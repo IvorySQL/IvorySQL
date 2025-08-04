@@ -21,8 +21,6 @@
 
 #include "access/detoast.h"
 #include "access/htup_details.h"
-#include "access/transam.h"
-#include "access/xact.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
@@ -379,8 +377,7 @@ ttdummy(PG_FUNCTION_ARGS)
 	newoff = Int32GetDatum((int32) DatumGetInt64(newoff));
 
 	/* Connect to SPI manager */
-	if ((ret = SPI_connect()) < 0)
-		elog(ERROR, "ttdummy (%s): SPI_connect returned %d", relname, ret);
+	SPI_connect();
 
 	/* Fetch tuple values and nulls */
 	cvals = (Datum *) palloc(natts * sizeof(Datum));
@@ -643,6 +640,29 @@ make_tuple_indirect(PG_FUNCTION_ARGS)
 	 * function into a container type (record, array, etc) it should be OK.
 	 */
 	PG_RETURN_POINTER(newtup->t_data);
+}
+
+PG_FUNCTION_INFO_V1(get_environ);
+
+Datum
+get_environ(PG_FUNCTION_ARGS)
+{
+	extern char **environ;
+	int			nvals = 0;
+	ArrayType  *result;
+	Datum	   *env;
+
+	for (char **s = environ; *s; s++)
+		nvals++;
+
+	env = palloc(nvals * sizeof(Datum));
+
+	for (int i = 0; i < nvals; i++)
+		env[i] = CStringGetTextDatum(environ[i]);
+
+	result = construct_array_builtin(env, nvals, TEXTOID);
+
+	PG_RETURN_POINTER(result);
 }
 
 PG_FUNCTION_INFO_V1(regress_setenv);
