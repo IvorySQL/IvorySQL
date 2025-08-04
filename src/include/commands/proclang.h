@@ -20,4 +20,7 @@ extern ObjectAddress CreateProceduralLanguage(CreatePLangStmt *stmt);
 
 extern Oid	get_language_oid(const char *langname, bool missing_ok);
 
+extern Oid  get_plisql_language_oid(void);
+#define LANG_PLISQL_OID	get_plisql_language_oid()
+
 #endif							/* PROCLANG_H */

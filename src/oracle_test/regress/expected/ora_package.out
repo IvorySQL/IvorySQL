@@ -4221,7 +4221,7 @@ end;
 select *from test1;
  id |  name   
 ----+---------
-  1 | 1
+  1 | welcome
   1 | welcome
 (2 rows)
 

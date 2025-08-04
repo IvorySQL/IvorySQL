@@ -56,6 +56,10 @@
 #include "utils/ora_compatible.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
+#include "commands/proclang.h"
+#include "utils/guc.h"
+#include "utils/ora_compatible.h"
+
 
 typedef struct
 {
@@ -4352,6 +4356,12 @@ expand_function_arguments(List *args, bool include_out_arguments,
 	int			pronargs = funcform->pronargs;
 	bool		has_named_args = false;
 	ListCell   *lc;
+
+	if (ORA_PARSER == compatible_db &&
+		funcform->prolang == LANG_PLISQL_OID)
+	{
+		include_out_arguments = true;
+	}
 
 	/*
 	 * If we are asked to match to OUT arguments, then use the proallargtypes

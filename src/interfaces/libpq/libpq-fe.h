@@ -47,6 +47,14 @@ extern "C"
 #define PG_COPYRES_EVENTS		  0x04
 #define PG_COPYRES_NOTICEHOOKS	  0x08
 
+/*
+ * Assume bool has been defined if true and false are defined.  
+ * This avoids duplicate-typedef errors if this file is included after c.h.
+ */
+#if !(defined(true) && defined(false))
+typedef unsigned char bool;
+#endif
+
 /* Application-visible enum types */
 
 /*
@@ -308,6 +316,11 @@ extern PGconn *PQsetdbLogin(const char *pghost, const char *pgport,
 
 /* close the current connection and free the PGconn data structure */
 extern void PQfinish(PGconn *conn);
+
+extern PGresult *PQexecFinish(PGconn *conn);
+extern bool PQexecStart(PGconn *conn);
+extern int	check_field_number(const PGresult *res, int field_num);
+extern int	check_tuple_field_number(const PGresult *res, int tup_num, int field_num);
 
 /* get info about connection options known to PQconnectdb */
 extern PQconninfoOption *PQconndefaults(void);

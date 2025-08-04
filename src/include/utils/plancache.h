@@ -100,6 +100,7 @@ typedef struct CachedPlanSource
 	const char *query_string;	/* source text of query */
 	CommandTag	commandTag;		/* 'nuff said */
 	Oid		   *param_types;	/* array of parameter type OIDs, or NULL */
+	char 	   	*param_modes;	/* array of parameter modes */
 	int			num_params;		/* length of param_types array */
 	ParserSetupHook parserSetup;	/* alternative parameter spec method */
 	void	   *parserSetupArg;
@@ -200,6 +201,7 @@ extern void CompleteCachedPlan(CachedPlanSource *plansource,
 							   List *querytree_list,
 							   MemoryContext querytree_context,
 							   Oid *param_types,
+							   char *param_modes,
 							   int num_params,
 							   ParserSetupHook parserSetup,
 							   void *parserSetupArg,

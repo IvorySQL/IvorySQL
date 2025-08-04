@@ -2354,4 +2354,6 @@ typedef struct OnConflictExpr
 	List	   *exclRelTlist;	/* tlist of the EXCLUDED pseudo relation */
 } OnConflictExpr;
 
+typedef Expr NonDefValNode;
+
 #endif							/* PRIMNODES_H */

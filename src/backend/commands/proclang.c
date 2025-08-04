@@ -235,3 +235,13 @@ get_language_oid(const char *langname, bool missing_ok)
 				 errmsg("language \"%s\" does not exist", langname)));
 	return oid;
 }
+
+/*
+ * get_plisql_language_oid - get plisql language oid
+ */
+Oid
+get_plisql_language_oid(void)
+{
+	return PLISQLlanguageId;
+}
+

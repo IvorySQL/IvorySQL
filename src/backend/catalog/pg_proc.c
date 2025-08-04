@@ -44,6 +44,9 @@
 #include "utils/regproc.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
+#include "commands/proclang.h"
+#include "utils/guc.h"
+#include "utils/ora_compatible.h"
 
 
 typedef struct
@@ -288,6 +291,17 @@ ProcedureCreate(const char *procedureName,
 					break;
 			}
 		}
+	}
+
+	/*
+	 * call plisql function which has out parameters
+	 */
+	if (compatible_db == ORA_PARSER &&
+		prokind == PROKIND_FUNCTION &&
+		LANG_PLISQL_OID == languageObjectId)
+	{
+		parameterTypes = buildoidvector(allParams, allParamCount);
+		parameterCount = allParamCount;
 	}
 
 	/*

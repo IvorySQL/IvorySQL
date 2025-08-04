@@ -256,6 +256,7 @@ struct ParseState
 	void	   *p_ref_hook_state;	/* common passthrough link for above */
 	uint16	    merge_on_attr_size;
 	uint8 	   *merge_on_attrno;
+	bool 		p_isVarParamState;
 };
 
 /*

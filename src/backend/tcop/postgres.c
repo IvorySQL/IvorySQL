@@ -81,6 +81,7 @@
 #include "utils/snapmgr.h"
 #include "utils/timeout.h"
 #include "utils/timestamp.h"
+#include "parser/parse_param.h"
 
 /* ----------------
  *		global variables
@@ -1023,6 +1024,9 @@ exec_simple_query(const char *query_string)
 	bool		was_logged = false;
 	bool		use_implicit_block;
 	char		msec_str[32];
+	/* anonymous block supports out parameters */
+	ParamListInfo	params = NULL;
+	Oid			*paramtypes = NULL;
 
 	/*
 	 * Report query to various monitoring facilities.
@@ -1092,6 +1096,51 @@ exec_simple_query(const char *query_string)
 	 * transaction block.
 	 */
 	use_implicit_block = (list_length(parsetree_list) > 1);
+
+	/*
+	 * Anonymous block wthi OUT parameters
+	 */
+	if (list_length(parsetree_list) == 1)
+	{
+		Node *node = (Node *) linitial(parsetree_list);
+		ParamListInfo paramsinfo;
+
+		if (node->type == T_RawStmt &&
+			((RawStmt *) node)->stmt->type == T_DoStmt &&
+			((DoStmt *)(((RawStmt *) node)->stmt))->paramsmode != NIL)
+		{
+			DoStmt *dostmt = (DoStmt *)(((RawStmt *) node)->stmt);
+			int	i = 0;
+			int	nargs;
+
+			nargs = list_length(dostmt->paramsmode);
+
+			paramsinfo = (ParamListInfo) palloc(offsetof(ParamListInfoData, params) +
+								nargs * sizeof(ParamExternData));
+			paramtypes = (Oid *) palloc(nargs * sizeof(Oid));
+
+			paramsinfo->paramFetchArg = NULL;
+			paramsinfo->paramFetch = NULL;
+			paramsinfo->parserSetupArg = NULL;
+			paramsinfo->parserSetup = NULL;
+			paramsinfo->numParams = nargs;
+			paramsinfo->haveout = true;
+			paramsinfo->outctext = NULL;
+			paramsinfo->paramnames = NULL;
+
+			for (i = 0; i < nargs; i++)
+			{
+				paramsinfo->params[i].isnull = true;
+				paramsinfo->params[i].pflags = PARAM_FLAG_OUT;
+				paramsinfo->params[i].ptype = 23;
+				paramsinfo->params[i].value = (Datum) 0;
+				paramtypes[i] = 23;
+				paramsinfo->params[i].pmode = 'o';
+			}
+
+			params = paramsinfo;
+		}
+	}
 
 	/*
 	 * Run through the raw parsetree(s) and process each one.
@@ -1190,11 +1239,15 @@ exec_simple_query(const char *query_string)
 		else
 			oldcontext = MemoryContextSwitchTo(MessageContext);
 
-		querytree_list = pg_analyze_and_rewrite_fixedparams(parsetree, query_string,
-															NULL, 0, NULL);
+		if (params != NULL)
+			querytree_list = pg_analyze_and_rewrite_fixedparams(parsetree, query_string,
+									paramtypes, params->numParams, NULL);
+		else
+			querytree_list = pg_analyze_and_rewrite_fixedparams(parsetree, query_string, 
+									NULL, 0, NULL);
 
 		plantree_list = pg_plan_queries(querytree_list, query_string,
-										CURSOR_OPT_PARALLEL_OK, NULL);
+										CURSOR_OPT_PARALLEL_OK, params);
 
 		/*
 		 * Done with the snapshot used for parsing/planning.
@@ -1235,7 +1288,7 @@ exec_simple_query(const char *query_string)
 		/*
 		 * Start the portal.  No parameters here.
 		 */
-		PortalStart(portal, NULL, 0, InvalidSnapshot);
+		PortalStart(portal, params, 0, InvalidSnapshot);
 
 		/*
 		 * Select the appropriate output format: text unless we are doing a
@@ -1405,6 +1458,10 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	bool		is_named;
 	bool		save_log_statement_stats = log_statement_stats;
 	char		msec_str[32];
+	char 	   *paramModes = palloc0(sizeof(char) * numParams);
+
+	/* get the parameter type mode */
+	GetParamMode(paramTypes, numParams, paramModes);
 
 	/*
 	 * Report query to various monitoring facilities.
@@ -1466,7 +1523,35 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	 * Do basic parsing of the query or queries (this should be safe even if
 	 * we are in aborted transaction state!)
 	 */
-	parsetree_list = pg_parse_query(query_string);
+	if (compatible_db== ORA_PARSER)
+	{
+		int oraparam_top_level;
+		int oraparam_cur_level;
+
+		push_oraparam_stack();
+		get_oraparam_level(&oraparam_top_level, &oraparam_cur_level);
+		forward_oraparam_stack();
+		set_ParseDynSql(true);
+		PG_TRY();
+		{
+			parsetree_list = pg_parse_query(query_string);
+		}
+		PG_CATCH();
+		{
+			backward_oraparam_stack();
+			pop_oraparam_stack(oraparam_top_level - 1, oraparam_cur_level);
+			set_ParseDynSql(false);
+			PG_RE_THROW();
+		}
+		PG_END_TRY();
+		backward_oraparam_stack();
+		pop_oraparam_stack(oraparam_top_level - 1, oraparam_cur_level);
+		set_ParseDynSql(false);
+	}
+	else
+	{
+		parsetree_list = pg_parse_query(query_string);
+	}
 
 	/*
 	 * We only allow a single user statement in a prepared statement. This is
@@ -1554,6 +1639,7 @@ exec_parse_message(const char *query_string,	/* string to execute */
 					   querytree_list,
 					   unnamed_stmt_context,
 					   paramTypes,
+					   paramModes,
 					   numParams,
 					   NULL,
 					   NULL,
@@ -1647,6 +1733,7 @@ exec_bind_message(StringInfo input_message)
 	char		msec_str[32];
 	ParamsErrorCbData params_data;
 	ErrorContextCallback params_errcxt;
+	List		*dostmt_modes = NIL;
 
 	/* Get the fixed part of the message */
 	portal_name = pq_getmsgstring(input_message);
@@ -1781,6 +1868,16 @@ exec_bind_message(StringInfo input_message)
 		snapshot_set = true;
 	}
 
+	/* anonymous block with OUT parameters */
+	if (psrc->raw_parse_tree != NULL &&
+		nodeTag(psrc->raw_parse_tree) == T_RawStmt &&
+		nodeTag((RawStmt *)(psrc->raw_parse_tree)->stmt) == T_DoStmt &&
+		((DoStmt *)(((RawStmt *) psrc->raw_parse_tree)->stmt))->paramsmode != NIL)
+	{
+		DoStmt *dostmt = (DoStmt *)((RawStmt *)(psrc->raw_parse_tree)->stmt);
+		dostmt_modes = dostmt->paramsmode;
+	}
+
 	/*
 	 * Fetch parameters, if any, and store in the portal's memory context.
 	 */
@@ -1802,6 +1899,11 @@ exec_bind_message(StringInfo input_message)
 		error_context_stack = &params_errcxt;
 
 		params = makeParamList(numParams);
+		
+		if (dostmt_modes != NIL && list_length(dostmt_modes) != numParams)
+		{
+			elog(ERROR, "number of parameters modes isn't same as of params");
+		}
 
 		for (int paramno = 0; paramno < numParams; paramno++)
 		{
@@ -1812,9 +1914,41 @@ exec_bind_message(StringInfo input_message)
 			StringInfoData pbuf;
 			char		csave;
 			int16		pformat;
+			char		pmode = psrc->param_modes[paramno];
 
 			one_param_data.paramno = paramno;
 			one_param_data.paramval = NULL;
+
+			if (dostmt_modes != NIL)
+			{
+				DefElem *def = (DefElem *) list_nth(dostmt_modes, paramno);
+
+				/* process paramname */
+				if (def->defname != NULL)
+				{
+					if (params->paramnames == NULL)
+					{
+						params->paramnames = palloc0(sizeof(char *) * numParams);
+					}
+
+					params->paramnames[paramno] = pstrdup(def->defname);
+				}
+
+				if (pg_strcasecmp(strVal(def->arg), "inout") == 0)
+				{
+					if (!params->haveout)
+					{
+						params->haveout = true;
+					}
+				}
+				else if (pg_strcasecmp(strVal(def->arg), "out") == 0)
+				{
+					if (!params->haveout)
+					{
+						params->haveout = true;
+					}
+				}
+			}
 
 			plength = pq_getmsgint(input_message, 4);
 			isNull = (plength == -1);
@@ -1859,6 +1993,18 @@ exec_bind_message(StringInfo input_message)
 				pformat = pformats[0];
 			else
 				pformat = 0;	/* default = text */
+
+			if (compatible_db == ORA_PARSER &&
+				pmode == 'o')
+			{
+				/* virtual type awalys has null value */
+				params->params[paramno].isnull = true;
+				params->params[paramno].value = (Datum) 0;
+				params->params[paramno].pflags |= PARAM_FLAG_OUT;
+				params->params[paramno].pmode = pmode;
+				params->params[paramno].ptype = ptype;
+				continue;
+			}
 
 			if (pformat == 0)	/* text mode */
 			{
@@ -1970,6 +2116,7 @@ exec_bind_message(StringInfo input_message)
 			 */
 			params->params[paramno].pflags = PARAM_FLAG_CONST;
 			params->params[paramno].ptype = ptype;
+			params->params[paramno].pmode = pmode;
 		}
 
 		/* Pop the per-parameter error callback */
@@ -2176,8 +2323,14 @@ exec_execute_message(const char *portal_name, long max_rows)
 	 * context, because that may get deleted if portal contains VACUUM).
 	 */
 	receiver = CreateDestReceiver(dest);
+
 	if (dest == DestRemoteExecute)
+	{
 		SetRemoteDestReceiverParams(receiver, portal);
+
+		if (portalParams != NULL && portalParams->haveout)
+			SetDestSendDescription(receiver);
+	}
 
 	/*
 	 * Ensure we are in a transaction command (this should normally be the

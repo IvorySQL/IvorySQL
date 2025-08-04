@@ -57,6 +57,7 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
+#include "parser/parse_param.h"
 
 /*
  * All plisql function executions within a single transaction share the same
@@ -462,6 +463,11 @@ static char *format_preparedparamsdata(PLiSQL_execstate *estate,
 									   ParamListInfo paramLI);
 static PLiSQL_variable *make_callstmt_target(PLiSQL_execstate *estate,
 											  PLiSQL_expr *expr);
+static void plisql_out_param_setup(void *s);
+static void plisql_out_param(ExprState *state, ExprEvalStep *op);
+
+static void plisql_anonymous_return_out_parameter(PLiSQL_execstate *estate, PLiSQL_function *func);
+
 
 
 /* ----------
@@ -496,6 +502,7 @@ plisql_exec_function(PLiSQL_function *func, FunctionCallInfo fcinfo,
 	int			rc;
 
 	char	function_from = plisql_function_from(fcinfo);
+	bool		anonymous_have_outparam = false;
 
 	/*
 	 * Setup the execution state
@@ -544,52 +551,55 @@ plisql_exec_function(PLiSQL_function *func, FunctionCallInfo fcinfo,
 				{
 					PLiSQL_var *var = (PLiSQL_var *) estate.datums[n];
 
-					assign_simple_var(&estate, var,
-									  fcinfo->args[i].value,
-									  fcinfo->args[i].isnull,
-									  false);
-
-					/*
-					 * Force any array-valued parameter to be stored in
-					 * expanded form in our local variable, in hopes of
-					 * improving efficiency of uses of the variable.  (This is
-					 * a hack, really: why only arrays? Need more thought
-					 * about which cases are likely to win.  See also
-					 * typisarray-specific heuristic in exec_assign_value.)
-					 *
-					 * Special cases: If passed a R/W expanded pointer, assume
-					 * we can commandeer the object rather than having to copy
-					 * it.  If passed a R/O expanded pointer, just keep it as
-					 * the value of the variable for the moment.  (We'll force
-					 * it to R/W if the variable gets modified, but that may
-					 * very well never happen.)
-					 */
-					if (!var->isnull && var->datatype->typisarray)
+					if (var->info != PROARGMODE_OUT)
 					{
-						if (VARATT_IS_EXTERNAL_EXPANDED_RW(DatumGetPointer(var->value)))
+						assign_simple_var(&estate, var,
+								  fcinfo->args[i].value,
+								  fcinfo->args[i].isnull,
+								  false);
+
+						/*
+						 * Force any array-valued parameter to be stored in
+						 * expanded form in our local variable, in hopes of
+						 * improving efficiency of uses of the variable.  (This is
+						 * a hack, really: why only arrays? Need more thought
+						 * about which cases are likely to win.  See also
+						 * typisarray-specific heuristic in exec_assign_value.)
+						 *
+						 * Special cases: If passed a R/W expanded pointer, assume
+						 * we can commandeer the object rather than having to copy
+						 * it.  If passed a R/O expanded pointer, just keep it as
+						 * the value of the variable for the moment.  (We'll force
+						 * it to R/W if the variable gets modified, but that may
+						 * very well never happen.)
+						 */
+						if (!var->isnull && var->datatype->typisarray)
 						{
-							/* take ownership of R/W object */
-							assign_simple_var(&estate, var,
+							if (VARATT_IS_EXTERNAL_EXPANDED_RW(DatumGetPointer(var->value)))
+							{
+								/* take ownership of R/W object */
+								assign_simple_var(&estate, var,
 											  TransferExpandedObject(var->value,
 											  plisql_get_relevantContext(var->pkgoid,
-														estate.datum_context)), 
+														estate.datum_context)),
 											  false,
 											  true);
-						}
-						else if (VARATT_IS_EXTERNAL_EXPANDED_RO(DatumGetPointer(var->value)))
-						{
-							/* R/O pointer, keep it as-is until assigned to */
-						}
-						else
-						{
-							/* flat array, so force to expanded form */
-							assign_simple_var(&estate, var,
+							}
+							else if (VARATT_IS_EXTERNAL_EXPANDED_RO(DatumGetPointer(var->value)))
+							{
+								/* R/O pointer, keep it as-is until assigned to */
+							}
+							else
+							{
+								/* flat array, so force to expanded form */
+								assign_simple_var(&estate, var,
 											  expand_array(var->value,
-												  plisql_get_relevantContext(var->pkgoid,
-														estate.datum_context),
-															   NULL), 
+											   plisql_get_relevantContext(var->pkgoid,
+												estate.datum_context),
+											   NULL),
 											  false,
 											  true);
+							}
 						}
 					}
 				}
@@ -599,21 +609,25 @@ plisql_exec_function(PLiSQL_function *func, FunctionCallInfo fcinfo,
 				{
 					PLiSQL_rec *rec = (PLiSQL_rec *) estate.datums[n];
 
-					if (!fcinfo->args[i].isnull)
+					if (rec->info != PROARGMODE_OUT)
 					{
-						/* Assign row value from composite datum */
-						exec_move_row_from_datum(&estate,
-												 (PLiSQL_variable *) rec,
-												 fcinfo->args[i].value);
+						if (!fcinfo->args[i].isnull)
+						{
+							/* Assign row value from composite datum */
+							exec_move_row_from_datum(&estate,
+											 (PLiSQL_variable *) rec,
+											 fcinfo->args[i].value);
+						}
+						else
+						{
+							/* If arg is null, set variable to null */
+							exec_move_row(&estate, (PLiSQL_variable *) rec,
+										  NULL, NULL);
+						}
+
+						/* clean up after exec_move_row() */
+						exec_eval_cleanup(&estate);
 					}
-					else
-					{
-						/* If arg is null, set variable to null */
-						exec_move_row(&estate, (PLiSQL_variable *) rec,
-									  NULL, NULL);
-					}
-					/* clean up after exec_move_row() */
-					exec_eval_cleanup(&estate);
 				}
 				break;
 
@@ -652,9 +666,18 @@ plisql_exec_function(PLiSQL_function *func, FunctionCallInfo fcinfo,
 				 errmsg("control reached end of function without RETURN")));
 	}
 
-	if (function_from == FUNC_FROM_SUBPROCFUNC &&
-		func->item == NULL) 
+	if (function_from == FUNC_FROM_SUBPROCFUNC)
 		plisql_assign_out_subprocfunc_globalvar(&estate, fcinfo);
+
+	/*
+	 * Anonymous block has out paramters
+	 */
+	if (func->fn_prokind == PROKIND_ANONYMOUS_BLOCK &&
+		func->fn_nargs > 0)
+	{
+		plisql_anonymous_return_out_parameter(&estate, func);
+		anonymous_have_outparam = true;
+	}
 
 	/*
 	 * We got a return value - process it
@@ -703,10 +726,12 @@ plisql_exec_function(PLiSQL_function *func, FunctionCallInfo fcinfo,
 		 */
 		if (estate.retistuple)
 		{
-			/* Don't need coercion if rowtype is known to match */
-			if (func->fn_rettype == estate.rettype &&
-				func->fn_rettype != RECORDOID)
+			if (!anonymous_have_outparam)
 			{
+				/* Don't need coercion if rowtype is known to match */
+				if (func->fn_rettype == estate.rettype &&
+					func->fn_rettype != RECORDOID)
+				{
 				/*
 				 * Copy the tuple result into upper executor memory context.
 				 * However, if we have a R/W expanded datum, we can just
@@ -721,9 +746,9 @@ plisql_exec_function(PLiSQL_function *func, FunctionCallInfo fcinfo,
 						estate.retval = SPI_datumTransfer(estate.retval,
 												  false,
 												  -1);
-			}
-			else
-			{
+				}
+				else
+				{
 				/*
 				 * Need to look up the expected result type.  XXX would be
 				 * better to cache the tupdesc instead of repeating
@@ -773,6 +798,12 @@ plisql_exec_function(PLiSQL_function *func, FunctionCallInfo fcinfo,
 						elog(ERROR, "return type must be a row type");
 						break;
 				}
+				}
+			}
+			else
+			{
+				estate.rettype = RECORDOID;
+				coerce_function_result_tuple(&estate, estate.tuple_store_desc);
 			}
 		}
 		else
@@ -841,6 +872,31 @@ plisql_exec_function(PLiSQL_function *func, FunctionCallInfo fcinfo,
 	 * Pop the error context stack
 	 */
 	error_context_stack = plerrcontext.previous;
+
+	if (anonymous_have_outparam)
+	{
+		for (i = 0; i < func->fn_nargs; i++)
+		{
+			int			n = func->fn_argvarnos[i];
+
+			switch (estate.datums[n]->dtype)
+			{
+				case PLISQL_DTYPE_VAR:
+				{
+					PLiSQL_var *var = (PLiSQL_var *)estate.datums[n];
+
+					fcinfo->args[i].value = var->value;
+					fcinfo->args[i].isnull = var->isnull;
+				}
+					break;
+				case PLISQL_DTYPE_ROW:
+					fcinfo->args[i].isnull = false;
+					break;
+				default:
+					elog(ERROR, "unrecognized dtype: %d", func->datums[i]->dtype);
+			}
+		}
+	}
 
 	/*
 	 * Return the function's result
@@ -1820,6 +1876,8 @@ exec_stmt_block(PLiSQL_execstate *estate, PLiSQL_stmt_block *block)
 
 	estate->err_var = NULL;
 
+	pop_oraparam_stack(block->ora_param_stack_top_level, block->ora_param_stack_cur_level);
+
 	if (block->exceptions)
 	{
 		/*
@@ -1900,6 +1958,8 @@ exec_stmt_block(PLiSQL_execstate *estate, PLiSQL_stmt_block *block)
 		{
 			ErrorData  *edata;
 			ListCell   *e;
+
+			pop_oraparam_stack(block->ora_param_stack_top_level, block->ora_param_stack_cur_level);
 
 			estate->err_text = gettext_noop("during exception cleanup");
 
@@ -3316,6 +3376,33 @@ exec_stmt_return(PLiSQL_execstate *estate, PLiSQL_stmt_return *stmt)
 		retvar = plisql_get_datum(estate, estate->datums[stmt->retvarno]);
 		estate->retpkgvar = (OidIsValid(retvar->pkgoid));
 
+		if (estate->func &&
+			stmt->retvarno == estate->func->fn_ret_vardno)
+		{
+			/* assign stmt->expr expression value to the function returned variable */
+			exec_assign_expr(estate, retvar, stmt->expr);
+
+			/* the return stmt is contructed combinding all OUT parameters and function return value */
+			return exec_stmt_return(estate, (PLiSQL_stmt_return *)
+						llast(estate->func->action->body));
+		}
+
+		/*
+		 * When compile a function with out arguments and the return type is not VOIDIID,
+		 * build a RETURN statment which combinds all OUT parameters and function return value,
+		 * and put it as the last statment of function body.
+		 * If there is no explicit RETURN statement in function body, raise error.
+		 */
+		if (estate->func &&
+			stmt->retvarno != estate->func->fn_ret_vardno &&
+			estate->func->fn_no_return)
+		{
+			estate->err_text = NULL;
+			ereport(ERROR,
+					(errcode(ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT),
+					 errmsg("Function returned without value")));
+		}
+
 		switch (retvar->dtype)
 		{
 			case PLISQL_DTYPE_PROMISE:
@@ -3764,6 +3851,8 @@ exec_stmt_return_query(PLiSQL_execstate *estate,
 
 		exec_eval_cleanup(estate);
 
+		forward_oraparam_stack();
+
 		/* Execute query, passing params if necessary */
 		memset(&options, 0, sizeof(options));
 		options.params = exec_eval_using_params(estate,
@@ -3776,6 +3865,8 @@ exec_stmt_return_query(PLiSQL_execstate *estate,
 		if (rc < 0)
 			elog(ERROR, "SPI_execute_extended failed executing query \"%s\": %s",
 				 querystr, SPI_result_code_string(rc));
+
+		backward_oraparam_stack();
 	}
 
 	/* Clean up */
@@ -4163,6 +4254,9 @@ plisql_estate_setup(PLiSQL_execstate *estate,
 	estate->paramLI->parserSetup = (ParserSetupHook) plisql_parser_setup;
 	estate->paramLI->parserSetupArg = NULL; /* filled during use */
 	estate->paramLI->numParams = estate->ndatums;
+	estate->paramLI->outparamSetup = (OutParamSetupHook) plisql_out_param_setup;
+	estate->paramLI->paramnames = NULL;
+
 
 	/* Create the session-wide cast-expression hash if we didn't already */
 	if (cast_expr_hash == NULL)
@@ -4611,7 +4705,14 @@ exec_stmt_dynexecute(PLiSQL_execstate *estate,
 	options.params = paramLI;
 	options.read_only = estate->readonly_func;
 
+	forward_oraparam_stack();
+	set_ParseDynSql(true);
+	set_parseDynDoStmt(true);
+	set_haspgparam(false);
+
 	exec_res = SPI_execute_extended(querystr, &options);
+	
+	backward_oraparam_stack();
 
 	switch (exec_res)
 	{
@@ -4767,8 +4868,11 @@ exec_stmt_dynfors(PLiSQL_execstate *estate, PLiSQL_stmt_dynfors *stmt)
 	Portal		portal;
 	int			rc;
 
+	forward_oraparam_stack();
+
 	portal = exec_dynquery_with_params(estate, stmt->query, stmt->params,
 									   NULL, CURSOR_OPT_NO_SCROLL);
+	backward_oraparam_stack();
 
 	/*
 	 * Execute the loop
@@ -4843,11 +4947,14 @@ exec_stmt_open(PLiSQL_execstate *estate, PLiSQL_stmt_open *stmt)
 		 * This is an OPEN refcursor FOR EXECUTE ...
 		 * ----------
 		 */
+		forward_oraparam_stack();
+
 		portal = exec_dynquery_with_params(estate,
 										   stmt->dynquery,
 										   stmt->params,
 										   curname,
 										   stmt->cursor_options);
+		backward_oraparam_stack();
 
 		/*
 		 * If cursor variable was NULL, store the generated portal name in it.
@@ -5178,6 +5285,32 @@ exec_assign_expr(PLiSQL_execstate *estate, PLiSQL_datum *target,
 	}
 
 	value = exec_eval_expr(estate, expr, &isnull, &valtype, &valtypmod);
+
+	if (target->dtype == PLISQL_DTYPE_VAR)
+	{
+		PLiSQL_var *var = (PLiSQL_var *) target;
+
+		if (var->info == PROARGMODE_IN)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_PLPGSQL_ERROR),
+					 errmsg("expression \"%s\" cannot be used as an assignment target",
+							var->refname)));
+		}
+	}
+	else if (target->dtype ==  PLISQL_DTYPE_REC)
+	{
+		PLiSQL_rec *rec = (PLiSQL_rec *) target;
+
+		if (rec->info == PROARGMODE_IN)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_PLPGSQL_ERROR),
+					 errmsg("expression \"%s\" cannot be used as an assignment target",
+							rec->refname)));
+		}
+	}
+
 	exec_assign_value(estate, target, value, isnull, valtype, valtypmod);
 	exec_eval_cleanup(estate);
 }
@@ -6742,8 +6875,16 @@ plisql_param_fetch(ParamListInfo params,
 	exec_eval_datum(estate, datum,
 					&prm->ptype, &prmtypmod,
 					&prm->value, &prm->isnull);
-	/* We can always mark params as "const" for executor's purposes */
-	prm->pflags = PARAM_FLAG_CONST;
+
+	if (params->outparamSetup)
+	{
+		prm->pflags = 0;
+	}
+	else
+	{
+		/* always mark params as "const" for executor's purposes */
+		prm->pflags = PARAM_FLAG_CONST;
+	}
 
 	/*
 	 * If it's a read/write expanded datum, convert reference to read-only.
@@ -9363,3 +9504,125 @@ format_preparedparamsdata(PLiSQL_execstate *estate,
 
 	return paramstr.data;
 }
+
+/*
+ * plisql_out_param_setup
+ */
+static void
+plisql_out_param_setup(void *s)
+{
+	ExprEvalStep *scratch = (ExprEvalStep *) s;
+
+	scratch->d.out_params.outparam_func = plisql_out_param;
+
+	return;
+}
+
+/*
+ * plisql_out_param
+ * separate the return value of function from the tuple 
+ * which combined out parameter and the return value,
+ * and assign values to out parameters.
+ */
+static void
+plisql_out_param(ExprState *state, ExprEvalStep *op)
+{
+	PLiSQL_execstate *estate = (PLiSQL_execstate *)op->d.out_params.pestate;
+	Datum 		  value = *op->resvalue;
+	bool 		  isNull = *op->resnull;
+	int 		  nout = op->d.out_params.nout;
+	int    		 *paramids = op->d.out_params.paramids;
+	MemoryContext 	old;
+	Datum		func_retval;
+	int		i;
+	HeapTupleData 	tmptup;
+	TupleDesc	tupdesc = NULL;
+
+	old = MemoryContextSwitchTo(estate->datum_context);
+
+	tupdesc = deconstruct_composite_datum(value, &tmptup);
+
+	/* assign value to out parameters */
+	for (i = 0; i < nout; i++)
+	{
+		bool	  	isnull;
+		Oid 		valtype;
+		int32		valtypmod = -1;
+		PLiSQL_datum    *target;
+
+		target = estate->datums[paramids[i]];
+
+		valtype = tupdesc->attrs[i].atttypid;
+		valtypmod = tupdesc->attrs[i].atttypmod;
+		value = SPI_getbinval(&tmptup, tupdesc, i + 1, &isnull);
+
+		exec_assign_value(estate, target, value, isnull,
+					valtype, valtypmod);
+	}
+
+	/* get the function real return value */
+	func_retval = SPI_getbinval(&tmptup, tupdesc, tupdesc->natts, &isNull);
+	*op->resnull = isNull;
+	*op->resvalue = func_retval;
+
+	ReleaseTupleDesc(tupdesc);
+	MemoryContextSwitchTo(old);
+
+	return;
+}
+
+/*
+ * call plisql anonymous using out parameters.
+ * this function would be used when jdbc calls plisql anonymous block.
+ * should return out parameters.
+ */
+static void
+plisql_anonymous_return_out_parameter(PLiSQL_execstate *estate, PLiSQL_function *func)
+{
+	int	i = 0;
+	int 	j = 0;
+	HeapTuple	tup;
+	PLiSQL_variable **out_variables = NULL;
+	PLiSQL_row *row;
+
+	out_variables = (PLiSQL_variable **) palloc0(func->fn_nargs * sizeof(PLiSQL_variable *));
+
+	for (i = 0; i < func->fn_nargs; i++)
+	{
+		PLiSQL_variable *argvariable = (PLiSQL_variable *) estate->datums[func->fn_argvarnos[i]];
+
+		if (argvariable->dtype == PLISQL_DTYPE_VAR)
+		{
+			if (((PLiSQL_var *)argvariable)->info == PROARGMODE_OUT ||
+				((PLiSQL_var *)argvariable)->info == PROARGMODE_INOUT)
+				out_variables[j++] = (PLiSQL_variable *) estate->datums[func->fn_argvarnos[i]];
+		}
+		else
+		{
+			Assert(argvariable->dtype == PLISQL_DTYPE_REC);
+			if (((PLiSQL_rec *)argvariable)->info == PROARGMODE_OUT ||
+				((PLiSQL_rec *)argvariable)->info == PROARGMODE_INOUT)
+				out_variables[j++] = (PLiSQL_variable *) estate->datums[func->fn_argvarnos[i]];
+		}
+	}
+
+	row = build_row_from_vars(out_variables, j);
+	BlessTupleDesc(row->rowtupdesc);
+
+	pfree(out_variables);
+
+	if (!row->rowtupdesc)	/* should not happen */
+		elog(ERROR, "row variable has no tupdesc");
+
+	tup = make_tuple_from_row(estate, row, row->rowtupdesc);
+	if (tup == NULL)	/* should not happen */
+		elog(ERROR, "row not compatible with its own tupdesc");
+
+	estate->retval = HeapTupleGetDatum(tup);
+	estate->tuple_store_desc = row->rowtupdesc;
+	estate->retisnull = false;
+	estate->retistuple = true;
+
+	return;
+}
+
