@@ -29,22 +29,20 @@ LANGUAGE C STRICT PARALLEL UNSAFE;
 --
 -- Executes the action attached to the injection point.
 --
-CREATE FUNCTION injection_points_run(IN point_name TEXT,
-    IN arg TEXT DEFAULT NULL)
+CREATE FUNCTION injection_points_run(IN point_name TEXT)
 RETURNS void
 AS 'MODULE_PATHNAME', 'injection_points_run'
-LANGUAGE C PARALLEL UNSAFE;
+LANGUAGE C STRICT PARALLEL UNSAFE;
 
 --
 -- injection_points_cached()
 --
 -- Executes the action attached to the injection point, from local cache.
 --
-CREATE FUNCTION injection_points_cached(IN point_name TEXT,
-    IN arg TEXT DEFAULT NULL)
+CREATE FUNCTION injection_points_cached(IN point_name TEXT)
 RETURNS void
 AS 'MODULE_PATHNAME', 'injection_points_cached'
-LANGUAGE C PARALLEL UNSAFE;
+LANGUAGE C STRICT PARALLEL UNSAFE;
 
 --
 -- injection_points_wakeup()
@@ -78,18 +76,6 @@ AS 'MODULE_PATHNAME', 'injection_points_detach'
 LANGUAGE C STRICT PARALLEL UNSAFE;
 
 --
--- injection_points_list()
---
--- List of all the injection points currently attached.
---
-CREATE FUNCTION injection_points_list(OUT point_name text,
-   OUT library text,
-   OUT function text)
-RETURNS SETOF record
-AS 'MODULE_PATHNAME', 'injection_points_list'
-LANGUAGE C STRICT VOLATILE PARALLEL RESTRICTED;
-
---
 -- injection_points_stats_numcalls()
 --
 -- Reports statistics, if any, related to the given injection point.
@@ -97,16 +83,6 @@ LANGUAGE C STRICT VOLATILE PARALLEL RESTRICTED;
 CREATE FUNCTION injection_points_stats_numcalls(IN point_name TEXT)
 RETURNS bigint
 AS 'MODULE_PATHNAME', 'injection_points_stats_numcalls'
-LANGUAGE C STRICT;
-
---
--- injection_points_stats_drop()
---
--- Drop all statistics of injection points.
---
-CREATE FUNCTION injection_points_stats_drop()
-RETURNS void
-AS 'MODULE_PATHNAME', 'injection_points_stats_drop'
 LANGUAGE C STRICT;
 
 --
@@ -121,11 +97,3 @@ CREATE FUNCTION injection_points_stats_fixed(OUT numattach int8,
 RETURNS record
 AS 'MODULE_PATHNAME', 'injection_points_stats_fixed'
 LANGUAGE C STRICT;
-
---
--- regress_injection.c functions
---
-CREATE FUNCTION removable_cutoff(rel regclass)
-RETURNS xid8
-AS 'MODULE_PATHNAME'
-LANGUAGE C CALLED ON NULL INPUT;
