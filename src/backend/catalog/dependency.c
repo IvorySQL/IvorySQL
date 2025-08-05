@@ -6,6 +6,7 @@
  *
  * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *	  src/backend/catalog/dependency.c
@@ -2338,6 +2339,8 @@ find_expr_references_walker(Node *node,
 						   context->addrs);
 		/* fall through to examine arguments */
 	}
+	else if (IsA(node, NonDefValNode))
+		return false;
 
 	return expression_tree_walker(node, find_expr_references_walker,
 								  (void *) context);

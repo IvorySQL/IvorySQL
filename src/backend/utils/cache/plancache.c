@@ -46,6 +46,7 @@
  *
  * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *	  src/backend/utils/cache/plancache.c
@@ -372,6 +373,7 @@ CompleteCachedPlan(CachedPlanSource *plansource,
 				   List *querytree_list,
 				   MemoryContext querytree_context,
 				   Oid *param_types,
+				   char *param_modes,
 				   int num_params,
 				   ParserSetupHook parserSetup,
 				   void *parserSetupArg,
@@ -461,6 +463,12 @@ CompleteCachedPlan(CachedPlanSource *plansource,
 	plansource->cursor_options = cursor_options;
 	plansource->fixed_result = fixed_result;
 	plansource->resultDesc = PlanCacheComputeResultDesc(querytree_list);
+
+	if (num_params > 0 && param_modes)
+	{
+		plansource->param_modes = (char *) palloc0(num_params * sizeof(char));
+		memcpy(plansource->param_modes, param_modes, num_params * sizeof(char));
+	}
 
 	MemoryContextSwitchTo(oldcxt);
 

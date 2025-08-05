@@ -270,6 +270,7 @@ static	PLiSQL_expr		*build_call_expr(int firsttoken, int location);
 %token <str>	IDENT UIDENT FCONST SCONST USCONST BCONST XCONST Op
 %token <str>	BFCONST	BDCONST
 %token <ival>	ICONST PARAM
+%token <str>	ORAPARAM
 %token			TYPECAST DOT_DOT COLON_EQUALS EQUALS_GREATER
 %token			LESS_EQUALS GREATER_EQUALS NOT_EQUALS LESS_LESS GREATER_GREATER
 
@@ -2700,6 +2701,8 @@ stmt_dynexecute : K_EXECUTE
 						new->strict = false;
 						new->target = NULL;
 						new->params = NIL;
+						new->haveout = false;
+						new->out = NULL;
 
 						/*
 						 * We loop to allow the INTO and USING clauses to
@@ -4136,12 +4139,34 @@ make_return_stmt(int location)
 	}
 	else if (plisql_curr_compile->out_param_varno >= 0)
 	{
-		if (yylex() != ';')
-			ereport(ERROR,
+		int		tok = yylex();
+
+		if (tok != ';')
+		{
+			if (plisql_curr_compile->fn_prokind == PROKIND_PROCEDURE)
+				ereport(ERROR,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
-					 errmsg("RETURN cannot have a parameter in function with OUT parameters"),
+					 errmsg("RETURN cannot have a parameter in procedure"),
 					 parser_errposition(yylloc)));
-		new->retvarno = plisql_curr_compile->out_param_varno;
+
+			/* treat the return variable as expression */
+			plisql_push_back_token(tok);
+			new->expr = read_sql_expression(';', ";");
+			new->retvarno = plisql_curr_compile->fn_ret_vardno;
+		}
+		else
+		{
+			if (plisql_curr_compile->fn_prokind == PROKIND_FUNCTION &&
+				plisql_curr_compile->fn_ret_vardno != -1 &&
+				plisql_curr_compile->datums != NULL &&
+				((PLiSQL_var *)plisql_curr_compile->datums[plisql_curr_compile->fn_ret_vardno])->datatype->typoid != VOIDOID)
+					ereport(ERROR,
+						(errcode(ERRCODE_DATATYPE_MISMATCH),
+						 errmsg("RETURN cannot have a parameter in function with OUT parameters"),
+						 parser_errposition(yylloc)));
+
+			new->retvarno = plisql_curr_compile->out_param_varno;
+		}
 	}
 	else
 	{

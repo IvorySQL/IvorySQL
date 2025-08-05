@@ -24,6 +24,7 @@
 #include "utils/datum.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "catalog/pg_proc.h"
 
 
 static void paramlist_parser_setup(ParseState *pstate, void *arg);
@@ -45,6 +46,7 @@ makeParamList(int numParams)
 {
 	ParamListInfo retval;
 	Size		size;
+	int		i;
 
 	size = offsetof(ParamListInfoData, params) +
 		numParams * sizeof(ParamExternData);
@@ -58,6 +60,17 @@ makeParamList(int numParams)
 	retval->parserSetupArg = (void *) retval;
 	retval->paramValuesStr = NULL;
 	retval->numParams = numParams;
+	retval->outparamSetup = NULL;
+
+	/* set all params mode to be IN */
+	for (i = 0; i < numParams; i++)
+	{
+		retval->params[i].pmode = PROARGMODE_IN;
+	}
+
+	retval->outctext = NULL;
+	retval->paramnames = NULL;
+	retval->haveout = false;
 
 	return retval;
 }
@@ -83,6 +96,11 @@ copyParamList(ParamListInfo from)
 		return NULL;
 
 	retval = makeParamList(from->numParams);
+
+	retval->outparamSetup = from->outparamSetup; /* handle OUT parameters */
+	retval->haveout = from->haveout;
+	retval->outctext = from->outctext;
+	retval->paramnames = from->paramnames;
 
 	for (int i = 0; i < from->numParams; i++)
 	{

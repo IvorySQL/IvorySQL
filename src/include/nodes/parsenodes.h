@@ -14,6 +14,7 @@
  *
  * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * src/include/nodes/parsenodes.h
  *
@@ -28,6 +29,7 @@
 #include "nodes/primnodes.h"
 #include "nodes/value.h"
 #include "partitioning/partdefs.h"
+#include "nodes/params.h"
 
 
 /* Possible sources of a Query */
@@ -304,6 +306,17 @@ typedef struct ParamRef
 	int			number;			/* the number of the parameter */
 	ParseLoc	location;		/* token location, or -1 if unknown */
 } ParamRef;
+
+/*
+ * OraParamRef - specifies a :a parameter reference
+ */
+typedef struct OraParamRef
+{
+	NodeTag		type;
+	int			number;			/* the number of the parameter */
+	ParseLoc		location;		/* token location, or -1 if unknown */	
+	char			*name;			/* placeholder variable name */	
+} OraParamRef;
 
 /*
  * A_Expr - infix, prefix, and postfix expressions
@@ -3495,6 +3508,7 @@ typedef struct DoStmt
 {
 	NodeTag		type;
 	List	   *args;			/* List of DefElem nodes */
+	List		*paramsmode;	/* List of parameter mode */
 } DoStmt;
 
 typedef struct InlineCodeBlock
@@ -3506,6 +3520,7 @@ typedef struct InlineCodeBlock
 	Oid			langOid;		/* OID of selected language */
 	bool		langIsTrusted;	/* trusted property of the language */
 	bool		atomic;			/* atomic execution context */
+	ParamListInfo params;		
 } InlineCodeBlock;
 
 /* ----------------------

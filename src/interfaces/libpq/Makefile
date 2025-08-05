@@ -4,6 +4,7 @@
 #
 # Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
+# Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
 #
 # src/interfaces/libpq/Makefile
 #
@@ -42,7 +43,9 @@ OBJS = \
 	legacy-pqsignal.o \
 	libpq-events.o \
 	pqexpbuffer.o \
-	fe-auth.o
+	fe-auth.o \
+	ivy_sema.o \
+	ivy-exec.o
 
 # File shared across all SSL implementations supported.
 ifneq ($(with_ssl),no)
@@ -131,6 +134,8 @@ $(top_builddir)/src/port/pg_config_paths.h:
 
 install: all installdirs install-lib
 	$(INSTALL_DATA) $(srcdir)/libpq-fe.h '$(DESTDIR)$(includedir)'
+	$(INSTALL_DATA) $(srcdir)/libpq-ivy.h '$(DESTDIR)$(includedir)'
+	$(INSTALL_DATA) $(srcdir)/ivy_sema.h  '$(DESTDIR)$(includedir)'
 	$(INSTALL_DATA) $(srcdir)/libpq-events.h '$(DESTDIR)$(includedir)'
 	$(INSTALL_DATA) $(srcdir)/libpq-int.h '$(DESTDIR)$(includedir_internal)'
 	$(INSTALL_DATA) $(srcdir)/fe-auth-sasl.h '$(DESTDIR)$(includedir_internal)'
@@ -156,6 +161,8 @@ installdirs: installdirs-lib
 
 uninstall: uninstall-lib
 	rm -f '$(DESTDIR)$(includedir)/libpq-fe.h'
+	rm -f '$(DESTDIR)$(includedir)/libpq-ivy.h'
+	rm -f '$(DESTDIR)$(includedir)/ivy_sema.h'
 	rm -f '$(DESTDIR)$(includedir)/libpq-events.h'
 	rm -f '$(DESTDIR)$(includedir_internal)/libpq-int.h'
 	rm -f '$(DESTDIR)$(includedir_internal)/fe-auth-sasl.h'
@@ -164,6 +171,7 @@ uninstall: uninstall-lib
 
 clean distclean: clean-lib
 	$(MAKE) -C test $@
+	$(MAKE) -C ivytest $@
 	rm -rf tmp_check
 	rm -f $(OBJS) pthread.h libpq-refs-stamp
 # Might be left over from a Win32 client-only build

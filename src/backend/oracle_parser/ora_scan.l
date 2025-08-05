@@ -23,6 +23,7 @@
  *
  * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *	  src/backend/oracle_parser/ora_scan.l
@@ -46,6 +47,8 @@
 #include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/ora_compatible.h"
+#include "executor/spi.h" 
+#include "parser/parse_param.h"
 }
 
 %{
@@ -435,6 +438,12 @@ real_junk		{real}{ident_start}
 
 param			\${decinteger}
 param_junk		\${decinteger}{ident_start}
+
+decdigits		{decdigit}+
+ora_ident_start		[A-Za-z]
+ora_ident_cont		[A-Za-z_0-9#]
+ora_identifier		{ora_ident_start}{ora_ident_cont}*
+ora_param       :({decdigits}|{ora_identifier})
 
 other			.
 
@@ -1157,6 +1166,11 @@ other			.
 					SET_YYLLOC();
 					yylval->ival = atol(yytext + 1);
 					return PARAM;
+				}
+{ora_param}     {
+					SET_YYLLOC();
+					yylval->str = pstrdup(yytext);
+					return ORAPARAM;
 				}
 {param_junk}	{
 					SET_YYLLOC();

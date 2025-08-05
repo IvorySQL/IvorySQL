@@ -6,6 +6,7 @@
  *
  * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * src/include/parser/parse_node.h
  *
@@ -256,6 +257,7 @@ struct ParseState
 	void	   *p_ref_hook_state;	/* common passthrough link for above */
 	uint16	    merge_on_attr_size;
 	uint8 	   *merge_on_attrno;
+	bool 		p_isVarParamState;
 };
 
 /*

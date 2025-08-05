@@ -1,4 +1,17 @@
 /*-------------------------------------------------------------------------
+ * Copyright 2025 IvorySQL Global Development Team
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  *
  * File:pl_subproc_function.c
  *
@@ -799,6 +812,7 @@ plisql_register_internal_func(void)
 	plisql_internal_funcs.get_internal_func_result_type = plisql_get_subprocfunc_result_type;
 	plisql_internal_funcs.get_internal_func_outargs = plisql_get_subprocfunc_outargs;
 	plisql_internal_funcs.get_inernal_func_result_name = plisql_get_subprocfunc_result_name;
+	plisql_internal_funcs.compile_inline_internal = plisql_compile_inline_internal;
 	plisql_internal_funcs.package_validator = plisql_package_validator;
 	plisql_internal_funcs.package_handle = plisql_package_handle;
 	plisql_internal_funcs.package_parse = plisql_package_parse;
@@ -1561,6 +1575,7 @@ plisql_build_subproc_function_internal(char *funcname, List *args,
 		function->fn_prokind = PROKIND_FUNCTION;
 
 	function->fn_nargs = list_length(args);
+	function->paramnames = NULL;
 
 	/*
 	 * when parse a package function

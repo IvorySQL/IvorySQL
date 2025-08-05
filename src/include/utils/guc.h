@@ -5,6 +5,7 @@
  *
  * Copyright (c) 2000-2024, PostgreSQL Global Development Group
  * Written by Peter Eisentraut <peter_e@gmx.net>.
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * src/include/utils/guc.h
  *--------------------------------------------------------------------
@@ -311,11 +312,15 @@ extern PGDLLIMPORT bool internal_warning;
 extern PGDLLIMPORT bool default_with_rowids;
 extern PGDLLIMPORT int rowid_seq_cache;
 
+extern PGDLLIMPORT bool	allow_out_parameter_const;
+
 #define ORADATE_MASK			0x01
 #define ORATIMESTAMP_MASK		0x02
 #define ORATIMESTAMPTZ_MASK		0x04
 #define ORATIMESTAMPLTZ_MASK	0x08
 #define DATETIME_IGNORE_NLS(i, m) (((i) & (m)) != 0) 
+
+extern PGDLLIMPORT bool out_parameter_column_position;
 
 /*
  * Functions exported by guc.c

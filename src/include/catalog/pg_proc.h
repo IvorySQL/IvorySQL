@@ -5,6 +5,7 @@
  *
  * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * src/include/catalog/pg_proc.h
  *
@@ -157,6 +158,9 @@ MAKE_SYSCACHE(PROCNAMEARGSNSP, pg_proc_proname_args_nsp_index, 128);
 #define PROKIND_AGGREGATE 'a'
 #define PROKIND_WINDOW 'w'
 #define PROKIND_PROCEDURE 'p'
+#define PROKIND_ANONYMOUS_BLOCK 'b'
+#define PROKIND_ANONYMOUS_BLOCK_ONLY_PARSE 'o'
+
 
 /*
  * Symbolic values for provolatile column: these indicate whether the result

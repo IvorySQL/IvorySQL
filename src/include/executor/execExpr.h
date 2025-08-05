@@ -6,6 +6,7 @@
  *
  * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * src/include/executor/execExpr.h
  *
@@ -43,6 +44,9 @@ typedef void (*ExecEvalSubroutine) (ExprState *state,
 typedef bool (*ExecEvalBoolSubroutine) (ExprState *state,
 										struct ExprEvalStep *op,
 										ExprContext *econtext);
+typedef void (*ExecEvalOutParamSubroutine)(ExprState *state,
+										struct ExprEvalStep *op);
+
 
 /* ExprEvalSteps that cache a composite type's tupdesc need one of these */
 /* (it fits in-line in some step types, otherwise allocate out-of-line) */
@@ -269,6 +273,8 @@ typedef enum ExprEvalOp
 	EEOP_AGG_PRESORTED_DISTINCT_MULTI,
 	EEOP_AGG_ORDERED_TRANS_DATUM,
 	EEOP_AGG_ORDERED_TRANS_TUPLE,
+	/* evaluate OUT parameters */
+	EEOP_OUT_PARAM_CALLBACK,
 
 	/* non-existent operation, used e.g. to check array lengths */
 	EEOP_LAST
@@ -716,6 +722,17 @@ typedef struct ExprEvalStep
 			void	   *json_populate_type_cache;
 			ErrorSaveContext *escontext;
 		}			jsonexpr_coercion;
+
+		/* for EEOP_OUT_PARAM_CALLBACK */
+		struct
+		{
+			int			*paramids;		/* out parameter id */
+			int			 nout;			/* number of out parameters of the function */
+			Oid			 rettype;		/* function return type */
+			void			*pestate;		/* parent of current PLiSQL_execstate */
+			ExecEvalOutParamSubroutine outparam_func;
+		}			out_params;
+
 	}			d;
 } ExprEvalStep;
 

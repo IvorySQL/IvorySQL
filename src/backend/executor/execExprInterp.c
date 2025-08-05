@@ -48,6 +48,7 @@
  *
  * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *	  src/backend/executor/execExprInterp.c
@@ -79,11 +80,16 @@
 #include "utils/timestamp.h"
 #include "utils/typcache.h"
 #include "utils/xml.h"
-
-/* Begin - ReqID:SRS-SQL-XML */
 #include "utils/guc.h"
 #include "utils/ora_compatible.h"
-/* End - ReqID:SRS-SQL-XML */
+#include "commands/proclang.h"
+#include "utils/guc.h"
+#include "utils/ora_compatible.h"
+#include "catalog/pg_proc.h"
+#include "utils/syscache.h"
+#include "parser/parse_param.h"
+#include "executor/spi.h"
+
 
 
 /*
@@ -515,6 +521,7 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 		&&CASE_EEOP_AGG_PRESORTED_DISTINCT_MULTI,
 		&&CASE_EEOP_AGG_ORDERED_TRANS_DATUM,
 		&&CASE_EEOP_AGG_ORDERED_TRANS_TUPLE,
+		&&CASE_EEOP_OUT_PARAM_CALLBACK,
 		&&CASE_EEOP_LAST
 	};
 
@@ -1888,6 +1895,13 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 			/* too complex for an inline implementation */
 			ExecEvalAggOrderedTransTuple(state, op, econtext);
 
+			EEO_NEXT();
+		}
+
+		EEO_CASE(EEOP_OUT_PARAM_CALLBACK)
+		{
+			/* process OUT paramerters value */
+			op->d.out_params.outparam_func(state, op);
 			EEO_NEXT();
 		}
 

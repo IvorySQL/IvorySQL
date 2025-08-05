@@ -5,6 +5,7 @@
  *
  * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  *
  * IDENTIFICATION
@@ -34,6 +35,7 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
+#include "parser/parse_param.h"
 
 
 /*
@@ -473,6 +475,11 @@ AtEOXact_SPI(bool isCommit)
 				(errcode(ERRCODE_WARNING),
 				 errmsg("transaction left non-empty SPI stack"),
 				 errhint("Check for missing \"SPI_finish\" calls.")));
+
+	set_parseDynDoStmt(true);
+	set_ParseDynSql(false);
+	set_haspgparam(false);
+	set_doStmtCheckVar(false);
 }
 
 /*
@@ -2305,6 +2312,7 @@ _SPI_prepare_plan(const char *src, SPIPlanPtr plan)
 						   stmt_list,
 						   NULL,
 						   plan->argtypes,
+						   NULL,
 						   plan->nargs,
 						   plan->parserSetup,
 						   plan->parserSetupArg,
@@ -2555,6 +2563,7 @@ _SPI_execute_plan(SPIPlanPtr plan, const SPIExecuteOptions *options,
 							   querytree_list,
 							   NULL,
 							   plan->argtypes,
+							   NULL,
 							   plan->nargs,
 							   plan->parserSetup,
 							   plan->parserSetupArg,
@@ -3461,3 +3470,12 @@ SPI_get_proccxt(int level)
 
 	return _SPI_stack[level].procCxt;
 }
+
+/* return saved memory context of current spi */
+MemoryContext
+Ora_spi_saved_memorycontext(void)
+{
+	return _SPI_current->savedcxt;
+}
+
+
