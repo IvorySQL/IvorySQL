@@ -237,15 +237,17 @@ free_stringlist(_stringlist **listhead)
 static void
 split_to_stringlist(const char *s, const char *delim, _stringlist **listhead)
 {
-	char	   *sc = pg_strdup(s);
-	char	   *token = strtok(sc, delim);
+	char	   *token;
+	char	   *sc;
+	char	   *tofree;
 
-	while (token)
+	tofree = sc = pg_strdup(s);
+
+	while ((token = strsep(&sc, delim)))
 	{
 		add_stringlist_item(listhead, token);
-		token = strtok(NULL, delim);
 	}
-	free(sc);
+	free(tofree);
 }
 
 /*
@@ -781,7 +783,7 @@ initialize_environment(void)
 	/*
 	 * Set timezone and datestyle for datetime-related tests
 	 */
-	setenv("PGTZ", "PST8PDT", 1);
+	setenv("PGTZ", "America/Los_Angeles", 1);
 	setenv("PGDATESTYLE", "Postgres, MDY", 1);
 
 	/*
@@ -1247,7 +1249,7 @@ spawn_process(const char *cmdline)
 		comspec = "CMD";
 
 	memset(&pi, 0, sizeof(pi));
-	cmdline2 = psprintf("\"%s\" /d /c \"%s\"", comspec, cmdline);
+	cmdline2 = psprintf("\"%s\" /c \"%s\"", comspec, cmdline);
 
 	if (!CreateRestrictedProcess(cmdline2, &pi))
 		exit(2);
@@ -1891,14 +1893,14 @@ run_single_test(const char *test, test_start_function startfunc,
 
 	if (exit_status != 0)
 	{
-		test_status_failed(test, false, INSTR_TIME_GET_MILLISEC(stoptime));
+		test_status_failed(test, INSTR_TIME_GET_MILLISEC(stoptime), false);
 		log_child_failure(exit_status);
 	}
 	else
 	{
 		if (differ)
 		{
-			test_status_failed(test, false, INSTR_TIME_GET_MILLISEC(stoptime));
+			test_status_failed(test, INSTR_TIME_GET_MILLISEC(stoptime), false);
 		}
 		else
 		{
