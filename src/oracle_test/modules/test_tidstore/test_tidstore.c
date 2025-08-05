@@ -18,7 +18,6 @@
 
 #include "access/tidstore.h"
 #include "fmgr.h"
-#include "funcapi.h"
 #include "storage/block.h"
 #include "storage/itemptr.h"
 #include "storage/lwlock.h"
@@ -156,7 +155,7 @@ check_tidstore_available(void)
 static void
 purge_from_verification_array(BlockNumber blkno)
 {
-	int            dst = 0;
+	int			dst = 0;
 
 	for (int src = 0; src < items.num_tids; src++)
 		if (ItemPointerGetBlockNumber(&items.insert_tids[src]) != blkno)
@@ -293,13 +292,13 @@ check_set_block_offsets(PG_FUNCTION_ARGS)
 	qsort(items.lookup_tids, items.num_tids, sizeof(ItemPointerData), itemptr_cmp);
 	for (int i = 0; i < items.num_tids; i++)
 	{
-		if (itemptr_cmp((const void *) &items.insert_tids[i], (const void *) &items.iter_tids[i]) != 0)
+		if (itemptr_cmp(&items.insert_tids[i], &items.iter_tids[i]) != 0)
 			elog(ERROR, "TID iter array doesn't match verification array, got (%u,%u) expected (%u,%u)",
 				 ItemPointerGetBlockNumber(&items.iter_tids[i]),
 				 ItemPointerGetOffsetNumber(&items.iter_tids[i]),
 				 ItemPointerGetBlockNumber(&items.insert_tids[i]),
 				 ItemPointerGetOffsetNumber(&items.insert_tids[i]));
-		if (itemptr_cmp((const void *) &items.insert_tids[i], (const void *) &items.lookup_tids[i]) != 0)
+		if (itemptr_cmp(&items.insert_tids[i], &items.lookup_tids[i]) != 0)
 			elog(ERROR, "TID lookup array doesn't match verification array, got (%u,%u) expected (%u,%u)",
 				 ItemPointerGetBlockNumber(&items.lookup_tids[i]),
 				 ItemPointerGetOffsetNumber(&items.lookup_tids[i]),

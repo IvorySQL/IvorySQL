@@ -4,6 +4,48 @@
 
 \set regresslib :libdir '/oraregress' :dlsuffix
 
+-- Function to assist with verifying EXPLAIN which includes costs.  A series
+-- of bool flags allows control over which portions are masked out
+CREATE FUNCTION explain_mask_costs(query text, do_analyze bool,
+    hide_costs bool, hide_row_est bool, hide_width bool) RETURNS setof text
+LANGUAGE plpgsql AS
+$$
+DECLARE
+    ln text;
+    analyze_str text;
+BEGIN
+    IF do_analyze = true THEN
+        analyze_str := 'on';
+    ELSE
+        analyze_str := 'off';
+    END IF;
+
+    -- avoid jit related output by disabling it
+    SET LOCAL jit = 0;
+
+    FOR ln IN
+        EXECUTE format('explain (analyze %s, costs on, summary off, timing off) %s',
+            analyze_str, query)
+    LOOP
+        IF hide_costs = true THEN
+            ln := regexp_replace(ln, 'cost=\d+\.\d\d\.\.\d+\.\d\d', 'cost=N..N');
+        END IF;
+
+        IF hide_row_est = true THEN
+            -- don't use 'g' so that we leave the actual rows intact
+            ln := regexp_replace(ln, 'rows=\d+', 'rows=N');
+        END IF;
+
+        IF hide_width = true THEN
+            ln := regexp_replace(ln, 'width=\d+', 'width=N');
+        END IF;
+
+        RETURN NEXT ln;
+    END LOOP;
+END;
+$$;
+/
+
 --
 -- num_nulls()
 --
@@ -124,6 +166,7 @@ select (w).size = :segsize as ok
 from (select pg_ls_waldir() w) ss where length((w).name) = 24 limit 1;
 
 select count(*) >= 0 as ok from pg_ls_archive_statusdir();
+select count(*) >= 0 as ok from pg_ls_summariesdir();
 
 -- pg_read_file()
 select length(pg_read_file('postmaster.pid')) > 20;
@@ -229,6 +272,44 @@ SELECT * FROM tenk1 a JOIN my_gen_series(1,1000) g ON a.unique1 = g;
 EXPLAIN (COSTS OFF)
 SELECT * FROM tenk1 a JOIN my_gen_series(1,10) g ON a.unique1 = g;
 
+--
+-- Test the SupportRequestRows support function for generate_series_numeric()
+--
+
+-- Ensure the row estimate matches the actual rows
+SELECT explain_mask_costs($$
+SELECT * FROM generate_series(1.0, 25.0) g(s);$$,
+true, true, false, true);
+
+-- As above but with non-default step
+SELECT explain_mask_costs($$
+SELECT * FROM generate_series(1.0, 25.0, 2.0) g(s);$$,
+true, true, false, true);
+
+-- Ensure the estimates match when step is decreasing
+SELECT explain_mask_costs($$
+SELECT * FROM generate_series(25.0, 1.0, -1.0) g(s);$$,
+true, true, false, true);
+
+-- Ensure an empty range estimates 1 row
+SELECT explain_mask_costs($$
+SELECT * FROM generate_series(25.0, 1.0, 1.0) g(s);$$,
+true, true, false, true);
+
+-- Ensure we get the default row estimate for error cases (infinity/NaN values
+-- and zero step size)
+SELECT explain_mask_costs($$
+SELECT * FROM generate_series('-infinity'::NUMERIC, 'infinity'::NUMERIC, 1.0) g(s);$$,
+false, true, false, true);
+
+SELECT explain_mask_costs($$
+SELECT * FROM generate_series(1.0, 25.0, 'NaN'::NUMERIC) g(s);$$,
+false, true, false, true);
+
+SELECT explain_mask_costs($$
+SELECT * FROM generate_series(25.0, 2.0, 0.0) g(s);$$,
+false, true, false, true);
+
 -- Test functions for control data
 SELECT count(*) > 0 AS ok FROM pg_control_checkpoint();
 SELECT count(*) > 0 AS ok FROM pg_control_init();
@@ -278,4 +359,9 @@ SELECT pg_column_toast_chunk_id(a) IS NULL,
   pg_column_toast_chunk_id(b) IN (SELECT chunk_id FROM pg_toast.:toastrel)
   FROM test_chunk_id;
 DROP TABLE test_chunk_id;
+DROP FUNCTION explain_mask_costs(text, bool, bool, bool, bool);
+
+-- test stratnum support functions
+SELECT gist_stratnum_identity(3::smallint);
+SELECT gist_stratnum_identity(18::smallint);
 reset ivorysql.enable_emptystring_to_null;
