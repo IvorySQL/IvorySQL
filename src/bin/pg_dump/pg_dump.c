@@ -12427,7 +12427,7 @@ dumpPackage(Archive *fout, const PkgInfo *pkginfo)
 	char		*pkgsrc;
 	PQExpBuffer package_identifier;
 	/* Skip if not to be dumped */
-	if (!pkginfo->dobj.dump || dopt->dataOnly)
+	if (!pkginfo->dobj.dump || !dopt->dumpSchema)
 		return;
 	query = createPQExpBuffer();
 	q = createPQExpBuffer();
