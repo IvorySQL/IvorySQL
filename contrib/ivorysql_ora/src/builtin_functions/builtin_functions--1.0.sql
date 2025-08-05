@@ -1194,3 +1194,35 @@ RETURNS sys.number
 AS 'select sys.to_number($1::text, $2::text)'
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
 
+CREATE FUNCTION sys.instr(str text, patt text, sta int, nth int)
+RETURNS int
+AS 'MODULE_PATHNAME','oracle_instr_4'
+LANGUAGE C IMMUTABLE STRICT;
+
+CREATE FUNCTION sys.instr(str text, patt text, sta int)
+RETURNS int
+AS 'MODULE_PATHNAME','oracle_instr_3'
+LANGUAGE C IMMUTABLE STRICT;
+
+CREATE FUNCTION sys.instr(str text, patt text)
+RETURNS int
+AS 'MODULE_PATHNAME','oracle_instr_2'
+LANGUAGE C IMMUTABLE STRICT;
+
+CREATE FUNCTION sys.instr(str varchar2, patt varchar2, sta number, nth number)
+RETURNS int
+AS $$
+  select sys.instr(str::text, patt::text, sta::integer, nth::integer);
+$$ LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE FUNCTION sys.instr(str varchar2, patt varchar2, sta number)
+RETURNS int
+AS $$
+  select sys.instr(str::text, patt::text, sta::integer);
+$$ LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE FUNCTION sys.instr(str varchar2, patt varchar2)
+RETURNS int
+AS $$
+  select sys.instr(str::text, patt::text);
+$$ LANGUAGE SQL IMMUTABLE STRICT;
