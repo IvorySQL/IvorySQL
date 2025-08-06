@@ -862,7 +862,7 @@ $$
 declare ln text;
 begin
     for ln in
-        explain (analyze, summary off, timing off, costs off)
+        explain (analyze, summary off, timing off, costs off, buffers off)
         select * from (select pk,c2 from sq_limit order by c1,pk) as x limit 3
     loop
         ln := regexp_replace(ln, 'Memory: \S*',  'Memory: xxx');
@@ -944,6 +944,76 @@ select t1.q1, x from
    lateral (select t2.q1+t3.q1 as x, * from int8_tbl t3) t3 on t2.q2 = t3.q2)
   on t1.q2 = t2.q2
 order by 1, 2;
+
+-- lateral references for simple Vars can escape being wrapped if the
+-- referenced rel is under the same lowest nulling outer join
+explain (verbose, costs off)
+select t1.q1, x from
+  int8_tbl t1 left join
+  (int8_tbl t2 inner join
+   lateral (select t2.q2 as x, * from int8_tbl t3) ss on t2.q2 = ss.q1)
+  on t1.q1 = t2.q1
+order by 1, 2;
+
+select t1.q1, x from
+  int8_tbl t1 left join
+  (int8_tbl t2 inner join
+   lateral (select t2.q2 as x, * from int8_tbl t3) ss on t2.q2 = ss.q1)
+  on t1.q1 = t2.q1
+order by 1, 2;
+
+-- otherwise we need to wrap the Vars
+explain (verbose, costs off)
+select t1.q1, x from
+  int8_tbl t1 left join
+  (int8_tbl t2 left join
+   lateral (select t2.q2 as x, * from int8_tbl t3) ss on t2.q2 = ss.q1)
+  on t1.q1 = t2.q1
+order by 1, 2;
+
+select t1.q1, x from
+  int8_tbl t1 left join
+  (int8_tbl t2 left join
+   lateral (select t2.q2 as x, * from int8_tbl t3) ss on t2.q2 = ss.q1)
+  on t1.q1 = t2.q1
+order by 1, 2;
+
+-- lateral references for PHVs can also escape being wrapped if the
+-- referenced rel is under the same lowest nulling outer join
+explain (verbose, costs off)
+select ss2.* from
+  int8_tbl t1 left join
+  (int8_tbl t2 left join
+   (select coalesce(q1) as x, * from int8_tbl t3) ss1 on t2.q1 = ss1.q2 inner join
+   lateral (select ss1.x as y, * from int8_tbl t4) ss2 on t2.q2 = ss2.q1)
+  on t1.q2 = ss2.q1
+order by 1, 2, 3;
+
+select ss2.* from
+  int8_tbl t1 left join
+  (int8_tbl t2 left join
+   (select coalesce(q1) as x, * from int8_tbl t3) ss1 on t2.q1 = ss1.q2 inner join
+   lateral (select ss1.x as y, * from int8_tbl t4) ss2 on t2.q2 = ss2.q1)
+  on t1.q2 = ss2.q1
+order by 1, 2, 3;
+
+-- otherwise we need to wrap the PHVs
+explain (verbose, costs off)
+select ss2.* from
+  int8_tbl t1 left join
+  (int8_tbl t2 left join
+   (select coalesce(q1) as x, * from int8_tbl t3) ss1 on t2.q1 = ss1.q2 left join
+   lateral (select ss1.x as y, * from int8_tbl t4) ss2 on t2.q2 = ss2.q1)
+  on t1.q2 = ss2.q1
+order by 1, 2, 3;
+
+select ss2.* from
+  int8_tbl t1 left join
+  (int8_tbl t2 left join
+   (select coalesce(q1) as x, * from int8_tbl t3) ss1 on t2.q1 = ss1.q2 left join
+   lateral (select ss1.x as y, * from int8_tbl t4) ss2 on t2.q2 = ss2.q1)
+  on t1.q2 = ss2.q1
+order by 1, 2, 3;
 
 --
 -- Tests for CTE inlining behavior

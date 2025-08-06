@@ -527,15 +527,19 @@ select explain_analyze_without_memory('select * from (select * from t order by a
                                         explain_analyze_without_memory                                         
 ---------------------------------------------------------------------------------------------------------------
  Limit (actual rows=55 loops=1)
+   Buffers: shared hit=9
    ->  Incremental Sort (actual rows=55 loops=1)
          Sort Key: t.a, t.b
          Presorted Key: t.a
          Full-sort Groups: 2  Sort Methods: top-N heapsort, quicksort  Average Memory: NNkB  Peak Memory: NNkB
+         Buffers: shared hit=9
          ->  Sort (actual rows=101 loops=1)
                Sort Key: t.a
                Sort Method: quicksort  Memory: NNkB
+               Buffers: shared hit=9
                ->  Seq Scan on t (actual rows=1000 loops=1)
-(9 rows)
+                     Buffers: shared hit=9
+(13 rows)
 
 select jsonb_pretty(explain_analyze_inc_sort_nodes_without_memory('select * from (select * from t order by a) s order by a, b limit 55'));
                   jsonb_pretty                   
@@ -566,7 +570,17 @@ select jsonb_pretty(explain_analyze_inc_sort_nodes_without_memory('select * from
                  "Average Sort Space Used": "NN"+
              }                                  +
          },                                     +
-         "Parent Relationship": "Outer"         +
+         "Local Hit Blocks": 0,                 +
+         "Temp Read Blocks": 0,                 +
+         "Local Read Blocks": 0,                +
+         "Shared Hit Blocks": 9,                +
+         "Shared Read Blocks": 0,               +
+         "Parent Relationship": "Outer",        +
+         "Temp Written Blocks": 0,              +
+         "Local Dirtied Blocks": 0,             +
+         "Local Written Blocks": 0,             +
+         "Shared Dirtied Blocks": 0,            +
+         "Shared Written Blocks": 0             +
      }                                          +
  ]
 (1 row)
@@ -731,16 +745,20 @@ select explain_analyze_without_memory('select * from (select * from t order by a
                                          explain_analyze_without_memory                                         
 ----------------------------------------------------------------------------------------------------------------
  Limit (actual rows=70 loops=1)
+   Buffers: shared hit=14
    ->  Incremental Sort (actual rows=70 loops=1)
          Sort Key: t.a, t.b
          Presorted Key: t.a
          Full-sort Groups: 1  Sort Method: quicksort  Average Memory: NNkB  Peak Memory: NNkB
          Pre-sorted Groups: 5  Sort Methods: top-N heapsort, quicksort  Average Memory: NNkB  Peak Memory: NNkB
+         Buffers: shared hit=14
          ->  Sort (actual rows=1000 loops=1)
                Sort Key: t.a
                Sort Method: quicksort  Memory: NNkB
+               Buffers: shared hit=14
                ->  Seq Scan on t (actual rows=1000 loops=1)
-(10 rows)
+                     Buffers: shared hit=14
+(14 rows)
 
 select jsonb_pretty(explain_analyze_inc_sort_nodes_without_memory('select * from (select * from t order by a) s order by a, b limit 70'));
                   jsonb_pretty                   
@@ -770,6 +788,9 @@ select jsonb_pretty(explain_analyze_inc_sort_nodes_without_memory('select * from
                  "Average Sort Space Used": "NN"+
              }                                  +
          },                                     +
+         "Local Hit Blocks": 0,                 +
+         "Temp Read Blocks": 0,                 +
+         "Local Read Blocks": 0,                +
          "Pre-sorted Groups": {                 +
              "Group Count": 5,                  +
              "Sort Methods Used": [             +
@@ -781,7 +802,14 @@ select jsonb_pretty(explain_analyze_inc_sort_nodes_without_memory('select * from
                  "Average Sort Space Used": "NN"+
              }                                  +
          },                                     +
-         "Parent Relationship": "Outer"         +
+         "Shared Hit Blocks": 14,               +
+         "Shared Read Blocks": 0,               +
+         "Parent Relationship": "Outer",        +
+         "Temp Written Blocks": 0,              +
+         "Local Dirtied Blocks": 0,             +
+         "Local Written Blocks": 0,             +
+         "Shared Dirtied Blocks": 0,            +
+         "Shared Written Blocks": 0             +
      }                                          +
  ]
 (1 row)
