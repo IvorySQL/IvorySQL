@@ -1,18 +1,26 @@
 # src/test/modules/injection_points/Makefile
 
-MODULES = injection_points
-
+MODULE_big = injection_points
+OBJS = \
+	$(WIN32RES) \
+	injection_points.o \
+	injection_stats.o \
+	injection_stats_fixed.o
 EXTENSION = injection_points
 DATA = injection_points--1.0.sql
 PGFILEDESC = "injection_points - facility for injection points"
 
-REGRESS = injection_points
+REGRESS = injection_points reindex_conc
 REGRESS_OPTS = --dlpath=$(top_builddir)/src/test/regress
 
-ISOLATION = inplace
+ISOLATION = basic inplace
+
+TAP_TESTS = 1
 
 # The injection points are cluster-wide, so disable installcheck
 NO_INSTALLCHECK = 1
+
+export enable_injection_points
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config

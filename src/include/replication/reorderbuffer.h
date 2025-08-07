@@ -18,6 +18,11 @@
 #include "utils/snapshot.h"
 #include "utils/timestamp.h"
 
+/* paths for logical decoding data (relative to installation's $PGDATA) */
+#define PG_LOGICAL_DIR				"pg_logical"
+#define PG_LOGICAL_MAPPINGS_DIR		PG_LOGICAL_DIR "/mappings"
+#define PG_LOGICAL_SNAPSHOTS_DIR	PG_LOGICAL_DIR "/snapshots"
+
 /* GUC variables */
 extern PGDLLIMPORT int logical_decoding_work_mem;
 extern PGDLLIMPORT int debug_logical_replication_streaming;
@@ -193,7 +198,7 @@ typedef struct ReorderBufferChange
 	((txn)->txn_flags & RBTXN_IS_SERIALIZED_CLEAR) != 0 \
 )
 
-/* Has this transaction contains partial changes? */
+/* Does this transaction contain partial changes? */
 #define rbtxn_has_partial_change(txn) \
 ( \
 	((txn)->txn_flags & RBTXN_HAS_PARTIAL_CHANGE) != 0 \
@@ -389,10 +394,9 @@ typedef struct ReorderBufferTXN
 	SharedInvalidationMessage *invalidations;
 
 	/* ---
-	 * Position in one of three lists:
+	 * Position in one of two lists:
 	 * * list of subtransactions if we are *known* to be subxact
 	 * * list of toplevel xacts (can be an as-yet unknown subxact)
-	 * * list of preallocated ReorderBufferTXNs (if unused)
 	 * ---
 	 */
 	dlist_node	node;
@@ -478,45 +482,38 @@ typedef void (*ReorderBufferRollbackPreparedCB) (ReorderBuffer *rb,
 												 TimestampTz prepare_time);
 
 /* start streaming transaction callback signature */
-typedef void (*ReorderBufferStreamStartCB) (
-											ReorderBuffer *rb,
+typedef void (*ReorderBufferStreamStartCB) (ReorderBuffer *rb,
 											ReorderBufferTXN *txn,
 											XLogRecPtr first_lsn);
 
 /* stop streaming transaction callback signature */
-typedef void (*ReorderBufferStreamStopCB) (
-										   ReorderBuffer *rb,
+typedef void (*ReorderBufferStreamStopCB) (ReorderBuffer *rb,
 										   ReorderBufferTXN *txn,
 										   XLogRecPtr last_lsn);
 
 /* discard streamed transaction callback signature */
-typedef void (*ReorderBufferStreamAbortCB) (
-											ReorderBuffer *rb,
+typedef void (*ReorderBufferStreamAbortCB) (ReorderBuffer *rb,
 											ReorderBufferTXN *txn,
 											XLogRecPtr abort_lsn);
 
 /* prepare streamed transaction callback signature */
-typedef void (*ReorderBufferStreamPrepareCB) (
-											  ReorderBuffer *rb,
+typedef void (*ReorderBufferStreamPrepareCB) (ReorderBuffer *rb,
 											  ReorderBufferTXN *txn,
 											  XLogRecPtr prepare_lsn);
 
 /* commit streamed transaction callback signature */
-typedef void (*ReorderBufferStreamCommitCB) (
-											 ReorderBuffer *rb,
+typedef void (*ReorderBufferStreamCommitCB) (ReorderBuffer *rb,
 											 ReorderBufferTXN *txn,
 											 XLogRecPtr commit_lsn);
 
 /* stream change callback signature */
-typedef void (*ReorderBufferStreamChangeCB) (
-											 ReorderBuffer *rb,
+typedef void (*ReorderBufferStreamChangeCB) (ReorderBuffer *rb,
 											 ReorderBufferTXN *txn,
 											 Relation relation,
 											 ReorderBufferChange *change);
 
 /* stream message callback signature */
-typedef void (*ReorderBufferStreamMessageCB) (
-											  ReorderBuffer *rb,
+typedef void (*ReorderBufferStreamMessageCB) (ReorderBuffer *rb,
 											  ReorderBufferTXN *txn,
 											  XLogRecPtr message_lsn,
 											  bool transactional,
@@ -524,16 +521,14 @@ typedef void (*ReorderBufferStreamMessageCB) (
 											  const char *message);
 
 /* stream truncate callback signature */
-typedef void (*ReorderBufferStreamTruncateCB) (
-											   ReorderBuffer *rb,
+typedef void (*ReorderBufferStreamTruncateCB) (ReorderBuffer *rb,
 											   ReorderBufferTXN *txn,
 											   int nrelations,
 											   Relation relations[],
 											   ReorderBufferChange *change);
 
 /* update progress txn callback signature */
-typedef void (*ReorderBufferUpdateProgressTxnCB) (
-												  ReorderBuffer *rb,
+typedef void (*ReorderBufferUpdateProgressTxnCB) (ReorderBuffer *rb,
 												  ReorderBufferTXN *txn,
 												  XLogRecPtr lsn);
 

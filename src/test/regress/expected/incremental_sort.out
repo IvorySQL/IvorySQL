@@ -39,7 +39,7 @@ declare
   line text;
 begin
   for line in
-    execute 'explain (analyze, costs off, summary off, timing off) ' || query
+    execute 'explain (analyze, costs off, summary off, timing off, buffers off) ' || query
   loop
     out_line := regexp_replace(line, '\d+kB', 'NNkB', 'g');
     return next;
@@ -55,7 +55,7 @@ declare
   element jsonb;
   matching_nodes jsonb := '[]'::jsonb;
 begin
-  execute 'explain (analyze, costs off, summary off, timing off, format ''json'') ' || query into strict elements;
+  execute 'explain (analyze, costs off, summary off, timing off, buffers off, format ''json'') ' || query into strict elements;
   while jsonb_array_length(elements) > 0 loop
     element := elements->0;
     elements := elements - 0;
@@ -538,6 +538,7 @@ select jsonb_pretty(explain_analyze_inc_sort_nodes_without_memory('select * from
 -------------------------------------------------
  [                                              +
      {                                          +
+         "Disabled": false,                     +
          "Sort Key": [                          +
              "t.a",                             +
              "t.b"                              +
@@ -708,9 +709,10 @@ explain (costs off) select * from t left join (select * from (select * from t or
          Sort Key: t_1.a, t_1.b
          Presorted Key: t_1.a
          ->  Sort
+               Disabled: true
                Sort Key: t_1.a
                ->  Seq Scan on t t_1
-(10 rows)
+(11 rows)
 
 select * from t left join (select * from (select * from t order by a) v order by a, b) s on s.a = t.a where t.a in (1, 2);
  a | b | a | b 
@@ -741,6 +743,7 @@ select jsonb_pretty(explain_analyze_inc_sort_nodes_without_memory('select * from
 -------------------------------------------------
  [                                              +
      {                                          +
+         "Disabled": false,                     +
          "Sort Key": [                          +
              "t.a",                             +
              "t.b"                              +
@@ -1697,4 +1700,25 @@ explain (costs off) select a, b, a <-> point(5, 5) dist from point_table order b
          ->  Index Scan using point_table_a_idx on point_table
                Order By: (a <-> '(5,5)'::point)
 (6 rows)
+
+-- Ensure we get an incremental sort on the outer side of the mergejoin
+explain (costs off)
+select * from
+  (select * from tenk1 order by four) t1 join tenk1 t2 on t1.four = t2.four and t1.two = t2.two
+order by t1.four, t1.two limit 1;
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Limit
+   ->  Merge Join
+         Merge Cond: ((tenk1.four = t2.four) AND (tenk1.two = t2.two))
+         ->  Incremental Sort
+               Sort Key: tenk1.four, tenk1.two
+               Presorted Key: tenk1.four
+               ->  Sort
+                     Sort Key: tenk1.four
+                     ->  Seq Scan on tenk1
+         ->  Sort
+               Sort Key: t2.four, t2.two
+               ->  Seq Scan on tenk1 t2
+(12 rows)
 

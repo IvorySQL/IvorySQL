@@ -88,7 +88,7 @@ static Query *transformCallStmt(ParseState *pstate,
 								CallStmt *stmt);
 static void transformLockingClause(ParseState *pstate, Query *qry,
 								   LockingClause *lc, bool pushedDown);
-#ifdef RAW_EXPRESSION_COVERAGE_TEST
+#ifdef DEBUG_NODE_TESTS_ENABLED
 static bool test_raw_expression_coverage(Node *node, void *context);
 #endif
 
@@ -242,22 +242,106 @@ parse_sub_analyze(Node *parseTree, ParseState *parentParseState,
 }
 
 /*
+ * setQueryLocationAndLength
+ * 		Set query's location and length from statement and ParseState
+ *
+ * Some statements, like PreparableStmt, can be located within parentheses.
+ * For example "(SELECT 1)" or "COPY (UPDATE ...) to x;".  For those, we
+ * cannot use the whole string from the statement's location or the SQL
+ * string would yield incorrectly.  The parser will set stmt_len, reflecting
+ * the size of the statement within the parentheses.  Thus, when stmt_len is
+ * available, we need to use it for the Query's stmt_len.
+ *
+ * For other cases, the parser can't provide the length of individual
+ * statements.  However, we have the statement's location plus the length
+ * (p_stmt_len) and location (p_stmt_location) of the top level RawStmt,
+ * stored in pstate.  Thus, the statement's length is the RawStmt's length
+ * minus how much we've advanced in the RawStmt's string.
+ */
+static void
+setQueryLocationAndLength(ParseState *pstate, Query *qry, Node *parseTree)
+{
+	ParseLoc	stmt_len = 0;
+
+	/*
+	 * If there is no information about the top RawStmt's length, leave it at
+	 * 0 to use the whole string.
+	 */
+	if (pstate->p_stmt_len == 0)
+		return;
+
+	switch (nodeTag(parseTree))
+	{
+		case T_InsertStmt:
+			qry->stmt_location = ((InsertStmt *) parseTree)->stmt_location;
+			stmt_len = ((InsertStmt *) parseTree)->stmt_len;
+			break;
+
+		case T_DeleteStmt:
+			qry->stmt_location = ((DeleteStmt *) parseTree)->stmt_location;
+			stmt_len = ((DeleteStmt *) parseTree)->stmt_len;
+			break;
+
+		case T_UpdateStmt:
+			qry->stmt_location = ((UpdateStmt *) parseTree)->stmt_location;
+			stmt_len = ((UpdateStmt *) parseTree)->stmt_len;
+			break;
+
+		case T_MergeStmt:
+			qry->stmt_location = ((MergeStmt *) parseTree)->stmt_location;
+			stmt_len = ((MergeStmt *) parseTree)->stmt_len;
+			break;
+
+		case T_SelectStmt:
+			qry->stmt_location = ((SelectStmt *) parseTree)->stmt_location;
+			stmt_len = ((SelectStmt *) parseTree)->stmt_len;
+			break;
+
+		case T_PLAssignStmt:
+			qry->stmt_location = ((PLAssignStmt *) parseTree)->location;
+			break;
+
+		default:
+			qry->stmt_location = pstate->p_stmt_location;
+			break;
+	}
+
+	if (stmt_len > 0)
+	{
+		/* Statement's length is known, use it */
+		qry->stmt_len = stmt_len;
+	}
+	else
+	{
+		/*
+		 * Compute the statement's length from the statement's location and
+		 * the RawStmt's length and location.
+		 */
+		qry->stmt_len = pstate->p_stmt_len - (qry->stmt_location - pstate->p_stmt_location);
+	}
+
+	/* The calculated statement length should be calculated as positive. */
+	Assert(qry->stmt_len >= 0);
+}
+
+/*
  * transformTopLevelStmt -
  *	  transform a Parse tree into a Query tree.
  *
- * This function is just responsible for transferring statement location data
- * from the RawStmt into the finished Query.
+ * This function is just responsible for storing location data
+ * from the RawStmt into the ParseState.
  */
 Query *
 transformTopLevelStmt(ParseState *pstate, RawStmt *parseTree)
 {
 	Query	   *result;
 
+	/* Store RawStmt's length and location in pstate */
+	pstate->p_stmt_len = parseTree->stmt_len;
+	pstate->p_stmt_location = parseTree->stmt_location;
+
 	/* We're at top level, so allow SELECT INTO */
 	result = transformOptionalSelectInto(pstate, parseTree->stmt);
-
-	result->stmt_location = parseTree->stmt_location;
-	result->stmt_len = parseTree->stmt_len;
 
 	return result;
 }
@@ -316,25 +400,30 @@ transformStmt(ParseState *pstate, Node *parseTree)
 {
 	Query	   *result;
 
+#ifdef DEBUG_NODE_TESTS_ENABLED
+
 	/*
-	 * We apply RAW_EXPRESSION_COVERAGE_TEST testing to basic DML statements;
-	 * we can't just run it on everything because raw_expression_tree_walker()
-	 * doesn't claim to handle utility statements.
+	 * We apply debug_raw_expression_coverage_test testing to basic DML
+	 * statements; we can't just run it on everything because
+	 * raw_expression_tree_walker() doesn't claim to handle utility
+	 * statements.
 	 */
-#ifdef RAW_EXPRESSION_COVERAGE_TEST
-	switch (nodeTag(parseTree))
+	if (Debug_raw_expression_coverage_test)
 	{
-		case T_SelectStmt:
-		case T_InsertStmt:
-		case T_UpdateStmt:
-		case T_DeleteStmt:
-		case T_MergeStmt:
-			(void) test_raw_expression_coverage(parseTree, NULL);
-			break;
-		default:
-			break;
+		switch (nodeTag(parseTree))
+		{
+			case T_SelectStmt:
+			case T_InsertStmt:
+			case T_UpdateStmt:
+			case T_DeleteStmt:
+			case T_MergeStmt:
+				(void) test_raw_expression_coverage(parseTree, NULL);
+				break;
+			default:
+				break;
+		}
 	}
-#endif							/* RAW_EXPRESSION_COVERAGE_TEST */
+#endif							/* DEBUG_NODE_TESTS_ENABLED */
 
 	/*
 	 * Caution: when changing the set of statement types that have non-default
@@ -422,6 +511,7 @@ transformStmt(ParseState *pstate, Node *parseTree)
 	/* Mark as original query until we learn differently */
 	result->querySource = QSRC_ORIGINAL;
 	result->canSetTag = true;
+	setQueryLocationAndLength(pstate, result, parseTree);
 
 	return result;
 }
@@ -1600,7 +1690,7 @@ transformValuesClause(ParseState *pstate, SelectStmt *stmt)
 			Node	   *col = (Node *) lfirst(lc);
 
 			col = coerce_to_common_type(pstate, col, coltype, "VALUES");
-			lfirst(lc) = (void *) col;
+			lfirst(lc) = col;
 		}
 
 		coltypmod = select_common_typmod(pstate, colexprs[i], coltype);
@@ -1983,6 +2073,7 @@ makeSortGroupClauseForSetOp(Oid rescoltype, bool require_hash)
 	grpcl->tleSortGroupRef = 0;
 	grpcl->eqop = eqop;
 	grpcl->sortop = sortop;
+	grpcl->reverse_sort = false;	/* Sort-op is "less than", or InvalidOid */
 	grpcl->nulls_first = false; /* OK with or without sortop */
 	grpcl->hashable = hashable;
 
@@ -3159,7 +3250,7 @@ transformCreateTableAsStmt(ParseState *pstate, CreateTableAsStmt *stmt)
 		 * in the IntoClause because that's where intorel_startup() can
 		 * conveniently get it from.
 		 */
-		stmt->into->viewQuery = (Node *) copyObject(query);
+		stmt->into->viewQuery = copyObject(query);
 	}
 
 	/* represent the command as a utility Query */
@@ -3673,6 +3764,7 @@ applyLockingClause(Query *qry, Index rtindex,
 	qry->rowMarks = lappend(qry->rowMarks, rc);
 }
 
+#ifdef DEBUG_NODE_TESTS_ENABLED
 /*
  * Coverage testing for raw_expression_tree_walker().
  *
@@ -3681,8 +3773,6 @@ applyLockingClause(Query *qry, Index rtindex,
  * applied in limited cases involving CTEs, and we don't really want to have
  * to test everything inside as well as outside a CTE.
  */
-#ifdef RAW_EXPRESSION_COVERAGE_TEST
-
 static bool
 test_raw_expression_coverage(Node *node, void *context)
 {
@@ -3692,5 +3782,4 @@ test_raw_expression_coverage(Node *node, void *context)
 									  test_raw_expression_coverage,
 									  context);
 }
-
-#endif							/* RAW_EXPRESSION_COVERAGE_TEST */
+#endif							/* DEBUG_NODE_TESTS_ENABLED */

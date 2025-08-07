@@ -17,16 +17,12 @@
 #include "access/xlogrecovery.h"
 #include "access/xlogutils.h"
 #include "funcapi.h"
-#include "miscadmin.h"
-#include "replication/decode.h"
 #include "replication/logical.h"
 #include "replication/slot.h"
 #include "replication/slotsync.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
-#include "utils/inval.h"
 #include "utils/pg_lsn.h"
-#include "utils/resowner.h"
 
 /*
  * Helper function for creating a new physical replication slot with
@@ -523,7 +519,8 @@ pg_replication_slot_advance(PG_FUNCTION_ARGS)
 
 	if (XLogRecPtrIsInvalid(moveto))
 		ereport(ERROR,
-				(errmsg("invalid target WAL LSN")));
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("invalid target WAL LSN")));
 
 	/* Build a tuple descriptor for our result type */
 	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
@@ -897,7 +894,8 @@ pg_sync_replication_slots(PG_FUNCTION_ARGS)
 	if (!wrconn)
 		ereport(ERROR,
 				errcode(ERRCODE_CONNECTION_FAILURE),
-				errmsg("could not connect to the primary server: %s", err));
+				errmsg("synchronization worker \"%s\" could not connect to the primary server: %s",
+					   app_name.data, err));
 
 	SyncReplicationSlots(wrconn);
 

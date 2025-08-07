@@ -16,12 +16,11 @@
 
 #include <dirent.h>
 #include <limits.h>
-#include <time.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "common/controldata_utils.h"
-#include "common/file_perm.h"
 #include "common/file_utils.h"
 #include "common/logging.h"
 #include "common/relpath.h"
@@ -60,8 +59,8 @@ static const char *progname;
 /*
  * Progress status information.
  */
-int64		total_size = 0;
-int64		current_size = 0;
+static int64 total_size = 0;
+static int64 current_size = 0;
 static pg_time_t last_progress_report = 0;
 
 static void
@@ -388,7 +387,7 @@ scan_directory(const char *basedir, const char *subdir, bool sizeonly)
 			 * is valid, resolving the linked locations and dive into them
 			 * directly.
 			 */
-			if (strncmp("pg_tblspc", subdir, strlen("pg_tblspc")) == 0)
+			if (strncmp(PG_TBLSPC_DIR, subdir, strlen(PG_TBLSPC_DIR)) == 0)
 			{
 				char		tblspc_path[MAXPGPATH];
 				struct stat tblspc_st;
@@ -593,12 +592,12 @@ main(int argc, char *argv[])
 		{
 			total_size = scan_directory(DataDir, "global", true);
 			total_size += scan_directory(DataDir, "base", true);
-			total_size += scan_directory(DataDir, "pg_tblspc", true);
+			total_size += scan_directory(DataDir, PG_TBLSPC_DIR, true);
 		}
 
 		(void) scan_directory(DataDir, "global", false);
 		(void) scan_directory(DataDir, "base", false);
-		(void) scan_directory(DataDir, "pg_tblspc", false);
+		(void) scan_directory(DataDir, PG_TBLSPC_DIR, false);
 
 		if (showprogress)
 			progress_report(true);

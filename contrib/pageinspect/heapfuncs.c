@@ -32,7 +32,6 @@
 #include "funcapi.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
-#include "pageinspect.h"
 #include "port/pg_bitutils.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
@@ -304,7 +303,11 @@ tuple_data_split_internal(Oid relid, char *tupdata,
 	raw_attrs = initArrayResult(BYTEAOID, CurrentMemoryContext, false);
 	nattrs = tupdesc->natts;
 
-	if (rel->rd_rel->relam != HEAP_TABLE_AM_OID)
+	/*
+	 * Sequences always use heap AM, but they don't show that in the catalogs.
+	 */
+	if (rel->rd_rel->relkind != RELKIND_SEQUENCE &&
+		rel->rd_rel->relam != HEAP_TABLE_AM_OID)
 		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						errmsg("only heap AM is supported")));
 
@@ -315,11 +318,11 @@ tuple_data_split_internal(Oid relid, char *tupdata,
 
 	for (i = 0; i < nattrs; i++)
 	{
-		Form_pg_attribute attr;
+		CompactAttribute *attr;
 		bool		is_null;
 		bytea	   *attr_data = NULL;
 
-		attr = TupleDescAttr(tupdesc, i);
+		attr = TupleDescCompactAttr(tupdesc, i);
 
 		/*
 		 * Tuple header can specify fewer attributes than tuple descriptor as
@@ -338,8 +341,8 @@ tuple_data_split_internal(Oid relid, char *tupdata,
 
 			if (attr->attlen == -1)
 			{
-				off = att_align_pointer(off, attr->attalign, -1,
-										tupdata + off);
+				off = att_pointer_alignby(off, attr->attalignby, -1,
+										  tupdata + off);
 
 				/*
 				 * As VARSIZE_ANY throws an exception if it can't properly
@@ -357,7 +360,7 @@ tuple_data_split_internal(Oid relid, char *tupdata,
 			}
 			else
 			{
-				off = att_align_nominal(off, attr->attalign);
+				off = att_nominal_alignby(off, attr->attalignby);
 				len = attr->attlen;
 			}
 

@@ -720,11 +720,6 @@ llvm_compile_expr(ExprState *state)
 					v_boolnull = l_load(b, TypeStorageBool, v_resnullp, "");
 					v_boolvalue = l_load(b, TypeSizeT, v_resvaluep, "");
 
-					/* set resnull to boolnull */
-					LLVMBuildStore(b, v_boolnull, v_resnullp);
-					/* set revalue to boolvalue */
-					LLVMBuildStore(b, v_boolvalue, v_resvaluep);
-
 					/* check if current input is NULL */
 					LLVMBuildCondBr(b,
 									LLVMBuildICmp(b, LLVMIntEQ, v_boolnull,
@@ -816,11 +811,6 @@ llvm_compile_expr(ExprState *state)
 					v_boolnull = l_load(b, TypeStorageBool, v_resnullp, "");
 					v_boolvalue = l_load(b, TypeSizeT, v_resvaluep, "");
 
-					/* set resnull to boolnull */
-					LLVMBuildStore(b, v_boolnull, v_resnullp);
-					/* set revalue to boolvalue */
-					LLVMBuildStore(b, v_boolvalue, v_resvaluep);
-
 					LLVMBuildCondBr(b,
 									LLVMBuildICmp(b, LLVMIntEQ, v_boolnull,
 												  l_sbool_const(1), ""),
@@ -875,21 +865,22 @@ llvm_compile_expr(ExprState *state)
 			case EEOP_BOOL_NOT_STEP:
 				{
 					LLVMValueRef v_boolvalue;
-					LLVMValueRef v_boolnull;
 					LLVMValueRef v_negbool;
 
-					v_boolnull = l_load(b, TypeStorageBool, v_resnullp, "");
+					/* compute !boolvalue */
 					v_boolvalue = l_load(b, TypeSizeT, v_resvaluep, "");
-
 					v_negbool = LLVMBuildZExt(b,
 											  LLVMBuildICmp(b, LLVMIntEQ,
 															v_boolvalue,
 															l_sizet_const(0),
 															""),
 											  TypeSizeT, "");
-					/* set resnull to boolnull */
-					LLVMBuildStore(b, v_boolnull, v_resnullp);
-					/* set revalue to !boolvalue */
+
+					/*
+					 * Store it back in resvalue.  We can ignore resnull here;
+					 * if it was true, it stays true, and the value we store
+					 * in resvalue doesn't matter.
+					 */
 					LLVMBuildStore(b, v_negbool, v_resvaluep);
 
 					LLVMBuildBr(b, opblocks[opno + 1]);
@@ -1144,6 +1135,12 @@ llvm_compile_expr(ExprState *state)
 					LLVMBuildBr(b, opblocks[opno + 1]);
 					break;
 				}
+
+			case EEOP_PARAM_SET:
+				build_EvalXFunc(b, mod, "ExecEvalParamSet",
+								v_state, op, v_econtext);
+				LLVMBuildBr(b, opblocks[opno + 1]);
+				break;
 
 			case EEOP_SBSREF_SUBSCRIPTS:
 				{
@@ -1562,6 +1559,9 @@ llvm_compile_expr(ExprState *state)
 
 					v_fcinfo = l_ptr_const(fcinfo, l_ptr(StructFunctionCallInfoData));
 
+					/* save original arg[0] */
+					v_arg0 = l_funcvalue(b, v_fcinfo, 0);
+
 					/* if either argument is NULL they can't be equal */
 					v_argnull0 = l_funcnull(b, v_fcinfo, 0);
 					v_argnull1 = l_funcnull(b, v_fcinfo, 1);
@@ -1578,7 +1578,6 @@ llvm_compile_expr(ExprState *state)
 
 					/* one (or both) of the arguments are null, return arg[0] */
 					LLVMPositionBuilderAtEnd(b, b_hasnull);
-					v_arg0 = l_funcvalue(b, v_fcinfo, 0);
 					LLVMBuildStore(b, v_argnull0, v_resnullp);
 					LLVMBuildStore(b, v_arg0, v_resvaluep);
 					LLVMBuildBr(b, opblocks[opno + 1]);
@@ -1586,12 +1585,35 @@ llvm_compile_expr(ExprState *state)
 					/* build block to invoke function and check result */
 					LLVMPositionBuilderAtEnd(b, b_nonull);
 
+					/*
+					 * If first argument is of varlena type, it might be an
+					 * expanded datum.  We need to ensure that the value
+					 * passed to the comparison function is a read-only
+					 * pointer.  However, if we end by returning the first
+					 * argument, that will be the original read-write pointer
+					 * if it was read-write.
+					 */
+					if (op->d.func.make_ro)
+					{
+						LLVMValueRef v_params[1];
+						LLVMValueRef v_arg0_ro;
+
+						v_params[0] = v_arg0;
+						v_arg0_ro =
+							l_call(b,
+								   llvm_pg_var_func_type("MakeExpandedObjectReadOnlyInternal"),
+								   llvm_pg_func(mod, "MakeExpandedObjectReadOnlyInternal"),
+								   v_params, lengthof(v_params), "");
+						LLVMBuildStore(b, v_arg0_ro,
+									   l_funcvaluep(b, v_fcinfo, 0));
+					}
+
 					v_retval = BuildV1Call(context, b, mod, fcinfo, &v_fcinfo_isnull);
 
 					/*
-					 * If result not null, and arguments are equal return null
-					 * (same result as if there'd been NULLs, hence reuse
-					 * b_hasnull).
+					 * If result not null and arguments are equal return null,
+					 * else return arg[0] (same result as if there'd been
+					 * NULLs, hence reuse b_hasnull).
 					 */
 					v_argsequal = LLVMBuildAnd(b,
 											   LLVMBuildICmp(b, LLVMIntEQ,
@@ -1609,7 +1631,6 @@ llvm_compile_expr(ExprState *state)
 					LLVMPositionBuilderAtEnd(b, b_argsequal);
 					LLVMBuildStore(b, l_sbool_const(1), v_resnullp);
 					LLVMBuildStore(b, l_sizet_const(0), v_resvaluep);
-					LLVMBuildStore(b, v_retval, v_resvaluep);
 
 					LLVMBuildBr(b, opblocks[opno + 1]);
 					break;
@@ -1893,6 +1914,216 @@ llvm_compile_expr(ExprState *state)
 								v_state, op);
 				LLVMBuildBr(b, opblocks[opno + 1]);
 				break;
+
+			case EEOP_HASHDATUM_SET_INITVAL:
+				{
+					LLVMValueRef v_initvalue;
+
+					v_initvalue = l_sizet_const(op->d.hashdatum_initvalue.init_value);
+
+					LLVMBuildStore(b, v_initvalue, v_resvaluep);
+					LLVMBuildStore(b, l_sbool_const(0), v_resnullp);
+					LLVMBuildBr(b, opblocks[opno + 1]);
+					break;
+				}
+
+			case EEOP_HASHDATUM_FIRST:
+			case EEOP_HASHDATUM_FIRST_STRICT:
+			case EEOP_HASHDATUM_NEXT32:
+			case EEOP_HASHDATUM_NEXT32_STRICT:
+				{
+					FunctionCallInfo fcinfo = op->d.hashdatum.fcinfo_data;
+					LLVMValueRef v_fcinfo;
+					LLVMValueRef v_fcinfo_isnull;
+					LLVMValueRef v_retval;
+					LLVMBasicBlockRef b_checkargnull;
+					LLVMBasicBlockRef b_ifnotnull;
+					LLVMBasicBlockRef b_ifnullblock;
+					LLVMValueRef v_argisnull;
+					LLVMValueRef v_prevhash = NULL;
+
+					/*
+					 * When performing the next hash and not in strict mode we
+					 * perform a rotation of the previously stored hash value
+					 * before doing the NULL check.  We want to do this even
+					 * when we receive a NULL Datum to hash.  In strict mode,
+					 * we do this after the NULL check so as not to waste the
+					 * effort of rotating the bits when we're going to throw
+					 * away the hash value and return NULL.
+					 */
+					if (opcode == EEOP_HASHDATUM_NEXT32)
+					{
+						LLVMValueRef v_tmp1;
+						LLVMValueRef v_tmp2;
+						LLVMValueRef tmp;
+
+						tmp = l_ptr_const(&op->d.hashdatum.iresult->value,
+										  l_ptr(TypeSizeT));
+
+						/*
+						 * Fetch the previously hashed value from where the
+						 * previous hash operation stored it.
+						 */
+						v_prevhash = l_load(b, TypeSizeT, tmp, "prevhash");
+
+						/*
+						 * Rotate bits left by 1 bit.  Be careful not to
+						 * overflow uint32 when working with size_t.
+						 */
+						v_tmp1 = LLVMBuildShl(b, v_prevhash, l_sizet_const(1),
+											  "");
+						v_tmp1 = LLVMBuildAnd(b, v_tmp1,
+											  l_sizet_const(0xffffffff), "");
+						v_tmp2 = LLVMBuildLShr(b, v_prevhash,
+											   l_sizet_const(31), "");
+						v_prevhash = LLVMBuildOr(b, v_tmp1, v_tmp2,
+												 "rotatedhash");
+					}
+
+					/*
+					 * Block for the actual function call, if args are
+					 * non-NULL.
+					 */
+					b_ifnotnull = l_bb_before_v(opblocks[opno + 1],
+												"b.%d.ifnotnull",
+												opno);
+
+					/* we expect the hash function to have 1 argument */
+					if (fcinfo->nargs != 1)
+						elog(ERROR, "incorrect number of function arguments");
+
+					v_fcinfo = l_ptr_const(fcinfo,
+										   l_ptr(StructFunctionCallInfoData));
+
+					b_checkargnull = l_bb_before_v(b_ifnotnull,
+												   "b.%d.isnull.0", opno);
+
+					LLVMBuildBr(b, b_checkargnull);
+
+					/*
+					 * Determine what to do if we find the argument to be
+					 * NULL.
+					 */
+					if (opcode == EEOP_HASHDATUM_FIRST_STRICT ||
+						opcode == EEOP_HASHDATUM_NEXT32_STRICT)
+					{
+						b_ifnullblock = l_bb_before_v(b_ifnotnull,
+													  "b.%d.strictnull",
+													  opno);
+
+						LLVMPositionBuilderAtEnd(b, b_ifnullblock);
+
+						/*
+						 * In strict node, NULL inputs result in NULL.  Save
+						 * the NULL result and goto jumpdone.
+						 */
+						LLVMBuildStore(b, l_sbool_const(1), v_resnullp);
+						LLVMBuildStore(b, l_sizet_const(0), v_resvaluep);
+						LLVMBuildBr(b, opblocks[op->d.hashdatum.jumpdone]);
+					}
+					else
+					{
+						b_ifnullblock = l_bb_before_v(b_ifnotnull,
+													  "b.%d.null",
+													  opno);
+
+						LLVMPositionBuilderAtEnd(b, b_ifnullblock);
+
+
+						LLVMBuildStore(b, l_sbool_const(0), v_resnullp);
+
+						if (opcode == EEOP_HASHDATUM_NEXT32)
+						{
+							Assert(v_prevhash != NULL);
+
+							/*
+							 * Save the rotated hash value and skip to the
+							 * next op.
+							 */
+							LLVMBuildStore(b, v_prevhash, v_resvaluep);
+						}
+						else
+						{
+							Assert(opcode == EEOP_HASHDATUM_FIRST);
+
+							/*
+							 * Store a zero Datum when the Datum to hash is
+							 * NULL
+							 */
+							LLVMBuildStore(b, l_sizet_const(0), v_resvaluep);
+						}
+
+						LLVMBuildBr(b, opblocks[opno + 1]);
+					}
+
+					LLVMPositionBuilderAtEnd(b, b_checkargnull);
+
+					/* emit code to check if the input parameter is NULL */
+					v_argisnull = l_funcnull(b, v_fcinfo, 0);
+					LLVMBuildCondBr(b,
+									LLVMBuildICmp(b,
+												  LLVMIntEQ,
+												  v_argisnull,
+												  l_sbool_const(1),
+												  ""),
+									b_ifnullblock,
+									b_ifnotnull);
+
+					LLVMPositionBuilderAtEnd(b, b_ifnotnull);
+
+					/*
+					 * Rotate the previously stored hash value when performing
+					 * NEXT32 in strict mode.  In non-strict mode we already
+					 * did this before checking for NULLs.
+					 */
+					if (opcode == EEOP_HASHDATUM_NEXT32_STRICT)
+					{
+						LLVMValueRef v_tmp1;
+						LLVMValueRef v_tmp2;
+						LLVMValueRef tmp;
+
+						tmp = l_ptr_const(&op->d.hashdatum.iresult->value,
+										  l_ptr(TypeSizeT));
+
+						/*
+						 * Fetch the previously hashed value from where the
+						 * previous hash operation stored it.
+						 */
+						v_prevhash = l_load(b, TypeSizeT, tmp, "prevhash");
+
+						/*
+						 * Rotate bits left by 1 bit.  Be careful not to
+						 * overflow uint32 when working with size_t.
+						 */
+						v_tmp1 = LLVMBuildShl(b, v_prevhash, l_sizet_const(1),
+											  "");
+						v_tmp1 = LLVMBuildAnd(b, v_tmp1,
+											  l_sizet_const(0xffffffff), "");
+						v_tmp2 = LLVMBuildLShr(b, v_prevhash,
+											   l_sizet_const(31), "");
+						v_prevhash = LLVMBuildOr(b, v_tmp1, v_tmp2,
+												 "rotatedhash");
+					}
+
+					/* call the hash function */
+					v_retval = BuildV1Call(context, b, mod, fcinfo,
+										   &v_fcinfo_isnull);
+
+					/*
+					 * For NEXT32 ops, XOR (^) the returned hash value with
+					 * the existing hash value.
+					 */
+					if (opcode == EEOP_HASHDATUM_NEXT32 ||
+						opcode == EEOP_HASHDATUM_NEXT32_STRICT)
+						v_retval = LLVMBuildXor(b, v_prevhash, v_retval,
+												"xorhash");
+
+					LLVMBuildStore(b, v_retval, v_resvaluep);
+					LLVMBuildStore(b, l_sbool_const(0), v_resnullp);
+
+					LLVMBuildBr(b, opblocks[opno + 1]);
+					break;
+				}
 
 			case EEOP_CONVERT_ROWTYPE:
 				build_EvalXFunc(b, mod, "ExecEvalConvertRowtype",
@@ -2766,7 +2997,7 @@ create_LifetimeEnd(LLVMModuleRef mod)
 	LLVMContextRef lc;
 
 	/* variadic pointer argument */
-	const char *nm = "llvm.lifetime.end.p0i8";
+	const char *nm = "llvm.lifetime.end.p0";
 
 	fn = LLVMGetNamedFunction(mod, nm);
 	if (fn)

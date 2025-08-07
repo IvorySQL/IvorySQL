@@ -19,10 +19,8 @@
 #include <sys/time.h>
 
 #include "catalog/pg_type_d.h"
-#include "common/fe_memutils.h"
 #include "libpq-fe.h"
 #include "pg_getopt.h"
-#include "portability/instr_time.h"
 
 
 static void exit_nicely(PGconn *conn);
@@ -31,10 +29,10 @@ static void pg_attribute_noreturn() pg_fatal_impl(int line, const char *fmt,...)
 static bool process_result(PGconn *conn, PGresult *res, int results,
 						   int numsent);
 
-const char *const progname = "libpq_pipeline";
+static const char *const progname = "libpq_pipeline";
 
 /* Options and defaults */
-char	   *tracefile = NULL;	/* path to PQtrace() file */
+static char *tracefile = NULL;	/* path to PQtrace() file */
 
 
 #ifdef DEBUG_OUTPUT

@@ -34,6 +34,9 @@ tests += {
       't/004_manifest.pl',
       't/005_integrity.pl',
       't/006_db_file_copy.pl',
+      't/007_wal_level_minimal.pl',
+      't/008_promote.pl',
+      't/009_no_full_file.pl',
     ],
   }
 }

@@ -76,6 +76,7 @@ spghandler(PG_FUNCTION_ARGS)
 	amroutine->amvacuumcleanup = spgvacuumcleanup;
 	amroutine->amcanreturn = spgcanreturn;
 	amroutine->amcostestimate = spgcostestimate;
+	amroutine->amgettreeheight = NULL;
 	amroutine->amoptions = spgoptions;
 	amroutine->amproperty = spgproperty;
 	amroutine->ambuildphasename = NULL;
@@ -278,7 +279,7 @@ spgGetCache(Relation index)
 			UnlockReleaseBuffer(metabuffer);
 		}
 
-		index->rd_amcache = (void *) cache;
+		index->rd_amcache = cache;
 	}
 	else
 	{
@@ -330,7 +331,9 @@ getSpGistTupleDesc(Relation index, SpGistTypeDesc *keyType)
 		att->attcollation = InvalidOid;
 		/* In case we changed typlen, we'd better reset following offsets */
 		for (int i = spgFirstIncludeColumn; i < outTupDesc->natts; i++)
-			TupleDescAttr(outTupDesc, i)->attcacheoff = -1;
+			TupleDescCompactAttr(outTupDesc, i)->attcacheoff = -1;
+
+		populate_compact_attribute(outTupDesc, spgKeyColumn);
 	}
 	return outTupDesc;
 }

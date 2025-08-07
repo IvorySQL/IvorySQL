@@ -214,10 +214,10 @@ SELECT *
 -- semijoin selectivity for <>
 --
 explain (costs off)
-select * from int4_tbl i4, tenk1 a
-where exists(select * from tenk1 b
-             where a.twothousand = b.twothousand and a.fivethous <> b.fivethous)
-      and i4.f1 = a.tenthous;
+select * from tenk1 a, tenk1 b
+where exists(select * from tenk1 c
+             where b.twothousand = c.twothousand and b.fivethous <> c.fivethous)
+      and a.tenthous = b.tenthous and a.tenthous < 5000;
 
 
 --
@@ -440,6 +440,27 @@ select a.f1, b.f1, t.thousand, t.tenthous from
   (select sum(f1)+1 as f1 from int4_tbl i4a) a,
   (select sum(f1) as f1 from int4_tbl i4b) b
 where b.f1 = t.thousand and a.f1 = b.f1 and (a.f1+b.f1+999) = t.tenthous;
+
+--
+-- Test hash joins with multiple hash keys and subplans.
+--
+
+-- First ensure we get a hash join with multiple hash keys.
+explain (costs off)
+select t1.unique1,t2.unique1 from tenk1 t1
+inner join tenk1 t2 on t1.two = t2.two
+  and t1.unique1 = (select min(unique1) from tenk1
+                    where t2.unique1=unique1)
+where t1.unique1 < 10 and t2.unique1 < 10
+order by t1.unique1;
+
+-- Ensure we get the expected result
+select t1.unique1,t2.unique1 from tenk1 t1
+inner join tenk1 t2 on t1.two = t2.two
+  and t1.unique1 = (select min(unique1) from tenk1
+                    where t2.unique1=unique1)
+where t1.unique1 < 10 and t2.unique1 < 10
+order by t1.unique1;
 
 --
 -- checks for correct handling of quals in multiway outer joins
@@ -694,6 +715,51 @@ reset enable_hashjoin;
 reset enable_nestloop;
 
 --
+-- regression test for bug #18522 (merge-right-anti-join in inner_unique cases)
+--
+
+create temp table tbl_ra(a int unique, b int);
+insert into tbl_ra select i, i%100 from generate_series(1,1000)i;
+create index on tbl_ra (b);
+analyze tbl_ra;
+
+set enable_hashjoin to off;
+set enable_nestloop to off;
+
+-- ensure we get a merge right anti join
+explain (costs off)
+select * from tbl_ra t1
+where not exists (select 1 from tbl_ra t2 where t2.b = t1.a) and t1.b < 2;
+
+-- and check we get the expected results
+select * from tbl_ra t1
+where not exists (select 1 from tbl_ra t2 where t2.b = t1.a) and t1.b < 2;
+
+reset enable_hashjoin;
+reset enable_nestloop;
+
+--
+-- regression test for bug with hash-right-semi join
+--
+
+create temp table tbl_rs(a int, b int);
+insert into tbl_rs select i, i from generate_series(1,10)i;
+analyze tbl_rs;
+
+-- ensure we get a hash right semi join
+explain (costs off)
+select * from tbl_rs t1 join
+  lateral (select * from tbl_rs t2 where t2.a in
+            (select t1.a+t3.a from tbl_rs t3) and t2.a < 5)
+  on true;
+
+-- and check we get the expected results
+select * from tbl_rs t1 join
+  lateral (select * from tbl_rs t2 where t2.a in
+            (select t1.a+t3.a from tbl_rs t3) and t2.a < 5)
+  on true;
+
+--
 -- regression test for bug #13908 (hash join with skew tuples & nbatch increase)
 --
 
@@ -772,6 +838,14 @@ where not exists (select 1 from tenk1 b where a.unique1 = b.unique2);
 explain (costs off)
 select a.* from tenk1 a left join tenk1 b on a.unique1 = b.unique2
 where b.unique2 is null;
+
+--
+-- regression test for bogus RTE_GROUP entries
+--
+
+explain (costs off)
+select a.* from tenk1 a
+where exists (select 1 from tenk1 b where a.unique1 = b.unique2 group by b.unique1);
 
 --
 -- regression test for proper handling of outer joins within antijoins
@@ -1409,6 +1483,15 @@ select * from tenk1 a join tenk1 b on
   (a.unique1 = 1 and b.unique1 = 2) or
   ((a.unique2 = 3 or a.unique2 = 7) and b.hundred = 4);
 
+explain (costs off)
+select * from tenk1 a join tenk1 b on
+  (a.unique1 = 1 and b.unique1 = 2) or
+  ((a.unique2 = 3 or a.unique2 = 7) and b.hundred = 4);
+explain (costs off)
+select * from tenk1 a join tenk1 b on
+  (a.unique1 < 20 or a.unique1 = 3 or a.unique1 = 1 and b.unique1 = 2) or
+  ((a.unique2 = 3 or a.unique2 = 7) and b.hundred = 4);
+
 --
 -- test placement of movable quals in a parameterized join tree
 --
@@ -1928,17 +2011,22 @@ CREATE TEMP TABLE a (id int PRIMARY KEY, b_id int);
 CREATE TEMP TABLE b (id int PRIMARY KEY, c_id int);
 CREATE TEMP TABLE c (id int PRIMARY KEY);
 CREATE TEMP TABLE d (a int, b int);
+CREATE TEMP TABLE e (id1 int, id2 int, PRIMARY KEY(id1, id2));
 INSERT INTO a VALUES (0, 0), (1, NULL);
 INSERT INTO b VALUES (0, 0), (1, NULL);
 INSERT INTO c VALUES (0), (1);
 INSERT INTO d VALUES (1,3), (2,2), (3,1);
+INSERT INTO e VALUES (0,0), (2,2), (3,1);
 
--- all three cases should be optimizable into a simple seqscan
+-- all these cases should be optimizable into a simple seqscan
 explain (costs off) SELECT a.* FROM a LEFT JOIN b ON a.b_id = b.id;
 explain (costs off) SELECT b.* FROM b LEFT JOIN c ON b.c_id = c.id;
 explain (costs off)
   SELECT a.* FROM a LEFT JOIN (b left join c on b.c_id = c.id)
   ON (a.b_id = b.id);
+explain (costs off)
+  SELECT a.* FROM a LEFT JOIN b ON a.id = b.id
+  LEFT JOIN e ON e.id1 = a.b_id AND b.c_id = e.id2;
 
 -- check optimization of outer join within another special join
 explain (costs off)
@@ -2928,3 +3016,20 @@ SELECT t1.a FROM skip_fetch t1 LEFT JOIN skip_fetch t2 ON t2.a = 1 WHERE t2.a IS
 
 RESET enable_indexonlyscan;
 RESET enable_seqscan;
+
+-- Test BitmapHeapScan with a rescan releases resources correctly
+SET enable_seqscan = off;
+SET enable_indexscan = off;
+
+CREATE TEMP TABLE rescan_bhs (a INT);
+INSERT INTO rescan_bhs VALUES (1), (2);
+CREATE INDEX ON rescan_bhs (a);
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM rescan_bhs t1 LEFT JOIN rescan_bhs t2 ON t1.a IN
+  (SELECT a FROM rescan_bhs t3 WHERE t2.a > 1);
+SELECT * FROM rescan_bhs t1 LEFT JOIN rescan_bhs t2 ON t1.a IN
+  (SELECT a FROM rescan_bhs t3 WHERE t2.a > 1);
+
+RESET enable_seqscan;
+RESET enable_indexscan;

@@ -18,16 +18,6 @@
 
 #ifndef WIN32
 #include <dlfcn.h>
-
-/*
- * On macOS, <dlfcn.h> insists on including <stdbool.h>.  If we're not
- * using stdbool, undef bool to undo the damage.
- */
-#ifndef PG_USE_STDBOOL
-#ifdef bool
-#undef bool
-#endif
-#endif
 #endif							/* !WIN32 */
 
 #include "fmgr.h"
@@ -135,7 +125,7 @@ load_external_function(const char *filename, const char *funcname,
 /*
  * This function loads a shlib file without looking up any particular
  * function in it.  If the same shlib has previously been loaded,
- * unload and reload it.
+ * we do not load it again.
  *
  * When 'restricted' is true, only libraries in the presumed-secure
  * directory $libdir/plugins may be referenced.
@@ -152,7 +142,7 @@ load_file(const char *filename, bool restricted)
 	/* Expand the possibly-abbreviated filename to an exact path name */
 	fullname = expand_dynamic_library_name(filename);
 
-	/* Load the shared library */
+	/* Load the shared library, unless we already did */
 	(void) internal_load_library(fullname);
 
 	pfree(fullname);
@@ -358,8 +348,9 @@ incompatible_module_error(const char *libname,
 		if (details.len)
 			appendStringInfoChar(&details, '\n');
 		appendStringInfo(&details,
-						 _("Server has FUNC_MAX_ARGS = %d, library has %d."),
-						 magic_data.funcmaxargs,
+		/* translator: %s is a variable name and %d its values */
+						 _("Server has %s = %d, library has %d."),
+						 "FUNC_MAX_ARGS", magic_data.funcmaxargs,
 						 module_magic_data->funcmaxargs);
 	}
 	if (module_magic_data->indexmaxkeys != magic_data.indexmaxkeys)
@@ -367,8 +358,9 @@ incompatible_module_error(const char *libname,
 		if (details.len)
 			appendStringInfoChar(&details, '\n');
 		appendStringInfo(&details,
-						 _("Server has INDEX_MAX_KEYS = %d, library has %d."),
-						 magic_data.indexmaxkeys,
+		/* translator: %s is a variable name and %d its values */
+						 _("Server has %s = %d, library has %d."),
+						 "INDEX_MAX_KEYS", magic_data.indexmaxkeys,
 						 module_magic_data->indexmaxkeys);
 	}
 	if (module_magic_data->namedatalen != magic_data.namedatalen)
@@ -376,8 +368,9 @@ incompatible_module_error(const char *libname,
 		if (details.len)
 			appendStringInfoChar(&details, '\n');
 		appendStringInfo(&details,
-						 _("Server has NAMEDATALEN = %d, library has %d."),
-						 magic_data.namedatalen,
+		/* translator: %s is a variable name and %d its values */
+						 _("Server has %s = %d, library has %d."),
+						 "NAMEDATALEN", magic_data.namedatalen,
 						 module_magic_data->namedatalen);
 	}
 	if (module_magic_data->float8byval != magic_data.float8byval)
@@ -385,8 +378,9 @@ incompatible_module_error(const char *libname,
 		if (details.len)
 			appendStringInfoChar(&details, '\n');
 		appendStringInfo(&details,
-						 _("Server has FLOAT8PASSBYVAL = %s, library has %s."),
-						 magic_data.float8byval ? "true" : "false",
+		/* translator: %s is a variable name and %d its values */
+						 _("Server has %s = %s, library has %s."),
+						 "FLOAT8PASSBYVAL", magic_data.float8byval ? "true" : "false",
 						 module_magic_data->float8byval ? "true" : "false");
 	}
 

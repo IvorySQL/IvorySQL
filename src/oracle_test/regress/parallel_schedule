@@ -31,7 +31,7 @@ test: strings md5 numerology point lseg line box path polygon circle date time t
 # geometry depends on point, lseg, line, box, path, polygon, circle
 # horology depends on date, time, timetz, timestamp, timestamptz, interval
 # ----------
-test: geometry horology tstypes regex type_sanity opr_sanity misc_sanity comments expressions unicode xid mvcc database
+test: geometry horology tstypes regex type_sanity opr_sanity misc_sanity comments expressions unicode xid mvcc database stats_import
 
 # ----------
 # Load huge amounts of data
@@ -39,7 +39,7 @@ test: geometry horology tstypes regex type_sanity opr_sanity misc_sanity comment
 # execute two copy tests in parallel, to check that copy itself
 # is concurrent safe.
 # ----------
-test: copy copyselect copydml insert insert_conflict
+test: copy copyselect copydml copyencoding insert insert_conflict
 
 # ----------
 # More groups of parallel tests
@@ -69,7 +69,7 @@ test: select_into select_distinct select_distinct_on select_implicit select_havi
 # ----------
 # Another group of parallel tests
 # ----------
-test: brin gin gist spgist privileges init_privs security_label collate matview lock replica_identity rowsecurity object_address tablesample groupingsets drop_operator password identity generated join_hash
+test: brin gin gist spgist privileges init_privs security_label collate matview lock replica_identity rowsecurity object_address tablesample groupingsets drop_operator password identity generated_stored join_hash
 
 # ----------
 # Additional BRIN tests
@@ -86,7 +86,7 @@ test: create_table_like alter_generic alter_operator misc async dbsize misc_func
 # rules cannot run concurrently with any test that creates
 # a view or rule in the public schema
 # collate.*.utf8 tests cannot be run in parallel with each other
-test: rules psql ora_psql psql_crosstab amutils stats_ext collate.linux.utf8
+test: rules psql ora_psql psql_crosstab amutils stats_ext collate.linux.utf8 collate.windows.win1252
 
 # ----------
 # Run these alone so they don't run out of parallel workers
@@ -124,7 +124,7 @@ test: plancache limit plpgsql copy2 temp domain rangefuncs prepare conversion tr
 # The stats test resets stats, so nothing else needing stats access can be in
 # this group.
 # ----------
-test: partition_merge partition_split partition_join partition_prune reloptions hash_part indexing partition_aggregate partition_info tuplesort explain compression memoize stats predicate
+test: partition_join partition_prune reloptions hash_part indexing partition_aggregate partition_info tuplesort explain compression memoize stats predicate
 
 # event_trigger depends on create_am and cannot run concurrently with
 # any test that runs DDL

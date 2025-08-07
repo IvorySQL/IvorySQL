@@ -111,6 +111,7 @@ typedef enum
 /* GUC parameters */
 extern PGDLLIMPORT int debug_parallel_query;
 extern PGDLLIMPORT bool parallel_leader_participation;
+extern PGDLLIMPORT bool enable_distinct_reordering;
 
 extern struct PlannedStmt *planner(Query *parse, const char *query_string,
 								   int cursorOptions,
@@ -201,5 +202,6 @@ extern bool contain_vars_of_level(Node *node, int levelsup);
 extern int	locate_var_of_level(Node *node, int levelsup);
 extern List *pull_var_clause(Node *node, int flags);
 extern Node *flatten_join_alias_vars(PlannerInfo *root, Query *query, Node *node);
+extern Node *flatten_group_exprs(PlannerInfo *root, Query *query, Node *node);
 
 #endif							/* OPTIMIZER_H */

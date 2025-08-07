@@ -57,6 +57,7 @@ static void RecordConstLocation(JumbleState *jstate, int location);
 static void _jumbleNode(JumbleState *jstate, Node *node);
 static void _jumbleA_Const(JumbleState *jstate, Node *node);
 static void _jumbleList(JumbleState *jstate, Node *node);
+static void _jumbleVariableSetStmt(JumbleState *jstate, Node *node);
 
 /*
  * Given a possibly multi-statement source string, confine our attention to the
@@ -89,6 +90,12 @@ CleanQuerytext(const char *query, int *location, int *len)
 	/*
 	 * Discard leading and trailing whitespace, too.  Use scanner_isspace()
 	 * not libc's isspace(), because we want to match the lexer's behavior.
+	 *
+	 * Note: the parser now strips leading comments and whitespace from the
+	 * reported stmt_location, so this first loop will only iterate in the
+	 * unusual case that the location didn't propagate to here.  But the
+	 * statement length will extend to the end-of-string or terminating
+	 * semicolon, so the second loop often does something useful.
 	 */
 	while (query_len > 0 && scanner_isspace(query[0]))
 		query++, query_location++, query_len--;
@@ -351,4 +358,22 @@ _jumbleA_Const(JumbleState *jstate, Node *node)
 				break;
 		}
 	}
+}
+
+static void
+_jumbleVariableSetStmt(JumbleState *jstate, Node *node)
+{
+	VariableSetStmt *expr = (VariableSetStmt *) node;
+
+	JUMBLE_FIELD(kind);
+	JUMBLE_STRING(name);
+
+	/*
+	 * Account for the list of arguments in query jumbling only if told by the
+	 * parser.
+	 */
+	if (expr->jumble_args)
+		JUMBLE_NODE(args);
+	JUMBLE_FIELD(is_local);
+	JUMBLE_LOCATION(location);
 }

@@ -1088,7 +1088,7 @@ finalize_aggregate(AggState *aggstate,
 		InitFunctionCallInfoData(*fcinfo, &peragg->finalfn,
 								 numFinalArgs,
 								 pertrans->aggCollation,
-								 (void *) aggstate, NULL);
+								 (Node *) aggstate, NULL);
 
 		/* Fill in the transition state value */
 		fcinfo->args[0].value =
@@ -1440,12 +1440,11 @@ find_cols_walker(Node *node, FindColsContext *context)
 	{
 		Assert(!context->is_aggref);
 		context->is_aggref = true;
-		expression_tree_walker(node, find_cols_walker, (void *) context);
+		expression_tree_walker(node, find_cols_walker, context);
 		context->is_aggref = false;
 		return false;
 	}
-	return expression_tree_walker(node, find_cols_walker,
-								  (void *) context);
+	return expression_tree_walker(node, find_cols_walker, context);
 }
 
 /*
@@ -1519,19 +1518,20 @@ build_hash_table(AggState *aggstate, int setno, long nbuckets)
 	 */
 	additionalsize = aggstate->numtrans * sizeof(AggStatePerGroupData);
 
-	perhash->hashtable = BuildTupleHashTableExt(&aggstate->ss.ps,
-												perhash->hashslot->tts_tupleDescriptor,
-												perhash->numCols,
-												perhash->hashGrpColIdxHash,
-												perhash->eqfuncoids,
-												perhash->hashfunctions,
-												perhash->aggnode->grpCollations,
-												nbuckets,
-												additionalsize,
-												metacxt,
-												hashcxt,
-												tmpcxt,
-												DO_AGGSPLIT_SKIPFINAL(aggstate->aggsplit));
+	perhash->hashtable = BuildTupleHashTable(&aggstate->ss.ps,
+											 perhash->hashslot->tts_tupleDescriptor,
+											 perhash->hashslot->tts_ops,
+											 perhash->numCols,
+											 perhash->hashGrpColIdxHash,
+											 perhash->eqfuncoids,
+											 perhash->hashfunctions,
+											 perhash->aggnode->grpCollations,
+											 nbuckets,
+											 additionalsize,
+											 metacxt,
+											 hashcxt,
+											 tmpcxt,
+											 DO_AGGSPLIT_SKIPFINAL(aggstate->aggsplit));
 }
 
 /*
@@ -4101,7 +4101,7 @@ build_pertrans_for_aggref(AggStatePerTrans pertrans,
 							 &pertrans->transfn,
 							 numTransArgs,
 							 pertrans->aggCollation,
-							 (void *) aggstate, NULL);
+							 (Node *) aggstate, NULL);
 
 	/* get info about the state value's datatype */
 	get_typlenbyval(aggtranstype,
@@ -4121,7 +4121,7 @@ build_pertrans_for_aggref(AggStatePerTrans pertrans,
 								 &pertrans->serialfn,
 								 1,
 								 InvalidOid,
-								 (void *) aggstate, NULL);
+								 (Node *) aggstate, NULL);
 	}
 
 	if (OidIsValid(aggdeserialfn))
@@ -4137,7 +4137,7 @@ build_pertrans_for_aggref(AggStatePerTrans pertrans,
 								 &pertrans->deserialfn,
 								 2,
 								 InvalidOid,
-								 (void *) aggstate, NULL);
+								 (Node *) aggstate, NULL);
 	}
 
 	/*

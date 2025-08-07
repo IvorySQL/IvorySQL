@@ -91,8 +91,16 @@ typedef enum
 /*
  * DumpComponents is a bitmask of the potentially dumpable components of
  * a database object: its core definition, plus optional attributes such
- * as ACL, comments, etc.  The NONE and ALL symbols are convenient
- * shorthands.
+ * as ACL, comments, etc.
+ *
+ * The NONE and ALL symbols are convenient shorthands for assigning values,
+ * but be careful about using them in tests.  For example, a test like
+ * "if (dobj->dump == DUMP_COMPONENT_NONE)" is probably wrong; you likely want
+ * "if (!(dobj->dump & DUMP_COMPONENT_DEFINITION))" instead.  This is because
+ * we aren't too careful about the values of irrelevant bits, as indeed can be
+ * seen in the definition of DUMP_COMPONENT_ALL.  It's also possible that an
+ * object has only subsidiary bits such as DUMP_COMPONENT_ACL set, leading to
+ * unexpected behavior of a test against NONE.
  */
 typedef uint32 DumpComponents;
 #define DUMP_COMPONENT_NONE			(0)
@@ -202,6 +210,7 @@ typedef struct _typeInfo
 	const char *rolname;
 	Oid			typelem;
 	Oid			typrelid;
+	Oid			typarray;
 	char		typrelkind;		/* 'r', 'v', 'c', etc */
 	char		typtype;		/* 'b', 'c', etc */
 	bool		isArray;		/* true if auto-generated array type */
@@ -361,8 +370,12 @@ typedef struct _tableInfo
 	bool	   *attisinvisible;	/* invisible column */
 	char	  **attfdwoptions;	/* per-attribute fdw options */
 	char	  **attmissingval;	/* per attribute missing value */
-	bool	   *notnull;		/* not-null constraints on attributes */
-	bool	   *inhNotNull;		/* true if NOT NULL is inherited */
+	char	  **notnull_constrs;	/* NOT NULL constraint names. If null,
+									 * there isn't one on this column. If
+									 * empty string, unnamed constraint
+									 * (pre-v17) */
+	bool	   *notnull_noinh;	/* NOT NULL is NO INHERIT */
+	bool	   *notnull_islocal;	/* true if NOT NULL has local definition */
 	struct _attrDefInfo **attrdefs; /* DEFAULT expressions */
 	struct _constraintInfo *checkexprs; /* CHECK constraints */
 	bool		needs_override; /* has GENERATED ALWAYS AS IDENTITY */
@@ -489,6 +502,7 @@ typedef struct _constraintInfo
 	DumpId		conindex;		/* identifies associated index if any */
 	bool		condeferrable;	/* true if constraint is DEFERRABLE */
 	bool		condeferred;	/* true if constraint is INITIALLY DEFERRED */
+	bool		conperiod;		/* true if the constraint is WITHOUT OVERLAPS */
 	bool		conislocal;		/* true if constraint has local definition */
 	bool		separate;		/* true if must dump as separate item */
 } ConstraintInfo;
@@ -639,6 +653,7 @@ typedef struct _PublicationInfo
 	bool		pubdelete;
 	bool		pubtruncate;
 	bool		pubviaroot;
+	bool		pubgencols;
 } PublicationInfo;
 
 /*
@@ -672,20 +687,20 @@ typedef struct _SubscriptionInfo
 {
 	DumpableObject dobj;
 	const char *rolname;
-	char	   *subenabled;
-	char	   *subbinary;
-	char	   *substream;
-	char	   *subtwophasestate;
-	char	   *subdisableonerr;
-	char	   *subpasswordrequired;
-	char	   *subrunasowner;
+	bool		subenabled;
+	bool		subbinary;
+	char		substream;
+	char		subtwophasestate;
+	bool		subdisableonerr;
+	bool		subpasswordrequired;
+	bool		subrunasowner;
+	bool		subfailover;
 	char	   *subconninfo;
 	char	   *subslotname;
 	char	   *subsynccommit;
 	char	   *subpublications;
 	char	   *suborigin;
 	char	   *suboriginremotelsn;
-	char	   *subfailover;
 } SubscriptionInfo;
 
 /*
@@ -746,18 +761,17 @@ extern void sortDumpableObjectsByTypeName(DumpableObject **objs, int numObjs);
 /*
  * version specific routines
  */
-extern NamespaceInfo *getNamespaces(Archive *fout, int *numNamespaces);
+extern void getNamespaces(Archive *fout);
 extern ExtensionInfo *getExtensions(Archive *fout, int *numExtensions);
-extern TypeInfo *getTypes(Archive *fout, int *numTypes);
-extern FuncInfo *getFuncs(Archive *fout, int *numFuncs);
-extern PkgInfo *getPackages(Archive *fout, int *numPkgs);
-extern AggInfo *getAggregates(Archive *fout, int *numAggs);
-extern OprInfo *getOperators(Archive *fout, int *numOprs);
-extern AccessMethodInfo *getAccessMethods(Archive *fout, int *numAccessMethods);
-extern OpclassInfo *getOpclasses(Archive *fout, int *numOpclasses);
-extern OpfamilyInfo *getOpfamilies(Archive *fout, int *numOpfamilies);
-extern CollInfo *getCollations(Archive *fout, int *numCollations);
-extern ConvInfo *getConversions(Archive *fout, int *numConversions);
+extern void getTypes(Archive *fout);
+extern void getFuncs(Archive *fout);
+extern void getAggregates(Archive *fout);
+extern void getOperators(Archive *fout);
+extern void getAccessMethods(Archive *fout);
+extern void getOpclasses(Archive *fout);
+extern void getOpfamilies(Archive *fout);
+extern void getCollations(Archive *fout);
+extern void getConversions(Archive *fout);
 extern TableInfo *getTables(Archive *fout, int *numTables);
 extern void getOwnedSeqs(Archive *fout, TableInfo tblinfo[], int numTables);
 extern InhInfo *getInherits(Archive *fout, int *numInherits);
@@ -765,30 +779,27 @@ extern void getPartitioningInfo(Archive *fout);
 extern void getIndexes(Archive *fout, TableInfo tblinfo[], int numTables);
 extern void getExtendedStatistics(Archive *fout);
 extern void getConstraints(Archive *fout, TableInfo tblinfo[], int numTables);
-extern RuleInfo *getRules(Archive *fout, int *numRules);
+extern void getRules(Archive *fout);
 extern void getTriggers(Archive *fout, TableInfo tblinfo[], int numTables);
-extern ProcLangInfo *getProcLangs(Archive *fout, int *numProcLangs);
-extern CastInfo *getCasts(Archive *fout, int *numCasts);
-extern TransformInfo *getTransforms(Archive *fout, int *numTransforms);
+extern void getProcLangs(Archive *fout);
+extern void getCasts(Archive *fout);
+extern void getTransforms(Archive *fout);
 extern void getTableAttrs(Archive *fout, TableInfo *tblinfo, int numTables);
 extern bool shouldPrintColumn(const DumpOptions *dopt, const TableInfo *tbinfo, int colno);
-extern TSParserInfo *getTSParsers(Archive *fout, int *numTSParsers);
-extern TSDictInfo *getTSDictionaries(Archive *fout, int *numTSDicts);
-extern TSTemplateInfo *getTSTemplates(Archive *fout, int *numTSTemplates);
-extern TSConfigInfo *getTSConfigurations(Archive *fout, int *numTSConfigs);
-extern FdwInfo *getForeignDataWrappers(Archive *fout,
-									   int *numForeignDataWrappers);
-extern ForeignServerInfo *getForeignServers(Archive *fout,
-											int *numForeignServers);
-extern DefaultACLInfo *getDefaultACLs(Archive *fout, int *numDefaultACLs);
+extern void getTSParsers(Archive *fout);
+extern void getTSDictionaries(Archive *fout);
+extern void getTSTemplates(Archive *fout);
+extern void getTSConfigurations(Archive *fout);
+extern void getForeignDataWrappers(Archive *fout);
+extern void getForeignServers(Archive *fout);
+extern void getDefaultACLs(Archive *fout);
 extern void getExtensionMembership(Archive *fout, ExtensionInfo extinfo[],
 								   int numExtensions);
 extern void processExtensionTables(Archive *fout, ExtensionInfo extinfo[],
 								   int numExtensions);
-extern EventTriggerInfo *getEventTriggers(Archive *fout, int *numEventTriggers);
+extern void getEventTriggers(Archive *fout);
 extern void getPolicies(Archive *fout, TableInfo tblinfo[], int numTables);
-extern PublicationInfo *getPublications(Archive *fout,
-										int *numPublications);
+extern void getPublications(Archive *fout);
 extern void getPublicationNamespaces(Archive *fout);
 extern void getPublicationTables(Archive *fout, TableInfo tblinfo[],
 								 int numTables);

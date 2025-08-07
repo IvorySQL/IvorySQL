@@ -25,7 +25,7 @@ PostgreSQL documentation
 MERGE INTO [ ONLY ] <replaceable class="parameter">target_table_name</replaceable> [ * ] [ [ AS ] <replaceable class="parameter">target_alias</replaceable> ]
 USING <replaceable class="parameter">data_source</replaceable> ON <replaceable class="parameter">join_condition</replaceable>
 <replaceable class="parameter">when_clause</replaceable> [...]
-[ RETURNING * | <replaceable class="parameter">output_expression</replaceable> [ [ AS ] <replaceable class="parameter">output_name</replaceable> ] [, ...] ]
+[ RETURNING { * | <replaceable class="parameter">output_expression</replaceable> [ [ AS ] <replaceable class="parameter">output_name</replaceable> ] } [, ...] ]
 
 <phrase>where <replaceable class="parameter">data_source</replaceable> is:</phrase>
 
@@ -698,23 +698,6 @@ MERGE <replaceable class="parameter">total_count</replaceable>
 <programlisting>
 MERGE INTO customer_account ca
 USING recent_transactions t
-ON t.customer_id = ca.customer_id
-WHEN MATCHED THEN
-  UPDATE SET balance = balance + transaction_value
-WHEN NOT MATCHED THEN
-  INSERT (customer_id, balance)
-  VALUES (t.customer_id, t.transaction_value);
-</programlisting>
-  </para>
-
-  <para>
-   Notice that this would be exactly equivalent to the following
-   statement because the <literal>MATCHED</literal> result does not change
-   during execution.
-
-<programlisting>
-MERGE INTO customer_account ca
-USING (SELECT customer_id, transaction_value FROM recent_transactions) AS t
 ON t.customer_id = ca.customer_id
 WHEN MATCHED THEN
   UPDATE SET balance = balance + transaction_value

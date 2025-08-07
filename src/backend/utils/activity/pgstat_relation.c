@@ -20,7 +20,6 @@
 #include "access/twophase_rmgr.h"
 #include "access/xact.h"
 #include "catalog/catalog.h"
-#include "postmaster/autovacuum.h"
 #include "utils/memutils.h"
 #include "utils/pgstat_internal.h"
 #include "utils/rel.h"
@@ -265,6 +264,7 @@ pgstat_report_vacuum(Oid tableoid, bool shared,
 	 * VACUUM command has processed all tables and committed.
 	 */
 	pgstat_flush_io(false);
+	pgstat_flush_backend(false);
 }
 
 /*
@@ -351,6 +351,7 @@ pgstat_report_analyze(Relation rel,
 
 	/* see pgstat_report_vacuum() */
 	pgstat_flush_io(false);
+	pgstat_flush_backend(false);
 }
 
 /*
@@ -801,7 +802,6 @@ pgstat_twophase_postabort(TransactionId xid, uint16 info,
 bool
 pgstat_relation_flush_cb(PgStat_EntryRef *entry_ref, bool nowait)
 {
-	static const PgStat_TableCounts all_zeroes;
 	Oid			dboid;
 	PgStat_TableStatus *lstats; /* pending stats entry  */
 	PgStatShared_Relation *shtabstats;
@@ -816,11 +816,9 @@ pgstat_relation_flush_cb(PgStat_EntryRef *entry_ref, bool nowait)
 	 * Ignore entries that didn't accumulate any actual counts, such as
 	 * indexes that were opened by the planner but not used.
 	 */
-	if (memcmp(&lstats->counts, &all_zeroes,
-			   sizeof(PgStat_TableCounts)) == 0)
-	{
+	if (pg_memory_is_all_zeros(&lstats->counts,
+							   sizeof(struct PgStat_TableCounts)))
 		return true;
-	}
 
 	if (!pgstat_lock_entry(entry_ref, nowait))
 		return false;

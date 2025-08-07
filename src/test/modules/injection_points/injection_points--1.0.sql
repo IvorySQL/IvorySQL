@@ -15,6 +15,16 @@ AS 'MODULE_PATHNAME', 'injection_points_attach'
 LANGUAGE C STRICT PARALLEL UNSAFE;
 
 --
+-- injection_points_load()
+--
+-- Load an injection point already attached.
+--
+CREATE FUNCTION injection_points_load(IN point_name TEXT)
+RETURNS void
+AS 'MODULE_PATHNAME', 'injection_points_load'
+LANGUAGE C STRICT PARALLEL UNSAFE;
+
+--
 -- injection_points_run()
 --
 -- Executes the action attached to the injection point.
@@ -22,6 +32,16 @@ LANGUAGE C STRICT PARALLEL UNSAFE;
 CREATE FUNCTION injection_points_run(IN point_name TEXT)
 RETURNS void
 AS 'MODULE_PATHNAME', 'injection_points_run'
+LANGUAGE C STRICT PARALLEL UNSAFE;
+
+--
+-- injection_points_cached()
+--
+-- Executes the action attached to the injection point, from local cache.
+--
+CREATE FUNCTION injection_points_cached(IN point_name TEXT)
+RETURNS void
+AS 'MODULE_PATHNAME', 'injection_points_cached'
 LANGUAGE C STRICT PARALLEL UNSAFE;
 
 --
@@ -54,3 +74,26 @@ CREATE FUNCTION injection_points_detach(IN point_name TEXT)
 RETURNS void
 AS 'MODULE_PATHNAME', 'injection_points_detach'
 LANGUAGE C STRICT PARALLEL UNSAFE;
+
+--
+-- injection_points_stats_numcalls()
+--
+-- Reports statistics, if any, related to the given injection point.
+--
+CREATE FUNCTION injection_points_stats_numcalls(IN point_name TEXT)
+RETURNS bigint
+AS 'MODULE_PATHNAME', 'injection_points_stats_numcalls'
+LANGUAGE C STRICT;
+
+--
+-- injection_points_stats_fixed()
+--
+-- Reports fixed-numbered statistics for injection points.
+CREATE FUNCTION injection_points_stats_fixed(OUT numattach int8,
+   OUT numdetach int8,
+   OUT numrun int8,
+   OUT numcached int8,
+   OUT numloaded int8)
+RETURNS record
+AS 'MODULE_PATHNAME', 'injection_points_stats_fixed'
+LANGUAGE C STRICT;

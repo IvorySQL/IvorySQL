@@ -12,7 +12,7 @@ use File::Copy;
 # Initialize primary node, doing archives
 my $node_primary = PostgreSQL::Test::Cluster->new('primary');
 $node_primary->init(
-	has_archiving => 1,
+	has_archiving    => 1,
 	allows_streaming => 1);
 my $backup_name = 'my_backup';
 
@@ -33,9 +33,9 @@ $node_standby->append_conf('postgresql.conf',
 
 # Set archive_cleanup_command and recovery_end_command, checking their
 # execution by the backend with dummy commands.
-my $data_dir = $node_standby->data_dir;
+my $data_dir                     = $node_standby->data_dir;
 my $archive_cleanup_command_file = "archive_cleanup_command.done";
-my $recovery_end_command_file = "recovery_end_command.done";
+my $recovery_end_command_file    = "recovery_end_command.done";
 $node_standby->append_conf(
 	'postgresql.conf', qq(
 archive_cleanup_command = 'echo archive_cleanup_done > $archive_cleanup_command_file'
@@ -96,7 +96,7 @@ $node_standby->promote;
 # creating a RECOVERYHISTORY.
 my $primary_archive = $node_primary->archive_dir;
 $caughtup_query =
-  "SELECT size IS NOT NULL FROM pg_stat_file('$primary_archive/00000002.history')";
+  "SELECT size IS NOT NULL FROM pg_stat_file('$primary_archive/00000002.history', true)";
 $node_primary->poll_query_until('postgres', $caughtup_query)
   or die "Timed out while waiting for archiving of 00000002.history";
 

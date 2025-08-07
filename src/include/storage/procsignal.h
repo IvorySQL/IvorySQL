@@ -47,9 +47,9 @@ typedef enum
 	PROCSIG_RECOVERY_CONFLICT_BUFFERPIN,
 	PROCSIG_RECOVERY_CONFLICT_STARTUP_DEADLOCK,
 	PROCSIG_RECOVERY_CONFLICT_LAST = PROCSIG_RECOVERY_CONFLICT_STARTUP_DEADLOCK,
-
-	NUM_PROCSIGNALS				/* Must be last! */
 } ProcSignalReason;
+
+#define NUM_PROCSIGNALS (PROCSIG_RECOVERY_CONFLICT_LAST + 1)
 
 typedef enum
 {
@@ -62,14 +62,22 @@ typedef enum
 extern Size ProcSignalShmemSize(void);
 extern void ProcSignalShmemInit(void);
 
-extern void ProcSignalInit(void);
+extern void ProcSignalInit(bool cancel_key_valid, int32 cancel_key);
 extern int	SendProcSignal(pid_t pid, ProcSignalReason reason,
 						   ProcNumber procNumber);
+extern void SendCancelRequest(int backendPID, int32 cancelAuthCode);
 
 extern uint64 EmitProcSignalBarrier(ProcSignalBarrierType type);
 extern void WaitForProcSignalBarrier(uint64 generation);
 extern void ProcessProcSignalBarrier(void);
 
 extern void procsignal_sigusr1_handler(SIGNAL_ARGS);
+
+/* ProcSignalHeader is an opaque struct, details known only within procsignal.c */
+typedef struct ProcSignalHeader ProcSignalHeader;
+
+#ifdef EXEC_BACKEND
+extern PGDLLIMPORT ProcSignalHeader *ProcSignal;
+#endif
 
 #endif							/* PROCSIGNAL_H */

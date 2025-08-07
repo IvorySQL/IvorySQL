@@ -1305,14 +1305,15 @@ pg_available_extensions| SELECT e.name,
      LEFT JOIN pg_extension x ON ((e.name = x.extname)));
 pg_backend_memory_contexts| SELECT name,
     ident,
-    parent,
+    type,
     level,
+    path,
     total_bytes,
     total_nblocks,
     free_bytes,
     free_chunks,
     used_bytes
-   FROM pg_get_backend_memory_contexts() pg_get_backend_memory_contexts(name, ident, parent, level, total_bytes, total_nblocks, free_bytes, free_chunks, used_bytes);
+   FROM pg_get_backend_memory_contexts() pg_get_backend_memory_contexts(name, ident, type, level, path, total_bytes, total_nblocks, free_bytes, free_chunks, used_bytes);
 pg_config| SELECT name,
     setting
    FROM pg_config() pg_config(name, setting);
@@ -1699,10 +1700,7 @@ pg_sequences| SELECT n.nspname AS schemaname,
     s.seqincrement AS increment_by,
     s.seqcycle AS cycle,
     s.seqcache AS cache_size,
-        CASE
-            WHEN has_sequence_privilege(c.oid, 'SELECT,USAGE'::text) THEN pg_sequence_last_value((c.oid)::regclass)
-            ELSE NULL::bigint
-        END AS last_value
+    pg_sequence_last_value((c.oid)::regclass) AS last_value
    FROM ((pg_sequence s
      JOIN pg_class c ON ((c.oid = s.seqrelid)))
      LEFT JOIN pg_namespace n ON ((n.oid = c.relnamespace)))
@@ -1826,12 +1824,14 @@ pg_stat_bgwriter| SELECT pg_stat_get_bgwriter_buf_written_clean() AS buffers_cle
     pg_stat_get_bgwriter_stat_reset_time() AS stats_reset;
 pg_stat_checkpointer| SELECT pg_stat_get_checkpointer_num_timed() AS num_timed,
     pg_stat_get_checkpointer_num_requested() AS num_requested,
+    pg_stat_get_checkpointer_num_performed() AS num_done,
     pg_stat_get_checkpointer_restartpoints_timed() AS restartpoints_timed,
     pg_stat_get_checkpointer_restartpoints_requested() AS restartpoints_req,
     pg_stat_get_checkpointer_restartpoints_performed() AS restartpoints_done,
     pg_stat_get_checkpointer_write_time() AS write_time,
     pg_stat_get_checkpointer_sync_time() AS sync_time,
     pg_stat_get_checkpointer_buffers_written() AS buffers_written,
+    pg_stat_get_checkpointer_slru_written() AS slru_written,
     pg_stat_get_checkpointer_stat_reset_time() AS stats_reset;
 pg_stat_database| SELECT oid AS datid,
     datname,
@@ -1863,6 +1863,8 @@ pg_stat_database| SELECT oid AS datid,
     pg_stat_get_db_sessions_abandoned(oid) AS sessions_abandoned,
     pg_stat_get_db_sessions_fatal(oid) AS sessions_fatal,
     pg_stat_get_db_sessions_killed(oid) AS sessions_killed,
+    pg_stat_get_db_parallel_workers_to_launch(oid) AS parallel_workers_to_launch,
+    pg_stat_get_db_parallel_workers_launched(oid) AS parallel_workers_launched,
     pg_stat_get_db_stat_reset_time(oid) AS stats_reset
    FROM ( SELECT 0 AS oid,
             NULL::name AS datname
@@ -2141,9 +2143,15 @@ pg_stat_subscription_stats| SELECT ss.subid,
     s.subname,
     ss.apply_error_count,
     ss.sync_error_count,
+    ss.confl_insert_exists,
+    ss.confl_update_origin_differs,
+    ss.confl_update_exists,
+    ss.confl_update_missing,
+    ss.confl_delete_origin_differs,
+    ss.confl_delete_missing,
     ss.stats_reset
    FROM pg_subscription s,
-    LATERAL pg_stat_get_subscription_stats(s.oid) ss(subid, apply_error_count, sync_error_count, stats_reset);
+    LATERAL pg_stat_get_subscription_stats(s.oid) ss(subid, apply_error_count, sync_error_count, confl_insert_exists, confl_update_origin_differs, confl_update_exists, confl_update_missing, confl_delete_origin_differs, confl_delete_missing, stats_reset);
 pg_stat_sys_indexes| SELECT relid,
     indexrelid,
     schemaname,

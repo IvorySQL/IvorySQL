@@ -84,8 +84,8 @@ typedef struct
 /* GUC parameters */
 int			Password_encryption = PASSWORD_TYPE_SCRAM_SHA_256;
 char	   *createrole_self_grant = "";
-bool		createrole_self_grant_enabled = false;
-GrantRoleOptions	createrole_self_grant_options;
+static bool createrole_self_grant_enabled = false;
+static GrantRoleOptions createrole_self_grant_options;
 
 /* Hook to check passwords in CreateRole() and AlterRole() */
 check_password_hook_type check_password_hook = NULL;
@@ -1730,6 +1730,7 @@ AddRoleMems(Oid currentUserId, const char *rolename, Oid roleid,
 		 */
 		if (memberid == ROLE_PG_DATABASE_OWNER)
 			ereport(ERROR,
+					errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					errmsg("role \"%s\" cannot be a member of any role",
 						   get_rolespec_name(memberRole)));
 
@@ -2121,6 +2122,7 @@ check_role_membership_authorization(Oid currentUserId, Oid roleid,
 	 */
 	if (is_grant && roleid == ROLE_PG_DATABASE_OWNER)
 		ereport(ERROR,
+				errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				errmsg("role \"%s\" cannot have explicit members",
 					   GetUserNameFromId(roleid, false)));
 

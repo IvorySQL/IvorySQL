@@ -33,15 +33,9 @@
 
 #include <unistd.h>
 
-#include "access/xlog.h"
-#include "common/file_utils.h"
 #include "libpq/libpq-be.h"
-#include "libpq/pqsignal.h"
 #include "miscadmin.h"
-#include "nodes/queryjumble.h"
-#include "port.h"
 #include "postmaster/autovacuum.h"
-#include "postmaster/auxprocess.h"
 #include "postmaster/bgworker_internals.h"
 #include "postmaster/bgwriter.h"
 #include "postmaster/fork_process.h"
@@ -53,18 +47,10 @@
 #include "postmaster/walwriter.h"
 #include "replication/slotsync.h"
 #include "replication/walreceiver.h"
-#include "storage/fd.h"
-#include "storage/ipc.h"
+#include "storage/dsm.h"
 #include "storage/pg_shmem.h"
-#include "storage/pmsignal.h"
-#include "storage/proc.h"
 #include "tcop/backend_startup.h"
-#include "tcop/tcopprot.h"
-#include "utils/builtins.h"
-#include "utils/datetime.h"
-#include "utils/guc.h"
 #include "utils/memutils.h"
-#include "utils/timestamp.h"
 
 #ifdef EXEC_BACKEND
 #include "nodes/queryjumble.h"
@@ -74,6 +60,15 @@
 
 
 #ifdef EXEC_BACKEND
+
+#include "common/file_utils.h"
+#include "storage/fd.h"
+#include "storage/lwlock.h"
+#include "storage/pmsignal.h"
+#include "storage/proc.h"
+#include "storage/procsignal.h"
+#include "tcop/tcopprot.h"
+#include "utils/injection_point.h"
 
 /* Type for a socket that can be inherited to a client process */
 #ifdef WIN32
@@ -93,8 +88,6 @@ typedef int InheritableSocket;
 typedef struct
 {
 	char		DataDir[MAXPGPATH];
-	int32		MyCancelKey;
-	int			MyPMChildSlot;
 #ifndef WIN32
 	unsigned long UsedShmemSegID;
 #else
@@ -103,9 +96,8 @@ typedef struct
 #endif
 	void	   *UsedShmemSegAddr;
 	slock_t    *ShmemLock;
-	struct bkend *ShmemBackendArray;
-#ifndef HAVE_SPINLOCKS
-	PGSemaphore *SpinlockSemaArray;
+#ifdef USE_INJECTION_POINTS
+	struct InjectionPointsCtl *ActiveInjectionPoints;
 #endif
 	int			NamedLWLockTrancheRequests;
 	NamedLWLockTranche *NamedLWLockTrancheArray;
@@ -114,7 +106,8 @@ typedef struct
 	PROC_HDR   *ProcGlobal;
 	PGPROC	   *AuxiliaryProcs;
 	PGPROC	   *PreparedXactProcs;
-	PMSignalData *PMSignalState;
+	volatile PMSignalData *PMSignalState;
+	ProcSignalHeader *ProcSignal;
 	pid_t		PostmasterPid;
 	TimestampTz PgStartTime;
 	TimestampTz PgReloadTime;
@@ -124,6 +117,7 @@ typedef struct
 	bool		query_id_enabled;
 	int			max_safe_fds;
 	int			MaxBackends;
+	int			num_pmchild_slots;
 #ifdef WIN32
 	HANDLE		PostmasterHandle;
 	HANDLE		initial_signal_pipe;
@@ -134,6 +128,8 @@ typedef struct
 #endif
 	char		my_exec_path[MAXPGPATH];
 	char		pkglib_path[MAXPGPATH];
+
+	int			MyPMChildSlot;
 
 	/*
 	 * These are only used by backend processes, but are here because passing
@@ -156,13 +152,16 @@ typedef struct
 static void read_backend_variables(char *id, char **startup_data, size_t *startup_data_len);
 static void restore_backend_variables(BackendParameters *param);
 
-static bool save_backend_variables(BackendParameters *param, ClientSocket *client_sock,
+static bool save_backend_variables(BackendParameters *param, int child_slot,
+								   ClientSocket *client_sock,
 #ifdef WIN32
 								   HANDLE childProcess, pid_t childPid,
 #endif
 								   char *startup_data, size_t startup_data_len);
 
-static pid_t internal_forkexec(const char *child_kind, char *startup_data, size_t startup_data_len, ClientSocket *client_sock);
+static pid_t internal_forkexec(const char *child_kind, int child_slot,
+							   char *startup_data, size_t startup_data_len,
+							   ClientSocket *client_sock);
 
 #endif							/* EXEC_BACKEND */
 
@@ -176,10 +175,11 @@ typedef struct
 	bool		shmem_attach;
 } child_process_kind;
 
-child_process_kind child_process_kinds[] = {
+static child_process_kind child_process_kinds[] = {
 	[B_INVALID] = {"invalid", NULL, false},
 
 	[B_BACKEND] = {"backend", BackendMain, true},
+	[B_DEAD_END_BACKEND] = {"dead-end backend", BackendMain, true},
 	[B_AUTOVAC_LAUNCHER] = {"autovacuum launcher", AutoVacLauncherMain, true},
 	[B_AUTOVAC_WORKER] = {"autovacuum worker", AutoVacWorkerMain, true},
 	[B_BG_WORKER] = {"bgworker", BackgroundWorkerMain, true},
@@ -215,15 +215,16 @@ PostmasterChildName(BackendType child_type)
  * Start a new postmaster child process.
  *
  * The child process will be restored to roughly the same state whether
- * EXEC_BACKEND is used or not: it will be attached to shared memory, and fds
- * and other resources that we've inherited from postmaster that are not
- * needed in a child process have been closed.
+ * EXEC_BACKEND is used or not: it will be attached to shared memory if
+ * appropriate, and fds and other resources that we've inherited from
+ * postmaster that are not needed in a child process have been closed.
  *
- * 'startup_data' is an optional contiguous chunk of data that is passed to
- * the child process.
+ * 'child_slot' is the PMChildFlags array index reserved for the child
+ * process.  'startup_data' is an optional contiguous chunk of data that is
+ * passed to the child process.
  */
 pid_t
-postmaster_child_launch(BackendType child_type,
+postmaster_child_launch(BackendType child_type, int child_slot,
 						char *startup_data, size_t startup_data_len,
 						ClientSocket *client_sock)
 {
@@ -232,7 +233,7 @@ postmaster_child_launch(BackendType child_type,
 	Assert(IsPostmasterEnvironment && !IsUnderPostmaster);
 
 #ifdef EXEC_BACKEND
-	pid = internal_forkexec(child_process_kinds[child_type].name,
+	pid = internal_forkexec(child_process_kinds[child_type].name, child_slot,
 							startup_data, startup_data_len, client_sock);
 	/* the child process will arrive in SubPostmasterMain */
 #else							/* !EXEC_BACKEND */
@@ -245,6 +246,13 @@ postmaster_child_launch(BackendType child_type,
 		/* Detangle from postmaster */
 		InitPostmasterChild();
 
+		/* Detach shared memory if not needed. */
+		if (!child_process_kinds[child_type].shmem_attach)
+		{
+			dsm_detach_all();
+			PGSharedMemoryDetach();
+		}
+
 		/*
 		 * Enter the Main function with TopMemoryContext.  The startup data is
 		 * allocated in PostmasterContext, so we cannot release it here yet.
@@ -253,6 +261,7 @@ postmaster_child_launch(BackendType child_type,
 		 */
 		MemoryContextSwitchTo(TopMemoryContext);
 
+		MyPMChildSlot = child_slot;
 		if (client_sock)
 		{
 			MyClientSocket = palloc(sizeof(ClientSocket));
@@ -279,7 +288,8 @@ postmaster_child_launch(BackendType child_type,
  * - fork():s, and then exec():s the child process
  */
 static pid_t
-internal_forkexec(const char *child_kind, char *startup_data, size_t startup_data_len, ClientSocket *client_sock)
+internal_forkexec(const char *child_kind, int child_slot,
+				  char *startup_data, size_t startup_data_len, ClientSocket *client_sock)
 {
 	static unsigned long tmpBackendFileNum = 0;
 	pid_t		pid;
@@ -299,7 +309,7 @@ internal_forkexec(const char *child_kind, char *startup_data, size_t startup_dat
 	 */
 	paramsz = SizeOfBackendParameters(startup_data_len);
 	param = palloc0(paramsz);
-	if (!save_backend_variables(param, client_sock, startup_data, startup_data_len))
+	if (!save_backend_variables(param, child_slot, client_sock, startup_data, startup_data_len))
 	{
 		pfree(param);
 		return -1;				/* log made by save_backend_variables */
@@ -388,7 +398,8 @@ internal_forkexec(const char *child_kind, char *startup_data, size_t startup_dat
  *	 file is complete.
  */
 static pid_t
-internal_forkexec(const char *child_kind, char *startup_data, size_t startup_data_len, ClientSocket *client_sock)
+internal_forkexec(const char *child_kind, int child_slot,
+				  char *startup_data, size_t startup_data_len, ClientSocket *client_sock)
 {
 	int			retry_count = 0;
 	STARTUPINFO si;
@@ -469,7 +480,9 @@ retry:
 		return -1;
 	}
 
-	if (!save_backend_variables(param, client_sock, pi.hProcess, pi.dwProcessId, startup_data, startup_data_len))
+	if (!save_backend_variables(param, child_slot, client_sock,
+								pi.hProcess, pi.dwProcessId,
+								startup_data, startup_data_len))
 	{
 		/*
 		 * log made by save_backend_variables, but we have to clean up the
@@ -668,18 +681,6 @@ SubPostmasterMain(int argc, char *argv[])
 	pg_unreachable();			/* main_fn never returns */
 }
 
-/*
- * The following need to be available to the save/restore_backend_variables
- * functions.  They are marked NON_EXEC_STATIC in their home modules.
- */
-extern slock_t *ShmemLock;
-extern slock_t *ProcStructLock;
-extern PGPROC *AuxiliaryProcs;
-extern PMSignalData *PMSignalState;
-extern pg_time_t first_syslogger_file_time;
-extern struct bkend *ShmemBackendArray;
-extern bool redirection_done;
-
 #ifndef WIN32
 #define write_inheritable_socket(dest, src, childpid) ((*(dest) = (src)), true)
 #define read_inheritable_socket(dest, src) (*(dest) = *(src))
@@ -693,7 +694,8 @@ static void read_inheritable_socket(SOCKET *dest, InheritableSocket *src);
 
 /* Save critical backend variables into the BackendParameters struct */
 static bool
-save_backend_variables(BackendParameters *param, ClientSocket *client_sock,
+save_backend_variables(BackendParameters *param,
+					   int child_slot, ClientSocket *client_sock,
 #ifdef WIN32
 					   HANDLE childProcess, pid_t childPid,
 #endif
@@ -710,8 +712,7 @@ save_backend_variables(BackendParameters *param, ClientSocket *client_sock,
 
 	strlcpy(param->DataDir, DataDir, MAXPGPATH);
 
-	param->MyCancelKey = MyCancelKey;
-	param->MyPMChildSlot = MyPMChildSlot;
+	param->MyPMChildSlot = child_slot;
 
 #ifdef WIN32
 	param->ShmemProtectiveRegion = ShmemProtectiveRegion;
@@ -720,11 +721,11 @@ save_backend_variables(BackendParameters *param, ClientSocket *client_sock,
 	param->UsedShmemSegAddr = UsedShmemSegAddr;
 
 	param->ShmemLock = ShmemLock;
-	param->ShmemBackendArray = ShmemBackendArray;
 
-#ifndef HAVE_SPINLOCKS
-	param->SpinlockSemaArray = SpinlockSemaArray;
+#ifdef USE_INJECTION_POINTS
+	param->ActiveInjectionPoints = ActiveInjectionPoints;
 #endif
+
 	param->NamedLWLockTrancheRequests = NamedLWLockTrancheRequests;
 	param->NamedLWLockTrancheArray = NamedLWLockTrancheArray;
 	param->MainLWLockArray = MainLWLockArray;
@@ -733,6 +734,7 @@ save_backend_variables(BackendParameters *param, ClientSocket *client_sock,
 	param->AuxiliaryProcs = AuxiliaryProcs;
 	param->PreparedXactProcs = PreparedXactProcs;
 	param->PMSignalState = PMSignalState;
+	param->ProcSignal = ProcSignal;
 
 	param->PostmasterPid = PostmasterPid;
 	param->PgStartTime = PgStartTime;
@@ -745,6 +747,7 @@ save_backend_variables(BackendParameters *param, ClientSocket *client_sock,
 	param->max_safe_fds = max_safe_fds;
 
 	param->MaxBackends = MaxBackends;
+	param->num_pmchild_slots = num_pmchild_slots;
 
 #ifdef WIN32
 	param->PostmasterHandle = PostmasterHandle;
@@ -764,7 +767,8 @@ save_backend_variables(BackendParameters *param, ClientSocket *client_sock,
 	strlcpy(param->pkglib_path, pkglib_path, MAXPGPATH);
 
 	param->startup_data_len = startup_data_len;
-	memcpy(param->startup_data, startup_data, startup_data_len);
+	if (startup_data_len > 0)
+		memcpy(param->startup_data, startup_data, startup_data_len);
 
 	return true;
 }
@@ -968,7 +972,6 @@ restore_backend_variables(BackendParameters *param)
 
 	SetDataDir(param->DataDir);
 
-	MyCancelKey = param->MyCancelKey;
 	MyPMChildSlot = param->MyPMChildSlot;
 
 #ifdef WIN32
@@ -978,11 +981,11 @@ restore_backend_variables(BackendParameters *param)
 	UsedShmemSegAddr = param->UsedShmemSegAddr;
 
 	ShmemLock = param->ShmemLock;
-	ShmemBackendArray = param->ShmemBackendArray;
 
-#ifndef HAVE_SPINLOCKS
-	SpinlockSemaArray = param->SpinlockSemaArray;
+#ifdef USE_INJECTION_POINTS
+	ActiveInjectionPoints = param->ActiveInjectionPoints;
 #endif
+
 	NamedLWLockTrancheRequests = param->NamedLWLockTrancheRequests;
 	NamedLWLockTrancheArray = param->NamedLWLockTrancheArray;
 	MainLWLockArray = param->MainLWLockArray;
@@ -991,6 +994,7 @@ restore_backend_variables(BackendParameters *param)
 	AuxiliaryProcs = param->AuxiliaryProcs;
 	PreparedXactProcs = param->PreparedXactProcs;
 	PMSignalState = param->PMSignalState;
+	ProcSignal = param->ProcSignal;
 
 	PostmasterPid = param->PostmasterPid;
 	PgStartTime = param->PgStartTime;
@@ -1003,6 +1007,7 @@ restore_backend_variables(BackendParameters *param)
 	max_safe_fds = param->max_safe_fds;
 
 	MaxBackends = param->MaxBackends;
+	num_pmchild_slots = param->num_pmchild_slots;
 
 #ifdef WIN32
 	PostmasterHandle = param->PostmasterHandle;

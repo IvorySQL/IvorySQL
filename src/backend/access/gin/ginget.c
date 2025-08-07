@@ -122,7 +122,7 @@ collectMatchBitmap(GinBtreeData *btree, GinBtreeStack *stack,
 				   GinScanEntry scanEntry, Snapshot snapshot)
 {
 	OffsetNumber attnum;
-	Form_pg_attribute attr;
+	CompactAttribute *attr;
 
 	/* Initialize empty bitmap result */
 	scanEntry->matchBitmap = tbm_create(work_mem * 1024L, NULL);
@@ -134,7 +134,7 @@ collectMatchBitmap(GinBtreeData *btree, GinBtreeStack *stack,
 
 	/* Locate tupdesc entry for key column (for attbyval/attlen data) */
 	attnum = scanEntry->attnum;
-	attr = TupleDescAttr(btree->ginstate->origTupdesc, attnum - 1);
+	attr = TupleDescCompactAttr(btree->ginstate->origTupdesc, attnum - 1);
 
 	/*
 	 * Predicate lock entry leaf page, following pages will be locked by
@@ -373,7 +373,7 @@ restartScanEntry:
 			if (entry->matchBitmap)
 			{
 				if (entry->matchIterator)
-					tbm_end_iterate(entry->matchIterator);
+					tbm_end_private_iterate(entry->matchIterator);
 				entry->matchIterator = NULL;
 				tbm_free(entry->matchBitmap);
 				entry->matchBitmap = NULL;
@@ -385,7 +385,8 @@ restartScanEntry:
 
 		if (entry->matchBitmap && !tbm_is_empty(entry->matchBitmap))
 		{
-			entry->matchIterator = tbm_begin_iterate(entry->matchBitmap);
+			entry->matchIterator =
+				tbm_begin_private_iterate(entry->matchBitmap);
 			entry->isFinished = false;
 		}
 	}
@@ -832,12 +833,13 @@ entryGetItem(GinState *ginstate, GinScanEntry entry,
 				   (ItemPointerIsLossyPage(&advancePast) &&
 					entry->matchResult->blockno == advancePastBlk))
 			{
-				entry->matchResult = tbm_iterate(entry->matchIterator);
+				entry->matchResult =
+					tbm_private_iterate(entry->matchIterator);
 
 				if (entry->matchResult == NULL)
 				{
 					ItemPointerSetInvalid(&entry->curItem);
-					tbm_end_iterate(entry->matchIterator);
+					tbm_end_private_iterate(entry->matchIterator);
 					entry->matchIterator = NULL;
 					entry->isFinished = true;
 					break;

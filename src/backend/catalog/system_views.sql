@@ -176,11 +176,7 @@ CREATE VIEW pg_sequences AS
         S.seqincrement AS increment_by,
         S.seqcycle AS cycle,
         S.seqcache AS cache_size,
-        CASE
-            WHEN has_sequence_privilege(C.oid, 'SELECT,USAGE'::text)
-                THEN pg_sequence_last_value(C.oid)
-            ELSE NULL
-        END AS last_value
+        pg_sequence_last_value(C.oid) AS last_value
     FROM pg_sequence S JOIN pg_class C ON (C.oid = S.seqrelid)
          LEFT JOIN pg_namespace N ON (N.oid = C.relnamespace)
     WHERE NOT pg_is_other_temp_schema(N.oid)
@@ -1077,6 +1073,8 @@ CREATE VIEW pg_stat_database AS
             pg_stat_get_db_sessions_abandoned(D.oid) AS sessions_abandoned,
             pg_stat_get_db_sessions_fatal(D.oid) AS sessions_fatal,
             pg_stat_get_db_sessions_killed(D.oid) AS sessions_killed,
+            pg_stat_get_db_parallel_workers_to_launch(D.oid) as parallel_workers_to_launch,
+            pg_stat_get_db_parallel_workers_launched(D.oid) as parallel_workers_launched,
             pg_stat_get_db_stat_reset_time(D.oid) AS stats_reset
     FROM (
         SELECT 0 AS oid, NULL::name AS datname
@@ -1142,12 +1140,14 @@ CREATE VIEW pg_stat_checkpointer AS
     SELECT
         pg_stat_get_checkpointer_num_timed() AS num_timed,
         pg_stat_get_checkpointer_num_requested() AS num_requested,
+        pg_stat_get_checkpointer_num_performed() AS num_done,
         pg_stat_get_checkpointer_restartpoints_timed() AS restartpoints_timed,
         pg_stat_get_checkpointer_restartpoints_requested() AS restartpoints_req,
         pg_stat_get_checkpointer_restartpoints_performed() AS restartpoints_done,
         pg_stat_get_checkpointer_write_time() AS write_time,
         pg_stat_get_checkpointer_sync_time() AS sync_time,
         pg_stat_get_checkpointer_buffers_written() AS buffers_written,
+        pg_stat_get_checkpointer_slru_written() AS slru_written,
         pg_stat_get_checkpointer_stat_reset_time() AS stats_reset;
 
 CREATE VIEW pg_stat_io AS
@@ -1369,6 +1369,12 @@ CREATE VIEW pg_stat_subscription_stats AS
         s.subname,
         ss.apply_error_count,
         ss.sync_error_count,
+        ss.confl_insert_exists,
+        ss.confl_update_origin_differs,
+        ss.confl_update_exists,
+        ss.confl_update_missing,
+        ss.confl_delete_origin_differs,
+        ss.confl_delete_missing,
         ss.stats_reset
     FROM pg_subscription as s,
          pg_stat_get_subscription_stats(s.oid) as ss;

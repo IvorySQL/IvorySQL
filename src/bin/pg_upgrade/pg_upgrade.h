@@ -100,7 +100,6 @@ extern bool pg_cluster_within_oracle_mode;
 #define RMDIR_CMD			"@RMDIR /s/q"
 #define SCRIPT_PREFIX		""
 #define SCRIPT_EXT			"bat"
-#define EXE_EXT				".exe"
 #define ECHO_QUOTE	""
 #define ECHO_BLANK	"."
 #endif
@@ -201,7 +200,6 @@ typedef struct
 											 * path */
 	RelInfoArr	rel_arr;		/* array of all user relinfos */
 	LogicalSlotInfoArr slot_arr;	/* array of all LogicalSlotInfo */
-	int			nsubs;			/* number of subscriptions */
 } DbInfo;
 
 /*
@@ -302,6 +300,7 @@ typedef struct
 	char		major_version_str[64];	/* string PG_VERSION of cluster */
 	uint32		bin_version;	/* version returned from pg_ctl */
 	const char *tablespace_suffix;	/* directory specification */
+	int			nsubs;			/* number of subscriptions */
 } ClusterInfo;
 
 
@@ -328,6 +327,7 @@ typedef struct
 typedef struct
 {
 	bool		check;			/* check clusters only, don't change any data */
+	bool		live_check;		/* check clusters only, old server is running */
 	bool		do_sync;		/* flush changes to disk */
 	transferMode transfer_mode; /* copy files or link them? */
 	int			jobs;			/* number of processes/threads to use */
@@ -372,20 +372,20 @@ extern OSInfo os_info;
 
 /* check.c */
 
-void		output_check_banner(bool live_check);
-void		check_and_dump_old_cluster(bool live_check);
+void		output_check_banner(void);
+void		check_and_dump_old_cluster(void);
 void		check_new_cluster(void);
 void		report_clusters_compatible(void);
 void		issue_warnings_and_set_wal_level(void);
 void		output_completion_banner(char *deletion_script_file_name);
 void		check_cluster_versions(void);
-void		check_cluster_compatibility(bool live_check);
+void		check_cluster_compatibility(void);
 void		create_script_for_old_cluster_deletion(char **deletion_script_file_name);
 
 
 /* controldata.c */
 
-void		get_control_data(ClusterInfo *cluster, bool live_check);
+void		get_control_data(ClusterInfo *cluster);
 void		check_control_data(ControlData *oldctrl, ControlData *newctrl);
 void		disable_old_cluster(void);
 
@@ -434,15 +434,15 @@ void		check_loadable_libraries(void);
 FileNameMap *gen_db_file_maps(DbInfo *old_db,
 							  DbInfo *new_db, int *nmaps, const char *old_pgdata,
 							  const char *new_pgdata);
-void		get_db_rel_and_slot_infos(ClusterInfo *cluster, bool live_check);
+void		get_db_rel_and_slot_infos(ClusterInfo *cluster);
 int			count_old_cluster_logical_slots(void);
-int			count_old_cluster_subscriptions(void);
+void		get_subscription_count(ClusterInfo *cluster);
 
 /* option.c */
 
 void		parseCommandLine(int argc, char *argv[]);
 void		adjust_data_dir(ClusterInfo *cluster);
-void		get_sock_dir(ClusterInfo *cluster, bool live_check);
+void		get_sock_dir(ClusterInfo *cluster);
 
 /* relfilenumber.c */
 
@@ -500,3 +500,24 @@ void		parallel_transfer_all_new_dbs(DbInfoArr *old_db_arr, DbInfoArr *new_db_arr
 										  char *old_pgdata, char *new_pgdata,
 										  char *old_tablespace);
 bool		reap_child(bool wait_for_child);
+
+/* task.c */
+
+typedef void (*UpgradeTaskProcessCB) (DbInfo *dbinfo, PGresult *res, void *arg);
+
+/* struct definition is private to task.c */
+typedef struct UpgradeTask UpgradeTask;
+
+UpgradeTask *upgrade_task_create(void);
+void		upgrade_task_add_step(UpgradeTask *task, const char *query,
+								  UpgradeTaskProcessCB process_cb, bool free_result,
+								  void *arg);
+void		upgrade_task_run(const UpgradeTask *task, const ClusterInfo *cluster);
+void		upgrade_task_free(UpgradeTask *task);
+
+/* convenient type for common private data needed by several tasks */
+typedef struct
+{
+	FILE	   *file;
+	char		path[MAXPGPATH];
+} UpgradeTaskReport;

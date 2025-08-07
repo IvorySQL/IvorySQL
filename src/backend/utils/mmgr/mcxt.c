@@ -886,7 +886,7 @@ MemoryContextStatsInternal(MemoryContext context, int level,
 	/* Examine the context itself */
 	context->methods->stats(context,
 							MemoryContextStatsPrint,
-							(void *) &level,
+							&level,
 							totals, print_to_stderr);
 
 	/*
@@ -1148,7 +1148,8 @@ MemoryContextAllocationFailure(MemoryContext context, Size size, int flags)
 {
 	if ((flags & MCXT_ALLOC_NO_OOM) == 0)
 	{
-		MemoryContextStats(TopMemoryContext);
+		if (TopMemoryContext)
+			MemoryContextStats(TopMemoryContext);
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of memory"),

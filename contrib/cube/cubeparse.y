@@ -7,12 +7,10 @@
 #include "postgres.h"
 
 #include "cubedata.h"
+#include "cubeparse.h"	/* must be after cubedata.h for YYSTYPE and NDBOX */
 #include "nodes/miscnodes.h"
 #include "utils/float.h"
 #include "varatt.h"
-
-/* All grammar constructs return strings */
-#define YYSTYPE char *
 
 /*
  * Bison doesn't allocate anything that needs to live across parser calls,
@@ -34,6 +32,9 @@ static bool write_point_as_box(int dim, char *str,
 %parse-param {NDBOX **result}
 %parse-param {Size scanbuflen}
 %parse-param {struct Node *escontext}
+%parse-param {yyscan_t yyscanner}
+%lex-param   {yyscan_t yyscanner}
+%pure-parser
 %expect 0
 %name-prefix="cube_yy"
 
@@ -69,6 +70,8 @@ box: O_BRACKET paren_list COMMA paren_list C_BRACKET
 
 		if (!write_box(dim, $2, $4, result, escontext))
 			YYABORT;
+
+		(void) yynerrs;	/* suppress compiler warning */
 	}
 
 	| paren_list COMMA paren_list

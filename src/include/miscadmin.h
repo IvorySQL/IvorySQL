@@ -191,6 +191,7 @@ extern PGDLLIMPORT pg_time_t MyStartTime;
 extern PGDLLIMPORT TimestampTz MyStartTimestamp;
 extern PGDLLIMPORT struct Port *MyProcPort;
 extern PGDLLIMPORT struct Latch *MyLatch;
+extern PGDLLIMPORT bool MyCancelKeyValid;
 extern PGDLLIMPORT int32 MyCancelKey;
 extern PGDLLIMPORT int MyPMChildSlot;
 
@@ -283,15 +284,16 @@ extern PGDLLIMPORT int VacuumCostPageDirty;
 extern PGDLLIMPORT int VacuumCostLimit;
 extern PGDLLIMPORT double VacuumCostDelay;
 
-extern PGDLLIMPORT int64 VacuumPageHit;
-extern PGDLLIMPORT int64 VacuumPageMiss;
-extern PGDLLIMPORT int64 VacuumPageDirty;
-
 extern PGDLLIMPORT int VacuumCostBalance;
 extern PGDLLIMPORT bool VacuumCostActive;
 
 
-/* in tcop/postgres.c */
+/* in utils/misc/stack_depth.c */
+
+extern PGDLLIMPORT int max_stack_depth;
+
+/* Required daylight between max_stack_depth and the kernel limit, in bytes */
+#define STACK_DEPTH_SLOP (512 * 1024L)
 
 typedef char *pg_stack_base_t;
 
@@ -299,6 +301,7 @@ extern pg_stack_base_t set_stack_base(void);
 extern void restore_stack_base(pg_stack_base_t base);
 extern void check_stack_depth(void);
 extern bool stack_is_too_deep(void);
+extern long get_stack_depth_rlimit(void);
 
 /* in tcop/utility.c */
 extern void PreventCommandIfReadOnly(const char *cmdname);
@@ -336,6 +339,7 @@ typedef enum BackendType
 
 	/* Backends and other backend-like processes */
 	B_BACKEND,
+	B_DEAD_END_BACKEND,
 	B_AUTOVAC_LAUNCHER,
 	B_AUTOVAC_WORKER,
 	B_BG_WORKER,
@@ -395,7 +399,9 @@ extern char *GetUserNameFromId(Oid roleid, bool noerr);
 extern Oid	GetUserId(void);
 extern Oid	GetOuterUserId(void);
 extern Oid	GetSessionUserId(void);
+extern bool GetSessionUserIsSuperuser(void);
 extern Oid	GetAuthenticatedUserId(void);
+extern void SetAuthenticatedUserId(Oid userid);
 extern void GetUserIdAndSecContext(Oid *userid, int *sec_context);
 extern void SetUserIdAndSecContext(Oid userid, int sec_context);
 extern bool InLocalUserIdChange(void);
@@ -478,6 +484,7 @@ extern PGDLLIMPORT ProcessingMode Mode;
 #define INIT_PG_OVERRIDE_ROLE_LOGIN		0x0004
 extern void pg_split_opts(char **argv, int *argcp, const char *optstr);
 extern void InitializeMaxBackends(void);
+extern void InitializeFastPathLocks(void);
 extern void InitPostgres(const char *in_dbname, Oid dboid,
 						 const char *username, Oid useroid,
 						 bits32 flags,

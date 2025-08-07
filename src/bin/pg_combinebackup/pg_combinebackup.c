@@ -25,12 +25,12 @@
 #endif
 
 #include "backup_label.h"
-#include "common/blkreftable.h"
 #include "common/checksum_helper.h"
 #include "common/controldata_utils.h"
 #include "common/file_perm.h"
 #include "common/file_utils.h"
 #include "common/logging.h"
+#include "common/relpath.h"
 #include "copy_file.h"
 #include "fe_utils/option_utils.h"
 #include "getopt_long.h"
@@ -97,7 +97,7 @@ typedef struct cb_tablespace
 } cb_tablespace;
 
 /* Directories to be removed if we exit uncleanly. */
-cb_cleanup_dir *cleanup_dir_list = NULL;
+static cb_cleanup_dir *cleanup_dir_list = NULL;
 
 static void add_tablespace_mapping(cb_options *opt, char *arg);
 static StringInfo check_backup_label_files(int n_backups, char **backup_dirs);
@@ -337,7 +337,7 @@ main(int argc, char *argv[])
 		 * won't have the WAL ranges for the resulting manifest.
 		 */
 		if (manifests[n_prior_backups] == NULL)
-			pg_fatal("can't generate a manifest because no manifest is available for the final input backup");
+			pg_fatal("cannot generate a manifest because no manifest is available for the final input backup");
 	}
 	else
 		mwriter = NULL;
@@ -373,7 +373,7 @@ main(int argc, char *argv[])
 		{
 			char		linkpath[MAXPGPATH];
 
-			snprintf(linkpath, MAXPGPATH, "%s/pg_tblspc/%u", opt.output,
+			snprintf(linkpath, MAXPGPATH, "%s/%s/%u", opt.output, PG_TBLSPC_DIR,
 					 ts->oid);
 
 			if (opt.dry_run)
@@ -655,7 +655,7 @@ check_control_files(int n_backups, char **backup_dirs)
 	if (data_checksum_mismatch)
 	{
 		pg_log_warning("only some backups have checksums enabled");
-		pg_log_warning_hint("disable, and optionally reenable, checksums on the output directory to avoid failures");
+		pg_log_warning_hint("Disable, and optionally reenable, checksums on the output directory to avoid failures.");
 	}
 
 	return system_identifier;
@@ -766,9 +766,9 @@ help(const char *progname)
 	printf(_("  -o, --output=DIRECTORY    output directory\n"));
 	printf(_("  -T, --tablespace-mapping=OLDDIR=NEWDIR\n"
 			 "                            relocate tablespace in OLDDIR to NEWDIR\n"));
-	printf(_("      --clone               clone (reflink) instead of copying files\n"));
+	printf(_("      --clone               clone (reflink) files instead of copying\n"));
 	printf(_("      --copy                copy files (default)\n"));
-	printf(_("      --copy-file-range     copy using copy_file_range() syscall\n"));
+	printf(_("      --copy-file-range     copy using copy_file_range() system call\n"));
 	printf(_("      --manifest-checksums=SHA{224,256,384,512}|CRC32C|NONE\n"
 			 "                            use algorithm for manifest checksums\n"));
 	printf(_("      --no-manifest         suppress generation of backup manifest\n"));
@@ -849,7 +849,7 @@ process_directory_recursively(Oid tsoid,
 	 *
 	 * We set is_pg_wal for the toplevel WAL directory and all of its
 	 * subdirectories, because those files are not included in the backup
-	 * manifest and hence need special treatement. (Since incremental backup
+	 * manifest and hence need special treatment. (Since incremental backup
 	 * does not exist in pre-v10 versions, we don't have to worry about the
 	 * old pg_xlog naming.)
 	 *
@@ -867,12 +867,12 @@ process_directory_recursively(Oid tsoid,
 		is_incremental_dir = true;
 	else if (relative_path != NULL)
 	{
-		is_pg_tblspc = strcmp(relative_path, "pg_tblspc") == 0;
+		is_pg_tblspc = strcmp(relative_path, PG_TBLSPC_DIR) == 0;
 		is_pg_wal = (strcmp(relative_path, "pg_wal") == 0 ||
 					 strncmp(relative_path, "pg_wal/", 7) == 0);
 		is_incremental_dir = strncmp(relative_path, "base/", 5) == 0 ||
 			strcmp(relative_path, "global") == 0 ||
-			strncmp(relative_path, "pg_tblspc/", 10) == 0;
+			strncmp(relative_path, PG_TBLSPC_DIR_SLASH, 10) == 0;
 	}
 
 	/*
@@ -895,7 +895,7 @@ process_directory_recursively(Oid tsoid,
 		strlcpy(ifulldir, input_directory, MAXPGPATH);
 		strlcpy(ofulldir, output_directory, MAXPGPATH);
 		if (OidIsValid(tsoid))
-			snprintf(manifest_prefix, MAXPGPATH, "pg_tblspc/%u/", tsoid);
+			snprintf(manifest_prefix, MAXPGPATH, "%s/%u/", PG_TBLSPC_DIR, tsoid);
 		else
 			manifest_prefix[0] = '\0';
 	}
@@ -906,8 +906,8 @@ process_directory_recursively(Oid tsoid,
 		snprintf(ofulldir, MAXPGPATH, "%s/%s", output_directory,
 				 relative_path);
 		if (OidIsValid(tsoid))
-			snprintf(manifest_prefix, MAXPGPATH, "pg_tblspc/%u/%s/",
-					 tsoid, relative_path);
+			snprintf(manifest_prefix, MAXPGPATH, "%s/%u/%s/",
+					 PG_TBLSPC_DIR, tsoid, relative_path);
 		else
 			snprintf(manifest_prefix, MAXPGPATH, "%s/", relative_path);
 	}
@@ -1070,7 +1070,7 @@ process_directory_recursively(Oid tsoid,
 					 */
 					bmpath = psprintf("%s/%s", input_directory,
 									  "backup_manifest");
-					pg_log_warning("\"%s\" contains no entry for \"%s\"",
+					pg_log_warning("manifest file \"%s\" contains no entry for file \"%s\"",
 								   bmpath, manifest_path);
 					pfree(bmpath);
 				}
@@ -1249,7 +1249,7 @@ scan_for_existing_tablespaces(char *pathname, cb_options *opt)
 	struct dirent *de;
 	cb_tablespace *tslist = NULL;
 
-	snprintf(pg_tblspc, MAXPGPATH, "%s/pg_tblspc", pathname);
+	snprintf(pg_tblspc, MAXPGPATH, "%s/%s", pathname, PG_TBLSPC_DIR);
 	pg_log_debug("scanning \"%s\"", pg_tblspc);
 
 	if ((dir = opendir(pg_tblspc)) == NULL)
@@ -1344,8 +1344,8 @@ scan_for_existing_tablespaces(char *pathname, cb_options *opt)
 			 * we just record the paths within the data directories.
 			 */
 			snprintf(ts->old_dir, MAXPGPATH, "%s/%s", pg_tblspc, de->d_name);
-			snprintf(ts->new_dir, MAXPGPATH, "%s/pg_tblspc/%s", opt->output,
-					 de->d_name);
+			snprintf(ts->new_dir, MAXPGPATH, "%s/%s/%s", opt->output,
+					 PG_TBLSPC_DIR, de->d_name);
 			ts->in_place = true;
 		}
 

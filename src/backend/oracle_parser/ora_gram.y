@@ -68,38 +68,24 @@
 
 
 /*
- * Location tracking support --- simpler than bison's default, since we only
- * want to track the start position not the end position of each nonterminal.
+ * Location tracking support.  Unlike bison's default, we only want
+ * to track the start position not the end position of each nonterminal.
+ * Nonterminals that reduce to empty receive position "-1".  Since a
+ * production's leading RHS nonterminal(s) may have reduced to empty,
+ * we have to scan to find the first one that's not -1.
  */
 #define YYLLOC_DEFAULT(Current, Rhs, N) \
 	do { \
-		if ((N) > 0) \
-			(Current) = (Rhs)[1]; \
-		else \
-			(Current) = (-1); \
+		(Current) = (-1); \
+		for (int _i = 1; _i <= (N); _i++) \
+		{ \
+			if ((Rhs)[_i] >= 0) \
+			{ \
+				(Current) = (Rhs)[_i]; \
+				break; \
+			} \
+		} \
 	} while (0)
-
-/*
- * The above macro assigns -1 (unknown) as the parse location of any
- * nonterminal that was reduced from an empty rule, or whose leftmost
- * component was reduced from an empty rule.  This is problematic
- * for nonterminals defined like
- *		OptFooList: / * EMPTY * / { ... } | OptFooList Foo { ... } ;
- * because we'll set -1 as the location during the first reduction and then
- * copy it during each subsequent reduction, leaving us with -1 for the
- * location even when the list is not empty.  To fix that, do this in the
- * action for the nonempty rule(s):
- *		if (@$ < 0) @$ = @2;
- * (Although we have many nonterminals that follow this pattern, we only
- * bother with fixing @$ like this when the nonterminal's parse location
- * is actually referenced in some rule.)
- *
- * A cleaner answer would be to make YYLLOC_DEFAULT scan all the Rhs
- * locations until it's found one that's not -1.  Then we'd get a correct
- * location for any nonterminal that isn't entirely empty.  But this way
- * would add overhead to every rule reduction, and so far there's not been
- * a compelling reason to pay that overhead.
- */
 
 /*
  * Bison doesn't allocate anything that needs to live across parser calls,
@@ -168,6 +154,7 @@ static void ora_base_yyerror(YYLTYPE *yylloc, ora_core_yyscan_t yyscanner,
 						 const char *msg);
 static RawStmt *makeRawStmt(Node *stmt, int stmt_location);
 static void updateRawStmtEnd(RawStmt *rs, int end_location);
+static void updatePreparableStmtEnd(Node *n, int end_location);
 static Node *makeColumnRef(char *colname, List *indirection,
 						   int location, ora_core_yyscan_t yyscanner);
 static Node *makeTypeCast(Node *arg, TypeName *typename, int location);
@@ -193,7 +180,7 @@ static void insertSelectOptions(SelectStmt *stmt,
 								SelectLimit *limitClause,
 								WithClause *withClause,
 								ora_core_yyscan_t yyscanner);
-static Node *makeSetOp(SetOperation op, bool all, Node *larg, Node *rarg);
+static Node *makeSetOp(SetOperation op, bool all, Node *larg, Node *rarg, int location);
 static Node *doNegate(Node *n, int location);
 static void doNegateFloat(Float *v);
 static Node *makeAndExpr(Node *lexpr, Node *rexpr, int location);
@@ -273,7 +260,6 @@ static void determineLanguage(List *options);
 	PartitionElem *partelem;
 	PartitionSpec *partspec;
 	PartitionBoundSpec *partboundspec;
-	SinglePartitionSpec *singlepartspec;
 	RoleSpec   *rolespec;
 	PublicationObjSpec *publicationobjectspec;
 	struct SelectLimit *selectlimit;
@@ -656,8 +642,6 @@ static void determineLanguage(List *options);
 %type <partelem>	part_elem
 %type <list>		part_params
 %type <partboundspec> PartitionBoundSpec
-%type <singlepartspec>	SinglePartitionSpec
-%type <list>		partitions_list
 %type <list>		hash_partbound
 %type <defelt>		hash_partbound_elem
 
@@ -786,7 +770,7 @@ static void determineLanguage(List *options);
 	ORDER ORDINALITY OTHERS OUT_P OUTER_P
 	OVER OVERLAPS OVERLAY OVERRIDING OWNED OWNER PACKAGES 
 
-	PARALLEL PARAMETER PARSER PARTIAL PARTITION PARTITIONS PASSING PASSWORD PATH
+	PARALLEL PARAMETER PARSER PARTIAL PARTITION PASSING PASSWORD PATH
 	PGEXTRACT PLACING PLAN PLANS POLICY
 	POSITION PRECEDING PRECISION PRESERVE PREPARE PREPARED PRIMARY
 	PRIOR PRIVILEGES PROCEDURAL PROCEDURE PROCEDURES PROGRAM PUBLICATION
@@ -801,7 +785,7 @@ static void determineLanguage(List *options);
 	SAVEPOINT SCALAR SCALE SCHEMA SCHEMAS SCROLL SEARCH SECOND_P SECURITY SELECT
 	SEQUENCE SEQUENCES
 	SERIALIZABLE SERVER SESSION SESSION_USER SET SETS SETOF SHARD SHARE SHOW
-	SIMILAR SIMPLE SKIP SMALLINT SNAPSHOT SOME SOURCE SPECIFICATION SPLIT SQL_P STABLE STANDALONE_P
+	SIMILAR SIMPLE SKIP SMALLINT SNAPSHOT SOME SOURCE SPECIFICATION SQL_P STABLE STANDALONE_P
 	START STATEMENT STATISTICS STDIN STDOUT STORAGE STORED STRICT_P STRING_P STRIP_P
 	SUBSCRIPTION SUBSTRING SUPPORT SYMMETRIC SYSDATE SYSID SYSTEM_P SYSTEM_USER SYSTIMESTAMP
 
@@ -993,7 +977,7 @@ parse_toplevel:
 			| MODE_PLPGSQL_EXPR PLpgSQL_Expr
 			{
 				pg_yyget_extra(yyscanner)->parsetree =
-					list_make1(makeRawStmt($2, 0));
+					list_make1(makeRawStmt($2, @2));
 			}
 			| MODE_PLPGSQL_ASSIGN1 PLAssignStmt
 			{
@@ -1001,7 +985,7 @@ parse_toplevel:
 
 				n->nnames = 1;
 				pg_yyget_extra(yyscanner)->parsetree =
-					list_make1(makeRawStmt((Node *) n, 0));
+					list_make1(makeRawStmt((Node *) n, @2));
 			}
 			| MODE_PLPGSQL_ASSIGN2 PLAssignStmt
 			{
@@ -1009,7 +993,7 @@ parse_toplevel:
 
 				n->nnames = 2;
 				pg_yyget_extra(yyscanner)->parsetree =
-					list_make1(makeRawStmt((Node *) n, 0));
+					list_make1(makeRawStmt((Node *) n, @2));
 			}
 			| MODE_PLPGSQL_ASSIGN3 PLAssignStmt
 			{
@@ -1017,19 +1001,15 @@ parse_toplevel:
 
 				n->nnames = 3;
 				pg_yyget_extra(yyscanner)->parsetree =
-					list_make1(makeRawStmt((Node *) n, 0));
+					list_make1(makeRawStmt((Node *) n, @2));
 			}
 		;
 
 /*
  * At top level, we wrap each stmt with a RawStmt node carrying start location
- * and length of the stmt's text.  Notice that the start loc/len are driven
- * entirely from semicolon locations (@2).  It would seem natural to use
- * @1 or @3 to get the true start location of a stmt, but that doesn't work
- * for statements that can start with empty nonterminals (opt_with_clause is
- * the main offender here); as noted in the comments for YYLLOC_DEFAULT,
- * we'd get -1 for the location in such cases.
- * We also take care to discard empty statements entirely.
+ * and length of the stmt's text.
+ * We also take care to discard empty statements entirely (which among other
+ * things dodges the problem of assigning them a location).
  */
 stmtmulti:	stmtmulti ';' toplevel_stmt
 				{
@@ -1039,14 +1019,14 @@ stmtmulti:	stmtmulti ';' toplevel_stmt
 						updateRawStmtEnd(llast_node(RawStmt, $1), @2);
 					}
 					if ($3 != NULL)
-						$$ = lappend($1, makeRawStmt($3, @2 + 1));
+						$$ = lappend($1, makeRawStmt($3, @3));
 					else
 						$$ = $1;
 				}
 			| toplevel_stmt
 				{
 					if ($1 != NULL)
-						$$ = list_make1(makeRawStmt($1, 0));
+						$$ = list_make1(makeRawStmt($1, @1));
 					else
 						$$ = NIL;
 				}
@@ -1680,8 +1660,6 @@ CreateSchemaStmt:
 OptSchemaEltList:
 			OptSchemaEltList schema_stmt
 				{
-					if (@$ < 0)			/* see comments for YYLLOC_DEFAULT */
-						@$ = @2;
 					$$ = lappend($1, $2);
 				}
 			| /* EMPTY */
@@ -1749,6 +1727,8 @@ set_rest:
 					n->kind = VAR_SET_MULTI;
 					n->name = "TRANSACTION";
 					n->args = $2;
+					n->jumble_args = true;
+					n->location = -1;
 					$$ = n;
 				}
 			| SESSION CHARACTERISTICS AS TRANSACTION transaction_mode_list
@@ -1758,6 +1738,8 @@ set_rest:
 					n->kind = VAR_SET_MULTI;
 					n->name = "SESSION CHARACTERISTICS";
 					n->args = $5;
+					n->jumble_args = true;
+					n->location = -1;
 					$$ = n;
 				}
 			| set_rest_more
@@ -1771,6 +1753,7 @@ generic_set:
 					n->kind = VAR_SET_VALUE;
 					n->name = $1;
 					n->args = $3;
+					n->location = @3;
 					$$ = n;
 				}
 			| var_name '=' var_list
@@ -1780,6 +1763,7 @@ generic_set:
 					n->kind = VAR_SET_VALUE;
 					n->name = $1;
 					n->args = $3;
+					n->location = @3;
 					$$ = n;
 				}
 			| var_name TO DEFAULT
@@ -1788,6 +1772,7 @@ generic_set:
 
 					n->kind = VAR_SET_DEFAULT;
 					n->name = $1;
+					n->location = -1;
 					$$ = n;
 				}
 			| var_name '=' DEFAULT
@@ -1796,6 +1781,7 @@ generic_set:
 
 					n->kind = VAR_SET_DEFAULT;
 					n->name = $1;
+					n->location = -1;
 					$$ = n;
 				}
 		;
@@ -1808,6 +1794,7 @@ set_rest_more:	/* Generic SET syntaxes: */
 
 					n->kind = VAR_SET_CURRENT;
 					n->name = $1;
+					n->location = -1;
 					$$ = n;
 				}
 			/* Special syntaxes mandated by SQL standard: */
@@ -1817,6 +1804,8 @@ set_rest_more:	/* Generic SET syntaxes: */
 
 					n->kind = VAR_SET_VALUE;
 					n->name = "timezone";
+					n->location = -1;
+					n->jumble_args = true;
 					if ($3 != NULL)
 						n->args = list_make1($3);
 					else
@@ -1838,6 +1827,7 @@ set_rest_more:	/* Generic SET syntaxes: */
 					n->kind = VAR_SET_VALUE;
 					n->name = "search_path";
 					n->args = list_make1(makeStringConst($2, @2));
+					n->location = @2;
 					$$ = n;
 				}
 			| NAMES opt_encoding
@@ -1846,6 +1836,7 @@ set_rest_more:	/* Generic SET syntaxes: */
 
 					n->kind = VAR_SET_VALUE;
 					n->name = "client_encoding";
+					n->location = @2;
 					if ($2 != NULL)
 						n->args = list_make1(makeStringConst($2, @2));
 					else
@@ -1859,6 +1850,7 @@ set_rest_more:	/* Generic SET syntaxes: */
 					n->kind = VAR_SET_VALUE;
 					n->name = "role";
 					n->args = list_make1(makeStringConst($2, @2));
+					n->location = @2;
 					$$ = n;
 				}
 			| SESSION AUTHORIZATION NonReservedWord_or_Sconst
@@ -1868,6 +1860,7 @@ set_rest_more:	/* Generic SET syntaxes: */
 					n->kind = VAR_SET_VALUE;
 					n->name = "session_authorization";
 					n->args = list_make1(makeStringConst($3, @3));
+					n->location = @3;
 					$$ = n;
 				}
 			| SESSION AUTHORIZATION DEFAULT
@@ -1876,6 +1869,7 @@ set_rest_more:	/* Generic SET syntaxes: */
 
 					n->kind = VAR_SET_DEFAULT;
 					n->name = "session_authorization";
+					n->location = -1;
 					$$ = n;
 				}
 			| XML_P OPTION document_or_content
@@ -1885,6 +1879,8 @@ set_rest_more:	/* Generic SET syntaxes: */
 					n->kind = VAR_SET_VALUE;
 					n->name = "xmloption";
 					n->args = list_make1(makeStringConst($3 == XMLOPTION_DOCUMENT ? "DOCUMENT" : "CONTENT", @3));
+					n->jumble_args = true;
+					n->location = -1;
 					$$ = n;
 				}
 			/* Special syntaxes invented by PostgreSQL: */
@@ -1895,6 +1891,7 @@ set_rest_more:	/* Generic SET syntaxes: */
 					n->kind = VAR_SET_MULTI;
 					n->name = "TRANSACTION SNAPSHOT";
 					n->args = list_make1(makeStringConst($3, @3));
+					n->location = @3;
 					$$ = n;
 				}
 		;
@@ -2004,6 +2001,7 @@ reset_rest:
 
 					n->kind = VAR_RESET;
 					n->name = "timezone";
+					n->location = -1;
 					$$ = n;
 				}
 			| TRANSACTION ISOLATION LEVEL
@@ -2012,6 +2010,7 @@ reset_rest:
 
 					n->kind = VAR_RESET;
 					n->name = "transaction_isolation";
+					n->location = -1;
 					$$ = n;
 				}
 			| SESSION AUTHORIZATION
@@ -2020,6 +2019,7 @@ reset_rest:
 
 					n->kind = VAR_RESET;
 					n->name = "session_authorization";
+					n->location = -1;
 					$$ = n;
 				}
 		;
@@ -2031,6 +2031,7 @@ generic_reset:
 
 					n->kind = VAR_RESET;
 					n->name = $1;
+					n->location = -1;
 					$$ = n;
 				}
 			| ALL
@@ -2038,6 +2039,7 @@ generic_reset:
 					VariableSetStmt *n = makeNode(VariableSetStmt);
 
 					n->kind = VAR_RESET_ALL;
+					n->location = -1;
 					$$ = n;
 				}
 		;
@@ -2420,23 +2422,6 @@ alter_table_cmds:
 			| MODIFY identity_clause				{ $$ = $2; }
 		;
 
-partitions_list:
-			SinglePartitionSpec							{ $$ = list_make1($1); }
-			| partitions_list ',' SinglePartitionSpec	{ $$ = lappend($1, $3); }
-		;
-
-SinglePartitionSpec:
-			PARTITION qualified_name PartitionBoundSpec
-				{
-					SinglePartitionSpec *n = makeNode(SinglePartitionSpec);
-
-					n->name = $2;
-					n->bound = $3;
-
-					$$ = n;
-				}
-		;
-
 partition_cmd:
 			/* ALTER TABLE <name> ATTACH PARTITION <table_name> FOR VALUES */
 			ATTACH PARTITION qualified_name PartitionBoundSpec
@@ -2447,7 +2432,6 @@ partition_cmd:
 					n->subtype = AT_AttachPartition;
 					cmd->name = $3;
 					cmd->bound = $4;
-					cmd->partlist = NULL;
 					cmd->concurrent = false;
 					n->def = (Node *) cmd;
 
@@ -2462,7 +2446,6 @@ partition_cmd:
 					n->subtype = AT_DetachPartition;
 					cmd->name = $3;
 					cmd->bound = NULL;
-					cmd->partlist = NULL;
 					cmd->concurrent = $4;
 					n->def = (Node *) cmd;
 
@@ -2476,35 +2459,6 @@ partition_cmd:
 					n->subtype = AT_DetachPartitionFinalize;
 					cmd->name = $3;
 					cmd->bound = NULL;
-					cmd->partlist = NULL;
-					cmd->concurrent = false;
-					n->def = (Node *) cmd;
-					$$ = (Node *) n;
-				}
-			/* ALTER TABLE <name> SPLIT PARTITION <partition_name> INTO () */
-			| SPLIT PARTITION qualified_name INTO '(' partitions_list ')'
-				{
-					AlterTableCmd *n = makeNode(AlterTableCmd);
-					PartitionCmd *cmd = makeNode(PartitionCmd);
-
-					n->subtype = AT_SplitPartition;
-					cmd->name = $3;
-					cmd->bound = NULL;
-					cmd->partlist = $6;
-					cmd->concurrent = false;
-					n->def = (Node *) cmd;
-					$$ = (Node *) n;
-				}
-			/* ALTER TABLE <name> MERGE PARTITIONS () INTO <partition_name> */
-			| MERGE PARTITIONS '(' qualified_name_list ')' INTO qualified_name
-				{
-					AlterTableCmd *n = makeNode(AlterTableCmd);
-					PartitionCmd *cmd = makeNode(PartitionCmd);
-
-					n->subtype = AT_MergePartitions;
-					cmd->name = $7;
-					cmd->bound = NULL;
-					cmd->partlist = $4;
 					cmd->concurrent = false;
 					n->def = (Node *) cmd;
 					$$ = (Node *) n;
@@ -2521,7 +2475,6 @@ index_partition_cmd:
 					n->subtype = AT_AttachPartition;
 					cmd->name = $3;
 					cmd->bound = NULL;
-					cmd->partlist = NULL;
 					cmd->concurrent = false;
 					n->def = (Node *) cmd;
 
@@ -3678,6 +3631,7 @@ CopyStmt:	COPY opt_binary qualified_name opt_column_list
 				{
 					CopyStmt *n = makeNode(CopyStmt);
 
+					updatePreparableStmtEnd($3, @4);
 					n->relation = NULL;
 					n->query = $3;
 					n->attlist = NIL;
@@ -13094,7 +13048,7 @@ opt_name_list:
 		;
 
 vacuum_relation:
-			qualified_name opt_name_list
+			relation_expr opt_name_list
 				{
 					$$ = (Node *) makeVacuumRelation($1, InvalidOid, $2);
 				}
@@ -13319,6 +13273,7 @@ InsertStmt:
 					$5->onConflictClause = $6;
 					$5->returningList = $7;
 					$5->withClause = $1;
+					$5->stmt_location = @$;
 					$$ = (Node *) $5;
 				}
 		;
@@ -13472,6 +13427,7 @@ DeleteStmt: opt_with_clause DELETE_P FROM relation_expr_opt_alias
 					n->whereClause = $6;
 					n->returningList = $7;
 					n->withClause = $1;
+					n->stmt_location = @$;
 					$$ = (Node *) n;
 				}
 		;
@@ -13546,6 +13502,7 @@ UpdateStmt: opt_with_clause UPDATE relation_expr_opt_alias
 					n->whereClause = $7;
 					n->returningList = $8;
 					n->withClause = $1;
+					n->stmt_location = @$;
 					$$ = (Node *) n;
 				}
 		;
@@ -13623,6 +13580,7 @@ MergeStmt:
 					m->joinCondition = $8;
 					m->mergeWhenClauses = $9;
 					m->returningList = $11;
+					m->stmt_location = @$;
 
 					$$ = (Node *)m;
 				}
@@ -13822,7 +13780,20 @@ SelectStmt: select_no_parens			%prec UMINUS
 		;
 
 select_with_parens:
-			'(' select_no_parens ')'				{ $$ = $2; }
+			'(' select_no_parens ')'
+				{
+					SelectStmt *n = (SelectStmt *) $2;
+
+					/*
+					 * As SelectStmt's location starts at the SELECT keyword,
+					 * we need to track the length of the SelectStmt within
+					 * parentheses to be able to extract the relevant part
+					 * of the query.  Without this, the RawStmt's length would
+					 * be used and would include the closing parenthesis.
+					 */
+					n->stmt_len = @3 - @2;
+					$$ = $2;
+				}
 			| '(' select_with_parens ')'			{ $$ = $2; }
 		;
 
@@ -13944,6 +13915,7 @@ simple_select:
 					n->groupDistinct = ($7)->distinct;
 					n->havingClause = $8;
 					n->windowClause = $9;
+					n->stmt_location = @1;
 					$$ = (Node *) n;
 				}
 			| SELECT distinct_clause target_list
@@ -13961,6 +13933,7 @@ simple_select:
 					n->groupDistinct = ($7)->distinct;
 					n->havingClause = $8;
 					n->windowClause = $9;
+					n->stmt_location = @1;
 					$$ = (Node *) n;
 				}
 			| values_clause							{ $$ = $1; }
@@ -13981,19 +13954,20 @@ simple_select:
 
 					n->targetList = list_make1(rt);
 					n->fromClause = list_make1($2);
+					n->stmt_location = @1;
 					$$ = (Node *) n;
 				}
 			| select_clause UNION set_quantifier select_clause
 				{
-					$$ = makeSetOp(SETOP_UNION, $3 == SET_QUANTIFIER_ALL, $1, $4);
+					$$ = makeSetOp(SETOP_UNION, $3 == SET_QUANTIFIER_ALL, $1, $4, @1);
 				}
 			| select_clause INTERSECT set_quantifier select_clause
 				{
-					$$ = makeSetOp(SETOP_INTERSECT, $3 == SET_QUANTIFIER_ALL, $1, $4);
+					$$ = makeSetOp(SETOP_INTERSECT, $3 == SET_QUANTIFIER_ALL, $1, $4, @1);
 				}
 			| select_clause EXCEPT set_quantifier select_clause
 				{
-					$$ = makeSetOp(SETOP_EXCEPT, $3 == SET_QUANTIFIER_ALL, $1, $4);
+					$$ = makeSetOp(SETOP_EXCEPT, $3 == SET_QUANTIFIER_ALL, $1, $4, @1);
 				}
 		;
 
@@ -14551,6 +14525,7 @@ values_clause:
 				{
 					SelectStmt *n = makeNode(SelectStmt);
 
+					n->stmt_location = @1;
 					n->valuesLists = list_make1($3);
 					$$ = (Node *) n;
 				}
@@ -20124,7 +20099,6 @@ unreserved_keyword:
 			| PARSER
 			| PARTIAL
 			| PARTITION
-			| PARTITIONS
 			| PASSING
 			| PASSWORD
 			| PATH
@@ -20205,8 +20179,7 @@ unreserved_keyword:
 			| SKIP
 			| SNAPSHOT
 			| SOURCE
-			| SPECIFICATION 
-			| SPLIT
+			| SPECIFICATION
 			| SQL_P
 			| SQL_MACRO
 			| STABLE
@@ -20829,7 +20802,6 @@ bare_label_keyword:
 			| PARSER
 			| PARTIAL
 			| PARTITION
-			| PARTITIONS
 			| PASSING
 			| PASSWORD
 			| PATH
@@ -20923,8 +20895,7 @@ bare_label_keyword:
 			| SNAPSHOT
 			| SOME
 			| SOURCE
-			| SPECIFICATION 
-			| SPLIT
+			| SPECIFICATION
 			| SQL_P
 			| SQL_MACRO
 			| STABLE
@@ -21062,6 +21033,47 @@ updateRawStmtEnd(RawStmt *rs, int end_location)
 
 	/* OK, update length of RawStmt */
 	rs->stmt_len = end_location - rs->stmt_location;
+}
+
+/*
+ * Adjust a PreparableStmt to reflect that it doesn't run to the end of the
+ * string.
+ */
+static void
+updatePreparableStmtEnd(Node *n, int end_location)
+{
+	if (IsA(n, SelectStmt))
+	{
+		SelectStmt *stmt = (SelectStmt *)n;
+
+		stmt->stmt_len = end_location - stmt->stmt_location;
+	}
+	else if (IsA(n, InsertStmt))
+	{
+		InsertStmt *stmt = (InsertStmt *)n;
+
+		stmt->stmt_len = end_location - stmt->stmt_location;
+	}
+	else if (IsA(n, UpdateStmt))
+	{
+		UpdateStmt *stmt = (UpdateStmt *)n;
+
+		stmt->stmt_len = end_location - stmt->stmt_location;
+	}
+	else if (IsA(n, DeleteStmt))
+	{
+		DeleteStmt *stmt = (DeleteStmt *)n;
+
+		stmt->stmt_len = end_location - stmt->stmt_location;
+	}
+	else if (IsA(n, MergeStmt))
+	{
+		MergeStmt *stmt = (MergeStmt *)n;
+
+		stmt->stmt_len = end_location - stmt->stmt_location;
+	}
+	else
+		elog(ERROR, "unexpected node type %d", (int) n->type);
 }
 
 static Node *
@@ -21469,11 +21481,14 @@ insertSelectOptions(SelectStmt *stmt,
 					 errmsg("multiple WITH clauses not allowed"),
 					 parser_errposition(exprLocation((Node *) withClause))));
 		stmt->withClause = withClause;
+
+		/* Update SelectStmt's location to the start of the WITH clause */
+		stmt->stmt_location = withClause->location;
 	}
 }
 
 static Node *
-makeSetOp(SetOperation op, bool all, Node *larg, Node *rarg)
+makeSetOp(SetOperation op, bool all, Node *larg, Node *rarg, int location)
 {
 	SelectStmt *n = makeNode(SelectStmt);
 
@@ -21481,6 +21496,7 @@ makeSetOp(SetOperation op, bool all, Node *larg, Node *rarg)
 	n->all = all;
 	n->larg = (SelectStmt *) larg;
 	n->rarg = (SelectStmt *) rarg;
+	n->stmt_location = location;
 	return (Node *) n;
 }
 

@@ -24,10 +24,11 @@
  </para>
 
  <para>
-  Logical replication of a table typically starts with taking a snapshot
-  of the data on the publisher database and copying that to the subscriber.
-  Once that is done, the changes on the publisher are sent to the subscriber
-  as they occur in real-time.  The subscriber applies the data in the same
+  When logical replication of a table typically starts, PostgreSQL takes
+  a snapshot of the table's data on the publisher database and copies it
+  to the subscriber.  Once complete, changes on the publisher since the
+  initial copy are sent continually to the subscriber.  The subscriber
+  applies the data in the same
   order as the publisher so that transactional consistency is guaranteed for
   publications within a single subscription.  This method of data replication
   is sometimes referred to as transactional replication.
@@ -165,7 +166,7 @@
    The individual tables can be added and removed dynamically using
    <link linkend="sql-alterpublication"><command>ALTER PUBLICATION</command></link>.  Both the <literal>ADD
    TABLE</literal> and <literal>DROP TABLE</literal> operations are
-   transactional; so the table will start or stop replicating at the correct
+   transactional, so the table will start or stop replicating at the correct
    snapshot once the transaction has committed.
   </para>
  </sect1>
@@ -701,10 +702,7 @@ ALTER SUBSCRIPTION
    <link linkend="sql-createsubscription-params-with-failover"><literal>failover</literal></link>
    parameter ensures a seamless transition of those subscriptions after the
    standby is promoted. They can continue subscribing to publications on the
-   new primary server without losing data. Note that in the case of
-   asynchronous replication, there remains a risk of data loss for transactions
-   committed on the former primary server but have yet to be replicated to the new
-   primary server.
+   new primary server.
   </para>
 
   <para>
@@ -713,7 +711,7 @@ ALTER SUBSCRIPTION
    server before the failover happens. To ensure a successful failover, the
    standby server must be ahead of the subscriber. This can be achieved by
    configuring
-   <link linkend="guc-standby-slot-names"><varname>standby_slot_names</varname></link>.
+   <link linkend="guc-synchronized-standby-slots"><varname>synchronized_standby_slots</varname></link>.
   </para>
 
   <para>
@@ -725,32 +723,45 @@ ALTER SUBSCRIPTION
   <procedure>
    <step performance="required">
     <para>
-     On the subscriber node, use the following SQL to identify which slots
-     should be synced to the standby that we plan to promote. This query will
-     return the relevant replication slots, including the main slots and table
-     synchronization slots associated with the failover-enabled subscriptions.
-     Note that the table sync slot should be synced to the standby server only
-     if the table copy is finished (See <xref linkend="catalog-pg-subscription-rel"/>).
+     On the subscriber node, use the following SQL to identify which replication
+     slots should be synced to the standby that we plan to promote. This query
+     will return the relevant replication slots associated with the
+     failover-enabled subscriptions.
+<programlisting>
+test_sub=# SELECT
+               array_agg(quote_literal(s.subslotname)) AS slots
+           FROM  pg_subscription s
+           WHERE s.subfailover AND
+                 s.subslotname IS NOT NULL;
+ slots
+-------
+ {'sub1','sub2','sub3'}
+(1 row)
+</programlisting></para>
+   </step>
+   <step performance="required">
+    <para>
+     On the subscriber node, use the following SQL to identify which table
+     synchronization slots should be synced to the standby that we plan to promote.
+     This query needs to be run on each database that includes the failover-enabled
+     subscription(s). Note that the table sync slot should be synced to the standby
+     server only if the table copy is finished
+     (See <xref linkend="catalog-pg-subscription-rel"/>).
      We don't need to ensure that the table sync slots are synced in other scenarios
      as they will either be dropped or re-created on the new primary server in those
      cases.
 <programlisting>
 test_sub=# SELECT
-               array_agg(slot_name) AS slots
+               array_agg(quote_literal(slot_name)) AS slots
            FROM
-           ((
-               SELECT r.srsubid AS subid, CONCAT('pg_', srsubid, '_sync_', srrelid, '_', ctl.system_identifier) AS slot_name
+           (
+               SELECT CONCAT('pg_', srsubid, '_sync_', srrelid, '_', ctl.system_identifier) AS slot_name
                FROM pg_control_system() ctl, pg_subscription_rel r, pg_subscription s
                WHERE r.srsubstate = 'f' AND s.oid = r.srsubid AND s.subfailover
-           ) UNION (
-               SELECT s.oid AS subid, s.subslotname as slot_name
-               FROM pg_subscription s
-               WHERE s.subfailover
-           ))
-           WHERE slot_name IS NOT NULL;
+           );
  slots
 -------
- {sub1,sub2,sub3}
+ {'pg_16394_sync_16385_7394666715149055164'}
 (1 row)
 </programlisting></para>
    </step>
@@ -761,13 +772,15 @@ test_sub=# SELECT
 <programlisting>
 test_standby=# SELECT slot_name, (synced AND NOT temporary AND NOT conflicting) AS failover_ready
                FROM pg_replication_slots
-               WHERE slot_name IN ('sub1','sub2','sub3');
-  slot_name  | failover_ready
--------------+----------------
-  sub1       | t
-  sub2       | t
-  sub3       | t
-(3 rows)
+               WHERE slot_name IN
+                   ('sub1','sub2','sub3', 'pg_16394_sync_16385_7394666715149055164');
+  slot_name                                 | failover_ready
+--------------------------------------------+----------------
+  sub1                                      | t
+  sub2                                      | t
+  sub3                                      | t
+  pg_16394_sync_16385_7394666715149055164   | t
+(4 rows)
 </programlisting></para>
     </step>
   </procedure>
@@ -776,7 +789,7 @@ test_standby=# SELECT slot_name, (synced AND NOT temporary AND NOT conflicting) 
    If all the slots are present on the standby server and the result
    (<literal>failover_ready</literal>) of the above SQL query is true, then
    existing subscriptions can continue subscribing to publications now on the
-   new primary server without losing data.
+   new primary server.
   </para>
 
  </sect1>
@@ -1424,7 +1437,9 @@ test_sub=# SELECT * FROM child ORDER BY a;
    During initial data synchronization, only the published columns are
    copied.  However, if the subscriber is from a release prior to 15, then
    all the columns in the table are copied during initial data synchronization,
-   ignoring any column lists.
+   ignoring any column lists. If the subscriber is from a release prior to 18,
+   then initial table synchronization won't copy generated columns even if they
+   are defined in the publisher.
   </para>
 
    <warning id="logical-replication-col-list-combining">
@@ -1564,8 +1579,197 @@ test_sub=# SELECT * FROM t1 ORDER BY id;
    node.  If incoming data violates any constraints the replication will
    stop.  This is referred to as a <firstterm>conflict</firstterm>.  When
    replicating <command>UPDATE</command> or <command>DELETE</command>
-   operations, missing data will not produce a conflict and such operations
-   will simply be skipped.
+   operations, missing data is also considered as a
+   <firstterm>conflict</firstterm>, but does not result in an error and such
+   operations will simply be skipped.
+  </para>
+
+  <para>
+   Additional logging is triggered, and the conflict statistics are collected (displayed in the
+   <link linkend="monitoring-pg-stat-subscription-stats"><structname>pg_stat_subscription_stats</structname></link> view)
+   in the following <firstterm>conflict</firstterm> cases:
+   <variablelist>
+    <varlistentry id="conflict-insert-exists" xreflabel="insert_exists">
+     <term><literal>insert_exists</literal></term>
+     <listitem>
+      <para>
+       Inserting a row that violates a <literal>NOT DEFERRABLE</literal>
+       unique constraint. Note that to log the origin and commit
+       timestamp details of the conflicting key,
+       <link linkend="guc-track-commit-timestamp"><varname>track_commit_timestamp</varname></link>
+       should be enabled on the subscriber. In this case, an error will be
+       raised until the conflict is resolved manually.
+      </para>
+     </listitem>
+    </varlistentry>
+    <varlistentry id="conflict-update-origin-differs" xreflabel="update_origin_differs">
+     <term><literal>update_origin_differs</literal></term>
+     <listitem>
+      <para>
+       Updating a row that was previously modified by another origin.
+       Note that this conflict can only be detected when
+       <link linkend="guc-track-commit-timestamp"><varname>track_commit_timestamp</varname></link>
+       is enabled on the subscriber. Currently, the update is always applied
+       regardless of the origin of the local row.
+      </para>
+     </listitem>
+    </varlistentry>
+    <varlistentry id="conflict-update-exists" xreflabel="update_exists">
+     <term><literal>update_exists</literal></term>
+     <listitem>
+      <para>
+       The updated value of a row violates a <literal>NOT DEFERRABLE</literal>
+       unique constraint. Note that to log the origin and commit
+       timestamp details of the conflicting key,
+       <link linkend="guc-track-commit-timestamp"><varname>track_commit_timestamp</varname></link>
+       should be enabled on the subscriber. In this case, an error will be
+       raised until the conflict is resolved manually. Note that when updating a
+       partitioned table, if the updated row value satisfies another partition
+       constraint resulting in the row being inserted into a new partition, the
+       <literal>insert_exists</literal> conflict may arise if the new row
+       violates a <literal>NOT DEFERRABLE</literal> unique constraint.
+      </para>
+     </listitem>
+    </varlistentry>
+    <varlistentry id="conflict-update-missing" xreflabel="update_missing">
+     <term><literal>update_missing</literal></term>
+     <listitem>
+      <para>
+       The tuple to be updated was not found. The update will simply be
+       skipped in this scenario.
+      </para>
+     </listitem>
+    </varlistentry>
+    <varlistentry id="conflict-delete-origin-differs" xreflabel="delete_origin_differs">
+     <term><literal>delete_origin_differs</literal></term>
+     <listitem>
+      <para>
+       Deleting a row that was previously modified by another origin. Note that
+       this conflict can only be detected when
+       <link linkend="guc-track-commit-timestamp"><varname>track_commit_timestamp</varname></link>
+       is enabled on the subscriber. Currently, the delete is always applied
+       regardless of the origin of the local row.
+      </para>
+     </listitem>
+    </varlistentry>
+    <varlistentry id="conflict-delete-missing" xreflabel="delete_missing">
+     <term><literal>delete_missing</literal></term>
+     <listitem>
+      <para>
+       The tuple to be deleted was not found. The delete will simply be
+       skipped in this scenario.
+      </para>
+     </listitem>
+    </varlistentry>
+   </variablelist>
+    Note that there are other conflict scenarios, such as exclusion constraint
+    violations. Currently, we do not provide additional details for them in the
+    log.
+  </para>
+
+  <para>
+   The log format for logical replication conflicts is as follows:
+<synopsis>
+LOG:  conflict detected on relation "<replaceable>schemaname</replaceable>.<replaceable>tablename</replaceable>": conflict=<replaceable>conflict_type</replaceable>
+DETAIL:  <replaceable class="parameter">detailed_explanation</replaceable>.
+{<replaceable class="parameter">detail_values</replaceable> [; ... ]}.
+
+<phrase>where <replaceable class="parameter">detail_values</replaceable> is one of:</phrase>
+
+    <literal>Key</literal> (<replaceable>column_name</replaceable> <optional>, ...</optional>)=(<replaceable>column_value</replaceable> <optional>, ...</optional>)
+    <literal>existing local tuple</literal> <optional>(<replaceable>column_name</replaceable> <optional>, ...</optional>)=</optional>(<replaceable>column_value</replaceable> <optional>, ...</optional>)
+    <literal>remote tuple</literal> <optional>(<replaceable>column_name</replaceable> <optional>, ...</optional>)=</optional>(<replaceable>column_value</replaceable> <optional>, ...</optional>)
+    <literal>replica identity</literal> {(<replaceable>column_name</replaceable> <optional>, ...</optional>)=(<replaceable>column_value</replaceable> <optional>, ...</optional>) | full <optional>(<replaceable>column_name</replaceable> <optional>, ...</optional>)=</optional>(<replaceable>column_value</replaceable> <optional>, ...</optional>)}
+</synopsis>
+
+   The log provides the following information:
+   <variablelist>
+    <varlistentry>
+     <term><literal>LOG</literal></term>
+      <listitem>
+       <itemizedlist>
+        <listitem>
+         <para>
+         <replaceable>schemaname</replaceable>.<replaceable>tablename</replaceable>
+         identifies the local relation involved in the conflict.
+         </para>
+        </listitem>
+        <listitem>
+         <para>
+         <replaceable>conflict_type</replaceable> is the type of conflict that occurred
+         (e.g., <literal>insert_exists</literal>, <literal>update_exists</literal>).
+         </para>
+        </listitem>
+       </itemizedlist>
+      </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>DETAIL</literal></term>
+      <listitem>
+      <itemizedlist>
+       <listitem>
+        <para>
+         <replaceable class="parameter">detailed_explanation</replaceable> includes
+         the origin, transaction ID, and commit timestamp of the transaction that
+         modified the existing local tuple, if available.
+        </para>
+       </listitem>
+       <listitem>
+        <para>
+         The <literal>Key</literal> section includes the key values of the local
+         tuple that violated a unique constraint for
+         <literal>insert_exists</literal> or <literal>update_exists</literal>
+         conflicts.
+        </para>
+       </listitem>
+       <listitem>
+        <para>
+         The <literal>existing local tuple</literal> section includes the local
+         tuple if its origin differs from the remote tuple for
+         <literal>update_origin_differs</literal> or <literal>delete_origin_differs</literal>
+         conflicts, or if the key value conflicts with the remote tuple for
+         <literal>insert_exists</literal> or <literal>update_exists</literal>
+         conflicts.
+        </para>
+       </listitem>
+       <listitem>
+        <para>
+         The <literal>remote tuple</literal> section includes the new tuple from
+         the remote insert or update operation that caused the conflict. Note that
+         for an update operation, the column value of the new tuple will be null
+         if the value is unchanged and toasted.
+        </para>
+       </listitem>
+       <listitem>
+        <para>
+         The <literal>replica identity</literal> section includes the replica
+         identity key values that were used to search for the existing local
+         tuple to be updated or deleted. This may include the full tuple value
+         if the local relation is marked with
+         <link linkend="sql-altertable-replica-identity-full"><literal>REPLICA IDENTITY FULL</literal></link>.
+        </para>
+       </listitem>
+       <listitem>
+        <para>
+         <replaceable class="parameter">column_name</replaceable> is the column name.
+         For <literal>existing local tuple</literal>, <literal>remote tuple</literal>,
+         and <literal>replica identity full</literal> cases, column names are
+         logged only if the user lacks the privilege to access all columns of
+         the table. If column names are present, they appear in the same order
+         as the corresponding column values.
+        </para>
+       </listitem>
+       <listitem>
+        <para>
+         <replaceable class="parameter">column_value</replaceable> is the column value.
+         The large column values are truncated to 64 bytes.
+        </para>
+       </listitem>
+      </itemizedlist>
+     </listitem>
+    </varlistentry>
+   </variablelist>
   </para>
 
   <para>
@@ -1582,7 +1786,7 @@ test_sub=# SELECT * FROM t1 ORDER BY id;
   </para>
 
   <para>
-   A conflict will produce an error and will stop the replication; it must be
+   A conflict that produces an error will stop the replication; it must be
    resolved manually by the user.  Details about the conflict can be found in
    the subscriber's server log.
   </para>
@@ -1594,8 +1798,9 @@ test_sub=# SELECT * FROM t1 ORDER BY id;
    an error, the replication won't proceed, and the logical replication worker will
    emit the following kind of message to the subscriber's server log:
 <screen>
-ERROR:  duplicate key value violates unique constraint "test_pkey"
-DETAIL:  Key (c)=(1) already exists.
+ERROR:  conflict detected on relation "public.test": conflict=insert_exists
+DETAIL:  Key already exists in unique index "t_pkey", which was modified locally in transaction 740 at 2024-06-26 10:47:04.727375+08.
+Key (c)=(1); existing local tuple (1, 'local'); remote tuple (1, 'remote').
 CONTEXT:  processing remote data for replication origin "pg_16395" during "INSERT" for replication target relation "public.test" in transaction 725 finished at 0/14C0378
 </screen>
    The LSN of the transaction that contains the change violating the constraint and
@@ -1621,6 +1826,15 @@ CONTEXT:  processing remote data for replication origin "pg_16395" during "INSER
    Please note that skipping the whole transaction includes skipping changes that
    might not violate any constraint.  This can easily make the subscriber
    inconsistent.
+   The additional details regarding conflicting rows, such as their origin and
+   commit timestamp can be seen in the <literal>DETAIL</literal> line of the
+   log. But note that this information is only available when
+   <link linkend="guc-track-commit-timestamp"><varname>track_commit_timestamp</varname></link>
+   is enabled on the subscriber. Users can use this information to decide
+   whether to retain the local change or adopt the remote alteration. For
+   instance, the <literal>DETAIL</literal> line in the above log indicates that
+   the existing row was modified locally. Users can manually perform a
+   remote-change-win.
   </para>
 
   <para>
@@ -1740,15 +1954,6 @@ CONTEXT:  processing remote data for replication origin "pg_16395" during "INSER
 
  <sect1 id="logical-replication-architecture">
   <title>Architecture</title>
-
-  <para>
-   Logical replication starts by copying a snapshot of the data on the
-   publisher database.  Once that is done, changes on the publisher are sent
-   to the subscriber as they occur in real time.  The subscriber applies data
-   in the order in which commits were made on the publisher so that
-   transactional consistency is guaranteed for the publications within any
-   single subscription.
-  </para>
 
   <para>
    Logical replication is built with an architecture similar to physical
@@ -2018,6 +2223,789 @@ CONTEXT:  processing remote data for replication origin "pg_16395" during "INSER
 
   </sect2>
 
+ </sect1>
+
+ <sect1 id="logical-replication-upgrade">
+  <title>Upgrade</title>
+
+  <para>
+   Migration of <glossterm linkend="glossary-logical-replication-cluster">logical replication clusters</glossterm>
+   is possible only when all the members of the old logical replication
+   clusters are version 17.0 or later.
+  </para>
+
+  <sect2 id="prepare-publisher-upgrades">
+   <title>Prepare for publisher upgrades</title>
+
+   <para>
+    <application>pg_upgrade</application> attempts to migrate logical
+    slots. This helps avoid the need for manually defining the same
+    logical slots on the new publisher. Migration of logical slots is
+    only supported when the old cluster is version 17.0 or later.
+    Logical slots on clusters before version 17.0 will silently be
+    ignored.
+   </para>
+
+   <para>
+    Before you start upgrading the publisher cluster, ensure that the
+    subscription is temporarily disabled, by executing
+    <link linkend="sql-altersubscription"><command>ALTER SUBSCRIPTION ... DISABLE</command></link>.
+    Re-enable the subscription after the upgrade.
+   </para>
+
+   <para>
+    There are some prerequisites for <application>pg_upgrade</application> to
+    be able to upgrade the logical slots. If these are not met an error
+    will be reported.
+   </para>
+
+   <itemizedlist>
+    <listitem>
+     <para>
+      The new cluster must have
+      <link linkend="guc-wal-level"><varname>wal_level</varname></link> as
+      <literal>logical</literal>.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      The new cluster must have
+      <link linkend="guc-max-replication-slots"><varname>max_replication_slots</varname></link>
+      configured to a value greater than or equal to the number of slots
+      present in the old cluster.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      The output plugins referenced by the slots on the old cluster must be
+      installed in the new PostgreSQL executable directory.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      The old cluster has replicated all the transactions and logical decoding
+      messages to subscribers.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      All slots on the old cluster must be usable, i.e., there are no slots
+      whose
+      <link linkend="view-pg-replication-slots">pg_replication_slots</link>.<structfield>conflicting</structfield>
+      is not <literal>true</literal>.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      The new cluster must not have permanent logical slots, i.e.,
+      there must be no slots where
+      <link linkend="view-pg-replication-slots">pg_replication_slots</link>.<structfield>temporary</structfield>
+      is <literal>false</literal>.
+     </para>
+    </listitem>
+   </itemizedlist>
+  </sect2>
+
+  <sect2 id="prepare-subscriber-upgrades">
+   <title>Prepare for subscriber upgrades</title>
+
+   <para>
+    Setup the <link linkend="logical-replication-config-subscriber">
+    subscriber configurations</link> in the new subscriber.
+    <application>pg_upgrade</application> attempts to migrate subscription
+    dependencies which includes the subscription's table information present in
+    <link linkend="catalog-pg-subscription-rel">pg_subscription_rel</link>
+    system catalog and also the subscription's replication origin. This allows
+    logical replication on the new subscriber to continue from where the
+    old subscriber was up to. Migration of subscription dependencies is only
+    supported when the old cluster is version 17.0 or later. Subscription
+    dependencies on clusters before version 17.0 will silently be ignored.
+   </para>
+
+   <para>
+    There are some prerequisites for <application>pg_upgrade</application> to
+    be able to upgrade the subscriptions. If these are not met an error
+    will be reported.
+   </para>
+
+   <itemizedlist>
+    <listitem>
+     <para>
+      All the subscription tables in the old subscriber should be in state
+      <literal>i</literal> (initialize) or <literal>r</literal> (ready). This
+      can be verified by checking <link linkend="catalog-pg-subscription-rel">pg_subscription_rel</link>.<structfield>srsubstate</structfield>.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      The replication origin entry corresponding to each of the subscriptions
+      should exist in the old cluster. This can be found by checking
+      <link linkend="catalog-pg-subscription">pg_subscription</link> and
+      <link linkend="catalog-pg-replication-origin">pg_replication_origin</link>
+      system tables.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      The new cluster must have
+      <link linkend="guc-max-replication-slots"><varname>max_replication_slots</varname></link>
+      configured to a value greater than or equal to the number of
+      subscriptions present in the old cluster.
+     </para>
+    </listitem>
+   </itemizedlist>
+  </sect2>
+
+  <sect2 id="upgrading-logical-replication-clusters">
+   <title>Upgrading logical replication clusters</title>
+
+   <para>
+    While upgrading a subscriber, write operations can be performed in the
+    publisher. These changes will be replicated to the subscriber once the
+    subscriber upgrade is completed.
+   </para>
+
+   <note>
+    <para>
+     The logical replication restrictions apply to logical replication cluster
+     upgrades also. See <xref linkend="logical-replication-restrictions"/> for
+     details.
+    </para>
+    <para>
+     The prerequisites of publisher upgrade apply to logical replication
+     cluster upgrades also. See <xref linkend="prepare-publisher-upgrades"/>
+     for details.
+    </para>
+    <para>
+     The prerequisites of subscriber upgrade apply to logical replication
+     cluster upgrades also. See <xref linkend="prepare-subscriber-upgrades"/>
+     for details.
+    </para>
+   </note>
+
+   <warning>
+    <para>
+     Upgrading logical replication cluster requires multiple steps to be
+     performed on various nodes. Because not all operations are
+     transactional, the user is advised to take backups as described in
+     <xref linkend="backup-base-backup"/>.
+    </para>
+   </warning>
+
+   <para>
+    The steps to upgrade the following logical replication clusters are
+    detailed below:
+    <itemizedlist>
+     <listitem>
+      <para>
+       Follow the steps specified in
+       <xref linkend="steps-two-node-logical-replication-cluster"/> to upgrade
+       a two-node logical replication cluster.
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       Follow the steps specified in
+       <xref linkend="steps-cascaded-logical-replication-cluster"/> to upgrade
+       a cascaded logical replication cluster.
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       Follow the steps specified in
+       <xref linkend="steps-two-node-circular-logical-replication-cluster"/>
+       to upgrade a two-node circular logical replication cluster.
+      </para>
+     </listitem>
+    </itemizedlist>
+   </para>
+
+   <sect3 id="steps-two-node-logical-replication-cluster">
+    <title>Steps to upgrade a two-node logical replication cluster</title>
+     <para>
+      Let's say publisher is in <literal>node1</literal> and subscriber is
+      in <literal>node2</literal>. The subscriber <literal>node2</literal> has
+      a subscription <literal>sub1_node1_node2</literal> which is subscribing
+      the changes from <literal>node1</literal>.
+     </para>
+
+     <procedure>
+      <step id="two-node-cluster-disable-subscriptions-node2">
+       <para>
+        Disable all the subscriptions on <literal>node2</literal> that are
+        subscribing the changes from <literal>node1</literal> by using
+        <link linkend="sql-altersubscription-params-disable"><command>ALTER SUBSCRIPTION ... DISABLE</command></link>,
+        e.g.:
+<programlisting>
+node2=# ALTER SUBSCRIPTION sub1_node1_node2 DISABLE;
+ALTER SUBSCRIPTION
+</programlisting>
+       </para>
+      </step>
+      <step>
+       <para>
+        Stop the publisher server in <literal>node1</literal>, e.g.:
+<programlisting>
+pg_ctl -D /opt/PostgreSQL/data1 stop
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Initialize <literal>data1_upgraded</literal> instance by using the
+        required newer version.
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Upgrade the publisher <literal>node1</literal>'s server to the
+        required newer version, e.g.:
+<programlisting>
+pg_upgrade
+        --old-datadir "/opt/PostgreSQL/postgres/17/data1"
+        --new-datadir "/opt/PostgreSQL/postgres/18/data1_upgraded"
+        --old-bindir "/opt/PostgreSQL/postgres/17/bin"
+        --new-bindir "/opt/PostgreSQL/postgres/18/bin"
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Start the upgraded publisher server in <literal>node1</literal>, e.g.:
+<programlisting>
+pg_ctl -D /opt/PostgreSQL/data1_upgraded start -l logfile
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Stop the subscriber server in <literal>node2</literal>, e.g.:
+<programlisting>
+pg_ctl -D /opt/PostgreSQL/data2 stop
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Initialize <literal>data2_upgraded</literal> instance by using the
+        required newer version.
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Upgrade the subscriber <literal>node2</literal>'s server to
+        the required new version, e.g.:
+<programlisting>
+pg_upgrade
+       --old-datadir "/opt/PostgreSQL/postgres/17/data2"
+       --new-datadir "/opt/PostgreSQL/postgres/18/data2_upgraded"
+       --old-bindir "/opt/PostgreSQL/postgres/17/bin"
+       --new-bindir "/opt/PostgreSQL/postgres/18/bin"
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Start the upgraded subscriber server in <literal>node2</literal>, e.g.:
+<programlisting>
+pg_ctl -D /opt/PostgreSQL/data2_upgraded start -l logfile
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        On <literal>node2</literal>, create any tables that were created in
+        the upgraded publisher <literal>node1</literal> server between
+        <xref linkend="two-node-cluster-disable-subscriptions-node2"/>
+        and now, e.g.:
+<programlisting>
+node2=# CREATE TABLE distributors (did integer PRIMARY KEY, name varchar(40));
+CREATE TABLE
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Enable all the subscriptions on <literal>node2</literal> that are
+        subscribing the changes from <literal>node1</literal> by using
+        <link linkend="sql-altersubscription-params-enable"><command>ALTER SUBSCRIPTION ... ENABLE</command></link>,
+        e.g.:
+<programlisting>
+node2=# ALTER SUBSCRIPTION sub1_node1_node2 ENABLE;
+ALTER SUBSCRIPTION
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Refresh the <literal>node2</literal> subscription's publications using
+        <link linkend="sql-altersubscription-params-refresh-publication"><command>ALTER SUBSCRIPTION ... REFRESH PUBLICATION</command></link>,
+        e.g.:
+<programlisting>
+node2=# ALTER SUBSCRIPTION sub1_node1_node2 REFRESH PUBLICATION;
+ALTER SUBSCRIPTION
+</programlisting>
+       </para>
+      </step>
+     </procedure>
+
+     <note>
+      <para>
+       In the steps described above, the publisher is upgraded first, followed
+       by the subscriber. Alternatively, the user can use similar steps to
+       upgrade the subscriber first, followed by the publisher.
+      </para>
+     </note>
+    </sect3>
+
+    <sect3 id="steps-cascaded-logical-replication-cluster">
+     <title>Steps to upgrade a cascaded logical replication cluster</title>
+     <para>
+      Let's say we have a cascaded logical replication setup
+      <literal>node1</literal>-><literal>node2</literal>-><literal>node3</literal>.
+      Here <literal>node2</literal> is subscribing the changes from
+      <literal>node1</literal> and <literal>node3</literal> is subscribing
+      the changes from <literal>node2</literal>. The <literal>node2</literal>
+      has a subscription <literal>sub1_node1_node2</literal> which is
+      subscribing the changes from <literal>node1</literal>. The
+      <literal>node3</literal> has a subscription
+      <literal>sub1_node2_node3</literal> which is subscribing the changes from
+      <literal>node2</literal>.
+     </para>
+
+     <procedure>
+      <step id="cascaded-cluster-disable-sub-node1-node2">
+       <para>
+        Disable all the subscriptions on <literal>node2</literal> that are
+        subscribing the changes from <literal>node1</literal> by using
+        <link linkend="sql-altersubscription-params-disable"><command>ALTER SUBSCRIPTION ... DISABLE</command></link>,
+        e.g.:
+<programlisting>
+node2=# ALTER SUBSCRIPTION sub1_node1_node2 DISABLE;
+ALTER SUBSCRIPTION
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Stop the server in <literal>node1</literal>, e.g.:
+<programlisting>
+pg_ctl -D /opt/PostgreSQL/data1 stop
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Initialize <literal>data1_upgraded</literal> instance by using the
+        required newer version.
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Upgrade the <literal>node1</literal>'s server to the required newer
+        version, e.g.:
+<programlisting>
+pg_upgrade
+        --old-datadir "/opt/PostgreSQL/postgres/17/data1"
+        --new-datadir "/opt/PostgreSQL/postgres/18/data1_upgraded"
+        --old-bindir "/opt/PostgreSQL/postgres/17/bin"
+        --new-bindir "/opt/PostgreSQL/postgres/18/bin"
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Start the upgraded server in <literal>node1</literal>, e.g.:
+<programlisting>
+pg_ctl -D /opt/PostgreSQL/data1_upgraded start -l logfile
+</programlisting>
+       </para>
+      </step>
+
+      <step id="cascaded-cluster-disable-sub-node2-node3">
+       <para>
+        Disable all the subscriptions on <literal>node3</literal> that are
+        subscribing the changes from <literal>node2</literal> by using
+        <link linkend="sql-altersubscription-params-disable"><command>ALTER SUBSCRIPTION ... DISABLE</command></link>,
+        e.g.:
+<programlisting>
+node3=# ALTER SUBSCRIPTION sub1_node2_node3 DISABLE;
+ALTER SUBSCRIPTION
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Stop the server in <literal>node2</literal>, e.g.:
+<programlisting>
+pg_ctl -D /opt/PostgreSQL/data2 stop
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Initialize <literal>data2_upgraded</literal> instance by using the
+        required newer version.
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Upgrade the <literal>node2</literal>'s server to the required
+        new version, e.g.:
+<programlisting>
+pg_upgrade
+        --old-datadir "/opt/PostgreSQL/postgres/17/data2"
+        --new-datadir "/opt/PostgreSQL/postgres/18/data2_upgraded"
+        --old-bindir "/opt/PostgreSQL/postgres/17/bin"
+        --new-bindir "/opt/PostgreSQL/postgres/18/bin"
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Start the upgraded server in <literal>node2</literal>, e.g.:
+<programlisting>
+pg_ctl -D /opt/PostgreSQL/data2_upgraded start -l logfile
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        On <literal>node2</literal>, create any tables that were created in
+        the upgraded publisher <literal>node1</literal> server between
+        <xref linkend="cascaded-cluster-disable-sub-node1-node2"/>
+        and now, e.g.:
+<programlisting>
+node2=# CREATE TABLE distributors (did integer PRIMARY KEY, name varchar(40));
+CREATE TABLE
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Enable all the subscriptions on <literal>node2</literal> that are
+        subscribing the changes from <literal>node1</literal> by using
+        <link linkend="sql-altersubscription-params-enable"><command>ALTER SUBSCRIPTION ... ENABLE</command></link>,
+        e.g.:
+<programlisting>
+node2=# ALTER SUBSCRIPTION sub1_node1_node2 ENABLE;
+ALTER SUBSCRIPTION
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Refresh the <literal>node2</literal> subscription's publications using
+        <link linkend="sql-altersubscription-params-refresh-publication"><command>ALTER SUBSCRIPTION ... REFRESH PUBLICATION</command></link>,
+        e.g.:
+<programlisting>
+node2=# ALTER SUBSCRIPTION sub1_node1_node2 REFRESH PUBLICATION;
+ALTER SUBSCRIPTION
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Stop the server in <literal>node3</literal>, e.g.:
+<programlisting>
+pg_ctl -D /opt/PostgreSQL/data3 stop
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Initialize <literal>data3_upgraded</literal> instance by using the
+        required newer version.
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Upgrade the <literal>node3</literal>'s server to the required
+        new version, e.g.:
+<programlisting>
+pg_upgrade
+        --old-datadir "/opt/PostgreSQL/postgres/17/data3"
+        --new-datadir "/opt/PostgreSQL/postgres/18/data3_upgraded"
+        --old-bindir "/opt/PostgreSQL/postgres/17/bin"
+        --new-bindir "/opt/PostgreSQL/postgres/18/bin"
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Start the upgraded server in <literal>node3</literal>, e.g.:
+<programlisting>
+pg_ctl -D /opt/PostgreSQL/data3_upgraded start -l logfile
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        On <literal>node3</literal>, create any tables that were created in
+        the upgraded <literal>node2</literal> between
+        <xref linkend="cascaded-cluster-disable-sub-node2-node3"/> and now,
+        e.g.:
+<programlisting>
+node3=# CREATE TABLE distributors (did integer PRIMARY KEY, name varchar(40));
+CREATE TABLE
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Enable all the subscriptions on <literal>node3</literal> that are
+        subscribing the changes from <literal>node2</literal> by using
+        <link linkend="sql-altersubscription-params-enable"><command>ALTER SUBSCRIPTION ... ENABLE</command></link>,
+        e.g.:
+<programlisting>
+node3=# ALTER SUBSCRIPTION sub1_node2_node3 ENABLE;
+ALTER SUBSCRIPTION
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Refresh the <literal>node3</literal> subscription's publications using
+        <link linkend="sql-altersubscription-params-refresh-publication"><command>ALTER SUBSCRIPTION ... REFRESH PUBLICATION</command></link>,
+        e.g.:
+<programlisting>
+node3=# ALTER SUBSCRIPTION sub1_node2_node3 REFRESH PUBLICATION;
+ALTER SUBSCRIPTION
+</programlisting>
+       </para>
+      </step>
+     </procedure>
+    </sect3>
+
+    <sect3 id="steps-two-node-circular-logical-replication-cluster">
+     <title>Steps to upgrade a two-node circular logical replication cluster</title>
+     <para>
+      Let's say we have a circular logical replication setup
+      <literal>node1</literal>-><literal>node2</literal> and
+      <literal>node2</literal>-><literal>node1</literal>. Here
+      <literal>node2</literal> is subscribing the changes from
+      <literal>node1</literal> and <literal>node1</literal> is subscribing
+      the changes from <literal>node2</literal>. The <literal>node1</literal>
+      has a subscription <literal>sub1_node2_node1</literal> which is
+      subscribing the changes from <literal>node2</literal>. The
+      <literal>node2</literal> has a subscription
+      <literal>sub1_node1_node2</literal> which is subscribing the changes from
+      <literal>node1</literal>.
+     </para>
+
+     <procedure>
+      <step id="circular-cluster-disable-sub-node2">
+       <para>
+        Disable all the subscriptions on <literal>node2</literal> that are
+        subscribing the changes from <literal>node1</literal> by using
+        <link linkend="sql-altersubscription-params-disable"><command>ALTER SUBSCRIPTION ... DISABLE</command></link>,
+        e.g.:
+<programlisting>
+node2=# ALTER SUBSCRIPTION sub1_node1_node2 DISABLE;
+ALTER SUBSCRIPTION
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Stop the server in <literal>node1</literal>, e.g.:
+<programlisting>
+pg_ctl -D /opt/PostgreSQL/data1 stop
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Initialize <literal>data1_upgraded</literal> instance by using the
+        required newer version.
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Upgrade the <literal>node1</literal>'s server to the required
+        newer version, e.g.:
+<programlisting>
+pg_upgrade
+        --old-datadir "/opt/PostgreSQL/postgres/17/data1"
+        --new-datadir "/opt/PostgreSQL/postgres/18/data1_upgraded"
+        --old-bindir "/opt/PostgreSQL/postgres/17/bin"
+        --new-bindir "/opt/PostgreSQL/postgres/18/bin"
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Start the upgraded server in <literal>node1</literal>, e.g.:
+<programlisting>
+pg_ctl -D /opt/PostgreSQL/data1_upgraded start -l logfile
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Enable all the subscriptions on <literal>node2</literal> that are
+        subscribing the changes from <literal>node1</literal> by using
+        <link linkend="sql-altersubscription-params-enable"><command>ALTER SUBSCRIPTION ... ENABLE</command></link>,
+        e.g.:
+<programlisting>
+node2=# ALTER SUBSCRIPTION sub1_node1_node2 ENABLE;
+ALTER SUBSCRIPTION
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        On <literal>node1</literal>, create any tables that were created in
+        <literal>node2</literal> between <xref linkend="circular-cluster-disable-sub-node2"/>
+        and now, e.g.:
+<programlisting>
+node1=# CREATE TABLE distributors (did integer PRIMARY KEY, name varchar(40));
+CREATE TABLE
+</programlisting>
+       </para>
+      </step>
+
+
+      <step>
+       <para>
+        Refresh the <literal>node1</literal> subscription's publications to
+        copy initial table data from <literal>node2</literal> using
+        <link linkend="sql-altersubscription-params-refresh-publication"><command>ALTER SUBSCRIPTION ... REFRESH PUBLICATION</command></link>,
+        e.g.:
+<programlisting>
+node1=# ALTER SUBSCRIPTION sub1_node2_node1 REFRESH PUBLICATION;
+ALTER SUBSCRIPTION
+</programlisting>
+       </para>
+      </step>
+
+      <step id="circular-cluster-disable-sub-node1">
+       <para>
+        Disable all the subscriptions on <literal>node1</literal> that are
+        subscribing the changes from <literal>node2</literal> by using
+        <link linkend="sql-altersubscription-params-disable"><command>ALTER SUBSCRIPTION ... DISABLE</command></link>,
+        e.g.:
+<programlisting>
+node1=# ALTER SUBSCRIPTION sub1_node2_node1 DISABLE;
+ALTER SUBSCRIPTION
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Stop the server in <literal>node2</literal>, e.g.:
+<programlisting>
+pg_ctl -D /opt/PostgreSQL/data2 stop
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Initialize <literal>data2_upgraded</literal> instance by using the
+        required newer version.
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Upgrade the <literal>node2</literal>'s server to the required
+        new version, e.g.:
+<programlisting>
+pg_upgrade
+        --old-datadir "/opt/PostgreSQL/postgres/17/data2"
+        --new-datadir "/opt/PostgreSQL/postgres/18/data2_upgraded"
+        --old-bindir "/opt/PostgreSQL/postgres/17/bin"
+        --new-bindir "/opt/PostgreSQL/postgres/18/bin"
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Start the upgraded server in <literal>node2</literal>, e.g.:
+<programlisting>
+pg_ctl -D /opt/PostgreSQL/data2_upgraded start -l logfile
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Enable all the subscriptions on <literal>node1</literal> that are
+        subscribing the changes from <literal>node2</literal> by using
+        <link linkend="sql-altersubscription-params-enable"><command>ALTER SUBSCRIPTION ... ENABLE</command></link>,
+        e.g.:
+<programlisting>
+node1=# ALTER SUBSCRIPTION sub1_node2_node1 ENABLE;
+ALTER SUBSCRIPTION
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        On <literal>node2</literal>, create any tables that were created in
+        the upgraded <literal>node1</literal> between <xref linkend="circular-cluster-disable-sub-node1"/>
+        and now, e.g.:
+<programlisting>
+node2=# CREATE TABLE distributors (did integer PRIMARY KEY, name varchar(40));
+CREATE TABLE
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Refresh the <literal>node2</literal> subscription's publications to
+        copy initial table data from <literal>node1</literal> using
+        <link linkend="sql-altersubscription-params-refresh-publication"><command>ALTER SUBSCRIPTION ... REFRESH PUBLICATION</command></link>,
+        e.g.:
+<programlisting>
+node2=# ALTER SUBSCRIPTION sub1_node1_node2 REFRESH PUBLICATION;
+ALTER SUBSCRIPTION
+</programlisting>
+       </para>
+      </step>
+     </procedure>
+    </sect3>
+
+   </sect2>
  </sect1>
 
  <sect1 id="logical-replication-quick-setup">

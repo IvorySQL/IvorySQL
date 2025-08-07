@@ -81,7 +81,7 @@ MainLoop(FILE *source)
 	/* Create working state */
 	scan_state = psql_scan_create(&psqlscan_callbacks);
 	cond_stack = conditional_stack_create();
-	psql_scan_set_passthrough(scan_state, (void *) cond_stack);
+	psql_scan_set_passthrough(scan_state, cond_stack);
 
 	/* Oracle working state */
 	ora_scan_state = ora_psql_scan_create(&Ora_psqlscan_callbacks);

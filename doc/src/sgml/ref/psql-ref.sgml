@@ -908,11 +908,42 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
          linkend="protocol-query-concepts"/>) to be used, unlike normal
          <application>psql</application> operation, which uses the simple
          query protocol.  So this command can be useful to test the extended
-         query protocol from psql.  (The extended query protocol is used even
-         if the query has no parameters and this command specifies zero
-         parameters.)  This command affects only the next query executed; all
-         subsequent queries will use the simple query protocol by default.
+         query protocol from <application>psql</application>.  (The extended
+         query protocol is used even if the query has no parameters and this
+         command specifies zero parameters.)  This command affects only the
+         next query executed; all subsequent queries will use the simple query
+         protocol by default.
         </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="app-psql-meta-command-bind-named">
+       <term><literal>\bind_named</literal> <replaceable class="parameter">statement_name</replaceable> [ <replaceable class="parameter">parameter</replaceable> ] ... </term>
+
+       <listitem>
+        <para>
+         <literal>\bind_named</literal> is equivalent to <literal>\bind</literal>,
+         except that it takes the name of an existing prepared statement as
+         first parameter. An empty string denotes the unnamed prepared
+         statement.
+        </para>
+
+        <para>
+         Example:
+<programlisting>
+INSERT INTO tbls1 VALUES ($1, $2) \parse stmt1
+\bind_named stmt1 'first value' 'second value' \g
+</programlisting>
+        </para>
+
+        <para>
+         This command causes the extended query protocol (see
+         <xref linkend="protocol-query-concepts"/>) to be used, unlike normal
+         <application>psql</application> operation, which uses the simple
+         query protocol. So this command can be useful to test the extended
+         query protocol from <application>psql</application>.
+        </para>
+
        </listitem>
       </varlistentry>
 
@@ -1017,7 +1048,8 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
         <para>
          Changes the current working directory to
          <replaceable>directory</replaceable>. Without argument, changes
-         to the current user's home directory.
+         to the current user's home directory.  For details on how home
+         directories are found, see <xref linkend="libpq-pgpass"/>.
         </para>
 
         <tip>
@@ -1035,6 +1067,35 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
         Outputs information about the current database connection.
         </para>
         </listitem>
+      </varlistentry>
+
+      <varlistentry id="app-psql-meta-command-close">
+       <term><literal>\close</literal> <replaceable class="parameter">prepared_statement_name</replaceable></term>
+
+       <listitem>
+        <para>
+         Closes the specified prepared statement. An empty string denotes the
+         unnamed prepared statement. If no prepared statement exists with this
+         name, the operation is a no-op.
+        </para>
+
+        <para>
+         Example:
+<programlisting>
+SELECT $1 \parse stmt1
+\close stmt1
+</programlisting>
+        </para>
+
+        <para>
+         This command causes the extended query protocol to be used,
+         unlike normal <application>psql</application> operation, which
+         uses the simple query protocol. So this command can be useful
+         to test the extended query protocol from
+         <application>psql</application>.
+        </para>
+
+       </listitem>
       </varlistentry>
 
       <varlistentry id="app-psql-meta-commands-copy">
@@ -1075,7 +1136,8 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
 
         <para>
         For <literal>\copy ... from stdin</literal>, data rows are read from the same
-        source that issued the command, continuing until <literal>\.</literal>
+        source that issued the command, continuing until a line containing
+        only <literal>\.</literal>
         is read or the stream reaches <acronym>EOF</acronym>. This option is useful
         for populating tables in-line within an SQL script file.
         For <literal>\copy ... to stdout</literal>, output is sent to the same place
@@ -1119,10 +1181,6 @@ INSERT INTO tbl1 VALUES ($1, $2) \bind 'first value' 'second value' \g
         destination, because all data must pass through the client/server
         connection.  For large amounts of data the <acronym>SQL</acronym>
         command might be preferable.
-        Also, because of this pass-through method, <literal>\copy
-        ... from</literal> in <acronym>CSV</acronym> mode will erroneously
-        treat a <literal>\.</literal> data value alone on a line as an
-        end-of-input marker.
         </para>
         </tip>
 
@@ -2779,6 +2837,37 @@ lo_import 152801
         </listitem>
       </varlistentry>
 
+      <varlistentry id="app-psql-meta-command-parse">
+        <term><literal>\parse <replaceable class="parameter">statement_name</replaceable></literal></term>
+        <listitem>
+        <para>
+         Creates a prepared statement from the current query buffer, based on
+         the name of a destination prepared-statement object. An empty string
+         denotes the unnamed prepared statement.
+        </para>
+
+        <para>
+         Example:
+<programlisting>
+SELECT $1 \parse stmt1
+</programlisting>
+        </para>
+
+        <para>
+         This command causes the extended query protocol to be used, unlike
+         normal <application>psql</application> operation, which uses the
+         simple query protocol. A
+         <xref linkend="protocol-message-formats-Parse"/>
+         message will be issued by this command so it can be useful to
+         test the extended query protocol from
+         <application>psql</application>. This command affects only the next
+         query executed; all subsequent queries will use the simple query
+         protocol by default.
+        </para>
+
+        </listitem>
+      </varlistentry>
+
       <varlistentry id="app-psql-meta-command-password">
         <term><literal>\password [ <replaceable class="parameter">username</replaceable> ]</literal></term>
         <listitem>
@@ -4291,6 +4380,15 @@ bar
         </listitem>
       </varlistentry>
 
+      <varlistentry id="app-psql-variables-service">
+        <term><varname>SERVICE</varname></term>
+        <listitem>
+        <para>
+        The service name, if applicable.
+        </para>
+        </listitem>
+      </varlistentry>
+
       <varlistentry id="app-psql-variables-shell-error">
        <term><varname>SHELL_ERROR</varname></term>
        <listitem>
@@ -4334,7 +4432,8 @@ bar
         When this variable is set to <literal>off</literal>, only the last
         result of a combined query (<literal>\;</literal>) is shown instead of
         all of them.  The default is <literal>on</literal>.  The off behavior
-        is for compatibility with older versions of psql.
+        is for compatibility with older versions of
+        <application>psql</application>.
         </para>
         </listitem>
       </varlistentry>
@@ -4582,6 +4681,11 @@ testdb=&gt; <userinput>INSERT INTO my_table VALUES (:'content');</userinput>
           AUTHORIZATION</command>.)
          </para>
         </listitem>
+      </varlistentry>
+
+      <varlistentry id="app-psql-prompting-s">
+        <term><literal>%s</literal></term>
+        <listitem><para>The name of the service.</para></listitem>
       </varlistentry>
 
       <varlistentry id="app-psql-prompting-slash">

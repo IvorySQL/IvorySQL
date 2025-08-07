@@ -39,6 +39,8 @@ CREATE FUNCTION casttesttype_out(casttesttype)
    LANGUAGE internal STRICT IMMUTABLE;
 /
 NOTICE:  argument type casttesttype is only a shell
+LINE 1: CREATE FUNCTION casttesttype_out(casttesttype)
+                                         ^
 CREATE TYPE casttesttype (
    internallength = variable,
    input = casttesttype_in,
@@ -285,7 +287,8 @@ SELECT * FROM pg_init_privs WHERE privtype = 'e';
  objoid | classoid | objsubid | privtype | initprivs 
 --------+----------+----------+----------+-----------
 (0 rows)
-REATE ROLE regress_dump_test_role;
+
+CREATE ROLE regress_dump_test_role;
 CREATE ROLE regress_dump_test_super SUPERUSER;
 SET ROLE regress_dump_test_super;
 CREATE EXTENSION test_pg_dump;

@@ -42,6 +42,17 @@
 #include "rewrite/rewriteManip.h"
 
 
+typedef struct nullingrel_info
+{
+	/*
+	 * For each leaf RTE, nullingrels[rti] is the set of relids of outer joins
+	 * that potentially null that RTE.
+	 */
+	Relids	   *nullingrels;
+	/* Length of range table (maximum index in nullingrels[]) */
+	int			rtlength;		/* used only for assertion checks */
+} nullingrel_info;
+
 typedef struct pullup_replace_vars_context
 {
 	PlannerInfo *root;
@@ -49,6 +60,8 @@ typedef struct pullup_replace_vars_context
 	RangeTblEntry *target_rte;	/* RTE of subquery */
 	Relids		relids;			/* relids within subquery, as numbered after
 								 * pullup (set only if target_rte->lateral) */
+	nullingrel_info *nullinfo;	/* per-RTE nullingrel info (set only if
+								 * target_rte->lateral) */
 	bool	   *outer_hasSubLinks;	/* -> outer query's hasSubLinks */
 	int			varno;			/* varno of subquery */
 	bool		wrap_non_vars;	/* do we need all non-Var outputs to be PHVs? */
@@ -142,6 +155,9 @@ static void substitute_phv_relids(Node *node,
 static void fix_append_rel_relids(PlannerInfo *root, int varno,
 								  Relids subrelids);
 static Node *find_jointree_node_for_rel(Node *jtnode, int relid);
+static nullingrel_info *get_nullingrels(Query *parse);
+static void get_nullingrels_recurse(Node *jtnode, Relids upper_nullingrels,
+									nullingrel_info *info);
 
 
 /*
@@ -158,6 +174,9 @@ transform_MERGE_to_join(Query *parse)
 	int			joinrti;
 	List	   *vars;
 	RangeTblRef *rtr;
+	FromExpr   *target;
+	Node	   *source;
+	int			sourcerti;
 
 	if (parse->commandType != CMD_MERGE)
 		return;
@@ -226,13 +245,36 @@ transform_MERGE_to_join(Query *parse)
 	 * parse->jointree->quals are restrictions on the target relation (if the
 	 * target relation is an auto-updatable view).
 	 */
+	/* target rel, with any quals */
 	rtr = makeNode(RangeTblRef);
 	rtr->rtindex = parse->mergeTargetRelation;
+	target = makeFromExpr(list_make1(rtr), parse->jointree->quals);
+
+	/* source rel (expect exactly one -- see transformMergeStmt()) */
+	Assert(list_length(parse->jointree->fromlist) == 1);
+	source = linitial(parse->jointree->fromlist);
+
+	/*
+	 * index of source rel (expect either a RangeTblRef or a JoinExpr -- see
+	 * transformFromClauseItem()).
+	 */
+	if (IsA(source, RangeTblRef))
+		sourcerti = ((RangeTblRef *) source)->rtindex;
+	else if (IsA(source, JoinExpr))
+		sourcerti = ((JoinExpr *) source)->rtindex;
+	else
+	{
+		elog(ERROR, "unrecognized source node type: %d",
+			 (int) nodeTag(source));
+		sourcerti = 0;			/* keep compiler quiet */
+	}
+
+	/* Join the source and target */
 	joinexpr = makeNode(JoinExpr);
 	joinexpr->jointype = jointype;
 	joinexpr->isNatural = false;
-	joinexpr->larg = (Node *) makeFromExpr(list_make1(rtr), parse->jointree->quals);
-	joinexpr->rarg = linitial(parse->jointree->fromlist);	/* source rel */
+	joinexpr->larg = (Node *) target;
+	joinexpr->rarg = source;
 	joinexpr->usingClause = NIL;
 	joinexpr->join_using_alias = NULL;
 	joinexpr->quals = parse->mergeJoinCondition;
@@ -257,13 +299,82 @@ transform_MERGE_to_join(Query *parse)
 							   bms_make_singleton(joinrti));
 
 	/*
+	 * If the source relation is on the outer side of the join, mark any
+	 * source relation Vars in the join condition, actions, and RETURNING list
+	 * as nullable by the join.  These Vars will be added to the targetlist by
+	 * preprocess_targetlist(), so it's important to mark them correctly here.
+	 *
+	 * It might seem that this is not necessary for Vars in the join
+	 * condition, since it is inside the join, but it is also needed above the
+	 * join (in the ModifyTable node) to distinguish between the MATCHED and
+	 * NOT MATCHED BY SOURCE cases -- see ExecMergeMatched().  Note that this
+	 * creates a modified copy of the join condition, for use above the join,
+	 * without modifying the original join condition, inside the join.
+	 */
+	if (jointype == JOIN_LEFT || jointype == JOIN_FULL)
+	{
+		parse->mergeJoinCondition =
+			add_nulling_relids(parse->mergeJoinCondition,
+							   bms_make_singleton(sourcerti),
+							   bms_make_singleton(joinrti));
+
+		foreach_node(MergeAction, action, parse->mergeActionList)
+		{
+			action->qual =
+				add_nulling_relids(action->qual,
+								   bms_make_singleton(sourcerti),
+								   bms_make_singleton(joinrti));
+
+			action->targetList = (List *)
+				add_nulling_relids((Node *) action->targetList,
+								   bms_make_singleton(sourcerti),
+								   bms_make_singleton(joinrti));
+		}
+
+		parse->returningList = (List *)
+			add_nulling_relids((Node *) parse->returningList,
+							   bms_make_singleton(sourcerti),
+							   bms_make_singleton(joinrti));
+	}
+
+	/*
 	 * If there are any WHEN NOT MATCHED BY SOURCE actions, the executor will
 	 * use the join condition to distinguish between MATCHED and NOT MATCHED
 	 * BY SOURCE cases.  Otherwise, it's no longer needed, and we set it to
 	 * NULL, saving cycles during planning and execution.
+	 *
+	 * We need to be careful though: the executor evaluates this condition
+	 * using the output of the join subplan node, which nulls the output from
+	 * the source relation when the join condition doesn't match.  That risks
+	 * producing incorrect results when rechecking using a "non-strict" join
+	 * condition, such as "src.col IS NOT DISTINCT FROM tgt.col".  To guard
+	 * against that, we add an additional "src IS NOT NULL" check to the join
+	 * condition, so that it does the right thing when performing a recheck
+	 * based on the output of the join subplan.
 	 */
-	if (!have_action[MERGE_WHEN_NOT_MATCHED_BY_SOURCE])
-		parse->mergeJoinCondition = NULL;
+	if (have_action[MERGE_WHEN_NOT_MATCHED_BY_SOURCE])
+	{
+		Var		   *var;
+		NullTest   *ntest;
+
+		/* source wholerow Var (nullable by the new join) */
+		var = makeWholeRowVar(rt_fetch(sourcerti, parse->rtable),
+							  sourcerti, 0, false);
+		var->varnullingrels = bms_make_singleton(joinrti);
+
+		/* "src IS NOT NULL" check */
+		ntest = makeNode(NullTest);
+		ntest->arg = (Expr *) var;
+		ntest->nulltesttype = IS_NOT_NULL;
+		ntest->argisrow = false;
+		ntest->location = -1;
+
+		/* combine it with the original join condition */
+		parse->mergeJoinCondition =
+			(Node *) make_and_qual((Node *) ntest, parse->mergeJoinCondition);
+	}
+	else
+		parse->mergeJoinCondition = NULL;	/* join condition not needed */
 }
 
 /*
@@ -455,8 +566,8 @@ pull_up_sublinks_jointree_recurse(PlannerInfo *root, Node *jtnode,
 		 * point of the available_rels machinations is to ensure that we only
 		 * pull up quals for which that's okay.
 		 *
-		 * We don't expect to see any pre-existing JOIN_SEMI, JOIN_ANTI, or
-		 * JOIN_RIGHT_ANTI jointypes here.
+		 * We don't expect to see any pre-existing JOIN_SEMI, JOIN_ANTI,
+		 * JOIN_RIGHT_SEMI, or JOIN_RIGHT_ANTI jointypes here.
 		 */
 		switch (j->jointype)
 		{
@@ -1164,10 +1275,16 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 	rvcontext.targetlist = subquery->targetList;
 	rvcontext.target_rte = rte;
 	if (rte->lateral)
+	{
 		rvcontext.relids = get_relids_in_jointree((Node *) subquery->jointree,
 												  true, true);
-	else						/* won't need relids */
+		rvcontext.nullinfo = get_nullingrels(parse);
+	}
+	else						/* won't need these values */
+	{
 		rvcontext.relids = NULL;
+		rvcontext.nullinfo = NULL;
+	}
 	rvcontext.outer_hasSubLinks = &parse->hasSubLinks;
 	rvcontext.varno = varno;
 	/* this flag will be set below, if needed */
@@ -1235,6 +1352,7 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 				case RTE_CTE:
 				case RTE_NAMEDTUPLESTORE:
 				case RTE_RESULT:
+				case RTE_GROUP:
 					/* these can't contain any lateral references */
 					break;
 			}
@@ -1629,6 +1747,9 @@ is_simple_subquery(PlannerInfo *root, Query *subquery, RangeTblEntry *rte,
 		 * such refs to be wrapped in PlaceHolderVars, even when they're below
 		 * the nearest outer join?	But it's a pretty hokey usage, so not
 		 * clear this is worth sweating over.)
+		 *
+		 * If you change this, see also the comments about lateral references
+		 * in pullup_replace_vars_callback().
 		 */
 		if (lowest_outer_join != NULL)
 		{
@@ -1713,7 +1834,8 @@ pull_up_simple_values(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte)
 	rvcontext.root = root;
 	rvcontext.targetlist = tlist;
 	rvcontext.target_rte = rte;
-	rvcontext.relids = NULL;
+	rvcontext.relids = NULL;	/* can't be any lateral references here */
+	rvcontext.nullinfo = NULL;
 	rvcontext.outer_hasSubLinks = &parse->hasSubLinks;
 	rvcontext.varno = varno;
 	rvcontext.wrap_non_vars = false;
@@ -1875,9 +1997,10 @@ pull_up_constant_function(PlannerInfo *root, Node *jtnode,
 	/*
 	 * Since this function was reduced to a Const, it doesn't contain any
 	 * lateral references, even if it's marked as LATERAL.  This means we
-	 * don't need to fill relids.
+	 * don't need to fill relids or nullinfo.
 	 */
 	rvcontext.relids = NULL;
+	rvcontext.nullinfo = NULL;
 
 	rvcontext.outer_hasSubLinks = &parse->hasSubLinks;
 	rvcontext.varno = ((RangeTblRef *) jtnode)->rtindex;
@@ -2218,7 +2341,8 @@ perform_pullup_replace_vars(PlannerInfo *root,
 	}
 
 	/*
-	 * Replace references in the joinaliasvars lists of join RTEs.
+	 * Replace references in the joinaliasvars lists of join RTEs and the
+	 * groupexprs list of group RTE.
 	 */
 	foreach(lc, parse->rtable)
 	{
@@ -2227,6 +2351,10 @@ perform_pullup_replace_vars(PlannerInfo *root,
 		if (otherrte->rtekind == RTE_JOIN)
 			otherrte->joinaliasvars = (List *)
 				pullup_replace_vars((Node *) otherrte->joinaliasvars,
+									rvcontext);
+		else if (otherrte->rtekind == RTE_GROUP)
+			otherrte->groupexprs = (List *)
+				pullup_replace_vars((Node *) otherrte->groupexprs,
 									rvcontext);
 	}
 }
@@ -2293,6 +2421,7 @@ replace_vars_in_jointree(Node *jtnode,
 					case RTE_CTE:
 					case RTE_NAMEDTUPLESTORE:
 					case RTE_RESULT:
+					case RTE_GROUP:
 						/* these shouldn't be marked LATERAL */
 						Assert(false);
 						break;
@@ -2348,7 +2477,7 @@ pullup_replace_vars(Node *expr, pullup_replace_vars_context *context)
 	return replace_rte_variables(expr,
 								 context->varno, 0,
 								 pullup_replace_vars_callback,
-								 (void *) context,
+								 context,
 								 context->outer_hasSubLinks);
 }
 
@@ -2469,35 +2598,134 @@ pullup_replace_vars_callback(Var *var,
 				/*
 				 * Simple Vars always escape being wrapped, unless they are
 				 * lateral references to something outside the subquery being
-				 * pulled up.  (Even then, we could omit the PlaceHolderVar if
-				 * the referenced rel is under the same lowest outer join, but
-				 * it doesn't seem worth the trouble to check that.)
+				 * pulled up and the referenced rel is not under the same
+				 * lowest nulling outer join.
 				 */
+				wrap = false;
 				if (rcon->target_rte->lateral &&
 					!bms_is_member(((Var *) newnode)->varno, rcon->relids))
-					wrap = true;
-				else
-					wrap = false;
+				{
+					nullingrel_info *nullinfo = rcon->nullinfo;
+					int			lvarno = ((Var *) newnode)->varno;
+
+					Assert(lvarno > 0 && lvarno <= nullinfo->rtlength);
+					if (!bms_is_subset(nullinfo->nullingrels[rcon->varno],
+									   nullinfo->nullingrels[lvarno]))
+						wrap = true;
+				}
 			}
 			else if (newnode && IsA(newnode, PlaceHolderVar) &&
 					 ((PlaceHolderVar *) newnode)->phlevelsup == 0)
 			{
 				/* The same rules apply for a PlaceHolderVar */
+				wrap = false;
 				if (rcon->target_rte->lateral &&
 					!bms_is_subset(((PlaceHolderVar *) newnode)->phrels,
 								   rcon->relids))
-					wrap = true;
-				else
-					wrap = false;
+				{
+					nullingrel_info *nullinfo = rcon->nullinfo;
+					Relids		lvarnos = ((PlaceHolderVar *) newnode)->phrels;
+					int			lvarno;
+
+					lvarno = -1;
+					while ((lvarno = bms_next_member(lvarnos, lvarno)) >= 0)
+					{
+						Assert(lvarno > 0 && lvarno <= nullinfo->rtlength);
+						if (!bms_is_subset(nullinfo->nullingrels[rcon->varno],
+										   nullinfo->nullingrels[lvarno]))
+						{
+							wrap = true;
+							break;
+						}
+					}
+				}
+			}
+			else if (rcon->wrap_non_vars)
+			{
+				/* Caller told us to wrap all non-Vars in a PlaceHolderVar */
+				wrap = true;
 			}
 			else
 			{
 				/*
-				 * Must wrap, either because we need a place to insert
-				 * varnullingrels or because caller told us to wrap
-				 * everything.
+				 * If the node contains Var(s) or PlaceHolderVar(s) of the
+				 * subquery being pulled up, or of rels that are under the
+				 * same lowest nulling outer join as the subquery, and does
+				 * not contain any non-strict constructs, then instead of
+				 * adding a PHV on top we can add the required nullingrels to
+				 * those Vars/PHVs.  (This is fundamentally a generalization
+				 * of the above cases for bare Vars and PHVs.)
+				 *
+				 * This test is somewhat expensive, but it avoids pessimizing
+				 * the plan in cases where the nullingrels get removed again
+				 * later by outer join reduction.
+				 *
+				 * Note that we don't force wrapping of expressions containing
+				 * lateral references, so long as they also contain Vars/PHVs
+				 * of the subquery, or of rels that are under the same lowest
+				 * nulling outer join as the subquery.  This is okay because
+				 * of the restriction to strict constructs: if those Vars/PHVs
+				 * have been forced to NULL by an outer join then the end
+				 * result of the expression will be NULL too, regardless of
+				 * the lateral references.  So it's not necessary to force the
+				 * expression to be evaluated below the outer join.  This can
+				 * be a very valuable optimization, because it may allow us to
+				 * avoid using a nested loop to pass the lateral reference
+				 * down.
+				 *
+				 * This analysis could be tighter: in particular, a non-strict
+				 * construct hidden within a lower-level PlaceHolderVar is not
+				 * reason to add another PHV.  But for now it doesn't seem
+				 * worth the code to be more exact.
+				 *
+				 * For a LATERAL subquery, we have to check the actual var
+				 * membership of the node, but if it's non-lateral then any
+				 * level-zero var must belong to the subquery.
 				 */
-				wrap = true;
+				bool		contain_nullable_vars = false;
+
+				if (!rcon->target_rte->lateral)
+				{
+					if (contain_vars_of_level(newnode, 0))
+						contain_nullable_vars = true;
+				}
+				else
+				{
+					Relids		all_varnos;
+
+					all_varnos = pull_varnos(rcon->root, newnode);
+					if (bms_overlap(all_varnos, rcon->relids))
+						contain_nullable_vars = true;
+					else
+					{
+						nullingrel_info *nullinfo = rcon->nullinfo;
+						int			varno;
+
+						varno = -1;
+						while ((varno = bms_next_member(all_varnos, varno)) >= 0)
+						{
+							Assert(varno > 0 && varno <= nullinfo->rtlength);
+							if (bms_is_subset(nullinfo->nullingrels[rcon->varno],
+											  nullinfo->nullingrels[varno]))
+							{
+								contain_nullable_vars = true;
+								break;
+							}
+						}
+					}
+				}
+
+				if (contain_nullable_vars &&
+					!contain_nonstrict_functions(newnode))
+				{
+					/* No wrap needed */
+					wrap = false;
+				}
+				else
+				{
+					/* Else wrap it in a PlaceHolderVar */
+					wrap = true;
+				}
 			}
 
 			if (wrap)
@@ -2518,18 +2746,14 @@ pullup_replace_vars_callback(Var *var,
 		}
 	}
 
-	/* Must adjust varlevelsup if replaced Var is within a subquery */
-	if (var->varlevelsup > 0)
-		IncrementVarSublevelsUp(newnode, var->varlevelsup, 0);
-
-	/* Propagate any varnullingrels into the replacement Var or PHV */
+	/* Propagate any varnullingrels into the replacement expression */
 	if (var->varnullingrels != NULL)
 	{
 		if (IsA(newnode, Var))
 		{
 			Var		   *newvar = (Var *) newnode;
 
-			Assert(newvar->varlevelsup == var->varlevelsup);
+			Assert(newvar->varlevelsup == 0);
 			newvar->varnullingrels = bms_add_members(newvar->varnullingrels,
 													 var->varnullingrels);
 		}
@@ -2537,13 +2761,72 @@ pullup_replace_vars_callback(Var *var,
 		{
 			PlaceHolderVar *newphv = (PlaceHolderVar *) newnode;
 
-			Assert(newphv->phlevelsup == var->varlevelsup);
+			Assert(newphv->phlevelsup == 0);
 			newphv->phnullingrels = bms_add_members(newphv->phnullingrels,
 													var->varnullingrels);
 		}
 		else
-			elog(ERROR, "failed to wrap a non-Var");
+		{
+			/*
+			 * There should be Vars/PHVs within the expression that we can
+			 * modify.  Vars/PHVs of the subquery should have the full
+			 * var->varnullingrels added to them, but if there are lateral
+			 * references within the expression, those must be marked with
+			 * only the nullingrels that potentially apply to them.  (This
+			 * corresponds to the fact that the expression will now be
+			 * evaluated at the join level of the Var that we are replacing:
+			 * the lateral references may have bubbled up through fewer outer
+			 * joins than the subquery's Vars have.  Per the discussion above,
+			 * we'll still get the right answers.)  That relid set could be
+			 * different for different lateral relations, so we have to do
+			 * this work for each one.
+			 *
+			 * (Currently, the restrictions in is_simple_subquery() mean that
+			 * at most we have to remove the lowest outer join's relid from
+			 * the nullingrels of a lateral reference.  However, we might
+			 * relax those restrictions someday, so let's do this right.)
+			 */
+			if (rcon->target_rte->lateral)
+			{
+				nullingrel_info *nullinfo = rcon->nullinfo;
+				Relids		lvarnos;
+				int			lvarno;
+
+				/*
+				 * Identify lateral varnos used within newnode.  We must do
+				 * this before injecting var->varnullingrels into the tree.
+				 */
+				lvarnos = pull_varnos(rcon->root, newnode);
+				lvarnos = bms_del_members(lvarnos, rcon->relids);
+				/* For each one, add relevant nullingrels if any */
+				lvarno = -1;
+				while ((lvarno = bms_next_member(lvarnos, lvarno)) >= 0)
+				{
+					Relids		lnullingrels;
+
+					Assert(lvarno > 0 && lvarno <= nullinfo->rtlength);
+					lnullingrels = bms_intersect(var->varnullingrels,
+												 nullinfo->nullingrels[lvarno]);
+					if (!bms_is_empty(lnullingrels))
+						newnode = add_nulling_relids(newnode,
+													 bms_make_singleton(lvarno),
+													 lnullingrels);
+				}
+			}
+
+			/* Finally, deal with Vars/PHVs of the subquery itself */
+			newnode = add_nulling_relids(newnode,
+										 rcon->relids,
+										 var->varnullingrels);
+			/* Assert we did put the varnullingrels into the expression */
+			Assert(bms_is_subset(var->varnullingrels,
+								 pull_varnos(rcon->root, newnode)));
+		}
 	}
+
+	/* Must adjust varlevelsup if replaced Var is within a subquery */
+	if (var->varlevelsup > 0)
+		IncrementVarSublevelsUp(newnode, var->varlevelsup, 0);
 
 	return newnode;
 }
@@ -2563,7 +2846,7 @@ pullup_replace_vars_subquery(Query *query,
 	return (Query *) replace_rte_variables((Node *) query,
 										   context->varno, 1,
 										   pullup_replace_vars_callback,
-										   (void *) context,
+										   context,
 										   NULL);
 }
 
@@ -2950,7 +3233,7 @@ reduce_outer_joins_pass2(Node *jtnode,
 				 * These could only have been introduced by pull_up_sublinks,
 				 * so there's no way that upper quals could refer to their
 				 * righthand sides, and no point in checking.  We don't expect
-				 * to see JOIN_RIGHT_ANTI yet.
+				 * to see JOIN_RIGHT_SEMI or JOIN_RIGHT_ANTI yet.
 				 */
 				break;
 			default:
@@ -3631,7 +3914,7 @@ find_dependent_phvs_walker(Node *node,
 		context->sublevels_up++;
 		result = query_tree_walker((Query *) node,
 								   find_dependent_phvs_walker,
-								   (void *) context, 0);
+								   context, 0);
 		context->sublevels_up--;
 		return result;
 	}
@@ -3640,8 +3923,7 @@ find_dependent_phvs_walker(Node *node,
 	Assert(!IsA(node, PlaceHolderInfo));
 	Assert(!IsA(node, MinMaxAggInfo));
 
-	return expression_tree_walker(node, find_dependent_phvs_walker,
-								  (void *) context);
+	return expression_tree_walker(node, find_dependent_phvs_walker, context);
 }
 
 static bool
@@ -3656,15 +3938,12 @@ find_dependent_phvs(PlannerInfo *root, int varno)
 	context.relids = bms_make_singleton(varno);
 	context.sublevels_up = 0;
 
-	if (query_tree_walker(root->parse,
-						  find_dependent_phvs_walker,
-						  (void *) &context,
-						  0))
+	if (query_tree_walker(root->parse, find_dependent_phvs_walker, &context, 0))
 		return true;
 	/* The append_rel_list could be populated already, so check it too */
 	if (expression_tree_walker((Node *) root->append_rel_list,
 							   find_dependent_phvs_walker,
-							   (void *) &context))
+							   &context))
 		return true;
 	return false;
 }
@@ -3703,10 +3982,7 @@ find_dependent_phvs_in_jointree(PlannerInfo *root, Node *node, int varno)
 		RangeTblEntry *rte = rt_fetch(relid, root->parse->rtable);
 
 		if (rte->lateral &&
-			range_table_entry_walker(rte,
-									 find_dependent_phvs_walker,
-									 (void *) &context,
-									 0))
+			range_table_entry_walker(rte, find_dependent_phvs_walker, &context, 0))
 			return true;
 	}
 
@@ -3763,7 +4039,7 @@ substitute_phv_relids_walker(Node *node,
 		context->sublevels_up++;
 		result = query_tree_walker((Query *) node,
 								   substitute_phv_relids_walker,
-								   (void *) context, 0);
+								   context, 0);
 		context->sublevels_up--;
 		return result;
 	}
@@ -3773,8 +4049,7 @@ substitute_phv_relids_walker(Node *node,
 	Assert(!IsA(node, PlaceHolderInfo));
 	Assert(!IsA(node, MinMaxAggInfo));
 
-	return expression_tree_walker(node, substitute_phv_relids_walker,
-								  (void *) context);
+	return expression_tree_walker(node, substitute_phv_relids_walker, context);
 }
 
 static void
@@ -3791,7 +4066,7 @@ substitute_phv_relids(Node *node, int varno, Relids subrelids)
 	 */
 	query_or_expression_tree_walker(node,
 									substitute_phv_relids_walker,
-									(void *) &context,
+									&context,
 									0);
 }
 
@@ -3968,4 +4243,95 @@ find_jointree_node_for_rel(Node *jtnode, int relid)
 		elog(ERROR, "unrecognized node type: %d",
 			 (int) nodeTag(jtnode));
 	return NULL;
+}
+
+/*
+ * get_nullingrels: collect info about which outer joins null which relations
+ *
+ * The result struct contains, for each leaf relation used in the query,
+ * the set of relids of outer joins that potentially null that rel.
+ */
+static nullingrel_info *
+get_nullingrels(Query *parse)
+{
+	nullingrel_info *result = palloc_object(nullingrel_info);
+
+	result->rtlength = list_length(parse->rtable);
+	result->nullingrels = palloc0_array(Relids, result->rtlength + 1);
+	get_nullingrels_recurse((Node *) parse->jointree, NULL, result);
+	return result;
+}
+
+/*
+ * Recursive guts of get_nullingrels().
+ *
+ * Note: at any recursion level, the passed-down upper_nullingrels must be
+ * treated as a constant, but it can be stored directly into *info
+ * if we're at leaf level.  Upper recursion levels do not free their mutated
+ * copies of the nullingrels, because those are probably referenced by
+ * at least one leaf rel.
+ */
+static void
+get_nullingrels_recurse(Node *jtnode, Relids upper_nullingrels,
+						nullingrel_info *info)
+{
+	if (jtnode == NULL)
+		return;
+	if (IsA(jtnode, RangeTblRef))
+	{
+		int			varno = ((RangeTblRef *) jtnode)->rtindex;
+
+		Assert(varno > 0 && varno <= info->rtlength);
+		info->nullingrels[varno] = upper_nullingrels;
+	}
+	else if (IsA(jtnode, FromExpr))
+	{
+		FromExpr   *f = (FromExpr *) jtnode;
+		ListCell   *l;
+
+		foreach(l, f->fromlist)
+		{
+			get_nullingrels_recurse(lfirst(l), upper_nullingrels, info);
+		}
+	}
+	else if (IsA(jtnode, JoinExpr))
+	{
+		JoinExpr   *j = (JoinExpr *) jtnode;
+		Relids		local_nullingrels;
+
+		switch (j->jointype)
+		{
+			case JOIN_INNER:
+				get_nullingrels_recurse(j->larg, upper_nullingrels, info);
+				get_nullingrels_recurse(j->rarg, upper_nullingrels, info);
+				break;
+			case JOIN_LEFT:
+			case JOIN_SEMI:
+			case JOIN_ANTI:
+				local_nullingrels = bms_add_member(bms_copy(upper_nullingrels),
+												   j->rtindex);
+				get_nullingrels_recurse(j->larg, upper_nullingrels, info);
+				get_nullingrels_recurse(j->rarg, local_nullingrels, info);
+				break;
+			case JOIN_FULL:
+				local_nullingrels = bms_add_member(bms_copy(upper_nullingrels),
+												   j->rtindex);
+				get_nullingrels_recurse(j->larg, local_nullingrels, info);
+				get_nullingrels_recurse(j->rarg, local_nullingrels, info);
+				break;
+			case JOIN_RIGHT:
+				local_nullingrels = bms_add_member(bms_copy(upper_nullingrels),
+												   j->rtindex);
+				get_nullingrels_recurse(j->larg, local_nullingrels, info);
+				get_nullingrels_recurse(j->rarg, upper_nullingrels, info);
+				break;
+			default:
+				elog(ERROR, "unrecognized join type: %d",
+					 (int) j->jointype);
+				break;
+		}
+	}
+	else
+		elog(ERROR, "unrecognized node type: %d",
+			 (int) nodeTag(jtnode));
 }

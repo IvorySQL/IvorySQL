@@ -68,7 +68,10 @@
  */
 #define MAX_BUFFERED_BYTES		65535
 
-/* Trim the list of buffers back down to this number after flushing */
+/*
+ * Trim the list of buffers back down to this number after flushing.  This
+ * must be >= 2.
+ */
 #define MAX_PARTITION_BUFFERS	32
 
 /* Stores multi-insert data related to a single relation in CopyFrom. */
@@ -550,6 +553,13 @@ CopyMultiInsertInfoFlush(CopyMultiInsertInfo *miinfo, ResultRelInfo *curr_rri,
 		 */
 		if (buffer->resultRelInfo == curr_rri)
 		{
+			/*
+			 * The code below would misbehave if we were trying to reduce the
+			 * list to less than two items.
+			 */
+			StaticAssertDecl(MAX_PARTITION_BUFFERS >= 2,
+							 "MAX_PARTITION_BUFFERS must be >= 2");
+
 			miinfo->multiInsertBuffers = list_delete_first(miinfo->multiInsertBuffers);
 			miinfo->multiInsertBuffers = lappend(miinfo->multiInsertBuffers, buffer);
 			buffer = (CopyMultiInsertBuffer *) linitial(miinfo->multiInsertBuffers);
@@ -587,10 +597,12 @@ CopyMultiInsertInfoNextFreeSlot(CopyMultiInsertInfo *miinfo,
 								ResultRelInfo *rri)
 {
 	CopyMultiInsertBuffer *buffer = rri->ri_CopyMultiInsertBuffer;
-	int			nused = buffer->nused;
+	int			nused;
 
 	Assert(buffer != NULL);
-	Assert(nused < MAX_BUFFERED_TUPLES);
+	Assert(buffer->nused < MAX_BUFFERED_TUPLES);
+
+	nused = buffer->nused;
 
 	if (buffer->slots[nused] == NULL)
 		buffer->slots[nused] = table_slot_create(rri->ri_RelationDesc, NULL);
@@ -645,7 +657,6 @@ CopyFrom(CopyFromState cstate)
 	CopyMultiInsertInfo multiInsertInfo = {0};	/* pacify compiler */
 	int64		processed = 0;
 	int64		excluded = 0;
-	int64		skipped = 0;
 	bool		has_before_insert_row_trig;
 	bool		has_instead_insert_row_trig;
 	bool		leafpart_use_multi_insert = false;
@@ -948,7 +959,7 @@ CopyFrom(CopyFromState cstate)
 
 	/* Set up callback to identify error line number */
 	errcallback.callback = CopyFromErrorCallback;
-	errcallback.arg = (void *) cstate;
+	errcallback.arg = cstate;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -992,26 +1003,29 @@ CopyFrom(CopyFromState cstate)
 		if (!NextCopyFrom(cstate, econtext, myslot->tts_values, myslot->tts_isnull))
 			break;
 
-		if (cstate->opts.on_error != COPY_ON_ERROR_STOP &&
+		if (cstate->opts.on_error == COPY_ON_ERROR_IGNORE &&
 			cstate->escontext->error_occurred)
 		{
 			/*
-			 * Soft error occurred, skip this tuple and deal with error
-			 * information according to ON_ERROR.
+			 * Soft error occurred, skip this tuple and just make
+			 * ErrorSaveContext ready for the next NextCopyFrom. Since we
+			 * don't set details_wanted and error_data is not to be filled,
+			 * just resetting error_occurred is enough.
 			 */
-			if (cstate->opts.on_error == COPY_ON_ERROR_IGNORE)
-
-				/*
-				 * Just make ErrorSaveContext ready for the next NextCopyFrom.
-				 * Since we don't set details_wanted and error_data is not to
-				 * be filled, just resetting error_occurred is enough.
-				 */
-				cstate->escontext->error_occurred = false;
+			cstate->escontext->error_occurred = false;
 
 			/* Report that this tuple was skipped by the ON_ERROR clause */
 			pgstat_progress_update_param(PROGRESS_COPY_TUPLES_SKIPPED,
-										 ++skipped);
+										 cstate->num_errors);
 
+			if (cstate->opts.reject_limit > 0 &&
+				cstate->num_errors > cstate->opts.reject_limit)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+						 errmsg("skipped more than REJECT_LIMIT (%lld) rows due to data type incompatibility",
+								(long long) cstate->opts.reject_limit)));
+
+			/* Repeat NextCopyFrom() until no soft error occurs */
 			continue;
 		}
 
@@ -1308,7 +1322,8 @@ CopyFrom(CopyFromState cstate)
 	error_context_stack = errcallback.previous;
 
 	if (cstate->opts.on_error != COPY_ON_ERROR_STOP &&
-		cstate->num_errors > 0)
+		cstate->num_errors > 0 &&
+		cstate->opts.log_verbosity >= COPY_LOG_VERBOSITY_DEFAULT)
 		ereport(NOTICE,
 				errmsg_plural("%llu row was skipped due to data type incompatibility",
 							  "%llu rows were skipped due to data type incompatibility",
@@ -1444,8 +1459,9 @@ BeginCopyFrom(ParseState *pstate,
 			if (!list_member_int(cstate->attnumlist, attnum))
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
-						 errmsg("FORCE_NOT_NULL column \"%s\" not referenced by COPY",
-								NameStr(attr->attname))));
+				/*- translator: first %s is the name of a COPY option, e.g. FORCE_NOT_NULL */
+						 errmsg("%s column \"%s\" not referenced by COPY",
+								"FORCE_NOT_NULL", NameStr(attr->attname))));
 			cstate->opts.force_notnull_flags[attnum - 1] = true;
 		}
 	}
@@ -1486,8 +1502,9 @@ BeginCopyFrom(ParseState *pstate,
 			if (!list_member_int(cstate->attnumlist, attnum))
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
-						 errmsg("FORCE_NULL column \"%s\" not referenced by COPY",
-								NameStr(attr->attname))));
+				/*- translator: first %s is the name of a COPY option, e.g. FORCE_NOT_NULL */
+						 errmsg("%s column \"%s\" not referenced by COPY",
+								"FORCE_NULL", NameStr(attr->attname))));
 			cstate->opts.force_null_flags[attnum - 1] = true;
 		}
 	}

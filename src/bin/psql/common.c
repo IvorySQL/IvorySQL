@@ -1361,15 +1361,8 @@ sendquery_cleanup:
 		pset.gsavepopt = NULL;
 	}
 
-	/* clean up after \bind */
-	if (pset.bind_flag)
-	{
-		for (i = 0; i < pset.bind_nparams; i++)
-			free(pset.bind_params[i]);
-		free(pset.bind_params);
-		pset.bind_params = NULL;
-		pset.bind_flag = false;
-	}
+	/* clean up after extended protocol queries */
+	clean_extended_state();
 
 	/* reset \gset trigger */
 	if (pset.gset_prefix)
@@ -1543,7 +1536,7 @@ ExecQueryAndProcessResults(const char *query,
 						   const printQueryOpt *opt, FILE *printQueryFout)
 {
 	bool		timing = pset.timing;
-	bool		success;
+	bool		success = false;
 	bool		return_early = false;
 	instr_time	before,
 				after;
@@ -1556,10 +1549,32 @@ ExecQueryAndProcessResults(const char *query,
 	else
 		INSTR_TIME_SET_ZERO(before);
 
-	if (pset.bind_flag)
-		success = PQsendQueryParams(pset.db, query, pset.bind_nparams, NULL, (const char * const *) pset.bind_params, NULL, NULL, 0);
-	else
-		success = PQsendQuery(pset.db, query);
+	switch (pset.send_mode)
+	{
+		case PSQL_SEND_EXTENDED_CLOSE:
+			success = PQsendClosePrepared(pset.db, pset.stmtName);
+			break;
+		case PSQL_SEND_EXTENDED_PARSE:
+			success = PQsendPrepare(pset.db, pset.stmtName, query, 0, NULL);
+			break;
+		case PSQL_SEND_EXTENDED_QUERY_PARAMS:
+			Assert(pset.stmtName == NULL);
+			success = PQsendQueryParams(pset.db, query,
+										pset.bind_nparams, NULL,
+										(const char *const *) pset.bind_params,
+										NULL, NULL, 0);
+			break;
+		case PSQL_SEND_EXTENDED_QUERY_PREPARED:
+			Assert(pset.stmtName != NULL);
+			success = PQsendQueryPrepared(pset.db, pset.stmtName,
+										  pset.bind_nparams,
+										  (const char *const *) pset.bind_params,
+										  NULL, NULL, 0);
+			break;
+		case PSQL_SEND_QUERY:
+			success = PQsendQuery(pset.db, query);
+			break;
+	}
 
 	if (!success)
 	{
@@ -1767,7 +1782,7 @@ ExecQueryAndProcessResults(const char *query,
 			{
 				/*
 				 * Display the current chunk of results, unless the output
-				 * stream stopped working or we got cancelled.  We skip use of
+				 * stream stopped working or we got canceled.  We skip use of
 				 * PrintQueryResult and go directly to printQuery, so that we
 				 * can pass the correct is_pager value and because we don't
 				 * want PrintQueryStatus to happen yet.  Above, we rejected
@@ -2337,6 +2352,43 @@ uri_prefix_length(const char *connstr)
 		return sizeof(short_uri_designator) - 1;
 
 	return 0;
+}
+
+/*
+ * Reset state related to extended query protocol
+ *
+ * Clean up any state related to bind parameters, statement name and
+ * PSQL_SEND_MODE.  This needs to be called after processing a query or when
+ * running a new meta-command that uses the extended query protocol, like
+ * \parse, \bind, etc.
+ */
+void
+clean_extended_state(void)
+{
+	int			i;
+
+	switch (pset.send_mode)
+	{
+		case PSQL_SEND_EXTENDED_CLOSE:	/* \close */
+			free(pset.stmtName);
+			break;
+		case PSQL_SEND_EXTENDED_PARSE:	/* \parse */
+			free(pset.stmtName);
+			break;
+		case PSQL_SEND_EXTENDED_QUERY_PARAMS:	/* \bind */
+		case PSQL_SEND_EXTENDED_QUERY_PREPARED: /* \bind_named */
+			for (i = 0; i < pset.bind_nparams; i++)
+				free(pset.bind_params[i]);
+			free(pset.bind_params);
+			free(pset.stmtName);
+			pset.bind_params = NULL;
+			break;
+		case PSQL_SEND_QUERY:
+			break;
+	}
+
+	pset.stmtName = NULL;
+	pset.send_mode = PSQL_SEND_QUERY;
 }
 
 /*

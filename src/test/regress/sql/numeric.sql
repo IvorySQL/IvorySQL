@@ -833,6 +833,31 @@ SELECT i as pow,
 	round((2.5 * 10 ^ i)::numeric, -i)
 FROM generate_series(-5,5) AS t(i);
 
+-- Check limits of rounding before the decimal point
+SELECT round(4.4e131071, -131071) = 4e131071;
+SELECT round(4.5e131071, -131071) = 5e131071;
+SELECT round(4.5e131071, -131072); -- loses all digits
+SELECT round(5.5e131071, -131072); -- rounds up and overflows
+SELECT round(5.5e131071, -131073); -- loses all digits
+SELECT round(5.5e131071, -1000000); -- loses all digits
+
+-- Check limits of rounding after the decimal point
+SELECT round(5e-16383, 1000000) = 5e-16383;
+SELECT round(5e-16383, 16383) = 5e-16383;
+SELECT round(5e-16383, 16382) = 1e-16382;
+SELECT round(5e-16383, 16381) = 0;
+
+-- Check limits of trunc() before the decimal point
+SELECT trunc(9.9e131071, -131071) = 9e131071;
+SELECT trunc(9.9e131071, -131072); -- loses all digits
+SELECT trunc(9.9e131071, -131073);  -- loses all digits
+SELECT trunc(9.9e131071, -1000000);  -- loses all digits
+
+-- Check limits of trunc() after the decimal point
+SELECT trunc(5e-16383, 1000000) = 5e-16383;
+SELECT trunc(5e-16383, 16383) = 5e-16383;
+SELECT trunc(5e-16383, 16382) = 0;
+
 -- Testing for width_bucket(). For convenience, we test both the
 -- numeric and float8 versions of the function in this file.
 
@@ -971,6 +996,7 @@ SELECT to_char(val, E'99999 "text" 9999 "9999" 999 "\\"text between quote marks\
 SELECT to_char(val, '999999SG9999999999')			FROM num_data;
 SELECT to_char(val, 'FM9999999999999999.999999999999999')	FROM num_data;
 SELECT to_char(val, '9.999EEEE')				FROM num_data;
+SELECT to_char(val, 'FMRN')					FROM num_data;
 
 WITH v(val) AS
   (VALUES('0'::numeric),('-4.2'),('4.2e9'),('1.2e-5'),('inf'),('-inf'),('nan'))
@@ -1007,6 +1033,19 @@ SELECT to_char('100'::numeric, 'FM999.9');
 SELECT to_char('100'::numeric, 'FM999.');
 SELECT to_char('100'::numeric, 'FM999');
 SELECT to_char('12345678901'::float8, 'FM9999999999D9999900000000000000000');
+
+SELECT to_char('100'::numeric, 'rn');
+SELECT to_char('1234'::numeric, 'rn');
+SELECT to_char('1235'::float4, 'rn');
+SELECT to_char('1236'::float8, 'rn');
+SELECT to_char('1237'::float8, 'fmrn');
+SELECT to_char('100e9'::numeric, 'RN');
+SELECT to_char('100e9'::float4, 'RN');
+SELECT to_char('100e9'::float8, 'RN');
+
+SELECT to_char(1234.56::numeric, '99999V99');
+SELECT to_char(1234.56::float4, '99999V99');
+SELECT to_char(1234.56::float8, '99999V99');
 
 -- Check parsing of literal text in a format string
 SELECT to_char('100'::numeric, 'foo999');
@@ -1045,6 +1084,7 @@ SELECT to_number('$1,234.56','L99,999.99');
 SELECT to_number('1234.56','L99,999.99');
 SELECT to_number('1,234.56','L99,999.99');
 SELECT to_number('42nd', '99th');
+SELECT to_number('123456', '99999V99');
 RESET lc_numeric;
 
 --
@@ -1185,6 +1225,9 @@ select 12345678901234567890 % 123;
 select 12345678901234567890 / 123;
 select div(12345678901234567890, 123);
 select div(12345678901234567890, 123) * 123 + 12345678901234567890 % 123;
+select 8e9000 - div(8e18000 - 1, 9e9000 - 1) * 9;
+select 7328412092 - div(53705623790171816464 - 1, 7328412092);
+select div(539913372912345678, 539913372912345678);
 
 --
 -- Test some corner cases for square root

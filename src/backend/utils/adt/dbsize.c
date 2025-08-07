@@ -143,7 +143,7 @@ calculate_database_size(Oid dbOid)
 	totalsize = db_dir_size(pathname);
 
 	/* Scan the non-default tablespaces */
-	snprintf(dirpath, MAXPGPATH, "pg_tblspc");
+	snprintf(dirpath, MAXPGPATH, PG_TBLSPC_DIR);
 	dirdesc = AllocateDir(dirpath);
 
 	while ((direntry = ReadDir(dirdesc, dirpath)) != NULL)
@@ -154,8 +154,8 @@ calculate_database_size(Oid dbOid)
 			strcmp(direntry->d_name, "..") == 0)
 			continue;
 
-		snprintf(pathname, sizeof(pathname), "pg_tblspc/%s/%s/%u",
-				 direntry->d_name, TABLESPACE_VERSION_DIRECTORY, dbOid);
+		snprintf(pathname, sizeof(pathname), "%s/%s/%s/%u",
+				 PG_TBLSPC_DIR, direntry->d_name, TABLESPACE_VERSION_DIRECTORY, dbOid);
 		totalsize += db_dir_size(pathname);
 	}
 
@@ -227,7 +227,7 @@ calculate_tablespace_size(Oid tblspcOid)
 	else if (tblspcOid == GLOBALTABLESPACE_OID)
 		snprintf(tblspcPath, MAXPGPATH, "global");
 	else
-		snprintf(tblspcPath, MAXPGPATH, "pg_tblspc/%u/%s", tblspcOid,
+		snprintf(tblspcPath, MAXPGPATH, "%s/%u/%s", PG_TBLSPC_DIR, tblspcOid,
 				 TABLESPACE_VERSION_DIRECTORY);
 
 	dirdesc = AllocateDir(tblspcPath);
@@ -575,9 +575,13 @@ pg_size_pretty(PG_FUNCTION_ARGS)
 	for (unit = size_pretty_units; unit->name != NULL; unit++)
 	{
 		uint8		bits;
+		uint64		abs_size = size < 0 ? 0 - (uint64) size : (uint64) size;
 
-		/* use this unit if there are no more units or we're below the limit */
-		if (unit[1].name == NULL || i64abs(size) < unit->limit)
+		/*
+		 * Use this unit if there are no more units or the absolute size is
+		 * below the limit for the current unit.
+		 */
+		if (unit[1].name == NULL || abs_size < unit->limit)
 		{
 			if (unit->round)
 				size = half_rounded(size);

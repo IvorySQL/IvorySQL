@@ -246,7 +246,7 @@ ginFreeScanKeys(GinScanOpaque so)
 		if (entry->list)
 			pfree(entry->list);
 		if (entry->matchIterator)
-			tbm_end_iterate(entry->matchIterator);
+			tbm_end_private_iterate(entry->matchIterator);
 		if (entry->matchBitmap)
 			tbm_free(entry->matchBitmap);
 	}
@@ -447,10 +447,7 @@ ginrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 	ginFreeScanKeys(so);
 
 	if (scankey && scan->numberOfKeys > 0)
-	{
-		memmove(scan->keyData, scankey,
-				scan->numberOfKeys * sizeof(ScanKeyData));
-	}
+		memcpy(scan->keyData, scankey, scan->numberOfKeys * sizeof(ScanKeyData));
 }
 
 

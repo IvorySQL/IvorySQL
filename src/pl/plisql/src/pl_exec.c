@@ -7591,7 +7591,7 @@ exec_move_row_from_fields(PLiSQL_execstate *estate,
 
 			for (int i = 0; i < tupdesc->natts; i++)
 			{
-				if (strcmp(NameStr(tupdesc->attrs[i].attname), "rowid") == 0)
+				if (strcmp(NameStr(TupleDescAttr(tupdesc, i)->attname), "rowid") == 0)
 					tuphd = DatumGetHeapTupleHeader(values[i]);
 			}
 
@@ -9552,8 +9552,8 @@ plisql_out_param(ExprState *state, ExprEvalStep *op)
 
 		target = estate->datums[paramids[i]];
 
-		valtype = tupdesc->attrs[i].atttypid;
-		valtypmod = tupdesc->attrs[i].atttypmod;
+		valtype = TupleDescAttr(tupdesc, i)->atttypid;
+		valtypmod = TupleDescAttr(tupdesc, i)->atttypmod;
 		value = SPI_getbinval(&tmptup, tupdesc, i + 1, &isnull);
 
 		exec_assign_value(estate, target, value, isnull,

@@ -708,7 +708,7 @@ include_dir 'conf.d'
        </para>
 
        <para>
-        PostgreSQL sizes certain resources based directly on the value of
+        <productname>PostgreSQL</productname> sizes certain resources based directly on the value of
         <varname>max_connections</varname>. Increasing its value leads to
         higher allocation of those resources, including shared memory.
        </para>
@@ -731,7 +731,7 @@ include_dir 'conf.d'
        <para>
         Determines the number of connection <quote>slots</quote> that are
         reserved for connections by roles with privileges of the
-        <link linkend="predefined-roles-table"><literal>pg_use_reserved_connections</literal></link>
+        <xref linkend="predefined-role-pg-use-reserved-connections"/>
         role.  Whenever the number of free connection slots is greater than
         <xref linkend="guc-superuser-reserved-connections"/> but less than or
         equal to the sum of <varname>superuser_reserved_connections</varname>
@@ -1124,6 +1124,14 @@ include_dir 'conf.d'
         mechanism, and hence not work with passwords encrypted with
         SCRAM-SHA-256.  See <xref linkend="auth-password"/> for more details.
        </para>
+       <warning>
+        <para>
+         Support for MD5-encrypted passwords is deprecated and will be removed
+         in a future release of <productname>PostgreSQL</productname>.  Refer
+         to <xref linkend="auth-password"/> for details about migrating to
+         another password type.
+        </para>
+       </warning>
       </listitem>
      </varlistentry>
 
@@ -1340,6 +1348,28 @@ include_dir 'conf.d'
       </listitem>
      </varlistentry>
 
+     <varlistentry id="guc-ssl-tls13-ciphers" xreflabel="ssl_tls13_ciphers">
+      <term><varname>ssl_tls13_ciphers</varname> (<type>string</type>)
+      <indexterm>
+       <primary><varname>ssl_tls13_ciphers</varname> configuration parameter</primary>
+      </indexterm>
+      </term>
+      <listitem>
+       <para>
+        Specifies a list of cipher suites that are allowed by connections using
+        <acronym>TLS</acronym> version 1.3.  Multiple cipher suites can be
+        specified by using a colon separated list. If left blank, the default
+        set of cipher suites in <productname>OpenSSL</productname> will be used.
+       </para>
+
+       <para>
+        This parameter can only be set in the
+        <filename>postgresql.conf</filename> file or on the server command
+        line.
+       </para>
+      </listitem>
+     </varlistentry>
+
      <varlistentry id="guc-ssl-ciphers" xreflabel="ssl_ciphers">
       <term><varname>ssl_ciphers</varname> (<type>string</type>)
       <indexterm>
@@ -1348,15 +1378,13 @@ include_dir 'conf.d'
       </term>
       <listitem>
        <para>
-        Specifies a list of <acronym>SSL</acronym> cipher suites that are
-        allowed to be used by SSL connections.  See the
-        <citerefentry><refentrytitle>ciphers</refentrytitle></citerefentry>
+        Specifies a list of <acronym>SSL</acronym> ciphers that are allowed by
+        connections using TLS version 1.2 and lower, see
+        <xref linkend="guc-ssl-tls13-ciphers"/> for TLS version 1.3 connections. See
+        the <citerefentry><refentrytitle>ciphers</refentrytitle></citerefentry>
         manual page in the <productname>OpenSSL</productname> package for the
-        syntax of this setting and a list of supported values.  Only
-        connections using TLS version 1.2 and lower are affected.  There is
-        currently no setting that controls the cipher choices used by TLS
-        version 1.3 connections.  The default value is
-        <literal>HIGH:MEDIUM:+3DES:!aNULL</literal>.  The default is usually a
+        syntax of this setting and a list of supported values.  The default value
+        is <literal>HIGH:MEDIUM:+3DES:!aNULL</literal>.  The default is usually a
         reasonable choice unless you have specific security requirements.
        </para>
 
@@ -1443,29 +1471,29 @@ include_dir 'conf.d'
        </para>
 
        <para>
-        Older PostgreSQL versions do not have this setting and always use the
-        client's preferences.  This setting is mainly for backward
-        compatibility with those versions.  Using the server's preferences is
-        usually better because it is more likely that the server is appropriately
-        configured.
+        <productname>PostgreSQL</productname> versions before 9.4 do not have
+        this setting and always use the client's preferences.  This setting is
+        mainly for backward compatibility with those versions.  Using the
+        server's preferences is usually better because it is more likely that
+        the server is appropriately configured.
        </para>
       </listitem>
      </varlistentry>
 
-     <varlistentry id="guc-ssl-ecdh-curve" xreflabel="ssl_ecdh_curve">
-      <term><varname>ssl_ecdh_curve</varname> (<type>string</type>)
+     <varlistentry id="guc-ssl-groups" xreflabel="ssl_groups">
+      <term><varname>ssl_groups</varname> (<type>string</type>)
       <indexterm>
-       <primary><varname>ssl_ecdh_curve</varname> configuration parameter</primary>
+       <primary><varname>ssl_groups</varname> configuration parameter</primary>
       </indexterm>
       </term>
       <listitem>
        <para>
         Specifies the name of the curve to use in <acronym>ECDH</acronym> key
         exchange.  It needs to be supported by all clients that connect.
+        Multiple curves can be specified by using a colon-separated list.
         It does not need to be the same curve used by the server's Elliptic
-        Curve key.
-        This parameter can only be set in the <filename>postgresql.conf</filename>
-        file or on the server command line.
+        Curve key.  This parameter can only be set in the
+        <filename>postgresql.conf</filename> file or on the server command line.
         The default is <literal>prime256v1</literal>.
        </para>
 
@@ -1475,9 +1503,16 @@ include_dir 'conf.d'
         <literal>prime256v1</literal> (NIST P-256),
         <literal>secp384r1</literal> (NIST P-384),
         <literal>secp521r1</literal> (NIST P-521).
-        The full list of available curves can be shown with the command
-        <command>openssl ecparam -list_curves</command>.  Not all of them
-        are usable in <acronym>TLS</acronym> though.
+        An incomplete list of available groups can be shown with the command
+        <command>openssl ecparam -list_curves</command>.  Not all of them are
+        usable with <acronym>TLS</acronym> though, and many supported group
+        names and aliases are omitted.
+       </para>
+
+       <para>
+        In <productname>PostgreSQL</productname> versions before 18.0 this
+        setting was named <literal>ssl_ecdh_curve</literal> and only accepted
+        a single value.
        </para>
       </listitem>
      </varlistentry>
@@ -2679,11 +2714,9 @@ include_dir 'conf.d'
         </para>
 
         <para>
-         Asynchronous I/O depends on an effective <function>posix_fadvise</function>
-         function, which some operating systems lack.  If the function is not
-         present then setting this parameter to anything but zero will result
-         in an error.  On some operating systems (e.g., Solaris), the function
-         is present but does not actually do anything.
+         Asynchronous I/O requires that the operating system supports issuing
+         read-ahead advice.  If there is no operating system support then
+         setting this parameter to anything but zero will result in an error.
         </para>
 
         <para>
@@ -2810,7 +2843,7 @@ include_dir 'conf.d'
          Sets the maximum number of parallel workers that can be
          started by a single utility command.  Currently, the parallel
          utility commands that support the use of parallel workers are
-         <command>CREATE INDEX</command> only when building a B-tree index,
+         <command>CREATE INDEX</command> when building a B-tree or BRIN index,
          and <command>VACUUM</command> without <literal>FULL</literal>
          option.  Parallel workers are taken from the pool of processes
          established by <xref linkend="guc-max-worker-processes"/>, limited
@@ -3852,10 +3885,8 @@ include_dir 'conf.d'
         <literal>off</literal>, <literal>on</literal> and
         <literal>try</literal> (the default).  The setting
         <literal>try</literal> enables
-        prefetching only if the operating system provides the
-        <function>posix_fadvise</function> function, which is currently used
-        to implement prefetching.  Note that some operating systems provide the
-        function, but it doesn't do anything.
+        prefetching only if the operating system provides support for issuing
+        read-ahead advice.
        </para>
        <para>
         Prefetching blocks that will soon be needed can reduce I/O wait times
@@ -4318,11 +4349,17 @@ restore_command = 'copy "C:\\server\\archivedir\\%f" "%p"'  # Windows
      <listitem>
       <para>
        Enables the WAL summarizer process. Note that WAL summarization can
-       be enabled either on a primary or on a standby. WAL summarization
-       cannot be enabled when <varname>wal_level</varname> is set to
-       <literal>minimal</literal>.  This parameter can only be set in the
-       <filename>postgresql.conf</filename> file or on the server command line.
-       The default is <literal>off</literal>.
+       be enabled either on a primary or on a standby.  This parameter can only
+       be set in the <filename>postgresql.conf</filename> file or on the server
+       command line.  The default is <literal>off</literal>.
+      </para>
+      <para>
+       The server cannot be started with <literal>summarize_wal=on</literal>
+       if <literal>wal_level</literal> is set to <literal>minimal</literal>. If
+       <literal>summarize_wal=on</literal> is configured after server startup
+       while <literal>wal_level=minimal</literal>, the summarizer will run
+       but refuse to generate summary files for any WAL generated with
+       <literal>wal_level=minimal</literal>.
       </para>
       </listitem>
      </varlistentry>
@@ -4459,7 +4496,9 @@ restore_command = 'copy "C:\\server\\archivedir\\%f" "%p"'  # Windows
 
         <para>
          Note that this parameter also applies on the subscriber side, but with
-         a different meaning.
+         a different meaning. See <xref linkend="guc-max-replication-slots-subscriber"/>
+         in <xref linkend="runtime-config-replication-subscriber"/> for more
+         details.
         </para>
        </listitem>
       </varlistentry>
@@ -4569,10 +4608,10 @@ restore_command = 'copy "C:\\server\\archivedir\\%f" "%p"'  # Windows
       </listitem>
      </varlistentry>
 
-     <varlistentry id="guc-standby-slot-names" xreflabel="standby_slot_names">
-      <term><varname>standby_slot_names</varname> (<type>string</type>)
+     <varlistentry id="guc-synchronized-standby-slots" xreflabel="synchronized_standby_slots">
+      <term><varname>synchronized_standby_slots</varname> (<type>string</type>)
       <indexterm>
-       <primary><varname>standby_slot_names</varname> configuration parameter</primary>
+       <primary><varname>synchronized_standby_slots</varname> configuration parameter</primary>
       </indexterm>
       </term>
       <listitem>
@@ -4587,7 +4626,7 @@ restore_command = 'copy "C:\\server\\archivedir\\%f" "%p"'  # Windows
         after the standby is promoted, the physical replication slot for the
         standby should be listed here. Note that logical replication will not
         proceed if the slots specified in the
-        <varname>standby_slot_names</varname> do not exist or are invalidated.
+        <varname>synchronized_standby_slots</varname> do not exist or are invalidated.
         Additionally, the replication management functions
         <link linkend="pg-replication-slot-advance">
         <function>pg_replication_slot_advance</function></link>,
@@ -4596,12 +4635,12 @@ restore_command = 'copy "C:\\server\\archivedir\\%f" "%p"'  # Windows
         <link linkend="pg-logical-slot-peek-changes">
         <function>pg_logical_slot_peek_changes</function></link>,
         when used with logical failover slots, will block until all
-        physical slots specified in <varname>standby_slot_names</varname> have
+        physical slots specified in <varname>synchronized_standby_slots</varname> have
         confirmed WAL receipt.
        </para>
        <para>
         The standbys corresponding to the physical replication slots in
-        <varname>standby_slot_names</varname> must configure
+        <varname>synchronized_standby_slots</varname> must configure
         <literal>sync_replication_slots = true</literal> so they can receive
         logical failover slot changes from the primary.
        </para>
@@ -5186,7 +5225,9 @@ ANY <replaceable class="parameter">num_sync</replaceable> ( <replaceable class="
 
        <para>
         Note that this parameter also applies on a sending server, but with
-        a different meaning.
+        a different meaning. See <xref linkend="guc-max-replication-slots"/>
+        in <xref linkend="runtime-config-replication-sender"/> for more
+        details.
        </para>
       </listitem>
      </varlistentry>
@@ -5327,6 +5368,20 @@ ANY <replaceable class="parameter">num_sync</replaceable> ( <replaceable class="
       </listitem>
      </varlistentry>
 
+     <varlistentry id="guc-enable-distinct-reordering" xreflabel="enable_distinct_reordering">
+      <term><varname>enable_distinct_reordering</varname> (<type>boolean</type>)
+      <indexterm>
+       <primary><varname>enable_distinct_reordering</varname> configuration parameter</primary>
+      </indexterm>
+      </term>
+      <listitem>
+       <para>
+        Enables or disables the query planner's ability to reorder DISTINCT
+        keys to match the input path's pathkeys. The default is <literal>on</literal>.
+       </para>
+      </listitem>
+     </varlistentry>
+
      <varlistentry id="guc-enable-gathermerge" xreflabel="enable_gathermerge">
       <term><varname>enable_gathermerge</varname> (<type>boolean</type>)
       <indexterm>
@@ -5413,8 +5468,9 @@ ANY <replaceable class="parameter">num_sync</replaceable> ( <replaceable class="
       </term>
       <listitem>
        <para>
-        Enables or disables the query planner's use of index-scan plan
-        types. The default is <literal>on</literal>.
+        Enables or disables the query planner's use of index-scan and
+        index-only-scan plan types.  The default is <literal>on</literal>.
+        Also see <xref linkend="guc-enable-indexonlyscan"/>.
        </para>
       </listitem>
      </varlistentry>
@@ -5429,7 +5485,9 @@ ANY <replaceable class="parameter">num_sync</replaceable> ( <replaceable class="
        <para>
         Enables or disables the query planner's use of index-only-scan plan
         types (see <xref linkend="indexes-index-only-scans"/>).
-        The default is <literal>on</literal>.
+        The default is <literal>on</literal>.  The
+        <xref linkend="guc-enable-indexscan"/> setting must also be
+        enabled to have the query planner consider index-only-scans.
        </para>
       </listitem>
      </varlistentry>
@@ -5561,9 +5619,13 @@ ANY <replaceable class="parameter">num_sync</replaceable> ( <replaceable class="
         joining the matching partitions.  Partitionwise join currently applies
         only when the join conditions include all the partition keys, which
         must be of the same data type and have one-to-one matching sets of
-        child partitions.  Because partitionwise join planning can use
-        significantly more CPU time and memory during planning, the default is
-        <literal>off</literal>.
+        child partitions.  With this setting enabled, the number of nodes
+        whose memory usage is restricted by <varname>work_mem</varname>
+        appearing in the final plan can increase linearly according to the
+        number of partitions being scanned.  This can result in a large
+        increase in overall memory consumption during the execution of the
+        query.  Query planning also becomes significantly more expensive in
+        terms of memory and CPU.  The default value is <literal>off</literal>.
        </para>
       </listitem>
      </varlistentry>
@@ -5581,9 +5643,13 @@ ANY <replaceable class="parameter">num_sync</replaceable> ( <replaceable class="
         tables to be performed separately for each partition.  If the
         <literal>GROUP BY</literal> clause does not include the partition
         keys, only partial aggregation can be performed on a per-partition
-        basis, and finalization must be performed later.  Because
-        partitionwise grouping or aggregation can use significantly more CPU
-        time and memory during planning, the default is
+        basis, and finalization must be performed later.  With this setting
+        enabled, the number of nodes whose memory usage is restricted by
+        <varname>work_mem</varname> appearing in the final plan can increase
+        linearly according to the number of partitions being scanned.  This
+        can result in a large increase in overall memory consumption during
+        the execution of the query.  Query planning also becomes significantly
+        more expensive in terms of memory and CPU.  The default value is
         <literal>off</literal>.
        </para>
       </listitem>
@@ -6412,7 +6478,7 @@ SELECT * FROM parent WHERE key = 2400;
        </para>
        <para>
         If <systemitem>csvlog</systemitem> is included in <varname>log_destination</varname>,
-        log entries are output in <quote>comma separated
+        log entries are output in <quote>comma-separated
         value</quote> (<acronym>CSV</acronym>) format, which is convenient for
         loading logs into programs.
         See <xref linkend="runtime-config-logging-csvlog"/> for details.
@@ -7855,6 +7921,22 @@ log_line_prefix = '%m [%p] %q%u@%d/%a '
       </listitem>
      </varlistentry>
 
+     <varlistentry id="guc-md5-password-warnings" xreflabel="md5_password_warnings">
+      <term><varname>md5_password_warnings</varname> (<type>boolean</type>)
+      <indexterm>
+       <primary><varname>md5_password_warnings</varname> configuration parameter</primary>
+      </indexterm>
+      </term>
+      <listitem>
+       <para>
+        Controls whether a <literal>WARNING</literal> about MD5 password
+        deprecation is produced when a <command>CREATE ROLE</command> or
+        <command>ALTER ROLE</command> statement sets an MD5-encrypted password.
+        The default value is <literal>on</literal>.
+       </para>
+      </listitem>
+     </varlistentry>
+
      </variablelist>
     </sect2>
      <sect2 id="runtime-config-logging-csvlog">
@@ -8319,9 +8401,13 @@ COPY postgres_log FROM '/full/path/to/logfile.csv' WITH csv;
         measure the overhead of timing on your system.
         I/O timing information is
         displayed in <link linkend="monitoring-pg-stat-database-view">
-        <structname>pg_stat_database</structname></link>, in the output of
-        <xref linkend="sql-explain"/> when the <literal>BUFFERS</literal> option
-        is used, in the output of <xref linkend="sql-vacuum"/> when
+        <structname>pg_stat_database</structname></link>,
+        <link linkend="monitoring-pg-stat-io-view">
+        <structname>pg_stat_io</structname></link>, in the output of the
+        <link linkend="pg-stat-get-backend-io">
+        <function>pg_stat_get_backend_io()</function></link> function, in the
+        output of <xref linkend="sql-explain"/> when the <literal>BUFFERS</literal>
+        option is used, in the output of <xref linkend="sql-vacuum"/> when
         the <literal>VERBOSE</literal> option is used, by autovacuum
         for auto-vacuums and auto-analyzes, when <xref
         linkend="guc-log-autovacuum-min-duration"/> is set and by
@@ -9368,7 +9454,7 @@ COPY postgres_log FROM '/full/path/to/logfile.csv' WITH csv;
        <para>
         If <varname>transaction_timeout</varname> is shorter or equal to
         <varname>idle_in_transaction_session_timeout</varname> or <varname>statement_timeout</varname>
-        then the longer timeout is ignored.
+        then the longer timeout is ignored.
        </para>
 
        <para>
@@ -9793,6 +9879,23 @@ SET XML OPTION { DOCUMENT | CONTENT };
        to <literal>true</literal> allows all event triggers to fire, this
        is the default value. Only superusers and users with the appropriate
        <literal>SET</literal> privilege can change this setting.
+      </para>
+     </listitem>
+     </varlistentry>
+
+     <varlistentry id="guc-restrict-nonsystem-relation-kind" xreflabel="restrict_nonsystem_relation_kind">
+      <term><varname>restrict_nonsystem_relation_kind</varname> (<type>string</type>)
+      <indexterm>
+       <primary><varname>restrict_nonsystem_relation_kind</varname></primary>
+       <secondary>configuration parameter</secondary>
+     </indexterm>
+     </term>
+     <listitem>
+      <para>
+       Set relation kinds for which access to non-system relations is prohibited.
+       The value takes the form of a comma-separated list of relation kinds.
+       Currently, the supported relation kinds are <literal>view</literal> and
+       <literal>foreign-table</literal>.
       </para>
      </listitem>
      </varlistentry>
@@ -10809,7 +10912,7 @@ dynamic_library_path = 'C:\tools\postgresql;H:\my_project\lib;$libdir'
         Turning this setting off is intended for environments where the
         configuration of <productname>PostgreSQL</productname> is managed by
         some external tool.
-        In such environments, a well intentioned superuser might
+        In such environments, a well-intentioned superuser might
         <emphasis>mistakenly</emphasis> use <command>ALTER SYSTEM</command>
         to change the configuration instead of using the external tool.
         This might result in unintended behavior, such as the external tool
@@ -11013,7 +11116,9 @@ dynamic_library_path = 'C:\tools\postgresql;H:\my_project\lib;$libdir'
         had at server startup.
         (On Microsoft Windows this parameter will always display
         <literal>0700</literal>.) See
-        <xref linkend="app-initdb-allow-group-access"/> for more information.
+        <link linkend="app-initdb-allow-group-access">the
+        <application>initdb</application> <option>-g</option> option</link>
+        for more information.
        </para>
       </listitem>
      </varlistentry>
@@ -11133,6 +11238,24 @@ dynamic_library_path = 'C:\tools\postgresql;H:\my_project\lib;$libdir'
         Reports the maximum number of index keys. It is determined by
         the value of <literal>INDEX_MAX_KEYS</literal> when building the server. The
         default value is 32 keys.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="guc-num-os-semaphores" xreflabel="num_os_semaphores">
+      <term><varname>num_os_semaphores</varname> (<type>integer</type>)
+      <indexterm>
+       <primary><varname>num_os_semaphores</varname> configuration parameter</primary>
+      </indexterm>
+      </term>
+      <listitem>
+       <para>
+        Reports the number of semaphores that are needed for the server based
+        on the configured number of allowed connections
+        (<xref linkend="guc-max-connections"/>), allowed autovacuum worker
+        processes (<xref linkend="guc-autovacuum-max-workers"/>), allowed WAL
+        sender processes (<xref linkend="guc-max-wal-senders"/>), allowed
+        background processes (<xref linkend="guc-max-worker-processes"/>), etc.
        </para>
       </listitem>
      </varlistentry>
@@ -11391,6 +11514,29 @@ dynamic_library_path = 'C:\tools\postgresql;H:\my_project\lib;$libdir'
       </listitem>
      </varlistentry>
 
+     <varlistentry id="guc-debug-copy-parse-plan-trees" xreflabel="debug_copy_parse_plan_trees">
+      <term><varname>debug_copy_parse_plan_trees</varname> (<type>boolean</type>)
+      <indexterm>
+       <primary><varname>debug_copy_parse_plan_trees</varname> configuration parameter</primary>
+      </indexterm>
+      </term>
+      <listitem>
+       <para>
+        Enabling this forces all parse and plan trees to be passed through
+        <function>copyObject()</function>, to facilitate catching errors and
+        omissions in <function>copyObject()</function>.  The default is off.
+       </para>
+
+       <para>
+        This parameter is only available when
+        <symbol>DEBUG_NODE_TESTS_ENABLED</symbol> was defined at compile time
+        (which happens automatically when using the
+        <application>configure</application> option
+        <option>--enable-cassert</option>).
+       </para>
+      </listitem>
+     </varlistentry>
+
      <varlistentry id="guc-debug-discard-caches" xreflabel="debug_discard_caches">
       <term><varname>debug_discard_caches</varname> (<type>integer</type>)
       <indexterm>
@@ -11506,6 +11652,54 @@ dynamic_library_path = 'C:\tools\postgresql;H:\my_project\lib;$libdir'
       </listitem>
      </varlistentry>
 
+     <varlistentry id="guc-debug-raw-expression-coverage-test" xreflabel="debug_raw_expression_coverage_test">
+      <term><varname>debug_raw_expression_coverage_test</varname> (<type>boolean</type>)
+      <indexterm>
+       <primary><varname>debug_raw_expression_coverage_test</varname> configuration parameter</primary>
+      </indexterm>
+      </term>
+      <listitem>
+       <para>
+        Enabling this forces all raw parse trees for DML statements to be
+        scanned by <function>raw_expression_tree_walker()</function>, to
+        facilitate catching errors and omissions in that function.  The
+        default is off.
+       </para>
+
+       <para>
+        This parameter is only available when
+        <symbol>DEBUG_NODE_TESTS_ENABLED</symbol> was defined at compile time
+        (which happens automatically when using the
+        <application>configure</application> option
+        <option>--enable-cassert</option>).
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="guc-debug-write-read-parse-plan-trees" xreflabel="debug_write_read_parse_plan_trees">
+      <term><varname>debug_write_read_parse_plan_trees</varname> (<type>boolean</type>)
+      <indexterm>
+       <primary><varname>debug_write_read_parse_plan_trees</varname> configuration parameter</primary>
+      </indexterm>
+      </term>
+      <listitem>
+       <para>
+        Enabling this forces all parse and plan trees to be passed through
+        <filename>outfuncs.c</filename>/<filename>readfuncs.c</filename>, to
+        facilitate catching errors and omissions in those modules.  The
+        default is off.
+       </para>
+
+       <para>
+        This parameter is only available when
+        <symbol>DEBUG_NODE_TESTS_ENABLED</symbol> was defined at compile time
+        (which happens automatically when using the
+        <application>configure</application> option
+        <option>--enable-cassert</option>).
+       </para>
+      </listitem>
+     </varlistentry>
+
      <varlistentry id="guc-ignore-system-indexes" xreflabel="ignore_system_indexes">
       <term><varname>ignore_system_indexes</varname> (<type>boolean</type>)
       <indexterm>
@@ -11589,9 +11783,6 @@ dynamic_library_path = 'C:\tools\postgresql;H:\my_project\lib;$libdir'
       <listitem>
        <para>
         If on, emit information about resource usage during sort operations.
-        This parameter is only available if the <symbol>TRACE_SORT</symbol> macro
-        was defined when <productname>PostgreSQL</productname> was compiled.
-        (However, <symbol>TRACE_SORT</symbol> is currently defined by default.)
        </para>
       </listitem>
      </varlistentry>

@@ -412,16 +412,30 @@ numericfail		{decinteger}\.\.
 real			({decinteger}|{numeric})[Ee][-+]?{decinteger}
 realfail		({decinteger}|{numeric})[Ee][-+]
 
-decinteger_junk	{decinteger}{ident_start}
-hexinteger_junk	{hexinteger}{ident_start}
-octinteger_junk	{octinteger}{ident_start}
-bininteger_junk	{bininteger}{ident_start}
-numeric_junk	{numeric}{ident_start}
-real_junk		{real}{ident_start}
-
 /* Positional parameters don't accept underscores. */
 param			\${decdigit}+
-param_junk		\${decdigit}+{ident_start}
+
+/*
+ * An identifier immediately following an integer literal is disallowed because
+ * in some cases it's ambiguous what is meant: for example, 0x1234 could be
+ * either a hexinteger or a decinteger "0" and an identifier "x1234".  We can
+ * detect such problems by seeing if integer_junk matches a longer substring
+ * than any of the XXXinteger patterns (decinteger, hexinteger, octinteger,
+ * bininteger).  One "junk" pattern is sufficient because
+ * {decinteger}{identifier} will match all the same strings we'd match with
+ * {hexinteger}{identifier} etc.
+ *
+ * Note that the rule for integer_junk must appear after the ones for
+ * XXXinteger to make this work correctly: 0x1234 will match both hexinteger
+ * and integer_junk, and we need hexinteger to be chosen in that case.
+ *
+ * Also disallow strings matched by numeric_junk, real_junk and param_junk
+ * for consistency.
+ */
+integer_junk	{decinteger}{identifier}
+numeric_junk	{numeric}{identifier}
+real_junk		{real}{identifier}
+param_junk		\${decdigit}+{identifier}
 
 other			.
 
@@ -992,8 +1006,14 @@ other			.
 				}
 
 {param}			{
+					ErrorSaveContext escontext = {T_ErrorSaveContext};
+					int32		val;
+
 					SET_YYLLOC();
-					yylval->ival = atol(yytext + 1);
+					val = pg_strtoint32_safe(yytext + 1, (Node *) &escontext);
+					if (escontext.error_occurred)
+						yyerror("parameter number too large");
+					yylval->ival = val;
 					return PARAM;
 				}
 {param_junk}	{
@@ -1049,19 +1069,7 @@ other			.
 					SET_YYLLOC();
 					yyerror("trailing junk after numeric literal");
 				}
-{decinteger_junk}	{
-					SET_YYLLOC();
-					yyerror("trailing junk after numeric literal");
-				}
-{hexinteger_junk}	{
-					SET_YYLLOC();
-					yyerror("trailing junk after numeric literal");
-				}
-{octinteger_junk}	{
-					SET_YYLLOC();
-					yyerror("trailing junk after numeric literal");
-				}
-{bininteger_junk}	{
+{integer_junk}	{
 					SET_YYLLOC();
 					yyerror("trailing junk after numeric literal");
 				}
@@ -1197,7 +1205,7 @@ setup_scanner_errposition_callback(ScannerCallbackState *scbstate,
 	scbstate->yyscanner = yyscanner;
 	scbstate->location = location;
 	scbstate->errcallback.callback = scb_error_callback;
-	scbstate->errcallback.arg = (void *) scbstate;
+	scbstate->errcallback.arg = scbstate;
 	scbstate->errcallback.previous = error_context_stack;
 	error_context_stack = &scbstate->errcallback;
 }

@@ -697,9 +697,7 @@ convert_testexpr_mutator(Node *node,
 		 */
 		return node;
 	}
-	return expression_tree_mutator(node,
-								   convert_testexpr_mutator,
-								   (void *) context);
+	return expression_tree_mutator(node, convert_testexpr_mutator, context);
 }
 
 /*
@@ -1121,14 +1119,13 @@ contain_outer_selfref_walker(Node *node, Index *depth)
 		(*depth)++;
 
 		result = query_tree_walker(query, contain_outer_selfref_walker,
-								   (void *) depth, QTW_EXAMINE_RTES_BEFORE);
+								   depth, QTW_EXAMINE_RTES_BEFORE);
 
 		(*depth)--;
 
 		return result;
 	}
-	return expression_tree_walker(node, contain_outer_selfref_walker,
-								  (void *) depth);
+	return expression_tree_walker(node, contain_outer_selfref_walker, depth);
 }
 
 /*
@@ -1539,6 +1536,8 @@ convert_EXISTS_sublink_to_join(PlannerInfo *root, SubLink *sublink,
 static bool
 simplify_EXISTS_query(PlannerInfo *root, Query *query)
 {
+	ListCell   *lc;
+
 	/*
 	 * We don't try to simplify at all if the query uses set operations,
 	 * aggregates, grouping sets, SRFs, modifying CTEs, HAVING, OFFSET, or FOR
@@ -1606,6 +1605,28 @@ simplify_EXISTS_query(PlannerInfo *root, Query *query)
 	query->distinctClause = NIL;
 	query->sortClause = NIL;
 	query->hasDistinctOn = false;
+
+	/*
+	 * Since we have thrown away the GROUP BY clauses, we'd better remove the
+	 * RTE_GROUP RTE and clear the hasGroupRTE flag.
+	 */
+	foreach(lc, query->rtable)
+	{
+		RangeTblEntry *rte = lfirst_node(RangeTblEntry, lc);
+
+		/*
+		 * Remove the RTE_GROUP RTE and clear the hasGroupRTE flag.  (Since
+		 * we'll exit the foreach loop immediately, we don't bother with
+		 * foreach_delete_current.)
+		 */
+		if (rte->rtekind == RTE_GROUP)
+		{
+			Assert(query->hasGroupRTE);
+			query->rtable = list_delete_cell(query->rtable, lc);
+			query->hasGroupRTE = false;
+			break;
+		}
+	}
 
 	return true;
 }
@@ -1903,9 +1924,7 @@ replace_correlation_vars_mutator(Node *node, PlannerInfo *root)
 			return (Node *) replace_outer_merge_support(root,
 														(MergeSupportFunc *) node);
 	}
-	return expression_tree_mutator(node,
-								   replace_correlation_vars_mutator,
-								   (void *) root);
+	return expression_tree_mutator(node, replace_correlation_vars_mutator, root);
 }
 
 /*
@@ -2053,7 +2072,7 @@ process_sublinks_mutator(Node *node, process_sublinks_context *context)
 
 	return expression_tree_mutator(node,
 								   process_sublinks_mutator,
-								   (void *) &locContext);
+								   &locContext);
 }
 
 /*
@@ -2961,8 +2980,7 @@ finalize_primnode(Node *node, finalize_primnode_context *context)
 
 		return false;			/* no more to do here */
 	}
-	return expression_tree_walker(node, finalize_primnode,
-								  (void *) context);
+	return expression_tree_walker(node, finalize_primnode, context);
 }
 
 /*
@@ -2984,8 +3002,7 @@ finalize_agg_primnode(Node *node, finalize_primnode_context *context)
 		finalize_primnode((Node *) agg->aggfilter, context);
 		return false;			/* there can't be any Aggrefs below here */
 	}
-	return expression_tree_walker(node, finalize_agg_primnode,
-								  (void *) context);
+	return expression_tree_walker(node, finalize_agg_primnode, context);
 }
 
 /*

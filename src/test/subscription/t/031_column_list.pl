@@ -1202,9 +1202,10 @@ $result = $node_publisher->safe_psql(
 is( $result, qq(t
 t), 'check the number of columns in the old tuple');
 
-# TEST: Generated and dropped columns are not considered for the column list.
-# So, the publication having a column list except for those columns and a
-# publication without any column (aka all columns as part of the columns
+# TEST: Dropped columns are not considered for the column list, and generated
+# columns are not replicated if they are not explicitly included in the column
+# list. So, the publication having a column list except for those columns and a
+# publication without any column list (aka all columns as part of the columns
 # list) are considered to have the same column list.
 $node_publisher->safe_psql(
 	'postgres', qq(

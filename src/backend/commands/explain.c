@@ -22,6 +22,7 @@
 #include "foreign/fdwapi.h"
 #include "jit/jit.h"
 #include "libpq/pqformat.h"
+#include "libpq/protocol.h"
 #include "nodes/extensible.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
@@ -72,8 +73,7 @@ typedef struct SerializeMetrics
 
 static void ExplainOneQuery(Query *query, int cursorOptions,
 							IntoClause *into, ExplainState *es,
-							const char *queryString, ParamListInfo params,
-							QueryEnvironment *queryEnv);
+							ParseState *pstate, ParamListInfo params);
 static void ExplainPrintJIT(ExplainState *es, int jit_flags,
 							JitInstrumentation *ji);
 static void ExplainPrintSerialize(ExplainState *es,
@@ -121,12 +121,21 @@ static void show_sort_group_keys(PlanState *planstate, const char *qlabel,
 								 List *ancestors, ExplainState *es);
 static void show_sortorder_options(StringInfo buf, Node *sortexpr,
 								   Oid sortOperator, Oid collation, bool nullsFirst);
+static void show_storage_info(char *maxStorageType, int64 maxSpaceUsed,
+							  ExplainState *es);
 static void show_tablesample(TableSampleClause *tsc, PlanState *planstate,
 							 List *ancestors, ExplainState *es);
 static void show_sort_info(SortState *sortstate, ExplainState *es);
 static void show_incremental_sort_info(IncrementalSortState *incrsortstate,
 									   ExplainState *es);
 static void show_hash_info(HashState *hashstate, ExplainState *es);
+static void show_material_info(MaterialState *mstate, ExplainState *es);
+static void show_windowagg_info(WindowAggState *winstate, ExplainState *es);
+static void show_ctescan_info(CteScanState *ctescanstate, ExplainState *es);
+static void show_table_func_scan_info(TableFuncScanState *tscanstate,
+									  ExplainState *es);
+static void show_recursive_union_info(RecursiveUnionState *rstate,
+									  ExplainState *es);
 static void show_memoize_info(MemoizeState *mstate, List *ancestors,
 							  ExplainState *es);
 static void show_hashagg_info(AggState *aggstate, ExplainState *es);
@@ -191,6 +200,7 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
 	List	   *rewritten;
 	ListCell   *lc;
 	bool		timing_set = false;
+	bool		buffers_set = false;
 	bool		summary_set = false;
 
 	/* Parse options list. */
@@ -205,7 +215,10 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
 		else if (strcmp(opt->defname, "costs") == 0)
 			es->costs = defGetBoolean(opt);
 		else if (strcmp(opt->defname, "buffers") == 0)
+		{
+			buffers_set = true;
 			es->buffers = defGetBoolean(opt);
+		}
 		else if (strcmp(opt->defname, "wal") == 0)
 			es->wal = defGetBoolean(opt);
 		else if (strcmp(opt->defname, "settings") == 0)
@@ -280,22 +293,25 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
 	if (es->wal && !es->analyze)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("EXPLAIN option WAL requires ANALYZE")));
+				 errmsg("EXPLAIN option %s requires ANALYZE", "WAL")));
 
 	/* if the timing was not set explicitly, set default value */
 	es->timing = (timing_set) ? es->timing : es->analyze;
+
+	/* if the buffers was not set explicitly, set default value */
+	es->buffers = (buffers_set) ? es->buffers : es->analyze;
 
 	/* check that timing is used with EXPLAIN ANALYZE */
 	if (es->timing && !es->analyze)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("EXPLAIN option TIMING requires ANALYZE")));
+				 errmsg("EXPLAIN option %s requires ANALYZE", "TIMING")));
 
 	/* check that serialize is used with EXPLAIN ANALYZE */
 	if (es->serialize != EXPLAIN_SERIALIZE_NONE && !es->analyze)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("EXPLAIN option SERIALIZE requires ANALYZE")));
+				 errmsg("EXPLAIN option %s requires ANALYZE", "SERIALIZE")));
 
 	/* check that GENERIC_PLAN is not used with EXPLAIN ANALYZE */
 	if (es->generic && es->analyze)
@@ -342,7 +358,7 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
 		{
 			ExplainOneQuery(lfirst_node(Query, l),
 							CURSOR_OPT_PARALLEL_OK, NULL, es,
-							pstate->p_sourcetext, params, pstate->p_queryEnv);
+							pstate, params);
 
 			/* Separate plans with an appropriate separator */
 			if (lnext(rewritten, l) != NULL)
@@ -428,24 +444,22 @@ ExplainResultDesc(ExplainStmt *stmt)
 static void
 ExplainOneQuery(Query *query, int cursorOptions,
 				IntoClause *into, ExplainState *es,
-				const char *queryString, ParamListInfo params,
-				QueryEnvironment *queryEnv)
+				ParseState *pstate, ParamListInfo params)
 {
 	/* planner will not cope with utility statements */
 	if (query->commandType == CMD_UTILITY)
 	{
-		ExplainOneUtility(query->utilityStmt, into, es, queryString, params,
-						  queryEnv);
+		ExplainOneUtility(query->utilityStmt, into, es, pstate, params);
 		return;
 	}
 
 	/* if an advisor plugin is present, let it manage things */
 	if (ExplainOneQuery_hook)
 		(*ExplainOneQuery_hook) (query, cursorOptions, into, es,
-								 queryString, params, queryEnv);
+								 pstate->p_sourcetext, params, pstate->p_queryEnv);
 	else
 		standard_ExplainOneQuery(query, cursorOptions, into, es,
-								 queryString, params, queryEnv);
+								 pstate->p_sourcetext, params, pstate->p_queryEnv);
 }
 
 /*
@@ -526,8 +540,7 @@ standard_ExplainOneQuery(Query *query, int cursorOptions,
  */
 void
 ExplainOneUtility(Node *utilityStmt, IntoClause *into, ExplainState *es,
-				  const char *queryString, ParamListInfo params,
-				  QueryEnvironment *queryEnv)
+				  ParseState *pstate, ParamListInfo params)
 {
 	if (utilityStmt == NULL)
 		return;
@@ -539,7 +552,9 @@ ExplainOneUtility(Node *utilityStmt, IntoClause *into, ExplainState *es,
 		 * ExplainOneQuery.  Copy to be safe in the EXPLAIN EXECUTE case.
 		 */
 		CreateTableAsStmt *ctas = (CreateTableAsStmt *) utilityStmt;
+		Query	   *ctas_query;
 		List	   *rewritten;
+		JumbleState *jstate = NULL;
 
 		/*
 		 * Check if the relation exists or not.  This is done at this stage to
@@ -557,11 +572,16 @@ ExplainOneUtility(Node *utilityStmt, IntoClause *into, ExplainState *es,
 			return;
 		}
 
-		rewritten = QueryRewrite(castNode(Query, copyObject(ctas->query)));
+		ctas_query = castNode(Query, copyObject(ctas->query));
+		if (IsQueryIdEnabled())
+			jstate = JumbleQuery(ctas_query);
+		if (post_parse_analyze_hook)
+			(*post_parse_analyze_hook) (pstate, ctas_query, jstate);
+		rewritten = QueryRewrite(ctas_query);
 		Assert(list_length(rewritten) == 1);
 		ExplainOneQuery(linitial_node(Query, rewritten),
 						CURSOR_OPT_PARALLEL_OK, ctas->into, es,
-						queryString, params, queryEnv);
+						pstate, params);
 	}
 	else if (IsA(utilityStmt, DeclareCursorStmt))
 	{
@@ -574,17 +594,25 @@ ExplainOneUtility(Node *utilityStmt, IntoClause *into, ExplainState *es,
 		 * be created, however.
 		 */
 		DeclareCursorStmt *dcs = (DeclareCursorStmt *) utilityStmt;
+		Query	   *dcs_query;
 		List	   *rewritten;
+		JumbleState *jstate = NULL;
 
-		rewritten = QueryRewrite(castNode(Query, copyObject(dcs->query)));
+		dcs_query = castNode(Query, copyObject(dcs->query));
+		if (IsQueryIdEnabled())
+			jstate = JumbleQuery(dcs_query);
+		if (post_parse_analyze_hook)
+			(*post_parse_analyze_hook) (pstate, dcs_query, jstate);
+
+		rewritten = QueryRewrite(dcs_query);
 		Assert(list_length(rewritten) == 1);
 		ExplainOneQuery(linitial_node(Query, rewritten),
 						dcs->options, NULL, es,
-						queryString, params, queryEnv);
+						pstate, params);
 	}
 	else if (IsA(utilityStmt, ExecuteStmt))
 		ExplainExecuteQuery((ExecuteStmt *) utilityStmt, into, es,
-							queryString, params, queryEnv);
+							pstate, params);
 	else if (IsA(utilityStmt, NotifyStmt))
 	{
 		if (es->format == EXPLAIN_FORMAT_TEXT)
@@ -700,7 +728,7 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 			dir = ForwardScanDirection;
 
 		/* run the plan */
-		ExecutorRun(queryDesc, dir, 0, true);
+		ExecutorRun(queryDesc, dir, 0);
 
 		/* run cleanup too */
 		ExecutorFinish(queryDesc);
@@ -879,6 +907,7 @@ ExplainPrintPlan(ExplainState *es, QueryDesc *queryDesc)
 {
 	Bitmapset  *rels_used = NULL;
 	PlanState  *ps;
+	ListCell   *lc;
 
 	/* Set up ExplainState fields associated with this plan tree */
 	Assert(queryDesc->plannedstmt != NULL);
@@ -889,6 +918,17 @@ ExplainPrintPlan(ExplainState *es, QueryDesc *queryDesc)
 	es->deparse_cxt = deparse_context_for_plan_tree(queryDesc->plannedstmt,
 													es->rtable_names);
 	es->printed_subplans = NULL;
+	es->rtable_size = list_length(es->rtable);
+	foreach(lc, es->rtable)
+	{
+		RangeTblEntry *rte = lfirst_node(RangeTblEntry, lc);
+
+		if (rte->rtekind == RTE_GROUP)
+		{
+			es->rtable_size--;
+			break;
+		}
+	}
 
 	/*
 	 * Sometimes we mark a Gather node as "invisible", which means that it's
@@ -1344,6 +1384,96 @@ ExplainPreScanNode(PlanState *planstate, Bitmapset **rels_used)
 }
 
 /*
+ * plan_is_disabled
+ *		Checks if the given plan node type was disabled during query planning.
+ *		This is evident by the disable_node field being higher than the sum of
+ *		the disabled_node field from the plan's children.
+ */
+static bool
+plan_is_disabled(Plan *plan)
+{
+	int			child_disabled_nodes;
+
+	/* The node is certainly not disabled if this is zero */
+	if (plan->disabled_nodes == 0)
+		return false;
+
+	child_disabled_nodes = 0;
+
+	/*
+	 * Handle special nodes first.  Children of BitmapOrs and BitmapAnds can't
+	 * be disabled, so no need to handle those specifically.
+	 */
+	if (IsA(plan, Append))
+	{
+		ListCell   *lc;
+		Append	   *aplan = (Append *) plan;
+
+		/*
+		 * Sum the Append childrens' disabled_nodes.  This purposefully
+		 * includes any run-time pruned children.  Ignoring those could give
+		 * us the incorrect number of disabled nodes.
+		 */
+		foreach(lc, aplan->appendplans)
+		{
+			Plan	   *subplan = lfirst(lc);
+
+			child_disabled_nodes += subplan->disabled_nodes;
+		}
+	}
+	else if (IsA(plan, MergeAppend))
+	{
+		ListCell   *lc;
+		MergeAppend *maplan = (MergeAppend *) plan;
+
+		/*
+		 * Sum the MergeAppend childrens' disabled_nodes.  This purposefully
+		 * includes any run-time pruned children.  Ignoring those could give
+		 * us the incorrect number of disabled nodes.
+		 */
+		foreach(lc, maplan->mergeplans)
+		{
+			Plan	   *subplan = lfirst(lc);
+
+			child_disabled_nodes += subplan->disabled_nodes;
+		}
+	}
+	else if (IsA(plan, SubqueryScan))
+		child_disabled_nodes += ((SubqueryScan *) plan)->subplan->disabled_nodes;
+	else if (IsA(plan, CustomScan))
+	{
+		ListCell   *lc;
+		CustomScan *cplan = (CustomScan *) plan;
+
+		foreach(lc, cplan->custom_plans)
+		{
+			Plan	   *subplan = lfirst(lc);
+
+			child_disabled_nodes += subplan->disabled_nodes;
+		}
+	}
+	else
+	{
+		/*
+		 * Else, sum up disabled_nodes from the plan's inner and outer side.
+		 */
+		if (outerPlan(plan))
+			child_disabled_nodes += outerPlan(plan)->disabled_nodes;
+		if (innerPlan(plan))
+			child_disabled_nodes += innerPlan(plan)->disabled_nodes;
+	}
+
+	/*
+	 * It's disabled if the plan's disable_nodes is higher than the sum of its
+	 * child's plan disabled_nodes.
+	 */
+	if (plan->disabled_nodes > child_disabled_nodes)
+		return true;
+
+	return false;
+}
+
+/*
  * ExplainNode -
  *	  Appends a description of a plan tree to es->str
  *
@@ -1379,6 +1509,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 	ExplainWorkersState *save_workers_state = es->workers_state;
 	int			save_indent = es->indent;
 	bool		haschildren;
+	bool		isdisabled;
 
 	/*
 	 * Prepare per-worker output buffers, if needed.  We'll append the data in
@@ -1751,6 +1882,9 @@ ExplainNode(PlanState *planstate, List *ancestors,
 					case JOIN_ANTI:
 						jointype = "Anti";
 						break;
+					case JOIN_RIGHT_SEMI:
+						jointype = "Right Semi";
+						break;
 					case JOIN_RIGHT_ANTI:
 						jointype = "Right Anti";
 						break;
@@ -1891,6 +2025,11 @@ ExplainNode(PlanState *planstate, List *ancestors,
 	if (es->format == EXPLAIN_FORMAT_TEXT)
 		appendStringInfoChar(es->str, '\n');
 
+
+	isdisabled = plan_is_disabled(plan);
+	if (es->format != EXPLAIN_FORMAT_TEXT || isdisabled)
+		ExplainPropertyBool("Disabled", isdisabled, es);
+
 	/* prepare per-worker general execution details */
 	if (es->workers_state && es->verbose)
 	{
@@ -2008,8 +2147,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			if (plan->qual)
 				show_instrumentation_count("Rows Removed by Filter", 1,
 										   planstate, es);
-			if (es->analyze)
-				show_tidbitmap_info((BitmapHeapScanState *) planstate, es);
+			show_tidbitmap_info((BitmapHeapScanState *) planstate, es);
 			break;
 		case T_SampleScan:
 			show_tablesample(((SampleScan *) plan)->tablesample,
@@ -2026,6 +2164,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			if (plan->qual)
 				show_instrumentation_count("Rows Removed by Filter", 1,
 										   planstate, es);
+			if (IsA(plan, CteScan))
+				show_ctescan_info(castNode(CteScanState, planstate), es);
 			break;
 		case T_Gather:
 			{
@@ -2107,6 +2247,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			if (plan->qual)
 				show_instrumentation_count("Rows Removed by Filter", 1,
 										   planstate, es);
+			show_table_func_scan_info(castNode(TableFuncScanState,
+											   planstate), es);
 			break;
 		case T_TidScan:
 			{
@@ -2213,6 +2355,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 										   planstate, es);
 			show_upper_qual(((WindowAgg *) plan)->runConditionOrig,
 							"Run Condition", planstate, ancestors, es);
+			show_windowagg_info(castNode(WindowAggState, planstate), es);
 			break;
 		case T_Group:
 			show_group_keys(castNode(GroupState, planstate), ancestors, es);
@@ -2250,9 +2393,16 @@ ExplainNode(PlanState *planstate, List *ancestors,
 		case T_Hash:
 			show_hash_info(castNode(HashState, planstate), es);
 			break;
+		case T_Material:
+			show_material_info(castNode(MaterialState, planstate), es);
+			break;
 		case T_Memoize:
 			show_memoize_info(castNode(MemoizeState, planstate), ancestors,
 							  es);
+			break;
+		case T_RecursiveUnion:
+			show_recursive_union_info(castNode(RecursiveUnionState,
+											   planstate), es);
 			break;
 		default:
 			break;
@@ -2465,7 +2615,7 @@ show_plan_tlist(PlanState *planstate, List *ancestors, ExplainState *es)
 	context = set_deparse_context_plan(es->deparse_cxt,
 									   plan,
 									   ancestors);
-	useprefix = list_length(es->rtable) > 1;
+	useprefix = es->rtable_size > 1;
 
 	/* Deparse each result column (we now include resjunk ones) */
 	foreach(lc, plan->targetlist)
@@ -2549,7 +2699,7 @@ show_upper_qual(List *qual, const char *qlabel,
 {
 	bool		useprefix;
 
-	useprefix = (list_length(es->rtable) > 1 || es->verbose);
+	useprefix = (es->rtable_size > 1 || es->verbose);
 	show_qual(qual, qlabel, planstate, ancestors, useprefix, es);
 }
 
@@ -2639,7 +2789,7 @@ show_grouping_sets(PlanState *planstate, Agg *agg,
 	context = set_deparse_context_plan(es->deparse_cxt,
 									   planstate->plan,
 									   ancestors);
-	useprefix = (list_length(es->rtable) > 1 || es->verbose);
+	useprefix = (es->rtable_size > 1 || es->verbose);
 
 	ExplainOpenGroup("Grouping Sets", "Grouping Sets", false, es);
 
@@ -2779,7 +2929,7 @@ show_sort_group_keys(PlanState *planstate, const char *qlabel,
 	context = set_deparse_context_plan(es->deparse_cxt,
 									   plan,
 									   ancestors);
-	useprefix = (list_length(es->rtable) > 1 || es->verbose);
+	useprefix = (es->rtable_size > 1 || es->verbose);
 
 	for (keyno = 0; keyno < nkeys; keyno++)
 	{
@@ -2874,6 +3024,29 @@ show_sortorder_options(StringInfo buf, Node *sortexpr,
 }
 
 /*
+ * Show information on storage method and maximum memory/disk space used.
+ */
+static void
+show_storage_info(char *maxStorageType, int64 maxSpaceUsed, ExplainState *es)
+{
+	int64		maxSpaceUsedKB = BYTES_TO_KILOBYTES(maxSpaceUsed);
+
+	if (es->format != EXPLAIN_FORMAT_TEXT)
+	{
+		ExplainPropertyText("Storage", maxStorageType, es);
+		ExplainPropertyInteger("Maximum Storage", "kB", maxSpaceUsedKB, es);
+	}
+	else
+	{
+		ExplainIndentText(es);
+		appendStringInfo(es->str,
+						 "Storage: %s  Maximum Storage: " INT64_FORMAT "kB\n",
+						 maxStorageType,
+						 maxSpaceUsedKB);
+	}
+}
+
+/*
  * Show TABLESAMPLE properties
  */
 static void
@@ -2891,7 +3064,7 @@ show_tablesample(TableSampleClause *tsc, PlanState *planstate,
 	context = set_deparse_context_plan(es->deparse_cxt,
 									   planstate->plan,
 									   ancestors);
-	useprefix = list_length(es->rtable) > 1;
+	useprefix = es->rtable_size > 1;
 
 	/* Get the tablesample method name */
 	method_name = get_func_name(tsc->tsmhandler);
@@ -3322,6 +3495,122 @@ show_hash_info(HashState *hashstate, ExplainState *es)
 }
 
 /*
+ * Show information on material node, storage method and maximum memory/disk
+ * space used.
+ */
+static void
+show_material_info(MaterialState *mstate, ExplainState *es)
+{
+	char	   *maxStorageType;
+	int64		maxSpaceUsed;
+
+	Tuplestorestate *tupstore = mstate->tuplestorestate;
+
+	/*
+	 * Nothing to show if ANALYZE option wasn't used or if execution didn't
+	 * get as far as creating the tuplestore.
+	 */
+	if (!es->analyze || tupstore == NULL)
+		return;
+
+	tuplestore_get_stats(tupstore, &maxStorageType, &maxSpaceUsed);
+	show_storage_info(maxStorageType, maxSpaceUsed, es);
+}
+
+/*
+ * Show information on WindowAgg node, storage method and maximum memory/disk
+ * space used.
+ */
+static void
+show_windowagg_info(WindowAggState *winstate, ExplainState *es)
+{
+	char	   *maxStorageType;
+	int64		maxSpaceUsed;
+
+	Tuplestorestate *tupstore = winstate->buffer;
+
+	/*
+	 * Nothing to show if ANALYZE option wasn't used or if execution didn't
+	 * get as far as creating the tuplestore.
+	 */
+	if (!es->analyze || tupstore == NULL)
+		return;
+
+	tuplestore_get_stats(tupstore, &maxStorageType, &maxSpaceUsed);
+	show_storage_info(maxStorageType, maxSpaceUsed, es);
+}
+
+/*
+ * Show information on CTE Scan node, storage method and maximum memory/disk
+ * space used.
+ */
+static void
+show_ctescan_info(CteScanState *ctescanstate, ExplainState *es)
+{
+	char	   *maxStorageType;
+	int64		maxSpaceUsed;
+
+	Tuplestorestate *tupstore = ctescanstate->leader->cte_table;
+
+	if (!es->analyze || tupstore == NULL)
+		return;
+
+	tuplestore_get_stats(tupstore, &maxStorageType, &maxSpaceUsed);
+	show_storage_info(maxStorageType, maxSpaceUsed, es);
+}
+
+/*
+ * Show information on Table Function Scan node, storage method and maximum
+ * memory/disk space used.
+ */
+static void
+show_table_func_scan_info(TableFuncScanState *tscanstate, ExplainState *es)
+{
+	char	   *maxStorageType;
+	int64		maxSpaceUsed;
+
+	Tuplestorestate *tupstore = tscanstate->tupstore;
+
+	if (!es->analyze || tupstore == NULL)
+		return;
+
+	tuplestore_get_stats(tupstore, &maxStorageType, &maxSpaceUsed);
+	show_storage_info(maxStorageType, maxSpaceUsed, es);
+}
+
+/*
+ * Show information on Recursive Union node, storage method and maximum
+ * memory/disk space used.
+ */
+static void
+show_recursive_union_info(RecursiveUnionState *rstate, ExplainState *es)
+{
+	char	   *maxStorageType,
+			   *tempStorageType;
+	int64		maxSpaceUsed,
+				tempSpaceUsed;
+
+	if (!es->analyze)
+		return;
+
+	/*
+	 * Recursive union node uses two tuplestores.  We employ the storage type
+	 * from one of them which consumed more memory/disk than the other.  The
+	 * storage size is sum of the two.
+	 */
+	tuplestore_get_stats(rstate->working_table, &tempStorageType,
+						 &tempSpaceUsed);
+	tuplestore_get_stats(rstate->intermediate_table, &maxStorageType,
+						 &maxSpaceUsed);
+
+	if (tempSpaceUsed > maxSpaceUsed)
+		maxStorageType = tempStorageType;
+
+	maxSpaceUsed += tempSpaceUsed;
+	show_storage_info(maxStorageType, maxSpaceUsed, es);
+}
+
+/*
  * Show information on memoize hits/misses/evictions and memory usage.
  */
 static void
@@ -3341,7 +3630,7 @@ show_memoize_info(MemoizeState *mstate, List *ancestors, ExplainState *es)
 	 * It's hard to imagine having a memoize node with fewer than 2 RTEs, but
 	 * let's just keep the same useprefix logic as elsewhere in this file.
 	 */
-	useprefix = list_length(es->rtable) > 1 || es->verbose;
+	useprefix = es->rtable_size > 1 || es->verbose;
 
 	/* Set up deparsing context */
 	context = set_deparse_context_plan(es->deparse_cxt,
@@ -3587,29 +3876,68 @@ show_hashagg_info(AggState *aggstate, ExplainState *es)
 }
 
 /*
- * If it's EXPLAIN ANALYZE, show exact/lossy pages for a BitmapHeapScan node
+ * Show exact/lossy pages for a BitmapHeapScan node
  */
 static void
 show_tidbitmap_info(BitmapHeapScanState *planstate, ExplainState *es)
 {
+	if (!es->analyze)
+		return;
+
 	if (es->format != EXPLAIN_FORMAT_TEXT)
 	{
-		ExplainPropertyInteger("Exact Heap Blocks", NULL,
-							   planstate->exact_pages, es);
-		ExplainPropertyInteger("Lossy Heap Blocks", NULL,
-							   planstate->lossy_pages, es);
+		ExplainPropertyUInteger("Exact Heap Blocks", NULL,
+								planstate->stats.exact_pages, es);
+		ExplainPropertyUInteger("Lossy Heap Blocks", NULL,
+								planstate->stats.lossy_pages, es);
 	}
 	else
 	{
-		if (planstate->exact_pages > 0 || planstate->lossy_pages > 0)
+		if (planstate->stats.exact_pages > 0 || planstate->stats.lossy_pages > 0)
 		{
 			ExplainIndentText(es);
 			appendStringInfoString(es->str, "Heap Blocks:");
-			if (planstate->exact_pages > 0)
-				appendStringInfo(es->str, " exact=%ld", planstate->exact_pages);
-			if (planstate->lossy_pages > 0)
-				appendStringInfo(es->str, " lossy=%ld", planstate->lossy_pages);
+			if (planstate->stats.exact_pages > 0)
+				appendStringInfo(es->str, " exact=" UINT64_FORMAT, planstate->stats.exact_pages);
+			if (planstate->stats.lossy_pages > 0)
+				appendStringInfo(es->str, " lossy=" UINT64_FORMAT, planstate->stats.lossy_pages);
 			appendStringInfoChar(es->str, '\n');
+		}
+	}
+
+	/* Display stats for each parallel worker */
+	if (planstate->pstate != NULL)
+	{
+		for (int n = 0; n < planstate->sinstrument->num_workers; n++)
+		{
+			BitmapHeapScanInstrumentation *si = &planstate->sinstrument->sinstrument[n];
+
+			if (si->exact_pages == 0 && si->lossy_pages == 0)
+				continue;
+
+			if (es->workers_state)
+				ExplainOpenWorker(n, es);
+
+			if (es->format == EXPLAIN_FORMAT_TEXT)
+			{
+				ExplainIndentText(es);
+				appendStringInfoString(es->str, "Heap Blocks:");
+				if (si->exact_pages > 0)
+					appendStringInfo(es->str, " exact=" UINT64_FORMAT, si->exact_pages);
+				if (si->lossy_pages > 0)
+					appendStringInfo(es->str, " lossy=" UINT64_FORMAT, si->lossy_pages);
+				appendStringInfoChar(es->str, '\n');
+			}
+			else
+			{
+				ExplainPropertyUInteger("Exact Heap Blocks", NULL,
+										si->exact_pages, es);
+				ExplainPropertyUInteger("Lossy Heap Blocks", NULL,
+										si->lossy_pages, es);
+			}
+
+			if (es->workers_state)
+				ExplainCloseWorker(n, es);
 		}
 	}
 }
@@ -5429,7 +5757,7 @@ serializeAnalyzeReceive(TupleTableSlot *slot, DestReceiver *self)
 	 * Note that we fill a StringInfo buffer the same as printtup() does, so
 	 * as to capture the costs of manipulating the strings accurately.
 	 */
-	pq_beginmessage_reuse(buf, 'D');
+	pq_beginmessage_reuse(buf, PqMsg_DataRow);
 
 	pq_sendint16(buf, natts);
 

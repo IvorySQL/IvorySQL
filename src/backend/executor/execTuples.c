@@ -190,7 +190,7 @@ tts_virtual_materialize(TupleTableSlot *slot)
 	/* compute size of memory required */
 	for (int natt = 0; natt < desc->natts; natt++)
 	{
-		Form_pg_attribute att = TupleDescAttr(desc, natt);
+		CompactAttribute *att = TupleDescCompactAttr(desc, natt);
 		Datum		val;
 
 		if (att->attbyval || slot->tts_isnull[natt])
@@ -205,12 +205,12 @@ tts_virtual_materialize(TupleTableSlot *slot)
 			 * We want to flatten the expanded value so that the materialized
 			 * slot doesn't depend on it.
 			 */
-			sz = att_align_nominal(sz, att->attalign);
+			sz = att_nominal_alignby(sz, att->attalignby);
 			sz += EOH_get_flat_size(DatumGetEOHP(val));
 		}
 		else
 		{
-			sz = att_align_nominal(sz, att->attalign);
+			sz = att_nominal_alignby(sz, att->attalignby);
 			sz = att_addlength_datum(sz, att->attlen, val);
 		}
 	}
@@ -226,7 +226,7 @@ tts_virtual_materialize(TupleTableSlot *slot)
 	/* and copy all attributes into the pre-allocated space */
 	for (int natt = 0; natt < desc->natts; natt++)
 	{
-		Form_pg_attribute att = TupleDescAttr(desc, natt);
+		CompactAttribute *att = TupleDescCompactAttr(desc, natt);
 		Datum		val;
 
 		if (att->attbyval || slot->tts_isnull[natt])
@@ -245,8 +245,8 @@ tts_virtual_materialize(TupleTableSlot *slot)
 			 */
 			ExpandedObjectHeader *eoh = DatumGetEOHP(val);
 
-			data = (char *) att_align_nominal(data,
-											  att->attalign);
+			data = (char *) att_nominal_alignby(data,
+												att->attalignby);
 			data_length = EOH_get_flat_size(eoh);
 			EOH_flatten_into(eoh, data, data_length);
 
@@ -257,7 +257,7 @@ tts_virtual_materialize(TupleTableSlot *slot)
 		{
 			Size		data_length = 0;
 
-			data = (char *) att_align_nominal(data, att->attalign);
+			data = (char *) att_nominal_alignby(data, att->attalignby);
 			data_length = att_addlength_datum(data_length, att->attlen, val);
 
 			memcpy(data, DatumGetPointer(val), data_length);
@@ -1047,7 +1047,7 @@ slot_deform_heap_tuple(TupleTableSlot *slot, HeapTuple tuple, uint32 *offp,
 
 	for (; attnum < natts; attnum++)
 	{
-		Form_pg_attribute thisatt = TupleDescAttr(tupleDesc, attnum);
+		CompactAttribute *thisatt = TupleDescCompactAttr(tupleDesc, attnum);
 
 		if (hasnulls && att_isnull(attnum, bp))
 		{
@@ -1070,19 +1070,19 @@ slot_deform_heap_tuple(TupleTableSlot *slot, HeapTuple tuple, uint32 *offp,
 			 * an aligned or unaligned value.
 			 */
 			if (!slow &&
-				off == att_align_nominal(off, thisatt->attalign))
+				off == att_nominal_alignby(off, thisatt->attalignby))
 				thisatt->attcacheoff = off;
 			else
 			{
-				off = att_align_pointer(off, thisatt->attalign, -1,
-										tp + off);
+				off = att_pointer_alignby(off, thisatt->attalignby, -1,
+										  tp + off);
 				slow = true;
 			}
 		}
 		else
 		{
-			/* not varlena, so safe to use att_align_nominal */
-			off = att_align_nominal(off, thisatt->attalign);
+			/* not varlena, so safe to use att_nominal_alignby */
+			off = att_nominal_alignby(off, thisatt->attalignby);
 
 			if (!slow)
 				thisatt->attcacheoff = off;
@@ -2283,7 +2283,7 @@ BuildTupleFromCStrings(AttInMetadata *attinmeta, char **values)
 	 */
 	for (i = 0; i < natts; i++)
 	{
-		if (!TupleDescAttr(tupdesc, i)->attisdropped)
+		if (!TupleDescCompactAttr(tupdesc, i)->attisdropped)
 		{
 			/* Non-dropped attributes */
 			dvalues[i] = InputFunctionCall(&attinmeta->attinfuncs[i],

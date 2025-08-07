@@ -23,7 +23,7 @@
 #include "catalog/pg_type.h"
 #include "funcapi.h"
 #include "nodes/makefuncs.h"
-#include "parser/parse_type.h"
+#include "parser/parse_node.h"
 #include "plpgsql.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
@@ -31,7 +31,6 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/regproc.h"
-#include "utils/rel.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 
@@ -230,7 +229,7 @@ recheck:
 	/*
 	 * Save pointer in FmgrInfo to avoid search on subsequent calls
 	 */
-	fcinfo->flinfo->fn_extra = (void *) function;
+	fcinfo->flinfo->fn_extra = function;
 
 	/*
 	 * Finally return the compiled function
@@ -1080,7 +1079,7 @@ plpgsql_parser_setup(struct ParseState *pstate, PLpgSQL_expr *expr)
 	pstate->p_post_columnref_hook = plpgsql_post_column_ref;
 	pstate->p_paramref_hook = plpgsql_param_ref;
 	/* no need to use p_coerce_param_hook */
-	pstate->p_ref_hook_state = (void *) expr;
+	pstate->p_ref_hook_state = expr;
 }
 
 /*

@@ -80,9 +80,10 @@
  */
 static SnapshotData CurrentSnapshotData = {SNAPSHOT_MVCC};
 static SnapshotData SecondarySnapshotData = {SNAPSHOT_MVCC};
-SnapshotData CatalogSnapshotData = {SNAPSHOT_MVCC};
+static SnapshotData CatalogSnapshotData = {SNAPSHOT_MVCC};
 SnapshotData SnapshotSelfData = {SNAPSHOT_SELF};
 SnapshotData SnapshotAnyData = {SNAPSHOT_ANY};
+SnapshotData SnapshotToastData = {SNAPSHOT_TOAST};
 
 /* Pointers to valid snapshots */
 static Snapshot CurrentSnapshot = NULL;
@@ -118,9 +119,6 @@ typedef struct ActiveSnapshotElt
 
 /* Top of the stack of active snapshots */
 static ActiveSnapshotElt *ActiveSnapshot = NULL;
-
-/* Bottom of the stack of active snapshots */
-static ActiveSnapshotElt *OldestActiveSnapshot = NULL;
 
 /*
  * Currently registered Snapshots.  Ordered in a heap by xmin, so that we can
@@ -199,8 +197,6 @@ typedef struct SerializedSnapshotData
 	bool		suboverflowed;
 	bool		takenDuringRecovery;
 	CommandId	curcid;
-	TimestampTz whenTaken;
-	XLogRecPtr	lsn;
 } SerializedSnapshotData;
 
 /*
@@ -216,16 +212,12 @@ Snapshot
 GetTransactionSnapshot(void)
 {
 	/*
-	 * Return historic snapshot if doing logical decoding. We'll never need a
-	 * non-historic transaction snapshot in this (sub-)transaction, so there's
-	 * no need to be careful to set one up for later calls to
-	 * GetTransactionSnapshot().
+	 * This should not be called while doing logical decoding.  Historic
+	 * snapshots are only usable for catalog access, not for general-purpose
+	 * queries.
 	 */
 	if (HistoricSnapshotActive())
-	{
-		Assert(!FirstSnapshotSet);
-		return HistoricSnapshot;
-	}
+		elog(ERROR, "cannot take query snapshot during logical decoding");
 
 	/* First call in transaction? */
 	if (!FirstSnapshotSet)
@@ -311,36 +303,6 @@ GetLatestSnapshot(void)
 	SecondarySnapshot = GetSnapshotData(&SecondarySnapshotData);
 
 	return SecondarySnapshot;
-}
-
-/*
- * GetOldestSnapshot
- *
- *		Get the transaction's oldest known snapshot, as judged by the LSN.
- *		Will return NULL if there are no active or registered snapshots.
- */
-Snapshot
-GetOldestSnapshot(void)
-{
-	Snapshot	OldestRegisteredSnapshot = NULL;
-	XLogRecPtr	RegisteredLSN = InvalidXLogRecPtr;
-
-	if (!pairingheap_is_empty(&RegisteredSnapshots))
-	{
-		OldestRegisteredSnapshot = pairingheap_container(SnapshotData, ph_node,
-														 pairingheap_first(&RegisteredSnapshots));
-		RegisteredLSN = OldestRegisteredSnapshot->lsn;
-	}
-
-	if (OldestActiveSnapshot != NULL)
-	{
-		XLogRecPtr	ActiveLSN = OldestActiveSnapshot->as_snap->lsn;
-
-		if (XLogRecPtrIsInvalid(RegisteredLSN) || RegisteredLSN > ActiveLSN)
-			return OldestActiveSnapshot->as_snap;
-	}
-
-	return OldestRegisteredSnapshot;
 }
 
 /*
@@ -684,8 +646,6 @@ PushActiveSnapshotWithLevel(Snapshot snapshot, int snap_level)
 	newactive->as_snap->active_count++;
 
 	ActiveSnapshot = newactive;
-	if (OldestActiveSnapshot == NULL)
-		OldestActiveSnapshot = ActiveSnapshot;
 }
 
 /*
@@ -756,8 +716,6 @@ PopActiveSnapshot(void)
 
 	pfree(ActiveSnapshot);
 	ActiveSnapshot = newstack;
-	if (ActiveSnapshot == NULL)
-		OldestActiveSnapshot = NULL;
 
 	SnapshotResetXmin();
 }
@@ -902,13 +860,6 @@ xmin_cmp(const pairingheap_node *a, const pairingheap_node *b, void *arg)
  * dropped.  For efficiency, we only consider recomputing PGPROC->xmin when
  * the active snapshot stack is empty; this allows us not to need to track
  * which active snapshot is oldest.
- *
- * Note: it's tempting to use GetOldestSnapshot() here so that we can include
- * active snapshots in the calculation.  However, that compares by LSN not
- * xmin so it's not entirely clear that it's the same thing.  Also, we'd be
- * critically dependent on the assumption that the bottommost active snapshot
- * stack entry has the oldest xmin.  (Current uses of GetOldestSnapshot() are
- * not actually critical, but this would be.)
  */
 static void
 SnapshotResetXmin(void)
@@ -920,7 +871,7 @@ SnapshotResetXmin(void)
 
 	if (pairingheap_is_empty(&RegisteredSnapshots))
 	{
-		MyProc->xmin = InvalidTransactionId;
+		MyProc->xmin = TransactionXmin = InvalidTransactionId;
 		return;
 	}
 
@@ -928,7 +879,7 @@ SnapshotResetXmin(void)
 										pairingheap_first(&RegisteredSnapshots));
 
 	if (TransactionIdPrecedes(MyProc->xmin, minSnapshot->xmin))
-		MyProc->xmin = minSnapshot->xmin;
+		MyProc->xmin = TransactionXmin = minSnapshot->xmin;
 }
 
 /*
@@ -980,8 +931,6 @@ AtSubAbort_Snapshot(int level)
 		pfree(ActiveSnapshot);
 
 		ActiveSnapshot = next;
-		if (ActiveSnapshot == NULL)
-			OldestActiveSnapshot = NULL;
 	}
 
 	SnapshotResetXmin();
@@ -1065,7 +1014,6 @@ AtEOXact_Snapshot(bool isCommit, bool resetXmin)
 	 * it'll go away with TopTransactionContext.
 	 */
 	ActiveSnapshot = NULL;
-	OldestActiveSnapshot = NULL;
 	pairingheap_reset(&RegisteredSnapshots);
 
 	CurrentSnapshot = NULL;
@@ -1727,8 +1675,6 @@ SerializeSnapshot(Snapshot snapshot, char *start_address)
 	serialized_snapshot.suboverflowed = snapshot->suboverflowed;
 	serialized_snapshot.takenDuringRecovery = snapshot->takenDuringRecovery;
 	serialized_snapshot.curcid = snapshot->curcid;
-	serialized_snapshot.whenTaken = snapshot->whenTaken;
-	serialized_snapshot.lsn = snapshot->lsn;
 
 	/*
 	 * Ignore the SubXID array if it has overflowed, unless the snapshot was
@@ -1801,8 +1747,6 @@ RestoreSnapshot(char *start_address)
 	snapshot->suboverflowed = serialized_snapshot.suboverflowed;
 	snapshot->takenDuringRecovery = serialized_snapshot.takenDuringRecovery;
 	snapshot->curcid = serialized_snapshot.curcid;
-	snapshot->whenTaken = serialized_snapshot.whenTaken;
-	snapshot->lsn = serialized_snapshot.lsn;
 	snapshot->snapXactCompletionCount = 0;
 
 	/* Copy XIDs, if present. */

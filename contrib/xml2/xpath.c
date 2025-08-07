@@ -11,7 +11,6 @@
 #include "fmgr.h"
 #include "funcapi.h"
 #include "lib/stringinfo.h"
-#include "miscadmin.h"
 #include "utils/builtins.h"
 #include "utils/xml.h"
 
@@ -386,9 +385,9 @@ pgxml_xpath(text *document, xmlChar *xpath, xpath_workspace *workspace)
 			workspace->ctxt->node = xmlDocGetRootElement(workspace->doctree);
 
 			/* compile the path */
-			comppath = xmlXPathCompile(xpath);
+			comppath = xmlXPathCtxtCompile(workspace->ctxt, xpath);
 			if (comppath == NULL)
-				xml_ereport(xmlerrcxt, ERROR, ERRCODE_EXTERNAL_ROUTINE_EXCEPTION,
+				xml_ereport(xmlerrcxt, ERROR, ERRCODE_INVALID_ARGUMENT_FOR_XQUERY,
 							"XPath Syntax Error");
 
 			/* Now evaluate the path expression. */
@@ -560,8 +559,7 @@ xpath_table(PG_FUNCTION_ARGS)
 					 relname,
 					 condition);
 
-	if ((ret = SPI_connect()) < 0)
-		elog(ERROR, "xpath_table: SPI_connect returned %d", ret);
+	SPI_connect();
 
 	if ((ret = SPI_exec(query_buf.data, 0)) != SPI_OK_SELECT)
 		elog(ERROR, "xpath_table: SPI execution failed for query %s",
@@ -650,10 +648,10 @@ xpath_table(PG_FUNCTION_ARGS)
 						ctxt->node = xmlDocGetRootElement(doctree);
 
 						/* compile the path */
-						comppath = xmlXPathCompile(xpaths[j]);
+						comppath = xmlXPathCtxtCompile(ctxt, xpaths[j]);
 						if (comppath == NULL)
 							xml_ereport(xmlerrcxt, ERROR,
-										ERRCODE_EXTERNAL_ROUTINE_EXCEPTION,
+										ERRCODE_INVALID_ARGUMENT_FOR_XQUERY,
 										"XPath Syntax Error");
 
 						/* Now evaluate the path expression. */

@@ -21,11 +21,14 @@
 #ifndef SHMEM_H
 #define SHMEM_H
 
+#include "storage/spin.h"
 #include "utils/hsearch.h"
 
 
 /* shmem.c */
-extern void InitShmemAccess(void *seghdr);
+extern PGDLLIMPORT slock_t *ShmemLock;
+struct PGShmemHeader;			/* avoid including storage/pg_shmem.h here */
+extern void InitShmemAccess(struct PGShmemHeader *seghdr);
 extern void InitShmemAllocation(void);
 extern void *ShmemAlloc(Size size);
 extern void *ShmemAllocNoError(Size size);

@@ -1076,6 +1076,9 @@ ExecParallelRetrieveInstrumentation(PlanState *planstate,
 		case T_MemoizeState:
 			ExecMemoizeRetrieveInstrumentation((MemoizeState *) planstate);
 			break;
+		case T_BitmapHeapScanState:
+			ExecBitmapHeapRetrieveInstrumentation((BitmapHeapScanState *) planstate);
+			break;
 		default:
 			break;
 	}
@@ -1468,8 +1471,7 @@ ParallelQueryMain(dsm_segment *seg, shm_toc *toc)
 	 */
 	ExecutorRun(queryDesc,
 				ForwardScanDirection,
-				fpes->tuples_needed < 0 ? (int64) 0 : fpes->tuples_needed,
-				true);
+				fpes->tuples_needed < 0 ? (int64) 0 : fpes->tuples_needed);
 
 	/* Shut down the executor */
 	ExecutorFinish(queryDesc);

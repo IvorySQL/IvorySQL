@@ -1670,7 +1670,10 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 			/*
 			 * The parser allows this, but it is only for identity columns, in
 			 * which case it is filtered out in parse_utilcmd.c.  We only get
-			 * here if someone puts it into a CREATE SEQUENCE.
+			 * here if someone puts it into a CREATE SEQUENCE, where it'd be
+			 * redundant.  (The same is true for the equally-nonstandard
+			 * LOGGED and UNLOGGED options, but for those, the default error
+			 * below seems sufficient.)
 			 */
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
@@ -2593,6 +2596,66 @@ pg_sequence_parameters(PG_FUNCTION_ARGS)
 	return HeapTupleGetDatum(heap_form_tuple(tupdesc, values, isnull));
 }
 
+
+/*
+ * Return the sequence tuple.
+ *
+ * This is primarily intended for use by pg_dump to gather sequence data
+ * without needing to individually query each sequence relation.
+ */
+Datum
+pg_get_sequence_data(PG_FUNCTION_ARGS)
+{
+#define PG_GET_SEQUENCE_DATA_COLS	2
+	Oid			relid = PG_GETARG_OID(0);
+	SeqTable	elm;
+	Relation	seqrel;
+	Datum		values[PG_GET_SEQUENCE_DATA_COLS] = {0};
+	bool		isnull[PG_GET_SEQUENCE_DATA_COLS] = {0};
+	TupleDesc	resultTupleDesc;
+	HeapTuple	resultHeapTuple;
+	Datum		result;
+
+	resultTupleDesc = CreateTemplateTupleDesc(PG_GET_SEQUENCE_DATA_COLS);
+	TupleDescInitEntry(resultTupleDesc, (AttrNumber) 1, "last_value",
+					   INT8OID, -1, 0);
+	TupleDescInitEntry(resultTupleDesc, (AttrNumber) 2, "is_called",
+					   BOOLOID, -1, 0);
+	resultTupleDesc = BlessTupleDesc(resultTupleDesc);
+
+	init_sequence(relid, &elm, &seqrel);
+
+	/*
+	 * Return all NULLs for sequences for which we lack privileges, other
+	 * sessions' temporary sequences, and unlogged sequences on standbys.
+	 */
+	if (pg_class_aclcheck(relid, GetUserId(), ACL_SELECT) == ACLCHECK_OK &&
+		!RELATION_IS_OTHER_TEMP(seqrel) &&
+		(RelationIsPermanent(seqrel) || !RecoveryInProgress()))
+	{
+		Buffer		buf;
+		HeapTupleData seqtuple;
+		Form_pg_sequence_data seq;
+
+		seq = read_seq_tuple(seqrel, &buf, &seqtuple);
+
+		values[0] = Int64GetDatum(seq->last_value);
+		values[1] = BoolGetDatum(seq->is_called);
+
+		UnlockReleaseBuffer(buf);
+	}
+	else
+		memset(isnull, true, sizeof(isnull));
+
+	sequence_close(seqrel, NoLock);
+
+	resultHeapTuple = heap_form_tuple(resultTupleDesc, values, isnull);
+	result = HeapTupleGetDatum(resultHeapTuple);
+	PG_RETURN_DATUM(result);
+#undef PG_GET_SEQUENCE_DATA_COLS
+}
+
+
 /*
  * Return the last value from the sequence
  *
@@ -2610,21 +2673,17 @@ pg_sequence_last_value(PG_FUNCTION_ARGS)
 	/* open and lock sequence */
 	init_sequence(relid, &elm, &seqrel);
 
-	if (pg_class_aclcheck(relid, GetUserId(), ACL_SELECT | ACL_USAGE) != ACLCHECK_OK)
-		ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("permission denied for sequence %s",
-						RelationGetRelationName(seqrel))));
-
 	/*
 	 * We return NULL for other sessions' temporary sequences.  The
 	 * pg_sequences system view already filters those out, but this offers a
 	 * defense against ERRORs in case someone invokes this function directly.
 	 *
 	 * Also, for the benefit of the pg_sequences view, we return NULL for
-	 * unlogged sequences on standbys instead of throwing an error.
+	 * unlogged sequences on standbys and for sequences for which the current
+	 * user lacks privileges instead of throwing an error.
 	 */
-	if (!RELATION_IS_OTHER_TEMP(seqrel) &&
+	if (pg_class_aclcheck(relid, GetUserId(), ACL_SELECT | ACL_USAGE) == ACLCHECK_OK &&
+		!RELATION_IS_OTHER_TEMP(seqrel) &&
 		(RelationIsPermanent(seqrel) || !RecoveryInProgress()))
 	{
 		Buffer		buf;

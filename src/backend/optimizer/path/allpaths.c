@@ -731,6 +731,10 @@ set_rel_consider_parallel(PlannerInfo *root, RelOptInfo *rel,
 		case RTE_RESULT:
 			/* RESULT RTEs, in themselves, are no problem. */
 			break;
+		case RTE_GROUP:
+			/* Shouldn't happen; we're only considering baserels here. */
+			Assert(false);
+			return;
 	}
 
 	/*
@@ -772,6 +776,17 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	 */
 	required_outer = rel->lateral_relids;
 
+	/*
+	 * Consider TID scans.
+	 *
+	 * If create_tidscan_paths returns true, then a TID scan path is forced.
+	 * This happens when rel->baserestrictinfo contains CurrentOfExpr, because
+	 * the executor can't handle any other type of path for such queries.
+	 * Hence, we return without adding any other paths.
+	 */
+	if (create_tidscan_paths(root, rel))
+		return;
+
 	/* Consider sequential scan */
 	add_path(rel, create_seqscan_path(root, rel, required_outer, 0));
 
@@ -781,9 +796,6 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 
 	/* Consider index scans */
 	create_index_paths(root, rel);
-
-	/* Consider TID scans */
-	create_tidscan_paths(root, rel);
 }
 
 /*
@@ -3071,8 +3083,7 @@ generate_gather_paths(PlannerInfo *root, RelOptInfo *rel, bool override_rows)
 	 * of partial_pathlist because of the way add_partial_path works.
 	 */
 	cheapest_partial_path = linitial(rel->partial_pathlist);
-	rows =
-		cheapest_partial_path->rows * cheapest_partial_path->parallel_workers;
+	rows = compute_gather_rows(cheapest_partial_path);
 	simple_gather_path = (Path *)
 		create_gather_path(root, rel, cheapest_partial_path, rel->reltarget,
 						   NULL, rowsp);
@@ -3090,7 +3101,7 @@ generate_gather_paths(PlannerInfo *root, RelOptInfo *rel, bool override_rows)
 		if (subpath->pathkeys == NIL)
 			continue;
 
-		rows = subpath->rows * subpath->parallel_workers;
+		rows = compute_gather_rows(subpath);
 		path = create_gather_merge_path(root, rel, subpath, rel->reltarget,
 										subpath->pathkeys, NULL, rowsp);
 		add_path(rel, &path->path);
@@ -3274,7 +3285,6 @@ generate_useful_gather_paths(PlannerInfo *root, RelOptInfo *rel, bool override_r
 													subpath,
 													useful_pathkeys,
 													-1.0);
-				rows = subpath->rows * subpath->parallel_workers;
 			}
 			else
 				subpath = (Path *) create_incremental_sort_path(root,
@@ -3283,6 +3293,7 @@ generate_useful_gather_paths(PlannerInfo *root, RelOptInfo *rel, bool override_r
 																useful_pathkeys,
 																presorted_keys,
 																-1);
+			rows = compute_gather_rows(subpath);
 			path = create_gather_merge_path(root, rel,
 											subpath,
 											rel->reltarget,

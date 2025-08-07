@@ -13,7 +13,6 @@
 
 #include "postgres.h"
 
-#include "catalog/namespace.h"
 #include "catalog/pg_ts_dict.h"
 #include "commands/defrem.h"
 #include "lib/stringinfo.h"
@@ -22,7 +21,6 @@
 #include "tsearch/ts_public.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
-#include "utils/regproc.h"
 #include "utils/syscache.h"
 
 PG_MODULE_MAGIC;
@@ -157,7 +155,7 @@ initTrie(const char *filename)
 				{
 					ptrlen = pg_mblen(ptr);
 					/* ignore whitespace, but end src or trg */
-					if (t_isspace(ptr))
+					if (isspace((unsigned char) *ptr))
 					{
 						if (state == 1)
 							state = 2;

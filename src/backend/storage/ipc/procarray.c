@@ -186,7 +186,7 @@ typedef struct ComputeXidHorizonsResult
 	FullTransactionId latest_completed;
 
 	/*
-	 * The same for procArray->replication_slot_xmin and.
+	 * The same for procArray->replication_slot_xmin and
 	 * procArray->replication_slot_catalog_xmin.
 	 */
 	TransactionId slot_xmin;
@@ -371,7 +371,7 @@ static inline FullTransactionId FullXidRelativeTo(FullTransactionId rel,
 static void GlobalVisUpdateApply(ComputeXidHorizonsResult *horizons);
 
 /*
- * Report shared-memory space needed by CreateSharedProcArray.
+ * Report shared-memory space needed by ProcArrayShmemInit
  */
 Size
 ProcArrayShmemSize(void)
@@ -416,7 +416,7 @@ ProcArrayShmemSize(void)
  * Initialize the shared PGPROC array during postmaster startup.
  */
 void
-CreateSharedProcArray(void)
+ProcArrayShmemInit(void)
 {
 	bool		found;
 
@@ -2136,8 +2136,6 @@ GetSnapshotDataReuse(Snapshot snapshot)
 	snapshot->active_count = 0;
 	snapshot->regd_count = 0;
 	snapshot->copied = false;
-	snapshot->lsn = InvalidXLogRecPtr;
-	snapshot->whenTaken = 0;
 
 	return true;
 }
@@ -2517,8 +2515,6 @@ GetSnapshotData(Snapshot snapshot)
 	snapshot->active_count = 0;
 	snapshot->regd_count = 0;
 	snapshot->copied = false;
-	snapshot->lsn = InvalidXLogRecPtr;
-	snapshot->whenTaken = 0;
 
 	return snapshot;
 }
@@ -2754,8 +2750,6 @@ GetRunningTransactionData(void)
 	 */
 	for (index = 0; index < arrayP->numProcs; index++)
 	{
-		int			pgprocno = arrayP->pgprocnos[index];
-		PGPROC	   *proc = &allProcs[pgprocno];
 		TransactionId xid;
 
 		/* Fetch xid just once - see GetNewTransactionId */
@@ -2777,11 +2771,18 @@ GetRunningTransactionData(void)
 			oldestRunningXid = xid;
 
 		/*
-		 * Also, update the oldest running xid within the current database.
+		 * Also, update the oldest running xid within the current database. As
+		 * fetching pgprocno and PGPROC could cause cache misses, we do cheap
+		 * TransactionId comparison first.
 		 */
-		if (proc->databaseId == MyDatabaseId &&
-			TransactionIdPrecedes(xid, oldestRunningXid))
-			oldestDatabaseRunningXid = xid;
+		if (TransactionIdPrecedes(xid, oldestDatabaseRunningXid))
+		{
+			int			pgprocno = arrayP->pgprocnos[index];
+			PGPROC	   *proc = &allProcs[pgprocno];
+
+			if (proc->databaseId == MyDatabaseId)
+				oldestDatabaseRunningXid = xid;
+		}
 
 		if (ProcGlobal->subxidStates[index].overflowed)
 			suboverflowed = true;

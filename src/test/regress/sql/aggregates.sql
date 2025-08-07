@@ -78,6 +78,12 @@ SELECT stddev_pop('inf'::numeric), stddev_samp('inf'::numeric);
 SELECT var_pop('nan'::numeric), var_samp('nan'::numeric);
 SELECT stddev_pop('nan'::numeric), stddev_samp('nan'::numeric);
 
+-- verify correct results for min(record) and max(record) aggregates
+SELECT max(row(a,b)) FROM aggtest;
+SELECT max(row(b,a)) FROM aggtest;
+SELECT min(row(a,b)) FROM aggtest;
+SELECT min(row(b,a)) FROM aggtest;
+
 -- verify correct results for null and NaN inputs
 select sum(null::int4) from generate_series(1,3);
 select sum(null::int8) from generate_series(1,3);
@@ -501,6 +507,38 @@ create temp table p_t1_2 partition of p_t1 for values in(2);
 -- Ensure we can remove non-PK columns for partitioned tables.
 explain (costs off) select * from p_t1 group by a,b,c,d;
 
+create unique index t3_c_uidx on t3(c);
+
+-- Ensure we don't remove any columns from the GROUP BY for a unique
+-- index on a NULLable column.
+explain (costs off) select b,c from t3 group by b,c;
+
+-- Make the column NOT NULL and ensure we remove the redundant column
+alter table t3 alter column c set not null;
+explain (costs off) select b,c from t3 group by b,c;
+
+-- When there are multiple supporting unique indexes and the GROUP BY contains
+-- columns to cover all of those, ensure we pick the index with the least
+-- number of columns so that we can remove more columns from the GROUP BY.
+explain (costs off) select a,b,c from t3 group by a,b,c;
+
+-- As above but try ordering the columns differently to ensure we get the
+-- same result.
+explain (costs off) select a,b,c from t3 group by c,a,b;
+
+-- Ensure we don't use a partial index as proof of functional dependency
+drop index t3_c_uidx;
+create index t3_c_uidx on t3 (c) where c > 0;
+explain (costs off) select b,c from t3 group by b,c;
+
+-- A unique index defined as NULLS NOT DISTINCT does not need a supporting NOT
+-- NULL constraint on the indexed columns.  Ensure the redundant columns are
+-- removed from the GROUP BY for such a table.
+drop index t3_c_uidx;
+alter table t3 alter column c drop not null;
+create unique index t3_c_uidx on t3(c) nulls not distinct;
+explain (costs off) select b,c from t3 group by b,c;
+
 drop table t1 cascade;
 drop table t2;
 drop table t3;
@@ -741,7 +779,7 @@ select string_agg(distinct f1::text, ',' order by f1) from varchar_tbl;  -- not 
 select string_agg(distinct f1, ',' order by f1::text) from varchar_tbl;  -- not ok
 select string_agg(distinct f1::text, ',' order by f1::text) from varchar_tbl;  -- ok
 
--- string_agg bytea tests
+-- string_agg, min, max bytea tests
 create table bytea_test_table(v bytea);
 
 select string_agg(v, '') from bytea_test_table;
@@ -755,6 +793,15 @@ insert into bytea_test_table values(decode('aa','hex'));
 select string_agg(v, '') from bytea_test_table;
 select string_agg(v, NULL) from bytea_test_table;
 select string_agg(v, decode('ee', 'hex')) from bytea_test_table;
+
+select min(v) from bytea_test_table;
+select max(v) from bytea_test_table;
+
+insert into bytea_test_table values(decode('ffff','hex'));
+insert into bytea_test_table values(decode('aaaa','hex'));
+
+select min(v) from bytea_test_table;
+select max(v) from bytea_test_table;
 
 drop table bytea_test_table;
 
@@ -1217,13 +1264,13 @@ EXPLAIN (COSTS OFF) SELECT count(*)
 FROM (SELECT * FROM btg ORDER BY x, y, w, z) AS q1
 GROUP BY w, x, z, y;
 
--- Utilize the ordering of merge join to avoid a full Sort operation
+-- Utilize the ordering of merge join to avoid a Sort operation
 SET enable_hashjoin = off;
 SET enable_nestloop = off;
 EXPLAIN (COSTS OFF)
 SELECT count(*)
-  FROM btg t1 JOIN btg t2 ON t1.z = t2.z AND t1.w = t2.w AND t1.x = t2.x
-  GROUP BY t1.x, t1.y, t1.z, t1.w;
+  FROM btg t1 JOIN btg t2 ON t1.w = t2.w AND t1.x = t2.x AND t1.z = t2.z
+  GROUP BY t1.w, t1.z, t1.x;
 RESET enable_nestloop;
 RESET enable_hashjoin;
 

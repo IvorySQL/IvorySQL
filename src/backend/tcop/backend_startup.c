@@ -31,10 +31,12 @@
 #include "replication/walsender.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
+#include "storage/procsignal.h"
 #include "storage/proc.h"
 #include "tcop/backend_startup.h"
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
+#include "utils/injection_point.h"
 #include "utils/memutils.h"
 #include "utils/ora_compatible.h"
 #include "utils/ps_status.h"
@@ -201,9 +203,8 @@ BackendInitialize(ClientSocket *client_sock, CAC_state cac)
 	 * Save remote_host and remote_port in port structure (after this, they
 	 * will appear in log_line_prefix data for log messages).
 	 */
-	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
-	port->remote_host = pstrdup(remote_host);
-	port->remote_port = pstrdup(remote_port);
+	port->remote_host = MemoryContextStrdup(TopMemoryContext, remote_host);
+	port->remote_port = MemoryContextStrdup(TopMemoryContext, remote_port);
 
 	/*
 	 * Get the local(server) port number to determine whether the current
@@ -266,6 +267,21 @@ BackendInitialize(ClientSocket *client_sock, CAC_state cac)
 							remote_host)));
 	}
 
+	/* For testing client error handling */
+#ifdef USE_INJECTION_POINTS
+	INJECTION_POINT("backend-initialize");
+	if (IS_INJECTION_POINT_ATTACHED("backend-initialize-v2-error"))
+	{
+		/*
+		 * This simulates an early error from a pre-v14 server, which used the
+		 * version 2 protocol for any errors that occurred before processing
+		 * the startup packet.
+		 */
+		FrontendProtocol = PG_PROTOCOL(2, 0);
+		elog(FATAL, "protocol version 2 error triggered");
+	}
+#endif
+
 	/*
 	 * If we did a reverse lookup to name, we might as well save the results
 	 * rather than possibly repeating the lookup during authentication.
@@ -282,9 +298,8 @@ BackendInitialize(ClientSocket *client_sock, CAC_state cac)
 		strspn(remote_host, "0123456789.") < strlen(remote_host) &&
 		strspn(remote_host, "0123456789ABCDEFabcdef:") < strlen(remote_host))
 	{
-		port->remote_hostname = pstrdup(remote_host);
+		port->remote_hostname = MemoryContextStrdup(TopMemoryContext, remote_host);
 	}
-	MemoryContextSwitchTo(oldcontext);
 
 	/*
 	 * Ready to begin client interaction.  We will give up and _exit(1) after
@@ -579,6 +594,11 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 
 	if (proto == CANCEL_REQUEST_CODE)
 	{
+		/*
+		 * The client has sent a cancel request packet, not a normal
+		 * start-a-new-connection packet.  Perform the necessary processing.
+		 * Nothing is sent back to the client.
+		 */
 		CancelRequestPacket *canc;
 		int			backendPID;
 		int32		cancelAuthCode;
@@ -594,7 +614,8 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 		backendPID = (int) pg_ntoh32(canc->backendPID);
 		cancelAuthCode = (int32) pg_ntoh32(canc->cancelAuthCode);
 
-		processCancelRequest(backendPID, cancelAuthCode);
+		if (backendPID != 0)
+			SendCancelRequest(backendPID, cancelAuthCode);
 		/* Not really an error, but we don't want to proceed further */
 		return STATUS_ERROR;
 	}
@@ -721,9 +742,13 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 
 	/*
 	 * Set FrontendProtocol now so that ereport() knows what format to send if
-	 * we fail during startup.
+	 * we fail during startup. We use the protocol version requested by the
+	 * client unless it's higher than the latest version we support. It's
+	 * possible that error message fields might look different in newer
+	 * protocol versions, but that's something those new clients should be
+	 * able to deal with.
 	 */
-	FrontendProtocol = proto;
+	FrontendProtocol = Min(proto, PG_PROTOCOL_LATEST);
 
 	/* Check that the major protocol version is in range. */
 	if (PG_PROTOCOL_MAJOR(proto) < PG_PROTOCOL_MAJOR(PG_PROTOCOL_EARLIEST) ||
@@ -959,6 +984,15 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 	if (port->database_name == NULL || port->database_name[0] == '\0')
 		port->database_name = pstrdup(port->user_name);
 
+	/*
+	 * Truncate given database and user names to length of a Postgres name.
+	 * This avoids lookup failures when overlength names are given.
+	 */
+	if (strlen(port->database_name) >= NAMEDATALEN)
+		port->database_name[NAMEDATALEN - 1] = '\0';
+	if (strlen(port->user_name) >= NAMEDATALEN)
+		port->user_name[NAMEDATALEN - 1] = '\0';
+
 	if (am_walsender)
 		MyBackendType = B_WAL_SENDER;
 	else
@@ -985,9 +1019,12 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 
 /*
  * Send a NegotiateProtocolVersion to the client.  This lets the client know
- * that they have requested a newer minor protocol version than we are able
- * to speak.  We'll speak the highest version we know about; the client can,
- * of course, abandon the connection if that's a problem.
+ * that they have either requested a newer minor protocol version than we are
+ * able to speak, or at least one protocol option that we don't understand, or
+ * possibly both. FrontendProtocol has already been set to the version
+ * requested by the client or the highest version we know how to speak,
+ * whichever is older. If the highest version that we know how to speak is too
+ * old for the client, it can abandon the connection.
  *
  * We also include in the response a list of protocol options we didn't
  * understand.  This allows clients to include optional parameters that might
@@ -1003,7 +1040,7 @@ SendNegotiateProtocolVersion(List *unrecognized_protocol_options)
 	ListCell   *lc;
 
 	pq_beginmessage(&buf, PqMsg_NegotiateProtocolVersion);
-	pq_sendint32(&buf, PG_PROTOCOL_LATEST);
+	pq_sendint32(&buf, FrontendProtocol);
 	pq_sendint32(&buf, list_length(unrecognized_protocol_options));
 	foreach(lc, unrecognized_protocol_options)
 		pq_sendstring(&buf, lfirst(lc));

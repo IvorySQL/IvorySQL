@@ -30,14 +30,35 @@ extern "C"
 
 /*
  * These symbols may be used in compile-time #ifdef tests for the availability
- * of newer libpq features.
+ * of v14-and-newer libpq features.
  */
+/* Features added in PostgreSQL v14: */
 /* Indicates presence of PQenterPipelineMode and friends */
 #define LIBPQ_HAS_PIPELINING 1
 /* Indicates presence of PQsetTraceFlags; also new PQtrace output format */
 #define LIBPQ_HAS_TRACE_FLAGS 1
+
+/* Features added in PostgreSQL v15: */
 /* Indicates that PQsslAttribute(NULL, "library") is useful */
 #define LIBPQ_HAS_SSL_LIBRARY_DETECTION 1
+
+/* Features added in PostgreSQL v17: */
+/* Indicates presence of PGcancelConn typedef and associated routines */
+#define LIBPQ_HAS_ASYNC_CANCEL 1
+/* Indicates presence of PQchangePassword */
+#define LIBPQ_HAS_CHANGE_PASSWORD 1
+/* Indicates presence of PQsetChunkedRowsMode, PGRES_TUPLES_CHUNK */
+#define LIBPQ_HAS_CHUNK_MODE 1
+/* Indicates presence of PQclosePrepared, PQclosePortal, etc */
+#define LIBPQ_HAS_CLOSE_PREPARED 1
+/* Indicates presence of PQsendPipelineSync */
+#define LIBPQ_HAS_SEND_PIPELINE_SYNC 1
+/* Indicates presence of PQsocketPoll, PQgetCurrentTimeUSec */
+#define LIBPQ_HAS_SOCKET_POLL 1
+
+/* Features added in PostgreSQL v18: */
+/* Indicates presence of PQfullProtocolVersion */
+#define LIBPQ_HAS_FULL_PROTOCOL_VERSION 1
 
 /*
  * Option flags for PQcopyResult
@@ -377,6 +398,7 @@ extern int	PQrequestCancel(PGconn *conn);
 
 /* Accessor functions for PGconn objects */
 extern char *PQdb(const PGconn *conn);
+extern char *PQservice(const PGconn *conn);
 extern char *PQuser(const PGconn *conn);
 extern char *PQpass(const PGconn *conn);
 extern char *PQhost(const PGconn *conn);
@@ -389,6 +411,7 @@ extern PGTransactionStatusType PQtransactionStatus(const PGconn *conn);
 extern const char *PQparameterStatus(const PGconn *conn,
 									 const char *paramName);
 extern int	PQprotocolVersion(const PGconn *conn);
+extern int	PQfullProtocolVersion(const PGconn *conn);
 extern int	PQserverVersion(const PGconn *conn);
 extern char *PQerrorMessage(const PGconn *conn);
 extern int	PQsocket(const PGconn *conn);

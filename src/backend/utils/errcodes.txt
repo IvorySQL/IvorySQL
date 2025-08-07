@@ -141,6 +141,12 @@ Section: Class 0Z - Diagnostics Exception
 0Z000    E    ERRCODE_DIAGNOSTICS_EXCEPTION                                  diagnostics_exception
 0Z002    E    ERRCODE_STACKED_DIAGNOSTICS_ACCESSED_WITHOUT_ACTIVE_HANDLER    stacked_diagnostics_accessed_without_active_handler
 
+Section: Class 10 - XQuery Error
+
+# recent SQL versions define quite a few codes in this class, but for now
+# we are only using this generic one
+10608    E    ERRCODE_INVALID_ARGUMENT_FOR_XQUERY                            invalid_argument_for_xquery
+
 Section: Class 20 - Case Not Found
 
 20000    E    ERRCODE_CASE_NOT_FOUND                                         case_not_found
@@ -439,6 +445,7 @@ Section: Class 58 - System Error (errors external to PostgreSQL itself)
 58030    E    ERRCODE_IO_ERROR                                               io_error
 58P01    E    ERRCODE_UNDEFINED_FILE                                         undefined_file
 58P02    E    ERRCODE_DUPLICATE_FILE                                         duplicate_file
+58P03    E    ERRCODE_FILE_NAME_TOO_LONG                                     file_name_too_long
 
 Section: Class F0 - Configuration File Error
 

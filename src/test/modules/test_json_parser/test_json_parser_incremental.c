@@ -18,6 +18,10 @@
  * If the -s flag is given, the program does semantic processing. This should
  * just mirror back the json, albeit with white space changes.
  *
+ * If the -o flag is given, the JSONLEX_CTX_OWNS_TOKENS flag is set. (This can
+ * be used in combination with a leak sanitizer; without the option, the parser
+ * may leak memory with invalid JSON.)
+ *
  * The argument specifies the file containing the JSON input.
  *
  *-------------------------------------------------------------------------
@@ -60,7 +64,7 @@ static JsonParseErrorType do_array_element_start(void *state, bool isnull);
 static JsonParseErrorType do_array_element_end(void *state, bool isnull);
 static JsonParseErrorType do_scalar(void *state, char *token, JsonTokenType tokentype);
 
-JsonSemAction sem = {
+static JsonSemAction sem = {
 	.object_start = do_object_start,
 	.object_end = do_object_end,
 	.object_field_start = do_object_field_start,
@@ -71,6 +75,8 @@ JsonSemAction sem = {
 	.array_element_end = do_array_element_end,
 	.scalar = do_scalar
 };
+
+static bool lex_owns_tokens = false;
 
 int
 main(int argc, char **argv)
@@ -84,14 +90,15 @@ main(int argc, char **argv)
 	size_t		chunk_size = DEFAULT_CHUNK_SIZE;
 	struct stat statbuf;
 	off_t		bytes_left;
-	JsonSemAction *testsem = &nullSemAction;
+	const JsonSemAction *testsem = &nullSemAction;
 	char	   *testfile;
 	int			c;
 	bool		need_strings = false;
+	int			ret = 0;
 
 	pg_logging_init(argv[0]);
 
-	while ((c = getopt(argc, argv, "c:s")) != -1)
+	while ((c = getopt(argc, argv, "c:os")) != -1)
 	{
 		switch (c)
 		{
@@ -99,6 +106,9 @@ main(int argc, char **argv)
 				chunk_size = strtou64(optarg, NULL, 10);
 				if (chunk_size > BUFSIZE)
 					pg_fatal("chunk size cannot exceed %d", BUFSIZE);
+				break;
+			case 'o':			/* switch token ownership */
+				lex_owns_tokens = true;
 				break;
 			case 's':			/* do semantic processing */
 				testsem = &sem;
@@ -112,7 +122,7 @@ main(int argc, char **argv)
 
 	if (optind < argc)
 	{
-		testfile = pg_strdup(argv[optind]);
+		testfile = argv[optind];
 		optind++;
 	}
 	else
@@ -122,9 +132,10 @@ main(int argc, char **argv)
 	}
 
 	makeJsonLexContextIncremental(&lex, PG_UTF8, need_strings);
+	setJsonLexContextOwnsTokens(&lex, lex_owns_tokens);
 	initStringInfo(&json);
 
-	if ((json_file = fopen(testfile, "r")) == NULL)
+	if ((json_file = fopen(testfile, PG_BINARY_R)) == NULL)
 		pg_fatal("error opening input: %m");
 
 	if (fstat(fileno(json_file), &statbuf) != 0)
@@ -160,7 +171,8 @@ main(int argc, char **argv)
 			if (result != JSON_INCOMPLETE)
 			{
 				fprintf(stderr, "%s\n", json_errdetail(result, &lex));
-				exit(1);
+				ret = 1;
+				goto cleanup;
 			}
 			resetStringInfo(&json);
 		}
@@ -172,15 +184,21 @@ main(int argc, char **argv)
 			if (result != JSON_SUCCESS)
 			{
 				fprintf(stderr, "%s\n", json_errdetail(result, &lex));
-				exit(1);
+				ret = 1;
+				goto cleanup;
 			}
 			if (!need_strings)
 				printf("SUCCESS!\n");
 			break;
 		}
 	}
+
+cleanup:
 	fclose(json_file);
-	exit(0);
+	freeJsonLexContext(&lex);
+	free(json.data);
+
+	return ret;
 }
 
 /*
@@ -230,7 +248,8 @@ do_object_field_start(void *state, char *fname, bool isnull)
 static JsonParseErrorType
 do_object_field_end(void *state, char *fname, bool isnull)
 {
-	/* nothing to do really */
+	if (!lex_owns_tokens)
+		free(fname);
 
 	return JSON_SUCCESS;
 }
@@ -291,6 +310,9 @@ do_scalar(void *state, char *token, JsonTokenType tokentype)
 	else
 		printf("%s", token);
 
+	if (!lex_owns_tokens)
+		free(token);
+
 	return JSON_SUCCESS;
 }
 
@@ -343,7 +365,8 @@ usage(const char *progname)
 {
 	fprintf(stderr, "Usage: %s [OPTION ...] testfile\n", progname);
 	fprintf(stderr, "Options:\n");
-	fprintf(stderr, "  -c chunksize      size of piece fed to parser (default 64)n");
+	fprintf(stderr, "  -c chunksize      size of piece fed to parser (default 64)\n");
+	fprintf(stderr, "  -o                set JSONLEX_CTX_OWNS_TOKENS for leak checking\n");
 	fprintf(stderr, "  -s                do semantic processing\n");
 
 }

@@ -445,7 +445,7 @@ TransactionGroupUpdateXidStatus(TransactionId xid, XidStatus status,
 	PGPROC	   *proc = MyProc;
 	uint32		nextidx;
 	uint32		wakeidx;
-	int			prevpageno;
+	int64		prevpageno;
 	LWLock	   *prevlock = NULL;
 
 	/* We should definitely have an XID whose status needs to be updated. */
@@ -577,7 +577,7 @@ TransactionGroupUpdateXidStatus(TransactionId xid, XidStatus status,
 	while (nextidx != INVALID_PROC_NUMBER)
 	{
 		PGPROC	   *nextproc = &ProcGlobal->allProcs[nextidx];
-		int			thispageno = nextproc->clogGroupMemberPage;
+		int64		thispageno = nextproc->clogGroupMemberPage;
 
 		/*
 		 * If the page to update belongs to a different bank than the previous
@@ -984,8 +984,8 @@ ExtendCLOG(TransactionId newestXact)
 /*
  * Remove all CLOG segments before the one holding the passed transaction ID
  *
- * Before removing any CLOG data, we must flush XLOG to disk, to ensure
- * that any recently-emitted FREEZE_PAGE records have reached disk; otherwise
+ * Before removing any CLOG data, we must flush XLOG to disk, to ensure that
+ * any recently-emitted records with freeze plans have reached disk; otherwise
  * a crash and restart might leave us with some unfrozen tuples referencing
  * removed CLOG data.  We choose to emit a special TRUNCATE XLOG record too.
  * Replaying the deletion from XLOG is not critical, since the files could

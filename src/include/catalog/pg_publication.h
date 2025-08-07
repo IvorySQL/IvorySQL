@@ -54,6 +54,9 @@ CATALOG(pg_publication,6104,PublicationRelationId)
 
 	/* true if partition changes are published using root schema */
 	bool		pubviaroot;
+
+	/* true if generated columns data should be published */
+	bool		pubgencols;
 } FormData_pg_publication;
 
 /* ----------------
@@ -95,6 +98,13 @@ typedef struct PublicationDesc
 	 */
 	bool		cols_valid_for_update;
 	bool		cols_valid_for_delete;
+
+	/*
+	 * true if all generated columns that are part of replica identity are
+	 * published or the publication actions do not include UPDATE or DELETE.
+	 */
+	bool		gencols_valid_for_update;
+	bool		gencols_valid_for_delete;
 } PublicationDesc;
 
 typedef struct Publication
@@ -103,6 +113,7 @@ typedef struct Publication
 	char	   *name;
 	bool		alltables;
 	bool		pubviaroot;
+	bool		pubgencols;
 	PublicationActions pubactions;
 } Publication;
 
@@ -150,12 +161,16 @@ extern Oid	GetTopMostAncestorInPublication(Oid puboid, List *ancestors,
 
 extern bool is_publishable_relation(Relation rel);
 extern bool is_schema_publication(Oid pubid);
+extern bool check_and_fetch_column_list(Publication *pub, Oid relid,
+										MemoryContext mcxt, Bitmapset **cols);
 extern ObjectAddress publication_add_relation(Oid pubid, PublicationRelInfo *pri,
 											  bool if_not_exists);
+extern Bitmapset *pub_collist_validate(Relation targetrel, List *columns);
 extern ObjectAddress publication_add_schema(Oid pubid, Oid schemaid,
 											bool if_not_exists);
 
 extern Bitmapset *pub_collist_to_bitmapset(Bitmapset *columns, Datum pubcols,
 										   MemoryContext mcxt);
+extern Bitmapset *pub_form_cols_map(Relation relation, bool include_gencols);
 
 #endif							/* PG_PUBLICATION_H */

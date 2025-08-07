@@ -19,11 +19,9 @@
 
 #include "access/detoast.h"
 #include "access/htup_details.h"
-#include "access/transam.h"
 #include "access/tupconvert.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
-#include "commands/defrem.h"
 #include "executor/execExpr.h"
 #include "executor/spi.h"
 #include "executor/tstoreReceiver.h"
@@ -34,13 +32,10 @@
 #include "optimizer/optimizer.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_type.h"
-#include "parser/scansup.h"
 #include "plpgsql.h"
 #include "storage/proc.h"
 #include "tcop/cmdtag.h"
 #include "tcop/pquery.h"
-#include "tcop/tcopprot.h"
-#include "tcop/utility.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
@@ -532,21 +527,22 @@ plpgsql_exec_function(PLpgSQL_function *func, FunctionCallInfo fcinfo,
 									  false);
 
 					/*
-					 * Force any array-valued parameter to be stored in
+					 * If it's a varlena type, check to see if we received a
+					 * R/W expanded-object pointer.  If so, we can commandeer
+					 * the object rather than having to copy it.  If passed a
+					 * R/O expanded pointer, just keep it as the value of the
+					 * variable for the moment.  (We can change it to R/W if
+					 * the variable gets modified, but that may very well
+					 * never happen.)
+					 *
+					 * Also, force any flat array value to be stored in
 					 * expanded form in our local variable, in hopes of
 					 * improving efficiency of uses of the variable.  (This is
 					 * a hack, really: why only arrays? Need more thought
 					 * about which cases are likely to win.  See also
 					 * typisarray-specific heuristic in exec_assign_value.)
-					 *
-					 * Special cases: If passed a R/W expanded pointer, assume
-					 * we can commandeer the object rather than having to copy
-					 * it.  If passed a R/O expanded pointer, just keep it as
-					 * the value of the variable for the moment.  (We'll force
-					 * it to R/W if the variable gets modified, but that may
-					 * very well never happen.)
 					 */
-					if (!var->isnull && var->datatype->typisarray)
+					if (!var->isnull && var->datatype->typlen == -1)
 					{
 						if (VARATT_IS_EXTERNAL_EXPANDED_RW(DatumGetPointer(var->value)))
 						{
@@ -561,7 +557,7 @@ plpgsql_exec_function(PLpgSQL_function *func, FunctionCallInfo fcinfo,
 						{
 							/* R/O pointer, keep it as-is until assigned to */
 						}
-						else
+						else if (var->datatype->typisarray)
 						{
 							/* flat array, so force to expanded form */
 							assign_simple_var(&estate, var,
@@ -867,7 +863,7 @@ coerce_function_result_tuple(PLpgSQL_execstate *estate, TupleDesc tupdesc)
 
 			resultsize = EOH_get_flat_size(&erh->hdr);
 			tuphdr = (HeapTupleHeader) SPI_palloc(resultsize);
-			EOH_flatten_into(&erh->hdr, (void *) tuphdr, resultsize);
+			EOH_flatten_into(&erh->hdr, tuphdr, resultsize);
 			HeapTupleHeaderSetTypeId(tuphdr, tupdesc->tdtypeid);
 			HeapTupleHeaderSetTypMod(tuphdr, tupdesc->tdtypmod);
 			estate->retval = PointerGetDatum(tuphdr);
@@ -2276,8 +2272,8 @@ exec_stmt_call(PLpgSQL_execstate *estate, PLpgSQL_stmt_call *stmt)
 static PLpgSQL_variable *
 make_callstmt_target(PLpgSQL_execstate *estate, PLpgSQL_expr *expr)
 {
-	List	   *plansources;
-	CachedPlanSource *plansource;
+	CachedPlan *cplan;
+	PlannedStmt *pstmt;
 	CallStmt   *stmt;
 	FuncExpr   *funcexpr;
 	HeapTuple	func_tuple;
@@ -2294,16 +2290,15 @@ make_callstmt_target(PLpgSQL_execstate *estate, PLpgSQL_expr *expr)
 	oldcontext = MemoryContextSwitchTo(get_eval_mcontext(estate));
 
 	/*
-	 * Get the parsed CallStmt, and look up the called procedure
+	 * Get the parsed CallStmt, and look up the called procedure.  We use
+	 * SPI_plan_get_cached_plan to cover the edge case where expr->plan is
+	 * already stale and needs to be updated.
 	 */
-	plansources = SPI_plan_get_plan_sources(expr->plan);
-	if (list_length(plansources) != 1)
+	cplan = SPI_plan_get_cached_plan(expr->plan);
+	if (cplan == NULL || list_length(cplan->stmt_list) != 1)
 		elog(ERROR, "query for CALL statement is not a CallStmt");
-	plansource = (CachedPlanSource *) linitial(plansources);
-	if (list_length(plansource->query_list) != 1)
-		elog(ERROR, "query for CALL statement is not a CallStmt");
-	stmt = (CallStmt *) linitial_node(Query,
-									  plansource->query_list)->utilityStmt;
+	pstmt = linitial_node(PlannedStmt, cplan->stmt_list);
+	stmt = (CallStmt *) pstmt->utilityStmt;
 	if (stmt == NULL || !IsA(stmt, CallStmt))
 		elog(ERROR, "query for CALL statement is not a CallStmt");
 
@@ -2382,6 +2377,8 @@ make_callstmt_target(PLpgSQL_execstate *estate, PLpgSQL_expr *expr)
 	Assert(nfields == list_length(stmt->outargs));
 
 	row->nfields = nfields;
+
+	ReleaseCachedPlan(cplan, CurrentResourceOwner);
 
 	MemoryContextSwitchTo(oldcontext);
 
@@ -4029,7 +4026,7 @@ plpgsql_estate_setup(PLpgSQL_execstate *estate,
 	/* initialize our ParamListInfo with appropriate hook functions */
 	estate->paramLI = makeParamList(0);
 	estate->paramLI->paramFetch = plpgsql_param_fetch;
-	estate->paramLI->paramFetchArg = (void *) estate;
+	estate->paramLI->paramFetchArg = estate;
 	estate->paramLI->paramCompile = plpgsql_param_compile;
 	estate->paramLI->paramCompileArg = NULL;	/* not needed */
 	estate->paramLI->parserSetup = (ParserSetupHook) plpgsql_parser_setup;
@@ -4188,7 +4185,7 @@ exec_prepare_plan(PLpgSQL_execstate *estate,
 	 */
 	memset(&options, 0, sizeof(options));
 	options.parserSetup = (ParserSetupHook) plpgsql_parser_setup;
-	options.parserSetupArg = (void *) expr;
+	options.parserSetupArg = expr;
 	options.parseMode = expr->parseMode;
 	options.cursorOptions = cursorOptions;
 	plan = SPI_prepare_extended(expr->query, &options);
@@ -4245,8 +4242,9 @@ exec_stmt_execsql(PLpgSQL_execstate *estate,
 			/*
 			 * We could look at the raw_parse_tree, but it seems simpler to
 			 * check the command tag.  Note we should *not* look at the Query
-			 * tree(s), since those are the result of rewriting and could have
-			 * been transmogrified into something else entirely.
+			 * tree(s), since those are the result of rewriting and could be
+			 * stale, or could have been transmogrified into something else
+			 * entirely.
 			 */
 			if (plansource->commandTag == CMDTAG_INSERT ||
 				plansource->commandTag == CMDTAG_UPDATE ||
@@ -6174,7 +6172,7 @@ exec_eval_simple_expr(PLpgSQL_execstate *estate,
 	 * possibly setting ecxt_param_list_info to NULL; we've already forced use
 	 * of a generic plan.
 	 */
-	paramLI->parserSetupArg = (void *) expr;
+	paramLI->parserSetupArg = expr;
 	econtext->ecxt_param_list_info = paramLI;
 
 	/*
@@ -6283,7 +6281,7 @@ setup_param_list(PLpgSQL_execstate *estate, PLpgSQL_expr *expr)
 		 * Callers must save and restore parserSetupArg if there is any chance
 		 * that they are interrupting an active use of parameters.
 		 */
-		paramLI->parserSetupArg = (void *) expr;
+		paramLI->parserSetupArg = expr;
 
 		/*
 		 * Also make sure this is set before parser hooks need it.  There is

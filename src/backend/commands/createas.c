@@ -35,14 +35,14 @@
 #include "commands/prepare.h"
 #include "commands/tablecmds.h"
 #include "commands/view.h"
-#include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
+#include "nodes/queryjumble.h"
+#include "parser/analyze.h"
 #include "rewrite/rewriteHandler.h"
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
-#include "utils/rel.h"
 #include "utils/rls.h"
 #include "utils/snapmgr.h"
 #include "parser/parse_clause.h"
@@ -84,7 +84,7 @@ create_ctas_internal(List *attrList, IntoClause *into)
 	bool		is_matview;
 	char		relkind;
 	Datum		toast_options;
-	static char *validnsps[] = HEAP_RELOPT_NAMESPACES;
+	const char *const validnsps[] = HEAP_RELOPT_NAMESPACES;
 	ObjectAddress intoRelationAddr;
 
 	/* This code supports both CREATE TABLE AS and CREATE MATERIALIZED VIEW */
@@ -134,7 +134,7 @@ create_ctas_internal(List *attrList, IntoClause *into)
 	if (is_matview)
 	{
 		/* StoreViewQuery scribbles on tree, so make a copy */
-		Query	   *query = (Query *) copyObject(into->viewQuery);
+		Query	   *query = copyObject(into->viewQuery);
 
 		StoreViewQuery(intoRelationAddr.objectId, query, false);
 		CommandCounterIncrement();
@@ -225,15 +225,11 @@ ExecCreateTableAs(ParseState *pstate, CreateTableAsStmt *stmt,
 {
 	Query	   *query = castNode(Query, stmt->query);
 	IntoClause *into = stmt->into;
+	JumbleState *jstate = NULL;
 	bool		is_matview = (into->viewQuery != NULL);
+	bool		do_refresh = false;
 	DestReceiver *dest;
-	Oid			save_userid = InvalidOid;
-	int			save_sec_context = 0;
-	int			save_nestlevel = 0;
 	ObjectAddress address;
-	List	   *rewritten;
-	PlannedStmt *plan;
-	QueryDesc  *queryDesc;
 
 	/* Check if the relation exists or not */
 	if (CreateTableAsRelExists(stmt))
@@ -243,6 +239,13 @@ ExecCreateTableAs(ParseState *pstate, CreateTableAsStmt *stmt,
 	 * Create the tuple receiver object and insert info it will need
 	 */
 	dest = CreateIntoRelDestReceiver(into);
+
+	/* Query contained by CTAS needs to be jumbled if requested */
+	if (IsQueryIdEnabled())
+		jstate = JumbleQuery(query);
+
+	if (post_parse_analyze_hook)
+		(*post_parse_analyze_hook) (pstate, query, jstate);
 
 	/*
 	 * The contained Query could be a SELECT, or an EXECUTE utility command.
@@ -264,18 +267,13 @@ ExecCreateTableAs(ParseState *pstate, CreateTableAsStmt *stmt,
 	Assert(query->commandType == CMD_SELECT);
 
 	/*
-	 * For materialized views, lock down security-restricted operations and
-	 * arrange to make GUC variable changes local to this command.  This is
-	 * not necessary for security, but this keeps the behavior similar to
-	 * REFRESH MATERIALIZED VIEW.  Otherwise, one could create a materialized
-	 * view not possible to refresh.
+	 * For materialized views, always skip data during table creation, and use
+	 * REFRESH instead (see below).
 	 */
 	if (is_matview)
 	{
-		GetUserIdAndSecContext(&save_userid, &save_sec_context);
-		SetUserIdAndSecContext(save_userid,
-							   save_sec_context | SECURITY_RESTRICTED_OPERATION);
-		save_nestlevel = NewGUCNestLevel();
+		do_refresh = !into->skipData;
+		into->skipData = true;
 	}
 
 	if (into->skipData)
@@ -287,9 +285,25 @@ ExecCreateTableAs(ParseState *pstate, CreateTableAsStmt *stmt,
 		 * from running the planner before all dependencies are set up.
 		 */
 		address = create_ctas_nodata(query->targetList, into);
+
+		/*
+		 * For materialized views, reuse the REFRESH logic, which locks down
+		 * security-restricted operations and restricts the search_path.  This
+		 * reduces the chance that a subsequent refresh will fail.
+		 */
+		if (do_refresh)
+			RefreshMatViewByOid(address.objectId, true, false, false,
+								pstate->p_sourcetext, qc);
+
 	}
 	else
 	{
+		List	   *rewritten;
+		PlannedStmt *plan;
+		QueryDesc  *queryDesc;
+
+		Assert(!is_matview);
+
 		/*
 		 * Parse analysis was done already, but we still have to run the rule
 		 * rewriter.  We do not do AcquireRewriteLocks: we assume the query
@@ -300,9 +314,7 @@ ExecCreateTableAs(ParseState *pstate, CreateTableAsStmt *stmt,
 
 		/* SELECT should never rewrite to more or less than one SELECT query */
 		if (list_length(rewritten) != 1)
-			elog(ERROR, "unexpected rewrite result for %s",
-				 is_matview ? "CREATE MATERIALIZED VIEW" :
-				 "CREATE TABLE AS SELECT");
+			elog(ERROR, "unexpected rewrite result for CREATE TABLE AS SELECT");
 		query = linitial_node(Query, rewritten);
 		Assert(query->commandType == CMD_SELECT);
 
@@ -329,7 +341,7 @@ ExecCreateTableAs(ParseState *pstate, CreateTableAsStmt *stmt,
 		ExecutorStart(queryDesc, GetIntoRelEFlags(into));
 
 		/* run the plan to completion */
-		ExecutorRun(queryDesc, ForwardScanDirection, 0, true);
+		ExecutorRun(queryDesc, ForwardScanDirection, 0);
 
 		/* save the rowcount if we're given a qc to fill */
 		if (qc)
@@ -345,15 +357,6 @@ ExecCreateTableAs(ParseState *pstate, CreateTableAsStmt *stmt,
 		FreeQueryDesc(queryDesc);
 
 		PopActiveSnapshot();
-	}
-
-	if (is_matview)
-	{
-		/* Roll back any GUC changes */
-		AtEOXact_GUC(false, save_nestlevel);
-
-		/* Restore userid and security context */
-		SetUserIdAndSecContext(save_userid, save_sec_context);
 	}
 
 	return address;
