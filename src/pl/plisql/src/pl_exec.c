@@ -5778,7 +5778,7 @@ Oid
 plisql_exec_get_datum_type(PLiSQL_execstate *estate,
 							PLiSQL_datum *datum)
 {
-	Oid			typeid;
+	Oid			typeid = InvalidOid;;
 
 	switch (datum->dtype)
 	{
