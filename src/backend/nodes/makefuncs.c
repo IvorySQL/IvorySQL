@@ -438,6 +438,29 @@ makeRangeVar(char *schemaname, char *relname, int location)
 }
 
 /*
+ * makeNotNullConstraint -
+ *		creates a Constraint node for NOT NULL constraints
+ */
+Constraint *
+makeNotNullConstraint(String *colname)
+{
+	Constraint *notnull;
+
+	notnull = makeNode(Constraint);
+	notnull->contype = CONSTR_NOTNULL;
+	notnull->conname = NULL;
+	notnull->is_no_inherit = false;
+	notnull->deferrable = false;
+	notnull->initdeferred = false;
+	notnull->location = -1;
+	notnull->keys = list_make1(colname);
+	notnull->skip_validation = false;
+	notnull->initially_valid = true;
+
+	return notnull;
+}
+
+/*
  * makeTypeName -
  *	build a TypeName node for an unqualified name.
  *
@@ -767,7 +790,8 @@ make_ands_implicit(Expr *clause)
 IndexInfo *
 makeIndexInfo(int numattrs, int numkeyattrs, Oid amoid, List *expressions,
 			  List *predicates, bool unique, bool nulls_not_distinct,
-			  bool isready, bool concurrent, bool summarizing)
+			  bool isready, bool concurrent, bool summarizing,
+			  bool withoutoverlaps)
 {
 	IndexInfo  *n = makeNode(IndexInfo);
 
@@ -782,6 +806,7 @@ makeIndexInfo(int numattrs, int numkeyattrs, Oid amoid, List *expressions,
 	n->ii_IndexUnchanged = false;
 	n->ii_Concurrent = concurrent;
 	n->ii_Summarizing = summarizing;
+	n->ii_WithoutOverlaps = withoutoverlaps;
 
 	/* summarizing indexes cannot contain non-key attributes */
 	Assert(!summarizing || (numkeyattrs == numattrs));

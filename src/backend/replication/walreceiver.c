@@ -195,6 +195,7 @@ WalReceiverMain(char *startup_data, size_t startup_data_len)
 	char	   *err;
 	char	   *sender_host = NULL;
 	int			sender_port = 0;
+	char	   *appname;
 
 	Assert(startup_data_len == 0);
 
@@ -265,8 +266,8 @@ WalReceiverMain(char *startup_data, size_t startup_data_len)
 	walrcv->lastMsgSendTime =
 		walrcv->lastMsgReceiptTime = walrcv->latestWalEndTime = now;
 
-	/* Report the latch to use to awaken this process */
-	walrcv->latch = &MyProc->procLatch;
+	/* Report our proc number so that others can wake us up */
+	walrcv->procno = MyProcNumber;
 
 	SpinLockRelease(&walrcv->mutex);
 
@@ -298,13 +299,13 @@ WalReceiverMain(char *startup_data, size_t startup_data_len)
 	sigprocmask(SIG_SETMASK, &UnBlockSig, NULL);
 
 	/* Establish the connection to the primary for XLOG streaming */
-	wrconn = walrcv_connect(conninfo, true, false, false,
-							cluster_name[0] ? cluster_name : "walreceiver",
-							&err);
+	appname = cluster_name[0] ? cluster_name : "walreceiver";
+	wrconn = walrcv_connect(conninfo, true, false, false, appname, &err);
 	if (!wrconn)
 		ereport(ERROR,
 				(errcode(ERRCODE_CONNECTION_FAILURE),
-				 errmsg("could not connect to the primary server: %s", err)));
+				 errmsg("streaming replication receiver \"%s\" could not connect to the primary server: %s",
+						appname, err)));
 
 	/*
 	 * Save user-visible connection string.  This clobbers the original
@@ -818,8 +819,8 @@ WalRcvDie(int code, Datum arg)
 	Assert(walrcv->pid == MyProcPid);
 	walrcv->walRcvState = WALRCV_STOPPED;
 	walrcv->pid = 0;
+	walrcv->procno = INVALID_PROC_NUMBER;
 	walrcv->ready_to_display = false;
-	walrcv->latch = NULL;
 	SpinLockRelease(&walrcv->mutex);
 
 	ConditionVariableBroadcast(&walrcv->walRcvStoppedCV);
@@ -1357,15 +1358,15 @@ WalRcvComputeNextWakeup(WalRcvWakeupReason reason, TimestampTz now)
 void
 WalRcvForceReply(void)
 {
-	Latch	   *latch;
+	ProcNumber	procno;
 
 	WalRcv->force_reply = true;
-	/* fetching the latch pointer might not be atomic, so use spinlock */
+	/* fetching the proc number is probably atomic, but don't rely on it */
 	SpinLockAcquire(&WalRcv->mutex);
-	latch = WalRcv->latch;
+	procno = WalRcv->procno;
 	SpinLockRelease(&WalRcv->mutex);
-	if (latch)
-		SetLatch(latch);
+	if (procno != INVALID_PROC_NUMBER)
+		SetLatch(&GetPGProcByNumber(procno)->procLatch);
 }
 
 /*

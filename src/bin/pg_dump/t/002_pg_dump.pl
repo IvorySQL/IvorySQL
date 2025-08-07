@@ -1008,6 +1008,42 @@ my %tests = (
 		},
 	},
 
+	'CONSTRAINT PRIMARY KEY / WITHOUT OVERLAPS' => {
+		create_sql => 'CREATE TABLE dump_test.test_table_tpk (
+							col1 int4range,
+							col2 tstzrange,
+							CONSTRAINT test_table_tpk_pkey PRIMARY KEY (col1, col2 WITHOUT OVERLAPS));',
+		regexp => qr/^
+			\QALTER TABLE ONLY dump_test.test_table_tpk\E \n^\s+
+			\QADD CONSTRAINT test_table_tpk_pkey PRIMARY KEY (col1, col2 WITHOUT OVERLAPS);\E
+			/xm,
+		like => {
+			%full_runs, %dump_test_schema_runs, section_post_data => 1,
+		},
+		unlike => {
+			exclude_dump_test_schema => 1,
+			only_dump_measurement => 1,
+		},
+	},
+
+	'CONSTRAINT UNIQUE / WITHOUT OVERLAPS' => {
+		create_sql => 'CREATE TABLE dump_test.test_table_tuq (
+							col1 int4range,
+							col2 tstzrange,
+							CONSTRAINT test_table_tuq_uq UNIQUE (col1, col2 WITHOUT OVERLAPS));',
+		regexp => qr/^
+			\QALTER TABLE ONLY dump_test.test_table_tuq\E \n^\s+
+			\QADD CONSTRAINT test_table_tuq_uq UNIQUE (col1, col2 WITHOUT OVERLAPS);\E
+			/xm,
+		like => {
+			%full_runs, %dump_test_schema_runs, section_post_data => 1,
+		},
+		unlike => {
+			exclude_dump_test_schema => 1,
+			only_dump_measurement => 1,
+		},
+	},
+
 	'ALTER TABLE (partitioned) ADD CONSTRAINT ... FOREIGN KEY' => {
 		create_order => 4,
 		create_sql   => 'CREATE TABLE dump_test.test_table_fk (
@@ -1158,7 +1194,7 @@ my %tests = (
 
 	'ALTER FOREIGN TABLE foreign_table ALTER COLUMN c1 OPTIONS' => {
 		regexp => qr/^
-			\QALTER FOREIGN TABLE dump_test.foreign_table ALTER COLUMN c1 OPTIONS (\E\n
+			\QALTER FOREIGN TABLE ONLY dump_test.foreign_table ALTER COLUMN c1 OPTIONS (\E\n
 			\s+\Qcolumn_name 'col1'\E\n
 			\Q);\E\n
 			/xm,
@@ -2935,13 +2971,23 @@ my %tests = (
 		like => { %full_runs, section_post_data => 1, },
 	},
 
+	'CREATE PUBLICATION pub5' => {
+		create_order => 50,
+		create_sql =>
+		  'CREATE PUBLICATION pub5 WITH (publish_generated_columns = true);',
+		regexp => qr/^
+			\QCREATE PUBLICATION pub5 WITH (publish = 'insert, update, delete, truncate', publish_generated_columns = true);\E
+			/xm,
+		like => { %full_runs, section_post_data => 1, },
+	},
+
 	'CREATE SUBSCRIPTION sub1' => {
 		create_order => 50,
 		create_sql   => 'CREATE SUBSCRIPTION sub1
 						 CONNECTION \'dbname=doesnotexist\' PUBLICATION pub1
 						 WITH (connect = false);',
 		regexp => qr/^
-			\QCREATE SUBSCRIPTION sub1 CONNECTION 'dbname=doesnotexist' PUBLICATION pub1 WITH (connect = false, slot_name = 'sub1');\E
+			\QCREATE SUBSCRIPTION sub1 CONNECTION 'dbname=doesnotexist' PUBLICATION pub1 WITH (connect = false, slot_name = 'sub1', streaming = parallel);\E
 			/xm,
 		like => { %full_runs, section_post_data => 1, },
 	},
@@ -2950,9 +2996,9 @@ my %tests = (
 		create_order => 50,
 		create_sql   => 'CREATE SUBSCRIPTION sub2
 						 CONNECTION \'dbname=doesnotexist\' PUBLICATION pub1
-						 WITH (connect = false, origin = none);',
+						 WITH (connect = false, origin = none, streaming = off);',
 		regexp => qr/^
-			\QCREATE SUBSCRIPTION sub2 CONNECTION 'dbname=doesnotexist' PUBLICATION pub1 WITH (connect = false, slot_name = 'sub2', origin = none);\E
+			\QCREATE SUBSCRIPTION sub2 CONNECTION 'dbname=doesnotexist' PUBLICATION pub1 WITH (connect = false, slot_name = 'sub2', streaming = off, origin = none);\E
 			/xm,
 		like => { %full_runs, section_post_data => 1, },
 	},
@@ -2961,9 +3007,9 @@ my %tests = (
 		create_order => 50,
 		create_sql   => 'CREATE SUBSCRIPTION sub3
 						 CONNECTION \'dbname=doesnotexist\' PUBLICATION pub1
-						 WITH (connect = false, origin = any);',
+						 WITH (connect = false, origin = any, streaming = on);',
 		regexp => qr/^
-			\QCREATE SUBSCRIPTION sub3 CONNECTION 'dbname=doesnotexist' PUBLICATION pub1 WITH (connect = false, slot_name = 'sub3');\E
+			\QCREATE SUBSCRIPTION sub3 CONNECTION 'dbname=doesnotexist' PUBLICATION pub1 WITH (connect = false, slot_name = 'sub3', streaming = on);\E
 			/xm,
 		like => { %full_runs, section_post_data => 1, },
 	},
@@ -3291,8 +3337,8 @@ my %tests = (
 						FOR VALUES FROM (\'2006-02-01\') TO (\'2006-03-01\');',
 		regexp => qr/^
 			\QCREATE TABLE dump_test_second_schema.measurement_y2006m2 (\E\n
-			\s+\Qcity_id integer DEFAULT nextval('dump_test.measurement_city_id_seq'::regclass) NOT NULL,\E\n
-			\s+\Qlogdate date NOT NULL,\E\n
+			\s+\Qcity_id integer DEFAULT nextval('dump_test.measurement_city_id_seq'::regclass) CONSTRAINT measurement_city_id_not_null NOT NULL,\E\n
+			\s+\Qlogdate date CONSTRAINT measurement_logdate_not_null NOT NULL,\E\n
 			\s+\Qpeaktemp integer,\E\n
 			\s+\Qunitsales integer DEFAULT 0,\E\n
 			\s+\QCONSTRAINT measurement_peaktemp_check CHECK ((peaktemp >= '-460'::integer)),\E\n
@@ -3698,7 +3744,7 @@ my %tests = (
 						) INHERITS (dump_test.test_inheritance_parent);',
 		regexp => qr/^
 		\QCREATE TABLE dump_test.test_inheritance_child (\E\n
-		\s+\Qcol1 integer,\E\n
+		\s+\Qcol1 integer NOT NULL,\E\n
 		\s+\QCONSTRAINT test_inheritance_child CHECK ((col2 >= 142857))\E\n
 		\)\n
 		\QINHERITS (dump_test.test_inheritance_parent);\E\n

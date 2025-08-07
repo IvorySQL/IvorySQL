@@ -1636,6 +1636,7 @@ CREATE FUNCTION op_leak(int, int) RETURNS bool
 CREATE OPERATOR <<< (procedure = op_leak, leftarg = int, rightarg = int,
                      restrict = scalarltsel);
 SELECT * FROM tststats.priv_test_tbl WHERE a <<< 0 AND b <<< 0; -- Permission denied
+SELECT * FROM tststats.priv_test_tbl WHERE a <<< 0 OR b <<< 0;
 DELETE FROM tststats.priv_test_tbl WHERE a <<< 0 AND b <<< 0; -- Permission denied
 
 -- Grant access via a security barrier view, but hide all data
@@ -1647,6 +1648,7 @@ GRANT SELECT, DELETE ON tststats.priv_test_view TO regress_stats_user1;
 -- Should now have access via the view, but see nothing and leak nothing
 SET SESSION AUTHORIZATION regress_stats_user1;
 SELECT * FROM tststats.priv_test_view WHERE a <<< 0 AND b <<< 0; -- Should not leak
+SELECT * FROM tststats.priv_test_view WHERE a <<< 0 OR b <<< 0; -- Should not leak
 DELETE FROM tststats.priv_test_view WHERE a <<< 0 AND b <<< 0; -- Should not leak
 
 -- Grant table access, but hide all data with RLS
@@ -1657,6 +1659,7 @@ GRANT SELECT, DELETE ON tststats.priv_test_tbl TO regress_stats_user1;
 -- Should now have direct table access, but see nothing and leak nothing
 SET SESSION AUTHORIZATION regress_stats_user1;
 SELECT * FROM tststats.priv_test_tbl WHERE a <<< 0 AND b <<< 0; -- Should not leak
+SELECT * FROM tststats.priv_test_tbl WHERE a <<< 0 OR b <<< 0;
 DELETE FROM tststats.priv_test_tbl WHERE a <<< 0 AND b <<< 0; -- Should not leak
 
 -- privilege checks for pg_stats_ext and pg_stats_ext_exprs

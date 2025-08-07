@@ -56,8 +56,6 @@ static bool SampleHeapTupleVisible(TableScanDesc scan, Buffer buffer,
 
 static BlockNumber heapam_scan_get_blocks_done(HeapScanDesc hscan);
 
-static const TableAmRoutine heapam_methods;
-
 
 /* ------------------------------------------------------------------------
  * Slot related callbacks for heap AM
@@ -607,14 +605,11 @@ heapam_relation_set_new_filelocator(Relation rel,
 
 	/*
 	 * If required, set up an init fork for an unlogged table so that it can
-	 * be correctly reinitialized on restart.  Recovery may remove it while
-	 * replaying, for example, an XLOG_DBASE_CREATE* or XLOG_TBLSPC_CREATE
-	 * record.  Therefore, logging is necessary even if wal_level=minimal.
+	 * be correctly reinitialized on restart.
 	 */
 	if (persistence == RELPERSISTENCE_UNLOGGED)
 	{
 		Assert(rel->rd_rel->relkind == RELKIND_RELATION ||
-			   rel->rd_rel->relkind == RELKIND_MATVIEW ||
 			   rel->rd_rel->relkind == RELKIND_TOASTVALUE);
 		smgrcreate(srel, INIT_FORKNUM, false);
 		log_smgrcreate(newrlocator, INIT_FORKNUM);
@@ -2120,16 +2115,45 @@ heapam_estimate_rel_size(Relation rel, int32 *attr_widths,
 
 static bool
 heapam_scan_bitmap_next_block(TableScanDesc scan,
-							  TBMIterateResult *tbmres)
+							  BlockNumber *blockno, bool *recheck,
+							  uint64 *lossy_pages, uint64 *exact_pages)
 {
 	HeapScanDesc hscan = (HeapScanDesc) scan;
-	BlockNumber block = tbmres->blockno;
+	BlockNumber block;
 	Buffer		buffer;
 	Snapshot	snapshot;
 	int			ntup;
+	TBMIterateResult *tbmres;
 
 	hscan->rs_cindex = 0;
 	hscan->rs_ntuples = 0;
+
+	*blockno = InvalidBlockNumber;
+	*recheck = true;
+
+	do
+	{
+		CHECK_FOR_INTERRUPTS();
+
+		tbmres = tbm_iterate(&scan->st.rs_tbmiterator);
+
+		if (tbmres == NULL)
+			return false;
+
+		/*
+		 * Ignore any claimed entries past what we think is the end of the
+		 * relation. It may have been extended after the start of our scan (we
+		 * only hold an AccessShareLock, and it could be inserts from this
+		 * backend).  We don't take this optimization in SERIALIZABLE
+		 * isolation though, as we need to examine all invisible tuples
+		 * reachable by the index.
+		 */
+	} while (!IsolationIsSerializable() &&
+			 tbmres->blockno >= hscan->rs_nblocks);
+
+	/* Got a valid block */
+	*blockno = tbmres->blockno;
+	*recheck = tbmres->recheck;
 
 	/*
 	 * We can skip fetching the heap page if we don't need any fields from the
@@ -2149,16 +2173,7 @@ heapam_scan_bitmap_next_block(TableScanDesc scan,
 		return true;
 	}
 
-	/*
-	 * Ignore any claimed entries past what we think is the end of the
-	 * relation. It may have been extended after the start of our scan (we
-	 * only hold an AccessShareLock, and it could be inserts from this
-	 * backend).  We don't take this optimization in SERIALIZABLE isolation
-	 * though, as we need to examine all invisible tuples reachable by the
-	 * index.
-	 */
-	if (!IsolationIsSerializable() && block >= hscan->rs_nblocks)
-		return false;
+	block = tbmres->blockno;
 
 	/*
 	 * Acquire pin on the target heap page, trading in any pin we held before.
@@ -2248,12 +2263,23 @@ heapam_scan_bitmap_next_block(TableScanDesc scan,
 	Assert(ntup <= MaxHeapTuplesPerPage);
 	hscan->rs_ntuples = ntup;
 
-	return ntup > 0;
+	if (tbmres->ntuples >= 0)
+		(*exact_pages)++;
+	else
+		(*lossy_pages)++;
+
+	/*
+	 * Return true to indicate that a valid block was found and the bitmap is
+	 * not exhausted. If there are no visible tuples on this page,
+	 * hscan->rs_ntuples will be 0 and heapam_scan_bitmap_next_tuple() will
+	 * return false returning control to this function to advance to the next
+	 * block in the bitmap.
+	 */
+	return true;
 }
 
 static bool
 heapam_scan_bitmap_next_tuple(TableScanDesc scan,
-							  TBMIterateResult *tbmres,
 							  TupleTableSlot *slot)
 {
 	HeapScanDesc hscan = (HeapScanDesc) scan;
@@ -2274,7 +2300,7 @@ heapam_scan_bitmap_next_tuple(TableScanDesc scan,
 	/*
 	 * Out of range?  If so, nothing more to look at on this page
 	 */
-	if (hscan->rs_cindex < 0 || hscan->rs_cindex >= hscan->rs_ntuples)
+	if (hscan->rs_cindex >= hscan->rs_ntuples)
 		return false;
 
 	targoffset = hscan->rs_vistuples[hscan->rs_cindex];
@@ -2524,7 +2550,7 @@ reform_and_rewrite_tuple(HeapTuple tuple,
 	/* Be sure to null out any dropped columns */
 	for (i = 0; i < newTupDesc->natts; i++)
 	{
-		if (TupleDescAttr(newTupDesc, i)->attisdropped)
+		if (TupleDescCompactAttr(newTupDesc, i)->attisdropped)
 			isnull[i] = true;
 	}
 
@@ -2548,6 +2574,9 @@ SampleHeapTupleVisible(TableScanDesc scan, Buffer buffer,
 
 	if (scan->rs_flags & SO_ALLOW_PAGEMODE)
 	{
+		uint32		start = 0,
+					end = hscan->rs_ntuples;
+
 		/*
 		 * In pageatatime mode, heap_prepare_pagescan() already did visibility
 		 * checks, so just look at the info it left in rs_vistuples[].
@@ -2557,18 +2586,15 @@ SampleHeapTupleVisible(TableScanDesc scan, Buffer buffer,
 		 * in increasing order, but it's not clear that there would be enough
 		 * gain to justify the restriction.
 		 */
-		int			start = 0,
-					end = hscan->rs_ntuples - 1;
-
-		while (start <= end)
+		while (start < end)
 		{
-			int			mid = (start + end) / 2;
+			uint32		mid = start + (end - start) / 2;
 			OffsetNumber curoffset = hscan->rs_vistuples[mid];
 
 			if (tupoffset == curoffset)
 				return true;
 			else if (tupoffset < curoffset)
-				end = mid - 1;
+				end = mid;
 			else
 				start = mid + 1;
 		}

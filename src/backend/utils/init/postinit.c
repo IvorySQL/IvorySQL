@@ -22,6 +22,7 @@
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "access/htup_details.h"
+#include "access/parallel.h"
 #include "access/session.h"
 #include "access/tableam.h"
 #include "access/xact.h"
@@ -318,7 +319,6 @@ CheckMyDatabase(const char *name, bool am_superuser, bool override_allow_connect
 	bool		isnull;
 	char	   *collate;
 	char	   *ctype;
-	char	   *datlocale;
 
 	/* Fetch our pg_database row normally, via syscache */
 	tup = SearchSysCache1(DATABASEOID, ObjectIdGetDatum(MyDatabaseId));
@@ -423,42 +423,7 @@ CheckMyDatabase(const char *name, bool am_superuser, bool override_allow_connect
 		strcmp(ctype, "POSIX") == 0)
 		database_ctype_is_c = true;
 
-	if (dbform->datlocprovider == COLLPROVIDER_BUILTIN)
-	{
-		datum = SysCacheGetAttrNotNull(DATABASEOID, tup, Anum_pg_database_datlocale);
-		datlocale = TextDatumGetCString(datum);
-
-		builtin_validate_locale(dbform->encoding, datlocale);
-
-		default_locale.info.builtin.locale = MemoryContextStrdup(
-																 TopMemoryContext, datlocale);
-	}
-	else if (dbform->datlocprovider == COLLPROVIDER_ICU)
-	{
-		char	   *icurules;
-
-		datum = SysCacheGetAttrNotNull(DATABASEOID, tup, Anum_pg_database_datlocale);
-		datlocale = TextDatumGetCString(datum);
-
-		datum = SysCacheGetAttr(DATABASEOID, tup, Anum_pg_database_daticurules, &isnull);
-		if (!isnull)
-			icurules = TextDatumGetCString(datum);
-		else
-			icurules = NULL;
-
-		make_icu_collator(datlocale, icurules, &default_locale);
-	}
-	else
-		datlocale = NULL;
-
-	default_locale.provider = dbform->datlocprovider;
-
-	/*
-	 * Default locale is currently always deterministic.  Nondeterministic
-	 * locales currently don't support pattern matching, which would break a
-	 * lot of things if applied globally.
-	 */
-	default_locale.deterministic = true;
+	init_database_collation();
 
 	/*
 	 * Check collation version.  See similar code in
@@ -478,7 +443,10 @@ CheckMyDatabase(const char *name, bool am_superuser, bool override_allow_connect
 		if (dbform->datlocprovider == COLLPROVIDER_LIBC)
 			locale = collate;
 		else
-			locale = datlocale;
+		{
+			datum = SysCacheGetAttrNotNull(DATABASEOID, tup, Anum_pg_database_datlocale);
+			locale = TextDatumGetCString(datum);
+		}
 
 		actual_versionstr = get_collation_actual_version(dbform->datlocprovider, locale);
 		if (!actual_versionstr)
@@ -580,57 +548,48 @@ InitializeMaxBackends(void)
 	MaxBackends = MaxConnections + autovacuum_max_workers + 1 +
 		max_worker_processes + max_wal_senders;
 
-	/* internal error because the values were all checked previously */
 	if (MaxBackends > MAX_BACKENDS)
-		elog(ERROR, "too many backends configured");
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("too many server processes configured"),
+				 errdetail("\"max_connections\" (%d) plus \"autovacuum_max_workers\" (%d) plus \"max_worker_processes\" (%d) plus \"max_wal_senders\" (%d) must be less than %d.",
+						   MaxConnections, autovacuum_max_workers,
+						   max_worker_processes, max_wal_senders,
+						   MAX_BACKENDS)));
 }
 
 /*
- * GUC check_hook for max_connections
+ * Initialize the number of fast-path lock slots in PGPROC.
+ *
+ * This must be called after modules have had the chance to alter GUCs in
+ * shared_preload_libraries and before shared memory size is determined.
+ *
+ * The default max_locks_per_xact=64 means 4 groups by default.
+ *
+ * We allow anything between 1 and 1024 groups, with the usual power-of-2
+ * logic. The 1 is the "old" size with only 16 slots, 1024 is an arbitrary
+ * limit (matching max_locks_per_xact = 16k). Values over 1024 are unlikely
+ * to be beneficial - there are bottlenecks we'll hit way before that.
  */
-bool
-check_max_connections(int *newval, void **extra, GucSource source)
+void
+InitializeFastPathLocks(void)
 {
-	if (*newval + autovacuum_max_workers + 1 +
-		max_worker_processes + max_wal_senders > MAX_BACKENDS)
-		return false;
-	return true;
-}
+	/* Should be initialized only once. */
+	Assert(FastPathLockGroupsPerBackend == 0);
 
-/*
- * GUC check_hook for autovacuum_max_workers
- */
-bool
-check_autovacuum_max_workers(int *newval, void **extra, GucSource source)
-{
-	if (MaxConnections + *newval + 1 +
-		max_worker_processes + max_wal_senders > MAX_BACKENDS)
-		return false;
-	return true;
-}
+	/* we need at least one group */
+	FastPathLockGroupsPerBackend = 1;
 
-/*
- * GUC check_hook for max_worker_processes
- */
-bool
-check_max_worker_processes(int *newval, void **extra, GucSource source)
-{
-	if (MaxConnections + autovacuum_max_workers + 1 +
-		*newval + max_wal_senders > MAX_BACKENDS)
-		return false;
-	return true;
-}
+	while (FastPathLockGroupsPerBackend < FP_LOCK_GROUPS_PER_BACKEND_MAX)
+	{
+		/* stop once we exceed max_locks_per_xact */
+		if (FastPathLockGroupsPerBackend * FP_LOCK_SLOTS_PER_GROUP >= max_locks_per_xact)
+			break;
 
-/*
- * GUC check_hook for max_wal_senders
- */
-bool
-check_max_wal_senders(int *newval, void **extra, GucSource source)
-{
-	if (MaxConnections + autovacuum_max_workers + 1 +
-		max_worker_processes + *newval > MAX_BACKENDS)
-		return false;
-	return true;
+		FastPathLockGroupsPerBackend *= 2;
+	}
+
+	Assert(FastPathLockGroupsPerBackend <= FP_LOCK_GROUPS_PER_BACKEND_MAX);
 }
 
 /*
@@ -668,7 +627,7 @@ BaseInit(void)
 	/* Do local initialization of storage and buffer managers */
 	InitSync();
 	smgrinit();
-	InitBufferPoolAccess();
+	InitBufferManagerAccess();
 
 	/*
 	 * Initialize temporary file access after pgstat, so that the temporary
@@ -681,6 +640,9 @@ BaseInit(void)
 	 * try to insert XLOG.
 	 */
 	InitXLogInsert();
+
+	/* Initialize lock manager's local structs */
+	InitLockManagerAccess();
 
 	/*
 	 * Initialize replication slots after pgstat. The exit hook might need to
@@ -759,7 +721,7 @@ InitPostgres(const char *in_dbname, Oid dboid,
 	 */
 	SharedInvalBackendInit(false);
 
-	ProcSignalInit();
+	ProcSignalInit(MyCancelKeyValid, MyCancelKey);
 
 	/*
 	 * Also set up timeout handlers needed for backend operation.  We need
@@ -851,16 +813,7 @@ InitPostgres(const char *in_dbname, Oid dboid,
 	}
 
 	/*
-	 * Start a new transaction here before first access to db, and get a
-	 * snapshot.  We don't have a use for the snapshot itself, but we're
-	 * interested in the secondary effect that it sets RecentGlobalXmin. (This
-	 * is critical for anything that reads heap pages, because HOT may decide
-	 * to prune them even if the process doesn't attempt to modify any
-	 * tuples.)
-	 *
-	 * FIXME: This comment is inaccurate / the code buggy. A snapshot that is
-	 * not pushed/active does not reliably prevent HOT pruning (->xmin could
-	 * e.g. be cleared when cache invalidations are processed).
+	 * Start a new transaction here before first access to db.
 	 */
 	if (!bootstrap)
 	{
@@ -875,8 +828,6 @@ InitPostgres(const char *in_dbname, Oid dboid,
 		 * Fortunately, "read committed" is plenty good enough.
 		 */
 		XactIsoLevel = XACT_READ_COMMITTED;
-
-		(void) GetTransactionSnapshot();
 	}
 
 	/*
@@ -914,7 +865,23 @@ InitPostgres(const char *in_dbname, Oid dboid,
 		{
 			InitializeSessionUserId(username, useroid,
 									(flags & INIT_PG_OVERRIDE_ROLE_LOGIN) != 0);
-			am_superuser = superuser();
+
+			/*
+			 * In a parallel worker, set am_superuser based on the
+			 * authenticated user ID, not the current role.  This is pretty
+			 * dubious but it matches our historical behavior.  Note that this
+			 * value of am_superuser is used only for connection-privilege
+			 * checks here and in CheckMyDatabase (we won't reach
+			 * process_startup_options in a background worker).
+			 *
+			 * In other cases, there's been no opportunity for the current
+			 * role to diverge from the authenticated user ID yet, so we can
+			 * just rely on superuser() and avoid an extra catalog lookup.
+			 */
+			if (InitializingParallelWorker)
+				am_superuser = superuser_arg(GetAuthenticatedUserId());
+			else
+				am_superuser = superuser();
 		}
 	}
 	else

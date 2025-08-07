@@ -282,10 +282,8 @@ InitWalSender(void)
 	/* Create a per-walsender data structure in shared memory */
 	InitWalSenderSlot();
 
-	/*
-	 * We don't currently need any ResourceOwner in a walsender process, but
-	 * if we did, we could call CreateAuxProcessResourceOwner here.
-	 */
+	/* need resource owner for e.g. basebackups */
+	CreateAuxProcessResourceOwner();
 
 	/*
 	 * Let postmaster know that we're a WAL sender. Once we've declared us as
@@ -346,41 +344,13 @@ WalSndErrorCleanup(void)
 	 * without a transaction, we've got to clean that up now.
 	 */
 	if (!IsTransactionOrTransactionBlock())
-		WalSndResourceCleanup(false);
+		ReleaseAuxProcessResources(false);
 
 	if (got_STOPPING || got_SIGUSR2)
 		proc_exit(0);
 
 	/* Revert back to startup state */
 	WalSndSetState(WALSNDSTATE_STARTUP);
-}
-
-/*
- * Clean up any ResourceOwner we created.
- */
-void
-WalSndResourceCleanup(bool isCommit)
-{
-	ResourceOwner resowner;
-
-	if (CurrentResourceOwner == NULL)
-		return;
-
-	/*
-	 * Deleting CurrentResourceOwner is not allowed, so we must save a pointer
-	 * in a local variable and clear it first.
-	 */
-	resowner = CurrentResourceOwner;
-	CurrentResourceOwner = NULL;
-
-	/* Now we can release resources and delete it. */
-	ResourceOwnerRelease(resowner,
-						 RESOURCE_RELEASE_BEFORE_LOCKS, isCommit, true);
-	ResourceOwnerRelease(resowner,
-						 RESOURCE_RELEASE_LOCKS, isCommit, true);
-	ResourceOwnerRelease(resowner,
-						 RESOURCE_RELEASE_AFTER_LOCKS, isCommit, true);
-	ResourceOwnerDelete(resowner);
 }
 
 /*
@@ -440,12 +410,10 @@ IdentifySystem(void)
 
 		/* syscache access needs a transaction env. */
 		StartTransactionCommand();
-		/* make dbname live outside TX context */
-		MemoryContextSwitchTo(cur);
 		dbname = get_database_name(MyDatabaseId);
+		/* copy dbname out of TX context */
+		dbname = MemoryContextStrdup(cur, dbname);
 		CommitTransactionCommand();
-		/* CommitTransactionCommand switches to TopMemoryContext */
-		MemoryContextSwitchTo(cur);
 	}
 
 	dest = CreateDestReceiver(DestRemoteSimple);
@@ -687,8 +655,10 @@ UploadManifest(void)
 	 * parsing the manifest will use the cryptohash stuff, which requires a
 	 * resource owner
 	 */
-	Assert(CurrentResourceOwner == NULL);
-	CurrentResourceOwner = ResourceOwnerCreate(NULL, "base backup");
+	Assert(AuxProcessResourceOwner != NULL);
+	Assert(CurrentResourceOwner == AuxProcessResourceOwner ||
+		   CurrentResourceOwner == NULL);
+	CurrentResourceOwner = AuxProcessResourceOwner;
 
 	/* Prepare to read manifest data into a temporary context. */
 	mcxt = AllocSetContextCreate(CurrentMemoryContext,
@@ -697,7 +667,7 @@ UploadManifest(void)
 	ib = CreateIncrementalBackupInfo(mcxt);
 
 	/* Send a CopyInResponse message */
-	pq_beginmessage(&buf, 'G');
+	pq_beginmessage(&buf, PqMsg_CopyInResponse);
 	pq_sendbyte(&buf, 0);
 	pq_sendint16(&buf, 0);
 	pq_endmessage_reuse(&buf);
@@ -725,7 +695,7 @@ UploadManifest(void)
 	uploaded_manifest_mcxt = mcxt;
 
 	/* clean up the resource owner we created */
-	WalSndResourceCleanup(true);
+	ReleaseAuxProcessResources(true);
 }
 
 /*
@@ -1059,16 +1029,21 @@ logical_read_xlog_page(XLogReaderState *state, XLogRecPtr targetPagePtr, int req
 
 	/*
 	 * Make sure we have enough WAL available before retrieving the current
-	 * timeline. This is needed to determine am_cascading_walsender accurately
-	 * which is needed to determine the current timeline.
+	 * timeline.
 	 */
 	flushptr = WalSndWaitForWal(targetPagePtr + reqLen);
+
+	/* Fail if not enough (implies we are going to shut down) */
+	if (flushptr < targetPagePtr + reqLen)
+		return -1;
 
 	/*
 	 * Since logical decoding is also permitted on a standby server, we need
 	 * to check if the server is in recovery to decide how to get the current
-	 * timeline ID (so that it also cover the promotion or timeline change
-	 * cases).
+	 * timeline ID (so that it also covers the promotion or timeline change
+	 * cases). We must determine am_cascading_walsender after waiting for the
+	 * required WAL so that it is correct when the walsender wakes up after a
+	 * promotion.
 	 */
 	am_cascading_walsender = RecoveryInProgress();
 
@@ -1082,10 +1057,6 @@ logical_read_xlog_page(XLogReaderState *state, XLogRecPtr targetPagePtr, int req
 	sendTimeLine = state->currTLI;
 	sendTimeLineValidUpto = state->currTLIValidUntil;
 	sendTimeLineNextTLI = state->nextTLI;
-
-	/* fail if not (implies we are going to shut down) */
-	if (flushptr < targetPagePtr + reqLen)
-		return -1;
 
 	if (targetPagePtr + XLOG_BLCKSZ <= flushptr)
 		count = XLOG_BLCKSZ;	/* more than one block available */
@@ -1408,12 +1379,15 @@ DropReplicationSlot(DropReplicationSlotCmd *cmd)
 }
 
 /*
- * Process extra options given to ALTER_REPLICATION_SLOT.
+ * Change the definition of a replication slot.
  */
 static void
-ParseAlterReplSlotOptions(AlterReplicationSlotCmd *cmd, bool *failover)
+AlterReplicationSlot(AlterReplicationSlotCmd *cmd)
 {
 	bool		failover_given = false;
+	bool		two_phase_given = false;
+	bool		failover;
+	bool		two_phase;
 
 	/* Parse options */
 	foreach_ptr(DefElem, defel, cmd->options)
@@ -1425,23 +1399,24 @@ ParseAlterReplSlotOptions(AlterReplicationSlotCmd *cmd, bool *failover)
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("conflicting or redundant options")));
 			failover_given = true;
-			*failover = defGetBoolean(defel);
+			failover = defGetBoolean(defel);
+		}
+		else if (strcmp(defel->defname, "two_phase") == 0)
+		{
+			if (two_phase_given)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			two_phase_given = true;
+			two_phase = defGetBoolean(defel);
 		}
 		else
 			elog(ERROR, "unrecognized option: %s", defel->defname);
 	}
-}
 
-/*
- * Change the definition of a replication slot.
- */
-static void
-AlterReplicationSlot(AlterReplicationSlotCmd *cmd)
-{
-	bool		failover = false;
-
-	ParseAlterReplSlotOptions(cmd, &failover);
-	ReplicationSlotAlter(cmd->slotname, failover);
+	ReplicationSlotAlter(cmd->slotname,
+						 failover_given ? &failover : NULL,
+						 two_phase_given ? &two_phase : NULL);
 }
 
 /*
@@ -1727,7 +1702,7 @@ WalSndUpdateProgress(LogicalDecodingContext *ctx, XLogRecPtr lsn, TransactionId 
 
 /*
  * Wake up the logical walsender processes with logical failover slots if the
- * currently acquired physical slot is specified in standby_slot_names GUC.
+ * currently acquired physical slot is specified in synchronized_standby_slots GUC.
  */
 void
 PhysicalWakeupLogicalWalSnd(void)
@@ -1742,7 +1717,7 @@ PhysicalWakeupLogicalWalSnd(void)
 	if (RecoveryInProgress())
 		return;
 
-	if (SlotExistsInStandbySlotNames(NameStr(MyReplicationSlot->data.name)))
+	if (SlotExistsInSyncStandbySlots(NameStr(MyReplicationSlot->data.name)))
 		ConditionVariableBroadcast(&WalSndCtl->wal_confirm_rcv_cv);
 }
 
@@ -2932,7 +2907,6 @@ InitWalSenderSlot(void)
 			walsnd->flushLag = -1;
 			walsnd->applyLag = -1;
 			walsnd->sync_standby_priority = 0;
-			walsnd->latch = &MyProc->procLatch;
 			walsnd->replyTime = 0;
 
 			/*
@@ -2976,8 +2950,6 @@ WalSndKill(int code, Datum arg)
 	MyWalSnd = NULL;
 
 	SpinLockAcquire(&walsnd->mutex);
-	/* clear latch while holding the spinlock, so it can safely be read */
-	walsnd->latch = NULL;
 	/* Mark WalSnd struct as no longer being in use. */
 	walsnd->pid = 0;
 	SpinLockRelease(&walsnd->mutex);

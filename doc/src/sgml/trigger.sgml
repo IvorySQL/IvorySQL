@@ -357,7 +357,8 @@
    <para>
     If a foreign key constraint specifies referential actions (that
     is, cascading updates or deletes), those actions are performed via
-    ordinary SQL update or delete commands on the referencing table.
+    ordinary SQL <command>UPDATE</command> or <command>DELETE</command>
+    commands on the referencing table.
     In particular, any triggers that exist on the referencing table
     will be fired for those changes.  If such a trigger modifies or
     blocks the effect of one of these commands, the end result could
@@ -915,8 +916,7 @@ trigf(PG_FUNCTION_ARGS)
     tupdesc = trigdata->tg_relation->rd_att;
 
     /* connect to SPI manager */
-    if ((ret = SPI_connect()) < 0)
-        elog(ERROR, "trigf (fired %s): SPI_connect returned %d", when, ret);
+    SPI_connect();
 
     /* get number of rows in table */
     ret = SPI_exec("SELECT count(*) FROM ttest", 0);

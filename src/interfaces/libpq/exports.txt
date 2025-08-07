@@ -205,7 +205,7 @@ PQcancelFinish            202
 PQsocketPoll              203
 PQsetChunkedRowsMode      204
 PQgetCurrentTimeUSec      205
-Ivyconnectdb               206
+PQservice                 206
 IvyCreatePreparedStatement 207
 IvybindOutParameterByPos   208
 IvyexecPreparedStatement   209
@@ -228,3 +228,4 @@ IvyFreeHandle              225
 IvyBindByPos               226
 IvyBindByName              227
 IvyStmtExecute             228
+Ivyconnectdb               229

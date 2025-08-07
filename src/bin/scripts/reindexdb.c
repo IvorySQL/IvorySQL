@@ -16,7 +16,6 @@
 
 #include "catalog/pg_class_d.h"
 #include "common.h"
-#include "common/connect.h"
 #include "common/logging.h"
 #include "fe_utils/cancel.h"
 #include "fe_utils/option_utils.h"
@@ -654,6 +653,8 @@ get_parallel_object_list(PGconn *conn, ReindexType type,
 								 "   AND c.relkind IN ("
 								 CppAsString2(RELKIND_RELATION) ", "
 								 CppAsString2(RELKIND_MATVIEW) ")\n"
+								 "   AND c.relpersistence != "
+								 CppAsString2(RELPERSISTENCE_TEMP) "\n"
 								 " ORDER BY c.relpages DESC;");
 			break;
 
@@ -676,6 +677,8 @@ get_parallel_object_list(PGconn *conn, ReindexType type,
 									 " WHERE c.relkind IN ("
 									 CppAsString2(RELKIND_RELATION) ", "
 									 CppAsString2(RELKIND_MATVIEW) ")\n"
+									 "   AND c.relpersistence != "
+									 CppAsString2(RELPERSISTENCE_TEMP) "\n"
 									 " AND ns.nspname IN (");
 
 				for (cell = user_list->head; cell; cell = cell->next)

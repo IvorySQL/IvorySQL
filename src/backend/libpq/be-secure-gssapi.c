@@ -18,9 +18,10 @@
 #include "libpq/auth.h"
 #include "libpq/be-gssapi-common.h"
 #include "libpq/libpq.h"
-#include "libpq/pqformat.h"
 #include "miscadmin.h"
 #include "pgstat.h"
+#include "port/pg_bswap.h"
+#include "utils/injection_point.h"
 #include "utils/memutils.h"
 
 
@@ -449,7 +450,7 @@ read_or_wait(Port *port, ssize_t len)
 		 */
 		if (ret <= 0)
 		{
-			WaitLatchOrSocket(MyLatch,
+			WaitLatchOrSocket(NULL,
 							  WL_SOCKET_READABLE | WL_EXIT_ON_PM_DEATH,
 							  port->sock, 0, WAIT_EVENT_GSS_OPEN_SERVER);
 
@@ -498,6 +499,8 @@ secure_open_gssapi(Port *port)
 	OM_uint32	major,
 				minor;
 	gss_cred_id_t delegated_creds;
+
+	INJECTION_POINT("backend-gssapi-startup");
 
 	/*
 	 * Allocate subsidiary Port data for GSSAPI operations.
@@ -665,7 +668,7 @@ secure_open_gssapi(Port *port)
 				/* Wait and retry if we couldn't write yet */
 				if (ret <= 0)
 				{
-					WaitLatchOrSocket(MyLatch,
+					WaitLatchOrSocket(NULL,
 									  WL_SOCKET_WRITEABLE | WL_EXIT_ON_PM_DEATH,
 									  port->sock, 0, WAIT_EVENT_GSS_OPEN_SERVER);
 					continue;

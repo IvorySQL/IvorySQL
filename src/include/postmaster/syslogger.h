@@ -75,6 +75,10 @@ extern PGDLLIMPORT char *Log_filename;
 extern PGDLLIMPORT bool Log_truncate_on_rotation;
 extern PGDLLIMPORT int Log_file_mode;
 
+#ifdef EXEC_BACKEND
+extern PGDLLIMPORT pg_time_t first_syslogger_file_time;
+#endif
+
 #ifndef WIN32
 extern PGDLLIMPORT int syslogPipe[2];
 #else
@@ -82,7 +86,7 @@ extern PGDLLIMPORT HANDLE syslogPipe[2];
 #endif
 
 
-extern int	SysLogger_Start(void);
+extern int	SysLogger_Start(int child_slot);
 
 extern void write_syslogger_file(const char *buffer, int count, int destination);
 

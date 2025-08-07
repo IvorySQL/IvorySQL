@@ -822,12 +822,12 @@ INSERT INTO PKTABLE VALUES(42);
 -- This next should fail, because int=inet does not exist
 CREATE TABLE FKTABLE (ftest1 inet REFERENCES pktable);
 ERROR:  foreign key constraint "fktable_ftest1_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: inet and integer.
+DETAIL:  Key columns "ftest1" of the referencing table and "ptest1" of the referenced table are of incompatible types: inet and integer.
 -- This should also fail for the same reason, but here we
 -- give the column name
 CREATE TABLE FKTABLE (ftest1 inet REFERENCES pktable(ptest1));
 ERROR:  foreign key constraint "fktable_ftest1_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: inet and integer.
+DETAIL:  Key columns "ftest1" of the referencing table and "ptest1" of the referenced table are of incompatible types: inet and integer.
 -- This should succeed, even though they are different types,
 -- because int=int8 exists and is a member of the integer opfamily
 CREATE TABLE FKTABLE (ftest1 int8 REFERENCES pktable);
@@ -846,7 +846,7 @@ DROP TABLE FKTABLE;
 -- of the integer opfamily)
 CREATE TABLE FKTABLE (ftest1 numeric REFERENCES pktable);
 ERROR:  foreign key constraint "fktable_ftest1_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: numeric and integer.
+DETAIL:  Key columns "ftest1" of the referencing table and "ptest1" of the referenced table are of incompatible types: numeric and integer.
 DROP TABLE PKTABLE;
 -- On the other hand, this should work because int implicitly promotes to
 -- numeric, and we allow promotion on the FK side
@@ -869,23 +869,23 @@ CREATE TABLE PKTABLE (ptest1 int, ptest2 inet, PRIMARY KEY(ptest1, ptest2));
 -- This should fail, because we just chose really odd types
 CREATE TABLE FKTABLE (ftest1 cidr, ftest2 timestamp, FOREIGN KEY(ftest1, ftest2) REFERENCES pktable);
 ERROR:  foreign key constraint "fktable_ftest1_ftest2_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: cidr and integer.
+DETAIL:  Key columns "ftest1" of the referencing table and "ptest1" of the referenced table are of incompatible types: cidr and integer.
 -- Again, so should this...
 CREATE TABLE FKTABLE (ftest1 cidr, ftest2 timestamp, FOREIGN KEY(ftest1, ftest2) REFERENCES pktable(ptest1, ptest2));
 ERROR:  foreign key constraint "fktable_ftest1_ftest2_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: cidr and integer.
+DETAIL:  Key columns "ftest1" of the referencing table and "ptest1" of the referenced table are of incompatible types: cidr and integer.
 -- This fails because we mixed up the column ordering
 CREATE TABLE FKTABLE (ftest1 int, ftest2 inet, FOREIGN KEY(ftest2, ftest1) REFERENCES pktable);
 ERROR:  foreign key constraint "fktable_ftest2_ftest1_fkey" cannot be implemented
-DETAIL:  Key columns "ftest2" and "ptest1" are of incompatible types: inet and integer.
+DETAIL:  Key columns "ftest2" of the referencing table and "ptest1" of the referenced table are of incompatible types: inet and integer.
 -- As does this...
 CREATE TABLE FKTABLE (ftest1 int, ftest2 inet, FOREIGN KEY(ftest2, ftest1) REFERENCES pktable(ptest1, ptest2));
 ERROR:  foreign key constraint "fktable_ftest2_ftest1_fkey" cannot be implemented
-DETAIL:  Key columns "ftest2" and "ptest1" are of incompatible types: inet and integer.
+DETAIL:  Key columns "ftest2" of the referencing table and "ptest1" of the referenced table are of incompatible types: inet and integer.
 -- And again..
 CREATE TABLE FKTABLE (ftest1 int, ftest2 inet, FOREIGN KEY(ftest1, ftest2) REFERENCES pktable(ptest2, ptest1));
 ERROR:  foreign key constraint "fktable_ftest1_ftest2_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest2" are of incompatible types: integer and inet.
+DETAIL:  Key columns "ftest1" of the referencing table and "ptest2" of the referenced table are of incompatible types: integer and inet.
 -- This works...
 CREATE TABLE FKTABLE (ftest1 int, ftest2 inet, FOREIGN KEY(ftest2, ftest1) REFERENCES pktable(ptest2, ptest1));
 DROP TABLE FKTABLE;
@@ -906,17 +906,17 @@ DROP TABLE PKTABLE;
 CREATE TABLE PKTABLE (ptest1 int, ptest2 inet, ptest3 int, ptest4 inet, PRIMARY KEY(ptest1, ptest2), FOREIGN KEY(ptest3,
 ptest4) REFERENCES pktable(ptest2, ptest1));
 ERROR:  foreign key constraint "pktable_ptest3_ptest4_fkey" cannot be implemented
-DETAIL:  Key columns "ptest3" and "ptest2" are of incompatible types: integer and inet.
+DETAIL:  Key columns "ptest3" of the referencing table and "ptest2" of the referenced table are of incompatible types: integer and inet.
 -- Nor should this... (same reason, we have 4,3 referencing 1,2 which mismatches types
 CREATE TABLE PKTABLE (ptest1 int, ptest2 inet, ptest3 int, ptest4 inet, PRIMARY KEY(ptest1, ptest2), FOREIGN KEY(ptest4,
 ptest3) REFERENCES pktable(ptest1, ptest2));
 ERROR:  foreign key constraint "pktable_ptest4_ptest3_fkey" cannot be implemented
-DETAIL:  Key columns "ptest4" and "ptest1" are of incompatible types: inet and integer.
+DETAIL:  Key columns "ptest4" of the referencing table and "ptest1" of the referenced table are of incompatible types: inet and integer.
 -- Not this one either... Same as the last one except we didn't defined the columns being referenced.
 CREATE TABLE PKTABLE (ptest1 int, ptest2 inet, ptest3 int, ptest4 inet, PRIMARY KEY(ptest1, ptest2), FOREIGN KEY(ptest4,
 ptest3) REFERENCES pktable);
 ERROR:  foreign key constraint "pktable_ptest4_ptest3_fkey" cannot be implemented
-DETAIL:  Key columns "ptest4" and "ptest1" are of incompatible types: inet and integer.
+DETAIL:  Key columns "ptest4" of the referencing table and "ptest1" of the referenced table are of incompatible types: inet and integer.
 --
 -- Now some cases with inheritance
 -- Basic 2 table case: 1 column of matching types.
@@ -1009,20 +1009,20 @@ create table pktable(ptest1 inet, primary key(base1, ptest1)) inherits (pktable_
 -- just generally bad types (with and without column references on the referenced table)
 create table fktable(ftest1 cidr, ftest2 int[], foreign key (ftest1, ftest2) references pktable);
 ERROR:  foreign key constraint "fktable_ftest1_ftest2_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "base1" are of incompatible types: cidr and integer.
+DETAIL:  Key columns "ftest1" of the referencing table and "base1" of the referenced table are of incompatible types: cidr and integer.
 create table fktable(ftest1 cidr, ftest2 int[], foreign key (ftest1, ftest2) references pktable(base1, ptest1));
 ERROR:  foreign key constraint "fktable_ftest1_ftest2_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "base1" are of incompatible types: cidr and integer.
+DETAIL:  Key columns "ftest1" of the referencing table and "base1" of the referenced table are of incompatible types: cidr and integer.
 -- let's mix up which columns reference which
 create table fktable(ftest1 int, ftest2 inet, foreign key(ftest2, ftest1) references pktable);
 ERROR:  foreign key constraint "fktable_ftest2_ftest1_fkey" cannot be implemented
-DETAIL:  Key columns "ftest2" and "base1" are of incompatible types: inet and integer.
+DETAIL:  Key columns "ftest2" of the referencing table and "base1" of the referenced table are of incompatible types: inet and integer.
 create table fktable(ftest1 int, ftest2 inet, foreign key(ftest2, ftest1) references pktable(base1, ptest1));
 ERROR:  foreign key constraint "fktable_ftest2_ftest1_fkey" cannot be implemented
-DETAIL:  Key columns "ftest2" and "base1" are of incompatible types: inet and integer.
+DETAIL:  Key columns "ftest2" of the referencing table and "base1" of the referenced table are of incompatible types: inet and integer.
 create table fktable(ftest1 int, ftest2 inet, foreign key(ftest1, ftest2) references pktable(ptest1, base1));
 ERROR:  foreign key constraint "fktable_ftest1_ftest2_fkey" cannot be implemented
-DETAIL:  Key columns "ftest1" and "ptest1" are of incompatible types: integer and inet.
+DETAIL:  Key columns "ftest1" of the referencing table and "ptest1" of the referenced table are of incompatible types: integer and inet.
 drop table pktable;
 drop table pktable_base;
 -- 2 columns (1 table), mismatched types
@@ -1030,19 +1030,19 @@ create table pktable_base(base1 int not null, base2 int);
 create table pktable(ptest1 inet, ptest2 inet[], primary key(base1, ptest1), foreign key(base2, ptest2) references
                                              pktable(base1, ptest1)) inherits (pktable_base);
 ERROR:  foreign key constraint "pktable_base2_ptest2_fkey" cannot be implemented
-DETAIL:  Key columns "ptest2" and "ptest1" are of incompatible types: inet[] and inet.
+DETAIL:  Key columns "ptest2" of the referencing table and "ptest1" of the referenced table are of incompatible types: inet[] and inet.
 create table pktable(ptest1 inet, ptest2 inet, primary key(base1, ptest1), foreign key(base2, ptest2) references
                                              pktable(ptest1, base1)) inherits (pktable_base);
 ERROR:  foreign key constraint "pktable_base2_ptest2_fkey" cannot be implemented
-DETAIL:  Key columns "base2" and "ptest1" are of incompatible types: integer and inet.
+DETAIL:  Key columns "base2" of the referencing table and "ptest1" of the referenced table are of incompatible types: integer and inet.
 create table pktable(ptest1 inet, ptest2 inet, primary key(base1, ptest1), foreign key(ptest2, base2) references
                                              pktable(base1, ptest1)) inherits (pktable_base);
 ERROR:  foreign key constraint "pktable_ptest2_base2_fkey" cannot be implemented
-DETAIL:  Key columns "ptest2" and "base1" are of incompatible types: inet and integer.
+DETAIL:  Key columns "ptest2" of the referencing table and "base1" of the referenced table are of incompatible types: inet and integer.
 create table pktable(ptest1 inet, ptest2 inet, primary key(base1, ptest1), foreign key(ptest2, base2) references
                                              pktable(base1, ptest1)) inherits (pktable_base);
 ERROR:  foreign key constraint "pktable_ptest2_base2_fkey" cannot be implemented
-DETAIL:  Key columns "ptest2" and "base1" are of incompatible types: inet and integer.
+DETAIL:  Key columns "ptest2" of the referencing table and "base1" of the referenced table are of incompatible types: inet and integer.
 drop table pktable;
 ERROR:  table "pktable" does not exist
 drop table pktable_base;
@@ -1154,22 +1154,22 @@ CREATE TEMP TABLE fktable (
 ALTER TABLE fktable ADD CONSTRAINT fk_2_3
 FOREIGN KEY (x2) REFERENCES pktable(id3);
 ERROR:  foreign key constraint "fk_2_3" cannot be implemented
-DETAIL:  Key columns "x2" and "id3" are of incompatible types: character varying and real.
+DETAIL:  Key columns "x2" of the referencing table and "id3" of the referenced table are of incompatible types: character varying and real.
 -- nor to int4
 ALTER TABLE fktable ADD CONSTRAINT fk_2_1
 FOREIGN KEY (x2) REFERENCES pktable(id1);
 ERROR:  foreign key constraint "fk_2_1" cannot be implemented
-DETAIL:  Key columns "x2" and "id1" are of incompatible types: character varying and integer.
+DETAIL:  Key columns "x2" of the referencing table and "id1" of the referenced table are of incompatible types: character varying and integer.
 -- real does not promote to int4
 ALTER TABLE fktable ADD CONSTRAINT fk_3_1
 FOREIGN KEY (x3) REFERENCES pktable(id1);
 ERROR:  foreign key constraint "fk_3_1" cannot be implemented
-DETAIL:  Key columns "x3" and "id1" are of incompatible types: real and integer.
+DETAIL:  Key columns "x3" of the referencing table and "id1" of the referenced table are of incompatible types: real and integer.
 -- int4 does not promote to text
 ALTER TABLE fktable ADD CONSTRAINT fk_1_2
 FOREIGN KEY (x1) REFERENCES pktable(id2);
 ERROR:  foreign key constraint "fk_1_2" cannot be implemented
-DETAIL:  Key columns "x1" and "id2" are of incompatible types: integer and character varying.
+DETAIL:  Key columns "x1" of the referencing table and "id2" of the referenced table are of incompatible types: integer and character varying.
 -- should succeed
 -- int4 promotes to real
 ALTER TABLE fktable ADD CONSTRAINT fk_1_3
@@ -1192,11 +1192,11 @@ FOREIGN KEY (x2,x5,x3) REFERENCES pktable(id2,id1,id3);
 ALTER TABLE fktable ADD CONSTRAINT fk_123_231
 FOREIGN KEY (x1,x2,x3) REFERENCES pktable(id2,id3,id1);
 ERROR:  foreign key constraint "fk_123_231" cannot be implemented
-DETAIL:  Key columns "x1" and "id2" are of incompatible types: integer and character varying.
+DETAIL:  Key columns "x1" of the referencing table and "id2" of the referenced table are of incompatible types: integer and character varying.
 ALTER TABLE fktable ADD CONSTRAINT fk_241_132
 FOREIGN KEY (x2,x4,x1) REFERENCES pktable(id1,id3,id2);
 ERROR:  foreign key constraint "fk_241_132" cannot be implemented
-DETAIL:  Key columns "x2" and "id1" are of incompatible types: character varying and integer.
+DETAIL:  Key columns "x2" of the referencing table and "id1" of the referenced table are of incompatible types: character varying and integer.
 DROP TABLE pktable, fktable;
 -- test a tricky case: we can elide firing the FK check trigger during
 -- an UPDATE if the UPDATE did not change the foreign key
@@ -1439,11 +1439,11 @@ insert into pp values(11);
 update pp set f1=f1+1;
 insert into cc values(13);
 update pp set f1=f1+1; -- fail
-ERROR:  update or delete on table "pp" violates foreign key constraint "cc_f1_fkey" on table "cc"
-DETAIL:  Key (f1)=(13) is still referenced from table "cc".
+ERROR:  update or delete on table "pp" violates RESTRICT setting of foreign key constraint "cc_f1_fkey" on table "cc"
+DETAIL:  Key (f1)=(13) is referenced from table "cc".
 delete from pp where f1 = 13; -- fail
-ERROR:  update or delete on table "pp" violates foreign key constraint "cc_f1_fkey" on table "cc"
-DETAIL:  Key (f1)=(13) is still referenced from table "cc".
+ERROR:  update or delete on table "pp" violates RESTRICT setting of foreign key constraint "cc_f1_fkey" on table "cc"
+DETAIL:  Key (f1)=(13) is referenced from table "cc".
 drop table pp, cc;
 --
 -- Test interaction of foreign-key optimization with rules (bug #14219)
@@ -1967,6 +1967,23 @@ INSERT INTO fk_notpartitioned_pk VALUES (1600, 601), (1600, 1601);
 ALTER TABLE fk_partitioned_fk ATTACH PARTITION fk_partitioned_fk_2
   FOR VALUES IN (1600);
 -- leave these tables around intentionally
+-- Verify that attaching a table that's referenced by an existing FK
+-- in the parent throws an error
+CREATE TABLE fk_partitioned_pk_6 (a int PRIMARY KEY);
+CREATE TABLE fk_partitioned_fk_6 (a int REFERENCES fk_partitioned_pk_6) PARTITION BY LIST (a);
+ALTER TABLE fk_partitioned_fk_6 ATTACH PARTITION fk_partitioned_pk_6 FOR VALUES IN (1);
+ERROR:  cannot attach table "fk_partitioned_pk_6" as a partition because it is referenced by foreign key "fk_partitioned_fk_6_a_fkey"
+DROP TABLE fk_partitioned_pk_6, fk_partitioned_fk_6;
+-- This case is similar to above, but the referenced relation is one level
+-- lower in the hierarchy.  This one fails in a different way as the above,
+-- because we don't bother to protect against this case explicitly.  If the
+-- current error stops happening, we'll need to add a better protection.
+CREATE TABLE fk_partitioned_pk_6 (a int PRIMARY KEY) PARTITION BY list (a);
+CREATE TABLE fk_partitioned_pk_61 PARTITION OF fk_partitioned_pk_6 FOR VALUES IN (1);
+CREATE TABLE fk_partitioned_fk_6 (a int REFERENCES fk_partitioned_pk_61) PARTITION BY LIST (a);
+ALTER TABLE fk_partitioned_fk_6 ATTACH PARTITION fk_partitioned_pk_6 FOR VALUES IN (1);
+ERROR:  cannot ALTER TABLE "fk_partitioned_pk_61" because it is being used by active queries in this session
+DROP TABLE fk_partitioned_pk_6, fk_partitioned_fk_6;
 -- test the case when the referenced table is owned by a different user
 create role regress_other_partitioned_fk_owner;
 grant references on fk_notpartitioned_pk to regress_other_partitioned_fk_owner;
@@ -2036,13 +2053,19 @@ ORDER BY co.contype, cr.relname, co.conname, p.conname;
  part33_self_fk | parted_self_fk_id_abc_fkey | f       | t            | parted_self_fk_id_abc_fkey | t            | parted_self_fk
  part3_self_fk  | parted_self_fk_id_abc_fkey | f       | t            | parted_self_fk_id_abc_fkey | t            | parted_self_fk
  parted_self_fk | parted_self_fk_id_abc_fkey | f       | t            |                            |              | parted_self_fk
+ part1_self_fk  | part1_self_fk_id_not_null  | n       | t            |                            |              | 
+ part2_self_fk  | parted_self_fk_id_not_null | n       | t            |                            |              | 
+ part32_self_fk | part3_self_fk_id_not_null  | n       | t            |                            |              | 
+ part33_self_fk | part33_self_fk_id_not_null | n       | t            |                            |              | 
+ part3_self_fk  | part3_self_fk_id_not_null  | n       | t            |                            |              | 
+ parted_self_fk | parted_self_fk_id_not_null | n       | t            |                            |              | 
  part1_self_fk  | part1_self_fk_pkey         | p       | t            | parted_self_fk_pkey        | t            | 
  part2_self_fk  | part2_self_fk_pkey         | p       | t            | parted_self_fk_pkey        | t            | 
  part32_self_fk | part32_self_fk_pkey        | p       | t            | part3_self_fk_pkey         | t            | 
  part33_self_fk | part33_self_fk_pkey        | p       | t            | part3_self_fk_pkey         | t            | 
  part3_self_fk  | part3_self_fk_pkey         | p       | t            | parted_self_fk_pkey        | t            | 
  parted_self_fk | parted_self_fk_pkey        | p       | t            |                            |              | 
-(12 rows)
+(18 rows)
 
 -- detach and re-attach multiple times just to ensure everything is kosher
 ALTER TABLE parted_self_fk DETACH PARTITION part2_self_fk;
@@ -2065,13 +2088,19 @@ ORDER BY co.contype, cr.relname, co.conname, p.conname;
  part33_self_fk | parted_self_fk_id_abc_fkey | f       | t            | parted_self_fk_id_abc_fkey | t            | parted_self_fk
  part3_self_fk  | parted_self_fk_id_abc_fkey | f       | t            | parted_self_fk_id_abc_fkey | t            | parted_self_fk
  parted_self_fk | parted_self_fk_id_abc_fkey | f       | t            |                            |              | parted_self_fk
+ part1_self_fk  | part1_self_fk_id_not_null  | n       | t            |                            |              | 
+ part2_self_fk  | parted_self_fk_id_not_null | n       | t            |                            |              | 
+ part32_self_fk | part3_self_fk_id_not_null  | n       | t            |                            |              | 
+ part33_self_fk | part33_self_fk_id_not_null | n       | t            |                            |              | 
+ part3_self_fk  | part3_self_fk_id_not_null  | n       | t            |                            |              | 
+ parted_self_fk | parted_self_fk_id_not_null | n       | t            |                            |              | 
  part1_self_fk  | part1_self_fk_pkey         | p       | t            | parted_self_fk_pkey        | t            | 
  part2_self_fk  | part2_self_fk_pkey         | p       | t            | parted_self_fk_pkey        | t            | 
  part32_self_fk | part32_self_fk_pkey        | p       | t            | part3_self_fk_pkey         | t            | 
  part33_self_fk | part33_self_fk_pkey        | p       | t            | part3_self_fk_pkey         | t            | 
  part3_self_fk  | part3_self_fk_pkey         | p       | t            | parted_self_fk_pkey        | t            | 
  parted_self_fk | parted_self_fk_pkey        | p       | t            |                            |              | 
-(12 rows)
+(18 rows)
 
 -- Leave this table around, for pg_upgrade/pg_dump tests
 -- Test creating a constraint at the parent that already exists in partitions.
@@ -2635,11 +2664,11 @@ ALTER TABLE fk ADD FOREIGN KEY (a) REFERENCES pk ON UPDATE RESTRICT ON DELETE RE
 CREATE TABLE fk_d PARTITION OF fk DEFAULT;
 INSERT INTO fk VALUES (20), (30);
 DELETE FROM pk WHERE a = 20;
-ERROR:  update or delete on table "pk11" violates foreign key constraint "fk_a_fkey2" on table "fk"
-DETAIL:  Key (a)=(20) is still referenced from table "fk".
+ERROR:  update or delete on table "pk11" violates RESTRICT setting of foreign key constraint "fk_a_fkey2" on table "fk"
+DETAIL:  Key (a)=(20) is referenced from table "fk".
 UPDATE pk SET a = 90 WHERE a = 30;
-ERROR:  update or delete on table "pk" violates foreign key constraint "fk_a_fkey" on table "fk"
-DETAIL:  Key (a)=(30) is still referenced from table "fk".
+ERROR:  update or delete on table "pk" violates RESTRICT setting of foreign key constraint "fk_a_fkey" on table "fk"
+DETAIL:  Key (a)=(30) is referenced from table "fk".
 SELECT tableoid::regclass, * FROM fk;
  tableoid | a  
 ----------+----
@@ -2917,3 +2946,102 @@ DETAIL:  drop cascades to table fkpart11.pk
 drop cascades to table fkpart11.fk_parted
 drop cascades to table fkpart11.fk_another
 drop cascades to function fkpart11.print_row()
+-- When a table is attached as partition to a partitioned table that has
+-- a foreign key to another partitioned table, it acquires a clone of the
+-- FK.  Upon detach, this clone is not removed, but instead becomes an
+-- independent FK.  If it then attaches to the partitioned table again,
+-- the FK from the parent "takes over" ownership of the independent FK rather
+-- than creating a separate one.
+CREATE SCHEMA fkpart12
+  CREATE TABLE fk_p ( id int, jd int, PRIMARY KEY(id, jd)) PARTITION BY list (id)
+  CREATE TABLE fk_p_1 PARTITION OF fk_p FOR VALUES IN (1) PARTITION BY list (jd)
+  CREATE TABLE fk_p_1_1 PARTITION OF fk_p_1 FOR VALUES IN (1)
+  CREATE TABLE fk_p_1_2 (x int, y int, jd int NOT NULL, id int NOT NULL)
+  CREATE TABLE fk_p_2 PARTITION OF fk_p FOR VALUES IN (2) PARTITION BY list (jd)
+  CREATE TABLE fk_p_2_1 PARTITION OF fk_p_2 FOR VALUES IN (1)
+  CREATE TABLE fk_p_2_2 PARTITION OF fk_p_2 FOR VALUES IN (2)
+  CREATE TABLE fk_r_1 ( p_jd int NOT NULL, x int, id int PRIMARY KEY, p_id int NOT NULL)
+  CREATE TABLE fk_r_2 ( id int PRIMARY KEY, p_id int NOT NULL, p_jd int NOT NULL) PARTITION BY list (id)
+  CREATE TABLE fk_r_2_1 PARTITION OF fk_r_2 FOR VALUES IN (2, 1)
+  CREATE TABLE fk_r   ( id int PRIMARY KEY, p_id int NOT NULL, p_jd int NOT NULL,
+       FOREIGN KEY (p_id, p_jd) REFERENCES fk_p (id, jd)
+  ) PARTITION BY list (id);
+SET search_path TO fkpart12;
+ALTER TABLE fk_p_1_2 DROP COLUMN x, DROP COLUMN y;
+ALTER TABLE fk_p_1 ATTACH PARTITION fk_p_1_2 FOR VALUES IN (2);
+ALTER TABLE fk_r_1 DROP COLUMN x;
+INSERT INTO fk_p VALUES (1, 1);
+ALTER TABLE fk_r ATTACH PARTITION fk_r_1 FOR VALUES IN (1);
+ALTER TABLE fk_r ATTACH PARTITION fk_r_2 FOR VALUES IN (2);
+\d fk_r_2
+        Partitioned table "fkpart12.fk_r_2"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ id     | integer |           | not null | 
+ p_id   | integer |           | not null | 
+ p_jd   | integer |           | not null | 
+Partition of: fk_r FOR VALUES IN (2)
+Partition key: LIST (id)
+Indexes:
+    "fk_r_2_pkey" PRIMARY KEY, btree (id)
+Foreign-key constraints:
+    TABLE "fk_r" CONSTRAINT "fk_r_p_id_p_jd_fkey" FOREIGN KEY (p_id, p_jd) REFERENCES fk_p(id, jd)
+Number of partitions: 1 (Use \d+ to list them.)
+
+INSERT INTO fk_r VALUES (1, 1, 1);
+INSERT INTO fk_r VALUES (2, 2, 1);
+ERROR:  insert or update on table "fk_r_2_1" violates foreign key constraint "fk_r_p_id_p_jd_fkey"
+DETAIL:  Key (p_id, p_jd)=(2, 1) is not present in table "fk_p".
+ALTER TABLE fk_r DETACH PARTITION fk_r_1;
+ALTER TABLE fk_r DETACH PARTITION fk_r_2;
+\d fk_r_2
+        Partitioned table "fkpart12.fk_r_2"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ id     | integer |           | not null | 
+ p_id   | integer |           | not null | 
+ p_jd   | integer |           | not null | 
+Partition key: LIST (id)
+Indexes:
+    "fk_r_2_pkey" PRIMARY KEY, btree (id)
+Foreign-key constraints:
+    "fk_r_p_id_p_jd_fkey" FOREIGN KEY (p_id, p_jd) REFERENCES fk_p(id, jd)
+Number of partitions: 1 (Use \d+ to list them.)
+
+INSERT INTO fk_r_1 (id, p_id, p_jd) VALUES (2, 1, 2); -- should fail
+ERROR:  insert or update on table "fk_r_1" violates foreign key constraint "fk_r_p_id_p_jd_fkey"
+DETAIL:  Key (p_id, p_jd)=(1, 2) is not present in table "fk_p".
+DELETE FROM fk_p; -- should fail
+ERROR:  update or delete on table "fk_p_1_1" violates foreign key constraint "fk_r_1_p_id_p_jd_fkey1" on table "fk_r_1"
+DETAIL:  Key (id, jd)=(1, 1) is still referenced from table "fk_r_1".
+ALTER TABLE fk_r ATTACH PARTITION fk_r_1 FOR VALUES IN (1);
+ALTER TABLE fk_r ATTACH PARTITION fk_r_2 FOR VALUES IN (2);
+\d fk_r_2
+        Partitioned table "fkpart12.fk_r_2"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ id     | integer |           | not null | 
+ p_id   | integer |           | not null | 
+ p_jd   | integer |           | not null | 
+Partition of: fk_r FOR VALUES IN (2)
+Partition key: LIST (id)
+Indexes:
+    "fk_r_2_pkey" PRIMARY KEY, btree (id)
+Foreign-key constraints:
+    TABLE "fk_r" CONSTRAINT "fk_r_p_id_p_jd_fkey" FOREIGN KEY (p_id, p_jd) REFERENCES fk_p(id, jd)
+Number of partitions: 1 (Use \d+ to list them.)
+
+DELETE FROM fk_p; -- should fail
+ERROR:  update or delete on table "fk_p_1_1" violates foreign key constraint "fk_r_p_id_p_jd_fkey2" on table "fk_r"
+DETAIL:  Key (id, jd)=(1, 1) is still referenced from table "fk_r".
+-- these should all fail
+ALTER TABLE fk_r_1 DROP CONSTRAINT fk_r_p_id_p_jd_fkey;
+ERROR:  cannot drop inherited constraint "fk_r_p_id_p_jd_fkey" of relation "fk_r_1"
+ALTER TABLE fk_r DROP CONSTRAINT fk_r_p_id_p_jd_fkey1;
+ERROR:  cannot drop inherited constraint "fk_r_p_id_p_jd_fkey1" of relation "fk_r"
+ALTER TABLE fk_r_2 DROP CONSTRAINT fk_r_p_id_p_jd_fkey;
+ERROR:  cannot drop inherited constraint "fk_r_p_id_p_jd_fkey" of relation "fk_r_2"
+SET client_min_messages TO warning;
+DROP SCHEMA fkpart12 CASCADE;
+RESET client_min_messages;
+RESET search_path;

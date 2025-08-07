@@ -138,6 +138,8 @@ SELECT JSON_OBJECT('a': '1', 'b': NULL, 'c': 2);
 SELECT JSON_OBJECT('a': '1', 'b': NULL, 'c': 2 NULL ON NULL);
 SELECT JSON_OBJECT('a': '1', 'b': NULL, 'c': 2 ABSENT ON NULL);
 
+SELECT JSON_OBJECT(1: 1, '2': NULL, '3': 1, repeat('x', 1000): 1, 2: repeat('a', 100) WITH UNIQUE);
+
 SELECT JSON_OBJECT(1: 1, '1': NULL WITH UNIQUE);
 SELECT JSON_OBJECT(1: 1, '1': NULL ABSENT ON NULL WITH UNIQUE);
 SELECT JSON_OBJECT(1: 1, '1': NULL NULL ON NULL WITH UNIQUE RETURNING jsonb);
@@ -282,6 +284,9 @@ FROM (VALUES (1, 1), (1, NULL), (2, 2)) foo(k, v);
 
 SELECT JSON_OBJECTAGG(k: v ABSENT ON NULL WITH UNIQUE KEYS RETURNING jsonb)
 FROM (VALUES (1, 1), (0, NULL),(4, null), (5, null),(6, null),(2, 2)) foo(k, v);
+
+SELECT JSON_OBJECTAGG(mod(i,100): (i)::text FORMAT JSON WITH UNIQUE)
+FROM generate_series(0, 199) i;
 
 -- Test JSON_OBJECT deparsing
 EXPLAIN (VERBOSE, COSTS OFF)
@@ -475,3 +480,17 @@ SELECT JSON_OBJECTAGG(i: ('111' || i)::bytea FORMAT JSON WITH UNIQUE RETURNING v
 CREATE DOMAIN sqljson_char2 AS char(2) CHECK (VALUE NOT IN ('12'));
 SELECT JSON_SERIALIZE('123' RETURNING sqljson_char2);
 SELECT JSON_SERIALIZE('12' RETURNING sqljson_char2);
+
+-- Bug #18657: JsonValueExpr.raw_expr was not initialized in ExecInitExprRec()
+-- causing the Aggrefs contained in it to also not be initialized, which led
+-- to a crash in ExecBuildAggTrans() as mentioned in the bug report:
+-- https://postgr.es/m/18657-1b90ccce2b16bdb8@postgresql.org
+CREATE FUNCTION volatile_one() RETURNS int AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql VOLATILE;
+CREATE FUNCTION stable_one() RETURNS int AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql STABLE;
+EXPLAIN (VERBOSE, COSTS OFF) SELECT JSON_OBJECT('a': JSON_OBJECTAGG('b': volatile_one() RETURNING text) FORMAT JSON);
+SELECT JSON_OBJECT('a': JSON_OBJECTAGG('b': volatile_one() RETURNING text) FORMAT JSON);
+EXPLAIN (VERBOSE, COSTS OFF) SELECT JSON_OBJECT('a': JSON_OBJECTAGG('b': stable_one() RETURNING text) FORMAT JSON);
+SELECT JSON_OBJECT('a': JSON_OBJECTAGG('b': stable_one() RETURNING text) FORMAT JSON);
+EXPLAIN (VERBOSE, COSTS OFF) SELECT JSON_OBJECT('a': JSON_OBJECTAGG('b': 1 RETURNING text) FORMAT JSON);
+SELECT JSON_OBJECT('a': JSON_OBJECTAGG('b': 1 RETURNING text) FORMAT JSON);
+DROP FUNCTION volatile_one, stable_one;

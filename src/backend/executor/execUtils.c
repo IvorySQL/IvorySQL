@@ -158,6 +158,8 @@ CreateExecutorState(void)
 	estate->es_sourceText = NULL;
 
 	estate->es_use_parallel_mode = false;
+	estate->es_parallel_workers_to_launch = 0;
+	estate->es_parallel_workers_launched = 0;
 
 	estate->es_jit_flags = 0;
 	estate->es_jit = NULL;
@@ -524,6 +526,49 @@ ExecGetResultSlotOps(PlanState *planstate, bool *isfixed)
 	return planstate->ps_ResultTupleSlot->tts_ops;
 }
 
+/*
+ * ExecGetCommonSlotOps - identify common result slot type, if any
+ *
+ * If all the given PlanState nodes return the same fixed tuple slot type,
+ * return the slot ops struct for that slot type.  Else, return NULL.
+ */
+const TupleTableSlotOps *
+ExecGetCommonSlotOps(PlanState **planstates, int nplans)
+{
+	const TupleTableSlotOps *result;
+	bool		isfixed;
+
+	if (nplans <= 0)
+		return NULL;
+	result = ExecGetResultSlotOps(planstates[0], &isfixed);
+	if (!isfixed)
+		return NULL;
+	for (int i = 1; i < nplans; i++)
+	{
+		const TupleTableSlotOps *thisops;
+
+		thisops = ExecGetResultSlotOps(planstates[i], &isfixed);
+		if (!isfixed)
+			return NULL;
+		if (result != thisops)
+			return NULL;
+	}
+	return result;
+}
+
+/*
+ * ExecGetCommonChildSlotOps - as above, for the PlanState's standard children
+ */
+const TupleTableSlotOps *
+ExecGetCommonChildSlotOps(PlanState *ps)
+{
+	PlanState  *planstates[2];
+
+	planstates[0] = outerPlanState(ps);
+	planstates[1] = innerPlanState(ps);
+	return ExecGetCommonSlotOps(planstates, 2);
+}
+
 
 /* ----------------
  *		ExecAssignProjectionInfo
@@ -765,7 +810,7 @@ ExecInitRangeTable(EState *estate, List *rangeTable, List *permInfos)
  * ExecGetRangeTableRelation
  *		Open the Relation for a range table entry, if not already done
  *
- * The Relations will be closed again in ExecEndPlan().
+ * The Relations will be closed in ExecEndPlan().
  */
 Relation
 ExecGetRangeTableRelation(EState *estate, Index rti)

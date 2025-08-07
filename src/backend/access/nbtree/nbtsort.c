@@ -45,7 +45,6 @@
 #include "access/relscan.h"
 #include "access/table.h"
 #include "access/xact.h"
-#include "access/xloginsert.h"
 #include "catalog/index.h"
 #include "commands/progress.h"
 #include "executor/instrument.h"
@@ -104,6 +103,9 @@ typedef struct BTShared
 	bool		nulls_not_distinct;
 	bool		isconcurrent;
 	int			scantuplesortstates;
+
+	/* Query ID, for report in worker processes */
+	uint64		queryid;
 
 	/*
 	 * workersdonecv is used to monitor the progress of workers.  All parallel
@@ -473,7 +475,7 @@ _bt_spools_heapscan(Relation heap, Relation index, BTBuildState *buildstate,
 	/* Fill spool using either serial or parallel heap scan */
 	if (!buildstate->btleader)
 		reltuples = table_index_build_scan(heap, index, indexInfo, true, true,
-										   _bt_build_callback, (void *) buildstate,
+										   _bt_build_callback, buildstate,
 										   NULL);
 	else
 		reltuples = _bt_parallel_heapscan(buildstate,
@@ -1505,6 +1507,7 @@ _bt_begin_parallel(BTBuildState *buildstate, bool isconcurrent, int request)
 	btshared->nulls_not_distinct = btspool->nulls_not_distinct;
 	btshared->isconcurrent = isconcurrent;
 	btshared->scantuplesortstates = scantuplesortstates;
+	btshared->queryid = pgstat_get_my_query_id();
 	ConditionVariableInit(&btshared->workersdonecv);
 	SpinLockInit(&btshared->mutex);
 	/* Initialize mutable state */
@@ -1787,6 +1790,9 @@ _bt_parallel_build_main(dsm_segment *seg, shm_toc *toc)
 		indexLockmode = RowExclusiveLock;
 	}
 
+	/* Track query ID */
+	pgstat_report_query_id(btshared->queryid, false);
+
 	/* Open relations within worker */
 	heapRel = table_open(btshared->heaprelid, heapLockmode);
 	indexRel = index_open(btshared->indexrelid, indexLockmode);
@@ -1924,7 +1930,7 @@ _bt_parallel_scan_and_sort(BTSpool *btspool, BTSpool *btspool2,
 									ParallelTableScanFromBTShared(btshared));
 	reltuples = table_index_build_scan(btspool->heap, btspool->index, indexInfo,
 									   true, progress, _bt_build_callback,
-									   (void *) &buildstate, scan);
+									   &buildstate, scan);
 
 	/* Execute this worker's part of the sort */
 	if (progress)

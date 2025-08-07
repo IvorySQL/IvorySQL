@@ -312,6 +312,14 @@
         (Keep in mind the <function>md5()</function> function returns its
         result as a hex string.)
        </para>
+        <warning>
+         <para>
+          Support for MD5-encrypted passwords is deprecated and will be removed
+          in a future release of <productname>PostgreSQL</productname>.  Refer
+          to <xref linkend="auth-password"/> for details about migrating to
+          another password type.
+         </para>
+        </warning>
       </listitem>
      </varlistentry>
 
@@ -1070,16 +1078,17 @@ SELCT 1/0;<!-- this typo is intentional -->
 
    <para>
     If the client has not issued an explicit <command>BEGIN</command>,
-    then each Sync ordinarily causes an implicit <command>COMMIT</command>
-    if the preceding step(s) succeeded, or an
-    implicit <command>ROLLBACK</command> if they failed.  However, there
-    are a few DDL commands (such as <command>CREATE DATABASE</command>)
-    that cannot be executed inside a transaction block.  If one of
-    these is executed in a pipeline, it will fail unless it is the first
-    command in the pipeline.  Furthermore, upon success it will force an
-    immediate commit to preserve database consistency.  Thus a Sync
-    immediately following one of these commands has no effect except to
-    respond with ReadyForQuery.
+    then an implicit transaction block is started and each Sync ordinarily
+    causes an implicit <command>COMMIT</command> if the preceding step(s)
+    succeeded, or an implicit <command>ROLLBACK</command> if they failed.
+    This implicit transaction block will only be detected by the server
+    when the first command ends without a sync.  There are a few DDL
+    commands (such as <command>CREATE DATABASE</command>) that cannot be
+    executed inside a transaction block. If one of these is executed in a
+    pipeline, it will fail unless it is the first command after a Sync.
+    Furthermore, upon success it will force an immediate commit to preserve
+    database consistency. Thus a Sync immediately following one of these
+    commands has no effect except to respond with ReadyForQuery.
    </para>
 
    <para>
@@ -1325,6 +1334,7 @@ SELCT 1/0;<!-- this typo is intentional -->
      <member><varname>IntervalStyle</varname></member>
      <member><varname>is_superuser</varname></member>
      <member><varname>scram_iterations</varname></member>
+     <member><varname>search_path</varname></member>
      <member><varname>server_encoding</varname></member>
      <member><varname>server_version</varname></member>
      <member><varname>session_authorization</varname></member>
@@ -1334,7 +1344,8 @@ SELCT 1/0;<!-- this typo is intentional -->
     (<varname>default_transaction_read_only</varname> and
     <varname>in_hot_standby</varname> were not reported by releases before
     14; <varname>scram_iterations</varname> was not reported by releases
-    before 16.)
+    before 16; <varname>search_path</varname> was not reported by releases
+    before 18.)
     Note that
     <varname>server_version</varname>,
     <varname>server_encoding</varname> and
@@ -1506,10 +1517,10 @@ SELCT 1/0;<!-- this typo is intentional -->
 
    <para>
     The frontend should also be prepared to handle an ErrorMessage
-    response to SSLRequest from the server.  This would only occur if
-    the server predates the addition of <acronym>SSL</acronym> support
-    to <productname>PostgreSQL</productname>.  (Such servers are now very ancient,
-    and likely do not exist in the wild anymore.)
+    response to SSLRequest from the server. The frontend should not display
+    this error message to the user/application, since the server has not been
+    authenticated
+    (<ulink url="https://www.postgresql.org/support/security/CVE-2024-10977/">CVE-2024-10977</ulink>).
     In this case the connection must
     be closed, but the frontend might choose to open a fresh connection
     and proceed without requesting <acronym>SSL</acronym>.
@@ -1619,12 +1630,13 @@ SELCT 1/0;<!-- this typo is intentional -->
 
    <para>
     The frontend should also be prepared to handle an ErrorMessage
-    response to GSSENCRequest from the server.  This would only occur if
-    the server predates the addition of <acronym>GSSAPI</acronym> encryption
-    support to <productname>PostgreSQL</productname>.  In this case the
-    connection must be closed, but the frontend might choose to open a fresh
-    connection and proceed without requesting <acronym>GSSAPI</acronym>
-    encryption.
+    response to GSSENCRequest from the server.  The frontend should not display
+    this error message to the user/application, since the server has not been
+    authenticated
+    (<ulink url="https://www.postgresql.org/support/security/CVE-2024-10977/">CVE-2024-10977</ulink>).
+    In this case the connection must be closed, but the frontend might choose
+    to open a fresh connection and proceed without requesting
+    <acronym>GSSAPI</acronym> encryption.
    </para>
 
    <para>
@@ -2192,7 +2204,23 @@ psql "dbname=postgres replication=database" -c "IDENTIFY_SYSTEM;"
        </varlistentry>
       </variablelist>
 
-      <para>The following option is supported:</para>
+      <para>The following options are supported:</para>
+
+      <variablelist>
+       <varlistentry>
+        <term><literal>TWO_PHASE [ <replaceable class="parameter">boolean</replaceable> ]</literal></term>
+        <listitem>
+         <para>
+          If true, this logical replication slot supports decoding of two-phase
+          commit. With this option, commands related to two-phase commit such as
+          <literal>PREPARE TRANSACTION</literal>, <literal>COMMIT PREPARED</literal>
+          and <literal>ROLLBACK PREPARED</literal> are decoded and transmitted.
+          The transaction will be decoded and transmitted at
+          <literal>PREPARE TRANSACTION</literal> time.
+         </para>
+        </listitem>
+       </varlistentry>
+      </variablelist>
 
       <variablelist>
        <varlistentry>
@@ -3247,7 +3275,7 @@ psql "dbname=postgres replication=database" -c "IDENTIFY_SYSTEM;"
      </term>
      <listitem>
       <para>
-       Comma separated list of publication names for which to subscribe
+       Comma-separated list of publication names for which to subscribe
        (receive changes). The individual publication names are treated
        as standard objects names and can be quoted the same as needed.
        At least one publication name is required.
@@ -3312,8 +3340,9 @@ psql "dbname=postgres replication=database" -c "IDENTIFY_SYSTEM;"
      </term>
      <listitem>
       <para>
-       Option to send changes by their origin.  Possible values are "none"
-       to only send the changes that have no origin associated, or "any"
+       Option to send changes by their origin.  Possible values are
+       <literal>none</literal> to only send the changes that have no origin
+       associated, or <literal>any</literal>
        to send the changes regardless of their origin.  This can be used
        to avoid loops (infinite replication of the same data) among
        replication nodes.
@@ -6525,7 +6554,7 @@ psql "dbname=postgres replication=database" -c "IDENTIFY_SYSTEM;"
 
      <para>
       Next, the following message part appears for each column included in
-      the publication (except generated columns):
+      the publication:
      </para>
 
      <variablelist>
@@ -7458,7 +7487,7 @@ psql "dbname=postgres replication=database" -c "IDENTIFY_SYSTEM;"
      </variablelist>
 
      <para>
-      Next, one of the following submessages appears for each column (except generated columns):
+      Next, one of the following submessages appears for each published column:
 
       <variablelist>
        <varlistentry>
@@ -7588,8 +7617,9 @@ psql "dbname=postgres replication=database" -c "IDENTIFY_SYSTEM;"
    is a well-defined way to recover from errors during <command>COPY</command>.  The special
    <quote><literal>\.</literal></quote> last line is not needed anymore, and is not sent
    during <command>COPY OUT</command>.
-   (It is still recognized as a terminator during <command>COPY IN</command>, but its use is
-   deprecated and will eventually be removed.)  Binary <command>COPY</command> is supported.
+   (It is still recognized as a terminator during text-mode <command>COPY
+   IN</command>, but not in CSV mode.  The text-mode behavior is
+   deprecated and may eventually be removed.)  Binary <command>COPY</command> is supported.
    The CopyInResponse and CopyOutResponse messages include fields indicating
    the number of columns and the format of each column.
   </para>

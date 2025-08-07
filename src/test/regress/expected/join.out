@@ -1905,23 +1905,24 @@ SELECT *
 -- semijoin selectivity for <>
 --
 explain (costs off)
-select * from int4_tbl i4, tenk1 a
-where exists(select * from tenk1 b
-             where a.twothousand = b.twothousand and a.fivethous <> b.fivethous)
-      and i4.f1 = a.tenthous;
-                  QUERY PLAN                  
-----------------------------------------------
+select * from tenk1 a, tenk1 b
+where exists(select * from tenk1 c
+             where b.twothousand = c.twothousand and b.fivethous <> c.fivethous)
+      and a.tenthous = b.tenthous and a.tenthous < 5000;
+                  QUERY PLAN                   
+-----------------------------------------------
  Hash Semi Join
-   Hash Cond: (a.twothousand = b.twothousand)
-   Join Filter: (a.fivethous <> b.fivethous)
+   Hash Cond: (b.twothousand = c.twothousand)
+   Join Filter: (b.fivethous <> c.fivethous)
    ->  Hash Join
-         Hash Cond: (a.tenthous = i4.f1)
-         ->  Seq Scan on tenk1 a
-         ->  Hash
-               ->  Seq Scan on int4_tbl i4
-   ->  Hash
+         Hash Cond: (b.tenthous = a.tenthous)
          ->  Seq Scan on tenk1 b
-(10 rows)
+         ->  Hash
+               ->  Seq Scan on tenk1 a
+                     Filter: (tenthous < 5000)
+   ->  Hash
+         ->  Seq Scan on tenk1 c
+(11 rows)
 
 --
 -- More complicated constructs
@@ -2356,6 +2357,61 @@ where b.f1 = t.thousand and a.f1 = b.f1 and (a.f1+b.f1+999) = t.tenthous;
  f1 | f1 | thousand | tenthous 
 ----+----+----------+----------
 (0 rows)
+
+--
+-- Test hash joins with multiple hash keys and subplans.
+--
+-- First ensure we get a hash join with multiple hash keys.
+explain (costs off)
+select t1.unique1,t2.unique1 from tenk1 t1
+inner join tenk1 t2 on t1.two = t2.two
+  and t1.unique1 = (select min(unique1) from tenk1
+                    where t2.unique1=unique1)
+where t1.unique1 < 10 and t2.unique1 < 10
+order by t1.unique1;
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: t1.unique1
+   ->  Hash Join
+         Hash Cond: ((t1.two = t2.two) AND (t1.unique1 = (SubPlan 2)))
+         ->  Bitmap Heap Scan on tenk1 t1
+               Recheck Cond: (unique1 < 10)
+               ->  Bitmap Index Scan on tenk1_unique1
+                     Index Cond: (unique1 < 10)
+         ->  Hash
+               ->  Bitmap Heap Scan on tenk1 t2
+                     Recheck Cond: (unique1 < 10)
+                     ->  Bitmap Index Scan on tenk1_unique1
+                           Index Cond: (unique1 < 10)
+               SubPlan 2
+                 ->  Result
+                       InitPlan 1
+                         ->  Limit
+                               ->  Index Only Scan using tenk1_unique1 on tenk1
+                                     Index Cond: ((unique1 IS NOT NULL) AND (unique1 = t2.unique1))
+(19 rows)
+
+-- Ensure we get the expected result
+select t1.unique1,t2.unique1 from tenk1 t1
+inner join tenk1 t2 on t1.two = t2.two
+  and t1.unique1 = (select min(unique1) from tenk1
+                    where t2.unique1=unique1)
+where t1.unique1 < 10 and t2.unique1 < 10
+order by t1.unique1;
+ unique1 | unique1 
+---------+---------
+       0 |       0
+       1 |       1
+       2 |       2
+       3 |       3
+       4 |       4
+       5 |       5
+       6 |       6
+       7 |       7
+       8 |       8
+       9 |       9
+(10 rows)
 
 --
 -- checks for correct handling of quals in multiway outer joins
@@ -2926,6 +2982,99 @@ select tt1.*, tt2.* from tt2 right join tt1 on tt1.joincol = tt2.joincol;
 reset enable_hashjoin;
 reset enable_nestloop;
 --
+-- regression test for bug #18522 (merge-right-anti-join in inner_unique cases)
+--
+create temp table tbl_ra(a int unique, b int);
+insert into tbl_ra select i, i%100 from generate_series(1,1000)i;
+create index on tbl_ra (b);
+analyze tbl_ra;
+set enable_hashjoin to off;
+set enable_nestloop to off;
+-- ensure we get a merge right anti join
+explain (costs off)
+select * from tbl_ra t1
+where not exists (select 1 from tbl_ra t2 where t2.b = t1.a) and t1.b < 2;
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Merge Right Anti Join
+   Merge Cond: (t2.b = t1.a)
+   ->  Index Only Scan using tbl_ra_b_idx on tbl_ra t2
+   ->  Sort
+         Sort Key: t1.a
+         ->  Bitmap Heap Scan on tbl_ra t1
+               Recheck Cond: (b < 2)
+               ->  Bitmap Index Scan on tbl_ra_b_idx
+                     Index Cond: (b < 2)
+(9 rows)
+
+-- and check we get the expected results
+select * from tbl_ra t1
+where not exists (select 1 from tbl_ra t2 where t2.b = t1.a) and t1.b < 2;
+  a   | b 
+------+---
+  100 | 0
+  101 | 1
+  200 | 0
+  201 | 1
+  300 | 0
+  301 | 1
+  400 | 0
+  401 | 1
+  500 | 0
+  501 | 1
+  600 | 0
+  601 | 1
+  700 | 0
+  701 | 1
+  800 | 0
+  801 | 1
+  900 | 0
+  901 | 1
+ 1000 | 0
+(19 rows)
+
+reset enable_hashjoin;
+reset enable_nestloop;
+--
+-- regression test for bug with hash-right-semi join
+--
+create temp table tbl_rs(a int, b int);
+insert into tbl_rs select i, i from generate_series(1,10)i;
+analyze tbl_rs;
+-- ensure we get a hash right semi join
+explain (costs off)
+select * from tbl_rs t1 join
+  lateral (select * from tbl_rs t2 where t2.a in
+            (select t1.a+t3.a from tbl_rs t3) and t2.a < 5)
+  on true;
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop
+   ->  Seq Scan on tbl_rs t1
+   ->  Hash Right Semi Join
+         Hash Cond: ((t1.a + t3.a) = t2.a)
+         ->  Seq Scan on tbl_rs t3
+         ->  Hash
+               ->  Seq Scan on tbl_rs t2
+                     Filter: (a < 5)
+(8 rows)
+
+-- and check we get the expected results
+select * from tbl_rs t1 join
+  lateral (select * from tbl_rs t2 where t2.a in
+            (select t1.a+t3.a from tbl_rs t3) and t2.a < 5)
+  on true;
+ a | b | a | b 
+---+---+---+---
+ 1 | 1 | 2 | 2
+ 1 | 1 | 3 | 3
+ 1 | 1 | 4 | 4
+ 2 | 2 | 3 | 3
+ 2 | 2 | 4 | 4
+ 3 | 3 | 4 | 4
+(6 rows)
+
+--
 -- regression test for bug #13908 (hash join with skew tuples & nbatch increase)
 --
 set work_mem to '64kB';
@@ -3066,6 +3215,21 @@ where b.unique2 is null;
                          QUERY PLAN                         
 ------------------------------------------------------------
  Hash Anti Join
+   Hash Cond: (a.unique1 = b.unique2)
+   ->  Seq Scan on tenk1 a
+   ->  Hash
+         ->  Index Only Scan using tenk1_unique2 on tenk1 b
+(5 rows)
+
+--
+-- regression test for bogus RTE_GROUP entries
+--
+explain (costs off)
+select a.* from tenk1 a
+where exists (select 1 from tenk1 b where a.unique1 = b.unique2 group by b.unique1);
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Hash Semi Join
    Hash Cond: (a.unique1 = b.unique2)
    ->  Seq Scan on tenk1 a
    ->  Hash
@@ -4171,20 +4335,20 @@ select * from tenk1 a join tenk1 b on
  Nested Loop
    Join Filter: (((a.unique1 = 1) AND (b.unique1 = 2)) OR ((a.unique2 = 3) AND (b.hundred = 4)))
    ->  Bitmap Heap Scan on tenk1 b
-         Recheck Cond: ((unique1 = 2) OR (hundred = 4))
+         Recheck Cond: ((hundred = 4) OR (unique1 = 2))
          ->  BitmapOr
-               ->  Bitmap Index Scan on tenk1_unique1
-                     Index Cond: (unique1 = 2)
                ->  Bitmap Index Scan on tenk1_hundred
                      Index Cond: (hundred = 4)
+               ->  Bitmap Index Scan on tenk1_unique1
+                     Index Cond: (unique1 = 2)
    ->  Materialize
          ->  Bitmap Heap Scan on tenk1 a
-               Recheck Cond: ((unique1 = 1) OR (unique2 = 3))
+               Recheck Cond: ((unique2 = 3) OR (unique1 = 1))
                ->  BitmapOr
-                     ->  Bitmap Index Scan on tenk1_unique1
-                           Index Cond: (unique1 = 1)
                      ->  Bitmap Index Scan on tenk1_unique2
                            Index Cond: (unique2 = 3)
+                     ->  Bitmap Index Scan on tenk1_unique1
+                           Index Cond: (unique1 = 1)
 (17 rows)
 
 explain (costs off)
@@ -4198,12 +4362,12 @@ select * from tenk1 a join tenk1 b on
          Filter: ((unique1 = 2) OR (ten = 4))
    ->  Materialize
          ->  Bitmap Heap Scan on tenk1 a
-               Recheck Cond: ((unique1 = 1) OR (unique2 = 3))
+               Recheck Cond: ((unique2 = 3) OR (unique1 = 1))
                ->  BitmapOr
-                     ->  Bitmap Index Scan on tenk1_unique1
-                           Index Cond: (unique1 = 1)
                      ->  Bitmap Index Scan on tenk1_unique2
                            Index Cond: (unique2 = 3)
+                     ->  Bitmap Index Scan on tenk1_unique1
+                           Index Cond: (unique1 = 1)
 (12 rows)
 
 explain (costs off)
@@ -4215,23 +4379,70 @@ select * from tenk1 a join tenk1 b on
  Nested Loop
    Join Filter: (((a.unique1 = 1) AND (b.unique1 = 2)) OR (((a.unique2 = 3) OR (a.unique2 = 7)) AND (b.hundred = 4)))
    ->  Bitmap Heap Scan on tenk1 b
-         Recheck Cond: ((unique1 = 2) OR (hundred = 4))
+         Recheck Cond: ((hundred = 4) OR (unique1 = 2))
          ->  BitmapOr
-               ->  Bitmap Index Scan on tenk1_unique1
-                     Index Cond: (unique1 = 2)
                ->  Bitmap Index Scan on tenk1_hundred
                      Index Cond: (hundred = 4)
+               ->  Bitmap Index Scan on tenk1_unique1
+                     Index Cond: (unique1 = 2)
    ->  Materialize
          ->  Bitmap Heap Scan on tenk1 a
-               Recheck Cond: ((unique1 = 1) OR (unique2 = 3) OR (unique2 = 7))
+               Recheck Cond: (((unique2 = 3) OR (unique2 = 7)) OR (unique1 = 1))
+               Filter: ((unique1 = 1) OR (unique2 = 3) OR (unique2 = 7))
                ->  BitmapOr
+                     ->  Bitmap Index Scan on tenk1_unique2
+                           Index Cond: (unique2 = ANY ('{3,7}'::integer[]))
                      ->  Bitmap Index Scan on tenk1_unique1
                            Index Cond: (unique1 = 1)
+(18 rows)
+
+explain (costs off)
+select * from tenk1 a join tenk1 b on
+  (a.unique1 = 1 and b.unique1 = 2) or
+  ((a.unique2 = 3 or a.unique2 = 7) and b.hundred = 4);
+                                                      QUERY PLAN                                                      
+----------------------------------------------------------------------------------------------------------------------
+ Nested Loop
+   Join Filter: (((a.unique1 = 1) AND (b.unique1 = 2)) OR (((a.unique2 = 3) OR (a.unique2 = 7)) AND (b.hundred = 4)))
+   ->  Bitmap Heap Scan on tenk1 b
+         Recheck Cond: ((hundred = 4) OR (unique1 = 2))
+         ->  BitmapOr
+               ->  Bitmap Index Scan on tenk1_hundred
+                     Index Cond: (hundred = 4)
+               ->  Bitmap Index Scan on tenk1_unique1
+                     Index Cond: (unique1 = 2)
+   ->  Materialize
+         ->  Bitmap Heap Scan on tenk1 a
+               Recheck Cond: (((unique2 = 3) OR (unique2 = 7)) OR (unique1 = 1))
+               Filter: ((unique1 = 1) OR (unique2 = 3) OR (unique2 = 7))
+               ->  BitmapOr
                      ->  Bitmap Index Scan on tenk1_unique2
-                           Index Cond: (unique2 = 3)
+                           Index Cond: (unique2 = ANY ('{3,7}'::integer[]))
+                     ->  Bitmap Index Scan on tenk1_unique1
+                           Index Cond: (unique1 = 1)
+(18 rows)
+
+explain (costs off)
+select * from tenk1 a join tenk1 b on
+  (a.unique1 < 20 or a.unique1 = 3 or a.unique1 = 1 and b.unique1 = 2) or
+  ((a.unique2 = 3 or a.unique2 = 7) and b.hundred = 4);
+                                                                         QUERY PLAN                                                                          
+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Nested Loop
+   Join Filter: ((a.unique1 < 20) OR (a.unique1 = 3) OR ((a.unique1 = 1) AND (b.unique1 = 2)) OR (((a.unique2 = 3) OR (a.unique2 = 7)) AND (b.hundred = 4)))
+   ->  Seq Scan on tenk1 b
+   ->  Materialize
+         ->  Bitmap Heap Scan on tenk1 a
+               Recheck Cond: (((unique2 = 3) OR (unique2 = 7)) OR ((unique1 = 3) OR (unique1 = 1)) OR (unique1 < 20))
+               Filter: ((unique1 < 20) OR (unique1 = 3) OR (unique1 = 1) OR (unique2 = 3) OR (unique2 = 7))
+               ->  BitmapOr
                      ->  Bitmap Index Scan on tenk1_unique2
-                           Index Cond: (unique2 = 7)
-(19 rows)
+                           Index Cond: (unique2 = ANY ('{3,7}'::integer[]))
+                     ->  Bitmap Index Scan on tenk1_unique1
+                           Index Cond: (unique1 = ANY ('{3,1}'::integer[]))
+                     ->  Bitmap Index Scan on tenk1_unique1
+                           Index Cond: (unique1 < 20)
+(14 rows)
 
 --
 -- test placement of movable quals in a parameterized join tree
@@ -5402,11 +5613,13 @@ CREATE TEMP TABLE a (id int PRIMARY KEY, b_id int);
 CREATE TEMP TABLE b (id int PRIMARY KEY, c_id int);
 CREATE TEMP TABLE c (id int PRIMARY KEY);
 CREATE TEMP TABLE d (a int, b int);
+CREATE TEMP TABLE e (id1 int, id2 int, PRIMARY KEY(id1, id2));
 INSERT INTO a VALUES (0, 0), (1, NULL);
 INSERT INTO b VALUES (0, 0), (1, NULL);
 INSERT INTO c VALUES (0), (1);
 INSERT INTO d VALUES (1,3), (2,2), (3,1);
--- all three cases should be optimizable into a simple seqscan
+INSERT INTO e VALUES (0,0), (2,2), (3,1);
+-- all these cases should be optimizable into a simple seqscan
 explain (costs off) SELECT a.* FROM a LEFT JOIN b ON a.b_id = b.id;
   QUERY PLAN   
 ---------------
@@ -5422,6 +5635,14 @@ explain (costs off) SELECT b.* FROM b LEFT JOIN c ON b.c_id = c.id;
 explain (costs off)
   SELECT a.* FROM a LEFT JOIN (b left join c on b.c_id = c.id)
   ON (a.b_id = b.id);
+  QUERY PLAN   
+---------------
+ Seq Scan on a
+(1 row)
+
+explain (costs off)
+  SELECT a.* FROM a LEFT JOIN b ON a.id = b.id
+  LEFT JOIN e ON e.id1 = a.b_id AND b.c_id = e.id2;
   QUERY PLAN   
 ---------------
  Seq Scan on a
@@ -7946,12 +8167,13 @@ SELECT t1.a FROM skip_fetch t1 LEFT JOIN skip_fetch t2 ON t2.a = 1 WHERE t2.a IS
 ---------------------------------------------------------
  Nested Loop Anti Join
    ->  Seq Scan on skip_fetch t1
+         Disabled: true
    ->  Materialize
          ->  Bitmap Heap Scan on skip_fetch t2
                Recheck Cond: (a = 1)
                ->  Bitmap Index Scan on skip_fetch_a_idx
                      Index Cond: (a = 1)
-(7 rows)
+(8 rows)
 
 SELECT t1.a FROM skip_fetch t1 LEFT JOIN skip_fetch t2 ON t2.a = 1 WHERE t2.a IS NULL;
  a 
@@ -7960,3 +8182,38 @@ SELECT t1.a FROM skip_fetch t1 LEFT JOIN skip_fetch t2 ON t2.a = 1 WHERE t2.a IS
 
 RESET enable_indexonlyscan;
 RESET enable_seqscan;
+-- Test BitmapHeapScan with a rescan releases resources correctly
+SET enable_seqscan = off;
+SET enable_indexscan = off;
+CREATE TEMP TABLE rescan_bhs (a INT);
+INSERT INTO rescan_bhs VALUES (1), (2);
+CREATE INDEX ON rescan_bhs (a);
+EXPLAIN (COSTS OFF)
+SELECT * FROM rescan_bhs t1 LEFT JOIN rescan_bhs t2 ON t1.a IN
+  (SELECT a FROM rescan_bhs t3 WHERE t2.a > 1);
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Nested Loop Left Join
+   Join Filter: (ANY (t1.a = (SubPlan 1).col1))
+   ->  Bitmap Heap Scan on rescan_bhs t1
+         ->  Bitmap Index Scan on rescan_bhs_a_idx
+   ->  Materialize
+         ->  Bitmap Heap Scan on rescan_bhs t2
+               ->  Bitmap Index Scan on rescan_bhs_a_idx
+   SubPlan 1
+     ->  Result
+           One-Time Filter: (t2.a > 1)
+           ->  Bitmap Heap Scan on rescan_bhs t3
+                 ->  Bitmap Index Scan on rescan_bhs_a_idx
+(12 rows)
+
+SELECT * FROM rescan_bhs t1 LEFT JOIN rescan_bhs t2 ON t1.a IN
+  (SELECT a FROM rescan_bhs t3 WHERE t2.a > 1);
+ a | a 
+---+---
+ 1 | 2
+ 2 | 2
+(2 rows)
+
+RESET enable_seqscan;
+RESET enable_indexscan;

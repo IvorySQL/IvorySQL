@@ -16,8 +16,10 @@
 
 #include "access/htup_details.h"
 #include "access/itup.h"
+#include "nodes/tidbitmap.h"
 #include "port/atomics.h"
 #include "storage/buf.h"
+#include "storage/relfilelocator.h"
 #include "storage/spin.h"
 #include "utils/relcache.h"
 
@@ -36,9 +38,24 @@ typedef struct TableScanDescData
 	int			rs_nkeys;		/* number of scan keys */
 	struct ScanKeyData *rs_key; /* array of scan key descriptors */
 
-	/* Range of ItemPointers for table_scan_getnextslot_tidrange() to scan. */
-	ItemPointerData rs_mintid;
-	ItemPointerData rs_maxtid;
+	/*
+	 * Scan type-specific members
+	 */
+	union
+	{
+		/* Iterator for Bitmap Table Scans */
+		TBMIterator rs_tbmiterator;
+
+		/*
+		 * Range of ItemPointers for table_scan_getnextslot_tidrange() to
+		 * scan.
+		 */
+		struct
+		{
+			ItemPointerData rs_mintid;
+			ItemPointerData rs_maxtid;
+		}			tidrange;
+	}			st;
 
 	/*
 	 * Information about type and behaviour of the scan, a bitmask of members
@@ -62,7 +79,7 @@ typedef struct TableScanDescData *TableScanDesc;
  */
 typedef struct ParallelTableScanDescData
 {
-	Oid			phs_relid;		/* OID of relation to scan */
+	RelFileLocator phs_locator; /* physical relation to scan */
 	bool		phs_syncscan;	/* report location to syncscan logic? */
 	bool		phs_snapshot_any;	/* SnapshotAny, not phs_snapshot_data? */
 	Size		phs_snapshot_off;	/* data for snapshot */
@@ -169,8 +186,8 @@ typedef struct IndexScanDescData
 /* Generic structure for parallel scans */
 typedef struct ParallelIndexScanDescData
 {
-	Oid			ps_relid;
-	Oid			ps_indexid;
+	RelFileLocator ps_locator;	/* physical table relation to scan */
+	RelFileLocator ps_indexlocator; /* physical index relation to scan */
 	Size		ps_offset;		/* Offset in bytes of am specific structure */
 	char		ps_snapshot_data[FLEXIBLE_ARRAY_MEMBER];
 }			ParallelIndexScanDescData;

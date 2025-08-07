@@ -811,10 +811,7 @@ CreateWaitEventSet(ResourceOwner resowner, int nevents)
 
 #if defined(WAIT_USE_EPOLL)
 	if (!AcquireExternalFD())
-	{
-		/* treat this as though epoll_create1 itself returned EMFILE */
-		elog(ERROR, "epoll_create1 failed: %m");
-	}
+		elog(ERROR, "AcquireExternalFD, for epoll_create1, failed: %m");
 	set->epoll_fd = epoll_create1(EPOLL_CLOEXEC);
 	if (set->epoll_fd < 0)
 	{
@@ -823,10 +820,7 @@ CreateWaitEventSet(ResourceOwner resowner, int nevents)
 	}
 #elif defined(WAIT_USE_KQUEUE)
 	if (!AcquireExternalFD())
-	{
-		/* treat this as though kqueue itself returned EMFILE */
-		elog(ERROR, "kqueue failed: %m");
-	}
+		elog(ERROR, "AcquireExternalFD, for kqueue, failed: %m");
 	set->kqueue_fd = kqueue();
 	if (set->kqueue_fd < 0)
 	{
@@ -1997,6 +1991,38 @@ WaitEventSetWaitBlock(WaitEventSet *set, int cur_timeout,
 		{
 			WaitEventAdjustWin32(set, cur_event);
 			cur_event->reset = false;
+		}
+
+		/*
+		 * We associate the socket with a new event handle for each
+		 * WaitEventSet.  FD_CLOSE is only generated once if the other end
+		 * closes gracefully.  Therefore we might miss the FD_CLOSE
+		 * notification, if it was delivered to another event after we stopped
+		 * waiting for it.  Close that race by peeking for EOF after setting
+		 * up this handle to receive notifications, and before entering the
+		 * sleep.
+		 *
+		 * XXX If we had one event handle for the lifetime of a socket, we
+		 * wouldn't need this.
+		 */
+		if (cur_event->events & WL_SOCKET_READABLE)
+		{
+			char		c;
+			WSABUF		buf;
+			DWORD		received;
+			DWORD		flags;
+
+			buf.buf = &c;
+			buf.len = 1;
+			flags = MSG_PEEK;
+			if (WSARecv(cur_event->fd, &buf, 1, &received, &flags, NULL, NULL) == 0)
+			{
+				occurred_events->pos = cur_event->pos;
+				occurred_events->user_data = cur_event->user_data;
+				occurred_events->events = WL_SOCKET_READABLE;
+				occurred_events->fd = cur_event->fd;
+				return 1;
+			}
 		}
 
 		/*

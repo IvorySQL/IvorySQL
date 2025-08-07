@@ -4153,7 +4153,7 @@ DateTimeParseError(int dterr, DateTimeErrorExtra *extra,
 					(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
 					 errmsg("date/time field value out of range: \"%s\"",
 							str),
-					 errhint("Perhaps you need a different \"datestyle\" setting.")));
+					 errhint("Perhaps you need a different \"DateStyle\" setting.")));
 			break;
 		case DTERR_INTERVAL_OVERFLOW:
 			errsave(escontext,
@@ -5077,7 +5077,7 @@ pg_timezone_abbrevs(PG_FUNCTION_ARGS)
 		/* allocate memory for user context */
 		pindex = (int *) palloc(sizeof(int));
 		*pindex = 0;
-		funcctx->user_fctx = (void *) pindex;
+		funcctx->user_fctx = pindex;
 
 		if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
 			elog(ERROR, "return type must be a row type");

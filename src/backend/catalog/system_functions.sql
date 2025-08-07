@@ -636,6 +636,38 @@ LANGUAGE INTERNAL
 CALLED ON NULL INPUT VOLATILE PARALLEL SAFE
 AS 'pg_stat_reset_slru';
 
+CREATE OR REPLACE FUNCTION
+  pg_set_relation_stats(relation regclass,
+                        relpages integer DEFAULT NULL,
+                        reltuples real DEFAULT NULL,
+                        relallvisible integer DEFAULT NULL)
+RETURNS void
+LANGUAGE INTERNAL
+CALLED ON NULL INPUT VOLATILE
+AS 'pg_set_relation_stats';
+
+CREATE OR REPLACE FUNCTION
+  pg_set_attribute_stats(relation regclass,
+                         attname name,
+                         inherited bool,
+                         null_frac real DEFAULT NULL,
+                         avg_width integer DEFAULT NULL,
+                         n_distinct real DEFAULT NULL,
+                         most_common_vals text DEFAULT NULL,
+                         most_common_freqs real[] DEFAULT NULL,
+                         histogram_bounds text DEFAULT NULL,
+                         correlation real DEFAULT NULL,
+                         most_common_elems text DEFAULT NULL,
+                         most_common_elem_freqs real[] DEFAULT NULL,
+                         elem_count_histogram real[] DEFAULT NULL,
+                         range_length_histogram text DEFAULT NULL,
+                         range_empty_frac real DEFAULT NULL,
+                         range_bounds_histogram text DEFAULT NULL)
+RETURNS void
+LANGUAGE INTERNAL
+CALLED ON NULL INPUT VOLATILE
+AS 'pg_set_attribute_stats';
+
 --
 -- The default permissions for functions mean that anyone can execute them.
 -- A number of functions shouldn't be executable by just anyone, but rather
@@ -679,9 +711,11 @@ REVOKE EXECUTE ON FUNCTION pg_stat_reset_single_table_counters(oid) FROM public;
 
 REVOKE EXECUTE ON FUNCTION pg_stat_reset_single_function_counters(oid) FROM public;
 
+REVOKE EXECUTE ON FUNCTION pg_stat_reset_backend_stats(integer) FROM public;
+
 REVOKE EXECUTE ON FUNCTION pg_stat_reset_replication_slot(text) FROM public;
 
-REVOKE EXECUTE ON FUNCTION pg_stat_have_stats(text, oid, oid) FROM public;
+REVOKE EXECUTE ON FUNCTION pg_stat_have_stats(text, oid, int8) FROM public;
 
 REVOKE EXECUTE ON FUNCTION pg_stat_reset_subscription_stats(oid) FROM public;
 
@@ -696,6 +730,8 @@ REVOKE EXECUTE ON FUNCTION pg_ls_logdir() FROM public;
 REVOKE EXECUTE ON FUNCTION pg_ls_waldir() FROM public;
 
 REVOKE EXECUTE ON FUNCTION pg_ls_archive_statusdir() FROM public;
+
+REVOKE EXECUTE ON FUNCTION pg_ls_summariesdir() FROM public;
 
 REVOKE EXECUTE ON FUNCTION pg_ls_tmpdir() FROM public;
 
@@ -766,6 +802,8 @@ GRANT EXECUTE ON FUNCTION pg_ls_logdir() TO pg_monitor;
 GRANT EXECUTE ON FUNCTION pg_ls_waldir() TO pg_monitor;
 
 GRANT EXECUTE ON FUNCTION pg_ls_archive_statusdir() TO pg_monitor;
+
+GRANT EXECUTE ON FUNCTION pg_ls_summariesdir() TO pg_monitor;
 
 GRANT EXECUTE ON FUNCTION pg_ls_tmpdir() TO pg_monitor;
 

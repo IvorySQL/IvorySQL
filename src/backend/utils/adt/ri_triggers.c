@@ -31,6 +31,7 @@
 #include "access/xact.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_constraint.h"
+#include "catalog/pg_proc.h"
 #include "commands/trigger.h"
 #include "executor/executor.h"
 #include "executor/spi.h"
@@ -48,6 +49,7 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/ora_compatible.h"
+#include "utils/rangetypes.h"
 #include "utils/rel.h"
 #include "utils/rls.h"
 #include "utils/ruleutils.h"
@@ -99,6 +101,9 @@
  *
  * Information extracted from an FK pg_constraint entry.  This is cached in
  * ri_constraint_cache.
+ *
+ * Note that pf/pp/ff_eq_oprs may hold the overlaps operator instead of equals
+ * for the PERIOD part of a temporal foreign key.
  */
 typedef struct RI_ConstraintInfo
 {
@@ -118,12 +123,15 @@ typedef struct RI_ConstraintInfo
 	int16		confdelsetcols[RI_MAX_NUMKEYS]; /* attnums of cols to set on
 												 * delete */
 	char		confmatchtype;	/* foreign key's match type */
+	bool		hasperiod;		/* if the foreign key uses PERIOD */
 	int			nkeys;			/* number of key columns */
 	int16		pk_attnums[RI_MAX_NUMKEYS]; /* attnums of referenced cols */
 	int16		fk_attnums[RI_MAX_NUMKEYS]; /* attnums of referencing cols */
 	Oid			pf_eq_oprs[RI_MAX_NUMKEYS]; /* equality operators (PK = FK) */
 	Oid			pp_eq_oprs[RI_MAX_NUMKEYS]; /* equality operators (PK = PK) */
 	Oid			ff_eq_oprs[RI_MAX_NUMKEYS]; /* equality operators (FK = FK) */
+	Oid			period_contained_by_oper;	/* anyrange <@ anyrange */
+	Oid			agged_period_contained_by_oper; /* fkattr <@ range_agg(pkattr) */
 	dlist_node	valid_link;		/* Link in list of valid entries */
 } RI_ConstraintInfo;
 
@@ -202,8 +210,8 @@ static void ri_BuildQueryKey(RI_QueryKey *key,
 							 int32 constr_queryno);
 static bool ri_KeysEqual(Relation rel, TupleTableSlot *oldslot, TupleTableSlot *newslot,
 						 const RI_ConstraintInfo *riinfo, bool rel_is_pk);
-static bool ri_AttributesEqual(Oid eq_opr, Oid typeid,
-							   Datum oldvalue, Datum newvalue);
+static bool ri_CompareWithCast(Oid eq_opr, Oid typeid, Oid collid,
+							   Datum lhs, Datum rhs);
 
 static void ri_InitHashTables(void);
 static void InvalidateConstraintCacheCallBack(Datum arg, int cacheid, uint32 hashvalue);
@@ -223,6 +231,7 @@ static bool ri_PerformCheck(const RI_ConstraintInfo *riinfo,
 							RI_QueryKey *qkey, SPIPlanPtr qplan,
 							Relation fk_rel, Relation pk_rel,
 							TupleTableSlot *oldslot, TupleTableSlot *newslot,
+							bool is_restrict,
 							bool detectNewRows, int expect_OK);
 static void ri_ExtractValues(Relation rel, TupleTableSlot *slot,
 							 const RI_ConstraintInfo *riinfo, bool rel_is_pk,
@@ -230,7 +239,7 @@ static void ri_ExtractValues(Relation rel, TupleTableSlot *slot,
 static void ri_ReportViolation(const RI_ConstraintInfo *riinfo,
 							   Relation pk_rel, Relation fk_rel,
 							   TupleTableSlot *violatorslot, TupleDesc tupdesc,
-							   int queryno, bool partgone) pg_attribute_noreturn();
+							   int queryno, bool is_restrict, bool partgone) pg_attribute_noreturn();
 
 
 /*
@@ -343,8 +352,7 @@ RI_FKey_check(TriggerData *trigdata)
 			break;
 	}
 
-	if (SPI_connect() != SPI_OK_CONNECT)
-		elog(ERROR, "SPI_connect failed");
+	SPI_connect();
 
 	/* Fetch or prepare a saved plan for the real check */
 	ri_BuildQueryKey(&qkey, riinfo, RI_PLAN_CHECK_LOOKUPPK);
@@ -365,14 +373,41 @@ RI_FKey_check(TriggerData *trigdata)
 		 *		   FOR KEY SHARE OF x
 		 * The type id's for the $ parameters are those of the
 		 * corresponding FK attributes.
+		 *
+		 * But for temporal FKs we need to make sure
+		 * the FK's range is completely covered.
+		 * So we use this query instead:
+		 *  SELECT 1
+		 *	FROM	(
+		 *		SELECT pkperiodatt AS r
+		 *		FROM   [ONLY] pktable x
+		 *		WHERE  pkatt1 = $1 [AND ...]
+		 *		AND    pkperiodatt && $n
+		 *		FOR KEY SHARE OF x
+		 *	) x1
+		 *  HAVING $n <@ range_agg(x1.r)
+		 * Note if FOR KEY SHARE ever allows GROUP BY and HAVING
+		 * we can make this a bit simpler.
 		 * ----------
 		 */
 		initStringInfo(&querybuf);
 		pk_only = pk_rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE ?
 			"" : "ONLY ";
 		quoteRelationName(pkrelname, pk_rel);
-		appendStringInfo(&querybuf, "SELECT 1 FROM %s%s x",
-						 pk_only, pkrelname);
+		if (riinfo->hasperiod)
+		{
+			quoteOneName(attname,
+						 RIAttName(pk_rel, riinfo->pk_attnums[riinfo->nkeys - 1]));
+
+			appendStringInfo(&querybuf,
+							 "SELECT 1 FROM (SELECT %s AS r FROM %s%s x",
+							 attname, pk_only, pkrelname);
+		}
+		else
+		{
+			appendStringInfo(&querybuf, "SELECT 1 FROM %s%s x",
+							 pk_only, pkrelname);
+		}
 		querysep = "WHERE";
 		for (int i = 0; i < riinfo->nkeys; i++)
 		{
@@ -390,6 +425,18 @@ RI_FKey_check(TriggerData *trigdata)
 			queryoids[i] = fk_type;
 		}
 		appendStringInfoString(&querybuf, " FOR KEY SHARE OF x");
+		if (riinfo->hasperiod)
+		{
+			Oid			fk_type = RIAttType(fk_rel, riinfo->fk_attnums[riinfo->nkeys - 1]);
+
+			appendStringInfo(&querybuf, ") x1 HAVING ");
+			sprintf(paramname, "$%d", riinfo->nkeys);
+			ri_GenerateQual(&querybuf, "",
+							paramname, fk_type,
+							riinfo->agged_period_contained_by_oper,
+							"pg_catalog.range_agg", ANYMULTIRANGEOID);
+			appendStringInfo(&querybuf, "(x1.r)");
+		}
 
 		/* Prepare and save the plan */
 		qplan = ri_PlanCheck(querybuf.data, riinfo->nkeys, queryoids,
@@ -406,6 +453,7 @@ RI_FKey_check(TriggerData *trigdata)
 	ri_PerformCheck(riinfo, &qkey, qplan,
 					fk_rel, pk_rel,
 					NULL, newslot,
+					false,
 					pk_rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE,
 					SPI_OK_SELECT);
 
@@ -472,8 +520,7 @@ ri_Check_Pk_Match(Relation pk_rel, Relation fk_rel,
 	/* Only called for non-null rows */
 	Assert(ri_NullCheck(RelationGetDescr(pk_rel), oldslot, riinfo, true) == RI_KEYS_NONE_NULL);
 
-	if (SPI_connect() != SPI_OK_CONNECT)
-		elog(ERROR, "SPI_connect failed");
+	SPI_connect();
 
 	/*
 	 * Fetch or prepare a saved plan for checking PK table with values coming
@@ -497,14 +544,40 @@ ri_Check_Pk_Match(Relation pk_rel, Relation fk_rel,
 		 *		   FOR KEY SHARE OF x
 		 * The type id's for the $ parameters are those of the
 		 * PK attributes themselves.
+		 *
+		 * But for temporal FKs we need to make sure
+		 * the old PK's range is completely covered.
+		 * So we use this query instead:
+		 *  SELECT 1
+		 *  FROM    (
+		 *	  SELECT pkperiodatt AS r
+		 *	  FROM   [ONLY] pktable x
+		 *	  WHERE  pkatt1 = $1 [AND ...]
+		 *	  AND    pkperiodatt && $n
+		 *	  FOR KEY SHARE OF x
+		 *  ) x1
+		 *  HAVING $n <@ range_agg(x1.r)
+		 * Note if FOR KEY SHARE ever allows GROUP BY and HAVING
+		 * we can make this a bit simpler.
 		 * ----------
 		 */
 		initStringInfo(&querybuf);
 		pk_only = pk_rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE ?
 			"" : "ONLY ";
 		quoteRelationName(pkrelname, pk_rel);
-		appendStringInfo(&querybuf, "SELECT 1 FROM %s%s x",
-						 pk_only, pkrelname);
+		if (riinfo->hasperiod)
+		{
+			quoteOneName(attname, RIAttName(pk_rel, riinfo->pk_attnums[riinfo->nkeys - 1]));
+
+			appendStringInfo(&querybuf,
+							 "SELECT 1 FROM (SELECT %s AS r FROM %s%s x",
+							 attname, pk_only, pkrelname);
+		}
+		else
+		{
+			appendStringInfo(&querybuf, "SELECT 1 FROM %s%s x",
+							 pk_only, pkrelname);
+		}
 		querysep = "WHERE";
 		for (int i = 0; i < riinfo->nkeys; i++)
 		{
@@ -521,6 +594,18 @@ ri_Check_Pk_Match(Relation pk_rel, Relation fk_rel,
 			queryoids[i] = pk_type;
 		}
 		appendStringInfoString(&querybuf, " FOR KEY SHARE OF x");
+		if (riinfo->hasperiod)
+		{
+			Oid			fk_type = RIAttType(fk_rel, riinfo->fk_attnums[riinfo->nkeys - 1]);
+
+			appendStringInfo(&querybuf, ") x1 HAVING ");
+			sprintf(paramname, "$%d", riinfo->nkeys);
+			ri_GenerateQual(&querybuf, "",
+							paramname, fk_type,
+							riinfo->agged_period_contained_by_oper,
+							"pg_catalog.range_agg", ANYMULTIRANGEOID);
+			appendStringInfo(&querybuf, "(x1.r)");
+		}
 
 		/* Prepare and save the plan */
 		qplan = ri_PlanCheck(querybuf.data, riinfo->nkeys, queryoids,
@@ -533,6 +618,7 @@ ri_Check_Pk_Match(Relation pk_rel, Relation fk_rel,
 	result = ri_PerformCheck(riinfo, &qkey, qplan,
 							 fk_rel, pk_rel,
 							 oldslot, NULL,
+							 false,
 							 true,	/* treat like update */
 							 SPI_OK_SELECT);
 
@@ -659,8 +745,7 @@ ri_restrict(TriggerData *trigdata, bool is_no_action)
 		return PointerGetDatum(NULL);
 	}
 
-	if (SPI_connect() != SPI_OK_CONNECT)
-		elog(ERROR, "SPI_connect failed");
+	SPI_connect();
 
 	/*
 	 * Fetch or prepare a saved plan for the restrict lookup (it's the same
@@ -697,8 +782,6 @@ ri_restrict(TriggerData *trigdata, bool is_no_action)
 		{
 			Oid			pk_type = RIAttType(pk_rel, riinfo->pk_attnums[i]);
 			Oid			fk_type = RIAttType(fk_rel, riinfo->fk_attnums[i]);
-			Oid			pk_coll = RIAttCollation(pk_rel, riinfo->pk_attnums[i]);
-			Oid			fk_coll = RIAttCollation(fk_rel, riinfo->fk_attnums[i]);
 
 			quoteOneName(attname,
 						 RIAttName(fk_rel, riinfo->fk_attnums[i]));
@@ -707,8 +790,6 @@ ri_restrict(TriggerData *trigdata, bool is_no_action)
 							paramname, pk_type,
 							riinfo->pf_eq_oprs[i],
 							attname, fk_type);
-			if (pk_coll != fk_coll && !get_collation_isdeterministic(pk_coll))
-				ri_GenerateQualCollation(&querybuf, pk_coll);
 			querysep = "AND";
 			queryoids[i] = pk_type;
 		}
@@ -725,6 +806,7 @@ ri_restrict(TriggerData *trigdata, bool is_no_action)
 	ri_PerformCheck(riinfo, &qkey, qplan,
 					fk_rel, pk_rel,
 					oldslot, NULL,
+					!is_no_action,
 					true,		/* must detect new rows */
 					SPI_OK_SELECT);
 
@@ -769,8 +851,7 @@ RI_FKey_cascade_del(PG_FUNCTION_ARGS)
 	pk_rel = trigdata->tg_relation;
 	oldslot = trigdata->tg_trigslot;
 
-	if (SPI_connect() != SPI_OK_CONNECT)
-		elog(ERROR, "SPI_connect failed");
+	SPI_connect();
 
 	/* Fetch or prepare a saved plan for the cascaded delete */
 	ri_BuildQueryKey(&qkey, riinfo, RI_PLAN_CASCADE_ONDELETE);
@@ -803,8 +884,6 @@ RI_FKey_cascade_del(PG_FUNCTION_ARGS)
 		{
 			Oid			pk_type = RIAttType(pk_rel, riinfo->pk_attnums[i]);
 			Oid			fk_type = RIAttType(fk_rel, riinfo->fk_attnums[i]);
-			Oid			pk_coll = RIAttCollation(pk_rel, riinfo->pk_attnums[i]);
-			Oid			fk_coll = RIAttCollation(fk_rel, riinfo->fk_attnums[i]);
 
 			quoteOneName(attname,
 						 RIAttName(fk_rel, riinfo->fk_attnums[i]));
@@ -813,8 +892,6 @@ RI_FKey_cascade_del(PG_FUNCTION_ARGS)
 							paramname, pk_type,
 							riinfo->pf_eq_oprs[i],
 							attname, fk_type);
-			if (pk_coll != fk_coll && !get_collation_isdeterministic(pk_coll))
-				ri_GenerateQualCollation(&querybuf, pk_coll);
 			querysep = "AND";
 			queryoids[i] = pk_type;
 		}
@@ -831,6 +908,7 @@ RI_FKey_cascade_del(PG_FUNCTION_ARGS)
 	ri_PerformCheck(riinfo, &qkey, qplan,
 					fk_rel, pk_rel,
 					oldslot, NULL,
+					false,
 					true,		/* must detect new rows */
 					SPI_OK_DELETE);
 
@@ -878,8 +956,7 @@ RI_FKey_cascade_upd(PG_FUNCTION_ARGS)
 	newslot = trigdata->tg_newslot;
 	oldslot = trigdata->tg_trigslot;
 
-	if (SPI_connect() != SPI_OK_CONNECT)
-		elog(ERROR, "SPI_connect failed");
+	SPI_connect();
 
 	/* Fetch or prepare a saved plan for the cascaded update */
 	ri_BuildQueryKey(&qkey, riinfo, RI_PLAN_CASCADE_ONUPDATE);
@@ -919,8 +996,6 @@ RI_FKey_cascade_upd(PG_FUNCTION_ARGS)
 		{
 			Oid			pk_type = RIAttType(pk_rel, riinfo->pk_attnums[i]);
 			Oid			fk_type = RIAttType(fk_rel, riinfo->fk_attnums[i]);
-			Oid			pk_coll = RIAttCollation(pk_rel, riinfo->pk_attnums[i]);
-			Oid			fk_coll = RIAttCollation(fk_rel, riinfo->fk_attnums[i]);
 
 			quoteOneName(attname,
 						 RIAttName(fk_rel, riinfo->fk_attnums[i]));
@@ -932,8 +1007,6 @@ RI_FKey_cascade_upd(PG_FUNCTION_ARGS)
 							paramname, pk_type,
 							riinfo->pf_eq_oprs[i],
 							attname, fk_type);
-			if (pk_coll != fk_coll && !get_collation_isdeterministic(pk_coll))
-				ri_GenerateQualCollation(&querybuf, pk_coll);
 			querysep = ",";
 			qualsep = "AND";
 			queryoids[i] = pk_type;
@@ -952,6 +1025,7 @@ RI_FKey_cascade_upd(PG_FUNCTION_ARGS)
 	ri_PerformCheck(riinfo, &qkey, qplan,
 					fk_rel, pk_rel,
 					oldslot, newslot,
+					false,
 					true,		/* must detect new rows */
 					SPI_OK_UPDATE);
 
@@ -1054,8 +1128,7 @@ ri_set(TriggerData *trigdata, bool is_set_null, int tgkind)
 	pk_rel = trigdata->tg_relation;
 	oldslot = trigdata->tg_trigslot;
 
-	if (SPI_connect() != SPI_OK_CONNECT)
-		elog(ERROR, "SPI_connect failed");
+	SPI_connect();
 
 	/*
 	 * Fetch or prepare a saved plan for the trigger.
@@ -1156,8 +1229,6 @@ ri_set(TriggerData *trigdata, bool is_set_null, int tgkind)
 		{
 			Oid			pk_type = RIAttType(pk_rel, riinfo->pk_attnums[i]);
 			Oid			fk_type = RIAttType(fk_rel, riinfo->fk_attnums[i]);
-			Oid			pk_coll = RIAttCollation(pk_rel, riinfo->pk_attnums[i]);
-			Oid			fk_coll = RIAttCollation(fk_rel, riinfo->fk_attnums[i]);
 
 			quoteOneName(attname,
 						 RIAttName(fk_rel, riinfo->fk_attnums[i]));
@@ -1167,8 +1238,6 @@ ri_set(TriggerData *trigdata, bool is_set_null, int tgkind)
 							paramname, pk_type,
 							riinfo->pf_eq_oprs[i],
 							attname, fk_type);
-			if (pk_coll != fk_coll && !get_collation_isdeterministic(pk_coll))
-				ri_GenerateQualCollation(&querybuf, pk_coll);
 			qualsep = "AND";
 			queryoids[i] = pk_type;
 		}
@@ -1184,6 +1253,7 @@ ri_set(TriggerData *trigdata, bool is_set_null, int tgkind)
 	ri_PerformCheck(riinfo, &qkey, qplan,
 					fk_rel, pk_rel,
 					oldslot, NULL,
+					false,
 					true,		/* must detect new rows */
 					SPI_OK_UPDATE);
 
@@ -1550,8 +1620,7 @@ RI_Initial_Check(Trigger *trigger, Relation fk_rel, Relation pk_rel)
 							 PGC_USERSET, PGC_S_SESSION,
 							 GUC_ACTION_SAVE, true, 0, false);
 
-	if (SPI_connect() != SPI_OK_CONNECT)
-		elog(ERROR, "SPI_connect failed");
+	SPI_connect();
 
 	/*
 	 * Generate the plan.  We don't need to cache it, and there are no
@@ -1631,7 +1700,7 @@ RI_Initial_Check(Trigger *trigger, Relation fk_rel, Relation pk_rel)
 		ri_ReportViolation(&fake_riinfo,
 						   pk_rel, fk_rel,
 						   slot, tupdesc,
-						   RI_PLAN_CHECK_LOOKUPPK, false);
+						   RI_PLAN_CHECK_LOOKUPPK, false, false);
 
 		ExecDropSingleTupleTableSlot(slot);
 	}
@@ -1790,8 +1859,7 @@ RI_PartitionRemove_Check(Trigger *trigger, Relation fk_rel, Relation pk_rel)
 							 PGC_USERSET, PGC_S_SESSION,
 							 GUC_ACTION_SAVE, true, 0, false);
 
-	if (SPI_connect() != SPI_OK_CONNECT)
-		elog(ERROR, "SPI_connect failed");
+	SPI_connect();
 
 	/*
 	 * Generate the plan.  We don't need to cache it, and there are no
@@ -1848,7 +1916,7 @@ RI_PartitionRemove_Check(Trigger *trigger, Relation fk_rel, Relation pk_rel)
 			fake_riinfo.pk_attnums[i] = i + 1;
 
 		ri_ReportViolation(&fake_riinfo, pk_rel, fk_rel,
-						   slot, tupdesc, 0, true);
+						   slot, tupdesc, 0, false, true);
 	}
 
 	if (SPI_finish() != SPI_OK_FINISH)
@@ -1940,19 +2008,17 @@ ri_GenerateQual(StringInfo buf,
 /*
  * ri_GenerateQualCollation --- add a COLLATE spec to a WHERE clause
  *
- * At present, we intentionally do not use this function for RI queries that
- * compare a variable to a $n parameter.  Since parameter symbols always have
- * default collation, the effect will be to use the variable's collation.
- * Now that is only strictly correct when testing the referenced column, since
- * the SQL standard specifies that RI comparisons should use the referenced
- * column's collation.  However, so long as all collations have the same
- * notion of equality (which they do, because texteq reduces to bitwise
- * equality), there's no visible semantic impact from using the referencing
- * column's collation when testing it, and this is a good thing to do because
- * it lets us use a normal index on the referencing column.  However, we do
- * have to use this function when directly comparing the referencing and
- * referenced columns, if they are of different collations; else the parser
- * will fail to resolve the collation to use.
+ * We only have to use this function when directly comparing the referencing
+ * and referenced columns, if they are of different collations; else the
+ * parser will fail to resolve the collation to use.  We don't need to use
+ * this function for RI queries that compare a variable to a $n parameter.
+ * Since parameter symbols always have default collation, the effect will be
+ * to use the variable's collation.
+ *
+ * Note that we require that the collations of the referencing and the
+ * referenced column have the same notion of equality: Either they have to
+ * both be deterministic or else they both have to be the same.  (See also
+ * ATAddForeignKeyConstraint().)
  */
 static void
 ri_GenerateQualCollation(StringInfo buf, Oid collation)
@@ -2181,6 +2247,7 @@ ri_LoadConstraintInfo(Oid constraintOid)
 	riinfo->confupdtype = conForm->confupdtype;
 	riinfo->confdeltype = conForm->confdeltype;
 	riinfo->confmatchtype = conForm->confmatchtype;
+	riinfo->hasperiod = conForm->conperiod;
 
 	DeconstructFkConstraintRow(tup,
 							   &riinfo->nkeys,
@@ -2191,6 +2258,20 @@ ri_LoadConstraintInfo(Oid constraintOid)
 							   riinfo->ff_eq_oprs,
 							   &riinfo->ndelsetcols,
 							   riinfo->confdelsetcols);
+
+	/*
+	 * For temporal FKs, get the operators and functions we need. We ask the
+	 * opclass of the PK element for these. This all gets cached (as does the
+	 * generated plan), so there's no performance issue.
+	 */
+	if (riinfo->hasperiod)
+	{
+		Oid			opclass = get_index_column_opclass(conForm->conindid, riinfo->nkeys);
+
+		FindFKPeriodOpers(opclass,
+						  &riinfo->period_contained_by_oper,
+						  &riinfo->agged_period_contained_by_oper);
+	}
 
 	ReleaseSysCache(tup);
 
@@ -2332,6 +2413,7 @@ ri_PerformCheck(const RI_ConstraintInfo *riinfo,
 				RI_QueryKey *qkey, SPIPlanPtr qplan,
 				Relation fk_rel, Relation pk_rel,
 				TupleTableSlot *oldslot, TupleTableSlot *newslot,
+				bool is_restrict,
 				bool detectNewRows, int expect_OK)
 {
 	Relation	query_rel,
@@ -2456,7 +2538,7 @@ ri_PerformCheck(const RI_ConstraintInfo *riinfo,
 						   pk_rel, fk_rel,
 						   newslot ? newslot : oldslot,
 						   NULL,
-						   qkey->constr_queryno, false);
+						   qkey->constr_queryno, is_restrict, false);
 
 	return SPI_processed != 0;
 }
@@ -2497,7 +2579,7 @@ static void
 ri_ReportViolation(const RI_ConstraintInfo *riinfo,
 				   Relation pk_rel, Relation fk_rel,
 				   TupleTableSlot *violatorslot, TupleDesc tupdesc,
-				   int queryno, bool partgone)
+				   int queryno, bool is_restrict, bool partgone)
 {
 	StringInfoData key_names;
 	StringInfoData key_values;
@@ -2626,6 +2708,20 @@ ri_ReportViolation(const RI_ConstraintInfo *riinfo,
 						   RelationGetRelationName(pk_rel)) :
 				 errdetail("Key is not present in table \"%s\".",
 						   RelationGetRelationName(pk_rel)),
+				 errtableconstraint(fk_rel, NameStr(riinfo->conname))));
+	else if (is_restrict)
+		ereport(ERROR,
+				(errcode(ERRCODE_RESTRICT_VIOLATION),
+				 errmsg("update or delete on table \"%s\" violates RESTRICT setting of foreign key constraint \"%s\" on table \"%s\"",
+						RelationGetRelationName(pk_rel),
+						NameStr(riinfo->conname),
+						RelationGetRelationName(fk_rel)),
+				 has_perm ?
+				 errdetail("Key (%s)=(%s) is referenced from table \"%s\".",
+						   key_names.data, key_values.data,
+						   RelationGetRelationName(fk_rel)) :
+				 errdetail("Key is referenced from table \"%s\".",
+						   RelationGetRelationName(fk_rel)),
 				 errtableconstraint(fk_rel, NameStr(riinfo->conname))));
 	else
 		ereport(ERROR,
@@ -2803,7 +2899,10 @@ ri_HashPreparedPlan(RI_QueryKey *key, SPIPlanPtr plan)
 /*
  * ri_KeysEqual -
  *
- * Check if all key values in OLD and NEW are equal.
+ * Check if all key values in OLD and NEW are "equivalent":
+ * For normal FKs we check for equality.
+ * For temporal FKs we check that the PK side is a superset of its old value,
+ * or the FK side is a subset of its old value.
  *
  * Note: at some point we might wish to redefine this as checking for
  * "IS NOT DISTINCT" rather than "=", that is, allow two nulls to be
@@ -2852,20 +2951,32 @@ ri_KeysEqual(Relation rel, TupleTableSlot *oldslot, TupleTableSlot *newslot,
 			 * difference for ON UPDATE CASCADE, but for consistency we treat
 			 * all changes to the PK the same.
 			 */
-			Form_pg_attribute att = TupleDescAttr(oldslot->tts_tupleDescriptor, attnums[i] - 1);
+			CompactAttribute *att = TupleDescCompactAttr(oldslot->tts_tupleDescriptor, attnums[i] - 1);
 
 			if (!datum_image_eq(oldvalue, newvalue, att->attbyval, att->attlen))
 				return false;
 		}
 		else
 		{
+			Oid			eq_opr;
+
+			/*
+			 * When comparing the PERIOD columns we can skip the check
+			 * whenever the referencing column stayed equal or shrank, so test
+			 * with the contained-by operator instead.
+			 */
+			if (riinfo->hasperiod && i == riinfo->nkeys - 1)
+				eq_opr = riinfo->period_contained_by_oper;
+			else
+				eq_opr = riinfo->ff_eq_oprs[i];
+
 			/*
 			 * For the FK table, compare with the appropriate equality
 			 * operator.  Changes that compare equal will still satisfy the
 			 * constraint after the update.
 			 */
-			if (!ri_AttributesEqual(riinfo->ff_eq_oprs[i], RIAttType(rel, attnums[i]),
-									oldvalue, newvalue))
+			if (!ri_CompareWithCast(eq_opr, RIAttType(rel, attnums[i]), RIAttCollation(rel, attnums[i]),
+									newvalue, oldvalue))
 				return false;
 		}
 	}
@@ -2875,29 +2986,32 @@ ri_KeysEqual(Relation rel, TupleTableSlot *oldslot, TupleTableSlot *newslot,
 
 
 /*
- * ri_AttributesEqual -
+ * ri_CompareWithCast -
  *
- * Call the appropriate equality comparison operator for two values.
+ * Call the appropriate comparison operator for two values.
+ * Normally this is equality, but for the PERIOD part of foreign keys
+ * it is ContainedBy, so the order of lhs vs rhs is significant.
+ * See below for how the collation is applied.
  *
  * NB: we have already checked that neither value is null.
  */
 static bool
-ri_AttributesEqual(Oid eq_opr, Oid typeid,
-				   Datum oldvalue, Datum newvalue)
+ri_CompareWithCast(Oid eq_opr, Oid typeid, Oid collid,
+				   Datum lhs, Datum rhs)
 {
 	RI_CompareHashEntry *entry = ri_HashCompareOp(eq_opr, typeid);
 
 	/* Do we need to cast the values? */
 	if (OidIsValid(entry->cast_func_finfo.fn_oid))
 	{
-		oldvalue = FunctionCall3(&entry->cast_func_finfo,
-								 oldvalue,
-								 Int32GetDatum(-1), /* typmod */
-								 BoolGetDatum(false));	/* implicit coercion */
-		newvalue = FunctionCall3(&entry->cast_func_finfo,
-								 newvalue,
-								 Int32GetDatum(-1), /* typmod */
-								 BoolGetDatum(false));	/* implicit coercion */
+		lhs = FunctionCall3(&entry->cast_func_finfo,
+							lhs,
+							Int32GetDatum(-1),	/* typmod */
+							BoolGetDatum(false));	/* implicit coercion */
+		rhs = FunctionCall3(&entry->cast_func_finfo,
+							rhs,
+							Int32GetDatum(-1),	/* typmod */
+							BoolGetDatum(false));	/* implicit coercion */
 	}
 
 	/*
@@ -2908,13 +3022,17 @@ ri_AttributesEqual(Oid eq_opr, Oid typeid,
 	 * on the other side of a foreign-key constraint.  Therefore, the
 	 * comparison here would need to be done with the collation of the *other*
 	 * table.  For simplicity (e.g., we might not even have the other table
-	 * open), we'll just use the default collation here, which could lead to
-	 * some false negatives.  All this would break if we ever allow
-	 * database-wide collations to be nondeterministic.
+	 * open), we'll use our own collation.  This is fine because we require
+	 * that both collations have the same notion of equality (either they are
+	 * both deterministic or else they are both the same).
+	 *
+	 * With range/multirangetypes, the collation of the base type is stored as
+	 * part of the rangetype (pg_range.rngcollation), and always used, so
+	 * there is no danger of inconsistency even using a non-equals operator.
+	 * But if we support arbitrary types with PERIOD, we should perhaps just
+	 * always force a re-check.
 	 */
-	return DatumGetBool(FunctionCall2Coll(&entry->eq_opr_finfo,
-										  DEFAULT_COLLATION_OID,
-										  oldvalue, newvalue));
+	return DatumGetBool(FunctionCall2Coll(&entry->eq_opr_finfo, collid, lhs, rhs));
 }
 
 /*
@@ -2969,7 +3087,7 @@ ri_HashCompareOp(Oid eq_opr, Oid typeid)
 		 * the cast function to get to the operator's input type.
 		 *
 		 * XXX eventually it would be good to support array-coercion cases
-		 * here and in ri_AttributesEqual().  At the moment there is no point
+		 * here and in ri_CompareWithCast().  At the moment there is no point
 		 * because cases involving nonidentical array types will be rejected
 		 * at constraint creation time.
 		 *

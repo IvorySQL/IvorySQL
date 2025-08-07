@@ -337,15 +337,20 @@ ReorderBufferAllocate(void)
 											sizeof(ReorderBufferTXN));
 
 	/*
-	 * XXX the allocation sizes used below pre-date generation context's block
-	 * growing code.  These values should likely be benchmarked and set to
-	 * more suitable values.
+	 * To minimize memory fragmentation caused by long-running transactions
+	 * with changes spanning multiple memory blocks, we use a single
+	 * fixed-size memory block for decoded tuple storage. The performance
+	 * testing showed that the default memory block size maintains logical
+	 * decoding performance without causing fragmentation due to concurrent
+	 * transactions. One might think that we can use the max size as
+	 * SLAB_LARGE_BLOCK_SIZE but the test also showed it doesn't help resolve
+	 * the memory fragmentation.
 	 */
 	buffer->tup_context = GenerationContextCreate(new_ctx,
 												  "Tuples",
-												  SLAB_LARGE_BLOCK_SIZE,
-												  SLAB_LARGE_BLOCK_SIZE,
-												  SLAB_LARGE_BLOCK_SIZE);
+												  SLAB_DEFAULT_BLOCK_SIZE,
+												  SLAB_DEFAULT_BLOCK_SIZE,
+												  SLAB_DEFAULT_BLOCK_SIZE);
 
 	hash_ctl.keysize = sizeof(TransactionId);
 	hash_ctl.entrysize = sizeof(ReorderBufferTXNByIdEnt);
@@ -466,6 +471,9 @@ ReorderBufferReturnTXN(ReorderBuffer *rb, ReorderBufferTXN *txn)
 
 	/* Reset the toast hash */
 	ReorderBufferToastReset(rb, txn);
+
+	/* All changes must be deallocated */
+	Assert(txn->size == 0);
 
 	pfree(txn);
 }
@@ -1506,6 +1514,7 @@ ReorderBufferCleanupTXN(ReorderBuffer *rb, ReorderBufferTXN *txn)
 {
 	bool		found;
 	dlist_mutable_iter iter;
+	Size		mem_freed = 0;
 
 	/* cleanup subtransactions & their changes */
 	dlist_foreach_modify(iter, &txn->subtxns)
@@ -1535,8 +1544,19 @@ ReorderBufferCleanupTXN(ReorderBuffer *rb, ReorderBufferTXN *txn)
 		/* Check we're not mixing changes from different transactions. */
 		Assert(change->txn == txn);
 
+		/*
+		 * Instead of updating the memory counter for individual changes, we
+		 * sum up the size of memory to free so we can update the memory
+		 * counter all together below. This saves costs of maintaining the
+		 * max-heap.
+		 */
+		mem_freed += ReorderBufferChangeSize(change);
+
 		ReorderBufferReturnChange(rb, change, false);
 	}
+
+	/* Update the memory counter */
+	ReorderBufferChangeMemoryUpdate(rb, NULL, txn, false, mem_freed);
 
 	/*
 	 * Cleanup the tuplecids we stored for decoding catalog snapshot access.
@@ -1594,9 +1614,6 @@ ReorderBufferCleanupTXN(ReorderBuffer *rb, ReorderBufferTXN *txn)
 	if (rbtxn_is_serialized(txn))
 		ReorderBufferRestoreCleanup(rb, txn);
 
-	/* Update the memory counter */
-	ReorderBufferChangeMemoryUpdate(rb, NULL, txn, false, txn->size);
-
 	/* deallocate */
 	ReorderBufferReturnTXN(rb, txn);
 }
@@ -1616,6 +1633,7 @@ static void
 ReorderBufferTruncateTXN(ReorderBuffer *rb, ReorderBufferTXN *txn, bool txn_prepared)
 {
 	dlist_mutable_iter iter;
+	Size		mem_freed = 0;
 
 	/* cleanup subtransactions & their changes */
 	dlist_foreach_modify(iter, &txn->subtxns)
@@ -1648,11 +1666,19 @@ ReorderBufferTruncateTXN(ReorderBuffer *rb, ReorderBufferTXN *txn, bool txn_prep
 		/* remove the change from it's containing list */
 		dlist_delete(&change->node);
 
+		/*
+		 * Instead of updating the memory counter for individual changes, we
+		 * sum up the size of memory to free so we can update the memory
+		 * counter all together below. This saves costs of maintaining the
+		 * max-heap.
+		 */
+		mem_freed += ReorderBufferChangeSize(change);
+
 		ReorderBufferReturnChange(rb, change, false);
 	}
 
 	/* Update the memory counter */
-	ReorderBufferChangeMemoryUpdate(rb, NULL, txn, false, txn->size);
+	ReorderBufferChangeMemoryUpdate(rb, NULL, txn, false, mem_freed);
 
 	/*
 	 * Mark the transaction as streamed.
@@ -1835,9 +1861,9 @@ ReorderBufferCopySnap(ReorderBuffer *rb, Snapshot orig_snap,
 	snap->subxip[i++] = txn->xid;
 
 	/*
-	 * subxcnt isn't decreased when subtransactions abort, so count manually.
-	 * Since it's an upper boundary it is safe to use it for the allocation
-	 * above.
+	 * txn->nsubtxns isn't decreased when subtransactions abort, so count
+	 * manually. Since it's an upper boundary it is safe to use it for the
+	 * allocation above.
 	 */
 	snap->subxcnt = 1;
 
@@ -2062,6 +2088,9 @@ ReorderBufferResetTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 		rb->stream_stop(rb, txn, last_lsn);
 		ReorderBufferSaveTXNSnapshot(rb, txn, snapshot_now, command_id);
 	}
+
+	/* All changes must be deallocated */
+	Assert(txn->size == 0);
 }
 
 /*
@@ -4571,9 +4600,9 @@ ReorderBufferCleanupSerializedTXNs(const char *slotname)
 	DIR		   *spill_dir;
 	struct dirent *spill_de;
 	struct stat statbuf;
-	char		path[MAXPGPATH * 2 + 12];
+	char		path[MAXPGPATH * 2 + sizeof(PG_REPLSLOT_DIR)];
 
-	sprintf(path, "pg_replslot/%s", slotname);
+	sprintf(path, "%s/%s", PG_REPLSLOT_DIR, slotname);
 
 	/* we're only handling directories here, skip if it's not ours */
 	if (lstat(path, &statbuf) == 0 && !S_ISDIR(statbuf.st_mode))
@@ -4586,14 +4615,14 @@ ReorderBufferCleanupSerializedTXNs(const char *slotname)
 		if (strncmp(spill_de->d_name, "xid", 3) == 0)
 		{
 			snprintf(path, sizeof(path),
-					 "pg_replslot/%s/%s", slotname,
+					 "%s/%s/%s", PG_REPLSLOT_DIR, slotname,
 					 spill_de->d_name);
 
 			if (unlink(path) != 0)
 				ereport(ERROR,
 						(errcode_for_file_access(),
-						 errmsg("could not remove file \"%s\" during removal of pg_replslot/%s/xid*: %m",
-								path, slotname)));
+						 errmsg("could not remove file \"%s\" during removal of %s/%s/xid*: %m",
+								path, PG_REPLSLOT_DIR, slotname)));
 		}
 	}
 	FreeDir(spill_dir);
@@ -4612,7 +4641,8 @@ ReorderBufferSerializedPath(char *path, ReplicationSlot *slot, TransactionId xid
 
 	XLogSegNoOffsetToRecPtr(segno, 0, wal_segment_size, recptr);
 
-	snprintf(path, MAXPGPATH, "pg_replslot/%s/xid-%u-lsn-%X-%X.spill",
+	snprintf(path, MAXPGPATH, "%s/%s/xid-%u-lsn-%X-%X.spill",
+			 PG_REPLSLOT_DIR,
 			 NameStr(MyReplicationSlot->data.name),
 			 xid, LSN_FORMAT_ARGS(recptr));
 }
@@ -4627,8 +4657,8 @@ StartupReorderBuffer(void)
 	DIR		   *logical_dir;
 	struct dirent *logical_de;
 
-	logical_dir = AllocateDir("pg_replslot");
-	while ((logical_de = ReadDir(logical_dir, "pg_replslot")) != NULL)
+	logical_dir = AllocateDir(PG_REPLSLOT_DIR);
+	while ((logical_de = ReadDir(logical_dir, PG_REPLSLOT_DIR)) != NULL)
 	{
 		if (strcmp(logical_de->d_name, ".") == 0 ||
 			strcmp(logical_de->d_name, "..") == 0)
@@ -5056,7 +5086,7 @@ ApplyLogicalMappingFile(HTAB *tuplecid_data, Oid relid, const char *fname)
 	int			readBytes;
 	LogicalRewriteMappingData map;
 
-	sprintf(path, "pg_logical/mappings/%s", fname);
+	sprintf(path, "%s/%s", PG_LOGICAL_MAPPINGS_DIR, fname);
 	fd = OpenTransientFile(path, O_RDONLY | PG_BINARY);
 	if (fd < 0)
 		ereport(ERROR,
@@ -5172,8 +5202,8 @@ UpdateLogicalMappings(HTAB *tuplecid_data, Oid relid, Snapshot snapshot)
 	ListCell   *file;
 	Oid			dboid = IsSharedRelation(relid) ? InvalidOid : MyDatabaseId;
 
-	mapping_dir = AllocateDir("pg_logical/mappings");
-	while ((mapping_de = ReadDir(mapping_dir, "pg_logical/mappings")) != NULL)
+	mapping_dir = AllocateDir(PG_LOGICAL_MAPPINGS_DIR);
+	while ((mapping_de = ReadDir(mapping_dir, PG_LOGICAL_MAPPINGS_DIR)) != NULL)
 	{
 		Oid			f_dboid;
 		Oid			f_relid;

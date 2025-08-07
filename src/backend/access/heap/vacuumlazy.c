@@ -35,7 +35,6 @@
 
 #include "access/genam.h"
 #include "access/heapam.h"
-#include "access/heapam_xlog.h"
 #include "access/htup_details.h"
 #include "access/multixact.h"
 #include "access/tidstore.h"
@@ -56,7 +55,6 @@
 #include "storage/freespace.h"
 #include "storage/lmgr.h"
 #include "utils/lsyscache.h"
-#include "utils/memutils.h"
 #include "utils/pg_rusage.h"
 #include "utils/timestamp.h"
 
@@ -190,7 +188,22 @@ typedef struct LVRelState
 	BlockNumber rel_pages;		/* total number of pages */
 	BlockNumber scanned_pages;	/* # pages examined (not skipped via VM) */
 	BlockNumber removed_pages;	/* # pages removed by relation truncation */
-	BlockNumber frozen_pages;	/* # pages with newly frozen tuples */
+	BlockNumber new_frozen_tuple_pages; /* # pages with newly frozen tuples */
+
+	/* # pages newly set all-visible in the VM */
+	BlockNumber vm_new_visible_pages;
+
+	/*
+	 * # pages newly set all-visible and all-frozen in the VM. This is a
+	 * subset of vm_new_visible_pages. That is, vm_new_visible_pages includes
+	 * all pages set all-visible, but vm_new_visible_frozen_pages includes
+	 * only those which were also set all-frozen.
+	 */
+	BlockNumber vm_new_visible_frozen_pages;
+
+	/* # all-visible pages newly set all-frozen in the VM */
+	BlockNumber vm_new_frozen_pages;
+
 	BlockNumber lpdead_item_pages;	/* # pages with LP_DEAD items */
 	BlockNumber missed_dead_pages;	/* # pages with missed dead tuples */
 	BlockNumber nonempty_pages; /* actually, last nonempty page + 1 */
@@ -408,7 +421,7 @@ heap_vacuum_rel(Relation rel, VacuumParams *params,
 	/* Initialize page counters explicitly (be tidy) */
 	vacrel->scanned_pages = 0;
 	vacrel->removed_pages = 0;
-	vacrel->frozen_pages = 0;
+	vacrel->new_frozen_tuple_pages = 0;
 	vacrel->lpdead_item_pages = 0;
 	vacrel->missed_dead_pages = 0;
 	vacrel->nonempty_pages = 0;
@@ -429,6 +442,10 @@ heap_vacuum_rel(Relation rel, VacuumParams *params,
 	vacrel->recently_dead_tuples = 0;
 	vacrel->missed_dead_tuples = 0;
 
+	vacrel->vm_new_visible_pages = 0;
+	vacrel->vm_new_visible_frozen_pages = 0;
+	vacrel->vm_new_frozen_pages = 0;
+
 	/*
 	 * Get cutoffs that determine which deleted tuples are considered DEAD,
 	 * not just RECENTLY_DEAD, and which XIDs/MXIDs to freeze.  Then determine
@@ -437,13 +454,13 @@ heap_vacuum_rel(Relation rel, VacuumParams *params,
 	 * as an upper bound on the XIDs stored in the pages we'll actually scan
 	 * (NewRelfrozenXid tracking must never be allowed to miss unfrozen XIDs).
 	 *
-	 * Next acquire vistest, a related cutoff that's used in pruning.  We
-	 * expect vistest will always make heap_page_prune_and_freeze() remove any
-	 * deleted tuple whose xmax is < OldestXmin.  lazy_scan_prune must never
-	 * become confused about whether a tuple should be frozen or removed.  (In
-	 * the future we might want to teach lazy_scan_prune to recompute vistest
-	 * from time to time, to increase the number of dead tuples it can prune
-	 * away.)
+	 * Next acquire vistest, a related cutoff that's used in pruning.  We use
+	 * vistest in combination with OldestXmin to ensure that
+	 * heap_page_prune_and_freeze() always removes any deleted tuple whose
+	 * xmax is < OldestXmin.  lazy_scan_prune must never become confused about
+	 * whether a tuple should be frozen or removed.  (In the future we might
+	 * want to teach lazy_scan_prune to recompute vistest from time to time,
+	 * to increase the number of dead tuples it can prune away.)
 	 */
 	vacrel->aggressive = vacuum_get_cutoffs(rel, params, &vacrel->cutoffs);
 	vacrel->rel_pages = orig_rel_pages = RelationGetNumberOfBlocks(rel);
@@ -607,12 +624,22 @@ heap_vacuum_rel(Relation rel, VacuumParams *params,
 			int32		diff;
 			double		read_rate = 0,
 						write_rate = 0;
+			int64		total_blks_hit;
+			int64		total_blks_read;
+			int64		total_blks_dirtied;
 
 			TimestampDifference(starttime, endtime, &secs_dur, &usecs_dur);
 			memset(&walusage, 0, sizeof(WalUsage));
 			WalUsageAccumDiff(&walusage, &pgWalUsage, &startwalusage);
 			memset(&bufferusage, 0, sizeof(BufferUsage));
 			BufferUsageAccumDiff(&bufferusage, &pgBufferUsage, &startbufferusage);
+
+			total_blks_hit = bufferusage.shared_blks_hit +
+				bufferusage.local_blks_hit;
+			total_blks_read = bufferusage.shared_blks_read +
+				bufferusage.local_blks_read;
+			total_blks_dirtied = bufferusage.shared_blks_dirtied +
+				bufferusage.local_blks_dirtied;
 
 			initStringInfo(&buf);
 			if (verbose)
@@ -687,10 +714,18 @@ heap_vacuum_rel(Relation rel, VacuumParams *params,
 								 vacrel->NewRelminMxid, diff);
 			}
 			appendStringInfo(&buf, _("frozen: %u pages from table (%.2f%% of total) had %lld tuples frozen\n"),
-							 vacrel->frozen_pages,
+							 vacrel->new_frozen_tuple_pages,
 							 orig_rel_pages == 0 ? 100.0 :
-							 100.0 * vacrel->frozen_pages / orig_rel_pages,
+							 100.0 * vacrel->new_frozen_tuple_pages /
+							 orig_rel_pages,
 							 (long long) vacrel->tuples_frozen);
+
+			appendStringInfo(&buf,
+							 _("visibility map: %u pages set all-visible, %u pages set all-frozen (%u were all-visible)\n"),
+							 vacrel->vm_new_visible_pages,
+							 vacrel->vm_new_visible_frozen_pages +
+							 vacrel->vm_new_frozen_pages,
+							 vacrel->vm_new_frozen_pages);
 			if (vacrel->do_index_vacuuming)
 			{
 				if (vacrel->nindexes == 0 || vacrel->num_index_scans == 0)
@@ -739,18 +774,18 @@ heap_vacuum_rel(Relation rel, VacuumParams *params,
 			}
 			if (secs_dur > 0 || usecs_dur > 0)
 			{
-				read_rate = (double) BLCKSZ * (bufferusage.shared_blks_read + bufferusage.local_blks_read) /
+				read_rate = (double) BLCKSZ * total_blks_read /
 					(1024 * 1024) / (secs_dur + usecs_dur / 1000000.0);
-				write_rate = (double) BLCKSZ * (bufferusage.shared_blks_dirtied + bufferusage.local_blks_dirtied) /
+				write_rate = (double) BLCKSZ * total_blks_dirtied /
 					(1024 * 1024) / (secs_dur + usecs_dur / 1000000.0);
 			}
 			appendStringInfo(&buf, _("avg read rate: %.3f MB/s, avg write rate: %.3f MB/s\n"),
 							 read_rate, write_rate);
 			appendStringInfo(&buf,
-							 _("buffer usage: %lld hits, %lld misses, %lld dirtied\n"),
-							 (long long) (bufferusage.shared_blks_hit + bufferusage.local_blks_hit),
-							 (long long) (bufferusage.shared_blks_read + bufferusage.local_blks_read),
-							 (long long) (bufferusage.shared_blks_dirtied + bufferusage.local_blks_dirtied));
+							 _("buffer usage: %lld hits, %lld reads, %lld dirtied\n"),
+							 (long long) total_blks_hit,
+							 (long long) total_blks_read,
+							 (long long) total_blks_dirtied);
 			appendStringInfo(&buf,
 							 _("WAL usage: %lld records, %lld full page images, %llu bytes\n"),
 							 (long long) walusage.wal_records,
@@ -819,8 +854,6 @@ lazy_scan_heap(LVRelState *vacrel)
 				next_fsm_block_to_vacuum = 0;
 	bool		all_visible_according_to_vm;
 
-	TidStore   *dead_items = vacrel->dead_items;
-	VacDeadItemsInfo *dead_items_info = vacrel->dead_items_info;
 	Buffer		vmbuffer = InvalidBuffer;
 	const int	initprog_index[] = {
 		PROGRESS_VACUUM_PHASE,
@@ -832,7 +865,7 @@ lazy_scan_heap(LVRelState *vacrel)
 	/* Report that we're scanning the heap, advertising total # of blocks */
 	initprog_val[0] = PROGRESS_VACUUM_PHASE_SCAN_HEAP;
 	initprog_val[1] = rel_pages;
-	initprog_val[2] = dead_items_info->max_bytes;
+	initprog_val[2] = vacrel->dead_items_info->max_bytes;
 	pgstat_progress_update_multi_param(3, initprog_index, initprog_val);
 
 	/* Initialize for the first heap_vac_scan_next_block() call */
@@ -875,7 +908,7 @@ lazy_scan_heap(LVRelState *vacrel)
 		 * dead_items TIDs, pause and do a cycle of vacuuming before we tackle
 		 * this page.
 		 */
-		if (TidStoreMemoryUsage(dead_items) > dead_items_info->max_bytes)
+		if (TidStoreMemoryUsage(vacrel->dead_items) > vacrel->dead_items_info->max_bytes)
 		{
 			/*
 			 * Before beginning index vacuuming, we release any pin we may
@@ -1045,7 +1078,7 @@ lazy_scan_heap(LVRelState *vacrel)
 	 * Do index vacuuming (call each index's ambulkdelete routine), then do
 	 * related heap vacuuming
 	 */
-	if (dead_items_info->num_items > 0)
+	if (vacrel->dead_items_info->num_items > 0)
 		lazy_vacuum(vacrel);
 
 	/*
@@ -1346,6 +1379,8 @@ lazy_scan_new_or_empty(LVRelState *vacrel, Buffer buf, BlockNumber blkno,
 		 */
 		if (!PageIsAllVisible(page))
 		{
+			uint8		old_vmbits;
+
 			START_CRIT_SECTION();
 
 			/* mark buffer dirty before writing a WAL record */
@@ -1365,10 +1400,24 @@ lazy_scan_new_or_empty(LVRelState *vacrel, Buffer buf, BlockNumber blkno,
 				log_newpage_buffer(buf, true);
 
 			PageSetAllVisible(page);
-			visibilitymap_set(vacrel->rel, blkno, buf, InvalidXLogRecPtr,
-							  vmbuffer, InvalidTransactionId,
-							  VISIBILITYMAP_ALL_VISIBLE | VISIBILITYMAP_ALL_FROZEN);
+			old_vmbits = visibilitymap_set(vacrel->rel, blkno, buf,
+										   InvalidXLogRecPtr,
+										   vmbuffer, InvalidTransactionId,
+										   VISIBILITYMAP_ALL_VISIBLE |
+										   VISIBILITYMAP_ALL_FROZEN);
 			END_CRIT_SECTION();
+
+			/*
+			 * If the page wasn't already set all-visible and/or all-frozen in
+			 * the VM, count it as newly set for logging.
+			 */
+			if ((old_vmbits & VISIBILITYMAP_ALL_VISIBLE) == 0)
+			{
+				vacrel->vm_new_visible_pages++;
+				vacrel->vm_new_visible_frozen_pages++;
+			}
+			else if ((old_vmbits & VISIBILITYMAP_ALL_FROZEN) == 0)
+				vacrel->vm_new_frozen_pages++;
 		}
 
 		freespace = PageGetHeapFreeSpace(page);
@@ -1446,11 +1495,12 @@ lazy_scan_prune(LVRelState *vacrel,
 	if (presult.nfrozen > 0)
 	{
 		/*
-		 * We don't increment the frozen_pages instrumentation counter when
-		 * nfrozen == 0, since it only counts pages with newly frozen tuples
-		 * (don't confuse that with pages newly set all-frozen in VM).
+		 * We don't increment the new_frozen_tuple_pages instrumentation
+		 * counter when nfrozen == 0, since it only counts pages with newly
+		 * frozen tuples (don't confuse that with pages newly set all-frozen
+		 * in VM).
 		 */
-		vacrel->frozen_pages++;
+		vacrel->new_frozen_tuple_pages++;
 	}
 
 	/*
@@ -1522,6 +1572,7 @@ lazy_scan_prune(LVRelState *vacrel,
 	 */
 	if (!all_visible_according_to_vm && presult.all_visible)
 	{
+		uint8		old_vmbits;
 		uint8		flags = VISIBILITYMAP_ALL_VISIBLE;
 
 		if (presult.all_frozen)
@@ -1545,9 +1596,24 @@ lazy_scan_prune(LVRelState *vacrel,
 		 */
 		PageSetAllVisible(page);
 		MarkBufferDirty(buf);
-		visibilitymap_set(vacrel->rel, blkno, buf, InvalidXLogRecPtr,
-						  vmbuffer, presult.vm_conflict_horizon,
-						  flags);
+		old_vmbits = visibilitymap_set(vacrel->rel, blkno, buf,
+									   InvalidXLogRecPtr,
+									   vmbuffer, presult.vm_conflict_horizon,
+									   flags);
+
+		/*
+		 * If the page wasn't already set all-visible and/or all-frozen in the
+		 * VM, count it as newly set for logging.
+		 */
+		if ((old_vmbits & VISIBILITYMAP_ALL_VISIBLE) == 0)
+		{
+			vacrel->vm_new_visible_pages++;
+			if (presult.all_frozen)
+				vacrel->vm_new_visible_frozen_pages++;
+		}
+		else if ((old_vmbits & VISIBILITYMAP_ALL_FROZEN) == 0 &&
+				 presult.all_frozen)
+			vacrel->vm_new_frozen_pages++;
 	}
 
 	/*
@@ -1597,6 +1663,8 @@ lazy_scan_prune(LVRelState *vacrel,
 	else if (all_visible_according_to_vm && presult.all_visible &&
 			 presult.all_frozen && !VM_ALL_FROZEN(vacrel->rel, blkno, &vmbuffer))
 	{
+		uint8		old_vmbits;
+
 		/*
 		 * Avoid relying on all_visible_according_to_vm as a proxy for the
 		 * page-level PD_ALL_VISIBLE bit being set, since it might have become
@@ -1616,10 +1684,31 @@ lazy_scan_prune(LVRelState *vacrel,
 		 * was logged when the page's tuples were frozen.
 		 */
 		Assert(!TransactionIdIsValid(presult.vm_conflict_horizon));
-		visibilitymap_set(vacrel->rel, blkno, buf, InvalidXLogRecPtr,
-						  vmbuffer, InvalidTransactionId,
-						  VISIBILITYMAP_ALL_VISIBLE |
-						  VISIBILITYMAP_ALL_FROZEN);
+		old_vmbits = visibilitymap_set(vacrel->rel, blkno, buf,
+									   InvalidXLogRecPtr,
+									   vmbuffer, InvalidTransactionId,
+									   VISIBILITYMAP_ALL_VISIBLE |
+									   VISIBILITYMAP_ALL_FROZEN);
+
+		/*
+		 * The page was likely already set all-visible in the VM. However,
+		 * there is a small chance that it was modified sometime between
+		 * setting all_visible_according_to_vm and checking the visibility
+		 * during pruning. Check the return value of old_vmbits anyway to
+		 * ensure the visibility map counters used for logging are accurate.
+		 */
+		if ((old_vmbits & VISIBILITYMAP_ALL_VISIBLE) == 0)
+		{
+			vacrel->vm_new_visible_pages++;
+			vacrel->vm_new_visible_frozen_pages++;
+		}
+
+		/*
+		 * We already checked that the page was not set all-frozen in the VM
+		 * above, so we don't need to test the value of old_vmbits.
+		 */
+		else
+			vacrel->vm_new_frozen_pages++;
 	}
 }
 
@@ -2125,11 +2214,16 @@ lazy_vacuum_heap_rel(LVRelState *vacrel)
 		Buffer		buf;
 		Page		page;
 		Size		freespace;
+		OffsetNumber offsets[MaxOffsetNumber];
+		int			num_offsets;
 
 		vacuum_delay_point();
 
 		blkno = iter_result->blkno;
 		vacrel->blkno = blkno;
+
+		num_offsets = TidStoreGetBlockOffsets(iter_result, offsets, lengthof(offsets));
+		Assert(num_offsets <= lengthof(offsets));
 
 		/*
 		 * Pin the visibility map page in case we need to mark the page
@@ -2142,8 +2236,8 @@ lazy_vacuum_heap_rel(LVRelState *vacrel)
 		buf = ReadBufferExtended(vacrel->rel, MAIN_FORKNUM, blkno, RBM_NORMAL,
 								 vacrel->bstrategy);
 		LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
-		lazy_vacuum_heap_page(vacrel, blkno, buf, iter_result->offsets,
-							  iter_result->num_offsets, vmbuffer);
+		lazy_vacuum_heap_page(vacrel, blkno, buf, offsets,
+							  num_offsets, vmbuffer);
 
 		/* Now that we've vacuumed the page, record its available space */
 		page = BufferGetPage(buf);
@@ -2260,6 +2354,7 @@ lazy_vacuum_heap_page(LVRelState *vacrel, BlockNumber blkno, Buffer buffer,
 	if (heap_page_is_all_visible(vacrel, buffer, &visibility_cutoff_xid,
 								 &all_frozen))
 	{
+		uint8		old_vmbits;
 		uint8		flags = VISIBILITYMAP_ALL_VISIBLE;
 
 		if (all_frozen)
@@ -2269,8 +2364,25 @@ lazy_vacuum_heap_page(LVRelState *vacrel, BlockNumber blkno, Buffer buffer,
 		}
 
 		PageSetAllVisible(page);
-		visibilitymap_set(vacrel->rel, blkno, buffer, InvalidXLogRecPtr,
-						  vmbuffer, visibility_cutoff_xid, flags);
+		old_vmbits = visibilitymap_set(vacrel->rel, blkno, buffer,
+									   InvalidXLogRecPtr,
+									   vmbuffer, visibility_cutoff_xid,
+									   flags);
+
+		/*
+		 * If the page wasn't already set all-visible and/or all-frozen in the
+		 * VM, count it as newly set for logging.
+		 */
+		if ((old_vmbits & VISIBILITYMAP_ALL_VISIBLE) == 0)
+		{
+			vacrel->vm_new_visible_pages++;
+			if (all_frozen)
+				vacrel->vm_new_visible_frozen_pages++;
+		}
+
+		else if ((old_vmbits & VISIBILITYMAP_ALL_FROZEN) == 0 &&
+				 all_frozen)
+			vacrel->vm_new_frozen_pages++;
 	}
 
 	/* Revert to the previous phase information for error traceback */
@@ -2439,7 +2551,7 @@ lazy_vacuum_one_index(Relation indrel, IndexBulkDeleteResult *istat,
 							 InvalidBlockNumber, InvalidOffsetNumber);
 
 	/* Do bulk deletion */
-	istat = vac_bulkdel_one_index(&ivinfo, istat, (void *) vacrel->dead_items,
+	istat = vac_bulkdel_one_index(&ivinfo, istat, vacrel->dead_items,
 								  vacrel->dead_items_info);
 
 	/* Revert to the previous phase information for error traceback */
@@ -2881,19 +2993,18 @@ static void
 dead_items_add(LVRelState *vacrel, BlockNumber blkno, OffsetNumber *offsets,
 			   int num_offsets)
 {
-	TidStore   *dead_items = vacrel->dead_items;
 	const int	prog_index[2] = {
 		PROGRESS_VACUUM_NUM_DEAD_ITEM_IDS,
 		PROGRESS_VACUUM_DEAD_TUPLE_BYTES
 	};
 	int64		prog_val[2];
 
-	TidStoreSetBlockOffsets(dead_items, blkno, offsets, num_offsets);
+	TidStoreSetBlockOffsets(vacrel->dead_items, blkno, offsets, num_offsets);
 	vacrel->dead_items_info->num_items += num_offsets;
 
 	/* update the progress information */
 	prog_val[0] = vacrel->dead_items_info->num_items;
-	prog_val[1] = TidStoreMemoryUsage(dead_items);
+	prog_val[1] = TidStoreMemoryUsage(vacrel->dead_items);
 	pgstat_progress_update_multi_param(2, prog_index, prog_val);
 }
 
@@ -2903,8 +3014,6 @@ dead_items_add(LVRelState *vacrel, BlockNumber blkno, OffsetNumber *offsets,
 static void
 dead_items_reset(LVRelState *vacrel)
 {
-	TidStore   *dead_items = vacrel->dead_items;
-
 	if (ParallelVacuumIsActive(vacrel))
 	{
 		parallel_vacuum_reset_dead_items(vacrel->pvs);
@@ -2912,7 +3021,7 @@ dead_items_reset(LVRelState *vacrel)
 	}
 
 	/* Recreate the tidstore with the same max_bytes limitation */
-	TidStoreDestroy(dead_items);
+	TidStoreDestroy(vacrel->dead_items);
 	vacrel->dead_items = TidStoreCreateLocal(vacrel->dead_items_info->max_bytes, true);
 
 	/* Reset the counter */

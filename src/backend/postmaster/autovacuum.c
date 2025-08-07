@@ -100,6 +100,7 @@
 #include "utils/fmgroids.h"
 #include "utils/fmgrprotos.h"
 #include "utils/guc_hooks.h"
+#include "utils/injection_point.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
@@ -246,8 +247,9 @@ typedef enum
 {
 	AutoVacForkFailed,			/* failed trying to start a worker */
 	AutoVacRebalance,			/* rebalance the cost limits */
-	AutoVacNumSignals,			/* must be last */
 }			AutoVacuumSignal;
+
+#define AutoVacNumSignals (AutoVacRebalance + 1)
 
 /*
  * Autovacuum workitem array, stored in AutoVacuumShmem->av_workItems.  This
@@ -380,7 +382,7 @@ AutoVacLauncherMain(char *startup_data, size_t startup_data_len)
 	if (PostAuthDelay)
 		pg_usleep(PostAuthDelay * 1000000L);
 
-	SetProcessingMode(InitProcessing);
+	Assert(GetProcessingMode() == InitProcessing);
 
 	/*
 	 * Set up signal handlers.  We operate on databases much like a regular
@@ -1373,7 +1375,7 @@ AutoVacWorkerMain(char *startup_data, size_t startup_data_len)
 	MyBackendType = B_AUTOVAC_WORKER;
 	init_ps_display(NULL);
 
-	SetProcessingMode(InitProcessing);
+	Assert(GetProcessingMode() == InitProcessing);
 
 	/*
 	 * Set up signal handlers.  We operate on databases much like a regular
@@ -1797,18 +1799,9 @@ get_database_list(void)
 	resultcxt = CurrentMemoryContext;
 
 	/*
-	 * Start a transaction so we can access pg_database, and get a snapshot.
-	 * We don't have a use for the snapshot itself, but we're interested in
-	 * the secondary effect that it sets RecentGlobalXmin.  (This is critical
-	 * for anything that reads heap pages, because HOT may decide to prune
-	 * them even if the process doesn't attempt to modify any tuples.)
-	 *
-	 * FIXME: This comment is inaccurate / the code buggy. A snapshot that is
-	 * not pushed/active does not reliably prevent HOT pruning (->xmin could
-	 * e.g. be cleared when cache invalidations are processed).
+	 * Start a transaction so we can access pg_database.
 	 */
 	StartTransactionCommand();
-	(void) GetTransactionSnapshot();
 
 	rel = table_open(DatabaseRelationId, AccessShareLock);
 	scan = table_beginscan_catalog(rel, 0, NULL);
@@ -1901,6 +1894,12 @@ do_autovacuum(void)
 
 	/* Start a transaction so our commands have one to play into. */
 	StartTransactionCommand();
+
+	/*
+	 * This injection point is put in a transaction block to work with a wait
+	 * that uses a condition variable.
+	 */
+	INJECTION_POINT("autovacuum-worker-start");
 
 	/*
 	 * Compute the multixact age for which freezing is urgent.  This is
@@ -3332,12 +3331,12 @@ check_autovacuum_work_mem(int *newval, void **extra, GucSource source)
 		return true;
 
 	/*
-	 * We clamp manually-set values to at least 1MB.  Since
+	 * We clamp manually-set values to at least 64kB.  Since
 	 * maintenance_work_mem is always set to at least this value, do the same
 	 * here.
 	 */
-	if (*newval < 1024)
-		*newval = 1024;
+	if (*newval < 64)
+		*newval = 64;
 
 	return true;
 }

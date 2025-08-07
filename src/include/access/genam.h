@@ -14,9 +14,11 @@
 #ifndef GENAM_H
 #define GENAM_H
 
+#include "access/htup.h"
 #include "access/sdir.h"
 #include "access/skey.h"
 #include "nodes/tidbitmap.h"
+#include "storage/buf.h"
 #include "storage/lockdefs.h"
 #include "utils/relcache.h"
 #include "utils/snapshot.h"
@@ -233,5 +235,14 @@ extern SysScanDesc systable_beginscan_ordered(Relation heapRelation,
 extern HeapTuple systable_getnext_ordered(SysScanDesc sysscan,
 										  ScanDirection direction);
 extern void systable_endscan_ordered(SysScanDesc sysscan);
+extern void systable_inplace_update_begin(Relation relation,
+										  Oid indexId,
+										  bool indexOK,
+										  Snapshot snapshot,
+										  int nkeys, const ScanKeyData *key,
+										  HeapTuple *oldtupcopy,
+										  void **state);
+extern void systable_inplace_update_finish(void *state, HeapTuple tuple);
+extern void systable_inplace_update_cancel(void *state);
 
 #endif							/* GENAM_H */

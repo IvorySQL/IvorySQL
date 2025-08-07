@@ -807,13 +807,6 @@ SELECT t1.c1, t2.c2 FROM v4 t1 LEFT JOIN ft5 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c
 SELECT t1.c1, t2.c2 FROM v4 t1 LEFT JOIN ft5 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c1, t2.c1 OFFSET 10 LIMIT 10;
 ALTER VIEW v4 OWNER TO regress_view_owner;
 
--- Make sure this big CROSS JOIN query is pushed down
-EXPLAIN (VERBOSE, COSTS OFF) SELECT count(*) FROM ft1 CROSS JOIN ft2 CROSS JOIN ft4 CROSS JOIN ft5;
--- Make sure query cancellation works
-BEGIN;
-SET LOCAL statement_timeout = '10ms';
-select count(*) from ft1 CROSS JOIN ft2 CROSS JOIN ft4 CROSS JOIN ft5; -- this takes very long
-COMMIT;
 
 -- ====================================================================
 -- Check that userid to use when querying the remote table is correctly
@@ -3462,9 +3455,11 @@ SELECT server_name FROM postgres_fdw_get_connections() ORDER BY 1;
 ALTER SERVER loopback OPTIONS (ADD use_remote_estimate 'off');
 DROP SERVER loopback3 CASCADE;
 -- List all the existing cached connections. loopback and loopback3
--- should be output as invalid connections. Also the server name for
--- loopback3 should be NULL because the server was dropped.
-SELECT * FROM postgres_fdw_get_connections() ORDER BY 1;
+-- should be output as invalid connections. Also the server name and user name
+-- for loopback3 should be NULL because both server and user mapping were
+-- dropped.
+SELECT server_name, user_name = CURRENT_USER as "user_name = CURRENT_USER", valid, used_in_xact, closed
+FROM postgres_fdw_get_connections() ORDER BY 1;
 -- The invalid connections get closed in pgfdw_xact_callback during commit.
 COMMIT;
 -- All cached connections were closed while committing above xact, so no
@@ -3984,7 +3979,7 @@ ALTER FOREIGN TABLE async_p2 OPTIONS (use_remote_estimate 'true');
 
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM local_tbl, async_pt WHERE local_tbl.a = async_pt.a AND local_tbl.c = 'bar';
-EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF)
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)
 SELECT * FROM local_tbl, async_pt WHERE local_tbl.a = async_pt.a AND local_tbl.c = 'bar';
 SELECT * FROM local_tbl, async_pt WHERE local_tbl.a = async_pt.a AND local_tbl.c = 'bar';
 
@@ -4059,13 +4054,13 @@ ANALYZE local_tbl;
 
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM local_tbl t1 LEFT JOIN (SELECT *, (SELECT count(*) FROM async_pt WHERE a < 3000) FROM async_pt WHERE a < 3000) t2 ON t1.a = t2.a;
-EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF)
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)
 SELECT * FROM local_tbl t1 LEFT JOIN (SELECT *, (SELECT count(*) FROM async_pt WHERE a < 3000) FROM async_pt WHERE a < 3000) t2 ON t1.a = t2.a;
 SELECT * FROM local_tbl t1 LEFT JOIN (SELECT *, (SELECT count(*) FROM async_pt WHERE a < 3000) FROM async_pt WHERE a < 3000) t2 ON t1.a = t2.a;
 
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM async_pt t1 WHERE t1.b === 505 LIMIT 1;
-EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF)
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)
 SELECT * FROM async_pt t1 WHERE t1.b === 505 LIMIT 1;
 SELECT * FROM async_pt t1 WHERE t1.b === 505 LIMIT 1;
 
@@ -4119,7 +4114,7 @@ DELETE FROM async_p1;
 DELETE FROM async_p2;
 DELETE FROM async_p3;
 
-EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF)
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)
 SELECT * FROM async_pt;
 
 -- Clean up
@@ -4327,5 +4322,39 @@ ANALYZE analyze_table;
 -- cleanup
 DROP FOREIGN TABLE analyze_ftable;
 DROP TABLE analyze_table;
+
+-- ===================================================================
+-- test for postgres_fdw_get_connections function with check_conn = true
+-- ===================================================================
+
+-- Disable debug_discard_caches in order to manage remote connections
+SET debug_discard_caches TO '0';
+
+-- The text of the error might vary across platforms, so only show SQLSTATE.
+\set VERBOSITY sqlstate
+
+SELECT 1 FROM postgres_fdw_disconnect_all();
+ALTER SERVER loopback OPTIONS (SET application_name 'fdw_conn_check');
+SELECT 1 FROM ft1 LIMIT 1;
+
+-- Since the remote server is still connected, "closed" should be FALSE,
+-- or NULL if the connection status check is not available.
+SELECT CASE WHEN closed IS NOT true THEN 1 ELSE 0 END
+  FROM postgres_fdw_get_connections(true);
+
+-- After terminating the remote backend, since the connection is closed,
+-- "closed" should be TRUE, or NULL if the connection status check
+-- is not available.
+DO $$ BEGIN
+PERFORM pg_terminate_backend(pid, 180000) FROM pg_stat_activity
+  WHERE application_name = 'fdw_conn_check';
+END $$;
+SELECT CASE WHEN closed IS NOT false THEN 1 ELSE 0 END
+  FROM postgres_fdw_get_connections(true);
+
+-- Clean up
+\set VERBOSITY default
+RESET debug_discard_caches;
+
 RESET ivorysql.enable_emptystring_to_NULL;
 

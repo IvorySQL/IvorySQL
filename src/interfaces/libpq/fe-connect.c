@@ -51,6 +51,7 @@
 #include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <pwd.h>
 #endif
 
 #ifdef WIN32
@@ -190,7 +191,8 @@ typedef struct _internalPQconninfoOption
 
 static const internalPQconninfoOption PQconninfoOptions[] = {
 	{"service", "PGSERVICE", NULL, NULL,
-	"Database-Service", "", 20, -1},
+		"Database-Service", "", 20,
+	offsetof(struct pg_conn, pgservice)},
 
 	{"user", "PGUSER", NULL, NULL,
 		"Database-User", "", 20,
@@ -949,7 +951,7 @@ fillPGconn(PGconn *conn, PQconninfoOption *connOptions)
  * Copy over option values from srcConn to dstConn
  *
  * Don't put anything cute here --- intelligence should be in
- * connectOptions2 ...
+ * pqConnectOptions2 ...
  *
  * Returns true on success. On failure, returns false and sets error message of
  * dstConn.
@@ -2170,14 +2172,14 @@ connectFailureMessage(PGconn *conn, int errorno)
 static int
 useKeepalives(PGconn *conn)
 {
-	char	   *ep;
 	int			val;
 
 	if (conn->keepalives == NULL)
 		return 1;
-	val = strtol(conn->keepalives, &ep, 10);
-	if (*ep)
+
+	if (!pqParseIntParam(conn->keepalives, &val, conn, "keepalives"))
 		return -1;
+
 	return val != 0 ? 1 : 0;
 }
 
@@ -3085,7 +3087,7 @@ keep_going:						/* We will come back to here until there is
 
 						if (usekeepalives < 0)
 						{
-							libpq_append_conn_error(conn, "keepalives parameter must be an integer");
+							/* error is already reported */
 							err = 1;
 						}
 						else if (usekeepalives == 0)
@@ -3344,16 +3346,6 @@ keep_going:						/* We will come back to here until there is
 #ifdef USE_SSL
 
 				/*
-				 * Enable the libcrypto callbacks before checking if SSL needs
-				 * to be done.  This is done before sending the startup packet
-				 * as depending on the type of authentication done, like MD5
-				 * or SCRAM that use cryptohashes, the callbacks would be
-				 * required even without a SSL connection
-				 */
-				if (pqsecure_initialize(conn, false, true) < 0)
-					goto error_return;
-
-				/*
 				 * If SSL is enabled, start the SSL negotiation. We will come
 				 * back here after SSL encryption has been established, with
 				 * ssl_in_use set.
@@ -3495,11 +3487,17 @@ keep_going:						/* We will come back to here until there is
 					}
 					if (SSLok == 'S')
 					{
+						if (conn->Pfdebug)
+							pqTraceOutputCharResponse(conn, "SSLResponse",
+													  SSLok);
 						/* mark byte consumed */
 						conn->inStart = conn->inCursor;
 					}
 					else if (SSLok == 'N')
 					{
+						if (conn->Pfdebug)
+							pqTraceOutputCharResponse(conn, "SSLResponse",
+													  SSLok);
 						/* mark byte consumed */
 						conn->inStart = conn->inCursor;
 
@@ -3514,16 +3512,12 @@ keep_going:						/* We will come back to here until there is
 					{
 						/*
 						 * Server failure of some sort, such as failure to
-						 * fork a backend process.  We need to process and
-						 * report the error message, which might be formatted
-						 * according to either protocol 2 or protocol 3.
-						 * Rather than duplicate the code for that, we flip
-						 * into AWAITING_RESPONSE state and let the code there
-						 * deal with it.  Note we have *not* consumed the "E"
-						 * byte here.
+						 * fork a backend process.  Don't bother retrieving
+						 * the error message; we should not trust it as the
+						 * server has not been authenticated yet.
 						 */
-						conn->status = CONNECTION_AWAITING_RESPONSE;
-						goto keep_going;
+						libpq_append_conn_error(conn, "server sent an error response during SSL exchange");
+						goto error_return;
 					}
 					else
 					{
@@ -3532,14 +3526,6 @@ keep_going:						/* We will come back to here until there is
 						goto error_return;
 					}
 				}
-
-				/*
-				 * Set up global SSL state if required.  The crypto state has
-				 * already been set if libpq took care of doing that, so there
-				 * is no need to make that happen again.
-				 */
-				if (pqsecure_initialize(conn, true, false) != 0)
-					goto error_return;
 
 				/*
 				 * Begin or continue the SSL negotiation process.
@@ -3566,8 +3552,8 @@ keep_going:						/* We will come back to here until there is
 				if (pollres == PGRES_POLLING_FAILED)
 				{
 					/*
-					 * Failed direct ssl connection, possibly try a new
-					 * connection with postgres negotiation
+					 * SSL handshake failed.  We will retry with a plaintext
+					 * connection, if permitted by sslmode.
 					 */
 					CONNECTION_FAILED();
 				}
@@ -3607,16 +3593,19 @@ keep_going:						/* We will come back to here until there is
 					{
 						/*
 						 * Server failure of some sort, possibly protocol
-						 * version support failure.  We need to process and
-						 * report the error message, which might be formatted
-						 * according to either protocol 2 or protocol 3.
-						 * Rather than duplicate the code for that, we flip
-						 * into AWAITING_RESPONSE state and let the code there
-						 * deal with it.  Note we have *not* consumed the "E"
-						 * byte here.
+						 * version support failure.  Don't bother retrieving
+						 * the error message; we should not trust it anyway as
+						 * the server has not authenticated yet.
+						 *
+						 * Note that unlike on an error response to
+						 * SSLRequest, we allow falling back to SSL or
+						 * plaintext connection here.  GSS support was
+						 * introduced in PostgreSQL version 12, so an error
+						 * response might mean that we are connecting to a
+						 * pre-v12 server.
 						 */
-						conn->status = CONNECTION_AWAITING_RESPONSE;
-						goto keep_going;
+						libpq_append_conn_error(conn, "server sent an error response during GSS encryption exchange");
+						CONNECTION_FAILED();
 					}
 
 					/* mark byte consumed */
@@ -3624,6 +3613,10 @@ keep_going:						/* We will come back to here until there is
 
 					if (gss_ok == 'N')
 					{
+						if (conn->Pfdebug)
+							pqTraceOutputCharResponse(conn, "GSSENCResponse",
+													  gss_ok);
+
 						/*
 						 * The connection is still valid, so if it's OK to
 						 * continue without GSS, we can proceed using this
@@ -3637,6 +3630,10 @@ keep_going:						/* We will come back to here until there is
 												gss_ok);
 						goto error_return;
 					}
+
+					if (conn->Pfdebug)
+						pqTraceOutputCharResponse(conn, "GSSENCResponse",
+												  gss_ok);
 				}
 
 				/* Begin or continue GSSAPI negotiation */
@@ -3661,6 +3658,10 @@ keep_going:						/* We will come back to here until there is
 				}
 				else if (pollres == PGRES_POLLING_FAILED)
 				{
+					/*
+					 * GSS handshake failed.  We will retry with an SSL or
+					 * plaintext connection, if permitted by the options.
+					 */
 					CONNECTION_FAILED();
 				}
 				/* Else, return POLLING_READING or POLLING_WRITING status */
@@ -3768,7 +3769,7 @@ keep_going:						/* We will come back to here until there is
 						return PGRES_POLLING_READING;
 					}
 					/* OK, we read the message; mark data consumed */
-					conn->inStart = conn->inCursor;
+					pqParseDone(conn, conn->inCursor);
 
 					/*
 					 * Before 7.2, the postmaster didn't always end its
@@ -3818,7 +3819,7 @@ keep_going:						/* We will come back to here until there is
 						goto error_return;
 					}
 					/* OK, we read the message; mark data consumed */
-					conn->inStart = conn->inCursor;
+					pqParseDone(conn, conn->inCursor);
 
 					/*
 					 * If error is "cannot connect now", try the next host if
@@ -3847,7 +3848,7 @@ keep_going:						/* We will come back to here until there is
 						goto error_return;
 					}
 					/* OK, we read the message; mark data consumed */
-					conn->inStart = conn->inCursor;
+					pqParseDone(conn, conn->inCursor);
 					goto error_return;
 				}
 
@@ -3872,7 +3873,11 @@ keep_going:						/* We will come back to here until there is
 				 */
 				res = pg_fe_sendauth(areq, msgLength, conn);
 
-				/* OK, we have processed the message; mark data consumed */
+				/*
+				 * OK, we have processed the message; mark data consumed.  We
+				 * don't call pqParseDone here because we already traced this
+				 * message inside pg_fe_sendauth.
+				 */
 				conn->inStart = conn->inCursor;
 
 				if (res != STATUS_OK)
@@ -6747,9 +6752,9 @@ conninfo_uri_parse_params(char *params,
 static char *
 conninfo_uri_decode(const char *str, PQExpBuffer errorMessage)
 {
-	char	   *buf;
-	char	   *p;
-	const char *q = str;
+	char	   *buf;			/* result */
+	char	   *p;				/* output location */
+	const char *q = str;		/* input location */
 
 	buf = malloc(strlen(str) + 1);
 	if (buf == NULL)
@@ -6759,13 +6764,23 @@ conninfo_uri_decode(const char *str, PQExpBuffer errorMessage)
 	}
 	p = buf;
 
+	/* skip leading whitespaces */
+	for (const char *s = q; *s == ' '; s++)
+	{
+		q++;
+		continue;
+	}
+
 	for (;;)
 	{
 		if (*q != '%')
 		{
-			/* copy and check for NUL terminator */
-			if (!(*(p++) = *(q++)))
-				break;
+			/* if found a whitespace or NUL, the string ends */
+			if (*q == ' ' || *q == '\0')
+				goto end;
+
+			/* copy character */
+			*(p++) = *(q++);
 		}
 		else
 		{
@@ -6800,6 +6815,28 @@ conninfo_uri_decode(const char *str, PQExpBuffer errorMessage)
 			*(p++) = c;
 		}
 	}
+
+end:
+
+	/* skip trailing whitespaces */
+	for (const char *s = q; *s == ' '; s++)
+	{
+		q++;
+		continue;
+	}
+
+	/* Not at the end of the string yet?  Fail. */
+	if (*q != '\0')
+	{
+		libpq_append_error(errorMessage,
+						   "unexpected spaces found in \"%s\", use percent-encoded spaces (%%20) instead",
+						   str);
+		free(buf);
+		return NULL;
+	}
+
+	/* Copy NUL terminator */
+	*p = '\0';
 
 	return buf;
 }
@@ -7007,6 +7044,14 @@ PQdb(const PGconn *conn)
 }
 
 char *
+PQservice(const PGconn *conn)
+{
+	if (!conn)
+		return NULL;
+	return conn->pgservice;
+}
+
+char *
 PQuser(const PGconn *conn)
 {
 	if (!conn)
@@ -7140,6 +7185,16 @@ PQprotocolVersion(const PGconn *conn)
 	if (conn->status == CONNECTION_BAD)
 		return 0;
 	return PG_PROTOCOL_MAJOR(conn->pversion);
+}
+
+int
+PQfullProtocolVersion(const PGconn *conn)
+{
+	if (!conn)
+		return 0;
+	if (conn->status == CONNECTION_BAD)
+		return 0;
+	return PG_PROTOCOL_FULL(conn->pversion);
 }
 
 int
@@ -7423,7 +7478,9 @@ passwordFromFile(const char *hostname, const char *port, const char *dbname,
 				 const char *username, const char *pgpassfile)
 {
 	FILE	   *fp;
+#ifndef WIN32
 	struct stat stat_buf;
+#endif
 	PQExpBufferData buf;
 
 	if (dbname == NULL || dbname[0] == '\0')
@@ -7448,15 +7505,23 @@ passwordFromFile(const char *hostname, const char *port, const char *dbname,
 		port = DEF_PGPORT_STR;
 
 	/* If password file cannot be opened, ignore it. */
-	if (stat(pgpassfile, &stat_buf) != 0)
+	fp = fopen(pgpassfile, "r");
+	if (fp == NULL)
 		return NULL;
 
 #ifndef WIN32
+	if (fstat(fileno(fp), &stat_buf) != 0)
+	{
+		fclose(fp);
+		return NULL;
+	}
+
 	if (!S_ISREG(stat_buf.st_mode))
 	{
 		fprintf(stderr,
 				libpq_gettext("WARNING: password file \"%s\" is not a plain file\n"),
 				pgpassfile);
+		fclose(fp);
 		return NULL;
 	}
 
@@ -7466,6 +7531,7 @@ passwordFromFile(const char *hostname, const char *port, const char *dbname,
 		fprintf(stderr,
 				libpq_gettext("WARNING: password file \"%s\" has group or world access; permissions should be u=rw (0600) or less\n"),
 				pgpassfile);
+		fclose(fp);
 		return NULL;
 	}
 #else
@@ -7475,10 +7541,6 @@ passwordFromFile(const char *hostname, const char *port, const char *dbname,
 	 * file.
 	 */
 #endif
-
-	fp = fopen(pgpassfile, "r");
-	if (fp == NULL)
-		return NULL;
 
 	/* Use an expansible buffer to accommodate any reasonable line length */
 	initPQExpBuffer(&buf);
@@ -7667,10 +7729,24 @@ pqGetHomeDirectory(char *buf, int bufsize)
 	const char *home;
 
 	home = getenv("HOME");
-	if (home == NULL || home[0] == '\0')
-		return pg_get_user_home_dir(geteuid(), buf, bufsize);
-	strlcpy(buf, home, bufsize);
-	return true;
+	if (home && home[0])
+	{
+		strlcpy(buf, home, bufsize);
+		return true;
+	}
+	else
+	{
+		struct passwd pwbuf;
+		struct passwd *pw;
+		char		tmpbuf[1024];
+		int			rc;
+
+		rc = getpwuid_r(geteuid(), &pwbuf, tmpbuf, sizeof tmpbuf, &pw);
+		if (rc != 0 || !pw)
+			return false;
+		strlcpy(buf, pw->pw_dir, bufsize);
+		return true;
+	}
 #else
 	char		tmppath[MAX_PATH];
 

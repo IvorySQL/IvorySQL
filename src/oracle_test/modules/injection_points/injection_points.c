@@ -6,7 +6,7 @@
  * Injection points are able to trigger user-defined callbacks in pre-defined
  * code paths.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -19,6 +19,8 @@
 #include "postgres.h"
 
 #include "fmgr.h"
+#include "funcapi.h"
+#include "injection_stats.h"
 #include "miscadmin.h"
 #include "nodes/pg_list.h"
 #include "nodes/value.h"
@@ -28,6 +30,7 @@
 #include "storage/lwlock.h"
 #include "storage/shmem.h"
 #include "utils/builtins.h"
+#include "utils/guc.h"
 #include "utils/injection_point.h"
 #include "utils/memutils.h"
 #include "utils/wait_event.h"
@@ -68,7 +71,12 @@ typedef struct InjectionPointCondition
  */
 static List *inj_list_local = NIL;
 
-/* Shared state information for injection points. */
+/*
+ * Shared state information for injection points.
+ *
+ * This state data can be initialized in two ways: dynamically with a DSM
+ * or when loading the module.
+ */
 typedef struct InjectionPointSharedState
 {
 	/* Protects access to other fields */
@@ -98,7 +106,21 @@ extern PGDLLEXPORT void injection_wait(const char *name,
 static bool injection_point_local = false;
 
 /*
- * Callback for shared memory area initialization.
+ * GUC variable
+ *
+ * This GUC is useful to control if statistics should be enabled or not
+ * during a test with injection points, like for example if a test relies
+ * on a callback run in a critical section where no allocation should happen.
+ */
+bool		inj_stats_enabled = false;
+
+/* Shared memory init callbacks */
+static shmem_request_hook_type prev_shmem_request_hook = NULL;
+static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
+
+/*
+ * Routine for shared memory area initialization, used as a callback
+ * when initializing dynamically with a DSM or when loading the module.
  */
 static void
 injection_point_init_state(void *ptr)
@@ -111,8 +133,48 @@ injection_point_init_state(void *ptr)
 	ConditionVariableInit(&state->wait_point);
 }
 
+/* Shared memory initialization when loading module */
+static void
+injection_shmem_request(void)
+{
+	Size		size;
+
+	if (prev_shmem_request_hook)
+		prev_shmem_request_hook();
+
+	size = MAXALIGN(sizeof(InjectionPointSharedState));
+	RequestAddinShmemSpace(size);
+}
+
+static void
+injection_shmem_startup(void)
+{
+	bool		found;
+
+	if (prev_shmem_startup_hook)
+		prev_shmem_startup_hook();
+
+	/* Create or attach to the shared memory state */
+	LWLockAcquire(AddinShmemInitLock, LW_EXCLUSIVE);
+
+	inj_state = ShmemInitStruct("injection_points",
+								sizeof(InjectionPointSharedState),
+								&found);
+
+	if (!found)
+	{
+		/*
+		 * First time through, so initialize.  This is shared with the dynamic
+		 * initialization using a DSM.
+		 */
+		injection_point_init_state(inj_state);
+	}
+
+	LWLockRelease(AddinShmemInitLock);
+}
+
 /*
- * Initialize shared memory area for this module.
+ * Initialize shared memory area for this module through DSM.
  */
 static void
 injection_init_shmem(void)
@@ -171,6 +233,9 @@ injection_points_cleanup(int code, Datum arg)
 		char	   *name = strVal(lfirst(lc));
 
 		(void) InjectionPointDetach(name);
+
+		/* Remove stats entry */
+		pgstat_drop_inj(name);
 	}
 }
 
@@ -183,6 +248,8 @@ injection_error(const char *name, const void *private_data)
 	if (!injection_point_allowed(condition))
 		return;
 
+	pgstat_report_inj(name);
+
 	elog(ERROR, "error triggered for injection point %s", name);
 }
 
@@ -193,6 +260,8 @@ injection_notice(const char *name, const void *private_data)
 
 	if (!injection_point_allowed(condition))
 		return;
+
+	pgstat_report_inj(name);
 
 	elog(NOTICE, "notice triggered for injection point %s", name);
 }
@@ -211,6 +280,8 @@ injection_wait(const char *name, const void *private_data)
 
 	if (!injection_point_allowed(condition))
 		return;
+
+	pgstat_report_inj(name);
 
 	/*
 	 * Use the injection point name for this custom wait event.  Note that
@@ -288,6 +359,7 @@ injection_points_attach(PG_FUNCTION_ARGS)
 		condition.pid = MyProcPid;
 	}
 
+	pgstat_report_inj_fixed(1, 0, 0, 0, 0);
 	InjectionPointAttach(name, "injection_points", function, &condition,
 						 sizeof(InjectionPointCondition));
 
@@ -300,6 +372,28 @@ injection_points_attach(PG_FUNCTION_ARGS)
 		inj_list_local = lappend(inj_list_local, makeString(pstrdup(name)));
 		MemoryContextSwitchTo(oldctx);
 	}
+
+	/* Add entry for stats */
+	pgstat_create_inj(name);
+
+	PG_RETURN_VOID();
+}
+
+/*
+ * SQL function for loading an injection point.
+ */
+PG_FUNCTION_INFO_V1(injection_points_load);
+Datum
+injection_points_load(PG_FUNCTION_ARGS)
+{
+	char	   *name = text_to_cstring(PG_GETARG_TEXT_PP(0));
+
+	if (inj_state == NULL)
+		injection_init_shmem();
+
+	pgstat_report_inj_fixed(0, 0, 0, 0, 1);
+	INJECTION_POINT_LOAD(name);
+
 	PG_RETURN_VOID();
 }
 
@@ -312,7 +406,23 @@ injection_points_run(PG_FUNCTION_ARGS)
 {
 	char	   *name = text_to_cstring(PG_GETARG_TEXT_PP(0));
 
+	pgstat_report_inj_fixed(0, 0, 1, 0, 0);
 	INJECTION_POINT(name);
+
+	PG_RETURN_VOID();
+}
+
+/*
+ * SQL function for triggering an injection point from cache.
+ */
+PG_FUNCTION_INFO_V1(injection_points_cached);
+Datum
+injection_points_cached(PG_FUNCTION_ARGS)
+{
+	char	   *name = text_to_cstring(PG_GETARG_TEXT_PP(0));
+
+	pgstat_report_inj_fixed(0, 0, 0, 1, 0);
+	INJECTION_POINT_CACHED(name);
 
 	PG_RETURN_VOID();
 }
@@ -388,6 +498,7 @@ injection_points_detach(PG_FUNCTION_ARGS)
 {
 	char	   *name = text_to_cstring(PG_GETARG_TEXT_PP(0));
 
+	pgstat_report_inj_fixed(0, 1, 0, 0, 0);
 	if (!InjectionPointDetach(name))
 		elog(ERROR, "could not detach injection point \"%s\"", name);
 
@@ -401,5 +512,38 @@ injection_points_detach(PG_FUNCTION_ARGS)
 		MemoryContextSwitchTo(oldctx);
 	}
 
+	/* Remove stats entry */
+	pgstat_drop_inj(name);
+
 	PG_RETURN_VOID();
+}
+
+
+void
+_PG_init(void)
+{
+	if (!process_shared_preload_libraries_in_progress)
+		return;
+
+	DefineCustomBoolVariable("injection_points.stats",
+							 "Enables statistics for injection points.",
+							 NULL,
+							 &inj_stats_enabled,
+							 false,
+							 PGC_POSTMASTER,
+							 0,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	MarkGUCPrefixReserved("injection_points");
+
+	/* Shared memory initialization */
+	prev_shmem_request_hook = shmem_request_hook;
+	shmem_request_hook = injection_shmem_request;
+	prev_shmem_startup_hook = shmem_startup_hook;
+	shmem_startup_hook = injection_shmem_startup;
+
+	pgstat_register_inj();
+	pgstat_register_inj_fixed();
 }

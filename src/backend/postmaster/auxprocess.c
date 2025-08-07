@@ -18,11 +18,6 @@
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "postmaster/auxprocess.h"
-#include "postmaster/bgwriter.h"
-#include "postmaster/startup.h"
-#include "postmaster/walsummarizer.h"
-#include "postmaster/walwriter.h"
-#include "replication/walreceiver.h"
 #include "storage/condition_variable.h"
 #include "storage/ipc.h"
 #include "storage/proc.h"
@@ -54,7 +49,8 @@ AuxiliaryProcessMainCommon(void)
 
 	init_ps_display(NULL);
 
-	SetProcessingMode(BootstrapProcessing);
+	Assert(GetProcessingMode() == InitProcessing);
+
 	IgnoreSystemIndexes = true;
 
 	/*
@@ -70,7 +66,7 @@ AuxiliaryProcessMainCommon(void)
 
 	BaseInit();
 
-	ProcSignalInit();
+	ProcSignalInit(false, 0);
 
 	/*
 	 * Auxiliary processes don't run transactions, but they may need a

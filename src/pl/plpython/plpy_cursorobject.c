@@ -8,14 +8,12 @@
 
 #include <limits.h>
 
-#include "access/xact.h"
 #include "catalog/pg_type.h"
 #include "mb/pg_wchar.h"
 #include "plpy_cursorobject.h"
 #include "plpy_elog.h"
 #include "plpy_main.h"
 #include "plpy_planobject.h"
-#include "plpy_procedure.h"
 #include "plpy_resultobject.h"
 #include "plpy_spi.h"
 #include "plpython.h"
@@ -27,7 +25,7 @@ static PyObject *PLy_cursor_iternext(PyObject *self);
 static PyObject *PLy_cursor_fetch(PyObject *self, PyObject *args);
 static PyObject *PLy_cursor_close(PyObject *self, PyObject *unused);
 
-static char PLy_cursor_doc[] = "Wrapper around a PostgreSQL cursor";
+static const char PLy_cursor_doc[] = "Wrapper around a PostgreSQL cursor";
 
 static PyMethodDef PLy_cursor_methods[] = {
 	{"fetch", PLy_cursor_fetch, METH_VARARGS, NULL},

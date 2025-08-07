@@ -22,6 +22,7 @@
 #include "libpq/libpq-be.h"
 #include "libpq/pqcomm.h"
 #include "miscadmin.h"
+#include "postmaster/postmaster.h"
 #include "storage/procnumber.h"
 
 
@@ -47,7 +48,8 @@ pg_time_t	MyStartTime;
 TimestampTz MyStartTimestamp;
 struct ClientSocket *MyClientSocket;
 struct Port *MyProcPort;
-int32		MyCancelKey;
+bool		MyCancelKeyValid = false;
+int32		MyCancelKey = 0;
 int			MyPMChildSlot;
 
 /*
@@ -150,10 +152,6 @@ int			VacuumCostPageMiss = 2;
 int			VacuumCostPageDirty = 20;
 int			VacuumCostLimit = 200;
 double		VacuumCostDelay = 0;
-
-int64		VacuumPageHit = 0;
-int64		VacuumPageMiss = 0;
-int64		VacuumPageDirty = 0;
 
 int			VacuumCostBalance = 0;	/* working state for vacuum */
 bool		VacuumCostActive = false;

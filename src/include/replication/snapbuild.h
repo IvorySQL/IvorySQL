@@ -15,6 +15,10 @@
 #include "access/xlogdefs.h"
 #include "utils/snapmgr.h"
 
+/*
+ * Please keep get_snapbuild_state_desc() (located in the pg_logicalinspect
+ * module) updated if a change needs to be made to SnapBuildState.
+ */
 typedef enum
 {
 	/*
@@ -46,7 +50,7 @@ typedef enum
 	SNAPBUILD_CONSISTENT = 2,
 } SnapBuildState;
 
-/* forward declare so we don't have to expose the struct to the public */
+/* forward declare so we don't have to include snapbuild_internal.h */
 struct SnapBuild;
 typedef struct SnapBuild SnapBuild;
 
@@ -62,6 +66,7 @@ extern void CheckPointSnapBuild(void);
 extern SnapBuild *AllocateSnapshotBuilder(struct ReorderBuffer *reorder,
 										  TransactionId xmin_horizon, XLogRecPtr start_lsn,
 										  bool need_full_snapshot,
+										  bool in_slot_creation,
 										  XLogRecPtr two_phase_at);
 extern void FreeSnapshotBuilder(SnapBuild *builder);
 

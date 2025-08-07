@@ -27,7 +27,7 @@
  * descriptors.)
  *
  * An SMgrRelation may be "pinned", to prevent it from being destroyed while
- * it's in use.  We use this to prevent pointers relcache to smgr from being
+ * it's in use.  We use this to prevent pointers in relcache to smgr from being
  * invalidated.  SMgrRelations that are not pinned are deleted at end of
  * transaction.
  */
@@ -92,6 +92,8 @@ extern void smgrzeroextend(SMgrRelation reln, ForkNumber forknum,
 						   BlockNumber blocknum, int nblocks, bool skipFsync);
 extern bool smgrprefetch(SMgrRelation reln, ForkNumber forknum,
 						 BlockNumber blocknum, int nblocks);
+extern uint32 smgrmaxcombine(SMgrRelation reln, ForkNumber forknum,
+							 BlockNumber blocknum);
 extern void smgrreadv(SMgrRelation reln, ForkNumber forknum,
 					  BlockNumber blocknum,
 					  void **buffers, BlockNumber nblocks);
@@ -103,8 +105,9 @@ extern void smgrwriteback(SMgrRelation reln, ForkNumber forknum,
 						  BlockNumber blocknum, BlockNumber nblocks);
 extern BlockNumber smgrnblocks(SMgrRelation reln, ForkNumber forknum);
 extern BlockNumber smgrnblocks_cached(SMgrRelation reln, ForkNumber forknum);
-extern void smgrtruncate(SMgrRelation reln, ForkNumber *forknum,
-						 int nforks, BlockNumber *nblocks);
+extern void smgrtruncate(SMgrRelation reln, ForkNumber *forknum, int nforks,
+						 BlockNumber *old_nblocks,
+						 BlockNumber *nblocks);
 extern void smgrimmedsync(SMgrRelation reln, ForkNumber forknum);
 extern void smgrregistersync(SMgrRelation reln, ForkNumber forknum);
 extern void AtEOXact_SMgr(void);

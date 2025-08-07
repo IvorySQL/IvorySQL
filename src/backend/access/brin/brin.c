@@ -67,6 +67,9 @@ typedef struct BrinShared
 	BlockNumber pagesPerRange;
 	int			scantuplesortstates;
 
+	/* Query ID, for report in worker processes */
+	uint64		queryid;
+
 	/*
 	 * workersdonecv is used to monitor the progress of workers.  All parallel
 	 * participants must indicate that they are done before leader can use
@@ -279,6 +282,7 @@ brinhandler(PG_FUNCTION_ARGS)
 	amroutine->amvacuumcleanup = brinvacuumcleanup;
 	amroutine->amcanreturn = NULL;
 	amroutine->amcostestimate = brincostestimate;
+	amroutine->amgettreeheight = NULL;
 	amroutine->amoptions = brinoptions;
 	amroutine->amproperty = NULL;
 	amroutine->ambuildphasename = NULL;
@@ -955,8 +959,7 @@ brinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 	 */
 
 	if (scankey && scan->numberOfKeys > 0)
-		memmove(scan->keyData, scankey,
-				scan->numberOfKeys * sizeof(ScanKeyData));
+		memcpy(scan->keyData, scankey, scan->numberOfKeys * sizeof(ScanKeyData));
 }
 
 /*
@@ -1219,7 +1222,7 @@ brinbuild(Relation heap, Relation index, IndexInfo *indexInfo)
 		 * generate summary for the same range twice).
 		 */
 		reltuples = table_index_build_scan(heap, index, indexInfo, false, true,
-										   brinbuildCallback, (void *) state, NULL);
+										   brinbuildCallback, state, NULL);
 
 		/*
 		 * process the final batch
@@ -1805,7 +1808,7 @@ summarize_range(IndexInfo *indexInfo, BrinBuildState *state, Relation heapRel,
 	state->bs_currRangeStart = heapBlk;
 	table_index_build_range_scan(heapRel, state->bs_irel, indexInfo, false, true, false,
 								 heapBlk, scanNumBlks,
-								 brinbuildCallback, (void *) state, NULL);
+								 brinbuildCallback, state, NULL);
 
 	/*
 	 * Now we update the values obtained by the scan with the placeholder
@@ -2448,6 +2451,7 @@ _brin_begin_parallel(BrinBuildState *buildstate, Relation heap, Relation index,
 	brinshared->isconcurrent = isconcurrent;
 	brinshared->scantuplesortstates = scantuplesortstates;
 	brinshared->pagesPerRange = buildstate->bs_pagesPerRange;
+	brinshared->queryid = pgstat_get_my_query_id();
 	ConditionVariableInit(&brinshared->workersdonecv);
 	SpinLockInit(&brinshared->mutex);
 
@@ -2890,6 +2894,9 @@ _brin_parallel_build_main(dsm_segment *seg, shm_toc *toc)
 		heapLockmode = ShareUpdateExclusiveLock;
 		indexLockmode = RowExclusiveLock;
 	}
+
+	/* Track query ID */
+	pgstat_report_query_id(brinshared->queryid, false);
 
 	/* Open relations within worker */
 	heapRel = table_open(brinshared->heaprelid, heapLockmode);

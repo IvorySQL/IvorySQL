@@ -121,18 +121,9 @@ get_subscription_list(void)
 	resultcxt = CurrentMemoryContext;
 
 	/*
-	 * Start a transaction so we can access pg_database, and get a snapshot.
-	 * We don't have a use for the snapshot itself, but we're interested in
-	 * the secondary effect that it sets RecentGlobalXmin.  (This is critical
-	 * for anything that reads heap pages, because HOT may decide to prune
-	 * them even if the process doesn't attempt to modify any tuples.)
-	 *
-	 * FIXME: This comment is inaccurate / the code buggy. A snapshot that is
-	 * not pushed/active does not reliably prevent HOT pruning (->xmin could
-	 * e.g. be cleared when cache invalidations are processed).
+	 * Start a transaction so we can access pg_subscription.
 	 */
 	StartTransactionCommand();
-	(void) GetTransactionSnapshot();
 
 	rel = table_open(SubscriptionRelationId, AccessShareLock);
 	scan = table_beginscan_catalog(rel, 0, NULL);
@@ -272,10 +263,13 @@ logicalrep_worker_find(Oid subid, Oid relid, bool only_running)
  * the subscription, instead of just one.
  */
 List *
-logicalrep_workers_find(Oid subid, bool only_running)
+logicalrep_workers_find(Oid subid, bool only_running, bool acquire_lock)
 {
 	int			i;
 	List	   *res = NIL;
+
+	if (acquire_lock)
+		LWLockAcquire(LogicalRepWorkerLock, LW_SHARED);
 
 	Assert(LWLockHeldByMe(LogicalRepWorkerLock));
 
@@ -287,6 +281,9 @@ logicalrep_workers_find(Oid subid, bool only_running)
 		if (w->in_use && w->subid == subid && (!only_running || w->proc))
 			res = lappend(res, w);
 	}
+
+	if (acquire_lock)
+		LWLockRelease(LogicalRepWorkerLock);
 
 	return res;
 }
@@ -331,7 +328,7 @@ logicalrep_worker_launch(LogicalRepWorkerType wtype,
 	if (max_replication_slots == 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),
-				 errmsg("cannot start logical replication workers when max_replication_slots = 0")));
+				 errmsg("cannot start logical replication workers when \"max_replication_slots\"=0")));
 
 	/*
 	 * We need to do the modification of the shared memory under lock so that
@@ -759,7 +756,7 @@ logicalrep_worker_detach(void)
 
 		LWLockAcquire(LogicalRepWorkerLock, LW_SHARED);
 
-		workers = logicalrep_workers_find(MyLogicalRepWorker->subid, true);
+		workers = logicalrep_workers_find(MyLogicalRepWorker->subid, true, false);
 		foreach(lc, workers)
 		{
 			LogicalRepWorker *w = (LogicalRepWorker *) lfirst(lc);

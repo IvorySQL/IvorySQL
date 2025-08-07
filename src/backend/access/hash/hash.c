@@ -89,6 +89,7 @@ hashhandler(PG_FUNCTION_ARGS)
 	amroutine->amvacuumcleanup = hashvacuumcleanup;
 	amroutine->amcanreturn = NULL;
 	amroutine->amcostestimate = hashcostestimate;
+	amroutine->amgettreeheight = NULL;
 	amroutine->amoptions = hashoptions;
 	amroutine->amproperty = NULL;
 	amroutine->ambuildphasename = NULL;
@@ -172,7 +173,7 @@ hashbuild(Relation heap, Relation index, IndexInfo *indexInfo)
 	/* do the heap scan */
 	reltuples = table_index_build_scan(heap, index, indexInfo, true, true,
 									   hashbuildCallback,
-									   (void *) &buildstate, NULL);
+									   &buildstate, NULL);
 	pgstat_progress_update_param(PROGRESS_CREATEIDX_TUPLES_TOTAL,
 								 buildstate.indtuples);
 
@@ -414,11 +415,7 @@ hashrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 
 	/* Update scan key, if a new one is given */
 	if (scankey && scan->numberOfKeys > 0)
-	{
-		memmove(scan->keyData,
-				scankey,
-				scan->numberOfKeys * sizeof(ScanKeyData));
-	}
+		memcpy(scan->keyData, scankey, scan->numberOfKeys * sizeof(ScanKeyData));
 
 	so->hashso_buc_populated = false;
 	so->hashso_buc_split = false;

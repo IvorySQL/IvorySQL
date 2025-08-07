@@ -3418,22 +3418,6 @@ SELECT t1.c1, t2.c2 FROM v4 t1 LEFT JOIN ft5 t2 ON (t1.c1 = t2.c1) ORDER BY t1.c
 (10 rows)
 
 ALTER VIEW v4 OWNER TO regress_view_owner;
--- Make sure this big CROSS JOIN query is pushed down
-EXPLAIN (VERBOSE, COSTS OFF) SELECT count(*) FROM ft1 CROSS JOIN ft2 CROSS JOIN ft4 CROSS JOIN ft5;
-                                                                             QUERY PLAN                                                                              
----------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Foreign Scan
-   Output: (count(*))
-   Relations: Aggregate on ((((public.ft1) INNER JOIN (public.ft2)) INNER JOIN (public.ft4)) INNER JOIN (public.ft5))
-   Remote SQL: SELECT count(*) FROM ((("S 1"."T 1" r1 INNER JOIN "S 1"."T 1" r2 ON (TRUE)) INNER JOIN "S 1"."T 3" r4 ON (TRUE)) INNER JOIN "S 1"."T 4" r6 ON (TRUE))
-(4 rows)
-
--- Make sure query cancellation works
-BEGIN;
-SET LOCAL statement_timeout = '10ms';
-select count(*) from ft1 CROSS JOIN ft2 CROSS JOIN ft4 CROSS JOIN ft5; -- this takes very long
-ERROR:  canceling statement due to statement timeout
-COMMIT;
 -- ====================================================================
 -- Check that userid to use when querying the remote table is correctly
 -- propagated into foreign rels present in subqueries under an UNION ALL
@@ -4648,17 +4632,21 @@ ORDER BY ref_0."C 1";
          ->  Index Scan using t1_pkey on "S 1"."T 1" ref_0
                Output: ref_0."C 1", ref_0.c2, ref_0.c3, ref_0.c4, ref_0.c5, ref_0.c6, ref_0.c7, ref_0.c8
                Index Cond: (ref_0."C 1" < '10'::number)
-         ->  Foreign Scan on public.ft1 ref_1
-               Output: ref_1.c3, ref_0.c2
-               Filter: (ref_1.c3 = '00001'::varchar2)
-               Remote SQL: SELECT c3 FROM "S 1"."T 1"
+         ->  Memoize
+               Output: ref_1.c3, (ref_0.c2)
+               Cache Key: ref_0.c2
+               Cache Mode: binary
+               ->  Foreign Scan on public.ft1 ref_1
+                     Output: ref_1.c3, ref_0.c2
+                     Filter: (ref_1.c3 = '00001'::varchar2)
+                     Remote SQL: SELECT c3 FROM "S 1"."T 1"
    ->  Materialize
          Output: ref_3.c3
          ->  Foreign Scan on public.ft2 ref_3
                Output: ref_3.c3
                Filter: (ref_3.c3 = '00001'::varchar2)
                Remote SQL: SELECT c3 FROM "S 1"."T 1"
-(17 rows)
+(21 rows)
 
 SELECT ref_0.c2, subq_1.*
 FROM
@@ -5008,6 +4996,7 @@ EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st2(10, 20);
                                           QUERY PLAN                                           
 -----------------------------------------------------------------------------------------------
  Sort
+   Disabled: true
    Output: t1.c1, t1.c2, t1.c3, t1.c4, t1.c5, t1.c6, t1.c7, t1.c8
    Sort Key: t1.c1
    ->  Nested Loop Semi Join
@@ -5023,7 +5012,7 @@ EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st2(10, 20);
                      Output: t2.c3
                      Filter: ((t2.c1 > '10'::number) AND ((t2.c4)::date = '1970-01-17'::date))
                      Remote SQL: SELECT "C 1", c3, c4 FROM "S 1"."T 1"
-(16 rows)
+(17 rows)
 
 EXECUTE st2(10, 20);
  c1 | c2 |  c3   |                c4                 |             c5             | c6 |     c7     | c8  
@@ -5838,17 +5827,17 @@ SELECT ft2.*, ft4.* FROM ft2 INNER JOIN
                                  Remote SQL: SELECT c1 FROM "S 1"."T 4"
                ->  Materialize
                      Output: ft5_1.c1
-                     ->  Hash Semi Join
+                     ->  Hash Right Semi Join
                            Output: ft5_1.c1
-                           Hash Cond: (ft5_1.c1 = ft4_1.c1)
-                           ->  Foreign Scan on public.ft5 ft5_1
-                                 Output: ft5_1.c1, ft5_1.c2, ft5_1.c3
-                                 Remote SQL: SELECT c1 FROM "S 1"."T 4"
+                           Hash Cond: (ft4_1.c1 = ft5_1.c1)
+                           ->  Foreign Scan on public.ft4 ft4_1
+                                 Output: ft4_1.c1, ft4_1.c2, ft4_1.c3
+                                 Remote SQL: SELECT c1 FROM "S 1"."T 3"
                            ->  Hash
-                                 Output: ft4_1.c1
-                                 ->  Foreign Scan on public.ft4 ft4_1
-                                       Output: ft4_1.c1
-                                       Remote SQL: SELECT c1 FROM "S 1"."T 3"
+                                 Output: ft5_1.c1
+                                 ->  Foreign Scan on public.ft5 ft5_1
+                                       Output: ft5_1.c1
+                                       Remote SQL: SELECT c1 FROM "S 1"."T 4"
 (41 rows)
 
 SELECT ft2.*, ft4.* FROM ft2 INNER JOIN
@@ -11691,13 +11680,15 @@ NOTICE:  drop cascades to 2 other objects
 DETAIL:  drop cascades to user mapping for public on server loopback3
 drop cascades to foreign table ft7
 -- List all the existing cached connections. loopback and loopback3
--- should be output as invalid connections. Also the server name for
--- loopback3 should be NULL because the server was dropped.
-SELECT * FROM postgres_fdw_get_connections() ORDER BY 1;
- server_name | valid 
--------------+-------
- loopback    | f
-             | f
+-- should be output as invalid connections. Also the server name and user name
+-- for loopback3 should be NULL because both server and user mapping were
+-- dropped.
+SELECT server_name, user_name = CURRENT_USER as "user_name = CURRENT_USER", valid, used_in_xact, closed
+FROM postgres_fdw_get_connections() ORDER BY 1;
+ server_name | user_name = CURRENT_USER | valid | used_in_xact | closed 
+-------------+--------------------------+-------+--------------+--------
+ loopback    | t                        | f     | t            | 
+             |                          | f     | t            | 
 (2 rows)
 
 -- The invalid connections get closed in pgfdw_xact_callback during commit.
@@ -12804,7 +12795,7 @@ SELECT * FROM local_tbl, async_pt WHERE local_tbl.a = async_pt.a AND local_tbl.c
                Filter: (local_tbl.c = 'bar'::varchar2)
 (17 rows)
 
-EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF)
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)
 SELECT * FROM local_tbl, async_pt WHERE local_tbl.a = async_pt.a AND local_tbl.c = 'bar';
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
@@ -12855,6 +12846,7 @@ UNION
                      ->  Limit
                            Output: async_p1.a, async_p1.b, (('AAA'::text || (async_p1.c)::text))
                            ->  Sort
+                                 Disabled: true
                                  Output: async_p1.a, async_p1.b, (('AAA'::text || (async_p1.c)::text))
                                  Sort Key: async_p1.a
                                  ->  Foreign Scan on public.async_p1
@@ -12864,7 +12856,7 @@ UNION
                            Output: async_p2.a, async_p2.b, ('AAA'::text || (async_p2.c)::text)
                            Filter: (async_p2.b < '10'::number)
                            Remote SQL: SELECT a, b, c FROM public.base_tbl2
-(19 rows)
+(20 rows)
 
 INSERT INTO result_tbl
 (SELECT a, b, 'AAA' || c FROM async_p1 ORDER BY a LIMIT 10)
@@ -12902,6 +12894,7 @@ UNION ALL
                ->  Limit
                      Output: async_p1.a, async_p1.b, (('AAA'::text || (async_p1.c)::text))
                      ->  Sort
+                           Disabled: true
                            Output: async_p1.a, async_p1.b, (('AAA'::text || (async_p1.c)::text))
                            Sort Key: async_p1.a
                            ->  Foreign Scan on public.async_p1
@@ -12911,7 +12904,7 @@ UNION ALL
                      Output: async_p2.a, async_p2.b, ('AAA'::text || (async_p2.c)::text)
                      Filter: (async_p2.b < '10'::number)
                      Remote SQL: SELECT a, b, c FROM public.base_tbl2
-(16 rows)
+(17 rows)
 
 INSERT INTO result_tbl
 (SELECT a, b, 'AAA' || c FROM async_p1 ORDER BY a LIMIT 10)
@@ -13074,7 +13067,7 @@ SELECT * FROM local_tbl t1 LEFT JOIN (SELECT *, (SELECT count(*) FROM async_pt W
                Remote SQL: SELECT a, b, c FROM public.base_tbl2
 (24 rows)
 
-EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF)
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)
 SELECT * FROM local_tbl t1 LEFT JOIN (SELECT *, (SELECT count(*) FROM async_pt WHERE a < 3000) FROM async_pt WHERE a < 3000) t2 ON t1.a = t2.a;
                                        QUERY PLAN                                        
 -----------------------------------------------------------------------------------------
@@ -13122,7 +13115,7 @@ SELECT * FROM async_pt t1 WHERE t1.b === 505 LIMIT 1;
                Filter: (t1_3.b === '505'::number)
 (14 rows)
 
-EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF)
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)
 SELECT * FROM async_pt t1 WHERE t1.b === 505 LIMIT 1;
                                QUERY PLAN                                
 -------------------------------------------------------------------------
@@ -13295,7 +13288,7 @@ SELECT * FROM async_pt WHERE b = 0;
 DELETE FROM async_p1;
 DELETE FROM async_p2;
 DELETE FROM async_p3;
-EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF)
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)
 SELECT * FROM async_pt;
                                QUERY PLAN                                
 -------------------------------------------------------------------------
@@ -13591,4 +13584,50 @@ ANALYZE analyze_table;
 -- cleanup
 DROP FOREIGN TABLE analyze_ftable;
 DROP TABLE analyze_table;
+-- ===================================================================
+-- test for postgres_fdw_get_connections function with check_conn = true
+-- ===================================================================
+-- Disable debug_discard_caches in order to manage remote connections
+SET debug_discard_caches TO '0';
+-- The text of the error might vary across platforms, so only show SQLSTATE.
+\set VERBOSITY sqlstate
+SELECT 1 FROM postgres_fdw_disconnect_all();
+ ?column? 
+----------
+        1
+(1 row)
+
+ALTER SERVER loopback OPTIONS (SET application_name 'fdw_conn_check');
+SELECT 1 FROM ft1 LIMIT 1;
+ ?column? 
+----------
+        1
+(1 row)
+
+-- Since the remote server is still connected, "closed" should be FALSE,
+-- or NULL if the connection status check is not available.
+SELECT CASE WHEN closed IS NOT true THEN 1 ELSE 0 END
+  FROM postgres_fdw_get_connections(true);
+ case 
+------
+    1
+(1 row)
+
+-- After terminating the remote backend, since the connection is closed,
+-- "closed" should be TRUE, or NULL if the connection status check
+-- is not available.
+DO $$ BEGIN
+PERFORM pg_terminate_backend(pid, 180000) FROM pg_stat_activity
+  WHERE application_name = 'fdw_conn_check';
+END $$;
+SELECT CASE WHEN closed IS NOT false THEN 1 ELSE 0 END
+  FROM postgres_fdw_get_connections(true);
+ case 
+------
+    1
+(1 row)
+
+-- Clean up
+\set VERBOSITY default
+RESET debug_discard_caches;
 RESET ivorysql.enable_emptystring_to_NULL;

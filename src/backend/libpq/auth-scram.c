@@ -113,7 +113,9 @@ static int	scram_exchange(void *opaq, const char *input, int inputlen,
 const pg_be_sasl_mech pg_be_scram_mech = {
 	scram_get_mechanisms,
 	scram_init,
-	scram_exchange
+	scram_exchange,
+
+	PG_MAX_SASL_MESSAGE_LENGTH
 };
 
 /*
@@ -608,16 +610,19 @@ parse_scram_secret(const char *secret, int *iterations,
 	 * SCRAM-SHA-256$<iterations>:<salt>$<storedkey>:<serverkey>
 	 */
 	v = pstrdup(secret);
-	if ((scheme_str = strtok(v, "$")) == NULL)
+	scheme_str = strsep(&v, "$");
+	if (v == NULL)
 		goto invalid_secret;
-	if ((iterations_str = strtok(NULL, ":")) == NULL)
+	iterations_str = strsep(&v, ":");
+	if (v == NULL)
 		goto invalid_secret;
-	if ((salt_str = strtok(NULL, "$")) == NULL)
+	salt_str = strsep(&v, "$");
+	if (v == NULL)
 		goto invalid_secret;
-	if ((storedkey_str = strtok(NULL, ":")) == NULL)
+	storedkey_str = strsep(&v, ":");
+	if (v == NULL)
 		goto invalid_secret;
-	if ((serverkey_str = strtok(NULL, "")) == NULL)
-		goto invalid_secret;
+	serverkey_str = v;
 
 	/* Parse the fields */
 	if (strcmp(scheme_str, "SCRAM-SHA-256") != 0)

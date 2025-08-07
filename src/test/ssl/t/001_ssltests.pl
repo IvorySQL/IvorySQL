@@ -17,7 +17,7 @@ if ($ENV{with_ssl} ne 'openssl')
 {
 	plan skip_all => 'OpenSSL not supported by this build';
 }
-elsif (!$ENV{PG_TEST_EXTRA} || $ENV{PG_TEST_EXTRA} !~ /\bssl\b/)
+if (!$ENV{PG_TEST_EXTRA} || $ENV{PG_TEST_EXTRA} !~ /\bssl\b/)
 {
 	plan skip_all => 'Potentially unsafe test SSL not enabled in PG_TEST_EXTRA';
 }
@@ -35,8 +35,7 @@ sub switch_server_cert
 }
 
 # Determine whether this build uses OpenSSL or LibreSSL. As a heuristic, the
-# HAVE_SSL_CTX_SET_CERT_CB macro isn't defined for LibreSSL. (Nor for OpenSSL
-# 1.0.1, but that's old enough that accommodating it isn't worth the cost.)
+# HAVE_SSL_CTX_SET_CERT_CB macro isn't defined for LibreSSL.
 my $libressl = not check_pg_config("#define HAVE_SSL_CTX_SET_CERT_CB 1");
 
 #### Some configuration
@@ -115,6 +114,18 @@ $node->append_conf(
 ssl_max_protocol_version=''});
 $result = $node->restart(fail_ok => 1);
 is($result, 1, 'restart succeeds with correct SSL protocol bounds');
+
+# Test parsing colon-separated groups. Resetting to a default value to clear
+# the error is fine since the call to switch_server_cert in the client side
+# tests will overwrite ssl_groups with a known set of groups.
+$node->append_conf('sslconfig.conf', qq{ssl_groups='bad:value'});
+my $log_size = -s $node->logfile;
+$result = $node->restart(fail_ok => 1);
+is($result, 0, 'restart fails with incorrect groups');
+ok($node->log_contains(qr/no SSL error reported/) == 0,
+	'error message translated');
+$node->append_conf('ssl_config.conf', qq{ssl_groups='prime256v1'});
+$result = $node->restart(fail_ok => 1);
 
 ### Run client-side tests.
 ###

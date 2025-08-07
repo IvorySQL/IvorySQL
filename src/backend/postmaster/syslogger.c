@@ -75,8 +75,6 @@ char	   *Log_filename = NULL;
 bool		Log_truncate_on_rotation = false;
 int			Log_file_mode = S_IRUSR | S_IWUSR;
 
-extern bool redirection_done;
-
 /*
  * Private state
  */
@@ -592,7 +590,7 @@ SysLoggerMain(char *startup_data, size_t startup_data_len)
  * Postmaster subroutine to start a syslogger subprocess.
  */
 int
-SysLogger_Start(void)
+SysLogger_Start(int child_slot)
 {
 	pid_t		sysloggerPid;
 	char	   *filename;
@@ -600,8 +598,7 @@ SysLogger_Start(void)
 	SysloggerStartupData startup_data;
 #endif							/* EXEC_BACKEND */
 
-	if (!Logging_collector)
-		return 0;
+	Assert(Logging_collector);
 
 	/*
 	 * If first time through, create the pipe which will receive stderr
@@ -701,9 +698,11 @@ SysLogger_Start(void)
 	startup_data.syslogFile = syslogger_fdget(syslogFile);
 	startup_data.csvlogFile = syslogger_fdget(csvlogFile);
 	startup_data.jsonlogFile = syslogger_fdget(jsonlogFile);
-	sysloggerPid = postmaster_child_launch(B_LOGGER, (char *) &startup_data, sizeof(startup_data), NULL);
+	sysloggerPid = postmaster_child_launch(B_LOGGER, child_slot,
+										   (char *) &startup_data, sizeof(startup_data), NULL);
 #else
-	sysloggerPid = postmaster_child_launch(B_LOGGER, NULL, 0, NULL);
+	sysloggerPid = postmaster_child_launch(B_LOGGER, child_slot,
+										   NULL, 0, NULL);
 #endif							/* EXEC_BACKEND */
 
 	if (sysloggerPid == -1)

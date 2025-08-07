@@ -54,12 +54,10 @@
 #include "storage/bufmgr.h"
 #include "storage/condition_variable.h"
 #include "storage/fd.h"
-#include "storage/ipc.h"
 #include "storage/lwlock.h"
 #include "storage/proc.h"
 #include "storage/procsignal.h"
 #include "storage/smgr.h"
-#include "utils/guc.h"
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
 #include "utils/resowner.h"
@@ -210,10 +208,10 @@ WalWriterMain(char *startup_data, size_t startup_data_len)
 	SetWalWriterSleeping(false);
 
 	/*
-	 * Advertise our latch that backends can use to wake us up while we're
-	 * sleeping.
+	 * Advertise our proc number that backends can use to wake us up while
+	 * we're sleeping.
 	 */
-	ProcGlobal->walwriterLatch = &MyProc->procLatch;
+	ProcGlobal->walwriterProc = MyProcNumber;
 
 	/*
 	 * Loop forever

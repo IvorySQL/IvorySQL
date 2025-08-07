@@ -2271,7 +2271,7 @@ find_expr_references_walker(Node *node,
 		context->rtables = lcons(query->rtable, context->rtables);
 		result = query_tree_walker(query,
 								   find_expr_references_walker,
-								   (void *) context,
+								   context,
 								   QTW_IGNORE_JOINALIASES |
 								   QTW_EXAMINE_SORTGROUP);
 		context->rtables = list_delete_first(context->rtables);
@@ -2343,7 +2343,7 @@ find_expr_references_walker(Node *node,
 		return false;
 
 	return expression_tree_walker(node, find_expr_references_walker,
-								  (void *) context);
+								  context);
 }
 
 /*

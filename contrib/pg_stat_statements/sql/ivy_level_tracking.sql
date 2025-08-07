@@ -33,6 +33,107 @@ END; $$;
 SELECT toplevel, calls, query FROM pg_stat_statements
   ORDER BY query COLLATE "C", toplevel;
 
+-- Explain analyze, all-level tracking.
+SET pg_stat_statements.track = 'all';
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) SELECT 100;
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)
+  DECLARE foocur CURSOR FOR SELECT * FROM stats_track_tab;
+SELECT toplevel, calls, query FROM pg_stat_statements
+  ORDER BY query COLLATE "C";
+
+-- Explain analyze, top tracking.
+SET pg_stat_statements.track = 'top';
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) SELECT 100;
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)
+  DECLARE foocur CURSOR FOR SELECT * FROM stats_track_tab;
+SELECT toplevel, calls, query FROM pg_stat_statements
+  ORDER BY query COLLATE "C";
+
+-- Create Materialized View, all-level tracking.
+SET pg_stat_statements.track = 'all';
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
+CREATE MATERIALIZED VIEW pgss_materialized_view AS
+  SELECT * FROM generate_series(1, 5) as id;
+SELECT toplevel, calls, query FROM pg_stat_statements
+  ORDER BY query COLLATE "C";
+
+-- CREATE MATERIALIZED VIEW, top-level tracking.
+SET pg_stat_statements.track = 'top';
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
+CREATE MATERIALIZED VIEW pgss_materialized_view_2 AS
+  SELECT * FROM generate_series(1, 5) as id;
+SELECT toplevel, calls, query FROM pg_stat_statements
+  ORDER BY query COLLATE "C";
+
+-- REFRESH MATERIALIZED VIEW, all-level tracking.
+SET pg_stat_statements.track = 'all';
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
+REFRESH MATERIALIZED VIEW pgss_materialized_view;
+SELECT toplevel, calls, query FROM pg_stat_statements
+  ORDER BY query COLLATE "C";
+
+-- REFRESH MATERIALIZED VIEW, top-level tracking.
+SET pg_stat_statements.track = 'top';
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
+REFRESH MATERIALIZED VIEW pgss_materialized_view;
+SELECT toplevel, calls, query FROM pg_stat_statements
+  ORDER BY query COLLATE "C";
+
+-- CREATE TABLE AS, all-level tracking.
+SET pg_stat_statements.track = 'all';
+PREPARE test_prepare_pgss AS select generate_series(1, 10);
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
+CREATE TEMPORARY TABLE pgss_ctas_1 AS SELECT 1;
+CREATE TEMPORARY TABLE pgss_ctas_2 AS EXECUTE test_prepare_pgss;
+SELECT toplevel, calls, query FROM pg_stat_statements
+  ORDER BY query COLLATE "C";
+
+-- CREATE TABLE AS, top-level tracking.
+SET pg_stat_statements.track = 'top';
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
+CREATE TEMPORARY TABLE pgss_ctas_3 AS SELECT 1;
+CREATE TEMPORARY TABLE pgss_ctas_4 AS EXECUTE test_prepare_pgss;
+SELECT toplevel, calls, query FROM pg_stat_statements
+  ORDER BY query COLLATE "C";
+
+-- EXPLAIN with CREATE TABLE AS - all-level tracking.
+SET pg_stat_statements.track = 'all';
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
+EXPLAIN (COSTS OFF) CREATE TEMPORARY TABLE pgss_explain_ctas AS SELECT 1;
+SELECT toplevel, calls, query FROM pg_stat_statements
+  ORDER BY query COLLATE "C";
+
+-- EXPLAIN with CREATE TABLE AS - top-level tracking.
+SET pg_stat_statements.track = 'top';
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
+EXPLAIN (COSTS OFF) CREATE TEMPORARY TABLE pgss_explain_ctas AS SELECT 1;
+SELECT toplevel, calls, query FROM pg_stat_statements
+  ORDER BY query COLLATE "C";
+
+-- DECLARE CURSOR, all-level tracking.
+SET pg_stat_statements.track = 'all';
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
+BEGIN;
+DECLARE FOOCUR CURSOR FOR SELECT * from stats_track_tab;
+FETCH FORWARD 1 FROM foocur;
+CLOSE foocur;
+COMMIT;
+SELECT toplevel, calls, query FROM pg_stat_statements
+  ORDER BY query COLLATE "C";
+
+-- DECLARE CURSOR, top-level tracking.
+SET pg_stat_statements.track = 'top';
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
+BEGIN;
+DECLARE FOOCUR CURSOR FOR SELECT * FROM stats_track_tab;
+FETCH FORWARD 1 FROM foocur;
+CLOSE foocur;
+COMMIT;
+SELECT toplevel, calls, query FROM pg_stat_statements
+  ORDER BY query COLLATE "C";
+
 -- DO block - top-level tracking without utility.
 SET pg_stat_statements.track = 'top';
 SET pg_stat_statements.track_utility = FALSE;

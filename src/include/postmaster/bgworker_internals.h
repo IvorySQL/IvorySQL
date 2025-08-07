@@ -26,30 +26,27 @@
 /*
  * List of background workers, private to postmaster.
  *
- * A worker that requests a database connection during registration will have
- * rw_backend set, and will be present in BackendList.  Note: do not rely on
- * rw_backend being non-NULL for shmem-connected workers!
+ * All workers that are currently running will also have an entry in
+ * ActiveChildList.
  */
 typedef struct RegisteredBgWorker
 {
 	BackgroundWorker rw_worker; /* its registry entry */
-	struct bkend *rw_backend;	/* its BackendList entry, or NULL */
 	pid_t		rw_pid;			/* 0 if not running */
-	int			rw_child_slot;
 	TimestampTz rw_crashed_at;	/* if not 0, time it last crashed */
 	int			rw_shmem_slot;
 	bool		rw_terminate;
-	slist_node	rw_lnode;		/* list link */
+	dlist_node	rw_lnode;		/* list link */
 } RegisteredBgWorker;
 
-extern PGDLLIMPORT slist_head BackgroundWorkerList;
+extern PGDLLIMPORT dlist_head BackgroundWorkerList;
 
 extern Size BackgroundWorkerShmemSize(void);
 extern void BackgroundWorkerShmemInit(void);
 extern void BackgroundWorkerStateChange(bool allow_new_workers);
-extern void ForgetBackgroundWorker(slist_mutable_iter *cur);
-extern void ReportBackgroundWorkerPID(RegisteredBgWorker *);
-extern void ReportBackgroundWorkerExit(slist_mutable_iter *cur);
+extern void ForgetBackgroundWorker(RegisteredBgWorker *rw);
+extern void ReportBackgroundWorkerPID(RegisteredBgWorker *rw);
+extern void ReportBackgroundWorkerExit(RegisteredBgWorker *rw);
 extern void BackgroundWorkerStopNotifications(pid_t pid);
 extern void ForgetUnstartedBackgroundWorkers(void);
 extern void ResetBackgroundWorkerCrashTimes(void);

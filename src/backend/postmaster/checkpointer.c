@@ -324,10 +324,10 @@ CheckpointerMain(char *startup_data, size_t startup_data_len)
 	UpdateSharedMemoryConfig();
 
 	/*
-	 * Advertise our latch that backends can use to wake us up while we're
-	 * sleeping.
+	 * Advertise our proc number that backends can use to wake us up while
+	 * we're sleeping.
 	 */
-	ProcGlobal->checkpointerLatch = &MyProc->procLatch;
+	ProcGlobal->checkpointerProc = MyProcNumber;
 
 	/*
 	 * Loop forever
@@ -460,10 +460,7 @@ CheckpointerMain(char *startup_data, size_t startup_data_len)
 			 * Do the checkpoint.
 			 */
 			if (!do_restartpoint)
-			{
-				CreateCheckPoint(flags);
-				ckpt_performed = true;
-			}
+				ckpt_performed = CreateCheckPoint(flags);
 			else
 				ckpt_performed = CreateRestartPoint(flags);
 
@@ -484,7 +481,7 @@ CheckpointerMain(char *startup_data, size_t startup_data_len)
 
 			ConditionVariableBroadcast(&CheckpointerShmem->done_cv);
 
-			if (ckpt_performed)
+			if (!do_restartpoint)
 			{
 				/*
 				 * Note we record the checkpoint start time not end time as
@@ -493,18 +490,32 @@ CheckpointerMain(char *startup_data, size_t startup_data_len)
 				 */
 				last_checkpoint_time = now;
 
-				if (do_restartpoint)
-					PendingCheckpointerStats.restartpoints_performed++;
+				if (ckpt_performed)
+					PendingCheckpointerStats.num_performed++;
 			}
 			else
 			{
-				/*
-				 * We were not able to perform the restartpoint (checkpoints
-				 * throw an ERROR in case of error).  Most likely because we
-				 * have not received any new checkpoint WAL records since the
-				 * last restartpoint. Try again in 15 s.
-				 */
-				last_checkpoint_time = now - CheckPointTimeout + 15;
+				if (ckpt_performed)
+				{
+					/*
+					 * The same as for checkpoint. Please see the
+					 * corresponding comment.
+					 */
+					last_checkpoint_time = now;
+
+					PendingCheckpointerStats.restartpoints_performed++;
+				}
+				else
+				{
+					/*
+					 * We were not able to perform the restartpoint
+					 * (checkpoints throw an ERROR in case of error).  Most
+					 * likely because we have not received any new checkpoint
+					 * WAL records since the last restartpoint. Try again in
+					 * 15 s.
+					 */
+					last_checkpoint_time = now - CheckPointTimeout + 15;
+				}
 			}
 
 			ckpt_active = false;
@@ -663,7 +674,7 @@ CheckArchiveTimeout(void)
 			 * assume nothing happened.
 			 */
 			if (XLogSegmentOffset(switchpoint, wal_segment_size) != 0)
-				elog(DEBUG1, "write-ahead log switch forced (archive_timeout=%d)",
+				elog(DEBUG1, "write-ahead log switch forced (\"archive_timeout\"=%d)",
 					 XLogArchiveTimeout);
 		}
 
@@ -1128,8 +1139,14 @@ ForwardSyncRequest(const FileTag *ftag, SyncRequestType type)
 	LWLockRelease(CheckpointerCommLock);
 
 	/* ... but not till after we release the lock */
-	if (too_full && ProcGlobal->checkpointerLatch)
-		SetLatch(ProcGlobal->checkpointerLatch);
+	if (too_full)
+	{
+		volatile PROC_HDR *procglobal = ProcGlobal;
+		ProcNumber	checkpointerProc = procglobal->checkpointerProc;
+
+		if (checkpointerProc != INVALID_PROC_NUMBER)
+			SetLatch(&GetPGProcByNumber(checkpointerProc)->procLatch);
+	}
 
 	return true;
 }

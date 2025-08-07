@@ -87,7 +87,7 @@ Policy from config file:        targeted
   </para>
 
   <para>
-   To build this module specify <xref
+   To build this module, specify <xref
    linkend="configure-option-with-sepgsql"/> (when using <link
    linkend="install-make">make and autoconf</link> ) or <xref
    linkend="configure-with-sepgsql-meson"/> (when using <link
@@ -794,7 +794,7 @@ ERROR:  SELinux: security policy violation
   <title>External Resources</title>
   <variablelist>
    <varlistentry>
-    <term><ulink url="https://wiki.postgresql.org/wiki/SEPostgreSQL">SE-PostgreSQL Introduction</ulink></term>
+    <term><ulink url="https://wiki.postgresql.org/wiki/SEPostgreSQL_Introduction">SE-PostgreSQL Introduction</ulink></term>
     <listitem>
      <para>
       This wiki page provides a brief overview, security design, architecture,

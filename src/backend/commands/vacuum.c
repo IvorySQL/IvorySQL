@@ -34,7 +34,6 @@
 #include "access/tableam.h"
 #include "access/transam.h"
 #include "access/xact.h"
-#include "catalog/index.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_inherits.h"
@@ -131,7 +130,8 @@ check_vacuum_buffer_usage_limit(int *newval, void **extra,
 		return true;
 
 	/* Value does not fall within any allowable range */
-	GUC_check_errdetail("\"vacuum_buffer_usage_limit\" must be 0 or between %d kB and %d kB",
+	GUC_check_errdetail("\"%s\" must be 0 or between %d kB and %d kB.",
+						"vacuum_buffer_usage_limit",
 						MIN_BAS_VAC_RING_SIZE_KB, MAX_BAS_VAC_RING_SIZE_KB);
 
 	return false;
@@ -603,9 +603,6 @@ vacuum(List *relations, VacuumParams *params, BufferAccessStrategy bstrategy,
 		VacuumFailsafeActive = false;
 		VacuumUpdateCosts();
 		VacuumCostBalance = 0;
-		VacuumPageHit = 0;
-		VacuumPageMiss = 0;
-		VacuumPageDirty = 0;
 		VacuumCostBalanceLocal = 0;
 		VacuumSharedCostBalance = NULL;
 		VacuumActiveNWorkers = NULL;
@@ -854,7 +851,7 @@ vacuum_open_relation(Oid relid, RangeVar *relation, bits32 options,
 
 /*
  * Given a VacuumRelation, fill in the table OID if it wasn't specified,
- * and optionally add VacuumRelations for partitions of the table.
+ * and optionally add VacuumRelations for partitions or inheritance children.
  *
  * If a VacuumRelation does not have an OID supplied and is a partitioned
  * table, an extra entry will be added to the output for each partition.
@@ -882,11 +879,15 @@ expand_vacuum_rel(VacuumRelation *vrel, MemoryContext vac_context,
 	}
 	else
 	{
-		/* Process a specific relation, and possibly partitions thereof */
+		/*
+		 * Process a specific relation, and possibly partitions or child
+		 * tables thereof.
+		 */
 		Oid			relid;
 		HeapTuple	tuple;
 		Form_pg_class classForm;
-		bool		include_parts;
+		bool		include_children;
+		bool		is_partitioned_table;
 		int			rvr_opts;
 
 		/*
@@ -947,20 +948,31 @@ expand_vacuum_rel(VacuumRelation *vrel, MemoryContext vac_context,
 			MemoryContextSwitchTo(oldcontext);
 		}
 
+		/*
+		 * Vacuuming a partitioned table with ONLY will not do anything since
+		 * the partitioned table itself is empty.  Issue a warning if the user
+		 * requests this.
+		 */
+		include_children = vrel->relation->inh;
+		is_partitioned_table = (classForm->relkind == RELKIND_PARTITIONED_TABLE);
+		if ((options & VACOPT_VACUUM) && is_partitioned_table && !include_children)
+			ereport(WARNING,
+					(errmsg("VACUUM ONLY of partitioned table \"%s\" has no effect",
+							vrel->relation->relname)));
 
-		include_parts = (classForm->relkind == RELKIND_PARTITIONED_TABLE);
 		ReleaseSysCache(tuple);
 
 		/*
-		 * If it is, make relation list entries for its partitions.  Note that
-		 * the list returned by find_all_inheritors() includes the passed-in
-		 * OID, so we have to skip that.  There's no point in taking locks on
-		 * the individual partitions yet, and doing so would just add
-		 * unnecessary deadlock risk.  For this last reason we do not check
-		 * yet the ownership of the partitions, which get added to the list to
-		 * process.  Ownership will be checked later on anyway.
+		 * Unless the user has specified ONLY, make relation list entries for
+		 * its partitions or inheritance child tables.  Note that the list
+		 * returned by find_all_inheritors() includes the passed-in OID, so we
+		 * have to skip that.  There's no point in taking locks on the
+		 * individual partitions or child tables yet, and doing so would just
+		 * add unnecessary deadlock risk.  For this last reason, we do not yet
+		 * check the ownership of the partitions/tables, which get added to
+		 * the list to process.  Ownership will be checked later on anyway.
 		 */
-		if (include_parts)
+		if (include_children)
 		{
 			List	   *part_oids = find_all_inheritors(relid, NoLock, NULL);
 			ListCell   *part_lc;
@@ -1405,7 +1417,9 @@ vac_update_relstats(Relation relation,
 {
 	Oid			relid = RelationGetRelid(relation);
 	Relation	rd;
+	ScanKeyData key[1];
 	HeapTuple	ctup;
+	void	   *inplace_state;
 	Form_pg_class pgcform;
 	bool		dirty,
 				futurexid,
@@ -1416,7 +1430,12 @@ vac_update_relstats(Relation relation,
 	rd = table_open(RelationRelationId, RowExclusiveLock);
 
 	/* Fetch a copy of the tuple to scribble on */
-	ctup = SearchSysCacheCopy1(RELOID, ObjectIdGetDatum(relid));
+	ScanKeyInit(&key[0],
+				Anum_pg_class_oid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(relid));
+	systable_inplace_update_begin(rd, ClassOidIndexId, true,
+								  NULL, 1, key, &ctup, &inplace_state);
 	if (!HeapTupleIsValid(ctup))
 		elog(ERROR, "pg_class entry for relid %u vanished during vacuuming",
 			 relid);
@@ -1524,7 +1543,9 @@ vac_update_relstats(Relation relation,
 
 	/* If anything changed, write out the tuple. */
 	if (dirty)
-		heap_inplace_update(rd, ctup);
+		systable_inplace_update_finish(inplace_state, ctup);
+	else
+		systable_inplace_update_cancel(inplace_state);
 
 	table_close(rd, RowExclusiveLock);
 
@@ -1576,6 +1597,7 @@ vac_update_datfrozenxid(void)
 	bool		bogus = false;
 	bool		dirty = false;
 	ScanKeyData key[1];
+	void	   *inplace_state;
 
 	/*
 	 * Restrict this task to one backend per database.  This avoids race
@@ -1699,20 +1721,18 @@ vac_update_datfrozenxid(void)
 	relation = table_open(DatabaseRelationId, RowExclusiveLock);
 
 	/*
-	 * Get the pg_database tuple to scribble on.  Note that this does not
-	 * directly rely on the syscache to avoid issues with flattened toast
-	 * values for the in-place update.
+	 * Fetch a copy of the tuple to scribble on.  We could check the syscache
+	 * tuple first.  If that concluded !dirty, we'd avoid waiting on
+	 * concurrent heap_update() and would avoid exclusive-locking the buffer.
+	 * For now, don't optimize that.
 	 */
 	ScanKeyInit(&key[0],
 				Anum_pg_database_oid,
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(MyDatabaseId));
 
-	scan = systable_beginscan(relation, DatabaseOidIndexId, true,
-							  NULL, 1, key);
-	tuple = systable_getnext(scan);
-	tuple = heap_copytuple(tuple);
-	systable_endscan(scan);
+	systable_inplace_update_begin(relation, DatabaseOidIndexId, true,
+								  NULL, 1, key, &tuple, &inplace_state);
 
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "could not find tuple for database %u", MyDatabaseId);
@@ -1746,7 +1766,9 @@ vac_update_datfrozenxid(void)
 		newMinMulti = dbform->datminmxid;
 
 	if (dirty)
-		heap_inplace_update(relation, tuple);
+		systable_inplace_update_finish(inplace_state, tuple);
+	else
+		systable_inplace_update_cancel(inplace_state);
 
 	heap_freetuple(tuple);
 	table_close(relation, RowExclusiveLock);
@@ -2496,7 +2518,7 @@ vac_bulkdel_one_index(IndexVacuumInfo *ivinfo, IndexBulkDeleteResult *istat,
 {
 	/* Do bulk deletion */
 	istat = index_bulk_delete(ivinfo, istat, vac_tid_reaped,
-							  (void *) dead_items);
+							  dead_items);
 
 	ereport(ivinfo->message_level,
 			(errmsg("scanned index \"%s\" to remove %lld row versions",

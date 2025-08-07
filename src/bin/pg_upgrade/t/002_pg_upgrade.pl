@@ -180,6 +180,10 @@ if ($oldnode->pg_version >= 15)
 	}
 }
 
+# Since checksums are now enabled by default, and weren't before 18,
+# pass '-k' to initdb on old versions so that upgrades work.
+push @initdb_params, '-k' if $oldnode->pg_version < 18;
+
 $node_params{extra} = \@initdb_params;
 $oldnode->init(%node_params);
 $oldnode->start;
@@ -425,7 +429,7 @@ SKIP:
 			$mode, '--check',
 		],
 		1,
-		[qr/invalid/],    # pg_upgrade prints errors on stdout :(
+		[qr/datconnlimit/],
 		[qr/^$/],
 		'invalid database causes failure');
 	rmtree($newnode->data_dir . "/pg_upgrade_output.d");
@@ -477,9 +481,14 @@ if (-d $log_path)
 			  if $File::Find::name =~ m/.*\.log/;
 		},
 		$newnode->data_dir . "/pg_upgrade_output.d");
+
+	my $test_logfile = $PostgreSQL::Test::Utils::test_logfile;
+
+	note "=== pg_upgrade logs found - appending to $test_logfile ===\n";
 	foreach my $log (@log_files)
 	{
-		note "=== contents of $log ===\n";
+		note "=== appending $log ===\n";
+		print "=== contents of $log ===\n";
 		print slurp_file($log);
 		print "=== EOF ===\n";
 	}

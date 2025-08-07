@@ -68,6 +68,7 @@ extern RelabelType *makeRelabelType(Expr *arg, Oid rtype, int32 rtypmod,
 									Oid rcollid, CoercionForm rformat);
 
 extern RangeVar *makeRangeVar(char *schemaname, char *relname, int location);
+extern Constraint *makeNotNullConstraint(String *colname);
 
 extern TypeName *makeTypeName(char *typnam);
 extern TypeName *makeTypeNameFromNameList(List *names);
@@ -98,7 +99,7 @@ extern IndexInfo *makeIndexInfo(int numattrs, int numkeyattrs, Oid amoid,
 								List *expressions, List *predicates,
 								bool unique, bool nulls_not_distinct,
 								bool isready, bool concurrent,
-								bool summarizing);
+								bool summarizing, bool withoutoverlaps);
 
 extern Node *makeStringConst(char *str, int location);
 extern DefElem *makeDefElem(char *name, Node *arg, int location);

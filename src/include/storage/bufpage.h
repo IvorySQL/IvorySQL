@@ -19,6 +19,9 @@
 #include "storage/item.h"
 #include "storage/off.h"
 
+/* GUC variable */
+extern PGDLLIMPORT bool ignore_checksum_failure;
+
 /*
  * A postgres disk page is an abstraction layered on top of a postgres
  * disk block (which is simply a unit of i/o, see block.h).
@@ -70,7 +73,7 @@
  *
  * AM-specific per-page data (if any) is kept in the area marked "special
  * space"; each AM has an "opaque" structure defined somewhere that is
- * stored as the page trailer.  an access method should always
+ * stored as the page trailer.  An access method should always
  * initialize its pages with PageInit and then set its own opaque
  * fields.
  */
@@ -381,9 +384,9 @@ PageGetMaxOffsetNumber(Page page)
  * Additional functions for access to page headers.
  */
 static inline XLogRecPtr
-PageGetLSN(Page page)
+PageGetLSN(const char *page)
 {
-	return PageXLogRecPtrGet(((PageHeader) page)->pd_lsn);
+	return PageXLogRecPtrGet(((const PageHeaderData *) page)->pd_lsn);
 }
 static inline void
 PageSetLSN(Page page, XLogRecPtr lsn)

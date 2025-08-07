@@ -18,6 +18,7 @@
 
 #include "access/htup_details.h"
 #include "catalog/pg_type.h"
+#include "common/int.h"
 #include "common/jsonapi.h"
 #include "common/string.h"
 #include "fmgr.h"
@@ -453,7 +454,7 @@ static void prepare_column_cache(ColumnIOData *column, Oid typid, int32 typmod,
 static Datum populate_record_field(ColumnIOData *col, Oid typid, int32 typmod,
 								   const char *colname, MemoryContext mcxt, Datum defaultval,
 								   JsValue *jsv, bool *isnull, Node *escontext,
-								   bool omit_quotes);
+								   bool omit_scalar_quotes);
 static RecordIOData *allocate_record_info(MemoryContext mcxt, int ncolumns);
 static bool JsObjectGetField(JsObject *obj, char *field, JsValue *jsv);
 static void populate_recordset_record(PopulateRecordsetState *state, JsObject *obj);
@@ -470,7 +471,7 @@ static Datum populate_array(ArrayIOData *aio, const char *colname,
 							Node *escontext);
 static Datum populate_domain(DomainIOData *io, Oid typid, const char *colname,
 							 MemoryContext mcxt, JsValue *jsv, bool *isnull,
-							 Node *escontext);
+							 Node *escontext, bool omit_quotes);
 
 /* functions supporting jsonb_delete, jsonb_set and jsonb_concat */
 static JsonbValue *IteratorConcat(JsonbIterator **it1, JsonbIterator **it2,
@@ -514,7 +515,7 @@ static JsonParseErrorType transform_string_values_scalar(void *state, char *toke
  * returned when escontext is an ErrorSaveContext).
  */
 bool
-pg_parse_json_or_errsave(JsonLexContext *lex, JsonSemAction *sem,
+pg_parse_json_or_errsave(JsonLexContext *lex, const JsonSemAction *sem,
 						 Node *escontext)
 {
 	JsonParseErrorType result;
@@ -616,7 +617,7 @@ jsonb_object_keys(PG_FUNCTION_ARGS)
 		}
 
 		MemoryContextSwitchTo(oldcontext);
-		funcctx->user_fctx = (void *) state;
+		funcctx->user_fctx = state;
 	}
 
 	funcctx = SRF_PERCALL_SETUP();
@@ -751,7 +752,7 @@ json_object_keys(PG_FUNCTION_ARGS)
 		state->sent_count = 0;
 		state->result = palloc(256 * sizeof(char *));
 
-		sem->semstate = (void *) state;
+		sem->semstate = state;
 		sem->array_start = okeys_array_start;
 		sem->scalar = okeys_scalar;
 		sem->object_field_start = okeys_object_field_start;
@@ -764,7 +765,7 @@ json_object_keys(PG_FUNCTION_ARGS)
 		pfree(sem);
 
 		MemoryContextSwitchTo(oldcontext);
-		funcctx->user_fctx = (void *) state;
+		funcctx->user_fctx = state;
 	}
 
 	funcctx = SRF_PERCALL_SETUP();
@@ -946,7 +947,7 @@ jsonb_array_element(PG_FUNCTION_ARGS)
 	{
 		uint32		nelements = JB_ROOT_COUNT(jb);
 
-		if (-element > nelements)
+		if (pg_abs_s32(element) > nelements)
 			PG_RETURN_NULL();
 		else
 			element += nelements;
@@ -989,7 +990,7 @@ jsonb_array_element_text(PG_FUNCTION_ARGS)
 	{
 		uint32		nelements = JB_ROOT_COUNT(jb);
 
-		if (-element > nelements)
+		if (pg_abs_s32(element) > nelements)
 			PG_RETURN_NULL();
 		else
 			element += nelements;
@@ -1122,7 +1123,7 @@ get_worker(text *json,
 	if (npath > 0)
 		state->pathok[0] = true;
 
-	sem->semstate = (void *) state;
+	sem->semstate = state;
 
 	/*
 	 * Not all variants need all the semantic routines. Only set the ones that
@@ -1862,7 +1863,7 @@ json_array_length(PG_FUNCTION_ARGS)
 #endif
 
 	sem = palloc0(sizeof(JsonSemAction));
-	sem->semstate = (void *) state;
+	sem->semstate = state;
 	sem->object_start = alen_object_start;
 	sem->scalar = alen_scalar;
 	sem->array_element_start = alen_array_element_start;
@@ -2070,7 +2071,7 @@ each_worker(FunctionCallInfo fcinfo, bool as_text)
 	state->tuple_store = rsi->setResult;
 	state->ret_tdesc = rsi->setDesc;
 
-	sem->semstate = (void *) state;
+	sem->semstate = state;
 	sem->array_start = each_array_start;
 	sem->scalar = each_scalar;
 	sem->object_field_start = each_object_field_start;
@@ -2322,7 +2323,7 @@ elements_worker(FunctionCallInfo fcinfo, const char *funcname, bool as_text)
 	state->tuple_store = rsi->setResult;
 	state->ret_tdesc = rsi->setDesc;
 
-	sem->semstate = (void *) state;
+	sem->semstate = state;
 	sem->object_start = elements_object_start;
 	sem->scalar = elements_scalar;
 	sem->array_element_start = elements_array_element_start;
@@ -2794,7 +2795,7 @@ populate_array_json(PopulateArrayContext *ctx, const char *json, int len)
 	state.ctx = ctx;
 
 	memset(&sem, 0, sizeof(sem));
-	sem.semstate = (void *) &state;
+	sem.semstate = &state;
 	sem.object_start = populate_array_object_start;
 	sem.array_end = populate_array_array_end;
 	sem.array_element_start = populate_array_element_start;
@@ -3133,18 +3134,6 @@ populate_scalar(ScalarIOData *io, Oid typid, int32 typmod, JsValue *jsv,
 
 		json = jsv->val.json.str;
 		Assert(json);
-		if (len >= 0)
-		{
-			/* Need to copy non-null-terminated string */
-			str = palloc(len + 1 * sizeof(char));
-			memcpy(str, json, len);
-			str[len] = '\0';
-		}
-		else
-		{
-			/* string is already null-terminated */
-			str = unconstify(char *, json);
-		}
 
 		/* If converting to json/jsonb, make string into valid JSON literal */
 		if ((typid == JSONOID || typid == JSONBOID) &&
@@ -3153,11 +3142,23 @@ populate_scalar(ScalarIOData *io, Oid typid, int32 typmod, JsValue *jsv,
 			StringInfoData buf;
 
 			initStringInfo(&buf);
-			escape_json(&buf, str);
-			/* free temporary buffer */
-			if (str != json)
-				pfree(str);
+			if (len >= 0)
+				escape_json_with_len(&buf, json, len);
+			else
+				escape_json(&buf, json);
 			str = buf.data;
+		}
+		else if (len >= 0)
+		{
+			/* create a NUL-terminated version */
+			str = palloc(len + 1);
+			memcpy(str, json, len);
+			str[len] = '\0';
+		}
+		else
+		{
+			/* string is already NUL-terminated */
+			str = unconstify(char *, json);
 		}
 	}
 	else
@@ -3218,7 +3219,8 @@ populate_domain(DomainIOData *io,
 				MemoryContext mcxt,
 				JsValue *jsv,
 				bool *isnull,
-				Node *escontext)
+				Node *escontext,
+				bool omit_quotes)
 {
 	Datum		res;
 
@@ -3229,7 +3231,7 @@ populate_domain(DomainIOData *io,
 		res = populate_record_field(io->base_io,
 									io->base_typid, io->base_typmod,
 									colname, mcxt, PointerGetDatum(NULL),
-									jsv, isnull, escontext, false);
+									jsv, isnull, escontext, omit_quotes);
 		Assert(!*isnull || SOFT_ERROR_OCCURRED(escontext));
 	}
 
@@ -3461,7 +3463,7 @@ populate_record_field(ColumnIOData *col,
 
 		case TYPECAT_DOMAIN:
 			return populate_domain(&col->io.domain, typid, colname, mcxt,
-								   jsv, isnull, escontext);
+								   jsv, isnull, escontext, omit_scalar_quotes);
 
 		default:
 			elog(ERROR, "unrecognized type category '%c'", typcat);
@@ -3829,7 +3831,7 @@ get_json_object_as_hash(const char *json, int len, const char *funcname,
 	state->lex = makeJsonLexContextCstringLen(NULL, json, len,
 											  GetDatabaseEncoding(), true);
 
-	sem->semstate = (void *) state;
+	sem->semstate = state;
 	sem->array_start = hash_array_start;
 	sem->scalar = hash_scalar;
 	sem->object_field_start = hash_object_field_start;
@@ -4142,7 +4144,7 @@ populate_recordset_worker(FunctionCallInfo fcinfo, const char *funcname,
 
 		makeJsonLexContext(&lex, json, true);
 
-		sem->semstate = (void *) state;
+		sem->semstate = state;
 		sem->array_start = populate_recordset_array_start;
 		sem->array_element_start = populate_recordset_array_element_start;
 		sem->scalar = populate_recordset_scalar;
@@ -4502,7 +4504,7 @@ json_strip_nulls(PG_FUNCTION_ARGS)
 	state->strval = makeStringInfo();
 	state->skip_next_null = false;
 
-	sem->semstate = (void *) state;
+	sem->semstate = state;
 	sem->object_start = sn_object_start;
 	sem->object_end = sn_object_end;
 	sem->array_start = sn_array_start;
@@ -4809,7 +4811,7 @@ jsonb_delete_idx(PG_FUNCTION_ARGS)
 
 	if (idx < 0)
 	{
-		if (-idx > n)
+		if (pg_abs_s32(idx) > n)
 			idx = n;
 		else
 			idx = n + idx;
@@ -5425,7 +5427,7 @@ setPathArray(JsonbIterator **it, Datum *path_elems, bool *path_nulls,
 
 	if (idx < 0)
 	{
-		if (-idx > nelems)
+		if (pg_abs_s32(idx) > nelems)
 		{
 			/*
 			 * If asked to keep elements position consistent, it's not allowed
@@ -5437,7 +5439,7 @@ setPathArray(JsonbIterator **it, Datum *path_elems, bool *path_nulls,
 						 errmsg("path element at position %d is out of range: %d",
 								level + 1, idx)));
 			else
-				idx = INT_MIN;
+				idx = PG_INT32_MIN;
 		}
 		else
 			idx = nelems + idx;
@@ -5716,7 +5718,7 @@ iterate_json_values(text *json, uint32 flags, void *action_state,
 	state->action_state = action_state;
 	state->flags = flags;
 
-	sem->semstate = (void *) state;
+	sem->semstate = state;
 	sem->scalar = iterate_values_scalar;
 	sem->object_field_start = iterate_values_object_field_start;
 
@@ -5837,7 +5839,7 @@ transform_json_string_values(text *json, void *action_state,
 	state->action = transform_action;
 	state->action_state = action_state;
 
-	sem->semstate = (void *) state;
+	sem->semstate = state;
 	sem->object_start = transform_string_values_object_start;
 	sem->object_end = transform_string_values_object_end;
 	sem->array_start = transform_string_values_array_start;
@@ -5935,7 +5937,7 @@ transform_string_values_scalar(void *state, char *token, JsonTokenType tokentype
 	{
 		text	   *out = _state->action(_state->action_state, token, strlen(token));
 
-		escape_json(_state->strval, text_to_cstring(out));
+		escape_json_text(_state->strval, out);
 	}
 	else
 		appendStringInfoString(_state->strval, token);

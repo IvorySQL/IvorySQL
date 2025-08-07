@@ -54,7 +54,6 @@
 #include "pg_getopt.h"
 #include "pg_trace.h"
 #include "pgstat.h"
-#include "postmaster/autovacuum.h"
 #include "postmaster/interrupt.h"
 #include "postmaster/postmaster.h"
 #include "replication/logicallauncher.h"
@@ -83,6 +82,7 @@
 #include "utils/timeout.h"
 #include "utils/timestamp.h"
 #include "parser/parse_param.h"
+#include "utils/varlena.h"
 
 /* ----------------
  *		global variables
@@ -98,14 +98,14 @@ bool		Log_disconnections = false;
 
 int			log_statement = LOGSTMT_NONE;
 
-/* GUC variable for maximum stack depth (measured in kilobytes) */
-int			max_stack_depth = 100;
-
 /* wait N seconds to allow attach from a debugger */
 int			PostAuthDelay = 0;
 
 /* Time between checks that the client is still connected. */
 int			client_connection_check_interval = 0;
+
+/* flags for non-system relation kinds to restrict use */
+int			restrict_nonsystem_relation_kind;
 
 /* ----------------
  *		private typedefs etc
@@ -124,15 +124,6 @@ typedef struct BindParamCbData
  *		private variables
  * ----------------
  */
-
-/* max_stack_depth converted to bytes for speed of checking */
-static long max_stack_depth_bytes = 100 * 1024L;
-
-/*
- * Stack base pointer -- initialized by PostmasterMain and inherited by
- * subprocesses (but see also InitPostmasterChild).
- */
-static char *stack_base_ptr = NULL;
 
 /*
  * Flag to keep track of whether we have started a transaction.
@@ -627,8 +618,10 @@ pg_parse_query(const char *query_string)
 	if (log_parser_stats)
 		ShowUsage("PARSER STATISTICS");
 
-#ifdef COPY_PARSE_PLAN_TREES
+#ifdef DEBUG_NODE_TESTS_ENABLED
+
 	/* Optional debugging check: pass raw parsetrees through copyObject() */
+	if (Debug_copy_parse_plan_trees)
 	{
 		List	   *new_list = copyObject(raw_parsetree_list);
 
@@ -638,13 +631,12 @@ pg_parse_query(const char *query_string)
 		else
 			raw_parsetree_list = new_list;
 	}
-#endif
 
 	/*
 	 * Optional debugging check: pass raw parsetrees through
 	 * outfuncs/readfuncs
 	 */
-#ifdef WRITE_READ_PARSE_PLAN_TREES
+	if (Debug_write_read_parse_plan_trees)
 	{
 		char	   *str = nodeToStringWithLocations(raw_parsetree_list);
 		List	   *new_list = stringToNodeWithLocations(str);
@@ -656,7 +648,8 @@ pg_parse_query(const char *query_string)
 		else
 			raw_parsetree_list = new_list;
 	}
-#endif
+
+#endif							/* DEBUG_NODE_TESTS_ENABLED */
 
 	TRACE_POSTGRESQL_QUERY_PARSE_DONE(query_string);
 
@@ -831,8 +824,10 @@ pg_rewrite_query(Query *query)
 	if (log_parser_stats)
 		ShowUsage("REWRITER STATISTICS");
 
-#ifdef COPY_PARSE_PLAN_TREES
+#ifdef DEBUG_NODE_TESTS_ENABLED
+
 	/* Optional debugging check: pass querytree through copyObject() */
+	if (Debug_copy_parse_plan_trees)
 	{
 		List	   *new_list;
 
@@ -843,10 +838,9 @@ pg_rewrite_query(Query *query)
 		else
 			querytree_list = new_list;
 	}
-#endif
 
-#ifdef WRITE_READ_PARSE_PLAN_TREES
 	/* Optional debugging check: pass querytree through outfuncs/readfuncs */
+	if (Debug_write_read_parse_plan_trees)
 	{
 		List	   *new_list = NIL;
 		ListCell   *lc;
@@ -873,7 +867,8 @@ pg_rewrite_query(Query *query)
 		else
 			querytree_list = new_list;
 	}
-#endif
+
+#endif							/* DEBUG_NODE_TESTS_ENABLED */
 
 	if (Debug_print_rewritten)
 		elog_node_display(LOG, "rewritten parse tree", querytree_list,
@@ -911,8 +906,10 @@ pg_plan_query(Query *querytree, const char *query_string, int cursorOptions,
 	if (log_planner_stats)
 		ShowUsage("PLANNER STATISTICS");
 
-#ifdef COPY_PARSE_PLAN_TREES
+#ifdef DEBUG_NODE_TESTS_ENABLED
+
 	/* Optional debugging check: pass plan tree through copyObject() */
+	if (Debug_copy_parse_plan_trees)
 	{
 		PlannedStmt *new_plan = copyObject(plan);
 
@@ -928,10 +925,9 @@ pg_plan_query(Query *querytree, const char *query_string, int cursorOptions,
 #endif
 			plan = new_plan;
 	}
-#endif
 
-#ifdef WRITE_READ_PARSE_PLAN_TREES
 	/* Optional debugging check: pass plan tree through outfuncs/readfuncs */
+	if (Debug_write_read_parse_plan_trees)
 	{
 		char	   *str;
 		PlannedStmt *new_plan;
@@ -952,7 +948,8 @@ pg_plan_query(Query *querytree, const char *query_string, int cursorOptions,
 #endif
 			plan = new_plan;
 	}
-#endif
+
+#endif							/* DEBUG_NODE_TESTS_ENABLED */
 
 	/*
 	 * Print plan if debugging.
@@ -1331,7 +1328,6 @@ exec_simple_query(const char *query_string)
 		(void) PortalRun(portal,
 						 FETCH_ALL,
 						 true,	/* always top level */
-						 true,
 						 receiver,
 						 receiver,
 						 &qc);
@@ -1735,6 +1731,7 @@ exec_bind_message(StringInfo input_message)
 	ParamsErrorCbData params_data;
 	ErrorContextCallback params_errcxt;
 	List		*dostmt_modes = NIL;
+	ListCell   *lc;
 
 	/* Get the fixed part of the message */
 	portal_name = pq_getmsgstring(input_message);
@@ -1769,6 +1766,17 @@ exec_bind_message(StringInfo input_message)
 	debug_query_string = psrc->query_string;
 
 	pgstat_report_activity(STATE_RUNNING, psrc->query_string);
+
+	foreach(lc, psrc->query_list)
+	{
+		Query	   *query = lfirst_node(Query, lc);
+
+		if (query->queryId != UINT64CONST(0))
+		{
+			pgstat_report_query_id(query->queryId, false);
+			break;
+		}
+	}
 
 	set_ps_display("BIND");
 
@@ -1896,7 +1904,7 @@ exec_bind_message(StringInfo input_message)
 		one_param_data.paramval = NULL;
 		params_errcxt.previous = error_context_stack;
 		params_errcxt.callback = bind_param_error_callback;
-		params_errcxt.arg = (void *) &one_param_data;
+		params_errcxt.arg = &one_param_data;
 		error_context_stack = &params_errcxt;
 
 		params = makeParamList(numParams);
@@ -2148,7 +2156,7 @@ exec_bind_message(StringInfo input_message)
 	params_data.params = params;
 	params_errcxt.previous = error_context_stack;
 	params_errcxt.callback = ParamsErrorCallback;
-	params_errcxt.arg = (void *) &params_data;
+	params_errcxt.arg = &params_data;
 	error_context_stack = &params_errcxt;
 
 	/* Get the result format codes */
@@ -2264,6 +2272,7 @@ exec_execute_message(const char *portal_name, long max_rows)
 	ErrorContextCallback params_errcxt;
 	const char *cmdtagname;
 	size_t		cmdtaglen;
+	ListCell   *lc;
 
 	/* Adjust destination to tell printtup.c what to do */
 	dest = whereToSendOutput;
@@ -2309,6 +2318,17 @@ exec_execute_message(const char *portal_name, long max_rows)
 	debug_query_string = sourceText;
 
 	pgstat_report_activity(STATE_RUNNING, sourceText);
+
+	foreach(lc, portal->stmts)
+	{
+		PlannedStmt *stmt = lfirst_node(PlannedStmt, lc);
+
+		if (stmt->queryId != UINT64CONST(0))
+		{
+			pgstat_report_query_id(stmt->queryId, false);
+			break;
+		}
+	}
 
 	cmdtagname = GetCommandTagNameAndLen(portal->commandTag, &cmdtaglen);
 
@@ -2387,7 +2407,7 @@ exec_execute_message(const char *portal_name, long max_rows)
 	params_data.params = portalParams;
 	params_errcxt.previous = error_context_stack;
 	params_errcxt.callback = ParamsErrorCallback;
-	params_errcxt.arg = (void *) &params_data;
+	params_errcxt.arg = &params_data;
 	error_context_stack = &params_errcxt;
 
 	if (max_rows <= 0)
@@ -2396,7 +2416,6 @@ exec_execute_message(const char *portal_name, long max_rows)
 	completed = PortalRun(portal,
 						  max_rows,
 						  true, /* always top level */
-						  !execute_is_fetch && max_rows == FETCH_ALL,
 						  receiver,
 						  receiver,
 						  &qc);
@@ -2820,8 +2839,7 @@ exec_describe_statement_message(const char *stmt_name)
 	/*
 	 * First describe the parameters...
 	 */
-	pq_beginmessage_reuse(&row_description_buf, 't');	/* parameter description
-														 * message type */
+	pq_beginmessage_reuse(&row_description_buf, PqMsg_ParameterDescription);
 	pq_sendint16(&row_description_buf, psrc->num_params);
 
 	for (int i = 0; i < psrc->num_params; i++)
@@ -2916,6 +2934,17 @@ start_xact_command(void)
 		StartTransactionCommand();
 
 		xact_started = true;
+	}
+	else if (MyXactFlags & XACT_FLAGS_PIPELINING)
+	{
+		/*
+		 * When the first Execute message is completed, following commands
+		 * will be done in an implicit transaction block created via
+		 * pipelining. The transaction state needs to be updated to an
+		 * implicit block if we're not already in a transaction block (like
+		 * one started by an explicit BEGIN).
+		 */
+		BeginImplicitTransactionBlock();
 	}
 
 	/*
@@ -3222,7 +3251,7 @@ ProcessRecoveryConflictInterrupt(ProcSignalReason reason)
 			/*
 			 * If we aren't waiting for a lock we can never deadlock.
 			 */
-			if (!IsWaitingForLock())
+			if (GetAwaitedLock() == NULL)
 				return;
 
 			/* Intentional fall through to check wait for pin */
@@ -3642,133 +3671,6 @@ ProcessInterrupts(void)
 }
 
 /*
- * set_stack_base: set up reference point for stack depth checking
- *
- * Returns the old reference point, if any.
- */
-pg_stack_base_t
-set_stack_base(void)
-{
-#ifndef HAVE__BUILTIN_FRAME_ADDRESS
-	char		stack_base;
-#endif
-	pg_stack_base_t old;
-
-	old = stack_base_ptr;
-
-	/*
-	 * Set up reference point for stack depth checking.  On recent gcc we use
-	 * __builtin_frame_address() to avoid a warning about storing a local
-	 * variable's address in a long-lived variable.
-	 */
-#ifdef HAVE__BUILTIN_FRAME_ADDRESS
-	stack_base_ptr = __builtin_frame_address(0);
-#else
-	stack_base_ptr = &stack_base;
-#endif
-
-	return old;
-}
-
-/*
- * restore_stack_base: restore reference point for stack depth checking
- *
- * This can be used after set_stack_base() to restore the old value. This
- * is currently only used in PL/Java. When PL/Java calls a backend function
- * from different thread, the thread's stack is at a different location than
- * the main thread's stack, so it sets the base pointer before the call, and
- * restores it afterwards.
- */
-void
-restore_stack_base(pg_stack_base_t base)
-{
-	stack_base_ptr = base;
-}
-
-/*
- * check_stack_depth/stack_is_too_deep: check for excessively deep recursion
- *
- * This should be called someplace in any recursive routine that might possibly
- * recurse deep enough to overflow the stack.  Most Unixen treat stack
- * overflow as an unrecoverable SIGSEGV, so we want to error out ourselves
- * before hitting the hardware limit.
- *
- * check_stack_depth() just throws an error summarily.  stack_is_too_deep()
- * can be used by code that wants to handle the error condition itself.
- */
-void
-check_stack_depth(void)
-{
-	if (stack_is_too_deep())
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_STATEMENT_TOO_COMPLEX),
-				 errmsg("stack depth limit exceeded"),
-				 errhint("Increase the configuration parameter \"max_stack_depth\" (currently %dkB), "
-						 "after ensuring the platform's stack depth limit is adequate.",
-						 max_stack_depth)));
-	}
-}
-
-bool
-stack_is_too_deep(void)
-{
-	char		stack_top_loc;
-	long		stack_depth;
-
-	/*
-	 * Compute distance from reference point to my local variables
-	 */
-	stack_depth = (long) (stack_base_ptr - &stack_top_loc);
-
-	/*
-	 * Take abs value, since stacks grow up on some machines, down on others
-	 */
-	if (stack_depth < 0)
-		stack_depth = -stack_depth;
-
-	/*
-	 * Trouble?
-	 *
-	 * The test on stack_base_ptr prevents us from erroring out if called
-	 * during process setup or in a non-backend process.  Logically it should
-	 * be done first, but putting it here avoids wasting cycles during normal
-	 * cases.
-	 */
-	if (stack_depth > max_stack_depth_bytes &&
-		stack_base_ptr != NULL)
-		return true;
-
-	return false;
-}
-
-/* GUC check hook for max_stack_depth */
-bool
-check_max_stack_depth(int *newval, void **extra, GucSource source)
-{
-	long		newval_bytes = *newval * 1024L;
-	long		stack_rlimit = get_stack_depth_rlimit();
-
-	if (stack_rlimit > 0 && newval_bytes > stack_rlimit - STACK_DEPTH_SLOP)
-	{
-		GUC_check_errdetail("\"max_stack_depth\" must not exceed %ldkB.",
-							(stack_rlimit - STACK_DEPTH_SLOP) / 1024L);
-		GUC_check_errhint("Increase the platform's stack depth limit via \"ulimit -s\" or local equivalent.");
-		return false;
-	}
-	return true;
-}
-
-/* GUC assign hook for max_stack_depth */
-void
-assign_max_stack_depth(int newval, void *extra)
-{
-	long		newval_bytes = newval * 1024L;
-
-	max_stack_depth_bytes = newval_bytes;
-}
-
-/*
  * GUC check_hook for client_connection_check_interval
  */
 bool
@@ -3837,6 +3739,66 @@ assign_transaction_timeout(int newval, void *extra)
 	}
 }
 
+/*
+ * GUC check_hook for restrict_nonsystem_relation_kind
+ */
+bool
+check_restrict_nonsystem_relation_kind(char **newval, void **extra, GucSource source)
+{
+	char	   *rawstring;
+	List	   *elemlist;
+	ListCell   *l;
+	int			flags = 0;
+
+	/* Need a modifiable copy of string */
+	rawstring = pstrdup(*newval);
+
+	if (!SplitIdentifierString(rawstring, ',', &elemlist))
+	{
+		/* syntax error in list */
+		GUC_check_errdetail("List syntax is invalid.");
+		pfree(rawstring);
+		list_free(elemlist);
+		return false;
+	}
+
+	foreach(l, elemlist)
+	{
+		char	   *tok = (char *) lfirst(l);
+
+		if (pg_strcasecmp(tok, "view") == 0)
+			flags |= RESTRICT_RELKIND_VIEW;
+		else if (pg_strcasecmp(tok, "foreign-table") == 0)
+			flags |= RESTRICT_RELKIND_FOREIGN_TABLE;
+		else
+		{
+			GUC_check_errdetail("Unrecognized key word: \"%s\".", tok);
+			pfree(rawstring);
+			list_free(elemlist);
+			return false;
+		}
+	}
+
+	pfree(rawstring);
+	list_free(elemlist);
+
+	/* Save the flags in *extra, for use by the assign function */
+	*extra = guc_malloc(ERROR, sizeof(int));
+	*((int *) *extra) = flags;
+
+	return true;
+}
+
+/*
+ * GUC assign_hook for restrict_nonsystem_relation_kind
+ */
+void
+assign_restrict_nonsystem_relation_kind(const char *newval, void *extra)
+{
+	int		   *flags = (int *) extra;
+
+	restrict_nonsystem_relation_kind = *flags;
+}
 
 /*
  * set_debug_options --- apply "-d N" command line option
@@ -4013,8 +3975,21 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 				/* ignored for consistency with the postmaster */
 				break;
 
-			case 'c':
 			case '-':
+
+				/*
+				 * Error if the user misplaced a special must-be-first option
+				 * for dispatching to a subprogram.  parse_dispatch_option()
+				 * returns DISPATCH_POSTMASTER if it doesn't find a match, so
+				 * error for anything else.
+				 */
+				if (parse_dispatch_option(optarg) != DISPATCH_POSTMASTER)
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("--%s must be first argument", optarg)));
+
+				/* FALLTHROUGH */
+			case 'c':
 				{
 					char	   *name,
 							   *value;
@@ -4268,6 +4243,15 @@ PostgresSingleUserMain(int argc, char *argv[],
 	InitializeMaxBackends();
 
 	/*
+	 * We don't need postmaster child slots in single-user mode, but
+	 * initialize them anyway to avoid having special handling.
+	 */
+	InitPostmasterChildSlots();
+
+	/* Initialize size of fast-path lock cache. */
+	InitializeFastPathLocks();
+
+	/*
 	 * Give preloaded libraries a chance to request additional shared memory.
 	 */
 	process_shmem_requests();
@@ -4285,7 +4269,17 @@ PostgresSingleUserMain(int argc, char *argv[],
 	 */
 	InitializeWalConsistencyChecking();
 
+	/*
+	 * Create shared memory etc.  (Nothing's really "shared" in single-user
+	 * mode, but we must have these data structures anyway.)
+	 */
 	CreateSharedMemoryAndSemaphores();
+
+	/*
+	 * Estimate number of openable files.  This must happen after setting up
+	 * semaphores, because on some platforms semaphores count as open files.
+	 */
+	set_max_safe_fds();
 
 	/*
 	 * Remember stand-alone backend startup time,roughly at the same point
@@ -4331,7 +4325,7 @@ PostgresMain(const char *dbname, const char *username)
 	Assert(dbname != NULL);
 	Assert(username != NULL);
 
-	SetProcessingMode(InitProcessing);
+	Assert(GetProcessingMode() == InitProcessing);
 
 	/*
 	 * Set up signal handlers.  (InitPostmasterChild or InitStandaloneProcess
@@ -4396,6 +4390,22 @@ PostgresMain(const char *dbname, const char *username)
 	sigprocmask(SIG_SETMASK, &UnBlockSig, NULL);
 
 	/*
+	 * Generate a random cancel key, if this is a backend serving a
+	 * connection. InitPostgres() will advertise it in shared memory.
+	 */
+	Assert(!MyCancelKeyValid);
+	if (whereToSendOutput == DestRemote)
+	{
+		if (!pg_strong_random(&MyCancelKey, sizeof(int32)))
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("could not generate random cancel key")));
+		}
+		MyCancelKeyValid = true;
+	}
+
+	/*
 	 * General initialization.
 	 *
 	 * NOTE: if you are tempted to add code in this vicinity, consider putting
@@ -4452,6 +4462,7 @@ PostgresMain(const char *dbname, const char *username)
 	{
 		StringInfoData buf;
 
+		Assert(MyCancelKeyValid);
 		pq_beginmessage(&buf, PqMsg_BackendKeyData);
 		pq_sendint32(&buf, (int32) MyProcPid);
 		pq_sendint32(&buf, (int32) MyCancelKey);
@@ -4593,7 +4604,7 @@ PostgresMain(const char *dbname, const char *username)
 		 * Now return to normal top-level context and clear ErrorContext for
 		 * next time.
 		 */
-		MemoryContextSwitchTo(TopMemoryContext);
+		MemoryContextSwitchTo(MessageContext);
 		FlushErrorState();
 
 		/*
@@ -5048,6 +5059,13 @@ PostgresMain(const char *dbname, const char *username)
 
 			case PqMsg_Sync:
 				pq_getmsgend(&input_message);
+
+				/*
+				 * If pipelining was used, we may be in an implicit
+				 * transaction block. Close it before calling
+				 * finish_xact_command.
+				 */
+				EndImplicitTransactionBlock();
 				finish_xact_command();
 				valgrind_report_error_query("SYNC message");
 				send_ready_for_query = true;
@@ -5124,40 +5142,6 @@ forbidden_in_wal_sender(char firstchar)
 					(errcode(ERRCODE_PROTOCOL_VIOLATION),
 					 errmsg("extended query protocol not supported in a replication connection")));
 	}
-}
-
-
-/*
- * Obtain platform stack depth limit (in bytes)
- *
- * Return -1 if unknown
- */
-long
-get_stack_depth_rlimit(void)
-{
-#if defined(HAVE_GETRLIMIT)
-	static long val = 0;
-
-	/* This won't change after process launch, so check just once */
-	if (val == 0)
-	{
-		struct rlimit rlim;
-
-		if (getrlimit(RLIMIT_STACK, &rlim) < 0)
-			val = -1;
-		else if (rlim.rlim_cur == RLIM_INFINITY)
-			val = LONG_MAX;
-		/* rlim_cur is probably of an unsigned type, so check for overflow */
-		else if (rlim.rlim_cur >= LONG_MAX)
-			val = LONG_MAX;
-		else
-			val = rlim.rlim_cur;
-	}
-	return val;
-#else
-	/* On Windows we set the backend stack size in src/backend/Makefile */
-	return WIN32_STACK_RLIMIT;
-#endif
 }
 
 

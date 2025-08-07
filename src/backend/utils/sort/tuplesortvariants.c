@@ -181,12 +181,10 @@ tuplesort_begin_heap(TupleDesc tupDesc,
 
 	Assert(nkeys > 0);
 
-#ifdef TRACE_SORT
 	if (trace_sort)
 		elog(LOG,
 			 "begin tuple sort: nkeys = %d, workMem = %d, randomAccess = %c",
 			 nkeys, workMem, sortopt & TUPLESORT_RANDOMACCESS ? 't' : 'f');
-#endif
 
 	base->nKeys = nkeys;
 
@@ -258,13 +256,11 @@ tuplesort_begin_cluster(TupleDesc tupDesc,
 	oldcontext = MemoryContextSwitchTo(base->maincontext);
 	arg = (TuplesortClusterArg *) palloc0(sizeof(TuplesortClusterArg));
 
-#ifdef TRACE_SORT
 	if (trace_sort)
 		elog(LOG,
 			 "begin tuple sort: nkeys = %d, workMem = %d, randomAccess = %c",
 			 RelationGetNumberOfAttributes(indexRel),
 			 workMem, sortopt & TUPLESORT_RANDOMACCESS ? 't' : 'f');
-#endif
 
 	base->nKeys = IndexRelationGetNumberOfKeyAttributes(indexRel);
 
@@ -368,13 +364,11 @@ tuplesort_begin_index_btree(Relation heapRel,
 	oldcontext = MemoryContextSwitchTo(base->maincontext);
 	arg = (TuplesortIndexBTreeArg *) palloc(sizeof(TuplesortIndexBTreeArg));
 
-#ifdef TRACE_SORT
 	if (trace_sort)
 		elog(LOG,
 			 "begin index sort: unique = %c, workMem = %d, randomAccess = %c",
 			 enforceUnique ? 't' : 'f',
 			 workMem, sortopt & TUPLESORT_RANDOMACCESS ? 't' : 'f');
-#endif
 
 	base->nKeys = IndexRelationGetNumberOfKeyAttributes(indexRel);
 
@@ -452,7 +446,6 @@ tuplesort_begin_index_hash(Relation heapRel,
 	oldcontext = MemoryContextSwitchTo(base->maincontext);
 	arg = (TuplesortIndexHashArg *) palloc(sizeof(TuplesortIndexHashArg));
 
-#ifdef TRACE_SORT
 	if (trace_sort)
 		elog(LOG,
 			 "begin index sort: high_mask = 0x%x, low_mask = 0x%x, "
@@ -462,7 +455,6 @@ tuplesort_begin_index_hash(Relation heapRel,
 			 max_buckets,
 			 workMem,
 			 sortopt & TUPLESORT_RANDOMACCESS ? 't' : 'f');
-#endif
 
 	base->nKeys = 1;			/* Only one sort column, the hash code */
 
@@ -503,12 +495,10 @@ tuplesort_begin_index_gist(Relation heapRel,
 	oldcontext = MemoryContextSwitchTo(base->maincontext);
 	arg = (TuplesortIndexBTreeArg *) palloc(sizeof(TuplesortIndexBTreeArg));
 
-#ifdef TRACE_SORT
 	if (trace_sort)
 		elog(LOG,
 			 "begin index sort: workMem = %d, randomAccess = %c",
 			 workMem, sortopt & TUPLESORT_RANDOMACCESS ? 't' : 'f');
-#endif
 
 	base->nKeys = IndexRelationGetNumberOfKeyAttributes(indexRel);
 
@@ -560,13 +550,11 @@ tuplesort_begin_index_brin(int workMem,
 												   sortopt);
 	TuplesortPublic *base = TuplesortstateGetPublic(state);
 
-#ifdef TRACE_SORT
 	if (trace_sort)
 		elog(LOG,
 			 "begin index sort: workMem = %d, randomAccess = %c",
 			 workMem,
 			 sortopt & TUPLESORT_RANDOMACCESS ? 't' : 'f');
-#endif
 
 	base->nKeys = 1;			/* Only one sort column, the block number */
 
@@ -596,12 +584,10 @@ tuplesort_begin_datum(Oid datumType, Oid sortOperator, Oid sortCollation,
 	oldcontext = MemoryContextSwitchTo(base->maincontext);
 	arg = (TuplesortDatumArg *) palloc(sizeof(TuplesortDatumArg));
 
-#ifdef TRACE_SORT
 	if (trace_sort)
 		elog(LOG,
 			 "begin datum sort: workMem = %d, randomAccess = %c",
 			 workMem, sortopt & TUPLESORT_RANDOMACCESS ? 't' : 'f');
-#endif
 
 	base->nKeys = 1;			/* always a one-column sort */
 
@@ -678,7 +664,7 @@ tuplesort_puttupleslot(Tuplesortstate *state, TupleTableSlot *slot)
 
 	/* copy the tuple into sort storage */
 	tuple = ExecCopySlotMinimalTuple(slot);
-	stup.tuple = (void *) tuple;
+	stup.tuple = tuple;
 	/* set up first-column key value */
 	htup.t_len = tuple->t_len + MINIMAL_TUPLE_OFFSET;
 	htup.t_data = (HeapTupleHeader) ((char *) tuple - MINIMAL_TUPLE_OFFSET);
@@ -716,7 +702,7 @@ tuplesort_putheaptuple(Tuplesortstate *state, HeapTuple tup)
 
 	/* copy the tuple into sort storage */
 	tup = heap_copytuple(tup);
-	stup.tuple = (void *) tup;
+	stup.tuple = tup;
 
 	/*
 	 * set up first-column key value, and potentially abbreviate, if it's a
@@ -1189,7 +1175,7 @@ readtup_heap(Tuplesortstate *state, SortTuple *stup,
 	LogicalTapeReadExact(tape, tupbody, tupbodylen);
 	if (base->sortopt & TUPLESORT_RANDOMACCESS) /* need trailing length word? */
 		LogicalTapeReadExact(tape, &tuplen, sizeof(tuplen));
-	stup->tuple = (void *) tuple;
+	stup->tuple = tuple;
 	/* set up first-column key value */
 	htup.t_len = tuple->t_len + MINIMAL_TUPLE_OFFSET;
 	htup.t_data = (HeapTupleHeader) ((char *) tuple - MINIMAL_TUPLE_OFFSET);
@@ -1386,7 +1372,7 @@ readtup_cluster(Tuplesortstate *state, SortTuple *stup,
 	LogicalTapeReadExact(tape, tuple->t_data, tuple->t_len);
 	if (base->sortopt & TUPLESORT_RANDOMACCESS) /* need trailing length word? */
 		LogicalTapeReadExact(tape, &tuplen, sizeof(tuplen));
-	stup->tuple = (void *) tuple;
+	stup->tuple = tuple;
 	/* set up first-column key value, if it's a simple column */
 	if (base->haveDatum1)
 		stup->datum1 = heap_getattr(tuple,
@@ -1695,7 +1681,7 @@ readtup_index(Tuplesortstate *state, SortTuple *stup,
 	LogicalTapeReadExact(tape, tuple, tuplen);
 	if (base->sortopt & TUPLESORT_RANDOMACCESS) /* need trailing length word? */
 		LogicalTapeReadExact(tape, &tuplen, sizeof(tuplen));
-	stup->tuple = (void *) tuple;
+	stup->tuple = tuple;
 	/* set up first-column key value */
 	stup->datum1 = index_getattr(tuple,
 								 1,
@@ -1771,7 +1757,7 @@ readtup_index_brin(Tuplesortstate *state, SortTuple *stup,
 	LogicalTapeReadExact(tape, &tuple->tuple, tuplen);
 	if (base->sortopt & TUPLESORT_RANDOMACCESS) /* need trailing length word? */
 		LogicalTapeReadExact(tape, &tuplen, sizeof(tuplen));
-	stup->tuple = (void *) tuple;
+	stup->tuple = tuple;
 
 	/* set up first-column key value, which is block number */
 	stup->datum1 = tuple->tuple.bt_blkno;

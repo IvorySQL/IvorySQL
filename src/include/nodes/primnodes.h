@@ -153,8 +153,8 @@ typedef struct TableFunc
  * For CREATE MATERIALIZED VIEW, viewQuery is the parsed-but-not-rewritten
  * SELECT Query for the view; otherwise it's NULL.  This is irrelevant in
  * the query jumbling as CreateTableAsStmt already includes a reference to
- * its own Query, so ignore it.  (Although it's actually Query*, we declare
- * it as Node* to avoid a forward reference.)
+ * its own Query, so ignore it.  (We declare it as struct Query* to avoid a
+ * forward reference.)
  */
 typedef struct IntoClause
 {
@@ -167,7 +167,7 @@ typedef struct IntoClause
 	OnCommitAction onCommit;	/* what do we do at COMMIT? */
 	char	   *tableSpaceName; /* table space to use, or NULL */
 	/* materialized view's SELECT query */
-	Node	   *viewQuery pg_node_attr(query_jumble_ignore);
+	struct Query *viewQuery pg_node_attr(query_jumble_ignore);
 	bool		skipData;		/* true for WITH NO DATA */
 } IntoClause;
 
@@ -1692,15 +1692,19 @@ typedef struct JsonReturning
  * JsonValueExpr -
  *		representation of JSON value expression (expr [FORMAT JsonFormat])
  *
- * The actual value is obtained by evaluating formatted_expr.  raw_expr is
- * only there for displaying the original user-written expression and is not
- * evaluated by ExecInterpExpr() and eval_const_expressions_mutator().
+ * raw_expr is the user-specified value, while formatted_expr is the value
+ * obtained by coercing raw_expr to the type required by either the FORMAT
+ * clause or an enclosing node's RETURNING clause.
+ *
+ * When deparsing a JsonValueExpr, get_rule_expr() prints raw_expr. However,
+ * during the evaluation of a JsonValueExpr, the value of formatted_expr
+ * takes precedence over that of raw_expr.
  */
 typedef struct JsonValueExpr
 {
 	NodeTag		type;
-	Expr	   *raw_expr;		/* raw expression */
-	Expr	   *formatted_expr; /* formatted expression */
+	Expr	   *raw_expr;		/* user-specified expression */
+	Expr	   *formatted_expr; /* coerced formatted expression */
 	JsonFormat *format;			/* FORMAT clause, if specified */
 } JsonValueExpr;
 

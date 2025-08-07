@@ -98,6 +98,81 @@ two | 2
    1 |   2
 (1 row)
 
+-- \parse (extended query protocol)
+\parse
+\parse: missing required argument
+SELECT 1 \parse ''
+SELECT 2 \parse stmt1
+SELECT $1 \parse stmt2
+SELECT $1, $2 \parse stmt3
+-- \bind_named (extended query protocol)
+\bind_named
+\bind_named: missing required argument
+\bind_named '' \g
+ ?column? 
+----------
+        1
+(1 row)
+
+\bind_named stmt1 \g
+ ?column? 
+----------
+        2
+(1 row)
+
+\bind_named stmt2 'foo' \g
+ ?column? 
+----------
+ foo
+(1 row)
+
+\bind_named stmt3 'foo' 'bar' \g
+ ?column? | ?column? 
+----------+----------
+ foo      | bar
+(1 row)
+
+-- Repeated calls.  The second call generates an error, cleaning up the
+-- statement name set by the first call.
+\bind_named stmt4
+\bind_named
+\bind_named: missing required argument
+\g
+ERROR:  there is no parameter $1
+LINE 1: SELECT $1, $2 
+               ^
+-- Last \bind_named wins
+\bind_named stmt2 'foo' \bind_named stmt3 'foo2' 'bar2' \g
+ ?column? | ?column? 
+----------+----------
+ foo2     | bar2
+(1 row)
+
+-- Multiple \g calls mean multiple executions
+\bind_named stmt2 'foo3' \g \bind_named stmt3 'foo4' 'bar4' \g
+ ?column? 
+----------
+ foo3
+(1 row)
+
+ ?column? | ?column? 
+----------+----------
+ foo4     | bar4
+(1 row)
+
+-- \close (extended query protocol)
+\close
+\close: missing required argument
+\close ''
+\close stmt2
+\close stmt2
+SELECT name, statement FROM pg_prepared_statements ORDER BY name;
+ name  |   statement    
+-------+----------------
+ stmt1 | SELECT 2 
+ stmt3 | SELECT $1, $2 
+(2 rows)
+
 -- \bind (extended query protocol)
 SELECT 1 \bind \g
  ?column? 
@@ -117,6 +192,25 @@ SELECT $1, $2 \bind 'foo' 'bar' \g
  foo      | bar
 (1 row)
 
+-- last \bind wins
+select $1::int as col \bind 'foo' \bind 2 \g
+ col 
+-----
+   2
+(1 row)
+
+-- Multiple \g calls mean multiple executions
+select $1::int as col \bind 1 \g \bind 2 \g
+ col 
+-----
+   1
+(1 row)
+
+ col 
+-----
+   2
+(1 row)
+
 -- errors
 -- parse error
 SELECT foo \bind \g
@@ -129,6 +223,11 @@ ERROR:  cannot insert multiple commands into a prepared statement
 -- bind error
 SELECT $1, $2 \bind 'foo' \g
 ERROR:  bind message supplies 1 parameters, but prepared statement "" requires 2
+-- bind_named error
+\bind_named stmt2 'baz' \g
+ERROR:  prepared statement "stmt2" does not exist
+\bind_named stmt3 'baz' \g
+ERROR:  bind message supplies 1 parameters, but prepared statement "stmt3" requires 2
 -- \gset
 select 10 as test01, 20 as test02, 'Hello' as test03 \gset pref01_
 \echo :pref01_test01 :pref01_test02 :pref01_test03
@@ -4507,9 +4606,11 @@ bar 'bar' "bar"
 	\pset fieldsep | `nosuchcommand` :foo :'foo' :"foo"
 	\a
 	SELECT $1 \bind 1 \g
+	\bind_named stmt1 1 2 \g
 	\C arg1
 	\c arg1 arg2 arg3 arg4
 	\cd arg1
+	\close stmt1
 	\conninfo
 	\copy arg1 arg2 arg3 arg4 arg5 arg6
 	\copyright
@@ -4538,6 +4639,7 @@ invalid command \lo
 	\lo_list
 	\o arg1
 	\p
+	SELECT 1 \parse
 	\password arg1
 	\prompt arg1 arg2
 	\pset arg1 arg2
@@ -6248,9 +6350,9 @@ List of schemas
 (0 rows)
 
 \dRp "no.such.publication"
-                              List of publications
- Name | Owner | All tables | Inserts | Updates | Deletes | Truncates | Via root 
-------+-------+------------+---------+---------+---------+-----------+----------
+                                        List of publications
+ Name | Owner | All tables | Inserts | Updates | Deletes | Truncates | Generated columns | Via root 
+------+-------+------------+---------+---------+---------+-----------+-------------------+----------
 (0 rows)
 
 \dRs "no.such.subscription"

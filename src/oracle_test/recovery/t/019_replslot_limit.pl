@@ -366,7 +366,7 @@ $logstart = -s $node_primary3->logfile;
 kill 'STOP', $senderpid, $receiverpid;
 $node_primary3->advance_wal(2);
 
-my $msg_logged = 0;
+my $msg_logged   = 0;
 my $max_attempts = $PostgreSQL::Test::Utils::timeout_default;
 while ($max_attempts-- >= 0)
 {
@@ -390,7 +390,7 @@ $node_primary3->poll_query_until('postgres',
 	"lost")
   or die "timed out waiting for slot to be lost";
 
-$msg_logged = 0;
+$msg_logged   = 0;
 $max_attempts = $PostgreSQL::Test::Utils::timeout_default;
 while ($max_attempts-- >= 0)
 {
@@ -443,7 +443,7 @@ $primary4->safe_psql(
 # Get inactive_since value after the slot's creation. Note that the slot is
 # still inactive till it's used by the standby below.
 my $inactive_since =
-	$primary4->validate_slot_inactive_since($sb4_slot, $slot_creation_time);
+  $primary4->validate_slot_inactive_since($sb4_slot, $slot_creation_time);
 
 $standby4->start;
 
@@ -502,8 +502,7 @@ $publisher4->safe_psql('postgres',
 # Get inactive_since value after the slot's creation. Note that the slot is
 # still inactive till it's used by the subscriber below.
 $inactive_since =
-	$publisher4->validate_slot_inactive_since($lsub4_slot, $slot_creation_time);
-
+  $publisher4->validate_slot_inactive_since($lsub4_slot, $slot_creation_time);
 
 $subscriber4->start;
 $subscriber4->safe_psql('postgres',

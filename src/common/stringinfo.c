@@ -24,9 +24,6 @@
 
 #include "postgres_fe.h"
 
-/* It's possible we could use a different value for this in frontend code */
-#define MaxAllocSize	((Size) 0x3fffffff) /* 1 gigabyte - 1 */
-
 #endif
 
 #include "lib/stringinfo.h"
@@ -311,13 +308,13 @@ enlargeStringInfo(StringInfo str, int needed)
 #ifndef FRONTEND
 		ereport(ERROR,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-				 errmsg("out of memory"),
+				 errmsg("string buffer exceeds maximum allowed length (%zu bytes)", MaxAllocSize),
 				 errdetail("Cannot enlarge string buffer containing %d bytes by %d more bytes.",
 						   str->len, needed)));
 #else
 		fprintf(stderr,
-				_("out of memory\n\nCannot enlarge string buffer containing %d bytes by %d more bytes.\n"),
-				str->len, needed);
+				_("string buffer exceeds maximum allowed length (%zu bytes)\n\nCannot enlarge string buffer containing %d bytes by %d more bytes.\n"),
+				MaxAllocSize, str->len, needed);
 		exit(EXIT_FAILURE);
 #endif
 	}

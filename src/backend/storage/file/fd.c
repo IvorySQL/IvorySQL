@@ -93,7 +93,6 @@
 #include "common/pg_prng.h"
 #include "miscadmin.h"
 #include "pgstat.h"
-#include "portability/mem.h"
 #include "postmaster/startup.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
@@ -1790,8 +1789,8 @@ TempTablespacePath(char *path, Oid tablespace)
 	else
 	{
 		/* All other tablespaces are accessed via symlinks */
-		snprintf(path, MAXPGPATH, "pg_tblspc/%u/%s/%s",
-				 tablespace, TABLESPACE_VERSION_DIRECTORY,
+		snprintf(path, MAXPGPATH, "%s/%u/%s/%s",
+				 PG_TBLSPC_DIR, tablespace, TABLESPACE_VERSION_DIRECTORY,
 				 PG_TEMP_FILES_DIR);
 	}
 }
@@ -2068,40 +2067,63 @@ FileClose(File file)
 /*
  * FilePrefetch - initiate asynchronous read of a given range of the file.
  *
- * Currently the only implementation of this function is using posix_fadvise
- * which is the simplest standardized interface that accomplishes this.
- * We could add an implementation using libaio in the future; but note that
- * this API is inappropriate for libaio, which wants to have a buffer provided
- * to read into.
+ * Returns 0 on success, otherwise an errno error code (like posix_fadvise()).
+ *
+ * posix_fadvise() is the simplest standardized interface that accomplishes
+ * this.
  */
 int
 FilePrefetch(File file, off_t offset, off_t amount, uint32 wait_event_info)
 {
-#if defined(USE_POSIX_FADVISE) && defined(POSIX_FADV_WILLNEED)
-	int			returnCode;
-
 	Assert(FileIsValid(file));
 
 	DO_DB(elog(LOG, "FilePrefetch: %d (%s) " INT64_FORMAT " " INT64_FORMAT,
 			   file, VfdCache[file].fileName,
 			   (int64) offset, (int64) amount));
 
-	returnCode = FileAccess(file);
-	if (returnCode < 0)
-		return returnCode;
+#if defined(USE_POSIX_FADVISE) && defined(POSIX_FADV_WILLNEED)
+	{
+		int			returnCode;
+
+		returnCode = FileAccess(file);
+		if (returnCode < 0)
+			return returnCode;
 
 retry:
-	pgstat_report_wait_start(wait_event_info);
-	returnCode = posix_fadvise(VfdCache[file].fd, offset, amount,
-							   POSIX_FADV_WILLNEED);
-	pgstat_report_wait_end();
+		pgstat_report_wait_start(wait_event_info);
+		returnCode = posix_fadvise(VfdCache[file].fd, offset, amount,
+								   POSIX_FADV_WILLNEED);
+		pgstat_report_wait_end();
 
-	if (returnCode == EINTR)
-		goto retry;
+		if (returnCode == EINTR)
+			goto retry;
 
-	return returnCode;
+		return returnCode;
+	}
+#elif defined(__darwin__)
+	{
+		struct radvisory
+		{
+			off_t		ra_offset;	/* offset into the file */
+			int			ra_count;	/* size of the read     */
+		}			ra;
+		int			returnCode;
+
+		returnCode = FileAccess(file);
+		if (returnCode < 0)
+			return returnCode;
+
+		ra.ra_offset = offset;
+		ra.ra_count = amount;
+		pgstat_report_wait_start(wait_event_info);
+		returnCode = fcntl(VfdCache[file].fd, F_RDADVISE, &ra);
+		pgstat_report_wait_end();
+		if (returnCode != -1)
+			return 0;
+		else
+			return errno;
+	}
 #else
-	Assert(FileIsValid(file));
 	return 0;
 #endif
 }
@@ -2231,7 +2253,7 @@ FileWriteV(File file, const struct iovec *iov, int iovcnt, off_t offset,
 			if (newTotal > (uint64) temp_file_limit * (uint64) 1024)
 				ereport(ERROR,
 						(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),
-						 errmsg("temporary file size exceeds temp_file_limit (%dkB)",
+						 errmsg("temporary file size exceeds \"temp_file_limit\" (%dkB)",
 								temp_file_limit)));
 		}
 	}
@@ -3273,7 +3295,7 @@ CleanupTempFiles(bool isCommit, bool isProcExit)
 void
 RemovePgTempFiles(void)
 {
-	char		temp_path[MAXPGPATH + 10 + sizeof(TABLESPACE_VERSION_DIRECTORY) + sizeof(PG_TEMP_FILES_DIR)];
+	char		temp_path[MAXPGPATH + sizeof(PG_TBLSPC_DIR) + sizeof(TABLESPACE_VERSION_DIRECTORY) + sizeof(PG_TEMP_FILES_DIR)];
 	DIR		   *spc_dir;
 	struct dirent *spc_de;
 
@@ -3287,20 +3309,21 @@ RemovePgTempFiles(void)
 	/*
 	 * Cycle through temp directories for all non-default tablespaces.
 	 */
-	spc_dir = AllocateDir("pg_tblspc");
+	spc_dir = AllocateDir(PG_TBLSPC_DIR);
 
-	while ((spc_de = ReadDirExtended(spc_dir, "pg_tblspc", LOG)) != NULL)
+	while ((spc_de = ReadDirExtended(spc_dir, PG_TBLSPC_DIR, LOG)) != NULL)
 	{
 		if (strcmp(spc_de->d_name, ".") == 0 ||
 			strcmp(spc_de->d_name, "..") == 0)
 			continue;
 
-		snprintf(temp_path, sizeof(temp_path), "pg_tblspc/%s/%s/%s",
-				 spc_de->d_name, TABLESPACE_VERSION_DIRECTORY, PG_TEMP_FILES_DIR);
+		snprintf(temp_path, sizeof(temp_path), "%s/%s/%s/%s",
+				 PG_TBLSPC_DIR, spc_de->d_name, TABLESPACE_VERSION_DIRECTORY,
+				 PG_TEMP_FILES_DIR);
 		RemovePgTempFilesInDir(temp_path, true, false);
 
-		snprintf(temp_path, sizeof(temp_path), "pg_tblspc/%s/%s",
-				 spc_de->d_name, TABLESPACE_VERSION_DIRECTORY);
+		snprintf(temp_path, sizeof(temp_path), "%s/%s/%s",
+				 PG_TBLSPC_DIR, spc_de->d_name, TABLESPACE_VERSION_DIRECTORY);
 		RemovePgTempRelationFiles(temp_path);
 	}
 
@@ -3587,15 +3610,15 @@ SyncDataDirectory(void)
 		/* Sync the top level pgdata directory. */
 		do_syncfs(".");
 		/* If any tablespaces are configured, sync each of those. */
-		dir = AllocateDir("pg_tblspc");
-		while ((de = ReadDirExtended(dir, "pg_tblspc", LOG)))
+		dir = AllocateDir(PG_TBLSPC_DIR);
+		while ((de = ReadDirExtended(dir, PG_TBLSPC_DIR, LOG)))
 		{
 			char		path[MAXPGPATH];
 
 			if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0)
 				continue;
 
-			snprintf(path, MAXPGPATH, "pg_tblspc/%s", de->d_name);
+			snprintf(path, MAXPGPATH, "%s/%s", PG_TBLSPC_DIR, de->d_name);
 			do_syncfs(path);
 		}
 		FreeDir(dir);
@@ -3618,7 +3641,7 @@ SyncDataDirectory(void)
 	walkdir(".", pre_sync_fname, false, DEBUG1);
 	if (xlog_is_symlink)
 		walkdir("pg_wal", pre_sync_fname, false, DEBUG1);
-	walkdir("pg_tblspc", pre_sync_fname, true, DEBUG1);
+	walkdir(PG_TBLSPC_DIR, pre_sync_fname, true, DEBUG1);
 #endif
 
 	/* Prepare to report progress syncing the data directory via fsync. */
@@ -3636,7 +3659,7 @@ SyncDataDirectory(void)
 	walkdir(".", datadir_fsync_fname, false, LOG);
 	if (xlog_is_symlink)
 		walkdir("pg_wal", datadir_fsync_fname, false, LOG);
-	walkdir("pg_tblspc", datadir_fsync_fname, true, LOG);
+	walkdir(PG_TBLSPC_DIR, datadir_fsync_fname, true, LOG);
 }
 
 /*
@@ -3947,7 +3970,8 @@ check_debug_io_direct(char **newval, void **extra, GucSource source)
 #if PG_O_DIRECT == 0
 	if (strcmp(*newval, "") != 0)
 	{
-		GUC_check_errdetail("\"debug_io_direct\" is not supported on this platform.");
+		GUC_check_errdetail("\"%s\" is not supported on this platform.",
+							"debug_io_direct");
 		result = false;
 	}
 	flags = 0;
@@ -3961,7 +3985,7 @@ check_debug_io_direct(char **newval, void **extra, GucSource source)
 
 	if (!SplitGUCList(rawstring, ',', &elemlist))
 	{
-		GUC_check_errdetail("Invalid list syntax in parameter \"%s\"",
+		GUC_check_errdetail("Invalid list syntax in parameter \"%s\".",
 							"debug_io_direct");
 		pfree(rawstring);
 		list_free(elemlist);
@@ -3981,7 +4005,7 @@ check_debug_io_direct(char **newval, void **extra, GucSource source)
 			flags |= IO_DIRECT_WAL_INIT;
 		else
 		{
-			GUC_check_errdetail("Invalid option \"%s\"", item);
+			GUC_check_errdetail("Invalid option \"%s\".", item);
 			result = false;
 			break;
 		}
@@ -3994,14 +4018,16 @@ check_debug_io_direct(char **newval, void **extra, GucSource source)
 #if XLOG_BLCKSZ < PG_IO_ALIGN_SIZE
 	if (result && (flags & (IO_DIRECT_WAL | IO_DIRECT_WAL_INIT)))
 	{
-		GUC_check_errdetail("\"debug_io_direct\" is not supported for WAL because XLOG_BLCKSZ is too small");
+		GUC_check_errdetail("\"%s\" is not supported for WAL because %s is too small.",
+							"debug_io_direct", "XLOG_BLCKSZ");
 		result = false;
 	}
 #endif
 #if BLCKSZ < PG_IO_ALIGN_SIZE
 	if (result && (flags & IO_DIRECT_DATA))
 	{
-		GUC_check_errdetail("\"debug_io_direct\" is not supported for data because BLCKSZ is too small");
+		GUC_check_errdetail("\"%s\" is not supported for WAL because %s is too small.",
+							"debug_io_direct", "BLCKSZ");
 		result = false;
 	}
 #endif
@@ -4020,7 +4046,7 @@ check_debug_io_direct(char **newval, void **extra, GucSource source)
 	return result;
 }
 
-extern void
+void
 assign_debug_io_direct(const char *newval, void *extra)
 {
 	int		   *flags = (int *) extra;

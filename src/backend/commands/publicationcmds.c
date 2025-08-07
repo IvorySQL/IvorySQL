@@ -78,12 +78,15 @@ parse_publication_options(ParseState *pstate,
 						  bool *publish_given,
 						  PublicationActions *pubactions,
 						  bool *publish_via_partition_root_given,
-						  bool *publish_via_partition_root)
+						  bool *publish_via_partition_root,
+						  bool *publish_generated_columns_given,
+						  bool *publish_generated_columns)
 {
 	ListCell   *lc;
 
 	*publish_given = false;
 	*publish_via_partition_root_given = false;
+	*publish_generated_columns_given = false;
 
 	/* defaults */
 	pubactions->pubinsert = true;
@@ -91,6 +94,7 @@ parse_publication_options(ParseState *pstate,
 	pubactions->pubdelete = true;
 	pubactions->pubtruncate = true;
 	*publish_via_partition_root = false;
+	*publish_generated_columns = false;
 
 	/* Parse options */
 	foreach(lc, options)
@@ -150,6 +154,13 @@ parse_publication_options(ParseState *pstate,
 				errorConflictingDefElem(defel, pstate);
 			*publish_via_partition_root_given = true;
 			*publish_via_partition_root = defGetBoolean(defel);
+		}
+		else if (strcmp(defel->defname, "publish_generated_columns") == 0)
+		{
+			if (*publish_generated_columns_given)
+				errorConflictingDefElem(defel, pstate);
+			*publish_generated_columns_given = true;
+			*publish_generated_columns = defGetBoolean(defel);
 		}
 		else
 			ereport(ERROR,
@@ -245,7 +256,7 @@ contain_invalid_rfcolumn_walker(Node *node, rf_context *context)
 	}
 
 	return expression_tree_walker(node, contain_invalid_rfcolumn_walker,
-								  (void *) context);
+								  context);
 }
 
 /*
@@ -325,21 +336,36 @@ pub_rf_contains_invalid_column(Oid pubid, Relation relation, List *ancestors,
 }
 
 /*
- * Check if all columns referenced in the REPLICA IDENTITY are covered by
- * the column list.
+ * Check for invalid columns in the publication table definition.
  *
- * Returns true if any replica identity column is not covered by column list.
+ * This function evaluates two conditions:
+ *
+ * 1. Ensures that all columns referenced in the REPLICA IDENTITY are covered
+ *    by the column list. If any column is missing, *invalid_column_list is set
+ *    to true.
+ * 2. Ensures that all the generated columns referenced in the REPLICA IDENTITY
+ *    are published either by listing them in the column list or by enabling
+ *    publish_generated_columns option. If any unpublished generated column is
+ *    found, *invalid_gen_col is set to true.
+ *
+ * Returns true if any of the above conditions are not met.
  */
 bool
-pub_collist_contains_invalid_column(Oid pubid, Relation relation, List *ancestors,
-									bool pubviaroot)
+pub_contains_invalid_column(Oid pubid, Relation relation, List *ancestors,
+							bool pubviaroot, bool pubgencols,
+							bool *invalid_column_list,
+							bool *invalid_gen_col)
 {
-	HeapTuple	tuple;
 	Oid			relid = RelationGetRelid(relation);
 	Oid			publish_as_relid = RelationGetRelid(relation);
-	bool		result = false;
-	Datum		datum;
-	bool		isnull;
+	Bitmapset  *idattrs;
+	Bitmapset  *columns = NULL;
+	TupleDesc	desc = RelationGetDescr(relation);
+	Publication *pub;
+	int			x;
+
+	*invalid_column_list = false;
+	*invalid_gen_col = false;
 
 	/*
 	 * For a partition, if pubviaroot is true, find the topmost ancestor that
@@ -357,80 +383,91 @@ pub_collist_contains_invalid_column(Oid pubid, Relation relation, List *ancestor
 			publish_as_relid = relid;
 	}
 
-	tuple = SearchSysCache2(PUBLICATIONRELMAP,
-							ObjectIdGetDatum(publish_as_relid),
-							ObjectIdGetDatum(pubid));
+	/* Fetch the column list */
+	pub = GetPublication(pubid);
+	check_and_fetch_column_list(pub, publish_as_relid, NULL, &columns);
 
-	if (!HeapTupleIsValid(tuple))
-		return false;
-
-	datum = SysCacheGetAttr(PUBLICATIONRELMAP, tuple,
-							Anum_pg_publication_rel_prattrs,
-							&isnull);
-
-	if (!isnull)
+	if (relation->rd_rel->relreplident == REPLICA_IDENTITY_FULL)
 	{
-		int			x;
-		Bitmapset  *idattrs;
-		Bitmapset  *columns = NULL;
-
 		/* With REPLICA IDENTITY FULL, no column list is allowed. */
-		if (relation->rd_rel->relreplident == REPLICA_IDENTITY_FULL)
-			result = true;
-
-		/* Transform the column list datum to a bitmapset. */
-		columns = pub_collist_to_bitmapset(NULL, datum, NULL);
-
-		/* Remember columns that are part of the REPLICA IDENTITY */
-		idattrs = RelationGetIndexAttrBitmap(relation,
-											 INDEX_ATTR_BITMAP_IDENTITY_KEY);
+		*invalid_column_list = (columns != NULL);
 
 		/*
-		 * Attnums in the bitmap returned by RelationGetIndexAttrBitmap are
-		 * offset (to handle system columns the usual way), while column list
-		 * does not use offset, so we can't do bms_is_subset(). Instead, we
-		 * have to loop over the idattrs and check all of them are in the
-		 * list.
+		 * As we don't allow a column list with REPLICA IDENTITY FULL, the
+		 * publish_generated_columns option must be set to true if the table
+		 * has any stored generated columns.
 		 */
-		x = -1;
-		while ((x = bms_next_member(idattrs, x)) >= 0)
-		{
-			AttrNumber	attnum = (x + FirstLowInvalidHeapAttributeNumber);
+		if (!pubgencols &&
+			relation->rd_att->constr &&
+			relation->rd_att->constr->has_generated_stored)
+			*invalid_gen_col = true;
 
-			/*
-			 * If pubviaroot is true, we are validating the column list of the
-			 * parent table, but the bitmap contains the replica identity
-			 * information of the child table. The parent/child attnums may
-			 * not match, so translate them to the parent - get the attname
-			 * from the child, and look it up in the parent.
-			 */
-			if (pubviaroot)
-			{
-				/* attribute name in the child table */
-				char	   *colname = get_attname(relid, attnum, false);
-
-				/*
-				 * Determine the attnum for the attribute name in parent (we
-				 * are using the column list defined on the parent).
-				 */
-				attnum = get_attnum(publish_as_relid, colname);
-			}
-
-			/* replica identity column, not covered by the column list */
-			if (!bms_is_member(attnum, columns))
-			{
-				result = true;
-				break;
-			}
-		}
-
-		bms_free(idattrs);
-		bms_free(columns);
+		if (*invalid_gen_col && *invalid_column_list)
+			return true;
 	}
 
-	ReleaseSysCache(tuple);
+	/* Remember columns that are part of the REPLICA IDENTITY */
+	idattrs = RelationGetIndexAttrBitmap(relation,
+										 INDEX_ATTR_BITMAP_IDENTITY_KEY);
 
-	return result;
+	/*
+	 * Attnums in the bitmap returned by RelationGetIndexAttrBitmap are offset
+	 * (to handle system columns the usual way), while column list does not
+	 * use offset, so we can't do bms_is_subset(). Instead, we have to loop
+	 * over the idattrs and check all of them are in the list.
+	 */
+	x = -1;
+	while ((x = bms_next_member(idattrs, x)) >= 0)
+	{
+		AttrNumber	attnum = (x + FirstLowInvalidHeapAttributeNumber);
+		Form_pg_attribute att = TupleDescAttr(desc, attnum - 1);
+
+		if (columns == NULL)
+		{
+			/*
+			 * The publish_generated_columns option must be set to true if the
+			 * REPLICA IDENTITY contains any stored generated column.
+			 */
+			if (!pubgencols && att->attgenerated)
+			{
+				*invalid_gen_col = true;
+				break;
+			}
+
+			/* Skip validating the column list since it is not defined */
+			continue;
+		}
+
+		/*
+		 * If pubviaroot is true, we are validating the column list of the
+		 * parent table, but the bitmap contains the replica identity
+		 * information of the child table. The parent/child attnums may not
+		 * match, so translate them to the parent - get the attname from the
+		 * child, and look it up in the parent.
+		 */
+		if (pubviaroot)
+		{
+			/* attribute name in the child table */
+			char	   *colname = get_attname(relid, attnum, false);
+
+			/*
+			 * Determine the attnum for the attribute name in parent (we are
+			 * using the column list defined on the parent).
+			 */
+			attnum = get_attnum(publish_as_relid, colname);
+		}
+
+		/* replica identity column, not covered by the column list */
+		*invalid_column_list |= !bms_is_member(attnum, columns);
+
+		if (*invalid_column_list && *invalid_gen_col)
+			break;
+	}
+
+	bms_free(columns);
+	bms_free(idattrs);
+
+	return *invalid_column_list || *invalid_gen_col;
 }
 
 /* check_functions_in_node callback */
@@ -559,7 +596,7 @@ check_simple_rowfilter_expr_walker(Node *node, ParseState *pstate)
 		if (exprType(node) >= FirstNormalObjectId)
 			errdetail_msg = _("User-defined types are not allowed.");
 		else if (check_functions_in_node(node, contain_mutable_or_user_functions_checker,
-										 (void *) pstate))
+										 pstate))
 			errdetail_msg = _("User-defined or built-in mutable functions are not allowed.");
 		else if (exprCollation(node) >= FirstNormalObjectId ||
 				 exprInputCollation(node) >= FirstNormalObjectId)
@@ -578,7 +615,7 @@ check_simple_rowfilter_expr_walker(Node *node, ParseState *pstate)
 				 parser_errposition(pstate, exprLocation(node))));
 
 	return expression_tree_walker(node, check_simple_rowfilter_expr_walker,
-								  (void *) pstate);
+								  pstate);
 }
 
 /*
@@ -737,6 +774,8 @@ CreatePublication(ParseState *pstate, CreatePublicationStmt *stmt)
 	PublicationActions pubactions;
 	bool		publish_via_partition_root_given;
 	bool		publish_via_partition_root;
+	bool		publish_generated_columns_given;
+	bool		publish_generated_columns;
 	AclResult	aclresult;
 	List	   *relations = NIL;
 	List	   *schemaidlist = NIL;
@@ -776,7 +815,9 @@ CreatePublication(ParseState *pstate, CreatePublicationStmt *stmt)
 							  stmt->options,
 							  &publish_given, &pubactions,
 							  &publish_via_partition_root_given,
-							  &publish_via_partition_root);
+							  &publish_via_partition_root,
+							  &publish_generated_columns_given,
+							  &publish_generated_columns);
 
 	puboid = GetNewOidWithIndex(rel, PublicationObjectIndexId,
 								Anum_pg_publication_oid);
@@ -793,6 +834,8 @@ CreatePublication(ParseState *pstate, CreatePublicationStmt *stmt)
 		BoolGetDatum(pubactions.pubtruncate);
 	values[Anum_pg_publication_pubviaroot - 1] =
 		BoolGetDatum(publish_via_partition_root);
+	values[Anum_pg_publication_pubgencols - 1] =
+		BoolGetDatum(publish_generated_columns);
 
 	tup = heap_form_tuple(RelationGetDescr(rel), values, nulls);
 
@@ -878,6 +921,8 @@ AlterPublicationOptions(ParseState *pstate, AlterPublicationStmt *stmt,
 	PublicationActions pubactions;
 	bool		publish_via_partition_root_given;
 	bool		publish_via_partition_root;
+	bool		publish_generated_columns_given;
+	bool		publish_generated_columns;
 	ObjectAddress obj;
 	Form_pg_publication pubform;
 	List	   *root_relids = NIL;
@@ -887,7 +932,9 @@ AlterPublicationOptions(ParseState *pstate, AlterPublicationStmt *stmt,
 							  stmt->options,
 							  &publish_given, &pubactions,
 							  &publish_via_partition_root_given,
-							  &publish_via_partition_root);
+							  &publish_via_partition_root,
+							  &publish_generated_columns_given,
+							  &publish_generated_columns);
 
 	pubform = (Form_pg_publication) GETSTRUCT(tup);
 
@@ -995,6 +1042,12 @@ AlterPublicationOptions(ParseState *pstate, AlterPublicationStmt *stmt,
 	{
 		values[Anum_pg_publication_pubviaroot - 1] = BoolGetDatum(publish_via_partition_root);
 		replaces[Anum_pg_publication_pubviaroot - 1] = true;
+	}
+
+	if (publish_generated_columns_given)
+	{
+		values[Anum_pg_publication_pubgencols - 1] = BoolGetDatum(publish_generated_columns);
+		replaces[Anum_pg_publication_pubgencols - 1] = true;
 	}
 
 	tup = heap_modify_tuple(tup, RelationGetDescr(rel), values, nulls,
@@ -1176,21 +1229,13 @@ AlterPublicationTables(AlterPublicationStmt *stmt, HeapTuple tup,
 				newrelid = RelationGetRelid(newpubrel->relation);
 
 				/*
-				 * If the new publication has column list, transform it to a
-				 * bitmap too.
+				 * Validate the column list.  If the column list or WHERE
+				 * clause changes, then the validation done here will be
+				 * duplicated inside PublicationAddTables().  The validation
+				 * is cheap enough that that seems harmless.
 				 */
-				if (newpubrel->columns)
-				{
-					ListCell   *lc;
-
-					foreach(lc, newpubrel->columns)
-					{
-						char	   *colname = strVal(lfirst(lc));
-						AttrNumber	attnum = get_attnum(newrelid, colname);
-
-						newcolumns = bms_add_member(newcolumns, attnum);
-					}
-				}
+				newcolumns = pub_collist_validate(newpubrel->relation,
+												  newpubrel->columns);
 
 				/*
 				 * Check if any of the new set of relations matches with the
@@ -1199,7 +1244,7 @@ AlterPublicationTables(AlterPublicationStmt *stmt, HeapTuple tup,
 				 * expressions also match. Same for the column list. Drop the
 				 * rest.
 				 */
-				if (RelationGetRelid(newpubrel->relation) == oldrelid)
+				if (newrelid == oldrelid)
 				{
 					if (equal(oldrelwhereclause, newpubrel->whereClause) &&
 						bms_equal(oldcolumns, newcolumns))

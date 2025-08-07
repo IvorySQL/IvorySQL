@@ -22,6 +22,12 @@
 #include "replication/walsender.h"
 #include "replication/walsender_private.h"
 
+#include "repl_gram.h"
+
+/* silence -Wmissing-variable-declarations */
+extern int replication_yychar;
+extern int replication_yynerrs;
+
 
 /* Result of the parsing is returned here */
 Node *replication_parse_result;

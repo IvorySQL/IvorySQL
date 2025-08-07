@@ -15,15 +15,11 @@
 #include "common/int.h"
 #include "common/pg_prng.h"
 #include "fmgr.h"
-#include "miscadmin.h"
-#include "storage/lwlock.h"
 #include "utils/memutils.h"
 #include "utils/timestamp.h"
 
 /* uncomment to use shared memory for the tree */
 /* #define TEST_SHARED_RT */
-
-#define UINT64_HEX_FORMAT "%" INT64_MODIFIER "X"
 
 /* Convenient macros to test results */
 #define EXPECT_TRUE(expr)	\

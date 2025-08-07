@@ -88,6 +88,8 @@ typedef struct f_smgr
 									BlockNumber blocknum, int nblocks, bool skipFsync);
 	bool		(*smgr_prefetch) (SMgrRelation reln, ForkNumber forknum,
 								  BlockNumber blocknum, int nblocks);
+	uint32		(*smgr_maxcombine) (SMgrRelation reln, ForkNumber forknum,
+									BlockNumber blocknum);
 	void		(*smgr_readv) (SMgrRelation reln, ForkNumber forknum,
 							   BlockNumber blocknum,
 							   void **buffers, BlockNumber nblocks);
@@ -99,7 +101,7 @@ typedef struct f_smgr
 								   BlockNumber blocknum, BlockNumber nblocks);
 	BlockNumber (*smgr_nblocks) (SMgrRelation reln, ForkNumber forknum);
 	void		(*smgr_truncate) (SMgrRelation reln, ForkNumber forknum,
-								  BlockNumber nblocks);
+								  BlockNumber old_blocks, BlockNumber nblocks);
 	void		(*smgr_immedsync) (SMgrRelation reln, ForkNumber forknum);
 	void		(*smgr_registersync) (SMgrRelation reln, ForkNumber forknum);
 } f_smgr;
@@ -117,6 +119,7 @@ static const f_smgr smgrsw[] = {
 		.smgr_extend = mdextend,
 		.smgr_zeroextend = mdzeroextend,
 		.smgr_prefetch = mdprefetch,
+		.smgr_maxcombine = mdmaxcombine,
 		.smgr_readv = mdreadv,
 		.smgr_writev = mdwritev,
 		.smgr_writeback = mdwriteback,
@@ -589,12 +592,28 @@ smgrprefetch(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
 }
 
 /*
+ * smgrmaxcombine() - Return the maximum number of total blocks that can be
+ *				 combined with an IO starting at blocknum.
+ *
+ * The returned value includes the IO for blocknum itself.
+ */
+uint32
+smgrmaxcombine(SMgrRelation reln, ForkNumber forknum,
+			   BlockNumber blocknum)
+{
+	return smgrsw[reln->smgr_which].smgr_maxcombine(reln, forknum, blocknum);
+}
+
+/*
  * smgrreadv() -- read a particular block range from a relation into the
  *				 supplied buffers.
  *
  * This routine is called from the buffer manager in order to
  * instantiate pages in the shared buffer cache.  All storage managers
  * return pages in the format that POSTGRES expects.
+ *
+ * If more than one block is intended to be read, callers need to use
+ * smgrmaxcombine() to check how many blocks can be combined into one IO.
  */
 void
 smgrreadv(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
@@ -626,6 +645,9 @@ smgrreadv(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
  * skipFsync indicates that the caller will make other provisions to
  * fsync the relation, so we needn't bother.  Temporary relations also
  * do not require fsync.
+ *
+ * If more than one block is intended to be read, callers need to use
+ * smgrmaxcombine() to check how many blocks can be combined into one IO.
  */
 void
 smgrwritev(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
@@ -697,10 +719,15 @@ smgrnblocks_cached(SMgrRelation reln, ForkNumber forknum)
  *
  * The caller must hold AccessExclusiveLock on the relation, to ensure that
  * other backends receive the smgr invalidation event that this function sends
- * before they access any forks of the relation again.
+ * before they access any forks of the relation again.  The current size of
+ * the forks should be provided in old_nblocks.  This function should normally
+ * be called in a critical section, but the current size must be checked
+ * outside the critical section, and no interrupts or smgr functions relating
+ * to this relation should be called in between.
  */
 void
-smgrtruncate(SMgrRelation reln, ForkNumber *forknum, int nforks, BlockNumber *nblocks)
+smgrtruncate(SMgrRelation reln, ForkNumber *forknum, int nforks,
+			 BlockNumber *old_nblocks, BlockNumber *nblocks)
 {
 	int			i;
 
@@ -728,14 +755,15 @@ smgrtruncate(SMgrRelation reln, ForkNumber *forknum, int nforks, BlockNumber *nb
 		/* Make the cached size is invalid if we encounter an error. */
 		reln->smgr_cached_nblocks[forknum[i]] = InvalidBlockNumber;
 
-		smgrsw[reln->smgr_which].smgr_truncate(reln, forknum[i], nblocks[i]);
+		smgrsw[reln->smgr_which].smgr_truncate(reln, forknum[i],
+											   old_nblocks[i], nblocks[i]);
 
 		/*
 		 * We might as well update the local smgr_cached_nblocks values. The
 		 * smgr cache inval message that this function sent will cause other
-		 * backends to invalidate their copies of smgr_fsm_nblocks and
-		 * smgr_vm_nblocks, and these ones too at the next command boundary.
-		 * But these ensure they aren't outright wrong until then.
+		 * backends to invalidate their copies of smgr_cached_nblocks, and
+		 * these ones too at the next command boundary. But ensure they aren't
+		 * outright wrong until then.
 		 */
 		reln->smgr_cached_nblocks[forknum[i]] = nblocks[i];
 	}

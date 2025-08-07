@@ -70,8 +70,23 @@
 #include "pgstat.h"
 #include "storage/fd.h"
 #include "storage/shmem.h"
-#include "utils/guc_hooks.h"
+#include "utils/guc.h"
 
+/*
+ * Converts segment number to the filename of the segment.
+ *
+ * "path" should point to a buffer at least MAXPGPATH characters long.
+ *
+ * If ctl->long_segment_names is true, segno can be in the range [0, 2^60-1].
+ * The resulting file name is made of 15 characters, e.g. dir/123456789ABCDEF.
+ *
+ * If ctl->long_segment_names is false, segno can be in the range [0, 2^24-1].
+ * The resulting file name is made of 4 to 6 characters, as of:
+ *
+ *  dir/1234   for [0, 2^16-1]
+ *  dir/12345  for [2^16, 2^20-1]
+ *  dir/123456 for [2^20, 2^24-1]
+ */
 static inline int
 SlruFileName(SlruCtl ctl, char *path, int64 segno)
 {
@@ -343,7 +358,7 @@ check_slru_buffers(const char *name, int *newval)
 	if (*newval % SLRU_BANK_SIZE == 0)
 		return true;
 
-	GUC_check_errdetail("\"%s\" must be a multiple of %d", name,
+	GUC_check_errdetail("\"%s\" must be a multiple of %d.", name,
 						SLRU_BANK_SIZE);
 	return false;
 }
@@ -701,9 +716,12 @@ SlruInternalWritePage(SlruCtl ctl, int slotno, SlruWriteAll fdata)
 	if (!ok)
 		SlruReportIOError(ctl, pageno, InvalidTransactionId);
 
-	/* If part of a checkpoint, count this as a buffer written. */
+	/* If part of a checkpoint, count this as a SLRU buffer written. */
 	if (fdata)
-		CheckpointStats.ckpt_bufs_written++;
+	{
+		CheckpointStats.ckpt_slru_written++;
+		PendingCheckpointerStats.slru_written++;
+	}
 }
 
 /*
@@ -1169,7 +1187,7 @@ SlruSelectLRUPage(SlruCtl ctl, int64 pageno)
 		Assert(LWLockHeldByMe(SimpleLruGetBankLock(ctl, pageno)));
 
 		/* See if page already has a buffer assigned */
-		for (int slotno = 0; slotno < shared->num_slots; slotno++)
+		for (int slotno = bankstart; slotno < bankend; slotno++)
 		{
 			if (shared->page_status[slotno] != SLRU_PAGE_EMPTY &&
 				shared->page_number[slotno] == pageno)
@@ -1517,7 +1535,7 @@ restart:
 	did_write = false;
 	for (int slotno = 0; slotno < shared->num_slots; slotno++)
 	{
-		int			pagesegno;
+		int64		pagesegno;
 		int			curbank = SlotGetBankNumber(slotno);
 
 		/*

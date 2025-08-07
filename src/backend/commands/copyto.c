@@ -475,7 +475,7 @@ BeginCopyTo(ParseState *pstate,
 				if (q->querySource == QSRC_NON_INSTEAD_RULE)
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("DO ALSO rules are not supported for the COPY")));
+							 errmsg("DO ALSO rules are not supported for COPY")));
 			}
 
 			ereport(ERROR,
@@ -492,7 +492,11 @@ BeginCopyTo(ParseState *pstate,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("COPY (SELECT INTO) is not supported")));
 
-		Assert(query->utilityStmt == NULL);
+		/* The only other utility command we could see is NOTIFY */
+		if (query->utilityStmt != NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("COPY query must not be a utility command")));
 
 		/*
 		 * Similarly the grammar doesn't enforce the presence of a RETURNING
@@ -593,8 +597,9 @@ BeginCopyTo(ParseState *pstate,
 			if (!list_member_int(cstate->attnumlist, attnum))
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
-						 errmsg("FORCE_QUOTE column \"%s\" not referenced by COPY",
-								NameStr(attr->attname))));
+				/*- translator: %s is the name of a COPY option, e.g. FORCE_NOT_NULL */
+						 errmsg("%s column \"%s\" not referenced by COPY",
+								"FORCE_QUOTE", NameStr(attr->attname))));
 			cstate->opts.force_quote_flags[attnum - 1] = true;
 		}
 	}
@@ -875,7 +880,7 @@ DoCopyTo(CopyToState cstate)
 	else
 	{
 		/* run the plan --- the dest receiver will send tuples */
-		ExecutorRun(cstate->queryDesc, ForwardScanDirection, 0, true);
+		ExecutorRun(cstate->queryDesc, ForwardScanDirection, 0);
 		processed = ((DR_copy *) cstate->queryDesc->dest)->processed;
 	}
 
@@ -901,11 +906,8 @@ DoCopyTo(CopyToState cstate)
 static void
 CopyOneRowTo(CopyToState cstate, TupleTableSlot *slot)
 {
-	bool		need_delim = false;
 	FmgrInfo   *out_functions = cstate->out_functions;
 	MemoryContext oldcontext;
-	ListCell   *cur;
-	char	   *string;
 
 	MemoryContextReset(cstate->rowcontext);
 	oldcontext = MemoryContextSwitchTo(cstate->rowcontext);
@@ -919,29 +921,23 @@ CopyOneRowTo(CopyToState cstate, TupleTableSlot *slot)
 	/* Make sure the tuple is fully deconstructed */
 	slot_getallattrs(slot);
 
-	foreach(cur, cstate->attnumlist)
+	if (!cstate->opts.binary)
 	{
-		int			attnum = lfirst_int(cur);
-		Datum		value = slot->tts_values[attnum - 1];
-		bool		isnull = slot->tts_isnull[attnum - 1];
+		bool		need_delim = false;
 
-		if (!cstate->opts.binary)
+		foreach_int(attnum, cstate->attnumlist)
 		{
+			Datum		value = slot->tts_values[attnum - 1];
+			bool		isnull = slot->tts_isnull[attnum - 1];
+			char	   *string;
+
 			if (need_delim)
 				CopySendChar(cstate, cstate->opts.delim[0]);
 			need_delim = true;
-		}
 
-		if (isnull)
-		{
-			if (!cstate->opts.binary)
+			if (isnull)
 				CopySendString(cstate, cstate->opts.null_print_client);
 			else
-				CopySendInt32(cstate, -1);
-		}
-		else
-		{
-			if (!cstate->opts.binary)
 			{
 				string = OutputFunctionCall(&out_functions[attnum - 1],
 											value);
@@ -951,10 +947,20 @@ CopyOneRowTo(CopyToState cstate, TupleTableSlot *slot)
 				else
 					CopyAttributeOutText(cstate, string);
 			}
+		}
+	}
+	else
+	{
+		foreach_int(attnum, cstate->attnumlist)
+		{
+			Datum		value = slot->tts_values[attnum - 1];
+			bool		isnull = slot->tts_isnull[attnum - 1];
+			bytea	   *outputbytes;
+
+			if (isnull)
+				CopySendInt32(cstate, -1);
 			else
 			{
-				bytea	   *outputbytes;
-
 				outputbytes = SendFunctionCall(&out_functions[attnum - 1],
 											   value);
 				CopySendInt32(cstate, VARSIZE(outputbytes) - VARHDRSZ);
@@ -1158,8 +1164,11 @@ CopyAttributeOutCSV(CopyToState cstate, const char *string,
 	if (!use_quote)
 	{
 		/*
-		 * Because '\.' can be a data value, quote it if it appears alone on a
-		 * line so it is not interpreted as the end-of-data marker.
+		 * Quote '\.' if it appears alone on a line, so that it will not be
+		 * interpreted as an end-of-data marker.  (PG 18 and up will not
+		 * interpret '\.' in CSV that way, except in embedded-in-SQL data; but
+		 * we want the data to be loadable by older versions too.  Also, this
+		 * avoids breaking clients that are still using PQgetline().)
 		 */
 		if (single_attr && strcmp(ptr, "\\.") == 0)
 			use_quote = true;

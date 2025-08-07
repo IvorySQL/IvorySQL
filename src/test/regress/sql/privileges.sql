@@ -124,6 +124,39 @@ SET ROLE pg_read_all_stats;     -- fail, granted without SET option
 RESET ROLE;
 
 RESET SESSION AUTHORIZATION;
+
+-- test interaction of SET SESSION AUTHORIZATION and SET ROLE,
+-- as well as propagation of these settings to parallel workers
+GRANT regress_priv_user9 TO regress_priv_user8;
+
+SET SESSION AUTHORIZATION regress_priv_user8;
+SET ROLE regress_priv_user9;
+SET debug_parallel_query = 0;
+SELECT session_user, current_role, current_user, current_setting('role') as role;
+SET debug_parallel_query = 1;
+SELECT session_user, current_role, current_user, current_setting('role') as role;
+
+BEGIN;
+SET SESSION AUTHORIZATION regress_priv_user10;
+SET debug_parallel_query = 0;
+SELECT session_user, current_role, current_user, current_setting('role') as role;
+SET debug_parallel_query = 1;
+SELECT session_user, current_role, current_user, current_setting('role') as role;
+ROLLBACK;
+SET debug_parallel_query = 0;
+SELECT session_user, current_role, current_user, current_setting('role') as role;
+SET debug_parallel_query = 1;
+SELECT session_user, current_role, current_user, current_setting('role') as role;
+
+RESET SESSION AUTHORIZATION;
+-- session_user at this point is installation-dependent
+SET debug_parallel_query = 0;
+SELECT session_user = current_role as c_r_ok, session_user = current_user as c_u_ok, current_setting('role') as role;
+SET debug_parallel_query = 1;
+SELECT session_user = current_role as c_r_ok, session_user = current_user as c_u_ok, current_setting('role') as role;
+
+RESET debug_parallel_query;
+
 REVOKE pg_read_all_settings FROM regress_priv_user8;
 
 DROP USER regress_priv_user10;
@@ -183,10 +216,16 @@ GRANT SELECT ON atest1 TO regress_priv_user3, regress_priv_user4;
 SELECT * FROM atest1;
 
 CREATE TABLE atest2 (col1 varchar(10), col2 boolean);
+SELECT pg_get_acl('pg_class'::regclass, 'atest2'::regclass::oid, 0);
 GRANT SELECT ON atest2 TO regress_priv_user2;
 GRANT UPDATE ON atest2 TO regress_priv_user3;
 GRANT INSERT ON atest2 TO regress_priv_user4 GRANTED BY CURRENT_USER;
 GRANT TRUNCATE ON atest2 TO regress_priv_user5 GRANTED BY CURRENT_ROLE;
+SELECT unnest(pg_get_acl('pg_class'::regclass, 'atest2'::regclass::oid, 0));
+
+-- Invalid inputs
+SELECT pg_get_acl('pg_class'::regclass, 0, 0); -- null
+SELECT pg_get_acl(0, 0, 0); -- null
 
 GRANT TRUNCATE ON atest2 TO regress_priv_user4 GRANTED BY regress_priv_user5;  -- error
 
@@ -433,6 +472,10 @@ CREATE TABLE atest5 (one int, two int unique, three int, four int unique);
 CREATE TABLE atest6 (one int, two int, blue int);
 GRANT SELECT (one), INSERT (two), UPDATE (three) ON atest5 TO regress_priv_user4;
 GRANT ALL (one) ON atest5 TO regress_priv_user3;
+SELECT unnest(pg_get_acl('pg_class'::regclass, 'atest5'::regclass::oid, 1));
+SELECT unnest(pg_get_acl('pg_class'::regclass, 'atest5'::regclass::oid, 2));
+SELECT unnest(pg_get_acl('pg_class'::regclass, 'atest5'::regclass::oid, 3));
+SELECT unnest(pg_get_acl('pg_class'::regclass, 'atest5'::regclass::oid, 4));
 
 INSERT INTO atest5 VALUES (1,2,3);
 
@@ -994,10 +1037,6 @@ from (select oid from pg_roles where rolname = current_user) as t2;
 select has_table_privilege(t2.oid,'pg_authid','delete')
 from (select oid from pg_roles where rolname = current_user) as t2;
 
--- 'rule' privilege no longer exists, but for backwards compatibility
--- has_table_privilege still recognizes the keyword and says FALSE
-select has_table_privilege(current_user,t1.oid,'rule')
-from (select oid from pg_class where relname = 'pg_authid') as t1;
 select has_table_privilege(current_user,t1.oid,'references')
 from (select oid from pg_class where relname = 'pg_authid') as t1;
 
@@ -1318,10 +1357,49 @@ SELECT loread(lo_open(1005, x'40000'::int), 32);
 SELECT lo_truncate(lo_open(1005, x'20000'::int), 10);	-- to be denied
 SELECT lo_truncate(lo_open(2001, x'20000'::int), 10);
 
+-- has_largeobject_privilege function
+
+-- superuser
+\c -
+SELECT has_largeobject_privilege(1001, 'SELECT');
+SELECT has_largeobject_privilege(1002, 'SELECT');
+SELECT has_largeobject_privilege(1003, 'SELECT');
+SELECT has_largeobject_privilege(1004, 'SELECT');
+
+SELECT has_largeobject_privilege(1001, 'UPDATE');
+SELECT has_largeobject_privilege(1002, 'UPDATE');
+SELECT has_largeobject_privilege(1003, 'UPDATE');
+SELECT has_largeobject_privilege(1004, 'UPDATE');
+
+-- not-existing large object
+SELECT has_largeobject_privilege(9999, 'SELECT');	-- NULL
+
+-- non-superuser
+SET SESSION AUTHORIZATION regress_priv_user2;
+SELECT has_largeobject_privilege(1001, 'SELECT');
+SELECT has_largeobject_privilege(1002, 'SELECT');	-- false
+SELECT has_largeobject_privilege(1003, 'SELECT');
+SELECT has_largeobject_privilege(1004, 'SELECT');
+
+SELECT has_largeobject_privilege(1001, 'UPDATE');
+SELECT has_largeobject_privilege(1002, 'UPDATE');	-- false
+SELECT has_largeobject_privilege(1003, 'UPDATE');	-- false
+SELECT has_largeobject_privilege(1004, 'UPDATE');
+
+SELECT has_largeobject_privilege('regress_priv_user3', 1001, 'SELECT');
+SELECT has_largeobject_privilege('regress_priv_user3', 1003, 'SELECT');	-- false
+SELECT has_largeobject_privilege('regress_priv_user3', 1005, 'SELECT');
+
+SELECT has_largeobject_privilege('regress_priv_user3', 1005, 'UPDATE');	-- false
+SELECT has_largeobject_privilege('regress_priv_user3', 2001, 'UPDATE');
+
 -- compatibility mode in largeobject permission
 \c -
 SET lo_compat_privileges = false;	-- default setting
 SET SESSION AUTHORIZATION regress_priv_user4;
+
+SELECT has_largeobject_privilege(1002, 'SELECT'); -- false
+SELECT has_largeobject_privilege(1002, 'UPDATE'); -- false
 
 SELECT loread(lo_open(1002, x'40000'::int), 32);	-- to be denied
 SELECT lowrite(lo_open(1002, x'20000'::int), 'abcd');	-- to be denied
@@ -1335,6 +1413,9 @@ SELECT lo_import('/dev/null', 2003);			-- to be denied
 \c -
 SET lo_compat_privileges = true;	-- compatibility mode
 SET SESSION AUTHORIZATION regress_priv_user4;
+
+SELECT has_largeobject_privilege(1002, 'SELECT'); -- true
+SELECT has_largeobject_privilege(1002, 'UPDATE'); -- true
 
 SELECT loread(lo_open(1002, x'40000'::int), 32);
 SELECT lowrite(lo_open(1002, x'20000'::int), 'abcd');

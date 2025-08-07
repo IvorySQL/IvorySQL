@@ -162,6 +162,8 @@ typedef struct Query
 	bool		hasForUpdate pg_node_attr(query_jumble_ignore);
 	/* rewriter has applied some RLS policy */
 	bool		hasRowSecurity pg_node_attr(query_jumble_ignore);
+	/* parser has added an RTE_GROUP RTE */
+	bool		hasGroupRTE pg_node_attr(query_jumble_ignore);
 	/* is a RETURN statement */
 	bool		isReturn pg_node_attr(query_jumble_ignore);
 
@@ -739,7 +741,7 @@ typedef struct ColumnDef
 	char	   *colname;		/* name of column */
 	TypeName   *typeName;		/* type of column */
 	char	   *compression;	/* compression method for column */
-	int			inhcount;		/* number of times column is inherited */
+	int16		inhcount;		/* number of times column is inherited */
 	bool		is_local;		/* column has local (non-inherited) def'n */
 	bool		is_not_null;	/* NOT NULL constraint specified? */
 	bool		is_from_type;	/* column definition came from table type */
@@ -954,17 +956,6 @@ typedef struct PartitionRangeDatum
 } PartitionRangeDatum;
 
 /*
- * PartitionDesc - info about single partition for ALTER TABLE SPLIT PARTITION command
- */
-typedef struct SinglePartitionSpec
-{
-	NodeTag		type;
-
-	RangeVar   *name;			/* name of partition */
-	PartitionBoundSpec *bound;	/* FOR VALUES, if attaching */
-} SinglePartitionSpec;
-
-/*
  * PartitionCmd - info for ALTER TABLE/INDEX ATTACH/DETACH PARTITION commands
  */
 typedef struct PartitionCmd
@@ -972,8 +963,6 @@ typedef struct PartitionCmd
 	NodeTag		type;
 	RangeVar   *name;			/* name of partition to attach/detach */
 	PartitionBoundSpec *bound;	/* FOR VALUES, if attaching */
-	List	   *partlist;		/* list of partitions, for MERGE/SPLIT
-								 * PARTITION command */
 	bool		concurrent;
 } PartitionCmd;
 
@@ -1052,6 +1041,7 @@ typedef enum RTEKind
 	RTE_RESULT,					/* RTE represents an empty FROM clause; such
 								 * RTEs are added by the planner, they're not
 								 * present during parsing or rewriting */
+	RTE_GROUP,					/* the grouping step */
 } RTEKind;
 
 typedef struct RangeTblEntry
@@ -1259,6 +1249,12 @@ typedef struct RangeTblEntry
 	Cardinality enrtuples pg_node_attr(query_jumble_ignore);
 
 	/*
+	 * Fields valid for a GROUP RTE (else NIL):
+	 */
+	/* list of grouping expressions */
+	List	   *groupexprs pg_node_attr(query_jumble_ignore);
+
+	/*
 	 * Fields valid in all RTEs:
 	 */
 	/* was LATERAL specified? */
@@ -1458,6 +1454,7 @@ typedef struct SortGroupClause
 	Index		tleSortGroupRef;	/* reference into targetlist */
 	Oid			eqop;			/* the equality operator ('=' op) */
 	Oid			sortop;			/* the ordering operator ('<' op), or 0 */
+	bool		reverse_sort;	/* is sortop a "greater than" operator? */
 	bool		nulls_first;	/* do NULLs come before normal values? */
 	/* can eqop be implemented by hashing? */
 	bool		hashable pg_node_attr(query_jumble_ignore);
@@ -2066,6 +2063,8 @@ typedef struct InsertStmt
 	List	   *returningList;	/* list of expressions to return */
 	WithClause *withClause;		/* WITH clause */
 	OverridingKind override;	/* OVERRIDING clause */
+	ParseLoc	stmt_location;	/* start location, or -1 if unknown */
+	ParseLoc	stmt_len;		/* length in bytes; 0 means "rest of string" */
 } InsertStmt;
 
 /* ----------------------
@@ -2080,6 +2079,8 @@ typedef struct DeleteStmt
 	Node	   *whereClause;	/* qualifications */
 	List	   *returningList;	/* list of expressions to return */
 	WithClause *withClause;		/* WITH clause */
+	ParseLoc	stmt_location;	/* start location, or -1 if unknown */
+	ParseLoc	stmt_len;		/* length in bytes; 0 means "rest of string" */
 } DeleteStmt;
 
 /* ----------------------
@@ -2095,6 +2096,8 @@ typedef struct UpdateStmt
 	List	   *fromClause;		/* optional from clause for more tables */
 	List	   *returningList;	/* list of expressions to return */
 	WithClause *withClause;		/* WITH clause */
+	ParseLoc	stmt_location;	/* start location, or -1 if unknown */
+	ParseLoc	stmt_len;		/* length in bytes; 0 means "rest of string" */
 } UpdateStmt;
 
 /* ----------------------
@@ -2110,6 +2113,8 @@ typedef struct MergeStmt
 	List	   *mergeWhenClauses;	/* list of MergeWhenClause(es) */
 	List	   *returningList;	/* list of expressions to return */
 	WithClause *withClause;		/* WITH clause */
+	ParseLoc	stmt_location;	/* start location, or -1 if unknown */
+	ParseLoc	stmt_len;		/* length in bytes; 0 means "rest of string" */
 } MergeStmt;
 
 /* ----------------------
@@ -2179,6 +2184,8 @@ typedef struct SelectStmt
 	bool		all;			/* ALL specified? */
 	struct SelectStmt *larg;	/* left child */
 	struct SelectStmt *rarg;	/* right child */
+	ParseLoc	stmt_location;	/* start location, or -1 if unknown */
+	ParseLoc	stmt_len;		/* length in bytes; 0 means "rest of string" */
 	/* Eventually add fields for CORRESPONDING spec here */
 } SelectStmt;
 
@@ -2377,7 +2384,6 @@ typedef enum AlterTableType
 	AT_SetNotNull,				/* alter column set not null */
 	AT_SetExpression,			/* alter column set expression */
 	AT_DropExpression,			/* alter column drop expression */
-	AT_CheckNotNull,			/* check column is already marked not null */
 	AT_SetStatistics,			/* alter column set statistics */
 	AT_SetOptions,				/* alter column set ( options ) */
 	AT_ResetOptions,			/* alter column reset ( options ) */
@@ -2435,8 +2441,6 @@ typedef enum AlterTableType
 	AT_AttachPartition,			/* ATTACH PARTITION */
 	AT_DetachPartition,			/* DETACH PARTITION */
 	AT_DetachPartitionFinalize, /* DETACH PARTITION FINALIZE */
-	AT_SplitPartition,			/* SPLIT PARTITION */
-	AT_MergePartitions,			/* MERGE PARTITIONS */
 	AT_AddIdentity,				/* ADD IDENTITY */
 	AT_SetIdentity,				/* SET identity column options */
 	AT_DropIdentity,			/* DROP IDENTITY */
@@ -2647,11 +2651,26 @@ typedef enum VariableSetKind
 
 typedef struct VariableSetStmt
 {
+	pg_node_attr(custom_query_jumble)
+
 	NodeTag		type;
 	VariableSetKind kind;
-	char	   *name;			/* variable to be set */
-	List	   *args;			/* List of A_Const nodes */
-	bool		is_local;		/* SET LOCAL? */
+	/* variable to be set */
+	char	   *name;
+	/* List of A_Const nodes */
+	List	   *args;
+
+	/*
+	 * True if arguments should be accounted for in query jumbling.  We use a
+	 * separate flag rather than query_jumble_ignore on "args" as several
+	 * grammar flavors of SET rely on a list of values that are parsed
+	 * directly from the grammar's keywords.
+	 */
+	bool		jumble_args;
+	/* SET LOCAL? */
+	bool		is_local;
+	/* token location, or -1 if unknown */
+	ParseLoc	location pg_node_attr(query_jumble_location);
 } VariableSetStmt;
 
 /* ----------------------
@@ -2668,10 +2687,10 @@ typedef struct VariableShowStmt
  *		Create Table Statement
  *
  * NOTE: in the raw gram.y output, ColumnDef and Constraint nodes are
- * intermixed in tableElts, and constraints is NIL.  After parse analysis,
- * tableElts contains just ColumnDefs, and constraints contains just
- * Constraint nodes (in fact, only CONSTR_CHECK nodes, in the present
- * implementation).
+ * intermixed in tableElts, and constraints and nnconstraints are NIL.  After
+ * parse analysis, tableElts contains just ColumnDefs, nnconstraints contains
+ * Constraint nodes of CONSTR_NOTNULL type from various sources, and
+ * constraints contains just CONSTR_CHECK Constraint nodes.
  * ----------------------
  */
 
@@ -2686,6 +2705,7 @@ typedef struct CreateStmt
 	PartitionSpec *partspec;	/* PARTITION BY clause */
 	TypeName   *ofTypename;		/* OF typename */
 	List	   *constraints;	/* constraints (list of Constraint nodes) */
+	List	   *nnconstraints;	/* NOT NULL constraints (ditto) */
 	List	   *options;		/* options from WITH clause */
 	OnCommitAction oncommit;	/* what do we do at COMMIT? */
 	char	   *tablespacename; /* table space to use, or NULL */
@@ -2771,11 +2791,10 @@ typedef struct Constraint
 	char	   *cooked_expr;	/* CHECK or DEFAULT expression, as
 								 * nodeToString representation */
 	char		generated_when; /* ALWAYS or BY DEFAULT */
-	int			inhcount;		/* initial inheritance count to apply, for
-								 * "raw" NOT NULL constraints */
 	bool		nulls_not_distinct; /* null treatment for UNIQUE constraints */
 	List	   *keys;			/* String nodes naming referenced key
 								 * column(s); for UNIQUE/PK/NOT NULL */
+	bool		without_overlaps;	/* WITHOUT OVERLAPS specified */
 	List	   *including;		/* String nodes naming referenced nonkey
 								 * column(s); for UNIQUE/PK */
 	List	   *exclusions;		/* list of (IndexElem, operator name) pairs;
@@ -2792,6 +2811,8 @@ typedef struct Constraint
 	RangeVar   *pktable;		/* Primary key table */
 	List	   *fk_attrs;		/* Attributes of foreign key */
 	List	   *pk_attrs;		/* Corresponding attrs in PK table */
+	bool		fk_with_period; /* Last attribute of FK uses PERIOD */
+	bool		pk_with_period; /* Last attribute of PK uses PERIOD */
 	char		fk_matchtype;	/* FULL, PARTIAL, SIMPLE */
 	char		fk_upd_action;	/* ON UPDATE action */
 	char		fk_del_action;	/* ON DELETE action */
@@ -3401,6 +3422,7 @@ typedef struct IndexStmt
 	bool		nulls_not_distinct; /* null treatment for UNIQUE constraints */
 	bool		primary;		/* is index a primary key? */
 	bool		isconstraint;	/* is it for a pkey/unique constraint? */
+	bool		iswithoutoverlaps;	/* is the constraint WITHOUT OVERLAPS? */
 	bool		deferrable;		/* is the constraint DEFERRABLE? */
 	bool		initdeferred;	/* is the constraint INITIALLY DEFERRED? */
 	bool		transformed;	/* true when transformIndexStmt is finished */
@@ -3488,6 +3510,7 @@ typedef struct FunctionParameter
 	TypeName   *argType;		/* TypeName for parameter type */
 	FunctionParameterMode mode; /* IN/OUT/etc */
 	Node	   *defexpr;		/* raw default expr, or NULL if not given */
+	ParseLoc	location;		/* token location, or -1 if unknown */
 } FunctionParameter;
 
 typedef struct AlterFunctionStmt

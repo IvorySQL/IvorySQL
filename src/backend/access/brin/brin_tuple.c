@@ -699,17 +699,19 @@ brin_deconstruct_tuple(BrinDesc *brdesc,
 			 datumno < brdesc->bd_info[attnum]->oi_nstored;
 			 datumno++)
 		{
-			Form_pg_attribute thisatt = TupleDescAttr(diskdsc, stored);
+			CompactAttribute *thisatt = TupleDescCompactAttr(diskdsc, stored);
 
 			if (thisatt->attlen == -1)
 			{
-				off = att_align_pointer(off, thisatt->attalign, -1,
-										tp + off);
+				off = att_pointer_alignby(off,
+										  thisatt->attalignby,
+										  -1,
+										  tp + off);
 			}
 			else
 			{
-				/* not varlena, so safe to use att_align_nominal */
-				off = att_align_nominal(off, thisatt->attalign);
+				/* not varlena, so safe to use att_nominal_alignby */
+				off = att_nominal_alignby(off, thisatt->attalignby);
 			}
 
 			values[stored++] = fetchatt(thisatt, tp + off);

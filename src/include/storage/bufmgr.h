@@ -115,14 +115,10 @@ typedef struct BufferManagerRelation
 
 struct ReadBuffersOperation
 {
-	/*
-	 * The following members should be set by the caller.  If only smgr is
-	 * provided without rel, then smgr_persistence can be set to override the
-	 * default assumption of RELPERSISTENCE_PERMANENT.
-	 */
-	Relation	rel;
+	/* The following members should be set by the caller. */
+	Relation	rel;			/* optional */
 	struct SMgrRelationData *smgr;
-	char		smgr_persistence;
+	char		persistence;
 	ForkNumber	forknum;
 	BufferAccessStrategy strategy;
 
@@ -254,7 +250,7 @@ extern Buffer ExtendBufferedRelTo(BufferManagerRelation bmr,
 								  BlockNumber extend_to,
 								  ReadBufferMode mode);
 
-extern void InitBufferPoolAccess(void);
+extern void InitBufferManagerAccess(void);
 extern void AtEOXact_Buffers(bool isCommit);
 extern char *DebugPrintBufferRefcount(Buffer buffer);
 extern void CheckPointBuffers(int flags);
@@ -305,8 +301,8 @@ extern void LimitAdditionalLocalPins(uint32 *additional_pins);
 extern bool EvictUnpinnedBuffer(Buffer buf);
 
 /* in buf_init.c */
-extern void InitBufferPool(void);
-extern Size BufferShmemSize(void);
+extern void BufferManagerShmemInit(void);
+extern Size BufferManagerShmemSize(void);
 
 /* in localbuf.c */
 extern void AtProcExit_LocalBuffers(void);

@@ -18,8 +18,6 @@
 #include "commands/explain.h"
 #include "common/pg_prng.h"
 #include "executor/instrument.h"
-#include "jit/jit.h"
-#include "nodes/params.h"
 #include "utils/guc.h"
 
 PG_MODULE_MAGIC;
@@ -72,7 +70,7 @@ static bool current_query_sampled = false;
 	 (nesting_level == 0 || auto_explain_log_nested_statements) && \
 	 current_query_sampled)
 
-/* Saved hook values in case of unload */
+/* Saved hook values */
 static ExecutorStart_hook_type prev_ExecutorStart = NULL;
 static ExecutorRun_hook_type prev_ExecutorRun = NULL;
 static ExecutorFinish_hook_type prev_ExecutorFinish = NULL;
@@ -81,7 +79,7 @@ static ExecutorEnd_hook_type prev_ExecutorEnd = NULL;
 static void explain_ExecutorStart(QueryDesc *queryDesc, int eflags);
 static void explain_ExecutorRun(QueryDesc *queryDesc,
 								ScanDirection direction,
-								uint64 count, bool execute_once);
+								uint64 count);
 static void explain_ExecutorFinish(QueryDesc *queryDesc);
 static void explain_ExecutorEnd(QueryDesc *queryDesc);
 
@@ -323,15 +321,15 @@ explain_ExecutorStart(QueryDesc *queryDesc, int eflags)
  */
 static void
 explain_ExecutorRun(QueryDesc *queryDesc, ScanDirection direction,
-					uint64 count, bool execute_once)
+					uint64 count)
 {
 	nesting_level++;
 	PG_TRY();
 	{
 		if (prev_ExecutorRun)
-			prev_ExecutorRun(queryDesc, direction, count, execute_once);
+			prev_ExecutorRun(queryDesc, direction, count);
 		else
-			standard_ExecutorRun(queryDesc, direction, count, execute_once);
+			standard_ExecutorRun(queryDesc, direction, count);
 	}
 	PG_FINALLY();
 	{

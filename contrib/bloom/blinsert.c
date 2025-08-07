@@ -16,11 +16,9 @@
 #include "access/generic_xlog.h"
 #include "access/tableam.h"
 #include "bloom.h"
-#include "catalog/index.h"
 #include "miscadmin.h"
+#include "nodes/execnodes.h"
 #include "storage/bufmgr.h"
-#include "storage/indexfsm.h"
-#include "storage/smgr.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
 
@@ -141,7 +139,7 @@ blbuild(Relation heap, Relation index, IndexInfo *indexInfo)
 
 	/* Do the heap scan */
 	reltuples = table_index_build_scan(heap, index, indexInfo, true, true,
-									   bloomBuildCallback, (void *) &buildstate,
+									   bloomBuildCallback, &buildstate,
 									   NULL);
 
 	/* Flush last page if needed (it will be, unless heap was empty) */

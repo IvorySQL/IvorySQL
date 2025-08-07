@@ -24,6 +24,8 @@ ALTER PUBLICATION testpub_default SET (publish = update);
 CREATE PUBLICATION testpub_xxx WITH (foo);
 CREATE PUBLICATION testpub_xxx WITH (publish = 'cluster, vacuum');
 CREATE PUBLICATION testpub_xxx WITH (publish_via_partition_root = 'true', publish_via_partition_root = '0');
+CREATE PUBLICATION testpub_xxx WITH (publish_generated_columns = 'true', publish_generated_columns = '0');
+CREATE PUBLICATION testpub_xxx WITH (publish_generated_columns = 'foo');
 
 \dRp
 
@@ -394,6 +396,33 @@ DROP TABLE rf_tbl_abcd_nopk;
 DROP TABLE rf_tbl_abcd_part_pk;
 -- ======================================================
 
+-- ======================================================
+-- Tests with generated column
+SET client_min_messages = 'ERROR';
+CREATE TABLE testpub_gencol (a INT, b INT GENERATED ALWAYS AS (a + 1) STORED NOT NULL);
+CREATE UNIQUE INDEX testpub_gencol_idx ON testpub_gencol (b);
+ALTER TABLE testpub_gencol REPLICA IDENTITY USING index testpub_gencol_idx;
+
+-- error - generated column "b" must be published explicitly as it is
+-- part of the REPLICA IDENTITY index.
+CREATE PUBLICATION pub_gencol FOR TABLE testpub_gencol;
+UPDATE testpub_gencol SET a = 100 WHERE a = 1;
+
+-- error - generated column "b" must be published explicitly as it is
+-- part of the REPLICA IDENTITY.
+ALTER TABLE testpub_gencol REPLICA IDENTITY FULL;
+UPDATE testpub_gencol SET a = 100 WHERE a = 1;
+DROP PUBLICATION pub_gencol;
+
+-- ok - generated column "b" is published explicitly
+CREATE PUBLICATION pub_gencol FOR TABLE testpub_gencol with (publish_generated_columns = true);
+UPDATE testpub_gencol SET a = 100 WHERE a = 1;
+DROP PUBLICATION pub_gencol;
+
+DROP TABLE testpub_gencol;
+RESET client_min_messages;
+-- ======================================================
+
 -- fail - duplicate tables are not allowed if that table has any column lists
 SET client_min_messages = 'ERROR';
 CREATE PUBLICATION testpub_dups FOR TABLE testpub_tbl1 (a), testpub_tbl1 WITH (publish = 'insert');
@@ -413,10 +442,12 @@ ALTER PUBLICATION testpub_fortable ADD TABLE testpub_tbl5 (a, x);
 ALTER PUBLICATION testpub_fortable ADD TABLE testpub_tbl5 (b, c);
 UPDATE testpub_tbl5 SET a = 1;
 ALTER PUBLICATION testpub_fortable DROP TABLE testpub_tbl5;
--- error: generated column "d" can't be in list
-ALTER PUBLICATION testpub_fortable ADD TABLE testpub_tbl5 (a, d);
 -- error: system attributes "ctid" not allowed in column list
 ALTER PUBLICATION testpub_fortable ADD TABLE testpub_tbl5 (a, ctid);
+ALTER PUBLICATION testpub_fortable SET TABLE testpub_tbl1 (id, ctid);
+-- error: duplicates not allowed in column list
+ALTER PUBLICATION testpub_fortable ADD TABLE testpub_tbl5 (a, a);
+ALTER PUBLICATION testpub_fortable SET TABLE testpub_tbl5 (a, a);
 -- ok
 ALTER PUBLICATION testpub_fortable ADD TABLE testpub_tbl5 (a, c);
 ALTER TABLE testpub_tbl5 DROP COLUMN c;		-- no dice
@@ -429,6 +460,10 @@ ALTER TABLE testpub_tbl5 ALTER b SET NOT NULL, ALTER c SET NOT NULL;
 ALTER TABLE testpub_tbl5 REPLICA IDENTITY USING INDEX testpub_tbl5_b_key;
 -- error: replica identity (b,c) is not covered by column list (a, c)
 UPDATE testpub_tbl5 SET a = 1;
+ALTER PUBLICATION testpub_fortable DROP TABLE testpub_tbl5;
+
+-- ok: generated column "d" can be in the list too
+ALTER PUBLICATION testpub_fortable ADD TABLE testpub_tbl5 (a, d);
 ALTER PUBLICATION testpub_fortable DROP TABLE testpub_tbl5;
 
 -- error: change the replica identity to "b", and column list to (a, c)
@@ -1105,7 +1140,47 @@ DROP PUBLICATION pub;
 DROP TABLE sch1.tbl1;
 DROP SCHEMA sch1 cascade;
 DROP SCHEMA sch2 cascade;
+-- ======================================================
 
+-- Test the publication 'publish_generated_columns' parameter enabled or disabled
+SET client_min_messages = 'ERROR';
+CREATE PUBLICATION pub1 FOR ALL TABLES WITH (publish_generated_columns=1);
+\dRp+ pub1
+CREATE PUBLICATION pub2 FOR ALL TABLES WITH (publish_generated_columns=0);
+\dRp+ pub2
+
+DROP PUBLICATION pub1;
+DROP PUBLICATION pub2;
+
+-- Test the 'publish_generated_columns' parameter enabled or disabled for
+-- different scenarios with/without generated columns in column lists.
+CREATE TABLE gencols (a int, gen1 int GENERATED ALWAYS AS (a * 2) STORED);
+
+-- Generated columns in column list, when 'publish_generated_columns'=false
+CREATE PUBLICATION pub1 FOR table gencols(a, gen1) WITH (publish_generated_columns=false);
+\dRp+ pub1
+
+-- Generated columns in column list, when 'publish_generated_columns'=true
+CREATE PUBLICATION pub2 FOR table gencols(a, gen1) WITH (publish_generated_columns=true);
+\dRp+ pub2
+
+-- Generated columns in column list, then set 'publication_generate_columns'=false
+ALTER PUBLICATION pub2 SET (publish_generated_columns = false);
+\dRp+ pub2
+
+-- Remove generated columns from column list, when 'publish_generated_columns'=false
+ALTER PUBLICATION pub2 SET TABLE gencols(a);
+\dRp+ pub2
+
+-- Add generated columns in column list, when 'publish_generated_columns'=false
+ALTER PUBLICATION pub2 SET TABLE gencols(a, gen1);
+\dRp+ pub2
+
+DROP PUBLICATION pub1;
+DROP PUBLICATION pub2;
+DROP TABLE gencols;
+
+RESET client_min_messages;
 RESET SESSION AUTHORIZATION;
 DROP ROLE regress_publication_user, regress_publication_user2;
 DROP ROLE regress_publication_user_dummy;

@@ -372,6 +372,12 @@ CREATE INDEX hash_tuplesort_idx ON tenk1 USING hash (stringu1 name_ops) WITH (fi
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM tenk1 WHERE stringu1 = 'TVAAAA';
 SELECT count(*) FROM tenk1 WHERE stringu1 = 'TVAAAA';
+-- OR-clauses shouldn't be transformed into SAOP because hash indexes don't
+-- support SAOP scans.
+SET enable_seqscan = off;
+EXPLAIN (COSTS OFF)
+SELECT COUNT(*) FROM tenk1 WHERE stringu1 = 'TVAAAA' OR  stringu1 = 'TVAAAB';
+RESET enable_seqscan;
 DROP INDEX hash_tuplesort_idx;
 RESET maintenance_work_mem;
 
@@ -728,9 +734,32 @@ DROP TABLE onek_with_null;
 
 EXPLAIN (COSTS OFF)
 SELECT * FROM tenk1
-  WHERE thousand = 42 AND (tenthous = 1 OR tenthous = 3 OR tenthous = 42);
+  WHERE thousand = 42 AND (tenthous = 1 OR tenthous = 3 OR tenthous = 42 OR tenthous = 0);
 SELECT * FROM tenk1
-  WHERE thousand = 42 AND (tenthous = 1 OR tenthous = 3 OR tenthous = 42);
+  WHERE thousand = 42 AND (tenthous = 1 OR tenthous = 3 OR tenthous = 42 OR tenthous = 0);
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM tenk1
+  WHERE thousand = 42 AND (tenthous = 1 OR tenthous = (SELECT 1 + 2) OR tenthous = 42);
+SELECT * FROM tenk1
+  WHERE thousand = 42 AND (tenthous = 1 OR tenthous = (SELECT 1 + 2) OR tenthous = 42);
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM tenk1
+  WHERE thousand = 42 AND (tenthous = 1 OR tenthous = 3 OR tenthous = 42 OR tenthous IS NULL);
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM tenk1
+  WHERE thousand = 42 AND (tenthous = 1::int2 OR tenthous::int2 = 3::int8 OR tenthous = 42::int8);
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM tenk1
+  WHERE thousand = 42 AND (tenthous = 1::int2 OR tenthous::int2 = 3::int8 OR tenthous::int2 = 42::int8);
+
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM tenk1
+  WHERE thousand = 42 AND (tenthous = 1::int2 OR tenthous = 3::int8 OR tenthous = 42::int8);
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM tenk1
@@ -738,6 +767,69 @@ SELECT count(*) FROM tenk1
 SELECT count(*) FROM tenk1
   WHERE hundred = 42 AND (thousand = 42 OR thousand = 99);
 
+EXPLAIN (COSTS OFF)
+SELECT * FROM tenk1
+  WHERE thousand = 42 AND (tenthous = 1 OR tenthous = 3 OR tenthous = 42);
+SELECT * FROM tenk1
+  WHERE thousand = 42 AND (tenthous = 1 OR tenthous = 3 OR tenthous = 42);
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM tenk1
+  WHERE thousand = 42 AND (tenthous = 1::numeric OR tenthous = 3::int4 OR tenthous = 42::numeric);
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM tenk1
+  WHERE tenthous = 1::numeric OR tenthous = 3::int4 OR tenthous = 42::numeric;
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM tenk1
+  WHERE hundred = 42 AND (thousand = 42 OR thousand = 99);
+SELECT count(*) FROM tenk1
+  WHERE hundred = 42 AND (thousand = 42 OR thousand = 99);
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM tenk1
+  WHERE hundred = 42 AND (thousand < 42 OR thousand < 99 OR 43 > thousand OR 42 > thousand);
+SELECT count(*) FROM tenk1
+  WHERE hundred = 42 AND (thousand < 42 OR thousand < 99 OR 43 > thousand OR 42 > thousand);
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM tenk1
+  WHERE thousand = 42 AND (tenthous = 1 OR tenthous = 3) OR thousand = 41;
+SELECT count(*) FROM tenk1
+  WHERE thousand = 42 AND (tenthous = 1 OR tenthous = 3) OR thousand = 41;
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM tenk1
+  WHERE hundred = 42 AND (thousand = 42 OR thousand = 99 OR tenthous < 2) OR thousand = 41;
+SELECT count(*) FROM tenk1
+  WHERE hundred = 42 AND (thousand = 42 OR thousand = 99 OR tenthous < 2) OR thousand = 41;
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM tenk1
+  WHERE hundred = 42 AND (thousand = 42 OR thousand = 41 OR thousand = 99 AND tenthous = 2);
+SELECT count(*) FROM tenk1
+  WHERE hundred = 42 AND (thousand = 42 OR thousand = 41 OR thousand = 99 AND tenthous = 2);
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM tenk1, tenk2
+  WHERE tenk1.hundred = 42 AND (tenk2.thousand = 42 OR tenk1.thousand = 41 OR tenk2.tenthous = 2) AND
+  tenk2.hundred = tenk1.hundred;
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM tenk1, tenk2
+  WHERE tenk1.hundred = 42 AND (tenk2.thousand = 42 OR tenk2.thousand = 41 OR tenk2.tenthous = 2) AND
+  tenk2.hundred = tenk1.hundred;
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM tenk1 JOIN tenk2 ON
+  tenk1.hundred = 42 AND (tenk2.thousand = 42 OR tenk2.thousand = 41 OR tenk2.tenthous = 2) AND
+  tenk2.hundred = tenk1.hundred;
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM tenk1 LEFT JOIN tenk2 ON
+  tenk1.hundred = 42 AND (tenk2.thousand = 42 OR tenk2.thousand = 41 OR tenk2.tenthous = 2) AND
+  tenk2.hundred = tenk1.hundred;
 --
 -- Check behavior with duplicate index column contents
 --
@@ -1126,9 +1218,9 @@ REINDEX TABLE CONCURRENTLY concur_reindex_tab;
 COMMIT;
 REINDEX TABLE CONCURRENTLY pg_class; -- no catalog relation
 REINDEX INDEX CONCURRENTLY pg_class_oid_index; -- no catalog index
--- These are the toast table and index of pg_authid.
-REINDEX TABLE CONCURRENTLY pg_toast.pg_toast_1260; -- no catalog toast table
-REINDEX INDEX CONCURRENTLY pg_toast.pg_toast_1260_index; -- no catalog toast index
+-- These are the toast table and index of pg_database.
+REINDEX TABLE CONCURRENTLY pg_toast.pg_toast_1262; -- no catalog toast table
+REINDEX INDEX CONCURRENTLY pg_toast.pg_toast_1262_index; -- no catalog toast index
 REINDEX SYSTEM CONCURRENTLY postgres; -- not allowed for SYSTEM
 REINDEX (CONCURRENTLY) SYSTEM postgres; -- ditto
 REINDEX (CONCURRENTLY) SYSTEM;  -- ditto
@@ -1252,6 +1344,27 @@ SELECT  b.relname,
   ORDER BY 1;
 DROP TABLE concur_temp_tab_1, concur_temp_tab_2, reindex_temp_before;
 
+-- Check bitmap scan can consider similar OR arguments separately without
+-- grouping them into SAOP.
+CREATE TABLE bitmap_split_or (a int NOT NULL, b int NOT NULL, c int NOT NULL);
+INSERT INTO bitmap_split_or (SELECT 1, 1, i FROM generate_series(1, 1000) i);
+INSERT INTO bitmap_split_or (select i, 2, 2 FROM generate_series(1, 1000) i);
+VACUUM ANALYZE bitmap_split_or;
+CREATE INDEX t_b_partial_1_idx ON bitmap_split_or (b) WHERE a = 1;
+CREATE INDEX t_b_partial_2_idx ON bitmap_split_or (b) WHERE a = 2;
+EXPLAIN (COSTS OFF)
+SELECT * FROM bitmap_split_or WHERE (a = 1 OR a = 2) AND b = 2;
+DROP INDEX t_b_partial_1_idx;
+DROP INDEX t_b_partial_2_idx;
+CREATE INDEX t_a_b_idx ON bitmap_split_or (a, b);
+CREATE INDEX t_b_c_idx ON bitmap_split_or (b, c);
+CREATE STATISTICS t_a_b_stat (mcv) ON a, b FROM bitmap_split_or;
+CREATE STATISTICS t_b_c_stat (mcv) ON b, c FROM bitmap_split_or;
+ANALYZE bitmap_split_or;
+EXPLAIN (COSTS OFF)
+SELECT * FROM bitmap_split_or WHERE a = 1 AND (b = 1 OR b = 2) AND c = 2;
+DROP TABLE bitmap_split_or;
+
 --
 -- REINDEX SCHEMA
 --
@@ -1305,8 +1418,8 @@ REINDEX SCHEMA schema_to_reindex;
 RESET ROLE;
 GRANT USAGE ON SCHEMA pg_toast TO regress_reindexuser;
 SET SESSION ROLE regress_reindexuser;
-REINDEX TABLE pg_toast.pg_toast_1260;
-REINDEX INDEX pg_toast.pg_toast_1260_index;
+REINDEX TABLE pg_toast.pg_toast_1262;
+REINDEX INDEX pg_toast.pg_toast_1262_index;
 
 -- Clean up
 RESET ROLE;

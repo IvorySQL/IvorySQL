@@ -38,6 +38,34 @@ copy copytest2 from :'filename' csv quote '''' escape E'\\';
 
 select * from copytest except select * from copytest2;
 
+--- test unquoted \. as data inside CSV
+-- do not use copy out to export the data, as it would quote \.
+\o :filename
+\qecho line1
+\qecho '\\.'
+\qecho line2
+\o
+-- get the data back in with copy
+truncate copytest2;
+copy copytest2(test) from :'filename' csv;
+select test from copytest2 order by test collate "C";
+
+-- in text mode, \. must be alone on its line
+truncate copytest2;
+copy copytest2(test) from stdin;
+line1
+line2
+foo\.
+line3
+\.
+copy copytest2(test) from stdin;
+line4
+line5
+\.foo
+line6
+\.
+select test from copytest2;
+
 
 -- test header line feature
 

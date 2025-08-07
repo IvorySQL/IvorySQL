@@ -36,7 +36,6 @@ extern PGDLLIMPORT bool synchronize_seqscans;
 struct BulkInsertStateData;
 struct IndexInfo;
 struct SampleScanState;
-struct TBMIterateResult;
 struct VacuumParams;
 struct ValidateIndexState;
 
@@ -780,21 +779,28 @@ typedef struct TableAmRoutine
 	 */
 
 	/*
-	 * Prepare to fetch / check / return tuples from `tbmres->blockno` as part
-	 * of a bitmap table scan. `scan` was started via table_beginscan_bm().
-	 * Return false if there are no tuples to be found on the page, true
-	 * otherwise.
+	 * Prepare to fetch / check / return tuples from `blockno` as part of a
+	 * bitmap table scan. `scan` was started via table_beginscan_bm(). Return
+	 * false if the bitmap is exhausted and true otherwise.
 	 *
 	 * This will typically read and pin the target block, and do the necessary
 	 * work to allow scan_bitmap_next_tuple() to return tuples (e.g. it might
-	 * make sense to perform tuple visibility checks at this time). For some
-	 * AMs it will make more sense to do all the work referencing `tbmres`
-	 * contents here, for others it might be better to defer more work to
-	 * scan_bitmap_next_tuple.
+	 * make sense to perform tuple visibility checks at this time).
 	 *
-	 * If `tbmres->blockno` is -1, this is a lossy scan and all visible tuples
-	 * on the page have to be returned, otherwise the tuples at offsets in
-	 * `tbmres->offsets` need to be returned.
+	 * `lossy_pages` and `exact_pages` are EXPLAIN counters that can be
+	 * incremented by the table AM to indicate whether or not the block's
+	 * representation in the bitmap is lossy.
+	 *
+	 * `recheck` is set by the table AM to indicate whether or not the tuples
+	 * from this block should be rechecked. Tuples from lossy pages will
+	 * always need to be rechecked, but some non-lossy pages' tuples may also
+	 * require recheck.
+	 *
+	 * `blockno` is the current block and is set by the table AM. The table AM
+	 * is responsible for advancing the main iterator, but the bitmap table
+	 * scan code still advances the prefetch iterator. `blockno` is used by
+	 * bitmap table scan code to validate that the prefetch block stays ahead
+	 * of the current block.
 	 *
 	 * XXX: Currently this may only be implemented if the AM uses md.c as its
 	 * storage manager, and uses ItemPointer->ip_blkid in a manner that maps
@@ -811,21 +817,19 @@ typedef struct TableAmRoutine
 	 * scan_bitmap_next_tuple need to exist, or neither.
 	 */
 	bool		(*scan_bitmap_next_block) (TableScanDesc scan,
-										   struct TBMIterateResult *tbmres);
+										   BlockNumber *blockno,
+										   bool *recheck,
+										   uint64 *lossy_pages,
+										   uint64 *exact_pages);
 
 	/*
 	 * Fetch the next tuple of a bitmap table scan into `slot` and return true
 	 * if a visible tuple was found, false otherwise.
 	 *
-	 * For some AMs it will make more sense to do all the work referencing
-	 * `tbmres` contents in scan_bitmap_next_block, for others it might be
-	 * better to defer more work to this callback.
-	 *
 	 * Optional callback, but either both scan_bitmap_next_block and
 	 * scan_bitmap_next_tuple need to exist, or neither.
 	 */
 	bool		(*scan_bitmap_next_tuple) (TableScanDesc scan,
-										   struct TBMIterateResult *tbmres,
 										   TupleTableSlot *slot);
 
 	/*
@@ -958,7 +962,8 @@ table_beginscan_bm(Relation rel, Snapshot snapshot,
 	if (need_tuple)
 		flags |= SO_NEED_TUPLES;
 
-	return rel->rd_tableam->scan_begin(rel, snapshot, nkeys, key, NULL, flags);
+	return rel->rd_tableam->scan_begin(rel, snapshot, nkeys, key,
+									   NULL, flags);
 }
 
 /*
@@ -1949,17 +1954,30 @@ table_relation_estimate_size(Relation rel, int32 *attr_widths,
  */
 
 /*
- * Prepare to fetch / check / return tuples from `tbmres->blockno` as part of
- * a bitmap table scan. `scan` needs to have been started via
- * table_beginscan_bm(). Returns false if there are no tuples to be found on
- * the page, true otherwise.
+ * Prepare to fetch / check / return tuples as part of a bitmap table scan.
+ * `scan` needs to have been started via table_beginscan_bm(). Returns false
+ * if there are no more blocks in the bitmap, true otherwise.
+ *
+ * `lossy_pages` and `exact_pages` are EXPLAIN counters that can be
+ * incremented by the table AM to indicate whether or not the block's
+ * representation in the bitmap is lossy.
+ *
+ * `recheck` is set by the table AM to indicate whether or not the tuples
+ * from this block should be rechecked.
+ *
+ * `blockno` is the current block and is set by the table AM and is used by
+ * bitmap table scan code to validate that the prefetch block stays ahead of
+ * the current block.
  *
  * Note, this is an optionally implemented function, therefore should only be
  * used after verifying the presence (at plan time or such).
  */
 static inline bool
 table_scan_bitmap_next_block(TableScanDesc scan,
-							 struct TBMIterateResult *tbmres)
+							 BlockNumber *blockno,
+							 bool *recheck,
+							 uint64 *lossy_pages,
+							 uint64 *exact_pages)
 {
 	/*
 	 * We don't expect direct calls to table_scan_bitmap_next_block with valid
@@ -1970,7 +1988,9 @@ table_scan_bitmap_next_block(TableScanDesc scan,
 		elog(ERROR, "unexpected table_scan_bitmap_next_block call during logical decoding");
 
 	return scan->rs_rd->rd_tableam->scan_bitmap_next_block(scan,
-														   tbmres);
+														   blockno, recheck,
+														   lossy_pages,
+														   exact_pages);
 }
 
 /*
@@ -1983,7 +2003,6 @@ table_scan_bitmap_next_block(TableScanDesc scan,
  */
 static inline bool
 table_scan_bitmap_next_tuple(TableScanDesc scan,
-							 struct TBMIterateResult *tbmres,
 							 TupleTableSlot *slot)
 {
 	/*
@@ -1995,7 +2014,6 @@ table_scan_bitmap_next_tuple(TableScanDesc scan,
 		elog(ERROR, "unexpected table_scan_bitmap_next_tuple call during logical decoding");
 
 	return scan->rs_rd->rd_tableam->scan_bitmap_next_tuple(scan,
-														   tbmres,
 														   slot);
 }
 

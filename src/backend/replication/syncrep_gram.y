@@ -17,12 +17,18 @@
 #include "nodes/pg_list.h"
 #include "replication/syncrep.h"
 
+#include "syncrep_gram.h"
+
 /* Result of parsing is returned in one of these two variables */
 SyncRepConfigData *syncrep_parse_result;
 char	   *syncrep_parse_error_msg;
 
 static SyncRepConfigData *create_syncrep_config(const char *num_sync,
 					List *members, uint8 syncrep_method);
+
+/* silence -Wmissing-variable-declarations */
+extern int syncrep_yychar;
+extern int syncrep_yynerrs;
 
 /*
  * Bison doesn't allocate anything that needs to live across parser calls,

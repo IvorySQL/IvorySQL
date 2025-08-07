@@ -268,7 +268,7 @@ sql_fn_parser_setup(struct ParseState *pstate, SQLFunctionParseInfoPtr pinfo)
 	pstate->p_post_columnref_hook = sql_fn_post_column_ref;
 	pstate->p_paramref_hook = sql_fn_param_ref;
 	/* no need to use p_coerce_param_hook */
-	pstate->p_ref_hook_state = (void *) pinfo;
+	pstate->p_ref_hook_state = pinfo;
 }
 
 /*
@@ -492,6 +492,7 @@ init_execution_state(List *queryTree_list,
 				stmt->utilityStmt = queryTree->utilityStmt;
 				stmt->stmt_location = queryTree->stmt_location;
 				stmt->stmt_len = queryTree->stmt_len;
+				stmt->queryId = queryTree->queryId;
 			}
 			else
 				stmt = pg_plan_query(queryTree,
@@ -613,7 +614,7 @@ init_sql_fcache(FunctionCallInfo fcinfo, Oid collation, bool lazyEvalOK)
 	 */
 	fcache = (SQLFunctionCachePtr) palloc0(sizeof(SQLFunctionCache));
 	fcache->fcontext = fcontext;
-	finfo->fn_extra = (void *) fcache;
+	finfo->fn_extra = fcache;
 
 	/*
 	 * get the procedure tuple corresponding to the given function Oid
@@ -893,7 +894,7 @@ postquel_getnext(execution_state *es, SQLFunctionCachePtr fcache)
 		/* Run regular commands to completion unless lazyEval */
 		uint64		count = (es->lazyEval) ? 1 : 0;
 
-		ExecutorRun(es->qd, ForwardScanDirection, count, !fcache->returnsSet || !es->lazyEval);
+		ExecutorRun(es->qd, ForwardScanDirection, count);
 
 		/*
 		 * If we requested run to completion OR there was no tuple returned,
@@ -1885,7 +1886,7 @@ check_sql_fn_retval(List *queryTreeLists,
 		/* remaining columns in rettupdesc had better all be dropped */
 		for (colindex++; colindex <= tupnatts; colindex++)
 		{
-			if (!TupleDescAttr(rettupdesc, colindex - 1)->attisdropped)
+			if (!TupleDescCompactAttr(rettupdesc, colindex - 1)->attisdropped)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 						 errmsg("return type mismatch in function declared to return %s",
@@ -1970,6 +1971,12 @@ tlist_coercion_finished:
 		rtr = makeNode(RangeTblRef);
 		rtr->rtindex = 1;
 		newquery->jointree = makeFromExpr(list_make1(rtr), NULL);
+
+		/*
+		 * Make sure the new query is marked as having row security if the
+		 * original one does.
+		 */
+		newquery->hasRowSecurity = parse->hasRowSecurity;
 
 		/* Replace original query in the correct element of the query list */
 		lfirst(parse_cell) = newquery;

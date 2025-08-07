@@ -125,6 +125,20 @@ typedef int (*ParseSubprocFuncHook) (ParseState *pstate, List *funcname,
  * byte-wise locations in parse structures to character-wise cursor
  * positions.)
  *
+ * p_stmt_location: location of the top level RawStmt's start.  During
+ * transformation, the Query's location will be set to the statement's
+ * location if available.  Otherwise, the RawStmt's start location will
+ * be used.  Propagating the location through ParseState is needed for
+ * the Query length calculation (see p_stmt_len below).
+ *
+ * p_stmt_len: length of the top level RawStmt.  Most of the time, the
+ * statement's length is not provided by the parser, with the exception
+ * of SelectStmt within parentheses and PreparableStmt in COPY.  If the
+ * statement's location is provided by the parser, the top-level location
+ * and length are needed to accurately compute the Query's length.  If the
+ * statement's location is not provided, the RawStmt's length can be used
+ * directly.
+ *
  * p_rtable: list of RTEs that will become the rangetable of the query.
  * Note that neither relname nor refname of these entries are necessarily
  * unique; searching the rtable by name is a bad idea.
@@ -168,6 +182,8 @@ typedef int (*ParseSubprocFuncHook) (ParseState *pstate, List *funcname,
  *
  * p_target_nsitem: target relation's ParseNamespaceItem.
  *
+ * p_grouping_nsitem: the ParseNamespaceItem that represents the grouping step.
+ *
  * p_is_insert: true to process assignment expressions like INSERT, false
  * to process them like UPDATE.  (Note this can change intra-statement, for
  * cases like INSERT ON CONFLICT UPDATE.)
@@ -208,6 +224,8 @@ struct ParseState
 {
 	ParseState *parentParseState;	/* stack link */
 	const char *p_sourcetext;	/* source text, or NULL if not available */
+	ParseLoc	p_stmt_location;	/* start location, or -1 if unknown */
+	ParseLoc	p_stmt_len;		/* length in bytes; 0 means "rest of string" */
 	List	   *p_rtable;		/* range table so far */
 	List	   *p_rteperminfos; /* list of RTEPermissionInfo nodes for each
 								 * RTE_RELATION entry in rtable */
@@ -223,6 +241,7 @@ struct ParseState
 	CommonTableExpr *p_parent_cte;	/* this query's containing CTE */
 	Relation	p_target_relation;	/* INSERT/UPDATE/DELETE/MERGE target rel */
 	ParseNamespaceItem *p_target_nsitem;	/* target rel's NSItem, or NULL */
+	ParseNamespaceItem *p_grouping_nsitem;	/* NSItem for grouping, or NULL */
 	bool		p_is_insert;	/* process assignment like INSERT not UPDATE */
 	List	   *p_windowdefs;	/* raw representations of window clauses */
 	ParseExprKind p_expr_kind;	/* what kind of expression we're parsing */
