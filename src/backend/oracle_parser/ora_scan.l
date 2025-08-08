@@ -167,6 +167,7 @@ extern void ora_core_yyset_column(int column_no, yyscan_t yyscanner);
 %option noyyfree
 %option warn
 %option prefix="ora_core_yy"
+%option extra-type="ora_core_yy_extra_type *"
 
 /*
  * OK, here is a short description of lex/flex rules behavior.
