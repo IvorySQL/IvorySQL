@@ -577,7 +577,7 @@ ora_sys_guid(PG_FUNCTION_ARGS)
     uuid_generate_random(uu);
     memcpy(VARDATA(result), uu, SYS_GUID_LENGTH);
 
-#else
+#else	/* BSD */
 	int i;
     unsigned char byte_array[SYS_GUID_LENGTH];
     for (i = 0; i < SYS_GUID_LENGTH; i++) {
