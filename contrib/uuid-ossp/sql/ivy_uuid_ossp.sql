@@ -79,3 +79,5 @@ SELECT uuid_version_bits(uuid_generate_v4()),
        uuid_reserved_bits(uuid_generate_v4());
 
 SELECT uuid_generate_v4() <> uuid_generate_v4();
+
+SELECT sys_guid() <> sys_guid();
