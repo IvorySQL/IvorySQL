@@ -1,5 +1,6 @@
 
-# Copyright (c) 2021-2024, PostgreSQL Global Development Group
+# Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+# Copyright (c) 2021-2025, PostgreSQL Global Development Group
 
 =pod
 
@@ -713,6 +714,7 @@ sub init
 		}
 		print $conf "max_wal_senders = 10\n";
 		print $conf "max_replication_slots = 10\n";
+		print $conf "autovacuum_worker_slots = 3\n";
 		print $conf "wal_log_hints = on\n";
 		print $conf "hot_standby = on\n";
 		# conservative settings to ensure we can run multiple postmasters:
