@@ -13,3 +13,8 @@ ALTER FUNCTION uuid_generate_v1mc() PARALLEL SAFE;
 ALTER FUNCTION uuid_generate_v3(uuid, text) PARALLEL SAFE;
 ALTER FUNCTION uuid_generate_v4() PARALLEL SAFE;
 ALTER FUNCTION uuid_generate_v5(uuid, text) PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION pg_catalog.sys_guid()
+    RETURNS bytea
+AS 'MODULE_PATHNAME', 'ora_sys_guid'
+VOLATILE STRICT LANGUAGE C;

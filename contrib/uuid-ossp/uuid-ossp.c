@@ -102,6 +102,9 @@ do { \
 
 #endif							/* !HAVE_UUID_OSSP */
 
+/** The byte length of the value returned by ora_sys_guid **/
+#define SYS_GUID_LENGTH 16
+
 PG_MODULE_MAGIC;
 
 PG_FUNCTION_INFO_V1(uuid_nil);
@@ -115,7 +118,7 @@ PG_FUNCTION_INFO_V1(uuid_generate_v1mc);
 PG_FUNCTION_INFO_V1(uuid_generate_v3);
 PG_FUNCTION_INFO_V1(uuid_generate_v4);
 PG_FUNCTION_INFO_V1(uuid_generate_v5);
-
+PG_FUNCTION_INFO_V1(ora_sys_guid);
 #ifdef HAVE_UUID_OSSP
 
 static void
@@ -549,4 +552,38 @@ uuid_generate_v5(PG_FUNCTION_ARGS)
 	return uuid_generate_internal(UUID_MAKE_V5, (unsigned char *) ns,
 								  VARDATA_ANY(name), VARSIZE_ANY_EXHDR(name));
 #endif
+}
+
+
+Datum
+ora_sys_guid(PG_FUNCTION_ARGS)
+{
+    bytea *result;
+    result = (bytea *)palloc(VARHDRSZ + SYS_GUID_LENGTH);
+    SET_VARSIZE(result, VARHDRSZ + SYS_GUID_LENGTH);
+
+#ifdef HAVE_UUID_OSSP
+    uuid_t      *uuid;
+    uuid_rc_t   rc;
+    uuid = get_cached_uuid_t(0);
+    rc = uuid_make(uuid, UUID_MAKE_V4, NULL, NULL);
+    if (rc != UUID_RC_OK) {
+        pguuid_complain(rc);
+    }
+    memcpy(VARDATA(result), (unsigned char *)uuid, SYS_GUID_LENGTH);
+
+#elif defined(HAVE_UUID_E2FS)
+    uuid_t uu;
+    uuid_generate_random(uu);
+    memcpy(VARDATA(result), uu, SYS_GUID_LENGTH);
+
+#else	/* BSD */
+	int i;
+    unsigned char byte_array[SYS_GUID_LENGTH];
+    for (i = 0; i < SYS_GUID_LENGTH; i++) {
+        byte_array[i] = (unsigned char)arc4random();
+    }
+    memcpy(VARDATA(result), byte_array, SYS_GUID_LENGTH);
+#endif
+    PG_RETURN_BYTEA_P(result);
 }
