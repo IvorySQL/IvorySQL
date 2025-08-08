@@ -13,7 +13,7 @@
 #ifndef VARIABLES_H
 #define VARIABLES_H
 
-#include "fe_utils/psqlscan_int.h"	/* ReqID:SRS-CMD-PSQL */
+#include "fe_utils/psqlscan_int.h"
 
 /*
  * Variables can be given "assign hook" functions.  The assign hook can
@@ -55,44 +55,46 @@ typedef bool (*VariableAssignHook) (const char *newval);
  */
 typedef char *(*VariableSubstituteHook) (char *newval);
 
-/* Begin - ReqID:SRS-CMD-PSQL */
+/*
+ * Variable Types
+ * 
+ * Differentiates between native PostgreSQL shell variables and
+ * Oracle SQL*Plus bind variables.
+ */
 typedef enum
 {
 	PSQL_SHELL_VAR,		/* Native Postgres shell variables */
 	PSQL_BIND_VAR,		/* Oracle SQL*PLUS bind variables */
 	PSQL_UNKNOWN_VAR	/* Currently used for the header of variable list */
 } PsqlVarKind;
-/* End - ReqID:SRS-CMD-PSQL */
 
 /*
- * Data structure representing one variable.
+ * Variable Data Structure
  *
- * Note:
- *	For shell variables, if value == NULL then the variable is logically unset, but
- *	we are keeping the struct around so as not to forget about its hook function(s).
+ * Represents a single variable in the repository.
  *
- * Side effect:
- *	Shell variables and bind variables are not allowed to have the same name, otherwise
- *	we cannot judge the type of the variable only by the name of the variable with the
- *	same name when the variable is referenced by a colon.
+ * Note: For shell variables, value == NULL indicates the variable is logically
+ *       unset, but we keep the struct to preserve hook functions.
+ *
+ * Side Effect: Shell variables and bind variables cannot share names because
+ *              we cannot determine the variable type by name alone when
+ *              referenced by a colon prefix.
  */
 struct _variable
 {
-	char	   *name;
-	char	   *value;
-	/* Begin - ReqID:SRS-CMD-PSQL */
-	PsqlVarKind	varkind;
-
-	/* fields for bind variable */
-	int			typoid;
-	int			typmod;
-	/* End - ReqID:SRS-CMD-PSQL */
-	VariableSubstituteHook substitute_hook;
-	VariableAssignHook assign_hook;
-	struct _variable *next;
+    char                   *name;             /* Variable name */
+    char                   *value;            /* Variable value (NULL = unset) */
+    PsqlVarKind             varkind;          /* Variable type */
+    
+    /* Fields specific to bind variables */
+    Oid                     typoid;           /* Type OID for bind variables */
+    int                     typmod;           /* Type modifier for bind variables */
+    VariableSubstituteHook  substitute_hook;  /* Value substitution hook */
+    VariableAssignHook      assign_hook;      /* Value assignment hook */
+    struct _variable       *next;             /* Next variable in linked list */
 };
 
-/* Data structure representing a set of variables */
+/* Variable space - a collection of variables */
 typedef struct _variable *VariableSpace;
 
 
@@ -118,7 +120,6 @@ bool		VariableHasHook(VariableSpace space, const char *name);
 
 void		PsqlVarEnumError(const char *name, const char *value, const char *suggestions);
 
-/* Begin - ReqID:SRS-CMD-PSQL */
 bool		SetBindVariable(VariableSpace space, const char *name, 
 							const int typoid, const int typmod,
 							const char *initval, bool notnull);
@@ -126,6 +127,5 @@ void		ListBindVariables(VariableSpace space, const char *name);
 void		PrintBindVariables(VariableSpace space, print_list *bvlist);
 bool		AssignBindVariable(VariableSpace space, const char *name, const char *value);
 bool		ValidBindVariableName(const char *name);
-/* End - ReqID:SRS-CMD-PSQL */
 
 #endif							/* VARIABLES_H */

@@ -43,7 +43,6 @@ valid_variable_name(const char *name)
 	return true;
 }
 
-/* Begin - ReqID:SRS-CMD-PSQL */
 /*
  * Check whether a variable's value is allowed.
  *
@@ -236,7 +235,6 @@ print_bind_variable_value(char *name, char *value)
 	printTableCleanup(&cont);
 	pg_free(uppername);
 }
-/* End - ReqID:SRS-CMD-PSQL */
 
 /*
  * A "variable space" is represented by an otherwise-unused struct _variable
@@ -251,11 +249,9 @@ CreateVariableSpace(void)
 	struct _variable *ptr;
 
 	ptr = pg_malloc(sizeof *ptr);
-	/* Begin - ReqID:SRS-CMD-PSQL */
 	ptr->varkind = PSQL_UNKNOWN_VAR;
 	ptr->typoid = 0;
 	ptr->typmod = -1;
-	/* End - ReqID:SRS-CMD-PSQL */
 	ptr->name = NULL;
 	ptr->value = NULL;
 	ptr->substitute_hook = NULL;
@@ -280,14 +276,12 @@ GetVariable(VariableSpace space, const char *name)
 
 	for (current = space->next; current; current = current->next)
 	{
-		/* Begin - ReqID:SRS-CMD-PSQL */
 		int			cmp;
 
 		if (current->varkind != PSQL_SHELL_VAR)
 			continue;
 
 		cmp = strcmp(current->name, name);
-		/* End - ReqID:SRS-CMD-PSQL */
 
 		if (cmp == 0)
 		{
@@ -402,10 +396,8 @@ PrintVariables(VariableSpace space)
 
 	for (ptr = space->next; ptr; ptr = ptr->next)
 	{
-		/* Begin - ReqID:SRS-CMD-PSQL */
 		if (ptr->varkind != PSQL_SHELL_VAR)
 			continue;
-		/* End - ReqID:SRS-CMD-PSQL */
 
 		if (ptr->value)
 			printf("%s = '%s'\n", ptr->name, ptr->value);
@@ -457,10 +449,9 @@ SetVariable(VariableSpace space, const char *name, const char *value)
 			 * variable.  Having to free the string again on failure is a
 			 * small price to pay for keeping these APIs simple.
 			 */
-			char	   *new_value;	/* ReqID:SRS-CMD-PSQL */
+			char	   *new_value;
 			bool		confirmed;
 
-			/* Begin - ReqID:SRS-CMD-PSQL */
 			if (current->varkind == PSQL_BIND_VAR)
 			{
 				pg_log_error("the variable name \"%s\" is already taken by a psql bind variable.", name);
@@ -468,7 +459,6 @@ SetVariable(VariableSpace space, const char *name, const char *value)
 			}
 
 			new_value = value ? pg_strdup(value) : NULL;
-			/* End - ReqID:SRS-CMD-PSQL */
 
 			if (current->substitute_hook)
 				new_value = current->substitute_hook(new_value);
@@ -509,11 +499,9 @@ SetVariable(VariableSpace space, const char *name, const char *value)
 	if (value)
 	{
 		current = pg_malloc(sizeof *current);
-		/* Begin - ReqID:SRS-CMD-PSQL */
 		current->varkind = PSQL_SHELL_VAR;
 		current->typoid = 0;	/* InvalidOid */	
 		current->typmod = -1;
-		/* End - ReqID:SRS-CMD-PSQL */
 		current->name = pg_strdup(name);
 		current->value = pg_strdup(value);
 		current->substitute_hook = NULL;
@@ -558,14 +546,12 @@ SetVariableHooks(VariableSpace space, const char *name,
 		 current;
 		 previous = current, current = current->next)
 	{
-		/* Begin - ReqID:SRS-CMD-PSQL */
 		int			cmp;
 
 		if (current->varkind != PSQL_SHELL_VAR)
 			continue;
 
 		cmp = strcmp(current->name, name);
-		/* End - ReqID:SRS-CMD-PSQL */
 
 		if (cmp == 0)
 		{
@@ -586,11 +572,9 @@ SetVariableHooks(VariableSpace space, const char *name,
 	current = pg_malloc(sizeof *current);
 	current->name = pg_strdup(name);
 	current->value = NULL;
-	/* Begin - ReqID:SRS-CMD-PSQL */
 	current->varkind = PSQL_SHELL_VAR;
 	current->typoid = 0;
 	current->typmod = -1;
-	/* End - ReqID:SRS-CMD-PSQL */
 	current->substitute_hook = shook;
 	current->assign_hook = ahook;
 	current->next = previous->next;
@@ -615,14 +599,12 @@ VariableHasHook(VariableSpace space, const char *name)
 
 	for (current = space->next; current; current = current->next)
 	{
-		/* Begin - ReqID:SRS-CMD-PSQL */
 		int			cmp;
 
 		if (current->varkind != PSQL_SHELL_VAR)
 			continue;
 
 		cmp = strcmp(current->name, name);
-		/* End - ReqID:SRS-CMD-PSQL */
 
 		if (cmp == 0)
 			return (current->substitute_hook != NULL ||
@@ -669,7 +651,6 @@ PsqlVarEnumError(const char *name, const char *value, const char *suggestions)
 				 value, name, suggestions);
 }
 
-/* Begin - ReqID:SRS-CMD-PSQL */
 /*
  * Set the bind variable named "name".
  *
@@ -997,7 +978,7 @@ ValidBindVariableName(const char *name)
 	
 	/* Must begin with a letter */
 	if (!IS_HIGHBIT_SET(*ptr) &&
-		strchr("ABCDEFGHIJKLMNOPQRSTUVWXYZ" "abcdefghijklmnopqrstuvwxyz", *ptr) == NULL)
+		!isalpha((unsigned char)*ptr))
 		return false;
 
 	while (*ptr)
@@ -1012,4 +993,3 @@ ValidBindVariableName(const char *name)
 
 	return true;
 }
-/* End - ReqID:SRS-CMD-PSQL */
