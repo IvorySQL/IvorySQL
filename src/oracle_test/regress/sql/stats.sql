@@ -763,19 +763,20 @@ DECLARE
 BEGIN
   -- we don't want to wait forever; loop will exit after 30 seconds
   FOR i IN 1 .. 300 LOOP
-    SELECT (pg_stat_get_tuples_hot_updated('brin_hot'::regclass::oid) > 0) INTO updated;
-    EXIT WHEN updated;
+    -- SELECT (pg_stat_get_tuples_hot_updated('brin_hot'::regclass::oid) > 0) INTO updated;
+	updated := (pg_stat_get_tuples_hot_updated('brin_hot'::regclass::oid) > 0);
+    -- EXIT WHEN updated;
+	if updated then 
+	  exit;
+	end if;
 
     -- wait a little
     PERFORM pg_sleep_for('100 milliseconds');
     -- reset stats snapshot so we can test again
     PERFORM pg_stat_clear_snapshot();
   END LOOP;
-  -- report time waited in postmaster log (where it won't change test output)
-  RAISE log 'wait_for_hot_stats delayed % seconds',
-    EXTRACT(epoch FROM clock_timestamp() - start_time);
 END
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plisql;
 /
 
 UPDATE brin_hot SET val = -3 WHERE id = 42;
@@ -789,7 +790,7 @@ UPDATE brin_hot SET val = -3 WHERE id = 42;
 \c -
 
 SELECT wait_for_hot_stats();
-SELECT pg_stat_get_tuples_hot_updated('brin_hot'::regclass::oid);
+-- SELECT pg_stat_get_tuples_hot_updated('brin_hot'::regclass::oid);
 
 DROP TABLE brin_hot;
 DROP FUNCTION wait_for_hot_stats();

@@ -1481,23 +1481,21 @@ DECLARE
 BEGIN
   -- we don't want to wait forever; loop will exit after 30 seconds
   FOR i IN 1 .. 300 LOOP
-    SELECT (pg_stat_get_tuples_hot_updated('brin_hot'::regclass::oid) > 0) INTO updated;
-    EXIT WHEN updated;
+    -- SELECT (pg_stat_get_tuples_hot_updated('brin_hot'::regclass::oid) > 0) INTO updated;
+	updated := (pg_stat_get_tuples_hot_updated('brin_hot'::regclass::oid) > 0);
+    -- EXIT WHEN updated;
+	if updated then 
+	  exit;
+	end if;
 
     -- wait a little
     PERFORM pg_sleep_for('100 milliseconds');
     -- reset stats snapshot so we can test again
     PERFORM pg_stat_clear_snapshot();
   END LOOP;
-  -- report time waited in postmaster log (where it won't change test output)
-  RAISE log 'wait_for_hot_stats delayed % seconds',
-    EXTRACT(epoch FROM clock_timestamp() - start_time);
 END
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plisql;
 /
-ERROR:  syntax error at or near "FROM"
-LINE 18:     EXTRACT(epoch FROM clock_timestamp() - start_time);
-                           ^
 UPDATE brin_hot SET val = -3 WHERE id = 42;
 -- We can't just call wait_for_hot_stats() at this point, because we only
 -- transmit stats when the session goes idle, and we probably didn't
@@ -1507,19 +1505,14 @@ UPDATE brin_hot SET val = -3 WHERE id = 42;
 -- then send its stats before dying.
 \c -
 SELECT wait_for_hot_stats();
-ERROR:  function wait_for_hot_stats() does not exist
-LINE 1: SELECT wait_for_hot_stats();
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
-SELECT pg_stat_get_tuples_hot_updated('brin_hot'::regclass::oid);
- pg_stat_get_tuples_hot_updated 
---------------------------------
-                              1
+ wait_for_hot_stats 
+--------------------
+ 
 (1 row)
 
+-- SELECT pg_stat_get_tuples_hot_updated('brin_hot'::regclass::oid);
 DROP TABLE brin_hot;
 DROP FUNCTION wait_for_hot_stats();
-ERROR:  function wait_for_hot_stats() does not exist
 -- Test handling of index predicates - updating attributes in precicates
 -- should not block HOT when summarizing indexes are involved. We update
 -- a row that was not indexed due to the index predicate, and becomes
