@@ -628,7 +628,6 @@ sub FindAllOidsFromHeaders
 		if (-e $datfile)
 		{
 			my $catdata =
-				Catalog::ParseData($datfile, $catalog->{columns}, 0);
 				Catalog::ParseData($datfile, $catalog->{columns}, 0, "oracle");
 
 			foreach my $row (@$catdata)

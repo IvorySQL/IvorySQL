@@ -142,14 +142,7 @@ static void addunicode(pg_wchar c, yyscan_t yyscanner);
 static void check_string_escape_warning(unsigned char ychar, ora_core_yyscan_t yyscanner);
 static void check_escape_warning(ora_core_yyscan_t yyscanner);
 
-/*
- * Work around a bug in flex 2.5.35: it emits a couple of functions that
- * it forgets to emit declarations for.  Since we use -Wmissing-prototypes,
- * this would cause warnings.  Providing our own declarations should be
- * harmless even when the bug gets fixed.
- */
-extern int	ora_core_yyget_column(yyscan_t yyscanner);
-extern void ora_core_yyset_column(int column_no, yyscan_t yyscanner);
+
 
 %}
 
