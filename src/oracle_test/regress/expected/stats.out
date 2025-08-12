@@ -1510,7 +1510,12 @@ SELECT wait_for_hot_stats();
  
 (1 row)
 
--- SELECT pg_stat_get_tuples_hot_updated('brin_hot'::regclass::oid);
+SELECT pg_stat_get_tuples_hot_updated('brin_hot'::regclass::oid);
+ pg_stat_get_tuples_hot_updated 
+--------------------------------
+                              1
+(1 row)
+
 DROP TABLE brin_hot;
 DROP FUNCTION wait_for_hot_stats();
 -- Test handling of index predicates - updating attributes in precicates

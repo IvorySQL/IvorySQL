@@ -790,7 +790,7 @@ UPDATE brin_hot SET val = -3 WHERE id = 42;
 \c -
 
 SELECT wait_for_hot_stats();
--- SELECT pg_stat_get_tuples_hot_updated('brin_hot'::regclass::oid);
+SELECT pg_stat_get_tuples_hot_updated('brin_hot'::regclass::oid);
 
 DROP TABLE brin_hot;
 DROP FUNCTION wait_for_hot_stats();
