@@ -630,11 +630,11 @@ lmerge_matched:
 
 				case CMD_DELETE:
 					rslot = IvyExecProcessReturning(context,
-													resultRelInfo,
-													CMD_DELETE,
-													resultRelInfo->ri_oldTupleSlot,
-													NULL,
-													context->planSlot);
+												resultRelInfo,
+												CMD_DELETE,
+												resultRelInfo->ri_oldTupleSlot,
+												NULL,
+												context->planSlot);
 
 					break;
 
