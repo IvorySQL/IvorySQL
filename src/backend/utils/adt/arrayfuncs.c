@@ -3426,7 +3426,7 @@ construct_array_builtin(Datum *elems, int nelems, Oid elmtype)
 
 		case FLOAT8OID:
 			elmlen = sizeof(float8);
-			elmbyval = FLOAT8PASSBYVAL;
+			elmbyval = true;
 			elmalign = TYPALIGN_DOUBLE;
 			break;
 
@@ -3444,7 +3444,7 @@ construct_array_builtin(Datum *elems, int nelems, Oid elmtype)
 
 		case INT8OID:
 			elmlen = sizeof(int64);
-			elmbyval = FLOAT8PASSBYVAL;
+			elmbyval = true;
 			elmalign = TYPALIGN_DOUBLE;
 			break;
 
@@ -3738,7 +3738,7 @@ deconstruct_array_builtin(ArrayType *array,
 
 		case FLOAT8OID:
 			elmlen = sizeof(float8);
-			elmbyval = FLOAT8PASSBYVAL;
+			elmbyval = true;
 			elmalign = TYPALIGN_DOUBLE;
 			break;
 
