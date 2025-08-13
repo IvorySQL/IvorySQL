@@ -1,7 +1,3 @@
--- sanity check of system catalog
-SELECT attrelid, attname, attgenerated FROM pg_attribute WHERE attgenerated NOT IN ('', 's');
-
-
 CREATE SCHEMA generated_stored_tests;
 GRANT USAGE ON SCHEMA generated_stored_tests TO PUBLIC;
 SET search_path = generated_stored_tests;
@@ -60,6 +56,8 @@ INSERT INTO gtest1 VALUES (3, 33), (4, DEFAULT);  -- error
 INSERT INTO gtest1 VALUES (3, DEFAULT), (4, DEFAULT);  -- ok
 
 SELECT * FROM gtest1 ORDER BY a;
+SELECT gtest1 FROM gtest1 ORDER BY a;  -- whole-row reference
+SELECT a, (SELECT gtest1.b) FROM gtest1 ORDER BY a;  -- sublink
 DELETE FROM gtest1 WHERE a >= 3;
 
 UPDATE gtest1 SET b = DEFAULT WHERE a = 1;
@@ -83,7 +81,7 @@ DROP TABLE gtestx;
 
 -- test UPDATE/DELETE quals
 SELECT * FROM gtest1 ORDER BY a;
-UPDATE gtest1 SET a = 3 WHERE b = 4;
+UPDATE gtest1 SET a = 3 WHERE b = 4 RETURNING old.*, new.*;
 SELECT * FROM gtest1 ORDER BY a;
 DELETE FROM gtest1 WHERE b = 2;
 SELECT * FROM gtest1 ORDER BY a;
@@ -99,9 +97,11 @@ CREATE TABLE gtestm (
 INSERT INTO gtestm VALUES (1, 5, 100);
 MERGE INTO gtestm t USING (VALUES (1, 10), (2, 20)) v(id, f1) ON t.id = v.id
   WHEN MATCHED THEN UPDATE SET f1 = v.f1
-  WHEN NOT MATCHED THEN INSERT VALUES (v.id, v.f1, 200);
+  WHEN NOT MATCHED THEN INSERT VALUES (v.id, v.f1, 200)
+  RETURNING merge_action(), old.*, new.*;
 SELECT * FROM gtestm ORDER BY id;
 DROP TABLE gtestm;
+
 
 -- views
 CREATE VIEW gtest1v AS SELECT * FROM gtest1;
@@ -144,6 +144,9 @@ CREATE TABLE gtestx (x int, b int DEFAULT 10) INHERITS (gtest1);  -- error
 CREATE TABLE gtestx (x int, b int GENERATED ALWAYS AS IDENTITY) INHERITS (gtest1);  -- error
 CREATE TABLE gtestx (x int, b int GENERATED ALWAYS AS (a * 22) STORED) INHERITS (gtest1);  -- ok, overrides parent
 \d+ gtestx
+INSERT INTO gtestx (a, x) VALUES (11, 22);
+SELECT * FROM gtest1;
+SELECT * FROM gtestx;
 
 CREATE TABLE gtestxx_1 (a int NOT NULL, b int);
 ALTER TABLE gtestxx_1 INHERIT gtest1;  -- error
@@ -269,27 +272,28 @@ INSERT INTO gtest10a (a) VALUES (1);
 -- privileges
 CREATE USER regress_user11;
 
-CREATE TABLE gtest11s (a int PRIMARY KEY, b int, c int GENERATED ALWAYS AS (b * 2) STORED);
-INSERT INTO gtest11s VALUES (1, 10), (2, 20);
-GRANT SELECT (a, c) ON gtest11s TO regress_user11;
+CREATE TABLE gtest11 (a int PRIMARY KEY, b int, c int GENERATED ALWAYS AS (b * 2) STORED);
+INSERT INTO gtest11 VALUES (1, 10), (2, 20);
+GRANT SELECT (a, c) ON gtest11 TO regress_user11;
 
 CREATE FUNCTION gf1(a int) RETURNS int AS $$ SELECT a * 3 $$ IMMUTABLE LANGUAGE SQL;
 /
 REVOKE ALL ON FUNCTION gf1(int) FROM PUBLIC;
 
-CREATE TABLE gtest12s (a int PRIMARY KEY, b int, c int GENERATED ALWAYS AS (gf1(b)) STORED);
-INSERT INTO gtest12s VALUES (1, 10), (2, 20);
-GRANT SELECT (a, c) ON gtest12s TO regress_user11;
+CREATE TABLE gtest12 (a int PRIMARY KEY, b int, c int GENERATED ALWAYS AS (gf1(b)) STORED);
+INSERT INTO gtest12 VALUES (1, 10), (2, 20);
+GRANT SELECT (a, c), INSERT ON gtest12 TO regress_user11;
 
 SET ROLE regress_user11;
-SELECT a, b FROM gtest11s;  -- not allowed
-SELECT a, c FROM gtest11s;  -- allowed
+SELECT a, b FROM gtest11;  -- not allowed
+SELECT a, c FROM gtest11;  -- allowed
 SELECT gf1(10);  -- not allowed
-SELECT a, c FROM gtest12s;  -- allowed
+INSERT INTO gtest12 VALUES (3, 30), (4, 40);  -- currently not allowed because of function permissions, should arguably be allowed
+SELECT a, c FROM gtest12;  -- allowed (does not actually invoke the function)
 RESET ROLE;
 
 DROP FUNCTION gf1(int);  -- fail
-DROP TABLE gtest11s, gtest12s;
+DROP TABLE gtest11, gtest12;
 DROP FUNCTION gf1(int);
 DROP USER regress_user11;
 
@@ -311,6 +315,12 @@ INSERT INTO gtest20b (a) VALUES (10);
 INSERT INTO gtest20b (a) VALUES (30);
 ALTER TABLE gtest20b ADD CONSTRAINT chk CHECK (b < 50) NOT VALID;
 ALTER TABLE gtest20b VALIDATE CONSTRAINT chk;  -- fails on existing row
+
+-- check with whole-row reference
+CREATE TABLE gtest20c (a int, b int GENERATED ALWAYS AS (a * 2) STORED);
+ALTER TABLE gtest20c ADD CONSTRAINT whole_row_check CHECK (gtest20c IS NOT NULL);
+INSERT INTO gtest20c VALUES (1);  -- ok
+INSERT INTO gtest20c VALUES (NULL);  -- fails
 
 -- not-null constraints
 CREATE TABLE gtest21a (a int PRIMARY KEY, b int GENERATED ALWAYS AS (nullif(a, 0)) STORED NOT NULL);
@@ -391,6 +401,10 @@ CREATE DOMAIN gtestdomain1 AS int CHECK (VALUE < 10);
 CREATE TABLE gtest24 (a int PRIMARY KEY, b gtestdomain1 GENERATED ALWAYS AS (a * 2) STORED);
 INSERT INTO gtest24 (a) VALUES (4);  -- ok
 INSERT INTO gtest24 (a) VALUES (6);  -- error
+CREATE TYPE gtestdomain1range AS range (subtype = gtestdomain1);
+CREATE TABLE gtest24r (a int PRIMARY KEY, b gtestdomain1range GENERATED ALWAYS AS (gtestdomain1range(a, a + 5)) STORED);
+INSERT INTO gtest24r (a) VALUES (4);  -- ok
+INSERT INTO gtest24r (a) VALUES (6);  -- error
 
 -- typed tables (currently not supported)
 CREATE TYPE gtest_type AS (f1 integer, f2 text, f3 bigint);
@@ -436,6 +450,9 @@ INSERT INTO gtest_parent (f1, f2) VALUES ('2016-07-15', 1);
 INSERT INTO gtest_parent (f1, f2) VALUES ('2016-07-15', 2);
 INSERT INTO gtest_parent (f1, f2) VALUES ('2016-08-15', 3);
 SELECT tableoid::regclass, * FROM gtest_parent ORDER BY 1, 2, 3;
+SELECT tableoid::regclass, * FROM gtest_child ORDER BY 1, 2, 3;
+SELECT tableoid::regclass, * FROM gtest_child2 ORDER BY 1, 2, 3;
+SELECT tableoid::regclass, * FROM gtest_child3 ORDER BY 1, 2, 3;
 UPDATE gtest_parent SET f1 = f1 + 60 WHERE f2 = 1;
 SELECT tableoid::regclass, * FROM gtest_parent ORDER BY 1, 2, 3;
 
@@ -550,6 +567,18 @@ ALTER TABLE ONLY gtest30 ALTER COLUMN b DROP EXPRESSION;  -- error
 \d gtest30_1
 ALTER TABLE gtest30_1 ALTER COLUMN b DROP EXPRESSION;  -- error
 
+-- composite type dependencies
+CREATE TABLE gtest31_1 (a int, b text GENERATED ALWAYS AS ('hello') STORED, c text);
+CREATE TABLE gtest31_2 (x int, y gtest31_1);
+ALTER TABLE gtest31_1 ALTER COLUMN b TYPE varchar;  -- fails
+DROP TABLE gtest31_1, gtest31_2;
+
+-- Check it for a partitioned table, too
+CREATE TABLE gtest31_1 (a int, b text GENERATED ALWAYS AS ('hello') STORED, c text) PARTITION BY LIST (a);
+CREATE TABLE gtest31_2 (x int, y gtest31_1);
+ALTER TABLE gtest31_1 ALTER COLUMN b TYPE varchar;  -- fails
+DROP TABLE gtest31_1, gtest31_2;
+
 -- triggers
 CREATE TABLE gtest26 (
     a int PRIMARY KEY,
@@ -650,20 +679,21 @@ END;
 $$;
 /
 
-CREATE TRIGGER gtest12_01 BEFORE UPDATE ON gtest26
+CREATE TRIGGER gtest12_01 BEFORE INSERT OR UPDATE ON gtest26
   FOR EACH ROW
   EXECUTE PROCEDURE gtest_trigger_func();
 
-CREATE TRIGGER gtest12_02 BEFORE UPDATE ON gtest26
+CREATE TRIGGER gtest12_02 BEFORE INSERT OR UPDATE ON gtest26
   FOR EACH ROW
   EXECUTE PROCEDURE gtest_trigger_func4();
 
-CREATE TRIGGER gtest12_03 BEFORE UPDATE ON gtest26
+CREATE TRIGGER gtest12_03 BEFORE INSERT OR UPDATE ON gtest26
   FOR EACH ROW
   EXECUTE PROCEDURE gtest_trigger_func();
 
 INSERT INTO gtest26 (a) VALUES (1);
-UPDATE gtest26 SET a = 11 WHERE a = 1;
+SELECT * FROM gtest26 ORDER BY a;
+UPDATE gtest26 SET a = 11 WHERE a = 10;
 SELECT * FROM gtest26 ORDER BY a;
 
 -- LIKE INCLUDING GENERATED and dropped column handling
@@ -679,3 +709,7 @@ ALTER TABLE gtest28a DROP COLUMN a;
 CREATE TABLE gtest28b (LIKE gtest28a INCLUDING GENERATED);
 
 \d gtest28*
+
+
+-- sanity check of system catalog
+SELECT attrelid, attname, attgenerated FROM pg_attribute WHERE attgenerated NOT IN ('', 's');

@@ -38,21 +38,6 @@
 #include "utils/rel.h"
 
 /*
- * It's not supported to create tuples with oids anymore, but when pg_upgrade
- * was used to upgrade from an older version, tuples might still have an
- * oid. Seems worthwhile to display that.
- */
-static inline Oid
-HeapTupleHeaderGetOidOld(const HeapTupleHeaderData *tup)
-{
-	if (tup->t_infomask & HEAP_HASOID_OLD)
-		return *((Oid *) ((char *) (tup) + (tup)->t_hoff - sizeof(Oid)));
-	else
-		return InvalidOid;
-}
-
-
-/*
  * bits_to_text
  *
  * Converts a bits8-array of 'len' bits to a human-readable

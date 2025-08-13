@@ -72,17 +72,11 @@ if ($ENV{with_icu} eq 'yes')
 
 	$node->command_fails_like(
 		[
-<<<<<<< HEAD
-			'createdb',             '-T',
-			'template0',            '--locale-provider=icu',
-			'--encoding=SQL_ASCII', 'foobarX'
-=======
 			'createdb',
 			'--template' => 'template0',
 			'--locale-provider' => 'icu',
 			'--encoding' => 'SQL_ASCII',
 			'foobarX',
->>>>>>> ce1b0f9da03 (Improve grammar of options for command arrays in TAP tests)
 		],
 		qr/ERROR:  encoding "SQL_ASCII" is not supported with ICU provider/,
 		'fails for encoding not supported by ICU');
@@ -93,15 +87,6 @@ if ($ENV{with_icu} eq 'yes')
 	$node2->start;
 
 	$node2->command_ok(
-<<<<<<< HEAD
-		[ 'createdb', '-T', 'template0', '--locale-provider=libc', 'foobar55' ],
-		'create database with libc provider from template database with icu provider');
-
-	$node2->command_ok(
-		[ 'createdb', '-T', 'template0', '--icu-locale', 'en-US', 'foobar56' ],
-		'create database with icu locale from template database with icu provider');
-	
-=======
 		[
 			'createdb',
 			'--template' => 'template0',
@@ -121,7 +106,6 @@ if ($ENV{with_icu} eq 'yes')
 		'create database with icu locale from template database with icu provider'
 	);
 
->>>>>>> ce1b0f9da03 (Improve grammar of options for command arrays in TAP tests)
 	$node2->command_ok(
 		[
 			'createdb',
