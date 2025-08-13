@@ -205,6 +205,7 @@ select '[{"b": "c"}, {"b": "cc"}]'::jsonb -> 'z';
 select '{"a": "c", "b": null}'::jsonb -> 'b';
 select '"foo"'::jsonb -> 1;
 select '"foo"'::jsonb -> 'z';
+select '[]'::jsonb -> -2147483648;
 
 select '{"a": [{"b": "c"}, {"b": "cc"}]}'::jsonb ->> null::text;
 select '{"a": [{"b": "c"}, {"b": "cc"}]}'::jsonb ->> null::int;
@@ -217,6 +218,7 @@ select '[{"b": "c"}, {"b": "cc"}]'::jsonb ->> 'z';
 select '{"a": "c", "b": null}'::jsonb ->> 'b';
 select '"foo"'::jsonb ->> 1;
 select '"foo"'::jsonb ->> 'z';
+select '[]'::jsonb ->> -2147483648;
 
 -- equality and inequality
 SELECT '{"x":"y"}'::jsonb = '{"x":"y"}'::jsonb;
@@ -1186,6 +1188,7 @@ select jsonb_set('{"n":null, "a":1, "b":[1,2], "c":{"1":2}, "d":{"1":[2,3]}}'::j
 select jsonb_delete_path('{"n":null, "a":1, "b":[1,2], "c":{"1":2}, "d":{"1":[2,3]}}', '{n}');
 select jsonb_delete_path('{"n":null, "a":1, "b":[1,2], "c":{"1":2}, "d":{"1":[2,3]}}', '{b,-1}');
 select jsonb_delete_path('{"n":null, "a":1, "b":[1,2], "c":{"1":2}, "d":{"1":[2,3]}}', '{d,1,0}');
+select jsonb_delete_path('{"a":[]}', '{"a",-2147483648}');
 
 select '{"n":null, "a":1, "b":[1,2], "c":{"1":2}, "d":{"1":[2,3]}}'::jsonb #- '{n}';
 select '{"n":null, "a":1, "b":[1,2], "c":{"1":2}, "d":{"1":[2,3]}}'::jsonb #- '{b,-1}';
@@ -1310,11 +1313,11 @@ select ('{"a": ["a1", {"b1": ["aaa", "bbb", "ccc"]}], "b": "bb"}'::jsonb)['a'][1
 select ('{"a": ["a1", {"b1": ["aaa", "bbb", "ccc"]}], "b": "bb"}'::jsonb)['a'][1]['b1'][2];
 
 -- slices are not supported
-select ('{"a": 1}'::jsonb)['a'..'b'];
-select ('[1, "2", null]'::jsonb)[1..2];
-select ('[1, "2", null]'::jsonb)[..2];
-select ('[1, "2", null]'::jsonb)[1..];
-select ('[1, "2", null]'::jsonb)[..];
+select ('{"a": 1}'::jsonb)['a':'b'];
+select ('[1, "2", null]'::jsonb)[1:2];
+select ('[1, "2", null]'::jsonb)[:2];
+select ('[1, "2", null]'::jsonb)[1:];
+select ('[1, "2", null]'::jsonb)[:];
 
 create TEMP TABLE test_jsonb_subscript (
        id int,
@@ -1538,12 +1541,25 @@ select ts_headline('[]'::jsonb, tsquery('aaa & bbb'));
 
 -- casts
 select 'true'::jsonb::bool;
+select 'null'::jsonb::bool;
 select '[]'::jsonb::bool;
 select '1.0'::jsonb::float;
+select 'null'::jsonb::float;
 select '[1.0]'::jsonb::float;
+select '1.0'::jsonb::float4;
+select 'null'::jsonb::float4;
+select '[1.0]'::jsonb::float4;
+select '12345'::jsonb::int2;
+select 'null'::jsonb::int2;
+select '"hello"'::jsonb::int2;
 select '12345'::jsonb::int4;
+select 'null'::jsonb::int4;
 select '"hello"'::jsonb::int4;
+select '12345'::jsonb::int8;
+select 'null'::jsonb::int8;
+select '"hello"'::jsonb::int8;
 select '12345'::jsonb::numeric;
+select 'null'::jsonb::numeric;
 select '{}'::jsonb::numeric;
 select '12345.05'::jsonb::numeric;
 select '12345.05'::jsonb::float4;

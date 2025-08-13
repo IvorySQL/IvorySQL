@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2024, PostgreSQL Global Development Group
+# Copyright (c) 2023-2025, PostgreSQL Global Development Group
 
 # logical decoding on standby : test logical decoding,
 # recovery conflict and standby promotion.
@@ -508,12 +508,14 @@ check_slots_conflict_reason('vacuum_full_', 'rows_removed');
 
 # Attempting to alter an invalidated slot should result in an error
 ($result, $stdout, $stderr) = $node_standby->psql(
-    'postgres',
-    qq[ALTER_REPLICATION_SLOT vacuum_full_inactiveslot (failover);],
-    replication => 'database');
-ok($stderr =~ /ERROR:  cannot alter invalid replication slot "vacuum_full_inactiveslot"/ &&
-   $stderr =~ /DETAIL:  This replication slot has been invalidated due to "rows_removed"./,
-    "invalidated slot cannot be altered");
+	'postgres',
+	qq[ALTER_REPLICATION_SLOT vacuum_full_inactiveslot (failover);],
+	replication => 'database');
+ok( $stderr =~
+	  /ERROR:  cannot alter invalid replication slot "vacuum_full_inactiveslot"/
+	  && $stderr =~
+	  /DETAIL:  This replication slot has been invalidated due to "rows_removed"./,
+	"invalidated slot cannot be altered");
 
 # Ensure that replication slot stats are not removed after invalidation.
 is( $node_standby->safe_psql(
