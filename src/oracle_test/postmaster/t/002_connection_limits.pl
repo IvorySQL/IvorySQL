@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2024, PostgreSQL Global Development Group
+# Copyright (c) 2021-2025, PostgreSQL Global Development Group
 
 # Test connection limits, i.e. max_connections, reserved_connections
 # and superuser_reserved_connections.
@@ -89,7 +89,7 @@ SKIP:
 		# postmaster cannot accept() them fast enough. The exact limit
 		# and behavior depends on the platform. To make this reliable,
 		# we attempt SSL negotiation on each connection before opening
-		# next one. The server will reject the SSL negotations, but
+		# next one. The server will reject the SSL negotiations, but
 		# when it does so, we know that the backend has been launched
 		# and we should be able to open another connection.
 
