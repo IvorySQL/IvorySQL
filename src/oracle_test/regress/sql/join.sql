@@ -3051,4 +3051,21 @@ SELECT 1 FROM group_tbl t1
 GROUP BY s.c1, s.c2;
 
 DROP TABLE group_tbl;
+
+--
+-- Test for a nested loop join involving index scan, transforming OR-clauses
+-- to SAOP.
+--
+
+EXPLAIN (COSTS OFF)
+SELECT COUNT(*) FROM tenk1 t1, tenk1 t2
+WHERE t2.thousand = t1.tenthous OR t2.thousand = t1.unique1 OR t2.thousand = t1.unique2;
+SELECT COUNT(*) FROM tenk1 t1, tenk1 t2
+WHERE t2.thousand = t1.tenthous OR t2.thousand = t1.unique1 OR t2.thousand = t1.unique2;
+
+EXPLAIN (COSTS OFF)
+SELECT COUNT(*) FROM onek t1 LEFT JOIN tenk1 t2
+    ON (t2.thousand = t1.tenthous OR t2.thousand = t1.thousand);
+SELECT COUNT(*) FROM onek t1 LEFT JOIN tenk1 t2
+    ON (t2.thousand = t1.tenthous OR t2.thousand = t1.thousand);
 reset ivorysql.enable_emptystring_to_null;

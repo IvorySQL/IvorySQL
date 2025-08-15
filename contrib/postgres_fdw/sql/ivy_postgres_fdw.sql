@@ -1873,13 +1873,16 @@ select * from rem1;
 -- test generated columns
 -- ===================================================================
 create table gloc1 (
-  a number(38,0),
-  b number(38,0) generated always as (a * 2) stored);
+  a int,
+  b int generated always as (a * 2) stored,
+  c int
+);
 alter table gloc1 set (autovacuum_enabled = 'false');
 create foreign table grem1 (
-  a number(38,0),
-  b number(38,0) generated always as (a * 2) stored)
-  server loopback options(table_name 'gloc1');
+  a int,
+  b int generated always as (a * 2) stored,
+  c int generated always as (a * 3) virtual
+) server loopback options(table_name 'gloc1');
 explain (verbose, costs off)
 insert into grem1 (a) values (1), (2);
 insert into grem1 (a) values (1), (2);

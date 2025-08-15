@@ -81,7 +81,7 @@ test: brin_bloom brin_multi
 # psql depends on create_am
 # amutils depends on geometry, create_index_spgist, hash_index, brin
 # ----------
-test: create_table_like alter_generic alter_operator misc async dbsize misc_functions sysviews tsrf tid tidscan tidrangescan collate.utf8 collate.icu.utf8 incremental_sort create_role
+test: create_table_like alter_generic alter_operator misc async dbsize misc_functions sysviews tsrf tid tidscan tidrangescan collate.utf8 collate.icu.utf8 incremental_sort create_role generated_virtual
 
 # rules cannot run concurrently with any test that creates
 # a view or rule in the public schema
