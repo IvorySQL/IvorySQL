@@ -8,7 +8,7 @@ subdir =
 top_builddir = .
 include $(top_builddir)/src/Makefile.global
 
-$(call recurse,all install,src config contrib/ivorysql_ora contrib/ora_btree_gist contrib/ora_btree_gin)
+$(call recurse,all install,src config contrib/ivorysql_ora contrib/uuid-ossp contrib/ora_btree_gist contrib/ora_btree_gin)
 
 docs:
 	$(MAKE) -C doc all
@@ -45,7 +45,7 @@ $(call recurse,coverage,doc src config contrib)
 
 # clean, distclean, etc should apply to contrib too, even though
 # it's not built by default
-$(call recurse,clean,doc contrib contrib/ivorysql_ora contrib/ora_btree_gist contrib/ora_btree_gin src config)
+$(call recurse,clean,doc contrib contrib/ivorysql_ora contrib/uuid-ossp contrib/ora_btree_gist contrib/ora_btree_gin src config)
 clean:
 	rm -rf tmp_install/ portlock/
 # Garbage from autoconf:
@@ -95,7 +95,7 @@ GNUmakefile: GNUmakefile.in $(top_builddir)/config.status
 
 $(call recurse,oracle-pg-check-world,src/test,oracle-pg-check)
 #add oracle regression
-$(call recurse,oracle-check-world,src/oracle_test src/pl src/interfaces/ecpg src/interfaces/libpq/ivytest contrib contrib/ivorysql_ora contrib/ora_btree_gist contrib/ora_btree_gin src/bin,oracle-check)
+$(call recurse,oracle-check-world,src/oracle_test src/pl src/interfaces/ecpg src/interfaces/libpq/ivytest contrib contrib/ivorysql_ora contrib/uuid-ossp contrib/ora_btree_gist contrib/ora_btree_gin src/bin,oracle-check)
 $(call recurse,oracle-checkprep,  src/oracle_test src/pl src/interfaces/ecpg contrib src/bin)
 
 $(call recurse,oracle-installcheck-world,src/oracle_test src/pl src/interfaces/ecpg contrib src/bin,oracle-installcheck)
