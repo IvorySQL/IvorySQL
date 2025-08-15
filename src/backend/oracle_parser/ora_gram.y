@@ -645,7 +645,7 @@ static void determineLanguage(List *options);
 %type <str>		opt_existing_window_name
 %type <boolean> opt_if_not_exists
 %type <boolean> opt_unique_null_treatment
-%type <ival>	generated_when override_kind
+%type <ival>	generated_when override_kind opt_virtual_or_stored
 %type <partspec>	PartitionSpec OptPartitionSpec
 %type <partelem>	part_elem
 %type <list>		part_params
@@ -806,7 +806,7 @@ static void determineLanguage(List *options);
 	UNLISTEN UNLOGGED UNTIL UPDATE UPDATEXML USER USERENV USING
 
 	VACUUM VALID VALIDATE VALIDATOR VALUE_P VALUES VARCHAR VARCHAR2 VARIADIC VARYING
-	VERBOSE VERSION_P VIEW VIEWS VISIBLE VOLATILE
+	VERBOSE VERSION_P VIEW VIEWS VIRTUAL VISIBLE VOLATILE
 
 	WHEN WHERE WHITESPACE_P WINDOW WITH WITHIN WITHOUT WORK WRAPPER WRITE
 
@@ -4251,7 +4251,7 @@ ColConstraintElem:
 					n->location = @1;
 					$$ = (Node *) n;
 				}
-			| GENERATED generated_when AS '(' a_expr ')' STORED
+			| GENERATED generated_when AS '(' a_expr ')' opt_virtual_or_stored
 				{
 					Constraint *n = makeNode(Constraint);
 
@@ -4259,6 +4259,7 @@ ColConstraintElem:
 					n->generated_when = $2;
 					n->raw_expr = $5;
 					n->cooked_expr = NULL;
+					n->generated_kind = $7;
 					n->location = @1;
 
 					/*
@@ -4307,6 +4308,12 @@ generated_when:
 			/* ... GENERATED ALWAYS BY DEFAULT [ON NULL] */
 			| BY DEFAULT ON NULL_P	{ $$ = ATTRIBUTE_IDENTITY_DEFAULT_ON_NULL; }
 			|				{ $$ = ATTRIBUTE_IDENTITY_ALWAYS; }
+		;
+
+opt_virtual_or_stored:
+			STORED			{ $$ = ATTRIBUTE_GENERATED_STORED; }
+			| VIRTUAL		{ $$ = ATTRIBUTE_GENERATED_VIRTUAL; }
+			| /*EMPTY*/		{ $$ = ATTRIBUTE_GENERATED_VIRTUAL; }
 		;
 
 /*
@@ -20302,6 +20309,7 @@ unreserved_keyword:
 			| VERSION_P
 			| VIEW
 			| VIEWS
+			| VIRTUAL
 			| VISIBLE
 			| VOLATILE
 			| WHITESPACE_P
@@ -21042,6 +21050,7 @@ bare_label_keyword:
 			| VERSION_P
 			| VIEW
 			| VIEWS
+			| VIRTUAL
 			| VISIBLE
 			| VOLATILE
 			| WHEN
