@@ -1373,6 +1373,11 @@ explain (costs off) execute update_part_abc_view (1, 'd');
 execute update_part_abc_view (1, 'd');
 explain (costs off) execute update_part_abc_view (2, 'a');
 execute update_part_abc_view (2, 'a');
+-- All pruned.
+explain (costs off) execute update_part_abc_view (3, 'a');
+execute update_part_abc_view (3, 'a');
 deallocate update_part_abc_view;
+
+
 drop view part_abc_view;
 drop table part_abc;
