@@ -4556,6 +4556,20 @@ explain (costs off) execute update_part_abc_view (2, 'a');
 execute update_part_abc_view (2, 'a');
 ERROR:  new row violates check option for view "part_abc_view"
 DETAIL:  Failing row contains (2, a, t).
+-- All pruned.
+explain (costs off) execute update_part_abc_view (3, 'a');
+         QUERY PLAN          
+-----------------------------
+ Update on part_abc
+   ->  Append
+         Subplans Removed: 2
+(3 rows)
+
+execute update_part_abc_view (3, 'a');
+ a | b | c 
+---+---+---
+(0 rows)
+
 deallocate update_part_abc_view;
 drop view part_abc_view;
 drop table part_abc;
