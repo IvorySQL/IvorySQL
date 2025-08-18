@@ -20,6 +20,7 @@ SUBDIRS = \
 		  test_ddl_deparse \
 		  test_dsa \
 		  test_dsm_registry \
+		  test_escape \
 		  test_extensions \
 		  test_ginpostinglist \
 		  test_integerset \
