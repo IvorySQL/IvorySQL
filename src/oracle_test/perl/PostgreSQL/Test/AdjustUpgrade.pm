@@ -294,6 +294,11 @@ sub adjust_old_dumpfile
 	# Version comments will certainly not match.
 	$dump =~ s/^-- Dumped from database version.*\n//mg;
 
+	# Same with version argument to pg_restore_relation_stats() or
+	# pg_restore_attribute_stats().
+	$dump =~ s ['version', '\d+'::integer,]
+		['version', '000000'::integer,]mg;
+
 	if ($old_version < 16)
 	{
 		# Fix up some view queries that no longer require table-qualification.
@@ -534,7 +539,6 @@ sub _mash_view_qualifiers
 		{
 			my @thischunks = split /;/, $chunk, 2;
 			my $stmt = shift(@thischunks);
-			my $ostmt = $stmt;
 
 			# now $stmt is just the body of the CREATE [MATERIALIZED] VIEW
 			$stmt =~ s/$qualifier\.//g;
@@ -626,6 +630,11 @@ sub adjust_new_dumpfile
 
 	# Version comments will certainly not match.
 	$dump =~ s/^-- Dumped from database version.*\n//mg;
+
+	# Same with version argument to pg_restore_relation_stats() or
+	# pg_restore_attribute_stats().
+	$dump =~ s ['version', '\d+'::integer,]
+		['version', '000000'::integer,]mg;
 
 	if ($old_version < 14)
 	{
