@@ -6897,7 +6897,7 @@ getPackages(Archive *fout, int *numPkgs)
 }
 
 
- * getRelationStatistics
+ /* getRelationStatistics
  *    register the statistics object as a dependent of the relation.
  *
  */
