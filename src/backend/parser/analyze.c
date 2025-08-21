@@ -91,6 +91,9 @@ static void transformLockingClause(ParseState *pstate, Query *qry,
 static bool test_raw_expression_coverage(Node *node, void *context);
 #endif
 
+static List *transformUpdateRowTargetList(ParseState *pstate, List *origTlist);
+static List *transformIvyUpdateTargetList(ParseState *pstate, List *origTlist);
+
 
 /*
  * parse_analyze_fixedparams
@@ -917,18 +920,48 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 		 * works just like a SELECT without any FROM.
 		 */
 		List	   *valuesLists = selectStmt->valuesLists;
+		int			nattrs;
+		int			nvalues;
 
 		Assert(list_length(valuesLists) == 1);
 		Assert(selectStmt->intoClause == NULL);
 
-		/*
-		 * Do basic expression transformation (same as a ROW() expr, but allow
-		 * SetToDefault at top level)
-		 */
-		exprList = transformExpressionList(pstate,
-										   (List *) linitial(valuesLists),
-										   EXPR_KIND_VALUES_SINGLE,
-										   true);
+		if (selectStmt->valuesIsrow == true)
+		{
+			/*
+			 * Transform the row variable into its fields form.
+			 * For example: INSERT INTO tablename VALUES row_variable; 
+			 * convert it to the equivalent statement: 
+			 * INSERT INTO tablename VALUES (row_variable.field1,...,row_variable.fieldN);
+			 */
+			exprList = transformRowExpression(pstate,
+							  (List *) linitial(valuesLists),
+							  EXPR_KIND_VALUES_SINGLE,
+							  true);
+
+			nattrs = list_length(icolumns);
+			nvalues = list_length(exprList);
+
+			if (nattrs > nvalues)
+			{
+				elog(ERROR, "no enough values");
+			}
+			else if (nattrs < nvalues)
+			{
+				elog(ERROR, "too many values");
+			}
+		}
+		else
+		{
+			/*
+			 * Do basic expression transformation (same as a ROW() expr, but allow
+			 * SetToDefault at top level)
+			 */
+			exprList = transformExpressionList(pstate,
+							   (List *) linitial(valuesLists),
+							   EXPR_KIND_VALUES_SINGLE,
+							   true);
+		}
 
 		/* Prepare row for assignment to target table */
 		exprList = transformInsertRow(pstate, exprList,
@@ -2475,11 +2508,18 @@ transformUpdateStmt(ParseState *pstate, UpdateStmt *stmt)
 		}
 	}
 
-	/*
-	 * Now we are done with SELECT-like processing, and can get on with
-	 * transforming the target list to match the UPDATE target columns.
-	 */
-	qry->targetList = transformUpdateTargetList(pstate, stmt->targetList);
+	if (DB_ORACLE == compatible_db)
+	{
+		qry->targetList = transformIvyUpdateTargetList(pstate, stmt->targetList);
+	}
+	else
+	{
+		/*
+		 * Now we are done with SELECT-like processing, and can get on with
+		 * transforming the target list to match the UPDATE target columns.
+		 */
+		qry->targetList = transformUpdateTargetList(pstate, stmt->targetList);
+	}
 
 	qry->rtable = pstate->p_rtable;
 	qry->rteperminfos = pstate->p_rteperminfos;
@@ -3693,3 +3733,197 @@ test_raw_expression_coverage(Node *node, void *context)
 }
 
 #endif							/* RAW_EXPRESSION_COVERAGE_TEST */
+
+/*
+ * transformUpdateRowTargetList
+ * Statement: UPDATE tablename SET ROW = value,.. colN = value..[WHERE ..] STATEMENT
+ */
+static List *
+transformUpdateRowTargetList(ParseState *pstate, List *origTlist)
+{
+	List	   *tlist = NIL;
+	RTEPermissionInfo *target_perminfo = NULL;
+	ListCell   *tl;
+	int	nattrs;
+	int	nvalues;
+	int	attrno;
+	int	location;
+	ResTarget  *origTarget;
+
+	nvalues = list_length(origTlist);
+	origTarget = (ResTarget *) linitial(origTlist);
+	location = ((ResTarget *)lfirst_node(ResTarget, list_head(origTlist)))->location;
+
+	/*
+	 * some checkings 
+	 */
+	 if (nvalues != 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("too many values"),
+				 parser_errposition(pstate,
+							location)));
+
+	if (nodeTag(origTarget->val) == T_FuncCall ||
+		nodeTag(origTarget->val) == T_OraParamRef ||
+		nodeTag(origTarget->val) == T_ParamRef)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("unsupported target"),
+				 parser_errposition(pstate,
+							location)));
+
+	/* Transform the target list */
+	tlist = transformRowTargetList(pstate, origTlist,
+					EXPR_KIND_UPDATE_SOURCE);
+
+	location = ((ResTarget *)lfirst_node(ResTarget, list_head(origTlist)))->location;
+
+	nattrs = RelationGetNumberOfAttributes(pstate->p_target_relation);
+	nvalues = list_length(tlist);
+
+	if (nattrs > nvalues)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("no enough values"),
+				 parser_errposition(pstate,
+							location)));
+
+	else if (nattrs < nvalues)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("too many values"),
+				 parser_errposition(pstate,
+							location)));
+
+	if (pstate->p_next_resno <= RelationGetNumberOfAttributes(pstate->p_target_relation))
+		pstate->p_next_resno = RelationGetNumberOfAttributes(pstate->p_target_relation) + 1;
+
+	target_perminfo = pstate->p_target_nsitem->p_perminfo;
+
+	attrno = 0;
+	foreach(tl, tlist)
+	{
+		TargetEntry *tle = (TargetEntry *) lfirst(tl);
+		Form_pg_attribute att;
+
+		att = TupleDescAttr(pstate->p_target_relation->rd_att, attrno);
+		updateTargetListEntry(pstate, tle, NameStr(att->attname),
+					  attrno + 1,
+					  NIL,
+					  location);
+
+		/* Mark the target column as requiring update permissions */
+		target_perminfo->updatedCols = bms_add_member(target_perminfo->updatedCols, attrno - FirstLowInvalidHeapAttributeNumber);
+
+		attrno++;
+
+	}
+
+	return tlist;
+}
+
+/*
+ *  transformIvyUpdateTargetList
+ *  process SET clause of UPDATE STATEENT.
+ *  the difference between transformUpdateTargetList and transformIvyUpdateTargetList is:
+ *  transformIvyUpdateTargetList supports UPDATE tablename SET ROW = record_var[WHERE ..] statement,
+ *  and record_var is a record variable that represents a row.
+ *
+ *  so far, ROW keyword is a col_name_keyword, it can be column, table, etc names.
+ *  UPDATE tablename SET ROW = value, colN = value..[WHERE ..] STATEMENT and
+ *  UPDATE tablename SET ROW = record_var[WHERE ..] STATEMENT are both supported.
+ */
+static List *
+transformIvyUpdateTargetList(ParseState *pstate, List *origTlist)
+{
+	List	   *tlist = NIL;
+	ListCell   *o_target;
+	int	target_has_row = false;
+	bool	cols_has_row = false;
+	int	col_is_complex = false;
+	int	row_no;
+	Oid	attrrowtype;
+
+	target_has_row = 0;
+	row_no = 0;
+
+	/* Check if the target name is "row" */
+	foreach(o_target, origTlist)
+	{
+		ResTarget  	*origTarget = (ResTarget *) lfirst(o_target);
+		int 		attrno;
+
+		/* Check if there is a column named "row" */
+		if (pg_strcasecmp(origTarget->name, "row") == 0)
+		{
+			target_has_row = true;
+			attrno = attnameAttNum(pstate->p_target_relation,
+						   origTarget->name, true);
+
+			if (attrno != InvalidAttrNumber)
+			{
+				cols_has_row = true;
+				attrrowtype = attnumTypeId(pstate->p_target_relation, attrno);
+
+				if (ISCOMPLEX(attrrowtype))
+					col_is_complex = true;
+			}
+
+			break;
+		}
+
+		row_no++;
+	}
+
+	/*
+	 * If target_has_row is false, there should be no SET ROW = xx clause, 
+	 * call transformUpdateTargetList to transform the targetlist.
+	 */
+	if (!target_has_row)
+		return transformUpdateTargetList(pstate, origTlist);
+
+	/*
+	 * cols_has_row is false, there should be no column named "row".
+	 * the UPDATE statment is UPDATE tablename SET ROW = record_var[WHERE ..] statement.
+	 */
+	if (!cols_has_row)
+	{
+		tlist = transformUpdateRowTargetList(pstate, origTlist);
+	}
+	else
+	{
+		TargetEntry 	*row_tle;
+		Oid		value_type;
+
+		tlist = transformTargetList(pstate, origTlist,
+						EXPR_KIND_UPDATE_SOURCE);
+
+		/* Get the transformed value of the target row */
+		row_tle = (TargetEntry *) list_nth(tlist, row_no);
+		value_type = exprType((Node *) (row_tle->expr));
+
+		if (ISCOMPLEX(value_type))
+		{
+			if (!col_is_complex)
+			{
+				tlist = transformUpdateRowTargetList(pstate, origTlist);
+			}
+			else
+			{
+				if (attrrowtype == value_type)
+					tlist = transformUpdateTargetList(pstate, origTlist);
+				else
+					tlist = transformUpdateRowTargetList(pstate, origTlist);
+			}
+		}
+		else
+		{
+			/* It is UPDATE tablename SET ROW = value,.. colN = value..[WHERE ..] statement */
+			tlist = transformUpdateTargetList(pstate, origTlist);
+		}
+	}
+
+	return tlist;
+}
+

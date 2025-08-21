@@ -38,6 +38,7 @@
 #include "utils/syscache.h"
 #include "commands/packagecmds.h"
 #include "parser/parse_param.h"
+#include "commands/proclang.h"
 
 
 /* Possible error codes from LookupFuncNameInternal */
@@ -444,6 +445,35 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 	 */
 	if (fdresult == FUNCDETAIL_NORMAL || fdresult == FUNCDETAIL_PROCEDURE)
 	{
+		if (ORA_PARSER == compatible_db)
+		{
+			HeapTuple	tup;
+			Form_pg_proc 	procstruct;
+
+			tup = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
+
+			if (HeapTupleIsValid(tup))
+			{
+				procstruct = (Form_pg_proc) GETSTRUCT(tup);
+
+				if (procstruct->prolang == LANG_PLISQL_OID &&
+					procstruct->prostatus == PROSTATUS_INVALID &&
+					(procstruct->prokind == PROKIND_FUNCTION ||
+					procstruct->prokind == PROKIND_PROCEDURE))
+				{
+					ReleaseSysCache(tup);
+
+					ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("%s %s is in invalid state",
+							(procstruct->prokind == PROKIND_FUNCTION) ? "function" : "procedure",
+								NameStr(procstruct->proname))));
+				}
+
+				ReleaseSysCache(tup);
+			}
+		}
+
 		/* Nothing special to do for these cases. */
 	}
 	else if (fdresult == FUNCDETAIL_AGGREGATE)
@@ -877,7 +907,40 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 
 			get_func_typename_info(procTup, &p_argtypeNames, &rettypeName);
 			if (p_argtypeNames != NULL || rettypeName != NULL)
-				funcexpr->ref_pkgtype = true;
+			{
+				bool rettyp_ref_pkgtype = false;
+				bool argtype_ref_pkgtype = false;
+				PkgType 	*pkgtype;
+				TypeName	*tname;
+
+				if (p_argtypeNames != NULL && strcmp(*p_argtypeNames, "") != 0)
+				{
+					tname = (TypeName *) stringToNode(*p_argtypeNames);
+					pkgtype = LookupPkgTypeByTypename(tname->names, false);
+
+					if (pkgtype != NULL)
+						argtype_ref_pkgtype = true;
+
+					pfree(tname);
+				}
+
+				if (rettypeName != NULL && strcmp(rettypeName, "") != 0)
+				{
+					tname = (TypeName *) stringToNode(rettypeName);
+					pkgtype = LookupPkgTypeByTypename(tname->names, false);
+
+					if (pkgtype != NULL)
+						argtype_ref_pkgtype = true;
+
+					pfree(tname);
+				}
+
+				if (argtype_ref_pkgtype || rettyp_ref_pkgtype)
+					funcexpr->ref_pkgtype = true;
+				else
+					funcexpr->ref_pkgtype = false;
+			}
+
 			ReleaseSysCache(procTup);
 			if (p_argtypeNames)
 				pfree(p_argtypeNames);

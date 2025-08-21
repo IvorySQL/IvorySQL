@@ -260,8 +260,10 @@ typedef struct Query
  * be prespecified in typemod, otherwise typemod is unused.
  *
  * If pct_type is true, then names is actually a field name and we look up
- * the type of that field.  Otherwise (the normal case), names is a type
- * name possibly qualified with schema and database name.
+ * the type of that field.  If row_type is true, then names is actually a
+ * relation name and we look up the type of that relation.
+ * Otherwise (the normal case), names is a type name possibly qualified 
+ * with the schema and database name.
  */
 typedef struct TypeName
 {
@@ -270,6 +272,7 @@ typedef struct TypeName
 	Oid			typeOid;		/* type identified by OID */
 	bool		setof;			/* is a set? */
 	bool		pct_type;		/* %TYPE specified? */
+	bool		row_type;		/* %ROWTYPE specified? */
 	List	   *typmods;		/* type modifier expression(s) */
 	int32		typemod;		/* prespecified type modifier */
 	List	   *arrayBounds;	/* array bounds */
@@ -2159,6 +2162,8 @@ typedef struct SelectStmt
 	 * analysis to reject that where not valid.
 	 */
 	List	   *valuesLists;	/* untransformed list of expression lists */
+
+	bool	valuesIsrow;	/* values clause is of ROW type */
 
 	/*
 	 * These fields are used in both "leaf" SelectStmts and upper-level

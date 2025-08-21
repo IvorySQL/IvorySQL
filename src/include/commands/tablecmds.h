@@ -106,5 +106,7 @@ extern void RangeVarCallbackOwnsRelation(const RangeVar *relation,
 										 Oid relId, Oid oldRelId, void *arg);
 extern bool PartConstraintImpliedByRelConstraint(Relation scanrel,
 												 List *partConstraint);
+extern void check_function_depend_on_relation(Oid relid);
+extern void check_function_depend_on_relation_column(Oid relid, AttrNumber attnum);
 
 #endif							/* TABLECMDS_H */

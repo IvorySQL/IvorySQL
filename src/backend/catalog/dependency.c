@@ -88,6 +88,9 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "utils/packagecache.h"
+#include "commands/tablecmds.h"
+#include "funcapi.h"
+#include "lib/qunique.h"
 
 
 
@@ -112,6 +115,7 @@ typedef struct
 #define DEPFLAG_REVERSE		0x0040	/* reverse internal/extension link */
 #define DEPFLAG_IS_PART		0x0080	/* has a partition dependency */
 #define DEPFLAG_SUBOBJECT	0x0100	/* subobject of another deletable object */
+#define DEPFLAG_TYPE		0x0200	/* reached via table type dependency */
 
 
 /* expansible list of ObjectAddresses */
@@ -453,6 +457,9 @@ findDependentObjects(const ObjectAddress *object,
 	int			maxDependentObjects;
 	ObjectAddressStack mystack;
 	ObjectAddressExtra extra;
+	ObjectFunOrPkg		*dependentFuncPkgOids;
+	int			numDependentFuncPkgOids;
+	int			maxDependentFuncPkgOids;
 
 	/*
 	 * If the target object is already being visited in an outer recursion
@@ -764,6 +771,10 @@ findDependentObjects(const ObjectAddress *object,
 				objflags |= DEPFLAG_IS_PART;
 				break;
 
+			case DEPENDENCY_TYPE:
+
+				break;
+
 			default:
 				elog(ERROR, "unrecognized dependency type '%c' for %s",
 					 foundDep->deptype, getObjectDescription(object, false));
@@ -807,6 +818,11 @@ findDependentObjects(const ObjectAddress *object,
 	dependentObjects = (ObjectAddressAndFlags *)
 		palloc(maxDependentObjects * sizeof(ObjectAddressAndFlags));
 	numDependentObjects = 0;
+
+	maxDependentFuncPkgOids = 128;	/* arbitrary initial allocation */
+	dependentFuncPkgOids = (ObjectFunOrPkg *)
+		palloc(maxDependentFuncPkgOids * sizeof(ObjectFunOrPkg));
+	numDependentFuncPkgOids = 0;
 
 	ScanKeyInit(&key[0],
 				Anum_pg_depend_refclassid,
@@ -892,11 +908,98 @@ findDependentObjects(const ObjectAddress *object,
 			case DEPENDENCY_EXTENSION:
 				subflags = DEPFLAG_EXTENSION;
 				break;
+			case DEPENDENCY_TYPE:
+				subflags = DEPFLAG_TYPE;
+				break;
 			default:
 				elog(ERROR, "unrecognized dependency type '%c' for %s",
 					 foundDep->deptype, getObjectDescription(object, false));
 				subflags = 0;	/* keep compiler quiet */
 				break;
+		}
+
+		if (foundDep->deptype == DEPENDENCY_TYPE &&
+			(object->classId == ProcedureRelationId ||
+			 object->classId == PackageRelationId ||
+			 object->classId == PackageBodyRelationId ))
+		{
+			if (foundDep->classid == 0)
+				continue;
+
+			switch ((&otherObject)->classId)
+			{
+				case ProcedureRelationId:
+
+					if (foundDep->deptype == DEPENDENCY_TYPE)
+					{
+						/* Add function Oid to the dependancy-oids list */
+						if (numDependentFuncPkgOids >= maxDependentFuncPkgOids)
+						{
+							/* enlarge array if needed */
+							maxDependentFuncPkgOids *= 2;
+							dependentFuncPkgOids = (ObjectFunOrPkg *)
+								repalloc(dependentFuncPkgOids,
+										 maxDependentFuncPkgOids * sizeof(ObjectFunOrPkg));
+						}
+
+						dependentFuncPkgOids[numDependentFuncPkgOids].objectId = foundDep->objid;
+						dependentFuncPkgOids[numDependentFuncPkgOids].flags = ProcedureRelationId;
+						numDependentFuncPkgOids++;
+
+						/* delete the tuple */
+						CatalogTupleDelete(*depRel, &tup->t_self);
+					}
+					break;
+
+				case PackageRelationId:
+
+					if (foundDep->deptype == DEPENDENCY_TYPE)
+					{
+						/* Add package Oid to the dependancy-oids list */
+						if (numDependentFuncPkgOids >= maxDependentFuncPkgOids)
+						{
+							/* enlarge array if needed */
+							maxDependentFuncPkgOids *= 2;
+							dependentFuncPkgOids = (ObjectFunOrPkg *)
+								repalloc(dependentFuncPkgOids,
+										 maxDependentFuncPkgOids * sizeof(ObjectFunOrPkg));
+						}
+
+						dependentFuncPkgOids[numDependentFuncPkgOids].objectId = foundDep->objid;
+						dependentFuncPkgOids[numDependentFuncPkgOids].flags = PackageRelationId;
+						numDependentFuncPkgOids++;
+
+						/* delete the tuple */
+						CatalogTupleDelete(*depRel, &tup->t_self);
+					}
+					break;
+				case PackageBodyRelationId:
+
+					if (foundDep->deptype == DEPENDENCY_TYPE)
+					{
+						/* Add package body Oid to the dependancy-oids list */
+						if (numDependentFuncPkgOids >= maxDependentFuncPkgOids)
+						{
+							/* enlarge array if needed */
+							maxDependentFuncPkgOids *= 2;
+							dependentFuncPkgOids = (ObjectFunOrPkg *)
+								repalloc(dependentFuncPkgOids,
+										 maxDependentFuncPkgOids * sizeof(ObjectFunOrPkg));
+						}
+
+						dependentFuncPkgOids[numDependentFuncPkgOids].objectId = foundDep->objid;
+						dependentFuncPkgOids[numDependentFuncPkgOids].flags = PackageBodyRelationId;
+						numDependentFuncPkgOids++;
+
+						/* delete the tuple */
+						CatalogTupleDelete(*depRel, &tup->t_self);
+					}
+					break;
+				default:
+					break;
+			}
+
+			continue;
 		}
 
 		/* And add it to the pending-objects list */
@@ -948,6 +1051,89 @@ findDependentObjects(const ObjectAddress *object,
 	}
 
 	pfree(dependentObjects);
+
+	/* sort to avoid OID counter reverses */
+	if (numDependentFuncPkgOids > 1)
+	{
+		/* Sort and de-dup OID arrays, so we can use binary search. */
+		pg_qsort(dependentFuncPkgOids, numDependentFuncPkgOids,
+				 sizeof(ObjectFunOrPkg), object_funpkgoid_comparator);
+
+		numDependentFuncPkgOids = qunique((void *)dependentFuncPkgOids, numDependentFuncPkgOids,
+							sizeof(ObjectFunOrPkg), object_funpkgoid_comparator);
+	}
+
+	/*
+	 * Find out the dependent funciton which uses %TYPE or %ROWTYPE 
+	 * in parameters datatype or return datatype.
+	 */
+	for (int i = 0; i < numDependentFuncPkgOids; i++)
+	{
+		Oid objectId = dependentFuncPkgOids[i].objectId;
+
+		switch (dependentFuncPkgOids[i].flags)
+		{
+			case ProcedureRelationId:
+				{
+					/* invalidate function */
+					plisql_internel_funcs_init();
+					plisql_internal_funcs.function_free(objectId);
+
+					/* use PROSTATUS_NA for the pg_proc prostatus */
+					change_func_prostatus(objectId, PROSTATUS_NA);
+				}
+				break;
+			case PackageRelationId:
+				{
+					PackageCacheKey pkey;
+					PackageCacheItem *item;
+
+					pkey = objectId;
+
+					if (PackageCacheIsValid(&pkey, false))
+						item = PackageCacheLookup(&pkey);
+					else
+						item = PackageHandle(pkey, false);
+
+					if (item != NULL)
+						item->cachestatus = PACKAGE_SET_SPECIFICATION_UPDATE_FLAG(item->cachestatus);
+				}
+				break;
+			case PackageBodyRelationId:
+				{
+					PackageCacheKey pkey;
+					PackageCacheItem *item;
+					HeapTuple pkgbodyTup;
+					Form_pg_package_body pkgbodyStruct;
+
+					/*
+					 * Find the pg_package_body tuple by Oid
+					 */
+					pkgbodyTup = SearchSysCache1(PKGBODYOID, ObjectIdGetDatum(objectId));
+					if (!HeapTupleIsValid(pkgbodyTup))
+						elog(ERROR, "cache lookup failed for package body %u", objectId);
+
+					pkgbodyStruct = (Form_pg_package_body) GETSTRUCT(pkgbodyTup);
+					pkey = pkgbodyStruct->pkgoid;
+
+					if (PackageCacheIsValid(&pkey, false))
+						item = PackageCacheLookup(&pkey);
+					else
+						item = PackageHandle(pkey, false);
+
+					if (item != NULL)
+						item->cachestatus = PACKAGE_SET_BODY_UPDATE_FLAG(item->cachestatus);
+
+					ReleaseSysCache(pkgbodyTup);
+				}
+				break;
+
+			default:
+				break;
+		}
+	}
+
+	pfree(dependentFuncPkgOids);
 
 	/*
 	 * Finally, we can add the target object to targetObjects.  Be careful to
@@ -1085,6 +1271,11 @@ reportDependentObjects(const ObjectAddresses *targetObjects,
 			ereport(DEBUG2,
 					(errmsg_internal("drop auto-cascades to %s",
 									 objDesc)));
+		}
+		else if (extra->flags & DEPFLAG_TYPE)
+		{
+			pfree(objDesc);
+			continue;
 		}
 		else if (behavior == DROP_RESTRICT)
 		{
@@ -2509,6 +2700,24 @@ object_address_comparator(const void *a, const void *b)
 		return 1;
 	return 0;
 }
+
+/*
+ * sort ObjectFunOrPkg items
+ */
+int
+object_funpkgoid_comparator(const void *a, const void *b)
+{
+	const ObjectFunOrPkg *obja = (const ObjectFunOrPkg *) a;
+	const ObjectFunOrPkg *objb = (const ObjectFunOrPkg *) b;
+
+	if (obja->objectId > objb->objectId)
+		return -1;
+	if (obja->objectId < objb->objectId)
+		return 1;
+
+	return 0;
+}
+
 
 /*
  * Routines for handling an expansible array of ObjectAddress items.

@@ -212,6 +212,9 @@ typedef struct PLiSQL_type
 	Oid			collation;		/* from pg_type, but can be overridden */
 	bool		typisarray;		/* is "true" array, or domain over one */
 	int32		atttypmod;		/* typmod (taken from someplace else) */
+	bool		notnull;		/* the type is built by variable%type,
+						 * isnull or notnull of the variable */
+	TypeName   *pctrowtypname;	/* type name only for the types that uses %TYPE or %ROWTYPE */
 	/* Remaining fields are used only for named composite types (not RECORD) */
 	TypeName   *origtypname;	/* type name as written by user */
 	TypeCacheEntry *tcache;		/* typcache entry for composite type */
@@ -1277,6 +1280,9 @@ extern MemoryContext plisql_compile_tmp_cxt;
 
 extern PLiSQL_plugin **plisql_plugin_ptr;
 
+extern bool check_referenced_objects;
+extern List *plisql_referenced_objects;	/*the elements in list are ObjectAddress */
+
 /**********************************************************************
  * Function declarations
  **********************************************************************/
@@ -1334,6 +1340,8 @@ extern void plisql_compile_inline_internal(char *proc_source);
 extern void dynamic_build_func_vars(PLiSQL_function **function);
 
 extern void delete_function(PLiSQL_function *func);
+
+extern void plisql_free_function(Oid funcOid);
 
 /*
  * Functions in pl_exec.c

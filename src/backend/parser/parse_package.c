@@ -157,6 +157,7 @@ parse_package_type(List *names, PackageCacheKey *pkey,
 	Oid basetypeid;
 	void *type;
 	PkgType *pkgtype;
+	int32	basetypmod = -1;
 
 	if (PackageCacheIsValid(pkey, false))
 		item = PackageCacheLookup(pkey);
@@ -166,7 +167,8 @@ parse_package_type(List *names, PackageCacheKey *pkey,
 	Assert(item != NULL);
 	plisql_internel_funcs_init();
 	type = plisql_internal_funcs.package_parse(NULL, item, names, typename_startloc,
-							 PACKAGE_PARSE_TYPE, &basetypeid, NULL,
+							 PACKAGE_PARSE_TYPE, &basetypeid, 
+							 &basetypmod, NULL, 
 							 NULL, NULL, 0, NULL, false, false,
 							 NULL, NULL, NULL, NULL, NULL, NULL,
 							 NULL, NULL,
@@ -179,6 +181,7 @@ parse_package_type(List *names, PackageCacheKey *pkey,
 	pkgtype->basetypid = basetypeid;
 	pkgtype->item = item;
 	pkgtype->value = type;
+	pkgtype->basetypmod = basetypmod;
 
 	return pkgtype;
  }
@@ -206,11 +209,12 @@ parse_package_var(List *names, PackageCacheKey *pkey,
 	Assert(item != NULL);
 	plisql_internel_funcs_init();
 	var = plisql_internal_funcs.package_parse(NULL, item, names, varname_startloc,
-									 PACKAGE_PARSE_VAR, NULL, NULL,
-									 NULL, NULL, 0, NULL, false, false,
-									 NULL, NULL, NULL, NULL, NULL, NULL,
-									 NULL, NULL,
-									 missing_ok);
+							 PACKAGE_PARSE_VAR, NULL, 
+							 NULL, NULL, 
+							 NULL, NULL, 0, NULL, false, false,
+							 NULL, NULL, NULL, NULL, NULL, NULL,
+							 NULL, NULL,
+							 missing_ok);
 	if (var == NULL)
 		return NULL;
 
@@ -243,7 +247,8 @@ parse_package_entry(List *names, PackageCacheKey *pkey,
 	Assert(item != NULL);
 	plisql_internel_funcs_init();
 	value = plisql_internal_funcs.package_parse(NULL, item, names, name_startloc,
-									 PACKAGE_PARSE_ENTRY, NULL, &entry_type,
+									 PACKAGE_PARSE_ENTRY, NULL, 
+									 NULL, &entry_type,
 									 NULL, NULL, 0, NULL, false, false,
 									 NULL, NULL, NULL, NULL, NULL, NULL,
 									 NULL, NULL,
@@ -305,6 +310,7 @@ parse_package_func(ParseState *pstate, PackageCacheKey *pkey,
 										item, names,
 										varname_startloc,
 										flags,
+										NULL,
 										NULL,
 										NULL,
 										fargs, /* return value */

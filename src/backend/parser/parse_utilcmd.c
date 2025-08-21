@@ -672,7 +672,9 @@ transformColumnDefinition(CreateStmtContext *cxt, ColumnDef *column)
 	is_serial = false;
 	if (column->typeName
 		&& list_length(column->typeName->names) == 1
-		&& !column->typeName->pct_type)
+		&& !column->typeName->pct_type
+		&& !column->typeName->row_type)
+
 	{
 		char	   *typname = strVal(linitial(column->typeName->names));
 

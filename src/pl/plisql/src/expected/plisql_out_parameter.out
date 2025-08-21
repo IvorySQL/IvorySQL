@@ -184,8 +184,8 @@ begin
   ret = test_inchange(id,name1,name2);
 end;
 /
-ERROR:  expression "id" cannot be used as an assignment target
-CONTEXT:  PL/iSQL function test_inchange(pg_catalog.int4,varchar2,varchar2) line 2 at assignment
+WARNING:  there was an compilation error
+HINT:  expression "id" cannot be used as an assignment target
 PL/iSQL function inline_code_block line 11 at assignment
 drop function test_inchange(integer,varchar,varchar);
 --if IN OUT paramater has default value, should reports an error
@@ -945,6 +945,7 @@ drop function test_binary_float(integer,binary_float,binary_float[],binary_float
 drop function test_binary_double(integer,binary_double,binary_double[],binary_double);
 -- the function returned datatype is table
 create table test(id integer,name varchar(23));
+drop function test;
 create or replace function test(id out integer) return test as
 declare
   var1 test%rowtype;

@@ -59,4 +59,11 @@ extern bool parseTypeString(const char *str, Oid *typeid_p, int32 *typmod_p,
 /* true if typeid is composite, or domain over composite, but not RECORD */
 #define ISCOMPLEX(typeid) (typeOrDomainTypeRelid(typeid) != InvalidOid)
 
+extern Type LookupOraTypeName(ParseState *pstate, const TypeName *typeName,
+			   int32 *typmod_p, bool missing_ok);
+extern Type LookupOraTypeNameExtended(ParseState *pstate,
+					   const TypeName *typeName, int32 *typmod_p,
+					   bool temp_ok, bool missing_ok);
+
+
 #endif							/* PARSE_TYPE_H */

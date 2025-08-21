@@ -107,6 +107,15 @@
 #include "utils/timestamp.h"
 #include "utils/typcache.h"
 #include "utils/usercontext.h"
+#include "utils/guc.h"
+#include "utils/ora_compatible.h"
+#include "utils/packagecache.h"
+#include "funcapi.h"
+#include "catalog/pg_proc.h"
+#include "catalog/pg_package_body.h"
+#include "lib/qunique.h"
+#include "catalog/pg_package_d.h"
+
 
 /*
  * ON COMMIT action list
@@ -566,7 +575,9 @@ static bool ATColumnChangeRequiresRewrite(Node *expr, AttrNumber varattno);
 static ObjectAddress ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 										   AlterTableCmd *cmd, LOCKMODE lockmode);
 static void RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
-											  Relation rel, AttrNumber attnum, const char *colName);
+						Relation rel, AttrNumber attnum, const char *colName,
+						int *numDependentFuncPkgOids, int *maxDependentFuncPkgOids, 
+						ObjectFunOrPkg **dependentFuncPkg);
 static void RememberConstraintForRebuilding(Oid conoid, AlteredTableInfo *tab);
 static void RememberIndexForRebuilding(Oid indoid, AlteredTableInfo *tab);
 static void RememberStatisticsForRebuilding(Oid stxoid, AlteredTableInfo *tab);
@@ -656,6 +667,7 @@ static void refuseDupeIndexAttach(Relation parentIdx, Relation partIdx,
 static List *GetParentedForeignKeyRefs(Relation partition);
 static void ATDetachCheckNoForeignKeyRefs(Relation partition);
 static char GetAttributeCompression(Oid atttypid, const char *compression);
+static void check_function_dependency_internal(Relation	depRel, SysScanDesc scan);
 static char GetAttributeStorage(Oid atttypid, const char *storagemode);
 static ObjectAddress ATExecDropInvisible(Relation rel, const char *colName,
 									  LOCKMODE lockmode);
@@ -3921,6 +3933,13 @@ renameatt_internal(Oid myrelid,
 
 	relation_close(targetrelation, NoLock); /* close rel but keep lock */
 
+	/*
+	 * if there is any functions(procedures, packages) that depend on 
+	 * the relation and attnum, invalidate functions(procedures, packages), 
+	 * but don't delete the dependency.
+	 */
+	check_function_depend_on_relation_column(myrelid, attnum);
+
 	return attnum;
 }
 
@@ -4198,6 +4217,13 @@ RenameRelation(RenameStmt *stmt)
 	RenameRelationInternal(relid, stmt->newname, false, is_index_stmt);
 
 	ObjectAddressSet(address, RelationRelationId, relid);
+
+	/*
+	 * if there is any functions(procedures, packages) that depend on 
+	 * the relation and attnum, invalidate functions(procedures, packages), 
+	 * but don't delete the dependency.
+	 */
+	check_function_depend_on_relation(relid);
 
 	return address;
 }
@@ -8803,7 +8829,7 @@ ATExecSetExpression(AlteredTableInfo *tab, Relation rel, const char *colName,
 	 * and record enough information to let us recreate the objects after
 	 * rewrite.
 	 */
-	RememberAllDependentForRebuilding(tab, AT_SetExpression, rel, attnum, colName);
+	RememberAllDependentForRebuilding(tab, AT_SetExpression, rel, attnum, colName, NULL, NULL, NULL);
 
 	/*
 	 * Drop the dependency records of the GENERATED expression, in particular
@@ -13520,6 +13546,9 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 	SysScanDesc scan;
 	HeapTuple	depTup;
 	ObjectAddress address;
+	ObjectFunOrPkg		*dependentFuncPkgOids;
+	int			numDependentFuncPkgOids;
+	int			maxDependentFuncPkgOids;
 
 	/*
 	 * Clear all the missing values if we're rewriting the table, since this
@@ -13604,6 +13633,13 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 	else
 		defaultexpr = NULL;
 
+	maxDependentFuncPkgOids = 128;	/* arbitrary initial allocation */
+
+	dependentFuncPkgOids = (ObjectFunOrPkg *)
+		palloc(maxDependentFuncPkgOids * sizeof(ObjectFunOrPkg));
+
+	numDependentFuncPkgOids = 0;
+
 	/*
 	 * Find everything that depends on the column (constraints, indexes, etc),
 	 * and record enough information to let us recreate the objects.
@@ -13613,7 +13649,8 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 	 * the info before executing ALTER TYPE, though, else the deparser will
 	 * get confused.
 	 */
-	RememberAllDependentForRebuilding(tab, AT_AlterColumnType, rel, attnum, colName);
+	RememberAllDependentForRebuilding(tab, AT_AlterColumnType, rel, attnum, colName,
+		&numDependentFuncPkgOids, &maxDependentFuncPkgOids, &dependentFuncPkgOids);
 
 	/*
 	 * Now scan for dependencies of this column on other things.  The only
@@ -13663,6 +13700,88 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 	systable_endscan(scan);
 
 	table_close(depRel, RowExclusiveLock);
+
+	/* re-sort, in case OID counter reversed */
+	if (numDependentFuncPkgOids > 1)
+	{
+		pg_qsort(dependentFuncPkgOids, numDependentFuncPkgOids,
+				 sizeof(ObjectFunOrPkg), object_funpkgoid_comparator);
+
+		numDependentFuncPkgOids = qunique((void *)dependentFuncPkgOids, numDependentFuncPkgOids,
+						sizeof(ObjectFunOrPkg), object_funpkgoid_comparator);
+	}
+
+	/*
+	 * Now find out the dependent funciton which parameters datatype
+	 * or return datatype reference %TYPE or %ROWTYPE.
+	 */
+	for (int i = 0; i < numDependentFuncPkgOids; i++)
+	{
+		Oid objectId = dependentFuncPkgOids[i].objectId;
+
+		switch (dependentFuncPkgOids[i].flags)
+		{
+			case ProcedureRelationId:
+				{
+					/* invalidate function */
+					plisql_internel_funcs_init();
+					plisql_internal_funcs.function_free(objectId);
+
+					/* modify the pg_proc prostatus to be PROSTATUS_NA */
+					change_func_prostatus(objectId, PROSTATUS_NA);
+				}
+				break;
+			case PackageRelationId:
+				{
+					PackageCacheKey pkey;
+					PackageCacheItem *item;
+
+					/* get package cache */
+					pkey = objectId;
+					if (PackageCacheIsValid(&pkey, false))
+						item = PackageCacheLookup(&pkey);
+					else
+						item = PackageHandle(pkey, false);
+
+					if (item != NULL)
+						item->cachestatus = PACKAGE_SET_SPECIFICATION_UPDATE_FLAG(item->cachestatus);
+				}
+				break;
+			case PackageBodyRelationId:
+				{
+					PackageCacheKey pkey;
+					PackageCacheItem *item;
+					HeapTuple pkgbodyTup;
+					Form_pg_package_body pkgbodyStruct;
+
+					/*
+					 * Lookup the pg_package_body tuple by Oid
+					 */
+					pkgbodyTup = SearchSysCache1(PKGBODYOID, ObjectIdGetDatum(objectId));
+					if (!HeapTupleIsValid(pkgbodyTup))
+						elog(ERROR, "failed to lookup package body %u in cache", objectId);
+
+					pkgbodyStruct = (Form_pg_package_body) GETSTRUCT(pkgbodyTup);
+					pkey = pkgbodyStruct->pkgoid;
+
+					if (PackageCacheIsValid(&pkey, false))
+						item = PackageCacheLookup(&pkey);
+					else
+						item = PackageHandle(pkey, false);
+
+					if (item != NULL)
+						item->cachestatus = PACKAGE_SET_BODY_UPDATE_FLAG(item->cachestatus);
+
+					ReleaseSysCache(pkgbodyTup);
+				}
+				break;
+			default:
+				break;
+		}
+	}
+
+	pfree(dependentFuncPkgOids);
+
 
 	/*
 	 * Here we go --- change the recorded column type and collation.  (Note
@@ -13816,12 +13935,24 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
  */
 static void
 RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
-								  Relation rel, AttrNumber attnum, const char *colName)
+				  Relation rel, AttrNumber attnum, const char *colName,
+				  int *numDependentFuncPkgOids, int *maxDependentFuncPkgOids,
+				  ObjectFunOrPkg **dependentFuncPkg)
 {
 	Relation	depRel;
 	ScanKeyData key[3];
 	SysScanDesc scan;
 	HeapTuple	depTup;
+	ObjectFunOrPkg *dependentFuncPkgOids;
+	bool		FuncPkgDepend = false;
+
+	if(NULL != numDependentFuncPkgOids  &&
+	   NULL != maxDependentFuncPkgOids  &&
+	   NULL != dependentFuncPkg)
+	{
+		 FuncPkgDepend = true;
+		dependentFuncPkgOids = *dependentFuncPkg;
+	}
 
 	Assert(subtype == AT_AlterColumnType || subtype == AT_SetExpression);
 
@@ -13887,24 +14018,50 @@ RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
 				break;
 
 			case ProcedureRelationId:
-
-				/*
-				 * A new-style SQL function can depend on a column, if that
-				 * column is referenced in the parsed function body.  Ideally
-				 * we'd automatically update the function by deparsing and
-				 * reparsing it, but that's risky and might well fail anyhow.
-				 * FIXME someday.
-				 *
-				 * This is only a problem for AT_AlterColumnType, not
-				 * AT_SetExpression.
-				 */
-				if (subtype == AT_AlterColumnType)
-					ereport(ERROR,
+				if(ORA_PARSER != compatible_db)
+				{
+					/*
+					 * A new-style SQL function can depend on a column, if that
+					 * column is referenced in the parsed function body.  Ideally
+					 * we'd automatically update the function by deparsing and
+					 * reparsing it, but that's risky and might well fail anyhow.
+					 * FIXME someday.
+					 *
+					 * This is only a problem for AT_AlterColumnType, not
+					 * AT_SetExpression.
+					 */
+					if (subtype == AT_AlterColumnType)
+						ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							 errmsg("cannot alter type of a column used by a function or procedure"),
 							 errdetail("%s depends on column \"%s\"",
 									   getObjectDescription(&foundObject, false),
 									   colName)));
+				}
+				else if(FuncPkgDepend == true)
+				{
+					if(foundDep->deptype == DEPENDENCY_TYPE)
+					{
+						/* Add function Oid to the pending-oids list */
+						if (*numDependentFuncPkgOids >= *maxDependentFuncPkgOids)
+						{
+							/* enlarge array if needed */
+							(*maxDependentFuncPkgOids) *= 2;
+							dependentFuncPkgOids = (ObjectFunOrPkg *)
+								repalloc(dependentFuncPkgOids,
+									 (*maxDependentFuncPkgOids) * sizeof(ObjectFunOrPkg));
+						}
+
+						dependentFuncPkgOids[*numDependentFuncPkgOids].objectId = foundDep->objid;
+						dependentFuncPkgOids[*numDependentFuncPkgOids].flags = ProcedureRelationId;
+						(*numDependentFuncPkgOids)++;
+					}
+					else
+					{
+						elog(ERROR, "unexpected object depending on column: %s",
+							 getObjectDescription(&foundObject, false));
+					}
+				}
 				break;
 
 			case RewriteRelationId:
@@ -14020,6 +14177,66 @@ RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
 									   colName)));
 				break;
 
+			case PackageRelationId:
+				if (ORA_PARSER == compatible_db && 
+				    foundDep->deptype == DEPENDENCY_TYPE && 
+				    FuncPkgDepend == true)
+				{
+					/* Add package Oid to the pending-oids list */
+					if (*numDependentFuncPkgOids >= *maxDependentFuncPkgOids)
+					{
+						/* enlarge array if needed */
+						(*maxDependentFuncPkgOids) *= 2;
+						dependentFuncPkgOids = (ObjectFunOrPkg *)
+							repalloc(dependentFuncPkgOids,
+									 (*maxDependentFuncPkgOids) * sizeof(ObjectFunOrPkg));
+					}
+
+					dependentFuncPkgOids[*numDependentFuncPkgOids].objectId = foundDep->objid;
+					dependentFuncPkgOids[*numDependentFuncPkgOids].flags = PackageRelationId;
+					(*numDependentFuncPkgOids)++;
+				}
+				else
+				{
+					/*
+					 * We don't expect any of these sorts of objects to depend on
+					 * a column.
+					 */
+					elog(ERROR, "unexpected object depending on column: %s",
+						 getObjectDescription(&foundObject, false));
+				}
+				break;
+
+			case PackageBodyRelationId:
+				if (ORA_PARSER == compatible_db && 
+				    foundDep->deptype == DEPENDENCY_TYPE && 
+				    FuncPkgDepend == true)
+				{
+					/* Add package body Oid to the pending-oids list */
+					if (*numDependentFuncPkgOids >= *maxDependentFuncPkgOids)
+					{
+						/* enlarge array if needed */
+						(*maxDependentFuncPkgOids) *= 2;
+						dependentFuncPkgOids = (ObjectFunOrPkg *)
+							repalloc(dependentFuncPkgOids,
+									 (*maxDependentFuncPkgOids) * sizeof(ObjectFunOrPkg));
+					}
+
+					dependentFuncPkgOids[*numDependentFuncPkgOids].objectId = foundDep->objid;
+					dependentFuncPkgOids[*numDependentFuncPkgOids].flags = PackageBodyRelationId;
+					(*numDependentFuncPkgOids)++;
+				}
+				else
+				{
+					/*
+					 * We don't expect any of these sorts of objects to depend on
+					 * a column.
+					 */
+					elog(ERROR, "unexpected object depending on column: %s",
+						 getObjectDescription(&foundObject, false));
+				}
+				break;
+				
 			default:
 
 				/*
@@ -21267,3 +21484,268 @@ ATExecMergePartitions(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	/* Keep the lock until commit. */
 	table_close(newPartRel, NoLock);
 }
+
+/*
+ * check_function_depend_on_relation
+ * Check if the relation is depended by any functions(procedures, or packages).
+ * If yes, invalidate the functions(procedures, ora packages).
+ */
+void
+check_function_depend_on_relation(Oid relid)
+{
+	Relation	depRel;
+	ScanKeyData key[2];
+	SysScanDesc scan;
+
+	if (ORA_PARSER != compatible_db)
+		return;
+
+	/*
+	 * Find the functions(procedures, ora packages) that depends on the relation
+	 */
+	depRel = table_open(DependRelationId, RowExclusiveLock);
+
+	ScanKeyInit(&key[0],
+				Anum_pg_depend_refclassid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(RelationRelationId));
+	ScanKeyInit(&key[1],
+				Anum_pg_depend_refobjid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(relid));
+
+	scan = systable_beginscan(depRel, DependReferenceIndexId, true,
+							  NULL, 2, key);
+
+	check_function_dependency_internal(depRel, scan);
+
+	systable_endscan(scan);
+
+	table_close(depRel, RowExclusiveLock);
+}
+
+/*
+ * check_function_depend_on_relation_column
+ * Check if there is any functions(procedures, ora packages) 
+ * that depend on the relation and attnum.
+ * If so, invalidate the functions(procedures, ora packages).
+ */
+void
+check_function_depend_on_relation_column(Oid relid, AttrNumber attnum)
+{
+	Relation	depRel;
+	ScanKeyData key[3];
+	SysScanDesc scan;
+
+	if (ORA_PARSER != compatible_db)
+		return;
+
+	/*
+	 * Find the functions(procedures, ora packages) that depends on the relation,
+	 */
+	depRel = table_open(DependRelationId, RowExclusiveLock);
+
+	ScanKeyInit(&key[0],
+				Anum_pg_depend_refclassid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(RelationRelationId));
+	ScanKeyInit(&key[1],
+				Anum_pg_depend_refobjid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(relid));
+	ScanKeyInit(&key[2],
+				Anum_pg_depend_refobjsubid,
+				BTEqualStrategyNumber, F_INT4EQ,
+				Int32GetDatum((int32) attnum));
+
+	scan = systable_beginscan(depRel, DependReferenceIndexId, true,
+							  NULL, 3, key);
+
+	check_function_dependency_internal(depRel, scan);
+
+	systable_endscan(scan);
+
+	table_close(depRel, RowExclusiveLock);
+}
+/*
+ * check_function_dependency_internal
+ * Common code to find the functions(procedures, ora packages)
+ * that depends on the relation or attnum.
+ */
+static void
+check_function_dependency_internal(Relation depRel, SysScanDesc scan)
+{
+	HeapTuple		depTup;
+	ObjectFunOrPkg		*dependentFuncPkgOids;
+	int			numDependentFuncPkgOids;
+	int			maxDependentFuncPkgOids;
+
+	maxDependentFuncPkgOids = 128;	/* arbitrary initial allocation */
+	dependentFuncPkgOids = (ObjectFunOrPkg *)
+		palloc(maxDependentFuncPkgOids * sizeof(ObjectFunOrPkg));
+	numDependentFuncPkgOids = 0;
+
+	while (HeapTupleIsValid(depTup = systable_getnext(scan)))
+	{
+		Form_pg_depend foundDep = (Form_pg_depend) GETSTRUCT(depTup);
+		ObjectAddress foundObject;
+
+		foundObject.classId = foundDep->classid;
+		foundObject.objectId = foundDep->objid;
+		foundObject.objectSubId = foundDep->objsubid;
+
+		if (foundObject.classId == 0)
+			continue;
+
+		switch (foundObject.classId)
+		{
+			case ProcedureRelationId:
+				if (foundDep->deptype == DEPENDENCY_TYPE)
+				{
+					/* Add function Oid into the pending-oids list */
+					if (numDependentFuncPkgOids >= maxDependentFuncPkgOids)
+					{
+						/* enlarge array if needed */
+						maxDependentFuncPkgOids *= 2;
+						dependentFuncPkgOids = (ObjectFunOrPkg *)
+							repalloc(dependentFuncPkgOids,
+									 maxDependentFuncPkgOids * sizeof(ObjectFunOrPkg));
+					}
+
+					dependentFuncPkgOids[numDependentFuncPkgOids].objectId = foundDep->objid;
+					dependentFuncPkgOids[numDependentFuncPkgOids].flags = ProcedureRelationId;
+					numDependentFuncPkgOids++;
+
+					/* Delete the depend tuples */
+					CatalogTupleDelete(depRel, &depTup->t_self);
+				}
+				break;
+			case PackageBodyRelationId:
+				if (foundDep->deptype == DEPENDENCY_TYPE)
+				{
+					/* Add package body Oid into the pending-oids list */
+					if (numDependentFuncPkgOids >= maxDependentFuncPkgOids)
+					{
+						/* enlarge array if needed */
+						maxDependentFuncPkgOids *= 2;
+						dependentFuncPkgOids = (ObjectFunOrPkg *)
+							repalloc(dependentFuncPkgOids,
+									 maxDependentFuncPkgOids * sizeof(ObjectFunOrPkg));
+					}
+
+					dependentFuncPkgOids[numDependentFuncPkgOids].objectId = foundDep->objid;
+					dependentFuncPkgOids[numDependentFuncPkgOids].flags = PackageBodyRelationId;
+					numDependentFuncPkgOids++;
+
+					/* Delete the depend tuples */
+					CatalogTupleDelete(depRel, &depTup->t_self);
+				}
+				break;
+			case PackageRelationId:
+				if (foundDep->deptype == DEPENDENCY_TYPE)
+				{
+					/* Add package Oid into the pending-oids list */
+					if (numDependentFuncPkgOids >= maxDependentFuncPkgOids)
+					{
+						/* enlarge array if needed */
+						maxDependentFuncPkgOids *= 2;
+						dependentFuncPkgOids = (ObjectFunOrPkg *)
+							repalloc(dependentFuncPkgOids,
+									 maxDependentFuncPkgOids * sizeof(ObjectFunOrPkg));
+					}
+
+					dependentFuncPkgOids[numDependentFuncPkgOids].objectId = foundDep->objid;
+					dependentFuncPkgOids[numDependentFuncPkgOids].flags = PackageRelationId;
+					numDependentFuncPkgOids++;
+
+					/* Delete the depend tuples */
+					CatalogTupleDelete(depRel, &depTup->t_self);
+				}
+				break;
+			default:
+				break;
+		}
+	}
+
+	/* re-sort, in case OID counter reversed */
+	if (numDependentFuncPkgOids > 1)
+	{
+		pg_qsort(dependentFuncPkgOids, numDependentFuncPkgOids,
+				 sizeof(ObjectFunOrPkg), object_funpkgoid_comparator);
+
+		numDependentFuncPkgOids = qunique((void *)dependentFuncPkgOids, numDependentFuncPkgOids,
+						sizeof(ObjectFunOrPkg), object_funpkgoid_comparator);
+	}
+
+	/*
+	 * Now find out the dependent funciton which parameters datatype
+	 * or return datatype reference %TYPE or %ROWTYPE.
+	 */
+	for (int i = 0; i < numDependentFuncPkgOids; i++)
+	{
+		Oid objectId = dependentFuncPkgOids[i].objectId;
+
+		switch (dependentFuncPkgOids[i].flags)
+		{
+			case ProcedureRelationId:
+				{
+					/* invalidate function */
+					plisql_internel_funcs_init();
+					plisql_internal_funcs.function_free(objectId);
+
+					/* modify the pg_proc prostatus to be PROSTATUS_NA */
+					change_func_prostatus(objectId, PROSTATUS_NA);
+				}
+				break;
+			case PackageRelationId:
+				{
+					PackageCacheKey pkey;
+					PackageCacheItem *item;
+
+					/* get package cache */
+					pkey = objectId;
+					if (PackageCacheIsValid(&pkey, false))
+						item = PackageCacheLookup(&pkey);
+					else
+						item = PackageHandle(pkey, false);
+
+					if (item != NULL)
+						item->cachestatus = PACKAGE_SET_SPECIFICATION_UPDATE_FLAG(item->cachestatus);
+				}
+				break;
+			case PackageBodyRelationId:
+				{
+					PackageCacheKey pkey;
+					PackageCacheItem *item;
+					HeapTuple pkgbodyTup;
+					Form_pg_package_body pkgbodyStruct;
+
+					/*
+					 * Lookup the pg_package_body tuple by Oid
+					 */
+					pkgbodyTup = SearchSysCache1(PKGBODYOID, ObjectIdGetDatum(objectId));
+
+					if (!HeapTupleIsValid(pkgbodyTup))
+						elog(ERROR, "failed to look for package body %u in cache", objectId);
+
+					pkgbodyStruct = (Form_pg_package_body) GETSTRUCT(pkgbodyTup);
+					pkey = pkgbodyStruct->pkgoid;
+
+					if (PackageCacheIsValid(&pkey, false))
+						item = PackageCacheLookup(&pkey);
+					else
+						item = PackageHandle(pkey, false);
+
+					if (item != NULL)
+						item->cachestatus = PACKAGE_SET_BODY_UPDATE_FLAG(item->cachestatus);
+
+					ReleaseSysCache(pkgbodyTup);
+				}
+					break;
+			default:
+				break;
+		}
+	}
+	pfree(dependentFuncPkgOids);
+}
+

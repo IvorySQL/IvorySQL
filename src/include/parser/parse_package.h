@@ -28,6 +28,7 @@ typedef struct PkgType
 {
 	Oid pkgoid;	 /* package oid */
 	Oid basetypid;  /* base of type id */
+	int32 basetypmod;	/* base of type mode */
 	int pkgname_startloc; /* pkgname start location */
 	PackageCacheItem *item; /* package cache item */
 	void *value;	 /* PLiSQL_type */

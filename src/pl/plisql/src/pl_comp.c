@@ -39,6 +39,13 @@
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 #include "commands/proclang.h"
+#include "catalog/pg_package.h"
+#include "access/table.h"
+#include "catalog/indexing.h"
+#include "access/skey.h"
+#include "catalog/pg_depend.h"
+#include "access/genam.h"
+
 
 /* ----------
  * Our own local and global variables
@@ -83,6 +90,9 @@ static const ExceptionLabelMap exception_label_map[] = {
 	{NULL, 0}
 };
 
+bool check_referenced_objects = false;
+List *plisql_referenced_objects = NIL;	/* the elements of list are ObjectAddress */
+
 
 /* ----------
  * static prototypes
@@ -110,6 +120,7 @@ static PLiSQL_function *plisql_HashTableLookup(PLiSQL_func_hashkey *func_key);
 static void plisql_HashTableInsert(PLiSQL_function *function,
 									PLiSQL_func_hashkey *func_key);
 static void plisql_HashTableDelete(PLiSQL_function *function);
+static void plisql_add_type_referenced_objects(TypeName *typeName);
 void delete_function(PLiSQL_function *func);
 
 /* ----------
@@ -204,19 +215,37 @@ recheck:
 	 */
 	if (!function_valid)
 	{
-		/*
-		 * Calculate hashkey if we didn't already; we'll need it to store the
-		 * completed function.
-		 */
-		if (!hashkey_valid)
-			compute_function_hashkey(fcinfo, procStruct, &hashkey,
-									 forValidator, procTup); 
+		PG_TRY();
+		{
+			if (!forValidator &&
+				procStruct->prostatus == PROSTATUS_INVALID)
+				ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("%s %s is in an invalid state",
+						(procStruct->prokind == PROKIND_FUNCTION) ? "function" : "procedure",
+						NameStr(procStruct->proname))));
+			/*
+			 * Calculate hashkey if we didn't already; we'll need it to store the
+			 * completed function.
+			 */
+			if (!hashkey_valid)
+				compute_function_hashkey(fcinfo, procStruct, &hashkey,
+							 forValidator, procTup); 
+	
+			/*
+			 * Do the hard part.
+			 */
+			function = do_compile(fcinfo, procTup, function,
+						  &hashkey, forValidator);
+		}
 
-		/*
-		 * Do the hard part.
-		 */
-		function = do_compile(fcinfo, procTup, function,
-							  &hashkey, forValidator);
+		PG_CATCH();
+		{
+			ReleaseSysCache(procTup);
+			PG_RE_THROW();
+		}
+
+		PG_END_TRY();
 	}
 
 	ReleaseSysCache(procTup);
@@ -378,6 +407,9 @@ do_compile(FunctionCallInfo fcinfo,
 
 	function->namelabel = pstrdup(NameStr(procStruct->proname));
 
+	check_referenced_objects = true;
+	plisql_referenced_objects = NIL;
+
 	/*
 	 * Initialize the compiler, particularly the namespace stack.  The
 	 * outermost namespace contains function parameters and other special
@@ -452,13 +484,31 @@ do_compile(FunctionCallInfo fcinfo,
 
 					tname = (TypeName *) stringToNode(argtypenames[i]);
 
-					if (tname->pct_type)
+					if (tname->pct_type || tname->row_type)
 						argdtype = plisql_parse_package_type(tname, parse_by_var_type, false);
 					else
 						argdtype = plisql_parse_package_type(tname, parse_by_pkg_type, false);
 					if (argdtype == NULL)
 					{
-						elog(ERROR, "doesn't recognise package type %s", TypeNameToString(tname));
+						/*
+						 * Check if parameter type refers to %TYPE or %ROWTYPE
+						 */
+						Type		typtup;
+
+						typtup = LookupOraTypeName(NULL, tname, NULL, true);
+						if (typtup == NULL)
+							ereport(ERROR,
+								(errcode(ERRCODE_UNDEFINED_OBJECT),
+								 errmsg("type \"%s\" does not exist",
+									TypeNameToString(tname)),
+								 	parser_errposition(NULL, tname->location)));
+
+						argtypeid = typeTypeId(typtup);
+						argdtype = plisql_build_datatype(argtypeid,
+										  -1,
+										  function->fn_input_collation,
+										  NULL);
+						ReleaseSysCache(typtup);
 					}
 					pfree(tname);
 				}
@@ -547,17 +597,39 @@ do_compile(FunctionCallInfo fcinfo,
 				TypeName		*tname;
 
 				tname = (TypeName *) stringToNode(rettypename);
-				if (tname->pct_type)
+				if (tname->pct_type || tname->row_type)
 					rettype = plisql_parse_package_type(tname, parse_by_var_type, false);
 				else
 					rettype = plisql_parse_package_type(tname, parse_by_pkg_type, false);
 
 				if (rettype == NULL)
 				{
-					elog(ERROR, "doesn't recognise package type %s", TypeNameToString(tname));
+					/*
+					 * Check if return type refers to %TYPE or %ROWTYPE
+					 */
+					Type		typtup;
+
+					typtup = LookupOraTypeName(NULL, tname, NULL, true);
+					if (typtup == NULL)
+						ereport(ERROR,
+							(errcode(ERRCODE_UNDEFINED_OBJECT),
+							 errmsg("type \"%s\" does not exist",
+								TypeNameToString(tname)),
+								 parser_errposition(NULL, tname->location)));
+
+					rettypeid = typeTypeId(typtup);
+					rettype = plisql_build_datatype(rettypeid,
+									  -1,
+									  function->fn_input_collation,
+									  NULL);
+					ReleaseSysCache(typtup);
 				}
+				else
+				{
+					rettypeid = rettype->typoid;
+				}
+
 				pfree(tname);
-				rettypeid = rettype->typoid;
 			}
 			else
 				rettypeid = procStruct->prorettype;
@@ -930,12 +1002,22 @@ do_compile(FunctionCallInfo fcinfo,
 								 true);
 	function->found_varno = var->dno;
 
-	/*
-	 * Now parse the function's text
-	 */
-	parse_rc = plisql_yyparse();
-	if (parse_rc != 0)
-		elog(ERROR, "plisql parser returned %d", parse_rc);
+	PG_TRY();
+	{
+		/*
+		 * Now parse the function's text
+		 */
+		parse_rc = plisql_yyparse();
+		if (parse_rc != 0)
+			elog(ERROR, "plisql parser returned %d", parse_rc);
+	}
+	PG_CATCH();
+	{
+		list_free(plisql_referenced_objects);
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
 	function->action = plisql_parse_result;
 
 	if (num_out_args > 0 &&
@@ -986,6 +1068,134 @@ do_compile(FunctionCallInfo fcinfo,
 	if (plisql_DumpExecTree)
 		plisql_dumptree(function, 0, 0); 
 
+	if (check_referenced_objects)
+	{
+		/*
+		 * we have builded a global list plisql_referenced_objects
+		 * to store the objects referenced by %TYPE and %ROWTYPE
+		 * in function body. Consider whether there are
+		 * referenced objects in the function arguments datatype
+		 * and the function returned datatype.
+		 *
+		 */
+		char		**argtypenames = NULL;
+		char		*rettypename = NULL;
+
+		get_func_typename_info(procTup, &argtypenames, &rettypename);
+		if (argtypenames != NULL)
+		{
+			int 	i = 0;
+
+			for (i = 0; i < procStruct->pronargs; i++)
+			{
+				if (strcmp(argtypenames[i], "") != 0)
+				{
+					TypeName	*typeName;
+
+					typeName = (TypeName *) stringToNode(argtypenames[i]);
+					plisql_add_type_referenced_objects(typeName);
+				}
+			}
+			pfree(argtypenames);
+		}
+		if (rettypename != NULL && strcmp(rettypename, "") != 0)
+		{
+			TypeName	*typeName;
+
+			typeName = (TypeName *) stringToNode(rettypename);
+			plisql_add_type_referenced_objects(typeName);
+			pfree(rettypename);
+		}
+	
+		/* All the referenced objects are in plisql_referenced_objects list */
+		if (plisql_referenced_objects != NIL)
+		{
+			ListCell   *x;
+			ObjectAddresses *addrs;
+			ObjectAddress myself;
+			Relation	depRel;
+
+			/*
+			 * If the parameters datatype or return type of a function(procedure)
+			 * or the function body reference tablename.column%TYPE,
+			 * schemaname.tablename.column%TYPE, tablename%ROWTYPE,
+			 * schemaname.tablename%ROWTYPE, record the dependencies
+			 * between relation and function(procedure or package).
+			 */
+			addrs = new_object_addresses();
+			ObjectAddressSet(myself, ProcedureRelationId, function->fn_oid);
+			depRel = table_open(DependRelationId, RowExclusiveLock);
+
+			/* Scan the parameters list and check if it references table name 
+			 * or tablename.columnname 
+			 */
+			foreach(x, plisql_referenced_objects)
+			{
+				ObjectAddress *obj = (ObjectAddress *) lfirst(x);
+				ObjectAddress referenced;
+				ScanKeyData key[3];
+				int 		nkeys;
+				SysScanDesc scan;
+				HeapTuple	tup;
+				bool		isduplicate = false;
+
+				/* Check duplicate dependencies that alreay been built in CREATE FUNCTION/PROCEDURE statment */
+				ScanKeyInit(&key[0],
+							Anum_pg_depend_refclassid,
+							BTEqualStrategyNumber, F_OIDEQ,
+							ObjectIdGetDatum(obj->classId));
+				ScanKeyInit(&key[1],
+							Anum_pg_depend_refobjid,
+							BTEqualStrategyNumber, F_OIDEQ,
+							ObjectIdGetDatum(obj->objectId));
+
+				if (obj->objectSubId != 0)
+				{
+					/* Consider dependencies of only this sub-object */
+					ScanKeyInit(&key[2],
+							Anum_pg_depend_refobjsubid,
+							BTEqualStrategyNumber, F_INT4EQ,
+							Int32GetDatum(obj->objectSubId));
+					nkeys = 3;
+				}
+				else
+				{
+					/* Consider dependencies of this object and any sub-objects */
+					nkeys = 2;
+				}
+
+				scan = systable_beginscan(depRel, DependReferenceIndexId, true,
+							  NULL, nkeys, key);
+
+				while (HeapTupleIsValid(tup = systable_getnext(scan)))
+				{
+					Form_pg_depend foundDep = (Form_pg_depend) GETSTRUCT(tup);
+					if (foundDep->objid == function->fn_oid)
+					{
+						isduplicate = true;
+						break;
+					}
+				}
+
+				systable_endscan(scan);
+				if (isduplicate)
+					continue;
+
+				/*
+				 * Record the dependencies between relation and function(procedure, or package).
+				 */
+				ObjectAddressSet(referenced, obj->classId, obj->objectId);
+				referenced.objectSubId = obj->objectSubId;
+				add_exact_object_address(&referenced, addrs);
+			}
+
+			table_close(depRel, RowExclusiveLock);
+			record_object_address_dependencies(&myself, addrs, DEPENDENCY_TYPE);
+
+			free_object_addresses(addrs);
+		}
+	}
+
 	/*
 	 * add it to the hash table
 	 */
@@ -998,6 +1208,9 @@ do_compile(FunctionCallInfo fcinfo,
 	plisql_error_funcname = NULL;
 
 	plisql_check_syntax = false;
+
+	check_referenced_objects = false;
+	list_free(plisql_referenced_objects);
 
 	MemoryContextSwitchTo(plisql_compile_tmp_cxt);
 	plisql_compile_tmp_cxt = NULL;
@@ -1079,6 +1292,9 @@ plisql_compile_inline(char *proc_source, ParamListInfo inparams)
 	function->fn_no_return = false;
 
 	function->namelabel = NULL;
+
+	check_referenced_objects = false;
+	plisql_referenced_objects = NIL;
 
 	plisql_ns_init();
 	plisql_ns_push(func_name, PLISQL_LABEL_BLOCK);
@@ -1220,6 +1436,9 @@ plisql_compile_inline(char *proc_source, ParamListInfo inparams)
 	plisql_error_funcname = NULL;
 
 	plisql_check_syntax = false;
+
+	check_referenced_objects = false;
+	plisql_referenced_objects = NIL;
 
 	MemoryContextSwitchTo(plisql_compile_tmp_cxt);
 	plisql_compile_tmp_cxt = NULL;
@@ -2088,7 +2307,18 @@ plisql_parse_wordtype(char *ident)
 		switch (nse->itemtype)
 		{
 			case PLISQL_NSTYPE_VAR:
-				return ((PLiSQL_var *) (plisql_Datums[nse->itemno]))->datatype;
+				/*
+				 * Set the not null attribute of variable with notnull attribute of dtype.
+				 * For example, name has a NOT NULL constraint, surname inherits the NOT NULL constraint.
+				 * DECLARE
+				 *   name     VARCHAR(25) NOT NULL := 'Smith';
+				 *   surname  name%TYPE;
+				 * BEGIN
+				 * END;
+				 */
+				dtype = ((PLiSQL_var *) (plisql_Datums[nse->itemno]))->datatype;
+				dtype->notnull = ((PLiSQL_var *) (plisql_Datums[nse->itemno]))->notnull;
+				return dtype;
 			case PLISQL_NSTYPE_REC:
 				return ((PLiSQL_rec *) (plisql_Datums[nse->itemno]))->datatype;
 			default:
@@ -2140,6 +2370,7 @@ plisql_parse_cwordtype(List *idents)
 	HeapTuple	typetup = NULL;
 	Form_pg_attribute attrStruct;
 	MemoryContext oldCxt;
+	TypeName	*typeName;
 
 	/* Avoid memory leaks in the long-term function context */
 	oldCxt = MemoryContextSwitchTo(plisql_compile_tmp_cxt);
@@ -2157,8 +2388,16 @@ plisql_parse_cwordtype(List *idents)
 
 		if (nse != NULL && nse->itemtype == PLISQL_NSTYPE_VAR)
 		{
-			/* Block-qualified reference to scalar variable. */
-			dtype = ((PLiSQL_var *) (plisql_Datums[nse->itemno]))->datatype;
+			/*
+			 * Set the not null attribute of variable with not null attribute of dtype.
+			 * For example, name has a NOT NULL constraint, surname gets the NOT NULL constraint.
+			 * DECLARE
+			 *	 name	  VARCHAR(25) NOT NULL := 'Steven';
+			 *	 surname  name%TYPE;
+			 * BEGIN
+			 * END;
+			 */
+			dtype->notnull = ((PLiSQL_var *) (plisql_Datums[nse->itemno]))->notnull;
 			goto done;
 		}
 		else if (nse != NULL && nse->itemtype == PLISQL_NSTYPE_REC &&
@@ -2235,10 +2474,32 @@ plisql_parse_cwordtype(List *idents)
 	 * attempt to re-look-up the type name will happen during invalidations.
 	 */
 	MemoryContextSwitchTo(oldCxt);
+
+	typeName = makeTypeNameFromNameList(idents);
+	typeName->pct_type = true;
+	typeName->row_type = false;
+
 	dtype = build_datatype(typetup,
 						   attrStruct->atttypmod,
 						   attrStruct->attcollation,
-						   NULL);
+						   typeName);
+
+	/*
+	 * declare a variable which datatype is table.column%TYPE
+	 * or schema.table.column%TYPE in a function, procedure or package.
+	 * record the table or view OID, and column number(or 0 if not used).
+	 */
+	if (check_referenced_objects)
+	{
+		ObjectAddress *refobj;
+
+		refobj = (ObjectAddress *)palloc(sizeof(ObjectAddress));
+		refobj->classId = RelationRelationId;
+		refobj->objectId = classOid;
+		refobj->objectSubId = attrStruct->attnum;
+		plisql_referenced_objects = lappend(plisql_referenced_objects, (void *)refobj);
+	}
+
 	MemoryContextSwitchTo(plisql_compile_tmp_cxt);
 
 done:
@@ -2264,6 +2525,7 @@ plisql_parse_wordrowtype(char *ident)
 	PLiSQL_type	*result;
 	TypeName	*typname;
 	bool		missing_ok = false;
+	TypeName	*typeName;
 
 	typname = typeStringToTypeName(ident, NULL);
 	if (list_length(typname->names) < 2 &&
@@ -2307,9 +2569,29 @@ plisql_parse_wordrowtype(char *ident)
 				 errmsg("relation \"%s\" does not have a composite type",
 						ident)));
 
+	/*
+	 * declare a variable which datatype is table%ROWTYPE
+	 * or schema.table%ROWTYPE in a function, procedure or package,
+	 * record the table or view OID.
+	 */
+	if (check_referenced_objects)
+	{
+		ObjectAddress *refobj;
+
+		refobj = (ObjectAddress *)palloc(sizeof(ObjectAddress));
+		refobj->classId = RelationRelationId;
+		refobj->objectId = classOid;
+		refobj->objectSubId = InvalidAttrNumber;
+		plisql_referenced_objects = lappend(plisql_referenced_objects, (void *)refobj);
+	}
+
+	typeName = makeTypeName(ident);
+	typeName->pct_type = false;
+	typeName->row_type = true;
+
 	/* Build and return the row type struct */
 	return plisql_build_datatype(typOid, -1, InvalidOid,
-								  makeTypeName(ident));
+					  typeName);
 }
 
 /* ----------
@@ -2325,6 +2607,7 @@ plisql_parse_cwordrowtype(List *idents)
 	RangeVar   *relvar;
 	MemoryContext oldCxt;
 	PLiSQL_type	*result;
+	TypeName	*typeName;
 
 	result = plisql_parse_package_type(makeTypeNameFromNameList(idents),
 							parse_by_var_rowtype, false);
@@ -2353,9 +2636,29 @@ plisql_parse_cwordrowtype(List *idents)
 
 	MemoryContextSwitchTo(oldCxt);
 
+	/*
+	 * declare a variable which datatype is schema.table%ROWTYPE
+	 * in a function, procedure or package,
+	 * record the table or view OID.
+	 */
+	if (check_referenced_objects)
+	{
+		ObjectAddress *refobj;
+
+		refobj = (ObjectAddress *)palloc(sizeof(ObjectAddress));
+		refobj->classId = RelationRelationId;
+		refobj->objectId = classOid;
+		refobj->objectSubId = InvalidAttrNumber;
+		plisql_referenced_objects = lappend(plisql_referenced_objects, (void *)refobj);
+	}
+
+	typeName = makeTypeNameFromNameList(idents);
+	typeName->pct_type = false;
+	typeName->row_type = true;
+
 	/* Build and return the row type struct */
 	return plisql_build_datatype(typOid, -1, InvalidOid,
-								  makeTypeNameFromNameList(idents));
+					  typeName);
 }
 
 /*
@@ -2713,6 +3016,16 @@ build_datatype(HeapTuple typeTup, int32 typmod,
 		typ->tupdesc_id = 0;
 	}
 
+	/*
+	 * If it's a %TYPE or %ROWTYPE type, save the original type name in pctrowtypname.
+	 */
+	typ->notnull = false;
+	if (origtypname!= NULL &&
+		(origtypname->pct_type || origtypname->row_type))
+		typ->pctrowtypname = origtypname;
+	else
+		typ->pctrowtypname = NULL;
+
 	return typ;
 }
 
@@ -3067,10 +3380,28 @@ compute_function_hashkey(FunctionCallInfo fcinfo,
 
 					pkgtype = LookupPkgTypeByTypename(tname->names, false);
 					if (pkgtype == NULL)
-						elog(ERROR, "package doesn't exist");
-					hashkey->argtypes[i] = pkgtype->basetypid;
+					{
+						Type		typtup;
+
+						typtup = LookupOraTypeName(NULL, tname, NULL, true);
+						if (typtup)
+						{
+							if (!((Form_pg_type) GETSTRUCT(typtup))->typisdefined)
+							{
+								pfree(tname);
+								elog(ERROR, "package, relation or view does not exist");
+							}
+							hashkey->argtypes[i] = typeTypeId(typtup);
+							ReleaseSysCache(typtup);
+						}
+					}
+					else
+					{
+						hashkey->argtypes[i] = pkgtype->basetypid;
+						pfree(pkgtype);
+					}
+
 					pfree(tname);
-					pfree(pkgtype);
 				}
 			}
 		}
@@ -3451,5 +3782,214 @@ dynamic_build_func_vars(PLiSQL_function **function)
 
 	/* Add to namespace under the $n name */
 	add_parameter_name(argitemtype, argvariable->dno, buf);
+}
+
+/*
+ * plisql_free_function
+ * remove the function from hashtable.
+ */
+void
+plisql_free_function(Oid funcOid)
+{
+	HeapTuple	procTup;
+	Form_pg_proc 	proc;
+	PLiSQL_function *function;
+	PLiSQL_func_hashkey hashkey;
+	char		functyptype;
+	LOCAL_FCINFO(fake_fcinfo, 0);
+	FmgrInfo	flinfo;
+	TriggerData trigdata;
+	EventTriggerData etrigdata;
+	bool		is_dml_trigger = false;
+	bool		is_event_trigger = false;
+
+	/*
+	 * Lookup the pg_proc tuple by Oid
+	 */
+	procTup = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcOid));
+
+	if (!HeapTupleIsValid(procTup))
+		elog(ERROR, "cache lookup failed for function %u", funcOid);
+
+	proc = (Form_pg_proc) GETSTRUCT(procTup);
+
+	functyptype = get_typtype(proc->prorettype);
+
+	/* pseudotype result is not allowed */
+	/* except for TRIGGER, EVTTRIGGER, RECORD, VOID, or polymorphic */
+	if (functyptype == TYPTYPE_PSEUDO)
+	{
+		if (proc->prorettype == TRIGGEROID)
+			is_dml_trigger = true;
+		else if (proc->prorettype == EVENT_TRIGGEROID)
+			is_event_trigger = true;
+		else if (proc->prorettype != RECORDOID &&
+				 proc->prorettype != VOIDOID &&
+				 !IsPolymorphicType(proc->prorettype))
+			ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("PL/iSQL functions cannot return type %s",
+					format_type_be(proc->prorettype))));
+	}
+
+	/*
+	 * Set up a fake fcinfo with enough info to satisfy
+	 * compute_function_hashkey().
+	 */
+	MemSet(fake_fcinfo, 0, SizeForFunctionCallInfo(0));
+	MemSet(&flinfo, 0, sizeof(flinfo));
+
+	fake_fcinfo->flinfo = &flinfo;
+	flinfo.fn_oid = funcOid;
+	flinfo.fn_mcxt = CurrentMemoryContext;
+
+	if (is_dml_trigger)
+	{
+		MemSet(&trigdata, 0, sizeof(trigdata));
+		trigdata.type = T_TriggerData;
+		fake_fcinfo->context = (Node *) &trigdata;
+	}
+	else if (is_event_trigger)
+	{
+		MemSet(&etrigdata, 0, sizeof(etrigdata));
+		etrigdata.type = T_EventTriggerData;
+		fake_fcinfo->context = (Node *) &etrigdata;
+	}
+
+	/* Compute hashkey with function signature and actual arg types */
+	compute_function_hashkey(fake_fcinfo, proc, &hashkey, true, procTup);
+
+	/* do the lookup */
+	function = plisql_HashTableLookup(&hashkey);
+
+	if (function)
+	{
+		/* We have a compiled function, and it is still valid, 
+		 * remove the function from hashtable 
+		 */
+		if (function->fn_xmin == HeapTupleHeaderGetRawXmin(procTup->t_data) &&
+			ItemPointerEquals(&function->fn_tid, &procTup->t_self))
+		{
+			/* Remove the function from hashtable. */
+			delete_function(function);
+		}
+	}
+
+	ReleaseSysCache(procTup);
+}
+
+/*
+ * plisql_add_type_referenced_objects
+ * Check %TYPE or %ROWTYPE type which may reference a table, view, package.
+ */
+static void
+plisql_add_type_referenced_objects(TypeName *typeName)
+{
+	PkgType *pkgtype;
+
+	pkgtype = LookupPkgTypeByTypename(typeName->names, false);
+
+	if (pkgtype != NULL)
+	{
+		ObjectAddress *refobj;
+
+		refobj = (ObjectAddress *)palloc(sizeof(ObjectAddress));
+		refobj->classId = PackageRelationId;
+		refobj->objectId = pkgtype->pkgoid;
+		refobj->objectSubId = InvalidAttrNumber;
+
+		plisql_referenced_objects = lappend(plisql_referenced_objects, refobj);
+
+		pfree(pkgtype);
+	}
+	else if (typeName != NULL && typeName->pct_type)
+	{
+		/* Handle %TYPE that reference to the type of an existing field */
+		RangeVar   *rel = makeRangeVar(NULL, NULL, typeName->location);
+		char	   *field = NULL;
+		Oid 		relid;
+		AttrNumber	attnum;
+		ObjectAddress 	*refobj;
+
+		/* deconstruct the name list */
+		switch (list_length(typeName->names))
+		{
+		case 1:
+			ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("improper %%TYPE reference (too few dotted names): %s",
+					NameListToString(typeName->names))));
+			break;
+		case 2:
+			rel->relname = strVal(linitial(typeName->names));
+			field = strVal(lsecond(typeName->names));
+			break;
+		case 3:
+			rel->schemaname = strVal(linitial(typeName->names));
+			rel->relname = strVal(lsecond(typeName->names));
+			field = strVal(lthird(typeName->names));
+			break;
+		case 4:
+			rel->catalogname = strVal(linitial(typeName->names));
+			rel->schemaname = strVal(lsecond(typeName->names));
+			rel->relname = strVal(lthird(typeName->names));
+			field = strVal(lfourth(typeName->names));
+			break;
+		default:
+			ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("improper %%TYPE reference (too many dotted names): %s",
+					NameListToString(typeName->names))));
+			break;
+		}
+
+		/*
+		 * Look up the field.
+		 *
+		 * As no lock is taken here, this might fail in the presence of
+		 * concurrent DDL. But taking a lock would carry a performance
+		 * penalty and would also require a permissions check.
+		 */
+		relid = RangeVarGetRelid(rel, NoLock, false);
+		attnum = get_attnum(relid, field);
+
+		if (attnum == InvalidAttrNumber)
+		{
+			ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_COLUMN),
+				 errmsg("column \"%s\" of relation \"%s\" does not exist",
+					field, rel->relname)));
+		}
+
+		refobj = (ObjectAddress *)palloc(sizeof(ObjectAddress));
+		refobj->classId = RelationRelationId;
+		refobj->objectId = relid;
+		refobj->objectSubId = attnum;
+		plisql_referenced_objects = lappend(plisql_referenced_objects, (void *)refobj);
+	}
+	else if (typeName != NULL && typeName->row_type)
+	{
+		char		*schema_name = NULL;
+		char		*relname = NULL;
+		RangeVar   	*rel;
+		Oid 		relid;
+
+		DeconstructQualifiedName(typeName->names, &schema_name, &relname);
+		rel = makeRangeVar(schema_name, relname, typeName->location);
+
+		relid = RangeVarGetRelid(rel, NoLock, false);
+		if (OidIsValid(relid))
+		{
+			ObjectAddress *refobj;
+
+			refobj = (ObjectAddress *)palloc(sizeof(ObjectAddress));
+			refobj->classId = RelationRelationId;
+			refobj->objectId = relid;
+			refobj->objectSubId = InvalidAttrNumber;
+			plisql_referenced_objects = lappend(plisql_referenced_objects, (void *)refobj);
+		}
+	}
+
+	pfree(typeName);
 }
 

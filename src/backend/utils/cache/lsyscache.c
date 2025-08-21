@@ -52,6 +52,7 @@
 #include "utils/typcache.h"
 #include "funcapi.h"
 #include "parser/parse_package.h"
+#include "parser/parse_type.h"
 
 /* Hook for plugins to get control in get_attavgwidth() */
 get_attavgwidth_hook_type get_attavgwidth_hook = NULL;
@@ -1671,9 +1672,11 @@ get_func_rettype(Oid funcid)
 }
 
 /*
- * maybe a function return a package'var
- * which is changed with package. so, we should
- * use this function to get its realy type
+ * If A function returns a variable in a package, 
+ * the variable may be changed with package. If A function's 
+ * returned datatype is tablename.columnname%TYPE, the tablename
+ * or the columnname can be changed or droped. 
+ * so, this function created to get the realy type.
  */
 Oid
 get_func_real_rettype(HeapTuple proc_tup)
@@ -1688,6 +1691,7 @@ get_func_real_rettype(HeapTuple proc_tup)
 		char *rettypename = NULL;
 
 		get_func_typename_info(proc_tup, NULL, &rettypename);
+
 		if (rettypename != NULL)
 		{
 			TypeName	*tname;
@@ -1695,10 +1699,34 @@ get_func_real_rettype(HeapTuple proc_tup)
 
 			tname = (TypeName *) stringToNode(rettypename);
 			pkgtype = LookupPkgTypeByTypename(tname->names, false);
+
 			if (pkgtype == NULL)
-				elog(ERROR, "package doesn't exist");
-			retoid = pkgtype->basetypid;
-			pfree(pkgtype);
+			{
+				Type	typtup;
+
+				typtup = LookupOraTypeName(NULL, tname, NULL, true);
+
+				if (typtup)
+				{
+					if (!((Form_pg_type) GETSTRUCT(typtup))->typisdefined)
+					{
+						pfree(tname);
+						elog(ERROR, "package, relation or view does not exist");
+					}
+
+					retoid = typeTypeId(typtup);
+					ReleaseSysCache(typtup);
+				}
+				else
+				{
+					elog(ERROR, "package, relation or view does not exist");
+				}
+			}
+			else
+			{
+				retoid = pkgtype->basetypid;
+				pfree(pkgtype);
+			}
 			pfree(tname);
 		}
 	}
@@ -1706,8 +1734,9 @@ get_func_real_rettype(HeapTuple proc_tup)
 }
 
 /*
- * function'argments maybe comes from package'var
- * which is dynamic changed with package
+ * function'argments may be from package'var
+ * which is dynamic changed with package.
+ * function'argments may be from relation.column%TYPE.
  */
 void
 repl_func_real_argtype(HeapTuple proc_tup, Oid *args, int nargs)
@@ -1779,9 +1808,33 @@ repl_func_real_argtype(HeapTuple proc_tup, Oid *args, int nargs)
 					PkgType *pkgtype = LookupPkgTypeByTypename(tname->names, false);
 
 					if (pkgtype == NULL)
-						elog(ERROR, "package doesn't exist");
-					args[j] = pkgtype->basetypid;
-					pfree(pkgtype);
+					{
+						Type		typtup;
+
+						typtup = LookupOraTypeName(NULL, tname, NULL, true);
+
+						if (typtup)
+						{
+							if (!((Form_pg_type) GETSTRUCT(typtup))->typisdefined)
+							{
+								pfree(tname);
+								elog(ERROR, "package, relation or view does not exist");
+							}
+
+							args[j] = typeTypeId(typtup);
+							ReleaseSysCache(typtup);
+						}
+						else
+						{
+							elog(ERROR, "package, relation or view does not exist");
+						}
+					}
+					else
+					{
+						args[j] = pkgtype->basetypid;
+						pfree(pkgtype);
+					}
+
 					pfree(tname);
 				}
 				j++;
@@ -1846,9 +1899,33 @@ get_func_real_allargtype(HeapTuple proc_tup)
 					PkgType *pkgtype = LookupPkgTypeByTypename(tname->names, false);
 
 					if (pkgtype == NULL)
-						elog(ERROR, "package doesn't exist");
-					proargtypes[i] = pkgtype->basetypid;
-					pfree(pkgtype);
+					{
+						Type		typtup;
+
+						typtup = LookupOraTypeName(NULL, tname, NULL, true);
+
+						if (typtup)
+						{
+							if (!((Form_pg_type) GETSTRUCT(typtup))->typisdefined)
+							{
+								pfree(tname);
+								elog(ERROR, "package, relation or view does not exist");
+							}
+
+							proargtypes[i] = typeTypeId(typtup);
+							ReleaseSysCache(typtup);
+						}
+						else
+						{
+							elog(ERROR, "package, relation or view does not exist");
+						}
+					}
+					else
+					{
+						proargtypes[i] = pkgtype->basetypid;
+						pfree(pkgtype);
+					}
+
 					pfree(tname);
 				}
 			}

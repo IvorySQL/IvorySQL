@@ -27,6 +27,12 @@
 #include "commands/packagecmds.h"
 #include "miscadmin.h"
 #include "utils/array.h"
+#include "access/table.h"
+#include "access/skey.h"
+#include "catalog/pg_depend.h"
+#include "access/genam.h"
+#include "utils/fmgroids.h"
+#include "utils/lsyscache.h"
 
 
 PLiSQL_package *plisql_compile_packageitem;
@@ -91,6 +97,7 @@ void *
 plisql_package_parse(ParseState *parsestate, PackageCacheItem *item, List *names,
 							int name_start, package_parse_flags flags,
 							Oid *basetypeid,
+							int32 *basetypmod,
 							int *entry_type,
 							List **fargs, /* return value */
 							List *fargnames,
@@ -179,6 +186,9 @@ plisql_package_parse(ParseState *parsestate, PackageCacheItem *item, List *names
 				{
 					if (basetypeid != NULL)
 						*basetypeid = var->datatype->typoid;
+
+					if (basetypmod != NULL)
+						*basetypmod = var->datatype->atttypmod;
 
 					value = (void *) var->datatype;
 				}
@@ -859,6 +869,9 @@ package_body_doCompile(HeapTuple pkgbodyTup,
 
 	plisql_curr_compile = (PLiSQL_function *) function;
 
+	check_referenced_objects = true;
+	plisql_referenced_objects = NIL;
+
 	/* init datums */
 	plisql_start_datums();
 	cur_compile_func_level = 0;
@@ -881,9 +894,99 @@ package_body_doCompile(HeapTuple pkgbodyTup,
 		/* append body to package struct */
 		psource->source.action->body = lappend(psource->source.action->body,
 							plisql_parse_result);
+
+		/*
+		 * Have built a global list plisql_referenced_objects
+		 * to store the objects referenced by %TYPE and %ROWTYPE
+		 * in package. All the referenced objects are in
+		 * plisql_referenced_objects list, record the dependencies
+		 * between relation and package.
+		 */
+		if (check_referenced_objects &&
+			plisql_referenced_objects != NIL)
+		{
+			ListCell   	*x;
+			ObjectAddresses *addrs;
+			ObjectAddress 	myself;
+			Relation	depRel;
+
+			addrs = new_object_addresses();
+			ObjectAddressSet(myself, PackageBodyRelationId, bodyStruct->oid);
+
+			depRel = table_open(DependRelationId, RowExclusiveLock);
+
+			foreach(x, plisql_referenced_objects)
+			{
+				ObjectAddress 	*obj = (ObjectAddress *) lfirst(x);
+				ObjectAddress 	referenced;
+				ScanKeyData 	key[3];
+				int 		nkeys;
+				SysScanDesc 	scan;
+				HeapTuple	tup;
+				bool		isduplicate = false;
+
+				/* Check duplicate dependencies already been built in CREATE PACKAGE statment */
+				ScanKeyInit(&key[0],
+						Anum_pg_depend_refclassid,
+						BTEqualStrategyNumber, F_OIDEQ,
+						ObjectIdGetDatum(obj->classId));
+				ScanKeyInit(&key[1],
+						Anum_pg_depend_refobjid,
+						BTEqualStrategyNumber, F_OIDEQ,
+						ObjectIdGetDatum(obj->objectId));
+
+				if (obj->objectSubId != 0)
+				{
+					/* Consider dependencies of only this sub-object */
+					ScanKeyInit(&key[2],
+							Anum_pg_depend_refobjsubid,
+							BTEqualStrategyNumber, F_INT4EQ,
+							Int32GetDatum(obj->objectSubId));
+					nkeys = 3;
+				}
+				else
+				{
+					/* Consider dependencies of this object and any sub-objects */
+					nkeys = 2;
+				}
+
+				scan = systable_beginscan(depRel, DependReferenceIndexId, true,
+							  NULL, nkeys, key);
+
+				while (HeapTupleIsValid(tup = systable_getnext(scan)))
+				{
+					Form_pg_depend foundDep = (Form_pg_depend) GETSTRUCT(tup);
+					if (foundDep->objid == bodyStruct->oid)
+					{
+						isduplicate = true;
+						break;
+					}
+				}
+
+				systable_endscan(scan);
+
+				if (isduplicate)
+					continue;
+
+				/*
+				 * Record the dependencies between relation and package.
+				 */
+				ObjectAddressSet(referenced, obj->classId, obj->objectId);
+				referenced.objectSubId = obj->objectSubId;
+				add_exact_object_address(&referenced, addrs);
+			}
+
+			table_close(depRel, RowExclusiveLock);
+
+			record_object_address_dependencies(&myself, addrs, DEPENDENCY_TYPE);
+
+			free_object_addresses(addrs);
+		}
 	}
 	PG_CATCH();
 	{
+		list_free(plisql_referenced_objects);
+
 		/*
 		 * package body compile failed, we drop package cache at best
 		 * because it may affect others packages
@@ -916,6 +1019,9 @@ package_body_doCompile(HeapTuple pkgbodyTup,
 	plisql_error_funcname = NULL;
 
 	plisql_check_syntax = false;
+
+	check_referenced_objects = false;
+	list_free(plisql_referenced_objects);
 
 	MemoryContextSwitchTo(plisql_compile_tmp_cxt);
 	plisql_compile_tmp_cxt = NULL;
@@ -1036,6 +1142,9 @@ package_doCompile(HeapTuple pkgTup, bool forValidator)
 	plisql_curr_compile = (PLiSQL_function *) function;
 	plisql_curr_compile->item = item;
 
+	check_referenced_objects = true;
+	plisql_referenced_objects = NIL;
+
 	/*
 	 * Initialize the compiler, particularly the namespace stack.  The
 	 * outermost namespace contains function parameters and other special
@@ -1074,11 +1183,99 @@ package_doCompile(HeapTuple pkgTup, bool forValidator)
 			elog(ERROR, "plisql parser returned %d", parse_rc);
 		function->action = plisql_parse_result;
 
+		/*
+		 * Have built a global list plisql_referenced_objects
+		 * to store the objects referenced by %TYPE and %ROWTYPE
+		 * in package. All the referenced objects are in
+		 * plisql_referenced_objects list, record the dependencies
+		 * between relation and package.
+		 */
+		if (check_referenced_objects &&
+			plisql_referenced_objects != NIL)
+		{
+			ListCell   	*x;
+			ObjectAddresses *addrs;
+			ObjectAddress 	myself;
+			Relation	depRel;
+
+			addrs = new_object_addresses();
+			ObjectAddressSet(myself, PackageRelationId, pkgStruct->oid);
+			depRel = table_open(DependRelationId, RowExclusiveLock);
+
+			foreach(x, plisql_referenced_objects)
+			{
+				ObjectAddress *obj = (ObjectAddress *) lfirst(x);
+				ObjectAddress referenced;
+				ScanKeyData 	key[3];
+				int 		nkeys;
+				SysScanDesc 	scan;
+				HeapTuple	tup;
+				bool		isduplicate = false;
+
+				/* Check duplicate dependencies that already been built in CREATE PACKAGE statment */
+				ScanKeyInit(&key[0],
+						Anum_pg_depend_refclassid,
+						BTEqualStrategyNumber, F_OIDEQ,
+						ObjectIdGetDatum(obj->classId));
+				ScanKeyInit(&key[1],
+						Anum_pg_depend_refobjid,
+						BTEqualStrategyNumber, F_OIDEQ,
+						ObjectIdGetDatum(obj->objectId));
+
+				if (obj->objectSubId != 0)
+				{
+					/* Consider dependencies of only this sub-object */
+					ScanKeyInit(&key[2],
+							Anum_pg_depend_refobjsubid,
+							BTEqualStrategyNumber, F_INT4EQ,
+							Int32GetDatum(obj->objectSubId));
+					nkeys = 3;
+				}
+				else
+				{
+					/* Consider dependencies of this object and any sub-objects */
+					nkeys = 2;
+				}
+
+				scan = systable_beginscan(depRel, DependReferenceIndexId, true,
+							  NULL, nkeys, key);
+
+				while (HeapTupleIsValid(tup = systable_getnext(scan)))
+				{
+					Form_pg_depend foundDep = (Form_pg_depend) GETSTRUCT(tup);
+					if (foundDep->objid == pkgStruct->oid)
+					{
+						isduplicate = true;
+						break;
+					}
+				}
+
+				systable_endscan(scan);
+
+				if (isduplicate)
+					continue;
+
+				/*
+				 * Record the dependencies between relation and package.
+				 */
+				ObjectAddressSet(referenced, obj->classId, obj->objectId);
+				referenced.objectSubId = obj->objectSubId;
+				add_exact_object_address(&referenced, addrs);
+			}
+
+			table_close(depRel, RowExclusiveLock);
+
+			record_object_address_dependencies(&myself, addrs, DEPENDENCY_TYPE);
+
+			free_object_addresses(addrs);
+		}
+
 		plisql_scanner_finish();
 		pfree(pkg_source);
 	}
 	PG_CATCH();
 	{
+		list_free(plisql_referenced_objects);
 		plisql_free_package_function(item);
 		PG_RE_THROW();
 	}
@@ -1108,6 +1305,9 @@ package_doCompile(HeapTuple pkgTup, bool forValidator)
 	plisql_error_funcname = NULL;
 
 	plisql_check_syntax = false;
+
+	check_referenced_objects = false;
+	list_free(plisql_referenced_objects);
 
 	MemoryContextSwitchTo(plisql_compile_tmp_cxt);
 	plisql_compile_tmp_cxt = NULL;
@@ -1786,6 +1986,8 @@ plisql_push_compile_global_proper(void)
 	plisql_saved_compile_proper[plisql_curr_global_proper_level].plisql_curr_compile = plisql_curr_compile;
 	plisql_saved_compile_proper[plisql_curr_global_proper_level].plisql_compile_tmp_cxt = plisql_compile_tmp_cxt;
 	plisql_saved_compile_proper[plisql_curr_global_proper_level].datums_alloc = datums_alloc;
+	plisql_saved_compile_proper[plisql_curr_global_proper_level].check_referenced_objects = check_referenced_objects;
+	plisql_saved_compile_proper[plisql_curr_global_proper_level].plisql_referenced_objects = plisql_referenced_objects;
 
 	/* come from pl_subproc_function.h */
 	plisql_saved_compile_proper[plisql_curr_global_proper_level].plisql_subprocFuncs = plisql_subprocFuncs;
@@ -1855,6 +2057,8 @@ plisql_pop_compile_global_proper()
 	plisql_curr_compile = plisql_saved_compile_proper[plisql_curr_global_proper_level].plisql_curr_compile;
 	plisql_compile_tmp_cxt = plisql_saved_compile_proper[plisql_curr_global_proper_level].plisql_compile_tmp_cxt;
 	datums_alloc = plisql_saved_compile_proper[plisql_curr_global_proper_level].datums_alloc;
+	check_referenced_objects = plisql_saved_compile_proper[plisql_curr_global_proper_level].check_referenced_objects;
+	plisql_referenced_objects = plisql_saved_compile_proper[plisql_curr_global_proper_level].plisql_referenced_objects;
 
 	/* come from pl_subproc_function.h */
 	plisql_subprocFuncs = plisql_saved_compile_proper[plisql_curr_global_proper_level].plisql_subprocFuncs;
@@ -2990,8 +3194,8 @@ plisql_get_subprocs_from_package(Oid pkgoid,
 
 	for (j = 0; j < psource->last_specialfno; j++)
 	{
-		Datum		values[17];
-		bool		nulls[17];
+		Datum		values[22];
+		bool		nulls[22];
 		PLiSQL_subproc_function *subproc = psource->source.subprocfuncs[j];
 		oidvector *parameterTypes;
 		Datum	*paramModes;
@@ -3005,6 +3209,21 @@ plisql_get_subprocs_from_package(Oid pkgoid,
 		ListCell *lc;
 		int nargs;
 		int i = 0;
+
+		/*
+		 * paramTypeNamesForView is used as TYPE_NAME in SYS.ALL_PACKAGE_ARGUMENTS,
+		 * SYS.USER_PACKAGE_ARGUMENTS, SYS.DBA_PACKAGE_ARGUMENTS views.
+		 */
+		Datum	*paramTypeNamesForView;
+		Datum	*paramObjectTypes;
+		Datum	*paramDataLengths;
+		Datum	*paramDataPrecisions;
+		Datum	*paramDataScales;
+		ArrayType  *parameterTypeNamesForView;
+		ArrayType  *parameterTypeObjectTypes;
+		ArrayType  *parameterTypeDataLengths;
+		ArrayType  *parameterTypeDataPrecisions;
+		ArrayType  *parameterTypeDataScales;
 
 		MemSet(nulls, 0, sizeof(nulls));
 
@@ -3031,14 +3250,83 @@ plisql_get_subprocs_from_package(Oid pkgoid,
 			nulls[9] = true;
 			nulls[10] = true;
 		}
+
+		if (!subproc->is_proc)
+			nargs += 1;
+
 		oids = (Oid *) palloc(sizeof(Oid) * nargs);
 		paramModes = (Datum *) palloc(nargs * sizeof(Datum));
 		paramNames = (Datum *) palloc(nargs * sizeof(Datum));
 		paramTypNames = (Datum *) palloc(nargs * sizeof(Datum));
 		paramDefaults = (Datum *) palloc(nargs * sizeof(Datum));
+		paramTypeNamesForView = (Datum *) palloc0(nargs * sizeof(Datum));
+		paramObjectTypes = (Datum *) palloc0(nargs * sizeof(Datum));
+		paramDataLengths = (Datum *) palloc0(nargs * sizeof(Datum));
+		paramDataPrecisions = (Datum *) palloc0(nargs * sizeof(Datum));
+		paramDataScales = (Datum *) palloc0(nargs * sizeof(Datum));
+
+		if (!subproc->is_proc)
+		{
+			int32		typmode = subproc->rettype->atttypmod;
+
+			/* first get the function's returned datatype information*/
+			oids[i] = subproc->rettype->typoid;
+			paramModes[i] = CharGetDatum(FUNC_PARAM_OUT);
+			paramNames[i] = CStringGetTextDatum("_NULL_");
+			paramTypNames[i] = CStringGetTextDatum(format_type_be(oids[i]));
+			paramDefaults[i] = CStringGetTextDatum("_NULL_");
+
+			if (type_is_rowtype(oids[i]))
+				paramTypeNamesForView[i] = CStringGetTextDatum(subproc->rettype->typname);
+			else
+				paramTypeNamesForView[i] = CStringGetTextDatum("_NULL_");
+
+			if (oids[i] == ORACHARCHAROID ||
+				oids[i] == ORACHARBYTEOID  ||
+				oids[i] == ORAVARCHARCHAROID  ||
+				oids[i] == ORAVARCHARBYTEOID ||
+				oids[i] == BPCHAROID ||
+				oids[i] == VARCHAROID)
+			{
+				paramObjectTypes[i] = CStringGetTextDatum("_NULL_");
+
+				if (typmode != -1)
+					paramDataLengths[i] = Int32GetDatum(typmode - VARHDRSZ);
+				else
+					paramDataLengths[i] = Int32GetDatum(0);
+
+				paramDataPrecisions[i] = Int32GetDatum(0);
+				paramDataScales[i] = Int32GetDatum(0);
+			}
+			else if (oids[i] == NUMERICOID ||
+					oids[i] == NUMBEROID)
+			{
+				paramObjectTypes[i] = CStringGetTextDatum("_NULL_");
+				paramDataLengths[i] = Int32GetDatum(0);
+
+				/* precision (i.e. max number of digits) is in upper bits of typmod */
+				paramDataPrecisions[i] = Int32GetDatum(((typmode - VARHDRSZ) >> 16) & 0xffff);
+				paramDataScales[i] = Int32GetDatum((typmode - VARHDRSZ) & 0xffff);
+			}
+			else
+			{
+				if (type_is_rowtype(oids[i]))
+					paramObjectTypes[i] = CStringGetTextDatum("table");
+				else
+					paramObjectTypes[i] = CStringGetTextDatum("_NULL_");
+
+				paramDataLengths[i] = Int32GetDatum(0);
+				paramDataPrecisions[i] = Int32GetDatum(0);
+				paramDataScales[i] = Int32GetDatum(0);
+			}
+
+			i++;
+		}
+
 		foreach (lc, subproc->arg)
 		{
 			PLiSQL_function_argitem *argitem = (PLiSQL_function_argitem *) lfirst(lc);
+			int32		typmode = argitem->type->atttypmod;
 
 			oids[i] = argitem->type->typoid;
 			switch (argitem->argmode)
@@ -3056,12 +3344,58 @@ plisql_get_subprocs_from_package(Oid pkgoid,
 					elog(ERROR, "invalid argmode %u", argitem->argmode);
 					break;
 			}
+
 			paramNames[i] = CStringGetTextDatum(argitem->argname);
 			paramTypNames[i] = CStringGetTextDatum(format_type_be(oids[i]));
 			if (argitem->defexpr != NULL)
 				paramDefaults[i] = CStringGetTextDatum(argitem->defexpr->query);
 			else
-				paramDefaults[i] = CStringGetTextDatum(pstrdup("_NULL_"));
+				paramDefaults[i] = CStringGetTextDatum("_NULL_");
+
+			if (type_is_rowtype(oids[i]))
+				paramTypeNamesForView[i] = CStringGetTextDatum(argitem->type->typname);
+			else
+				paramTypeNamesForView[i] = CStringGetTextDatum("_NULL_");
+
+			if (oids[i] == ORACHARCHAROID ||
+				oids[i] == ORACHARBYTEOID  ||
+				oids[i] == ORAVARCHARCHAROID  ||
+				oids[i] == ORAVARCHARBYTEOID ||
+				oids[i] == BPCHAROID ||
+				oids[i] == VARCHAROID)
+			{
+				paramObjectTypes[i] = CStringGetTextDatum("_NULL_");
+
+				if (typmode != -1)
+					paramDataLengths[i] = Int32GetDatum(typmode - VARHDRSZ);
+				else
+					paramDataLengths[i] = Int32GetDatum(0);
+
+				paramDataPrecisions[i] = Int32GetDatum(0);
+				paramDataScales[i] = Int32GetDatum(0);
+			}
+			else if (oids[i] == NUMERICOID ||
+					oids[i] == NUMBEROID)
+			{
+				paramObjectTypes[i] = CStringGetTextDatum("_NULL_");
+				paramDataLengths[i] = Int32GetDatum(0);
+
+				/* precision (i.e. max number of digits) is in upper bits of typmod */
+				paramDataPrecisions[i] = Int32GetDatum(((typmode - VARHDRSZ) >> 16) & 0xffff);
+				paramDataScales[i] = Int32GetDatum((typmode - VARHDRSZ) & 0xffff);
+			}
+			else
+			{
+				if (type_is_rowtype(oids[i]))
+					paramObjectTypes[i] = CStringGetTextDatum("table");
+				else
+					paramObjectTypes[i] = CStringGetTextDatum("_NULL_");
+
+				paramDataLengths[i] = Int32GetDatum(0);
+				paramDataPrecisions[i] = Int32GetDatum(0);
+				paramDataScales[i] = Int32GetDatum(0);
+			}
+
 			i++;
 		}
 		parameterTypes = buildoidvector(oids, nargs);
@@ -3073,6 +3407,17 @@ plisql_get_subprocs_from_package(Oid pkgoid,
 										  -1, false, TYPALIGN_INT);
 		parameterdefaults = construct_array(paramDefaults, nargs, TEXTOID,
 										  -1, false, TYPALIGN_INT);
+		parameterTypeNamesForView = construct_array(paramTypeNamesForView, nargs, TEXTOID,
+										  -1, false, TYPALIGN_INT);
+		parameterTypeObjectTypes = construct_array(paramObjectTypes, nargs, TEXTOID,
+										  -1, false, TYPALIGN_INT);
+		parameterTypeDataLengths = construct_array(paramDataLengths, nargs, INT4OID,
+										  sizeof(int32), true, TYPALIGN_INT);
+		parameterTypeDataPrecisions = construct_array(paramDataPrecisions, nargs, INT4OID,
+										  sizeof(int32), true, TYPALIGN_INT);
+		parameterTypeDataScales = construct_array(paramDataScales, nargs, INT4OID,
+										  sizeof(int32), true, TYPALIGN_INT);
+
 		values[11] = PointerGetDatum(parameterTypes);
 		if (parameterTypeNames != NULL)
 			values[12] = PointerGetDatum(parameterTypeNames);
@@ -3091,6 +3436,31 @@ plisql_get_subprocs_from_package(Oid pkgoid,
 		else
 			nulls[15] = true;
 		values[16] = BoolGetDatum(define_invok);
+
+		if (parameterTypeNamesForView != NULL)
+			values[17] = PointerGetDatum(parameterTypeNamesForView);
+		else
+			nulls[17] = true;
+
+		if (parameterTypeObjectTypes != NULL)
+			values[18] = PointerGetDatum(parameterTypeObjectTypes);
+		else
+			nulls[18] = true;
+
+		if (parameterTypeDataLengths != NULL)
+			values[19] = PointerGetDatum(parameterTypeDataLengths);
+		else
+			nulls[19] = true;
+
+		if (parameterTypeDataPrecisions != NULL)
+			values[20] = PointerGetDatum(parameterTypeDataPrecisions);
+		else
+			nulls[20] = true;
+
+		if (parameterTypeDataScales != NULL)
+			values[21] = PointerGetDatum(parameterTypeDataScales);
+		else
+			nulls[21] = true;
 
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}

@@ -327,7 +327,7 @@ static void determineLanguage(List *options);
 		CreateSubscriptionStmt AlterSubscriptionStmt DropSubscriptionStmt
 
 %type <node>	select_no_parens select_with_parens select_clause
-				simple_select values_clause
+				simple_select values_clause values_clause_no_parens
 				PLpgSQL_Expr PLAssignStmt
 
 %type <str>			opt_single_name
@@ -9305,10 +9305,16 @@ func_type:	Typename								{ $$ = $1; }
 					$$->pct_type = true;
 					$$->location = @1;
 				}
+			| type_function_name attrs '%' ROWTYPE
+				{
+					$$ = makeTypeNameFromNameList(lcons(makeString($1), $2));
+					$$->row_type = true;
+					$$->location = @1;
+				}
 			| type_function_name '%' ROWTYPE
 				{
 					$$ = makeTypeNameFromNameList(list_make1(makeString($1)));
-					$$->pct_type = false;
+					$$->row_type = true;
 					$$->location = @1;
 				}
 			| SETOF type_function_name attrs '%' TYPE_P
@@ -13965,6 +13971,7 @@ simple_select:
 					$$ = (Node *) n;
 				}
 			| values_clause							{ $$ = $1; }
+			| values_clause_no_parens				{ $$ = $1; }
 			| TABLE relation_expr
 				{
 					/* same as SELECT * FROM relation_expr */
@@ -14553,6 +14560,7 @@ values_clause:
 					SelectStmt *n = makeNode(SelectStmt);
 
 					n->valuesLists = list_make1($3);
+					n->valuesIsrow = false;
 					$$ = (Node *) n;
 				}
 			| values_clause ',' '(' expr_list ')'
@@ -14560,6 +14568,17 @@ values_clause:
 					SelectStmt *n = (SelectStmt *) $1;
 
 					n->valuesLists = lappend(n->valuesLists, $4);
+					n->valuesIsrow = false;
+					$$ = (Node *) n;
+				}
+		;
+
+values_clause_no_parens:
+			VALUES columnref
+				{
+					SelectStmt *n = makeNode(SelectStmt);
+					n->valuesLists = list_make1(list_make1($2));
+					n->valuesIsrow = true;
 					$$ = (Node *) n;
 				}
 		;
@@ -20346,7 +20365,6 @@ col_name_keyword:
 			| TRIM
 			| UPDATEXML /* ReqID:SRS-SQL-XML */
 			| USERENV
-			| VALUES
 			| VARCHAR
 			| VARCHAR2
 			| XMLATTRIBUTES
@@ -20488,6 +20506,7 @@ reserved_keyword:
 			| UNIQUE
 			| USER
 			| USING
+			| VALUES
 			| VARIADIC
 			| WHEN
 			| WHERE

@@ -37,6 +37,7 @@ typedef enum DependencyType
 	DEPENDENCY_PARTITION_SEC = 'S',
 	DEPENDENCY_EXTENSION = 'e',
 	DEPENDENCY_AUTO_EXTENSION = 'x',
+	DEPENDENCY_TYPE = 't'
 } DependencyType;
 
 /*
@@ -97,6 +98,18 @@ typedef struct ObjectAddresses ObjectAddresses;
 #define PERFORM_DELETION_CONCURRENT_LOCK	0x0020	/* normal drop with
 													 * concurrent lock mode */
 
+/*
+ * Used to store the functions or packages found in pg_depend.
+ * If arguments or return datatype of funtions(package subprocedures) reference %TYPE and %ROWTYPE,
+ * record the dependencies between function(or package) and the relation.
+ */
+typedef struct
+{
+	Oid		objectId;	/* function, package and package body to be invalidated --- MUST BE FIRST */
+	Oid		flags;		/* flags used to identify function, package and package body */
+} ObjectFunOrPkg;
+
+
 
 /* in dependency.c */
 
@@ -135,6 +148,8 @@ extern void record_object_address_dependencies(const ObjectAddress *depender,
 extern void sort_object_addresses(ObjectAddresses *addrs);
 
 extern void free_object_addresses(ObjectAddresses *addrs);
+
+extern int object_funpkgoid_comparator(const void *a, const void *b);
 
 /* in pg_depend.c */
 

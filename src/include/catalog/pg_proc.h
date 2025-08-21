@@ -86,6 +86,11 @@ CATALOG(pg_proc,1255,ProcedureRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(81,Proce
 	/* OID of result type */
 	Oid			prorettype BKI_LOOKUP(pg_type);
 
+	/* procedure status: N/A, VALID, INVALID 
+	 * see PROSTATUS_NA, PROSTATUS_VALID and PROSTATUS_INVALID below.
+	 */
+	char		prostatus	BKI_DEFAULT(v);
+
 	/*
 	 * variable-length fields start here, but we allow direct access to
 	 * proargtypes
@@ -192,6 +197,21 @@ MAKE_SYSCACHE(PROCNAMEARGSNSP, pg_proc_proname_args_nsp_index, 128);
 #define PROARGMODE_INOUT	'b'
 #define PROARGMODE_VARIADIC 'v'
 #define PROARGMODE_TABLE	't'
+
+/*
+ * Symbolic values for prostatus column.
+ */
+#define PROSTATUS_NA		'n'	/* procedure status is unknown,
+					 * must call ALTER FUNCTION COMPILE statement to
+					 * validate te procedure, otherwise failed to
+					 * call the procedure
+					 */
+#define PROSTATUS_VALID		'v'	/* procedure can be called */
+#define PROSTATUS_INVALID	'i'	/* procedure status is invalid,
+					 * must call ALTER FUNCTION COMPILE statement to
+					 * validate te procedure, otherwise failed to
+					 * call the procedure
+					 */
 
 #endif							/* EXPOSE_TO_CLIENT_CODE */
 
