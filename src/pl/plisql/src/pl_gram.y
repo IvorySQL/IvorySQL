@@ -745,6 +745,15 @@ decl_statement	: decl_varname decl_const decl_datatype decl_collate decl_notnull
 													 $3, true);
 						var->isconst = $2;
 						var->notnull = $5;
+						/*
+						 * If decl_datatype is variable%TYPE,
+						 * and the variable has a NOT NULL constraint,
+						 * var inherits the NOT NULL constraint(unless 
+						 * the decl_datatype is a table.column%TYPE).
+						 */
+						if (!var->notnull && $3->notnull == true)
+							var->notnull = $3->notnull;
+
 						var->default_val = $6;
 
 						/*

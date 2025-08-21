@@ -179,6 +179,7 @@ typedef struct
 							int name_start,
 							package_parse_flags flag,
 							Oid *basetypeid, /* return value */
+							int32 *basetypmod,
 							int *entry_type, /* return value */
 							List **fargs, /* return value */
 							List *fargnames,
@@ -201,6 +202,7 @@ typedef struct
 	void (*get_subprocs_from_package) (Oid pkgoid, TupleDesc tupdesc,
 									Tuplestorestate *tupstore);
 	void (*compile_inline_internal)(char *proc_source);
+	void (*function_free) (Oid funcOid);
 	bool isload;
 } PLiSQL_funcs_call;
 
@@ -266,6 +268,9 @@ extern bool	func_should_change_return_type(Oid functionId, Oid *rettype,
 extern void get_func_typename_info(HeapTuple procTup,
 					char ***p_argtypeNames,
 					char **rettypeName);
+
+extern char get_func_prostatus(HeapTuple procTup);
+extern void change_func_prostatus(Oid funcOid, char prostatus);
 
 /*----------
  *	Support to ease writing functions returning composite types

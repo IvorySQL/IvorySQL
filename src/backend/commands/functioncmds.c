@@ -77,6 +77,8 @@
 #include "utils/typcache.h"
 #include "parser/parse_param.h"
 #include "access/printtup.h"
+#include "nodes/makefuncs.h"
+#include "access/xact.h"
 
 /*
  *	 Examine the RETURNS clause of the CREATE FUNCTION statement
@@ -147,7 +149,16 @@ compute_return_type(TypeName *returnType, Oid languageOid,
 						 errmsg("return type %s is only a shell",
 								TypeNameToString(returnType))));
 		}
+
 		rettype = typeTypeId(typtup);
+
+		if (ORA_PARSER == compatible_db &&
+			languageOid == LANG_PLISQL_OID &&
+			(returnType->pct_type || returnType->row_type))
+		{
+			*rettypename = nodeToString(returnType);
+		}
+
 		ReleaseSysCache(typtup);
 	}
 	else
@@ -248,6 +259,7 @@ interpret_function_parameter_list(ParseState *pstate,
 	Datum		*typeNames = NULL;
 	bool		has_pkg_type = false;
 	bool isplisql = false;
+	bool		has_rel_type = false;
 
 	*variadicArgType = InvalidOid;	/* default result */
 	*requiredResultType = InvalidOid;	/* default result */
@@ -574,6 +586,77 @@ interpret_function_parameter_list(ParseState *pstate,
 			}
 		}
 
+		/*
+		 * Check if the datatype of function parameter is tablename.columnname%TYPE
+		 */
+		if (!has_pkg_type &&
+			compatible_db == ORA_PARSER &&
+			LANG_PLISQL_OID == languageOid &&
+			t->pct_type)
+		{
+			RangeVar	*rel = makeRangeVar(NULL, NULL, t->location);
+			Oid 		relid;
+
+			/* parse name list */
+			switch (list_length(t->names))
+			{
+				case 1:
+					ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("wrong %%TYPE reference (too few dotted names): %s",
+							NameListToString(t->names)),
+							 parser_errposition(pstate, t->location)));
+					break;
+				case 2:
+					rel->relname = strVal(linitial(t->names));
+					break;
+				case 3:
+					rel->schemaname = strVal(linitial(t->names));
+					rel->relname = strVal(lsecond(t->names));
+					break;
+				case 4:
+					rel->catalogname = strVal(linitial(t->names));
+					rel->schemaname = strVal(lsecond(t->names));
+					rel->relname = strVal(lthird(t->names));
+					break;
+				default:
+					ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("wrong %%TYPE reference (too many dotted names): %s",
+							NameListToString(t->names)),
+						 	parser_errposition(pstate, t->location)));
+					break;
+			}
+
+			/* Get oid of the relation */
+			relid = RangeVarGetRelid(rel, NoLock, false);
+			if (OidIsValid(relid))
+			{
+				typeNames[i] = CStringGetTextDatum(nodeToString(t));
+				has_rel_type = true;
+			}
+		}
+		else if (!has_pkg_type &&
+			compatible_db == ORA_PARSER &&
+			LANG_PLISQL_OID == languageOid &&
+			t->row_type)
+		{
+			char		*schema_name = NULL;
+			char		*relname = NULL;
+			RangeVar   	*rel = NULL;
+			Oid 		relid;
+
+			DeconstructQualifiedName(t->names, &schema_name, &relname);
+			rel = makeRangeVar(schema_name, relname, t->location);
+
+			relid = RangeVarGetRelid(rel, NoLock, false);
+			if (OidIsValid(relid))
+			{
+				typeNames[i] = CStringGetTextDatum(nodeToString(t));
+				has_rel_type = true;
+			}
+		}
+
 		i++;
 	}
 
@@ -606,7 +689,7 @@ interpret_function_parameter_list(ParseState *pstate,
 	else
 		*parameterNames = NULL;
 
-	if (has_pkg_type)
+	if (has_pkg_type || has_rel_type)
 	{
 		for (i = 0; i < parameterCount; i++)
 		{
@@ -1550,6 +1633,15 @@ CompileFunction(CompileFunctionStmt *stmt)
 	bool		argtypes_change = false;
 	ArrayType	*all_argtypes;
 	bool		alltype_change = false;
+	bool		nulls[Natts_pg_proc];
+	Datum		values[Natts_pg_proc];
+	bool		replaces[Natts_pg_proc];
+	int 		i;
+	HeapTuple 	newtuple;
+	ObjectAddress 	myself;
+	MemoryContext 	oldcontext = CurrentMemoryContext;
+	ResourceOwner 	oldowner = CurrentResourceOwner;
+	bool		plisql_check_body = false;
 
 	rel = table_open(ProcedureRelationId, RowExclusiveLock);
 	funcOid = LookupFuncWithArgs(stmt->objtype, stmt->func, false);
@@ -1586,61 +1678,20 @@ CompileFunction(CompileFunctionStmt *stmt)
 		return address;
 	}
 
-	/*
-	 * there, if function argtypes or rettype come from
-	 * a package, we should change its pg_proc tuple if
-	 * its argumentstype or rettype is changed
-	 */
-	relrettypoid = get_func_real_rettype(tup);
-	if (procForm->pronargs != 0)
-	{
-		memcpy(argtypes, procForm->proargtypes.values,
-			procForm->pronargs * sizeof(Oid));
-		repl_func_real_argtype(tup, argtypes, procForm->pronargs);
-		argtypes_change = (procForm->pronargs != 0 &&
-			memcmp(argtypes, procForm->proargtypes.values,
-			procForm->pronargs * sizeof(Oid)) != 0);
-	}
-	all_argtypes = get_func_real_allargtype(tup);
-	if (all_argtypes != NULL)
-	{
-		Datum proallargtypes;
-		bool	isNull;
-		ArrayType *arr;
-		int		numargs;
+	if (ORA_PARSER == compatible_db &&
+		!strcmp(NameStr(langForm->lanname), "plisql"))
+		plisql_check_body = true;
 
-		/* First discover the total number of parameters and get their types */
-		proallargtypes = SysCacheGetAttr(PROCOID, tup,
-									 Anum_pg_proc_proallargtypes,
-									 &isNull);
-		Assert(!isNull);
-		/*
-		 * We expect the arrays to be 1-D arrays of the right types; verify
-		 * that.  For the OID and char arrays, we don't need to use
-		 * deconstruct_array() since the array data is just going to look like
-		 * a C array of values.
-		 */
-		arr = DatumGetArrayTypeP(proallargtypes);	/* ensure not toasted */
-		numargs = ARR_DIMS(arr)[0];
-		if (ARR_NDIM(arr) != 1 ||
-			numargs < 0 ||
-			ARR_HASNULL(arr) ||
-			ARR_ELEMTYPE(arr) != OIDOID)
-			elog(ERROR, "proallargtypes is not a 1-D Oid array or it contains nulls");
-		alltype_change = (memcmp(ARR_DATA_PTR(arr),
-							ARR_DATA_PTR(all_argtypes), sizeof(Oid) * numargs) != 0);
-	}
-	if (relrettypoid != procForm->prorettype ||
-		argtypes_change ||
-		alltype_change)
+	PG_TRY();
 	{
-		/* replace pg_proc with new arguments */
-		bool		nulls[Natts_pg_proc];
-		Datum		values[Natts_pg_proc];
-		bool		replaces[Natts_pg_proc];
-		int			i;
-		HeapTuple newtuple;
-		ObjectAddress myself;
+		/*
+		 * Execute the function validator inside a sub-transaction
+		 */
+		if (plisql_check_body)
+		{
+			BeginInternalSubTransaction(NULL);
+			MemoryContextSwitchTo(oldcontext);
+		}
 
 		for (i = 0; i < Natts_pg_proc; ++i)
 		{
@@ -1648,31 +1699,161 @@ CompileFunction(CompileFunctionStmt *stmt)
 			values[i] = (Datum) 0;
 			replaces[i] = false;
 		}
-		if (relrettypoid != procForm->prorettype)
+
+		/*
+		 * if function argtypes or rettype is from
+		 * a package, its pg_proc tuple should be changed 
+		 * when its argumentstype or rettype is changed.
+		 */
+		relrettypoid = get_func_real_rettype(tup);
+		if (procForm->pronargs != 0)
 		{
-			nulls[Anum_pg_proc_prorettype - 1] = false;
-			values[Anum_pg_proc_prorettype - 1] = ObjectIdGetDatum(relrettypoid);
-			replaces[Anum_pg_proc_prorettype - 1] = true;
+			memcpy(argtypes, procForm->proargtypes.values,
+				procForm->pronargs * sizeof(Oid));
+
+			repl_func_real_argtype(tup, argtypes, procForm->pronargs);
+
+			argtypes_change = (procForm->pronargs != 0 &&
+				memcmp(argtypes, procForm->proargtypes.values,
+				procForm->pronargs * sizeof(Oid)) != 0);
 		}
-		if (argtypes_change)
+
+		all_argtypes = get_func_real_allargtype(tup);
+		if (all_argtypes != NULL)
 		{
-			nulls[Anum_pg_proc_proargtypes - 1] = false;
-			values[Anum_pg_proc_proargtypes - 1] = PointerGetDatum(buildoidvector(argtypes,
-												procForm->pronargs));
-			replaces[Anum_pg_proc_proargtypes - 1] = true;
+			Datum 	proallargtypes;
+			bool	isNull;
+			ArrayType *arr;
+			int	numargs;
+
+			/* find out the number of parameters and get the types */
+			proallargtypes = SysCacheGetAttr(PROCOID, tup,
+							 Anum_pg_proc_proallargtypes,
+							 &isNull);
+			Assert(!isNull);
+
+			/*
+			 * Expect the arrays to be 1-D arrays of the right types and verify that.  
+			 */
+			arr = DatumGetArrayTypeP(proallargtypes);	
+			numargs = ARR_DIMS(arr)[0];
+
+			if (ARR_NDIM(arr) != 1 ||
+				numargs < 0 ||
+				ARR_HASNULL(arr) ||
+				ARR_ELEMTYPE(arr) != OIDOID)
+			{
+				elog(ERROR, "proallargtypes is not a 1-D Oid array or it contains nulls");
+			}
+	
+			alltype_change = (memcmp(ARR_DATA_PTR(arr),
+						ARR_DATA_PTR(all_argtypes), sizeof(Oid) * numargs) != 0);
 		}
-		if (alltype_change)
+
+		if (relrettypoid != procForm->prorettype ||
+			argtypes_change ||
+			alltype_change)
 		{
-			nulls[Anum_pg_proc_proallargtypes - 1] = false;
-			values[Anum_pg_proc_proallargtypes - 1] = PointerGetDatum(all_argtypes);
-			replaces[Anum_pg_proc_proallargtypes - 1] = true;
+			/* modify pg_proc with new arguments */
+			if (relrettypoid != procForm->prorettype)
+			{
+				nulls[Anum_pg_proc_prorettype - 1] = false;
+				values[Anum_pg_proc_prorettype - 1] = ObjectIdGetDatum(relrettypoid);
+				replaces[Anum_pg_proc_prorettype - 1] = true;
+			}
+
+			if (argtypes_change)
+			{
+				nulls[Anum_pg_proc_proargtypes - 1] = false;
+				values[Anum_pg_proc_proargtypes - 1] = PointerGetDatum(buildoidvector(argtypes,
+													procForm->pronargs));
+				replaces[Anum_pg_proc_proargtypes - 1] = true;
+			}
+
+			if (alltype_change)
+			{
+				nulls[Anum_pg_proc_proallargtypes - 1] = false;
+				values[Anum_pg_proc_proallargtypes - 1] = PointerGetDatum(all_argtypes);
+				replaces[Anum_pg_proc_proallargtypes - 1] = true;
+			}
+
+			if (!OidIsValid(lanvalidator) &&
+				procForm->prostatus == PROSTATUS_INVALID)
+			{
+				newtuple = heap_modify_tuple(tup, RelationGetDescr(rel), values, nulls, replaces);
+				CatalogTupleUpdate(rel, &newtuple->t_self, newtuple);
+
+				/* dependency on current extension */
+				ObjectAddressSet(myself, ProcedureRelationId, funcOid);
+				recordDependencyOnCurrentExtension(&myself, true);
+			}
 		}
-		newtuple = heap_modify_tuple(tup, RelationGetDescr(rel), values, nulls, replaces);
-		CatalogTupleUpdate(rel, &newtuple->t_self, newtuple);
-		/* dependency on extension */
-		ObjectAddressSet(myself, ProcedureRelationId, funcOid);
-		recordDependencyOnCurrentExtension(&myself, true);
+		if (plisql_check_body)
+		{
+			/* Commit the sub-transaction, return to outer transaction context */
+			ReleaseCurrentSubTransaction();
+			MemoryContextSwitchTo(oldcontext);
+			CurrentResourceOwner = oldowner;
+		}
 	}
+	PG_CATCH();
+	{
+		if (plisql_check_body)
+		{
+			ErrorData  *edata;
+
+			MemoryContextSwitchTo(oldcontext);
+			edata = CopyErrorData();
+			FlushErrorState();
+
+			/* Abort the inner transaction */
+			RollbackAndReleaseCurrentSubTransaction();
+			MemoryContextSwitchTo(oldcontext);
+			CurrentResourceOwner = oldowner;
+
+			if (procForm->prostatus == PROSTATUS_NA || procForm->prostatus == PROSTATUS_VALID)
+			{
+				/*
+				 * When lanvalidator failed, just update prostatus to be PROSTATUS_INVALID.
+				 * No need to update prorettype, proargtypes, proallargtypes.
+				 */
+				/* emit nuisance notice */
+				ereport(WARNING,
+						(errmsg("compilation error"),
+						 errhint("%s", edata->message),
+						 errposition(edata->cursorpos)));
+
+				nulls[Anum_pg_proc_prostatus - 1] = false;
+				values[Anum_pg_proc_prostatus - 1] = CharGetDatum(PROSTATUS_INVALID);
+				replaces[Anum_pg_proc_prostatus - 1] = true;
+
+				if (relrettypoid != procForm->prorettype)
+					replaces[Anum_pg_proc_prorettype - 1] = false;
+				if (argtypes_change)
+					replaces[Anum_pg_proc_proargtypes - 1] = false;
+				if (alltype_change)
+					replaces[Anum_pg_proc_proallargtypes - 1] = false;
+
+				newtuple = heap_modify_tuple(tup, RelationGetDescr(rel), values, nulls, replaces);
+				CatalogTupleUpdate(rel, &newtuple->t_self, newtuple);
+
+				/* record dependency on extension */
+				ObjectAddressSet(myself, ProcedureRelationId, funcOid);
+				recordDependencyOnCurrentExtension(&myself, true);
+			}
+
+			ReleaseSysCache(languageTuple);
+			InvokeObjectPostAlterHook(ProcedureRelationId, funcOid, 0);
+			ObjectAddressSet(address, ProcedureRelationId, funcOid);
+			table_close(rel, NoLock);
+			heap_freetuple(tup);
+
+			return address;
+		}
+		else
+			PG_RE_THROW();
+	}
+	PG_END_TRY();
 
 	if (OidIsValid(lanvalidator))
 	{
@@ -1696,6 +1877,15 @@ CompileFunction(CompileFunctionStmt *stmt)
 		saved_check_function_bodies = check_function_bodies;
 		check_function_bodies = true;
 
+		/*
+		 * Execute the function validator inside a sub-transaction
+		 */
+		if (plisql_check_body)
+		{
+			BeginInternalSubTransaction(NULL);
+			MemoryContextSwitchTo(oldcontext);
+		}
+
 		PG_TRY();
 		{
 			datum = SysCacheGetAttr(PROCOID, tup, Anum_pg_proc_proconfig,
@@ -1715,11 +1905,87 @@ CompileFunction(CompileFunctionStmt *stmt)
 
 			if (set_items)
 				AtEOXact_GUC(true, save_nestlevel);
+
+			if (plisql_check_body)
+			{
+				/* Commit the inner transaction, return to outer transaction context */
+				ReleaseCurrentSubTransaction();
+				MemoryContextSwitchTo(oldcontext);
+				CurrentResourceOwner = oldowner;
+			}
+
+			if (procForm->prostatus == PROSTATUS_NA || procForm->prostatus == PROSTATUS_INVALID)
+			{
+				nulls[Anum_pg_proc_prostatus - 1] = false;
+				values[Anum_pg_proc_prostatus - 1] = CharGetDatum(PROSTATUS_VALID);
+				replaces[Anum_pg_proc_prostatus - 1] = true;
+			}
+
+			newtuple = heap_modify_tuple(tup, RelationGetDescr(rel), values, nulls, replaces);
+			CatalogTupleUpdate(rel, &newtuple->t_self, newtuple);
+
+			/* record dependency on extension */
+			ObjectAddressSet(myself, ProcedureRelationId, funcOid);
+			recordDependencyOnCurrentExtension(&myself, true);
 		}
 		PG_CATCH();
 		{
 			check_function_bodies = saved_check_function_bodies;
-			PG_RE_THROW();
+
+			if (plisql_check_body)
+			{
+				ErrorData  *edata;
+
+				MemoryContextSwitchTo(oldcontext);
+				edata = CopyErrorData();
+				FlushErrorState();
+
+				/* Abort the inner transaction */
+				RollbackAndReleaseCurrentSubTransaction();
+				MemoryContextSwitchTo(oldcontext);
+				CurrentResourceOwner = oldowner;
+
+				if (procForm->prostatus == PROSTATUS_NA || procForm->prostatus == PROSTATUS_VALID)
+				{
+					/* emit nuisance notice */
+					ereport(WARNING,
+							(errmsg("compilation error"),
+							 errhint("%s", edata->message),
+							 errposition(edata->cursorpos)));
+
+					/*
+					 * When lanvalidator failed, update prostatus to be PROSTATUS_INVALID.
+					 * no need to update prorettype, proargtypes, proallargtypes.
+					 */
+					nulls[Anum_pg_proc_prostatus - 1] = false;
+					values[Anum_pg_proc_prostatus - 1] = CharGetDatum(PROSTATUS_INVALID);
+					replaces[Anum_pg_proc_prostatus - 1] = true;
+
+					if (relrettypoid != procForm->prorettype)
+						replaces[Anum_pg_proc_prorettype - 1] = false;
+					if (argtypes_change)
+						replaces[Anum_pg_proc_proargtypes - 1] = false;
+					if (alltype_change)
+						replaces[Anum_pg_proc_proallargtypes - 1] = false;
+
+					newtuple = heap_modify_tuple(tup, RelationGetDescr(rel), values, nulls, replaces);
+					CatalogTupleUpdate(rel, &newtuple->t_self, newtuple);
+
+					/* record dependency on extension */
+					ObjectAddressSet(myself, ProcedureRelationId, funcOid);
+					recordDependencyOnCurrentExtension(&myself, true);
+				}
+
+				ReleaseSysCache(languageTuple);
+				InvokeObjectPostAlterHook(ProcedureRelationId, funcOid, 0);
+				ObjectAddressSet(address, ProcedureRelationId, funcOid);
+				table_close(rel, NoLock);
+				heap_freetuple(tup);
+
+				return address;
+			}
+			else
+				PG_RE_THROW();
 		}
 		PG_END_TRY();
 	}
