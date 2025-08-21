@@ -19,9 +19,10 @@ BEGIN
 END;
 $$;
 /
-ERROR:  RETURN cannot have a parameter in a procedure
+WARNING:  there was an compilation error
 LINE 5:     RETURN 5;
                    ^
+HINT:  RETURN cannot have a parameter in a procedure
 CREATE TABLE test1 (a int);
 CREATE PROCEDURE test_proc3(x int)
 LANGUAGE plisql

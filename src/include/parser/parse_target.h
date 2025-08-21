@@ -55,4 +55,10 @@ extern TupleDesc expandRecordVariable(ParseState *pstate, Var *var,
 extern char *FigureColname(Node *node);
 extern char *FigureIndexColname(Node *node);
 
+List *transformRowExpression(ParseState *pstate, List *exprlist,
+					ParseExprKind exprKind, bool allowDefault);
+List *transformRowTargetList(ParseState *pstate, List *targetlist,
+					ParseExprKind exprKind);
+
+
 #endif							/* PARSE_TARGET_H */

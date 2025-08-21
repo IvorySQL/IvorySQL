@@ -698,8 +698,24 @@ plisql_validator(PG_FUNCTION_ARGS)
 			fake_fcinfo->context = (Node *) &etrigdata;
 		}
 
-		/* Test-compile the function */
-		plisql_compile(fake_fcinfo, true);
+		PG_TRY();
+		{
+			/* Test-compile the function */
+			plisql_compile(fake_fcinfo, true);
+		}
+		PG_CATCH();
+		{
+			/*
+			 * Disconnect from SPI manager
+			 */
+			if ((rc = SPI_finish()) != SPI_OK_FINISH)
+				elog(ERROR, "SPI_finish failed: %s", SPI_result_code_string(rc));
+
+			ReleaseSysCache(tuple);
+
+			PG_RE_THROW();
+		}
+		PG_END_TRY();
 
 		/*
 		 * Disconnect from SPI manager
