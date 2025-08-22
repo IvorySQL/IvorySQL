@@ -28,14 +28,14 @@ psql_sources += psqlscanslash
 ora_psqlscanslash = custom_target('ora_psqlscanslash',
   input: 'ora_psqlscanslash.l',
   output: 'ora_psqlscanslash.c',
-  command: [flex_cmd, '--no-backup', '--fix-warnings', '--', '-Cfe', '-p', '-p'])
+  command: [flex_cmd, '--no-backup', '--', '-Cfe', '-p', '-p'])
 generated_sources += ora_psqlscanslash
 psql_sources += ora_psqlscanslash
 
 psqlplusscan = custom_target('psqlplusscan',
   input: 'psqlplusscan.l',
   output: 'psqlplusscan.c',
-  command: [flex_cmd, '--no-backup', '--fix-warnings', '--', '-Cfe', '-p', '-p'])
+  command: [flex_cmd, '--no-backup', '--', '-Cfe', '-p', '-p'])
 generated_sources += psqlplusscan
 psql_sources += psqlplusscan
 psqlplusparse = custom_target('psqlplusparse',
