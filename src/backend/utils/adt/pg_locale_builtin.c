@@ -2,7 +2,7 @@
  *
  * PostgreSQL locale utilities for builtin provider
  *
- * Portions Copyright (c) 2002-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2002-2025, PostgreSQL Global Development Group
  *
  * src/backend/utils/adt/pg_locale_builtin.c
  *
@@ -24,12 +24,15 @@
 
 extern pg_locale_t create_pg_locale_builtin(Oid collid,
 											MemoryContext context);
+extern char *get_collation_actual_version_builtin(const char *collcollate);
 extern size_t strlower_builtin(char *dst, size_t dstsize, const char *src,
 							   ssize_t srclen, pg_locale_t locale);
 extern size_t strtitle_builtin(char *dst, size_t dstsize, const char *src,
 							   ssize_t srclen, pg_locale_t locale);
 extern size_t strupper_builtin(char *dst, size_t dstsize, const char *src,
 							   ssize_t srclen, pg_locale_t locale);
+extern size_t strfold_builtin(char *dst, size_t dstsize, const char *src,
+							  ssize_t srclen, pg_locale_t locale);
 
 
 struct WordBoundaryState
@@ -77,7 +80,8 @@ size_t
 strlower_builtin(char *dest, size_t destsize, const char *src, ssize_t srclen,
 				 pg_locale_t locale)
 {
-	return unicode_strlower(dest, destsize, src, srclen);
+	return unicode_strlower(dest, destsize, src, srclen,
+							locale->info.builtin.casemap_full);
 }
 
 size_t
@@ -93,6 +97,7 @@ strtitle_builtin(char *dest, size_t destsize, const char *src, ssize_t srclen,
 	};
 
 	return unicode_strtitle(dest, destsize, src, srclen,
+							locale->info.builtin.casemap_full,
 							initcap_wbnext, &wbstate);
 }
 
@@ -100,7 +105,16 @@ size_t
 strupper_builtin(char *dest, size_t destsize, const char *src, ssize_t srclen,
 				 pg_locale_t locale)
 {
-	return unicode_strupper(dest, destsize, src, srclen);
+	return unicode_strupper(dest, destsize, src, srclen,
+							locale->info.builtin.casemap_full);
+}
+
+size_t
+strfold_builtin(char *dest, size_t destsize, const char *src, ssize_t srclen,
+				pg_locale_t locale)
+{
+	return unicode_strfold(dest, destsize, src, srclen,
+						   locale->info.builtin.casemap_full);
 }
 
 pg_locale_t
@@ -141,10 +155,36 @@ create_pg_locale_builtin(Oid collid, MemoryContext context)
 	result = MemoryContextAllocZero(context, sizeof(struct pg_locale_struct));
 
 	result->info.builtin.locale = MemoryContextStrdup(context, locstr);
+	result->info.builtin.casemap_full = (strcmp(locstr, "PG_UNICODE_FAST") == 0);
 	result->provider = COLLPROVIDER_BUILTIN;
 	result->deterministic = true;
 	result->collate_is_c = true;
 	result->ctype_is_c = (strcmp(locstr, "C") == 0);
 
 	return result;
+}
+
+char *
+get_collation_actual_version_builtin(const char *collcollate)
+{
+	/*
+	 * The only two supported locales (C and C.UTF-8) are both based on memcmp
+	 * and are not expected to change, but track the version anyway.
+	 *
+	 * Note that the character semantics may change for some locales, but the
+	 * collation version only tracks changes to sort order.
+	 */
+	if (strcmp(collcollate, "C") == 0)
+		return "1";
+	else if (strcmp(collcollate, "C.UTF-8") == 0)
+		return "1";
+	else if (strcmp(collcollate, "PG_UNICODE_FAST") == 0)
+		return "1";
+	else
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("invalid locale name \"%s\" for builtin provider",
+						collcollate)));
+
+	return NULL;				/* keep compiler quiet */
 }

@@ -55,9 +55,11 @@
       </indexterm>
 
       Alternatively, <productname>PostgreSQL</productname> can be built using
-      <ulink url="https://mesonbuild.com/">Meson</ulink>.  This is currently
-      experimental.  If you choose to use
-      <application>Meson</application>, then you don't need
+      <ulink url="https://mesonbuild.com/">Meson</ulink>.  This is the only
+      option for building <productname>PostgreSQL</productname> on Windows
+      using <productname>Visual Studio</productname>.  For other platforms,
+      using <application>Meson</application> is currently experimental.  If
+      you choose to use <application>Meson</application>, then you don't need
       <acronym>GNU</acronym> <application>make</application>, but the other
       requirements below still apply.
      </para>
@@ -100,10 +102,10 @@
        <primary>yacc</primary>
       </indexterm>
 
-      <application>Flex</application> 2.5.35 or later and
-      <application>Bison</application> 2.3 or later are required.  Other
-      <application>lex</application> and <application>yacc</application>
-      programs cannot be used.
+      <application>Flex</application> and <application>Bison</application> are
+      required.  Other <application>lex</application> and
+      <application>yacc</application> programs cannot be used.
+      <application>Bison</application> needs to be at least version 2.3.
      </para>
     </listitem>
 
@@ -1137,6 +1139,19 @@ build-postgresql:
        <listitem>
         <para>
          Obsolete equivalent of <literal>--with-uuid=ossp</literal>.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-with-libcurl">
+       <term><option>--with-libcurl</option></term>
+       <listitem>
+        <para>
+         Build with libcurl support for OAuth 2.0 client flows.
+         Libcurl version 7.61.0 or later is required for this feature.
+         Building with this will check for the required header files
+         and libraries to make sure that your <productname>curl</productname>
+         installation is sufficient before proceeding.
         </para>
        </listitem>
       </varlistentry>
@@ -2582,6 +2597,20 @@ ninja install
       </listitem>
      </varlistentry>
 
+     <varlistentry id="configure-with-libcurl-meson">
+      <term><option>-Dlibcurl={ auto | enabled | disabled }</option></term>
+      <listitem>
+       <para>
+        Build with libcurl support for OAuth 2.0 client flows.
+        Libcurl version 7.61.0 or later is required for this feature.
+        Building with this will check for the required header files
+        and libraries to make sure that your <productname>Curl</productname>
+        installation is sufficient before proceeding. The default for this
+        option is auto.
+       </para>
+      </listitem>
+     </varlistentry>
+
      <varlistentry id="configure-with-libxml-meson">
       <term><option>-Dlibxml={ auto | enabled | disabled }</option></term>
       <listitem>
@@ -3811,10 +3840,8 @@ make: *** [postgres] Error 1
         <productname>Flex</productname></term>
        <listitem>
        <para>
-        <productname>Bison</productname> and <productname>Flex</productname> are
-        required.  Only <productname>Bison</productname> versions 2.3 and later
-        will work. <productname>Flex</productname> must be version 2.5.35 or later.
-        Binaries can be downloaded from <ulink
+        Binaries for <productname>Bison</productname> and
+        <productname>Flex</productname> can be downloaded from <ulink
         url="https://github.com/lexxmark/winflexbison"></ulink>.
        </para>
        </listitem>

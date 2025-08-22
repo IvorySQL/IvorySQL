@@ -524,10 +524,14 @@ make_temp_sockdir(void)
 	 * Remove the directory before dying to the usual signals.  Omit SIGQUIT,
 	 * preserving it as a quick, untidy exit.
 	 */
-	pqsignal(SIGHUP, signal_remove_temp);
 	pqsignal(SIGINT, signal_remove_temp);
-	pqsignal(SIGPIPE, signal_remove_temp);
 	pqsignal(SIGTERM, signal_remove_temp);
+
+	/* the following are not valid on Windows */
+#ifndef WIN32
+	pqsignal(SIGHUP, signal_remove_temp);
+	pqsignal(SIGPIPE, signal_remove_temp);
+#endif
 
 	return temp_sockdir;
 }
@@ -1336,7 +1340,7 @@ make_directory(const char *dir)
 }
 
 /*
- * In: filename.ext, Return: filename_i.ext, where 0 < i <= 9
+ * In: filename.ext, Return: filename_i.ext, where 0 <= i <= 9
  */
 static char *
 get_alternative_expectfile(const char *expectfile, int i)

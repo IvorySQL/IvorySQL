@@ -3,7 +3,7 @@
  * connection.c
  *		  Connection management functions for postgres_fdw
  *
- * Portions Copyright (c) 2012-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2012-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  contrib/postgres_fdw/connection.c
@@ -19,6 +19,7 @@
 #include "access/xact.h"
 #include "catalog/pg_user_mapping.h"
 #include "commands/defrem.h"
+#include "common/base64.h"
 #include "funcapi.h"
 #include "libpq/libpq-be.h"
 #include "libpq/libpq-be-fe-helpers.h"
@@ -177,6 +178,7 @@ static void pgfdw_finish_abort_cleanup(List *pending_entries,
 static void pgfdw_security_check(const char **keywords, const char **values,
 								 UserMapping *user, PGconn *conn);
 static bool UserMappingPasswordRequired(UserMapping *user);
+static bool UseScramPassthrough(ForeignServer *server, UserMapping *user);
 static bool disconnect_cached_connections(Oid serverid);
 static void postgres_fdw_get_connections_internal(FunctionCallInfo fcinfo,
 												  enum pgfdwVersion api_version);
@@ -485,7 +487,7 @@ connect_pg_server(ForeignServer *server, UserMapping *user)
 		 * for application_name, fallback_application_name, client_encoding,
 		 * end marker.
 		 */
-		n = list_length(server->options) + list_length(user->options) + 4;
+		n = list_length(server->options) + list_length(user->options) + 4 + 2;
 		keywords = (const char **) palloc(n * sizeof(char *));
 		values = (const char **) palloc(n * sizeof(char *));
 
@@ -554,10 +556,42 @@ connect_pg_server(ForeignServer *server, UserMapping *user)
 		values[n] = GetDatabaseEncodingName();
 		n++;
 
+		if (MyProcPort->has_scram_keys && UseScramPassthrough(server, user))
+		{
+			int			len;
+			int			encoded_len;
+
+			keywords[n] = "scram_client_key";
+			len = pg_b64_enc_len(sizeof(MyProcPort->scram_ClientKey));
+			/* don't forget the zero-terminator */
+			values[n] = palloc0(len + 1);
+			encoded_len = pg_b64_encode((const char *) MyProcPort->scram_ClientKey,
+										sizeof(MyProcPort->scram_ClientKey),
+										(char *) values[n], len);
+			if (encoded_len < 0)
+				elog(ERROR, "could not encode SCRAM client key");
+			n++;
+
+			keywords[n] = "scram_server_key";
+			len = pg_b64_enc_len(sizeof(MyProcPort->scram_ServerKey));
+			/* don't forget the zero-terminator */
+			values[n] = palloc0(len + 1);
+			encoded_len = pg_b64_encode((const char *) MyProcPort->scram_ServerKey,
+										sizeof(MyProcPort->scram_ServerKey),
+										(char *) values[n], len);
+			if (encoded_len < 0)
+				elog(ERROR, "could not encode SCRAM server key");
+			n++;
+		}
+
 		keywords[n] = values[n] = NULL;
 
-		/* verify the set of connection parameters */
-		check_conn_params(keywords, values, user);
+		/*
+		 * Verify the set of connection parameters only if scram pass-through
+		 * is not being used because the password is not necessary.
+		 */
+		if (!(MyProcPort->has_scram_keys && UseScramPassthrough(server, user)))
+			check_conn_params(keywords, values, user);
 
 		/* first time, allocate or get the custom wait event */
 		if (pgfdw_we_connect == 0)
@@ -575,8 +609,12 @@ connect_pg_server(ForeignServer *server, UserMapping *user)
 							server->servername),
 					 errdetail_internal("%s", pchomp(PQerrorMessage(conn)))));
 
-		/* Perform post-connection security checks */
-		pgfdw_security_check(keywords, values, user, conn);
+		/*
+		 * Perform post-connection security checks only if scram pass-through
+		 * is not being used because the password is not necessary.
+		 */
+		if (!(MyProcPort->has_scram_keys && UseScramPassthrough(server, user)))
+			pgfdw_security_check(keywords, values, user, conn);
 
 		/* Prepare new session for use */
 		configure_remote_session(conn);
@@ -629,6 +667,30 @@ UserMappingPasswordRequired(UserMapping *user)
 	return true;
 }
 
+static bool
+UseScramPassthrough(ForeignServer *server, UserMapping *user)
+{
+	ListCell   *cell;
+
+	foreach(cell, server->options)
+	{
+		DefElem    *def = (DefElem *) lfirst(cell);
+
+		if (strcmp(def->defname, "use_scram_passthrough") == 0)
+			return defGetBoolean(def);
+	}
+
+	foreach(cell, user->options)
+	{
+		DefElem    *def = (DefElem *) lfirst(cell);
+
+		if (strcmp(def->defname, "use_scram_passthrough") == 0)
+			return defGetBoolean(def);
+	}
+
+	return false;
+}
+
 /*
  * For non-superusers, insist that the connstr specify a password or that the
  * user provided their own GSSAPI delegated credentials.  This
@@ -666,7 +728,7 @@ check_conn_params(const char **keywords, const char **values, UserMapping *user)
 	ereport(ERROR,
 			(errcode(ERRCODE_S_R_E_PROHIBITED_SQL_STATEMENT_ATTEMPTED),
 			 errmsg("password or GSSAPI delegated credentials required"),
-			 errdetail("Non-superusers must delegate GSSAPI credentials or provide a password in the user mapping.")));
+			 errdetail("Non-superusers must delegate GSSAPI credentials, provide a password, or enable SCRAM pass-through in user mapping.")));
 }
 
 /*
@@ -2049,8 +2111,8 @@ pgfdw_finish_abort_cleanup(List *pending_entries, List *cancel_requested,
 
 /* Number of output arguments (columns) for various API versions */
 #define POSTGRES_FDW_GET_CONNECTIONS_COLS_V1_1	2
-#define POSTGRES_FDW_GET_CONNECTIONS_COLS_V1_2	5
-#define POSTGRES_FDW_GET_CONNECTIONS_COLS	5	/* maximum of above */
+#define POSTGRES_FDW_GET_CONNECTIONS_COLS_V1_2	6
+#define POSTGRES_FDW_GET_CONNECTIONS_COLS	6	/* maximum of above */
 
 /*
  * Internal function used by postgres_fdw_get_connections variants.
@@ -2066,13 +2128,15 @@ pgfdw_finish_abort_cleanup(List *pending_entries, List *cancel_requested,
  *
  * For API version 1.2 and later, this function takes an input parameter
  * to check a connection status and returns the following
- * additional values along with the three values from version 1.1:
+ * additional values along with the four values from version 1.1:
  *
  * - user_name - the local user name of the active connection. In case the
  *   user mapping is dropped but the connection is still active, then the
  *   user name will be NULL in the output.
  * - used_in_xact - true if the connection is used in the current transaction.
  * - closed - true if the connection is closed.
+ * - remote_backend_pid - process ID of the remote backend, on the foreign
+ *   server, handling the connection.
  *
  * No records are returned when there are no cached connections at all.
  */
@@ -2211,6 +2275,9 @@ postgres_fdw_get_connections_internal(FunctionCallInfo fcinfo,
 				values[i++] = BoolGetDatum(pgfdw_conn_check(entry->conn) != 0);
 			else
 				nulls[i++] = true;
+
+			/* Return process ID of remote backend */
+			values[i++] = Int32GetDatum(PQbackendPID(entry->conn));
 		}
 
 		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);

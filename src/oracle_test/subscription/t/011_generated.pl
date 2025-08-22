@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2024, PostgreSQL Global Development Group
+# Copyright (c) 2021-2025, PostgreSQL Global Development Group
 
 # Test generated columns
 use strict;
@@ -21,11 +21,11 @@ $node_subscriber->start;
 my $publisher_connstr = $node_publisher->connstr . ' dbname=postgres';
 
 $node_publisher->safe_psql('postgres',
-	"CREATE TABLE tab1 (a int PRIMARY KEY, b int GENERATED ALWAYS AS (a * 2) STORED)"
+	"CREATE TABLE tab1 (a int PRIMARY KEY, b int GENERATED ALWAYS AS (a * 2) STORED, c int GENERATED ALWAYS AS (a * 3) VIRTUAL)"
 );
 
 $node_subscriber->safe_psql('postgres',
-	"CREATE TABLE tab1 (a int PRIMARY KEY, b int GENERATED ALWAYS AS (a * 22) STORED, c int)"
+	"CREATE TABLE tab1 (a int PRIMARY KEY, b int GENERATED ALWAYS AS (a * 22) STORED, c int GENERATED ALWAYS AS (a * 33) VIRTUAL, d int)"
 );
 
 # data for initial sync
@@ -42,10 +42,11 @@ $node_subscriber->safe_psql('postgres',
 # Wait for initial sync of all subscriptions
 $node_subscriber->wait_for_subscription_sync;
 
-my $result = $node_subscriber->safe_psql('postgres', "SELECT a, b FROM tab1");
-is( $result, qq(1|22
-2|44
-3|66), 'generated columns initial sync');
+my $result =
+  $node_subscriber->safe_psql('postgres', "SELECT a, b, c FROM tab1");
+is( $result, qq(1|22|33
+2|44|66
+3|66|99), 'generated columns initial sync');
 
 # data to replicate
 
@@ -56,11 +57,11 @@ $node_publisher->safe_psql('postgres', "UPDATE tab1 SET a = 6 WHERE a = 5");
 $node_publisher->wait_for_catchup('sub1');
 
 $result = $node_subscriber->safe_psql('postgres', "SELECT * FROM tab1");
-is( $result, qq(1|22|
-2|44|
-3|66|
-4|88|
-6|132|), 'generated columns replicated');
+is( $result, qq(1|22|33|
+2|44|66|
+3|66|99|
+4|88|132|
+6|132|198|), 'generated columns replicated');
 
 # try it with a subscriber-side trigger
 
@@ -69,7 +70,7 @@ $node_subscriber->safe_psql(
 CREATE FUNCTION tab1_trigger_func() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
-  NEW.c := NEW.a + 10;
+  NEW.d := NEW.a + 10;
   RETURN NEW;
 END $$;
 
@@ -88,13 +89,13 @@ $node_publisher->wait_for_catchup('sub1');
 
 $result =
   $node_subscriber->safe_psql('postgres', "SELECT * FROM tab1 ORDER BY 1");
-is( $result, qq(1|22|
-2|44|
-3|66|
-4|88|
-6|132|
-8|176|18
-9|198|19), 'generated columns replicated with trigger');
+is( $result, qq(1|22|33|
+2|44|66|
+3|66|99|
+4|88|132|
+6|132|198|
+8|176|264|18
+9|198|297|19), 'generated columns replicated with trigger');
 
 # cleanup
 $node_subscriber->safe_psql('postgres', "DROP SUBSCRIPTION sub1");
@@ -103,16 +104,16 @@ $node_publisher->safe_psql('postgres', "DROP PUBLICATION pub1");
 # =============================================================================
 # Exercise logical replication of a generated column to a subscriber side
 # regular column. This is done both when the publication parameter
-# 'publish_generated_columns' is set to false (to confirm existing default
-# behavior), and is set to true (to confirm replication occurs).
+# 'publish_generated_columns' is set to 'none' (to confirm existing default
+# behavior), and is set to 'stored' (to confirm replication occurs).
 #
 # The test environment is set up as follows:
 #
 # - Publication pub1 on the 'postgres' database.
-#   pub1 has publish_generated_columns=false.
+#   pub1 has publish_generated_columns as 'none'.
 #
 # - Publication pub2 on the 'postgres' database.
-#   pub2 has publish_generated_columns=true.
+#   pub2 has publish_generated_columns as 'stored'.
 #
 # - Subscription sub1 on the 'postgres' database for publication pub1.
 #
@@ -132,8 +133,8 @@ $node_publisher->safe_psql(
 	'postgres', qq(
 	CREATE TABLE tab_gen_to_nogen (a int, b int GENERATED ALWAYS AS (a * 2) STORED);
 	INSERT INTO tab_gen_to_nogen (a) VALUES (1), (2), (3);
-	CREATE PUBLICATION regress_pub1_gen_to_nogen FOR TABLE tab_gen_to_nogen WITH (publish_generated_columns = false);
-	CREATE PUBLICATION regress_pub2_gen_to_nogen FOR TABLE tab_gen_to_nogen WITH (publish_generated_columns = true);
+	CREATE PUBLICATION regress_pub1_gen_to_nogen FOR TABLE tab_gen_to_nogen WITH (publish_generated_columns = none);
+	CREATE PUBLICATION regress_pub2_gen_to_nogen FOR TABLE tab_gen_to_nogen WITH (publish_generated_columns = stored);
 ));
 
 # Create the table and subscription in the 'postgres' database.
@@ -157,28 +158,28 @@ $node_subscriber->wait_for_subscription_sync($node_publisher,
 	'regress_sub2_gen_to_nogen', 'test_pgc_true');
 
 # Verify that generated column data is not copied during the initial
-# synchronization when publish_generated_columns is set to false.
+# synchronization when publish_generated_columns is set to 'none'.
 $result = $node_subscriber->safe_psql('postgres',
 	"SELECT a, b FROM tab_gen_to_nogen ORDER BY a");
 is( $result, qq(1|
 2|
-3|), 'tab_gen_to_nogen initial sync, when publish_generated_columns=false');
+3|), 'tab_gen_to_nogen initial sync, when publish_generated_columns=none');
 
 # Verify that generated column data is copied during the initial synchronization
-# when publish_generated_columns is set to true.
+# when publish_generated_columns is set to 'stored'.
 $result = $node_subscriber->safe_psql('test_pgc_true',
 	"SELECT a, b FROM tab_gen_to_nogen ORDER BY a");
 is( $result, qq(1|2
 2|4
 3|6),
-	'tab_gen_to_nogen initial sync, when publish_generated_columns=true');
+	'tab_gen_to_nogen initial sync, when publish_generated_columns=stored');
 
 # Insert data to verify incremental replication.
 $node_publisher->safe_psql('postgres',
 	"INSERT INTO tab_gen_to_nogen VALUES (4), (5)");
 
 # Verify that the generated column data is not replicated during incremental
-# replication when publish_generated_columns is set to false.
+# replication when publish_generated_columns is set to 'none'.
 $node_publisher->wait_for_catchup('regress_sub1_gen_to_nogen');
 $result = $node_subscriber->safe_psql('postgres',
 	"SELECT a, b FROM tab_gen_to_nogen ORDER BY a");
@@ -187,11 +188,11 @@ is( $result, qq(1|
 3|
 4|
 5|),
-	'tab_gen_to_nogen incremental replication, when publish_generated_columns=false'
+	'tab_gen_to_nogen incremental replication, when publish_generated_columns=none'
 );
 
 # Verify that generated column data is replicated during incremental
-# synchronization when publish_generated_columns is set to true.
+# synchronization when publish_generated_columns is set to 'stored'.
 $node_publisher->wait_for_catchup('regress_sub2_gen_to_nogen');
 $result = $node_subscriber->safe_psql('test_pgc_true',
 	"SELECT a, b FROM tab_gen_to_nogen ORDER BY a");
@@ -200,7 +201,7 @@ is( $result, qq(1|2
 3|6
 4|8
 5|10),
-	'tab_gen_to_nogen incremental replication, when publish_generated_columns=true'
+	'tab_gen_to_nogen incremental replication, when publish_generated_columns=stored'
 );
 
 # cleanup
@@ -221,15 +222,16 @@ $node_subscriber->safe_psql('postgres', "DROP DATABASE test_pgc_true");
 # with the publication parameter 'publish_generated_columns'.
 #
 # Test: Column lists take precedence, so generated columns in a column list
-# will be replicated even when publish_generated_columns=false.
+# will be replicated even when publish_generated_columns is 'none'.
 #
 # Test: When there is a column list, only those generated columns named in the
-# column list will be replicated even when publish_generated_columns=true.
+# column list will be replicated even when publish_generated_columns is
+# 'stored'.
 # =============================================================================
 
 # --------------------------------------------------
 # Test Case: Publisher replicates the column list, including generated columns,
-# even when the publish_generated_columns option is set to false.
+# even when the publish_generated_columns option is set to 'none'.
 # --------------------------------------------------
 
 # Create table and publication. Insert data to verify initial sync.
@@ -237,7 +239,7 @@ $node_publisher->safe_psql(
 	'postgres', qq(
 	CREATE TABLE tab2 (a int, gen1 int GENERATED ALWAYS AS (a * 2) STORED);
 	INSERT INTO tab2 (a) VALUES (1), (2);
-	CREATE PUBLICATION pub1 FOR table tab2(gen1) WITH (publish_generated_columns=false);
+	CREATE PUBLICATION pub1 FOR table tab2(gen1) WITH (publish_generated_columns=none);
 ));
 
 # Create table and subscription.
@@ -250,19 +252,19 @@ $node_subscriber->safe_psql(
 # Wait for initial sync.
 $node_subscriber->wait_for_subscription_sync($node_publisher, 'sub1');
 
-# Initial sync test when publish_generated_columns=false.
-# Verify 'gen1' is replicated regardless of the false parameter value.
+# Initial sync test when publish_generated_columns is 'none'.
+# Verify 'gen1' is replicated regardless of the 'none' parameter value.
 $result =
   $node_subscriber->safe_psql('postgres', "SELECT * FROM tab2 ORDER BY gen1");
 is( $result, qq(|2
 |4),
-	'tab2 initial sync, when publish_generated_columns=false');
+	'tab2 initial sync, when publish_generated_columns=none');
 
 # Insert data to verify incremental replication.
 $node_publisher->safe_psql('postgres', "INSERT INTO tab2 VALUES (3), (4)");
 
-# Incremental replication test when publish_generated_columns=false.
-# Verify 'gen1' is replicated regardless of the false parameter value.
+# Incremental replication test when publish_generated_columns is 'none'.
+# Verify 'gen1' is replicated regardless of the 'none' parameter value.
 $node_publisher->wait_for_catchup('sub1');
 $result =
   $node_subscriber->safe_psql('postgres', "SELECT * FROM tab2 ORDER BY gen1");
@@ -270,15 +272,15 @@ is( $result, qq(|2
 |4
 |6
 |8),
-	'tab2 incremental replication, when publish_generated_columns=false');
+	'tab2 incremental replication, when publish_generated_columns=none');
 
 # cleanup
 $node_subscriber->safe_psql('postgres', "DROP SUBSCRIPTION sub1");
 $node_publisher->safe_psql('postgres', "DROP PUBLICATION pub1");
 
 # --------------------------------------------------
-# Test Case: Even when publish_generated_columns is set to true, the publisher
-# only publishes the data of columns specified in the column list,
+# Test Case: Even when publish_generated_columns is set to 'stored', the
+# publisher only publishes the data of columns specified in the column list,
 # skipping other generated and non-generated columns.
 # --------------------------------------------------
 
@@ -287,7 +289,7 @@ $node_publisher->safe_psql(
 	'postgres', qq(
 	CREATE TABLE tab3 (a int, gen1 int GENERATED ALWAYS AS (a * 2) STORED, gen2 int GENERATED ALWAYS AS (a * 2) STORED);
 	INSERT INTO tab3 (a) VALUES (1), (2);
-	CREATE PUBLICATION pub1 FOR table tab3(gen1) WITH (publish_generated_columns=true);
+	CREATE PUBLICATION pub1 FOR table tab3(gen1) WITH (publish_generated_columns=stored);
 ));
 
 # Create table and subscription.
@@ -300,19 +302,19 @@ $node_subscriber->safe_psql(
 # Wait for initial sync.
 $node_subscriber->wait_for_subscription_sync($node_publisher, 'sub1');
 
-# Initial sync test when publish_generated_columns=true.
-# Verify only 'gen1' is replicated regardless of the true parameter value.
+# Initial sync test when publish_generated_columns is 'stored'.
+# Verify only 'gen1' is replicated regardless of the 'stored' parameter value.
 $result =
   $node_subscriber->safe_psql('postgres', "SELECT * FROM tab3 ORDER BY gen1");
 is( $result, qq(|2|
 |4|),
-	'tab3 initial sync, when publish_generated_columns=true');
+	'tab3 initial sync, when publish_generated_columns=stored');
 
 # Insert data to verify incremental replication.
 $node_publisher->safe_psql('postgres', "INSERT INTO tab3 VALUES (3), (4)");
 
-# Incremental replication test when publish_generated_columns=true.
-# Verify only 'gen1' is replicated regardless of the true parameter value.
+# Incremental replication test when publish_generated_columns is 'stored'.
+# Verify only 'gen1' is replicated regardless of the 'stored' parameter value.
 $node_publisher->wait_for_catchup('sub1');
 $result =
   $node_subscriber->safe_psql('postgres', "SELECT * FROM tab3 ORDER BY gen1");
@@ -320,7 +322,7 @@ is( $result, qq(|2|
 |4|
 |6|
 |8|),
-	'tab3 incremental replication, when publish_generated_columns=true');
+	'tab3 incremental replication, when publish_generated_columns=stored');
 
 # cleanup
 $node_subscriber->safe_psql('postgres', "DROP SUBSCRIPTION sub1");

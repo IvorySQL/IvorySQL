@@ -2,8 +2,8 @@
  *
  * reindexdb
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  *
  * src/bin/scripts/reindexdb.c
  *
@@ -344,7 +344,10 @@ reindex_one_database(ConnParams *cparams, ReindexType type,
 
 				/* Bail out if nothing to process */
 				if (process_list == NULL)
+				{
+					PQfinish(conn);
 					return;
+				}
 				break;
 
 			case REINDEX_SCHEMA:
@@ -357,7 +360,10 @@ reindex_one_database(ConnParams *cparams, ReindexType type,
 
 				/* Bail out if nothing to process */
 				if (process_list == NULL)
+				{
+					PQfinish(conn);
 					return;
+				}
 				break;
 
 			case REINDEX_INDEX:
@@ -375,7 +381,10 @@ reindex_one_database(ConnParams *cparams, ReindexType type,
 				 * in-place, so check if it has at least one cell.
 				 */
 				if (user_list->head == NULL)
+				{
+					PQfinish(conn);
 					return;
+				}
 
 				/*
 				 * Assuming 'user_list' is not empty, 'indices_tables_list'
@@ -421,6 +430,7 @@ reindex_one_database(ConnParams *cparams, ReindexType type,
 
 	sa = ParallelSlotsSetup(concurrentCons, cparams, progname, echo, NULL);
 	ParallelSlotsAdoptConn(sa, conn);
+	conn = NULL;
 
 	cell = process_list->head;
 	do
@@ -516,7 +526,8 @@ run_reindex_command(PGconn *conn, ReindexType type, const char *name,
 
 	if (tablespace)
 	{
-		appendPQExpBuffer(&sql, "%sTABLESPACE %s", sep, fmtId(tablespace));
+		appendPQExpBuffer(&sql, "%sTABLESPACE %s", sep,
+						  fmtIdEnc(tablespace, PQclientEncoding(conn)));
 		sep = comma;
 	}
 
@@ -556,7 +567,8 @@ run_reindex_command(PGconn *conn, ReindexType type, const char *name,
 	{
 		case REINDEX_DATABASE:
 		case REINDEX_SYSTEM:
-			appendPQExpBufferStr(&sql, fmtId(name));
+			appendPQExpBufferStr(&sql,
+								 fmtIdEnc(name, PQclientEncoding(conn)));
 			break;
 		case REINDEX_INDEX:
 		case REINDEX_TABLE:
@@ -768,7 +780,6 @@ get_parallel_object_list(PGconn *conn, ReindexType type,
 	if (ntups == 0)
 	{
 		PQclear(res);
-		PQfinish(conn);
 		return NULL;
 	}
 
@@ -779,8 +790,9 @@ get_parallel_object_list(PGconn *conn, ReindexType type,
 	for (i = 0; i < ntups; i++)
 	{
 		appendPQExpBufferStr(&buf,
-							 fmtQualifiedId(PQgetvalue(res, i, 1),
-											PQgetvalue(res, i, 0)));
+							 fmtQualifiedIdEnc(PQgetvalue(res, i, 1),
+											   PQgetvalue(res, i, 0),
+											   PQclientEncoding(conn)));
 
 		simple_string_list_append(tables, buf.data);
 		resetPQExpBuffer(&buf);
@@ -792,8 +804,9 @@ get_parallel_object_list(PGconn *conn, ReindexType type,
 			 * the order of tables list.
 			 */
 			appendPQExpBufferStr(&buf,
-								 fmtQualifiedId(PQgetvalue(res, i, 1),
-												PQgetvalue(res, i, 2)));
+								 fmtQualifiedIdEnc(PQgetvalue(res, i, 1),
+												   PQgetvalue(res, i, 2),
+												   PQclientEncoding(conn)));
 
 			simple_string_list_append(user_list, buf.data);
 			resetPQExpBuffer(&buf);

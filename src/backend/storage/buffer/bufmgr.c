@@ -3,7 +3,7 @@
  * bufmgr.c
  *	  buffer manager interface routines
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -1166,7 +1166,7 @@ PinBufferForBlock(Relation rel,
 	}
 	if (*foundPtr)
 	{
-		pgstat_count_io_op(io_object, io_context, IOOP_HIT);
+		pgstat_count_io_op(io_object, io_context, IOOP_HIT, 1, 0);
 		if (VacuumCostActive)
 			VacuumCostBalance += VacuumCostPageHit;
 
@@ -1331,10 +1331,7 @@ StartReadBuffersImpl(ReadBuffersOperation *operation,
 		 * StartReadBuffers() were made for the same blocks before
 		 * WaitReadBuffers(), only the first would issue the advice. That'd be
 		 * a better simulation of true asynchronous I/O, which would only
-		 * start the I/O once, but isn't done here for simplicity.  Note also
-		 * that the following call might actually issue two advice calls if we
-		 * cross a segment boundary; in a true asynchronous version we might
-		 * choose to process only one real I/O at a time in that case.
+		 * start the I/O once, but isn't done here for simplicity.
 		 */
 		smgrprefetch(operation->smgr,
 					 operation->forknum,
@@ -1516,7 +1513,7 @@ WaitReadBuffers(ReadBuffersOperation *operation)
 		io_start = pgstat_prepare_io_time(track_io_timing);
 		smgrreadv(operation->smgr, forknum, io_first_block, io_pages, io_buffers_len);
 		pgstat_count_io_op_time(io_object, io_context, IOOP_READ, io_start,
-								io_buffers_len);
+								1, io_buffers_len * BLCKSZ);
 
 		/* Verify each block we read, and terminate the I/O. */
 		for (int j = 0; j < io_buffers_len; ++j)
@@ -1545,7 +1542,7 @@ WaitReadBuffers(ReadBuffersOperation *operation)
 							(errcode(ERRCODE_DATA_CORRUPTED),
 							 errmsg("invalid page in block %u of relation %s; zeroing out page",
 									io_first_block + j,
-									relpath(operation->smgr->smgr_rlocator, forknum))));
+									relpath(operation->smgr->smgr_rlocator, forknum).str)));
 					memset(bufBlock, 0, BLCKSZ);
 				}
 				else
@@ -1553,7 +1550,7 @@ WaitReadBuffers(ReadBuffersOperation *operation)
 							(errcode(ERRCODE_DATA_CORRUPTED),
 							 errmsg("invalid page in block %u of relation %s",
 									io_first_block + j,
-									relpath(operation->smgr->smgr_rlocator, forknum))));
+									relpath(operation->smgr->smgr_rlocator, forknum).str)));
 			}
 
 			/* Terminate I/O and set BM_VALID. */
@@ -2074,7 +2071,7 @@ again:
 		 * pinners or erroring out.
 		 */
 		pgstat_count_io_op(IOOBJECT_RELATION, io_context,
-						   from_ring ? IOOP_REUSE : IOOP_EVICT);
+						   from_ring ? IOOP_REUSE : IOOP_EVICT, 1, 0);
 	}
 
 	/*
@@ -2222,7 +2219,7 @@ ExtendBufferedRelShared(BufferManagerRelation bmr,
 		buf_block = BufHdrGetBlock(GetBufferDescriptor(buffers[i] - 1));
 
 		/* new buffers are zero-filled */
-		MemSet((char *) buf_block, 0, BLCKSZ);
+		MemSet(buf_block, 0, BLCKSZ);
 	}
 
 	/*
@@ -2288,7 +2285,7 @@ ExtendBufferedRelShared(BufferManagerRelation bmr,
 		ereport(ERROR,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("cannot extend relation %s beyond %u blocks",
-						relpath(bmr.smgr->smgr_rlocator, fork),
+						relpath(bmr.smgr->smgr_rlocator, fork).str,
 						MaxBlockNumber)));
 
 	/*
@@ -2359,7 +2356,8 @@ ExtendBufferedRelShared(BufferManagerRelation bmr,
 			if (valid && !PageIsNew((Page) buf_block))
 				ereport(ERROR,
 						(errmsg("unexpected data beyond EOF in block %u of relation %s",
-								existing_hdr->tag.blockNum, relpath(bmr.smgr->smgr_rlocator, fork)),
+								existing_hdr->tag.blockNum,
+								relpath(bmr.smgr->smgr_rlocator, fork).str),
 						 errhint("This has been seen to occur with buggy kernels; consider updating your system.")));
 
 			/*
@@ -2430,7 +2428,7 @@ ExtendBufferedRelShared(BufferManagerRelation bmr,
 		UnlockRelationForExtension(bmr.rel, ExclusiveLock);
 
 	pgstat_count_io_op_time(IOOBJECT_RELATION, io_context, IOOP_EXTEND,
-							io_start, extend_by);
+							io_start, 1, extend_by * BLCKSZ);
 
 	/* Set BM_VALID, terminate IO, and wake up any waiters */
 	for (uint32 i = 0; i < extend_by; i++)
@@ -2473,20 +2471,19 @@ BufferIsExclusiveLocked(Buffer buffer)
 {
 	BufferDesc *bufHdr;
 
+	Assert(BufferIsPinned(buffer));
+
 	if (BufferIsLocal(buffer))
 	{
-		int			bufid = -buffer - 1;
-
-		bufHdr = GetLocalBufferDescriptor(bufid);
+		/* Content locks are not maintained for local buffers. */
+		return true;
 	}
 	else
 	{
 		bufHdr = GetBufferDescriptor(buffer - 1);
+		return LWLockHeldByMeInMode(BufferDescriptorGetContentLock(bufHdr),
+									LW_EXCLUSIVE);
 	}
-
-	Assert(BufferIsPinned(buffer));
-	return LWLockHeldByMeInMode(BufferDescriptorGetContentLock(bufHdr),
-								LW_EXCLUSIVE);
 }
 
 /*
@@ -2502,20 +2499,21 @@ BufferIsDirty(Buffer buffer)
 {
 	BufferDesc *bufHdr;
 
+	Assert(BufferIsPinned(buffer));
+
 	if (BufferIsLocal(buffer))
 	{
 		int			bufid = -buffer - 1;
 
 		bufHdr = GetLocalBufferDescriptor(bufid);
+		/* Content locks are not maintained for local buffers. */
 	}
 	else
 	{
 		bufHdr = GetBufferDescriptor(buffer - 1);
+		Assert(LWLockHeldByMeInMode(BufferDescriptorGetContentLock(bufHdr),
+									LW_EXCLUSIVE));
 	}
-
-	Assert(BufferIsPinned(buffer));
-	Assert(LWLockHeldByMeInMode(BufferDescriptorGetContentLock(bufHdr),
-								LW_EXCLUSIVE));
 
 	return pg_atomic_read_u32(&bufHdr->state) & BM_DIRTY;
 }
@@ -3667,7 +3665,6 @@ DebugPrintBufferRefcount(Buffer buffer)
 {
 	BufferDesc *buf;
 	int32		loccount;
-	char	   *path;
 	char	   *result;
 	ProcNumber	backend;
 	uint32		buf_state;
@@ -3687,15 +3684,14 @@ DebugPrintBufferRefcount(Buffer buffer)
 	}
 
 	/* theoretically we should lock the bufhdr here */
-	path = relpathbackend(BufTagGetRelFileLocator(&buf->tag), backend,
-						  BufTagGetForkNum(&buf->tag));
 	buf_state = pg_atomic_read_u32(&buf->state);
 
 	result = psprintf("[%03d] (rel=%s, blockNum=%u, flags=0x%x, refcount=%u %d)",
-					  buffer, path,
+					  buffer,
+					  relpathbackend(BufTagGetRelFileLocator(&buf->tag), backend,
+									 BufTagGetForkNum(&buf->tag)).str,
 					  buf->tag.blockNum, buf_state & BUF_FLAG_MASK,
 					  BUF_STATE_GET_REFCOUNT(buf_state), loccount);
-	pfree(path);
 	return result;
 }
 
@@ -3892,7 +3888,7 @@ FlushBuffer(BufferDesc *buf, SMgrRelation reln, IOObject io_object,
 	 * of a dirty shared buffer (IOCONTEXT_NORMAL IOOP_WRITE).
 	 */
 	pgstat_count_io_op_time(IOOBJECT_RELATION, io_context,
-							IOOP_WRITE, io_start, 1);
+							IOOP_WRITE, io_start, 1, BLCKSZ);
 
 	pgBufferUsage.shared_blks_written++;
 
@@ -3985,8 +3981,8 @@ BufferIsPermanent(Buffer buffer)
 XLogRecPtr
 BufferGetLSNAtomic(Buffer buffer)
 {
-	BufferDesc *bufHdr = GetBufferDescriptor(buffer - 1);
 	char	   *page = BufferGetPage(buffer);
+	BufferDesc *bufHdr;
 	XLogRecPtr	lsn;
 	uint32		buf_state;
 
@@ -4000,6 +3996,7 @@ BufferGetLSNAtomic(Buffer buffer)
 	Assert(BufferIsValid(buffer));
 	Assert(BufferIsPinned(buffer));
 
+	bufHdr = GetBufferDescriptor(buffer - 1);
 	buf_state = LockBufHdr(bufHdr);
 	lsn = PageGetLSN(page);
 	UnlockBufHdr(bufHdr, buf_state);
@@ -4413,64 +4410,6 @@ DropDatabaseBuffers(Oid dbid)
 	}
 }
 
-/* -----------------------------------------------------------------
- *		PrintBufferDescs
- *
- *		this function prints all the buffer descriptors, for debugging
- *		use only.
- * -----------------------------------------------------------------
- */
-#ifdef NOT_USED
-void
-PrintBufferDescs(void)
-{
-	int			i;
-
-	for (i = 0; i < NBuffers; ++i)
-	{
-		BufferDesc *buf = GetBufferDescriptor(i);
-		Buffer		b = BufferDescriptorGetBuffer(buf);
-
-		/* theoretically we should lock the bufhdr here */
-		elog(LOG,
-			 "[%02d] (freeNext=%d, rel=%s, "
-			 "blockNum=%u, flags=0x%x, refcount=%u %d)",
-			 i, buf->freeNext,
-			 relpathbackend(BufTagGetRelFileLocator(&buf->tag),
-							INVALID_PROC_NUMBER, BufTagGetForkNum(&buf->tag)),
-			 buf->tag.blockNum, buf->flags,
-			 buf->refcount, GetPrivateRefCount(b));
-	}
-}
-#endif
-
-#ifdef NOT_USED
-void
-PrintPinnedBufs(void)
-{
-	int			i;
-
-	for (i = 0; i < NBuffers; ++i)
-	{
-		BufferDesc *buf = GetBufferDescriptor(i);
-		Buffer		b = BufferDescriptorGetBuffer(buf);
-
-		if (GetPrivateRefCount(b) > 0)
-		{
-			/* theoretically we should lock the bufhdr here */
-			elog(LOG,
-				 "[%02d] (freeNext=%d, rel=%s, "
-				 "blockNum=%u, flags=0x%x, refcount=%u %d)",
-				 i, buf->freeNext,
-				 relpathperm(BufTagGetRelFileLocator(&buf->tag),
-							 BufTagGetForkNum(&buf->tag)),
-				 buf->tag.blockNum, buf->flags,
-				 buf->refcount, GetPrivateRefCount(b));
-		}
-	}
-}
-#endif
-
 /* ---------------------------------------------------------------------
  *		FlushRelationBuffers
  *
@@ -4531,7 +4470,7 @@ FlushRelationBuffers(Relation rel)
 
 				pgstat_count_io_op_time(IOOBJECT_TEMP_RELATION,
 										IOCONTEXT_NORMAL, IOOP_WRITE,
-										io_start, 1);
+										io_start, 1, BLCKSZ);
 
 				buf_state &= ~(BM_DIRTY | BM_JUST_DIRTIED);
 				pg_atomic_unlocked_write_u32(&bufHdr->state, buf_state);
@@ -5672,16 +5611,13 @@ AbortBufferIO(Buffer buffer)
 		if (buf_state & BM_IO_ERROR)
 		{
 			/* Buffer is pinned, so we can read tag without spinlock */
-			char	   *path;
-
-			path = relpathperm(BufTagGetRelFileLocator(&buf_hdr->tag),
-							   BufTagGetForkNum(&buf_hdr->tag));
 			ereport(WARNING,
 					(errcode(ERRCODE_IO_ERROR),
 					 errmsg("could not write block %u of %s",
-							buf_hdr->tag.blockNum, path),
+							buf_hdr->tag.blockNum,
+							relpathperm(BufTagGetRelFileLocator(&buf_hdr->tag),
+										BufTagGetForkNum(&buf_hdr->tag)).str),
 					 errdetail("Multiple failures --- write error might be permanent.")));
-			pfree(path);
 		}
 	}
 
@@ -5698,14 +5634,10 @@ shared_buffer_write_error_callback(void *arg)
 
 	/* Buffer is pinned, so we can read the tag without locking the spinlock */
 	if (bufHdr != NULL)
-	{
-		char	   *path = relpathperm(BufTagGetRelFileLocator(&bufHdr->tag),
-									   BufTagGetForkNum(&bufHdr->tag));
-
 		errcontext("writing block %u of relation %s",
-				   bufHdr->tag.blockNum, path);
-		pfree(path);
-	}
+				   bufHdr->tag.blockNum,
+				   relpathperm(BufTagGetRelFileLocator(&bufHdr->tag),
+							   BufTagGetForkNum(&bufHdr->tag)).str);
 }
 
 /*
@@ -5717,15 +5649,11 @@ local_buffer_write_error_callback(void *arg)
 	BufferDesc *bufHdr = (BufferDesc *) arg;
 
 	if (bufHdr != NULL)
-	{
-		char	   *path = relpathbackend(BufTagGetRelFileLocator(&bufHdr->tag),
-										  MyProcNumber,
-										  BufTagGetForkNum(&bufHdr->tag));
-
 		errcontext("writing block %u of relation %s",
-				   bufHdr->tag.blockNum, path);
-		pfree(path);
-	}
+				   bufHdr->tag.blockNum,
+				   relpathbackend(BufTagGetRelFileLocator(&bufHdr->tag),
+								  MyProcNumber,
+								  BufTagGetForkNum(&bufHdr->tag)).str);
 }
 
 /*
@@ -6038,7 +5966,7 @@ IssuePendingWritebacks(WritebackContext *wb_context, IOContext io_context)
 	 * blocks of permanent relations.
 	 */
 	pgstat_count_io_op_time(IOOBJECT_RELATION, io_context,
-							IOOP_WRITEBACK, io_start, wb_context->nr_pending);
+							IOOP_WRITEBACK, io_start, wb_context->nr_pending, 0);
 
 	wb_context->nr_pending = 0;
 }

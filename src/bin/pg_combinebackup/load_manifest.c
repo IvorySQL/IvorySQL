@@ -2,7 +2,7 @@
  *
  * Load data from a backup manifest into memory.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/bin/pg_combinebackup/load_manifest.c
@@ -68,9 +68,9 @@ static void combinebackup_per_wal_range_cb(JsonManifestParseContext *context,
 										   TimeLineID tli,
 										   XLogRecPtr start_lsn,
 										   XLogRecPtr end_lsn);
-static void report_manifest_error(JsonManifestParseContext *context,
-								  const char *fmt,...)
-			pg_attribute_printf(2, 3) pg_attribute_noreturn();
+pg_noreturn static void report_manifest_error(JsonManifestParseContext *context,
+											  const char *fmt,...)
+			pg_attribute_printf(2, 3);
 
 /*
  * Load backup_manifest files from an array of backups and produces an array

@@ -12,7 +12,7 @@
  * example.  For the most part, however, code outside the core planner
  * should not need to include any optimizer/ header except this one.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/optimizer/optimizer.h
@@ -192,6 +192,8 @@ extern SortGroupClause *get_sortgroupref_clause_noerr(Index sortref,
 											 * output list */
 #define PVC_RECURSE_PLACEHOLDERS	0x0020	/* recurse into PlaceHolderVar
 											 * arguments */
+#define PVC_INCLUDE_CONVERTROWTYPES	0x0040	/* include ConvertRowtypeExprs in
+											 * output list */
 
 extern Bitmapset *pull_varnos(PlannerInfo *root, Node *node);
 extern Bitmapset *pull_varnos_of_level(PlannerInfo *root, Node *node, int levelsup);
@@ -199,6 +201,7 @@ extern void pull_varattnos(Node *node, Index varno, Bitmapset **varattnos);
 extern List *pull_vars_of_level(Node *node, int levelsup);
 extern bool contain_var_clause(Node *node);
 extern bool contain_vars_of_level(Node *node, int levelsup);
+extern bool contain_vars_returning_old_or_new(Node *node);
 extern int	locate_var_of_level(Node *node, int levelsup);
 extern List *pull_var_clause(Node *node, int flags);
 extern Node *flatten_join_alias_vars(PlannerInfo *root, Query *query, Node *node);

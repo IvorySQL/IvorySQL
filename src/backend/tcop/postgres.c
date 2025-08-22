@@ -3,7 +3,7 @@
  * postgres.c
  *	  POSTGRES C Backend Interface
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -67,6 +67,7 @@
 #include "storage/proc.h"
 #include "storage/procsignal.h"
 #include "storage/sinval.h"
+#include "tcop/backend_startup.h"
 #include "tcop/fastpath.h"
 #include "tcop/pquery.h"
 #include "tcop/tcopprot.h"
@@ -315,7 +316,7 @@ InteractiveBackend(StringInfo inBuf)
 		printf("statement: %s\n", inBuf->data);
 	fflush(stdout);
 
-	return 'Q';
+	return PqMsg_Query;
 }
 
 /*
@@ -1281,6 +1282,7 @@ exec_simple_query(const char *query_string)
 						  query_string,
 						  commandTag,
 						  plantree_list,
+						  NULL,
 						  NULL);
 
 		/*
@@ -2188,7 +2190,8 @@ exec_bind_message(StringInfo input_message)
 					  query_string,
 					  psrc->commandTag,
 					  cplan->stmt_list,
-					  cplan);
+					  cplan,
+					  psrc);
 
 	/* Done with the snapshot used for parameter I/O and parsing/planning */
 	if (snapshot_set)
@@ -3661,13 +3664,13 @@ ProcessInterrupts(void)
 		ProcessProcSignalBarrier();
 
 	if (ParallelMessagePending)
-		HandleParallelMessages();
+		ProcessParallelMessages();
 
 	if (LogMemoryContextPending)
 		ProcessLogMemoryContextInterrupt();
 
 	if (ParallelApplyMessagePending)
-		HandleParallelApplyMessages();
+		ProcessParallelApplyMessages();
 }
 
 /*
@@ -4780,6 +4783,38 @@ PostgresMain(const char *dbname, const char *username)
 			/* Report any recently-changed GUC options */
 			ReportChangedGUCOptions();
 
+			/*
+			 * The first time this backend is ready for query, log the
+			 * durations of the different components of connection
+			 * establishment and setup.
+			 */
+			if (conn_timing.ready_for_use == TIMESTAMP_MINUS_INFINITY &&
+				(log_connections & LOG_CONNECTION_SETUP_DURATIONS) &&
+				IsExternalConnectionBackend(MyBackendType))
+			{
+				uint64		total_duration,
+							fork_duration,
+							auth_duration;
+
+				conn_timing.ready_for_use = GetCurrentTimestamp();
+
+				total_duration =
+					TimestampDifferenceMicroseconds(conn_timing.socket_create,
+													conn_timing.ready_for_use);
+				fork_duration =
+					TimestampDifferenceMicroseconds(conn_timing.fork_start,
+													conn_timing.fork_end);
+				auth_duration =
+					TimestampDifferenceMicroseconds(conn_timing.auth_start,
+													conn_timing.auth_end);
+
+				ereport(LOG,
+						errmsg("connection ready: setup total=%.3f ms, fork=%.3f ms, authentication=%.3f ms",
+							   (double) total_duration / NS_PER_US,
+							   (double) fork_duration / NS_PER_US,
+							   (double) auth_duration / NS_PER_US));
+			}
+
 			ReadyForQuery(whereToSendOutput);
 			send_ready_for_query = false;
 		}
@@ -5072,9 +5107,9 @@ PostgresMain(const char *dbname, const char *username)
 				break;
 
 				/*
-				 * 'X' means that the frontend is closing down the socket. EOF
-				 * means unexpected loss of frontend connection. Either way,
-				 * perform normal shutdown.
+				 * PqMsg_Terminate means that the frontend is closing down the
+				 * socket. EOF means unexpected loss of frontend connection.
+				 * Either way, perform normal shutdown.
 				 */
 			case EOF:
 
@@ -5166,8 +5201,8 @@ ShowUsage(const char *title)
 
 	getrusage(RUSAGE_SELF, &r);
 	gettimeofday(&elapse_t, NULL);
-	memcpy((char *) &user, (char *) &r.ru_utime, sizeof(user));
-	memcpy((char *) &sys, (char *) &r.ru_stime, sizeof(sys));
+	memcpy(&user, &r.ru_utime, sizeof(user));
+	memcpy(&sys, &r.ru_stime, sizeof(sys));
 	if (elapse_t.tv_usec < Save_t.tv_usec)
 	{
 		elapse_t.tv_sec--;

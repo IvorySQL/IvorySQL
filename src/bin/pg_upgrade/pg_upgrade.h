@@ -1,8 +1,8 @@
 /*
  *	pg_upgrade.h
  *
- *	Copyright (c) 2010-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ *	Copyright (c) 2010-2025, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/pg_upgrade.h
  */
 
@@ -129,6 +129,11 @@ extern bool pg_cluster_within_oracle_mode;
  */
 #define JSONB_FORMAT_CHANGE_CAT_VER 201409291
 
+/*
+ * The control file was changed to have the default char signedness,
+ * commit 44fe30fdab6746a287163e7cc093fd36cda8eb92
+ */
+#define DEFAULT_CHAR_SIGNEDNESS_CAT_VER 202502212
 
 /*
  * Each relation is represented by a relinfo structure.
@@ -250,6 +255,7 @@ typedef struct
 	bool		float8_pass_by_value;
 	uint32		data_checksum_version;
 	bool		database_mode_is_oracle;
+	bool		default_char_signedness;
 } ControlData;
 
 /*
@@ -333,6 +339,10 @@ typedef struct
 	int			jobs;			/* number of processes/threads to use */
 	char	   *socketdir;		/* directory to use for Unix sockets */
 	char	   *sync_method;
+	bool		do_statistics;	/* carry over statistics from old cluster */
+	int			char_signedness;	/* default char signedness: -1 for initial
+									 * value, 1 for "signed" and 0 for
+									 * "unsigned" */
 } UserOpts;
 
 typedef struct
@@ -477,7 +487,7 @@ int			get_user_info(char **user_name_p);
 void		check_ok(void);
 void		report_status(eLogType type, const char *fmt,...) pg_attribute_printf(2, 3);
 void		pg_log(eLogType type, const char *fmt,...) pg_attribute_printf(2, 3);
-void		pg_fatal(const char *fmt,...) pg_attribute_printf(1, 2) pg_attribute_noreturn();
+pg_noreturn void pg_fatal(const char *fmt,...) pg_attribute_printf(1, 2);
 void		end_progress_output(void);
 void		cleanup_output_dirs(void);
 void		prep_status(const char *fmt,...) pg_attribute_printf(1, 2);

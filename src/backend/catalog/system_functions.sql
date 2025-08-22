@@ -1,7 +1,7 @@
 /*
  * PostgreSQL System Functions
  *
- * Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Copyright (c) 1996-2025, PostgreSQL Global Development Group
  *
  * src/backend/catalog/system_functions.sql
  *
@@ -607,6 +607,20 @@ LANGUAGE INTERNAL
 STRICT STABLE PARALLEL SAFE
 AS 'jsonb_path_query_first_tz';
 
+CREATE OR REPLACE FUNCTION
+  jsonb_strip_nulls(target jsonb, strip_in_arrays boolean DEFAULT false)
+RETURNS jsonb
+LANGUAGE INTERNAL
+STRICT STABLE PARALLEL SAFE
+AS 'jsonb_strip_nulls';
+
+CREATE OR REPLACE FUNCTION
+  json_strip_nulls(target json, strip_in_arrays boolean DEFAULT false)
+RETURNS json
+LANGUAGE INTERNAL
+STRICT STABLE PARALLEL SAFE
+AS 'json_strip_nulls';
+
 -- default normalization form is NFC, per SQL standard
 CREATE OR REPLACE FUNCTION
   "normalize"(text, text DEFAULT 'NFC')
@@ -635,38 +649,6 @@ RETURNS void
 LANGUAGE INTERNAL
 CALLED ON NULL INPUT VOLATILE PARALLEL SAFE
 AS 'pg_stat_reset_slru';
-
-CREATE OR REPLACE FUNCTION
-  pg_set_relation_stats(relation regclass,
-                        relpages integer DEFAULT NULL,
-                        reltuples real DEFAULT NULL,
-                        relallvisible integer DEFAULT NULL)
-RETURNS void
-LANGUAGE INTERNAL
-CALLED ON NULL INPUT VOLATILE
-AS 'pg_set_relation_stats';
-
-CREATE OR REPLACE FUNCTION
-  pg_set_attribute_stats(relation regclass,
-                         attname name,
-                         inherited bool,
-                         null_frac real DEFAULT NULL,
-                         avg_width integer DEFAULT NULL,
-                         n_distinct real DEFAULT NULL,
-                         most_common_vals text DEFAULT NULL,
-                         most_common_freqs real[] DEFAULT NULL,
-                         histogram_bounds text DEFAULT NULL,
-                         correlation real DEFAULT NULL,
-                         most_common_elems text DEFAULT NULL,
-                         most_common_elem_freqs real[] DEFAULT NULL,
-                         elem_count_histogram real[] DEFAULT NULL,
-                         range_length_histogram text DEFAULT NULL,
-                         range_empty_frac real DEFAULT NULL,
-                         range_bounds_histogram text DEFAULT NULL)
-RETURNS void
-LANGUAGE INTERNAL
-CALLED ON NULL INPUT VOLATILE
-AS 'pg_set_attribute_stats';
 
 --
 -- The default permissions for functions mean that anyone can execute them.

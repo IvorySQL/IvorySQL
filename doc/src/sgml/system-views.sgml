@@ -2566,17 +2566,16 @@ SELECT * FROM pg_locks pl LEFT JOIN pg_prepared_xacts ppx
       </para>
       <para>
         The time when the slot became inactive. <literal>NULL</literal> if the
-        slot is currently being streamed.
-        Note that for slots on the standby that are being synced from a
+        slot is currently being streamed. If the slot becomes invalid,
+        this value will never be updated.
+        For standby slots that are being synced from a
         primary server (whose <structfield>synced</structfield> field is
         <literal>true</literal>), the <structfield>inactive_since</structfield>
         indicates the time when slot synchronization (see <xref
         linkend="logicaldecoding-replication-slots-synchronization"/>)
         was most recently stopped.  <literal>NULL</literal> if the slot
-        has always been synchronized. On standby, this is useful for slots
-        that are being synced from a primary server (whose
-        <structfield>synced</structfield> field is <literal>true</literal>)
-        so they know when the slot stopped being synchronized.
+        has always been synchronized. This helps standby slots track when
+        synchronization was interrupted.
       </para></entry>
      </row>
 
@@ -2618,6 +2617,13 @@ SELECT * FROM pg_locks pl LEFT JOIN pg_prepared_xacts ppx
           <literal>wal_level_insufficient</literal> means that the
           primary doesn't have a <xref linkend="guc-wal-level"/> sufficient to
           perform logical decoding.  It is set only for logical slots.
+         </para>
+        </listitem>
+        <listitem>
+         <para>
+          <literal>idle_timeout</literal> means that the slot has remained
+          idle longer than the configured
+          <xref linkend="guc-idle-replication-slot-timeout"/> duration.
          </para>
         </listitem>
        </itemizedlist>
@@ -4566,7 +4572,9 @@ SELECT * FROM pg_locks pl LEFT JOIN pg_prepared_xacts ppx
    The view <structname>pg_timezone_abbrevs</structname> provides a list
    of time zone abbreviations that are currently recognized by the datetime
    input routines.  The contents of this view change when the
-   <xref linkend="guc-timezone-abbreviations"/> run-time parameter is modified.
+   <xref linkend="guc-timezone"/> or
+   <xref linkend="guc-timezone-abbreviations"/> run-time parameters are
+   modified.
   </para>
 
   <table>

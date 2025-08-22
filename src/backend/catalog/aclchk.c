@@ -3,7 +3,7 @@
  * aclchk.c
  *	  Routines to check access control permissions.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -3289,10 +3289,6 @@ pg_package_aclmask(Oid pkg_oid, Oid roleid, AclMode mask, AclMaskHow how)
  * Exported routines for examining a user's privileges for various objects
  *
  * See aclmask() for a description of the common API for these functions.
- *
- * Note: we give lookup failure the full ereport treatment because the
- * has_xxx_privilege() family of functions allow users to pass any random
- * OID to these functions.
  * ****************************************************************
  */
 
@@ -3359,10 +3355,8 @@ object_aclmask_ext(Oid classid, Oid objectid, Oid roleid,
 			return 0;
 		}
 		else
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("%s with OID %u does not exist",
-							get_object_class_descr(classid), objectid)));
+			elog(ERROR, "cache lookup failed for %s %u",
+				 get_object_class_descr(classid), objectid);
 	}
 
 	ownerId = DatumGetObjectId(SysCacheGetAttrNotNull(cacheid,
@@ -4380,9 +4374,8 @@ object_ownercheck(Oid classid, Oid objectid, Oid roleid)
 
 		tuple = SearchSysCache1(cacheid, ObjectIdGetDatum(objectid));
 		if (!HeapTupleIsValid(tuple))
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("%s with OID %u does not exist", get_object_class_descr(classid), objectid)));
+			elog(ERROR, "cache lookup failed for %s %u",
+				 get_object_class_descr(classid), objectid);
 
 		ownerId = DatumGetObjectId(SysCacheGetAttrNotNull(cacheid,
 														  tuple,
@@ -4411,9 +4404,8 @@ object_ownercheck(Oid classid, Oid objectid, Oid roleid)
 
 		tuple = systable_getnext(scan);
 		if (!HeapTupleIsValid(tuple))
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("%s with OID %u does not exist", get_object_class_descr(classid), objectid)));
+			elog(ERROR, "could not find tuple for %s %u",
+				 get_object_class_descr(classid), objectid);
 
 		ownerId = DatumGetObjectId(heap_getattr(tuple,
 												get_object_attnum_owner(classid),

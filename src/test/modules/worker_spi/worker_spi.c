@@ -13,7 +13,7 @@
  * "delta" type.  Delta rows will be deleted by this worker and their values
  * aggregated into the total.
  *
- * Copyright (c) 2013-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2013-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		src/test/modules/worker_spi/worker_spi.c
@@ -44,7 +44,7 @@ PG_MODULE_MAGIC;
 
 PG_FUNCTION_INFO_V1(worker_spi_launch);
 
-PGDLLEXPORT void worker_spi_main(Datum main_arg) pg_attribute_noreturn();
+PGDLLEXPORT pg_noreturn void worker_spi_main(Datum main_arg);
 
 /* GUC variables */
 static int	worker_spi_naptime = 10;
@@ -168,16 +168,6 @@ worker_spi_main(Datum main_arg)
 	else
 		BackgroundWorkerInitializeConnection(worker_spi_database,
 											 worker_spi_role, flags);
-
-	/*
-	 * Disable parallel query for workers started with
-	 * BGWORKER_BYPASS_ALLOWCONN or BGWORKER_BYPASS_ROLELOGINCHECK so as these
-	 * don't attempt connections using a database or a role that may not allow
-	 * that.
-	 */
-	if ((flags & (BGWORKER_BYPASS_ALLOWCONN | BGWORKER_BYPASS_ROLELOGINCHECK)))
-		SetConfigOption("max_parallel_workers_per_gather", "0",
-						PGC_USERSET, PGC_S_OVERRIDE);
 
 	elog(LOG, "%s initialized with %s.%s",
 		 MyBgworkerEntry->bgw_name, table->schema, table->name);

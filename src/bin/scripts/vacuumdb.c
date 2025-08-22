@@ -2,7 +2,7 @@
  *
  * vacuumdb
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -462,15 +462,14 @@ escape_quotes(const char *src)
 /*
  * vacuum_one_database
  *
- * Process tables in the given database.  If the 'tables' list is empty,
+ * Process tables in the given database.  If the 'objects' list is empty,
  * process all tables in the database.
  *
  * Note that this function is only concerned with running exactly one stage
  * when in analyze-in-stages mode; caller must iterate on us if necessary.
  *
  * If concurrentCons is > 1, multiple connections are used to vacuum tables
- * in parallel.  In this case and if the table list is empty, we first obtain
- * a list of tables from the database.
+ * in parallel.
  */
 static void
 vacuum_one_database(ConnParams *cparams,
@@ -559,20 +558,32 @@ vacuum_one_database(ConnParams *cparams,
 	}
 
 	if (vacopts->min_xid_age != 0 && PQserverVersion(conn) < 90600)
+	{
+		PQfinish(conn);
 		pg_fatal("cannot use the \"%s\" option on server versions older than PostgreSQL %s",
 				 "--min-xid-age", "9.6");
+	}
 
 	if (vacopts->min_mxid_age != 0 && PQserverVersion(conn) < 90600)
+	{
+		PQfinish(conn);
 		pg_fatal("cannot use the \"%s\" option on server versions older than PostgreSQL %s",
 				 "--min-mxid-age", "9.6");
+	}
 
 	if (vacopts->parallel_workers >= 0 && PQserverVersion(conn) < 130000)
+	{
+		PQfinish(conn);
 		pg_fatal("cannot use the \"%s\" option on server versions older than PostgreSQL %s",
 				 "--parallel", "13");
+	}
 
 	if (vacopts->buffer_usage_limit && PQserverVersion(conn) < 160000)
+	{
+		PQfinish(conn);
 		pg_fatal("cannot use the \"%s\" option on server versions older than PostgreSQL %s",
 				 "--buffer-usage-limit", "16");
+	}
 
 	/* skip_database_stats is used automatically if server supports it */
 	vacopts->skip_database_stats = (PQserverVersion(conn) >= 160000);
@@ -774,8 +785,9 @@ vacuum_one_database(ConnParams *cparams,
 	for (i = 0; i < ntups; i++)
 	{
 		appendPQExpBufferStr(&buf,
-							 fmtQualifiedId(PQgetvalue(res, i, 1),
-											PQgetvalue(res, i, 0)));
+							 fmtQualifiedIdEnc(PQgetvalue(res, i, 1),
+											   PQgetvalue(res, i, 0),
+											   PQclientEncoding(conn)));
 
 		if (objects_listed && !PQgetisnull(res, i, 2))
 			appendPQExpBufferStr(&buf, PQgetvalue(res, i, 2));

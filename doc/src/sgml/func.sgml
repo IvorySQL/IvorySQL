@@ -2596,7 +2596,7 @@ SELECT NOT(ROW(table.*) IS NOT NULL) FROM TABLE; -- detect at least one null in 
 
       <row>
        <entry role="func_table_entry"><para role="func_signature">
-        <indexterm>
+        <indexterm id="function-lower">
          <primary>lower</primary>
         </indexterm>
         <function>lower</function> ( <type>text</type> )
@@ -2657,7 +2657,7 @@ SELECT NOT(ROW(table.*) IS NOT NULL) FROM TABLE; -- detect at least one null in 
 
       <row>
        <entry role="func_table_entry"><para role="func_signature">
-        <indexterm>
+        <indexterm id="function-normalize">
          <primary>normalize</primary>
         </indexterm>
         <indexterm>
@@ -3106,6 +3106,44 @@ SELECT NOT(ROW(table.*) IS NOT NULL) FROM TABLE; -- detect at least one null in 
        <para>
         <literal>initcap('hi THOMAS')</literal>
         <returnvalue>Hi Thomas</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>casefold</primary>
+        </indexterm>
+        <function>casefold</function> ( <type>text</type> )
+        <returnvalue>text</returnvalue>
+       </para>
+       <para>
+        Performs case folding of the input string according to the collation.
+        Case folding is similar to case conversion, but the purpose of case
+        folding is to facilitate case-insensitive matching of strings,
+        whereas the purpose of case conversion is to convert to a particular
+        cased form.  This function can only be used when the server encoding
+        is <literal>UTF8</literal>.
+       </para>
+       <para>
+        Ordinarily, case folding simply converts to lowercase, but there may
+        be exceptions depending on the collation.  For instance, some
+        characters have more than two lowercase variants, or fold to uppercase.
+       </para>
+       <para>
+        Case folding may change the length of the string.  For instance, in
+        the <literal>PG_UNICODE_FAST</literal> collation, <literal>ß</literal>
+        (U+00DF) folds to <literal>ss</literal>.
+       </para>
+       <para>
+        <function>casefold</function> can be used for Unicode Default Caseless
+        Matching.  It does not always preserve the normalized form of the
+        input string (see <xref linkend="function-normalize"/>).
+       </para>
+       <para>
+        The <literal>libc</literal> provider doesn't support case folding, so
+        <function>casefold</function> is identical to <xref
+        linkend="function-lower"/>.
        </para></entry>
       </row>
 
@@ -4625,6 +4663,23 @@ SELECT format('Testing %3$s, %2$s, %s', 'one', 'two', 'three');
       <row>
        <entry role="func_table_entry"><para role="func_signature">
         <indexterm>
+         <primary>reverse</primary>
+        </indexterm>
+        <function>reverse</function> ( <type>bytea</type> )
+        <returnvalue>bytea</returnvalue>
+       </para>
+       <para>
+        Reverses the order of the bytes in the binary string.
+       </para>
+       <para>
+        <literal>reverse('\xabcd'::bytea)</literal>
+        <returnvalue>\xcdab</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
          <primary>set_bit</primary>
         </indexterm>
         <function>set_bit</function> ( <parameter>bytes</parameter> <type>bytea</type>,
@@ -4995,6 +5050,23 @@ SELECT format('Testing %3$s, %2$s, %s', 'one', 'two', 'three');
      </listitem>
     </varlistentry>
    </variablelist>
+  </para>
+
+  <para>
+   In addition, it is possible to cast integral values to and from type
+   <type>bytea</type>. Casting an integer to <type>bytea</type> produces
+   2, 4, or 8 bytes, depending on the width of the integer type. The result
+   is the two's complement representation of the integer, with the most
+   significant byte first. Some examples:
+<programlisting>
+1234::smallint::bytea          <lineannotation>\x04d2</lineannotation>
+cast(1234 as bytea)            <lineannotation>\x000004d2</lineannotation>
+cast(-1234 as bytea)           <lineannotation>\xfffffb2e</lineannotation>
+'\x8000'::bytea::smallint      <lineannotation>-32768</lineannotation>
+'\x8000'::bytea::integer       <lineannotation>32768</lineannotation>
+</programlisting>
+   Casting a <type>bytea</type> to an integer will raise an error if the
+   length of the <type>bytea</type> exceeds the width of the integer type.
   </para>
 
   <para>
@@ -8669,8 +8741,8 @@ SELECT regexp_match('abc01234xyz', '(?:(.*?)(\d+)(.*)){1,1}');
         <entry>plus/minus sign in specified position</entry>
        </row>
        <row>
-        <entry><literal>RN</literal></entry>
-        <entry>Roman numeral (input between 1 and 3999)</entry>
+        <entry><literal>RN</literal> or <literal>rn</literal></entry>
+        <entry>Roman numeral (values between 1 and 3999)</entry>
        </row>
        <row>
         <entry><literal>TH</literal> or <literal>th</literal></entry>
@@ -8796,6 +8868,19 @@ SELECT regexp_match('abc01234xyz', '(?:(.*?)(\d+)(.*)){1,1}');
        combination with any of the other formatting patterns or
        modifiers other than digit and decimal point patterns, and must be at the end of the format string
        (e.g., <literal>9.99EEEE</literal> is a valid pattern).
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       In <function>to_number()</function>, the <literal>RN</literal>
+       pattern converts Roman numerals (in standard form) to numbers.
+       Input is case-insensitive, so <literal>RN</literal>
+       and <literal>rn</literal> are equivalent.  <literal>RN</literal>
+       cannot be used in combination with any other formatting patterns or
+       modifiers except <literal>FM</literal>, which is applicable only
+       in <function>to_char()</function> and is ignored
+       in <function>to_number()</function>.
       </para>
      </listitem>
     </itemizedlist>
@@ -10955,6 +11040,8 @@ SELECT TIMESTAMP '2001-02-16 20:38:40' AT TIME ZONE 'Asia/Tokyo' AT TIME ZONE 'A
 <lineannotation>Result: </lineannotation><computeroutput>2001-02-16 05:38:40</computeroutput>
 SELECT TIMESTAMP WITH TIME ZONE '2001-02-16 20:38:40-05' AT LOCAL;
 <lineannotation>Result: </lineannotation><computeroutput>2001-02-16 17:38:40</computeroutput>
+SELECT TIMESTAMP WITH TIME ZONE '2001-02-16 20:38:40-05' AT TIME ZONE '+05';
+<lineannotation>Result: </lineannotation><computeroutput>2001-02-16 20:38:40</computeroutput>
 SELECT TIME WITH TIME ZONE '20:38:40-05' AT LOCAL;
 <lineannotation>Result: </lineannotation><computeroutput>17:38:40</computeroutput>
 </screen>
@@ -10967,11 +11054,14 @@ SELECT TIME WITH TIME ZONE '20:38:40-05' AT LOCAL;
     Tokyo time to Chicago time.  The fourth example shifts the time stamp
     with time zone value to the time zone currently specified by the
     <varname>TimeZone</varname> setting and returns the value without a
-    time zone.
+    time zone.  The fifth example demonstrates that the sign in a POSIX-style
+    time zone specification has the opposite meaning of the sign in an
+    ISO-8601 datetime literal, as described in <xref linkend="datatype-timezones"/>
+    and <xref linkend="datetime-appendix"/>.
    </para>
 
    <para>
-    The fifth example is a cautionary tale. Due to the fact that there is no
+    The sixth example is a cautionary tale. Due to the fact that there is no
     date associated with the input value, the conversion is made using the
     current date of the session. Therefore, this static example may show a wrong
     result depending on the time of the year it is viewed because
@@ -14272,53 +14362,163 @@ CREATE TYPE rainbow AS ENUM ('red', 'orange', 'yellow', 'green', 'blue', 'purple
   </indexterm>
 
   <para>
-   <productname>PostgreSQL</productname> includes several functions to generate a UUID.
-<synopsis>
-<function>gen_random_uuid</function> () <returnvalue>uuid</returnvalue>
-<function>uuidv4</function> () <returnvalue>uuid</returnvalue>
-</synopsis>
-   These functions return a version 4 (random) UUID.
-<synopsis>
-<function>uuidv7</function> (<optional> <parameter>shift</parameter> <type>interval</type> </optional>) <returnvalue>uuid</returnvalue>
-</synopsis>
-    This function returns a version 7 UUID (UNIX timestamp with millisecond
-    precision + sub-millisecond timestamp + random). This function can accept
-    optional <parameter>shift</parameter> parameter of type <type>interval</type>
-    which shift internal timestamp by the given interval.
+   <xref linkend="func_uuid_gen_table"/> shows the <productname>PostgreSQL</productname>
+   functions that can be used to generate UUIDs.
   </para>
 
-  <para>
-   The <xref linkend="uuid-ossp"/> module provides additional functions that
-   implement other standard algorithms for generating UUIDs.
-  </para>
+  <table id="func_uuid_gen_table">
+   <title><acronym>UUID</acronym> Generation Functions</title>
+   <tgroup cols="1">
+    <thead>
+     <row>
+      <entry role="func_table_entry">
+       <para role="func_signature">
+        Function
+       </para>
+       <para>
+        Description
+        </para>
+       <para>
+        Example(s)
+       </para>
+       </entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry role="func_table_entry">
+       <para role="func_signature">
+        <type>gen_random_uuid</type>
+        <returnvalue>uuid</returnvalue>
+       </para>
+       <para role="func_signature">
+        <type>uuidv4</type>
+        <returnvalue>uuid</returnvalue>
+       </para>
+       <para>
+         Generate a version 4 (random) UUID.
+       </para>
+       <para>
+        <literal>gen_random_uuid()</literal>
+        <returnvalue>5b30857f-0bfa-48b5-ac0b-5c64e28078d1</returnvalue>
+       </para>
+       <para>
+        <literal>uuidv4()</literal>
+        <returnvalue>b42410ee-132f-42ee-9e4f-09a6485c95b8</returnvalue>
+       </para>
+      </entry>
+     </row>
+     <row>
+      <entry role="func_table_entry">
+       <para role="func_signature">
+        <type>uuidv7</type>
+        ( <optional> <parameter>shift</parameter> <type>interval</type> </optional> )
+        <returnvalue>uuid</returnvalue>
+       </para>
+       <para>
+        Generate a version 7 (time-ordered) UUID. The timestamp is computed using UNIX timestamp
+        with millisecond precision + sub-millisecond timestamp + random. The optional parameter
+        <parameter>shift</parameter> will shift the computed timestamp by the given <type>interval</type>.
+       </para>
+       <para>
+        <literal>uuidv7()</literal>
+        <returnvalue>019535d9-3df7-79fb-b466-fa907fa17f9e</returnvalue>
+       </para>
+      </entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+
+  <note>
+   <para>
+    The <xref linkend="uuid-ossp"/> module provides additional functions that
+    implement other standard algorithms for generating UUIDs.
+   </para>
+  </note>
 
   <para>
-   There are also functions to extract data from UUIDs:
-<synopsis>
-<function>uuid_extract_timestamp</function> (uuid) <returnvalue>timestamp with time zone</returnvalue>
-</synopsis>
-   This function extracts a <type>timestamp with time zone</type> from UUID
-   version 1 and 7.  For other versions, this function returns null.  Note that
-   the extracted timestamp is not necessarily exactly equal to the time the
-   UUID was generated; this depends on the implementation that generated the
-   UUID.
+   <xref linkend="func_uuid_extract_table"/> shows the <productname>PostgreSQL</productname>
+   functions that can be used to extract information from UUIDs.
   </para>
 
-  <para>
-<synopsis>
-<function>uuid_extract_version</function> (uuid) <returnvalue>smallint</returnvalue>
-</synopsis>
-   This function extracts the version from a UUID of the variant described by
-   <ulink url="https://datatracker.ietf.org/doc/html/rfc9562">RFC 9562</ulink>.  For
-   other variants, this function returns null.  For example, for a UUID
-   generated by <function>gen_random_uuid</function>, this function will
-   return 4.
-  </para>
+  <table id="func_uuid_extract_table">
+   <title><acronym>UUID</acronym> Extraction Functions</title>
+   <tgroup cols="1">
+    <thead>
+     <row>
+      <entry role="func_table_entry">
+       <para role="func_signature">
+        Function
+       </para>
+       <para>
+        Description
+       </para>
+       <para>
+        Example(s)
+       </para>
+      </entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry role="func_table_entry">
+       <para role="func_signature">
+        <type>uuid_extract_timestamp</type>
+        ( <type>uuid</type> )
+        <returnvalue>timestamp with time zone</returnvalue>
+       </para>
+       <para>
+        Extracts a <type>timestamp with time zone</type> from UUID
+        version 1 and 7.  For other versions, this function returns null.  Note that
+        the extracted timestamp is not necessarily exactly equal to the time the
+        UUID was generated; this depends on the implementation that generated the
+        UUID.
+       </para>
+       <para>
+        <literal>uuid_extract_timestamp('019535d9-3df7-79fb-b466-fa907fa17f9e'::uuid)</literal>
+         <returnvalue>2025-02-23 21:46:24.503-05</returnvalue>
+       </para>
+      </entry>
+     </row>
+     <row>
+      <entry role="func_table_entry">
+       <para role="func_signature">
+        <type>uuid_extract_version</type>
+        ( <type>uuid</type> )
+        <returnvalue>smallint</returnvalue>
+       </para>
+       <para>
+        Extracts the version from a UUID of the variant described by
+        <ulink url="https://datatracker.ietf.org/doc/html/rfc9562">RFC 9562</ulink>.  For
+        other variants, this function returns null.  For example, for a UUID
+        generated by <function>gen_random_uuid</function>, this function will
+        return 4.
+       </para>
+       <para>
+        <literal>uuid_extract_version('41db1265-8bc1-4ab3-992f-885799a4af1d'::uuid)</literal>
+        <returnvalue>4</returnvalue>
+       </para>
+       <para>
+        <literal>uuid_extract_version('019535d9-3df7-79fb-b466-fa907fa17f9e'::uuid)</literal>
+        <returnvalue>7</returnvalue>
+       </para>
+      </entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
 
   <para>
    <productname>PostgreSQL</productname> also provides the usual comparison
    operators shown in <xref linkend="functions-comparison-op-table"/> for
    UUIDs.
+  </para>
+  <para>
+   See <xref linkend="datatype-uuid"/> for details on the data type
+   <type>uuid</type> in <productname>PostgreSQL</productname>.
   </para>
  </sect1>
 
@@ -17179,25 +17379,32 @@ ERROR:  value too long for type character(2)
         <indexterm>
          <primary>json_strip_nulls</primary>
         </indexterm>
-        <function>json_strip_nulls</function> ( <type>json</type> )
+        <function>json_strip_nulls</function> ( <parameter>target</parameter> <type>json</type> <optional>,<parameter>strip_in_arrays</parameter> <type>boolean</type> </optional> )
         <returnvalue>json</returnvalue>
        </para>
        <para role="func_signature">
         <indexterm>
          <primary>jsonb_strip_nulls</primary>
         </indexterm>
-        <function>jsonb_strip_nulls</function> ( <type>jsonb</type> )
+        <function>jsonb_strip_nulls</function> ( <parameter>target</parameter> <type>jsonb</type> <optional>,<parameter>strip_in_arrays</parameter> <type>boolean</type> </optional> )
         <returnvalue>jsonb</returnvalue>
        </para>
        <para>
         Deletes all object fields that have null values from the given JSON
-        value, recursively.  Null values that are not object fields are
-        untouched.
+        value, recursively.
+        If <parameter>strip_in_arrays</parameter> is true (the default is false),
+        null array elements are also stripped.
+        Otherwise they are not stripped. Bare null values are never stripped.
        </para>
        <para>
         <literal>json_strip_nulls('[{"f1":1, "f2":null}, 2, null, 3]')</literal>
         <returnvalue>[{"f1":1},2,null,3]</returnvalue>
-       </para></entry>
+       </para>
+       <para>
+        <literal>jsonb_strip_nulls('[1,2,null,3,4]', true);</literal>
+        <returnvalue>[1,2,3,4]</returnvalue>
+       </para>
+       </entry>
       </row>
 
       <row>
@@ -19419,7 +19626,7 @@ SELECT jt.* FROM
 SELECT jt.* FROM
  my_films,
  JSON_TABLE (js, '$.favorites[*] ? (@.films[*].director == $filter)'
-   PASSING 'Alfred Hitchcock' AS filter, 'Vertigo' AS filter2
+   PASSING 'Alfred Hitchcock' AS filter
      COLUMNS (
      id FOR ORDINALITY,
      kind text PATH '$.kind',
@@ -19506,13 +19713,13 @@ SELECT jt.* FROM
 <programlisting>
 SELECT * FROM JSON_TABLE (
 '{"favorites":
-    {"movies":
+    [{"movies":
       [{"name": "One", "director": "John Doe"},
        {"name": "Two", "director": "Don Joe"}],
      "books":
       [{"name": "Mystery", "authors": [{"name": "Brown Dan"}]},
        {"name": "Wonder", "authors": [{"name": "Jun Murakami"}, {"name":"Craig Doe"}]}]
-}}'::json, '$.favorites[*]'
+}]}'::json, '$.favorites[*]'
 COLUMNS (
   user_id FOR ORDINALITY,
   NESTED '$.movies[*]'
@@ -27935,6 +28142,11 @@ acl      | {postgres=arwdDxtm/postgres,foo=r/postgres}
        <entry><type>integer</type></entry>
       </row>
 
+      <row>
+       <entry><structfield>default_char_signedness</structfield></entry>
+       <entry><type>boolean</type></entry>
+      </row>
+
      </tbody>
     </tgroup>
    </table>
@@ -29313,6 +29525,10 @@ postgres=# SELECT '0/0'::pg_lsn + pd.segment_number * ps.setting::int + :offset 
         from the same <acronym>LSN</acronym> as the source logical slot.  Both
         <parameter>temporary</parameter> and <parameter>plugin</parameter> are
         optional; if they are omitted, the values of the source slot are used.
+        The <literal>failover</literal> option of the source logical slot
+        is not copied and is set to <literal>false</literal> by default. This
+        is to avoid the risk of being unable to continue logical replication
+        after failover to standby where the slot is being synchronized.
        </para></entry>
       </row>
 
@@ -30116,41 +30332,72 @@ postgres=# SELECT '0/0'::pg_lsn + pd.segment_number * ps.setting::int + :offset 
 
      <tbody>
       <row>
-       <entry role="func_table_entry">
-        <para role="func_signature">
-         <indexterm>
-          <primary>pg_set_relation_stats</primary>
-         </indexterm>
-         <function>pg_set_relation_stats</function> (
-         <parameter>relation</parameter> <type>regclass</type>
-         <optional>, <parameter>relpages</parameter> <type>integer</type></optional>
-         <optional>, <parameter>reltuples</parameter> <type>real</type></optional>
-         <optional>, <parameter>relallvisible</parameter> <type>integer</type></optional> )
-         <returnvalue>void</returnvalue>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>pg_restore_relation_stats</primary>
+        </indexterm>
+        <function>pg_restore_relation_stats</function> (
+        <literal>VARIADIC</literal> <parameter>kwargs</parameter> <type>"any"</type> )
+        <returnvalue>boolean</returnvalue>
+       </para>
+        <para>
+         Updates table-level statistics.  Ordinarily, these statistics are
+         collected automatically or updated as a part of <xref
+         linkend="sql-vacuum"/> or <xref linkend="sql-analyze"/>, so it's not
+         necessary to call this function.  However, it is useful after a
+         restore to enable the optimizer to choose better plans if
+         <command>ANALYZE</command> has not been run yet.
         </para>
         <para>
-         Updates relation-level statistics for the given relation to the
-         specified values. The parameters correspond to columns in <link
-         linkend="catalog-pg-class"><structname>pg_class</structname></link>. Unspecified
-         or <literal>NULL</literal> values leave the setting unchanged.
+         The tracked statistics may change from version to version, so
+         arguments are passed as pairs of <replaceable>argname</replaceable>
+         and <replaceable>argvalue</replaceable> in the form:
+<programlisting>
+ SELECT pg_restore_relation_stats(
+    '<replaceable>arg1name</replaceable>', '<replaceable>arg1value</replaceable>'::<replaceable>arg1type</replaceable>,
+    '<replaceable>arg2name</replaceable>', '<replaceable>arg2value</replaceable>'::<replaceable>arg2type</replaceable>,
+    '<replaceable>arg3name</replaceable>', '<replaceable>arg3value</replaceable>'::<replaceable>arg3type</replaceable>);
+</programlisting>
         </para>
         <para>
-         Ordinarily, these statistics are collected automatically or updated
-         as a part of <xref linkend="sql-vacuum"/> or <xref
-         linkend="sql-analyze"/>, so it's not necessary to call this
-         function. However, it may be useful when testing the effects of
-         statistics on the planner to understand or anticipate plan changes.
+         For example, to set the <structfield>relpages</structfield> and
+         <structfield>reltuples</structfield> values for the table
+         <structname>mytable</structname>:
+<programlisting>
+ SELECT pg_restore_relation_stats(
+    'relation',  'mytable'::regclass,
+    'relpages',  173::integer,
+    'reltuples', 10000::real);
+</programlisting>
         </para>
         <para>
-         The caller must have the <literal>MAINTAIN</literal> privilege on
-         the table or be the owner of the database.
+         The argument <literal>relation</literal> with a value of type
+         <type>regclass</type> is required, and specifies the table. Other
+         arguments are the names and values of statistics corresponding to
+         certain columns in <link
+         linkend="catalog-pg-class"><structname>pg_class</structname></link>.
+         The currently-supported relation statistics are
+         <literal>relpages</literal> with a value of type
+         <type>integer</type>, <literal>reltuples</literal> with a value of
+         type <type>real</type>, and <literal>relallvisible</literal> with a
+         value of type <type>integer</type>.
         </para>
         <para>
-         The value of <structfield>relpages</structfield> must be greater than
-         or equal to <literal>-1</literal>,
-         <structfield>reltuples</structfield> must be greater than or equal to
-         <literal>-1.0</literal>, and <structfield>relallvisible</structfield>
-         must be greater than or equal to <literal>0</literal>.
+         Additionally, this function accepts argument name
+         <literal>version</literal> of type <type>integer</type>, which
+         specifies the server version from which the statistics originated.
+         This is anticipated to be helpful in porting statistics from older
+         versions of <productname>PostgreSQL</productname>.
+        </para>
+        <para>
+         Minor errors are reported as a <literal>WARNING</literal> and
+         ignored, and remaining statistics will still be restored. If all
+         specified statistics are successfully restored, returns
+         <literal>true</literal>, otherwise <literal>false</literal>.
+        </para>
+        <para>
+         The caller must have the <literal>MAINTAIN</literal> privilege on the
+         table or be the owner of the database.
         </para>
        </entry>
       </row>
@@ -30169,8 +30416,8 @@ postgres=# SELECT '0/0'::pg_lsn + pd.segment_number * ps.setting::int + :offset 
          table was newly created.
         </para>
         <para>
-         The caller must have the <literal>MAINTAIN</literal> privilege on
-         the table or be the owner of the database.
+         The caller must have the <literal>MAINTAIN</literal> privilege on the
+         table or be the owner of the database.
         </para>
        </entry>
       </row>
@@ -30178,104 +30425,72 @@ postgres=# SELECT '0/0'::pg_lsn + pd.segment_number * ps.setting::int + :offset 
       <row>
        <entry role="func_table_entry"><para role="func_signature">
         <indexterm>
-         <primary>pg_restore_relation_stats</primary>
+         <primary>pg_restore_attribute_stats</primary>
         </indexterm>
-        <function>pg_restore_relation_stats</function> (
+        <function>pg_restore_attribute_stats</function> (
         <literal>VARIADIC</literal> <parameter>kwargs</parameter> <type>"any"</type> )
         <returnvalue>boolean</returnvalue>
+       </para>
+        <para>
+         Creates or updates column-level statistics.  Ordinarily, these
+         statistics are collected automatically or updated as a part of <xref
+         linkend="sql-vacuum"/> or <xref linkend="sql-analyze"/>, so it's not
+         necessary to call this function.  However, it is useful after a
+         restore to enable the optimizer to choose better plans if
+         <command>ANALYZE</command> has not been run yet.
         </para>
         <para>
-         Similar to <function>pg_set_relation_stats()</function>, but intended
-         for bulk restore of relation statistics. The tracked statistics may
-         change from version to version, so the primary purpose of this
-         function is to maintain a consistent function signature to avoid
-         errors when restoring statistics from previous versions.
+         The tracked statistics may change from version to version, so
+         arguments are passed as pairs of <replaceable>argname</replaceable>
+         and <replaceable>argvalue</replaceable> in the form:
+<programlisting>
+ SELECT pg_restore_attribute_stats(
+    '<replaceable>arg1name</replaceable>', '<replaceable>arg1value</replaceable>'::<replaceable>arg1type</replaceable>,
+    '<replaceable>arg2name</replaceable>', '<replaceable>arg2value</replaceable>'::<replaceable>arg2type</replaceable>,
+    '<replaceable>arg3name</replaceable>', '<replaceable>arg3value</replaceable>'::<replaceable>arg3type</replaceable>);
+</programlisting>
         </para>
         <para>
-         To match the behavior of <xref linkend="sql-vacuum"/> and <xref
-         linkend="sql-analyze"/> when updating relation statistics,
-         <function>pg_restore_relation_stats()</function> does not follow MVCC
-         transactional semantics (see <xref linkend="mvcc"/>). New relation
-         statistics may be durable even if the transaction aborts, and the
-         changes are not isolated from other transactions.
-        </para>
-        <para>
-         Arguments are passed as pairs of <replaceable>argname</replaceable>
-         and <replaceable>argvalue</replaceable>, where
-         <replaceable>argname</replaceable> corresponds to a named argument in
-         <function>pg_set_relation_stats()</function> and
-         <replaceable>argvalue</replaceable> is of the corresponding type.
-        </para>
-        <para>
-         Additionally, this function supports argument name
-         <literal>version</literal> of type <type>integer</type>, which
-         specifies the version from which the statistics originated, improving
-         interpretation of older statistics.
-        </para>
-        <para>
-         For example, to set the <structname>relpages</structname> and
-         <structname>reltuples</structname> of the table
+         For example, to set the <structfield>avg_width</structfield> and
+         <structfield>null_frac</structfield> values for the attribute
+         <structfield>col1</structfield> of the table
          <structname>mytable</structname>:
 <programlisting>
- SELECT pg_restore_relation_stats(
-    'relation',  'mytable'::regclass,
-    'relpages',  173::integer,
-    'reltuples', 10000::float4);
+ SELECT pg_restore_attribute_stats(
+    'relation',    'mytable'::regclass,
+    'attname',     'col1'::name,
+    'inherited',   false,
+    'avg_width',   125::integer,
+    'null_frac',   0.5::real);
 </programlisting>
+        </para>
+        <para>
+         The required arguments are <literal>relation</literal> with a value
+         of type <type>regclass</type>, which specifies the table; either
+         <literal>attname</literal> with a value of type <type>name</type> or
+         <literal>attnum</literal> with a value of type <type>smallint</type>,
+         which specifies the column; and <literal>inherited</literal>, which
+         specifies whether the statistics include values from child tables.
+         Other arguments are the names and values of statistics corresponding
+         to columns in <link
+         linkend="view-pg-stats"><structname>pg_stats</structname></link>.
+        </para>
+        <para>
+         Additionally, this function accepts argument name
+         <literal>version</literal> of type <type>integer</type>, which
+         specifies the server version from which the statistics originated.
+         This is anticipated to be helpful in porting statistics from older
+         versions of <productname>PostgreSQL</productname>.
         </para>
         <para>
          Minor errors are reported as a <literal>WARNING</literal> and
          ignored, and remaining statistics will still be restored. If all
-         specified statistics are successfully restored, return
+         specified statistics are successfully restored, returns
          <literal>true</literal>, otherwise <literal>false</literal>.
         </para>
-       </entry>
-      </row>
-
-      <row>
-       <entry role="func_table_entry">
-        <para role="func_signature">
-         <indexterm>
-          <primary>pg_set_attribute_stats</primary>
-         </indexterm>
-         <function>pg_set_attribute_stats</function> (
-         <parameter>relation</parameter> <type>regclass</type>,
-         <parameter>attname</parameter> <type>name</type>,
-         <parameter>inherited</parameter> <type>boolean</type>
-         <optional>, <parameter>null_frac</parameter> <type>real</type></optional>
-         <optional>, <parameter>avg_width</parameter> <type>integer</type></optional>
-         <optional>, <parameter>n_distinct</parameter> <type>real</type></optional>
-         <optional>, <parameter>most_common_vals</parameter> <type>text</type>, <parameter>most_common_freqs</parameter> <type>real[]</type> </optional>
-         <optional>, <parameter>histogram_bounds</parameter> <type>text</type> </optional>
-         <optional>, <parameter>correlation</parameter> <type>real</type> </optional>
-         <optional>, <parameter>most_common_elems</parameter> <type>text</type>, <parameter>most_common_elem_freqs</parameter> <type>real[]</type> </optional>
-         <optional>, <parameter>elem_count_histogram</parameter> <type>real[]</type> </optional>
-         <optional>, <parameter>range_length_histogram</parameter> <type>text</type> </optional>
-         <optional>, <parameter>range_empty_frac</parameter> <type>real</type> </optional>
-         <optional>, <parameter>range_bounds_histogram</parameter> <type>text</type> </optional> )
-         <returnvalue>void</returnvalue>
-        </para>
         <para>
-         Creates or updates attribute-level statistics for the given relation
-         and attribute name to the specified values. The parameters correspond
-         to attributes of the same name found in the <link
-         linkend="view-pg-stats"><structname>pg_stats</structname></link>
-         view.
-        </para>
-        <para>
-         Optional parameters default to <literal>NULL</literal>, which leave
-         the corresponding statistic unchanged.
-        </para>
-        <para>
-         Ordinarily, these statistics are collected automatically or updated
-         as a part of <xref linkend="sql-vacuum"/> or <xref
-         linkend="sql-analyze"/>, so it's not necessary to call this
-         function. However, it may be useful when testing the effects of
-         statistics on the planner to understand or anticipate plan changes.
-        </para>
-        <para>
-         The caller must have the <literal>MAINTAIN</literal> privilege on
-         the table or be the owner of the database.
+         The caller must have the <literal>MAINTAIN</literal> privilege on the
+         table or be the owner of the database.
         </para>
        </entry>
       </row>
@@ -30293,64 +30508,12 @@ postgres=# SELECT '0/0'::pg_lsn + pd.segment_number * ps.setting::int + :offset 
          <returnvalue>void</returnvalue>
         </para>
         <para>
-         Clears table-level statistics for the given relation attribute, as
-         though the table was newly created.
+         Clears column-level statistics for the given relation and
+         attribute, as though the table was newly created.
         </para>
         <para>
          The caller must have the <literal>MAINTAIN</literal> privilege on
          the table or be the owner of the database.
-        </para>
-       </entry>
-      </row>
-
-      <row>
-       <entry role="func_table_entry"><para role="func_signature">
-        <indexterm>
-         <primary>pg_restore_attribute_stats</primary>
-        </indexterm>
-        <function>pg_restore_attribute_stats</function> (
-        <literal>VARIADIC</literal> <parameter>kwargs</parameter> <type>"any"</type> )
-        <returnvalue>boolean</returnvalue>
-        </para>
-        <para>
-         Similar to <function>pg_set_attribute_stats()</function>, but
-         intended for bulk restore of attribute statistics. The tracked
-         statistics may change from version to version, so the primary purpose
-         of this function is to maintain a consistent function signature to
-         avoid errors when restoring statistics from previous versions.
-        </para>
-        <para>
-         Arguments are passed as pairs of <replaceable>argname</replaceable>
-         and <replaceable>argvalue</replaceable>, where
-         <replaceable>argname</replaceable> corresponds to a named argument in
-         <function>pg_set_attribute_stats()</function> and
-         <replaceable>argvalue</replaceable> is of the corresponding type.
-        </para>
-        <para>
-         Additionally, this function supports argument name
-         <literal>version</literal> of type <type>integer</type>, which
-         specifies the version from which the statistics originated, improving
-         interpretation of older statistics.
-        </para>
-        <para>
-         For example, to set the <structname>avg_width</structname> and
-         <structname>null_frac</structname> for the attribute
-         <structname>col1</structname> of the table
-         <structname>mytable</structname>:
-<programlisting>
- SELECT pg_restore_attribute_stats(
-    'relation',    'mytable'::regclass,
-    'attname',     'col1'::name,
-    'inherited',   false,
-    'avg_width',   125::integer,
-    'null_frac',   0.5::real);
-</programlisting>
-        </para>
-        <para>
-         Minor errors are reported as a <literal>WARNING</literal> and
-         ignored, and remaining statistics will still be restored. If all
-         specified statistics are successfully restored, return
-         <literal>true</literal>, otherwise <literal>false</literal>.
         </para>
        </entry>
       </row>

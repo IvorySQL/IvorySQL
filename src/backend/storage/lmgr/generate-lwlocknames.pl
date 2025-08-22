@@ -1,8 +1,8 @@
 #!/usr/bin/perl
 #
 # Generate lwlocknames.h from lwlocklist.h
-# Copyright (c) 2000-2024, PostgreSQL Global Development Group
 # Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+# Copyright (c) 2000-2025, PostgreSQL Global Development Group
 
 use strict;
 use warnings FATAL => 'all';

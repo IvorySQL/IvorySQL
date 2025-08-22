@@ -3,7 +3,7 @@
  *
  *	server checks and output routines
  *
- *	Copyright (c) 2010-2024, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2025, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/check.c
  */
 
@@ -779,7 +779,7 @@ output_completion_banner(char *deletion_script_file_name)
 	}
 
 	pg_log(PG_REPORT,
-		   "Optimizer statistics are not transferred by pg_upgrade.\n"
+		   "Some optimizer statistics may not have been transferred by pg_upgrade.\n"
 		   "Once you start the new server, consider running:\n"
 		   "    %s/vacuumdb %s--all --analyze-in-stages", new_cluster.bindir, user_specification.data);
 
@@ -837,6 +837,18 @@ check_cluster_versions(void)
 	if (GET_MAJOR_VERSION(new_cluster.major_version) !=
 		GET_MAJOR_VERSION(new_cluster.bin_version))
 		pg_fatal("New cluster data and binary directories are from different major versions.");
+
+	/*
+	 * Since from version 18, newly created database clusters always have
+	 * 'signed' default char-signedness, it makes less sense to use
+	 * --set-char-signedness option for upgrading from version 18 or later.
+	 * Users who want to change the default char signedness of the new
+	 * cluster, they can use pg_resetwal manually before the upgrade.
+	 */
+	if (GET_MAJOR_VERSION(old_cluster.major_version) >= 1800 &&
+		user_opts.char_signedness != -1)
+		pg_fatal("%s option cannot be used to upgrade from PostgreSQL %s and later.",
+				 "--set-char-signedness", "18");
 
 	check_ok();
 }

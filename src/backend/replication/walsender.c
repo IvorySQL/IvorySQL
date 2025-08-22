@@ -37,7 +37,7 @@
  * record, wait for it to be replicated to the standby, and then exit.
  *
  *
- * Portions Copyright (c) 2010-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2010-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/replication/walsender.c
@@ -237,7 +237,7 @@ typedef void (*WalSndSendDataCallback) (void);
 static void WalSndLoop(WalSndSendDataCallback send_data);
 static void InitWalSenderSlot(void);
 static void WalSndKill(int code, Datum arg);
-static void WalSndShutdown(void) pg_attribute_noreturn();
+pg_noreturn static void WalSndShutdown(void);
 static void XLogSendPhysical(void);
 static void XLogSendLogical(void);
 static void WalSndDone(WalSndSendDataCallback send_data);
@@ -816,7 +816,7 @@ StartReplication(StartReplicationCmd *cmd)
 
 	if (cmd->slotname)
 	{
-		ReplicationSlotAcquire(cmd->slotname, true);
+		ReplicationSlotAcquire(cmd->slotname, true, true);
 		if (SlotIsLogical(MyReplicationSlot))
 			ereport(ERROR,
 					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
@@ -1434,7 +1434,7 @@ StartLogicalReplication(StartReplicationCmd *cmd)
 
 	Assert(!MyReplicationSlot);
 
-	ReplicationSlotAcquire(cmd->slotname, true);
+	ReplicationSlotAcquire(cmd->slotname, true, true);
 
 	/*
 	 * Force a disconnect, so that the decoding code doesn't need to care
@@ -1951,6 +1951,7 @@ WalSndWaitForWal(XLogRecPtr loc)
 bool
 exec_replication_command(const char *cmd_string)
 {
+	yyscan_t	scanner;
 	int			parse_rc;
 	Node	   *cmd_node;
 	const char *cmdtag;
@@ -1990,15 +1991,15 @@ exec_replication_command(const char *cmd_string)
 										ALLOCSET_DEFAULT_SIZES);
 	old_context = MemoryContextSwitchTo(cmd_context);
 
-	replication_scanner_init(cmd_string);
+	replication_scanner_init(cmd_string, &scanner);
 
 	/*
 	 * Is it a WalSender command?
 	 */
-	if (!replication_scanner_is_replication_command())
+	if (!replication_scanner_is_replication_command(scanner))
 	{
 		/* Nope; clean up and get out. */
-		replication_scanner_finish();
+		replication_scanner_finish(scanner);
 
 		MemoryContextSwitchTo(old_context);
 		MemoryContextDelete(cmd_context);
@@ -2016,15 +2017,13 @@ exec_replication_command(const char *cmd_string)
 	/*
 	 * Looks like a WalSender command, so parse it.
 	 */
-	parse_rc = replication_yyparse();
+	parse_rc = replication_yyparse(&cmd_node, scanner);
 	if (parse_rc != 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg_internal("replication command parser returned %d",
 								 parse_rc)));
-	replication_scanner_finish();
-
-	cmd_node = replication_parse_result;
+	replication_scanner_finish(scanner);
 
 	/*
 	 * Report query to various monitoring facilities.  For this purpose, we

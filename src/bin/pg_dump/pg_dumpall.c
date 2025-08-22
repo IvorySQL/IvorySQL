@@ -2,7 +2,7 @@
  *
  * pg_dumpall.c
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -105,6 +105,9 @@ static int	use_setsessauth = 0;
 static int	no_comments = 0;
 static int	no_publications = 0;
 static int	no_security_labels = 0;
+static int	no_data = 0;
+static int	no_schema = 0;
+static int	no_statistics = 0;
 static int	no_subscriptions = 0;
 static int	no_toast_compression = 0;
 static int	no_unlogged_table_data = 0;
@@ -112,6 +115,7 @@ static int	no_role_passwords = 0;
 static int	server_version;
 static int	load_via_partition_root = 0;
 static int	on_conflict_do_nothing = 0;
+static int	statistics_only = 0;
 
 static char role_catalog[10];
 #define PG_AUTHID "pg_authid"
@@ -170,15 +174,19 @@ main(int argc, char *argv[])
 		{"role", required_argument, NULL, 3},
 		{"use-set-session-authorization", no_argument, &use_setsessauth, 1},
 		{"no-comments", no_argument, &no_comments, 1},
+		{"no-data", no_argument, &no_data, 1},
 		{"no-publications", no_argument, &no_publications, 1},
 		{"no-role-passwords", no_argument, &no_role_passwords, 1},
+		{"no-schema", no_argument, &no_schema, 1},
 		{"no-security-labels", no_argument, &no_security_labels, 1},
 		{"no-subscriptions", no_argument, &no_subscriptions, 1},
+		{"no-statistics", no_argument, &no_statistics, 1},
 		{"no-sync", no_argument, NULL, 4},
 		{"no-toast-compression", no_argument, &no_toast_compression, 1},
 		{"no-unlogged-table-data", no_argument, &no_unlogged_table_data, 1},
 		{"on-conflict-do-nothing", no_argument, &on_conflict_do_nothing, 1},
 		{"rows-per-insert", required_argument, NULL, 7},
+		{"statistics-only", no_argument, &statistics_only, 1},
 		{"filter", required_argument, NULL, 8},
 
 		{NULL, 0, NULL, 0}
@@ -449,10 +457,16 @@ main(int argc, char *argv[])
 		appendPQExpBufferStr(pgdumpopts, " --use-set-session-authorization");
 	if (no_comments)
 		appendPQExpBufferStr(pgdumpopts, " --no-comments");
+	if (no_data)
+		appendPQExpBufferStr(pgdumpopts, " --no-data");
 	if (no_publications)
 		appendPQExpBufferStr(pgdumpopts, " --no-publications");
 	if (no_security_labels)
 		appendPQExpBufferStr(pgdumpopts, " --no-security-labels");
+	if (no_schema)
+		appendPQExpBufferStr(pgdumpopts, " --no-schema");
+	if (no_statistics)
+		appendPQExpBufferStr(pgdumpopts, " --no-statistics");
 	if (no_subscriptions)
 		appendPQExpBufferStr(pgdumpopts, " --no-subscriptions");
 	if (no_toast_compression)
@@ -461,6 +475,8 @@ main(int argc, char *argv[])
 		appendPQExpBufferStr(pgdumpopts, " --no-unlogged-table-data");
 	if (on_conflict_do_nothing)
 		appendPQExpBufferStr(pgdumpopts, " --on-conflict-do-nothing");
+	if (statistics_only)
+		appendPQExpBufferStr(pgdumpopts, " --statistics-only");
 
 	/*
 	 * If there was a database specified on the command line, use that,
@@ -529,6 +545,7 @@ main(int argc, char *argv[])
 	 * we know how to escape strings.
 	 */
 	encoding = PQclientEncoding(conn);
+	setFmtEncoding(encoding);
 	std_strings = PQparameterStatus(conn, "standard_conforming_strings");
 	if (!std_strings)
 		std_strings = "off";
@@ -648,13 +665,13 @@ help(void)
 	printf(_("  --lock-wait-timeout=TIMEOUT  fail after waiting TIMEOUT for a table lock\n"));
 	printf(_("  -?, --help                   show this help, then exit\n"));
 	printf(_("\nOptions controlling the output content:\n"));
-	printf(_("  -a, --data-only              dump only the data, not the schema\n"));
+	printf(_("  -a, --data-only              dump only the data, not the schema or statistics\n"));
 	printf(_("  -c, --clean                  clean (drop) databases before recreating\n"));
 	printf(_("  -E, --encoding=ENCODING      dump the data in encoding ENCODING\n"));
 	printf(_("  -g, --globals-only           dump only global objects, no databases\n"));
 	printf(_("  -O, --no-owner               skip restoration of object ownership\n"));
 	printf(_("  -r, --roles-only             dump only roles, no databases or tablespaces\n"));
-	printf(_("  -s, --schema-only            dump only the schema, no data\n"));
+	printf(_("  -s, --schema-only            dump only the schema, no data or statistics\n"));
 	printf(_("  -S, --superuser=NAME         superuser user name to use in the dump\n"));
 	printf(_("  -t, --tablespaces-only       dump only tablespaces, no databases or roles\n"));
 	printf(_("  -x, --no-privileges          do not dump privileges (grant/revoke)\n"));
@@ -669,9 +686,12 @@ help(void)
 	printf(_("  --inserts                    dump data as INSERT commands, rather than COPY\n"));
 	printf(_("  --load-via-partition-root    load partitions via the root table\n"));
 	printf(_("  --no-comments                do not dump comment commands\n"));
+	printf(_("  --no-data                    do not dump data\n"));
 	printf(_("  --no-publications            do not dump publications\n"));
 	printf(_("  --no-role-passwords          do not dump passwords for roles\n"));
+	printf(_("  --no-schema                  do not dump schema\n"));
 	printf(_("  --no-security-labels         do not dump security label assignments\n"));
+	printf(_("  --no-statistics              do not dump statistics\n"));
 	printf(_("  --no-subscriptions           do not dump subscriptions\n"));
 	printf(_("  --no-sync                    do not wait for changes to be written safely to disk\n"));
 	printf(_("  --no-table-access-method     do not dump table access methods\n"));
@@ -681,6 +701,7 @@ help(void)
 	printf(_("  --on-conflict-do-nothing     add ON CONFLICT DO NOTHING to INSERT commands\n"));
 	printf(_("  --quote-all-identifiers      quote all identifiers, even if not key words\n"));
 	printf(_("  --rows-per-insert=NROWS      number of rows per INSERT; implies --inserts\n"));
+	printf(_("  --statistics-only            dump only the statistics, not schema or data\n"));
 	printf(_("  --use-set-session-authorization\n"
 			 "                               use SET SESSION AUTHORIZATION commands instead of\n"
 			 "                               ALTER OWNER commands to set ownership\n"));
@@ -971,6 +992,13 @@ dumpRoleMembership(PGconn *conn)
 				total;
 	bool		dump_grantors;
 	bool		dump_grant_options;
+	int			i_role;
+	int			i_member;
+	int			i_grantor;
+	int			i_roleid;
+	int			i_memberid;
+	int			i_grantorid;
+	int			i_admin_option;
 	int			i_inherit_option;
 	int			i_set_option;
 
@@ -980,6 +1008,10 @@ dumpRoleMembership(PGconn *conn)
 	 * they didn't have ADMIN OPTION on the role, or a user that no longer
 	 * existed. To avoid dump and restore failures, don't dump the grantor
 	 * when talking to an old server version.
+	 *
+	 * Also, in older versions the roleid and/or member could be role OIDs
+	 * that no longer exist.  If we find such cases, print a warning and skip
+	 * the entry.
 	 */
 	dump_grantors = (PQserverVersion(conn) >= 160000);
 
@@ -991,8 +1023,10 @@ dumpRoleMembership(PGconn *conn)
 	/* Generate and execute query. */
 	printfPQExpBuffer(buf, "SELECT ur.rolname AS role, "
 					  "um.rolname AS member, "
-					  "ug.oid AS grantorid, "
 					  "ug.rolname AS grantor, "
+					  "a.roleid AS roleid, "
+					  "a.member AS memberid, "
+					  "a.grantor AS grantorid, "
 					  "a.admin_option");
 	if (dump_grant_options)
 		appendPQExpBufferStr(buf, ", a.inherit_option, a.set_option");
@@ -1001,8 +1035,15 @@ dumpRoleMembership(PGconn *conn)
 					  "LEFT JOIN %s um on um.oid = a.member "
 					  "LEFT JOIN %s ug on ug.oid = a.grantor "
 					  "WHERE NOT (ur.rolname ~ '^pg_' AND um.rolname ~ '^pg_')"
-					  "ORDER BY 1,2,4", role_catalog, role_catalog, role_catalog);
+					  "ORDER BY 1,2,3", role_catalog, role_catalog, role_catalog);
 	res = executeQuery(conn, buf->data);
+	i_role = PQfnumber(res, "role");
+	i_member = PQfnumber(res, "member");
+	i_grantor = PQfnumber(res, "grantor");
+	i_roleid = PQfnumber(res, "roleid");
+	i_memberid = PQfnumber(res, "memberid");
+	i_grantorid = PQfnumber(res, "grantorid");
+	i_admin_option = PQfnumber(res, "admin_option");
 	i_inherit_option = PQfnumber(res, "inherit_option");
 	i_set_option = PQfnumber(res, "set_option");
 
@@ -1026,24 +1067,32 @@ dumpRoleMembership(PGconn *conn)
 	total = PQntuples(res);
 	while (start < total)
 	{
-		char	   *role = PQgetvalue(res, start, 0);
+		char	   *role = PQgetvalue(res, start, i_role);
 		int			i;
 		bool	   *done;
 		int			remaining;
 		int			prev_remaining = 0;
 		rolename_hash *ht;
 
+		/* If we hit a null roleid, we're done (nulls sort to the end). */
+		if (PQgetisnull(res, start, i_role))
+		{
+			/* translator: %s represents a numeric role OID */
+			pg_log_warning("found orphaned pg_auth_members entry for role %s",
+						   PQgetvalue(res, start, i_roleid));
+			break;
+		}
+
 		/* All memberships for a single role should be adjacent. */
 		for (end = start; end < total; ++end)
 		{
 			char   *otherrole;
 
-			otherrole = PQgetvalue(res, end, 0);
+			otherrole = PQgetvalue(res, end, i_role);
 			if (strcmp(role, otherrole) != 0)
 				break;
 		}
 
-		role = PQgetvalue(res, start, 0);
 		remaining = end - start;
 		done = pg_malloc0(remaining * sizeof(bool));
 		ht = rolename_create(remaining, NULL);
@@ -1083,10 +1132,30 @@ dumpRoleMembership(PGconn *conn)
 				if (done[i - start])
 					continue;
 
-				member = PQgetvalue(res, i, 1);
-				grantorid = PQgetvalue(res, i, 2);
-				grantor = PQgetvalue(res, i, 3);
-				admin_option = PQgetvalue(res, i, 4);
+				/* Complain about, then ignore, entries with orphaned OIDs. */
+				if (PQgetisnull(res, i, i_member))
+				{
+					/* translator: %s represents a numeric role OID */
+					pg_log_warning("found orphaned pg_auth_members entry for role %s",
+								   PQgetvalue(res, i, i_memberid));
+					done[i - start] = true;
+					--remaining;
+					continue;
+				}
+				if (PQgetisnull(res, i, i_grantor))
+				{
+					/* translator: %s represents a numeric role OID */
+					pg_log_warning("found orphaned pg_auth_members entry for role %s",
+								   PQgetvalue(res, i, i_grantorid));
+					done[i - start] = true;
+					--remaining;
+					continue;
+				}
+
+				member = PQgetvalue(res, i, i_member);
+				grantor = PQgetvalue(res, i, i_grantor);
+				grantorid = PQgetvalue(res, i, i_grantorid);
+				admin_option = PQgetvalue(res, i, i_admin_option);
 				if (dump_grant_options)
 					set_option = PQgetvalue(res, i, i_set_option);
 

@@ -2,7 +2,7 @@
 #
 # Makefile for src/interfaces/ecpg/preproc
 #
-# Copyright (c) 1998-2024, PostgreSQL Global Development Group
+# Copyright (c) 1998-2025, PostgreSQL Global Development Group
 #
 # src/interfaces/ecpg/preproc/Makefile
 #
@@ -80,6 +80,9 @@ ecpg_keywords.o c_keywords.o keywords.o preproc.o pgc.o parser.o: preproc.h
 ecpg_keywords.o: ecpg_kwlist_d.h
 c_keywords.o: c_kwlist_d.h
 keywords.o: $(top_srcdir)/src/include/parser/kwlist.h
+
+check:
+	$(prove_check)
 
 install: all installdirs
 	$(INSTALL_PROGRAM) ecpg$(X) '$(DESTDIR)$(bindir)'

@@ -72,6 +72,7 @@ enum _dumpPreparedQueries
 	PREPQUERY_DUMPOPR,
 	PREPQUERY_DUMPRANGETYPE,
 	PREPQUERY_DUMPTABLEATTACH,
+	PREPQUERY_GETATTRIBUTESTATS,
 	PREPQUERY_GETCOLUMNACLS,
 	PREPQUERY_GETDOMAINCONSTRAINTS,
 };
@@ -160,6 +161,7 @@ typedef struct _restoreOptions
 	/* flags derived from the user-settable flags */
 	bool		dumpSchema;
 	bool		dumpData;
+	bool		dumpStatistics;
 } RestoreOptions;
 
 typedef struct _dumpOptions
@@ -208,6 +210,7 @@ typedef struct _dumpOptions
 	/* flags derived from the user-settable flags */
 	bool		dumpSchema;
 	bool		dumpData;
+	bool		dumpStatistics;
 } DumpOptions;
 
 /*

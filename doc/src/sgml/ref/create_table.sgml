@@ -65,13 +65,13 @@ CREATE [ [ GLOBAL | LOCAL ] { TEMPORARY | TEMP } | UNLOGGED ] TABLE [ IF NOT EXI
   NULL |
   CHECK ( <replaceable class="parameter">expression</replaceable> ) [ NO INHERIT ] |
   DEFAULT <replaceable>default_expr</replaceable> |
-  GENERATED ALWAYS AS ( <replaceable>generation_expr</replaceable> ) STORED |
+  GENERATED ALWAYS AS ( <replaceable>generation_expr</replaceable> ) [ STORED | VIRTUAL ] |
   GENERATED { ALWAYS | BY DEFAULT } AS IDENTITY [ ( <replaceable>sequence_options</replaceable> ) ] |
   UNIQUE [ NULLS [ NOT ] DISTINCT ] <replaceable class="parameter">index_parameters</replaceable> |
   PRIMARY KEY <replaceable class="parameter">index_parameters</replaceable> |
   REFERENCES <replaceable class="parameter">reftable</replaceable> [ ( <replaceable class="parameter">refcolumn</replaceable> ) ] [ MATCH FULL | MATCH PARTIAL | MATCH SIMPLE ]
     [ ON DELETE <replaceable class="parameter">referential_action</replaceable> ] [ ON UPDATE <replaceable class="parameter">referential_action</replaceable> ] }
-[ DEFERRABLE | NOT DEFERRABLE ] [ INITIALLY DEFERRED | INITIALLY IMMEDIATE ]
+[ DEFERRABLE | NOT DEFERRABLE ] [ INITIALLY DEFERRED | INITIALLY IMMEDIATE ] [ ENFORCED | NOT ENFORCED ]
 
 <phrase>and <replaceable class="parameter">table_constraint</replaceable> is:</phrase>
 
@@ -84,7 +84,7 @@ CREATE [ [ GLOBAL | LOCAL ] { TEMPORARY | TEMP } | UNLOGGED ] TABLE [ IF NOT EXI
   FOREIGN KEY ( <replaceable class="parameter">column_name</replaceable> [, ... ] [, PERIOD <replaceable class="parameter">column_name</replaceable> ] ) REFERENCES <replaceable class="parameter">reftable</replaceable> [ ( <replaceable class="parameter">refcolumn</replaceable> [, ... ] [, PERIOD <replaceable class="parameter">refcolumn</replaceable> ] ) ]
     [ MATCH FULL | MATCH PARTIAL | MATCH SIMPLE ] [ ON DELETE <replaceable
 class="parameter">referential_action</replaceable> ] [ ON UPDATE <replaceable class="parameter">referential_action</replaceable> ] }
-[ DEFERRABLE | NOT DEFERRABLE ] [ INITIALLY DEFERRED | INITIALLY IMMEDIATE ]
+[ DEFERRABLE | NOT DEFERRABLE ] [ INITIALLY DEFERRED | INITIALLY IMMEDIATE ] [ ENFORCED | NOT ENFORCED ]
 
 <phrase>and <replaceable class="parameter">like_option</replaceable> is:</phrase>
 
@@ -725,8 +725,9 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
         <term><literal>INCLUDING GENERATED</literal></term>
         <listitem>
          <para>
-          Any generation expressions of copied column definitions will be
-          copied.  By default, new columns will be regular base columns.
+          Any generation expressions as well as the stored/virtual choice of
+          copied column definitions will be copied.  By default, new columns
+          will be regular base columns.
          </para>
         </listitem>
        </varlistentry>
@@ -907,7 +908,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
    </varlistentry>
 
    <varlistentry id="sql-createtable-parms-generated-stored">
-    <term><literal>GENERATED ALWAYS AS ( <replaceable>generation_expr</replaceable> ) STORED</literal><indexterm><primary>generated column</primary></indexterm></term>
+    <term><literal>GENERATED ALWAYS AS ( <replaceable>generation_expr</replaceable> ) [ STORED | VIRTUAL ]</literal><indexterm><primary>generated column</primary></indexterm></term>
     <listitem>
      <para>
       This clause creates the column as a <firstterm>generated
@@ -916,8 +917,11 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
      </para>
 
      <para>
-      The keyword <literal>STORED</literal> is required to signify that the
-      column will be computed on write and will be stored on disk.
+      When <literal>VIRTUAL</literal> is specified, the column will be
+      computed when it is read, and it will not occupy any storage.  When
+      <literal>STORED</literal> is specified, the column will be computed on
+      write and will be stored on disk.  <literal>VIRTUAL</literal> is the
+      default.
      </para>
 
      <para>
@@ -1278,6 +1282,10 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
           <quote>no-op</quote> updates that update a column to the same
           value.)
          </para>
+
+         <para>
+          In a temporal foreign key, this option is not supported.
+         </para>
         </listitem>
        </varlistentry>
 
@@ -1373,6 +1381,36 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
       <literal>INITIALLY DEFERRED</literal>, it is checked only at the
       end of the transaction.  The constraint check time can be
       altered with the <link linkend="sql-set-constraints"><command>SET CONSTRAINTS</command></link> command.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry id="sql-createtable-parms-enforced">
+    <term><literal>ENFORCED</literal></term>
+    <term><literal>NOT ENFORCED</literal></term>
+    <listitem>
+     <para>
+      When the constraint is <literal>ENFORCED</literal>, then the database
+      system will ensure that the constraint is satisfied, by checking the
+      constraint at appropriate times (after each statement or at the end of
+      the transaction, as appropriate).  That is the default.  If the
+      constraint is <literal>NOT ENFORCED</literal>, the database system will
+      not check the constraint.  It is then up to the application code to
+      ensure that the constraints are satisfied.  The database system might
+      still assume that the data actually satisfies the constraint for
+      optimization decisions where this does not affect the correctness of the
+      result.
+     </para>
+
+     <para>
+      <literal>NOT ENFORCED</literal> constraints can be useful as
+      documentation if the actual checking of the constraint at run time is
+      too expensive.
+     </para>
+
+     <para>
+      This is currently only supported for <literal>CHECK</literal>
+      constraints.
      </para>
     </listitem>
    </varlistentry>
@@ -1682,6 +1720,21 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
+   <varlistentry id="reloption-autovacuum-vacuum-max-threshold" xreflabel="autovacuum_vacuum_max_threshold">
+    <term><literal>autovacuum_vacuum_max_threshold</literal>, <literal>toast.autovacuum_vacuum_max_threshold</literal> (<type>integer</type>)
+    <indexterm>
+     <primary><varname>autovacuum_vacuum_max_threshold</varname></primary>
+     <secondary>storage parameter</secondary>
+    </indexterm>
+    </term>
+   <listitem>
+    <para>
+     Per-table value for <xref linkend="guc-autovacuum-vacuum-max-threshold"/>
+     parameter.
+    </para>
+   </listitem>
+  </varlistentry>
+
    <varlistentry id="reloption-autovacuum-vacuum-scale-factor" xreflabel="autovacuum_vacuum_scale_factor">
     <term><literal>autovacuum_vacuum_scale_factor</literal>, <literal>toast.autovacuum_vacuum_scale_factor</literal> (<type>floating point</type>)
     <indexterm>
@@ -1896,6 +1949,21 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     <listitem>
      <para>
       Per-table value for <xref linkend="guc-log-autovacuum-min-duration"/>
+      parameter.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry id="reloption-vacuum-max-eager-freeze-failure-rate" xreflabel="vacuum_max_eager_freeze_failure_rate">
+    <term><literal>vacuum_max_eager_freeze_failure_rate</literal>, <literal>toast.vacuum_max_eager_freeze_failure_rate</literal> (<type>floating point</type>)
+    <indexterm>
+     <primary><varname>vacuum_max_eager_freeze_failure_rate</varname></primary>
+     <secondary>storage parameter</secondary>
+    </indexterm>
+    </term>
+    <listitem>
+     <para>
+      Per-table value for <xref linkend="guc-vacuum-max-eager-freeze-failure-rate"/>
       parameter.
      </para>
     </listitem>
@@ -2459,9 +2527,9 @@ CREATE TABLE cities_partdef
    <title>Generated Columns</title>
 
    <para>
-    The option <literal>STORED</literal> is not standard but is also used by
-    other SQL implementations.  The SQL standard does not specify the storage
-    of generated columns.
+    The options <literal>STORED</literal> and <literal>VIRTUAL</literal> are
+    not standard but are also used by other SQL implementations.  The SQL
+    standard does not specify the storage of generated columns.
    </para>
   </refsect2>
 

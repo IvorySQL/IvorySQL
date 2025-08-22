@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2024, PostgreSQL Global Development Group
+# Copyright (c) 2021-2025, PostgreSQL Global Development Group
 
 =pod
 
@@ -302,7 +302,8 @@ sub switch_server_cert
 	$node->append_conf('sslconfig.conf', $backend->set_server_cert(\%params));
 	# use lists of ECDH curves and cipher suites for syntax testing
 	$node->append_conf('sslconfig.conf', 'ssl_groups=prime256v1:secp521r1');
-	$node->append_conf('sslconfig.conf', 'ssl_tls13_ciphers=TLS_AES_256_GCM_SHA384:TLS_AES_128_GCM_SHA256');
+	$node->append_conf('sslconfig.conf',
+		'ssl_tls13_ciphers=TLS_AES_256_GCM_SHA384:TLS_AES_128_GCM_SHA256');
 
 	$node->append_conf('sslconfig.conf',
 		"ssl_passphrase_command='" . $params{passphrase_cmd} . "'")

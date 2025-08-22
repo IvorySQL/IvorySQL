@@ -3,7 +3,7 @@
  * fe-lobj.c
  *	  Front-end large object interface
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -870,7 +870,7 @@ lo_initialize(PGconn *conn)
 		libpq_append_conn_error(conn, "out of memory");
 		return -1;
 	}
-	MemSet((char *) lobjfuncs, 0, sizeof(PGlobjfuncs));
+	MemSet(lobjfuncs, 0, sizeof(PGlobjfuncs));
 
 	/*
 	 * Execute the query to get all the functions at once.  (Not all of them

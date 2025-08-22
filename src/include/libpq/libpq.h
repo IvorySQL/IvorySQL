@@ -4,7 +4,7 @@
  *	  POSTGRES LIBPQ buffer structure definitions.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/libpq/libpq.h
@@ -71,7 +71,7 @@ extern int	AcceptConnection(pgsocket server_fd, ClientSocket *client_sock);
 extern void TouchSocketFiles(void);
 extern void RemoveSocketFiles(void);
 extern Port *pq_init(ClientSocket *client_sock);
-extern int	pq_getbytes(char *s, size_t len);
+extern int	pq_getbytes(void *b, size_t len);
 extern void pq_startmsgread(void);
 extern void pq_endmsgread(void);
 extern bool pq_is_reading_msg(void);
@@ -92,7 +92,7 @@ extern void secure_destroy(void);
 extern int	secure_open_server(Port *port);
 extern void secure_close(Port *port);
 extern ssize_t secure_read(Port *port, void *ptr, size_t len);
-extern ssize_t secure_write(Port *port, void *ptr, size_t len);
+extern ssize_t secure_write(Port *port, const void *ptr, size_t len);
 extern ssize_t secure_raw_read(Port *port, void *ptr, size_t len);
 extern ssize_t secure_raw_write(Port *port, const void *ptr, size_t len);
 

@@ -94,7 +94,10 @@ PostgreSQL documentation
       <para>
        The name of the database in which to create a subscription.  Multiple
        databases can be selected by writing multiple <option>-d</option>
-       switches.
+       switches. If <option>-d</option> option is not provided, the database
+       name will be obtained from <option>-P</option> option. If the database
+       name is not specified in either the <option>-d</option> option or
+       <option>-P</option> option, an error will be reported.
       </para>
      </listitem>
     </varlistentry>
@@ -161,6 +164,19 @@ PostgreSQL documentation
       <para>
        The maximum number of seconds to wait for recovery to end.  Setting to
        0 disables.  The default is 0.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>-T</option></term>
+     <term><option>--enable-two-phase</option></term>
+     <listitem>
+      <para>
+       Enables <link linkend="sql-createsubscription-params-with-two-phase"><literal>two_phase</literal></link>
+       commit for the subscription. When multiple databases are specified, this
+       option applies uniformly to all subscriptions created on those databases.
+       The default is <literal>false</literal>.
       </para>
      </listitem>
     </varlistentry>
@@ -300,7 +316,9 @@ PostgreSQL documentation
     greater than or equal to the number of specified databases.  The target
     server must have <xref linkend="guc-max-worker-processes"/> configured to a
     value greater than the number of specified databases.  The target server
-    must accept local connections.
+    must accept local connections. If you are planning to use the
+    <option>--enable-two-phase</option> switch then you will also need to set
+    the <xref linkend="guc-max-prepared-transactions"/> appropriately.
    </para>
 
    <para>
@@ -360,6 +378,7 @@ PostgreSQL documentation
    </para>
 
    <para>
+    Unless the <option>--enable-two-phase</option> switch is specified,
     <application>pg_createsubscriber</application> sets up logical
     replication with two-phase commit disabled.  This means that any
     prepared transactions will be replicated at the time
@@ -376,6 +395,13 @@ PostgreSQL documentation
     situations in which the target server might use WAL files from the source
     server.  If the target server has a standby, replication will break and a
     fresh standby should be created.
+   </para>
+
+   <para>
+    Replication failures can occur if required WAL files are missing. To prevent
+    this, the source server must set
+    <xref linkend="guc-max-slot-wal-keep-size"/> to <literal>-1</literal> to
+    ensure that required WAL files are not prematurely removed.
    </para>
   </refsect2>
 

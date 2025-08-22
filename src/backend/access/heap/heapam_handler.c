@@ -3,7 +3,7 @@
  * heapam_handler.c
  *	  heap table access method code
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -749,7 +749,7 @@ heapam_relation_copy_for_cluster(Relation OldHeap, Relation NewHeap,
 
 		tableScan = NULL;
 		heapScan = NULL;
-		indexScan = index_beginscan(OldHeap, OldIndex, SnapshotAny, 0, 0);
+		indexScan = index_beginscan(OldHeap, OldIndex, SnapshotAny, NULL, 0, 0);
 		index_rescan(indexScan, NULL, 0, NULL, 0);
 	}
 	else
@@ -2047,6 +2047,8 @@ heapam_relation_needs_toast_table(Relation rel)
 
 		if (att->attisdropped)
 			continue;
+		if (att->attgenerated == ATTRIBUTE_GENERATED_VIRTUAL)
+			continue;
 		data_length = att_align_nominal(data_length, att->attalign);
 		if (att->attlen > 0)
 		{
@@ -2118,12 +2120,17 @@ heapam_scan_bitmap_next_block(TableScanDesc scan,
 							  BlockNumber *blockno, bool *recheck,
 							  uint64 *lossy_pages, uint64 *exact_pages)
 {
-	HeapScanDesc hscan = (HeapScanDesc) scan;
+	BitmapHeapScanDesc bscan = (BitmapHeapScanDesc) scan;
+	HeapScanDesc hscan = (HeapScanDesc) bscan;
 	BlockNumber block;
 	Buffer		buffer;
 	Snapshot	snapshot;
 	int			ntup;
 	TBMIterateResult *tbmres;
+	OffsetNumber offsets[TBM_MAX_TUPLES_PER_PAGE];
+	int			noffsets = -1;
+
+	Assert(scan->rs_flags & SO_TYPE_BITMAPSCAN);
 
 	hscan->rs_cindex = 0;
 	hscan->rs_ntuples = 0;
@@ -2139,6 +2146,11 @@ heapam_scan_bitmap_next_block(TableScanDesc scan,
 
 		if (tbmres == NULL)
 			return false;
+
+		/* Exact pages need their tuple offsets extracted. */
+		if (!tbmres->lossy)
+			noffsets = tbm_extract_page_tuple(tbmres, offsets,
+											  TBM_MAX_TUPLES_PER_PAGE);
 
 		/*
 		 * Ignore any claimed entries past what we think is the end of the
@@ -2162,13 +2174,14 @@ heapam_scan_bitmap_next_block(TableScanDesc scan,
 	 */
 	if (!(scan->rs_flags & SO_NEED_TUPLES) &&
 		!tbmres->recheck &&
-		VM_ALL_VISIBLE(scan->rs_rd, tbmres->blockno, &hscan->rs_vmbuffer))
+		VM_ALL_VISIBLE(scan->rs_rd, tbmres->blockno, &bscan->rs_vmbuffer))
 	{
 		/* can't be lossy in the skip_fetch case */
-		Assert(tbmres->ntuples >= 0);
-		Assert(hscan->rs_empty_tuples_pending >= 0);
+		Assert(!tbmres->lossy);
+		Assert(bscan->rs_empty_tuples_pending >= 0);
+		Assert(noffsets > -1);
 
-		hscan->rs_empty_tuples_pending += tbmres->ntuples;
+		bscan->rs_empty_tuples_pending += noffsets;
 
 		return true;
 	}
@@ -2202,7 +2215,7 @@ heapam_scan_bitmap_next_block(TableScanDesc scan,
 	/*
 	 * We need two separate strategies for lossy and non-lossy cases.
 	 */
-	if (tbmres->ntuples >= 0)
+	if (!tbmres->lossy)
 	{
 		/*
 		 * Bitmap is non-lossy, so we just look through the offsets listed in
@@ -2211,9 +2224,12 @@ heapam_scan_bitmap_next_block(TableScanDesc scan,
 		 */
 		int			curslot;
 
-		for (curslot = 0; curslot < tbmres->ntuples; curslot++)
+		/* We must have extracted the tuple offsets by now */
+		Assert(noffsets > -1);
+
+		for (curslot = 0; curslot < noffsets; curslot++)
 		{
-			OffsetNumber offnum = tbmres->offsets[curslot];
+			OffsetNumber offnum = offsets[curslot];
 			ItemPointerData tid;
 			HeapTupleData heapTuple;
 
@@ -2263,10 +2279,10 @@ heapam_scan_bitmap_next_block(TableScanDesc scan,
 	Assert(ntup <= MaxHeapTuplesPerPage);
 	hscan->rs_ntuples = ntup;
 
-	if (tbmres->ntuples >= 0)
-		(*exact_pages)++;
-	else
+	if (tbmres->lossy)
 		(*lossy_pages)++;
+	else
+		(*exact_pages)++;
 
 	/*
 	 * Return true to indicate that a valid block was found and the bitmap is
@@ -2282,18 +2298,19 @@ static bool
 heapam_scan_bitmap_next_tuple(TableScanDesc scan,
 							  TupleTableSlot *slot)
 {
-	HeapScanDesc hscan = (HeapScanDesc) scan;
+	BitmapHeapScanDesc bscan = (BitmapHeapScanDesc) scan;
+	HeapScanDesc hscan = (HeapScanDesc) bscan;
 	OffsetNumber targoffset;
 	Page		page;
 	ItemId		lp;
 
-	if (hscan->rs_empty_tuples_pending > 0)
+	if (bscan->rs_empty_tuples_pending > 0)
 	{
 		/*
 		 * If we don't have to fetch the tuple, just return nulls.
 		 */
 		ExecStoreAllNullTuple(slot);
-		hscan->rs_empty_tuples_pending--;
+		bscan->rs_empty_tuples_pending--;
 		return true;
 	}
 

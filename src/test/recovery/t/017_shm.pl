@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2024, PostgreSQL Global Development Group
+# Copyright (c) 2021-2025, PostgreSQL Global Development Group
 
 #
 # Tests of pg_shmem.h functions
@@ -160,13 +160,13 @@ my $pre_existing_msg = qr/pre-existing shared memory block/;
 like(slurp_file($gnat->logfile),
 	$pre_existing_msg, 'detected live backend via shared memory');
 # Reject single-user startup.
-my $single_stderr;
-ok( !run_log(
-		[ 'postgres', '--single', '-D', $gnat->data_dir, 'template1' ],
-		'<', \undef, '2>', \$single_stderr),
-	'live query blocks --single');
-print STDERR $single_stderr;
-like($single_stderr, $pre_existing_msg,
+command_fails_like(
+	[
+		'postgres', '--single',
+		'-D' => $gnat->data_dir,
+		'template1'
+	],
+	$pre_existing_msg,
 	'single-user mode detected live backend via shared memory');
 log_ipcs();
 

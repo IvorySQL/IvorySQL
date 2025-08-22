@@ -4,7 +4,7 @@
  *    This file contains declarations for logical decoding utility
  *    functions for internal use.
  *
- * Copyright (c) 2024, PostgreSQL Global Development Group
+ * Copyright (c) 2024-2025, PostgreSQL Global Development Group
  *
  * src/include/replication/snapbuild_internal.h
  *
@@ -193,7 +193,7 @@ typedef struct SnapBuildOnDisk
 	/* variable amount of TransactionIds follows */
 } SnapBuildOnDisk;
 
-extern bool SnapBuildRestoreSnapshot(SnapBuildOnDisk *ondisk, const char *path,
+extern bool SnapBuildRestoreSnapshot(SnapBuildOnDisk *ondisk, XLogRecPtr lsn,
 									 MemoryContext context, bool missing_ok);
 
 #endif							/* SNAPBUILD_INTERNAL_H */

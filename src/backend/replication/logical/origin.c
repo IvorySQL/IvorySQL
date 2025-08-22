@@ -3,7 +3,7 @@
  * origin.c
  *	  Logical replication progress tracking support.
  *
- * Copyright (c) 2013-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2013-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/replication/logical/origin.c
@@ -391,7 +391,7 @@ restart:
 
 				xlrec.node_id = roident;
 				XLogBeginInsert();
-				XLogRegisterData((char *) (&xlrec), sizeof(xlrec));
+				XLogRegisterData(&xlrec, sizeof(xlrec));
 				XLogInsert(RM_REPLORIGIN_ID, XLOG_REPLORIGIN_DROP);
 			}
 
@@ -986,7 +986,7 @@ replorigin_advance(RepOriginId node,
 		xlrec.force = go_backward;
 
 		XLogBeginInsert();
-		XLogRegisterData((char *) (&xlrec), sizeof(xlrec));
+		XLogRegisterData(&xlrec, sizeof(xlrec));
 
 		XLogInsert(RM_REPLORIGIN_ID, XLOG_REPLORIGIN_SET);
 	}

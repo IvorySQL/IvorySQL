@@ -5,7 +5,7 @@
  *	  Planning is complete, we just need to convert the selected
  *	  Path into a Plan.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -285,12 +285,9 @@ static Memoize *make_memoize(Plan *lefttree, Oid *hashoperators,
 							 Oid *collations, List *param_exprs,
 							 bool singlerow, bool binary_mode,
 							 uint32 est_entries, Bitmapset *keyparamids);
-static WindowAgg *make_windowagg(List *tlist, Index winref,
+static WindowAgg *make_windowagg(List *tlist, WindowClause *wc,
 								 int partNumCols, AttrNumber *partColIdx, Oid *partOperators, Oid *partCollations,
 								 int ordNumCols, AttrNumber *ordColIdx, Oid *ordOperators, Oid *ordCollations,
-								 int frameOptions, Node *startOffset, Node *endOffset,
-								 Oid startInRangeFunc, Oid endInRangeFunc,
-								 Oid inRangeColl, bool inRangeAsc, bool inRangeNullsFirst,
 								 List *runCondition, List *qual, bool topWindow,
 								 Plan *lefttree);
 static Group *make_group(List *tlist, List *qual, int numGroupCols,
@@ -1227,7 +1224,6 @@ create_append_plan(PlannerInfo *root, AppendPath *best_path, int flags)
 	ListCell   *subpaths;
 	int			nasyncplans = 0;
 	RelOptInfo *rel = best_path->path.parent;
-	PartitionPruneInfo *partpruneinfo = NULL;
 	int			nodenumsortkeys = 0;
 	AttrNumber *nodeSortColIdx = NULL;
 	Oid		   *nodeSortOperators = NULL;
@@ -1378,6 +1374,9 @@ create_append_plan(PlannerInfo *root, AppendPath *best_path, int flags)
 		subplans = lappend(subplans, subplan);
 	}
 
+	/* Set below if we find quals that we can use to run-time prune */
+	plan->part_prune_index = -1;
+
 	/*
 	 * If any quals exist, they may be useful to perform further partition
 	 * pruning during execution.  Gather information needed by the executor to
@@ -1401,16 +1400,14 @@ create_append_plan(PlannerInfo *root, AppendPath *best_path, int flags)
 		}
 
 		if (prunequal != NIL)
-			partpruneinfo =
-				make_partition_pruneinfo(root, rel,
-										 best_path->subpaths,
-										 prunequal);
+			plan->part_prune_index = make_partition_pruneinfo(root, rel,
+															  best_path->subpaths,
+															  prunequal);
 	}
 
 	plan->appendplans = subplans;
 	plan->nasyncplans = nasyncplans;
 	plan->first_partial_plan = best_path->first_partial_path;
-	plan->part_prune_info = partpruneinfo;
 
 	copy_generic_path_info(&plan->plan, (Path *) best_path);
 
@@ -1449,7 +1446,6 @@ create_merge_append_plan(PlannerInfo *root, MergeAppendPath *best_path,
 	List	   *subplans = NIL;
 	ListCell   *subpaths;
 	RelOptInfo *rel = best_path->path.parent;
-	PartitionPruneInfo *partpruneinfo = NULL;
 
 	/*
 	 * We don't have the actual creation of the MergeAppend node split out
@@ -1542,6 +1538,9 @@ create_merge_append_plan(PlannerInfo *root, MergeAppendPath *best_path,
 		subplans = lappend(subplans, subplan);
 	}
 
+	/* Set below if we find quals that we can use to run-time prune */
+	node->part_prune_index = -1;
+
 	/*
 	 * If any quals exist, they may be useful to perform further partition
 	 * pruning during execution.  Gather information needed by the executor to
@@ -1557,13 +1556,12 @@ create_merge_append_plan(PlannerInfo *root, MergeAppendPath *best_path,
 		Assert(best_path->path.param_info == NULL);
 
 		if (prunequal != NIL)
-			partpruneinfo = make_partition_pruneinfo(root, rel,
-													 best_path->subpaths,
-													 prunequal);
+			node->part_prune_index = make_partition_pruneinfo(root, rel,
+															  best_path->subpaths,
+															  prunequal);
 	}
 
 	node->mergeplans = subplans;
-	node->part_prune_info = partpruneinfo;
 
 	/*
 	 * If prepare_sort_from_pathkeys added sort columns, but we were told to
@@ -2682,7 +2680,7 @@ create_windowagg_plan(PlannerInfo *root, WindowAggPath *best_path)
 
 	/* And finally we can make the WindowAgg node */
 	plan = make_windowagg(tlist,
-						  wc->winref,
+						  wc,
 						  partNumCols,
 						  partColIdx,
 						  partOperators,
@@ -2691,14 +2689,6 @@ create_windowagg_plan(PlannerInfo *root, WindowAggPath *best_path)
 						  ordColIdx,
 						  ordOperators,
 						  ordCollations,
-						  wc->frameOptions,
-						  wc->startOffset,
-						  wc->endOffset,
-						  wc->startInRangeFunc,
-						  wc->endInRangeFunc,
-						  wc->inRangeColl,
-						  wc->inRangeAsc,
-						  wc->inRangeNullsFirst,
 						  best_path->runCondition,
 						  best_path->qual,
 						  best_path->topwindow,
@@ -6703,18 +6693,16 @@ make_agg(List *tlist, List *qual,
 }
 
 static WindowAgg *
-make_windowagg(List *tlist, Index winref,
+make_windowagg(List *tlist, WindowClause *wc,
 			   int partNumCols, AttrNumber *partColIdx, Oid *partOperators, Oid *partCollations,
 			   int ordNumCols, AttrNumber *ordColIdx, Oid *ordOperators, Oid *ordCollations,
-			   int frameOptions, Node *startOffset, Node *endOffset,
-			   Oid startInRangeFunc, Oid endInRangeFunc,
-			   Oid inRangeColl, bool inRangeAsc, bool inRangeNullsFirst,
 			   List *runCondition, List *qual, bool topWindow, Plan *lefttree)
 {
 	WindowAgg  *node = makeNode(WindowAgg);
 	Plan	   *plan = &node->plan;
 
-	node->winref = winref;
+	node->winname = wc->name;
+	node->winref = wc->winref;
 	node->partNumCols = partNumCols;
 	node->partColIdx = partColIdx;
 	node->partOperators = partOperators;
@@ -6723,17 +6711,17 @@ make_windowagg(List *tlist, Index winref,
 	node->ordColIdx = ordColIdx;
 	node->ordOperators = ordOperators;
 	node->ordCollations = ordCollations;
-	node->frameOptions = frameOptions;
-	node->startOffset = startOffset;
-	node->endOffset = endOffset;
+	node->frameOptions = wc->frameOptions;
+	node->startOffset = wc->startOffset;
+	node->endOffset = wc->endOffset;
 	node->runCondition = runCondition;
 	/* a duplicate of the above for EXPLAIN */
 	node->runConditionOrig = runCondition;
-	node->startInRangeFunc = startInRangeFunc;
-	node->endInRangeFunc = endInRangeFunc;
-	node->inRangeColl = inRangeColl;
-	node->inRangeAsc = inRangeAsc;
-	node->inRangeNullsFirst = inRangeNullsFirst;
+	node->startInRangeFunc = wc->startInRangeFunc;
+	node->endInRangeFunc = wc->endInRangeFunc;
+	node->inRangeColl = wc->inRangeColl;
+	node->inRangeAsc = wc->inRangeAsc;
+	node->inRangeNullsFirst = wc->inRangeNullsFirst;
 	node->topWindow = topWindow;
 
 	plan->targetlist = tlist;
@@ -7121,6 +7109,8 @@ make_modifytable(PlannerInfo *root, Plan *subplan,
 				 int epqParam)
 {
 	ModifyTable *node = makeNode(ModifyTable);
+	bool		returning_old_or_new = false;
+	bool		returning_old_or_new_valid = false;
 	List	   *fdw_private_list;
 	Bitmapset  *direct_modify_plans;
 	ListCell   *lc;
@@ -7185,6 +7175,8 @@ make_modifytable(PlannerInfo *root, Plan *subplan,
 	}
 	node->updateColnosLists = updateColnosLists;
 	node->withCheckOptionLists = withCheckOptionLists;
+	node->returningOldAlias = root->parse->returningOldAlias;
+	node->returningNewAlias = root->parse->returningNewAlias;
 	node->returningLists = returningLists;
 	node->rowMarks = rowMarks;
 	node->mergeActionLists = mergeActionLists;
@@ -7265,7 +7257,8 @@ make_modifytable(PlannerInfo *root, Plan *subplan,
 		 * callback functions needed for that and (2) there are no local
 		 * structures that need to be run for each modified row: row-level
 		 * triggers on the foreign table, stored generated columns, WITH CHECK
-		 * OPTIONs from parent views.
+		 * OPTIONs from parent views, or Vars returning OLD/NEW in the
+		 * RETURNING list.
 		 */
 		direct_modify = false;
 		if (fdwroutine != NULL &&
@@ -7276,7 +7269,18 @@ make_modifytable(PlannerInfo *root, Plan *subplan,
 			withCheckOptionLists == NIL &&
 			!has_row_triggers(root, rti, operation) &&
 			!has_stored_generated_columns(root, rti))
-			direct_modify = fdwroutine->PlanDirectModify(root, node, rti, i);
+		{
+			/* returning_old_or_new is the same for all result relations */
+			if (!returning_old_or_new_valid)
+			{
+				returning_old_or_new =
+					contain_vars_returning_old_or_new((Node *)
+													  root->parse->returningList);
+				returning_old_or_new_valid = true;
+			}
+			if (!returning_old_or_new)
+				direct_modify = fdwroutine->PlanDirectModify(root, node, rti, i);
+		}
 		if (direct_modify)
 			direct_modify_plans = bms_add_member(direct_modify_plans, i);
 

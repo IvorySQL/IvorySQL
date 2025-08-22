@@ -3,7 +3,7 @@
  *	fe-trace.c
  *	  functions for libpq protocol tracing
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -578,9 +578,15 @@ pqTraceOutput_RowDescription(FILE *f, const char *message, int *cursor, bool reg
 static void
 pqTraceOutput_NegotiateProtocolVersion(FILE *f, const char *message, int *cursor)
 {
+	int			nparams;
+
 	fprintf(f, "NegotiateProtocolVersion\t");
 	pqTraceOutputInt32(f, message, cursor, false);
-	pqTraceOutputInt32(f, message, cursor, false);
+	nparams = pqTraceOutputInt32(f, message, cursor, false);
+	for (int i = 0; i < nparams; i++)
+	{
+		pqTraceOutputString(f, message, cursor, false);
+	}
 }
 
 static void

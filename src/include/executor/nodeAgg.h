@@ -4,7 +4,7 @@
  *	  prototypes for nodeAgg.c
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/executor/nodeAgg.h
@@ -264,7 +264,7 @@ typedef struct AggStatePerGroupData
 	 * NULL and not auto-replace it with a later input value. Only the first
 	 * non-NULL input will be auto-substituted.
 	 */
-}			AggStatePerGroupData;
+} AggStatePerGroupData;
 
 /*
  * AggStatePerPhaseData - per-grouping-set-phase state

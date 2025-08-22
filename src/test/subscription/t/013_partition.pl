@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2024, PostgreSQL Global Development Group
+# Copyright (c) 2021-2025, PostgreSQL Global Development Group
 
 # Test logical replication with partitioned tables
 use strict;
@@ -48,6 +48,10 @@ $node_publisher->safe_psql('postgres',
 # subscriber.
 $node_subscriber1->safe_psql('postgres',
 	"CREATE TABLE tab1 (c text, a int PRIMARY KEY, b text) PARTITION BY LIST (a)"
+);
+# make a BRIN index to test aminsertcleanup logic in subscriber
+$node_subscriber1->safe_psql('postgres',
+	"CREATE INDEX tab1_c_brin_idx ON tab1 USING brin (c)"
 );
 $node_subscriber1->safe_psql('postgres',
 	"CREATE TABLE tab1_1 (b text, c text DEFAULT 'sub1_tab1', a int NOT NULL)"

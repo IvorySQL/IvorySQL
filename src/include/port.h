@@ -3,7 +3,7 @@
  * port.h
  *	  Header for src/port/ compatibility functions.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -54,6 +54,7 @@ extern char *first_path_var_separator(const char *pathlist);
 extern void join_path_components(char *ret_path,
 								 const char *head, const char *tail);
 extern void canonicalize_path(char *path);
+extern void canonicalize_path_enc(char *path, int encoding);
 extern void make_native_path(char *filename);
 extern void cleanup_path(char *path);
 extern bool path_contains_parent_reference(const char *path);
@@ -314,6 +315,33 @@ extern bool rmtree(const char *path, bool rmtopdir);
 #if defined(WIN32) && !defined(__CYGWIN__)
 
 /*
+ * We want the 64-bit variant of lseek().
+ *
+ * For Visual Studio, this must be after <io.h> to avoid messing up its
+ * lseek() and _lseeki64() function declarations.
+ *
+ * For MinGW there is already a macro, so we have to undefine it (depending on
+ * _FILE_OFFSET_BITS, it may point at its own lseek64, but we don't want to
+ * count on that being set).
+ */
+#undef lseek
+#define lseek(a,b,c) _lseeki64((a),(b),(c))
+
+/*
+ * We want the 64-bit variant of chsize().  It sets errno and also returns it,
+ * so convert non-zero result to -1 to match POSIX.
+ *
+ * Prevent MinGW from declaring functions, and undefine its macro before we
+ * define our own.
+ */
+#ifndef _MSC_VER
+#define FTRUNCATE_DEFINED
+#include <unistd.h>
+#undef ftruncate
+#endif
+#define ftruncate(a,b) (_chsize_s((a),(b)) == 0 ? 0 : -1)
+
+/*
  * open() and fopen() replacements to allow deletion of open files and
  * passing of other special options.
  */
@@ -493,9 +521,14 @@ extern int	pg_check_dir(const char *dir);
 /* port/pgmkdirp.c */
 extern int	pg_mkdir_p(char *path, int omode);
 
-/* port/pqsignal.c */
+/* port/pqsignal.c (see also interfaces/libpq/legacy-pqsignal.c) */
+#ifdef FRONTEND
+#define pqsignal pqsignal_fe
+#else
+#define pqsignal pqsignal_be
+#endif
 typedef void (*pqsigfunc) (SIGNAL_ARGS);
-extern pqsigfunc pqsignal(int signo, pqsigfunc func);
+extern void pqsignal(int signo, pqsigfunc func);
 
 /* port/quotes.c */
 extern char *escape_single_quotes_ascii(const char *src);

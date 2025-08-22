@@ -3,7 +3,7 @@
  * postgres_fdw.c
  *		  Foreign-data wrapper for remote PostgreSQL servers
  *
- * Portions Copyright (c) 2012-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2012-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  contrib/postgres_fdw/postgres_fdw.c
@@ -20,6 +20,7 @@
 #include "catalog/pg_opfamily.h"
 #include "commands/defrem.h"
 #include "commands/explain.h"
+#include "commands/explain_format.h"
 #include "executor/execAsync.h"
 #include "foreign/fdwapi.h"
 #include "funcapi.h"
@@ -5661,13 +5662,13 @@ postgresImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 				attname = PQgetvalue(res, i, 1);
 				typename = PQgetvalue(res, i, 2);
 				attnotnull = PQgetvalue(res, i, 3);
-				attdefault = PQgetisnull(res, i, 4) ? (char *) NULL :
+				attdefault = PQgetisnull(res, i, 4) ? NULL :
 					PQgetvalue(res, i, 4);
-				attgenerated = PQgetisnull(res, i, 5) ? (char *) NULL :
+				attgenerated = PQgetisnull(res, i, 5) ? NULL :
 					PQgetvalue(res, i, 5);
-				collname = PQgetisnull(res, i, 6) ? (char *) NULL :
+				collname = PQgetisnull(res, i, 6) ? NULL :
 					PQgetvalue(res, i, 6);
-				collnamespace = PQgetisnull(res, i, 7) ? (char *) NULL :
+				collnamespace = PQgetisnull(res, i, 7) ? NULL :
 					PQgetvalue(res, i, 7);
 
 				if (first_item)

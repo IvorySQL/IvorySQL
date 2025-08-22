@@ -2,7 +2,7 @@
  *
  * PostgreSQL locale utilities
  *
- * Portions Copyright (c) 2002-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2002-2025, PostgreSQL Global Development Group
  *
  * src/backend/utils/adt/pg_locale.c
  *
@@ -69,10 +69,6 @@
 #include "utils/pg_locale.h"
 #include "utils/syscache.h"
 
-#ifdef __GLIBC__
-#include <gnu/libc-version.h>
-#endif
-
 #ifdef WIN32
 #include <shlwapi.h>
 #endif
@@ -91,30 +87,18 @@
 
 /* pg_locale_builtin.c */
 extern pg_locale_t create_pg_locale_builtin(Oid collid, MemoryContext context);
+extern char *get_collation_actual_version_builtin(const char *collcollate);
 
 /* pg_locale_icu.c */
 #ifdef USE_ICU
 extern UCollator *pg_ucol_open(const char *loc_str);
-extern int	strncoll_icu(const char *arg1, ssize_t len1,
-						 const char *arg2, ssize_t len2,
-						 pg_locale_t locale);
-extern size_t strnxfrm_icu(char *dest, size_t destsize,
-						   const char *src, ssize_t srclen,
-						   pg_locale_t locale);
-extern size_t strnxfrm_prefix_icu(char *dest, size_t destsize,
-								  const char *src, ssize_t srclen,
-								  pg_locale_t locale);
+extern char *get_collation_actual_version_icu(const char *collcollate);
 #endif
 extern pg_locale_t create_pg_locale_icu(Oid collid, MemoryContext context);
 
 /* pg_locale_libc.c */
 extern pg_locale_t create_pg_locale_libc(Oid collid, MemoryContext context);
-extern int	strncoll_libc(const char *arg1, ssize_t len1,
-						  const char *arg2, ssize_t len2,
-						  pg_locale_t locale);
-extern size_t strnxfrm_libc(char *dest, size_t destsize,
-							const char *src, ssize_t srclen,
-							pg_locale_t locale);
+extern char *get_collation_actual_version_libc(const char *collcollate);
 
 extern size_t strlower_builtin(char *dst, size_t dstsize, const char *src,
 							   ssize_t srclen, pg_locale_t locale);
@@ -122,6 +106,8 @@ extern size_t strtitle_builtin(char *dst, size_t dstsize, const char *src,
 							   ssize_t srclen, pg_locale_t locale);
 extern size_t strupper_builtin(char *dst, size_t dstsize, const char *src,
 							   ssize_t srclen, pg_locale_t locale);
+extern size_t strfold_builtin(char *dst, size_t dstsize, const char *src,
+							  ssize_t srclen, pg_locale_t locale);
 
 extern size_t strlower_icu(char *dst, size_t dstsize, const char *src,
 						   ssize_t srclen, pg_locale_t locale);
@@ -129,6 +115,8 @@ extern size_t strtitle_icu(char *dst, size_t dstsize, const char *src,
 						   ssize_t srclen, pg_locale_t locale);
 extern size_t strupper_icu(char *dst, size_t dstsize, const char *src,
 						   ssize_t srclen, pg_locale_t locale);
+extern size_t strfold_icu(char *dst, size_t dstsize, const char *src,
+						  ssize_t srclen, pg_locale_t locale);
 
 extern size_t strlower_libc(char *dst, size_t dstsize, const char *src,
 							ssize_t srclen, pg_locale_t locale);
@@ -1245,6 +1233,9 @@ create_pg_locale(Oid collid, MemoryContext context)
 
 	result->is_default = false;
 
+	Assert((result->collate_is_c && result->collate == NULL) ||
+		   (!result->collate_is_c && result->collate != NULL));
+
 	datum = SysCacheGetAttr(COLLOID, tp, Anum_pg_collation_collversion,
 							&isnull);
 	if (!isnull)
@@ -1391,100 +1382,14 @@ get_collation_actual_version(char collprovider, const char *collcollate)
 {
 	char	   *collversion = NULL;
 
-	/*
-	 * The only two supported locales (C and C.UTF-8) are both based on memcmp
-	 * and are not expected to change, but track the version anyway.
-	 *
-	 * Note that the character semantics may change for some locales, but the
-	 * collation version only tracks changes to sort order.
-	 */
 	if (collprovider == COLLPROVIDER_BUILTIN)
-	{
-		if (strcmp(collcollate, "C") == 0)
-			return "1";
-		else if (strcmp(collcollate, "C.UTF-8") == 0)
-			return "1";
-		else
-			ereport(ERROR,
-					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-					 errmsg("invalid locale name \"%s\" for builtin provider",
-							collcollate)));
-	}
-
+		collversion = get_collation_actual_version_builtin(collcollate);
 #ifdef USE_ICU
-	if (collprovider == COLLPROVIDER_ICU)
-	{
-		UCollator  *collator;
-		UVersionInfo versioninfo;
-		char		buf[U_MAX_VERSION_STRING_LENGTH];
-
-		collator = pg_ucol_open(collcollate);
-
-		ucol_getVersion(collator, versioninfo);
-		ucol_close(collator);
-
-		u_versionToString(versioninfo, buf);
-		collversion = pstrdup(buf);
-	}
-	else
+	else if (collprovider == COLLPROVIDER_ICU)
+		collversion = get_collation_actual_version_icu(collcollate);
 #endif
-		if (collprovider == COLLPROVIDER_LIBC &&
-			pg_strcasecmp("C", collcollate) != 0 &&
-			pg_strncasecmp("C.", collcollate, 2) != 0 &&
-			pg_strcasecmp("POSIX", collcollate) != 0)
-	{
-#if defined(__GLIBC__)
-		/* Use the glibc version because we don't have anything better. */
-		collversion = pstrdup(gnu_get_libc_version());
-#elif defined(LC_VERSION_MASK)
-		locale_t	loc;
-
-		/* Look up FreeBSD collation version. */
-		loc = newlocale(LC_COLLATE_MASK, collcollate, NULL);
-		if (loc)
-		{
-			collversion =
-				pstrdup(querylocale(LC_COLLATE_MASK | LC_VERSION_MASK, loc));
-			freelocale(loc);
-		}
-		else
-			ereport(ERROR,
-					(errmsg("could not load locale \"%s\"", collcollate)));
-#elif defined(WIN32)
-		/*
-		 * If we are targeting Windows Vista and above, we can ask for a name
-		 * given a collation name (earlier versions required a location code
-		 * that we don't have).
-		 */
-		NLSVERSIONINFOEX version = {sizeof(NLSVERSIONINFOEX)};
-		WCHAR		wide_collcollate[LOCALE_NAME_MAX_LENGTH];
-
-		MultiByteToWideChar(CP_ACP, 0, collcollate, -1, wide_collcollate,
-							LOCALE_NAME_MAX_LENGTH);
-		if (!GetNLSVersionEx(COMPARE_STRING, wide_collcollate, &version))
-		{
-			/*
-			 * GetNLSVersionEx() wants a language tag such as "en-US", not a
-			 * locale name like "English_United States.1252".  Until those
-			 * values can be prevented from entering the system, or 100%
-			 * reliably converted to the more useful tag format, tolerate the
-			 * resulting error and report that we have no version data.
-			 */
-			if (GetLastError() == ERROR_INVALID_PARAMETER)
-				return NULL;
-
-			ereport(ERROR,
-					(errmsg("could not get collation version for locale \"%s\": error code %lu",
-							collcollate,
-							GetLastError())));
-		}
-		collversion = psprintf("%lu.%lu,%lu.%lu",
-							   (version.dwNLSVersion >> 8) & 0xFFFF,
-							   version.dwNLSVersion & 0xFF,
-							   (version.dwDefinedVersion >> 8) & 0xFFFF,
-							   version.dwDefinedVersion & 0xFF);
-#endif
-	}
+	else if (collprovider == COLLPROVIDER_LIBC)
+		collversion = get_collation_actual_version_libc(collcollate);
 
 	return collversion;
 }
@@ -1546,6 +1451,26 @@ pg_strupper(char *dst, size_t dstsize, const char *src, ssize_t srclen,
 	return 0;					/* keep compiler quiet */
 }
 
+size_t
+pg_strfold(char *dst, size_t dstsize, const char *src, ssize_t srclen,
+		   pg_locale_t locale)
+{
+	if (locale->provider == COLLPROVIDER_BUILTIN)
+		return strfold_builtin(dst, dstsize, src, srclen, locale);
+#ifdef USE_ICU
+	else if (locale->provider == COLLPROVIDER_ICU)
+		return strfold_icu(dst, dstsize, src, srclen, locale);
+#endif
+	/* for libc, just use strlower */
+	else if (locale->provider == COLLPROVIDER_LIBC)
+		return strlower_libc(dst, dstsize, src, srclen, locale);
+	else
+		/* shouldn't happen */
+		PGLOCALE_SUPPORT_ERROR(locale->provider);
+
+	return 0;					/* keep compiler quiet */
+}
+
 /*
  * pg_strcoll
  *
@@ -1554,19 +1479,7 @@ pg_strupper(char *dst, size_t dstsize, const char *src, ssize_t srclen,
 int
 pg_strcoll(const char *arg1, const char *arg2, pg_locale_t locale)
 {
-	int			result;
-
-	if (locale->provider == COLLPROVIDER_LIBC)
-		result = strncoll_libc(arg1, -1, arg2, -1, locale);
-#ifdef USE_ICU
-	else if (locale->provider == COLLPROVIDER_ICU)
-		result = strncoll_icu(arg1, -1, arg2, -1, locale);
-#endif
-	else
-		/* shouldn't happen */
-		PGLOCALE_SUPPORT_ERROR(locale->provider);
-
-	return result;
+	return locale->collate->strncoll(arg1, -1, arg2, -1, locale);
 }
 
 /*
@@ -1587,51 +1500,25 @@ int
 pg_strncoll(const char *arg1, ssize_t len1, const char *arg2, ssize_t len2,
 			pg_locale_t locale)
 {
-	int		 result;
-
-	if (locale->provider == COLLPROVIDER_LIBC)
-		result = strncoll_libc(arg1, len1, arg2, len2, locale);
-#ifdef USE_ICU
-	else if (locale->provider == COLLPROVIDER_ICU)
-		result = strncoll_icu(arg1, len1, arg2, len2, locale);
-#endif
-	else
-		/* shouldn't happen */
-		PGLOCALE_SUPPORT_ERROR(locale->provider);
-
-	return result;
+	return locale->collate->strncoll(arg1, len1, arg2, len2, locale);
 }
 
 /*
  * Return true if the collation provider supports pg_strxfrm() and
  * pg_strnxfrm(); otherwise false.
  *
- * Unfortunately, it seems that strxfrm() for non-C collations is broken on
- * many common platforms; testing of multiple versions of glibc reveals that,
- * for many locales, strcoll() and strxfrm() do not return consistent
- * results. While no other libc other than Cygwin has so far been shown to
- * have a problem, we take the conservative course of action for right now and
- * disable this categorically.  (Users who are certain this isn't a problem on
- * their system can define TRUST_STRXFRM.)
  *
  * No similar problem is known for the ICU provider.
  */
 bool
 pg_strxfrm_enabled(pg_locale_t locale)
 {
-	if (locale->provider == COLLPROVIDER_LIBC)
-#ifdef TRUST_STRXFRM
-		return true;
-#else
-		return false;
-#endif
-	else if (locale->provider == COLLPROVIDER_ICU)
-		return true;
-	else
-		/* shouldn't happen */
-		PGLOCALE_SUPPORT_ERROR(locale->provider);
-
-	return false; /* keep compiler quiet */
+	/*
+	 * locale->collate->strnxfrm is still a required method, even if it may
+	 * have the wrong behavior, because the planner uses it for estimates in
+	 * some cases.
+	 */
+	return locale->collate->strxfrm_is_safe;
 }
 
 /*
@@ -1642,19 +1529,7 @@ pg_strxfrm_enabled(pg_locale_t locale)
 size_t
 pg_strxfrm(char *dest, const char *src, size_t destsize, pg_locale_t locale)
 {
-	size_t result = 0; /* keep compiler quiet */
-
-	if (locale->provider == COLLPROVIDER_LIBC)
-		result = strnxfrm_libc(dest, destsize, src, -1, locale);
-#ifdef USE_ICU
-	else if (locale->provider == COLLPROVIDER_ICU)
-		result = strnxfrm_icu(dest, destsize, src, -1, locale);
-#endif
-	else
-		/* shouldn't happen */
-		PGLOCALE_SUPPORT_ERROR(locale->provider);
-
-	return result;
+	return locale->collate->strnxfrm(dest, destsize, src, -1, locale);
 }
 
 /*
@@ -1680,19 +1555,7 @@ size_t
 pg_strnxfrm(char *dest, size_t destsize, const char *src, ssize_t srclen,
 			pg_locale_t locale)
 {
-	size_t result = 0; /* keep compiler quiet */
-
-	if (locale->provider == COLLPROVIDER_LIBC)
-		result = strnxfrm_libc(dest, destsize, src, srclen, locale);
-#ifdef USE_ICU
-	else if (locale->provider == COLLPROVIDER_ICU)
-		result = strnxfrm_icu(dest, destsize, src, srclen, locale);
-#endif
-	else
-		/* shouldn't happen */
-		PGLOCALE_SUPPORT_ERROR(locale->provider);
-
-	return result;
+	return locale->collate->strnxfrm(dest, destsize, src, srclen, locale);
 }
 
 /*
@@ -1702,15 +1565,7 @@ pg_strnxfrm(char *dest, size_t destsize, const char *src, ssize_t srclen,
 bool
 pg_strxfrm_prefix_enabled(pg_locale_t locale)
 {
-	if (locale->provider == COLLPROVIDER_LIBC)
-		return false;
-	else if (locale->provider == COLLPROVIDER_ICU)
-		return true;
-	else
-		/* shouldn't happen */
-		PGLOCALE_SUPPORT_ERROR(locale->provider);
-
-	return false; /* keep compiler quiet */
+	return (locale->collate->strnxfrm_prefix != NULL);
 }
 
 /*
@@ -1722,7 +1577,7 @@ size_t
 pg_strxfrm_prefix(char *dest, const char *src, size_t destsize,
 				  pg_locale_t locale)
 {
-	return pg_strnxfrm_prefix(dest, destsize, src, -1, locale);
+	return locale->collate->strnxfrm_prefix(dest, destsize, src, -1, locale);
 }
 
 /*
@@ -1747,16 +1602,7 @@ size_t
 pg_strnxfrm_prefix(char *dest, size_t destsize, const char *src,
 				   ssize_t srclen, pg_locale_t locale)
 {
-	size_t result = 0; /* keep compiler quiet */
-
-#ifdef USE_ICU
-	if (locale->provider == COLLPROVIDER_ICU)
-		result = strnxfrm_prefix_icu(dest, destsize, src, -1, locale);
-	else
-#endif
-		PGLOCALE_SUPPORT_ERROR(locale->provider);
-
-	return result;
+	return locale->collate->strnxfrm_prefix(dest, destsize, src, srclen, locale);
 }
 
 /*
@@ -1768,8 +1614,11 @@ builtin_locale_encoding(const char *locale)
 {
 	if (strcmp(locale, "C") == 0)
 		return -1;
-	if (strcmp(locale, "C.UTF-8") == 0)
+	else if (strcmp(locale, "C.UTF-8") == 0)
 		return PG_UTF8;
+	else if (strcmp(locale, "PG_UNICODE_FAST") == 0)
+		return PG_UTF8;
+
 
 	ereport(ERROR,
 			(errcode(ERRCODE_WRONG_OBJECT_TYPE),
@@ -1794,6 +1643,8 @@ builtin_validate_locale(int encoding, const char *locale)
 		canonical_name = "C";
 	else if (strcmp(locale, "C.UTF-8") == 0 || strcmp(locale, "C.UTF8") == 0)
 		canonical_name = "C.UTF-8";
+	else if (strcmp(locale, "PG_UNICODE_FAST") == 0)
+		canonical_name = "PG_UNICODE_FAST";
 
 	if (!canonical_name)
 		ereport(ERROR,

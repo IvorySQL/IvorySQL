@@ -4,7 +4,7 @@
  *	  routines for scanning SP-GiST indexes
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -421,6 +421,8 @@ spgrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 
 	/* count an indexscan for stats */
 	pgstat_count_index_scan(scan->indexRelation);
+	if (scan->instrument)
+		scan->instrument->nsearches++;
 }
 
 void
@@ -865,7 +867,7 @@ redirect:
 
 			if (SpGistPageIsLeaf(page))
 			{
-				/* Page is a leaf - that is, all it's tuples are heap items */
+				/* Page is a leaf - that is, all its tuples are heap items */
 				OffsetNumber max = PageGetMaxOffsetNumber(page);
 
 				if (SpGistBlockIsRoot(blkno))

@@ -3,7 +3,7 @@
  * dfmgr.c
  *	  Dynamic function manager code.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -67,8 +67,8 @@ static DynamicFileList *file_tail = NULL;
 char	   *Dynamic_library_path;
 
 static void *internal_load_library(const char *libname);
-static void incompatible_module_error(const char *libname,
-									  const Pg_magic_struct *module_magic_data) pg_attribute_noreturn();
+pg_noreturn static void incompatible_module_error(const char *libname,
+												  const Pg_magic_struct *module_magic_data);
 static char *expand_dynamic_library_name(const char *name);
 static void check_restricted_library_name(const char *name);
 static char *substitute_libpath_macro(const char *name);

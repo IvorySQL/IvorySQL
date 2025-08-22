@@ -1,4 +1,4 @@
-# Copyright (c) 2021-2024, PostgreSQL Global Development Group
+# Copyright (c) 2021-2025, PostgreSQL Global Development Group
 
 # This test case aims to verify that client-side backup compression work
 # properly, and it also aims to verify that pg_verifybackup can verify a base
@@ -108,7 +108,11 @@ for my $tc (@test_configuration)
 			"found expected backup files, compression $method");
 
 		# Verify tar backup.
-		$primary->command_ok( [ 'pg_verifybackup', '-n', '-e', $backup_path ],
+		$primary->command_ok(
+			[
+				'pg_verifybackup', '--no-parse-wal',
+				'--exit-on-error', $backup_path,
+			],
 			"verify backup, compression $method");
 
 		# Cleanup.

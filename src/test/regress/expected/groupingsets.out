@@ -434,6 +434,35 @@ select x, not x as not_x, q2 from
    |       |  4567890123456789
 (5 rows)
 
+select x, y
+  from (select four as x, four as y from tenk1) as t
+  group by grouping sets (x, y)
+  having y is null
+  order by 1, 2;
+ x | y 
+---+---
+ 0 |  
+ 1 |  
+ 2 |  
+ 3 |  
+(4 rows)
+
+select x, y || 'y'
+  from (select four as x, four as y from tenk1) as t
+  group by grouping sets (x, y)
+  order by 1, 2;
+ x | ?column? 
+---+----------
+ 0 | 
+ 1 | 
+ 2 | 
+ 3 | 
+   | 0y
+   | 1y
+   | 2y
+   | 3y
+(8 rows)
+
 -- check qual push-down rules for a subquery with grouping sets
 explain (verbose, costs off)
 select * from (
@@ -1436,8 +1465,9 @@ explain (costs off)
                  QUERY PLAN                  
 ---------------------------------------------
  Sort
-   Sort Key: (sum((sum(c))) OVER (?)), a, b
+   Sort Key: (sum((sum(c))) OVER w1), a, b
    ->  WindowAgg
+         Window: w1 AS (ORDER BY a, b)
          ->  Sort
                Sort Key: a, b
                ->  MixedAggregate
@@ -1446,7 +1476,7 @@ explain (costs off)
                      Hash Key: b
                      Group Key: ()
                      ->  Seq Scan on gstest2
-(11 rows)
+(12 rows)
 
 select a, b, sum(v.x)
   from (values (1),(2)) v(x), gstest_data(v.x)
@@ -2427,9 +2457,10 @@ explain (costs off)
 select a, b, row_number() over (order by a, b nulls first)
 from (values (1, 1), (2, 2)) as t (a, b) where a = b
 group by grouping sets((a, b), (a));
-                              QUERY PLAN                              
-----------------------------------------------------------------------
+                                         QUERY PLAN                                         
+--------------------------------------------------------------------------------------------
  WindowAgg
+   Window: w1 AS (ORDER BY "*VALUES*".column1, "*VALUES*".column2 ROWS UNBOUNDED PRECEDING)
    ->  Sort
          Sort Key: "*VALUES*".column1, "*VALUES*".column2 NULLS FIRST
          ->  HashAggregate
@@ -2437,7 +2468,7 @@ group by grouping sets((a, b), (a));
                Hash Key: "*VALUES*".column1
                ->  Values Scan on "*VALUES*"
                      Filter: (column1 = column2)
-(8 rows)
+(9 rows)
 
 select a, b, row_number() over (order by a, b nulls first)
 from (values (1, 1), (2, 2)) as t (a, b) where a = b

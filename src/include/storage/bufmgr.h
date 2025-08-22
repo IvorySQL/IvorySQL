@@ -4,7 +4,7 @@
  *	  POSTGRES buffer manager definitions.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -153,7 +153,7 @@ extern PGDLLIMPORT bool track_io_timing;
 
 /* only applicable when prefetching is available */
 #ifdef USE_PREFETCH
-#define DEFAULT_EFFECTIVE_IO_CONCURRENCY 1
+#define DEFAULT_EFFECTIVE_IO_CONCURRENCY 16
 #define DEFAULT_MAINTENANCE_IO_CONCURRENCY 10
 #else
 #define DEFAULT_EFFECTIVE_IO_CONCURRENCY 0
@@ -276,10 +276,6 @@ extern void DropDatabaseBuffers(Oid dbid);
 
 extern bool BufferIsPermanent(Buffer buffer);
 extern XLogRecPtr BufferGetLSNAtomic(Buffer buffer);
-
-#ifdef NOT_USED
-extern void PrintPinnedBufs(void);
-#endif
 extern void BufferGetTag(Buffer buffer, RelFileLocator *rlocator,
 						 ForkNumber *forknum, BlockNumber *blknum);
 
@@ -389,7 +385,7 @@ BufferGetBlock(Buffer buffer)
 static inline Size
 BufferGetPageSize(Buffer buffer)
 {
-	AssertMacro(BufferIsValid(buffer));
+	Assert(BufferIsValid(buffer));
 	return (Size) BLCKSZ;
 }
 

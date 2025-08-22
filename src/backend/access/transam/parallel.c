@@ -3,7 +3,7 @@
  * parallel.c
  *	  Infrastructure for launching parallel workers
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -15,6 +15,7 @@
 #include "postgres.h"
 
 #include "access/brin.h"
+#include "access/gin.h"
 #include "access/nbtree.h"
 #include "access/parallel.h"
 #include "access/session.h"
@@ -149,12 +150,15 @@ static const struct
 		"_brin_parallel_build_main", _brin_parallel_build_main
 	},
 	{
+		"_gin_parallel_build_main", _gin_parallel_build_main
+	},
+	{
 		"parallel_vacuum_main", parallel_vacuum_main
 	}
 };
 
 /* Private functions. */
-static void HandleParallelMessage(ParallelContext *pcxt, int i, StringInfo msg);
+static void ProcessParallelMessage(ParallelContext *pcxt, int i, StringInfo msg);
 static void WaitForParallelWorkersToExit(ParallelContext *pcxt);
 static parallel_worker_main_type LookupParallelWorkerFunction(const char *libraryname, const char *funcname);
 static void ParallelWorkerShutdown(int code, Datum arg);
@@ -1027,7 +1031,7 @@ ParallelContextActive(void)
  *
  * Note: this is called within a signal handler!  All we can do is set
  * a flag that will cause the next CHECK_FOR_INTERRUPTS() to invoke
- * HandleParallelMessages().
+ * ProcessParallelMessages().
  */
 void
 HandleParallelMessageInterrupt(void)
@@ -1038,10 +1042,10 @@ HandleParallelMessageInterrupt(void)
 }
 
 /*
- * Handle any queued protocol messages received from parallel workers.
+ * Process any queued protocol messages received from parallel workers.
  */
 void
-HandleParallelMessages(void)
+ProcessParallelMessages(void)
 {
 	dlist_iter	iter;
 	MemoryContext oldcontext;
@@ -1064,7 +1068,7 @@ HandleParallelMessages(void)
 	 */
 	if (hpm_context == NULL)	/* first time through? */
 		hpm_context = AllocSetContextCreate(TopMemoryContext,
-											"HandleParallelMessages",
+											"ProcessParallelMessages",
 											ALLOCSET_DEFAULT_SIZES);
 	else
 		MemoryContextReset(hpm_context);
@@ -1107,7 +1111,7 @@ HandleParallelMessages(void)
 
 					initStringInfo(&msg);
 					appendBinaryStringInfo(&msg, data, nbytes);
-					HandleParallelMessage(pcxt, i, &msg);
+					ProcessParallelMessage(pcxt, i, &msg);
 					pfree(msg.data);
 				}
 				else
@@ -1127,10 +1131,10 @@ HandleParallelMessages(void)
 }
 
 /*
- * Handle a single protocol message received from a single parallel worker.
+ * Process a single protocol message received from a single parallel worker.
  */
 static void
-HandleParallelMessage(ParallelContext *pcxt, int i, StringInfo msg)
+ProcessParallelMessage(ParallelContext *pcxt, int i, StringInfo msg)
 {
 	char		msgtype;
 
@@ -1208,7 +1212,7 @@ HandleParallelMessage(ParallelContext *pcxt, int i, StringInfo msg)
 				break;
 			}
 
-		case 'P':				/* Parallel progress reporting */
+		case PqMsg_Progress:
 			{
 				/*
 				 * Only incremental progress reporting is currently supported.
@@ -1419,10 +1423,16 @@ ParallelWorkerMain(Datum main_arg)
 							fps->session_user_is_superuser);
 	SetCurrentRoleId(fps->outer_user_id, fps->role_is_superuser);
 
-	/* Restore database connection. */
+	/*
+	 * Restore database connection.  We skip connection authorization checks,
+	 * reasoning that (a) the leader checked these things when it started, and
+	 * (b) we do not want parallel mode to cause these failures, because that
+	 * would make use of parallel query plans not transparent to applications.
+	 */
 	BackgroundWorkerInitializeConnectionByOid(fps->database_id,
 											  fps->authenticated_user_id,
-											  0);
+											  BGWORKER_BYPASS_ALLOWCONN |
+											  BGWORKER_BYPASS_ROLELOGINCHECK);
 
 	/*
 	 * Set the client encoding to the database encoding, since that is what

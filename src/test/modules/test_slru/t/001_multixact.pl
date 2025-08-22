@@ -1,4 +1,4 @@
-# Copyright (c) 2024, PostgreSQL Global Development Group
+# Copyright (c) 2024-2025, PostgreSQL Global Development Group
 
 # This test verifies edge case of reading a multixact:
 # when we have multixact that is followed by exactly one another multixact,
@@ -58,7 +58,7 @@ $node->safe_psql('postgres',
 );
 
 # We expect this query to hang in the critical section after generating new
-# multixact, but before filling it's offset into SLRU.
+# multixact, but before filling its offset into SLRU.
 # Running an injection point inside a critical section requires it to be
 # loaded beforehand.
 $creator->query_until(

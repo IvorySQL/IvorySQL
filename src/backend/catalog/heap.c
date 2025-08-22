@@ -3,7 +3,7 @@
  * heap.c
  *	  code to create and destroy POSTGRES heap relations
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -69,6 +69,7 @@
 #include "pgstat.h"
 #include "storage/lmgr.h"
 #include "storage/predicate.h"
+#include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/inval.h"
@@ -104,12 +105,13 @@ static ObjectAddress AddNewRelationType(const char *typeName,
 										Oid new_array_type);
 static void RelationRemoveInheritance(Oid relid);
 static Oid	StoreRelCheck(Relation rel, const char *ccname, Node *expr,
-						  bool is_validated, bool is_local, int16 inhcount,
-						  bool is_no_inherit, bool is_internal);
+						  bool is_enforced, bool is_validated, bool is_local,
+						  int16 inhcount, bool is_no_inherit, bool is_internal);
 static void StoreConstraints(Relation rel, List *cooked_constraints,
 							 bool is_internal);
 static bool MergeWithExistingConstraint(Relation rel, const char *ccname, Node *expr,
 										bool allow_merge, bool is_local,
+										bool is_enforced,
 										bool is_initially_valid,
 										bool is_no_inherit);
 static void SetRelationNumChecks(Relation rel, int numchecks);
@@ -445,7 +447,7 @@ heap_create(const char *relname,
  *		6) AddNewAttributeTuples() is called to register the
  *		   new relation's schema in pg_attribute.
  *
- *		7) StoreConstraints is called ()		- vadim 08/22/97
+ *		7) StoreConstraints() is called			- vadim 08/22/97
  *
  *		8) the relations are closed and the new relation's oid
  *		   is returned.
@@ -527,7 +529,7 @@ CheckAttributeNamesTypes(TupleDesc tupdesc, char relkind,
 						   TupleDescAttr(tupdesc, i)->atttypid,
 						   TupleDescAttr(tupdesc, i)->attcollation,
 						   NIL, /* assume we're creating a new rowtype */
-						   flags);
+						   flags | (TupleDescAttr(tupdesc, i)->attgenerated == ATTRIBUTE_GENERATED_VIRTUAL ? CHKATYPE_IS_VIRTUAL : 0));
 	}
 }
 
@@ -602,6 +604,17 @@ CheckAttributeType(const char *attname,
 	}
 	else if (att_typtype == TYPTYPE_DOMAIN)
 	{
+		/*
+		 * Prevent virtual generated columns from having a domain type.  We
+		 * would have to enforce domain constraints when columns underlying
+		 * the generated column change.  This could possibly be implemented,
+		 * but it's not.
+		 */
+		if (flags & CHKATYPE_IS_VIRTUAL)
+			ereport(ERROR,
+					errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("virtual generated column \"%s\" cannot have a domain type", attname));
+
 		/*
 		 * If it's a domain, recurse to check its base type.
 		 */
@@ -934,6 +947,7 @@ InsertPgClassTuple(Relation pg_class_desc,
 	values[Anum_pg_class_relpages - 1] = Int32GetDatum(rd_rel->relpages);
 	values[Anum_pg_class_reltuples - 1] = Float4GetDatum(rd_rel->reltuples);
 	values[Anum_pg_class_relallvisible - 1] = Int32GetDatum(rd_rel->relallvisible);
+	values[Anum_pg_class_relallfrozen - 1] = Int32GetDatum(rd_rel->relallfrozen);
 	values[Anum_pg_class_reltoastrelid - 1] = ObjectIdGetDatum(rd_rel->reltoastrelid);
 	values[Anum_pg_class_relhasindex - 1] = BoolGetDatum(rd_rel->relhasindex);
 	values[Anum_pg_class_relisshared - 1] = BoolGetDatum(rd_rel->relisshared);
@@ -1005,6 +1019,7 @@ AddNewRelationTuple(Relation pg_class_desc,
 	new_rel_reltup->relpages = 0;
 	new_rel_reltup->reltuples = -1;
 	new_rel_reltup->relallvisible = 0;
+	new_rel_reltup->relallfrozen = 0;
 
 	/* Sequences always have a known size */
 	if (relkind == RELKIND_SEQUENCE)
@@ -1510,7 +1525,7 @@ heap_create_with_catalog(const char *relname,
 	InvokeObjectPostCreateHookArg(RelationRelationId, relid, 0, is_internal);
 
 	/*
-	 * Store any supplied constraints and defaults.
+	 * Store any supplied CHECK constraints and defaults.
 	 *
 	 * NB: this may do a CommandCounterIncrement and rebuild the relcache
 	 * entry, so the relation must be valid and self-consistent at this point.
@@ -2037,6 +2052,60 @@ RelationClearMissing(Relation rel)
 }
 
 /*
+ * StoreAttrMissingVal
+ *
+ * Set the missing value of a single attribute.
+ */
+void
+StoreAttrMissingVal(Relation rel, AttrNumber attnum, Datum missingval)
+{
+	Datum		valuesAtt[Natts_pg_attribute] = {0};
+	bool		nullsAtt[Natts_pg_attribute] = {0};
+	bool		replacesAtt[Natts_pg_attribute] = {0};
+	Relation	attrrel;
+	Form_pg_attribute attStruct;
+	HeapTuple	atttup,
+				newtup;
+
+	/* This is only supported for plain tables */
+	Assert(rel->rd_rel->relkind == RELKIND_RELATION);
+
+	/* Fetch the pg_attribute row */
+	attrrel = table_open(AttributeRelationId, RowExclusiveLock);
+
+	atttup = SearchSysCache2(ATTNUM,
+							 ObjectIdGetDatum(RelationGetRelid(rel)),
+							 Int16GetDatum(attnum));
+	if (!HeapTupleIsValid(atttup))	/* shouldn't happen */
+		elog(ERROR, "cache lookup failed for attribute %d of relation %u",
+			 attnum, RelationGetRelid(rel));
+	attStruct = (Form_pg_attribute) GETSTRUCT(atttup);
+
+	/* Make a one-element array containing the value */
+	missingval = PointerGetDatum(construct_array(&missingval,
+												 1,
+												 attStruct->atttypid,
+												 attStruct->attlen,
+												 attStruct->attbyval,
+												 attStruct->attalign));
+
+	/* Update the pg_attribute row */
+	valuesAtt[Anum_pg_attribute_atthasmissing - 1] = BoolGetDatum(true);
+	replacesAtt[Anum_pg_attribute_atthasmissing - 1] = true;
+
+	valuesAtt[Anum_pg_attribute_attmissingval - 1] = missingval;
+	replacesAtt[Anum_pg_attribute_attmissingval - 1] = true;
+
+	newtup = heap_modify_tuple(atttup, RelationGetDescr(attrrel),
+							   valuesAtt, nullsAtt, replacesAtt);
+	CatalogTupleUpdate(attrrel, &newtup->t_self, newtup);
+
+	/* clean up */
+	ReleaseSysCache(atttup);
+	table_close(attrrel, RowExclusiveLock);
+}
+
+/*
  * SetAttrMissing
  *
  * Set the missing value of a single attribute. This should only be used by
@@ -2106,8 +2175,8 @@ SetAttrMissing(Oid relid, char *attname, char *value)
  */
 static Oid
 StoreRelCheck(Relation rel, const char *ccname, Node *expr,
-			  bool is_validated, bool is_local, int16 inhcount,
-			  bool is_no_inherit, bool is_internal)
+			  bool is_enforced, bool is_validated, bool is_local,
+			  int16 inhcount, bool is_no_inherit, bool is_internal)
 {
 	char	   *ccbin;
 	List	   *varList;
@@ -2172,6 +2241,7 @@ StoreRelCheck(Relation rel, const char *ccname, Node *expr,
 							  CONSTRAINT_CHECK, /* Constraint Type */
 							  false,	/* Is Deferrable */
 							  false,	/* Is Deferred */
+							  is_enforced,	/* Is Enforced */
 							  is_validated,
 							  InvalidOid,	/* no parent constraint */
 							  RelationGetRelid(rel),	/* relation */
@@ -2225,6 +2295,7 @@ StoreRelNotNull(Relation rel, const char *nnname, AttrNumber attnum,
 							  CONSTRAINT_NOTNULL,
 							  false,
 							  false,
+							  true, /* Is Enforced */
 							  is_validated,
 							  InvalidOid,
 							  RelationGetRelid(rel),
@@ -2256,7 +2327,7 @@ StoreRelNotNull(Relation rel, const char *nnname, AttrNumber attnum,
 }
 
 /*
- * Store defaults and constraints (passed as a list of CookedConstraint).
+ * Store defaults and CHECK constraints (passed as a list of CookedConstraint).
  *
  * Each CookedConstraint struct is modified to store the new catalog tuple OID.
  *
@@ -2289,22 +2360,15 @@ StoreConstraints(Relation rel, List *cooked_constraints, bool is_internal)
 		{
 			case CONSTR_DEFAULT:
 				con->conoid = StoreAttrDefault(rel, con->attnum, con->expr,
-											   is_internal, false);
+											   is_internal);
 				break;
 			case CONSTR_CHECK:
 				con->conoid =
 					StoreRelCheck(rel, con->name, con->expr,
-								  !con->skip_validation, con->is_local,
-								  con->inhcount, con->is_no_inherit,
-								  is_internal);
+								  con->is_enforced, !con->skip_validation,
+								  con->is_local, con->inhcount,
+								  con->is_no_inherit, is_internal);
 				numchecks++;
-				break;
-
-			case CONSTR_NOTNULL:
-				con->conoid =
-					StoreRelNotNull(rel, con->name, con->attnum,
-									!con->skip_validation, con->is_local,
-									con->inhcount, con->is_no_inherit);
 				break;
 
 			default:
@@ -2423,13 +2487,7 @@ AddRelationNewConstraints(Relation rel,
 			 castNode(Const, expr)->constisnull))
 			continue;
 
-		/* If the DEFAULT is volatile we cannot use a missing value */
-		if (colDef->missingMode &&
-			contain_volatile_functions_after_planning((Expr *) expr))
-			colDef->missingMode = false;
-
-		defOid = StoreAttrDefault(rel, colDef->attnum, expr, is_internal,
-								  colDef->missingMode);
+		defOid = StoreAttrDefault(rel, colDef->attnum, expr, is_internal);
 
 		cooked = (CookedConstraint *) palloc(sizeof(CookedConstraint));
 		cooked->contype = CONSTR_DEFAULT;
@@ -2437,6 +2495,7 @@ AddRelationNewConstraints(Relation rel,
 		cooked->name = NULL;
 		cooked->attnum = colDef->attnum;
 		cooked->expr = expr;
+		cooked->is_enforced = true;
 		cooked->skip_validation = false;
 		cooked->is_local = is_local;
 		cooked->inhcount = is_local ? 0 : 1;
@@ -2508,6 +2567,7 @@ AddRelationNewConstraints(Relation rel,
 				 */
 				if (MergeWithExistingConstraint(rel, ccname, expr,
 												allow_merge, is_local,
+												cdef->is_enforced,
 												cdef->initially_valid,
 												cdef->is_no_inherit))
 					continue;
@@ -2556,8 +2616,10 @@ AddRelationNewConstraints(Relation rel,
 			 * OK, store it.
 			 */
 			constrOid =
-				StoreRelCheck(rel, ccname, expr, cdef->initially_valid, is_local,
-							  is_local ? 0 : 1, cdef->is_no_inherit, is_internal);
+				StoreRelCheck(rel, ccname, expr, cdef->is_enforced,
+							  cdef->initially_valid, is_local,
+							  is_local ? 0 : 1, cdef->is_no_inherit,
+							  is_internal);
 
 			numchecks++;
 
@@ -2567,6 +2629,7 @@ AddRelationNewConstraints(Relation rel,
 			cooked->name = ccname;
 			cooked->attnum = 0;
 			cooked->expr = expr;
+			cooked->is_enforced = cdef->is_enforced;
 			cooked->skip_validation = cdef->skip_validation;
 			cooked->is_local = is_local;
 			cooked->inhcount = is_local ? 0 : 1;
@@ -2592,6 +2655,11 @@ AddRelationNewConstraints(Relation rel,
 						errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						errmsg("cannot add not-null constraint on system column \"%s\"",
 							   strVal(linitial(cdef->keys))));
+			/* TODO: see transformColumnDefinition() */
+			if (get_attgenerated(RelationGetRelid(rel), colnum) == ATTRIBUTE_GENERATED_VIRTUAL)
+				ereport(ERROR,
+						errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						errmsg("not-null constraints are not supported on virtual generated columns"));
 
 			/*
 			 * If the column already has a not-null constraint, we don't want
@@ -2637,6 +2705,7 @@ AddRelationNewConstraints(Relation rel,
 			nncooked->name = nnname;
 			nncooked->attnum = colnum;
 			nncooked->expr = NULL;
+			nncooked->is_enforced = true;
 			nncooked->skip_validation = cdef->skip_validation;
 			nncooked->is_local = is_local;
 			nncooked->inhcount = inhcount;
@@ -2671,6 +2740,7 @@ AddRelationNewConstraints(Relation rel,
 static bool
 MergeWithExistingConstraint(Relation rel, const char *ccname, Node *expr,
 							bool allow_merge, bool is_local,
+							bool is_enforced,
 							bool is_initially_valid,
 							bool is_no_inherit)
 {
@@ -2761,10 +2831,22 @@ MergeWithExistingConstraint(Relation rel, const char *ccname, Node *expr,
 		 * If the child constraint is "not valid" then cannot merge with a
 		 * valid parent constraint.
 		 */
-		if (is_initially_valid && !con->convalidated)
+		if (is_initially_valid && con->conenforced && !con->convalidated)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 					 errmsg("constraint \"%s\" conflicts with NOT VALID constraint on relation \"%s\"",
+							ccname, RelationGetRelationName(rel))));
+
+		/*
+		 * A non-enforced child constraint cannot be merged with an enforced
+		 * parent constraint. However, the reverse is allowed, where the child
+		 * constraint is enforced.
+		 */
+		if ((!is_local && is_enforced && !con->conenforced) ||
+			(is_local && !is_enforced && con->conenforced))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+					 errmsg("constraint \"%s\" conflicts with NOT ENFORCED constraint on relation \"%s\"",
 							ccname, RelationGetRelationName(rel))));
 
 		/* OK to update the tuple */
@@ -2800,6 +2882,19 @@ MergeWithExistingConstraint(Relation rel, const char *ccname, Node *expr,
 		{
 			Assert(is_local);
 			con->connoinherit = true;
+		}
+
+		/*
+		 * If the child constraint is required to be enforced while the parent
+		 * constraint is not, this should be allowed by marking the child
+		 * constraint as enforced. In the reverse case, an error would have
+		 * already been thrown before reaching this point.
+		 */
+		if (is_enforced && !con->conenforced)
+		{
+			Assert(is_local);
+			con->conenforced = true;
+			con->convalidated = true;
 		}
 
 		CatalogTupleUpdate(conDesc, &tup->t_self, tup);
@@ -2880,6 +2975,11 @@ AddRelationNotNullConstraints(Relation rel, List *constraints,
 					errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					errmsg("cannot add not-null constraint on system column \"%s\"",
 						   strVal(linitial(constr->keys))));
+		/* TODO: see transformColumnDefinition() */
+		if (get_attgenerated(RelationGetRelid(rel), attnum) == ATTRIBUTE_GENERATED_VIRTUAL)
+			ereport(ERROR,
+					errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("not-null constraints are not supported on virtual generated columns"));
 
 		/*
 		 * A column can only have one not-null constraint, so discard any

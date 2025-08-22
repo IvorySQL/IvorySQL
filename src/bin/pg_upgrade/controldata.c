@@ -3,14 +3,15 @@
  *
  *	controldata functions
  *
- *	Copyright (c) 2010-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ *	Copyright (c) 2010-2025, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/controldata.c
  */
 
 #include "postgres_fe.h"
 
 #include <ctype.h>
+#include <limits.h>				/* for CHAR_MIN */
 
 #include "common/string.h"
 #include "pg_upgrade.h"
@@ -64,6 +65,7 @@ get_control_data(ClusterInfo *cluster)
 	bool		got_data_checksum_version = false;
 	bool		got_database_mode_is_oracle = false;
 	bool		got_cluster_state = false;
+	bool		got_default_char_signedness = false;
 	char	   *lc_collate = NULL;
 	char	   *lc_ctype = NULL;
 	char	   *lc_monetary = NULL;
@@ -514,6 +516,26 @@ get_control_data(ClusterInfo *cluster)
 			cluster->controldata.database_mode_is_oracle = str2uint(p);
 			got_database_mode_is_oracle = true;
 		}
+		else if ((p = strstr(bufin, "Default char data signedness:")) != NULL)
+		{
+				p = strchr(p, ':');
+
+				if (p == NULL || strlen(p) <= 1)
+						pg_fatal("%d: controldata retrieval problem", __LINE__);
+
+				/* Skip the colon and any whitespace after it */
+				p++;
+				while (isspace((unsigned char) *p))
+						p++;
+
+				/* The value should be either 'signed' or 'unsigned' */
+				if (strcmp(p, "signed") != 0 && strcmp(p, "unsigned") != 0)
+						pg_fatal("%d: controldata retrieval problem", __LINE__);
+
+				cluster->controldata.default_char_signedness = strcmp(p, "signed") == 0;
+				got_default_char_signedness = true;
+		}
+
 	}
 
 	rc = pclose(output);
@@ -574,6 +596,21 @@ get_control_data(ClusterInfo *cluster)
 		}
 	}
 
+	/*
+	 * Pre-v18 database clusters don't have the default char signedness
+	 * information. We use the char signedness of the platform where
+	 * pg_upgrade was built.
+	 */
+	if (cluster->controldata.cat_ver < DEFAULT_CHAR_SIGNEDNESS_CAT_VER)
+	{
+		Assert(!got_default_char_signedness);
+#if CHAR_MIN != 0
+		cluster->controldata.default_char_signedness = true;
+#else
+		cluster->controldata.default_char_signedness = false;
+#endif
+	}
+
 	/* verify that we got all the mandatory pg_control data */
 	if (!got_xid || !got_oid ||
 		!got_multi || !got_oldestxid ||
@@ -586,7 +623,9 @@ get_control_data(ClusterInfo *cluster)
 		(!got_large_object &&
 		 cluster->controldata.ctrl_ver >= LARGE_OBJECT_SIZE_PG_CONTROL_VER) ||
 		!got_date_is_int || !got_data_checksum_version ||
-		!got_database_mode_is_oracle)	/* ReqID:SRS-GKC-DATATYPE_001 */
+		!got_database_mode_is_oracle ||
+        (!got_default_char_signedness &&
+            cluster->controldata.cat_ver >= DEFAULT_CHAR_SIGNEDNESS_CAT_VER))	
 	{
 		if (cluster == &old_cluster)
 			pg_log(PG_REPORT,
@@ -657,6 +696,10 @@ get_control_data(ClusterInfo *cluster)
 
 		if (!got_database_mode_is_oracle)
 			pg_log(PG_REPORT, "  database mode\n");
+		
+		/* value added in Postgres 18 */
+		if (!got_default_char_signedness)
+				pg_log(PG_REPORT, "  default char signedness");
 
 		pg_fatal("Cannot continue without required control information, terminating");
 	}

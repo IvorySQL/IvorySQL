@@ -3,7 +3,7 @@
  * blvacuum.c
  *		Bloom VACUUM functions.
  *
- * Copyright (c) 2016-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/bloom/blvacuum.c
@@ -57,7 +57,7 @@ blbulkdelete(IndexVacuumInfo *info, IndexBulkDeleteResult *stats,
 				   *itupPtr,
 				   *itupEnd;
 
-		vacuum_delay_point();
+		vacuum_delay_point(false);
 
 		buffer = ReadBufferExtended(index, MAIN_FORKNUM, blkno,
 									RBM_NORMAL, info->strategy);
@@ -187,7 +187,7 @@ blvacuumcleanup(IndexVacuumInfo *info, IndexBulkDeleteResult *stats)
 		Buffer		buffer;
 		Page		page;
 
-		vacuum_delay_point();
+		vacuum_delay_point(false);
 
 		buffer = ReadBufferExtended(index, MAIN_FORKNUM, blkno,
 									RBM_NORMAL, info->strategy);

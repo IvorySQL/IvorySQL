@@ -3,7 +3,7 @@
  * fd.c
  *	  Virtual file descriptor code.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -910,7 +910,7 @@ InitFileAccess(void)
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of memory")));
 
-	MemSet((char *) &(VfdCache[0]), 0, sizeof(Vfd));
+	MemSet(&(VfdCache[0]), 0, sizeof(Vfd));
 	VfdCache->fd = VFD_CLOSED;
 
 	SizeVfdCache = 1;
@@ -1447,7 +1447,7 @@ AllocateVfd(void)
 		 */
 		for (i = SizeVfdCache; i < newCacheSize; i++)
 		{
-			MemSet((char *) &(VfdCache[i]), 0, sizeof(Vfd));
+			MemSet(&(VfdCache[i]), 0, sizeof(Vfd));
 			VfdCache[i].nextFree = i + 1;
 			VfdCache[i].fd = VFD_CLOSED;
 		}
@@ -4026,7 +4026,7 @@ check_debug_io_direct(char **newval, void **extra, GucSource source)
 #if BLCKSZ < PG_IO_ALIGN_SIZE
 	if (result && (flags & IO_DIRECT_DATA))
 	{
-		GUC_check_errdetail("\"%s\" is not supported for WAL because %s is too small.",
+		GUC_check_errdetail("\"%s\" is not supported for data because %s is too small.",
 							"debug_io_direct", "BLCKSZ");
 		result = false;
 	}

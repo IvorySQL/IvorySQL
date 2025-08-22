@@ -6,7 +6,7 @@
  *	  changes should be made with care.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/gist.h
@@ -21,6 +21,7 @@
 #include "access/transam.h"
 #include "access/xlog.h"
 #include "access/xlogdefs.h"
+#include "nodes/primnodes.h"
 #include "storage/block.h"
 #include "storage/bufpage.h"
 #include "utils/relcache.h"
@@ -247,6 +248,6 @@ typedef struct
 	do { (e).key = (k); (e).rel = (r); (e).page = (pg); \
 		 (e).offset = (o); (e).leafkey = (l); } while (0)
 
-extern StrategyNumber GistTranslateStratnum(Oid opclass, StrategyNumber strat);
+extern StrategyNumber gisttranslatecmptype(CompareType cmptype, Oid opfamily);
 
 #endif							/* GIST_H */

@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2024, PostgreSQL Global Development Group
+# Copyright (c) 2023-2025, PostgreSQL Global Development Group
 
 # Test for pg_upgrade of logical subscription. Note that after the successful
 # upgrade test, we can't use the old cluster to prevent failing in --link mode.
@@ -58,11 +58,17 @@ $new_sub->append_conf('postgresql.conf', "max_replication_slots = 0");
 # max_replication_slots.
 command_checks_all(
 	[
-		'pg_upgrade', '--no-sync', '-d', $old_sub->data_dir,
-		'-D', $new_sub->data_dir, '-b', $oldbindir,
-		'-B', $newbindir, '-s', $new_sub->host,
-		'-p', $old_sub->port, '-P', $new_sub->port,
-		$mode, '--check',
+		'pg_upgrade',
+		'--no-sync',
+		'--old-datadir' => $old_sub->data_dir,
+		'--new-datadir' => $new_sub->data_dir,
+		'--old-bindir' => $oldbindir,
+		'--new-bindir' => $newbindir,
+		'--socketdir' => $new_sub->host,
+		'--old-port' => $old_sub->port,
+		'--new-port' => $new_sub->port,
+		$mode,
+		'--check',
 	],
 	1,
 	[
@@ -124,14 +130,25 @@ $old_sub->safe_psql('postgres',
 
 $old_sub->stop;
 
-command_fails(
+command_checks_all(
 	[
-		'pg_upgrade', '--no-sync', '-d', $old_sub->data_dir,
-		'-D', $new_sub->data_dir, '-b', $oldbindir,
-		'-B', $newbindir, '-s', $new_sub->host,
-		'-p', $old_sub->port, '-P', $new_sub->port,
-		$mode, '--check',
+		'pg_upgrade',
+		'--no-sync',
+		'--old-datadir' => $old_sub->data_dir,
+		'--new-datadir' => $new_sub->data_dir,
+		'--old-bindir' => $oldbindir,
+		'--new-bindir' => $newbindir,
+		'--socketdir' => $new_sub->host,
+		'--old-port' => $old_sub->port,
+		'--new-port' => $new_sub->port,
+		$mode,
+		'--check',
 	],
+	1,
+	[
+		qr/\QYour installation contains subscriptions without origin or having relations not in i (initialize) or r (ready) state\E/
+	],
+	[],
 	'run of pg_upgrade --check for old instance with relation in \'d\' datasync(invalid) state and missing replication origin'
 );
 
@@ -254,10 +271,15 @@ $new_sub->append_conf('postgresql.conf',
 # ------------------------------------------------------
 command_ok(
 	[
-		'pg_upgrade', '--no-sync', '-d', $old_sub->data_dir,
-		'-D', $new_sub->data_dir, '-b', $oldbindir,
-		'-B', $newbindir, '-s', $new_sub->host,
-		'-p', $old_sub->port, '-P', $new_sub->port,
+		'pg_upgrade',
+		'--no-sync',
+		'--old-datadir' => $old_sub->data_dir,
+		'--new-datadir' => $new_sub->data_dir,
+		'--old-bindir' => $oldbindir,
+		'--new-bindir' => $newbindir,
+		'--socketdir' => $new_sub->host,
+		'--old-port' => $old_sub->port,
+		'--new-port' => $new_sub->port,
 		$mode
 	],
 	'run of pg_upgrade for old instance when the subscription tables are in init/ready state'

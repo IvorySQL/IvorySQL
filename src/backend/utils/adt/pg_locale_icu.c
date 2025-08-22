@@ -2,7 +2,7 @@
  *
  * PostgreSQL locale utilities for ICU
  *
- * Portions Copyright (c) 2002-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2002-2025, PostgreSQL Global Development Group
  *
  * src/backend/utils/adt/pg_locale_icu.c
  *
@@ -54,19 +54,23 @@ extern size_t strtitle_icu(char *dst, size_t dstsize, const char *src,
 						   ssize_t srclen, pg_locale_t locale);
 extern size_t strupper_icu(char *dst, size_t dstsize, const char *src,
 						   ssize_t srclen, pg_locale_t locale);
+extern size_t strfold_icu(char *dst, size_t dstsize, const char *src,
+						  ssize_t srclen, pg_locale_t locale);
 
 #ifdef USE_ICU
 
 extern UCollator *pg_ucol_open(const char *loc_str);
-extern int	strncoll_icu(const char *arg1, ssize_t len1,
+
+static int	strncoll_icu(const char *arg1, ssize_t len1,
 						 const char *arg2, ssize_t len2,
 						 pg_locale_t locale);
-extern size_t strnxfrm_icu(char *dest, size_t destsize,
+static size_t strnxfrm_icu(char *dest, size_t destsize,
 						   const char *src, ssize_t srclen,
 						   pg_locale_t locale);
-extern size_t strnxfrm_prefix_icu(char *dest, size_t destsize,
+static size_t strnxfrm_prefix_icu(char *dest, size_t destsize,
 								  const char *src, ssize_t srclen,
 								  pg_locale_t locale);
+extern char *get_collation_actual_version_icu(const char *collcollate);
 
 typedef int32_t (*ICU_Convert_Func) (UChar *dest, int32_t destCapacity,
 									 const UChar *src, int32_t srcLength,
@@ -82,12 +86,20 @@ static UConverter *icu_converter = NULL;
 
 static UCollator *make_icu_collator(const char *iculocstr,
 									const char *icurules);
-static int	strncoll_icu_no_utf8(const char *arg1, ssize_t len1,
-								 const char *arg2, ssize_t len2,
-								 pg_locale_t locale);
-static size_t strnxfrm_prefix_icu_no_utf8(char *dest, size_t destsize,
-										  const char *src, ssize_t srclen,
-										  pg_locale_t locale);
+static int	strncoll_icu(const char *arg1, ssize_t len1,
+						 const char *arg2, ssize_t len2,
+						 pg_locale_t locale);
+static size_t strnxfrm_prefix_icu(char *dest, size_t destsize,
+								  const char *src, ssize_t srclen,
+								  pg_locale_t locale);
+#ifdef HAVE_UCOL_STRCOLLUTF8
+static int	strncoll_icu_utf8(const char *arg1, ssize_t len1,
+							  const char *arg2, ssize_t len2,
+							  pg_locale_t locale);
+#endif
+static size_t strnxfrm_prefix_icu_utf8(char *dest, size_t destsize,
+									   const char *src, ssize_t srclen,
+									   pg_locale_t locale);
 static void init_icu_converter(void);
 static size_t uchar_length(UConverter *converter,
 						   const char *str, int32_t len);
@@ -107,6 +119,29 @@ static int32_t u_strToTitle_default_BI(UChar *dest, int32_t destCapacity,
 									   const UChar *src, int32_t srcLength,
 									   const char *locale,
 									   UErrorCode *pErrorCode);
+static int32_t u_strFoldCase_default(UChar *dest, int32_t destCapacity,
+									 const UChar *src, int32_t srcLength,
+									 const char *locale,
+									 UErrorCode *pErrorCode);
+
+static const struct collate_methods collate_methods_icu = {
+	.strncoll = strncoll_icu,
+	.strnxfrm = strnxfrm_icu,
+	.strnxfrm_prefix = strnxfrm_prefix_icu,
+	.strxfrm_is_safe = true,
+};
+
+static const struct collate_methods collate_methods_icu_utf8 = {
+#ifdef HAVE_UCOL_STRCOLLUTF8
+	.strncoll = strncoll_icu_utf8,
+#else
+	.strncoll = strncoll_icu,
+#endif
+	.strnxfrm = strnxfrm_icu,
+	.strnxfrm_prefix = strnxfrm_prefix_icu_utf8,
+	.strxfrm_is_safe = true,
+};
+
 #endif
 
 pg_locale_t
@@ -173,6 +208,10 @@ create_pg_locale_icu(Oid collid, MemoryContext context)
 	result->deterministic = deterministic;
 	result->collate_is_c = false;
 	result->ctype_is_c = false;
+	if (GetDatabaseEncoding() == PG_UTF8)
+		result->collate = &collate_methods_icu_utf8;
+	else
+		result->collate = &collate_methods_icu;
 
 	return result;
 #else
@@ -406,43 +445,57 @@ strupper_icu(char *dest, size_t destsize, const char *src, ssize_t srclen,
 	return result_len;
 }
 
+size_t
+strfold_icu(char *dest, size_t destsize, const char *src, ssize_t srclen,
+			pg_locale_t locale)
+{
+	int32_t		len_uchar;
+	int32_t		len_conv;
+	UChar	   *buff_uchar;
+	UChar	   *buff_conv;
+	size_t		result_len;
+
+	len_uchar = icu_to_uchar(&buff_uchar, src, srclen);
+	len_conv = icu_convert_case(u_strFoldCase_default, locale,
+								&buff_conv, buff_uchar, len_uchar);
+	result_len = icu_from_uchar(dest, destsize, buff_conv, len_conv);
+	pfree(buff_uchar);
+	pfree(buff_conv);
+
+	return result_len;
+}
+
 /*
- * strncoll_icu
+ * strncoll_icu_utf8
  *
  * Call ucol_strcollUTF8() or ucol_strcoll() as appropriate for the given
  * database encoding. An argument length of -1 means the string is
  * NUL-terminated.
  */
+#ifdef HAVE_UCOL_STRCOLLUTF8
 int
-strncoll_icu(const char *arg1, ssize_t len1, const char *arg2, ssize_t len2,
-			 pg_locale_t locale)
+strncoll_icu_utf8(const char *arg1, ssize_t len1, const char *arg2, ssize_t len2,
+				  pg_locale_t locale)
 {
 	int			result;
+	UErrorCode	status;
 
 	Assert(locale->provider == COLLPROVIDER_ICU);
 
-#ifdef HAVE_UCOL_STRCOLLUTF8
-	if (GetDatabaseEncoding() == PG_UTF8)
-	{
-		UErrorCode	status;
+	Assert(GetDatabaseEncoding() == PG_UTF8);
 
-		status = U_ZERO_ERROR;
-		result = ucol_strcollUTF8(locale->info.icu.ucol,
-								  arg1, len1,
-								  arg2, len2,
-								  &status);
-		if (U_FAILURE(status))
-			ereport(ERROR,
-					(errmsg("collation failed: %s", u_errorName(status))));
-	}
-	else
-#endif
-	{
-		result = strncoll_icu_no_utf8(arg1, len1, arg2, len2, locale);
-	}
+	status = U_ZERO_ERROR;
+	result = ucol_strcollUTF8(locale->info.icu.ucol,
+							  arg1, len1,
+							  arg2, len2,
+							  &status);
+	if (U_FAILURE(status))
+		ereport(ERROR,
+				(errmsg("collation failed: %s", u_errorName(status))));
 
 	return result;
 }
+#endif
 
 /* 'srclen' of -1 means the strings are NUL-terminated */
 size_t
@@ -493,39 +546,50 @@ strnxfrm_icu(char *dest, size_t destsize, const char *src, ssize_t srclen,
 
 /* 'srclen' of -1 means the strings are NUL-terminated */
 size_t
-strnxfrm_prefix_icu(char *dest, size_t destsize,
-					const char *src, ssize_t srclen,
-					pg_locale_t locale)
+strnxfrm_prefix_icu_utf8(char *dest, size_t destsize,
+						 const char *src, ssize_t srclen,
+						 pg_locale_t locale)
 {
 	size_t		result;
+	UCharIterator iter;
+	uint32_t	state[2];
+	UErrorCode	status;
 
 	Assert(locale->provider == COLLPROVIDER_ICU);
 
-	if (GetDatabaseEncoding() == PG_UTF8)
-	{
-		UCharIterator iter;
-		uint32_t	state[2];
-		UErrorCode	status;
+	Assert(GetDatabaseEncoding() == PG_UTF8);
 
-		uiter_setUTF8(&iter, src, srclen);
-		state[0] = state[1] = 0;	/* won't need that again */
-		status = U_ZERO_ERROR;
-		result = ucol_nextSortKeyPart(locale->info.icu.ucol,
-									  &iter,
-									  state,
-									  (uint8_t *) dest,
-									  destsize,
-									  &status);
-		if (U_FAILURE(status))
-			ereport(ERROR,
-					(errmsg("sort key generation failed: %s",
-							u_errorName(status))));
-	}
-	else
-		result = strnxfrm_prefix_icu_no_utf8(dest, destsize, src, srclen,
-											 locale);
+	uiter_setUTF8(&iter, src, srclen);
+	state[0] = state[1] = 0;	/* won't need that again */
+	status = U_ZERO_ERROR;
+	result = ucol_nextSortKeyPart(locale->info.icu.ucol,
+								  &iter,
+								  state,
+								  (uint8_t *) dest,
+								  destsize,
+								  &status);
+	if (U_FAILURE(status))
+		ereport(ERROR,
+				(errmsg("sort key generation failed: %s",
+						u_errorName(status))));
 
 	return result;
+}
+
+char *
+get_collation_actual_version_icu(const char *collcollate)
+{
+	UCollator  *collator;
+	UVersionInfo versioninfo;
+	char		buf[U_MAX_VERSION_STRING_LENGTH];
+
+	collator = pg_ucol_open(collcollate);
+
+	ucol_getVersion(collator, versioninfo);
+	ucol_close(collator);
+
+	u_versionToString(versioninfo, buf);
+	return pstrdup(buf);
 }
 
 /*
@@ -635,8 +699,40 @@ u_strToTitle_default_BI(UChar *dest, int32_t destCapacity,
 						NULL, locale, pErrorCode);
 }
 
+static int32_t
+u_strFoldCase_default(UChar *dest, int32_t destCapacity,
+					  const UChar *src, int32_t srcLength,
+					  const char *locale,
+					  UErrorCode *pErrorCode)
+{
+	uint32		options = U_FOLD_CASE_DEFAULT;
+	char		lang[3];
+	UErrorCode	status;
+
+	/*
+	 * Unlike the ICU APIs for lowercasing, titlecasing, and uppercasing, case
+	 * folding does not accept a locale. Instead it just supports a single
+	 * option relevant to Turkic languages 'az' and 'tr'; check for those
+	 * languages to enable the option.
+	 */
+	status = U_ZERO_ERROR;
+	uloc_getLanguage(locale, lang, 3, &status);
+	if (U_SUCCESS(status))
+	{
+		/*
+		 * The option name is confusing, but it causes u_strFoldCase to use
+		 * the 'T' mappings, which are ignored for U_FOLD_CASE_DEFAULT.
+		 */
+		if (strcmp(lang, "tr") == 0 || strcmp(lang, "az") == 0)
+			options = U_FOLD_CASE_EXCLUDE_SPECIAL_I;
+	}
+
+	return u_strFoldCase(dest, destCapacity, src, srcLength,
+						 options, pErrorCode);
+}
+
 /*
- * strncoll_icu_no_utf8
+ * strncoll_icu
  *
  * Convert the arguments from the database encoding to UChar strings, then
  * call ucol_strcoll(). An argument length of -1 means that the string is
@@ -646,8 +742,8 @@ u_strToTitle_default_BI(UChar *dest, int32_t destCapacity,
  * caller should call that instead.
  */
 static int
-strncoll_icu_no_utf8(const char *arg1, ssize_t len1,
-					 const char *arg2, ssize_t len2, pg_locale_t locale)
+strncoll_icu(const char *arg1, ssize_t len1,
+			 const char *arg2, ssize_t len2, pg_locale_t locale)
 {
 	char		sbuf[TEXTBUFLEN];
 	char	   *buf = sbuf;
@@ -660,6 +756,8 @@ strncoll_icu_no_utf8(const char *arg1, ssize_t len1,
 	int			result;
 
 	Assert(locale->provider == COLLPROVIDER_ICU);
+
+	/* if encoding is UTF8, use more efficient strncoll_icu_utf8 */
 #ifdef HAVE_UCOL_STRCOLLUTF8
 	Assert(GetDatabaseEncoding() != PG_UTF8);
 #endif
@@ -693,9 +791,9 @@ strncoll_icu_no_utf8(const char *arg1, ssize_t len1,
 
 /* 'srclen' of -1 means the strings are NUL-terminated */
 static size_t
-strnxfrm_prefix_icu_no_utf8(char *dest, size_t destsize,
-							const char *src, ssize_t srclen,
-							pg_locale_t locale)
+strnxfrm_prefix_icu(char *dest, size_t destsize,
+					const char *src, ssize_t srclen,
+					pg_locale_t locale)
 {
 	char		sbuf[TEXTBUFLEN];
 	char	   *buf = sbuf;
@@ -708,6 +806,8 @@ strnxfrm_prefix_icu_no_utf8(char *dest, size_t destsize,
 	Size		result_bsize;
 
 	Assert(locale->provider == COLLPROVIDER_ICU);
+
+	/* if encoding is UTF8, use more efficient strnxfrm_prefix_icu_utf8 */
 	Assert(GetDatabaseEncoding() != PG_UTF8);
 
 	init_icu_converter();

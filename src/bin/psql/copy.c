@@ -1,7 +1,7 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2025, PostgreSQL Global Development Group
  *
  * src/bin/psql/copy.c
  */
@@ -280,7 +280,7 @@ do_copy(const char *args)
 
 	/* prepare to read or write the target file */
 	if (options->file && !options->program)
-		canonicalize_path(options->file);
+		canonicalize_path_enc(options->file, pset.encoding);
 
 	if (options->from)
 	{

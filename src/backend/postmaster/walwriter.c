@@ -31,7 +31,7 @@
  * should be killed by SIGQUIT and then a recovery cycle started.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -84,7 +84,7 @@ int			WalWriterFlushAfter = DEFAULT_WAL_WRITER_FLUSH_AFTER;
  * basic execution environment, but not enabled signals yet.
  */
 void
-WalWriterMain(char *startup_data, size_t startup_data_len)
+WalWriterMain(const void *startup_data, size_t startup_data_len)
 {
 	sigjmp_buf	local_sigjmp_buf;
 	MemoryContext walwriter_context;
@@ -239,7 +239,7 @@ WalWriterMain(char *startup_data, size_t startup_data_len)
 		ResetLatch(MyLatch);
 
 		/* Process any signals received recently */
-		HandleMainLoopInterrupts();
+		ProcessMainLoopInterrupts();
 
 		/*
 		 * Do what we're here for; then, if XLogBackgroundFlush() found useful

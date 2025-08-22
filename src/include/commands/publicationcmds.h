@@ -4,7 +4,7 @@
  *	  prototypes for publicationcmds.c.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/commands/publicationcmds.h
@@ -35,8 +35,9 @@ extern bool pub_rf_contains_invalid_column(Oid pubid, Relation relation,
 										   List *ancestors, bool pubviaroot);
 extern bool pub_contains_invalid_column(Oid pubid, Relation relation,
 										List *ancestors, bool pubviaroot,
-										bool pubgencols,
+										char pubgencols_type,
 										bool *invalid_column_list,
 										bool *invalid_gen_col);
+extern void InvalidatePubRelSyncCache(Oid pubid, bool puballtables);
 
 #endif							/* PUBLICATIONCMDS_H */

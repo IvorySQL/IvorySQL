@@ -3,7 +3,7 @@
  * planner.c
  *	  The query optimizer external interface.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -214,6 +214,7 @@ static List *postprocess_setop_tlist(List *new_tlist, List *orig_tlist);
 static void optimize_window_clauses(PlannerInfo *root,
 									WindowFuncLists *wflists);
 static List *select_active_windows(PlannerInfo *root, WindowFuncLists *wflists);
+static void name_active_windows(List *activeWindows);
 static PathTarget *make_window_input_target(PlannerInfo *root,
 											PathTarget *final_target,
 											List *activeWindows);
@@ -555,7 +556,10 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 	result->dependsOnRole = glob->dependsOnRole;
 	result->parallelModeNeeded = glob->parallelModeNeeded;
 	result->planTree = top_plan;
+	result->partPruneInfos = glob->partPruneInfos;
 	result->rtable = glob->finalrtable;
+	result->unprunableRelids = bms_difference(glob->allRelids,
+											  glob->prunableRelids);
 	result->permInfos = glob->finalrteperminfos;
 	result->resultRelations = glob->resultRelations;
 	result->appendRelations = glob->appendRelations;
@@ -730,6 +734,14 @@ subquery_planner(PlannerGlobal *glob, Query *parse, PlannerInfo *parent_root,
 	 * for SubLinks.
 	 */
 	preprocess_function_rtes(root);
+
+	/*
+	 * Scan the rangetable for relations with virtual generated columns, and
+	 * replace all Var nodes in the query that reference these columns with
+	 * the generation expressions.  Recursion issues here are handled in the
+	 * same way as for SubLinks.
+	 */
+	parse = root->parse = expand_virtual_generated_columns(root);
 
 	/*
 	 * Check to see if any subqueries in the jointree can be merged into this
@@ -1528,7 +1540,11 @@ grouping_planner(PlannerInfo *root, double tuple_fraction,
 				 */
 				optimize_window_clauses(root, wflists);
 
+				/* Extract the list of windows actually in use. */
 				activeWindows = select_active_windows(root, wflists);
+
+				/* Make sure they all have names, for EXPLAIN's use. */
+				name_active_windows(activeWindows);
 			}
 			else
 				parse->hasWindowFuncs = false;
@@ -5904,6 +5920,52 @@ select_active_windows(PlannerInfo *root, WindowFuncLists *wflists)
 }
 
 /*
+ * name_active_windows
+ *	  Ensure all active windows have unique names.
+ *
+ * The parser will have checked that user-assigned window names are unique
+ * within the Query.  Here we assign made-up names to any unnamed
+ * WindowClauses for the benefit of EXPLAIN.  (We don't want to do this
+ * at parse time, because it'd mess up decompilation of views.)
+ *
+ * activeWindows: result of select_active_windows
+ */
+static void
+name_active_windows(List *activeWindows)
+{
+	int			next_n = 1;
+	char		newname[16];
+	ListCell   *lc;
+
+	foreach(lc, activeWindows)
+	{
+		WindowClause *wc = lfirst_node(WindowClause, lc);
+
+		/* Nothing to do if it has a name already. */
+		if (wc->name)
+			continue;
+
+		/* Select a name not currently present in the list. */
+		for (;;)
+		{
+			ListCell   *lc2;
+
+			snprintf(newname, sizeof(newname), "w%d", next_n++);
+			foreach(lc2, activeWindows)
+			{
+				WindowClause *wc2 = lfirst_node(WindowClause, lc2);
+
+				if (wc2->name && strcmp(wc2->name, newname) == 0)
+					break;		/* matched */
+			}
+			if (lc2 == NULL)
+				break;			/* reached the end with no match */
+		}
+		wc->name = pstrdup(newname);
+	}
+}
+
+/*
  * common_prefix_cmp
  *	  QSort comparison function for WindowClauseSortData
  *
@@ -6403,6 +6465,11 @@ make_sort_input_target(PlannerInfo *root,
  *	  Find the cheapest path for retrieving a specified fraction of all
  *	  the tuples expected to be returned by the given relation.
  *
+ * Do not consider parameterized paths.  If the caller needs a path for upper
+ * rel, it can't have parameterized paths.  If the caller needs an append
+ * subpath, it could become limited by the treatment of similar
+ * parameterization of all the subpaths.
+ *
  * We interpret tuple_fraction the same way as grouping_planner.
  *
  * We assume set_cheapest() has been run on the given rel.
@@ -6424,6 +6491,9 @@ get_cheapest_fractional_path(RelOptInfo *rel, double tuple_fraction)
 	foreach(l, rel->pathlist)
 	{
 		Path	   *path = (Path *) lfirst(l);
+
+		if (path->param_info)
+			continue;
 
 		if (path == rel->cheapest_total_path ||
 			compare_fractional_path_costs(best_path, path, tuple_fraction) <= 0)
@@ -6886,7 +6956,7 @@ plan_create_index_workers(Oid tableOid, Oid indexOid)
 	 * parallel worker to sort.
 	 */
 	while (parallel_workers > 0 &&
-		   maintenance_work_mem / (parallel_workers + 1) < 32768L)
+		   maintenance_work_mem / (parallel_workers + 1) < 32 * 1024)
 		parallel_workers--;
 
 done:
@@ -8077,7 +8147,10 @@ group_by_has_partkey(RelOptInfo *input_rel,
  * child query's targetlist entries may already have a tleSortGroupRef
  * assigned for other purposes, such as GROUP BYs.  Here we keep the
  * SortGroupClause list in the same order as 'op' groupClauses and just adjust
- * the tleSortGroupRef to reference the TargetEntry's 'ressortgroupref'.
+ * the tleSortGroupRef to reference the TargetEntry's 'ressortgroupref'.  If
+ * any of the columns in the targetlist don't match to the setop's colTypes
+ * then we return an empty list.  This may leave some TLEs with unreferenced
+ * ressortgroupref markings, but that's harmless.
  */
 static List *
 generate_setop_child_grouplist(SetOperationStmt *op, List *targetlist)
@@ -8085,25 +8158,42 @@ generate_setop_child_grouplist(SetOperationStmt *op, List *targetlist)
 	List	   *grouplist = copyObject(op->groupClauses);
 	ListCell   *lg;
 	ListCell   *lt;
+	ListCell   *ct;
 
 	lg = list_head(grouplist);
+	ct = list_head(op->colTypes);
 	foreach(lt, targetlist)
 	{
 		TargetEntry *tle = (TargetEntry *) lfirst(lt);
 		SortGroupClause *sgc;
+		Oid			coltype;
 
 		/* resjunk columns could have sortgrouprefs.  Leave these alone */
 		if (tle->resjunk)
 			continue;
 
-		/* we expect every non-resjunk target to have a SortGroupClause */
+		/*
+		 * We expect every non-resjunk target to have a SortGroupClause and
+		 * colTypes.
+		 */
 		Assert(lg != NULL);
+		Assert(ct != NULL);
 		sgc = (SortGroupClause *) lfirst(lg);
+		coltype = lfirst_oid(ct);
+
+		/* reject if target type isn't the same as the setop target type */
+		if (coltype != exprType((Node *) tle->expr))
+			return NIL;
+
 		lg = lnext(grouplist, lg);
+		ct = lnext(op->colTypes, ct);
 
 		/* assign a tleSortGroupRef, or reuse the existing one */
 		sgc->tleSortGroupRef = assignSortGroupRef(tle, targetlist);
 	}
+
 	Assert(lg == NULL);
+	Assert(ct == NULL);
+
 	return grouplist;
 }

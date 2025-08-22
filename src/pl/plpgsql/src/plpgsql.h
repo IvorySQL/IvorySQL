@@ -3,7 +3,7 @@
  * plpgsql.h		- Definitions for the PL/pgSQL
  *			  procedural language
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -187,6 +187,17 @@ typedef enum PLpgSQL_resolve_option
 	PLPGSQL_RESOLVE_COLUMN,		/* prefer table column to plpgsql var */
 } PLpgSQL_resolve_option;
 
+/*
+ * Status of optimization of assignment to a read/write expanded object
+ */
+typedef enum PLpgSQL_rwopt
+{
+	PLPGSQL_RWOPT_UNKNOWN = 0,	/* applicability not determined yet */
+	PLPGSQL_RWOPT_NOPE,			/* cannot do any optimization */
+	PLPGSQL_RWOPT_TRANSFER,		/* transfer the old value into expr state */
+	PLPGSQL_RWOPT_INPLACE,		/* pass value as R/W to top-level function */
+} PLpgSQL_rwopt;
+
 
 /**********************************************************************
  * Node and structure definitions
@@ -219,14 +230,25 @@ typedef struct PLpgSQL_expr
 {
 	char	   *query;			/* query string, verbatim from function body */
 	RawParseMode parseMode;		/* raw_parser() mode to use */
+	struct PLpgSQL_function *func;	/* function containing this expr */
+	struct PLpgSQL_nsitem *ns;	/* namespace chain visible to this expr */
+
+	/*
+	 * These fields are used to help optimize assignments to expanded-datum
+	 * variables.  If this expression is the source of an assignment to a
+	 * simple variable, target_param holds that variable's dno (else it's -1),
+	 * and target_is_local indicates whether the target is declared inside the
+	 * closest exception block containing the assignment.
+	 */
+	int			target_param;	/* dno of assign target, or -1 if none */
+	bool		target_is_local;	/* is it within nearest exception block? */
+
+	/*
+	 * Fields above are set during plpgsql parsing.  Remaining fields are left
+	 * as zeroes/NULLs until we first parse/plan the query.
+	 */
 	SPIPlanPtr	plan;			/* plan, or NULL if not made yet */
 	Bitmapset  *paramnos;		/* all dnos referenced by this query */
-
-	/* function containing this expr (not set until we first parse query) */
-	struct PLpgSQL_function *func;
-
-	/* namespace chain visible to this expr */
-	struct PLpgSQL_nsitem *ns;
 
 	/* fields for "simple expression" fast-path execution: */
 	Expr	   *expr_simple_expr;	/* NULL means not a simple expr */
@@ -235,14 +257,14 @@ typedef struct PLpgSQL_expr
 	bool		expr_simple_mutable;	/* true if simple expr is mutable */
 
 	/*
-	 * These fields are used to optimize assignments to expanded-datum
-	 * variables.  If this expression is the source of an assignment to a
-	 * simple variable, target_param holds that variable's dno; else it's -1.
-	 * If we match a Param within expr_simple_expr to such a variable, that
-	 * Param's address is stored in expr_rw_param; then expression code
-	 * generation will allow the value for that Param to be passed read/write.
+	 * expr_rwopt tracks whether we have determined that assignment to a
+	 * read/write expanded object (stored in the target_param datum) can be
+	 * optimized by passing it to the expr as a read/write expanded-object
+	 * pointer.  If so, expr_rw_param identifies the specific Param that
+	 * should emit a read/write pointer; any others will emit read-only
+	 * pointers.
 	 */
-	int			target_param;	/* dno of assign target, or -1 if none */
+	PLpgSQL_rwopt expr_rwopt;	/* can we apply R/W optimization? */
 	Param	   *expr_rw_param;	/* read/write Param within expr, if any */
 
 	/*
@@ -1009,6 +1031,7 @@ typedef struct PLpgSQL_function
 	/* data derived while parsing body */
 	unsigned int nstatements;	/* counter for assigning stmtids */
 	bool		requires_procedure_resowner;	/* contains CALL or DO? */
+	bool		has_exception_block;	/* contains BEGIN...EXCEPTION? */
 
 	/* these fields change when the function is used */
 	struct PLpgSQL_execstate *cur_estate;
@@ -1212,8 +1235,6 @@ extern int	plpgsql_extra_errors;
 extern bool plpgsql_check_syntax;
 extern bool plpgsql_DumpExecTree;
 
-extern PLpgSQL_stmt_block *plpgsql_parse_result;
-
 extern int	plpgsql_nDatums;
 extern PLpgSQL_datum **plpgsql_Datums;
 
@@ -1309,32 +1330,39 @@ extern PLpgSQL_nsitem *plpgsql_ns_find_nearest_loop(PLpgSQL_nsitem *ns_cur);
  */
 extern PGDLLEXPORT const char *plpgsql_stmt_typename(PLpgSQL_stmt *stmt);
 extern const char *plpgsql_getdiag_kindname(PLpgSQL_getdiag_kind kind);
+extern void plpgsql_mark_local_assignment_targets(PLpgSQL_function *func);
 extern void plpgsql_free_function_memory(PLpgSQL_function *func);
 extern void plpgsql_dumptree(PLpgSQL_function *func);
 
 /*
  * Scanner functions in pl_scanner.c
  */
-extern int	plpgsql_base_yylex(void);
-extern int	plpgsql_yylex(void);
-extern int	plpgsql_token_length(void);
-extern void plpgsql_push_back_token(int token);
+union YYSTYPE;
+#define YYLTYPE int
+#ifndef YY_TYPEDEF_YY_SCANNER_T
+#define YY_TYPEDEF_YY_SCANNER_T
+typedef void *yyscan_t;
+#endif
+extern int	plpgsql_yylex(union YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner);
+extern int	plpgsql_token_length(yyscan_t yyscanner);
+extern void plpgsql_push_back_token(int token, union YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner);
 extern bool plpgsql_token_is_unreserved_keyword(int token);
 extern void plpgsql_append_source_text(StringInfo buf,
-									   int startlocation, int endlocation);
-extern int	plpgsql_peek(void);
+									   int startlocation, int endlocation,
+									   yyscan_t yyscanner);
+extern int	plpgsql_peek(yyscan_t yyscanner);
 extern void plpgsql_peek2(int *tok1_p, int *tok2_p, int *tok1_loc,
-						  int *tok2_loc);
-extern int	plpgsql_scanner_errposition(int location);
-extern void plpgsql_yyerror(const char *message) pg_attribute_noreturn();
-extern int	plpgsql_location_to_lineno(int location);
-extern int	plpgsql_latest_lineno(void);
-extern void plpgsql_scanner_init(const char *str);
-extern void plpgsql_scanner_finish(void);
+						  int *tok2_loc, yyscan_t yyscanner);
+extern int	plpgsql_scanner_errposition(int location, yyscan_t yyscanner);
+pg_noreturn extern void plpgsql_yyerror(YYLTYPE *yyllocp, PLpgSQL_stmt_block **plpgsql_parse_result_p, yyscan_t yyscanner, const char *message);
+extern int	plpgsql_location_to_lineno(int location, yyscan_t yyscanner);
+extern int	plpgsql_latest_lineno(yyscan_t yyscanner);
+extern yyscan_t plpgsql_scanner_init(const char *str);
+extern void plpgsql_scanner_finish(yyscan_t yyscanner);
 
 /*
- * Externs in gram.y
+ * Externs in pl_gram.y
  */
-extern int	plpgsql_yyparse(void);
+extern int	plpgsql_yyparse(PLpgSQL_stmt_block **plpgsql_parse_result_p, yyscan_t yyscanner);
 
 #endif							/* PLPGSQL_H */

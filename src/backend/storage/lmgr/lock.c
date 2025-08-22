@@ -3,7 +3,7 @@
  * lock.c
  *	  POSTGRES primary lock mechanism
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -22,7 +22,7 @@
  *
  *	Interface:
  *
- *	InitLocks(), GetLocksMethodTable(), GetLockTagsMethodTable(),
+ *	LockManagerShmemInit(), GetLocksMethodTable(), GetLockTagsMethodTable(),
  *	LockAcquire(), LockRelease(), LockReleaseAll(),
  *	LockCheckConflicts(), GrantLock()
  *
@@ -227,10 +227,10 @@ int			FastPathLockGroupsPerBackend = 0;
  * the FAST_PATH_SLOT macro, split it into group and index (in the group).
  */
 #define FAST_PATH_GROUP(index)	\
-	(AssertMacro((uint32) (index) < FP_LOCK_SLOTS_PER_BACKEND), \
+	(AssertMacro((uint32) (index) < FastPathLockSlotsPerBackend()), \
 	 ((index) / FP_LOCK_SLOTS_PER_GROUP))
 #define FAST_PATH_INDEX(index)	\
-	(AssertMacro((uint32) (index) < FP_LOCK_SLOTS_PER_BACKEND), \
+	(AssertMacro((uint32) (index) < FastPathLockSlotsPerBackend()), \
 	 ((index) % FP_LOCK_SLOTS_PER_GROUP))
 
 /* Macros for manipulating proc->fpLockBits */
@@ -243,7 +243,7 @@ int			FastPathLockGroupsPerBackend = 0;
 #define FAST_PATH_BIT_POSITION(n, l) \
 	(AssertMacro((l) >= FAST_PATH_LOCKNUMBER_OFFSET), \
 	 AssertMacro((l) < FAST_PATH_BITS_PER_SLOT+FAST_PATH_LOCKNUMBER_OFFSET), \
-	 AssertMacro((n) < FP_LOCK_SLOTS_PER_BACKEND), \
+	 AssertMacro((n) < FastPathLockSlotsPerBackend()), \
 	 ((l) - FAST_PATH_LOCKNUMBER_OFFSET + FAST_PATH_BITS_PER_SLOT * (FAST_PATH_INDEX(n))))
 #define FAST_PATH_SET_LOCKMODE(proc, n, l) \
 	 FAST_PATH_BITS(proc, n) |= UINT64CONST(1) << FAST_PATH_BIT_POSITION(n, l)
@@ -1324,7 +1324,7 @@ SetupLockInTable(LockMethod lockMethodTable, PGPROC *proc,
 		 * on our own behalf, in which case our group leader isn't changing
 		 * because the group leader for a process can only ever be changed by
 		 * the process itself; or else we are transferring a fast-path lock to
-		 * the main lock table, in which case that process can't change it's
+		 * the main lock table, in which case that process can't change its
 		 * lock group leader without first releasing all of its locks (and in
 		 * particular the one we are currently transferring).
 		 */
@@ -2692,7 +2692,7 @@ static bool
 FastPathGrantRelationLock(Oid relid, LOCKMODE lockmode)
 {
 	uint32		i;
-	uint32		unused_slot = FP_LOCK_SLOTS_PER_BACKEND;
+	uint32		unused_slot = FastPathLockSlotsPerBackend();
 
 	/* fast-path group the lock belongs to */
 	uint32		group = FAST_PATH_REL_GROUP(relid);
@@ -2714,7 +2714,7 @@ FastPathGrantRelationLock(Oid relid, LOCKMODE lockmode)
 	}
 
 	/* If no existing entry, use any empty slot. */
-	if (unused_slot < FP_LOCK_SLOTS_PER_BACKEND)
+	if (unused_slot < FastPathLockSlotsPerBackend())
 	{
 		MyProc->fpRelId[unused_slot] = relid;
 		FAST_PATH_SET_LOCKMODE(MyProc, unused_slot, lockmode);

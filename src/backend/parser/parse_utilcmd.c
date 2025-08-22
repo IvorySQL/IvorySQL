@@ -12,7 +12,7 @@
  * respective utility commands.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -1025,7 +1025,7 @@ transformColumnDefinition(CreateStmtContext *cxt, ColumnDef *column)
 									column->colname, cxt->relation->relname),
 							 parser_errposition(cxt->pstate,
 												constraint->location)));
-				column->generated = ATTRIBUTE_GENERATED_STORED;
+				column->generated = constraint->generated_kind;
 				column->raw_default = constraint->raw_expr;
 				Assert(constraint->cooked_expr == NULL);
 				saw_generated = true;
@@ -1090,6 +1090,8 @@ transformColumnDefinition(CreateStmtContext *cxt, ColumnDef *column)
 			case CONSTR_ATTR_NOT_DEFERRABLE:
 			case CONSTR_ATTR_DEFERRED:
 			case CONSTR_ATTR_IMMEDIATE:
+			case CONSTR_ATTR_ENFORCED:
+			case CONSTR_ATTR_NOT_ENFORCED:
 				/* transformConstraintAttrs took care of these */
 				break;
 
@@ -1120,6 +1122,20 @@ transformColumnDefinition(CreateStmtContext *cxt, ColumnDef *column)
 					(errcode(ERRCODE_SYNTAX_ERROR),
 					 errmsg("both identity and generation expression specified for column \"%s\" of table \"%s\"",
 							column->colname, cxt->relation->relname),
+					 parser_errposition(cxt->pstate,
+										constraint->location)));
+
+		/*
+		 * TODO: Straightforward not-null constraints won't work on virtual
+		 * generated columns, because there is no support for expanding the
+		 * column when the constraint is checked.  Maybe we could convert the
+		 * not-null constraint into a full check constraint, so that the
+		 * generation expression can be expanded at check time.
+		 */
+		if (column->is_not_null && column->generated == ATTRIBUTE_GENERATED_VIRTUAL)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("not-null constraints are not supported on virtual generated columns"),
 					 parser_errposition(cxt->pstate,
 										constraint->location)));
 	}
@@ -1229,6 +1245,8 @@ transformTableConstraint(CreateStmtContext *cxt, Constraint *constraint)
 		case CONSTR_ATTR_NOT_DEFERRABLE:
 		case CONSTR_ATTR_DEFERRED:
 		case CONSTR_ATTR_IMMEDIATE:
+		case CONSTR_ATTR_ENFORCED:
+		case CONSTR_ATTR_NOT_ENFORCED:
 			elog(ERROR, "invalid context for constraint type %d",
 				 constraint->contype);
 			break;
@@ -1249,6 +1267,10 @@ transformTableConstraint(CreateStmtContext *cxt, Constraint *constraint)
  * process at this point, add the TableLikeClause to cxt->likeclauses, which
  * will cause utility.c to call expandTableLikeClause() after the new
  * table has been created.
+ *
+ * Some options are ignored.  For example, as foreign tables have no storage,
+ * these INCLUDING options have no effect: STORAGE, COMPRESSION, IDENTITY
+ * and INDEXES.  Similarly, INCLUDING INDEXES is ignored from a view.
  */
 static void
 transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_clause)
@@ -1262,12 +1284,6 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 
 	setup_parser_errposition_callback(&pcbstate, cxt->pstate,
 									  table_like_clause->relation->location);
-
-	/* we could support LIKE in many cases, but worry about it another day */
-	if (cxt->isforeign)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("LIKE is not supported for creating foreign tables")));
 
 	/* Open the relation referenced by the LIKE clause */
 	relation = relation_openrv(table_like_clause->relation, AccessShareLock);
@@ -1349,7 +1365,8 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 		 * Copy identity if requested
 		 */
 		if (attribute->attidentity &&
-			(table_like_clause->options & CREATE_TABLE_LIKE_IDENTITY))
+			(table_like_clause->options & CREATE_TABLE_LIKE_IDENTITY) &&
+			!cxt->isforeign)
 		{
 			Oid			seq_relid;
 			List	   *seq_options;
@@ -1368,7 +1385,8 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 		}
 
 		/* Likewise, copy storage if requested */
-		if (table_like_clause->options & CREATE_TABLE_LIKE_STORAGE)
+		if ((table_like_clause->options & CREATE_TABLE_LIKE_STORAGE) &&
+			!cxt->isforeign)
 			def->storage = attribute->attstorage;
 		else
 			def->storage = 0;
@@ -1380,8 +1398,9 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 			def->is_invisible = false;
 
 		/* Likewise, copy compression if requested */
-		if ((table_like_clause->options & CREATE_TABLE_LIKE_COMPRESSION) != 0
-			&& CompressionMethodIsValid(attribute->attcompression))
+		if ((table_like_clause->options & CREATE_TABLE_LIKE_COMPRESSION) != 0 &&
+			CompressionMethodIsValid(attribute->attcompression) &&
+			!cxt->isforeign)
 			def->compression =
 				pstrdup(GetCompressionMethodName(attribute->attcompression));
 		else
@@ -1578,6 +1597,8 @@ expandTableLikeClause(RangeVar *heapRel, TableLikeClause *table_like_clause)
 		{
 			char	   *ccname = constr->check[ccnum].ccname;
 			char	   *ccbin = constr->check[ccnum].ccbin;
+			bool		ccenforced = constr->check[ccnum].ccenforced;
+			bool		ccvalid = constr->check[ccnum].ccvalid;
 			bool		ccnoinherit = constr->check[ccnum].ccnoinherit;
 			Node	   *ccbin_node;
 			bool		found_whole_row;
@@ -1607,13 +1628,14 @@ expandTableLikeClause(RangeVar *heapRel, TableLikeClause *table_like_clause)
 			n->contype = CONSTR_CHECK;
 			n->conname = pstrdup(ccname);
 			n->location = -1;
+			n->is_enforced = ccenforced;
+			n->initially_valid = ccvalid;
 			n->is_no_inherit = ccnoinherit;
 			n->raw_expr = NULL;
 			n->cooked_expr = nodeToString(ccbin_node);
 
 			/* We can skip validation, since the new table should be empty. */
 			n->skip_validation = true;
-			n->initially_valid = true;
 
 			atsubcmd = makeNode(AlterTableCmd);
 			atsubcmd->subtype = AT_AddConstraint;
@@ -1660,7 +1682,8 @@ expandTableLikeClause(RangeVar *heapRel, TableLikeClause *table_like_clause)
 	 * Process indexes if required.
 	 */
 	if ((table_like_clause->options & CREATE_TABLE_LIKE_INDEXES) &&
-		relation->rd_rel->relhasindex)
+		relation->rd_rel->relhasindex &&
+		childrel->rd_rel->relkind != RELKIND_FOREIGN_TABLE)
 	{
 		List	   *parent_indexes;
 		ListCell   *l;
@@ -3066,9 +3089,11 @@ transformCheckConstraints(CreateStmtContext *cxt, bool skipValidation)
 		return;
 
 	/*
-	 * If creating a new table (but not a foreign table), we can safely skip
-	 * validation of check constraints, and nonetheless mark them valid. (This
-	 * will override any user-supplied NOT VALID flag.)
+	 * When creating a new table (but not a foreign table), we can safely skip
+	 * the validation of check constraints and mark them as valid based on the
+	 * constraint enforcement flag, since NOT ENFORCED constraints must always
+	 * be marked as NOT VALID. (This will override any user-supplied NOT VALID
+	 * flag.)
 	 */
 	if (skipValidation)
 	{
@@ -3077,7 +3102,7 @@ transformCheckConstraints(CreateStmtContext *cxt, bool skipValidation)
 			Constraint *constraint = (Constraint *) lfirst(ckclist);
 
 			constraint->skip_validation = true;
-			constraint->initially_valid = true;
+			constraint->initially_valid = constraint->is_enforced;
 		}
 	}
 }
@@ -4076,6 +4101,7 @@ transformConstraintAttrs(CreateStmtContext *cxt, List *constraintList)
 	Constraint *lastprimarycon = NULL;
 	bool		saw_deferrability = false;
 	bool		saw_initially = false;
+	bool		saw_enforced = false;
 	ListCell   *clist;
 
 #define SUPPORTS_ATTRS(node)				\
@@ -4171,12 +4197,49 @@ transformConstraintAttrs(CreateStmtContext *cxt, List *constraintList)
 				lastprimarycon->initdeferred = false;
 				break;
 
+			case CONSTR_ATTR_ENFORCED:
+				if (lastprimarycon == NULL ||
+					lastprimarycon->contype != CONSTR_CHECK)
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("misplaced ENFORCED clause"),
+							 parser_errposition(cxt->pstate, con->location)));
+				if (saw_enforced)
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("multiple ENFORCED/NOT ENFORCED clauses not allowed"),
+							 parser_errposition(cxt->pstate, con->location)));
+				saw_enforced = true;
+				lastprimarycon->is_enforced = true;
+				break;
+
+			case CONSTR_ATTR_NOT_ENFORCED:
+				if (lastprimarycon == NULL ||
+					lastprimarycon->contype != CONSTR_CHECK)
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("misplaced NOT ENFORCED clause"),
+							 parser_errposition(cxt->pstate, con->location)));
+				if (saw_enforced)
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("multiple ENFORCED/NOT ENFORCED clauses not allowed"),
+							 parser_errposition(cxt->pstate, con->location)));
+				saw_enforced = true;
+				lastprimarycon->is_enforced = false;
+
+				/* A NOT ENFORCED constraint must be marked as invalid. */
+				lastprimarycon->skip_validation = true;
+				lastprimarycon->initially_valid = false;
+				break;
+
 			default:
 				/* Otherwise it's not an attribute */
 				lastprimarycon = con;
 				/* reset flags for new primary node */
 				saw_deferrability = false;
 				saw_initially = false;
+				saw_enforced = false;
 				break;
 		}
 	}

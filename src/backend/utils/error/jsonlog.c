@@ -3,7 +3,7 @@
  * jsonlog.c
  *	  JSON logging
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -206,7 +206,7 @@ write_jsonlog(ErrorData *edata)
 	/* Error severity */
 	if (edata->elevel)
 		appendJSONKeyValue(&buf, "error_severity",
-						   (char *) error_severity(edata->elevel), true);
+						   error_severity(edata->elevel), true);
 
 	/* SQL state code */
 	if (edata->sqlerrcode)

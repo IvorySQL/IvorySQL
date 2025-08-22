@@ -3,7 +3,7 @@
  * storage.c
  *	  code to create and destroy physical storage for relations
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -194,7 +194,7 @@ log_smgrcreate(const RelFileLocator *rlocator, ForkNumber forkNum)
 	xlrec.forkNum = forkNum;
 
 	XLogBeginInsert();
-	XLogRegisterData((char *) &xlrec, sizeof(xlrec));
+	XLogRegisterData(&xlrec, sizeof(xlrec));
 	XLogInsert(RM_SMGR_ID, XLOG_SMGR_CREATE | XLR_SPECIAL_REL_UPDATE);
 }
 
@@ -380,7 +380,7 @@ RelationTruncate(Relation rel, BlockNumber nblocks)
 	 * replay or visibility invariants downstream.  The critical section also
 	 * suppresses interrupts.
 	 *
-	 * (See also pg_visibilitymap.c if changing this code.)
+	 * (See also visibilitymap.c if changing this code.)
 	 */
 	START_CRIT_SECTION();
 
@@ -397,7 +397,7 @@ RelationTruncate(Relation rel, BlockNumber nblocks)
 		xlrec.flags = SMGR_TRUNCATE_ALL;
 
 		XLogBeginInsert();
-		XLogRegisterData((char *) &xlrec, sizeof(xlrec));
+		XLogRegisterData(&xlrec, sizeof(xlrec));
 
 		lsn = XLogInsert(RM_SMGR_ID,
 						 XLOG_SMGR_TRUNCATE | XLR_SPECIAL_REL_UPDATE);
@@ -524,14 +524,14 @@ RelationCopyStorage(SMgrRelation src, SMgrRelation dst,
 			 * (errcontext callbacks shouldn't be risking any such thing, but
 			 * people have been known to forget that rule.)
 			 */
-			char	   *relpath = relpathbackend(src->smgr_rlocator.locator,
+			RelPathStr	relpath = relpathbackend(src->smgr_rlocator.locator,
 												 src->smgr_rlocator.backend,
 												 forkNum);
 
 			ereport(ERROR,
 					(errcode(ERRCODE_DATA_CORRUPTED),
 					 errmsg("invalid page in block %u of relation %s",
-							blkno, relpath)));
+							blkno, relpath.str)));
 		}
 
 		/*
@@ -763,7 +763,7 @@ smgrDoPendingSyncs(bool isCommit, bool isParallelWorker)
 	{
 		ForkNumber	fork;
 		BlockNumber nblocks[MAX_FORKNUM + 1];
-		BlockNumber total_blocks = 0;
+		uint64		total_blocks = 0;
 		SMgrRelation srel;
 
 		srel = smgropen(pendingsync->rlocator, INVALID_PROC_NUMBER);
@@ -807,7 +807,7 @@ smgrDoPendingSyncs(bool isCommit, bool isParallelWorker)
 		 * main fork is longer than ever but FSM fork gets shorter.
 		 */
 		if (pendingsync->is_truncated ||
-			total_blocks * BLCKSZ / 1024 >= wal_skip_threshold)
+			total_blocks >= wal_skip_threshold * (uint64) 1024 / BLCKSZ)
 		{
 			/* allocate the initial array, or extend it, if needed */
 			if (maxrels == 0)

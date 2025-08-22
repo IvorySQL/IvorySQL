@@ -14,7 +14,7 @@
  * that every visible heap tuple has a matching index tuple.
  *
  *
- * Copyright (c) 2017-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2017-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/amcheck/verify_nbtree.c
@@ -1597,8 +1597,7 @@ bt_target_page_check(BtreeCheckState *state)
 		 */
 		lowersizelimit = skey->heapkeyspace &&
 			(P_ISLEAF(topaque) || BTreeTupleGetHeapTID(itup) == NULL);
-		if (tupsize > (lowersizelimit ? BTMaxItemSize(state->target) :
-					   BTMaxItemSizeNoHeapTid(state->target)))
+		if (tupsize > (lowersizelimit ? BTMaxItemSize : BTMaxItemSizeNoHeapTid))
 		{
 			ItemPointer tid = BTreeTupleGetPointsToTID(itup);
 			char	   *itid,
@@ -2469,7 +2468,7 @@ bt_child_highkey_check(BtreeCheckState *state,
 				 * So, now we traverse to the right of that cousin page and
 				 * current child level page under consideration still belongs
 				 * to the subtree of target's left sibling.  Thus, we need to
-				 * match child's high key to it's left uncle page high key.
+				 * match child's high key to its left uncle page high key.
 				 * Thankfully we saved it, it's called a "low key" of target
 				 * page.
 				 */

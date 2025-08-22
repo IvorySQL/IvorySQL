@@ -2,7 +2,7 @@
  * tablesync.c
  *	  PostgreSQL logical replication: initial table data synchronization
  *
- * Copyright (c) 2012-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2012-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/replication/logical/tablesync.c
@@ -139,8 +139,7 @@ static StringInfo copybuf = NULL;
 /*
  * Exit routine for synchronization worker.
  */
-static void
-pg_attribute_noreturn()
+pg_noreturn static void
 finish_sync_worker(void)
 {
 	/*

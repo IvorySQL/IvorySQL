@@ -1,5 +1,5 @@
 
-# Copyright (c) 2023-2024, PostgreSQL Global Development Group
+# Copyright (c) 2023-2025, PostgreSQL Global Development Group
 
 =pod
 
@@ -294,6 +294,11 @@ sub adjust_old_dumpfile
 	# Version comments will certainly not match.
 	$dump =~ s/^-- Dumped from database version.*\n//mg;
 
+	# Same with version argument to pg_restore_relation_stats() or
+	# pg_restore_attribute_stats().
+	$dump =~ s {\n(\s+'version',) '\d+'::integer,$}
+		{$1 '000000'::integer,}mg;
+
 	if ($old_version < 16)
 	{
 		# Fix up some view queries that no longer require table-qualification.
@@ -331,6 +336,18 @@ sub adjust_old_dumpfile
 			(^CREATE\sTRIGGER\s.*?)
 			\sEXECUTE\sPROCEDURE
 			/$1 EXECUTE FUNCTION/mgx;
+	}
+
+	# During pg_upgrade, we reindex hash indexes if the source is pre-v10.
+	# This may change their tables' relallvisible values, so don't compare
+	# those.
+	if ($old_version < 10)
+	{
+		$dump =~ s/
+			(^SELECT\s\*\sFROM\spg_catalog\.pg_restore_relation_stats\(
+			[^;]*'relation',\s'public\.hash_[a-z0-9]*_heap'::regclass,
+			[^;]*'relallvisible',)\s'\d+'::integer
+			/$1 ''::integer/mgx;
 	}
 
 	if ($old_version lt '9.6')
@@ -534,7 +551,6 @@ sub _mash_view_qualifiers
 		{
 			my @thischunks = split /;/, $chunk, 2;
 			my $stmt = shift(@thischunks);
-			my $ostmt = $stmt;
 
 			# now $stmt is just the body of the CREATE [MATERIALIZED] VIEW
 			$stmt =~ s/$qualifier\.//g;
@@ -627,6 +643,17 @@ sub adjust_new_dumpfile
 	# Version comments will certainly not match.
 	$dump =~ s/^-- Dumped from database version.*\n//mg;
 
+	# Same with version argument to pg_restore_relation_stats() or
+	# pg_restore_attribute_stats().
+	$dump =~ s {\n(\s+'version',) '\d+'::integer,$}
+		{$1 '000000'::integer,}mg;
+
+	# pre-v16 dumps do not know about XMLSERIALIZE(NO INDENT).
+	if ($old_version < 16)
+	{
+		$dump =~ s/XMLSERIALIZE\((.*)? NO INDENT\)/XMLSERIALIZE\($1\)/mg;
+	}
+
 	if ($old_version < 14)
 	{
 		# Suppress noise-word uses of IN in CREATE/ALTER PROCEDURE.
@@ -656,6 +683,18 @@ sub adjust_new_dumpfile
 	if ($old_version < 12)
 	{
 		$dump =~ s/^SET default_table_access_method = heap;\n//mg;
+	}
+
+	# During pg_upgrade, we reindex hash indexes if the source is pre-v10.
+	# This may change their tables' relallvisible values, so don't compare
+	# those.
+	if ($old_version < 10)
+	{
+		$dump =~ s/
+			(^SELECT\s\*\sFROM\spg_catalog\.pg_restore_relation_stats\(
+			[^;]*'relation',\s'public\.hash_[a-z0-9]*_heap'::regclass,
+			[^;]*'relallvisible',)\s'\d+'::integer
+			/$1 ''::integer/mgx;
 	}
 
 	# dumps from pre-9.6 dblink may include redundant ACL settings

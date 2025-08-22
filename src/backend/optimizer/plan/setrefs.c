@@ -4,7 +4,7 @@
  *	  Post-processing of a completed plan tree: fix references to subplan
  *	  vars, compute regproc values for operators, etc
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -569,7 +569,9 @@ add_rte_to_flat_rtable(PlannerGlobal *glob, List *rteperminfos,
 
 	/*
 	 * If it's a plain relation RTE (or a subquery that was once a view
-	 * reference), add the relation OID to relationOids.
+	 * reference), add the relation OID to relationOids.  Also add its new RT
+	 * index to the set of relations to be potentially accessed during
+	 * execution.
 	 *
 	 * We do this even though the RTE might be unreferenced in the plan tree;
 	 * this would correspond to cases such as views that were expanded, child
@@ -581,7 +583,11 @@ add_rte_to_flat_rtable(PlannerGlobal *glob, List *rteperminfos,
 	 */
 	if (newrte->rtekind == RTE_RELATION ||
 		(newrte->rtekind == RTE_SUBQUERY && OidIsValid(newrte->relid)))
+	{
 		glob->relationOids = lappend_oid(glob->relationOids, newrte->relid);
+		glob->allRelids = bms_add_member(glob->allRelids,
+										 list_length(glob->finalrtable));
+	}
 
 	/*
 	 * Add a copy of the RTEPermissionInfo, if any, corresponding to this RTE
@@ -1737,6 +1743,74 @@ set_customscan_references(PlannerInfo *root,
 }
 
 /*
+ * register_partpruneinfo
+ *		Subroutine for set_append_references and set_mergeappend_references
+ *
+ * Add the PartitionPruneInfo from root->partPruneInfos at the given index
+ * into PlannerGlobal->partPruneInfos and return its index there.
+ *
+ * Also update the RT indexes present in PartitionedRelPruneInfos to add the
+ * offset.
+ *
+ * Finally, if there are initial pruning steps, add the RT indexes of the
+ * leaf partitions to the set of relations that are prunable at execution
+ * startup time.
+ */
+static int
+register_partpruneinfo(PlannerInfo *root, int part_prune_index, int rtoffset)
+{
+	PlannerGlobal *glob = root->glob;
+	PartitionPruneInfo *pinfo;
+	ListCell   *l;
+
+	Assert(part_prune_index >= 0 &&
+		   part_prune_index < list_length(root->partPruneInfos));
+	pinfo = list_nth_node(PartitionPruneInfo, root->partPruneInfos,
+						  part_prune_index);
+
+	pinfo->relids = offset_relid_set(pinfo->relids, rtoffset);
+	foreach(l, pinfo->prune_infos)
+	{
+		List	   *prune_infos = lfirst(l);
+		ListCell   *l2;
+
+		foreach(l2, prune_infos)
+		{
+			PartitionedRelPruneInfo *prelinfo = lfirst(l2);
+			int			i;
+
+			prelinfo->rtindex += rtoffset;
+			prelinfo->initial_pruning_steps =
+				fix_scan_list(root, prelinfo->initial_pruning_steps,
+							  rtoffset, 1);
+			prelinfo->exec_pruning_steps =
+				fix_scan_list(root, prelinfo->exec_pruning_steps,
+							  rtoffset, 1);
+
+			for (i = 0; i < prelinfo->nparts; i++)
+			{
+				/*
+				 * Non-leaf partitions and partitions that do not have a
+				 * subplan are not included in this map as mentioned in
+				 * make_partitionedrel_pruneinfo().
+				 */
+				if (prelinfo->leafpart_rti_map[i])
+				{
+					prelinfo->leafpart_rti_map[i] += rtoffset;
+					if (prelinfo->initial_pruning_steps)
+						glob->prunableRelids = bms_add_member(glob->prunableRelids,
+															  prelinfo->leafpart_rti_map[i]);
+				}
+			}
+		}
+	}
+
+	glob->partPruneInfos = lappend(glob->partPruneInfos, pinfo);
+
+	return list_length(glob->partPruneInfos) - 1;
+}
+
+/*
  * set_append_references
  *		Do set_plan_references processing on an Append
  *
@@ -1788,21 +1862,13 @@ set_append_references(PlannerInfo *root,
 
 	aplan->apprelids = offset_relid_set(aplan->apprelids, rtoffset);
 
-	if (aplan->part_prune_info)
-	{
-		foreach(l, aplan->part_prune_info->prune_infos)
-		{
-			List	   *prune_infos = lfirst(l);
-			ListCell   *l2;
-
-			foreach(l2, prune_infos)
-			{
-				PartitionedRelPruneInfo *pinfo = lfirst(l2);
-
-				pinfo->rtindex += rtoffset;
-			}
-		}
-	}
+	/*
+	 * Add PartitionPruneInfo, if any, to PlannerGlobal and update the index.
+	 * Also update the RT indexes present in it to add the offset.
+	 */
+	if (aplan->part_prune_index >= 0)
+		aplan->part_prune_index =
+			register_partpruneinfo(root, aplan->part_prune_index, rtoffset);
 
 	/* We don't need to recurse to lefttree or righttree ... */
 	Assert(aplan->plan.lefttree == NULL);
@@ -1864,21 +1930,13 @@ set_mergeappend_references(PlannerInfo *root,
 
 	mplan->apprelids = offset_relid_set(mplan->apprelids, rtoffset);
 
-	if (mplan->part_prune_info)
-	{
-		foreach(l, mplan->part_prune_info->prune_infos)
-		{
-			List	   *prune_infos = lfirst(l);
-			ListCell   *l2;
-
-			foreach(l2, prune_infos)
-			{
-				PartitionedRelPruneInfo *pinfo = lfirst(l2);
-
-				pinfo->rtindex += rtoffset;
-			}
-		}
-	}
+	/*
+	 * Add PartitionPruneInfo, if any, to PlannerGlobal and update the index.
+	 * Also update the RT indexes present in it to add the offset.
+	 */
+	if (mplan->part_prune_index >= 0)
+		mplan->part_prune_index =
+			register_partpruneinfo(root, mplan->part_prune_index, rtoffset);
 
 	/* We don't need to recurse to lefttree or righttree ... */
 	Assert(mplan->plan.lefttree == NULL);
@@ -3078,6 +3136,21 @@ fix_join_expr_mutator(Node *node, fix_join_expr_context *context)
 	if (IsA(node, Var))
 	{
 		Var		   *var = (Var *) node;
+
+		/*
+		 * Verify that Vars with non-default varreturningtype only appear in
+		 * the RETURNING list, and refer to the target relation.
+		 */
+		if (var->varreturningtype != VAR_RETURNING_DEFAULT)
+		{
+			if (context->inner_itlist != NULL ||
+				context->outer_itlist == NULL ||
+				context->acceptable_rel == 0)
+				elog(ERROR, "variable returning old/new found outside RETURNING list");
+			if (var->varno != context->acceptable_rel)
+				elog(ERROR, "wrong varno %d (expected %d) for variable returning old/new",
+					 var->varno, context->acceptable_rel);
+		}
 
 		/* Look for the var in the input tlists, first in the outer */
 		if (context->outer_itlist)

@@ -3,7 +3,7 @@
  * pg_iovec.h
  *	  Header for vectored I/O functions, to use in place of <sys/uio.h>.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/port/pg_iovec.h
@@ -16,7 +16,7 @@
 #ifndef WIN32
 
 #include <limits.h>
-#include <sys/uio.h>
+#include <sys/uio.h>			/* IWYU pragma: export */
 #include <unistd.h>
 
 #else

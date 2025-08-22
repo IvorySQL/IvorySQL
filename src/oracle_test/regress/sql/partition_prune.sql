@@ -389,6 +389,21 @@ explain (costs off) select * from rparted_by_int2 where a > 100_000_000_000_000;
 
 drop table lp, coll_pruning, rlp, mc3p, mc2p, boolpart, iboolpart, boolrangep, rp, coll_pruning_multi, like_op_noprune, lparted_by_int2, rparted_by_int2;
 
+-- check that AlternativeSubPlan within a pruning expression gets cleaned up
+
+create table asptab (id int primary key) partition by range (id);
+create table asptab0 partition of asptab for values from (0) to (1);
+create table asptab1 partition of asptab for values from (1) to (2);
+
+explain (costs off)
+select * from
+  (select exists (select 1 from int4_tbl tinner where f1 = touter.f1) as b
+   from int4_tbl touter) ss,
+  asptab
+where asptab.id > ss.b::int;
+
+drop table asptab;
+
 --
 -- Test Partition pruning for HASH partitioning
 --
@@ -573,8 +588,12 @@ begin
             $1)
     loop
         ln := regexp_replace(ln, 'Workers Launched: \d+', 'Workers Launched: N');
-        ln := regexp_replace(ln, 'actual rows=\d+ loops=\d+', 'actual rows=N loops=N');
+        ln := regexp_replace(ln, 'actual rows=\d+(?:\.\d+)? loops=\d+', 'actual rows=N loops=N');
         ln := regexp_replace(ln, 'Rows Removed by Filter: \d+', 'Rows Removed by Filter: N');
+        perform regexp_matches(ln, 'Index Searches: \d+');
+        if found then
+          continue;
+        end if;
         return next ln;
     end loop;
 end;
@@ -1341,3 +1360,43 @@ drop operator class part_test_int4_ops2 using hash;
 drop operator ===(int4, int4);
 
 drop function explain_analyze(text);
+
+-- Runtime pruning on UPDATE using WITH CHECK OPTIONS and RETURNING
+create table part_abc (a int, b text, c bool) partition by list (a);
+create table part_abc_1 (b text, a int, c bool);
+create table part_abc_2 (a int, c bool, b text);
+alter table part_abc attach partition part_abc_1 for values in (1);
+alter table part_abc attach partition part_abc_2 for values in (2);
+insert into part_abc values (1, 'b', true);
+insert into part_abc values (2, 'c', true);
+create view part_abc_view as select * from part_abc where b <> 'a' with check option;
+prepare update_part_abc_view as update part_abc_view set b = $2 where a = $1 returning *;
+-- Only the unpruned partition should be shown in the list of relations to be
+-- updated
+explain (costs off) execute update_part_abc_view (1, 'd');
+execute update_part_abc_view (1, 'd');
+explain (costs off) execute update_part_abc_view (2, 'a');
+execute update_part_abc_view (2, 'a');
+-- All pruned.
+explain (costs off) execute update_part_abc_view (3, 'a');
+execute update_part_abc_view (3, 'a');
+deallocate update_part_abc_view;
+
+-- Runtime pruning on MERGE using a stable function
+create function stable_one() returns int as $$ begin return 1; end; $$ language plisql stable;
+/
+
+-- A case with nested MergeAppend with its own PartitionPruneInfo.
+create index on part_abc (a);
+alter table part_abc add d int;
+create table part_abc_3 partition of part_abc for values in (3, 4) partition by range (d);
+create table part_abc_3_1 partition of part_abc_3 for values from (minvalue) to (1);
+create table part_abc_3_2 partition of part_abc_3 for values from (1) to (100);
+create table part_abc_3_3 partition of part_abc_3 for values from (100) to (maxvalue);
+explain (costs off)
+select min(a) over (partition by a order by a) from part_abc where a >= stable_one() + 1 and d <= stable_one()
+union all
+select min(a) over (partition by a order by a) from part_abc where a >= stable_one() + 1 and d >= stable_one();
+
+drop view part_abc_view;
+drop table part_abc;

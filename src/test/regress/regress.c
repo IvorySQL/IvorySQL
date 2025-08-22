@@ -6,7 +6,7 @@
  *
  * This code is released under the terms of the PostgreSQL License.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/test/regress/regress.c
@@ -36,6 +36,7 @@
 #include "optimizer/plancat.h"
 #include "parser/parse_coerce.h"
 #include "port/atomics.h"
+#include "postmaster/postmaster.h"	/* for MAX_BACKENDS */
 #include "storage/spin.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
@@ -1018,6 +1019,56 @@ test_opclass_options_func(PG_FUNCTION_ARGS)
 	PG_RETURN_NULL();
 }
 
+/* one-time tests for encoding infrastructure */
+PG_FUNCTION_INFO_V1(test_enc_setup);
+Datum
+test_enc_setup(PG_FUNCTION_ARGS)
+{
+	/* Test pg_encoding_set_invalid() */
+	for (int i = 0; i < _PG_LAST_ENCODING_; i++)
+	{
+		char		buf[2],
+					bigbuf[16];
+		int			len,
+					mblen,
+					valid;
+
+		if (pg_encoding_max_length(i) == 1)
+			continue;
+		pg_encoding_set_invalid(i, buf);
+		len = strnlen(buf, 2);
+		if (len != 2)
+			elog(WARNING,
+				 "official invalid string for encoding \"%s\" has length %d",
+				 pg_enc2name_tbl[i].name, len);
+		mblen = pg_encoding_mblen(i, buf);
+		if (mblen != 2)
+			elog(WARNING,
+				 "official invalid string for encoding \"%s\" has mblen %d",
+				 pg_enc2name_tbl[i].name, mblen);
+		valid = pg_encoding_verifymbstr(i, buf, len);
+		if (valid != 0)
+			elog(WARNING,
+				 "official invalid string for encoding \"%s\" has valid prefix of length %d",
+				 pg_enc2name_tbl[i].name, valid);
+		valid = pg_encoding_verifymbstr(i, buf, 1);
+		if (valid != 0)
+			elog(WARNING,
+				 "first byte of official invalid string for encoding \"%s\" has valid prefix of length %d",
+				 pg_enc2name_tbl[i].name, valid);
+		memset(bigbuf, ' ', sizeof(bigbuf));
+		bigbuf[0] = buf[0];
+		bigbuf[1] = buf[1];
+		valid = pg_encoding_verifymbstr(i, bigbuf, sizeof(bigbuf));
+		if (valid != 0)
+			elog(WARNING,
+				 "trailing data changed official invalid string for encoding \"%s\" to have valid prefix of length %d",
+				 pg_enc2name_tbl[i].name, valid);
+	}
+
+	PG_RETURN_VOID();
+}
+
 /*
  * Call an encoding conversion or verification function.
  *
@@ -1157,4 +1208,32 @@ binary_coercible(PG_FUNCTION_ARGS)
 	Oid			targettype = PG_GETARG_OID(1);
 
 	PG_RETURN_BOOL(IsBinaryCoercible(srctype, targettype));
+}
+
+/*
+ * Sanity checks for functions in relpath.h
+ */
+PG_FUNCTION_INFO_V1(test_relpath);
+Datum
+test_relpath(PG_FUNCTION_ARGS)
+{
+	RelPathStr	rpath;
+
+	/*
+	 * Verify that PROCNUMBER_CHARS and MAX_BACKENDS stay in sync.
+	 * Unfortunately I don't know how to express that in a way suitable for a
+	 * static assert.
+	 */
+	if ((int) ceil(log10(MAX_BACKENDS)) != PROCNUMBER_CHARS)
+		elog(WARNING, "mismatch between MAX_BACKENDS and PROCNUMBER_CHARS");
+
+	/* verify that the max-length relpath is generated ok */
+	rpath = GetRelationPath(OID_MAX, OID_MAX, OID_MAX, MAX_BACKENDS - 1,
+							INIT_FORKNUM);
+
+	if (strlen(rpath.str) != REL_PATH_STR_MAXLEN)
+		elog(WARNING, "maximum length relpath is if length %zu instead of %zu",
+			 strlen(rpath.str), REL_PATH_STR_MAXLEN);
+
+	PG_RETURN_VOID();
 }

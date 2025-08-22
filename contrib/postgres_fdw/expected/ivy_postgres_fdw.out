@@ -4850,13 +4850,14 @@ select distinct sum(c1)/1000 s from ft2 where c2 < 6 group by c2 order by 1;
 -- WindowAgg
 explain (verbose, costs off)
 select c2, sum(c2), count(c2) over (partition by c2%2) from ft2 where c2 < 10 group by c2 order by 1;
-                               QUERY PLAN                                
--------------------------------------------------------------------------
+                               QUERY PLAN                               
+------------------------------------------------------------------------
  Sort
-   Output: c2, (sum(c2)), (count(c2) OVER (?)), ((c2 % '2'::number))
+   Output: c2, (sum(c2)), (count(c2) OVER w1), ((c2 % '2'::number))
    Sort Key: ft2.c2
    ->  WindowAgg
-         Output: c2, (sum(c2)), count(c2) OVER (?), ((c2 % '2'::number))
+         Output: c2, (sum(c2)), count(c2) OVER w1, ((c2 % '2'::number))
+         Window: w1 AS (PARTITION BY ((ft2.c2 % '2'::number)))
          ->  Sort
                Output: c2, ((c2 % '2'::number)), (sum(c2))
                Sort Key: ((ft2.c2 % '2'::number))
@@ -4867,7 +4868,7 @@ select c2, sum(c2), count(c2) over (partition by c2%2) from ft2 where c2 < 10 gr
                            Output: c2
                            Filter: (ft2.c2 < '10'::number)
                            Remote SQL: SELECT c2 FROM "S 1"."T 1"
-(15 rows)
+(16 rows)
 
 select c2, sum(c2), count(c2) over (partition by c2%2) from ft2 where c2 < 10 group by c2 order by 1;
  c2 | sum | count 
@@ -4886,13 +4887,14 @@ select c2, sum(c2), count(c2) over (partition by c2%2) from ft2 where c2 < 10 gr
 
 explain (verbose, costs off)
 select c2, array_agg(c2) over (partition by c2%2 order by c2 desc) from ft1 where c2 < 10 group by c2 order by 1;
-                            QUERY PLAN                            
-------------------------------------------------------------------
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
  Sort
-   Output: c2, (array_agg(c2) OVER (?)), ((c2 % '2'::number))
+   Output: c2, (array_agg(c2) OVER w1), ((c2 % '2'::number))
    Sort Key: ft1.c2
    ->  WindowAgg
-         Output: c2, array_agg(c2) OVER (?), ((c2 % '2'::number))
+         Output: c2, array_agg(c2) OVER w1, ((c2 % '2'::number))
+         Window: w1 AS (PARTITION BY ((ft1.c2 % '2'::number)) ORDER BY ft1.c2)
          ->  Sort
                Output: c2, ((c2 % '2'::number))
                Sort Key: ((ft1.c2 % '2'::number)), ft1.c2 DESC
@@ -4903,7 +4905,7 @@ select c2, array_agg(c2) over (partition by c2%2 order by c2 desc) from ft1 wher
                            Output: c2
                            Filter: (ft1.c2 < '10'::number)
                            Remote SQL: SELECT c2 FROM "S 1"."T 1"
-(15 rows)
+(16 rows)
 
 select c2, array_agg(c2) over (partition by c2%2 order by c2 desc) from ft1 where c2 < 10 group by c2 order by 1;
  c2 |  array_agg  
@@ -4922,13 +4924,14 @@ select c2, array_agg(c2) over (partition by c2%2 order by c2 desc) from ft1 wher
 
 explain (verbose, costs off)
 select c2, array_agg(c2) over (partition by c2%2 order by c2 range between current row and unbounded following) from ft1 where c2 < 10 group by c2 order by 1;
-                            QUERY PLAN                            
-------------------------------------------------------------------
+                                                           QUERY PLAN                                                            
+---------------------------------------------------------------------------------------------------------------------------------
  Sort
-   Output: c2, (array_agg(c2) OVER (?)), ((c2 % '2'::number))
+   Output: c2, (array_agg(c2) OVER w1), ((c2 % '2'::number))
    Sort Key: ft1.c2
    ->  WindowAgg
-         Output: c2, array_agg(c2) OVER (?), ((c2 % '2'::number))
+         Output: c2, array_agg(c2) OVER w1, ((c2 % '2'::number))
+         Window: w1 AS (PARTITION BY ((ft1.c2 % '2'::number)) ORDER BY ft1.c2 RANGE BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING)
          ->  Sort
                Output: c2, ((c2 % '2'::number))
                Sort Key: ((ft1.c2 % '2'::number)), ft1.c2
@@ -4939,7 +4942,7 @@ select c2, array_agg(c2) over (partition by c2%2 order by c2 range between curre
                            Output: c2
                            Filter: (ft1.c2 < '10'::number)
                            Remote SQL: SELECT c2 FROM "S 1"."T 1"
-(15 rows)
+(16 rows)
 
 select c2, array_agg(c2) over (partition by c2%2 order by c2 range between current row and unbounded following) from ft1 where c2 < 10 group by c2 order by 1;
  c2 |  array_agg  
@@ -5194,13 +5197,13 @@ EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st6;
 
 PREPARE st7 AS INSERT INTO ft1 (c1,c2,c3) VALUES (1001,101,'foo');
 EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st7;
-                                                                                                    QUERY PLAN                                                                                                     
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                        QUERY PLAN                                                                                                        
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Insert on public.ft1
    Remote SQL: INSERT INTO "S 1"."T 1"("C 1", c2, c3, c4, c5, c6, c7, c8) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
    Batch Size: 1
    ->  Result
-         Output: NULL::pg_catalog.int4, '1001'::number(38,0), '101'::number(38,0), 'foo'::varchar2(1024), NULL::timestamp with time zone, NULL::timestamp, NULL::varchar2, 'ft1       '::char(10), NULL::user_enum
+         Output: NULL::pg_catalog.int4, '1001'::number(38,0), '101'::number(38,0), 'foo'::varchar2(1024), NULL::timestamp with time zone, NULL::timestamp(6), NULL::varchar2(10), 'ft1       '::char(10), NULL::user_enum
 (5 rows)
 
 ALTER TABLE "S 1"."T 1" RENAME TO "T 0";
@@ -5229,13 +5232,13 @@ EXECUTE st6;
 (9 rows)
 
 EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st7;
-                                                                                                    QUERY PLAN                                                                                                     
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                        QUERY PLAN                                                                                                        
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Insert on public.ft1
    Remote SQL: INSERT INTO "S 1"."T 0"("C 1", c2, c3, c4, c5, c6, c7, c8) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
    Batch Size: 1
    ->  Result
-         Output: NULL::pg_catalog.int4, '1001'::number(38,0), '101'::number(38,0), 'foo'::varchar2(1024), NULL::timestamp with time zone, NULL::timestamp, NULL::varchar2, 'ft1       '::char(10), NULL::user_enum
+         Output: NULL::pg_catalog.int4, '1001'::number(38,0), '101'::number(38,0), 'foo'::varchar2(1024), NULL::timestamp with time zone, NULL::timestamp(6), NULL::varchar2(10), 'ft1       '::char(10), NULL::user_enum
 (5 rows)
 
 ALTER TABLE "S 1"."T 0" RENAME TO "T 1";
@@ -5973,13 +5976,13 @@ SELECT ft1.c1 FROM ft1 JOIN ft2 on ft1.c1 = ft2.c1 WHERE
 -- ===================================================================
 EXPLAIN (verbose, costs off)
 INSERT INTO ft2 (c1,c2,c3) SELECT c1+1000,c2+100, c3 || c3 FROM ft2 LIMIT 20;
-                                                                                                        QUERY PLAN                                                                                                        
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                           QUERY PLAN                                                                                                            
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Insert on public.ft2
    Remote SQL: INSERT INTO "S 1"."T 1"("C 1", c2, c3, c4, c5, c6, c7, c8) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
    Batch Size: 1
    ->  Subquery Scan on "*SELECT*"
-         Output: "*SELECT*"."?column?", "*SELECT*"."?column?_1", NULL::pg_catalog.int4, "*SELECT*"."?column?_2", NULL::timestamp with time zone, NULL::timestamp, NULL::varchar2, 'ft2       '::char(10), NULL::user_enum
+         Output: "*SELECT*"."?column?", "*SELECT*"."?column?_1", NULL::pg_catalog.int4, "*SELECT*"."?column?_2", NULL::timestamp with time zone, NULL::timestamp(6), NULL::varchar2(10), 'ft2       '::char(10), NULL::user_enum
          ->  Foreign Scan on public.ft2 ft2_1
                Output: (ft2_1.c1 + '1000'::number), (ft2_1.c2 + '100'::number), ((ft2_1.c3)::text || (ft2_1.c3)::text)
                Remote SQL: SELECT "C 1", c2, c3 FROM "S 1"."T 1" LIMIT 20::pg_catalog.int8
@@ -7120,14 +7123,14 @@ SELECT c1,c2,c3,c4 FROM ft2 ORDER BY c1;
 
 EXPLAIN (verbose, costs off)
 INSERT INTO ft2 (c1,c2,c3) VALUES (1200,999,'foo') RETURNING tableoid::regclass;
-                                                                                                    QUERY PLAN                                                                                                     
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                        QUERY PLAN                                                                                                        
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Insert on public.ft2
    Output: (ft2.tableoid)::regclass
    Remote SQL: INSERT INTO "S 1"."T 1"("C 1", c2, c3, c4, c5, c6, c7, c8) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
    Batch Size: 1
    ->  Result
-         Output: '1200'::number(38,0), '999'::number(38,0), NULL::pg_catalog.int4, 'foo'::varchar2(1024), NULL::timestamp with time zone, NULL::timestamp, NULL::varchar2, 'ft2       '::char(10), NULL::user_enum
+         Output: '1200'::number(38,0), '999'::number(38,0), NULL::pg_catalog.int4, 'foo'::varchar2(1024), NULL::timestamp with time zone, NULL::timestamp(6), NULL::varchar2(10), 'ft2       '::char(10), NULL::user_enum
 (6 rows)
 
 INSERT INTO ft2 (c1,c2,c3) VALUES (1200,999,'foo') RETURNING tableoid::regclass;
@@ -8331,67 +8334,69 @@ select * from rem1;
 -- test generated columns
 -- ===================================================================
 create table gloc1 (
-  a number(38,0),
-  b number(38,0) generated always as (a * 2) stored);
+  a int,
+  b int generated always as (a * 2) stored,
+  c int
+);
 alter table gloc1 set (autovacuum_enabled = 'false');
 create foreign table grem1 (
-  a number(38,0),
-  b number(38,0) generated always as (a * 2) stored)
-  server loopback options(table_name 'gloc1');
+  a int,
+  b int generated always as (a * 2) stored,
+  c int generated always as (a * 3) virtual
+) server loopback options(table_name 'gloc1');
 explain (verbose, costs off)
 insert into grem1 (a) values (1), (2);
-                            QUERY PLAN                             
--------------------------------------------------------------------
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
  Insert on public.grem1
-   Remote SQL: INSERT INTO public.gloc1(a, b) VALUES ($1, DEFAULT)
+   Remote SQL: INSERT INTO public.gloc1(a, b, c) VALUES ($1, DEFAULT, DEFAULT)
    Batch Size: 1
    ->  Values Scan on "*VALUES*"
-         Output: "*VALUES*".column1, NULL::number
+         Output: "*VALUES*".column1, NULL::pg_catalog.int4, NULL::pg_catalog.int4
 (5 rows)
 
 insert into grem1 (a) values (1), (2);
 explain (verbose, costs off)
 update grem1 set a = 22 where a = 2;
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
  Update on public.grem1
-   Remote SQL: UPDATE public.gloc1 SET a = $2, b = DEFAULT WHERE ctid = $1
+   Remote SQL: UPDATE public.gloc1 SET a = $2, b = DEFAULT, c = DEFAULT WHERE ctid = $1
    ->  Foreign Scan on public.grem1
-         Output: '22'::number(38,0), ctid, grem1.*
-         Filter: (grem1.a = '2'::number)
-         Remote SQL: SELECT a, b, ctid FROM public.gloc1 FOR UPDATE
-(6 rows)
+         Output: 22, ctid, grem1.*
+         Remote SQL: SELECT a, b, c, ctid FROM public.gloc1 WHERE ((a = 2)) FOR UPDATE
+(5 rows)
 
 update grem1 set a = 22 where a = 2;
 select * from gloc1;
- a  | b  
-----+----
- 1  | 2
- 22 | 44
+ a  | b  | c 
+----+----+---
+  1 |  2 |  
+ 22 | 44 |  
 (2 rows)
 
 select * from grem1;
- a  | b  
-----+----
- 1  | 2
- 22 | 44
+ a  | b  | c  
+----+----+----
+  1 |  2 |  3
+ 22 | 44 | 66
 (2 rows)
 
 delete from grem1;
 -- test copy from
 copy grem1 from stdin;
 select * from gloc1;
- a | b 
----+---
- 1 | 2
- 2 | 4
+ a | b | c 
+---+---+---
+ 1 | 2 |  
+ 2 | 4 |  
 (2 rows)
 
 select * from grem1;
- a | b 
----+---
- 1 | 2
- 2 | 4
+ a | b | c 
+---+---+---
+ 1 | 2 | 3
+ 2 | 4 | 6
 (2 rows)
 
 delete from grem1;
@@ -8399,28 +8404,28 @@ delete from grem1;
 alter server loopback options (add batch_size '10');
 explain (verbose, costs off)
 insert into grem1 (a) values (1), (2);
-                            QUERY PLAN                             
--------------------------------------------------------------------
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
  Insert on public.grem1
-   Remote SQL: INSERT INTO public.gloc1(a, b) VALUES ($1, DEFAULT)
+   Remote SQL: INSERT INTO public.gloc1(a, b, c) VALUES ($1, DEFAULT, DEFAULT)
    Batch Size: 10
    ->  Values Scan on "*VALUES*"
-         Output: "*VALUES*".column1, NULL::number
+         Output: "*VALUES*".column1, NULL::pg_catalog.int4, NULL::pg_catalog.int4
 (5 rows)
 
 insert into grem1 (a) values (1), (2);
 select * from gloc1;
- a | b 
----+---
- 1 | 2
- 2 | 4
+ a | b | c 
+---+---+---
+ 1 | 2 |  
+ 2 | 4 |  
 (2 rows)
 
 select * from grem1;
- a | b 
----+---
- 1 | 2
- 2 | 4
+ a | b | c 
+---+---+---
+ 1 | 2 | 3
+ 2 | 4 | 6
 (2 rows)
 
 delete from grem1;
@@ -11509,7 +11514,7 @@ CREATE FOREIGN TABLE pg_temp.ft1_nopw (
 ) SERVER loopback_nopw OPTIONS (schema_name 'public', table_name 'ft1');
 SELECT 1 FROM ft1_nopw LIMIT 1;
 ERROR:  password or GSSAPI delegated credentials required
-DETAIL:  Non-superusers must delegate GSSAPI credentials or provide a password in the user mapping.
+DETAIL:  Non-superusers must delegate GSSAPI credentials, provide a password, or enable SCRAM pass-through in user mapping.
 -- If we add a password to the connstr it'll fail, because we don't allow passwords
 -- in connstrs only in user mappings.
 ALTER SERVER loopback_nopw OPTIONS (ADD password 'dummypw');
@@ -11559,7 +11564,7 @@ DROP USER MAPPING FOR CURRENT_USER SERVER loopback_nopw;
 -- lacks password_required=false
 SELECT 1 FROM ft1_nopw LIMIT 1;
 ERROR:  password or GSSAPI delegated credentials required
-DETAIL:  Non-superusers must delegate GSSAPI credentials or provide a password in the user mapping.
+DETAIL:  Non-superusers must delegate GSSAPI credentials, provide a password, or enable SCRAM pass-through in user mapping.
 RESET ROLE;
 -- The user mapping for public is passwordless and lacks the password_required=false
 -- mapping option, but will work because the current user is a superuser.
@@ -11682,13 +11687,18 @@ drop cascades to foreign table ft7
 -- List all the existing cached connections. loopback and loopback3
 -- should be output as invalid connections. Also the server name and user name
 -- for loopback3 should be NULL because both server and user mapping were
--- dropped.
-SELECT server_name, user_name = CURRENT_USER as "user_name = CURRENT_USER", valid, used_in_xact, closed
-FROM postgres_fdw_get_connections() ORDER BY 1;
- server_name | user_name = CURRENT_USER | valid | used_in_xact | closed 
--------------+--------------------------+-------+--------------+--------
- loopback    | t                        | f     | t            | 
-             |                          | f     | t            | 
+-- dropped. In this test, the PIDs of remote backends can be gathered from
+-- pg_stat_activity, and remote_backend_pid should match one of those PIDs.
+SELECT server_name, user_name = CURRENT_USER as "user_name = CURRENT_USER",
+  valid, used_in_xact, closed,
+  remote_backend_pid = ANY(SELECT pid FROM pg_stat_activity
+  WHERE backend_type = 'client backend' AND pid <> pg_backend_pid())
+  as remote_backend_pid
+  FROM postgres_fdw_get_connections() ORDER BY 1;
+ server_name | user_name = CURRENT_USER | valid | used_in_xact | closed | remote_backend_pid 
+-------------+--------------------------+-------+--------------+--------+--------------------
+ loopback    | t                        | f     | t            |        | t
+             |                          | f     | t            |        | t
 (2 rows)
 
 -- The invalid connections get closed in pgfdw_xact_callback during commit.
@@ -12797,17 +12807,17 @@ SELECT * FROM local_tbl, async_pt WHERE local_tbl.a = async_pt.a AND local_tbl.c
 
 EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)
 SELECT * FROM local_tbl, async_pt WHERE local_tbl.a = async_pt.a AND local_tbl.c = 'bar';
-                                   QUERY PLAN                                    
----------------------------------------------------------------------------------
- Hash Join (actual rows=1 loops=1)
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Hash Join (actual rows=1.00 loops=1)
    Hash Cond: (async_pt.a = local_tbl.a)
-   ->  Append (actual rows=600 loops=1)
-         ->  Async Foreign Scan on async_p1 async_pt_1 (actual rows=200 loops=1)
-         ->  Async Foreign Scan on async_p2 async_pt_2 (actual rows=200 loops=1)
-         ->  Seq Scan on async_p3 async_pt_3 (actual rows=200 loops=1)
-   ->  Hash (actual rows=1 loops=1)
+   ->  Append (actual rows=600.00 loops=1)
+         ->  Async Foreign Scan on async_p1 async_pt_1 (actual rows=200.00 loops=1)
+         ->  Async Foreign Scan on async_p2 async_pt_2 (actual rows=200.00 loops=1)
+         ->  Seq Scan on async_p3 async_pt_3 (actual rows=200.00 loops=1)
+   ->  Hash (actual rows=1.00 loops=1)
          Buckets: 1024  Batches: 1  Memory Usage: 9kB
-         ->  Seq Scan on local_tbl (actual rows=1 loops=1)
+         ->  Seq Scan on local_tbl (actual rows=1.00 loops=1)
                Filter: (c = 'bar'::varchar2)
                Rows Removed by Filter: 1
 (11 rows)
@@ -13069,23 +13079,23 @@ SELECT * FROM local_tbl t1 LEFT JOIN (SELECT *, (SELECT count(*) FROM async_pt W
 
 EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)
 SELECT * FROM local_tbl t1 LEFT JOIN (SELECT *, (SELECT count(*) FROM async_pt WHERE a < 3000) FROM async_pt WHERE a < 3000) t2 ON t1.a = t2.a;
-                                       QUERY PLAN                                        
------------------------------------------------------------------------------------------
- Nested Loop Left Join (actual rows=1 loops=1)
+                                         QUERY PLAN                                         
+--------------------------------------------------------------------------------------------
+ Nested Loop Left Join (actual rows=1.00 loops=1)
    Join Filter: (t1.a = async_pt.a)
    Rows Removed by Join Filter: 399
    InitPlan 1
-     ->  Aggregate (actual rows=1 loops=1)
-           ->  Append (actual rows=400 loops=1)
-                 ->  Async Foreign Scan on async_p1 async_pt_4 (actual rows=200 loops=1)
+     ->  Aggregate (actual rows=1.00 loops=1)
+           ->  Append (actual rows=400.00 loops=1)
+                 ->  Async Foreign Scan on async_p1 async_pt_4 (actual rows=200.00 loops=1)
                        Filter: (a < '3000'::number)
-                 ->  Async Foreign Scan on async_p2 async_pt_5 (actual rows=200 loops=1)
+                 ->  Async Foreign Scan on async_p2 async_pt_5 (actual rows=200.00 loops=1)
                        Filter: (a < '3000'::number)
-   ->  Seq Scan on local_tbl t1 (actual rows=1 loops=1)
-   ->  Append (actual rows=400 loops=1)
-         ->  Async Foreign Scan on async_p1 async_pt_1 (actual rows=200 loops=1)
+   ->  Seq Scan on local_tbl t1 (actual rows=1.00 loops=1)
+   ->  Append (actual rows=400.00 loops=1)
+         ->  Async Foreign Scan on async_p1 async_pt_1 (actual rows=200.00 loops=1)
                Filter: (a < '3000'::number)
-         ->  Async Foreign Scan on async_p2 async_pt_2 (actual rows=200 loops=1)
+         ->  Async Foreign Scan on async_p2 async_pt_2 (actual rows=200.00 loops=1)
                Filter: (a < '3000'::number)
 (16 rows)
 
@@ -13117,15 +13127,15 @@ SELECT * FROM async_pt t1 WHERE t1.b === 505 LIMIT 1;
 
 EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)
 SELECT * FROM async_pt t1 WHERE t1.b === 505 LIMIT 1;
-                               QUERY PLAN                                
--------------------------------------------------------------------------
- Limit (actual rows=1 loops=1)
-   ->  Append (actual rows=1 loops=1)
-         ->  Async Foreign Scan on async_p1 t1_1 (actual rows=0 loops=1)
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
+ Limit (actual rows=1.00 loops=1)
+   ->  Append (actual rows=1.00 loops=1)
+         ->  Async Foreign Scan on async_p1 t1_1 (actual rows=0.00 loops=1)
                Filter: (b === '505'::number)
-         ->  Async Foreign Scan on async_p2 t1_2 (actual rows=0 loops=1)
+         ->  Async Foreign Scan on async_p2 t1_2 (actual rows=0.00 loops=1)
                Filter: (b === '505'::number)
-         ->  Seq Scan on async_p3 t1_3 (actual rows=1 loops=1)
+         ->  Seq Scan on async_p3 t1_3 (actual rows=1.00 loops=1)
                Filter: (b === '505'::number)
                Rows Removed by Filter: 101
 (9 rows)
@@ -13290,12 +13300,12 @@ DELETE FROM async_p2;
 DELETE FROM async_p3;
 EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)
 SELECT * FROM async_pt;
-                               QUERY PLAN                                
--------------------------------------------------------------------------
- Append (actual rows=0 loops=1)
-   ->  Async Foreign Scan on async_p1 async_pt_1 (actual rows=0 loops=1)
-   ->  Async Foreign Scan on async_p2 async_pt_2 (actual rows=0 loops=1)
-   ->  Seq Scan on async_p3 async_pt_3 (actual rows=0 loops=1)
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
+ Append (actual rows=0.00 loops=1)
+   ->  Async Foreign Scan on async_p1 async_pt_1 (actual rows=0.00 loops=1)
+   ->  Async Foreign Scan on async_p2 async_pt_2 (actual rows=0.00 loops=1)
+   ->  Seq Scan on async_p3 async_pt_3 (actual rows=0.00 loops=1)
 (4 rows)
 
 -- Clean up
@@ -13606,25 +13616,34 @@ SELECT 1 FROM ft1 LIMIT 1;
 
 -- Since the remote server is still connected, "closed" should be FALSE,
 -- or NULL if the connection status check is not available.
-SELECT CASE WHEN closed IS NOT true THEN 1 ELSE 0 END
+-- In this test, the remote backend handling this connection should have
+-- application_name set to "fdw_conn_check", so remote_backend_pid should
+-- match the PID from the pg_stat_activity entry with that application_name.
+SELECT server_name,
+  CASE WHEN closed IS NOT true THEN false ELSE true END AS closed,
+  remote_backend_pid = (SELECT pid FROM pg_stat_activity
+  WHERE application_name = 'fdw_conn_check') AS remote_backend_pid
   FROM postgres_fdw_get_connections(true);
- case 
-------
-    1
+ server_name | closed | remote_backend_pid 
+-------------+--------+--------------------
+ loopback    | f      | t
 (1 row)
 
 -- After terminating the remote backend, since the connection is closed,
 -- "closed" should be TRUE, or NULL if the connection status check
--- is not available.
+-- is not available. Despite the termination, remote_backend_pid should
+-- still show the non-zero PID of the terminated remote backend.
 DO $$ BEGIN
 PERFORM pg_terminate_backend(pid, 180000) FROM pg_stat_activity
   WHERE application_name = 'fdw_conn_check';
 END $$;
-SELECT CASE WHEN closed IS NOT false THEN 1 ELSE 0 END
+SELECT server_name,
+  CASE WHEN closed IS NOT false THEN true ELSE false END AS closed,
+  remote_backend_pid <> 0 AS remote_backend_pid
   FROM postgres_fdw_get_connections(true);
- case 
-------
-    1
+ server_name | closed | remote_backend_pid 
+-------------+--------+--------------------
+ loopback    | t      | t
 (1 row)
 
 -- Clean up

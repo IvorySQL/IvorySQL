@@ -194,6 +194,7 @@ with_systemd	= @with_systemd@
 with_gssapi	= @with_gssapi@
 with_krb_srvnam	= @with_krb_srvnam@
 with_ldap	= @with_ldap@
+with_libcurl	= @with_libcurl@
 with_libxml	= @with_libxml@
 with_libxslt	= @with_libxslt@
 with_llvm	= @with_llvm@
@@ -486,6 +487,7 @@ cd $(srcdir) && \
    PATH="$(bindir):$(CURDIR):$$PATH" \
    PGPORT='6$(DEF_PGPORT)' top_builddir='$(CURDIR)/$(top_builddir)' \
    PG_REGRESS='$(CURDIR)/$(top_builddir)/src/test/regress/pg_regress' \
+   share_contrib_dir='$(DESTDIR)$(datadir)/$(datamoduledir)' \
    $(PROVE) $(PG_PROVE_FLAGS) $(PROVE_FLAGS) $(if $(PROVE_TESTS),$(PROVE_TESTS),t/*.pl)
 endef
 #IvorySQL:BEGIN - SQL oracle_test
@@ -541,6 +543,7 @@ cd $(srcdir) && \
    $(with_temp_install) \
    PGPORT='6$(DEF_PGPORT)' top_builddir='$(CURDIR)/$(top_builddir)' \
    PG_REGRESS='$(CURDIR)/$(top_builddir)/src/test/regress/pg_regress' \
+   share_contrib_dir='$(abs_top_builddir)/tmp_install$(datadir)/$(datamoduledir)' \
    $(PROVE) $(PG_PROVE_FLAGS) $(PROVE_FLAGS) $(if $(PROVE_TESTS),$(PROVE_TESTS),t/*.pl)
 endef
 #IvorySQL:BEGIN - SQL oracle_test
@@ -925,7 +928,6 @@ TAS         = @TAS@
 %.c: %.l
 	$(FLEX) $(if $(FLEX_NO_BACKUP),-b) $(FLEXFLAGS) -o'$@' $<
 	@$(if $(FLEX_NO_BACKUP),if [ `wc -l <lex.backup` -eq 1 ]; then rm lex.backup; else echo "Scanner requires backup; see lex.backup." 1>&2; exit 1; fi)
-	$(if $(FLEX_FIX_WARNING),$(PERL) $(top_srcdir)/src/tools/fix-old-flex-code.pl '$@')
 
 %.c: %.y
 	$(if $(BISON_CHECK_CMD),$(BISON_CHECK_CMD))

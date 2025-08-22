@@ -3,7 +3,7 @@
  * pg_constraint.c
  *	  routines to support manipulation of the pg_constraint relation
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -53,6 +53,7 @@ CreateConstraintEntry(const char *constraintName,
 					  char constraintType,
 					  bool isDeferrable,
 					  bool isDeferred,
+					  bool isEnforced,
 					  bool isValidated,
 					  Oid parentConstrId,
 					  Oid relId,
@@ -98,6 +99,11 @@ CreateConstraintEntry(const char *constraintName,
 	ObjectAddress conobject;
 	ObjectAddresses *addrs_auto;
 	ObjectAddresses *addrs_normal;
+
+	/* Only CHECK constraint can be not enforced */
+	Assert(isEnforced || constraintType == CONSTRAINT_CHECK);
+	/* NOT ENFORCED constraint must be NOT VALID */
+	Assert(isEnforced || !isValidated);
 
 	conDesc = table_open(ConstraintRelationId, RowExclusiveLock);
 
@@ -182,6 +188,7 @@ CreateConstraintEntry(const char *constraintName,
 	values[Anum_pg_constraint_contype - 1] = CharGetDatum(constraintType);
 	values[Anum_pg_constraint_condeferrable - 1] = BoolGetDatum(isDeferrable);
 	values[Anum_pg_constraint_condeferred - 1] = BoolGetDatum(isDeferred);
+	values[Anum_pg_constraint_conenforced - 1] = BoolGetDatum(isEnforced);
 	values[Anum_pg_constraint_convalidated - 1] = BoolGetDatum(isValidated);
 	values[Anum_pg_constraint_conrelid - 1] = ObjectIdGetDatum(relId);
 	values[Anum_pg_constraint_contypid - 1] = ObjectIdGetDatum(domainId);
@@ -822,6 +829,7 @@ RelationGetNotNullConstraints(Oid relid, bool cooked, bool include_noinh)
 			cooked->name = pstrdup(NameStr(conForm->conname));
 			cooked->attnum = colnum;
 			cooked->expr = NULL;
+			cooked->is_enforced = true;
 			cooked->skip_validation = false;
 			cooked->is_local = true;
 			cooked->inhcount = 0;
@@ -841,6 +849,7 @@ RelationGetNotNullConstraints(Oid relid, bool cooked, bool include_noinh)
 			constr->location = -1;
 			constr->keys = list_make1(makeString(get_attname(relid, colnum,
 															 false)));
+			constr->is_enforced = true;
 			constr->skip_validation = false;
 			constr->initially_valid = true;
 			constr->is_no_inherit = conForm->connoinherit;
@@ -1600,7 +1609,7 @@ DeconstructFkConstraintRow(HeapTuple tuple, int *numfks,
 }
 
 /*
- * FindFkPeriodOpers -
+ * FindFKPeriodOpers -
  *
  * Looks up the operator oids used for the PERIOD part of a temporal foreign key.
  * The opclass should be the opclass of that PERIOD element.
@@ -1609,11 +1618,14 @@ DeconstructFkConstraintRow(HeapTuple tuple, int *numfks,
  * aggedcontainedbyoperoid is also a ContainedBy operator,
  * but one whose rhs is a multirange.
  * That way foreign keys can compare fkattr <@ range_agg(pkattr).
+ * intersectoperoid is used by NO ACTION constraints to trim the range being considered
+ * to just what was updated/deleted.
  */
 void
 FindFKPeriodOpers(Oid opclass,
 				  Oid *containedbyoperoid,
-				  Oid *aggedcontainedbyoperoid)
+				  Oid *aggedcontainedbyoperoid,
+				  Oid *intersectoperoid)
 {
 	Oid			opfamily = InvalidOid;
 	Oid			opcintype = InvalidOid;
@@ -1638,22 +1650,34 @@ FindFKPeriodOpers(Oid opclass,
 	 * of the old value, then we can treat the attribute as if it didn't
 	 * change, and skip the RI check.
 	 */
-	strat = RTContainedByStrategyNumber;
-	GetOperatorFromWellKnownStrategy(opclass,
-									 InvalidOid,
-									 containedbyoperoid,
-									 &strat);
+	GetOperatorFromCompareType(opclass,
+							   InvalidOid,
+							   COMPARE_CONTAINED_BY,
+							   containedbyoperoid,
+							   &strat);
 
 	/*
 	 * Now look up the ContainedBy operator. Its left arg must be the type of
 	 * the column (or rather of the opclass). Its right arg must match the
 	 * return type of the support proc.
 	 */
-	strat = RTContainedByStrategyNumber;
-	GetOperatorFromWellKnownStrategy(opclass,
-									 ANYMULTIRANGEOID,
-									 aggedcontainedbyoperoid,
-									 &strat);
+	GetOperatorFromCompareType(opclass,
+							   ANYMULTIRANGEOID,
+							   COMPARE_CONTAINED_BY,
+							   aggedcontainedbyoperoid,
+							   &strat);
+
+	switch (opcintype)
+	{
+		case ANYRANGEOID:
+			*intersectoperoid = OID_RANGE_INTERSECT_RANGE_OP;
+			break;
+		case ANYMULTIRANGEOID:
+			*intersectoperoid = OID_MULTIRANGE_INTERSECT_MULTIRANGE_OP;
+			break;
+		default:
+			elog(ERROR, "unexpected opcintype: %u", opcintype);
+	}
 }
 
 /*

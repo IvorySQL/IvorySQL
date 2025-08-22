@@ -3,7 +3,7 @@
  * parse_agg.c
  *	  handle aggregates and window functions in parser
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -2052,7 +2052,7 @@ resolve_aggregate_transtype(Oid aggfuncid,
 
 /*
  * agg_args_support_sendreceive
- *		Returns true if all non-byval of aggref's arg types have send and
+ *		Returns true if all non-byval types of aggref's args have send and
  *		receive functions.
  */
 bool
@@ -2066,6 +2066,15 @@ agg_args_support_sendreceive(Aggref *aggref)
 		Form_pg_type pt;
 		TargetEntry *tle = (TargetEntry *) lfirst(lc);
 		Oid			type = exprType((Node *) tle->expr);
+
+		/*
+		 * RECORD is a special case: it has typsend/typreceive functions, but
+		 * record_recv only works if passed the correct typmod to identify the
+		 * specific anonymous record type.  array_agg_deserialize cannot do
+		 * that, so we have to disclaim support for the case.
+		 */
+		if (type == RECORDOID)
+			return false;
 
 		typeTuple = SearchSysCache1(TYPEOID, ObjectIdGetDatum(type));
 		if (!HeapTupleIsValid(typeTuple))

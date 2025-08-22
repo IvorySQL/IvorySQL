@@ -2,7 +2,7 @@
  * relation.c
  *	   PostgreSQL logical replication relation mapping cache
  *
- * Copyright (c) 2016-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/replication/logical/relation.c
@@ -27,6 +27,7 @@
 #include "replication/logicalrelation.h"
 #include "replication/worker_internal.h"
 #include "utils/inval.h"
+#include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
 
@@ -835,7 +836,10 @@ IsIndexUsableForReplicaIdentityFull(Relation idxrel, AttrMap *attrmap)
 	/* Ensure that the index has a valid equal strategy for each key column */
 	for (int i = 0; i < idxrel->rd_index->indnkeyatts; i++)
 	{
-		if (get_equal_strategy_number(indclass->values[i]) == InvalidStrategy)
+		Oid			opfamily;
+
+		opfamily = get_opclass_family(indclass->values[i]);
+		if (IndexAmTranslateCompareType(COMPARE_EQ, idxrel->rd_rel->relam, opfamily, true) == InvalidStrategy)
 			return false;
 	}
 

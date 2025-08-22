@@ -20,17 +20,17 @@ setup	{
 	SELECT injection_points_attach('injection-points-wait', 'wait');
 }
 step wait1	{ SELECT injection_points_run('injection-points-wait'); }
+step noop1	{ }
 
 session s2
 step wakeup2	{ SELECT injection_points_wakeup('injection-points-wait'); }
 step detach2	{ SELECT injection_points_detach('injection-points-wait'); }
 
-# Detach after wait and wakeup.
-# Permutations like the following one commented out should be avoided, as
-# the detach may finish before the SQL function doing the wait returns
-# its result.  It is recommended to use wakeups as the last permutation
-# should a wait be done within an SQL function.
-#permutation wait1 wakeup2 detach2
+# Detach after wait and wakeup.  Note that the detach may finish before
+# the SQL function doing the wait returns its result.  In order to avoid
+# any ordering issues, a no-op step is added after the wait, so as the
+# detach is not launched until the wait has completed.
+permutation wait1 wakeup2 noop1 detach2
 
 # Detach before wakeup.  s1 waits until wakeup, ignores the detach.
 permutation wait1 detach2 wakeup2

@@ -3,7 +3,7 @@
  *	   Functionality for synchronizing slots to a standby server from the
  *         primary server.
  *
- * Copyright (c) 2024, PostgreSQL Global Development Group
+ * Copyright (c) 2024-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/replication/logical/slotsync.c
@@ -446,7 +446,7 @@ drop_local_obsolete_slots(List *remote_slot_list)
 
 			if (synced_slot)
 			{
-				ReplicationSlotAcquire(NameStr(local_slot->data.name), true);
+				ReplicationSlotAcquire(NameStr(local_slot->data.name), true, false);
 				ReplicationSlotDropAcquired();
 			}
 
@@ -665,7 +665,7 @@ synchronize_one_slot(RemoteSlot *remote_slot, Oid remote_dbid)
 		 * pre-check to ensure that at least one of the slot properties is
 		 * changed before acquiring the slot.
 		 */
-		ReplicationSlotAcquire(remote_slot->name, true);
+		ReplicationSlotAcquire(remote_slot->name, true, false);
 
 		Assert(slot == MyReplicationSlot);
 
@@ -1326,7 +1326,7 @@ reset_syncing_flag()
  * information periodically in order to create and sync the slots.
  */
 void
-ReplSlotSyncWorkerMain(char *startup_data, size_t startup_data_len)
+ReplSlotSyncWorkerMain(const void *startup_data, size_t startup_data_len)
 {
 	WalReceiverConn *wrconn = NULL;
 	char	   *dbname;
@@ -1541,9 +1541,7 @@ update_synced_slots_inactive_since(void)
 			if (now == 0)
 				now = GetCurrentTimestamp();
 
-			SpinLockAcquire(&s->mutex);
-			s->inactive_since = now;
-			SpinLockRelease(&s->mutex);
+			ReplicationSlotSetInactiveSince(s, now, true);
 		}
 	}
 

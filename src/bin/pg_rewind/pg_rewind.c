@@ -3,7 +3,7 @@
  * pg_rewind.c
  *	  Synchronizes a PostgreSQL data directory to a new timeline
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  *
  *-------------------------------------------------------------------------
  */
@@ -451,7 +451,8 @@ main(int argc, char **argv)
 		pg_log_info("no rewind required");
 		if (writerecoveryconf && !dry_run)
 			WriteRecoveryConfig(conn, datadir_target,
-								GenerateRecoveryConfig(conn, NULL, NULL));
+								GenerateRecoveryConfig(conn, NULL,
+													   GetDbnameFromConnectionOptions(connstr_source)));
 		exit(0);
 	}
 
@@ -528,7 +529,8 @@ main(int argc, char **argv)
 	/* Also update the standby configuration, if requested. */
 	if (writerecoveryconf && !dry_run)
 		WriteRecoveryConfig(conn, datadir_target,
-							GenerateRecoveryConfig(conn, NULL, NULL));
+							GenerateRecoveryConfig(conn, NULL,
+												   GetDbnameFromConnectionOptions(connstr_source)));
 
 	/* don't need the source connection anymore */
 	source->destroy(source);
@@ -1007,7 +1009,7 @@ checkControlFile(ControlFileData *ControlFile)
 
 	/* Calculate CRC */
 	INIT_CRC32C(crc);
-	COMP_CRC32C(crc, (char *) ControlFile, offsetof(ControlFileData, crc));
+	COMP_CRC32C(crc, ControlFile, offsetof(ControlFileData, crc));
 	FIN_CRC32C(crc);
 
 	/* And simply compare it */

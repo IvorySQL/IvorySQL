@@ -34,8 +34,8 @@
  * in the file to be read or written while holding only shared lock.
  *
  *
- * Copyright (c) 2008-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Copyright (c) 2008-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/pg_stat_statements/pg_stat_statements.c
@@ -192,6 +192,7 @@ typedef struct Counters
 	int64		wal_records;	/* # of WAL records generated */
 	int64		wal_fpi;		/* # of WAL full page images generated */
 	uint64		wal_bytes;		/* total amount of WAL generated in bytes */
+	int64		wal_buffers_full;	/* # of times the WAL buffers became full */
 	int64		jit_functions;	/* total number of JIT functions emitted */
 	double		jit_generation_time;	/* total time to generate jit code */
 	int64		jit_inlining_count; /* number of times inlining time has been
@@ -337,7 +338,7 @@ static PlannedStmt *pgss_planner(Query *parse,
 								 const char *query_string,
 								 int cursorOptions,
 								 ParamListInfo boundParams);
-static void pgss_ExecutorStart(QueryDesc *queryDesc, int eflags);
+static bool pgss_ExecutorStart(QueryDesc *queryDesc, int eflags);
 static void pgss_ExecutorRun(QueryDesc *queryDesc,
 							 ScanDirection direction,
 							 uint64 count);
@@ -993,13 +994,19 @@ pgss_planner(Query *parse,
 /*
  * ExecutorStart hook: start up tracking if needed
  */
-static void
+static bool
 pgss_ExecutorStart(QueryDesc *queryDesc, int eflags)
 {
+	bool		plan_valid;
+
 	if (prev_ExecutorStart)
-		prev_ExecutorStart(queryDesc, eflags);
+		plan_valid = prev_ExecutorStart(queryDesc, eflags);
 	else
-		standard_ExecutorStart(queryDesc, eflags);
+		plan_valid = standard_ExecutorStart(queryDesc, eflags);
+
+	/* The plan may have become invalid during standard_ExecutorStart() */
+	if (!plan_valid)
+		return false;
 
 	/*
 	 * If query has queryId zero, don't track it.  This prevents double
@@ -1022,6 +1029,8 @@ pgss_ExecutorStart(QueryDesc *queryDesc, int eflags)
 			MemoryContextSwitchTo(oldcxt);
 		}
 	}
+
+	return true;
 }
 
 /*
@@ -1472,6 +1481,7 @@ pgss_store(const char *query, uint64 queryId,
 		entry->counters.wal_records += walusage->wal_records;
 		entry->counters.wal_fpi += walusage->wal_fpi;
 		entry->counters.wal_bytes += walusage->wal_bytes;
+		entry->counters.wal_buffers_full += walusage->wal_buffers_full;
 		if (jitusage)
 		{
 			entry->counters.jit_functions += jitusage->created_functions;
@@ -1564,8 +1574,8 @@ pg_stat_statements_reset(PG_FUNCTION_ARGS)
 #define PG_STAT_STATEMENTS_COLS_V1_9	33
 #define PG_STAT_STATEMENTS_COLS_V1_10	43
 #define PG_STAT_STATEMENTS_COLS_V1_11	49
-#define PG_STAT_STATEMENTS_COLS_V1_12	51
-#define PG_STAT_STATEMENTS_COLS			51	/* maximum of above */
+#define PG_STAT_STATEMENTS_COLS_V1_12	52
+#define PG_STAT_STATEMENTS_COLS			52	/* maximum of above */
 
 /*
  * Retrieve statement statistics.
@@ -1961,6 +1971,10 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 											ObjectIdGetDatum(0),
 											Int32GetDatum(-1));
 			values[i++] = wal_bytes;
+		}
+		if (api_version >= PGSS_V1_12)
+		{
+			values[i++] = Int64GetDatumFast(tmp.wal_buffers_full);
 		}
 		if (api_version >= PGSS_V1_10)
 		{

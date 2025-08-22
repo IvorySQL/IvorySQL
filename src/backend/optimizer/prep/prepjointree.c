@@ -7,6 +7,7 @@
  *		replace_empty_jointree
  *		pull_up_sublinks
  *		preprocess_function_rtes
+ *		expand_virtual_generated_columns
  *		pull_up_subqueries
  *		flatten_simple_union_all
  *		do expression preprocessing (including flattening JOIN alias vars)
@@ -14,7 +15,7 @@
  *		remove_useless_result_rtes
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -25,6 +26,7 @@
  */
 #include "postgres.h"
 
+#include "access/table.h"
 #include "catalog/pg_type.h"
 #include "funcapi.h"
 #include "miscadmin.h"
@@ -39,7 +41,9 @@
 #include "optimizer/tlist.h"
 #include "parser/parse_relation.h"
 #include "parser/parsetree.h"
+#include "rewrite/rewriteHandler.h"
 #include "rewrite/rewriteManip.h"
+#include "utils/rel.h"
 
 
 typedef struct nullingrel_info
@@ -53,18 +57,29 @@ typedef struct nullingrel_info
 	int			rtlength;		/* used only for assertion checks */
 } nullingrel_info;
 
+/* Options for wrapping an expression for identification purposes */
+typedef enum ReplaceWrapOption
+{
+	REPLACE_WRAP_NONE,			/* no expressions need to be wrapped */
+	REPLACE_WRAP_ALL,			/* all expressions need to be wrapped */
+	REPLACE_WRAP_VARFREE,		/* variable-free expressions need to be
+								 * wrapped */
+} ReplaceWrapOption;
+
 typedef struct pullup_replace_vars_context
 {
 	PlannerInfo *root;
 	List	   *targetlist;		/* tlist of subquery being pulled up */
 	RangeTblEntry *target_rte;	/* RTE of subquery */
+	int			result_relation;	/* the index of the result relation in the
+									 * rewritten query */
 	Relids		relids;			/* relids within subquery, as numbered after
 								 * pullup (set only if target_rte->lateral) */
 	nullingrel_info *nullinfo;	/* per-RTE nullingrel info (set only if
 								 * target_rte->lateral) */
 	bool	   *outer_hasSubLinks;	/* -> outer query's hasSubLinks */
 	int			varno;			/* varno of subquery */
-	bool		wrap_non_vars;	/* do we need all non-Var outputs to be PHVs? */
+	ReplaceWrapOption wrap_option;	/* do we need certain outputs to be PHVs? */
 	Node	  **rv_cache;		/* cache for results with PHVs */
 } pullup_replace_vars_context;
 
@@ -908,12 +923,140 @@ preprocess_function_rtes(PlannerInfo *root)
 				rte->rtekind = RTE_SUBQUERY;
 				rte->subquery = funcquery;
 				rte->security_barrier = false;
-				/* Clear fields that should not be set in a subquery RTE */
-				rte->functions = NIL;
+
+				/*
+				 * Clear fields that should not be set in a subquery RTE.
+				 * However, we leave rte->functions filled in for the moment,
+				 * in case makeWholeRowVar needs to consult it.  We'll clear
+				 * it in setrefs.c (see add_rte_to_flat_rtable) so that this
+				 * abuse of the data structure doesn't escape the planner.
+				 */
 				rte->funcordinality = false;
 			}
 		}
 	}
+}
+
+/*
+ * expand_virtual_generated_columns
+ *		Expand all virtual generated column references in a query.
+ *
+ * This scans the rangetable for relations with virtual generated columns, and
+ * replaces all Var nodes in the query that reference these columns with the
+ * generation expressions.  Note that we do not descend into subqueries; that
+ * is taken care of when the subqueries are planned.
+ *
+ * This has to be done after we have pulled up any SubLinks within the query's
+ * quals; otherwise any virtual generated column references within the SubLinks
+ * that should be transformed into joins wouldn't get expanded.
+ *
+ * Returns a modified copy of the query tree, if any relations with virtual
+ * generated columns are present.
+ */
+Query *
+expand_virtual_generated_columns(PlannerInfo *root)
+{
+	Query	   *parse = root->parse;
+	int			rt_index;
+	ListCell   *lc;
+
+	rt_index = 0;
+	foreach(lc, parse->rtable)
+	{
+		RangeTblEntry *rte = (RangeTblEntry *) lfirst(lc);
+		Relation	rel;
+		TupleDesc	tupdesc;
+
+		++rt_index;
+
+		/*
+		 * Only normal relations can have virtual generated columns.
+		 */
+		if (rte->rtekind != RTE_RELATION)
+			continue;
+
+		rel = table_open(rte->relid, NoLock);
+
+		tupdesc = RelationGetDescr(rel);
+		if (tupdesc->constr && tupdesc->constr->has_generated_virtual)
+		{
+			List	   *tlist = NIL;
+			pullup_replace_vars_context rvcontext;
+
+			for (int i = 0; i < tupdesc->natts; i++)
+			{
+				Form_pg_attribute attr = TupleDescAttr(tupdesc, i);
+				TargetEntry *tle;
+
+				if (attr->attgenerated == ATTRIBUTE_GENERATED_VIRTUAL)
+				{
+					Node	   *defexpr;
+
+					defexpr = build_generation_expression(rel, i + 1);
+					ChangeVarNodes(defexpr, 1, rt_index, 0);
+
+					tle = makeTargetEntry((Expr *) defexpr, i + 1, 0, false);
+					tlist = lappend(tlist, tle);
+				}
+				else
+				{
+					Var		   *var;
+
+					var = makeVar(rt_index,
+								  i + 1,
+								  attr->atttypid,
+								  attr->atttypmod,
+								  attr->attcollation,
+								  0);
+
+					tle = makeTargetEntry((Expr *) var, i + 1, 0, false);
+					tlist = lappend(tlist, tle);
+				}
+			}
+
+			Assert(list_length(tlist) > 0);
+			Assert(!rte->lateral);
+
+			/*
+			 * The relation's targetlist items are now in the appropriate form
+			 * to insert into the query, except that we may need to wrap them
+			 * in PlaceHolderVars.  Set up required context data for
+			 * pullup_replace_vars.
+			 */
+			rvcontext.root = root;
+			rvcontext.targetlist = tlist;
+			rvcontext.target_rte = rte;
+			rvcontext.result_relation = parse->resultRelation;
+			/* won't need these values */
+			rvcontext.relids = NULL;
+			rvcontext.nullinfo = NULL;
+			/* pass NULL for outer_hasSubLinks */
+			rvcontext.outer_hasSubLinks = NULL;
+			rvcontext.varno = rt_index;
+			/* this flag will be set below, if needed */
+			rvcontext.wrap_option = REPLACE_WRAP_NONE;
+			/* initialize cache array with indexes 0 .. length(tlist) */
+			rvcontext.rv_cache = palloc0((list_length(tlist) + 1) *
+										 sizeof(Node *));
+
+			/*
+			 * If the query uses grouping sets, we need a PlaceHolderVar for
+			 * each expression of the relation's targetlist items.  (See
+			 * comments in pull_up_simple_subquery().)
+			 */
+			if (parse->groupingSets)
+				rvcontext.wrap_option = REPLACE_WRAP_ALL;
+
+			/*
+			 * Apply pullup variable replacement throughout the query tree.
+			 */
+			parse = (Query *) pullup_replace_vars((Node *) parse, &rvcontext);
+		}
+
+		table_close(rel, NoLock);
+	}
+
+	return parse;
 }
 
 /*
@@ -1198,6 +1341,13 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 	preprocess_function_rtes(subroot);
 
 	/*
+	 * Scan the rangetable for relations with virtual generated columns, and
+	 * replace all Var nodes in the query that reference these columns with
+	 * the generation expressions.
+	 */
+	subquery = subroot->parse = expand_virtual_generated_columns(subroot);
+
+	/*
 	 * Recursively pull up the subquery's subqueries, so that
 	 * pull_up_subqueries' processing is complete for its jointree and
 	 * rangetable.
@@ -1274,6 +1424,7 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 	rvcontext.root = root;
 	rvcontext.targetlist = subquery->targetList;
 	rvcontext.target_rte = rte;
+	rvcontext.result_relation = 0;
 	if (rte->lateral)
 	{
 		rvcontext.relids = get_relids_in_jointree((Node *) subquery->jointree,
@@ -1288,32 +1439,22 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 	rvcontext.outer_hasSubLinks = &parse->hasSubLinks;
 	rvcontext.varno = varno;
 	/* this flag will be set below, if needed */
-	rvcontext.wrap_non_vars = false;
+	rvcontext.wrap_option = REPLACE_WRAP_NONE;
 	/* initialize cache array with indexes 0 .. length(tlist) */
 	rvcontext.rv_cache = palloc0((list_length(subquery->targetList) + 1) *
 								 sizeof(Node *));
 
 	/*
-	 * If we are dealing with an appendrel member then anything that's not a
-	 * simple Var has to be turned into a PlaceHolderVar.  We force this to
-	 * ensure that what we pull up doesn't get merged into a surrounding
-	 * expression during later processing and then fail to match the
-	 * expression actually available from the appendrel.
-	 */
-	if (containing_appendrel != NULL)
-		rvcontext.wrap_non_vars = true;
-
-	/*
 	 * If the parent query uses grouping sets, we need a PlaceHolderVar for
-	 * anything that's not a simple Var.  Again, this ensures that expressions
-	 * retain their separate identity so that they will match grouping set
-	 * columns when appropriate.  (It'd be sufficient to wrap values used in
-	 * grouping set columns, and do so only in non-aggregated portions of the
-	 * tlist and havingQual, but that would require a lot of infrastructure
-	 * that pullup_replace_vars hasn't currently got.)
+	 * each expression of the subquery's targetlist items.  This ensures that
+	 * expressions retain their separate identity so that they will match
+	 * grouping set columns when appropriate.  (It'd be sufficient to wrap
+	 * values used in grouping set columns, and do so only in non-aggregated
+	 * portions of the tlist and havingQual, but that would require a lot of
+	 * infrastructure that pullup_replace_vars hasn't currently got.)
 	 */
 	if (parse->groupingSets)
-		rvcontext.wrap_non_vars = true;
+		rvcontext.wrap_option = REPLACE_WRAP_ALL;
 
 	/*
 	 * Replace all of the top query's references to the subquery's outputs
@@ -1834,11 +1975,12 @@ pull_up_simple_values(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte)
 	rvcontext.root = root;
 	rvcontext.targetlist = tlist;
 	rvcontext.target_rte = rte;
+	rvcontext.result_relation = 0;
 	rvcontext.relids = NULL;	/* can't be any lateral references here */
 	rvcontext.nullinfo = NULL;
 	rvcontext.outer_hasSubLinks = &parse->hasSubLinks;
 	rvcontext.varno = varno;
-	rvcontext.wrap_non_vars = false;
+	rvcontext.wrap_option = REPLACE_WRAP_NONE;
 	/* initialize cache array with indexes 0 .. length(tlist) */
 	rvcontext.rv_cache = palloc0((list_length(tlist) + 1) *
 								 sizeof(Node *));
@@ -1993,6 +2135,7 @@ pull_up_constant_function(PlannerInfo *root, Node *jtnode,
 													  NULL, /* resname */
 													  false));	/* resjunk */
 	rvcontext.target_rte = rte;
+	rvcontext.result_relation = 0;
 
 	/*
 	 * Since this function was reduced to a Const, it doesn't contain any
@@ -2005,25 +2148,18 @@ pull_up_constant_function(PlannerInfo *root, Node *jtnode,
 	rvcontext.outer_hasSubLinks = &parse->hasSubLinks;
 	rvcontext.varno = ((RangeTblRef *) jtnode)->rtindex;
 	/* this flag will be set below, if needed */
-	rvcontext.wrap_non_vars = false;
+	rvcontext.wrap_option = REPLACE_WRAP_NONE;
 	/* initialize cache array with indexes 0 .. length(tlist) */
 	rvcontext.rv_cache = palloc0((list_length(rvcontext.targetlist) + 1) *
 								 sizeof(Node *));
 
 	/*
-	 * If we are dealing with an appendrel member then anything that's not a
-	 * simple Var has to be turned into a PlaceHolderVar.  (See comments in
+	 * If the parent query uses grouping sets, we need a PlaceHolderVar for
+	 * each expression of the subquery's targetlist items.  (See comments in
 	 * pull_up_simple_subquery().)
 	 */
-	if (containing_appendrel != NULL)
-		rvcontext.wrap_non_vars = true;
-
-	/*
-	 * If the parent query uses grouping sets, we need a PlaceHolderVar for
-	 * anything that's not a simple Var.
-	 */
 	if (parse->groupingSets)
-		rvcontext.wrap_non_vars = true;
+		rvcontext.wrap_option = REPLACE_WRAP_ALL;
 
 	/*
 	 * Replace all of the top query's references to the RTE's output with
@@ -2274,13 +2410,13 @@ perform_pullup_replace_vars(PlannerInfo *root,
 	 */
 	if (containing_appendrel)
 	{
-		bool		save_wrap_non_vars = rvcontext->wrap_non_vars;
+		ReplaceWrapOption save_wrap_option = rvcontext->wrap_option;
 
-		rvcontext->wrap_non_vars = false;
+		rvcontext->wrap_option = REPLACE_WRAP_NONE;
 		containing_appendrel->translated_vars = (List *)
 			pullup_replace_vars((Node *) containing_appendrel->translated_vars,
 								rvcontext);
-		rvcontext->wrap_non_vars = save_wrap_non_vars;
+		rvcontext->wrap_option = save_wrap_option;
 		return;
 	}
 
@@ -2441,24 +2577,24 @@ replace_vars_in_jointree(Node *jtnode,
 	else if (IsA(jtnode, JoinExpr))
 	{
 		JoinExpr   *j = (JoinExpr *) jtnode;
-		bool		save_wrap_non_vars = context->wrap_non_vars;
+		ReplaceWrapOption save_wrap_option = context->wrap_option;
 
 		replace_vars_in_jointree(j->larg, context);
 		replace_vars_in_jointree(j->rarg, context);
 
 		/*
-		 * Use PHVs within the join quals of a full join.  Otherwise, we
-		 * cannot identify which side of the join a pulled-up var-free
-		 * expression came from, which can lead to failure to make a plan at
-		 * all because none of the quals appear to be mergeable or hashable
-		 * conditions.
+		 * Use PHVs within the join quals of a full join for variable-free
+		 * expressions.  Otherwise, we cannot identify which side of the join
+		 * a pulled-up variable-free expression came from, which can lead to
+		 * failure to make a plan at all because none of the quals appear to
+		 * be mergeable or hashable conditions.
 		 */
 		if (j->jointype == JOIN_FULL)
-			context->wrap_non_vars = true;
+			context->wrap_option = REPLACE_WRAP_VARFREE;
 
 		j->quals = pullup_replace_vars(j->quals, context);
 
-		context->wrap_non_vars = save_wrap_non_vars;
+		context->wrap_option = save_wrap_option;
 	}
 	else
 		elog(ERROR, "unrecognized node type: %d",
@@ -2490,14 +2626,19 @@ pullup_replace_vars_callback(Var *var,
 	bool		need_phv;
 	Node	   *newnode;
 
+	/* System columns are not replaced. */
+	if (varattno < InvalidAttrNumber)
+		return (Node *) copyObject(var);
+
 	/*
 	 * We need a PlaceHolderVar if the Var-to-be-replaced has nonempty
 	 * varnullingrels (unless we find below that the replacement expression is
 	 * a Var or PlaceHolderVar that we can just add the nullingrels to).  We
-	 * also need one if the caller has instructed us that all non-Var/PHV
+	 * also need one if the caller has instructed us that certain expression
 	 * replacements need to be wrapped for identification purposes.
 	 */
-	need_phv = (var->varnullingrels != NULL) || rcon->wrap_non_vars;
+	need_phv = (var->varnullingrels != NULL) ||
+		(rcon->wrap_option != REPLACE_WRAP_NONE);
 
 	/*
 	 * If PlaceHolderVars are needed, we cache the modified expressions in
@@ -2519,81 +2660,43 @@ pullup_replace_vars_callback(Var *var,
 		/* Just copy the entry and fall through to adjust phlevelsup etc */
 		newnode = copyObject(rcon->rv_cache[varattno]);
 	}
-	else if (varattno == InvalidAttrNumber)
-	{
-		/* Must expand whole-tuple reference into RowExpr */
-		RowExpr    *rowexpr;
-		List	   *colnames;
-		List	   *fields;
-		bool		save_wrap_non_vars = rcon->wrap_non_vars;
-		int			save_sublevelsup = context->sublevels_up;
-
-		/*
-		 * If generating an expansion for a var of a named rowtype (ie, this
-		 * is a plain relation RTE), then we must include dummy items for
-		 * dropped columns.  If the var is RECORD (ie, this is a JOIN), then
-		 * omit dropped columns.  In the latter case, attach column names to
-		 * the RowExpr for use of the executor and ruleutils.c.
-		 *
-		 * In order to be able to cache the results, we always generate the
-		 * expansion with varlevelsup = 0, and then adjust below if needed.
-		 */
-		expandRTE(rcon->target_rte,
-				  var->varno, 0 /* not varlevelsup */ , var->location,
-				  (var->vartype != RECORDOID),
-				  &colnames, &fields);
-		/* Expand the generated per-field Vars, but don't insert PHVs there */
-		rcon->wrap_non_vars = false;
-		context->sublevels_up = 0;	/* to match the expandRTE output */
-		fields = (List *) replace_rte_variables_mutator((Node *) fields,
-														context);
-		rcon->wrap_non_vars = save_wrap_non_vars;
-		context->sublevels_up = save_sublevelsup;
-
-		rowexpr = makeNode(RowExpr);
-		rowexpr->args = fields;
-		rowexpr->row_typeid = var->vartype;
-		rowexpr->row_format = COERCE_IMPLICIT_CAST;
-		rowexpr->colnames = (var->vartype == RECORDOID) ? colnames : NIL;
-		rowexpr->location = var->location;
-		newnode = (Node *) rowexpr;
-
-		/*
-		 * Insert PlaceHolderVar if needed.  Notice that we are wrapping one
-		 * PlaceHolderVar around the whole RowExpr, rather than putting one
-		 * around each element of the row.  This is because we need the
-		 * expression to yield NULL, not ROW(NULL,NULL,...) when it is forced
-		 * to null by an outer join.
-		 */
-		if (need_phv)
-		{
-			newnode = (Node *)
-				make_placeholder_expr(rcon->root,
-									  (Expr *) newnode,
-									  bms_make_singleton(rcon->varno));
-			/* cache it with the PHV, and with phlevelsup etc not set yet */
-			rcon->rv_cache[InvalidAttrNumber] = copyObject(newnode);
-		}
-	}
 	else
 	{
-		/* Normal case referencing one targetlist element */
-		TargetEntry *tle = get_tle_by_resno(rcon->targetlist, varattno);
-
-		if (tle == NULL)		/* shouldn't happen */
-			elog(ERROR, "could not find attribute %d in subquery targetlist",
-				 varattno);
-
-		/* Make a copy of the tlist item to return */
-		newnode = (Node *) copyObject(tle->expr);
+		/*
+		 * Generate the replacement expression.  This takes care of expanding
+		 * wholerow references and dealing with non-default varreturningtype.
+		 */
+		newnode = ReplaceVarFromTargetList(var,
+										   rcon->target_rte,
+										   rcon->targetlist,
+										   rcon->result_relation,
+										   REPLACEVARS_REPORT_ERROR,
+										   0);
 
 		/* Insert PlaceHolderVar if needed */
 		if (need_phv)
 		{
 			bool		wrap;
 
-			if (newnode && IsA(newnode, Var) &&
-				((Var *) newnode)->varlevelsup == 0)
+			if (rcon->wrap_option == REPLACE_WRAP_ALL)
+			{
+				/* Caller told us to wrap all expressions in a PlaceHolderVar */
+				wrap = true;
+			}
+			else if (varattno == InvalidAttrNumber)
+			{
+				/*
+				 * Insert PlaceHolderVar for whole-tuple reference.  Notice
+				 * that we are wrapping one PlaceHolderVar around the whole
+				 * RowExpr, rather than putting one around each element of the
+				 * row.  This is because we need the expression to yield NULL,
+				 * not ROW(NULL,NULL,...) when it is forced to null by an
+				 * outer join.
+				 */
+				wrap = true;
+			}
+			else if (newnode && IsA(newnode, Var) &&
+					 ((Var *) newnode)->varlevelsup == 0)
 			{
 				/*
 				 * Simple Vars always escape being wrapped, unless they are
@@ -2640,11 +2743,6 @@ pullup_replace_vars_callback(Var *var,
 					}
 				}
 			}
-			else if (rcon->wrap_non_vars)
-			{
-				/* Caller told us to wrap all non-Vars in a PlaceHolderVar */
-				wrap = true;
-			}
 			else
 			{
 				/*
@@ -2676,7 +2774,11 @@ pullup_replace_vars_callback(Var *var,
 				 * This analysis could be tighter: in particular, a non-strict
 				 * construct hidden within a lower-level PlaceHolderVar is not
 				 * reason to add another PHV.  But for now it doesn't seem
-				 * worth the code to be more exact.
+				 * worth the code to be more exact.  This is also why it's
+				 * preferable to handle bare PHVs in the above branch, rather
+				 * than this branch.  We also prefer to handle bare Vars in a
+				 * separate branch, as it's cheaper this way and parallels the
+				 * handling of PHVs.
 				 *
 				 * For a LATERAL subquery, we have to check the actual var
 				 * membership of the node, but if it's non-lateral then any
@@ -2739,7 +2841,7 @@ pullup_replace_vars_callback(Var *var,
 				 * Cache it if possible (ie, if the attno is in range, which
 				 * it probably always should be).
 				 */
-				if (varattno > InvalidAttrNumber &&
+				if (varattno >= InvalidAttrNumber &&
 					varattno <= list_length(rcon->targetlist))
 					rcon->rv_cache[varattno] = copyObject(newnode);
 			}

@@ -3,7 +3,7 @@
  * proc.c
  *	  routines to manage per-process shared memory data structure
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -117,7 +117,7 @@ ProcGlobalShmemSize(void)
 	 * nicely aligned in each backend.
 	 */
 	fpLockBitsSize = MAXALIGN(FastPathLockGroupsPerBackend * sizeof(uint64));
-	fpRelIdSize = MAXALIGN(FastPathLockGroupsPerBackend * sizeof(Oid) * FP_LOCK_SLOTS_PER_GROUP);
+	fpRelIdSize = MAXALIGN(FastPathLockSlotsPerBackend() * sizeof(Oid));
 
 	size = add_size(size, mul_size(TotalProcs, (fpLockBitsSize + fpRelIdSize)));
 
@@ -151,7 +151,7 @@ ProcGlobalSemas(void)
  *	  So, now we grab enough semaphores to support the desired max number
  *	  of backends immediately at initialization --- if the sysadmin has set
  *	  MaxConnections, max_worker_processes, max_wal_senders, or
- *	  autovacuum_max_workers higher than his kernel will support, he'll
+ *	  autovacuum_worker_slots higher than his kernel will support, he'll
  *	  find out sooner rather than later.
  *
  *	  Another reason for creating semaphores here is that the semaphore
@@ -198,11 +198,12 @@ InitProcGlobal(void)
 
 	/*
 	 * Create and initialize all the PGPROC structures we'll need.  There are
-	 * five separate consumers: (1) normal backends, (2) autovacuum workers
-	 * and the autovacuum launcher, (3) background workers, (4) auxiliary
-	 * processes, and (5) prepared transactions.  Each PGPROC structure is
-	 * dedicated to exactly one of these purposes, and they do not move
-	 * between groups.
+	 * six separate consumers: (1) normal backends, (2) autovacuum workers and
+	 * special workers, (3) background workers, (4) walsenders, (5) auxiliary
+	 * processes, and (6) prepared transactions.  (For largely-historical
+	 * reasons, we combine autovacuum and special workers into one category
+	 * with a single freelist.)  Each PGPROC structure is dedicated to exactly
+	 * one of these purposes, and they do not move between groups.
 	 */
 	procs = (PGPROC *) ShmemAlloc(TotalProcs * sizeof(PGPROC));
 	MemSet(procs, 0, TotalProcs * sizeof(PGPROC));
@@ -231,7 +232,7 @@ InitProcGlobal(void)
 	 * shared memory and then divide that between backends.
 	 */
 	fpLockBitsSize = MAXALIGN(FastPathLockGroupsPerBackend * sizeof(uint64));
-	fpRelIdSize = MAXALIGN(FastPathLockGroupsPerBackend * sizeof(Oid) * FP_LOCK_SLOTS_PER_GROUP);
+	fpRelIdSize = MAXALIGN(FastPathLockSlotsPerBackend() * sizeof(Oid));
 
 	fpPtr = ShmemAlloc(TotalProcs * (fpLockBitsSize + fpRelIdSize));
 	MemSet(fpPtr, 0, TotalProcs * (fpLockBitsSize + fpRelIdSize));
@@ -270,12 +271,13 @@ InitProcGlobal(void)
 		}
 
 		/*
-		 * Newly created PGPROCs for normal backends, autovacuum and bgworkers
-		 * must be queued up on the appropriate free list.  Because there can
-		 * only ever be a small, fixed number of auxiliary processes, no free
-		 * list is used in that case; InitAuxiliaryProcess() instead uses a
-		 * linear search.   PGPROCs for prepared transactions are added to a
-		 * free list by TwoPhaseShmemInit().
+		 * Newly created PGPROCs for normal backends, autovacuum workers,
+		 * special workers, bgworkers, and walsenders must be queued up on the
+		 * appropriate free list.  Because there can only ever be a small,
+		 * fixed number of auxiliary processes, no free list is used in that
+		 * case; InitAuxiliaryProcess() instead uses a linear search.  PGPROCs
+		 * for prepared transactions are added to a free list by
+		 * TwoPhaseShmemInit().
 		 */
 		if (i < MaxConnections)
 		{
@@ -283,13 +285,13 @@ InitProcGlobal(void)
 			dlist_push_tail(&ProcGlobal->freeProcs, &proc->links);
 			proc->procgloballist = &ProcGlobal->freeProcs;
 		}
-		else if (i < MaxConnections + autovacuum_max_workers + 1)
+		else if (i < MaxConnections + autovacuum_worker_slots + NUM_SPECIAL_WORKER_PROCS)
 		{
-			/* PGPROC for AV launcher/worker, add to autovacFreeProcs list */
+			/* PGPROC for AV or special worker, add to autovacFreeProcs list */
 			dlist_push_tail(&ProcGlobal->autovacFreeProcs, &proc->links);
 			proc->procgloballist = &ProcGlobal->autovacFreeProcs;
 		}
-		else if (i < MaxConnections + autovacuum_max_workers + 1 + max_worker_processes)
+		else if (i < MaxConnections + autovacuum_worker_slots + NUM_SPECIAL_WORKER_PROCS + max_worker_processes)
 		{
 			/* PGPROC for bgworker, add to bgworkerFreeProcs list */
 			dlist_push_tail(&ProcGlobal->bgworkerFreeProcs, &proc->links);
@@ -359,8 +361,11 @@ InitProcess(void)
 	if (IsUnderPostmaster)
 		RegisterPostmasterChildActive();
 
-	/* Decide which list should supply our PGPROC. */
-	if (AmAutoVacuumLauncherProcess() || AmAutoVacuumWorkerProcess())
+	/*
+	 * Decide which list should supply our PGPROC.  This logic must match the
+	 * way the freelists were constructed in InitProcGlobal().
+	 */
+	if (AmAutoVacuumWorkerProcess() || AmSpecialWorkerProcess())
 		procgloballist = &ProcGlobal->autovacFreeProcs;
 	else if (AmBackgroundWorkerProcess())
 		procgloballist = &ProcGlobal->bgworkerFreeProcs;
@@ -428,7 +433,7 @@ InitProcess(void)
 	MyProc->databaseId = InvalidOid;
 	MyProc->roleId = InvalidOid;
 	MyProc->tempNamespaceId = InvalidOid;
-	MyProc->isBackgroundWorker = AmBackgroundWorkerProcess();
+	MyProc->isRegularBackend = AmRegularBackendProcess();
 	MyProc->delayChkptFlags = 0;
 	MyProc->statusFlags = 0;
 	/* NB -- autovac launcher intentionally does not set IS_AUTOVACUUM */
@@ -627,7 +632,7 @@ InitAuxiliaryProcess(void)
 	MyProc->databaseId = InvalidOid;
 	MyProc->roleId = InvalidOid;
 	MyProc->tempNamespaceId = InvalidOid;
-	MyProc->isBackgroundWorker = AmBackgroundWorkerProcess();
+	MyProc->isRegularBackend = false;
 	MyProc->delayChkptFlags = 0;
 	MyProc->statusFlags = 0;
 	MyProc->lwWaiting = LW_WS_NOT_WAITING;

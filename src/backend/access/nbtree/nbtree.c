@@ -8,7 +8,7 @@
  *	  This file contains only the public interface routines.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -20,6 +20,7 @@
 
 #include "access/nbtree.h"
 #include "access/relscan.h"
+#include "access/stratnum.h"
 #include "commands/progress.h"
 #include "commands/vacuum.h"
 #include "nodes/execnodes.h"
@@ -69,7 +70,7 @@ typedef struct BTParallelScanDescData
 	BTPS_State	btps_pageStatus;	/* indicates whether next page is
 									 * available for scan. see above for
 									 * possible states of parallel scan. */
-	slock_t		btps_mutex;		/* protects above variables, btps_arrElems */
+	LWLock		btps_lock;		/* protects shared parallel state */
 	ConditionVariable btps_cv;	/* used to synchronize parallel scan */
 
 	/*
@@ -106,6 +107,9 @@ bthandler(PG_FUNCTION_ARGS)
 	amroutine->amoptsprocnum = BTOPTIONS_PROC;
 	amroutine->amcanorder = true;
 	amroutine->amcanorderbyop = false;
+	amroutine->amcanhash = false;
+	amroutine->amconsistentequality = true;
+	amroutine->amconsistentordering = true;
 	amroutine->amcanbackward = true;
 	amroutine->amcanunique = true;
 	amroutine->amcanmulticol = true;
@@ -148,6 +152,8 @@ bthandler(PG_FUNCTION_ARGS)
 	amroutine->amestimateparallelscan = btestimateparallelscan;
 	amroutine->aminitparallelscan = btinitparallelscan;
 	amroutine->amparallelrescan = btparallelrescan;
+	amroutine->amtranslatestrategy = bttranslatestrategy;
+	amroutine->amtranslatecmptype = bttranslatecmptype;
 
 	PG_RETURN_POINTER(amroutine);
 }
@@ -548,7 +554,8 @@ btinitparallelscan(void *target)
 {
 	BTParallelScanDesc bt_target = (BTParallelScanDesc) target;
 
-	SpinLockInit(&bt_target->btps_mutex);
+	LWLockInitialize(&bt_target->btps_lock,
+					 LWTRANCHE_PARALLEL_BTREE_SCAN);
 	bt_target->btps_nextScanPage = InvalidBlockNumber;
 	bt_target->btps_lastCurrPage = InvalidBlockNumber;
 	bt_target->btps_pageStatus = BTPARALLEL_NOT_INITIALIZED;
@@ -567,18 +574,18 @@ btparallelrescan(IndexScanDesc scan)
 	Assert(parallel_scan);
 
 	btscan = (BTParallelScanDesc) OffsetToPointer(parallel_scan,
-												  parallel_scan->ps_offset);
+												  parallel_scan->ps_offset_am);
 
 	/*
-	 * In theory, we don't need to acquire the spinlock here, because there
+	 * In theory, we don't need to acquire the LWLock here, because there
 	 * shouldn't be any other workers running at this point, but we do so for
 	 * consistency.
 	 */
-	SpinLockAcquire(&btscan->btps_mutex);
+	LWLockAcquire(&btscan->btps_lock, LW_EXCLUSIVE);
 	btscan->btps_nextScanPage = InvalidBlockNumber;
 	btscan->btps_lastCurrPage = InvalidBlockNumber;
 	btscan->btps_pageStatus = BTPARALLEL_NOT_INITIALIZED;
-	SpinLockRelease(&btscan->btps_mutex);
+	LWLockRelease(&btscan->btps_lock);
 }
 
 /*
@@ -645,11 +652,11 @@ _bt_parallel_seize(IndexScanDesc scan, BlockNumber *next_scan_page,
 	}
 
 	btscan = (BTParallelScanDesc) OffsetToPointer(parallel_scan,
-												  parallel_scan->ps_offset);
+												  parallel_scan->ps_offset_am);
 
 	while (1)
 	{
-		SpinLockAcquire(&btscan->btps_mutex);
+		LWLockAcquire(&btscan->btps_lock, LW_EXCLUSIVE);
 
 		if (btscan->btps_pageStatus == BTPARALLEL_DONE)
 		{
@@ -711,7 +718,7 @@ _bt_parallel_seize(IndexScanDesc scan, BlockNumber *next_scan_page,
 			*last_curr_page = btscan->btps_lastCurrPage;
 			exit_loop = true;
 		}
-		SpinLockRelease(&btscan->btps_mutex);
+		LWLockRelease(&btscan->btps_lock);
 		if (exit_loop || !status)
 			break;
 		ConditionVariableSleep(&btscan->btps_cv, WAIT_EVENT_BTREE_PAGE);
@@ -753,13 +760,13 @@ _bt_parallel_release(IndexScanDesc scan, BlockNumber next_scan_page,
 	Assert(BlockNumberIsValid(next_scan_page));
 
 	btscan = (BTParallelScanDesc) OffsetToPointer(parallel_scan,
-												  parallel_scan->ps_offset);
+												  parallel_scan->ps_offset_am);
 
-	SpinLockAcquire(&btscan->btps_mutex);
+	LWLockAcquire(&btscan->btps_lock, LW_EXCLUSIVE);
 	btscan->btps_nextScanPage = next_scan_page;
 	btscan->btps_lastCurrPage = curr_page;
 	btscan->btps_pageStatus = BTPARALLEL_IDLE;
-	SpinLockRelease(&btscan->btps_mutex);
+	LWLockRelease(&btscan->btps_lock);
 	ConditionVariableSignal(&btscan->btps_cv);
 }
 
@@ -792,20 +799,20 @@ _bt_parallel_done(IndexScanDesc scan)
 		return;
 
 	btscan = (BTParallelScanDesc) OffsetToPointer(parallel_scan,
-												  parallel_scan->ps_offset);
+												  parallel_scan->ps_offset_am);
 
 	/*
 	 * Mark the parallel scan as done, unless some other process did so
 	 * already
 	 */
-	SpinLockAcquire(&btscan->btps_mutex);
+	LWLockAcquire(&btscan->btps_lock, LW_EXCLUSIVE);
 	Assert(btscan->btps_pageStatus != BTPARALLEL_NEED_PRIMSCAN);
 	if (btscan->btps_pageStatus != BTPARALLEL_DONE)
 	{
 		btscan->btps_pageStatus = BTPARALLEL_DONE;
 		status_changed = true;
 	}
-	SpinLockRelease(&btscan->btps_mutex);
+	LWLockRelease(&btscan->btps_lock);
 
 	/* wake up all the workers associated with this parallel scan */
 	if (status_changed)
@@ -830,9 +837,9 @@ _bt_parallel_primscan_schedule(IndexScanDesc scan, BlockNumber curr_page)
 	Assert(so->numArrayKeys);
 
 	btscan = (BTParallelScanDesc) OffsetToPointer(parallel_scan,
-												  parallel_scan->ps_offset);
+												  parallel_scan->ps_offset_am);
 
-	SpinLockAcquire(&btscan->btps_mutex);
+	LWLockAcquire(&btscan->btps_lock, LW_EXCLUSIVE);
 	if (btscan->btps_lastCurrPage == curr_page &&
 		btscan->btps_pageStatus == BTPARALLEL_IDLE)
 	{
@@ -848,7 +855,7 @@ _bt_parallel_primscan_schedule(IndexScanDesc scan, BlockNumber curr_page)
 			btscan->btps_arrElems[i] = array->cur_elem;
 		}
 	}
-	SpinLockRelease(&btscan->btps_mutex);
+	LWLockRelease(&btscan->btps_lock);
 }
 
 /*
@@ -1134,7 +1141,7 @@ backtrack:
 	backtrack_to = P_NONE;
 
 	/* call vacuum_delay_point while not holding any buffer lock */
-	vacuum_delay_point();
+	vacuum_delay_point(false);
 
 	/*
 	 * We can't use _bt_getbuf() here because it always applies
@@ -1507,4 +1514,44 @@ int
 btgettreeheight(Relation rel)
 {
 	return _bt_getrootheight(rel);
+}
+
+CompareType
+bttranslatestrategy(StrategyNumber strategy, Oid opfamily)
+{
+	switch (strategy)
+	{
+		case BTLessStrategyNumber:
+			return COMPARE_LT;
+		case BTLessEqualStrategyNumber:
+			return COMPARE_LE;
+		case BTEqualStrategyNumber:
+			return COMPARE_EQ;
+		case BTGreaterEqualStrategyNumber:
+			return COMPARE_GE;
+		case BTGreaterStrategyNumber:
+			return COMPARE_GT;
+		default:
+			return COMPARE_INVALID;
+	}
+}
+
+StrategyNumber
+bttranslatecmptype(CompareType cmptype, Oid opfamily)
+{
+	switch (cmptype)
+	{
+		case COMPARE_LT:
+			return BTLessStrategyNumber;
+		case COMPARE_LE:
+			return BTLessEqualStrategyNumber;
+		case COMPARE_EQ:
+			return BTEqualStrategyNumber;
+		case COMPARE_GE:
+			return BTGreaterEqualStrategyNumber;
+		case COMPARE_GT:
+			return BTGreaterStrategyNumber;
+		default:
+			return InvalidStrategy;
+	}
 }

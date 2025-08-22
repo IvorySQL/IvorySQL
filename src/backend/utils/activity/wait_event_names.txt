@@ -2,7 +2,7 @@
 # wait_event_names.txt
 #      PostgreSQL wait events
 #
-# Copyright (c) 2023-2024, PostgreSQL Global Development Group
+# Copyright (c) 2023-2025, PostgreSQL Global Development Group
 #
 # This list serves as the basis for generating source and documentation files
 # related to wait events.
@@ -56,6 +56,7 @@ AUTOVACUUM_MAIN	"Waiting in main loop of autovacuum launcher process."
 BGWRITER_HIBERNATE	"Waiting in background writer process, hibernating."
 BGWRITER_MAIN	"Waiting in main loop of background writer process."
 CHECKPOINTER_MAIN	"Waiting in main loop of checkpointer process."
+CHECKPOINTER_SHUTDOWN	"Waiting for checkpointer process to be terminated."
 LOGICAL_APPLY_MAIN	"Waiting in main loop of logical replication apply process."
 LOGICAL_LAUNCHER_MAIN	"Waiting in main loop of logical replication launcher process."
 LOGICAL_PARALLEL_APPLY_MAIN	"Waiting in main loop of logical replication parallel apply process."
@@ -370,6 +371,7 @@ BufferMapping	"Waiting to associate a data block with a buffer in the buffer poo
 LockManager	"Waiting to read or update information about <quote>heavyweight</quote> locks."
 PredicateLockManager	"Waiting to access predicate lock information used by serializable transactions."
 ParallelHashJoin	"Waiting to synchronize workers during Parallel Hash Join plan execution."
+ParallelBtreeScan	"Waiting to synchronize workers during Parallel B-tree scan plan execution."
 ParallelQueryDSA	"Waiting for parallel query dynamic shared memory allocation."
 PerSessionDSA	"Waiting for parallel query dynamic shared memory allocation."
 PerSessionRecordType	"Waiting to access a parallel query's information about composite types."

@@ -146,6 +146,15 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
+      <term><option>--no-statistics</option></term>
+      <listitem>
+       <para>
+        Do not restore statistics from the old cluster into the new cluster.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
       <term><option>-o</option> <replaceable class="parameter">options</replaceable></term>
       <term><option>--old-options</option> <replaceable class="parameter">options</replaceable></term>
       <listitem><para>options to be passed directly to the
@@ -272,6 +281,59 @@ PostgreSQL documentation
        </para>
        <para>
         This option has no effect when <option>--no-sync</option> is used.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--set-char-signedness=</option><replaceable>option</replaceable></term>
+      <listitem>
+       <para>
+        Manually set the default char signedness of new clusters. Possible values
+        are <literal>signed</literal> and <literal>unsigned</literal>.
+       </para>
+       <para>
+        In the C language, the default signedness of the <type>char</type> type
+        (when not explicitly specified) varies across platforms. For example,
+        <type>char</type> defaults to <type>signed char</type> on x86 CPUs but
+        to <type>unsigned char</type> on ARM CPUs.
+       </para>
+       <para>
+        Starting from <productname>PostgreSQL</productname> 18, database clusters
+        maintain their own default char signedness setting, which can be used to
+        ensure consistent behavior across platforms with different default char
+        signedness. By default, <application>pg_upgrade</application> preserves
+        the char signedness setting when upgrading from an existing cluster.
+        However, when upgrading from <productname>PostgreSQL</productname> 17 or
+        earlier, <application>pg_upgrade</application> adopts the char signedness
+        of the platform on which it was built.
+       </para>
+       <para>
+        This option allows you to explicitly set the default char signedness for
+        the new cluster, overriding any inherited values. There are two specific
+        scenarios where this option is relevant:
+        <itemizedlist>
+         <listitem>
+          <para>
+           If you are planning to migrate to a different platform after the upgrade,
+           you should not use this option. The default behavior is right in this case.
+           Instead, perform the upgrade on the original platform without this flag,
+           and then migrate the cluster afterward. This is the recommended and safest
+           approach.
+          </para>
+         </listitem>
+         <listitem>
+          <para>
+           If you have already migrated the cluster to a platform with different
+           char signedness (for example, from an x86-based system to an ARM-based
+           system), you should use this option to specify the signedness matching
+           the original platform's default char signedness. Additionally, it's
+           essential not to modify any data files between migrating data files and
+           running <command>pg_upgrade</command>. <command>pg_upgrade</command>
+           should be the first operation that starts the cluster on the new platform.
+          </para>
+         </listitem>
+        </itemizedlist>
        </para>
       </listitem>
      </varlistentry>
@@ -471,12 +533,11 @@ NET STOP postgresql-&majorversion;
     </para>
 
     <para>
-     The <option>--jobs</option> option allows multiple CPU cores to be used
-     for copying/linking of files, dumping and restoring database schemas
-     in parallel, etc.;  a good place to start is the maximum of the number of
-     CPU cores and tablespaces.  This option can dramatically reduce the
-     time to upgrade a multi-database server running on a multiprocessor
-     machine.
+     Setting <option>--jobs</option> to 2 or higher allows pg_upgrade to
+     process multiple databases and tablespaces in parallel.  A good starting
+     point is the number of CPU cores on the machine.  This option can
+     substantially reduce the upgrade time for multi-database and
+     multi-tablespace servers.
     </para>
 
     <para>
@@ -730,10 +791,19 @@ psql --username=postgres --file=script.sql postgres
     <title>Statistics</title>
 
     <para>
-     Because optimizer statistics are not transferred by <command>pg_upgrade</command>, you will
-     be instructed to run a command to regenerate that information at the end
-     of the upgrade.  You might need to set connection parameters to
-     match your new cluster.
+     Unless the <option>--no-statistics</option> option is specified,
+     <command>pg_upgrade</command> will transfer most optimizer statistics
+     from the old cluster to the new cluster.  However, some statistics may
+     not be transferred, such as those created explicitly with <xref
+     linkend="sql-createstatistics"/> or custom statistics added by an
+     extension.
+    </para>
+
+    <para>
+     Because not all statistics are not transferred by
+     <command>pg_upgrade</command>, you will be instructed to run a command to
+     regenerate that information at the end of the upgrade.  You might need to
+     set connection parameters to match your new cluster.
     </para>
 
     <para>

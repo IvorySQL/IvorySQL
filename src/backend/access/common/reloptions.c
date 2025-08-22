@@ -3,7 +3,7 @@
  * reloptions.c
  *	  Core support for relation options (pg_class.reloptions)
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -233,6 +233,15 @@ static relopt_int intRelOpts[] =
 	},
 	{
 		{
+			"autovacuum_vacuum_max_threshold",
+			"Maximum number of tuple updates or deletes prior to vacuum",
+			RELOPT_KIND_HEAP | RELOPT_KIND_TOAST,
+			ShareUpdateExclusiveLock
+		},
+		-2, -1, INT_MAX
+	},
+	{
+		{
 			"autovacuum_vacuum_insert_threshold",
 			"Minimum number of tuple inserts prior to vacuum, or -1 to disable insert vacuums",
 			RELOPT_KIND_HEAP | RELOPT_KIND_TOAST,
@@ -423,6 +432,16 @@ static relopt_real realRelOpts[] =
 		},
 		-1, 0.0, 100.0
 	},
+	{
+		{
+			"vacuum_max_eager_freeze_failure_rate",
+			"Fraction of pages in a relation vacuum can scan and fail to freeze before disabling eager scanning.",
+			RELOPT_KIND_HEAP | RELOPT_KIND_TOAST,
+			ShareUpdateExclusiveLock
+		},
+		-1, 0.0, 1.0
+	},
+
 	{
 		{
 			"seq_page_cost",
@@ -1846,6 +1865,8 @@ default_reloptions(Datum reloptions, bool validate, relopt_kind kind)
 		offsetof(StdRdOptions, autovacuum) + offsetof(AutoVacOpts, enabled)},
 		{"autovacuum_vacuum_threshold", RELOPT_TYPE_INT,
 		offsetof(StdRdOptions, autovacuum) + offsetof(AutoVacOpts, vacuum_threshold)},
+		{"autovacuum_vacuum_max_threshold", RELOPT_TYPE_INT,
+		offsetof(StdRdOptions, autovacuum) + offsetof(AutoVacOpts, vacuum_max_threshold)},
 		{"autovacuum_vacuum_insert_threshold", RELOPT_TYPE_INT,
 		offsetof(StdRdOptions, autovacuum) + offsetof(AutoVacOpts, vacuum_ins_threshold)},
 		{"autovacuum_analyze_threshold", RELOPT_TYPE_INT,
@@ -1883,7 +1904,9 @@ default_reloptions(Datum reloptions, bool validate, relopt_kind kind)
 		{"vacuum_index_cleanup", RELOPT_TYPE_ENUM,
 		offsetof(StdRdOptions, vacuum_index_cleanup)},
 		{"vacuum_truncate", RELOPT_TYPE_BOOL,
-		offsetof(StdRdOptions, vacuum_truncate)}
+		offsetof(StdRdOptions, vacuum_truncate)},
+		{"vacuum_max_eager_freeze_failure_rate", RELOPT_TYPE_REAL,
+		offsetof(StdRdOptions, vacuum_max_eager_freeze_failure_rate)}
 	};
 
 	return (bytea *) build_reloptions(reloptions, validate, kind,

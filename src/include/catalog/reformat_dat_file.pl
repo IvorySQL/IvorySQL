@@ -10,7 +10,7 @@
 #    in the same order as the columns of the corresponding catalog.
 #    Comments and blank lines are preserved.
 #
-# Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 # Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
 #
@@ -85,7 +85,7 @@ foreach my $datfile (@ARGV)
 # if you need to. In the following example, the "next if !ref $row"
 # check below is a hack to filter out non-hash objects. This is because
 # we build the lookup tables from data that we read using the
-# "preserve_formatting" parameter.
+# "preserve_comments" parameter.
 #
 ##Index access method lookup.
 #my %amnames;

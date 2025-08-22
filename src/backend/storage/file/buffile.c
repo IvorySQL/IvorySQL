@@ -3,7 +3,7 @@
  * buffile.c
  *	  Management of large buffered temporary files.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -461,7 +461,7 @@ BufFileLoadBuffer(BufFile *file)
 	 */
 	file->nbytes = FileRead(thisfile,
 							file->buffer.data,
-							sizeof(file->buffer),
+							sizeof(file->buffer.data),
 							file->curOffset,
 							WAIT_EVENT_BUFFILE_READ);
 	if (file->nbytes < 0)

@@ -29,7 +29,7 @@
  * This code isn't concerned about the FSM at all. The caller is responsible
  * for initializing that.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -51,7 +51,7 @@
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "storage/bulk_write.h"
-#include "tcop/tcopprot.h"		/* pgrminclude ignore */
+#include "tcop/tcopprot.h"
 #include "utils/rel.h"
 #include "utils/sortsupport.h"
 #include "utils/tuplesort.h"
@@ -829,7 +829,7 @@ _bt_buildadd(BTWriteState *wstate, BTPageState *state, IndexTuple itup,
 	 * make use of the reserved space.  This should never fail on internal
 	 * pages.
 	 */
-	if (unlikely(itupsz > BTMaxItemSize(npage)))
+	if (unlikely(itupsz > BTMaxItemSize))
 		_bt_check_third_page(wstate->index, wstate->heap, isleaf, npage,
 							 itup);
 
@@ -1305,7 +1305,7 @@ _bt_load(BTWriteState *wstate, BTSpool *btspool, BTSpool *btspool2)
 				 */
 				dstate->maxpostingsize = MAXALIGN_DOWN((BLCKSZ * 10 / 100)) -
 					sizeof(ItemIdData);
-				Assert(dstate->maxpostingsize <= BTMaxItemSize((Page) state->btps_buf) &&
+				Assert(dstate->maxpostingsize <= BTMaxItemSize &&
 					   dstate->maxpostingsize <= INDEX_SIZE_MASK);
 				dstate->htids = palloc(dstate->maxpostingsize);
 

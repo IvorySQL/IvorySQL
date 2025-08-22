@@ -10,7 +10,7 @@
  *	  Over time, this has also become the preferred place for widely known
  *	  resource-limitation stuff, such as work_mem and check_stack_depth().
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/miscadmin.h
@@ -293,7 +293,7 @@ extern PGDLLIMPORT bool VacuumCostActive;
 extern PGDLLIMPORT int max_stack_depth;
 
 /* Required daylight between max_stack_depth and the kernel limit, in bytes */
-#define STACK_DEPTH_SLOP (512 * 1024L)
+#define STACK_DEPTH_SLOP (512 * 1024)
 
 typedef char *pg_stack_base_t;
 
@@ -301,7 +301,7 @@ extern pg_stack_base_t set_stack_base(void);
 extern void restore_stack_base(pg_stack_base_t base);
 extern void check_stack_depth(void);
 extern bool stack_is_too_deep(void);
-extern long get_stack_depth_rlimit(void);
+extern ssize_t get_stack_depth_rlimit(void);
 
 /* in tcop/utility.c */
 extern void PreventCommandIfReadOnly(const char *cmdname);
@@ -350,8 +350,9 @@ typedef enum BackendType
 
 	/*
 	 * Auxiliary processes. These have PGPROC entries, but they are not
-	 * attached to any particular database. There can be only one of each of
-	 * these running at a time.
+	 * attached to any particular database, and cannot run transactions or
+	 * even take heavyweight locks. There can be only one of each of these
+	 * running at a time.
 	 *
 	 * If you modify these, make sure to update NUM_AUXILIARY_PROCS and the
 	 * glossary in the docs.
@@ -375,6 +376,7 @@ typedef enum BackendType
 
 extern PGDLLIMPORT BackendType MyBackendType;
 
+#define AmRegularBackendProcess()	(MyBackendType == B_BACKEND)
 #define AmAutoVacuumLauncherProcess() (MyBackendType == B_AUTOVAC_LAUNCHER)
 #define AmAutoVacuumWorkerProcess()	(MyBackendType == B_AUTOVAC_WORKER)
 #define AmBackgroundWorkerProcess() (MyBackendType == B_BG_WORKER)
@@ -387,6 +389,18 @@ extern PGDLLIMPORT BackendType MyBackendType;
 #define AmWalReceiverProcess()		(MyBackendType == B_WAL_RECEIVER)
 #define AmWalSummarizerProcess()	(MyBackendType == B_WAL_SUMMARIZER)
 #define AmWalWriterProcess()		(MyBackendType == B_WAL_WRITER)
+
+#define AmSpecialWorkerProcess() \
+	(AmAutoVacuumLauncherProcess() || \
+	 AmLogicalSlotSyncWorkerProcess())
+
+/*
+ * Backend types that are spawned by the postmaster to serve a client or
+ * replication connection. These backend types have in common that they are
+ * externally initiated.
+ */
+#define IsExternalConnectionBackend(backend_type) \
+	(backend_type == B_BACKEND || backend_type == B_WAL_SENDER)
 
 extern const char *GetBackendTypeDesc(BackendType backendType);
 
