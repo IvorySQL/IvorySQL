@@ -4850,13 +4850,14 @@ select distinct sum(c1)/1000 s from ft2 where c2 < 6 group by c2 order by 1;
 -- WindowAgg
 explain (verbose, costs off)
 select c2, sum(c2), count(c2) over (partition by c2%2) from ft2 where c2 < 10 group by c2 order by 1;
-                               QUERY PLAN                                
--------------------------------------------------------------------------
+                               QUERY PLAN                               
+------------------------------------------------------------------------
  Sort
-   Output: c2, (sum(c2)), (count(c2) OVER (?)), ((c2 % '2'::number))
+   Output: c2, (sum(c2)), (count(c2) OVER w1), ((c2 % '2'::number))
    Sort Key: ft2.c2
    ->  WindowAgg
-         Output: c2, (sum(c2)), count(c2) OVER (?), ((c2 % '2'::number))
+         Output: c2, (sum(c2)), count(c2) OVER w1, ((c2 % '2'::number))
+         Window: w1 AS (PARTITION BY ((ft2.c2 % '2'::number)))
          ->  Sort
                Output: c2, ((c2 % '2'::number)), (sum(c2))
                Sort Key: ((ft2.c2 % '2'::number))
@@ -4867,7 +4868,7 @@ select c2, sum(c2), count(c2) over (partition by c2%2) from ft2 where c2 < 10 gr
                            Output: c2
                            Filter: (ft2.c2 < '10'::number)
                            Remote SQL: SELECT c2 FROM "S 1"."T 1"
-(15 rows)
+(16 rows)
 
 select c2, sum(c2), count(c2) over (partition by c2%2) from ft2 where c2 < 10 group by c2 order by 1;
  c2 | sum | count 
@@ -4886,13 +4887,14 @@ select c2, sum(c2), count(c2) over (partition by c2%2) from ft2 where c2 < 10 gr
 
 explain (verbose, costs off)
 select c2, array_agg(c2) over (partition by c2%2 order by c2 desc) from ft1 where c2 < 10 group by c2 order by 1;
-                            QUERY PLAN                            
-------------------------------------------------------------------
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
  Sort
-   Output: c2, (array_agg(c2) OVER (?)), ((c2 % '2'::number))
+   Output: c2, (array_agg(c2) OVER w1), ((c2 % '2'::number))
    Sort Key: ft1.c2
    ->  WindowAgg
-         Output: c2, array_agg(c2) OVER (?), ((c2 % '2'::number))
+         Output: c2, array_agg(c2) OVER w1, ((c2 % '2'::number))
+         Window: w1 AS (PARTITION BY ((ft1.c2 % '2'::number)) ORDER BY ft1.c2)
          ->  Sort
                Output: c2, ((c2 % '2'::number))
                Sort Key: ((ft1.c2 % '2'::number)), ft1.c2 DESC
@@ -4903,7 +4905,7 @@ select c2, array_agg(c2) over (partition by c2%2 order by c2 desc) from ft1 wher
                            Output: c2
                            Filter: (ft1.c2 < '10'::number)
                            Remote SQL: SELECT c2 FROM "S 1"."T 1"
-(15 rows)
+(16 rows)
 
 select c2, array_agg(c2) over (partition by c2%2 order by c2 desc) from ft1 where c2 < 10 group by c2 order by 1;
  c2 |  array_agg  
@@ -4922,13 +4924,14 @@ select c2, array_agg(c2) over (partition by c2%2 order by c2 desc) from ft1 wher
 
 explain (verbose, costs off)
 select c2, array_agg(c2) over (partition by c2%2 order by c2 range between current row and unbounded following) from ft1 where c2 < 10 group by c2 order by 1;
-                            QUERY PLAN                            
-------------------------------------------------------------------
+                                                           QUERY PLAN                                                            
+---------------------------------------------------------------------------------------------------------------------------------
  Sort
-   Output: c2, (array_agg(c2) OVER (?)), ((c2 % '2'::number))
+   Output: c2, (array_agg(c2) OVER w1), ((c2 % '2'::number))
    Sort Key: ft1.c2
    ->  WindowAgg
-         Output: c2, array_agg(c2) OVER (?), ((c2 % '2'::number))
+         Output: c2, array_agg(c2) OVER w1, ((c2 % '2'::number))
+         Window: w1 AS (PARTITION BY ((ft1.c2 % '2'::number)) ORDER BY ft1.c2 RANGE BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING)
          ->  Sort
                Output: c2, ((c2 % '2'::number))
                Sort Key: ((ft1.c2 % '2'::number)), ft1.c2
@@ -4939,7 +4942,7 @@ select c2, array_agg(c2) over (partition by c2%2 order by c2 range between curre
                            Output: c2
                            Filter: (ft1.c2 < '10'::number)
                            Remote SQL: SELECT c2 FROM "S 1"."T 1"
-(15 rows)
+(16 rows)
 
 select c2, array_agg(c2) over (partition by c2%2 order by c2 range between current row and unbounded following) from ft1 where c2 < 10 group by c2 order by 1;
  c2 |  array_agg  

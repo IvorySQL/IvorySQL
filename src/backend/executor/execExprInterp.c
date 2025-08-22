@@ -80,13 +80,10 @@
 #include "utils/timestamp.h"
 #include "utils/typcache.h"
 #include "utils/xml.h"
-#include "utils/guc.h"
-#include "utils/ora_compatible.h"
 #include "commands/proclang.h"
 #include "utils/guc.h"
 #include "utils/ora_compatible.h"
 #include "catalog/pg_proc.h"
-#include "utils/syscache.h"
 #include "parser/parse_param.h"
 #include "executor/spi.h"
 
