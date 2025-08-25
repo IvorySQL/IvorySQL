@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2024, PostgreSQL Global Development Group
+# Copyright (c) 2022-2025, PostgreSQL Global Development Group
 
 test_install_data += files(
   'test_ext1--1.0.sql',
@@ -56,5 +56,10 @@ tests += {
       'test_extdepend',
     ],
     'regress_args': ['--no-locale'],
+  },
+  'tap': {
+    'tests': [
+      't/001_extension_control_path.pl',
+    ],
   },
 }
