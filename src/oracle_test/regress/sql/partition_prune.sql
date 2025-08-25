@@ -1386,6 +1386,7 @@ deallocate update_part_abc_view;
 create function stable_one() returns int as $$ begin return 1; end; $$ language plisql stable;
 /
 
+
 -- A case with nested MergeAppend with its own PartitionPruneInfo.
 create index on part_abc (a);
 alter table part_abc add d int;

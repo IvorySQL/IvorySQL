@@ -132,8 +132,8 @@ INIT
 
 	# Set PGHOST for backward compatibility.  This doesn't work for own_host
 	# nodes, so prefer to not rely on this when writing new tests.
-	$use_tcp = !$PostgreSQL::Test::Utils::use_unix_sockets;
-	$test_localhost = "127.0.0.1";
+	$use_tcp            = !$PostgreSQL::Test::Utils::use_unix_sockets;
+	$test_localhost     = "127.0.0.1";
 	$last_host_assigned = 1;
 	if ($use_tcp)
 	{
@@ -147,7 +147,7 @@ INIT
 		$test_pghost = PostgreSQL::Test::Utils::tempdir_short;
 		$test_pghost =~ s!\\!/!g if $PostgreSQL::Test::Utils::windows_os;
 	}
-	$ENV{PGHOST} = $test_pghost;
+	$ENV{PGHOST}     = $test_pghost;
 	$ENV{PGDATABASE} = 'postgres';
 
 	# Tracking of last port value assigned to accelerate free port lookup.
@@ -650,11 +650,8 @@ sub init
 		or !defined $ENV{INITDB_TEMPLATE})
 	{
 		note("initializing database system by running initdb");
-		PostgreSQL::Test::Utils::system_or_bail(
-			'initdb', '--no-sync',
-			'--pgdata' => $pgdata,
-			'--auth' => 'trust',
-			@{ $params{extra} });
+		PostgreSQL::Test::Utils::system_or_bail('initdb', '-D', $pgdata, '-A',
+			'trust', '-N', '-m', 'oracle', '-C', 'normal', @{ $params{extra} });
 	}
 	else
 	{
@@ -2834,6 +2831,25 @@ sub command_fails_like
 
 	PostgreSQL::Test::Utils::command_fails_like(@_);
 	return;
+}
+
+=pod
+
+=item $node->command_ok_or_fails_like(...)
+
+PostgreSQL::Test::Utils::command_ok_or_fails_like with our connection parameters. See command_ok(...)
+
+=cut
+
+sub command_ok_or_fails_like
+{
+	local $Test::Builder::Level = $Test::Builder::Level + 1;
+
+	my $self = shift;
+
+	local %ENV = $self->_get_env();
+
+	return PostgreSQL::Test::Utils::command_ok_or_fails_like(@_);
 }
 
 =pod
