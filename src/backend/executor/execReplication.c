@@ -3,7 +3,7 @@
  * execReplication.c
  *	  miscellaneous executor routines for logical replication
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -37,35 +37,6 @@
 
 static bool tuples_equal(TupleTableSlot *slot1, TupleTableSlot *slot2,
 						 TypeCacheEntry **eq);
-
-/*
- * Returns the fixed strategy number, if any, of the equality operator for the
- * given operator class, otherwise, InvalidStrategy.
- */
-StrategyNumber
-get_equal_strategy_number(Oid opclass)
-{
-	Oid			am = get_opclass_method(opclass);
-	int			ret;
-
-	switch (am)
-	{
-		case BTREE_AM_OID:
-			ret = BTEqualStrategyNumber;
-			break;
-		case HASH_AM_OID:
-			ret = HTEqualStrategyNumber;
-			break;
-		case GIST_AM_OID:
-			ret = GistTranslateStratnum(opclass, RTEqualStrategyNumber);
-			break;
-		default:
-			ret = InvalidStrategy;
-			break;
-	}
-
-	return ret;
-}
 
 /*
  * Setup a ScanKey for a search in the relation 'rel' for a tuple 'key' that
@@ -120,10 +91,7 @@ build_replindex_scan_key(ScanKey skey, Relation rel, Relation idxrel,
 		 */
 		optype = get_opclass_input_type(opclass->values[index_attoff]);
 		opfamily = get_opclass_family(opclass->values[index_attoff]);
-		eq_strategy = get_equal_strategy_number(opclass->values[index_attoff]);
-		if (!eq_strategy)
-			elog(ERROR, "missing equal strategy for opclass %u", opclass->values[index_attoff]);
-
+		eq_strategy = IndexAmTranslateCompareType(COMPARE_EQ, idxrel->rd_rel->relam, opfamily, false);
 		operator = get_opfamily_member(opfamily, optype,
 									   optype,
 									   eq_strategy);
@@ -234,7 +202,7 @@ RelationFindReplTupleByIndex(Relation rel, Oid idxoid,
 	skey_attoff = build_replindex_scan_key(skey, rel, idxrel, searchslot);
 
 	/* Start an index scan. */
-	scan = index_beginscan(rel, idxrel, &snap, skey_attoff, 0);
+	scan = index_beginscan(rel, idxrel, &snap, NULL, skey_attoff, 0);
 
 retry:
 	found = false;
@@ -285,7 +253,7 @@ retry:
 
 		PushActiveSnapshot(GetLatestSnapshot());
 
-		res = table_tuple_lock(rel, &(outslot->tts_tid), GetLatestSnapshot(),
+		res = table_tuple_lock(rel, &(outslot->tts_tid), GetActiveSnapshot(),
 							   outslot,
 							   GetCurrentCommandId(false),
 							   lockmode,
@@ -443,7 +411,7 @@ retry:
 
 		PushActiveSnapshot(GetLatestSnapshot());
 
-		res = table_tuple_lock(rel, &(outslot->tts_tid), GetLatestSnapshot(),
+		res = table_tuple_lock(rel, &(outslot->tts_tid), GetActiveSnapshot(),
 							   outslot,
 							   GetCurrentCommandId(false),
 							   lockmode,
@@ -500,7 +468,7 @@ retry:
 
 	PushActiveSnapshot(GetLatestSnapshot());
 
-	res = table_tuple_lock(rel, &conflictTid, GetLatestSnapshot(),
+	res = table_tuple_lock(rel, &conflictTid, GetActiveSnapshot(),
 						   *conflictslot,
 						   GetCurrentCommandId(false),
 						   LockTupleShare,

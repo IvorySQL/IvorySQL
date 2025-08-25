@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2024, PostgreSQL Global Development Group
+# Copyright (c) 2022-2025, PostgreSQL Global Development Group
 
 subdir('brin')
 subdir('commit_ts')
@@ -9,6 +9,7 @@ subdir('gin')
 subdir('injection_points')
 subdir('ldap_password_func')
 subdir('libpq_pipeline')
+subdir('oauth_validator')
 subdir('plsample')
 subdir('spgist_name_ops')
 subdir('ssl_passphrase_callback')
@@ -18,6 +19,7 @@ subdir('test_custom_rmgrs')
 subdir('test_ddl_deparse')
 subdir('test_dsa')
 subdir('test_dsm_registry')
+subdir('test_escape')
 subdir('test_extensions')
 subdir('test_ginpostinglist')
 subdir('test_integerset')

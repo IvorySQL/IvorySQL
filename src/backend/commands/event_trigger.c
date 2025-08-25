@@ -3,7 +3,7 @@
  * event_trigger.c
  *	  PostgreSQL EVENT TRIGGER support code.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -277,8 +277,8 @@ insert_event_trigger_tuple(const char *trigname, const char *eventname, Oid evtO
 	Relation	tgrel;
 	Oid			trigoid;
 	HeapTuple	tuple;
-	Datum		values[Natts_pg_trigger];
-	bool		nulls[Natts_pg_trigger];
+	Datum		values[Natts_pg_event_trigger];
+	bool		nulls[Natts_pg_event_trigger];
 	NameData	evtnamedata,
 				evteventdata;
 	ObjectAddress myself,

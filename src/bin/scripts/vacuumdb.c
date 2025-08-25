@@ -2,7 +2,7 @@
  *
  * vacuumdb
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -48,6 +48,7 @@ typedef struct vacuumingOptions
 	bool		process_toast;
 	bool		skip_database_stats;
 	char	   *buffer_usage_limit;
+	bool		missing_stats_only;
 } vacuumingOptions;
 
 /* object filter options */
@@ -63,10 +64,16 @@ typedef enum
 
 static VacObjFilter objfilter = OBJFILTER_NONE;
 
+static SimpleStringList *retrieve_objects(PGconn *conn,
+										  vacuumingOptions *vacopts,
+										  SimpleStringList *objects,
+										  bool echo);
+
 static void vacuum_one_database(ConnParams *cparams,
 								vacuumingOptions *vacopts,
 								int stage,
 								SimpleStringList *objects,
+								SimpleStringList **found_objs,
 								int concurrentCons,
 								const char *progname, bool echo, bool quiet);
 
@@ -129,6 +136,7 @@ main(int argc, char *argv[])
 		{"no-process-toast", no_argument, NULL, 11},
 		{"no-process-main", no_argument, NULL, 12},
 		{"buffer-usage-limit", required_argument, NULL, 13},
+		{"missing-stats-only", no_argument, NULL, 14},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -276,6 +284,9 @@ main(int argc, char *argv[])
 			case 13:
 				vacopts.buffer_usage_limit = escape_quotes(optarg);
 				break;
+			case 14:
+				vacopts.missing_stats_only = true;
+				break;
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
@@ -361,6 +372,14 @@ main(int argc, char *argv[])
 		pg_fatal("cannot use the \"%s\" option with the \"%s\" option",
 				 "buffer-usage-limit", "full");
 
+	/*
+	 * Prohibit --missing-stats-only without --analyze-only or
+	 * --analyze-in-stages.
+	 */
+	if (vacopts.missing_stats_only && !vacopts.analyze_only)
+		pg_fatal("cannot use the \"%s\" option without \"%s\" or \"%s\"",
+				 "missing-stats-only", "analyze-only", "analyze-in-stages");
+
 	/* fill cparams except for dbname, which is set below */
 	cparams.pghost = host;
 	cparams.pgport = port;
@@ -401,12 +420,14 @@ main(int argc, char *argv[])
 		if (analyze_in_stages)
 		{
 			int			stage;
+			SimpleStringList *found_objs = NULL;
 
 			for (stage = 0; stage < ANALYZE_NUM_STAGES; stage++)
 			{
 				vacuum_one_database(&cparams, &vacopts,
 									stage,
 									&objects,
+									vacopts.missing_stats_only ? &found_objs : NULL,
 									concurrentCons,
 									progname, echo, quiet);
 			}
@@ -414,7 +435,7 @@ main(int argc, char *argv[])
 		else
 			vacuum_one_database(&cparams, &vacopts,
 								ANALYZE_NO_STAGE,
-								&objects,
+								&objects, NULL,
 								concurrentCons,
 								progname, echo, quiet);
 	}
@@ -462,37 +483,60 @@ escape_quotes(const char *src)
 /*
  * vacuum_one_database
  *
- * Process tables in the given database.  If the 'tables' list is empty,
- * process all tables in the database.
+ * Process tables in the given database.
+ *
+ * There are two ways to specify the list of objects to process:
+ *
+ * 1) The "found_objs" parameter is a double pointer to a fully qualified list
+ *    of objects to process, as returned by a previous call to
+ *    vacuum_one_database().
+ *
+ *     a) If both "found_objs" (the double pointer) and "*found_objs" (the
+ *        once-dereferenced double pointer) are not NULL, this list takes
+ *        priority, and anything specified in "objects" is ignored.
+ *
+ *     b) If "found_objs" (the double pointer) is not NULL but "*found_objs"
+ *        (the once-dereferenced double pointer) _is_ NULL, the "objects"
+ *        parameter takes priority, and the results of the catalog query
+ *        described in (2) are stored in "found_objs".
+ *
+ *     c) If "found_objs" (the double pointer) is NULL, the "objects"
+ *        parameter again takes priority, and the results of the catalog query
+ *        are not saved.
+ *
+ * 2) The "objects" parameter is a user-specified list of objects to process.
+ *    When (1b) or (1c) applies, this function performs a catalog query to
+ *    retrieve a fully qualified list of objects to process, as described
+ *    below.
+ *
+ *     a) If "objects" is not NULL, the catalog query gathers only the objects
+ *        listed in "objects".
+ *
+ *     b) If "objects" is NULL, all tables in the database are gathered.
  *
  * Note that this function is only concerned with running exactly one stage
  * when in analyze-in-stages mode; caller must iterate on us if necessary.
  *
  * If concurrentCons is > 1, multiple connections are used to vacuum tables
- * in parallel.  In this case and if the table list is empty, we first obtain
- * a list of tables from the database.
+ * in parallel.
  */
 static void
 vacuum_one_database(ConnParams *cparams,
 					vacuumingOptions *vacopts,
 					int stage,
 					SimpleStringList *objects,
+					SimpleStringList **found_objs,
 					int concurrentCons,
 					const char *progname, bool echo, bool quiet)
 {
 	PQExpBufferData sql;
-	PQExpBufferData buf;
-	PQExpBufferData catalog_query;
-	PGresult   *res;
 	PGconn	   *conn;
 	SimpleStringListCell *cell;
 	ParallelSlotArray *sa;
-	SimpleStringList dbtables = {NULL, NULL};
-	int			i;
-	int			ntups;
+	int			ntups = 0;
 	bool		failed = false;
-	bool		objects_listed = false;
 	const char *initcmd;
+	SimpleStringList *ret = NULL;
 	const char *stage_commands[] = {
 		"SET default_statistics_target=1; SET vacuum_cost_delay=0;",
 		"SET default_statistics_target=10; RESET vacuum_cost_delay;",
@@ -559,20 +603,39 @@ vacuum_one_database(ConnParams *cparams,
 	}
 
 	if (vacopts->min_xid_age != 0 && PQserverVersion(conn) < 90600)
+	{
+		PQfinish(conn);
 		pg_fatal("cannot use the \"%s\" option on server versions older than PostgreSQL %s",
 				 "--min-xid-age", "9.6");
+	}
 
 	if (vacopts->min_mxid_age != 0 && PQserverVersion(conn) < 90600)
+	{
+		PQfinish(conn);
 		pg_fatal("cannot use the \"%s\" option on server versions older than PostgreSQL %s",
 				 "--min-mxid-age", "9.6");
+	}
 
 	if (vacopts->parallel_workers >= 0 && PQserverVersion(conn) < 130000)
+	{
+		PQfinish(conn);
 		pg_fatal("cannot use the \"%s\" option on server versions older than PostgreSQL %s",
 				 "--parallel", "13");
+	}
 
 	if (vacopts->buffer_usage_limit && PQserverVersion(conn) < 160000)
+	{
+		PQfinish(conn);
 		pg_fatal("cannot use the \"%s\" option on server versions older than PostgreSQL %s",
 				 "--buffer-usage-limit", "16");
+	}
+
+	if (vacopts->missing_stats_only && PQserverVersion(conn) < 150000)
+	{
+		PQfinish(conn);
+		pg_fatal("cannot use the \"%s\" option on server versions older than PostgreSQL %s",
+				 "--missing-stats-only", "15");
+	}
 
 	/* skip_database_stats is used automatically if server supports it */
 	vacopts->skip_database_stats = (PQserverVersion(conn) >= 160000);
@@ -589,19 +652,155 @@ vacuum_one_database(ConnParams *cparams,
 	}
 
 	/*
-	 * Prepare the list of tables to process by querying the catalogs.
-	 *
-	 * Since we execute the constructed query with the default search_path
-	 * (which could be unsafe), everything in this query MUST be fully
-	 * qualified.
-	 *
-	 * First, build a WITH clause for the catalog query if any tables were
-	 * specified, with a set of values made of relation names and their
-	 * optional set of columns.  This is used to match any provided column
-	 * lists with the generated qualified identifiers and to filter for the
-	 * tables provided via --table.  If a listed table does not exist, the
-	 * catalog query will fail.
+	 * If the caller provided the results of a previous catalog query, just
+	 * use that.  Otherwise, run the catalog query ourselves and set the
+	 * return variable if provided.
 	 */
+	if (found_objs && *found_objs)
+		ret = *found_objs;
+	else
+	{
+		ret = retrieve_objects(conn, vacopts, objects, echo);
+		if (found_objs)
+			*found_objs = ret;
+	}
+
+	/*
+	 * Count the number of objects in the catalog query result.  If there are
+	 * none, we are done.
+	 */
+	for (cell = ret ? ret->head : NULL; cell; cell = cell->next)
+		ntups++;
+
+	if (ntups == 0)
+	{
+		PQfinish(conn);
+		return;
+	}
+
+	/*
+	 * Ensure concurrentCons is sane.  If there are more connections than
+	 * vacuumable relations, we don't need to use them all.
+	 */
+	if (concurrentCons > ntups)
+		concurrentCons = ntups;
+	if (concurrentCons <= 0)
+		concurrentCons = 1;
+
+	/*
+	 * All slots need to be prepared to run the appropriate analyze stage, if
+	 * caller requested that mode.  We have to prepare the initial connection
+	 * ourselves before setting up the slots.
+	 */
+	if (stage == ANALYZE_NO_STAGE)
+		initcmd = NULL;
+	else
+	{
+		initcmd = stage_commands[stage];
+		executeCommand(conn, initcmd, echo);
+	}
+
+	/*
+	 * Setup the database connections. We reuse the connection we already have
+	 * for the first slot.  If not in parallel mode, the first slot in the
+	 * array contains the connection.
+	 */
+	sa = ParallelSlotsSetup(concurrentCons, cparams, progname, echo, initcmd);
+	ParallelSlotsAdoptConn(sa, conn);
+
+	initPQExpBuffer(&sql);
+
+	cell = ret->head;
+	do
+	{
+		const char *tabname = cell->val;
+		ParallelSlot *free_slot;
+
+		if (CancelRequested)
+		{
+			failed = true;
+			goto finish;
+		}
+
+		free_slot = ParallelSlotsGetIdle(sa, NULL);
+		if (!free_slot)
+		{
+			failed = true;
+			goto finish;
+		}
+
+		prepare_vacuum_command(&sql, PQserverVersion(free_slot->connection),
+							   vacopts, tabname);
+
+		/*
+		 * Execute the vacuum.  All errors are handled in processQueryResult
+		 * through ParallelSlotsGetIdle.
+		 */
+		ParallelSlotSetHandler(free_slot, TableCommandResultHandler, NULL);
+		run_vacuum_command(free_slot->connection, sql.data,
+						   echo, tabname);
+
+		cell = cell->next;
+	} while (cell != NULL);
+
+	if (!ParallelSlotsWaitCompletion(sa))
+	{
+		failed = true;
+		goto finish;
+	}
+
+	/* If we used SKIP_DATABASE_STATS, mop up with ONLY_DATABASE_STATS */
+	if (vacopts->skip_database_stats && stage == ANALYZE_NO_STAGE)
+	{
+		const char *cmd = "VACUUM (ONLY_DATABASE_STATS);";
+		ParallelSlot *free_slot = ParallelSlotsGetIdle(sa, NULL);
+
+		if (!free_slot)
+		{
+			failed = true;
+			goto finish;
+		}
+
+		ParallelSlotSetHandler(free_slot, TableCommandResultHandler, NULL);
+		run_vacuum_command(free_slot->connection, cmd, echo, NULL);
+
+		if (!ParallelSlotsWaitCompletion(sa))
+			failed = true;
+	}
+
+finish:
+	ParallelSlotsTerminate(sa);
+	pg_free(sa);
+
+	termPQExpBuffer(&sql);
+
+	if (failed)
+		exit(1);
+}
+
+/*
+ * Prepare the list of tables to process by querying the catalogs.
+ *
+ * Since we execute the constructed query with the default search_path (which
+ * could be unsafe), everything in this query MUST be fully qualified.
+ *
+ * First, build a WITH clause for the catalog query if any tables were
+ * specified, with a set of values made of relation names and their optional
+ * set of columns.  This is used to match any provided column lists with the
+ * generated qualified identifiers and to filter for the tables provided via
+ * --table.  If a listed table does not exist, the catalog query will fail.
+ */
+static SimpleStringList *
+retrieve_objects(PGconn *conn, vacuumingOptions *vacopts,
+				 SimpleStringList *objects, bool echo)
+{
+	PQExpBufferData buf;
+	PQExpBufferData catalog_query;
+	PGresult   *res;
+	SimpleStringListCell *cell;
+	SimpleStringList *found_objs = palloc0(sizeof(SimpleStringList));
+	bool		objects_listed = false;
+
 	initPQExpBuffer(&catalog_query);
 	for (cell = objects ? objects->head : NULL; cell; cell = cell->next)
 	{
@@ -662,6 +861,9 @@ vacuum_one_database(ConnParams *cparams,
 						 " FROM pg_catalog.pg_class c\n"
 						 " JOIN pg_catalog.pg_namespace ns"
 						 " ON c.relnamespace OPERATOR(pg_catalog.=) ns.oid\n"
+						 " CROSS JOIN LATERAL (SELECT c.relkind IN ("
+						 CppAsString2(RELKIND_PARTITIONED_TABLE) ", "
+						 CppAsString2(RELKIND_PARTITIONED_INDEX) ")) as p (inherited)\n"
 						 " LEFT JOIN pg_catalog.pg_class t"
 						 " ON c.reltoastrelid OPERATOR(pg_catalog.=) t.oid\n");
 
@@ -745,6 +947,84 @@ vacuum_one_database(ConnParams *cparams,
 						  vacopts->min_mxid_age);
 	}
 
+	if (vacopts->missing_stats_only)
+	{
+		appendPQExpBufferStr(&catalog_query, " AND (\n");
+
+		/* regular stats */
+		appendPQExpBufferStr(&catalog_query,
+							 " EXISTS (SELECT NULL FROM pg_catalog.pg_attribute a\n"
+							 " WHERE a.attrelid OPERATOR(pg_catalog.=) c.oid\n"
+							 " AND c.reltuples OPERATOR(pg_catalog.!=) 0::pg_catalog.float4\n"
+							 " AND a.attnum OPERATOR(pg_catalog.>) 0::pg_catalog.int2\n"
+							 " AND NOT a.attisdropped\n"
+							 " AND a.attstattarget IS DISTINCT FROM 0::pg_catalog.int2\n"
+							 " AND NOT EXISTS (SELECT NULL FROM pg_catalog.pg_statistic s\n"
+							 " WHERE s.starelid OPERATOR(pg_catalog.=) a.attrelid\n"
+							 " AND s.staattnum OPERATOR(pg_catalog.=) a.attnum\n"
+							 " AND s.stainherit OPERATOR(pg_catalog.=) p.inherited))\n");
+
+		/* extended stats */
+		appendPQExpBufferStr(&catalog_query,
+							 " OR EXISTS (SELECT NULL FROM pg_catalog.pg_statistic_ext e\n"
+							 " WHERE e.stxrelid OPERATOR(pg_catalog.=) c.oid\n"
+							 " AND c.reltuples OPERATOR(pg_catalog.!=) 0::pg_catalog.float4\n"
+							 " AND e.stxstattarget IS DISTINCT FROM 0::pg_catalog.int2\n"
+							 " AND NOT EXISTS (SELECT NULL FROM pg_catalog.pg_statistic_ext_data d\n"
+							 " WHERE d.stxoid OPERATOR(pg_catalog.=) e.oid\n"
+							 " AND d.stxdinherit OPERATOR(pg_catalog.=) p.inherited))\n");
+
+		/* expression indexes */
+		appendPQExpBufferStr(&catalog_query,
+							 " OR EXISTS (SELECT NULL FROM pg_catalog.pg_attribute a\n"
+							 " JOIN pg_catalog.pg_index i"
+							 " ON i.indexrelid OPERATOR(pg_catalog.=) a.attrelid\n"
+							 " WHERE i.indrelid OPERATOR(pg_catalog.=) c.oid\n"
+							 " AND c.reltuples OPERATOR(pg_catalog.!=) 0::pg_catalog.float4\n"
+							 " AND i.indkey[a.attnum OPERATOR(pg_catalog.-) 1::pg_catalog.int2]"
+							 " OPERATOR(pg_catalog.=) 0::pg_catalog.int2\n"
+							 " AND a.attnum OPERATOR(pg_catalog.>) 0::pg_catalog.int2\n"
+							 " AND NOT a.attisdropped\n"
+							 " AND a.attstattarget IS DISTINCT FROM 0::pg_catalog.int2\n"
+							 " AND NOT EXISTS (SELECT NULL FROM pg_catalog.pg_statistic s\n"
+							 " WHERE s.starelid OPERATOR(pg_catalog.=) a.attrelid\n"
+							 " AND s.staattnum OPERATOR(pg_catalog.=) a.attnum\n"
+							 " AND s.stainherit OPERATOR(pg_catalog.=) p.inherited))\n");
+
+		/* inheritance and regular stats */
+		appendPQExpBufferStr(&catalog_query,
+							 " OR EXISTS (SELECT NULL FROM pg_catalog.pg_attribute a\n"
+							 " WHERE a.attrelid OPERATOR(pg_catalog.=) c.oid\n"
+							 " AND c.reltuples OPERATOR(pg_catalog.!=) 0::pg_catalog.float4\n"
+							 " AND a.attnum OPERATOR(pg_catalog.>) 0::pg_catalog.int2\n"
+							 " AND NOT a.attisdropped\n"
+							 " AND a.attstattarget IS DISTINCT FROM 0::pg_catalog.int2\n"
+							 " AND c.relhassubclass\n"
+							 " AND NOT p.inherited\n"
+							 " AND EXISTS (SELECT NULL FROM pg_catalog.pg_inherits h\n"
+							 " WHERE h.inhparent OPERATOR(pg_catalog.=) c.oid)\n"
+							 " AND NOT EXISTS (SELECT NULL FROM pg_catalog.pg_statistic s\n"
+							 " WHERE s.starelid OPERATOR(pg_catalog.=) a.attrelid\n"
+							 " AND s.staattnum OPERATOR(pg_catalog.=) a.attnum\n"
+							 " AND s.stainherit))\n");
+
+		/* inheritance and extended stats */
+		appendPQExpBufferStr(&catalog_query,
+							 " OR EXISTS (SELECT NULL FROM pg_catalog.pg_statistic_ext e\n"
+							 " WHERE e.stxrelid OPERATOR(pg_catalog.=) c.oid\n"
+							 " AND c.reltuples OPERATOR(pg_catalog.!=) 0::pg_catalog.float4\n"
+							 " AND e.stxstattarget IS DISTINCT FROM 0::pg_catalog.int2\n"
+							 " AND c.relhassubclass\n"
+							 " AND NOT p.inherited\n"
+							 " AND EXISTS (SELECT NULL FROM pg_catalog.pg_inherits h\n"
+							 " WHERE h.inhparent OPERATOR(pg_catalog.=) c.oid)\n"
+							 " AND NOT EXISTS (SELECT NULL FROM pg_catalog.pg_statistic_ext_data d\n"
+							 " WHERE d.stxoid OPERATOR(pg_catalog.=) e.oid\n"
+							 " AND d.stxdinherit))\n");
+
+		appendPQExpBufferStr(&catalog_query, " )\n");
+	}
+
 	/*
 	 * Execute the catalog query.  We use the default search_path for this
 	 * query for consistency with table lookups done elsewhere by the user.
@@ -756,134 +1036,27 @@ vacuum_one_database(ConnParams *cparams,
 	PQclear(executeQuery(conn, ALWAYS_SECURE_SEARCH_PATH_SQL, echo));
 
 	/*
-	 * If no rows are returned, there are no matching tables, so we are done.
-	 */
-	ntups = PQntuples(res);
-	if (ntups == 0)
-	{
-		PQclear(res);
-		PQfinish(conn);
-		return;
-	}
-
-	/*
 	 * Build qualified identifiers for each table, including the column list
 	 * if given.
 	 */
 	initPQExpBuffer(&buf);
-	for (i = 0; i < ntups; i++)
+	for (int i = 0; i < PQntuples(res); i++)
 	{
 		appendPQExpBufferStr(&buf,
-							 fmtQualifiedId(PQgetvalue(res, i, 1),
-											PQgetvalue(res, i, 0)));
+							 fmtQualifiedIdEnc(PQgetvalue(res, i, 1),
+											   PQgetvalue(res, i, 0),
+											   PQclientEncoding(conn)));
 
 		if (objects_listed && !PQgetisnull(res, i, 2))
 			appendPQExpBufferStr(&buf, PQgetvalue(res, i, 2));
 
-		simple_string_list_append(&dbtables, buf.data);
+		simple_string_list_append(found_objs, buf.data);
 		resetPQExpBuffer(&buf);
 	}
 	termPQExpBuffer(&buf);
 	PQclear(res);
 
-	/*
-	 * Ensure concurrentCons is sane.  If there are more connections than
-	 * vacuumable relations, we don't need to use them all.
-	 */
-	if (concurrentCons > ntups)
-		concurrentCons = ntups;
-	if (concurrentCons <= 0)
-		concurrentCons = 1;
-
-	/*
-	 * All slots need to be prepared to run the appropriate analyze stage, if
-	 * caller requested that mode.  We have to prepare the initial connection
-	 * ourselves before setting up the slots.
-	 */
-	if (stage == ANALYZE_NO_STAGE)
-		initcmd = NULL;
-	else
-	{
-		initcmd = stage_commands[stage];
-		executeCommand(conn, initcmd, echo);
-	}
-
-	/*
-	 * Setup the database connections. We reuse the connection we already have
-	 * for the first slot.  If not in parallel mode, the first slot in the
-	 * array contains the connection.
-	 */
-	sa = ParallelSlotsSetup(concurrentCons, cparams, progname, echo, initcmd);
-	ParallelSlotsAdoptConn(sa, conn);
-
-	initPQExpBuffer(&sql);
-
-	cell = dbtables.head;
-	do
-	{
-		const char *tabname = cell->val;
-		ParallelSlot *free_slot;
-
-		if (CancelRequested)
-		{
-			failed = true;
-			goto finish;
-		}
-
-		free_slot = ParallelSlotsGetIdle(sa, NULL);
-		if (!free_slot)
-		{
-			failed = true;
-			goto finish;
-		}
-
-		prepare_vacuum_command(&sql, PQserverVersion(free_slot->connection),
-							   vacopts, tabname);
-
-		/*
-		 * Execute the vacuum.  All errors are handled in processQueryResult
-		 * through ParallelSlotsGetIdle.
-		 */
-		ParallelSlotSetHandler(free_slot, TableCommandResultHandler, NULL);
-		run_vacuum_command(free_slot->connection, sql.data,
-						   echo, tabname);
-
-		cell = cell->next;
-	} while (cell != NULL);
-
-	if (!ParallelSlotsWaitCompletion(sa))
-	{
-		failed = true;
-		goto finish;
-	}
-
-	/* If we used SKIP_DATABASE_STATS, mop up with ONLY_DATABASE_STATS */
-	if (vacopts->skip_database_stats && stage == ANALYZE_NO_STAGE)
-	{
-		const char *cmd = "VACUUM (ONLY_DATABASE_STATS);";
-		ParallelSlot *free_slot = ParallelSlotsGetIdle(sa, NULL);
-
-		if (!free_slot)
-		{
-			failed = true;
-			goto finish;
-		}
-
-		ParallelSlotSetHandler(free_slot, TableCommandResultHandler, NULL);
-		run_vacuum_command(free_slot->connection, cmd, echo, NULL);
-
-		if (!ParallelSlotsWaitCompletion(sa))
-			failed = true;
-	}
-
-finish:
-	ParallelSlotsTerminate(sa);
-	pg_free(sa);
-
-	termPQExpBuffer(&sql);
-
-	if (failed)
-		exit(1);
+	return found_objs;
 }
 
 /*
@@ -914,6 +1087,11 @@ vacuum_all_databases(ConnParams *cparams,
 
 	if (analyze_in_stages)
 	{
+		SimpleStringList **found_objs = NULL;
+
+		if (vacopts->missing_stats_only)
+			found_objs = palloc0(PQntuples(result) * sizeof(SimpleStringList *));
+
 		/*
 		 * When analyzing all databases in stages, we analyze them all in the
 		 * fastest stage first, so that initial statistics become available
@@ -931,6 +1109,7 @@ vacuum_all_databases(ConnParams *cparams,
 				vacuum_one_database(cparams, vacopts,
 									stage,
 									objects,
+									vacopts->missing_stats_only ? &found_objs[i] : NULL,
 									concurrentCons,
 									progname, echo, quiet);
 			}
@@ -944,7 +1123,7 @@ vacuum_all_databases(ConnParams *cparams,
 
 			vacuum_one_database(cparams, vacopts,
 								ANALYZE_NO_STAGE,
-								objects,
+								objects, NULL,
 								concurrentCons,
 								progname, echo, quiet);
 		}
@@ -1170,6 +1349,7 @@ help(const char *progname)
 	printf(_("  -j, --jobs=NUM                  use this many concurrent connections to vacuum\n"));
 	printf(_("      --min-mxid-age=MXID_AGE     minimum multixact ID age of tables to vacuum\n"));
 	printf(_("      --min-xid-age=XID_AGE       minimum transaction ID age of tables to vacuum\n"));
+	printf(_("      --missing-stats-only        only analyze relations with missing statistics\n"));
 	printf(_("      --no-index-cleanup          don't remove index entries that point to dead tuples\n"));
 	printf(_("      --no-process-main           skip the main relation\n"));
 	printf(_("      --no-process-toast          skip the TOAST table associated with the table to vacuum\n"));

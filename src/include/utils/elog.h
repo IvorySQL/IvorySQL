@@ -4,7 +4,7 @@
  *	  POSTGRES error reporting/logging definitions.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/elog.h
@@ -415,17 +415,8 @@ extern PGDLLIMPORT ErrorContextCallback *error_context_stack;
 		error_context_stack = _save_context_stack##__VA_ARGS__; \
 	} while (0)
 
-/*
- * Some compilers understand pg_attribute_noreturn(); for other compilers,
- * insert pg_unreachable() so that the compiler gets the point.
- */
-#ifdef HAVE_PG_ATTRIBUTE_NORETURN
 #define PG_RE_THROW()  \
 	pg_re_throw()
-#else
-#define PG_RE_THROW()  \
-	(pg_re_throw(), pg_unreachable())
-#endif
 
 extern PGDLLIMPORT sigjmp_buf *PG_exception_stack;
 
@@ -476,9 +467,9 @@ extern void EmitErrorReport(void);
 extern ErrorData *CopyErrorData(void);
 extern void FreeErrorData(ErrorData *edata);
 extern void FlushErrorState(void);
-extern void ReThrowError(ErrorData *edata) pg_attribute_noreturn();
+pg_noreturn extern void ReThrowError(ErrorData *edata);
 extern void ThrowErrorData(ErrorData *edata);
-extern void pg_re_throw(void) pg_attribute_noreturn();
+pg_noreturn extern void pg_re_throw(void);
 
 extern char *GetErrorContextStack(void);
 
@@ -494,7 +485,7 @@ typedef enum
 	PGERROR_TERSE,				/* single-line error messages */
 	PGERROR_DEFAULT,			/* recommended style */
 	PGERROR_VERBOSE,			/* all the facts, ma'am */
-}			PGErrorVerbosity;
+} PGErrorVerbosity;
 
 extern PGDLLIMPORT int Log_error_verbosity;
 extern PGDLLIMPORT char *Log_line_prefix;

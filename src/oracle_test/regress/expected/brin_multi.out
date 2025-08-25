@@ -876,9 +876,9 @@ SET enable_seqscan = off;
 -- make sure the ranges were built correctly and 2023-01-01 eliminates all
 EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF, SUMMARY OFF, BUFFERS OFF)
 SELECT * FROM brin_date_test WHERE a = '2023-01-01'::date;
-                     QUERY PLAN                     
-----------------------------------------------------
- Seq Scan on brin_date_test (actual rows=0 loops=1)
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Seq Scan on brin_date_test (actual rows=0.00 loops=1)
    Disabled: true
    Filter: (a = '2023-01-01'::date)
 (3 rows)
@@ -901,7 +901,7 @@ EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF, SUMMARY OFF, BUFFERS OFF)
 SELECT * FROM brin_timestamp_test WHERE a = '2023-01-01'::timestamp;
                          QUERY PLAN                         
 ------------------------------------------------------------
- Seq Scan on brin_timestamp_test (actual rows=0 loops=1)
+ Seq Scan on brin_timestamp_test (actual rows=0.00 loops=1)
    Disabled: true
    Filter: (a = '2023-01-01 00:00:00.000000'::timestamp(6))
 (3 rows)
@@ -910,7 +910,7 @@ EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF, SUMMARY OFF, BUFFERS OFF)
 SELECT * FROM brin_timestamp_test WHERE a = '1900-01-01'::timestamp;
                          QUERY PLAN                         
 ------------------------------------------------------------
- Seq Scan on brin_timestamp_test (actual rows=0 loops=1)
+ Seq Scan on brin_timestamp_test (actual rows=0.00 loops=1)
    Disabled: true
    Filter: (a = '1900-01-01 00:00:00.000000'::timestamp(6))
 (3 rows)
@@ -930,9 +930,9 @@ ERROR:  operator class "date_minmax_multi_ops" does not accept data type date
 SET enable_seqscan = off;
 EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF, SUMMARY OFF, BUFFERS OFF)
 SELECT * FROM brin_date_test WHERE a = '2023-01-01'::date;
-                     QUERY PLAN                     
-----------------------------------------------------
- Seq Scan on brin_date_test (actual rows=0 loops=1)
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Seq Scan on brin_date_test (actual rows=0.00 loops=1)
    Disabled: true
    Filter: (a = '2023-01-01'::date)
    Rows Removed by Filter: 40
@@ -940,9 +940,9 @@ SELECT * FROM brin_date_test WHERE a = '2023-01-01'::date;
 
 EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF, SUMMARY OFF, BUFFERS OFF)
 SELECT * FROM brin_date_test WHERE a = '1900-01-01'::date;
-                     QUERY PLAN                     
-----------------------------------------------------
- Seq Scan on brin_date_test (actual rows=0 loops=1)
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Seq Scan on brin_date_test (actual rows=0.00 loops=1)
    Disabled: true
    Filter: (a = '1900-01-01'::date)
    Rows Removed by Filter: 40

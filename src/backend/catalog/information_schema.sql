@@ -2,7 +2,7 @@
  * SQL Information Schema
  * as defined in ISO/IEC 9075-11:2023
  *
- * Copyright (c) 2003-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2003-2025, PostgreSQL Global Development Group
  *
  * src/backend/catalog/information_schema.sql
  *
@@ -1844,7 +1844,7 @@ CREATE VIEW table_constraints AS
              AS is_deferrable,
            CAST(CASE WHEN c.condeferred THEN 'YES' ELSE 'NO' END AS yes_or_no)
              AS initially_deferred,
-           CAST('YES' AS yes_or_no) AS enforced,
+           CAST(CASE WHEN c.conenforced THEN 'YES' ELSE 'NO' END AS yes_or_no) AS enforced,
            CAST(CASE WHEN c.contype = 'u'
                      THEN CASE WHEN (SELECT NOT indnullsnotdistinct FROM pg_index WHERE indexrelid = conindid) THEN 'YES' ELSE 'NO' END
                      END

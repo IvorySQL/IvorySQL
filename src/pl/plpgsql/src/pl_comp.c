@@ -3,7 +3,7 @@
  * pl_comp.c		- Compiler part of the PL/pgSQL
  *			  procedural language
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -38,8 +38,6 @@
  * Our own local and global variables
  * ----------
  */
-PLpgSQL_stmt_block *plpgsql_parse_result;
-
 static int	datums_alloc;
 int			plpgsql_nDatums;
 PLpgSQL_datum **plpgsql_Datums;
@@ -79,7 +77,7 @@ typedef struct
 } ExceptionLabelMap;
 
 static const ExceptionLabelMap exception_label_map[] = {
-#include "plerrcodes.h"			/* pgrminclude ignore */
+#include "plerrcodes.h"
 	{NULL, 0}
 };
 
@@ -237,6 +235,12 @@ recheck:
 	return function;
 }
 
+struct compile_error_callback_arg
+{
+	const char *proc_source;
+	yyscan_t	yyscanner;
+};
+
 /*
  * This is the slow part of plpgsql_compile().
  *
@@ -269,6 +273,7 @@ do_compile(FunctionCallInfo fcinfo,
 	Form_pg_proc procStruct = (Form_pg_proc) GETSTRUCT(procTup);
 	bool		is_dml_trigger = CALLED_AS_TRIGGER(fcinfo);
 	bool		is_event_trigger = CALLED_AS_EVENT_TRIGGER(fcinfo);
+	yyscan_t	scanner;
 	Datum		prosrcdatum;
 	char	   *proc_source;
 	HeapTuple	typeTup;
@@ -276,6 +281,7 @@ do_compile(FunctionCallInfo fcinfo,
 	PLpgSQL_variable *var;
 	PLpgSQL_rec *rec;
 	int			i;
+	struct compile_error_callback_arg cbarg;
 	ErrorContextCallback plerrcontext;
 	int			parse_rc;
 	Oid			rettypeid;
@@ -290,21 +296,21 @@ do_compile(FunctionCallInfo fcinfo,
 	MemoryContext func_cxt;
 
 	/*
-	 * Setup the scanner input and error info.  We assume that this function
-	 * cannot be invoked recursively, so there's no need to save and restore
-	 * the static variables used here.
+	 * Setup the scanner input and error info.
 	 */
 	prosrcdatum = SysCacheGetAttrNotNull(PROCOID, procTup, Anum_pg_proc_prosrc);
 	proc_source = TextDatumGetCString(prosrcdatum);
-	plpgsql_scanner_init(proc_source);
+	scanner = plpgsql_scanner_init(proc_source);
 
 	plpgsql_error_funcname = pstrdup(NameStr(procStruct->proname));
 
 	/*
 	 * Setup error traceback support for ereport()
 	 */
+	cbarg.proc_source = forValidator ? proc_source : NULL;
+	cbarg.yyscanner = scanner;
 	plerrcontext.callback = plpgsql_compile_error_callback;
-	plerrcontext.arg = forValidator ? proc_source : NULL;
+	plerrcontext.arg = &cbarg;
 	plerrcontext.previous = error_context_stack;
 	error_context_stack = &plerrcontext;
 
@@ -365,6 +371,7 @@ do_compile(FunctionCallInfo fcinfo,
 
 	function->nstatements = 0;
 	function->requires_procedure_resowner = false;
+	function->has_exception_block = false;
 
 	/*
 	 * Initialize the compiler, particularly the namespace stack.  The
@@ -779,12 +786,11 @@ do_compile(FunctionCallInfo fcinfo,
 	/*
 	 * Now parse the function's text
 	 */
-	parse_rc = plpgsql_yyparse();
+	parse_rc = plpgsql_yyparse(&function->action, scanner);
 	if (parse_rc != 0)
 		elog(ERROR, "plpgsql parser returned %d", parse_rc);
-	function->action = plpgsql_parse_result;
 
-	plpgsql_scanner_finish();
+	plpgsql_scanner_finish(scanner);
 	pfree(proc_source);
 
 	/*
@@ -805,6 +811,9 @@ do_compile(FunctionCallInfo fcinfo,
 		function->fn_argvarnos[i] = in_arg_varnos[i];
 
 	plpgsql_finish_datums(function);
+
+	if (function->has_exception_block)
+		plpgsql_mark_local_assignment_targets(function);
 
 	/* Debug dump for completed functions */
 	if (plpgsql_DumpExecTree)
@@ -841,27 +850,29 @@ do_compile(FunctionCallInfo fcinfo,
 PLpgSQL_function *
 plpgsql_compile_inline(char *proc_source)
 {
+	yyscan_t	scanner;
 	char	   *func_name = "inline_code_block";
 	PLpgSQL_function *function;
+	struct compile_error_callback_arg cbarg;
 	ErrorContextCallback plerrcontext;
 	PLpgSQL_variable *var;
 	int			parse_rc;
 	MemoryContext func_cxt;
 
 	/*
-	 * Setup the scanner input and error info.  We assume that this function
-	 * cannot be invoked recursively, so there's no need to save and restore
-	 * the static variables used here.
+	 * Setup the scanner input and error info.
 	 */
-	plpgsql_scanner_init(proc_source);
+	scanner = plpgsql_scanner_init(proc_source);
 
 	plpgsql_error_funcname = func_name;
 
 	/*
 	 * Setup error traceback support for ereport()
 	 */
+	cbarg.proc_source = proc_source;
+	cbarg.yyscanner = scanner;
 	plerrcontext.callback = plpgsql_compile_error_callback;
-	plerrcontext.arg = proc_source;
+	plerrcontext.arg = &cbarg;
 	plerrcontext.previous = error_context_stack;
 	error_context_stack = &plerrcontext;
 
@@ -899,6 +910,7 @@ plpgsql_compile_inline(char *proc_source)
 
 	function->nstatements = 0;
 	function->requires_procedure_resowner = false;
+	function->has_exception_block = false;
 
 	plpgsql_ns_init();
 	plpgsql_ns_push(func_name, PLPGSQL_LABEL_BLOCK);
@@ -935,12 +947,11 @@ plpgsql_compile_inline(char *proc_source)
 	/*
 	 * Now parse the function's text
 	 */
-	parse_rc = plpgsql_yyparse();
+	parse_rc = plpgsql_yyparse(&function->action, scanner);
 	if (parse_rc != 0)
 		elog(ERROR, "plpgsql parser returned %d", parse_rc);
-	function->action = plpgsql_parse_result;
 
-	plpgsql_scanner_finish();
+	plpgsql_scanner_finish(scanner);
 
 	/*
 	 * If it returns VOID (always true at the moment), we allow control to
@@ -955,6 +966,13 @@ plpgsql_compile_inline(char *proc_source)
 	function->fn_nargs = 0;
 
 	plpgsql_finish_datums(function);
+
+	if (function->has_exception_block)
+		plpgsql_mark_local_assignment_targets(function);
+
+	/* Debug dump for completed functions */
+	if (plpgsql_DumpExecTree)
+		plpgsql_dumptree(function);
 
 	/*
 	 * Pop the error context stack
@@ -978,13 +996,16 @@ plpgsql_compile_inline(char *proc_source)
 static void
 plpgsql_compile_error_callback(void *arg)
 {
-	if (arg)
+	struct compile_error_callback_arg *cbarg = (struct compile_error_callback_arg *) arg;
+	yyscan_t	yyscanner = cbarg->yyscanner;
+
+	if (cbarg->proc_source)
 	{
 		/*
 		 * Try to convert syntax error position to reference text of original
 		 * CREATE FUNCTION or DO command.
 		 */
-		if (function_parse_error_transpose((const char *) arg))
+		if (function_parse_error_transpose(cbarg->proc_source))
 			return;
 
 		/*
@@ -995,7 +1016,7 @@ plpgsql_compile_error_callback(void *arg)
 
 	if (plpgsql_error_funcname)
 		errcontext("compilation of PL/pgSQL function \"%s\" near line %d",
-				   plpgsql_error_funcname, plpgsql_latest_lineno());
+				   plpgsql_error_funcname, plpgsql_latest_lineno(yyscanner));
 }
 
 

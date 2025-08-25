@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 
-# Copyright (c) 2024, PostgreSQL Global Development Group
+# Copyright (c) 2024-2025, PostgreSQL Global Development Group
 
 use strict;
 use warnings FATAL => 'all';
@@ -12,34 +12,35 @@ my $input_path = '';
 my $depfile;
 
 our @languages = qw(
-	arabic
-	armenian
-	basque
-	catalan
-	danish
-	dutch
-	english
-	finnish
-	french
-	german
-	greek
-	hindi
-	hungarian
-	indonesian
-	irish
-	italian
-	lithuanian
-	nepali
-	norwegian
-	portuguese
-	romanian
-	russian
-	serbian
-	spanish
-	swedish
-	tamil
-	turkish
-	yiddish
+  arabic
+  armenian
+  basque
+  catalan
+  danish
+  dutch
+  english
+  estonian
+  finnish
+  french
+  german
+  greek
+  hindi
+  hungarian
+  indonesian
+  irish
+  italian
+  lithuanian
+  nepali
+  norwegian
+  portuguese
+  romanian
+  russian
+  serbian
+  spanish
+  swedish
+  tamil
+  turkish
+  yiddish
 );
 
 # Names of alternative dictionaries for all-ASCII words.  If not

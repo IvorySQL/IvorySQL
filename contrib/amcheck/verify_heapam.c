@@ -3,7 +3,7 @@
  * verify_heapam.c
  *	  Functions to check postgresql heap relations for corruption
  *
- * Copyright (c) 2016-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2025, PostgreSQL Global Development Group
  *
  *	  contrib/amcheck/verify_heapam.c
  *-------------------------------------------------------------------------
@@ -1881,7 +1881,9 @@ check_tuple(HeapCheckContext *ctx, bool *xmin_commit_status_ok,
 /*
  * Convert a TransactionId into a FullTransactionId using our cached values of
  * the valid transaction ID range.  It is the caller's responsibility to have
- * already updated the cached values, if necessary.
+ * already updated the cached values, if necessary.  This is akin to
+ * FullTransactionIdFromAllowableAt(), but it tolerates corruption in the form
+ * of an xid before epoch 0.
  */
 static FullTransactionId
 FullTransactionIdFromXidAndCtx(TransactionId xid, const HeapCheckContext *ctx)

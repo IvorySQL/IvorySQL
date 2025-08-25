@@ -3,7 +3,7 @@
  * genam.c
  *	  general index access method routines
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -122,6 +122,7 @@ RelationGetIndexScan(Relation indexRelation, int nkeys, int norderbys)
 	scan->ignore_killed_tuples = !scan->xactStartedInRecovery;
 
 	scan->opaque = NULL;
+	scan->instrument = NULL;
 
 	scan->xs_itup = NULL;
 	scan->xs_itupdesc = NULL;
@@ -463,7 +464,7 @@ systable_beginscan(Relation heapRelation,
 		}
 
 		sysscan->iscan = index_beginscan(heapRelation, irel,
-										 snapshot, nkeys, 0);
+										 snapshot, NULL, nkeys, 0);
 		index_rescan(sysscan->iscan, idxkey, nkeys, NULL, 0);
 		sysscan->scan = NULL;
 
@@ -593,17 +594,13 @@ systable_recheck_tuple(SysScanDesc sysscan, HeapTuple tup)
 
 	Assert(tup == ExecFetchSlotHeapTuple(sysscan->slot, false, NULL));
 
-	/*
-	 * Trust that table_tuple_satisfies_snapshot() and its subsidiaries
-	 * (commonly LockBuffer() and HeapTupleSatisfiesMVCC()) do not themselves
-	 * acquire snapshots, so we need not register the snapshot.  Those
-	 * facilities are too low-level to have any business scanning tables.
-	 */
 	freshsnap = GetCatalogSnapshot(RelationGetRelid(sysscan->heap_rel));
+	freshsnap = RegisterSnapshot(freshsnap);
 
 	result = table_tuple_satisfies_snapshot(sysscan->heap_rel,
 											sysscan->slot,
 											freshsnap);
+	UnregisterSnapshot(freshsnap);
 
 	/*
 	 * Handle the concurrent abort while fetching the catalog tuple during
@@ -728,7 +725,7 @@ systable_beginscan_ordered(Relation heapRelation,
 	}
 
 	sysscan->iscan = index_beginscan(heapRelation, indexRelation,
-									 snapshot, nkeys, 0);
+									 snapshot, NULL, nkeys, 0);
 	index_rescan(sysscan->iscan, idxkey, nkeys, NULL, 0);
 	sysscan->scan = NULL;
 

@@ -1802,7 +1802,11 @@ pg_stat_all_tables| SELECT c.oid AS relid,
     pg_stat_get_vacuum_count(c.oid) AS vacuum_count,
     pg_stat_get_autovacuum_count(c.oid) AS autovacuum_count,
     pg_stat_get_analyze_count(c.oid) AS analyze_count,
-    pg_stat_get_autoanalyze_count(c.oid) AS autoanalyze_count
+    pg_stat_get_autoanalyze_count(c.oid) AS autoanalyze_count,
+    pg_stat_get_total_vacuum_time(c.oid) AS total_vacuum_time,
+    pg_stat_get_total_autovacuum_time(c.oid) AS total_autovacuum_time,
+    pg_stat_get_total_analyze_time(c.oid) AS total_analyze_time,
+    pg_stat_get_total_autoanalyze_time(c.oid) AS total_autoanalyze_time
    FROM ((pg_class c
      LEFT JOIN pg_index i ON ((c.oid = i.indrelid)))
      LEFT JOIN pg_namespace n ON ((n.oid = c.relnamespace)))
@@ -1890,21 +1894,23 @@ pg_stat_io| SELECT backend_type,
     object,
     context,
     reads,
+    read_bytes,
     read_time,
     writes,
+    write_bytes,
     write_time,
     writebacks,
     writeback_time,
     extends,
+    extend_bytes,
     extend_time,
-    op_bytes,
     hits,
     evictions,
     reuses,
     fsyncs,
     fsync_time,
     stats_reset
-   FROM pg_stat_get_io() b(backend_type, object, context, reads, read_time, writes, write_time, writebacks, writeback_time, extends, extend_time, op_bytes, hits, evictions, reuses, fsyncs, fsync_time, stats_reset);
+   FROM pg_stat_get_io() b(backend_type, object, context, reads, read_bytes, read_time, writes, write_bytes, write_time, writebacks, writeback_time, extends, extend_bytes, extend_time, hits, evictions, reuses, fsyncs, fsync_time, stats_reset);
 pg_stat_progress_analyze| SELECT s.pid,
     s.datid,
     d.datname,
@@ -1924,7 +1930,8 @@ pg_stat_progress_analyze| SELECT s.pid,
     s.param5 AS ext_stats_computed,
     s.param6 AS child_tables_total,
     s.param7 AS child_tables_done,
-    (s.param8)::oid AS current_child_table_relid
+    (s.param8)::oid AS current_child_table_relid,
+    ((s.param9)::pg_catalog.float8 / (1000000)::pg_catalog.float8) AS delay_time
    FROM (pg_stat_get_progress_info('ANALYZE'::text) s(pid, datid, relid, param1, param2, param3, param4, param5, param6, param7, param8, param9, param10, param11, param12, param13, param14, param15, param16, param17, param18, param19, param20)
      LEFT JOIN pg_database d ON ((s.datid = d.oid)));
 pg_stat_progress_basebackup| SELECT pid,
@@ -2054,7 +2061,8 @@ pg_stat_progress_vacuum| SELECT s.pid,
     s.param7 AS dead_tuple_bytes,
     s.param8 AS num_dead_item_ids,
     s.param9 AS indexes_total,
-    s.param10 AS indexes_processed
+    s.param10 AS indexes_processed,
+    ((s.param11)::pg_catalog.float8 / (1000000)::pg_catalog.float8) AS delay_time
    FROM (pg_stat_get_progress_info('VACUUM'::text) s(pid, datid, relid, param1, param2, param3, param4, param5, param6, param7, param8, param9, param10, param11, param12, param13, param14, param15, param16, param17, param18, param19, param20)
      LEFT JOIN pg_database d ON ((s.datid = d.oid)));
 pg_stat_recovery_prefetch| SELECT stats_reset,
@@ -2186,7 +2194,11 @@ pg_stat_sys_tables| SELECT relid,
     vacuum_count,
     autovacuum_count,
     analyze_count,
-    autoanalyze_count
+    autoanalyze_count,
+    total_vacuum_time,
+    total_autovacuum_time,
+    total_analyze_time,
+    total_autoanalyze_time
    FROM pg_stat_all_tables
   WHERE ((schemaname = ANY (ARRAY['pg_catalog'::name, 'information_schema'::name])) OR (schemaname ~ '^pg_toast'::text));
 pg_stat_user_functions| SELECT p.oid AS funcid,
@@ -2234,19 +2246,19 @@ pg_stat_user_tables| SELECT relid,
     vacuum_count,
     autovacuum_count,
     analyze_count,
-    autoanalyze_count
+    autoanalyze_count,
+    total_vacuum_time,
+    total_autovacuum_time,
+    total_analyze_time,
+    total_autoanalyze_time
    FROM pg_stat_all_tables
   WHERE ((schemaname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name])) AND (schemaname !~ '^pg_toast'::text));
 pg_stat_wal| SELECT wal_records,
     wal_fpi,
     wal_bytes,
     wal_buffers_full,
-    wal_write,
-    wal_sync,
-    wal_write_time,
-    wal_sync_time,
     stats_reset
-   FROM pg_stat_get_wal() w(wal_records, wal_fpi, wal_bytes, wal_buffers_full, wal_write, wal_sync, wal_write_time, wal_sync_time, stats_reset);
+   FROM pg_stat_get_wal() w(wal_records, wal_fpi, wal_bytes, wal_buffers_full, stats_reset);
 pg_stat_wal_receiver| SELECT pid,
     status,
     receive_start_lsn,
@@ -2625,10 +2637,19 @@ pg_tables| SELECT n.nspname AS schemaname,
      LEFT JOIN pg_namespace n ON ((n.oid = c.relnamespace)))
      LEFT JOIN pg_tablespace t ON ((t.oid = c.reltablespace)))
   WHERE (c.relkind = ANY (ARRAY['r'::"char", 'p'::"char"]));
-pg_timezone_abbrevs| SELECT abbrev,
-    utc_offset,
-    is_dst
-   FROM pg_timezone_abbrevs() pg_timezone_abbrevs(abbrev, utc_offset, is_dst);
+pg_timezone_abbrevs| SELECT z.abbrev,
+    z.utc_offset,
+    z.is_dst
+   FROM pg_timezone_abbrevs_zone() z(abbrev, utc_offset, is_dst)
+UNION ALL
+ SELECT a.abbrev,
+    a.utc_offset,
+    a.is_dst
+   FROM pg_timezone_abbrevs_abbrevs() a(abbrev, utc_offset, is_dst)
+  WHERE (NOT (EXISTS ( SELECT 1
+           FROM pg_timezone_abbrevs_zone() z2(abbrev, utc_offset, is_dst)
+          WHERE (z2.abbrev = a.abbrev))))
+  ORDER BY 1;
 pg_timezone_names| SELECT name,
     abbrev,
     utc_offset,

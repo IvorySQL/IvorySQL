@@ -16,6 +16,8 @@ subdir = src/oracle_test/authentication
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
+EXTRA_INSTALL = src/oracle_test/modules/injection_points
+export enable_injection_points
 oracle_check:
 	$(oracle_prove_check)
 

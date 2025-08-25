@@ -4,7 +4,7 @@
  *	  interface routines for the postgres GiST index access method.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -65,6 +65,9 @@ gisthandler(PG_FUNCTION_ARGS)
 	amroutine->amoptsprocnum = GIST_OPTIONS_PROC;
 	amroutine->amcanorder = false;
 	amroutine->amcanorderbyop = true;
+	amroutine->amcanhash = false;
+	amroutine->amconsistentequality = false;
+	amroutine->amconsistentordering = false;
 	amroutine->amcanbackward = false;
 	amroutine->amcanunique = false;
 	amroutine->amcanmulticol = true;
@@ -107,6 +110,8 @@ gisthandler(PG_FUNCTION_ARGS)
 	amroutine->amestimateparallelscan = NULL;
 	amroutine->aminitparallelscan = NULL;
 	amroutine->amparallelrescan = NULL;
+	amroutine->amtranslatestrategy = NULL;
+	amroutine->amtranslatecmptype = gisttranslatecmptype;
 
 	PG_RETURN_POINTER(amroutine);
 }

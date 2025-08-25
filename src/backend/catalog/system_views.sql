@@ -1,7 +1,7 @@
 /*
  * PostgreSQL System Views
  *
- * Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Copyright (c) 1996-2025, PostgreSQL Global Development Group
  *
  * src/backend/catalog/system_views.sql
  *
@@ -634,7 +634,12 @@ REVOKE ALL ON pg_ident_file_mappings FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION pg_ident_file_mappings() FROM PUBLIC;
 
 CREATE VIEW pg_timezone_abbrevs AS
-    SELECT * FROM pg_timezone_abbrevs();
+    SELECT * FROM pg_timezone_abbrevs_zone() z
+    UNION ALL
+    (SELECT * FROM pg_timezone_abbrevs_abbrevs() a
+     WHERE NOT EXISTS (SELECT 1 FROM pg_timezone_abbrevs_zone() z2
+                       WHERE z2.abbrev = a.abbrev))
+    ORDER BY abbrev;
 
 CREATE VIEW pg_timezone_names AS
     SELECT * FROM pg_timezone_names();
@@ -691,7 +696,11 @@ CREATE VIEW pg_stat_all_tables AS
             pg_stat_get_vacuum_count(C.oid) AS vacuum_count,
             pg_stat_get_autovacuum_count(C.oid) AS autovacuum_count,
             pg_stat_get_analyze_count(C.oid) AS analyze_count,
-            pg_stat_get_autoanalyze_count(C.oid) AS autoanalyze_count
+            pg_stat_get_autoanalyze_count(C.oid) AS autoanalyze_count,
+            pg_stat_get_total_vacuum_time(C.oid) AS total_vacuum_time,
+            pg_stat_get_total_autovacuum_time(C.oid) AS total_autovacuum_time,
+            pg_stat_get_total_analyze_time(C.oid) AS total_analyze_time,
+            pg_stat_get_total_autoanalyze_time(C.oid) AS total_autoanalyze_time
     FROM pg_class C LEFT JOIN
          pg_index I ON C.oid = I.indrelid
          LEFT JOIN pg_namespace N ON (N.oid = C.relnamespace)
@@ -1156,14 +1165,16 @@ SELECT
        b.object,
        b.context,
        b.reads,
+       b.read_bytes,
        b.read_time,
        b.writes,
+       b.write_bytes,
        b.write_time,
        b.writebacks,
        b.writeback_time,
        b.extends,
+       b.extend_bytes,
        b.extend_time,
-       b.op_bytes,
        b.hits,
        b.evictions,
        b.reuses,
@@ -1178,10 +1189,6 @@ CREATE VIEW pg_stat_wal AS
         w.wal_fpi,
         w.wal_bytes,
         w.wal_buffers_full,
-        w.wal_write,
-        w.wal_sync,
-        w.wal_write_time,
-        w.wal_sync_time,
         w.stats_reset
     FROM pg_stat_get_wal() w;
 
@@ -1202,7 +1209,8 @@ CREATE VIEW pg_stat_progress_analyze AS
         S.param5 AS ext_stats_computed,
         S.param6 AS child_tables_total,
         S.param7 AS child_tables_done,
-        CAST(S.param8 AS oid) AS current_child_table_relid
+        CAST(S.param8 AS oid) AS current_child_table_relid,
+        S.param9 / 1000000::double precision AS delay_time
     FROM pg_stat_get_progress_info('ANALYZE') AS S
         LEFT JOIN pg_database D ON S.datid = D.oid;
 
@@ -1222,7 +1230,8 @@ CREATE VIEW pg_stat_progress_vacuum AS
         S.param4 AS heap_blks_vacuumed, S.param5 AS index_vacuum_count,
         S.param6 AS max_dead_tuple_bytes, S.param7 AS dead_tuple_bytes,
         S.param8 AS num_dead_item_ids, S.param9 AS indexes_total,
-        S.param10 AS indexes_processed
+        S.param10 AS indexes_processed,
+        S.param11 / 1000000::double precision AS delay_time
     FROM pg_stat_get_progress_info('VACUUM') AS S
         LEFT JOIN pg_database D ON S.datid = D.oid;
 

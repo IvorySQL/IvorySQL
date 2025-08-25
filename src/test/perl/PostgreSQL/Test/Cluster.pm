@@ -1,6 +1,6 @@
 
-# Copyright (c) 2021-2024, PostgreSQL Global Development Group
 # Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+# Copyright (c) 2021-2025, PostgreSQL Global Development Group
 
 =pod
 
@@ -169,9 +169,8 @@ INIT
 	$portdir = $ENV{PG_TEST_PORT_DIR};
 	# Otherwise, try to use a directory at the top of the build tree
 	# or as a last resort use the tmp_check directory
-	my $build_dir = $ENV{MESON_BUILD_ROOT}
-	  || $ENV{top_builddir}
-	  || $PostgreSQL::Test::Utils::tmp_check ;
+	my $build_dir = $ENV{top_builddir}
+	  || $PostgreSQL::Test::Utils::tmp_check;
 	$portdir ||= "$build_dir/portlock";
 	$portdir =~ s!\\!/!g;
 	# Make sure the directory exists
@@ -707,6 +706,7 @@ sub init
 		}
 		print $conf "max_wal_senders = 10\n";
 		print $conf "max_replication_slots = 10\n";
+		print $conf "autovacuum_worker_slots = 3\n";
 		print $conf "wal_log_hints = on\n";
 		print $conf "hot_standby = on\n";
 		# conservative settings to ensure we can run multiple postmasters:
@@ -843,11 +843,11 @@ sub backup
 
 	print "# Taking pg_basebackup $backup_name from node \"$name\"\n";
 	PostgreSQL::Test::Utils::system_or_bail(
-		'pg_basebackup', '-D',
-		$backup_path,    '-h',
-		$self->host,     '-p',
-		$self->port,     '--checkpoint',
-		'fast',          '--no-sync',
+		'pg_basebackup', '--no-sync',
+		'--pgdata' => $backup_path,
+		'--host' => $self->host,
+		'--port' => $self->port,
+		'--checkpoint' => 'fast',
 		@{ $params{backup_options} });
 	print "# Backup finished\n";
 	return;
@@ -951,7 +951,7 @@ sub init_from_backup
 		}
 
 		local %ENV = $self->_get_env();
-		my @combineargs = ('pg_combinebackup', '-d');
+		my @combineargs = ('pg_combinebackup', '--debug');
 		if (exists $params{tablespace_map})
 		{
 			while (my ($olddir, $newdir) = each %{ $params{tablespace_map} })
@@ -964,19 +964,21 @@ sub init_from_backup
 		{
 			push @combineargs, $params{combine_mode};
 		}
-		push @combineargs, @prior_backup_path, $backup_path, '-o', $data_path;
+		push @combineargs, @prior_backup_path, $backup_path,
+		  '--output' => $data_path;
 		PostgreSQL::Test::Utils::system_or_bail(@combineargs);
 	}
 	elsif (defined $params{tar_program})
 	{
 		mkdir($data_path) || die "mkdir $data_path: $!";
-		PostgreSQL::Test::Utils::system_or_bail($params{tar_program}, 'xf',
-			$backup_path . '/base.tar',
-			'-C', $data_path);
 		PostgreSQL::Test::Utils::system_or_bail(
-			$params{tar_program},         'xf',
-			$backup_path . '/pg_wal.tar', '-C',
-			$data_path . '/pg_wal');
+			$params{tar_program},
+			'xf' => $backup_path . '/base.tar',
+			'-C' => $data_path);
+		PostgreSQL::Test::Utils::system_or_bail(
+			$params{tar_program},
+			'xf' => $backup_path . '/pg_wal.tar',
+			'-C' => $data_path . '/pg_wal');
 
 		# We need to generate a tablespace_map file.
 		open(my $tsmap, ">", "$data_path/tablespace_map")
@@ -996,9 +998,10 @@ sub init_from_backup
 			my $newdir = $params{tablespace_map}{$tsoid};
 
 			mkdir($newdir) || die "mkdir $newdir: $!";
-			PostgreSQL::Test::Utils::system_or_bail($params{tar_program},
-				'xf', $backup_path . '/' . $tstar,
-				'-C', $newdir);
+			PostgreSQL::Test::Utils::system_or_bail(
+				$params{tar_program},
+				'xf' => $backup_path . '/' . $tstar,
+				'-C' => $newdir);
 
 			my $escaped_newdir = $newdir;
 			$escaped_newdir =~ s/\\/\\\\/g;
@@ -1018,7 +1021,7 @@ sub init_from_backup
 		PostgreSQL::Test::RecursiveCopy::copypath(
 			$backup_path,
 			$data_path,
-			'filterfn' => sub {
+			filterfn => sub {
 				my ($path) = @_;
 				if ($path =~ /^pg_tblspc\/(\d+)$/
 					&& exists $params{tablespace_map}{$1})
@@ -1141,8 +1144,10 @@ sub start
 	# -w is now the default but having it here does no harm and helps
 	# compatibility with older versions.
 	$ret = PostgreSQL::Test::Utils::system_log(
-		'pg_ctl', '-w',           '-D', $self->data_dir,
-		'-l',     $self->logfile, '-o', "--cluster-name=$name",
+		'pg_ctl', '--wait',
+		'--pgdata' => $self->data_dir,
+		'--log' => $self->logfile,
+		'--options' => "--cluster-name=$name",
 		'start');
 
 	if ($ret != 0)
@@ -1219,9 +1224,10 @@ sub stop
 	return 1 unless defined $self->{_pid};
 
 	print "### Stopping node \"$name\" using mode $mode\n";
-	my @cmd = ('pg_ctl', '-D', $pgdata, '-m', $mode, 'stop');
-	if ($params{timeout}) {
-		push(@cmd, ('--timeout', $params{timeout}));
+	my @cmd = ('pg_ctl', '--pgdata' => $pgdata, '--mode' => $mode, 'stop');
+	if ($params{timeout})
+	{
+		push(@cmd, ('--timeout' => $params{timeout}));
 	}
 	$ret = PostgreSQL::Test::Utils::system_log(@cmd);
 
@@ -1258,7 +1264,9 @@ sub reload
 	local %ENV = $self->_get_env();
 
 	print "### Reloading node \"$name\"\n";
-	PostgreSQL::Test::Utils::system_or_bail('pg_ctl', '-D', $pgdata,
+	PostgreSQL::Test::Utils::system_or_bail(
+		'pg_ctl',
+		'--pgdata' => $pgdata,
 		'reload');
 	return;
 }
@@ -1286,8 +1294,11 @@ sub restart
 
 	# -w is now the default but having it here does no harm and helps
 	# compatibility with older versions.
-	$ret = PostgreSQL::Test::Utils::system_log('pg_ctl', '-w', '-D',
-		$self->data_dir, '-l', $self->logfile, 'restart');
+	$ret = PostgreSQL::Test::Utils::system_log(
+		'pg_ctl', '--wait',
+		'--pgdata' => $self->data_dir,
+		'--log' => $self->logfile,
+		'restart');
 
 	if ($ret != 0)
 	{
@@ -1325,8 +1336,11 @@ sub promote
 	local %ENV = $self->_get_env();
 
 	print "### Promoting node \"$name\"\n";
-	PostgreSQL::Test::Utils::system_or_bail('pg_ctl', '-D', $pgdata, '-l',
-		$logfile, 'promote');
+	PostgreSQL::Test::Utils::system_or_bail(
+		'pg_ctl',
+		'--pgdata' => $pgdata,
+		'--log' => $logfile,
+		'promote');
 	return;
 }
 
@@ -1349,8 +1363,11 @@ sub logrotate
 	local %ENV = $self->_get_env();
 
 	print "### Rotating log in node \"$name\"\n";
-	PostgreSQL::Test::Utils::system_or_bail('pg_ctl', '-D', $pgdata, '-l',
-		$logfile, 'logrotate');
+	PostgreSQL::Test::Utils::system_or_bail(
+		'pg_ctl',
+		'--pgdata' => $pgdata,
+		'--log' => $logfile,
+		'logrotate');
 	return;
 }
 
@@ -2127,7 +2144,9 @@ sub psql
 
 	my @psql_params = (
 		$self->installed_command('psql'),
-		'-XAtq', '-d', $psql_connstr, '-f', '-');
+		'--no-psqlrc', '--no-align', '--tuples-only', '--quiet',
+		'--dbname' => $psql_connstr,
+		'--file' => '-');
 
 	# If the caller wants an array and hasn't passed stdout/stderr
 	# references, allocate temporary ones to capture them so we
@@ -2149,7 +2168,8 @@ sub psql
 	$params{on_error_stop} = 1 unless defined $params{on_error_stop};
 	$params{on_error_die}  = 0 unless defined $params{on_error_die};
 
-	push @psql_params, '-v', 'ON_ERROR_STOP=1' if $params{on_error_stop};
+	push @psql_params, '--variable' => 'ON_ERROR_STOP=1'
+	  if $params{on_error_stop};
 	push @psql_params, @{ $params{extra_params} }
 	  if defined $params{extra_params};
 
@@ -2175,9 +2195,9 @@ sub psql
 	{
 		local $@;
 		eval {
-			my @ipcrun_opts = (\@psql_params, '<', \$sql);
-			push @ipcrun_opts, '>',  $stdout if defined $stdout;
-			push @ipcrun_opts, '2>', $stderr if defined $stderr;
+			my @ipcrun_opts = (\@psql_params, '<' => \$sql);
+			push @ipcrun_opts, '>' => $stdout if defined $stdout;
+			push @ipcrun_opts, '2>' => $stderr if defined $stderr;
 			push @ipcrun_opts, $timeout if defined $timeout;
 
 			IPC::Run::run @ipcrun_opts;
@@ -2332,13 +2352,16 @@ sub background_psql
 
 	my @psql_params = (
 		$self->installed_command('psql'),
-		'-XAtq', '-d', $psql_connstr, '-f', '-');
+		'--no-psqlrc', '--no-align',
+		'--tuples-only', '--quiet',
+		'--dbname' => $psql_connstr,
+		'--file' => '-');
 
 	$params{on_error_stop} = 1 unless defined $params{on_error_stop};
 	$params{wait} = 1 unless defined $params{wait};
 	$timeout = $params{timeout} if defined $params{timeout};
 
-	push @psql_params, '-v', 'ON_ERROR_STOP=1' if $params{on_error_stop};
+	push @psql_params, '--set' => 'ON_ERROR_STOP=1' if $params{on_error_stop};
 	push @psql_params, @{ $params{extra_params} }
 	  if defined $params{extra_params};
 
@@ -2409,7 +2432,8 @@ sub interactive_psql
 
 	my @psql_params = (
 		$self->installed_command('psql'),
-		'-XAt', '-d', $self->connstr($dbname));
+		'--no-psqlrc', '--no-align', '--tuples-only',
+		'--dbname' => $self->connstr($dbname));
 
 	push @psql_params, @{ $params{extra_params} }
 	  if defined $params{extra_params};
@@ -2431,7 +2455,7 @@ sub _pgbench_make_files
 		for my $fn (sort keys %$files)
 		{
 			my $filename = $self->basedir . '/' . $fn;
-			push @file_opts, '-f', $filename;
+			push @file_opts, '--file' => $filename;
 
 			# cleanup file weight
 			$filename =~ s/\@\d+$//;
@@ -2520,6 +2544,11 @@ instead of the default.
 
 If this regular expression is set, matches it with the output generated.
 
+=item expected_stderr => B<value>
+
+If this regular expression is set, matches it against the standard error
+stream; otherwise stderr must be empty.
+
 =item log_like => [ qr/required message/ ]
 
 =item log_unlike => [ qr/prohibited message/ ]
@@ -2563,7 +2592,22 @@ sub connect_ok
 		like($stdout, $params{expected_stdout}, "$test_name: stdout matches");
 	}
 
-	is($stderr, "", "$test_name: no stderr");
+	if (defined($params{expected_stderr}))
+	{
+		if (like(
+				$stderr, $params{expected_stderr},
+				"$test_name: stderr matches")
+			&& ($ret != 0))
+		{
+			# In this case (failing test but matching stderr) we'll have
+			# swallowed the output needed to debug. Put it back into the logs.
+			diag("$test_name: full stderr:\n" . $stderr);
+		}
+	}
+	else
+	{
+		is($stderr, "", "$test_name: no stderr");
+	}
 
 	$self->log_check($test_name, $log_location, %params);
 }
@@ -2637,8 +2681,9 @@ sub poll_query_until
 	$expected = 't' unless defined($expected);    # default value
 
 	my $cmd = [
-		$self->installed_command('psql'), '-XAt',
-		'-d',                             $self->connstr($dbname)
+		$self->installed_command('psql'), '--no-psqlrc',
+		'--no-align', '--tuples-only',
+		'--dbname' => $self->connstr($dbname)
 	];
 	my ($stdout, $stderr);
 	my $max_attempts = 10 * $PostgreSQL::Test::Utils::timeout_default;
@@ -2646,8 +2691,10 @@ sub poll_query_until
 
 	while ($attempts < $max_attempts)
 	{
-		my $result = IPC::Run::run $cmd, '<', \$query,
-		  '>', \$stdout, '2>', \$stderr;
+		my $result = IPC::Run::run $cmd,
+		  '<' => \$query,
+		  '>' => \$stdout,
+		  '2>' => \$stderr;
 
 		chomp($stdout);
 		chomp($stderr);
@@ -2759,6 +2806,25 @@ sub command_fails_like
 
 =pod
 
+=item $node->command_ok_or_fails_like(...)
+
+PostgreSQL::Test::Utils::command_ok_or_fails_like with our connection parameters. See command_ok(...)
+
+=cut
+
+sub command_ok_or_fails_like
+{
+	local $Test::Builder::Level = $Test::Builder::Level + 1;
+
+	my $self = shift;
+
+	local %ENV = $self->_get_env();
+
+	return PostgreSQL::Test::Utils::command_ok_or_fails_like(@_);
+}
+
+=pod
+
 =item $node->command_checks_all(...)
 
 PostgreSQL::Test::Utils::command_checks_all with our connection parameters. See
@@ -2802,6 +2868,33 @@ sub issues_sql_like
 	my $log =
 	  PostgreSQL::Test::Utils::slurp_file($self->logfile, $log_location);
 	like($log, $expected_sql, "$test_name: SQL found in server log");
+	return;
+}
+
+=pod
+
+=item $node->issues_sql_unlike(cmd, unexpected_sql, test_name)
+
+Run a command on the node, then verify that $unexpected_sql does not appear in
+the server log file.
+
+=cut
+
+sub issues_sql_unlike
+{
+	local $Test::Builder::Level = $Test::Builder::Level + 1;
+
+	my ($self, $cmd, $unexpected_sql, $test_name) = @_;
+
+	local %ENV = $self->_get_env();
+
+	my $log_location = -s $self->logfile;
+
+	my $result = PostgreSQL::Test::Utils::run_log($cmd);
+	ok($result, "@$cmd exit code 0");
+	my $log =
+	  PostgreSQL::Test::Utils::slurp_file($self->logfile, $log_location);
+	unlike($log, $unexpected_sql, "$test_name: SQL not found in server log");
 	return;
 }
 
@@ -2957,6 +3050,154 @@ sub lsn
 	{
 		return $result;
 	}
+}
+
+=pod
+
+=item $node->write_wal($tli, $lsn, $segment_size, $data)
+
+Write some arbitrary data in WAL for the given segment at $lsn (in bytes).
+This should be called while the cluster is not running.
+
+Returns the path of the WAL segment written to.
+
+=cut
+
+sub write_wal
+{
+	my ($self, $tli, $lsn, $segment_size, $data) = @_;
+
+	# Calculate segment number and offset position in segment based on the
+	# input LSN.
+	my $segment = $lsn / $segment_size;
+	my $offset = $lsn % $segment_size;
+	my $path =
+	  sprintf("%s/pg_wal/%08X%08X%08X", $self->data_dir, $tli, 0, $segment);
+
+	open my $fh, "+<:raw", $path or die "could not open WAL segment $path";
+	seek($fh, $offset, SEEK_SET) or die "could not seek WAL segment $path";
+	print $fh $data;
+	close $fh;
+
+	return $path;
+}
+
+=pod
+
+=item $node->emit_wal($size)
+
+Emit a WAL record of arbitrary size, using pg_logical_emit_message().
+
+Returns the end LSN of the record inserted, in bytes.
+
+=cut
+
+sub emit_wal
+{
+	my ($self, $size) = @_;
+
+	return int(
+		$self->safe_psql(
+			'postgres',
+			"SELECT pg_logical_emit_message(true, '', repeat('a', $size)) - '0/0'"
+		));
+}
+
+
+# Private routine returning the current insert LSN of a node, in bytes.
+# Used by the routines below in charge of advancing WAL to arbitrary
+# positions.  The insert LSN is returned in bytes.
+sub _get_insert_lsn
+{
+	my ($self) = @_;
+	return int(
+		$self->safe_psql(
+			'postgres', "SELECT pg_current_wal_insert_lsn() - '0/0'"));
+}
+
+=pod
+
+=item $node->advance_wal_out_of_record_splitting_zone($wal_block_size)
+
+Advance WAL at the end of a page, making sure that we are far away enough
+from the end of a page that we could insert a couple of small records.
+
+This inserts a few records of a fixed size, until the threshold gets close
+enough to the end of the WAL page inserting records to.
+
+Returns the end LSN up to which WAL has advanced, in bytes.
+
+=cut
+
+sub advance_wal_out_of_record_splitting_zone
+{
+	my ($self, $wal_block_size) = @_;
+
+	my $page_threshold = $wal_block_size / 4;
+	my $end_lsn = $self->_get_insert_lsn();
+	my $page_offset = $end_lsn % $wal_block_size;
+	while ($page_offset >= $wal_block_size - $page_threshold)
+	{
+		$self->emit_wal($page_threshold);
+		$end_lsn = $self->_get_insert_lsn();
+		$page_offset = $end_lsn % $wal_block_size;
+	}
+	return $end_lsn;
+}
+
+=pod
+
+=item $node->advance_wal_to_record_splitting_zone($wal_block_size)
+
+Advance WAL so close to the end of a page that an XLogRecordHeader would not
+fit on it.
+
+Returns the end LSN up to which WAL has advanced, in bytes.
+
+=cut
+
+sub advance_wal_to_record_splitting_zone
+{
+	my ($self, $wal_block_size) = @_;
+
+	# Size of record header.
+	my $RECORD_HEADER_SIZE = 24;
+
+	my $end_lsn = $self->_get_insert_lsn();
+	my $page_offset = $end_lsn % $wal_block_size;
+
+	# Get fairly close to the end of a page in big steps
+	while ($page_offset <= $wal_block_size - 512)
+	{
+		$self->emit_wal($wal_block_size - $page_offset - 256);
+		$end_lsn = $self->_get_insert_lsn();
+		$page_offset = $end_lsn % $wal_block_size;
+	}
+
+	# Calibrate our message size so that we can get closer 8 bytes at
+	# a time.
+	my $message_size = $wal_block_size - 80;
+	while ($page_offset <= $wal_block_size - $RECORD_HEADER_SIZE)
+	{
+		$self->emit_wal($message_size);
+		$end_lsn = $self->_get_insert_lsn();
+
+		my $old_offset = $page_offset;
+		$page_offset = $end_lsn % $wal_block_size;
+
+		# Adjust the message size until it causes 8 bytes changes in
+		# offset, enough to be able to split a record header.
+		my $delta = $page_offset - $old_offset;
+		if ($delta > 8)
+		{
+			$message_size -= 8;
+		}
+		elsif ($delta <= 0)
+		{
+			$message_size += 8;
+		}
+	}
+	return $end_lsn;
 }
 
 =pod
@@ -3373,15 +3614,17 @@ sub pg_recvlogical_upto
 
 	my @cmd = (
 		$self->installed_command('pg_recvlogical'),
-		'-S', $slot_name, '--dbname', $self->connstr($dbname));
-	push @cmd, '--endpos', $endpos;
-	push @cmd, '-f', '-', '--no-loop', '--start';
+		'--slot' => $slot_name,
+		'--dbname' => $self->connstr($dbname),
+		'--endpos' => $endpos,
+		'--file' => '-',
+		'--no-loop', '--start');
 
 	while (my ($k, $v) = each %plugin_options)
 	{
 		croak "= is not permitted to appear in replication option name"
 		  if ($k =~ qr/=/);
-		push @cmd, "-o", "$k=$v";
+		push @cmd, "--option" => "$k=$v";
 	}
 
 	my $timeout;
@@ -3394,7 +3637,7 @@ sub pg_recvlogical_upto
 	{
 		local $@;
 		eval {
-			IPC::Run::run(\@cmd, ">", \$stdout, "2>", \$stderr, $timeout);
+			IPC::Run::run(\@cmd, '>' => \$stdout, '2>' => \$stderr, $timeout);
 			$ret = $?;
 		};
 		my $exc_save = $@;
@@ -3506,7 +3749,16 @@ sub create_logical_slot_on_standby
 
 	my $handle;
 
-	$handle = IPC::Run::start(['pg_recvlogical', '-d', $self->connstr($dbname), '-P', 'test_decoding', '-S', $slot_name, '--create-slot'], '>', \$stdout, '2>', \$stderr);
+	$handle = IPC::Run::start(
+		[
+			'pg_recvlogical',
+			'--dbname' => $self->connstr($dbname),
+			'--plugin' => 'test_decoding',
+			'--slot' => $slot_name,
+			'--create-slot'
+		],
+		'>' => \$stdout,
+		'2>' => \$stderr);
 
 	# Arrange for the xl_running_xacts record for which pg_recvlogical is
 	# waiting.

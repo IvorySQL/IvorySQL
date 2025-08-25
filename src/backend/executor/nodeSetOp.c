@@ -33,7 +33,7 @@
  * input group.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -104,7 +104,7 @@ build_hash_table(SetOpState *setopstate)
 												setopstate->hashfunctions,
 												node->cmpCollations,
 												node->numGroups,
-												0,
+												sizeof(SetOpStatePerGroupData),
 												setopstate->ps.state->es_query_cxt,
 												setopstate->tableContext,
 												econtext->ecxt_per_tuple_memory,

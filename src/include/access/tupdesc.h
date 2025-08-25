@@ -4,7 +4,7 @@
  *	  POSTGRES tuple descriptor definitions.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/tupdesc.h
@@ -29,6 +29,7 @@ typedef struct ConstrCheck
 {
 	char	   *ccname;
 	char	   *ccbin;			/* nodeToString representation of expr */
+	bool		ccenforced;
 	bool		ccvalid;
 	bool		ccnoinherit;	/* this is a non-inheritable constraint */
 } ConstrCheck;
@@ -43,6 +44,7 @@ typedef struct TupleConstr
 	uint16		num_check;
 	bool		has_not_null;
 	bool		has_generated_stored;
+	bool		has_generated_virtual;
 } TupleConstr;
 
 /*
@@ -159,6 +161,8 @@ TupleDescAttr(TupleDesc tupdesc, int i)
 
 #undef TupleDescAttrAddress
 
+extern void verify_compact_attribute(TupleDesc, int attnum);
+
 /*
  * Accessor for the i'th CompactAttribute element of tupdesc.
  */
@@ -166,30 +170,11 @@ static inline CompactAttribute *
 TupleDescCompactAttr(TupleDesc tupdesc, int i)
 {
 	CompactAttribute *cattr = &tupdesc->compact_attrs[i];
+
 #ifdef USE_ASSERT_CHECKING
-	CompactAttribute snapshot;
 
-	/*
-	 * In Assert enabled builds we verify that the CompactAttribute is
-	 * populated correctly.  This helps find bugs in places such as ALTER
-	 * TABLE where code makes changes to the FormData_pg_attribute but forgets
-	 * to call populate_compact_attribute.
-	 */
-
-	/*
-	 * Take a snapshot of how the CompactAttribute is now before calling
-	 * populate_compact_attribute to make it up-to-date with the
-	 * FormData_pg_attribute.
-	 */
-	memcpy(&snapshot, cattr, sizeof(CompactAttribute));
-
-	populate_compact_attribute(tupdesc, i);
-
-	/* reset attcacheoff back to what it was */
-	cattr->attcacheoff = snapshot.attcacheoff;
-
-	/* Ensure the snapshot matches the freshly populated CompactAttribute */
-	Assert(memcmp(&snapshot, cattr, sizeof(CompactAttribute)) == 0);
+	/* Check that the CompactAttribute is correctly populated */
+	verify_compact_attribute(tupdesc, i);
 #endif
 
 	return cattr;

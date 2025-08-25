@@ -8,6 +8,12 @@
 -- conditio sine qua non
 SHOW track_counts;  -- must be on
 
+-- List of backend types, contexts and objects tracked in pg_stat_io.
+\a
+SELECT backend_type, object, context FROM pg_stat_io
+  ORDER BY backend_type COLLATE "C", object COLLATE "C", context COLLATE "C";
+\a
+
 -- ensure that both seqscan and indexscan plans are allowed
 SET enable_seqscan TO on;
 SET enable_indexscan TO on;
@@ -422,9 +428,13 @@ SELECT sessions > :db_stat_sessions FROM pg_stat_database WHERE datname = (SELEC
 -- Test pg_stat_checkpointer checkpointer-related stats, together with pg_stat_wal
 SELECT num_requested AS rqst_ckpts_before FROM pg_stat_checkpointer \gset
 
--- Test pg_stat_wal (and make a temp table so our temp schema exists)
+-- Test pg_stat_wal
 SELECT wal_bytes AS wal_bytes_before FROM pg_stat_wal \gset
 
+-- Test pg_stat_get_backend_wal()
+SELECT wal_bytes AS backend_wal_bytes_before from pg_stat_get_backend_wal(pg_backend_pid()) \gset
+
+-- Make a temp table so our temp schema exists
 CREATE TEMP TABLE test_stats_temp AS SELECT 17;
 DROP TABLE test_stats_temp;
 
@@ -436,6 +446,9 @@ CHECKPOINT;
 
 SELECT num_requested > :rqst_ckpts_before FROM pg_stat_checkpointer;
 SELECT wal_bytes > :wal_bytes_before FROM pg_stat_wal;
+
+SELECT pg_stat_force_next_flush();
+SELECT wal_bytes > :backend_wal_bytes_before FROM pg_stat_get_backend_wal(pg_backend_pid());
 
 -- Test pg_stat_get_backend_idset() and some allied functions.
 -- In particular, verify that their notion of backend ID matches
@@ -546,6 +559,7 @@ SELECT pg_stat_get_subscription_stats(NULL);
 -- - extends of relations using shared buffers
 -- - fsyncs done to ensure the durability of data dirtying shared buffers
 -- - shared buffer hits
+-- - WAL writes and fsyncs in IOContext IOCONTEXT_NORMAL
 
 -- There is no test for blocks evicted from shared buffers, because we cannot
 -- be sure of the state of shared buffers at the point the test is run.
@@ -565,6 +579,9 @@ SELECT sum(writes) AS writes, sum(fsyncs) AS fsyncs
 SELECT sum(writes) AS writes, sum(fsyncs) AS fsyncs
   FROM pg_stat_get_backend_io(pg_backend_pid())
   WHERE object = 'relation' \gset my_io_sum_shared_before_
+SELECT sum(writes) AS writes, sum(fsyncs) AS fsyncs
+  FROM pg_stat_io
+  WHERE context = 'normal' AND object = 'wal' \gset io_sum_wal_normal_before_
 CREATE TABLE test_io_shared(a int);
 INSERT INTO test_io_shared SELECT i FROM generate_series(1,100)i;
 SELECT pg_stat_force_next_flush();
@@ -593,6 +610,13 @@ SELECT sum(writes) AS writes, sum(fsyncs) AS fsyncs
 SELECT :my_io_sum_shared_after_writes >= :my_io_sum_shared_before_writes;
 SELECT current_setting('fsync') = 'off'
   OR :my_io_sum_shared_after_fsyncs >= :my_io_sum_shared_before_fsyncs;
+SELECT sum(writes) AS writes, sum(fsyncs) AS fsyncs
+  FROM pg_stat_io
+  WHERE context = 'normal' AND object = 'wal' \gset io_sum_wal_normal_after_
+SELECT current_setting('synchronous_commit') = 'on';
+SELECT :io_sum_wal_normal_after_writes > :io_sum_wal_normal_before_writes;
+SELECT current_setting('fsync') = 'off'
+  OR :io_sum_wal_normal_after_fsyncs > :io_sum_wal_normal_before_fsyncs;
 
 -- Change the tablespace so that the table is rewritten directly, then SELECT
 -- from it to cause it to be read back into shared buffers.

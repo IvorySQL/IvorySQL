@@ -3,7 +3,7 @@
  * postmaster.h
  *	  Exports from postmaster/postmaster.c.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -68,7 +68,6 @@ extern PGDLLIMPORT char *OraListenAddresses;
 extern PGDLLIMPORT bool ClientAuthInProgress;
 extern PGDLLIMPORT int PreAuthDelay;
 extern PGDLLIMPORT int AuthenticationTimeout;
-extern PGDLLIMPORT bool Log_connections;
 extern PGDLLIMPORT bool log_hostname;
 extern PGDLLIMPORT bool enable_bonjour;
 extern PGDLLIMPORT char *bonjour_name;
@@ -96,7 +95,7 @@ extern PGDLLIMPORT const char *progname;
 extern PGDLLIMPORT bool redirection_done;
 extern PGDLLIMPORT bool LoadedSSL;
 
-extern void PostmasterMain(int argc, char *argv[]) pg_attribute_noreturn();
+pg_noreturn extern void PostmasterMain(int argc, char *argv[]);
 extern void ClosePostmasterPorts(bool am_syslogger);
 extern void InitProcessGlobals(void);
 
@@ -114,12 +113,12 @@ extern PGDLLIMPORT struct ClientSocket *MyClientSocket;
 /* prototypes for functions in launch_backend.c */
 extern pid_t postmaster_child_launch(BackendType child_type,
 									 int child_slot,
-									 char *startup_data,
+									 const void *startup_data,
 									 size_t startup_data_len,
 									 struct ClientSocket *client_sock);
 const char *PostmasterChildName(BackendType child_type);
 #ifdef EXEC_BACKEND
-extern void SubPostmasterMain(int argc, char *argv[]) pg_attribute_noreturn();
+pg_noreturn extern void SubPostmasterMain(int argc, char *argv[]);
 #endif
 
 /* defined in pmchild.c */
@@ -130,18 +129,6 @@ extern PMChild *AssignPostmasterChildSlot(BackendType btype);
 extern PMChild *AllocDeadEndChild(void);
 extern bool ReleasePostmasterChildSlot(PMChild *pmchild);
 extern PMChild *FindPostmasterChildByPid(int pid);
-
-/*
- * Note: MAX_BACKENDS is limited to 2^18-1 because that's the width reserved
- * for buffer references in buf_internals.h.  This limitation could be lifted
- * by using a 64bit state; but it's unlikely to be worthwhile as 2^18-1
- * backends exceed currently realistic configurations. Even if that limitation
- * were removed, we still could not a) exceed 2^23-1 because inval.c stores
- * the ProcNumber as a 3-byte signed integer, b) INT_MAX/4 because some places
- * compute 4*MaxBackends without any overflow check.  This is rechecked in the
- * relevant GUC check hooks and in RegisterBackgroundWorker().
- */
-#define MAX_BACKENDS	0x3FFFF
 
 /*
  * These values correspond to the special must-be-first options for dispatching

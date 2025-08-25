@@ -4,7 +4,7 @@
  *	  Routines to support inter-object dependencies.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -2222,7 +2222,22 @@ find_expr_references_walker(Node *node,
 					}
 					context->rtables = list_delete_first(context->rtables);
 					break;
+				case RTE_NAMEDTUPLESTORE:
+
+					/*
+					 * Cataloged objects cannot depend on tuplestores, because
+					 * those have no cataloged representation.  For now we can
+					 * call the tuplestore a "transition table" because that's
+					 * the only kind exposed to SQL, but someday we might have
+					 * to work harder.
+					 */
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("transition table \"%s\" cannot be referenced in a persistent object",
+									rte->eref->aliasname)));
+					break;
 				default:
+					/* Other RTE types can be ignored here */
 					break;
 			}
 		}

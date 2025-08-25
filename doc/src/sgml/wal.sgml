@@ -194,10 +194,8 @@
     </listitem>
     <listitem>
      <para>
-      Data pages are not currently checksummed by default, though full page images
-      recorded in WAL records will be protected; see <link
-      linkend="app-initdb-data-checksums"><application>initdb</application></link>
-      for details about enabling data checksums.
+      Data pages are checksummed by default, and full page images
+      recorded in WAL records are always checksum protected.
      </para>
     </listitem>
     <listitem>
@@ -238,15 +236,15 @@
   </indexterm>
 
   <para>
-   By default, data pages are not protected by checksums, but this can
-   optionally be enabled for a cluster. When enabled, each data page includes
+   By default, data pages are protected by checksums, but this can
+   optionally be disabled for a cluster. When enabled, each data page includes
    a checksum that is updated when the page is written and verified each time
    the page is read. Only data pages are protected by checksums; internal data
    structures and temporary files are not.
   </para>
 
   <para>
-   Checksums are normally enabled when the cluster is initialized using <link
+   Checksums can be disabled when the cluster is initialized using <link
    linkend="app-initdb-data-checksums"><application>initdb</application></link>.
    They can also be enabled or disabled at a later time as an offline
    operation. Data checksums are enabled or disabled at the full cluster
@@ -813,8 +811,9 @@
    When <xref linkend="guc-track-wal-io-timing"/> is enabled, the total
    amounts of time <function>XLogWrite</function> writes and
    <function>issue_xlog_fsync</function> syncs WAL data to disk are counted as
-   <literal>wal_write_time</literal> and <literal>wal_sync_time</literal> in
-   <xref linkend="pg-stat-wal-view"/>, respectively.
+   <varname>write_time</varname> and <varname>fsync_time</varname> in
+   <xref linkend="pg-stat-io-view"/> for the <varname>object</varname>
+   <literal>wal</literal>, respectively.
    <function>XLogWrite</function> is normally called by
    <function>XLogInsertRecord</function> (when there is no space for the new
    record in WAL buffers), <function>XLogFlush</function> and the WAL writer,
@@ -832,8 +831,9 @@
    of the setting of <varname>track_wal_io_timing</varname>, the number
    of times <function>XLogWrite</function> writes and
    <function>issue_xlog_fsync</function> syncs WAL data to disk are also
-   counted as <literal>wal_write</literal> and <literal>wal_sync</literal>
-   in <structname>pg_stat_wal</structname>, respectively.
+   counted as <varname>writes</varname> and <varname>fsyncs</varname>
+   in <structname>pg_stat_io</structname> for the <varname>object</varname>
+   <literal>wal</literal>, respectively.
   </para>
 
   <para>

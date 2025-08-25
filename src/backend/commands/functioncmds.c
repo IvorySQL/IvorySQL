@@ -5,7 +5,7 @@
  *	  Routines for CREATE and DROP FUNCTION commands and CREATE and DROP
  *	  CAST commands.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -80,7 +80,7 @@
 
 /*
  *	 Examine the RETURNS clause of the CREATE FUNCTION statement
- *	 and return information about it as *prorettype_p and *returnsSet.
+ *	 and return information about it as *prorettype_p and *returnsSet_p.
  *
  * This is more complex than the average typename lookup because we want to
  * allow a shell type to be used, or even created if the specified return type

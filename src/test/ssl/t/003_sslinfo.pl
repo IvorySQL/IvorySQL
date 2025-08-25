@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2024, PostgreSQL Global Development Group
+# Copyright (c) 2021-2025, PostgreSQL Global Development Group
 
 use strict;
 use warnings FATAL => 'all';
@@ -185,9 +185,8 @@ foreach my $c (@cases)
 	$result = $node->safe_psql(
 		"trustdb",
 		"SELECT ssl_client_cert_present();",
-		connstr => "$common_connstr dbname=trustdb $c->{'opts'}");
-	is($result, $c->{'present'},
-		"ssl_client_cert_present() for $c->{'opts'}");
+		connstr => "$common_connstr dbname=trustdb $c->{opts}");
+	is($result, $c->{present}, "ssl_client_cert_present() for $c->{opts}");
 }
 
 done_testing();

@@ -4,7 +4,7 @@
  *	  POSTGRES low-level lock mechanism
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -31,6 +31,7 @@ typedef struct PGPROC PGPROC;
 
 /* GUC variables */
 extern PGDLLIMPORT int max_locks_per_xact;
+extern PGDLLIMPORT bool log_lock_failure;
 
 #ifdef LOCK_DEBUG
 extern PGDLLIMPORT int Trace_lock_oidmin;
@@ -561,7 +562,8 @@ extern LockAcquireResult LockAcquireExtended(const LOCKTAG *locktag,
 											 bool sessionLock,
 											 bool dontWait,
 											 bool reportMemoryError,
-											 LOCALLOCK **locallockp);
+											 LOCALLOCK **locallockp,
+											 bool logLockFailure);
 extern void AbortStrongLockAcquire(void);
 extern void MarkLockClear(LOCALLOCK *locallock);
 extern bool LockRelease(const LOCKTAG *locktag,
@@ -606,7 +608,7 @@ extern void lock_twophase_standby_recover(TransactionId xid, uint16 info,
 
 extern DeadLockState DeadLockCheck(PGPROC *proc);
 extern PGPROC *GetBlockingAutoVacuumPgproc(void);
-extern void DeadLockReport(void) pg_attribute_noreturn();
+pg_noreturn extern void DeadLockReport(void);
 extern void RememberSimpleDeadLock(PGPROC *proc1,
 								   LOCKMODE lockmode,
 								   LOCK *lock,

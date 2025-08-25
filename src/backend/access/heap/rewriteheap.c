@@ -92,7 +92,7 @@
  * heap's TOAST table will go through the normal bufmgr.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994-5, Regents of the University of California
  *
  * IDENTIFICATION
@@ -887,7 +887,7 @@ logical_heap_rewrite_flush_mappings(RewriteState state)
 		src->off += len;
 
 		XLogBeginInsert();
-		XLogRegisterData((char *) (&xlrec), sizeof(xlrec));
+		XLogRegisterData(&xlrec, sizeof(xlrec));
 		XLogRegisterData(waldata_start, len);
 
 		/* write xlog record */

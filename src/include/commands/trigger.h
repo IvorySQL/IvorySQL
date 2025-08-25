@@ -3,7 +3,7 @@
  * trigger.h
  *	  Declarations for trigger handling.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/commands/trigger.h
@@ -258,6 +258,7 @@ extern void ExecASTruncateTriggers(EState *estate,
 extern void AfterTriggerBeginXact(void);
 extern void AfterTriggerBeginQuery(void);
 extern void AfterTriggerEndQuery(EState *estate);
+extern void AfterTriggerAbortQuery(void);
 extern void AfterTriggerFireDeferred(void);
 extern void AfterTriggerEndXact(bool isCommit);
 extern void AfterTriggerBeginSubXact(void);

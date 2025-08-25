@@ -3,7 +3,7 @@
  * libpq_pipeline.c
  *		Verify libpq pipeline execution functionality
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -20,22 +20,20 @@
 #include <sys/time.h>
 
 #include "catalog/pg_type_d.h"
-#include "common/fe_memutils.h"
 #include "libpq-fe.h"
 #include "pg_getopt.h"
-#include "portability/instr_time.h"
 
 
 static void exit_nicely(PGconn *conn);
-static void pg_attribute_noreturn() pg_fatal_impl(int line, const char *fmt,...)
+pg_noreturn static void pg_fatal_impl(int line, const char *fmt,...)
 			pg_attribute_printf(2, 3);
 static bool process_result(PGconn *conn, PGresult *res, int results,
 						   int numsent);
 
-const char *const progname = "libpq_pipeline";
+static const char *const progname = "libpq_pipeline";
 
 /* Options and defaults */
-char	   *tracefile = NULL;	/* path to PQtrace() file */
+static char *tracefile = NULL;	/* path to PQtrace() file */
 
 
 #ifdef DEBUG_OUTPUT
@@ -74,8 +72,7 @@ exit_nicely(PGconn *conn)
  * Print an error to stderr and terminate the program.
  */
 #define pg_fatal(...) pg_fatal_impl(__LINE__, __VA_ARGS__)
-static void
-pg_attribute_noreturn()
+pg_noreturn static void
 pg_fatal_impl(int line, const char *fmt,...)
 {
 	va_list		args;
@@ -1002,7 +999,7 @@ enum PipelineInsertStep
 	BI_INSERT_ROWS,
 	BI_COMMIT_TX,
 	BI_SYNC,
-	BI_DONE
+	BI_DONE,
 };
 
 static void
@@ -1413,7 +1410,7 @@ test_prepared(PGconn *conn)
 static void
 notice_processor(void *arg, const char *message)
 {
-	int		   *n_notices = (int *) arg;
+	int	   *n_notices = (int *) arg;
 
 	(*n_notices)++;
 	fprintf(stderr, "NOTICE %d: %s", *n_notices, message);

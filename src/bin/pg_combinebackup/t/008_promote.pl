@@ -1,4 +1,4 @@
-# Copyright (c) 2021-2024, PostgreSQL Global Development Group
+# Copyright (c) 2021-2025, PostgreSQL Global Development Group
 #
 # Test whether WAL summaries are complete such that incremental backup
 # can be performed after promoting a standby at an arbitrary LSN.
@@ -31,7 +31,12 @@ EOM
 # Take a full backup.
 my $backup1path = $node1->backup_dir . '/backup1';
 $node1->command_ok(
-	[ 'pg_basebackup', '-D', $backup1path, '--no-sync', '-cfast' ],
+	[
+		'pg_basebackup',
+		'--pgdata' => $backup1path,
+		'--no-sync',
+		'--checkpoint' => 'fast',
+	],
 	"full backup from node1");
 
 # Checkpoint and record LSN after.
@@ -47,7 +52,7 @@ EOM
 # then stop recovery at some arbitrary LSN, not just when it hits the end of
 # WAL, so use a recovery target.
 my $node2 = PostgreSQL::Test::Cluster->new('node2');
-$node2->init_from_backup($node1, 'backup1', 'has_streaming' => 1);
+$node2->init_from_backup($node1, 'backup1', has_streaming => 1);
 $node2->append_conf('postgresql.conf', <<EOM);
 recovery_target_lsn = '$lsn'
 recovery_target_action = 'pause'
@@ -55,7 +60,8 @@ EOM
 $node2->start();
 
 # Wait until recovery pauses, then promote.
-$node2->poll_query_until('postgres', "SELECT pg_get_wal_replay_pause_state() = 'paused';");
+$node2->poll_query_until('postgres',
+	"SELECT pg_get_wal_replay_pause_state() = 'paused';");
 $node2->safe_psql('postgres', "SELECT pg_promote()");
 
 # Once promotion occurs, insert a second row on the new node.
@@ -68,14 +74,19 @@ EOM
 # timeline change correctly, something should break at this point.
 my $backup2path = $node1->backup_dir . '/backup2';
 $node2->command_ok(
-	[ 'pg_basebackup', '-D', $backup2path, '--no-sync', '-cfast',
-	  '--incremental', $backup1path . '/backup_manifest' ],
+	[
+		'pg_basebackup',
+		'--pgdata' => $backup2path,
+		'--no-sync',
+		'--checkpoint' => 'fast',
+		'--incremental' => $backup1path . '/backup_manifest',
+	],
 	"incremental backup from node2");
 
 # Restore the incremental backup and use it to create a new node.
 my $node3 = PostgreSQL::Test::Cluster->new('node3');
 $node3->init_from_backup($node1, 'backup2',
-						 combine_with_prior => [ 'backup1' ]);
+	combine_with_prior => ['backup1']);
 $node3->start();
 
 done_testing();

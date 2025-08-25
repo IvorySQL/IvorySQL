@@ -206,10 +206,10 @@ PQsocketPoll              203
 PQsetChunkedRowsMode      204
 PQgetCurrentTimeUSec      205
 PQservice                 206
-IvyCreatePreparedStatement 207
-IvybindOutParameterByPos   208
-IvyexecPreparedStatement   209
-IvyFreePreparedStatement   210
+PQsetAuthDataHook         207
+PQgetAuthDataHook         208
+PQdefaultAuthDataHook     209
+PQfullProtocolVersion     210
 Ivyclear                   211
 Ivyfinish                  212
 Ivystatus                  213
@@ -229,3 +229,7 @@ IvyBindByPos               226
 IvyBindByName              227
 IvyStmtExecute             228
 Ivyconnectdb               229
+IvyCreatePreparedStatement 230
+IvybindOutParameterByPos   231
+IvyexecPreparedStatement   232
+IvyFreePreparedStatement   233

@@ -15,7 +15,7 @@
  * there's hardly any use case for using these without superuser-rights
  * anyway.
  *
- * Copyright (c) 2007-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2007-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/pageinspect/heapfuncs.c
@@ -36,7 +36,6 @@
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/rel.h"
-
 
 /*
  * bits_to_text

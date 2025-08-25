@@ -209,14 +209,14 @@ SELECT xslt_process('<employee><name>cim</name><age>30</age><pay>400</pay></empl
 (1 row)
 
 -- xpath_nodeset()
-SELECT xpath_nodeset(article_xml::text, '/article/author|/article/pages')
+SELECT xpath_nodeset(article_xml::text, '/article/author|/article/pages',''::text,''::text)
   FROM articles;
              xpath_nodeset              
 ----------------------------------------
  <author>test</author><pages>37</pages>
 (1 row)
 
-SELECT xpath_nodeset(article_xml::text, '/article/author|/article/pages',
+SELECT xpath_nodeset(article_xml::text, '/article/author|/article/pages',''::text,
                      'item_without_toptag')
   FROM articles;
                                                         xpath_nodeset                                                         

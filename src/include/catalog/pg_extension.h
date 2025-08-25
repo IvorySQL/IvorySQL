@@ -4,7 +4,7 @@
  *	  definition of the "extension" system catalog (pg_extension)
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_extension.h
@@ -19,7 +19,7 @@
 #define PG_EXTENSION_H
 
 #include "catalog/genbki.h"
-#include "catalog/pg_extension_d.h"
+#include "catalog/pg_extension_d.h" /* IWYU pragma: export */
 
 /* ----------------
  *		pg_extension definition.  cpp turns this into

@@ -1,4 +1,4 @@
-# Copyright (c) 2021-2024, PostgreSQL Global Development Group
+# Copyright (c) 2021-2025, PostgreSQL Global Development Group
 
 use strict;
 use warnings FATAL => 'all';
@@ -21,15 +21,23 @@ $primary->start;
 # Take a full backup.
 my $backup1path = $primary->backup_dir . '/backup1';
 $primary->command_ok(
-	[ 'pg_basebackup', '-D', $backup1path, '--no-sync', '-cfast' ],
+	[
+		'pg_basebackup',
+		'--pgdata' => $backup1path,
+		'--no-sync',
+		'--checkpoint' => 'fast'
+	],
 	"full backup");
 
 # Take an incremental backup.
 my $backup2path = $primary->backup_dir . '/backup2';
 $primary->command_ok(
 	[
-		'pg_basebackup', '-D', $backup2path, '--no-sync', '-cfast',
-		'--incremental', $backup1path . '/backup_manifest'
+		'pg_basebackup',
+		'--pgdata' => $backup2path,
+		'--no-sync',
+		'--checkpoint' => 'fast',
+		'--incremental' => $backup1path . '/backup_manifest'
 	],
 	"incremental backup");
 
@@ -46,9 +54,9 @@ for my $iname (@filelist)
 	if (-f "$backup1path/base/1/$name")
 	{
 		copy("$backup2path/base/1/$iname", "$backup1path/base/1/$iname")
-			|| die "copy $backup2path/base/1/$iname: $!";
+		  || die "copy $backup2path/base/1/$iname: $!";
 		unlink("$backup1path/base/1/$name")
-			|| die "unlink $backup1path/base/1/$name: $!";
+		  || die "unlink $backup1path/base/1/$name: $!";
 		$success = 1;
 		last;
 	}
@@ -58,7 +66,8 @@ for my $iname (@filelist)
 my $outpath = $primary->backup_dir . '/out';
 $primary->command_fails_like(
 	[
-		'pg_combinebackup', $backup1path, $backup2path, '-o', $outpath,
+		'pg_combinebackup', $backup1path,
+		$backup2path, '--output' => $outpath,
 	],
 	qr/full backup contains unexpected incremental file/,
 	"pg_combinebackup fails");

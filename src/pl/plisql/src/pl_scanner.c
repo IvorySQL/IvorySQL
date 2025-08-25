@@ -616,7 +616,7 @@ plisql_scanner_errposition(int location)
  * Beware of using yyerror for other purposes, as the cursor position might
  * be misleading!
  */
-void
+pg_noreturn void
 plisql_yyerror(const char *message)
 {
 	char	   *yytext = core_yy.scanbuf + plisql_yylloc;

@@ -49,7 +49,7 @@
  * we calculate operands first.  Then we check that results are numeric
  * singleton lists, calculate the result and pass it to the next path item.
  *
- * Copyright (c) 2019-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2019-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	src/backend/utils/adt/jsonpath_exec.c
@@ -77,7 +77,7 @@
 #include "utils/timestamp.h"
 
 /*
- * Represents "base object" and it's "id" for .keyvalue() evaluation.
+ * Represents "base object" and its "id" for .keyvalue() evaluation.
  */
 typedef struct JsonBaseObjectInfo
 {
@@ -3977,13 +3977,13 @@ JsonPathQuery(Datum jb, JsonPath *jp, JsonWrapper wrapper, bool *empty,
 		if (column_name)
 			ereport(ERROR,
 					(errcode(ERRCODE_MORE_THAN_ONE_SQL_JSON_ITEM),
-					 errmsg("JSON path expression for column \"%s\" should return single item without wrapper",
+					 errmsg("JSON path expression for column \"%s\" must return single item when no wrapper is requested",
 							column_name),
 					 errhint("Use the WITH WRAPPER clause to wrap SQL/JSON items into an array.")));
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_MORE_THAN_ONE_SQL_JSON_ITEM),
-					 errmsg("JSON path expression in JSON_QUERY should return single item without wrapper"),
+					 errmsg("JSON path expression in JSON_QUERY must return single item when no wrapper is requested"),
 					 errhint("Use the WITH WRAPPER clause to wrap SQL/JSON items into an array.")));
 	}
 
@@ -4041,12 +4041,12 @@ JsonPathValue(Datum jb, JsonPath *jp, bool *empty, bool *error, List *vars,
 		if (column_name)
 			ereport(ERROR,
 					(errcode(ERRCODE_MORE_THAN_ONE_SQL_JSON_ITEM),
-					 errmsg("JSON path expression for column \"%s\" should return single scalar item",
+					 errmsg("JSON path expression for column \"%s\" must return single scalar item",
 							column_name)));
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_MORE_THAN_ONE_SQL_JSON_ITEM),
-					 errmsg("JSON path expression in JSON_VALUE should return single scalar item")));
+					 errmsg("JSON path expression in JSON_VALUE must return single scalar item")));
 	}
 
 	res = JsonValueListHead(&found);
@@ -4065,12 +4065,12 @@ JsonPathValue(Datum jb, JsonPath *jp, bool *empty, bool *error, List *vars,
 		if (column_name)
 			ereport(ERROR,
 					(errcode(ERRCODE_SQL_JSON_SCALAR_REQUIRED),
-					 errmsg("JSON path expression for column \"%s\" should return single scalar item",
+					 errmsg("JSON path expression for column \"%s\" must return single scalar item",
 							column_name)));
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_SQL_JSON_SCALAR_REQUIRED),
-					 errmsg("JSON path expression in JSON_VALUE should return single scalar item")));
+					 errmsg("JSON path expression in JSON_VALUE must return single scalar item")));
 	}
 
 	if (res->type == jbvNull)

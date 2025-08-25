@@ -4,7 +4,7 @@
  *		Routines for handling specialized SET variables.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -383,6 +383,8 @@ void
 assign_timezone(const char *newval, void *extra)
 {
 	session_timezone = *((pg_tz **) extra);
+	/* datetime.c's cache of timezone abbrevs may now be obsolete */
+	ClearTimeZoneAbbrevCache();
 }
 
 /*
@@ -1156,6 +1158,24 @@ assign_maintenance_io_concurrency(int newval, void *extra)
 #endif
 }
 
+/*
+ * GUC assign hooks that recompute io_combine_limit whenever
+ * io_combine_limit_guc and io_max_combine_limit are changed.  These are needed
+ * because the GUC subsystem doesn't support dependencies between GUCs, and
+ * they may be assigned in either order.
+ */
+void
+assign_io_max_combine_limit(int newval, void *extra)
+{
+	io_max_combine_limit = newval;
+	io_combine_limit = Min(io_max_combine_limit, io_combine_limit_guc);
+}
+void
+assign_io_combine_limit(int newval, void *extra)
+{
+	io_combine_limit_guc = newval;
+	io_combine_limit = Min(io_max_combine_limit, io_combine_limit_guc);
+}
 
 /*
  * These show hooks just exist because we want to show the values in octal.

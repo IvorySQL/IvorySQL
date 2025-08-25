@@ -1873,13 +1873,16 @@ select * from rem1;
 -- test generated columns
 -- ===================================================================
 create table gloc1 (
-  a number(38,0),
-  b number(38,0) generated always as (a * 2) stored);
+  a int,
+  b int generated always as (a * 2) stored,
+  c int
+);
 alter table gloc1 set (autovacuum_enabled = 'false');
 create foreign table grem1 (
-  a number(38,0),
-  b number(38,0) generated always as (a * 2) stored)
-  server loopback options(table_name 'gloc1');
+  a int,
+  b int generated always as (a * 2) stored,
+  c int generated always as (a * 3) virtual
+) server loopback options(table_name 'gloc1');
 explain (verbose, costs off)
 insert into grem1 (a) values (1), (2);
 insert into grem1 (a) values (1), (2);
@@ -3457,9 +3460,14 @@ DROP SERVER loopback3 CASCADE;
 -- List all the existing cached connections. loopback and loopback3
 -- should be output as invalid connections. Also the server name and user name
 -- for loopback3 should be NULL because both server and user mapping were
--- dropped.
-SELECT server_name, user_name = CURRENT_USER as "user_name = CURRENT_USER", valid, used_in_xact, closed
-FROM postgres_fdw_get_connections() ORDER BY 1;
+-- dropped. In this test, the PIDs of remote backends can be gathered from
+-- pg_stat_activity, and remote_backend_pid should match one of those PIDs.
+SELECT server_name, user_name = CURRENT_USER as "user_name = CURRENT_USER",
+  valid, used_in_xact, closed,
+  remote_backend_pid = ANY(SELECT pid FROM pg_stat_activity
+  WHERE backend_type = 'client backend' AND pid <> pg_backend_pid())
+  as remote_backend_pid
+  FROM postgres_fdw_get_connections() ORDER BY 1;
 -- The invalid connections get closed in pgfdw_xact_callback during commit.
 COMMIT;
 -- All cached connections were closed while committing above xact, so no
@@ -4339,17 +4347,26 @@ SELECT 1 FROM ft1 LIMIT 1;
 
 -- Since the remote server is still connected, "closed" should be FALSE,
 -- or NULL if the connection status check is not available.
-SELECT CASE WHEN closed IS NOT true THEN 1 ELSE 0 END
+-- In this test, the remote backend handling this connection should have
+-- application_name set to "fdw_conn_check", so remote_backend_pid should
+-- match the PID from the pg_stat_activity entry with that application_name.
+SELECT server_name,
+  CASE WHEN closed IS NOT true THEN false ELSE true END AS closed,
+  remote_backend_pid = (SELECT pid FROM pg_stat_activity
+  WHERE application_name = 'fdw_conn_check') AS remote_backend_pid
   FROM postgres_fdw_get_connections(true);
 
 -- After terminating the remote backend, since the connection is closed,
 -- "closed" should be TRUE, or NULL if the connection status check
--- is not available.
+-- is not available. Despite the termination, remote_backend_pid should
+-- still show the non-zero PID of the terminated remote backend.
 DO $$ BEGIN
 PERFORM pg_terminate_backend(pid, 180000) FROM pg_stat_activity
   WHERE application_name = 'fdw_conn_check';
 END $$;
-SELECT CASE WHEN closed IS NOT false THEN 1 ELSE 0 END
+SELECT server_name,
+  CASE WHEN closed IS NOT false THEN true ELSE false END AS closed,
+  remote_backend_pid <> 0 AS remote_backend_pid
   FROM postgres_fdw_get_connections(true);
 
 -- Clean up

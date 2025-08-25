@@ -38,42 +38,9 @@
 #include "parser/scansup.h"
 #include "utils/ora_compatible.h"
 #include "parser/parse_param.h"
+#include "nodes/queryjumble.h"
 
 PG_MODULE_MAGIC;
-
-/*
- * Struct for tracking locations/lengths of constants during normalization
- */
-typedef struct pgssLocationLen
-{
-	int			location;		/* start offset in query text */
-	int			length;			/* length in bytes, or -1 to ignore */
-} pgssLocationLen;
-
-/*
- * Working state for computing a query jumble and producing a normalized
- * query string
- */
-typedef struct JumbleState
-{
-	/* Jumble of current query tree */
-	unsigned char *jumble;
-
-	/* Number of bytes used in jumble[] */
-	Size		jumble_len;
-
-	/* Array of locations of constants that should be removed */
-	pgssLocationLen *clocations;
-
-	/* Allocated length of clocations array */
-	int			clocations_buf_size;
-
-	/* Current number of valid entries in clocations array */
-	int			clocations_count;
-
-	/* highest Param id we've seen, in order to start normalization correctly */
-	int			highest_extern_param_id;
-} JumbleState;
 
 /* saved hook value */
 static raw_parser_hook_type prev_raw_parser = NULL;
@@ -121,13 +88,13 @@ _PG_fini(void)
 }
 
 /*
- * comp_location: comparator for qsorting pgssLocationLen structs by location
+ * comp_location: comparator for qsorting LocationLen structs by location
  */
 static int
 oracle_comp_location(const void *a, const void *b)
 {
-	int			l = ((const pgssLocationLen *) a)->location;
-	int			r = ((const pgssLocationLen *) b)->location;
+	int			l = ((const LocationLen *) a)->location;
+	int			r = ((const LocationLen *) b)->location;
 
 	if (l < r)
 		return -1;
@@ -1196,7 +1163,7 @@ oracle_fill_in_constant_lengths(void *jjstate, const char *query,
 						 int query_loc)
 {
 	JumbleState	*jstate;
-	pgssLocationLen *locs;
+	LocationLen *locs;
 	ora_core_yyscan_t yyscanner;
 	ora_core_yy_extra_type yyextra;
 	ora_core_YYSTYPE yylval;
@@ -1211,7 +1178,7 @@ oracle_fill_in_constant_lengths(void *jjstate, const char *query,
 	jstate = (JumbleState *)jjstate;
 	if (jstate->clocations_count > 1)
 		qsort(jstate->clocations, jstate->clocations_count,
-			  sizeof(pgssLocationLen), oracle_comp_location);
+			  sizeof(LocationLen), oracle_comp_location);
 	locs = jstate->clocations;
 
 	/* initialize the flex scanner --- should match oracle_raw_parser() */

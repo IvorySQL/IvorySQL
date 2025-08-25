@@ -3,7 +3,7 @@
  * fe-secure-gssapi.c
  *   The front-end (client) encryption support for GSSAPI
  *
- * Portions Copyright (c) 2016-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2016-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *  src/interfaces/libpq/fe-secure-gssapi.c
@@ -698,7 +698,7 @@ pqsecure_open_gss(PGconn *conn)
 	/* Queue the token for writing */
 	netlen = pg_hton32(output.length);
 
-	memcpy(PqGSSSendBuffer, (char *) &netlen, sizeof(uint32));
+	memcpy(PqGSSSendBuffer, &netlen, sizeof(uint32));
 	PqGSSSendLength += sizeof(uint32);
 
 	memcpy(PqGSSSendBuffer + PqGSSSendLength, output.value, output.length);

@@ -43,7 +43,7 @@
  * before switching to the other state or activating a different read pointer.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -265,7 +265,7 @@ tuplestore_begin_common(int eflags, bool interXact, int maxKBytes)
 	state->truncated = false;
 	state->usedDisk = false;
 	state->maxSpace = 0;
-	state->allowedMem = maxKBytes * 1024L;
+	state->allowedMem = maxKBytes * (int64) 1024;
 	state->availMem = state->allowedMem;
 	state->myfile = NULL;
 

@@ -3,7 +3,7 @@
  * pg_dump.h
  *	  Common header file for the pg_dump utility
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -16,6 +16,7 @@
 #define PG_DUMP_H
 
 #include "pg_backup.h"
+#include "catalog/pg_publication_d.h"
 
 
 #define oidcmp(x,y) ( ((x) < (y) ? -1 : ((x) > (y)) ?  1 : 0) )
@@ -84,9 +85,12 @@ typedef enum
 	DO_PUBLICATION,
 	DO_PUBLICATION_REL,
 	DO_PUBLICATION_TABLE_IN_SCHEMA,
+	DO_REL_STATS,
 	DO_SUBSCRIPTION,
 	DO_SUBSCRIPTION_REL,		/* see note for SubRelInfo */
 } DumpableObjectType;
+
+#define NUM_DUMPABLE_OBJECT_TYPES (DO_SUBSCRIPTION_REL + 1)
 
 /*
  * DumpComponents is a bitmask of the potentially dumpable components of
@@ -111,6 +115,7 @@ typedef uint32 DumpComponents;
 #define DUMP_COMPONENT_ACL			(1 << 4)
 #define DUMP_COMPONENT_POLICY		(1 << 5)
 #define DUMP_COMPONENT_USERMAP		(1 << 6)
+#define DUMP_COMPONENT_STATISTICS	(1 << 7)
 #define DUMP_COMPONENT_ALL			(0xFFFF)
 
 /*
@@ -138,6 +143,7 @@ typedef uint32 DumpComponents;
 #define DUMP_COMPONENTS_REQUIRING_LOCK (\
 		DUMP_COMPONENT_DEFINITION |\
 		DUMP_COMPONENT_DATA |\
+		DUMP_COMPONENT_STATISTICS |\
 		DUMP_COMPONENT_POLICY)
 
 typedef struct _dumpableObject
@@ -336,7 +342,7 @@ typedef struct _tableInfo
 	Oid			owning_tab;		/* OID of table owning sequence */
 	int			owning_col;		/* attr # of column owning sequence */
 	bool		is_identity_sequence;
-	int			relpages;		/* table's size in pages (from pg_class) */
+	int32		relpages;		/* table's size in pages (from pg_class) */
 	int			toastpages;		/* toast table's size in pages, if any */
 
 	bool		interesting;	/* true if need to collect more data */
@@ -443,6 +449,23 @@ typedef struct _indexAttachInfo
 	IndxInfo   *parentIdx;		/* link to index on partitioned table */
 	IndxInfo   *partitionIdx;	/* link to index on partition */
 } IndexAttachInfo;
+
+typedef struct _relStatsInfo
+{
+	DumpableObject dobj;
+	int32		relpages;
+	char	   *reltuples;
+	int32		relallvisible;
+	char		relkind;		/* 'r', 'm', 'i', etc */
+
+	/*
+	 * indAttNames/nindAttNames are populated only if the relation is an index
+	 * with at least one expression column; we don't need them otherwise.
+	 */
+	char	  **indAttNames;	/* attnames of the index, in order */
+	int32		nindAttNames;	/* number of attnames stored (can be 0) */
+	bool		postponed_def;	/* stats must be postponed into post-data */
+} RelStatsInfo;
 
 typedef struct _statsExtInfo
 {
@@ -653,7 +676,7 @@ typedef struct _PublicationInfo
 	bool		pubdelete;
 	bool		pubtruncate;
 	bool		pubviaroot;
-	bool		pubgencols;
+	PublishGencolsType pubgencols_type;
 } PublicationInfo;
 
 /*

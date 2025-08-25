@@ -376,7 +376,8 @@ NOTICE:  drop cascades to view ro_view19
 -- simple updatable view
 CREATE TABLE base_tbl (a int PRIMARY KEY, b text DEFAULT 'Unspecified');
 INSERT INTO base_tbl SELECT i, 'Row ' || i FROM generate_series(-2, 2) g(i);
-CREATE VIEW rw_view1 AS SELECT * FROM base_tbl WHERE a>0;
+CREATE VIEW rw_view1 AS
+  SELECT *, 'Const' AS c, (SELECT concat('b: ', b)) AS d FROM base_tbl WHERE a>0;
 SELECT table_name, is_insertable_into
   FROM information_schema.tables
  WHERE table_name = 'rw_view1';
@@ -401,7 +402,9 @@ SELECT table_name, column_name, is_updatable
 ------------+-------------+--------------
  rw_view1   | a           | YES
  rw_view1   | b           | YES
-(2 rows)
+ rw_view1   | c           | NO
+ rw_view1   | d           | NO
+(4 rows)
 
 INSERT INTO rw_view1 VALUES (3, 'Row 3');
 INSERT INTO rw_view1 (a) VALUES (4);

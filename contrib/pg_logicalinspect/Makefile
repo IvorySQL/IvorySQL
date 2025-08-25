@@ -11,6 +11,8 @@ DATA = pg_logicalinspect--1.0.sql
 
 EXTRA_INSTALL = contrib/test_decoding
 
+REGRESS = pg_logicalinspect
+ORA_REGRESS = ivy_pg_logicalinspect
 ISOLATION = logical_inspect
 
 ISOLATION_OPTS = --temp-config $(top_srcdir)/contrib/pg_logicalinspect/logicalinspect.conf

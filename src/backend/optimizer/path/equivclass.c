@@ -6,7 +6,7 @@
  * See src/backend/optimizer/README for discussion of EquivalenceClasses.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -852,7 +852,8 @@ find_computable_ec_member(PlannerInfo *root,
 	exprvars = pull_var_clause((Node *) exprs,
 							   PVC_INCLUDE_AGGREGATES |
 							   PVC_INCLUDE_WINDOWFUNCS |
-							   PVC_INCLUDE_PLACEHOLDERS);
+							   PVC_INCLUDE_PLACEHOLDERS |
+							   PVC_INCLUDE_CONVERTROWTYPES);
 
 	foreach(lc, ec->ec_members)
 	{

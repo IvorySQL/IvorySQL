@@ -2,7 +2,7 @@
  * backend_status.h
  *	  Definitions related to backend status reporting
  *
- * Copyright (c) 2001-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2001-2025, PostgreSQL Global Development Group
  *
  * src/include/utils/backend_status.h
  * ----------
@@ -24,6 +24,7 @@
 typedef enum BackendState
 {
 	STATE_UNDEFINED,
+	STATE_STARTING,
 	STATE_IDLE,
 	STATE_RUNNING,
 	STATE_IDLEINTRANSACTION,
@@ -309,7 +310,9 @@ extern void BackendStatusShmemInit(void);
 
 /* Initialization functions */
 extern void pgstat_beinit(void);
-extern void pgstat_bestart(void);
+extern void pgstat_bestart_initial(void);
+extern void pgstat_bestart_security(void);
+extern void pgstat_bestart_final(void);
 
 extern void pgstat_clear_backend_activity_snapshot(void);
 

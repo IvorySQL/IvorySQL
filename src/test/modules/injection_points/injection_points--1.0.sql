@@ -86,6 +86,16 @@ AS 'MODULE_PATHNAME', 'injection_points_stats_numcalls'
 LANGUAGE C STRICT;
 
 --
+-- injection_points_stats_drop()
+--
+-- Drop all statistics of injection points.
+--
+CREATE FUNCTION injection_points_stats_drop()
+RETURNS void
+AS 'MODULE_PATHNAME', 'injection_points_stats_drop'
+LANGUAGE C STRICT;
+
+--
 -- injection_points_stats_fixed()
 --
 -- Reports fixed-numbered statistics for injection points.
@@ -97,3 +107,11 @@ CREATE FUNCTION injection_points_stats_fixed(OUT numattach int8,
 RETURNS record
 AS 'MODULE_PATHNAME', 'injection_points_stats_fixed'
 LANGUAGE C STRICT;
+
+--
+-- regress_injection.c functions
+--
+CREATE FUNCTION removable_cutoff(rel regclass)
+RETURNS xid8
+AS 'MODULE_PATHNAME'
+LANGUAGE C CALLED ON NULL INPUT;

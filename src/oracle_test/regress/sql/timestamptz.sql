@@ -201,9 +201,13 @@ SELECT d1 - timestamp with time zone '1997-01-02' AS diff
 
 SELECT date_trunc( 'week', timestamp with time zone '2004-02-29 15:44:17.71393' ) AS week_trunc;
 
+
 SELECT date_trunc('day', timestamp with time zone '2001-02-16 20:38:40+00', 'Australia/Sydney') as sydney_trunc;  -- zone name
 SELECT date_trunc('day', timestamp with time zone '2001-02-16 20:38:40+00', 'GMT') as gmt_trunc;  -- fixed-offset abbreviation
 SELECT date_trunc('day', timestamp with time zone '2001-02-16 20:38:40+00', 'VET') as vet_trunc;  -- variable-offset abbreviation
+
+
+
 
 -- verify date_bin behaves the same as date_trunc for relevant intervals
 SELECT
@@ -442,14 +446,18 @@ SELECT make_timestamptz(1973, 07, 15, 08, 15, 55.33, '+2') = '1973-07-15 08:15:5
 -- full timezone names
 SELECT make_timestamptz(2014, 12, 10, 0, 0, 0, 'Europe/Prague') = timestamptz '2014-12-10 00:00:00 Europe/Prague';
 SELECT make_timestamptz(2014, 12, 10, 0, 0, 0, 'Europe/Prague') AT TIME ZONE 'UTC';
-SELECT make_timestamptz(1846, 12, 10, 0, 0, 0, 'Asia/Manila') AT TIME ZONE 'UTC';
+SELECT make_timestamptz(1881, 12, 10, 0, 0, 0, 'Asia/Singapore') AT TIME ZONE 'UTC';
+SELECT make_timestamptz(1881, 12, 10, 0, 0, 0, 'Pacific/Honolulu') AT TIME ZONE 'UTC';
 SELECT make_timestamptz(1881, 12, 10, 0, 0, 0, 'Europe/Paris') AT TIME ZONE 'UTC';
 SELECT make_timestamptz(1910, 12, 24, 0, 0, 0, 'Nehwon/Lankhmar');
 
 -- abbreviations
 SELECT make_timestamptz(2008, 12, 10, 10, 10, 10, 'EST');
 SELECT make_timestamptz(2008, 12, 10, 10, 10, 10, 'EDT');
-SELECT make_timestamptz(2014, 12, 10, 10, 10, 10, 'PST8PDT');
+SELECT make_timestamptz(2014, 12, 10, 10, 10, 10, 'FOO8BAR');
+
+-- POSIX
+SELECT make_timestamptz(2014, 12, 10, 10, 10, 10, 'PST8PDT,M3.2.0,M11.1.0');
 
 RESET TimeZone;
 

@@ -3,7 +3,7 @@
  * sequence.c
  *	  PostgreSQL sequences support code.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -429,8 +429,8 @@ fill_seq_fork_with_data(Relation rel, HeapTuple tuple, ForkNumber forkNum)
 
 		xlrec.locator = rel->rd_locator;
 
-		XLogRegisterData((char *) &xlrec, sizeof(xl_seq_rec));
-		XLogRegisterData((char *) tuple->t_data, tuple->t_len);
+		XLogRegisterData(&xlrec, sizeof(xl_seq_rec));
+		XLogRegisterData(tuple->t_data, tuple->t_len);
 
 		recptr = XLogInsert(RM_SEQ_ID, XLOG_SEQ_LOG);
 
@@ -983,8 +983,8 @@ nextval_internal(Oid relid, bool check_permissions)
 
 		xlrec.locator = seqrel->rd_locator;
 
-		XLogRegisterData((char *) &xlrec, sizeof(xl_seq_rec));
-		XLogRegisterData((char *) seqdatatuple.t_data, seqdatatuple.t_len);
+		XLogRegisterData(&xlrec, sizeof(xl_seq_rec));
+		XLogRegisterData(seqdatatuple.t_data, seqdatatuple.t_len);
 
 		recptr = XLogInsert(RM_SEQ_ID, XLOG_SEQ_LOG);
 
@@ -1321,8 +1321,8 @@ do_setval(Oid relid, int64 next, bool iscalled)
 		XLogRegisterBuffer(0, buf, REGBUF_WILL_INIT);
 
 		xlrec.locator = seqrel->rd_locator;
-		XLogRegisterData((char *) &xlrec, sizeof(xl_seq_rec));
-		XLogRegisterData((char *) seqdatatuple.t_data, seqdatatuple.t_len);
+		XLogRegisterData(&xlrec, sizeof(xl_seq_rec));
+		XLogRegisterData(seqdatatuple.t_data, seqdatatuple.t_len);
 
 		recptr = XLogInsert(RM_SEQ_ID, XLOG_SEQ_LOG);
 

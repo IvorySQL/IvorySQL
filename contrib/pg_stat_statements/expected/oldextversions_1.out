@@ -385,6 +385,7 @@ AlTER EXTENSION pg_stat_statements UPDATE TO '1.12';
  wal_records                | pg_catalog.int8          |           |          | 
  wal_fpi                    | pg_catalog.int8          |           |          | 
  wal_bytes                  | pg_catalog.numeric       |           |          | 
+ wal_buffers_full           | pg_catalog.int8          |           |          | 
  jit_functions              | pg_catalog.int8          |           |          | 
  jit_generation_time        | pg_catalog.float8        |           |          | 
  jit_inlining_count         | pg_catalog.int8          |           |          | 

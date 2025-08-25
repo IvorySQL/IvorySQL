@@ -31,7 +31,7 @@ ora_parser_sources += ora_parser_kwlist
 ora_backend_scanner = custom_target('ora_scan',
   input: 'ora_scan.l',
   output: 'ora_scan.c',
-  command: [flex_cmd, '--no-backup', '--fix-warnings', '--', '-CF', '-p', '-p'],
+  command: [flex_cmd, '--no-backup', '--', '-CF', '-p', '-p'],
 )
 generated_sources += ora_backend_scanner
 ora_parser_sources += ora_backend_scanner

@@ -146,6 +146,6 @@ extern void ora_setup_scanner_errposition_callback(OraScannerCallbackState *scbs
 											   ora_core_yyscan_t yyscanner,
 											   int location);
 extern void ora_cancel_scanner_errposition_callback(OraScannerCallbackState *scbstate);
-extern void ora_scanner_yyerror(const char *message, ora_core_yyscan_t yyscanner) pg_attribute_noreturn();
+pg_noreturn void ora_scanner_yyerror(const char *message, ora_core_yyscan_t yyscanner);
 
 #endif							/* SCANNER_H */

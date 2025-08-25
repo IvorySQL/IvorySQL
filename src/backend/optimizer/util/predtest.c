@@ -4,7 +4,7 @@
  *	  Routines to attempt to prove logical implications between predicate
  *	  expressions.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -1664,7 +1664,7 @@ clause_is_strict_for(Node *clause, Node *subexpr, bool allow_false)
 #define BTEQ BTEqualStrategyNumber
 #define BTGE BTGreaterEqualStrategyNumber
 #define BTGT BTGreaterStrategyNumber
-#define BTNE ROWCOMPARE_NE
+#define BTNE COMPARE_NE
 
 /* We use "none" for 0/false to make the tables align nicely */
 #define none 0

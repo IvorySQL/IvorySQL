@@ -4,8 +4,8 @@
  * src/backend/utils/adt/formatting.c
  *
  *
- *	 Portions Copyright (c) 1999-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ *	 Portions Copyright (c) 1999-2025, PostgreSQL Global Development Group
  *
  *
  *	 TO_CHAR(); TO_TIMESTAMP(); TO_DATE(); TO_NUMBER();
@@ -50,7 +50,6 @@
  *	- better number building (formatting) / parsing, now it isn't
  *		  ideal code
  *	- use Assert()
- *	- add support for roman number to standard number conversion
  *	- add support for number spelling
  *	- add support for string to string formatting (we must be better
  *	  than Oracle :-),
@@ -262,12 +261,38 @@ static const char *const rm_months_lower[] =
 {"xii", "xi", "x", "ix", "viii", "vii", "vi", "v", "iv", "iii", "ii", "i", NULL};
 
 /* ----------
- * Roman numbers
+ * Roman numerals
  * ----------
  */
 static const char *const rm1[] = {"I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", NULL};
 static const char *const rm10[] = {"X", "XX", "XXX", "XL", "L", "LX", "LXX", "LXXX", "XC", NULL};
 static const char *const rm100[] = {"C", "CC", "CCC", "CD", "D", "DC", "DCC", "DCCC", "CM", NULL};
+
+/*
+ * MACRO: Check if the current and next characters form a valid subtraction
+ * combination for roman numerals.
+ */
+#define IS_VALID_SUB_COMB(curr, next) \
+	(((curr) == 'I' && ((next) == 'V' || (next) == 'X')) || \
+	 ((curr) == 'X' && ((next) == 'L' || (next) == 'C')) || \
+	 ((curr) == 'C' && ((next) == 'D' || (next) == 'M')))
+
+/*
+ * MACRO: Roman numeral value, or 0 if character isn't a roman numeral.
+ */
+#define ROMAN_VAL(r) \
+	((r) == 'I' ? 1 : \
+	 (r) == 'V' ? 5 : \
+	 (r) == 'X' ? 10 : \
+	 (r) == 'L' ? 50 : \
+	 (r) == 'C' ? 100 : \
+	 (r) == 'D' ? 500 : \
+	 (r) == 'M' ? 1000 : 0)
+
+/*
+ * 'MMMDCCCLXXXVIII' (3888) is the longest valid roman numeral (15 characters).
+ */
+#define MAX_ROMAN_LEN	15
 
 /* ----------
  * Ordinal postfixes
@@ -1029,6 +1054,15 @@ typedef struct NUMProc
 #define DCH_TIMED	0x02
 #define DCH_ZONED	0x04
 
+/*
+ * These macros are used in NUM_processor() and its subsidiary routines.
+ * OVERLOAD_TEST: true if we've reached end of input string
+ * AMOUNT_TEST(s): true if at least s bytes remain in string
+ */
+#define OVERLOAD_TEST	(Np->inout_p >= Np->inout + input_len)
+#define AMOUNT_TEST(s)	(Np->inout_p <= Np->inout + (input_len - (s)))
+
+
 /* ----------
  * Functions
  * ----------
@@ -1077,6 +1111,7 @@ static bool do_to_timestamp(text *date_txt, text *fmt, Oid collid, bool std,
 static char *fill_str(char *str, int c, int max);
 static FormatNode *NUM_cache(int len, NUMDesc *Num, text *pars_str, bool *shouldFree);
 static char *int_to_roman(int number);
+static int	roman_to_int(NUMProc *Np, int input_len);
 static void NUM_prepare_locale(NUMProc *Np);
 static char *get_last_relevant_decnum(char *num);
 static void NUM_numpart_from_char(NUMProc *Np, int id, int input_len);
@@ -1314,6 +1349,10 @@ NUMDesc_prepare(NUMDesc *num, FormatNode *n)
 
 		case NUM_rn:
 		case NUM_RN:
+			if (IS_ROMAN(num))
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("cannot use \"RN\" twice")));
 			num->flag |= NUM_F_ROMAN;
 			break;
 
@@ -1345,6 +1384,13 @@ NUMDesc_prepare(NUMDesc *num, FormatNode *n)
 			num->flag |= NUM_F_EEEE;
 			break;
 	}
+
+	if (IS_ROMAN(num) &&
+		(num->flag & ~(NUM_F_ROMAN | NUM_F_FILLMODE)) != 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("\"RN\" is incompatible with other formats"),
+				 errdetail("\"RN\" may only be used together with \"FM\".")));
 }
 
 /* ----------
@@ -1799,6 +1845,75 @@ str_initcap(const char *buff, size_t nbytes, Oid collid)
 			dstsize = needed + 1;
 			dst = repalloc(dst, dstsize);
 			needed = pg_strtitle(dst, dstsize, src, srclen, mylocale);
+			Assert(needed + 1 <= dstsize);
+		}
+
+		Assert(dst[needed] == '\0');
+		result = dst;
+	}
+
+	return result;
+}
+
+/*
+ * collation-aware, wide-character-aware case folding
+ *
+ * We pass the number of bytes so we can pass varlena and char*
+ * to this function.  The result is a palloc'd, null-terminated string.
+ */
+char *
+str_casefold(const char *buff, size_t nbytes, Oid collid)
+{
+	char	   *result;
+	pg_locale_t mylocale;
+
+	if (!buff)
+		return NULL;
+
+	if (!OidIsValid(collid))
+	{
+		/*
+		 * This typically means that the parser could not resolve a conflict
+		 * of implicit collations, so report it that way.
+		 */
+		ereport(ERROR,
+				(errcode(ERRCODE_INDETERMINATE_COLLATION),
+				 errmsg("could not determine which collation to use for %s function",
+						"lower()"),
+				 errhint("Use the COLLATE clause to set the collation explicitly.")));
+	}
+
+	if (GetDatabaseEncoding() != PG_UTF8)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("Unicode case folding can only be performed if server encoding is UTF8")));
+
+	mylocale = pg_newlocale_from_collation(collid);
+
+	/* C/POSIX collations use this path regardless of database encoding */
+	if (mylocale->ctype_is_c)
+	{
+		result = asc_tolower(buff, nbytes);
+	}
+	else
+	{
+		const char *src = buff;
+		size_t		srclen = nbytes;
+		size_t		dstsize;
+		char	   *dst;
+		size_t		needed;
+
+		/* first try buffer of equal size plus terminating NUL */
+		dstsize = srclen + 1;
+		dst = palloc(dstsize);
+
+		needed = pg_strfold(dst, dstsize, src, srclen, mylocale);
+		if (needed + 1 > dstsize)
+		{
+			/* grow buffer if needed and retry */
+			dstsize = needed + 1;
+			dst = repalloc(dst, dstsize);
+			needed = pg_strfold(dst, dstsize, src, srclen, mylocale);
 			Assert(needed + 1 <= dstsize);
 		}
 
@@ -6033,7 +6148,7 @@ int_to_roman(int number)
 			   *result,
 				numstr[12];
 
-	result = (char *) palloc(16);
+	result = (char *) palloc(MAX_ROMAN_LEN + 1);
 	*result = '\0';
 
 	/*
@@ -6043,7 +6158,7 @@ int_to_roman(int number)
 	 */
 	if (number > 3999 || number < 1)
 	{
-		fill_str(result, '#', 15);
+		fill_str(result, '#', MAX_ROMAN_LEN);
 		return result;
 	}
 
@@ -6077,6 +6192,157 @@ int_to_roman(int number)
 	return result;
 }
 
+/*
+ * Convert a roman numeral (standard form) to an integer.
+ * Result is an integer between 1 and 3999.
+ * Np->inout_p is advanced past the characters consumed.
+ *
+ * If input is invalid, return -1.
+ */
+static int
+roman_to_int(NUMProc *Np, int input_len)
+{
+	int			result = 0;
+	int			len;
+	char		romanChars[MAX_ROMAN_LEN];
+	int			romanValues[MAX_ROMAN_LEN];
+	int			repeatCount = 1;
+	int			vCount = 0,
+				lCount = 0,
+				dCount = 0;
+	bool		subtractionEncountered = false;
+	int			lastSubtractedValue = 0;
+
+	/*
+	 * Skip any leading whitespace.  Perhaps we should limit the amount of
+	 * space skipped to MAX_ROMAN_LEN, but that seems unnecessarily picky.
+	 */
+	while (!OVERLOAD_TEST && isspace((unsigned char) *Np->inout_p))
+		Np->inout_p++;
+
+	/*
+	 * Collect and decode valid roman numerals, consuming at most
+	 * MAX_ROMAN_LEN characters.  We do this in a separate loop to avoid
+	 * repeated decoding and because the main loop needs to know when it's at
+	 * the last numeral.
+	 */
+	for (len = 0; len < MAX_ROMAN_LEN && !OVERLOAD_TEST; len++)
+	{
+		char		currChar = pg_ascii_toupper(*Np->inout_p);
+		int			currValue = ROMAN_VAL(currChar);
+
+		if (currValue == 0)
+			break;				/* Not a valid roman numeral. */
+		romanChars[len] = currChar;
+		romanValues[len] = currValue;
+		Np->inout_p++;
+	}
+
+	if (len == 0)
+		return -1;				/* No valid roman numerals. */
+
+	/* Check for valid combinations and compute the represented value. */
+	for (int i = 0; i < len; i++)
+	{
+		char		currChar = romanChars[i];
+		int			currValue = romanValues[i];
+
+		/*
+		 * Ensure no numeral greater than or equal to the subtracted numeral
+		 * appears after a subtraction.
+		 */
+		if (subtractionEncountered && currValue >= lastSubtractedValue)
+			return -1;
+
+		/*
+		 * V, L, and D should not appear before a larger numeral, nor should
+		 * they be repeated.
+		 */
+		if ((vCount && currValue >= ROMAN_VAL('V')) ||
+			(lCount && currValue >= ROMAN_VAL('L')) ||
+			(dCount && currValue >= ROMAN_VAL('D')))
+			return -1;
+		if (currChar == 'V')
+			vCount++;
+		else if (currChar == 'L')
+			lCount++;
+		else if (currChar == 'D')
+			dCount++;
+
+		if (i < len - 1)
+		{
+			/* Compare current numeral to next numeral. */
+			char		nextChar = romanChars[i + 1];
+			int			nextValue = romanValues[i + 1];
+
+			/*
+			 * If the current value is less than the next value, handle
+			 * subtraction. Verify valid subtractive combinations and update
+			 * the result accordingly.
+			 */
+			if (currValue < nextValue)
+			{
+				if (!IS_VALID_SUB_COMB(currChar, nextChar))
+					return -1;
+
+				/*
+				 * Reject cases where same numeral is repeated with
+				 * subtraction (e.g. 'MCCM' or 'DCCCD').
+				 */
+				if (repeatCount > 1)
+					return -1;
+
+				/*
+				 * We are going to skip nextChar, so first make checks needed
+				 * for V, L, and D.  These are the same as we'd have applied
+				 * if we reached nextChar without a subtraction.
+				 */
+				if ((vCount && nextValue >= ROMAN_VAL('V')) ||
+					(lCount && nextValue >= ROMAN_VAL('L')) ||
+					(dCount && nextValue >= ROMAN_VAL('D')))
+					return -1;
+				if (nextChar == 'V')
+					vCount++;
+				else if (nextChar == 'L')
+					lCount++;
+				else if (nextChar == 'D')
+					dCount++;
+
+				/*
+				 * Skip the next numeral as it is part of the subtractive
+				 * combination.
+				 */
+				i++;
+
+				/* Update state. */
+				repeatCount = 1;
+				subtractionEncountered = true;
+				lastSubtractedValue = currValue;
+				result += (nextValue - currValue);
+			}
+			else
+			{
+				/* For same numerals, check for repetition. */
+				if (currChar == nextChar)
+				{
+					repeatCount++;
+					if (repeatCount > 3)
+						return -1;
+				}
+				else
+					repeatCount = 1;
+				result += currValue;
+			}
+		}
+		else
+		{
+			/* This is the last numeral; just add it to the result. */
+			result += currValue;
+		}
+	}
+
+	return result;
+}
 
 
 /* ----------
@@ -6188,14 +6454,6 @@ get_last_relevant_decnum(char *num)
 
 	return result;
 }
-
-/*
- * These macros are used in NUM_processor() and its subsidiary routines.
- * OVERLOAD_TEST: true if we've reached end of input string
- * AMOUNT_TEST(s): true if at least s bytes remain in string
- */
-#define OVERLOAD_TEST	(Np->inout_p >= Np->inout + input_len)
-#define AMOUNT_TEST(s)	(Np->inout_p <= Np->inout + (input_len - (s)))
 
 /* ----------
  * Number extraction for TO_NUMBER()
@@ -6380,7 +6638,7 @@ NUM_numpart_from_char(NUMProc *Np, int id, int input_len)
 		}
 
 		/*
-		 * try read non-locale sign, it's happen only if format is not exact
+		 * try read non-locale sign, which happens only if format is not exact
 		 * and we cannot determine sign position of MI/PL/SG, an example:
 		 *
 		 * FM9.999999MI			   -> 5.01-
@@ -7316,29 +7574,6 @@ NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 	}
 
 	/*
-	 * Roman correction
-	 */
-	if (IS_ROMAN(Np->Num))
-	{
-		if (!Np->is_to_char)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("\"RN\" not supported for input")));
-
-		Np->Num->lsign = Np->Num->pre_lsign_num = Np->Num->post =
-			Np->Num->pre = Np->out_pre_spaces = Np->sign = 0;
-
-		if (IS_FILLMODE(Np->Num))
-		{
-			Np->Num->flag = 0;
-			Np->Num->flag |= NUM_F_FILLMODE;
-		}
-		else
-			Np->Num->flag = 0;
-		Np->Num->flag |= NUM_F_ROMAN;
-	}
-
-	/*
 	 * Sign
 	 */
 	if (is_to_char)
@@ -7588,28 +7823,35 @@ NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 					break;
 
 				case NUM_RN:
-					if (IS_FILLMODE(Np->Num))
-					{
-						strcpy(Np->inout_p, Np->number_p);
-						Np->inout_p += strlen(Np->inout_p) - 1;
-					}
-					else
-					{
-						sprintf(Np->inout_p, "%15s", Np->number_p);
-						Np->inout_p += strlen(Np->inout_p) - 1;
-					}
-					break;
-
 				case NUM_rn:
-					if (IS_FILLMODE(Np->Num))
+					if (Np->is_to_char)
 					{
-						strcpy(Np->inout_p, asc_tolower_z(Np->number_p));
+						const char *number_p;
+
+						if (n->key->id == NUM_rn)
+							number_p = asc_tolower_z(Np->number_p);
+						else
+							number_p = Np->number_p;
+						if (IS_FILLMODE(Np->Num))
+							strcpy(Np->inout_p, number_p);
+						else
+							sprintf(Np->inout_p, "%15s", number_p);
 						Np->inout_p += strlen(Np->inout_p) - 1;
 					}
 					else
 					{
-						sprintf(Np->inout_p, "%15s", asc_tolower_z(Np->number_p));
-						Np->inout_p += strlen(Np->inout_p) - 1;
+						int			roman_result = roman_to_int(Np, input_len);
+						int			numlen;
+
+						if (roman_result < 0)
+							ereport(ERROR,
+									(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+									 errmsg("invalid Roman numeral")));
+						numlen = sprintf(Np->number_p, "%d", roman_result);
+						Np->number_p += numlen;
+						Np->Num->pre = numlen;
+						Np->Num->post = 0;
+						continue;	/* roman_to_int ate all the chars */
 					}
 					break;
 

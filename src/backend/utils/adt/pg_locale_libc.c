@@ -2,7 +2,7 @@
  *
  * PostgreSQL locale utilities for libc
  *
- * Portions Copyright (c) 2002-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2002-2025, PostgreSQL Global Development Group
  *
  * src/backend/utils/adt/pg_locale_libc.c
  *
@@ -25,6 +25,14 @@
 #include "utils/pg_locale.h"
 #include "utils/syscache.h"
 
+#ifdef __GLIBC__
+#include <gnu/libc-version.h>
+#endif
+
+#ifdef WIN32
+#include <shlwapi.h>
+#endif
+
 /*
  * Size of stack buffer to use for string transformations, used to avoid heap
  * allocations in typical cases. This should be large enough that most strings
@@ -42,12 +50,13 @@ extern size_t strtitle_libc(char *dst, size_t dstsize, const char *src,
 extern size_t strupper_libc(char *dst, size_t dstsize, const char *src,
 							ssize_t srclen, pg_locale_t locale);
 
-extern int	strncoll_libc(const char *arg1, ssize_t len1,
+static int	strncoll_libc(const char *arg1, ssize_t len1,
 						  const char *arg2, ssize_t len2,
 						  pg_locale_t locale);
-extern size_t strnxfrm_libc(char *dest, size_t destsize,
+static size_t strnxfrm_libc(char *dest, size_t destsize,
 							const char *src, ssize_t srclen,
 							pg_locale_t locale);
+extern char *get_collation_actual_version_libc(const char *collcollate);
 static locale_t make_libc_collator(const char *collate,
 								   const char *ctype);
 static void report_newlocale_failure(const char *localename);
@@ -76,6 +85,40 @@ static size_t strupper_libc_sb(char *dest, size_t destsize,
 static size_t strupper_libc_mb(char *dest, size_t destsize,
 							   const char *src, ssize_t srclen,
 							   pg_locale_t locale);
+
+static const struct collate_methods collate_methods_libc = {
+	.strncoll = strncoll_libc,
+	.strnxfrm = strnxfrm_libc,
+	.strnxfrm_prefix = NULL,
+
+	/*
+	 * Unfortunately, it seems that strxfrm() for non-C collations is broken
+	 * on many common platforms; testing of multiple versions of glibc reveals
+	 * that, for many locales, strcoll() and strxfrm() do not return
+	 * consistent results. While no other libc other than Cygwin has so far
+	 * been shown to have a problem, we take the conservative course of action
+	 * for right now and disable this categorically.  (Users who are certain
+	 * this isn't a problem on their system can define TRUST_STRXFRM.)
+	 */
+#ifdef TRUST_STRXFRM
+	.strxfrm_is_safe = true,
+#else
+	.strxfrm_is_safe = false,
+#endif
+};
+
+#ifdef WIN32
+static const struct collate_methods collate_methods_libc_win32_utf8 = {
+	.strncoll = strncoll_libc_win32_utf8,
+	.strnxfrm = strnxfrm_libc,
+	.strnxfrm_prefix = NULL,
+#ifdef TRUST_STRXFRM
+	.strxfrm_is_safe = true,
+#else
+	.strxfrm_is_safe = false,
+#endif
+};
+#endif
 
 size_t
 strlower_libc(char *dst, size_t dstsize, const char *src,
@@ -430,6 +473,15 @@ create_pg_locale_libc(Oid collid, MemoryContext context)
 	result->ctype_is_c = (strcmp(ctype, "C") == 0) ||
 		(strcmp(ctype, "POSIX") == 0);
 	result->info.lt = loc;
+	if (!result->collate_is_c)
+	{
+#ifdef WIN32
+		if (GetDatabaseEncoding() == PG_UTF8)
+			result->collate = &collate_methods_libc_win32_utf8;
+		else
+#endif
+			result->collate = &collate_methods_libc;
+	}
 
 	return result;
 }
@@ -527,12 +579,6 @@ strncoll_libc(const char *arg1, ssize_t len1, const char *arg2, ssize_t len2,
 
 	Assert(locale->provider == COLLPROVIDER_LIBC);
 
-#ifdef WIN32
-	/* check for this case before doing the work for nul-termination */
-	if (GetDatabaseEncoding() == PG_UTF8)
-		return strncoll_libc_win32_utf8(arg1, len1, arg2, len2, locale);
-#endif							/* WIN32 */
-
 	if (bufsize1 + bufsize2 > TEXTBUFLEN)
 		buf = palloc(bufsize1 + bufsize2);
 
@@ -608,6 +654,71 @@ strnxfrm_libc(char *dest, size_t destsize, const char *src, ssize_t srclen,
 	Assert(result >= destsize || dest[result] == '\0');
 
 	return result;
+}
+
+char *
+get_collation_actual_version_libc(const char *collcollate)
+{
+	char	   *collversion = NULL;
+
+	if (pg_strcasecmp("C", collcollate) != 0 &&
+		pg_strncasecmp("C.", collcollate, 2) != 0 &&
+		pg_strcasecmp("POSIX", collcollate) != 0)
+	{
+#if defined(__GLIBC__)
+		/* Use the glibc version because we don't have anything better. */
+		collversion = pstrdup(gnu_get_libc_version());
+#elif defined(LC_VERSION_MASK)
+		locale_t	loc;
+
+		/* Look up FreeBSD collation version. */
+		loc = newlocale(LC_COLLATE_MASK, collcollate, NULL);
+		if (loc)
+		{
+			collversion =
+				pstrdup(querylocale(LC_COLLATE_MASK | LC_VERSION_MASK, loc));
+			freelocale(loc);
+		}
+		else
+			ereport(ERROR,
+					(errmsg("could not load locale \"%s\"", collcollate)));
+#elif defined(WIN32)
+		/*
+		 * If we are targeting Windows Vista and above, we can ask for a name
+		 * given a collation name (earlier versions required a location code
+		 * that we don't have).
+		 */
+		NLSVERSIONINFOEX version = {sizeof(NLSVERSIONINFOEX)};
+		WCHAR		wide_collcollate[LOCALE_NAME_MAX_LENGTH];
+
+		MultiByteToWideChar(CP_ACP, 0, collcollate, -1, wide_collcollate,
+							LOCALE_NAME_MAX_LENGTH);
+		if (!GetNLSVersionEx(COMPARE_STRING, wide_collcollate, &version))
+		{
+			/*
+			 * GetNLSVersionEx() wants a language tag such as "en-US", not a
+			 * locale name like "English_United States.1252".  Until those
+			 * values can be prevented from entering the system, or 100%
+			 * reliably converted to the more useful tag format, tolerate the
+			 * resulting error and report that we have no version data.
+			 */
+			if (GetLastError() == ERROR_INVALID_PARAMETER)
+				return NULL;
+
+			ereport(ERROR,
+					(errmsg("could not get collation version for locale \"%s\": error code %lu",
+							collcollate,
+							GetLastError())));
+		}
+		collversion = psprintf("%lu.%lu,%lu.%lu",
+							   (version.dwNLSVersion >> 8) & 0xFFFF,
+							   version.dwNLSVersion & 0xFF,
+							   (version.dwDefinedVersion >> 8) & 0xFFFF,
+							   version.dwDefinedVersion & 0xFF);
+#endif
+	}
+
+	return collversion;
 }
 
 /*

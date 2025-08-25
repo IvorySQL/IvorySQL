@@ -8,7 +8,7 @@
  * doesn't actually run the executor for them.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -284,7 +284,8 @@ PortalDefineQuery(Portal portal,
 				  const char *sourceText,
 				  CommandTag commandTag,
 				  List *stmts,
-				  CachedPlan *cplan)
+				  CachedPlan *cplan,
+				  CachedPlanSource *plansource)
 {
 	Assert(PortalIsValid(portal));
 	Assert(portal->status == PORTAL_NEW);
@@ -299,6 +300,7 @@ PortalDefineQuery(Portal portal,
 	portal->commandTag = commandTag;
 	portal->stmts = stmts;
 	portal->cplan = cplan;
+	portal->plansource = plansource;
 	portal->status = PORTAL_DEFINED;
 }
 

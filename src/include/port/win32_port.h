@@ -6,7 +6,7 @@
  * Note this is read in MinGW as well as native Windows builds,
  * but not in Cygwin builds.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/port/win32_port.h
@@ -78,8 +78,6 @@
 
 /* Must be here to avoid conflicting with prototype in windows.h */
 #define mkdir(a,b)	mkdir(a)
-
-#define ftruncate(a,b)	chsize(a,b)
 
 /* Windows doesn't have fsync() as such, use _commit() */
 #define fsync(fd) _commit(fd)
@@ -155,14 +153,6 @@
 #define WTERMSIG(w)		(w)
 
 #define sigmask(sig) ( 1 << ((sig)-1) )
-
-/* Signal function return values */
-#undef SIG_DFL
-#undef SIG_ERR
-#undef SIG_IGN
-#define SIG_DFL ((pqsigfunc)0)
-#define SIG_ERR ((pqsigfunc)-1)
-#define SIG_IGN ((pqsigfunc)1)
 
 /* Some extra signals */
 #define SIGHUP				1

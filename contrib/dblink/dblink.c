@@ -9,7 +9,7 @@
  * Shridhar Daithankar <shridhar_daithankar@persistent.co.in>
  *
  * contrib/dblink/dblink.c
- * Copyright (c) 2001-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2001-2025, PostgreSQL Global Development Group
  * ALL RIGHTS RESERVED;
  *
  * Permission to use, copy, modify, and distribute this software and its
@@ -160,8 +160,7 @@ xpstrdup(const char *in)
 	return pstrdup(in);
 }
 
-static void
-pg_attribute_noreturn()
+pg_noreturn static void
 dblink_res_internalerror(PGconn *conn, PGresult *res, const char *p2)
 {
 	char	   *msg = pchomp(PQerrorMessage(conn));
@@ -170,8 +169,7 @@ dblink_res_internalerror(PGconn *conn, PGresult *res, const char *p2)
 	elog(ERROR, "%s: %s", p2, msg);
 }
 
-static void
-pg_attribute_noreturn()
+pg_noreturn static void
 dblink_conn_not_avail(const char *conname)
 {
 	if (conname)

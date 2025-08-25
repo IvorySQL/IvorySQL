@@ -31,7 +31,7 @@
  * should be killed by SIGQUIT and then a recovery cycle started.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -51,6 +51,7 @@
 #include "postmaster/auxprocess.h"
 #include "postmaster/interrupt.h"
 #include "postmaster/walwriter.h"
+#include "storage/aio_subsys.h"
 #include "storage/bufmgr.h"
 #include "storage/condition_variable.h"
 #include "storage/fd.h"
@@ -84,7 +85,7 @@ int			WalWriterFlushAfter = DEFAULT_WAL_WRITER_FLUSH_AFTER;
  * basic execution environment, but not enabled signals yet.
  */
 void
-WalWriterMain(char *startup_data, size_t startup_data_len)
+WalWriterMain(const void *startup_data, size_t startup_data_len)
 {
 	sigjmp_buf	local_sigjmp_buf;
 	MemoryContext walwriter_context;
@@ -164,6 +165,7 @@ WalWriterMain(char *startup_data, size_t startup_data_len)
 		LWLockReleaseAll();
 		ConditionVariableCancelSleep();
 		pgstat_report_wait_end();
+		pgaio_error_cleanup();
 		UnlockBuffers();
 		ReleaseAuxProcessResources(false);
 		AtEOXact_Buffers(false);
@@ -239,7 +241,7 @@ WalWriterMain(char *startup_data, size_t startup_data_len)
 		ResetLatch(MyLatch);
 
 		/* Process any signals received recently */
-		HandleMainLoopInterrupts();
+		ProcessMainLoopInterrupts();
 
 		/*
 		 * Do what we're here for; then, if XLogBackgroundFlush() found useful

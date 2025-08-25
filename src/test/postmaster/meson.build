@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2024, PostgreSQL Global Development Group
+# Copyright (c) 2022-2025, PostgreSQL Global Development Group
 
 tests += {
   'name': 'postmaster',
@@ -6,8 +6,9 @@ tests += {
   'bd': meson.current_build_dir(),
   'tap': {
     'tests': [
-      't/001_connection_limits.pl',
-      't/002_start_stop.pl',
+      't/001_basic.pl',
+      't/002_connection_limits.pl',
+      't/003_start_stop.pl',
     ],
   },
 }

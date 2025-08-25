@@ -3,7 +3,7 @@
  * libpq_pipeline.c
  *		Verify libpq pipeline execution functionality
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -24,7 +24,7 @@
 
 
 static void exit_nicely(PGconn *conn);
-static void pg_attribute_noreturn() pg_fatal_impl(int line, const char *fmt,...)
+pg_noreturn static void pg_fatal_impl(int line, const char *fmt,...)
 			pg_attribute_printf(2, 3);
 static bool process_result(PGconn *conn, PGresult *res, int results,
 						   int numsent);
@@ -71,8 +71,7 @@ exit_nicely(PGconn *conn)
  * Print an error to stderr and terminate the program.
  */
 #define pg_fatal(...) pg_fatal_impl(__LINE__, __VA_ARGS__)
-static void
-pg_attribute_noreturn()
+pg_noreturn static void
 pg_fatal_impl(int line, const char *fmt,...)
 {
 	va_list		args;

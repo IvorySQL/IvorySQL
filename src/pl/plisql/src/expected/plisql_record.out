@@ -31,7 +31,7 @@ $$ begin return row($1,1); end $$;
 /
 select retc(42);
 ERROR:  returned record type does not match expected record type
-DETAIL:  Returned type pg_catalog.int4 does not match expected type pg_catalog.int8 in column 1.
+DETAIL:  Returned type pg_catalog.int4 does not match expected type pg_catalog.int8 in column "q1" (position 1).
 CONTEXT:  PL/iSQL function retc(pg_catalog.int4) while casting return value to function's return type
 -- nor extra columns
 create or replace function retc(int) returns two_int8s language plisql as
@@ -56,7 +56,7 @@ $$ declare r record; begin r := row($1,1); return r; end $$;
 /
 select retc(42);
 ERROR:  returned record type does not match expected record type
-DETAIL:  Returned type pg_catalog.int4 does not match expected type pg_catalog.int8 in column 1.
+DETAIL:  Returned type pg_catalog.int4 does not match expected type pg_catalog.int8 in column "q1" (position 1).
 CONTEXT:  PL/iSQL function retc(pg_catalog.int4) while casting return value to function's return type
 create or replace function retc(int) returns two_int8s language plisql as
 $$ declare r record; begin r := row($1::int8, 1::int8, 42); return r; end $$;
@@ -396,7 +396,7 @@ DETAIL:  Number of returned columns (2) does not match expected column count (3)
 CONTEXT:  PL/iSQL function returnsrecord(pg_catalog.int4) while casting return value to function's return type
 select * from returnsrecord(42) as r(x int, y bigint);  -- fail
 ERROR:  returned record type does not match expected record type
-DETAIL:  Returned type pg_catalog.int4 does not match expected type pg_catalog.int8 in column 2.
+DETAIL:  Returned type pg_catalog.int4 does not match expected type pg_catalog.int8 in column "y" (position 2).
 CONTEXT:  PL/iSQL function returnsrecord(pg_catalog.int4) while casting return value to function's return type
 -- same with an intermediate record variable
 create or replace function returnsrecord(int) returns record language plisql as
@@ -420,7 +420,7 @@ DETAIL:  Number of returned columns (2) does not match expected column count (3)
 CONTEXT:  PL/iSQL function returnsrecord(pg_catalog.int4) while casting return value to function's return type
 select * from returnsrecord(42) as r(x int, y bigint);  -- fail
 ERROR:  returned record type does not match expected record type
-DETAIL:  Returned type pg_catalog.int4 does not match expected type pg_catalog.int8 in column 2.
+DETAIL:  Returned type pg_catalog.int4 does not match expected type pg_catalog.int8 in column "y" (position 2).
 CONTEXT:  PL/iSQL function returnsrecord(pg_catalog.int4) while casting return value to function's return type
 -- should work the same with a missing column in the actual result value
 create table has_hole(f1 int, f2 int, f3 int);
@@ -446,7 +446,7 @@ DETAIL:  Number of returned columns (2) does not match expected column count (3)
 CONTEXT:  PL/iSQL function returnsrecord(pg_catalog.int4) while casting return value to function's return type
 select * from returnsrecord(42) as r(x int, y bigint);  -- fail
 ERROR:  returned record type does not match expected record type
-DETAIL:  Returned type pg_catalog.int4 does not match expected type pg_catalog.int8 in column 2.
+DETAIL:  Returned type pg_catalog.int4 does not match expected type pg_catalog.int8 in column "y" (position 2).
 CONTEXT:  PL/iSQL function returnsrecord(pg_catalog.int4) while casting return value to function's return type
 -- same with an intermediate record variable
 create or replace function returnsrecord(int) returns record language plisql as
@@ -470,7 +470,7 @@ DETAIL:  Number of returned columns (2) does not match expected column count (3)
 CONTEXT:  PL/iSQL function returnsrecord(pg_catalog.int4) while casting return value to function's return type
 select * from returnsrecord(42) as r(x int, y bigint);  -- fail
 ERROR:  returned record type does not match expected record type
-DETAIL:  Returned type pg_catalog.int4 does not match expected type pg_catalog.int8 in column 2.
+DETAIL:  Returned type pg_catalog.int4 does not match expected type pg_catalog.int8 in column "y" (position 2).
 CONTEXT:  PL/iSQL function returnsrecord(pg_catalog.int4) while casting return value to function's return type
 -- check access to a field of an argument declared "record"
 create function getf1(x record) returns int language plisql as

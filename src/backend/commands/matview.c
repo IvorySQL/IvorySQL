@@ -3,7 +3,7 @@
  * matview.c
  *	  materialized view support
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -319,7 +319,7 @@ RefreshMatViewByOid(Oid matviewOid, bool is_create, bool skipData,
 	OIDNewHeap = make_new_heap(matviewOid, tableSpace,
 							   matviewRel->rd_rel->relam,
 							   relpersistence, ExclusiveLock);
-	LockRelationOid(OIDNewHeap, AccessExclusiveLock);
+	Assert(CheckRelationOidLockedByMe(OIDNewHeap, AccessExclusiveLock, false));
 
 	/* Generate the data, if wanted. */
 	if (!skipData)
@@ -438,12 +438,13 @@ refresh_matview_datafill(DestReceiver *dest, Query *query,
 	UpdateActiveSnapshotCommandId();
 
 	/* Create a QueryDesc, redirecting output to our tuple receiver */
-	queryDesc = CreateQueryDesc(plan, queryString,
+	queryDesc = CreateQueryDesc(plan, NULL, queryString,
 								GetActiveSnapshot(), InvalidSnapshot,
 								dest, NULL, NULL, 0);
 
 	/* call ExecutorStart to prepare the plan for execution */
-	ExecutorStart(queryDesc, EXEC_FLAG_WITHOUT_ROWID);
+	if (!ExecutorStart(queryDesc, EXEC_FLAG_WITHOUT_ROWID))
+		elog(ERROR, "ExecutorStart() failed unexpectedly");
 
 	/* run the plan */
 	ExecutorRun(queryDesc, ForwardScanDirection, 0);
@@ -773,16 +774,14 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 				if (!HeapTupleIsValid(cla_ht))
 					elog(ERROR, "cache lookup failed for opclass %u", opclass);
 				cla_tup = (Form_pg_opclass) GETSTRUCT(cla_ht);
-				Assert(cla_tup->opcmethod == BTREE_AM_OID);
 				opfamily = cla_tup->opcfamily;
 				opcintype = cla_tup->opcintype;
 				ReleaseSysCache(cla_ht);
 
-				op = get_opfamily_member(opfamily, opcintype, opcintype,
-										 BTEqualStrategyNumber);
+				op = get_opfamily_member_for_cmptype(opfamily, opcintype, opcintype, COMPARE_EQ);
 				if (!OidIsValid(op))
-					elog(ERROR, "missing operator %d(%u,%u) in opfamily %u",
-						 BTEqualStrategyNumber, opcintype, opcintype, opfamily);
+					elog(ERROR, "missing equality operator for (%u,%u) in opfamily %u",
+						 opcintype, opcintype, opfamily);
 
 				/*
 				 * If we find the same column with the same equality semantics
@@ -919,15 +918,10 @@ is_usable_unique_index(Relation indexRel)
 
 	/*
 	 * Must be unique, valid, immediate, non-partial, and be defined over
-	 * plain user columns (not expressions).  We also require it to be a
-	 * btree.  Even if we had any other unique index kinds, we'd not know how
-	 * to identify the corresponding equality operator, nor could we be sure
-	 * that the planner could implement the required FULL JOIN with non-btree
-	 * operators.
+	 * plain user columns (not expressions).
 	 */
 	if (indexStruct->indisunique &&
 		indexStruct->indimmediate &&
-		indexRel->rd_rel->relam == BTREE_AM_OID &&
 		indexStruct->indisvalid &&
 		RelationGetIndexPredicate(indexRel) == NIL &&
 		indexStruct->indnatts > 0)

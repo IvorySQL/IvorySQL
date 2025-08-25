@@ -3,7 +3,7 @@
  *
  *	server checks and output routines
  *
- *	Copyright (c) 2010-2024, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2025, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/check.c
  */
 
@@ -779,9 +779,9 @@ output_completion_banner(char *deletion_script_file_name)
 	}
 
 	pg_log(PG_REPORT,
-		   "Optimizer statistics are not transferred by pg_upgrade.\n"
+		   "Some optimizer statistics may not have been transferred by pg_upgrade.\n"
 		   "Once you start the new server, consider running:\n"
-		   "    %s/vacuumdb %s--all --analyze-in-stages", new_cluster.bindir, user_specification.data);
+		   "    %s/vacuumdb %s--all --analyze-in-stages --missing-stats-only", new_cluster.bindir, user_specification.data);
 
 	if (deletion_script_file_name)
 		pg_log(PG_REPORT,
@@ -837,6 +837,18 @@ check_cluster_versions(void)
 	if (GET_MAJOR_VERSION(new_cluster.major_version) !=
 		GET_MAJOR_VERSION(new_cluster.bin_version))
 		pg_fatal("New cluster data and binary directories are from different major versions.");
+
+	/*
+	 * Since from version 18, newly created database clusters always have
+	 * 'signed' default char-signedness, it makes less sense to use
+	 * --set-char-signedness option for upgrading from version 18 or later.
+	 * Users who want to change the default char signedness of the new
+	 * cluster, they can use pg_resetwal manually before the upgrade.
+	 */
+	if (GET_MAJOR_VERSION(old_cluster.major_version) >= 1800 &&
+		user_opts.char_signedness != -1)
+		pg_fatal("%s option cannot be used to upgrade from PostgreSQL %s and later.",
+				 "--set-char-signedness", "18");
 
 	check_ok();
 }
@@ -924,6 +936,7 @@ create_script_for_old_cluster_deletion(char **deletion_script_file_name)
 	int			tblnum;
 	char		old_cluster_pgdata[MAXPGPATH],
 				new_cluster_pgdata[MAXPGPATH];
+	char	   *old_tblspc_suffix;
 
 	*deletion_script_file_name = psprintf("%sdelete_old_cluster.%s",
 										  SCRIPT_PREFIX, SCRIPT_EXT);
@@ -988,39 +1001,13 @@ create_script_for_old_cluster_deletion(char **deletion_script_file_name)
 			fix_path_separator(old_cluster.pgdata), PATH_QUOTE);
 
 	/* delete old cluster's alternate tablespaces */
+	old_tblspc_suffix = pg_strdup(old_cluster.tablespace_suffix);
+	fix_path_separator(old_tblspc_suffix);
 	for (tblnum = 0; tblnum < os_info.num_old_tablespaces; tblnum++)
-	{
-		/*
-		 * Do the old cluster's per-database directories share a directory
-		 * with a new version-specific tablespace?
-		 */
-		if (strlen(old_cluster.tablespace_suffix) == 0)
-		{
-			/* delete per-database directories */
-			int			dbnum;
-
-			fprintf(script, "\n");
-
-			for (dbnum = 0; dbnum < old_cluster.dbarr.ndbs; dbnum++)
-				fprintf(script, RMDIR_CMD " %c%s%c%u%c\n", PATH_QUOTE,
-						fix_path_separator(os_info.old_tablespaces[tblnum]),
-						PATH_SEPARATOR, old_cluster.dbarr.dbs[dbnum].db_oid,
-						PATH_QUOTE);
-		}
-		else
-		{
-			char	   *suffix_path = pg_strdup(old_cluster.tablespace_suffix);
-
-			/*
-			 * Simply delete the tablespace directory, which might be ".old"
-			 * or a version-specific subdirectory.
-			 */
-			fprintf(script, RMDIR_CMD " %c%s%s%c\n", PATH_QUOTE,
-					fix_path_separator(os_info.old_tablespaces[tblnum]),
-					fix_path_separator(suffix_path), PATH_QUOTE);
-			pfree(suffix_path);
-		}
-	}
+		fprintf(script, RMDIR_CMD " %c%s%s%c\n", PATH_QUOTE,
+				fix_path_separator(os_info.old_tablespaces[tblnum]),
+				old_tblspc_suffix, PATH_QUOTE);
+	pfree(old_tblspc_suffix);
 
 	fclose(script);
 
@@ -1815,16 +1802,16 @@ check_new_cluster_logical_replication_slots(void)
 /*
  * check_new_cluster_subscription_configuration()
  *
- * Verify that the max_replication_slots configuration specified is enough for
- * creating the subscriptions. This is required to create the replication
- * origin for each subscription.
+ * Verify that the max_active_replication_origins configuration specified is
+ * enough for creating the subscriptions. This is required to create the
+ * replication origin for each subscription.
  */
 static void
 check_new_cluster_subscription_configuration(void)
 {
 	PGresult   *res;
 	PGconn	   *conn;
-	int			max_replication_slots;
+	int			max_active_replication_origins;
 
 	/* Subscriptions and their dependencies can be migrated since PG17. */
 	if (GET_MAJOR_VERSION(old_cluster.major_version) < 1700)
@@ -1839,16 +1826,16 @@ check_new_cluster_subscription_configuration(void)
 	conn = connectToServer(&new_cluster, "template1");
 
 	res = executeQueryOrDie(conn, "SELECT setting FROM pg_settings "
-							"WHERE name = 'max_replication_slots';");
+							"WHERE name = 'max_active_replication_origins';");
 
 	if (PQntuples(res) != 1)
 		pg_fatal("could not determine parameter settings on new cluster");
 
-	max_replication_slots = atoi(PQgetvalue(res, 0, 0));
-	if (old_cluster.nsubs > max_replication_slots)
-		pg_fatal("\"max_replication_slots\" (%d) must be greater than or equal to the number of "
+	max_active_replication_origins = atoi(PQgetvalue(res, 0, 0));
+	if (old_cluster.nsubs > max_active_replication_origins)
+		pg_fatal("\"max_active_replication_origins\" (%d) must be greater than or equal to the number of "
 				 "subscriptions (%d) on the old cluster",
-				 max_replication_slots, old_cluster.nsubs);
+				 max_active_replication_origins, old_cluster.nsubs);
 
 	PQclear(res);
 	PQfinish(conn);

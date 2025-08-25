@@ -3,7 +3,7 @@
  * pg_publication.c
  *		publication C API manipulation
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -546,7 +546,8 @@ publication_add_relation(Oid pubid, PublicationRelInfo *pri,
  * pub_collist_validate
  *		Process and validate the 'columns' list and ensure the columns are all
  *		valid to use for a publication.  Checks for and raises an ERROR for
- * 		any unknown columns, system columns, or duplicate columns.
+ *		any unknown columns, system columns, duplicate columns, or virtual
+ *		generated columns.
  *
  * Looks up each column's attnum and returns a 0-based Bitmapset of the
  * corresponding attnums.
@@ -556,6 +557,7 @@ pub_collist_validate(Relation targetrel, List *columns)
 {
 	Bitmapset  *set = NULL;
 	ListCell   *lc;
+	TupleDesc	tupdesc = RelationGetDescr(targetrel);
 
 	foreach(lc, columns)
 	{
@@ -572,6 +574,12 @@ pub_collist_validate(Relation targetrel, List *columns)
 			ereport(ERROR,
 					errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
 					errmsg("cannot use system column \"%s\" in publication column list",
+						   colname));
+
+		if (TupleDescAttr(tupdesc, attnum - 1)->attgenerated == ATTRIBUTE_GENERATED_VIRTUAL)
+			ereport(ERROR,
+					errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
+					errmsg("cannot use virtual generated column \"%s\" in publication column list",
 						   colname));
 
 		if (bms_is_member(attnum, set))
@@ -622,10 +630,11 @@ pub_collist_to_bitmapset(Bitmapset *columns, Datum pubcols, MemoryContext mcxt)
 /*
  * Returns a bitmap representing the columns of the specified table.
  *
- * Generated columns are included if include_gencols is true.
+ * Generated columns are included if include_gencols_type is
+ * PUBLISH_GENCOLS_STORED.
  */
 Bitmapset *
-pub_form_cols_map(Relation relation, bool include_gencols)
+pub_form_cols_map(Relation relation, PublishGencolsType include_gencols_type)
 {
 	Bitmapset  *result = NULL;
 	TupleDesc	desc = RelationGetDescr(relation);
@@ -634,8 +643,19 @@ pub_form_cols_map(Relation relation, bool include_gencols)
 	{
 		Form_pg_attribute att = TupleDescAttr(desc, i);
 
-		if (att->attisdropped || (att->attgenerated && !include_gencols))
+		if (att->attisdropped)
 			continue;
+
+		if (att->attgenerated)
+		{
+			/* We only support replication of STORED generated cols. */
+			if (att->attgenerated != ATTRIBUTE_GENERATED_STORED)
+				continue;
+
+			/* User hasn't requested to replicate STORED generated cols. */
+			if (include_gencols_type != PUBLISH_GENCOLS_STORED)
+				continue;
+		}
 
 		result = bms_add_member(result, att->attnum);
 	}
@@ -1068,7 +1088,7 @@ GetPublication(Oid pubid)
 	pub->pubactions.pubdelete = pubform->pubdelete;
 	pub->pubactions.pubtruncate = pubform->pubtruncate;
 	pub->pubviaroot = pubform->pubviaroot;
-	pub->pubgencols = pubform->pubgencols;
+	pub->pubgencols_type = pubform->pubgencols;
 
 	ReleaseSysCache(tup);
 
@@ -1276,8 +1296,22 @@ pg_get_publication_tables(PG_FUNCTION_ARGS)
 			{
 				Form_pg_attribute att = TupleDescAttr(desc, i);
 
-				if (att->attisdropped || (att->attgenerated && !pub->pubgencols))
+				if (att->attisdropped)
 					continue;
+
+				if (att->attgenerated)
+				{
+					/* We only support replication of STORED generated cols. */
+					if (att->attgenerated != ATTRIBUTE_GENERATED_STORED)
+						continue;
+
+					/*
+					 * User hasn't requested to replicate STORED generated
+					 * cols.
+					 */
+					if (pub->pubgencols_type != PUBLISH_GENCOLS_STORED)
+						continue;
+				}
 
 				attnums[nattnums++] = att->attnum;
 			}

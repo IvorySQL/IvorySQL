@@ -11,7 +11,7 @@
  * Note: This file must be includable in both frontend and backend contexts,
  * to allow stand-alone tools like pg_receivewal to deal with WAL files.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/xlog_internal.h
@@ -312,7 +312,7 @@ typedef struct xl_end_of_recovery
 typedef struct XLogRecData
 {
 	struct XLogRecData *next;	/* next struct in chain, or NULL */
-	const char *data;			/* start of rmgr data to include */
+	const void *data;			/* start of rmgr data to include */
 	uint32		len;			/* length of rmgr data to include */
 } XLogRecData;
 

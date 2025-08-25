@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2024, PostgreSQL Global Development Group
+# Copyright (c) 2022-2025, PostgreSQL Global Development Group
 
 ecpg_sources = files(
   '../ecpglib/typename.c',
@@ -86,3 +86,16 @@ ecpg_exe = executable('ecpg',
 ecpg_targets += ecpg_exe
 
 subdir('po', if_found: libintl)
+
+tests += {
+  'name': 'ecpg',
+  'sd': meson.current_source_dir(),
+  'bd': meson.current_build_dir(),
+  'tap': {
+    'tests': [
+      't/001_ecpg_err_warn_msg.pl',
+      't/002_ecpg_err_warn_msg_informix.pl',
+    ],
+    'deps': [ecpg_exe],
+  },
+}

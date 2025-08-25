@@ -3,7 +3,7 @@
  * fe-connect.c
  *	  functions related to setting up a connection to the backend
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -23,11 +23,13 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "common/base64.h"
 #include "common/ip.h"
 #include "common/link-canary.h"
 #include "common/scram-common.h"
 #include "common/string.h"
 #include "fe-auth.h"
+#include "fe-auth-oauth.h"
 #include "libpq-fe.h"
 #include "libpq-int.h"
 #include "mb/pg_wchar.h"
@@ -367,6 +369,28 @@ static const internalPQconninfoOption PQconninfoOptions[] = {
 		"Load-Balance-Hosts", "", 8,	/* sizeof("disable") = 8 */
 	offsetof(struct pg_conn, load_balance_hosts)},
 
+	{"scram_client_key", NULL, NULL, NULL, "SCRAM-Client-Key", "D", SCRAM_MAX_KEY_LEN * 2,
+	offsetof(struct pg_conn, scram_client_key)},
+
+	{"scram_server_key", NULL, NULL, NULL, "SCRAM-Server-Key", "D", SCRAM_MAX_KEY_LEN * 2,
+	offsetof(struct pg_conn, scram_server_key)},
+
+	/* OAuth v2 */
+	{"oauth_issuer", NULL, NULL, NULL,
+		"OAuth-Issuer", "", 40,
+	offsetof(struct pg_conn, oauth_issuer)},
+
+	{"oauth_client_id", NULL, NULL, NULL,
+		"OAuth-Client-ID", "", 40,
+	offsetof(struct pg_conn, oauth_client_id)},
+
+	{"oauth_client_secret", NULL, NULL, NULL,
+		"OAuth-Client-Secret", "", 40,
+	offsetof(struct pg_conn, oauth_client_secret)},
+
+	{"oauth_scope", NULL, NULL, NULL,
+		"OAuth-Scope", "", 15,
+	offsetof(struct pg_conn, oauth_scope)},
 
 	/* Terminating entry --- MUST BE LAST */
 	{NULL, NULL, NULL, NULL,
@@ -390,6 +414,13 @@ static const PQEnvironmentOption EnvironmentOptions[] =
 		NULL, NULL
 	}
 };
+
+static const pg_fe_sasl_mech *supported_sasl_mechs[] =
+{
+	&pg_scram_mech,
+	&pg_oauth_mech,
+};
+#define SASL_MECHANISM_COUNT lengthof(supported_sasl_mechs)
 
 /* The connection URI must start with either of the following designators: */
 static const char uri_designator[] = "postgresql://";
@@ -496,6 +527,19 @@ pqDropConnection(PGconn *conn, bool flushInput)
 	conn->cmd_queue_recycle = NULL;
 
 	/* Free authentication/encryption state */
+	if (conn->cleanup_async_auth)
+	{
+		/*
+		 * Any in-progress async authentication should be torn down first so
+		 * that cleanup_async_auth() can depend on the other authentication
+		 * state if necessary.
+		 */
+		conn->cleanup_async_auth(conn);
+		conn->cleanup_async_auth = NULL;
+	}
+	conn->async_auth = NULL;
+	/* cleanup_async_auth() should have done this, but make sure */
+	conn->altsock = PGINVALID_SOCKET;
 #ifdef ENABLE_GSS
 	{
 		OM_uint32	min_s;
@@ -631,6 +675,7 @@ pqDropServerData(PGconn *conn)
 	conn->write_failed = false;
 	free(conn->write_err_msg);
 	conn->write_err_msg = NULL;
+	conn->oauth_want_retry = false;
 
 	/*
 	 * Cancel connections need to retain their be_pid and be_key across
@@ -1113,6 +1158,57 @@ libpq_prng_init(PGconn *conn)
 }
 
 /*
+ * Fills the connection's allowed_sasl_mechs list with all supported SASL
+ * mechanisms.
+ */
+static inline void
+fill_allowed_sasl_mechs(PGconn *conn)
+{
+	/*---
+	 * We only support two mechanisms at the moment, so rather than deal with a
+	 * linked list, conn->allowed_sasl_mechs is an array of static length. We
+	 * rely on the compile-time assertion here to keep us honest.
+	 *
+	 * To add a new mechanism to require_auth,
+	 * - add it to supported_sasl_mechs,
+	 * - update the length of conn->allowed_sasl_mechs,
+	 * - handle the new mechanism name in the require_auth portion of
+	 *   pqConnectOptions2(), below.
+	 */
+	StaticAssertDecl(lengthof(conn->allowed_sasl_mechs) == SASL_MECHANISM_COUNT,
+					 "conn->allowed_sasl_mechs[] is not sufficiently large for holding all supported SASL mechanisms");
+
+	for (int i = 0; i < SASL_MECHANISM_COUNT; i++)
+		conn->allowed_sasl_mechs[i] = supported_sasl_mechs[i];
+}
+
+/*
+ * Clears the connection's allowed_sasl_mechs list.
+ */
+static inline void
+clear_allowed_sasl_mechs(PGconn *conn)
+{
+	for (int i = 0; i < lengthof(conn->allowed_sasl_mechs); i++)
+		conn->allowed_sasl_mechs[i] = NULL;
+}
+
+/*
+ * Helper routine that searches the static allowed_sasl_mechs list for a
+ * specific mechanism.
+ */
+static inline int
+index_of_allowed_sasl_mech(PGconn *conn, const pg_fe_sasl_mech *mech)
+{
+	for (int i = 0; i < lengthof(conn->allowed_sasl_mechs); i++)
+	{
+		if (conn->allowed_sasl_mechs[i] == mech)
+			return i;
+	}
+
+	return -1;
+}
+
+/*
  *		pqConnectOptions2
  *
  * Compute derived connection options after absorbing all user-supplied info.
@@ -1353,17 +1449,19 @@ pqConnectOptions2(PGconn *conn)
 		bool		negated = false;
 
 		/*
-		 * By default, start from an empty set of allowed options and add to
-		 * it.
+		 * By default, start from an empty set of allowed methods and
+		 * mechanisms, and add to it.
 		 */
 		conn->auth_required = true;
 		conn->allowed_auth_methods = 0;
+		clear_allowed_sasl_mechs(conn);
 
 		for (first = true, more = true; more; first = false)
 		{
 			char	   *method,
 					   *part;
-			uint32		bits;
+			uint32		bits = 0;
+			const pg_fe_sasl_mech *mech = NULL;
 
 			part = parse_comma_separated_list(&s, &more);
 			if (part == NULL)
@@ -1379,11 +1477,12 @@ pqConnectOptions2(PGconn *conn)
 				if (first)
 				{
 					/*
-					 * Switch to a permissive set of allowed options, and
-					 * subtract from it.
+					 * Switch to a permissive set of allowed methods and
+					 * mechanisms, and subtract from it.
 					 */
 					conn->auth_required = false;
 					conn->allowed_auth_methods = -1;
+					fill_allowed_sasl_mechs(conn);
 				}
 				else if (!negated)
 				{
@@ -1408,6 +1507,10 @@ pqConnectOptions2(PGconn *conn)
 				return false;
 			}
 
+			/*
+			 * First group: methods that can be handled solely with the
+			 * authentication request codes.
+			 */
 			if (strcmp(method, "password") == 0)
 			{
 				bits = (1 << AUTH_REQ_PASSWORD);
@@ -1426,13 +1529,25 @@ pqConnectOptions2(PGconn *conn)
 				bits = (1 << AUTH_REQ_SSPI);
 				bits |= (1 << AUTH_REQ_GSS_CONT);
 			}
+
+			/*
+			 * Next group: SASL mechanisms. All of these use the same request
+			 * codes, so the list of allowed mechanisms is tracked separately.
+			 *
+			 * supported_sasl_mechs must contain all mechanisms handled here.
+			 */
 			else if (strcmp(method, "scram-sha-256") == 0)
 			{
-				/* This currently assumes that SCRAM is the only SASL method. */
-				bits = (1 << AUTH_REQ_SASL);
-				bits |= (1 << AUTH_REQ_SASL_CONT);
-				bits |= (1 << AUTH_REQ_SASL_FIN);
+				mech = &pg_scram_mech;
 			}
+			else if (strcmp(method, "oauth") == 0)
+			{
+				mech = &pg_oauth_mech;
+			}
+
+			/*
+			 * Final group: meta-options.
+			 */
 			else if (strcmp(method, "none") == 0)
 			{
 				/*
@@ -1468,20 +1583,68 @@ pqConnectOptions2(PGconn *conn)
 				return false;
 			}
 
-			/* Update the bitmask. */
-			if (negated)
+			if (mech)
 			{
-				if ((conn->allowed_auth_methods & bits) == 0)
-					goto duplicate;
+				/*
+				 * Update the mechanism set only. The method bitmask will be
+				 * updated for SASL further down.
+				 */
+				Assert(!bits);
 
-				conn->allowed_auth_methods &= ~bits;
+				if (negated)
+				{
+					/* Remove the existing mechanism from the list. */
+					i = index_of_allowed_sasl_mech(conn, mech);
+					if (i < 0)
+						goto duplicate;
+
+					conn->allowed_sasl_mechs[i] = NULL;
+				}
+				else
+				{
+					/*
+					 * Find a space to put the new mechanism (after making
+					 * sure it's not already there).
+					 */
+					i = index_of_allowed_sasl_mech(conn, mech);
+					if (i >= 0)
+						goto duplicate;
+
+					i = index_of_allowed_sasl_mech(conn, NULL);
+					if (i < 0)
+					{
+						/* Should not happen; the pointer list is corrupted. */
+						Assert(false);
+
+						conn->status = CONNECTION_BAD;
+						libpq_append_conn_error(conn,
+												"internal error: no space in allowed_sasl_mechs");
+						free(part);
+						return false;
+					}
+
+					conn->allowed_sasl_mechs[i] = mech;
+				}
 			}
 			else
 			{
-				if ((conn->allowed_auth_methods & bits) == bits)
-					goto duplicate;
+				/* Update the method bitmask. */
+				Assert(bits);
 
-				conn->allowed_auth_methods |= bits;
+				if (negated)
+				{
+					if ((conn->allowed_auth_methods & bits) == 0)
+						goto duplicate;
+
+					conn->allowed_auth_methods &= ~bits;
+				}
+				else
+				{
+					if ((conn->allowed_auth_methods & bits) == bits)
+						goto duplicate;
+
+					conn->allowed_auth_methods |= bits;
+				}
 			}
 
 			free(part);
@@ -1499,6 +1662,36 @@ pqConnectOptions2(PGconn *conn)
 
 			free(part);
 			return false;
+		}
+
+		/*
+		 * Finally, allow SASL authentication requests if (and only if) we've
+		 * allowed any mechanisms.
+		 */
+		{
+			bool		allowed = false;
+			const uint32 sasl_bits =
+				(1 << AUTH_REQ_SASL)
+				| (1 << AUTH_REQ_SASL_CONT)
+				| (1 << AUTH_REQ_SASL_FIN);
+
+			for (i = 0; i < lengthof(conn->allowed_sasl_mechs); i++)
+			{
+				if (conn->allowed_sasl_mechs[i])
+				{
+					allowed = true;
+					break;
+				}
+			}
+
+			/*
+			 * For the standard case, add the SASL bits to the (default-empty)
+			 * set if needed. For the negated case, remove them.
+			 */
+			if (!negated && allowed)
+				conn->allowed_auth_methods |= sasl_bits;
+			else if (negated && !allowed)
+				conn->allowed_auth_methods &= ~sasl_bits;
 		}
 	}
 
@@ -1794,6 +1987,56 @@ pqConnectOptions2(PGconn *conn)
 	}
 	else
 		conn->target_server_type = SERVER_TYPE_ANY;
+
+	if (conn->scram_client_key)
+	{
+		int			len;
+
+		len = pg_b64_dec_len(strlen(conn->scram_client_key));
+		conn->scram_client_key_binary = malloc(len);
+		if (!conn->scram_client_key_binary)
+			goto oom_error;
+		len = pg_b64_decode(conn->scram_client_key, strlen(conn->scram_client_key),
+							conn->scram_client_key_binary, len);
+		if (len < 0)
+		{
+			libpq_append_conn_error(conn, "invalid SCRAM client key");
+			free(conn->scram_client_key_binary);
+			return false;
+		}
+		if (len != SCRAM_MAX_KEY_LEN)
+		{
+			libpq_append_conn_error(conn, "invalid SCRAM client key length: %d", len);
+			free(conn->scram_client_key_binary);
+			return false;
+		}
+		conn->scram_client_key_len = len;
+	}
+
+	if (conn->scram_server_key)
+	{
+		int			len;
+
+		len = pg_b64_dec_len(strlen(conn->scram_server_key));
+		conn->scram_server_key_binary = malloc(len);
+		if (!conn->scram_server_key_binary)
+			goto oom_error;
+		len = pg_b64_decode(conn->scram_server_key, strlen(conn->scram_server_key),
+							conn->scram_server_key_binary, len);
+		if (len < 0)
+		{
+			libpq_append_conn_error(conn, "invalid SCRAM server key");
+			free(conn->scram_server_key_binary);
+			return false;
+		}
+		if (len != SCRAM_MAX_KEY_LEN)
+		{
+			libpq_append_conn_error(conn, "invalid SCRAM server key length: %d", len);
+			free(conn->scram_server_key_binary);
+			return false;
+		}
+		conn->scram_server_key_len = len;
+	}
 
 	/*
 	 * validate load_balance_hosts option, and set load_balance_type
@@ -2648,6 +2891,7 @@ PQconnectPoll(PGconn *conn)
 		case CONNECTION_NEEDED:
 		case CONNECTION_GSS_STARTUP:
 		case CONNECTION_CHECK_TARGET:
+		case CONNECTION_AUTHENTICATING:
 			break;
 
 		default:
@@ -3683,6 +3927,7 @@ keep_going:						/* We will come back to here until there is
 				int			avail;
 				AuthRequest areq;
 				int			res;
+				bool		async;
 
 				/*
 				 * Scan the message from current point (note that if we find
@@ -3871,7 +4116,17 @@ keep_going:						/* We will come back to here until there is
 				 * Note that conn->pghost must be non-NULL if we are going to
 				 * avoid the Kerberos code doing a hostname look-up.
 				 */
-				res = pg_fe_sendauth(areq, msgLength, conn);
+				res = pg_fe_sendauth(areq, msgLength, conn, &async);
+
+				if (async && (res == STATUS_OK))
+				{
+					/*
+					 * We'll come back later once we're ready to respond.
+					 * Don't consume the request yet.
+					 */
+					conn->status = CONNECTION_AUTHENTICATING;
+					goto keep_going;
+				}
 
 				/*
 				 * OK, we have processed the message; mark data consumed.  We
@@ -3881,7 +4136,19 @@ keep_going:						/* We will come back to here until there is
 				conn->inStart = conn->inCursor;
 
 				if (res != STATUS_OK)
+				{
+					/*
+					 * OAuth connections may perform two-step discovery, where
+					 * the first connection is a dummy.
+					 */
+					if (conn->sasl == &pg_oauth_mech && conn->oauth_want_retry)
+					{
+						need_new_connection = true;
+						goto keep_going;
+					}
+
 					goto error_return;
+				}
 
 				/*
 				 * Just make sure that any data sent by pg_fe_sendauth is
@@ -3906,6 +4173,69 @@ keep_going:						/* We will come back to here until there is
 
 				/* Look to see if we have more data yet. */
 				goto keep_going;
+			}
+
+		case CONNECTION_AUTHENTICATING:
+			{
+				PostgresPollingStatusType status;
+
+				if (!conn->async_auth || !conn->cleanup_async_auth)
+				{
+					/* programmer error; should not happen */
+					libpq_append_conn_error(conn,
+											"internal error: async authentication has no handler");
+					goto error_return;
+				}
+
+				/* Drive some external authentication work. */
+				status = conn->async_auth(conn);
+
+				if (status == PGRES_POLLING_FAILED)
+					goto error_return;
+
+				if (status == PGRES_POLLING_OK)
+				{
+					/* Done. Tear down the async implementation. */
+					conn->cleanup_async_auth(conn);
+					conn->cleanup_async_auth = NULL;
+
+					/*
+					 * Cleanup must unset altsock, both as an indication that
+					 * it's been released, and to stop pqSocketCheck from
+					 * looking at the wrong socket after async auth is done.
+					 */
+					if (conn->altsock != PGINVALID_SOCKET)
+					{
+						Assert(false);
+						libpq_append_conn_error(conn,
+												"internal error: async cleanup did not release polling socket");
+						goto error_return;
+					}
+
+					/*
+					 * Reenter the authentication exchange with the server. We
+					 * didn't consume the message that started external
+					 * authentication, so it'll be reprocessed as if we just
+					 * received it.
+					 */
+					conn->status = CONNECTION_AWAITING_RESPONSE;
+
+					goto keep_going;
+				}
+
+				/*
+				 * Caller needs to poll some more. conn->async_auth() should
+				 * have assigned an altsock to poll on.
+				 */
+				if (conn->altsock == PGINVALID_SOCKET)
+				{
+					Assert(false);
+					libpq_append_conn_error(conn,
+											"internal error: async authentication did not set a socket for polling");
+					goto error_return;
+				}
+
+				return status;
 			}
 
 		case CONNECTION_AUTH_OK:
@@ -4096,6 +4426,9 @@ keep_going:						/* We will come back to here until there is
 						goto keep_going;
 					}
 				}
+
+				/* Don't hold onto any OAuth tokens longer than necessary. */
+				pqClearOAuthToken(conn);
 
 				/*
 				 * For non cancel requests we can release the address list
@@ -4589,6 +4922,7 @@ pqMakeEmptyPGconn(void)
 	conn->verbosity = PQERRORS_DEFAULT;
 	conn->show_context = PQSHOW_CONTEXT_ERRORS;
 	conn->sock = PGINVALID_SOCKET;
+	conn->altsock = PGINVALID_SOCKET;
 	conn->Pfdebug = NULL;
 
 	/*
@@ -4706,6 +5040,14 @@ freePGconn(PGconn *conn)
 	free(conn->rowBuf);
 	free(conn->target_session_attrs);
 	free(conn->load_balance_hosts);
+	free(conn->scram_client_key);
+	free(conn->scram_server_key);
+	free(conn->oauth_issuer);
+	free(conn->oauth_issuer_id);
+	free(conn->oauth_discovery_uri);
+	free(conn->oauth_client_id);
+	free(conn->oauth_client_secret);
+	free(conn->oauth_scope);
 	termPQExpBuffer(&conn->errorMessage);
 	termPQExpBuffer(&conn->workBuffer);
 
@@ -4859,6 +5201,7 @@ pqClosePGconn(PGconn *conn)
 	conn->asyncStatus = PGASYNC_IDLE;
 	conn->xactStatus = PQTRANS_IDLE;
 	conn->pipelineStatus = PQ_PIPELINE_OFF;
+	pqClearOAuthToken(conn);
 	pqClearAsyncResult(conn);	/* deallocate result */
 	pqClearConnErrorState(conn);
 
@@ -7238,6 +7581,8 @@ PQsocket(const PGconn *conn)
 {
 	if (!conn)
 		return -1;
+	if (conn->altsock != PGINVALID_SOCKET)
+		return conn->altsock;
 	return (conn->sock != PGINVALID_SOCKET) ? conn->sock : -1;
 }
 

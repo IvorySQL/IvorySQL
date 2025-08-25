@@ -3,7 +3,7 @@
  * pg_subscription.h
  *	  definition of the "subscription" system catalog (pg_subscription)
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_subscription.h
@@ -19,7 +19,7 @@
 
 #include "access/xlogdefs.h"
 #include "catalog/genbki.h"
-#include "catalog/pg_subscription_d.h"
+#include "catalog/pg_subscription_d.h"	/* IWYU pragma: export */
 #include "lib/stringinfo.h"
 #include "nodes/pg_list.h"
 

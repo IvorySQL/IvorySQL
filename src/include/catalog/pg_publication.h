@@ -3,7 +3,7 @@
  * pg_publication.h
  *	  definition of the "publication" system catalog (pg_publication)
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_publication.h
@@ -19,7 +19,7 @@
 
 #include "catalog/genbki.h"
 #include "catalog/objectaddress.h"
-#include "catalog/pg_publication_d.h"
+#include "catalog/pg_publication_d.h"	/* IWYU pragma: export */
 
 /* ----------------
  *		pg_publication definition.  cpp turns this into
@@ -55,8 +55,11 @@ CATALOG(pg_publication,6104,PublicationRelationId)
 	/* true if partition changes are published using root schema */
 	bool		pubviaroot;
 
-	/* true if generated columns data should be published */
-	bool		pubgencols;
+	/*
+	 * 'n'(none) if generated column data should not be published. 's'(stored)
+	 * if stored generated column data should be published.
+	 */
+	char		pubgencols;
 } FormData_pg_publication;
 
 /* ----------------
@@ -107,13 +110,27 @@ typedef struct PublicationDesc
 	bool		gencols_valid_for_delete;
 } PublicationDesc;
 
+#ifdef EXPOSE_TO_CLIENT_CODE
+
+typedef enum PublishGencolsType
+{
+	/* Generated columns present should not be replicated. */
+	PUBLISH_GENCOLS_NONE = 'n',
+
+	/* Generated columns present should be replicated. */
+	PUBLISH_GENCOLS_STORED = 's',
+
+} PublishGencolsType;
+
+#endif							/* EXPOSE_TO_CLIENT_CODE */
+
 typedef struct Publication
 {
 	Oid			oid;
 	char	   *name;
 	bool		alltables;
 	bool		pubviaroot;
-	bool		pubgencols;
+	PublishGencolsType pubgencols_type;
 	PublicationActions pubactions;
 } Publication;
 
@@ -171,6 +188,7 @@ extern ObjectAddress publication_add_schema(Oid pubid, Oid schemaid,
 
 extern Bitmapset *pub_collist_to_bitmapset(Bitmapset *columns, Datum pubcols,
 										   MemoryContext mcxt);
-extern Bitmapset *pub_form_cols_map(Relation relation, bool include_gencols);
+extern Bitmapset *pub_form_cols_map(Relation relation,
+									PublishGencolsType include_gencols_type);
 
 #endif							/* PG_PUBLICATION_H */

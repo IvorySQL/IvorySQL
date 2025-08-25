@@ -1,4 +1,4 @@
-# Copyright (c) 2021-2024, PostgreSQL Global Development Group
+# Copyright (c) 2021-2025, PostgreSQL Global Development Group
 
 # This test case aims to verify that client-side backup compression work
 # properly, and it also aims to verify that pg_verifybackup can verify a base
@@ -72,14 +72,19 @@ for my $tc (@test_configuration)
 			|| $tc->{'decompress_program'} eq '');
 
 		# Take a client-side backup.
-		my @backup = (
-			'pg_basebackup', '-D', $backup_path,
-			'-Xfetch', '--no-sync', '-cfast', '-Ft');
-		push @backup, @{ $tc->{'backup_flags'} };
 		my $backup_stdout = '';
 		my $backup_stderr = '';
-		my $backup_result = $primary->run_log(\@backup, '>', \$backup_stdout,
-			'2>', \$backup_stderr);
+		my $backup_result = $primary->run_log(
+			[
+				'pg_basebackup', '--no-sync',
+				'--pgdata' => $backup_path,
+				'--wal-method' => 'fetch',
+				'--checkpoint' => 'fast',
+				'--format' => 'tar',
+				@{ $tc->{'backup_flags'} }
+			],
+			'>' => \$backup_stdout,
+			'2>' => \$backup_stderr);
 		if ($backup_stdout ne '')
 		{
 			print "# standard output was:\n$backup_stdout";
@@ -108,7 +113,11 @@ for my $tc (@test_configuration)
 			"found expected backup files, compression $method");
 
 		# Verify tar backup.
-		$primary->command_ok( [ 'pg_verifybackup', '-n', '-e', $backup_path ],
+		$primary->command_ok(
+			[
+				'pg_verifybackup', '--no-parse-wal',
+				'--exit-on-error', $backup_path,
+			],
 			"verify backup, compression $method");
 
 		# Cleanup.

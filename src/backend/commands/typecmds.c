@@ -3,7 +3,7 @@
  * typecmds.c
  *	  Routines for SQL commands that manipulate types (and domains).
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -1026,6 +1026,14 @@ DefineDomain(ParseState *pstate, CreateDomainStmt *stmt)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("specifying GENERATED not supported for domains"),
+						 parser_errposition(pstate, constr->location)));
+				break;
+
+			case CONSTR_ATTR_ENFORCED:
+			case CONSTR_ATTR_NOT_ENFORCED:
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+						 errmsg("specifying constraint enforceability not supported for domains"),
 						 parser_errposition(pstate, constr->location)));
 				break;
 
@@ -2957,51 +2965,8 @@ AlterDomainAddConstraint(List *names, Node *newConstraint,
 
 	constr = (Constraint *) newConstraint;
 
-	switch (constr->contype)
-	{
-		case CONSTR_CHECK:
-		case CONSTR_NOTNULL:
-			/* processed below */
-			break;
-
-		case CONSTR_UNIQUE:
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("unique constraints not possible for domains")));
-			break;
-
-		case CONSTR_PRIMARY:
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("primary key constraints not possible for domains")));
-			break;
-
-		case CONSTR_EXCLUSION:
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("exclusion constraints not possible for domains")));
-			break;
-
-		case CONSTR_FOREIGN:
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("foreign key constraints not possible for domains")));
-			break;
-
-		case CONSTR_ATTR_DEFERRABLE:
-		case CONSTR_ATTR_NOT_DEFERRABLE:
-		case CONSTR_ATTR_DEFERRED:
-		case CONSTR_ATTR_IMMEDIATE:
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("specifying constraint deferrability not supported for domains")));
-			break;
-
-		default:
-			elog(ERROR, "unrecognized constraint subtype: %d",
-				 (int) constr->contype);
-			break;
-	}
+	/* enforced by parser */
+	Assert(constr->contype == CONSTR_CHECK || constr->contype == CONSTR_NOTNULL);
 
 	if (constr->contype == CONSTR_CHECK)
 	{
@@ -3626,6 +3591,7 @@ domainAddCheckConstraint(Oid domainOid, Oid domainNamespace, Oid baseTypeOid,
 							  CONSTRAINT_CHECK, /* Constraint Type */
 							  false,	/* Is Deferrable */
 							  false,	/* Is Deferred */
+							  true, /* Is Enforced */
 							  !constr->skip_validation, /* Is Validated */
 							  InvalidOid,	/* no parent constraint */
 							  InvalidOid,	/* not a relation constraint */
@@ -3733,6 +3699,7 @@ domainAddNotNullConstraint(Oid domainOid, Oid domainNamespace, Oid baseTypeOid,
 							  CONSTRAINT_NOTNULL,	/* Constraint Type */
 							  false,	/* Is Deferrable */
 							  false,	/* Is Deferred */
+							  true, /* Is Enforced */
 							  !constr->skip_validation, /* Is Validated */
 							  InvalidOid,	/* no parent constraint */
 							  InvalidOid,	/* not a relation constraint */

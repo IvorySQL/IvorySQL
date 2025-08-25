@@ -8,7 +8,7 @@
  * or call fmgr-callable functions.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -746,6 +746,9 @@ extern bool CheckFunctionValidatorAccess(Oid validatorOid, Oid functionOid);
  */
 extern PGDLLIMPORT char *Dynamic_library_path;
 
+extern char *substitute_path_macro(const char *str, const char *macro, const char *value);
+extern char *find_in_path(const char *basename, const char *path, const char *path_param,
+						  const char *macro, const char *macro_val);
 extern void *load_external_function(const char *filename, const char *funcname,
 									bool signalNotFound, void **filehandle);
 extern void *lookup_external_function(void *filehandle, const char *funcname);
