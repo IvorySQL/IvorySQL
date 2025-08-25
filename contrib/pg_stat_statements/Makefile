@@ -23,7 +23,7 @@ REGRESS = select dml cursors utility level_tracking planning \
 	user_activity wal entry_timestamp privileges extended \
 	parallel cleanup oldextversions squashing
 ORA_REGRESS = select ivy_dml cursors ivy_utility ivy_level_tracking planning \
-	user_activity wal cleanup oldextversions squashing
+	user_activity wal cleanup oldextversions ivy_squashing
 # Disabled because these tests require "shared_preload_libraries=pg_stat_statements",
 # which typical installcheck users do not have (e.g. buildfarm clients).
 NO_INSTALLCHECK = 1
