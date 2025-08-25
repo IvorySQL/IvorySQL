@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2024, PostgreSQL Global Development Group
+# Copyright (c) 2021-2025, PostgreSQL Global Development Group
 
 =pod
 
@@ -107,13 +107,17 @@ sub new
 	if ($interactive)
 	{
 		$run = IPC::Run::start $psql_params,
-		  '<pty<', \$psql->{stdin}, '>pty>', \$psql->{stdout}, '2>', \$psql->{stderr},
+		  '<pty<' => \$psql->{stdin},
+		  '>pty>' => \$psql->{stdout},
+		  '2>' => \$psql->{stderr},
 		  $psql->{timeout};
 	}
 	else
 	{
 		$run = IPC::Run::start $psql_params,
-		  '<', \$psql->{stdin}, '>', \$psql->{stdout}, '2>', \$psql->{stderr},
+		  '<' => \$psql->{stdin},
+		  '>' => \$psql->{stdout},
+		  '2>' => \$psql->{stderr},
 		  $psql->{timeout};
 	}
 

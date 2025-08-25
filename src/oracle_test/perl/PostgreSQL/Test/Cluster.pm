@@ -593,6 +593,8 @@ On Windows, we use SSPI authentication to ensure the same (by pg_regress
 WAL archiving can be enabled on this node by passing the keyword parameter
 has_archiving => 1. This is disabled by default.
 
+Data checksums can be forced off by passing no_data_checksums => 1.
+
 postgresql.conf can be set up for replication by passing the keyword
 parameter allows_streaming => 'logical' or 'physical' (passing 1 will also
 suffice for physical replication) depending on type of replication that
@@ -609,10 +611,10 @@ disabled.
 sub init
 {
 	my ($self, %params) = @_;
-	my $port = $self->port;
+	my $port   = $self->port;
 	my $oraport = $self->oraport;
 	my $pgdata = $self->data_dir;
-	my $host = $self->host;
+	my $host   = $self->host;
 
 	local %ENV = $self->_get_env();
 
@@ -648,8 +650,11 @@ sub init
 		or !defined $ENV{INITDB_TEMPLATE})
 	{
 		note("initializing database system by running initdb");
-		PostgreSQL::Test::Utils::system_or_bail('initdb', '-D', $pgdata, '-A',
-			'trust', '-N', '-m', 'pg', '-C', 'normal', @{ $params{extra} });
+		PostgreSQL::Test::Utils::system_or_bail(
+			'initdb', '--no-sync',
+			'--pgdata' => $pgdata,
+			'--auth' => 'trust',
+			@{ $params{extra} });
 	}
 	else
 	{
@@ -747,7 +752,7 @@ sub init
 	  or die("unable to set permissions for $pgdata/postgresql.conf");
 
 	$self->set_replication_conf if $params{allows_streaming};
-	$self->enable_archiving if $params{has_archiving};
+	$self->enable_archiving     if $params{has_archiving};
 	return;
 }
 
@@ -842,17 +847,17 @@ sub backup
 {
 	my ($self, $backup_name, %params) = @_;
 	my $backup_path = $self->backup_dir . '/' . $backup_name;
-	my $name = $self->name;
+	my $name        = $self->name;
 
 	local %ENV = $self->_get_env();
 
 	print "# Taking pg_basebackup $backup_name from node \"$name\"\n";
 	PostgreSQL::Test::Utils::system_or_bail(
-		'pg_basebackup', '-D',
-		$backup_path, '-h',
-		$self->host, '-p',
-		$self->port, '--checkpoint',
-		'fast', '--no-sync',
+		'pg_basebackup', '--no-sync',
+		'--pgdata' => $backup_path,
+		'--host' => $self->host,
+		'--port' => $self->port,
+		'--checkpoint' => 'fast',
 		@{ $params{backup_options} });
 	print "# Backup finished\n";
 	return;
@@ -926,15 +931,15 @@ sub init_from_backup
 {
 	my ($self, $root_node, $backup_name, %params) = @_;
 	my $backup_path = $root_node->backup_dir . '/' . $backup_name;
-	my $host = $self->host;
-	my $port = $self->port;
+	my $host        = $self->host;
+	my $port        = $self->port;
 	my $oraport = $self->oraport;
-	my $node_name = $self->name;
-	my $root_name = $root_node->name;
+	my $node_name   = $self->name;
+	my $root_name   = $root_node->name;
 
 	$params{has_streaming} = 0 unless defined $params{has_streaming};
 	$params{has_restoring} = 0 unless defined $params{has_restoring};
-	$params{standby} = 1 unless defined $params{standby};
+	$params{standby}       = 1 unless defined $params{standby};
 
 	print
 	  "# Initializing node \"$node_name\" from backup \"$backup_name\" of node \"$root_name\"\n";
@@ -947,20 +952,20 @@ sub init_from_backup
 	my $data_path = $self->data_dir;
 	if (defined $params{combine_with_prior})
 	{
-		my @prior_backups = @{$params{combine_with_prior}};
+		my @prior_backups = @{ $params{combine_with_prior} };
 		my @prior_backup_path;
 
 		for my $prior_backup_name (@prior_backups)
 		{
 			push @prior_backup_path,
-				$root_node->backup_dir . '/' . $prior_backup_name;
+			  $root_node->backup_dir . '/' . $prior_backup_name;
 		}
 
 		local %ENV = $self->_get_env();
-		my @combineargs = ('pg_combinebackup', '-d');
+		my @combineargs = ('pg_combinebackup', '--debug');
 		if (exists $params{tablespace_map})
 		{
-			while (my ($olddir, $newdir) = each %{$params{tablespace_map}})
+			while (my ($olddir, $newdir) = each %{ $params{tablespace_map} })
 			{
 				push @combineargs, "-T$olddir=$newdir";
 			}
@@ -970,47 +975,50 @@ sub init_from_backup
 		{
 			push @combineargs, $params{combine_mode};
 		}
-		push @combineargs, @prior_backup_path, $backup_path, '-o', $data_path;
+		push @combineargs, @prior_backup_path, $backup_path,
+		  '--output' => $data_path;
 		PostgreSQL::Test::Utils::system_or_bail(@combineargs);
 	}
 	elsif (defined $params{tar_program})
 	{
 		mkdir($data_path) || die "mkdir $data_path: $!";
-		PostgreSQL::Test::Utils::system_or_bail($params{tar_program}, 'xf',
-			$backup_path . '/base.tar',
-			'-C', $data_path);
 		PostgreSQL::Test::Utils::system_or_bail(
-			$params{tar_program}, 'xf',
-			$backup_path . '/pg_wal.tar', '-C',
-			$data_path . '/pg_wal');
+			$params{tar_program},
+			'xf' => $backup_path . '/base.tar',
+			'-C' => $data_path);
+		PostgreSQL::Test::Utils::system_or_bail(
+			$params{tar_program},
+			'xf' => $backup_path . '/pg_wal.tar',
+			'-C' => $data_path . '/pg_wal');
 
 		# We need to generate a tablespace_map file.
 		open(my $tsmap, ">", "$data_path/tablespace_map")
-			|| die "$data_path/tablespace_map: $!";
-		
+		  || die "$data_path/tablespace_map: $!";
+
 		# Extract tarfiles and add tablespace_map entries
 		my @tstars = grep { /^\d+.tar/ }
-			PostgreSQL::Test::Utils::slurp_dir($backup_path);
+		  PostgreSQL::Test::Utils::slurp_dir($backup_path);
 		for my $tstar (@tstars)
 		{
 			my $tsoid = $tstar;
 			$tsoid =~ s/\.tar$//;
-		
+
 			die "no tablespace mapping for $tstar"
 			  if !exists $params{tablespace_map}
 			  || !exists $params{tablespace_map}{$tsoid};
 			my $newdir = $params{tablespace_map}{$tsoid};
-		
+
 			mkdir($newdir) || die "mkdir $newdir: $!";
-			PostgreSQL::Test::Utils::system_or_bail($params{tar_program},
-				'xf', $backup_path . '/' . $tstar,
-				'-C', $newdir);
+			PostgreSQL::Test::Utils::system_or_bail(
+				$params{tar_program},
+				'xf' => $backup_path . '/' . $tstar,
+				'-C' => $newdir);
 
 			my $escaped_newdir = $newdir;
 			$escaped_newdir =~ s/\\/\\\\/g;
 			print $tsmap "$tsoid $escaped_newdir\n";
 		}
-		
+
 		# Close tablespace_map.
 		close($tsmap);
 	}
@@ -1024,7 +1032,7 @@ sub init_from_backup
 		PostgreSQL::Test::RecursiveCopy::copypath(
 			$backup_path,
 			$data_path,
-			'filterfn' => sub {
+			filterfn => sub {
 				my ($path) = @_;
 				if ($path =~ /^pg_tblspc\/(\d+)$/
 					&& exists $params{tablespace_map}{$1})
@@ -1034,13 +1042,13 @@ sub init_from_backup
 				}
 				return 1;
 			});
-		
+
 		if (@tsoids > 0)
 		{
 			# We need to generate a tablespace_map file.
 			open(my $tsmap, ">", "$data_path/tablespace_map")
-				|| die "$data_path/tablespace_map: $!";
-		
+			  || die "$data_path/tablespace_map: $!";
+
 			# Now use the list of tablespace links to copy each tablespace.
 			for my $tsoid (@tsoids)
 			{
@@ -1051,12 +1059,12 @@ sub init_from_backup
 				my $olddir = $backup_path . '/pg_tblspc/' . $tsoid;
 				my $newdir = $params{tablespace_map}{$tsoid};
 				PostgreSQL::Test::RecursiveCopy::copypath($olddir, $newdir);
-		
+
 				my $escaped_newdir = $newdir;
 				$escaped_newdir =~ s/\\/\\\\/g;
 				print $tsmap "$tsoid $escaped_newdir\n";
 			}
-		
+
 			# Close tablespace_map.
 			close($tsmap);
 		}
@@ -1126,9 +1134,9 @@ instead return a true or false value to indicate success or failure.
 sub start
 {
 	my ($self, %params) = @_;
-	my $port = $self->port;
+	my $port   = $self->port;
 	my $pgdata = $self->data_dir;
-	my $name = $self->name;
+	my $name   = $self->name;
 	my $ret;
 
 	BAIL_OUT("node \"$name\" is already running") if defined $self->{_pid};
@@ -1145,8 +1153,10 @@ sub start
 	# -w is now the default but having it here does no harm and helps
 	# compatibility with older versions.
 	$ret = PostgreSQL::Test::Utils::system_log(
-		'pg_ctl', '-w', '-D', $self->data_dir,
-		'-l', $self->logfile, '-o', "--cluster-name=$name",
+		'pg_ctl', '--wait',
+		'--pgdata' => $self->data_dir,
+		'--log' => $self->logfile,
+		'--options' => "--cluster-name=$name",
 		'start');
 
 	if ($ret != 0)
@@ -1205,13 +1215,16 @@ this to fail.  Otherwise, tests might fail to detect server crashes.
 With optional extra param fail_ok => 1, returns 0 for failure
 instead of bailing out.
 
+The optional extra param timeout can be used to pass the pg_ctl
+--timeout option.
+
 =cut
 
 sub stop
 {
 	my ($self, $mode, %params) = @_;
 	my $pgdata = $self->data_dir;
-	my $name = $self->name;
+	my $name   = $self->name;
 	my $ret;
 
 	local %ENV = $self->_get_env();
@@ -1220,10 +1233,10 @@ sub stop
 	return 1 unless defined $self->{_pid};
 
 	print "### Stopping node \"$name\" using mode $mode\n";
-	my @cmd = ('pg_ctl', '-D', $pgdata, '-m', $mode, 'stop');
+	my @cmd = ('pg_ctl', '--pgdata' => $pgdata, '--mode' => $mode, 'stop');
 	if ($params{timeout})
 	{
-		push(@cmd, ('--timeout', $params{timeout}));
+		push(@cmd, ('--timeout' => $params{timeout}));
 	}
 	$ret = PostgreSQL::Test::Utils::system_log(@cmd);
 
@@ -1253,14 +1266,16 @@ Reload configuration parameters on the node.
 sub reload
 {
 	my ($self) = @_;
-	my $port = $self->port;
+	my $port   = $self->port;
 	my $pgdata = $self->data_dir;
-	my $name = $self->name;
+	my $name   = $self->name;
 
 	local %ENV = $self->_get_env();
 
 	print "### Reloading node \"$name\"\n";
-	PostgreSQL::Test::Utils::system_or_bail('pg_ctl', '-D', $pgdata,
+	PostgreSQL::Test::Utils::system_or_bail(
+		'pg_ctl',
+		'--pgdata' => $pgdata,
 		'reload');
 	return;
 }
@@ -1288,8 +1303,11 @@ sub restart
 
 	# -w is now the default but having it here does no harm and helps
 	# compatibility with older versions.
-	$ret = PostgreSQL::Test::Utils::system_log('pg_ctl', '-w', '-D',
-		$self->data_dir, '-l', $self->logfile, 'restart');
+	$ret = PostgreSQL::Test::Utils::system_log(
+		'pg_ctl', '--wait',
+		'--pgdata' => $self->data_dir,
+		'--log' => $self->logfile,
+		'restart');
 
 	if ($ret != 0)
 	{
@@ -1318,17 +1336,20 @@ Wrapper for pg_ctl promote
 
 sub promote
 {
-	my ($self) = @_;
-	my $port = $self->port;
-	my $pgdata = $self->data_dir;
+	my ($self)  = @_;
+	my $port    = $self->port;
+	my $pgdata  = $self->data_dir;
 	my $logfile = $self->logfile;
-	my $name = $self->name;
+	my $name    = $self->name;
 
 	local %ENV = $self->_get_env();
 
 	print "### Promoting node \"$name\"\n";
-	PostgreSQL::Test::Utils::system_or_bail('pg_ctl', '-D', $pgdata, '-l',
-		$logfile, 'promote');
+	PostgreSQL::Test::Utils::system_or_bail(
+		'pg_ctl',
+		'--pgdata' => $pgdata,
+		'--log' => $logfile,
+		'promote');
 	return;
 }
 
@@ -1342,17 +1363,20 @@ Wrapper for pg_ctl logrotate
 
 sub logrotate
 {
-	my ($self) = @_;
-	my $port = $self->port;
-	my $pgdata = $self->data_dir;
+	my ($self)  = @_;
+	my $port    = $self->port;
+	my $pgdata  = $self->data_dir;
 	my $logfile = $self->logfile;
-	my $name = $self->name;
+	my $name    = $self->name;
 
 	local %ENV = $self->_get_env();
 
 	print "### Rotating log in node \"$name\"\n";
-	PostgreSQL::Test::Utils::system_or_bail('pg_ctl', '-D', $pgdata, '-l',
-		$logfile, 'logrotate');
+	PostgreSQL::Test::Utils::system_or_bail(
+		'pg_ctl',
+		'--pgdata' => $pgdata,
+		'--log' => $logfile,
+		'logrotate');
 	return;
 }
 
@@ -1361,7 +1385,7 @@ sub enable_streaming
 {
 	my ($self, $root_node) = @_;
 	my $root_connstr = $root_node->connstr;
-	my $name = $self->name;
+	my $name         = $self->name;
 
 	print "### Enabling streaming replication for node \"$name\"\n";
 	$self->append_conf(
@@ -1408,7 +1432,7 @@ restore_command = '$copy_command'
 	return;
 }
 
-sub _recovery_file {return "postgresql.conf";}
+sub _recovery_file { return "postgresql.conf"; }
 
 =pod
 
@@ -1446,8 +1470,8 @@ sub set_standby_mode
 sub enable_archiving
 {
 	my ($self) = @_;
-	my $path = $self->archive_dir;
-	my $name = $self->name;
+	my $path   = $self->archive_dir;
+	my $name   = $self->name;
 
 	print "### Enabling WAL archiving for node \"$name\"\n";
 
@@ -1607,7 +1631,7 @@ sub new
 		_host => $host,
 		_basedir =>
 		  "$PostgreSQL::Test::Utils::tmp_check/t_${testname}_${name}_data",
-		_name => $name,
+		_name               => $name,
 		_logfile_generation => 0,
 		_logfile_base =>
 		  "$PostgreSQL::Test::Utils::log_path/${testname}_${name}",
@@ -1660,8 +1684,8 @@ sub new
 #
 sub _set_pg_version
 {
-	my ($self) = @_;
-	my $inst = $self->{_install_path};
+	my ($self)    = @_;
+	my $inst      = $self->{_install_path};
 	my $pg_config = "pg_config";
 
 	if (defined $inst)
@@ -1815,7 +1839,7 @@ called from outside the module as C<PostgreSQL::Test::Cluster::get_free_port()>.
 sub get_free_port
 {
 	my $found = 0;
-	my $port = $last_port_assigned;
+	my $port  = $last_port_assigned;
 
 	while ($found == 0)
 	{
@@ -1914,7 +1938,7 @@ sub _reserve_port
 	# All good, go ahead and reserve the port
 	seek($portfile, 0, SEEK_SET) || die $!;
 	# print the pid with a fixed width so we don't leave any trailing junk
-	print $portfile sprintf("%10d\n",$$);
+	print $portfile sprintf("%10d\n", $$);
 	flock($portfile, LOCK_UN) || die $!;
 	close($portfile);
 	push(@port_reservation_files, $filename);
@@ -2010,9 +2034,9 @@ sub safe_psql
 	my $ret = $self->psql(
 		$dbname, $sql,
 		%params,
-		stdout => \$stdout,
-		stderr => \$stderr,
-		on_error_die => 1,
+		stdout        => \$stdout,
+		stderr        => \$stderr,
+		on_error_die  => 1,
 		on_error_stop => 1);
 
 	# psql can emit stderr from NOTICEs etc
@@ -2125,10 +2149,10 @@ sub psql
 	local %ENV = $self->_get_env();
 
 	my $connect_to_oraport = $params{connect_to_oraport};
-	my $stdout = $params{stdout};
-	my $stderr = $params{stderr};
-	my $replication = $params{replication};
-	my $timeout = undef;
+	my $stdout            = $params{stdout};
+	my $stderr            = $params{stderr};
+	my $replication       = $params{replication};
+	my $timeout           = undef;
 	my $timeout_exception = 'psql timed out';
 
 	# Build the connection string.
@@ -2152,7 +2176,9 @@ sub psql
 
 	my @psql_params = (
 		$self->installed_command('psql'),
-		'-XAtq', '-d', $psql_connstr, '-f', '-');
+		'--no-psqlrc', '--no-align', '--tuples-only', '--quiet',
+		'--dbname' => $psql_connstr,
+		'--file' => '-');
 
 	# If the caller wants an array and hasn't passed stdout/stderr
 	# references, allocate temporary ones to capture them so we
@@ -2172,9 +2198,10 @@ sub psql
 	}
 
 	$params{on_error_stop} = 1 unless defined $params{on_error_stop};
-	$params{on_error_die} = 0 unless defined $params{on_error_die};
+	$params{on_error_die}  = 0 unless defined $params{on_error_die};
 
-	push @psql_params, '-v', 'ON_ERROR_STOP=1' if $params{on_error_stop};
+	push @psql_params, '--variable' => 'ON_ERROR_STOP=1'
+	  if $params{on_error_stop};
 	push @psql_params, @{ $params{extra_params} }
 	  if defined $params{extra_params};
 
@@ -2200,9 +2227,9 @@ sub psql
 	{
 		local $@;
 		eval {
-			my @ipcrun_opts = (\@psql_params, '<', \$sql);
-			push @ipcrun_opts, '>',  $stdout if defined $stdout;
-			push @ipcrun_opts, '2>', $stderr if defined $stderr;
+			my @ipcrun_opts = (\@psql_params, '<' => \$sql);
+			push @ipcrun_opts, '>' => $stdout if defined $stdout;
+			push @ipcrun_opts, '2>' => $stderr if defined $stderr;
 			push @ipcrun_opts, $timeout if defined $timeout;
 
 			IPC::Run::run @ipcrun_opts;
@@ -2357,13 +2384,16 @@ sub background_psql
 
 	my @psql_params = (
 		$self->installed_command('psql'),
-		'-XAtq', '-d', $psql_connstr, '-f', '-');
+		'--no-psqlrc', '--no-align',
+		'--tuples-only', '--quiet',
+		'--dbname' => $psql_connstr,
+		'--file' => '-');
 
 	$params{on_error_stop} = 1 unless defined $params{on_error_stop};
 	$params{wait} = 1 unless defined $params{wait};
 	$timeout = $params{timeout} if defined $params{timeout};
 
-	push @psql_params, '-v', 'ON_ERROR_STOP=1' if $params{on_error_stop};
+	push @psql_params, '--set' => 'ON_ERROR_STOP=1' if $params{on_error_stop};
 	push @psql_params, @{ $params{extra_params} }
 	  if defined $params{extra_params};
 
@@ -2434,7 +2464,8 @@ sub interactive_psql
 
 	my @psql_params = (
 		$self->installed_command('psql'),
-		'-XAt', '-d', $self->connstr($dbname));
+		'--no-psqlrc', '--no-align', '--tuples-only',
+		'--dbname' => $self->connstr($dbname));
 
 	push @psql_params, @{ $params{extra_params} }
 	  if defined $params{extra_params};
@@ -2456,7 +2487,7 @@ sub _pgbench_make_files
 		for my $fn (sort keys %$files)
 		{
 			my $filename = $self->basedir . '/' . $fn;
-			push @file_opts, '-f', $filename;
+			push @file_opts, '--file' => $filename;
 
 			# cleanup file weight
 			$filename =~ s/\@\d+$//;
@@ -2582,8 +2613,8 @@ sub connect_ok
 	my ($ret, $stdout, $stderr) = $self->psql(
 		'postgres',
 		$sql,
-		extra_params => ['-w'],
-		connstr => "$connstr",
+		extra_params  => ['-w'],
+		connstr       => "$connstr",
 		on_error_stop => 0);
 
 	is($ret, 0, $test_name);
@@ -2649,7 +2680,7 @@ sub connect_fails
 		'postgres',
 		undef,
 		extra_params => ['-w'],
-		connstr => "$connstr");
+		connstr      => "$connstr");
 
 	isnt($ret, 0, $test_name);
 
@@ -2682,17 +2713,20 @@ sub poll_query_until
 	$expected = 't' unless defined($expected);    # default value
 
 	my $cmd = [
-		$self->installed_command('psql'), '-XAt',
-		'-d', $self->connstr($dbname)
+		$self->installed_command('psql'), '--no-psqlrc',
+		'--no-align', '--tuples-only',
+		'--dbname' => $self->connstr($dbname)
 	];
 	my ($stdout, $stderr);
 	my $max_attempts = 10 * $PostgreSQL::Test::Utils::timeout_default;
-	my $attempts = 0;
+	my $attempts     = 0;
 
 	while ($attempts < $max_attempts)
 	{
-		my $result = IPC::Run::run $cmd, '<', \$query,
-		  '>', \$stdout, '2>', \$stderr;
+		my $result = IPC::Run::run $cmd,
+		  '<' => \$query,
+		  '>' => \$stdout,
+		  '2>' => \$stderr;
 
 		chomp($stdout);
 		chomp($stderr);
@@ -2852,6 +2886,33 @@ sub issues_sql_like
 
 =pod
 
+=item $node->issues_sql_unlike(cmd, unexpected_sql, test_name)
+
+Run a command on the node, then verify that $unexpected_sql does not appear in
+the server log file.
+
+=cut
+
+sub issues_sql_unlike
+{
+	local $Test::Builder::Level = $Test::Builder::Level + 1;
+
+	my ($self, $cmd, $unexpected_sql, $test_name) = @_;
+
+	local %ENV = $self->_get_env();
+
+	my $log_location = -s $self->logfile;
+
+	my $result = PostgreSQL::Test::Utils::run_log($cmd);
+	ok($result, "@$cmd exit code 0");
+	my $log =
+	  PostgreSQL::Test::Utils::slurp_file($self->logfile, $log_location);
+	unlike($log, $unexpected_sql, "$test_name: SQL not found in server log");
+	return;
+}
+
+=pod
+
 =item $node->log_content()
 
 Returns the contents of log of the node
@@ -2981,11 +3042,11 @@ sub lsn
 {
 	my ($self, $mode) = @_;
 	my %modes = (
-		'insert' => 'pg_current_wal_insert_lsn()',
-		'flush' => 'pg_current_wal_flush_lsn()',
-		'write' => 'pg_current_wal_lsn()',
+		'insert'  => 'pg_current_wal_insert_lsn()',
+		'flush'   => 'pg_current_wal_flush_lsn()',
+		'write'   => 'pg_current_wal_lsn()',
 		'receive' => 'pg_last_wal_receive_lsn()',
-		'replay' => 'pg_last_wal_replay_lsn()');
+		'replay'  => 'pg_last_wal_replay_lsn()');
 
 	$mode = '<undef>' if !defined($mode);
 	croak "unknown mode for 'lsn': '$mode', valid modes are "
@@ -3440,7 +3501,7 @@ sub wait_for_log
 	$offset = 0 unless defined $offset;
 
 	my $max_attempts = 10 * $PostgreSQL::Test::Utils::timeout_default;
-	my $attempts = 0;
+	my $attempts     = 0;
 
 	while ($attempts < $max_attempts)
 	{
@@ -3522,8 +3583,8 @@ sub slot
 {
 	my ($self, $slot_name) = @_;
 	my @columns = (
-		'plugin', 'slot_type', 'datoid', 'database',
-		'active', 'active_pid', 'xmin', 'catalog_xmin',
+		'plugin', 'slot_type',  'datoid', 'database',
+		'active', 'active_pid', 'xmin',   'catalog_xmin',
 		'restart_lsn');
 	return $self->query_hash(
 		'postgres',
@@ -3562,19 +3623,21 @@ sub pg_recvlogical_upto
 	my $timeout_exception = 'pg_recvlogical timed out';
 
 	croak 'slot name must be specified' unless defined($slot_name);
-	croak 'endpos must be specified' unless defined($endpos);
+	croak 'endpos must be specified'    unless defined($endpos);
 
 	my @cmd = (
 		$self->installed_command('pg_recvlogical'),
-		'-S', $slot_name, '--dbname', $self->connstr($dbname));
-	push @cmd, '--endpos', $endpos;
-	push @cmd, '-f', '-', '--no-loop', '--start';
+		'--slot' => $slot_name,
+		'--dbname' => $self->connstr($dbname),
+		'--endpos' => $endpos,
+		'--file' => '-',
+		'--no-loop', '--start');
 
 	while (my ($k, $v) = each %plugin_options)
 	{
 		croak "= is not permitted to appear in replication option name"
 		  if ($k =~ qr/=/);
-		push @cmd, "-o", "$k=$v";
+		push @cmd, "--option" => "$k=$v";
 	}
 
 	my $timeout;
@@ -3587,7 +3650,7 @@ sub pg_recvlogical_upto
 	{
 		local $@;
 		eval {
-			IPC::Run::run(\@cmd, ">", \$stdout, "2>", \$stderr, $timeout);
+			IPC::Run::run(\@cmd, '>' => \$stdout, '2>' => \$stderr, $timeout);
 			$ret = $?;
 		};
 		my $exc_save = $@;
@@ -3699,7 +3762,16 @@ sub create_logical_slot_on_standby
 
 	my $handle;
 
-	$handle = IPC::Run::start(['pg_recvlogical', '-d', $self->connstr($dbname), '-P', 'test_decoding', '-S', $slot_name, '--create-slot'], '>', \$stdout, '2>', \$stderr);
+	$handle = IPC::Run::start(
+		[
+			'pg_recvlogical',
+			'--dbname' => $self->connstr($dbname),
+			'--plugin' => 'test_decoding',
+			'--slot' => $slot_name,
+			'--create-slot'
+		],
+		'>' => \$stdout,
+		'2>' => \$stderr);
 
 	# Arrange for the xl_running_xacts record for which pg_recvlogical is
 	# waiting.
@@ -3729,7 +3801,7 @@ sub validate_slot_inactive_since
 		'postgres',
 		qq(SELECT inactive_since FROM pg_replication_slots
 			WHERE slot_name = '$slot_name' AND inactive_since IS NOT NULL;)
-		);
+	);
 
 	# Check that the inactive_since is sane
 	is( $self->safe_psql(
@@ -3739,7 +3811,7 @@ sub validate_slot_inactive_since
 		),
 		't',
 		"last inactive time for slot $slot_name is valid on node $name")
-		or die "could not validate captured inactive_since for slot $slot_name";
+	  or die "could not validate captured inactive_since for slot $slot_name";
 
 	return $inactive_since;
 }
