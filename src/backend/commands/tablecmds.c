@@ -14100,9 +14100,12 @@ ATPostAlterTypeCleanup(List **wqueue, AlteredTableInfo *tab, LOCKMODE lockmode)
 	/*
 	 * Re-parse the index and constraint definitions, and attach them to the
 	 * appropriate work queue entries.  We do this before dropping because in
-	 * the case of a FOREIGN KEY constraint, we might not yet have exclusive
-	 * lock on the table the constraint is attached to, and we need to get
-	 * that before reparsing/dropping.
+	 * the case of a constraint on another table, we might not yet have
+	 * exclusive lock on the table the constraint is attached to, and we need
+	 * to get that before reparsing/dropping.  (That's possible at least for
+	 * FOREIGN KEY, CHECK, and EXCLUSION constraints; in non-FK cases it
+	 * requires a dependency on the target table's composite type in the other
+	 * table's constraint expressions.)
 	 *
 	 * We can't rely on the output of deparsing to tell us which relation to
 	 * operate on, because concurrent activity might have made the name
@@ -14118,7 +14121,6 @@ ATPostAlterTypeCleanup(List **wqueue, AlteredTableInfo *tab, LOCKMODE lockmode)
 		Form_pg_constraint con;
 		Oid			relid;
 		Oid			confrelid;
-		char		contype;
 		bool		conislocal;
 
 		tup = SearchSysCache1(CONSTROID, ObjectIdGetDatum(oldId));
@@ -14135,7 +14137,6 @@ ATPostAlterTypeCleanup(List **wqueue, AlteredTableInfo *tab, LOCKMODE lockmode)
 				elog(ERROR, "could not identify relation associated with constraint %u", oldId);
 		}
 		confrelid = con->confrelid;
-		contype = con->contype;
 		conislocal = con->conislocal;
 		ReleaseSysCache(tup);
 
@@ -14152,12 +14153,12 @@ ATPostAlterTypeCleanup(List **wqueue, AlteredTableInfo *tab, LOCKMODE lockmode)
 			continue;
 
 		/*
-		 * When rebuilding an FK constraint that references the table we're
-		 * modifying, we might not yet have any lock on the FK's table, so get
-		 * one now.  We'll need AccessExclusiveLock for the DROP CONSTRAINT
-		 * step, so there's no value in asking for anything weaker.
+		 * When rebuilding another table's constraint that references the
+		 * table we're modifying, we might not yet have any lock on the other
+		 * table, so get one now.  We'll need AccessExclusiveLock for the DROP
+		 * CONSTRAINT step, so there's no value in asking for anything weaker.
 		 */
-		if (relid != tab->relid && contype == CONSTRAINT_FOREIGN)
+		if (relid != tab->relid)
 			LockRelationOid(relid, AccessExclusiveLock);
 
 		ATPostAlterTypeParse(oldId, relid, confrelid,
@@ -14171,6 +14172,14 @@ ATPostAlterTypeCleanup(List **wqueue, AlteredTableInfo *tab, LOCKMODE lockmode)
 		Oid			relid;
 
 		relid = IndexGetRelation(oldId, false);
+
+		/*
+		 * As above, make sure we have lock on the index's table if it's not
+		 * the same table.
+		 */
+		if (relid != tab->relid)
+			LockRelationOid(relid, AccessExclusiveLock);
+
 		ATPostAlterTypeParse(oldId, relid, InvalidOid,
 							 (char *) lfirst(def_item),
 							 wqueue, lockmode, tab->rewrite);
@@ -14187,6 +14196,20 @@ ATPostAlterTypeCleanup(List **wqueue, AlteredTableInfo *tab, LOCKMODE lockmode)
 		Oid			relid;
 
 		relid = StatisticsGetRelation(oldId, false);
+
+		/*
+		 * As above, make sure we have lock on the statistics object's table
+		 * if it's not the same table.  However, we take
+		 * ShareUpdateExclusiveLock here, aligning with the lock level used in
+		 * CreateStatistics and RemoveStatisticsById.
+		 *
+		 * CAUTION: this should be done after all cases that grab
+		 * AccessExclusiveLock, else we risk causing deadlock due to needing
+		 * to promote our table lock.
+		 */
+		if (relid != tab->relid)
+			LockRelationOid(relid, ShareUpdateExclusiveLock);
+
 		ATPostAlterTypeParse(oldId, relid, InvalidOid,
 							 (char *) lfirst(def_item),
 							 wqueue, lockmode, tab->rewrite);
@@ -19514,8 +19537,16 @@ ATExecDetachPartition(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		tab->rel = rel;
 	}
 
+	/*
+	 * Detaching the partition might involve TOAST table access, so ensure we
+	 * have a valid snapshot.
+	 */
+	PushActiveSnapshot(GetTransactionSnapshot());
+
 	/* Do the final part of detaching */
 	DetachPartitionFinalize(rel, partRel, concurrent, defaultPartOid);
+
+	PopActiveSnapshot();
 
 	ObjectAddressSet(address, RelationRelationId, RelationGetRelid(partRel));
 

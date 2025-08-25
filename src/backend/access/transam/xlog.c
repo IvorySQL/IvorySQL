@@ -669,7 +669,8 @@ static XLogRecPtr CreateOverwriteContrecordRecord(XLogRecPtr aborted_lsn,
 												  XLogRecPtr pagePtr,
 												  TimeLineID newTLI);
 static void CheckPointGuts(XLogRecPtr checkPointRedo, int flags);
-static void KeepLogSeg(XLogRecPtr recptr, XLogSegNo *logSegNo);
+static void KeepLogSeg(XLogRecPtr recptr, XLogRecPtr slotsMinLSN,
+					   XLogSegNo *logSegNo);
 static XLogRecPtr XLogGetReplicationSlotMinimumLSN(void);
 
 static void AdvanceXLInsertBuffer(XLogRecPtr upto, TimeLineID tli,
@@ -2210,25 +2211,6 @@ check_wal_segment_size(int *newval, void **extra, GucSource source)
 	if (!IsValidWalSegSize(*newval))
 	{
 		GUC_check_errdetail("The WAL segment size must be a power of two between 1 MB and 1 GB.");
-		return false;
-	}
-
-	return true;
-}
-
-/*
- * GUC check_hook for max_slot_wal_keep_size
- *
- * We don't allow the value of max_slot_wal_keep_size other than -1 during the
- * binary upgrade. See start_postmaster() in pg_upgrade for more details.
- */
-bool
-check_max_slot_wal_keep_size(int *newval, void **extra, GucSource source)
-{
-	if (IsBinaryUpgrade && *newval != -1)
-	{
-		GUC_check_errdetail("\"%s\" must be set to -1 during binary upgrade mode.",
-							"max_slot_wal_keep_size");
 		return false;
 	}
 
@@ -7025,6 +7007,7 @@ CreateCheckPoint(int flags)
 	VirtualTransactionId *vxids;
 	int			nvxids;
 	int			oldXLogAllowed = 0;
+	XLogRecPtr	slotsMinReqLSN;
 
 	/*
 	 * An end-of-recovery checkpoint is really a shutdown checkpoint, just
@@ -7254,6 +7237,15 @@ CreateCheckPoint(int flags)
 	END_CRIT_SECTION();
 
 	/*
+	 * Get the current minimum LSN to be used later in the WAL segment
+	 * cleanup.  We may clean up only WAL segments, which are not needed
+	 * according to synchronized LSNs of replication slots.  The slot's LSN
+	 * might be advanced concurrently, so we call this before
+	 * CheckPointReplicationSlots() synchronizes replication slots.
+	 */
+	slotsMinReqLSN = XLogGetReplicationSlotMinimumLSN();
+
+	/*
 	 * In some cases there are groups of actions that must all occur on one
 	 * side or the other of a checkpoint record. Before flushing the
 	 * checkpoint record we must explicitly wait for any backend currently
@@ -7436,22 +7428,34 @@ CreateCheckPoint(int flags)
 	if (PriorRedoPtr != InvalidXLogRecPtr)
 		UpdateCheckPointDistanceEstimate(RedoRecPtr - PriorRedoPtr);
 
+#ifdef USE_INJECTION_POINTS
+	INJECTION_POINT("checkpoint-before-old-wal-removal");
+#endif
+
 	/*
 	 * Delete old log files, those no longer needed for last checkpoint to
 	 * prevent the disk holding the xlog from growing full.
 	 */
 	XLByteToSeg(RedoRecPtr, _logSegNo, wal_segment_size);
-	KeepLogSeg(recptr, &_logSegNo);
+	KeepLogSeg(recptr, slotsMinReqLSN, &_logSegNo);
 	if (InvalidateObsoleteReplicationSlots(RS_INVAL_WAL_REMOVED,
 										   _logSegNo, InvalidOid,
 										   InvalidTransactionId))
 	{
 		/*
+		 * Recalculate the current minimum LSN to be used in the WAL segment
+		 * cleanup.  Then, we must synchronize the replication slots again in
+		 * order to make this LSN safe to use.
+		 */
+		slotsMinReqLSN = XLogGetReplicationSlotMinimumLSN();
+		CheckPointReplicationSlots(shutdown);
+
+		/*
 		 * Some slots have been invalidated; recalculate the old-segment
 		 * horizon, starting again from RedoRecPtr.
 		 */
 		XLByteToSeg(RedoRecPtr, _logSegNo, wal_segment_size);
-		KeepLogSeg(recptr, &_logSegNo);
+		KeepLogSeg(recptr, slotsMinReqLSN, &_logSegNo);
 	}
 	_logSegNo--;
 	RemoveOldXlogFiles(_logSegNo, RedoRecPtr, recptr,
@@ -7724,6 +7728,7 @@ CreateRestartPoint(int flags)
 	XLogRecPtr	endptr;
 	XLogSegNo	_logSegNo;
 	TimestampTz xtime;
+	XLogRecPtr	slotsMinReqLSN;
 
 	/* Concurrent checkpoint/restartpoint cannot happen */
 	Assert(!IsUnderPostmaster || MyBackendType == B_CHECKPOINTER);
@@ -7805,6 +7810,15 @@ CreateRestartPoint(int flags)
 	 */
 	MemSet(&CheckpointStats, 0, sizeof(CheckpointStats));
 	CheckpointStats.ckpt_start_t = GetCurrentTimestamp();
+
+	/*
+	 * Get the current minimum LSN to be used later in the WAL segment
+	 * cleanup.  We may clean up only WAL segments, which are not needed
+	 * according to synchronized LSNs of replication slots.  The slot's LSN
+	 * might be advanced concurrently, so we call this before
+	 * CheckPointReplicationSlots() synchronizes replication slots.
+	 */
+	slotsMinReqLSN = XLogGetReplicationSlotMinimumLSN();
 
 	if (log_checkpoints)
 		LogCheckpointStart(flags, true);
@@ -7894,17 +7908,25 @@ CreateRestartPoint(int flags)
 	receivePtr = GetWalRcvFlushRecPtr(NULL, NULL);
 	replayPtr = GetXLogReplayRecPtr(&replayTLI);
 	endptr = (receivePtr < replayPtr) ? replayPtr : receivePtr;
-	KeepLogSeg(endptr, &_logSegNo);
+	KeepLogSeg(endptr, slotsMinReqLSN, &_logSegNo);
 	if (InvalidateObsoleteReplicationSlots(RS_INVAL_WAL_REMOVED,
 										   _logSegNo, InvalidOid,
 										   InvalidTransactionId))
 	{
 		/*
+		 * Recalculate the current minimum LSN to be used in the WAL segment
+		 * cleanup.  Then, we must synchronize the replication slots again in
+		 * order to make this LSN safe to use.
+		 */
+		slotsMinReqLSN = XLogGetReplicationSlotMinimumLSN();
+		CheckPointReplicationSlots(flags & CHECKPOINT_IS_SHUTDOWN);
+
+		/*
 		 * Some slots have been invalidated; recalculate the old-segment
 		 * horizon, starting again from RedoRecPtr.
 		 */
 		XLByteToSeg(RedoRecPtr, _logSegNo, wal_segment_size);
-		KeepLogSeg(endptr, &_logSegNo);
+		KeepLogSeg(endptr, slotsMinReqLSN, &_logSegNo);
 	}
 	_logSegNo--;
 
@@ -7999,6 +8021,7 @@ GetWALAvailability(XLogRecPtr targetLSN)
 	XLogSegNo	oldestSegMaxWalSize;	/* oldest segid kept by max_wal_size */
 	XLogSegNo	oldestSlotSeg;	/* oldest segid kept by slot */
 	uint64		keepSegs;
+	XLogRecPtr	slotsMinReqLSN;
 
 	/*
 	 * slot does not reserve WAL. Either deactivated, or has never been active
@@ -8012,8 +8035,9 @@ GetWALAvailability(XLogRecPtr targetLSN)
 	 * oldestSlotSeg to the current segment.
 	 */
 	currpos = GetXLogWriteRecPtr();
+	slotsMinReqLSN = XLogGetReplicationSlotMinimumLSN();
 	XLByteToSeg(currpos, oldestSlotSeg, wal_segment_size);
-	KeepLogSeg(currpos, &oldestSlotSeg);
+	KeepLogSeg(currpos, slotsMinReqLSN, &oldestSlotSeg);
 
 	/*
 	 * Find the oldest extant segment file. We get 1 until checkpoint removes
@@ -8074,7 +8098,7 @@ GetWALAvailability(XLogRecPtr targetLSN)
  * invalidation is optionally done here, instead.
  */
 static void
-KeepLogSeg(XLogRecPtr recptr, XLogSegNo *logSegNo)
+KeepLogSeg(XLogRecPtr recptr, XLogRecPtr slotsMinReqLSN, XLogSegNo *logSegNo)
 {
 	XLogSegNo	currSegNo;
 	XLogSegNo	segno;
@@ -8083,17 +8107,19 @@ KeepLogSeg(XLogRecPtr recptr, XLogSegNo *logSegNo)
 	XLByteToSeg(recptr, currSegNo, wal_segment_size);
 	segno = currSegNo;
 
-	/*
-	 * Calculate how many segments are kept by slots first, adjusting for
-	 * max_slot_wal_keep_size.
-	 */
-	keep = XLogGetReplicationSlotMinimumLSN();
+	/* Calculate how many segments are kept by slots. */
+	keep = slotsMinReqLSN;
 	if (keep != InvalidXLogRecPtr && keep < recptr)
 	{
 		XLByteToSeg(keep, segno, wal_segment_size);
 
-		/* Cap by max_slot_wal_keep_size ... */
-		if (max_slot_wal_keep_size_mb >= 0)
+		/*
+		 * Account for max_slot_wal_keep_size to avoid keeping more than
+		 * configured.  However, don't do that during a binary upgrade: if
+		 * slots were to be invalidated because of this, it would not be
+		 * possible to preserve logical ones during the upgrade.
+		 */
+		if (max_slot_wal_keep_size_mb >= 0 && !IsBinaryUpgrade)
 		{
 			uint64		slot_keep_segs;
 
