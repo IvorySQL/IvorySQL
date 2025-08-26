@@ -53,11 +53,6 @@ my $tempdir = PostgreSQL::Test::Utils::tempdir;
 # database and then pg_dump *that* database (or something along
 # those lines) to validate that part of the process.
 
-my $supports_icu  = ($ENV{with_icu} eq 'yes');
-my $supports_gzip = check_pg_config("#define HAVE_LIBZ 1");
-my $supports_lz4  = check_pg_config("#define USE_LZ4 1");
-my $supports_zstd  = check_pg_config("#define USE_ZSTD 1");
-
 my %pgdump_runs = (
 	packages => {
 		dump_cmd => [
@@ -169,7 +164,6 @@ my ($connect_to_oraport);
 
 # ICU doesn't work with some encodings
 my $encoding = $node->safe_psql('postgres', 'show server_encoding', connect_to_oraport => 1);
-$supports_icu = 0 if $encoding eq 'SQL_ASCII';
 
 # Create additional databases for mutations of schema public
 $node->psql('postgres', 'create database testdb;', connect_to_oraport => 1);
