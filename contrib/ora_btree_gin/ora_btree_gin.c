@@ -19,7 +19,10 @@
 #include "utils/varlena.h"
 
 
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(
+					.name = "ora_btree_gin",
+					.version = PG_VERSION
+);
 
 typedef struct QueryInfo
 {

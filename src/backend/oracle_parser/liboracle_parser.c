@@ -40,7 +40,10 @@
 #include "parser/parse_param.h"
 #include "nodes/queryjumble.h"
 
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(
+					.name = "oracle_parser",
+					.version = PG_VERSION
+);
 
 /* saved hook value */
 static raw_parser_hook_type prev_raw_parser = NULL;
