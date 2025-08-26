@@ -6789,7 +6789,7 @@ getPackages(Archive *fout, int *numPkgs)
 	i_pkgname = PQfnumber(res, "pkgname");
 	i_oid = PQfnumber(res, "oid");
 	i_pkgnamespace = PQfnumber(res, "pkgnamespace");
-	i_rolname = PQfnumber(res, "rolname");
+	i_rolname = PQfnumber(res, "pkgowner");
 	i_pkgacl = PQfnumber(res, "pkgacl");
 	i_acldefault = PQfnumber(res, "acldefault");
 
