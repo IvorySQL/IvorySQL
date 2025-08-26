@@ -8,6 +8,7 @@ OBJS = \
 PGFILEDESC = "pg_overexplain - allow EXPLAIN to dump even more details"
 
 REGRESS = pg_overexplain
+ORA_REGRESS = ivy_pg_overexplain
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
