@@ -42,3 +42,4 @@ lib*.pc
 /Debug/
 /Release/
 /tmp_install/
+src/backend/oracle_parser/ora_kwlist_d.h

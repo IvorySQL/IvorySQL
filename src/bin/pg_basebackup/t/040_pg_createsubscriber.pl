@@ -436,12 +436,13 @@ my ($stdout, $stderr) = run_command(
 
 # Verify that the required logical replication objects are output.
 # The expected count 3 refers to postgres, $db1 and $db2 databases.
+# ivorysql expected count 4 refers to ivorysql, postgres, $db1 and $db2 databases.
 is(scalar(() = $stderr =~ /creating publication/g),
-	3, "verify publications are created for all databases");
+	4, "verify publications are created for all databases");
 is(scalar(() = $stderr =~ /creating the replication slot/g),
-	3, "verify replication slots are created for all databases");
+	4, "verify replication slots are created for all databases");
 is(scalar(() = $stderr =~ /creating subscription/g),
-	3, "verify subscriptions are created for all databases");
+	4, "verify subscriptions are created for all databases");
 
 # Run pg_createsubscriber on node S.  --verbose is used twice
 # to show more information.
