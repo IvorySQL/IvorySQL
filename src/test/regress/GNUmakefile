@@ -51,7 +51,7 @@ pg_regress.o: override CPPFLAGS := -I$(top_builddir)/src/port -I$(libpq_srcdir) 
 
 #IvorySQL: BEGIN oracle test
 ora_pg_regress.o: ora_pg_regress.c $(top_builddir)/src/port/pg_config_paths.h
-ora_pg_regress.o: override CPPFLAGS += -I$(top_builddir)/src/port -I$(libpq_srcdir) $(EXTRADEFS) $(CPPFLAGS)
+ora_pg_regress.o: override CPPFLAGS := -I$(top_builddir)/src/port -I$(libpq_srcdir) $(EXTRADEFS) $(CPPFLAGS)
 #IvorySQL: END oracle test
 
 # note: because of the submake dependency, this rule's action is really a no-op
