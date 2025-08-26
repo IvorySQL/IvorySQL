@@ -3308,6 +3308,7 @@ libpq_deps += [
 ]
 
 libpq_oauth_deps += [
+  thread_dep,
   libcurl,
 ]
 
