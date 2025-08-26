@@ -1987,6 +1987,14 @@ get_publisher_databases(struct CreateSubscriberOptions *opt,
 		conninfo = concat_conninfo_dbname(opt->pub_conninfo_str, "postgres");
 		conn = connect_database(conninfo, false);
 		pg_free(conninfo);
+		
+		if (!conn)
+		{
+			conninfo = concat_conninfo_dbname(opt->pub_conninfo_str, "ivorysql");
+			conn = connect_database(conninfo, true);
+			pg_free(conninfo);
+		}
+
 		if (!conn)
 		{
 			conninfo = concat_conninfo_dbname(opt->pub_conninfo_str, "template1");
