@@ -295,7 +295,7 @@ sub connstr
 
 	if (!defined($connect_to_oraport))
 	{
-		return "port=$pgport host=$pghost";
+		return "port=$pgport host=$pghost dbname='$dbname'";
 	}
 
 	return "port=$oraport host=$pghost dbname='$dbname'";
