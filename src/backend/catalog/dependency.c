@@ -920,7 +920,7 @@ findDependentObjects(const ObjectAddress *object,
 		}
 
 		if (foundDep->deptype == DEPENDENCY_TYPE &&
-			(object->classId == ProcedureRelationId ||
+			(object->classId == RelationRelationId ||
 			 object->classId == PackageRelationId ||
 			 object->classId == PackageBodyRelationId ))
 		{

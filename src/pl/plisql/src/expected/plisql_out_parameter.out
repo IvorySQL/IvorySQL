@@ -184,8 +184,8 @@ begin
   ret = test_inchange(id,name1,name2);
 end;
 /
-WARNING:  there was an compilation error
-HINT:  expression "id" cannot be used as an assignment target
+ERROR:  expression "id" cannot be used as an assignment target
+CONTEXT:  PL/iSQL function test_inchange(pg_catalog.int4,varchar2,varchar2) line 2 at assignment
 PL/iSQL function inline_code_block line 11 at assignment
 drop function test_inchange(integer,varchar,varchar);
 --report error when IN OUT paramater has default value

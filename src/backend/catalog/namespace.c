@@ -1612,7 +1612,7 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 										 errmsg("argument type %s is invalid",
 											TypeNameToString(tname))));
 
-								newResult->args[i] = typeTypeId(typtup);
+								newResult->args[j] = typeTypeId(typtup);
 								ReleaseSysCache(typtup);
 							}
 						}

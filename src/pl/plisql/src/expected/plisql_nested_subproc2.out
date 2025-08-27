@@ -1132,7 +1132,7 @@ begin
     return id;
 end;
 /
-WARNING:  there was an compilation error
+WARNING:  compilation error
 HINT:  RELIES_ON clause is disallowed on function declaration
 --test ok
 create or replace function test_mds(id integer) return integer as
@@ -1309,7 +1309,7 @@ begin
     return id;
 end;
 /
-WARNING:  there was an compilation error
+WARNING:  compilation error
 HINT:  RESULT_CACHE must be specified on "test_subproc" declaration and definition
 --test failed
 create or replace function test_mds(id integer) return integer AS
@@ -1328,7 +1328,7 @@ begin
     return id;
 end;
 /
-WARNING:  there was an compilation error
+WARNING:  compilation error
 HINT:  RESULT_CACHE must be specified on "test_subproc" declaration and definition
 --test failed
 create or replace function test_mds(id integer) return integer AS
@@ -1347,7 +1347,7 @@ begin
     return id;
 end;
 /
-WARNING:  there was an compilation error
+WARNING:  compilation error
 HINT:  RESULT_CACHE must be specified on "test_subproc" declaration and definition
 --test failed
 create or replace function test_mds(id integer) return integer AS
@@ -1366,7 +1366,7 @@ begin
     return id;
 end;
 /
-WARNING:  there was an compilation error
+WARNING:  compilation error
 HINT:  RESULT_CACHE must be specified on "test_subproc" declaration and definition
 --test failed
 create or replace function test_mds(id integer) return integer AS
@@ -1385,7 +1385,7 @@ begin
     return id;
 end;
 /
-WARNING:  there was an compilation error
+WARNING:  compilation error
 HINT:  RESULT_CACHE must be specified on "test_subproc" declaration and definition
 --test failed
 create or replace function test_mds(id integer) return integer AS
@@ -1404,7 +1404,7 @@ begin
     return id;
 end;
 /
-WARNING:  there was an compilation error
+WARNING:  compilation error
 HINT:  RESULT_CACHE must be specified on "test_subproc" declaration and definition
 --test failed
 declare
@@ -1443,7 +1443,7 @@ begin
     return id;
 end;
 /
-WARNING:  there was an compilation error
+WARNING:  compilation error
 HINT:  at most one declaration for 'RESULT_CACHE' is permitted
 --test ok
 create or replace function test_mds(id integer) return integer AS
@@ -1994,7 +1994,7 @@ begin
   return 23;
 end;
 /
-WARNING:  there was an compilation error
+WARNING:  compilation error
 HINT:  A subprogram body must be defined for the forward declaration of mds
 DECLARE
   -- Declare proc1 (forward declaration):
@@ -4331,7 +4331,7 @@ begin
   raise info '%',mds;
 end;
 /
-WARNING:  there was an compilation error
+WARNING:  compilation error
 HINT:  illegal option for subprogram "infunc"
 --raise error
 create or replace function test_f2(id integer) return integer pipelined is
@@ -4345,7 +4345,7 @@ begin
   RETURN 1;
 end;
 /
-WARNING:  there was an compilation error
+WARNING:  compilation error
 HINT:  aggregate/table functions are not allowed in PLi/SQL scope
 --ok
 declare

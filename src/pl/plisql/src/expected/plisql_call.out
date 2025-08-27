@@ -19,7 +19,7 @@ BEGIN
 END;
 $$;
 /
-WARNING:  there was an compilation error
+WARNING:  compilation error
 LINE 5:     RETURN 5;
                    ^
 HINT:  RETURN cannot have a parameter in a procedure

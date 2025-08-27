@@ -247,9 +247,10 @@ begin
 end;
 $$ language plisql;
 /
-WARNING:  there was an compilation error
+WARNING:  compilation error
 LINE 4:         continue;
                 ^
+HINT:  CONTINUE cannot be used outside a loop
 -- should fail: unlabeled EXIT is only legal inside a loop
 create function exit_error1() returns void as $$
 begin
@@ -259,7 +260,7 @@ begin
 end;
 $$ language plisql;
 /
-WARNING:  there was an compilation error
+WARNING:  compilation error
 LINE 4:         exit;
                 ^
 HINT:  EXIT cannot be used outside a loop, unless it has a label
@@ -274,7 +275,7 @@ begin
 end;
 $$ language plisql;
 /
-WARNING:  there was an compilation error
+WARNING:  compilation error
 LINE 5:             continue no_such_label;
                              ^
 HINT:  there is no label "no_such_label" attached to any block or loop enclosing this statement
@@ -289,7 +290,7 @@ begin
 end;
 $$ language plisql;
 /
-WARNING:  there was an compilation error
+WARNING:  compilation error
 LINE 5:             exit no_such_label;
                          ^
 HINT:  there is no label "no_such_label" attached to any block or loop enclosing this statement
@@ -305,7 +306,7 @@ begin
 end;
 $$ language plisql;
 /
-WARNING:  there was an compilation error
+WARNING:  compilation error
 LINE 6:             continue begin_block1;
                              ^
 HINT:  block label "begin_block1" cannot be used in CONTINUE
@@ -362,7 +363,7 @@ begin
 end;
 $$ language plisql;
 /
-WARNING:  there was an compilation error
+WARNING:  compilation error
 LINE 5:   end loop flbl1;
                    ^
 HINT:  end label "flbl1" specified for unlabeled block
@@ -377,7 +378,7 @@ begin
 end;
 $$ language plisql;
 /
-WARNING:  there was an compilation error
+WARNING:  compilation error
 LINE 7:   end loop outer_label;
                    ^
 HINT:  end label "outer_label" differs from block's label "inner_label"
@@ -391,8 +392,7 @@ begin
 end;
 $$ language plisql;
 /
-ERROR:  end label "outer_label" specified for unlabeled block
-WARNING:  there was an compilation error
+WARNING:  compilation error
 LINE 6:   end loop outer_label;
                    ^
 HINT:  end label "outer_label" specified for unlabeled block
