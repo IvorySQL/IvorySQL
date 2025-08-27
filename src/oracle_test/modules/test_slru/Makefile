@@ -3,7 +3,8 @@
 MODULE_big = test_slru
 OBJS = \
 	$(WIN32RES) \
-	test_slru.o
+	test_slru.o \
+	test_multixact.o
 PGFILEDESC = "test_slru - test module for SLRUs"
 
 EXTENSION = test_slru
