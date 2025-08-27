@@ -2395,6 +2395,8 @@ plisql_parse_cwordtype(List *idents)
 
 		if (nse != NULL && nse->itemtype == PLISQL_NSTYPE_VAR)
 		{
+			dtype = ((PLiSQL_var *) (plisql_Datums[nse->itemno]))->datatype;
+
 			/*
 			 * Set the not null attribute of variable with not null attribute of dtype.
 			 * For example, name has a NOT NULL constraint, surname gets the NOT NULL constraint.
