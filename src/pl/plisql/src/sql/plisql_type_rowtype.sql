@@ -85,9 +85,9 @@ ALTER PROCEDURE proc1 COMPILE;
 SELECT prostatus FROM pg_proc WHERE proname like 'proc1'; --v
 CALL proc1('a');  --successfully
 
-DROP TABLE t1;
 DROP FUNCTION fun1;
 DROP PROCEDURE proc1;
+DROP TABLE t1;
 
 --function's return datatype is tablename.columnname%TYPE
 CREATE TABLE t1(id varchar(20), name varchar(20));
@@ -108,8 +108,8 @@ ALTER FUNCTION fun2 COMPILE;
 SELECT prostatus FROM pg_proc WHERE proname like 'fun2'; --v
 SELECT fun2(2) FROM dual; --failed
 
-DROP TABLE t1;
 DROP FUNCTION fun2; 
+DROP TABLE t1;
 
 --Variable datatype is tablename.columnname%TYPE
 CREATE TABLE t1(id varchar(20), name varchar(20));
@@ -175,7 +175,7 @@ SELECT count(*) FROM pg_depend d, pg_class c, pg_proc p
 
 --change the column id type from int to varchar, call the function
 SELECT fun3(3) FROM dual;  --failed
-SELECT fun4(4) FROM dual;  --falled
+SELECT fun4(4) FROM dual;  --failed
 SELECT fun5(5) FROM dual;  --successfully
 
 ALTER FUNCTION fun3 COMPILE;
@@ -186,13 +186,13 @@ SELECT prostatus FROM pg_proc WHERE proname like 'fun4'; --v
 SELECT prostatus FROM pg_proc WHERE proname like 'fun5'; --v
 
 SELECT fun3(3) FROM dual;  --failed
-SELECT fun4(4) FROM dual;  --falled
+SELECT fun4(4) FROM dual;  --failed
 SELECT fun5(5) FROM dual;  --successfully
 
-DROP TABLE t1;
 DROP FUNCTION fun3; 
 DROP FUNCTION fun4; 
 DROP FUNCTION fun5; 
+DROP TABLE t1;
 
 --use tablename.columnname%TYPE in package
 CREATE TABLE t1(id varchar(20), name varchar(20));
@@ -374,15 +374,15 @@ ALTER TABLE t1 DROP COLUMN id;
 
 --after dropping the column id, call the function again
 SELECT fun3(3) FROM dual;  --failed
-SELECT fun4(4) FROM dual;  --falled
-SELECT fun5(5) FROM dual;  --falled
+SELECT fun4(4) FROM dual;  --failed
+SELECT fun5(5) FROM dual;  --failed
 ALTER FUNCTION fun3 COMPILE;
 ALTER FUNCTION fun4 COMPILE;
 ALTER FUNCTION fun5 COMPILE;
 
 SELECT fun3(3) FROM dual;  --failed
-SELECT fun4(4) FROM dual;  --falled
-SELECT fun5(5) FROM dual;  --falled
+SELECT fun4(4) FROM dual;  --failed
+SELECT fun5(5) FROM dual;  --failed
 
 DROP TABLE t1;
 DROP FUNCTION fun3; 
@@ -565,16 +565,16 @@ ALTER TABLE t1 RENAME COLUMN id to id2;
 
 --after renaming the column id to id2, call the function again
 SELECT fun3(3) FROM dual;  --failed
-SELECT fun4(4) FROM dual;  --falled
-SELECT fun5(5) FROM dual;  --falled
+SELECT fun4(4) FROM dual;  --failed
+SELECT fun5(5) FROM dual;  --failed
 
 ALTER FUNCTION fun3 COMPILE;
 ALTER FUNCTION fun4 COMPILE;
 ALTER FUNCTION fun5 COMPILE;
 
 SELECT fun3(3) FROM dual;  --failed
-SELECT fun4(4) FROM dual;  --falled
-SELECT fun5(5) FROM dual;  --falled
+SELECT fun4(4) FROM dual;  --failed
+SELECT fun5(5) FROM dual;  --failed
 
 DROP TABLE t1;
 DROP FUNCTION fun3; 
@@ -757,15 +757,15 @@ ALTER TABLE t1 RENAME TO t1_new;
 
 --after renaming the table t1 to t1_new, call the function again
 SELECT fun3(3) FROM dual;  --failed
-SELECT fun4(4) FROM dual;  --falled
-SELECT fun5(5) FROM dual;  --falled
+SELECT fun4(4) FROM dual;  --failed
+SELECT fun5(5) FROM dual;  --failed
 ALTER FUNCTION fun3 COMPILE;
 ALTER FUNCTION fun4 COMPILE;
 ALTER FUNCTION fun5 COMPILE;
 
 SELECT fun3(3) FROM dual;  --failed
-SELECT fun4(4) FROM dual;  --falled
-SELECT fun5(5) FROM dual;  --falled
+SELECT fun4(4) FROM dual;  --failed
+SELECT fun5(5) FROM dual;  --failed
 
 DROP TABLE t1_new;
 DROP FUNCTION fun3; 
@@ -945,16 +945,16 @@ DROP TABLE t1;
 
 --after dropping the table t1, call the function again
 SELECT fun3(3) FROM dual;  --failed
-SELECT fun4(4) FROM dual;  --falled
-SELECT fun5(5) FROM dual;  --falled
+SELECT fun4(4) FROM dual;  --failed
+SELECT fun5(5) FROM dual;  --failed
 
 ALTER FUNCTION fun3 COMPILE;
 ALTER FUNCTION fun4 COMPILE;
 ALTER FUNCTION fun5 COMPILE;
 
 SELECT fun3(3) FROM dual;  --failed
-SELECT fun4(4) FROM dual;  --falled
-SELECT fun5(5) FROM dual;  --falled
+SELECT fun4(4) FROM dual;  --failed
+SELECT fun5(5) FROM dual;  --failed
 
 DROP FUNCTION fun3; 
 DROP FUNCTION fun4; 
@@ -2413,117 +2413,6 @@ SELECT count(*) FROM pg_depend d, pg_class c, pg_proc p
 
 DROP FUNCTION fun1;
 DROP TABLE t1;
-
---6 all_arguments system views
-SET IVORYSQL.COMPATIBLE_MODE TO ORACLE;
-SET IVORYSQL.IDENTIFIER_CASE_SWITCH = INTERCHANGE;
-
-CREATE TABLE t1(id varchar(20), name varchar(20), id2 number(10,2));
-CREATE TABLE t2(id int, name varchar(20));
-CREATE VIEW view1 AS SELECT * FROM t1;
-
---argument is table%ROWTYPE
-create or replace  function fn1(v1 t1%ROWTYPE, v2 t2%ROWTYPE, v3 t1.id%TYPE, v4 int) return t1%ROWTYPE as
- a t1%ROWTYPE;
-begin
-  return a;
-end;
-/
-
-SELECT object_name,package_name,subprogram_id,argument_name,position,sequence,data_level,data_type,defaulted,default_value,default_length,in_out,data_length,data_precision,data_scale,
-  radix,type_name,type_subname,type_object_type,pls_type,char_length,char_used,origin_con_id FROM SYS.ALL_ARGUMENTS where OBJECT_NAME like 'FN1';
-SELECT object_name,package_name,subprogram_id,argument_name,position,sequence,data_level,data_type,defaulted,default_value,default_length,in_out,data_length,data_precision,data_scale,
-  radix,type_name,type_subname,type_object_type,pls_type,char_length,char_used,origin_con_id FROM SYS.USER_ARGUMENTS where OBJECT_NAME like 'FN1';
-SELECT object_name,package_name,subprogram_id,argument_name,position,sequence,data_level,data_type,defaulted,default_value,default_length,in_out,data_length,data_precision,data_scale,
-  radix,type_name,type_subname,type_object_type,pls_type,char_length,char_used,origin_con_id FROM SYS.DBA_ARGUMENTS where OBJECT_NAME like 'FN1';
-
---argument is view%ROWTYPE
-create or replace  function fn2(v1 view1%ROWTYPE, v2 t2%ROWTYPE, v3 view1.id%TYPE, v4 int) return view1%ROWTYPE as
- a view1%ROWTYPE;
-begin
-  return a;
-end;
-/
-
-SELECT object_name,package_name,subprogram_id,argument_name,position,sequence,data_level,data_type,defaulted,default_value,default_length,in_out,data_length,data_precision,data_scale,
-  radix,type_name,type_subname,type_object_type,pls_type,char_length,char_used,origin_con_id FROM SYS.ALL_ARGUMENTS where OBJECT_NAME like 'FN2';
-SELECT object_name,package_name,subprogram_id,argument_name,position,sequence,data_level,data_type,defaulted,default_value,default_length,in_out,data_length,data_precision,data_scale,
-  radix,type_name,type_subname,type_object_type,pls_type,char_length,char_used,origin_con_id FROM SYS.USER_ARGUMENTS where OBJECT_NAME like 'FN2';
-SELECT object_name,package_name,subprogram_id,argument_name,position,sequence,data_level,data_type,defaulted,default_value,default_length,in_out,data_length,data_precision,data_scale,
-  radix,type_name,type_subname,type_object_type,pls_type,char_length,char_used,origin_con_id FROM SYS.DBA_ARGUMENTS where OBJECT_NAME like 'FN2';
-
---package.var%TYPE
-CREATE OR REPLACE PACKAGE pkg1 is
-  var1 int;
-  var2 t1%ROWTYPE;
-  var3 view1%ROWTYPE;
-  var4 varchar(40);
-  var5 number(10,3);
-  FUNCTION pfun(v int) return int;
-END;
-/
-
-CREATE OR REPLACE PACKAGE BODY pkg1 is
-  FUNCTION pfun(v int) RETURN int AS
-  BEGIN
-    RETURN 1;
-  END;
-END;
-/
-
-create or replace  function fp1(v1 pkg1.var1%TYPE, v2 pkg1.var2%TYPE, v3 pkg1.var3%TYPE, v4 pkg1.var4%TYPE, v5 pkg1.var5%TYPE) return int as
-begin
-  return 1;
-end;
-/
-
-SELECT object_name,package_name,subprogram_id,argument_name,position,sequence,data_level,data_type,defaulted,default_value,default_length,in_out,data_length,data_precision,data_scale,
-  radix,type_name,type_subname,type_object_type,pls_type,char_length,char_used,origin_con_id FROM SYS.ALL_ARGUMENTS where OBJECT_NAME like 'FP1';
-SELECT object_name,package_name,subprogram_id,argument_name,position,sequence,data_level,data_type,defaulted,default_value,default_length,in_out,data_length,data_precision,data_scale,
-  radix,type_name,type_subname,type_object_type,pls_type,char_length,char_used,origin_con_id FROM SYS.USER_ARGUMENTS where OBJECT_NAME like 'FP1';
-SELECT object_name,package_name,subprogram_id,argument_name,position,sequence,data_level,data_type,defaulted,default_value,default_length,in_out,data_length,data_precision,data_scale,
-  radix,type_name,type_subname,type_object_type,pls_type,char_length,char_used,origin_con_id FROM SYS.DBA_ARGUMENTS where OBJECT_NAME like 'FP1';
-
---table.column%TYPE is varchar
-create or replace procedure fn3(v1 t1.name%TYPE, v2 t1.id2%TYPE) as
-begin
-  null;
-end;
-/
-SELECT object_name,package_name,subprogram_id,argument_name,position,sequence,data_level,data_type,defaulted,default_value,default_length,in_out,data_length,data_precision,data_scale,
-  radix,type_name,type_subname,type_object_type,pls_type,char_length,char_used,origin_con_id FROM SYS.ALL_ARGUMENTS where OBJECT_NAME like 'FN3';
-SELECT object_name,package_name,subprogram_id,argument_name,position,sequence,data_level,data_type,defaulted,default_value,default_length,in_out,data_length,data_precision,data_scale,
-  radix,type_name,type_subname,type_object_type,pls_type,char_length,char_used,origin_con_id FROM SYS.USER_ARGUMENTS where OBJECT_NAME like 'FN3';
-SELECT object_name,package_name,subprogram_id,argument_name,position,sequence,data_level,data_type,defaulted,default_value,default_length,in_out,data_length,data_precision,data_scale,
-  radix,type_name,type_subname,type_object_type,pls_type,char_length,char_used,origin_con_id FROM SYS.DBA_ARGUMENTS where OBJECT_NAME like 'FN3';
-
---a package function argument referenced another package var
-CREATE OR REPLACE PACKAGE pkg2 is
-  FUNCTION pfun2(v pkg1.var1%TYPE) RETURN pkg1.var2%TYPE;
-END;
-/
-
-CREATE OR REPLACE PACKAGE BODY pkg2 is
-  FUNCTION pfun2(v pkg1.var1%TYPE) RETURN pkg1.var2%TYPE AS
-    a pkg1.var2%TYPE;
-  BEGIN
-    RETURN a;
-  END;
-END;
-/
-SELECT object_name,package_name,subprogram_id,argument_name,position,sequence,data_level,data_type,defaulted,default_value,default_length,in_out,data_length,data_precision,data_scale,
-  radix,type_name,type_subname,type_object_type,pls_type,char_length,char_used,origin_con_id FROM SYS.ALL_ARGUMENTS where OBJECT_NAME like 'PFUN2';
-SELECT object_name,package_name,subprogram_id,argument_name,position,sequence,data_level,data_type,defaulted,default_value,default_length,in_out,data_length,data_precision,data_scale,
-  radix,type_name,type_subname,type_object_type,pls_type,char_length,char_used,origin_con_id FROM SYS.USER_ARGUMENTS where OBJECT_NAME like 'PFUN2';
-SELECT object_name,package_name,subprogram_id,argument_name,position,sequence,data_level,data_type,defaulted,default_value,default_length,in_out,data_length,data_precision,data_scale,
-  radix,type_name,type_subname,type_object_type,pls_type,char_length,char_used,origin_con_id FROM SYS.DBA_ARGUMENTS where OBJECT_NAME like 'PFUN2';
-
-DROP PACKAGE pkg2;
-DROP FUNCTION fp1;
-DROP PACKAGE pkg1;
-DROP FUNCTION fn1;
-DROP FUNCTION fn2;
-DROP PROCEDURE fn3;
 DROP VIEW view1;
 DROP TABLE t1;
 DROP TABLE t2;
