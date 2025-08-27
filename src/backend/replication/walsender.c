@@ -2392,6 +2392,10 @@ PhysicalConfirmReceivedLocation(XLogRecPtr lsn)
 	 * be energy wasted - the worst thing lost information could cause here is
 	 * to give wrong information in a statistics view - we'll just potentially
 	 * be more conservative in removing files.
+	 *
+	 * Checkpointer makes special efforts to keep the WAL segments required by
+	 * the restart_lsn written to the disk. See CreateCheckPoint() and
+	 * CreateRestartPoint() for details.
 	 */
 }
 
@@ -3450,8 +3454,16 @@ XLogSendLogical(void)
 	if (flushPtr == InvalidXLogRecPtr ||
 		logical_decoding_ctx->reader->EndRecPtr >= flushPtr)
 	{
+		/*
+		 * For cascading logical WAL senders, we use the replay LSN instead of
+		 * the flush LSN, since logical decoding on a standby only processes
+		 * WAL that has been replayed.  This distinction becomes particularly
+		 * important during shutdown, as new WAL is no longer replayed and the
+		 * last replayed LSN marks the furthest point up to which decoding can
+		 * proceed.
+		 */
 		if (am_cascading_walsender)
-			flushPtr = GetStandbyFlushRecPtr(NULL);
+			flushPtr = GetXLogReplayRecPtr(NULL);
 		else
 			flushPtr = GetFlushRecPtr(NULL);
 	}

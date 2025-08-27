@@ -1786,13 +1786,23 @@ SELECT NOT(ROW(table.*) IS NOT NULL) FROM TABLE; -- detect at least one null in 
         which <parameter>operand</parameter> falls in a histogram
         having <parameter>count</parameter> equal-width buckets spanning the
         range <parameter>low</parameter> to <parameter>high</parameter>.
-        Returns <literal>0</literal>
+        The buckets have inclusive lower bounds and exclusive upper bounds.
+        Returns <literal>0</literal> for an input less
+        than <parameter>low</parameter>,
         or <literal><parameter>count</parameter>+1</literal> for an input
-        outside that range.
+        greater than or equal to <parameter>high</parameter>.
+        If <parameter>low</parameter> &gt; <parameter>high</parameter>,
+        the behavior is mirror-reversed, with bucket <literal>1</literal>
+        now being the one just below <parameter>low</parameter>, and the
+        inclusive bounds now being on the upper side.
        </para>
        <para>
         <literal>width_bucket(5.35, 0.024, 10.06, 5)</literal>
         <returnvalue>3</returnvalue>
+       </para>
+       <para>
+        <literal>width_bucket(9, 10, 0, 10)</literal>
+        <returnvalue>2</returnvalue>
        </para></entry>
       </row>
 
@@ -1804,8 +1814,8 @@ SELECT NOT(ROW(table.*) IS NOT NULL) FROM TABLE; -- detect at least one null in 
        <para>
         Returns the number of the bucket in
         which <parameter>operand</parameter> falls given an array listing the
-        lower bounds of the buckets.  Returns <literal>0</literal> for an
-        input less than the first lower
+        inclusive lower bounds of the buckets.
+        Returns <literal>0</literal> for an input less than the first lower
         bound.  <parameter>operand</parameter> and the array elements can be
         of any type having standard comparison operators.
         The <parameter>thresholds</parameter> array <emphasis>must be
@@ -10687,7 +10697,7 @@ SELECT date_bin('15 minutes', TIMESTAMP '2020-02-11 15:44:17', TIMESTAMP '2001-0
   </sect2>
 
   <sect2 id="functions-datetime-zoneconvert">
-   <title><literal>AT TIME ZONE and AT LOCAL</literal></title>
+   <title><literal>AT TIME ZONE</literal> and <literal>AT LOCAL</literal></title>
 
    <indexterm>
     <primary>time zone</primary>
@@ -11014,10 +11024,10 @@ now()
     statement (more specifically, the time of receipt of the latest command
     message from the client).
     <function>statement_timestamp()</function> and <function>transaction_timestamp()</function>
-    return the same value during the first command of a transaction, but might
-    differ during subsequent commands.
+    return the same value during the first statement of a transaction, but might
+    differ during subsequent statements.
     <function>clock_timestamp()</function> returns the actual current time, and
-    therefore its value changes even within a single SQL command.
+    therefore its value changes even within a single SQL statement.
     <function>timeofday()</function> is a historical
     <productname>PostgreSQL</productname> function.  Like
     <function>clock_timestamp()</function>, it returns the actual current time,
@@ -14151,7 +14161,7 @@ CREATE TYPE rainbow AS ENUM ('red', 'orange', 'yellow', 'green', 'blue', 'purple
  <sect1 id="functions-uuid">
   <title>UUID Functions</title>
 
-  <indexterm zone="datatype-uuid">
+  <indexterm zone="functions-uuid">
    <primary>UUID</primary>
    <secondary>generating</secondary>
   </indexterm>
@@ -27174,6 +27184,31 @@ SELECT currval(pg_get_serial_sequence('sometable', 'id'));
         details.
        </para></entry>
       </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>pg_get_multixact_members</primary>
+        </indexterm>
+        <function>pg_get_multixact_members</function> ( <parameter>multixid</parameter> <type>xid</type> )
+        <returnvalue>setof record</returnvalue>
+        ( <parameter>xid</parameter> <type>xid</type>,
+        <parameter>mode</parameter> <type>text</type> )
+       </para>
+       <para>
+        Returns the transaction ID and lock mode for each member of the
+        specified multixact ID.  The lock modes <literal>forupd</literal>,
+        <literal>fornokeyupd</literal>, <literal>sh</literal>, and
+        <literal>keysh</literal> correspond to the row-level locks
+        <literal>FOR UPDATE</literal>, <literal>FOR NO KEY UPDATE</literal>,
+        <literal>FOR SHARE</literal>, and <literal>FOR KEY SHARE</literal>,
+        respectively, as described in <xref linkend="locking-rows"/>.  Two
+        additional modes are specific to multixacts:
+        <literal>nokeyupd</literal>, used by updates that do not modify key
+        columns, and <literal>upd</literal>, used by updates or deletes that
+        modify key columns.
+       </para></entry>
+      </row>
      </tbody>
     </tgroup>
    </table>
@@ -27182,7 +27217,8 @@ SELECT currval(pg_get_serial_sequence('sometable', 'id'));
     The internal transaction ID type <type>xid</type> is 32 bits wide and
     wraps around every 4 billion transactions.  However,
     the functions shown in <xref linkend="functions-pg-snapshot"/>, except
-    <function>age</function> and <function>mxid_age</function>, use a
+    <function>age</function>, <function>mxid_age</function>, and
+    <function>pg_get_multixact_members</function>, use a
     64-bit type <type>xid8</type> that does not wrap around during the life
     of an installation and can be converted to <type>xid</type> by casting if
     required;  see <xref linkend="transaction-id"/> for details.
@@ -29177,7 +29213,7 @@ postgres=# SELECT '0/0'::pg_lsn + pd.segment_number * ps.setting::int + :offset 
       </row>
 
       <row>
-       <entry role="func_table_entry"><para role="func_signature">
+       <entry id="pg-logical-slot-get-binary-changes" role="func_table_entry"><para role="func_signature">
         <indexterm>
          <primary>pg_logical_slot_get_binary_changes</primary>
         </indexterm>
@@ -29448,7 +29484,9 @@ postgres=# SELECT '0/0'::pg_lsn + pd.segment_number * ps.setting::int + :offset 
         standby server. Temporary synced slots, if any, cannot be used for
         logical decoding and must be dropped after promotion. See
         <xref linkend="logicaldecoding-replication-slots-synchronization"/> for details.
-        Note that this function cannot be executed if
+        Note that this function is primarily intended for testing and
+        debugging purposes and should be used with caution. Additionally,
+        this function cannot be executed if
         <link linkend="guc-sync-replication-slots"><varname>
         sync_replication_slots</varname></link> is enabled and the slotsync
         worker is already running to perform the synchronization of slots.

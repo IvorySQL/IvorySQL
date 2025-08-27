@@ -4,7 +4,7 @@
 use strict;
 use warnings FATAL => 'all';
 
-use Cwd qw(abs_path);
+use Cwd            qw(abs_path);
 use File::Basename qw(dirname);
 use File::Compare;
 use File::Find qw(find);
@@ -81,7 +81,7 @@ if (   (defined($ENV{olddump}) && !defined($ENV{oldinstall}))
 }
 
 # Paths to the dumps taken during the tests.
-my $tempdir    = PostgreSQL::Test::Utils::tempdir;
+my $tempdir = PostgreSQL::Test::Utils::tempdir;
 my $dump1_file = "$tempdir/dump1.sql";
 my $dump2_file = "$tempdir/dump2.sql";
 
@@ -215,9 +215,9 @@ else
 	# Create databases with names covering most ASCII bytes.  The
 	# first name exercises backslashes adjacent to double quotes, a
 	# Windows special case.
-	generate_db($oldnode, 'regression\\"\\', 1,  45,  '\\\\"\\\\\\');
-	generate_db($oldnode, 'regression',      46, 90,  '');
-	generate_db($oldnode, 'regression',      91, 127, '');
+	generate_db($oldnode, 'regression\\"\\', 1, 45, '\\\\"\\\\\\');
+	generate_db($oldnode, 'regression', 46, 90, '');
+	generate_db($oldnode, 'regression', 91, 127, '');
 
 	# Grab any regression options that may be passed down by caller.
 	my $extra_opts = $ENV{EXTRA_REGRESS_OPTS} || "";
@@ -315,7 +315,8 @@ if (defined($ENV{oldinstall}))
 # that we need to use pg_dumpall from the new node here.
 my @dump_command = (
 	'pg_dumpall', '--no-sync', '-d', $oldnode->connstr('postgres'),
-	'-f',         $dump1_file);
+	'--restrict-key=test',
+	'-f', $dump1_file);
 # --extra-float-digits is needed when upgrading from a version older than 11.
 push(@dump_command, '--extra-float-digits', '0')
   if ($oldnode->pg_version < 12);
@@ -389,15 +390,14 @@ $oldnode->stop;
 command_fails(
 	[
 		'pg_upgrade', '--no-sync',
-		'-d',         $oldnode->data_dir,
-		'-D',         $newnode->data_dir,
-		'-b',         $oldbindir . '/does/not/exist/',
-		'-B',         $newbindir,
-		'-s',         $newnode->host,
-		'-p',         $oldnode->port,
-		'-P',         $newnode->port,
-		$mode,
-		'--check',
+		'-d', $oldnode->data_dir,
+		'-D', $newnode->data_dir,
+		'-b', $oldbindir . '/does/not/exist/',
+		'-B', $newbindir,
+		'-s', $newnode->host,
+		'-p', $oldnode->port,
+		'-P', $newnode->port,
+		$mode, '--check',
 	],
 	'run of pg_upgrade --check for new instance with incorrect binary path');
 ok(-d $newnode->data_dir . "/pg_upgrade_output.d",
@@ -439,12 +439,11 @@ $oldnode->stop;
 # --check command works here, cleans up pg_upgrade_output.d.
 command_ok(
 	[
-		'pg_upgrade', '--no-sync',        '-d', $oldnode->data_dir,
-		'-D',         $newnode->data_dir, '-b', $oldbindir,
-		'-B',         $newbindir,         '-s', $newnode->host,
-		'-p',         $oldnode->port,     '-P', $newnode->port,
-		$mode,
-		'--check',
+		'pg_upgrade', '--no-sync', '-d', $oldnode->data_dir,
+		'-D', $newnode->data_dir, '-b', $oldbindir,
+		'-B', $newbindir, '-s', $newnode->host,
+		'-p', $oldnode->port, '-P', $newnode->port,
+		$mode, '--check',
 	],
 	'run of pg_upgrade --check for new instance');
 ok(!-d $newnode->data_dir . "/pg_upgrade_output.d",
@@ -453,10 +452,10 @@ ok(!-d $newnode->data_dir . "/pg_upgrade_output.d",
 # Actual run, pg_upgrade_output.d is removed at the end.
 command_ok(
 	[
-		'pg_upgrade', '--no-sync',        '-d', $oldnode->data_dir,
-		'-D',         $newnode->data_dir, '-b', $oldbindir,
-		'-B',         $newbindir,         '-s', $newnode->host,
-		'-p',         $oldnode->port,     '-P', $newnode->port,
+		'pg_upgrade', '--no-sync', '-d', $oldnode->data_dir,
+		'-D', $newnode->data_dir, '-b', $oldbindir,
+		'-B', $newbindir, '-s', $newnode->host,
+		'-p', $oldnode->port, '-P', $newnode->port,
 		$mode,
 	],
 	'run of pg_upgrade for new instance');
@@ -502,7 +501,8 @@ is( $result,
 # Second dump from the upgraded instance.
 @dump_command = (
 	'pg_dumpall', '--no-sync', '-d', $newnode->connstr('postgres'),
-	'-f',         $dump2_file);
+	'--restrict-key=test',
+	'-f', $dump2_file);
 # --extra-float-digits is needed when upgrading from a version older than 11.
 push(@dump_command, '--extra-float-digits', '0')
   if ($oldnode->pg_version < 12);
