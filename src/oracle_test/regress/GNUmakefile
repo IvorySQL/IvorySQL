@@ -121,7 +121,7 @@ ORACLE_REGRESS_OPTS = --dlpath=. --max-concurrent-tests=20 \
 oracle-check: all
 	$(oracle_regress_check) $(ORACLE_REGRESS_OPTS) --schedule=$(srcdir)/parallel_schedule $(MAXCONNOPT) $(EXTRA_TESTS)
 
-oracle-check-tests: all | temp-install
+oracle-check-tests: all | oracle-temp-install
 	$(oracle_regress_check) $(ORACLE_REGRESS_OPTS) $(MAXCONNOPT) $(TESTS) $(EXTRA_TESTS)
 
 oracle-installcheck: all
@@ -142,7 +142,7 @@ runtest-parallel: installcheck-parallel oracle-installcheck-parallel
 bigtest: all
 	$(oracle_regress_installcheck) $(ORACLE_REGRESS_OPTS) --schedule=$(srcdir)/parallel_schedule --max-connections=1 numeric_big
 
-bigcheck: all | temp-install
+bigcheck: all | oracle-temp-install
 	$(oracle_regress_check) $(ORACLE_REGRESS_OPTS) --schedule=$(srcdir)/parallel_schedule $(MAXCONNOPT) numeric_big
 
 

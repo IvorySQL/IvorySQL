@@ -1,4 +1,4 @@
-# src/test/modules/test_resowner/Makefile
+# src/oracle_test/modules/test_resowner/Makefile
 
 MODULE_big = test_resowner
 OBJS = \
@@ -17,7 +17,7 @@ PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
 else
-subdir = src/test/modules/test_resowner
+subdir = src/oracle_test/modules/test_resowner
 top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 include $(top_srcdir)/contrib/contrib-global.mk
