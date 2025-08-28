@@ -2842,6 +2842,8 @@ alter_table_cmd:
 					n->subtype = AT_AlterConstraint;
 					n->def = (Node *) c;
 					c->conname = $3;
+					if ($4 & (CAS_NOT_ENFORCED | CAS_ENFORCED))
+                        c->alterEnforceability = true;
 					if ($4 & (CAS_DEFERRABLE | CAS_NOT_DEFERRABLE |
 							  CAS_INITIALLY_DEFERRED | CAS_INITIALLY_IMMEDIATE))
 						c->alterDeferrability = true;
@@ -2850,7 +2852,10 @@ alter_table_cmd:
 					processCASbits($4, @4, "FOREIGN KEY",
 									&c->deferrable,
 									&c->initdeferred,
-									NULL, NULL, &c->noinherit, yyscanner);
+									&c->is_enforced,
+									NULL,
+									&c->noinherit,
+									yyscanner);
 					$$ = (Node *) n;
 				}
 			/* ALTER TABLE <name> ALTER CONSTRAINT INHERIT */
@@ -4582,7 +4587,7 @@ ConstraintElem:
 					n->fk_del_set_cols = ($10)->deleteAction->cols;
 					processCASbits($11, @11, "FOREIGN KEY",
 								   &n->deferrable, &n->initdeferred,
-								   NULL, &n->skip_validation, NULL,
+								   &n->is_enforced, &n->skip_validation, NULL,
 								   yyscanner);
 					n->initially_valid = !n->skip_validation;
 					$$ = (Node *) n;
