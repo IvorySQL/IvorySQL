@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2024, PostgreSQL Global Development Group
+# Copyright (c) 2022-2025, PostgreSQL Global Development Group
 
 subdir('brin')
 subdir('commit_ts')
@@ -13,6 +13,7 @@ subdir('oauth_validator')
 subdir('plsample')
 subdir('spgist_name_ops')
 subdir('ssl_passphrase_callback')
+subdir('test_aio')
 subdir('test_bloomfilter')
 subdir('test_copy_callbacks')
 subdir('test_custom_rmgrs')

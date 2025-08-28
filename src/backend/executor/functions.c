@@ -806,7 +806,7 @@ init_execution_state(SQLFunctionCachePtr fcache)
 															  fcache->func->rettupdesc,
 															  slot);
 		else
-			fcache->junkFilter = ExecInitJunkFilter(resulttlist, slot);
+			fcache->junkFilter = ExecInitJunkFilter(resulttlist, false, slot);
 	}
 
 	if (fcache->func->returnsTuple)
@@ -936,6 +936,7 @@ prepare_next_query(SQLFunctionHashEntry *func)
 	CompleteCachedPlan(plansource,
 					   queryTree_list,
 					   NULL,
+					   &func->rettype,
 					   NULL,
 					   0,
 					   (ParserSetupHook) sql_fn_parser_setup,
