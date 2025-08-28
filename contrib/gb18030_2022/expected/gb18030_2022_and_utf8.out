@@ -955,11 +955,11 @@ show shared_preload_libraries;
 (1 row)
 
 \dx
-                       List of installed extensions
-     Name     | Version |   Schema   |             Description             
---------------+---------+------------+-------------------------------------
- gb18030_2022 | 1.0     | pg_catalog | support gb18030 2022 with extension
- plpgsql      | 1.0     | pg_catalog | PL/pgSQL procedural language
+                                List of installed extensions
+     Name     | Version | Default version |   Schema   |             Description             
+--------------+---------+-----------------+------------+-------------------------------------
+ gb18030_2022 | 1.0     | 1.0             | pg_catalog | support gb18030 2022 with extension
+ plpgsql      | 1.0     | 1.0             | pg_catalog | PL/pgSQL procedural language
 (2 rows)
 
 SELECT count(0)
