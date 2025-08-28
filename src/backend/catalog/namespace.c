@@ -44,7 +44,6 @@
 #include "catalog/pg_type.h"
 #include "catalog/pg_package.h"
 #include "commands/packagecmds.h"
-#include "commands/dbcommands.h"
 #include "common/hashfn_unstable.h"
 #include "funcapi.h"
 #include "mb/pg_wchar.h"

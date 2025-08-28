@@ -66,7 +66,6 @@
 #include "catalog/pg_package.h"
 #include "catalog/pg_package_body.h"
 #include "commands/packagecmds.h"
-#include "commands/dbcommands.h"
 #include "commands/defrem.h"
 #include "commands/event_trigger.h"
 #include "commands/extension.h"
