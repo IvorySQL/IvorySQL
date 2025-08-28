@@ -87,7 +87,7 @@ variable_stmt:
 	| K_VARIABLE opt_varname truncate_char
 		{
 			/*
-			 * The weird behavior of oracle, when encountering these characters 
+			 * Oracle's unusual behavior, when encountering these characters 
 			 * represented by $3, ignore these characters and the following text.
 			 */
 			PsqlScanState		state = psql_yyget_extra(yyscanner);

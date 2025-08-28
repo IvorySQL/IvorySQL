@@ -3,7 +3,7 @@
  * File: psqlplus.h
  *
  * Abstract: 
- * 		lexical scanner for client commands.
+ *    Lexical scanner for Oracle-compatible client commands.
  *
  * Authored by zhenmingyang@highgo.com, 20221221.
  *
@@ -19,32 +19,38 @@
 
 #include "fe_utils/psqlscan_int.h"
 
-#define PSQL_KEYWORD(a,b,c) {a,b,c},
-
 /*
- * Keyword categories --- should match lists in psqlplusparse.y,
- * the keyword categories may not be useful at the moment,  but
- * the name of the "object" created by the some Oracle client
- * command is allowed to have the same name as the keyword ,
- * which can use this to distinguish.
+ * Keyword categories - should match lists in psqlplusparse.y
+ * 
+ * These categories may not be actively used currently, but they allow
+ * object names created by Oracle client commands to have the same name
+ * as keywords by providing a way to distinguish between them.
  */
 #define UNRESERVED_PSQL_KEYWORD		0
 #define RESERVED_PSQL_KEYWORD		1
 
+/*
+ * Structure representing a SQL keyword for the scanner
+ */
 typedef struct PsqlScanKeyword
 {
-	const char *name;			/* in lower case */
+	const char *name;			/* keyword name in lower case */
 	int16		value;			/* grammar's token code */
-	int16		category;		/* see codes above */
+	int16		category;		/* keyword category (UNRESERVED/RESERVED) */
 } PsqlScanKeyword;
 
+/* Macro for defining keywords */
+#define PSQL_KEYWORD(name,value,category) {name,value,category},
+
+/* Macro to get extra data from yyscanner */
 #define psql_yyget_extra(yyscanner) (*((PsqlScanStateData **) (yyscanner)))
 
 /*
- * You can compile the psql client separately from the source code.
- * In order not to depend on the backend pg_type_d.h file, declare
- * the type OID macro here.  If you modify the OID values of these
- * types, pay attention to keeping in sync with pg_type_d.h.
+ * Oracle-compatible type OIDs
+ * 
+ * These are declared here to avoid dependency on backend pg_type_d.h
+ * when compiling the psql client separately. If modifying these OID
+ * values, ensure synchronization with pg_type_d.h.
  */
 #define ORACHARCHAROID		9500
 #define ORACHARBYTEOID		9501
@@ -54,24 +60,29 @@ typedef struct PsqlScanKeyword
 #define BINARY_FLOATOID		9522
 #define BINARY_DOUBLEOID	9524
 
-/* Maxsize of char and varchar2 within Oracle */
-#define MaxOraCharLen 2000
-#define MaxOraVarcharLen 32767
+/* Maximum sizes for Oracle character types */
+#define MaxOraCharLen 2000	/* Maximum length for CHAR */
+#define MaxOraVarcharLen 32767	/* Maximum length for VARCHAR2 */
 
 /*
- * The type of yyscanner is opaque outside psqlplus.l.
+ * Scanner interface functions
+ * 
+ * The type of yyscanner is opaque outside psqlplus.l, so we forward declare
+ * YYSTYPE and declare the external functions needed by the parser.
  */
-//#define yyscan_t  void *
 union YYSTYPE;
 
-/* callback functions for our flex lexer */
-static const Ora_psqlScanCallbacks psqlplus_callbacks = {
-	NULL,
-};
-
-extern int	psqlplus_yyparse(yyscan_t yyscanner);
-extern int	psqlplus_yylex(union YYSTYPE *lvalp, yyscan_t yyscanner);
-extern void psqlplus_yyerror(yyscan_t yyscanner, const char *message);
+/* Scanner lifecycle management */
 extern yyscan_t psqlplus_scanner_init(PsqlScanState state);
 extern void psqlplus_scanner_finish(yyscan_t yyscanner);
+/* Parser interface functions */
+extern int psqlplus_yyparse(yyscan_t yyscanner);
+extern int psqlplus_yylex(union YYSTYPE *lvalp, yyscan_t yyscanner);
+extern void psqlplus_yyerror(yyscan_t yyscanner, const char *message);
+
+/* Callback functions for the flex lexer */
+static const Ora_psqlScanCallbacks psqlplus_callbacks = {
+	NULL,	 /* placeholder for future callback functions */
+};
+
 #endif   /* PSQLPLUS_H */

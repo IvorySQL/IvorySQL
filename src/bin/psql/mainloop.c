@@ -433,250 +433,256 @@ MainLoop(FILE *source)
 								pset.encoding, standard_strings());
 		}
 		/*
-		 * At present, compatible-oracle client commands are all single-line
-		 * commands, so we only scan the input of stmt_lineno = 1, which can
+		 * Currently, compatible-oracle client commands are all single-line
+		 * commands, so we only scan the input when stmt_lineno = 1, which can
 		 * avoid the performance loss caused by the parser invoked by multi-line
 		 * commands.
 		 *
 		 * Note:
-		 *	Oracle client command also extends over multiple lines, but
-		 *	must using the SQL*Plus command continuation character(eg: -),
-		 *	the ontinuation character we haven't implemented it yet, so for
-		 *	the time being we're still assuming that these client commands
-		 *	are all one-liners.
+		 * Oracle client commands can also extend over multiple lines, but
+		 * must use the SQL*Plus command continuation character (e.g., -).
+		 * Since we haven't implemented this continuation character yet, we
+		 * temporarily assume that these client commands are all single-line.
 		 */
 		if (db_mode == DB_ORACLE && pset.stmt_lineno == 1)
 		{
-			PsqlScanState	pstate;
-			yyscan_t		yyscanner;
-			char			*psqlplus_line = pg_strdup(line);;
+		    PsqlScanState	pstate;
+		    yyscan_t		yyscanner;
+		    char			*psqlplus_line = pg_strdup(line); // Copy current input line for Oracle command processing
 
-			pstate = ora_psql_scan_create(&psqlplus_callbacks);
-			ora_psql_scan_setup(pstate, psqlplus_line,
-								strlen(psqlplus_line),
-								pset.encoding,
-								standard_strings());
-			
-			yyscanner = psqlplus_scanner_init(pstate);
-			if (psqlplus_yyparse(yyscanner) == 0)
-			{
-				/* Parser success, i.e. this is a ora client command */
-				psqlplus_cmd	*psqlpluscmd = pstate->psqlpluscmd;
-				
-				switch(psqlpluscmd->cmd_type)
-				{
-					case PSQLPLUS_CMD_VARIABLE:
-						{
-							psqlplus_cmd_var *bind_var = (psqlplus_cmd_var *) pstate->psqlpluscmd;
+		    // Create and initialize Oracle compatibility mode scanning state
+		    pstate = ora_psql_scan_create(&psqlplus_callbacks);
+		    ora_psql_scan_setup(pstate, psqlplus_line,
+		                        strlen(psqlplus_line),
+		                        pset.encoding,
+		                        standard_strings());
 
-							if (bind_var->list_bind_var == true)
-							{
-								if (bind_var->var_name)
-									ListBindVariables(pset.vars, bind_var->var_name);
-								else
-									ListBindVariables(pset.vars, NULL);
-							}
-							else if (bind_var->miss_termination_quote)
-							{
-								/*
-								 * init_value[0] indicates whether this is a single quote
-								 * or a double quote that is missing a terminating quote.
-								 */
-								char	quote = bind_var->init_value[0];
-								char	*str_double_quote = pg_malloc0(strlen(bind_var->init_value) * 2);	/* enough */
-								char	*ptr = str_double_quote;
-								int		i;
+		    // Initialize lexical analyzer
+		    yyscanner = psqlplus_scanner_init(pstate);
 
-								/* skip first char */
-								*ptr++ = bind_var->init_value[0];
-								i = 1;
+		    // Try to parse the command using syntax analyzer
+		    if (psqlplus_yyparse(yyscanner) == 0)
+		    {
+		        /* Parsing succeeded, this is a valid Oracle client command */
+		        psqlplus_cmd	*psqlpluscmd = pstate->psqlpluscmd;
 
-								while (bind_var->init_value[i] != '\0')
-								{
-									/* double write quote if needed */
-									if (bind_var->init_value[i] == quote)
-										*ptr++ = bind_var->init_value[i];
+		        switch(psqlpluscmd->cmd_type)
+		        {
+		            case PSQLPLUS_CMD_VARIABLE:
+		                {
+		                    psqlplus_cmd_var *bind_var = (psqlplus_cmd_var *) pstate->psqlpluscmd;
 
-									/* copy the character */
-									*ptr++ = bind_var->init_value[i];
-									i++;
-								}
+		                    if (bind_var->list_bind_var == true)
+		                    {
+		                        // List bind variables
+		                        if (bind_var->var_name)
+		                            ListBindVariables(pset.vars, bind_var->var_name);
+		                        else
+		                            ListBindVariables(pset.vars, NULL);
+		                    }
+		                    else if (bind_var->miss_termination_quote)
+		                    {
+		                        /*
+		                         * init_value[0] indicates the type of missing quote: single or double quote
+		                         */
+		                        char	quote = bind_var->init_value[0];
+		                        char	*str_double_quote = pg_malloc0(strlen(bind_var->init_value) * 2);	/* Ensure enough space */
+		                        char	*ptr = str_double_quote;
+		                        int		i;
 
-								*ptr = '\0';	/* Paranoid */
-								
-								/* report an error directly */
-								pg_log_error("string \"%s\" missing terminating quote (%c).",
-											str_double_quote ,
-											quote);
-								pg_free(str_double_quote);
-							}
-							else if (bind_var->assign_bind_var)
-							{
-								AssignBindVariable(pset.vars,
-												bind_var->var_name,
-												bind_var->init_value);
-							}
-							else
-							{
-								Assert(bind_var->vartype);
-								SetBindVariable(pset.vars,
-												bind_var->var_name,
-												bind_var->vartype->oid,
-												bind_var->vartype->typmod,
-												bind_var->init_value,
-												bind_var->initial_nonnull_value);
-							}
-						}
-						break;
-					case PSQLPLUS_CMD_PRINT:
-						{
-							psqlplus_cmd_print *pb = (psqlplus_cmd_print *) pstate->psqlpluscmd;
-							PrintBindVariables(pset.vars, pb->print_items);
-						}
-						break;
-					default:
-						pg_log_error("Invalid PSQL*PLUS client command.");
-						break;
-				}
+		                        // Skip the first character (starting quote)
+		                        *ptr++ = bind_var->init_value[0];
+		                        i = 1;
 
-				/* save client command in history */
-				if (pset.cur_cmd_interactive)
-				{
-					pg_append_history(psqlplus_line, history_buf);
-					pg_send_history(history_buf);
-				}
+		                        // Traverse string, duplicate quote character if needed
+		                        while (bind_var->init_value[i] != '\0')
+		                        {
+		                            if (bind_var->init_value[i] == quote)
+		                                *ptr++ = bind_var->init_value[i];
 
-				/* reset */
-				pset.stmt_lineno = 1;
-				resetPQExpBuffer(query_buf);
-				psql_scan_finish(scan_state);
-				ora_psql_scan_finish(ora_scan_state);
-				free(psqlplus_line);
-				free(line);
-				psqlplus_scanner_finish(yyscanner);
-				ora_psql_scan_destroy(pstate);
-				continue;
-			}
+		                            *ptr++ = bind_var->init_value[i];
+		                            i++;
+		                        }
 
-			/* Syntax parsing failed, but we know it's a client command */
-			if (pstate->is_sqlplus_cmd)
-			{
-				char	*token;
-				const char	*whitespace = " \t\n\r";
+		                        *ptr = '\0';	/* Safely terminate string */
 
-				token = strtokx(pstate->scanline, whitespace, NULL, NULL,
-								0, false, false, pset.encoding);
+		                        // Report error: missing terminating quote
+		                        pg_log_error("string \"%s\" missing terminating quote (%c).",
+		                                    str_double_quote ,
+		                                    quote);
+		                        pg_free(str_double_quote);
+		                    }
+		                    else if (bind_var->assign_bind_var)
+		                    {
+		                        // Assign value to bind variable
+		                        AssignBindVariable(pset.vars,
+		                                           bind_var->var_name,
+		                                           bind_var->init_value);
+		                    }
+		                    else
+		                    {
+		                        // Set bind variable with type
+		                        Assert(bind_var->vartype);
+		                        SetBindVariable(pset.vars,
+		                                        bind_var->var_name,
+		                                        bind_var->vartype->oid,
+		                                        bind_var->vartype->typmod,
+		                                        bind_var->init_value,
+		                                        bind_var->initial_nonnull_value);
+		                    }
+		                }
+		                break;
 
-				if (token && pg_strcasecmp(token, "variable") == 0)
-				{
-					token = strtokx(NULL, whitespace, NULL, NULL,
-									0, false, false, pset.encoding);
+		            case PSQLPLUS_CMD_PRINT:
+		                {
+		                    psqlplus_cmd_print *pb = (psqlplus_cmd_print *) pstate->psqlpluscmd;
+		                    PrintBindVariables(pset.vars, pb->print_items);
+		                }
+		                break;
 
-					/*
-					 * keep in sync with 'truncate_char' in psqlplusparse.y
-					 */
-					if (token)
-						token[strcspn(token, ",()")] = '\0';
+		            default:
+		                pg_log_error("Invalid PSQL*PLUS client command.");
+		                break;
+		        }
 
-					/*
-					 * Theoretically, this token is the name of a VARIABLE variable.
-					 * Check whether the reason for the parsing failure is that the
-					 * name is illegal.
-					 */
-					if (token && !ValidBindVariableName(token))
-						pg_log_error("Illegal variable name \"%s\"", token);
-					else
-						pg_log_error("Usage: VAR[IABLE] [ <variable> [ NUMBER | CHAR | CHAR (n [CHAR|BYTE]) |\n"
-							"\t\t\t VARCHAR2 (n [CHAR|BYTE]) | NCHAR | NCHAR (n) |\n"
-							"\t\t\t NVARCHAR2 (n) | BINARY_FLOAT | BINARY_DOUBLE ] ]");
-				}
-				else if (token && pg_strcasecmp(token, "print") == 0)
-				{
-					print_list	*pl = pg_malloc0(sizeof(print_list));
+		        /* If in interactive mode, add command to history */
+		        if (pset.cur_cmd_interactive)
+		        {
+		            pg_append_history(psqlplus_line, history_buf);
+		            pg_send_history(history_buf);
+		        }
 
-					pl->items = NULL;
-					pl->length = 0;
-					
-					token = strtokx(NULL, whitespace, NULL, NULL,
-									0, false, false, pset.encoding);
-					while (token)
-					{
-						print_item *item;
+		        /* Reset state */
+		        pset.stmt_lineno = 1;
+		        resetPQExpBuffer(query_buf);
+		        psql_scan_finish(scan_state);
+		        ora_psql_scan_finish(ora_scan_state);
+		        free(psqlplus_line);
+		        free(line);
+		        psqlplus_scanner_finish(yyscanner);
+		        ora_psql_scan_destroy(pstate);
+		        continue;
+		    }
 
-						pl->length++;
+		    /* Parsing failed but confirmed as Oracle client command */
+		    if (pstate->is_sqlplus_cmd)
+		    {
+		        char	*token;
+		        const char	*whitespace = " \t\n\r";
 
-						if (pl->length == 1)
-							pl->items = (print_item **) pg_malloc0(sizeof(print_item *) * 1);
-						else
-							pl->items = (print_item **) pg_realloc(pl->items, sizeof(print_item *) * pl->length);
+		        // Get the first token of the command (e.g., VARIABLE or PRINT)
+		        token = strtokx(pstate->scanline, whitespace, NULL, NULL,
+		                        0, false, false, pset.encoding);
 
-						/* Strips the leading and trailing quote characters of double quotes */
-						if (token[0] == '"' && token[strlen(token) - 1] == '"')
-						{
-							token[strlen(token) - 1] = '\0';
-							token++;
-						}
+		        if (token && pg_strcasecmp(token, "variable") == 0)
+		        {
+		            token = strtokx(NULL, whitespace, NULL, NULL,
+		                            0, false, false, pset.encoding);
 
-						item = pg_malloc0(sizeof(print_item));
-						item->bv_name = pg_strdup(token);
-						
-						if (ValidBindVariableName(item->bv_name))
-							item->valid = true;
-						else
-							item->valid = false;
-						pl->items[pl->length - 1] = item;
-						token = strtokx(NULL, whitespace, NULL, NULL,
-										0, false, false, pset.encoding);
-					}
+		            /*
+		             * Keep in sync with 'truncate_char' in psqlplusparse.y
+		             */
+		            if (token)
+		                token[strcspn(token, ",()")] = '\0';
 
-					if (pl->length == 0)
-						PrintBindVariables(pset.vars, NULL);
-					else
-						PrintBindVariables(pset.vars, pl);
+		            /*
+		             * Token should be the variable name after VARIABLE, check if it's valid
+		             */
+		            if (token && !ValidBindVariableName(token))
+		                pg_log_error("Illegal variable name \"%s\"", token);
+		            else
+		                pg_log_error("Usage: VAR[IABLE] [ <variable> [ NUMBER | CHAR | CHAR (n [CHAR|BYTE]) |\n"
+		                             "\t\t\t VARCHAR2 (n [CHAR|BYTE]) | NCHAR | NCHAR (n) |\n"
+		                             "\t\t\t NVARCHAR2 (n) | BINARY_FLOAT | BINARY_DOUBLE ] ]");
+		        }
+		        else if (token && pg_strcasecmp(token, "print") == 0)
+		        {
+		            print_list	*pl = pg_malloc0(sizeof(print_list));
 
-					while (pl->length > 0)
-					{
-						pl->length--;
-						if (pl->items &&
-							pl->items[pl->length] &&
-							pl->items[pl->length]->bv_name)
-						{
-							pg_free(pl->items[pl->length]->bv_name);
-							pg_free(pl->items[pl->length]);
-						}
+		            pl->items = NULL;
+		            pl->length = 0;
 
-						if (pl->length == 0)
-						{
-							pg_free(pl->items);
-							pg_free(pl);
-							break;
-						}
-					}
-				}
+		            token = strtokx(NULL, whitespace, NULL, NULL,
+		                            0, false, false, pset.encoding);
+		            while (token)
+		            {
+		                print_item *item;
 
-				/* save client command in history */
-				if (pset.cur_cmd_interactive)
-				{
-					pg_append_history(psqlplus_line, history_buf);
-					pg_send_history(history_buf);
-				}
+		                pl->length++;
 
-				/* reset */
-				pset.stmt_lineno = 1;
-				resetPQExpBuffer(query_buf);
-				psql_scan_finish(scan_state);
-				ora_psql_scan_finish(ora_scan_state);
-				free(psqlplus_line);
-				free(line);
-				psqlplus_scanner_finish(yyscanner);
-				ora_psql_scan_destroy(pstate);
-				continue;
-			}
-			
-			/* Not a compatible-oracle client command */
-			psqlplus_scanner_finish(yyscanner);
-			ora_psql_scan_destroy(pstate);
-			free(psqlplus_line);
+		                if (pl->length == 1)
+		                    pl->items = (print_item **) pg_malloc0(sizeof(print_item *) * 1);
+		                else
+		                    pl->items = (print_item **) pg_realloc(pl->items, sizeof(print_item *) * pl->length);
+
+		                /* Remove leading and trailing double quotes */
+		                if (token[0] == '"' && token[strlen(token) - 1] == '"')
+		                {
+		                    token[strlen(token) - 1] = '\0';
+		                    token++;
+		                }
+
+		                item = pg_malloc0(sizeof(print_item));
+		                item->bv_name = pg_strdup(token);
+
+		                if (ValidBindVariableName(item->bv_name))
+		                    item->valid = true;
+		                else
+		                    item->valid = false;
+
+		                pl->items[pl->length - 1] = item;
+		                token = strtokx(NULL, whitespace, NULL, NULL,
+		                                0, false, false, pset.encoding);
+		            }
+
+		            if (pl->length == 0)
+		                PrintBindVariables(pset.vars, NULL);
+		            else
+		                PrintBindVariables(pset.vars, pl);
+
+		            // Free memory
+		            while (pl->length > 0)
+		            {
+		                pl->length--;
+		                if (pl->items &&
+		                    pl->items[pl->length] &&
+		                    pl->items[pl->length]->bv_name)
+		                {
+		                    pg_free(pl->items[pl->length]->bv_name);
+		                    pg_free(pl->items[pl->length]);
+		                }
+
+		                if (pl->length == 0)
+		                {
+		                    pg_free(pl->items);
+		                    pg_free(pl);
+		                }
+		            }
+		        }
+
+		        /* Save command to history */
+		        if (pset.cur_cmd_interactive)
+		        {
+		            pg_append_history(psqlplus_line, history_buf);
+		            pg_send_history(history_buf);
+		        }
+
+		        /* Reset state */
+		        pset.stmt_lineno = 1;
+		        resetPQExpBuffer(query_buf);
+		        psql_scan_finish(scan_state);
+		        ora_psql_scan_finish(ora_scan_state);
+		        free(psqlplus_line);
+		        free(line);
+		        psqlplus_scanner_finish(yyscanner);
+		        ora_psql_scan_destroy(pstate);
+		        continue;
+		    }
+
+		    /* Not a compatible Oracle client command, release resources */
+		    psqlplus_scanner_finish(yyscanner);
+		    ora_psql_scan_destroy(pstate);
+		    free(psqlplus_line);
 		}
 
 		success = true;
