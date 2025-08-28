@@ -333,7 +333,7 @@ WHERE t1.typanalyze = p1.oid AND NOT
 
 SELECT d.oid, d.typname, d.typanalyze, t.oid, t.typname, t.typanalyze
 FROM pg_type d JOIN pg_type t ON d.typbasetype = t.oid
-WHERE d.typanalyze != t.typanalyze;
+WHERE d.typanalyze != t.typanalyze AND d.typnamespace != 9900;
 
 -- range_typanalyze should be used for all and only range types
 -- (but exclude domains, which we checked above)
@@ -397,8 +397,7 @@ WHERE pc.relkind IN ('r', 't', 'm') and
 SELECT a1.attrelid, a1.attname
 FROM pg_attribute as a1
 WHERE a1.attrelid = 0 OR a1.atttypid = 0 OR a1.attnum = 0 OR
-    a1.attcacheoff != -1 OR a1.attinhcount < 0 OR
-    (a1.attinhcount = 0 AND NOT a1.attislocal);
+    a1.attinhcount < 0 OR (a1.attinhcount = 0 AND NOT a1.attislocal);
 
 -- Cross-check attnum against parent relation
 
@@ -545,7 +544,7 @@ SELECT oid, typname, typtype, typelem, typarray
   FROM pg_type t
   WHERE oid < 16384 AND
     -- Exclude pseudotypes and composite types.
-    typtype NOT IN ('p', 'c') AND
+    typtype NOT IN ('p', 'c') AND t.typnamespace != 9900 AND
     -- These reg* types cannot be pg_upgraded, so discard them.
     oid != ALL(ARRAY['regproc', 'regprocedure', 'regoper',
                      'regoperator', 'regconfig', 'regdictionary',

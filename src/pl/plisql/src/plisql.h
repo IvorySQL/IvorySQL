@@ -1413,7 +1413,7 @@ extern int	plisql_peek(void);
 extern void plisql_peek2(int *tok1_p, int *tok2_p, int *tok1_loc,
 						  int *tok2_loc);
 extern int	plisql_scanner_errposition(int location);
-extern void plisql_yyerror(const char *message) pg_attribute_noreturn();
+pg_noreturn extern void plisql_yyerror(const char *message);
 extern int	plisql_location_to_lineno(int location);
 extern int	plisql_latest_lineno(void);
 extern void plisql_scanner_init(const char *str);

@@ -37,7 +37,8 @@ sub test_tablespace
 		has_streaming => 1);
 	$node_standby->append_conf('postgresql.conf',
 		"allow_in_place_tablespaces = on");
-	$node_standby->append_conf('postgresql.conf', "primary_slot_name = slot");
+	$node_standby->append_conf('postgresql.conf',
+		"primary_slot_name = slot");
 	$node_standby->start;
 
 	# Make sure the connection is made

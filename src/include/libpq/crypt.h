@@ -3,7 +3,7 @@
  * crypt.h
  *	  Interface to libpq/crypt.c
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/libpq/crypt.h
@@ -14,6 +14,19 @@
 #define PG_CRYPT_H
 
 #include "datatype/timestamp.h"
+
+/*
+ * Valid password hashes may be very long, but we don't want to store anything
+ * that might need out-of-line storage, since de-TOASTing won't work during
+ * authentication because we haven't selected a database yet and cannot read
+ * pg_class.  512 bytes should be more than enough for all practical use, and
+ * our own password encryption routines should never produce hashes longer than
+ * this.
+ */
+#define MAX_ENCRYPTED_PASSWORD_LEN (512)
+
+/* Enables deprecation warnings for MD5 passwords. */
+extern PGDLLIMPORT bool md5_password_warnings;
 
 /*
  * Types of password hashes or secrets.

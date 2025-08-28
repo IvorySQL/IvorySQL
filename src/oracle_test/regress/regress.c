@@ -22,8 +22,6 @@
 
 #include "access/detoast.h"
 #include "access/htup_details.h"
-#include "access/transam.h"
-#include "access/xact.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
@@ -39,6 +37,7 @@
 #include "optimizer/plancat.h"
 #include "parser/parse_coerce.h"
 #include "port/atomics.h"
+#include "postmaster/postmaster.h"	/* for MAX_BACKENDS */
 #include "storage/spin.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
@@ -81,7 +80,10 @@
 
 static void regress_lseg_construct(LSEG *lseg, Point *pt1, Point *pt2);
 
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(
+					.name = "regress",
+					.version = PG_VERSION
+);
 
 
 /* return the point where two paths intersect, or NULL if no intersection. */
@@ -380,8 +382,7 @@ ttdummy(PG_FUNCTION_ARGS)
 	newoff = Int32GetDatum((int32) DatumGetInt64(newoff));
 
 	/* Connect to SPI manager */
-	if ((ret = SPI_connect()) < 0)
-		elog(ERROR, "ttdummy (%s): SPI_connect returned %d", relname, ret);
+	SPI_connect();
 
 	/* Fetch tuple values and nulls */
 	cvals = (Datum *) palloc(natts * sizeof(Datum));
@@ -646,6 +647,31 @@ make_tuple_indirect(PG_FUNCTION_ARGS)
 	PG_RETURN_POINTER(newtup->t_data);
 }
 
+PG_FUNCTION_INFO_V1(get_environ);
+
+Datum
+get_environ(PG_FUNCTION_ARGS)
+{
+#if !defined(WIN32) || defined(_MSC_VER)
+	extern char **environ;
+#endif
+	int			nvals = 0;
+	ArrayType  *result;
+	Datum	   *env;
+
+	for (char **s = environ; *s; s++)
+		nvals++;
+
+	env = palloc(nvals * sizeof(Datum));
+
+	for (int i = 0; i < nvals; i++)
+		env[i] = CStringGetTextDatum(environ[i]);
+
+	result = construct_array_builtin(env, nvals, TEXTOID);
+
+	PG_RETURN_POINTER(result);
+}
+
 PG_FUNCTION_INFO_V1(regress_setenv);
 
 Datum
@@ -888,91 +914,7 @@ test_spinlock(void)
 		if (memcmp(struct_w_lock.data_after, "ef12", 4) != 0)
 			elog(ERROR, "padding after spinlock modified");
 	}
-
-	/*
-	 * Ensure that allocating more than INT32_MAX emulated spinlocks works.
-	 * That's interesting because the spinlock emulation uses a 32bit integer
-	 * to map spinlocks onto semaphores. There've been bugs...
-	 */
-#ifndef HAVE_SPINLOCKS
-	{
-		/*
-		 * Initialize enough spinlocks to advance counter close to wraparound.
-		 * It's too expensive to perform acquire/release for each, as those
-		 * may be syscalls when the spinlock emulation is used (and even just
-		 * atomic TAS would be expensive).
-		 */
-		for (uint32 i = 0; i < INT32_MAX - 100000; i++)
-		{
-			slock_t		lock;
-
-			SpinLockInit(&lock);
-		}
-
-		for (uint32 i = 0; i < 200000; i++)
-		{
-			slock_t		lock;
-
-			SpinLockInit(&lock);
-
-			SpinLockAcquire(&lock);
-			SpinLockRelease(&lock);
-			SpinLockAcquire(&lock);
-			SpinLockRelease(&lock);
-		}
-	}
-#endif
 }
-
-/*
- * Verify that performing atomic ops inside a spinlock isn't a
- * problem. Realistically that's only going to be a problem when both
- * --disable-spinlocks and --disable-atomics are used, but it's cheap enough
- * to just always test.
- *
- * The test works by initializing enough atomics that we'd conflict if there
- * were an overlap between a spinlock and an atomic by holding a spinlock
- * while manipulating more than NUM_SPINLOCK_SEMAPHORES atomics.
- *
- * NUM_TEST_ATOMICS doesn't really need to be more than
- * NUM_SPINLOCK_SEMAPHORES, but it seems better to test a bit more
- * extensively.
- */
-static void
-test_atomic_spin_nest(void)
-{
-	slock_t		lock;
-#define NUM_TEST_ATOMICS (NUM_SPINLOCK_SEMAPHORES + NUM_ATOMICS_SEMAPHORES + 27)
-	pg_atomic_uint32 atomics32[NUM_TEST_ATOMICS];
-	pg_atomic_uint64 atomics64[NUM_TEST_ATOMICS];
-
-	SpinLockInit(&lock);
-
-	for (int i = 0; i < NUM_TEST_ATOMICS; i++)
-	{
-		pg_atomic_init_u32(&atomics32[i], 0);
-		pg_atomic_init_u64(&atomics64[i], 0);
-	}
-
-	/* just so it's not all zeroes */
-	for (int i = 0; i < NUM_TEST_ATOMICS; i++)
-	{
-		EXPECT_EQ_U32(pg_atomic_fetch_add_u32(&atomics32[i], i), 0);
-		EXPECT_EQ_U64(pg_atomic_fetch_add_u64(&atomics64[i], i), 0);
-	}
-
-	/* test whether we can do atomic op with lock held */
-	SpinLockAcquire(&lock);
-	for (int i = 0; i < NUM_TEST_ATOMICS; i++)
-	{
-		EXPECT_EQ_U32(pg_atomic_fetch_sub_u32(&atomics32[i], i), i);
-		EXPECT_EQ_U32(pg_atomic_read_u32(&atomics32[i]), 0);
-		EXPECT_EQ_U64(pg_atomic_fetch_sub_u64(&atomics64[i], i), i);
-		EXPECT_EQ_U64(pg_atomic_read_u64(&atomics64[i]), 0);
-	}
-	SpinLockRelease(&lock);
-}
-#undef NUM_TEST_ATOMICS
 
 PG_FUNCTION_INFO_V1(test_atomic_ops);
 Datum
@@ -989,8 +931,6 @@ test_atomic_ops(PG_FUNCTION_ARGS)
 	 * closely enough related that that seems ok for now.
 	 */
 	test_spinlock();
-
-	test_atomic_spin_nest();
 
 	PG_RETURN_BOOL(true);
 }
@@ -1081,6 +1021,56 @@ Datum
 test_opclass_options_func(PG_FUNCTION_ARGS)
 {
 	PG_RETURN_NULL();
+}
+
+/* one-time tests for encoding infrastructure */
+PG_FUNCTION_INFO_V1(test_enc_setup);
+Datum
+test_enc_setup(PG_FUNCTION_ARGS)
+{
+	/* Test pg_encoding_set_invalid() */
+	for (int i = 0; i < _PG_LAST_ENCODING_; i++)
+	{
+		char		buf[2],
+					bigbuf[16];
+		int			len,
+					mblen,
+					valid;
+
+		if (pg_encoding_max_length(i) == 1)
+			continue;
+		pg_encoding_set_invalid(i, buf);
+		len = strnlen(buf, 2);
+		if (len != 2)
+			elog(WARNING,
+				 "official invalid string for encoding \"%s\" has length %d",
+				 pg_enc2name_tbl[i].name, len);
+		mblen = pg_encoding_mblen(i, buf);
+		if (mblen != 2)
+			elog(WARNING,
+				 "official invalid string for encoding \"%s\" has mblen %d",
+				 pg_enc2name_tbl[i].name, mblen);
+		valid = pg_encoding_verifymbstr(i, buf, len);
+		if (valid != 0)
+			elog(WARNING,
+				 "official invalid string for encoding \"%s\" has valid prefix of length %d",
+				 pg_enc2name_tbl[i].name, valid);
+		valid = pg_encoding_verifymbstr(i, buf, 1);
+		if (valid != 0)
+			elog(WARNING,
+				 "first byte of official invalid string for encoding \"%s\" has valid prefix of length %d",
+				 pg_enc2name_tbl[i].name, valid);
+		memset(bigbuf, ' ', sizeof(bigbuf));
+		bigbuf[0] = buf[0];
+		bigbuf[1] = buf[1];
+		valid = pg_encoding_verifymbstr(i, bigbuf, sizeof(bigbuf));
+		if (valid != 0)
+			elog(WARNING,
+				 "trailing data changed official invalid string for encoding \"%s\" to have valid prefix of length %d",
+				 pg_enc2name_tbl[i].name, valid);
+	}
+
+	PG_RETURN_VOID();
 }
 
 /*
@@ -1222,4 +1212,32 @@ binary_coercible(PG_FUNCTION_ARGS)
 	Oid			targettype = PG_GETARG_OID(1);
 
 	PG_RETURN_BOOL(IsBinaryCoercible(srctype, targettype));
+}
+
+/*
+ * Sanity checks for functions in relpath.h
+ */
+PG_FUNCTION_INFO_V1(test_relpath);
+Datum
+test_relpath(PG_FUNCTION_ARGS)
+{
+	RelPathStr	rpath;
+
+	/*
+	 * Verify that PROCNUMBER_CHARS and MAX_BACKENDS stay in sync.
+	 * Unfortunately I don't know how to express that in a way suitable for a
+	 * static assert.
+	 */
+	if ((int) ceil(log10(MAX_BACKENDS)) != PROCNUMBER_CHARS)
+		elog(WARNING, "mismatch between MAX_BACKENDS and PROCNUMBER_CHARS");
+
+	/* verify that the max-length relpath is generated ok */
+	rpath = GetRelationPath(OID_MAX, OID_MAX, OID_MAX, MAX_BACKENDS - 1,
+							INIT_FORKNUM);
+
+	if (strlen(rpath.str) != REL_PATH_STR_MAXLEN)
+		elog(WARNING, "maximum length relpath is if length %zu instead of %zu",
+			 strlen(rpath.str), REL_PATH_STR_MAXLEN);
+
+	PG_RETURN_VOID();
 }

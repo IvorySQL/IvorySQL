@@ -91,9 +91,19 @@ endif # not PGXS
 #
 # In a PGXS build, we cannot use the values inserted into Makefile.global
 # by configure, since the installation tree may have been relocated.
-# Instead get the path values from pg_config.
+# Instead get the path values from pg_config.  But users can specify
+# prefix explicitly, if they want to select their own installation
+# location.
 
-ifndef PGXS
+ifdef PGXS
+# Extension makefiles should set PG_CONFIG, but older ones might not
+ifndef PG_CONFIG
+PG_CONFIG = pg_config
+endif
+endif
+
+# This means: if ((not PGXS) or prefix)
+ifneq (,$(if $(PGXS),,1)$(prefix))
 
 # Note that prefix, exec_prefix, and datarootdir aren't defined in a PGXS build;
 # makefiles may only use the derived variables such as bindir.
@@ -151,11 +161,6 @@ localedir := @localedir@
 
 else # PGXS case
 
-# Extension makefiles should set PG_CONFIG, but older ones might not
-ifndef PG_CONFIG
-PG_CONFIG = pg_config
-endif
-
 bindir := $(shell $(PG_CONFIG) --bindir)
 datadir := $(shell $(PG_CONFIG) --sharedir)
 sysconfdir := $(shell $(PG_CONFIG) --sysconfdir)
@@ -194,6 +199,8 @@ with_systemd	= @with_systemd@
 with_gssapi	= @with_gssapi@
 with_krb_srvnam	= @with_krb_srvnam@
 with_ldap	= @with_ldap@
+with_libcurl	= @with_libcurl@
+with_liburing	= @with_liburing@
 with_libxml	= @with_libxml@
 with_libxslt	= @with_libxslt@
 with_llvm	= @with_llvm@
@@ -220,6 +227,9 @@ krb_srvtab = @krb_srvtab@
 ICU_CFLAGS		= @ICU_CFLAGS@
 ICU_LIBS		= @ICU_LIBS@
 
+LIBURING_CFLAGS		= @LIBURING_CFLAGS@
+LIBURING_LIBS		= @LIBURING_LIBS@
+
 TCLSH			= @TCLSH@
 TCL_LIBS		= @TCL_LIBS@
 TCL_LIB_SPEC		= @TCL_LIB_SPEC@
@@ -244,7 +254,7 @@ CPP = @CPP@
 CPPFLAGS = @CPPFLAGS@
 PG_SYSROOT = @PG_SYSROOT@
 
-override CPPFLAGS := $(ICU_CFLAGS) $(CPPFLAGS)
+override CPPFLAGS := $(ICU_CFLAGS) $(LIBURING_CFLAGS) $(CPPFLAGS)
 
 ifdef PGXS
 override CPPFLAGS := -I$(includedir_server) -I$(includedir_internal) $(CPPFLAGS)
@@ -266,10 +276,9 @@ CFLAGS_SL_MODULE = @CFLAGS_SL_MODULE@
 CXXFLAGS_SL_MODULE = @CXXFLAGS_SL_MODULE@
 CFLAGS_UNROLL_LOOPS = @CFLAGS_UNROLL_LOOPS@
 CFLAGS_VECTORIZE = @CFLAGS_VECTORIZE@
-CFLAGS_POPCNT = @CFLAGS_POPCNT@
 CFLAGS_CRC = @CFLAGS_CRC@
-CFLAGS_XSAVE = @CFLAGS_XSAVE@
 PERMIT_DECLARATION_AFTER_STATEMENT = @PERMIT_DECLARATION_AFTER_STATEMENT@
+PERMIT_MISSING_VARIABLE_DECLARATIONS = @PERMIT_MISSING_VARIABLE_DECLARATIONS@
 CXXFLAGS = @CXXFLAGS@
 
 LLVM_CPPFLAGS = @LLVM_CPPFLAGS@
@@ -487,6 +496,7 @@ cd $(srcdir) && \
    PATH="$(bindir):$(CURDIR):$$PATH" \
    PGPORT='6$(DEF_PGPORT)' top_builddir='$(CURDIR)/$(top_builddir)' \
    PG_REGRESS='$(CURDIR)/$(top_builddir)/src/test/regress/pg_regress' \
+   share_contrib_dir='$(DESTDIR)$(datadir)/$(datamoduledir)' \
    $(PROVE) $(PG_PROVE_FLAGS) $(PROVE_FLAGS) $(if $(PROVE_TESTS),$(PROVE_TESTS),t/*.pl)
 endef
 #IvorySQL:BEGIN - SQL oracle_test
@@ -542,6 +552,7 @@ cd $(srcdir) && \
    $(with_temp_install) \
    PGPORT='6$(DEF_PGPORT)' top_builddir='$(CURDIR)/$(top_builddir)' \
    PG_REGRESS='$(CURDIR)/$(top_builddir)/src/test/regress/pg_regress' \
+   share_contrib_dir='$(abs_top_builddir)/tmp_install$(datadir)/$(datamoduledir)' \
    $(PROVE) $(PG_PROVE_FLAGS) $(PROVE_FLAGS) $(if $(PROVE_TESTS),$(PROVE_TESTS),t/*.pl)
 endef
 #IvorySQL:BEGIN - SQL oracle_test
@@ -719,6 +730,16 @@ submake-libpgfeutils: | submake-generated-headers
 #
 # Testing support
 
+# Store any configure-time setting for PG_TEST_EXTRA, but let environment
+# variables override it to maintain the historical behavior of the tests.
+# (Standard `=` assignment would require devs to use a commandline option.)
+# This is skipped in PGXS mode to keep the setting from escaping into other
+# projects' builds.
+ifndef PGXS
+PG_TEST_EXTRA ?= @PG_TEST_EXTRA@
+export PG_TEST_EXTRA
+endif
+
 ifneq ($(USE_MODULE_DB),)
   PL_TESTDB = pl_regression_$(NAME)
   ifneq ($(MODULE_big),)
@@ -878,6 +899,7 @@ endif
 #
 ifdef COPT
    CFLAGS += $(COPT)
+   CXXFLAGS += $(COPT)
    LDFLAGS += $(COPT)
 endif
 
@@ -897,9 +919,6 @@ LIBOBJS = @LIBOBJS@
 # files needed for the chosen CRC-32C implementation
 PG_CRC32C_OBJS = @PG_CRC32C_OBJS@
 
-# files needed for the chosen popcount implementation
-PG_POPCNT_OBJS = @PG_POPCNT_OBJS@
-
 LIBS := -lpgcommon -lpgport $(LIBS)
 
 # to make ws2_32.lib the last library
@@ -918,7 +937,6 @@ TAS         = @TAS@
 %.c: %.l
 	$(FLEX) $(if $(FLEX_NO_BACKUP),-b) $(FLEXFLAGS) -o'$@' $<
 	@$(if $(FLEX_NO_BACKUP),if [ `wc -l <lex.backup` -eq 1 ]; then rm lex.backup; else echo "Scanner requires backup; see lex.backup." 1>&2; exit 1; fi)
-	$(if $(FLEX_FIX_WARNING),$(PERL) $(top_srcdir)/src/tools/fix-old-flex-code.pl '$@')
 
 %.c: %.y
 	$(if $(BISON_CHECK_CMD),$(BISON_CHECK_CMD))
@@ -969,12 +987,6 @@ $(top_builddir)/src/include/pg_config.h: $(top_builddir)/src/include/stamp-h ;
 
 $(top_builddir)/src/include/stamp-h: $(top_srcdir)/src/include/pg_config.h.in $(top_builddir)/config.status
 	cd $(top_builddir) && ./config.status src/include/pg_config.h
-
-# Also remake pg_config_ext.h from pg_config_ext.h.in, same logic as above.
-$(top_builddir)/src/include/pg_config_ext.h: $(top_builddir)/src/include/stamp-ext-h ;
-
-$(top_builddir)/src/include/stamp-ext-h: $(top_srcdir)/src/include/pg_config_ext.h.in $(top_builddir)/config.status
-	cd $(top_builddir) && ./config.status src/include/pg_config_ext.h
 
 # Also remake ecpg_config.h from ecpg_config.h.in if the latter changed, same
 # logic as above.

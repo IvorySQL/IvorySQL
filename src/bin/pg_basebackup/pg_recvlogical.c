@@ -3,7 +3,7 @@
  * pg_recvlogical.c - receive data from a logical decoding slot in a streaming
  *					  fashion and write it to a local file.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  src/bin/pg_basebackup/pg_recvlogical.c
@@ -18,8 +18,6 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include "access/xlog_internal.h"
-#include "common/fe_memutils.h"
 #include "common/file_perm.h"
 #include "common/logging.h"
 #include "fe_utils/option_utils.h"
@@ -635,6 +633,7 @@ StreamLogicalLog(void)
 	{
 		pg_log_error("unexpected termination of replication stream: %s",
 					 PQresultErrorMessage(res));
+		PQclear(res);
 		goto error;
 	}
 	PQclear(res);
@@ -946,13 +945,16 @@ main(int argc, char **argv)
 #endif
 
 	/*
-	 * Run IDENTIFY_SYSTEM to make sure we connected using a database specific
-	 * replication connection.
+	 * Run IDENTIFY_SYSTEM to check the connection type for each action.
+	 * --create-slot and --start actions require a database-specific
+	 * replication connection because they handle logical replication slots.
+	 * --drop-slot can remove replication slots from any replication
+	 * connection without this restriction.
 	 */
 	if (!RunIdentifySystem(conn, NULL, NULL, NULL, &db_name))
 		exit(1);
 
-	if (db_name == NULL)
+	if (!do_drop_slot && db_name == NULL)
 		pg_fatal("could not establish database-specific replication connection");
 
 	/*

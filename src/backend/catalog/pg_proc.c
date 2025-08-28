@@ -3,7 +3,7 @@
  * pg_proc.c
  *	  routines to support manipulation of the pg_proc relation
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -1049,7 +1049,7 @@ fmgr_sql_validator(PG_FUNCTION_ARGS)
 		callback_arg.prosrc = prosrc;
 
 		sqlerrcontext.callback = sql_function_parse_error_callback;
-		sqlerrcontext.arg = (void *) &callback_arg;
+		sqlerrcontext.arg = &callback_arg;
 		sqlerrcontext.previous = error_context_stack;
 		error_context_stack = &sqlerrcontext;
 
@@ -1136,7 +1136,7 @@ fmgr_sql_validator(PG_FUNCTION_ARGS)
 			(void) check_sql_fn_retval(querytree_list,
 									   rettype, rettupdesc,
 									   proc->prokind,
-									   false, NULL);
+									   false);
 		}
 
 		error_context_stack = sqlerrcontext.previous;

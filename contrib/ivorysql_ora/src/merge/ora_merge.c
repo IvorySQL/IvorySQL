@@ -88,38 +88,86 @@ static TM_Result heapTupleSatisfiesUpdate4Merge(HeapTuple htup, CommandId curcid
 /*
  * ExecProcessReturning --- evaluate a RETURNING list
  *
+ * context: context for the ModifyTable operation
  * resultRelInfo: current result rel
- * tupleSlot: slot holding tuple actually inserted/updated/deleted
+ * cmdType: operation/merge action performed (INSERT, UPDATE, or DELETE)
+ * oldSlot: slot holding old tuple deleted or updated
+ * newSlot: slot holding new tuple inserted or updated
  * planSlot: slot holding tuple returned by top subplan node
  *
- * Note: If tupleSlot is NULL, the FDW should have already provided econtext's
- * scan tuple.
+ * Note: If oldSlot and newSlot are NULL, the FDW should have already provided
+ * econtext's scan tuple and its old & new tuples are not needed (FDW direct-
+ * modify is disabled if the RETURNING list refers to any OLD/NEW values).
  *
  * Returns a slot holding the result tuple
  */
 static TupleTableSlot *
-IvyExecProcessReturning(ResultRelInfo *resultRelInfo,
-					 TupleTableSlot *tupleSlot,
+IvyExecProcessReturning(IvyModifyTableContext *context,
+					 ResultRelInfo *resultRelInfo,
+					 CmdType cmdType,
+					 TupleTableSlot *oldSlot,
+					 TupleTableSlot *newSlot,
 					 TupleTableSlot *planSlot)
 {
+	EState	   *estate = context->estate;
 	ProjectionInfo *projectReturning = resultRelInfo->ri_projectReturning;
 	ExprContext *econtext = projectReturning->pi_exprContext;
 
 	/* Make tuple and any needed join variables available to ExecProject */
-	if (tupleSlot)
-		econtext->ecxt_scantuple = tupleSlot;
+	switch (cmdType)
+	{
+		case CMD_INSERT:
+		case CMD_UPDATE:
+			/* return new tuple by default */
+			if (newSlot)
+				econtext->ecxt_scantuple = newSlot;
+			break;
+
+		case CMD_DELETE:
+			/* return old tuple by default */
+			if (oldSlot)
+				econtext->ecxt_scantuple = oldSlot;
+			break;
+
+		default:
+			elog(ERROR, "unrecognized commandType: %d", (int) cmdType);
+	}
 	econtext->ecxt_outertuple = planSlot;
 
+	/* Make old/new tuples available to ExecProject, if required */
+	if (oldSlot)
+		econtext->ecxt_oldtuple = oldSlot;
+	else if (projectReturning->pi_state.flags & EEO_FLAG_HAS_OLD)
+		econtext->ecxt_oldtuple = ExecGetAllNullSlot(estate, resultRelInfo);
+	else
+		econtext->ecxt_oldtuple = NULL; /* No references to OLD columns */
+
+	if (newSlot)
+		econtext->ecxt_newtuple = newSlot;
+	else if (projectReturning->pi_state.flags & EEO_FLAG_HAS_NEW)
+		econtext->ecxt_newtuple = ExecGetAllNullSlot(estate, resultRelInfo);
+	else
+		econtext->ecxt_newtuple = NULL; /* No references to NEW columns */
+
 	/*
-	 * RETURNING expressions might reference the tableoid column, so
-	 * reinitialize tts_tableOid before evaluating them.
+	 * Tell ExecProject whether or not the OLD/NEW rows actually exist.  This
+	 * information is required to evaluate ReturningExpr nodes and also in
+	 * ExecEvalSysVar() and ExecEvalWholeRowVar().
 	 */
-	econtext->ecxt_scantuple->tts_tableOid =
-		RelationGetRelid(resultRelInfo->ri_RelationDesc);
+	if (oldSlot == NULL)
+		projectReturning->pi_state.flags |= EEO_FLAG_OLD_IS_NULL;
+	else
+		projectReturning->pi_state.flags &= ~EEO_FLAG_OLD_IS_NULL;
+
+	if (newSlot == NULL)
+		projectReturning->pi_state.flags |= EEO_FLAG_NEW_IS_NULL;
+	else
+		projectReturning->pi_state.flags &= ~EEO_FLAG_NEW_IS_NULL;
 
 	/* Compute the RETURNING expressions */
 	return ExecProject(projectReturning);
 }
+
 
 /*
  * IvyExecMergeMatched:
@@ -133,6 +181,7 @@ IvyExecMergeMatched(IvyModifyTableContext *context, ResultRelInfo *resultRelInfo
 {
 	ModifyTableState *mtstate = context->mtstate;
 	List	  **mergeActions = resultRelInfo->ri_MergeActions;
+	ItemPointerData lockedtid;
 	List	   *actionStates;
 	TupleTableSlot *newslot = NULL;
 	TupleTableSlot *rslot = NULL;
@@ -169,15 +218,32 @@ IvyExecMergeMatched(IvyModifyTableContext *context, ResultRelInfo *resultRelInfo
 	 * target wholerow junk attr.
 	 */
 	Assert(tupleid != NULL || oldtuple != NULL);
+	ItemPointerSetInvalid(&lockedtid);
 	if (oldtuple != NULL)
+	{
+		Assert(!resultRelInfo->ri_needLockTagTuple);
 		ExecForceStoreHeapTuple(oldtuple, resultRelInfo->ri_oldTupleSlot,
 								false);
-	else if (!table_tuple_fetch_row_version(resultRelInfo->ri_RelationDesc,
-											tupleid,
-											SnapshotAny,
-											resultRelInfo->ri_oldTupleSlot))
-		elog(ERROR, "failed to fetch the target tuple");
-
+	}
+	else
+	{
+		if (resultRelInfo->ri_needLockTagTuple)
+		{
+			/*
+			 * This locks even for CMD_DELETE, for CMD_NOTHING, and for tuples
+			 * that don't match mas_whenqual.  MERGE on system catalogs is a
+			 * minor use case, so don't bother optimizing those.
+			 */
+			LockTuple(resultRelInfo->ri_RelationDesc, tupleid,
+					  InplaceUpdateTupleLock);
+			lockedtid = *tupleid;
+		}
+		if (!table_tuple_fetch_row_version(resultRelInfo->ri_RelationDesc,
+										   tupleid,
+										   SnapshotAny,
+										   resultRelInfo->ri_oldTupleSlot))
+			elog(ERROR, "failed to fetch the target tuple");
+	}
 	/*
 	 * Test the join condition.  If it's satisfied, perform a MATCHED action.
 	 * Otherwise, perform a NOT MATCHED BY SOURCE action.
@@ -248,14 +314,16 @@ lmerge_matched:
 				newslot = ExecProject(relaction->mas_proj);
 
 				mtstate->mt_merge_action = relaction;
-				context->cpUpdateRetrySlot = NULL;
+				context->cpDeletedSlot = NULL;
 
 				/* Fire row-level before update trigger */
 				if (!ExecUpdatePrologue(context, resultRelInfo,
-										 tupleid, NULL, newslot, NULL))
+										tupleid, NULL, newslot, &result))
 				{
-					result = TM_Ok;
-					break;
+					if (result == TM_Ok)
+						goto out;	/* "do nothing" */
+
+					break;		/* concurrent update/delete */
 				}
 
 				result = ExecUpdateAct(context, resultRelInfo, tupleid, NULL,
@@ -280,9 +348,10 @@ lmerge_matched:
 						if (ExecQual(del->mas_whenqual, econtext))
 						{
 							/* Fire row-level before delete trigger */
-							if (!ExecDeletePrologue(context, resultRelInfo, &newslot->tts_tid, NULL, NULL, NULL))
+							if (!ExecDeletePrologue(context, resultRelInfo, &newslot->tts_tid, NULL, NULL, &result))
 							{
-								result = TM_Ok;
+								if (result == TM_Ok)
+									goto out;	/* "do nothing" */
 								break;
 							}
 							result = execDelete4Merge(context, resultRelInfo, &newslot->tts_tid, false);
@@ -369,7 +438,7 @@ lmerge_matched:
 				 * let caller handle it under NOT MATCHED [BY TARGET] clauses.
 				 */
 				*matched = false;
-				return NULL;
+				goto out;
 
 			case TM_Updated:
 				{
@@ -443,7 +512,7 @@ lmerge_matched:
 								 * more to do.
 								 */
 								if (TupIsNull(epqslot))
-									return NULL;
+									goto out;
 
 								/*
 								 * If we got a NULL ctid from the subplan, the
@@ -461,6 +530,15 @@ lmerge_matched:
 								 * we need to switch to the NOT MATCHED BY
 								 * SOURCE case.
 								 */
+								if (resultRelInfo->ri_needLockTagTuple)
+								{
+									if (ItemPointerIsValid(&lockedtid))
+										UnlockTuple(resultRelInfo->ri_RelationDesc, &lockedtid,
+													InplaceUpdateTupleLock);
+									LockTuple(resultRelInfo->ri_RelationDesc, &context->tmfd.ctid,
+											  InplaceUpdateTupleLock);
+									lockedtid = context->tmfd.ctid;
+								}
 								if (!table_tuple_fetch_row_version(resultRelationDesc,
 																   &context->tmfd.ctid,
 																   SnapshotAny,
@@ -489,7 +567,7 @@ lmerge_matched:
 							 * MATCHED [BY TARGET] actions
 							 */
 							*matched = false;
-							return NULL;
+							goto out;
 
 						case TM_SelfModified:
 
@@ -517,13 +595,13 @@ lmerge_matched:
 
 							/* This shouldn't happen */
 							elog(ERROR, "attempted to update or delete invisible tuple");
-							return NULL;
+							goto out;
 
 						default:
 							/* see table_tuple_lock call in ExecDelete() */
 							elog(ERROR, "unexpected table_tuple_lock status: %u",
 								 result);
-							return NULL;
+							goto out;
 					}
 				}
 
@@ -541,14 +619,23 @@ lmerge_matched:
 			switch (commandType)
 			{
 				case CMD_UPDATE:
-					rslot = IvyExecProcessReturning(resultRelInfo, newslot,
-												 context->planSlot);
+					rslot = IvyExecProcessReturning(context,
+													resultRelInfo,
+													CMD_UPDATE,
+													resultRelInfo->ri_oldTupleSlot,
+													newslot,
+													context->planSlot);
+
 					break;
 
 				case CMD_DELETE:
-					rslot = IvyExecProcessReturning(resultRelInfo,
-												 resultRelInfo->ri_oldTupleSlot,
-												 context->planSlot);
+					rslot = IvyExecProcessReturning(context,
+												resultRelInfo,
+												CMD_DELETE,
+												resultRelInfo->ri_oldTupleSlot,
+												NULL,
+												context->planSlot);
+
 					break;
 
 				case CMD_NOTHING:
@@ -570,6 +657,10 @@ lmerge_matched:
 	/*
 	 * Successfully executed an action or no qualifying action was found.
 	 */
+out:
+	if (ItemPointerIsValid(&lockedtid))
+		UnlockTuple(resultRelInfo->ri_RelationDesc, &lockedtid,
+					InplaceUpdateTupleLock);
 	return rslot;
 }
 
@@ -740,9 +831,8 @@ IvytransformMergeStmt(ParseState *pstate, MergeStmt *stmt)
 	qry->jointree = makeFromExpr(pstate->p_joinlist, NULL);
 
 	/* Transform the RETURNING list, if any */
-	qry->returningList = transformReturningList(pstate, stmt->returningList,
+	transformReturningClause(pstate, qry, stmt->returningClause,
 												EXPR_KIND_MERGE_RETURNING);
-
 	/*
 	 * We now have a good query shape, so now look at the WHEN conditions and
 	 * action targetlists.

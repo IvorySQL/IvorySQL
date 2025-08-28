@@ -8,7 +8,7 @@
  * declarations should be put here.  However, we do include some stuff
  * that is meant to prevent conflicts between our code and Perl.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1995, Regents of the University of California
  *
  * src/pl/plperl/plperl_system.h
@@ -72,16 +72,10 @@
 #endif
 
 /*
- * Regarding bool, both PostgreSQL and Perl might use stdbool.h or not,
- * depending on configuration.  If both agree, things are relatively harmless.
- * If not, things get tricky.  If PostgreSQL does but Perl does not, define
- * HAS_BOOL here so that Perl does not redefine bool; this avoids compiler
- * warnings.  If PostgreSQL does not but Perl does, we need to undefine bool
- * after we include the Perl headers; see below.
+ * Define HAS_BOOL here so that Perl does not redefine bool.  We included
+ * <stdbool.h> in c.h.
  */
-#ifdef PG_USE_STDBOOL
 #define HAS_BOOL 1
-#endif
 
 /*
  * Get the basic Perl API.  We use PERL_NO_GET_CONTEXT mode so that our code
@@ -109,6 +103,7 @@
 #undef fstat
 #undef kill
 #undef listen
+#undef lseek
 #undef lstat
 #undef mkdir
 #undef open
@@ -179,19 +174,6 @@
 
 /* perl version and platform portability */
 #include "ppport.h"
-
-/*
- * perl might have included stdbool.h.  If we also did that earlier (see c.h),
- * then that's fine.  If not, we probably rejected it for some reason.  In
- * that case, undef bool and proceed with our own bool.  (Note that stdbool.h
- * makes bool a macro, but our own replacement is a typedef, so the undef
- * makes ours visible again).
- */
-#ifndef PG_USE_STDBOOL
-#ifdef bool
-#undef bool
-#endif
-#endif
 
 /* supply HeUTF8 if it's missing - ppport.h doesn't supply it, unfortunately */
 #ifndef HeUTF8

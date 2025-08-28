@@ -5,7 +5,8 @@
 
 #include "btree_gist.h"
 #include "btree_utils_var.h"
-#include "utils/builtins.h"
+#include "mb/pg_wchar.h"
+#include "utils/fmgrprotos.h"
 
 /*
 ** Text ops
@@ -192,7 +193,7 @@ Datum
 gbt_text_consistent(PG_FUNCTION_ARGS)
 {
 	GISTENTRY  *entry = (GISTENTRY *) PG_GETARG_POINTER(0);
-	void	   *query = (void *) DatumGetTextP(PG_GETARG_DATUM(1));
+	void	   *query = DatumGetTextP(PG_GETARG_DATUM(1));
 	StrategyNumber strategy = (StrategyNumber) PG_GETARG_UINT16(2);
 
 	/* Oid		subtype = PG_GETARG_OID(3); */
@@ -220,7 +221,7 @@ Datum
 gbt_bpchar_consistent(PG_FUNCTION_ARGS)
 {
 	GISTENTRY  *entry = (GISTENTRY *) PG_GETARG_POINTER(0);
-	void	   *query = (void *) DatumGetTextP(PG_GETARG_DATUM(1));
+	void	   *query = DatumGetTextP(PG_GETARG_DATUM(1));
 	StrategyNumber strategy = (StrategyNumber) PG_GETARG_UINT16(2);
 
 	/* Oid		subtype = PG_GETARG_OID(3); */

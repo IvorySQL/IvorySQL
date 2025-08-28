@@ -4,7 +4,7 @@
  *	  PlaceHolderVar and PlaceHolderInfo manipulation routines
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -310,6 +310,33 @@ fix_placeholder_input_needed_levels(PlannerInfo *root)
 										   PVC_INCLUDE_PLACEHOLDERS);
 
 		add_vars_to_targetlist(root, vars, phinfo->ph_eval_at);
+		list_free(vars);
+	}
+}
+
+/*
+ * rebuild_placeholder_attr_needed
+ *	  Put back attr_needed bits for Vars/PHVs needed in PlaceHolderVars.
+ *
+ * This is used to rebuild attr_needed/ph_needed sets after removal of a
+ * useless outer join.  It should match what
+ * fix_placeholder_input_needed_levels did, except that we call
+ * add_vars_to_attr_needed not add_vars_to_targetlist.
+ */
+void
+rebuild_placeholder_attr_needed(PlannerInfo *root)
+{
+	ListCell   *lc;
+
+	foreach(lc, root->placeholder_list)
+	{
+		PlaceHolderInfo *phinfo = (PlaceHolderInfo *) lfirst(lc);
+		List	   *vars = pull_var_clause((Node *) phinfo->ph_var->phexpr,
+										   PVC_RECURSE_AGGREGATES |
+										   PVC_RECURSE_WINDOWFUNCS |
+										   PVC_INCLUDE_PLACEHOLDERS);
+
+		add_vars_to_attr_needed(root, vars, phinfo->ph_eval_at);
 		list_free(vars);
 	}
 }

@@ -4,7 +4,7 @@
  *	  interface routines for the postgres GiST index access method.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -43,7 +43,7 @@ static void gistprunepage(Relation rel, Page page, Buffer buffer,
 
 
 #define ROTATEDIST(d) do { \
-	SplitPageLayout *tmp=(SplitPageLayout*)palloc0(sizeof(SplitPageLayout)); \
+	SplitPageLayout *tmp = (SplitPageLayout *) palloc0(sizeof(SplitPageLayout)); \
 	tmp->block.blkno = InvalidBlockNumber;	\
 	tmp->buffer = InvalidBuffer;	\
 	tmp->next = (d); \
@@ -65,6 +65,9 @@ gisthandler(PG_FUNCTION_ARGS)
 	amroutine->amoptsprocnum = GIST_OPTIONS_PROC;
 	amroutine->amcanorder = false;
 	amroutine->amcanorderbyop = true;
+	amroutine->amcanhash = false;
+	amroutine->amconsistentequality = false;
+	amroutine->amconsistentordering = false;
 	amroutine->amcanbackward = false;
 	amroutine->amcanunique = false;
 	amroutine->amcanmulticol = true;
@@ -91,6 +94,7 @@ gisthandler(PG_FUNCTION_ARGS)
 	amroutine->amvacuumcleanup = gistvacuumcleanup;
 	amroutine->amcanreturn = gistcanreturn;
 	amroutine->amcostestimate = gistcostestimate;
+	amroutine->amgettreeheight = NULL;
 	amroutine->amoptions = gistoptions;
 	amroutine->amproperty = gistproperty;
 	amroutine->ambuildphasename = NULL;
@@ -106,6 +110,8 @@ gisthandler(PG_FUNCTION_ARGS)
 	amroutine->amestimateparallelscan = NULL;
 	amroutine->aminitparallelscan = NULL;
 	amroutine->amparallelrescan = NULL;
+	amroutine->amtranslatestrategy = NULL;
+	amroutine->amtranslatecmptype = gisttranslatecmptype;
 
 	PG_RETURN_POINTER(amroutine);
 }
@@ -172,14 +178,13 @@ gistinsert(Relation r, Datum *values, bool *isnull,
 		oldCxt = MemoryContextSwitchTo(indexInfo->ii_Context);
 		giststate = initGISTstate(r);
 		giststate->tempCxt = createTempGistContext();
-		indexInfo->ii_AmCache = (void *) giststate;
+		indexInfo->ii_AmCache = giststate;
 		MemoryContextSwitchTo(oldCxt);
 	}
 
 	oldCxt = MemoryContextSwitchTo(giststate->tempCxt);
 
-	itup = gistFormTuple(giststate, r,
-						 values, isnull, true /* size is currently bogus */ );
+	itup = gistFormTuple(giststate, r, values, isnull, true);
 	itup->t_tid = *ht_ctid;
 
 	gistdoinsert(r, itup, 0, giststate, heapRel, false);
@@ -626,7 +631,7 @@ gistplacetopage(Relation rel, Size freespace, GISTSTATE *giststate,
 }
 
 /*
- * Workhouse routine for doing insertion into a GiST index. Note that
+ * Workhorse routine for doing insertion into a GiST index. Note that
  * this routine assumes it is invoked in a short-lived memory context,
  * so it does not bother releasing palloc'd allocations.
  */
@@ -1557,9 +1562,8 @@ initGISTstate(Relation index)
 	 * tuples during page split.  Also, B-tree is not adjusting tuples on
 	 * internal pages the way GiST does.
 	 */
-	giststate->nonLeafTupdesc = CreateTupleDescCopyConstr(index->rd_att);
-	giststate->nonLeafTupdesc->natts =
-		IndexRelationGetNumberOfKeyAttributes(index);
+	giststate->nonLeafTupdesc = CreateTupleDescTruncatedCopy(index->rd_att,
+															 IndexRelationGetNumberOfKeyAttributes(index));
 
 	for (i = 0; i < IndexRelationGetNumberOfKeyAttributes(index); i++)
 	{

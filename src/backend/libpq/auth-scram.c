@@ -80,7 +80,7 @@
  * general, after logging in, but let's do what we can here.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/libpq/auth-scram.c
@@ -101,6 +101,7 @@
 #include "libpq/crypt.h"
 #include "libpq/sasl.h"
 #include "libpq/scram.h"
+#include "miscadmin.h"
 
 static void scram_get_mechanisms(Port *port, StringInfo buf);
 static void *scram_init(Port *port, const char *selected_mech,
@@ -113,7 +114,9 @@ static int	scram_exchange(void *opaq, const char *input, int inputlen,
 const pg_be_sasl_mech pg_be_scram_mech = {
 	scram_get_mechanisms,
 	scram_init,
-	scram_exchange
+	scram_exchange,
+
+	PG_MAX_SASL_MESSAGE_LENGTH
 };
 
 /*
@@ -142,6 +145,7 @@ typedef struct
 
 	int			iterations;
 	char	   *salt;			/* base64-encoded */
+	uint8		ClientKey[SCRAM_MAX_KEY_LEN];
 	uint8		StoredKey[SCRAM_MAX_KEY_LEN];
 	uint8		ServerKey[SCRAM_MAX_KEY_LEN];
 
@@ -460,6 +464,13 @@ scram_exchange(void *opaq, const char *input, int inputlen,
 	if (*output)
 		*outputlen = strlen(*output);
 
+	if (result == PG_SASL_EXCHANGE_SUCCESS && state->state == SCRAM_AUTH_FINISHED)
+	{
+		memcpy(MyProcPort->scram_ClientKey, state->ClientKey, sizeof(MyProcPort->scram_ClientKey));
+		memcpy(MyProcPort->scram_ServerKey, state->ServerKey, sizeof(MyProcPort->scram_ServerKey));
+		MyProcPort->has_scram_keys = true;
+	}
+
 	return result;
 }
 
@@ -608,16 +619,19 @@ parse_scram_secret(const char *secret, int *iterations,
 	 * SCRAM-SHA-256$<iterations>:<salt>$<storedkey>:<serverkey>
 	 */
 	v = pstrdup(secret);
-	if ((scheme_str = strtok(v, "$")) == NULL)
+	scheme_str = strsep(&v, "$");
+	if (v == NULL)
 		goto invalid_secret;
-	if ((iterations_str = strtok(NULL, ":")) == NULL)
+	iterations_str = strsep(&v, ":");
+	if (v == NULL)
 		goto invalid_secret;
-	if ((salt_str = strtok(NULL, "$")) == NULL)
+	salt_str = strsep(&v, "$");
+	if (v == NULL)
 		goto invalid_secret;
-	if ((storedkey_str = strtok(NULL, ":")) == NULL)
+	storedkey_str = strsep(&v, ":");
+	if (v == NULL)
 		goto invalid_secret;
-	if ((serverkey_str = strtok(NULL, "")) == NULL)
-		goto invalid_secret;
+	serverkey_str = v;
 
 	/* Parse the fields */
 	if (strcmp(scheme_str, "SCRAM-SHA-256") != 0)
@@ -1135,7 +1149,6 @@ static bool
 verify_client_proof(scram_state *state)
 {
 	uint8		ClientSignature[SCRAM_MAX_KEY_LEN];
-	uint8		ClientKey[SCRAM_MAX_KEY_LEN];
 	uint8		client_StoredKey[SCRAM_MAX_KEY_LEN];
 	pg_hmac_ctx *ctx = pg_hmac_create(state->hash_type);
 	int			i;
@@ -1168,10 +1181,10 @@ verify_client_proof(scram_state *state)
 
 	/* Extract the ClientKey that the client calculated from the proof */
 	for (i = 0; i < state->key_length; i++)
-		ClientKey[i] = state->ClientProof[i] ^ ClientSignature[i];
+		state->ClientKey[i] = state->ClientProof[i] ^ ClientSignature[i];
 
 	/* Hash it one more time, and compare with StoredKey */
-	if (scram_H(ClientKey, state->hash_type, state->key_length,
+	if (scram_H(state->ClientKey, state->hash_type, state->key_length,
 				client_StoredKey, &errstr) < 0)
 		elog(ERROR, "could not hash stored key: %s", errstr);
 

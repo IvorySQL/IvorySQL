@@ -3,7 +3,7 @@
  * parse_cte.c
  *	  handle CTEs (common table expressions) in parser
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -746,7 +746,7 @@ makeDependencyGraphWalker(Node *node, CteState *cstate)
 				}
 				(void) raw_expression_tree_walker(node,
 												  makeDependencyGraphWalker,
-												  (void *) cstate);
+												  cstate);
 				cstate->innerwiths = list_delete_first(cstate->innerwiths);
 			}
 			else
@@ -768,7 +768,7 @@ makeDependencyGraphWalker(Node *node, CteState *cstate)
 				}
 				(void) raw_expression_tree_walker(node,
 												  makeDependencyGraphWalker,
-												  (void *) cstate);
+												  cstate);
 				cstate->innerwiths = list_delete_first(cstate->innerwiths);
 			}
 			/* We're done examining the SelectStmt */
@@ -787,7 +787,7 @@ makeDependencyGraphWalker(Node *node, CteState *cstate)
 	}
 	return raw_expression_tree_walker(node,
 									  makeDependencyGraphWalker,
-									  (void *) cstate);
+									  cstate);
 }
 
 /*
@@ -877,25 +877,14 @@ checkWellFormedRecursion(CteState *cstate)
 							cte->ctename),
 					 parser_errposition(cstate->pstate, cte->location)));
 
-		/* The left-hand operand mustn't contain self-reference at all */
-		cstate->curitem = i;
-		cstate->innerwiths = NIL;
-		cstate->selfrefcount = 0;
-		cstate->context = RECURSION_NONRECURSIVETERM;
-		checkWellFormedRecursionWalker((Node *) stmt->larg, cstate);
-		Assert(cstate->innerwiths == NIL);
-
-		/* Right-hand operand should contain one reference in a valid place */
-		cstate->curitem = i;
-		cstate->innerwiths = NIL;
-		cstate->selfrefcount = 0;
-		cstate->context = RECURSION_OK;
-		checkWellFormedRecursionWalker((Node *) stmt->rarg, cstate);
-		Assert(cstate->innerwiths == NIL);
-		if (cstate->selfrefcount != 1)	/* shouldn't happen */
-			elog(ERROR, "missing recursive reference");
-
-		/* WITH mustn't contain self-reference, either */
+		/*
+		 * Really, we should insist that there not be a top-level WITH, since
+		 * syntactically that would enclose the UNION.  However, we've not
+		 * done so in the past and it's probably too late to change.  Settle
+		 * for insisting that WITH not contain a self-reference.  Test this
+		 * before examining the UNION arms, to avoid issuing confusing errors
+		 * in such cases.
+		 */
 		if (stmt->withClause)
 		{
 			cstate->curitem = i;
@@ -912,7 +901,9 @@ checkWellFormedRecursion(CteState *cstate)
 		 * don't make sense because it's impossible to figure out what they
 		 * mean when we have only part of the recursive query's results. (If
 		 * we did allow them, we'd have to check for recursive references
-		 * inside these subtrees.)
+		 * inside these subtrees.  As for WITH, we have to do this before
+		 * examining the UNION arms, to avoid issuing confusing errors if
+		 * there is a recursive reference here.)
 		 */
 		if (stmt->sortClause)
 			ereport(ERROR,
@@ -938,6 +929,28 @@ checkWellFormedRecursion(CteState *cstate)
 					 errmsg("FOR UPDATE/SHARE in a recursive query is not implemented"),
 					 parser_errposition(cstate->pstate,
 										exprLocation((Node *) stmt->lockingClause))));
+
+		/*
+		 * Now we can get on with checking the UNION operands themselves.
+		 *
+		 * The left-hand operand mustn't contain a self-reference at all.
+		 */
+		cstate->curitem = i;
+		cstate->innerwiths = NIL;
+		cstate->selfrefcount = 0;
+		cstate->context = RECURSION_NONRECURSIVETERM;
+		checkWellFormedRecursionWalker((Node *) stmt->larg, cstate);
+		Assert(cstate->innerwiths == NIL);
+
+		/* Right-hand operand should contain one reference in a valid place */
+		cstate->curitem = i;
+		cstate->innerwiths = NIL;
+		cstate->selfrefcount = 0;
+		cstate->context = RECURSION_OK;
+		checkWellFormedRecursionWalker((Node *) stmt->rarg, cstate);
+		Assert(cstate->innerwiths == NIL);
+		if (cstate->selfrefcount != 1)	/* shouldn't happen */
+			elog(ERROR, "missing recursive reference");
 	}
 }
 
@@ -1117,7 +1130,7 @@ checkWellFormedRecursionWalker(Node *node, CteState *cstate)
 	}
 	return raw_expression_tree_walker(node,
 									  checkWellFormedRecursionWalker,
-									  (void *) cstate);
+									  cstate);
 }
 
 /*
@@ -1134,7 +1147,7 @@ checkWellFormedSelectStmt(SelectStmt *stmt, CteState *cstate)
 		/* just recurse without changing state */
 		raw_expression_tree_walker((Node *) stmt,
 								   checkWellFormedRecursionWalker,
-								   (void *) cstate);
+								   cstate);
 	}
 	else
 	{
@@ -1144,7 +1157,7 @@ checkWellFormedSelectStmt(SelectStmt *stmt, CteState *cstate)
 			case SETOP_UNION:
 				raw_expression_tree_walker((Node *) stmt,
 										   checkWellFormedRecursionWalker,
-										   (void *) cstate);
+										   cstate);
 				break;
 			case SETOP_INTERSECT:
 				if (stmt->all)

@@ -19,7 +19,7 @@
  *	sync.
  *
  *
- *	Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ *	Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  *	Portions Copyright (c) 1994, Regents of the University of California
  *	Portions Copyright (c) 2000, Philip Warner
  *
@@ -140,7 +140,7 @@ InitArchiveFmt_Directory(ArchiveHandle *AH)
 
 	/* Set up our private context */
 	ctx = (lclContext *) pg_malloc0(sizeof(lclContext));
-	AH->formatData = (void *) ctx;
+	AH->formatData = ctx;
 
 	ctx->dataFH = NULL;
 	ctx->LOsTocFH = NULL;
@@ -246,7 +246,7 @@ _ArchiveEntry(ArchiveHandle *AH, TocEntry *te)
 	else
 		tctx->filename = NULL;
 
-	te->formatData = (void *) tctx;
+	te->formatData = tctx;
 }
 
 /*
@@ -285,7 +285,7 @@ _ReadExtraToc(ArchiveHandle *AH, TocEntry *te)
 	if (tctx == NULL)
 	{
 		tctx = (lclTocEntry *) pg_malloc0(sizeof(lclTocEntry));
-		te->formatData = (void *) tctx;
+		te->formatData = tctx;
 	}
 
 	tctx->filename = ReadStr(AH);
@@ -780,7 +780,7 @@ _PrepParallelRestore(ArchiveHandle *AH)
 			continue;
 
 		/* We may ignore items not due to be restored */
-		if ((te->reqs & REQ_DATA) == 0)
+		if ((te->reqs & (REQ_DATA | REQ_STATS)) == 0)
 			continue;
 
 		/*

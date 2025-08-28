@@ -2,7 +2,7 @@
  *
  * plpython.h - Python as a procedural language for PostgreSQL
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/pl/plpython/plpython.h
@@ -17,6 +17,15 @@
 #error postgres.h must be included before plpython.h
 #elif defined(Py_PYTHON_H)
 #error Python.h must be included via plpython.h
+#endif
+
+/*
+ * Enable Python Limited API
+ *
+ * XXX currently not enabled on MSVC because of build failures
+ */
+#if !defined(_MSC_VER)
+#define Py_LIMITED_API 0x03020000
 #endif
 
 /*

@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2024, PostgreSQL Global Development Group
+# Copyright (c) 2022-2025, PostgreSQL Global Development Group
 # Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
 
 run_command(
@@ -9,6 +9,11 @@ run_command(
 
 fe_utils_sources = files(
   'archive.c',
+  'astreamer_file.c',
+  'astreamer_gzip.c',
+  'astreamer_lz4.c',
+  'astreamer_tar.c',
+  'astreamer_zstd.c',
   'cancel.c',
   'conditional.c',
   'connect_utils.c',
@@ -35,7 +40,7 @@ fe_utils_sources += ora_parser_kwlist
 psqlscan = custom_target('psqlscan',
   input: 'psqlscan.l',
   output: 'psqlscan.c',
-  command: [flex_cmd, '--no-backup', '--fix-warnings', '--', '-Cfe', '-p', '-p'],
+  command: [flex_cmd, '--no-backup', '--', '-Cfe', '-p', '-p'],
 )
 generated_sources += psqlscan
 fe_utils_sources += psqlscan

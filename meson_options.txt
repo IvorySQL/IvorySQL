@@ -1,5 +1,5 @@
-# Copyright (c) 2022-2024, PostgreSQL Global Development Group
 #Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+# Copyright (c) 2022-2025, PostgreSQL Global Development Group
 
 # Data layout influencing options
 
@@ -51,13 +51,7 @@ option('injection_points', type: 'boolean', value: false,
   description: 'Enable injection points')
 
 option('PG_TEST_EXTRA', type: 'string', value: '',
-  description: 'Enable selected extra tests')
-
-option('atomics', type: 'boolean', value: true,
-  description: 'Use atomic operations')
-
-option('spinlocks', type: 'boolean', value: true,
-  description: 'Use spinlocks')
+  description: 'Enable selected extra tests. Overridden by PG_TEST_EXTRA environment variable.')
 
 option('PG_GIT_REVISION', type: 'string', value: 'HEAD',
   description: 'git revision to be packaged by pgdist target')
@@ -110,8 +104,14 @@ option('icu', type: 'feature', value: 'auto',
 option('ldap', type: 'feature', value: 'auto',
   description: 'LDAP support')
 
+option('libcurl', type : 'feature', value: 'auto',
+  description: 'libcurl support')
+
 option('libedit_preferred', type: 'boolean', value: false,
   description: 'Prefer BSD Libedit over GNU Readline')
+
+option('liburing', type : 'feature', value: 'auto',
+  description: 'io_uring support, for asynchronous I/O')
 
 option('libxml', type: 'feature', value: 'auto',
   description: 'XML support')

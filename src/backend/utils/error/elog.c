@@ -43,7 +43,7 @@
  * overflow.)
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -95,8 +95,6 @@ ErrorContextCallback *error_context_stack = NULL;
 
 sigjmp_buf *PG_exception_stack = NULL;
 
-extern bool redirection_done;
-
 /*
  * Hook for intercepting messages before they are sent to the server log.
  * Note that the hook will not get called for messages that are suppressed
@@ -138,8 +136,6 @@ static void write_syslog(int level, const char *line);
 #endif
 
 #ifdef WIN32
-extern char *event_source;
-
 static void write_eventlog(int level, const char *line, int len);
 #endif
 
@@ -931,6 +927,10 @@ errcode_for_file_access(void)
 			edata->sqlerrcode = ERRCODE_IO_ERROR;
 			break;
 
+		case ENAMETOOLONG:		/* File name too long */
+			edata->sqlerrcode = ERRCODE_FILE_NAME_TOO_LONG;
+			break;
+
 			/* All else is classified as internal errors */
 		default:
 			edata->sqlerrcode = ERRCODE_INTERNAL_ERROR;
@@ -1330,6 +1330,27 @@ errhint(const char *fmt,...)
 	return 0;					/* return value does not matter */
 }
 
+/*
+ * errhint_internal --- add a hint error message text to the current error
+ *
+ * Non-translated version of errhint(), see also errmsg_internal().
+ */
+int
+errhint_internal(const char *fmt,...)
+{
+	ErrorData  *edata = &errordata[errordata_stack_depth];
+	MemoryContext oldcontext;
+
+	recursion_depth++;
+	CHECK_STACK_DEPTH();
+	oldcontext = MemoryContextSwitchTo(edata->assoc_context);
+
+	EVALUATE_MESSAGE(edata->domain, hint, false, false);
+
+	MemoryContextSwitchTo(oldcontext);
+	recursion_depth--;
+	return 0;					/* return value does not matter */
+}
 
 /*
  * errhint_plural --- add a hint error message text to the current error,
@@ -1566,6 +1587,23 @@ geterrcode(void)
 	CHECK_STACK_DEPTH();
 
 	return edata->sqlerrcode;
+}
+
+/*
+ * geterrlevel --- return the currently set error level
+ *
+ * This is only intended for use in error callback subroutines, since there
+ * is no other place outside elog.c where the concept is meaningful.
+ */
+int
+geterrlevel(void)
+{
+	ErrorData  *edata = &errordata[errordata_stack_depth];
+
+	/* we don't bother incrementing recursion_depth */
+	CHECK_STACK_DEPTH();
+
+	return edata->elevel;
 }
 
 /*
@@ -1864,12 +1902,15 @@ FlushErrorState(void)
 /*
  * ThrowErrorData --- report an error described by an ErrorData structure
  *
- * This is somewhat like ReThrowError, but it allows elevels besides ERROR,
- * and the boolean flags such as output_to_server are computed via the
- * default rules rather than being copied from the given ErrorData.
- * This is primarily used to re-report errors originally reported by
- * background worker processes and then propagated (with or without
- * modification) to the backend responsible for them.
+ * This function should be called on an ErrorData structure that isn't stored
+ * on the errordata stack and hasn't been processed yet. It will call
+ * errstart() and errfinish() as needed, so those should not have already been
+ * called.
+ *
+ * ThrowErrorData() is useful for handling soft errors. It's also useful for
+ * re-reporting errors originally reported by background worker processes and
+ * then propagated (with or without modification) to the backend responsible
+ * for them.
  */
 void
 ThrowErrorData(ErrorData *edata)
@@ -2163,7 +2204,7 @@ check_backtrace_functions(char **newval, void **extra, GucSource source)
 					  ", \n\t");
 	if (validlen != newvallen)
 	{
-		GUC_check_errdetail("Invalid character");
+		GUC_check_errdetail("Invalid character.");
 		return false;
 	}
 
@@ -2178,7 +2219,9 @@ check_backtrace_functions(char **newval, void **extra, GucSource source)
 	 * whitespace chars to save some memory, but it doesn't seem worth the
 	 * trouble.
 	 */
-	someval = guc_malloc(ERROR, newvallen + 1 + 1);
+	someval = guc_malloc(LOG, newvallen + 1 + 1);
+	if (!someval)
+		return false;
 	for (i = 0, j = 0; i < newvallen; i++)
 	{
 		if ((*newval)[i] == ',')
@@ -2263,9 +2306,11 @@ check_log_destination(char **newval, void **extra, GucSource source)
 	pfree(rawstring);
 	list_free(elemlist);
 
-	myextra = (int *) guc_malloc(ERROR, sizeof(int));
+	myextra = (int *) guc_malloc(LOG, sizeof(int));
+	if (!myextra)
+		return false;
 	*myextra = newlogdest;
-	*extra = (void *) myextra;
+	*extra = myextra;
 
 	return true;
 }
@@ -2927,12 +2972,12 @@ log_status_format(StringInfo buf, const char *format, ErrorData *edata)
 				{
 					char		strfbuf[128];
 
-					snprintf(strfbuf, sizeof(strfbuf) - 1, "%lx.%x",
-							 (long) (MyStartTime), MyProcPid);
+					snprintf(strfbuf, sizeof(strfbuf) - 1, INT64_HEX_FORMAT ".%x",
+							 MyStartTime, MyProcPid);
 					appendStringInfo(buf, "%*s", padding, strfbuf);
 				}
 				else
-					appendStringInfo(buf, "%lx.%x", (long) (MyStartTime), MyProcPid);
+					appendStringInfo(buf, INT64_HEX_FORMAT ".%x", MyStartTime, MyProcPid);
 				break;
 			case 'p':
 				if (padding != 0)
@@ -3128,11 +3173,11 @@ log_status_format(StringInfo buf, const char *format, ErrorData *edata)
 				break;
 			case 'Q':
 				if (padding != 0)
-					appendStringInfo(buf, "%*lld", padding,
-									 (long long) pgstat_get_my_query_id());
+					appendStringInfo(buf, "%*" PRId64, padding,
+									 pgstat_get_my_query_id());
 				else
-					appendStringInfo(buf, "%lld",
-									 (long long) pgstat_get_my_query_id());
+					appendStringInfo(buf, "%" PRId64,
+									 pgstat_get_my_query_id());
 				break;
 			default:
 				/* format error - ignore it */

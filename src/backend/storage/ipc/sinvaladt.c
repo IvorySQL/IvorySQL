@@ -3,7 +3,7 @@
  * sinvaladt.c
  *	  POSTGRES shared cache invalidation data manager.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -17,7 +17,6 @@
 #include <signal.h>
 #include <unistd.h>
 
-#include "access/transam.h"
 #include "miscadmin.h"
 #include "storage/ipc.h"
 #include "storage/proc.h"
@@ -212,10 +211,10 @@ static void CleanupInvalidationState(int status, Datum arg);
 
 
 /*
- * SInvalShmemSize --- return shared-memory space needed
+ * SharedInvalShmemSize --- return shared-memory space needed
  */
 Size
-SInvalShmemSize(void)
+SharedInvalShmemSize(void)
 {
 	Size		size;
 
@@ -227,18 +226,18 @@ SInvalShmemSize(void)
 }
 
 /*
- * CreateSharedInvalidationState
+ * SharedInvalShmemInit
  *		Create and initialize the SI message buffer
  */
 void
-CreateSharedInvalidationState(void)
+SharedInvalShmemInit(void)
 {
 	int			i;
 	bool		found;
 
 	/* Allocate space in shared memory */
 	shmInvalBuffer = (SISeg *)
-		ShmemInitStruct("shmInvalBuffer", SInvalShmemSize(), &found);
+		ShmemInitStruct("shmInvalBuffer", SharedInvalShmemSize(), &found);
 	if (found)
 		return;
 

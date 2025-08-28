@@ -1,9 +1,7 @@
-# Copyright (c) 2022-2024, PostgreSQL Global Development Group
-
-# test/ is entered via top-level meson.build, that way it can use the default
-# args for executables (which depend on libpq).
+# Copyright (c) 2022-2025, PostgreSQL Global Development Group
 
 libpq_sources = files(
+  'fe-auth-oauth.c',
   'fe-auth-scram.c',
   'fe-auth.c',
   'fe-cancel.c',
@@ -38,6 +36,10 @@ if gssapi.found()
     'fe-gssapi-common.c',
     'fe-secure-gssapi.c',
   )
+endif
+
+if libcurl.found()
+  libpq_sources += files('fe-auth-oauth-curl.c')
 endif
 
 export_file = custom_target('libpq.exports',
@@ -107,6 +109,7 @@ install_data('pg_service.conf.sample',
   install_dir: dir_data,
 )
 
+subdir('test')
 
 tests += {
   'name': 'libpq',
@@ -119,12 +122,14 @@ tests += {
       't/003_load_balance_host_list.pl',
       't/004_load_balance_dns.pl',
       't/005_negotiate_encryption.pl',
+      't/006_service.pl',
     ],
     'env': {
       'with_ssl': ssl_library,
       'with_gssapi': gssapi.found() ? 'yes' : 'no',
       'with_krb_srvnam': 'postgres',
     },
+    'deps': libpq_test_deps,
   },
 }
 

@@ -649,7 +649,7 @@ ERROR:  interval field value out of range: "2562047788:00:54.775807"
 LINE 1: SELECT interval '2562047788:00:54.775807' second(2);
                         ^
 SELECT interval '-2562047788:00:54.775807' second(2);  -- out of range
-ERROR:  interval field value out of range: "-2562047788:00:54.775807"
+ERROR:  invalid input syntax for type interval: "-2562047788:00:54.775807"
 LINE 1: SELECT interval '-2562047788:00:54.775807' second(2);
                         ^
 -- test casting to restricted precision (bug #14479)

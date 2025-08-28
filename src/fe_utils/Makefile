@@ -5,7 +5,7 @@
 # This makefile generates a static library, libpgfeutils.a,
 # for use by client applications
 #
-# Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 # Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
 #
@@ -23,6 +23,11 @@ override CPPFLAGS := -DFRONTEND -I$(libpq_srcdir) -I$(top_builddir)/src/include/
 
 OBJS = \
 	archive.o \
+	astreamer_file.o \
+	astreamer_gzip.o \
+	astreamer_lz4.o \
+	astreamer_tar.o \
+	astreamer_zstd.o \
 	cancel.o \
 	conditional.o \
 	connect_utils.o \
@@ -55,7 +60,6 @@ libpgfeutils.a: $(OBJS)
 
 psqlscan.c: FLEXFLAGS = -Cfe -p -p
 psqlscan.c: FLEX_NO_BACKUP=yes
-psqlscan.c: FLEX_FIX_WARNING=yes
 
 # generate SQL keyword lookup table to be included into ora_keywords*.o.
 ora_kwlist_d.h: $(top_srcdir)/src/include/oracle_parser/ora_kwlist.h $(GEN_KEYWORDLIST_DEPS)

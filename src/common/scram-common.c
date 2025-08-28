@@ -6,7 +6,7 @@
  * backend, for implement the Salted Challenge Response Authentication
  * Mechanism (SCRAM), per IETF's RFC 5802.
  *
- * Portions Copyright (c) 2017-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2017-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/common/scram-common.c
@@ -74,7 +74,7 @@ scram_SaltedPassword(const char *password,
 	memcpy(result, Ui_prev, key_length);
 
 	/* Subsequent iterations */
-	for (i = 2; i <= iterations; i++)
+	for (i = 1; i < iterations; i++)
 	{
 #ifndef FRONTEND
 		/*
@@ -200,8 +200,7 @@ scram_ServerKey(const uint8 *salted_password,
  *
  * The password should already have been processed with SASLprep, if necessary!
  *
- * If iterations is 0, default number of iterations is used.  The result is
- * palloc'd or malloc'd, so caller is responsible for freeing it.
+ * The result is palloc'd or malloc'd, so caller is responsible for freeing it.
  *
  * On error, returns NULL and sets *errstr to point to a message about the
  * error details.

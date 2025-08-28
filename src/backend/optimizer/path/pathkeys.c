@@ -7,7 +7,7 @@
  * the nature and use of path keys.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -25,6 +25,7 @@
 #include "optimizer/pathnode.h"
 #include "optimizer/paths.h"
 #include "partitioning/partbounds.h"
+#include "rewrite/rewriteManip.h"
 #include "utils/lsyscache.h"
 
 /* Consider reordering of GROUP BY keys? */
@@ -255,6 +256,7 @@ static PathKey *
 make_pathkey_from_sortop(PlannerInfo *root,
 						 Expr *expr,
 						 Oid ordering_op,
+						 bool reverse_sort,
 						 bool nulls_first,
 						 Index sortref,
 						 bool create_it)
@@ -278,7 +280,7 @@ make_pathkey_from_sortop(PlannerInfo *root,
 									  opfamily,
 									  opcintype,
 									  collation,
-									  (strategy == BTGreaterStrategyNumber),
+									  reverse_sort,
 									  nulls_first,
 									  sortref,
 									  NULL,
@@ -1294,6 +1296,9 @@ build_join_pathkeys(PlannerInfo *root,
 					JoinType jointype,
 					List *outer_pathkeys)
 {
+	/* RIGHT_SEMI should not come here */
+	Assert(jointype != JOIN_RIGHT_SEMI);
+
 	if (jointype == JOIN_FULL ||
 		jointype == JOIN_RIGHT ||
 		jointype == JOIN_RIGHT_ANTI)
@@ -1338,6 +1343,7 @@ make_pathkeys_for_sortclauses(PlannerInfo *root,
 													&sortclauses,
 													tlist,
 													false,
+													false,
 													&sortable,
 													false);
 	/* It's caller error if not all clauses were sortable */
@@ -1356,6 +1362,9 @@ make_pathkeys_for_sortclauses(PlannerInfo *root,
  * give rise to redundant pathkeys are removed from the sortclauses list
  * (which therefore must be pass-by-reference in this version).
  *
+ * If remove_group_rtindex is true, then we need to remove the RT index of the
+ * grouping step from the sort expressions before we make PathKeys for them.
+ *
  * *sortable is set to true if all the sort clauses are in fact sortable.
  * If any are not, they are ignored except for setting *sortable false.
  * (In that case, the output pathkey list isn't really useful.  However,
@@ -1372,6 +1381,7 @@ make_pathkeys_for_sortclauses_extended(PlannerInfo *root,
 									   List **sortclauses,
 									   List *tlist,
 									   bool remove_redundant,
+									   bool remove_group_rtindex,
 									   bool *sortable,
 									   bool set_ec_sortref)
 {
@@ -1391,9 +1401,18 @@ make_pathkeys_for_sortclauses_extended(PlannerInfo *root,
 			*sortable = false;
 			continue;
 		}
+		if (remove_group_rtindex)
+		{
+			Assert(root->group_rtindex > 0);
+			sortkey = (Expr *)
+				remove_nulling_relids((Node *) sortkey,
+									  bms_make_singleton(root->group_rtindex),
+									  NULL);
+		}
 		pathkey = make_pathkey_from_sortop(root,
 										   sortkey,
 										   sortcl->sortop,
+										   sortcl->reverse_sort,
 										   sortcl->nulls_first,
 										   sortcl->tleSortGroupRef,
 										   true);
@@ -2189,6 +2208,41 @@ pathkeys_useful_for_grouping(PlannerInfo *root, List *pathkeys)
 }
 
 /*
+ * pathkeys_useful_for_distinct
+ *		Count the number of pathkeys that are useful for DISTINCT or DISTINCT
+ *		ON clause.
+ *
+ * DISTINCT keys could be reordered to benefit from the given pathkey list.  As
+ * with pathkeys_useful_for_grouping, we return the number of leading keys in
+ * the list that are shared by the distinctClause pathkeys.
+ */
+static int
+pathkeys_useful_for_distinct(PlannerInfo *root, List *pathkeys)
+{
+	int			n_common_pathkeys;
+
+	/*
+	 * distinct_pathkeys may have become empty if all of the pathkeys were
+	 * determined to be redundant.  Return 0 in this case.
+	 */
+	if (root->distinct_pathkeys == NIL)
+		return 0;
+
+	/* walk the pathkeys and search for matching DISTINCT key */
+	n_common_pathkeys = 0;
+	foreach_node(PathKey, pathkey, pathkeys)
+	{
+		/* no matching DISTINCT key, we're done */
+		if (!list_member_ptr(root->distinct_pathkeys, pathkey))
+			break;
+
+		n_common_pathkeys++;
+	}
+
+	return n_common_pathkeys;
+}
+
+/*
  * pathkeys_useful_for_setop
  *		Count the number of leading common pathkeys root's 'setop_pathkeys' in
  *		'pathkeys'.
@@ -2221,6 +2275,9 @@ truncate_useless_pathkeys(PlannerInfo *root,
 	if (nuseful2 > nuseful)
 		nuseful = nuseful2;
 	nuseful2 = pathkeys_useful_for_grouping(root, pathkeys);
+	if (nuseful2 > nuseful)
+		nuseful = nuseful2;
+	nuseful2 = pathkeys_useful_for_distinct(root, pathkeys);
 	if (nuseful2 > nuseful)
 		nuseful = nuseful2;
 	nuseful2 = pathkeys_useful_for_setop(root, pathkeys);

@@ -68,8 +68,8 @@ static char *shellprog = SHELLPROG;
 const char *basic_diff_opts = "";
 const char *pretty_diff_opts = "-U3";
 #else
-const char *basic_diff_opts = "-w";
-const char *pretty_diff_opts = "-w -U3";
+const char *basic_diff_opts = "--strip-trailing-cr";
+const char *pretty_diff_opts = "--strip-trailing-cr -U3";
 #endif
 
 static int oraPort;	/* SQL PARSER */
@@ -238,15 +238,17 @@ free_stringlist(_stringlist **listhead)
 static void
 split_to_stringlist(const char *s, const char *delim, _stringlist **listhead)
 {
-	char	   *sc = pg_strdup(s);
-	char	   *token = strtok(sc, delim);
+	char	   *token;
+	char	   *sc;
+	char	   *tofree;
 
-	while (token)
+	tofree = sc = pg_strdup(s);
+
+	while ((token = strsep(&sc, delim)))
 	{
 		add_stringlist_item(listhead, token);
-		token = strtok(NULL, delim);
 	}
-	free(sc);
+	free(tofree);
 }
 
 /*
@@ -522,10 +524,14 @@ make_temp_sockdir(void)
 	 * Remove the directory before dying to the usual signals.  Omit SIGQUIT,
 	 * preserving it as a quick, untidy exit.
 	 */
-	pqsignal(SIGHUP, signal_remove_temp);
 	pqsignal(SIGINT, signal_remove_temp);
-	pqsignal(SIGPIPE, signal_remove_temp);
 	pqsignal(SIGTERM, signal_remove_temp);
+
+	/* the following are not valid on Windows */
+#ifndef WIN32
+	pqsignal(SIGHUP, signal_remove_temp);
+	pqsignal(SIGPIPE, signal_remove_temp);
+#endif
 
 	return temp_sockdir;
 }
@@ -782,7 +788,7 @@ initialize_environment(void)
 	/*
 	 * Set timezone and datestyle for datetime-related tests
 	 */
-	setenv("PGTZ", "PST8PDT", 1);
+	setenv("PGTZ", "America/Los_Angeles", 1);
 	setenv("PGDATESTYLE", "Postgres, MDY", 1);
 
 	/*
@@ -1248,7 +1254,7 @@ spawn_process(const char *cmdline)
 		comspec = "CMD";
 
 	memset(&pi, 0, sizeof(pi));
-	cmdline2 = psprintf("\"%s\" /d /c \"%s\"", comspec, cmdline);
+	cmdline2 = psprintf("\"%s\" /c \"%s\"", comspec, cmdline);
 
 	if (!CreateRestrictedProcess(cmdline2, &pi))
 		exit(2);
@@ -1334,7 +1340,7 @@ make_directory(const char *dir)
 }
 
 /*
- * In: filename.ext, Return: filename_i.ext, where 0 < i <= 9
+ * In: filename.ext, Return: filename_i.ext, where 0 <= i <= 9
  */
 static char *
 get_alternative_expectfile(const char *expectfile, int i)
@@ -1892,14 +1898,14 @@ run_single_test(const char *test, test_start_function startfunc,
 
 	if (exit_status != 0)
 	{
-                test_status_failed(test, false, INSTR_TIME_GET_MILLISEC(stoptime));
+		test_status_failed(test, INSTR_TIME_GET_MILLISEC(stoptime), false);
 		log_child_failure(exit_status);
 	}
 	else
 	{
 		if (differ)
 		{
-                        test_status_failed(test, false, INSTR_TIME_GET_MILLISEC(stoptime));
+			test_status_failed(test, INSTR_TIME_GET_MILLISEC(stoptime), false);
 		}
 		else
 		{
@@ -1967,10 +1973,10 @@ create_database(const char *dbname)
 	 */
 	if (encoding)
 		psql_add_command(buf, "CREATE DATABASE \"%s\" TEMPLATE=template0 ENCODING='%s'%s", dbname, encoding,
-                                                 (nolocale) ? " LC_COLLATE='C' LC_CTYPE='C'" : "");
+						 (nolocale) ? " LOCALE='C'" : "");
 	else
 		psql_add_command(buf, "CREATE DATABASE \"%s\" TEMPLATE=template0%s", dbname,
-                                                 (nolocale) ? " LC_COLLATE='C' LC_CTYPE='C'" : "");
+						 (nolocale) ? " LOCALE='C'" : "");
 	psql_add_command(buf,
 					 "ALTER DATABASE \"%s\" SET lc_messages TO 'C';"
 					 "ALTER DATABASE \"%s\" SET lc_monetary TO 'C';"

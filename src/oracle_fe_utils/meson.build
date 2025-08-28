@@ -19,7 +19,7 @@ ora_fe_utils_sources = files(
 ora_psqlscan = custom_target('ora_psqlscan',
   input: 'ora_psqlscan.l',
   output: 'ora_psqlscan.c',
-  command: [flex_cmd, '--no-backup', '--fix-warnings', '--', '-Cfe', '-p', '-p'],
+  command: [flex_cmd, '--no-backup', '--', '-Cfe', '-p', '-p'],
 )
 generated_sources += ora_psqlscan
 ora_fe_utils_sources += ora_psqlscan

@@ -14,7 +14,7 @@
  * Cache invalidation is driven off sinval events.  Any CachedPlanSource
  * that matches the event is marked invalid, as is its generic CachedPlan
  * if it has one.  When (and if) the next demand for a cached plan occurs,
- * parse analysis and rewrite is repeated to build a new valid query tree,
+ * parse analysis and/or rewrite is repeated to build a new valid query tree,
  * and then planning is performed as normal.  We also force re-analysis and
  * re-planning if the active search_path is different from the previous time
  * or, if RLS is involved, if the user changes or the RLS environment changes.
@@ -44,7 +44,7 @@
  * if the old one gets invalidated.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -64,6 +64,7 @@
 #include "nodes/nodeFuncs.h"
 #include "optimizer/optimizer.h"
 #include "parser/analyze.h"
+#include "rewrite/rewriteHandler.h"
 #include "storage/lmgr.h"
 #include "tcop/pquery.h"
 #include "tcop/utility.h"
@@ -74,18 +75,6 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
-
-/*
- * We must skip "overhead" operations that involve database access when the
- * cached plan's subject statement is a transaction control command or one
- * that requires a snapshot not to be set yet (such as SET or LOCK).  More
- * generally, statements that do not require parse analysis/rewrite/plan
- * activity never need to be revalidated, so we can treat them all like that.
- * For the convenience of postgres.c, treat empty statements that way too.
- */
-#define StmtPlanRequiresRevalidation(plansource)  \
-	((plansource)->raw_parse_tree != NULL && \
-	 stmt_requires_parse_analysis((plansource)->raw_parse_tree))
 
 /*
  * This is the head of the backend's list of "saved" CachedPlanSources (i.e.,
@@ -101,8 +90,11 @@ static dlist_head saved_plan_list = DLIST_STATIC_INIT(saved_plan_list);
 static dlist_head cached_expression_list = DLIST_STATIC_INIT(cached_expression_list);
 
 static void ReleaseGenericPlan(CachedPlanSource *plansource);
+static bool StmtPlanRequiresRevalidation(CachedPlanSource *plansource);
+static bool BuildingPlanRequiresSnapshot(CachedPlanSource *plansource);
 static List *RevalidateCachedQuery(CachedPlanSource *plansource,
-								   QueryEnvironment *queryEnv);
+								   QueryEnvironment *queryEnv,
+								   bool release_generic);
 static bool CheckCachedPlan(CachedPlanSource *plansource);
 static CachedPlan *BuildCachedPlan(CachedPlanSource *plansource, List *qlist,
 								   ParamListInfo boundParams, QueryEnvironment *queryEnv);
@@ -171,7 +163,7 @@ InitPlanCache(void)
 }
 
 /*
- * CreateCachedPlan: initially create a plan cache entry.
+ * CreateCachedPlan: initially create a plan cache entry for a raw parse tree.
  *
  * Creation of a cached plan is divided into two steps, CreateCachedPlan and
  * CompleteCachedPlan.  CreateCachedPlan should be called after running the
@@ -225,6 +217,7 @@ CreateCachedPlan(RawStmt *raw_parse_tree,
 	plansource = (CachedPlanSource *) palloc0(sizeof(CachedPlanSource));
 	plansource->magic = CACHEDPLANSOURCE_MAGIC;
 	plansource->raw_parse_tree = copyObject(raw_parse_tree);
+	plansource->analyzed_parse_tree = NULL;
 	plansource->query_string = pstrdup(query_string);
 	MemoryContextSetIdentifier(source_context, plansource->query_string);
 	plansource->commandTag = commandTag;
@@ -232,6 +225,8 @@ CreateCachedPlan(RawStmt *raw_parse_tree,
 	plansource->num_params = 0;
 	plansource->parserSetup = NULL;
 	plansource->parserSetupArg = NULL;
+	plansource->postRewrite = NULL;
+	plansource->postRewriteArg = NULL;
 	plansource->cursor_options = 0;
 	plansource->fixed_result = false;
 	plansource->resultDesc = NULL;
@@ -255,6 +250,34 @@ CreateCachedPlan(RawStmt *raw_parse_tree,
 	plansource->num_generic_plans = 0;
 	plansource->num_custom_plans = 0;
 
+	MemoryContextSwitchTo(oldcxt);
+
+	return plansource;
+}
+
+/*
+ * CreateCachedPlanForQuery: initially create a plan cache entry for a Query.
+ *
+ * This is used in the same way as CreateCachedPlan, except that the source
+ * query has already been through parse analysis, and the plancache will never
+ * try to re-do that step.
+ *
+ * Currently this is used only for new-style SQL functions, where we have a
+ * Query from the function's prosqlbody, but no source text.  The query_string
+ * is typically empty, but is required anyway.
+ */
+CachedPlanSource *
+CreateCachedPlanForQuery(Query *analyzed_parse_tree,
+						 const char *query_string,
+						 CommandTag commandTag)
+{
+	CachedPlanSource *plansource;
+	MemoryContext oldcxt;
+
+	/* Rather than duplicating CreateCachedPlan, just do this: */
+	plansource = CreateCachedPlan(NULL, query_string, commandTag);
+	oldcxt = MemoryContextSwitchTo(plansource->context);
+	plansource->analyzed_parse_tree = copyObject(analyzed_parse_tree);
 	MemoryContextSwitchTo(oldcxt);
 
 	return plansource;
@@ -294,12 +317,15 @@ CreateOneShotCachedPlan(RawStmt *raw_parse_tree,
 	plansource = (CachedPlanSource *) palloc0(sizeof(CachedPlanSource));
 	plansource->magic = CACHEDPLANSOURCE_MAGIC;
 	plansource->raw_parse_tree = raw_parse_tree;
+	plansource->analyzed_parse_tree = NULL;
 	plansource->query_string = query_string;
 	plansource->commandTag = commandTag;
 	plansource->param_types = NULL;
 	plansource->num_params = 0;
 	plansource->parserSetup = NULL;
 	plansource->parserSetupArg = NULL;
+	plansource->postRewrite = NULL;
+	plansource->postRewriteArg = NULL;
 	plansource->cursor_options = 0;
 	plansource->fixed_result = false;
 	plansource->resultDesc = NULL;
@@ -477,6 +503,29 @@ CompleteCachedPlan(CachedPlanSource *plansource,
 }
 
 /*
+ * SetPostRewriteHook: set a hook to modify post-rewrite query trees
+ *
+ * Some callers have a need to modify the query trees between rewriting and
+ * planning.  In the initial call to CompleteCachedPlan, it's assumed such
+ * work was already done on the querytree_list.  However, if we're forced
+ * to replan, it will need to be done over.  The caller can set this hook
+ * to provide code to make that happen.
+ *
+ * postRewriteArg is just passed verbatim to the hook.  As with parserSetupArg,
+ * it is caller's responsibility that the referenced data remains
+ * valid for as long as the CachedPlanSource exists.
+ */
+void
+SetPostRewriteHook(CachedPlanSource *plansource,
+				   PostRewriteHook postRewrite,
+				   void *postRewriteArg)
+{
+	Assert(plansource->magic == CACHEDPLANSOURCE_MAGIC);
+	plansource->postRewrite = postRewrite;
+	plansource->postRewriteArg = postRewriteArg;
+}
+
+/*
  * SaveCachedPlan: save a cached plan permanently
  *
  * This function moves the cached plan underneath CacheMemoryContext (making
@@ -579,6 +628,42 @@ ReleaseGenericPlan(CachedPlanSource *plansource)
 }
 
 /*
+ * We must skip "overhead" operations that involve database access when the
+ * cached plan's subject statement is a transaction control command or one
+ * that requires a snapshot not to be set yet (such as SET or LOCK).  More
+ * generally, statements that do not require parse analysis/rewrite/plan
+ * activity never need to be revalidated, so we can treat them all like that.
+ * For the convenience of postgres.c, treat empty statements that way too.
+ */
+static bool
+StmtPlanRequiresRevalidation(CachedPlanSource *plansource)
+{
+	if (plansource->raw_parse_tree != NULL)
+		return stmt_requires_parse_analysis(plansource->raw_parse_tree);
+	else if (plansource->analyzed_parse_tree != NULL)
+		return query_requires_rewrite_plan(plansource->analyzed_parse_tree);
+	/* empty query never needs revalidation */
+	return false;
+}
+
+/*
+ * Determine if creating a plan for this CachedPlanSource requires a snapshot.
+ * In fact this function matches StmtPlanRequiresRevalidation(), but we want
+ * to preserve the distinction between stmt_requires_parse_analysis() and
+ * analyze_requires_snapshot().
+ */
+static bool
+BuildingPlanRequiresSnapshot(CachedPlanSource *plansource)
+{
+	if (plansource->raw_parse_tree != NULL)
+		return analyze_requires_snapshot(plansource->raw_parse_tree);
+	else if (plansource->analyzed_parse_tree != NULL)
+		return query_requires_rewrite_plan(plansource->analyzed_parse_tree);
+	/* empty query never needs a snapshot */
+	return false;
+}
+
+/*
  * RevalidateCachedQuery: ensure validity of analyzed-and-rewritten query tree.
  *
  * What we do here is re-acquire locks and redo parse analysis if necessary.
@@ -591,13 +676,19 @@ ReleaseGenericPlan(CachedPlanSource *plansource)
  * The result value is the transient analyzed-and-rewritten query tree if we
  * had to do re-analysis, and NIL otherwise.  (This is returned just to save
  * a tree copying step in a subsequent BuildCachedPlan call.)
+ *
+ * This also releases and drops the generic plan (plansource->gplan), if any,
+ * as most callers will typically build a new CachedPlan for the plansource
+ * right after this. However, when called from UpdateCachedPlan(), the
+ * function does not release the generic plan, as UpdateCachedPlan() updates
+ * an existing CachedPlan in place.
  */
 static List *
 RevalidateCachedQuery(CachedPlanSource *plansource,
-					  QueryEnvironment *queryEnv)
+					  QueryEnvironment *queryEnv,
+					  bool release_generic)
 {
 	bool		snapshot_set;
-	RawStmt    *rawtree;
 	List	   *tlist;			/* transient query-tree list */
 	List	   *qlist;			/* permanent query-tree list */
 	TupleDesc	resultDesc;
@@ -620,7 +711,10 @@ RevalidateCachedQuery(CachedPlanSource *plansource,
 	/*
 	 * If the query is currently valid, we should have a saved search_path ---
 	 * check to see if that matches the current environment.  If not, we want
-	 * to force replan.
+	 * to force replan.  (We could almost ignore this consideration when
+	 * working from an analyzed parse tree; but there are scenarios where
+	 * planning can have search_path-dependent results, for example if it
+	 * inlines an old-style SQL function.)
 	 */
 	if (plansource->is_valid)
 	{
@@ -667,9 +761,9 @@ RevalidateCachedQuery(CachedPlanSource *plansource,
 	}
 
 	/*
-	 * Discard the no-longer-useful query tree.  (Note: we don't want to do
-	 * this any earlier, else we'd not have been able to release locks
-	 * correctly in the race condition case.)
+	 * Discard the no-longer-useful rewritten query tree.  (Note: we don't
+	 * want to do this any earlier, else we'd not have been able to release
+	 * locks correctly in the race condition case.)
 	 */
 	plansource->is_valid = false;
 	plansource->query_list = NIL;
@@ -691,8 +785,9 @@ RevalidateCachedQuery(CachedPlanSource *plansource,
 		MemoryContextDelete(qcxt);
 	}
 
-	/* Drop the generic plan reference if any */
-	ReleaseGenericPlan(plansource);
+	/* Drop the generic plan reference, if any, and if requested */
+	if (release_generic)
+		ReleaseGenericPlan(plansource);
 
 	/*
 	 * Now re-do parse analysis and rewrite.  This not incidentally acquires
@@ -715,25 +810,52 @@ RevalidateCachedQuery(CachedPlanSource *plansource,
 	}
 
 	/*
-	 * Run parse analysis and rule rewriting.  The parser tends to scribble on
-	 * its input, so we must copy the raw parse tree to prevent corruption of
-	 * the cache.
+	 * Run parse analysis (if needed) and rule rewriting.
 	 */
-	rawtree = copyObject(plansource->raw_parse_tree);
-	if (rawtree == NULL)
-		tlist = NIL;
-	else if (plansource->parserSetup != NULL)
-		tlist = pg_analyze_and_rewrite_withcb(rawtree,
-											  plansource->query_string,
-											  plansource->parserSetup,
-											  plansource->parserSetupArg,
-											  queryEnv);
+	if (plansource->raw_parse_tree != NULL)
+	{
+		/* Source is raw parse tree */
+		RawStmt    *rawtree;
+
+		/*
+		 * The parser tends to scribble on its input, so we must copy the raw
+		 * parse tree to prevent corruption of the cache.
+		 */
+		rawtree = copyObject(plansource->raw_parse_tree);
+		if (plansource->parserSetup != NULL)
+			tlist = pg_analyze_and_rewrite_withcb(rawtree,
+												  plansource->query_string,
+												  plansource->parserSetup,
+												  plansource->parserSetupArg,
+												  queryEnv);
+		else
+			tlist = pg_analyze_and_rewrite_fixedparams(rawtree,
+													   plansource->query_string,
+													   plansource->param_types,
+													   plansource->num_params,
+													   queryEnv);
+	}
+	else if (plansource->analyzed_parse_tree != NULL)
+	{
+		/* Source is pre-analyzed query, so we only need to rewrite */
+		Query	   *analyzed_tree;
+
+		/* The rewriter scribbles on its input, too, so copy */
+		analyzed_tree = copyObject(plansource->analyzed_parse_tree);
+		/* Acquire locks needed before rewriting ... */
+		AcquireRewriteLocks(analyzed_tree, true, false);
+		/* ... and do it */
+		tlist = pg_rewrite_query(analyzed_tree);
+	}
 	else
-		tlist = pg_analyze_and_rewrite_fixedparams(rawtree,
-												   plansource->query_string,
-												   plansource->param_types,
-												   plansource->num_params,
-												   queryEnv);
+	{
+		/* Empty query, nothing to do */
+		tlist = NIL;
+	}
+
+	/* Apply post-rewrite callback if there is one */
+	if (plansource->postRewrite != NULL)
+		plansource->postRewrite(tlist, plansource->postRewriteArg);
 
 	/* Release snapshot if we got one */
 	if (snapshot_set)
@@ -828,8 +950,10 @@ RevalidateCachedQuery(CachedPlanSource *plansource,
  * Caller must have already called RevalidateCachedQuery to verify that the
  * querytree is up to date.
  *
- * On a "true" return, we have acquired the locks needed to run the plan.
- * (We must do this for the "true" result to be race-condition-free.)
+ * On a "true" return, we have acquired locks on the "unprunableRelids" set
+ * for all plans in plansource->stmt_list. However, the plans are not fully
+ * race-condition-free until the executor acquires locks on the prunable
+ * relations that survive initial runtime pruning during InitPlan().
  */
 static bool
 CheckCachedPlan(CachedPlanSource *plansource)
@@ -914,6 +1038,8 @@ CheckCachedPlan(CachedPlanSource *plansource)
  * Planning work is done in the caller's memory context.  The finished plan
  * is in a child memory context, which typically should get reparented
  * (unless this is a one-shot plan, in which case we don't copy the plan).
+ *
+ * Note: When changing this, you should also look at UpdateCachedPlan().
  */
 static CachedPlan *
 BuildCachedPlan(CachedPlanSource *plansource, List *qlist,
@@ -924,6 +1050,7 @@ BuildCachedPlan(CachedPlanSource *plansource, List *qlist,
 	bool		snapshot_set;
 	bool		is_transient;
 	MemoryContext plan_context;
+	MemoryContext stmt_context = NULL;
 	MemoryContext oldcxt = CurrentMemoryContext;
 	ListCell   *lc;
 
@@ -941,7 +1068,7 @@ BuildCachedPlan(CachedPlanSource *plansource, List *qlist,
 	 * let's treat it as real and redo the RevalidateCachedQuery call.
 	 */
 	if (!plansource->is_valid)
-		qlist = RevalidateCachedQuery(plansource, queryEnv);
+		qlist = RevalidateCachedQuery(plansource, queryEnv, true);
 
 	/*
 	 * If we don't already have a copy of the querytree list that can be
@@ -962,8 +1089,7 @@ BuildCachedPlan(CachedPlanSource *plansource, List *qlist,
 	 */
 	snapshot_set = false;
 	if (!ActiveSnapshotSet() &&
-		plansource->raw_parse_tree &&
-		analyze_requires_snapshot(plansource->raw_parse_tree))
+		BuildingPlanRequiresSnapshot(plansource))
 	{
 		PushActiveSnapshot(GetTransactionSnapshot());
 		snapshot_set = true;
@@ -980,10 +1106,19 @@ BuildCachedPlan(CachedPlanSource *plansource, List *qlist,
 		PopActiveSnapshot();
 
 	/*
-	 * Normally we make a dedicated memory context for the CachedPlan and its
-	 * subsidiary data.  (It's probably not going to be large, but just in
-	 * case, allow it to grow large.  It's transient for the moment.)  But for
-	 * a one-shot plan, we just leave it in the caller's memory context.
+	 * Normally, we create a dedicated memory context for the CachedPlan and
+	 * its subsidiary data. Although it's usually not very large, the context
+	 * is designed to allow growth if necessary.
+	 *
+	 * The PlannedStmts are stored in a separate child context (stmt_context)
+	 * of the CachedPlan's memory context. This separation allows
+	 * UpdateCachedPlan() to free and replace the PlannedStmts without
+	 * affecting the CachedPlan structure or its stmt_list List.
+	 *
+	 * For one-shot plans, we instead use the caller's memory context, as the
+	 * CachedPlan will not persist.  stmt_context will be set to NULL in this
+	 * case, because UpdateCachedPlan() should never get called on a one-shot
+	 * plan.
 	 */
 	if (!plansource->is_oneshot)
 	{
@@ -992,12 +1127,17 @@ BuildCachedPlan(CachedPlanSource *plansource, List *qlist,
 											 ALLOCSET_START_SMALL_SIZES);
 		MemoryContextCopyAndSetIdentifier(plan_context, plansource->query_string);
 
-		/*
-		 * Copy plan into the new context.
-		 */
-		MemoryContextSwitchTo(plan_context);
+		stmt_context = AllocSetContextCreate(CurrentMemoryContext,
+											 "CachedPlan PlannedStmts",
+											 ALLOCSET_START_SMALL_SIZES);
+		MemoryContextCopyAndSetIdentifier(stmt_context, plansource->query_string);
+		MemoryContextSetParent(stmt_context, plan_context);
 
+		MemoryContextSwitchTo(stmt_context);
 		plist = copyObject(plist);
+
+		MemoryContextSwitchTo(plan_context);
+		plist = list_copy(plist);
 	}
 	else
 		plan_context = CurrentMemoryContext;
@@ -1038,8 +1178,10 @@ BuildCachedPlan(CachedPlanSource *plansource, List *qlist,
 		plan->saved_xmin = InvalidTransactionId;
 	plan->refcount = 0;
 	plan->context = plan_context;
+	plan->stmt_context = stmt_context;
 	plan->is_oneshot = plansource->is_oneshot;
 	plan->is_saved = false;
+	plan->is_reused = false;
 	plan->is_valid = true;
 
 	/* assign generation number to new plan */
@@ -1048,6 +1190,113 @@ BuildCachedPlan(CachedPlanSource *plansource, List *qlist,
 	MemoryContextSwitchTo(oldcxt);
 
 	return plan;
+}
+
+/*
+ * UpdateCachedPlan
+ *		Create fresh plans for all queries in the CachedPlanSource, replacing
+ *		those in the generic plan's stmt_list, and return the plan for the
+ *		query_index'th query.
+ *
+ * This function is primarily used by ExecutorStartCachedPlan() to handle
+ * cases where the original generic CachedPlan becomes invalid. Such
+ * invalidation may occur when prunable relations in the old plan for the
+ * query_index'th query are locked in preparation for execution.
+ *
+ * Note that invalidations received during the execution of the query_index'th
+ * query can affect both the queries that have already finished execution
+ * (e.g., due to concurrent modifications on prunable relations that were not
+ * locked during their execution) and also the queries that have not yet been
+ * executed.  As a result, this function updates all plans to ensure
+ * CachedPlan.is_valid is safely set to true.
+ *
+ * The old PlannedStmts in plansource->gplan->stmt_list are freed here, so
+ * the caller and any of its callers must not rely on them remaining accessible
+ * after this function is called.
+ */
+PlannedStmt *
+UpdateCachedPlan(CachedPlanSource *plansource, int query_index,
+				 QueryEnvironment *queryEnv)
+{
+	List	   *query_list = plansource->query_list,
+			   *plan_list;
+	ListCell   *l1,
+			   *l2;
+	CachedPlan *plan = plansource->gplan;
+	MemoryContext oldcxt;
+
+	Assert(ActiveSnapshotSet());
+
+	/* Sanity checks (XXX can be Asserts?) */
+	if (plan == NULL)
+		elog(ERROR, "UpdateCachedPlan() called in the wrong context: plansource->gplan is NULL");
+	else if (plan->is_valid)
+		elog(ERROR, "UpdateCachedPlan() called in the wrong context: plansource->gplan->is_valid is true");
+	else if (plan->is_oneshot)
+		elog(ERROR, "UpdateCachedPlan() called in the wrong context: plansource->gplan->is_oneshot is true");
+
+	/*
+	 * The plansource might have become invalid since GetCachedPlan() returned
+	 * the CachedPlan. See the comment in BuildCachedPlan() for details on why
+	 * this might happen.  Although invalidation is likely a false positive as
+	 * stated there, we make the plan valid to ensure the query list used for
+	 * planning is up to date.
+	 *
+	 * The risk of catching an invalidation is higher here than when
+	 * BuildCachedPlan() is called from GetCachedPlan(), because this function
+	 * is normally called long after GetCachedPlan() returns the CachedPlan,
+	 * so much more processing could have occurred including things that mark
+	 * the CachedPlanSource invalid.
+	 *
+	 * Note: Do not release plansource->gplan, because the upstream callers
+	 * (such as the callers of ExecutorStartCachedPlan()) would still be
+	 * referencing it.
+	 */
+	if (!plansource->is_valid)
+		query_list = RevalidateCachedQuery(plansource, queryEnv, false);
+	Assert(query_list != NIL);
+
+	/*
+	 * Build a new generic plan for all the queries after making a copy to be
+	 * scribbled on by the planner.
+	 */
+	query_list = copyObject(query_list);
+
+	/*
+	 * Planning work is done in the caller's memory context.  The resulting
+	 * PlannedStmt is then copied into plan->stmt_context after throwing away
+	 * the old ones.
+	 */
+	plan_list = pg_plan_queries(query_list, plansource->query_string,
+								plansource->cursor_options, NULL);
+	Assert(list_length(plan_list) == list_length(plan->stmt_list));
+
+	MemoryContextReset(plan->stmt_context);
+	oldcxt = MemoryContextSwitchTo(plan->stmt_context);
+	forboth(l1, plan_list, l2, plan->stmt_list)
+	{
+		PlannedStmt *plannedstmt = lfirst(l1);
+
+		lfirst(l2) = copyObject(plannedstmt);
+	}
+	MemoryContextSwitchTo(oldcxt);
+
+	/*
+	 * XXX Should this also (re)set the properties of the CachedPlan that are
+	 * set in BuildCachedPlan() after creating the fresh plans such as
+	 * planRoleId, dependsOnRole, and save_xmin?
+	 */
+
+	/*
+	 * We've updated all the plans that might have been invalidated, so mark
+	 * the CachedPlan as valid.
+	 */
+	plan->is_valid = true;
+
+	/* Also update generic_cost because we just created a new generic plan. */
+	plansource->generic_cost = cached_plan_cost(plan, false);
+
+	return list_nth_node(PlannedStmt, plan->stmt_list, query_index);
 }
 
 /*
@@ -1166,8 +1415,13 @@ cached_plan_cost(CachedPlan *plan, bool include_planner)
  * plan or a custom plan for the given parameters: the caller does not know
  * which it will get.
  *
- * On return, the plan is valid and we have sufficient locks to begin
- * execution.
+ * On return, the plan is valid, but if it is a reused generic plan, not all
+ * locks are acquired. In such cases, CheckCachedPlan() does not take locks
+ * on relations subject to initial runtime pruning; instead, these locks are
+ * deferred until execution startup, when ExecDoInitialPruning() performs
+ * initial pruning.  The plan's "is_reused" flag is set to indicate that
+ * CachedPlanRequiresLocking() should return true when called by
+ * ExecDoInitialPruning().
  *
  * On return, the refcount of the plan has been incremented; a later
  * ReleaseCachedPlan() call is expected.  If "owner" is not NULL then
@@ -1193,7 +1447,7 @@ GetCachedPlan(CachedPlanSource *plansource, ParamListInfo boundParams,
 		elog(ERROR, "cannot apply ResourceOwner to non-saved cached plan");
 
 	/* Make sure the querytree list is valid and we have parse-time locks */
-	qlist = RevalidateCachedQuery(plansource, queryEnv);
+	qlist = RevalidateCachedQuery(plansource, queryEnv, true);
 
 	/* Decide whether to use a custom plan */
 	customplan = choose_custom_plan(plansource, boundParams);
@@ -1205,6 +1459,8 @@ GetCachedPlan(CachedPlanSource *plansource, ParamListInfo boundParams,
 			/* We want a generic plan, and we already have a valid one */
 			plan = plansource->gplan;
 			Assert(plan->magic == CACHEDPLAN_MAGIC);
+			/* Reusing the existing plan, so not all locks may be acquired. */
+			plan->is_reused = true;
 		}
 		else
 		{
@@ -1572,6 +1828,7 @@ CopyCachedPlan(CachedPlanSource *plansource)
 	newsource = (CachedPlanSource *) palloc0(sizeof(CachedPlanSource));
 	newsource->magic = CACHEDPLANSOURCE_MAGIC;
 	newsource->raw_parse_tree = copyObject(plansource->raw_parse_tree);
+	newsource->analyzed_parse_tree = copyObject(plansource->analyzed_parse_tree);
 	newsource->query_string = pstrdup(plansource->query_string);
 	MemoryContextSetIdentifier(source_context, newsource->query_string);
 	newsource->commandTag = plansource->commandTag;
@@ -1587,6 +1844,8 @@ CopyCachedPlan(CachedPlanSource *plansource)
 	newsource->num_params = plansource->num_params;
 	newsource->parserSetup = plansource->parserSetup;
 	newsource->parserSetupArg = plansource->parserSetupArg;
+	newsource->postRewrite = plansource->postRewrite;
+	newsource->postRewriteArg = plansource->postRewriteArg;
 	newsource->cursor_options = plansource->cursor_options;
 	newsource->fixed_result = plansource->fixed_result;
 	if (plansource->resultDesc)
@@ -1667,7 +1926,7 @@ CachedPlanGetTargetList(CachedPlanSource *plansource,
 		return NIL;
 
 	/* Make sure the querytree list is valid and we have parse-time locks */
-	RevalidateCachedQuery(plansource, queryEnv);
+	RevalidateCachedQuery(plansource, queryEnv, true);
 
 	/* Get the primary statement and find out what it returns */
 	pstmt = QueryListGetPrimaryStmt(plansource->query_list);
@@ -1814,7 +2073,7 @@ AcquireExecutorLocks(List *stmt_list, bool acquire)
 	foreach(lc1, stmt_list)
 	{
 		PlannedStmt *plannedstmt = lfirst_node(PlannedStmt, lc1);
-		ListCell   *lc2;
+		int			rtindex;
 
 		if (plannedstmt->commandType == CMD_UTILITY)
 		{
@@ -1832,13 +2091,16 @@ AcquireExecutorLocks(List *stmt_list, bool acquire)
 			continue;
 		}
 
-		foreach(lc2, plannedstmt->rtable)
+		rtindex = -1;
+		while ((rtindex = bms_next_member(plannedstmt->unprunableRelids,
+										  rtindex)) >= 0)
 		{
-			RangeTblEntry *rte = (RangeTblEntry *) lfirst(lc2);
+			RangeTblEntry *rte = list_nth_node(RangeTblEntry,
+											   plannedstmt->rtable,
+											   rtindex - 1);
 
-			if (!(rte->rtekind == RTE_RELATION ||
-				  (rte->rtekind == RTE_SUBQUERY && OidIsValid(rte->relid))))
-				continue;
+			Assert(rte->rtekind == RTE_RELATION ||
+				   (rte->rtekind == RTE_SUBQUERY && OidIsValid(rte->relid)));
 
 			/*
 			 * Acquire the appropriate type of lock on each relation OID. Note
@@ -1945,8 +2207,7 @@ ScanQueryForLocks(Query *parsetree, bool acquire)
 	 */
 	if (parsetree->hasSubLinks)
 	{
-		query_tree_walker(parsetree, ScanQueryWalker,
-						  (void *) &acquire,
+		query_tree_walker(parsetree, ScanQueryWalker, &acquire,
 						  QTW_IGNORE_RC_SUBQUERIES);
 	}
 }
@@ -1972,8 +2233,7 @@ ScanQueryWalker(Node *node, bool *acquire)
 	 * Do NOT recurse into Query nodes, because ScanQueryForLocks already
 	 * processed subselects of subselects for us.
 	 */
-	return expression_tree_walker(node, ScanQueryWalker,
-								  (void *) acquire);
+	return expression_tree_walker(node, ScanQueryWalker, acquire);
 }
 
 /*

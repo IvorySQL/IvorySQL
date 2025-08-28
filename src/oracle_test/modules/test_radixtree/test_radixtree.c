@@ -16,15 +16,11 @@
 #include "common/int.h"
 #include "common/pg_prng.h"
 #include "fmgr.h"
-#include "miscadmin.h"
-#include "storage/lwlock.h"
 #include "utils/memutils.h"
 #include "utils/timestamp.h"
 
 /* uncomment to use shared memory for the tree */
 /* #define TEST_SHARED_RT */
-
-#define UINT64_HEX_FORMAT "%" INT64_MODIFIER "X"
 
 /* Convenient macros to test results */
 #define EXPECT_TRUE(expr)	\
@@ -113,7 +109,7 @@ static rt_node_class_test_elem rt_node_class_tests[] =
  * Return the number of keys in the radix tree.
  */
 static uint64
-rt_num_entries(rt_radix_tree * tree)
+rt_num_entries(rt_radix_tree *tree)
 {
 	return tree->ctl->num_keys;
 }
@@ -125,25 +121,22 @@ PG_FUNCTION_INFO_V1(test_radixtree);
 static void
 test_empty(void)
 {
-	MemoryContext radixtree_ctx;
 	rt_radix_tree *radixtree;
 	rt_iter    *iter;
 	uint64		key;
 #ifdef TEST_SHARED_RT
 	int			tranche_id = LWLockNewTrancheId();
 	dsa_area   *dsa;
-#endif
+
+	LWLockRegisterTranche(tranche_id, "test_radix_tree");
+	dsa = dsa_create(tranche_id);
+	radixtree = rt_create(dsa, tranche_id);
+#else
+	MemoryContext radixtree_ctx;
 
 	radixtree_ctx = AllocSetContextCreate(CurrentMemoryContext,
 										  "test_radix_tree",
 										  ALLOCSET_SMALL_SIZES);
-
-#ifdef TEST_SHARED_RT
-	LWLockRegisterTranche(tranche_id, "test_radix_tree");
-	dsa = dsa_create(tranche_id);
-
-	radixtree = rt_create(radixtree_ctx, dsa, tranche_id);
-#else
 	radixtree = rt_create(radixtree_ctx);
 #endif
 
@@ -170,7 +163,6 @@ test_empty(void)
 static void
 test_basic(rt_node_class_test_elem *test_info, int shift, bool asc)
 {
-	MemoryContext radixtree_ctx;
 	rt_radix_tree *radixtree;
 	rt_iter    *iter;
 	uint64	   *keys;
@@ -178,18 +170,16 @@ test_basic(rt_node_class_test_elem *test_info, int shift, bool asc)
 #ifdef TEST_SHARED_RT
 	int			tranche_id = LWLockNewTrancheId();
 	dsa_area   *dsa;
-#endif
+
+	LWLockRegisterTranche(tranche_id, "test_radix_tree");
+	dsa = dsa_create(tranche_id);
+	radixtree = rt_create(dsa, tranche_id);
+#else
+	MemoryContext radixtree_ctx;
 
 	radixtree_ctx = AllocSetContextCreate(CurrentMemoryContext,
 										  "test_radix_tree",
 										  ALLOCSET_SMALL_SIZES);
-
-#ifdef TEST_SHARED_RT
-	LWLockRegisterTranche(tranche_id, "test_radix_tree");
-	dsa = dsa_create(tranche_id);
-
-	radixtree = rt_create(radixtree_ctx, dsa, tranche_id);
-#else
 	radixtree = rt_create(radixtree_ctx);
 #endif
 
@@ -210,7 +200,7 @@ test_basic(rt_node_class_test_elem *test_info, int shift, bool asc)
 	 * false.
 	 */
 	for (int i = 0; i < children; i++)
-		EXPECT_FALSE(rt_set(radixtree, keys[i], (TestValueType *) & keys[i]));
+		EXPECT_FALSE(rt_set(radixtree, keys[i], (TestValueType *) &keys[i]));
 
 	rt_stats(radixtree);
 
@@ -232,14 +222,14 @@ test_basic(rt_node_class_test_elem *test_info, int shift, bool asc)
 		TestValueType update = keys[i] + 1;
 
 		/* rt_set should report the key found */
-		EXPECT_TRUE(rt_set(radixtree, keys[i], (TestValueType *) & update));
+		EXPECT_TRUE(rt_set(radixtree, keys[i], (TestValueType *) &update));
 	}
 
 	/* delete and re-insert keys */
 	for (int i = 0; i < children; i++)
 	{
 		EXPECT_TRUE(rt_delete(radixtree, keys[i]));
-		EXPECT_FALSE(rt_set(radixtree, keys[i], (TestValueType *) & keys[i]));
+		EXPECT_FALSE(rt_set(radixtree, keys[i], (TestValueType *) &keys[i]));
 	}
 
 	/* look up keys after deleting and re-inserting */
@@ -305,7 +295,6 @@ key_cmp(const void *a, const void *b)
 static void
 test_random(void)
 {
-	MemoryContext radixtree_ctx;
 	rt_radix_tree *radixtree;
 	rt_iter    *iter;
 	pg_prng_state state;
@@ -318,18 +307,17 @@ test_random(void)
 #ifdef TEST_SHARED_RT
 	int			tranche_id = LWLockNewTrancheId();
 	dsa_area   *dsa;
-#endif
 
-	radixtree_ctx = AllocSetContextCreate(CurrentMemoryContext,
-										  "test_radix_tree",
-										  ALLOCSET_SMALL_SIZES);
-
-#ifdef TEST_SHARED_RT
 	LWLockRegisterTranche(tranche_id, "test_radix_tree");
 	dsa = dsa_create(tranche_id);
-
-	radixtree = rt_create(radixtree_ctx, dsa, tranche_id);
+	radixtree = rt_create(dsa, tranche_id);
 #else
+	MemoryContext radixtree_ctx;
+
+	radixtree_ctx = SlabContextCreate(CurrentMemoryContext,
+									  "test_radix_tree",
+									  SLAB_DEFAULT_BLOCK_SIZE,
+									  sizeof(TestValueType));
 	radixtree = rt_create(radixtree_ctx);
 #endif
 

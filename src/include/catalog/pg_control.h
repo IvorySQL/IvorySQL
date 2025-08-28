@@ -5,7 +5,7 @@
  *	  However, we define it here so that the format is documented.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -23,7 +23,7 @@
 
 
 /* Version identifier for this pg_control format */
-#define PG_CONTROL_VERSION	1300
+#define PG_CONTROL_VERSION	1800
 
 /* Nonce key length, see below */
 #define MOCK_AUTH_NONCE_LEN		32
@@ -41,6 +41,7 @@ typedef struct CheckPoint
 	TimeLineID	PrevTimeLineID; /* previous TLI, if this record begins a new
 								 * timeline (equals ThisTimeLineID otherwise) */
 	bool		fullPageWrites; /* current full_page_writes */
+	int			wal_level;		/* current wal_level */
 	FullTransactionId nextXid;	/* next free transaction ID */
 	Oid			nextOid;		/* next free OID */
 	MultiXactId nextMulti;		/* next free MultiXactId */
@@ -220,6 +221,12 @@ typedef struct ControlFileData
 
 	/* Are data pages protected by checksums? Zero if no checksum version */
 	uint32		data_checksum_version;
+
+	/*
+	 * True if the default signedness of char is "signed" on a platform where
+	 * the cluster is initialized.
+	 */
+	bool		default_char_signedness;
 
 	/*
 	 * Random nonce, used in authentication requests that need to proceed

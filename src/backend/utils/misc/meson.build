@@ -1,5 +1,5 @@
-# Copyright (c) 2022-2024, PostgreSQL Global Development Group
 # Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+# Copyright (c) 2022-2025, PostgreSQL Global Development Group
 
 backend_sources += files(
   'conffiles.c',
@@ -15,6 +15,7 @@ backend_sources += files(
   'queryenvironment.c',
   'rls.c',
   'sampling.c',
+  'stack_depth.c',
   'superuser.c',
   'timeout.c',
   'tzparser.c',

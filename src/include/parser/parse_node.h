@@ -4,7 +4,7 @@
  *		Internal definitions for parser
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -125,6 +125,20 @@ typedef int (*ParseSubprocFuncHook) (ParseState *pstate, List *funcname,
  * byte-wise locations in parse structures to character-wise cursor
  * positions.)
  *
+ * p_stmt_location: location of the top level RawStmt's start.  During
+ * transformation, the Query's location will be set to the statement's
+ * location if available.  Otherwise, the RawStmt's start location will
+ * be used.  Propagating the location through ParseState is needed for
+ * the Query length calculation (see p_stmt_len below).
+ *
+ * p_stmt_len: length of the top level RawStmt.  Most of the time, the
+ * statement's length is not provided by the parser, with the exception
+ * of SelectStmt within parentheses and PreparableStmt in COPY.  If the
+ * statement's location is provided by the parser, the top-level location
+ * and length are needed to accurately compute the Query's length.  If the
+ * statement's location is not provided, the RawStmt's length can be used
+ * directly.
+ *
  * p_rtable: list of RTEs that will become the rangetable of the query.
  * Note that neither relname nor refname of these entries are necessarily
  * unique; searching the rtable by name is a bad idea.
@@ -168,6 +182,8 @@ typedef int (*ParseSubprocFuncHook) (ParseState *pstate, List *funcname,
  *
  * p_target_nsitem: target relation's ParseNamespaceItem.
  *
+ * p_grouping_nsitem: the ParseNamespaceItem that represents the grouping step.
+ *
  * p_is_insert: true to process assignment expressions like INSERT, false
  * to process them like UPDATE.  (Note this can change intra-statement, for
  * cases like INSERT ON CONFLICT UPDATE.)
@@ -208,6 +224,8 @@ struct ParseState
 {
 	ParseState *parentParseState;	/* stack link */
 	const char *p_sourcetext;	/* source text, or NULL if not available */
+	ParseLoc	p_stmt_location;	/* start location, or -1 if unknown */
+	ParseLoc	p_stmt_len;		/* length in bytes; 0 means "rest of string" */
 	List	   *p_rtable;		/* range table so far */
 	List	   *p_rteperminfos; /* list of RTEPermissionInfo nodes for each
 								 * RTE_RELATION entry in rtable */
@@ -223,6 +241,7 @@ struct ParseState
 	CommonTableExpr *p_parent_cte;	/* this query's containing CTE */
 	Relation	p_target_relation;	/* INSERT/UPDATE/DELETE/MERGE target rel */
 	ParseNamespaceItem *p_target_nsitem;	/* target rel's NSItem, or NULL */
+	ParseNamespaceItem *p_grouping_nsitem;	/* NSItem for grouping, or NULL */
 	bool		p_is_insert;	/* process assignment like INSERT not UPDATE */
 	List	   *p_windowdefs;	/* raw representations of window clauses */
 	ParseExprKind p_expr_kind;	/* what kind of expression we're parsing */
@@ -297,6 +316,11 @@ struct ParseState
  * of SQL:2008 requires us to do it this way.  We also use p_lateral_ok to
  * forbid LATERAL references to an UPDATE/DELETE target table.
  *
+ * While processing the RETURNING clause, special namespace items are added to
+ * refer to the OLD and NEW state of the result relation.  These namespace
+ * items have p_returning_type set appropriately, for use when creating Vars.
+ * For convenience, this information is duplicated on each namespace column.
+ *
  * At no time should a namespace list contain two entries that conflict
  * according to the rules in checkNameSpaceConflicts; but note that those
  * are more complicated than "must have different alias names", so in practice
@@ -314,6 +338,7 @@ struct ParseNamespaceItem
 	bool		p_cols_visible; /* Column names visible as unqualified refs? */
 	bool		p_lateral_only; /* Is only visible to LATERAL expressions? */
 	bool		p_lateral_ok;	/* If so, does join type allow use? */
+	VarReturningType p_returning_type;	/* Is OLD/NEW for use in RETURNING? */
 };
 
 /*
@@ -344,6 +369,7 @@ struct ParseNamespaceColumn
 	Oid			p_vartype;		/* pg_type OID */
 	int32		p_vartypmod;	/* type modifier value */
 	Oid			p_varcollid;	/* OID of collation, or InvalidOid */
+	VarReturningType p_varreturningtype;	/* for RETURNING OLD/NEW */
 	Index		p_varnosyn;		/* rangetable index of syntactic referent */
 	AttrNumber	p_varattnosyn;	/* attribute number of syntactic referent */
 	bool		p_dontexpand;	/* not included in star expansion */

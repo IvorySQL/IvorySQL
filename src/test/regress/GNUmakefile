@@ -3,7 +3,7 @@
 # GNUmakefile--
 #    Makefile for src/test/regress (the regression tests)
 #
-# Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/test/regress/GNUmakefile
@@ -47,11 +47,11 @@ ora_pg_regress$(X): ora_pg_regress.o pg_regress_main.o $(WIN32RES) | submake-lib
 
 # dependencies ensure that path changes propagate
 pg_regress.o: pg_regress.c $(top_builddir)/src/port/pg_config_paths.h
-pg_regress.o: override CPPFLAGS += -I$(top_builddir)/src/port -I$(libpq_srcdir) $(EXTRADEFS)
+pg_regress.o: override CPPFLAGS := -I$(top_builddir)/src/port -I$(libpq_srcdir) $(EXTRADEFS) $(CPPFLAGS)
 
 #IvorySQL: BEGIN oracle test
 ora_pg_regress.o: ora_pg_regress.c $(top_builddir)/src/port/pg_config_paths.h
-ora_pg_regress.o: override CPPFLAGS += -I$(top_builddir)/src/port -I$(libpq_srcdir) $(EXTRADEFS)
+ora_pg_regress.o: override CPPFLAGS := -I$(top_builddir)/src/port -I$(libpq_srcdir) $(EXTRADEFS) $(CPPFLAGS)
 #IvorySQL: END oracle test
 
 # note: because of the submake dependency, this rule's action is really a no-op

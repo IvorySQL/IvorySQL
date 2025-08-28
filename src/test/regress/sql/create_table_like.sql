@@ -51,7 +51,7 @@ INSERT INTO test_like_id_3 (b) VALUES ('b3');
 SELECT * FROM test_like_id_3;  -- identity was copied and applied
 DROP TABLE test_like_id_1, test_like_id_2, test_like_id_3;
 
-CREATE TABLE test_like_gen_1 (a int, b int GENERATED ALWAYS AS (a * 2) STORED);
+CREATE TABLE test_like_gen_1 (a int, b int GENERATED ALWAYS AS (a * 2) STORED, c int GENERATED ALWAYS AS (a * 3) VIRTUAL);
 \d test_like_gen_1
 INSERT INTO test_like_gen_1 (a) VALUES (1);
 SELECT * FROM test_like_gen_1;
@@ -128,7 +128,8 @@ CREATE TABLE inhz (x text REFERENCES inhz, LIKE inhx INCLUDING INDEXES);
 DROP TABLE inhz;
 
 -- including storage and comments
-CREATE TABLE ctlt1 (a text CHECK (length(a) > 2) PRIMARY KEY, b text);
+CREATE TABLE ctlt1 (a text CHECK (length(a) > 2) ENFORCED PRIMARY KEY,
+	b text CHECK (length(b) > 100) NOT ENFORCED);
 CREATE INDEX ctlt1_b_key ON ctlt1 (b);
 CREATE INDEX ctlt1_fnidx ON ctlt1 ((a || b));
 CREATE STATISTICS ctlt1_a_b_stat ON a,b FROM ctlt1;
@@ -194,9 +195,10 @@ ROLLBACK;
 DROP TABLE ctlt1, ctlt2, ctlt3, ctlt4, ctlt12_storage, ctlt12_comments, ctlt1_inh, ctlt13_inh, ctlt13_like, ctlt_all, ctla, ctlb CASCADE;
 
 -- LIKE must respect NO INHERIT property of constraints
-CREATE TABLE noinh_con_copy (a int CHECK (a > 0) NO INHERIT);
+CREATE TABLE noinh_con_copy (a int CHECK (a > 0) NO INHERIT, b int not null,
+	c int not null no inherit);
 CREATE TABLE noinh_con_copy1 (LIKE noinh_con_copy INCLUDING CONSTRAINTS);
-\d noinh_con_copy1
+\d+ noinh_con_copy1
 
 -- fail, as partitioned tables don't allow NO INHERIT constraints
 CREATE TABLE noinh_con_copy1_parted (LIKE noinh_con_copy INCLUDING ALL)
@@ -223,3 +225,45 @@ DROP SEQUENCE ctlseq1;
 DROP TYPE ctlty1;
 DROP VIEW ctlv1;
 DROP TABLE IF EXISTS ctlt4, ctlt10, ctlt11, ctlt11a, ctlt12;
+
+--
+-- CREATE FOREIGN TABLE LIKE
+--
+CREATE FOREIGN DATA WRAPPER ctl_dummy;
+CREATE SERVER ctl_s0 FOREIGN DATA WRAPPER ctl_dummy;
+
+CREATE TABLE ctl_table(a int PRIMARY KEY,
+  b varchar COMPRESSION pglz,
+  c int GENERATED ALWAYS AS (a * 2) STORED,
+  d bigint GENERATED ALWAYS AS IDENTITY,
+  e int DEFAULT 1);
+
+CREATE INDEX ctl_table_a_key ON ctl_table(a);
+COMMENT ON COLUMN ctl_table.b IS 'Column b';
+CREATE STATISTICS ctl_table_stat ON a,b FROM ctl_table;
+ALTER TABLE ctl_table ADD CONSTRAINT foo CHECK (b = 'text');
+ALTER TABLE ctl_table ALTER COLUMN b SET STORAGE MAIN;
+
+\d+ ctl_table
+
+-- Test EXCLUDING ALL
+CREATE FOREIGN TABLE ctl_foreign_table1(LIKE ctl_table EXCLUDING ALL) SERVER ctl_s0;
+\d+ ctl_foreign_table1
+-- \d+ does not report the value of attcompression for a foreign table, so
+-- check separately.
+SELECT attname, attcompression FROM pg_attribute
+  WHERE attrelid = 'ctl_foreign_table1'::regclass and attnum > 0 ORDER BY attnum;
+
+-- Test INCLUDING ALL
+-- INDEXES, IDENTITY, COMPRESSION, STORAGE are not copied.
+CREATE FOREIGN TABLE ctl_foreign_table2(LIKE ctl_table INCLUDING ALL) SERVER ctl_s0;
+\d+ ctl_foreign_table2
+-- \d+ does not report the value of attcompression for a foreign table, so
+-- check separately.
+SELECT attname, attcompression FROM pg_attribute
+  WHERE attrelid = 'ctl_foreign_table2'::regclass and attnum > 0 ORDER BY attnum;
+
+DROP TABLE ctl_table;
+DROP FOREIGN TABLE ctl_foreign_table1;
+DROP FOREIGN TABLE ctl_foreign_table2;
+DROP FOREIGN DATA WRAPPER ctl_dummy CASCADE;

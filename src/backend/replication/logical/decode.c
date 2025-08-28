@@ -16,7 +16,7 @@
  *		contents of records in here except turning them into a more usable
  *		format.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -301,12 +301,13 @@ xact_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 					ReorderBufferXidSetCatalogChanges(ctx->reorder, xid,
 													  buf->origptr);
 				}
-				else if ((!ctx->fast_forward))
+				else if (!ctx->fast_forward)
 					ReorderBufferImmediateInvalidation(ctx->reorder,
 													   invals->nmsgs,
 													   invals->msgs);
+
+				break;
 			}
-			break;
 		case XLOG_XACT_PREPARE:
 			{
 				xl_xact_parsed_prepare parsed;
@@ -508,23 +509,19 @@ heap_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 
 			/*
 			 * Inplace updates are only ever performed on catalog tuples and
-			 * can, per definition, not change tuple visibility.  Since we
-			 * don't decode catalog tuples, we're not interested in the
-			 * record's contents.
+			 * can, per definition, not change tuple visibility.  Inplace
+			 * updates don't affect storage or interpretation of table rows,
+			 * so they don't affect logicalrep_write_tuple() outcomes.  Hence,
+			 * we don't process invalidations from the original operation.  If
+			 * inplace updates did affect those things, invalidations wouldn't
+			 * make it work, since there are no snapshot-specific versions of
+			 * inplace-updated values.  Since we also don't decode catalog
+			 * tuples, we're not interested in the record's contents.
 			 *
-			 * In-place updates can be used either by XID-bearing transactions
-			 * (e.g.  in CREATE INDEX CONCURRENTLY) or by XID-less
-			 * transactions (e.g.  VACUUM).  In the former case, the commit
-			 * record will include cache invalidations, so we mark the
-			 * transaction as catalog modifying here. Currently that's
-			 * redundant because the commit will do that as well, but once we
-			 * support decoding in-progress relations, this will be important.
+			 * WAL contains likely-unnecessary commit-time invals from the
+			 * CacheInvalidateHeapTuple() call in
+			 * heap_inplace_update_and_unlock(). Excess invalidation is safe.
 			 */
-			if (!TransactionIdIsValid(xid))
-				break;
-
-			(void) SnapBuildProcessChange(builder, xid, buf->origptr);
-			ReorderBufferXidSetCatalogChanges(ctx->reorder, xid, buf->origptr);
 			break;
 
 		case XLOG_HEAP_CONFIRM:
@@ -918,7 +915,7 @@ DecodeInsert(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 	if (FilterByOrigin(ctx, XLogRecGetOrigin(r)))
 		return;
 
-	change = ReorderBufferGetChange(ctx->reorder);
+	change = ReorderBufferAllocChange(ctx->reorder);
 	if (!(xlrec->flags & XLH_INSERT_IS_SPECULATIVE))
 		change->action = REORDER_BUFFER_CHANGE_INSERT;
 	else
@@ -931,7 +928,7 @@ DecodeInsert(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 	tuplelen = datalen - SizeOfHeapHeader;
 
 	change->data.tp.newtuple =
-		ReorderBufferGetTupleBuf(ctx->reorder, tuplelen);
+		ReorderBufferAllocTupleBuf(ctx->reorder, tuplelen);
 
 	DecodeXLogTuple(tupledata, datalen, change->data.tp.newtuple);
 
@@ -968,7 +965,7 @@ DecodeUpdate(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 	if (FilterByOrigin(ctx, XLogRecGetOrigin(r)))
 		return;
 
-	change = ReorderBufferGetChange(ctx->reorder);
+	change = ReorderBufferAllocChange(ctx->reorder);
 	change->action = REORDER_BUFFER_CHANGE_UPDATE;
 	change->origin_id = XLogRecGetOrigin(r);
 	memcpy(&change->data.tp.rlocator, &target_locator, sizeof(RelFileLocator));
@@ -983,7 +980,7 @@ DecodeUpdate(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 		tuplelen = datalen - SizeOfHeapHeader;
 
 		change->data.tp.newtuple =
-			ReorderBufferGetTupleBuf(ctx->reorder, tuplelen);
+			ReorderBufferAllocTupleBuf(ctx->reorder, tuplelen);
 
 		DecodeXLogTuple(data, datalen, change->data.tp.newtuple);
 	}
@@ -999,7 +996,7 @@ DecodeUpdate(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 		tuplelen = datalen - SizeOfHeapHeader;
 
 		change->data.tp.oldtuple =
-			ReorderBufferGetTupleBuf(ctx->reorder, tuplelen);
+			ReorderBufferAllocTupleBuf(ctx->reorder, tuplelen);
 
 		DecodeXLogTuple(data, datalen, change->data.tp.oldtuple);
 	}
@@ -1034,7 +1031,7 @@ DecodeDelete(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 	if (FilterByOrigin(ctx, XLogRecGetOrigin(r)))
 		return;
 
-	change = ReorderBufferGetChange(ctx->reorder);
+	change = ReorderBufferAllocChange(ctx->reorder);
 
 	if (xlrec->flags & XLH_DELETE_IS_SUPER)
 		change->action = REORDER_BUFFER_CHANGE_INTERNAL_SPEC_ABORT;
@@ -1054,7 +1051,7 @@ DecodeDelete(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 		Assert(XLogRecGetDataLen(r) > (SizeOfHeapDelete + SizeOfHeapHeader));
 
 		change->data.tp.oldtuple =
-			ReorderBufferGetTupleBuf(ctx->reorder, tuplelen);
+			ReorderBufferAllocTupleBuf(ctx->reorder, tuplelen);
 
 		DecodeXLogTuple((char *) xlrec + SizeOfHeapDelete,
 						datalen, change->data.tp.oldtuple);
@@ -1086,7 +1083,7 @@ DecodeTruncate(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 	if (FilterByOrigin(ctx, XLogRecGetOrigin(r)))
 		return;
 
-	change = ReorderBufferGetChange(ctx->reorder);
+	change = ReorderBufferAllocChange(ctx->reorder);
 	change->action = REORDER_BUFFER_CHANGE_TRUNCATE;
 	change->origin_id = XLogRecGetOrigin(r);
 	if (xlrec->flags & XLH_TRUNCATE_CASCADE)
@@ -1094,8 +1091,8 @@ DecodeTruncate(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 	if (xlrec->flags & XLH_TRUNCATE_RESTART_SEQS)
 		change->data.truncate.restart_seqs = true;
 	change->data.truncate.nrelids = xlrec->nrelids;
-	change->data.truncate.relids = ReorderBufferGetRelids(ctx->reorder,
-														  xlrec->nrelids);
+	change->data.truncate.relids = ReorderBufferAllocRelids(ctx->reorder,
+															xlrec->nrelids);
 	memcpy(change->data.truncate.relids, xlrec->relids,
 		   xlrec->nrelids * sizeof(Oid));
 	ReorderBufferQueueChange(ctx->reorder, XLogRecGetXid(r),
@@ -1152,7 +1149,7 @@ DecodeMultiInsert(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 		HeapTuple	tuple;
 		HeapTupleHeader header;
 
-		change = ReorderBufferGetChange(ctx->reorder);
+		change = ReorderBufferAllocChange(ctx->reorder);
 		change->action = REORDER_BUFFER_CHANGE_INSERT;
 		change->origin_id = XLogRecGetOrigin(r);
 
@@ -1163,7 +1160,7 @@ DecodeMultiInsert(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 		datalen = xlhdr->datalen;
 
 		change->data.tp.newtuple =
-			ReorderBufferGetTupleBuf(ctx->reorder, datalen);
+			ReorderBufferAllocTupleBuf(ctx->reorder, datalen);
 
 		tuple = change->data.tp.newtuple;
 		header = tuple->t_data;
@@ -1180,9 +1177,7 @@ DecodeMultiInsert(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 
 		memset(header, 0, SizeofHeapTupleHeader);
 
-		memcpy((char *) tuple->t_data + SizeofHeapTupleHeader,
-			   (char *) data,
-			   datalen);
+		memcpy((char *) tuple->t_data + SizeofHeapTupleHeader, data, datalen);
 		header->t_infomask = xlhdr->t_infomask;
 		header->t_infomask2 = xlhdr->t_infomask2;
 		header->t_hoff = xlhdr->t_hoff;
@@ -1229,7 +1224,7 @@ DecodeSpecConfirm(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 	if (FilterByOrigin(ctx, XLogRecGetOrigin(r)))
 		return;
 
-	change = ReorderBufferGetChange(ctx->reorder);
+	change = ReorderBufferAllocChange(ctx->reorder);
 	change->action = REORDER_BUFFER_CHANGE_INTERNAL_SPEC_CONFIRM;
 	change->origin_id = XLogRecGetOrigin(r);
 
@@ -1268,9 +1263,7 @@ DecodeXLogTuple(char *data, Size len, HeapTuple tuple)
 	tuple->t_tableOid = InvalidOid;
 
 	/* data is not stored aligned, copy to aligned storage */
-	memcpy((char *) &xlhdr,
-		   data,
-		   SizeOfHeapHeader);
+	memcpy(&xlhdr, data, SizeOfHeapHeader);
 
 	memset(header, 0, SizeofHeapTupleHeader);
 

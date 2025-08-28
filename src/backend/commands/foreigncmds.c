@@ -3,7 +3,7 @@
  * foreigncmds.c
  *	  foreign-data wrapper/server creation/manipulation commands
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -1532,7 +1532,7 @@ ImportForeignSchema(ImportForeignSchemaStmt *stmt)
 		callback_arg.tablename = NULL;	/* not known yet */
 		callback_arg.cmd = cmd;
 		sqlerrcontext.callback = import_error_callback;
-		sqlerrcontext.arg = (void *) &callback_arg;
+		sqlerrcontext.arg = &callback_arg;
 		sqlerrcontext.previous = error_context_stack;
 		error_context_stack = &sqlerrcontext;
 
