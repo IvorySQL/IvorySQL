@@ -1,4 +1,5 @@
-# Copyright (c) 2022-2024, PostgreSQL Global Development Group
+# Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+# Copyright (c) 2022-2025, PostgreSQL Global Development Group
 
 # libraries that other subsystems might depend upon first, in their respective
 # dependency order

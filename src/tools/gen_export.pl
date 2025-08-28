@@ -1,5 +1,5 @@
 
-# Copyright (c) 2024, PostgreSQL Global Development Group
+# Copyright (c) 2024-2025, PostgreSQL Global Development Group
 
 use strict;
 use warnings FATAL => 'all';
@@ -14,7 +14,7 @@ GetOptions(
 	'format:s'   => \$format,
 	'libname:s'    => \$libname,
 	'input:s' => \$input,
-	'output:s'  => \$output) or die "wrong arguments";
+	'output:s' => \$output) or die "wrong arguments";
 
 if (not(   $format eq 'darwin'
 		or $format eq 'gnu'

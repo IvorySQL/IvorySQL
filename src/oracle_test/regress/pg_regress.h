@@ -3,6 +3,7 @@
  *
  * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * src/test/regress/pg_regress.h
  *-------------------------------------------------------------------------
@@ -17,8 +18,6 @@
 #define PID_TYPE HANDLE
 #define INVALID_PID INVALID_HANDLE_VALUE
 #endif
-
-struct StringInfoData;			/* avoid including stringinfo.h here */
 
 /* simple list of strings */
 typedef struct _stringlist

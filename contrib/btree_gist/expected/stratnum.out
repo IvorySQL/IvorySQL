@@ -1,0 +1,13 @@
+-- test stratnum support func
+SELECT gist_stratnum_btree(7);
+ gist_stratnum_btree 
+---------------------
+                   0
+(1 row)
+
+SELECT gist_stratnum_btree(3);
+ gist_stratnum_btree 
+---------------------
+                   3
+(1 row)
+

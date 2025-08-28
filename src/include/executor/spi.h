@@ -3,7 +3,7 @@
  * spi.h
  *				Server Programming Interface public declarations
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/executor/spi.h
@@ -208,5 +208,6 @@ extern int SPI_get_connected(void);
 extern void SPI_remember_func(void *func);
 extern void *SPI_get_func(int level);
 extern MemoryContext SPI_get_proccxt(int level);
+extern MemoryContext Ora_spi_saved_memorycontext(void);
 
 #endif							/* SPI_H */

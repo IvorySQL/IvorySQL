@@ -1,4 +1,5 @@
-# Copyright (c) 2022-2024, PostgreSQL Global Development Group
+# Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+# Copyright (c) 2022-2025, PostgreSQL Global Development Group
 
 psql_sources = files(
   'command.c',
@@ -13,7 +14,6 @@ psql_sources = files(
   'prompt.c',
   'startup.c',
   'stringutils.c',
-  'tab-complete.c',
   'variables.c',
   'ora_prompt.c',
 )
@@ -21,21 +21,21 @@ psql_sources = files(
 psqlscanslash = custom_target('psqlscanslash',
   input: 'psqlscanslash.l',
   output: 'psqlscanslash.c',
-  command: [flex_cmd, '--no-backup', '--fix-warnings', '--', '-Cfe', '-p', '-p'])
+  command: [flex_cmd, '--no-backup', '--', '-Cfe', '-p', '-p'])
 generated_sources += psqlscanslash
 psql_sources += psqlscanslash
 
 ora_psqlscanslash = custom_target('ora_psqlscanslash',
   input: 'ora_psqlscanslash.l',
   output: 'ora_psqlscanslash.c',
-  command: [flex_cmd, '--no-backup', '--fix-warnings', '--', '-Cfe', '-p', '-p'])
+  command: [flex_cmd, '--no-backup', '--', '-Cfe', '-p', '-p'])
 generated_sources += ora_psqlscanslash
 psql_sources += ora_psqlscanslash
 
 psqlplusscan = custom_target('psqlplusscan',
   input: 'psqlplusscan.l',
   output: 'psqlplusscan.c',
-  command: [flex_cmd, '--no-backup', '--fix-warnings', '--', '-Cfe', '-p', '-p'])
+  command: [flex_cmd, '--no-backup', '--', '-Cfe', '-p', '-p'])
 generated_sources += psqlplusscan
 psql_sources += psqlplusscan
 psqlplusparse = custom_target('psqlplusparse',
@@ -44,6 +44,16 @@ psqlplusparse = custom_target('psqlplusparse',
 )
 generated_sources += psqlplusparse.to_list()
 psql_sources += psqlplusparse
+tabcomplete = custom_target('tabcomplete',
+  input: 'tab-complete.in.c',
+  output: 'tab-complete.c',
+  command: [
+    perl, files('gen_tabcomplete.pl'), '@INPUT@',
+    '--outfile', '@OUTPUT@',
+  ],
+)
+generated_sources += tabcomplete
+psql_sources += tabcomplete
 
 sql_help = custom_target('psql_help',
   output: ['sql_help.c', 'sql_help.h'],

@@ -16,7 +16,7 @@
  *		relevant database in turn.  The former keeps running after the
  *		initial prewarm is complete to update the dump file periodically.
  *
- *	Copyright (c) 2016-2024, PostgreSQL Global Development Group
+ *	Copyright (c) 2016-2025, PostgreSQL Global Development Group
  *
  *	IDENTIFICATION
  *		contrib/pg_prewarm/autoprewarm.c
@@ -30,8 +30,6 @@
 
 #include "access/relation.h"
 #include "access/xact.h"
-#include "catalog/pg_class.h"
-#include "catalog/pg_type.h"
 #include "pgstat.h"
 #include "postmaster/bgworker.h"
 #include "postmaster/interrupt.h"
@@ -42,18 +40,13 @@
 #include "storage/ipc.h"
 #include "storage/latch.h"
 #include "storage/lwlock.h"
-#include "storage/proc.h"
 #include "storage/procsignal.h"
-#include "storage/shmem.h"
 #include "storage/smgr.h"
 #include "tcop/tcopprot.h"
-#include "utils/acl.h"
-#include "utils/datetime.h"
 #include "utils/guc.h"
-#include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/relfilenumbermap.h"
-#include "utils/resowner.h"
+#include "utils/timestamp.h"
 
 #define AUTOPREWARM_FILE "autoprewarm.blocks"
 
@@ -805,12 +798,11 @@ apw_detach_shmem(int code, Datum arg)
 static void
 apw_start_leader_worker(void)
 {
-	BackgroundWorker worker;
+	BackgroundWorker worker = {0};
 	BackgroundWorkerHandle *handle;
 	BgwHandleStatus status;
 	pid_t		pid;
 
-	MemSet(&worker, 0, sizeof(BackgroundWorker));
 	worker.bgw_flags = BGWORKER_SHMEM_ACCESS;
 	worker.bgw_start_time = BgWorkerStart_ConsistentState;
 	strcpy(worker.bgw_library_name, "pg_prewarm");
@@ -847,10 +839,9 @@ apw_start_leader_worker(void)
 static void
 apw_start_database_worker(void)
 {
-	BackgroundWorker worker;
+	BackgroundWorker worker = {0};
 	BackgroundWorkerHandle *handle;
 
-	MemSet(&worker, 0, sizeof(BackgroundWorker));
 	worker.bgw_flags =
 		BGWORKER_SHMEM_ACCESS | BGWORKER_BACKEND_DATABASE_CONNECTION;
 	worker.bgw_start_time = BgWorkerStart_ConsistentState;

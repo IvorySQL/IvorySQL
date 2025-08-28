@@ -8,6 +8,8 @@
  * higher-level API provided by parser.h.
  *
  *
+ * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * src/include/oracle-parser/ora_scanner.h
@@ -144,6 +146,6 @@ extern void ora_setup_scanner_errposition_callback(OraScannerCallbackState *scbs
 											   ora_core_yyscan_t yyscanner,
 											   int location);
 extern void ora_cancel_scanner_errposition_callback(OraScannerCallbackState *scbstate);
-extern void ora_scanner_yyerror(const char *message, ora_core_yyscan_t yyscanner) pg_attribute_noreturn();
+pg_noreturn void ora_scanner_yyerror(const char *message, ora_core_yyscan_t yyscanner);
 
 #endif							/* SCANNER_H */

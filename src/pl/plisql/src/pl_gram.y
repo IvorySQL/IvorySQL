@@ -83,7 +83,8 @@ static	PLiSQL_expr	*read_sql_expression2(int until, int until2,
 											  int *endtoken);
 static	PLiSQL_expr	*read_sql_stmt(void);
 static	PLiSQL_type	*read_datatype(int tok);
-static	PLiSQL_stmt	*make_execsql_stmt(int firsttoken, int location);
+static	PLiSQL_stmt	*make_execsql_stmt(int firsttoken, int location,
+										   PLword *word);
 static	PLiSQL_stmt_fetch *read_fetch_direction(void);
 static	void			 complete_direction(PLiSQL_stmt_fetch *fetch,
 											bool *check_FROM);
@@ -270,6 +271,7 @@ static	PLiSQL_expr		*build_call_expr(int firsttoken, int location);
 %token <str>	IDENT UIDENT FCONST SCONST USCONST BCONST XCONST Op
 %token <str>	BFCONST	BDCONST
 %token <ival>	ICONST PARAM
+%token <str>	ORAPARAM
 %token			TYPECAST DOT_DOT COLON_EQUALS EQUALS_GREATER
 %token			LESS_EQUALS GREATER_EQUALS NOT_EQUALS LESS_LESS GREATER_GREATER
 
@@ -2613,15 +2615,15 @@ loop_body		: proc_sect K_END K_LOOP opt_label ';'
  */
 stmt_execsql	: K_IMPORT
 					{
-						$$ = make_execsql_stmt(K_IMPORT, @1);
+						$$ = make_execsql_stmt(K_IMPORT, @1, NULL);
 					}
 				| K_INSERT
 					{
-						$$ = make_execsql_stmt(K_INSERT, @1);
+						$$ = make_execsql_stmt(K_INSERT, @1, NULL);
 					}
 				| K_MERGE
 					{
-						$$ = make_execsql_stmt(K_MERGE, @1);
+						$$ = make_execsql_stmt(K_MERGE, @1, NULL);
 					}
 				| T_WORD
 					{
@@ -2647,7 +2649,7 @@ stmt_execsql	: K_IMPORT
 						}
 						else
 						{
-							$$ = make_execsql_stmt(T_WORD, @1);
+							$$ = make_execsql_stmt(T_WORD, @1, &($1));
 						}
 					}
 				| T_CWORD
@@ -2674,7 +2676,7 @@ stmt_execsql	: K_IMPORT
 						}
 						else
 						{
-							$$ = make_execsql_stmt(T_CWORD, @1);
+							$$ = make_execsql_stmt(T_CWORD, @1, NULL);
 						}
 					}
 				;
@@ -2700,6 +2702,8 @@ stmt_dynexecute : K_EXECUTE
 						new->strict = false;
 						new->target = NULL;
 						new->params = NIL;
+						new->haveout = false;
+						new->out = NULL;
 
 						/*
 						 * We loop to allow the INTO and USING clauses to
@@ -3768,7 +3772,7 @@ read_datatype(int tok)
 }
 
 static PLiSQL_stmt *
-make_execsql_stmt(int firsttoken, int location)
+make_execsql_stmt(int firsttoken, int location, PLword *word)
 {
 	StringInfoData		ds;
 	IdentifierLookup	save_IdentifierLookup;
@@ -3781,16 +3785,29 @@ make_execsql_stmt(int firsttoken, int location)
 	bool				have_strict = false;
 	int					into_start_loc = -1;
 	int					into_end_loc = -1;
+	int			paren_depth = 0;
+	int			begin_depth = 0;
+	bool		in_routine_definition = false;
+	int			token_count = 0;
+	char		tokens[4];		/* records the first few tokens */
 
 	initStringInfo(&ds);
+
+	memset(tokens, 0, sizeof(tokens));
 
 	/* special lookup mode for identifiers within the SQL text */
 	save_IdentifierLookup = plisql_IdentifierLookup;
 	plisql_IdentifierLookup = IDENTIFIER_LOOKUP_EXPR;
 
 	/*
-	 * Scan to the end of the SQL command.  Identify any INTO-variables
-	 * clause lurking within it, and parse that via read_into_target().
+	 * Scan to the end of the SQL command.  Identify any INTO-variables clause
+	 * lurking within it, and parse that via read_into_target().
+	 *
+	 * The end of the statement is defined by a semicolon ... except that
+	 * semicolons within parentheses or BEGIN/END blocks don't terminate a
+	 * statement.  We follow psql's lead in not recognizing BEGIN/END except
+	 * after CREATE [OR REPLACE] {FUNCTION|PROCEDURE}.  END can also appear
+	 * within a CASE construct, so we treat CASE/END like BEGIN/END.
 	 *
 	 * Because INTO is sometimes used in the main SQL grammar, we have to be
 	 * careful not to take any such usage of INTO as a PL/iSQL INTO clause.
@@ -3817,13 +3834,50 @@ make_execsql_stmt(int firsttoken, int location)
 	 * break this logic again ... beware!
 	 */
 	tok = firsttoken;
+	if (tok == T_WORD && strcmp(word->ident, "create") == 0)
+		tokens[token_count] = 'c';
+	token_count++;
+
 	for (;;)
 	{
 		prev_tok = tok;
 		tok = yylex();
 		if (have_into && into_end_loc < 0)
-			into_end_loc = yylloc;		/* token after the INTO part */
-		if (tok == ';')
+			into_end_loc = yylloc;	/* token after the INTO part */
+		/* Detect CREATE [OR REPLACE] {FUNCTION|PROCEDURE} */
+		if (tokens[0] == 'c' && token_count < sizeof(tokens))
+		{
+			if (tok == K_OR)
+				tokens[token_count] = 'o';
+			else if (tok == T_WORD &&
+					 strcmp(yylval.word.ident, "replace") == 0)
+				tokens[token_count] = 'r';
+			else if (tok == T_WORD &&
+					 strcmp(yylval.word.ident, "function") == 0)
+				tokens[token_count] = 'f';
+			else if (tok == T_WORD &&
+					 strcmp(yylval.word.ident, "procedure") == 0)
+				tokens[token_count] = 'f';	/* treat same as "function" */
+			if (tokens[1] == 'f' ||
+				(tokens[1] == 'o' && tokens[2] == 'r' && tokens[3] == 'f'))
+				in_routine_definition = true;
+			token_count++;
+		}
+		/* Track paren nesting (needed for CREATE RULE syntax) */
+		if (tok == '(')
+			paren_depth++;
+		else if (tok == ')' && paren_depth > 0)
+			paren_depth--;
+		/* We need track BEGIN/END nesting only in a routine definition */
+		if (in_routine_definition && paren_depth == 0)
+		{
+			if (tok == K_BEGIN || tok == K_CASE)
+				begin_depth++;
+			else if (tok == K_END && begin_depth > 0)
+				begin_depth--;
+		}
+		/* Command-ending semicolon? */
+		if (tok == ';' && paren_depth == 0 && begin_depth == 0)
 			break;
 		if (tok == 0)
 			yyerror("unexpected end of function definition");
@@ -4136,12 +4190,34 @@ make_return_stmt(int location)
 	}
 	else if (plisql_curr_compile->out_param_varno >= 0)
 	{
-		if (yylex() != ';')
-			ereport(ERROR,
+		int		tok = yylex();
+
+		if (tok != ';')
+		{
+			if (plisql_curr_compile->fn_prokind == PROKIND_PROCEDURE)
+				ereport(ERROR,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
-					 errmsg("RETURN cannot have a parameter in function with OUT parameters"),
+					 errmsg("RETURN cannot have a parameter in procedure"),
 					 parser_errposition(yylloc)));
-		new->retvarno = plisql_curr_compile->out_param_varno;
+
+			/* treat the return variable as expression */
+			plisql_push_back_token(tok);
+			new->expr = read_sql_expression(';', ";");
+			new->retvarno = plisql_curr_compile->fn_ret_vardno;
+		}
+		else
+		{
+			if (plisql_curr_compile->fn_prokind == PROKIND_FUNCTION &&
+				plisql_curr_compile->fn_ret_vardno != -1 &&
+				plisql_curr_compile->datums != NULL &&
+				((PLiSQL_var *)plisql_curr_compile->datums[plisql_curr_compile->fn_ret_vardno])->datatype->typoid != VOIDOID)
+					ereport(ERROR,
+						(errcode(ERRCODE_DATATYPE_MISMATCH),
+						 errmsg("RETURN cannot have a parameter in function with OUT parameters"),
+						 parser_errposition(yylloc)));
+
+			new->retvarno = plisql_curr_compile->out_param_varno;
+		}
 	}
 	else
 	{

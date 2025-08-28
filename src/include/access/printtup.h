@@ -4,7 +4,7 @@
  *
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/printtup.h
@@ -31,5 +31,9 @@ extern bool debugtup(TupleTableSlot *slot, DestReceiver *self);
 extern void spi_dest_startup(DestReceiver *self, int operation,
 							 TupleDesc typeinfo);
 extern bool spi_printtup(TupleTableSlot *slot, DestReceiver *self);
+
+extern void SetDestSendDescription(DestReceiver *dest);
+extern void ChangeRemoteDestReceiverSendDescription(DestReceiver *self, bool send_info);
+
 
 #endif							/* PRINTTUP_H */

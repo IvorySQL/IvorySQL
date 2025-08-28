@@ -3,7 +3,7 @@
  * pquery.c
  *	  POSTGRES process query command code
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -19,6 +19,8 @@
 
 #include "access/xact.h"
 #include "commands/prepare.h"
+#include "executor/execdesc.h"
+#include "executor/executor.h"
 #include "executor/tstoreReceiver.h"
 #include "miscadmin.h"
 #include "pg_trace.h"
@@ -36,6 +38,9 @@ Portal		ActivePortal = NULL;
 
 
 static void ProcessQuery(PlannedStmt *plan,
+						 CachedPlan *cplan,
+						 CachedPlanSource *plansource,
+						 int query_index,
 						 const char *sourceText,
 						 ParamListInfo params,
 						 QueryEnvironment *queryEnv,
@@ -58,13 +63,14 @@ static uint64 DoPortalRunFetch(Portal portal,
 							   long count,
 							   DestReceiver *dest);
 static void DoPortalRewind(Portal portal);
-
+static TupleDesc CreateTupleDescFromParams(ParamListInfo params);
 
 /*
  * CreateQueryDesc
  */
 QueryDesc *
 CreateQueryDesc(PlannedStmt *plannedstmt,
+				CachedPlan *cplan,
 				const char *sourceText,
 				Snapshot snapshot,
 				Snapshot crosscheck_snapshot,
@@ -77,6 +83,7 @@ CreateQueryDesc(PlannedStmt *plannedstmt,
 
 	qd->operation = plannedstmt->commandType;	/* operation */
 	qd->plannedstmt = plannedstmt;	/* plan */
+	qd->cplan = cplan;			/* CachedPlan supplying the plannedstmt */
 	qd->sourceText = sourceText;	/* query text */
 	qd->snapshot = RegisterSnapshot(snapshot);	/* snapshot */
 	/* RI check snapshot */
@@ -122,6 +129,9 @@ FreeQueryDesc(QueryDesc *qdesc)
  *		PORTAL_ONE_RETURNING, or PORTAL_ONE_MOD_WITH portal
  *
  *	plan: the plan tree for the query
+ *	cplan: CachedPlan supplying the plan
+ *	plansource: CachedPlanSource supplying the cplan
+ *	query_index: index of the query in plansource->query_list
  *	sourceText: the source text of the query
  *	params: any parameters needed
  *	dest: where to send results
@@ -134,6 +144,9 @@ FreeQueryDesc(QueryDesc *qdesc)
  */
 static void
 ProcessQuery(PlannedStmt *plan,
+			 CachedPlan *cplan,
+			 CachedPlanSource *plansource,
+			 int query_index,
 			 const char *sourceText,
 			 ParamListInfo params,
 			 QueryEnvironment *queryEnv,
@@ -145,19 +158,28 @@ ProcessQuery(PlannedStmt *plan,
 	/*
 	 * Create the QueryDesc object
 	 */
-	queryDesc = CreateQueryDesc(plan, sourceText,
+	queryDesc = CreateQueryDesc(plan, cplan, sourceText,
 								GetActiveSnapshot(), InvalidSnapshot,
 								dest, params, queryEnv, 0);
 
 	/*
-	 * Call ExecutorStart to prepare the plan for execution
+	 * Prepare the plan for execution
 	 */
-	ExecutorStart(queryDesc, 0);
+	if (queryDesc->cplan)
+	{
+		ExecutorStartCachedPlan(queryDesc, 0, plansource, query_index);
+		Assert(queryDesc->planstate);
+	}
+	else
+	{
+		if (!ExecutorStart(queryDesc, 0))
+			elog(ERROR, "ExecutorStart() failed unexpectedly");
+	}
 
 	/*
 	 * Run the plan to completion.
 	 */
-	ExecutorRun(queryDesc, ForwardScanDirection, 0, true);
+	ExecutorRun(queryDesc, ForwardScanDirection, 0);
 
 	/*
 	 * Build command completion status data, if caller wants one.
@@ -493,6 +515,7 @@ PortalStart(Portal portal, ParamListInfo params,
 				 * the destination to DestNone.
 				 */
 				queryDesc = CreateQueryDesc(linitial_node(PlannedStmt, portal->stmts),
+											portal->cplan,
 											portal->sourceText,
 											GetActiveSnapshot(),
 											InvalidSnapshot,
@@ -512,9 +535,19 @@ PortalStart(Portal portal, ParamListInfo params,
 					myeflags = eflags;
 
 				/*
-				 * Call ExecutorStart to prepare the plan for execution
+				 * Prepare the plan for execution.
 				 */
-				ExecutorStart(queryDesc, myeflags);
+				if (portal->cplan)
+				{
+					ExecutorStartCachedPlan(queryDesc, myeflags,
+											portal->plansource, 0);
+					Assert(queryDesc->planstate);
+				}
+				else
+				{
+					if (!ExecutorStart(queryDesc, myeflags))
+						elog(ERROR, "ExecutorStart() failed unexpectedly");
+				}
 
 				/*
 				 * This tells PortalCleanup to shut down the executor
@@ -583,6 +616,19 @@ PortalStart(Portal portal, ParamListInfo params,
 			case PORTAL_MULTI_QUERY:
 				/* Need do nothing now */
 				portal->tupDesc = NULL;
+
+				/* DoStmt has OUT parameters, build output tupdesc */
+				if (portal->stmts!= NIL)
+				{
+					Node *node = linitial(portal->stmts);
+
+					if (nodeTag(node) == T_RawStmt &&
+						nodeTag(((RawStmt *)node)->stmt) == T_DoStmt)
+					{
+						portal->tupDesc = CreateTupleDescFromParams(params);
+					}
+				}
+
 				break;
 		}
 	}
@@ -681,7 +727,7 @@ PortalSetResultFormat(Portal portal, int nFormats, int16 *formats)
  * suspended due to exhaustion of the count parameter.
  */
 bool
-PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
+PortalRun(Portal portal, long count, bool isTopLevel,
 		  DestReceiver *dest, DestReceiver *altdest,
 		  QueryCompletion *qc)
 {
@@ -713,10 +759,6 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 	 * Check for improper portal use, and mark portal active.
 	 */
 	MarkPortalActive(portal);
-
-	/* Set run_once flag.  Shouldn't be clear if previously set. */
-	Assert(!portal->run_once || run_once);
-	portal->run_once = run_once;
 
 	/*
 	 * Set up global portal context pointers.
@@ -921,8 +963,7 @@ PortalRunSelect(Portal portal,
 		else
 		{
 			PushActiveSnapshot(queryDesc->snapshot);
-			ExecutorRun(queryDesc, direction, (uint64) count,
-						portal->run_once);
+			ExecutorRun(queryDesc, direction, (uint64) count);
 			nprocessed = queryDesc->estate->es_processed;
 			PopActiveSnapshot();
 		}
@@ -961,8 +1002,7 @@ PortalRunSelect(Portal portal,
 		else
 		{
 			PushActiveSnapshot(queryDesc->snapshot);
-			ExecutorRun(queryDesc, direction, (uint64) count,
-						portal->run_once);
+			ExecutorRun(queryDesc, direction, (uint64) count);
 			nprocessed = queryDesc->estate->es_processed;
 			PopActiveSnapshot();
 		}
@@ -1194,6 +1234,32 @@ PortalRunMulti(Portal portal,
 {
 	bool		active_snapshot_set = false;
 	ListCell   *stmtlist_item;
+	bool		anonymous_has_outparamter = false;
+	int			query_index = 0;
+
+	/* check if anonymous block has OUT parameters */
+	if (portal->stmts != NIL &&
+	   list_length(portal->stmts) == 1)
+	{
+		Node *node = (Node *) linitial(portal->stmts);
+
+		if (nodeTag(node) == T_PlannedStmt &&
+			((PlannedStmt*)node)->utilityStmt != NULL &&
+			nodeTag(((PlannedStmt*)node)->utilityStmt) == T_DoStmt &&
+			portal->portalParams != NULL &&
+			portal->portalParams->haveout)
+		{
+			anonymous_has_outparamter = true;
+		}
+		else if (nodeTag(node) == T_RawStmt &&
+			nodeTag(((RawStmt *)node)->stmt) == T_DoStmt &&
+			portal->portalParams != NULL &&
+			portal->portalParams->haveout)
+		{
+			anonymous_has_outparamter = true;
+		}
+	}
+
 
 	/*
 	 * If the destination is DestRemoteExecute, change to DestNone.  The
@@ -1205,9 +1271,9 @@ PortalRunMulti(Portal portal,
 	 * but the results will be discarded unless you use "simple Query"
 	 * protocol.
 	 */
-	if (dest->mydest == DestRemoteExecute)
+	if (dest->mydest == DestRemoteExecute && !anonymous_has_outparamter)
 		dest = None_Receiver;
-	if (altdest->mydest == DestRemoteExecute)
+	if (altdest->mydest == DestRemoteExecute && !anonymous_has_outparamter)
 		altdest = None_Receiver;
 
 	/*
@@ -1275,6 +1341,9 @@ PortalRunMulti(Portal portal,
 			{
 				/* statement can set tag string */
 				ProcessQuery(pstmt,
+							 portal->cplan,
+							 portal->plansource,
+							 query_index,
 							 portal->sourceText,
 							 portal->portalParams,
 							 portal->queryEnv,
@@ -1284,6 +1353,9 @@ PortalRunMulti(Portal portal,
 			{
 				/* stmt added by rewrite cannot set tag */
 				ProcessQuery(pstmt,
+							 portal->cplan,
+							 portal->plansource,
+							 query_index,
 							 portal->sourceText,
 							 portal->portalParams,
 							 portal->queryEnv,
@@ -1348,6 +1420,8 @@ PortalRunMulti(Portal portal,
 		 */
 		if (lnext(portal->stmts, stmtlist_item) != NULL)
 			CommandCounterIncrement();
+
+		query_index++;
 	}
 
 	/* Pop the snapshot if we pushed one. */
@@ -1405,9 +1479,6 @@ PortalRunFetch(Portal portal,
 	 * Check for improper portal use, and mark portal active.
 	 */
 	MarkPortalActive(portal);
-
-	/* If supporting FETCH, portal can't be run-once. */
-	Assert(!portal->run_once);
 
 	/*
 	 * Set up global portal context pointers.
@@ -1805,3 +1876,50 @@ EnsurePortalSnapshotExists(void)
 	/* PushActiveSnapshotWithLevel might have copied the snapshot */
 	portal->portalSnapshot = GetActiveSnapshot();
 }
+
+/*
+ * build tupledesc from params. 
+ */
+static TupleDesc
+CreateTupleDescFromParams(ParamListInfo params)
+{
+	int i = 0;
+	int j = 0;
+	int natts = 0;
+	TupleDesc desc = NULL;
+
+	if (params == NULL || !params->haveout)
+		return NULL;
+
+	for (i = 0; i < params->numParams; i++)
+	{
+		if (params->params[i].pflags & PARAM_FLAG_OUT)
+			natts++;
+	}
+
+	if (natts == 0)
+		return NULL;
+
+	desc = CreateTemplateTupleDesc(natts);
+	for (i = 0, j = 0; i < natts; i++, j++)
+	{
+		for (; j < params->numParams; j++)
+		{
+			char buf[23];
+
+			if (params->params[j].pflags & PARAM_FLAG_OUT)
+			{
+				snprintf(buf, 23, "$%d", j + 1);
+				TupleDescInitEntry(desc, i + 1,
+							buf,
+							params->params[j].ptype,
+							-1,
+							0);
+				break;
+			}
+		}
+	}
+
+	return desc;
+}
+

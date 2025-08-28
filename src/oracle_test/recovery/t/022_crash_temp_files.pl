@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2024, PostgreSQL Global Development Group
+# Copyright (c) 2021-2025, PostgreSQL Global Development Group
 
 # Test remove of temporary files after a crash.
 use strict;
@@ -38,15 +38,14 @@ $node->safe_psql('postgres', q[CREATE TABLE tab_crash (a integer UNIQUE);]);
 my ($killme_stdin, $killme_stdout, $killme_stderr) = ('', '', '');
 my $killme = IPC::Run::start(
 	[
-		'psql', '-X', '-qAt', '-v', 'ON_ERROR_STOP=1', '-f', '-', '-d',
-		$node->connstr('postgres')
+		'psql', '--no-psqlrc', '--quiet', '--no-align', '--tuples-only',
+		'--set' => 'ON_ERROR_STOP=1',
+		'--file' => '-',
+		'--dbname' => $node->connstr('postgres')
 	],
-	'<',
-	\$killme_stdin,
-	'>',
-	\$killme_stdout,
-	'2>',
-	\$killme_stderr,
+	'<' => \$killme_stdin,
+	'>' => \$killme_stdout,
+	'2>' => \$killme_stderr,
 	$psql_timeout);
 
 # Get backend pid
@@ -66,15 +65,14 @@ $killme_stderr = '';
 my ($killme_stdin2, $killme_stdout2, $killme_stderr2) = ('', '', '');
 my $killme2 = IPC::Run::start(
 	[
-		'psql', '-X', '-qAt', '-v', 'ON_ERROR_STOP=1', '-f', '-', '-d',
-		$node->connstr('postgres')
+		'psql', '--no-psqlrc', '--quiet', '--no-align', '--tuples-only',
+		'--set' => 'ON_ERROR_STOP=1',
+		'--file' => '-',
+		'--dbname' => $node->connstr('postgres')
 	],
-	'<',
-	\$killme_stdin2,
-	'>',
-	\$killme_stdout2,
-	'2>',
-	\$killme_stderr2,
+	'<' => \$killme_stdin2,
+	'>' => \$killme_stdout2,
+	'2>' => \$killme_stderr2,
 	$psql_timeout);
 
 # Insert one tuple and leave the transaction open
@@ -98,7 +96,7 @@ SELECT $$in-progress-before-sigkill$$;
 INSERT INTO tab_crash (a) SELECT i FROM generate_series(1, 5000) s(i);
 ];
 ok( pump_until(
-		$killme, $psql_timeout,
+		$killme,         $psql_timeout,
 		\$killme_stdout, qr/in-progress-before-sigkill/m),
 	'insert in-progress-before-sigkill');
 $killme_stdout = '';
@@ -205,7 +203,7 @@ SELECT $$in-progress-before-sigkill$$;
 INSERT INTO tab_crash (a) SELECT i FROM generate_series(1, 5000) s(i);
 ];
 ok( pump_until(
-		$killme, $psql_timeout,
+		$killme,         $psql_timeout,
 		\$killme_stdout, qr/in-progress-before-sigkill/m),
 	'insert in-progress-before-sigkill');
 $killme_stdout = '';

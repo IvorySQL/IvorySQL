@@ -5,8 +5,9 @@
  *
  * See plancache.c for comments.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * src/include/utils/plancache.h
  *
@@ -18,12 +19,15 @@
 #include "access/tupdesc.h"
 #include "lib/ilist.h"
 #include "nodes/params.h"
+#include "nodes/parsenodes.h"
+#include "nodes/plannodes.h"
 #include "tcop/cmdtag.h"
 #include "utils/queryenvironment.h"
 #include "utils/resowner.h"
 
 
-/* Forward declaration, to avoid including parsenodes.h here */
+/* Forward declarations, to avoid including parsenodes.h here */
+struct Query;
 struct RawStmt;
 
 /* possible values for plan_cache_mode */
@@ -37,17 +41,30 @@ typedef enum
 /* GUC parameter */
 extern PGDLLIMPORT int plan_cache_mode;
 
+/* Optional callback to editorialize on rewritten parse trees */
+typedef void (*PostRewriteHook) (List *querytree_list, void *arg);
+
 #define CACHEDPLANSOURCE_MAGIC		195726186
 #define CACHEDPLAN_MAGIC			953717834
 #define CACHEDEXPR_MAGIC			838275847
 
 /*
  * CachedPlanSource (which might better have been called CachedQuery)
- * represents a SQL query that we expect to use multiple times.  It stores
- * the query source text, the raw parse tree, and the analyzed-and-rewritten
+ * represents a SQL query that we expect to use multiple times.  It stores the
+ * query source text, the source parse tree, and the analyzed-and-rewritten
  * query tree, as well as adjunct data.  Cache invalidation can happen as a
  * result of DDL affecting objects used by the query.  In that case we discard
  * the analyzed-and-rewritten query tree, and rebuild it when next needed.
+ *
+ * There are two ways in which the source query can be represented: either
+ * as a raw parse tree, or as an analyzed-but-not-rewritten parse tree.
+ * In the latter case we expect that cache invalidation need not affect
+ * the parse-analysis results, only the rewriting and planning steps.
+ * Only one of raw_parse_tree and analyzed_parse_tree can be non-NULL.
+ * (If both are NULL, the CachedPlanSource represents an empty query.)
+ * Note that query_string is typically just an empty string when the
+ * source query is an analyzed parse tree; also, param_types, num_params,
+ * parserSetup, and parserSetupArg will not be used.
  *
  * An actual execution plan, represented by CachedPlan, is derived from the
  * CachedPlanSource when we need to execute the query.  The plan could be
@@ -76,7 +93,7 @@ extern PGDLLIMPORT int plan_cache_mode;
  * though it may be useful if the CachedPlan can be discarded early.)
  *
  * A CachedPlanSource has two associated memory contexts: one that holds the
- * struct itself, the query source text and the raw parse tree, and another
+ * struct itself, the query source text and the source parse tree, and another
  * context that holds the rewritten query tree and associated data.  This
  * allows the query tree to be discarded easily when it is invalidated.
  *
@@ -87,22 +104,21 @@ extern PGDLLIMPORT int plan_cache_mode;
  * all subsidiary data live in the caller's CurrentMemoryContext, and there
  * is no way to free memory short of clearing that entire context.  A oneshot
  * plan is always treated as unsaved.
- *
- * Note: the string referenced by commandTag is not subsidiary storage;
- * it is assumed to be a compile-time-constant string.  As with portals,
- * commandTag shall be NULL if and only if the original query string (before
- * rewriting) was an empty string.
  */
 typedef struct CachedPlanSource
 {
 	int			magic;			/* should equal CACHEDPLANSOURCE_MAGIC */
 	struct RawStmt *raw_parse_tree; /* output of raw_parser(), or NULL */
+	struct Query *analyzed_parse_tree;	/* analyzed parse tree, or NULL */
 	const char *query_string;	/* source text of query */
-	CommandTag	commandTag;		/* 'nuff said */
+	CommandTag	commandTag;		/* command tag for query */
 	Oid		   *param_types;	/* array of parameter type OIDs, or NULL */
+	char 	   	*param_modes;	/* array of parameter modes */
 	int			num_params;		/* length of param_types array */
 	ParserSetupHook parserSetup;	/* alternative parameter spec method */
 	void	   *parserSetupArg;
+	PostRewriteHook postRewrite;	/* see SetPostRewriteHook */
+	void	   *postRewriteArg;
 	int			cursor_options; /* cursor options used for planning */
 	bool		fixed_result;	/* disallow change in result tupdesc? */
 	TupleDesc	resultDesc;		/* result type; NULL = doesn't return tuples */
@@ -139,10 +155,11 @@ typedef struct CachedPlanSource
  * The reference count includes both the link from the parent CachedPlanSource
  * (if any), and any active plan executions, so the plan can be discarded
  * exactly when refcount goes to zero.  Both the struct itself and the
- * subsidiary data live in the context denoted by the context field.
- * This makes it easy to free a no-longer-needed cached plan.  (However,
- * if is_oneshot is true, the context does not belong solely to the CachedPlan
- * so no freeing is possible.)
+ * subsidiary data, except the PlannedStmts in stmt_list live in the context
+ * denoted by the context field; the PlannedStmts live in the context denoted
+ * by stmt_context.  Separate contexts makes it easy to free a no-longer-needed
+ * cached plan. (However, if is_oneshot is true, the context does not belong
+ * solely to the CachedPlan so no freeing is possible.)
  */
 typedef struct CachedPlan
 {
@@ -150,6 +167,7 @@ typedef struct CachedPlan
 	List	   *stmt_list;		/* list of PlannedStmts */
 	bool		is_oneshot;		/* is it a "oneshot" plan? */
 	bool		is_saved;		/* is CachedPlan in a long-lived context? */
+	bool		is_reused;		/* is it a reused generic plan? */
 	bool		is_valid;		/* is the stmt_list currently valid? */
 	Oid			planRoleId;		/* Role ID the plan was created for */
 	bool		dependsOnRole;	/* is plan specific to that role? */
@@ -158,6 +176,10 @@ typedef struct CachedPlan
 	int			generation;		/* parent's generation number for this plan */
 	int			refcount;		/* count of live references to this struct */
 	MemoryContext context;		/* context containing this CachedPlan */
+	MemoryContext stmt_context; /* context containing the PlannedStmts in
+								 * stmt_list, but not the List itself which is
+								 * in the above context; NULL if is_oneshot is
+								 * true. */
 } CachedPlan;
 
 /*
@@ -193,6 +215,9 @@ extern void ReleaseAllPlanCacheRefsInOwner(ResourceOwner owner);
 extern CachedPlanSource *CreateCachedPlan(struct RawStmt *raw_parse_tree,
 										  const char *query_string,
 										  CommandTag commandTag);
+extern CachedPlanSource *CreateCachedPlanForQuery(struct Query *analyzed_parse_tree,
+												  const char *query_string,
+												  CommandTag commandTag);
 extern CachedPlanSource *CreateOneShotCachedPlan(struct RawStmt *raw_parse_tree,
 												 const char *query_string,
 												 CommandTag commandTag);
@@ -200,11 +225,15 @@ extern void CompleteCachedPlan(CachedPlanSource *plansource,
 							   List *querytree_list,
 							   MemoryContext querytree_context,
 							   Oid *param_types,
+							   char *param_modes,
 							   int num_params,
 							   ParserSetupHook parserSetup,
 							   void *parserSetupArg,
 							   int cursor_options,
 							   bool fixed_result);
+extern void SetPostRewriteHook(CachedPlanSource *plansource,
+							   PostRewriteHook postRewrite,
+							   void *postRewriteArg);
 
 extern void SaveCachedPlan(CachedPlanSource *plansource);
 extern void DropCachedPlan(CachedPlanSource *plansource);
@@ -223,6 +252,10 @@ extern CachedPlan *GetCachedPlan(CachedPlanSource *plansource,
 								 ParamListInfo boundParams,
 								 ResourceOwner owner,
 								 QueryEnvironment *queryEnv);
+extern PlannedStmt *UpdateCachedPlan(CachedPlanSource *plansource,
+									 int query_index,
+									 QueryEnvironment *queryEnv);
+
 extern void ReleaseCachedPlan(CachedPlan *plan, ResourceOwner owner);
 
 extern bool CachedPlanAllowsSimpleValidityCheck(CachedPlanSource *plansource,
@@ -236,5 +269,30 @@ extern CachedExpression *GetCachedExpression(Node *expr);
 extern void FreeCachedExpression(CachedExpression *cexpr);
 
 extern void setPlanCacheInvalidForPackage(Oid pkgoid);
+/*
+ * CachedPlanRequiresLocking: should the executor acquire additional locks?
+ *
+ * If the plan is a saved generic plan, the executor must acquire locks for
+ * relations that are not covered by AcquireExecutorLocks(), such as partitions
+ * that are subject to initial runtime pruning.
+ */
+static inline bool
+CachedPlanRequiresLocking(CachedPlan *cplan)
+{
+	return !cplan->is_oneshot && cplan->is_reused;
+}
+
+/*
+ * CachedPlanValid
+ *      Returns whether a cached generic plan is still valid.
+ *
+ * Invoked by the executor to check if the plan has not been invalidated after
+ * taking locks during the initialization of the plan.
+ */
+static inline bool
+CachedPlanValid(CachedPlan *cplan)
+{
+	return cplan->is_valid;
+}
 
 #endif							/* PLANCACHE_H */

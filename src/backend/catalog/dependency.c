@@ -4,8 +4,9 @@
  *	  Routines to support inter-object dependencies.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *	  src/backend/catalog/dependency.c
@@ -2221,7 +2222,22 @@ find_expr_references_walker(Node *node,
 					}
 					context->rtables = list_delete_first(context->rtables);
 					break;
+				case RTE_NAMEDTUPLESTORE:
+
+					/*
+					 * Cataloged objects cannot depend on tuplestores, because
+					 * those have no cataloged representation.  For now we can
+					 * call the tuplestore a "transition table" because that's
+					 * the only kind exposed to SQL, but someday we might have
+					 * to work harder.
+					 */
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("transition table \"%s\" cannot be referenced in a persistent object",
+									rte->eref->aliasname)));
+					break;
 				default:
+					/* Other RTE types can be ignored here */
 					break;
 			}
 		}
@@ -2270,7 +2286,7 @@ find_expr_references_walker(Node *node,
 		context->rtables = lcons(query->rtable, context->rtables);
 		result = query_tree_walker(query,
 								   find_expr_references_walker,
-								   (void *) context,
+								   context,
 								   QTW_IGNORE_JOINALIASES |
 								   QTW_EXAMINE_SORTGROUP);
 		context->rtables = list_delete_first(context->rtables);
@@ -2338,9 +2354,11 @@ find_expr_references_walker(Node *node,
 						   context->addrs);
 		/* fall through to examine arguments */
 	}
+	else if (IsA(node, NonDefValNode))
+		return false;
 
 	return expression_tree_walker(node, find_expr_references_walker,
-								  (void *) context);
+								  context);
 }
 
 /*

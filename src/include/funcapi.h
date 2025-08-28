@@ -8,7 +8,8 @@
  * or call FUNCAPI-callable functions or macros.
  *
  *
- * Copyright (c) 2002-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Copyright (c) 2002-2025, PostgreSQL Global Development Group
  *
  * src/include/funcapi.h
  *
@@ -199,6 +200,7 @@ typedef struct
 	Oid (*get_top_function_id) (void *function, bool *is_package);
 	void (*get_subprocs_from_package) (Oid pkgoid, TupleDesc tupdesc,
 									Tuplestorestate *tupstore);
+	void (*compile_inline_internal)(char *proc_source);
 	bool isload;
 } PLiSQL_funcs_call;
 
@@ -236,6 +238,13 @@ extern TupleDesc build_function_result_tupdesc_d(char prokind,
 												 Datum proargnames,
 												 Datum proargtypenames); 
 extern TupleDesc build_function_result_tupdesc_t(HeapTuple procTuple);
+extern TupleDesc build_plisql_function_result_tupdesc_d(char prokind,
+								Datum proallargtypes,
+								Datum proargmodes,
+								Datum proargnames,
+								Oid prorettype,
+								Datum proargtypenames);
+
 
 extern bool resolve_polymorphic_tupdesc(TupleDesc tupdesc,
 										oidvector *declared_args,
@@ -250,6 +259,9 @@ extern TypeFuncClass get_internal_function_result_type(FuncExpr *fexpr,
 extern TypeFuncClass external_get_type_func_class(Oid typid, Oid *base_typeid);
 extern List *get_internal_function_outargs(FuncExpr *fexpr);
 extern char *get_internal_function_result_name(FuncExpr *fexpr);
+extern bool	func_should_change_return_type(Oid functionId, Oid *rettype,
+								int32 *typmod, Oid *collationoid);
+
 
 extern void get_func_typename_info(HeapTuple procTup,
 					char ***p_argtypeNames,

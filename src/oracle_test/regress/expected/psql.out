@@ -2742,6 +2742,19 @@ Owned by: public.psql_serial_tab.id
  pg_catalog | exp  | pg_catalog.float8  | pg_catalog.float8   | func
  pg_catalog | exp  | pg_catalog.numeric | pg_catalog.numeric  | func
 
+\dfx exp
+Schema              | pg_catalog
+Name                | exp
+Result data type    | pg_catalog.float8
+Argument data types | pg_catalog.float8
+Type                | func
+--------------------+-------------------
+Schema              | pg_catalog
+Name                | exp
+Result data type    | pg_catalog.numeric
+Argument data types | pg_catalog.numeric
+Type                | func
+
 \pset tuples_only false
 \pset expanded on
 \d psql_serial_tab_id_seq
@@ -2915,7 +2928,7 @@ Access method: heap
 (4 rows)
 
 \dt+
-                                                    List of relations
+                                                     List of tables
      Schema      |     Name      | Type  |        Owner         | Persistence | Access method |    Size    | Description 
 -----------------+---------------+-------+----------------------+-------------+---------------+------------+-------------
  tableam_display | tbl_heap      | table | regress_display_role | permanent   | heap          | 8192 bytes | 
@@ -2923,7 +2936,7 @@ Access method: heap
 (2 rows)
 
 \dm+
-                                                           List of relations
+                                                      List of materialized views
      Schema      |        Name        |       Type        |        Owner         | Persistence | Access method |  Size   | Description 
 -----------------+--------------------+-------------------+----------------------+-------------+---------------+---------+-------------
  tableam_display | mat_view_heap_psql | materialized view | regress_display_role | permanent   | heap_psql     | 0 bytes | 
@@ -2931,7 +2944,7 @@ Access method: heap
 
 -- But not for views and sequences.
 \dv+
-                                          List of relations
+                                            List of views
      Schema      |      Name      | Type |        Owner         | Persistence |  Size   | Description 
 -----------------+----------------+------+----------------------+-------------+---------+-------------
  tableam_display | view_heap_psql | view | regress_display_role | permanent   | 0 bytes | 
@@ -2947,6 +2960,49 @@ Access method: heap
  tableam_display | tbl_heap_psql      | table             | regress_display_role | permanent   | 8192 bytes | 
  tableam_display | view_heap_psql     | view              | regress_display_role | permanent   | 0 bytes    | 
 (4 rows)
+
+-- \d with 'x' enables expanded mode, but only without a pattern
+\d+x tbl_heap
+                                       Table "tableam_display.tbl_heap"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage  | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+----------+--------------+-------------
+ f1     | pg_catalog.int4 |           |          |         |           | plain    |              | 
+ f2     | char(100)       |           |          |         |           | extended |              | 
+
+\d+x
+List of relations
+-[ RECORD 1 ]---------------------
+Schema      | tableam_display
+Name        | mat_view_heap_psql
+Type        | materialized view
+Owner       | regress_display_role
+Persistence | permanent
+Size        | 0 bytes
+Description | 
+-[ RECORD 2 ]---------------------
+Schema      | tableam_display
+Name        | tbl_heap
+Type        | table
+Owner       | regress_display_role
+Persistence | permanent
+Size        | 8192 bytes
+Description | 
+-[ RECORD 3 ]---------------------
+Schema      | tableam_display
+Name        | tbl_heap_psql
+Type        | table
+Owner       | regress_display_role
+Persistence | permanent
+Size        | 8192 bytes
+Description | 
+-[ RECORD 4 ]---------------------
+Schema      | tableam_display
+Name        | view_heap_psql
+Type        | view
+Owner       | regress_display_role
+Persistence | permanent
+Size        | 0 bytes
+Description | 
 
 RESET ROLE;
 RESET search_path;
@@ -4521,11 +4577,15 @@ bar 'bar' "bar"
 	\echo arg1 arg2 arg3 arg4 arg5
 	\echo arg1
 	\encoding arg1
+	\endpipeline
 	\errverbose
 	\f arg1
+	\flush
+	\flushrequest
 	\g arg1
 	\gx arg1
 	\gexec
+	\getresults
 	SELECT 1 AS one \gset
 	\h
 	\?
@@ -4544,10 +4604,13 @@ invalid command \lo
 	\q
 	\reset
 	\s arg1
+	\sendpipeline
 	\set arg1 arg2 arg3 arg4 arg5 arg6 arg7
 	\setenv arg1 arg2
 	\sf whole_line
 	\sv whole_line
+	\startpipeline
+	\syncpipeline
 	\t arg1
 	\T arg1
 	\timing arg1
@@ -5082,31 +5145,36 @@ List of access methods
  btree | integer_ops     | pg_catalog.int2, pg_catalog.int4, pg_catalog.int8
 (1 row)
 
-\dAo+ btree float_ops
-                                 List of operators of operator families
-  AM   | Operator family |                Operator                 | Strategy | Purpose | Sort opfamily 
--------+-----------------+-----------------------------------------+----------+---------+---------------
- btree | float_ops       | <(pg_catalog.float4,pg_catalog.float4)  |        1 | search  | 
- btree | float_ops       | <=(pg_catalog.float4,pg_catalog.float4) |        2 | search  | 
- btree | float_ops       | =(pg_catalog.float4,pg_catalog.float4)  |        3 | search  | 
- btree | float_ops       | >=(pg_catalog.float4,pg_catalog.float4) |        4 | search  | 
- btree | float_ops       | >(pg_catalog.float4,pg_catalog.float4)  |        5 | search  | 
- btree | float_ops       | <(pg_catalog.float8,pg_catalog.float8)  |        1 | search  | 
- btree | float_ops       | <=(pg_catalog.float8,pg_catalog.float8) |        2 | search  | 
- btree | float_ops       | =(pg_catalog.float8,pg_catalog.float8)  |        3 | search  | 
- btree | float_ops       | >=(pg_catalog.float8,pg_catalog.float8) |        4 | search  | 
- btree | float_ops       | >(pg_catalog.float8,pg_catalog.float8)  |        5 | search  | 
- btree | float_ops       | <(pg_catalog.float4,pg_catalog.float8)  |        1 | search  | 
- btree | float_ops       | <=(pg_catalog.float4,pg_catalog.float8) |        2 | search  | 
- btree | float_ops       | =(pg_catalog.float4,pg_catalog.float8)  |        3 | search  | 
- btree | float_ops       | >=(pg_catalog.float4,pg_catalog.float8) |        4 | search  | 
- btree | float_ops       | >(pg_catalog.float4,pg_catalog.float8)  |        5 | search  | 
- btree | float_ops       | <(pg_catalog.float8,pg_catalog.float4)  |        1 | search  | 
- btree | float_ops       | <=(pg_catalog.float8,pg_catalog.float4) |        2 | search  | 
- btree | float_ops       | =(pg_catalog.float8,pg_catalog.float4)  |        3 | search  | 
- btree | float_ops       | >=(pg_catalog.float8,pg_catalog.float4) |        4 | search  | 
- btree | float_ops       | >(pg_catalog.float8,pg_catalog.float4)  |        5 | search  | 
-(20 rows)
+\dAo+ btree array_ops|float_ops
+                                       List of operators of operator families
+  AM   | Operator family |                Operator                 | Strategy | Purpose | Sort opfamily | Leakproof? 
+-------+-----------------+-----------------------------------------+----------+---------+---------------+------------
+ btree | array_ops       | <(anyarray,anyarray)                    |        1 | search  |               | no
+ btree | array_ops       | <=(anyarray,anyarray)                   |        2 | search  |               | no
+ btree | array_ops       | =(anyarray,anyarray)                    |        3 | search  |               | no
+ btree | array_ops       | >=(anyarray,anyarray)                   |        4 | search  |               | no
+ btree | array_ops       | >(anyarray,anyarray)                    |        5 | search  |               | no
+ btree | float_ops       | <(pg_catalog.float4,pg_catalog.float4)  |        1 | search  |               | yes
+ btree | float_ops       | <=(pg_catalog.float4,pg_catalog.float4) |        2 | search  |               | yes
+ btree | float_ops       | =(pg_catalog.float4,pg_catalog.float4)  |        3 | search  |               | yes
+ btree | float_ops       | >=(pg_catalog.float4,pg_catalog.float4) |        4 | search  |               | yes
+ btree | float_ops       | >(pg_catalog.float4,pg_catalog.float4)  |        5 | search  |               | yes
+ btree | float_ops       | <(pg_catalog.float8,pg_catalog.float8)  |        1 | search  |               | yes
+ btree | float_ops       | <=(pg_catalog.float8,pg_catalog.float8) |        2 | search  |               | yes
+ btree | float_ops       | =(pg_catalog.float8,pg_catalog.float8)  |        3 | search  |               | yes
+ btree | float_ops       | >=(pg_catalog.float8,pg_catalog.float8) |        4 | search  |               | yes
+ btree | float_ops       | >(pg_catalog.float8,pg_catalog.float8)  |        5 | search  |               | yes
+ btree | float_ops       | <(pg_catalog.float4,pg_catalog.float8)  |        1 | search  |               | yes
+ btree | float_ops       | <=(pg_catalog.float4,pg_catalog.float8) |        2 | search  |               | yes
+ btree | float_ops       | =(pg_catalog.float4,pg_catalog.float8)  |        3 | search  |               | yes
+ btree | float_ops       | >=(pg_catalog.float4,pg_catalog.float8) |        4 | search  |               | yes
+ btree | float_ops       | >(pg_catalog.float4,pg_catalog.float8)  |        5 | search  |               | yes
+ btree | float_ops       | <(pg_catalog.float8,pg_catalog.float4)  |        1 | search  |               | yes
+ btree | float_ops       | <=(pg_catalog.float8,pg_catalog.float4) |        2 | search  |               | yes
+ btree | float_ops       | =(pg_catalog.float8,pg_catalog.float4)  |        3 | search  |               | yes
+ btree | float_ops       | >=(pg_catalog.float8,pg_catalog.float4) |        4 | search  |               | yes
+ btree | float_ops       | >(pg_catalog.float8,pg_catalog.float4)  |        5 | search  |               | yes
+(25 rows)
 
 \dAo * pg_catalog.jsonb_path_ops
              List of operators of operator families
@@ -5130,6 +5198,30 @@ List of access methods
  btree | float_ops       | pg_catalog.float4    | pg_catalog.float8     |      3 | in_range(pg_catalog.float4,pg_catalog.float4,pg_catalog.float8,pg_catalog.bool,pg_catalog.bool)
  btree | float_ops       | pg_catalog.float8    | pg_catalog.float4     |      1 | btfloat84cmp(pg_catalog.float8,pg_catalog.float4)
 (8 rows)
+
+\dApx+ btree time_ops
+List of support functions of operator families
+-[ RECORD 1 ]---------+-----------------------------------------------------------------------------------
+AM                    | btree
+Operator family       | time_ops
+Registered left type  | pg_catalog.time
+Registered right type | pg_catalog.time
+Number                | 1
+Function              | time_cmp(pg_catalog.time,pg_catalog.time)
+-[ RECORD 2 ]---------+-----------------------------------------------------------------------------------
+AM                    | btree
+Operator family       | time_ops
+Registered left type  | pg_catalog.time
+Registered right type | pg_catalog.time
+Number                | 4
+Function              | btequalimage(oid)
+-[ RECORD 3 ]---------+-----------------------------------------------------------------------------------
+AM                    | btree
+Operator family       | time_ops
+Registered left type  | pg_catalog.time
+Registered right type | interval
+Number                | 3
+Function              | in_range(pg_catalog.time,pg_catalog.time,interval,pg_catalog.bool,pg_catalog.bool)
 
 \dAp * pg_catalog.uuid_ops
                             List of support functions of operator families
@@ -5300,12 +5392,12 @@ create function psql_df_plpgsql ()
   as $$ begin return; end; $$;
 comment on function psql_df_plpgsql () is 'some comment';
 \df+ psql_df_*
-                                                                                        List of functions
- Schema |       Name       | Result data type  | Argument data types | Type | Volatility | Parallel |       Owner       | Security | Access privileges | Language | Internal name | Description  
---------+------------------+-------------------+---------------------+------+------------+----------+-------------------+----------+-------------------+----------+---------------+--------------
- public | psql_df_internal | pg_catalog.float8 | pg_catalog.float8   | func | immutable  | safe     | regress_psql_user | invoker  |                   | internal | dsin          | 
- public | psql_df_plpgsql  | void              |                     | func | volatile   | unsafe   | regress_psql_user | invoker  |                   | plpgsql  |               | some comment
- public | psql_df_sql      | pg_catalog.int4   | x pg_catalog.int4   | func | volatile   | unsafe   | regress_psql_user | definer  |                   | sql      |               | 
+                                                                                              List of functions
+ Schema |       Name       | Result data type  | Argument data types | Type | Volatility | Parallel |       Owner       | Security | Leakproof? | Access privileges | Language | Internal name | Description  
+--------+------------------+-------------------+---------------------+------+------------+----------+-------------------+----------+------------+-------------------+----------+---------------+--------------
+ public | psql_df_internal | pg_catalog.float8 | pg_catalog.float8   | func | immutable  | safe     | regress_psql_user | invoker  | no         |                   | internal | dsin          | 
+ public | psql_df_plpgsql  | void              |                     | func | volatile   | unsafe   | regress_psql_user | invoker  | no         |                   | plpgsql  |               | some comment
+ public | psql_df_sql      | pg_catalog.int4   | x pg_catalog.int4   | func | volatile   | unsafe   | regress_psql_user | definer  | no         |                   | sql      |               | 
 (3 rows)
 
 rollback;
@@ -6073,7 +6165,7 @@ List of access methods
 (0 rows)
 
 \dt "no.such.table.relation"
-      List of relations
+        List of tables
  Schema | Name | Type | Owner 
 --------+------+------+-------
 (0 rows)
@@ -6145,31 +6237,31 @@ List of access methods
 (0 rows)
 
 \di "no.such.index.relation"
-          List of relations
+           List of indexes
  Schema | Name | Type | Owner | Table 
 --------+------+------+-------+-------
 (0 rows)
 
 \dm "no.such.materialized.view"
-      List of relations
+  List of materialized views
  Schema | Name | Type | Owner 
 --------+------+------+-------
 (0 rows)
 
 \ds "no.such.relation"
-      List of relations
+      List of sequences
  Schema | Name | Type | Owner 
 --------+------+------+-------
 (0 rows)
 
 \dt "no.such.relation"
-      List of relations
+        List of tables
  Schema | Name | Type | Owner 
 --------+------+------+-------
 (0 rows)
 
 \dv "no.such.relation"
-      List of relations
+        List of views
  Schema | Name | Type | Owner 
 --------+------+------+-------
 (0 rows)
@@ -6264,9 +6356,9 @@ List of schemas
 (0 rows)
 
 \dRp "no.such.publication"
-                              List of publications
- Name | Owner | All tables | Inserts | Updates | Deletes | Truncates | Via root 
-------+-------+------------+---------+---------+---------+-----------+----------
+                                        List of publications
+ Name | Owner | All tables | Inserts | Updates | Deletes | Truncates | Generated columns | Via root 
+------+-------+------------+---------+---------+---------+-----------+-------------------+----------
 (0 rows)
 
 \dRs "no.such.subscription"
@@ -6282,9 +6374,9 @@ List of schemas
 (0 rows)
 
 \dx "no.such.installed.extension"
-     List of installed extensions
- Name | Version | Schema | Description 
-------+---------+--------+-------------
+              List of installed extensions
+ Name | Version | Default version | Schema | Description 
+------+---------+-----------------+--------+-------------
 (0 rows)
 
 \dX "no.such.extended.statistics"
@@ -6303,7 +6395,7 @@ List of schemas
 \dA "no.such.schema"."no.such.access.method"
 improper qualified name (too many dotted names): "no.such.schema"."no.such.access.method"
 \dt "no.such.schema"."no.such.table.relation"
-      List of relations
+        List of tables
  Schema | Name | Type | Owner 
 --------+------+------+-------
 (0 rows)
@@ -6355,31 +6447,31 @@ improper qualified name (too many dotted names): "no.such.schema"."no.such.table
 (0 rows)
 
 \di "no.such.schema"."no.such.index.relation"
-          List of relations
+           List of indexes
  Schema | Name | Type | Owner | Table 
 --------+------+------+-------+-------
 (0 rows)
 
 \dm "no.such.schema"."no.such.materialized.view"
-      List of relations
+  List of materialized views
  Schema | Name | Type | Owner 
 --------+------+------+-------
 (0 rows)
 
 \ds "no.such.schema"."no.such.relation"
-      List of relations
+      List of sequences
  Schema | Name | Type | Owner 
 --------+------+------+-------
 (0 rows)
 
 \dt "no.such.schema"."no.such.relation"
-      List of relations
+        List of tables
  Schema | Name | Type | Owner 
 --------+------+------+-------
 (0 rows)
 
 \dv "no.such.schema"."no.such.relation"
-      List of relations
+        List of views
  Schema | Name | Type | Owner 
 --------+------+------+-------
 (0 rows)
@@ -6470,7 +6562,7 @@ improper qualified name (too many dotted names): "no.such.schema"."no.such.insta
 improper qualified name (too many dotted names): "no.such.schema"."no.such.event.trigger"
 -- again, but with current database and dotted schema qualifications.
 \dt regression."no.such.schema"."no.such.table.relation"
-      List of relations
+        List of tables
  Schema | Name | Type | Owner 
 --------+------+------+-------
 (0 rows)
@@ -6506,31 +6598,31 @@ improper qualified name (too many dotted names): "no.such.schema"."no.such.event
 (0 rows)
 
 \di regression."no.such.schema"."no.such.index.relation"
-          List of relations
+           List of indexes
  Schema | Name | Type | Owner | Table 
 --------+------+------+-------+-------
 (0 rows)
 
 \dm regression."no.such.schema"."no.such.materialized.view"
-      List of relations
+  List of materialized views
  Schema | Name | Type | Owner 
 --------+------+------+-------
 (0 rows)
 
 \ds regression."no.such.schema"."no.such.relation"
-      List of relations
+      List of sequences
  Schema | Name | Type | Owner 
 --------+------+------+-------
 (0 rows)
 
 \dt regression."no.such.schema"."no.such.relation"
-      List of relations
+        List of tables
  Schema | Name | Type | Owner 
 --------+------+------+-------
 (0 rows)
 
 \dv regression."no.such.schema"."no.such.relation"
-      List of relations
+        List of views
  Schema | Name | Type | Owner 
 --------+------+------+-------
 (0 rows)
@@ -6706,10 +6798,10 @@ CREATE PROCEDURE regress_zeropriv_proc() LANGUAGE sql AS $$ $$;
 /
 REVOKE ALL ON PROCEDURE regress_zeropriv_proc() FROM CURRENT_USER, PUBLIC;
 \df+ regress_zeropriv_proc
-                                                                                            List of functions
- Schema |         Name          | Result data type | Argument data types | Type | Volatility | Parallel |         Owner          | Security | Access privileges | Language | Internal name | Description 
---------+-----------------------+------------------+---------------------+------+------------+----------+------------------------+----------+-------------------+----------+---------------+-------------
- public | regress_zeropriv_proc |                  |                     | proc | volatile   | unsafe   | regress_zeropriv_owner | invoker  | (none)            | sql      |               | 
+                                                                                                  List of functions
+ Schema |         Name          | Result data type | Argument data types | Type | Volatility | Parallel |         Owner          | Security | Leakproof? | Access privileges | Language | Internal name | Description 
+--------+-----------------------+------------------+---------------------+------+------------+----------+------------------------+----------+------------+-------------------+----------+---------------+-------------
+ public | regress_zeropriv_proc |                  |                     | proc | volatile   | unsafe   | regress_zeropriv_owner | invoker  | no         | (none)            | sql      |               | 
 (1 row)
 
 CREATE TABLE regress_zeropriv_tbl (a int);
@@ -6740,6 +6832,16 @@ CREATE TABLE defprivs (a int);
 --------+----------+-------+-------------------+-------------------+----------
  public | defprivs | table | (default)         |                   | 
 (1 row)
+
+\zx defprivs
+Access privileges
+-[ RECORD 1 ]-----+----------
+Schema            | public
+Name              | defprivs
+Type              | table
+Access privileges | (default)
+Column privileges | 
+Policies          | 
 
 \pset null ''
 DROP TABLE defprivs;

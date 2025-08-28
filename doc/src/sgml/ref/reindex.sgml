@@ -194,7 +194,8 @@ REINDEX [ ( <replaceable class="parameter">option</replaceable> [, ...] ) ] { DA
     <term><literal>VERBOSE</literal></term>
     <listitem>
      <para>
-      Prints a progress report as each index is reindexed.
+      Prints a progress report as each index is reindexed
+      at <literal>INFO</literal> level.
      </para>
     </listitem>
    </varlistentry>
@@ -305,7 +306,7 @@ REINDEX [ ( <replaceable class="parameter">option</replaceable> [, ...] ) ] { DA
    partitioned table, such commands skip the privilege checks when processing
    the individual partitions.  Reindexing a schema or database requires being the
    owner of that schema or database or having privileges of the
-   <link linkend="predefined-roles-table"><literal>pg_maintain</literal></link>
+   <xref linkend="predefined-role-pg-maintain"/>
    role.  Note specifically that it's thus
    possible for non-superusers to rebuild indexes of tables owned by
    other users.  However, as a special exception,

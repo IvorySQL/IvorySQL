@@ -3,7 +3,8 @@
  * test_bloomfilter.c
  *		Test false positive rate of Bloom filter.
  *
- * Copyright (c) 2018-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2018-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *		src/oracle_test/modules/test_bloomfilter/test_bloomfilter.c
@@ -78,7 +79,7 @@ create_and_test_bloom(int power, int64 nelements, int callerseed)
 	int64		nfalsepos;
 	bloom_filter *filter;
 
-	bloom_work_mem = (1L << power) / 8L / 1024L;
+	bloom_work_mem = ((int64) 1 << power) / (8 * 1024);
 
 	elog(DEBUG1, "bloom_work_mem (KB): %d", bloom_work_mem);
 

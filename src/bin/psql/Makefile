@@ -2,8 +2,9 @@
 #
 # Makefile for src/bin/psql
 #
-# Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
+# Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
 #
 # src/bin/psql/Makefile
 #
@@ -74,11 +75,12 @@ sql_help.h: create_help.pl $(wildcard $(REFDOCDIR)/*.sgml)
 
 psqlscanslash.c: FLEXFLAGS = -Cfe -p -p
 psqlscanslash.c: FLEX_NO_BACKUP=yes
-psqlscanslash.c: FLEX_FIX_WARNING=yes
 
 ora_psqlscanslash.c: FLEXFLAGS = -Cfe -p -p
 ora_psqlscanslash.c: FLEX_NO_BACKUP=yes
 ora_psqlscanslash.c: FLEX_FIX_WARNING=yes
+tab-complete.c: gen_tabcomplete.pl tab-complete.in.c
+	$(PERL) $^ --outfile $@
 
 install: all installdirs
 	$(INSTALL_PROGRAM) psql$(X) '$(DESTDIR)$(bindir)/psql$(X)'
@@ -96,6 +98,7 @@ clean distclean:
 	rm -f ora_psqlscanslash.c sql_help.h sql_help.c psqlscanslash.c
 	rm -f psqlplusscan.c psqlplusparse.c
 	rm -f psqlplusparse.h
+	rm -f sql_help.h sql_help.c psqlscanslash.c tab-complete.c
 
 check:
 	$(prove_check)

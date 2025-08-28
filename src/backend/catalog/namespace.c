@@ -9,8 +9,9 @@
  * and implementing search-path-controlled searches.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *	  src/backend/catalog/namespace.c
@@ -64,6 +65,10 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "utils/varlena.h"
+#include "commands/proclang.h"
+#include "utils/guc.h"
+#include "utils/ora_compatible.h"
+
 
 
 /*
@@ -234,10 +239,11 @@ static void AccessTempTableNamespace(bool force);
 static void InitTempTableNamespace(void);
 static void RemoveTempRelations(Oid tempNamespaceId);
 static void RemoveTempRelationsCallback(int code, Datum arg);
-static void NamespaceCallback(Datum arg, int cacheid, uint32 hashvalue);
+static void InvalidationCallback(Datum arg, int cacheid, uint32 hashvalue);
 static bool MatchNamedCall(HeapTuple proctup, int nargs, List *argnames,
 						   bool include_out_arguments, int pronargs,
 						   int **argnumbers);
+static Bitmapset  *get_nodefvalargposition(HeapTuple proctup, int pronargs);
 
 /*
  * Recomputing the namespace path can be costly when done frequently, such as
@@ -309,17 +315,32 @@ static SearchPathCacheEntry *LastSearchPathCacheEntry = NULL;
 static void
 spcache_init(void)
 {
-	Assert(SearchPathCacheContext);
-
 	if (SearchPathCache && searchPathCacheValid &&
 		SearchPathCache->members < SPCACHE_RESET_THRESHOLD)
 		return;
 
-	/* make sure we don't leave dangling pointers if nsphash_create fails */
+	searchPathCacheValid = false;
+	baseSearchPathValid = false;
+
+	/*
+	 * Make sure we don't leave dangling pointers if a failure happens during
+	 * initialization.
+	 */
 	SearchPathCache = NULL;
 	LastSearchPathCacheEntry = NULL;
 
-	MemoryContextReset(SearchPathCacheContext);
+	if (SearchPathCacheContext == NULL)
+	{
+		/* Make the context we'll keep search path cache hashtable in */
+		SearchPathCacheContext = AllocSetContextCreate(TopMemoryContext,
+													   "search_path processing cache",
+													   ALLOCSET_DEFAULT_SIZES);
+	}
+	else
+	{
+		MemoryContextReset(SearchPathCacheContext);
+	}
+
 	/* arbitrary initial starting size of 16 elements */
 	SearchPathCache = nsphash_create(SearchPathCacheContext, 16, NULL);
 	searchPathCacheValid = true;
@@ -1340,6 +1361,12 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 				continue;		/* proc is not in search path */
 		}
 
+		if (ORA_PARSER == compatible_db && 
+			LANG_PLISQL_OID == procform->prolang)
+		{
+			include_out_arguments = true;
+		}
+
 		/*
 		 * If we are asked to match to OUT arguments, then use the
 		 * proallargtypes array (which includes those); otherwise use
@@ -1437,9 +1464,40 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 			 */
 			if (pronargs > nargs && expand_defaults)
 			{
-				/* Ignore if not enough default expressions */
-				if (nargs + procform->pronargdefaults < pronargs)
-					continue;
+				if (compatible_db == PG_PARSER)
+				{
+					/* Ignore if no enough default expressions */
+					if (nargs + procform->pronargdefaults < pronargs)
+						continue;
+				}
+				else
+				{
+					Bitmapset  *nodefvalargposition;
+					bool is_have_nondefarg = false;
+					int pp;
+
+					nodefvalargposition = get_nodefvalargposition(proctup, pronargs);
+					if (nargs + procform->pronargdefaults < pronargs)
+						is_have_nondefarg = true;
+
+					/*
+					 * For parameters that have default values, if they are not continuous 
+					 * and in the last case, check which parameter has no default value
+					 */
+					for (pp = nargs; is_have_nondefarg != true && pp < pronargs; ++pp)
+					{
+						if (bms_is_member(pp, nodefvalargposition))
+							is_have_nondefarg = true;
+					}
+
+					if (is_have_nondefarg)
+					{
+						bms_free(nodefvalargposition);
+						continue;
+					}
+
+				}
+
 				use_defaults = true;
 				any_special = true;
 			}
@@ -4953,22 +5011,31 @@ InitializeSearchPath(void)
 	}
 	else
 	{
-		/* Make the context we'll keep search path cache hashtable in */
-		SearchPathCacheContext = AllocSetContextCreate(TopMemoryContext,
-													   "search_path processing cache",
-													   ALLOCSET_DEFAULT_SIZES);
-
 		/*
 		 * In normal mode, arrange for a callback on any syscache invalidation
-		 * of pg_namespace or pg_authid rows. (Changing a role name may affect
-		 * the meaning of the special string $user.)
+		 * that will affect the search_path cache.
 		 */
+
+		/* namespace name or ACLs may have changed */
 		CacheRegisterSyscacheCallback(NAMESPACEOID,
-									  NamespaceCallback,
+									  InvalidationCallback,
 									  (Datum) 0);
+
+		/* role name may affect the meaning of "$user" */
 		CacheRegisterSyscacheCallback(AUTHOID,
-									  NamespaceCallback,
+									  InvalidationCallback,
 									  (Datum) 0);
+
+		/* role membership may affect ACLs */
+		CacheRegisterSyscacheCallback(AUTHMEMROLEMEM,
+									  InvalidationCallback,
+									  (Datum) 0);
+
+		/* database owner may affect ACLs */
+		CacheRegisterSyscacheCallback(DATABASEOID,
+									  InvalidationCallback,
+									  (Datum) 0);
+
 		/* Force search path to be recomputed on next use */
 		baseSearchPathValid = false;
 		searchPathCacheValid = false;
@@ -4976,11 +5043,11 @@ InitializeSearchPath(void)
 }
 
 /*
- * NamespaceCallback
+ * InvalidationCallback
  *		Syscache inval callback function
  */
 static void
-NamespaceCallback(Datum arg, int cacheid, uint32 hashvalue)
+InvalidationCallback(Datum arg, int cacheid, uint32 hashvalue)
 {
 	/*
 	 * Force search path to be recomputed on next use, also invalidating the
@@ -5283,3 +5350,50 @@ pg_is_other_temp_schema(PG_FUNCTION_ARGS)
 
 	PG_RETURN_BOOL(isOtherTempNamespace(oid));
 }
+
+/*
+ * get_nodefvalargposition
+ * Get position of parameters that have no default value, 
+ * the result is saved in the Bitmap Set type. 
+ * The position of parameters with no default value is set to be 1. 
+ * create function f(num1 int = 5, num2 int = 10, num3 int)
+ * the position of num3 is set to 1
+*/
+static Bitmapset *
+get_nodefvalargposition(HeapTuple proctup, int pronargs)
+{
+	Form_pg_proc procform = (Form_pg_proc)GETSTRUCT(proctup);
+	Bitmapset  *nodefvalargposition;
+	Datum		proargdefaults;
+	char	   *string = NULL;
+	List	   *defaults = NULL;
+	ListCell   *lc = NULL;
+	int	i = 0;
+	bool        isnull;
+
+	proargdefaults = SysCacheGetAttr(PROCOID, proctup,
+						Anum_pg_proc_proargdefaults,
+						&isnull);
+	if (isnull)
+		return NULL;
+
+	string = TextDatumGetCString(proargdefaults);
+	defaults = (List *)stringToNode(string);
+	Assert(IsA(defaults, List));
+	pfree(string);
+
+	i = pronargs - procform->pronargdefaults;
+	nodefvalargposition = NULL;
+	foreach(lc, defaults)
+	{
+		Node *def = (Node*)lfirst(lc);
+		if (IsA(def, NonDefValNode))
+		{
+			nodefvalargposition = bms_add_member(nodefvalargposition, i);
+		}
+
+		i++;
+	}
+	return nodefvalargposition;
+}
+

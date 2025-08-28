@@ -3,8 +3,9 @@
  * alter.c
  *	  Drivers for generic alter commands
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  *
  * IDENTIFICATION
@@ -61,6 +62,7 @@
 #include "miscadmin.h"
 #include "replication/logicalworker.h"
 #include "rewrite/rewriteDefine.h"
+#include "storage/lmgr.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
@@ -346,6 +348,22 @@ AlterObjectRename_internal(Relation rel, Oid objectId, const char *new_name)
 
 	InvokeObjectPostAlterHook(classId, objectId, 0);
 
+	/* Do post catalog-update tasks */
+	if (classId == PublicationRelationId)
+	{
+		Form_pg_publication pub = (Form_pg_publication) GETSTRUCT(oldtup);
+
+		/*
+		 * Invalidate relsynccache entries.
+		 *
+		 * Unlike ALTER PUBLICATION ADD/SET/DROP commands, renaming a
+		 * publication does not impact the publication status of tables. So,
+		 * we don't need to invalidate relcache to rebuild the rd_pubdesc.
+		 * Instead, we invalidate only the relsyncache.
+		 */
+		InvalidatePubRelSyncCache(pub->oid, pub->puballtables);
+	}
+
 	/* Release memory */
 	pfree(values);
 	pfree(nulls);
@@ -431,13 +449,11 @@ ExecRenameStmt(RenameStmt *stmt)
 			{
 				ObjectAddress address;
 				Relation	catalog;
-				Relation	relation;
 
 				address = get_object_address(stmt->renameType,
 											 stmt->object,
-											 &relation,
+											 NULL,
 											 AccessExclusiveLock, false);
-				Assert(relation == NULL);
 
 				catalog = table_open(address.classId, RowExclusiveLock);
 				AlterObjectRename_internal(catalog,
@@ -492,8 +508,7 @@ ExecAlterObjectDependsStmt(AlterObjectDependsStmt *stmt, ObjectAddress *refAddre
 		table_close(rel, NoLock);
 
 	refAddr = get_object_address(OBJECT_EXTENSION, (Node *) stmt->extname,
-								 &rel, AccessExclusiveLock, false);
-	Assert(rel == NULL);
+								 NULL, AccessExclusiveLock, false);
 	if (refAddress)
 		*refAddress = refAddr;
 
@@ -574,16 +589,14 @@ ExecAlterObjectSchemaStmt(AlterObjectSchemaStmt *stmt,
 		case OBJECT_TSTEMPLATE:
 			{
 				Relation	catalog;
-				Relation	relation;
 				Oid			classId;
 				Oid			nspOid;
 
 				address = get_object_address(stmt->objectType,
 											 stmt->object,
-											 &relation,
+											 NULL,
 											 AccessExclusiveLock,
 											 false);
-				Assert(relation == NULL);
 				classId = address.classId;
 				catalog = table_open(classId, RowExclusiveLock);
 				nspOid = LookupCreationNamespace(stmt->newschema);
@@ -896,15 +909,13 @@ ExecAlterOwnerStmt(AlterOwnerStmt *stmt)
 		case OBJECT_TSDICTIONARY:
 		case OBJECT_TSCONFIGURATION:
 			{
-				Relation	relation;
 				ObjectAddress address;
 
 				address = get_object_address(stmt->objectType,
 											 stmt->object,
-											 &relation,
+											 NULL,
 											 AccessExclusiveLock,
 											 false);
-				Assert(relation == NULL);
 
 				AlterObjectOwner_internal(address.classId, address.objectId,
 										  newowner);
@@ -951,7 +962,9 @@ AlterObjectOwner_internal(Oid classId, Oid objectId, Oid new_ownerId)
 
 	rel = table_open(catalogId, RowExclusiveLock);
 
-	oldtup = get_catalog_object_by_oid(rel, Anum_oid, objectId);
+	/* Search tuple and lock it. */
+	oldtup =
+		get_catalog_object_by_oid_extended(rel, Anum_oid, objectId, true);
 	if (oldtup == NULL)
 		elog(ERROR, "cache lookup failed for object %u of catalog \"%s\"",
 			 objectId, RelationGetRelationName(rel));
@@ -1051,6 +1064,8 @@ AlterObjectOwner_internal(Oid classId, Oid objectId, Oid new_ownerId)
 		/* Perform actual update */
 		CatalogTupleUpdate(rel, &newtup->t_self, newtup);
 
+		UnlockTuple(rel, &oldtup->t_self, InplaceUpdateTupleLock);
+
 		/* Update owner dependency reference */
 		changeDependencyOnOwner(classId, objectId, new_ownerId);
 
@@ -1059,6 +1074,8 @@ AlterObjectOwner_internal(Oid classId, Oid objectId, Oid new_ownerId)
 		pfree(nulls);
 		pfree(replaces);
 	}
+	else
+		UnlockTuple(rel, &oldtup->t_self, InplaceUpdateTupleLock);
 
 	/* Note the post-alter hook gets classId not catalogId */
 	InvokeObjectPostAlterHook(classId, objectId, 0);

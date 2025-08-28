@@ -3,8 +3,9 @@
  * testlo64.c
  *	  test using large objects with libpq using 64-bit APIs
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  *
  * IDENTIFICATION
@@ -14,6 +15,7 @@
  *
  *-------------------------------------------------------------------------
  */
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -77,7 +79,7 @@ importFile(PGconn *conn, char *filename)
 }
 
 static void
-pickout(PGconn *conn, Oid lobjId, pg_int64 start, int len)
+pickout(PGconn *conn, Oid lobjId, int64_t start, int len)
 {
 	int			lobj_fd;
 	char	   *buf;
@@ -112,7 +114,7 @@ pickout(PGconn *conn, Oid lobjId, pg_int64 start, int len)
 }
 
 static void
-overwrite(PGconn *conn, Oid lobjId, pg_int64 start, int len)
+overwrite(PGconn *conn, Oid lobjId, int64_t start, int len)
 {
 	int			lobj_fd;
 	char	   *buf;
@@ -150,7 +152,7 @@ overwrite(PGconn *conn, Oid lobjId, pg_int64 start, int len)
 }
 
 static void
-my_truncate(PGconn *conn, Oid lobjId, pg_int64 len)
+my_truncate(PGconn *conn, Oid lobjId, int64_t len)
 {
 	int			lobj_fd;
 

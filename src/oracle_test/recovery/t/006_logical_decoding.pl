@@ -109,7 +109,7 @@ $node_primary->safe_psql('postgres',
 my $stdout_recv = $node_primary->pg_recvlogical_upto(
 	'postgres', 'test_slot', $endpos,
 	$PostgreSQL::Test::Utils::timeout_default,
-	'include-xids' => '0',
+	'include-xids'     => '0',
 	'skip-empty-xacts' => '1');
 chomp($stdout_recv);
 is($stdout_recv, $expected,
@@ -122,7 +122,7 @@ $node_primary->poll_query_until('postgres',
 $stdout_recv = $node_primary->pg_recvlogical_upto(
 	'postgres', 'test_slot', $endpos,
 	$PostgreSQL::Test::Utils::timeout_default,
-	'include-xids' => '0',
+	'include-xids'     => '0',
 	'skip-empty-xacts' => '1');
 chomp($stdout_recv);
 is($stdout_recv, '', 'pg_recvlogical acknowledged changes');
@@ -149,8 +149,11 @@ SKIP:
 
 	my $pg_recvlogical = IPC::Run::start(
 		[
-			'pg_recvlogical', '-d', $node_primary->connstr('otherdb'),
-			'-S', 'otherdb_slot', '-f', '-', '--start'
+			'pg_recvlogical',
+			'--dbname' => $node_primary->connstr('otherdb'),
+			'--slot' => 'otherdb_slot',
+			'--file' => '-',
+			'--start'
 		]);
 	$node_primary->poll_query_until('otherdb',
 		"SELECT EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name = 'otherdb_slot' AND active_pid IS NOT NULL)"

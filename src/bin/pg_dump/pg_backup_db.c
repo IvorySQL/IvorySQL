@@ -19,8 +19,6 @@
 
 #include "common/connect.h"
 #include "common/string.h"
-#include "dumputils.h"
-#include "fe_utils/string_utils.h"
 #include "oracle_fe_utils/ora_string_utils.h"
 #include "parallel.h"
 #include "pg_backup_archiver.h"
@@ -40,7 +38,7 @@ _check_database_version(ArchiveHandle *AH)
 	remoteversion_str = PQparameterStatus(AH->connection, "server_version");
 	remoteversion = PQserverVersion(AH->connection);
 	if (remoteversion == 0 || !remoteversion_str)
-		pg_fatal("could not get server_version from libpq");
+		pg_fatal("could not get \"server_version\" from libpq");
 
 	AH->public.remoteVersionStr = pg_strdup(remoteversion_str);
 	AH->public.remoteVersion = remoteversion;

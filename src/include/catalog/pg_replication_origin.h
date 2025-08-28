@@ -4,7 +4,7 @@
  *	  definition of the "replication origin" system catalog
  *	  (pg_replication_origin)
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_replication_origin.h
@@ -20,7 +20,7 @@
 
 #include "access/xlogdefs.h"
 #include "catalog/genbki.h"
-#include "catalog/pg_replication_origin_d.h"
+#include "catalog/pg_replication_origin_d.h"	/* IWYU pragma: export */
 
 /* ----------------
  *		pg_replication_origin.  cpp turns this into

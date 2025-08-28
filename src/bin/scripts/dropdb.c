@@ -2,8 +2,9 @@
  *
  * dropdb
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * src/bin/scripts/dropdb.c
  *
@@ -129,14 +130,6 @@ main(int argc, char *argv[])
 		if (!yesno_prompt("Are you sure?"))
 			exit(0);
 	}
-#if 0
-	initPQExpBuffer(&sql);
-
-	appendPQExpBuffer(&sql, "DROP DATABASE %s%s%s;",
-					  (if_exists ? "IF EXISTS " : ""),
-					  fmtId(dbname),
-					  force ? " WITH (FORCE)" : "");
-#endif
 
 	/* Avoid trying to drop postgres db while we are connected to it. */
 	if (maintenance_db == NULL && strcmp(dbname, "postgres") == 0)
@@ -152,12 +145,10 @@ main(int argc, char *argv[])
 	conn = connectMaintenanceDatabase(&cparams, progname, echo);
 
 	getDbCompatibleMode(conn);
-
 	initPQExpBuffer(&sql);
-
 	appendPQExpBuffer(&sql, "DROP DATABASE %s%s%s;",
 					  (if_exists ? "IF EXISTS " : ""),
-					  fmtId(dbname),
+					  fmtIdEnc(dbname, PQclientEncoding(conn)),
 					  force ? " WITH (FORCE)" : "");
 
 	if (echo)

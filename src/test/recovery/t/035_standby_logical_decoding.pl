@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2024, PostgreSQL Global Development Group
+# Copyright (c) 2023-2025, PostgreSQL Global Development Group
 
 # logical decoding on standby : test logical decoding,
 # recovery conflict and standby promotion.
@@ -10,10 +10,7 @@ use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
 
-my ($stdin,             $stdout,            $stderr,
-	$cascading_stdout,  $cascading_stderr,  $subscriber_stdin,
-	$subscriber_stdout, $subscriber_stderr, $ret,
-	$handle,            $slot);
+my ($stdout, $stderr, $cascading_stdout, $cascading_stderr, $handle);
 
 my $node_primary = PostgreSQL::Test::Cluster->new('primary');
 my $node_standby = PostgreSQL::Test::Cluster->new('standby');
@@ -73,18 +70,17 @@ sub make_slot_active
 	my $active_slot = $slot_prefix . 'activeslot';
 	$slot_user_handle = IPC::Run::start(
 		[
-			'pg_recvlogical', '-d',
-			$node->connstr('testdb'), '-S',
-			qq($active_slot), '-o',
-			'include-xids=0', '-o',
-			'skip-empty-xacts=1', '--no-loop',
-			'--start', '-f',
-			'-'
+			'pg_recvlogical',
+			'--dbname' => $node->connstr('testdb'),
+			'--slot' => $active_slot,
+			'--option' => 'include-xids=0',
+			'--option' => 'skip-empty-xacts=1',
+			'--file' => '-',
+			'--no-loop',
+			'--start',
 		],
-		'>',
-		$to_stdout,
-		'2>',
-		$to_stderr,
+		'>' => $to_stdout,
+		'2>' => $to_stderr,
 		IPC::Run::timeout($default_timeout));
 
 	if ($wait)
@@ -318,14 +314,53 @@ my %psql_subscriber = (
 	'subscriber_stdout' => '',
 	'subscriber_stderr' => '');
 $psql_subscriber{run} = IPC::Run::start(
-	[ 'psql', '-XA', '-f', '-', '-d', $node_subscriber->connstr('postgres') ],
-	'<',
-	\$psql_subscriber{subscriber_stdin},
-	'>',
-	\$psql_subscriber{subscriber_stdout},
-	'2>',
-	\$psql_subscriber{subscriber_stderr},
+	[
+		'psql', '--no-psqlrc', '--no-align',
+		'--file' => '-',
+		'--dbname' => $node_subscriber->connstr('postgres')
+	],
+	'<' => \$psql_subscriber{subscriber_stdin},
+	'>' => \$psql_subscriber{subscriber_stdout},
+	'2>' => \$psql_subscriber{subscriber_stderr},
 	IPC::Run::timeout($default_timeout));
+
+##################################################
+# Test that the standby requires hot_standby to be
+# enabled for pre-existing logical slots.
+##################################################
+
+# create the logical slots
+$node_standby->create_logical_slot_on_standby($node_primary, 'restart_test');
+$node_standby->stop;
+$node_standby->append_conf('postgresql.conf', qq[hot_standby = off]);
+
+# Use run_log instead of $node_standby->start because this test expects
+# that the server ends with an error during startup.
+run_log(
+	[
+		'pg_ctl',
+		'--pgdata' => $node_standby->data_dir,
+		'--log' => $node_standby->logfile,
+		'start',
+	]);
+
+# wait for postgres to terminate
+foreach my $i (0 .. 10 * $PostgreSQL::Test::Utils::timeout_default)
+{
+	last if !-f $node_standby->data_dir . '/postmaster.pid';
+	usleep(100_000);
+}
+
+# Confirm that the server startup fails with an expected error
+my $logfile = slurp_file($node_standby->logfile());
+ok( $logfile =~
+	  qr/FATAL: .* logical replication slot ".*" exists on the standby, but "hot_standby" = "off"/,
+	"the standby ends with an error during startup because hot_standby was disabled"
+);
+$node_standby->adjust_conf('postgresql.conf', 'hot_standby', 'on');
+$node_standby->start;
+$node_standby->safe_psql('postgres',
+	qq[SELECT pg_drop_replication_slot('restart_test')]);
 
 ##################################################
 # Test that logical decoding on the standby
@@ -478,7 +513,8 @@ $node_subscriber->stop;
 # Scenario 1: hot_standby_feedback off and vacuum FULL
 #
 # In passing, ensure that replication slot stats are not removed when the
-# active slot is invalidated.
+# active slot is invalidated, and check that an error occurs when
+# attempting to alter the invalid slot.
 ##################################################
 
 # One way to produce recovery conflict is to create/drop a relation and
@@ -508,6 +544,17 @@ check_for_invalidation('vacuum_full_', 1, 'with vacuum FULL on pg_class');
 # Verify reason for conflict is 'rows_removed' in pg_replication_slots
 check_slots_conflict_reason('vacuum_full_', 'rows_removed');
 
+# Attempting to alter an invalidated slot should result in an error
+($result, $stdout, $stderr) = $node_standby->psql(
+	'postgres',
+	qq[ALTER_REPLICATION_SLOT vacuum_full_inactiveslot (failover);],
+	replication => 'database');
+ok( $stderr =~
+	  /ERROR:  can no longer access replication slot "vacuum_full_inactiveslot"/
+	  && $stderr =~
+	  /DETAIL:  This replication slot has been invalidated due to "rows_removed"./,
+	"invalidated slot cannot be altered");
+
 # Ensure that replication slot stats are not removed after invalidation.
 is( $node_standby->safe_psql(
 		'testdb',
@@ -520,7 +567,8 @@ $handle =
   make_slot_active($node_standby, 'vacuum_full_', 0, \$stdout, \$stderr);
 
 # We are not able to read from the slot as it has been invalidated
-check_pg_recvlogical_stderr($handle, "can no longer get changes from replication slot \"vacuum_full_activeslot\"");
+check_pg_recvlogical_stderr($handle,
+	"can no longer access replication slot \"vacuum_full_activeslot\"");
 
 # Turn hot_standby_feedback back on
 change_hot_standby_feedback_and_wait_for_xmins(1,1);
@@ -598,7 +646,8 @@ check_slots_conflict_reason('row_removal_', 'rows_removed');
 $handle = make_slot_active($node_standby, 'row_removal_', 0, \$stdout, \$stderr);
 
 # We are not able to read from the slot as it has been invalidated
-check_pg_recvlogical_stderr($handle, "can no longer get changes from replication slot \"row_removal_activeslot\"");
+check_pg_recvlogical_stderr($handle,
+	"can no longer access replication slot \"row_removal_activeslot\"");
 
 ##################################################
 # Recovery conflict: Same as Scenario 2 but on a shared catalog table
@@ -630,7 +679,9 @@ check_slots_conflict_reason('shared_row_removal_', 'rows_removed');
 $handle = make_slot_active($node_standby, 'shared_row_removal_', 0, \$stdout, \$stderr);
 
 # We are not able to read from the slot as it has been invalidated
-check_pg_recvlogical_stderr($handle, "can no longer get changes from replication slot \"shared_row_removal_activeslot\"");
+check_pg_recvlogical_stderr($handle,
+	"can no longer access replication slot \"shared_row_removal_activeslot\""
+);
 
 ##################################################
 # Recovery conflict: Same as Scenario 2 but on a non catalog table
@@ -711,7 +762,8 @@ check_slots_conflict_reason('pruning_', 'rows_removed');
 $handle = make_slot_active($node_standby, 'pruning_', 0, \$stdout, \$stderr);
 
 # We are not able to read from the slot as it has been invalidated
-check_pg_recvlogical_stderr($handle, "can no longer get changes from replication slot \"pruning_activeslot\"");
+check_pg_recvlogical_stderr($handle,
+	"can no longer access replication slot \"pruning_activeslot\"");
 
 # Turn hot_standby_feedback back on
 change_hot_standby_feedback_and_wait_for_xmins(1, 1);
@@ -764,10 +816,11 @@ $node_primary->wait_for_replay_catchup($node_standby);
 
 $handle = make_slot_active($node_standby, 'wal_level_', 0, \$stdout, \$stderr);
 # as the slot has been invalidated we should not be able to read
-check_pg_recvlogical_stderr($handle, "can no longer get changes from replication slot \"wal_level_activeslot\"");
+check_pg_recvlogical_stderr($handle,
+	"can no longer access replication slot \"wal_level_activeslot\"");
 
 ##################################################
-# DROP DATABASE should drops it's slots, including active slots.
+# DROP DATABASE should drop its slots, including active slots.
 ##################################################
 
 # drop the logical slots

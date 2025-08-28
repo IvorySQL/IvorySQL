@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2024, PostgreSQL Global Development Group
+# Copyright (c) 2021-2025, PostgreSQL Global Development Group
 
 # Test SCRAM authentication and TLS channel binding types
 
@@ -20,7 +20,7 @@ if ($ENV{with_ssl} ne 'openssl')
 {
 	plan skip_all => 'OpenSSL not supported by this build';
 }
-elsif (!$ENV{PG_TEST_EXTRA} || $ENV{PG_TEST_EXTRA} !~ /\bssl\b/)
+if (!$ENV{PG_TEST_EXTRA} || $ENV{PG_TEST_EXTRA} !~ /\bssl\b/)
 {
 	plan skip_all => 'Potentially unsafe test SSL not enabled in PG_TEST_EXTRA';
 }
@@ -70,8 +70,8 @@ my $md5_works = ($node->psql('postgres', "select md5('')") == 0);
 $ssl_server->configure_test_server_for_ssl(
 	$node, $SERVERHOSTADDR, $SERVERHOSTCIDR,
 	"scram-sha-256",
-	'password'     => "pass",
-	'password_enc' => "scram-sha-256");
+	password => "pass",
+	password_enc => "scram-sha-256");
 switch_server_cert($node, certfile => 'server-cn-only');
 $ENV{PGPASSWORD} = "pass";
 $common_connstr =

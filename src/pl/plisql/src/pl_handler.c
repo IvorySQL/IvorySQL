@@ -31,13 +31,19 @@
 #include "utils/syscache.h"
 #include "utils/varlena.h"
 #include "commands/packagecmds.h"
+#include "parser/parse_param.h"
+#include "utils/datum.h"
 
 
 static bool plisql_extra_checks_check_hook(char **newvalue, void **extra, GucSource source);
 static void plisql_extra_warnings_assign_hook(const char *newvalue, void *extra);
 static void plisql_extra_errors_assign_hook(const char *newvalue, void *extra);
+static void set_blocks_oraparam_level(PLiSQL_stmt_block *block, int top, int cur);
 
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(
+					.name = "plisql",
+					.version = PG_VERSION
+);
 
 /* Custom GUC variable */
 static const struct config_enum_entry variable_conflict_options[] = {
@@ -246,6 +252,8 @@ plisql_call_handler(PG_FUNCTION_ARGS)
 	int			rc;
 
 	char	function_from = plisql_function_from(fcinfo);
+	int         oraparam_top_level = -1;
+	int         oraparam_cur_level = -1;
 
 	nonatomic = fcinfo->context &&
 		IsA(fcinfo->context, CallContext) &&
@@ -288,6 +296,10 @@ plisql_call_handler(PG_FUNCTION_ARGS)
 		(nonatomic && func->requires_procedure_resowner) ?
 		ResourceOwnerCreate(NULL, "PL/iSQL procedure resources") : NULL;
 
+	push_oraparam_stack();
+	get_oraparam_level(&oraparam_top_level, &oraparam_cur_level);
+	set_blocks_oraparam_level(func->action, oraparam_top_level, oraparam_cur_level);
+
 	PG_TRY();
 	{
 		/*
@@ -311,6 +323,8 @@ plisql_call_handler(PG_FUNCTION_ARGS)
 	}
 	PG_FINALLY();
 	{
+		pop_oraparam_stack(oraparam_top_level - 1, oraparam_cur_level);
+
 		/* Decrement use-count, restore cur_estate */
 		func->use_count--;
 		func->cur_estate = save_cur_estate;
@@ -349,7 +363,7 @@ PG_FUNCTION_INFO_V1(plisql_inline_handler);
 Datum
 plisql_inline_handler(PG_FUNCTION_ARGS)
 {
-	LOCAL_FCINFO(fake_fcinfo, 0);
+	LOCAL_FCINFO(fake_fcinfo, FUNC_MAX_ARGS);
 	InlineCodeBlock *codeblock = castNode(InlineCodeBlock, DatumGetPointer(PG_GETARG_DATUM(0)));
 	PLiSQL_function *func;
 	FmgrInfo	flinfo;
@@ -357,6 +371,9 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 	ResourceOwner simple_eval_resowner;
 	Datum		retval;
 	int			rc;
+	bool	ora_forward = false;
+	int         oraparam_top_level = -1;
+	int         oraparam_cur_level = -1;
 
 	/*
 	 * Connect to SPI manager
@@ -364,11 +381,62 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 	if ((rc = SPI_connect_ext(codeblock->atomic ? 0 : SPI_OPT_NONATOMIC)) != SPI_OK_CONNECT)
 		elog(ERROR, "SPI_connect failed: %s", SPI_result_code_string(rc));
 
+	if (codeblock->params != NULL)
+	{
+		bool check_var = get_doStmtCheckVar();
+
+		set_ParseDynSql(true);
+		set_parseDynDoStmt(true);
+		set_haspgparam(false);
+		set_ParseDynSql(true);
+		set_doStmtCheckVar(check_var);
+
+		if (codeblock->params->paramnames != NULL)
+			set_bindByName(true);
+	}
+
+	/*
+	 * Anonymous block has parameters, call forward_oraparam_stack, 
+	 * so that we can check if the variable match
+	 */
+	if (codeblock->params != NULL &&
+		SPI_get_connected() == 0)
+	{
+		forward_oraparam_stack();
+		ora_forward = true;
+	}
+
 	/* Compile the anonymous code block */
-	func = plisql_compile_inline(codeblock->source_text);
+	func = plisql_compile_inline(codeblock->source_text, codeblock->params);
 
 	/* rember current func in SPI */
 	SPI_remember_func(func);
+
+	/* check variables */
+	if (get_doStmtCheckVar() || ora_forward)
+	{
+		PG_TRY();
+		{
+			check_variables_does_match(codeblock->params == NULL ? 0 : codeblock->params->numParams);
+		}
+
+		PG_CATCH();
+		{
+			plisql_subxact_cb(SUBXACT_EVENT_ABORT_SUB,
+						GetCurrentSubTransactionId(),
+						0, NULL);
+
+			plisql_free_function_memory(func, 0, 0);
+
+			if (ora_forward)
+				backward_oraparam_stack();
+
+			/* throw out the error */
+			PG_RE_THROW();
+		}
+
+		PG_END_TRY();
+	}
 
 	/* Mark the function as busy, just pro forma */
 	func->use_count++;
@@ -378,7 +446,11 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 	 * plisql_exec_function().  In particular note that this sets things up
 	 * with no arguments passed.
 	 */
-	MemSet(fake_fcinfo, 0, SizeForFunctionCallInfo(0));
+	if (codeblock->params)
+		MemSet(fake_fcinfo, 0, SizeForFunctionCallInfo(codeblock->params->numParams));
+	else
+		MemSet(fake_fcinfo, 0, SizeForFunctionCallInfo(0));
+
 	MemSet(&flinfo, 0, sizeof(flinfo));
 	fake_fcinfo->flinfo = &flinfo;
 	flinfo.fn_oid = InvalidOid;
@@ -400,6 +472,21 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 	simple_eval_resowner =
 		ResourceOwnerCreate(NULL, "PL/iSQL DO block simple expressions");
 
+	if (codeblock->params)
+	{
+		int		i;
+
+		fake_fcinfo->nargs = codeblock->params->numParams;
+		for (i = 0; i < codeblock->params->numParams; ++i)
+		{
+			fake_fcinfo->args[i].value = codeblock->params->params[i].value;
+			fake_fcinfo->args[i].isnull = codeblock->params->params[i].isnull;
+		}
+	}
+	push_oraparam_stack();		
+	get_oraparam_level(&oraparam_top_level, &oraparam_cur_level);
+	set_blocks_oraparam_level(func->action, oraparam_top_level, oraparam_cur_level);
+
 	/* And run the function */
 	PG_TRY();
 	{
@@ -411,6 +498,11 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 	}
 	PG_CATCH();
 	{
+		pop_oraparam_stack(oraparam_top_level - 1, oraparam_cur_level);
+		if (ora_forward)
+			backward_oraparam_stack();
+		set_bindByName(false);
+
 		/*
 		 * We need to clean up what would otherwise be long-lived resources
 		 * accumulated by the failed DO block, principally cached plans for
@@ -445,6 +537,42 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
+
+	pop_oraparam_stack(oraparam_top_level - 1, oraparam_cur_level);
+	if (ora_forward)
+		backward_oraparam_stack();
+
+	set_bindByName(false);
+
+	if (codeblock->params != NULL && codeblock->params->haveout)
+	{
+		int		i;
+		int16		typLen;
+		bool		typByVal;
+		MemoryContext 	old;
+
+		/* use datumCopy to pass variables, first swith to saved memory context */
+		old = MemoryContextSwitchTo(Ora_spi_saved_memorycontext());
+		for (i = 0; i < fake_fcinfo->nargs; ++i)
+		{
+			if (!fake_fcinfo->args[i].isnull)
+			{
+				get_typlenbyval(codeblock->params->params[i].ptype, &typLen, &typByVal);
+
+				/* use datumCopy because fake_fcinfo memory will be freed by FreeExecutorState */
+				codeblock->params->params[i].value = datumCopy(fake_fcinfo->args[i].value, typByVal, typLen);
+				codeblock->params->params[i].isnull = fake_fcinfo->args[i].isnull;
+			}
+			else
+			{
+				codeblock->params->params[i].value = (Datum) 0;
+				codeblock->params->params[i].isnull = fake_fcinfo->args[i].isnull;
+			}
+		}
+
+		/* return to old memory context */
+		MemoryContextSwitchTo(old);
+	}
 
 	/* Clean up the private EState and resowner */
 	FreeExecutorState(simple_eval_estate);
@@ -587,3 +715,30 @@ plisql_validator(PG_FUNCTION_ARGS)
 
 	PG_RETURN_VOID();
 }
+
+static void
+set_blocks_oraparam_level(PLiSQL_stmt_block *block, int top, int cur)
+{
+	ListCell   *s;
+
+	if (block == NULL || block->body == NIL)
+	{
+		return;
+	}
+
+	block->ora_param_stack_top_level = top;
+	block->ora_param_stack_cur_level = cur;
+
+	foreach(s, block->body)
+	{
+		PLiSQL_stmt *stmt = (PLiSQL_stmt *)lfirst(s);
+
+		if (stmt != NULL && (enum PLiSQL_stmt_type) stmt->cmd_type == PLISQL_STMT_BLOCK)
+		{
+			set_blocks_oraparam_level((PLiSQL_stmt_block *)stmt, top, cur);		
+		}	
+	}
+
+	return;
+}
+

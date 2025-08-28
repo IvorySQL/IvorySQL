@@ -3,8 +3,9 @@
  * regexp.c
  *	  Postgres' interface to the regular expression package.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  *
  * IDENTIFICATION
@@ -1380,7 +1381,7 @@ regexp_matches(PG_FUNCTION_ARGS)
 		matchctx->nulls = (bool *) palloc(sizeof(bool) * matchctx->npatterns);
 
 		MemoryContextSwitchTo(oldcontext);
-		funcctx->user_fctx = (void *) matchctx;
+		funcctx->user_fctx = matchctx;
 	}
 
 	funcctx = SRF_PERCALL_SETUP();
@@ -2063,7 +2064,7 @@ regexp_split_to_table(PG_FUNCTION_ARGS)
 										false, true, true);
 
 		MemoryContextSwitchTo(oldcontext);
-		funcctx->user_fctx = (void *) splitctx;
+		funcctx->user_fctx = splitctx;
 	}
 
 	funcctx = SRF_PERCALL_SETUP();

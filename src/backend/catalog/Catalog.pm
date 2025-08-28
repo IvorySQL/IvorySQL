@@ -4,8 +4,9 @@
 #    Perl module that extracts info from catalog files into Perl
 #    data structures
 #
-# Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
+# Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
 #
 # src/backend/catalog/Catalog.pm
 #
@@ -627,7 +628,6 @@ sub FindAllOidsFromHeaders
 		if (-e $datfile)
 		{
 			my $catdata =
-				Catalog::ParseData($datfile, $catalog->{columns}, 0);
 				Catalog::ParseData($datfile, $catalog->{columns}, 0, "oracle");
 
 			foreach my $row (@$catdata)

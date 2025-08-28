@@ -3,7 +3,7 @@
 # pg_language.dat
 #    Initial contents of the pg_language system catalog.
 #
-# Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/include/catalog/pg_language.dat
@@ -22,4 +22,13 @@
   descr => 'SQL-language functions',
   lanname => 'sql', lanpltrusted => 't', lanvalidator => 'fmgr_sql_validator' },
 
+]
+/*BEGIN Oracle Compatibility Metadatas*/
+/* Begin - ReqID:SRS-SQL-FUNCOUT */
+{ oid => '9100', oid_symbol => 'PLISQLlanguageId',
+  descr => 'PL/iSQL procedural language',
+  lanname => 'plisql', lanispl => 't',lanpltrusted => 't', lanplcallfoid => 'plisql_call_handler',
+  laninline => 'plisql_inline_handler', lanvalidator => 'plisql_validator' },
+/* End - ReqID:SRS-SQL-FUNCOUT */
+/*END Oracle Compatibility Metadatas*/
 ]

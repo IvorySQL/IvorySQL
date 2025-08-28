@@ -1,3 +1,17 @@
+# Copyright 2025 IvorySQL Global Development Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
 
 ora_parser_sources = files(
@@ -17,7 +31,7 @@ ora_parser_sources += ora_parser_kwlist
 ora_backend_scanner = custom_target('ora_scan',
   input: 'ora_scan.l',
   output: 'ora_scan.c',
-  command: [flex_cmd, '--no-backup', '--fix-warnings', '--', '-CF', '-p', '-p'],
+  command: [flex_cmd, '--no-backup', '--', '-CF', '-p', '-p'],
 )
 generated_sources += ora_backend_scanner
 ora_parser_sources += ora_backend_scanner

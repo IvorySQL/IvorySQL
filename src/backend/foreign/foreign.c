@@ -3,7 +3,7 @@
  * foreign.c
  *		  support for foreign-data wrappers, servers and user mappings.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  src/backend/foreign/foreign.c
@@ -22,6 +22,7 @@
 #include "foreign/foreign.h"
 #include "funcapi.h"
 #include "miscadmin.h"
+#include "tcop/tcopprot.h"
 #include "utils/builtins.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
@@ -326,6 +327,15 @@ GetFdwRoutine(Oid fdwhandler)
 	Datum		datum;
 	FdwRoutine *routine;
 
+	/* Check if the access to foreign tables is restricted */
+	if (unlikely((restrict_nonsystem_relation_kind & RESTRICT_RELKIND_FOREIGN_TABLE) != 0))
+	{
+		/* there must not be built-in FDW handler  */
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("access to non-system foreign table is restricted")));
+	}
+
 	datum = OidFunctionCall0(fdwhandler);
 	routine = (FdwRoutine *) DatumGetPointer(datum);
 
@@ -514,7 +524,7 @@ pg_options_to_table(PG_FUNCTION_ARGS)
 	Datum		array = PG_GETARG_DATUM(0);
 	ListCell   *cell;
 	List	   *options;
-	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	ReturnSetInfo *rsinfo;
 
 	options = untransformRelOptions(array);
 	rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;

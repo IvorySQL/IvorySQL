@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2024, PostgreSQL Global Development Group
+# Copyright (c) 2021-2025, PostgreSQL Global Development Group
 
 # Testing of logical decoding using SQL interface and/or pg_recvlogical
 #
@@ -149,8 +149,11 @@ SKIP:
 
 	my $pg_recvlogical = IPC::Run::start(
 		[
-			'pg_recvlogical', '-d', $node_primary->connstr('otherdb'),
-			'-S', 'otherdb_slot', '-f', '-', '--start'
+			'pg_recvlogical',
+			'--dbname' => $node_primary->connstr('otherdb'),
+			'--slot' => 'otherdb_slot',
+			'--file' => '-',
+			'--start'
 		]);
 	$node_primary->poll_query_until('otherdb',
 		"SELECT EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name = 'otherdb_slot' AND active_pid IS NOT NULL)"

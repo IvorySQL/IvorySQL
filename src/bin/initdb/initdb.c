@@ -38,8 +38,9 @@
  *
  * This code is released under the terms of the PostgreSQL License.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * src/bin/initdb/initdb.c
  *
@@ -66,9 +67,9 @@
 
 #include "access/xlog_internal.h"
 #include "catalog/pg_authid_d.h"
-#include "catalog/pg_class_d.h" /* pgrminclude ignore */
+#include "catalog/pg_class_d.h"
 #include "catalog/pg_collation_d.h"
-#include "catalog/pg_database_d.h"	/* pgrminclude ignore */
+#include "catalog/pg_database_d.h"
 #include "common/file_perm.h"
 #include "common/file_utils.h"
 #include "common/logging.h"
@@ -165,10 +166,11 @@ static bool noinstructions = false;
 static bool do_sync = true;
 static bool sync_only = false;
 static bool show_setting = false;
-static bool data_checksums = false;
+static bool data_checksums = true;
 static char *xlog_dir = NULL;
 static int	wal_segment_size_mb = (DEFAULT_XLOG_SEG_SIZE) / (1024 * 1024);
 static DataDirSyncMethod sync_method = DATA_DIR_SYNC_METHOD_FSYNC;
+static bool sync_data_files = true;
 
 
 /* internal vars */
@@ -202,6 +204,7 @@ static int   caseswitchmode = INTERCHANGE;
 
 /* defaults */
 static int	n_connections = 10;
+static int	n_av_slots = 16;
 static int	n_buffers = 50;
 static const char *dynamic_shared_memory_type = NULL;
 static const char *default_timezone = NULL;
@@ -285,7 +288,8 @@ static void check_input(char *path);
 static void write_version_file(const char *extrapath);
 static void set_null_conf(void);
 static void test_config_settings(void);
-static bool test_specific_config_settings(int test_conns, int test_buffs);
+static bool test_specific_config_settings(int test_conns, int test_av_slots,
+										  int test_buffs);
 static void setup_config(void);
 static void bootstrap_template1(void);
 static void setup_auth(FILE *cmdfd);
@@ -354,6 +358,61 @@ do { \
 	if (fprintf(cmdfd, fmt, __VA_ARGS__) < 0 || fflush(cmdfd) < 0) \
 		output_failed = true, output_errno = errno; \
 } while (0)
+
+#ifdef WIN32
+typedef wchar_t *save_locale_t;
+#else
+typedef char *save_locale_t;
+#endif
+
+/*
+ * Save a copy of the current global locale's name, for the given category.
+ * The returned value must be passed to restore_global_locale().
+ *
+ * Since names from the environment haven't been vetted for non-ASCII
+ * characters, we use the wchar_t variant of setlocale() on Windows.  Otherwise
+ * they might not survive a save-restore round trip: when restoring, the name
+ * itself might be interpreted with a different encoding by plain setlocale(),
+ * after we switch to another locale in between.  (This is a problem only in
+ * initdb, not in similar backend code where the global locale's name should
+ * already have been verified as ASCII-only.)
+ */
+static save_locale_t
+save_global_locale(int category)
+{
+	save_locale_t save;
+
+#ifdef WIN32
+	save = _wsetlocale(category, NULL);
+	if (!save)
+		pg_fatal("_wsetlocale() failed");
+	save = wcsdup(save);
+	if (!save)
+		pg_fatal("out of memory");
+#else
+	save = setlocale(category, NULL);
+	if (!save)
+		pg_fatal("setlocale() failed");
+	save = pg_strdup(save);
+#endif
+	return save;
+}
+
+/*
+ * Restore the global locale returned by save_global_locale().
+ */
+static void
+restore_global_locale(int category, save_locale_t save)
+{
+#ifdef WIN32
+	if (!_wsetlocale(category, save))
+		pg_fatal("failed to restore old locale");
+#else
+	if (!setlocale(category, save))
+		pg_fatal("failed to restore old locale \"%s\"", save);
+#endif
+	free(save);
+}
 
 /*
  * Escape single quotes and backslashes, suitably for insertions into
@@ -851,6 +910,8 @@ static const struct tsearch_config_match tsearch_config_languages[] =
 	{"english", "POSIX"},
 	{"english", "en"},
 	{"english", "English"},
+	{"estonian", "et"},
+	{"estonian", "Estonian"},
 	{"finnish", "fi"},
 	{"finnish", "Finnish"},
 	{"french", "fr"},
@@ -1105,8 +1166,20 @@ test_config_settings(void)
 	 */
 #define MIN_BUFS_FOR_CONNS(nconns)	((nconns) * 10)
 
+	/*
+	 * This macro defines the default value of autovacuum_worker_slots we want
+	 * for a given max_connections value.  Note that it has been carefully
+	 * crafted to provide specific values for the associated values in
+	 * trial_conns.  We want it to return autovacuum_worker_slots's initial
+	 * default value (16) for the maximum value in trial_conns (100), and we
+	 * want it to return close to the minimum value we'd consider (3, which is
+	 * the default of autovacuum_max_workers) for the minimum value in
+	 * trial_conns (25).
+	 */
+#define AV_SLOTS_FOR_CONNS(nconns)	((nconns) / 6)
+
 	static const int trial_conns[] = {
-		100, 50, 40, 30, 20
+		100, 50, 40, 30, 25
 	};
 	static const int trial_bufs[] = {
 		16384, 8192, 4096, 3584, 3072, 2560, 2048, 1536,
@@ -1132,7 +1205,8 @@ test_config_settings(void)
 
 	/*
 	 * Probe for max_connections before shared_buffers, since it is subject to
-	 * more constraints than shared_buffers.
+	 * more constraints than shared_buffers.  We also choose the default
+	 * autovacuum_worker_slots here.
 	 */
 	printf(_("selecting default \"max_connections\" ... "));
 	fflush(stdout);
@@ -1140,9 +1214,10 @@ test_config_settings(void)
 	for (i = 0; i < connslen; i++)
 	{
 		test_conns = trial_conns[i];
+		n_av_slots = AV_SLOTS_FOR_CONNS(test_conns);
 		test_buffs = MIN_BUFS_FOR_CONNS(test_conns);
 
-		if (test_specific_config_settings(test_conns, test_buffs))
+		if (test_specific_config_settings(test_conns, n_av_slots, test_buffs))
 		{
 			ok_buffers = test_buffs;
 			break;
@@ -1153,6 +1228,13 @@ test_config_settings(void)
 	n_connections = trial_conns[i];
 
 	printf("%d\n", n_connections);
+
+	/*
+	 * We chose the default for autovacuum_worker_slots during the
+	 * max_connections tests above, but we print a progress message anyway.
+	 */
+	printf(_("selecting default \"autovacuum_worker_slots\" ... %d\n"),
+		   n_av_slots);
 
 	printf(_("selecting default \"shared_buffers\" ... "));
 	fflush(stdout);
@@ -1167,7 +1249,7 @@ test_config_settings(void)
 			break;
 		}
 
-		if (test_specific_config_settings(n_connections, test_buffs))
+		if (test_specific_config_settings(n_connections, n_av_slots, test_buffs))
 			break;
 	}
 	n_buffers = test_buffs;
@@ -1187,7 +1269,7 @@ test_config_settings(void)
  * Test a specific combination of configuration settings.
  */
 static bool
-test_specific_config_settings(int test_conns, int test_buffs)
+test_specific_config_settings(int test_conns, int test_av_slots, int test_buffs)
 {
 	PQExpBufferData cmd;
 	_stringlist *gnames,
@@ -1200,10 +1282,11 @@ test_specific_config_settings(int test_conns, int test_buffs)
 	printfPQExpBuffer(&cmd,
 					  "\"%s\" --check %s %s "
 					  "-c max_connections=%d "
+					  "-c autovacuum_worker_slots=%d "
 					  "-c shared_buffers=%d "
 					  "-c dynamic_shared_memory_type=%s",
 					  backend_exec, boot_options, extra_options,
-					  test_conns, test_buffs,
+					  test_conns, test_av_slots, test_buffs,
 					  dynamic_shared_memory_type);
 
 	/* Add any user-given setting overrides */
@@ -1267,12 +1350,15 @@ setup_config(void)
 	conflines = replace_guc_value(conflines, "max_connections",
 								  repltok, false);
 
-
 	if(is_load_gb18030_2022 && database_mode == DB_PG)
 		conflines = replace_token(conflines,
 								  "#shared_preload_libraries = ''",
 								  "shared_preload_libraries = 'gb18030_2022'");
-							
+
+	snprintf(repltok, sizeof(repltok), "%d", n_av_slots);
+	conflines = replace_guc_value(conflines, "autovacuum_worker_slots",
+								  repltok, false);
+
 	if ((n_buffers * (BLCKSZ / 1024)) % 1024 == 0)
 		snprintf(repltok, sizeof(repltok), "%dMB",
 				 (n_buffers * (BLCKSZ / 1024)) / 1024);
@@ -1362,11 +1448,6 @@ setup_config(void)
 			 DEFAULT_CHECKPOINT_FLUSH_AFTER * (BLCKSZ / 1024));
 	conflines = replace_guc_value(conflines, "checkpoint_flush_after",
 								  repltok, true);
-#endif
-
-#ifndef USE_PREFETCH
-	conflines = replace_guc_value(conflines, "effective_io_concurrency",
-								  "0", true);
 #endif
 
 #ifdef WIN32
@@ -2198,16 +2279,13 @@ locale_date_order(const char *locale)
 	char	   *posD;
 	char	   *posM;
 	char	   *posY;
-	char	   *save;
+	save_locale_t save;
 	size_t		res;
 	int			result;
 
 	result = DATEORDER_MDY;		/* default */
 
-	save = setlocale(LC_TIME, NULL);
-	if (!save)
-		return result;
-	save = pg_strdup(save);
+	save = save_global_locale(LC_TIME);
 
 	setlocale(LC_TIME, locale);
 
@@ -2218,8 +2296,7 @@ locale_date_order(const char *locale)
 
 	res = my_strftime(buf, sizeof(buf), "%x", &testtime);
 
-	setlocale(LC_TIME, save);
-	free(save);
+	restore_global_locale(LC_TIME, save);
 
 	if (res == 0)
 		return result;
@@ -2256,18 +2333,17 @@ locale_date_order(const char *locale)
 static void
 check_locale_name(int category, const char *locale, char **canonname)
 {
-	char	   *save;
+	save_locale_t save;
 	char	   *res;
+
+	/* Don't let Windows' non-ASCII locale names in. */
+	if (locale && !pg_is_ascii(locale))
+		pg_fatal("locale name \"%s\" contains non-ASCII characters", locale);
 
 	if (canonname)
 		*canonname = NULL;		/* in case of failure */
 
-	save = setlocale(category, NULL);
-	if (!save)
-		pg_fatal("setlocale() failed");
-
-	/* save may be pointing at a modifiable scratch variable, so copy it. */
-	save = pg_strdup(save);
+	save = save_global_locale(category);
 
 	/* for setlocale() call */
 	if (!locale)
@@ -2281,9 +2357,7 @@ check_locale_name(int category, const char *locale, char **canonname)
 		*canonname = pg_strdup(res);
 
 	/* restore old value. */
-	if (!setlocale(category, save))
-		pg_fatal("failed to restore old locale \"%s\"", save);
-	free(save);
+	restore_global_locale(category, save);
 
 	/* complain if locale wasn't valid */
 	if (res == NULL)
@@ -2307,6 +2381,11 @@ check_locale_name(int category, const char *locale, char **canonname)
 			pg_fatal("invalid locale settings; check LANG and LC_* environment variables");
 		}
 	}
+
+	/* Don't let Windows' non-ASCII locale names out. */
+	if (canonname && !pg_is_ascii(*canonname))
+		pg_fatal("locale name \"%s\" contains non-ASCII characters",
+				 *canonname);
 }
 
 /*
@@ -2533,6 +2612,8 @@ setlocales(void)
 		else if (strcmp(datlocale, "C.UTF-8") == 0 ||
 				 strcmp(datlocale, "C.UTF8") == 0)
 			canonname = "C.UTF-8";
+		else if (strcmp(datlocale, "PG_UNICODE_FAST") == 0)
+			canonname = "PG_UNICODE_FAST";
 		else
 			pg_fatal("invalid locale name \"%s\" for builtin provider",
 					 datlocale);
@@ -2594,6 +2675,7 @@ usage(const char *progname)
 			 "                            set builtin locale name for new databases\n"));
 	printf(_("      --locale-provider={builtin|libc|icu}\n"
 			 "                            set default locale provider for new databases\n"));
+	printf(_("      --no-data-checksums   do not use data page checksums\n"));
 	printf(_("      --pwfile=FILE         read password for the new superuser from file\n"));
 	printf(_("  -T, --text-search-config=CFG\n"
 			 "                            default text search configuration\n"));
@@ -2610,6 +2692,7 @@ usage(const char *progname)
 	printf(_("  -L DIRECTORY              where to find the input files\n"));
 	printf(_("  -n, --no-clean            do not clean up after errors\n"));
 	printf(_("  -N, --no-sync             do not wait for changes to be written safely to disk\n"));
+	printf(_("      --no-sync-data-files  do not sync files within database directories\n"));
 	printf(_("      --no-instructions     do not print instructions for next steps\n"));
 	printf(_("  -s, --show                show internal settings, then exit\n"));
 	printf(_("      --sync-method=METHOD  set method for syncing files to disk\n"));
@@ -2830,7 +2913,9 @@ setup_locale_encoding(void)
 
 	if (locale_provider == COLLPROVIDER_BUILTIN)
 	{
-		if (strcmp(datlocale, "C.UTF-8") == 0 && encodingid != PG_UTF8)
+		if ((strcmp(datlocale, "C.UTF-8") == 0 ||
+			 strcmp(datlocale, "PG_UNICODE_FAST") == 0) &&
+			encodingid != PG_UTF8)
 			pg_fatal("builtin provider locale \"%s\" requires encoding \"%s\"",
 					 datlocale, "UTF-8");
 	}
@@ -2935,27 +3020,18 @@ setup_text_search(void)
 void
 setup_signals(void)
 {
-	/* some of these are not valid on Windows */
-#ifdef SIGHUP
-	pqsignal(SIGHUP, trapsig);
-#endif
-#ifdef SIGINT
 	pqsignal(SIGINT, trapsig);
-#endif
-#ifdef SIGQUIT
-	pqsignal(SIGQUIT, trapsig);
-#endif
-#ifdef SIGTERM
 	pqsignal(SIGTERM, trapsig);
-#endif
+
+	/* the following are not valid on Windows */
+#ifndef WIN32
+	pqsignal(SIGHUP, trapsig);
+	pqsignal(SIGQUIT, trapsig);
 
 	/* Ignore SIGPIPE when writing to backend, so we can clean up */
-#ifdef SIGPIPE
 	pqsignal(SIGPIPE, SIG_IGN);
-#endif
 
 	/* Prevent SIGSYS so we can probe for kernel calls that might not work */
-#ifdef SIGSYS
 	pqsignal(SIGSYS, SIG_IGN);
 #endif
 }
@@ -3298,6 +3374,8 @@ main(int argc, char *argv[])
 		{"icu-locale", required_argument, NULL, 17},
 		{"icu-rules", required_argument, NULL, 18},
 		{"sync-method", required_argument, NULL, 19},
+		{"no-data-checksums", no_argument, NULL, 20},
+		{"no-sync-data-files", no_argument, NULL, 21},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -3522,6 +3600,12 @@ main(int argc, char *argv[])
 				if (!parse_sync_method(optarg, &sync_method))
 					exit(1);
 				break;
+			case 20:
+				data_checksums = false;
+				break;
+			case 21:
+				sync_data_files = false;
+				break;
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
@@ -3573,7 +3657,7 @@ main(int argc, char *argv[])
 
 		fputs(_("syncing data to disk ... "), stdout);
 		fflush(stdout);
-		sync_pgdata(pg_data, PG_VERSION_NUM, sync_method);
+		sync_pgdata(pg_data, PG_VERSION_NUM, sync_method, sync_data_files);
 		check_ok();
 		return 0;
 	}
@@ -3645,7 +3729,7 @@ main(int argc, char *argv[])
 	{
 		fputs(_("syncing data to disk ... "), stdout);
 		fflush(stdout);
-		sync_pgdata(pg_data, PG_VERSION_NUM, sync_method);
+		sync_pgdata(pg_data, PG_VERSION_NUM, sync_method, sync_data_files);
 		check_ok();
 	}
 	else

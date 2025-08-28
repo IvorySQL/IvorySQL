@@ -1,4 +1,17 @@
 /*-------------------------------------------------------------------------
+ * Copyright 2025 IvorySQL Global Development Team
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  *
  * ivy_guc.c
  *
@@ -21,7 +34,9 @@ int				identifier_case_switch = INTERCHANGE;
 bool  			identifier_case_from_pg_dump = false;
 bool			enable_case_switch = true;
 
-
+char	   *nls_territory = "AMERICA";
+char	   *nls_currency = "$";
+char	   *nls_iso_currency = "AMERICA";
 // int	   *nls_length_semantics = NULL;
 // char	   *nls_date_format = "";
 // char	   *nls_timestamp_format = "";
@@ -32,6 +47,9 @@ bool			enable_emptystring_to_NULL = false;
 
 int	database_mode = DB_PG;
 int	compatible_db = PG_PARSER;
+
+bool	allow_out_parameter_const = false;
+bool	out_parameter_column_position = false;
 
 bool	seq_scale_fixed = false;
 bool	internal_warning = false;
@@ -88,6 +106,10 @@ static bool check_nls_length_semantics(int *newval, void **extra, GucSource sour
 static bool check_compatible_mode(int *newval, void **extra, GucSource source);
 static bool check_database_mode(int *newval, void **extra, GucSource source);
 void assign_compatible_mode(int newval, void *extra);
+
+static void nls_case_conversion(char **param, char type);
+static bool nls_length_check(char **newval, void **extra, GucSource source);
+static bool nls_territory_check(char **newval, void **extra, GucSource source);
 #endif
 
 #if 0
@@ -124,6 +146,32 @@ static struct config_bool Ivy_ConfigureNamesBool[] =
 			NULL
 		},
 		&enable_emptystring_to_NULL,
+		false,
+		NULL, NULL, NULL
+	},
+
+	/*
+	 * if ivorysql.allow_out_parameter_const is false, out parameter must be a var.
+	 * if ivorysql.allow_out_parameter_const is true, out parameter can be a constant value
+	 */
+	{
+		{"ivorysql.allow_out_parameter_const", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("plisql function out parameter can be a constant value."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&allow_out_parameter_const,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"ivorysql.out_parameter_column_position", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("plisql function construct out parameter column by its position."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&out_parameter_column_position,
 		false,
 		NULL, NULL, NULL
 	},
@@ -268,6 +316,38 @@ static struct config_string Ivy_ConfigureNamesString[] =
 		&nls_timestamp_tz_format,
 		"YYYY-MM-DD HH24:MI:SS.FF6 TZH:TZM",
 		NULL, NULL, NULL
+	},
+	{
+		{"nls_territory", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
+			gettext_noop("Compatible Oracle NLS parameter for NLS_TERRITORY."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&nls_territory,
+		"AMERICA",
+		nls_territory_check, NULL, NULL
+	},
+
+	{
+		{"nls_currency", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
+			gettext_noop("Compatible Oracle NLS parameter for NLS_CURRENCY."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&nls_currency,
+		"$",
+		nls_length_check, NULL, NULL
+	},
+
+	{
+		{"nls_iso_currency", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
+			gettext_noop("Compatible Oracle NLS parameter for NLS_ISO_CURRENCY."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&nls_iso_currency,
+		"AMERICA",
+		nls_territory_check, NULL, NULL
 	},
 #endif
 #if 0
@@ -437,5 +517,88 @@ assign_compatible_mode(int newval, void *extra)
 			assign_search_path(NULL, NULL);
 		}
 	}
+}
+
+static void
+nls_case_conversion(char **param, char type)
+{
+	char   *p;
+
+CASE_CONVERSION:
+	if (type == 'u')
+	{
+		for (p = *param; p < *param + strlen(*param); ++p)
+			if (97 <= *p && *p <= 122)
+				*p -= 32;
+		*p = '\0';
+	}
+	else if (type == 'l')
+	{
+		for (p = *param; p < *param + strlen(*param); ++p)
+			if (65 <= *p && *p <= 90)
+				*p += 32;
+		*p = '\0';
+	}
+	else if (type == 'b')
+	{
+		bool    has_upper = false,
+				has_lower = false;
+
+		for (p = *param; p < *param + strlen(*param); ++p)
+		{
+			if (65 <= *p && *p <= 90)
+				has_upper = true;
+			else if (97 <= *p && *p <= 122)
+				has_lower = true;
+			if (has_upper && has_lower)
+				return;
+		}
+
+		if (has_upper && !has_lower)
+		{
+			type = 'l';
+			goto CASE_CONVERSION;
+		}
+		else if (!has_upper && has_lower)
+		{
+			type = 'u';
+			goto CASE_CONVERSION;
+		}
+	}
+}
+static bool
+nls_length_check(char **newval, void **extra, GucSource source)
+{
+	if (DB_ORACLE == database_mode
+			&&  (IsNormalProcessingMode() || (IsUnderPostmaster && MyProcPort)))
+	{
+		if (strlen(*newval) > 255)
+			ereport(ERROR, (errmsg("parameter value longer than 255 characters")));
+		else if (isdigit(**newval))
+			ereport(ERROR, (errmsg("Cannot access NLS data files "
+								   "or invalid environment specified")));
+		else if (identifier_case_switch == INTERCHANGE)
+				nls_case_conversion(newval, 'b');
+	}
+
+	return true;
+}
+
+static bool
+nls_territory_check(char **newval, void **extra, GucSource source)
+{
+	if (DB_ORACLE == database_mode
+			&&  (IsNormalProcessingMode() || (IsUnderPostmaster && MyProcPort)))
+	{
+		if (pg_strcasecmp(*newval, "CHINA") == 0)
+			memcpy(*newval, "CHINA", 5);
+		else if (pg_strcasecmp(*newval, "AMERICA") == 0)
+			memcpy(*newval, "AMERICA", 7);
+		else
+			ereport(ERROR, (errmsg("Cannot access NLS data files "
+								   "or invalid environment specified")));
+	}
+
+	return true;
 }
 #endif

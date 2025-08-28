@@ -2,7 +2,7 @@
  * logical.c
  *	   PostgreSQL logical decoding coordination
  *
- * Copyright (c) 2012-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2012-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/replication/logical/logical.c
@@ -152,6 +152,7 @@ StartupDecodingContext(List *output_plugin_options,
 					   TransactionId xmin_horizon,
 					   bool need_full_snapshot,
 					   bool fast_forward,
+					   bool in_create,
 					   XLogReaderRoutine *xl_routine,
 					   LogicalOutputPluginWriterPrepareWrite prepare_write,
 					   LogicalOutputPluginWriterWrite do_write,
@@ -212,7 +213,7 @@ StartupDecodingContext(List *output_plugin_options,
 	ctx->reorder = ReorderBufferAllocate();
 	ctx->snapshot_builder =
 		AllocateSnapshotBuilder(ctx->reorder, xmin_horizon, start_lsn,
-								need_full_snapshot, slot->data.two_phase_at);
+								need_full_snapshot, in_create, slot->data.two_phase_at);
 
 	ctx->reorder->private_data = ctx;
 
@@ -438,7 +439,7 @@ CreateInitDecodingContext(const char *plugin,
 	ReplicationSlotSave();
 
 	ctx = StartupDecodingContext(NIL, restart_lsn, xmin_horizon,
-								 need_full_snapshot, false,
+								 need_full_snapshot, false, true,
 								 xl_routine, prepare_write, do_write,
 								 update_progress);
 
@@ -538,31 +539,12 @@ CreateDecodingContext(XLogRecPtr start_lsn,
 				errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				errmsg("cannot use replication slot \"%s\" for logical decoding",
 					   NameStr(slot->data.name)),
-				errdetail("This slot is being synchronized from the primary server."),
+				errdetail("This replication slot is being synchronized from the primary server."),
 				errhint("Specify another replication slot."));
 
-	/*
-	 * Check if slot has been invalidated due to max_slot_wal_keep_size. Avoid
-	 * "cannot get changes" wording in this errmsg because that'd be
-	 * confusingly ambiguous about no changes being available when called from
-	 * pg_logical_slot_get_changes_guts().
-	 */
-	if (MyReplicationSlot->data.invalidated == RS_INVAL_WAL_REMOVED)
-		ereport(ERROR,
-				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("can no longer get changes from replication slot \"%s\"",
-						NameStr(MyReplicationSlot->data.name)),
-				 errdetail("This slot has been invalidated because it exceeded the maximum reserved size.")));
-
-	if (MyReplicationSlot->data.invalidated != RS_INVAL_NONE)
-		ereport(ERROR,
-				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("can no longer get changes from replication slot \"%s\"",
-						NameStr(MyReplicationSlot->data.name)),
-				 errdetail("This slot has been invalidated because it was conflicting with recovery.")));
-
-	Assert(MyReplicationSlot->data.invalidated == RS_INVAL_NONE);
-	Assert(MyReplicationSlot->data.restart_lsn != InvalidXLogRecPtr);
+	/* slot must be valid to allow decoding */
+	Assert(slot->data.invalidated == RS_INVAL_NONE);
+	Assert(slot->data.restart_lsn != InvalidXLogRecPtr);
 
 	if (start_lsn == InvalidXLogRecPtr)
 	{
@@ -592,7 +574,7 @@ CreateDecodingContext(XLogRecPtr start_lsn,
 
 	ctx = StartupDecodingContext(output_plugin_options,
 								 start_lsn, InvalidTransactionId, false,
-								 fast_forward, xl_routine, prepare_write,
+								 fast_forward, false, xl_routine, prepare_write,
 								 do_write, update_progress);
 
 	/* call output plugin initialization callback */
@@ -799,7 +781,7 @@ startup_cb_wrapper(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool i
 	state.callback_name = "startup";
 	state.report_location = InvalidXLogRecPtr;
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -827,7 +809,7 @@ shutdown_cb_wrapper(LogicalDecodingContext *ctx)
 	state.callback_name = "shutdown";
 	state.report_location = InvalidXLogRecPtr;
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -861,7 +843,7 @@ begin_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn)
 	state.callback_name = "begin";
 	state.report_location = txn->first_lsn;
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -893,7 +875,7 @@ commit_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	state.callback_name = "commit";
 	state.report_location = txn->final_lsn; /* beginning of commit record */
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -934,7 +916,7 @@ begin_prepare_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn)
 	state.callback_name = "begin_prepare";
 	state.report_location = txn->first_lsn;
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -979,7 +961,7 @@ prepare_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	state.callback_name = "prepare";
 	state.report_location = txn->final_lsn; /* beginning of prepare record */
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -1024,7 +1006,7 @@ commit_prepared_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	state.callback_name = "commit_prepared";
 	state.report_location = txn->final_lsn; /* beginning of commit record */
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -1070,7 +1052,7 @@ rollback_prepared_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	state.callback_name = "rollback_prepared";
 	state.report_location = txn->final_lsn; /* beginning of commit record */
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -1113,7 +1095,7 @@ change_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	state.callback_name = "change";
 	state.report_location = change->lsn;
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -1155,7 +1137,7 @@ truncate_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	state.callback_name = "truncate";
 	state.report_location = change->lsn;
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -1194,7 +1176,7 @@ filter_prepare_cb_wrapper(LogicalDecodingContext *ctx, TransactionId xid,
 	state.callback_name = "filter_prepare";
 	state.report_location = InvalidXLogRecPtr;
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -1225,7 +1207,7 @@ filter_by_origin_cb_wrapper(LogicalDecodingContext *ctx, RepOriginId origin_id)
 	state.callback_name = "filter_by_origin";
 	state.report_location = InvalidXLogRecPtr;
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -1261,7 +1243,7 @@ message_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	state.callback_name = "message";
 	state.report_location = message_lsn;
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -1297,7 +1279,7 @@ stream_start_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	state.callback_name = "stream_start";
 	state.report_location = first_lsn;
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -1346,7 +1328,7 @@ stream_stop_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	state.callback_name = "stream_stop";
 	state.report_location = last_lsn;
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -1395,7 +1377,7 @@ stream_abort_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	state.callback_name = "stream_abort";
 	state.report_location = abort_lsn;
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -1440,7 +1422,7 @@ stream_prepare_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	state.callback_name = "stream_prepare";
 	state.report_location = txn->final_lsn;
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -1481,7 +1463,7 @@ stream_commit_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	state.callback_name = "stream_commit";
 	state.report_location = txn->final_lsn;
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -1522,7 +1504,7 @@ stream_change_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	state.callback_name = "stream_change";
 	state.report_location = change->lsn;
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -1576,7 +1558,7 @@ stream_message_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	state.callback_name = "stream_message";
 	state.report_location = message_lsn;
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -1617,7 +1599,7 @@ stream_truncate_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	state.callback_name = "stream_truncate";
 	state.report_location = change->lsn;
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -1656,7 +1638,7 @@ update_progress_txn_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	state.callback_name = "update_progress_txn";
 	state.report_location = lsn;
 	errcallback.callback = output_plugin_error_callback;
-	errcallback.arg = (void *) &state;
+	errcallback.arg = &state;
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
@@ -1773,6 +1755,7 @@ LogicalIncreaseRestartDecodingForSlot(XLogRecPtr current_lsn, XLogRecPtr restart
 	/* don't overwrite if have a newer restart lsn */
 	if (restart_lsn <= slot->data.restart_lsn)
 	{
+		SpinLockRelease(&slot->mutex);
 	}
 
 	/*
@@ -1783,6 +1766,7 @@ LogicalIncreaseRestartDecodingForSlot(XLogRecPtr current_lsn, XLogRecPtr restart
 	{
 		slot->candidate_restart_valid = current_lsn;
 		slot->candidate_restart_lsn = restart_lsn;
+		SpinLockRelease(&slot->mutex);
 
 		/* our candidate can directly be used */
 		updated_lsn = true;
@@ -1793,7 +1777,7 @@ LogicalIncreaseRestartDecodingForSlot(XLogRecPtr current_lsn, XLogRecPtr restart
 	 * might never end up updating if the receiver acks too slowly. A missed
 	 * value here will just cause some extra effort after reconnecting.
 	 */
-	if (slot->candidate_restart_valid == InvalidXLogRecPtr)
+	else if (slot->candidate_restart_valid == InvalidXLogRecPtr)
 	{
 		slot->candidate_restart_valid = current_lsn;
 		slot->candidate_restart_lsn = restart_lsn;
@@ -1937,16 +1921,16 @@ UpdateDecodingStats(LogicalDecodingContext *ctx)
 	if (rb->spillBytes <= 0 && rb->streamBytes <= 0 && rb->totalBytes <= 0)
 		return;
 
-	elog(DEBUG2, "UpdateDecodingStats: updating stats %p %lld %lld %lld %lld %lld %lld %lld %lld",
+	elog(DEBUG2, "UpdateDecodingStats: updating stats %p %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64,
 		 rb,
-		 (long long) rb->spillTxns,
-		 (long long) rb->spillCount,
-		 (long long) rb->spillBytes,
-		 (long long) rb->streamTxns,
-		 (long long) rb->streamCount,
-		 (long long) rb->streamBytes,
-		 (long long) rb->totalTxns,
-		 (long long) rb->totalBytes);
+		 rb->spillTxns,
+		 rb->spillCount,
+		 rb->spillBytes,
+		 rb->streamTxns,
+		 rb->streamCount,
+		 rb->streamBytes,
+		 rb->totalTxns,
+		 rb->totalBytes);
 
 	repSlotStat.spill_txns = rb->spillTxns;
 	repSlotStat.spill_count = rb->spillCount;

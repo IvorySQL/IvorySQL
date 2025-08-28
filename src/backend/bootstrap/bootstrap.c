@@ -4,8 +4,9 @@
  *	  routines to support running postgres in 'bootstrap' mode
  *	bootstrap mode is used to create the initial template database
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *	  src/backend/bootstrap/bootstrap.c
@@ -31,6 +32,7 @@
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "pg_getopt.h"
+#include "postmaster/postmaster.h"
 #include "storage/bufpage.h"
 #include "storage/ipc.h"
 #include "storage/proc.h"
@@ -42,7 +44,6 @@
 #include "utils/relmapper.h"
 #include "utils/ora_compatible.h"
 
-uint32		bootstrap_data_checksum_version = 0;	/* No checksum */
 int			bootstrap_database_mode = DB_ORACLE;
 
 static void CheckerModeMain(void);
@@ -203,6 +204,8 @@ BootstrapModeMain(int argc, char *argv[], bool check_only)
 	char	   *progname = argv[0];
 	int			flag;
 	char	   *userDoption = NULL;
+	uint32		bootstrap_data_checksum_version = 0;	/* No checksum */
+	yyscan_t	scanner;
 
 	Assert(!IsUnderPostmaster);
 
@@ -226,9 +229,22 @@ BootstrapModeMain(int argc, char *argv[], bool check_only)
 			case 'B':
 				SetConfigOption("shared_buffers", optarg, PGC_POSTMASTER, PGC_S_ARGV);
 				break;
+			case '-':
+
+				/*
+				 * Error if the user misplaced a special must-be-first option
+				 * for dispatching to a subprogram.  parse_dispatch_option()
+				 * returns DISPATCH_POSTMASTER if it doesn't find a match, so
+				 * error for anything else.
+				 */
+				if (parse_dispatch_option(optarg) != DISPATCH_POSTMASTER)
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("--%s must be first argument", optarg)));
+
+				/* FALLTHROUGH */
 			case 'C':
 			case 'c':
-			case '-':
 				{
 					char	   *name,
 							   *value;
@@ -327,7 +343,22 @@ BootstrapModeMain(int argc, char *argv[], bool check_only)
 
 	InitializeMaxBackends();
 
+	/*
+	 * Even though bootstrapping runs in single-process mode, initialize
+	 * postmaster child slots array so that --check can detect running out of
+	 * shared memory or other resources if max_connections is set too high.
+	 */
+	InitPostmasterChildSlots();
+
+	InitializeFastPathLocks();
+
 	CreateSharedMemoryAndSemaphores();
+
+	/*
+	 * Estimate number of openable files.  This is essential too in --check
+	 * mode, because on some platforms semaphores count as open files.
+	 */
+	set_max_safe_fds();
 
 	/*
 	 * XXX: It might make sense to move this into its own function at some
@@ -349,7 +380,7 @@ BootstrapModeMain(int argc, char *argv[], bool check_only)
 	BaseInit();
 
 	bootstrap_signals();
-	BootStrapXLOG();
+	BootStrapXLOG(bootstrap_data_checksum_version);
 
 	/*
 	 * To ensure that src/common/link-canary.c is linked into the backend, we
@@ -367,11 +398,14 @@ BootstrapModeMain(int argc, char *argv[], bool check_only)
 		Nulls[i] = false;
 	}
 
+	if (boot_yylex_init(&scanner) != 0)
+		elog(ERROR, "yylex_init() failed: %m");
+
 	/*
 	 * Process bootstrap input.
 	 */
 	StartTransactionCommand();
-	boot_yyparse();
+	boot_yyparse(scanner);
 	CommitTransactionCommand();
 
 	/*
@@ -448,8 +482,8 @@ boot_openrel(char *relname)
 	{
 		if (attrtypes[i] == NULL)
 			attrtypes[i] = AllocateAttribute();
-		memmove((char *) attrtypes[i],
-				(char *) TupleDescAttr(boot_reldesc->rd_att, i),
+		memmove(attrtypes[i],
+				TupleDescAttr(boot_reldesc->rd_att, i),
 				ATTRIBUTE_FIXED_PART_SIZE);
 
 		{
@@ -565,7 +599,6 @@ DefineAttr(char *name, char *type, int attnum, int nullness)
 	if (OidIsValid(attrtypes[attnum]->attcollation))
 		attrtypes[attnum]->attcollation = C_COLLATION_OID;
 
-	attrtypes[attnum]->attcacheoff = -1;
 	attrtypes[attnum]->atttypmod = -1;
 	attrtypes[attnum]->attislocal = true;
 

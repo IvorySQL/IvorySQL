@@ -7,7 +7,7 @@
  * knowledge of the tuple descriptor. Fixed column widths, NOT NULLness, etc
  * can be taken advantage of.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -110,7 +110,7 @@ slot_compile_deform(LLVMJitContext *context, TupleDesc desc,
 	 */
 	for (attnum = 0; attnum < desc->natts; attnum++)
 	{
-		Form_pg_attribute att = TupleDescAttr(desc, attnum);
+		CompactAttribute *att = TupleDescCompactAttr(desc, attnum);
 
 		/*
 		 * If the column is declared NOT NULL then it must be present in every
@@ -393,9 +393,9 @@ slot_compile_deform(LLVMJitContext *context, TupleDesc desc,
 	 */
 	for (attnum = 0; attnum < natts; attnum++)
 	{
-		Form_pg_attribute att = TupleDescAttr(desc, attnum);
+		CompactAttribute *att = TupleDescCompactAttr(desc, attnum);
 		LLVMValueRef v_incby;
-		int			alignto;
+		int			alignto = att->attalignby;
 		LLVMValueRef l_attno = l_int16_const(lc, attnum);
 		LLVMValueRef v_attdatap;
 		LLVMValueRef v_resultp;
@@ -493,21 +493,6 @@ slot_compile_deform(LLVMJitContext *context, TupleDesc desc,
 			LLVMBuildBr(b, attcheckalignblocks[attnum]);
 		}
 		LLVMPositionBuilderAtEnd(b, attcheckalignblocks[attnum]);
-
-		/* determine required alignment */
-		if (att->attalign == TYPALIGN_INT)
-			alignto = ALIGNOF_INT;
-		else if (att->attalign == TYPALIGN_CHAR)
-			alignto = 1;
-		else if (att->attalign == TYPALIGN_DOUBLE)
-			alignto = ALIGNOF_DOUBLE;
-		else if (att->attalign == TYPALIGN_SHORT)
-			alignto = ALIGNOF_SHORT;
-		else
-		{
-			elog(ERROR, "unknown alignment");
-			alignto = 0;
-		}
 
 		/* ------
 		 * Even if alignment is required, we can skip doing it if provably

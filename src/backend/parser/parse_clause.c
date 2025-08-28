@@ -3,7 +3,7 @@
  * parse_clause.c
  *	  handle clauses in parser
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -40,15 +40,18 @@
 #include "parser/parse_target.h"
 #include "parser/parse_type.h"
 #include "parser/parser.h"
-#include "parser/parsetree.h"
 #include "rewrite/rewriteManip.h"
 #include "utils/builtins.h"
 #include "utils/catcache.h"
-#include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
 #include "utils/ora_compatible.h"
+#include "catalog/pg_proc.h"
+#include "commands/proclang.h"
+#include "funcapi.h"
+#include "parser/parse_param.h"
+#include "utils/guc.h"
 
 
 static int	extractRemainingColumns(ParseState *pstate,
@@ -99,6 +102,7 @@ static WindowClause *findWindowClause(List *wclist, const char *name);
 static Node *transformFrameOffset(ParseState *pstate, int frameOptions,
 								  Oid rangeopfamily, Oid rangeopcintype, Oid *inRangeFunc,
 								  Node *clause);
+static void check_funcexpr_outparams(List *funcexprs);
 
 
 /*
@@ -668,6 +672,8 @@ transformRangeFunction(ParseState *pstate, RangeFunction *r)
 	 * there are any lateral cross-references in it.
 	 */
 	is_lateral = r->lateral || contain_vars_of_level((Node *) funcexprs, 0);
+
+	check_funcexpr_outparams(funcexprs);
 
 	/*
 	 * OK, build an RTE and nsitem for the function.
@@ -1588,6 +1594,7 @@ transformFromClauseItem(ParseState *pstate, Node *n,
 			jnsitem->p_cols_visible = true;
 			jnsitem->p_lateral_only = false;
 			jnsitem->p_lateral_ok = true;
+			jnsitem->p_returning_type = VAR_RETURNING_DEFAULT;
 			/* Per SQL, we must check for alias conflicts */
 			checkNameSpaceConflicts(pstate, list_make1(jnsitem), my_namespace);
 			my_namespace = lappend(my_namespace, jnsitem);
@@ -1650,6 +1657,7 @@ buildVarFromNSColumn(ParseState *pstate, ParseNamespaceColumn *nscol)
 				  nscol->p_varcollid,
 				  0);
 	/* makeVar doesn't offer parameters for these, so set by hand: */
+	var->varreturningtype = nscol->p_varreturningtype;
 	var->varnosyn = nscol->p_varnosyn;
 	var->varattnosyn = nscol->p_varattnosyn;
 
@@ -3002,7 +3010,7 @@ transformWindowDefinitions(ParseState *pstate,
 					 sortcl->sortop);
 			/* Record properties of sort ordering */
 			wc->inRangeColl = exprCollation(sortkey);
-			wc->inRangeAsc = (rangestrategy == BTLessStrategyNumber);
+			wc->inRangeAsc = !sortcl->reverse_sort;
 			wc->inRangeNullsFirst = sortcl->nulls_first;
 		}
 
@@ -3558,6 +3566,7 @@ addTargetToSortList(ParseState *pstate, TargetEntry *tle,
 		sortcl->eqop = eqop;
 		sortcl->sortop = sortop;
 		sortcl->hashable = hashable;
+		sortcl->reverse_sort = reverse;
 
 		switch (sortby->sortby_nulls)
 		{
@@ -3640,6 +3649,8 @@ addTargetToGroupList(ParseState *pstate, TargetEntry *tle,
 		grpcl->tleSortGroupRef = assignSortGroupRef(tle, targetlist);
 		grpcl->eqop = eqop;
 		grpcl->sortop = sortop;
+		grpcl->reverse_sort = false;	/* sortop is "less than", or
+										 * InvalidOid */
 		grpcl->nulls_first = false; /* OK with or without sortop */
 		grpcl->hashable = hashable;
 
@@ -3924,5 +3935,81 @@ interpretRowidOption(List *defList, bool allowRowid)
 		return default_with_rowids;
 	else
 		return false;
+}
+
+/*
+ * check_funcexpr_outparams
+ * OUT or IN OUT arguments of the function must be variables 
+ * when allow_out_parameter_const is false.
+ */
+static void
+check_funcexpr_outparams(List *funcexprs)
+{
+	HeapTuple		procTup;
+	Form_pg_proc		procStruct;
+	char			*proname = NULL;
+	FuncExpr *func = (FuncExpr *) linitial(funcexprs);
+
+	if (list_length(funcexprs) <= 0)
+		return;
+
+	if (!IsA(func, FuncExpr))
+		return;
+
+	if (!FUNC_EXPR_FROM_PG_PROC(func->function_from))
+		return;
+
+	procTup = SearchSysCache1(PROCOID,
+					ObjectIdGetDatum(func->funcid));
+
+	if (!HeapTupleIsValid(procTup))
+		ereport(ERROR,
+			(errcode(ERRCODE_DATA_EXCEPTION),
+			 errmsg("cache lookup failed for function %u", func->funcid)));
+
+	procStruct = (Form_pg_proc) GETSTRUCT(procTup);
+
+	if (LANG_PLISQL_OID != procStruct->prolang)
+	{
+		ReleaseSysCache(procTup);
+		return;
+	}
+
+	if (!heap_attisnull(procTup, Anum_pg_proc_proargmodes, NULL) &&
+		!allow_out_parameter_const)
+	{
+		int		i;
+		ListCell 	*lc;
+		Oid 	   *argtypes;
+		char	  **argnames;
+		char	   *argmodes;
+
+		proname = pstrdup(NameStr(procStruct->proname));
+		get_func_arg_info(procTup, &argtypes, &argnames, &argmodes);
+
+		i = 0;
+		foreach(lc, func->args)
+		{
+			if (argmodes[i] == PROARGMODE_OUT ||
+				argmodes[i] == PROARGMODE_INOUT)
+			{
+				Node *arg = (Node *) lfirst(lc);
+
+				arg = ParseParamVariable(arg);
+				if (!IsA(arg, Param))
+				{
+					ReleaseSysCache(procTup);
+					ereport(ERROR,
+						(errcode(ERRCODE_DATA_EXCEPTION),
+						errmsg("OUT or IN OUT arguments of the function %s must be variables ",
+								proname)));
+				}
+			}
+			i++;
+		}
+	}
+	ReleaseSysCache(procTup);
+
+	return;
 }
 

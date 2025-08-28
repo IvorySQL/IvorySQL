@@ -23,6 +23,7 @@
  *
  * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *	  src/backend/oracle_parser/ora_scan.l
@@ -46,6 +47,8 @@
 #include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/ora_compatible.h"
+#include "executor/spi.h" 
+#include "parser/parse_param.h"
 }
 
 %{
@@ -139,14 +142,7 @@ static void addunicode(pg_wchar c, yyscan_t yyscanner);
 static void check_string_escape_warning(unsigned char ychar, ora_core_yyscan_t yyscanner);
 static void check_escape_warning(ora_core_yyscan_t yyscanner);
 
-/*
- * Work around a bug in flex 2.5.35: it emits a couple of functions that
- * it forgets to emit declarations for.  Since we use -Wmissing-prototypes,
- * this would cause warnings.  Providing our own declarations should be
- * harmless even when the bug gets fixed.
- */
-extern int	ora_core_yyget_column(yyscan_t yyscanner);
-extern void ora_core_yyset_column(int column_no, yyscan_t yyscanner);
+
 
 %}
 
@@ -164,6 +160,7 @@ extern void ora_core_yyset_column(int column_no, yyscan_t yyscanner);
 %option noyyfree
 %option warn
 %option prefix="ora_core_yy"
+%option extra-type="ora_core_yy_extra_type *"
 
 /*
  * OK, here is a short description of lex/flex rules behavior.
@@ -426,15 +423,36 @@ realfail		({decinteger}|{numeric})[Ee][-+]
 binary_float	(({decinteger}|{numeric}|{real})[Ff])
 binary_double	({decinteger}|{numeric}|{real})[Dd]
 
-decinteger_junk	{decinteger}{ident_start}
-hexinteger_junk	{hexinteger}{ident_start}
-octinteger_junk	{octinteger}{ident_start}
-bininteger_junk	{bininteger}{ident_start}
-numeric_junk	{numeric}{ident_start}
-real_junk		{real}{ident_start}
-
+/* Positional parameters don't accept underscores. */
 param			\${decinteger}
-param_junk		\${decinteger}{ident_start}
+
+/*
+ * An identifier immediately following an integer literal is disallowed because
+ * in some cases it's ambiguous what is meant: for example, 0x1234 could be
+ * either a hexinteger or a decinteger "0" and an identifier "x1234".  We can
+ * detect such problems by seeing if integer_junk matches a longer substring
+ * than any of the XXXinteger patterns (decinteger, hexinteger, octinteger,
+ * bininteger).  One "junk" pattern is sufficient because
+ * {decinteger}{identifier} will match all the same strings we'd match with
+ * {hexinteger}{identifier} etc.
+ *
+ * Note that the rule for integer_junk must appear after the ones for
+ * XXXinteger to make this work correctly: 0x1234 will match both hexinteger
+ * and integer_junk, and we need hexinteger to be chosen in that case.
+ *
+ * Also disallow strings matched by numeric_junk, real_junk and param_junk
+ * for consistency.
+ */
+integer_junk   {decinteger}{identifier}
+numeric_junk   {numeric}{identifier}
+real_junk              {real}{identifier}
+param_junk             \${decdigit}+{identifier}
+
+decdigits		{decdigit}+
+ora_ident_start		[A-Za-z]
+ora_ident_cont		[A-Za-z_0-9#]
+ora_identifier		{ora_ident_start}{ora_ident_cont}*
+ora_param       :({decdigits}|{ora_identifier})
 
 other			.
 
@@ -1158,6 +1176,11 @@ other			.
 					yylval->ival = atol(yytext + 1);
 					return PARAM;
 				}
+{ora_param}     {
+					SET_YYLLOC();
+					yylval->str = pstrdup(yytext);
+					return ORAPARAM;
+				}
 {param_junk}	{
 					SET_YYLLOC();
 					yyerror("trailing junk after parameter");
@@ -1221,19 +1244,7 @@ other			.
 					yylval->str = pnstrdup(yytext, yyleng - 1);
 					return BDCONST;
 				}
-{decinteger_junk}	{
-					SET_YYLLOC();
-					yyerror("trailing junk after numeric literal");
-				}
-{hexinteger_junk}	{
-					SET_YYLLOC();
-					yyerror("trailing junk after numeric literal");
-				}
-{octinteger_junk}	{
-					SET_YYLLOC();
-					yyerror("trailing junk after numeric literal");
-				}
-{bininteger_junk}	{
+{integer_junk}  {
 					SET_YYLLOC();
 					yyerror("trailing junk after numeric literal");
 				}

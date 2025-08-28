@@ -6,7 +6,7 @@
  * See src/backend/optimizer/README for discussion of EquivalenceClasses.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -38,7 +38,6 @@ static EquivalenceMember *add_eq_member(EquivalenceClass *ec,
 										JoinDomain *jdomain,
 										EquivalenceMember *parent,
 										Oid datatype);
-static bool is_exprlist_member(Expr *node, List *exprs);
 static void generate_base_implied_equalities_const(PlannerInfo *root,
 												   EquivalenceClass *ec);
 static void generate_base_implied_equalities_no_const(PlannerInfo *root,
@@ -726,6 +725,10 @@ get_eclass_for_sort_expr(PlannerInfo *root,
 		{
 			RelOptInfo *rel = root->simple_rel_array[i];
 
+			/* ignore the RTE_GROUP RTE */
+			if (i == root->group_rtindex)
+				continue;
+
 			if (rel == NULL)	/* must be an outer join */
 			{
 				Assert(bms_is_member(i, root->outer_join_rels));
@@ -806,9 +809,18 @@ find_ec_member_matching_expr(EquivalenceClass *ec,
  *		expressions appearing in "exprs"; return NULL if no match.
  *
  * "exprs" can be either a list of bare expression trees, or a list of
- * TargetEntry nodes.  Either way, it should contain Vars and possibly
- * Aggrefs and WindowFuncs, which are matched to the corresponding elements
- * of the EquivalenceClass's expressions.
+ * TargetEntry nodes.  Typically it will contain Vars and possibly Aggrefs
+ * and WindowFuncs; however, when considering an appendrel member the list
+ * could contain arbitrary expressions.  We consider an EC member to be
+ * computable if all the Vars, PlaceHolderVars, Aggrefs, and WindowFuncs
+ * it needs are present in "exprs".
+ *
+ * There is some subtlety in that definition: for example, if an EC member is
+ * Var_A + 1 while what is in "exprs" is Var_A + 2, it's still computable.
+ * This works because in the final plan tree, the EC member's expression will
+ * be computed as part of the same plan node targetlist that is currently
+ * represented by "exprs".  So if we have Var_A available for the existing
+ * tlist member, it must be OK to use it in the EC expression too.
  *
  * Unlike find_ec_member_matching_expr, there's no special provision here
  * for binary-compatible relabeling.  This is intentional: if we have to
@@ -828,12 +840,25 @@ find_computable_ec_member(PlannerInfo *root,
 						  Relids relids,
 						  bool require_parallel_safe)
 {
+	List	   *exprvars;
 	ListCell   *lc;
+
+	/*
+	 * Pull out the Vars and quasi-Vars present in "exprs".  In the typical
+	 * non-appendrel case, this is just another representation of the same
+	 * list.  However, it does remove the distinction between the case of a
+	 * list of plain expressions and a list of TargetEntrys.
+	 */
+	exprvars = pull_var_clause((Node *) exprs,
+							   PVC_INCLUDE_AGGREGATES |
+							   PVC_INCLUDE_WINDOWFUNCS |
+							   PVC_INCLUDE_PLACEHOLDERS |
+							   PVC_INCLUDE_CONVERTROWTYPES);
 
 	foreach(lc, ec->ec_members)
 	{
 		EquivalenceMember *em = (EquivalenceMember *) lfirst(lc);
-		List	   *exprvars;
+		List	   *emvars;
 		ListCell   *lc2;
 
 		/*
@@ -851,18 +876,18 @@ find_computable_ec_member(PlannerInfo *root,
 			continue;
 
 		/*
-		 * Match if all Vars and quasi-Vars are available in "exprs".
+		 * Match if all Vars and quasi-Vars are present in "exprs".
 		 */
-		exprvars = pull_var_clause((Node *) em->em_expr,
-								   PVC_INCLUDE_AGGREGATES |
-								   PVC_INCLUDE_WINDOWFUNCS |
-								   PVC_INCLUDE_PLACEHOLDERS);
-		foreach(lc2, exprvars)
+		emvars = pull_var_clause((Node *) em->em_expr,
+								 PVC_INCLUDE_AGGREGATES |
+								 PVC_INCLUDE_WINDOWFUNCS |
+								 PVC_INCLUDE_PLACEHOLDERS);
+		foreach(lc2, emvars)
 		{
-			if (!is_exprlist_member(lfirst(lc2), exprs))
+			if (!list_member(exprvars, lfirst(lc2)))
 				break;
 		}
-		list_free(exprvars);
+		list_free(emvars);
 		if (lc2)
 			continue;			/* we hit a non-available Var */
 
@@ -878,31 +903,6 @@ find_computable_ec_member(PlannerInfo *root,
 	}
 
 	return NULL;
-}
-
-/*
- * is_exprlist_member
- *	  Subroutine for find_computable_ec_member: is "node" in "exprs"?
- *
- * Per the requirements of that function, "exprs" might or might not have
- * TargetEntry superstructure.
- */
-static bool
-is_exprlist_member(Expr *node, List *exprs)
-{
-	ListCell   *lc;
-
-	foreach(lc, exprs)
-	{
-		Expr	   *expr = (Expr *) lfirst(lc);
-
-		if (expr && IsA(expr, TargetEntry))
-			expr = ((TargetEntry *) expr)->expr;
-
-		if (equal(node, expr))
-			return true;
-	}
-	return false;
 }
 
 /*
@@ -1086,6 +1086,10 @@ generate_base_implied_equalities(PlannerInfo *root)
 		while ((i = bms_next_member(ec->ec_relids, i)) > 0)
 		{
 			RelOptInfo *rel = root->simple_rel_array[i];
+
+			/* ignore the RTE_GROUP RTE */
+			if (i == root->group_rtindex)
+				continue;
 
 			if (rel == NULL)	/* must be an outer join */
 			{
@@ -1285,7 +1289,8 @@ generate_base_implied_equalities_no_const(PlannerInfo *root,
 	 * For the moment we force all the Vars to be available at all join nodes
 	 * for this eclass.  Perhaps this could be improved by doing some
 	 * pre-analysis of which members we prefer to join, but it's no worse than
-	 * what happened in the pre-8.3 code.
+	 * what happened in the pre-8.3 code.  (Note: rebuild_eclass_attr_needed
+	 * needs to match this code.)
 	 */
 	foreach(lc, ec->ec_members)
 	{
@@ -2415,6 +2420,44 @@ reconsider_full_join_clause(PlannerInfo *root, OuterJoinClauseInfo *ojcinfo)
 }
 
 /*
+ * rebuild_eclass_attr_needed
+ *	  Put back attr_needed bits for Vars/PHVs needed for join eclasses.
+ *
+ * This is used to rebuild attr_needed/ph_needed sets after removal of a
+ * useless outer join.  It should match what
+ * generate_base_implied_equalities_no_const did, except that we call
+ * add_vars_to_attr_needed not add_vars_to_targetlist.
+ */
+void
+rebuild_eclass_attr_needed(PlannerInfo *root)
+{
+	ListCell   *lc;
+
+	foreach(lc, root->eq_classes)
+	{
+		EquivalenceClass *ec = (EquivalenceClass *) lfirst(lc);
+
+		/* Need do anything only for a multi-member, no-const EC. */
+		if (list_length(ec->ec_members) > 1 && !ec->ec_has_const)
+		{
+			ListCell   *lc2;
+
+			foreach(lc2, ec->ec_members)
+			{
+				EquivalenceMember *cur_em = (EquivalenceMember *) lfirst(lc2);
+				List	   *vars = pull_var_clause((Node *) cur_em->em_expr,
+												   PVC_RECURSE_AGGREGATES |
+												   PVC_RECURSE_WINDOWFUNCS |
+												   PVC_INCLUDE_PLACEHOLDERS);
+
+				add_vars_to_attr_needed(root, vars, ec->ec_relids);
+				list_free(vars);
+			}
+		}
+	}
+}
+
+/*
  * find_join_domain
  *	  Find the highest JoinDomain enclosed within the given relid set.
  *
@@ -2443,15 +2486,17 @@ find_join_domain(PlannerInfo *root, Relids relids)
  *	  Detect whether two expressions are known equal due to equivalence
  *	  relationships.
  *
- * Actually, this only shows that the expressions are equal according
- * to some opfamily's notion of equality --- but we only use it for
- * selectivity estimation, so a fuzzy idea of equality is OK.
+ * If opfamily is given, the expressions must be known equal per the semantics
+ * of that opfamily (note it has to be a btree opfamily, since those are the
+ * only opfamilies equivclass.c deals with).  If opfamily is InvalidOid, we'll
+ * return true if they're equal according to any opfamily, which is fuzzy but
+ * OK for estimation purposes.
  *
  * Note: does not bother to check for "equal(item1, item2)"; caller must
  * check that case if it's possible to pass identical items.
  */
 bool
-exprs_known_equal(PlannerInfo *root, Node *item1, Node *item2)
+exprs_known_equal(PlannerInfo *root, Node *item1, Node *item2, Oid opfamily)
 {
 	ListCell   *lc1;
 
@@ -2464,6 +2509,17 @@ exprs_known_equal(PlannerInfo *root, Node *item1, Node *item2)
 
 		/* Never match to a volatile EC */
 		if (ec->ec_has_volatile)
+			continue;
+
+		/*
+		 * It's okay to consider ec_broken ECs here.  Brokenness just means we
+		 * couldn't derive all the implied clauses we'd have liked to; it does
+		 * not invalidate our knowledge that the members are equal.
+		 */
+
+		/* Ignore if this EC doesn't use specified opfamily */
+		if (OidIsValid(opfamily) &&
+			!list_member_oid(ec->ec_opfamilies, opfamily))
 			continue;
 
 		foreach(lc2, ec->ec_members)
@@ -2494,8 +2550,7 @@ exprs_known_equal(PlannerInfo *root, Node *item1, Node *item2)
  * (In principle there might be more than one matching eclass if multiple
  * collations are involved, but since collation doesn't matter for equality,
  * we ignore that fine point here.)  This is much like exprs_known_equal,
- * except that we insist on the comparison operator matching the eclass, so
- * that the result is definite not approximate.
+ * except for the format of the input.
  *
  * On success, we also set fkinfo->eclass[colno] to the matching eclass,
  * and set fkinfo->fk_eclass_member[colno] to the eclass member for the
@@ -2536,7 +2591,7 @@ match_eclasses_to_foreign_key_col(PlannerInfo *root,
 		/* Never match to a volatile EC */
 		if (ec->ec_has_volatile)
 			continue;
-		/* Note: it seems okay to match to "broken" eclasses here */
+		/* It's okay to consider "broken" ECs here, see exprs_known_equal */
 
 		foreach(lc2, ec->ec_members)
 		{
@@ -3341,6 +3396,10 @@ get_eclass_indexes_for_relids(PlannerInfo *root, Relids relids)
 	while ((i = bms_next_member(relids, i)) > 0)
 	{
 		RelOptInfo *rel = root->simple_rel_array[i];
+
+		/* ignore the RTE_GROUP RTE */
+		if (i == root->group_rtindex)
+			continue;
 
 		if (rel == NULL)		/* must be an outer join */
 		{

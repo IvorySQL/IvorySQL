@@ -3,8 +3,9 @@
  * parse_node.c
  *	  various routines that make nodes for querytrees
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  *
  * IDENTIFICATION
@@ -60,6 +61,7 @@ make_parsestate(ParseState *parentParseState)
 		/* query environment stays in context for the whole parse analysis */
 		pstate->p_queryEnv = parentParseState->p_queryEnv;
 		pstate->p_subprocfunc_hook = parentParseState->p_subprocfunc_hook;
+		pstate->p_isVarParamState = parentParseState->p_isVarParamState;
 	}
 
 	return pstate;
@@ -145,7 +147,7 @@ setup_parser_errposition_callback(ParseCallbackState *pcbstate,
 	pcbstate->pstate = pstate;
 	pcbstate->location = location;
 	pcbstate->errcallback.callback = pcb_error_callback;
-	pcbstate->errcallback.arg = (void *) pcbstate;
+	pcbstate->errcallback.arg = pcbstate;
 	pcbstate->errcallback.previous = error_context_stack;
 	error_context_stack = &pcbstate->errcallback;
 }

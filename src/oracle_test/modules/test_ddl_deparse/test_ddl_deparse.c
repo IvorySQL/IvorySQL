@@ -3,6 +3,7 @@
  *		Support functions for the test_ddl_deparse module
  *
  * Copyright (c) 2014-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *	  src/oracle_test/modules/test_ddl_deparse/test_ddl_deparse.c
@@ -138,9 +139,6 @@ get_altertable_subcmdinfo(PG_FUNCTION_ARGS)
 				break;
 			case AT_DropExpression:
 				strtype = "DROP EXPRESSION";
-				break;
-			case AT_CheckNotNull:
-				strtype = "CHECK NOT NULL";
 				break;
 			case AT_SetStatistics:
 				strtype = "SET STATS";
@@ -303,12 +301,6 @@ get_altertable_subcmdinfo(PG_FUNCTION_ARGS)
 				break;
 			case AT_DetachPartitionFinalize:
 				strtype = "DETACH PARTITION ... FINALIZE";
-				break;
-			case AT_SplitPartition:
-				strtype = "SPLIT PARTITION";
-				break;
-			case AT_MergePartitions:
-				strtype = "MERGE PARTITIONS";
 				break;
 			case AT_AddIdentity:
 				strtype = "ADD IDENTITY";

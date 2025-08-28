@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2024, PostgreSQL Global Development Group
+# Copyright (c) 2021-2025, PostgreSQL Global Development Group
 
 use strict;
 use warnings FATAL => 'all';
@@ -17,7 +17,7 @@ if ($ENV{with_ssl} ne 'openssl')
 {
 	plan skip_all => 'OpenSSL not supported by this build';
 }
-elsif (!$ENV{PG_TEST_EXTRA} || $ENV{PG_TEST_EXTRA} !~ /\bssl\b/)
+if (!$ENV{PG_TEST_EXTRA} || $ENV{PG_TEST_EXTRA} !~ /\bssl\b/)
 {
 	plan skip_all => 'Potentially unsafe test SSL not enabled in PG_TEST_EXTRA';
 }
@@ -35,8 +35,7 @@ sub switch_server_cert
 }
 
 # Determine whether this build uses OpenSSL or LibreSSL. As a heuristic, the
-# HAVE_SSL_CTX_SET_CERT_CB macro isn't defined for LibreSSL. (Nor for OpenSSL
-# 1.0.1, but that's old enough that accommodating it isn't worth the cost.)
+# HAVE_SSL_CTX_SET_CERT_CB macro isn't defined for LibreSSL.
 my $libressl = not check_pg_config("#define HAVE_SSL_CTX_SET_CERT_CB 1");
 
 #### Some configuration
@@ -115,6 +114,18 @@ $node->append_conf(
 ssl_max_protocol_version=''});
 $result = $node->restart(fail_ok => 1);
 is($result, 1, 'restart succeeds with correct SSL protocol bounds');
+
+# Test parsing colon-separated groups. Resetting to a default value to clear
+# the error is fine since the call to switch_server_cert in the client side
+# tests will overwrite ssl_groups with a known set of groups.
+$node->append_conf('sslconfig.conf', qq{ssl_groups='bad:value'});
+my $log_size = -s $node->logfile;
+$result = $node->restart(fail_ok => 1);
+is($result, 0, 'restart fails with incorrect groups');
+ok($node->log_contains(qr/no SSL error reported/) == 0,
+	'error message translated');
+$node->append_conf('ssl_config.conf', qq{ssl_groups='prime256v1'});
+$result = $node->restart(fail_ok => 1);
 
 ### Run client-side tests.
 ###
@@ -526,12 +537,14 @@ $node->connect_fails(
 # pg_stat_ssl
 command_like(
 	[
-		'psql',                                '-X',
-		'-A',                                  '-F',
-		',',                                   '-P',
-		'null=_null_',                         '-d',
-		"$common_connstr sslrootcert=invalid", '-c',
-		"SELECT * FROM pg_stat_ssl WHERE pid = pg_backend_pid()"
+		'psql',
+		'--no-psqlrc',
+		'--no-align',
+		'--field-separator' => ',',
+		'--pset', => 'null=_null_',
+		'--dbname' => "$common_connstr sslrootcert=invalid",
+		'--command' =>
+		  "SELECT * FROM pg_stat_ssl WHERE pid = pg_backend_pid()"
 	],
 	qr{^pid,ssl,version,cipher,bits,client_dn,client_serial,issuer_dn\r?\n
 				^\d+,t,TLSv[\d.]+,[\w-]+,\d+,_null_,_null_,_null_\r?$}mx,
@@ -725,17 +738,15 @@ else
 command_like(
 	[
 		'psql',
-		'-X',
-		'-A',
-		'-F',
-		',',
-		'-P',
-		'null=_null_',
-		'-d',
-		"$common_connstr user=ssltestuser sslcert=ssl/client.crt "
+		'--no-psqlrc',
+		'--no-align',
+		'--field-separator' => ',',
+		'--pset' => 'null=_null_',
+		'--dbname' =>
+		  "$common_connstr user=ssltestuser sslcert=ssl/client.crt "
 		  . sslkey('client.key'),
-		'-c',
-		"SELECT * FROM pg_stat_ssl WHERE pid = pg_backend_pid()"
+		'--command' =>
+		  "SELECT * FROM pg_stat_ssl WHERE pid = pg_backend_pid()"
 	],
 	qr{^pid,ssl,version,cipher,bits,client_dn,client_serial,issuer_dn\r?\n
 				^\d+,t,TLSv[\d.]+,[\w-]+,\d+,/?CN=ssltestuser,$serialno,/?\QCN=Test CA for PostgreSQL SSL regression test client certs\E\r?$}mx,
