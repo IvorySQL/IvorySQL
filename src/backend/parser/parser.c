@@ -79,7 +79,20 @@ standard_raw_parser(const char *str, RawParseMode mode)
 			[RAW_PARSE_PLPGSQL_ASSIGN1] = MODE_PLPGSQL_ASSIGN1,
 			[RAW_PARSE_PLPGSQL_ASSIGN2] = MODE_PLPGSQL_ASSIGN2,
 			[RAW_PARSE_PLPGSQL_ASSIGN3] = MODE_PLPGSQL_ASSIGN3,
+			[RAW_PARSE_PLISQL_EXPR] = MODE_PLISQL_EXPR,
+			[RAW_PARSE_PLISQL_ASSIGN1] = MODE_PLISQL_ASSIGN1,
+			[RAW_PARSE_PLISQL_ASSIGN2] = MODE_PLISQL_ASSIGN2,
+			[RAW_PARSE_PLISQL_ASSIGN3] = MODE_PLISQL_ASSIGN3,
 		};
+
+		if (mode > RAW_PARSE_PLPGSQL_ASSIGN3)
+		{
+			/* Clean up (release memory) */
+			scanner_finish(yyscanner);
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("when ivorysql.compatible_mode is pg, not support a plisql procedural-language function statement")));
+		}
 
 		yyextra.have_lookahead = true;
 		yyextra.lookahead_token = mode_token[mode];

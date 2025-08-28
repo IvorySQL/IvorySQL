@@ -2658,7 +2658,7 @@ plisql_get_subprocfunc_argdefaults(ParseState *pstate, PLiSQL_subproc_function *
 
 		Assert(argitem->defexpr->query != NULL);
 
-		rawlist = raw_parser(argitem->defexpr->query, RAW_PARSE_PLPGSQL_EXPR);
+		rawlist = raw_parser(argitem->defexpr->query, RAW_PARSE_PLISQL_EXPR);
 		if (list_length(rawlist) != 1)
 			elog(ERROR, "invalid argitem default expr '%s'", argitem->defexpr->query);
 
