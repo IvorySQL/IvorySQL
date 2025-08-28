@@ -1198,6 +1198,22 @@ select decode(null, null, 2018, 2, 3) from test_decode; --expect:all
 
 drop table test_decode;
 
+/*
+ * instr
+ */
+
+SELECT INSTR('OBJECT-ORIENTED PROGRAMMING', 'O') FROM DUAL;
+SELECT INSTR('OBJECT-ORIENTED PROGRAMMING', 'O', 2) FROM DUAL;
+SELECT INSTR('OBJECT-ORIENTED PROGRAMMING', 'O', 1, 2) FROM DUAL;
+SELECT INSTR('OBJECT-ORIENTED PROGRAMMING', 'RIEN', 5, 1) FROM DUAL;
+SELECT INSTR('OBJECT-ORIENTED PROGRAMMING', 'O', 1, 4) FROM DUAL;
+
+SELECT INSTR('Information for the information age requires information.', 'information', 1, 1);
+SELECT INSTR('Information for the information age requires information.', 'information', 1, 2);
+SELECT INSTR('Information for the information age requires information.', 'information', 10, 1);
+SELECT INSTR('Information for the information age requires information.', 'information');
+SELECT INSTR('Information for the information age requires information.', 'information', 2);
+SELECT INSTR('Information for the information age requires information.', 'information', 1, 4);
 
 /*
  * asciistr
