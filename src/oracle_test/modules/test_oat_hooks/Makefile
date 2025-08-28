@@ -1,4 +1,4 @@
-# src/test/modules/test_oat_hooks/Makefile
+# src/oracle_test/modules/test_oat_hooks/Makefile
 
 MODULE_big = test_oat_hooks
 OBJS = \
@@ -19,7 +19,7 @@ PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
 else
-subdir = src/test/modules/test_oat_hooks
+subdir = src/oracle_test/modules/test_oat_hooks
 top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 include $(top_srcdir)/contrib/contrib-global.mk
