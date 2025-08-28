@@ -509,6 +509,14 @@ msgstr "  -D, --pgdata=DATADIR      当前数据库簇的位置\n"
 msgid "  -E, --encoding=ENCODING   set default encoding for new databases\n"
 msgstr "  -E, --encoding=ENCODING   为新数据库设置默认编码\n"
 
+#: initdb.c:2521
+#, c-format
+msgid "	NOTICE: If you set this to gb18030,\n\
+		the database will initilized with gb18030_2000,but not gb18030_2022,\n\
+		if you want to use gb18030_2022,please set this option to gb18030_2022,\n"
+msgstr "    注意: 如果设置了这个参数为gb18030,数据库会以gb18030_2000标准进行初始化,\n\
+        如果想要使用gb18030_2022标准,将此选项设置为gb18030_2022\n"
+
 #: initdb.c:2253
 #, c-format
 msgid "  -g, --allow-group-access  allow group read/execute on data directory\n"
@@ -789,6 +797,11 @@ msgstr ""
 #, c-format
 msgid "The default database encoding has accordingly been set to \"%s\".\n"
 msgstr "默认的数据库编码已经相应的设置为 \"%s\".\n"
+
+#: initdb.c:2780
+#, c-format
+msgid "Could not find gb18030_2022--1.0.sql,the gb18030_2022 will not be loaded!\n"
+msgstr "无法找到文件gb18030_2022--1.0.sql,gb18030_2022将不会被加载\n"
 
 #: initdb.c:2555
 msgid "could not find suitable text search configuration for locale \"%s\""

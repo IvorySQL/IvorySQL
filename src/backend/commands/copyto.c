@@ -1282,6 +1282,15 @@ CopyAttributeOutText(CopyToState cstate, const char *string)
 				CopySendChar(cstate, '\\');
 				start = ptr++;	/* we include char in next run */
 			}
+			/*
+			* A simple check for the ASCII range is unsafe for multi-byte
+			* encodings like GB18030 and GBK. The subsequent bytes (trail bytes)
+			* in a multi-byte sequence can have values that fall within the
+			* ASCII range, which would lead to misinterpreting them as
+			* standalone characters.
+			*/
+			else if (IS_HIGHBIT_SET(c))
+				ptr += pg_encoding_mblen(cstate->file_encoding, ptr);
 			else
 				ptr++;
 		}
@@ -1340,7 +1349,7 @@ CopyAttributeOutCSV(CopyToState cstate, const char *string,
 					use_quote = true;
 					break;
 				}
-				if (IS_HIGHBIT_SET(c) && cstate->encoding_embeds_ascii)
+				if (IS_HIGHBIT_SET(c) && (cstate->encoding_embeds_ascii || cstate->file_encoding == PG_GBK || cstate->file_encoding == PG_GB18030))
 					tptr += pg_encoding_mblen(cstate->file_encoding, tptr);
 				else
 					tptr++;
@@ -1364,7 +1373,7 @@ CopyAttributeOutCSV(CopyToState cstate, const char *string,
 				CopySendChar(cstate, escapec);
 				start = ptr;	/* we include char in next run */
 			}
-			if (IS_HIGHBIT_SET(c) && cstate->encoding_embeds_ascii)
+			if (IS_HIGHBIT_SET(c) && (cstate->encoding_embeds_ascii || cstate->file_encoding == PG_GBK || cstate->file_encoding == PG_GB18030))
 				ptr += pg_encoding_mblen(cstate->file_encoding, ptr);
 			else
 				ptr++;
