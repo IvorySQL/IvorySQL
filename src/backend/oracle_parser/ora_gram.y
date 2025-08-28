@@ -889,6 +889,11 @@ static void determineLanguage(List *options);
 %token		MODE_PLPGSQL_ASSIGN2
 %token		MODE_PLPGSQL_ASSIGN3
 
+%token          MODE_PLISQL_EXPR
+%token          MODE_PLISQL_ASSIGN1
+%token          MODE_PLISQL_ASSIGN2
+%token          MODE_PLISQL_ASSIGN3
+
 
 /* Precedence: lowest to highest */
 %left		UNION EXCEPT
@@ -1019,6 +1024,32 @@ parse_toplevel:
 				pg_yyget_extra(yyscanner)->parsetree =
 					list_make1(makeRawStmt((Node *) n, 0));
 			}
+			| MODE_PLISQL_EXPR PLpgSQL_Expr
+                        {
+                                pg_yyget_extra(yyscanner)->parsetree =
+                                        list_make1(makeRawStmt($2, 0));
+                        }
+                        | MODE_PLISQL_ASSIGN1 PLAssignStmt
+                        {
+                                PLAssignStmt *n = (PLAssignStmt *) $2;
+                                n->nnames = 1;
+                                pg_yyget_extra(yyscanner)->parsetree =
+                                        list_make1(makeRawStmt((Node *) n, 0));
+                        }
+                        | MODE_PLISQL_ASSIGN2 PLAssignStmt
+                        {
+                                PLAssignStmt *n = (PLAssignStmt *) $2;
+                                n->nnames = 2;
+                                pg_yyget_extra(yyscanner)->parsetree =
+                                        list_make1(makeRawStmt((Node *) n, 0));
+                        }
+                        | MODE_PLISQL_ASSIGN3 PLAssignStmt
+                        {
+                                PLAssignStmt *n = (PLAssignStmt *) $2;
+                                n->nnames = 3;
+                                pg_yyget_extra(yyscanner)->parsetree =
+                                        list_make1(makeRawStmt((Node *) n, 0));
+                        }
 		;
 
 /*

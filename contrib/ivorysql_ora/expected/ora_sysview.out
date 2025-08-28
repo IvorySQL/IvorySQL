@@ -46,18 +46,16 @@ END;
 /
 -- select ... from all_source
 SELECT NAME, LINE, TEXT FROM ALL_SOURCE WHERE NAME = 'func_quotes_lower';
-       name        | line |                      text                       
--------------------+------+-------------------------------------------------
- func_quotes_lower | 1    | FUNCTION public."FUNC_QUOTES_LOWER"(id integer)
+       name        | line |                          text                           
+-------------------+------+---------------------------------------------------------
+ func_quotes_lower | 1    | FUNCTION public."FUNC_QUOTES_LOWER"(id pg_catalog.int4)
  func_quotes_lower | 2    |  RETURN varchar2
  func_quotes_lower | 3    |  AUTHID DEFINER
  func_quotes_lower |      | IS 
  func_quotes_lower |      | BEGIN
  func_quotes_lower |      |         RETURN 'func_quotes_lower'::VARCHAR2;
  func_quotes_lower |      | END;
- func_quotes_lower |      | 
-(8 rows)
-
+(7 rows)
 
 -- data_type and pls_type in all_arguments
 CREATE OR REPLACE FUNCTION FUNC_22_ARG_TYPES

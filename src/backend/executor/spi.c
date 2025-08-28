@@ -3007,12 +3007,18 @@ _SPI_error_callback(void *arg)
 		switch (carg->mode)
 		{
 			case RAW_PARSE_PLPGSQL_EXPR:
+			case RAW_PARSE_PLISQL_EXPR:
 				errcontext("SQL expression \"%s\"", query);
 				break;
 			case RAW_PARSE_PLPGSQL_ASSIGN1:
 			case RAW_PARSE_PLPGSQL_ASSIGN2:
 			case RAW_PARSE_PLPGSQL_ASSIGN3:
 				errcontext("PL/pgSQL assignment \"%s\"", query);
+				break;
+			case RAW_PARSE_PLISQL_ASSIGN1:
+			case RAW_PARSE_PLISQL_ASSIGN2:
+			case RAW_PARSE_PLISQL_ASSIGN3:
+				errcontext("PL/iSQL assignment \"%s\"", query);
 				break;
 			default:
 				errcontext("SQL statement \"%s\"", query);
