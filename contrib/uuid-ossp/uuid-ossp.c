@@ -2,7 +2,7 @@
  *
  * UUID generation functions using the BSD, E2FS or OSSP UUID library
  *
- * Copyright (c) 2007-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2007-2025, PostgreSQL Global Development Group
  *
  * Portions Copyright (c) 2009 Andrew Gierth
  *
@@ -105,7 +105,10 @@ do { \
 /** The byte length of the value returned by ora_sys_guid **/
 #define SYS_GUID_LENGTH 16
 
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(
+					.name = "uuid-ossp",
+					.version = PG_VERSION
+);
 
 PG_FUNCTION_INFO_V1(uuid_nil);
 PG_FUNCTION_INFO_V1(uuid_ns_dns);

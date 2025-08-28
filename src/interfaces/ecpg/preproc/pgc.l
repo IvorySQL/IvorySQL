@@ -10,7 +10,7 @@
  * only here to simplify syncing this file with scan.l.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -1847,9 +1847,9 @@ isdefine(void)
 			ptr->used = yb;
 
 			/*
-			 * We use yy_scan_string which will copy the value, so there's
-			 * no need to worry about a possible undef happening while we
-			 * are still scanning it.
+			 * We use yy_scan_string which will copy the value, so there's no
+			 * need to worry about a possible undef happening while we are
+			 * still scanning it.
 			 */
 			yy_scan_string(ptr->value);
 			return true;

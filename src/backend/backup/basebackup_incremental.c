@@ -10,7 +10,7 @@
  * backup manifest supplied by the user taking the incremental backup
  * and extract the required information from it.
  *
- * Portions Copyright (c) 2010-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2010-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/backup/basebackup_incremental.c
@@ -139,9 +139,9 @@ static void manifest_process_wal_range(JsonManifestParseContext *context,
 									   TimeLineID tli,
 									   XLogRecPtr start_lsn,
 									   XLogRecPtr end_lsn);
-static void manifest_report_error(JsonManifestParseContext *context,
-								  const char *fmt,...)
-			pg_attribute_printf(2, 3) pg_attribute_noreturn();
+pg_noreturn static void manifest_report_error(JsonManifestParseContext *context,
+											  const char *fmt,...)
+			pg_attribute_printf(2, 3);
 static int	compare_block_numbers(const void *a, const void *b);
 
 /*
@@ -625,23 +625,21 @@ char *
 GetIncrementalFilePath(Oid dboid, Oid spcoid, RelFileNumber relfilenumber,
 					   ForkNumber forknum, unsigned segno)
 {
-	char	   *path;
+	RelPathStr	path;
 	char	   *lastslash;
 	char	   *ipath;
 
 	path = GetRelationPath(dboid, spcoid, relfilenumber, INVALID_PROC_NUMBER,
 						   forknum);
 
-	lastslash = strrchr(path, '/');
+	lastslash = strrchr(path.str, '/');
 	Assert(lastslash != NULL);
 	*lastslash = '\0';
 
 	if (segno > 0)
-		ipath = psprintf("%s/INCREMENTAL.%s.%u", path, lastslash + 1, segno);
+		ipath = psprintf("%s/INCREMENTAL.%s.%u", path.str, lastslash + 1, segno);
 	else
-		ipath = psprintf("%s/INCREMENTAL.%s", path, lastslash + 1);
-
-	pfree(path);
+		ipath = psprintf("%s/INCREMENTAL.%s", path.str, lastslash + 1);
 
 	return ipath;
 }
@@ -951,9 +949,9 @@ manifest_process_system_identifier(JsonManifestParseContext *context,
 
 	if (manifest_system_identifier != system_identifier)
 		context->error_cb(context,
-						  "system identifier in backup manifest is %llu, but database system identifier is %llu",
-						  (unsigned long long) manifest_system_identifier,
-						  (unsigned long long) system_identifier);
+						  "system identifier in backup manifest is %" PRIu64 ", but database system identifier is %" PRIu64,
+						  manifest_system_identifier,
+						  system_identifier);
 }
 
 /*

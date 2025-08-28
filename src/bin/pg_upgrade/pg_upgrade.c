@@ -3,8 +3,8 @@
  *
  *	main source file
  *
- *	Copyright (c) 2010-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ *	Copyright (c) 2010-2025, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/pg_upgrade.c
  */
 
@@ -55,6 +55,7 @@
  */
 #define RESTORE_TRANSACTION_SIZE 1000
 
+static void set_new_cluster_char_signedness(void);
 static void set_locale_and_encoding(void);
 static void prepare_new_cluster(void);
 static void prepare_new_globals(void);
@@ -165,6 +166,7 @@ main(int argc, char **argv)
 	 */
 
 	copy_xact_xlog_xid();
+	set_new_cluster_char_signedness();
 
 	/* New now using xids of the old system */
 
@@ -179,12 +181,14 @@ main(int argc, char **argv)
 
 	/*
 	 * Most failures happen in create_new_objects(), which has completed at
-	 * this point.  We do this here because it is just before linking, which
-	 * will link the old and new cluster data files, preventing the old
-	 * cluster from being safely started once the new cluster is started.
+	 * this point.  We do this here because it is just before file transfer,
+	 * which for --link will make it unsafe to start the old cluster once the
+	 * new cluster is started, and for --swap will make it unsafe to start the
+	 * old cluster at all.
 	 */
-	if (user_opts.transfer_mode == TRANSFER_MODE_LINK)
-		disable_old_cluster();
+	if (user_opts.transfer_mode == TRANSFER_MODE_LINK ||
+		user_opts.transfer_mode == TRANSFER_MODE_SWAP)
+		disable_old_cluster(user_opts.transfer_mode);
 
 	transfer_all_new_tablespaces(&old_cluster.dbarr, &new_cluster.dbarr,
 								 old_cluster.pgdata, new_cluster.pgdata);
@@ -221,8 +225,10 @@ main(int argc, char **argv)
 	{
 		prep_status("Sync data directory to disk");
 		exec_prog(UTILITY_LOG_FILE, NULL, true, true,
-				  "\"%s/initdb\" --sync-only \"%s\" --sync-method %s",
+				  "\"%s/initdb\" --sync-only %s \"%s\" --sync-method %s",
 				  new_cluster.bindir,
+				  (user_opts.transfer_mode == TRANSFER_MODE_SWAP) ?
+				  "--no-sync-data-files" : "",
 				  new_cluster.pgdata,
 				  user_opts.sync_method);
 		check_ok();
@@ -399,6 +405,38 @@ setup(char *argv0)
 	}
 }
 
+/*
+ * Set the new cluster's default char signedness using the old cluster's
+ * value.
+ */
+static void
+set_new_cluster_char_signedness(void)
+{
+	bool		new_char_signedness;
+
+	/*
+	 * Use the specified char signedness if specified. Otherwise we inherit
+	 * the source database's signedness.
+	 */
+	if (user_opts.char_signedness != -1)
+		new_char_signedness = (user_opts.char_signedness == 1);
+	else
+		new_char_signedness = old_cluster.controldata.default_char_signedness;
+
+	/* Change the char signedness of the new cluster, if necessary */
+	if (new_cluster.controldata.default_char_signedness != new_char_signedness)
+	{
+		prep_status("Setting the default char signedness for new cluster");
+
+		exec_prog(UTILITY_LOG_FILE, NULL, true, true,
+				  "\"%s/pg_resetwal\" --char-signedness %s \"%s\"",
+				  new_cluster.bindir,
+				  new_char_signedness ? "signed" : "unsigned",
+				  new_cluster.pgdata);
+
+		check_ok();
+	}
+}
 
 /*
  * Copy locale and encoding information into the new cluster's template0.
@@ -414,6 +452,7 @@ set_locale_and_encoding(void)
 	char	   *datcollate_literal;
 	char	   *datctype_literal;
 	char	   *datlocale_literal = NULL;
+	char	   *datlocale_src;
 	DbLocaleInfo *locale = old_cluster.template0;
 
 	prep_status("Setting locale and encoding for new cluster");
@@ -427,12 +466,10 @@ set_locale_and_encoding(void)
 	datctype_literal = PQescapeLiteral(conn_new_template1,
 									   locale->db_ctype,
 									   strlen(locale->db_ctype));
-	if (locale->db_locale)
-		datlocale_literal = PQescapeLiteral(conn_new_template1,
-											locale->db_locale,
-											strlen(locale->db_locale));
-	else
-		datlocale_literal = pg_strdup("NULL");
+	datlocale_src = locale->db_locale ? locale->db_locale : "NULL";
+	datlocale_literal = PQescapeLiteral(conn_new_template1,
+										datlocale_src,
+										strlen(datlocale_src));
 
 	/* update template0 in new cluster */
 	if (GET_MAJOR_VERSION(new_cluster.major_version) >= 1700)

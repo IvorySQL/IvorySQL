@@ -11,7 +11,7 @@
  * subplans, which are re-evaluated every time their result is required.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -753,7 +753,7 @@ findPartialMatch(TupleHashTable hashtable, TupleTableSlot *slot,
 	{
 		CHECK_FOR_INTERRUPTS();
 
-		ExecStoreMinimalTuple(entry->firstTuple, hashtable->tableslot, false);
+		ExecStoreMinimalTuple(TupleHashEntryGetTuple(entry), hashtable->tableslot, false);
 		if (!execTuplesUnequal(slot, hashtable->tableslot,
 							   numCols, keyColIdx,
 							   eqfunctions,

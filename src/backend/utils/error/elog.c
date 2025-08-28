@@ -43,7 +43,7 @@
  * overflow.)
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -1330,6 +1330,27 @@ errhint(const char *fmt,...)
 	return 0;					/* return value does not matter */
 }
 
+/*
+ * errhint_internal --- add a hint error message text to the current error
+ *
+ * Non-translated version of errhint(), see also errmsg_internal().
+ */
+int
+errhint_internal(const char *fmt,...)
+{
+	ErrorData  *edata = &errordata[errordata_stack_depth];
+	MemoryContext oldcontext;
+
+	recursion_depth++;
+	CHECK_STACK_DEPTH();
+	oldcontext = MemoryContextSwitchTo(edata->assoc_context);
+
+	EVALUATE_MESSAGE(edata->domain, hint, false, false);
+
+	MemoryContextSwitchTo(oldcontext);
+	recursion_depth--;
+	return 0;					/* return value does not matter */
+}
 
 /*
  * errhint_plural --- add a hint error message text to the current error,
@@ -2198,7 +2219,9 @@ check_backtrace_functions(char **newval, void **extra, GucSource source)
 	 * whitespace chars to save some memory, but it doesn't seem worth the
 	 * trouble.
 	 */
-	someval = guc_malloc(ERROR, newvallen + 1 + 1);
+	someval = guc_malloc(LOG, newvallen + 1 + 1);
+	if (!someval)
+		return false;
 	for (i = 0, j = 0; i < newvallen; i++)
 	{
 		if ((*newval)[i] == ',')
@@ -2283,7 +2306,9 @@ check_log_destination(char **newval, void **extra, GucSource source)
 	pfree(rawstring);
 	list_free(elemlist);
 
-	myextra = (int *) guc_malloc(ERROR, sizeof(int));
+	myextra = (int *) guc_malloc(LOG, sizeof(int));
+	if (!myextra)
+		return false;
 	*myextra = newlogdest;
 	*extra = myextra;
 
@@ -3148,11 +3173,11 @@ log_status_format(StringInfo buf, const char *format, ErrorData *edata)
 				break;
 			case 'Q':
 				if (padding != 0)
-					appendStringInfo(buf, "%*lld", padding,
-									 (long long) pgstat_get_my_query_id());
+					appendStringInfo(buf, "%*" PRId64, padding,
+									 pgstat_get_my_query_id());
 				else
-					appendStringInfo(buf, "%lld",
-									 (long long) pgstat_get_my_query_id());
+					appendStringInfo(buf, "%" PRId64,
+									 pgstat_get_my_query_id());
 				break;
 			default:
 				/* format error - ignore it */

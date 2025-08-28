@@ -112,7 +112,7 @@
  * is a convenient point to initialize replication from, which is why we
  * export a snapshot at that point, which *can* be used to read normal data.
  *
- * Copyright (c) 2012-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2012-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/replication/logical/snapbuild.c
@@ -173,7 +173,7 @@ static void SnapBuildWaitSnapshot(xl_running_xacts *running, TransactionId cutof
 /* serialization functions */
 static void SnapBuildSerialize(SnapBuild *builder, XLogRecPtr lsn);
 static bool SnapBuildRestore(SnapBuild *builder, XLogRecPtr lsn);
-static void SnapBuildRestoreContents(int fd, char *dest, Size size, const char *path);
+static void SnapBuildRestoreContents(int fd, void *dest, Size size, const char *path);
 
 /*
  * Allocate a new snapshot builder.
@@ -761,7 +761,7 @@ SnapBuildDistributeNewCatalogSnapshot(SnapBuild *builder, XLogRecPtr lsn)
 		 * We don't need to add snapshot to prepared transactions as they
 		 * should not see the new catalog contents.
 		 */
-		if (rbtxn_prepared(txn) || rbtxn_skip_prepared(txn))
+		if (rbtxn_is_prepared(txn))
 			continue;
 
 		elog(DEBUG2, "adding a new snapshot to %u at %X/%X",
@@ -1691,12 +1691,17 @@ out:
  * If 'missing_ok' is true, will not throw an error if the file is not found.
  */
 bool
-SnapBuildRestoreSnapshot(SnapBuildOnDisk *ondisk, const char *path,
+SnapBuildRestoreSnapshot(SnapBuildOnDisk *ondisk, XLogRecPtr lsn,
 						 MemoryContext context, bool missing_ok)
 {
 	int			fd;
 	pg_crc32c	checksum;
 	Size		sz;
+	char		path[MAXPGPATH];
+
+	sprintf(path, "%s/%X-%X.snap",
+			PG_LOGICAL_SNAPSHOTS_DIR,
+			LSN_FORMAT_ARGS(lsn));
 
 	fd = OpenTransientFile(path, O_RDONLY | PG_BINARY);
 
@@ -1722,7 +1727,7 @@ SnapBuildRestoreSnapshot(SnapBuildOnDisk *ondisk, const char *path,
 	fsync_fname(PG_LOGICAL_SNAPSHOTS_DIR, true);
 
 	/* read statically sized portion of snapshot */
-	SnapBuildRestoreContents(fd, (char *) ondisk, SnapBuildOnDiskConstantSize, path);
+	SnapBuildRestoreContents(fd, ondisk, SnapBuildOnDiskConstantSize, path);
 
 	if (ondisk->magic != SNAPBUILD_MAGIC)
 		ereport(ERROR,
@@ -1742,7 +1747,7 @@ SnapBuildRestoreSnapshot(SnapBuildOnDisk *ondisk, const char *path,
 				SnapBuildOnDiskConstantSize - SnapBuildOnDiskNotChecksummedSize);
 
 	/* read SnapBuild */
-	SnapBuildRestoreContents(fd, (char *) &ondisk->builder, sizeof(SnapBuild), path);
+	SnapBuildRestoreContents(fd, &ondisk->builder, sizeof(SnapBuild), path);
 	COMP_CRC32C(checksum, &ondisk->builder, sizeof(SnapBuild));
 
 	/* restore committed xacts information */
@@ -1750,7 +1755,7 @@ SnapBuildRestoreSnapshot(SnapBuildOnDisk *ondisk, const char *path,
 	{
 		sz = sizeof(TransactionId) * ondisk->builder.committed.xcnt;
 		ondisk->builder.committed.xip = MemoryContextAllocZero(context, sz);
-		SnapBuildRestoreContents(fd, (char *) ondisk->builder.committed.xip, sz, path);
+		SnapBuildRestoreContents(fd, ondisk->builder.committed.xip, sz, path);
 		COMP_CRC32C(checksum, ondisk->builder.committed.xip, sz);
 	}
 
@@ -1759,7 +1764,7 @@ SnapBuildRestoreSnapshot(SnapBuildOnDisk *ondisk, const char *path,
 	{
 		sz = sizeof(TransactionId) * ondisk->builder.catchange.xcnt;
 		ondisk->builder.catchange.xip = MemoryContextAllocZero(context, sz);
-		SnapBuildRestoreContents(fd, (char *) ondisk->builder.catchange.xip, sz, path);
+		SnapBuildRestoreContents(fd, ondisk->builder.catchange.xip, sz, path);
 		COMP_CRC32C(checksum, ondisk->builder.catchange.xip, sz);
 	}
 
@@ -1788,18 +1793,13 @@ static bool
 SnapBuildRestore(SnapBuild *builder, XLogRecPtr lsn)
 {
 	SnapBuildOnDisk ondisk;
-	char		path[MAXPGPATH];
 
 	/* no point in loading a snapshot if we're already there */
 	if (builder->state == SNAPBUILD_CONSISTENT)
 		return false;
 
-	sprintf(path, "%s/%X-%X.snap",
-			PG_LOGICAL_SNAPSHOTS_DIR,
-			LSN_FORMAT_ARGS(lsn));
-
 	/* validate and restore the snapshot to 'ondisk' */
-	if (!SnapBuildRestoreSnapshot(&ondisk, path, builder->context, true))
+	if (!SnapBuildRestoreSnapshot(&ondisk, lsn, builder->context, true))
 		return false;
 
 	/*
@@ -1882,7 +1882,7 @@ snapshot_not_interesting:
  * Read the contents of the serialized snapshot to 'dest'.
  */
 static void
-SnapBuildRestoreContents(int fd, char *dest, Size size, const char *path)
+SnapBuildRestoreContents(int fd, void *dest, Size size, const char *path)
 {
 	int			readBytes;
 

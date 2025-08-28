@@ -3,7 +3,7 @@
  * slotfuncs.c
  *	   Support functions for replication slots
  *
- * Copyright (c) 2012-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2012-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/replication/slotfuncs.c
@@ -431,7 +431,7 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 		if (cause == RS_INVAL_NONE)
 			nulls[i++] = true;
 		else
-			values[i++] = CStringGetTextDatum(SlotInvalidationCauses[cause]);
+			values[i++] = CStringGetTextDatum(GetSlotInvalidationCauseName(cause));
 
 		values[i++] = BoolGetDatum(slot_contents.data.failover);
 
@@ -536,7 +536,7 @@ pg_replication_slot_advance(PG_FUNCTION_ARGS)
 		moveto = Min(moveto, GetXLogReplayRecPtr(NULL));
 
 	/* Acquire the slot so we "own" it */
-	ReplicationSlotAcquire(NameStr(*slotname), true);
+	ReplicationSlotAcquire(NameStr(*slotname), true, true);
 
 	/* A slot whose restart_lsn has never been reserved cannot be advanced */
 	if (XLogRecPtrIsInvalid(MyReplicationSlot->data.restart_lsn))
@@ -695,13 +695,18 @@ copy_replication_slot(FunctionCallInfo fcinfo, bool logical_slot)
 		 * hence pass find_startpoint false.  confirmed_flush will be set
 		 * below, by copying from the source slot.
 		 *
-		 * To avoid potential issues with the slot synchronization where the
-		 * restart_lsn of a replication slot can go backward, we set the
-		 * failover option to false here.  This situation occurs when a slot
-		 * on the primary server is dropped and immediately replaced with a
-		 * new slot of the same name, created by copying from another existing
-		 * slot.  However, the slot synchronization will only observe the
-		 * restart_lsn of the same slot going backward.
+		 * We don't copy the failover option to prevent potential issues with
+		 * slot synchronization. For instance, if a slot was synchronized to
+		 * the standby, then dropped on the primary, and immediately recreated
+		 * by copying from another existing slot with much earlier restart_lsn
+		 * and confirmed_flush_lsn, the slot synchronization would only
+		 * observe the LSN of the same slot moving backward. As slot
+		 * synchronization does not copy the restart_lsn and
+		 * confirmed_flush_lsn backward (see update_local_synced_slot() for
+		 * details), if a failover happens before the primary's slot catches
+		 * up, logical replication cannot continue using the synchronized slot
+		 * on the promoted standby because the slot retains the restart_lsn
+		 * and confirmed_flush_lsn that are much later than expected.
 		 */
 		create_logical_replication_slot(NameStr(*dst_name),
 										plugin,

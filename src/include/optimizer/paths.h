@@ -4,7 +4,7 @@
  *	  prototypes for various files in optimizer/path
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/optimizer/paths.h
@@ -72,6 +72,9 @@ extern void create_index_paths(PlannerInfo *root, RelOptInfo *rel);
 extern bool relation_has_unique_index_for(PlannerInfo *root, RelOptInfo *rel,
 										  List *restrictlist,
 										  List *exprlist, List *oprlist);
+extern bool relation_has_unique_index_ext(PlannerInfo *root, RelOptInfo *rel,
+										  List *restrictlist, List *exprlist,
+										  List *oprlist, List **extra_clauses);
 extern bool indexcol_is_bool_constant_for_query(PlannerInfo *root,
 												IndexOptInfo *index,
 												int indexcol);

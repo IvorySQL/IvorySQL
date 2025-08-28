@@ -4,7 +4,7 @@
  *	   routines for accessing the system catalogs
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -325,7 +325,7 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 				info->amcanparallel = amroutine->amcanparallel;
 				info->amhasgettuple = (amroutine->amgettuple != NULL);
 				info->amhasgetbitmap = amroutine->amgetbitmap != NULL &&
-					relation->rd_tableam->scan_bitmap_next_block != NULL;
+					relation->rd_tableam->scan_bitmap_next_tuple != NULL;
 				info->amcanmarkpos = (amroutine->ammarkpos != NULL &&
 									  amroutine->amrestrpos != NULL);
 				info->amcostestimate = amroutine->amcostestimate;
@@ -639,6 +639,10 @@ get_relation_foreign_keys(PlannerInfo *root, RelOptInfo *rel,
 
 		/* conrelid should always be that of the table we're considering */
 		Assert(cachedfk->conrelid == RelationGetRelid(relation));
+
+		/* skip constraints currently not enforced */
+		if (!cachedfk->conenforced)
+			continue;
 
 		/* Scan to find other RTEs matching confrelid */
 		rti = 0;
@@ -1304,8 +1308,19 @@ get_relation_constraints(PlannerInfo *root,
 			 */
 			if (!constr->check[i].ccvalid)
 				continue;
+
+			/*
+			 * NOT ENFORCED constraints are always marked as invalid, which
+			 * should have been ignored.
+			 */
+			Assert(constr->check[i].ccenforced);
+
+			/*
+			 * Also ignore if NO INHERIT and we weren't told that that's safe.
+			 */
 			if (constr->check[i].ccnoinherit && !include_noinherit)
 				continue;
+
 
 			cexpr = stringToNode(constr->check[i].ccbin);
 
@@ -1846,8 +1861,8 @@ build_physical_tlist(PlannerInfo *root, RelOptInfo *rel)
 		case RTE_NAMEDTUPLESTORE:
 		case RTE_RESULT:
 			/* Not all of these can have dropped cols, but share code anyway */
-			expandRTE(rte, varno, 0, -1, true /* include dropped */ ,
-					  NULL, &colvars);
+			expandRTE(rte, varno, 0, VAR_RETURNING_DEFAULT, -1,
+					  true /* include dropped */ , NULL, &colvars);
 			foreach(l, colvars)
 			{
 				var = (Var *) lfirst(l);

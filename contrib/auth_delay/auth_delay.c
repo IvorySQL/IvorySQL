@@ -2,7 +2,7 @@
  *
  * auth_delay.c
  *
- * Copyright (c) 2010-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2010-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		contrib/auth_delay/auth_delay.c
@@ -16,7 +16,10 @@
 #include "libpq/auth.h"
 #include "utils/guc.h"
 
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(
+					.name = "auth_delay",
+					.version = PG_VERSION
+);
 
 /* GUC Variables */
 static int	auth_delay_milliseconds = 0;

@@ -16,7 +16,7 @@
  * for each file.  Finally, it sorts the array to the final order that the
  * actions should be executed in.
  *
- * Copyright (c) 2013-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2013-2025, PostgreSQL Global Development Group
  *
  *-------------------------------------------------------------------------
  */
@@ -652,18 +652,17 @@ isRelDataFile(const char *path)
 static char *
 datasegpath(RelFileLocator rlocator, ForkNumber forknum, BlockNumber segno)
 {
-	char	   *path;
+	RelPathStr	path;
 	char	   *segpath;
 
 	path = relpathperm(rlocator, forknum);
 	if (segno > 0)
 	{
-		segpath = psprintf("%s.%u", path, segno);
-		pfree(path);
+		segpath = psprintf("%s.%u", path.str, segno);
 		return segpath;
 	}
 	else
-		return path;
+		return pstrdup(path.str);
 }
 
 /*

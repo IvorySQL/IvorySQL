@@ -1,5 +1,5 @@
-# Copyright (c) 2022-2024, PostgreSQL Global Development Group
 # Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+# Copyright (c) 2022-2025, PostgreSQL Global Development Group
 
 pgport_sources = [
   'bsearch_arg.c',
@@ -8,6 +8,8 @@ pgport_sources = [
   'noblock.c',
   'path.c',
   'pg_bitutils.c',
+  'pg_localeconv_r.c',
+  'pg_popcount_aarch64.c',
   'pg_popcount_avx512.c',
   'pg_strong_random.c',
   'pgcheckdir.c',
@@ -73,6 +75,7 @@ replace_funcs_neg = [
   ['strlcpy'],
   ['strnlen'],
   ['strsep'],
+  ['timingsafe_bcmp'],
 ]
 
 if host_system != 'windows'
@@ -186,6 +189,7 @@ foreach name, opts : pgport_variants
   lib = static_library('libpgport@0@'.format(name),
       pgport_sources,
       link_with: cflag_libs,
+      link_whole: cflag_libs,
       c_pch: pch_c_h,
       kwargs: opts + {
         'dependencies': opts['dependencies'] + [ssl],

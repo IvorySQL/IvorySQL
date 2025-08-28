@@ -3,7 +3,7 @@
  * syslogger.h
  *	  Exports from postmaster/syslogger.c.
  *
- * Copyright (c) 2004-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2004-2025, PostgreSQL Global Development Group
  *
  * src/include/postmaster/syslogger.h
  *
@@ -90,7 +90,7 @@ extern int	SysLogger_Start(int child_slot);
 
 extern void write_syslogger_file(const char *buffer, int count, int destination);
 
-extern void SysLoggerMain(char *startup_data, size_t startup_data_len) pg_attribute_noreturn();
+pg_noreturn extern void SysLoggerMain(const void *startup_data, size_t startup_data_len);
 
 extern bool CheckLogrotateSignal(void);
 extern void RemoveLogrotateSignalFiles(void);

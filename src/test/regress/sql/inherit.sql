@@ -380,8 +380,9 @@ CREATE TABLE inhta ();
 CREATE TABLE inhtb () INHERITS (inhta);
 CREATE TABLE inhtc () INHERITS (inhtb);
 CREATE TABLE inhtd () INHERITS (inhta, inhtb, inhtc);
-ALTER TABLE inhta ADD COLUMN i int;
+ALTER TABLE inhta ADD COLUMN i int, ADD COLUMN j bigint DEFAULT 1;
 \d+ inhta
+\d+ inhtd
 DROP TABLE inhta, inhtb, inhtc, inhtd;
 
 -- Test for renaming in diamond inheritance
@@ -468,11 +469,63 @@ alter table p1_c1 add constraint inh_check_constraint1 check (f1 > 0);
 alter table p1_c1 add constraint inh_check_constraint2 check (f1 < 10);
 alter table p1 add constraint inh_check_constraint2 check (f1 < 10);
 
-select conrelid::regclass::text as relname, conname, conislocal, coninhcount
+alter table p1 add constraint inh_check_constraint3 check (f1 > 0) not enforced;
+alter table p1_c1 add constraint inh_check_constraint3 check (f1 > 0) not enforced;
+
+alter table p1_c1 add constraint inh_check_constraint4 check (f1 < 10) not enforced;
+alter table p1 add constraint inh_check_constraint4 check (f1 < 10) not enforced;
+
+-- allowed to merge enforced constraint with parent's not enforced constraint
+alter table p1_c1 add constraint inh_check_constraint5 check (f1 < 10) enforced;
+alter table p1 add constraint inh_check_constraint5 check (f1 < 10) not enforced;
+
+alter table p1 add constraint inh_check_constraint6 check (f1 < 10) not enforced;
+alter table p1_c1 add constraint inh_check_constraint6 check (f1 < 10) enforced;
+
+alter table p1_c1 add constraint inh_check_constraint9 check (f1 < 10) not valid enforced;
+alter table p1 add constraint inh_check_constraint9 check (f1 < 10) not enforced;
+
+-- the not-valid state of the child constraint will be ignored here.
+alter table p1 add constraint inh_check_constraint10 check (f1 < 10) not enforced;
+alter table p1_c1 add constraint inh_check_constraint10 check (f1 < 10) not valid enforced;
+
+create table p1_c2(f1 int constraint inh_check_constraint4 check (f1 < 10)) inherits(p1);
+
+-- but reverse is not allowed
+alter table p1_c1 add constraint inh_check_constraint7 check (f1 < 10) not enforced;
+alter table p1 add constraint inh_check_constraint7 check (f1 < 10) enforced;
+
+alter table p1 add constraint inh_check_constraint8 check (f1 < 10) enforced;
+alter table p1_c1 add constraint inh_check_constraint8 check (f1 < 10) not enforced;
+
+create table p1_fail(f1 int constraint inh_check_constraint2 check (f1 < 10) not enforced) inherits(p1);
+
+-- constraints with different enforceability can be merged by marking them as ENFORCED
+create table p1_c3() inherits(p1, p1_c1);
+
+-- but not allowed if the child constraint is explicitly asked to be NOT ENFORCED
+create table p1_fail(f1 int constraint inh_check_constraint6 check (f1 < 10) not enforced) inherits(p1, p1_c1);
+
+select conrelid::regclass::text as relname, conname, conislocal, coninhcount, conenforced, convalidated
 from pg_constraint where conname like 'inh\_check\_constraint%'
 order by 1, 2;
 
 drop table p1 cascade;
+
+--
+-- Similarly, check the merging of existing constraints; a parent constraint
+-- marked as NOT ENFORCED can merge with an ENFORCED child constraint, but the
+-- reverse is not allowed.
+--
+create table p1(f1 int constraint p1_a_check check (f1 > 0) not enforced);
+create table p1_c1(f1 int constraint p1_a_check check (f1 > 0) enforced);
+alter table p1_c1 inherit p1;
+drop table p1 cascade;
+
+create table p1(f1 int constraint p1_a_check check (f1 > 0) enforced);
+create table p1_c1(f1 int constraint p1_a_check check (f1 > 0) not enforced);
+alter table p1_c1 inherit p1;
+drop table p1, p1_c1;
 
 --
 -- Test DROP behavior of multiply-defined CHECK constraints
@@ -912,7 +965,7 @@ CREATE TABLE inh_nn1 (a int not null);
 CREATE TABLE inh_nn2 (a int not null no inherit) INHERITS (inh_nn1);
 CREATE TABLE inh_nn3 (a int not null, b int,  not null a no inherit);
 CREATE TABLE inh_nn4 (a int not null no inherit, b int,  not null a);
-DROP TABLE inh_nn1, inh_nn2, inh_nn3, inh_nn4;
+DROP TABLE IF EXISTS inh_nn1, inh_nn2, inh_nn3, inh_nn4;
 
 --
 -- test inherit/deinherit
@@ -1044,6 +1097,83 @@ select conrelid::regclass, contype, conname,
  order by conrelid::regclass::text, conname;
 
 drop table inh_p1, inh_p2, inh_p3, inh_p4 cascade;
+
+--
+-- Test ALTER CONSTRAINT SET [NO] INHERIT
+--
+create table inh_nn1 (f1 int not null no inherit);
+create table inh_nn2 (f2 text, f3 int, f1 int);
+alter table inh_nn2 inherit inh_nn1;
+create table inh_nn3 (f4 float) inherits (inh_nn2);
+create table inh_nn4 (f5 int, f4 float, f2 text, f3 int, f1 int);
+alter table inh_nn4 inherit inh_nn2, inherit inh_nn1, inherit inh_nn3;
+alter table inh_nn1 alter constraint inh_nn1_f1_not_null inherit;
+select conrelid::regclass, conname, conkey, coninhcount, conislocal, connoinherit
+ from pg_constraint where contype = 'n' and
+ conrelid::regclass::text in ('inh_nn1', 'inh_nn2', 'inh_nn3', 'inh_nn4')
+ order by 2, 1;
+-- ALTER CONSTRAINT NO INHERIT should work on top-level constraints
+alter table inh_nn1 alter constraint inh_nn1_f1_not_null no inherit;
+select conrelid::regclass, conname, conkey, coninhcount, conislocal, connoinherit
+ from pg_constraint where contype = 'n' and
+ conrelid::regclass::text in ('inh_nn1', 'inh_nn2', 'inh_nn3', 'inh_nn4')
+ order by 2, 1;
+-- A constraint that's NO INHERIT can be dropped without damaging children
+alter table inh_nn1 drop constraint inh_nn1_f1_not_null;
+select conrelid::regclass, conname, coninhcount, conislocal, connoinherit
+ from pg_constraint where contype = 'n' and
+ conrelid::regclass::text in ('inh_nn1', 'inh_nn2', 'inh_nn3', 'inh_nn4')
+ order by 2, 1;
+drop table inh_nn1, inh_nn2, inh_nn3, inh_nn4;
+
+-- Test inherit constraint and make sure it validates.
+create table inh_nn1 (f1 int not null no inherit);
+create table inh_nn2 (f2 text, f3 int) inherits (inh_nn1);
+insert into inh_nn2 values(NULL, 'sample', 1);
+alter table inh_nn1 alter constraint inh_nn1_f1_not_null inherit;
+delete from inh_nn2;
+create table inh_nn3 () inherits (inh_nn2);
+create table inh_nn4 () inherits (inh_nn1, inh_nn2);
+alter table inh_nn1	-- test multicommand alter table while at it
+   alter constraint inh_nn1_f1_not_null inherit,
+   alter constraint inh_nn1_f1_not_null no inherit;
+select conrelid::regclass, conname, coninhcount, conislocal, connoinherit
+ from pg_constraint where contype = 'n' and
+ conrelid::regclass::text in ('inh_nn1', 'inh_nn2', 'inh_nn3', 'inh_nn4')
+ order by 2, 1;
+drop table inh_nn1, inh_nn2, inh_nn3, inh_nn4;
+
+-- Test not null inherit constraint which already exists on child table.
+create table inh_nn1 (f1 int not null no inherit);
+create table inh_nn2 (f2 text, f3 int) inherits (inh_nn1);
+create table inh_nn3 (f4 float, constraint nn3_f1 not null f1 no inherit) inherits (inh_nn1, inh_nn2);
+select conrelid::regclass, conname, conkey, coninhcount, conislocal, connoinherit
+ from pg_constraint where contype = 'n' and
+ conrelid::regclass::text in ('inh_nn1', 'inh_nn2', 'inh_nn3')
+ order by 2, 1;
+-- error: inh_nn3 has an incompatible NO INHERIT constraint
+alter table inh_nn1 alter constraint inh_nn1_f1_not_null inherit;
+alter table inh_nn3 alter constraint nn3_f1 inherit;
+alter table inh_nn1 alter constraint inh_nn1_f1_not_null inherit; -- now it works
+select conrelid::regclass, conname, conkey, coninhcount, conislocal, connoinherit
+ from pg_constraint where contype = 'n' and
+ conrelid::regclass::text in ('inh_nn1', 'inh_nn2', 'inh_nn3')
+ order by 2, 1;
+drop table inh_nn1, inh_nn2, inh_nn3;
+
+-- Negative scenarios for alter constraint .. inherit.
+create table inh_nn1 (f1 int check(f1 > 5) primary key references inh_nn1, f2 int not null);
+-- constraints other than not-null are not supported
+alter table inh_nn1 alter constraint inh_nn1_f1_check inherit;
+alter table inh_nn1 alter constraint inh_nn1_pkey inherit;
+alter table inh_nn1 alter constraint inh_nn1_f1_fkey inherit;
+-- try to drop a nonexistant constraint
+alter table inh_nn1 alter constraint foo inherit;
+-- Can't modify inheritability of inherited constraints
+create table inh_nn2 () inherits (inh_nn1);
+alter table inh_nn2 alter constraint inh_nn1_f2_not_null no inherit;
+
+drop table inh_nn1, inh_nn2;
 
 --
 -- Mixed ownership inheritance tree
@@ -1438,3 +1568,24 @@ UPDATE errtst_parent SET partid = 0, data = data + 10 WHERE partid = 20;
 UPDATE errtst_parent SET partid = 30, data = data + 10 WHERE partid = 20;
 
 DROP TABLE errtst_parent;
+
+-- Check that we have the correct tuples estimate for an appendrel
+create table tuplesest_parted (a int, b int, c float) partition by range(a);
+create table tuplesest_parted1 partition of tuplesest_parted for values from (0) to (100);
+create table tuplesest_parted2 partition of tuplesest_parted for values from (100) to (200);
+
+create table tuplesest_tab (a int, b int);
+
+insert into tuplesest_parted select i%200, i%300, i%400 from generate_series(1, 1000)i;
+insert into tuplesest_tab select i, i from generate_series(1, 100)i;
+
+analyze tuplesest_parted;
+analyze tuplesest_tab;
+
+explain (costs off)
+select * from tuplesest_tab join
+  (select b from tuplesest_parted where c < 100 group by b) sub
+  on tuplesest_tab.a = sub.b;
+
+drop table tuplesest_parted;
+drop table tuplesest_tab;

@@ -14,6 +14,24 @@
 #
 # $ git log --pretty=format:"%H # %cd%n# %s" $PGINDENTGITHASH -1 --date=iso
 
+796bdda484c838313959f65e2b700f14ac7c0e66 # 2025-03-18 09:02:36 -0400
+# Fix indentation again.
+
+203c1b4cc49455364b6bcab8034900d1c016b9cd # 2025-03-17 16:06:17 -0400
+# Fix indentation.
+
+b955df443405e056fd9047ef819a1465654f9d79 # 2025-03-13 12:41:44 +1300
+# Fix indentation issue
+
+76aa615943049c04efd36ab4765c06eda89cdfea # 2025-01-31 16:44:24 +0900
+# Fix bad indentation introduced in commit d47cbf474
+
+6e826278f1ebd9967c0f8adda29c8960a812e344 # 2025-01-13 11:27:32 +0900
+# Fix pgindent damage
+
+301de6a6f609cb3ad2d9d31fd8db9ae6c71e6dea # 2024-12-25 17:55:42 +0100
+# Partial pgindent of .l and .y files
+
 53dcba9be5746cc126bdb949bf81c29ea2cfc24d # 2024-11-21 21:40:17 +0100
 # pgindent run
 

@@ -8,7 +8,7 @@
  *	  Structs that need to be client-visible are in pqcomm.h.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -19,6 +19,8 @@
 #ifndef LIBPQ_BE_H
 #define LIBPQ_BE_H
 
+#include "common/scram-common.h"
+
 #include <sys/time.h>
 #ifdef USE_OPENSSL
 #include <openssl/ssl.h>
@@ -26,13 +28,7 @@
 #endif
 #include <netinet/tcp.h>
 
-#ifdef ENABLE_GSS
-#if defined(HAVE_GSSAPI_H)
-#include <gssapi.h>
-#else
-#include <gssapi/gssapi.h>
-#endif							/* HAVE_GSSAPI_H */
-#endif							/* ENABLE_GSS */
+#include "libpq/pg-gssapi.h"
 
 #ifdef ENABLE_SSPI
 #define SECURITY_WIN32
@@ -183,6 +179,13 @@ typedef struct Port
 	int			tcp_user_timeout;
 
 	/*
+	 * SCRAM structures.
+	 */
+	uint8		scram_ClientKey[SCRAM_MAX_KEY_LEN];
+	uint8		scram_ServerKey[SCRAM_MAX_KEY_LEN];
+	bool		has_scram_keys; /* true if the above two are valid */
+
+	/*
 	 * GSSAPI structures.
 	 */
 #if defined(ENABLE_GSS) || defined(ENABLE_SSPI)
@@ -315,7 +318,7 @@ extern ssize_t be_tls_read(Port *port, void *ptr, size_t len, int *waitfor);
 /*
  * Write data to a secure connection.
  */
-extern ssize_t be_tls_write(Port *port, void *ptr, size_t len, int *waitfor);
+extern ssize_t be_tls_write(Port *port, const void *ptr, size_t len, int *waitfor);
 
 /*
  * Return information about the SSL connection.
@@ -355,7 +358,7 @@ extern bool be_gssapi_get_delegation(Port *port);
 
 /* Read and write to a GSSAPI-encrypted connection. */
 extern ssize_t be_gssapi_read(Port *port, void *ptr, size_t len);
-extern ssize_t be_gssapi_write(Port *port, void *ptr, size_t len);
+extern ssize_t be_gssapi_write(Port *port, const void *ptr, size_t len);
 #endif							/* ENABLE_GSS */
 
 extern PGDLLIMPORT ProtocolVersion FrontendProtocol;

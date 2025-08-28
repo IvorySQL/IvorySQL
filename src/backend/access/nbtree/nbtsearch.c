@@ -4,7 +4,7 @@
  *	  Search code for postgres btrees.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -33,7 +33,7 @@ static OffsetNumber _bt_binsrch(Relation rel, BTScanInsert key, Buffer buf);
 static int	_bt_binsrch_posting(BTScanInsert key, Page page,
 								OffsetNumber offnum);
 static bool _bt_readpage(IndexScanDesc scan, ScanDirection dir,
-						 OffsetNumber offnum, bool firstPage);
+						 OffsetNumber offnum, bool firstpage);
 static void _bt_saveitem(BTScanOpaque so, int itemIndex,
 						 OffsetNumber offnum, IndexTuple itup);
 static int	_bt_setuppostingitems(BTScanOpaque so, int itemIndex,
@@ -890,6 +890,8 @@ _bt_first(IndexScanDesc scan, ScanDirection dir)
 	ScanKeyData notnullkeys[INDEX_MAX_KEYS];
 	int			keysz = 0;
 	StrategyNumber strat_total;
+	BlockNumber blkno = InvalidBlockNumber,
+				lastcurrblkno;
 
 	Assert(!BTScanPosIsValid(so->currPos));
 
@@ -905,64 +907,42 @@ _bt_first(IndexScanDesc scan, ScanDirection dir)
 	 */
 	if (!so->qual_ok)
 	{
+		Assert(!so->needPrimScan);
 		_bt_parallel_done(scan);
 		return false;
 	}
 
 	/*
-	 * For parallel scans, get the starting page from shared state. If the
-	 * scan has not started, proceed to find out first leaf page in the usual
-	 * way while keeping other participating processes waiting.  If the scan
-	 * has already begun, use the page number from the shared structure.
-	 *
-	 * When a parallel scan has another primitive index scan scheduled, a
-	 * parallel worker will seize the scan for that purpose now.  This is
-	 * similar to the case where the top-level scan hasn't started.
+	 * If this is a parallel scan, we must seize the scan.  _bt_readfirstpage
+	 * will likely release the parallel scan later on.
 	 */
-	if (scan->parallel_scan != NULL)
-	{
-		BlockNumber blkno,
-					lastcurrblkno;
+	if (scan->parallel_scan != NULL &&
+		!_bt_parallel_seize(scan, &blkno, &lastcurrblkno, true))
+		return false;
 
-		if (!_bt_parallel_seize(scan, &blkno, &lastcurrblkno, true))
+	/*
+	 * Initialize the scan's arrays (if any) for the current scan direction
+	 * (except when they were already set to later values as part of
+	 * scheduling the primitive index scan that is now underway)
+	 */
+	if (so->numArrayKeys && !so->needPrimScan)
+		_bt_start_array_keys(scan, dir);
+
+	if (blkno != InvalidBlockNumber)
+	{
+		/*
+		 * We anticipated calling _bt_search, but another worker bet us to it.
+		 * _bt_readnextpage releases the scan for us (not _bt_readfirstpage).
+		 */
+		Assert(scan->parallel_scan != NULL);
+		Assert(!so->needPrimScan);
+		Assert(blkno != P_NONE);
+
+		if (!_bt_readnextpage(scan, blkno, lastcurrblkno, dir, true))
 			return false;
 
-		/*
-		 * Successfully seized the scan, which _bt_readfirstpage or possibly
-		 * _bt_readnextpage will release (unless the scan ends right away, in
-		 * which case we'll call _bt_parallel_done directly).
-		 *
-		 * Initialize arrays (when _bt_parallel_seize didn't already set up
-		 * the next primitive index scan).
-		 */
-		if (so->numArrayKeys && !so->needPrimScan)
-			_bt_start_array_keys(scan, dir);
-
-		Assert(blkno != P_NONE);
-		if (blkno != InvalidBlockNumber)
-		{
-			Assert(!so->needPrimScan);
-
-			/*
-			 * We anticipated starting another primitive scan, but some other
-			 * worker bet us to it
-			 */
-			if (!_bt_readnextpage(scan, blkno, lastcurrblkno, dir, true))
-				return false;
-
-			_bt_returnitem(scan, so);
-			return true;
-		}
-	}
-	else if (so->numArrayKeys && !so->needPrimScan)
-	{
-		/*
-		 * First _bt_first call (for current btrescan) without parallelism.
-		 *
-		 * Initialize arrays, and the corresponding scan keys that were just
-		 * output by _bt_preprocess_keys.
-		 */
-		_bt_start_array_keys(scan, dir);
+		_bt_returnitem(scan, so);
+		return true;
 	}
 
 	/*
@@ -970,6 +950,8 @@ _bt_first(IndexScanDesc scan, ScanDirection dir)
 	 * _bt_search/_bt_endpoint below
 	 */
 	pgstat_count_index_scan(rel);
+	if (scan->instrument)
+		scan->instrument->nsearches++;
 
 	/*----------
 	 * Examine the scan keys to discover where we need to start the scan.
@@ -1090,7 +1072,12 @@ _bt_first(IndexScanDesc scan, ScanDirection dir)
 					break;
 				startKeys[keysz++] = chosen;
 
-				/* Quit if we have stored a > or < key */
+				/*
+				 * We can only consider adding more boundary keys when the one
+				 * that we just chose to add uses either the = or >= strategy
+				 * (during backwards scans we can only do so when the key that
+				 * we just added to startKeys[] uses the = or <= strategy)
+				 */
 				strat_total = chosen->sk_strategy;
 				if (strat_total == BTGreaterStrategyNumber ||
 					strat_total == BTLessStrategyNumber)
@@ -1177,22 +1164,23 @@ _bt_first(IndexScanDesc scan, ScanDirection dir)
 		if (cur->sk_flags & SK_ROW_HEADER)
 		{
 			/*
-			 * Row comparison header: look to the first row member instead.
-			 *
-			 * The member scankeys are already in insertion format (ie, they
-			 * have sk_func = 3-way-comparison function), but we have to watch
-			 * out for nulls, which _bt_preprocess_keys didn't check. A null
-			 * in the first row member makes the condition unmatchable, just
-			 * like qual_ok = false.
+			 * Row comparison header: look to the first row member instead
 			 */
 			ScanKey		subkey = (ScanKey) DatumGetPointer(cur->sk_argument);
 
+			/*
+			 * Cannot be a NULL in the first row member: _bt_preprocess_keys
+			 * would've marked the qual as unsatisfiable, preventing us from
+			 * ever getting this far
+			 */
 			Assert(subkey->sk_flags & SK_ROW_MEMBER);
-			if (subkey->sk_flags & SK_ISNULL)
-			{
-				_bt_parallel_done(scan);
-				return false;
-			}
+			Assert(subkey->sk_attno == cur->sk_attno);
+			Assert(!(subkey->sk_flags & SK_ISNULL));
+
+			/*
+			 * The member scankeys are already in insertion format (ie, they
+			 * have sk_func = 3-way-comparison function)
+			 */
 			memcpy(inskey.scankeys + i, subkey, sizeof(ScanKeyData));
 
 			/*
@@ -1408,6 +1396,7 @@ _bt_first(IndexScanDesc scan, ScanDirection dir)
 
 		if (!BufferIsValid(so->currPos.buf))
 		{
+			Assert(!so->needPrimScan);
 			_bt_parallel_done(scan);
 			return false;
 		}
@@ -1511,7 +1500,7 @@ _bt_next(IndexScanDesc scan, ScanDirection dir)
  */
 static bool
 _bt_readpage(IndexScanDesc scan, ScanDirection dir, OffsetNumber offnum,
-			 bool firstPage)
+			 bool firstpage)
 {
 	Relation	rel = scan->indexRelation;
 	BTScanOpaque so = (BTScanOpaque) scan->opaque;
@@ -1567,6 +1556,7 @@ _bt_readpage(IndexScanDesc scan, ScanDirection dir, OffsetNumber offnum,
 	pstate.maxoff = maxoff;
 	pstate.finaltup = NULL;
 	pstate.page = page;
+	pstate.firstpage = firstpage;
 	pstate.offnum = InvalidOffsetNumber;
 	pstate.skip = InvalidOffsetNumber;
 	pstate.continuescan = true; /* default assumption */
@@ -1615,7 +1605,7 @@ _bt_readpage(IndexScanDesc scan, ScanDirection dir, OffsetNumber offnum,
 	 * required < or <= strategy scan keys) during the precheck, we can safely
 	 * assume that this must also be true of all earlier tuples from the page.
 	 */
-	if (!firstPage && !so->scanBehind && minoff < maxoff)
+	if (!pstate.firstpage && !so->scanBehind && minoff < maxoff)
 	{
 		ItemId		iid;
 		IndexTuple	itup;
@@ -1632,36 +1622,28 @@ _bt_readpage(IndexScanDesc scan, ScanDirection dir, OffsetNumber offnum,
 	if (ScanDirectionIsForward(dir))
 	{
 		/* SK_SEARCHARRAY forward scans must provide high key up front */
-		if (arrayKeys && !P_RIGHTMOST(opaque))
+		if (arrayKeys)
 		{
-			ItemId		iid = PageGetItemId(page, P_HIKEY);
-
-			pstate.finaltup = (IndexTuple) PageGetItem(page, iid);
-
-			if (unlikely(so->oppositeDirCheck))
+			if (!P_RIGHTMOST(opaque))
 			{
-				Assert(so->scanBehind);
+				ItemId		iid = PageGetItemId(page, P_HIKEY);
 
-				/*
-				 * Last _bt_readpage call scheduled a recheck of finaltup for
-				 * required scan keys up to and including a > or >= scan key.
-				 *
-				 * _bt_checkkeys won't consider the scanBehind flag unless the
-				 * scan is stopped by a scan key required in the current scan
-				 * direction.  We need this recheck so that we'll notice when
-				 * all tuples on this page are still before the _bt_first-wise
-				 * start of matches for the current set of array keys.
-				 */
-				if (!_bt_oppodir_checkkeys(scan, dir, pstate.finaltup))
+				pstate.finaltup = (IndexTuple) PageGetItem(page, iid);
+
+				if (so->scanBehind &&
+					!_bt_scanbehind_checkkeys(scan, dir, pstate.finaltup))
 				{
 					/* Schedule another primitive index scan after all */
 					so->currPos.moreRight = false;
 					so->needPrimScan = true;
+					if (scan->parallel_scan)
+						_bt_parallel_primscan_schedule(scan,
+													   so->currPos.currPage);
 					return false;
 				}
-
-				/* Deliberately don't unset scanBehind flag just yet */
 			}
+
+			so->scanBehind = so->oppositeDirCheck = false;	/* reset */
 		}
 
 		/* load items[] in ascending order */
@@ -1757,7 +1739,7 @@ _bt_readpage(IndexScanDesc scan, ScanDirection dir, OffsetNumber offnum,
 		 * only appear on non-pivot tuples on the right sibling page are
 		 * common.
 		 */
-		if (pstate.continuescan && !P_RIGHTMOST(opaque))
+		if (pstate.continuescan && !so->scanBehind && !P_RIGHTMOST(opaque))
 		{
 			ItemId		iid = PageGetItemId(page, P_HIKEY);
 			IndexTuple	itup = (IndexTuple) PageGetItem(page, iid);
@@ -1779,11 +1761,28 @@ _bt_readpage(IndexScanDesc scan, ScanDirection dir, OffsetNumber offnum,
 	else
 	{
 		/* SK_SEARCHARRAY backward scans must provide final tuple up front */
-		if (arrayKeys && minoff <= maxoff && !P_LEFTMOST(opaque))
+		if (arrayKeys)
 		{
-			ItemId		iid = PageGetItemId(page, minoff);
+			if (minoff <= maxoff && !P_LEFTMOST(opaque))
+			{
+				ItemId		iid = PageGetItemId(page, minoff);
 
-			pstate.finaltup = (IndexTuple) PageGetItem(page, iid);
+				pstate.finaltup = (IndexTuple) PageGetItem(page, iid);
+
+				if (so->scanBehind &&
+					!_bt_scanbehind_checkkeys(scan, dir, pstate.finaltup))
+				{
+					/* Schedule another primitive index scan after all */
+					so->currPos.moreLeft = false;
+					so->needPrimScan = true;
+					if (scan->parallel_scan)
+						_bt_parallel_primscan_schedule(scan,
+													   so->currPos.currPage);
+					return false;
+				}
+			}
+
+			so->scanBehind = so->oppositeDirCheck = false;	/* reset */
 		}
 
 		/* load items[] in descending order */
@@ -2063,8 +2062,8 @@ _bt_steppage(IndexScanDesc scan, ScanDirection dir)
 		 * markPos state.  But depending on the current array state like this
 		 * would add complexity.  Instead, we just unset markPos's copy of
 		 * moreRight or moreLeft (whichever might be affected), while making
-		 * btrestpos reset the scan's arrays to their initial scan positions.
-		 * In effect, btrestpos leaves advancing the arrays up to the first
+		 * btrestrpos reset the scan's arrays to their initial scan positions.
+		 * In effect, btrestrpos leaves advancing the arrays up to the first
 		 * _bt_readpage call (that takes place after it has restored markPos).
 		 */
 		if (so->needPrimScan)
@@ -2196,7 +2195,9 @@ _bt_readfirstpage(IndexScanDesc scan, OffsetNumber offnum, ScanDirection dir)
  * scan.  A seized=false caller's blkno can never be assumed to be the page
  * that must be read next during a parallel scan, though.  We must figure that
  * part out for ourselves by seizing the scan (the correct page to read might
- * already be beyond the seized=false caller's blkno during a parallel scan).
+ * already be beyond the seized=false caller's blkno during a parallel scan,
+ * unless blkno/so->currPos.nextPage/so->currPos.prevPage is already P_NONE,
+ * or unless so->currPos.moreRight/so->currPos.moreLeft is already unset).
  *
  * On success exit, so->currPos is updated to contain data from the next
  * interesting page, and we return true.  We hold a pin on the buffer on
@@ -2217,6 +2218,7 @@ _bt_readnextpage(IndexScanDesc scan, BlockNumber blkno,
 	BTScanOpaque so = (BTScanOpaque) scan->opaque;
 
 	Assert(so->currPos.currPage == lastcurrblkno || seized);
+	Assert(!(blkno == P_NONE && seized));
 	Assert(!BTScanPosIsPinned(so->currPos));
 
 	/*
@@ -2284,14 +2286,14 @@ _bt_readnextpage(IndexScanDesc scan, BlockNumber blkno,
 			if (ScanDirectionIsForward(dir))
 			{
 				/* note that this will clear moreRight if we can stop */
-				if (_bt_readpage(scan, dir, P_FIRSTDATAKEY(opaque), false))
+				if (_bt_readpage(scan, dir, P_FIRSTDATAKEY(opaque), seized))
 					break;
 				blkno = so->currPos.nextPage;
 			}
 			else
 			{
 				/* note that this will clear moreLeft if we can stop */
-				if (_bt_readpage(scan, dir, PageGetMaxOffsetNumber(page), false))
+				if (_bt_readpage(scan, dir, PageGetMaxOffsetNumber(page), seized))
 					break;
 				blkno = so->currPos.prevPage;
 			}
@@ -2553,6 +2555,7 @@ _bt_endpoint(IndexScanDesc scan, ScanDirection dir)
 	OffsetNumber start;
 
 	Assert(!BTScanPosIsValid(so->currPos));
+	Assert(!so->needPrimScan);
 
 	/*
 	 * Scan down to the leftmost or rightmost leaf page.  This is a simplified

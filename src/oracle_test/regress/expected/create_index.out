@@ -1904,13 +1904,13 @@ SELECT * FROM tenk1
                                                                 QUERY PLAN                                                                 
 -------------------------------------------------------------------------------------------------------------------------------------------
  Bitmap Heap Scan on tenk1
-   Recheck Cond: (((thousand = 42) AND (tenthous IS NULL)) OR ((thousand = 42) AND ((tenthous = 1) OR (tenthous = 3) OR (tenthous = 42))))
+   Recheck Cond: (((thousand = 42) AND ((tenthous = 1) OR (tenthous = 3) OR (tenthous = 42))) OR ((thousand = 42) AND (tenthous IS NULL)))
    Filter: ((tenthous = 1) OR (tenthous = 3) OR (tenthous = 42) OR (tenthous IS NULL))
    ->  BitmapOr
          ->  Bitmap Index Scan on tenk1_thous_tenthous
-               Index Cond: ((thousand = 42) AND (tenthous IS NULL))
-         ->  Bitmap Index Scan on tenk1_thous_tenthous
                Index Cond: ((thousand = 42) AND (tenthous = ANY ('{1,3,42}'::pg_catalog.int4[])))
+         ->  Bitmap Index Scan on tenk1_thous_tenthous
+               Index Cond: ((thousand = 42) AND (tenthous IS NULL))
 (8 rows)
 
 EXPLAIN (COSTS OFF)
@@ -1943,13 +1943,13 @@ SELECT * FROM tenk1
                                                                                   QUERY PLAN                                                                                  
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Bitmap Heap Scan on tenk1
-   Recheck Cond: (((thousand = 42) AND ((tenthous = '3'::pg_catalog.int8) OR (tenthous = '42'::pg_catalog.int8))) OR ((thousand = 42) AND (tenthous = '1'::pg_catalog.int2)))
+   Recheck Cond: (((thousand = 42) AND (tenthous = '1'::pg_catalog.int2)) OR ((thousand = 42) AND ((tenthous = '3'::pg_catalog.int8) OR (tenthous = '42'::pg_catalog.int8))))
    Filter: ((tenthous = '1'::pg_catalog.int2) OR (tenthous = '3'::pg_catalog.int8) OR (tenthous = '42'::pg_catalog.int8))
    ->  BitmapOr
          ->  Bitmap Index Scan on tenk1_thous_tenthous
-               Index Cond: ((thousand = 42) AND (tenthous = ANY ('{3,42}'::pg_catalog.int8[])))
-         ->  Bitmap Index Scan on tenk1_thous_tenthous
                Index Cond: ((thousand = 42) AND (tenthous = '1'::pg_catalog.int2))
+         ->  Bitmap Index Scan on tenk1_thous_tenthous
+               Index Cond: ((thousand = 42) AND (tenthous = ANY ('{3,42}'::pg_catalog.int8[])))
 (8 rows)
 
 EXPLAIN (COSTS OFF)
@@ -2010,6 +2010,27 @@ SELECT * FROM tenk1
  Seq Scan on tenk1
    Filter: (((tenthous)::pg_catalog.numeric = '1'::pg_catalog.numeric) OR (tenthous = 3) OR ((tenthous)::pg_catalog.numeric = '42'::pg_catalog.numeric))
 (2 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM tenk1 t1
+  WHERE t1.thousand = 42 OR t1.thousand = (SELECT t2.tenthous FROM tenk1 t2 WHERE t2.thousand = t1.tenthous + 1 LIMIT 1);
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using tenk1_thous_tenthous on tenk1 t1
+         Filter: ((thousand = 42) OR (thousand = (SubPlan 1)))
+         SubPlan 1
+           ->  Limit
+                 ->  Index Only Scan using tenk1_thous_tenthous on tenk1 t2
+                       Index Cond: (thousand = (t1.tenthous + 1))
+(7 rows)
+
+SELECT count(*) FROM tenk1 t1
+  WHERE t1.thousand = 42 OR t1.thousand = (SELECT t2.tenthous FROM tenk1 t2 WHERE t2.thousand = t1.tenthous + 1 LIMIT 1);
+ count 
+-------
+    10
+(1 row)
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM tenk1
@@ -2113,16 +2134,16 @@ SELECT count(*) FROM tenk1
 ---------------------------------------------------------------------------------------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on tenk1
-         Recheck Cond: ((hundred = 42) AND (((thousand = 99) AND (tenthous = 2)) OR ((thousand = 42) OR (thousand = 41))))
+         Recheck Cond: ((hundred = 42) AND (((thousand = 42) OR (thousand = 41)) OR ((thousand = 99) AND (tenthous = 2))))
          Filter: ((thousand = 42) OR (thousand = 41) OR ((thousand = 99) AND (tenthous = 2)))
          ->  BitmapAnd
                ->  Bitmap Index Scan on tenk1_hundred
                      Index Cond: (hundred = 42)
                ->  BitmapOr
                      ->  Bitmap Index Scan on tenk1_thous_tenthous
-                           Index Cond: ((thousand = 99) AND (tenthous = 2))
-                     ->  Bitmap Index Scan on tenk1_thous_tenthous
                            Index Cond: (thousand = ANY ('{42,41}'::pg_catalog.int4[]))
+                     ->  Bitmap Index Scan on tenk1_thous_tenthous
+                           Index Cond: ((thousand = 99) AND (tenthous = 2))
 (12 rows)
 
 SELECT count(*) FROM tenk1
@@ -2429,6 +2450,19 @@ SELECT unique1 FROM tenk1 WHERE unique1 IN (1, 42, 7) and unique1 < (-1)::bigint
 (2 rows)
 
 SELECT unique1 FROM tenk1 WHERE unique1 IN (1, 42, 7) and unique1 < (-1)::bigint;
+ unique1 
+---------
+(0 rows)
+
+explain (costs off)
+SELECT unique1 FROM tenk1 WHERE (thousand, tenthous) > (NULL, 5);
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
+ Index Scan using tenk1_thous_tenthous on tenk1
+   Index Cond: (ROW(thousand, tenthous) > ROW(NULL::pg_catalog.int4, 5))
+(2 rows)
+
+SELECT unique1 FROM tenk1 WHERE (thousand, tenthous) > (NULL, 5);
  unique1 
 ---------
 (0 rows)
@@ -3221,6 +3255,37 @@ SELECT  b.relname,
 (2 rows)
 
 DROP TABLE concur_temp_tab_1, concur_temp_tab_2, reindex_temp_before;
+-- No OR-clause groupings should happen, and there should be no clause
+-- permutations in the filtering conditions we could see in the EXPLAIN.
+EXPLAIN (COSTS OFF)
+SELECT * FROM tenk1 WHERE unique1 < 1 OR hundred < 2;
+                    QUERY PLAN                    
+--------------------------------------------------
+ Bitmap Heap Scan on tenk1
+   Recheck Cond: ((unique1 < 1) OR (hundred < 2))
+   ->  BitmapOr
+         ->  Bitmap Index Scan on tenk1_unique1
+               Index Cond: (unique1 < 1)
+         ->  Bitmap Index Scan on tenk1_hundred
+               Index Cond: (hundred < 2)
+(7 rows)
+
+-- OR clauses in the 'unique1' column are grouped, so clause permutation
+-- occurs. W e can see it in the 'Recheck Cond': the second clause involving
+-- the 'unique1' column goes just after the first one.
+EXPLAIN (COSTS OFF)
+SELECT * FROM tenk1 WHERE unique1 < 1 OR unique1 < 3 OR hundred < 2;
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Bitmap Heap Scan on tenk1
+   Recheck Cond: (((unique1 < 1) OR (unique1 < 3)) OR (hundred < 2))
+   ->  BitmapOr
+         ->  Bitmap Index Scan on tenk1_unique1
+               Index Cond: (unique1 < ANY ('{1,3}'::pg_catalog.int4[]))
+         ->  Bitmap Index Scan on tenk1_hundred
+               Index Cond: (hundred < 2)
+(7 rows)
+
 -- Check bitmap scan can consider similar OR arguments separately without
 -- grouping them into SAOP.
 CREATE TABLE bitmap_split_or (a int NOT NULL, b int NOT NULL, c int NOT NULL);
@@ -3249,6 +3314,17 @@ CREATE INDEX t_b_c_idx ON bitmap_split_or (b, c);
 CREATE STATISTICS t_a_b_stat (mcv) ON a, b FROM bitmap_split_or;
 CREATE STATISTICS t_b_c_stat (mcv) ON b, c FROM bitmap_split_or;
 ANALYZE bitmap_split_or;
+EXPLAIN (COSTS OFF)
+SELECT * FROM bitmap_split_or t1, bitmap_split_or t2
+WHERE t1.a = t2.b OR t1.a = 2;
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on bitmap_split_or t2
+   ->  Index Scan using t_a_b_idx on bitmap_split_or t1
+         Index Cond: (a = ANY (ARRAY[t2.b, 2]))
+(4 rows)
+
 EXPLAIN (COSTS OFF)
 SELECT * FROM bitmap_split_or WHERE a = 1 AND (b = 1 OR b = 2) AND c = 2;
                             QUERY PLAN                            

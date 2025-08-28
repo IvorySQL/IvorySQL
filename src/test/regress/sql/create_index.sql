@@ -782,6 +782,12 @@ SELECT * FROM tenk1
   WHERE tenthous = 1::numeric OR tenthous = 3::int4 OR tenthous = 42::numeric;
 
 EXPLAIN (COSTS OFF)
+SELECT count(*) FROM tenk1 t1
+  WHERE t1.thousand = 42 OR t1.thousand = (SELECT t2.tenthous FROM tenk1 t2 WHERE t2.thousand = t1.tenthous + 1 LIMIT 1);
+SELECT count(*) FROM tenk1 t1
+  WHERE t1.thousand = 42 OR t1.thousand = (SELECT t2.tenthous FROM tenk1 t2 WHERE t2.thousand = t1.tenthous + 1 LIMIT 1);
+
+EXPLAIN (COSTS OFF)
 SELECT count(*) FROM tenk1
   WHERE hundred = 42 AND (thousand = 42 OR thousand = 99);
 SELECT count(*) FROM tenk1
@@ -930,6 +936,11 @@ explain (costs off)
 SELECT unique1 FROM tenk1 WHERE unique1 IN (1, 42, 7) and unique1 < (-1)::bigint;
 
 SELECT unique1 FROM tenk1 WHERE unique1 IN (1, 42, 7) and unique1 < (-1)::bigint;
+
+explain (costs off)
+SELECT unique1 FROM tenk1 WHERE (thousand, tenthous) > (NULL, 5);
+
+SELECT unique1 FROM tenk1 WHERE (thousand, tenthous) > (NULL, 5);
 
 --
 -- Check elimination of constant-NULL subexpressions
@@ -1344,6 +1355,17 @@ SELECT  b.relname,
   ORDER BY 1;
 DROP TABLE concur_temp_tab_1, concur_temp_tab_2, reindex_temp_before;
 
+-- No OR-clause groupings should happen, and there should be no clause
+-- permutations in the filtering conditions we could see in the EXPLAIN.
+EXPLAIN (COSTS OFF)
+SELECT * FROM tenk1 WHERE unique1 < 1 OR hundred < 2;
+
+-- OR clauses in the 'unique1' column are grouped, so clause permutation
+-- occurs. W e can see it in the 'Recheck Cond': the second clause involving
+-- the 'unique1' column goes just after the first one.
+EXPLAIN (COSTS OFF)
+SELECT * FROM tenk1 WHERE unique1 < 1 OR unique1 < 3 OR hundred < 2;
+
 -- Check bitmap scan can consider similar OR arguments separately without
 -- grouping them into SAOP.
 CREATE TABLE bitmap_split_or (a int NOT NULL, b int NOT NULL, c int NOT NULL);
@@ -1361,6 +1383,9 @@ CREATE INDEX t_b_c_idx ON bitmap_split_or (b, c);
 CREATE STATISTICS t_a_b_stat (mcv) ON a, b FROM bitmap_split_or;
 CREATE STATISTICS t_b_c_stat (mcv) ON b, c FROM bitmap_split_or;
 ANALYZE bitmap_split_or;
+EXPLAIN (COSTS OFF)
+SELECT * FROM bitmap_split_or t1, bitmap_split_or t2
+WHERE t1.a = t2.b OR t1.a = 2;
 EXPLAIN (COSTS OFF)
 SELECT * FROM bitmap_split_or WHERE a = 1 AND (b = 1 OR b = 2) AND c = 2;
 DROP TABLE bitmap_split_or;

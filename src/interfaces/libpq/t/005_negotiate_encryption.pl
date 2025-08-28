@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2024, PostgreSQL Global Development Group
+# Copyright (c) 2021-2025, PostgreSQL Global Development Group
 
 # OVERVIEW
 # --------
@@ -673,7 +673,9 @@ sub connect_test
 	my ($ret, $stdout, $stderr) = $node->psql(
 		'postgres',
 		'',
-		extra_params => [ '-w', '-c', 'SELECT current_enc()' ],
+		extra_params => [
+			'--no-password', '--command' => 'SELECT current_enc()',
+		],
 		connstr => "$connstr_full",
 		on_error_stop => 0);
 

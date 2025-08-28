@@ -1,8 +1,8 @@
 #!/usr/bin/perl
 #
 # Generate lwlocknames.h from lwlocklist.h
-# Copyright (c) 2000-2024, PostgreSQL Global Development Group
 # Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+# Copyright (c) 2000-2025, PostgreSQL Global Development Group
 
 use strict;
 use warnings FATAL => 'all';
@@ -110,7 +110,8 @@ while (<$lwlocklist>)
 	$continue    = ",\n";
 
 	# Add a "Lock" suffix to each lock name, as the C code depends on that
-	print $h "#define ${lockname}Lock (&MainLWLockArray[$lockidx].lock)\n";
+	printf $h "#define %-32s (&MainLWLockArray[$lockidx].lock)\n",
+	  $lockname . "Lock";
 }
 
 die

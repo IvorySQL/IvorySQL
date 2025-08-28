@@ -756,7 +756,7 @@ OPTIONS (ADD password_required 'false');
 
     <variablelist>
 
-     <varlistentry>
+     <varlistentry id="postgres-fdw-option-keep-connections">
       <term><literal>keep_connections</literal> (<type>boolean</type>)</term>
       <listitem>
        <para>
@@ -767,6 +767,73 @@ OPTIONS (ADD password_required 'false');
         all connections to this foreign server will be discarded at the end of
         each transaction.
       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="postgres-fdw-option-use-scram-passthrough">
+      <term><literal>use_scram_passthrough</literal> (<type>boolean</type>)</term>
+      <listitem>
+       <para>
+        This option controls whether <filename>postgres_fdw</filename> will
+        use the SCRAM pass-through authentication to connect to the foreign
+        server.  With SCRAM pass-through authentication,
+        <filename>postgres_fdw</filename> uses SCRAM-hashed secrets instead of
+        plain-text user passwords to connect to the remote server.  This
+        avoids storing plain-text user passwords in PostgreSQL system
+        catalogs.
+       </para>
+
+       <para>
+        To use SCRAM pass-through authentication:
+        <itemizedlist>
+         <listitem>
+          <para>
+           The remote server must request the <literal>scram-sha-256</literal>
+           authentication method; otherwise, the connection will fail.
+          </para>
+         </listitem>
+
+         <listitem>
+          <para>
+           The remote server can be of any PostgreSQL version that supports
+           SCRAM.  Support for <literal>use_scram_passthrough</literal> is
+           only required on the client side (FDW side).
+          </para>
+         </listitem>
+
+         <listitem>
+          <para>
+           The user mapping password is not used.
+          </para>
+         </listitem>
+
+         <listitem>
+          <para>
+           The server running <filename>postgres_fdw</filename> and the remote
+           server must have identical SCRAM secrets (encrypted passwords) for
+           the user being used on <filename>postgres_fdw</filename> to
+           authenticate on the foreign server (same salt and iterations, not
+           merely the same password).
+          </para>
+
+          <para>
+           As a corollary, if FDW connections to multiple hosts are to be
+           made, for example for partitioned foreign tables/sharding, then all
+           hosts must have identical SCRAM secrets for the users involved.
+          </para>
+         </listitem>
+
+         <listitem>
+          <para>
+           The current session on the PostgreSQL instance that makes the
+           outgoing FDW connections also must also use SCRAM authentication
+           for its incoming client connection.  (Hence
+           <quote>pass-through</quote>: SCRAM must be used going in and out.)
+           This is a technical requirement of the SCRAM protocol.
+          </para>
+         </listitem>
+        </itemizedlist>
+       </para>
       </listitem>
      </varlistentry>
 
@@ -782,7 +849,7 @@ OPTIONS (ADD password_required 'false');
     <term><function>postgres_fdw_get_connections(
       IN check_conn boolean DEFAULT false, OUT server_name text,
       OUT user_name text, OUT valid boolean, OUT used_in_xact boolean,
-      OUT closed boolean)
+      OUT closed boolean, OUT remote_backend_pid int4)
       returns setof record</function></term>
     <listitem>
      <para>
@@ -810,11 +877,11 @@ OPTIONS (ADD password_required 'false');
       Example usage of the function:
 <screen>
 postgres=# SELECT * FROM postgres_fdw_get_connections(true);
- server_name | user_name | valid | used_in_xact | closed
--------------+-----------+-------+--------------+--------
- loopback1   | postgres  | t     | t            | f
- loopback2   | public    | t     | t            | f
- loopback3   |           | f     | t            | f
+ server_name | user_name | valid | used_in_xact | closed | remote_backend_pid
+-------------+-----------+-------+--------------+-----------------------------
+ loopback1   | postgres  | t     | t            | f      |            1353340
+ loopback2   | public    | t     | t            | f      |            1353120
+ loopback3   |           | f     | t            | f      |            1353156
 </screen>
       The output columns are described in
       <xref linkend="postgres-fdw-get-connections-columns"/>.
@@ -877,6 +944,17 @@ postgres=# SELECT * FROM postgres_fdw_get_connections(true);
          <literal>NULL</literal> is returned if <literal>check_conn</literal>
          is set to <literal>false</literal> or if the connection status check
          is not available on this platform.
+        </entry>
+       </row>
+       <row>
+        <entry><structfield>remote_backend_pid</structfield></entry>
+        <entry><type>int4</type></entry>
+        <entry>
+         Process ID of the remote backend, on the foreign server,
+         handling the connection.  If the remote backend is terminated and
+         the connection is closed (with <literal>closed</literal> set to
+         <literal>true</literal>), this still shows the process ID of
+         the terminated backend.
         </entry>
        </row>
       </tbody>

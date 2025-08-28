@@ -140,7 +140,7 @@
  *	SLRU per-bank locks
  *		- Protects SerialSlruCtl
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -1227,13 +1227,20 @@ PredicateLockShmemInit(void)
 	 */
 	max_table_size *= 10;
 
+	requestSize = add_size(PredXactListDataSize,
+						   (mul_size((Size) max_table_size,
+									 sizeof(SERIALIZABLEXACT))));
+
 	PredXact = ShmemInitStruct("PredXactList",
-							   PredXactListDataSize,
+							   requestSize,
 							   &found);
 	Assert(found == IsUnderPostmaster);
 	if (!found)
 	{
 		int			i;
+
+		/* clean everything, both the header and the element */
+		memset(PredXact, 0, requestSize);
 
 		dlist_init(&PredXact->availableList);
 		dlist_init(&PredXact->activeList);
@@ -1243,11 +1250,9 @@ PredicateLockShmemInit(void)
 		PredXact->LastSxactCommitSeqNo = FirstNormalSerCommitSeqNo - 1;
 		PredXact->CanPartialClearThrough = 0;
 		PredXact->HavePartialClearedThrough = 0;
-		requestSize = mul_size((Size) max_table_size,
-							   sizeof(SERIALIZABLEXACT));
-		PredXact->element = ShmemAlloc(requestSize);
+		PredXact->element
+			= (SERIALIZABLEXACT *) ((char *) PredXact + PredXactListDataSize);
 		/* Add all elements to available list, clean. */
-		memset(PredXact->element, 0, requestSize);
 		for (i = 0; i < max_table_size; i++)
 		{
 			LWLockInitialize(&PredXact->element[i].perXactPredicateListLock,
@@ -1301,20 +1306,25 @@ PredicateLockShmemInit(void)
 	 */
 	max_table_size *= 5;
 
+	requestSize = RWConflictPoolHeaderDataSize +
+		mul_size((Size) max_table_size,
+				 RWConflictDataSize);
+
 	RWConflictPool = ShmemInitStruct("RWConflictPool",
-									 RWConflictPoolHeaderDataSize,
+									 requestSize,
 									 &found);
 	Assert(found == IsUnderPostmaster);
 	if (!found)
 	{
 		int			i;
 
+		/* clean everything, including the elements */
+		memset(RWConflictPool, 0, requestSize);
+
 		dlist_init(&RWConflictPool->availableList);
-		requestSize = mul_size((Size) max_table_size,
-							   RWConflictDataSize);
-		RWConflictPool->element = ShmemAlloc(requestSize);
+		RWConflictPool->element = (RWConflict) ((char *) RWConflictPool +
+												RWConflictPoolHeaderDataSize);
 		/* Add all elements to available list, clean. */
-		memset(RWConflictPool->element, 0, requestSize);
 		for (i = 0; i < max_table_size; i++)
 		{
 			dlist_push_tail(&RWConflictPool->availableList,

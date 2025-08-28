@@ -8,7 +8,7 @@
  *	  This file contains only the public interface routines.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -20,6 +20,7 @@
 
 #include "access/nbtree.h"
 #include "access/relscan.h"
+#include "access/stratnum.h"
 #include "commands/progress.h"
 #include "commands/vacuum.h"
 #include "nodes/execnodes.h"
@@ -29,6 +30,7 @@
 #include "storage/indexfsm.h"
 #include "storage/ipc.h"
 #include "storage/lmgr.h"
+#include "storage/read_stream.h"
 #include "utils/fmgrprotos.h"
 #include "utils/index_selfuncs.h"
 #include "utils/memutils.h"
@@ -69,7 +71,7 @@ typedef struct BTParallelScanDescData
 	BTPS_State	btps_pageStatus;	/* indicates whether next page is
 									 * available for scan. see above for
 									 * possible states of parallel scan. */
-	slock_t		btps_mutex;		/* protects above variables, btps_arrElems */
+	LWLock		btps_lock;		/* protects shared parallel state */
 	ConditionVariable btps_cv;	/* used to synchronize parallel scan */
 
 	/*
@@ -85,7 +87,7 @@ typedef struct BTParallelScanDescData *BTParallelScanDesc;
 static void btvacuumscan(IndexVacuumInfo *info, IndexBulkDeleteResult *stats,
 						 IndexBulkDeleteCallback callback, void *callback_state,
 						 BTCycleId cycleid);
-static void btvacuumpage(BTVacState *vstate, BlockNumber scanblkno);
+static BlockNumber btvacuumpage(BTVacState *vstate, Buffer buf);
 static BTVacuumPosting btreevacuumposting(BTVacState *vstate,
 										  IndexTuple posting,
 										  OffsetNumber updatedoffset,
@@ -106,6 +108,9 @@ bthandler(PG_FUNCTION_ARGS)
 	amroutine->amoptsprocnum = BTOPTIONS_PROC;
 	amroutine->amcanorder = true;
 	amroutine->amcanorderbyop = false;
+	amroutine->amcanhash = false;
+	amroutine->amconsistentequality = true;
+	amroutine->amconsistentordering = true;
 	amroutine->amcanbackward = true;
 	amroutine->amcanunique = true;
 	amroutine->amcanmulticol = true;
@@ -148,6 +153,8 @@ bthandler(PG_FUNCTION_ARGS)
 	amroutine->amestimateparallelscan = btestimateparallelscan;
 	amroutine->aminitparallelscan = btinitparallelscan;
 	amroutine->amparallelrescan = btparallelrescan;
+	amroutine->amtranslatestrategy = bttranslatestrategy;
+	amroutine->amtranslatecmptype = bttranslatecmptype;
 
 	PG_RETURN_POINTER(amroutine);
 }
@@ -548,7 +555,8 @@ btinitparallelscan(void *target)
 {
 	BTParallelScanDesc bt_target = (BTParallelScanDesc) target;
 
-	SpinLockInit(&bt_target->btps_mutex);
+	LWLockInitialize(&bt_target->btps_lock,
+					 LWTRANCHE_PARALLEL_BTREE_SCAN);
 	bt_target->btps_nextScanPage = InvalidBlockNumber;
 	bt_target->btps_lastCurrPage = InvalidBlockNumber;
 	bt_target->btps_pageStatus = BTPARALLEL_NOT_INITIALIZED;
@@ -567,18 +575,18 @@ btparallelrescan(IndexScanDesc scan)
 	Assert(parallel_scan);
 
 	btscan = (BTParallelScanDesc) OffsetToPointer(parallel_scan,
-												  parallel_scan->ps_offset);
+												  parallel_scan->ps_offset_am);
 
 	/*
-	 * In theory, we don't need to acquire the spinlock here, because there
+	 * In theory, we don't need to acquire the LWLock here, because there
 	 * shouldn't be any other workers running at this point, but we do so for
 	 * consistency.
 	 */
-	SpinLockAcquire(&btscan->btps_mutex);
+	LWLockAcquire(&btscan->btps_lock, LW_EXCLUSIVE);
 	btscan->btps_nextScanPage = InvalidBlockNumber;
 	btscan->btps_lastCurrPage = InvalidBlockNumber;
 	btscan->btps_pageStatus = BTPARALLEL_NOT_INITIALIZED;
-	SpinLockRelease(&btscan->btps_mutex);
+	LWLockRelease(&btscan->btps_lock);
 }
 
 /*
@@ -645,11 +653,11 @@ _bt_parallel_seize(IndexScanDesc scan, BlockNumber *next_scan_page,
 	}
 
 	btscan = (BTParallelScanDesc) OffsetToPointer(parallel_scan,
-												  parallel_scan->ps_offset);
+												  parallel_scan->ps_offset_am);
 
 	while (1)
 	{
-		SpinLockAcquire(&btscan->btps_mutex);
+		LWLockAcquire(&btscan->btps_lock, LW_EXCLUSIVE);
 
 		if (btscan->btps_pageStatus == BTPARALLEL_DONE)
 		{
@@ -711,7 +719,7 @@ _bt_parallel_seize(IndexScanDesc scan, BlockNumber *next_scan_page,
 			*last_curr_page = btscan->btps_lastCurrPage;
 			exit_loop = true;
 		}
-		SpinLockRelease(&btscan->btps_mutex);
+		LWLockRelease(&btscan->btps_lock);
 		if (exit_loop || !status)
 			break;
 		ConditionVariableSleep(&btscan->btps_cv, WAIT_EVENT_BTREE_PAGE);
@@ -753,13 +761,13 @@ _bt_parallel_release(IndexScanDesc scan, BlockNumber next_scan_page,
 	Assert(BlockNumberIsValid(next_scan_page));
 
 	btscan = (BTParallelScanDesc) OffsetToPointer(parallel_scan,
-												  parallel_scan->ps_offset);
+												  parallel_scan->ps_offset_am);
 
-	SpinLockAcquire(&btscan->btps_mutex);
+	LWLockAcquire(&btscan->btps_lock, LW_EXCLUSIVE);
 	btscan->btps_nextScanPage = next_scan_page;
 	btscan->btps_lastCurrPage = curr_page;
 	btscan->btps_pageStatus = BTPARALLEL_IDLE;
-	SpinLockRelease(&btscan->btps_mutex);
+	LWLockRelease(&btscan->btps_lock);
 	ConditionVariableSignal(&btscan->btps_cv);
 }
 
@@ -792,20 +800,20 @@ _bt_parallel_done(IndexScanDesc scan)
 		return;
 
 	btscan = (BTParallelScanDesc) OffsetToPointer(parallel_scan,
-												  parallel_scan->ps_offset);
+												  parallel_scan->ps_offset_am);
 
 	/*
 	 * Mark the parallel scan as done, unless some other process did so
 	 * already
 	 */
-	SpinLockAcquire(&btscan->btps_mutex);
+	LWLockAcquire(&btscan->btps_lock, LW_EXCLUSIVE);
 	Assert(btscan->btps_pageStatus != BTPARALLEL_NEED_PRIMSCAN);
 	if (btscan->btps_pageStatus != BTPARALLEL_DONE)
 	{
 		btscan->btps_pageStatus = BTPARALLEL_DONE;
 		status_changed = true;
 	}
-	SpinLockRelease(&btscan->btps_mutex);
+	LWLockRelease(&btscan->btps_lock);
 
 	/* wake up all the workers associated with this parallel scan */
 	if (status_changed)
@@ -830,9 +838,9 @@ _bt_parallel_primscan_schedule(IndexScanDesc scan, BlockNumber curr_page)
 	Assert(so->numArrayKeys);
 
 	btscan = (BTParallelScanDesc) OffsetToPointer(parallel_scan,
-												  parallel_scan->ps_offset);
+												  parallel_scan->ps_offset_am);
 
-	SpinLockAcquire(&btscan->btps_mutex);
+	LWLockAcquire(&btscan->btps_lock, LW_EXCLUSIVE);
 	if (btscan->btps_lastCurrPage == curr_page &&
 		btscan->btps_pageStatus == BTPARALLEL_IDLE)
 	{
@@ -848,7 +856,7 @@ _bt_parallel_primscan_schedule(IndexScanDesc scan, BlockNumber curr_page)
 			btscan->btps_arrElems[i] = array->cur_elem;
 		}
 	}
-	SpinLockRelease(&btscan->btps_mutex);
+	LWLockRelease(&btscan->btps_lock);
 }
 
 /*
@@ -984,8 +992,9 @@ btvacuumscan(IndexVacuumInfo *info, IndexBulkDeleteResult *stats,
 	Relation	rel = info->index;
 	BTVacState	vstate;
 	BlockNumber num_pages;
-	BlockNumber scanblkno;
 	bool		needLock;
+	BlockRangeReadStreamPrivate p;
+	ReadStream *stream = NULL;
 
 	/*
 	 * Reset fields that track information about the entire index now.  This
@@ -1054,7 +1063,20 @@ btvacuumscan(IndexVacuumInfo *info, IndexBulkDeleteResult *stats,
 	 */
 	needLock = !RELATION_IS_LOCAL(rel);
 
-	scanblkno = BTREE_METAPAGE + 1;
+	p.current_blocknum = BTREE_METAPAGE + 1;
+
+	/*
+	 * It is safe to use batchmode as block_range_read_stream_cb takes no
+	 * locks.
+	 */
+	stream = read_stream_begin_relation(READ_STREAM_FULL |
+										READ_STREAM_USE_BATCHING,
+										info->strategy,
+										rel,
+										MAIN_FORKNUM,
+										block_range_read_stream_cb,
+										&p,
+										0);
 	for (;;)
 	{
 		/* Get the current relation length */
@@ -1069,17 +1091,43 @@ btvacuumscan(IndexVacuumInfo *info, IndexBulkDeleteResult *stats,
 										 num_pages);
 
 		/* Quit if we've scanned the whole relation */
-		if (scanblkno >= num_pages)
+		if (p.current_blocknum >= num_pages)
 			break;
-		/* Iterate over pages, then loop back to recheck length */
-		for (; scanblkno < num_pages; scanblkno++)
+
+		p.last_exclusive = num_pages;
+
+		/* Iterate over pages, then loop back to recheck relation length */
+		while (true)
 		{
-			btvacuumpage(&vstate, scanblkno);
+			BlockNumber current_block;
+			Buffer		buf;
+
+			/* call vacuum_delay_point while not holding any buffer lock */
+			vacuum_delay_point(false);
+
+			buf = read_stream_next_buffer(stream, NULL);
+
+			if (!BufferIsValid(buf))
+				break;
+
+			current_block = btvacuumpage(&vstate, buf);
+
 			if (info->report_progress)
 				pgstat_progress_update_param(PROGRESS_SCAN_BLOCKS_DONE,
-											 scanblkno);
+											 current_block);
 		}
+
+		Assert(read_stream_next_buffer(stream, NULL) == InvalidBuffer);
+
+		/*
+		 * We have to reset the read stream to use it again. After returning
+		 * InvalidBuffer, the read stream API won't invoke our callback again
+		 * until the stream has been reset.
+		 */
+		read_stream_reset(stream);
 	}
+
+	read_stream_end(stream);
 
 	/* Set statistics num_pages field to final size of index */
 	stats->num_pages = num_pages;
@@ -1104,14 +1152,16 @@ btvacuumscan(IndexVacuumInfo *info, IndexBulkDeleteResult *stats,
  * btvacuumpage --- VACUUM one page
  *
  * This processes a single page for btvacuumscan().  In some cases we must
- * backtrack to re-examine and VACUUM pages that were the scanblkno during
+ * backtrack to re-examine and VACUUM pages that were on buf's page during
  * a previous call here.  This is how we handle page splits (that happened
  * after our cycleid was acquired) whose right half page happened to reuse
  * a block that we might have processed at some point before it was
  * recycled (i.e. before the page split).
+ *
+ * Returns BlockNumber of a scanned page (not backtracked).
  */
-static void
-btvacuumpage(BTVacState *vstate, BlockNumber scanblkno)
+static BlockNumber
+btvacuumpage(BTVacState *vstate, Buffer buf)
 {
 	IndexVacuumInfo *info = vstate->info;
 	IndexBulkDeleteResult *stats = vstate->stats;
@@ -1122,7 +1172,7 @@ btvacuumpage(BTVacState *vstate, BlockNumber scanblkno)
 	bool		attempt_pagedel;
 	BlockNumber blkno,
 				backtrack_to;
-	Buffer		buf;
+	BlockNumber scanblkno = BufferGetBlockNumber(buf);
 	Page		page;
 	BTPageOpaque opaque;
 
@@ -1133,17 +1183,6 @@ backtrack:
 	attempt_pagedel = false;
 	backtrack_to = P_NONE;
 
-	/* call vacuum_delay_point while not holding any buffer lock */
-	vacuum_delay_point();
-
-	/*
-	 * We can't use _bt_getbuf() here because it always applies
-	 * _bt_checkpage(), which will barf on an all-zero page. We want to
-	 * recycle all-zero pages, not fail.  Also, we want to use a nondefault
-	 * buffer access strategy.
-	 */
-	buf = ReadBufferExtended(rel, MAIN_FORKNUM, blkno, RBM_NORMAL,
-							 info->strategy);
 	_bt_lockbuf(rel, buf, BT_READ);
 	page = BufferGetPage(buf);
 	opaque = NULL;
@@ -1179,7 +1218,7 @@ backtrack:
 					 errmsg_internal("right sibling %u of scanblkno %u unexpectedly in an inconsistent state in index \"%s\"",
 									 blkno, scanblkno, RelationGetRelationName(rel))));
 			_bt_relbuf(rel, buf);
-			return;
+			return scanblkno;
 		}
 
 		/*
@@ -1199,7 +1238,7 @@ backtrack:
 		{
 			/* Done with current scanblkno (and all lower split pages) */
 			_bt_relbuf(rel, buf);
-			return;
+			return scanblkno;
 		}
 	}
 
@@ -1430,8 +1469,22 @@ backtrack:
 	if (backtrack_to != P_NONE)
 	{
 		blkno = backtrack_to;
+
+		/* check for vacuum delay while not holding any buffer lock */
+		vacuum_delay_point(false);
+
+		/*
+		 * We can't use _bt_getbuf() here because it always applies
+		 * _bt_checkpage(), which will barf on an all-zero page. We want to
+		 * recycle all-zero pages, not fail.  Also, we want to use a
+		 * nondefault buffer access strategy.
+		 */
+		buf = ReadBufferExtended(rel, MAIN_FORKNUM, blkno, RBM_NORMAL,
+								 info->strategy);
 		goto backtrack;
 	}
+
+	return scanblkno;
 }
 
 /*
@@ -1507,4 +1560,44 @@ int
 btgettreeheight(Relation rel)
 {
 	return _bt_getrootheight(rel);
+}
+
+CompareType
+bttranslatestrategy(StrategyNumber strategy, Oid opfamily)
+{
+	switch (strategy)
+	{
+		case BTLessStrategyNumber:
+			return COMPARE_LT;
+		case BTLessEqualStrategyNumber:
+			return COMPARE_LE;
+		case BTEqualStrategyNumber:
+			return COMPARE_EQ;
+		case BTGreaterEqualStrategyNumber:
+			return COMPARE_GE;
+		case BTGreaterStrategyNumber:
+			return COMPARE_GT;
+		default:
+			return COMPARE_INVALID;
+	}
+}
+
+StrategyNumber
+bttranslatecmptype(CompareType cmptype, Oid opfamily)
+{
+	switch (cmptype)
+	{
+		case COMPARE_LT:
+			return BTLessStrategyNumber;
+		case COMPARE_LE:
+			return BTLessEqualStrategyNumber;
+		case COMPARE_EQ:
+			return BTEqualStrategyNumber;
+		case COMPARE_GE:
+			return BTGreaterEqualStrategyNumber;
+		case COMPARE_GT:
+			return BTGreaterStrategyNumber;
+		default:
+			return InvalidStrategy;
+	}
 }

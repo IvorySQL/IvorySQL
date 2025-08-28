@@ -3,7 +3,7 @@
  * buf_init.c
  *	  buffer manager initialization routines
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -14,6 +14,7 @@
  */
 #include "postgres.h"
 
+#include "storage/aio.h"
 #include "storage/buf_internals.h"
 #include "storage/bufmgr.h"
 
@@ -124,6 +125,8 @@ BufferManagerShmemInit(void)
 			buf->wait_backend_pgprocno = INVALID_PROC_NUMBER;
 
 			buf->buf_id = i;
+
+			pgaio_wref_clear(&buf->io_wref);
 
 			/*
 			 * Initially link all the buffers together as unused. Subsequent

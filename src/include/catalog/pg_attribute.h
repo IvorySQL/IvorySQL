@@ -8,7 +8,7 @@
  * relations need be included.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -24,7 +24,7 @@
 #define PG_ATTRIBUTE_H
 
 #include "catalog/genbki.h"
-#include "catalog/pg_attribute_d.h"
+#include "catalog/pg_attribute_d.h" /* IWYU pragma: export */
 
 /* ----------------
  *		pg_attribute definition.  cpp turns this into
@@ -233,6 +233,7 @@ MAKE_SYSCACHE(ATTNUM, pg_attribute_relid_attnum_index, 128);
 #define		  ATTRIBUTE_IDENTITY_BY_DEFAULT 'd'
 
 #define		  ATTRIBUTE_GENERATED_STORED	's'
+#define		  ATTRIBUTE_GENERATED_VIRTUAL	'v'
 
 /* for compatibel oracle identity column */
 /* n=self increasing columns can be inserted and NULL */

@@ -2,7 +2,7 @@
 #
 # Makefile for src/bin/psql
 #
-# Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 # Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
 #
@@ -75,7 +75,6 @@ sql_help.h: create_help.pl $(wildcard $(REFDOCDIR)/*.sgml)
 
 psqlscanslash.c: FLEXFLAGS = -Cfe -p -p
 psqlscanslash.c: FLEX_NO_BACKUP=yes
-psqlscanslash.c: FLEX_FIX_WARNING=yes
 
 ora_psqlscanslash.c: FLEXFLAGS = -Cfe -p -p
 ora_psqlscanslash.c: FLEX_NO_BACKUP=yes

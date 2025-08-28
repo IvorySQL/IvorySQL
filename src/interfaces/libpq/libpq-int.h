@@ -9,7 +9,7 @@
  *	  more likely to break across PostgreSQL releases than code that uses
  *	  only the official API.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -45,13 +45,7 @@
 #include "fe-auth-sasl.h"
 #include "pqexpbuffer.h"
 
-#ifdef ENABLE_GSS
-#if defined(HAVE_GSSAPI_H)
-#include <gssapi.h>
-#else
-#include <gssapi/gssapi.h>
-#endif
-#endif
+#include "libpq/pg-gssapi.h"
 
 #ifdef ENABLE_SSPI
 #define SECURITY_WIN32
@@ -426,15 +420,30 @@ struct pg_conn
 	char	   *gsslib;			/* What GSS library to use ("gssapi" or
 								 * "sspi") */
 	char	   *gssdelegation;	/* Try to delegate GSS credentials? (0 or 1) */
+	char	   *min_protocol_version;	/* minimum used protocol version */
+	char	   *max_protocol_version;	/* maximum used protocol version */
 	char	   *ssl_min_protocol_version;	/* minimum TLS protocol version */
 	char	   *ssl_max_protocol_version;	/* maximum TLS protocol version */
 	char	   *target_session_attrs;	/* desired session properties */
 	char	   *require_auth;	/* name of the expected auth method */
 	char	   *load_balance_hosts; /* load balance over hosts */
+	char	   *scram_client_key;	/* base64-encoded SCRAM client key */
+	char	   *scram_server_key;	/* base64-encoded SCRAM server key */
 
 	bool		cancelRequest;	/* true if this connection is used to send a
 								 * cancel request, instead of being a normal
 								 * connection that's used for queries */
+
+	/* OAuth v2 */
+	char	   *oauth_issuer;	/* token issuer/URL */
+	char	   *oauth_issuer_id;	/* token issuer identifier */
+	char	   *oauth_discovery_uri;	/* URI of the issuer's discovery
+										 * document */
+	char	   *oauth_client_id;	/* client identifier */
+	char	   *oauth_client_secret;	/* client secret */
+	char	   *oauth_scope;	/* access token scope */
+	char	   *oauth_token;	/* access token */
+	bool		oauth_want_retry;	/* should we retry on failure? */
 
 	/* Optional file to write trace info to */
 	FILE	   *Pfdebug;
@@ -492,6 +501,8 @@ struct pg_conn
 	SockAddr	raddr;			/* Remote address */
 	ProtocolVersion pversion;	/* FE/BE protocol version in use */
 	int			sversion;		/* server version, e.g. 70401 for 7.4.1 */
+	bool		pversion_negotiated;	/* true if NegotiateProtocolVersion
+										 * was received */
 	bool		auth_req_received;	/* true if any type of auth req received */
 	bool		password_needed;	/* true if server demanded a password */
 	bool		gssapi_used;	/* true if authenticated via gssapi */
@@ -504,11 +515,19 @@ struct pg_conn
 								 * the server? */
 	uint32		allowed_auth_methods;	/* bitmask of acceptable AuthRequest
 										 * codes */
+	const pg_fe_sasl_mech *allowed_sasl_mechs[2];	/* and acceptable SASL
+													 * mechanisms */
 	bool		client_finished_auth;	/* have we finished our half of the
 										 * authentication exchange? */
 	char		current_auth_response;	/* used by pqTraceOutputMessage to
 										 * know which auth response we're
 										 * sending */
+
+	/* Callbacks for external async authentication */
+	PostgresPollingStatusType (*async_auth) (PGconn *conn);
+	void		(*cleanup_async_auth) (PGconn *conn);
+	pgsocket	altsock;		/* alternative socket for client to poll */
+
 
 	/* Transient state needed while establishing connection */
 	PGTargetServerType target_server_type;	/* desired session properties */
@@ -521,10 +540,17 @@ struct pg_conn
 	AddrInfo   *addr;			/* the array of addresses for the currently
 								 * tried host */
 	bool		send_appname;	/* okay to send application_name? */
+	size_t		scram_client_key_len;
+	void	   *scram_client_key_binary;	/* binary SCRAM client key */
+	size_t		scram_server_key_len;
+	void	   *scram_server_key_binary;	/* binary SCRAM server key */
+	ProtocolVersion min_pversion;	/* protocol version to request */
+	ProtocolVersion max_pversion;	/* protocol version to request */
 
 	/* Miscellaneous stuff */
 	int			be_pid;			/* PID of backend --- needed for cancels */
-	int			be_key;			/* key of backend --- needed for cancels */
+	char	   *be_cancel_key;	/* query cancellation key and its length */
+	uint16		be_cancel_key_len;
 	pgParameterStatus *pstatus; /* ParameterStatus data */
 	int			client_encoding;	/* encoding id */
 	bool		std_strings;	/* standard_conforming_strings */
@@ -743,6 +769,10 @@ extern PGresult *pqFunctionCall3(PGconn *conn, Oid fnid,
 								 int *result_buf, int *actual_result_len,
 								 int result_is_int,
 								 const PQArgBlock *args, int nargs);
+
+/* === in fe-cancel.c === */
+
+extern int	PQsendCancelRequest(PGconn *cancelConn);
 
 /* === in fe-misc.c === */
 

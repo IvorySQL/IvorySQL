@@ -93,7 +93,7 @@
  * specific kinds of stats.
  *
  *
- * Copyright (c) 2001-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2001-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/utils/activity/pgstat.c
@@ -104,7 +104,6 @@
 #include <unistd.h>
 
 #include "access/xact.h"
-#include "access/xlog.h"
 #include "lib/dshash.h"
 #include "pgstat.h"
 #include "storage/fd.h"
@@ -181,8 +180,8 @@ typedef struct PgStat_SnapshotEntry
  * ----------
  */
 
-static void pgstat_write_statsfile(XLogRecPtr redo);
-static void pgstat_read_statsfile(XLogRecPtr redo);
+static void pgstat_write_statsfile(void);
+static void pgstat_read_statsfile(void);
 
 static void pgstat_init_snapshot_fixed(void);
 
@@ -370,9 +369,9 @@ static const PgStat_KindInfo pgstat_kind_builtin_infos[PGSTAT_KIND_BUILTIN_SIZE]
 		.shared_size = sizeof(PgStatShared_Backend),
 		.shared_data_off = offsetof(PgStatShared_Backend, stats),
 		.shared_data_len = sizeof(((PgStatShared_Backend *) 0)->stats),
-		.pending_size = sizeof(PgStat_BackendPendingIO),
 
-		.flush_pending_cb = pgstat_backend_flush_cb,
+		.have_static_pending_cb = pgstat_backend_have_pending_cb,
+		.flush_static_cb = pgstat_backend_flush_cb,
 		.reset_timestamp_cb = pgstat_backend_reset_timestamp_cb,
 	},
 
@@ -437,8 +436,8 @@ static const PgStat_KindInfo pgstat_kind_builtin_infos[PGSTAT_KIND_BUILTIN_SIZE]
 		.shared_data_off = offsetof(PgStatShared_IO, stats),
 		.shared_data_len = sizeof(((PgStatShared_IO *) 0)->stats),
 
-		.flush_fixed_cb = pgstat_io_flush_cb,
-		.have_fixed_pending_cb = pgstat_io_have_pending_cb,
+		.flush_static_cb = pgstat_io_flush_cb,
+		.have_static_pending_cb = pgstat_io_have_pending_cb,
 		.init_shmem_cb = pgstat_io_init_shmem_cb,
 		.reset_all_cb = pgstat_io_reset_all_cb,
 		.snapshot_cb = pgstat_io_snapshot_cb,
@@ -455,8 +454,8 @@ static const PgStat_KindInfo pgstat_kind_builtin_infos[PGSTAT_KIND_BUILTIN_SIZE]
 		.shared_data_off = offsetof(PgStatShared_SLRU, stats),
 		.shared_data_len = sizeof(((PgStatShared_SLRU *) 0)->stats),
 
-		.flush_fixed_cb = pgstat_slru_flush_cb,
-		.have_fixed_pending_cb = pgstat_slru_have_pending_cb,
+		.flush_static_cb = pgstat_slru_flush_cb,
+		.have_static_pending_cb = pgstat_slru_have_pending_cb,
 		.init_shmem_cb = pgstat_slru_init_shmem_cb,
 		.reset_all_cb = pgstat_slru_reset_all_cb,
 		.snapshot_cb = pgstat_slru_snapshot_cb,
@@ -474,8 +473,8 @@ static const PgStat_KindInfo pgstat_kind_builtin_infos[PGSTAT_KIND_BUILTIN_SIZE]
 		.shared_data_len = sizeof(((PgStatShared_Wal *) 0)->stats),
 
 		.init_backend_cb = pgstat_wal_init_backend_cb,
-		.flush_fixed_cb = pgstat_wal_flush_cb,
-		.have_fixed_pending_cb = pgstat_wal_have_pending_cb,
+		.flush_static_cb = pgstat_wal_flush_cb,
+		.have_static_pending_cb = pgstat_wal_have_pending_cb,
 		.init_shmem_cb = pgstat_wal_init_shmem_cb,
 		.reset_all_cb = pgstat_wal_reset_all_cb,
 		.snapshot_cb = pgstat_wal_snapshot_cb,
@@ -503,9 +502,9 @@ static const PgStat_KindInfo **pgstat_kind_custom_infos = NULL;
  * Should only be called by the startup process or in single user mode.
  */
 void
-pgstat_restore_stats(XLogRecPtr redo)
+pgstat_restore_stats(void)
 {
-	pgstat_read_statsfile(redo);
+	pgstat_read_statsfile();
 }
 
 /*
@@ -581,7 +580,7 @@ pgstat_before_server_shutdown(int code, Datum arg)
 	if (code == 0)
 	{
 		pgStatLocal.shmem->is_shutdown = true;
-		pgstat_write_statsfile(GetRedoRecPtr());
+		pgstat_write_statsfile();
 	}
 }
 
@@ -713,22 +712,17 @@ pgstat_report_stat(bool force)
 	{
 		bool		do_flush = false;
 
-		/* Check for pending fixed-numbered stats */
+		/* Check for pending stats */
 		for (PgStat_Kind kind = PGSTAT_KIND_MIN; kind <= PGSTAT_KIND_MAX; kind++)
 		{
 			const PgStat_KindInfo *kind_info = pgstat_get_kind_info(kind);
 
 			if (!kind_info)
 				continue;
-			if (!kind_info->fixed_amount)
-			{
-				Assert(kind_info->have_fixed_pending_cb == NULL);
-				continue;
-			}
-			if (!kind_info->have_fixed_pending_cb)
+			if (!kind_info->have_static_pending_cb)
 				continue;
 
-			if (kind_info->have_fixed_pending_cb())
+			if (kind_info->have_static_pending_cb())
 			{
 				do_flush = true;
 				break;
@@ -789,25 +783,20 @@ pgstat_report_stat(bool force)
 
 	partial_flush = false;
 
-	/* flush of variable-numbered stats */
+	/* flush of variable-numbered stats tracked in pending entries list */
 	partial_flush |= pgstat_flush_pending_entries(nowait);
 
-	/* flush of fixed-numbered stats */
+	/* flush of other stats kinds */
 	for (PgStat_Kind kind = PGSTAT_KIND_MIN; kind <= PGSTAT_KIND_MAX; kind++)
 	{
 		const PgStat_KindInfo *kind_info = pgstat_get_kind_info(kind);
 
 		if (!kind_info)
 			continue;
-		if (!kind_info->fixed_amount)
-		{
-			Assert(kind_info->flush_fixed_cb == NULL);
-			continue;
-		}
-		if (!kind_info->flush_fixed_cb)
+		if (!kind_info->flush_static_cb)
 			continue;
 
-		partial_flush |= kind_info->flush_fixed_cb(nowait);
+		partial_flush |= kind_info->flush_static_cb(nowait);
 	}
 
 	last_flush = now;
@@ -1595,7 +1584,7 @@ write_chunk(FILE *fpout, void *ptr, size_t len)
  * stats so locking is not required.
  */
 static void
-pgstat_write_statsfile(XLogRecPtr redo)
+pgstat_write_statsfile(void)
 {
 	FILE	   *fpout;
 	int32		format_id;
@@ -1612,8 +1601,7 @@ pgstat_write_statsfile(XLogRecPtr redo)
 	/* we're shutting down, so it's ok to just override this */
 	pgstat_fetch_consistency = PGSTAT_FETCH_CONSISTENCY_NONE;
 
-	elog(DEBUG2, "writing stats file \"%s\" with redo %X/%X", statfile,
-		 LSN_FORMAT_ARGS(redo));
+	elog(DEBUG2, "writing stats file \"%s\"", statfile);
 
 	/*
 	 * Open the statistics temp file to write out the current values.
@@ -1633,9 +1621,6 @@ pgstat_write_statsfile(XLogRecPtr redo)
 	 */
 	format_id = PGSTAT_FILE_FORMAT_ID;
 	write_chunk_s(fpout, &format_id);
-
-	/* Write the redo LSN, used to cross check the file read */
-	write_chunk_s(fpout, &redo);
 
 	/* Write various stats structs for fixed number of objects */
 	for (PgStat_Kind kind = PGSTAT_KIND_MIN; kind <= PGSTAT_KIND_MAX; kind++)
@@ -1694,9 +1679,9 @@ pgstat_write_statsfile(XLogRecPtr redo)
 		 */
 		if (!pgstat_is_kind_valid(ps->key.kind))
 		{
-			elog(WARNING, "found unknown stats entry %u/%u/%llu",
+			elog(WARNING, "found unknown stats entry %u/%u/%" PRIu64,
 				 ps->key.kind, ps->key.dboid,
-				 (unsigned long long) ps->key.objid);
+				 ps->key.objid);
 			continue;
 		}
 
@@ -1783,20 +1768,18 @@ read_chunk(FILE *fpin, void *ptr, size_t len)
  * stats so locking is not required.
  */
 static void
-pgstat_read_statsfile(XLogRecPtr redo)
+pgstat_read_statsfile(void)
 {
 	FILE	   *fpin;
 	int32		format_id;
 	bool		found;
 	const char *statfile = PGSTAT_STAT_PERMANENT_FILENAME;
 	PgStat_ShmemControl *shmem = pgStatLocal.shmem;
-	XLogRecPtr	file_redo;
 
 	/* shouldn't be called from postmaster */
 	Assert(IsUnderPostmaster || !IsPostmasterEnvironment);
 
-	elog(DEBUG2, "reading stats file \"%s\" with redo %X/%X", statfile,
-		 LSN_FORMAT_ARGS(redo));
+	elog(DEBUG2, "reading stats file \"%s\"", statfile);
 
 	/*
 	 * Try to open the stats file. If it doesn't exist, the backends simply
@@ -1831,22 +1814,6 @@ pgstat_read_statsfile(XLogRecPtr redo)
 	{
 		elog(WARNING, "found incorrect format ID %d (expected %d)",
 			 format_id, PGSTAT_FILE_FORMAT_ID);
-		goto error;
-	}
-
-	/*
-	 * Read the redo LSN stored in the file.
-	 */
-	if (!read_chunk_s(fpin, &file_redo))
-	{
-		elog(WARNING, "could not read redo LSN");
-		goto error;
-	}
-
-	if (file_redo != redo)
-	{
-		elog(WARNING, "found incorrect redo LSN %X/%X (expected %X/%X)",
-			 LSN_FORMAT_ARGS(file_redo), LSN_FORMAT_ARGS(redo));
 		goto error;
 	}
 
@@ -1936,9 +1903,9 @@ pgstat_read_statsfile(XLogRecPtr redo)
 
 						if (!pgstat_is_kind_valid(key.kind))
 						{
-							elog(WARNING, "invalid stats kind for entry %u/%u/%llu of type %c",
+							elog(WARNING, "invalid stats kind for entry %u/%u/%" PRIu64 " of type %c",
 								 key.kind, key.dboid,
-								 (unsigned long long) key.objid, t);
+								 key.objid, t);
 							goto error;
 						}
 					}
@@ -2009,9 +1976,9 @@ pgstat_read_statsfile(XLogRecPtr redo)
 					if (found)
 					{
 						dshash_release_lock(pgStatLocal.shared_hash, p);
-						elog(WARNING, "found duplicate stats entry %u/%u/%llu of type %c",
+						elog(WARNING, "found duplicate stats entry %u/%u/%" PRIu64 " of type %c",
 							 key.kind, key.dboid,
-							 (unsigned long long) key.objid, t);
+							 key.objid, t);
 						goto error;
 					}
 
@@ -2022,9 +1989,9 @@ pgstat_read_statsfile(XLogRecPtr redo)
 									pgstat_get_entry_data(key.kind, header),
 									pgstat_get_entry_len(key.kind)))
 					{
-						elog(WARNING, "could not read data for entry %u/%u/%llu of type %c",
+						elog(WARNING, "could not read data for entry %u/%u/%" PRIu64 " of type %c",
 							 key.kind, key.dboid,
-							 (unsigned long long) key.objid, t);
+							 key.objid, t);
 						goto error;
 					}
 

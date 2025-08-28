@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2024, PostgreSQL Global Development Group
+# Copyright (c) 2021-2025, PostgreSQL Global Development Group
 
 use strict;
 use warnings FATAL => 'all';
@@ -213,7 +213,7 @@ my $nthreads = 2;
 
 {
 	my ($stderr);
-	run_log([ 'pgbench', '-j', '2', '--bad-option' ], '2>', \$stderr);
+	run_log([ 'pgbench', '--jobs' => '2', '--bad-option' ], '2>' => \$stderr);
 	$nthreads = 1 if $stderr =~ m/threads are not supported on this platform/;
 }
 

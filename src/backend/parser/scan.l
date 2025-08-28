@@ -22,7 +22,7 @@
  * Postgres 9.2, this check is made automatically by the Makefile.)
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -90,12 +90,6 @@ const uint16 ScanKeywordTokens[] = {
 #define YYSTYPE core_YYSTYPE
 
 /*
- * Set the type of yyextra.  All state variables used by the scanner should
- * be in yyextra, *not* statically allocated.
- */
-#define YY_EXTRA_TYPE core_yy_extra_type *
-
-/*
  * Each call to yylex must set yylloc to the location of the found token
  * (expressed as a byte offset from the start of the input text).
  * When we parse a token that requires multiple lexer rules to process,
@@ -136,15 +130,6 @@ static void addunicode(pg_wchar c, yyscan_t yyscanner);
 static void check_string_escape_warning(unsigned char ychar, core_yyscan_t yyscanner);
 static void check_escape_warning(core_yyscan_t yyscanner);
 
-/*
- * Work around a bug in flex 2.5.35: it emits a couple of functions that
- * it forgets to emit declarations for.  Since we use -Wmissing-prototypes,
- * this would cause warnings.  Providing our own declarations should be
- * harmless even when the bug gets fixed.
- */
-extern int	core_yyget_column(yyscan_t yyscanner);
-extern void core_yyset_column(int column_no, yyscan_t yyscanner);
-
 %}
 
 %option reentrant
@@ -161,6 +146,7 @@ extern void core_yyset_column(int column_no, yyscan_t yyscanner);
 %option noyyfree
 %option warn
 %option prefix="core_yy"
+%option extra-type="core_yy_extra_type *"
 
 /*
  * OK, here is a short description of lex/flex rules behavior.
@@ -1468,9 +1454,9 @@ check_escape_warning(core_yyscan_t yyscanner)
 		ereport(WARNING,
 				(errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER),
 				 errmsg("nonstandard use of escape in a string literal"),
-		errhint("Use the escape string syntax for escapes, e.g., E'\\r\\n'."),
+				 errhint("Use the escape string syntax for escapes, e.g., E'\\r\\n'."),
 				 lexer_errposition()));
-	yyextra->warn_on_first_escape = false;		/* warn only once per string */
+	yyextra->warn_on_first_escape = false;	/* warn only once per string */
 }
 
 /*

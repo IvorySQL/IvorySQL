@@ -3,7 +3,7 @@
  * lsyscache.c
  *	  Convenience routines for common queries in the system catalog cache.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -31,6 +31,7 @@
 #include "catalog/pg_language.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
+#include "catalog/pg_opfamily.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_publication.h"
@@ -186,6 +187,28 @@ get_opfamily_member(Oid opfamily, Oid lefttype, Oid righttype,
 	result = amop_tup->amopopr;
 	ReleaseSysCache(tp);
 	return result;
+}
+
+/*
+ * get_opfamily_member_for_cmptype
+ *		Get the OID of the operator that implements the specified comparison
+ *		type with the specified datatypes for the specified opfamily.
+ *
+ * Returns InvalidOid if there is no mapping for the comparison type or no
+ * pg_amop entry for the given keys.
+ */
+Oid
+get_opfamily_member_for_cmptype(Oid opfamily, Oid lefttype, Oid righttype,
+								CompareType cmptype)
+{
+	Oid			opmethod;
+	StrategyNumber strategy;
+
+	opmethod = get_opfamily_method(opfamily);
+	strategy = IndexAmTranslateCompareType(cmptype, opmethod, opfamily, true);
+	if (!strategy)
+		return InvalidOid;
+	return get_opfamily_member(opfamily, lefttype, righttype, strategy);
 }
 
 /*
@@ -600,7 +623,7 @@ get_op_hash_functions(Oid opno,
  *
  * In addition to the normal btree operators, we consider a <> operator to be
  * a "member" of an opfamily if its negator is an equality operator of the
- * opfamily.  ROWCOMPARE_NE is returned as the strategy number for this case.
+ * opfamily.  COMPARE_NE is returned as the strategy number for this case.
  */
 List *
 get_op_btree_interpretation(Oid opno)
@@ -671,11 +694,11 @@ get_op_btree_interpretation(Oid opno)
 				if (op_strategy != BTEqualStrategyNumber)
 					continue;
 
-				/* OK, report it with "strategy" ROWCOMPARE_NE */
+				/* OK, report it with "strategy" COMPARE_NE */
 				thisresult = (OpBtreeInterpretation *)
 					palloc(sizeof(OpBtreeInterpretation));
 				thisresult->opfamily_id = op_form->amopfamily;
-				thisresult->strategy = ROWCOMPARE_NE;
+				thisresult->strategy = COMPARE_NE;
 				thisresult->oplefttype = op_form->amoplefttype;
 				thisresult->oprighttype = op_form->amoprighttype;
 				result = lappend(result, thisresult);
@@ -694,10 +717,11 @@ get_op_btree_interpretation(Oid opno)
  *		semantics.
  *
  * This is trivially true if they are the same operator.  Otherwise,
- * we look to see if they can be found in the same btree or hash opfamily.
- * Either finding allows us to assume that they have compatible notions
- * of equality.  (The reason we need to do these pushups is that one might
- * be a cross-type operator; for instance int24eq vs int4eq.)
+ * Otherwise, we look to see if they both belong to an opfamily that
+ * guarantees compatible semantics for equality.  Either finding allows us to
+ * assume that they have compatible notions of equality.  (The reason we need
+ * to do these pushups is that one might be a cross-type operator; for
+ * instance int24eq vs int4eq.)
  */
 bool
 equality_ops_are_compatible(Oid opno1, Oid opno2)
@@ -721,11 +745,15 @@ equality_ops_are_compatible(Oid opno1, Oid opno2)
 		HeapTuple	op_tuple = &catlist->members[i]->tuple;
 		Form_pg_amop op_form = (Form_pg_amop) GETSTRUCT(op_tuple);
 
-		/* must be btree or hash */
-		if (op_form->amopmethod == BTREE_AM_OID ||
-			op_form->amopmethod == HASH_AM_OID)
+		/*
+		 * op_in_opfamily() is cheaper than GetIndexAmRoutineByAmId(), so
+		 * check it first
+		 */
+		if (op_in_opfamily(opno2, op_form->amopfamily))
 		{
-			if (op_in_opfamily(opno2, op_form->amopfamily))
+			IndexAmRoutine *amroutine = GetIndexAmRoutineByAmId(op_form->amopmethod, false);
+
+			if (amroutine->amconsistentequality)
 			{
 				result = true;
 				break;
@@ -743,12 +771,13 @@ equality_ops_are_compatible(Oid opno1, Oid opno2)
  *		Return true if the two given comparison operators have compatible
  *		semantics.
  *
- * This is trivially true if they are the same operator.  Otherwise,
- * we look to see if they can be found in the same btree opfamily.
- * For example, '<' and '>=' ops match if they belong to the same family.
+ * This is trivially true if they are the same operator.  Otherwise, we look
+ * to see if they both belong to an opfamily that guarantees compatible
+ * semantics for ordering.  (For example, for btree, '<' and '>=' ops match if
+ * they belong to the same family.)
  *
- * (This is identical to equality_ops_are_compatible(), except that we
- * don't bother to examine hash opclasses.)
+ * (This is identical to equality_ops_are_compatible(), except that we check
+ * amconsistentordering instead of amconsistentequality.)
  */
 bool
 comparison_ops_are_compatible(Oid opno1, Oid opno2)
@@ -772,9 +801,15 @@ comparison_ops_are_compatible(Oid opno1, Oid opno2)
 		HeapTuple	op_tuple = &catlist->members[i]->tuple;
 		Form_pg_amop op_form = (Form_pg_amop) GETSTRUCT(op_tuple);
 
-		if (op_form->amopmethod == BTREE_AM_OID)
+		/*
+		 * op_in_opfamily() is cheaper than GetIndexAmRoutineByAmId(), so
+		 * check it first
+		 */
+		if (op_in_opfamily(opno2, op_form->amopfamily))
 		{
-			if (op_in_opfamily(opno2, op_form->amopfamily))
+			IndexAmRoutine *amroutine = GetIndexAmRoutineByAmId(op_form->amopmethod, false);
+
+			if (amroutine->amconsistentordering)
 			{
 				result = true;
 				break;
@@ -1276,6 +1311,54 @@ get_opclass_method(Oid opclass)
 	result = cla_tup->opcmethod;
 	ReleaseSysCache(tp);
 	return result;
+}
+
+/*				---------- OPFAMILY CACHE ----------					 */
+
+/*
+ * get_opfamily_method
+ *
+ *		Returns the OID of the index access method the opfamily is for.
+ */
+Oid
+get_opfamily_method(Oid opfid)
+{
+	HeapTuple	tp;
+	Form_pg_opfamily opfform;
+	Oid			result;
+
+	tp = SearchSysCache1(OPFAMILYOID, ObjectIdGetDatum(opfid));
+	if (!HeapTupleIsValid(tp))
+		elog(ERROR, "cache lookup failed for operator family %u", opfid);
+	opfform = (Form_pg_opfamily) GETSTRUCT(tp);
+
+	result = opfform->opfmethod;
+	ReleaseSysCache(tp);
+	return result;
+}
+
+char *
+get_opfamily_name(Oid opfid, bool missing_ok)
+{
+	HeapTuple	tup;
+	char	   *opfname;
+	Form_pg_opfamily opfform;
+
+	tup = SearchSysCache1(OPFAMILYOID, ObjectIdGetDatum(opfid));
+
+	if (!HeapTupleIsValid(tup))
+	{
+		if (!missing_ok)
+			elog(ERROR, "cache lookup failed for operator family %u", opfid);
+		return NULL;
+	}
+
+	opfform = (Form_pg_opfamily) GETSTRUCT(tup);
+	opfname = pstrdup(NameStr(opfform->opfname));
+
+	ReleaseSysCache(tup);
+
+	return opfname;
 }
 
 /*				---------- OPERATOR CACHE ----------					 */

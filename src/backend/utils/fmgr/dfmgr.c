@@ -3,7 +3,7 @@
  * dfmgr.c
  *	  Dynamic function manager code.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -40,19 +40,21 @@ typedef struct
 
 /*
  * List of dynamically loaded files (kept in malloc'd memory).
+ *
+ * Note: "typedef struct DynamicFileList DynamicFileList" appears in fmgr.h.
  */
-
-typedef struct df_files
+struct DynamicFileList
 {
-	struct df_files *next;		/* List link */
+	DynamicFileList *next;		/* List link */
 	dev_t		device;			/* Device file is on */
 #ifndef WIN32					/* ensures we never again depend on this under
 								 * win32 */
 	ino_t		inode;			/* Inode number of file */
 #endif
 	void	   *handle;			/* a handle for pg_dl* functions */
+	const Pg_magic_struct *magic;	/* Location of module's magic block */
 	char		filename[FLEXIBLE_ARRAY_MEMBER];	/* Full pathname of file */
-} DynamicFileList;
+};
 
 static DynamicFileList *file_list = NULL;
 static DynamicFileList *file_tail = NULL;
@@ -67,15 +69,13 @@ static DynamicFileList *file_tail = NULL;
 char	   *Dynamic_library_path;
 
 static void *internal_load_library(const char *libname);
-static void incompatible_module_error(const char *libname,
-									  const Pg_magic_struct *module_magic_data) pg_attribute_noreturn();
+pg_noreturn static void incompatible_module_error(const char *libname,
+												  const Pg_abi_values *module_magic_data);
 static char *expand_dynamic_library_name(const char *name);
 static void check_restricted_library_name(const char *name);
-static char *substitute_libpath_macro(const char *name);
-static char *find_in_dynamic_libpath(const char *basename);
 
-/* Magic structure that module needs to match to be accepted */
-static const Pg_magic_struct magic_data = PG_MODULE_MAGIC_DATA;
+/* ABI values that module needs to match to be accepted */
+static const Pg_abi_values magic_data = PG_MODULE_ABI_DATA;
 
 
 /*
@@ -245,8 +245,10 @@ internal_load_library(const char *libname)
 		{
 			const Pg_magic_struct *magic_data_ptr = (*magic_func) ();
 
-			if (magic_data_ptr->len != magic_data.len ||
-				memcmp(magic_data_ptr, &magic_data, magic_data.len) != 0)
+			/* Check ABI compatibility fields */
+			if (magic_data_ptr->len != sizeof(Pg_magic_struct) ||
+				memcmp(&magic_data_ptr->abi_fields, &magic_data,
+					   sizeof(Pg_abi_values)) != 0)
 			{
 				/* copy data block before unlinking library */
 				Pg_magic_struct module_magic_data = *magic_data_ptr;
@@ -256,8 +258,11 @@ internal_load_library(const char *libname)
 				free(file_scanner);
 
 				/* issue suitable complaint */
-				incompatible_module_error(libname, &module_magic_data);
+				incompatible_module_error(libname, &module_magic_data.abi_fields);
 			}
+
+			/* Remember the magic block's location for future use */
+			file_scanner->magic = magic_data_ptr;
 		}
 		else
 		{
@@ -294,7 +299,7 @@ internal_load_library(const char *libname)
  */
 static void
 incompatible_module_error(const char *libname,
-						  const Pg_magic_struct *module_magic_data)
+						  const Pg_abi_values *module_magic_data)
 {
 	StringInfoData details;
 
@@ -396,9 +401,47 @@ incompatible_module_error(const char *libname,
 
 
 /*
+ * Iterator functions to allow callers to scan the list of loaded modules.
+ *
+ * Note: currently, there is no special provision for dealing with changes
+ * in the list while a scan is happening.  Current callers don't need it.
+ */
+DynamicFileList *
+get_first_loaded_module(void)
+{
+	return file_list;
+}
+
+DynamicFileList *
+get_next_loaded_module(DynamicFileList *dfptr)
+{
+	return dfptr->next;
+}
+
+/*
+ * Return some details about the specified module.
+ *
+ * Note that module_name and module_version could be returned as NULL.
+ *
+ * We could dispense with this function by exposing struct DynamicFileList
+ * globally, but this way seems preferable.
+ */
+void
+get_loaded_module_details(DynamicFileList *dfptr,
+						  const char **library_path,
+						  const char **module_name,
+						  const char **module_version)
+{
+	*library_path = dfptr->filename;
+	*module_name = dfptr->magic->name;
+	*module_version = dfptr->magic->version;
+}
+
+
+/*
  * If name contains a slash, check if the file exists, if so return
  * the name.  Else (no slash) try to expand using search path (see
- * find_in_dynamic_libpath below); if that works, return the fully
+ * find_in_path below); if that works, return the fully
  * expanded file name.  If the previous failed, append DLSUFFIX and
  * try again.  If all fails, just return the original name.
  *
@@ -413,17 +456,25 @@ expand_dynamic_library_name(const char *name)
 
 	Assert(name);
 
+	/*
+	 * If the value starts with "$libdir/", strip that.  This is because many
+	 * extensions have hardcoded '$libdir/foo' as their library name, which
+	 * prevents using the path.
+	 */
+	if (strncmp(name, "$libdir/", 8) == 0)
+		name += 8;
+
 	have_slash = (first_dir_separator(name) != NULL);
 
 	if (!have_slash)
 	{
-		full = find_in_dynamic_libpath(name);
+		full = find_in_path(name, Dynamic_library_path, "dynamic_library_path", "$libdir", pkglib_path);
 		if (full)
 			return full;
 	}
 	else
 	{
-		full = substitute_libpath_macro(name);
+		full = substitute_path_macro(name, "$libdir", pkglib_path);
 		if (pg_file_exists(full))
 			return full;
 		pfree(full);
@@ -433,14 +484,14 @@ expand_dynamic_library_name(const char *name)
 
 	if (!have_slash)
 	{
-		full = find_in_dynamic_libpath(new);
+		full = find_in_path(new, Dynamic_library_path, "dynamic_library_path", "$libdir", pkglib_path);
 		pfree(new);
 		if (full)
 			return full;
 	}
 	else
 	{
-		full = substitute_libpath_macro(new);
+		full = substitute_path_macro(new, "$libdir", pkglib_path);
 		pfree(new);
 		if (pg_file_exists(full))
 			return full;
@@ -474,48 +525,61 @@ check_restricted_library_name(const char *name)
  * Substitute for any macros appearing in the given string.
  * Result is always freshly palloc'd.
  */
-static char *
-substitute_libpath_macro(const char *name)
+char *
+substitute_path_macro(const char *str, const char *macro, const char *value)
 {
 	const char *sep_ptr;
 
-	Assert(name != NULL);
+	Assert(str != NULL);
+	Assert(macro[0] == '$');
 
-	/* Currently, we only recognize $libdir at the start of the string */
-	if (name[0] != '$')
-		return pstrdup(name);
+	/* Currently, we only recognize $macro at the start of the string */
+	if (str[0] != '$')
+		return pstrdup(str);
 
-	if ((sep_ptr = first_dir_separator(name)) == NULL)
-		sep_ptr = name + strlen(name);
+	if ((sep_ptr = first_dir_separator(str)) == NULL)
+		sep_ptr = str + strlen(str);
 
-	if (strlen("$libdir") != sep_ptr - name ||
-		strncmp(name, "$libdir", strlen("$libdir")) != 0)
+	if (strlen(macro) != sep_ptr - str ||
+		strncmp(str, macro, strlen(macro)) != 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_NAME),
-				 errmsg("invalid macro name in dynamic library path: %s",
-						name)));
+				 errmsg("invalid macro name in path: %s",
+						str)));
 
-	return psprintf("%s%s", pkglib_path, sep_ptr);
+	return psprintf("%s%s", value, sep_ptr);
 }
 
 
 /*
  * Search for a file called 'basename' in the colon-separated search
- * path Dynamic_library_path.  If the file is found, the full file name
+ * path given.  If the file is found, the full file name
  * is returned in freshly palloc'd memory.  If the file is not found,
  * return NULL.
+ *
+ * path_param is the name of the parameter that path came from, for error
+ * messages.
+ *
+ * macro and macro_val allow substituting a macro; see
+ * substitute_path_macro().
  */
-static char *
-find_in_dynamic_libpath(const char *basename)
+char *
+find_in_path(const char *basename, const char *path, const char *path_param,
+			 const char *macro, const char *macro_val)
 {
 	const char *p;
 	size_t		baselen;
 
 	Assert(basename != NULL);
 	Assert(first_dir_separator(basename) == NULL);
-	Assert(Dynamic_library_path != NULL);
+	Assert(path != NULL);
+	Assert(path_param != NULL);
 
-	p = Dynamic_library_path;
+	p = path;
+
+	/*
+	 * If the path variable is empty, don't do a path search.
+	 */
 	if (strlen(p) == 0)
 		return NULL;
 
@@ -532,7 +596,7 @@ find_in_dynamic_libpath(const char *basename)
 		if (piece == p)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_NAME),
-					 errmsg("zero-length component in parameter \"dynamic_library_path\"")));
+					 errmsg("zero-length component in parameter \"%s\"", path_param)));
 
 		if (piece == NULL)
 			len = strlen(p);
@@ -542,7 +606,7 @@ find_in_dynamic_libpath(const char *basename)
 		piece = palloc(len + 1);
 		strlcpy(piece, p, len + 1);
 
-		mangled = substitute_libpath_macro(piece);
+		mangled = substitute_path_macro(piece, macro, macro_val);
 		pfree(piece);
 
 		canonicalize_path(mangled);
@@ -551,13 +615,13 @@ find_in_dynamic_libpath(const char *basename)
 		if (!is_absolute_path(mangled))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_NAME),
-					 errmsg("component in parameter \"dynamic_library_path\" is not an absolute path")));
+					 errmsg("component in parameter \"%s\" is not an absolute path", path_param)));
 
 		full = palloc(strlen(mangled) + 1 + baselen + 1);
 		sprintf(full, "%s/%s", mangled, basename);
 		pfree(mangled);
 
-		elog(DEBUG3, "find_in_dynamic_libpath: trying \"%s\"", full);
+		elog(DEBUG3, "%s: trying \"%s\"", __func__, full);
 
 		if (pg_file_exists(full))
 			return full;

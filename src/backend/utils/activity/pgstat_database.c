@@ -8,7 +8,7 @@
  * storage implementation and the details about individual types of
  * statistics.
  *
- * Copyright (c) 2001-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2001-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/utils/activity/pgstat_database.c
@@ -134,7 +134,33 @@ pgstat_report_deadlock(void)
 }
 
 /*
+ * Allow this backend to later report checksum failures for dboid, even if in
+ * a critical section at the time of the report.
+ *
+ * Without this function having been called first, the backend might need to
+ * allocate an EntryRef or might need to map in DSM segments. Neither should
+ * happen in a critical section.
+ */
+void
+pgstat_prepare_report_checksum_failure(Oid dboid)
+{
+	Assert(!CritSectionCount);
+
+	/*
+	 * Just need to ensure this backend has an entry ref for the database.
+	 * That will allows us to report checksum failures without e.g. needing to
+	 * map in DSM segments.
+	 */
+	pgstat_get_entry_ref(PGSTAT_KIND_DATABASE, dboid, InvalidOid,
+						 true, NULL);
+}
+
+/*
  * Report one or more checksum failures.
+ *
+ * To be allowed to report checksum failures in critical sections, we require
+ * pgstat_prepare_report_checksum_failure() to have been called before this
+ * function is called.
  */
 void
 pgstat_report_checksum_failures_in_db(Oid dboid, int failurecount)
@@ -147,25 +173,35 @@ pgstat_report_checksum_failures_in_db(Oid dboid, int failurecount)
 
 	/*
 	 * Update the shared stats directly - checksum failures should never be
-	 * common enough for that to be a problem.
+	 * common enough for that to be a problem. Note that we pass create=false
+	 * here, as we want to be sure to not require memory allocations, so this
+	 * can be called in critical sections.
 	 */
-	entry_ref =
-		pgstat_get_entry_ref_locked(PGSTAT_KIND_DATABASE, dboid, InvalidOid, false);
+	entry_ref = pgstat_get_entry_ref(PGSTAT_KIND_DATABASE, dboid, InvalidOid,
+									 false, NULL);
+
+	/*
+	 * Should always have been created by
+	 * pgstat_prepare_report_checksum_failure().
+	 *
+	 * When not using assertions, we don't want to crash should something have
+	 * gone wrong, so just return.
+	 */
+	Assert(entry_ref);
+	if (!entry_ref)
+	{
+		elog(WARNING, "could not report %d conflicts for DB %u",
+			 failurecount, dboid);
+		return;
+	}
+
+	pgstat_lock_entry(entry_ref, false);
 
 	sharedent = (PgStatShared_Database *) entry_ref->shared_stats;
 	sharedent->stats.checksum_failures += failurecount;
 	sharedent->stats.last_checksum_failure = GetCurrentTimestamp();
 
 	pgstat_unlock_entry(entry_ref);
-}
-
-/*
- * Report one checksum failure in the current database.
- */
-void
-pgstat_report_checksum_failure(void)
-{
-	pgstat_report_checksum_failures_in_db(MyDatabaseId, 1);
 }
 
 /*

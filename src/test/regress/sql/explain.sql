@@ -70,6 +70,11 @@ select explain_filter('explain (analyze, serialize, buffers, format yaml) select
 select explain_filter('explain (buffers, format text) select * from int8_tbl i8');
 select explain_filter('explain (buffers, format json) select * from int8_tbl i8');
 
+-- Check expansion of window definitions
+
+select explain_filter('explain verbose select sum(unique1) over w, sum(unique2) over (w order by hundred), sum(tenthous) over (w order by hundred) from tenk1 window w as (partition by ten)');
+select explain_filter('explain verbose select sum(unique1) over w1, sum(unique2) over (w1 order by hundred), sum(tenthous) over (w1 order by hundred rows 10 preceding) from tenk1 window w1 as (partition by ten)');
+
 -- Check output including I/O timings.  These fields are conditional
 -- but always set in JSON format, so check them only in this case.
 set track_io_timing = on;
@@ -178,7 +183,7 @@ select explain_filter('explain (analyze,buffers off,serialize) create temp table
 select explain_filter('explain (analyze,buffers off,costs off) select sum(n) over() from generate_series(1,10) a(n)');
 -- Test tuplestore storage usage in Window aggregate (disk case)
 set work_mem to 64;
-select explain_filter('explain (analyze,buffers off,costs off) select sum(n) over() from generate_series(1,2000) a(n)');
+select explain_filter('explain (analyze,buffers off,costs off) select sum(n) over() from generate_series(1,2500) a(n)');
 -- Test tuplestore storage usage in Window aggregate (memory and disk case, final result is disk)
-select explain_filter('explain (analyze,buffers off,costs off) select sum(n) over(partition by m) from (SELECT n < 3 as m, n from generate_series(1,2000) a(n))');
+select explain_filter('explain (analyze,buffers off,costs off) select sum(n) over(partition by m) from (SELECT n < 3 as m, n from generate_series(1,2500) a(n))');
 reset work_mem;

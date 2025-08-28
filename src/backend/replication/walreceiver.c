@@ -39,7 +39,7 @@
  * specific parts are in the libpqwalreceiver module. It's loaded
  * dynamically to avoid linking the server with libpq.
  *
- * Portions Copyright (c) 2010-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2010-2025, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -180,7 +180,7 @@ ProcessWalRcvInterrupts(void)
 
 /* Main entry point for walreceiver process */
 void
-WalReceiverMain(char *startup_data, size_t startup_data_len)
+WalReceiverMain(const void *startup_data, size_t startup_data_len)
 {
 	char		conninfo[MAXCONNINFO];
 	char	   *tmp_conninfo;
@@ -249,8 +249,8 @@ WalReceiverMain(char *startup_data, size_t startup_data_len)
 
 	/* Fetch information required to start streaming */
 	walrcv->ready_to_display = false;
-	strlcpy(conninfo, (char *) walrcv->conninfo, MAXCONNINFO);
-	strlcpy(slotname, (char *) walrcv->slotname, NAMEDATALEN);
+	strlcpy(conninfo, walrcv->conninfo, MAXCONNINFO);
+	strlcpy(slotname, walrcv->slotname, NAMEDATALEN);
 	is_temp_slot = walrcv->is_temp_slot;
 	startpoint = walrcv->receiveStart;
 	startpointTLI = walrcv->receiveStartTLI;
@@ -317,11 +317,11 @@ WalReceiverMain(char *startup_data, size_t startup_data_len)
 	SpinLockAcquire(&walrcv->mutex);
 	memset(walrcv->conninfo, 0, MAXCONNINFO);
 	if (tmp_conninfo)
-		strlcpy((char *) walrcv->conninfo, tmp_conninfo, MAXCONNINFO);
+		strlcpy(walrcv->conninfo, tmp_conninfo, MAXCONNINFO);
 
 	memset(walrcv->sender_host, 0, NI_MAXHOST);
 	if (sender_host)
-		strlcpy((char *) walrcv->sender_host, sender_host, NI_MAXHOST);
+		strlcpy(walrcv->sender_host, sender_host, NI_MAXHOST);
 
 	walrcv->sender_port = sender_port;
 	walrcv->ready_to_display = true;
@@ -582,6 +582,16 @@ WalReceiverMain(char *startup_data, size_t startup_data_len)
 					 * WAL.
 					 */
 					bool		requestReply = false;
+
+					/*
+					 * Report pending statistics to the cumulative stats
+					 * system.  This location is useful for the report as it
+					 * is not within a tight loop in the WAL receiver, to
+					 * avoid bloating pgstats with requests, while also making
+					 * sure that the reports happen each time a status update
+					 * is sent.
+					 */
+					pgstat_report_wal(false);
 
 					/*
 					 * Check if time since last receive from primary has
@@ -912,6 +922,7 @@ XLogWalRcvWrite(char *buf, Size nbytes, XLogRecPtr recptr, TimeLineID tli)
 {
 	int			startoff;
 	int			byteswritten;
+	instr_time	start;
 
 	Assert(tli != 0);
 
@@ -942,7 +953,18 @@ XLogWalRcvWrite(char *buf, Size nbytes, XLogRecPtr recptr, TimeLineID tli)
 		/* OK to write the logs */
 		errno = 0;
 
+		/*
+		 * Measure I/O timing to write WAL data, for pg_stat_io.
+		 */
+		start = pgstat_prepare_io_time(track_wal_io_timing);
+
+		pgstat_report_wait_start(WAIT_EVENT_WAL_WRITE);
 		byteswritten = pg_pwrite(recvFile, buf, segbytes, (off_t) startoff);
+		pgstat_report_wait_end();
+
+		pgstat_count_io_op_time(IOOBJECT_WAL, IOCONTEXT_NORMAL,
+								IOOP_WRITE, start, 1, byteswritten);
+
 		if (byteswritten <= 0)
 		{
 			char		xlogfname[MAXFNAMELEN];
@@ -1434,10 +1456,10 @@ pg_stat_get_wal_receiver(PG_FUNCTION_ARGS)
 	last_receipt_time = WalRcv->lastMsgReceiptTime;
 	latest_end_lsn = WalRcv->latestWalEnd;
 	latest_end_time = WalRcv->latestWalEndTime;
-	strlcpy(slotname, (char *) WalRcv->slotname, sizeof(slotname));
-	strlcpy(sender_host, (char *) WalRcv->sender_host, sizeof(sender_host));
+	strlcpy(slotname, WalRcv->slotname, sizeof(slotname));
+	strlcpy(sender_host, WalRcv->sender_host, sizeof(sender_host));
 	sender_port = WalRcv->sender_port;
-	strlcpy(conninfo, (char *) WalRcv->conninfo, sizeof(conninfo));
+	strlcpy(conninfo, WalRcv->conninfo, sizeof(conninfo));
 	SpinLockRelease(&WalRcv->mutex);
 
 	/*

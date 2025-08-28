@@ -3,7 +3,7 @@
  * pg_popcount_avx512.c
  *	  Holds the AVX-512 pg_popcount() implementation.
  *
- * Copyright (c) 2024, PostgreSQL Global Development Group
+ * Copyright (c) 2024-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/port/pg_popcount_avx512.c
@@ -27,11 +27,11 @@
 #include "port/pg_bitutils.h"
 
 /*
- * It's probably unlikely that TRY_POPCNT_FAST won't be set if we are able to
+ * It's probably unlikely that TRY_POPCNT_X86_64 won't be set if we are able to
  * use AVX-512 intrinsics, but we check it anyway to be sure.  We piggy-back on
- * the function pointers that are only used when TRY_POPCNT_FAST is set.
+ * the function pointers that are only used when TRY_POPCNT_X86_64 is set.
  */
-#ifdef TRY_POPCNT_FAST
+#ifdef TRY_POPCNT_X86_64
 
 /*
  * Does CPUID say there's support for XSAVE instructions?
@@ -219,5 +219,5 @@ pg_popcount_masked_avx512(const char *buf, int bytes, bits8 mask)
 	return _mm512_reduce_add_epi64(accum);
 }
 
-#endif							/* TRY_POPCNT_FAST */
+#endif							/* TRY_POPCNT_X86_64 */
 #endif							/* USE_AVX512_POPCNT_WITH_RUNTIME_CHECK */

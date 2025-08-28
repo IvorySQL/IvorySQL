@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2024, PostgreSQL Global Development Group
+# Copyright (c) 2021-2025, PostgreSQL Global Development Group
 
 use strict;
 use warnings FATAL => 'all';
@@ -61,18 +61,20 @@ my $supports_zstd  = check_pg_config("#define USE_ZSTD 1");
 my %pgdump_runs = (
 	binary_upgrade => {
 		dump_cmd => [
-			'pg_dump',
-			'--no-sync',
-			'--format=custom',
-			"--file=$tempdir/binary_upgrade.dump",
-			'-w',
-			'--schema-only',
+			'pg_dump', '--no-sync',
+			'--format' => 'custom',
+			'--file' => "$tempdir/binary_upgrade.dump",
+			'--no-password',
+			'--no-data',
+			'--sequence-data',
 			'--binary-upgrade',
-			'-d', 'postgres',    # alternative way to specify database
+			'--dbname' => 'postgres',    # alternative way to specify database
 		],
 		restore_cmd => [
-			'pg_restore', '-Fc', '--verbose',
-			"--file=$tempdir/binary_upgrade.sql",
+			'pg_restore',
+			'--format' => 'custom',
+			'--verbose',
+			'--file' => "$tempdir/binary_upgrade.sql",
 			"$tempdir/binary_upgrade.dump",
 		],
 	},
@@ -81,19 +83,22 @@ my %pgdump_runs = (
 	compression_gzip_custom => {
 		test_key       => 'compression',
 		compile_option => 'gzip',
-		dump_cmd       => [
-			'pg_dump',      '--format=custom',
-			'--compress=1', "--file=$tempdir/compression_gzip_custom.dump",
+		dump_cmd => [
+			'pg_dump',
+			'--format' => 'custom',
+			'--compress' => '1',
+			'--file' => "$tempdir/compression_gzip_custom.dump",
 			'postgres',
 		],
 		restore_cmd => [
 			'pg_restore',
-			"--file=$tempdir/compression_gzip_custom.sql",
+			'--file' => "$tempdir/compression_gzip_custom.sql",
 			"$tempdir/compression_gzip_custom.dump",
 		],
 		command_like => {
 			command => [
-				'pg_restore', '-l', "$tempdir/compression_gzip_custom.dump",
+				'pg_restore', '--list',
+				"$tempdir/compression_gzip_custom.dump",
 			],
 			expected => qr/Compression: gzip/,
 			name     => 'data content is gzip-compressed'
@@ -104,10 +109,13 @@ my %pgdump_runs = (
 	compression_gzip_dir => {
 		test_key       => 'compression',
 		compile_option => 'gzip',
-		dump_cmd       => [
-			'pg_dump',                              '--jobs=2',
-			'--format=directory',                   '--compress=gzip:1',
-			"--file=$tempdir/compression_gzip_dir", 'postgres',
+		dump_cmd => [
+			'pg_dump',
+			'--jobs' => '2',
+			'--format' => 'directory',
+			'--compress' => 'gzip:1',
+			'--file' => "$tempdir/compression_gzip_dir",
+			'postgres',
 		],
 		# Give coverage for manually compressed blobs.toc files during
 		# restore.
@@ -121,8 +129,9 @@ my %pgdump_runs = (
 			"$tempdir/compression_gzip_dir/*.dat.gz",
 		],
 		restore_cmd => [
-			'pg_restore', '--jobs=2',
-			"--file=$tempdir/compression_gzip_dir.sql",
+			'pg_restore',
+			'--jobs' => '2',
+			'--file' => "$tempdir/compression_gzip_dir.sql",
 			"$tempdir/compression_gzip_dir",
 		],
 	},
@@ -130,9 +139,12 @@ my %pgdump_runs = (
 	compression_gzip_plain => {
 		test_key       => 'compression',
 		compile_option => 'gzip',
-		dump_cmd       => [
-			'pg_dump', '--format=plain', '-Z1',
-			"--file=$tempdir/compression_gzip_plain.sql.gz", 'postgres',
+		dump_cmd => [
+			'pg_dump',
+			'--format' => 'plain',
+			'--compress' => '1',
+			'--file' => "$tempdir/compression_gzip_plain.sql.gz",
+			'postgres',
 		],
 		# Decompress the generated file to run through the tests.
 		compress_cmd => {
@@ -145,20 +157,22 @@ my %pgdump_runs = (
 	compression_lz4_custom => {
 		test_key       => 'compression',
 		compile_option => 'lz4',
-		dump_cmd       => [
-			'pg_dump',      '--format=custom',
-			'--compress=lz4', "--file=$tempdir/compression_lz4_custom.dump",
+		dump_cmd => [
+			'pg_dump',
+			'--format' => 'custom',
+			'--compress' => 'lz4',
+			'--file' => "$tempdir/compression_lz4_custom.dump",
 			'postgres',
 		],
 		restore_cmd => [
 			'pg_restore',
-			"--file=$tempdir/compression_lz4_custom.sql",
+			'--file' => "$tempdir/compression_lz4_custom.sql",
 			"$tempdir/compression_lz4_custom.dump",
 		],
 		command_like => {
 			command => [
-				'pg_restore',
-				'-l', "$tempdir/compression_lz4_custom.dump",
+				'pg_restore', '--list',
+				"$tempdir/compression_lz4_custom.dump",
 			],
 			expected => qr/Compression: lz4/,
 			name => 'data content is lz4 compressed'
@@ -169,10 +183,13 @@ my %pgdump_runs = (
 	compression_lz4_dir => {
 		test_key       => 'compression',
 		compile_option => 'lz4',
-		dump_cmd       => [
-			'pg_dump',                              '--jobs=2',
-			'--format=directory',                   '--compress=lz4:1',
-			"--file=$tempdir/compression_lz4_dir", 'postgres',
+		dump_cmd => [
+			'pg_dump',
+			'--jobs' => '2',
+			'--format' => 'directory',
+			'--compress' => 'lz4:1',
+			'--file' => "$tempdir/compression_lz4_dir",
+			'postgres',
 		],
 		# Verify that data files were compressed
 		glob_patterns => [
@@ -180,8 +197,9 @@ my %pgdump_runs = (
 		    "$tempdir/compression_lz4_dir/*.dat.lz4",
 		],
 		restore_cmd => [
-			'pg_restore', '--jobs=2',
-			"--file=$tempdir/compression_lz4_dir.sql",
+			'pg_restore',
+			'--jobs' => '2',
+			'--file' => "$tempdir/compression_lz4_dir.sql",
 			"$tempdir/compression_lz4_dir",
 		],
 	},
@@ -189,9 +207,12 @@ my %pgdump_runs = (
 	compression_lz4_plain => {
 		test_key       => 'compression',
 		compile_option => 'lz4',
-		dump_cmd       => [
-			'pg_dump', '--format=plain', '--compress=lz4',
-			"--file=$tempdir/compression_lz4_plain.sql.lz4", 'postgres',
+		dump_cmd => [
+			'pg_dump',
+			'--format' => 'plain',
+			'--compress' => 'lz4',
+			'--file' => "$tempdir/compression_lz4_plain.sql.lz4",
+			'postgres',
 		],
 		# Decompress the generated file to run through the tests.
 		compress_cmd => {
@@ -207,20 +228,22 @@ my %pgdump_runs = (
 	compression_zstd_custom => {
 		test_key       => 'compression',
 		compile_option => 'zstd',
-		dump_cmd       => [
-			'pg_dump',      '--format=custom',
-			'--compress=zstd', "--file=$tempdir/compression_zstd_custom.dump",
+		dump_cmd => [
+			'pg_dump',
+			'--format' => 'custom',
+			'--compress' => 'zstd',
+			'--file' => "$tempdir/compression_zstd_custom.dump",
 			'postgres',
 		],
 		restore_cmd => [
 			'pg_restore',
-			"--file=$tempdir/compression_zstd_custom.sql",
+			'--file' => "$tempdir/compression_zstd_custom.sql",
 			"$tempdir/compression_zstd_custom.dump",
 		],
 		command_like => {
 			command => [
-				'pg_restore',
-				'-l', "$tempdir/compression_zstd_custom.dump",
+				'pg_restore', '--list',
+				"$tempdir/compression_zstd_custom.dump",
 			],
 			expected => qr/Compression: zstd/,
 			name => 'data content is zstd compressed'
@@ -230,10 +253,13 @@ my %pgdump_runs = (
 	compression_zstd_dir => {
 		test_key       => 'compression',
 		compile_option => 'zstd',
-		dump_cmd       => [
-			'pg_dump',                              '--jobs=2',
-			'--format=directory',                   '--compress=zstd:1',
-			"--file=$tempdir/compression_zstd_dir", 'postgres',
+		dump_cmd => [
+			'pg_dump',
+			'--jobs' => '2',
+			'--format' => 'directory',
+			'--compress' => 'zstd:1',
+			'--file' => "$tempdir/compression_zstd_dir",
+			'postgres',
 		],
 		# Give coverage for manually compressed blobs.toc files during
 		# restore.
@@ -250,8 +276,9 @@ my %pgdump_runs = (
 		    "$tempdir/compression_zstd_dir/*.dat.zst",
 		],
 		restore_cmd => [
-			'pg_restore', '--jobs=2',
-			"--file=$tempdir/compression_zstd_dir.sql",
+			'pg_restore',
+			'--jobs' => '2',
+			'--file' => "$tempdir/compression_zstd_dir.sql",
 			"$tempdir/compression_zstd_dir",
 		],
 	},
@@ -260,9 +287,12 @@ my %pgdump_runs = (
 	compression_zstd_plain => {
 		test_key       => 'compression',
 		compile_option => 'zstd',
-		dump_cmd       => [
-			'pg_dump', '--format=plain', '--compress=zstd:long',
-			"--file=$tempdir/compression_zstd_plain.sql.zst", 'postgres',
+		dump_cmd => [
+			'pg_dump',
+			'--format' => 'plain',
+			'--compress' => 'zstd:long',
+			'--file' => "$tempdir/compression_zstd_plain.sql.zst",
+			'postgres',
 		],
 		# Decompress the generated file to run through the tests.
 		compress_cmd => {
@@ -277,81 +307,80 @@ my %pgdump_runs = (
 
 	clean => {
 		dump_cmd => [
-			'pg_dump',
-			'--no-sync',
-			"--file=$tempdir/clean.sql",
-			'-c',
-			'-d', 'postgres',    # alternative way to specify database
+			'pg_dump', '--no-sync',
+			'--file' => "$tempdir/clean.sql",
+			'--clean',
+			'--dbname' => 'postgres',    # alternative way to specify database
 		],
 	},
 	clean_if_exists => {
 		dump_cmd => [
-			'pg_dump',
-			'--no-sync',
-			"--file=$tempdir/clean_if_exists.sql",
-			'-c',
+			'pg_dump', '--no-sync',
+			'--file' => "$tempdir/clean_if_exists.sql",
+			'--clean',
 			'--if-exists',
-			'--encoding=UTF8',    # no-op, just tests that option is accepted
+			'--encoding' => 'UTF8',      # no-op, just for testing
 			'postgres',
 		],
 	},
 	column_inserts => {
 		dump_cmd => [
-			'pg_dump',                            '--no-sync',
-			"--file=$tempdir/column_inserts.sql", '-a',
-			'--column-inserts',                   'postgres',
+			'pg_dump', '--no-sync',
+			'--file' => "$tempdir/column_inserts.sql",
+			'--data-only',
+			'--column-inserts', 'postgres',
 		],
 	},
 	createdb => {
 		dump_cmd => [
-			'pg_dump',
-			'--no-sync',
-			"--file=$tempdir/createdb.sql",
-			'-C',
-			'-R',    # no-op, just for testing
-			'-v',
+			'pg_dump', '--no-sync',
+			'--file' => "$tempdir/createdb.sql",
+			'--create',
+			'--no-reconnect',    # no-op, just for testing
+			'--verbose',
 			'postgres',
 		],
 	},
 	data_only => {
 		dump_cmd => [
-			'pg_dump',
-			'--no-sync',
-			"--file=$tempdir/data_only.sql",
-			'-a',
-			'--superuser=test_superuser',
+			'pg_dump', '--no-sync',
+			'--file' => "$tempdir/data_only.sql",
+			'--data-only',
+			'--superuser' => 'test_superuser',
 			'--disable-triggers',
-			'-v',    # no-op, just make sure it works
+			'--verbose',         # no-op, just make sure it works
 			'postgres',
 		],
 	},
 	defaults => {
 		dump_cmd => [
 			'pg_dump', '--no-sync',
-			'-f',      "$tempdir/defaults.sql",
+			'--file' => "$tempdir/defaults.sql",
 			'postgres',
 		],
 	},
 	defaults_no_public => {
 		database => 'regress_pg_dump_test',
 		dump_cmd => [
-			'pg_dump', '--no-sync', '-f', "$tempdir/defaults_no_public.sql",
+			'pg_dump', '--no-sync',
+			'--file' => "$tempdir/defaults_no_public.sql",
 			'regress_pg_dump_test',
 		],
 	},
 	defaults_no_public_clean => {
 		database => 'regress_pg_dump_test',
 		dump_cmd => [
-			'pg_dump', '--no-sync', '-c', '-f',
-			"$tempdir/defaults_no_public_clean.sql",
+			'pg_dump', '--no-sync',
+			'--clean',
+			'--file' => "$tempdir/defaults_no_public_clean.sql",
 			'regress_pg_dump_test',
 		],
 	},
 	defaults_public_owner => {
 		database => 'regress_public_owner',
 		dump_cmd => [
-			'pg_dump', '--no-sync', '-f',
-			"$tempdir/defaults_public_owner.sql",
+			'pg_dump', '--no-sync',
+			'--file' => "$tempdir/defaults_public_owner.sql",
 			'regress_public_owner',
 		],
 	},
@@ -363,20 +392,25 @@ my %pgdump_runs = (
 	defaults_custom_format => {
 		test_key => 'defaults',
 		dump_cmd => [
-			'pg_dump', '-Fc',
-			"--file=$tempdir/defaults_custom_format.dump", 'postgres',
+			'pg_dump',
+			'--format' => 'custom',
+			'--file' => "$tempdir/defaults_custom_format.dump",
+			'postgres',
 		],
 		restore_cmd => [
-			'pg_restore', '-Fc',
-			"--file=$tempdir/defaults_custom_format.sql",
+			'pg_restore',
+			'--format' => 'custom',
+			'--file' => "$tempdir/defaults_custom_format.sql",
 			"$tempdir/defaults_custom_format.dump",
 		],
 		command_like => {
-			command =>
-			  [ 'pg_restore', '-l', "$tempdir/defaults_custom_format.dump", ],
-			expected => $supports_gzip ?
-			qr/Compression: gzip/ :
-			qr/Compression: none/,
+			command => [
+				'pg_restore', '--list',
+				"$tempdir/defaults_custom_format.dump",
+			],
+			expected => $supports_gzip
+			? qr/Compression: gzip/
+			: qr/Compression: none/,
 			name => 'data content is gzip-compressed by default if available',
 		},
 	},
@@ -388,20 +422,22 @@ my %pgdump_runs = (
 	defaults_dir_format => {
 		test_key => 'defaults',
 		dump_cmd => [
-			'pg_dump',                             '-Fd',
-			"--file=$tempdir/defaults_dir_format", 'postgres',
+			'pg_dump',
+			'--format' => 'directory',
+			'--file' => "$tempdir/defaults_dir_format",
+			'postgres',
 		],
 		restore_cmd => [
-			'pg_restore', '-Fd',
-			"--file=$tempdir/defaults_dir_format.sql",
+			'pg_restore',
+			'--format' => 'directory',
+			'--file' => "$tempdir/defaults_dir_format.sql",
 			"$tempdir/defaults_dir_format",
 		],
 		command_like => {
 			command =>
-			  [ 'pg_restore', '-l', "$tempdir/defaults_dir_format", ],
-			expected => $supports_gzip ?
-			qr/Compression: gzip/ :
-			qr/Compression: none/,
+			  [ 'pg_restore', '--list', "$tempdir/defaults_dir_format", ],
+			expected => $supports_gzip ? qr/Compression: gzip/
+			: qr/Compression: none/,
 			name => 'data content is gzip-compressed by default',
 		},
 		glob_patterns => [
@@ -416,12 +452,15 @@ my %pgdump_runs = (
 	defaults_parallel => {
 		test_key => 'defaults',
 		dump_cmd => [
-			'pg_dump', '-Fd', '-j2', "--file=$tempdir/defaults_parallel",
+			'pg_dump',
+			'--format' => 'directory',
+			'--jobs' => 2,
+			'--file' => "$tempdir/defaults_parallel",
 			'postgres',
 		],
 		restore_cmd => [
 			'pg_restore',
-			"--file=$tempdir/defaults_parallel.sql",
+			'--file' => "$tempdir/defaults_parallel.sql",
 			"$tempdir/defaults_parallel",
 		],
 	},
@@ -430,224 +469,290 @@ my %pgdump_runs = (
 	defaults_tar_format => {
 		test_key => 'defaults',
 		dump_cmd => [
-			'pg_dump',                                 '-Ft',
-			"--file=$tempdir/defaults_tar_format.tar", 'postgres',
+			'pg_dump',
+			'--format' => 'tar',
+			'--file' => "$tempdir/defaults_tar_format.tar",
+			'postgres',
 		],
 		restore_cmd => [
 			'pg_restore',
-			'--format=tar',
-			"--file=$tempdir/defaults_tar_format.sql",
+			'--format' => 'tar',
+			'--file' => "$tempdir/defaults_tar_format.sql",
 			"$tempdir/defaults_tar_format.tar",
 		],
 	},
 	exclude_dump_test_schema => {
 		dump_cmd => [
 			'pg_dump', '--no-sync',
-			"--file=$tempdir/exclude_dump_test_schema.sql",
-			'--exclude-schema=dump_test', 'postgres',
+			'--file' => "$tempdir/exclude_dump_test_schema.sql",
+			'--exclude-schema' => 'dump_test',
+			'postgres',
 		],
 	},
 	exclude_test_table => {
 		dump_cmd => [
 			'pg_dump', '--no-sync',
-			"--file=$tempdir/exclude_test_table.sql",
-			'--exclude-table=dump_test.test_table', 'postgres',
+			'--file' => "$tempdir/exclude_test_table.sql",
+			'--exclude-table' => 'dump_test.test_table',
+			'postgres',
 		],
 	},
 	exclude_measurement => {
 		dump_cmd => [
 			'pg_dump', '--no-sync',
-			"--file=$tempdir/exclude_measurement.sql",
-			'--exclude-table-and-children=dump_test.measurement',
+			'--file' => "$tempdir/exclude_measurement.sql",
+			'--exclude-table-and-children' => 'dump_test.measurement',
 			'postgres',
 		],
 	},
 	exclude_measurement_data => {
 		dump_cmd => [
-			'pg_dump',
-			'--no-sync',
-			"--file=$tempdir/exclude_measurement_data.sql",
-			'--exclude-table-data-and-children=dump_test.measurement',
+			'pg_dump', '--no-sync',
+			'--file' => "$tempdir/exclude_measurement_data.sql",
+			'--exclude-table-data-and-children' => 'dump_test.measurement',
 			'--no-unlogged-table-data',
 			'postgres',
 		],
 	},
 	exclude_test_table_data => {
 		dump_cmd => [
-			'pg_dump',
-			'--no-sync',
-			"--file=$tempdir/exclude_test_table_data.sql",
-			'--exclude-table-data=dump_test.test_table',
+			'pg_dump', '--no-sync',
+			'--file' => "$tempdir/exclude_test_table_data.sql",
+			'--exclude-table-data' => 'dump_test.test_table',
 			'--no-unlogged-table-data',
 			'postgres',
 		],
 	},
 	inserts => {
 		dump_cmd => [
-			'pg_dump',                     '--no-sync',
-			"--file=$tempdir/inserts.sql", '-a',
-			'--inserts',                   'postgres',
+			'pg_dump', '--no-sync',
+			'--file' => "$tempdir/inserts.sql",
+			'--data-only',
+			'--inserts', 'postgres',
 		],
 	},
 	pg_dumpall_globals => {
 		dump_cmd => [
-			'pg_dumpall', '-v', "--file=$tempdir/pg_dumpall_globals.sql",
-			'-g', '--no-sync',
+			'pg_dumpall',
+			'--verbose',
+			'--file' => "$tempdir/pg_dumpall_globals.sql",
+			'--globals-only',
+			'--no-sync',
 		],
 	},
 	pg_dumpall_globals_clean => {
 		dump_cmd => [
-			'pg_dumpall', "--file=$tempdir/pg_dumpall_globals_clean.sql",
-			'-g', '-c', '--no-sync',
+			'pg_dumpall',
+			'--file' => "$tempdir/pg_dumpall_globals_clean.sql",
+			'--globals-only',
+			'--clean',
+			'--no-sync',
 		],
 	},
 	pg_dumpall_dbprivs => {
 		dump_cmd => [
 			'pg_dumpall', '--no-sync',
-			"--file=$tempdir/pg_dumpall_dbprivs.sql",
+			'--file' => "$tempdir/pg_dumpall_dbprivs.sql",
 		],
 	},
 	pg_dumpall_exclude => {
 		dump_cmd => [
-			'pg_dumpall', '-v', "--file=$tempdir/pg_dumpall_exclude.sql",
-			'--exclude-database', '*dump_test*', '--no-sync',
+			'pg_dumpall',
+			'--verbose',
+			'--file' => "$tempdir/pg_dumpall_exclude.sql",
+			'--exclude-database' => '*dump_test*',
+			'--no-sync',
 		],
 	},
 	no_toast_compression => {
 		dump_cmd => [
 			'pg_dump', '--no-sync',
-			"--file=$tempdir/no_toast_compression.sql",
-			'--no-toast-compression', 'postgres',
+			'--file' => "$tempdir/no_toast_compression.sql",
+			'--no-toast-compression',
+			'postgres',
 		],
 	},
 	no_large_objects => {
 		dump_cmd => [
-			'pg_dump',                      '--no-sync',
-			"--file=$tempdir/no_large_objects.sql", '-B',
+			'pg_dump', '--no-sync',
+			'--file' => "$tempdir/no_large_objects.sql",
+			'--no-large-objects',
+			'postgres',
+		],
+	},
+	no_policies => {
+		dump_cmd => [
+			'pg_dump', '--no-sync',
+			'--file' => "$tempdir/no_policies.sql",
+			'--no-policies',
 			'postgres',
 		],
 	},
 	no_privs => {
 		dump_cmd => [
-			'pg_dump',                      '--no-sync',
-			"--file=$tempdir/no_privs.sql", '-x',
+			'pg_dump', '--no-sync',
+			'--file' => "$tempdir/no_privs.sql",
+			'--no-privileges',
 			'postgres',
 		],
 	},
 	no_owner => {
 		dump_cmd => [
-			'pg_dump',                      '--no-sync',
-			"--file=$tempdir/no_owner.sql", '-O',
+			'pg_dump', '--no-sync',
+			'--file' => "$tempdir/no_owner.sql",
+			'--no-owner',
 			'postgres',
 		],
 	},
 	no_table_access_method => {
 		dump_cmd => [
 			'pg_dump', '--no-sync',
-			"--file=$tempdir/no_table_access_method.sql",
-			'--no-table-access-method', 'postgres',
+			'--file' => "$tempdir/no_table_access_method.sql",
+			'--no-table-access-method',
+			'postgres',
 		],
 	},
 	only_dump_test_schema => {
 		dump_cmd => [
 			'pg_dump', '--no-sync',
-			"--file=$tempdir/only_dump_test_schema.sql",
-			'--schema=dump_test', 'postgres',
+			'--file' => "$tempdir/only_dump_test_schema.sql",
+			'--schema' => 'dump_test',
+			'postgres',
 		],
 	},
 	only_dump_test_table => {
 		dump_cmd => [
-			'pg_dump',
-			'--no-sync',
-			"--file=$tempdir/only_dump_test_table.sql",
-			'--table=dump_test.test_table',
-			'--lock-wait-timeout='
-			  . (1000 * $PostgreSQL::Test::Utils::timeout_default),
+			'pg_dump', '--no-sync',
+			'--file' => "$tempdir/only_dump_test_table.sql",
+			'--table' => 'dump_test.test_table',
+			'--lock-wait-timeout' =>
+			  (1000 * $PostgreSQL::Test::Utils::timeout_default),
 			'postgres',
 		],
 	},
 	only_dump_measurement => {
 		dump_cmd => [
-			'pg_dump',
-			'--no-sync',
-			"--file=$tempdir/only_dump_measurement.sql",
-			'--table-and-children=dump_test.measurement',
-			'--lock-wait-timeout='
-			  . (1000 * $PostgreSQL::Test::Utils::timeout_default),
+			'pg_dump', '--no-sync',
+			'--file' => "$tempdir/only_dump_measurement.sql",
+			'--table-and-children' => 'dump_test.measurement',
+			'--lock-wait-timeout' =>
+			  (1000 * $PostgreSQL::Test::Utils::timeout_default),
 			'postgres',
 		],
 	},
 	role => {
 		dump_cmd => [
-			'pg_dump',
-			'--no-sync',
-			"--file=$tempdir/role.sql",
-			'--role=regress_dump_test_role',
-			'--schema=dump_test_second_schema',
+			'pg_dump', '--no-sync',
+			'--file' => "$tempdir/role.sql",
+			'--role' => 'regress_dump_test_role',
+			'--schema' => 'dump_test_second_schema',
 			'postgres',
 		],
 	},
 	role_parallel => {
 		test_key => 'role',
 		dump_cmd => [
-			'pg_dump',
-			'--no-sync',
-			'--format=directory',
-			'--jobs=2',
-			"--file=$tempdir/role_parallel",
-			'--role=regress_dump_test_role',
-			'--schema=dump_test_second_schema',
+			'pg_dump', '--no-sync',
+			'--format' => 'directory',
+			'--jobs' => '2',
+			'--file' => "$tempdir/role_parallel",
+			'--role' => 'regress_dump_test_role',
+			'--schema' => 'dump_test_second_schema',
 			'postgres',
 		],
 		restore_cmd => [
-			'pg_restore', "--file=$tempdir/role_parallel.sql",
+			'pg_restore',
+			'--file' => "$tempdir/role_parallel.sql",
 			"$tempdir/role_parallel",
 		],
 	},
 	rows_per_insert => {
 		dump_cmd => [
-			'pg_dump',
-			'--no-sync',
-			"--file=$tempdir/rows_per_insert.sql",
-			'-a',
-			'--rows-per-insert=4',
-			'--table=dump_test.test_table',
-			'--table=dump_test.test_fourth_table',
+			'pg_dump', '--no-sync',
+			'--file' => "$tempdir/rows_per_insert.sql",
+			'--data-only',
+			'--rows-per-insert' => '4',
+			'--table' => 'dump_test.test_table',
+			'--table' => 'dump_test.test_fourth_table',
 			'postgres',
 		],
 	},
 	schema_only => {
 		dump_cmd => [
-			'pg_dump',                         '--format=plain',
-			"--file=$tempdir/schema_only.sql", '--no-sync',
-			'-s',                              'postgres',
+			'pg_dump', '--no-sync',
+			'--format' => 'plain',
+			'--file' => "$tempdir/schema_only.sql",
+			'--schema-only',
+			'postgres',
 		],
 	},
 	section_pre_data => {
 		dump_cmd => [
-			'pg_dump',            "--file=$tempdir/section_pre_data.sql",
-			'--section=pre-data', '--no-sync',
+			'pg_dump', '--no-sync',
+			'--file' => "$tempdir/section_pre_data.sql",
+			'--section' => 'pre-data',
 			'postgres',
 		],
 	},
 	section_data => {
 		dump_cmd => [
-			'pg_dump',        "--file=$tempdir/section_data.sql",
-			'--section=data', '--no-sync',
+			'pg_dump', '--no-sync',
+			'--file' => "$tempdir/section_data.sql",
+			'--section' => 'data',
 			'postgres',
 		],
 	},
 	section_post_data => {
 		dump_cmd => [
-			'pg_dump', "--file=$tempdir/section_post_data.sql",
-			'--section=post-data', '--no-sync', 'postgres',
+			'pg_dump', '--no-sync',
+			'--file' => "$tempdir/section_post_data.sql",
+			'--section' => 'post-data',
+			'postgres',
 		],
 	},
 	test_schema_plus_large_objects => {
 		dump_cmd => [
-			'pg_dump', "--file=$tempdir/test_schema_plus_large_objects.sql",
-
-			'--schema=dump_test', '-b', '-B', '--no-sync', 'postgres',
+			'pg_dump', '--no-sync',
+			'--file' => "$tempdir/test_schema_plus_large_objects.sql",
+			'--schema' => 'dump_test',
+			'--large-objects',
+			'--no-large-objects',
+			'postgres',
+		],
+	},
+	no_statistics => {
+		dump_cmd => [
+			'pg_dump', '--no-sync',
+			"--file=$tempdir/no_statistics.sql", '--no-statistics',
+			'postgres',
+		],
+	},
+	no_data_no_schema => {
+		dump_cmd => [
+			'pg_dump', '--no-sync',
+			"--file=$tempdir/no_data_no_schema.sql", '--no-data',
+			'--no-schema', 'postgres',
+		],
+	},
+	statistics_only => {
+		dump_cmd => [
+			'pg_dump', '--no-sync',
+			"--file=$tempdir/statistics_only.sql", '--statistics-only',
+			'postgres',
+		],
+	},
+	schema_only_with_statistics => {
+		dump_cmd => [
+			'pg_dump', '--no-sync',
+			"--file=$tempdir/schema_only_with_statistics.sql", '--schema-only',
+			'--with-statistics', 'postgres',
+		],
+	},
+	no_schema => {
+		dump_cmd => [
+			'pg_dump', '--no-sync',
+			"--file=$tempdir/no_schema.sql", '--no-schema',
+			'postgres',
 		],
 	},);
 
@@ -711,14 +816,17 @@ my %full_runs = (
 	exclude_test_table_data  => 1,
 	exclude_measurement      => 1,
 	exclude_measurement_data => 1,
-	no_toast_compression     => 1,
-	no_large_objects         => 1,
-	no_owner                 => 1,
-	no_privs                 => 1,
-	no_table_access_method   => 1,
-	pg_dumpall_dbprivs       => 1,
-	pg_dumpall_exclude       => 1,
-	schema_only              => 1,);
+	no_toast_compression => 1,
+	no_large_objects => 1,
+	no_owner => 1,
+	no_policies => 1,
+	no_privs => 1,
+	no_statistics => 1,
+	no_table_access_method => 1,
+	pg_dumpall_dbprivs => 1,
+	pg_dumpall_exclude => 1,
+	schema_only => 1,
+	schema_only_with_statistics => 1,);
 
 # This is where the actual tests are defined.
 my %tests = (
@@ -916,6 +1024,7 @@ my %tests = (
 			column_inserts => 1,
 			data_only => 1,
 			inserts => 1,
+			no_schema => 1,
 			section_data => 1,
 			test_schema_plus_large_objects => 1,
 		},
@@ -923,6 +1032,7 @@ my %tests = (
 			no_large_objects => 1,
 			no_owner    => 1,
 			schema_only => 1,
+			schema_only_with_statistics => 1,
 		},
 	},
 
@@ -1236,8 +1346,9 @@ my %tests = (
 		},
 		unlike => {
 			exclude_dump_test_schema => 1,
-			exclude_test_table       => 1,
-			only_dump_measurement    => 1,
+			exclude_test_table => 1,
+			no_policies => 1,
+			only_dump_measurement => 1,
 		},
 	},
 
@@ -1329,11 +1440,13 @@ my %tests = (
 			column_inserts => 1,
 			data_only => 1,
 			inserts => 1,
+			no_schema => 1,
 			section_data => 1,
 			test_schema_plus_large_objects => 1,
 		},
 		unlike => {
 			schema_only => 1,
+			schema_only_with_statistics => 1,
 			no_large_objects => 1,
 		},
 	},
@@ -1347,16 +1460,18 @@ my %tests = (
 			/xm,
 		like => {
 			%full_runs,
-			column_inserts         => 1,
-			data_only              => 1,
-			inserts                => 1,
-			section_data           => 1,
+			column_inserts => 1,
+			data_only => 1,
+			inserts => 1,
+			no_schema => 1,
+			section_data => 1,
 			test_schema_plus_large_objects => 1,
 		},
 		unlike => {
 			binary_upgrade => 1,
 			no_large_objects => 1,
-			schema_only    => 1,
+			schema_only => 1,
+			schema_only_with_statistics => 1,
 		},
 	},
 
@@ -1369,16 +1484,18 @@ my %tests = (
 			/xm,
 		like   => {
 			%full_runs,
-			column_inserts         => 1,
-			data_only              => 1,
-			inserts                => 1,
-			section_data           => 1,
+			column_inserts => 1,
+			data_only => 1,
+			inserts => 1,
+			no_schema => 1,
+			section_data => 1,
 			test_schema_plus_large_objects => 1,
 		},
 		unlike => {
 			binary_upgrade => 1,
 			no_large_objects => 1,
 			schema_only => 1,
+			schema_only_with_statistics => 1,
 		},
 	},
 
@@ -1538,12 +1655,14 @@ my %tests = (
 			column_inserts => 1,
 			data_only => 1,
 			inserts => 1,
+			no_schema => 1,
 			section_data => 1,
 			test_schema_plus_large_objects => 1,
 		},
 		unlike => {
 			no_large_objects => 1,
 			schema_only => 1,
+			schema_only_with_statistics => 1,
 		},
 	},
 
@@ -1690,17 +1809,19 @@ my %tests = (
 		like => {
 			%full_runs,
 			%dump_test_schema_runs,
-			data_only            => 1,
+			data_only => 1,
+			no_schema => 1,
 			only_dump_test_table => 1,
 			section_data         => 1,
 		},
 		unlike => {
 			binary_upgrade           => 1,
 			exclude_dump_test_schema => 1,
-			exclude_test_table       => 1,
-			exclude_test_table_data  => 1,
-			schema_only              => 1,
-			only_dump_measurement    => 1,
+			exclude_test_table => 1,
+			exclude_test_table_data => 1,
+			schema_only => 1,
+			schema_only_with_statistics => 1,
+			only_dump_measurement => 1,
 		},
 	},
 
@@ -1718,13 +1839,15 @@ my %tests = (
 			data_only               => 1,
 			exclude_test_table      => 1,
 			exclude_test_table_data => 1,
-			section_data            => 1,
+			no_schema => 1,
+			section_data => 1,
 		},
 		unlike => {
 			binary_upgrade           => 1,
 			exclude_dump_test_schema => 1,
-			schema_only              => 1,
-			only_dump_measurement    => 1,
+			schema_only => 1,
+			schema_only_with_statistics => 1,
+			only_dump_measurement => 1,
 		},
 	},
 
@@ -1738,7 +1861,10 @@ my %tests = (
 			\QCOPY dump_test.fk_reference_test_table (col1) FROM stdin;\E
 			\n(?:\d\n){5}\\\.\n
 			/xms,
-		like => { data_only => 1, },
+		like => {
+			data_only => 1,
+			no_schema => 1,
+		},
 	},
 
 	'COPY test_second_table' => {
@@ -1753,14 +1879,16 @@ my %tests = (
 		like => {
 			%full_runs,
 			%dump_test_schema_runs,
-			data_only    => 1,
+			data_only => 1,
+			no_schema => 1,
 			section_data => 1,
 		},
 		unlike => {
 			binary_upgrade           => 1,
 			exclude_dump_test_schema => 1,
-			schema_only              => 1,
-			only_dump_measurement    => 1,
+			schema_only => 1,
+			schema_only_with_statistics => 1,
+			only_dump_measurement => 1,
 		},
 	},
 
@@ -1775,14 +1903,16 @@ my %tests = (
 		like => {
 			%full_runs,
 			%dump_test_schema_runs,
-			data_only    => 1,
+			data_only => 1,
+			no_schema => 1,
 			section_data => 1,
 		},
 		unlike => {
 			binary_upgrade           => 1,
 			exclude_dump_test_schema => 1,
-			schema_only              => 1,
-			only_dump_measurement    => 1,
+			schema_only => 1,
+			schema_only_with_statistics => 1,
+			only_dump_measurement => 1,
 		},
 	},
 
@@ -1798,14 +1928,16 @@ my %tests = (
 		like => {
 			%full_runs,
 			%dump_test_schema_runs,
-			data_only    => 1,
+			data_only => 1,
+			no_schema => 1,
 			section_data => 1,
 		},
 		unlike => {
 			binary_upgrade           => 1,
 			exclude_dump_test_schema => 1,
-			schema_only              => 1,
-			only_dump_measurement    => 1,
+			schema_only => 1,
+			schema_only_with_statistics => 1,
+			only_dump_measurement => 1,
 		},
 	},
 
@@ -1820,14 +1952,16 @@ my %tests = (
 		like => {
 			%full_runs,
 			%dump_test_schema_runs,
-			data_only    => 1,
+			data_only => 1,
+			no_schema => 1,
 			section_data => 1,
 		},
 		unlike => {
 			binary_upgrade           => 1,
 			exclude_dump_test_schema => 1,
-			schema_only              => 1,
-			only_dump_measurement    => 1,
+			schema_only => 1,
+			schema_only_with_statistics => 1,
+			only_dump_measurement => 1,
 		},
 	},
 
@@ -1842,14 +1976,16 @@ my %tests = (
 		like => {
 			%full_runs,
 			%dump_test_schema_runs,
-			data_only    => 1,
+			data_only => 1,
+			no_schema => 1,
 			section_data => 1,
 		},
 		unlike => {
 			binary_upgrade           => 1,
 			exclude_dump_test_schema => 1,
-			schema_only              => 1,
-			only_dump_measurement    => 1,
+			schema_only => 1,
+			schema_only_with_statistics => 1,
+			only_dump_measurement => 1,
 		},
 	},
 
@@ -2823,8 +2959,9 @@ my %tests = (
 		},
 		unlike => {
 			exclude_dump_test_schema => 1,
-			exclude_test_table       => 1,
-			only_dump_measurement    => 1,
+			exclude_test_table => 1,
+			no_policies => 1,
+			only_dump_measurement => 1,
 		},
 	},
 
@@ -2844,8 +2981,9 @@ my %tests = (
 		},
 		unlike => {
 			exclude_dump_test_schema => 1,
-			exclude_test_table       => 1,
-			only_dump_measurement    => 1,
+			exclude_test_table => 1,
+			no_policies => 1,
+			only_dump_measurement => 1,
 		},
 	},
 
@@ -2865,8 +3003,9 @@ my %tests = (
 		},
 		unlike => {
 			exclude_dump_test_schema => 1,
-			exclude_test_table       => 1,
-			only_dump_measurement    => 1,
+			exclude_test_table => 1,
+			no_policies => 1,
+			only_dump_measurement => 1,
 		},
 	},
 
@@ -2886,8 +3025,9 @@ my %tests = (
 		},
 		unlike => {
 			exclude_dump_test_schema => 1,
-			exclude_test_table       => 1,
-			only_dump_measurement    => 1,
+			exclude_test_table => 1,
+			no_policies => 1,
+			only_dump_measurement => 1,
 		},
 	},
 
@@ -2907,8 +3047,9 @@ my %tests = (
 		},
 		unlike => {
 			exclude_dump_test_schema => 1,
-			exclude_test_table       => 1,
-			only_dump_measurement    => 1,
+			exclude_test_table => 1,
+			no_policies => 1,
+			only_dump_measurement => 1,
 		},
 	},
 
@@ -2928,8 +3069,9 @@ my %tests = (
 		},
 		unlike => {
 			exclude_dump_test_schema => 1,
-			exclude_test_table       => 1,
-			only_dump_measurement    => 1,
+			exclude_test_table => 1,
+			no_policies => 1,
+			only_dump_measurement => 1,
 		},
 	},
 
@@ -2974,9 +3116,9 @@ my %tests = (
 	'CREATE PUBLICATION pub5' => {
 		create_order => 50,
 		create_sql =>
-		  'CREATE PUBLICATION pub5 WITH (publish_generated_columns = true);',
+		  'CREATE PUBLICATION pub5 WITH (publish_generated_columns = stored);',
 		regexp => qr/^
-			\QCREATE PUBLICATION pub5 WITH (publish = 'insert, update, delete, truncate', publish_generated_columns = true);\E
+			\QCREATE PUBLICATION pub5 WITH (publish = 'insert, update, delete, truncate', publish_generated_columns = stored);\E
 			/xm,
 		like => { %full_runs, section_post_data => 1, },
 	},
@@ -3014,6 +3156,10 @@ my %tests = (
 		like => { %full_runs, section_post_data => 1, },
 	},
 
+
+	# Regardless of whether the table or schema is excluded, publications must
+	# still be dumped, as excluded objects do not apply to publications. We
+	# perform table and schema exclusion via full_runs.
 	'ALTER PUBLICATION pub1 ADD TABLE test_table' => {
 		create_order => 51,
 		create_sql =>
@@ -3021,13 +3167,12 @@ my %tests = (
 		regexp => qr/^
 			\QALTER PUBLICATION pub1 ADD TABLE ONLY dump_test.test_table;\E
 			/xm,
-		like   => { %full_runs, section_post_data => 1, },
-		unlike => {
-			exclude_dump_test_schema => 1,
-			exclude_test_table       => 1,
-		},
+		like => { %full_runs, section_post_data => 1, },
 	},
 
+	# Regardless of whether the table or schema is excluded, publications must
+	# still be dumped, as excluded objects do not apply to publications. We
+	# perform table and schema exclusion via full_runs.
 	'ALTER PUBLICATION pub1 ADD TABLE test_second_table' => {
 		create_order => 52,
 		create_sql =>
@@ -3036,9 +3181,11 @@ my %tests = (
 			\QALTER PUBLICATION pub1 ADD TABLE ONLY dump_test.test_second_table;\E
 			/xm,
 		like => { %full_runs, section_post_data => 1, },
-		unlike => { exclude_dump_test_schema => 1, },
 	},
 
+	# Regardless of whether the table or schema is excluded, publications must
+	# still be dumped, as excluded objects do not apply to publications. We
+	# perform table and schema exclusion via full_runs.
 	'ALTER PUBLICATION pub1 ADD TABLE test_sixth_table (col3, col2)' => {
 		create_order => 52,
 		create_sql =>
@@ -3047,9 +3194,11 @@ my %tests = (
 			\QALTER PUBLICATION pub1 ADD TABLE ONLY dump_test.test_sixth_table (col2, col3);\E
 			/xm,
 		like => { %full_runs, section_post_data => 1, },
-		unlike => { exclude_dump_test_schema => 1, },
 	},
 
+	# Regardless of whether the table or schema is excluded, publications must
+	# still be dumped, as excluded objects do not apply to publications. We
+	# perform table and schema exclusion via full_runs.
 	'ALTER PUBLICATION pub1 ADD TABLE test_seventh_table (col3, col2) WHERE (col1 = 1)'
 	  => {
 		create_order => 52,
@@ -3059,9 +3208,11 @@ my %tests = (
 			\QALTER PUBLICATION pub1 ADD TABLE ONLY dump_test.test_seventh_table (col2, col3) WHERE ((col1 = 1));\E
 			/xm,
 		like => { %full_runs, section_post_data => 1, },
-		unlike => { exclude_dump_test_schema => 1, },
 	  },
 
+	# Regardless of whether the table or schema is excluded, publications must
+	# still be dumped, as excluded objects do not apply to publications. We
+	# perform table and schema exclusion via full_runs.
 	'ALTER PUBLICATION pub3 ADD TABLES IN SCHEMA dump_test' => {
 		create_order => 51,
 		create_sql =>
@@ -3070,9 +3221,11 @@ my %tests = (
 			\QALTER PUBLICATION pub3 ADD TABLES IN SCHEMA dump_test;\E
 			/xm,
 		like => { %full_runs, section_post_data => 1, },
-		unlike => { exclude_dump_test_schema => 1, },
 	},
 
+	# Regardless of whether the table or schema is excluded, publications must
+	# still be dumped, as excluded objects do not apply to publications. We
+	# perform table and schema exclusion via full_runs.
 	'ALTER PUBLICATION pub3 ADD TABLES IN SCHEMA public' => {
 		create_order => 52,
 		create_sql   => 'ALTER PUBLICATION pub3 ADD TABLES IN SCHEMA public;',
@@ -3082,6 +3235,9 @@ my %tests = (
 		like => { %full_runs, section_post_data => 1, },
 	},
 
+	# Regardless of whether the table or schema is excluded, publications must
+	# still be dumped, as excluded objects do not apply to publications. We
+	# perform table and schema exclusion via full_runs.
 	'ALTER PUBLICATION pub3 ADD TABLE test_table' => {
 		create_order => 51,
 		create_sql =>
@@ -3089,13 +3245,12 @@ my %tests = (
 		regexp => qr/^
 			\QALTER PUBLICATION pub3 ADD TABLE ONLY dump_test.test_table;\E
 			/xm,
-		like   => { %full_runs, section_post_data => 1, },
-		unlike => {
-			exclude_dump_test_schema => 1,
-			exclude_test_table       => 1,
-		},
+		like => { %full_runs, section_post_data => 1, },
 	},
 
+	# Regardless of whether the table or schema is excluded, publications must
+	# still be dumped, as excluded objects do not apply to publications. We
+	# perform table and schema exclusion via full_runs.
 	'ALTER PUBLICATION pub4 ADD TABLE test_table WHERE (col1 > 0);' => {
 		create_order => 51,
 		create_sql =>
@@ -3103,13 +3258,12 @@ my %tests = (
 		regexp => qr/^
 			\QALTER PUBLICATION pub4 ADD TABLE ONLY dump_test.test_table WHERE ((col1 > 0));\E
 			/xm,
-		like   => { %full_runs, section_post_data => 1, },
-		unlike => {
-			exclude_dump_test_schema => 1,
-			exclude_test_table       => 1,
-		},
+		like => { %full_runs, section_post_data => 1, },
 	},
 
+	# Regardless of whether the table or schema is excluded, publications must
+	# still be dumped, as excluded objects do not apply to publications. We
+	# perform table and schema exclusion via full_runs.
 	'ALTER PUBLICATION pub4 ADD TABLE test_second_table WHERE (col2 = \'test\');'
 	  => {
 		create_order => 52,
@@ -3119,7 +3273,6 @@ my %tests = (
 			\QALTER PUBLICATION pub4 ADD TABLE ONLY dump_test.test_second_table WHERE ((col2 = 'test'::text));\E
 			/xm,
 		like => { %full_runs, section_post_data => 1, },
-		unlike => { exclude_dump_test_schema => 1, },
 	  },
 
 	'CREATE SCHEMA public' => {
@@ -3220,15 +3373,17 @@ my %tests = (
 			/xm,
 		like => {
 			%full_runs,
-			data_only                => 1,
-			section_data             => 1,
-			only_dump_test_schema    => 1,
-			test_schema_plus_large_objects    => 1,
+			data_only => 1,
+			no_schema => 1,
+			section_data => 1,
+			only_dump_test_schema => 1,
+			test_schema_plus_large_objects => 1,
 		},
 		unlike => {
 			binary_upgrade           => 1,
 			exclude_dump_test_schema => 1,
 			schema_only => 1,
+			schema_only_with_statistics => 1,
 		},
 	},
 
@@ -3388,7 +3543,8 @@ my %tests = (
 		like => {
 			%full_runs,
 			%dump_test_schema_runs,
-			data_only            => 1,
+			data_only => 1,
+			no_schema => 1,
 			only_dump_measurement => 1,
 			section_data         => 1,
 			only_dump_test_schema => 1,
@@ -3396,10 +3552,11 @@ my %tests = (
 			role => 1,
 		},
 		unlike => {
-			binary_upgrade           => 1,
-			schema_only              => 1,
-			exclude_measurement      => 1,
-			only_dump_test_schema    => 1,
+			binary_upgrade => 1,
+			schema_only => 1,
+			schema_only_with_statistics => 1,
+			exclude_measurement => 1,
+			only_dump_test_schema => 1,
 			test_schema_plus_large_objects => 1,
 			exclude_measurement      => 1,
 			exclude_measurement_data => 1,
@@ -3626,12 +3783,14 @@ my %tests = (
 		create_order => 3,
 		create_sql   => 'CREATE TABLE dump_test.test_table_generated (
 						   col1 int primary key,
-						   col2 int generated always as (col1 * 2) stored
+						   col2 int generated always as (col1 * 2) stored,
+						   col3 int generated always as (col1 * 3) virtual
 					   );',
 		regexp => qr/^
 			\QCREATE TABLE dump_test.test_table_generated (\E\n
 			\s+\Qcol1 integer NOT NULL,\E\n
-			\s+\Qcol2 integer GENERATED ALWAYS AS ((col1 * 2)) STORED\E\n
+			\s+\Qcol2 integer GENERATED ALWAYS AS ((col1 * 2)) STORED,\E\n
+			\s+\Qcol3 integer GENERATED ALWAYS AS ((col1 * 3))\E\n
 			\);
 			/xms,
 		like =>
@@ -4271,6 +4430,7 @@ my %tests = (
 			column_inserts => 1,
 			data_only => 1,
 			inserts => 1,
+			no_schema => 1,
 			section_data => 1,
 			test_schema_plus_large_objects => 1,
 			binary_upgrade         => 1,
@@ -4279,6 +4439,7 @@ my %tests = (
 			no_large_objects => 1,
 			no_privs    => 1,
 			schema_only => 1,
+			schema_only_with_statistics => 1,
 		},
 	},
 
@@ -4396,8 +4557,9 @@ my %tests = (
 		unlike => {
 			binary_upgrade           => 1,
 			exclude_dump_test_schema => 1,
-			schema_only              => 1,
-			only_dump_measurement    => 1,
+			schema_only => 1,
+			schema_only_with_statistics => 1,
+			only_dump_measurement => 1,
 		},
 	},
 
@@ -4412,8 +4574,9 @@ my %tests = (
 		unlike => {
 			binary_upgrade           => 1,
 			exclude_dump_test_schema => 1,
-			schema_only              => 1,
-			only_dump_measurement    => 1,
+			schema_only => 1,
+			schema_only_with_statistics => 1,
+			only_dump_measurement => 1,
 		},
 	},
 
@@ -4571,6 +4734,83 @@ my %tests = (
 		},
 	},
 
+	#
+	# TABLE and MATVIEW stats will end up in SECTION_DATA.
+	# INDEX stats (expression columns only) will end up in SECTION_POST_DATA.
+	#
+	'statistics_import' => {
+		create_sql => '
+			CREATE TABLE dump_test.has_stats
+			AS SELECT g.g AS x, g.g / 2 AS y FROM generate_series(1,100) AS g(g);
+			CREATE MATERIALIZED VIEW dump_test.has_stats_mv AS SELECT * FROM dump_test.has_stats;
+			CREATE INDEX dup_test_post_data_ix ON dump_test.has_stats(x, (x - 1));
+			ANALYZE dump_test.has_stats, dump_test.has_stats_mv;',
+		regexp => qr/^
+			\QSELECT * FROM pg_catalog.pg_restore_relation_stats(\E\s+
+			'version',\s'\d+'::integer,\s+
+			'schemaname',\s'dump_test',\s+
+			'relname',\s'dup_test_post_data_ix',\s+
+			'relpages',\s'\d+'::integer,\s+
+			'reltuples',\s'\d+'::real,\s+
+			'relallvisible',\s'\d+'::integer,\s+
+			'relallfrozen',\s'\d+'::integer\s+
+			\);\s+
+			\QSELECT * FROM pg_catalog.pg_restore_attribute_stats(\E\s+
+			'version',\s'\d+'::integer,\s+
+			'schemaname',\s'dump_test',\s+
+			'relname',\s'dup_test_post_data_ix',\s+
+			'attnum',\s'2'::smallint,\s+
+			'inherited',\s'f'::boolean,\s+
+			'null_frac',\s'0'::real,\s+
+			'avg_width',\s'4'::integer,\s+
+			'n_distinct',\s'-1'::real,\s+
+			'histogram_bounds',\s'\{[0-9,]+\}'::text,\s+
+			'correlation',\s'1'::real\s+
+			\);/xm,
+		like => {
+			%full_runs,
+			%dump_test_schema_runs,
+			no_data_no_schema => 1,
+			no_schema => 1,
+			section_post_data => 1,
+			statistics_only => 1,
+			schema_only_with_statistics => 1,
+		},
+		unlike => {
+			exclude_dump_test_schema => 1,
+			no_statistics => 1,
+			only_dump_measurement => 1,
+			schema_only => 1,
+		},
+	},
+
+	#
+	# While attribute stats (aka pg_statistic stats) only appear for tables
+	# that have been analyzed, all tables will have relation stats because
+	# those come from pg_class.
+	#
+	'relstats_on_unanalyzed_tables' => {
+		regexp => qr/pg_catalog.pg_restore_relation_stats/,
+
+		like => {
+			%full_runs,
+			%dump_test_schema_runs,
+			no_data_no_schema => 1,
+			no_schema => 1,
+			only_dump_test_table => 1,
+			role => 1,
+			role_parallel => 1,
+			section_data => 1,
+			section_post_data => 1,
+			statistics_only => 1,
+			schema_only_with_statistics => 1,
+		},
+		unlike => {
+			no_statistics => 1,
+			schema_only => 1,
+		},
+	},
+
 	# CREATE TABLE with partitioned table and various AMs.  One
 	# partition uses the same default as the parent, and a second
 	# uses its own AM.
@@ -4717,7 +4957,7 @@ foreach my $db (sort keys %create_sql)
 # Test connecting to a non-existent database
 
 command_fails_like(
-	[ 'pg_dump', '-p', "$port", 'qqq' ],
+	[ 'pg_dump', '--port' => $port, 'qqq' ],
 	qr/pg_dump: error: connection to server .* failed: FATAL:  database "qqq" does not exist/,
 	'connecting to a non-existent database');
 
@@ -4725,7 +4965,7 @@ command_fails_like(
 # Test connecting to an invalid database
 
 $node->command_fails_like(
-	[ 'pg_dump', '-d', 'regression_invalid' ],
+	[ 'pg_dump', '--dbname' => 'regression_invalid' ],
 	qr/pg_dump: error: connection to server .* failed: FATAL:  cannot connect to invalid database "regression_invalid"/,
 	'connecting to an invalid database');
 
@@ -4733,7 +4973,7 @@ $node->command_fails_like(
 # Test connecting with an unprivileged user
 
 command_fails_like(
-	[ 'pg_dump', '-p', "$port", '--role=regress_dump_test_role' ],
+	[ 'pg_dump', '--port' => $port, '--role' => 'regress_dump_test_role' ],
 	qr/\Qpg_dump: error: query failed: ERROR:  permission denied for\E/,
 	'connecting with an unprivileged user');
 
@@ -4741,22 +4981,32 @@ command_fails_like(
 # Test dumping a non-existent schema, table, and patterns with --strict-names
 
 command_fails_like(
-	[ 'pg_dump', '-p', "$port", '-n', 'nonexistent' ],
+	[ 'pg_dump', '--port' => $port, '--schema' => 'nonexistent' ],
 	qr/\Qpg_dump: error: no matching schemas were found\E/,
 	'dumping a non-existent schema');
 
 command_fails_like(
-	[ 'pg_dump', '-p', "$port", '-t', 'nonexistent' ],
+	[ 'pg_dump', '--port' => $port, '--table' => 'nonexistent' ],
 	qr/\Qpg_dump: error: no matching tables were found\E/,
 	'dumping a non-existent table');
 
 command_fails_like(
-	[ 'pg_dump', '-p', "$port", '--strict-names', '-n', 'nonexistent*' ],
+	[
+		'pg_dump',
+		'--port' => $port,
+		'--strict-names',
+		'--schema' => 'nonexistent*'
+	],
 	qr/\Qpg_dump: error: no matching schemas were found for pattern\E/,
 	'no matching schemas');
 
 command_fails_like(
-	[ 'pg_dump', '-p', "$port", '--strict-names', '-t', 'nonexistent*' ],
+	[
+		'pg_dump',
+		'--port' => $port,
+		'--strict-names',
+		'--table' => 'nonexistent*'
+	],
 	qr/\Qpg_dump: error: no matching tables were found for pattern\E/,
 	'no matching tables');
 
@@ -4764,26 +5014,31 @@ command_fails_like(
 # Test invalid multipart database names
 
 $node->command_fails_like(
-	[ 'pg_dumpall', '--exclude-database', '.' ],
+	[ 'pg_dumpall', '--exclude-database' => '.' ],
 	qr/pg_dumpall: error: improper qualified name \(too many dotted names\): \./,
 	'pg_dumpall: option --exclude-database rejects multipart pattern "."');
 
 $node->command_fails_like(
-	[ 'pg_dumpall', '--exclude-database', 'myhost.mydb' ],
+	[ 'pg_dumpall', '--exclude-database' => 'myhost.mydb' ],
 	qr/pg_dumpall: error: improper qualified name \(too many dotted names\): myhost\.mydb/,
 	'pg_dumpall: option --exclude-database rejects multipart database names');
 
 ##############################################################
 # Test dumping pg_catalog (for research -- cannot be reloaded)
 
-$node->command_ok([ 'pg_dump', '-p', "$port", '-n', 'pg_catalog' ],
+$node->command_ok(
+	[ 'pg_dump', '--port' => $port, '--schema' => 'pg_catalog' ],
 	'pg_dump: option -n pg_catalog');
 
 #########################################
 # Test valid database exclusion patterns
 
 $node->command_ok(
-	[ 'pg_dumpall', '-p', "$port", '--exclude-database', '"myhost.mydb"' ],
+	[
+		'pg_dumpall',
+		'--port' => $port,
+		'--exclude-database' => '"myhost.mydb"'
+	],
 	'pg_dumpall: option --exclude-database handles database names with embedded dots'
 );
 
@@ -4791,28 +5046,28 @@ $node->command_ok(
 # Test invalid multipart schema names
 
 $node->command_fails_like(
-	[ 'pg_dump', '--schema', 'myhost.mydb.myschema' ],
+	[ 'pg_dump', '--schema' => 'myhost.mydb.myschema' ],
 	qr/pg_dump: error: improper qualified name \(too many dotted names\): myhost\.mydb\.myschema/,
 	'pg_dump: option --schema rejects three-part schema names');
 
 $node->command_fails_like(
-	[ 'pg_dump', '--schema', 'otherdb.myschema' ],
+	[ 'pg_dump', '--schema' => 'otherdb.myschema' ],
 	qr/pg_dump: error: cross-database references are not implemented: otherdb\.myschema/,
 	'pg_dump: option --schema rejects cross-database multipart schema names');
 
 $node->command_fails_like(
-	[ 'pg_dump', '--schema', '.' ],
+	[ 'pg_dump', '--schema' => '.' ],
 	qr/pg_dump: error: cross-database references are not implemented: \./,
 	'pg_dump: option --schema rejects degenerate two-part schema name: "."');
 
 $node->command_fails_like(
-	[ 'pg_dump', '--schema', '"some.other.db".myschema' ],
+	[ 'pg_dump', '--schema' => '"some.other.db".myschema' ],
 	qr/pg_dump: error: cross-database references are not implemented: "some\.other\.db"\.myschema/,
 	'pg_dump: option --schema rejects cross-database multipart schema names with embedded dots'
 );
 
 $node->command_fails_like(
-	[ 'pg_dump', '--schema', '..' ],
+	[ 'pg_dump', '--schema' => '..' ],
 	qr/pg_dump: error: improper qualified name \(too many dotted names\): \.\./,
 	'pg_dump: option --schema rejects degenerate three-part schema name: ".."'
 );
@@ -4821,19 +5076,20 @@ $node->command_fails_like(
 # Test invalid multipart relation names
 
 $node->command_fails_like(
-	[ 'pg_dump', '--table', 'myhost.mydb.myschema.mytable' ],
+	[ 'pg_dump', '--table' => 'myhost.mydb.myschema.mytable' ],
 	qr/pg_dump: error: improper relation name \(too many dotted names\): myhost\.mydb\.myschema\.mytable/,
 	'pg_dump: option --table rejects four-part table names');
 
 $node->command_fails_like(
-	[ 'pg_dump', '--table', 'otherdb.pg_catalog.pg_class' ],
+	[ 'pg_dump', '--table' => 'otherdb.pg_catalog.pg_class' ],
 	qr/pg_dump: error: cross-database references are not implemented: otherdb\.pg_catalog\.pg_class/,
 	'pg_dump: option --table rejects cross-database three part table names');
 
 command_fails_like(
 	[
-		'pg_dump', '-p', "$port", '--table',
-		'"some.other.db".pg_catalog.pg_class'
+		'pg_dump',
+		'--port' => $port,
+		'--table' => '"some.other.db".pg_catalog.pg_class'
 	],
 	qr/pg_dump: error: cross-database references are not implemented: "some\.other\.db"\.pg_catalog\.pg_class/,
 	'pg_dump: option --table rejects cross-database three part table names with embedded dots'

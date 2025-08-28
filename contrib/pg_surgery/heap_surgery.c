@@ -3,7 +3,7 @@
  * heap_surgery.c
  *	  Functions to perform surgery on the damaged heap table.
  *
- * Copyright (c) 2020-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2020-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/pg_surgery/heap_surgery.c
@@ -23,7 +23,10 @@
 #include "utils/array.h"
 #include "utils/rel.h"
 
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(
+					.name = "pg_surgery",
+					.version = PG_VERSION
+);
 
 /* Options to forcefully change the state of a heap tuple. */
 typedef enum HeapTupleForceOption

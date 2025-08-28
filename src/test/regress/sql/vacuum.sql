@@ -113,6 +113,10 @@ CREATE INDEX brin_pvactst ON pvactst USING brin (i);
 CREATE INDEX gin_pvactst ON pvactst USING gin (a);
 CREATE INDEX gist_pvactst ON pvactst USING gist (p);
 CREATE INDEX spgist_pvactst ON pvactst USING spgist (p);
+CREATE TABLE pvactst2 (i INT) WITH (autovacuum_enabled = off);
+INSERT INTO pvactst2 SELECT generate_series(1, 1000);
+CREATE INDEX ON pvactst2 (i);
+CREATE INDEX ON pvactst2 (i);
 
 -- VACUUM invokes parallel index cleanup
 SET min_parallel_index_scan_size to 0;
@@ -130,6 +134,14 @@ VACUUM (PARALLEL 2, INDEX_CLEANUP FALSE) pvactst;
 VACUUM (PARALLEL 2, FULL TRUE) pvactst; -- error, cannot use both PARALLEL and FULL
 VACUUM (PARALLEL) pvactst; -- error, cannot use PARALLEL option without parallel degree
 
+-- Test parallel vacuum using the minimum maintenance_work_mem with and without
+-- dead tuples.
+SET maintenance_work_mem TO 64;
+VACUUM (PARALLEL 2) pvactst2;
+DELETE FROM pvactst2 WHERE i < 1000;
+VACUUM (PARALLEL 2) pvactst2;
+RESET maintenance_work_mem;
+
 -- Test different combinations of parallel and full options for temporary tables
 CREATE TEMPORARY TABLE tmp (a int PRIMARY KEY);
 CREATE INDEX tmp_idx1 ON tmp (a);
@@ -137,6 +149,7 @@ VACUUM (PARALLEL 1, FULL FALSE) tmp; -- parallel vacuum disabled for temp tables
 VACUUM (PARALLEL 0, FULL TRUE) tmp; -- can specify parallel disabled (even though that's implied by FULL)
 RESET min_parallel_index_scan_size;
 DROP TABLE pvactst;
+DROP TABLE pvactst2;
 
 -- INDEX_CLEANUP option
 CREATE TABLE no_index_cleanup (i INT PRIMARY KEY, t TEXT);
@@ -181,9 +194,19 @@ CREATE TEMP TABLE vac_truncate_test(i INT NOT NULL, j text)
 INSERT INTO vac_truncate_test VALUES (1, NULL), (NULL, NULL);
 VACUUM (TRUNCATE FALSE, DISABLE_PAGE_SKIPPING) vac_truncate_test;
 SELECT pg_relation_size('vac_truncate_test') > 0;
+SET vacuum_truncate = false;
 VACUUM (DISABLE_PAGE_SKIPPING) vac_truncate_test;
 SELECT pg_relation_size('vac_truncate_test') = 0;
 VACUUM (TRUNCATE FALSE, FULL TRUE) vac_truncate_test;
+ALTER TABLE vac_truncate_test RESET (vacuum_truncate);
+INSERT INTO vac_truncate_test VALUES (1, NULL), (NULL, NULL);
+VACUUM (DISABLE_PAGE_SKIPPING) vac_truncate_test;
+SELECT pg_relation_size('vac_truncate_test') > 0;
+RESET vacuum_truncate;
+VACUUM (TRUNCATE FALSE, DISABLE_PAGE_SKIPPING) vac_truncate_test;
+SELECT pg_relation_size('vac_truncate_test') > 0;
+VACUUM (DISABLE_PAGE_SKIPPING) vac_truncate_test;
+SELECT pg_relation_size('vac_truncate_test') = 0;
 DROP TABLE vac_truncate_test;
 
 -- partitioned table

@@ -3,7 +3,7 @@
  * csvlog.c
  *	  CSV logging
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -248,7 +248,7 @@ write_csvlog(ErrorData *edata)
 	appendStringInfoChar(&buf, ',');
 
 	/* query id */
-	appendStringInfo(&buf, "%lld", (long long) pgstat_get_my_query_id());
+	appendStringInfo(&buf, "%" PRId64, pgstat_get_my_query_id());
 
 	appendStringInfoChar(&buf, '\n');
 

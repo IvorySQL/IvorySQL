@@ -9,7 +9,7 @@
  * proper FooMain() routine for the incarnation.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -143,10 +143,7 @@ main(int argc, char *argv[])
 	init_locale("LC_MESSAGES", LC_MESSAGES, "");
 #endif
 
-	/*
-	 * We keep these set to "C" always, except transiently in pg_locale.c; see
-	 * that file for explanations.
-	 */
+	/* We keep these set to "C" always.  See pg_locale.c for explanation. */
 	init_locale("LC_MONETARY", LC_MONETARY, "C");
 	init_locale("LC_NUMERIC", LC_NUMERIC, "C");
 	init_locale("LC_TIME", LC_TIME, "C");

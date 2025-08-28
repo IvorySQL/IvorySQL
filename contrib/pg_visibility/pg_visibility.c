@@ -3,7 +3,7 @@
  * pg_visibility.c
  *	  display visibility map information and page-level visibility bits
  *
- * Copyright (c) 2016-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2025, PostgreSQL Global Development Group
  *
  *	  contrib/pg_visibility/pg_visibility.c
  *-------------------------------------------------------------------------
@@ -25,7 +25,10 @@
 #include "storage/smgr.h"
 #include "utils/rel.h"
 
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(
+					.name = "pg_visibility",
+					.version = PG_VERSION
+);
 
 typedef struct vbits
 {
@@ -424,7 +427,7 @@ pg_truncate_visibility_map(PG_FUNCTION_ARGS)
 		xlrec.flags = SMGR_TRUNCATE_VM;
 
 		XLogBeginInsert();
-		XLogRegisterData((char *) &xlrec, sizeof(xlrec));
+		XLogRegisterData(&xlrec, sizeof(xlrec));
 
 		lsn = XLogInsert(RM_SMGR_ID,
 						 XLOG_SMGR_TRUNCATE | XLR_SPECIAL_REL_UPDATE);
@@ -523,7 +526,13 @@ collect_visibility_data(Oid relid, bool include_pd)
 	{
 		p.current_blocknum = 0;
 		p.last_exclusive = nblocks;
-		stream = read_stream_begin_relation(READ_STREAM_FULL,
+
+		/*
+		 * It is safe to use batchmode as block_range_read_stream_cb takes no
+		 * locks.
+		 */
+		stream = read_stream_begin_relation(READ_STREAM_FULL |
+											READ_STREAM_USE_BATCHING,
 											bstrategy,
 											rel,
 											MAIN_FORKNUM,

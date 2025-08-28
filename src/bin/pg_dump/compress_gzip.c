@@ -3,7 +3,7 @@
  * compress_gzip.c
  *	 Routines for archivers to read or write a gzip compressed data stream.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -129,7 +129,7 @@ DeflateCompressorCommon(ArchiveHandle *AH, CompressorState *cs, bool flush)
 				 */
 				size_t		len = gzipcs->outsize - zp->avail_out;
 
-				cs->writeF(AH, (char *) out, len);
+				cs->writeF(AH, out, len);
 			}
 			zp->next_out = out;
 			zp->avail_out = gzipcs->outsize;

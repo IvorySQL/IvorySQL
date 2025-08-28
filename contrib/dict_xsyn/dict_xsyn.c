@@ -3,7 +3,7 @@
  * dict_xsyn.c
  *	  Extended synonym dictionary
  *
- * Copyright (c) 2007-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2007-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/dict_xsyn/dict_xsyn.c
@@ -20,7 +20,10 @@
 #include "tsearch/ts_public.h"
 #include "utils/formatting.h"
 
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(
+					.name = "dict_xsyn",
+					.version = PG_VERSION
+);
 
 typedef struct
 {

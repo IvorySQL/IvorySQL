@@ -3,7 +3,7 @@
  * signalfuncs.c
  *	  Functions for signaling backends
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -215,10 +215,10 @@ pg_wait_until_termination(int pid, int64 timeout)
 	} while (remainingtime > 0);
 
 	ereport(WARNING,
-			(errmsg_plural("backend with PID %d did not terminate within %lld millisecond",
-						   "backend with PID %d did not terminate within %lld milliseconds",
+			(errmsg_plural("backend with PID %d did not terminate within %" PRId64 " millisecond",
+						   "backend with PID %d did not terminate within %" PRId64 " milliseconds",
 						   timeout,
-						   pid, (long long int) timeout)));
+						   pid, timeout)));
 
 	return false;
 }

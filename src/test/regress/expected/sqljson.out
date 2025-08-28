@@ -272,7 +272,7 @@ SELECT pg_typeof(JSON_SERIALIZE(NULL));
 
 -- only string types or bytea allowed
 SELECT JSON_SERIALIZE('{ "a" : 1 } ' RETURNING jsonb);
-ERROR:  cannot use RETURNING type jsonb in JSON_SERIALIZE()
+ERROR:  cannot use type jsonb in RETURNING clause of JSON_SERIALIZE()
 HINT:  Try returning a string type or bytea.
 EXPLAIN (VERBOSE, COSTS OFF) SELECT JSON_SERIALIZE('{}');
                      QUERY PLAN                      
@@ -573,6 +573,18 @@ SELECT JSON_OBJECT(1: 1, '2': NULL, '3': 1, 4: NULL, '5': 'a' ABSENT ON NULL WIT
  {"1": 1, "3": 1, "5": "a"}
 (1 row)
 
+-- BUG: https://postgr.es/m/CADXhmgTJtJZK9A3Na_ry%2BXrq-ghjcejBRhcRMzWZvbd__QdgJA%40mail.gmail.com
+-- datum_to_jsonb_internal() didn't catch keys that are casts instead of a simple scalar
+CREATE TYPE mood AS ENUM ('happy', 'sad', 'neutral');
+CREATE FUNCTION mood_to_json(mood) RETURNS json AS $$
+  SELECT to_json($1::text);
+$$ LANGUAGE sql IMMUTABLE;
+CREATE CAST (mood AS json) WITH FUNCTION mood_to_json(mood) AS IMPLICIT;
+SELECT JSON_OBJECT('happy'::mood: '123'::jsonb);
+ERROR:  key value must be scalar, not array, composite, or json
+DROP CAST (mood AS json);
+DROP FUNCTION mood_to_json;
+DROP TYPE mood;
 -- JSON_ARRAY()
 SELECT JSON_ARRAY();
  json_array 
@@ -1011,17 +1023,18 @@ FROM generate_series(1,5) i;
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT JSON_OBJECTAGG(i: ('111' || i)::bytea FORMAT JSON WITH UNIQUE RETURNING text) OVER (PARTITION BY i % 2)
 FROM generate_series(1,5) i;
-                                                            QUERY PLAN                                                             
------------------------------------------------------------------------------------------------------------------------------------
+                                                            QUERY PLAN                                                            
+----------------------------------------------------------------------------------------------------------------------------------
  WindowAgg
-   Output: JSON_OBJECTAGG(i : (('111'::text || (i)::text))::bytea FORMAT JSON WITH UNIQUE KEYS RETURNING text) OVER (?), ((i % 2))
+   Output: JSON_OBJECTAGG(i : (('111'::text || (i)::text))::bytea FORMAT JSON WITH UNIQUE KEYS RETURNING text) OVER w1, ((i % 2))
+   Window: w1 AS (PARTITION BY ((i.i % 2)))
    ->  Sort
          Output: ((i % 2)), i
          Sort Key: ((i.i % 2))
          ->  Function Scan on pg_catalog.generate_series i
                Output: (i % 2), i
                Function Call: generate_series(1, 5)
-(8 rows)
+(9 rows)
 
 CREATE VIEW json_objectagg_view AS
 SELECT JSON_OBJECTAGG(i: ('111' || i)::bytea FORMAT JSON WITH UNIQUE RETURNING text) FILTER (WHERE i > 3)
@@ -1047,17 +1060,18 @@ FROM generate_series(1,5) i;
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT JSON_ARRAYAGG(('111' || i)::bytea FORMAT JSON NULL ON NULL RETURNING text) OVER (PARTITION BY i % 2)
 FROM generate_series(1,5) i;
-                                                        QUERY PLAN                                                        
---------------------------------------------------------------------------------------------------------------------------
+                                                       QUERY PLAN                                                        
+-------------------------------------------------------------------------------------------------------------------------
  WindowAgg
-   Output: JSON_ARRAYAGG((('111'::text || (i)::text))::bytea FORMAT JSON NULL ON NULL RETURNING text) OVER (?), ((i % 2))
+   Output: JSON_ARRAYAGG((('111'::text || (i)::text))::bytea FORMAT JSON NULL ON NULL RETURNING text) OVER w1, ((i % 2))
+   Window: w1 AS (PARTITION BY ((i.i % 2)))
    ->  Sort
          Output: ((i % 2)), i
          Sort Key: ((i.i % 2))
          ->  Function Scan on pg_catalog.generate_series i
                Output: (i % 2), i
                Function Call: generate_series(1, 5)
-(8 rows)
+(9 rows)
 
 CREATE VIEW json_arrayagg_view AS
 SELECT JSON_ARRAYAGG(('111' || i)::bytea FORMAT JSON NULL ON NULL RETURNING text) FILTER (WHERE i > 3)

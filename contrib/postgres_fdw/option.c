@@ -3,7 +3,7 @@
  * option.c
  *		  FDW and GUC option handling for postgres_fdw
  *
- * Portions Copyright (c) 2012-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2012-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  contrib/postgres_fdw/option.c
@@ -278,6 +278,9 @@ InitPgFdwOptions(void)
 		/* sampling is available on both server and table */
 		{"analyze_sampling", ForeignServerRelationId, false},
 		{"analyze_sampling", ForeignTableRelationId, false},
+
+		{"use_scram_passthrough", ForeignServerRelationId, false},
+		{"use_scram_passthrough", UserMappingRelationId, false},
 
 		/*
 		 * sslcert and sslkey are in fact libpq options, but we repeat them

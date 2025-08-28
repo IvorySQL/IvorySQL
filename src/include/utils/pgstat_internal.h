@@ -5,7 +5,7 @@
  * only be needed by files implementing statistics support (rather than ones
  * reporting / querying stats).
  *
- * Copyright (c) 2001-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2001-2025, PostgreSQL Global Development Group
  *
  * src/include/utils/pgstat_internal.h
  * ----------
@@ -156,8 +156,8 @@ typedef struct PgStat_EntryRef
 	 * Pending statistics data that will need to be flushed to shared memory
 	 * stats eventually. Each stats kind utilizing pending data defines what
 	 * format its pending data has and needs to provide a
-	 * PgStat_KindInfo->flush_pending_cb callback to merge pending into shared
-	 * stats.
+	 * PgStat_KindInfo->flush_pending_cb callback to merge pending entries
+	 * into the shared stats hash table.
 	 */
 	void	   *pending;
 	dlist_node	pending_node;	/* membership in pgStatPending list */
@@ -260,7 +260,8 @@ typedef struct PgStat_KindInfo
 
 	/*
 	 * For variable-numbered stats: flush pending stats. Required if pending
-	 * data is used.  See flush_fixed_cb for fixed-numbered stats.
+	 * data is used. See flush_static_cb when dealing with stats data that
+	 * that cannot use PgStat_EntryRef->pending.
 	 */
 	bool		(*flush_pending_cb) (PgStat_EntryRef *sr, bool nowait);
 
@@ -289,17 +290,23 @@ typedef struct PgStat_KindInfo
 	void		(*init_shmem_cb) (void *stats);
 
 	/*
-	 * For fixed-numbered statistics: Flush pending stats. Returns true if
-	 * some of the stats could not be flushed, due to lock contention for
-	 * example. Optional.
+	 * For fixed-numbered or variable-numbered statistics: Flush pending stats
+	 * entries, for stats kinds that do not use PgStat_EntryRef->pending.
+	 *
+	 * Returns true if some of the stats could not be flushed, due to lock
+	 * contention for example. Optional.
 	 */
-	bool		(*flush_fixed_cb) (bool nowait);
+	bool		(*flush_static_cb) (bool nowait);
 
 	/*
-	 * For fixed-numbered statistics: Check for pending stats in need of
-	 * flush. Returns true if there are any stats pending for flush. Optional.
+	 * For fixed-numbered or variable-numbered statistics: Check for pending
+	 * stats in need of flush with flush_static_cb, when these do not use
+	 * PgStat_EntryRef->pending.
+	 *
+	 * Returns true if there are any stats pending for flush, triggering
+	 * flush_static_cb. Optional.
 	 */
-	bool		(*have_fixed_pending_cb) (void);
+	bool		(*have_static_pending_cb) (void);
 
 	/*
 	 * For fixed-numbered statistics: Reset All.
@@ -613,11 +620,16 @@ extern void pgstat_archiver_snapshot_cb(void);
  * Functions in pgstat_backend.c
  */
 
-extern void pgstat_flush_backend(bool nowait);
+/* flags for pgstat_flush_backend() */
+#define PGSTAT_BACKEND_FLUSH_IO		(1 << 0)	/* Flush I/O statistics */
+#define PGSTAT_BACKEND_FLUSH_WAL   (1 << 1) /* Flush WAL statistics */
+#define PGSTAT_BACKEND_FLUSH_ALL   (PGSTAT_BACKEND_FLUSH_IO | PGSTAT_BACKEND_FLUSH_WAL)
 
-extern PgStat_BackendPendingIO *pgstat_prep_backend_pending(ProcNumber procnum);
-extern bool pgstat_backend_flush_cb(PgStat_EntryRef *entry_ref, bool nowait);
-extern void pgstat_backend_reset_timestamp_cb(PgStatShared_Common *header, TimestampTz ts);
+extern bool pgstat_flush_backend(bool nowait, bits32 flags);
+extern bool pgstat_backend_flush_cb(bool nowait);
+extern bool pgstat_backend_have_pending_cb(void);
+extern void pgstat_backend_reset_timestamp_cb(PgStatShared_Common *header,
+											  TimestampTz ts);
 
 /*
  * Functions in pgstat_bgwriter.c
@@ -707,6 +719,8 @@ extern bool pgstat_lock_entry_shared(PgStat_EntryRef *entry_ref, bool nowait);
 extern void pgstat_unlock_entry(PgStat_EntryRef *entry_ref);
 extern bool pgstat_drop_entry(PgStat_Kind kind, Oid dboid, uint64 objid);
 extern void pgstat_drop_all_entries(void);
+extern void pgstat_drop_matching_entries(bool (*do_drop) (PgStatShared_HashEntry *, Datum),
+										 Datum match_data);
 extern PgStat_EntryRef *pgstat_get_entry_ref_locked(PgStat_Kind kind, Oid dboid, uint64 objid,
 													bool nowait);
 extern void pgstat_reset_entry(PgStat_Kind kind, Oid dboid, uint64 objid, TimestampTz ts);
@@ -734,8 +748,6 @@ extern void pgstat_slru_snapshot_cb(void);
 /*
  * Functions in pgstat_wal.c
  */
-
-extern void pgstat_flush_wal(bool nowait);
 
 extern void pgstat_wal_init_backend_cb(void);
 extern bool pgstat_wal_have_pending_cb(void);

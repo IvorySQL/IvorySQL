@@ -14,7 +14,7 @@
  * See src/backend/utils/misc/README for more information.
  *
  *
- * Copyright (c) 2000-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2025, PostgreSQL Global Development Group
  * Written by Peter Eisentraut <peter_e@gmx.net>.
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -1594,7 +1594,7 @@ static void
 InitializeGUCOptionsFromEnvironment(void)
 {
 	char	   *env;
-	long		stack_rlimit;
+	ssize_t		stack_rlimit;
 
 	env = getenv("PGPORT");
 	if (env != NULL)
@@ -1618,7 +1618,7 @@ InitializeGUCOptionsFromEnvironment(void)
 	stack_rlimit = get_stack_depth_rlimit();
 	if (stack_rlimit > 0)
 	{
-		long		new_limit = (stack_rlimit - STACK_DEPTH_SLOP) / 1024L;
+		ssize_t		new_limit = (stack_rlimit - STACK_DEPTH_SLOP) / 1024;
 
 		if (new_limit > 100)
 		{
@@ -1632,7 +1632,7 @@ InitializeGUCOptionsFromEnvironment(void)
 				new_limit = 2048;
 				source = PGC_S_DYNAMIC_DEFAULT;
 			}
-			snprintf(limbuf, sizeof(limbuf), "%ld", new_limit);
+			snprintf(limbuf, sizeof(limbuf), "%d", (int) new_limit);
 			SetConfigOption("max_stack_depth", limbuf,
 							PGC_POSTMASTER, source);
 		}
@@ -4914,10 +4914,11 @@ init_custom_variable(const char *name,
 		 strcmp(name, "pljava.vmoptions") == 0))
 		context = PGC_SUSET;
 
-	gen = (struct config_generic *) guc_malloc(ERROR, sz);
+	/* As above, an OOM here is FATAL */
+	gen = (struct config_generic *) guc_malloc(FATAL, sz);
 	memset(gen, 0, sz);
 
-	gen->name = guc_strdup(ERROR, name);
+	gen->name = guc_strdup(FATAL, name);
 	gen->context = context;
 	gen->group = CUSTOM_OPTIONS;
 	gen->short_desc = short_desc;

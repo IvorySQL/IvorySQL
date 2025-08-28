@@ -3,7 +3,7 @@
  * clauses.c
  *	  routines to manipulate qualification clauses
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -1318,6 +1318,7 @@ contain_leaked_vars_walker(Node *node, void *context)
 		case T_NullTest:
 		case T_BooleanTest:
 		case T_NextValueExpr:
+		case T_ReturningExpr:
 		case T_List:
 
 			/*
@@ -2350,7 +2351,7 @@ convert_saop_to_hashed_saop_walker(Node *node, void *context)
 						/* Looks good. Fill in the hash functions */
 						saop->hashfuncid = lefthashfunc;
 					}
-					return true;
+					return false;
 				}
 			}
 			else				/* !saop->useOr */
@@ -2388,7 +2389,7 @@ convert_saop_to_hashed_saop_walker(Node *node, void *context)
 						 */
 						saop->negfuncid = get_opcode(negator);
 					}
-					return true;
+					return false;
 				}
 			}
 		}
@@ -3588,6 +3589,8 @@ eval_whenexpr2:
 										 fselect->resulttypmod,
 										 fselect->resultcollid,
 										 ((Var *) arg)->varlevelsup);
+						/* New Var has same OLD/NEW returning as old one */
+						newvar->varreturningtype = ((Var *) arg)->varreturningtype;
 						/* New Var is nullable by same rels as the old one */
 						newvar->varnullingrels = ((Var *) arg)->varnullingrels;
 						return (Node *) newvar;
@@ -4958,7 +4961,7 @@ inline_function(Oid funcid, Oid result_type, Oid result_collid,
 	if (check_sql_fn_retval(list_make1(querytree_list),
 							result_type, rettupdesc,
 							funcform->prokind,
-							false, NULL))
+							false))
 		goto fail;				/* reject whole-tuple-result cases */
 
 	/*
@@ -5507,7 +5510,7 @@ inline_set_returning_function(PlannerInfo *root, RangeTblEntry *rte)
 	if (!check_sql_fn_retval(list_make1(querytree_list),
 							 fexpr->funcresulttype, rettupdesc,
 							 funcform->prokind,
-							 true, NULL) &&
+							 true) &&
 		(functypclass == TYPEFUNC_COMPOSITE ||
 		 functypclass == TYPEFUNC_COMPOSITE_DOMAIN ||
 		 functypclass == TYPEFUNC_RECORD))

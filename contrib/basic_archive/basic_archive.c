@@ -17,7 +17,7 @@
  * a file is successfully archived and then the system crashes before
  * a durable record of the success has been made.
  *
- * Copyright (c) 2022-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2022-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/basic_archive/basic_archive.c
@@ -37,7 +37,10 @@
 #include "storage/fd.h"
 #include "utils/guc.h"
 
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(
+					.name = "basic_archive",
+					.version = PG_VERSION
+);
 
 static char *archive_directory = NULL;
 

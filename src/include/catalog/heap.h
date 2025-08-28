@@ -4,7 +4,7 @@
  *	  prototypes for functions in backend/catalog/heap.c
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/heap.h
@@ -23,12 +23,12 @@
 #define CHKATYPE_ANYARRAY		0x01	/* allow ANYARRAY */
 #define CHKATYPE_ANYRECORD		0x02	/* allow RECORD and RECORD[] */
 #define CHKATYPE_IS_PARTKEY		0x04	/* attname is part key # not column */
+#define CHKATYPE_IS_VIRTUAL		0x08	/* is virtual generated column */
 
 typedef struct RawColumnDefault
 {
 	AttrNumber	attnum;			/* attribute to attach default to */
 	Node	   *raw_default;	/* default value (untransformed parse tree) */
-	bool		missingMode;	/* true if part of add column processing */
 	char		generated;		/* attgenerated setting */
 } RawColumnDefault;
 
@@ -40,6 +40,7 @@ typedef struct CookedConstraint
 	char	   *name;			/* name, or NULL if none */
 	AttrNumber	attnum;			/* which attr (only for NOTNULL, DEFAULT) */
 	Node	   *expr;			/* transformed default or check expr */
+	bool		is_enforced;	/* is enforced? (only for CHECK) */
 	bool		skip_validation;	/* skip validation? (only for CHECK) */
 	bool		is_local;		/* constraint has local (non-inherited) def */
 	int16		inhcount;		/* number of times constraint is inherited */
@@ -119,6 +120,9 @@ extern List *AddRelationNotNullConstraints(Relation rel,
 										   List *old_notnulls);
 
 extern void RelationClearMissing(Relation rel);
+
+extern void StoreAttrMissingVal(Relation rel, AttrNumber attnum,
+								Datum missingval);
 extern void SetAttrMissing(Oid relid, char *attname, char *value);
 
 extern Node *cookDefault(ParseState *pstate,

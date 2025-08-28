@@ -4,7 +4,7 @@
  *	  definition of the "large object" system catalog (pg_largeobject)
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_largeobject.h
@@ -19,7 +19,7 @@
 #define PG_LARGEOBJECT_H
 
 #include "catalog/genbki.h"
-#include "catalog/pg_largeobject_d.h"
+#include "catalog/pg_largeobject_d.h"	/* IWYU pragma: export */
 #include "utils/snapshot.h"
 
 /* ----------------

@@ -49,7 +49,7 @@
  * by re-setting the page's page_dirty flag.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/access/transam/slru.c
@@ -100,8 +100,7 @@ SlruFileName(SlruCtl ctl, char *path, int64 segno)
 		 * that in the future we can't decrease SLRU_PAGES_PER_SEGMENT easily.
 		 */
 		Assert(segno >= 0 && segno <= INT64CONST(0xFFFFFFFFFFFFFFF));
-		return snprintf(path, MAXPGPATH, "%s/%015llX", ctl->Dir,
-						(long long) segno);
+		return snprintf(path, MAXPGPATH, "%s/%015" PRIX64, ctl->Dir, segno);
 	}
 	else
 	{
@@ -343,7 +342,7 @@ SimpleLruInit(SlruCtl ctl, const char *name, int nslots, int nlsns,
 	ctl->shared = shared;
 	ctl->sync_handler = sync_handler;
 	ctl->long_segment_names = long_segment_names;
-	ctl->bank_mask = (nslots / SLRU_BANK_SIZE) - 1;
+	ctl->nbanks = nbanks;
 	strlcpy(ctl->Dir, subdir, sizeof(ctl->Dir));
 }
 
@@ -606,7 +605,7 @@ SimpleLruReadPage_ReadOnly(SlruCtl ctl, int64 pageno, TransactionId xid)
 {
 	SlruShared	shared = ctl->shared;
 	LWLock	   *banklock = SimpleLruGetBankLock(ctl, pageno);
-	int			bankno = pageno & ctl->bank_mask;
+	int			bankno = pageno % ctl->nbanks;
 	int			bankstart = bankno * SLRU_BANK_SIZE;
 	int			bankend = bankstart + SLRU_BANK_SIZE;
 
@@ -1180,7 +1179,7 @@ SlruSelectLRUPage(SlruCtl ctl, int64 pageno)
 		int			bestinvalidslot = 0;	/* keep compiler quiet */
 		int			best_invalid_delta = -1;
 		int64		best_invalid_page_number = 0;	/* keep compiler quiet */
-		int			bankno = pageno & ctl->bank_mask;
+		int			bankno = pageno % ctl->nbanks;
 		int			bankstart = bankno * SLRU_BANK_SIZE;
 		int			bankend = bankstart + SLRU_BANK_SIZE;
 

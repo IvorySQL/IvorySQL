@@ -2,7 +2,7 @@
  *
  * dropuser
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -147,7 +147,8 @@ main(int argc, char *argv[])
 
 	initPQExpBuffer(&sql);
 	appendPQExpBuffer(&sql, "DROP ROLE %s%s;",
-					  (if_exists ? "IF EXISTS " : ""), fmtId(dropuser));
+					  (if_exists ? "IF EXISTS " : ""),
+					  fmtIdEnc(dropuser, PQclientEncoding(conn)));
 
 #if 0
 	cparams.dbname = NULL;     /* this program lacks any dbname option... */

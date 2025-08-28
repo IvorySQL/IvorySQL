@@ -88,13 +88,36 @@ PostgreSQL documentation
 
    <variablelist>
     <varlistentry>
+     <term><option>-a</option></term>
+     <term><option>--all</option></term>
+     <listitem>
+      <para>
+       Create one subscription per database on the target server. Exceptions
+       are template databases and databases that don't allow connections.
+       If the database name is not specified in publisher-server, the postgres
+       database will be used, or if that does not exist, template1 will be used.
+       Automatically generated names for subscriptions, publications, and
+       replication slots are used when this option is specified.
+       This option cannot be used along with <option>--database</option>,
+       <option>--publication</option>, <option>--replication-slot</option>, or
+       <option>--subscription</option>.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
      <term><option>-d <replaceable class="parameter">dbname</replaceable></option></term>
      <term><option>--database=<replaceable class="parameter">dbname</replaceable></option></term>
      <listitem>
       <para>
        The name of the database in which to create a subscription.  Multiple
        databases can be selected by writing multiple <option>-d</option>
-       switches.
+       switches. This option cannot be used together with <option>-a</option>.
+       If <option>-d</option> option is not provided, the database name will be
+       obtained from <option>-P</option> option. If the database name is not
+       specified in either the <option>-d</option> option, or the
+       <option>-P</option> option, and <option>-a</option> option is not
+       specified, an error will be reported.
       </para>
      </listitem>
     </varlistentry>
@@ -144,6 +167,29 @@ PostgreSQL documentation
     </varlistentry>
 
     <varlistentry>
+     <term><option>-R</option></term>
+     <term><option>--remove</option></term>
+     <listitem>
+      <para>
+       Remove all objects of the specified type from specified databases on the
+       target server.
+      </para>
+      <para>
+       publications: The "all tables" publications established for this
+       subscriber are always removed; specifying this object type causes all
+       other publications replicated from the source server to be dropped as
+       well.
+      </para>
+      <para>
+       The objects selected to be dropped are individually logged and do show
+       up in a --dry-run.  There is no opportunity to affect or stop the
+       dropping of the selected objects so consider taking a backup of them
+       using pg_dump.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
      <term><option>-s <replaceable class="parameter">dir</replaceable></option></term>
      <term><option>--socketdir=<replaceable class="parameter">dir</replaceable></option></term>
      <listitem>
@@ -161,6 +207,19 @@ PostgreSQL documentation
       <para>
        The maximum number of seconds to wait for recovery to end.  Setting to
        0 disables.  The default is 0.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>-T</option></term>
+     <term><option>--enable-two-phase</option></term>
+     <listitem>
+      <para>
+       Enables <link linkend="sql-createsubscription-params-with-two-phase"><literal>two_phase</literal></link>
+       commit for the subscription. When multiple databases are specified, this
+       option applies uniformly to all subscriptions created on those databases.
+       The default is <literal>false</literal>.
       </para>
      </listitem>
     </varlistentry>
@@ -214,7 +273,8 @@ PostgreSQL documentation
        names must match the number of specified databases, otherwise an error
        is reported.  The order of the multiple publication name switches must
        match the order of database switches.  If this option is not specified,
-       a generated name is assigned to the publication name.
+       a generated name is assigned to the publication name. This option cannot
+       be used together with <option>--all</option>.
       </para>
      </listitem>
     </varlistentry>
@@ -230,7 +290,8 @@ PostgreSQL documentation
        otherwise an error is reported.  The order of the multiple replication
        slot name switches must match the order of database switches.  If this
        option is not specified, the subscription name is assigned to the
-       replication slot name.
+       replication slot name. This option cannot be used together with
+       <option>--all</option>.
       </para>
      </listitem>
     </varlistentry>
@@ -245,7 +306,8 @@ PostgreSQL documentation
        names must match the number of specified databases, otherwise an error
        is reported.  The order of the multiple subscription name switches must
        match the order of database switches.  If this option is not specified,
-       a generated name is assigned to the subscription name.
+       a generated name is assigned to the subscription name. This option cannot
+       be used together with <option>--all</option>.
       </para>
      </listitem>
     </varlistentry>
@@ -295,12 +357,14 @@ PostgreSQL documentation
 
    <para>
     The target server must be used as a physical standby.  The target server
-    must have <xref linkend="guc-max-replication-slots"/> and <xref
+    must have <xref linkend="guc-max-active-replication-origins"/> and <xref
     linkend="guc-max-logical-replication-workers"/> configured to a value
     greater than or equal to the number of specified databases.  The target
     server must have <xref linkend="guc-max-worker-processes"/> configured to a
     value greater than the number of specified databases.  The target server
-    must accept local connections.
+    must accept local connections. If you are planning to use the
+    <option>--enable-two-phase</option> switch then you will also need to set
+    the <xref linkend="guc-max-prepared-transactions"/> appropriately.
    </para>
 
    <para>
@@ -360,6 +424,7 @@ PostgreSQL documentation
    </para>
 
    <para>
+    Unless the <option>--enable-two-phase</option> switch is specified,
     <application>pg_createsubscriber</application> sets up logical
     replication with two-phase commit disabled.  This means that any
     prepared transactions will be replicated at the time
@@ -376,6 +441,13 @@ PostgreSQL documentation
     situations in which the target server might use WAL files from the source
     server.  If the target server has a standby, replication will break and a
     fresh standby should be created.
+   </para>
+
+   <para>
+    Replication failures can occur if required WAL files are missing. To prevent
+    this, the source server must set
+    <xref linkend="guc-max-slot-wal-keep-size"/> to <literal>-1</literal> to
+    ensure that required WAL files are not prematurely removed.
    </para>
   </refsect2>
 

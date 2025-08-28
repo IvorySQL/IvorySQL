@@ -31,7 +31,7 @@
  * constraint changes are also tracked properly.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -499,6 +499,7 @@ lookup_type_cache(Oid type_id, int flags)
 		typentry->typrelid = typtup->typrelid;
 		typentry->typsubscript = typtup->typsubscript;
 		typentry->typelem = typtup->typelem;
+		typentry->typarray = typtup->typarray;
 		typentry->typcollation = typtup->typcollation;
 		typentry->flags |= TCFLAGS_HAVE_PG_TYPE_DATA;
 
@@ -544,6 +545,7 @@ lookup_type_cache(Oid type_id, int flags)
 		typentry->typrelid = typtup->typrelid;
 		typentry->typsubscript = typtup->typsubscript;
 		typentry->typelem = typtup->typelem;
+		typentry->typarray = typtup->typarray;
 		typentry->typcollation = typtup->typcollation;
 		typentry->flags |= TCFLAGS_HAVE_PG_TYPE_DATA;
 

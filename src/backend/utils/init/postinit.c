@@ -3,7 +3,7 @@
  * postinit.c
  *	  postgres initialization utilities
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -22,7 +22,6 @@
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "access/htup_details.h"
-#include "access/parallel.h"
 #include "access/session.h"
 #include "access/tableam.h"
 #include "access/xact.h"
@@ -44,21 +43,25 @@
 #include "replication/slot.h"
 #include "replication/slotsync.h"
 #include "replication/walsender.h"
+#include "storage/aio_subsys.h"
 #include "storage/bufmgr.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/lmgr.h"
 #include "storage/proc.h"
 #include "storage/procarray.h"
+#include "storage/procnumber.h"
 #include "storage/procsignal.h"
 #include "storage/sinvaladt.h"
 #include "storage/smgr.h"
 #include "storage/sync.h"
+#include "tcop/backend_startup.h"
 #include "tcop/tcopprot.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/guc_hooks.h"
+#include "utils/injection_point.h"
 #include "utils/memutils.h"
 #include "utils/pg_locale.h"
 #include "utils/portal.h"
@@ -233,6 +236,9 @@ PerformAuthentication(Port *port)
 	}
 #endif
 
+	/* Capture authentication start time for logging */
+	conn_timing.auth_start = GetCurrentTimestamp();
+
 	/*
 	 * Set up a timeout in case a buggy or malicious client fails to respond
 	 * during authentication.  Since we're inside a transaction and might do
@@ -251,7 +257,10 @@ PerformAuthentication(Port *port)
 	 */
 	disable_timeout(STATEMENT_TIMEOUT, false);
 
-	if (Log_connections)
+	/* Capture authentication end time for logging */
+	conn_timing.auth_end = GetCurrentTimestamp();
+
+	if (log_connections & LOG_CONNECTION_AUTHORIZATION)
 	{
 		StringInfoData logmsg;
 
@@ -341,13 +350,13 @@ CheckMyDatabase(const char *name, bool am_superuser, bool override_allow_connect
 	 * These checks are not enforced when in standalone mode, so that there is
 	 * a way to recover from disabling all access to all databases, for
 	 * example "UPDATE pg_database SET datallowconn = false;".
-	 *
-	 * We do not enforce them for autovacuum worker processes either.
 	 */
-	if (IsUnderPostmaster && !AmAutoVacuumWorkerProcess())
+	if (IsUnderPostmaster)
 	{
 		/*
 		 * Check that the database is currently allowing connections.
+		 * (Background processes can override this test and the next one by
+		 * setting override_allow_connections.)
 		 */
 		if (!dbform->datallowconn && !override_allow_connections)
 			ereport(FATAL,
@@ -360,7 +369,7 @@ CheckMyDatabase(const char *name, bool am_superuser, bool override_allow_connect
 		 * is redundant, but since we have the flag, might as well check it
 		 * and save a few cycles.)
 		 */
-		if (!am_superuser &&
+		if (!am_superuser && !override_allow_connections &&
 			object_aclcheck(DatabaseRelationId, MyDatabaseId, GetUserId(),
 								 ACL_CONNECT) != ACLCHECK_OK)
 			ereport(FATAL,
@@ -369,7 +378,9 @@ CheckMyDatabase(const char *name, bool am_superuser, bool override_allow_connect
 					 errdetail("User does not have CONNECT privilege.")));
 
 		/*
-		 * Check connection limit for this database.
+		 * Check connection limit for this database.  We enforce the limit
+		 * only for regular backends, since other process types have their own
+		 * PGPROC pools.
 		 *
 		 * There is a race condition here --- we create our PGPROC before
 		 * checking for other PGPROCs.  If two backends did this at about the
@@ -379,6 +390,7 @@ CheckMyDatabase(const char *name, bool am_superuser, bool override_allow_connect
 		 * just document that the connection limit is approximate.
 		 */
 		if (dbform->datconnlimit >= 0 &&
+			AmRegularBackendProcess() &&
 			!am_superuser &&
 			CountDBConnections(MyDatabaseId) > dbform->datconnlimit)
 			ereport(FATAL,
@@ -544,18 +556,18 @@ InitializeMaxBackends(void)
 {
 	Assert(MaxBackends == 0);
 
-	/* the extra unit accounts for the autovacuum launcher */
-	MaxBackends = MaxConnections + autovacuum_max_workers + 1 +
-		max_worker_processes + max_wal_senders;
+	/* Note that this does not include "auxiliary" processes */
+	MaxBackends = MaxConnections + autovacuum_worker_slots +
+		max_worker_processes + max_wal_senders + NUM_SPECIAL_WORKER_PROCS;
 
 	if (MaxBackends > MAX_BACKENDS)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("too many server processes configured"),
-				 errdetail("\"max_connections\" (%d) plus \"autovacuum_max_workers\" (%d) plus \"max_worker_processes\" (%d) plus \"max_wal_senders\" (%d) must be less than %d.",
-						   MaxConnections, autovacuum_max_workers,
+				 errdetail("\"max_connections\" (%d) plus \"autovacuum_worker_slots\" (%d) plus \"max_worker_processes\" (%d) plus \"max_wal_senders\" (%d) must be less than %d.",
+						   MaxConnections, autovacuum_worker_slots,
 						   max_worker_processes, max_wal_senders,
-						   MAX_BACKENDS)));
+						   MAX_BACKENDS - (NUM_SPECIAL_WORKER_PROCS - 1))));
 }
 
 /*
@@ -583,7 +595,7 @@ InitializeFastPathLocks(void)
 	while (FastPathLockGroupsPerBackend < FP_LOCK_GROUPS_PER_BACKEND_MAX)
 	{
 		/* stop once we exceed max_locks_per_xact */
-		if (FastPathLockGroupsPerBackend * FP_LOCK_SLOTS_PER_GROUP >= max_locks_per_xact)
+		if (FastPathLockSlotsPerBackend() >= max_locks_per_xact)
 			break;
 
 		FastPathLockGroupsPerBackend *= 2;
@@ -623,6 +635,12 @@ BaseInit(void)
 	 * can).
 	 */
 	pgstat_initialize();
+
+	/*
+	 * Initialize AIO before infrastructure that might need to actually
+	 * execute AIO.
+	 */
+	pgaio_init_backend();
 
 	/* Do local initialization of storage and buffer managers */
 	InitSync();
@@ -715,13 +733,27 @@ InitPostgres(const char *in_dbname, Oid dboid,
 	 */
 	InitProcessPhase2();
 
+	/* Initialize status reporting */
+	pgstat_beinit();
+
+	/*
+	 * And initialize an entry in the PgBackendStatus array.  That way, if
+	 * LWLocks or third-party authentication should happen to hang, it is
+	 * possible to retrieve some information about what is going on.
+	 */
+	if (!bootstrap)
+	{
+		pgstat_bestart_initial();
+		INJECTION_POINT("init-pre-auth");
+	}
+
 	/*
 	 * Initialize my entry in the shared-invalidation manager's array of
 	 * per-backend data.
 	 */
 	SharedInvalBackendInit(false);
 
-	ProcSignalInit(MyCancelKeyValid, MyCancelKey);
+	ProcSignalInit(MyCancelKey, MyCancelKeyLength);
 
 	/*
 	 * Also set up timeout handlers needed for backend operation.  We need
@@ -783,9 +815,6 @@ InitPostgres(const char *in_dbname, Oid dboid,
 	/* Initialize portal manager */
 	EnablePortalManager();
 
-	/* Initialize status reporting */
-	pgstat_beinit();
-
 	/*
 	 * Load relcache entries for the shared system catalogs.  This must create
 	 * at least entries for pg_database and catalogs used for authentication.
@@ -806,8 +835,8 @@ InitPostgres(const char *in_dbname, Oid dboid,
 	/* The autovacuum launcher is done here */
 	if (AmAutoVacuumLauncherProcess())
 	{
-		/* report this backend in the PgBackendStatus array */
-		pgstat_bestart();
+		/* fill in the remainder of this entry in the PgBackendStatus array */
+		pgstat_bestart_final();
 
 		return;
 	}
@@ -865,23 +894,7 @@ InitPostgres(const char *in_dbname, Oid dboid,
 		{
 			InitializeSessionUserId(username, useroid,
 									(flags & INIT_PG_OVERRIDE_ROLE_LOGIN) != 0);
-
-			/*
-			 * In a parallel worker, set am_superuser based on the
-			 * authenticated user ID, not the current role.  This is pretty
-			 * dubious but it matches our historical behavior.  Note that this
-			 * value of am_superuser is used only for connection-privilege
-			 * checks here and in CheckMyDatabase (we won't reach
-			 * process_startup_options in a background worker).
-			 *
-			 * In other cases, there's been no opportunity for the current
-			 * role to diverge from the authenticated user ID yet, so we can
-			 * just rely on superuser() and avoid an extra catalog lookup.
-			 */
-			if (InitializingParallelWorker)
-				am_superuser = superuser_arg(GetAuthenticatedUserId());
-			else
-				am_superuser = superuser();
+			am_superuser = superuser();
 		}
 	}
 	else
@@ -897,6 +910,14 @@ InitPostgres(const char *in_dbname, Oid dboid,
 		am_superuser = superuser();
 	}
 
+	/* Report any SSL/GSS details for the session. */
+	if (MyProcPort != NULL)
+	{
+		Assert(!bootstrap);
+
+		pgstat_bestart_security();
+	}
+
 	/*
 	 * Binary upgrades only allowed super-user connections
 	 */
@@ -908,17 +929,16 @@ InitPostgres(const char *in_dbname, Oid dboid,
 	}
 
 	/*
-	 * The last few connection slots are reserved for superusers and roles with
-	 * privileges of pg_use_reserved_connections.  Replication connections are
-	 * drawn from slots reserved with max_wal_senders and are not limited by
-	 * max_connections, superuser_reserved_connections, or
-	 * reserved_connections.
+	 * The last few regular connection slots are reserved for superusers and
+	 * roles with privileges of pg_use_reserved_connections.  We do not apply
+	 * these limits to background processes, since they all have their own
+	 * pools of PGPROC slots.
 	 *
 	 * Note: At this point, the new backend has already claimed a proc struct,
 	 * so we must check whether the number of free slots is strictly less than
 	 * the reserved connection limits.
 	 */
-	if (!am_superuser && !am_walsender &&
+	if (AmRegularBackendProcess() && !am_superuser &&
 		(SuperuserReservedConnections + ReservedConnections) > 0 &&
 		!HaveNFreeProcs(SuperuserReservedConnections + ReservedConnections, &nfree))
 	{
@@ -967,8 +987,8 @@ InitPostgres(const char *in_dbname, Oid dboid,
 		/* initialize client encoding */
 		InitializeClientEncoding();
 
-		/* report this backend in the PgBackendStatus array */
-		pgstat_bestart();
+		/* fill in the remainder of this entry in the PgBackendStatus array */
+		pgstat_bestart_final();
 
 		/* close the transaction we started above */
 		CommitTransactionCommand();
@@ -1011,7 +1031,7 @@ InitPostgres(const char *in_dbname, Oid dboid,
 		 */
 		if (!bootstrap)
 		{
-			pgstat_bestart();
+			pgstat_bestart_final();
 			CommitTransactionCommand();
 		}
 		return;
@@ -1211,9 +1231,9 @@ InitPostgres(const char *in_dbname, Oid dboid,
 	if ((flags & INIT_PG_LOAD_SESSION_LIBS) != 0)
 		process_session_preload_libraries();
 
-	/* report this backend in the PgBackendStatus array */
+	/* fill in the remainder of this entry in the PgBackendStatus array */
 	if (!bootstrap)
-		pgstat_bestart();
+		pgstat_bestart_final();
 
 	/* close the transaction we started above */
 	if (!bootstrap)

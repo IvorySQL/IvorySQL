@@ -2,7 +2,7 @@
  * dbsize.c
  *		Database object size functions, and related inquiries
  *
- * Copyright (c) 2002-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2002-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/utils/adt/dbsize.c
@@ -170,6 +170,15 @@ pg_database_size_oid(PG_FUNCTION_ARGS)
 	Oid			dbOid = PG_GETARG_OID(0);
 	int64		size;
 
+	/*
+	 * Not needed for correctness, but avoid non-user-facing error message
+	 * later if the database doesn't exist.
+	 */
+	if (!SearchSysCacheExists1(DATABASEOID, ObjectIdGetDatum(dbOid)))
+		ereport(ERROR,
+				errcode(ERRCODE_UNDEFINED_OBJECT),
+				errmsg("database with OID %u does not exist", dbOid));
+
 	size = calculate_database_size(dbOid);
 
 	if (size == 0)
@@ -274,6 +283,15 @@ pg_tablespace_size_oid(PG_FUNCTION_ARGS)
 	Oid			tblspcOid = PG_GETARG_OID(0);
 	int64		size;
 
+	/*
+	 * Not needed for correctness, but avoid non-user-facing error message
+	 * later if the tablespace doesn't exist.
+	 */
+	if (!SearchSysCacheExists1(TABLESPACEOID, ObjectIdGetDatum(tblspcOid)))
+		ereport(ERROR,
+				errcode(ERRCODE_UNDEFINED_OBJECT),
+				errmsg("tablespace with OID %u does not exist", tblspcOid));
+
 	size = calculate_tablespace_size(tblspcOid);
 
 	if (size < 0)
@@ -308,7 +326,7 @@ static int64
 calculate_relation_size(RelFileLocator *rfn, ProcNumber backend, ForkNumber forknum)
 {
 	int64		totalsize = 0;
-	char	   *relationpath;
+	RelPathStr	relationpath;
 	char		pathname[MAXPGPATH];
 	unsigned int segcount = 0;
 
@@ -322,10 +340,10 @@ calculate_relation_size(RelFileLocator *rfn, ProcNumber backend, ForkNumber fork
 
 		if (segcount == 0)
 			snprintf(pathname, MAXPGPATH, "%s",
-					 relationpath);
+					 relationpath.str);
 		else
 			snprintf(pathname, MAXPGPATH, "%s.%u",
-					 relationpath, segcount);
+					 relationpath.str, segcount);
 
 		if (stat(pathname, &fst) < 0)
 		{
@@ -955,7 +973,7 @@ pg_relation_filepath(PG_FUNCTION_ARGS)
 	Form_pg_class relform;
 	RelFileLocator rlocator;
 	ProcNumber	backend;
-	char	   *path;
+	RelPathStr	path;
 
 	tuple = SearchSysCache1(RELOID, ObjectIdGetDatum(relid));
 	if (!HeapTupleIsValid(tuple))
@@ -1021,5 +1039,5 @@ pg_relation_filepath(PG_FUNCTION_ARGS)
 
 	path = relpathbackend(rlocator, backend, MAIN_FORKNUM);
 
-	PG_RETURN_TEXT_P(cstring_to_text(path));
+	PG_RETURN_TEXT_P(cstring_to_text(path.str));
 }

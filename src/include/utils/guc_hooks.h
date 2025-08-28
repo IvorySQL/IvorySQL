@@ -7,8 +7,8 @@
  * declare them all here to avoid having to propagate guc.h into
  * a lot of unrelated header files.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  *
  *	  src/include/utils/guc_hooks.h
  *
@@ -52,6 +52,8 @@ extern bool check_datestyle(char **newval, void **extra, GucSource source);
 extern void assign_datestyle(const char *newval, void *extra);
 extern bool check_debug_io_direct(char **newval, void **extra, GucSource source);
 extern void assign_debug_io_direct(const char *newval, void *extra);
+extern bool check_log_connections(char **newval, void **extra, GucSource source);
+extern void assign_log_connections(const char *newval, void *extra);
 extern bool check_default_table_access_method(char **newval, void **extra,
 											  GucSource source);
 extern bool check_default_tablespace(char **newval, void **extra,
@@ -60,9 +62,9 @@ extern bool check_default_text_search_config(char **newval, void **extra, GucSou
 extern void assign_default_text_search_config(const char *newval, void *extra);
 extern bool check_default_with_oids(bool *newval, void **extra,
 									GucSource source);
-extern bool check_effective_io_concurrency(int *newval, void **extra,
-										   GucSource source);
 extern bool check_huge_page_size(int *newval, void **extra, GucSource source);
+extern void assign_io_method(int newval, void *extra);
+extern bool check_io_max_concurrency(int *newval, void **extra, GucSource source);
 extern const char *show_in_hot_standby(void);
 extern bool check_locale_messages(char **newval, void **extra, GucSource source);
 extern void assign_locale_messages(const char *newval, void *extra);
@@ -80,9 +82,9 @@ extern bool check_log_stats(bool *newval, void **extra, GucSource source);
 extern bool check_log_timezone(char **newval, void **extra, GucSource source);
 extern void assign_log_timezone(const char *newval, void *extra);
 extern const char *show_log_timezone(void);
-extern bool check_maintenance_io_concurrency(int *newval, void **extra,
-											 GucSource source);
 extern void assign_maintenance_io_concurrency(int newval, void *extra);
+extern void assign_io_max_combine_limit(int newval, void *extra);
+extern void assign_io_combine_limit(int newval, void *extra);
 extern bool check_max_slot_wal_keep_size(int *newval, void **extra,
 										 GucSource source);
 extern void assign_max_wal_size(int newval, void *extra);
@@ -175,6 +177,8 @@ extern void assign_wal_sync_method(int new_wal_sync_method, void *extra);
 extern bool check_synchronized_standby_slots(char **newval, void **extra,
 											 GucSource source);
 extern void assign_synchronized_standby_slots(const char *newval, void *extra);
+extern bool check_idle_replication_slot_timeout(int *newval, void **extra,
+												GucSource source);
 
 
 #endif							/* GUC_HOOKS_H */

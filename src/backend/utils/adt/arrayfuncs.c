@@ -3,7 +3,7 @@
  * arrayfuncs.c
  *	  Support functions for arrays.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -5802,9 +5802,14 @@ ArrayBuildStateAny *
 initArrayResultAny(Oid input_type, MemoryContext rcontext, bool subcontext)
 {
 	ArrayBuildStateAny *astate;
-	Oid			element_type = get_element_type(input_type);
 
-	if (OidIsValid(element_type))
+	/*
+	 * int2vector and oidvector will satisfy both get_element_type and
+	 * get_array_type.  We prefer to treat them as scalars, to be consistent
+	 * with get_promoted_array_type.  Hence, check get_array_type not
+	 * get_element_type.
+	 */
+	if (!OidIsValid(get_array_type(input_type)))
 	{
 		/* Array case */
 		ArrayBuildStateArr *arraystate;
@@ -5820,9 +5825,6 @@ initArrayResultAny(Oid input_type, MemoryContext rcontext, bool subcontext)
 	{
 		/* Scalar case */
 		ArrayBuildState *scalarstate;
-
-		/* Let's just check that we have a type that can be put into arrays */
-		Assert(OidIsValid(get_array_type(input_type)));
 
 		scalarstate = initArrayResult(input_type, rcontext, subcontext);
 		astate = (ArrayBuildStateAny *)

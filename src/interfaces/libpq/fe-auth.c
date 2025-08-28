@@ -3,7 +3,7 @@
  * fe-auth.c
  *	   The front-end (client) authorization routines
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -40,9 +40,11 @@
 #endif
 
 #include "common/md5.h"
+#include "common/oauth-common.h"
 #include "common/scram-common.h"
 #include "fe-auth.h"
 #include "fe-auth-sasl.h"
+#include "fe-auth-oauth.h"
 #include "libpq-fe.h"
 
 #ifdef ENABLE_GSS
@@ -430,7 +432,7 @@ pg_SSPI_startup(PGconn *conn, int use_negotiate, int payloadlen)
  * Initialize SASL authentication exchange.
  */
 static int
-pg_SASL_init(PGconn *conn, int payloadlen)
+pg_SASL_init(PGconn *conn, int payloadlen, bool *async)
 {
 	char	   *initialresponse = NULL;
 	int			initialresponselen;
@@ -448,7 +450,7 @@ pg_SASL_init(PGconn *conn, int payloadlen)
 		goto error;
 	}
 
-	if (conn->sasl_state)
+	if (conn->sasl_state && !conn->async_auth)
 	{
 		libpq_append_conn_error(conn, "duplicate SASL authentication request");
 		goto error;
@@ -535,12 +537,41 @@ pg_SASL_init(PGconn *conn, int payloadlen)
 			conn->sasl = &pg_scram_mech;
 			conn->password_needed = true;
 		}
+		else if (strcmp(mechanism_buf.data, OAUTHBEARER_NAME) == 0 &&
+				 !selected_mechanism)
+		{
+			selected_mechanism = OAUTHBEARER_NAME;
+			conn->sasl = &pg_oauth_mech;
+			conn->password_needed = false;
+		}
 	}
 
 	if (!selected_mechanism)
 	{
 		libpq_append_conn_error(conn, "none of the server's SASL authentication mechanisms are supported");
 		goto error;
+	}
+
+	/* Make sure require_auth is satisfied. */
+	if (conn->require_auth)
+	{
+		bool		allowed = false;
+
+		for (int i = 0; i < lengthof(conn->allowed_sasl_mechs); i++)
+		{
+			if (conn->sasl == conn->allowed_sasl_mechs[i])
+			{
+				allowed = true;
+				break;
+			}
+		}
+
+		if (!allowed)
+		{
+			libpq_append_conn_error(conn, "authentication method requirement \"%s\" failed: server requested %s authentication",
+									conn->require_auth, selected_mechanism);
+			goto error;
+		}
 	}
 
 	if (conn->channel_binding[0] == 'r' &&	/* require */
@@ -559,7 +590,7 @@ pg_SASL_init(PGconn *conn, int payloadlen)
 	 * First, select the password to use for the exchange, complaining if
 	 * there isn't one and the selected SASL mechanism needs it.
 	 */
-	if (conn->password_needed)
+	if (conn->password_needed && !conn->scram_client_key_binary)
 	{
 		password = conn->connhost[conn->whichhost].password;
 		if (password == NULL)
@@ -578,25 +609,53 @@ pg_SASL_init(PGconn *conn, int payloadlen)
 
 	Assert(conn->sasl);
 
-	/*
-	 * Initialize the SASL state information with all the information gathered
-	 * during the initial exchange.
-	 *
-	 * Note: Only tls-unique is supported for the moment.
-	 */
-	conn->sasl_state = conn->sasl->init(conn,
-										password,
-										selected_mechanism);
 	if (!conn->sasl_state)
-		goto oom_error;
+	{
+		/*
+		 * Initialize the SASL state information with all the information
+		 * gathered during the initial exchange.
+		 *
+		 * Note: Only tls-unique is supported for the moment.
+		 */
+		conn->sasl_state = conn->sasl->init(conn,
+											password,
+											selected_mechanism);
+		if (!conn->sasl_state)
+			goto oom_error;
+	}
+	else
+	{
+		/*
+		 * This is only possible if we're returning from an async loop.
+		 * Disconnect it now.
+		 */
+		Assert(conn->async_auth);
+		conn->async_auth = NULL;
+	}
 
 	/* Get the mechanism-specific Initial Client Response, if any */
-	status = conn->sasl->exchange(conn->sasl_state,
+	status = conn->sasl->exchange(conn->sasl_state, false,
 								  NULL, -1,
 								  &initialresponse, &initialresponselen);
 
 	if (status == SASL_FAILED)
 		goto error;
+
+	if (status == SASL_ASYNC)
+	{
+		/*
+		 * The mechanism should have set up the necessary callbacks; all we
+		 * need to do is signal the caller.
+		 *
+		 * In non-assertion builds, this postcondition is enforced at time of
+		 * use in PQconnectPoll().
+		 */
+		Assert(conn->async_auth);
+		Assert(conn->cleanup_async_auth);
+
+		*async = true;
+		return STATUS_OK;
+	}
 
 	/*
 	 * Build a SASLInitialResponse message, and send it.
@@ -642,7 +701,7 @@ oom_error:
  * the protocol.
  */
 static int
-pg_SASL_continue(PGconn *conn, int payloadlen, bool final)
+pg_SASL_continue(PGconn *conn, int payloadlen, bool final, bool *async)
 {
 	char	   *output;
 	int			outputlen;
@@ -672,10 +731,24 @@ pg_SASL_continue(PGconn *conn, int payloadlen, bool final)
 	/* For safety and convenience, ensure the buffer is NULL-terminated. */
 	challenge[payloadlen] = '\0';
 
-	status = conn->sasl->exchange(conn->sasl_state,
+	status = conn->sasl->exchange(conn->sasl_state, final,
 								  challenge, payloadlen,
 								  &output, &outputlen);
 	free(challenge);			/* don't need the input anymore */
+
+	if (status == SASL_ASYNC)
+	{
+		/*
+		 * The mechanism should have set up the necessary callbacks; all we
+		 * need to do is signal the caller.
+		 */
+		*async = true;
+
+		/*
+		 * The mechanism may optionally generate some output to send before
+		 * switching over to async auth, so continue onwards.
+		 */
+	}
 
 	if (final && status == SASL_CONTINUE)
 	{
@@ -984,11 +1057,17 @@ check_expected_areq(AuthRequest areq, PGconn *conn)
  * it. We are responsible for reading any remaining extra data, specific
  * to the authentication method. 'payloadlen' is the remaining length in
  * the message.
+ *
+ * If *async is set to true on return, the client doesn't yet have enough
+ * information to respond, and the caller must temporarily switch to
+ * conn->async_auth() to continue driving the exchange.
  */
 int
-pg_fe_sendauth(AuthRequest areq, int payloadlen, PGconn *conn)
+pg_fe_sendauth(AuthRequest areq, int payloadlen, PGconn *conn, bool *async)
 {
 	int			oldmsglen;
+
+	*async = false;
 
 	if (!check_expected_areq(areq, conn))
 		return STATUS_ERROR;
@@ -1147,7 +1226,7 @@ pg_fe_sendauth(AuthRequest areq, int payloadlen, PGconn *conn)
 			 * The request contains the name (as assigned by IANA) of the
 			 * authentication mechanism.
 			 */
-			if (pg_SASL_init(conn, payloadlen) != STATUS_OK)
+			if (pg_SASL_init(conn, payloadlen, async) != STATUS_OK)
 			{
 				/* pg_SASL_init already set the error message */
 				return STATUS_ERROR;
@@ -1156,23 +1235,33 @@ pg_fe_sendauth(AuthRequest areq, int payloadlen, PGconn *conn)
 
 		case AUTH_REQ_SASL_CONT:
 		case AUTH_REQ_SASL_FIN:
-			if (conn->sasl_state == NULL)
 			{
-				appendPQExpBufferStr(&conn->errorMessage,
-									 "fe_sendauth: invalid authentication request from server: AUTH_REQ_SASL_CONT without AUTH_REQ_SASL\n");
-				return STATUS_ERROR;
-			}
-			oldmsglen = conn->errorMessage.len;
-			if (pg_SASL_continue(conn, payloadlen,
-								 (areq == AUTH_REQ_SASL_FIN)) != STATUS_OK)
-			{
-				/* Use this message if pg_SASL_continue didn't supply one */
-				if (conn->errorMessage.len == oldmsglen)
+				bool		final = false;
+
+				if (conn->sasl_state == NULL)
+				{
 					appendPQExpBufferStr(&conn->errorMessage,
-										 "fe_sendauth: error in SASL authentication\n");
-				return STATUS_ERROR;
+										 "fe_sendauth: invalid authentication request from server: AUTH_REQ_SASL_CONT without AUTH_REQ_SASL\n");
+					return STATUS_ERROR;
+				}
+				oldmsglen = conn->errorMessage.len;
+
+				if (areq == AUTH_REQ_SASL_FIN)
+					final = true;
+
+				if (pg_SASL_continue(conn, payloadlen, final, async) != STATUS_OK)
+				{
+					/*
+					 * Append a generic error message unless pg_SASL_continue
+					 * did set a more specific one already.
+					 */
+					if (conn->errorMessage.len == oldmsglen)
+						appendPQExpBufferStr(&conn->errorMessage,
+											 "fe_sendauth: error in SASL authentication\n");
+					return STATUS_ERROR;
+				}
+				break;
 			}
-			break;
 
 		default:
 			libpq_append_conn_error(conn, "authentication method %u not supported", areq);
@@ -1492,4 +1581,24 @@ PQchangePassword(PGconn *conn, const char *user, const char *passwd)
 			}
 		}
 	}
+}
+
+PQauthDataHook_type PQauthDataHook = PQdefaultAuthDataHook;
+
+PQauthDataHook_type
+PQgetAuthDataHook(void)
+{
+	return PQauthDataHook;
+}
+
+void
+PQsetAuthDataHook(PQauthDataHook_type hook)
+{
+	PQauthDataHook = hook ? hook : PQdefaultAuthDataHook;
+}
+
+int
+PQdefaultAuthDataHook(PGauthData type, PGconn *conn, void *data)
+{
+	return 0;					/* handle nothing */
 }

@@ -8,7 +8,7 @@
  * do nothing if it's enabled. You should avoid accessing the target files
  * directly but if you do, make sure you honor the --dry-run mode!
  *
- * Portions Copyright (c) 2013-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2013-2025, PostgreSQL Global Development Group
  *
  *-------------------------------------------------------------------------
  */
@@ -296,7 +296,7 @@ sync_target_dir(void)
 	if (!do_sync || dry_run)
 		return;
 
-	sync_pgdata(datadir_target, PG_VERSION_NUM, sync_method);
+	sync_pgdata(datadir_target, PG_VERSION_NUM, sync_method, true);
 }
 
 

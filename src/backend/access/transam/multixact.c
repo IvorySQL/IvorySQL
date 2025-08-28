@@ -59,7 +59,7 @@
  * counter does not fall within the wraparound horizon considering the global
  * minimum value.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/access/transam/multixact.c
@@ -886,8 +886,8 @@ MultiXactIdCreateFromMembers(int nmembers, MultiXactMember *members)
 	 * Not clear that it's worth the trouble though.
 	 */
 	XLogBeginInsert();
-	XLogRegisterData((char *) (&xlrec), SizeOfMultiXactCreate);
-	XLogRegisterData((char *) members, nmembers * sizeof(MultiXactMember));
+	XLogRegisterData(&xlrec, SizeOfMultiXactCreate);
+	XLogRegisterData(members, nmembers * sizeof(MultiXactMember));
 
 	(void) XLogInsert(RM_MULTIXACT_ID, XLOG_MULTIXACT_CREATE_ID);
 
@@ -3058,8 +3058,8 @@ PerformMembersTruncation(MultiXactOffset oldestOffset, MultiXactOffset newOldest
 	 */
 	while (segment != endsegment)
 	{
-		elog(DEBUG2, "truncating multixact members segment %llx",
-			 (unsigned long long) segment);
+		elog(DEBUG2, "truncating multixact members segment %" PRIx64,
+			 segment);
 		SlruDeleteSegment(MultiXactMemberCtl, segment);
 
 		/* move to next segment, handling wraparound correctly */
@@ -3210,14 +3210,14 @@ TruncateMultiXact(MultiXactId newOldestMulti, Oid newOldestMultiDB)
 	}
 
 	elog(DEBUG1, "performing multixact truncation: "
-		 "offsets [%u, %u), offsets segments [%llx, %llx), "
-		 "members [%u, %u), members segments [%llx, %llx)",
+		 "offsets [%u, %u), offsets segments [%" PRIx64 ", %" PRIx64 "), "
+		 "members [%u, %u), members segments [%" PRIx64 ", %" PRIx64 ")",
 		 oldestMulti, newOldestMulti,
-		 (unsigned long long) MultiXactIdToOffsetSegment(oldestMulti),
-		 (unsigned long long) MultiXactIdToOffsetSegment(newOldestMulti),
+		 MultiXactIdToOffsetSegment(oldestMulti),
+		 MultiXactIdToOffsetSegment(newOldestMulti),
 		 oldestOffset, newOldestOffset,
-		 (unsigned long long) MXOffsetToMemberSegment(oldestOffset),
-		 (unsigned long long) MXOffsetToMemberSegment(newOldestOffset));
+		 MXOffsetToMemberSegment(oldestOffset),
+		 MXOffsetToMemberSegment(newOldestOffset));
 
 	/*
 	 * Do truncation, and the WAL logging of the truncation, in a critical
@@ -3355,7 +3355,7 @@ static void
 WriteMZeroPageXlogRec(int64 pageno, uint8 info)
 {
 	XLogBeginInsert();
-	XLogRegisterData((char *) (&pageno), sizeof(pageno));
+	XLogRegisterData(&pageno, sizeof(pageno));
 	(void) XLogInsert(RM_MULTIXACT_ID, info);
 }
 
@@ -3382,7 +3382,7 @@ WriteMTruncateXlogRec(Oid oldestMultiDB,
 	xlrec.endTruncMemb = endTruncMemb;
 
 	XLogBeginInsert();
-	XLogRegisterData((char *) (&xlrec), SizeOfMultiXactTruncate);
+	XLogRegisterData(&xlrec, SizeOfMultiXactTruncate);
 	recptr = XLogInsert(RM_MULTIXACT_ID, XLOG_MULTIXACT_TRUNCATE_ID);
 	XLogFlush(recptr);
 }
@@ -3470,14 +3470,14 @@ multixact_redo(XLogReaderState *record)
 			   SizeOfMultiXactTruncate);
 
 		elog(DEBUG1, "replaying multixact truncation: "
-			 "offsets [%u, %u), offsets segments [%llx, %llx), "
-			 "members [%u, %u), members segments [%llx, %llx)",
+			 "offsets [%u, %u), offsets segments [%" PRIx64 ", %" PRIx64 "), "
+			 "members [%u, %u), members segments [%" PRIx64 ", %" PRIx64 ")",
 			 xlrec.startTruncOff, xlrec.endTruncOff,
-			 (unsigned long long) MultiXactIdToOffsetSegment(xlrec.startTruncOff),
-			 (unsigned long long) MultiXactIdToOffsetSegment(xlrec.endTruncOff),
+			 MultiXactIdToOffsetSegment(xlrec.startTruncOff),
+			 MultiXactIdToOffsetSegment(xlrec.endTruncOff),
 			 xlrec.startTruncMemb, xlrec.endTruncMemb,
-			 (unsigned long long) MXOffsetToMemberSegment(xlrec.startTruncMemb),
-			 (unsigned long long) MXOffsetToMemberSegment(xlrec.endTruncMemb));
+			 MXOffsetToMemberSegment(xlrec.startTruncMemb),
+			 MXOffsetToMemberSegment(xlrec.endTruncMemb));
 
 		/* should not be required, but more than cheap enough */
 		LWLockAcquire(MultiXactTruncationLock, LW_EXCLUSIVE);

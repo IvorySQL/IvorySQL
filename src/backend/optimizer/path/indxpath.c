@@ -4,7 +4,7 @@
  *	  Routines to determine which indexes are usable for scanning a
  *	  given relation, and create Paths accordingly.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -1189,6 +1189,8 @@ typedef struct
 	Oid			inputcollid;	/* OID of the OpClause input collation */
 	int			argindex;		/* index of the clause in the list of
 								 * arguments */
+	int			groupindex;		/* value of argindex for the fist clause in
+								 * the group of similar clauses */
 } OrArgIndexMatch;
 
 /*
@@ -1230,6 +1232,29 @@ or_arg_index_match_cmp(const void *a, const void *b)
 }
 
 /*
+ * Another comparison function for OrArgIndexMatch.  It sorts groups together
+ * using groupindex.  The group items are then sorted by argindex.
+ */
+static int
+or_arg_index_match_cmp_group(const void *a, const void *b)
+{
+	const OrArgIndexMatch *match_a = (const OrArgIndexMatch *) a;
+	const OrArgIndexMatch *match_b = (const OrArgIndexMatch *) b;
+
+	if (match_a->groupindex < match_b->groupindex)
+		return -1;
+	else if (match_a->groupindex > match_b->groupindex)
+		return 1;
+
+	if (match_a->argindex < match_b->argindex)
+		return -1;
+	else if (match_a->argindex > match_b->argindex)
+		return 1;
+
+	return 0;
+}
+
+/*
  * group_similar_or_args
  *		Transform incoming OR-restrictinfo into a list of sub-restrictinfos,
  *		each of them containing a subset of similar OR-clause arguments from
@@ -1255,6 +1280,7 @@ group_similar_or_args(PlannerInfo *root, RelOptInfo *rel, RestrictInfo *rinfo)
 	ListCell   *lc2;
 	List	   *orargs;
 	List	   *result = NIL;
+	Index		relid = rel->relid;
 
 	Assert(IsA(rinfo->orclause, BoolExpr));
 	orargs = ((BoolExpr *) rinfo->orclause)->args;
@@ -1281,6 +1307,7 @@ group_similar_or_args(PlannerInfo *root, RelOptInfo *rel, RestrictInfo *rinfo)
 
 		i++;
 		matches[i].argindex = i;
+		matches[i].groupindex = i;
 		matches[i].indexnum = -1;
 		matches[i].colnum = -1;
 		matches[i].opno = InvalidOid;
@@ -1319,10 +1346,13 @@ group_similar_or_args(PlannerInfo *root, RelOptInfo *rel, RestrictInfo *rinfo)
 		/*
 		 * Check for clauses of the form: (indexkey operator constant) or
 		 * (constant operator indexkey).  But we don't know a particular index
-		 * yet.  First check for a constant, which must be Const or Param.
-		 * That's cheaper than search for an index key among all indexes.
+		 * yet.  Therefore, we try to distinguish the potential index key and
+		 * constant first, then search for a matching index key among all
+		 * indexes.
 		 */
-		if (IsA(leftop, Const) || IsA(leftop, Param))
+		if (bms_is_member(relid, argrinfo->right_relids) &&
+			!bms_is_member(relid, argrinfo->left_relids) &&
+			!contain_volatile_functions(leftop))
 		{
 			opno = get_commutator(opno);
 
@@ -1333,7 +1363,9 @@ group_similar_or_args(PlannerInfo *root, RelOptInfo *rel, RestrictInfo *rinfo)
 			}
 			nonConstExpr = rightop;
 		}
-		else if (IsA(rightop, Const) || IsA(rightop, Param))
+		else if (bms_is_member(relid, argrinfo->left_relids) &&
+				 !bms_is_member(relid, argrinfo->right_relids) &&
+				 !contain_volatile_functions(rightop))
 		{
 			nonConstExpr = leftop;
 		}
@@ -1394,8 +1426,39 @@ group_similar_or_args(PlannerInfo *root, RelOptInfo *rel, RestrictInfo *rinfo)
 		return orargs;
 	}
 
-	/* Sort clauses to make similar clauses go together */
+	/*
+	 * Sort clauses to make similar clauses go together.  But at the same
+	 * time, we would like to change the order of clauses as little as
+	 * possible.  To do so, we reorder each group of similar clauses so that
+	 * the first item of the group stays in place, and all the other items are
+	 * moved after it.  So, if there are no similar clauses, the order of
+	 * clauses stays the same.  When there are some groups, required
+	 * reordering happens while the rest of the clauses remain in their
+	 * places.  That is achieved by assigning a 'groupindex' to each clause:
+	 * the number of the first item in the group in the original clause list.
+	 */
 	qsort(matches, n, sizeof(OrArgIndexMatch), or_arg_index_match_cmp);
+
+	/* Assign groupindex to the sorted clauses */
+	for (i = 1; i < n; i++)
+	{
+		/*
+		 * When two clauses are similar and should belong to the same group,
+		 * copy the 'groupindex' from the previous clause.  Given we are
+		 * considering clauses in direct order, all the clauses would have a
+		 * 'groupindex' equal to the 'groupindex' of the first clause in the
+		 * group.
+		 */
+		if (matches[i].indexnum == matches[i - 1].indexnum &&
+			matches[i].colnum == matches[i - 1].colnum &&
+			matches[i].opno == matches[i - 1].opno &&
+			matches[i].inputcollid == matches[i - 1].inputcollid &&
+			matches[i].indexnum != -1)
+			matches[i].groupindex = matches[i - 1].groupindex;
+	}
+
+	/* Re-sort clauses first by groupindex then by argindex */
+	qsort(matches, n, sizeof(OrArgIndexMatch), or_arg_index_match_cmp_group);
 
 	/*
 	 * Group similar clauses into single sub-restrictinfo. Side effect: the
@@ -2414,6 +2477,7 @@ match_restriction_clauses_to_index(PlannerInfo *root,
  *	  Identify join clauses for the rel that match the index.
  *	  Matching clauses are added to *clauseset.
  *	  Also, add any potentially usable join OR clauses to *joinorclauses.
+ *	  They also might be processed by match_clause_to_index() as a whole.
  */
 static void
 match_join_clauses_to_index(PlannerInfo *root,
@@ -2432,11 +2496,15 @@ match_join_clauses_to_index(PlannerInfo *root,
 		if (!join_clause_is_movable_to(rinfo, rel))
 			continue;
 
-		/* Potentially usable, so see if it matches the index or is an OR */
+		/*
+		 * Potentially usable, so see if it matches the index or is an OR. Use
+		 * list_append_unique_ptr() here to avoid possible duplicates when
+		 * processing the same clauses with different indexes.
+		 */
 		if (restriction_is_or_clause(rinfo))
-			*joinorclauses = lappend(*joinorclauses, rinfo);
-		else
-			match_clause_to_index(root, rinfo, index, clauseset);
+			*joinorclauses = list_append_unique_ptr(*joinorclauses, rinfo);
+
+		match_clause_to_index(root, rinfo, index, clauseset);
 	}
 }
 
@@ -2585,10 +2653,7 @@ match_clause_to_index(PlannerInfo *root,
  *	  (3)  must match the collation of the index, if collation is relevant.
  *
  *	  Our definition of "const" is exceedingly liberal: we allow anything that
- *	  doesn't involve a volatile function or a Var of the index's relation
- *	  except for a boolean OR expression input: due to a trade-off between the
- *	  expected execution speedup and planning complexity, we limit or->saop
- *	  transformation by obvious cases when an index scan can get a profit.
+ *	  doesn't involve a volatile function or a Var of the index's relation.
  *	  In particular, Vars belonging to other relations of the query are
  *	  accepted here, since a clause of that form can be used in a
  *	  parameterized indexscan.  It's the responsibility of higher code levels
@@ -2620,7 +2685,7 @@ match_clause_to_index(PlannerInfo *root,
  *
  *	  It is also possible to match a list of OR clauses if it might be
  *	  transformed into a single ScalarArrayOpExpr clause.  On success,
- *	  the returning index clause will contain a trasformed clause.
+ *	  the returning index clause will contain a transformed clause.
  *
  *	  For boolean indexes, it is also possible to match the clause directly
  *	  to the indexkey; or perhaps the clause is (NOT indexkey).
@@ -2639,8 +2704,9 @@ match_clause_to_index(PlannerInfo *root,
  * Returns an IndexClause if the clause can be used with this index key,
  * or NULL if not.
  *
- * NOTE:  returns NULL if clause is an OR or AND clause; it is the
- * responsibility of higher-level routines to cope with those.
+ * NOTE:  This routine always returns NULL if the clause is an AND clause.
+ * Higher-level routines deal with OR and AND clauses. OR clause can be
+ * matched as a whole by match_orclause_to_indexcol() though.
  */
 static IndexClause *
 match_clause_to_indexcol(PlannerInfo *root,
@@ -3249,7 +3315,8 @@ match_orclause_to_indexcol(PlannerInfo *root,
 	Oid			arraytype = InvalidOid;
 	Oid			inputcollid = InvalidOid;
 	bool		firstTime = true;
-	bool		haveParam = false;
+	bool		haveNonConst = false;
+	Index		indexRelid = index->rel->relid;
 
 	Assert(IsA(orclause, BoolExpr));
 	Assert(orclause->boolop == OR_EXPR);
@@ -3261,10 +3328,9 @@ match_orclause_to_indexcol(PlannerInfo *root,
 	/*
 	 * Try to convert a list of OR-clauses to a single SAOP expression. Each
 	 * OR entry must be in the form: (indexkey operator constant) or (constant
-	 * operator indexkey).  Operators of all the entries must match.  Constant
-	 * might be either Const or Param.  To be effective, give up on the first
-	 * non-matching entry.  Exit is implemented as a break from the loop,
-	 * which is catched afterwards.
+	 * operator indexkey).  Operators of all the entries must match.  To be
+	 * effective, give up on the first non-matching entry.  Exit is
+	 * implemented as a break from the loop, which is catched afterwards.
 	 */
 	foreach(lc, orclause->args)
 	{
@@ -3315,17 +3381,21 @@ match_orclause_to_indexcol(PlannerInfo *root,
 
 		/*
 		 * Check for clauses of the form: (indexkey operator constant) or
-		 * (constant operator indexkey).  Determine indexkey side first, check
-		 * the constant later.
+		 * (constant operator indexkey).  See match_clause_to_indexcol's notes
+		 * about const-ness.
 		 */
 		leftop = (Node *) linitial(subClause->args);
 		rightop = (Node *) lsecond(subClause->args);
-		if (match_index_to_operand(leftop, indexcol, index))
+		if (match_index_to_operand(leftop, indexcol, index) &&
+			!bms_is_member(indexRelid, subRinfo->right_relids) &&
+			!contain_volatile_functions(rightop))
 		{
 			indexExpr = leftop;
 			constExpr = rightop;
 		}
-		else if (match_index_to_operand(rightop, indexcol, index))
+		else if (match_index_to_operand(rightop, indexcol, index) &&
+				 !bms_is_member(indexRelid, subRinfo->left_relids) &&
+				 !contain_volatile_functions(leftop))
 		{
 			opno = get_commutator(opno);
 			if (!OidIsValid(opno))
@@ -3351,10 +3421,6 @@ match_orclause_to_indexcol(PlannerInfo *root,
 			constExpr = (Node *) ((RelabelType *) constExpr)->arg;
 		if (IsA(indexExpr, RelabelType))
 			indexExpr = (Node *) ((RelabelType *) indexExpr)->arg;
-
-		/* We allow constant to be Const or Param */
-		if (!IsA(constExpr, Const) && !IsA(constExpr, Param))
-			break;
 
 		/* Forbid transformation for composite types, records. */
 		if (type_is_rowtype(exprType(constExpr)) ||
@@ -3392,8 +3458,12 @@ match_orclause_to_indexcol(PlannerInfo *root,
 				break;
 		}
 
-		if (IsA(constExpr, Param))
-			haveParam = true;
+		/*
+		 * Check if our list of constants in match_clause_to_indexcol's
+		 * understanding of const-ness have something other than Const.
+		 */
+		if (!IsA(constExpr, Const))
+			haveNonConst = true;
 		consts = lappend(consts, constExpr);
 	}
 
@@ -3410,10 +3480,10 @@ match_orclause_to_indexcol(PlannerInfo *root,
 
 	/*
 	 * Assemble an array from the list of constants.  It seems more profitable
-	 * to build a const array.  But in the presence of parameters, we don't
+	 * to build a const array.  But in the presence of other nodes, we don't
 	 * have a specific value here and must employ an ArrayExpr instead.
 	 */
-	if (haveParam)
+	if (haveNonConst)
 	{
 		ArrayExpr  *arrayExpr = makeNode(ArrayExpr);
 
@@ -3678,7 +3748,7 @@ expand_indexqual_rowcompare(PlannerInfo *root,
 		{
 			RowCompareExpr *rc = makeNode(RowCompareExpr);
 
-			rc->rctype = (RowCompareType) op_strategy;
+			rc->cmptype = (CompareType) op_strategy;
 			rc->opnos = new_ops;
 			rc->opfamilies = list_copy_head(clause->opfamilies,
 											matching_cols);
@@ -4153,6 +4223,22 @@ relation_has_unique_index_for(PlannerInfo *root, RelOptInfo *rel,
 							  List *restrictlist,
 							  List *exprlist, List *oprlist)
 {
+	return relation_has_unique_index_ext(root, rel, restrictlist,
+										 exprlist, oprlist, NULL);
+}
+
+/*
+ * relation_has_unique_index_ext
+ *	  Same as relation_has_unique_index_for(), but supports extra_clauses
+ *	  parameter.  If extra_clauses isn't NULL, return baserestrictinfo clauses
+ *	  which were used to derive uniqueness.
+ */
+bool
+relation_has_unique_index_ext(PlannerInfo *root, RelOptInfo *rel,
+							  List *restrictlist,
+							  List *exprlist, List *oprlist,
+							  List **extra_clauses)
+{
 	ListCell   *ic;
 
 	Assert(list_length(exprlist) == list_length(oprlist));
@@ -4207,6 +4293,7 @@ relation_has_unique_index_for(PlannerInfo *root, RelOptInfo *rel,
 	{
 		IndexOptInfo *ind = (IndexOptInfo *) lfirst(ic);
 		int			c;
+		List	   *exprs = NIL;
 
 		/*
 		 * If the index is not unique, or not immediately enforced, or if it's
@@ -4258,6 +4345,24 @@ relation_has_unique_index_for(PlannerInfo *root, RelOptInfo *rel,
 				if (match_index_to_operand(rexpr, c, ind))
 				{
 					matched = true; /* column is unique */
+
+					if (bms_membership(rinfo->clause_relids) == BMS_SINGLETON)
+					{
+						MemoryContext oldMemCtx =
+							MemoryContextSwitchTo(root->planner_cxt);
+
+						/*
+						 * Add filter clause into a list allowing caller to
+						 * know if uniqueness have made not only by join
+						 * clauses.
+						 */
+						Assert(bms_is_empty(rinfo->left_relids) ||
+							   bms_is_empty(rinfo->right_relids));
+						if (extra_clauses)
+							exprs = lappend(exprs, rinfo);
+						MemoryContextSwitchTo(oldMemCtx);
+					}
+
 					break;
 				}
 			}
@@ -4300,7 +4405,11 @@ relation_has_unique_index_for(PlannerInfo *root, RelOptInfo *rel,
 
 		/* Matched all key columns of this index? */
 		if (c == ind->nkeycolumns)
+		{
+			if (extra_clauses)
+				*extra_clauses = exprs;
 			return true;
+		}
 	}
 
 	return false;

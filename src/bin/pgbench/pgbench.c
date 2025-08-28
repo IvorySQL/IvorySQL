@@ -5,7 +5,7 @@
  * Originally written by Tatsuo Ishii and enhanced by many contributors.
  *
  * src/bin/pgbench/pgbench.c
- * Copyright (c) 2000-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2025, PostgreSQL Global Development Group
  * ALL RIGHTS RESERVED;
  *
  * Permission to use, copy, modify, and distribute this software and its
@@ -53,6 +53,7 @@
 #include <sys/select.h>
 #endif
 
+#include "catalog/pg_class_d.h"
 #include "common/int.h"
 #include "common/logging.h"
 #include "common/pg_prng.h"
@@ -847,6 +848,31 @@ typedef void (*initRowMethod) (PQExpBufferData *sql, int64 curr);
 static const PsqlScanCallbacks pgbench_callbacks = {
 	NULL,						/* don't need get_variable functionality */
 };
+
+static char
+get_table_relkind(PGconn *con, const char *table)
+{
+	PGresult   *res;
+	char	   *val;
+	char		relkind;
+	const char *params[1] = {table};
+	const char *sql =
+		"SELECT relkind FROM pg_catalog.pg_class WHERE oid=$1::pg_catalog.regclass";
+
+	res = PQexecParams(con, sql, 1, NULL, params, NULL, NULL, 0);
+	if (PQresultStatus(res) != PGRES_TUPLES_OK)
+	{
+		pg_log_error("query failed: %s", PQerrorMessage(con));
+		pg_log_error_detail("Query was: %s", sql);
+		exit(1);
+	}
+	val = PQgetvalue(res, 0, 0);
+	Assert(strlen(val) == 1);
+	relkind = val[0];
+	PQclear(res);
+
+	return relkind;
+}
 
 static inline pg_time_usec_t
 pg_time_now(void)
@@ -2253,14 +2279,9 @@ evalStandardFunc(CState *st,
 {
 	/* evaluate all function arguments */
 	int			nargs = 0;
+	PgBenchValue vargs[MAX_FARGS] = {0};
 	PgBenchExprLink *l = args;
 	bool		has_null = false;
-
-	/*
-	 * This value is double braced to workaround GCC bug 53119, which seems to
-	 * exist at least on gcc (Debian 4.7.2-5) 4.7.2, 32-bit.
-	 */
-	PgBenchValue vargs[MAX_FARGS] = {{0}};
 
 	for (nargs = 0; nargs < MAX_FARGS && l != NULL; nargs++, l = l->next)
 	{
@@ -4962,16 +4983,11 @@ initPopulateTable(PGconn *con, const char *table, int64 base,
 
 	initPQExpBuffer(&sql);
 
-	/*
-	 * Use COPY with FREEZE on v14 and later for all the tables except
-	 * pgbench_accounts when it is partitioned.
-	 */
-	if (PQserverVersion(con) >= 140000)
-	{
-		if (strcmp(table, "pgbench_accounts") != 0 ||
-			partitions == 0)
-			copy_statement_fmt = "copy %s from stdin with (freeze on)";
-	}
+	/* Use COPY with FREEZE on v14 and later for all ordinary tables */
+	if ((PQserverVersion(con) >= 140000) &&
+		get_table_relkind(con, table) == RELKIND_RELATION)
+		copy_statement_fmt = "copy %s from stdin with (freeze on)";
+
 
 	n = pg_snprintf(copy_statement, sizeof(copy_statement), copy_statement_fmt, table);
 	if (n >= sizeof(copy_statement))
@@ -5011,6 +5027,16 @@ initPopulateTable(PGconn *con, const char *table, int64 base,
 							j, total,
 							(int) ((j * 100) / total),
 							table, elapsed_sec, remaining_sec);
+
+			/*
+			 * If the previous progress message is longer than the current
+			 * one, add spaces to the current line to fully overwrite any
+			 * remaining characters from the previous message.
+			 */
+			if (prev_chars > chars)
+				fprintf(stderr, "%*c", prev_chars - chars, ' ');
+			fputc(eol, stderr);
+			prev_chars = chars;
 		}
 		/* let's not call the timing for each row, but only each 100 rows */
 		else if (use_quiet && (j % 100 == 0))
@@ -5026,20 +5052,20 @@ initPopulateTable(PGconn *con, const char *table, int64 base,
 								(int) ((j * 100) / total),
 								table, elapsed_sec, remaining_sec);
 
+				/*
+				 * If the previous progress message is longer than the current
+				 * one, add spaces to the current line to fully overwrite any
+				 * remaining characters from the previous message.
+				 */
+				if (prev_chars > chars)
+					fprintf(stderr, "%*c", prev_chars - chars, ' ');
+				fputc(eol, stderr);
+				prev_chars = chars;
+
 				/* skip to the next interval */
 				log_interval = (int) ceil(elapsed_sec / LOG_STEP_SECONDS);
 			}
 		}
-
-		/*
-		 * If the previous progress message is longer than the current one,
-		 * add spaces to the current line to fully overwrite any remaining
-		 * characters from the previous message.
-		 */
-		if (prev_chars > chars)
-			fprintf(stderr, "%*c", prev_chars - chars, ' ');
-		fputc(eol, stderr);
-		prev_chars = chars;
 	}
 
 	if (chars != 0 && eol != '\n')
@@ -5646,21 +5672,16 @@ postprocess_sql_command(Command *my_command)
  * At call, we have scanned only the initial backslash.
  */
 static Command *
-process_backslash_command(PsqlScanState sstate, const char *source)
+process_backslash_command(PsqlScanState sstate, const char *source,
+						  int lineno, int start_offset)
 {
 	Command    *my_command;
 	PQExpBufferData word_buf;
 	int			word_offset;
 	int			offsets[MAX_ARGS];	/* offsets of argument words */
-	int			start_offset;
-	int			lineno;
 	int			j;
 
 	initPQExpBuffer(&word_buf);
-
-	/* Remember location of the backslash */
-	start_offset = expr_scanner_offset(sstate) - 1;
-	lineno = expr_scanner_get_lineno(sstate, start_offset);
 
 	/* Collect first word of command */
 	if (!expr_lex_one_word(sstate, &word_buf, &word_offset))
@@ -5706,19 +5727,16 @@ process_backslash_command(PsqlScanState sstate, const char *source)
 		yyscanner = expr_scanner_init(sstate, source, lineno, start_offset,
 									  my_command->argv[0]);
 
-		if (expr_yyparse(yyscanner) != 0)
+		if (expr_yyparse(&my_command->expr, yyscanner) != 0)
 		{
 			/* dead code: exit done from syntax_error called by yyerror */
 			exit(1);
 		}
 
-		my_command->expr = expr_parse_result;
-
 		/* Save line, trimming any trailing newline */
 		my_command->first_line =
 			expr_scanner_get_substring(sstate,
 									   start_offset,
-									   expr_scanner_offset(sstate),
 									   true);
 
 		expr_scanner_finish(yyscanner);
@@ -5748,7 +5766,6 @@ process_backslash_command(PsqlScanState sstate, const char *source)
 	my_command->first_line =
 		expr_scanner_get_substring(sstate,
 								   start_offset,
-								   expr_scanner_offset(sstate),
 								   true);
 
 	if (my_command->meta == META_SLEEP)
@@ -5923,8 +5940,6 @@ ParseScript(const char *script, const char *desc, int weight)
 	PQExpBufferData line_buf;
 	int			alloc_num;
 	int			index;
-	int			lineno;
-	int			start_offset;
 
 #define COMMANDS_ALLOC_NUM 128
 	alloc_num = COMMANDS_ALLOC_NUM;
@@ -5948,7 +5963,6 @@ ParseScript(const char *script, const char *desc, int weight)
 	 * stdstrings should be true, which is a bit riskier.
 	 */
 	psql_scan_setup(sstate, script, strlen(script), 0, true);
-	start_offset = expr_scanner_offset(sstate) - 1;
 
 	initPQExpBuffer(&line_buf);
 
@@ -5961,7 +5975,6 @@ ParseScript(const char *script, const char *desc, int weight)
 		Command    *command = NULL;
 
 		resetPQExpBuffer(&line_buf);
-		lineno = expr_scanner_get_lineno(sstate, start_offset);
 
 		sr = psql_scan(sstate, &line_buf, &prompt);
 
@@ -5975,7 +5988,15 @@ ParseScript(const char *script, const char *desc, int weight)
 		/* If we reached a backslash, process that */
 		if (sr == PSCAN_BACKSLASH)
 		{
-			command = process_backslash_command(sstate, desc);
+			int			lineno;
+			int			start_offset;
+
+			/* Capture location of the backslash */
+			psql_scan_get_location(sstate, &lineno, &start_offset);
+			start_offset--;
+
+			command = process_backslash_command(sstate, desc,
+												lineno, start_offset);
 
 			if (command)
 			{
@@ -6613,27 +6634,23 @@ set_random_seed(const char *seed)
 	}
 	else
 	{
-		/* parse unsigned-int seed value */
-		unsigned long ulseed;
 		char		garbage;
 
-		/* Don't try to use UINT64_FORMAT here; it might not work for sscanf */
-		if (sscanf(seed, "%lu%c", &ulseed, &garbage) != 1)
+		if (sscanf(seed, "%" SCNu64 "%c", &iseed, &garbage) != 1)
 		{
 			pg_log_error("unrecognized random seed option \"%s\"", seed);
 			pg_log_error_detail("Expecting an unsigned integer, \"time\" or \"rand\".");
 			return false;
 		}
-		iseed = (uint64) ulseed;
 	}
 
 	if (seed != NULL)
-		pg_log_info("setting random seed to %llu", (unsigned long long) iseed);
+		pg_log_info("setting random seed to %" PRIu64, iseed);
 
 	random_seed = iseed;
 
 	/* Initialize base_random_sequence using seed */
-	pg_prng_seed(&base_random_sequence, (uint64) iseed);
+	pg_prng_seed(&base_random_sequence, iseed);
 
 	return true;
 }
@@ -6786,12 +6803,25 @@ main(int argc, char **argv)
 #ifdef HAVE_GETRLIMIT
 				if (getrlimit(RLIMIT_NOFILE, &rlim) == -1)
 					pg_fatal("getrlimit failed: %m");
-				if (rlim.rlim_cur < nclients + 3)
+
+				if (rlim.rlim_max < nclients + 3)
 				{
 					pg_log_error("need at least %d open files, but system limit is %ld",
-								 nclients + 3, (long) rlim.rlim_cur);
+								 nclients + 3, (long) rlim.rlim_max);
 					pg_log_error_hint("Reduce number of clients, or use limit/ulimit to increase the system limit.");
 					exit(1);
+				}
+
+				if (rlim.rlim_cur < nclients + 3)
+				{
+					rlim.rlim_cur = nclients + 3;
+					if (setrlimit(RLIMIT_NOFILE, &rlim) == -1)
+					{
+						pg_log_error("need at least %d open files, but couldn't raise the limit: %m",
+									 nclients + 3);
+						pg_log_error_hint("Reduce number of clients, or use limit/ulimit to increase the system limit.");
+						exit(1);
+					}
 				}
 #endif							/* HAVE_GETRLIMIT */
 				break;

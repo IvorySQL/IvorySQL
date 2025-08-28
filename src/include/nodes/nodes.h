@@ -4,7 +4,7 @@
  *	  Definitions for tagged nodes.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/nodes/nodes.h
@@ -54,6 +54,7 @@ typedef enum NodeTag
  *   readfuncs.c.
  *
  * - custom_query_jumble: Has custom implementation in queryjumblefuncs.c.
+ *   Also available as a node field attribute.
  *
  * - no_copy: Does not support copyObject() at all.
  *
@@ -101,9 +102,14 @@ typedef enum NodeTag
  * - equal_ignore_if_zero: Ignore the field for equality if it is zero.
  *   (Otherwise, compare normally.)
  *
+ * - custom_query_jumble: Has custom implementation in queryjumblefuncs.c
+ *   for the field of a node.  Also available as a node attribute.
+ *
  * - query_jumble_ignore: Ignore the field for the query jumbling.  Note
  *   that typmod and collation information are usually irrelevant for the
  *   query jumbling.
+ *
+ * - query_jumble_squash: Squash multiple values during query jumbling.
  *
  * - query_jumble_location: Mark the field as a location to track.  This is
  *   only allowed for integer fields that include "location" in their name.

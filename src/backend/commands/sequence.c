@@ -3,7 +3,7 @@
  * sequence.c
  *	  PostgreSQL sequences support code.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -429,8 +429,8 @@ fill_seq_fork_with_data(Relation rel, HeapTuple tuple, ForkNumber forkNum)
 
 		xlrec.locator = rel->rd_locator;
 
-		XLogRegisterData((char *) &xlrec, sizeof(xl_seq_rec));
-		XLogRegisterData((char *) tuple->t_data, tuple->t_len);
+		XLogRegisterData(&xlrec, sizeof(xl_seq_rec));
+		XLogRegisterData(tuple->t_data, tuple->t_len);
 
 		recptr = XLogInsert(RM_SEQ_ID, XLOG_SEQ_LOG);
 
@@ -888,9 +888,9 @@ nextval_internal(Oid relid, bool check_permissions)
 				if (!cycle)
 					ereport(ERROR,
 							(errcode(ERRCODE_SEQUENCE_GENERATOR_LIMIT_EXCEEDED),
-							 errmsg("nextval: reached maximum value of sequence \"%s\" (%lld)",
+							 errmsg("nextval: reached maximum value of sequence \"%s\" (%" PRId64 ")",
 									RelationGetRelationName(seqrel),
-									(long long) maxv)));
+									maxv)));
 				next = minv;
 			}
 			else
@@ -907,9 +907,9 @@ nextval_internal(Oid relid, bool check_permissions)
 				if (!cycle)
 					ereport(ERROR,
 							(errcode(ERRCODE_SEQUENCE_GENERATOR_LIMIT_EXCEEDED),
-							 errmsg("nextval: reached minimum value of sequence \"%s\" (%lld)",
+							 errmsg("nextval: reached minimum value of sequence \"%s\" (%" PRId64 ")",
 									RelationGetRelationName(seqrel),
-									(long long) minv)));
+									minv)));
 				next = maxv;
 			}
 			else
@@ -983,8 +983,8 @@ nextval_internal(Oid relid, bool check_permissions)
 
 		xlrec.locator = seqrel->rd_locator;
 
-		XLogRegisterData((char *) &xlrec, sizeof(xl_seq_rec));
-		XLogRegisterData((char *) seqdatatuple.t_data, seqdatatuple.t_len);
+		XLogRegisterData(&xlrec, sizeof(xl_seq_rec));
+		XLogRegisterData(seqdatatuple.t_data, seqdatatuple.t_len);
 
 		recptr = XLogInsert(RM_SEQ_ID, XLOG_SEQ_LOG);
 
@@ -1283,9 +1283,9 @@ do_setval(Oid relid, int64 next, bool iscalled)
 	if ((next < minv) || (next > maxv))
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-				 errmsg("setval: value %lld is out of bounds for sequence \"%s\" (%lld..%lld)",
-						(long long) next, RelationGetRelationName(seqrel),
-						(long long) minv, (long long) maxv)));
+				 errmsg("setval: value %" PRId64 " is out of bounds for sequence \"%s\" (%" PRId64 "..%" PRId64 ")",
+						next, RelationGetRelationName(seqrel),
+						minv, maxv)));
 
 	/* Set the currval() state only if iscalled = true */
 	if (iscalled)
@@ -1321,8 +1321,8 @@ do_setval(Oid relid, int64 next, bool iscalled)
 		XLogRegisterBuffer(0, buf, REGBUF_WILL_INIT);
 
 		xlrec.locator = seqrel->rd_locator;
-		XLogRegisterData((char *) &xlrec, sizeof(xl_seq_rec));
-		XLogRegisterData((char *) seqdatatuple.t_data, seqdatatuple.t_len);
+		XLogRegisterData(&xlrec, sizeof(xl_seq_rec));
+		XLogRegisterData(seqdatatuple.t_data, seqdatatuple.t_len);
 
 		recptr = XLogInsert(RM_SEQ_ID, XLOG_SEQ_LOG);
 
@@ -1986,8 +1986,8 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 		|| (seqform->seqtypid == INT4OID && (seqform->seqmax < PG_INT32_MIN || seqform->seqmax > PG_INT32_MAX)))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("MAXVALUE (%lld) is out of range for sequence data type %s",
-						(long long) seqform->seqmax,
+				 errmsg("MAXVALUE (%" PRId64 ") is out of range for sequence data type %s",
+						seqform->seqmax,
 						format_type_be(seqform->seqtypid))));
 
 	/* MINVALUE (null arg means NO MINVALUE) */
@@ -2054,17 +2054,17 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 		|| (seqform->seqtypid == INT4OID && (seqform->seqmin < PG_INT32_MIN || seqform->seqmin > PG_INT32_MAX)))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("MINVALUE (%lld) is out of range for sequence data type %s",
-						(long long) seqform->seqmin,
+				 errmsg("MINVALUE (%" PRId64 ") is out of range for sequence data type %s",
+						seqform->seqmin,
 						format_type_be(seqform->seqtypid))));
 
 	/* crosscheck min/max */
 	if (seqform->seqmin >= seqform->seqmax)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("MINVALUE (%lld) must be less than MAXVALUE (%lld)",
-						(long long) seqform->seqmin,
-						(long long) seqform->seqmax)));
+				 errmsg("MINVALUE (%" PRId64 ") must be less than MAXVALUE (%" PRId64 ")",
+						seqform->seqmin,
+						seqform->seqmax)));
 
 	/* START WITH */
 	if (start_value != NULL)
@@ -2120,15 +2120,15 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 	if (seqform->seqstart < seqform->seqmin)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("START value (%lld) cannot be less than MINVALUE (%lld)",
-						(long long) seqform->seqstart,
-						(long long) seqform->seqmin)));
+				 errmsg("START value (%" PRId64 ") cannot be less than MINVALUE (%" PRId64 ")",
+						seqform->seqstart,
+						seqform->seqmin)));
 	if (seqform->seqstart > seqform->seqmax && (compatible_db == PG_PARSER || !for_identity))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("START value (%lld) cannot be greater than MAXVALUE (%lld)",
-						(long long) seqform->seqstart,
-						(long long) seqform->seqmax)));
+				 errmsg("START value (%" PRId64 ") cannot be greater than MAXVALUE (%" PRId64 ")",
+						seqform->seqstart,
+						seqform->seqmax)));
 
 	if (isInit)
 		seqform->flags = 0;
@@ -2292,15 +2292,15 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 	if (seqdataform->last_value < seqform->seqmin)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("RESTART value (%lld) cannot be less than MINVALUE (%lld)",
-						(long long) seqdataform->last_value,
-						(long long) seqform->seqmin)));
+				 errmsg("RESTART value (%" PRId64 ") cannot be less than MINVALUE (%" PRId64 ")",
+						seqdataform->last_value,
+						seqform->seqmin)));
 	if (seqdataform->last_value > seqform->seqmax && compatible_db == PG_PARSER)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("RESTART value (%lld) cannot be greater than MAXVALUE (%lld)",
-						(long long) seqdataform->last_value,
-						(long long) seqform->seqmax)));
+				 errmsg("RESTART value (%" PRId64 ") cannot be greater than MAXVALUE (%" PRId64 ")",
+						seqdataform->last_value,
+						seqform->seqmax)));
 
 	/* CACHE */
 	if (cache_value != NULL)

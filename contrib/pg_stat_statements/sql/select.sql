@@ -12,6 +12,26 @@ SELECT pg_stat_statements_reset() IS NOT NULL AS t;
 --
 SELECT 1 AS "int";
 
+-- LIMIT and OFFSET patterns
+-- Try some query permutations which once produced identical query IDs
+SELECT 1 AS "int" LIMIT 1;
+SELECT 1 AS "int" LIMIT 2;
+SELECT 1 AS "int" OFFSET 1;
+SELECT 1 AS "int" OFFSET 2;
+SELECT 1 AS "int" OFFSET 1 LIMIT 1;
+SELECT 1 AS "int" OFFSET 2 LIMIT 2;
+SELECT 1 AS "int" LIMIT 1 OFFSET 1;
+SELECT 1 AS "int" LIMIT 3 OFFSET 3;
+SELECT 1 AS "int" OFFSET 1 FETCH FIRST 2 ROW ONLY;
+SELECT 1 AS "int" OFFSET 2 FETCH FIRST 3 ROW ONLY;
+
+-- DISTINCT and ORDER BY patterns
+-- Try some query permutations which once produced identical query IDs
+SELECT DISTINCT 1 AS "int";
+SELECT DISTINCT 2 AS "int";
+SELECT 1 AS "int" ORDER BY 1;
+SELECT 2 AS "int" ORDER BY 1;
+
 /* this comment should not appear in the output */
 SELECT 'hello'
   -- but this one will appear
@@ -147,4 +167,73 @@ SELECT (
 ) FROM (VALUES(6,7)) v3(e,f) GROUP BY ROLLUP(e,f);
 
 SELECT COUNT(*) FROM pg_stat_statements WHERE query LIKE '%SELECT GROUPING%';
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
+
+-- Temporary table with same name, re-created.
+BEGIN;
+  CREATE TEMP TABLE temp_t (id int) ON COMMIT DROP;
+  SELECT * FROM temp_t;
+COMMIT;
+BEGIN;
+  CREATE TEMP TABLE temp_t (id int) ON COMMIT DROP;
+  SELECT * FROM temp_t;
+COMMIT;
+SELECT calls, query FROM pg_stat_statements ORDER BY query COLLATE "C";
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
+
+-- search_path with various schemas and temporary tables
+CREATE SCHEMA pgss_schema_1;
+CREATE SCHEMA pgss_schema_2;
+-- Same attributes.
+CREATE TABLE pgss_schema_1.tab_search_same (a int, b int);
+CREATE TABLE pgss_schema_2.tab_search_same (a int, b int);
+CREATE TEMP TABLE tab_search_same (a int, b int);
+-- Different number of attributes, mapping types
+CREATE TABLE pgss_schema_1.tab_search_diff_1 (a int);
+CREATE TABLE pgss_schema_2.tab_search_diff_1 (a int, b int);
+CREATE TEMP TABLE tab_search_diff_1 (a int, b int, c int);
+-- Same number of attributes, different types
+CREATE TABLE pgss_schema_1.tab_search_diff_2 (a int);
+CREATE TABLE pgss_schema_2.tab_search_diff_2 (a text);
+CREATE TEMP TABLE tab_search_diff_2 (a bigint);
+-- First permanent schema
+SET search_path = 'pgss_schema_1';
+SELECT count(*) FROM tab_search_same;
+SELECT a, b FROM tab_search_same;
+SELECT count(*) FROM tab_search_diff_1;
+SELECT count(*) FROM tab_search_diff_2;
+SELECT a FROM tab_search_diff_2 AS t1;
+SELECT a FROM tab_search_diff_2;
+SELECT a AS a1 FROM tab_search_diff_2;
+-- Second permanent schema
+SET search_path = 'pgss_schema_2';
+SELECT count(*) FROM tab_search_same;
+SELECT a, b FROM tab_search_same;
+SELECT count(*) FROM tab_search_diff_1;
+SELECT count(*) FROM tab_search_diff_2;
+SELECT a FROM tab_search_diff_2 AS t1;
+SELECT a FROM tab_search_diff_2;
+SELECT a AS a1 FROM tab_search_diff_2;
+-- Temporary schema
+SET search_path = 'pg_temp';
+SELECT count(*) FROM tab_search_same;
+SELECT a, b FROM tab_search_same;
+SELECT count(*) FROM tab_search_diff_1;
+SELECT count(*) FROM tab_search_diff_2;
+SELECT a FROM tab_search_diff_2 AS t1;
+SELECT a FROM tab_search_diff_2;
+SELECT a AS a1 FROM tab_search_diff_2;
+RESET search_path;
+-- Schema qualifications
+SELECT count(*) FROM pgss_schema_1.tab_search_same;
+SELECT a, b FROM pgss_schema_1.tab_search_same;
+SELECT count(*) FROM pgss_schema_2.tab_search_diff_1;
+SELECT count(*) FROM pg_temp.tab_search_diff_2;
+SELECT a FROM pgss_schema_2.tab_search_diff_2 AS t1;
+SELECT a FROM pgss_schema_2.tab_search_diff_2;
+SELECT a AS a1 FROM pgss_schema_2.tab_search_diff_2;
+SELECT calls, query FROM pg_stat_statements ORDER BY query COLLATE "C";
+DROP SCHEMA pgss_schema_1 CASCADE;
+DROP SCHEMA pgss_schema_2 CASCADE;
+DROP TABLE tab_search_same, tab_search_diff_1, tab_search_diff_2;
 SELECT pg_stat_statements_reset() IS NOT NULL AS t;

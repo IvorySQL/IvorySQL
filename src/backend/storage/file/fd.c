@@ -3,7 +3,7 @@
  * fd.c
  *	  Virtual file descriptor code.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -94,6 +94,7 @@
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "postmaster/startup.h"
+#include "storage/aio.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
 #include "utils/guc.h"
@@ -910,7 +911,7 @@ InitFileAccess(void)
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of memory")));
 
-	MemSet((char *) &(VfdCache[0]), 0, sizeof(Vfd));
+	MemSet(&(VfdCache[0]), 0, sizeof(Vfd));
 	VfdCache->fd = VFD_CLOSED;
 
 	SizeVfdCache = 1;
@@ -1047,16 +1048,17 @@ set_max_safe_fds(void)
 
 	/*----------
 	 * We want to set max_safe_fds to
-	 *			MIN(usable_fds, max_files_per_process - already_open)
+	 *			MIN(usable_fds, max_files_per_process)
 	 * less the slop factor for files that are opened without consulting
-	 * fd.c.  This ensures that we won't exceed either max_files_per_process
-	 * or the experimentally-determined EMFILE limit.
+	 * fd.c.  This ensures that we won't allow to open more than
+	 * max_files_per_process, or the experimentally-determined EMFILE limit,
+	 * additional files.
 	 *----------
 	 */
 	count_usable_fds(max_files_per_process,
 					 &usable_fds, &already_open);
 
-	max_safe_fds = Min(usable_fds, max_files_per_process - already_open);
+	max_safe_fds = Min(usable_fds, max_files_per_process);
 
 	/*
 	 * Take off the FDs reserved for system() etc.
@@ -1070,9 +1072,10 @@ set_max_safe_fds(void)
 		ereport(FATAL,
 				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
 				 errmsg("insufficient file descriptors available to start server process"),
-				 errdetail("System allows %d, server needs at least %d.",
+				 errdetail("System allows %d, server needs at least %d, %d files are already open.",
 						   max_safe_fds + NUM_RESERVED_FDS,
-						   FD_MINFREE + NUM_RESERVED_FDS)));
+						   FD_MINFREE + NUM_RESERVED_FDS,
+						   already_open)));
 
 	elog(DEBUG2, "max_safe_fds = %d, usable_fds = %d, already_open = %d",
 		 max_safe_fds, usable_fds, already_open);
@@ -1294,6 +1297,8 @@ LruDelete(File file)
 
 	vfdP = &VfdCache[file];
 
+	pgaio_closing_fd(vfdP->fd);
+
 	/*
 	 * Close the file.  We aren't expecting this to fail; if it does, better
 	 * to leak the FD than to mess up our internal state.
@@ -1447,7 +1452,7 @@ AllocateVfd(void)
 		 */
 		for (i = SizeVfdCache; i < newCacheSize; i++)
 		{
-			MemSet((char *) &(VfdCache[i]), 0, sizeof(Vfd));
+			MemSet(&(VfdCache[i]), 0, sizeof(Vfd));
 			VfdCache[i].nextFree = i + 1;
 			VfdCache[i].fd = VFD_CLOSED;
 		}
@@ -1987,6 +1992,8 @@ FileClose(File file)
 
 	if (!FileIsNotOpen(file))
 	{
+		pgaio_closing_fd(vfdP->fd);
+
 		/* close the file */
 		if (close(vfdP->fd) != 0)
 		{
@@ -2208,6 +2215,32 @@ retry:
 	}
 
 	return returnCode;
+}
+
+int
+FileStartReadV(PgAioHandle *ioh, File file,
+			   int iovcnt, off_t offset,
+			   uint32 wait_event_info)
+{
+	int			returnCode;
+	Vfd		   *vfdP;
+
+	Assert(FileIsValid(file));
+
+	DO_DB(elog(LOG, "FileStartReadV: %d (%s) " INT64_FORMAT " %d",
+			   file, VfdCache[file].fileName,
+			   (int64) offset,
+			   iovcnt));
+
+	returnCode = FileAccess(file);
+	if (returnCode < 0)
+		return returnCode;
+
+	vfdP = &VfdCache[file];
+
+	pgaio_io_start_readv(ioh, vfdP->fd, iovcnt, offset);
+
+	return 0;
 }
 
 ssize_t
@@ -2498,6 +2531,12 @@ FilePathName(File file)
 int
 FileGetRawDesc(File file)
 {
+	int			returnCode;
+
+	returnCode = FileAccess(file);
+	if (returnCode < 0)
+		return returnCode;
+
 	Assert(FileIsValid(file));
 	return VfdCache[file].fd;
 }
@@ -2778,6 +2817,7 @@ FreeDesc(AllocateDesc *desc)
 			result = closedir(desc->desc.dir);
 			break;
 		case AllocateDescRawFD:
+			pgaio_closing_fd(desc->desc.fd);
 			result = close(desc->desc.fd);
 			break;
 		default:
@@ -2845,6 +2885,8 @@ CloseTransientFile(int fd)
 
 	/* Only get here if someone passes us a file not in allocatedDescs */
 	elog(WARNING, "fd passed to CloseTransientFile was not obtained from OpenTransientFile");
+
+	pgaio_closing_fd(fd);
 
 	return close(fd);
 }
@@ -4026,7 +4068,7 @@ check_debug_io_direct(char **newval, void **extra, GucSource source)
 #if BLCKSZ < PG_IO_ALIGN_SIZE
 	if (result && (flags & IO_DIRECT_DATA))
 	{
-		GUC_check_errdetail("\"%s\" is not supported for WAL because %s is too small.",
+		GUC_check_errdetail("\"%s\" is not supported for data because %s is too small.",
 							"debug_io_direct", "BLCKSZ");
 		result = false;
 	}
@@ -4040,7 +4082,9 @@ check_debug_io_direct(char **newval, void **extra, GucSource source)
 		return result;
 
 	/* Save the flags in *extra, for use by assign_debug_io_direct */
-	*extra = guc_malloc(ERROR, sizeof(int));
+	*extra = guc_malloc(LOG, sizeof(int));
+	if (!*extra)
+		return false;
 	*((int *) *extra) = flags;
 
 	return result;

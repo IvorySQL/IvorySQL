@@ -3,7 +3,7 @@
  * nodeMergeAppend.c
  *	  routines to handle MergeAppend nodes.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -83,7 +83,7 @@ ExecInitMergeAppend(MergeAppend *node, EState *estate, int eflags)
 	mergestate->ps.ExecProcNode = ExecMergeAppend;
 
 	/* If run-time partition pruning is enabled, then set that up now */
-	if (node->part_prune_info != NULL)
+	if (node->part_prune_index >= 0)
 	{
 		PartitionPruneState *prunestate;
 
@@ -92,10 +92,11 @@ ExecInitMergeAppend(MergeAppend *node, EState *estate, int eflags)
 		 * subplans to initialize (validsubplans) by taking into account the
 		 * result of performing initial pruning if any.
 		 */
-		prunestate = ExecInitPartitionPruning(&mergestate->ps,
-											  list_length(node->mergeplans),
-											  node->part_prune_info,
-											  &validsubplans);
+		prunestate = ExecInitPartitionExecPruning(&mergestate->ps,
+												  list_length(node->mergeplans),
+												  node->part_prune_index,
+												  node->apprelids,
+												  &validsubplans);
 		mergestate->ms_prune_state = prunestate;
 		nplans = bms_num_members(validsubplans);
 
@@ -232,7 +233,7 @@ ExecMergeAppend(PlanState *pstate)
 		 */
 		if (node->ms_valid_subplans == NULL)
 			node->ms_valid_subplans =
-				ExecFindMatchingSubPlans(node->ms_prune_state, false);
+				ExecFindMatchingSubPlans(node->ms_prune_state, false, NULL);
 
 		/*
 		 * First time through: pull the first tuple from each valid subplan,

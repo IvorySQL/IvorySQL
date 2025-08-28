@@ -111,6 +111,7 @@
 <!ENTITY generic-wal SYSTEM "generic-wal.sgml">
 <!ENTITY custom-rmgr SYSTEM "custom-rmgr.sgml">
 <!ENTITY backup-manifest SYSTEM "backup-manifest.sgml">
+<!ENTITY oauth-validators SYSTEM "oauth-validators.sgml">
 
 <!-- contrib information -->
 <!ENTITY contrib         SYSTEM "contrib.sgml">
@@ -144,6 +145,7 @@
 <!ENTITY pgcrypto        SYSTEM "pgcrypto.sgml">
 <!ENTITY pgfreespacemap  SYSTEM "pgfreespacemap.sgml">
 <!ENTITY pglogicalinspect  SYSTEM "pglogicalinspect.sgml">
+<!ENTITY pgoverexplain   SYSTEM "pgoverexplain.sgml">
 <!ENTITY pgprewarm       SYSTEM "pgprewarm.sgml">
 <!ENTITY pgrowlocks      SYSTEM "pgrowlocks.sgml">
 <!ENTITY pgstatstatements SYSTEM "pgstatstatements.sgml">

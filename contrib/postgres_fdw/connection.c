@@ -3,7 +3,7 @@
  * connection.c
  *		  Connection management functions for postgres_fdw
  *
- * Portions Copyright (c) 2012-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2012-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  contrib/postgres_fdw/connection.c
@@ -19,6 +19,7 @@
 #include "access/xact.h"
 #include "catalog/pg_user_mapping.h"
 #include "commands/defrem.h"
+#include "common/base64.h"
 #include "funcapi.h"
 #include "libpq/libpq-be.h"
 #include "libpq/libpq-be-fe-helpers.h"
@@ -177,11 +178,13 @@ static void pgfdw_finish_abort_cleanup(List *pending_entries,
 static void pgfdw_security_check(const char **keywords, const char **values,
 								 UserMapping *user, PGconn *conn);
 static bool UserMappingPasswordRequired(UserMapping *user);
+static bool UseScramPassthrough(ForeignServer *server, UserMapping *user);
 static bool disconnect_cached_connections(Oid serverid);
 static void postgres_fdw_get_connections_internal(FunctionCallInfo fcinfo,
 												  enum pgfdwVersion api_version);
 static int	pgfdw_conn_check(PGconn *conn);
 static bool pgfdw_conn_checkable(void);
+static bool pgfdw_has_required_scram_options(const char **keywords, const char **values);
 
 /*
  * Get a PGconn which can be used to execute queries on the remote PostgreSQL
@@ -453,6 +456,15 @@ pgfdw_security_check(const char **keywords, const char **values, UserMapping *us
 		}
 	}
 
+	/*
+	 * Ok if SCRAM pass-through is being used and all required SCRAM options
+	 * are set correctly. If pgfdw_has_required_scram_options returns true we
+	 * assume that UseScramPassthrough is also true since SCRAM options are
+	 * only set when UseScramPassthrough is enabled.
+	 */
+	if (MyProcPort->has_scram_keys && pgfdw_has_required_scram_options(keywords, values))
+		return;
+
 	ereport(ERROR,
 			(errcode(ERRCODE_S_R_E_PROHIBITED_SQL_STATEMENT_ATTEMPTED),
 			 errmsg("password or GSSAPI delegated credentials required"),
@@ -483,9 +495,10 @@ connect_pg_server(ForeignServer *server, UserMapping *user)
 		 * and UserMapping.  (Some of them might not be libpq options, in
 		 * which case we'll just waste a few array slots.)  Add 4 extra slots
 		 * for application_name, fallback_application_name, client_encoding,
-		 * end marker.
+		 * end marker, and 3 extra slots for scram keys and required scram
+		 * pass-through options.
 		 */
-		n = list_length(server->options) + list_length(user->options) + 4;
+		n = list_length(server->options) + list_length(user->options) + 4 + 3;
 		keywords = (const char **) palloc(n * sizeof(char *));
 		values = (const char **) palloc(n * sizeof(char *));
 
@@ -554,9 +567,46 @@ connect_pg_server(ForeignServer *server, UserMapping *user)
 		values[n] = GetDatabaseEncodingName();
 		n++;
 
+		/* Add required SCRAM pass-through connection options if it's enabled. */
+		if (MyProcPort->has_scram_keys && UseScramPassthrough(server, user))
+		{
+			int			len;
+			int			encoded_len;
+
+			keywords[n] = "scram_client_key";
+			len = pg_b64_enc_len(sizeof(MyProcPort->scram_ClientKey));
+			/* don't forget the zero-terminator */
+			values[n] = palloc0(len + 1);
+			encoded_len = pg_b64_encode((const char *) MyProcPort->scram_ClientKey,
+										sizeof(MyProcPort->scram_ClientKey),
+										(char *) values[n], len);
+			if (encoded_len < 0)
+				elog(ERROR, "could not encode SCRAM client key");
+			n++;
+
+			keywords[n] = "scram_server_key";
+			len = pg_b64_enc_len(sizeof(MyProcPort->scram_ServerKey));
+			/* don't forget the zero-terminator */
+			values[n] = palloc0(len + 1);
+			encoded_len = pg_b64_encode((const char *) MyProcPort->scram_ServerKey,
+										sizeof(MyProcPort->scram_ServerKey),
+										(char *) values[n], len);
+			if (encoded_len < 0)
+				elog(ERROR, "could not encode SCRAM server key");
+			n++;
+
+			/*
+			 * Require scram-sha-256 to ensure that no other auth method is
+			 * used when connecting with foreign server.
+			 */
+			keywords[n] = "require_auth";
+			values[n] = "scram-sha-256";
+			n++;
+		}
+
 		keywords[n] = values[n] = NULL;
 
-		/* verify the set of connection parameters */
+		/* Verify the set of connection parameters. */
 		check_conn_params(keywords, values, user);
 
 		/* first time, allocate or get the custom wait event */
@@ -575,7 +625,7 @@ connect_pg_server(ForeignServer *server, UserMapping *user)
 							server->servername),
 					 errdetail_internal("%s", pchomp(PQerrorMessage(conn)))));
 
-		/* Perform post-connection security checks */
+		/* Perform post-connection security checks. */
 		pgfdw_security_check(keywords, values, user, conn);
 
 		/* Prepare new session for use */
@@ -629,6 +679,30 @@ UserMappingPasswordRequired(UserMapping *user)
 	return true;
 }
 
+static bool
+UseScramPassthrough(ForeignServer *server, UserMapping *user)
+{
+	ListCell   *cell;
+
+	foreach(cell, server->options)
+	{
+		DefElem    *def = (DefElem *) lfirst(cell);
+
+		if (strcmp(def->defname, "use_scram_passthrough") == 0)
+			return defGetBoolean(def);
+	}
+
+	foreach(cell, user->options)
+	{
+		DefElem    *def = (DefElem *) lfirst(cell);
+
+		if (strcmp(def->defname, "use_scram_passthrough") == 0)
+			return defGetBoolean(def);
+	}
+
+	return false;
+}
+
 /*
  * For non-superusers, insist that the connstr specify a password or that the
  * user provided their own GSSAPI delegated credentials.  This
@@ -663,10 +737,19 @@ check_conn_params(const char **keywords, const char **values, UserMapping *user)
 	if (!UserMappingPasswordRequired(user))
 		return;
 
+	/*
+	 * Ok if SCRAM pass-through is being used and all required scram options
+	 * are set correctly. If pgfdw_has_required_scram_options returns true we
+	 * assume that UseScramPassthrough is also true since SCRAM options are
+	 * only set when UseScramPassthrough is enabled.
+	 */
+	if (MyProcPort->has_scram_keys && pgfdw_has_required_scram_options(keywords, values))
+		return;
+
 	ereport(ERROR,
 			(errcode(ERRCODE_S_R_E_PROHIBITED_SQL_STATEMENT_ATTEMPTED),
 			 errmsg("password or GSSAPI delegated credentials required"),
-			 errdetail("Non-superusers must delegate GSSAPI credentials or provide a password in the user mapping.")));
+			 errdetail("Non-superusers must delegate GSSAPI credentials, provide a password, or enable SCRAM pass-through in user mapping.")));
 }
 
 /*
@@ -2049,8 +2132,8 @@ pgfdw_finish_abort_cleanup(List *pending_entries, List *cancel_requested,
 
 /* Number of output arguments (columns) for various API versions */
 #define POSTGRES_FDW_GET_CONNECTIONS_COLS_V1_1	2
-#define POSTGRES_FDW_GET_CONNECTIONS_COLS_V1_2	5
-#define POSTGRES_FDW_GET_CONNECTIONS_COLS	5	/* maximum of above */
+#define POSTGRES_FDW_GET_CONNECTIONS_COLS_V1_2	6
+#define POSTGRES_FDW_GET_CONNECTIONS_COLS	6	/* maximum of above */
 
 /*
  * Internal function used by postgres_fdw_get_connections variants.
@@ -2066,13 +2149,15 @@ pgfdw_finish_abort_cleanup(List *pending_entries, List *cancel_requested,
  *
  * For API version 1.2 and later, this function takes an input parameter
  * to check a connection status and returns the following
- * additional values along with the three values from version 1.1:
+ * additional values along with the four values from version 1.1:
  *
  * - user_name - the local user name of the active connection. In case the
  *   user mapping is dropped but the connection is still active, then the
  *   user name will be NULL in the output.
  * - used_in_xact - true if the connection is used in the current transaction.
  * - closed - true if the connection is closed.
+ * - remote_backend_pid - process ID of the remote backend, on the foreign
+ *   server, handling the connection.
  *
  * No records are returned when there are no cached connections at all.
  */
@@ -2211,6 +2296,9 @@ postgres_fdw_get_connections_internal(FunctionCallInfo fcinfo,
 				values[i++] = BoolGetDatum(pgfdw_conn_check(entry->conn) != 0);
 			else
 				nulls[i++] = true;
+
+			/* Return process ID of remote backend */
+			values[i++] = Int32GetDatum(PQbackendPID(entry->conn));
 		}
 
 		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
@@ -2419,4 +2507,57 @@ pgfdw_conn_checkable(void)
 #else
 	return false;
 #endif
+}
+
+/*
+ * Ensure that require_auth and SCRAM keys are correctly set on values. SCRAM
+ * keys used to pass-through are coming from the initial connection from the
+ * client with the server.
+ *
+ * All required SCRAM options are set by postgres_fdw, so we just need to
+ * ensure that these options are not overwritten by the user.
+ */
+static bool
+pgfdw_has_required_scram_options(const char **keywords, const char **values)
+{
+	bool		has_scram_server_key = false;
+	bool		has_scram_client_key = false;
+	bool		has_require_auth = false;
+	bool		has_scram_keys = false;
+
+	/*
+	 * Continue iterating even if we found the keys that we need to validate
+	 * to make sure that there is no other declaration of these keys that can
+	 * overwrite the first.
+	 */
+	for (int i = 0; keywords[i] != NULL; i++)
+	{
+		if (strcmp(keywords[i], "scram_client_key") == 0)
+		{
+			if (values[i] != NULL && values[i][0] != '\0')
+				has_scram_client_key = true;
+			else
+				has_scram_client_key = false;
+		}
+
+		if (strcmp(keywords[i], "scram_server_key") == 0)
+		{
+			if (values[i] != NULL && values[i][0] != '\0')
+				has_scram_server_key = true;
+			else
+				has_scram_server_key = false;
+		}
+
+		if (strcmp(keywords[i], "require_auth") == 0)
+		{
+			if (values[i] != NULL && strcmp(values[i], "scram-sha-256") == 0)
+				has_require_auth = true;
+			else
+				has_require_auth = false;
+		}
+	}
+
+	has_scram_keys = has_scram_client_key && has_scram_server_key && MyProcPort->has_scram_keys;
+
+	return (has_scram_keys && has_require_auth);
 }

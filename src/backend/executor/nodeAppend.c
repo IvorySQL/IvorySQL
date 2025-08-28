@@ -3,7 +3,7 @@
  * nodeAppend.c
  *	  routines to handle append nodes.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -135,7 +135,7 @@ ExecInitAppend(Append *node, EState *estate, int eflags)
 	appendstate->as_begun = false;
 
 	/* If run-time partition pruning is enabled, then set that up now */
-	if (node->part_prune_info != NULL)
+	if (node->part_prune_index >= 0)
 	{
 		PartitionPruneState *prunestate;
 
@@ -144,10 +144,11 @@ ExecInitAppend(Append *node, EState *estate, int eflags)
 		 * subplans to initialize (validsubplans) by taking into account the
 		 * result of performing initial pruning if any.
 		 */
-		prunestate = ExecInitPartitionPruning(&appendstate->ps,
-											  list_length(node->appendplans),
-											  node->part_prune_info,
-											  &validsubplans);
+		prunestate = ExecInitPartitionExecPruning(&appendstate->ps,
+												  list_length(node->appendplans),
+												  node->part_prune_index,
+												  node->apprelids,
+												  &validsubplans);
 		appendstate->as_prune_state = prunestate;
 		nplans = bms_num_members(validsubplans);
 
@@ -594,7 +595,7 @@ choose_next_subplan_locally(AppendState *node)
 		else if (!node->as_valid_subplans_identified)
 		{
 			node->as_valid_subplans =
-				ExecFindMatchingSubPlans(node->as_prune_state, false);
+				ExecFindMatchingSubPlans(node->as_prune_state, false, NULL);
 			node->as_valid_subplans_identified = true;
 		}
 
@@ -661,7 +662,7 @@ choose_next_subplan_for_leader(AppendState *node)
 		if (!node->as_valid_subplans_identified)
 		{
 			node->as_valid_subplans =
-				ExecFindMatchingSubPlans(node->as_prune_state, false);
+				ExecFindMatchingSubPlans(node->as_prune_state, false, NULL);
 			node->as_valid_subplans_identified = true;
 
 			/*
@@ -737,7 +738,7 @@ choose_next_subplan_for_worker(AppendState *node)
 	else if (!node->as_valid_subplans_identified)
 	{
 		node->as_valid_subplans =
-			ExecFindMatchingSubPlans(node->as_prune_state, false);
+			ExecFindMatchingSubPlans(node->as_prune_state, false, NULL);
 		node->as_valid_subplans_identified = true;
 
 		mark_invalid_subplans_as_finished(node);
@@ -890,7 +891,7 @@ ExecAppendAsyncBegin(AppendState *node)
 	if (!node->as_valid_subplans_identified)
 	{
 		node->as_valid_subplans =
-			ExecFindMatchingSubPlans(node->as_prune_state, false);
+			ExecFindMatchingSubPlans(node->as_prune_state, false, NULL);
 		node->as_valid_subplans_identified = true;
 
 		classify_matching_subplans(node);
@@ -1030,7 +1031,7 @@ ExecAppendAsyncRequest(AppendState *node, TupleTableSlot **result)
 static void
 ExecAppendAsyncEventWait(AppendState *node)
 {
-	int			nevents = node->as_nasyncplans + 1;
+	int			nevents = node->as_nasyncplans + 2;
 	long		timeout = node->as_syncdone ? -1 : 0;
 	WaitEvent	occurred_event[EVENT_BUFFER_SIZE];
 	int			noccurred;
@@ -1055,8 +1056,8 @@ ExecAppendAsyncEventWait(AppendState *node)
 	}
 
 	/*
-	 * No need for further processing if there are no configured events other
-	 * than the postmaster death event.
+	 * No need for further processing if none of the subplans configured any
+	 * events.
 	 */
 	if (GetNumRegisteredWaitEvents(node->as_eventset) == 1)
 	{
@@ -1064,6 +1065,21 @@ ExecAppendAsyncEventWait(AppendState *node)
 		node->as_eventset = NULL;
 		return;
 	}
+
+	/*
+	 * Add the process latch to the set, so that we wake up to process the
+	 * standard interrupts with CHECK_FOR_INTERRUPTS().
+	 *
+	 * NOTE: For historical reasons, it's important that this is added to the
+	 * WaitEventSet after the ExecAsyncConfigureWait() calls.  Namely,
+	 * postgres_fdw calls "GetNumRegisteredWaitEvents(set) == 1" to check if
+	 * any other events are in the set.  That's a poor design, it's
+	 * questionable for postgres_fdw to be doing that in the first place, but
+	 * we cannot change it now.  The pattern has possibly been copied to other
+	 * extensions too.
+	 */
+	AddWaitEventToSet(node->as_eventset, WL_LATCH_SET, PGINVALID_SOCKET,
+					  MyLatch, NULL);
 
 	/* Return at most EVENT_BUFFER_SIZE events in one call. */
 	if (nevents > EVENT_BUFFER_SIZE)
@@ -1105,6 +1121,13 @@ ExecAppendAsyncEventWait(AppendState *node)
 				/* Do the actual work. */
 				ExecAsyncNotify(areq);
 			}
+		}
+
+		/* Handle standard interrupts */
+		if ((w->events & WL_LATCH_SET) != 0)
+		{
+			ResetLatch(MyLatch);
+			CHECK_FOR_INTERRUPTS();
 		}
 	}
 }

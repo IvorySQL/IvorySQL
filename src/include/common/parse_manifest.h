@@ -3,7 +3,7 @@
  * parse_manifest.h
  *	  Parse a backup manifest in JSON format.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/common/parse_manifest.h
@@ -34,8 +34,7 @@ typedef void (*json_manifest_per_wal_range_callback) (JsonManifestParseContext *
 													  TimeLineID tli,
 													  XLogRecPtr start_lsn, XLogRecPtr end_lsn);
 typedef void (*json_manifest_error_callback) (JsonManifestParseContext *,
-											  const char *fmt,...) pg_attribute_printf(2, 3)
-			pg_attribute_noreturn();
+											  const char *fmt,...) pg_attribute_printf(2, 3);
 
 struct JsonManifestParseContext
 {

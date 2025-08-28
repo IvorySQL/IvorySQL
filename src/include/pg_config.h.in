@@ -112,6 +112,10 @@
    don't. */
 #undef HAVE_DECL_PWRITEV
 
+/* Define to 1 if you have the declaration of `strchrnul', and to 0 if you
+   don't. */
+#undef HAVE_DECL_STRCHRNUL
+
 /* Define to 1 if you have the declaration of `strlcat', and to 0 if you
    don't. */
 #undef HAVE_DECL_STRLCAT
@@ -238,6 +242,9 @@
 /* Define to 1 if you have the `crypto' library (-lcrypto). */
 #undef HAVE_LIBCRYPTO
 
+/* Define to 1 if you have the `curl' library (-lcurl). */
+#undef HAVE_LIBCURL
+
 /* Define to 1 if you have the `ldap' library (-lldap). */
 #undef HAVE_LIBLDAP
 
@@ -273,6 +280,9 @@
 
 /* Define to 1 if you have the `zstd' library (-lzstd). */
 #undef HAVE_LIBZSTD
+
+/* Define to 1 if you have the `localeconv_l' function. */
+#undef HAVE_LOCALECONV_L
 
 /* Define to 1 if you have the <mbarrier.h> header file. */
 #undef HAVE_MBARRIER_H
@@ -376,9 +386,6 @@
 /* Define to 1 if you have the <stdlib.h> header file. */
 #undef HAVE_STDLIB_H
 
-/* Define to 1 if you have the `strchrnul' function. */
-#undef HAVE_STRCHRNUL
-
 /* Define to 1 if you have the `strerror_r' function. */
 #undef HAVE_STRERROR_R
 
@@ -450,6 +457,9 @@
 
 /* Define to 1 if you have the <termios.h> header file. */
 #undef HAVE_TERMIOS_H
+
+/* Define to 1 if curl_global_init() is guaranteed to be thread-safe. */
+#undef HAVE_THREADSAFE_CURL_GLOBAL_INIT
 
 /* Define to 1 if your compiler understands `typeof' or something similar. */
 #undef HAVE_TYPEOF
@@ -675,6 +685,12 @@
 /* Define to 1 to build with LDAP support. (--with-ldap) */
 #undef USE_LDAP
 
+/* Define to 1 to build with libcurl support. (--with-libcurl) */
+#undef USE_LIBCURL
+
+/* Define to build with io_uring support. (--with-liburing) */
+#undef USE_LIBURING
+
 /* Define to 1 to build with XML support. (--with-libxml) */
 #undef USE_LIBXML
 
@@ -708,6 +724,9 @@
 
 /* Define to 1 to use Intel SSE 4.2 CRC instructions with a runtime check. */
 #undef USE_SSE42_CRC32C_WITH_RUNTIME_CHECK
+
+/* Define to 1 to use SVE popcount instructions with a runtime check. */
+#undef USE_SVE_POPCNT_WITH_RUNTIME_CHECK
 
 /* Define to build with systemd support. (--with-systemd) */
 #undef USE_SYSTEMD

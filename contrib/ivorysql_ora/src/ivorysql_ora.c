@@ -43,7 +43,11 @@
 
 
 /* Only include it once in any C file */
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(
+					.name = "ivorysql_ora",
+					.version = PG_VERSION
+);
+
 
 /* Saved hook value in case of unload */
 static oracle_datatype_precedence_hook_type pre_oracle_datatype_precedence_hook = NULL;

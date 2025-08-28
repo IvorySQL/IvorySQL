@@ -3,7 +3,7 @@
  * llvmjit_expr.c
  *	  JIT compile expressions.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -105,6 +105,8 @@ llvm_compile_expr(ExprState *state)
 	LLVMValueRef v_innerslot;
 	LLVMValueRef v_outerslot;
 	LLVMValueRef v_scanslot;
+	LLVMValueRef v_oldslot;
+	LLVMValueRef v_newslot;
 	LLVMValueRef v_resultslot;
 
 	/* nulls/values of slots */
@@ -114,6 +116,10 @@ llvm_compile_expr(ExprState *state)
 	LLVMValueRef v_outernulls;
 	LLVMValueRef v_scanvalues;
 	LLVMValueRef v_scannulls;
+	LLVMValueRef v_oldvalues;
+	LLVMValueRef v_oldnulls;
+	LLVMValueRef v_newvalues;
+	LLVMValueRef v_newnulls;
 	LLVMValueRef v_resultvalues;
 	LLVMValueRef v_resultnulls;
 
@@ -200,6 +206,16 @@ llvm_compile_expr(ExprState *state)
 									v_econtext,
 									FIELDNO_EXPRCONTEXT_OUTERTUPLE,
 									"v_outerslot");
+	v_oldslot = l_load_struct_gep(b,
+								  StructExprContext,
+								  v_econtext,
+								  FIELDNO_EXPRCONTEXT_OLDTUPLE,
+								  "v_oldslot");
+	v_newslot = l_load_struct_gep(b,
+								  StructExprContext,
+								  v_econtext,
+								  FIELDNO_EXPRCONTEXT_NEWTUPLE,
+								  "v_newslot");
 	v_resultslot = l_load_struct_gep(b,
 									 StructExprState,
 									 v_state,
@@ -237,6 +253,26 @@ llvm_compile_expr(ExprState *state)
 									 v_outerslot,
 									 FIELDNO_TUPLETABLESLOT_ISNULL,
 									 "v_outernulls");
+	v_oldvalues = l_load_struct_gep(b,
+									StructTupleTableSlot,
+									v_oldslot,
+									FIELDNO_TUPLETABLESLOT_VALUES,
+									"v_oldvalues");
+	v_oldnulls = l_load_struct_gep(b,
+								   StructTupleTableSlot,
+								   v_oldslot,
+								   FIELDNO_TUPLETABLESLOT_ISNULL,
+								   "v_oldnulls");
+	v_newvalues = l_load_struct_gep(b,
+									StructTupleTableSlot,
+									v_newslot,
+									FIELDNO_TUPLETABLESLOT_VALUES,
+									"v_newvalues");
+	v_newnulls = l_load_struct_gep(b,
+								   StructTupleTableSlot,
+								   v_newslot,
+								   FIELDNO_TUPLETABLESLOT_ISNULL,
+								   "v_newnulls");
 	v_resultvalues = l_load_struct_gep(b,
 									   StructTupleTableSlot,
 									   v_resultslot,
@@ -285,7 +321,7 @@ llvm_compile_expr(ExprState *state)
 
 		switch (opcode)
 		{
-			case EEOP_DONE:
+			case EEOP_DONE_RETURN:
 				{
 					LLVMValueRef v_tmpisnull;
 					LLVMValueRef v_tmpvalue;
@@ -299,9 +335,15 @@ llvm_compile_expr(ExprState *state)
 					break;
 				}
 
+			case EEOP_DONE_NO_RETURN:
+				LLVMBuildRet(b, l_sizet_const(0));
+				break;
+
 			case EEOP_INNER_FETCHSOME:
 			case EEOP_OUTER_FETCHSOME:
 			case EEOP_SCAN_FETCHSOME:
+			case EEOP_OLD_FETCHSOME:
+			case EEOP_NEW_FETCHSOME:
 				{
 					TupleDesc	desc = NULL;
 					LLVMValueRef v_slot;
@@ -326,8 +368,12 @@ llvm_compile_expr(ExprState *state)
 						v_slot = v_innerslot;
 					else if (opcode == EEOP_OUTER_FETCHSOME)
 						v_slot = v_outerslot;
-					else
+					else if (opcode == EEOP_SCAN_FETCHSOME)
 						v_slot = v_scanslot;
+					else if (opcode == EEOP_OLD_FETCHSOME)
+						v_slot = v_oldslot;
+					else
+						v_slot = v_newslot;
 
 					/*
 					 * Check if all required attributes are available, or
@@ -396,6 +442,8 @@ llvm_compile_expr(ExprState *state)
 			case EEOP_INNER_VAR:
 			case EEOP_OUTER_VAR:
 			case EEOP_SCAN_VAR:
+			case EEOP_OLD_VAR:
+			case EEOP_NEW_VAR:
 				{
 					LLVMValueRef value,
 								isnull;
@@ -413,10 +461,20 @@ llvm_compile_expr(ExprState *state)
 						v_values = v_outervalues;
 						v_nulls = v_outernulls;
 					}
-					else
+					else if (opcode == EEOP_SCAN_VAR)
 					{
 						v_values = v_scanvalues;
 						v_nulls = v_scannulls;
+					}
+					else if (opcode == EEOP_OLD_VAR)
+					{
+						v_values = v_oldvalues;
+						v_nulls = v_oldnulls;
+					}
+					else
+					{
+						v_values = v_newvalues;
+						v_nulls = v_newnulls;
 					}
 
 					v_attnum = l_int32_const(lc, op->d.var.attnum);
@@ -432,6 +490,8 @@ llvm_compile_expr(ExprState *state)
 			case EEOP_INNER_SYSVAR:
 			case EEOP_OUTER_SYSVAR:
 			case EEOP_SCAN_SYSVAR:
+			case EEOP_OLD_SYSVAR:
+			case EEOP_NEW_SYSVAR:
 				{
 					LLVMValueRef v_slot;
 
@@ -439,8 +499,12 @@ llvm_compile_expr(ExprState *state)
 						v_slot = v_innerslot;
 					else if (opcode == EEOP_OUTER_SYSVAR)
 						v_slot = v_outerslot;
-					else
+					else if (opcode == EEOP_SCAN_SYSVAR)
 						v_slot = v_scanslot;
+					else if (opcode == EEOP_OLD_SYSVAR)
+						v_slot = v_oldslot;
+					else
+						v_slot = v_newslot;
 
 					build_EvalXFunc(b, mod, "ExecEvalSysVar",
 									v_state, op, v_econtext, v_slot);
@@ -458,6 +522,8 @@ llvm_compile_expr(ExprState *state)
 			case EEOP_ASSIGN_INNER_VAR:
 			case EEOP_ASSIGN_OUTER_VAR:
 			case EEOP_ASSIGN_SCAN_VAR:
+			case EEOP_ASSIGN_OLD_VAR:
+			case EEOP_ASSIGN_NEW_VAR:
 				{
 					LLVMValueRef v_value;
 					LLVMValueRef v_isnull;
@@ -478,10 +544,20 @@ llvm_compile_expr(ExprState *state)
 						v_values = v_outervalues;
 						v_nulls = v_outernulls;
 					}
-					else
+					else if (opcode == EEOP_ASSIGN_SCAN_VAR)
 					{
 						v_values = v_scanvalues;
 						v_nulls = v_scannulls;
+					}
+					else if (opcode == EEOP_ASSIGN_OLD_VAR)
+					{
+						v_values = v_oldvalues;
+						v_nulls = v_oldnulls;
+					}
+					else
+					{
+						v_values = v_newvalues;
+						v_nulls = v_newnulls;
 					}
 
 					/* load data */
@@ -586,12 +662,16 @@ llvm_compile_expr(ExprState *state)
 
 			case EEOP_FUNCEXPR:
 			case EEOP_FUNCEXPR_STRICT:
+			case EEOP_FUNCEXPR_STRICT_1:
+			case EEOP_FUNCEXPR_STRICT_2:
 				{
 					FunctionCallInfo fcinfo = op->d.func.fcinfo_data;
 					LLVMValueRef v_fcinfo_isnull;
 					LLVMValueRef v_retval;
 
-					if (opcode == EEOP_FUNCEXPR_STRICT)
+					if (opcode == EEOP_FUNCEXPR_STRICT ||
+						opcode == EEOP_FUNCEXPR_STRICT_1 ||
+						opcode == EEOP_FUNCEXPR_STRICT_2)
 					{
 						LLVMBasicBlockRef b_nonull;
 						LLVMBasicBlockRef *b_checkargnulls;
@@ -1193,41 +1273,30 @@ llvm_compile_expr(ExprState *state)
 
 			case EEOP_CASE_TESTVAL:
 				{
-					LLVMBasicBlockRef b_avail,
-								b_notavail;
 					LLVMValueRef v_casevaluep,
 								v_casevalue;
 					LLVMValueRef v_casenullp,
 								v_casenull;
-					LLVMValueRef v_casevaluenull;
-
-					b_avail = l_bb_before_v(opblocks[opno + 1],
-											"op.%d.avail", opno);
-					b_notavail = l_bb_before_v(opblocks[opno + 1],
-											   "op.%d.notavail", opno);
 
 					v_casevaluep = l_ptr_const(op->d.casetest.value,
 											   l_ptr(TypeSizeT));
 					v_casenullp = l_ptr_const(op->d.casetest.isnull,
 											  l_ptr(TypeStorageBool));
 
-					v_casevaluenull =
-						LLVMBuildICmp(b, LLVMIntEQ,
-									  LLVMBuildPtrToInt(b, v_casevaluep,
-														TypeSizeT, ""),
-									  l_sizet_const(0), "");
-					LLVMBuildCondBr(b, v_casevaluenull, b_notavail, b_avail);
-
-					/* if casetest != NULL */
-					LLVMPositionBuilderAtEnd(b, b_avail);
 					v_casevalue = l_load(b, TypeSizeT, v_casevaluep, "");
 					v_casenull = l_load(b, TypeStorageBool, v_casenullp, "");
 					LLVMBuildStore(b, v_casevalue, v_resvaluep);
 					LLVMBuildStore(b, v_casenull, v_resnullp);
-					LLVMBuildBr(b, opblocks[opno + 1]);
 
-					/* if casetest == NULL */
-					LLVMPositionBuilderAtEnd(b, b_notavail);
+					LLVMBuildBr(b, opblocks[opno + 1]);
+					break;
+				}
+
+			case EEOP_CASE_TESTVAL_EXT:
+				{
+					LLVMValueRef v_casevalue;
+					LLVMValueRef v_casenull;
+
 					v_casevalue =
 						l_load_struct_gep(b,
 										  StructExprContext,
@@ -1654,6 +1723,45 @@ llvm_compile_expr(ExprState *state)
 				LLVMBuildBr(b, opblocks[opno + 1]);
 				break;
 
+			case EEOP_RETURNINGEXPR:
+				{
+					LLVMBasicBlockRef b_isnull;
+					LLVMValueRef v_flagsp;
+					LLVMValueRef v_flags;
+					LLVMValueRef v_nullflag;
+
+					b_isnull = l_bb_before_v(opblocks[opno + 1],
+											 "op.%d.row.isnull", opno);
+
+					/*
+					 * The next op actually evaluates the expression.  If the
+					 * OLD/NEW row doesn't exist, skip that and return NULL.
+					 */
+					v_flagsp = l_struct_gep(b,
+											StructExprState,
+											v_state,
+											FIELDNO_EXPRSTATE_FLAGS,
+											"v.state.flags");
+					v_flags = l_load(b, TypeStorageBool, v_flagsp, "");
+
+					v_nullflag = l_int8_const(lc, op->d.returningexpr.nullflag);
+
+					LLVMBuildCondBr(b,
+									LLVMBuildICmp(b, LLVMIntEQ,
+												  LLVMBuildAnd(b, v_flags,
+															   v_nullflag, ""),
+												  l_sbool_const(0), ""),
+									opblocks[opno + 1], b_isnull);
+
+					LLVMPositionBuilderAtEnd(b, b_isnull);
+
+					LLVMBuildStore(b, l_sizet_const(0), v_resvaluep);
+					LLVMBuildStore(b, l_sbool_const(1), v_resnullp);
+
+					LLVMBuildBr(b, opblocks[op->d.returningexpr.jumpdone]);
+					break;
+				}
+
 			case EEOP_ARRAYEXPR:
 				build_EvalXFunc(b, mod, "ExecEvalArrayExpr",
 								v_state, op);
@@ -1770,7 +1878,7 @@ llvm_compile_expr(ExprState *state)
 
 			case EEOP_ROWCOMPARE_FINAL:
 				{
-					RowCompareType rctype = op->d.rowcompare_final.rctype;
+					CompareType cmptype = op->d.rowcompare_final.cmptype;
 
 					LLVMValueRef v_cmpresult;
 					LLVMValueRef v_result;
@@ -1786,18 +1894,18 @@ llvm_compile_expr(ExprState *state)
 									   l_load(b, TypeSizeT, v_resvaluep, ""),
 									   LLVMInt32TypeInContext(lc), "");
 
-					switch (rctype)
+					switch (cmptype)
 					{
-						case ROWCOMPARE_LT:
+						case COMPARE_LT:
 							predicate = LLVMIntSLT;
 							break;
-						case ROWCOMPARE_LE:
+						case COMPARE_LE:
 							predicate = LLVMIntSLE;
 							break;
-						case ROWCOMPARE_GT:
+						case COMPARE_GT:
 							predicate = LLVMIntSGT;
 							break;
-						case ROWCOMPARE_GE:
+						case COMPARE_GE:
 							predicate = LLVMIntSGE;
 							break;
 						default:
@@ -1847,43 +1955,30 @@ llvm_compile_expr(ExprState *state)
 
 			case EEOP_DOMAIN_TESTVAL:
 				{
-					LLVMBasicBlockRef b_avail,
-								b_notavail;
 					LLVMValueRef v_casevaluep,
 								v_casevalue;
 					LLVMValueRef v_casenullp,
 								v_casenull;
-					LLVMValueRef v_casevaluenull;
-
-					b_avail = l_bb_before_v(opblocks[opno + 1],
-											"op.%d.avail", opno);
-					b_notavail = l_bb_before_v(opblocks[opno + 1],
-											   "op.%d.notavail", opno);
 
 					v_casevaluep = l_ptr_const(op->d.casetest.value,
 											   l_ptr(TypeSizeT));
 					v_casenullp = l_ptr_const(op->d.casetest.isnull,
 											  l_ptr(TypeStorageBool));
 
-					v_casevaluenull =
-						LLVMBuildICmp(b, LLVMIntEQ,
-									  LLVMBuildPtrToInt(b, v_casevaluep,
-														TypeSizeT, ""),
-									  l_sizet_const(0), "");
-					LLVMBuildCondBr(b,
-									v_casevaluenull,
-									b_notavail, b_avail);
-
-					/* if casetest != NULL */
-					LLVMPositionBuilderAtEnd(b, b_avail);
 					v_casevalue = l_load(b, TypeSizeT, v_casevaluep, "");
 					v_casenull = l_load(b, TypeStorageBool, v_casenullp, "");
 					LLVMBuildStore(b, v_casevalue, v_resvaluep);
 					LLVMBuildStore(b, v_casenull, v_resnullp);
-					LLVMBuildBr(b, opblocks[opno + 1]);
 
-					/* if casetest == NULL */
-					LLVMPositionBuilderAtEnd(b, b_notavail);
+					LLVMBuildBr(b, opblocks[opno + 1]);
+					break;
+				}
+
+			case EEOP_DOMAIN_TESTVAL_EXT:
+				{
+					LLVMValueRef v_casevalue;
+					LLVMValueRef v_casenull;
+
 					v_casevalue =
 						l_load_struct_gep(b,
 										  StructExprContext,
@@ -2391,6 +2486,7 @@ llvm_compile_expr(ExprState *state)
 				}
 
 			case EEOP_AGG_STRICT_INPUT_CHECK_ARGS:
+			case EEOP_AGG_STRICT_INPUT_CHECK_ARGS_1:
 			case EEOP_AGG_STRICT_INPUT_CHECK_NULLS:
 				{
 					int			nargs = op->d.agg_strict_input_check.nargs;

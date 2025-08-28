@@ -53,7 +53,10 @@ EXTERN_C void boot_DynaLoader(pTHX_ CV *cv);
 EXTERN_C void boot_PostgreSQL__InServer__Util(pTHX_ CV *cv);
 EXTERN_C void boot_PostgreSQL__InServer__SPI(pTHX_ CV *cv);
 
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(
+					.name = "plperl",
+					.version = PG_VERSION
+);
 
 /**********************************************************************
  * Information associated with a Perl interpreter.  We have one interpreter
@@ -3047,6 +3050,9 @@ plperl_hash_from_tuple(HeapTuple tuple, TupleDesc tupdesc, bool include_generate
 		{
 			/* don't include unless requested */
 			if (!include_generated)
+				continue;
+			/* never include virtual columns */
+			if (att->attgenerated == ATTRIBUTE_GENERATED_VIRTUAL)
 				continue;
 		}
 

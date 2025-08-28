@@ -12,7 +12,7 @@
  * postgresql.conf.  An extension also has an installation script file,
  * containing SQL commands to create the extension's objects.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -54,6 +54,7 @@
 #include "funcapi.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
+#include "nodes/pg_list.h"
 #include "nodes/queryjumble.h"
 #include "storage/fd.h"
 #include "tcop/utility.h"
@@ -69,6 +70,9 @@
 #include "utils/varlena.h"
 
 
+/* GUC */
+char	   *Extension_control_path;
+
 /* Globally visible state variables */
 bool		creating_extension = false;
 Oid			CurrentExtensionObject = InvalidOid;
@@ -79,6 +83,7 @@ Oid			CurrentExtensionObject = InvalidOid;
 typedef struct ExtensionControlFile
 {
 	char	   *name;			/* name of the extension */
+	char	   *control_dir;	/* directory where control file was found */
 	char	   *directory;		/* directory for script files */
 	char	   *default_version;	/* default install target version, if any */
 	char	   *module_pathname;	/* string to substitute for
@@ -146,6 +151,7 @@ static void ExecAlterExtensionContentsRecurse(AlterExtensionContentsStmt *stmt,
 											  ObjectAddress extension,
 											  ObjectAddress object);
 static char *read_whole_file(const char *filename, int *length);
+static ExtensionControlFile *new_ExtensionControlFile(const char *extname);
 
 
 /*
@@ -328,29 +334,104 @@ is_extension_script_filename(const char *filename)
 	return (extension != NULL) && (strcmp(extension, ".sql") == 0);
 }
 
-static char *
-get_extension_control_directory(void)
+/*
+ * Return a list of directories declared on extension_control_path GUC.
+ */
+static List *
+get_extension_control_directories(void)
 {
 	char		sharepath[MAXPGPATH];
-	char	   *result;
+	char	   *system_dir;
+	char	   *ecp;
+	List	   *paths = NIL;
 
 	get_share_path(my_exec_path, sharepath);
-	result = (char *) palloc(MAXPGPATH);
-	snprintf(result, MAXPGPATH, "%s/extension", sharepath);
 
-	return result;
+	system_dir = psprintf("%s/extension", sharepath);
+
+	if (strlen(Extension_control_path) == 0)
+	{
+		paths = lappend(paths, system_dir);
+	}
+	else
+	{
+		/* Duplicate the string so we can modify it */
+		ecp = pstrdup(Extension_control_path);
+
+		for (;;)
+		{
+			int			len;
+			char	   *mangled;
+			char	   *piece = first_path_var_separator(ecp);
+
+			/* Get the length of the next path on ecp */
+			if (piece == NULL)
+				len = strlen(ecp);
+			else
+				len = piece - ecp;
+
+			/* Copy the next path found on ecp */
+			piece = palloc(len + 1);
+			strlcpy(piece, ecp, len + 1);
+
+			/* Substitute the path macro if needed */
+			mangled = substitute_path_macro(piece, "$system", system_dir);
+			pfree(piece);
+
+			/* Canonicalize the path based on the OS and add to the list */
+			canonicalize_path(mangled);
+			paths = lappend(paths, mangled);
+
+			/* Break if ecp is empty or move to the next path on ecp */
+			if (ecp[len] == '\0')
+				break;
+			else
+				ecp += len + 1;
+		}
+	}
+
+	return paths;
 }
 
+/*
+ * Find control file for extension with name in control->name, looking in the
+ * path.  Return the full file name, or NULL if not found.  If found, the
+ * directory is recorded in control->control_dir.
+ */
 static char *
-get_extension_control_filename(const char *extname)
+find_extension_control_filename(ExtensionControlFile *control)
 {
 	char		sharepath[MAXPGPATH];
+	char	   *system_dir;
+	char	   *basename;
+	char	   *ecp;
 	char	   *result;
 
+	Assert(control->name);
+
 	get_share_path(my_exec_path, sharepath);
-	result = (char *) palloc(MAXPGPATH);
-	snprintf(result, MAXPGPATH, "%s/extension/%s.control",
-			 sharepath, extname);
+	system_dir = psprintf("%s/extension", sharepath);
+
+	basename = psprintf("%s.control", control->name);
+
+	/*
+	 * find_in_path() does nothing if the path value is empty.  This is the
+	 * historical behavior for dynamic_library_path, but it makes no sense for
+	 * extensions.  So in that case, substitute a default value.
+	 */
+	ecp = Extension_control_path;
+	if (strlen(ecp) == 0)
+		ecp = "$system";
+	result = find_in_path(basename, ecp, "extension_control_path", "$system", system_dir);
+
+	if (result)
+	{
+		const char *p;
+
+		p = strrchr(result, '/');
+		Assert(p);
+		control->control_dir = pnstrdup(result, p - result);
+	}
 
 	return result;
 }
@@ -366,7 +447,7 @@ get_extension_script_directory(ExtensionControlFile *control)
 	 * installation's share directory.
 	 */
 	if (!control->directory)
-		return get_extension_control_directory();
+		return pstrdup(control->control_dir);
 
 	if (is_absolute_path(control->directory))
 		return pstrdup(control->directory);
@@ -424,6 +505,11 @@ get_extension_script_filename(ExtensionControlFile *control,
  * fields of *control.  We parse primary file if version == NULL,
  * else the optional auxiliary file for that version.
  *
+ * The control file will be search on Extension_control_path paths if
+ * control->control_dir is NULL, otherwise it will use the value of control_dir
+ * to read and parse the .control file, so it assume that the control_dir is a
+ * valid path for the control file being parsed.
+ *
  * Control files are supposed to be very short, half a dozen lines,
  * so we don't worry about memory allocation risks here.  Also we don't
  * worry about what encoding it's in; all values are expected to be ASCII.
@@ -444,27 +530,35 @@ parse_extension_control_file(ExtensionControlFile *control,
 	if (version)
 		filename = get_extension_aux_control_filename(control, version);
 	else
-		filename = get_extension_control_filename(control->name);
+	{
+		/*
+		 * If control_dir is already set, use it, else do a path search.
+		 */
+		if (control->control_dir)
+		{
+			filename = psprintf("%s/%s.control", control->control_dir, control->name);
+		}
+		else
+			filename = find_extension_control_filename(control);
+	}
+
+	if (!filename)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("extension \"%s\" is not available", control->name),
+				 errhint("The extension must first be installed on the system where PostgreSQL is running.")));
+	}
 
 	if ((file = AllocateFile(filename, "r")) == NULL)
 	{
-		if (errno == ENOENT)
+		/* no complaint for missing auxiliary file */
+		if (errno == ENOENT && version)
 		{
-			/* no complaint for missing auxiliary file */
-			if (version)
-			{
-				pfree(filename);
-				return;
-			}
-
-			/* missing control file indicates extension is not installed */
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("extension \"%s\" is not available", control->name),
-					 errdetail("Could not open extension control file \"%s\": %m.",
-							   filename),
-					 errhint("The extension must first be installed on the system where PostgreSQL is running.")));
+			pfree(filename);
+			return;
 		}
+
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("could not open extension control file \"%s\": %m",
@@ -603,17 +697,7 @@ parse_extension_control_file(ExtensionControlFile *control,
 static ExtensionControlFile *
 read_extension_control_file(const char *extname)
 {
-	ExtensionControlFile *control;
-
-	/*
-	 * Set up default values.  Pointer fields are initially null.
-	 */
-	control = (ExtensionControlFile *) palloc0(sizeof(ExtensionControlFile));
-	control->name = pstrdup(extname);
-	control->relocatable = false;
-	control->superuser = true;
-	control->trusted = false;
-	control->encoding = -1;
+	ExtensionControlFile *control = new_ExtensionControlFile(extname);
 
 	/*
 	 * Parse the primary control file.
@@ -907,11 +991,13 @@ execute_sql_string(const char *sql, const char *filename)
 				QueryDesc  *qdesc;
 
 				qdesc = CreateQueryDesc(stmt,
+										NULL,
 										sql,
 										GetActiveSnapshot(), NULL,
 										dest, NULL, NULL, 0);
 
-				ExecutorStart(qdesc, 0);
+				if (!ExecutorStart(qdesc, 0))
+					elog(ERROR, "ExecutorStart() failed unexpectedly");
 				ExecutorRun(qdesc, ForwardScanDirection, 0);
 				ExecutorFinish(qdesc);
 				ExecutorEnd(qdesc);
@@ -982,7 +1068,7 @@ execute_extension_script(Oid extensionOid, ExtensionControlFile *control,
 						 const char *from_version,
 						 const char *version,
 						 List *requiredSchemas,
-						 const char *schemaName, Oid schemaOid)
+						 const char *schemaName)
 {
 	bool		switch_to_superuser = false;
 	char	   *filename;
@@ -1788,7 +1874,7 @@ CreateExtensionInternal(char *extensionName,
 	execute_extension_script(extensionOid, control,
 							 NULL, versionName,
 							 requiredSchemas,
-							 schemaName, schemaOid);
+							 schemaName);
 
 	/*
 	 * If additional update scripts have to be executed, apply the updates as
@@ -2119,68 +2205,74 @@ Datum
 pg_available_extensions(PG_FUNCTION_ARGS)
 {
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
-	char	   *location;
+	List	   *locations;
 	DIR		   *dir;
 	struct dirent *de;
 
 	/* Build tuplestore to hold the result rows */
 	InitMaterializedSRF(fcinfo, 0);
 
-	location = get_extension_control_directory();
-	dir = AllocateDir(location);
+	locations = get_extension_control_directories();
 
-	/*
-	 * If the control directory doesn't exist, we want to silently return an
-	 * empty set.  Any other error will be reported by ReadDir.
-	 */
-	if (dir == NULL && errno == ENOENT)
+	foreach_ptr(char, location, locations)
 	{
-		/* do nothing */
-	}
-	else
-	{
-		while ((de = ReadDir(dir, location)) != NULL)
+		dir = AllocateDir(location);
+
+		/*
+		 * If the control directory doesn't exist, we want to silently return
+		 * an empty set.  Any other error will be reported by ReadDir.
+		 */
+		if (dir == NULL && errno == ENOENT)
 		{
-			ExtensionControlFile *control;
-			char	   *extname;
-			Datum		values[3];
-			bool		nulls[3];
-
-			if (!is_extension_control_filename(de->d_name))
-				continue;
-
-			/* extract extension name from 'name.control' filename */
-			extname = pstrdup(de->d_name);
-			*strrchr(extname, '.') = '\0';
-
-			/* ignore it if it's an auxiliary control file */
-			if (strstr(extname, "--"))
-				continue;
-
-			control = read_extension_control_file(extname);
-
-			memset(values, 0, sizeof(values));
-			memset(nulls, 0, sizeof(nulls));
-
-			/* name */
-			values[0] = DirectFunctionCall1(namein,
-											CStringGetDatum(control->name));
-			/* default_version */
-			if (control->default_version == NULL)
-				nulls[1] = true;
-			else
-				values[1] = CStringGetTextDatum(control->default_version);
-			/* comment */
-			if (control->comment == NULL)
-				nulls[2] = true;
-			else
-				values[2] = CStringGetTextDatum(control->comment);
-
-			tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc,
-								 values, nulls);
+			/* do nothing */
 		}
+		else
+		{
+			while ((de = ReadDir(dir, location)) != NULL)
+			{
+				ExtensionControlFile *control;
+				char	   *extname;
+				Datum		values[3];
+				bool		nulls[3];
 
-		FreeDir(dir);
+				if (!is_extension_control_filename(de->d_name))
+					continue;
+
+				/* extract extension name from 'name.control' filename */
+				extname = pstrdup(de->d_name);
+				*strrchr(extname, '.') = '\0';
+
+				/* ignore it if it's an auxiliary control file */
+				if (strstr(extname, "--"))
+					continue;
+
+				control = new_ExtensionControlFile(extname);
+				control->control_dir = pstrdup(location);
+				parse_extension_control_file(control, NULL);
+
+				memset(values, 0, sizeof(values));
+				memset(nulls, 0, sizeof(nulls));
+
+				/* name */
+				values[0] = DirectFunctionCall1(namein,
+												CStringGetDatum(control->name));
+				/* default_version */
+				if (control->default_version == NULL)
+					nulls[1] = true;
+				else
+					values[1] = CStringGetTextDatum(control->default_version);
+				/* comment */
+				if (control->comment == NULL)
+					nulls[2] = true;
+				else
+					values[2] = CStringGetTextDatum(control->comment);
+
+				tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc,
+									 values, nulls);
+			}
+
+			FreeDir(dir);
+		}
 	}
 
 	return (Datum) 0;
@@ -2199,51 +2291,57 @@ Datum
 pg_available_extension_versions(PG_FUNCTION_ARGS)
 {
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
-	char	   *location;
+	List	   *locations;
 	DIR		   *dir;
 	struct dirent *de;
 
 	/* Build tuplestore to hold the result rows */
 	InitMaterializedSRF(fcinfo, 0);
 
-	location = get_extension_control_directory();
-	dir = AllocateDir(location);
+	locations = get_extension_control_directories();
 
-	/*
-	 * If the control directory doesn't exist, we want to silently return an
-	 * empty set.  Any other error will be reported by ReadDir.
-	 */
-	if (dir == NULL && errno == ENOENT)
+	foreach_ptr(char, location, locations)
 	{
-		/* do nothing */
-	}
-	else
-	{
-		while ((de = ReadDir(dir, location)) != NULL)
+		dir = AllocateDir(location);
+
+		/*
+		 * If the control directory doesn't exist, we want to silently return
+		 * an empty set.  Any other error will be reported by ReadDir.
+		 */
+		if (dir == NULL && errno == ENOENT)
 		{
-			ExtensionControlFile *control;
-			char	   *extname;
-
-			if (!is_extension_control_filename(de->d_name))
-				continue;
-
-			/* extract extension name from 'name.control' filename */
-			extname = pstrdup(de->d_name);
-			*strrchr(extname, '.') = '\0';
-
-			/* ignore it if it's an auxiliary control file */
-			if (strstr(extname, "--"))
-				continue;
-
-			/* read the control file */
-			control = read_extension_control_file(extname);
-
-			/* scan extension's script directory for install scripts */
-			get_available_versions_for_extension(control, rsinfo->setResult,
-												 rsinfo->setDesc);
+			/* do nothing */
 		}
+		else
+		{
+			while ((de = ReadDir(dir, location)) != NULL)
+			{
+				ExtensionControlFile *control;
+				char	   *extname;
 
-		FreeDir(dir);
+				if (!is_extension_control_filename(de->d_name))
+					continue;
+
+				/* extract extension name from 'name.control' filename */
+				extname = pstrdup(de->d_name);
+				*strrchr(extname, '.') = '\0';
+
+				/* ignore it if it's an auxiliary control file */
+				if (strstr(extname, "--"))
+					continue;
+
+				/* read the control file */
+				control = new_ExtensionControlFile(extname);
+				control->control_dir = pstrdup(location);
+				parse_extension_control_file(control, NULL);
+
+				/* scan extension's script directory for install scripts */
+				get_available_versions_for_extension(control, rsinfo->setResult,
+													 rsinfo->setDesc);
+			}
+
+			FreeDir(dir);
+		}
 	}
 
 	return (Datum) 0;
@@ -2371,47 +2469,53 @@ bool
 extension_file_exists(const char *extensionName)
 {
 	bool		result = false;
-	char	   *location;
+	List	   *locations;
 	DIR		   *dir;
 	struct dirent *de;
 
-	location = get_extension_control_directory();
-	dir = AllocateDir(location);
+	locations = get_extension_control_directories();
 
-	/*
-	 * If the control directory doesn't exist, we want to silently return
-	 * false.  Any other error will be reported by ReadDir.
-	 */
-	if (dir == NULL && errno == ENOENT)
+	foreach_ptr(char, location, locations)
 	{
-		/* do nothing */
-	}
-	else
-	{
-		while ((de = ReadDir(dir, location)) != NULL)
+		dir = AllocateDir(location);
+
+		/*
+		 * If the control directory doesn't exist, we want to silently return
+		 * false.  Any other error will be reported by ReadDir.
+		 */
+		if (dir == NULL && errno == ENOENT)
 		{
-			char	   *extname;
-
-			if (!is_extension_control_filename(de->d_name))
-				continue;
-
-			/* extract extension name from 'name.control' filename */
-			extname = pstrdup(de->d_name);
-			*strrchr(extname, '.') = '\0';
-
-			/* ignore it if it's an auxiliary control file */
-			if (strstr(extname, "--"))
-				continue;
-
-			/* done if it matches request */
-			if (strcmp(extname, extensionName) == 0)
-			{
-				result = true;
-				break;
-			}
+			/* do nothing */
 		}
+		else
+		{
+			while ((de = ReadDir(dir, location)) != NULL)
+			{
+				char	   *extname;
 
-		FreeDir(dir);
+				if (!is_extension_control_filename(de->d_name))
+					continue;
+
+				/* extract extension name from 'name.control' filename */
+				extname = pstrdup(de->d_name);
+				*strrchr(extname, '.') = '\0';
+
+				/* ignore it if it's an auxiliary control file */
+				if (strstr(extname, "--"))
+					continue;
+
+				/* done if it matches request */
+				if (strcmp(extname, extensionName) == 0)
+				{
+					result = true;
+					break;
+				}
+			}
+
+			FreeDir(dir);
+		}
+		if (result)
+			break;
 	}
 
 	return result;
@@ -2705,6 +2809,59 @@ pg_extension_config_dump(PG_FUNCTION_ARGS)
 	table_close(extRel, RowExclusiveLock);
 
 	PG_RETURN_VOID();
+}
+
+/*
+ * pg_get_loaded_modules
+ *
+ * SQL-callable function to get per-loaded-module information.  Modules
+ * (shared libraries) aren't necessarily one-to-one with extensions, but
+ * they're sufficiently closely related to make this file a good home.
+ */
+Datum
+pg_get_loaded_modules(PG_FUNCTION_ARGS)
+{
+	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	DynamicFileList *file_scanner;
+
+	/* Build tuplestore to hold the result rows */
+	InitMaterializedSRF(fcinfo, 0);
+
+	for (file_scanner = get_first_loaded_module(); file_scanner != NULL;
+		 file_scanner = get_next_loaded_module(file_scanner))
+	{
+		const char *library_path,
+				   *module_name,
+				   *module_version;
+		const char *sep;
+		Datum		values[3] = {0};
+		bool		nulls[3] = {0};
+
+		get_loaded_module_details(file_scanner,
+								  &library_path,
+								  &module_name,
+								  &module_version);
+
+		if (module_name == NULL)
+			nulls[0] = true;
+		else
+			values[0] = CStringGetTextDatum(module_name);
+		if (module_version == NULL)
+			nulls[1] = true;
+		else
+			values[1] = CStringGetTextDatum(module_version);
+
+		/* For security reasons, we don't show the directory path */
+		sep = last_dir_separator(library_path);
+		if (sep)
+			library_path = sep + 1;
+		values[2] = CStringGetTextDatum(library_path);
+
+		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc,
+							 values, nulls);
+	}
+
+	return (Datum) 0;
 }
 
 /*
@@ -3380,7 +3537,7 @@ ApplyExtensionUpdates(Oid extensionOid,
 		execute_extension_script(extensionOid, control,
 								 oldVersionName, versionName,
 								 requiredSchemas,
-								 schemaName, schemaOid);
+								 schemaName);
 
 		/*
 		 * Update prior-version name and loop around.  Since
@@ -3688,4 +3845,21 @@ read_whole_file(const char *filename, int *length)
 
 	*length = bytes_to_read;
 	return buf;
+}
+
+static ExtensionControlFile *
+new_ExtensionControlFile(const char *extname)
+{
+	/*
+	 * Set up default values.  Pointer fields are initially null.
+	 */
+	ExtensionControlFile *control = palloc0_object(ExtensionControlFile);
+
+	control->name = pstrdup(extname);
+	control->relocatable = false;
+	control->superuser = true;
+	control->trusted = false;
+	control->encoding = -1;
+
+	return control;
 }

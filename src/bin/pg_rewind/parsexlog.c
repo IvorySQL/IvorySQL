@@ -3,7 +3,7 @@
  * parsexlog.c
  *	  Functions for reading Write-Ahead-Log
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *-------------------------------------------------------------------------
@@ -227,7 +227,7 @@ findLastCheckpoint(const char *datadir, XLogRecPtr forkptr, int tliIndex,
 
 			snprintf(xlogfname, MAXFNAMELEN, XLOGDIR "/");
 
-			/* update curent values */
+			/* update current values */
 			current_tli = xlogreader->seg.ws_tli;
 			current_segno = xlogreader->seg.ws_segno;
 

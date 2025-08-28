@@ -14,7 +14,7 @@
  * contain optimizable statements, which we should transform.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -595,6 +595,45 @@ analyze_requires_snapshot(RawStmt *parseTree)
 }
 
 /*
+ * query_requires_rewrite_plan()
+ *		Returns true if rewriting or planning is non-trivial for this Query.
+ *
+ * This is much like stmt_requires_parse_analysis(), but applies one step
+ * further down the pipeline.
+ *
+ * We do not provide an equivalent of analyze_requires_snapshot(): callers
+ * can assume that any rewriting or planning activity needs a snapshot.
+ */
+bool
+query_requires_rewrite_plan(Query *query)
+{
+	bool		result;
+
+	if (query->commandType != CMD_UTILITY)
+	{
+		/* All optimizable statements require rewriting/planning */
+		result = true;
+	}
+	else
+	{
+		/* This list should match stmt_requires_parse_analysis() */
+		switch (nodeTag(query->utilityStmt))
+		{
+			case T_DeclareCursorStmt:
+			case T_ExplainStmt:
+			case T_CreateTableAsStmt:
+			case T_CallStmt:
+				result = true;
+				break;
+			default:
+				result = false;
+				break;
+		}
+	}
+	return result;
+}
+
+/*
  * transformDeleteStmt -
  *	  transforms a Delete Statement
  */
@@ -644,8 +683,8 @@ transformDeleteStmt(ParseState *pstate, DeleteStmt *stmt)
 	qual = transformWhereClause(pstate, stmt->whereClause,
 								EXPR_KIND_WHERE, "WHERE");
 
-	qry->returningList = transformReturningList(pstate, stmt->returningList,
-												EXPR_KIND_RETURNING);
+	transformReturningClause(pstate, qry, stmt->returningClause,
+							 EXPR_KIND_RETURNING);
 
 	/* done building the range table and jointree */
 	qry->rtable = pstate->p_rtable;
@@ -1057,7 +1096,7 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 	 * contain only the target relation, removing any entries added in a
 	 * sub-SELECT or VALUES list.
 	 */
-	if (stmt->onConflictClause || stmt->returningList)
+	if (stmt->onConflictClause || stmt->returningClause)
 	{
 		pstate->p_namespace = NIL;
 		addNSItemToQuery(pstate, pstate->p_target_nsitem,
@@ -1070,10 +1109,9 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 													stmt->onConflictClause);
 
 	/* Process RETURNING, if any. */
-	if (stmt->returningList)
-		qry->returningList = transformReturningList(pstate,
-													stmt->returningList,
-													EXPR_KIND_RETURNING);
+	if (stmt->returningClause)
+		transformReturningClause(pstate, qry, stmt->returningClause,
+								 EXPR_KIND_RETURNING);
 
 	/* done building the range table and jointree */
 	qry->rtable = pstate->p_rtable;
@@ -2551,8 +2589,8 @@ transformUpdateStmt(ParseState *pstate, UpdateStmt *stmt)
 	qual = transformWhereClause(pstate, stmt->whereClause,
 								EXPR_KIND_WHERE, "WHERE");
 
-	qry->returningList = transformReturningList(pstate, stmt->returningList,
-												EXPR_KIND_RETURNING);
+	transformReturningClause(pstate, qry, stmt->returningClause,
+							 EXPR_KIND_RETURNING);
 
 	if (ORA_PARSER == compatible_db)
 	{
@@ -2733,18 +2771,120 @@ transformUpdateTargetList(ParseState *pstate, List *origTlist)
 }
 
 /*
- * transformReturningList -
+ * addNSItemForReturning -
+ *	add a ParseNamespaceItem for the OLD or NEW alias in RETURNING.
+ */
+static void
+addNSItemForReturning(ParseState *pstate, const char *aliasname,
+					  VarReturningType returning_type)
+{
+	List	   *colnames;
+	int			numattrs;
+	ParseNamespaceColumn *nscolumns;
+	ParseNamespaceItem *nsitem;
+
+	/* copy per-column data from the target relation */
+	colnames = pstate->p_target_nsitem->p_rte->eref->colnames;
+	numattrs = list_length(colnames);
+
+	nscolumns = (ParseNamespaceColumn *)
+		palloc(numattrs * sizeof(ParseNamespaceColumn));
+
+	memcpy(nscolumns, pstate->p_target_nsitem->p_nscolumns,
+		   numattrs * sizeof(ParseNamespaceColumn));
+
+	/* mark all columns as returning OLD/NEW */
+	for (int i = 0; i < numattrs; i++)
+		nscolumns[i].p_varreturningtype = returning_type;
+
+	/* build the nsitem, copying most fields from the target relation */
+	nsitem = (ParseNamespaceItem *) palloc(sizeof(ParseNamespaceItem));
+	nsitem->p_names = makeAlias(aliasname, colnames);
+	nsitem->p_rte = pstate->p_target_nsitem->p_rte;
+	nsitem->p_rtindex = pstate->p_target_nsitem->p_rtindex;
+	nsitem->p_perminfo = pstate->p_target_nsitem->p_perminfo;
+	nsitem->p_nscolumns = nscolumns;
+	nsitem->p_returning_type = returning_type;
+
+	/* add it to the query namespace as a table-only item */
+	addNSItemToQuery(pstate, nsitem, false, true, false);
+}
+
+/*
+ * transformReturningClause -
  *	handle a RETURNING clause in INSERT/UPDATE/DELETE/MERGE
  */
-List *
-transformReturningList(ParseState *pstate, List *returningList,
-					   ParseExprKind exprKind)
+void
+transformReturningClause(ParseState *pstate, Query *qry,
+						 ReturningClause *returningClause,
+						 ParseExprKind exprKind)
 {
-	List	   *rlist;
+	int			save_nslen = list_length(pstate->p_namespace);
 	int			save_next_resno;
 
-	if (returningList == NIL)
-		return NIL;				/* nothing to do */
+	if (returningClause == NULL)
+		return;					/* nothing to do */
+
+	/*
+	 * Scan RETURNING WITH(...) options for OLD/NEW alias names.  Complain if
+	 * there is any conflict with existing relations.
+	 */
+	foreach_node(ReturningOption, option, returningClause->options)
+	{
+		switch (option->option)
+		{
+			case RETURNING_OPTION_OLD:
+				if (qry->returningOldAlias != NULL)
+					ereport(ERROR,
+							errcode(ERRCODE_SYNTAX_ERROR),
+					/* translator: %s is OLD or NEW */
+							errmsg("%s cannot be specified multiple times", "OLD"),
+							parser_errposition(pstate, option->location));
+				qry->returningOldAlias = option->value;
+				break;
+
+			case RETURNING_OPTION_NEW:
+				if (qry->returningNewAlias != NULL)
+					ereport(ERROR,
+							errcode(ERRCODE_SYNTAX_ERROR),
+					/* translator: %s is OLD or NEW */
+							errmsg("%s cannot be specified multiple times", "NEW"),
+							parser_errposition(pstate, option->location));
+				qry->returningNewAlias = option->value;
+				break;
+
+			default:
+				elog(ERROR, "unrecognized returning option: %d", option->option);
+		}
+
+		if (refnameNamespaceItem(pstate, NULL, option->value, -1, NULL) != NULL)
+			ereport(ERROR,
+					errcode(ERRCODE_DUPLICATE_ALIAS),
+					errmsg("table name \"%s\" specified more than once",
+						   option->value),
+					parser_errposition(pstate, option->location));
+
+		addNSItemForReturning(pstate, option->value,
+							  option->option == RETURNING_OPTION_OLD ?
+							  VAR_RETURNING_OLD : VAR_RETURNING_NEW);
+	}
+
+	/*
+	 * If OLD/NEW alias names weren't explicitly specified, use "old"/"new"
+	 * unless masked by existing relations.
+	 */
+	if (qry->returningOldAlias == NULL &&
+		refnameNamespaceItem(pstate, NULL, "old", -1, NULL) == NULL)
+	{
+		qry->returningOldAlias = "old";
+		addNSItemForReturning(pstate, "old", VAR_RETURNING_OLD);
+	}
+	if (qry->returningNewAlias == NULL &&
+		refnameNamespaceItem(pstate, NULL, "new", -1, NULL) == NULL)
+	{
+		qry->returningNewAlias = "new";
+		addNSItemForReturning(pstate, "new", VAR_RETURNING_NEW);
+	}
 
 	/*
 	 * We need to assign resnos starting at one in the RETURNING list. Save
@@ -2754,8 +2894,10 @@ transformReturningList(ParseState *pstate, List *returningList,
 	save_next_resno = pstate->p_next_resno;
 	pstate->p_next_resno = 1;
 
-	/* transform RETURNING identically to a SELECT targetlist */
-	rlist = transformTargetList(pstate, returningList, exprKind);
+	/* transform RETURNING expressions identically to a SELECT targetlist */
+	qry->returningList = transformTargetList(pstate,
+											 returningClause->exprs,
+											 exprKind);
 
 	/*
 	 * Complain if the nonempty tlist expanded to nothing (which is possible
@@ -2763,24 +2905,23 @@ transformReturningList(ParseState *pstate, List *returningList,
 	 * allow this, the parsed Query will look like it didn't have RETURNING,
 	 * with results that would probably surprise the user.
 	 */
-	if (rlist == NIL)
+	if (qry->returningList == NIL)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("RETURNING must have at least one column"),
 				 parser_errposition(pstate,
-									exprLocation(linitial(returningList)))));
+									exprLocation(linitial(returningClause->exprs)))));
 
 	/* mark column origins */
-	markTargetListOrigins(pstate, rlist);
+	markTargetListOrigins(pstate, qry->returningList);
 
 	/* resolve any still-unresolved output columns as being type text */
 	if (pstate->p_resolve_unknowns)
-		resolveTargetListUnknowns(pstate, rlist);
+		resolveTargetListUnknowns(pstate, qry->returningList);
 
 	/* restore state */
+	pstate->p_namespace = list_truncate(pstate->p_namespace, save_nslen);
 	pstate->p_next_resno = save_next_resno;
-
-	return rlist;
 }
 
 

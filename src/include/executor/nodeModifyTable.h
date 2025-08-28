@@ -3,7 +3,7 @@
  * nodeModifyTable.h
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -43,10 +43,11 @@ typedef struct IvyModifyTableContext
 	TM_FailureData tmfd;
 
 	/*
-	 * The tuple produced by EvalPlanQual to retry from, if a cross-partition
-	 * UPDATE requires it
+	 * The tuple deleted when doing a cross-partition UPDATE with a RETURNING
+	 * clause that refers to OLD columns (converted to the root's tuple
+	 * descriptor).
 	 */
-	TupleTableSlot *cpUpdateRetrySlot;
+	TupleTableSlot *cpDeletedSlot;
 
 	/*
 	 * The tuple projected by the INSERT's RETURNING clause, when doing a
@@ -70,9 +71,9 @@ typedef struct IvyUpdateContext
 	LockTupleMode lockmode;
 } IvyUpdateContext;
 
-extern void ExecInitStoredGenerated(ResultRelInfo *resultRelInfo,
-									EState *estate,
-									CmdType cmdtype);
+extern void ExecInitGenerated(ResultRelInfo *resultRelInfo,
+							  EState *estate,
+							  CmdType cmdtype);
 
 extern void ExecComputeStoredGenerated(ResultRelInfo *resultRelInfo,
 									   EState *estate, TupleTableSlot *slot,

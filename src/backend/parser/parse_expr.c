@@ -3,7 +3,7 @@
  * parse_expr.c
  *	  handle expressions in parser
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -2627,10 +2627,18 @@ transformArrayExpr(ParseState *pstate, A_ArrayExpr *a,
 
 			/*
 			 * Check for sub-array expressions, if we haven't already found
-			 * one.
+			 * one.  Note we don't accept domain-over-array as a sub-array,
+			 * nor int2vector nor oidvector; those have constraints that don't
+			 * map well to being treated as a sub-array.
 			 */
-			if (!newa->multidims && type_is_array(exprType(newe)))
-				newa->multidims = true;
+			if (!newa->multidims)
+			{
+				Oid			newetype = exprType(newe);
+
+				if (newetype != INT2VECTOROID && newetype != OIDVECTOROID &&
+					type_is_array(newetype))
+					newa->multidims = true;
+			}
 		}
 
 		newelems = lappend(newelems, newe);
@@ -3202,6 +3210,13 @@ transformWholeRowRef(ParseState *pstate, ParseNamespaceItem *nsitem,
 	 * point, there seems no harm in expanding it now rather than during
 	 * planning.
 	 *
+	 * Note that if the nsitem is an OLD/NEW alias for the target RTE (as can
+	 * appear in a RETURNING list), its alias won't match the target RTE's
+	 * alias, but we still want to make a whole-row Var here rather than a
+	 * RowExpr, for consistency with direct references to the target RTE, and
+	 * so that any dropped columns are handled correctly.  Thus we also check
+	 * p_returning_type here.
+	 *
 	 * Note that if the RTE is a function returning scalar, we create just a
 	 * plain reference to the function value, not a composite containing a
 	 * single column.  This is pretty inconsistent at first sight, but it's
@@ -3209,12 +3224,16 @@ transformWholeRowRef(ParseState *pstate, ParseNamespaceItem *nsitem,
 	 * "rel.*" mean the same thing for composite relations, so why not for
 	 * scalar functions...
 	 */
-	if (nsitem->p_names == nsitem->p_rte->eref)
+	if (nsitem->p_names == nsitem->p_rte->eref ||
+		nsitem->p_returning_type != VAR_RETURNING_DEFAULT)
 	{
 		Var		   *result;
 
 		result = makeWholeRowVar(nsitem->p_rte, nsitem->p_rtindex,
 								 sublevels_up, true);
+
+		/* mark Var for RETURNING OLD/NEW, as necessary */
+		result->varreturningtype = nsitem->p_returning_type;
 
 		/* location is not filled in by makeWholeRowVar */
 		result->location = location;
@@ -3238,9 +3257,8 @@ transformWholeRowRef(ParseState *pstate, ParseNamespaceItem *nsitem,
 		 * are in the RTE.  We needn't worry about marking the RTE for SELECT
 		 * access, as the common columns are surely so marked already.
 		 */
-		expandRTE(nsitem->p_rte, nsitem->p_rtindex,
-				  sublevels_up, location, false,
-				  NULL, &fields);
+		expandRTE(nsitem->p_rte, nsitem->p_rtindex, sublevels_up,
+				  nsitem->p_returning_type, location, false, NULL, &fields);
 		rowexpr = makeNode(RowExpr);
 		rowexpr->args = list_truncate(fields,
 									  list_length(nsitem->p_names->colnames));
@@ -3390,7 +3408,7 @@ make_row_comparison_op(ParseState *pstate, List *opname,
 					   List *largs, List *rargs, int location)
 {
 	RowCompareExpr *rcexpr;
-	RowCompareType rctype;
+	CompareType cmptype;
 	List	   *opexprs;
 	List	   *opnos;
 	List	   *opfamilies;
@@ -3511,15 +3529,15 @@ make_row_comparison_op(ParseState *pstate, List *opname,
 				 errhint("Row comparison operators must be associated with btree operator families."),
 				 parser_errposition(pstate, location)));
 	}
-	rctype = (RowCompareType) i;
+	cmptype = (CompareType) i;
 
 	/*
 	 * For = and <> cases, we just combine the pairwise operators with AND or
 	 * OR respectively.
 	 */
-	if (rctype == ROWCOMPARE_EQ)
+	if (cmptype == COMPARE_EQ)
 		return (Node *) makeBoolExpr(AND_EXPR, opexprs, location);
-	if (rctype == ROWCOMPARE_NE)
+	if (cmptype == COMPARE_NE)
 		return (Node *) makeBoolExpr(OR_EXPR, opexprs, location);
 
 	/*
@@ -3536,7 +3554,7 @@ make_row_comparison_op(ParseState *pstate, List *opname,
 		{
 			OpBtreeInterpretation *opinfo = lfirst(j);
 
-			if (opinfo->strategy == rctype)
+			if (opinfo->strategy == cmptype)
 			{
 				opfamily = opinfo->opfamily_id;
 				break;
@@ -3572,7 +3590,7 @@ make_row_comparison_op(ParseState *pstate, List *opname,
 	}
 
 	rcexpr = makeNode(RowCompareExpr);
-	rcexpr->rctype = rctype;
+	rcexpr->cmptype = cmptype;
 	rcexpr->opnos = opnos;
 	rcexpr->opfamilies = opfamilies;
 	rcexpr->inputcollids = NIL; /* assign_expr_collations will fix this */
@@ -4696,8 +4714,9 @@ transformJsonReturning(ParseState *pstate, JsonOutput *output, const char *fname
 		if (returning->typid != JSONOID && returning->typid != JSONBOID)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
-					 errmsg("cannot use RETURNING type %s in %s",
+					 errmsg("cannot use type %s in RETURNING clause of %s",
 							format_type_be(returning->typid), fname),
+					 errhint("Try returning json or jsonb."),
 					 parser_errposition(pstate, output->typeName->location)));
 	}
 	else
@@ -4816,7 +4835,7 @@ transformJsonSerializeExpr(ParseState *pstate, JsonSerializeExpr *expr)
 			if (typcategory != TYPCATEGORY_STRING)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATATYPE_MISMATCH),
-						 errmsg("cannot use RETURNING type %s in %s",
+						 errmsg("cannot use type %s in RETURNING clause of %s",
 								format_type_be(returning->typid),
 								"JSON_SERIALIZE()"),
 						 errhint("Try returning a string type or bytea.")));

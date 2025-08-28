@@ -3,7 +3,7 @@
  * execGrouping.c
  *	  executor utility routines for grouping, hashing, and aggregation
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -174,13 +174,15 @@ BuildTupleHashTable(PlanState *parent,
 					bool use_variable_hash_iv)
 {
 	TupleHashTable hashtable;
-	Size		entrysize = sizeof(TupleHashEntryData) + additionalsize;
+	Size		entrysize;
 	Size		hash_mem_limit;
 	MemoryContext oldcontext;
 	bool		allow_jit;
 	uint32		hash_iv = 0;
 
 	Assert(nbuckets > 0);
+	additionalsize = MAXALIGN(additionalsize);
+	entrysize = sizeof(TupleHashEntryData) + additionalsize;
 
 	/* Limit initial table size request to not more than hash_mem */
 	hash_mem_limit = get_hash_memory_limit() / entrysize;
@@ -196,7 +198,7 @@ BuildTupleHashTable(PlanState *parent,
 	hashtable->tab_collations = collations;
 	hashtable->tablecxt = tablecxt;
 	hashtable->tempcxt = tempcxt;
-	hashtable->entrysize = entrysize;
+	hashtable->additionalsize = additionalsize;
 	hashtable->tableslot = NULL;	/* will be made on first lookup */
 	hashtable->inputslot = NULL;
 	hashtable->in_hash_expr = NULL;
@@ -480,11 +482,21 @@ LookupTupleHashEntry_internal(TupleHashTable hashtable, TupleTableSlot *slot,
 		{
 			/* created new entry */
 			*isnew = true;
-			/* zero caller data */
-			entry->additional = NULL;
+
 			MemoryContextSwitchTo(hashtable->tablecxt);
-			/* Copy the first tuple into the table context */
-			entry->firstTuple = ExecCopySlotMinimalTuple(slot);
+
+			/*
+			 * Copy the first tuple into the table context, and request
+			 * additionalsize extra bytes before the allocation.
+			 *
+			 * The caller can get a pointer to the additional data with
+			 * TupleHashEntryGetAdditional(), and store arbitrary data there.
+			 * Placing both the tuple and additional data in the same
+			 * allocation avoids the need to store an extra pointer in
+			 * TupleHashEntryData or allocate an additional chunk.
+			 */
+			entry->firstTuple = ExecCopySlotMinimalTupleExtra(slot,
+															  hashtable->additionalsize);
 		}
 	}
 	else

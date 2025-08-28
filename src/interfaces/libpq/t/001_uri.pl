@@ -1,4 +1,4 @@
-# Copyright (c) 2021-2024, PostgreSQL Global Development Group
+# Copyright (c) 2021-2025, PostgreSQL Global Development Group
 use strict;
 use warnings FATAL => 'all';
 
@@ -269,8 +269,9 @@ sub test_uri
 	%ENV = (%ENV, %envvars);
 
 	my $cmd = [ 'libpq_uri_regress', $uri ];
-	$result{exit} = IPC::Run::run $cmd, '>', \$result{stdout}, '2>',
-	  \$result{stderr};
+	$result{exit} = IPC::Run::run $cmd,
+	  '>' => \$result{stdout},
+	  '2>' => \$result{stderr};
 
 	chomp($result{stdout});
 	chomp($result{stderr});

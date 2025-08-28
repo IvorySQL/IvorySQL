@@ -40,7 +40,10 @@ static void plisql_extra_warnings_assign_hook(const char *newvalue, void *extra)
 static void plisql_extra_errors_assign_hook(const char *newvalue, void *extra);
 static void set_blocks_oraparam_level(PLiSQL_stmt_block *block, int top, int cur);
 
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(
+					.name = "plisql",
+					.version = PG_VERSION
+);
 
 /* Custom GUC variable */
 static const struct config_enum_entry variable_conflict_options[] = {

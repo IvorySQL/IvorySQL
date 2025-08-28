@@ -34,8 +34,8 @@
  * in the file to be read or written while holding only shared lock.
  *
  *
- * Copyright (c) 2008-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Copyright (c) 2008-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/pg_stat_statements/pg_stat_statements.c
@@ -76,7 +76,10 @@
 #include "utils/ora_compatible.h"
 
 
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(
+					.name = "pg_stat_statements",
+					.version = PG_VERSION
+);
 
 /* Location of permanent stats file (valid when database is shut down) */
 #define PGSS_DUMP_FILE	PGSTAT_STAT_PERMANENT_DIRECTORY "/pg_stat_statements.stat"
@@ -192,6 +195,7 @@ typedef struct Counters
 	int64		wal_records;	/* # of WAL records generated */
 	int64		wal_fpi;		/* # of WAL full page images generated */
 	uint64		wal_bytes;		/* total amount of WAL generated in bytes */
+	int64		wal_buffers_full;	/* # of times the WAL buffers became full */
 	int64		jit_functions;	/* total number of JIT functions emitted */
 	double		jit_generation_time;	/* total time to generate jit code */
 	int64		jit_inlining_count; /* number of times inlining time has been
@@ -300,7 +304,6 @@ static bool pgss_track_planning = false;	/* whether to track planning
 											 * duration */
 static bool pgss_save = true;	/* whether to save stats across shutdown */
 
-
 #define pgss_enabled(level) \
 	(!IsParallelWorker() && \
 	(pgss_track == PGSS_TRACK_ALL || \
@@ -337,7 +340,7 @@ static PlannedStmt *pgss_planner(Query *parse,
 								 const char *query_string,
 								 int cursorOptions,
 								 ParamListInfo boundParams);
-static void pgss_ExecutorStart(QueryDesc *queryDesc, int eflags);
+static bool pgss_ExecutorStart(QueryDesc *queryDesc, int eflags);
 static void pgss_ExecutorRun(QueryDesc *queryDesc,
 							 ScanDirection direction,
 							 uint64 count);
@@ -993,13 +996,19 @@ pgss_planner(Query *parse,
 /*
  * ExecutorStart hook: start up tracking if needed
  */
-static void
+static bool
 pgss_ExecutorStart(QueryDesc *queryDesc, int eflags)
 {
+	bool		plan_valid;
+
 	if (prev_ExecutorStart)
-		prev_ExecutorStart(queryDesc, eflags);
+		plan_valid = prev_ExecutorStart(queryDesc, eflags);
 	else
-		standard_ExecutorStart(queryDesc, eflags);
+		plan_valid = standard_ExecutorStart(queryDesc, eflags);
+
+	/* The plan may have become invalid during standard_ExecutorStart() */
+	if (!plan_valid)
+		return false;
 
 	/*
 	 * If query has queryId zero, don't track it.  This prevents double
@@ -1022,6 +1031,8 @@ pgss_ExecutorStart(QueryDesc *queryDesc, int eflags)
 			MemoryContextSwitchTo(oldcxt);
 		}
 	}
+
+	return true;
 }
 
 /*
@@ -1472,6 +1483,7 @@ pgss_store(const char *query, uint64 queryId,
 		entry->counters.wal_records += walusage->wal_records;
 		entry->counters.wal_fpi += walusage->wal_fpi;
 		entry->counters.wal_bytes += walusage->wal_bytes;
+		entry->counters.wal_buffers_full += walusage->wal_buffers_full;
 		if (jitusage)
 		{
 			entry->counters.jit_functions += jitusage->created_functions;
@@ -1564,8 +1576,8 @@ pg_stat_statements_reset(PG_FUNCTION_ARGS)
 #define PG_STAT_STATEMENTS_COLS_V1_9	33
 #define PG_STAT_STATEMENTS_COLS_V1_10	43
 #define PG_STAT_STATEMENTS_COLS_V1_11	49
-#define PG_STAT_STATEMENTS_COLS_V1_12	51
-#define PG_STAT_STATEMENTS_COLS			51	/* maximum of above */
+#define PG_STAT_STATEMENTS_COLS_V1_12	52
+#define PG_STAT_STATEMENTS_COLS			52	/* maximum of above */
 
 /*
  * Retrieve statement statistics.
@@ -1961,6 +1973,10 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 											ObjectIdGetDatum(0),
 											Int32GetDatum(-1));
 			values[i++] = wal_bytes;
+		}
+		if (api_version >= PGSS_V1_12)
+		{
+			values[i++] = Int64GetDatumFast(tmp.wal_buffers_full);
 		}
 		if (api_version >= PGSS_V1_10)
 		{
@@ -2816,6 +2832,10 @@ generate_normalized_query(JumbleState *jstate, const char *query,
 				n_quer_loc = 0, /* Normalized query byte location */
 				last_off = 0,	/* Offset from start for previous tok */
 				last_tok_len = 0;	/* Length (in bytes) of that tok */
+	bool		in_squashed = false;	/* in a run of squashed consts? */
+	int			skipped_constants = 0;	/* Position adjustment of later
+										 * constants after squashed ones */
+
 
 	/*
 	 * Get constants' lengths (core system only gives us locations).  Note
@@ -2829,6 +2849,9 @@ generate_normalized_query(JumbleState *jstate, const char *query,
 	 * certainly isn't more than 11 bytes, even if n reaches INT_MAX.  We
 	 * could refine that limit based on the max value of n for the current
 	 * query, but it hardly seems worth any extra effort to do so.
+	 *
+	 * Note this also gives enough room for the commented-out ", ..." list
+	 * syntax used by constant squashing.
 	 */
 	norm_query_buflen = query_len + jstate->clocations_count * 10;
 
@@ -2841,6 +2864,7 @@ generate_normalized_query(JumbleState *jstate, const char *query,
 					tok_len;	/* Length (in bytes) of that tok */
 
 		off = jstate->clocations[i].location;
+
 		/* Adjust recorded location if we're dealing with partial string */
 		off -= query_loc;
 
@@ -2849,18 +2873,67 @@ generate_normalized_query(JumbleState *jstate, const char *query,
 		if (tok_len < 0)
 			continue;			/* ignore any duplicates */
 
-		/* Copy next chunk (what precedes the next constant) */
-		len_to_wrt = off - last_off;
-		len_to_wrt -= last_tok_len;
+		/*
+		 * What to do next depends on whether we're squashing constant lists,
+		 * and whether we're already in a run of such constants.
+		 */
+		if (!jstate->clocations[i].squashed)
+		{
+			/*
+			 * This location corresponds to a constant not to be squashed.
+			 * Print what comes before the constant ...
+			 */
+			len_to_wrt = off - last_off;
+			len_to_wrt -= last_tok_len;
 
-		Assert(len_to_wrt >= 0);
-		memcpy(norm_query + n_quer_loc, query + quer_loc, len_to_wrt);
-		n_quer_loc += len_to_wrt;
+			Assert(len_to_wrt >= 0);
 
-		/* And insert a param symbol in place of the constant token */
-		n_quer_loc += sprintf(norm_query + n_quer_loc, "$%d",
-							  i + 1 + jstate->highest_extern_param_id);
+			memcpy(norm_query + n_quer_loc, query + quer_loc, len_to_wrt);
+			n_quer_loc += len_to_wrt;
 
+			/* ... and then a param symbol replacing the constant itself */
+			n_quer_loc += sprintf(norm_query + n_quer_loc, "$%d",
+								  i + 1 + jstate->highest_extern_param_id - skipped_constants);
+
+			/* In case previous constants were merged away, stop doing that */
+			in_squashed = false;
+		}
+		else if (!in_squashed)
+		{
+			/*
+			 * This location is the start position of a run of constants to be
+			 * squashed, so we need to print the representation of starting a
+			 * group of stashed constants.
+			 *
+			 * Print what comes before the constant ...
+			 */
+			len_to_wrt = off - last_off;
+			len_to_wrt -= last_tok_len;
+			Assert(len_to_wrt >= 0);
+			Assert(i + 1 < jstate->clocations_count);
+			Assert(jstate->clocations[i + 1].squashed);
+			memcpy(norm_query + n_quer_loc, query + quer_loc, len_to_wrt);
+			n_quer_loc += len_to_wrt;
+
+			/* ... and then start a run of squashed constants */
+			n_quer_loc += sprintf(norm_query + n_quer_loc, "$%d /*, ... */",
+								  i + 1 + jstate->highest_extern_param_id - skipped_constants);
+
+			/* The next location will match the block below, to end the run */
+			in_squashed = true;
+
+			skipped_constants++;
+		}
+		else
+		{
+			/*
+			 * The second location of a run of squashable elements; this
+			 * indicates its end.
+			 */
+			in_squashed = false;
+		}
+
+		/* Otherwise the constant is squashed away -- move forward */
 		quer_loc = off + tok_len;
 		last_off = off;
 		last_tok_len = tok_len;

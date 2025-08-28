@@ -4,7 +4,7 @@
  *	  header file for postgres btree access method implementation.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/nbtree.h
@@ -161,13 +161,13 @@ typedef struct BTMetaPageData
  * a heap index tuple to make space for a tiebreaker heap TID
  * attribute, which we account for here.
  */
-#define BTMaxItemSize(page) \
-	(MAXALIGN_DOWN((PageGetPageSize(page) - \
+#define BTMaxItemSize \
+	(MAXALIGN_DOWN((BLCKSZ - \
 					MAXALIGN(SizeOfPageHeaderData + 3*sizeof(ItemIdData)) - \
 					MAXALIGN(sizeof(BTPageOpaqueData))) / 3) - \
 					MAXALIGN(sizeof(ItemPointerData)))
-#define BTMaxItemSizeNoHeapTid(page) \
-	MAXALIGN_DOWN((PageGetPageSize(page) - \
+#define BTMaxItemSizeNoHeapTid \
+	MAXALIGN_DOWN((BLCKSZ - \
 				   MAXALIGN(SizeOfPageHeaderData + 3*sizeof(ItemIdData)) - \
 				   MAXALIGN(sizeof(BTPageOpaqueData))) / 3)
 
@@ -702,6 +702,11 @@ BTreeTupleGetMaxHeapTID(IndexTuple itup)
  *	To facilitate B-Tree deduplication, an operator class may choose to
  *	offer a forth amproc procedure (BTEQUALIMAGE_PROC).  For full details,
  *	see doc/src/sgml/btree.sgml.
+ *
+ *	An operator class may choose to offer a fifth amproc procedure
+ *	(BTOPTIONS_PROC).  These procedures define a set of user-visible
+ *	parameters that can be used to control operator class behavior.  None of
+ *	the built-in B-Tree operator classes currently register an "options" proc.
  */
 
 #define BTORDER_PROC		1
@@ -1038,8 +1043,8 @@ typedef struct BTScanOpaqueData
 	/* workspace for SK_SEARCHARRAY support */
 	int			numArrayKeys;	/* number of equality-type array keys */
 	bool		needPrimScan;	/* New prim scan to continue in current dir? */
-	bool		scanBehind;		/* Last array advancement matched -inf attr? */
-	bool		oppositeDirCheck;	/* explicit scanBehind recheck needed? */
+	bool		scanBehind;		/* Check scan not still behind on next page? */
+	bool		oppositeDirCheck;	/* scanBehind opposite-scan-dir check? */
 	BTArrayKeyInfo *arrayKeys;	/* info about each equality-type array key */
 	FmgrInfo   *orderProcs;		/* ORDER procs for required equality keys */
 	MemoryContext arrayContext; /* scan-lifespan context for array data */
@@ -1082,11 +1087,12 @@ typedef struct BTReadPageState
 	OffsetNumber maxoff;		/* Highest non-pivot tuple's offset */
 	IndexTuple	finaltup;		/* Needed by scans with array keys */
 	Page		page;			/* Page being read */
+	bool		firstpage;		/* page is first for primitive scan? */
 
 	/* Per-tuple input parameters, set by _bt_readpage for _bt_checkkeys */
 	OffsetNumber offnum;		/* current tuple's page offset number */
 
-	/* Output parameter, set by _bt_checkkeys for _bt_readpage */
+	/* Output parameters, set by _bt_checkkeys for _bt_readpage */
 	OffsetNumber skip;			/* Array keys "look ahead" skip offnum */
 	bool		continuescan;	/* Terminate ongoing (primitive) index scan? */
 
@@ -1178,6 +1184,9 @@ extern IndexBulkDeleteResult *btvacuumcleanup(IndexVacuumInfo *info,
 extern bool btcanreturn(Relation index, int attno);
 extern int	btgettreeheight(Relation rel);
 
+extern CompareType bttranslatestrategy(StrategyNumber strategy, Oid opfamily);
+extern StrategyNumber bttranslatecmptype(CompareType cmptype, Oid opfamily);
+
 /*
  * prototypes for internal functions in nbtree.c
  */
@@ -1261,6 +1270,11 @@ extern void _bt_pendingfsm_init(Relation rel, BTVacState *vstate,
 extern void _bt_pendingfsm_finalize(Relation rel, BTVacState *vstate);
 
 /*
+ * prototypes for functions in nbtpreprocesskeys.c
+ */
+extern void _bt_preprocess_keys(IndexScanDesc scan);
+
+/*
  * prototypes for functions in nbtsearch.c
  */
 extern BTStack _bt_search(Relation rel, Relation heaprel, BTScanInsert key,
@@ -1277,12 +1291,16 @@ extern Buffer _bt_get_endpoint(Relation rel, uint32 level, bool rightmost);
 extern BTScanInsert _bt_mkscankey(Relation rel, IndexTuple itup);
 extern void _bt_freestack(BTStack stack);
 extern bool _bt_start_prim_scan(IndexScanDesc scan, ScanDirection dir);
+extern int	_bt_binsrch_array_skey(FmgrInfo *orderproc,
+								   bool cur_elem_trig, ScanDirection dir,
+								   Datum tupdatum, bool tupnull,
+								   BTArrayKeyInfo *array, ScanKey cur,
+								   int32 *set_elem_result);
 extern void _bt_start_array_keys(IndexScanDesc scan, ScanDirection dir);
-extern void _bt_preprocess_keys(IndexScanDesc scan);
 extern bool _bt_checkkeys(IndexScanDesc scan, BTReadPageState *pstate, bool arrayKeys,
 						  IndexTuple tuple, int tupnatts);
-extern bool _bt_oppodir_checkkeys(IndexScanDesc scan, ScanDirection dir,
-								  IndexTuple finaltup);
+extern bool _bt_scanbehind_checkkeys(IndexScanDesc scan, ScanDirection dir,
+									 IndexTuple finaltup);
 extern void _bt_killitems(IndexScanDesc scan);
 extern BTCycleId _bt_vacuum_cycleid(Relation rel);
 extern BTCycleId _bt_start_vacuum(Relation rel);

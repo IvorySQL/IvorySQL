@@ -4,7 +4,7 @@
  *	  definition of the "constraint" system catalog (pg_constraint)
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_constraint.h
@@ -20,7 +20,7 @@
 
 #include "catalog/dependency.h"
 #include "catalog/genbki.h"
-#include "catalog/pg_constraint_d.h"
+#include "catalog/pg_constraint_d.h"	/* IWYU pragma: export */
 #include "nodes/pg_list.h"
 
 /* ----------------
@@ -51,6 +51,7 @@ CATALOG(pg_constraint,2606,ConstraintRelationId)
 	char		contype;		/* constraint type; see codes below */
 	bool		condeferrable;	/* deferrable constraint? */
 	bool		condeferred;	/* deferred by default? */
+	bool		conenforced;	/* enforced constraint? */
 	bool		convalidated;	/* constraint has been validated? */
 
 	/*
@@ -222,6 +223,7 @@ extern Oid	CreateConstraintEntry(const char *constraintName,
 								  char constraintType,
 								  bool isDeferrable,
 								  bool isDeferred,
+								  bool isEnforced,
 								  bool isValidated,
 								  Oid parentConstrId,
 								  Oid relId,
@@ -288,7 +290,8 @@ extern void DeconstructFkConstraintRow(HeapTuple tuple, int *numfks,
 									   int *num_fk_del_set_cols, AttrNumber *fk_del_set_cols);
 extern void FindFKPeriodOpers(Oid opclass,
 							  Oid *containedbyoperoid,
-							  Oid *aggedcontainedbyoperoid);
+							  Oid *aggedcontainedbyoperoid,
+							  Oid *intersectoperoid);
 
 extern bool check_functional_grouping(Oid relid,
 									  Index varno, Index varlevelsup,

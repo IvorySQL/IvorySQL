@@ -3,7 +3,7 @@
  * fmgr.c
  *	  The Postgres function manager.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -687,7 +687,7 @@ fmgr_security_definer(PG_FUNCTION_ARGS)
 	ListCell   *lc1,
 			   *lc2,
 			   *lc3;
-	volatile int save_nestlevel;
+	int			save_nestlevel;
 	PgStat_FunctionCallUsage fcusage;
 
 	if (!fcinfo->flinfo->fn_extra)

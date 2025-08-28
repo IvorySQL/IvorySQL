@@ -3,7 +3,7 @@
  * backend_startup.c
  *	  Backend startup code
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -19,6 +19,7 @@
 #include <unistd.h>
 
 #include "access/xlog.h"
+#include "access/xlogrecovery.h"
 #include "common/ip.h"
 #include "common/string.h"
 #include "libpq/libpq.h"
@@ -36,21 +37,37 @@
 #include "tcop/backend_startup.h"
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
+#include "utils/guc_hooks.h"
 #include "utils/injection_point.h"
 #include "utils/memutils.h"
 #include "utils/ora_compatible.h"
 #include "utils/ps_status.h"
 #include "utils/timeout.h"
+#include "utils/varlena.h"
 
 /* GUCs */
 bool		Trace_connection_negotiation = false;
+uint32		log_connections = 0;
+char	   *log_connections_string = NULL;
+
+/* Other globals */
+
+/*
+ * ConnectionTiming stores timestamps of various points in connection
+ * establishment and setup.
+ * ready_for_use is initialized to a special value here so we can check if
+ * we've already set it before doing so in PostgresMain().
+ */
+ConnectionTiming conn_timing = {.ready_for_use = TIMESTAMP_MINUS_INFINITY};
 
 static void BackendInitialize(ClientSocket *client_sock, CAC_state cac);
 static int	ProcessSSLStartup(Port *port);
 static int	ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done);
+static void ProcessCancelRequestPacket(Port *port, void *pkt, int pktlen);
 static void SendNegotiateProtocolVersion(List *unrecognized_protocol_options);
 static void process_startup_packet_die(SIGNAL_ARGS);
 static void StartupPacketTimeoutHandler(void);
+static bool validate_log_connections_options(List *elemlist, uint32 *flags);
 
 /*
  * Entry point for a new backend process.
@@ -59,9 +76,9 @@ static void StartupPacketTimeoutHandler(void);
  * client, and start the main processing loop.
  */
 void
-BackendMain(char *startup_data, size_t startup_data_len)
+BackendMain(const void *startup_data, size_t startup_data_len)
 {
-	BackendStartupData *bsdata = (BackendStartupData *) startup_data;
+	const BackendStartupData *bsdata = startup_data;
 
 	Assert(startup_data_len == sizeof(BackendStartupData));
 	Assert(MyClientSocket != NULL);
@@ -253,8 +270,8 @@ BackendInitialize(ClientSocket *client_sock, CAC_state cac)
 			port->connmode = 'u';
 	}
 
-	/* And now we can issue the Log_connections message, if wanted */
-	if (Log_connections)
+	/* And now we can log that the connection was received, if enabled */
+	if (log_connections & LOG_CONNECTION_RECEIPT)
 	{
 		if (remote_port[0])
 			ereport(LOG,
@@ -343,17 +360,24 @@ BackendInitialize(ClientSocket *client_sock, CAC_state cac)
 						(errcode(ERRCODE_CANNOT_CONNECT_NOW),
 						 errmsg("the database system is starting up")));
 				break;
-			case CAC_NOTCONSISTENT:
-				if (EnableHotStandby)
-					ereport(FATAL,
-							(errcode(ERRCODE_CANNOT_CONNECT_NOW),
-							 errmsg("the database system is not yet accepting connections"),
-							 errdetail("Consistent recovery state has not been yet reached.")));
-				else
+			case CAC_NOTHOTSTANDBY:
+				if (!EnableHotStandby)
 					ereport(FATAL,
 							(errcode(ERRCODE_CANNOT_CONNECT_NOW),
 							 errmsg("the database system is not accepting connections"),
 							 errdetail("Hot standby mode is disabled.")));
+				else if (reachedConsistency)
+					ereport(FATAL,
+							(errcode(ERRCODE_CANNOT_CONNECT_NOW),
+							 errmsg("the database system is not yet accepting connections"),
+							 errdetail("Recovery snapshot is not yet ready for hot standby."),
+							 errhint("To enable hot standby, close write transactions with more than %d subtransactions on the primary server.",
+									 PGPROC_MAX_CACHED_SUBXIDS)));
+				else
+					ereport(FATAL,
+							(errcode(ERRCODE_CANNOT_CONNECT_NOW),
+							 errmsg("the database system is not yet accepting connections"),
+							 errdetail("Consistent recovery state has not been yet reached.")));
 				break;
 			case CAC_SHUTDOWN:
 				ereport(FATAL,
@@ -532,7 +556,7 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 	 * sound inefficient, but it's not really, because of buffering in
 	 * pqcomm.c.)
 	 */
-	if (pq_getbytes((char *) &len, 1) == EOF)
+	if (pq_getbytes(&len, 1) == EOF)
 	{
 		/*
 		 * If we get no data at all, don't clutter the log with a complaint;
@@ -594,28 +618,7 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 
 	if (proto == CANCEL_REQUEST_CODE)
 	{
-		/*
-		 * The client has sent a cancel request packet, not a normal
-		 * start-a-new-connection packet.  Perform the necessary processing.
-		 * Nothing is sent back to the client.
-		 */
-		CancelRequestPacket *canc;
-		int			backendPID;
-		int32		cancelAuthCode;
-
-		if (len != sizeof(CancelRequestPacket))
-		{
-			ereport(COMMERROR,
-					(errcode(ERRCODE_PROTOCOL_VIOLATION),
-					 errmsg("invalid length of startup packet")));
-			return STATUS_ERROR;
-		}
-		canc = (CancelRequestPacket *) buf;
-		backendPID = (int) pg_ntoh32(canc->backendPID);
-		cancelAuthCode = (int32) pg_ntoh32(canc->cancelAuthCode);
-
-		if (backendPID != 0)
-			SendCancelRequest(backendPID, cancelAuthCode);
+		ProcessCancelRequestPacket(port, buf, len);
 		/* Not really an error, but we don't want to proceed further */
 		return STATUS_ERROR;
 	}
@@ -1018,6 +1021,37 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 }
 
 /*
+ * The client has sent a cancel request packet, not a normal
+ * start-a-new-connection packet.  Perform the necessary processing.  Nothing
+ * is sent back to the client.
+ */
+static void
+ProcessCancelRequestPacket(Port *port, void *pkt, int pktlen)
+{
+	CancelRequestPacket *canc;
+	int			len;
+
+	if (pktlen < offsetof(CancelRequestPacket, cancelAuthCode))
+	{
+		ereport(COMMERROR,
+				(errcode(ERRCODE_PROTOCOL_VIOLATION),
+				 errmsg("invalid length of query cancel packet")));
+		return;
+	}
+	len = pktlen - offsetof(CancelRequestPacket, cancelAuthCode);
+	if (len == 0 || len > 256)
+	{
+		ereport(COMMERROR,
+				(errcode(ERRCODE_PROTOCOL_VIOLATION),
+				 errmsg("invalid length of query cancel key")));
+		return;
+	}
+
+	canc = (CancelRequestPacket *) pkt;
+	SendCancelRequest(pg_ntoh32(canc->backendPID), canc->cancelAuthCode, len);
+}
+
+/*
  * Send a NegotiateProtocolVersion to the client.  This lets the client know
  * that they have either requested a newer minor protocol version than we are
  * able to speak, or at least one protocol option that we don't understand, or
@@ -1077,4 +1111,159 @@ static void
 StartupPacketTimeoutHandler(void)
 {
 	_exit(1);
+}
+
+/*
+ * Helper for the log_connections GUC check hook.
+ *
+ * `elemlist` is a listified version of the string input passed to the
+ * log_connections GUC check hook, check_log_connections().
+ * check_log_connections() is responsible for cleaning up `elemlist`.
+ *
+ * validate_log_connections_options() returns false if an error was
+ * encountered and the GUC input could not be validated and true otherwise.
+ *
+ * `flags` returns the flags that should be stored in the log_connections GUC
+ * by its assign hook.
+ */
+static bool
+validate_log_connections_options(List *elemlist, uint32 *flags)
+{
+	ListCell   *l;
+	char	   *item;
+
+	/*
+	 * For backwards compatibility, we accept these tokens by themselves.
+	 *
+	 * Prior to PostgreSQL 18, log_connections was a boolean GUC that accepted
+	 * any unambiguous substring of 'true', 'false', 'yes', 'no', 'on', and
+	 * 'off'. Since log_connections became a list of strings in 18, we only
+	 * accept complete option strings.
+	 */
+	static const struct config_enum_entry compat_options[] = {
+		{"off", 0},
+		{"false", 0},
+		{"no", 0},
+		{"0", 0},
+		{"on", LOG_CONNECTION_ON},
+		{"true", LOG_CONNECTION_ON},
+		{"yes", LOG_CONNECTION_ON},
+		{"1", LOG_CONNECTION_ON},
+	};
+
+	*flags = 0;
+
+	/* If an empty string was passed, we're done */
+	if (list_length(elemlist) == 0)
+		return true;
+
+	/*
+	 * Now check for the backwards compatibility options. They must always be
+	 * specified on their own, so we error out if the first option is a
+	 * backwards compatibility option and other options are also specified.
+	 */
+	item = linitial(elemlist);
+
+	for (size_t i = 0; i < lengthof(compat_options); i++)
+	{
+		struct config_enum_entry option = compat_options[i];
+
+		if (pg_strcasecmp(item, option.name) != 0)
+			continue;
+
+		if (list_length(elemlist) > 1)
+		{
+			GUC_check_errdetail("Cannot specify log_connections option \"%s\" in a list with other options.",
+								item);
+			return false;
+		}
+
+		*flags = option.val;
+		return true;
+	}
+
+	/* Now check the aspect options. The empty string was already handled */
+	foreach(l, elemlist)
+	{
+		static const struct config_enum_entry options[] = {
+			{"receipt", LOG_CONNECTION_RECEIPT},
+			{"authentication", LOG_CONNECTION_AUTHENTICATION},
+			{"authorization", LOG_CONNECTION_AUTHORIZATION},
+			{"setup_durations", LOG_CONNECTION_SETUP_DURATIONS},
+			{"all", LOG_CONNECTION_ALL},
+		};
+
+		item = lfirst(l);
+		for (size_t i = 0; i < lengthof(options); i++)
+		{
+			struct config_enum_entry option = options[i];
+
+			if (pg_strcasecmp(item, option.name) == 0)
+			{
+				*flags |= option.val;
+				goto next;
+			}
+		}
+
+		GUC_check_errdetail("Invalid option \"%s\".", item);
+		return false;
+
+next:	;
+	}
+
+	return true;
+}
+
+
+/*
+ * GUC check hook for log_connections
+ */
+bool
+check_log_connections(char **newval, void **extra, GucSource source)
+{
+	uint32		flags;
+	char	   *rawstring;
+	List	   *elemlist;
+	bool		success;
+
+	/* Need a modifiable copy of string */
+	rawstring = pstrdup(*newval);
+
+	if (!SplitIdentifierString(rawstring, ',', &elemlist))
+	{
+		GUC_check_errdetail("Invalid list syntax in parameter \"log_connections\".");
+		pfree(rawstring);
+		list_free(elemlist);
+		return false;
+	}
+
+	/* Validation logic is all in the helper */
+	success = validate_log_connections_options(elemlist, &flags);
+
+	/* Time for cleanup */
+	pfree(rawstring);
+	list_free(elemlist);
+
+	if (!success)
+		return false;
+
+	/*
+	 * We succeeded, so allocate `extra` and save the flags there for use by
+	 * assign_log_connections().
+	 */
+	*extra = guc_malloc(LOG, sizeof(int));
+	if (!*extra)
+		return false;
+	*((int *) *extra) = flags;
+
+	return true;
+}
+
+/*
+ * GUC assign hook for log_connections
+ */
+void
+assign_log_connections(const char *newval, void *extra)
+{
+	log_connections = *((int *) extra);
 }

@@ -9,7 +9,7 @@
  * Apart from walreceiver, the libpq-specific routines are now being used by
  * logical replication workers and slot synchronization.
  *
- * Portions Copyright (c) 2010-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2010-2025, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -36,7 +36,10 @@
 #include "utils/pg_lsn.h"
 #include "utils/tuplestore.h"
 
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(
+					.name = "libpqwalreceiver",
+					.version = PG_VERSION
+);
 
 struct WalReceiverConn
 {
@@ -208,7 +211,7 @@ libpqrcv_connect(const char *conninfo, bool replication, bool logical,
 	keys[++i] = NULL;
 	vals[i] = NULL;
 
-	Assert(i < sizeof(keys));
+	Assert(i < lengthof(keys));
 
 	conn = palloc0(sizeof(WalReceiverConn));
 	conn->streamConn = PQconnectStartParams(keys, vals,

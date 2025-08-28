@@ -40,7 +40,19 @@
  * themselves, as there could pointers to them in active use.  See
  * smgrrelease() and smgrreleaseall().
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * NB: We need to hold interrupts across most of the functions in this file,
+ * as otherwise interrupt processing, e.g. due to a < ERROR elog/ereport, can
+ * trigger procsignal processing, which in turn can trigger
+ * smgrreleaseall(). Most of the relevant code is not reentrant.  It seems
+ * better to put the HOLD_INTERRUPTS()/RESUME_INTERRUPTS() here, instead of
+ * trying to push them down to md.c where possible: For one, every smgr
+ * implementation would be vulnerable, for another, a good bit of smgr.c code
+ * itself is affected too.  Eventually we might want a more targeted solution,
+ * allowing e.g. a networked smgr implementation to be interrupted, but many
+ * other, more complicated, problems would need to be fixed for that to be
+ * viable (e.g. smgr.c is often called with interrupts already held).
+ *
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -53,6 +65,8 @@
 
 #include "access/xlogutils.h"
 #include "lib/ilist.h"
+#include "miscadmin.h"
+#include "storage/aio.h"
 #include "storage/bufmgr.h"
 #include "storage/ipc.h"
 #include "storage/md.h"
@@ -93,6 +107,10 @@ typedef struct f_smgr
 	void		(*smgr_readv) (SMgrRelation reln, ForkNumber forknum,
 							   BlockNumber blocknum,
 							   void **buffers, BlockNumber nblocks);
+	void		(*smgr_startreadv) (PgAioHandle *ioh,
+									SMgrRelation reln, ForkNumber forknum,
+									BlockNumber blocknum,
+									void **buffers, BlockNumber nblocks);
 	void		(*smgr_writev) (SMgrRelation reln, ForkNumber forknum,
 								BlockNumber blocknum,
 								const void **buffers, BlockNumber nblocks,
@@ -104,6 +122,7 @@ typedef struct f_smgr
 								  BlockNumber old_blocks, BlockNumber nblocks);
 	void		(*smgr_immedsync) (SMgrRelation reln, ForkNumber forknum);
 	void		(*smgr_registersync) (SMgrRelation reln, ForkNumber forknum);
+	int			(*smgr_fd) (SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum, uint32 *off);
 } f_smgr;
 
 static const f_smgr smgrsw[] = {
@@ -121,12 +140,14 @@ static const f_smgr smgrsw[] = {
 		.smgr_prefetch = mdprefetch,
 		.smgr_maxcombine = mdmaxcombine,
 		.smgr_readv = mdreadv,
+		.smgr_startreadv = mdstartreadv,
 		.smgr_writev = mdwritev,
 		.smgr_writeback = mdwriteback,
 		.smgr_nblocks = mdnblocks,
 		.smgr_truncate = mdtruncate,
 		.smgr_immedsync = mdimmedsync,
 		.smgr_registersync = mdregistersync,
+		.smgr_fd = mdfd,
 	}
 };
 
@@ -144,6 +165,16 @@ static dlist_head unpinned_relns;
 static void smgrshutdown(int code, Datum arg);
 static void smgrdestroy(SMgrRelation reln);
 
+static void smgr_aio_reopen(PgAioHandle *ioh);
+static char *smgr_aio_describe_identity(const PgAioTargetData *sd);
+
+
+const PgAioTargetInfo aio_smgr_target_info = {
+	.name = "smgr",
+	.reopen = smgr_aio_reopen,
+	.describe_identity = smgr_aio_describe_identity,
+};
+
 
 /*
  * smgrinit(), smgrshutdown() -- Initialize or shut down storage
@@ -158,11 +189,15 @@ smgrinit(void)
 {
 	int			i;
 
+	HOLD_INTERRUPTS();
+
 	for (i = 0; i < NSmgr; i++)
 	{
 		if (smgrsw[i].smgr_init)
 			smgrsw[i].smgr_init();
 	}
+
+	RESUME_INTERRUPTS();
 
 	/* register the shutdown proc */
 	on_proc_exit(smgrshutdown, 0);
@@ -176,11 +211,15 @@ smgrshutdown(int code, Datum arg)
 {
 	int			i;
 
+	HOLD_INTERRUPTS();
+
 	for (i = 0; i < NSmgr; i++)
 	{
 		if (smgrsw[i].smgr_shutdown)
 			smgrsw[i].smgr_shutdown();
 	}
+
+	RESUME_INTERRUPTS();
 }
 
 /*
@@ -205,6 +244,8 @@ smgropen(RelFileLocator rlocator, ProcNumber backend)
 	bool		found;
 
 	Assert(RelFileNumberIsValid(rlocator.relNumber));
+
+	HOLD_INTERRUPTS();
 
 	if (SMgrRelationHash == NULL)
 	{
@@ -234,13 +275,15 @@ smgropen(RelFileLocator rlocator, ProcNumber backend)
 			reln->smgr_cached_nblocks[i] = InvalidBlockNumber;
 		reln->smgr_which = 0;	/* we only have md.c at present */
 
-		/* implementation-specific initialization */
-		smgrsw[reln->smgr_which].smgr_open(reln);
-
 		/* it is not pinned yet */
 		reln->pincount = 0;
 		dlist_push_tail(&unpinned_relns, &reln->node);
+
+		/* implementation-specific initialization */
+		smgrsw[reln->smgr_which].smgr_open(reln);
 	}
+
+	RESUME_INTERRUPTS();
 
 	return reln;
 }
@@ -283,6 +326,8 @@ smgrdestroy(SMgrRelation reln)
 
 	Assert(reln->pincount == 0);
 
+	HOLD_INTERRUPTS();
+
 	for (forknum = 0; forknum <= MAX_FORKNUM; forknum++)
 		smgrsw[reln->smgr_which].smgr_close(reln, forknum);
 
@@ -292,6 +337,8 @@ smgrdestroy(SMgrRelation reln)
 					&(reln->smgr_rlocator),
 					HASH_REMOVE, NULL) == NULL)
 		elog(ERROR, "SMgrRelation hashtable corrupted");
+
+	RESUME_INTERRUPTS();
 }
 
 /*
@@ -302,12 +349,16 @@ smgrdestroy(SMgrRelation reln)
 void
 smgrrelease(SMgrRelation reln)
 {
+	HOLD_INTERRUPTS();
+
 	for (ForkNumber forknum = 0; forknum <= MAX_FORKNUM; forknum++)
 	{
 		smgrsw[reln->smgr_which].smgr_close(reln, forknum);
 		reln->smgr_cached_nblocks[forknum] = InvalidBlockNumber;
 	}
 	reln->smgr_targblock = InvalidBlockNumber;
+
+	RESUME_INTERRUPTS();
 }
 
 /*
@@ -336,6 +387,9 @@ smgrdestroyall(void)
 {
 	dlist_mutable_iter iter;
 
+	/* seems unsafe to accept interrupts while in a dlist_foreach_modify() */
+	HOLD_INTERRUPTS();
+
 	/*
 	 * Zap all unpinned SMgrRelations.  We rely on smgrdestroy() to remove
 	 * each one from the list.
@@ -347,6 +401,8 @@ smgrdestroyall(void)
 
 		smgrdestroy(rel);
 	}
+
+	RESUME_INTERRUPTS();
 }
 
 /*
@@ -362,12 +418,17 @@ smgrreleaseall(void)
 	if (SMgrRelationHash == NULL)
 		return;
 
+	/* seems unsafe to accept interrupts while iterating */
+	HOLD_INTERRUPTS();
+
 	hash_seq_init(&status, SMgrRelationHash);
 
 	while ((reln = (SMgrRelation) hash_seq_search(&status)) != NULL)
 	{
 		smgrrelease(reln);
 	}
+
+	RESUME_INTERRUPTS();
 }
 
 /*
@@ -400,7 +461,13 @@ smgrreleaserellocator(RelFileLocatorBackend rlocator)
 bool
 smgrexists(SMgrRelation reln, ForkNumber forknum)
 {
-	return smgrsw[reln->smgr_which].smgr_exists(reln, forknum);
+	bool		ret;
+
+	HOLD_INTERRUPTS();
+	ret = smgrsw[reln->smgr_which].smgr_exists(reln, forknum);
+	RESUME_INTERRUPTS();
+
+	return ret;
 }
 
 /*
@@ -413,7 +480,9 @@ smgrexists(SMgrRelation reln, ForkNumber forknum)
 void
 smgrcreate(SMgrRelation reln, ForkNumber forknum, bool isRedo)
 {
+	HOLD_INTERRUPTS();
 	smgrsw[reln->smgr_which].smgr_create(reln, forknum, isRedo);
+	RESUME_INTERRUPTS();
 }
 
 /*
@@ -436,6 +505,8 @@ smgrdosyncall(SMgrRelation *rels, int nrels)
 
 	FlushRelationsAllBuffers(rels, nrels);
 
+	HOLD_INTERRUPTS();
+
 	/*
 	 * Sync the physical file(s).
 	 */
@@ -449,6 +520,8 @@ smgrdosyncall(SMgrRelation *rels, int nrels)
 				smgrsw[which].smgr_immedsync(rels[i], forknum);
 		}
 	}
+
+	RESUME_INTERRUPTS();
 }
 
 /*
@@ -470,6 +543,13 @@ smgrdounlinkall(SMgrRelation *rels, int nrels, bool isRedo)
 
 	if (nrels == 0)
 		return;
+
+	/*
+	 * It would be unsafe to process interrupts between DropRelationBuffers()
+	 * and unlinking the underlying files. This probably should be a critical
+	 * section, but we're not there yet.
+	 */
+	HOLD_INTERRUPTS();
 
 	/*
 	 * Get rid of any remaining buffers for the relations.  bufmgr will just
@@ -522,6 +602,8 @@ smgrdounlinkall(SMgrRelation *rels, int nrels, bool isRedo)
 	}
 
 	pfree(rlocators);
+
+	RESUME_INTERRUPTS();
 }
 
 
@@ -538,6 +620,8 @@ void
 smgrextend(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
 		   const void *buffer, bool skipFsync)
 {
+	HOLD_INTERRUPTS();
+
 	smgrsw[reln->smgr_which].smgr_extend(reln, forknum, blocknum,
 										 buffer, skipFsync);
 
@@ -550,6 +634,8 @@ smgrextend(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
 		reln->smgr_cached_nblocks[forknum] = blocknum + 1;
 	else
 		reln->smgr_cached_nblocks[forknum] = InvalidBlockNumber;
+
+	RESUME_INTERRUPTS();
 }
 
 /*
@@ -563,6 +649,8 @@ void
 smgrzeroextend(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
 			   int nblocks, bool skipFsync)
 {
+	HOLD_INTERRUPTS();
+
 	smgrsw[reln->smgr_which].smgr_zeroextend(reln, forknum, blocknum,
 											 nblocks, skipFsync);
 
@@ -575,6 +663,8 @@ smgrzeroextend(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
 		reln->smgr_cached_nblocks[forknum] = blocknum + nblocks;
 	else
 		reln->smgr_cached_nblocks[forknum] = InvalidBlockNumber;
+
+	RESUME_INTERRUPTS();
 }
 
 /*
@@ -588,7 +678,13 @@ bool
 smgrprefetch(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
 			 int nblocks)
 {
-	return smgrsw[reln->smgr_which].smgr_prefetch(reln, forknum, blocknum, nblocks);
+	bool		ret;
+
+	HOLD_INTERRUPTS();
+	ret = smgrsw[reln->smgr_which].smgr_prefetch(reln, forknum, blocknum, nblocks);
+	RESUME_INTERRUPTS();
+
+	return ret;
 }
 
 /*
@@ -601,7 +697,13 @@ uint32
 smgrmaxcombine(SMgrRelation reln, ForkNumber forknum,
 			   BlockNumber blocknum)
 {
-	return smgrsw[reln->smgr_which].smgr_maxcombine(reln, forknum, blocknum);
+	uint32		ret;
+
+	HOLD_INTERRUPTS();
+	ret = smgrsw[reln->smgr_which].smgr_maxcombine(reln, forknum, blocknum);
+	RESUME_INTERRUPTS();
+
+	return ret;
 }
 
 /*
@@ -619,8 +721,42 @@ void
 smgrreadv(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
 		  void **buffers, BlockNumber nblocks)
 {
+	HOLD_INTERRUPTS();
 	smgrsw[reln->smgr_which].smgr_readv(reln, forknum, blocknum, buffers,
 										nblocks);
+	RESUME_INTERRUPTS();
+}
+
+/*
+ * smgrstartreadv() -- asynchronous version of smgrreadv()
+ *
+ * This starts an asynchronous readv IO using the IO handle `ioh`. Other than
+ * `ioh` all parameters are the same as smgrreadv().
+ *
+ * Completion callbacks above smgr will be passed the result as the number of
+ * successfully read blocks if the read [partially] succeeds (Buffers for
+ * blocks not successfully read might bear unspecified modifications, up to
+ * the full nblocks). This maintains the abstraction that smgr operates on the
+ * level of blocks, rather than bytes.
+ *
+ * Compared to smgrreadv(), more responsibilities fall on the caller:
+ * - Partial reads need to be handled by the caller re-issuing IO for the
+ *   unread blocks
+ * - smgr will ereport(LOG_SERVER_ONLY) some problems, but higher layers are
+ *   responsible for pgaio_result_report() to mirror that news to the user (if
+ *   the IO results in PGAIO_RS_WARNING) or abort the (sub)transaction (if
+ *   PGAIO_RS_ERROR).
+ */
+void
+smgrstartreadv(PgAioHandle *ioh,
+			   SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
+			   void **buffers, BlockNumber nblocks)
+{
+	HOLD_INTERRUPTS();
+	smgrsw[reln->smgr_which].smgr_startreadv(ioh,
+											 reln, forknum, blocknum, buffers,
+											 nblocks);
+	RESUME_INTERRUPTS();
 }
 
 /*
@@ -653,8 +789,10 @@ void
 smgrwritev(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
 		   const void **buffers, BlockNumber nblocks, bool skipFsync)
 {
+	HOLD_INTERRUPTS();
 	smgrsw[reln->smgr_which].smgr_writev(reln, forknum, blocknum,
 										 buffers, nblocks, skipFsync);
+	RESUME_INTERRUPTS();
 }
 
 /*
@@ -665,8 +803,10 @@ void
 smgrwriteback(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
 			  BlockNumber nblocks)
 {
+	HOLD_INTERRUPTS();
 	smgrsw[reln->smgr_which].smgr_writeback(reln, forknum, blocknum,
 											nblocks);
+	RESUME_INTERRUPTS();
 }
 
 /*
@@ -683,9 +823,13 @@ smgrnblocks(SMgrRelation reln, ForkNumber forknum)
 	if (result != InvalidBlockNumber)
 		return result;
 
+	HOLD_INTERRUPTS();
+
 	result = smgrsw[reln->smgr_which].smgr_nblocks(reln, forknum);
 
 	reln->smgr_cached_nblocks[forknum] = result;
+
+	RESUME_INTERRUPTS();
 
 	return result;
 }
@@ -784,7 +928,9 @@ smgrtruncate(SMgrRelation reln, ForkNumber *forknum, int nforks,
 void
 smgrregistersync(SMgrRelation reln, ForkNumber forknum)
 {
+	HOLD_INTERRUPTS();
 	smgrsw[reln->smgr_which].smgr_registersync(reln, forknum);
+	RESUME_INTERRUPTS();
 }
 
 /*
@@ -816,7 +962,32 @@ smgrregistersync(SMgrRelation reln, ForkNumber forknum)
 void
 smgrimmedsync(SMgrRelation reln, ForkNumber forknum)
 {
+	HOLD_INTERRUPTS();
 	smgrsw[reln->smgr_which].smgr_immedsync(reln, forknum);
+	RESUME_INTERRUPTS();
+}
+
+/*
+ * Return fd for the specified block number and update *off to the appropriate
+ * position.
+ *
+ * This is only to be used for when AIO needs to perform the IO in a different
+ * process than where it was issued (e.g. in an IO worker).
+ */
+static int
+smgrfd(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum, uint32 *off)
+{
+	int			fd;
+
+	/*
+	 * The caller needs to prevent interrupts from being processed, otherwise
+	 * the FD could be closed prematurely.
+	 */
+	Assert(!INTERRUPTS_CAN_BE_PROCESSED());
+
+	fd = smgrsw[reln->smgr_which].smgr_fd(reln, forknum, blocknum, off);
+
+	return fd;
 }
 
 /*
@@ -846,4 +1017,100 @@ ProcessBarrierSmgrRelease(void)
 {
 	smgrreleaseall();
 	return true;
+}
+
+/*
+ * Set target of the IO handle to be smgr and initialize all the relevant
+ * pieces of data.
+ */
+void
+pgaio_io_set_target_smgr(PgAioHandle *ioh,
+						 SMgrRelationData *smgr,
+						 ForkNumber forknum,
+						 BlockNumber blocknum,
+						 int nblocks,
+						 bool skip_fsync)
+{
+	PgAioTargetData *sd = pgaio_io_get_target_data(ioh);
+
+	pgaio_io_set_target(ioh, PGAIO_TID_SMGR);
+
+	/* backend is implied via IO owner */
+	sd->smgr.rlocator = smgr->smgr_rlocator.locator;
+	sd->smgr.forkNum = forknum;
+	sd->smgr.blockNum = blocknum;
+	sd->smgr.nblocks = nblocks;
+	sd->smgr.is_temp = SmgrIsTemp(smgr);
+	/* Temp relations should never be fsync'd */
+	sd->smgr.skip_fsync = skip_fsync && !SmgrIsTemp(smgr);
+}
+
+/*
+ * Callback for the smgr AIO target, to reopen the file (e.g. because the IO
+ * is executed in a worker).
+ */
+static void
+smgr_aio_reopen(PgAioHandle *ioh)
+{
+	PgAioTargetData *sd = pgaio_io_get_target_data(ioh);
+	PgAioOpData *od = pgaio_io_get_op_data(ioh);
+	SMgrRelation reln;
+	ProcNumber	procno;
+	uint32		off;
+
+	/*
+	 * The caller needs to prevent interrupts from being processed, otherwise
+	 * the FD could be closed again before we get to executing the IO.
+	 */
+	Assert(!INTERRUPTS_CAN_BE_PROCESSED());
+
+	if (sd->smgr.is_temp)
+		procno = pgaio_io_get_owner(ioh);
+	else
+		procno = INVALID_PROC_NUMBER;
+
+	reln = smgropen(sd->smgr.rlocator, procno);
+	switch (pgaio_io_get_op(ioh))
+	{
+		case PGAIO_OP_INVALID:
+			pg_unreachable();
+			break;
+		case PGAIO_OP_READV:
+			od->read.fd = smgrfd(reln, sd->smgr.forkNum, sd->smgr.blockNum, &off);
+			Assert(off == od->read.offset);
+			break;
+		case PGAIO_OP_WRITEV:
+			od->write.fd = smgrfd(reln, sd->smgr.forkNum, sd->smgr.blockNum, &off);
+			Assert(off == od->write.offset);
+			break;
+	}
+}
+
+/*
+ * Callback for the smgr AIO target, describing the target of the IO.
+ */
+static char *
+smgr_aio_describe_identity(const PgAioTargetData *sd)
+{
+	RelPathStr	path;
+	char	   *desc;
+
+	path = relpathbackend(sd->smgr.rlocator,
+						  sd->smgr.is_temp ?
+						  MyProcNumber : INVALID_PROC_NUMBER,
+						  sd->smgr.forkNum);
+
+	if (sd->smgr.nblocks == 0)
+		desc = psprintf(_("file \"%s\""), path.str);
+	else if (sd->smgr.nblocks == 1)
+		desc = psprintf(_("block %u in file \"%s\""),
+						sd->smgr.blockNum,
+						path.str);
+	else
+		desc = psprintf(_("blocks %u..%u in file \"%s\""),
+						sd->smgr.blockNum,
+						sd->smgr.blockNum + sd->smgr.nblocks - 1,
+						path.str);
+
+	return desc;
 }

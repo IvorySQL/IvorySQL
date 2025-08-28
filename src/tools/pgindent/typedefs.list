@@ -47,6 +47,7 @@ AggSplit
 AggState
 AggStatePerAgg
 AggStatePerGroup
+AggStatePerGroupData
 AggStatePerHash
 AggStatePerPhase
 AggStatePerTrans
@@ -54,6 +55,9 @@ AggStrategy
 AggTransInfo
 Aggref
 AggregateInstrumentation
+AioWorkerControl
+AioWorkerSlot
+AioWorkerSubmissionQueue
 AlenState
 Alias
 AllocBlock
@@ -150,12 +154,14 @@ ArrayIOData
 ArrayIterator
 ArrayMapState
 ArrayMetaState
+ArraySortCachedInfo
 ArraySubWorkspace
 ArrayToken
 ArrayType
 AsyncQueueControl
 AsyncQueueEntry
 AsyncRequest
+ATAlterConstraint
 AttInMetadata
 AttStatsSlot
 AttoptCacheEntry
@@ -189,6 +195,7 @@ BOOLEAN
 BOX
 BTArrayKeyInfo
 BTBuildState
+BTCallbackState
 BTCycleId
 BTDedupInterval
 BTDedupState
@@ -263,6 +270,7 @@ BitmapAndState
 BitmapHeapPath
 BitmapHeapScan
 BitmapHeapScanInstrumentation
+BitmapHeapScanDesc
 BitmapHeapScanState
 BitmapIndexScan
 BitmapIndexScanState
@@ -369,8 +377,16 @@ CState
 CTECycleClause
 CTEMaterialize
 CTESearchClause
+CURL
+CURLM
+CURLoption
 CV
 CachedExpression
+CachedFunction
+CachedFunctionCompileCallback
+CachedFunctionDeleteCallback
+CachedFunctionHashEntry
+CachedFunctionHashKey
 CachedPlan
 CachedPlanSource
 CallContext
@@ -383,6 +399,7 @@ CaseTestExpr
 CaseWhen
 Cash
 CastInfo
+CatCInProgress
 CatCList
 CatCTup
 CatCache
@@ -456,6 +473,7 @@ CommonEntry
 CommonTableExpr
 CompactAttribute
 CompareScalarsContext
+CompareType
 CompiledExprState
 CompositeIOData
 CompositeTypeStmt
@@ -469,6 +487,7 @@ ConditionVariableMinimallyPadded
 ConditionalStack
 ConfigData
 ConfigVariable
+ConflictTupleInfo
 ConflictType
 ConnCacheEntry
 ConnCacheKey
@@ -476,6 +495,7 @@ ConnParams
 ConnStatusType
 ConnType
 ConnectionStateEnum
+ConnectionTiming
 ConsiderSplitContext
 Const
 ConstrCheck
@@ -493,6 +513,7 @@ ConvertRowtypeExpr
 CookedConstraint
 CopyDest
 CopyFormatOptions
+CopyFromRoutine
 CopyFromState
 CopyFromStateData
 CopyHeaderChoice
@@ -504,6 +525,7 @@ CopyMultiInsertInfo
 CopyOnErrorChoice
 CopySource
 CopyStmt
+CopyToRoutine
 CopyToState
 CopyToStateData
 Cost
@@ -1022,11 +1044,14 @@ GinBtreeData
 GinBtreeDataLeafInsertData
 GinBtreeEntryInsertData
 GinBtreeStack
+GinBuffer
+GinBuildShared
 GinBuildState
 GinChkVal
 GinEntries
 GinEntryAccumulator
 GinIndexStat
+GinLeader
 GinMetaPageData
 GinNullCategory
 GinOptions
@@ -1034,14 +1059,18 @@ GinPageOpaque
 GinPageOpaqueData
 GinPlaceToPageRC
 GinPostingList
+GinPostingTreeScanItem
 GinQualCounts
 GinScanEntry
+GinScanItem
 GinScanKey
 GinScanOpaque
 GinScanOpaqueData
+GinSegmentInfo
 GinState
 GinStatsData
 GinTernaryValue
+GinTuple
 GinTupleCollector
 GinVacuumState
 GistBuildMode
@@ -1149,6 +1178,7 @@ HeadlineJsonState
 HeadlineParsedText
 HeadlineWordEntry
 HeapCheckContext
+HeapCheckReadStreamData
 HeapPageFreeze
 HeapScanDesc
 HeapTuple
@@ -1223,6 +1253,7 @@ IndexPath
 IndexRuntimeKeyInfo
 IndexScan
 IndexScanDesc
+IndexScanInstrumentation
 IndexScanState
 IndexStateFlagsAction
 IndexStmt
@@ -1262,6 +1293,8 @@ IntoClause
 InvalMessageArray
 InvalidationInfo
 InvalidationMsgsGroup
+IoMethod
+IoMethodOps
 IpcMemoryId
 IpcMemoryKey
 IpcMemoryState
@@ -1540,6 +1573,7 @@ LockTupleMode
 LockViewRecurse_context
 LockWaitPolicy
 LockingClause
+LogConnectionOption
 LogOpts
 LogStmtLevel
 LogicalDecodeBeginCB
@@ -1615,6 +1649,7 @@ Material
 MaterialPath
 MaterialState
 MdfdVec
+MdPathStr
 Memoize
 MemoizeEntry
 MemoizeInstrumentation
@@ -1720,6 +1755,7 @@ NumericDigit
 NumericSortSupport
 NumericSumAccum
 NumericVar
+OAuthValidatorCallbacks
 OM_uint32
 OP
 OSAPerGroupState
@@ -1788,6 +1824,7 @@ PGAsyncStatusType
 PGCALL2
 PGChecksummablePage
 PGContextVisibility
+PGErrorVerbosity
 PGEvent
 PGEventConnDestroy
 PGEventConnReset
@@ -1828,6 +1865,7 @@ PGVerbosity
 PG_Locale_Strategy
 PG_Lock_Status
 PG_init_t
+PGauthData
 PGcancel
 PGcancelConn
 PGcmdQueueEntry
@@ -1835,7 +1873,9 @@ PGconn
 PGdataValue
 PGlobjfuncs
 PGnotify
+PGoauthBearerRequest
 PGpipelineStatus
+PGpromptOAuthDevice
 PGresAttDesc
 PGresAttValue
 PGresParamDesc
@@ -1869,6 +1909,7 @@ PLpgSQL_rec
 PLpgSQL_recfield
 PLpgSQL_resolve_option
 PLpgSQL_row
+PLpgSQL_rwopt
 PLpgSQL_stmt
 PLpgSQL_stmt_assert
 PLpgSQL_stmt_assign
@@ -1947,6 +1988,7 @@ PQArgBlock
 PQEnvironmentOption
 PQExpBuffer
 PQExpBufferData
+PQauthDataHook_type
 PQcommMethods
 PQconninfoOption
 PQnoticeProcessor
@@ -1982,6 +2024,7 @@ PX_Combo
 PX_HMAC
 PX_MD
 Page
+PageData
 PageGistNSN
 PageHeader
 PageHeaderData
@@ -2099,6 +2142,27 @@ Permutation
 PermutationStep
 PermutationStepBlocker
 PermutationStepBlockerType
+PgAioBackend
+PgAioCtl
+PgAioHandle
+PgAioHandleCallbackID
+PgAioHandleCallbackStage
+PgAioHandleCallbackComplete
+PgAioHandleCallbackReport
+PgAioHandleCallbacks
+PgAioHandleCallbacksEntry
+PgAioHandleFlags
+PgAioHandleState
+PgAioOp
+PgAioOpData
+PgAioResult
+PgAioResultStatus
+PgAioReturn
+PgAioTargetData
+PgAioTargetID
+PgAioTargetInfo
+PgAioUringContext
+PgAioWaitRef
 PgArchData
 PgBackendGSSStatus
 PgBackendSSLStatus
@@ -2139,7 +2203,7 @@ PgStatShared_Subscription
 PgStatShared_Wal
 PgStat_ArchiverStats
 PgStat_Backend
-PgStat_BackendPendingIO
+PgStat_BackendPending
 PgStat_BackendSubEntry
 PgStat_BgWriterStats
 PgStat_BktypeIO
@@ -2157,7 +2221,6 @@ PgStat_KindInfo
 PgStat_LocalState
 PgStat_PendingDroppedStatsItem
 PgStat_PendingIO
-PgStat_PendingWalStats
 PgStat_SLRUStats
 PgStat_ShmemControl
 PgStat_Snapshot
@@ -2173,9 +2236,11 @@ PgStat_SubXactStatus
 PgStat_TableCounts
 PgStat_TableStatus
 PgStat_TableXactStatus
+PgStat_WalCounters
 PgStat_WalStats
 PgXmlErrorContext
 PgXmlStrictness
+Pg_abi_values
 Pg_finfo_record
 Pg_magic_struct
 PipeProtoChunk
@@ -2207,6 +2272,7 @@ PortalHashEnt
 PortalStatus
 PortalStrategy
 PostParseColumnRefHook
+PostRewriteHook
 PostgresPollingStatusType
 PostingItem
 PreParseColumnRefHook
@@ -2271,6 +2337,7 @@ PublicationPartOpt
 PublicationRelInfo
 PublicationSchemaInfo
 PublicationTable
+PublishGencolsType
 PullFilter
 PullFilterOps
 PushFilter
@@ -2394,6 +2461,8 @@ RelMapFile
 RelMapping
 RelOptInfo
 RelOptKind
+RelPathStr
+RelStatsInfo
 RelToCheck
 RelToCluster
 RelabelType
@@ -2447,6 +2516,7 @@ RepOriginId
 ReparameterizeForeignPathByChild_function
 ReplaceVarsFromTargetList_context
 ReplaceVarsNoMatchOption
+ReplaceWrapOption
 ReplicaIdentityStmt
 ReplicationKind
 ReplicationSlot
@@ -2476,6 +2546,10 @@ ResultRelInfo
 ResultState
 ReturnSetInfo
 ReturnStmt
+ReturningClause
+ReturningExpr
+ReturningOption
+ReturningOptionKind
 RevmapContents
 RevokeRoleGrantAction
 RewriteMappingDataEntry
@@ -2492,7 +2566,6 @@ RoleSpecType
 RoleStmtType
 RollupData
 RowCompareExpr
-RowCompareType
 RowExpr
 RowIdentityVarInfo
 RowMarkClause
@@ -2541,6 +2614,8 @@ SPPageDesc
 SQLDropObject
 SQLFunctionCache
 SQLFunctionCachePtr
+SQLFunctionHashEntry
+SQLFunctionLink
 SQLFunctionParseInfo
 SQLFunctionParseInfoPtr
 SQLValueFunction
@@ -2583,6 +2658,7 @@ SeenRelsEntry
 SelectLimit
 SelectStmt
 Selectivity
+SelfJoinCandidate
 SemTPadded
 SemiAntiJoinFactors
 SeqScan
@@ -2623,6 +2699,7 @@ SetOperation
 SetOperationStmt
 SetQuantifier
 SetToDefault
+SetVarReturningType_context
 SetupWorkerPtrType
 ShDependObjectInfo
 SharedAggInfo
@@ -2634,6 +2711,7 @@ SharedExecutorInstrumentation
 SharedFileSet
 SharedHashInfo
 SharedIncrementalSortInfo
+SharedIndexScanInstrumentation
 SharedInvalCatalogMsg
 SharedInvalCatcacheMsg
 SharedInvalRelcacheMsg
@@ -2677,6 +2755,7 @@ SkipPages
 SlabBlock
 SlabContext
 SlabSlot
+SlotInvalidationCauseMap
 SlotNumber
 SlotSyncCtxStruct
 SlruCtl
@@ -2793,6 +2872,7 @@ SubscriptionRelState
 SummarizerReadLocalXLogPrivate
 SupportRequestCost
 SupportRequestIndexCondition
+SupportRequestModifyInPlace
 SupportRequestOptimizeWindowClause
 SupportRequestRows
 SupportRequestSelectivity
@@ -3029,6 +3109,7 @@ TypeCat
 TypeFuncClass
 TypeInfo
 TypeName
+TzAbbrevCache
 U32
 U8
 UChar
@@ -3078,12 +3159,15 @@ VacuumRelation
 VacuumStmt
 ValidIOData
 ValidateIndexState
+ValidatorModuleState
+ValidatorModuleResult
 ValuesScan
 ValuesScanState
 Var
 VarBit
 VarChar
 VarParamState
+VarReturningType
 VarString
 VarStringSortSupport
 Variable
@@ -3306,6 +3390,8 @@ amparallelrescan_function
 amproperty_function
 amrescan_function
 amrestrpos_function
+amtranslate_strategy_function amtranslatestrategy;
+amtranslate_cmptype_function amtranslatecmptype;
 amvacuumcleanup_function
 amvalidate_function
 array_iter
@@ -3400,6 +3486,7 @@ core_yy_extra_type
 core_yyscan_t
 corrupt_items
 cost_qual_eval_context
+count_param_references_context
 cp_hash_func
 create_upper_paths_hook_type
 createdb_failure_params
@@ -3471,6 +3558,7 @@ explain_get_index_name_hook_type
 f_smgr
 fasthash_state
 fd_set
+fe_oauth_state
 fe_scram_state
 fe_scram_state_enum
 fetch_range_request
@@ -3695,6 +3783,9 @@ pam_handle_t
 parallel_worker_main_type
 parse_error_callback_arg
 partition_method_t
+pe_test_config
+pe_test_escape_func
+pe_test_vector
 pendingPosition
 pending_label
 pgParameterStatus
@@ -3744,6 +3835,7 @@ pg_sha256_ctx
 pg_sha384_ctx
 pg_sha512_ctx
 pg_snapshot
+pg_special_case
 pg_stack_base_t
 pg_time_t
 pg_time_usec_t
@@ -4035,6 +4127,7 @@ unicodeStyleColumnFormat
 unicodeStyleFormat
 unicodeStyleRowFormat
 unicode_linestyle
+UniqueRelInfo
 unit_conversion
 unlogged_relation_entry
 utf_local_conversion_func
@@ -4197,3 +4290,6 @@ yyscan_t
 z_stream
 z_streamp
 zic_t
+ExplainExtensionOption
+ExplainOptionHandler
+overexplain_options

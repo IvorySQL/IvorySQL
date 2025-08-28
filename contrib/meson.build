@@ -1,5 +1,5 @@
-# Copyright (c) 2022-2024, PostgreSQL Global Development Group
 # Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+# Copyright (c) 2022-2025, PostgreSQL Global Development Group
 
 contrib_mod_args = pg_mod_args
 
@@ -51,6 +51,7 @@ subdir('pg_buffercache')
 subdir('pgcrypto')
 subdir('pg_freespacemap')
 subdir('pg_logicalinspect')
+subdir('pg_overexplain')
 subdir('pg_prewarm')
 subdir('pgrowlocks')
 subdir('pg_stat_statements')

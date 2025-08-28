@@ -1455,6 +1455,23 @@ SELECT ft2.*, ft4.* FROM ft2 INNER JOIN
 	WHERE ft2.c1 > 900
 	ORDER BY ft2.c1 LIMIT 10;
 
+-- Semi-join conditions shouldn't pop up as left/right join clauses.
+SET enable_material TO off;
+EXPLAIN (verbose, costs off)
+SELECT x1.c1 FROM
+		(SELECT * FROM ft2 WHERE EXISTS (SELECT 1 FROM ft4 WHERE ft4.c1 = ft2.c1 AND ft2.c2 < 10)) x1
+	RIGHT JOIN
+		(SELECT * FROM ft2 WHERE EXISTS (SELECT 1 FROM ft4 WHERE ft4.c1 = ft2.c1 AND ft2.c2 < 10)) x2
+	ON (x1.c1 = x2.c1)
+ORDER BY x1.c1 LIMIT 10;
+SELECT x1.c1 FROM
+		(SELECT * FROM ft2 WHERE EXISTS (SELECT 1 FROM ft4 WHERE ft4.c1 = ft2.c1 AND ft2.c2 < 10)) x1
+	RIGHT JOIN
+		(SELECT * FROM ft2 WHERE EXISTS (SELECT 1 FROM ft4 WHERE ft4.c1 = ft2.c1 AND ft2.c2 < 10)) x2
+	ON (x1.c1 = x2.c1)
+ORDER BY x1.c1 LIMIT 10;
+RESET enable_material;
+
 -- Can't push down semi-join with inner rel vars in targetlist
 EXPLAIN (verbose, costs off)
 SELECT ft1.c1 FROM ft1 JOIN ft2 on ft1.c1 = ft2.c1 WHERE
@@ -1469,7 +1486,7 @@ EXPLAIN (verbose, costs off)
 INSERT INTO ft2 (c1,c2,c3) SELECT c1+1000,c2+100, c3 || c3 FROM ft2 LIMIT 20;
 INSERT INTO ft2 (c1,c2,c3) SELECT c1+1000,c2+100, c3 || c3 FROM ft2 LIMIT 20;
 INSERT INTO ft2 (c1,c2,c3)
-  VALUES (1101,201,'aaa'), (1102,202,'bbb'), (1103,203,'ccc') RETURNING *;
+  VALUES (1101,201,'aaa'), (1102,202,'bbb'), (1103,203,'ccc') RETURNING old, new, old.*, new.*;
 INSERT INTO ft2 (c1,c2,c3) VALUES (1104,204,'ddd'), (1105,205,'eee');
 EXPLAIN (verbose, costs off)
 UPDATE ft2 SET c2 = c2 + 300, c3 = c3 || '_update3' WHERE c1 % 10 = 3;              -- can be pushed down
@@ -1477,6 +1494,13 @@ UPDATE ft2 SET c2 = c2 + 300, c3 = c3 || '_update3' WHERE c1 % 10 = 3;
 EXPLAIN (verbose, costs off)
 UPDATE ft2 SET c2 = c2 + 400, c3 = c3 || '_update7' WHERE c1 % 10 = 7 RETURNING *;  -- can be pushed down
 UPDATE ft2 SET c2 = c2 + 400, c3 = c3 || '_update7' WHERE c1 % 10 = 7 RETURNING *;
+BEGIN;
+  EXPLAIN (verbose, costs off)
+  UPDATE ft2 SET c2 = c2 + 400, c3 = c3 || '_update7b' WHERE c1 % 10 = 7 AND c1 < 40
+    RETURNING old.*, new.*;                                                         -- can't be pushed down
+  UPDATE ft2 SET c2 = c2 + 400, c3 = c3 || '_update7b' WHERE c1 % 10 = 7 AND c1 < 40
+    RETURNING old.*, new.*;
+ROLLBACK;
 EXPLAIN (verbose, costs off)
 UPDATE ft2 SET c2 = ft2.c2 + 500, c3 = ft2.c3 || '_update9', c7 = DEFAULT
   FROM ft1 WHERE ft1.c1 = ft2.c2 AND ft1.c1 % 10 = 9;                               -- can be pushed down
@@ -1485,6 +1509,11 @@ UPDATE ft2 SET c2 = ft2.c2 + 500, c3 = ft2.c3 || '_update9', c7 = DEFAULT
 EXPLAIN (verbose, costs off)
   DELETE FROM ft2 WHERE c1 % 10 = 5 RETURNING c1, c4;                               -- can be pushed down
 DELETE FROM ft2 WHERE c1 % 10 = 5 RETURNING c1, c4;
+BEGIN;
+  EXPLAIN (verbose, costs off)
+  DELETE FROM ft2 WHERE c1 % 10 = 6 AND c1 < 40 RETURNING old.c1, c4;               -- can't be pushed down
+  DELETE FROM ft2 WHERE c1 % 10 = 6 AND c1 < 40 RETURNING old.c1, c4;
+ROLLBACK;
 EXPLAIN (verbose, costs off)
 DELETE FROM ft2 USING ft1 WHERE ft1.c1 = ft2.c2 AND ft1.c1 % 10 = 2;                -- can be pushed down
 DELETE FROM ft2 USING ft1 WHERE ft1.c1 = ft2.c2 AND ft1.c1 % 10 = 2;
@@ -1511,6 +1540,17 @@ UPDATE ft2 SET c3 = 'foo'
   FROM ft4 INNER JOIN ft5 ON (ft4.c1 = ft5.c1)
   WHERE ft2.c1 > 1200 AND ft2.c2 = ft4.c1
   RETURNING ft2, ft2.*, ft4, ft4.*;
+BEGIN;
+  EXPLAIN (verbose, costs off)
+  UPDATE ft2 SET c3 = 'bar'
+    FROM ft4 INNER JOIN ft5 ON (ft4.c1 = ft5.c1)
+    WHERE ft2.c1 > 1200 AND ft2.c2 = ft4.c1
+    RETURNING old, new, ft2, ft2.*, ft4, ft4.*;  -- can't be pushed down
+  UPDATE ft2 SET c3 = 'bar'
+    FROM ft4 INNER JOIN ft5 ON (ft4.c1 = ft5.c1)
+    WHERE ft2.c1 > 1200 AND ft2.c2 = ft4.c1
+    RETURNING old, new, ft2, ft2.*, ft4, ft4.*;
+ROLLBACK;
 EXPLAIN (verbose, costs off)
 DELETE FROM ft2
   USING ft4 LEFT JOIN ft5 ON (ft4.c1 = ft5.c1)
@@ -1836,12 +1876,15 @@ select * from rem1;
 -- ===================================================================
 create table gloc1 (
   a int,
-  b int generated always as (a * 2) stored);
+  b int generated always as (a * 2) stored,
+  c int
+);
 alter table gloc1 set (autovacuum_enabled = 'false');
 create foreign table grem1 (
   a int,
-  b int generated always as (a * 2) stored)
-  server loopback options(table_name 'gloc1');
+  b int generated always as (a * 2) stored,
+  c int generated always as (a * 3) virtual
+) server loopback options(table_name 'gloc1');
 explain (verbose, costs off)
 insert into grem1 (a) values (1), (2);
 insert into grem1 (a) values (1), (2);
@@ -3384,9 +3427,14 @@ DROP SERVER loopback3 CASCADE;
 -- List all the existing cached connections. loopback and loopback3
 -- should be output as invalid connections. Also the server name and user name
 -- for loopback3 should be NULL because both server and user mapping were
--- dropped.
-SELECT server_name, user_name = CURRENT_USER as "user_name = CURRENT_USER", valid, used_in_xact, closed
-FROM postgres_fdw_get_connections() ORDER BY 1;
+-- dropped. In this test, the PIDs of remote backends can be gathered from
+-- pg_stat_activity, and remote_backend_pid should match one of those PIDs.
+SELECT server_name, user_name = CURRENT_USER as "user_name = CURRENT_USER",
+  valid, used_in_xact, closed,
+  remote_backend_pid = ANY(SELECT pid FROM pg_stat_activity
+  WHERE backend_type = 'client backend' AND pid <> pg_backend_pid())
+  as remote_backend_pid
+  FROM postgres_fdw_get_connections() ORDER BY 1;
 -- The invalid connections get closed in pgfdw_xact_callback during commit.
 COMMIT;
 -- All cached connections were closed while committing above xact, so no
@@ -4262,17 +4310,26 @@ SELECT 1 FROM ft1 LIMIT 1;
 
 -- Since the remote server is still connected, "closed" should be FALSE,
 -- or NULL if the connection status check is not available.
-SELECT CASE WHEN closed IS NOT true THEN 1 ELSE 0 END
+-- In this test, the remote backend handling this connection should have
+-- application_name set to "fdw_conn_check", so remote_backend_pid should
+-- match the PID from the pg_stat_activity entry with that application_name.
+SELECT server_name,
+  CASE WHEN closed IS NOT true THEN false ELSE true END AS closed,
+  remote_backend_pid = (SELECT pid FROM pg_stat_activity
+  WHERE application_name = 'fdw_conn_check') AS remote_backend_pid
   FROM postgres_fdw_get_connections(true);
 
 -- After terminating the remote backend, since the connection is closed,
 -- "closed" should be TRUE, or NULL if the connection status check
--- is not available.
+-- is not available. Despite the termination, remote_backend_pid should
+-- still show the non-zero PID of the terminated remote backend.
 DO $$ BEGIN
 PERFORM pg_terminate_backend(pid, 180000) FROM pg_stat_activity
   WHERE application_name = 'fdw_conn_check';
 END $$;
-SELECT CASE WHEN closed IS NOT false THEN 1 ELSE 0 END
+SELECT server_name,
+  CASE WHEN closed IS NOT false THEN true ELSE false END AS closed,
+  remote_backend_pid <> 0 AS remote_backend_pid
   FROM postgres_fdw_get_connections(true);
 
 -- Clean up

@@ -3,7 +3,7 @@
  * fe-protocol3.c
  *	  functions that are specific to frontend/backend protocol version 3
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -48,6 +48,7 @@ static int	getRowDescriptions(PGconn *conn, int msgLength);
 static int	getParamDescriptions(PGconn *conn, int msgLength);
 static int	getAnotherTuple(PGconn *conn, int msgLength);
 static int	getParameterStatus(PGconn *conn);
+static int	getBackendKeyData(PGconn *conn, int msgLength);
 static int	getNotify(PGconn *conn);
 static int	getCopyStart(PGconn *conn, ExecStatusType copytype);
 static int	getReadyForQuery(PGconn *conn);
@@ -308,9 +309,7 @@ pqParseInput3(PGconn *conn)
 					 * just as easy to handle it as part of the main loop.
 					 * Save the data and continue processing.
 					 */
-					if (pqGetInt(&(conn->be_pid), 4, conn))
-						return;
-					if (pqGetInt(&(conn->be_key), 4, conn))
+					if (getBackendKeyData(conn, msgLength))
 						return;
 					break;
 				case PqMsg_RowDescription:
@@ -870,6 +869,7 @@ advance_and_error:
 /*
  * Attempt to read an Error or Notice response message.
  * This is possible in several places, so we break it out as a subroutine.
+ *
  * Entry: 'E' or 'N' message type and length have already been consumed.
  * Exit: returns 0 if successfully consumed message.
  *		 returns EOF if not enough data.
@@ -1399,64 +1399,105 @@ reportErrorPosition(PQExpBuffer msg, const char *query, int loc, int encoding)
 
 
 /*
- * Attempt to read a NegotiateProtocolVersion message.
+ * Attempt to read a NegotiateProtocolVersion message.  Sets conn->pversion
+ * to the version that's negotiated by the server.
+ *
  * Entry: 'v' message type and length have already been consumed.
  * Exit: returns 0 if successfully consumed message.
- *		 returns EOF if not enough data.
+ *		 returns 1 on failure. The error message is filled in.
  */
 int
 pqGetNegotiateProtocolVersion3(PGconn *conn)
 {
-	int			tmp;
-	ProtocolVersion their_version;
+	int			their_version;
 	int			num;
-	PQExpBufferData buf;
 
-	if (pqGetInt(&tmp, 4, conn) != 0)
-		return EOF;
-	their_version = tmp;
+	if (pqGetInt(&their_version, 4, conn) != 0)
+		goto eof;
 
 	if (pqGetInt(&num, 4, conn) != 0)
-		return EOF;
+		goto eof;
 
-	initPQExpBuffer(&buf);
+	/* Check the protocol version */
+	if (their_version > conn->pversion)
+	{
+		libpq_append_conn_error(conn, "received invalid protocol negotiation message: server requested downgrade to a higher-numbered version");
+		goto failure;
+	}
+
+	if (their_version < PG_PROTOCOL(3, 0))
+	{
+		libpq_append_conn_error(conn, "received invalid protocol negotiation message: server requested downgrade to pre-3.0 protocol version");
+		goto failure;
+	}
+
+	/* 3.1 never existed, we went straight from 3.0 to 3.2 */
+	if (their_version == PG_PROTOCOL(3, 1))
+	{
+		libpq_append_conn_error(conn, "received invalid protocol negotiation message: server requests downgrade to non-existent 3.1 protocol version");
+		goto failure;
+	}
+
+	if (num < 0)
+	{
+		libpq_append_conn_error(conn, "received invalid protocol negotiation message: server reported negative number of unsupported parameters");
+		goto failure;
+	}
+
+	if (their_version == conn->pversion && num == 0)
+	{
+		libpq_append_conn_error(conn, "received invalid protocol negotiation message: server negotiated but asks for no changes");
+		goto failure;
+	}
+
+	if (their_version < conn->min_pversion)
+	{
+		libpq_append_conn_error(conn, "server only supports protocol version %d.%d, but min_protocol_version was set to %d.%d",
+								PG_PROTOCOL_MAJOR(their_version),
+								PG_PROTOCOL_MINOR(their_version),
+								PG_PROTOCOL_MAJOR(conn->min_pversion),
+								PG_PROTOCOL_MINOR(conn->min_pversion));
+
+		goto failure;
+	}
+
+	/* the version is acceptable */
+	conn->pversion = their_version;
+
+	/*
+	 * We don't currently request any protocol extensions, so we don't expect
+	 * the server to reply with any either.
+	 */
 	for (int i = 0; i < num; i++)
 	{
 		if (pqGets(&conn->workBuffer, conn))
 		{
-			termPQExpBuffer(&buf);
-			return EOF;
+			goto eof;
 		}
-		if (buf.len > 0)
-			appendPQExpBufferChar(&buf, ' ');
-		appendPQExpBufferStr(&buf, conn->workBuffer.data);
+		if (strncmp(conn->workBuffer.data, "_pq_.", 5) != 0)
+		{
+			libpq_append_conn_error(conn, "received invalid protocol negotiation message: server reported unsupported parameter name without a _pq_. prefix (\"%s\")", conn->workBuffer.data);
+			goto failure;
+		}
+		libpq_append_conn_error(conn, "received invalid protocol negotiation message: server reported an unsupported parameter that was not requested (\"%s\")", conn->workBuffer.data);
+		goto failure;
 	}
 
-	if (their_version < conn->pversion)
-		libpq_append_conn_error(conn, "protocol version not supported by server: client uses %u.%u, server supports up to %u.%u",
-								PG_PROTOCOL_MAJOR(conn->pversion), PG_PROTOCOL_MINOR(conn->pversion),
-								PG_PROTOCOL_MAJOR(their_version), PG_PROTOCOL_MINOR(their_version));
-	if (num > 0)
-	{
-		appendPQExpBuffer(&conn->errorMessage,
-						  libpq_ngettext("protocol extension not supported by server: %s",
-										 "protocol extensions not supported by server: %s", num),
-						  buf.data);
-		appendPQExpBufferChar(&conn->errorMessage, '\n');
-	}
-
-	/* neither -- server shouldn't have sent it */
-	if (!(their_version < conn->pversion) && !(num > 0))
-		libpq_append_conn_error(conn, "invalid %s message", "NegotiateProtocolVersion");
-
-	termPQExpBuffer(&buf);
 	return 0;
+
+eof:
+	libpq_append_conn_error(conn, "received invalid protocol negotation message: message too short");
+failure:
+	conn->asyncStatus = PGASYNC_READY;
+	pqSaveErrorResult(conn);
+	return 1;
 }
 
 
 /*
  * Attempt to read a ParameterStatus message.
  * This is possible in several places, so we break it out as a subroutine.
+ *
  * Entry: 'S' message type and length have already been consumed.
  * Exit: returns 0 if successfully consumed message.
  *		 returns EOF if not enough data.
@@ -1482,10 +1523,51 @@ getParameterStatus(PGconn *conn)
 	return 0;
 }
 
+/*
+ * parseInput subroutine to read a BackendKeyData message.
+ * Entry: 'v' message type and length have already been consumed.
+ * Exit: returns 0 if successfully consumed message.
+ *		 returns EOF if not enough data.
+ */
+static int
+getBackendKeyData(PGconn *conn, int msgLength)
+{
+	uint8		cancel_key_len;
+
+	if (conn->be_cancel_key)
+	{
+		free(conn->be_cancel_key);
+		conn->be_cancel_key = NULL;
+		conn->be_cancel_key_len = 0;
+	}
+
+	if (pqGetInt(&(conn->be_pid), 4, conn))
+		return EOF;
+
+	cancel_key_len = 5 + msgLength - (conn->inCursor - conn->inStart);
+
+	conn->be_cancel_key = malloc(cancel_key_len);
+	if (conn->be_cancel_key == NULL)
+	{
+		libpq_append_conn_error(conn, "out of memory");
+		/* discard the message */
+		return EOF;
+	}
+	if (pqGetnchar(conn->be_cancel_key, cancel_key_len, conn))
+	{
+		free(conn->be_cancel_key);
+		conn->be_cancel_key = NULL;
+		return EOF;
+	}
+	conn->be_cancel_key_len = cancel_key_len;
+	return 0;
+}
+
 
 /*
  * Attempt to read a Notify response message.
  * This is possible in several places, so we break it out as a subroutine.
+ *
  * Entry: 'A' message type and length have already been consumed.
  * Exit: returns 0 if successfully consumed Notify message.
  *		 returns EOF if not enough data.

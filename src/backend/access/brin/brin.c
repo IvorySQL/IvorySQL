@@ -4,7 +4,7 @@
  *
  * See src/backend/access/brin/README for details.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -33,7 +33,7 @@
 #include "postmaster/autovacuum.h"
 #include "storage/bufmgr.h"
 #include "storage/freespace.h"
-#include "tcop/tcopprot.h"		/* pgrminclude ignore */
+#include "tcop/tcopprot.h"
 #include "utils/acl.h"
 #include "utils/datum.h"
 #include "utils/fmgrprotos.h"
@@ -256,6 +256,9 @@ brinhandler(PG_FUNCTION_ARGS)
 	amroutine->amoptsprocnum = BRIN_PROCNUM_OPTIONS;
 	amroutine->amcanorder = false;
 	amroutine->amcanorderbyop = false;
+	amroutine->amcanhash = false;
+	amroutine->amconsistentequality = false;
+	amroutine->amconsistentordering = false;
 	amroutine->amcanbackward = false;
 	amroutine->amcanunique = false;
 	amroutine->amcanmulticol = true;
@@ -298,6 +301,8 @@ brinhandler(PG_FUNCTION_ARGS)
 	amroutine->amestimateparallelscan = NULL;
 	amroutine->aminitparallelscan = NULL;
 	amroutine->amparallelrescan = NULL;
+	amroutine->amtranslatestrategy = NULL;
+	amroutine->amtranslatecmptype = NULL;
 
 	PG_RETURN_POINTER(amroutine);
 }
@@ -509,16 +514,18 @@ brininsertcleanup(Relation index, IndexInfo *indexInfo)
 	BrinInsertState *bistate = (BrinInsertState *) indexInfo->ii_AmCache;
 
 	/* bail out if cache not initialized */
-	if (indexInfo->ii_AmCache == NULL)
+	if (bistate == NULL)
 		return;
+
+	/* do this first to avoid dangling pointer if we fail partway through */
+	indexInfo->ii_AmCache = NULL;
 
 	/*
 	 * Clean up the revmap. Note that the brinDesc has already been cleaned up
 	 * as part of its own memory context.
 	 */
 	brinRevmapTerminate(bistate->bis_rmAccess);
-	bistate->bis_rmAccess = NULL;
-	bistate->bis_desc = NULL;
+	pfree(bistate);
 }
 
 /*
@@ -567,7 +574,7 @@ bringetbitmap(IndexScanDesc scan, TIDBitmap *tbm)
 	BrinOpaque *opaque;
 	BlockNumber nblocks;
 	BlockNumber heapBlk;
-	int			totalpages = 0;
+	int64		totalpages = 0;
 	FmgrInfo   *consistentFn;
 	MemoryContext oldcxt;
 	MemoryContext perRangeCxt;
@@ -585,6 +592,8 @@ bringetbitmap(IndexScanDesc scan, TIDBitmap *tbm)
 	opaque = (BrinOpaque *) scan->opaque;
 	bdesc = opaque->bo_bdesc;
 	pgstat_count_index_scan(idxRel);
+	if (scan->instrument)
+		scan->instrument->nsearches++;
 
 	/*
 	 * We need to know the size of the table so that we know how long to
@@ -1133,7 +1142,7 @@ brinbuild(Relation heap, Relation index, IndexInfo *indexInfo)
 		xlrec.pagesPerRange = BrinGetPagesPerRange(index);
 
 		XLogBeginInsert();
-		XLogRegisterData((char *) &xlrec, SizeOfBrinCreateIdx);
+		XLogRegisterData(&xlrec, SizeOfBrinCreateIdx);
 		XLogRegisterBuffer(0, meta, REGBUF_WILL_INIT | REGBUF_STANDARD);
 
 		recptr = XLogInsert(RM_BRIN_ID, XLOG_BRIN_CREATE_INDEX);
@@ -1391,8 +1400,7 @@ brin_summarize_range(PG_FUNCTION_ARGS)
 	if (heapBlk64 > BRIN_ALL_BLOCKRANGES || heapBlk64 < 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-				 errmsg("block number out of range: %lld",
-						(long long) heapBlk64)));
+				 errmsg("block number out of range: %" PRId64, heapBlk64)));
 	heapBlk = (BlockNumber) heapBlk64;
 
 	/*
@@ -1499,8 +1507,8 @@ brin_desummarize_range(PG_FUNCTION_ARGS)
 	if (heapBlk64 > MaxBlockNumber || heapBlk64 < 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-				 errmsg("block number out of range: %lld",
-						(long long) heapBlk64)));
+				 errmsg("block number out of range: %" PRId64,
+						heapBlk64)));
 	heapBlk = (BlockNumber) heapBlk64;
 
 	/*

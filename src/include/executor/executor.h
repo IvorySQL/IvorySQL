@@ -4,7 +4,7 @@
  *	  support for the POSTGRES executor module
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/executor/executor.h
@@ -19,6 +19,7 @@
 #include "nodes/lockoptions.h"
 #include "nodes/parsenodes.h"
 #include "utils/memutils.h"
+#include "utils/plancache.h"
 
 
 /*
@@ -74,7 +75,7 @@
 
 
 /* Hook for plugins to get control in ExecutorStart() */
-typedef void (*ExecutorStart_hook_type) (QueryDesc *queryDesc, int eflags);
+typedef bool (*ExecutorStart_hook_type) (QueryDesc *queryDesc, int eflags);
 extern PGDLLIMPORT ExecutorStart_hook_type ExecutorStart_hook;
 
 /* Hook for plugins to get control in ExecutorRun() */
@@ -159,6 +160,43 @@ extern TupleHashEntry FindTupleHashEntry(TupleHashTable hashtable,
 										 ExprState *hashexpr);
 extern void ResetTupleHashTable(TupleHashTable hashtable);
 
+#ifndef FRONTEND
+/*
+ * Return size of the hash bucket. Useful for estimating memory usage.
+ */
+static inline size_t
+TupleHashEntrySize(void)
+{
+	return sizeof(TupleHashEntryData);
+}
+
+/*
+ * Return tuple from hash entry.
+ */
+static inline MinimalTuple
+TupleHashEntryGetTuple(TupleHashEntry entry)
+{
+	return entry->firstTuple;
+}
+
+/*
+ * Get a pointer into the additional space allocated for this entry. The
+ * memory will be maxaligned and zeroed.
+ *
+ * The amount of space available is the additionalsize requested in the call
+ * to BuildTupleHashTable(). If additionalsize was specified as zero, return
+ * NULL.
+ */
+static inline void *
+TupleHashEntryGetAdditional(TupleHashTable hashtable, TupleHashEntry entry)
+{
+	if (hashtable->additionalsize > 0)
+		return (char *) entry->firstTuple - hashtable->additionalsize;
+	else
+		return NULL;
+}
+#endif
+
 /*
  * prototypes from functions in execJunk.c
  */
@@ -193,8 +231,11 @@ ExecGetJunkAttribute(TupleTableSlot *slot, AttrNumber attno, bool *isNull)
 /*
  * prototypes from functions in execMain.c
  */
-extern void ExecutorStart(QueryDesc *queryDesc, int eflags);
-extern void standard_ExecutorStart(QueryDesc *queryDesc, int eflags);
+extern bool ExecutorStart(QueryDesc *queryDesc, int eflags);
+extern void ExecutorStartCachedPlan(QueryDesc *queryDesc, int eflags,
+									CachedPlanSource *plansource,
+									int query_index);
+extern bool standard_ExecutorStart(QueryDesc *queryDesc, int eflags);
 extern void ExecutorRun(QueryDesc *queryDesc,
 						ScanDirection direction, uint64 count);
 extern void standard_ExecutorRun(QueryDesc *queryDesc,
@@ -219,6 +260,10 @@ extern bool ExecContextForcesRowId(PlanState *planstate, bool *hasrowid);
 extern List *ExecGetAncestorResultRels(EState *estate, ResultRelInfo *resultRelInfo);
 extern void ExecConstraints(ResultRelInfo *resultRelInfo,
 							TupleTableSlot *slot, EState *estate);
+extern AttrNumber ExecRelGenVirtualNotNull(ResultRelInfo *resultRelInfo,
+										   TupleTableSlot *slot,
+										   EState *estate,
+										   List *notnull_virtual_attrs);
 extern bool ExecPartitionCheck(ResultRelInfo *resultRelInfo,
 							   TupleTableSlot *slot, EState *estate, bool emitError);
 extern void ExecPartitionCheckEmitError(ResultRelInfo *resultRelInfo,
@@ -258,6 +303,30 @@ extern void ExecEndNode(PlanState *node);
 extern void ExecShutdownNode(PlanState *node);
 extern void ExecSetTupleBound(int64 tuples_needed, PlanState *child_node);
 
+/*
+ * Is the CachedPlan in es_cachedplan still valid?
+ *
+ * Called from InitPlan() because invalidation messages that affect the plan
+ * might be received after locks have been taken on runtime-prunable relations.
+ * The caller should take appropriate action if the plan has become invalid.
+ */
+static inline bool
+ExecPlanStillValid(EState *estate)
+{
+	return estate->es_cachedplan == NULL ? true :
+		CachedPlanValid(estate->es_cachedplan);
+}
+
+/*
+ * Locks are needed only if running a cached plan that might contain unlocked
+ * relations, such as a reused generic plan.
+ */
+static inline bool
+ExecShouldLockRelations(EState *estate)
+{
+	return estate->es_cachedplan == NULL ? false :
+		CachedPlanRequiresLocking(estate->es_cachedplan);
+}
 
 /* ----------------------------------------------------------------
  *		ExecProcNode
@@ -355,6 +424,34 @@ ExecEvalExpr(ExprState *state,
 #endif
 
 /*
+ * ExecEvalExprNoReturn
+ *
+ * Like ExecEvalExpr(), but for cases where no return value is expected,
+ * because the side-effects of expression evaluation are what's desired. This
+ * is e.g. used for projection and aggregate transition computation.
+
+ * Evaluate expression identified by "state" in the execution context
+ * given by "econtext".
+ *
+ * The caller should already have switched into the temporary memory context
+ * econtext->ecxt_per_tuple_memory.  The convenience entry point
+ * ExecEvalExprNoReturnSwitchContext() is provided for callers who don't
+ * prefer to do the switch in an outer loop.
+ */
+#ifndef FRONTEND
+static inline void
+ExecEvalExprNoReturn(ExprState *state,
+					 ExprContext *econtext)
+{
+	PG_USED_FOR_ASSERTS_ONLY Datum retDatum;
+
+	retDatum = state->evalfunc(state, econtext, NULL);
+
+	Assert(retDatum == (Datum) 0);
+}
+#endif
+
+/*
  * ExecEvalExprSwitchContext
  *
  * Same as ExecEvalExpr, but get into the right allocation context explicitly.
@@ -372,6 +469,25 @@ ExecEvalExprSwitchContext(ExprState *state,
 	retDatum = state->evalfunc(state, econtext, isNull);
 	MemoryContextSwitchTo(oldContext);
 	return retDatum;
+}
+#endif
+
+/*
+ * ExecEvalExprNoReturnSwitchContext
+ *
+ * Same as ExecEvalExprNoReturn, but get into the right allocation context
+ * explicitly.
+ */
+#ifndef FRONTEND
+static inline void
+ExecEvalExprNoReturnSwitchContext(ExprState *state,
+								  ExprContext *econtext)
+{
+	MemoryContext oldContext;
+
+	oldContext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
+	ExecEvalExprNoReturn(state, econtext);
+	MemoryContextSwitchTo(oldContext);
 }
 #endif
 
@@ -394,7 +510,6 @@ ExecProject(ProjectionInfo *projInfo)
 	ExprContext *econtext = projInfo->pi_exprContext;
 	ExprState  *state = &projInfo->pi_state;
 	TupleTableSlot *slot = state->resultslot;
-	bool		isnull;
 
 	/*
 	 * Clear any former contents of the result slot.  This makes it safe for
@@ -402,8 +517,8 @@ ExecProject(ProjectionInfo *projInfo)
 	 */
 	ExecClearTuple(slot);
 
-	/* Run the expression, discarding scalar result from the last column. */
-	(void) ExecEvalExprSwitchContext(state, econtext, &isnull);
+	/* Run the expression */
+	ExecEvalExprNoReturnSwitchContext(state, econtext);
 
 	/*
 	 * Successfully formed a result row.  Mark the result slot as containing a
@@ -598,7 +713,8 @@ extern bool ExecRelationIsTargetRelation(EState *estate, Index scanrelid);
 
 extern Relation ExecOpenScanRelation(EState *estate, Index scanrelid, int eflags);
 
-extern void ExecInitRangeTable(EState *estate, List *rangeTable, List *permInfos);
+extern void ExecInitRangeTable(EState *estate, List *rangeTable, List *permInfos,
+							   Bitmapset *unpruned_relids);
 extern void ExecCloseRangeTableRelations(EState *estate);
 extern void ExecCloseResultRelations(EState *estate);
 
@@ -608,7 +724,8 @@ exec_rt_fetch(Index rti, EState *estate)
 	return (RangeTblEntry *) list_nth(estate->es_range_table, rti - 1);
 }
 
-extern Relation ExecGetRangeTableRelation(EState *estate, Index rti);
+extern Relation ExecGetRangeTableRelation(EState *estate, Index rti,
+										  bool isResultRel);
 extern void ExecInitResultRelation(EState *estate, ResultRelInfo *resultRelInfo,
 								   Index rti);
 
@@ -632,6 +749,7 @@ extern int	ExecCleanTargetListLength(List *targetlist);
 extern TupleTableSlot *ExecGetTriggerOldSlot(EState *estate, ResultRelInfo *relInfo);
 extern TupleTableSlot *ExecGetTriggerNewSlot(EState *estate, ResultRelInfo *relInfo);
 extern TupleTableSlot *ExecGetReturningSlot(EState *estate, ResultRelInfo *relInfo);
+extern TupleTableSlot *ExecGetAllNullSlot(EState *estate, ResultRelInfo *relInfo);
 extern TupleConversionMap *ExecGetChildToRootMap(ResultRelInfo *resultRelInfo);
 extern TupleConversionMap *ExecGetRootToChildMap(ResultRelInfo *resultRelInfo, EState *estate);
 
@@ -666,7 +784,6 @@ extern void check_exclusion_constraint(Relation heap, Relation index,
 /*
  * prototypes from functions in execReplication.c
  */
-extern StrategyNumber get_equal_strategy_number(Oid opclass);
 extern bool RelationFindReplTupleByIndex(Relation rel, Oid idxoid,
 										 LockTupleMode lockmode,
 										 TupleTableSlot *searchslot,

@@ -3,7 +3,7 @@
  * libpq_pipeline.c
  *		Verify libpq pipeline execution functionality
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -20,22 +20,20 @@
 #include <sys/time.h>
 
 #include "catalog/pg_type_d.h"
-#include "common/fe_memutils.h"
 #include "libpq-fe.h"
 #include "pg_getopt.h"
-#include "portability/instr_time.h"
 
 
 static void exit_nicely(PGconn *conn);
-static void pg_attribute_noreturn() pg_fatal_impl(int line, const char *fmt,...)
+pg_noreturn static void pg_fatal_impl(int line, const char *fmt,...)
 			pg_attribute_printf(2, 3);
 static bool process_result(PGconn *conn, PGresult *res, int results,
 						   int numsent);
 
-const char *const progname = "libpq_pipeline";
+static const char *const progname = "libpq_pipeline";
 
 /* Options and defaults */
-char	   *tracefile = NULL;	/* path to PQtrace() file */
+static char *tracefile = NULL;	/* path to PQtrace() file */
 
 
 #ifdef DEBUG_OUTPUT
@@ -74,8 +72,7 @@ exit_nicely(PGconn *conn)
  * Print an error to stderr and terminate the program.
  */
 #define pg_fatal(...) pg_fatal_impl(__LINE__, __VA_ARGS__)
-static void
-pg_attribute_noreturn()
+pg_noreturn static void
 pg_fatal_impl(int line, const char *fmt,...)
 {
 	va_list		args;
@@ -210,15 +207,17 @@ copy_connection(PGconn *conn)
 	PQconninfoOption *opts = PQconninfo(conn);
 	const char **keywords;
 	const char **vals;
-	int			nopts = 1;
-	int			i = 0;
+	int			nopts = 0;
+	int			i;
 
 	for (PQconninfoOption *opt = opts; opt->keyword != NULL; ++opt)
 		nopts++;
+	nopts++;					/* for the NULL terminator */
 
 	keywords = pg_malloc(sizeof(char *) * nopts);
 	vals = pg_malloc(sizeof(char *) * nopts);
 
+	i = 0;
 	for (PQconninfoOption *opt = opts; opt->keyword != NULL; ++opt)
 	{
 		if (opt->val)
@@ -1002,7 +1001,7 @@ enum PipelineInsertStep
 	BI_INSERT_ROWS,
 	BI_COMMIT_TX,
 	BI_SYNC,
-	BI_DONE
+	BI_DONE,
 };
 
 static void
@@ -1409,11 +1408,115 @@ test_prepared(PGconn *conn)
 	fprintf(stderr, "ok\n");
 }
 
+/*
+ * Test max_protocol_version options.
+ */
+static void
+test_protocol_version(PGconn *conn)
+{
+	const char **keywords;
+	const char **vals;
+	int			nopts;
+	PQconninfoOption *opts = PQconninfo(conn);
+	int			protocol_version;
+	int			max_protocol_version_index;
+	int			i;
+
+	/*
+	 * Prepare keywords/vals arrays, copied from the existing connection, with
+	 * an extra slot for 'max_protocol_version'.
+	 */
+	nopts = 0;
+	for (PQconninfoOption *opt = opts; opt->keyword != NULL; ++opt)
+		nopts++;
+	nopts++;					/* max_protocol_version */
+	nopts++;					/* NULL terminator */
+
+	keywords = pg_malloc0(sizeof(char *) * nopts);
+	vals = pg_malloc0(sizeof(char *) * nopts);
+
+	i = 0;
+	for (PQconninfoOption *opt = opts; opt->keyword != NULL; ++opt)
+	{
+		if (opt->val)
+		{
+			keywords[i] = opt->keyword;
+			vals[i] = opt->val;
+			i++;
+		}
+	}
+
+	max_protocol_version_index = i;
+	keywords[i] = "max_protocol_version";	/* value is filled in below */
+	i++;
+	keywords[i] = vals[i] = NULL;
+
+	/*
+	 * Test max_protocol_version=3.0
+	 */
+	vals[max_protocol_version_index] = "3.0";
+	conn = PQconnectdbParams(keywords, vals, false);
+
+	if (PQstatus(conn) != CONNECTION_OK)
+		pg_fatal("Connection to database failed: %s",
+				 PQerrorMessage(conn));
+
+	protocol_version = PQfullProtocolVersion(conn);
+	if (protocol_version != 30000)
+		pg_fatal("expected 30000, got %d", protocol_version);
+
+	PQfinish(conn);
+
+	/*
+	 * Test max_protocol_version=3.1. It's not valid, we went straight from
+	 * 3.0 to 3.2.
+	 */
+	vals[max_protocol_version_index] = "3.1";
+	conn = PQconnectdbParams(keywords, vals, false);
+
+	if (PQstatus(conn) != CONNECTION_BAD)
+		pg_fatal("Connecting with max_protocol_version 3.1 should have failed.");
+
+	PQfinish(conn);
+
+	/*
+	 * Test max_protocol_version=3.2
+	 */
+	vals[max_protocol_version_index] = "3.2";
+	conn = PQconnectdbParams(keywords, vals, false);
+
+	if (PQstatus(conn) != CONNECTION_OK)
+		pg_fatal("Connection to database failed: %s",
+				 PQerrorMessage(conn));
+
+	protocol_version = PQfullProtocolVersion(conn);
+	if (protocol_version != 30002)
+		pg_fatal("expected 30002, got %d", protocol_version);
+
+	PQfinish(conn);
+
+	/*
+	 * Test max_protocol_version=latest. 'latest' currently means '3.2'.
+	 */
+	vals[max_protocol_version_index] = "latest";
+	conn = PQconnectdbParams(keywords, vals, false);
+
+	if (PQstatus(conn) != CONNECTION_OK)
+		pg_fatal("Connection to database failed: %s",
+				 PQerrorMessage(conn));
+
+	protocol_version = PQfullProtocolVersion(conn);
+	if (protocol_version != 30002)
+		pg_fatal("expected 30002, got %d", protocol_version);
+
+	PQfinish(conn);
+}
+
 /* Notice processor: print notices, and count how many we got */
 static void
 notice_processor(void *arg, const char *message)
 {
-	int		   *n_notices = (int *) arg;
+	int	   *n_notices = (int *) arg;
 
 	(*n_notices)++;
 	fprintf(stderr, "NOTICE %d: %s", *n_notices, message);

@@ -4,7 +4,7 @@
  *	  routines to support running postgres in 'bootstrap' mode
  *	bootstrap mode is used to create the initial template database
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
@@ -482,8 +482,8 @@ boot_openrel(char *relname)
 	{
 		if (attrtypes[i] == NULL)
 			attrtypes[i] = AllocateAttribute();
-		memmove((char *) attrtypes[i],
-				(char *) TupleDescAttr(boot_reldesc->rd_att, i),
+		memmove(attrtypes[i],
+				TupleDescAttr(boot_reldesc->rd_att, i),
 				ATTRIBUTE_FIXED_PART_SIZE);
 
 		{

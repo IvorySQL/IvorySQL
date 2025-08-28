@@ -2,7 +2,7 @@
  *
  * Write a new backup manifest.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/bin/pg_combinebackup/write_manifest.c
@@ -104,8 +104,7 @@ add_file_to_manifest(manifest_writer *mwriter, const char *manifest_path,
 		appendStringInfoString(&mwriter->buf, "\", ");
 	}
 
-	appendStringInfo(&mwriter->buf, "\"Size\": %llu, ",
-					 (unsigned long long) size);
+	appendStringInfo(&mwriter->buf, "\"Size\": %" PRIu64 ", ", size);
 
 	appendStringInfoString(&mwriter->buf, "\"Last-Modified\": \"");
 	enlargeStringInfo(&mwriter->buf, 128);

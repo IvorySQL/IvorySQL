@@ -3,7 +3,7 @@
  * pg_amcheck.c
  *		Detects corruption within database relations.
  *
- * Copyright (c) 2017-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2017-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/bin/pg_amcheck/pg_amcheck.c
@@ -26,7 +26,7 @@
 #include "fe_utils/query_utils.h"
 #include "fe_utils/simple_list.h"
 #include "fe_utils/string_utils.h"
-#include "getopt_long.h"		/* pgrminclude ignore */
+#include "getopt_long.h"
 #include "pgtime.h"
 #include "storage/block.h"
 
@@ -560,7 +560,7 @@ main(int argc, char *argv[])
 
 			executeCommand(conn, install_sql, opts.echo);
 			pfree(install_sql);
-			pfree(schema);
+			PQfreemem(schema);
 		}
 
 		/*
@@ -587,6 +587,7 @@ main(int argc, char *argv[])
 			/* Querying the catalog succeeded, but amcheck is missing. */
 			pg_log_warning("skipping database \"%s\": amcheck is not installed",
 						   PQdb(conn));
+			PQclear(result);
 			disconnectDatabase(conn);
 			conn = NULL;
 			continue;
