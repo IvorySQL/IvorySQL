@@ -1877,6 +1877,12 @@ func_get_detail(List *funcname,
 				 best_candidate->oid);
 		pform = (Form_pg_proc) GETSTRUCT(ftup);
 
+		if (PG_PARSER == compatible_db &&
+			pform->prolang == LANG_PLISQL_OID)
+			ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("when ivorysql.compatible_mode is pg, can't execute a plisql procedural-language function")));
+
 		*rettype = pform->prorettype;
 		/* return a package.xxx */
 		if (ORA_PARSER == compatible_db)
