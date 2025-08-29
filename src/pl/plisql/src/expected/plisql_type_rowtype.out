@@ -3292,6 +3292,8 @@ end;
 /
 NOTICE:  type reference tb1.id%TYPE converted to pg_catalog.int4
 ERROR:  column "i2d" of relation "tb1" does not exist
+LINE 1: create function fun1(c1 tb1.id%type,c2 tb1.i2d%type, c3 tb1....
+                                               ^
 create function fun1(c1 tb1.id%type,c2 tb1.id2%type, c3 tb1.id3%type, c4 tb1.id4%type, c5 tb1.name1%type, c6 tb1.name2%type) return tb1.name1%type is
 begin
   return c5;
