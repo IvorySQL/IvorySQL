@@ -788,6 +788,7 @@ extern void sortDumpableObjectsByTypeName(DumpableObject **objs, int numObjs);
  */
 extern void getNamespaces(Archive *fout);
 extern ExtensionInfo *getExtensions(Archive *fout, int *numExtensions);
+extern PkgInfo * getPackages(Archive *fout, int *numPkgs);
 extern void getTypes(Archive *fout);
 extern void getFuncs(Archive *fout);
 extern void getAggregates(Archive *fout);
