@@ -1088,7 +1088,7 @@ QUERY:  begin
   raise info '%','init block';
 end
 CONTEXT:  compilation of PL/iSQL package "pkg" near line 1
-PL/pgSQL assignment "pkg.var1 := 23"
+PL/iSQL assignment "pkg.var1 := 23"
 PL/iSQL function inline_code_block line 2 at assignment
 --drop
 drop package pkg;
@@ -2041,7 +2041,7 @@ drop package pkg;
 --test package references package
 create or replace package pkg is
 var1 mds%rowtype;
-function test(id integer, var2 mds) return mds;
+function test(id integer, var2 mds%rowtype) return mds;
 end;
 /
 create or replace package body pkg is
@@ -2455,7 +2455,7 @@ begin
   raise info '%',var1.name;
 end;
 /
-ERROR:  package doesn't exist
+ERROR:  package, relation or view does not exist
 LINE 1: var1 := test_fun(23,'xiexie')
                 ^
 QUERY:  var1 := test_fun(23,'xiexie')
@@ -3336,7 +3336,7 @@ LINE 1: SELECT test_f(1.45) FROM dual;
                ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * FROM test_f_view_f;
-ERROR:  package doesn't exist
+ERROR:  package, relation or view does not exist
 --clean data
 DROP VIEW test_f_view_f;
 DROP FUNCTION test_f;

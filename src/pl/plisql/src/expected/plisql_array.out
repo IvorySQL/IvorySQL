@@ -63,12 +63,12 @@ NOTICE:  a = {1,2}
 do $$ declare a int[];
 begin a := from onecol; raise notice 'a = %', a; end$$;
 ERROR:  assignment source returned 0 columns
-CONTEXT:  PL/pgSQL assignment "a := from onecol"
+CONTEXT:  PL/iSQL assignment "a := from onecol"
 PL/iSQL function inline_code_block line 2 at assignment
 do $$ declare a int[];
 begin a := f1, f1 from onecol; raise notice 'a = %', a; end$$;
 ERROR:  assignment source returned 2 columns
-CONTEXT:  PL/pgSQL assignment "a := f1, f1 from onecol"
+CONTEXT:  PL/iSQL assignment "a := f1, f1 from onecol"
 PL/iSQL function inline_code_block line 2 at assignment
 insert into onecol values(array[11]);
 do $$ declare a int[];

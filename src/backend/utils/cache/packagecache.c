@@ -560,7 +560,7 @@ pg_get_subprocs_in_package(PG_FUNCTION_ARGS)
 	/*
 	 * build tupdesc for result tuples.
 	 */
-	tupdesc = CreateTemplateTupleDesc(17);
+	tupdesc = CreateTemplateTupleDesc(22);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "oid",
 					   OIDOID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "namespace",
@@ -595,6 +595,28 @@ pg_get_subprocs_in_package(PG_FUNCTION_ARGS)
 					   TEXTARRAYOID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 17, "prosecdef",
 					   BOOLOID, -1, 0);
+
+	/*
+	 * In the following views:
+	 * SYS.ALL_PACKAGE_ARGUMENTS,
+	 * SYS.USER_PACKAGE_ARGUMENTS, 
+	 * SYS.DBA_PACKAGE_ARGUMENTS,
+	 * type_names is used for TYPE_NAME,
+	 * type_object_types is used for TYPE_OBJECT_TYPE,
+	 * data_lengths is used for DATA_LENGTHS,
+	 * data_precisions is used for DATA_PRECISION,
+	 * data_scales is used for DATA_SCALERS.
+	 */
+	TupleDescInitEntry(tupdesc, (AttrNumber) 18, "type_names",
+					   TEXTARRAYOID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 19, "type_object_types",
+					   TEXTARRAYOID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 20, "data_lengths",
+					   INT4ARRAYOID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 21, "data_precisions",
+					   INT4ARRAYOID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 22, "data_scales",
+					   INT4ARRAYOID, -1, 0);
 
 	/*
 	 * We put all the tuples into a tuplestore in one scan of the hashtable.

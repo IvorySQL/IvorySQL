@@ -247,9 +247,10 @@ begin
 end;
 $$ language plisql;
 /
-ERROR:  CONTINUE cannot be used outside a loop
+WARNING:  compilation error
 LINE 4:         continue;
                 ^
+HINT:  CONTINUE cannot be used outside a loop
 -- should fail: unlabeled EXIT is only legal inside a loop
 create function exit_error1() returns void as $$
 begin
@@ -259,9 +260,10 @@ begin
 end;
 $$ language plisql;
 /
-ERROR:  EXIT cannot be used outside a loop, unless it has a label
+WARNING:  compilation error
 LINE 4:         exit;
                 ^
+HINT:  EXIT cannot be used outside a loop, unless it has a label
 -- should fail: no such label
 create function continue_error2() returns void as $$
 begin
@@ -273,9 +275,10 @@ begin
 end;
 $$ language plisql;
 /
-ERROR:  there is no label "no_such_label" attached to any block or loop enclosing this statement
+WARNING:  compilation error
 LINE 5:             continue no_such_label;
                              ^
+HINT:  there is no label "no_such_label" attached to any block or loop enclosing this statement
 -- should fail: no such label
 create function exit_error2() returns void as $$
 begin
@@ -287,9 +290,10 @@ begin
 end;
 $$ language plisql;
 /
-ERROR:  there is no label "no_such_label" attached to any block or loop enclosing this statement
+WARNING:  compilation error
 LINE 5:             exit no_such_label;
                          ^
+HINT:  there is no label "no_such_label" attached to any block or loop enclosing this statement
 -- should fail: CONTINUE can't reference the label of a named block
 create function continue_error3() returns void as $$
 begin
@@ -302,9 +306,10 @@ begin
 end;
 $$ language plisql;
 /
-ERROR:  block label "begin_block1" cannot be used in CONTINUE
+WARNING:  compilation error
 LINE 6:             continue begin_block1;
                              ^
+HINT:  block label "begin_block1" cannot be used in CONTINUE
 -- On the other hand, EXIT *can* reference the label of a named block
 create function exit_block1() returns void as $$
 begin
@@ -358,9 +363,10 @@ begin
 end;
 $$ language plisql;
 /
-ERROR:  end label "flbl1" specified for unlabeled block
+WARNING:  compilation error
 LINE 5:   end loop flbl1;
                    ^
+HINT:  end label "flbl1" specified for unlabeled block
 -- should fail: end label does not match start label
 create function end_label3() returns void as $$
 <<outer_label>>
@@ -372,9 +378,10 @@ begin
 end;
 $$ language plisql;
 /
-ERROR:  end label "outer_label" differs from block's label "inner_label"
+WARNING:  compilation error
 LINE 7:   end loop outer_label;
                    ^
+HINT:  end label "outer_label" differs from block's label "inner_label"
 -- should fail: end label on a block without a start label
 create function end_label4() returns void as $$
 <<outer_label>>
@@ -385,9 +392,10 @@ begin
 end;
 $$ language plisql;
 /
-ERROR:  end label "outer_label" specified for unlabeled block
+WARNING:  compilation error
 LINE 6:   end loop outer_label;
                    ^
+HINT:  end label "outer_label" specified for unlabeled block
 -- unlabeled exit matches no blocks
 do $$
 begin

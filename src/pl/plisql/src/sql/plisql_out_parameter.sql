@@ -943,6 +943,7 @@ drop function test_binary_double(integer,binary_double,binary_double[],binary_do
 --the datatype returned by function is table 
 create table test(id integer,name varchar(23));
 
+drop function test;
 create or replace function test(id out integer) return test as
 declare
   var1 test%rowtype;

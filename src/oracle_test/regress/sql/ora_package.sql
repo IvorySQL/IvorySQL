@@ -2001,7 +2001,7 @@ drop package pkg;
 --test package references package
 create or replace package pkg is
 var1 mds%rowtype;
-function test(id integer, var2 mds) return mds;
+function test(id integer, var2 mds%rowtype) return mds;
 end;
 /
 
