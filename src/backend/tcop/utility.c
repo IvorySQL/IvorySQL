@@ -1893,7 +1893,8 @@ ProcessUtilitySlow(ParseState *pstate,
 					if (!IsA(rel, RangeVar))
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								 errmsg("only a single relation is allowed in CREATE STATISTICS")));
+								 errmsg("cannot create statistics on the specified relation"),
+								 errdetail("CREATE STATISTICS only supports tables, foreign tables and materialized views.")));
 
 					/*
 					 * CREATE STATISTICS will influence future execution plans
