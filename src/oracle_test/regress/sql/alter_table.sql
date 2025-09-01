@@ -1812,6 +1812,9 @@ select * from my_locks order by 1;
 rollback;
 
 begin;
+create function ttdummy () returns trigger language plisql as
+$$ begin return new; end $$;
+/
 create trigger ttdummy
 	before delete or update on alterlock
 	for each row
