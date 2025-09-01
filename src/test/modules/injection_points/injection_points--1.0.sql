@@ -97,3 +97,13 @@ CREATE FUNCTION injection_points_stats_fixed(OUT numattach int8,
 RETURNS record
 AS 'MODULE_PATHNAME', 'injection_points_stats_fixed'
 LANGUAGE C STRICT;
+
+--
+-- injection_points_stats_drop()
+--
+-- Drop all statistics of injection points.
+--
+CREATE FUNCTION injection_points_stats_drop()
+RETURNS void
+AS 'MODULE_PATHNAME', 'injection_points_stats_drop'
+LANGUAGE C STRICT;
