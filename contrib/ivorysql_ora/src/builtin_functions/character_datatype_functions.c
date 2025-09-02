@@ -1729,9 +1729,9 @@ appendUTF16Escape(StringInfoData* outputString, uint16_t codePoint) {
  * instr
  *
  * Syntax:
- *   instr (string VARCHAR, substring VARCHAR)
- *   instr (string VARCHAR, substring VARCHAR, position INTEGER)
- *   instr (string VARCHAR, substring VARCHAR, position INTEGER, occurrence INTEGER)
+ *   instr (string TEXT, substring TEXT)
+ *   instr (string TEXT, substring TEXT, position INTEGER)
+ *   instr (string TEXT, substring TEXT, position INTEGER, occurrence INTEGER)
  *
  ****************************************************************/
 Datum
