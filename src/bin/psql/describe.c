@@ -6927,7 +6927,7 @@ describeSubscriptions(const char *pattern, bool verbose)
 	printQueryOpt myopt = pset.popt;
 	static const bool translate_columns[] = {false, false, false, false,
 		false, false, false, false, false, false, false, false, false, false,
-	false, false};
+	false, false, false, false};
 
 	if (pset.sversion < 100000)
 	{
@@ -6996,9 +6996,19 @@ describeSubscriptions(const char *pattern, bool verbose)
 							  ", subfailover AS \"%s\"\n",
 							  gettext_noop("Failover"));
 		if (pset.sversion >= 190000)
+		{
 			appendPQExpBuffer(&buf,
 							  ", subretaindeadtuples AS \"%s\"\n",
 							  gettext_noop("Retain dead tuples"));
+
+			appendPQExpBuffer(&buf,
+							  ", submaxretention AS \"%s\"\n",
+							  gettext_noop("Max retention duration"));
+
+			appendPQExpBuffer(&buf,
+							  ", subretentionactive AS \"%s\"\n",
+							  gettext_noop("Retention active"));
+		}
 
 		appendPQExpBuffer(&buf,
 						  ",  subsynccommit AS \"%s\"\n"
