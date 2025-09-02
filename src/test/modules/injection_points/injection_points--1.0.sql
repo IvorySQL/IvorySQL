@@ -109,16 +109,6 @@ AS 'MODULE_PATHNAME', 'injection_points_stats_fixed'
 LANGUAGE C STRICT;
 
 --
--- injection_points_stats_drop()
---
--- Drop all statistics of injection points.
---
-CREATE FUNCTION injection_points_stats_drop()
-RETURNS void
-AS 'MODULE_PATHNAME', 'injection_points_stats_drop'
-LANGUAGE C STRICT;
-
---
 -- regress_injection.c functions
 --
 CREATE FUNCTION removable_cutoff(rel regclass)
