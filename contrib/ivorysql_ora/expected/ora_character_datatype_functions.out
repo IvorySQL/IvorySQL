@@ -3129,6 +3129,108 @@ select decode(null, null, 2018, 2, 3) from test_decode; --expect:all
 
 drop table test_decode;
 /*
+ * instr
+ */
+-- NULL input tests
+SELECT INSTR(NULL, 'O') FROM DUAL;      -- Expected: NULL
+ instr 
+-------
+      
+(1 row)
+
+SELECT INSTR('TEST', NULL) FROM DUAL;   -- Expected: NULL
+ instr 
+-------
+      
+(1 row)
+
+SELECT INSTR(NULL, NULL) FROM DUAL;     -- Expected: NULL
+ instr 
+-------
+      
+(1 row)
+
+-- VARCHAR2
+SELECT INSTR('OBJECT-ORIENTED PROGRAMMING', 'O') FROM DUAL;
+ instr 
+-------
+     1
+(1 row)
+
+SELECT INSTR('OBJECT-ORIENTED PROGRAMMING', 'O', 2) FROM DUAL;
+ instr 
+-------
+     8
+(1 row)
+
+SELECT INSTR('OBJECT-ORIENTED PROGRAMMING', 'O', 1, 2) FROM DUAL;
+ instr 
+-------
+     8
+(1 row)
+
+SELECT INSTR('OBJECT-ORIENTED PROGRAMMING', 'RIEN', 5, 1) FROM DUAL;
+ instr 
+-------
+     9
+(1 row)
+
+SELECT INSTR('OBJECT-ORIENTED PROGRAMMING', 'O', 1, 4) FROM DUAL;
+ instr 
+-------
+     0
+(1 row)
+
+-- TEXT
+SELECT INSTR(CAST('OBJECT-ORIENTED PROGRAMMING' AS TEXT), CAST('O' AS TEXT)) FROM DUAL;
+ instr 
+-------
+     1
+(1 row)
+
+SELECT INSTR('OBJECT-ORIENTED PROGRAMMING'::TEXT, 'O') FROM DUAL;
+ instr 
+-------
+     1
+(1 row)
+
+SELECT INSTR('Information for the information age requires information.', 'information', 1, 1);
+ instr 
+-------
+    21
+(1 row)
+
+SELECT INSTR('Information for the information age requires information.', 'information', 1, 2);
+ instr 
+-------
+    46
+(1 row)
+
+SELECT INSTR('Information for the information age requires information.', 'information', 10, 1);
+ instr 
+-------
+    21
+(1 row)
+
+SELECT INSTR('Information for the information age requires information.', 'information');
+ instr 
+-------
+    21
+(1 row)
+
+SELECT INSTR('Information for the information age requires information.', 'information', 2);
+ instr 
+-------
+    21
+(1 row)
+
+SELECT INSTR('Information for the information age requires information.', 'information', 1, 4);
+ instr 
+-------
+     0
+(1 row)
+
+/*
  * asciistr
  */
   
