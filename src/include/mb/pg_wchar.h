@@ -273,6 +273,7 @@ typedef enum pg_enc
 	PG_WIN1254,					/* windows-1254 */
 	PG_WIN1255,					/* windows-1255 */
 	PG_WIN1257,					/* windows-1257 */
+	PG_GB18030,					/* GB18030 */
 	PG_KOI8U,					/* KOI8-U */
 	/* PG_ENCODING_BE_LAST points to the above entry */
 
@@ -281,7 +282,6 @@ typedef enum pg_enc
 	PG_BIG5,					/* Big5 (Windows-950) */
 	PG_GBK,						/* GBK (Windows-936) */
 	PG_UHC,						/* UHC (Windows-949) */
-	PG_GB18030,					/* GB18030 */
 	PG_JOHAB,					/* EUC for Korean JOHAB */
 	PG_SHIFT_JIS_2004,			/* Shift-JIS-2004 */
 	_PG_LAST_ENCODING_			/* mark only */
@@ -388,6 +388,13 @@ typedef bool (*mbcharacter_incrementer) (unsigned char *mbstr, int len);
 typedef int (*mbchar_verifier) (const unsigned char *mbstr, int len);
 
 typedef int (*mbstr_verifier) (const unsigned char *mbstr, int len);
+
+typedef int (*gb18030_2022_to_utf8_hook_type)(const unsigned char *iso, int len,
+												unsigned char *utf, bool noError);
+typedef int (*utf8_to_gb18030_2022_hook_type)(const unsigned char *utf, int len,
+											  unsigned char *iso, bool noError);
+extern PGDLLIMPORT gb18030_2022_to_utf8_hook_type gb18030_2022_to_utf8_hook;
+extern PGDLLIMPORT utf8_to_gb18030_2022_hook_type utf8_to_gb18030_2022_hook;
 
 typedef struct
 {

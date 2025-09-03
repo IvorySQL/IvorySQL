@@ -12458,6 +12458,18 @@
   proname => 'ivy_get_plisql_functiondef', provolatile => 's', prorettype => 'text',
   proargtypes => 'oid', prosrc => 'ivy_get_plisql_functiondef' },
 
+{ oid => '4650',
+  descr => 'internal conversion function for gb18030 to gbk',
+  proname => 'gb18030_to_gbk', prolang => 'c', prorettype => 'int4',
+  proargtypes => 'int4 int4 cstring internal int4 bool',
+  prosrc => 'gb18030_to_gbk', probin => '$libdir/gb18030_and_gbk' },
+
+  { oid => '4651',
+  descr => 'internal conversion function for gbk to gb18030',
+  proname => 'gbk_to_gb18030', prolang => 'c', prorettype => 'int4',
+  proargtypes => 'int4 int4 cstring internal int4 bool',
+  prosrc => 'gbk_to_gb18030', probin => '$libdir/gb18030_and_gbk' },
+
 { oid => '6321', descr => 'list of available WAL summary files',
   proname => 'pg_available_wal_summaries', prorows => '100', proretset => 't',
   provolatile => 'v', prorettype => 'record', proargtypes => '',

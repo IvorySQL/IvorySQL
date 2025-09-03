@@ -20,6 +20,6 @@ SUBDIRS = \
 	utf8_and_euc_jp utf8_and_euc_kr utf8_and_euc_tw utf8_and_gb18030 \
 	utf8_and_gbk utf8_and_iso8859 utf8_and_iso8859_1 utf8_and_johab \
 	utf8_and_sjis utf8_and_win utf8_and_uhc \
-	utf8_and_euc2004 utf8_and_sjis2004 euc2004_sjis2004
+	utf8_and_euc2004 utf8_and_sjis2004 euc2004_sjis2004  gb18030_and_gbk
 
 $(recurse)

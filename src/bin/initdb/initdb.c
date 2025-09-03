@@ -179,6 +179,7 @@ static int	encodingid;
 static char *bki_file;
 static char *hba_file;
 static char *ident_file;
+static char *ivorysql_file;
 static char *conf_file;
 static char *dictionary_file;
 static char *info_schema_file;
@@ -222,6 +223,7 @@ static int	database_mode = DB_ORACLE;
 "# the database superuser.  If you do not trust all your local users,\n" \
 "# use another authentication method.\n"
 static bool authwarning = false;
+static bool is_load_gb18030_2022 = true;
 
 /*
  * Centralized knowledge of switches to pass to backend
@@ -860,10 +862,20 @@ static int
 get_encoding_id(const char *encoding_name)
 {
 	int			enc;
+	char		*encoding_name_modify;
 
 	if (encoding_name && *encoding_name)
 	{
-		if ((enc = pg_valid_server_encoding(encoding_name)) >= 0)
+		encoding_name_modify = pg_strdup(encoding_name);
+		if(pg_strcasecmp(encoding_name,"gb18030_2022") == 0)
+		{
+			encoding_name_modify = pg_strdup("gb18030");
+			is_load_gb18030_2022 =  true;
+		}
+		else if(pg_strcasecmp(encoding_name,"gb18030") == 0)
+			is_load_gb18030_2022 = false;
+
+		if ((enc = pg_valid_server_encoding((const char *)encoding_name_modify)) >= 0)
 			return enc;
 	}
 	pg_fatal("\"%s\" is not a valid server encoding name",
@@ -1338,6 +1350,12 @@ setup_config(void)
 	conflines = replace_guc_value(conflines, "max_connections",
 								  repltok, false);
 
+
+	if(is_load_gb18030_2022 && database_mode == DB_PG)
+		conflines = replace_token(conflines,
+								  "#shared_preload_libraries = ''",
+								  "shared_preload_libraries = 'gb18030_2022'");
+
 	snprintf(repltok, sizeof(repltok), "%d", n_av_slots);
 	conflines = replace_guc_value(conflines, "autovacuum_worker_slots",
 								  repltok, false);
@@ -1433,6 +1451,11 @@ setup_config(void)
 								  repltok, true);
 #endif
 
+#ifndef USE_PREFETCH
+	conflines = replace_guc_value(conflines, "effective_io_concurrency",
+								  "0", true);
+#endif
+
 #ifdef WIN32
 	conflines = replace_guc_value(conflines, "update_process_title",
 								  "off", true);
@@ -1504,6 +1527,11 @@ setup_config(void)
 			snprintf(repltok, sizeof(repltok), "ivorysql.port = %d", DEF_ORAPORT);
 			conflines = replace_token(conflines, "#ivorysql.port = 1521", repltok);
 		}
+
+		if(is_load_gb18030_2022)
+		conflines = replace_token(conflines,
+								  "shared_preload_libraries = 'liboracle_parser, ivorysql_ora'",
+								  "shared_preload_libraries = 'gb18030_2022, liboracle_parser, ivorysql_ora'");
 
 		writefile(path, conflines);
 		if (chmod(path, pg_file_create_mode) != 0)
@@ -2074,7 +2102,13 @@ load_plisql(FILE *cmdfd)
 	PG_CMD_PUTS("CREATE EXTENSION plisql;\n\n");
 }
 
-/* 
+static void
+load_gb18030_2022(FILE *cmdfd)
+{
+	PG_CMD_PUTS("CREATE EXTENSION gb18030_2022;\n\n");
+}
+
+/*
  *
  * load PL/pgSQL server-side language
  */
@@ -2630,6 +2664,9 @@ usage(const char *progname)
 	printf(_("      --auth-local=METHOD   default authentication method for local-socket connections\n"));
 	printf(_(" [-D, --pgdata=]DATADIR     location for this database cluster\n"));
 	printf(_("  -E, --encoding=ENCODING   set default encoding for new databases\n"));
+	printf(_("	NOTICE: If you set this to gb18030,\n\
+		the database will initilized with gb18030_2000,but not gb18030_2022,\n\
+		if you want to use gb18030_2022,please set this option to gb18030_2022,\n"));
 	printf(_("  -g, --allow-group-access  allow group read/execute on data directory\n"));
 	printf(_("      --icu-locale=LOCALE   set ICU locale ID for new databases\n"));
 	printf(_("      --icu-rules=RULES     set additional ICU collation rules for new databases\n"));
@@ -2904,6 +2941,7 @@ setup_data_file_paths(void)
 		set_input(&bki_file, "postgres_oracle.bki");
 	set_input(&hba_file, "pg_hba.conf.sample");
 	set_input(&ident_file, "pg_ident.conf.sample");
+	set_input(&ivorysql_file, "ivorysql.conf.sample");
 	set_input(&conf_file, "postgresql.conf.sample");
 	set_input(&dictionary_file, "snowball_create.sql");
 	set_input(&info_schema_file, "information_schema.sql");
@@ -3269,6 +3307,9 @@ initialize_data_directory(void)
 	setup_privileges(cmdfd);
 
 	setup_schema(cmdfd);
+
+	if(is_load_gb18030_2022)
+		load_gb18030_2022(cmdfd);
 
 	load_plpgsql(cmdfd);
 
