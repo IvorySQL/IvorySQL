@@ -371,5 +371,9 @@ CREATE FUNCTION test_relpath()
     RETURNS void
     AS :'regresslib'
     LANGUAGE C;
+/
 SELECT test_relpath();
+
+-- pg_replication_origin.roname limit
+SELECT pg_replication_origin_create('regress_' || repeat('a', 505));
 
