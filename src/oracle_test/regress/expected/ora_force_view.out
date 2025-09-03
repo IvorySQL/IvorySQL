@@ -1,0 +1,323 @@
+create view v_bug193 as select * from t_bug193;
+ERROR:  relation "t_bug193" does not exist
+LINE 1: create view v_bug193 as select * from t_bug193;
+                                              ^
+create force view v_bug193 as select * from t_bug193;
+WARNING:  View created with compilation errors
+select pg_get_viewdef('v_bug193');
+                    pg_get_viewdef                     
+-------------------------------------------------------
+ create force view v_bug193 as select * from t_bug193;
+(1 row)
+
+create force view v_bug193 as select * from t_bug193_1;
+WARNING:  View created with compilation errors
+select pg_get_viewdef('v_bug193');		-- force view defination not change
+                    pg_get_viewdef                     
+-------------------------------------------------------
+ create force view v_bug193 as select * from t_bug193;
+(1 row)
+
+create or replace force view v_bug193 as select * from t_bug193_1;
+WARNING:  View created with compilation errors
+select pg_get_viewdef('v_bug193');		-- force view defination be changed
+                           pg_get_viewdef                           
+--------------------------------------------------------------------
+ create or replace force view v_bug193 as select * from t_bug193_1;
+(1 row)
+
+create table test_bug193(a int);
+insert into test_bug193 values(123456);
+create view bug193_ok as select * from test_bug193;
+select * from bug193_ok;
+   a    
+--------
+ 123456
+(1 row)
+
+create force view bug193_ok as select * from t_bug193_2;
+WARNING:  View created with compilation errors
+select * from bug193_ok;	-- ok
+   a    
+--------
+ 123456
+(1 row)
+
+select pg_get_viewdef('bug193_ok');
+    pg_get_viewdef    
+----------------------
+  SELECT a           +
+    FROM test_bug193;
+(1 row)
+
+create or replace force view bug193_ok as select * from t_bug193_2;
+WARNING:  View created with compilation errors
+select * from bug193_ok;	-- error, view has errors
+ERROR:  view "public.bug193_ok" has errors
+select pg_get_viewdef('bug193_ok');
+                           pg_get_viewdef                            
+---------------------------------------------------------------------
+ create or replace force view bug193_ok as select * from t_bug193_2;
+(1 row)
+
+create view bug193_ok_1 as select * from test_bug193;
+select * from bug193_ok_1;
+   a    
+--------
+ 123456
+(1 row)
+
+create table test_bug193_1(a int);
+insert into test_bug193_1 values(987654);
+create force view bug193_ok_1 as select * from test_bug193_1;	-- error
+ERROR:  relation "bug193_ok_1" already exists
+select pg_get_viewdef('bug193_ok_1');
+    pg_get_viewdef    
+----------------------
+  SELECT a           +
+    FROM test_bug193;
+(1 row)
+
+create or replace force view bug193_ok_1 as select * from test_bug193_1;
+select * from bug193_ok_1;
+   a    
+--------
+ 987654
+(1 row)
+
+select pg_get_viewdef('bug193_ok_1');
+     pg_get_viewdef     
+------------------------
+  SELECT a             +
+    FROM test_bug193_1;
+(1 row)
+
+drop table test_bug193_1 cascade;
+NOTICE:  drop cascades to view bug193_ok_1
+drop table test_bug193 cascade;
+drop view v_bug193;
+drop view bug193_ok;
+-- compile view
+create force view bug193_ok_3 as select * from test_bug193_fail;
+WARNING:  View created with compilation errors
+create force view bug193_ok_4 as select * from bug193_ok_3;
+WARNING:  View created with compilation errors
+select * from bug193_ok_3;
+ERROR:  view "public.bug193_ok_3" has errors
+select * from bug193_ok_4;
+ERROR:  view "public.bug193_ok_4" has errors
+alter view bug193_ok_4 compile;		--View altered with compilation errors
+WARNING:  View altered with compilation errors
+create table test_bug193_fail(a int);
+insert into test_bug193_fail values(1314);
+alter view bug193_ok_4 compile;
+select * from bug193_ok_3;
+  a   
+------
+ 1314
+(1 row)
+
+select * from bug193_ok_4;
+  a   
+------
+ 1314
+(1 row)
+
+drop table test_bug193_fail cascade;
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to view bug193_ok_3
+drop cascades to view bug193_ok_4
+-- the view becomes invalid after the dependent object of the view is deleted.
+create table test_193(a int);
+insert into test_193 values(2023);
+create view v1 as select * from test_193;
+create view v2 as select * from v1;
+select * from v1;
+  a   
+------
+ 2023
+(1 row)
+
+select * from v2;
+  a   
+------
+ 2023
+(1 row)
+
+drop table test_193;
+select * from v1;
+ERROR:  view "public.v1" has errors
+select * from v2;
+ERROR:  view "public.v2" has errors
+create table test_193(a int);
+insert into test_193 values(2024);
+select * from v1;
+  a   
+------
+ 2024
+(1 row)
+
+select * from v2;
+  a   
+------
+ 2024
+(1 row)
+
+drop table test_193;
+drop view v1;
+drop view v2;
+-- circular dependency
+create force view v1 as select * from v2;
+WARNING:  View created with compilation errors
+create force view v2 as select * from v1;
+WARNING:  View created with compilation errors
+select * from v1;
+ERROR:  view "public.v1" has errors
+select * from v2;
+ERROR:  view "public.v2" has errors
+ALTER VIEW V1 COMPILE;
+WARNING:  View altered with compilation errors
+ALTER VIEW V2 COMPILE;
+WARNING:  View altered with compilation errors
+drop view v1;
+drop view v2;
+-- function depend view.
+create table test_193(a int);
+insert into test_193 values(2023);
+create view v1 as select * from test_193;
+select * from v1;
+  a   
+------
+ 2023
+(1 row)
+
+create or replace function ftest193(x int) return text as
+ var v1%ROWTYPE;
+begin
+SELECT * INTO var FROM v1;
+RETURN 'a = ' || var.a;
+end;
+/
+select ftest193(1);
+ ftest193 
+----------
+ a = 2023
+(1 row)
+
+drop table test_193;
+select * from v1;		-- err
+ERROR:  view "public.v1" has errors
+select ftest193(1);		-- err
+ERROR:  view "public.v1" has errors
+CONTEXT:  SQL statement "SELECT *          FROM v1"
+PL/iSQL function ftest193(pg_catalog.int4) line 3 at SQL statement
+create table test_193(a int);
+insert into test_193 values(2024);
+select * from v1;
+  a   
+------
+ 2024
+(1 row)
+
+select ftest193(1);
+ ftest193 
+----------
+ a = 2024
+(1 row)
+
+drop table test_193;
+drop view v1;
+drop function ftest193;
+create table user_info(id int, uname varchar2(64));
+insert into user_info values(1, '111');
+insert into user_info values(2, '222');
+insert into user_info values(3, '333');
+insert into user_info values(4, null);
+-- success
+select id, (case uname when null then null else uname end) as bm from user_info order by bm;
+ id | bm  
+----+-----
+  1 | 111
+  2 | 222
+  3 | 333
+  4 | 
+(4 rows)
+
+select id, (case uname when null then null else uname end) as bm from user_info order by length(bm);
+ERROR:  "bm": invalid identifier
+LINE 1: ...ll else uname end) as bm from user_info order by length(bm);
+                                                                   ^
+select id, (case uname when null then null else uname end) as bm from user_info order by length(case uname when null then null else uname end);
+ id | bm  
+----+-----
+  1 | 111
+  2 | 222
+  3 | 333
+  4 | 
+(4 rows)
+
+select id, uname as id from user_info tbl order by tbl.id;
+ id | id  
+----+-----
+  1 | 111
+  2 | 222
+  3 | 333
+  4 | 
+(4 rows)
+
+-- error
+select id, uname as id from user_info order by id;
+ERROR:  ORDER BY "id" is ambiguous
+LINE 1: select id, uname as id from user_info order by id;
+                                                       ^
+select id, (case uname when null then null else uname end) as id from user_info order by length(id);
+ id | id  
+----+-----
+  1 | 111
+  2 | 222
+  3 | 333
+  4 | 
+(4 rows)
+
+select id, (case uname when null then null else uname end) as id from user_info order by id-100;
+ id | id  
+----+-----
+  1 | 111
+  2 | 222
+  3 | 333
+  4 | 
+(4 rows)
+
+drop table user_info;
+create table test193(a int, b int);
+insert into test193 values(1, 123);
+select * from test193;
+ a |  b  
+---+-----
+ 1 | 123
+(1 row)
+
+create view vtest193 as select * from test193;
+select * from vtest193;
+ a |  b  
+---+-----
+ 1 | 123
+(1 row)
+
+alter table test193 alter column b type varchar2(128);
+select * from vtest193;
+ a |  b  
+---+-----
+ 1 | 123
+(1 row)
+
+insert into test193 values(1, 'abc');
+select * from vtest193;
+ a |  b  
+---+-----
+ 1 | 123
+ 1 | abc
+(2 rows)
+
+drop view vtest193;
+drop table test193;

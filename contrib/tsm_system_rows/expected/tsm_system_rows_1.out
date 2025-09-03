@@ -77,7 +77,4 @@ SELECT * FROM vv;
     20
 (1 row)
 
-DROP EXTENSION tsm_system_rows;  -- fail, view depends on extension
-ERROR:  cannot drop extension tsm_system_rows because other objects depend on it
-DETAIL:  view vv depends on function system_rows(internal)
-HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+DROP EXTENSION tsm_system_rows;  -- fail, view depends on extension ,but success in Oracle because of FORCE VIEW
