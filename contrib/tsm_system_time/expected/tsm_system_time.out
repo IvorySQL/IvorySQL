@@ -94,7 +94,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM vv;
    Sampling: system_time ('20'::double precision)
 (2 rows)
 
-DROP EXTENSION tsm_system_time;  -- fail, view depends on extension
+DROP EXTENSION tsm_system_time;  -- fail, view depends on extension ,but success in Oracle because of FORCE VIEW
 ERROR:  cannot drop extension tsm_system_time because other objects depend on it
 DETAIL:  view vv depends on function system_time(internal)
 HINT:  Use DROP ... CASCADE to drop the dependent objects too.

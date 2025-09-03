@@ -48,4 +48,4 @@ CREATE VIEW vv AS
 
 EXPLAIN (COSTS OFF) SELECT * FROM vv;
 
-DROP EXTENSION tsm_system_time;  -- fail, view depends on extension
+DROP EXTENSION tsm_system_time;  -- fail, view depends on extension ,but success in Oracle because of FORCE VIEW

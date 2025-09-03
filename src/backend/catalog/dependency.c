@@ -79,6 +79,8 @@
 #include "commands/sequence.h"
 #include "commands/trigger.h"
 #include "commands/typecmds.h"
+#include "commands/tablecmds.h"
+#include "commands/view.h"
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "nodes/nodeFuncs.h"
@@ -89,9 +91,9 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "utils/packagecache.h"
-#include "commands/tablecmds.h"
-#include "funcapi.h"
 #include "lib/qunique.h"
+#include "utils/ora_compatible.h"
+#include "utils/guc.h"
 
 
 
@@ -162,7 +164,8 @@ static void findDependentObjects(const ObjectAddress *object,
 static void reportDependentObjects(const ObjectAddresses *targetObjects,
 								   DropBehavior behavior,
 								   int flags,
-								   const ObjectAddress *origObject);
+								   const ObjectAddress *origObject,
+								   bool	*refinddepobjects);
 static void deleteOneObject(const ObjectAddress *object,
 							Relation *depRel, int32 flags);
 static void doDeletion(const ObjectAddress *object, int flags);
@@ -284,6 +287,7 @@ performDeletion(const ObjectAddress *object,
 {
 	Relation	depRel;
 	ObjectAddresses *targetObjects;
+	bool	need_refinddepobj = false;
 
 	/*
 	 * We save some cycles by opening pg_depend just once and passing the
@@ -317,7 +321,22 @@ performDeletion(const ObjectAddress *object,
 	reportDependentObjects(targetObjects,
 						   behavior,
 						   flags,
-						   object);
+						   object,
+						   &need_refinddepobj);
+
+	if (ORA_PARSER == compatible_db && need_refinddepobj)
+	{
+		free_object_addresses(targetObjects);
+		targetObjects = new_object_addresses();
+
+		findDependentObjects(object,
+							 DEPFLAG_ORIGINAL,
+							 flags,
+							 NULL,	/* empty stack */
+							 targetObjects,
+							 NULL,	/* no pendingObjects */
+							 &depRel);
+	}
 
 	/* do the deed */
 	deleteObjectsInList(targetObjects, &depRel, flags);
@@ -344,6 +363,7 @@ performMultipleDeletions(const ObjectAddresses *objects,
 	Relation	depRel;
 	ObjectAddresses *targetObjects;
 	int			i;
+	bool	need_refinddepobj = false;
 
 	/* No work if no objects... */
 	if (objects->numrefs <= 0)
@@ -393,7 +413,33 @@ performMultipleDeletions(const ObjectAddresses *objects,
 	reportDependentObjects(targetObjects,
 						   behavior,
 						   flags,
-						   (objects->numrefs == 1 ? objects->refs : NULL));
+						   (objects->numrefs == 1 ? objects->refs : NULL),
+						   &need_refinddepobj);
+
+
+	if (ORA_PARSER == compatible_db && need_refinddepobj)
+	{
+		free_object_addresses(targetObjects);
+		targetObjects = new_object_addresses();
+
+		for (i = 0; i < objects->numrefs; i++)
+		{
+			const ObjectAddress *thisobj = objects->refs + i;
+
+			/*
+			 * Obtain a deletion lock for every target object.  (Preferably, this should have been handled by the caller, but in reality, many callers neglect to do so.)
+			 */
+			AcquireDeletionLock(thisobj, flags);
+
+			findDependentObjects(thisobj,
+								 DEPFLAG_ORIGINAL,
+								 flags,
+								 NULL,	/* empty stack */
+								 targetObjects,
+								 objects,
+								 &depRel);
+		}
+	}
 
 	/* do the deed */
 	deleteObjectsInList(targetObjects, &depRel, flags);
@@ -1065,7 +1111,7 @@ findDependentObjects(const ObjectAddress *object,
 	}
 
 	/*
-	 * Find out the dependent funciton which uses %TYPE or %ROWTYPE 
+	 * Find out the dependent funciton which uses %TYPE or %ROWTYPE
 	 * in parameters datatype or return datatype.
 	 */
 	for (int i = 0; i < numDependentFuncPkgOids; i++)
@@ -1171,7 +1217,8 @@ static void
 reportDependentObjects(const ObjectAddresses *targetObjects,
 					   DropBehavior behavior,
 					   int flags,
-					   const ObjectAddress *origObject)
+					   const ObjectAddress *origObject,
+					   bool *refinddepobj)
 {
 	int			msglevel = (flags & PERFORM_DELETION_QUIETLY) ? DEBUG2 : NOTICE;
 	bool		ok = true;
@@ -1218,6 +1265,89 @@ reportDependentObjects(const ObjectAddresses *targetObjects,
 	if (behavior == DROP_CASCADE &&
 		!message_level_is_interesting(msglevel))
 		return;
+
+	if (ORA_PARSER == compatible_db && behavior == DROP_RESTRICT)
+	{
+		/* Check if all dependencies that require CASCADE are views */
+		bool	all_cascade_dep_is_view = true;
+		ObjectAddresses *viewObjects;
+
+		viewObjects = new_object_addresses();
+
+		for (i = targetObjects->numrefs - 1; i >= 0; i--)
+		{
+			const ObjectAddress *obj = &targetObjects->refs[i];
+			const ObjectAddressExtra *extra = &targetObjects->extras[i];
+			char	   *objDesc;
+
+			/* Skip the initial objects requested for deletion */
+			if (extra->flags & DEPFLAG_ORIGINAL)
+				continue;
+
+			/* Skip reporting for subcomponents, handled elsewhere */
+			if (extra->flags & DEPFLAG_SUBOBJECT)
+				continue;
+
+			objDesc = getObjectDescription(obj, false);
+
+			/* Ignore objects that are being dropped concurrently */
+			if (objDesc == NULL)
+				continue;
+
+			/*
+			 * If the object was found via an automatic, internal, partition, or extension dependency,
+			 * it is permitted to be removed even with RESTRICT.
+			 */
+			if (extra->flags & (DEPFLAG_AUTO |
+								DEPFLAG_INTERNAL |
+								DEPFLAG_PARTITION |
+								DEPFLAG_EXTENSION))
+			{
+				/*
+				 * Log automatic cascades at DEBUG2 level for clarity.
+				 */
+				ereport(DEBUG2,
+						(errmsg_internal("drop auto-cascades to %s",
+										 objDesc)));
+			}
+			else if (extra->flags & DEPFLAG_TYPE)
+			{
+				pfree(objDesc);
+				continue;
+			}
+			else
+			{
+				/* If any dependent object is not a view, set flag and exit loop */
+				if (get_rel_relkind(obj->objectId) != RELKIND_VIEW)
+				{
+					all_cascade_dep_is_view = false;
+					pfree(objDesc);
+					break;
+				}
+				else
+					add_exact_object_address(obj, viewObjects);
+			}
+			pfree(objDesc);
+		}
+
+		/* If all dependencies are views, mark them as invalid and trigger a recheck */
+		if (all_cascade_dep_is_view && viewObjects->numrefs > 0)
+		{
+			for (i = viewObjects->numrefs - 1; i >= 0; i--)
+			{
+				make_view_invalid(viewObjects->refs[i].objectId);
+			}
+
+			/*
+			 * After invalidating views, re-evaluate dependencies to ensure consistency.
+			 */
+			if (refinddepobj)
+				*refinddepobj = true;
+			return;
+		}
+
+		free_object_addresses(viewObjects);
+	}
 
 	/*
 	 * We limit the number of dependencies reported to the client to
@@ -1577,6 +1707,10 @@ doDeletion(const ObjectAddress *object, int flags)
 				 */
 				if (relKind == RELKIND_SEQUENCE)
 					DeleteSequenceTuple(object->objectId);
+
+				if (ORA_PARSER == compatible_db && relKind == RELKIND_VIEW)
+					  DeleteForceView(object->objectId);
+
 				break;
 			}
 

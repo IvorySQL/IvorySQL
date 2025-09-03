@@ -19,12 +19,14 @@
 #include "access/nbtree.h"
 #include "access/table.h"
 #include "access/tsmapi.h"
+#include "access/relation.h"
 #include "catalog/catalog.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_amproc.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
+#include "commands/view.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
@@ -211,6 +213,14 @@ setTargetTable(ParseState *pstate, RangeVar *relation,
 	 */
 	pstate->p_target_relation = parserOpenTable(pstate, relation,
 												RowExclusiveLock);
+
+	if(rel_is_force_view(RelationGetRelid(pstate->p_target_relation)))
+	{
+		relation_close(pstate->p_target_relation, RowExclusiveLock);
+		compile_force_view(RelationGetRelid(pstate->p_target_relation));
+		pstate->p_target_relation = parserOpenTable(pstate, relation,
+													RowExclusiveLock);
+	}
 
 	/*
 	 * Now build an RTE and a ParseNamespaceItem.

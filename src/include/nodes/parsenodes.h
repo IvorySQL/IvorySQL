@@ -2500,7 +2500,8 @@ typedef enum AlterTableType
 	AT_DropIdentity,			/* DROP IDENTITY */
 	AT_ReAddStatistics,			/* internal to commands/tablecmds.c */
 	AT_DropInvisible,			/* alter column drop invisible */
-	AT_SetInvisible			/* alter column set invisible */
+	AT_SetInvisible,			/* alter column set invisible */
+	AT_ForceViewCompile			/* compile force view */
 } AlterTableType;
 
 typedef struct AlterTableCmd	/* one subcommand of an ALTER TABLE */
@@ -3875,6 +3876,8 @@ typedef struct ViewStmt
 	List	   *aliases;		/* target column names */
 	Node	   *query;			/* the SELECT query (as a raw parse tree) */
 	bool		replace;		/* replace an existing view? */
+	bool		force;			/* force view */
+	char	   *stmt_literal;	/* the original text that defines the force view */
 	List	   *options;		/* options from WITH clause */
 	ViewCheckOption withCheckOption;	/* WITH CHECK OPTION */
 } ViewStmt;

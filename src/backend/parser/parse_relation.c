@@ -23,6 +23,7 @@
 #include "catalog/heap.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_type.h"
+#include "commands/view.h"
 #include "funcapi.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
@@ -1528,6 +1529,38 @@ addRangeTableEntry(ParseState *pstate,
 	 * to a rel in a statement, we must open the rel with the proper lockmode.
 	 */
 	rel = parserOpenTable(pstate, relation, lockmode);
+	/*
+	 * The force view is compiled at this point. Although performing compilation here may not be ideal,
+	 * since it is a DDL operation, Oracle's SELECT statements will recursively compile force views.
+	 * For now, we handle the compilation in this location as a temporary solution.
+	 */
+	if (ORA_PARSER == compatible_db && rel_is_force_view(RelationGetRelid(rel)))
+	{
+		bool	compile_res;
+		char	*nspname;
+		char	*viewname;
+		Oid		viewoid;
+
+		viewoid = RelationGetRelid(rel);
+		nspname = get_namespace_name(RelationGetNamespace(rel));
+		viewname = RelationGetRelationName(rel);
+		table_close(rel, lockmode);
+
+		compile_res = compile_force_view(viewoid);
+
+		if (compile_res)
+		{
+			/* reopen the view */
+			lockmode = isLockedRefname(pstate, refname) ? RowShareLock : AccessShareLock;
+			rel = parserOpenTable(pstate, relation, lockmode);
+		}
+		else
+		{
+			/* ORA-04063: view "xxx.xxx" has errors */
+			elog(ERROR, "view \"%s.%s\" has errors", nspname, viewname);
+		}
+	}
+
 	rte->relid = RelationGetRelid(rel);
 	rte->inh = inh;
 	rte->relkind = rel->rd_rel->relkind;
