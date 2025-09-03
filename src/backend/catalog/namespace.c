@@ -67,8 +67,7 @@
 #include "utils/varlena.h"
 #include "commands/proclang.h"
 #include "utils/guc.h"
-#include "utils/ora_compatible.h"
-
+#include "parser/parse_type.h"
 
 
 /*
@@ -1567,6 +1566,25 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 						newResult->args[i] = pkgtype->basetypid;
 						pfree(pkgtype);
 					}
+					else
+					{
+						Type	typtup;
+
+						typtup = LookupOraTypeName(NULL, tname, NULL, false);
+
+						if (typtup)
+						{
+							if (!((Form_pg_type) GETSTRUCT(typtup))->typisdefined)
+								ereport(NOTICE,
+									(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+									 errmsg("argument type %s is invalid",
+										TypeNameToString(tname))));
+
+							newResult->args[i] = typeTypeId(typtup);
+							ReleaseSysCache(typtup);
+						}
+					}
+
 					pfree(tname);
 				}
 			}
@@ -1595,6 +1613,25 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 							newResult->args[j] = pkgtype->basetypid;
 							pfree(pkgtype);
 						}
+						else
+						{
+							Type	typtup;
+
+							typtup = LookupOraTypeName(NULL, tname, NULL, true);
+
+							if (typtup)
+							{
+								if (!((Form_pg_type) GETSTRUCT(typtup))->typisdefined)
+									ereport(NOTICE,
+										(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+										 errmsg("argument type %s is invalid",
+											TypeNameToString(tname))));
+
+								newResult->args[j] = typeTypeId(typtup);
+								ReleaseSysCache(typtup);
+							}
+						}
+
 						pfree(tname);
 					}
 				}

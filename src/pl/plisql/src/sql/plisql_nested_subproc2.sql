@@ -3906,7 +3906,7 @@ end;
 /
 
 --raise error
-create or replace function test_f(id integer) return integer pipelined is
+create or replace function test_f2(id integer) return integer pipelined is
   mds integer;
   function infunc return  integer pipelined is
   begin

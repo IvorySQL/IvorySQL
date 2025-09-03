@@ -595,6 +595,19 @@ ProcedureCreate(const char *procedureName,
 			}
 		}
 
+		if (ORA_PARSER == compatible_db &&
+			languageObjectId == get_language_oid("plisql", true))
+		{
+			if (check_function_bodies)
+				values[Anum_pg_proc_prostatus - 1] = CharGetDatum(PROSTATUS_VALID);
+			else
+				values[Anum_pg_proc_prostatus - 1] = CharGetDatum(PROSTATUS_NA);
+		}
+		else
+		{
+			values[Anum_pg_proc_prostatus - 1] = CharGetDatum(PROSTATUS_VALID);
+		}
+
 		/*
 		 * Do not change existing oid, ownership or permissions, either.  Note
 		 * dependency-update code below has to agree with this decision.
@@ -626,6 +639,20 @@ ProcedureCreate(const char *procedureName,
 		newOid = GetNewOidWithIndex(rel, ProcedureOidIndexId,
 									Anum_pg_proc_oid);
 		values[Anum_pg_proc_oid - 1] = ObjectIdGetDatum(newOid);
+
+		if (ORA_PARSER == compatible_db &&
+			languageObjectId == get_language_oid("plisql", true))
+		{
+			if (check_function_bodies)
+				values[Anum_pg_proc_prostatus - 1] = CharGetDatum(PROSTATUS_VALID);
+			else
+				values[Anum_pg_proc_prostatus - 1] = CharGetDatum(PROSTATUS_NA);
+		}
+		else
+		{
+			values[Anum_pg_proc_prostatus - 1] = CharGetDatum(PROSTATUS_VALID);
+		}
+
 		tup = heap_form_tuple(tupDesc, values, nulls);
 		CatalogTupleInsert(rel, tup);
 		is_update = false;
@@ -655,9 +682,14 @@ ProcedureCreate(const char *procedureName,
 	ObjectAddressSet(referenced, LanguageRelationId, languageObjectId);
 	add_exact_object_address(&referenced, addrs);
 
-	/* dependency on return type */
-	ObjectAddressSet(referenced, TypeRelationId, returnType);
-	add_exact_object_address(&referenced, addrs);
+	if (!(ORA_PARSER == compatible_db &&
+		LANG_PLISQL_OID == languageObjectId &&
+		get_typtype(returnType) == TYPTYPE_COMPOSITE))
+	{
+		/* dependency on return type */
+		ObjectAddressSet(referenced, TypeRelationId, returnType);
+		add_exact_object_address(&referenced, addrs);
+	}
 
 	/* dependency on transform used by return type, if any */
 	if ((trfid = get_transform_oid(returnType, languageObjectId, true)))
@@ -669,14 +701,19 @@ ProcedureCreate(const char *procedureName,
 	/* dependency on parameter types */
 	for (i = 0; i < allParamCount; i++)
 	{
-		ObjectAddressSet(referenced, TypeRelationId, allParams[i]);
-		add_exact_object_address(&referenced, addrs);
-
-		/* dependency on transform used by parameter type, if any */
-		if ((trfid = get_transform_oid(allParams[i], languageObjectId, true)))
+		if (!(ORA_PARSER == compatible_db &&
+			LANG_PLISQL_OID == languageObjectId &&
+			get_typtype(allParams[i]) == TYPTYPE_COMPOSITE))
 		{
-			ObjectAddressSet(referenced, TransformRelationId, trfid);
+			ObjectAddressSet(referenced, TypeRelationId, allParams[i]);
 			add_exact_object_address(&referenced, addrs);
+
+			/* dependency on transform */
+			if ((trfid = get_transform_oid(allParams[i], languageObjectId, true)))
+			{
+				ObjectAddressSet(referenced, TransformRelationId, trfid);
+				add_exact_object_address(&referenced, addrs);
+			}
 		}
 	}
 
@@ -722,7 +759,10 @@ ProcedureCreate(const char *procedureName,
 	if (OidIsValid(languageValidator))
 	{
 		ArrayType  *set_items = NULL;
-		int			save_nestlevel = 0;
+		int	save_nestlevel = 0;
+		MemoryContext oldcontext = CurrentMemoryContext;
+		ResourceOwner oldowner = CurrentResourceOwner;
+		bool	plisql_check_body = false;
 
 		/* Advance command counter so new tuple can be seen by validator */
 		CommandCounterIncrement();
@@ -750,7 +790,93 @@ ProcedureCreate(const char *procedureName,
 			}
 		}
 
-		OidFunctionCall1(languageValidator, ObjectIdGetDatum(retval));
+		if (ORA_PARSER == compatible_db &&
+			languageObjectId == LANG_PLISQL_OID &&
+			check_function_bodies)
+		{
+			plisql_check_body = true;
+		}
+
+		/*
+		 * perform the function validator in a sub-transaction
+		 */
+		if (plisql_check_body)
+		{
+			BeginInternalSubTransaction(NULL);
+			MemoryContextSwitchTo(oldcontext);
+		}
+
+		PG_TRY();
+		{
+			OidFunctionCall1(languageValidator, ObjectIdGetDatum(retval));
+
+			if (plisql_check_body)
+			{
+				/* Commit the inner transaction, return to outer xact context */
+				ReleaseCurrentSubTransaction();
+				MemoryContextSwitchTo(oldcontext);
+				CurrentResourceOwner = oldowner;
+			}
+		}
+		PG_CATCH();
+		{
+			if (set_items)
+			{
+				AtEOXact_GUC(true, save_nestlevel);
+			}
+
+			if (plisql_check_body)
+			{
+				HeapTuple	old_tup;
+				HeapTuple	newtup;
+				bool		nulls_array[Natts_pg_proc];
+				Datum		values_array[Natts_pg_proc];
+				bool		replaces_array[Natts_pg_proc];
+				int		j;
+				ErrorData  	*edata;
+
+				MemoryContextSwitchTo(oldcontext);
+				edata = CopyErrorData();
+				FlushErrorState();
+
+				/* Abort the inner transaction */
+				RollbackAndReleaseCurrentSubTransaction();
+				MemoryContextSwitchTo(oldcontext);
+				CurrentResourceOwner = oldowner;
+
+				/*
+				 * If failed to validator the function body,
+				 * update the tuple in pg_proc catatlog,
+				 * and mark function's status as invalid.
+				 * Like Oracle, if fails to compile function,
+				 * the function's status is set as invalid.
+				 */
+				ereport(WARNING,
+						(errmsg("compilation error"),
+						 errhint("%s", edata->message),
+						 errposition(edata->cursorpos)));
+
+				for (j = 0; j < Natts_pg_proc; ++j)
+				{
+					nulls_array[j] = false;
+					replaces_array[j] = false;
+					values_array[j] = (Datum) 0;
+				}
+
+				nulls_array[Anum_pg_proc_prostatus - 1] = false;
+				replaces_array[Anum_pg_proc_prostatus - 1] = true;
+				values_array[Anum_pg_proc_prostatus - 1] = CharGetDatum(PROSTATUS_INVALID);
+
+				old_tup = SearchSysCache1(PROCOID, ObjectIdGetDatum(retval));
+				newtup = heap_modify_tuple(old_tup, tupDesc, values_array, nulls_array, replaces_array);
+				CatalogTupleUpdate(rel, &newtup->t_self, newtup);
+
+				ReleaseSysCache(old_tup);
+			}
+			else
+				PG_RE_THROW();
+		}
+		PG_END_TRY();
 
 		if (set_items)
 			AtEOXact_GUC(true, save_nestlevel);

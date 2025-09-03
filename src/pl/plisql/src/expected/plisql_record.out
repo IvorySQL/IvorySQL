@@ -132,15 +132,15 @@ NOTICE:  (b.d.c2).q2 = 42
 -- error cases
 do $$ declare c two_int8s; begin c.x = 1; end $$;
 ERROR:  record "c" has no field "x"
-CONTEXT:  PL/pgSQL assignment "c.x = 1"
+CONTEXT:  PL/iSQL assignment "c.x = 1"
 PL/iSQL function inline_code_block line 1 at assignment
 do $$ declare c nested_int8s; begin c.x = 1; end $$;
 ERROR:  record "c" has no field "x"
-CONTEXT:  PL/pgSQL assignment "c.x = 1"
+CONTEXT:  PL/iSQL assignment "c.x = 1"
 PL/iSQL function inline_code_block line 1 at assignment
 do $$ declare c nested_int8s; begin c.x.q1 = 1; end $$;
 ERROR:  record "c" has no field "x"
-CONTEXT:  PL/pgSQL assignment "c.x.q1 = 1"
+CONTEXT:  PL/iSQL assignment "c.x.q1 = 1"
 PL/iSQL function inline_code_block line 1 at assignment
 do $$ declare c nested_int8s; begin c.c2.x = 1; end $$;
 ERROR:  cannot assign to field "x" of column "c" because there is no such column in data type two_int8s
@@ -154,15 +154,15 @@ LINE 1: do $$ declare c nested_int8s; begin d.c2.x = 1; end $$;
                                             ^
 do $$ <<b>> declare c two_int8s; begin b.c.x = 1; end $$;
 ERROR:  record "c" has no field "x"
-CONTEXT:  PL/pgSQL assignment "b.c.x = 1"
+CONTEXT:  PL/iSQL assignment "b.c.x = 1"
 PL/iSQL function inline_code_block line 1 at assignment
 do $$ <<b>> declare c nested_int8s; begin b.c.x = 1; end $$;
 ERROR:  record "c" has no field "x"
-CONTEXT:  PL/pgSQL assignment "b.c.x = 1"
+CONTEXT:  PL/iSQL assignment "b.c.x = 1"
 PL/iSQL function inline_code_block line 1 at assignment
 do $$ <<b>> declare c nested_int8s; begin b.c.x.q1 = 1; end $$;
 ERROR:  record "c" has no field "x"
-CONTEXT:  PL/pgSQL assignment "b.c.x.q1 = 1"
+CONTEXT:  PL/iSQL assignment "b.c.x.q1 = 1"
 PL/iSQL function inline_code_block line 1 at assignment
 do $$ <<b>> declare c nested_int8s; begin b.c.c2.x = 1; end $$;
 ERROR:  cannot assign to field "x" of column "b" because there is no such column in data type two_int8s
@@ -281,7 +281,7 @@ NOTICE:  r1.q1 = <NULL>
 NOTICE:  r1.q2 = <NULL>
 NOTICE:  r1 = <NULL>
 ERROR:  record "r1" has no field "nosuchfield"
-CONTEXT:  PL/pgSQL expression "r1.nosuchfield"
+CONTEXT:  SQL expression "r1.nosuchfield"
 PL/iSQL function inline_code_block line 7 at RAISE
 -- records, not so much
 do $$
@@ -295,7 +295,7 @@ end$$;
 NOTICE:  r1 = <NULL>
 ERROR:  record "r1" is not assigned yet
 DETAIL:  The tuple structure of a not-yet-assigned record is indeterminate.
-CONTEXT:  PL/pgSQL expression "r1.f1"
+CONTEXT:  SQL expression "r1.f1"
 PL/iSQL function inline_code_block line 5 at RAISE
 -- but OK if you assign first
 do $$
@@ -313,7 +313,7 @@ NOTICE:  r1.f1 = 1
 NOTICE:  r1.f2 = 2
 NOTICE:  r1 = (1,2)
 ERROR:  record "r1" has no field "nosuchfield"
-CONTEXT:  PL/pgSQL expression "r1.nosuchfield"
+CONTEXT:  SQL expression "r1.nosuchfield"
 PL/iSQL function inline_code_block line 9 at RAISE
 -- check %type with block-qualified variable names
 do $$
@@ -618,7 +618,7 @@ $$ begin return x.f3; end $$;
 /
 select getf3(null::mutable);  -- doesn't work yet
 ERROR:  record "x" has no field "f3"
-CONTEXT:  PL/pgSQL expression "x.f3"
+CONTEXT:  SQL expression "x.f3"
 PL/iSQL function getf3(mutable) line 1 at RETURN
 alter table mutable add column f3 int;
 select getf3(null::mutable);  -- now it works

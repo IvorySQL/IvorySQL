@@ -135,7 +135,7 @@ begin
   raise notice 'x = %', x;
 end$$ language plpgsql;
 ERROR:  division by zero
-CONTEXT:  PL/pgSQL expression "1/0"
+CONTEXT:  SQL expression "1/0"
 PL/pgSQL function inline_code_block line 2 during statement block local variable initialization
 do $$
 declare x int := 1/0;  -- fail
