@@ -198,6 +198,12 @@ sub port
 	return $self->{_port};
 }
 
+sub oraport
+{
+	my ($self) = @_;
+	return $self->{_oraport};
+}
+
 =pod
 
 =item $node->host()
@@ -268,12 +274,18 @@ this node. Suitable for passing to psql, DBD::Pg, etc.
 
 sub connstr
 {
-	my ($self, $dbname) = @_;
+	my ($self, $dbname, $connect_to_oraport) = @_;
 	my $pgport = $self->port;
+	my $oraport = $self->oraport;
 	my $pghost = $self->host;
 	if (!defined($dbname))
 	{
-		return "port=$pgport host=$pghost";
+		if (!defined($connect_to_oraport))
+		{
+			return "port=$pgport host=$pghost";
+		}
+
+		return "port=$oraport host=$pghost";
 	}
 
 	# Escape properly the database string before using it, only
@@ -281,7 +293,12 @@ sub connstr
 	$dbname =~ s#\\#\\\\#g;
 	$dbname =~ s#\'#\\\'#g;
 
-	return "port=$pgport host=$pghost dbname='$dbname'";
+	if (!defined($connect_to_oraport))
+	{
+		return "port=$pgport host=$pghost dbname='$dbname'";
+	}
+
+	return "port=$oraport host=$pghost dbname='$dbname'";
 }
 
 =pod
@@ -520,7 +537,8 @@ disabled.
 sub init
 {
 	my ($self, %params) = @_;
-	my $port = $self->port;
+	my $port   = $self->port;
+	my $oraport = $self->oraport;
 	my $pgdata = $self->data_dir;
 	my $host = $self->host;
 
@@ -632,9 +650,7 @@ sub init
 	}
 
 	print $conf "port = $port\n";
-
-	my $ora_port = get_free_port();
-	print $conf "ivorysql.port = $ora_port\n";
+	print $conf "ivorysql.port = $oraport\n";
 
 	if ($use_tcp)
 	{
@@ -831,10 +847,11 @@ sub init_from_backup
 {
 	my ($self, $root_node, $backup_name, %params) = @_;
 	my $backup_path = $root_node->backup_dir . '/' . $backup_name;
-	my $host = $self->host;
-	my $port = $self->port;
-	my $node_name = $self->name;
-	my $root_name = $root_node->name;
+	my $host        = $self->host;
+	my $port        = $self->port;
+	my $oraport = $self->oraport;
+	my $node_name   = $self->name;
+	my $root_name   = $root_node->name;
 
 	$params{has_streaming} = 0 unless defined $params{has_streaming};
 	$params{has_restoring} = 0 unless defined $params{has_restoring};
@@ -965,12 +982,11 @@ sub init_from_backup
 	chmod(0700, $data_path) or die $!;
 
 	# Base configuration for this node
-	my $ora_port = get_free_port();
 	$self->append_conf(
 		'postgresql.conf',
 		qq(
 port = $port
-ivorysql.port = $ora_port
+ivorysql.port = $oraport
 ));
 	if ($use_tcp)
 	{
@@ -1466,6 +1482,20 @@ sub new
 		# good idea on Unixen as well.
 		$port = get_free_port();
 	}
+	# Select a oraport.
+	my $oraport;
+	if (defined $params{'ivorysql.port'})
+	{
+		$oraport = $params{'ivorysql.port'};
+	}
+	else
+	{
+		# When selecting a port, we look for an unassigned TCP port number,
+		# even if we intend to use only Unix-domain sockets.  This is clearly
+		# necessary on $use_tcp (Windows) configurations, and it seems like a
+		# good idea on Unixen as well.
+		$oraport = get_free_port();
+	}
 
 	# Select a host.
 	my $host = $test_pghost;
@@ -1488,6 +1518,7 @@ sub new
 	$testname =~ s/\.[^.]+$//;
 	my $node = {
 		_port => $port,
+		_oraport => $oraport,
 		_host => $host,
 		_basedir =>
 		  "$PostgreSQL::Test::Utils::tmp_check/t_${testname}_${name}_data",
@@ -2008,10 +2039,11 @@ sub psql
 
 	local %ENV = $self->_get_env();
 
-	my $stdout = $params{stdout};
-	my $stderr = $params{stderr};
-	my $replication = $params{replication};
-	my $timeout = undef;
+	my $connect_to_oraport = $params{connect_to_oraport};
+	my $stdout            = $params{stdout};
+	my $stderr            = $params{stderr};
+	my $replication       = $params{replication};
+	my $timeout           = undef;
 	my $timeout_exception = 'psql timed out';
 
 	# Build the connection string.
@@ -2022,7 +2054,14 @@ sub psql
 	}
 	else
 	{
-		$psql_connstr = $self->connstr($dbname);
+		if (defined $params{connect_to_oraport})
+		{
+			$psql_connstr = $self->connstr($dbname, $connect_to_oraport);
+		}
+		else
+		{
+			$psql_connstr = $self->connstr($dbname);
+		}
 	}
 	$psql_connstr .= defined $replication ? " replication=$replication" : "";
 
