@@ -45,7 +45,7 @@ if ($ENV{with_python} ne 'yes')
 
 my $node = PostgreSQL::Test::Cluster->new('primary');
 $node->init;
-$node->append_conf('postgresql.conf', "log_connections = on\n");
+$node->append_conf('postgresql.conf', "log_connections = all\n");
 $node->append_conf('postgresql.conf',
 	"oauth_validator_libraries = 'validator'\n");
 # Needed to allow connect_fails to inspect postmaster log:
@@ -294,6 +294,26 @@ $node->connect_fails(
 	"bad token response: overlarge JSON",
 	expected_stderr =>
 	  qr/failed to obtain access token: response is too large/);
+
+my $nesting_limit = 16;
+$node->connect_ok(
+	connstr(
+		stage => 'device',
+		nested_array => $nesting_limit,
+		nested_object => $nesting_limit),
+	"nested arrays and objects, up to parse limit",
+	expected_stderr =>
+	  qr@Visit https://example\.com/ and enter the code: postgresuser@);
+$node->connect_fails(
+	connstr(stage => 'device', nested_array => $nesting_limit + 1),
+	"bad discovery response: overly nested JSON array",
+	expected_stderr =>
+	  qr/failed to parse device authorization: JSON is too deeply nested/);
+$node->connect_fails(
+	connstr(stage => 'device', nested_object => $nesting_limit + 1),
+	"bad discovery response: overly nested JSON object",
+	expected_stderr =>
+	  qr/failed to parse device authorization: JSON is too deeply nested/);
 
 $node->connect_fails(
 	connstr(stage => 'device', content_type => 'text/plain'),

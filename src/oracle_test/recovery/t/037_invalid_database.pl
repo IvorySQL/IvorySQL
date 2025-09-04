@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2024, PostgreSQL Global Development Group
+# Copyright (c) 2023-2025, PostgreSQL Global Development Group
 #
 # Test we handle interrupted DROP DATABASE correctly.
 
@@ -15,7 +15,7 @@ $node->append_conf(
 autovacuum = off
 max_prepared_transactions=5
 log_min_duration_statement=0
-log_connections=on
+log_connections=receipt
 log_disconnections=on
 ));
 
