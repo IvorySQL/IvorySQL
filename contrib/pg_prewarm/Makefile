@@ -11,6 +11,7 @@ DATA = pg_prewarm--1.1--1.2.sql pg_prewarm--1.1.sql pg_prewarm--1.0--1.1.sql
 PGFILEDESC = "pg_prewarm - preload relation data into system buffer cache"
 
 REGRESS = pg_prewarm
+ORA_REGRESS = pg_prewarm
 
 TAP_TESTS = 1
 
