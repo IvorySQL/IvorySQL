@@ -1208,6 +1208,9 @@ oracle_fill_in_constant_lengths(void *jjstate, const char *query,
 
 		Assert(loc >= 0);
 
+		if (locs[i].squashed)
+			continue;			/* squashable list, ignore */
+		
 		if (loc <= last_loc)
 			continue;			/* Duplicate constant, ignore */
 

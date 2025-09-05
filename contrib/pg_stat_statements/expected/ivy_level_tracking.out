@@ -90,13 +90,14 @@ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)
 
 SELECT toplevel, calls, query FROM pg_stat_statements
   ORDER BY query COLLATE "C";
- toplevel | calls |                                    query                                     
-----------+-------+------------------------------------------------------------------------------
- t        |     1 | EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)          +
+ toplevel | calls |                                     query                                     
+----------+-------+-------------------------------------------------------------------------------
+ t        |     1 | EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)           +
           |       |   DECLARE foocur CURSOR FOR SELECT * FROM stats_track_tab
+ f        |     1 | EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)           +
+          |       |   DECLARE foocur CURSOR FOR SELECT * FROM stats_track_tab;
  t        |     1 | EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) SELECT $1
- f        |     1 | SELECT $1
- f        |     1 | SELECT * FROM stats_track_tab
+ f        |     1 | EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) SELECT $1;
  t        |     1 | SELECT pg_stat_statements_reset() IS NOT NULL AS t
 (5 rows)
 
@@ -219,10 +220,10 @@ SELECT toplevel, calls, query FROM pg_stat_statements
  toplevel | calls |                              query                              
 ----------+-------+-----------------------------------------------------------------
  t        |     1 | CREATE TEMPORARY TABLE pgss_ctas_1 AS SELECT $1
+ f        |     1 | CREATE TEMPORARY TABLE pgss_ctas_1 AS SELECT $1;
  t        |     1 | CREATE TEMPORARY TABLE pgss_ctas_2 AS EXECUTE test_prepare_pgss
- f        |     1 | SELECT $1
+ f        |     1 | PREPARE test_prepare_pgss AS select generate_series($1, $2)
  t        |     1 | SELECT pg_stat_statements_reset() IS NOT NULL AS t
- f        |     1 | select generate_series($1, $2)
 (5 rows)
 
 -- CREATE TABLE AS, top-level tracking.
@@ -260,10 +261,10 @@ EXPLAIN (COSTS OFF) CREATE TEMPORARY TABLE pgss_explain_ctas AS SELECT 1;
 
 SELECT toplevel, calls, query FROM pg_stat_statements
   ORDER BY query COLLATE "C";
- toplevel | calls |                                   query                                   
-----------+-------+---------------------------------------------------------------------------
+ toplevel | calls |                                   query                                    
+----------+-------+----------------------------------------------------------------------------
  t        |     1 | EXPLAIN (COSTS OFF) CREATE TEMPORARY TABLE pgss_explain_ctas AS SELECT $1
- f        |     1 | SELECT $1
+ f        |     1 | EXPLAIN (COSTS OFF) CREATE TEMPORARY TABLE pgss_explain_ctas AS SELECT $1;
  t        |     1 | SELECT pg_stat_statements_reset() IS NOT NULL AS t
 (3 rows)
 
@@ -308,14 +309,14 @@ CLOSE foocur;
 COMMIT;
 SELECT toplevel, calls, query FROM pg_stat_statements
   ORDER BY query COLLATE "C";
- toplevel | calls |                          query                          
-----------+-------+---------------------------------------------------------
+ toplevel | calls |                          query                           
+----------+-------+----------------------------------------------------------
  t        |     1 | BEGIN
  t        |     1 | CLOSE foocur
  t        |     1 | COMMIT
  t        |     1 | DECLARE FOOCUR CURSOR FOR SELECT * from stats_track_tab
+ f        |     1 | DECLARE FOOCUR CURSOR FOR SELECT * from stats_track_tab;
  t        |     1 | FETCH FORWARD 1 FROM foocur
- f        |     1 | SELECT * from stats_track_tab
  t        |     1 | SELECT pg_stat_statements_reset() IS NOT NULL AS t
 (7 rows)
 
