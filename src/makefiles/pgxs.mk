@@ -377,7 +377,6 @@ endif
 ifdef REGRESS
 # things created by various check targets
 	rm -rf $(pg_regress_clean_files)
-endif
 endif # REGRESS
 
 ifdef ORA_REGRESS
