@@ -43,6 +43,7 @@
 #include "catalog/pg_foreign_table.h"
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_largeobject.h"
+#include "catalog/pg_largeobject_metadata.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_rewrite.h"
@@ -2476,12 +2477,15 @@ truncate_check_rel(Oid relid, Form_pg_class reltuple)
 	/*
 	 * Most system catalogs can't be truncated at all, or at least not unless
 	 * allow_system_table_mods=on. As an exception, however, we allow
-	 * pg_largeobject to be truncated as part of pg_upgrade, because we need
-	 * to change its relfilenode to match the old cluster, and allowing a
-	 * TRUNCATE command to be executed is the easiest way of doing that.
+	 * pg_largeobject and pg_largeobject_metadata to be truncated as part of
+	 * pg_upgrade, because we need to change its relfilenode to match the old
+	 * cluster, and allowing a TRUNCATE command to be executed is the easiest
+	 * way of doing that.
 	 */
 	if (!allowSystemTableMods && IsSystemClass(relid, reltuple)
-		&& (!IsBinaryUpgrade || relid != LargeObjectRelationId))
+		&& (!IsBinaryUpgrade ||
+			(relid != LargeObjectRelationId &&
+			 relid != LargeObjectMetadataRelationId)))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied: \"%s\" is a system catalog",
