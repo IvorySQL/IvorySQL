@@ -454,6 +454,10 @@ CREATE TABLE gtest24r (a int PRIMARY KEY, b gtestdomain1range GENERATED ALWAYS A
 --INSERT INTO gtest24r (a) VALUES (4);  -- ok
 --INSERT INTO gtest24r (a) VALUES (6);  -- error
 
+CREATE TABLE gtest24at (a int PRIMARY KEY);
+ALTER TABLE gtest24at ADD COLUMN b gtestdomain1 GENERATED ALWAYS AS (a * 2) VIRTUAL;  -- error
+CREATE TABLE gtest24ata (a int PRIMARY KEY, b int GENERATED ALWAYS AS (a * 2) VIRTUAL);
+ALTER TABLE gtest24ata ALTER COLUMN b TYPE gtestdomain1;  -- error
 -- typed tables (currently not supported)
 CREATE TYPE gtest_type AS (f1 integer, f2 text, f3 bigint);
 CREATE TABLE gtest28 OF gtest_type (f1 WITH OPTIONS GENERATED ALWAYS AS (f2 *2) VIRTUAL);
