@@ -59,8 +59,8 @@ bool		plisql_print_strict_params = false;
 
 bool		plisql_check_asserts = true;
 
-char	   *plisql_extra_warnings_string = NULL;
-char	   *plisql_extra_errors_string = NULL;
+static char	 *plisql_extra_warnings_string = NULL;
+static char	 *plisql_extra_errors_string = NULL;
 int			plisql_extra_warnings;
 int			plisql_extra_errors;
 
