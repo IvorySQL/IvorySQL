@@ -109,7 +109,7 @@ typedef struct
 
 /* The stuff the core lexer needs */
 static ora_core_yyscan_t yyscanner = NULL;
-static ora_core_yy_extra_type core_yy;
+static ora_core_yy_extra_type core_yy_extra;
 
 /* The original input string */
 static const char *scanorig;
@@ -138,7 +138,7 @@ static int	cur_line_num;
 typedef struct PLiSQL_yylex_global_proper
 {
 	ora_core_yyscan_t yyscanner;
-	ora_core_yy_extra_type core_yy;
+	ora_core_yy_extra_type core_yy_extra;
 
 	/* The original input string */
 	const char *scanorig;
@@ -320,7 +320,7 @@ plisql_yylex(void)
 				push_back_token(tok2, &aux2);
 				if (plisql_parse_word(paramname,
 									   aux1.lval.str,
-									   core_yy.scanbuf + aux1.lloc,
+									   core_yy_extra.scanbuf + aux1.lloc,
 									   true,
 									   &aux1.lval.wdatum,
 									   &aux1.lval.word))
@@ -361,7 +361,7 @@ plisql_yylex(void)
 			 */
 			if (plisql_parse_word(paramname,
 								   aux1.lval.str,
-								   core_yy.scanbuf + aux1.lloc,
+								   core_yy_extra.scanbuf + aux1.lloc,
 								   (!AT_STMT_START(plisql_yytoken) ||
 									(tok2 == '=' || tok2 == COLON_EQUALS ||
 									 tok2 == '[')),
@@ -437,7 +437,7 @@ internal_yylex(TokenAuxData *auxdata)
 						   yyscanner);
 
 		/* remember the length of yytext before it gets changed */
-		yytext = core_yy.scanbuf + auxdata->lloc;
+		yytext = core_yy_extra.scanbuf + auxdata->lloc;
 		auxdata->leng = strlen(yytext);
 
 		/* Check for #, which the core considers operators */
@@ -619,7 +619,7 @@ plisql_scanner_errposition(int location)
 pg_noreturn void
 plisql_yyerror(const char *message)
 {
-	char	   *yytext = core_yy.scanbuf + plisql_yylloc;
+	char	   *yytext = core_yy_extra.scanbuf + plisql_yylloc;
 
 	if (*yytext == '\0')
 	{
@@ -707,7 +707,7 @@ void
 plisql_scanner_init(const char *str)
 {
 	/* Start up the core scanner */
-	yyscanner = ora_scanner_init(str, &core_yy,
+	yyscanner = ora_scanner_init(str, &core_yy_extra,
 							 &ReservedPLKeywords, ReservedPLKeywordTokens);
 
 	/*
@@ -751,7 +751,7 @@ plisql_get_yylex_global_proper(void)
 
 	yylex_data = (PLiSQL_yylex_global_proper *) palloc0(sizeof(PLiSQL_yylex_global_proper));
 
-	yylex_data->core_yy = core_yy;
+	yylex_data->core_yy_extra = core_yy_extra;
 	yylex_data->cur_line_end = cur_line_end;
 	yylex_data->cur_line_num = cur_line_num;
 	yylex_data->cur_line_start = cur_line_start;
@@ -786,7 +786,7 @@ plisql_recover_yylex_global_proper(void *value)
 
 	yylex_data = (PLiSQL_yylex_global_proper *) value;
 
-	core_yy = yylex_data->core_yy;
+	core_yy_extra = yylex_data->core_yy_extra;
 	cur_line_end = yylex_data->cur_line_end;
 	cur_line_num = yylex_data->cur_line_num;
 	cur_line_start = yylex_data->cur_line_start;
