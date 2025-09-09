@@ -625,10 +625,10 @@ INSERT INTO gtest20 (a) VALUES (30);  -- violates constraint
 ERROR:  new row for relation "gtest20" violates check constraint "gtest20_b_check"
 DETAIL:  Failing row contains (30, virtual).
 ALTER TABLE gtest20 ALTER COLUMN b SET EXPRESSION AS (a * 100);  -- violates constraint (currently not supported)
-ERROR:  ALTER TABLE / SET EXPRESSION is not supported for virtual generated columns on tables with check constraints
+ERROR:  ALTER TABLE / SET EXPRESSION is not supported for virtual generated columns in tables with check constraints
 DETAIL:  Column "b" of relation "gtest20" is a virtual generated column.
 ALTER TABLE gtest20 ALTER COLUMN b SET EXPRESSION AS (a * 3);  -- ok (currently not supported)
-ERROR:  ALTER TABLE / SET EXPRESSION is not supported for virtual generated columns on tables with check constraints
+ERROR:  ALTER TABLE / SET EXPRESSION is not supported for virtual generated columns in tables with check constraints
 DETAIL:  Column "b" of relation "gtest20" is a virtual generated column.
 CREATE TABLE gtest20a (a int PRIMARY KEY, b int GENERATED ALWAYS AS (a * 2) VIRTUAL);
 INSERT INTO gtest20a (a) VALUES (10);
@@ -1473,7 +1473,8 @@ create table gtest32 (
   a int primary key,
   b int generated always as (a * 2),
   c int generated always as (10 + 10),
-  d int generated always as (coalesce(a, 100))
+  d int generated always as (coalesce(a, 100)),
+  e int
 );
 insert into gtest32 values (1), (2);
 analyze gtest32;
@@ -1554,44 +1555,47 @@ where coalesce(t2.b, 1) = 2 or t1.a is null;
 -- Ensure that the generation expressions are wrapped into PHVs if needed
 explain (verbose, costs off)
 select t2.* from gtest32 t1 left join gtest32 t2 on false;
-                                      QUERY PLAN                                       
----------------------------------------------------------------------------------------
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
  Nested Loop Left Join
-   Output: a, (a * 2), (20), ((COALESCE((a)::number, '100'::number))::pg_catalog.int4)
+   Output: a, (a * 2), (20), ((COALESCE((a)::number, '100'::number))::pg_catalog.int4), e
    Join Filter: false
    ->  Seq Scan on generated_virtual_tests.gtest32 t1
-         Output: t1.a, t1.b, t1.c, t1.d
+         Output: t1.a, t1.b, t1.c, t1.d, t1.e
    ->  Result
-         Output: a, 20, COALESCE((a)::number, '100'::number)
+         Output: a, e, 20, COALESCE((a)::number, '100'::number)
          One-Time Filter: false
 (8 rows)
 
 select t2.* from gtest32 t1 left join gtest32 t2 on false;
- a | b | c | d 
----+---+---+---
-   |   |   |  
-   |   |   |  
+ a | b | c | d | e 
+---+---+---+---+---
+   |   |   |   |  
+   |   |   |   |  
 (2 rows)
 
 explain (verbose, costs off)
-select * from gtest32 t group by grouping sets (a, b, c, d) having c = 20;
-                                       QUERY PLAN                                        
------------------------------------------------------------------------------------------
+select * from gtest32 t group by grouping sets (a, b, c, d, e) having c = 20;
+                                         QUERY PLAN                                         
+--------------------------------------------------------------------------------------------
  HashAggregate
-   Output: a, ((a * 2)), (20), ((COALESCE((a)::number, '100'::number))::pg_catalog.int4)
+   Output: a, ((a * 2)), (20), ((COALESCE((a)::number, '100'::number))::pg_catalog.int4), e
    Hash Key: t.a
    Hash Key: (t.a * 2)
    Hash Key: 20
    Hash Key: (COALESCE((t.a)::number, '100'::number))::pg_catalog.int4
+   Hash Key: t.e
    Filter: ((20) = 20)
    ->  Seq Scan on generated_virtual_tests.gtest32 t
-         Output: a, (a * 2), 20, COALESCE((a)::number, '100'::number)
-(9 rows)
+         Output: a, (a * 2), 20, COALESCE((a)::number, '100'::number), e
+(10 rows)
 
-select * from gtest32 t group by grouping sets (a, b, c, d) having c = 20;
- a | b | c  | d 
----+---+----+---
-   |   | 20 |  
+select * from gtest32 t group by grouping sets (a, b, c, d, e) having c = 20;
+ a | b | c  | d | e 
+---+---+----+---+---
+   |   | 20 |   |  
 (1 row)
 
+-- Ensure that the virtual generated columns in ALTER COLUMN TYPE USING expression are expanded
+alter table gtest32 alter column e type bigint using b;
 drop table gtest32;
