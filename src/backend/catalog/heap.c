@@ -3293,7 +3293,10 @@ check_nested_generated(ParseState *pstate, Node *node)
 static bool
 contains_user_functions_checker(Oid func_id, void *context)
 {
-	return (func_id >= FirstUnpinnedObjectId);
+	if (compatible_db != ORA_PARSER)
+		return (func_id >= FirstUnpinnedObjectId);
+	else
+		return (func_id >= FirstNormalObjectId);
 }
 
 /*
