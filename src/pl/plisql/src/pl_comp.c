@@ -35,7 +35,6 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/regproc.h"
-#include "utils/rel.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 #include "commands/proclang.h"
@@ -253,7 +252,7 @@ recheck:
 	/*
 	 * Save pointer in FmgrInfo to avoid search on subsequent calls
 	 */
-	fcinfo->flinfo->fn_extra = (void *) function;
+	fcinfo->flinfo->fn_extra =  function;
 
 	/*
 	 * Finally return the compiled function
@@ -1565,7 +1564,7 @@ plisql_parser_setup(struct ParseState *pstate, PLiSQL_expr *expr)
 	pstate->p_paramref_hook = plisql_param_ref;
 	pstate->p_subprocfunc_hook = plisql_subprocfunc_ref;
 	/* no need to use p_coerce_param_hook */
-	pstate->p_ref_hook_state = (void *) expr;
+	pstate->p_ref_hook_state =  expr;
 }
 
 /*

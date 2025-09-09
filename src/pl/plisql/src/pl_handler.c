@@ -130,7 +130,7 @@ plisql_extra_checks_check_hook(char **newvalue, void **extra, GucSource source)
 	if (!myextra)
 		return false;
 	*myextra = extrachecks;
-	*extra = (void *) myextra;
+	*extra =  myextra;
 
 	return true;
 }
