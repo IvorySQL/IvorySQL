@@ -1616,7 +1616,6 @@ expandTableLikeClause(RangeVar *heapRel, TableLikeClause *table_like_clause)
 			char	   *ccname = constr->check[ccnum].ccname;
 			char	   *ccbin = constr->check[ccnum].ccbin;
 			bool		ccenforced = constr->check[ccnum].ccenforced;
-			bool		ccvalid = constr->check[ccnum].ccvalid;
 			bool		ccnoinherit = constr->check[ccnum].ccnoinherit;
 			Node	   *ccbin_node;
 			bool		found_whole_row;
@@ -1647,7 +1646,7 @@ expandTableLikeClause(RangeVar *heapRel, TableLikeClause *table_like_clause)
 			n->conname = pstrdup(ccname);
 			n->location = -1;
 			n->is_enforced = ccenforced;
-			n->initially_valid = ccvalid;
+			n->initially_valid = ccenforced;	/* sic */
 			n->is_no_inherit = ccnoinherit;
 			n->raw_expr = NULL;
 			n->cooked_expr = nodeToString(ccbin_node);
