@@ -111,6 +111,7 @@ ExecHashSubPlan(SubPlanState *node,
 				ExprContext *econtext,
 				bool *isNull)
 {
+	bool		result = false;
 	SubPlan    *subplan = node->subplan;
 	PlanState  *planstate = node->planstate;
 	TupleTableSlot *slot;
@@ -142,14 +143,6 @@ ExecHashSubPlan(SubPlanState *node,
 	slot = ExecProject(node->projLeft);
 
 	/*
-	 * Note: because we are typically called in a per-tuple context, we have
-	 * to explicitly clear the projected tuple before returning. Otherwise,
-	 * we'll have a double-free situation: the per-tuple context will probably
-	 * be reset before we're called again, and then the tuple slot will think
-	 * it still needs to free the tuple.
-	 */
-
-	/*
 	 * If the LHS is all non-null, probe for an exact match in the main hash
 	 * table.  If we find one, the result is TRUE. Otherwise, scan the
 	 * partly-null table to see if there are any rows that aren't provably
@@ -170,19 +163,10 @@ ExecHashSubPlan(SubPlanState *node,
 							   slot,
 							   node->cur_eq_comp,
 							   node->lhs_hash_expr) != NULL)
-		{
-			ExecClearTuple(slot);
-			return BoolGetDatum(true);
-		}
-		if (node->havenullrows &&
-			findPartialMatch(node->hashnulls, slot, node->cur_eq_funcs))
-		{
-			ExecClearTuple(slot);
+			result = true;
+		else if (node->havenullrows &&
+				 findPartialMatch(node->hashnulls, slot, node->cur_eq_funcs))
 			*isNull = true;
-			return BoolGetDatum(false);
-		}
-		ExecClearTuple(slot);
-		return BoolGetDatum(false);
 	}
 
 	/*
@@ -195,34 +179,31 @@ ExecHashSubPlan(SubPlanState *node,
 	 * aren't provably unequal to the LHS; if so, the result is UNKNOWN.
 	 * Otherwise, the result is FALSE.
 	 */
-	if (node->hashnulls == NULL)
-	{
-		ExecClearTuple(slot);
-		return BoolGetDatum(false);
-	}
-	if (slotAllNulls(slot))
-	{
-		ExecClearTuple(slot);
+	else if (node->hashnulls == NULL)
+		 /* just return FALSE */ ;
+	else if (slotAllNulls(slot))
 		*isNull = true;
-		return BoolGetDatum(false);
-	}
 	/* Scan partly-null table first, since more likely to get a match */
-	if (node->havenullrows &&
-		findPartialMatch(node->hashnulls, slot, node->cur_eq_funcs))
-	{
-		ExecClearTuple(slot);
+	else if (node->havenullrows &&
+			 findPartialMatch(node->hashnulls, slot, node->cur_eq_funcs))
 		*isNull = true;
-		return BoolGetDatum(false);
-	}
-	if (node->havehashrows &&
-		findPartialMatch(node->hashtable, slot, node->cur_eq_funcs))
-	{
-		ExecClearTuple(slot);
+	else if (node->havehashrows &&
+			 findPartialMatch(node->hashtable, slot, node->cur_eq_funcs))
 		*isNull = true;
-		return BoolGetDatum(false);
-	}
+
+	/*
+	 * Note: because we are typically called in a per-tuple context, we have
+	 * to explicitly clear the projected tuple before returning. Otherwise,
+	 * we'll have a double-free situation: the per-tuple context will probably
+	 * be reset before we're called again, and then the tuple slot will think
+	 * it still needs to free the tuple.
+	 */
 	ExecClearTuple(slot);
-	return BoolGetDatum(false);
+
+	/* Also must reset the hashtempcxt after each hashtable lookup. */
+	MemoryContextReset(node->hashtempcxt);
+
+	return BoolGetDatum(result);
 }
 
 /*
@@ -657,6 +638,9 @@ buildSubPlanHash(SubPlanState *node, ExprContext *econtext)
 		 * during ExecProject.
 		 */
 		ResetExprContext(innerecontext);
+
+		/* Also must reset the hashtempcxt after each hashtable lookup. */
+		MemoryContextReset(node->hashtempcxt);
 	}
 
 	/*
