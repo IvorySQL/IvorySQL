@@ -4,7 +4,7 @@
  *			  procedural language
  *
  * Portions Copyright (c) 2024-2025, IvorySQL Global Development Team
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -344,387 +344,290 @@ plisql_getdiag_kindname(PLiSQL_getdiag_kind kind)
 
 
 /**********************************************************************
- * Release memory when a PL/iSQL function is no longer needed
+ * Support for recursing through a PL/iSQL statement tree
  *
- * The code for recursing through the function tree is really only
- * needed to locate PLiSQL_expr nodes, which may contain references
- * to saved SPI Plans that must be freed.  The function tree itself,
- * along with subsidiary data, is freed in one swoop by freeing the
- * function's permanent memory context.
+ * The point of this code is to encapsulate knowledge of where the
+ * sub-statements and expressions are in a statement tree, avoiding
+ * duplication of code.  The caller supplies two callbacks, one to
+ * be invoked on statements and one to be invoked on expressions.
+ * (The recursion should be started by invoking the statement callback
+ * on function->action.)  The statement callback should do any
+ * statement-type-specific action it needs, then recurse by calling
+ * plisql_statement_tree_walker().  The expression callback can be a
+ * no-op if no per-expression behavior is needed.
  **********************************************************************/
-static void free_stmt(PLiSQL_stmt *stmt);
-static void free_block(PLiSQL_stmt_block *block);
-static void free_assign(PLiSQL_stmt_assign *stmt);
-static void free_if(PLiSQL_stmt_if *stmt);
-static void free_case(PLiSQL_stmt_case *stmt);
-static void free_loop(PLiSQL_stmt_loop *stmt);
-static void free_while(PLiSQL_stmt_while *stmt);
-static void free_fori(PLiSQL_stmt_fori *stmt);
-static void free_fors(PLiSQL_stmt_fors *stmt);
-static void free_forc(PLiSQL_stmt_forc *stmt);
-static void free_foreach_a(PLiSQL_stmt_foreach_a *stmt);
-static void free_exit(PLiSQL_stmt_exit *stmt);
-static void free_return(PLiSQL_stmt_return *stmt);
-static void free_return_next(PLiSQL_stmt_return_next *stmt);
-static void free_return_query(PLiSQL_stmt_return_query *stmt);
-static void free_raise(PLiSQL_stmt_raise *stmt);
-static void free_assert(PLiSQL_stmt_assert *stmt);
-static void free_execsql(PLiSQL_stmt_execsql *stmt);
-static void free_dynexecute(PLiSQL_stmt_dynexecute *stmt);
-static void free_dynfors(PLiSQL_stmt_dynfors *stmt);
-static void free_getdiag(PLiSQL_stmt_getdiag *stmt);
-static void free_open(PLiSQL_stmt_open *stmt);
-static void free_fetch(PLiSQL_stmt_fetch *stmt);
-static void free_close(PLiSQL_stmt_close *stmt);
-static void free_perform(PLiSQL_stmt_perform *stmt);
-static void free_call(PLiSQL_stmt_call *stmt);
-static void free_commit(PLiSQL_stmt_commit *stmt);
-static void free_rollback(PLiSQL_stmt_rollback *stmt);
-static void free_expr(PLiSQL_expr *expr);
+typedef void (*plisql_stmt_walker_callback) (PLiSQL_stmt *stmt,
+											  void *context);
+typedef void (*plisql_expr_walker_callback) (PLiSQL_expr *expr,
+											  void *context);
 
+/*
+ * As in nodeFuncs.h, we respectfully decline to support the C standard's
+ * position that a pointer to struct is incompatible with "void *".  Instead,
+ * silence related compiler warnings using casts in this macro wrapper.
+ */
+#define plisql_statement_tree_walker(s, sw, ew, c) \
+	plisql_statement_tree_walker_impl(s, (plisql_stmt_walker_callback) (sw), \
+									   (plisql_expr_walker_callback) (ew), c)
 
 static void
-free_stmt(PLiSQL_stmt *stmt)
+plisql_statement_tree_walker_impl(PLiSQL_stmt *stmt,
+								   plisql_stmt_walker_callback stmt_callback,
+								   plisql_expr_walker_callback expr_callback,
+								   void *context)
 {
+#define S_WALK(st) stmt_callback(st, context)
+#define E_WALK(ex) expr_callback(ex, context)
+#define S_LIST_WALK(lst) foreach_ptr(PLiSQL_stmt, st, lst) S_WALK(st)
+#define E_LIST_WALK(lst) foreach_ptr(PLiSQL_expr, ex, lst) E_WALK(ex)
+
 	switch (stmt->cmd_type)
 	{
 		case PLISQL_STMT_BLOCK:
-			free_block((PLiSQL_stmt_block *) stmt);
-			break;
+			{
+				PLiSQL_stmt_block *bstmt = (PLiSQL_stmt_block *) stmt;
+
+				S_LIST_WALK(bstmt->body);
+				if (bstmt->exceptions)
+				{
+					foreach_ptr(PLiSQL_exception, exc, bstmt->exceptions->exc_list)
+					{
+						/* conditions list has no interesting sub-structure */
+						S_LIST_WALK(exc->action);
+					}
+				}
+				break;
+			}
 		case PLISQL_STMT_ASSIGN:
-			free_assign((PLiSQL_stmt_assign *) stmt);
-			break;
+			{
+				PLiSQL_stmt_assign *astmt = (PLiSQL_stmt_assign *) stmt;
+
+				E_WALK(astmt->expr);
+				break;
+			}
 		case PLISQL_STMT_IF:
-			free_if((PLiSQL_stmt_if *) stmt);
-			break;
+			{
+				PLiSQL_stmt_if *ifstmt = (PLiSQL_stmt_if *) stmt;
+
+				E_WALK(ifstmt->cond);
+				S_LIST_WALK(ifstmt->then_body);
+				foreach_ptr(PLiSQL_if_elsif, elif, ifstmt->elsif_list)
+				{
+					E_WALK(elif->cond);
+					S_LIST_WALK(elif->stmts);
+				}
+				S_LIST_WALK(ifstmt->else_body);
+				break;
+			}
 		case PLISQL_STMT_CASE:
-			free_case((PLiSQL_stmt_case *) stmt);
-			break;
+			{
+				PLiSQL_stmt_case *cstmt = (PLiSQL_stmt_case *) stmt;
+
+				E_WALK(cstmt->t_expr);
+				foreach_ptr(PLiSQL_case_when, cwt, cstmt->case_when_list)
+				{
+					E_WALK(cwt->expr);
+					S_LIST_WALK(cwt->stmts);
+				}
+				S_LIST_WALK(cstmt->else_stmts);
+				break;
+			}
 		case PLISQL_STMT_LOOP:
-			free_loop((PLiSQL_stmt_loop *) stmt);
-			break;
+			{
+				PLiSQL_stmt_loop *lstmt = (PLiSQL_stmt_loop *) stmt;
+
+				S_LIST_WALK(lstmt->body);
+				break;
+			}
 		case PLISQL_STMT_WHILE:
-			free_while((PLiSQL_stmt_while *) stmt);
-			break;
+			{
+				PLiSQL_stmt_while *wstmt = (PLiSQL_stmt_while *) stmt;
+
+				E_WALK(wstmt->cond);
+				S_LIST_WALK(wstmt->body);
+				break;
+			}
 		case PLISQL_STMT_FORI:
-			free_fori((PLiSQL_stmt_fori *) stmt);
-			break;
+			{
+				PLiSQL_stmt_fori *fori = (PLiSQL_stmt_fori *) stmt;
+
+				E_WALK(fori->lower);
+				E_WALK(fori->upper);
+				E_WALK(fori->step);
+				S_LIST_WALK(fori->body);
+				break;
+			}
 		case PLISQL_STMT_FORS:
-			free_fors((PLiSQL_stmt_fors *) stmt);
-			break;
+			{
+				PLiSQL_stmt_fors *fors = (PLiSQL_stmt_fors *) stmt;
+
+				S_LIST_WALK(fors->body);
+				E_WALK(fors->query);
+				break;
+			}
 		case PLISQL_STMT_FORC:
-			free_forc((PLiSQL_stmt_forc *) stmt);
-			break;
+			{
+				PLiSQL_stmt_forc *forc = (PLiSQL_stmt_forc *) stmt;
+
+				S_LIST_WALK(forc->body);
+				E_WALK(forc->argquery);
+				break;
+			}
 		case PLISQL_STMT_FOREACH_A:
-			free_foreach_a((PLiSQL_stmt_foreach_a *) stmt);
-			break;
+			{
+				PLiSQL_stmt_foreach_a *fstmt = (PLiSQL_stmt_foreach_a *) stmt;
+
+				E_WALK(fstmt->expr);
+				S_LIST_WALK(fstmt->body);
+				break;
+			}
 		case PLISQL_STMT_EXIT:
-			free_exit((PLiSQL_stmt_exit *) stmt);
-			break;
+			{
+				PLiSQL_stmt_exit *estmt = (PLiSQL_stmt_exit *) stmt;
+
+				E_WALK(estmt->cond);
+				break;
+			}
 		case PLISQL_STMT_RETURN:
-			free_return((PLiSQL_stmt_return *) stmt);
-			break;
+			{
+				PLiSQL_stmt_return *rstmt = (PLiSQL_stmt_return *) stmt;
+
+				E_WALK(rstmt->expr);
+				break;
+			}
 		case PLISQL_STMT_RETURN_NEXT:
-			free_return_next((PLiSQL_stmt_return_next *) stmt);
-			break;
+			{
+				PLiSQL_stmt_return_next *rstmt = (PLiSQL_stmt_return_next *) stmt;
+
+				E_WALK(rstmt->expr);
+				break;
+			}
 		case PLISQL_STMT_RETURN_QUERY:
-			free_return_query((PLiSQL_stmt_return_query *) stmt);
-			break;
+			{
+				PLiSQL_stmt_return_query *rstmt = (PLiSQL_stmt_return_query *) stmt;
+
+				E_WALK(rstmt->query);
+				E_WALK(rstmt->dynquery);
+				E_LIST_WALK(rstmt->params);
+				break;
+			}
 		case PLISQL_STMT_RAISE:
-			free_raise((PLiSQL_stmt_raise *) stmt);
-			break;
+			{
+				PLiSQL_stmt_raise *rstmt = (PLiSQL_stmt_raise *) stmt;
+
+				E_LIST_WALK(rstmt->params);
+				foreach_ptr(PLiSQL_raise_option, opt, rstmt->options)
+				{
+					E_WALK(opt->expr);
+				}
+				break;
+			}
 		case PLISQL_STMT_ASSERT:
-			free_assert((PLiSQL_stmt_assert *) stmt);
-			break;
+			{
+				PLiSQL_stmt_assert *astmt = (PLiSQL_stmt_assert *) stmt;
+
+				E_WALK(astmt->cond);
+				E_WALK(astmt->message);
+				break;
+			}
 		case PLISQL_STMT_EXECSQL:
-			free_execsql((PLiSQL_stmt_execsql *) stmt);
-			break;
+			{
+				PLiSQL_stmt_execsql *xstmt = (PLiSQL_stmt_execsql *) stmt;
+
+				E_WALK(xstmt->sqlstmt);
+				break;
+			}
 		case PLISQL_STMT_DYNEXECUTE:
-			free_dynexecute((PLiSQL_stmt_dynexecute *) stmt);
-			break;
+			{
+				PLiSQL_stmt_dynexecute *dstmt = (PLiSQL_stmt_dynexecute *) stmt;
+
+				E_WALK(dstmt->query);
+				E_LIST_WALK(dstmt->params);
+				break;
+			}
 		case PLISQL_STMT_DYNFORS:
-			free_dynfors((PLiSQL_stmt_dynfors *) stmt);
-			break;
+			{
+				PLiSQL_stmt_dynfors *dstmt = (PLiSQL_stmt_dynfors *) stmt;
+
+				S_LIST_WALK(dstmt->body);
+				E_WALK(dstmt->query);
+				E_LIST_WALK(dstmt->params);
+				break;
+			}
 		case PLISQL_STMT_GETDIAG:
-			free_getdiag((PLiSQL_stmt_getdiag *) stmt);
-			break;
+			{
+				/* no interesting sub-structure */
+				break;
+			}
 		case PLISQL_STMT_OPEN:
-			free_open((PLiSQL_stmt_open *) stmt);
-			break;
+			{
+				PLiSQL_stmt_open *ostmt = (PLiSQL_stmt_open *) stmt;
+
+				E_WALK(ostmt->argquery);
+				E_WALK(ostmt->query);
+				E_WALK(ostmt->dynquery);
+				E_LIST_WALK(ostmt->params);
+				break;
+			}
 		case PLISQL_STMT_FETCH:
-			free_fetch((PLiSQL_stmt_fetch *) stmt);
-			break;
+			{
+				PLiSQL_stmt_fetch *fstmt = (PLiSQL_stmt_fetch *) stmt;
+
+				E_WALK(fstmt->expr);
+				break;
+			}
 		case PLISQL_STMT_CLOSE:
-			free_close((PLiSQL_stmt_close *) stmt);
-			break;
+			{
+				/* no interesting sub-structure */
+				break;
+			}
 		case PLISQL_STMT_PERFORM:
-			free_perform((PLiSQL_stmt_perform *) stmt);
-			break;
+			{
+				PLiSQL_stmt_perform *pstmt = (PLiSQL_stmt_perform *) stmt;
+
+				E_WALK(pstmt->expr);
+				break;
+			}
 		case PLISQL_STMT_CALL:
-			free_call((PLiSQL_stmt_call *) stmt);
-			break;
+			{
+				PLiSQL_stmt_call *cstmt = (PLiSQL_stmt_call *) stmt;
+
+				E_WALK(cstmt->expr);
+				break;
+			}
 		case PLISQL_STMT_COMMIT:
-			free_commit((PLiSQL_stmt_commit *) stmt);
-			break;
 		case PLISQL_STMT_ROLLBACK:
-			free_rollback((PLiSQL_stmt_rollback *) stmt);
-			break;
+			{
+				/* no interesting sub-structure */
+				break;
+			}
 		default:
 			elog(ERROR, "unrecognized cmd_type: %d", stmt->cmd_type);
 			break;
 	}
 }
 
-static void
-free_stmts(List *stmts)
-{
-	ListCell   *s;
+/**********************************************************************
+ * Release memory when a PL/iSQL function is no longer needed
+ *
+ * This code only needs to deal with cleaning up PLiSQL_expr nodes,
+ * which may contain references to saved SPI Plans that must be freed.
+ * The function tree itself, along with subsidiary data, is freed in
+ * one swoop by freeing the function's permanent memory context.
+ **********************************************************************/
+static void free_stmt(PLiSQL_stmt *stmt, void *context);
+static void free_expr(PLiSQL_expr *expr, void *context);
 
-	foreach(s, stmts)
-	{
-		free_stmt((PLiSQL_stmt *) lfirst(s));
-	}
+static void
+free_stmt(PLiSQL_stmt *stmt, void *context)
+{
+	if (stmt == NULL)
+		return;
+	plisql_statement_tree_walker(stmt, free_stmt, free_expr, NULL);
 }
 
 static void
-free_block(PLiSQL_stmt_block *block)
-{
-	free_stmts(block->body);
-	if (block->exceptions)
-	{
-		ListCell   *e;
-
-		foreach(e, block->exceptions->exc_list)
-		{
-			PLiSQL_exception *exc = (PLiSQL_exception *) lfirst(e);
-
-			free_stmts(exc->action);
-		}
-	}
-}
-
-static void
-free_assign(PLiSQL_stmt_assign *stmt)
-{
-	free_expr(stmt->expr);
-}
-
-static void
-free_if(PLiSQL_stmt_if *stmt)
-{
-	ListCell   *l;
-
-	free_expr(stmt->cond);
-	free_stmts(stmt->then_body);
-	foreach(l, stmt->elsif_list)
-	{
-		PLiSQL_if_elsif *elif = (PLiSQL_if_elsif *) lfirst(l);
-
-		free_expr(elif->cond);
-		free_stmts(elif->stmts);
-	}
-	free_stmts(stmt->else_body);
-}
-
-static void
-free_case(PLiSQL_stmt_case *stmt)
-{
-	ListCell   *l;
-
-	free_expr(stmt->t_expr);
-	foreach(l, stmt->case_when_list)
-	{
-		PLiSQL_case_when *cwt = (PLiSQL_case_when *) lfirst(l);
-
-		free_expr(cwt->expr);
-		free_stmts(cwt->stmts);
-	}
-	free_stmts(stmt->else_stmts);
-}
-
-static void
-free_loop(PLiSQL_stmt_loop *stmt)
-{
-	free_stmts(stmt->body);
-}
-
-static void
-free_while(PLiSQL_stmt_while *stmt)
-{
-	free_expr(stmt->cond);
-	free_stmts(stmt->body);
-}
-
-static void
-free_fori(PLiSQL_stmt_fori *stmt)
-{
-	free_expr(stmt->lower);
-	free_expr(stmt->upper);
-	free_expr(stmt->step);
-	free_stmts(stmt->body);
-}
-
-static void
-free_fors(PLiSQL_stmt_fors *stmt)
-{
-	free_stmts(stmt->body);
-	free_expr(stmt->query);
-}
-
-static void
-free_forc(PLiSQL_stmt_forc *stmt)
-{
-	free_stmts(stmt->body);
-	free_expr(stmt->argquery);
-}
-
-static void
-free_foreach_a(PLiSQL_stmt_foreach_a *stmt)
-{
-	free_expr(stmt->expr);
-	free_stmts(stmt->body);
-}
-
-static void
-free_open(PLiSQL_stmt_open *stmt)
-{
-	ListCell   *lc;
-
-	free_expr(stmt->argquery);
-	free_expr(stmt->query);
-	free_expr(stmt->dynquery);
-	foreach(lc, stmt->params)
-	{
-		free_expr((PLiSQL_expr *) lfirst(lc));
-	}
-}
-
-static void
-free_fetch(PLiSQL_stmt_fetch *stmt)
-{
-	free_expr(stmt->expr);
-}
-
-static void
-free_close(PLiSQL_stmt_close *stmt)
-{
-}
-
-static void
-free_perform(PLiSQL_stmt_perform *stmt)
-{
-	free_expr(stmt->expr);
-}
-
-static void
-free_call(PLiSQL_stmt_call *stmt)
-{
-	free_expr(stmt->expr);
-}
-
-static void
-free_commit(PLiSQL_stmt_commit *stmt)
-{
-}
-
-static void
-free_rollback(PLiSQL_stmt_rollback *stmt)
-{
-}
-
-static void
-free_exit(PLiSQL_stmt_exit *stmt)
-{
-	free_expr(stmt->cond);
-}
-
-static void
-free_return(PLiSQL_stmt_return *stmt)
-{
-	free_expr(stmt->expr);
-}
-
-static void
-free_return_next(PLiSQL_stmt_return_next *stmt)
-{
-	free_expr(stmt->expr);
-}
-
-static void
-free_return_query(PLiSQL_stmt_return_query *stmt)
-{
-	ListCell   *lc;
-
-	free_expr(stmt->query);
-	free_expr(stmt->dynquery);
-	foreach(lc, stmt->params)
-	{
-		free_expr((PLiSQL_expr *) lfirst(lc));
-	}
-}
-
-static void
-free_raise(PLiSQL_stmt_raise *stmt)
-{
-	ListCell   *lc;
-
-	foreach(lc, stmt->params)
-	{
-		free_expr((PLiSQL_expr *) lfirst(lc));
-	}
-	foreach(lc, stmt->options)
-	{
-		PLiSQL_raise_option *opt = (PLiSQL_raise_option *) lfirst(lc);
-
-		free_expr(opt->expr);
-	}
-}
-
-static void
-free_assert(PLiSQL_stmt_assert *stmt)
-{
-	free_expr(stmt->cond);
-	free_expr(stmt->message);
-}
-
-static void
-free_execsql(PLiSQL_stmt_execsql *stmt)
-{
-	free_expr(stmt->sqlstmt);
-}
-
-static void
-free_dynexecute(PLiSQL_stmt_dynexecute *stmt)
-{
-	ListCell   *lc;
-
-	free_expr(stmt->query);
-	foreach(lc, stmt->params)
-	{
-		free_expr((PLiSQL_expr *) lfirst(lc));
-	}
-}
-
-static void
-free_dynfors(PLiSQL_stmt_dynfors *stmt)
-{
-	ListCell   *lc;
-
-	free_stmts(stmt->body);
-	free_expr(stmt->query);
-	foreach(lc, stmt->params)
-	{
-		free_expr((PLiSQL_expr *) lfirst(lc));
-	}
-}
-
-static void
-free_getdiag(PLiSQL_stmt_getdiag *stmt)
-{
-}
-
-static void
-free_expr(PLiSQL_expr *expr)
+free_expr(PLiSQL_expr *expr, void *context)
 {
 	if (expr && expr->plan)
 	{
@@ -756,8 +659,8 @@ plisql_free_function_memory(PLiSQL_function *func,
 				{
 					PLiSQL_var *var = (PLiSQL_var *) d;
 
-					free_expr(var->default_val);
-					free_expr(var->cursor_explicit_expr);
+					free_expr(var->default_val, NULL);
+					free_expr(var->cursor_explicit_expr, NULL);
 					/* we should close package explicit cursor */
 					if (OidIsValid(var->pkgoid) &&
 						var->datatype->typoid == REFCURSOROID &&
@@ -771,7 +674,7 @@ plisql_free_function_memory(PLiSQL_function *func,
 				{
 					PLiSQL_rec *rec = (PLiSQL_rec *) d;
 
-					free_expr(rec->default_val);
+					free_expr(rec->default_val, NULL);
 				}
 				break;
 			case PLISQL_DTYPE_RECFIELD:
@@ -785,8 +688,7 @@ plisql_free_function_memory(PLiSQL_function *func,
 	func->ndatums = 0;
 
 	/* Release plans in statement tree */
-	if (func->action)
-		free_block(func->action);
+	free_stmt((PLiSQL_stmt *) func->action, NULL);
 	func->action = NULL;
 
 	/* release subproc function */
@@ -799,7 +701,7 @@ plisql_free_function_memory(PLiSQL_function *func,
 		{
 			PLiSQL_function_argitem *argitem = (PLiSQL_function_argitem *) lfirst(lc);
 
-			free_expr(argitem->defexpr);
+			free_expr(argitem->defexpr, NULL);
 		}
 		if (!subprocfunc->has_poly_argument ||
 			subprocfunc->poly_tab == NULL)
@@ -853,6 +755,9 @@ plisql_free_function_memory(PLiSQL_function *func,
 
 /**********************************************************************
  * Debug functions for analyzing the compiled code
+ *
+ * Sadly, there doesn't seem to be any way to let plisql_statement_tree_walker
+ * bear some of the burden for this.
  **********************************************************************/
 static int	dump_indent;
 
