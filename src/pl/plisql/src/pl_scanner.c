@@ -108,7 +108,7 @@ typedef struct
  */
 
 /* The stuff the core lexer needs */
-static ora_core_yyscan_t yyscanner = NULL;
+//static ora_core_yyscan_t yyscanner = NULL;
 static ora_core_yy_extra_type core_yy_extra;
 
 /* The original input string */
@@ -120,6 +120,15 @@ static int	plisql_yyleng;
 /* Current token's code (corresponds to plisql_yylval and plisql_yylloc) */
 static int	plisql_yytoken;
 
+static yyscan_t plisql_scanner;
+/* The semantic value of the lookahead symbol.  */
+static YYSTYPE plisql_yylval;
+/* Location data for the lookahead symbol.  */
+static YYLTYPE plisql_yylloc
+# if defined YYLTYPE_IS_TRIVIAL && YYLTYPE_IS_TRIVIAL
+  = { 1, 1, 1, 1 }
+# endif
+;
 /* Token pushback stack */
 #define MAX_PUSHBACKS 4
 
@@ -137,9 +146,9 @@ static int	cur_line_num;
  */
 typedef struct PLiSQL_yylex_global_proper
 {
-	ora_core_yyscan_t yyscanner;
-	ora_core_yy_extra_type core_yy_extra;
 
+	ora_core_yy_extra_type core_yy_extra;
+	//ora_core_yyscan_t yyscanner;
 	/* The original input string */
 	const char *scanorig;
 
@@ -164,9 +173,22 @@ typedef struct PLiSQL_yylex_global_proper
 } PLiSQL_yylex_global_proper;
 
 /* Internal functions */
-static int	internal_yylex(TokenAuxData *auxdata);
-static void push_back_token(int token, TokenAuxData *auxdata);
-static void location_lineno_init(void);
+static int	internal_yylex(TokenAuxData *auxdata, yyscan_t yyscanner);
+static void push_back_token(int token, TokenAuxData *auxdata, yyscan_t yyscanner);
+static void location_lineno_init(yyscan_t yyscanner);
+
+/*
+ * This is normally provided by the generated flex code, but we don't have
+ * that here, so we make a minimal version ourselves.
+ */
+struct yyguts_t
+{
+	struct PLiSQL_yylex_global_proper *yyextra_r;
+};
+
+/* see scan.l */
+#undef yyextra
+#define yyextra (((struct yyguts_t *) yyscanner)->yyextra_r)
 
 
 /*
@@ -179,7 +201,7 @@ static void location_lineno_init(void);
  * matches one of those.
  */
 int
-plisql_yylex(void)
+plisql_yylex(YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 {
 	int			tok1;
 	TokenAuxData aux1;
@@ -187,7 +209,7 @@ plisql_yylex(void)
 	char        buf[32];
 	char		*paramname;
 
-	tok1 = internal_yylex(&aux1);
+	tok1 = internal_yylex(&aux1, yyscanner);
 	if (tok1 == IDENT || tok1 == PARAM || tok1 == ORAPARAM)
 	{
 		int	tok2;
@@ -247,25 +269,25 @@ plisql_yylex(void)
 				dynamic_build_func_vars(&plisql_curr_compile);
 		}
 
-		tok2 = internal_yylex(&aux2);
+		tok2 = internal_yylex(&aux2, yyscanner);
 		if (tok2 == '.')
 		{
 			int			tok3;
 			TokenAuxData aux3;
 
-			tok3 = internal_yylex(&aux3);
+			tok3 = internal_yylex(&aux3, yyscanner);
 			if (tok3 == IDENT)
 			{
 				int			tok4;
 				TokenAuxData aux4;
 
-				tok4 = internal_yylex(&aux4);
+				tok4 = internal_yylex(&aux4, yyscanner);
 				if (tok4 == '.')
 				{
 					int			tok5;
 					TokenAuxData aux5;
 
-					tok5 = internal_yylex(&aux5);
+					tok5 = internal_yylex(&aux5, yyscanner);
 					if (tok5 == IDENT)
 					{
 						if (plisql_parse_tripword(paramname,
@@ -283,8 +305,8 @@ plisql_yylex(void)
 					else
 					{
 						/* not A.B.C, so just process A.B */
-						push_back_token(tok5, &aux5);
-						push_back_token(tok4, &aux4);
+						push_back_token(tok5, &aux5, yyscanner);
+						push_back_token(tok4, &aux4, yyscanner);
 						if (plisql_parse_dblword(paramname,
 												  aux1.lval.str,
 												  aux3.lval.str,
@@ -300,7 +322,7 @@ plisql_yylex(void)
 				else
 				{
 					/* not A.B.C, so just process A.B */
-					push_back_token(tok4, &aux4);
+					push_back_token(tok4, &aux4, yyscanner);
 					if (plisql_parse_dblword(paramname,
 											  aux1.lval.str,
 											  aux3.lval.str,
@@ -316,11 +338,11 @@ plisql_yylex(void)
 			else
 			{
 				/* not A.B, so just process A */
-				push_back_token(tok3, &aux3);
-				push_back_token(tok2, &aux2);
+				push_back_token(tok3, &aux3, yyscanner);
+				push_back_token(tok2, &aux2, yyscanner);
 				if (plisql_parse_word(paramname,
 									   aux1.lval.str,
-									   core_yy_extra.scanbuf + aux1.lloc,
+									   yyextra->core_yy_extra.scanbuf + aux1.lloc,
 									   true,
 									   &aux1.lval.wdatum,
 									   &aux1.lval.word))
@@ -340,7 +362,7 @@ plisql_yylex(void)
 		else
 		{
 			/* not A.B, so just process A */
-			push_back_token(tok2, &aux2);
+			push_back_token(tok2, &aux2, yyscanner);
 
 			/*
 			 * See if it matches a variable name, except in the context where
@@ -361,7 +383,7 @@ plisql_yylex(void)
 			 */
 			if (plisql_parse_word(paramname,
 								   aux1.lval.str,
-								   core_yy_extra.scanbuf + aux1.lloc,
+								   yyextra->core_yy_extra.scanbuf + aux1.lloc,
 								   (!AT_STMT_START(plisql_yytoken) ||
 									(tok2 == '=' || tok2 == COLON_EQUALS ||
 									 tok2 == '[')),
@@ -394,10 +416,10 @@ plisql_yylex(void)
 		 */
 	}
 
-	plisql_yylval = aux1.lval;
-	plisql_yylloc = aux1.lloc;
-	plisql_yyleng = aux1.leng;
-	plisql_yytoken = tok1;
+	*yylvalp = aux1.lval;
+	*yyllocp = aux1.lloc;
+	yyextra->plisql_yyleng = aux1.leng;
+	yyextra->plisql_yytoken = tok1;
 	return tok1;
 }
 
@@ -407,9 +429,9 @@ plisql_yylex(void)
  * In the case of compound tokens, the length includes all the parts.
  */
 int
-plisql_token_length(void)
+plisql_token_length(yyscan_t yyscanner)
 {
-	return plisql_yyleng;
+	return yyextra->plisql_yyleng;
 }
 
 /*
@@ -419,16 +441,16 @@ plisql_token_length(void)
  * interfacing from the ora_core_YYSTYPE to YYSTYPE union.
  */
 static int
-internal_yylex(TokenAuxData *auxdata)
+internal_yylex(TokenAuxData *auxdata, yyscan_t yyscanner)
 {
 	int			token;
 	const char *yytext;
 
-	if (num_pushbacks > 0)
+	if (yyextra->num_pushbacks > 0)
 	{
-		num_pushbacks--;
-		token = pushback_token[num_pushbacks];
-		*auxdata = pushback_auxdata[num_pushbacks];
+		yyextra->num_pushbacks--;
+		token = yyextra->pushback_token[yyextra->num_pushbacks];
+		*auxdata = yyextra->pushback_auxdata[yyextra->num_pushbacks];
 	}
 	else
 	{
@@ -437,7 +459,7 @@ internal_yylex(TokenAuxData *auxdata)
 						   yyscanner);
 
 		/* remember the length of yytext before it gets changed */
-		yytext = core_yy_extra.scanbuf + auxdata->lloc;
+		yytext = yyextra->core_yy_extra.scanbuf + auxdata->lloc;
 		auxdata->leng = strlen(yytext);
 
 		/* Check for #, which the core considers operators */
@@ -472,13 +494,13 @@ internal_yylex(TokenAuxData *auxdata)
  * Push back a token to be re-read by next internal_yylex() call.
  */
 static void
-push_back_token(int token, TokenAuxData *auxdata)
+push_back_token(int token, TokenAuxData *auxdata, yyscan_t yyscanner)
 {
-	if (num_pushbacks >= MAX_PUSHBACKS)
+	if (yyextra->num_pushbacks >= MAX_PUSHBACKS)
 		elog(ERROR, "too many tokens pushed back");
-	pushback_token[num_pushbacks] = token;
-	pushback_auxdata[num_pushbacks] = *auxdata;
-	num_pushbacks++;
+	yyextra->pushback_token[yyextra->num_pushbacks] = token;
+	yyextra->pushback_auxdata[yyextra->num_pushbacks] = *auxdata;
+	yyextra->num_pushbacks++;
 }
 
 /*
@@ -488,14 +510,14 @@ push_back_token(int token, TokenAuxData *auxdata)
  * is not a good idea to push back a token code other than what you read.
  */
 void
-plisql_push_back_token(int token)
+plisql_push_back_token(int token, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 {
 	TokenAuxData auxdata;
 
-	auxdata.lval = plisql_yylval;
-	auxdata.lloc = plisql_yylloc;
-	auxdata.leng = plisql_yyleng;
-	push_back_token(token, &auxdata);
+	auxdata.lval = *yylvalp;
+	auxdata.lloc = *yyllocp;
+	auxdata.leng = yyextra->plisql_yyleng;
+	push_back_token(token, &auxdata, yyscanner);
 }
 
 /*
@@ -523,10 +545,11 @@ plisql_token_is_unreserved_keyword(int token)
  */
 void
 plisql_append_source_text(StringInfo buf,
-						   int startlocation, int endlocation)
+						   int startlocation, int endlocation,
+						   yyscan_t yyscanner)
 {
 	Assert(startlocation <= endlocation);
-	appendBinaryStringInfo(buf, scanorig + startlocation,
+	appendBinaryStringInfo(buf, yyextra->scanorig + startlocation,
 						   endlocation - startlocation);
 }
 
@@ -538,13 +561,13 @@ plisql_append_source_text(StringInfo buf,
  * be returned as IDENT. Reserved keywords are resolved as usual.
  */
 int
-plisql_peek(void)
+plisql_peek(yyscan_t yyscanner)
 {
 	int			tok1;
 	TokenAuxData aux1;
 
-	tok1 = internal_yylex(&aux1);
-	push_back_token(tok1, &aux1);
+	tok1 = internal_yylex(&aux1, yyscanner);
+	push_back_token(tok1, &aux1, yyscanner);
 	return tok1;
 }
 
@@ -557,15 +580,15 @@ plisql_peek(void)
  * be returned as IDENT. Reserved keywords are resolved as usual.
  */
 void
-plisql_peek2(int *tok1_p, int *tok2_p, int *tok1_loc, int *tok2_loc)
+plisql_peek2(int *tok1_p, int *tok2_p, int *tok1_loc, int *tok2_loc, yyscan_t yyscanner)
 {
 	int			tok1,
 				tok2;
 	TokenAuxData aux1,
 				aux2;
 
-	tok1 = internal_yylex(&aux1);
-	tok2 = internal_yylex(&aux2);
+	tok1 = internal_yylex(&aux1, yyscanner);
+	tok2 = internal_yylex(&aux2, yyscanner);
 
 	*tok1_p = tok1;
 	if (tok1_loc)
@@ -574,8 +597,8 @@ plisql_peek2(int *tok1_p, int *tok2_p, int *tok1_loc, int *tok2_loc)
 	if (tok2_loc)
 		*tok2_loc = aux2.lloc;
 
-	push_back_token(tok2, &aux2);
-	push_back_token(tok1, &aux1);
+	push_back_token(tok2, &aux2, yyscanner);
+	push_back_token(tok1, &aux1, yyscanner);
 }
 
 /*
@@ -590,19 +613,19 @@ plisql_peek2(int *tok1_p, int *tok2_p, int *tok1_loc, int *tok2_loc)
  * to still be available.
  */
 int
-plisql_scanner_errposition(int location)
+plisql_scanner_errposition(int location, yyscan_t yyscanner)
 {
 	int			pos;
 
-	if (location < 0 || scanorig == NULL)
+	if (location < 0 || yyextra->scanorig == NULL)
 		return 0;				/* no-op if location is unknown */
 
 	/* Convert byte offset to character number */
-	pos = pg_mbstrlen_with_len(scanorig, location) + 1;
+	pos = pg_mbstrlen_with_len(yyextra->scanorig, location) + 1;
 	/* And pass it to the ereport mechanism */
 	(void) internalerrposition(pos);
 	/* Also pass the function body string */
-	return internalerrquery(scanorig);
+	return internalerrquery(yyextra->scanorig);
 }
 
 /*
@@ -617,9 +640,9 @@ plisql_scanner_errposition(int location)
  * be misleading!
  */
 pg_noreturn void
-plisql_yyerror(const char *message)
+plisql_yyerror(YYLTYPE *yyllocp, yyscan_t yyscanner,const char *message)
 {
-	char	   *yytext = core_yy_extra.scanbuf + plisql_yylloc;
+	char	   *yytext = yyextra->core_yy_extra.scanbuf + *yyllocp;
 
 	if (*yytext == '\0')
 	{
@@ -627,7 +650,7 @@ plisql_yyerror(const char *message)
 				(errcode(ERRCODE_SYNTAX_ERROR),
 		/* translator: %s is typically the translation of "syntax error" */
 				 errmsg("%s at end of input", _(message)),
-				 plisql_scanner_errposition(plisql_yylloc)));
+				 plisql_scanner_errposition(*yyllocp, yyscanner)));
 	}
 	else
 	{
@@ -637,13 +660,13 @@ plisql_yyerror(const char *message)
 		 * only the single token here.  This modifies scanbuf but we no longer
 		 * care about that.
 		 */
-		yytext[plisql_yyleng] = '\0';
+		yytext[yyextra->plisql_yyleng] = '\0';
 
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 		/* translator: first %s is typically the translation of "syntax error" */
 				 errmsg("%s at or near \"%s\"", _(message), yytext),
-				 plisql_scanner_errposition(plisql_yylloc)));
+				 plisql_scanner_errposition(*yyllocp, yyscanner)));
 	}
 }
 
@@ -656,43 +679,43 @@ plisql_yyerror(const char *message)
  * of the "current" line.
  */
 int
-plisql_location_to_lineno(int location)
+plisql_location_to_lineno(int location, yyscan_t yyscanner)
 {
 	const char *loc;
 
-	if (location < 0 || scanorig == NULL)
+	if (location < 0 || yyextra->scanorig == NULL)
 		return 0;				/* garbage in, garbage out */
-	loc = scanorig + location;
+	loc = yyextra->scanorig + location;
 
 	/* be correct, but not fast, if input location goes backwards */
-	if (loc < cur_line_start)
-		location_lineno_init();
+	if (loc < yyextra->cur_line_start)
+		location_lineno_init(yyscanner);
 
-	while (cur_line_end != NULL && loc > cur_line_end)
+	while (yyextra->cur_line_end != NULL && loc > yyextra->cur_line_end)
 	{
-		cur_line_start = cur_line_end + 1;
-		cur_line_num++;
-		cur_line_end = strchr(cur_line_start, '\n');
+		yyextra->cur_line_start = yyextra->cur_line_end + 1;
+		yyextra->cur_line_num++;
+		yyextra->cur_line_end = strchr(yyextra->cur_line_start, '\n');
 	}
 
-	return cur_line_num;
+	return yyextra->cur_line_num;
 }
 
 /* initialize or reset the state for plisql_location_to_lineno */
 static void
-location_lineno_init(void)
+location_lineno_init(yyscan_t yyscanner)
 {
-	cur_line_start = scanorig;
-	cur_line_num = 1;
+	yyextra->cur_line_start = yyextra->scanorig;
+	yyextra->cur_line_num = 1;
 
-	cur_line_end = strchr(cur_line_start, '\n');
+	yyextra->cur_line_end = strchr(yyextra->cur_line_start, '\n');
 }
 
 /* return the most recently computed lineno */
 int
-plisql_latest_lineno(void)
+plisql_latest_lineno(yyscan_t yyscanner)
 {
-	return cur_line_num;
+	return yyextra->cur_line_num;
 }
 
 
@@ -703,11 +726,14 @@ plisql_latest_lineno(void)
  * Although it is not fed directly to flex, we need the original string
  * to cite in error messages.
  */
-void
+yyscan_t
 plisql_scanner_init(const char *str)
 {
+	yyscan_t	yyscanner;
+	struct PLiSQL_yylex_global_proper *yyext = palloc0_object(struct PLiSQL_yylex_global_proper);
+
 	/* Start up the core scanner */
-	yyscanner = ora_scanner_init(str, &core_yy_extra,
+	yyscanner = ora_scanner_init(str, (ora_core_yy_extra_type *) yyext,
 							 &ReservedPLKeywords, ReservedPLKeywordTokens);
 
 	/*
@@ -716,28 +742,26 @@ plisql_scanner_init(const char *str)
 	 * yytext points into scanbuf, we rely on being able to apply locations
 	 * (offsets from string start) to scanorig as well.
 	 */
-	scanorig = str;
+	yyext->scanorig = str;
 
 	/* Other setup */
 	plisql_IdentifierLookup = IDENTIFIER_LOOKUP_NORMAL;
-	plisql_yytoken = 0;
+	yyext->plisql_yytoken = 0;
 
-	num_pushbacks = 0;
+	yyext->num_pushbacks = 0;
+	location_lineno_init(yyscanner);
 
-	location_lineno_init();
+	return yyscanner;
 }
 
 /*
  * Called after parsing is done to clean up after plisql_scanner_init()
  */
 void
-plisql_scanner_finish(void)
+plisql_scanner_finish(yyscan_t yyscanner)
 {
 	/* release storage */
 	ora_scanner_finish(yyscanner);
-	/* avoid leaving any dangling pointers */
-	yyscanner = NULL;
-	scanorig = NULL;
 }
 
 /*
@@ -753,7 +777,7 @@ plisql_get_yylex_global_proper(void)
 
 	yylex_data->core_yy_extra = core_yy_extra;
 	yylex_data->cur_line_end = cur_line_end;
-	yylex_data->cur_line_num = cur_line_num;
+	//yylex_data->cur_line_num = cur_line_num;
 	yylex_data->cur_line_start = cur_line_start;
 	yylex_data->plisql_yyleng = plisql_yyleng;
 	yylex_data->plisql_yytoken = plisql_yytoken;
@@ -766,7 +790,7 @@ plisql_get_yylex_global_proper(void)
 	}
 
 	yylex_data->scanorig = scanorig;
-	yylex_data->yyscanner = yyscanner;
+	//yylex_data->yyscanner = plisql_scanner;
 	yylex_data->plisql_yylval = plisql_yylval;
 	yylex_data->plisql_yylloc = plisql_yylloc;
 
@@ -788,7 +812,7 @@ plisql_recover_yylex_global_proper(void *value)
 
 	core_yy_extra = yylex_data->core_yy_extra;
 	cur_line_end = yylex_data->cur_line_end;
-	cur_line_num = yylex_data->cur_line_num;
+	//cur_line_num = yylex_data->cur_line_num;
 	cur_line_start = yylex_data->cur_line_start;
 	plisql_yyleng = yylex_data->plisql_yyleng;
 	plisql_yytoken = yylex_data->plisql_yytoken;
@@ -801,7 +825,7 @@ plisql_recover_yylex_global_proper(void *value)
 	}
 
 	scanorig = yylex_data->scanorig;
-	yyscanner = yylex_data->yyscanner;
+	//plisql_scanner = yylex_data->yyscanner;
 	plisql_yylval = yylex_data->plisql_yylval;
 	plisql_yylloc = yylex_data->plisql_yylloc;
 

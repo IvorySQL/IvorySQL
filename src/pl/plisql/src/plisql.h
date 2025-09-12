@@ -1230,6 +1230,18 @@ typedef struct PLwdatum
 	int			nname_used;		/* to find datum, we match idents n names */
 } PLwdatum;
 
+union YYSTYPE;
+#define YYLTYPE int
+#ifndef YY_TYPEDEF_YY_SCANNER_T
+#define YY_TYPEDEF_YY_SCANNER_T
+typedef void *yyscan_t;
+#endif
+typedef struct compile_error_callback_arg
+{
+	const char *proc_source;
+	yyscan_t	yyscanner;
+} compile_error_callback_arg;
+
 /**********************************************************************
  * Global variable declarations
  **********************************************************************/
@@ -1402,22 +1414,24 @@ extern void plisql_dumptree(PLiSQL_function *func, int start_datum, int start_su
 /*
  * Scanner functions in pl_scanner.c
  */
-extern int	plisql_base_yylex(void);
-extern int	plisql_yylex(void);
-extern int	plisql_token_length(void);
-extern void plisql_push_back_token(int token);
+
+
+extern int	plisql_yylex(union YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner);
+extern int	plisql_token_length(yyscan_t yyscanner);
+extern void plisql_push_back_token(int token, union YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner);
 extern bool plisql_token_is_unreserved_keyword(int token);
 extern void plisql_append_source_text(StringInfo buf,
-									   int startlocation, int endlocation);
-extern int	plisql_peek(void);
+									   int startlocation, int endlocation,
+									   yyscan_t yyscanner);
+extern int	plisql_peek(yyscan_t yyscanner);
 extern void plisql_peek2(int *tok1_p, int *tok2_p, int *tok1_loc,
-						  int *tok2_loc);
-extern int	plisql_scanner_errposition(int location);
-pg_noreturn extern void plisql_yyerror(const char *message);
-extern int	plisql_location_to_lineno(int location);
-extern int	plisql_latest_lineno(void);
-extern void plisql_scanner_init(const char *str);
-extern void plisql_scanner_finish(void);
+						  int *tok2_loc, yyscan_t yyscanner);
+extern int	plisql_scanner_errposition(int location, yyscan_t yyscanner);
+pg_noreturn extern void plisql_yyerror(YYLTYPE *yyllocp, yyscan_t yyscanner, const char *message);
+extern int	plisql_location_to_lineno(int location, yyscan_t yyscanner);
+extern int	plisql_latest_lineno(yyscan_t yyscanner);
+extern yyscan_t plisql_scanner_init(const char *str);
+extern void plisql_scanner_finish(yyscan_t yyscanner);
 extern void *plisql_get_yylex_global_proper(void);
 extern void plisql_recover_yylex_global_proper(void *yylex_data);
 
@@ -1425,6 +1439,6 @@ extern void plisql_recover_yylex_global_proper(void *yylex_data);
 /*
  * Externs in gram.y
  */
-extern int	plisql_yyparse(void);
+extern int	plisql_yyparse(yyscan_t yyscanner);
 
 #endif							/* PLPGSQL_H */

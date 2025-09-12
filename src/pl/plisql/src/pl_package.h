@@ -202,7 +202,7 @@ extern PLiSQL_datum *get_package_datum_bydno(PLiSQL_execstate *estate,
 extern bool is_package_global_var(PLiSQL_var *var);
 extern bool is_const_datum(PLiSQL_execstate *estate, PLiSQL_datum *datum);
 extern void plisql_expand_rec_field(PLiSQL_rec *rec);
-extern void plisql_check_subproc_define(PLiSQL_function *function);
+extern void plisql_check_subproc_define(PLiSQL_function *function, yyscan_t yyscanner);
 extern void plisql_compile_package_error_callback(void *arg);
 extern Datum package_datumTransfer(Datum value, bool typByVal,
 							int typLen, bool isnull);

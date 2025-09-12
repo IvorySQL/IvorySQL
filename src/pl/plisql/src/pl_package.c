@@ -90,7 +90,7 @@ static void plisql_exec_package_init(FunctionCallInfo fcinfo,
 static void plisql_check_package_status(PLiSQL_execstate *estate,
 											PLiSQL_pkg_datum *pkgdatum);
 
-static void plisql_check_subproc_define_recurse(PLiSQL_function *function, List **already_checks);
+static void plisql_check_subproc_define_recurse(PLiSQL_function *function, List **already_checks, yyscan_t yyscanner);
 static TupleDesc get_plisql_rec_tupdesc(PLiSQL_rec *rec);
 static void plisql_addpackage_references(PLiSQL_function *func, PackageCacheItem *item);
 static PLiSQL_variable *plisql_build_package_local_variable(const char *refname,
@@ -824,7 +824,8 @@ package_body_doCompile(HeapTuple pkgbodyTup,
 	Oid		current_user = GetUserId();
 	HeapTuple	pkgTup;
 	Form_pg_package pkgStruct;
-
+	yyscan_t	scanner;
+	compile_error_callback_arg cbarg;
 
 	/*
 	 * Setup the scanner input and error info.  We assume that this package
@@ -836,7 +837,7 @@ package_body_doCompile(HeapTuple pkgbodyTup,
 	if (isnull)
 		elog(ERROR, "null bodysrc");
 	body_source = TextDatumGetCString(pkgbodydatum);
-	plisql_scanner_init(body_source);
+	scanner = plisql_scanner_init(body_source);
 
 	item->body_hash_value = GetSysCacheHashValue1(PKGBODYOID,
 									ObjectIdGetDatum(bodyStruct->oid));
@@ -866,8 +867,10 @@ package_body_doCompile(HeapTuple pkgbodyTup,
 	/*
 	 * Setup error traceback support for ereport()
 	 */
+	cbarg.proc_source = body_source;
+	cbarg.yyscanner = scanner;
 	plerrcontext.callback = plisql_compile_package_error_callback;
-	plerrcontext.arg = forValidator ? body_source : NULL;
+	plerrcontext.arg =  &cbarg;
 	plerrcontext.previous = error_context_stack;
 	error_context_stack = &plerrcontext;
 
@@ -900,7 +903,7 @@ package_body_doCompile(HeapTuple pkgbodyTup,
 		/*
 		 * Now parse the function's text
 		 */
-		parse_rc = plisql_yyparse();
+		parse_rc = plisql_yyparse(scanner);
 		if (parse_rc != 0)
 			elog(ERROR, "plsql parser returned %d", parse_rc);
 
@@ -1016,9 +1019,9 @@ package_body_doCompile(HeapTuple pkgbodyTup,
 
 	plisql_finish_datums(function);
 	plisql_finish_subproc_func(function);
-	plisql_check_subproc_define(function);
+	plisql_check_subproc_define(function,scanner);
 
-	plisql_scanner_finish();
+	plisql_scanner_finish(scanner);
 	pfree(body_source);
 
 	/* Debug dump for completed functions */
@@ -1068,7 +1071,8 @@ package_doCompile(HeapTuple pkgTup, bool forValidator)
 	Oid 		save_userid;
 	int 		save_sec_context;
 	Oid			current_user = GetUserId();
-
+	yyscan_t        scanner;
+	struct compile_error_callback_arg cbarg;
 	/*
 	 * Setup the scanner input and error info.  We assume that this package
 	 * cannot be invoked recursively, so there's no need to save and restore
@@ -1079,7 +1083,7 @@ package_doCompile(HeapTuple pkgTup, bool forValidator)
 	if (isnull)
 		elog(ERROR, "null pkgsrc");
 	pkg_source = TextDatumGetCString(pkgdatum);
-	plisql_scanner_init(pkg_source);
+	scanner = plisql_scanner_init(pkg_source);
 
 	/*
 	 * invoke as define in compiling, we should
@@ -1099,8 +1103,10 @@ package_doCompile(HeapTuple pkgTup, bool forValidator)
 	/*
 	 * Setup error traceback support for ereport()
 	 */
+	cbarg.proc_source = pkg_source;
+	cbarg.yyscanner = scanner;
 	plerrcontext.callback = plisql_compile_package_error_callback;
-	plerrcontext.arg = forValidator ? pkg_source : NULL;
+	plerrcontext.arg = &cbarg;
 	plerrcontext.previous = error_context_stack;
 	error_context_stack = &plerrcontext;
 
@@ -1191,7 +1197,7 @@ package_doCompile(HeapTuple pkgTup, bool forValidator)
 		/*
 		 * Now parse the function's text
 		 */
-		parse_rc = plisql_yyparse();
+		parse_rc = plisql_yyparse(scanner);
 		if (parse_rc != 0)
 			elog(ERROR, "plisql parser returned %d", parse_rc);
 		function->action = plisql_parse_result;
@@ -1283,7 +1289,7 @@ package_doCompile(HeapTuple pkgTup, bool forValidator)
 			free_object_addresses(addrs);
 		}
 
-		plisql_scanner_finish();
+		plisql_scanner_finish(scanner);
 		pfree(pkg_source);
 	}
 	PG_CATCH();
@@ -1738,7 +1744,7 @@ plisql_check_package_status(PLiSQL_execstate *estate,
  * internel function to check subproc wether has define
  */
 static void
-plisql_check_subproc_define_recurse(PLiSQL_function *function, List **already_checks)
+plisql_check_subproc_define_recurse(PLiSQL_function *function, List **already_checks, yyscan_t yyscanner)
 {
 	int i;
 
@@ -1770,10 +1776,10 @@ plisql_check_subproc_define_recurse(PLiSQL_function *function, List **already_ch
 					(errcode(ERRCODE_DATA_EXCEPTION),
 					 errmsg("A subprogram body must be defined for the forward declaration of %s",
 					 subproc->func_name),
-					 plisql_scanner_errposition(subproc->location)));
+					 plisql_scanner_errposition(subproc->location, yyscanner)));
 		}
 		*already_checks = lappend(*already_checks, subproc);
-		plisql_check_subproc_define_recurse(subproc->function, already_checks);
+		plisql_check_subproc_define_recurse(subproc->function, already_checks, yyscanner);
 	}
 }
 
@@ -3098,11 +3104,11 @@ plisql_expand_rec_field(PLiSQL_rec *rec)
  * check wether subproc has a action
  */
 void
-plisql_check_subproc_define(PLiSQL_function *function)
+plisql_check_subproc_define(PLiSQL_function *function, yyscan_t yyscanner)
 {
 	List *already_checks = NIL;
 
-	plisql_check_subproc_define_recurse(function, &already_checks);
+	plisql_check_subproc_define_recurse(function, &already_checks, yyscanner);
 	list_free(already_checks);
 
 	return;
@@ -3114,13 +3120,15 @@ plisql_check_subproc_define(PLiSQL_function *function)
 void
 plisql_compile_package_error_callback(void *arg)
 {
-	if (arg)
+	struct compile_error_callback_arg *cbarg = (struct compile_error_callback_arg *) arg;
+	yyscan_t	yyscanner = cbarg->yyscanner;
+	if (cbarg->proc_source)
 	{
 		/*
 		 * Try to convert syntax error position to reference text of original
 		 * CREATE FUNCTION or DO command.
 		 */
-		if (function_parse_error_transpose((const char *) arg))
+		if (function_parse_error_transpose(cbarg->proc_source))
 			return;
 
 		/*
@@ -3131,7 +3139,7 @@ plisql_compile_package_error_callback(void *arg)
 
 	if (plisql_error_funcname)
 		errcontext("compilation of PL/iSQL package \"%s\" near line %d",
-				   plisql_error_funcname, plisql_latest_lineno());
+				   plisql_error_funcname, plisql_latest_lineno(yyscanner));
 }
 
 
