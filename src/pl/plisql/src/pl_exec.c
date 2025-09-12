@@ -2323,6 +2323,12 @@ exec_stmt_call(PLiSQL_execstate *estate, PLiSQL_stmt_call *stmt)
 	int			rc;
 
 	/*
+	* The grammar can't conveniently set expr->func while building the parse
+	* tree, so make sure it's set before parser hooks need it.
+	*/
+	expr->func = estate->func;
+
+	/*
 	 * Make a plan if we don't have one already.
 	 */
 	if (expr->plan == NULL)
@@ -4402,12 +4408,6 @@ exec_prepare_plan(PLiSQL_execstate *estate,
 	SPIPrepareOptions options;
 
 	/*
-	 * The grammar can't conveniently set expr->func while building the parse
-	 * tree, so make sure it's set before parser hooks need it.
-	 */
-	expr->func = estate->func;
-
-	/*
 	 * Generate and save the plan
 	 */
 	memset(&options, 0, sizeof(options));
@@ -5272,21 +5272,7 @@ exec_assign_expr(PLiSQL_execstate *estate, PLiSQL_datum *target,
 	 * If first time through, create a plan for this expression.
 	 */
 	if (expr->plan == NULL)
-	{
-		/*
-		 * Mark the expression as being an assignment source, if target is a
-		 * simple variable.  (This is a bit messy, but it seems cleaner than
-		 * modifying the API of exec_prepare_plan for the purpose.  We need to
-		 * stash the target dno into the expr anyway, so that it will be
-		 * available if we have to replan.)
-		 */
-		if (target->dtype == PLISQL_DTYPE_VAR)
-			expr->target_param = target->dno;
-		else
-			expr->target_param = -1;	/* should be that already */
-
 		exec_prepare_plan(estate, expr, 0);
-	}
 
 	value = exec_eval_expr(estate, expr, &isnull, &valtype, &valtypmod);
 

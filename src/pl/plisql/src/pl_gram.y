@@ -69,6 +69,10 @@ static	bool			tok_is_keyword(int token, union YYSTYPE *lval,
 static	void			word_is_not_variable(PLword *word, int location, yyscan_t yyscanner);
 static	void			cword_is_not_variable(PLcword *cword, int location, yyscan_t yyscanner);
 static	void			current_token_is_not_variable(int tok, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner);
+static PLiSQL_expr    *make_plisql_expr(const char *query,
+                        					RawParseMode parsemode);
+static void             mark_expr_as_assignment_source(PLiSQL_expr *expr,
+														PLiSQL_datum *target);
 static	PLiSQL_expr	*read_sql_construct(int until,
 											int until2,
 											int until3,
@@ -778,6 +782,11 @@ decl_statement	: decl_varname decl_const decl_datatype decl_collate decl_notnull
 									 errmsg("variable \"%s\" must have a default value, since it's declared NOT NULL",
 											var->refname),
 									 parser_errposition(@5)));
+
+						if (var->default_val != NULL)
+								mark_expr_as_assignment_source(var->default_val,
+																(PLiSQL_datum *) var);
+
 					}
 				| decl_varname K_ALIAS K_FOR decl_aliasitem ';'
 					{
@@ -1651,6 +1660,7 @@ stmt_assign		: T_DATUM
 													   false, true,
 													   NULL, NULL,
 													   &yylval, &yylloc, yyscanner);
+						mark_expr_as_assignment_source(new->expr, $1.datum);
 
 						$$ = (PLiSQL_stmt *)new;
 					}
@@ -3479,6 +3489,38 @@ current_token_is_not_variable(int tok, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yysca
 		yyerror(yyllocp, NULL,  yyscanner, "syntax error");
 }
 
+/* Convenience routine to construct a PLiSQL_expr struct */
+static PLiSQL_expr *
+make_plisql_expr(const char *query,
+				  RawParseMode parsemode)
+{
+	PLiSQL_expr *expr = palloc0(sizeof(PLiSQL_expr));
+
+	expr->query = pstrdup(query);
+	expr->parseMode = parsemode;
+	expr->func = plisql_curr_compile;
+	expr->ns = plisql_ns_top();
+	/* might get changed later during parsing: */
+	expr->target_param = -1;
+	/* other fields are left as zeroes until first execution */
+	return expr;
+}
+
+/* Mark a PLiSQL_expr as being the source of an assignment to target */
+static void
+mark_expr_as_assignment_source(PLiSQL_expr *expr, PLiSQL_datum *target)
+{
+	/*
+	 * Mark the expression as being an assignment source, if target is a
+	 * simple variable.  We don't currently support optimized assignments to
+	 * other DTYPEs, so no need to mark in other cases.
+	 */
+	if (target->dtype == PLISQL_DTYPE_VAR)
+		expr->target_param = target->dno;
+	else
+		expr->target_param = -1;
+}
+
 /* Convenience routine to read an expression with one possible terminator */
 static PLiSQL_expr *
 read_sql_expression(int until, const char *expected, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
@@ -3621,13 +3663,7 @@ read_sql_construct(int until,
 	 */
 	plisql_append_source_text(&ds, startlocation, endlocation, yyscanner);
 
-	expr = palloc0(sizeof(PLiSQL_expr));
-	expr->query = pstrdup(ds.data);
-	expr->parseMode = parsemode;
-	expr->plan = NULL;
-	expr->paramnos = NULL;
-	expr->target_param = -1;
-	expr->ns			= plisql_ns_top();
+	expr = make_plisql_expr(ds.data, parsemode);
 	pfree(ds.data);
 
 	if (valid_sql)
@@ -3948,13 +3984,7 @@ make_execsql_stmt(int firsttoken, int location, PLword *word, YYSTYPE *yylvalp, 
 	while (ds.len > 0 && scanner_isspace(ds.data[ds.len - 1]))
 		ds.data[--ds.len] = '\0';
 
-	expr = palloc0(sizeof(PLiSQL_expr));
-	expr->query			= pstrdup(ds.data);
-	expr->parseMode		= RAW_PARSE_DEFAULT;
-	expr->plan			= NULL;
-	expr->paramnos		= NULL;
-	expr->target_param	= -1;
-	expr->ns			= plisql_ns_top();
+	expr = make_plisql_expr(ds.data, RAW_PARSE_DEFAULT);
 	pfree(ds.data);
 
 	check_sql_expr(expr->query, expr->parseMode, location, yyscanner);
@@ -4989,13 +5019,7 @@ read_cursor_args(PLiSQL_var *cursor, int until, YYSTYPE *yylvalp, YYLTYPE *yyllo
 			appendStringInfoString(&ds, ", ");
 	}
 
-	expr = palloc0(sizeof(PLiSQL_expr));
-	expr->query = pstrdup(ds.data);
-	expr->parseMode = RAW_PARSE_PLISQL_EXPR;
-	expr->plan = NULL;
-	expr->paramnos = NULL;
-	expr->target_param = -1;
-	expr->ns            = plisql_ns_top();
+	expr = make_plisql_expr(ds.data, RAW_PARSE_PLISQL_EXPR);
 	pfree(ds.data);
 
 	/* Next we'd better find the until token */
