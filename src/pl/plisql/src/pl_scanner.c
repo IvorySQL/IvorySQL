@@ -638,9 +638,12 @@ plisql_scanner_errposition(int location, yyscan_t yyscanner)
  * parsers report error as soon as the first unparsable token is reached.
  * Beware of using yyerror for other purposes, as the cursor position might
  * be misleading!
+ * 
+ * (The second argument is enforced by Bison to match the second argument of
+ * yyparse(), but it is not used here.)
  */
 pg_noreturn void
-plisql_yyerror(YYLTYPE *yyllocp, yyscan_t yyscanner,const char *message)
+plisql_yyerror(YYLTYPE *yyllocp,  PLiSQL_stmt_block **plisql_parse_result_p, yyscan_t yyscanner,const char *message)
 {
 	char	   *yytext = yyextra->core_yy_extra.scanbuf + *yyllocp;
 

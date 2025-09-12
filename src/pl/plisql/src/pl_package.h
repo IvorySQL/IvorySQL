@@ -101,7 +101,7 @@ typedef struct PLiSQL_compile_global_proper
 	int	plisql_extra_errors;
 	bool plisql_check_syntax;
 	bool plisql_DumpExecTree;
-	PLiSQL_stmt_block *plisql_parse_result;
+	//PLiSQL_stmt_block *plisql_parse_result;
 	int	plisql_nDatums;
 	PLiSQL_datum **plisql_Datums;
 	int datums_last;

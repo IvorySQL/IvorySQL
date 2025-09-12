@@ -2748,7 +2748,7 @@ plisql_dynamic_compile_subproc(FunctionCallInfo fcinfo,
 	Oid			current_user = GetUserId();
 	yyscan_t	scanner;
 	compile_error_callback_arg cbarg;
-
+	PLiSQL_stmt_block *plisql_parse_result;
 	scanner = plisql_scanner_init(subprocfunc->src);
 
 	plisql_error_funcname = pstrdup(subprocfunc->func_name);
@@ -2847,7 +2847,7 @@ plisql_dynamic_compile_subproc(FunctionCallInfo fcinfo,
 	/*
 	 * Now parse the function's text
 	 */
-	parse_rc = plisql_yyparse(scanner);
+	parse_rc = plisql_yyparse(&plisql_parse_result, scanner);
 	if (parse_rc != 0)
 		elog(ERROR, "plisql parser returned %d", parse_rc);
 

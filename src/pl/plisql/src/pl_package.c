@@ -826,7 +826,7 @@ package_body_doCompile(HeapTuple pkgbodyTup,
 	Form_pg_package pkgStruct;
 	yyscan_t	scanner;
 	compile_error_callback_arg cbarg;
-
+	PLiSQL_stmt_block *plisql_parse_result;
 	/*
 	 * Setup the scanner input and error info.  We assume that this package
 	 * cannot be invoked recursively, so there's no need to save and restore
@@ -903,7 +903,7 @@ package_body_doCompile(HeapTuple pkgbodyTup,
 		/*
 		 * Now parse the function's text
 		 */
-		parse_rc = plisql_yyparse(scanner);
+		parse_rc = plisql_yyparse(&plisql_parse_result, scanner);
 		if (parse_rc != 0)
 			elog(ERROR, "plsql parser returned %d", parse_rc);
 
@@ -1197,10 +1197,9 @@ package_doCompile(HeapTuple pkgTup, bool forValidator)
 		/*
 		 * Now parse the function's text
 		 */
-		parse_rc = plisql_yyparse(scanner);
+		parse_rc = plisql_yyparse(&function->action, scanner);
 		if (parse_rc != 0)
 			elog(ERROR, "plisql parser returned %d", parse_rc);
-		function->action = plisql_parse_result;
 
 		/*
 		 * Have built a global list plisql_referenced_objects
@@ -1997,7 +1996,7 @@ plisql_push_compile_global_proper(void)
 	plisql_saved_compile_proper[plisql_curr_global_proper_level].plisql_extra_errors = plisql_extra_errors;
 	plisql_saved_compile_proper[plisql_curr_global_proper_level].plisql_check_syntax = plisql_check_syntax;
 	plisql_saved_compile_proper[plisql_curr_global_proper_level].plisql_DumpExecTree = plisql_DumpExecTree;
-	plisql_saved_compile_proper[plisql_curr_global_proper_level].plisql_parse_result = plisql_parse_result;
+	//plisql_saved_compile_proper[plisql_curr_global_proper_level].plisql_parse_result = plisql_parse_result;
 	plisql_saved_compile_proper[plisql_curr_global_proper_level].plisql_nDatums = plisql_nDatums;
 	plisql_saved_compile_proper[plisql_curr_global_proper_level].plisql_Datums = plisql_Datums;
 	plisql_saved_compile_proper[plisql_curr_global_proper_level].datums_last = datums_last;
@@ -2068,7 +2067,6 @@ plisql_pop_compile_global_proper()
 	plisql_extra_errors = plisql_saved_compile_proper[plisql_curr_global_proper_level].plisql_extra_errors;
 	plisql_check_syntax = plisql_saved_compile_proper[plisql_curr_global_proper_level].plisql_check_syntax;
 	plisql_DumpExecTree = plisql_saved_compile_proper[plisql_curr_global_proper_level].plisql_DumpExecTree;
-	plisql_parse_result = plisql_saved_compile_proper[plisql_curr_global_proper_level].plisql_parse_result;
 	plisql_nDatums = plisql_saved_compile_proper[plisql_curr_global_proper_level].plisql_nDatums;
 	plisql_Datums = plisql_saved_compile_proper[plisql_curr_global_proper_level].plisql_Datums;
 	datums_last = plisql_saved_compile_proper[plisql_curr_global_proper_level].datums_last;

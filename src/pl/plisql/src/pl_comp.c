@@ -50,7 +50,6 @@
  * Our own local and global variables
  * ----------
  */
-PLiSQL_stmt_block *plisql_parse_result;
 
 int	datums_alloc; 
 int			plisql_nDatums;
@@ -1016,7 +1015,7 @@ do_compile(FunctionCallInfo fcinfo,
 		/*
 		 * Now parse the function's text
 		 */
-		parse_rc = plisql_yyparse(scanner);
+		parse_rc = plisql_yyparse(&function->action, scanner);
 		if (parse_rc != 0)
 			elog(ERROR, "plisql parser returned %d", parse_rc);
 	}
@@ -1412,10 +1411,9 @@ plisql_compile_inline(char *proc_source, ParamListInfo inparams)
 	/*
 	 * Now parse the function's text
 	 */
-	parse_rc = plisql_yyparse(scanner);
+	parse_rc = plisql_yyparse(&function->action, scanner);
 	if (parse_rc != 0)
 		elog(ERROR, "plisql parser returned %d", parse_rc);
-	function->action = plisql_parse_result;
 
 	/*
 	 * If it returns VOID (always true at the moment), we allow control to
@@ -3719,12 +3717,11 @@ plisql_compile_inline_internal(char *proc_source)
 	/*
 	 * Now parse the function's text
 	 */
-	parse_rc = plisql_yyparse(scanner);
+	parse_rc = plisql_yyparse(&function->action, scanner);
 
 	if (parse_rc != 0)
 		elog(ERROR, "plisql parser returned %d", parse_rc);
 
-	function->action = plisql_parse_result;
 
 	/*
 	 * Complete the function's info

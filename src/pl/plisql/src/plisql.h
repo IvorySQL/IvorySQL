@@ -1274,7 +1274,6 @@ extern int	plisql_extra_errors;
 extern bool plisql_check_syntax;
 extern bool plisql_DumpExecTree;
 
-extern PLiSQL_stmt_block *plisql_parse_result;
 
 extern int	plisql_nDatums;
 extern PLiSQL_datum **plisql_Datums;
@@ -1427,7 +1426,7 @@ extern int	plisql_peek(yyscan_t yyscanner);
 extern void plisql_peek2(int *tok1_p, int *tok2_p, int *tok1_loc,
 						  int *tok2_loc, yyscan_t yyscanner);
 extern int	plisql_scanner_errposition(int location, yyscan_t yyscanner);
-pg_noreturn extern void plisql_yyerror(YYLTYPE *yyllocp, yyscan_t yyscanner, const char *message);
+pg_noreturn extern void plisql_yyerror(YYLTYPE *yyllocp, PLiSQL_stmt_block **plisql_parse_result_p, yyscan_t yyscanner, const char *message);
 extern int	plisql_location_to_lineno(int location, yyscan_t yyscanner);
 extern int	plisql_latest_lineno(yyscan_t yyscanner);
 extern yyscan_t plisql_scanner_init(const char *str);
@@ -1439,6 +1438,6 @@ extern void plisql_recover_yylex_global_proper(void *yylex_data);
 /*
  * Externs in gram.y
  */
-extern int	plisql_yyparse(yyscan_t yyscanner);
+extern int	plisql_yyparse(PLiSQL_stmt_block **plisql_parse_result_p, yyscan_t yyscanner);
 
 #endif							/* PLPGSQL_H */
