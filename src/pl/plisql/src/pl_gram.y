@@ -3047,6 +3047,8 @@ exception_sect	:
 						var->isconst = true;
 						new->sqlstate_varno = var->dno;
 
+						plisql_curr_compile->has_exception_block = true;
+
 						var = plisql_build_variable("sqlerrm", lineno,
 													 plisql_build_datatype(TEXTOID,
 																			-1,
@@ -3502,6 +3504,7 @@ make_plisql_expr(const char *query,
 	expr->ns = plisql_ns_top();
 	/* might get changed later during parsing: */
 	expr->target_param = -1;
+	expr->target_is_local = false;
 	/* other fields are left as zeroes until first execution */
 	return expr;
 }
@@ -3516,9 +3519,21 @@ mark_expr_as_assignment_source(PLiSQL_expr *expr, PLiSQL_datum *target)
 	 * other DTYPEs, so no need to mark in other cases.
 	 */
 	if (target->dtype == PLISQL_DTYPE_VAR)
+	{
 		expr->target_param = target->dno;
+		/*
+		 * For now, assume the target is local to the nearest enclosing
+		 * exception block.  That's correct if the function contains no
+		 * exception blocks; otherwise we'll update this later.
+		 */
+		expr->target_is_local = true;
+
+	}
 	else
-		expr->target_param = -1;
+	{
+		expr->target_param = -1; /* should be that already */
+		expr->target_is_local = false; /* ditto */
+	}
 }
 
 /* Convenience routine to read an expression with one possible terminator */

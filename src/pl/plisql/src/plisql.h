@@ -234,9 +234,12 @@ typedef struct PLiSQL_expr
 	/*
 	 * These fields are used to help optimize assignments to expanded-datum
 	 * variables.  If this expression is the source of an assignment to a
-	 * simple variable, target_param holds that variable's dno (else it's -1).
+	 * simple variable, target_param holds that variable's dno (else it's -1),
+	 * and target_is_local indicates whether the target is declared inside the
+	 * closest exception block containing the assignment
 	 */
 	int			target_param;	/* dno of assign target, or -1 if none */
+	bool        target_is_local;        /* is it within nearest exception block? */
 
 	/*
 	 * Fields above are set during plpgsql parsing.  Remaining fields are left
@@ -1051,6 +1054,7 @@ typedef struct PLiSQL_function
 	/* data derived while parsing body */
 	unsigned int nstatements;	/* counter for assigning stmtids */
 	bool		requires_procedure_resowner;	/* contains CALL or DO? */
+	bool        has_exception_block;    /* contains BEGIN...EXCEPTION? */
 
 	/* these fields change when the function is used */
 	struct PLiSQL_execstate *cur_estate;
@@ -1415,6 +1419,7 @@ extern PGDLLEXPORT const char *plisql_stmt_typename(PLiSQL_stmt *stmt);
 extern const char *plisql_getdiag_kindname(PLiSQL_getdiag_kind kind);
 extern void plisql_free_function_memory(PLiSQL_function *func,
 							int start_datum, int start_inlinefunc);
+extern void plisql_mark_local_assignment_targets(PLiSQL_function *func);
 extern void plisql_dumptree(PLiSQL_function *func, int start_datum, int start_subprocfunc); 
 
 /*

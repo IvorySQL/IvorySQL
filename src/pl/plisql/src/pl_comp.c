@@ -398,6 +398,7 @@ do_compile(FunctionCallInfo fcinfo,
 
 	function->nstatements = 0;
 	function->requires_procedure_resowner = false;
+	function->has_exception_block = false;
 
 	function->fn_ret_vardno = -1;
 	function->fn_no_return = false;
@@ -1059,7 +1060,8 @@ do_compile(FunctionCallInfo fcinfo,
 	}
 
 	plisql_finish_datums(function);
-
+	if (function->has_exception_block)
+			plisql_mark_local_assignment_targets(function);
 	plisql_finish_subproc_func(function);
 
 	plisql_check_subproc_define(function, scanner);
@@ -1296,6 +1298,7 @@ plisql_compile_inline(char *proc_source, ParamListInfo inparams)
 
 	function->nstatements = 0;
 	function->requires_procedure_resowner = false;
+	function->has_exception_block = false;
 	function->fn_ret_vardno = -1;
 	function->fn_no_return = false;
 
@@ -1430,6 +1433,12 @@ plisql_compile_inline(char *proc_source, ParamListInfo inparams)
 	plisql_finish_subproc_func(function);
 
 	plisql_check_subproc_define(function, scanner);
+	if (function->has_exception_block)
+		plisql_mark_local_assignment_targets(function);
+
+	/* Debug dump for completed functions */
+	if (plisql_DumpExecTree)
+		plisql_dumptree(function, 0, 0);
 
 	/*
 	 * after plisql_check_subproc_define for nice error message
