@@ -4,7 +4,7 @@
  *			  procedural language
  *
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -3132,14 +3132,10 @@ plisql_parse_err_condition(char *condname)
 	 * here.
 	 */
 
-	/*
-	 * OTHERS is represented as code 0 (which would map to '00000', but we
-	 * have no need to represent that as an exception condition).
-	 */
 	if (strcmp(condname, "others") == 0)
 	{
 		new = palloc(sizeof(PLiSQL_condition));
-		new->sqlerrstate = 0;
+		new->sqlerrstate = PLISQL_OTHERS;
 		new->condname = condname;
 		new->next = NULL;
 		return new;

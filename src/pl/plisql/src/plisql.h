@@ -509,10 +509,13 @@ typedef struct PLiSQL_stmt
  */
 typedef struct PLiSQL_condition
 {
-	int			sqlerrstate;	/* SQLSTATE code */
+	int			sqlerrstate;	/* SQLSTATE code, or PLISQL_OTHERS */
 	char	   *condname;		/* condition name (for debugging) */
 	struct PLiSQL_condition *next;
 } PLiSQL_condition;
+
+/* This value mustn't match any possible output of MAKE_SQLSTATE() */
+#define PLISQL_OTHERS (-1)
 
 /*
  * EXCEPTION block

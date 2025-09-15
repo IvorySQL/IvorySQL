@@ -1730,7 +1730,7 @@ exception_matches_conditions(ErrorData *edata, PLiSQL_condition *cond)
 		 * assert-failure.  If you're foolish enough, you can match those
 		 * explicitly.
 		 */
-		if (sqlerrstate == 0)
+		if (sqlerrstate == PLISQL_OTHERS)
 		{
 			if (edata->sqlerrcode != ERRCODE_QUERY_CANCELED &&
 				edata->sqlerrcode != ERRCODE_ASSERT_FAILURE)
