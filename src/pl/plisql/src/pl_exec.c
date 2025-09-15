@@ -8908,9 +8908,9 @@ exec_save_simple_expr(PLiSQL_expr *expr, CachedPlan *cplan)
 			/* If setrefs.c copied up a Const, no need to look further */
 			if (IsA(tle_expr, Const))
 				break;
-			/* Otherwise, it had better be a Param or an outer Var */
-			Assert(IsA(tle_expr, Param) || (IsA(tle_expr, Var) &&
-											((Var *) tle_expr)->varno == OUTER_VAR));
+			/* Otherwise, it better be an outer Var */
+			Assert(IsA(tle_expr, Var));
+			Assert(((Var *) tle_expr)->varno == OUTER_VAR);
 			/* Descend to the child node */
 			plan = plan->lefttree;
 		}
