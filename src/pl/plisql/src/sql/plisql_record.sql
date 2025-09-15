@@ -374,6 +374,14 @@ end$$;
 /
 select returnssetofholes();
 
+create or replace function returnssetofholes() returns setof has_hole language plisql as
+$$
+begin
+  return query select 1, 2.0;  -- fails
+end$$;
+/
+select returnssetofholes();
+
 -- check behavior with changes of a named rowtype
 create table mutable(f1 int, f2 text);
 

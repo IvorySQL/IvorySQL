@@ -593,6 +593,17 @@ select returnssetofholes();
 ERROR:  returned record type does not match expected record type
 DETAIL:  Number of returned columns (3) does not match expected column count (2).
 CONTEXT:  PL/iSQL function returnssetofholes() line 3 at RETURN NEXT
+create or replace function returnssetofholes() returns setof has_hole language plisql as
+$$
+begin
+  return query select 1, 2.0;  -- fails
+end$$;
+/
+select returnssetofholes();
+ERROR:  structure of query does not match function result type
+DETAIL:  Returned type pg_catalog.numeric does not match expected type pg_catalog.int4 in column "f3" (position 2).
+CONTEXT:  SQL statement "select 1, 2.0"
+PL/iSQL function returnssetofholes() line 3 at RETURN QUERY
 -- check behavior with changes of a named rowtype
 create table mutable(f1 int, f2 text);
 create function sillyaddone(int) returns int language plisql as
