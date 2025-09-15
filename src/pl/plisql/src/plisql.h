@@ -193,6 +193,13 @@ typedef enum PLiSQL_resolve_option
 	PLISQL_RESOLVE_COLUMN		/* prefer table column to plpgsql var */
 } PLiSQL_resolve_option;
 
+typedef enum PLiSQL_rwopt
+{
+	PLISQL_RWOPT_UNKNOWN = 0,	/* applicability not determined yet */
+	PLISQL_RWOPT_NOPE,			/* cannot do any optimization */
+	PLISQL_RWOPT_TRANSFER,		/* transfer the old value into expr state */
+	PLISQL_RWOPT_INPLACE,		/* pass value as R/W to top-level function */
+} PLiSQL_rwopt;
 
 /**********************************************************************
  * Node and structure definitions
@@ -262,6 +269,7 @@ typedef struct PLiSQL_expr
 	 * should emit a read/write pointer; any others will emit read-only
 	 * pointers.
 	 */
+	PLiSQL_rwopt expr_rwopt;	/* can we apply R/W optimization? */
 	Param	   *expr_rw_param;	/* read/write Param within expr, if any */
 
 	/*
@@ -1452,4 +1460,4 @@ extern void plisql_recover_yylex_global_proper(void *yylex_data);
  */
 extern int	plisql_yyparse(PLiSQL_stmt_block **plisql_parse_result_p, yyscan_t yyscanner);
 
-#endif							/* PLPGSQL_H */
+#endif							/* PLISQL_H */
