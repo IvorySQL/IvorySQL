@@ -94,6 +94,9 @@ typedef enum ExtendBufferedFlags
 	EB_LOCK_TARGET = (1 << 5),
 } ExtendBufferedFlags;
 
+/* forward declared, to avoid including smgr.h here */
+typedef struct SMgrRelationData *SMgrRelation;
+
 /*
  * Some functions identify relations either by relation or smgr +
  * relpersistence.  Used via the BMR_REL()/BMR_SMGR() macros below.  This
@@ -102,7 +105,7 @@ typedef enum ExtendBufferedFlags
 typedef struct BufferManagerRelation
 {
 	Relation	rel;
-	struct SMgrRelationData *smgr;
+	SMgrRelation smgr;
 	char		relpersistence;
 } BufferManagerRelation;
 
@@ -123,7 +126,7 @@ struct ReadBuffersOperation
 {
 	/* The following members should be set by the caller. */
 	Relation	rel;			/* optional */
-	struct SMgrRelationData *smgr;
+	SMgrRelation smgr;
 	char		persistence;
 	ForkNumber	forknum;
 	BufferAccessStrategy strategy;
@@ -144,11 +147,8 @@ struct ReadBuffersOperation
 
 typedef struct ReadBuffersOperation ReadBuffersOperation;
 
-/* forward declared, to avoid having to expose buf_internals.h here */
-struct WritebackContext;
-
-/* forward declared, to avoid including smgr.h here */
-struct SMgrRelationData;
+/* to avoid having to expose buf_internals.h here */
+typedef struct WritebackContext WritebackContext;
 
 /* in globals.c ... this duplicates miscadmin.h */
 extern PGDLLIMPORT int NBuffers;
@@ -202,7 +202,7 @@ extern PGDLLIMPORT int32 *LocalRefCount;
 /*
  * prototypes for functions in bufmgr.c
  */
-extern PrefetchBufferResult PrefetchSharedBuffer(struct SMgrRelationData *smgr_reln,
+extern PrefetchBufferResult PrefetchSharedBuffer(SMgrRelation smgr_reln,
 												 ForkNumber forkNum,
 												 BlockNumber blockNum);
 extern PrefetchBufferResult PrefetchBuffer(Relation reln, ForkNumber forkNum,
@@ -269,15 +269,15 @@ extern BlockNumber RelationGetNumberOfBlocksInFork(Relation relation,
 												   ForkNumber forkNum);
 extern void FlushOneBuffer(Buffer buffer);
 extern void FlushRelationBuffers(Relation rel);
-extern void FlushRelationsAllBuffers(struct SMgrRelationData **smgrs, int nrels);
+extern void FlushRelationsAllBuffers(SMgrRelation *smgrs, int nrels);
 extern void CreateAndCopyRelationData(RelFileLocator src_rlocator,
 									  RelFileLocator dst_rlocator,
 									  bool permanent);
 extern void FlushDatabaseBuffers(Oid dbid);
-extern void DropRelationBuffers(struct SMgrRelationData *smgr_reln,
+extern void DropRelationBuffers(SMgrRelation smgr_reln,
 								ForkNumber *forkNum,
 								int nforks, BlockNumber *firstDelBlock);
-extern void DropRelationsAllBuffers(struct SMgrRelationData **smgr_reln,
+extern void DropRelationsAllBuffers(SMgrRelation *smgr_reln,
 									int nlocators);
 extern void DropDatabaseBuffers(Oid dbid);
 
@@ -299,7 +299,7 @@ extern bool ConditionalLockBufferForCleanup(Buffer buffer);
 extern bool IsBufferCleanupOK(Buffer buffer);
 extern bool HoldingBufferPinThatDelaysRecovery(void);
 
-extern bool BgBufferSync(struct WritebackContext *wb_context);
+extern bool BgBufferSync(WritebackContext *wb_context);
 
 extern uint32 GetPinLimit(void);
 extern uint32 GetLocalPinLimit(void);
