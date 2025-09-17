@@ -62,6 +62,9 @@ PG_FUNCTION_INFO_V1(ora_substrb_no_length);
 PG_FUNCTION_INFO_V1(ora_substrb);
 PG_FUNCTION_INFO_V1(ora_replace);
 PG_FUNCTION_INFO_V1(ora_instrb);
+PG_FUNCTION_INFO_V1(oracle_instr_2);
+PG_FUNCTION_INFO_V1(oracle_instr_3);
+PG_FUNCTION_INFO_V1(oracle_instr_4);
 PG_FUNCTION_INFO_V1(ora_asciistr);
 PG_FUNCTION_INFO_V1(ora_to_multi_byte);
 PG_FUNCTION_INFO_V1(ora_to_single_byte);
@@ -1720,6 +1723,45 @@ appendUTF16Escape(StringInfoData* outputString, uint16_t codePoint) {
     char buffer[10];
     snprintf(buffer, sizeof(buffer), "\\%04X", codePoint);
     appendStringInfoString(outputString, buffer);
+}
+
+/****************************************************************
+ * instr
+ *
+ * Syntax:
+ *   instr (string TEXT, substring TEXT)
+ *   instr (string TEXT, substring TEXT, position INTEGER)
+ *   instr (string TEXT, substring TEXT, position INTEGER, occurrence INTEGER)
+ *
+ ****************************************************************/
+Datum
+oracle_instr_2 (PG_FUNCTION_ARGS)
+{
+	text *arg1 = PG_GETARG_TEXT_PP(0);
+	text *arg2 = PG_GETARG_TEXT_PP(1);
+
+	PG_RETURN_INT32(text_instring(arg1, arg2, 1, 1, false));
+}
+
+Datum
+oracle_instr_3 (PG_FUNCTION_ARGS)
+{
+	text *arg1 = PG_GETARG_TEXT_PP(0);
+	text *arg2 = PG_GETARG_TEXT_PP(1);
+	int arg3 = PG_GETARG_INT32(2);
+
+	PG_RETURN_INT32(text_instring(arg1, arg2, arg3, 1, false));
+}
+
+Datum
+oracle_instr_4 (PG_FUNCTION_ARGS)
+{
+	text *arg1 = PG_GETARG_TEXT_PP(0);
+	text *arg2 = PG_GETARG_TEXT_PP(1);
+	int arg3 = PG_GETARG_INT32(2);
+	int arg4 = PG_GETARG_INT32(3);
+
+	PG_RETURN_INT32(text_instring(arg1, arg2, arg3, arg4, false));
 }
 
 /********************************************************************
