@@ -1087,7 +1087,7 @@ QUERY:  begin
   var2 := 23;
   raise info '%','init block';
 end
-CONTEXT: PL/iSQL assignment "pkg.var1 := 23"
+CONTEXT:  PL/iSQL assignment "pkg.var1 := 23"
 PL/iSQL function inline_code_block line 2 at assignment
 --drop
 drop package pkg;

@@ -637,7 +637,7 @@ END;
 /
 ERROR:  column "id" of relation "t1" does not exist
 CONTEXT:  compilation of PL/iSQL package "pkg1" near line 1
-compilation of PL/iSQL function "pkg1" near line 1
+compilation of PL/iSQL function "pkg1" near line 3
 DROP PACKAGE pkg1;
 DROP TABLE t1;
 --inherit table
@@ -874,7 +874,7 @@ END;
 /
 ERROR:  column "id" of relation "t1" does not exist
 CONTEXT:  compilation of PL/iSQL package "pkg1" near line 1
-compilation of PL/iSQL function "pkg1" near line 1
+compilation of PL/iSQL function "pkg1" near line 3
 DROP PACKAGE pkg1;
 DROP TABLE t1;
 --inherit table
@@ -1113,7 +1113,7 @@ END;
 /
 ERROR:  relation "t1" does not exist
 CONTEXT:  compilation of PL/iSQL package "pkg1" near line 1
-compilation of PL/iSQL function "pkg1" near line 1
+compilation of PL/iSQL function "pkg1" near line 3
 DROP PACKAGE pkg1;
 DROP TABLE t1_new;
 --inherit table
@@ -1352,7 +1352,7 @@ END;
 /
 ERROR:  relation "t1" does not exist
 CONTEXT:  compilation of PL/iSQL package "pkg1" near line 1
-compilation of PL/iSQL function "pkg1" near line 1
+compilation of PL/iSQL function "pkg1" near line 3
 DROP PACKAGE pkg1;
 --inherit table
 CREATE TABLE father_table(c1 integer,c2 varchar(10));
@@ -2034,7 +2034,7 @@ END;
 /
 ERROR:  relation "tmpe" does not exist
 CONTEXT:  compilation of PL/iSQL package "pkg1" near line 1
-compilation of PL/iSQL function "pkg1" near line 1
+compilation of PL/iSQL function "pkg1" near line 5
 DROP PROCEDURE p1(v tmpe2%ROWTYPE);
 DROP FUNCTION f1(v int);
 DROP FUNCTION f2(v int);
