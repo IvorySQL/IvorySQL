@@ -85,15 +85,18 @@ typedef enum PLSQL_endSymbolState
 } PLSQL_endSymbolState;
 
 /*
- * Oracle SQL*PLUS client cmd node types
+ * Oracle SQL*Plus Client Command Types
  */
 typedef enum psqlplus_cmd_type
 {
-	PSQLPLUS_CMD_VARIABLE,
-	PSQLPLUS_CMD_EXECUTE,
-	PSQLPLUS_CMD_PRINT
+    PSQLPLUS_CMD_VARIABLE, /* VARIABLE command */
+    PSQLPLUS_CMD_EXECUTE,  /* EXECUTE command */
+    PSQLPLUS_CMD_PRINT     /* PRINT command */
 } psqlplus_cmd_type;
 
+/*
+ * Bind Variable Data Type Information
+ */
 typedef struct BindVarType
 {
 	char	*name;		/* name of datatype */
@@ -102,15 +105,20 @@ typedef struct BindVarType
 } BindVarType;
 
 /*
- * Generic command node
+ * Generic SQL*Plus Command Node Base Structure
  */
 typedef struct psqlplus_cmd
 {
-	psqlplus_cmd_type	cmd_type;
+	psqlplus_cmd_type	cmd_type; /* Type of the SQL*Plus command */
 } psqlplus_cmd;
 
 /*
- * VARIABLE command node
+ * SQL*Plus VARIABLE Command Node
+ *
+ * Represents the parsing result of a VARIABLE command, which can be:
+ * - Declaration: VARIABLE <name> <type>
+ * - Assignment: VARIABLE <name> <type> = <value>
+ * - Listing: VARIABLE [<name>]
  */
 typedef struct psqlplus_cmd_var
 {
@@ -247,7 +255,7 @@ typedef struct PsqlScanStateData
 	const Ora_psqlScanCallbacks *oracallbacks;
 	void	   *cb_passthrough;
 
-	/* Used to handle funtion/procedure that does not end properly */
+	/* Used to handle function/procedure that does not end properly */
 	PLSQL_endSymbolState ora_plsql_expect_end_symbol;
 
 	/*
