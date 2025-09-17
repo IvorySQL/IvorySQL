@@ -293,6 +293,9 @@ get_altertable_subcmdinfo(PG_FUNCTION_ARGS)
 			case AT_GenericOptions:
 				strtype = "SET OPTIONS";
 				break;
+			case AT_ForceViewCompile:
+				strtype = "COMPILE FOIRCE VIEW";
+				break;
 			case AT_DetachPartition:
 				strtype = "DETACH PARTITION";
 				break;

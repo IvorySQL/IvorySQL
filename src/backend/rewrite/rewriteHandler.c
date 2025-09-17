@@ -25,6 +25,7 @@
 #include "access/sysattr.h"
 #include "access/table.h"
 #include "catalog/dependency.h"
+#include "commands/view.h"
 #include "commands/trigger.h"
 #include "executor/executor.h"
 #include "foreign/fdwapi.h"
@@ -45,6 +46,8 @@
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
+#include "utils/guc.h"
+#include "utils/ora_compatible.h"
 
 
 /* We use a list of these to detect recursion in RewriteQuery */
@@ -2564,6 +2567,18 @@ get_view_query(Relation view)
 	int			i;
 
 	Assert(view->rd_rel->relkind == RELKIND_VIEW);
+
+	/*
+	 * Safety check:
+	 * For force views, the rewrite rule is absent (NULL), but this function
+	 * accesses view->rd_rules without verifying its existence.
+	 *
+	 * To prevent a potential crash, we raise an error here. If you encounter
+	 * this error, your SQL statement likely does not account for force views.
+	 * This could indicate an area where further modification is needed.
+	 */
+	if (ORA_PARSER == compatible_db && rel_is_force_view(RelationGetRelid(view)))
+		elog(ERROR, "force view does not have a Query tree");
 
 	for (i = 0; i < view->rd_rules->numLocks; i++)
 	{

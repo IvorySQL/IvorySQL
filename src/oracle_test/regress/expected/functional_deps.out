@@ -177,9 +177,6 @@ FROM articles
 GROUP BY id;
 -- fail
 ALTER TABLE articles DROP CONSTRAINT articles_pkey RESTRICT;
-ERROR:  cannot drop constraint articles_pkey on table articles because other objects depend on it
-DETAIL:  view fdv1 depends on constraint articles_pkey on table articles
-HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 DROP VIEW fdv1;
 -- multiple dependencies
 CREATE TEMP VIEW fdv2 AS
@@ -187,15 +184,14 @@ SELECT a.id, a.keywords, a.title, aic.category_id, aic.changed
 FROM articles AS a JOIN articles_in_category AS aic ON a.id = aic.article_id
 WHERE aic.category_id in (14,62,70,53,138)
 GROUP BY a.id, aic.category_id, aic.article_id;
+ERROR:  column "a.keywords" must appear in the GROUP BY clause or be used in an aggregate function
+LINE 2: SELECT a.id, a.keywords, a.title, aic.category_id, aic.chang...
+                     ^
 ALTER TABLE articles DROP CONSTRAINT articles_pkey RESTRICT; -- fail
-ERROR:  cannot drop constraint articles_pkey on table articles because other objects depend on it
-DETAIL:  view fdv2 depends on constraint articles_pkey on table articles
-HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+ERROR:  constraint "articles_pkey" of relation "articles" does not exist
 ALTER TABLE articles_in_category DROP CONSTRAINT articles_in_category_pkey RESTRICT; --fail
-ERROR:  cannot drop constraint articles_in_category_pkey on table articles_in_category because other objects depend on it
-DETAIL:  view fdv2 depends on constraint articles_in_category_pkey on table articles_in_category
-HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 DROP VIEW fdv2;
+ERROR:  view "fdv2" does not exist
 -- nested queries
 CREATE TEMP VIEW fdv3 AS
 SELECT id, keywords, title, body, created
@@ -205,28 +201,33 @@ UNION
 SELECT id, keywords, title, body, created
 FROM articles
 GROUP BY id;
+ERROR:  column "articles.keywords" must appear in the GROUP BY clause or be used in an aggregate function
+LINE 2: SELECT id, keywords, title, body, created
+                   ^
 ALTER TABLE articles DROP CONSTRAINT articles_pkey RESTRICT; -- fail
-ERROR:  cannot drop constraint articles_pkey on table articles because other objects depend on it
-DETAIL:  view fdv3 depends on constraint articles_pkey on table articles
-HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+ERROR:  constraint "articles_pkey" of relation "articles" does not exist
 DROP VIEW fdv3;
+ERROR:  view "fdv3" does not exist
 CREATE TEMP VIEW fdv4 AS
 SELECT * FROM articles WHERE title IN (SELECT title FROM articles GROUP BY id);
+ERROR:  column "articles.title" must appear in the GROUP BY clause or be used in an aggregate function
+LINE 2: SELECT * FROM articles WHERE title IN (SELECT title FROM art...
+                                                      ^
 ALTER TABLE articles DROP CONSTRAINT articles_pkey RESTRICT; -- fail
-ERROR:  cannot drop constraint articles_pkey on table articles because other objects depend on it
-DETAIL:  view fdv4 depends on constraint articles_pkey on table articles
-HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+ERROR:  constraint "articles_pkey" of relation "articles" does not exist
 DROP VIEW fdv4;
+ERROR:  view "fdv4" does not exist
 -- prepared query plans: this results in failure on reuse
 PREPARE foo AS
   SELECT id, keywords, title, body, created
   FROM articles
   GROUP BY id;
-EXECUTE foo;
- id | keywords | title | body | created 
-----+----------+-------+------+---------
-(0 rows)
-
-ALTER TABLE articles DROP CONSTRAINT articles_pkey RESTRICT;
-EXECUTE foo;  -- fail
 ERROR:  column "articles.keywords" must appear in the GROUP BY clause or be used in an aggregate function
+LINE 2:   SELECT id, keywords, title, body, created
+                     ^
+EXECUTE foo;
+ERROR:  prepared statement "foo" does not exist
+ALTER TABLE articles DROP CONSTRAINT articles_pkey RESTRICT;
+ERROR:  constraint "articles_pkey" of relation "articles" does not exist
+EXECUTE foo;  -- fail
+ERROR:  prepared statement "foo" does not exist

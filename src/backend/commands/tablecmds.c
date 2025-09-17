@@ -45,6 +45,7 @@
 #include "catalog/pg_largeobject.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
+#include "catalog/pg_rewrite.h"
 #include "catalog/pg_policy.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_publication_rel.h"
@@ -66,6 +67,7 @@
 #include "commands/trigger.h"
 #include "commands/typecmds.h"
 #include "commands/user.h"
+#include "commands/view.h"
 #include "commands/vacuum.h"
 #include "common/int.h"
 #include "executor/executor.h"
@@ -654,7 +656,7 @@ static ObjectAddress ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 										   AlterTableCmd *cmd, LOCKMODE lockmode);
 static void RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
 						Relation rel, AttrNumber attnum, const char *colName,
-						int *numDependentFuncPkgOids, int *maxDependentFuncPkgOids, 
+						int *numDependentFuncPkgOids, int *maxDependentFuncPkgOids,
 						ObjectFunOrPkg **dependentFuncPkg);
 static void RememberConstraintForRebuilding(Oid conoid, AlteredTableInfo *tab);
 static void RememberIndexForRebuilding(Oid indoid, AlteredTableInfo *tab);
@@ -1018,9 +1020,10 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	{
 		ColumnDef  *colDef = lfirst(listptr);
 		Form_pg_attribute attr;
+
 		attnum++;
 		attr = TupleDescAttr(descriptor, attnum - 1);
-		
+
 		if (colDef->raw_default != NULL)
 		{
 			RawColumnDefault *rawEnt;
@@ -4070,8 +4073,8 @@ renameatt_internal(Oid myrelid,
 	relation_close(targetrelation, NoLock); /* close rel but keep lock */
 
 	/*
-	 * if there is any functions(procedures, packages) that depend on 
-	 * the relation and attnum, invalidate functions(procedures, packages), 
+	 * if there is any functions(procedures, packages) that depend on
+	 * the relation and attnum, invalidate functions(procedures, packages),
 	 * but don't delete the dependency.
 	 */
 	check_function_depend_on_relation_column(myrelid, attnum);
@@ -4358,8 +4361,8 @@ RenameRelation(RenameStmt *stmt)
 	ObjectAddressSet(address, RelationRelationId, relid);
 
 	/*
-	 * if there is any functions(procedures, packages) that depend on 
-	 * the relation and attnum, invalidate functions(procedures, packages), 
+	 * if there is any functions(procedures, packages) that depend on
+	 * the relation and attnum, invalidate functions(procedures, packages),
 	 * but don't delete the dependency.
 	 */
 	check_function_depend_on_relation(relid);
@@ -4952,6 +4955,10 @@ AlterTableGetLockLevel(List *cmds)
 				cmd_lockmode = ShareUpdateExclusiveLock;
 				break;
 
+			case AT_ForceViewCompile:
+				cmd_lockmode = AccessExclusiveLock;
+				break;
+
 			default:			/* oops */
 				elog(ERROR, "unrecognized alter table type: %d",
 					 (int) cmd->subtype);
@@ -5440,6 +5447,10 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			/* No command-specific prep needed */
 			pass = AT_PASS_MISC;
 			break;
+		case AT_ForceViewCompile:	/* COMPILE ALTER VIEW  */
+			ATSimplePermissions(cmd->subtype, rel, ATT_VIEW);
+			pass = AT_PASS_MISC;
+			break;
 		default:				/* oops */
 			elog(ERROR, "unrecognized alter table type: %d",
 				 (int) cmd->subtype);
@@ -5865,6 +5876,15 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab,
 			break;
 		case AT_DetachPartitionFinalize:
 			address = ATExecDetachPartitionFinalize(rel, ((PartitionCmd *) cmd->def)->name);
+			break;
+		case AT_ForceViewCompile:
+			if (tab->rel)
+			{
+				relation_close(tab->rel, NoLock);
+				tab->rel = NULL;
+			}
+			if (!compile_force_view(tab->relid))
+				elog(WARNING, "View altered with compilation errors");
 			break;
 		default:				/* oops */
 			elog(ERROR, "unrecognized alter table type: %d",
@@ -15490,18 +15510,69 @@ RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
 				break;
 
 			case RewriteRelationId:
+				if (ORA_PARSER == compatible_db)
+				{
+					Relation	ruleDesc;
+					ScanKeyData skey[1];
+					SysScanDesc rcscan;
+					HeapTuple	tup;
+					Form_pg_rewrite rule;
 
-				/*
-				 * View/rule bodies have pretty much the same issues as
-				 * function bodies.  FIXME someday.
-				 */
-				if (subtype == AT_AlterColumnType)
-					ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("cannot alter type of a column used by a view or rule"),
-							 errdetail("%s depends on column \"%s\"",
-									   getObjectDescription(&foundObject, false),
-									   colName)));
+					ruleDesc = table_open(RewriteRelationId, AccessShareLock);
+
+					ScanKeyInit(&skey[0],
+								Anum_pg_rewrite_oid,
+								BTEqualStrategyNumber, F_OIDEQ,
+								ObjectIdGetDatum(foundObject.objectId));
+
+					rcscan = systable_beginscan(ruleDesc, RewriteOidIndexId, true,
+												NULL, 1, skey);
+
+					tup = systable_getnext(rcscan);
+
+					if (!HeapTupleIsValid(tup))
+					{
+						systable_endscan(rcscan);
+						table_close(ruleDesc, AccessShareLock);
+						elog(ERROR, "could not find tuple for rule %u",
+							 foundObject.objectId);
+					}
+
+					rule = (Form_pg_rewrite) GETSTRUCT(tup);
+
+					/* view ? */
+					if (strcmp(NameStr(rule->rulename), "_RETURN") == 0)
+					{
+						make_view_invalid(rule->ev_class);
+						systable_endscan(rcscan);
+						table_close(ruleDesc, AccessShareLock);
+						continue;
+					}
+					else
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								 errmsg("cannot alter type of a column used by a view or rule"),
+								 errdetail("%s depends on column \"%s\"",
+										   getObjectDescription(&foundObject, false),
+										   colName)));
+						break;
+					}
+				}
+				else
+				{
+					/*
+					* View/rule bodies have pretty much the same issues as
+					* function bodies.  FIXME someday.
+					*/
+					if (subtype == AT_AlterColumnType)
+						ereport(ERROR,
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								errmsg("cannot alter type of a column used by a view or rule"),
+								errdetail("%s depends on column \"%s\"",
+										getObjectDescription(&foundObject, false),
+										colName)));
+				}
 				break;
 
 			case TriggerRelationId:
@@ -15603,8 +15674,8 @@ RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
 				break;
 
 			case PackageRelationId:
-				if (ORA_PARSER == compatible_db && 
-				    foundDep->deptype == DEPENDENCY_TYPE && 
+				if (ORA_PARSER == compatible_db &&
+				    foundDep->deptype == DEPENDENCY_TYPE &&
 				    FuncPkgDepend == true)
 				{
 					/* Add package Oid to the pending-oids list */
@@ -15633,8 +15704,8 @@ RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
 				break;
 
 			case PackageBodyRelationId:
-				if (ORA_PARSER == compatible_db && 
-				    foundDep->deptype == DEPENDENCY_TYPE && 
+				if (ORA_PARSER == compatible_db &&
+				    foundDep->deptype == DEPENDENCY_TYPE &&
 				    FuncPkgDepend == true)
 				{
 					/* Add package body Oid to the pending-oids list */
@@ -15661,7 +15732,7 @@ RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
 						 getObjectDescription(&foundObject, false));
 				}
 				break;
-				
+
 			default:
 
 				/*
@@ -22523,7 +22594,7 @@ check_function_depend_on_relation(Oid relid)
 
 /*
  * check_function_depend_on_relation_column
- * Check if there is any functions(procedures, ora packages) 
+ * Check if there is any functions(procedures, ora packages)
  * that depend on the relation and attnum.
  * If so, invalidate the functions(procedures, ora packages).
  */

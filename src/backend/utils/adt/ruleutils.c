@@ -41,6 +41,7 @@
 #include "catalog/pg_package.h"
 #include "commands/defrem.h"
 #include "commands/tablespace.h"
+#include "commands/view.h"
 #include "common/keywords.h"
 #include "executor/spi.h"
 #include "funcapi.h"
@@ -812,6 +813,9 @@ pg_get_viewdef_worker(Oid viewoid, int prettyFlags, int wrapColumn)
 	HeapTuple	ruletup;
 	TupleDesc	rulettc;
 	StringInfoData buf;
+
+	if (ORA_PARSER == compatible_db && rel_is_force_view(viewoid))
+		return get_force_view_def(viewoid);
 
 	/*
 	 * Do this first so that string is alloc'd in outer context not SPI's.
