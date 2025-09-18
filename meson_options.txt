@@ -160,7 +160,7 @@ option('systemd', type: 'feature', value: 'auto',
   description: 'systemd support')
 
 option('uuid', type: 'combo', choices: ['none', 'bsd', 'e2fs', 'ossp'],
-  value: 'none',
+  value: 'ossp',
   description: 'Use LIB for contrib/uuid-ossp support')
 
 option('zlib', type: 'feature', value: 'auto',

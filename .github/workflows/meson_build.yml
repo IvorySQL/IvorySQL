@@ -24,12 +24,12 @@ jobs:
               libreadline-dev libedit-dev uuid-dev libossp-uuid-dev \
               libipc-run-perl libtime-hires-perl libtest-simple-perl \
               libgssapi-krb5-2 libicu-dev
-        curl -L "https://github.com/mesonbuild/meson/releases/download/0.57.2/meson-0.57.2.tar.gz" -o meson-0.57.2.tar.gz
+        curl -L "https://github.com/mesonbuild/meson/releases/download/1.0.1/meson-1.0.1.tar.gz" -o meson-1.0.1.tar.gz
         curl -L "https://github.com/ninja-build/ninja/releases/download/v1.10.1/ninja-linux.zip" -o ninja-linux.zip
         unzip -o ninja-linux.zip
         sudo cp ninja /usr/bin/
-        tar xzf meson-0.57.2.tar.gz
-        cd meson-0.57.2
+        tar xzf meson-1.0.1.tar.gz
+        cd meson-1.0.1
         sudo python3 setup.py install
     
     - name: configure - linux
