@@ -193,6 +193,9 @@ typedef struct NamedLWLockTrancheRequest
 int			NamedLWLockTrancheRequests = 0;
 NamedLWLockTrancheRequest *NamedLWLockTrancheRequestArray = NULL;
 
+/* postmaster's local copy of the request array */
+static NamedLWLockTrancheRequest *LocalNamedLWLockTrancheRequestArray = NULL;
+
 /* shared memory counter of registered tranches */
 int		   *LWLockCounter = NULL;
 
@@ -397,6 +400,15 @@ LWLockShmemSize(void)
 	Size		size;
 	int			numLocks = NUM_FIXED_LWLOCKS;
 
+	/*
+	 * If re-initializing shared memory, the request array will no longer be
+	 * accessible, so switch to the copy in postmaster's local memory.  We'll
+	 * copy it back into shared memory later when CreateLWLocks() is called
+	 * again.
+	 */
+	if (LocalNamedLWLockTrancheRequestArray)
+		NamedLWLockTrancheRequestArray = LocalNamedLWLockTrancheRequestArray;
+
 	/* Calculate total number of locks needed in the main array. */
 	numLocks += NumLWLocksForNamedTranches();
 
@@ -458,9 +470,15 @@ CreateLWLocks(void)
 		 */
 		if (NamedLWLockTrancheRequests > 0)
 		{
+			/*
+			 * Save the pointer to the request array in postmaster's local
+			 * memory.  We'll need it if we ever need to re-initialize shared
+			 * memory after a crash.
+			 */
+			LocalNamedLWLockTrancheRequestArray = NamedLWLockTrancheRequestArray;
+
 			memcpy(ptr, NamedLWLockTrancheRequestArray,
 				   NamedLWLockTrancheRequests * sizeof(NamedLWLockTrancheRequest));
-			pfree(NamedLWLockTrancheRequestArray);
 			NamedLWLockTrancheRequestArray = (NamedLWLockTrancheRequest *) ptr;
 			ptr += NamedLWLockTrancheRequests * sizeof(NamedLWLockTrancheRequest);
 		}
