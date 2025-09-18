@@ -33,6 +33,9 @@
  *	We control all assignments of pg_authid.oid for historical reasons (the
  *	oids used to be stored in pg_largeobject_metadata, which is now copied via
  *	SQL commands), that might change at some point in the future.
+ *
+ *	We control all assignments of pg_database.oid because we want the directory
+ *	names to match between the old and new cluster.
  */
 
 
@@ -452,7 +455,6 @@ set_locale_and_encoding(void)
 	char	   *datcollate_literal;
 	char	   *datctype_literal;
 	char	   *datlocale_literal = NULL;
-	char	   *datlocale_src;
 	DbLocaleInfo *locale = old_cluster.template0;
 
 	prep_status("Setting locale and encoding for new cluster");
@@ -466,10 +468,13 @@ set_locale_and_encoding(void)
 	datctype_literal = PQescapeLiteral(conn_new_template1,
 									   locale->db_ctype,
 									   strlen(locale->db_ctype));
-	datlocale_src = locale->db_locale ? locale->db_locale : "NULL";
-	datlocale_literal = PQescapeLiteral(conn_new_template1,
-										datlocale_src,
-										strlen(datlocale_src));
+
+	if (locale->db_locale)
+		datlocale_literal = PQescapeLiteral(conn_new_template1,
+											locale->db_locale,
+											strlen(locale->db_locale));
+	else
+		datlocale_literal = "NULL";
 
 	/* update template0 in new cluster */
 	if (GET_MAJOR_VERSION(new_cluster.major_version) >= 1700)
@@ -513,7 +518,8 @@ set_locale_and_encoding(void)
 
 	PQfreemem(datcollate_literal);
 	PQfreemem(datctype_literal);
-	PQfreemem(datlocale_literal);
+	if (locale->db_locale)
+		PQfreemem(datlocale_literal);
 
 	PQfinish(conn_new_template1);
 
@@ -1008,11 +1014,11 @@ create_logical_replication_slots(void)
 			LogicalSlotInfo *slot_info = &slot_arr->slots[slotnum];
 
 			/* Constructs a query for creating logical replication slots */
-			appendPQExpBuffer(query,
-							  "SELECT * FROM "
-							  "pg_catalog.pg_create_logical_replication_slot(");
+			appendPQExpBufferStr(query,
+								 "SELECT * FROM "
+								 "pg_catalog.pg_create_logical_replication_slot(");
 			appendStringLiteralConn(query, slot_info->slotname, conn);
-			appendPQExpBuffer(query, ", ");
+			appendPQExpBufferStr(query, ", ");
 			appendStringLiteralConn(query, slot_info->plugin, conn);
 
 			appendPQExpBuffer(query, ", false, %s, %s);",

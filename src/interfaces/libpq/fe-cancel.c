@@ -50,7 +50,7 @@ struct pg_cancel
 									 * retransmits */
 
 	/* Pre-constructed cancel request packet starts here */
-	int32		cancel_pkt_len; /* in network-byte-order */
+	int32		cancel_pkt_len; /* in network byte order */
 	char		cancel_req[FLEXIBLE_ARRAY_MEMBER];	/* CancelRequestPacket */
 };
 
@@ -114,7 +114,7 @@ PQcancelCreate(PGconn *conn)
 	if (conn->be_cancel_key != NULL)
 	{
 		cancelConn->be_cancel_key = malloc(conn->be_cancel_key_len);
-		if (!conn->be_cancel_key)
+		if (cancelConn->be_cancel_key == NULL)
 			goto oom_error;
 		memcpy(cancelConn->be_cancel_key, conn->be_cancel_key, conn->be_cancel_key_len);
 	}
@@ -463,7 +463,7 @@ PQsendCancelRequest(PGconn *cancelConn)
 	memset(&req, 0, offsetof(CancelRequestPacket, cancelAuthCode));
 	req.cancelRequestCode = (MsgType) pg_hton32(CANCEL_REQUEST_CODE);
 	req.backendPID = pg_hton32(cancelConn->be_pid);
-	if (pqPutnchar((char *) &req, offsetof(CancelRequestPacket, cancelAuthCode), cancelConn))
+	if (pqPutnchar(&req, offsetof(CancelRequestPacket, cancelAuthCode), cancelConn))
 		return STATUS_ERROR;
 	if (pqPutnchar(cancelConn->be_cancel_key, cancelConn->be_cancel_key_len, cancelConn))
 		return STATUS_ERROR;

@@ -264,6 +264,17 @@ ALTER USER MAPPING FOR public SERVER testserver1
 -- permitted to check validation.
 ALTER USER MAPPING FOR public SERVER testserver1
 	OPTIONS (ADD sslkey 'value', ADD sslcert 'value');
+-- OAuth options are not allowed in either context
+ALTER SERVER testserver1 OPTIONS (ADD oauth_issuer 'https://example.com');
+ERROR:  invalid option "oauth_issuer"
+ALTER SERVER testserver1 OPTIONS (ADD oauth_client_id 'myID');
+ERROR:  invalid option "oauth_client_id"
+ALTER USER MAPPING FOR public SERVER testserver1
+	OPTIONS (ADD oauth_issuer 'https://example.com');
+ERROR:  invalid option "oauth_issuer"
+ALTER USER MAPPING FOR public SERVER testserver1
+	OPTIONS (ADD oauth_client_id 'myID');
+ERROR:  invalid option "oauth_client_id"
 ALTER FOREIGN TABLE ft1 OPTIONS (schema_name 'S 1', table_name 'T 1');
 ALTER FOREIGN TABLE ft2 OPTIONS (schema_name 'S 1', table_name 'T 1');
 ALTER FOREIGN TABLE ft1 ALTER COLUMN c1 OPTIONS (column_name 'C 1');
@@ -3205,6 +3216,68 @@ SELECT * FROM ft1, ft2, ft4, ft5, local_tbl WHERE ft1.c1 = ft2.c1 AND ft1.c2 = f
  36 | 6  | 00036 | 1970-02-06 00:00:00.000000 -08:00 | 1970-02-06 00:00:00.000000 | 6  | 6          | foo | 36 | 6  | 00036 | 1970-02-06 00:00:00.000000 -08:00 | 1970-02-06 00:00:00.000000 | 6  | 6          | foo | 6  | 7  | AAA006 | 6  | 7  | AAA006 | 6  | 6  | 0006
 (10 rows)
 
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM ft1, ft4, ft5, local_tbl WHERE ft1.c1 = ft4.c1 AND ft1.c1 = ft5.c1
+    AND ft1.c2 = local_tbl.c1 AND ft1.c1 < 100 AND ft5.c1 < 100 FOR UPDATE;
+                                                                                                  QUERY PLAN                                                                                                   
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ LockRows
+   Output: ft1.c1, ft1.c2, ft1.c3, ft1.c4, ft1.c5, ft1.c6, ft1.c7, ft1.c8, ft4.c1, ft4.c2, ft4.c3, ft5.c1, ft5.c2, ft5.c3, local_tbl.c1, local_tbl.c2, local_tbl.c3, ft1.*, ft4.*, ft5.*, local_tbl.ctid
+   ->  Merge Join
+         Output: ft1.c1, ft1.c2, ft1.c3, ft1.c4, ft1.c5, ft1.c6, ft1.c7, ft1.c8, ft4.c1, ft4.c2, ft4.c3, ft5.c1, ft5.c2, ft5.c3, local_tbl.c1, local_tbl.c2, local_tbl.c3, ft1.*, ft4.*, ft5.*, local_tbl.ctid
+         Merge Cond: (local_tbl.c1 = ft1.c2)
+         ->  Index Scan using local_tbl_pkey on public.local_tbl
+               Output: local_tbl.c1, local_tbl.c2, local_tbl.c3, local_tbl.ctid
+         ->  Sort
+               Output: ft1.c1, ft1.c2, ft1.c3, ft1.c4, ft1.c5, ft1.c6, ft1.c7, ft1.c8, ft1.*, ft4.c1, ft4.c2, ft4.c3, ft4.*, ft5.c1, ft5.c2, ft5.c3, ft5.*
+               Sort Key: ft1.c2
+               ->  Merge Join
+                     Output: ft1.c1, ft1.c2, ft1.c3, ft1.c4, ft1.c5, ft1.c6, ft1.c7, ft1.c8, ft1.*, ft4.c1, ft4.c2, ft4.c3, ft4.*, ft5.c1, ft5.c2, ft5.c3, ft5.*
+                     Merge Cond: (ft1.c1 = ft5.c1)
+                     ->  Merge Join
+                           Output: ft1.c1, ft1.c2, ft1.c3, ft1.c4, ft1.c5, ft1.c6, ft1.c7, ft1.c8, ft1.*, ft4.c1, ft4.c2, ft4.c3, ft4.*
+                           Merge Cond: (ft1.c1 = ft4.c1)
+                           ->  Sort
+                                 Output: ft1.c1, ft1.c2, ft1.c3, ft1.c4, ft1.c5, ft1.c6, ft1.c7, ft1.c8, ft1.*
+                                 Sort Key: ft1.c1
+                                 ->  Foreign Scan on public.ft1
+                                       Output: ft1.c1, ft1.c2, ft1.c3, ft1.c4, ft1.c5, ft1.c6, ft1.c7, ft1.c8, ft1.*
+                                       Filter: (ft1.c1 < '100'::number)
+                                       Remote SQL: SELECT "C 1", c2, c3, c4, c5, c6, c7, c8 FROM "S 1"."T 1" FOR UPDATE
+                           ->  Sort
+                                 Output: ft4.c1, ft4.c2, ft4.c3, ft4.*
+                                 Sort Key: ft4.c1
+                                 ->  Foreign Scan on public.ft4
+                                       Output: ft4.c1, ft4.c2, ft4.c3, ft4.*
+                                       Remote SQL: SELECT c1, c2, c3 FROM "S 1"."T 3" FOR UPDATE
+                     ->  Sort
+                           Output: ft5.c1, ft5.c2, ft5.c3, ft5.*
+                           Sort Key: ft5.c1
+                           ->  Foreign Scan on public.ft5
+                                 Output: ft5.c1, ft5.c2, ft5.c3, ft5.*
+                                 Filter: (ft5.c1 < '100'::number)
+                                 Remote SQL: SELECT c1, c2, c3 FROM "S 1"."T 4" FOR UPDATE
+(36 rows)
+
+SELECT * FROM ft1, ft4, ft5, local_tbl WHERE ft1.c1 = ft4.c1 AND ft1.c1 = ft5.c1
+    AND ft1.c2 = local_tbl.c1 AND ft1.c1 < 100 AND ft5.c1 < 100 FOR UPDATE;
+ c1 | c2 |  c3   |                c4                 |             c5             | c6 |     c7     | c8  | c1 | c2 |   c3   | c1 | c2 |   c3   | c1 | c2 |  c3  
+----+----+-------+-----------------------------------+----------------------------+----+------------+-----+----+----+--------+----+----+--------+----+----+------
+ 12 | 2  | 00012 | 1970-01-13 00:00:00.000000 -08:00 | 1970-01-13 00:00:00.000000 | 2  | 2          | foo | 12 | 13 | AAA012 | 12 | 13 | AAA012 | 2  | 2  | 0002
+ 42 | 2  | 00042 | 1970-02-12 00:00:00.000000 -08:00 | 1970-02-12 00:00:00.000000 | 2  | 2          | foo | 42 | 43 | AAA042 | 42 | 43 | AAA042 | 2  | 2  | 0002
+ 72 | 2  | 00072 | 1970-03-14 00:00:00.000000 -08:00 | 1970-03-14 00:00:00.000000 | 2  | 2          | foo | 72 | 73 | AAA072 | 72 | 73 |        | 2  | 2  | 0002
+ 24 | 4  | 00024 | 1970-01-25 00:00:00.000000 -08:00 | 1970-01-25 00:00:00.000000 | 4  | 4          | foo | 24 | 25 | AAA024 | 24 | 25 | AAA024 | 4  | 4  | 0004
+ 54 | 4  | 00054 | 1970-02-24 00:00:00.000000 -08:00 | 1970-02-24 00:00:00.000000 | 4  | 4          | foo | 54 | 55 | AAA054 | 54 | 55 |        | 4  | 4  | 0004
+ 84 | 4  | 00084 | 1970-03-26 00:00:00.000000 -08:00 | 1970-03-26 00:00:00.000000 | 4  | 4          | foo | 84 | 85 | AAA084 | 84 | 85 | AAA084 | 4  | 4  | 0004
+ 96 | 6  | 00096 | 1970-04-07 00:00:00.000000 -08:00 | 1970-04-07 00:00:00.000000 | 6  | 6          | foo | 96 | 97 | AAA096 | 96 | 97 | AAA096 | 6  | 6  | 0006
+ 36 | 6  | 00036 | 1970-02-06 00:00:00.000000 -08:00 | 1970-02-06 00:00:00.000000 | 6  | 6          | foo | 36 | 37 | AAA036 | 36 | 37 |        | 6  | 6  | 0006
+ 66 | 6  | 00066 | 1970-03-08 00:00:00.000000 -08:00 | 1970-03-08 00:00:00.000000 | 6  | 6          | foo | 66 | 67 | AAA066 | 66 | 67 | AAA066 | 6  | 6  | 0006
+ 6  | 6  | 00006 | 1970-01-07 00:00:00.000000 -08:00 | 1970-01-07 00:00:00.000000 | 6  | 6          | foo | 6  | 7  | AAA006 | 6  | 7  | AAA006 | 6  | 6  | 0006
+ 48 | 8  | 00048 | 1970-02-18 00:00:00.000000 -08:00 | 1970-02-18 00:00:00.000000 | 8  | 8          | foo | 48 | 49 | AAA048 | 48 | 49 | AAA048 | 8  | 8  | 0008
+ 18 | 8  | 00018 | 1970-01-19 00:00:00.000000 -08:00 | 1970-01-19 00:00:00.000000 | 8  | 8          | foo | 18 | 19 | AAA018 | 18 | 19 |        | 8  | 8  | 0008
+ 78 | 8  | 00078 | 1970-03-20 00:00:00.000000 -08:00 | 1970-03-20 00:00:00.000000 | 8  | 8          | foo | 78 | 79 | AAA078 | 78 | 79 | AAA078 | 8  | 8  | 0008
+(13 rows)
+
 RESET enable_nestloop;
 RESET enable_hashjoin;
 -- test that add_paths_with_pathkeys_for_rel() arranges for the epq_path to
@@ -4050,18 +4123,15 @@ select sum(c1) filter (where c1 < 100 and c2 > 5) from ft1 group by c2 order by 
 -- DISTINCT, ORDER BY and FILTER within aggregate
 explain (verbose, costs off)
 select sum(c1%3), sum(distinct c1%3 order by c1%3) filter (where c1%3 < 2), c2 from ft1 where c2 = 6 group by c2;
-                                                                          QUERY PLAN                                                                           
----------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                      QUERY PLAN                                                                       
+-------------------------------------------------------------------------------------------------------------------------------------------------------
  GroupAggregate
-   Output: sum(((c1 % '3'::number))), sum(DISTINCT ((c1 % '3'::number)) ORDER BY ((c1 % '3'::number))) FILTER (WHERE (((c1 % '3'::number)) < '2'::number)), c2
-   ->  Sort
-         Output: c1, c2, ((c1 % '3'::number))
-         Sort Key: ((ft1.c1 % '3'::number))
-         ->  Foreign Scan on public.ft1
-               Output: c1, c2, (c1 % '3'::number)
-               Filter: (ft1.c2 = '6'::number)
-               Remote SQL: SELECT "C 1", c2 FROM "S 1"."T 1"
-(9 rows)
+   Output: sum((c1 % '3'::number)), sum(DISTINCT (c1 % '3'::number) ORDER BY (c1 % '3'::number)) FILTER (WHERE ((c1 % '3'::number) < '2'::number)), c2
+   ->  Foreign Scan on public.ft1
+         Output: c1, c2
+         Filter: (ft1.c2 = '6'::number)
+         Remote SQL: SELECT "C 1", c2 FROM "S 1"."T 1"
+(6 rows)
 
 select sum(c1%3), sum(distinct c1%3 order by c1%3) filter (where c1%3 < 2), c2 from ft1 where c2 = 6 group by c2;
  sum | sum | c2 

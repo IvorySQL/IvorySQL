@@ -5,6 +5,7 @@
 
 #include "btree_gist.h"
 #include "btree_utils_num.h"
+#include "utils/sortsupport.h"
 
 typedef struct
 {
@@ -12,9 +13,7 @@ typedef struct
 	Oid			upper;
 } oidKEY;
 
-/*
-** OID ops
-*/
+/* GiST support functions */
 PG_FUNCTION_INFO_V1(gbt_oid_compress);
 PG_FUNCTION_INFO_V1(gbt_oid_fetch);
 PG_FUNCTION_INFO_V1(gbt_oid_union);
@@ -23,6 +22,7 @@ PG_FUNCTION_INFO_V1(gbt_oid_consistent);
 PG_FUNCTION_INFO_V1(gbt_oid_distance);
 PG_FUNCTION_INFO_V1(gbt_oid_penalty);
 PG_FUNCTION_INFO_V1(gbt_oid_same);
+PG_FUNCTION_INFO_V1(gbt_oid_sortsupport);
 
 
 static bool
@@ -113,9 +113,8 @@ oid_dist(PG_FUNCTION_ARGS)
 
 
 /**************************************************
- * Oid ops
+ * GiST support functions
  **************************************************/
-
 
 Datum
 gbt_oid_compress(PG_FUNCTION_ARGS)
@@ -155,7 +154,6 @@ gbt_oid_consistent(PG_FUNCTION_ARGS)
 									  GIST_LEAF(entry), &tinfo, fcinfo->flinfo));
 }
 
-
 Datum
 gbt_oid_distance(PG_FUNCTION_ARGS)
 {
@@ -173,7 +171,6 @@ gbt_oid_distance(PG_FUNCTION_ARGS)
 									  &tinfo, fcinfo->flinfo));
 }
 
-
 Datum
 gbt_oid_union(PG_FUNCTION_ARGS)
 {
@@ -183,7 +180,6 @@ gbt_oid_union(PG_FUNCTION_ARGS)
 	*(int *) PG_GETARG_POINTER(1) = sizeof(oidKEY);
 	PG_RETURN_POINTER(gbt_num_union(out, entryvec, &tinfo, fcinfo->flinfo));
 }
-
 
 Datum
 gbt_oid_penalty(PG_FUNCTION_ARGS)
@@ -214,4 +210,30 @@ gbt_oid_same(PG_FUNCTION_ARGS)
 
 	*result = gbt_num_same((void *) b1, (void *) b2, &tinfo, fcinfo->flinfo);
 	PG_RETURN_POINTER(result);
+}
+
+static int
+gbt_oid_ssup_cmp(Datum x, Datum y, SortSupport ssup)
+{
+	oidKEY	   *arg1 = (oidKEY *) DatumGetPointer(x);
+	oidKEY	   *arg2 = (oidKEY *) DatumGetPointer(y);
+
+	/* for leaf items we expect lower == upper, so only compare lower */
+	if (arg1->lower > arg2->lower)
+		return 1;
+	else if (arg1->lower < arg2->lower)
+		return -1;
+	else
+		return 0;
+}
+
+Datum
+gbt_oid_sortsupport(PG_FUNCTION_ARGS)
+{
+	SortSupport ssup = (SortSupport) PG_GETARG_POINTER(0);
+
+	ssup->comparator = gbt_oid_ssup_cmp;
+	ssup->ssup_extra = NULL;
+
+	PG_RETURN_VOID();
 }

@@ -1,5 +1,5 @@
 
-# Copyright (c) 2022-2024, PostgreSQL Global Development Group
+# Copyright (c) 2022-2025, PostgreSQL Global Development Group
 
 use strict;
 use warnings FATAL => 'all';
@@ -11,10 +11,6 @@ use Test::More;
 
 use lib "$FindBin::RealBin/../../../ldap";
 use LdapServer;
-
-my ($slapd, $ldap_bin_dir, $ldap_schema_dir);
-
-$ldap_bin_dir = undef;    # usually in PATH
 
 if ($ENV{with_ldap} ne 'yes')
 {
@@ -34,7 +30,7 @@ elsif (!$LdapServer::setup)
 my $clear_ldap_rootpw = "FooBaR1";
 my $rot13_ldap_rootpw = "SbbOnE1";
 
-my $ldap = LdapServer->new($clear_ldap_rootpw, 'users');   # no anonymous auth
+my $ldap = LdapServer->new($clear_ldap_rootpw, 'users');    # no anonymous auth
 $ldap->ldapadd_file("$FindBin::RealBin/../../../ldap/authdata.ldif");
 $ldap->ldapsetpw('uid=test1,dc=example,dc=net', 'secret1');
 
@@ -46,9 +42,10 @@ note "setting up PostgreSQL instance";
 
 my $node = PostgreSQL::Test::Cluster->new('node');
 $node->init;
-$node->append_conf('postgresql.conf', "log_connections = on\n");
 $node->append_conf('postgresql.conf',
-   "shared_preload_libraries = 'ldap_password_func'");
+	"log_connections = 'receipt,authentication,authorization'\n");
+$node->append_conf('postgresql.conf',
+	"shared_preload_libraries = 'ldap_password_func'");
 $node->start;
 
 $node->safe_psql('postgres', 'CREATE USER test1;');
@@ -83,8 +80,7 @@ $node->append_conf('pg_hba.conf',
 );
 $node->restart;
 
-test_access($node, 'test1', 2,
-   'search+bind authentication fails with wrong ldapbindpasswd');
+test_access($node, 'test1', 2, 'search+bind authentication fails with wrong ldapbindpasswd');
 
 unlink($node->data_dir . '/pg_hba.conf');
 $node->append_conf('pg_hba.conf',
@@ -92,8 +88,7 @@ $node->append_conf('pg_hba.conf',
 );
 $node->restart;
 
-test_access($node, 'test1', 2,
-   'search+bind authentication fails with clear password');
+test_access($node, 'test1', 2, 'search+bind authentication fails with clear password');
 
 unlink($node->data_dir . '/pg_hba.conf');
 $node->append_conf('pg_hba.conf',
@@ -101,7 +96,6 @@ $node->append_conf('pg_hba.conf',
 );
 $node->restart;
 
-test_access($node, 'test1', 0,
-   'search+bind authentication succeeds with rot13ed password');
+test_access($node, 'test1', 0, 'search+bind authentication succeeds with rot13ed password');
 
 done_testing();

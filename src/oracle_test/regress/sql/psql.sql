@@ -45,6 +45,36 @@ SELECT 1 as one, 2 as two \g (format=csv csv_fieldsep='\t')
 SELECT 1 as one, 2 as two \gx (title='foo bar')
 \g
 
+-- \parse (extended query protocol)
+\parse
+SELECT 1 \parse ''
+SELECT 2 \parse stmt1
+SELECT $1 \parse stmt2
+SELECT $1, $2 \parse stmt3
+
+-- \bind_named (extended query protocol)
+\bind_named
+\bind_named '' \g
+\bind_named stmt1 \g
+\bind_named stmt2 'foo' \g
+\bind_named stmt3 'foo' 'bar' \g
+-- Repeated calls.  The second call generates an error, cleaning up the
+-- statement name set by the first call.
+\bind_named stmt4
+\bind_named
+\g
+-- Last \bind_named wins
+\bind_named stmt2 'foo' \bind_named stmt3 'foo2' 'bar2' \g
+-- Multiple \g calls mean multiple executions
+\bind_named stmt2 'foo3' \g \bind_named stmt3 'foo4' 'bar4' \g
+
+-- \close_prepared (extended query protocol)
+\close_prepared
+\close_prepared ''
+\close_prepared stmt2
+\close_prepared stmt2
+SELECT name, statement FROM pg_prepared_statements ORDER BY name;
+
 -- \bind (extended query protocol)
 
 SELECT 1 \bind \g
@@ -994,9 +1024,11 @@ select \if false \\ (bogus \else \\ 42 \endif \\ forty_two;
 	\pset fieldsep | `nosuchcommand` :foo :'foo' :"foo"
 	\a
 	SELECT $1 \bind 1 \g
+	\bind_named stmt1 1 2 \g
 	\C arg1
 	\c arg1 arg2 arg3 arg4
 	\cd arg1
+	\close_prepared stmt1
 	\conninfo
 	\copy arg1 arg2 arg3 arg4 arg5 arg6
 	\copyright
@@ -1028,6 +1060,7 @@ select \if false \\ (bogus \else \\ 42 \endif \\ forty_two;
 	\lo_list
 	\o arg1
 	\p
+	SELECT 1 \parse
 	\password arg1
 	\prompt arg1 arg2
 	\pset arg1 arg2

@@ -421,6 +421,16 @@ CREATE TABLE people (
     </listitem>
     <listitem>
      <para>
+      A virtual generated column cannot have a user-defined type, and the
+      generation expression of a virtual generated column must not reference
+      user-defined functions or types, that is, it can only use built-in
+      functions or types.  This applies also indirectly, such as for functions
+      or types that underlie operators or casts.  (This restriction does not
+      exist for stored generated columns.)
+     </para>
+    </listitem>
+    <listitem>
+     <para>
       A generated column cannot have a column default or an identity definition.
      </para>
     </listitem>
@@ -1764,9 +1774,6 @@ ALTER TABLE products ALTER COLUMN product_no SET NOT NULL;
 <programlisting>
 ALTER TABLE products DROP CONSTRAINT some_name;
 </programlisting>
-    (If you are dealing with a generated constraint name like <literal>$2</literal>,
-    don't forget that you'll need to double-quote it to make it a valid
-    identifier.)
    </para>
 
    <para>
@@ -2226,8 +2233,9 @@ REVOKE ALL ON accounts FROM PUBLIC;
      <para>
       Allows <command>VACUUM</command>, <command>ANALYZE</command>,
       <command>CLUSTER</command>, <command>REFRESH MATERIALIZED VIEW</command>,
-      <command>REINDEX</command>, and <command>LOCK TABLE</command> on a
-      relation.
+      <command>REINDEX</command>, <command>LOCK TABLE</command>,
+      and database object statistics manipulation functions
+      (see <xref linkend="functions-admin-statsmod"/>) on a relation.
      </para>
     </listitem>
    </varlistentry>

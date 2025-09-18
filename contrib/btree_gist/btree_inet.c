@@ -7,6 +7,7 @@
 #include "btree_utils_num.h"
 #include "catalog/pg_type.h"
 #include "utils/builtins.h"
+#include "utils/sortsupport.h"
 
 typedef struct inetkey
 {
@@ -14,15 +15,14 @@ typedef struct inetkey
 	double		upper;
 } inetKEY;
 
-/*
-** inet ops
-*/
+/* GiST support functions */
 PG_FUNCTION_INFO_V1(gbt_inet_compress);
 PG_FUNCTION_INFO_V1(gbt_inet_union);
 PG_FUNCTION_INFO_V1(gbt_inet_picksplit);
 PG_FUNCTION_INFO_V1(gbt_inet_consistent);
 PG_FUNCTION_INFO_V1(gbt_inet_penalty);
 PG_FUNCTION_INFO_V1(gbt_inet_same);
+PG_FUNCTION_INFO_V1(gbt_inet_sortsupport);
 
 
 static bool
@@ -85,9 +85,8 @@ static const gbtree_ninfo tinfo =
 
 
 /**************************************************
- * inet ops
+ * GiST support functions
  **************************************************/
-
 
 Datum
 gbt_inet_compress(PG_FUNCTION_ARGS)
@@ -113,7 +112,6 @@ gbt_inet_compress(PG_FUNCTION_ARGS)
 
 	PG_RETURN_POINTER(retval);
 }
-
 
 Datum
 gbt_inet_consistent(PG_FUNCTION_ARGS)
@@ -142,7 +140,6 @@ gbt_inet_consistent(PG_FUNCTION_ARGS)
 									  &strategy, GIST_LEAF(entry), &tinfo, fcinfo->flinfo));
 }
 
-
 Datum
 gbt_inet_union(PG_FUNCTION_ARGS)
 {
@@ -152,7 +149,6 @@ gbt_inet_union(PG_FUNCTION_ARGS)
 	*(int *) PG_GETARG_POINTER(1) = sizeof(inetKEY);
 	PG_RETURN_POINTER(gbt_num_union(out, entryvec, &tinfo, fcinfo->flinfo));
 }
-
 
 Datum
 gbt_inet_penalty(PG_FUNCTION_ARGS)
@@ -183,4 +179,30 @@ gbt_inet_same(PG_FUNCTION_ARGS)
 
 	*result = gbt_num_same((void *) b1, (void *) b2, &tinfo, fcinfo->flinfo);
 	PG_RETURN_POINTER(result);
+}
+
+static int
+gbt_inet_ssup_cmp(Datum x, Datum y, SortSupport ssup)
+{
+	inetKEY    *arg1 = (inetKEY *) DatumGetPointer(x);
+	inetKEY    *arg2 = (inetKEY *) DatumGetPointer(y);
+
+	/* for leaf items we expect lower == upper, so only compare lower */
+	if (arg1->lower < arg2->lower)
+		return -1;
+	else if (arg1->lower > arg2->lower)
+		return 1;
+	else
+		return 0;
+}
+
+Datum
+gbt_inet_sortsupport(PG_FUNCTION_ARGS)
+{
+	SortSupport ssup = (SortSupport) PG_GETARG_POINTER(0);
+
+	ssup->comparator = gbt_inet_ssup_cmp;
+	ssup->ssup_extra = NULL;
+
+	PG_RETURN_VOID();
 }

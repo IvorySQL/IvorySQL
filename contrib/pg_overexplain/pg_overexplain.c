@@ -54,7 +54,7 @@ static void overexplain_alias(const char *qlabel, Alias *alias,
 							  ExplainState *es);
 static void overexplain_bitmapset(const char *qlabel, Bitmapset *bms,
 								  ExplainState *es);
-static void overexplain_intlist(const char *qlabel, List *intlist,
+static void overexplain_intlist(const char *qlabel, List *list,
 								ExplainState *es);
 
 static int	es_extension_id;
@@ -277,7 +277,7 @@ overexplain_per_plan_hook(PlannedStmt *plannedstmt,
  * Print out various details from the PlannedStmt that wouldn't otherwise
  * be displayed.
  *
- * We don't try to print everything here. Information that would be displyed
+ * We don't try to print everything here. Information that would be displayed
  * anyway doesn't need to be printed again here, and things with lots of
  * substructure probably should be printed via separate options, or not at all.
  */
@@ -292,7 +292,7 @@ overexplain_debug(PlannedStmt *plannedstmt, ExplainState *es)
 	if (es->format == EXPLAIN_FORMAT_TEXT)
 	{
 		ExplainIndentText(es);
-		appendStringInfo(es->str, "PlannedStmt:\n");
+		appendStringInfoString(es->str, "PlannedStmt:\n");
 		es->indent++;
 	}
 
@@ -329,19 +329,19 @@ overexplain_debug(PlannedStmt *plannedstmt, ExplainState *es)
 	/* Print various properties as a comma-separated list of flags. */
 	initStringInfo(&flags);
 	if (plannedstmt->hasReturning)
-		appendStringInfo(&flags, ", hasReturning");
+		appendStringInfoString(&flags, ", hasReturning");
 	if (plannedstmt->hasModifyingCTE)
-		appendStringInfo(&flags, ", hasModifyingCTE");
+		appendStringInfoString(&flags, ", hasModifyingCTE");
 	if (plannedstmt->canSetTag)
-		appendStringInfo(&flags, ", canSetTag");
+		appendStringInfoString(&flags, ", canSetTag");
 	if (plannedstmt->transientPlan)
-		appendStringInfo(&flags, ", transientPlan");
+		appendStringInfoString(&flags, ", transientPlan");
 	if (plannedstmt->dependsOnRole)
-		appendStringInfo(&flags, ", dependsOnRole");
+		appendStringInfoString(&flags, ", dependsOnRole");
 	if (plannedstmt->parallelModeNeeded)
-		appendStringInfo(&flags, ", parallelModeNeeded");
+		appendStringInfoString(&flags, ", parallelModeNeeded");
 	if (flags.len == 0)
-		appendStringInfo(&flags, ", none");
+		appendStringInfoString(&flags, ", none");
 	ExplainPropertyText("Flags", flags.data + 2, es);
 
 	/* Various lists of integers. */
@@ -517,10 +517,10 @@ overexplain_range_table(PlannedStmt *plannedstmt, ExplainState *es)
 				relkind = "foreign_table";
 				break;
 			case RELKIND_PARTITIONED_TABLE:
-				relkind = "parititioned_table";
+				relkind = "partitioned_table";
 				break;
 			case RELKIND_PARTITIONED_INDEX:
-				relkind = "parititioned_index";
+				relkind = "partitioned_index";
 				break;
 			case '\0':
 				relkind = NULL;
@@ -632,7 +632,7 @@ overexplain_range_table(PlannedStmt *plannedstmt, ExplainState *es)
 		}
 
 		/*
-		 * add_rte_to_flat_rtable will clear coltypes, coltypemods, and
+		 * add_rte_to_flat_rtable will clear coltypes, coltypmods, and
 		 * colcollations, so skip those fields.
 		 *
 		 * If this is an ephemeral named relation, print out ENR-related
@@ -675,7 +675,7 @@ overexplain_range_table(PlannedStmt *plannedstmt, ExplainState *es)
  * Emit a text property describing the contents of an Alias.
  *
  * Column lists can be quite long here, so perhaps we should have an option
- * to limit the display length by # of columsn or # of characters, but for
+ * to limit the display length by # of column or # of characters, but for
  * now, just display everything.
  */
 static void
@@ -763,7 +763,7 @@ overexplain_intlist(const char *qlabel, List *list, ExplainState *es)
 	}
 	else
 	{
-		appendStringInfo(&buf, " not an integer list");
+		appendStringInfoString(&buf, " not an integer list");
 		Assert(false);
 	}
 

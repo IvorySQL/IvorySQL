@@ -42,9 +42,9 @@ typedef struct InjIoErrorState
 
 	bool		short_read_result_set;
 	int			short_read_result;
-}			InjIoErrorState;
+} InjIoErrorState;
 
-static InjIoErrorState * inj_io_error_state;
+static InjIoErrorState *inj_io_error_state;
 
 /* Shared memory init callbacks */
 static shmem_request_hook_type prev_shmem_request_hook = NULL;
@@ -86,19 +86,19 @@ test_aio_shmem_startup(void)
 		inj_io_error_state->enabled_reopen = false;
 
 #ifdef USE_INJECTION_POINTS
-		InjectionPointAttach("AIO_PROCESS_COMPLETION_BEFORE_SHARED",
+		InjectionPointAttach("aio-process-completion-before-shared",
 							 "test_aio",
 							 "inj_io_short_read",
 							 NULL,
 							 0);
-		InjectionPointLoad("AIO_PROCESS_COMPLETION_BEFORE_SHARED");
+		InjectionPointLoad("aio-process-completion-before-shared");
 
-		InjectionPointAttach("AIO_WORKER_AFTER_REOPEN",
+		InjectionPointAttach("aio-worker-after-reopen",
 							 "test_aio",
 							 "inj_io_reopen",
 							 NULL,
 							 0);
-		InjectionPointLoad("AIO_WORKER_AFTER_REOPEN");
+		InjectionPointLoad("aio-worker-after-reopen");
 
 #endif
 	}
@@ -109,8 +109,8 @@ test_aio_shmem_startup(void)
 		 * critical section.
 		 */
 #ifdef USE_INJECTION_POINTS
-		InjectionPointLoad("AIO_PROCESS_COMPLETION_BEFORE_SHARED");
-		InjectionPointLoad("AIO_WORKER_AFTER_REOPEN");
+		InjectionPointLoad("aio-process-completion-before-shared");
+		InjectionPointLoad("aio-worker-after-reopen");
 		elog(LOG, "injection point loaded");
 #endif
 	}
@@ -203,6 +203,7 @@ modify_rel_block(PG_FUNCTION_ARGS)
 	bool		corrupt_header = PG_GETARG_BOOL(3);
 	bool		corrupt_checksum = PG_GETARG_BOOL(4);
 	Page		page = palloc_aligned(BLCKSZ, PG_IO_ALIGN_SIZE, 0);
+	bool		flushed;
 	Relation	rel;
 	Buffer		buf;
 	PageHeader	ph;
@@ -237,7 +238,7 @@ modify_rel_block(PG_FUNCTION_ARGS)
 	if (BufferIsLocal(buf))
 		InvalidateLocalBuffer(GetLocalBufferDescriptor(-buf - 1), true);
 	else
-		EvictUnpinnedBuffer(buf);
+		EvictUnpinnedBuffer(buf, &flushed);
 
 	/*
 	 * Now modify the page as asked for by the caller.
@@ -478,6 +479,7 @@ invalidate_rel_block(PG_FUNCTION_ARGS)
 			BufferDesc *buf_hdr = BufferIsLocal(buf) ?
 				GetLocalBufferDescriptor(-buf - 1)
 				: GetBufferDescriptor(buf - 1);
+			bool		flushed;
 
 			LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
 
@@ -493,7 +495,7 @@ invalidate_rel_block(PG_FUNCTION_ARGS)
 
 			if (BufferIsLocal(buf))
 				InvalidateLocalBuffer(GetLocalBufferDescriptor(-buf - 1), true);
-			else if (!EvictUnpinnedBuffer(buf))
+			else if (!EvictUnpinnedBuffer(buf, &flushed))
 				elog(ERROR, "couldn't evict");
 		}
 	}
@@ -672,13 +674,17 @@ batch_end(PG_FUNCTION_ARGS)
 }
 
 #ifdef USE_INJECTION_POINTS
-extern PGDLLEXPORT void inj_io_short_read(const char *name, const void *private_data);
-extern PGDLLEXPORT void inj_io_reopen(const char *name, const void *private_data);
+extern PGDLLEXPORT void inj_io_short_read(const char *name,
+										  const void *private_data,
+										  void *arg);
+extern PGDLLEXPORT void inj_io_reopen(const char *name,
+									  const void *private_data,
+									  void *arg);
 
 void
-inj_io_short_read(const char *name, const void *private_data)
+inj_io_short_read(const char *name, const void *private_data, void *arg)
 {
-	PgAioHandle *ioh;
+	PgAioHandle *ioh = (PgAioHandle *) arg;
 
 	ereport(LOG,
 			errmsg("short read injection point called, is enabled: %d",
@@ -687,8 +693,6 @@ inj_io_short_read(const char *name, const void *private_data)
 
 	if (inj_io_error_state->enabled_short_read)
 	{
-		ioh = pgaio_inj_io_get();
-
 		/*
 		 * Only shorten reads that are actually longer than the target size,
 		 * otherwise we can trigger over-reads.
@@ -740,7 +744,7 @@ inj_io_short_read(const char *name, const void *private_data)
 }
 
 void
-inj_io_reopen(const char *name, const void *private_data)
+inj_io_reopen(const char *name, const void *private_data, void *arg)
 {
 	ereport(LOG,
 			errmsg("reopen injection point called, is enabled: %d",

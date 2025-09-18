@@ -34,11 +34,13 @@ sub psql_fails_like
 {
 	local $Test::Builder::Level = $Test::Builder::Level + 1;
 
-	my ($node, $sql, $expected_stderr, $test_name) = @_;
+	my ($node, $sql, $expected_stderr, $test_name, $replication) = @_;
 
-	# Use the context of a WAL sender, some of the tests rely on that.
+	# Use the context of a WAL sender, if requested by the caller.
+	$replication = '' unless defined($replication);
+
 	my ($ret, $stdout, $stderr) =
-	  $node->psql('postgres', $sql, replication => 'database');
+	  $node->psql('postgres', $sql, replication => $replication);
 
 	isnt($ret, 0, "$test_name: exit code not 0");
 	like($stderr, $expected_stderr, "$test_name: matches");
@@ -79,7 +81,7 @@ psql_fails_like(
 	$node,
 	'START_REPLICATION 0/0',
 	qr/unexpected PQresultStatus: 8$/,
-	'handling of unexpected PQresultStatus');
+	'handling of unexpected PQresultStatus', 'database');
 
 # test \timing
 psql_like(
@@ -481,5 +483,52 @@ psql_like($node, "copy (values ('foo'),('bar')) to stdout \\g | $pipe_cmd",
 	qr//, "copy output passed to \\g pipe");
 my $c4 = slurp_file($g_file);
 like($c4, qr/foo.*bar/s);
+
+# Test COPY within pipelines.  These abort the connection from
+# the frontend so they cannot be tested via SQL.
+$node->safe_psql('postgres', 'CREATE TABLE psql_pipeline()');
+my $log_location = -s $node->logfile;
+psql_fails_like(
+	$node,
+	qq{\\startpipeline
+COPY psql_pipeline FROM STDIN;
+SELECT 'val1';
+\\syncpipeline
+\\endpipeline},
+	qr/COPY in a pipeline is not supported, aborting connection/,
+	'COPY FROM in pipeline: fails');
+$node->wait_for_log(
+	qr/FATAL: .*terminating connection because protocol synchronization was lost/,
+	$log_location);
+
+# Remove \syncpipeline here.
+psql_fails_like(
+	$node,
+	qq{\\startpipeline
+COPY psql_pipeline TO STDOUT;
+SELECT 'val1';
+\\endpipeline},
+	qr/COPY in a pipeline is not supported, aborting connection/,
+	'COPY TO in pipeline: fails');
+
+psql_fails_like(
+	$node,
+	qq{\\startpipeline
+\\copy psql_pipeline from stdin;
+SELECT 'val1';
+\\syncpipeline
+\\endpipeline},
+	qr/COPY in a pipeline is not supported, aborting connection/,
+	'\copy from in pipeline: fails');
+
+# Sync attempt after a COPY TO/FROM.
+psql_fails_like(
+	$node,
+	qq{\\startpipeline
+\\copy psql_pipeline to stdout;
+\\syncpipeline
+\\endpipeline},
+	qr/COPY in a pipeline is not supported, aborting connection/,
+	'\copy to in pipeline: fails');
 
 done_testing();

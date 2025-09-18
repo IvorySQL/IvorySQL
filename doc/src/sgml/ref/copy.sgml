@@ -520,16 +520,16 @@ COPY <replaceable class="parameter">count</replaceable>
   <title>Notes</title>
 
    <para>
-    <command>COPY TO</command> can be used only with plain
-    tables, not views, and does not copy rows from child tables
-    or child partitions.  For example, <literal>COPY <replaceable
-    class="parameter">table</replaceable> TO</literal> copies
-    the same rows as <literal>SELECT * FROM ONLY <replaceable
-    class="parameter">table</replaceable></literal>.
-    The syntax <literal>COPY (SELECT * FROM <replaceable
-    class="parameter">table</replaceable>) TO ...</literal> can be used to
-    dump all of the rows in an inheritance hierarchy, partitioned table,
-    or view.
+    <command>COPY TO</command> can be used with plain
+    tables and populated materialized views.
+    For example,
+    <literal>COPY <replaceable class="parameter">table</replaceable>
+    TO</literal> copies the same rows as
+    <literal>SELECT * FROM ONLY <replaceable class="parameter">table</replaceable></literal>.
+    However it doesn't directly support other relation types,
+    such as partitioned tables, inheritance child tables, or views.
+    To copy all rows from such relations, use <literal>COPY (SELECT * FROM
+    <replaceable class="parameter">table</replaceable>) TO</literal>.
    </para>
 
    <para>
@@ -677,7 +677,7 @@ COPY <replaceable class="parameter">count</replaceable>
     backward compatibility.  However, <application>psql</application>
     uses <literal>\.</literal> to terminate a <literal>COPY FROM
     STDIN</literal> operation (that is, reading
-    in-line <command>COPY</command> data in a SQL script).  In that
+    in-line <command>COPY</command> data in an SQL script).  In that
     context the rule is needed to be able to end the operation before the
     end of the script.
    </para>
@@ -844,7 +844,7 @@ COPY <replaceable class="parameter">count</replaceable>
     is not normally treated as special when reading <literal>CSV</literal>
     data.  An exception is that <application>psql</application> will terminate
     a <literal>COPY FROM STDIN</literal> operation (that is, reading
-    in-line <command>COPY</command> data in a SQL script) at a line containing
+    in-line <command>COPY</command> data in an SQL script) at a line containing
     only <literal>\.</literal>, whether it is text or <literal>CSV</literal>
     mode.
    </para>

@@ -215,7 +215,8 @@ gistvacuumscan(IndexVacuumInfo *info, IndexBulkDeleteResult *stats,
 	 * It is safe to use batchmode as block_range_read_stream_cb takes no
 	 * locks.
 	 */
-	stream = read_stream_begin_relation(READ_STREAM_FULL |
+	stream = read_stream_begin_relation(READ_STREAM_MAINTENANCE |
+										READ_STREAM_FULL |
 										READ_STREAM_USE_BATCHING,
 										info->strategy,
 										rel,
@@ -253,8 +254,6 @@ gistvacuumscan(IndexVacuumInfo *info, IndexBulkDeleteResult *stats,
 
 			gistvacuumpage(&vstate, buf);
 		}
-
-		Assert(read_stream_next_buffer(stream, NULL) == InvalidBuffer);
 
 		/*
 		 * We have to reset the read stream to use it again. After returning

@@ -105,26 +105,6 @@ installdirs-tests: installdirs
 	$(MKDIR_P)  $(patsubst $(srcdir)/%/,'$(DESTDIR)$(pkglibdir)/regress/%',$(sort $(dir $(regress_data_files))))
 
 
-# Get some extra C modules from contrib/spi
-
-all: refint$(DLSUFFIX) autoinc$(DLSUFFIX)
-
-refint$(DLSUFFIX): $(top_builddir)/contrib/spi/refint$(DLSUFFIX)
-	cp $< $@
-
-autoinc$(DLSUFFIX): $(top_builddir)/contrib/spi/autoinc$(DLSUFFIX)
-	cp $< $@
-
-$(top_builddir)/contrib/spi/refint$(DLSUFFIX): | submake-contrib-spi ;
-
-$(top_builddir)/contrib/spi/autoinc$(DLSUFFIX): | submake-contrib-spi ;
-
-submake-contrib-spi: | submake-libpgport submake-generated-headers
-	$(MAKE) -C $(top_builddir)/contrib/spi
-
-.PHONY: submake-contrib-spi
-
-
 ##
 ## Run tests
 ##
@@ -171,7 +151,7 @@ bigcheck: all | temp-install
 
 clean distclean: clean-lib
 # things built by `all' target
-	rm -f $(OBJS) refint$(DLSUFFIX) autoinc$(DLSUFFIX)
+	rm -f $(OBJS)
 	rm -f pg_regress_main.o pg_regress.o pg_regress$(X)
 	#IvorySQL: BEGIN oracle test
 	rm -f ora_pg_regress.o ora_pg_regress$(X)

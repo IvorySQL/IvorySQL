@@ -4,7 +4,7 @@
  *			  procedural language
  *
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -59,8 +59,8 @@ bool		plisql_print_strict_params = false;
 
 bool		plisql_check_asserts = true;
 
-char	   *plisql_extra_warnings_string = NULL;
-char	   *plisql_extra_errors_string = NULL;
+static char	 *plisql_extra_warnings_string = NULL;
+static char	 *plisql_extra_errors_string = NULL;
 int			plisql_extra_warnings;
 int			plisql_extra_errors;
 
@@ -130,7 +130,7 @@ plisql_extra_checks_check_hook(char **newvalue, void **extra, GucSource source)
 	if (!myextra)
 		return false;
 	*myextra = extrachecks;
-	*extra = (void *) myextra;
+	*extra =  myextra;
 
 	return true;
 }
@@ -262,8 +262,7 @@ plisql_call_handler(PG_FUNCTION_ARGS)
 	/*
 	 * Connect to SPI manager
 	 */
-	if ((rc = SPI_connect_ext(nonatomic ? SPI_OPT_NONATOMIC : 0)) != SPI_OK_CONNECT)
-		elog(ERROR, "SPI_connect failed: %s", SPI_result_code_string(rc));
+	SPI_connect_ext(nonatomic ? SPI_OPT_NONATOMIC : 0);
 
 	/* Find or compile the function */
 	if (function_from == FUNC_FROM_SUBPROCFUNC)
@@ -378,8 +377,7 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 	/*
 	 * Connect to SPI manager
 	 */
-	if ((rc = SPI_connect_ext(codeblock->atomic ? 0 : SPI_OPT_NONATOMIC)) != SPI_OK_CONNECT)
-		elog(ERROR, "SPI_connect failed: %s", SPI_result_code_string(rc));
+	SPI_connect_ext(codeblock->atomic ? 0 : SPI_OPT_NONATOMIC);
 
 	if (codeblock->params != NULL)
 	{

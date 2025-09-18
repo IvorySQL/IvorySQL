@@ -1087,8 +1087,7 @@ QUERY:  begin
   var2 := 23;
   raise info '%','init block';
 end
-CONTEXT:  compilation of PL/iSQL package "pkg" near line 1
-PL/iSQL assignment "pkg.var1 := 23"
+CONTEXT:  PL/iSQL assignment "pkg.var1 := 23"
 PL/iSQL function inline_code_block line 2 at assignment
 --drop
 drop package pkg;
@@ -2174,7 +2173,7 @@ drop package pkg;
 select test_rely(23) FROM dual;
 ERROR:  relation "pkg" does not exist
 CONTEXT:  compilation of PL/iSQL package "pkg1" near line 2
-compilation of PL/iSQL function "pkg1" near line 2
+compilation of PL/iSQL function "pkg1" near line 1
 drop package pkg1;
 drop function test_rely(integer);
 --test body reference package variable and pkg.xx
@@ -4366,7 +4365,7 @@ end;
 /
 ERROR:  "equip_categ_meterx" doesn't exist in package "test_pkg"
 CONTEXT:  compilation of PL/iSQL package "test_pkg" near line 3
-compilation of PL/iSQL function "test_pkg" near line 3
+compilation of PL/iSQL function "test_pkg" near line 2
 --again error
 begin
   raise info '%', test_pkg.equip_categ_meter1;
@@ -4374,7 +4373,7 @@ end;
 /
 ERROR:  "equip_categ_meterx" doesn't exist in package "test_pkg"
 CONTEXT:  compilation of PL/iSQL package "test_pkg" near line 3
-compilation of PL/iSQL function "test_pkg" near line 3
+compilation of PL/iSQL function "test_pkg" near line 2
 drop package test_pkg;
 --function
 create or replace function test_f(id integer) return integer is

@@ -8,7 +8,7 @@
 
 #include "plpy_elog.h"
 #include "plpy_resultobject.h"
-#include "plpython.h"
+#include "plpy_util.h"
 
 static void PLy_result_dealloc(PLyResultObject *self);
 static PyObject *PLy_result_colnames(PyObject *self, PyObject *unused);
@@ -70,9 +70,9 @@ static PyType_Slot PLyResult_slots[] =
 static PyType_Spec PLyResult_spec =
 {
 	.name = "PLyResult",
-		.basicsize = sizeof(PLyResultObject),
-		.flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
-		.slots = PLyResult_slots,
+	.basicsize = sizeof(PLyResultObject),
+	.flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+	.slots = PLyResult_slots,
 };
 
 static PyTypeObject *PLy_ResultType;

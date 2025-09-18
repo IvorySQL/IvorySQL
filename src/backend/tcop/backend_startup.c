@@ -286,7 +286,7 @@ BackendInitialize(ClientSocket *client_sock, CAC_state cac)
 
 	/* For testing client error handling */
 #ifdef USE_INJECTION_POINTS
-	INJECTION_POINT("backend-initialize");
+	INJECTION_POINT("backend-initialize", NULL);
 	if (IS_INJECTION_POINT_ATTACHED("backend-initialize-v2-error"))
 	{
 		/*
@@ -1035,7 +1035,7 @@ ProcessCancelRequestPacket(Port *port, void *pkt, int pktlen)
 	{
 		ereport(COMMERROR,
 				(errcode(ERRCODE_PROTOCOL_VIOLATION),
-				 errmsg("invalid length of query cancel packet")));
+				 errmsg("invalid length of cancel request packet")));
 		return;
 	}
 	len = pktlen - offsetof(CancelRequestPacket, cancelAuthCode);
@@ -1043,7 +1043,7 @@ ProcessCancelRequestPacket(Port *port, void *pkt, int pktlen)
 	{
 		ereport(COMMERROR,
 				(errcode(ERRCODE_PROTOCOL_VIOLATION),
-				 errmsg("invalid length of query cancel key")));
+				 errmsg("invalid length of cancel key in cancel request packet")));
 		return;
 	}
 
@@ -1231,7 +1231,7 @@ check_log_connections(char **newval, void **extra, GucSource source)
 
 	if (!SplitIdentifierString(rawstring, ',', &elemlist))
 	{
-		GUC_check_errdetail("Invalid list syntax in parameter \"log_connections\".");
+		GUC_check_errdetail("Invalid list syntax in parameter \"%s\".", "log_connections");
 		pfree(rawstring);
 		list_free(elemlist);
 		return false;

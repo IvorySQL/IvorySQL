@@ -2339,8 +2339,7 @@ plisql_expand_and_reorder_functionargs(ParseState *pstate, PLiSQL_subproc_functi
 	int i;
 	ListCell   *lc;
 	int provnargs = list_length(fargs);
-
-	MemSet(argarray, 0, funcnarg * sizeof(Node *));
+	MemSet(argarray, 0, sizeof(argarray));
 
 	i = 0;
 	foreach(lc, fargs)
@@ -2747,16 +2746,20 @@ plisql_dynamic_compile_subproc(FunctionCallInfo fcinfo,
 	Oid 		save_userid;
 	int 		save_sec_context;
 	Oid			current_user = GetUserId();
-
-	plisql_scanner_init(subprocfunc->src);
+	yyscan_t	scanner;
+	compile_error_callback_arg cbarg;
+	PLiSQL_stmt_block *plisql_parse_result;
+	scanner = plisql_scanner_init(subprocfunc->src);
 
 	plisql_error_funcname = pstrdup(subprocfunc->func_name);
 
 	/*
 	 * Setup error traceback support for ereport()
 	 */
+	cbarg.proc_source = subprocfunc->src;
+	cbarg.yyscanner = scanner;
 	plerrcontext.callback = plisql_compile_error_callback;
-	plerrcontext.arg = NULL;
+	plerrcontext.arg = &cbarg;
 	plerrcontext.previous = error_context_stack;
 	error_context_stack = &plerrcontext;
 
@@ -2844,7 +2847,7 @@ plisql_dynamic_compile_subproc(FunctionCallInfo fcinfo,
 	/*
 	 * Now parse the function's text
 	 */
-	parse_rc = plisql_yyparse();
+	parse_rc = plisql_yyparse(&plisql_parse_result, scanner);
 	if (parse_rc != 0)
 		elog(ERROR, "plisql parser returned %d", parse_rc);
 
@@ -2854,7 +2857,7 @@ plisql_dynamic_compile_subproc(FunctionCallInfo fcinfo,
 
 	plisql_finish_subproc_func(function);
 
-	plisql_scanner_finish();
+	plisql_scanner_finish(scanner);
 
 	/*
 	 * Pop the error context stack

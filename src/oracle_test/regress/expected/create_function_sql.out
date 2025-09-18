@@ -8,6 +8,7 @@ CREATE USER regress_unpriv_user;
 CREATE SCHEMA temp_func_test;
 GRANT ALL ON SCHEMA temp_func_test TO public;
 SET search_path TO temp_func_test, public;
+set ivorysql.enable_emptystring_to_null to false;
 --
 -- Make sanity checks on the pg_proc entries created by CREATE FUNCTION
 --
@@ -27,11 +28,11 @@ SELECT proname, prorettype::regtype, proargtypes::regtype[] FROM pg_proc
        WHERE oid in ('functest_A_1'::regproc,
                      'functest_A_2'::regproc,
                      'functest_A_3'::regproc) ORDER BY proname;
-   proname    | prorettype |    proargtypes    
---------------+------------+-------------------
- functest_a_1 | boolean    | [0:1]={text,date}
- functest_a_2 | integer    | [0:0]={text[]}
- functest_a_3 | boolean    | {}
+   proname    |   prorettype    |    proargtypes    
+--------------+-----------------+-------------------
+ functest_a_1 | pg_catalog.bool | [0:1]={text,date}
+ functest_a_2 | pg_catalog.int4 | [0:0]={text[]}
+ functest_a_3 | pg_catalog.bool | {}
 (3 rows)
 
 SELECT functest_A_1('abcd', '2020-01-01');
@@ -233,42 +234,42 @@ SELECT pg_get_functiondef('functest_A_1'::regproc);
                          pg_get_functiondef                         
 --------------------------------------------------------------------
  CREATE OR REPLACE FUNCTION temp_func_test.functest_a_1(text, date)+
-  RETURNS boolean                                                  +
+  RETURNS pg_catalog.bool                                          +
   LANGUAGE sql                                                     +
  AS $function$SELECT $1 = 'abcd' AND $2 > '2001-01-01'$function$   +
  
 (1 row)
 
 SELECT pg_get_functiondef('functest_B_3'::regproc);
-                       pg_get_functiondef                        
------------------------------------------------------------------
- CREATE OR REPLACE FUNCTION temp_func_test.functest_b_3(integer)+
-  RETURNS boolean                                               +
-  LANGUAGE sql                                                  +
-  STABLE                                                        +
- AS $function$SELECT $1 = 0$function$                           +
+                           pg_get_functiondef                            
+-------------------------------------------------------------------------
+ CREATE OR REPLACE FUNCTION temp_func_test.functest_b_3(pg_catalog.int4)+
+  RETURNS pg_catalog.bool                                               +
+  LANGUAGE sql                                                          +
+  STABLE                                                                +
+ AS $function$SELECT $1 = 0$function$                                   +
  
 (1 row)
 
 SELECT pg_get_functiondef('functest_C_3'::regproc);
-                       pg_get_functiondef                        
------------------------------------------------------------------
- CREATE OR REPLACE FUNCTION temp_func_test.functest_c_3(integer)+
-  RETURNS boolean                                               +
-  LANGUAGE sql                                                  +
-  SECURITY DEFINER                                              +
- AS $function$SELECT $1 < 0$function$                           +
+                           pg_get_functiondef                            
+-------------------------------------------------------------------------
+ CREATE OR REPLACE FUNCTION temp_func_test.functest_c_3(pg_catalog.int4)+
+  RETURNS pg_catalog.bool                                               +
+  LANGUAGE sql                                                          +
+  SECURITY DEFINER                                                      +
+ AS $function$SELECT $1 < 0$function$                                   +
  
 (1 row)
 
 SELECT pg_get_functiondef('functest_F_2'::regproc);
-                       pg_get_functiondef                        
------------------------------------------------------------------
- CREATE OR REPLACE FUNCTION temp_func_test.functest_f_2(integer)+
-  RETURNS boolean                                               +
-  LANGUAGE sql                                                  +
-  STRICT                                                        +
- AS $function$SELECT $1 = 50$function$                          +
+                           pg_get_functiondef                            
+-------------------------------------------------------------------------
+ CREATE OR REPLACE FUNCTION temp_func_test.functest_f_2(pg_catalog.int4)+
+  RETURNS pg_catalog.bool                                               +
+  LANGUAGE sql                                                          +
+  STRICT                                                                +
+ AS $function$SELECT $1 = 50$function$                                  +
  
 (1 row)
 
@@ -328,10 +329,7 @@ CREATE FUNCTION functest_S_xx(x date) RETURNS boolean
     LANGUAGE SQL
     RETURN x > 1;
 /
-ERROR:  operator does not exist: date > integer
-LINE 3:     RETURN x > 1;
-                     ^
-HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  failed to find conversion function from pg_catalog.int4 to date
 -- tricky parsing
 CREATE FUNCTION functest_S_15(x int) RETURNS boolean
 LANGUAGE SQL
@@ -373,9 +371,9 @@ SELECT pg_get_functiondef('functest_S_1'::regproc);
                            pg_get_functiondef                           
 ------------------------------------------------------------------------
  CREATE OR REPLACE FUNCTION temp_func_test.functest_s_1(a text, b date)+
-  RETURNS boolean                                                      +
+  RETURNS pg_catalog.bool                                              +
   LANGUAGE sql                                                         +
- RETURN ((a = 'abcd'::text) AND (b > '01-01-2001'::date))              +
+ RETURN ((a = 'abcd'::text) AND (b > '2001-01-01'::date))              +
  
 (1 row)
 
@@ -383,9 +381,9 @@ SELECT pg_get_functiondef('functest_S_2'::regproc);
                         pg_get_functiondef                        
 ------------------------------------------------------------------
  CREATE OR REPLACE FUNCTION temp_func_test.functest_s_2(a text[])+
-  RETURNS integer                                                +
+  RETURNS pg_catalog.int4                                        +
   LANGUAGE sql                                                   +
- RETURN ((a)[1])::integer                                        +
+ RETURN ((a)[1])::pg_catalog.int4                                +
  
 (1 row)
 
@@ -393,7 +391,7 @@ SELECT pg_get_functiondef('functest_S_3'::regproc);
                     pg_get_functiondef                    
 ----------------------------------------------------------
  CREATE OR REPLACE FUNCTION temp_func_test.functest_s_3()+
-  RETURNS boolean                                        +
+  RETURNS pg_catalog.bool                                +
   LANGUAGE sql                                           +
  RETURN false                                            +
  
@@ -403,7 +401,7 @@ SELECT pg_get_functiondef('functest_S_3a'::regproc);
                     pg_get_functiondef                     
 -----------------------------------------------------------
  CREATE OR REPLACE FUNCTION temp_func_test.functest_s_3a()+
-  RETURNS boolean                                         +
+  RETURNS pg_catalog.bool                                 +
   LANGUAGE sql                                            +
  BEGIN ATOMIC                                             +
   RETURN false;                                           +
@@ -415,10 +413,10 @@ SELECT pg_get_functiondef('functest_S_10'::regproc);
                            pg_get_functiondef                            
 -------------------------------------------------------------------------
  CREATE OR REPLACE FUNCTION temp_func_test.functest_s_10(a text, b date)+
-  RETURNS boolean                                                       +
+  RETURNS pg_catalog.bool                                               +
   LANGUAGE sql                                                          +
  BEGIN ATOMIC                                                           +
-  SELECT ((a = 'abcd'::text) AND (b > '01-01-2001'::date));             +
+  SELECT ((a = 'abcd'::text) AND (b > '2001-01-01'::date));             +
  END                                                                    +
  
 (1 row)
@@ -427,7 +425,7 @@ SELECT pg_get_functiondef('functest_S_13'::regproc);
                     pg_get_functiondef                     
 -----------------------------------------------------------
  CREATE OR REPLACE FUNCTION temp_func_test.functest_s_13()+
-  RETURNS boolean                                         +
+  RETURNS pg_catalog.bool                                 +
   LANGUAGE sql                                            +
  BEGIN ATOMIC                                             +
   SELECT 1;                                               +
@@ -437,41 +435,42 @@ SELECT pg_get_functiondef('functest_S_13'::regproc);
 (1 row)
 
 SELECT pg_get_functiondef('functest_S_15'::regproc);
-                         pg_get_functiondef                         
---------------------------------------------------------------------
- CREATE OR REPLACE FUNCTION temp_func_test.functest_s_15(x integer)+
-  RETURNS boolean                                                  +
-  LANGUAGE sql                                                     +
- BEGIN ATOMIC                                                      +
-  SELECT                                                           +
-          CASE                                                     +
-              WHEN ((x % 2) = 0) THEN true                         +
-              ELSE false                                           +
-          END AS "case";                                           +
- END                                                               +
+                             pg_get_functiondef                             
+----------------------------------------------------------------------------
+ CREATE OR REPLACE FUNCTION temp_func_test.functest_s_15(x pg_catalog.int4)+
+  RETURNS pg_catalog.bool                                                  +
+  LANGUAGE sql                                                             +
+ BEGIN ATOMIC                                                              +
+  SELECT                                                                   +
+          CASE                                                             +
+              WHEN ((x % 2) = 0) THEN true                                 +
+              ELSE false                                                   +
+          END AS "case";                                                   +
+ END                                                                       +
  
 (1 row)
 
 SELECT pg_get_functiondef('functest_S_16'::regproc);
-                              pg_get_functiondef                               
--------------------------------------------------------------------------------
- CREATE OR REPLACE FUNCTION temp_func_test.functest_s_16(a integer, b integer)+
-  RETURNS void                                                                +
-  LANGUAGE sql                                                                +
- BEGIN ATOMIC                                                                 +
-  INSERT INTO functest1 (i)  SELECT (functest_s_16.a + functest_s_16.b);      +
- END                                                                          +
+                                      pg_get_functiondef                                       
+-----------------------------------------------------------------------------------------------
+ CREATE OR REPLACE FUNCTION temp_func_test.functest_s_16(a pg_catalog.int4, b pg_catalog.int4)+
+  RETURNS void                                                                                +
+  LANGUAGE sql                                                                                +
+ BEGIN ATOMIC                                                                                 +
+  INSERT INTO functest1 (i)  SELECT (functest_s_16.a + functest_s_16.b);                      +
+ END                                                                                          +
  
 (1 row)
 
 DROP TABLE functest1 CASCADE;
-NOTICE:  drop cascades to function functest_s_16(integer,integer)
+NOTICE:  drop cascades to function functest_s_16(pg_catalog.int4,pg_catalog.int4)
 -- test with views
 CREATE TABLE functest3 (a int);
 INSERT INTO functest3 VALUES (1), (2);
 CREATE VIEW functestv3 AS SELECT * FROM functest3;
 CREATE FUNCTION functest_S_14() RETURNS bigint
     RETURN (SELECT count(*) FROM functestv3);
+/
 SELECT functest_S_14();
  functest_s_14 
 ---------------
@@ -574,10 +573,10 @@ SELECT routine_name, table_name FROM information_schema.routine_table_usage
 (1 row)
 
 DROP FUNCTION functest_IS_4a CASCADE;
-NOTICE:  drop cascades to function functest_is_4b(integer)
+NOTICE:  drop cascades to function functest_is_4b(pg_catalog.int4)
 DROP SEQUENCE functest1 CASCADE;
 NOTICE:  drop cascades to 2 other objects
-DETAIL:  drop cascades to function functest_is_5(integer)
+DETAIL:  drop cascades to function functest_is_5(pg_catalog.int4)
 drop cascades to function functest_is_6()
 DROP TABLE functest2 CASCADE;
 NOTICE:  drop cascades to function functest_is_7()
@@ -649,6 +648,7 @@ STABLE
 BEGIN ATOMIC
     SELECT * FROM functest3;
 END;
+/
 SELECT * FROM functest_sri2();
  functest_sri2 
 ---------------
@@ -787,7 +787,7 @@ SELECT double_append(array_append(ARRAY[q1], q2), q3)
 CREATE FUNCTION test1 (int) RETURNS int LANGUAGE SQL
     AS 'SELECT ''not an integer'';';
 /
-ERROR:  return type mismatch in function declared to return integer
+ERROR:  return type mismatch in function declared to return pg_catalog.int4
 DETAIL:  Actual return type is text.
 CONTEXT:  SQL function "test1"
 CREATE FUNCTION test1 (int) RETURNS int LANGUAGE SQL
@@ -799,50 +799,69 @@ LINE 2:     AS 'not even SQL';
 CREATE FUNCTION test1 (int) RETURNS int LANGUAGE SQL
     AS 'SELECT 1, 2, 3;';
 /
-ERROR:  return type mismatch in function declared to return integer
+ERROR:  return type mismatch in function declared to return pg_catalog.int4
 DETAIL:  Final statement must return exactly one column.
 CONTEXT:  SQL function "test1"
 CREATE FUNCTION test1 (int) RETURNS int LANGUAGE SQL
     AS 'SELECT $2;';
+/
 ERROR:  there is no parameter $2
 LINE 2:     AS 'SELECT $2;';
                        ^
 CREATE FUNCTION test1 (int) RETURNS int LANGUAGE SQL
     AS 'a', 'b';
+CREATE FUNCTION test1 (int) RETURNS int LANGUAGE SQL
+    AS '';
 /
 ERROR:  only one AS item needed for language "sql"
+-- make sure empty-body case is handled at execution time, too
+SET check_function_bodies = off;
+CREATE FUNCTION test1 (anyelement) RETURNS anyarray LANGUAGE SQL
+    AS '';
+/
+SELECT test1(0);
+ERROR:  return type mismatch in function declared to return pg_catalog.int4[]
+DETAIL:  Function's final statement must be SELECT or INSERT/UPDATE/DELETE/MERGE RETURNING.
+CONTEXT:  SQL function "test1" during startup
+RESET check_function_bodies;
 -- Cleanup
 DROP SCHEMA temp_func_test CASCADE;
-NOTICE:  drop cascades to 30 other objects
+NOTICE:  drop cascades to 35 other objects
 DETAIL:  drop cascades to function functest_a_1(text,date)
 drop cascades to function functest_a_2(text[])
 drop cascades to function functest_a_3()
-drop cascades to function functest_b_2(integer)
-drop cascades to function functest_b_3(integer)
-drop cascades to function functest_b_4(integer)
-drop cascades to function functest_c_1(integer)
-drop cascades to function functest_c_2(integer)
-drop cascades to function functest_c_3(integer)
-drop cascades to function functest_e_1(integer)
-drop cascades to function functest_e_2(integer)
-drop cascades to function functest_f_1(integer)
-drop cascades to function functest_f_2(integer)
-drop cascades to function functest_f_3(integer)
-drop cascades to function functest_f_4(integer)
+drop cascades to function functest_b_2(pg_catalog.int4)
+drop cascades to function functest_b_3(pg_catalog.int4)
+drop cascades to function functest_b_4(pg_catalog.int4)
+drop cascades to function functest_c_1(pg_catalog.int4)
+drop cascades to function functest_c_2(pg_catalog.int4)
+drop cascades to function functest_c_3(pg_catalog.int4)
+drop cascades to function functest_e_1(pg_catalog.int4)
+drop cascades to function functest_e_2(pg_catalog.int4)
+drop cascades to function functest_f_1(pg_catalog.int4)
+drop cascades to function functest_f_2(pg_catalog.int4)
+drop cascades to function functest_f_3(pg_catalog.int4)
+drop cascades to function functest_f_4(pg_catalog.int4)
 drop cascades to function functest_s_1(text,date)
 drop cascades to function functest_s_2(text[])
 drop cascades to function functest_s_3()
 drop cascades to function functest_s_3a()
 drop cascades to function functest_s_10(text,date)
 drop cascades to function functest_s_13()
-drop cascades to function functest_s_15(integer)
-drop cascades to function functest_b_2(bigint)
+drop cascades to function functest_s_15(pg_catalog.int4)
+drop cascades to function functest_b_2(pg_catalog.int8)
+drop cascades to function functest_srf0()
 drop cascades to function functest_sri1()
-drop cascades to function voidtest1(integer)
-drop cascades to function voidtest2(integer,integer)
-drop cascades to function voidtest3(integer)
-drop cascades to function voidtest4(integer)
-drop cascades to function voidtest5(integer)
+drop cascades to function voidtest1(pg_catalog.int4)
+drop cascades to function voidtest2(pg_catalog.int4,pg_catalog.int4)
+drop cascades to function voidtest3(pg_catalog.int4)
+drop cascades to function voidtest4(pg_catalog.int4)
+drop cascades to function voidtest5(pg_catalog.int4)
+drop cascades to function create_and_insert()
+drop cascades to table ddl_test
+drop cascades to function alter_and_insert()
 drop cascades to function double_append(anyarray,anyelement)
+drop cascades to function test1(anyelement)
 DROP USER regress_unpriv_user;
 RESET search_path;
+reset ivorysql.enable_emptystring_to_null;

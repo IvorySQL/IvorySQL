@@ -51,6 +51,12 @@ static void outDouble(StringInfo str, double d);
 #define WRITE_UINT_FIELD(fldname) \
 	appendStringInfo(str, " :" CppAsString(fldname) " %u", node->fldname)
 
+/* Write a signed integer field (anything written with INT64_FORMAT) */
+#define WRITE_INT64_FIELD(fldname) \
+	appendStringInfo(str, \
+					 " :" CppAsString(fldname) " " INT64_FORMAT, \
+					 node->fldname)
+
 /* Write an unsigned integer field (anything written with UINT64_FORMAT) */
 #define WRITE_UINT64_FIELD(fldname) \
 	appendStringInfo(str, " :" CppAsString(fldname) " " UINT64_FORMAT, \
@@ -468,9 +474,12 @@ _outEquivalenceClass(StringInfo str, const EquivalenceClass *node)
 
 	WRITE_NODE_FIELD(ec_opfamilies);
 	WRITE_OID_FIELD(ec_collation);
+	WRITE_INT_FIELD(ec_childmembers_size);
 	WRITE_NODE_FIELD(ec_members);
+	WRITE_NODE_ARRAY(ec_childmembers, node->ec_childmembers_size);
 	WRITE_NODE_FIELD(ec_sources);
-	WRITE_NODE_FIELD(ec_derives);
+	/* Only ec_derives_list is written; hash is not serialized. */
+	WRITE_NODE_FIELD(ec_derives_list);
 	WRITE_BITMAPSET_FIELD(ec_relids);
 	WRITE_BOOL_FIELD(ec_has_const);
 	WRITE_BOOL_FIELD(ec_has_volatile);
@@ -647,6 +656,8 @@ _outA_Expr(StringInfo str, const A_Expr *node)
 
 	WRITE_NODE_FIELD(lexpr);
 	WRITE_NODE_FIELD(rexpr);
+	WRITE_LOCATION_FIELD(rexpr_list_start);
+	WRITE_LOCATION_FIELD(rexpr_list_end);
 	WRITE_LOCATION_FIELD(location);
 }
 

@@ -603,14 +603,19 @@ process_syncing_tables_for_apply(XLogRecPtr current_lsn)
 						TimestampDifferenceExceeds(hentry->last_start_time, now,
 												   wal_retrieve_retry_interval))
 					{
-						logicalrep_worker_launch(WORKERTYPE_TABLESYNC,
-												 MyLogicalRepWorker->dbid,
-												 MySubscription->oid,
-												 MySubscription->name,
-												 MyLogicalRepWorker->userid,
-												 rstate->relid,
-												 DSM_HANDLE_INVALID);
+						/*
+						 * Set the last_start_time even if we fail to start
+						 * the worker, so that we won't retry until
+						 * wal_retrieve_retry_interval has elapsed.
+						 */
 						hentry->last_start_time = now;
+						(void) logicalrep_worker_launch(WORKERTYPE_TABLESYNC,
+														MyLogicalRepWorker->dbid,
+														MySubscription->oid,
+														MySubscription->name,
+														MyLogicalRepWorker->userid,
+														rstate->relid,
+														DSM_HANDLE_INVALID);
 					}
 				}
 			}
@@ -940,15 +945,15 @@ fetch_remote_table_info(char *nspname, char *relname, LogicalRepRelation *lrel,
 	 * Now fetch column names and types.
 	 */
 	resetStringInfo(&cmd);
-	appendStringInfo(&cmd,
-					 "SELECT a.attnum,"
-					 "       a.attname,"
-					 "       a.atttypid,"
-					 "       a.attnum = ANY(i.indkey)");
+	appendStringInfoString(&cmd,
+						   "SELECT a.attnum,"
+						   "       a.attname,"
+						   "       a.atttypid,"
+						   "       a.attnum = ANY(i.indkey)");
 
 	/* Generated columns can be replicated since version 18. */
 	if (server_version >= 180000)
-		appendStringInfo(&cmd, ", a.attgenerated != ''");
+		appendStringInfoString(&cmd, ", a.attgenerated != ''");
 
 	appendStringInfo(&cmd,
 					 "  FROM pg_catalog.pg_attribute a"

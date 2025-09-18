@@ -1,6 +1,6 @@
 /*-------------------------------------------------------------------------
  *
- * fe-auth-oauth-curl.c
+ * oauth-curl.c
  *	   The libcurl implementation of OAuth/OIDC authentication, using the
  *	   OAuth Device Authorization Grant (RFC 8628).
  *
@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  src/interfaces/libpq/fe-auth-oauth-curl.c
+ *	  src/interfaces/libpq-oauth/oauth-curl.c
  *
  *-------------------------------------------------------------------------
  */
@@ -17,20 +17,56 @@
 
 #include <curl/curl.h>
 #include <math.h>
-#ifdef HAVE_SYS_EPOLL_H
-#include <sys/epoll.h>
-#include <sys/timerfd.h>
-#endif
-#ifdef HAVE_SYS_EVENT_H
-#include <sys/event.h>
-#endif
 #include <unistd.h>
 
+#if defined(HAVE_SYS_EPOLL_H)
+#include <sys/epoll.h>
+#include <sys/timerfd.h>
+#elif defined(HAVE_SYS_EVENT_H)
+#include <sys/event.h>
+#else
+#error libpq-oauth is not supported on this platform
+#endif
+
 #include "common/jsonapi.h"
-#include "fe-auth.h"
 #include "fe-auth-oauth.h"
-#include "libpq-int.h"
 #include "mb/pg_wchar.h"
+#include "oauth-curl.h"
+
+#ifdef USE_DYNAMIC_OAUTH
+
+/*
+ * The module build is decoupled from libpq-int.h, to try to avoid inadvertent
+ * ABI breaks during minor version bumps. Replacements for the missing internals
+ * are provided by oauth-utils.
+ */
+#include "oauth-utils.h"
+
+#else							/* !USE_DYNAMIC_OAUTH */
+
+/*
+ * Static builds may rely on PGconn offsets directly. Keep these aligned with
+ * the bank of callbacks in oauth-utils.h.
+ */
+#include "libpq-int.h"
+
+#define conn_errorMessage(CONN) (&CONN->errorMessage)
+#define conn_oauth_client_id(CONN) (CONN->oauth_client_id)
+#define conn_oauth_client_secret(CONN) (CONN->oauth_client_secret)
+#define conn_oauth_discovery_uri(CONN) (CONN->oauth_discovery_uri)
+#define conn_oauth_issuer_id(CONN) (CONN->oauth_issuer_id)
+#define conn_oauth_scope(CONN) (CONN->oauth_scope)
+#define conn_sasl_state(CONN) (CONN->sasl_state)
+
+#define set_conn_altsock(CONN, VAL) do { CONN->altsock = VAL; } while (0)
+#define set_conn_oauth_token(CONN, VAL) do { CONN->oauth_token = VAL; } while (0)
+
+#endif							/* USE_DYNAMIC_OAUTH */
+
+/* One final guardrail against accidental inclusion... */
+#if defined(USE_DYNAMIC_OAUTH) && defined(LIBPQ_INT_H)
+#error do not rely on libpq-int.h in dynamic builds of libpq-oauth
+#endif
 
 /*
  * It's generally prudent to set a maximum response size to buffer in memory,
@@ -45,6 +81,20 @@
  * appears to be common among popular providers at the moment.)
  */
 #define MAX_OAUTH_RESPONSE_SIZE (256 * 1024)
+
+/*
+ * Similarly, a limit on the maximum JSON nesting level keeps a server from
+ * running us out of stack space. A common nesting level in practice is 2 (for a
+ * top-level object containing arrays of strings). As of May 2025, the maximum
+ * depth for standard server metadata appears to be 6, if the document contains
+ * a full JSON Web Key Set in its "jwks" parameter.
+ *
+ * Since it's easy to nest JSON, and the number of parameters and key types
+ * keeps growing, take a healthy buffer of 16. (If this ever proves to be a
+ * problem in practice, we may want to switch over to the incremental JSON
+ * parser instead of playing with this parameter.)
+ */
+#define MAX_OAUTH_NESTING_LEVEL 16
 
 /*
  * Parsed JSON Representations
@@ -303,7 +353,7 @@ free_async_ctx(PGconn *conn, struct async_ctx *actx)
 void
 pg_fe_cleanup_oauth_flow(PGconn *conn)
 {
-	fe_oauth_state *state = conn->sasl_state;
+	fe_oauth_state *state = conn_sasl_state(conn);
 
 	if (state->async_ctx)
 	{
@@ -311,7 +361,7 @@ pg_fe_cleanup_oauth_flow(PGconn *conn)
 		state->async_ctx = NULL;
 	}
 
-	conn->altsock = PGINVALID_SOCKET;
+	set_conn_altsock(conn, PGINVALID_SOCKET);
 }
 
 /*
@@ -459,6 +509,12 @@ oauth_json_object_start(void *state)
 	}
 
 	++ctx->nested;
+	if (ctx->nested > MAX_OAUTH_NESTING_LEVEL)
+	{
+		oauth_parse_set_error(ctx, "JSON is too deeply nested");
+		return JSON_SEM_ACTION_FAILED;
+	}
+
 	return JSON_SUCCESS;
 }
 
@@ -563,6 +619,12 @@ oauth_json_array_start(void *state)
 	}
 
 	++ctx->nested;
+	if (ctx->nested > MAX_OAUTH_NESTING_LEVEL)
+	{
+		oauth_parse_set_error(ctx, "JSON is too deeply nested");
+		return JSON_SEM_ACTION_FAILED;
+	}
+
 	return JSON_SUCCESS;
 }
 
@@ -1110,7 +1172,7 @@ parse_access_token(struct async_ctx *actx, struct token *tok)
 static bool
 setup_multiplexer(struct async_ctx *actx)
 {
-#ifdef HAVE_SYS_EPOLL_H
+#if defined(HAVE_SYS_EPOLL_H)
 	struct epoll_event ev = {.events = EPOLLIN};
 
 	actx->mux = epoll_create1(EPOLL_CLOEXEC);
@@ -1134,8 +1196,7 @@ setup_multiplexer(struct async_ctx *actx)
 	}
 
 	return true;
-#endif
-#ifdef HAVE_SYS_EVENT_H
+#elif defined(HAVE_SYS_EVENT_H)
 	actx->mux = kqueue();
 	if (actx->mux < 0)
 	{
@@ -1158,10 +1219,9 @@ setup_multiplexer(struct async_ctx *actx)
 	}
 
 	return true;
+#else
+#error setup_multiplexer is not implemented on this platform
 #endif
-
-	actx_error(actx, "libpq does not support the Device Authorization flow on this platform");
-	return false;
 }
 
 /*
@@ -1172,8 +1232,9 @@ static int
 register_socket(CURL *curl, curl_socket_t socket, int what, void *ctx,
 				void *socketp)
 {
-#ifdef HAVE_SYS_EPOLL_H
 	struct async_ctx *actx = ctx;
+
+#if defined(HAVE_SYS_EPOLL_H)
 	struct epoll_event ev = {0};
 	int			res;
 	int			op = EPOLL_CTL_ADD;
@@ -1204,7 +1265,7 @@ register_socket(CURL *curl, curl_socket_t socket, int what, void *ctx,
 	res = epoll_ctl(actx->mux, op, socket, &ev);
 	if (res < 0 && errno == EEXIST)
 	{
-		/* We already had this socket in the pollset. */
+		/* We already had this socket in the poll set. */
 		op = EPOLL_CTL_MOD;
 		res = epoll_ctl(actx->mux, op, socket, &ev);
 	}
@@ -1229,9 +1290,7 @@ register_socket(CURL *curl, curl_socket_t socket, int what, void *ctx,
 	}
 
 	return 0;
-#endif
-#ifdef HAVE_SYS_EVENT_H
-	struct async_ctx *actx = ctx;
+#elif defined(HAVE_SYS_EVENT_H)
 	struct kevent ev[2] = {0};
 	struct kevent ev_out[2];
 	struct timespec timeout = {0};
@@ -1312,10 +1371,9 @@ register_socket(CURL *curl, curl_socket_t socket, int what, void *ctx,
 	}
 
 	return 0;
+#else
+#error register_socket is not implemented on this platform
 #endif
-
-	actx_error(actx, "libpq does not support multiplexer sockets on this platform");
-	return -1;
 }
 
 /*
@@ -1334,7 +1392,7 @@ register_socket(CURL *curl, curl_socket_t socket, int what, void *ctx,
 static bool
 set_timer(struct async_ctx *actx, long timeout)
 {
-#if HAVE_SYS_EPOLL_H
+#if defined(HAVE_SYS_EPOLL_H)
 	struct itimerspec spec = {0};
 
 	if (timeout < 0)
@@ -1363,8 +1421,7 @@ set_timer(struct async_ctx *actx, long timeout)
 	}
 
 	return true;
-#endif
-#ifdef HAVE_SYS_EVENT_H
+#elif defined(HAVE_SYS_EVENT_H)
 	struct kevent ev;
 
 #ifdef __NetBSD__
@@ -1419,10 +1476,9 @@ set_timer(struct async_ctx *actx, long timeout)
 	}
 
 	return true;
+#else
+#error set_timer is not implemented on this platform
 #endif
-
-	actx_error(actx, "libpq does not support timers on this platform");
-	return false;
 }
 
 /*
@@ -1433,7 +1489,7 @@ set_timer(struct async_ctx *actx, long timeout)
 static int
 timer_expired(struct async_ctx *actx)
 {
-#if HAVE_SYS_EPOLL_H
+#if defined(HAVE_SYS_EPOLL_H)
 	struct itimerspec spec = {0};
 
 	if (timerfd_gettime(actx->timerfd, &spec) < 0)
@@ -1453,8 +1509,7 @@ timer_expired(struct async_ctx *actx)
 	/* If the remaining time to expiration is zero, we're done. */
 	return (spec.it_value.tv_sec == 0
 			&& spec.it_value.tv_nsec == 0);
-#endif
-#ifdef HAVE_SYS_EVENT_H
+#elif defined(HAVE_SYS_EVENT_H)
 	int			res;
 
 	/* Is the timer queue ready? */
@@ -1466,10 +1521,9 @@ timer_expired(struct async_ctx *actx)
 	}
 
 	return (res > 0);
+#else
+#error timer_expired is not implemented on this platform
 #endif
-
-	actx_error(actx, "libpq does not support timers on this platform");
-	return -1;
 }
 
 /*
@@ -2070,8 +2124,9 @@ static bool
 check_issuer(struct async_ctx *actx, PGconn *conn)
 {
 	const struct provider *provider = &actx->provider;
+	const char *oauth_issuer_id = conn_oauth_issuer_id(conn);
 
-	Assert(conn->oauth_issuer_id);	/* ensured by setup_oauth_parameters() */
+	Assert(oauth_issuer_id);	/* ensured by setup_oauth_parameters() */
 	Assert(provider->issuer);	/* ensured by parse_provider() */
 
 	/*---
@@ -2091,11 +2146,11 @@ check_issuer(struct async_ctx *actx, PGconn *conn)
 	 *    sent to. This comparison MUST use simple string comparison as defined
 	 *    in Section 6.2.1 of [RFC3986].
 	 */
-	if (strcmp(conn->oauth_issuer_id, provider->issuer) != 0)
+	if (strcmp(oauth_issuer_id, provider->issuer) != 0)
 	{
 		actx_error(actx,
 				   "the issuer identifier (%s) does not match oauth_issuer (%s)",
-				   provider->issuer, conn->oauth_issuer_id);
+				   provider->issuer, oauth_issuer_id);
 		return false;
 	}
 
@@ -2172,11 +2227,14 @@ check_for_device_flow(struct async_ctx *actx)
 static bool
 add_client_identification(struct async_ctx *actx, PQExpBuffer reqbody, PGconn *conn)
 {
+	const char *oauth_client_id = conn_oauth_client_id(conn);
+	const char *oauth_client_secret = conn_oauth_client_secret(conn);
+
 	bool		success = false;
 	char	   *username = NULL;
 	char	   *password = NULL;
 
-	if (conn->oauth_client_secret)	/* Zero-length secrets are permitted! */
+	if (oauth_client_secret)	/* Zero-length secrets are permitted! */
 	{
 		/*----
 		 * Use HTTP Basic auth to send the client_id and secret. Per RFC 6749,
@@ -2204,8 +2262,8 @@ add_client_identification(struct async_ctx *actx, PQExpBuffer reqbody, PGconn *c
 		 * would it be redundant, but some providers in the wild (e.g. Okta)
 		 * refuse to accept it.
 		 */
-		username = urlencode(conn->oauth_client_id);
-		password = urlencode(conn->oauth_client_secret);
+		username = urlencode(oauth_client_id);
+		password = urlencode(oauth_client_secret);
 
 		if (!username || !password)
 		{
@@ -2225,7 +2283,7 @@ add_client_identification(struct async_ctx *actx, PQExpBuffer reqbody, PGconn *c
 		 * If we're not otherwise authenticating, client_id is REQUIRED in the
 		 * request body.
 		 */
-		build_urlencoded(reqbody, "client_id", conn->oauth_client_id);
+		build_urlencoded(reqbody, "client_id", oauth_client_id);
 
 		CHECK_SETOPT(actx, CURLOPT_HTTPAUTH, CURLAUTH_NONE, goto cleanup);
 		actx->used_basic_auth = false;
@@ -2253,16 +2311,17 @@ cleanup:
 static bool
 start_device_authz(struct async_ctx *actx, PGconn *conn)
 {
+	const char *oauth_scope = conn_oauth_scope(conn);
 	const char *device_authz_uri = actx->provider.device_authorization_endpoint;
 	PQExpBuffer work_buffer = &actx->work_data;
 
-	Assert(conn->oauth_client_id);	/* ensured by setup_oauth_parameters() */
+	Assert(conn_oauth_client_id(conn)); /* ensured by setup_oauth_parameters() */
 	Assert(device_authz_uri);	/* ensured by check_for_device_flow() */
 
 	/* Construct our request body. */
 	resetPQExpBuffer(work_buffer);
-	if (conn->oauth_scope && conn->oauth_scope[0])
-		build_urlencoded(work_buffer, "scope", conn->oauth_scope);
+	if (oauth_scope && oauth_scope[0])
+		build_urlencoded(work_buffer, "scope", oauth_scope);
 
 	if (!add_client_identification(actx, work_buffer, conn))
 		return false;
@@ -2344,7 +2403,7 @@ start_token_request(struct async_ctx *actx, PGconn *conn)
 	const char *device_code = actx->authz.device_code;
 	PQExpBuffer work_buffer = &actx->work_data;
 
-	Assert(conn->oauth_client_id);	/* ensured by setup_oauth_parameters() */
+	Assert(conn_oauth_client_id(conn)); /* ensured by setup_oauth_parameters() */
 	Assert(token_uri);			/* ensured by parse_provider() */
 	Assert(device_code);		/* ensured by parse_device_authz() */
 
@@ -2487,8 +2546,9 @@ prompt_user(struct async_ctx *actx, PGconn *conn)
 		.verification_uri_complete = actx->authz.verification_uri_complete,
 		.expires_in = actx->authz.expires_in,
 	};
+	PQauthDataHook_type hook = PQgetAuthDataHook();
 
-	res = PQauthDataHook(PQAUTHDATA_PROMPT_OAUTH_DEVICE, conn, &prompt);
+	res = hook(PQAUTHDATA_PROMPT_OAUTH_DEVICE, conn, &prompt);
 
 	if (!res)
 	{
@@ -2633,8 +2693,10 @@ done:
 static PostgresPollingStatusType
 pg_fe_run_oauth_flow_impl(PGconn *conn)
 {
-	fe_oauth_state *state = conn->sasl_state;
+	fe_oauth_state *state = conn_sasl_state(conn);
 	struct async_ctx *actx;
+	char	   *oauth_token = NULL;
+	PQExpBuffer errbuf;
 
 	if (!initialize_curl(conn))
 		return PGRES_POLLING_FAILED;
@@ -2676,7 +2738,7 @@ pg_fe_run_oauth_flow_impl(PGconn *conn)
 	do
 	{
 		/* By default, the multiplexer is the altsock. Reassign as desired. */
-		conn->altsock = actx->mux;
+		set_conn_altsock(conn, actx->mux);
 
 		switch (actx->step)
 		{
@@ -2712,7 +2774,7 @@ pg_fe_run_oauth_flow_impl(PGconn *conn)
 				 */
 				if (!timer_expired(actx))
 				{
-					conn->altsock = actx->timerfd;
+					set_conn_altsock(conn, actx->timerfd);
 					return PGRES_POLLING_READING;
 				}
 
@@ -2732,7 +2794,7 @@ pg_fe_run_oauth_flow_impl(PGconn *conn)
 		{
 			case OAUTH_STEP_INIT:
 				actx->errctx = "failed to fetch OpenID discovery document";
-				if (!start_discovery(actx, conn->oauth_discovery_uri))
+				if (!start_discovery(actx, conn_oauth_discovery_uri(conn)))
 					goto error_return;
 
 				actx->step = OAUTH_STEP_DISCOVERY;
@@ -2768,8 +2830,14 @@ pg_fe_run_oauth_flow_impl(PGconn *conn)
 				break;
 
 			case OAUTH_STEP_TOKEN_REQUEST:
-				if (!handle_token_response(actx, &conn->oauth_token))
+				if (!handle_token_response(actx, &oauth_token))
 					goto error_return;
+
+				/*
+				 * Hook any oauth_token into the PGconn immediately so that
+				 * the allocation isn't lost in case of an error.
+				 */
+				set_conn_oauth_token(conn, oauth_token);
 
 				if (!actx->user_prompted)
 				{
@@ -2783,7 +2851,7 @@ pg_fe_run_oauth_flow_impl(PGconn *conn)
 					actx->user_prompted = true;
 				}
 
-				if (conn->oauth_token)
+				if (oauth_token)
 					break;		/* done! */
 
 				/*
@@ -2798,7 +2866,7 @@ pg_fe_run_oauth_flow_impl(PGconn *conn)
 				 * the client wait directly on the timerfd rather than the
 				 * multiplexer.
 				 */
-				conn->altsock = actx->timerfd;
+				set_conn_altsock(conn, actx->timerfd);
 
 				actx->step = OAUTH_STEP_WAIT_INTERVAL;
 				actx->running = 1;
@@ -2818,48 +2886,40 @@ pg_fe_run_oauth_flow_impl(PGconn *conn)
 		 * point, actx->running will be set. But there are some corner cases
 		 * where we can immediately loop back around; see start_request().
 		 */
-	} while (!conn->oauth_token && !actx->running);
+	} while (!oauth_token && !actx->running);
 
 	/* If we've stored a token, we're done. Otherwise come back later. */
-	return conn->oauth_token ? PGRES_POLLING_OK : PGRES_POLLING_READING;
+	return oauth_token ? PGRES_POLLING_OK : PGRES_POLLING_READING;
 
 error_return:
+	errbuf = conn_errorMessage(conn);
 
 	/*
 	 * Assemble the three parts of our error: context, body, and detail. See
 	 * also the documentation for struct async_ctx.
 	 */
 	if (actx->errctx)
-	{
-		appendPQExpBufferStr(&conn->errorMessage,
-							 libpq_gettext(actx->errctx));
-		appendPQExpBufferStr(&conn->errorMessage, ": ");
-	}
+		appendPQExpBuffer(errbuf, "%s: ", libpq_gettext(actx->errctx));
 
 	if (PQExpBufferDataBroken(actx->errbuf))
-		appendPQExpBufferStr(&conn->errorMessage,
-							 libpq_gettext("out of memory"));
+		appendPQExpBufferStr(errbuf, libpq_gettext("out of memory"));
 	else
-		appendPQExpBufferStr(&conn->errorMessage, actx->errbuf.data);
+		appendPQExpBufferStr(errbuf, actx->errbuf.data);
 
 	if (actx->curl_err[0])
 	{
-		size_t		len;
-
-		appendPQExpBuffer(&conn->errorMessage,
-						  " (libcurl: %s)", actx->curl_err);
+		appendPQExpBuffer(errbuf, " (libcurl: %s)", actx->curl_err);
 
 		/* Sometimes libcurl adds a newline to the error buffer. :( */
-		len = conn->errorMessage.len;
-		if (len >= 2 && conn->errorMessage.data[len - 2] == '\n')
+		if (errbuf->len >= 2 && errbuf->data[errbuf->len - 2] == '\n')
 		{
-			conn->errorMessage.data[len - 2] = ')';
-			conn->errorMessage.data[len - 1] = '\0';
-			conn->errorMessage.len--;
+			errbuf->data[errbuf->len - 2] = ')';
+			errbuf->data[errbuf->len - 1] = '\0';
+			errbuf->len--;
 		}
 	}
 
-	appendPQExpBufferStr(&conn->errorMessage, "\n");
+	appendPQExpBufferChar(errbuf, '\n');
 
 	return PGRES_POLLING_FAILED;
 }

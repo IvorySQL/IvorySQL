@@ -1,6 +1,6 @@
 <!-- doc/src/sgml/libpq.sgml -->
 
-<chapter id="libpq">
+<chapter id="libpq" xreflabel="libpq">
  <title><application>libpq</application> &mdash; C Library</title>
 
  <indexterm zone="libpq">
@@ -378,7 +378,7 @@ PostgresPollingStatusType PQconnectPoll(PGconn *conn);
       <para>
        At any time during connection, the status of the connection can be
        checked by calling <xref linkend="libpq-PQstatus"/>. If this call returns <symbol>CONNECTION_BAD</symbol>, then the
-       connection procedure has failed; if the call returns <function>CONNECTION_OK</function>, then the
+       connection procedure has failed; if the call returns <symbol>CONNECTION_OK</symbol>, then the
        connection is ready.  Both of these states are equally detectable
        from the return value of <function>PQconnectPoll</function>, described above. Other states might also occur
        during (and only during) an asynchronous connection procedure. These
@@ -1918,6 +1918,30 @@ postgresql://%2Fvar%2Flib%2Fpostgresql/dbname
       </listitem>
      </varlistentry>
 
+     <varlistentry id="libpq-connect-sslkeylogfile" xreflabel="sslkeylogfile">
+      <term><literal>sslkeylogfile</literal></term>
+      <listitem>
+       <para>
+        This parameter specifies the location where <application>libpq</application>
+        will log keys used in this SSL context.  This is useful for debugging
+        <productname>PostgreSQL</productname> protocol interactions or client
+        connections using network inspection tools like
+        <productname>Wireshark</productname>.  This parameter is ignored if an
+        SSL connection is not made, or if <productname>LibreSSL</productname>
+        is used (<productname>LibreSSL</productname> does not support key
+        logging).  Keys are logged using the <productname>NSS</productname>
+        format.
+        <warning>
+         <para>
+          Key logging will expose potentially sensitive information in the
+          keylog file.  Keylog files should be handled with the same care as
+          <xref linkend="libpq-connect-sslkey" /> files.
+         </para>
+        </warning>
+       </para>
+      </listitem>
+     </varlistentry>
+
      <varlistentry id="libpq-connect-sslpassword" xreflabel="sslpassword">
       <term><literal>sslpassword</literal></term>
       <listitem>
@@ -1932,7 +1956,7 @@ postgresql://%2Fvar%2Flib%2Fpostgresql/dbname
         <literal>Enter PEM pass phrase:</literal>
         prompt that <productname>OpenSSL</productname> will emit by default
         when an encrypted client certificate key is provided to
-        <literal>libpq</literal>.
+        <application>libpq</application>.
        </para>
        <para>
         If the key is not encrypted this parameter is ignored. The parameter
@@ -2018,7 +2042,7 @@ postgresql://%2Fvar%2Flib%2Fpostgresql/dbname
        </para>
        <para>
         The special value <literal>system</literal> may be specified instead, in
-        which case the system's trusted CA roots will be loaded. The exact
+        which case the trusted CA roots from the SSL implementation will be loaded. The exact
         locations of these root certificates differ by SSL implementation and
         platform. For <productname>OpenSSL</productname> in particular, the
         locations may be further modified by the <envar>SSL_CERT_DIR</envar>
@@ -2144,6 +2168,24 @@ postgresql://%2Fvar%2Flib%2Fpostgresql/dbname
       </listitem>
      </varlistentry>
 
+     <varlistentry id="libpq-connect-ssl-max-protocol-version" xreflabel="ssl_max_protocol_version">
+      <term><literal>ssl_max_protocol_version</literal></term>
+      <listitem>
+       <para>
+        This parameter specifies the maximum SSL/TLS protocol version to allow
+        for the connection. Valid values are <literal>TLSv1</literal>,
+        <literal>TLSv1.1</literal>, <literal>TLSv1.2</literal> and
+        <literal>TLSv1.3</literal>. The supported protocols depend on the
+        version of <productname>OpenSSL</productname> used, older versions
+        not supporting the most modern protocol versions. If not set, this
+        parameter is ignored and the connection will use the maximum bound
+        defined by the backend, if set. Setting the maximum protocol version
+        is mainly useful for testing or if some component has issues working
+        with a newer protocol.
+       </para>
+      </listitem>
+     </varlistentry>
+
      <varlistentry id="libpq-connect-min-protocol-version" xreflabel="min_protocol_version">
       <term><literal>min_protocol_version</literal></term>
       <listitem>
@@ -2188,24 +2230,6 @@ postgresql://%2Fvar%2Flib%2Fpostgresql/dbname
         and <literal>latest</literal>. The <literal>latest</literal> value is
         equivalent to the latest protocol version supported by the libpq
         version being used, which is currently <literal>3.2</literal>.
-       </para>
-      </listitem>
-     </varlistentry>
-
-     <varlistentry id="libpq-connect-ssl-max-protocol-version" xreflabel="ssl_max_protocol_version">
-      <term><literal>ssl_max_protocol_version</literal></term>
-      <listitem>
-       <para>
-        This parameter specifies the maximum SSL/TLS protocol version to allow
-        for the connection. Valid values are <literal>TLSv1</literal>,
-        <literal>TLSv1.1</literal>, <literal>TLSv1.2</literal> and
-        <literal>TLSv1.3</literal>. The supported protocols depend on the
-        version of <productname>OpenSSL</productname> used, older versions
-        not supporting the most modern protocol versions. If not set, this
-        parameter is ignored and the connection will use the maximum bound
-        defined by the backend, if set. Setting the maximum protocol version
-        is mainly useful for testing or if some component has issues working
-        with a newer protocol.
        </para>
       </listitem>
      </varlistentry>
@@ -2787,14 +2811,14 @@ ConnStatusType PQstatus(const PGconn *conn);
       <para>
        The status can be one of a number of values.  However, only two of
        these are seen outside of an asynchronous connection procedure:
-       <literal>CONNECTION_OK</literal> and
-       <literal>CONNECTION_BAD</literal>. A good connection to the database
-       has the status <literal>CONNECTION_OK</literal>.  A failed
+       <symbol>CONNECTION_OK</symbol> and
+       <symbol>CONNECTION_BAD</symbol>. A good connection to the database
+       has the status <symbol>CONNECTION_OK</symbol>.  A failed
        connection attempt is signaled by status
-       <literal>CONNECTION_BAD</literal>.  Ordinarily, an OK status will
+       <symbol>CONNECTION_BAD</symbol>.  Ordinarily, an OK status will
        remain so until <xref linkend="libpq-PQfinish"/>, but a communications
        failure might result in the status changing to
-       <literal>CONNECTION_BAD</literal> prematurely.  In that case the
+       <symbol>CONNECTION_BAD</symbol> prematurely.  In that case the
        application could try to recover by calling
        <xref linkend="libpq-PQreset"/>.
       </para>
@@ -5310,7 +5334,7 @@ unsigned char *PQunescapeBytea(const unsigned char *from, size_t *to_length);
    <xref linkend="libpq-PQprepare"/>,
    <xref linkend="libpq-PQexecPrepared"/>,
    <xref linkend="libpq-PQdescribePrepared"/>,
-   <xref linkend="libpq-PQdescribePortal"/>
+   <xref linkend="libpq-PQdescribePortal"/>,
    <xref linkend="libpq-PQclosePrepared"/>, and
    <xref linkend="libpq-PQclosePortal"/>
    respectively.
@@ -6604,7 +6628,7 @@ PostgresPollingStatusType PQcancelPoll(PGcancelConn *cancelConn);
        checked by calling <xref linkend="libpq-PQcancelStatus"/>.
        If this call returns <symbol>CONNECTION_BAD</symbol>, then
        the cancel procedure has failed; if the call returns
-       <function>CONNECTION_OK</function>, then cancel request was
+       <symbol>CONNECTION_OK</symbol>, then cancel request was
        successfully dispatched.
        Both of these states are equally detectable from the return value of
        <function>PQcancelPoll</function>, described above.
@@ -6726,15 +6750,15 @@ ConnStatusType PQcancelStatus(const PGcancelConn *cancelConn);
       <para>
        The status can be one of a number of values.  However, only three of
        these are seen outside of an asynchronous cancel procedure:
-       <literal>CONNECTION_ALLOCATED</literal>,
-       <literal>CONNECTION_OK</literal> and
-       <literal>CONNECTION_BAD</literal>. The initial state of a
+       <symbol>CONNECTION_ALLOCATED</symbol>,
+       <symbol>CONNECTION_OK</symbol> and
+       <symbol>CONNECTION_BAD</symbol>. The initial state of a
        <function>PGcancelConn</function> that's successfully created using
-       <xref linkend="libpq-PQcancelCreate"/> is <literal>CONNECTION_ALLOCATED</literal>.
+       <xref linkend="libpq-PQcancelCreate"/> is <symbol>CONNECTION_ALLOCATED</symbol>.
        A cancel request that was successfully dispatched
-       has the status <literal>CONNECTION_OK</literal>.  A failed
+       has the status <symbol>CONNECTION_OK</symbol>.  A failed
        cancel attempt is signaled by status
-       <literal>CONNECTION_BAD</literal>.  An OK status will
+       <symbol>CONNECTION_BAD</symbol>.  An OK status will
        remain so until <xref linkend="libpq-PQcancelFinish"/> or
        <xref linkend="libpq-PQcancelReset"/> is called.
       </para>
@@ -8259,7 +8283,7 @@ size_t PQresultMemorySize(const PGresult *res);
 
     <listitem>
      <para>
-      Return the version of <productname>libpq</productname> that is being used.
+      Return the version of <application>libpq</application> that is being used.
 <synopsis>
 int PQlibVersion(void);
 </synopsis>
@@ -8510,7 +8534,7 @@ typedef struct
        <parameter>evtInfo</parameter> pointer should be cast to a
        <structname>PGEventRegister *</structname>.  This structure contains a
        <structname>PGconn</structname> that should be in the
-       <literal>CONNECTION_OK</literal> status; guaranteed if one calls
+       <symbol>CONNECTION_OK</symbol> status; guaranteed if one calls
        <xref linkend="libpq-PQregisterEventProc"/> right after obtaining a good
        <structname>PGconn</structname>.  When returning a failure code, all
        cleanup must be performed as no <literal>PGEVT_CONNDESTROY</literal>
@@ -10202,15 +10226,20 @@ void PQinitSSL(int do_ssl);
   <title>OAuth Support</title>
 
   <para>
-   libpq implements support for the OAuth v2 Device Authorization client flow,
+   <application>libpq</application> implements support for the OAuth v2 Device Authorization client flow,
    documented in
    <ulink url="https://datatracker.ietf.org/doc/html/rfc8628">RFC 8628</ulink>,
-   which it will attempt to use by default if the server
+   as an optional module. See the <link linkend="configure-option-with-libcurl">
+   installation documentation</link> for information on how to enable support
+   for Device Authorization as a builtin flow.
+  </para>
+  <para>
+   When support is enabled and the optional module installed, <application>libpq</application>
+   will use the builtin flow by default if the server
    <link linkend="auth-oauth">requests a bearer token</link> during
    authentication. This flow can be utilized even if the system running the
    client application does not have a usable web browser, for example when
-   running a client via <application>SSH</application>. Client applications may implement their own flows
-   instead; see <xref linkend="libpq-oauth-authdata-hooks"/>.
+   running a client via <acronym>SSH</acronym>.
   </para>
   <para>
    The builtin flow will, by default, print a URL to visit and a user code to
@@ -10226,6 +10255,11 @@ Visit https://example.com/device and enter the code: ABCD-EFGH
    a good idea to carefully review the URL and permissions displayed, to ensure
    they match expectations, before continuing. Permissions should not be given
    to untrusted third parties.
+  </para>
+  <para>
+   Client applications may implement their own flows to customize interaction
+   and integration with applications. See <xref linkend="libpq-oauth-authdata-hooks"/>
+   for more information on how add a custom flow to <application>libpq</application>.
   </para>
   <para>
    For an OAuth client flow to be usable, the connection string must at minimum
@@ -10342,7 +10376,9 @@ typedef struct _PGpromptOAuthDevice
 </synopsis>
         </para>
         <para>
-         The OAuth Device Authorization flow included in <application>libpq</application>
+         The OAuth Device Authorization flow which
+         <link linkend="configure-option-with-libcurl">can be included</link>
+         in <application>libpq</application>
          requires the end user to visit a URL with a browser, then enter a code
          which permits <application>libpq</application> to connect to the server
          on their behalf. The default prompt simply prints the
@@ -10354,7 +10390,8 @@ typedef struct _PGpromptOAuthDevice
          This callback is only invoked during the builtin device
          authorization flow. If the application installs a
          <link linkend="libpq-oauth-authdata-oauth-bearer-token">custom OAuth
-         flow</link>, this authdata type will not be used.
+         flow</link>, or <application>libpq</application> was not built with
+         support for the builtin flow, this authdata type will not be used.
         </para>
         <para>
          If a non-NULL <structfield>verification_uri_complete</structfield> is
@@ -10376,8 +10413,9 @@ typedef struct _PGpromptOAuthDevice
        </term>
        <listitem>
         <para>
-         Replaces the entire OAuth flow with a custom implementation. The hook
-         should either directly return a Bearer token for the current
+         Adds a custom implementation of a flow, replacing the builtin flow if
+         it is <link linkend="configure-option-with-libcurl">installed</link>.
+         The hook should either directly return a Bearer token for the current
          user/issuer/scope combination, if one is available without blocking, or
          else set up an asynchronous callback to retrieve one.
         </para>

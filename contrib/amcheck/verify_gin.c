@@ -38,7 +38,6 @@ typedef struct GinScanItem
 	int			depth;
 	IndexTuple	parenttup;
 	BlockNumber parentblk;
-	XLogRecPtr	parentlsn;
 	BlockNumber blkno;
 	struct GinScanItem *next;
 } GinScanItem;
@@ -346,7 +345,7 @@ gin_check_posting_tree_parent_keys_consistency(Relation rel, BlockNumber posting
 				 * Check if this tuple is consistent with the downlink in the
 				 * parent.
 				 */
-				if (stack->parentblk != InvalidBlockNumber && i == maxoff &&
+				if (i == maxoff && ItemPointerIsValid(&stack->parentkey) &&
 					ItemPointerCompare(&stack->parentkey, &posting_item->key) < 0)
 					ereport(ERROR,
 							(errcode(ERRCODE_INDEX_CORRUPTED),
@@ -359,14 +358,10 @@ gin_check_posting_tree_parent_keys_consistency(Relation rel, BlockNumber posting
 				ptr->depth = stack->depth + 1;
 
 				/*
-				 * Set rightmost parent key to invalid iterm pointer. Its
-				 * value is 'Infinity' and not explicitly stored.
+				 * The rightmost parent key is always invalid item pointer.
+				 * Its value is 'Infinity' and not explicitly stored.
 				 */
-				if (rightlink == InvalidBlockNumber)
-					ItemPointerSetInvalid(&ptr->parentkey);
-				else
-					ptr->parentkey = posting_item->key;
-
+				ptr->parentkey = posting_item->key;
 				ptr->parentblk = stack->blkno;
 				ptr->blkno = BlockIdGetBlockNumber(&posting_item->child_blkno);
 				ptr->next = stack->next;
@@ -421,7 +416,6 @@ gin_check_parent_keys_consistency(Relation rel,
 	stack->depth = 0;
 	stack->parenttup = NULL;
 	stack->parentblk = InvalidBlockNumber;
-	stack->parentlsn = InvalidXLogRecPtr;
 	stack->blkno = GIN_ROOT_BLKNO;
 
 	while (stack)
@@ -432,7 +426,6 @@ gin_check_parent_keys_consistency(Relation rel,
 		OffsetNumber i,
 					maxoff,
 					prev_attnum;
-		XLogRecPtr	lsn;
 		IndexTuple	prev_tuple;
 		BlockNumber rightlink;
 
@@ -442,7 +435,6 @@ gin_check_parent_keys_consistency(Relation rel,
 									RBM_NORMAL, strategy);
 		LockBuffer(buffer, GIN_SHARE);
 		page = (Page) BufferGetPage(buffer);
-		lsn = BufferGetLSNAtomic(buffer);
 		maxoff = PageGetMaxOffsetNumber(page);
 		rightlink = GinPageGetOpaque(page)->rightlink;
 
@@ -463,17 +455,18 @@ gin_check_parent_keys_consistency(Relation rel,
 			Datum		parent_key = gintuple_get_key(&state,
 													  stack->parenttup,
 													  &parent_key_category);
+			OffsetNumber parent_key_attnum = gintuple_get_attrnum(&state, stack->parenttup);
 			ItemId		iid = PageGetItemIdCareful(rel, stack->blkno,
 												   page, maxoff);
 			IndexTuple	idxtuple = (IndexTuple) PageGetItem(page, iid);
-			OffsetNumber attnum = gintuple_get_attrnum(&state, idxtuple);
+			OffsetNumber page_max_key_attnum = gintuple_get_attrnum(&state, idxtuple);
 			GinNullCategory page_max_key_category;
 			Datum		page_max_key = gintuple_get_key(&state, idxtuple, &page_max_key_category);
 
 			if (rightlink != InvalidBlockNumber &&
-				ginCompareEntries(&state, attnum, page_max_key,
-								  page_max_key_category, parent_key,
-								  parent_key_category) > 0)
+				ginCompareAttEntries(&state, page_max_key_attnum, page_max_key,
+									 page_max_key_category, parent_key_attnum,
+									 parent_key, parent_key_category) < 0)
 			{
 				/* split page detected, install right link to the stack */
 				GinScanItem *ptr;
@@ -484,7 +477,6 @@ gin_check_parent_keys_consistency(Relation rel,
 				ptr->depth = stack->depth;
 				ptr->parenttup = CopyIndexTuple(stack->parenttup);
 				ptr->parentblk = stack->parentblk;
-				ptr->parentlsn = stack->parentlsn;
 				ptr->blkno = rightlink;
 				ptr->next = stack->next;
 				stack->next = ptr;
@@ -513,9 +505,7 @@ gin_check_parent_keys_consistency(Relation rel,
 		{
 			ItemId		iid = PageGetItemIdCareful(rel, stack->blkno, page, i);
 			IndexTuple	idxtuple = (IndexTuple) PageGetItem(page, iid);
-			OffsetNumber attnum = gintuple_get_attrnum(&state, idxtuple);
-			GinNullCategory prev_key_category;
-			Datum		prev_key;
+			OffsetNumber current_attnum = gintuple_get_attrnum(&state, idxtuple);
 			GinNullCategory current_key_category;
 			Datum		current_key;
 
@@ -528,20 +518,24 @@ gin_check_parent_keys_consistency(Relation rel,
 			current_key = gintuple_get_key(&state, idxtuple, &current_key_category);
 
 			/*
-			 * First block is metadata, skip order check. Also, never check
-			 * for high key on rightmost page, as this key is not really
-			 * stored explicitly.
+			 * Compare the entry to the preceding one.
 			 *
-			 * Also make sure to not compare entries for different attnums,
-			 * which may be stored on the same page.
+			 * Don't check for high key on the rightmost inner page, as this
+			 * key is not really stored explicitly.
+			 *
+			 * The entries may be for different attributes, so make sure to
+			 * use ginCompareAttEntries for comparison.
 			 */
-			if (i != FirstOffsetNumber && attnum == prev_attnum && stack->blkno != GIN_ROOT_BLKNO &&
-				!(i == maxoff && rightlink == InvalidBlockNumber))
+			if ((i != FirstOffsetNumber) &&
+				!(i == maxoff && rightlink == InvalidBlockNumber && !GinPageIsLeaf(page)))
 			{
+				Datum		prev_key;
+				GinNullCategory prev_key_category;
+
 				prev_key = gintuple_get_key(&state, prev_tuple, &prev_key_category);
-				if (ginCompareEntries(&state, attnum, prev_key,
-									  prev_key_category, current_key,
-									  current_key_category) >= 0)
+				if (ginCompareAttEntries(&state, prev_attnum, prev_key,
+										 prev_key_category, current_attnum,
+										 current_key, current_key_category) >= 0)
 					ereport(ERROR,
 							(errcode(ERRCODE_INDEX_CORRUPTED),
 							 errmsg("index \"%s\" has wrong tuple order on entry tree page, block %u, offset %u, rightlink %u",
@@ -556,13 +550,14 @@ gin_check_parent_keys_consistency(Relation rel,
 				i == maxoff)
 			{
 				GinNullCategory parent_key_category;
+				OffsetNumber parent_key_attnum = gintuple_get_attrnum(&state, stack->parenttup);
 				Datum		parent_key = gintuple_get_key(&state,
 														  stack->parenttup,
 														  &parent_key_category);
 
-				if (ginCompareEntries(&state, attnum, current_key,
-									  current_key_category, parent_key,
-									  parent_key_category) > 0)
+				if (ginCompareAttEntries(&state, current_attnum, current_key,
+										 current_key_category, parent_key_attnum,
+										 parent_key, parent_key_category) > 0)
 				{
 					/*
 					 * There was a discrepancy between parent and child
@@ -581,17 +576,18 @@ gin_check_parent_keys_consistency(Relation rel,
 							 stack->blkno, stack->parentblk);
 					else
 					{
+						parent_key_attnum = gintuple_get_attrnum(&state, stack->parenttup);
 						parent_key = gintuple_get_key(&state,
 													  stack->parenttup,
 													  &parent_key_category);
 
 						/*
 						 * Check if it is properly adjusted. If succeed,
-						 * procced to the next key.
+						 * proceed to the next key.
 						 */
-						if (ginCompareEntries(&state, attnum, current_key,
-											  current_key_category, parent_key,
-											  parent_key_category) > 0)
+						if (ginCompareAttEntries(&state, current_attnum, current_key,
+												 current_key_category, parent_key_attnum,
+												 parent_key, parent_key_category) > 0)
 							ereport(ERROR,
 									(errcode(ERRCODE_INDEX_CORRUPTED),
 									 errmsg("index \"%s\" has inconsistent records on page %u offset %u",
@@ -608,13 +604,12 @@ gin_check_parent_keys_consistency(Relation rel,
 				ptr = (GinScanItem *) palloc(sizeof(GinScanItem));
 				ptr->depth = stack->depth + 1;
 				/* last tuple in layer has no high key */
-				if (i != maxoff && !GinPageGetOpaque(page)->rightlink)
-					ptr->parenttup = CopyIndexTuple(idxtuple);
-				else
+				if (i == maxoff && rightlink == InvalidBlockNumber)
 					ptr->parenttup = NULL;
+				else
+					ptr->parenttup = CopyIndexTuple(idxtuple);
 				ptr->parentblk = stack->blkno;
 				ptr->blkno = GinGetDownlink(idxtuple);
-				ptr->parentlsn = lsn;
 				ptr->next = stack->next;
 				stack->next = ptr;
 			}
@@ -644,7 +639,7 @@ gin_check_parent_keys_consistency(Relation rel,
 			}
 
 			prev_tuple = CopyIndexTuple(idxtuple);
-			prev_attnum = attnum;
+			prev_attnum = current_attnum;
 		}
 
 		LockBuffer(buffer, GIN_UNLOCK);
@@ -700,18 +695,18 @@ check_index_page(Relation rel, Buffer buffer, BlockNumber blockNo)
 		if (!GinPageIsLeaf(page))
 			ereport(ERROR,
 					(errcode(ERRCODE_INDEX_CORRUPTED),
-					 errmsg("index \"%s\" has deleted internal page %d",
+					 errmsg("index \"%s\" has deleted internal page %u",
 							RelationGetRelationName(rel), blockNo)));
 		if (PageGetMaxOffsetNumber(page) > InvalidOffsetNumber)
 			ereport(ERROR,
 					(errcode(ERRCODE_INDEX_CORRUPTED),
-					 errmsg("index \"%s\" has deleted page %d with tuples",
+					 errmsg("index \"%s\" has deleted page %u with tuples",
 							RelationGetRelationName(rel), blockNo)));
 	}
 	else if (PageGetMaxOffsetNumber(page) > MaxIndexTuplesPerPage)
 		ereport(ERROR,
 				(errcode(ERRCODE_INDEX_CORRUPTED),
-				 errmsg("index \"%s\" has page %d with exceeding count of tuples",
+				 errmsg("index \"%s\" has page %u with exceeding count of tuples",
 						RelationGetRelationName(rel), blockNo)));
 }
 
@@ -749,7 +744,7 @@ gin_refind_parent(Relation rel, BlockNumber parentblkno,
 		ItemId		p_iid = PageGetItemIdCareful(rel, parentblkno, parentpage, o);
 		IndexTuple	itup = (IndexTuple) PageGetItem(parentpage, p_iid);
 
-		if (ItemPointerGetBlockNumber(&(itup->t_tid)) == childblkno)
+		if (GinGetDownlink(itup) == childblkno)
 		{
 			/* Found it! Make copy and return it */
 			result = CopyIndexTuple(itup);

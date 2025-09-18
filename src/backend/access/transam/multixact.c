@@ -872,7 +872,7 @@ MultiXactIdCreateFromMembers(int nmembers, MultiXactMember *members)
 	 */
 	multi = GetNewMultiXactId(nmembers, &offset);
 
-	INJECTION_POINT_CACHED("multixact-create-from-members");
+	INJECTION_POINT_CACHED("multixact-create-from-members", NULL);
 
 	/* Make an XLOG entry describing the new MXID. */
 	xlrec.mid = multi;
@@ -1287,7 +1287,7 @@ GetNewMultiXactId(int nmembers, MultiXactOffset *offset)
  * range, in which case an error would be raised.
  *
  * In all other cases, the passed multixact must be within the known valid
- * range, that is, greater to or equal than oldestMultiXactId, and less than
+ * range, that is, greater than or equal to oldestMultiXactId, and less than
  * nextMXact.  Otherwise, an error is raised.
  *
  * isLockOnly must be set to true if caller is certain that the given multi
@@ -1486,7 +1486,7 @@ retry:
 			LWLockRelease(lock);
 			CHECK_FOR_INTERRUPTS();
 
-			INJECTION_POINT("multixact-get-members-cv-sleep");
+			INJECTION_POINT("multixact-get-members-cv-sleep", NULL);
 
 			ConditionVariableSleep(&MultiXactState->nextoff_cv,
 								   WAIT_EVENT_MULTIXACT_CREATION);

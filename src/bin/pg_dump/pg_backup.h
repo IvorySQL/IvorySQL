@@ -284,18 +284,15 @@ typedef int DumpId;
 /*
  * Function pointer prototypes for assorted callback methods.
  */
-
-typedef int (*DataDumperPtr) (Archive *AH, const void *userArg);
-
 typedef void (*SetupWorkerPtrType) (Archive *AH);
 
 /*
  * Main archiver interface.
  */
 
-extern void ConnectDatabase(Archive *AHX,
-							const ConnParams *cparams,
-							bool isReconnect);
+extern void ConnectDatabaseAhx(Archive *AHX,
+							   const ConnParams *cparams,
+							   bool isReconnect);
 extern void DisconnectDatabase(Archive *AHX);
 extern PGconn *GetConnection(Archive *AHX);
 
@@ -311,7 +308,7 @@ extern void SetArchiveOptions(Archive *AH, DumpOptions *dopt, RestoreOptions *ro
 
 extern void ProcessArchiveRestoreOptions(Archive *AHX);
 
-extern void RestoreArchive(Archive *AHX);
+extern void RestoreArchive(Archive *AHX, bool append_data);
 
 /* Open an existing archive */
 extern Archive *OpenArchive(const char *FileSpec, const ArchiveFormat fmt);

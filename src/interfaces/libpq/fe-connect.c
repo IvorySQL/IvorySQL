@@ -159,6 +159,12 @@ static int	ldapServiceLookup(const char *purl, PQconninfoOption *options,
  *		"*"		Password field - hide value
  *		"D"		Debug option - don't show by default
  *
+ * NB: Server-side clients -- dblink, postgres_fdw, libpqrcv -- use dispchar to
+ * determine which options to expose to end users, and how. Changing dispchar
+ * has compatibility and security implications for those clients. For example,
+ * postgres_fdw will attach a "*" option to USER MAPPING instead of the default
+ * SERVER, and it disallows setting "D" options entirely.
+ *
  * PQconninfoOptions[] is a constant static array that we use to initialize
  * a dynamically allocated working copy.  All the "val" fields in
  * PQconninfoOptions[] *must* be NULL.  In a working copy, non-null "val"
@@ -395,12 +401,16 @@ static const internalPQconninfoOption PQconninfoOptions[] = {
 	offsetof(struct pg_conn, oauth_client_id)},
 
 	{"oauth_client_secret", NULL, NULL, NULL,
-		"OAuth-Client-Secret", "", 40,
+		"OAuth-Client-Secret", "*", 40,
 	offsetof(struct pg_conn, oauth_client_secret)},
 
 	{"oauth_scope", NULL, NULL, NULL,
 		"OAuth-Scope", "", 15,
 	offsetof(struct pg_conn, oauth_scope)},
+
+	{"sslkeylogfile", NULL, NULL, NULL,
+		"SSL-Key-Log-File", "D", 64,
+	offsetof(struct pg_conn, sslkeylogfile)},
 
 	/* Terminating entry --- MUST BE LAST */
 	{NULL, NULL, NULL, NULL,
@@ -690,7 +700,7 @@ pqDropServerData(PGconn *conn)
 	conn->oauth_want_retry = false;
 
 	/*
-	 * Cancel connections need to retain their be_pid and be_key across
+	 * Cancel connections need to retain their be_pid and be_cancel_key across
 	 * PQcancelReset invocations, otherwise they would not have access to the
 	 * secret token of the connection they are supposed to cancel.
 	 */
@@ -1830,7 +1840,7 @@ pqConnectOptions2(PGconn *conn)
 		 * sslmode='allow' or sslmode='disable' either. If a user goes through
 		 * the trouble of setting sslnegotiation='direct', they probably
 		 * intend to use SSL, and sslmode=disable or allow is probably a user
-		 * user mistake anyway.
+		 * mistake anyway.
 		 */
 		if (conn->sslnegotiation[0] == 'd' &&
 			conn->sslmode[0] != 'r' && conn->sslmode[0] != 'v')
@@ -2018,13 +2028,11 @@ pqConnectOptions2(PGconn *conn)
 		if (len < 0)
 		{
 			libpq_append_conn_error(conn, "invalid SCRAM client key");
-			free(conn->scram_client_key_binary);
 			return false;
 		}
 		if (len != SCRAM_MAX_KEY_LEN)
 		{
 			libpq_append_conn_error(conn, "invalid SCRAM client key length: %d", len);
-			free(conn->scram_client_key_binary);
 			return false;
 		}
 		conn->scram_client_key_len = len;
@@ -2043,13 +2051,11 @@ pqConnectOptions2(PGconn *conn)
 		if (len < 0)
 		{
 			libpq_append_conn_error(conn, "invalid SCRAM server key");
-			free(conn->scram_server_key_binary);
 			return false;
 		}
 		if (len != SCRAM_MAX_KEY_LEN)
 		{
 			libpq_append_conn_error(conn, "invalid SCRAM server key length: %d", len);
-			free(conn->scram_server_key_binary);
 			return false;
 		}
 		conn->scram_server_key_len = len;
@@ -2136,7 +2142,7 @@ pqConnectOptions2(PGconn *conn)
 	if (conn->min_pversion > conn->max_pversion)
 	{
 		conn->status = CONNECTION_BAD;
-		libpq_append_conn_error(conn, "min_protocol_version is greater than max_protocol_version");
+		libpq_append_conn_error(conn, "\"%s\" is greater than \"%s\"", "min_protocol_version", "max_protocol_version");
 		return false;
 	}
 
@@ -5044,21 +5050,19 @@ freePGconn(PGconn *conn)
 		free(conn->events[i].name);
 	}
 
-	release_conn_addrinfo(conn);
-	pqReleaseConnHosts(conn);
-
-	free(conn->client_encoding_initial);
-	free(conn->events);
+	/* free everything not freed in pqClosePGconn */
 	free(conn->pghost);
 	free(conn->pghostaddr);
 	free(conn->pgport);
 	free(conn->connect_timeout);
 	free(conn->pgtcp_user_timeout);
+	free(conn->client_encoding_initial);
 	free(conn->pgoptions);
 	free(conn->appname);
 	free(conn->fbappname);
 	free(conn->dbName);
 	free(conn->replication);
+	free(conn->pgservice);
 	free(conn->pguser);
 	if (conn->pgpass)
 	{
@@ -5073,8 +5077,9 @@ freePGconn(PGconn *conn)
 	free(conn->keepalives_count);
 	free(conn->sslmode);
 	free(conn->sslnegotiation);
-	free(conn->sslcert);
+	free(conn->sslcompression);
 	free(conn->sslkey);
+	free(conn->sslcert);
 	if (conn->sslpassword)
 	{
 		explicit_bzero(conn->sslpassword, strlen(conn->sslpassword));
@@ -5084,32 +5089,40 @@ freePGconn(PGconn *conn)
 	free(conn->sslrootcert);
 	free(conn->sslcrl);
 	free(conn->sslcrldir);
-	free(conn->sslcompression);
 	free(conn->sslsni);
 	free(conn->requirepeer);
-	free(conn->require_auth);
-	free(conn->ssl_min_protocol_version);
-	free(conn->ssl_max_protocol_version);
 	free(conn->gssencmode);
 	free(conn->krbsrvname);
 	free(conn->gsslib);
 	free(conn->gssdelegation);
-	free(conn->connip);
-	/* Note that conn->Pfdebug is not ours to close or free */
-	free(conn->write_err_msg);
-	free(conn->inBuffer);
-	free(conn->outBuffer);
-	free(conn->rowBuf);
+	free(conn->min_protocol_version);
+	free(conn->max_protocol_version);
+	free(conn->ssl_min_protocol_version);
+	free(conn->ssl_max_protocol_version);
 	free(conn->target_session_attrs);
+	free(conn->require_auth);
 	free(conn->load_balance_hosts);
 	free(conn->scram_client_key);
 	free(conn->scram_server_key);
+	free(conn->sslkeylogfile);
 	free(conn->oauth_issuer);
 	free(conn->oauth_issuer_id);
 	free(conn->oauth_discovery_uri);
 	free(conn->oauth_client_id);
 	free(conn->oauth_client_secret);
 	free(conn->oauth_scope);
+	/* Note that conn->Pfdebug is not ours to close or free */
+	free(conn->events);
+	pqReleaseConnHosts(conn);
+	free(conn->connip);
+	release_conn_addrinfo(conn);
+	free(conn->scram_client_key_binary);
+	free(conn->scram_server_key_binary);
+	/* if this is a cancel connection, be_cancel_key may still be allocated */
+	free(conn->be_cancel_key);
+	free(conn->inBuffer);
+	free(conn->outBuffer);
+	free(conn->rowBuf);
 	termPQExpBuffer(&conn->errorMessage);
 	termPQExpBuffer(&conn->workBuffer);
 
@@ -5138,6 +5151,7 @@ pqReleaseConnHosts(PGconn *conn)
 			}
 		}
 		free(conn->connhost);
+		conn->connhost = NULL;
 	}
 }
 

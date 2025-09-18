@@ -36,7 +36,7 @@ typedef enum IoMethod
 #ifdef IOMETHOD_IO_URING_ENABLED
 	IOMETHOD_IO_URING,
 #endif
-} IoMethod;
+}			IoMethod;
 
 /* We'll default to worker based execution. */
 #define DEFAULT_IO_METHOD IOMETHOD_WORKER
@@ -159,7 +159,7 @@ struct PgAioTargetInfo
 {
 	/*
 	 * To support executing using worker processes, the file descriptor for an
-	 * IO may need to be be reopened in a different process.
+	 * IO may need to be reopened in a different process.
 	 */
 	void		(*reopen) (PgAioHandle *ioh);
 

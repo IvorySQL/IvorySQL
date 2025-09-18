@@ -834,7 +834,7 @@ MemoryContextStatsDetail(MemoryContext context,
 
 	memset(&grand_totals, 0, sizeof(grand_totals));
 
-	MemoryContextStatsInternal(context, 0, max_level, max_children,
+	MemoryContextStatsInternal(context, 1, max_level, max_children,
 							   &grand_totals, print_to_stderr);
 
 	if (print_to_stderr)
@@ -899,7 +899,7 @@ MemoryContextStatsInternal(MemoryContext context, int level,
 	 */
 	child = context->firstchild;
 	ichild = 0;
-	if (level < max_level && !stack_is_too_deep())
+	if (level <= max_level && !stack_is_too_deep())
 	{
 		for (; child != NULL && ichild < max_children;
 			 child = child->nextchild, ichild++)
@@ -928,7 +928,7 @@ MemoryContextStatsInternal(MemoryContext context, int level,
 
 		if (print_to_stderr)
 		{
-			for (int i = 0; i <= level; i++)
+			for (int i = 0; i < level; i++)
 				fprintf(stderr, "  ");
 			fprintf(stderr,
 					"%d more child contexts containing %zu total in %zu blocks; %zu free (%zu chunks); %zu used\n",
@@ -1029,7 +1029,7 @@ MemoryContextStatsPrint(MemoryContext context, void *passthru,
 
 	if (print_to_stderr)
 	{
-		for (i = 0; i < level; i++)
+		for (i = 1; i < level; i++)
 			fprintf(stderr, "  ");
 		fprintf(stderr, "%s: %s%s\n", name, stats_string, truncated_ident);
 	}
@@ -1105,6 +1105,10 @@ MemoryContextCreate(MemoryContext node,
 {
 	/* Creating new memory contexts is not allowed in a critical section */
 	Assert(CritSectionCount == 0);
+
+	/* Validate parent, to help prevent crazy context linkages */
+	Assert(parent == NULL || MemoryContextIsValid(parent));
+	Assert(node != parent);
 
 	/* Initialize all standard fields of memory context header */
 	node->type = tag;

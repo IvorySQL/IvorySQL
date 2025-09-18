@@ -1434,7 +1434,7 @@ pqGetNegotiateProtocolVersion3(PGconn *conn)
 	/* 3.1 never existed, we went straight from 3.0 to 3.2 */
 	if (their_version == PG_PROTOCOL(3, 1))
 	{
-		libpq_append_conn_error(conn, "received invalid protocol negotiation message: server requests downgrade to non-existent 3.1 protocol version");
+		libpq_append_conn_error(conn, "received invalid protocol negotiation message: server requested downgrade to non-existent 3.1 protocol version");
 		goto failure;
 	}
 
@@ -1452,9 +1452,10 @@ pqGetNegotiateProtocolVersion3(PGconn *conn)
 
 	if (their_version < conn->min_pversion)
 	{
-		libpq_append_conn_error(conn, "server only supports protocol version %d.%d, but min_protocol_version was set to %d.%d",
+		libpq_append_conn_error(conn, "server only supports protocol version %d.%d, but \"%s\" was set to %d.%d",
 								PG_PROTOCOL_MAJOR(their_version),
 								PG_PROTOCOL_MINOR(their_version),
+								"min_protocol_version",
 								PG_PROTOCOL_MAJOR(conn->min_pversion),
 								PG_PROTOCOL_MINOR(conn->min_pversion));
 
@@ -1476,7 +1477,7 @@ pqGetNegotiateProtocolVersion3(PGconn *conn)
 		}
 		if (strncmp(conn->workBuffer.data, "_pq_.", 5) != 0)
 		{
-			libpq_append_conn_error(conn, "received invalid protocol negotiation message: server reported unsupported parameter name without a _pq_. prefix (\"%s\")", conn->workBuffer.data);
+			libpq_append_conn_error(conn, "received invalid protocol negotiation message: server reported unsupported parameter name without a \"%s\" prefix (\"%s\")", "_pq_.", conn->workBuffer.data);
 			goto failure;
 		}
 		libpq_append_conn_error(conn, "received invalid protocol negotiation message: server reported an unsupported parameter that was not requested (\"%s\")", conn->workBuffer.data);
@@ -1486,7 +1487,7 @@ pqGetNegotiateProtocolVersion3(PGconn *conn)
 	return 0;
 
 eof:
-	libpq_append_conn_error(conn, "received invalid protocol negotation message: message too short");
+	libpq_append_conn_error(conn, "received invalid protocol negotiation message: message too short");
 failure:
 	conn->asyncStatus = PGASYNC_READY;
 	pqSaveErrorResult(conn);
@@ -1532,7 +1533,7 @@ getParameterStatus(PGconn *conn)
 static int
 getBackendKeyData(PGconn *conn, int msgLength)
 {
-	uint8		cancel_key_len;
+	int			cancel_key_len;
 
 	if (conn->be_cancel_key)
 	{
@@ -2121,7 +2122,7 @@ pqFunctionCall3(PGconn *conn, Oid fnid,
 		}
 		else
 		{
-			if (pqPutnchar((char *) args[i].u.ptr, args[i].len, conn))
+			if (pqPutnchar(args[i].u.ptr, args[i].len, conn))
 				return NULL;
 		}
 	}
@@ -2215,7 +2216,7 @@ pqFunctionCall3(PGconn *conn, Oid fnid,
 					}
 					else
 					{
-						if (pqGetnchar((char *) result_buf,
+						if (pqGetnchar(result_buf,
 									   *actual_result_len,
 									   conn))
 							continue;

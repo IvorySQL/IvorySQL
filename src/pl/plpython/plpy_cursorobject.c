@@ -16,7 +16,7 @@
 #include "plpy_planobject.h"
 #include "plpy_resultobject.h"
 #include "plpy_spi.h"
-#include "plpython.h"
+#include "plpy_util.h"
 #include "utils/memutils.h"
 
 static PyObject *PLy_cursor_query(const char *query);
@@ -58,9 +58,9 @@ static PyType_Slot PLyCursor_slots[] =
 static PyType_Spec PLyCursor_spec =
 {
 	.name = "PLyCursor",
-		.basicsize = sizeof(PLyCursorObject),
-		.flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
-		.slots = PLyCursor_slots,
+	.basicsize = sizeof(PLyCursorObject),
+	.flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+	.slots = PLyCursor_slots,
 };
 
 static PyTypeObject *PLy_CursorType;

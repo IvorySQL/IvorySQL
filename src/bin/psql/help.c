@@ -161,29 +161,16 @@ slashUsage(unsigned short int pager)
 	initPQExpBuffer(&buf);
 
 	HELP0("General\n");
-	HELP0("  \\bind [PARAM]...       set query parameters\n");
-	HELP0("  \\bind_named STMT_NAME [PARAM]...\n"
-		  "                         set query parameters for an existing prepared statement\n");
-	HELP0("  \\close STMT_NAME       close an existing prepared statement\n");
 	HELP0("  \\copyright             show PostgreSQL usage and distribution terms\n");
 	HELP0("  \\crosstabview [COLUMNS] execute query and display result in crosstab\n");
-	HELP0("  \\endpipeline           exit pipeline mode\n");
 	HELP0("  \\errverbose            show most recent error message at maximum verbosity\n");
-	HELP0("  \\flush                 push unsent data to the server\n");
-	HELP0("  \\flushrequest          send a flushrequest command\n");
 	HELP0("  \\g [(OPTIONS)] [FILE]  execute query (and send result to file or |pipe);\n"
 		  "                         \\g with no arguments is equivalent to a semicolon\n");
 	HELP0("  \\gdesc                 describe result of query, without executing it\n");
-	HELP0("  \\getresults [NUM_RES]  read NUM_RES pending results. All pending results are\n"
-		  "                         read if no argument is provided\n");
 	HELP0("  \\gexec                 execute query, then execute each value in its result\n");
 	HELP0("  \\gset [PREFIX]         execute query and store result in psql variables\n");
 	HELP0("  \\gx [(OPTIONS)] [FILE] as \\g, but forces expanded output mode\n");
-	HELP0("  \\parse STMT_NAME       create a prepared statement\n");
 	HELP0("  \\q                     quit psql\n");
-	HELP0("  \\sendpipeline          send an extended query to an ongoing pipeline\n");
-	HELP0("  \\startpipeline         enter pipeline mode\n");
-	HELP0("  \\syncpipeline          add a synchronisation point to an ongoing pipeline\n");
 	HELP0("  \\watch [[i=]SEC] [c=N] [m=MIN]\n"
 		  "                         execute query every SEC seconds, up to N times,\n"
 		  "                         stop if less than MIN rows are returned\n");
@@ -265,7 +252,8 @@ slashUsage(unsigned short int pager)
 	HELP0("  \\dO[Sx+] [PATTERN]     list collations\n");
 	HELP0("  \\dp[Sx]  [PATTERN]     list table, view, and sequence access privileges\n");
 	HELP0("  \\dP[itnx+] [PATTERN]   list [only index/table] partitioned relations [n=nested]\n");
-	HELP0("  \\drds[x] [ROLEPTRN [DBPTRN]] list per-database role settings\n");
+	HELP0("  \\drds[x] [ROLEPTRN [DBPTRN]]\n"
+		  "                         list per-database role settings\n");
 	HELP0("  \\drg[Sx] [PATTERN]     list role grants\n");
 	HELP0("  \\dRp[x+] [PATTERN]     list replication publications\n");
 	HELP0("  \\dRs[x+] [PATTERN]     list replication subscriptions\n");
@@ -338,6 +326,22 @@ slashUsage(unsigned short int pager)
 	HELP0("  \\prompt [TEXT] NAME    prompt user to set internal variable\n");
 	HELP0("  \\set [NAME [VALUE]]    set internal variable, or list all if no parameters\n");
 	HELP0("  \\unset NAME            unset (delete) internal variable\n");
+	HELP0("\n");
+
+	HELP0("Extended Query Protocol\n");
+	HELP0("  \\bind [PARAM]...       set query parameters\n");
+	HELP0("  \\bind_named STMT_NAME [PARAM]...\n"
+		  "                         set query parameters for an existing prepared statement\n");
+	HELP0("  \\close_prepared STMT_NAME\n"
+		  "                         close an existing prepared statement\n");
+	HELP0("  \\endpipeline           exit pipeline mode\n");
+	HELP0("  \\flush                 flush output data to the server\n");
+	HELP0("  \\flushrequest          send request to the server to flush its output buffer\n");
+	HELP0("  \\getresults [NUM_RES]  read NUM_RES pending results, or all if no argument\n");
+	HELP0("  \\parse STMT_NAME       create a prepared statement\n");
+	HELP0("  \\sendpipeline          send an extended query to an ongoing pipeline\n");
+	HELP0("  \\startpipeline         enter pipeline mode\n");
+	HELP0("  \\syncpipeline          add a synchronisation point to an ongoing pipeline\n");
 
 	/* Now we can count the lines. */
 	nlcount = 0;
@@ -461,8 +465,9 @@ helpVariables(unsigned short int pager)
 		  "  VERSION_NAME\n"
 		  "  VERSION_NUM\n"
 		  "    psql's version (in verbose string, short string, or numeric format)\n");
-	HELP0("  WATCH_INTERVAL\n"
-		  "    number of seconds \\watch by default waits between executing the query buffer\n");
+	HELPN("  WATCH_INTERVAL\n"
+		  "    number of seconds \\watch waits between executions (default %s)\n",
+		  DEFAULT_WATCH_INTERVAL);
 
 	HELP0("\nDisplay settings:\n");
 	HELP0("Usage:\n");

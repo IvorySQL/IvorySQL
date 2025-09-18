@@ -73,7 +73,7 @@ sub filter_dump
 # adjust_child_columns is passed to adjust_regress_dumpfile() which actually
 # adjusts the dump output.
 #
-# The name of the file containting adjusted dump is returned.
+# The name of the file containing adjusted dump is returned.
 sub get_dump_for_comparison
 {
 	my ($node, $db, $file_prefix, $adjust_child_columns) = @_;
@@ -84,10 +84,9 @@ sub get_dump_for_comparison
 	open(my $dh, '>', $dump_adjusted)
 	  || die "could not open $dump_adjusted for writing $!";
 
-	# Don't dump statistics, because there are still some bugs.
 	$node->run_log(
 		[
-			'pg_dump', '--no-sync', '--no-statistics',
+			'pg_dump', '--no-sync',
 			'-d' => $node->connstr($db),
 			'-f' => $dumpfile
 		]);
@@ -129,7 +128,7 @@ my $oldnode =
   PostgreSQL::Test::Cluster->new('old_node',
 	install_path => $ENV{oldinstall});
 
-my %node_params = ();
+my %old_node_params = ();
 
 # To increase coverage of non-standard segment size and group access without
 # increasing test runtime, run these tests with a custom setting.
@@ -195,34 +194,37 @@ else
 my %encodings = ('UTF-8' => 6, 'SQL_ASCII' => 0);
 my $original_encoding = $encodings{$original_enc_name};
 
-my @initdb_params = @custom_opts;
+my @old_initdb_params = @custom_opts;
 
-push @initdb_params, ('--encoding', $original_enc_name);
-push @initdb_params, ('--lc-collate', $original_datcollate);
-push @initdb_params, ('--lc-ctype', $original_datctype);
+push @old_initdb_params, ('--encoding', $original_enc_name);
+push @old_initdb_params, ('--lc-collate', $original_datcollate);
+push @old_initdb_params, ('--lc-ctype', $original_datctype);
 
 # add --locale-provider, if supported
 my %provider_name = ('b' => 'builtin', 'i' => 'icu', 'c' => 'libc');
 if ($oldnode->pg_version >= 15)
 {
-	push @initdb_params,
+	push @old_initdb_params,
 	  ('--locale-provider', $provider_name{$original_provider});
 	if ($original_provider eq 'b')
 	{
-		push @initdb_params, ('--builtin-locale', $original_datlocale);
+		push @old_initdb_params, ('--builtin-locale', $original_datlocale);
 	}
 	elsif ($original_provider eq 'i')
 	{
-		push @initdb_params, ('--icu-locale', $original_datlocale);
+		push @old_initdb_params, ('--icu-locale', $original_datlocale);
 	}
 }
 
 # Since checksums are now enabled by default, and weren't before 18,
 # pass '-k' to initdb on old versions so that upgrades work.
-push @initdb_params, '-k' if $oldnode->pg_version < 18;
+push @old_initdb_params, '-k' if $oldnode->pg_version < 18;
 
-$node_params{extra} = \@initdb_params;
-$oldnode->init(%node_params);
+$old_node_params{extra} = \@old_initdb_params;
+$oldnode->init(%old_node_params);
+# Override log_statement=all set by Cluster.pm.  This avoids large amounts
+# of log traffic that slow this test down even more when run under valgrind.
+$oldnode->append_conf('postgresql.conf', 'log_statement = none');
 $oldnode->start;
 
 my $result;
@@ -301,74 +303,20 @@ else
 	is($rc, 0, 'regression tests pass');
 }
 
-# Test that dump/restore of the regression database roundtrips cleanly.  This
-# doesn't work well when the nodes are different versions, so skip it in that
-# case.  Note that this isn't a pg_restore test, but it's convenient to do it
-# here because we've gone to the trouble of creating the regression database.
-#
-# Do this while the old cluster is running before it is shut down by the
-# upgrade test.
-SKIP:
-{
-	my $dstnode = PostgreSQL::Test::Cluster->new('dst_node');
-
-	skip "different Postgres versions"
-	  if ($oldnode->pg_version != $dstnode->pg_version);
-	skip "source node not using default install"
-	  if (defined $oldnode->install_path);
-
-	# Dump the original database for comparison later.
-	my $src_dump =
-	  get_dump_for_comparison($oldnode, 'regression', 'src_dump', 1);
-
-	# Setup destination database cluster
-	$dstnode->init(%node_params);
-	# Stabilize stats for comparison.
-	$dstnode->append_conf('postgresql.conf', 'autovacuum = off');
-	$dstnode->start;
-
-	my $dump_file = "$tempdir/regression.dump";
-
-	# Use --create in dump and restore commands so that the restored
-	# database has the same configurable variable settings as the original
-	# database so that the dumps taken from both databases taken do not
-	# differ because of locale changes. Additionally this provides test
-	# coverage for --create option.
-	#
-	# Use directory format so that we can use parallel dump/restore.
-	$oldnode->command_ok(
-		[
-			'pg_dump', '-Fd', '-j2', '--no-sync',
-			'-d' => $oldnode->connstr('regression'),
-			'--create', '-f' => $dump_file
-		],
-		'pg_dump on source instance');
-
-	$dstnode->command_ok(
-		[ 'pg_restore', '--create', '-j2', '-d' => 'postgres', $dump_file ],
-		'pg_restore to destination instance');
-
-	my $dst_dump =
-	  get_dump_for_comparison($dstnode, 'regression', 'dest_dump', 0);
-
-	compare_files($src_dump, $dst_dump,
-		'dump outputs from original and restored regression databases match');
-}
-
 # Initialize a new node for the upgrade.
 my $newnode = PostgreSQL::Test::Cluster->new('new_node');
-
-# Reset to original parameters.
-@initdb_params = @custom_opts;
 
 # The new cluster will be initialized with different locale settings,
 # but these settings will be overwritten with those of the original
 # cluster.
-push @initdb_params, ('--encoding', 'SQL_ASCII');
-push @initdb_params, ('--locale-provider', 'libc');
-
-$node_params{extra} = \@initdb_params;
-$newnode->init(%node_params);
+my %new_node_params = %old_node_params;
+my @new_initdb_params = @custom_opts;
+push @new_initdb_params, ('--encoding', 'SQL_ASCII');
+push @new_initdb_params, ('--locale-provider', 'libc');
+$new_node_params{extra} = \@new_initdb_params;
+$newnode->init(%new_node_params);
+# Avoid unnecessary log noise
+$newnode->append_conf('postgresql.conf', 'log_statement = none');
 
 my $newbindir = $newnode->config_data('--bindir');
 my $oldbindir = $oldnode->config_data('--bindir');
@@ -404,6 +352,68 @@ if (defined($ENV{oldinstall}))
 			],
 			"ran version adaptation commands for database $updb");
 	}
+}
+
+# Stabilize stats before pg_dump / pg_dumpall. Doing it after initializing
+# the new node gives enough time for autovacuum to update statistics on the
+# old node.
+$oldnode->append_conf('postgresql.conf', 'autovacuum = off');
+$oldnode->restart;
+
+# Test that dump/restore of the regression database roundtrips cleanly.  This
+# doesn't work well when the nodes are different versions, so skip it in that
+# case.  Note that this isn't a pg_upgrade test, but it's convenient to do it
+# here because we've gone to the trouble of creating the regression database.
+#
+# Do this while the old cluster is running before it is shut down by the
+# upgrade test but after turning its autovacuum off for stable statistics.
+SKIP:
+{
+	my $dstnode = PostgreSQL::Test::Cluster->new('dst_node');
+
+	skip "different Postgres versions"
+	  if ($oldnode->pg_version != $dstnode->pg_version);
+	skip "source node not using default install"
+	  if (defined $oldnode->install_path);
+
+	# Setup destination database cluster with the same configuration as the
+	# source cluster to avoid any differences between dumps taken from both the
+	# clusters caused by differences in their configurations.
+	$dstnode->init(%old_node_params);
+	# Avoid unnecessary log noise
+	$dstnode->append_conf('postgresql.conf', 'log_statement = none');
+	# Stabilize stats for comparison.
+	$dstnode->append_conf('postgresql.conf', 'autovacuum = off');
+	$dstnode->start;
+
+	# Use --create in dump and restore commands so that the restored
+	# database has the same configurable variable settings as the original
+	# database so that the dumps taken from both databases taken do not
+	# differ because of locale changes. Additionally this provides test
+	# coverage for --create option.
+	#
+	# Use directory format so that we can use parallel dump/restore.
+	my $dump_file = "$tempdir/regression.dump";
+	$oldnode->command_ok(
+		[
+			'pg_dump', '-Fd', '-j2', '--no-sync',
+			'-d' => $oldnode->connstr('regression'),
+			'--create', '-f' => $dump_file
+		],
+		'pg_dump on source instance');
+
+	$dstnode->command_ok(
+		[ 'pg_restore', '--create', '-j2', '-d' => 'postgres', $dump_file ],
+		'pg_restore to destination instance');
+
+	# Dump original and restored database for comparison.
+	my $src_dump =
+	  get_dump_for_comparison($oldnode, 'regression', 'src_dump', 1);
+	my $dst_dump =
+	  get_dump_for_comparison($dstnode, 'regression', 'dest_dump', 0);
+
+	compare_files($src_dump, $dst_dump,
+		'dump outputs from original and restored regression databases match');
 }
 
 # Take a dump before performing the upgrade as a base comparison. Note

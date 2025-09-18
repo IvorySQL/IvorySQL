@@ -361,9 +361,9 @@ SELECT pg_column_toast_chunk_id(a) IS NULL,
 DROP TABLE test_chunk_id;
 DROP FUNCTION explain_mask_costs(text, bool, bool, bool, bool);
 
--- test stratnum support functions
-SELECT gist_stratnum_common(7);
-SELECT gist_stratnum_common(3);
+-- test stratnum translation support functions
+SELECT gist_translate_cmptype_common(7);
+SELECT gist_translate_cmptype_common(3);
 
 reset ivorysql.enable_emptystring_to_null;
 -- relpath tests
@@ -371,5 +371,9 @@ CREATE FUNCTION test_relpath()
     RETURNS void
     AS :'regresslib'
     LANGUAGE C;
+/
 SELECT test_relpath();
+
+-- pg_replication_origin.roname limit
+SELECT pg_replication_origin_create('regress_' || repeat('a', 505));
 

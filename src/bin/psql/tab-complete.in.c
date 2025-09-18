@@ -1893,7 +1893,7 @@ psql_completion(const char *text, int start, int end)
 	static const char *const backslash_commands[] = {
 		"\\a",
 		"\\bind", "\\bind_named",
-		"\\connect", "\\conninfo", "\\C", "\\cd", "\\close", "\\copy",
+		"\\connect", "\\conninfo", "\\C", "\\cd", "\\close_prepared", "\\copy",
 		"\\copyright", "\\crosstabview",
 		"\\d", "\\da", "\\dA", "\\dAc", "\\dAf", "\\dk" , "\\dAo", "\\dAp",
 		"\\db", "\\dc", "\\dconfig", "\\dC", "\\dd", "\\ddp", "\\dD",
@@ -2557,6 +2557,12 @@ match_previous_words(int pattern_id,
 	else if (Matches("ALTER", "DOMAIN", MatchAny))
 		COMPLETE_WITH("ADD", "DROP", "OWNER TO", "RENAME", "SET",
 					  "VALIDATE CONSTRAINT");
+	/* ALTER DOMAIN <sth> ADD */
+	else if (Matches("ALTER", "DOMAIN", MatchAny, "ADD"))
+		COMPLETE_WITH("CONSTRAINT", "NOT NULL", "CHECK (");
+	/* ALTER DOMAIN <sth> ADD CONSTRAINT <sth> */
+	else if (Matches("ALTER", "DOMAIN", MatchAny, "ADD", "CONSTRAINT", MatchAny))
+		COMPLETE_WITH("NOT NULL", "CHECK (");
 	/* ALTER DOMAIN <sth> DROP */
 	else if (Matches("ALTER", "DOMAIN", MatchAny, "DROP"))
 		COMPLETE_WITH("CONSTRAINT", "DEFAULT", "NOT NULL");
@@ -3311,7 +3317,7 @@ match_previous_words(int pattern_id,
 		COMPLETE_WITH("FORMAT", "FREEZE", "DELIMITER", "NULL",
 					  "HEADER", "QUOTE", "ESCAPE", "FORCE_QUOTE",
 					  "FORCE_NOT_NULL", "FORCE_NULL", "ENCODING", "DEFAULT",
-					  "ON_ERROR", "LOG_VERBOSITY");
+					  "ON_ERROR", "LOG_VERBOSITY", "REJECT_LIMIT");
 
 	/* Complete COPY <sth> FROM|TO filename WITH (FORMAT */
 	else if (Matches("COPY|\\copy", MatchAny, "FROM|TO", MatchAny, "WITH", "(", "FORMAT"))
@@ -3686,9 +3692,10 @@ match_previous_words(int pattern_id,
 			 TailMatches("CREATE", "TEMP|TEMPORARY|UNLOGGED", "TABLE", MatchAny, "(*)", "AS"))
 		COMPLETE_WITH("EXECUTE", "SELECT", "TABLE", "VALUES", "WITH");
 	/* Complete CREATE TABLE name (...) with supported options */
-	else if (TailMatches("CREATE", "TABLE", MatchAny, "(*)") ||
-			 TailMatches("CREATE", "UNLOGGED", "TABLE", MatchAny, "(*)"))
+	else if (TailMatches("CREATE", "TABLE", MatchAny, "(*)"))
 		COMPLETE_WITH("AS", "INHERITS (", "PARTITION BY", "USING", "TABLESPACE", "WITH (");
+	else if (TailMatches("CREATE", "UNLOGGED", "TABLE", MatchAny, "(*)"))
+		COMPLETE_WITH("AS", "INHERITS (", "USING", "TABLESPACE", "WITH (");
 	else if (TailMatches("CREATE", "TEMP|TEMPORARY", "TABLE", MatchAny, "(*)"))
 		COMPLETE_WITH("AS", "INHERITS (", "ON COMMIT", "PARTITION BY", "USING",
 					  "TABLESPACE", "WITH (");
@@ -4485,7 +4492,7 @@ match_previous_words(int pattern_id,
 		 * objects supported.
 		 */
 		if (HeadMatches("ALTER", "DEFAULT", "PRIVILEGES"))
-			COMPLETE_WITH("TABLES", "SEQUENCES", "FUNCTIONS", "PACKAGES", "PROCEDURES", "ROUTINES", "TYPES", "SCHEMAS"); 
+			COMPLETE_WITH("TABLES", "SEQUENCES", "FUNCTIONS", "PACKAGES", "PROCEDURES", "ROUTINES", "TYPES", "SCHEMAS", "LARGE OBJECTS");
 		else
 			COMPLETE_WITH_SCHEMA_QUERY_PLUS(Query_for_list_of_grantables,
 											"ALL FUNCTIONS IN SCHEMA",

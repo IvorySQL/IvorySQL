@@ -110,10 +110,10 @@ SELECT spi_test();
 
 DROP EXTENSION plperl CASCADE;
 NOTICE:  drop cascades to 6 other objects
-DETAIL:  drop cascades to function spi_test()
-drop cascades to extension bool_plperl
+DETAIL:  drop cascades to extension bool_plperl
 drop cascades to function perl2int(pg_catalog.int4)
 drop cascades to function perl2text(text)
 drop cascades to function perl2undef()
 drop cascades to function bool2perl(pg_catalog.bool,pg_catalog.bool,pg_catalog.bool)
+drop cascades to function spi_test()
 RESET ivorysql.enable_emptystring_to_null;

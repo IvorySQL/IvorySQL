@@ -19,7 +19,7 @@
  * immediately.
  *
  * The other categories, LC_MONETARY, LC_NUMERIC, and LC_TIME are
- * permanentaly set to "C", and then we use temporary locale_t
+ * permanently set to "C", and then we use temporary locale_t
  * objects when we need to look up locale data based on the GUCs
  * of the same name.  Information is cached when the GUCs change.
  * The cached information is only used by the formatting functions
@@ -46,6 +46,7 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/pg_locale.h"
+#include "utils/relcache.h"
 #include "utils/syscache.h"
 
 #ifdef WIN32
@@ -551,7 +552,7 @@ PGLC_localeconv(void)
 			 "could not get lconv for LC_MONETARY = \"%s\", LC_NUMERIC = \"%s\": %m",
 			 locale_monetary, locale_numeric);
 
-	/* Must copy data now now so we can re-encode it. */
+	/* Must copy data now so we can re-encode it. */
 	extlconv = &tmp;
 	worklconv.decimal_point = strdup(extlconv->decimal_point);
 	worklconv.thousands_sep = strdup(extlconv->thousands_sep);
@@ -1195,6 +1196,8 @@ pg_newlocale_from_collation(Oid collid)
 
 	if (!OidIsValid(collid))
 		elog(ERROR, "cache lookup failed for collation %u", collid);
+
+	AssertCouldGetRelation();
 
 	if (last_collation_cache_oid == collid)
 		return last_collation_cache_locale;

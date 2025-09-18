@@ -241,7 +241,7 @@
       language, you need a <productname>Python</productname>
       installation with the header files and
       the <application>sysconfig</application> module.  The minimum
-      required version is <productname>Python</productname> 3.2.
+      supported version is <productname>Python</productname> 3.6.8.
      </para>
 
      <para>
@@ -310,6 +310,14 @@
       You need <application>MIT Kerberos</application> (for GSSAPI),
       <productname>OpenLDAP</productname>, and/or <application>PAM</application>,
       if you want to support authentication using those services.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      You need <productname>Curl</productname> to build an optional module
+      which implements the <link linkend="libpq-oauth">OAuth Device
+      Authorization flow</link> for client applications.
      </para>
     </listitem>
 
@@ -1152,6 +1160,17 @@ build-postgresql:
          Building with this will check for the required header files
          and libraries to make sure that your <productname>curl</productname>
          installation is sufficient before proceeding.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-with-libnuma">
+       <term><option>--with-libnuma</option></term>
+       <listitem>
+        <para>
+         Build with libnuma support for basic NUMA support.
+         Only supported on platforms for which the <productname>libnuma</productname>
+         library is implemented.
         </para>
        </listitem>
       </varlistentry>
@@ -2645,6 +2664,17 @@ ninja install
       </listitem>
      </varlistentry>
 
+     <varlistentry id="configure-with-libnuma-meson">
+      <term><option>-Dlibnuma={ auto | enabled | disabled }</option></term>
+      <listitem>
+       <para>
+        Build with libnuma support for basic NUMA support.
+        Only supported on platforms for which the <productname>libnuma</productname>
+        library is implemented. The default for this option is auto.
+       </para>
+      </listitem>
+     </varlistentry>
+
      <varlistentry id="configure-with-libxml-meson">
       <term><option>-Dlibxml={ auto | enabled | disabled }</option></term>
       <listitem>
@@ -2739,7 +2769,7 @@ ninja install
 
     <variablelist>
      <varlistentry id="configure-auto-features-meson">
-      <term><option>--auto_features={ auto | enabled | disabled }</option></term>
+      <term><option>--auto-features={ auto | enabled | disabled }</option></term>
       <listitem>
        <para>
         Setting this option allows you to override the value of all

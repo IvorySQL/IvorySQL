@@ -6416,9 +6416,19 @@ get_select_query_def(Query *query, deparse_context *context)
 	{
 		if (query->limitOption == LIMIT_OPTION_WITH_TIES)
 		{
+			/*
+			 * The limitCount arg is a c_expr, so it needs parens. Simple
+			 * literals and function expressions would not need parens, but
+			 * unfortunately it's hard to tell if the expression will be
+			 * printed as a simple literal like 123 or as a typecast
+			 * expression, like '-123'::int4. The grammar accepts the former
+			 * without quoting, but not the latter.
+			 */
 			appendContextKeyword(context, " FETCH FIRST ",
 								 -PRETTYINDENT_STD, PRETTYINDENT_STD, 0);
+			appendStringInfoChar(buf, '(');
 			get_rule_expr(query->limitCount, context, false);
+			appendStringInfoChar(buf, ')');
 			appendStringInfoString(buf, " ROWS WITH TIES");
 		}
 		else
@@ -12611,7 +12621,7 @@ get_json_table_columns(TableFunc *tf, JsonTablePathScan *scan,
 
 		/*
 		 * Set default_behavior to guide get_json_expr_options() on whether to
-		 * to emit the ON ERROR / EMPTY clauses.
+		 * emit the ON ERROR / EMPTY clauses.
 		 */
 		if (colexpr->op == JSON_EXISTS_OP)
 		{

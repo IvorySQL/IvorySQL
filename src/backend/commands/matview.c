@@ -438,13 +438,12 @@ refresh_matview_datafill(DestReceiver *dest, Query *query,
 	UpdateActiveSnapshotCommandId();
 
 	/* Create a QueryDesc, redirecting output to our tuple receiver */
-	queryDesc = CreateQueryDesc(plan, NULL, queryString,
+	queryDesc = CreateQueryDesc(plan, queryString,
 								GetActiveSnapshot(), InvalidSnapshot,
 								dest, NULL, NULL, 0);
 
 	/* call ExecutorStart to prepare the plan for execution */
-	if (!ExecutorStart(queryDesc, EXEC_FLAG_WITHOUT_ROWID))
-		elog(ERROR, "ExecutorStart() failed unexpectedly");
+	ExecutorStart(queryDesc, EXEC_FLAG_WITHOUT_ROWID);
 
 	/* run the plan */
 	ExecutorRun(queryDesc, ForwardScanDirection, 0);
@@ -836,7 +835,8 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 	if (!foundUniqueIndex)
 		ereport(ERROR,
 				errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				errmsg("could not find suitable unique index on materialized view"));
+				errmsg("could not find suitable unique index on materialized view \"%s\"",
+					   RelationGetRelationName(matviewRel)));
 
 	appendStringInfoString(&querybuf,
 						   " AND newdata.* OPERATOR(pg_catalog.*=) mv.*) "

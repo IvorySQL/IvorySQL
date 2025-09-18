@@ -730,10 +730,7 @@ pgstat_report_stat(bool force)
 		}
 
 		if (!do_flush)
-		{
-			Assert(pending_since == 0);
 			return 0;
-		}
 	}
 
 	/*
@@ -1019,7 +1016,7 @@ pgstat_fetch_entry(PgStat_Kind kind, Oid dboid, uint64 objid)
 		stats_data = MemoryContextAlloc(pgStatLocal.snapshot.context,
 										kind_info->shared_data_len);
 
-	pgstat_lock_entry_shared(entry_ref, false);
+	(void) pgstat_lock_entry_shared(entry_ref, false);
 	memcpy(stats_data,
 		   pgstat_get_entry_data(kind, entry_ref->shared_stats),
 		   kind_info->shared_data_len);
@@ -1190,7 +1187,7 @@ pgstat_build_snapshot(void)
 		Assert(!found);
 
 		entry->data = MemoryContextAlloc(pgStatLocal.snapshot.context,
-										 kind_info->shared_size);
+										 pgstat_get_entry_len(kind));
 
 		/*
 		 * Acquire the LWLock directly instead of using
@@ -1199,7 +1196,7 @@ pgstat_build_snapshot(void)
 		LWLockAcquire(&stats_data->lock, LW_SHARED);
 		memcpy(entry->data,
 			   pgstat_get_entry_data(kind, stats_data),
-			   kind_info->shared_size);
+			   pgstat_get_entry_len(kind));
 		LWLockRelease(&stats_data->lock);
 	}
 	dshash_seq_term(&hstat);
@@ -1904,6 +1901,14 @@ pgstat_read_statsfile(void)
 						if (!pgstat_is_kind_valid(key.kind))
 						{
 							elog(WARNING, "invalid stats kind for entry %u/%u/%" PRIu64 " of type %c",
+								 key.kind, key.dboid,
+								 key.objid, t);
+							goto error;
+						}
+
+						if (!pgstat_get_kind_info(key.kind))
+						{
+							elog(WARNING, "could not find information of kind for entry %u/%u/%" PRIu64 " of type %c",
 								 key.kind, key.dboid,
 								 key.objid, t);
 							goto error;

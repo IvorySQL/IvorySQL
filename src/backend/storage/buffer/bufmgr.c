@@ -41,6 +41,9 @@
 #include "access/tableam.h"
 #include "access/xloginsert.h"
 #include "access/xlogutils.h"
+#ifdef USE_ASSERT_CHECKING
+#include "catalog/pg_tablespace_d.h"
+#endif
 #include "catalog/storage.h"
 #include "catalog/storage_xlog.h"
 #include "executor/instrument.h"
@@ -528,7 +531,7 @@ static inline BufferDesc *BufferAlloc(SMgrRelation smgr,
 									  BlockNumber blockNum,
 									  BufferAccessStrategy strategy,
 									  bool *foundPtr, IOContext io_context);
-static bool AsyncReadBuffers(ReadBuffersOperation *operation, int *nblocks);
+static bool AsyncReadBuffers(ReadBuffersOperation *operation, int *nblocks_progress);
 static void CheckReadBuffersOperation(ReadBuffersOperation *operation, bool is_complete);
 static Buffer GetVictimBuffer(BufferAccessStrategy strategy, IOContext io_context);
 static void FlushBuffer(BufferDesc *buf, SMgrRelation reln,
@@ -542,6 +545,10 @@ static void RelationCopyStorageUsingBuffer(RelFileLocator srclocator,
 										   ForkNumber forkNum, bool permanent);
 static void AtProcExit_Buffers(int code, Datum arg);
 static void CheckForBufferLeaks(void);
+#ifdef USE_ASSERT_CHECKING
+static void AssertNotCatalogBufferLock(LWLock *lock, LWLockMode mode,
+									   void *unused_context);
+#endif
 static int	rlocator_comparator(const void *p1, const void *p2);
 static inline int buffertag_comparator(const BufferTag *ba, const BufferTag *bb);
 static inline int ckpt_buforder_comparator(const CkptSortItem *a, const CkptSortItem *b);
@@ -3327,7 +3334,7 @@ UnpinBufferNoOwner(BufferDesc *buf)
 #define ST_COMPARE(a, b) ckpt_buforder_comparator(a, b)
 #define ST_SCOPE static
 #define ST_DEFINE
-#include <lib/sort_template.h>
+#include "lib/sort_template.h"
 
 /*
  * BufferSync -- Write out all dirty buffers in the pool.
@@ -4097,6 +4104,67 @@ CheckForBufferLeaks(void)
 	Assert(RefCountErrors == 0);
 #endif
 }
+
+#ifdef USE_ASSERT_CHECKING
+/*
+ * Check for exclusive-locked catalog buffers.  This is the core of
+ * AssertCouldGetRelation().
+ *
+ * A backend would self-deadlock on LWLocks if the catalog scan read the
+ * exclusive-locked buffer.  The main threat is exclusive-locked buffers of
+ * catalogs used in relcache, because a catcache search on any catalog may
+ * build that catalog's relcache entry.  We don't have an inventory of
+ * catalogs relcache uses, so just check buffers of most catalogs.
+ *
+ * It's better to minimize waits while holding an exclusive buffer lock, so it
+ * would be nice to broaden this check not to be catalog-specific.  However,
+ * bttextcmp() accesses pg_collation, and non-core opclasses might similarly
+ * read tables.  That is deadlock-free as long as there's no loop in the
+ * dependency graph: modifying table A may cause an opclass to read table B,
+ * but it must not cause a read of table A.
+ */
+void
+AssertBufferLocksPermitCatalogRead(void)
+{
+	ForEachLWLockHeldByMe(AssertNotCatalogBufferLock, NULL);
+}
+
+static void
+AssertNotCatalogBufferLock(LWLock *lock, LWLockMode mode,
+						   void *unused_context)
+{
+	BufferDesc *bufHdr;
+	BufferTag	tag;
+	Oid			relid;
+
+	if (mode != LW_EXCLUSIVE)
+		return;
+
+	if (!((BufferDescPadded *) lock > BufferDescriptors &&
+		  (BufferDescPadded *) lock < BufferDescriptors + NBuffers))
+		return;					/* not a buffer lock */
+
+	bufHdr = (BufferDesc *)
+		((char *) lock - offsetof(BufferDesc, content_lock));
+	tag = bufHdr->tag;
+
+	/*
+	 * This relNumber==relid assumption holds until a catalog experiences
+	 * VACUUM FULL or similar.  After a command like that, relNumber will be
+	 * in the normal (non-catalog) range, and we lose the ability to detect
+	 * hazardous access to that catalog.  Calling RelidByRelfilenumber() would
+	 * close that gap, but RelidByRelfilenumber() might then deadlock with a
+	 * held lock.
+	 */
+	relid = tag.relNumber;
+
+	if (IsCatalogTextUniqueIndexOid(relid)) /* see comments at the callee */
+		return;
+
+	Assert(!IsCatalogRelationOid(relid));
+}
+#endif
+
 
 /*
  * Helper routine to issue warnings when a buffer is unexpectedly pinned
@@ -4896,7 +4964,20 @@ FlushRelationBuffers(Relation rel)
 				errcallback.previous = error_context_stack;
 				error_context_stack = &errcallback;
 
+				/* Make sure we can handle the pin */
+				ReservePrivateRefCountEntry();
+				ResourceOwnerEnlarge(CurrentResourceOwner);
+
+				/*
+				 * Pin/unpin mostly to make valgrind work, but it also seems
+				 * like the right thing to do.
+				 */
+				PinLocalBuffer(bufHdr, false);
+
+
 				FlushLocalBuffer(bufHdr, srel);
+
+				UnpinLocalBuffer(BufferDescriptorGetBuffer(bufHdr));
 
 				/* Pop the error context stack */
 				error_context_stack = errcallback.previous;
@@ -6368,7 +6449,7 @@ ScheduleBufferTagForWriteback(WritebackContext *wb_context, IOContext io_context
 #define ST_COMPARE(a, b) buffertag_comparator(&a->tag, &b->tag)
 #define ST_SCOPE static
 #define ST_DEFINE
-#include <lib/sort_template.h>
+#include "lib/sort_template.h"
 
 /*
  * Issue all pending writeback requests, previously scheduled with
@@ -6498,37 +6579,20 @@ ResOwnerPrintBufferPin(Datum res)
 }
 
 /*
- * Try to evict the current block in a shared buffer.
- *
- * This function is intended for testing/development use only!
- *
- * To succeed, the buffer must not be pinned on entry, so if the caller had a
- * particular block in mind, it might already have been replaced by some other
- * block by the time this function runs.  It's also unpinned on return, so the
- * buffer might be occupied again by the time control is returned, potentially
- * even by the same block.  This inherent raciness without other interlocking
- * makes the function unsuitable for non-testing usage.
- *
- * Returns true if the buffer was valid and it has now been made invalid.
- * Returns false if it wasn't valid, if it couldn't be evicted due to a pin,
- * or if the buffer becomes dirty again while we're trying to write it out.
+ * Helper function to evict unpinned buffer whose buffer header lock is
+ * already acquired.
  */
-bool
-EvictUnpinnedBuffer(Buffer buf)
+static bool
+EvictUnpinnedBufferInternal(BufferDesc *desc, bool *buffer_flushed)
 {
-	BufferDesc *desc;
 	uint32		buf_state;
 	bool		result;
 
-	/* Make sure we can pin the buffer. */
-	ResourceOwnerEnlarge(CurrentResourceOwner);
-	ReservePrivateRefCountEntry();
+	*buffer_flushed = false;
 
-	Assert(!BufferIsLocal(buf));
-	desc = GetBufferDescriptor(buf - 1);
+	buf_state = pg_atomic_read_u32(&(desc->state));
+	Assert(buf_state & BM_LOCKED);
 
-	/* Lock the header and check if it's valid. */
-	buf_state = LockBufHdr(desc);
 	if ((buf_state & BM_VALID) == 0)
 	{
 		UnlockBufHdr(desc, buf_state);
@@ -6549,6 +6613,7 @@ EvictUnpinnedBuffer(Buffer buf)
 	{
 		LWLockAcquire(BufferDescriptorGetContentLock(desc), LW_SHARED);
 		FlushBuffer(desc, NULL, IOOBJECT_RELATION, IOCONTEXT_NORMAL);
+		*buffer_flushed = true;
 		LWLockRelease(BufferDescriptorGetContentLock(desc));
 	}
 
@@ -6558,6 +6623,149 @@ EvictUnpinnedBuffer(Buffer buf)
 	UnpinBuffer(desc);
 
 	return result;
+}
+
+/*
+ * Try to evict the current block in a shared buffer.
+ *
+ * This function is intended for testing/development use only!
+ *
+ * To succeed, the buffer must not be pinned on entry, so if the caller had a
+ * particular block in mind, it might already have been replaced by some other
+ * block by the time this function runs.  It's also unpinned on return, so the
+ * buffer might be occupied again by the time control is returned, potentially
+ * even by the same block.  This inherent raciness without other interlocking
+ * makes the function unsuitable for non-testing usage.
+ *
+ * *buffer_flushed is set to true if the buffer was dirty and has been
+ * flushed, false otherwise.  However, *buffer_flushed=true does not
+ * necessarily mean that we flushed the buffer, it could have been flushed by
+ * someone else.
+ *
+ * Returns true if the buffer was valid and it has now been made invalid.
+ * Returns false if it wasn't valid, if it couldn't be evicted due to a pin,
+ * or if the buffer becomes dirty again while we're trying to write it out.
+ */
+bool
+EvictUnpinnedBuffer(Buffer buf, bool *buffer_flushed)
+{
+	BufferDesc *desc;
+
+	Assert(BufferIsValid(buf) && !BufferIsLocal(buf));
+
+	/* Make sure we can pin the buffer. */
+	ResourceOwnerEnlarge(CurrentResourceOwner);
+	ReservePrivateRefCountEntry();
+
+	desc = GetBufferDescriptor(buf - 1);
+	LockBufHdr(desc);
+
+	return EvictUnpinnedBufferInternal(desc, buffer_flushed);
+}
+
+/*
+ * Try to evict all the shared buffers.
+ *
+ * This function is intended for testing/development use only! See
+ * EvictUnpinnedBuffer().
+ *
+ * The buffers_* parameters are mandatory and indicate the total count of
+ * buffers that:
+ * - buffers_evicted - were evicted
+ * - buffers_flushed - were flushed
+ * - buffers_skipped - could not be evicted
+ */
+void
+EvictAllUnpinnedBuffers(int32 *buffers_evicted, int32 *buffers_flushed,
+						int32 *buffers_skipped)
+{
+	*buffers_evicted = 0;
+	*buffers_skipped = 0;
+	*buffers_flushed = 0;
+
+	for (int buf = 1; buf <= NBuffers; buf++)
+	{
+		BufferDesc *desc = GetBufferDescriptor(buf - 1);
+		uint32		buf_state;
+		bool		buffer_flushed;
+
+		buf_state = pg_atomic_read_u32(&desc->state);
+		if (!(buf_state & BM_VALID))
+			continue;
+
+		ResourceOwnerEnlarge(CurrentResourceOwner);
+		ReservePrivateRefCountEntry();
+
+		LockBufHdr(desc);
+
+		if (EvictUnpinnedBufferInternal(desc, &buffer_flushed))
+			(*buffers_evicted)++;
+		else
+			(*buffers_skipped)++;
+
+		if (buffer_flushed)
+			(*buffers_flushed)++;
+	}
+}
+
+/*
+ * Try to evict all the shared buffers containing provided relation's pages.
+ *
+ * This function is intended for testing/development use only! See
+ * EvictUnpinnedBuffer().
+ *
+ * The caller must hold at least AccessShareLock on the relation to prevent
+ * the relation from being dropped.
+ *
+ * The buffers_* parameters are mandatory and indicate the total count of
+ * buffers that:
+ * - buffers_evicted - were evicted
+ * - buffers_flushed - were flushed
+ * - buffers_skipped - could not be evicted
+ */
+void
+EvictRelUnpinnedBuffers(Relation rel, int32 *buffers_evicted,
+						int32 *buffers_flushed, int32 *buffers_skipped)
+{
+	Assert(!RelationUsesLocalBuffers(rel));
+
+	*buffers_skipped = 0;
+	*buffers_evicted = 0;
+	*buffers_flushed = 0;
+
+	for (int buf = 1; buf <= NBuffers; buf++)
+	{
+		BufferDesc *desc = GetBufferDescriptor(buf - 1);
+		uint32		buf_state = pg_atomic_read_u32(&(desc->state));
+		bool		buffer_flushed;
+
+		/* An unlocked precheck should be safe and saves some cycles. */
+		if ((buf_state & BM_VALID) == 0 ||
+			!BufTagMatchesRelFileLocator(&desc->tag, &rel->rd_locator))
+			continue;
+
+		/* Make sure we can pin the buffer. */
+		ResourceOwnerEnlarge(CurrentResourceOwner);
+		ReservePrivateRefCountEntry();
+
+		buf_state = LockBufHdr(desc);
+
+		/* recheck, could have changed without the lock */
+		if ((buf_state & BM_VALID) == 0 ||
+			!BufTagMatchesRelFileLocator(&desc->tag, &rel->rd_locator))
+		{
+			UnlockBufHdr(desc, buf_state);
+			continue;
+		}
+
+		if (EvictUnpinnedBufferInternal(desc, &buffer_flushed))
+			(*buffers_evicted)++;
+		else
+			(*buffers_skipped)++;
+
+		if (buffer_flushed)
+			(*buffers_flushed)++;
+	}
 }
 
 /*
@@ -6869,7 +7077,18 @@ buffer_readv_complete_one(PgAioTargetData *td, uint8 buf_off, Buffer buffer,
 	/* Check for garbage data. */
 	if (!failed)
 	{
-		PgAioResult result_one;
+		/*
+		 * If the buffer is not currently pinned by this backend, e.g. because
+		 * we're completing this IO after an error, the buffer data will have
+		 * been marked as inaccessible when the buffer was unpinned. The AIO
+		 * subsystem holds a pin, but that doesn't prevent the buffer from
+		 * having been marked as inaccessible. The completion might also be
+		 * executed in a different process.
+		 */
+#ifdef USE_VALGRIND
+		if (!BufferIsPinned(buffer))
+			VALGRIND_MAKE_MEM_DEFINED(bufdata, BLCKSZ);
+#endif
 
 		if (!PageIsVerified((Page) bufdata, tag.blockNum, piv_flags,
 							failed_checksum))
@@ -6889,6 +7108,12 @@ buffer_readv_complete_one(PgAioTargetData *td, uint8 buf_off, Buffer buffer,
 		else if (*failed_checksum)
 			*ignored_checksum = true;
 
+		/* undo what we did above */
+#ifdef USE_VALGRIND
+		if (!BufferIsPinned(buffer))
+			VALGRIND_MAKE_MEM_NOACCESS(bufdata, BLCKSZ);
+#endif
+
 		/*
 		 * Immediately log a message about the invalid page, but only to the
 		 * server log. The reason to do so immediately is that this may be
@@ -6905,6 +7130,8 @@ buffer_readv_complete_one(PgAioTargetData *td, uint8 buf_off, Buffer buffer,
 		 */
 		if (*buffer_invalid || *failed_checksum || *zeroed_buffer)
 		{
+			PgAioResult result_one = {0};
+
 			buffer_readv_encode_error(&result_one, is_temp,
 									  *zeroed_buffer,
 									  *ignored_checksum,
@@ -7094,7 +7321,7 @@ buffer_readv_report(PgAioResult result, const PgAioTargetData *td,
 				affected_count > 1 ?
 				errdetail("Block %u held first zeroed page.",
 						  first + first_off) : 0,
-				errhint("See server log for details about the other %u invalid block(s).",
+				errhint("See server log for details about the other %d invalid block(s).",
 						affected_count + checkfail_count - 1));
 		return;
 	}

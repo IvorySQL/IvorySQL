@@ -112,6 +112,14 @@ pg_prewarm(PG_FUNCTION_ARGS)
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, get_relkind_objtype(rel->rd_rel->relkind), get_rel_name(relOid));
 
+	/* Check that the relation has storage. */
+	if (!RELKIND_HAS_STORAGE(rel->rd_rel->relkind))
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("relation \"%s\" does not have storage",
+						RelationGetRelationName(rel)),
+				 errdetail_relkind_not_supported(rel->rd_rel->relkind)));
+
 	/* Check that the fork exists. */
 	if (!smgrexists(RelationGetSmgr(rel), forkNumber))
 		ereport(ERROR,
@@ -202,7 +210,8 @@ pg_prewarm(PG_FUNCTION_ARGS)
 		 * It is safe to use batchmode as block_range_read_stream_cb takes no
 		 * locks.
 		 */
-		stream = read_stream_begin_relation(READ_STREAM_FULL |
+		stream = read_stream_begin_relation(READ_STREAM_MAINTENANCE |
+											READ_STREAM_FULL |
 											READ_STREAM_USE_BATCHING,
 											NULL,
 											rel,

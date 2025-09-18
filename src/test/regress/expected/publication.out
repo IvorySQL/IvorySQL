@@ -34,7 +34,8 @@ ERROR:  conflicting or redundant options
 LINE 1: ...pub_xxx WITH (publish_generated_columns = stored, publish_ge...
                                                              ^
 CREATE PUBLICATION testpub_xxx WITH (publish_generated_columns = foo);
-ERROR:  publish_generated_columns requires a "none" or "stored" value
+ERROR:  invalid value for publication parameter "publish_generated_columns": "foo"
+DETAIL:  Valid values are "none" and "stored".
 \dRp
                                                         List of publications
         Name        |          Owner           | All tables | Inserts | Updates | Deletes | Truncates | Generated columns | Via root 
@@ -524,16 +525,22 @@ Tables from schemas:
     "testpub_rf_schema2"
 
 -- fail - virtual generated column uses user-defined function
+-- (Actually, this already fails at CREATE TABLE rather than at CREATE
+-- PUBLICATION, but let's keep the test in case the former gets
+-- relaxed sometime.)
 CREATE TABLE testpub_rf_tbl6 (id int PRIMARY KEY, x int, y int GENERATED ALWAYS AS (x * testpub_rf_func2()) VIRTUAL);
+ERROR:  generation expression uses user-defined function
+LINE 1: ...RIMARY KEY, x int, y int GENERATED ALWAYS AS (x * testpub_rf...
+                                                             ^
+DETAIL:  Virtual generated columns that make use of user-defined functions are not yet supported.
 CREATE PUBLICATION testpub7 FOR TABLE testpub_rf_tbl6 WHERE (y > 100);
-ERROR:  invalid publication WHERE expression
-DETAIL:  User-defined or built-in mutable functions are not allowed.
+ERROR:  relation "testpub_rf_tbl6" does not exist
 -- test that SET EXPRESSION is rejected, because it could affect a row filter
 SET client_min_messages = 'ERROR';
 CREATE TABLE testpub_rf_tbl7 (id int PRIMARY KEY, x int, y int GENERATED ALWAYS AS (x * 111) VIRTUAL);
 CREATE PUBLICATION testpub8 FOR TABLE testpub_rf_tbl7 WHERE (y > 100);
 ALTER TABLE testpub_rf_tbl7 ALTER COLUMN y SET EXPRESSION AS (x * testpub_rf_func2());
-ERROR:  ALTER TABLE / SET EXPRESSION is not supported for virtual generated columns on tables that are part of a publication
+ERROR:  ALTER TABLE / SET EXPRESSION is not supported for virtual generated columns in tables that are part of a publication
 DETAIL:  Column "y" of relation "testpub_rf_tbl7" is a virtual generated column.
 RESET client_min_messages;
 DROP TABLE testpub_rf_tbl1;
@@ -541,7 +548,7 @@ DROP TABLE testpub_rf_tbl2;
 DROP TABLE testpub_rf_tbl3;
 DROP TABLE testpub_rf_tbl4;
 DROP TABLE testpub_rf_tbl5;
-DROP TABLE testpub_rf_tbl6;
+--DROP TABLE testpub_rf_tbl6;
 DROP TABLE testpub_rf_schema1.testpub_rf_tbl5;
 DROP TABLE testpub_rf_schema2.testpub_rf_tbl6;
 DROP SCHEMA testpub_rf_schema1;

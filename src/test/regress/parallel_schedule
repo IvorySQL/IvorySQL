@@ -91,6 +91,10 @@ test: select_parallel
 test: write_parallel
 test: vacuum_parallel
 
+# Run this alone, because concurrent DROP TABLE would make non-superuser
+# "ANALYZE;" fail with "relation with OID $n does not exist".
+test: maintain_every
+
 # no relation related tests can be put in this group
 test: publication subscription
 
@@ -119,7 +123,7 @@ test: plancache limit plpgsql copy2 temp domain rangefuncs prepare conversion tr
 # The stats test resets stats, so nothing else needing stats access can be in
 # this group.
 # ----------
-test: partition_join partition_prune reloptions hash_part indexing partition_aggregate partition_info tuplesort explain compression memoize stats predicate
+test: partition_join partition_prune reloptions hash_part indexing partition_aggregate partition_info tuplesort explain compression memoize stats predicate numa
 
 # event_trigger depends on create_am and cannot run concurrently with
 # any test that runs DDL

@@ -1283,7 +1283,6 @@ exec_simple_query(const char *query_string)
 						  query_string,
 						  commandTag,
 						  plantree_list,
-						  NULL,
 						  NULL);
 
 		/*
@@ -1774,7 +1773,7 @@ exec_bind_message(StringInfo input_message)
 	{
 		Query	   *query = lfirst_node(Query, lc);
 
-		if (query->queryId != UINT64CONST(0))
+		if (query->queryId != INT64CONST(0))
 		{
 			pgstat_report_query_id(query->queryId, false);
 			break;
@@ -2191,15 +2190,14 @@ exec_bind_message(StringInfo input_message)
 					  query_string,
 					  psrc->commandTag,
 					  cplan->stmt_list,
-					  cplan,
-					  psrc);
+					  cplan);
 
 	/* Portal is defined, set the plan ID based on its contents. */
 	foreach(lc, portal->stmts)
 	{
 		PlannedStmt *plan = lfirst_node(PlannedStmt, lc);
 
-		if (plan->planId != UINT64CONST(0))
+		if (plan->planId != INT64CONST(0))
 		{
 			pgstat_report_plan_id(plan->planId, false);
 			break;
@@ -2339,7 +2337,7 @@ exec_execute_message(const char *portal_name, long max_rows)
 	{
 		PlannedStmt *stmt = lfirst_node(PlannedStmt, lc);
 
-		if (stmt->queryId != UINT64CONST(0))
+		if (stmt->queryId != INT64CONST(0))
 		{
 			pgstat_report_query_id(stmt->queryId, false);
 			break;
@@ -2350,7 +2348,7 @@ exec_execute_message(const char *portal_name, long max_rows)
 	{
 		PlannedStmt *stmt = lfirst_node(PlannedStmt, lc);
 
-		if (stmt->planId != UINT64CONST(0))
+		if (stmt->planId != INT64CONST(0))
 		{
 			pgstat_report_plan_id(stmt->planId, false);
 			break;
@@ -3504,6 +3502,10 @@ ProcessInterrupts(void)
 			 */
 			proc_exit(1);
 		}
+		else if (AmWalReceiverProcess())
+			ereport(FATAL,
+					(errcode(ERRCODE_ADMIN_SHUTDOWN),
+					 errmsg("terminating walreceiver process due to administrator command")));
 		else if (AmBackgroundWorkerProcess())
 			ereport(FATAL,
 					(errcode(ERRCODE_ADMIN_SHUTDOWN),
@@ -3647,7 +3649,7 @@ ProcessInterrupts(void)
 		IdleInTransactionSessionTimeoutPending = false;
 		if (IdleInTransactionSessionTimeout > 0)
 		{
-			INJECTION_POINT("idle-in-transaction-session-timeout");
+			INJECTION_POINT("idle-in-transaction-session-timeout", NULL);
 			ereport(FATAL,
 					(errcode(ERRCODE_IDLE_IN_TRANSACTION_SESSION_TIMEOUT),
 					 errmsg("terminating connection due to idle-in-transaction timeout")));
@@ -3660,7 +3662,7 @@ ProcessInterrupts(void)
 		TransactionTimeoutPending = false;
 		if (TransactionTimeout > 0)
 		{
-			INJECTION_POINT("transaction-timeout");
+			INJECTION_POINT("transaction-timeout", NULL);
 			ereport(FATAL,
 					(errcode(ERRCODE_TRANSACTION_TIMEOUT),
 					 errmsg("terminating connection due to transaction timeout")));
@@ -3673,7 +3675,7 @@ ProcessInterrupts(void)
 		IdleSessionTimeoutPending = false;
 		if (IdleSessionTimeout > 0)
 		{
-			INJECTION_POINT("idle-session-timeout");
+			INJECTION_POINT("idle-session-timeout", NULL);
 			ereport(FATAL,
 					(errcode(ERRCODE_IDLE_SESSION_TIMEOUT),
 					 errmsg("terminating connection due to idle-session timeout")));
@@ -3857,7 +3859,7 @@ set_debug_options(int debug_flag, GucContext context, GucSource source)
 
 	if (debug_flag >= 1 && context == PGC_POSTMASTER)
 	{
-		SetConfigOption("log_connections", "true", context, source);
+		SetConfigOption("log_connections", "all", context, source);
 		SetConfigOption("log_disconnections", "true", context, source);
 	}
 	if (debug_flag >= 2)

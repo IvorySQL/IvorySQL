@@ -240,6 +240,7 @@ typedef struct PgFdwDirectModifyState
 	PGresult   *result;			/* result for query */
 	int			num_tuples;		/* # of result tuples */
 	int			next_tuple;		/* index of next one to return */
+	MemoryContextCallback result_cb;	/* ensures result will get freed */
 	Relation	resultRel;		/* relcache entry for the target relation */
 	AttrNumber *attnoMap;		/* array of attnums of input user columns */
 	AttrNumber	ctidAttno;		/* attnum of input ctid column */
@@ -444,7 +445,7 @@ static void adjust_foreign_grouping_path_cost(PlannerInfo *root,
 											  double retrieved_rows,
 											  double width,
 											  double limit_tuples,
-											  int *disabled_nodes,
+											  int *p_disabled_nodes,
 											  Cost *p_startup_cost,
 											  Cost *p_run_cost);
 static bool ec_member_matches_foreign(PlannerInfo *root, RelOptInfo *rel,
@@ -999,7 +1000,7 @@ get_useful_pathkeys_for_relation(PlannerInfo *root, RelOptInfo *rel)
 		/* Looks like we can generate a pathkey, so let's do it. */
 		pathkey = make_canonical_pathkey(root, cur_ec,
 										 linitial_oid(cur_ec->ec_opfamilies),
-										 BTLessStrategyNumber,
+										 COMPARE_LT,
 										 false);
 		useful_pathkeys_list = lappend(useful_pathkeys_list,
 									   list_make1(pathkey));
@@ -2672,6 +2673,17 @@ postgresBeginDirectModify(ForeignScanState *node, int eflags)
 	node->fdw_state = dmstate;
 
 	/*
+	 * We use a memory context callback to ensure that the dmstate's PGresult
+	 * (if any) will be released, even if the query fails somewhere that's
+	 * outside our control.  The callback is always armed for the duration of
+	 * the query; this relies on PQclear(NULL) being a no-op.
+	 */
+	dmstate->result_cb.func = (MemoryContextCallbackFunction) PQclear;
+	dmstate->result_cb.arg = NULL;
+	MemoryContextRegisterResetCallback(CurrentMemoryContext,
+									   &dmstate->result_cb);
+
+	/*
 	 * Identify which user to do the remote access as.  This should match what
 	 * ExecCheckPermissions() does.
 	 */
@@ -2818,7 +2830,13 @@ postgresEndDirectModify(ForeignScanState *node)
 		return;
 
 	/* Release PGresult */
-	PQclear(dmstate->result);
+	if (dmstate->result)
+	{
+		PQclear(dmstate->result);
+		dmstate->result = NULL;
+		/* ... and don't forget to disable the callback */
+		dmstate->result_cb.arg = NULL;
+	}
 
 	/* Release remote connection */
 	ReleaseConnection(dmstate->conn);
@@ -4592,13 +4610,17 @@ execute_dml_stmt(ForeignScanState *node)
 	/*
 	 * Get the result, and check for success.
 	 *
-	 * We don't use a PG_TRY block here, so be careful not to throw error
-	 * without releasing the PGresult.
+	 * We use a memory context callback to ensure that the PGresult will be
+	 * released, even if the query fails somewhere that's outside our control.
+	 * The callback is already registered, just need to fill in its arg.
 	 */
+	Assert(dmstate->result == NULL);
 	dmstate->result = pgfdw_get_result(dmstate->conn);
+	dmstate->result_cb.arg = dmstate->result;
+
 	if (PQresultStatus(dmstate->result) !=
 		(dmstate->has_returning ? PGRES_TUPLES_OK : PGRES_COMMAND_OK))
-		pgfdw_report_error(ERROR, dmstate->result, dmstate->conn, true,
+		pgfdw_report_error(ERROR, dmstate->result, dmstate->conn, false,
 						   dmstate->query);
 
 	/* Get the number of rows affected. */
@@ -4642,30 +4664,16 @@ get_returning_data(ForeignScanState *node)
 	}
 	else
 	{
-		/*
-		 * On error, be sure to release the PGresult on the way out.  Callers
-		 * do not have PG_TRY blocks to ensure this happens.
-		 */
-		PG_TRY();
-		{
-			HeapTuple	newtup;
+		HeapTuple	newtup;
 
-			newtup = make_tuple_from_result_row(dmstate->result,
-												dmstate->next_tuple,
-												dmstate->rel,
-												dmstate->attinmeta,
-												dmstate->retrieved_attrs,
-												node,
-												dmstate->temp_cxt);
-			ExecStoreHeapTuple(newtup, slot, false);
-		}
-		PG_CATCH();
-		{
-			PQclear(dmstate->result);
-			PG_RE_THROW();
-		}
-		PG_END_TRY();
-
+		newtup = make_tuple_from_result_row(dmstate->result,
+											dmstate->next_tuple,
+											dmstate->rel,
+											dmstate->attinmeta,
+											dmstate->retrieved_attrs,
+											node,
+											dmstate->temp_cxt);
+		ExecStoreHeapTuple(newtup, slot, false);
 		/* Get the updated/deleted tuple. */
 		if (dmstate->rel)
 			resultSlot = slot;
@@ -7848,14 +7856,13 @@ conversion_error_callback(void *arg)
 EquivalenceMember *
 find_em_for_rel(PlannerInfo *root, EquivalenceClass *ec, RelOptInfo *rel)
 {
-	ListCell   *lc;
-
 	PgFdwRelationInfo *fpinfo = (PgFdwRelationInfo *) rel->fdw_private;
+	EquivalenceMemberIterator it;
+	EquivalenceMember *em;
 
-	foreach(lc, ec->ec_members)
+	setup_eclass_member_iterator(&it, ec, rel->relids);
+	while ((em = eclass_member_iterator_next(&it)) != NULL)
 	{
-		EquivalenceMember *em = (EquivalenceMember *) lfirst(lc);
-
 		/*
 		 * Note we require !bms_is_empty, else we'd accept constant
 		 * expressions which are not suitable for the purpose.
@@ -7909,7 +7916,10 @@ find_em_for_rel_target(PlannerInfo *root, EquivalenceClass *ec,
 		while (expr && IsA(expr, RelabelType))
 			expr = ((RelabelType *) expr)->arg;
 
-		/* Locate an EquivalenceClass member matching this expr, if any */
+		/*
+		 * Locate an EquivalenceClass member matching this expr, if any.
+		 * Ignore child members.
+		 */
 		foreach(lc2, ec->ec_members)
 		{
 			EquivalenceMember *em = (EquivalenceMember *) lfirst(lc2);
@@ -7919,9 +7929,8 @@ find_em_for_rel_target(PlannerInfo *root, EquivalenceClass *ec,
 			if (em->em_is_const)
 				continue;
 
-			/* Ignore child members */
-			if (em->em_is_child)
-				continue;
+			/* Child members should not exist in ec_members */
+			Assert(!em->em_is_child);
 
 			/* Match if same expression (after stripping relabel) */
 			em_expr = em->em_expr;

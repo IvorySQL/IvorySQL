@@ -380,6 +380,8 @@ typedef struct _tableInfo
 									 * there isn't one on this column. If
 									 * empty string, unnamed constraint
 									 * (pre-v17) */
+	char	  **notnull_comment;	/* comment thereof */
+	bool	   *notnull_invalid;	/* true for NOT NULL NOT VALID */
 	bool	   *notnull_noinh;	/* NOT NULL is NO INHERIT */
 	bool	   *notnull_islocal;	/* true if NOT NULL has local definition */
 	struct _attrDefInfo **attrdefs; /* DEFAULT expressions */
@@ -512,6 +514,8 @@ typedef struct _evttriggerInfo
  * struct ConstraintInfo is used for all constraint types.  However we
  * use a different objType for foreign key constraints, to make it easier
  * to sort them the way we want.
+ *
+ * Not-null constraints don't need this, unless they are NOT VALID.
  *
  * Note: condeferrable and condeferred are currently only valid for
  * unique/primary-key constraints.  Otherwise that info is in condef.
@@ -788,6 +792,7 @@ extern void sortDumpableObjectsByTypeName(DumpableObject **objs, int numObjs);
  */
 extern void getNamespaces(Archive *fout);
 extern ExtensionInfo *getExtensions(Archive *fout, int *numExtensions);
+extern PkgInfo * getPackages(Archive *fout, int *numPkgs);
 extern void getTypes(Archive *fout);
 extern void getFuncs(Archive *fout);
 extern void getAggregates(Archive *fout);

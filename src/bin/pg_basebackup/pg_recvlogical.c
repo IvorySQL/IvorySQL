@@ -41,7 +41,8 @@ typedef enum
 /* Global Options */
 static char *outfile = NULL;
 static int	verbose = 0;
-static bool two_phase = false;
+static bool two_phase = false;	/* enable-two-phase option */
+static bool failover = false;	/* enable-failover option */
 static int	noloop = 0;
 static int	standby_message_timeout = 10 * 1000;	/* 10 sec = default */
 static int	fsync_interval = 10 * 1000; /* 10 sec = default */
@@ -88,6 +89,8 @@ usage(void)
 	printf(_("      --drop-slot        drop the replication slot (for the slot's name see --slot)\n"));
 	printf(_("      --start            start streaming in a replication slot (for the slot's name see --slot)\n"));
 	printf(_("\nOptions:\n"));
+	printf(_("      --enable-failover  enable replication slot synchronization to standby servers when\n"
+			 "                         creating a replication slot\n"));
 	printf(_("  -E, --endpos=LSN       exit after receiving the specified LSN\n"));
 	printf(_("  -f, --file=FILE        receive log into this file, - for stdout\n"));
 	printf(_("  -F  --fsync-interval=SECS\n"
@@ -102,7 +105,8 @@ usage(void)
 	printf(_("  -s, --status-interval=SECS\n"
 			 "                         time between status packets sent to server (default: %d)\n"), (standby_message_timeout / 1000));
 	printf(_("  -S, --slot=SLOTNAME    name of the logical replication slot\n"));
-	printf(_("  -t, --two-phase        enable decoding of prepared transactions when creating a slot\n"));
+	printf(_("  -t, --enable-two-phase enable decoding of prepared transactions when creating a slot\n"));
+	printf(_("      --two-phase        (same as --enable-two-phase, deprecated)\n"));
 	printf(_("  -v, --verbose          output verbose messages\n"));
 	printf(_("  -V, --version          output version information, then exit\n"));
 	printf(_("  -?, --help             show this help, then exit\n"));
@@ -695,8 +699,10 @@ main(int argc, char **argv)
 		{"file", required_argument, NULL, 'f'},
 		{"fsync-interval", required_argument, NULL, 'F'},
 		{"no-loop", no_argument, NULL, 'n'},
+		{"enable-failover", no_argument, NULL, 5},
+		{"enable-two-phase", no_argument, NULL, 't'},
+		{"two-phase", no_argument, NULL, 't'},	/* deprecated */
 		{"verbose", no_argument, NULL, 'v'},
-		{"two-phase", no_argument, NULL, 't'},
 		{"version", no_argument, NULL, 'V'},
 		{"help", no_argument, NULL, '?'},
 /* connection options */
@@ -769,6 +775,9 @@ main(int argc, char **argv)
 				break;
 			case 'v':
 				verbose++;
+				break;
+			case 5:
+				failover = true;
 				break;
 /* connection options */
 			case 'd':
@@ -917,11 +926,21 @@ main(int argc, char **argv)
 		exit(1);
 	}
 
-	if (two_phase && !do_create_slot)
+	if (!do_create_slot)
 	{
-		pg_log_error("--two-phase may only be specified with --create-slot");
-		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
-		exit(1);
+		if (two_phase)
+		{
+			pg_log_error("%s may only be specified with --create-slot", "--enable-two-phase");
+			pg_log_error_hint("Try \"%s --help\" for more information.", progname);
+			exit(1);
+		}
+
+		if (failover)
+		{
+			pg_log_error("%s may only be specified with --create-slot", "--enable-failover");
+			pg_log_error_hint("Try \"%s --help\" for more information.", progname);
+			exit(1);
+		}
 	}
 
 	/*
@@ -984,7 +1003,8 @@ main(int argc, char **argv)
 			pg_log_info("creating replication slot \"%s\"", replication_slot);
 
 		if (!CreateReplicationSlot(conn, replication_slot, plugin, false,
-								   false, false, slot_exists_ok, two_phase))
+								   false, false, slot_exists_ok, two_phase,
+								   failover))
 			exit(1);
 		startpos = InvalidXLogRecPtr;
 	}

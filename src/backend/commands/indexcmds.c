@@ -2470,8 +2470,8 @@ GetOperatorFromCompareType(Oid opclass, Oid rhstype, CompareType cmptype,
 					cmptype == COMPARE_EQ ? errmsg("could not identify an equality operator for type %s", format_type_be(opcintype)) :
 					cmptype == COMPARE_OVERLAP ? errmsg("could not identify an overlaps operator for type %s", format_type_be(opcintype)) :
 					cmptype == COMPARE_CONTAINED_BY ? errmsg("could not identify a contained-by operator for type %s", format_type_be(opcintype)) : 0,
-					errdetail("Could not translate compare type %d for operator family \"%s\", input type %s, access method \"%s\".",
-							  cmptype, get_opfamily_name(opfamily, false), format_type_be(opcintype), get_am_name(amid)));
+					errdetail("Could not translate compare type %d for operator family \"%s\" of access method \"%s\".",
+							  cmptype, get_opfamily_name(opfamily, false), get_am_name(amid)));
 
 		/*
 		 * We parameterize rhstype so foreign keys can ask for a <@ operator
@@ -2593,7 +2593,9 @@ makeObjectName(const char *name1, const char *name2, const char *label)
  * constraint names.)
  *
  * Note: it is theoretically possible to get a collision anyway, if someone
- * else chooses the same name concurrently.  This is fairly unlikely to be
+ * else chooses the same name concurrently.  We shorten the race condition
+ * window by checking for conflicting relations using SnapshotDirty, but
+ * that doesn't close the window entirely.  This is fairly unlikely to be
  * a problem in practice, especially if one is holding an exclusive lock on
  * the relation identified by name1.  However, if choosing multiple names
  * within a single command, you'd better create the new object and do
@@ -2609,15 +2611,45 @@ ChooseRelationName(const char *name1, const char *name2,
 	int			pass = 0;
 	char	   *relname = NULL;
 	char		modlabel[NAMEDATALEN];
+	SnapshotData SnapshotDirty;
+	Relation	pgclassrel;
+
+	/* prepare to search pg_class with a dirty snapshot */
+	InitDirtySnapshot(SnapshotDirty);
+	pgclassrel = table_open(RelationRelationId, AccessShareLock);
 
 	/* try the unmodified label first */
 	strlcpy(modlabel, label, sizeof(modlabel));
 
 	for (;;)
 	{
+		ScanKeyData key[2];
+		SysScanDesc scan;
+		bool		collides;
+
 		relname = makeObjectName(name1, name2, modlabel);
 
-		if (!OidIsValid(get_relname_relid(relname, namespaceid)))
+		/* is there any conflicting relation name? */
+		ScanKeyInit(&key[0],
+					Anum_pg_class_relname,
+					BTEqualStrategyNumber, F_NAMEEQ,
+					CStringGetDatum(relname));
+		ScanKeyInit(&key[1],
+					Anum_pg_class_relnamespace,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(namespaceid));
+
+		scan = systable_beginscan(pgclassrel, ClassNameNspIndexId,
+								  true /* indexOK */ ,
+								  &SnapshotDirty,
+								  2, key);
+
+		collides = HeapTupleIsValid(systable_getnext(scan));
+
+		systable_endscan(scan);
+
+		/* break out of loop if no conflict */
+		if (!collides)
 		{
 			if (!isconstraint ||
 				!ConstraintNameExists(relname, namespaceid))
@@ -2628,6 +2660,8 @@ ChooseRelationName(const char *name1, const char *name2,
 		pfree(relname);
 		snprintf(modlabel, sizeof(modlabel), "%s%d", label, ++pass);
 	}
+
+	table_close(pgclassrel, AccessShareLock);
 
 	return relname;
 }
@@ -3893,9 +3927,9 @@ ReindexRelationConcurrently(const ReindexStmt *stmt, Oid relationOid, const Rein
 
 #ifdef USE_INJECTION_POINTS
 		if (idx->safe)
-			INJECTION_POINT("reindex-conc-index-safe");
+			INJECTION_POINT("reindex-conc-index-safe", NULL);
 		else
-			INJECTION_POINT("reindex-conc-index-not-safe");
+			INJECTION_POINT("reindex-conc-index-not-safe", NULL);
 #endif
 
 		idx->tableId = RelationGetRelid(heapRel);
@@ -4227,7 +4261,7 @@ ReindexRelationConcurrently(const ReindexStmt *stmt, Oid relationOid, const Rein
 									 false);
 
 		/*
-		 * Updating pg_index might involve TOAST table access, so ensure we
+		 * Swapping the indexes might involve TOAST table access, so ensure we
 		 * have a valid snapshot.
 		 */
 		PushActiveSnapshot(GetTransactionSnapshot());

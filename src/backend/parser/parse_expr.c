@@ -1385,6 +1385,8 @@ transformAExprIn(ParseState *pstate, A_Expr *a)
 			newa->element_typeid = scalar_type;
 			newa->elements = aexprs;
 			newa->multidims = false;
+			newa->list_start = a->rexpr_list_start;
+			newa->list_end = a->rexpr_list_end;
 			newa->location = -1;
 
 			result = (Node *) make_scalar_array_op(pstate,
@@ -2739,6 +2741,8 @@ transformArrayExpr(ParseState *pstate, A_ArrayExpr *a,
 	/* array_collid will be set by parse_collate.c */
 	newa->element_typeid = element_type;
 	newa->elements = newcoercedelems;
+	newa->list_start = a->list_start;
+	newa->list_end = a->list_end;
 	newa->location = a->location;
 
 	return (Node *) newa;
@@ -3415,7 +3419,7 @@ make_row_comparison_op(ParseState *pstate, List *opname,
 	ListCell   *l,
 			   *r;
 	List	  **opinfo_lists;
-	Bitmapset  *strats;
+	Bitmapset  *cmptypes;
 	int			nopers;
 	int			i;
 
@@ -3480,45 +3484,45 @@ make_row_comparison_op(ParseState *pstate, List *opname,
 
 	/*
 	 * Now we must determine which row comparison semantics (= <> < <= > >=)
-	 * apply to this set of operators.  We look for btree opfamilies
-	 * containing the operators, and see which interpretations (strategy
-	 * numbers) exist for each operator.
+	 * apply to this set of operators.  We look for opfamilies containing the
+	 * operators, and see which interpretations (cmptypes) exist for each
+	 * operator.
 	 */
 	opinfo_lists = (List **) palloc(nopers * sizeof(List *));
-	strats = NULL;
+	cmptypes = NULL;
 	i = 0;
 	foreach(l, opexprs)
 	{
 		Oid			opno = ((OpExpr *) lfirst(l))->opno;
-		Bitmapset  *this_strats;
+		Bitmapset  *this_cmptypes;
 		ListCell   *j;
 
-		opinfo_lists[i] = get_op_btree_interpretation(opno);
+		opinfo_lists[i] = get_op_index_interpretation(opno);
 
 		/*
-		 * convert strategy numbers into a Bitmapset to make the intersection
+		 * convert comparison types into a Bitmapset to make the intersection
 		 * calculation easy.
 		 */
-		this_strats = NULL;
+		this_cmptypes = NULL;
 		foreach(j, opinfo_lists[i])
 		{
-			OpBtreeInterpretation *opinfo = lfirst(j);
+			OpIndexInterpretation *opinfo = lfirst(j);
 
-			this_strats = bms_add_member(this_strats, opinfo->strategy);
+			this_cmptypes = bms_add_member(this_cmptypes, opinfo->cmptype);
 		}
 		if (i == 0)
-			strats = this_strats;
+			cmptypes = this_cmptypes;
 		else
-			strats = bms_int_members(strats, this_strats);
+			cmptypes = bms_int_members(cmptypes, this_cmptypes);
 		i++;
 	}
 
 	/*
 	 * If there are multiple common interpretations, we may use any one of
-	 * them ... this coding arbitrarily picks the lowest btree strategy
+	 * them ... this coding arbitrarily picks the lowest comparison type
 	 * number.
 	 */
-	i = bms_next_member(strats, -1);
+	i = bms_next_member(cmptypes, -1);
 	if (i < 0)
 	{
 		/* No common interpretation, so fail */
@@ -3552,9 +3556,9 @@ make_row_comparison_op(ParseState *pstate, List *opname,
 
 		foreach(j, opinfo_lists[i])
 		{
-			OpBtreeInterpretation *opinfo = lfirst(j);
+			OpIndexInterpretation *opinfo = lfirst(j);
 
-			if (opinfo->strategy == cmptype)
+			if (opinfo->cmptype == cmptype)
 			{
 				opfamily = opinfo->opfamily_id;
 				break;
@@ -4355,7 +4359,7 @@ transformJsonArrayQueryConstructor(ParseState *pstate,
 	/* Transform query only for counting target list entries. */
 	qpstate = make_parsestate(pstate);
 
-	query = transformStmt(qpstate, ctor->query);
+	query = transformStmt(qpstate, copyObject(ctor->query));
 
 	if (count_nonjunk_tlist_entries(query->targetList) != 1)
 		ereport(ERROR,

@@ -827,7 +827,8 @@ spgvacuumscan(spgBulkDeleteState *bds)
 	 * It is safe to use batchmode as block_range_read_stream_cb takes no
 	 * locks.
 	 */
-	stream = read_stream_begin_relation(READ_STREAM_FULL |
+	stream = read_stream_begin_relation(READ_STREAM_MAINTENANCE |
+										READ_STREAM_FULL |
 										READ_STREAM_USE_BATCHING,
 										bds->info->strategy,
 										index,
@@ -878,8 +879,6 @@ spgvacuumscan(spgBulkDeleteState *bds)
 			if (bds->pendingList != NULL)
 				spgprocesspending(bds);
 		}
-
-		Assert(read_stream_next_buffer(stream, NULL) == InvalidBuffer);
 
 		/*
 		 * We have to reset the read stream to use it again. After returning

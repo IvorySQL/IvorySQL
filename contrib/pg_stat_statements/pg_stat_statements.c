@@ -149,7 +149,7 @@ typedef struct pgssHashKey
 {
 	Oid			userid;			/* user OID */
 	Oid			dbid;			/* database OID */
-	uint64		queryid;		/* query identifier */
+	int64		queryid;		/* query identifier */
 	bool		toplevel;		/* query executed at top level */
 } pgssHashKey;
 
@@ -340,7 +340,7 @@ static PlannedStmt *pgss_planner(Query *parse,
 								 const char *query_string,
 								 int cursorOptions,
 								 ParamListInfo boundParams);
-static bool pgss_ExecutorStart(QueryDesc *queryDesc, int eflags);
+static void pgss_ExecutorStart(QueryDesc *queryDesc, int eflags);
 static void pgss_ExecutorRun(QueryDesc *queryDesc,
 							 ScanDirection direction,
 							 uint64 count);
@@ -351,7 +351,7 @@ static void pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 								ProcessUtilityContext context, ParamListInfo params,
 								QueryEnvironment *queryEnv,
 								DestReceiver *dest, QueryCompletion *qc);
-static void pgss_store(const char *query, uint64 queryId,
+static void pgss_store(const char *query, int64 queryId,
 					   int query_location, int query_len,
 					   pgssStoreKind kind,
 					   double total_time, uint64 rows,
@@ -375,7 +375,7 @@ static char *qtext_fetch(Size query_offset, int query_len,
 						 char *buffer, Size buffer_size);
 static bool need_gc_qtexts(void);
 static void gc_qtexts(void);
-static TimestampTz entry_reset(Oid userid, Oid dbid, uint64 queryid, bool minmax_only);
+static TimestampTz entry_reset(Oid userid, Oid dbid, int64 queryid, bool minmax_only);
 static char *generate_normalized_query(JumbleState *jstate, const char *query,
 									   int query_loc, int *query_len_p);
 static void fill_in_constant_lengths(JumbleState *jstate, const char *query,
@@ -859,7 +859,7 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query, JumbleState *jstate)
 	{
 		if (pgss_track_utility && IsA(query->utilityStmt, ExecuteStmt))
 		{
-			query->queryId = UINT64CONST(0);
+			query->queryId = INT64CONST(0);
 			return;
 		}
 	}
@@ -906,7 +906,7 @@ pgss_planner(Query *parse,
 	 */
 	if (pgss_enabled(nesting_level)
 		&& pgss_track_planning && query_string
-		&& parse->queryId != UINT64CONST(0))
+		&& parse->queryId != INT64CONST(0))
 	{
 		instr_time	start;
 		instr_time	duration;
@@ -996,26 +996,20 @@ pgss_planner(Query *parse,
 /*
  * ExecutorStart hook: start up tracking if needed
  */
-static bool
+static void
 pgss_ExecutorStart(QueryDesc *queryDesc, int eflags)
 {
-	bool		plan_valid;
-
 	if (prev_ExecutorStart)
-		plan_valid = prev_ExecutorStart(queryDesc, eflags);
+		prev_ExecutorStart(queryDesc, eflags);
 	else
-		plan_valid = standard_ExecutorStart(queryDesc, eflags);
-
-	/* The plan may have become invalid during standard_ExecutorStart() */
-	if (!plan_valid)
-		return false;
+		standard_ExecutorStart(queryDesc, eflags);
 
 	/*
 	 * If query has queryId zero, don't track it.  This prevents double
 	 * counting of optimizable statements that are directly contained in
 	 * utility statements.
 	 */
-	if (pgss_enabled(nesting_level) && queryDesc->plannedstmt->queryId != UINT64CONST(0))
+	if (pgss_enabled(nesting_level) && queryDesc->plannedstmt->queryId != INT64CONST(0))
 	{
 		/*
 		 * Set up to track total elapsed time in ExecutorRun.  Make sure the
@@ -1031,8 +1025,6 @@ pgss_ExecutorStart(QueryDesc *queryDesc, int eflags)
 			MemoryContextSwitchTo(oldcxt);
 		}
 	}
-
-	return true;
 }
 
 /*
@@ -1083,9 +1075,9 @@ pgss_ExecutorFinish(QueryDesc *queryDesc)
 static void
 pgss_ExecutorEnd(QueryDesc *queryDesc)
 {
-	uint64		queryId = queryDesc->plannedstmt->queryId;
+	int64		queryId = queryDesc->plannedstmt->queryId;
 
-	if (queryId != UINT64CONST(0) && queryDesc->totaltime &&
+	if (queryId != INT64CONST(0) && queryDesc->totaltime &&
 		pgss_enabled(nesting_level))
 	{
 		/*
@@ -1126,7 +1118,7 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 					DestReceiver *dest, QueryCompletion *qc)
 {
 	Node	   *parsetree = pstmt->utilityStmt;
-	uint64		saved_queryId = pstmt->queryId;
+	int64		saved_queryId = pstmt->queryId;
 	int			saved_stmt_location = pstmt->stmt_location;
 	int			saved_stmt_len = pstmt->stmt_len;
 	bool		enabled = pgss_track_utility && pgss_enabled(nesting_level);
@@ -1146,7 +1138,7 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 	 * only.
 	 */
 	if (enabled)
-		pstmt->queryId = UINT64CONST(0);
+		pstmt->queryId = INT64CONST(0);
 
 	/*
 	 * If it's an EXECUTE statement, we don't track it and don't increment the
@@ -1293,7 +1285,7 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
  * for the arrays in the Counters field.
  */
 static void
-pgss_store(const char *query, uint64 queryId,
+pgss_store(const char *query, int64 queryId,
 		   int query_location, int query_len,
 		   pgssStoreKind kind,
 		   double total_time, uint64 rows,
@@ -1319,7 +1311,7 @@ pgss_store(const char *query, uint64 queryId,
 	 * Nothing to do if compute_query_id isn't enabled and no other module
 	 * computed a query identifier.
 	 */
-	if (queryId == UINT64CONST(0))
+	if (queryId == INT64CONST(0))
 		return;
 
 	/*
@@ -1529,11 +1521,11 @@ pg_stat_statements_reset_1_7(PG_FUNCTION_ARGS)
 {
 	Oid			userid;
 	Oid			dbid;
-	uint64		queryid;
+	int64		queryid;
 
 	userid = PG_GETARG_OID(0);
 	dbid = PG_GETARG_OID(1);
-	queryid = (uint64) PG_GETARG_INT64(2);
+	queryid = PG_GETARG_INT64(2);
 
 	entry_reset(userid, dbid, queryid, false);
 
@@ -1545,12 +1537,12 @@ pg_stat_statements_reset_1_11(PG_FUNCTION_ARGS)
 {
 	Oid			userid;
 	Oid			dbid;
-	uint64		queryid;
+	int64		queryid;
 	bool		minmax_only;
 
 	userid = PG_GETARG_OID(0);
 	dbid = PG_GETARG_OID(1);
-	queryid = (uint64) PG_GETARG_INT64(2);
+	queryid = PG_GETARG_INT64(2);
 	minmax_only = PG_GETARG_BOOL(3);
 
 	PG_RETURN_TIMESTAMPTZ(entry_reset(userid, dbid, queryid, minmax_only));
@@ -2686,7 +2678,7 @@ if (e) { \
  * Reset entries corresponding to parameters passed.
  */
 static TimestampTz
-entry_reset(Oid userid, Oid dbid, uint64 queryid, bool minmax_only)
+entry_reset(Oid userid, Oid dbid, int64 queryid, bool minmax_only)
 {
 	HASH_SEQ_STATUS hash_seq;
 	pgssEntry  *entry;
@@ -2706,7 +2698,7 @@ entry_reset(Oid userid, Oid dbid, uint64 queryid, bool minmax_only)
 
 	stats_reset = GetCurrentTimestamp();
 
-	if (userid != 0 && dbid != 0 && queryid != UINT64CONST(0))
+	if (userid != 0 && dbid != 0 && queryid != INT64CONST(0))
 	{
 		/* If all the parameters are available, use the fast path. */
 		memset(&key, 0, sizeof(pgssHashKey));
@@ -2729,7 +2721,7 @@ entry_reset(Oid userid, Oid dbid, uint64 queryid, bool minmax_only)
 
 		SINGLE_ENTRY_RESET(entry);
 	}
-	else if (userid != 0 || dbid != 0 || queryid != UINT64CONST(0))
+	else if (userid != 0 || dbid != 0 || queryid != INT64CONST(0))
 	{
 		/* Reset entries corresponding to valid parameters. */
 		hash_seq_init(&hash_seq, pgss_hash);
@@ -2825,17 +2817,13 @@ generate_normalized_query(JumbleState *jstate, const char *query,
 {
 	char	   *norm_query;
 	int			query_len = *query_len_p;
-	int			i,
-				norm_query_buflen,	/* Space allowed for norm_query */
+	int			norm_query_buflen,	/* Space allowed for norm_query */
 				len_to_wrt,		/* Length (in bytes) to write */
 				quer_loc = 0,	/* Source query byte location */
 				n_quer_loc = 0, /* Normalized query byte location */
 				last_off = 0,	/* Offset from start for previous tok */
 				last_tok_len = 0;	/* Length (in bytes) of that tok */
-	bool		in_squashed = false;	/* in a run of squashed consts? */
-	int			skipped_constants = 0;	/* Position adjustment of later
-										 * constants after squashed ones */
-
+	int			num_constants_replaced = 0;
 
 	/*
 	 * Get constants' lengths (core system only gives us locations).  Note
@@ -2849,19 +2837,26 @@ generate_normalized_query(JumbleState *jstate, const char *query,
 	 * certainly isn't more than 11 bytes, even if n reaches INT_MAX.  We
 	 * could refine that limit based on the max value of n for the current
 	 * query, but it hardly seems worth any extra effort to do so.
-	 *
-	 * Note this also gives enough room for the commented-out ", ..." list
-	 * syntax used by constant squashing.
 	 */
 	norm_query_buflen = query_len + jstate->clocations_count * 10;
 
 	/* Allocate result buffer */
 	norm_query = palloc(norm_query_buflen + 1);
 
-	for (i = 0; i < jstate->clocations_count; i++)
+	for (int i = 0; i < jstate->clocations_count; i++)
 	{
 		int			off,		/* Offset from start for cur tok */
 					tok_len;	/* Length (in bytes) of that tok */
+
+		/*
+		 * If we have an external param at this location, but no lists are
+		 * being squashed across the query, then we skip here; this will make
+		 * us print the characters found in the original query that represent
+		 * the parameter in the next iteration (or after the loop is done),
+		 * which is a bit odd but seems to work okay in most cases.
+		 */
+		if (jstate->clocations[i].extern_param && !jstate->has_squashed_lists)
+			continue;
 
 		off = jstate->clocations[i].location;
 
@@ -2873,67 +2868,24 @@ generate_normalized_query(JumbleState *jstate, const char *query,
 		if (tok_len < 0)
 			continue;			/* ignore any duplicates */
 
+		/* Copy next chunk (what precedes the next constant) */
+		len_to_wrt = off - last_off;
+		len_to_wrt -= last_tok_len;
+		Assert(len_to_wrt >= 0);
+		memcpy(norm_query + n_quer_loc, query + quer_loc, len_to_wrt);
+		n_quer_loc += len_to_wrt;
+
 		/*
-		 * What to do next depends on whether we're squashing constant lists,
-		 * and whether we're already in a run of such constants.
+		 * And insert a param symbol in place of the constant token; and, if
+		 * we have a squashable list, insert a placeholder comment starting
+		 * from the list's second value.
 		 */
-		if (!jstate->clocations[i].squashed)
-		{
-			/*
-			 * This location corresponds to a constant not to be squashed.
-			 * Print what comes before the constant ...
-			 */
-			len_to_wrt = off - last_off;
-			len_to_wrt -= last_tok_len;
+		n_quer_loc += sprintf(norm_query + n_quer_loc, "$%d%s",
+							  num_constants_replaced + 1 + jstate->highest_extern_param_id,
+							  jstate->clocations[i].squashed ? " /*, ... */" : "");
+		num_constants_replaced++;
 
-			Assert(len_to_wrt >= 0);
-
-			memcpy(norm_query + n_quer_loc, query + quer_loc, len_to_wrt);
-			n_quer_loc += len_to_wrt;
-
-			/* ... and then a param symbol replacing the constant itself */
-			n_quer_loc += sprintf(norm_query + n_quer_loc, "$%d",
-								  i + 1 + jstate->highest_extern_param_id - skipped_constants);
-
-			/* In case previous constants were merged away, stop doing that */
-			in_squashed = false;
-		}
-		else if (!in_squashed)
-		{
-			/*
-			 * This location is the start position of a run of constants to be
-			 * squashed, so we need to print the representation of starting a
-			 * group of stashed constants.
-			 *
-			 * Print what comes before the constant ...
-			 */
-			len_to_wrt = off - last_off;
-			len_to_wrt -= last_tok_len;
-			Assert(len_to_wrt >= 0);
-			Assert(i + 1 < jstate->clocations_count);
-			Assert(jstate->clocations[i + 1].squashed);
-			memcpy(norm_query + n_quer_loc, query + quer_loc, len_to_wrt);
-			n_quer_loc += len_to_wrt;
-
-			/* ... and then start a run of squashed constants */
-			n_quer_loc += sprintf(norm_query + n_quer_loc, "$%d /*, ... */",
-								  i + 1 + jstate->highest_extern_param_id - skipped_constants);
-
-			/* The next location will match the block below, to end the run */
-			in_squashed = true;
-
-			skipped_constants++;
-		}
-		else
-		{
-			/*
-			 * The second location of a run of squashable elements; this
-			 * indicates its end.
-			 */
-			in_squashed = false;
-		}
-
-		/* Otherwise the constant is squashed away -- move forward */
+		/* move forward */
 		quer_loc = off + tok_len;
 		last_off = off;
 		last_tok_len = tok_len;
@@ -3034,6 +2986,9 @@ standard_fill_in_constant_lengths(JumbleState *jstate, const char *query,
 		loc -= query_loc;
 
 		Assert(loc >= 0);
+
+		if (locs[i].squashed)
+			continue;			/* squashable list, ignore */
 
 		if (loc <= last_loc)
 			continue;			/* Duplicate constant, ignore */

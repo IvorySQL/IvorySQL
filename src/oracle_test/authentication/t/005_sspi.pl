@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2024, PostgreSQL Global Development Group
+# Copyright (c) 2021-2025, PostgreSQL Global Development Group
 
 # Tests targeting SSPI on Windows.
 
@@ -18,7 +18,7 @@ if (!$windows_os || $use_unix_sockets)
 # Initialize primary node
 my $node = PostgreSQL::Test::Cluster->new('primary');
 $node->init;
-$node->append_conf('postgresql.conf', "log_connections = on\n");
+$node->append_conf('postgresql.conf', "log_connections = authentication\n");
 $node->start;
 
 my $huge_pages_status =
@@ -33,13 +33,13 @@ $node->connect_fails(
 	"require_auth=!sspi",
 	"SSPI authentication forbidden, fails with SSPI auth",
 	expected_stderr =>
-	  qr/authentication method "!sspi" requirement failed: server requested SSPI authentication/
+	  qr/authentication method requirement "!sspi" failed: server requested SSPI authentication/
 );
 $node->connect_fails(
 	"require_auth=scram-sha-256",
 	"SCRAM authentication required, fails with SSPI auth",
 	expected_stderr =>
-	  qr/authentication method "scram-sha-256" requirement failed: server requested SSPI authentication/
+	  qr/authentication method requirement "scram-sha-256" failed: server requested SSPI authentication/
 );
 
 done_testing();

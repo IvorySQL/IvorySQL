@@ -124,6 +124,7 @@ pgaio_io_set_handle_data_64(PgAioHandle *ioh, uint64 *data, uint8 len)
 	Assert(ioh->state == PGAIO_HS_HANDED_OUT);
 	Assert(ioh->handle_data_len == 0);
 	Assert(len <= PG_IOV_MAX);
+	Assert(len <= io_max_combine_limit);
 
 	for (int i = 0; i < len; i++)
 		pgaio_ctl->handle_data[ioh->iovec_off + i] = data[i];
@@ -141,6 +142,7 @@ pgaio_io_set_handle_data_32(PgAioHandle *ioh, uint32 *data, uint8 len)
 	Assert(ioh->state == PGAIO_HS_HANDED_OUT);
 	Assert(ioh->handle_data_len == 0);
 	Assert(len <= PG_IOV_MAX);
+	Assert(len <= io_max_combine_limit);
 
 	for (int i = 0; i < len; i++)
 		pgaio_ctl->handle_data[ioh->iovec_off + i] = data[i];
@@ -254,6 +256,9 @@ pgaio_io_call_complete_shared(PgAioHandle *ioh)
 					   pgaio_result_status_string(result.status),
 					   result.id, result.error_data, result.result);
 		result = ce->cb->complete_shared(ioh, result, cb_data);
+
+		/* the callback should never transition to unknown */
+		Assert(result.status != PGAIO_RS_UNKNOWN);
 	}
 
 	ioh->distilled_result = result;
@@ -288,6 +293,7 @@ pgaio_io_call_complete_local(PgAioHandle *ioh)
 
 	/* start with distilled result from shared callback */
 	result = ioh->distilled_result;
+	Assert(result.status != PGAIO_RS_UNKNOWN);
 
 	for (int i = ioh->num_callbacks; i > 0; i--)
 	{
@@ -304,6 +310,9 @@ pgaio_io_call_complete_local(PgAioHandle *ioh)
 					   pgaio_result_status_string(result.status),
 					   result.id, result.error_data, result.result);
 		result = ce->cb->complete_local(ioh, result, cb_data);
+
+		/* the callback should never transition to unknown */
+		Assert(result.status != PGAIO_RS_UNKNOWN);
 	}
 
 	/*

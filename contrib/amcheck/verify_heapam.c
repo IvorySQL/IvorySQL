@@ -460,7 +460,7 @@ verify_heapam(PG_FUNCTION_ARGS)
 	else
 	{
 		/*
-		 * It would not be safe to naively use use batchmode, as
+		 * It would not be safe to naively use batchmode, as
 		 * heapcheck_read_stream_next_unskippable takes locks. It shouldn't be
 		 * too hard to convert though.
 		 */
@@ -853,8 +853,6 @@ verify_heapam(PG_FUNCTION_ARGS)
 			break;
 	}
 
-	/* Ensure that the stream is completely read */
-	Assert(read_stream_next_buffer(stream, NULL) == InvalidBuffer);
 	read_stream_end(stream);
 
 	if (vmbuffer != InvalidBuffer)

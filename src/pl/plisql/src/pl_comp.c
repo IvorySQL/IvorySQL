@@ -4,7 +4,7 @@
  *			  procedural language
  *
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -35,7 +35,6 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/regproc.h"
-#include "utils/rel.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 #include "commands/proclang.h"
@@ -51,7 +50,6 @@
  * Our own local and global variables
  * ----------
  */
-PLiSQL_stmt_block *plisql_parse_result;
 
 int	datums_alloc; 
 int			plisql_nDatums;
@@ -253,13 +251,14 @@ recheck:
 	/*
 	 * Save pointer in FmgrInfo to avoid search on subsequent calls
 	 */
-	fcinfo->flinfo->fn_extra = (void *) function;
+	fcinfo->flinfo->fn_extra =  function;
 
 	/*
 	 * Finally return the compiled function
 	 */
 	return function;
 }
+
 
 /*
  * This is the slow part of plisql_compile().
@@ -293,6 +292,7 @@ do_compile(FunctionCallInfo fcinfo,
 	Form_pg_proc procStruct = (Form_pg_proc) GETSTRUCT(procTup);
 	bool		is_dml_trigger = CALLED_AS_TRIGGER(fcinfo);
 	bool		is_event_trigger = CALLED_AS_EVENT_TRIGGER(fcinfo);
+	yyscan_t        scanner;
 	Datum		prosrcdatum;
 	char	   *proc_source;
 	HeapTuple	typeTup;
@@ -300,6 +300,7 @@ do_compile(FunctionCallInfo fcinfo,
 	PLiSQL_variable *var;
 	PLiSQL_rec *rec;
 	int			i;
+	compile_error_callback_arg cbarg;
 	ErrorContextCallback plerrcontext;
 	int			parse_rc;
 	Oid			rettypeid;
@@ -321,21 +322,21 @@ do_compile(FunctionCallInfo fcinfo,
 	PLiSQL_type	*rettype = NULL;
 
 	/*
-	 * Setup the scanner input and error info.  We assume that this function
-	 * cannot be invoked recursively, so there's no need to save and restore
-	 * the static variables used here.
+	 * Setup the scanner input and error info.
 	 */
 	prosrcdatum = SysCacheGetAttrNotNull(PROCOID, procTup, Anum_pg_proc_prosrc);
 	proc_source = TextDatumGetCString(prosrcdatum);
-	plisql_scanner_init(proc_source);
+	scanner = plisql_scanner_init(proc_source);
 
 	plisql_error_funcname = pstrdup(NameStr(procStruct->proname));
 
 	/*
 	 * Setup error traceback support for ereport()
 	 */
+	cbarg.proc_source = forValidator ? proc_source : NULL;
+	cbarg.yyscanner = scanner;
 	plerrcontext.callback = plisql_compile_error_callback;
-	plerrcontext.arg = forValidator ? proc_source : NULL;
+	plerrcontext.arg = &cbarg;
 	plerrcontext.previous = error_context_stack;
 	error_context_stack = &plerrcontext;
 
@@ -397,6 +398,7 @@ do_compile(FunctionCallInfo fcinfo,
 
 	function->nstatements = 0;
 	function->requires_procedure_resowner = false;
+	function->has_exception_block = false;
 
 	function->fn_ret_vardno = -1;
 	function->fn_no_return = false;
@@ -1014,7 +1016,7 @@ do_compile(FunctionCallInfo fcinfo,
 		/*
 		 * Now parse the function's text
 		 */
-		parse_rc = plisql_yyparse();
+		parse_rc = plisql_yyparse(&function->action, scanner);
 		if (parse_rc != 0)
 			elog(ERROR, "plisql parser returned %d", parse_rc);
 	}
@@ -1024,8 +1026,6 @@ do_compile(FunctionCallInfo fcinfo,
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
-
-	function->action = plisql_parse_result;
 
 	if (num_out_args > 0 &&
 		is_plisql_function &&
@@ -1060,15 +1060,16 @@ do_compile(FunctionCallInfo fcinfo,
 	}
 
 	plisql_finish_datums(function);
-
+	if (function->has_exception_block)
+			plisql_mark_local_assignment_targets(function);
 	plisql_finish_subproc_func(function);
 
-	plisql_check_subproc_define(function);
+	plisql_check_subproc_define(function, scanner);
 
 	/*
 	 * after plisql_check_subproc_define for nice error message
 	 */
-	plisql_scanner_finish();
+	plisql_scanner_finish(scanner);
 	pfree(proc_source);
 
 	/* Debug dump for completed functions */
@@ -1237,6 +1238,8 @@ do_compile(FunctionCallInfo fcinfo,
 PLiSQL_function *
 plisql_compile_inline(char *proc_source, ParamListInfo inparams)
 {
+	yyscan_t        scanner;
+	struct compile_error_callback_arg cbarg;
 	char	   *func_name = "inline_code_block";
 	PLiSQL_function *function;
 	ErrorContextCallback plerrcontext;
@@ -1245,19 +1248,19 @@ plisql_compile_inline(char *proc_source, ParamListInfo inparams)
 	MemoryContext func_cxt;
 
 	/*
-	 * Setup the scanner input and error info.  We assume that this function
-	 * cannot be invoked recursively, so there's no need to save and restore
-	 * the static variables used here.
+	 * Setup the scanner input and error info.
 	 */
-	plisql_scanner_init(proc_source);
+	scanner = plisql_scanner_init(proc_source);
 
 	plisql_error_funcname = func_name;
 
 	/*
 	 * Setup error traceback support for ereport()
 	 */
+	cbarg.proc_source = proc_source;
+	cbarg.yyscanner = scanner;
 	plerrcontext.callback = plisql_compile_error_callback;
-	plerrcontext.arg = proc_source;
+	plerrcontext.arg = &cbarg;
 	plerrcontext.previous = error_context_stack;
 	error_context_stack = &plerrcontext;
 
@@ -1295,6 +1298,7 @@ plisql_compile_inline(char *proc_source, ParamListInfo inparams)
 
 	function->nstatements = 0;
 	function->requires_procedure_resowner = false;
+	function->has_exception_block = false;
 	function->fn_ret_vardno = -1;
 	function->fn_no_return = false;
 
@@ -1410,10 +1414,9 @@ plisql_compile_inline(char *proc_source, ParamListInfo inparams)
 	/*
 	 * Now parse the function's text
 	 */
-	parse_rc = plisql_yyparse();
+	parse_rc = plisql_yyparse(&function->action, scanner);
 	if (parse_rc != 0)
 		elog(ERROR, "plisql parser returned %d", parse_rc);
-	function->action = plisql_parse_result;
 
 	/*
 	 * If it returns VOID (always true at the moment), we allow control to
@@ -1429,12 +1432,18 @@ plisql_compile_inline(char *proc_source, ParamListInfo inparams)
 
 	plisql_finish_subproc_func(function);
 
-	plisql_check_subproc_define(function);
+	plisql_check_subproc_define(function, scanner);
+	if (function->has_exception_block)
+		plisql_mark_local_assignment_targets(function);
+
+	/* Debug dump for completed functions */
+	if (plisql_DumpExecTree)
+		plisql_dumptree(function, 0, 0);
 
 	/*
 	 * after plisql_check_subproc_define for nice error message
 	 */
-	plisql_scanner_finish();
+	plisql_scanner_finish(scanner);
 
 	/*
 	 * Pop the error context stack
@@ -1461,13 +1470,16 @@ plisql_compile_inline(char *proc_source, ParamListInfo inparams)
 void
 plisql_compile_error_callback(void *arg)
 {
-	if (arg)
+	struct compile_error_callback_arg *cbarg = (struct compile_error_callback_arg *) arg;
+	yyscan_t	yyscanner = cbarg->yyscanner;
+
+	if (cbarg->proc_source)
 	{
 		/*
 		 * Try to convert syntax error position to reference text of original
 		 * CREATE FUNCTION or DO command.
 		 */
-		if (function_parse_error_transpose((const char *) arg))
+		if (function_parse_error_transpose(cbarg->proc_source))
 			return;
 
 		/*
@@ -1478,7 +1490,7 @@ plisql_compile_error_callback(void *arg)
 
 	if (plisql_error_funcname)
 		errcontext("compilation of PL/iSQL function \"%s\" near line %d",
-				   plisql_error_funcname, plisql_latest_lineno());
+				   plisql_error_funcname, plisql_latest_lineno(yyscanner));
 }
 
 
@@ -1565,7 +1577,7 @@ plisql_parser_setup(struct ParseState *pstate, PLiSQL_expr *expr)
 	pstate->p_paramref_hook = plisql_param_ref;
 	pstate->p_subprocfunc_hook = plisql_subprocfunc_ref;
 	/* no need to use p_coerce_param_hook */
-	pstate->p_ref_hook_state = (void *) expr;
+	pstate->p_ref_hook_state =  expr;
 }
 
 /*
@@ -3120,14 +3132,10 @@ plisql_parse_err_condition(char *condname)
 	 * here.
 	 */
 
-	/*
-	 * OTHERS is represented as code 0 (which would map to '00000', but we
-	 * have no need to represent that as an exception condition).
-	 */
 	if (strcmp(condname, "others") == 0)
 	{
 		new = palloc(sizeof(PLiSQL_condition));
-		new->sqlerrstate = 0;
+		new->sqlerrstate = PLISQL_OTHERS;
 		new->condname = condname;
 		new->next = NULL;
 		return new;
@@ -3615,28 +3623,29 @@ plisql_HashTableDelete(PLiSQL_function *function)
 void
 plisql_compile_inline_internal(char *proc_source)
 {
+	yyscan_t        scanner;
 	char   *func_name = "inline_code_block";
 	PLiSQL_function *function;
+	struct compile_error_callback_arg cbarg;
 	ErrorContextCallback plerrcontext;
 	int	parse_rc;
 	MemoryContext func_cxt;
 
 	/*
-	 * Setup the scanner input and error info.  
-	 * We assume that this function cannot be invoked recursively, 
-	 * so there's no need to save and restore
-	 * the static variables used here.
+	 * Setup the scanner input and error info.
 	 */
-	plisql_scanner_init(proc_source);
+	scanner = plisql_scanner_init(proc_source);
 
 	plisql_error_funcname = func_name;
 
 	/*
 	 * Setup error traceback support for ereport()
 	 */
+	cbarg.proc_source = proc_source;
+	cbarg.yyscanner = scanner;
 	plerrcontext.callback = plisql_compile_error_callback;
 	plerrcontext.previous = error_context_stack;
-	plerrcontext.arg = proc_source;
+	plerrcontext.arg = &cbarg;
 	error_context_stack = &plerrcontext;
 
 	/* Do extra syntax check if check_function_bodies is on */
@@ -3713,24 +3722,23 @@ plisql_compile_inline_internal(char *proc_source)
 	/*
 	 * Now parse the function's text
 	 */
-	parse_rc = plisql_yyparse();
+	parse_rc = plisql_yyparse(&function->action, scanner);
 
 	if (parse_rc != 0)
 		elog(ERROR, "plisql parser returned %d", parse_rc);
 
-	function->action = plisql_parse_result;
 
 	/*
 	 * Complete the function's info
 	 */
 	plisql_finish_datums(function);
 	plisql_finish_subproc_func(function);
-	plisql_check_subproc_define(function);
+	plisql_check_subproc_define(function, scanner);
 
 	/*
 	 * finish scanner after plisql_check_subproc_define for nice error message
 	 */
-	plisql_scanner_finish();
+	plisql_scanner_finish(scanner);
 
 	/*
 	 * Pop the error context stack

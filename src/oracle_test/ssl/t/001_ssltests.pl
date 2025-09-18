@@ -34,9 +34,8 @@ sub switch_server_cert
 	$ssl_server->switch_server_cert(@_);
 }
 
-# Determine whether this build uses OpenSSL or LibreSSL. As a heuristic, the
-# HAVE_SSL_CTX_SET_CERT_CB macro isn't defined for LibreSSL.
-my $libressl = not check_pg_config("#define HAVE_SSL_CTX_SET_CERT_CB 1");
+# Determine whether this build uses OpenSSL or LibreSSL.
+my $libressl = $ssl_server->is_libressl;
 
 #### Some configuration
 
@@ -59,6 +58,8 @@ my $common_connstr;
 note "setting up data directory";
 my $node = PostgreSQL::Test::Cluster->new('primary');
 $node->init;
+# Needed to allow connect_fails to inspect postmaster log:
+$node->append_conf('postgresql.conf', "log_min_messages = debug2");
 
 # PGHOST is enforced here to set up the node, subsequent connections
 # will use a dedicated connection string.
@@ -145,6 +146,33 @@ my $default_ssl_connstr =
 
 $common_connstr =
   "$default_ssl_connstr user=ssltestuser dbname=trustdb hostaddr=$SERVERHOSTADDR host=common-name.pg-ssltest.test";
+
+SKIP:
+{
+	skip "Keylogging is not supported with LibreSSL", 5 if $libressl;
+
+	my $tempdir = PostgreSQL::Test::Utils::tempdir;
+	my @status;
+
+	# Properly escape backslashes in the path
+	$tempdir =~ s/\\/\\\\/g;
+
+	# Connect should work with a given sslkeylogfile
+	$node->connect_ok(
+		"$common_connstr sslrootcert=ssl/root+server_ca.crt sslkeylogfile=$tempdir/key.txt sslmode=require",
+		"connect with server root cert and sslkeylogfile=$tempdir/key.txt");
+
+	# Verify the key file exists
+	ok(-f "$tempdir/key.txt", "keylog file exists at: $tempdir/key.txt");
+
+	# Skip permission checks on Windows/Cygwin
+	skip "Permissions check not enforced on Windows", 2
+	  if ($windows_os || $Config::Config{osname} eq 'cygwin');
+
+	ok( (@status = stat("$tempdir/key.txt")),
+		"keylog file exists and returned status");
+	ok(@status && !($status[2] & 0006), "keylog file is not world readable");
+}
 
 # The server should not accept non-SSL connections.
 $node->connect_fails(
@@ -774,10 +802,8 @@ $node->connect_fails(
 	expected_stderr =>
 	  qr/certificate authentication failed for user "anotheruser"/,
 	# certificate authentication should be logged even on failure
-	# temporarily(?) skip this check due to timing issue
-#	log_like =>
-#	  [qr/connection authenticated: identity="CN=ssltestuser" method=cert/],
-);
+	log_like =>
+	  [qr/connection authenticated: identity="CN=ssltestuser" method=cert/],);
 
 # revoked client cert
 $node->connect_fails(
@@ -785,11 +811,10 @@ $node->connect_fails(
 	  . sslkey('client-revoked.key'),
 	"certificate authorization fails with revoked client cert",
 	expected_stderr => qr|SSL error: ssl[a-z0-9/]* alert certificate revoked|,
-	# temporarily(?) skip this check due to timing issue
-#	log_like => [
-#		qr{Client certificate verification failed at depth 0: certificate revoked},
-#		qr{Failed certificate data \(unverified\): subject "/CN=ssltestuser", serial number 2315134995201656577, issuer "/CN=Test CA for PostgreSQL SSL regression test client certs"},
-#	],
+	log_like => [
+		qr{Client certificate verification failed at depth 0: certificate revoked},
+		qr{Failed certificate data \(unverified\): subject "/CN=ssltestuser", serial number \d+, issuer "/CN=Test CA for PostgreSQL SSL regression test client certs"},
+	],
 	# revoked certificates should not authenticate the user
 	log_unlike => [qr/connection authenticated:/],);
 
@@ -839,23 +864,19 @@ $node->connect_fails(
 	$common_connstr . " " . "sslmode=require sslcert=ssl/client.crt",
 	"intermediate client certificate is missing",
 	expected_stderr => qr/SSL error: tlsv1 alert unknown ca/,
-	# temporarily(?) skip this check due to timing issue
-#	log_like => [
-#		qr{Client certificate verification failed at depth 0: unable to get local issuer certificate},
-#		qr{Failed certificate data \(unverified\): subject "/CN=ssltestuser", serial number 2315134995201656576, issuer "/CN=Test CA for PostgreSQL SSL regression test client certs"},
-#	]
-);
+	log_like => [
+		qr{Client certificate verification failed at depth 0: unable to get local issuer certificate},
+		qr{Failed certificate data \(unverified\): subject "/CN=ssltestuser", serial number \d+, issuer "/CN=Test CA for PostgreSQL SSL regression test client certs"},
+	]);
 
 $node->connect_fails(
 	"$common_connstr sslmode=require sslcert=ssl/client-long.crt " . sslkey('client-long.key'),
 	"logged client certificate Subjects are truncated if they're too long",
 	expected_stderr => qr/SSL error: tlsv1 alert unknown ca/,
-	# temporarily(?) skip this check due to timing issue
-#	log_like => [
-#		qr{Client certificate verification failed at depth 0: unable to get local issuer certificate},
-#		qr{Failed certificate data \(unverified\): subject "\.\.\./CN=ssl-123456789012345678901234567890123456789012345678901234567890", serial number 2315418733629425152, issuer "/CN=Test CA for PostgreSQL SSL regression test client certs"},
-#	]
-);
+	log_like => [
+		qr{Client certificate verification failed at depth 0: unable to get local issuer certificate},
+		qr{Failed certificate data \(unverified\): subject "\.\.\./CN=ssl-123456789012345678901234567890123456789012345678901234567890", serial number \d+, issuer "/CN=Test CA for PostgreSQL SSL regression test client certs"},
+	]);
 
 # Use an invalid cafile here so that the next test won't be able to verify the
 # client CA.
@@ -867,12 +888,14 @@ $node->connect_fails(
 	"$common_connstr sslmode=require sslcert=ssl/client+client_ca.crt",
 	"intermediate client certificate is untrusted",
 	expected_stderr => qr/SSL error: tlsv1 alert unknown ca/,
-	# temporarily(?) skip this check due to timing issue
-#	log_like => [
-#		qr{Client certificate verification failed at depth 1: unable to get local issuer certificate},
-#		qr{Failed certificate data \(unverified\): subject "/CN=Test CA for PostgreSQL SSL regression test client certs", serial number 2315134995201656577, issuer "/CN=Test root CA for PostgreSQL SSL regression test suite"},
-#	]
-);
+	log_like => [
+		qr{Client certificate verification failed at depth 1: unable to get local issuer certificate},
+		# As of 5/2025, LibreSSL reports a different cert as being at fault;
+		# it's wrong, but seems to be their bug not ours
+		!$libressl
+		? qr{Failed certificate data \(unverified\): subject "/CN=Test CA for PostgreSQL SSL regression test client certs", serial number \d+, issuer "/CN=Test root CA for PostgreSQL SSL regression test suite"}
+		: qr{Failed certificate data \(unverified\): subject "/CN=ssltestuser", serial number \d+, issuer "/CN=Test CA for PostgreSQL SSL regression test client certs"},
+	]);
 
 # test server-side CRL directory
 switch_server_cert(
@@ -886,12 +909,10 @@ $node->connect_fails(
 	  . sslkey('client-revoked.key'),
 	"certificate authorization fails with revoked client cert with server-side CRL directory",
 	expected_stderr => qr|SSL error: ssl[a-z0-9/]* alert certificate revoked|,
-	# temporarily(?) skip this check due to timing issue
-#	log_like => [
-#		qr{Client certificate verification failed at depth 0: certificate revoked},
-#		qr{Failed certificate data \(unverified\): subject "/CN=ssltestuser", serial number 2315134995201656577, issuer "/CN=Test CA for PostgreSQL SSL regression test client certs"},
-#	]
-);
+	log_like => [
+		qr{Client certificate verification failed at depth 0: certificate revoked},
+		qr{Failed certificate data \(unverified\): subject "/CN=ssltestuser", serial number \d+, issuer "/CN=Test CA for PostgreSQL SSL regression test client certs"},
+	]);
 
 # revoked client cert, non-ASCII subject
 $node->connect_fails(
@@ -899,11 +920,9 @@ $node->connect_fails(
 	  . sslkey('client-revoked-utf8.key'),
 	"certificate authorization fails with revoked UTF-8 client cert with server-side CRL directory",
 	expected_stderr => qr|SSL error: ssl[a-z0-9/]* alert certificate revoked|,
-	# temporarily(?) skip this check due to timing issue
-#	log_like => [
-#		qr{Client certificate verification failed at depth 0: certificate revoked},
-#		qr{Failed certificate data \(unverified\): subject "/CN=\\xce\\x9f\\xce\\xb4\\xcf\\x85\\xcf\\x83\\xcf\\x83\\xce\\xad\\xce\\xb1\\xcf\\x82", serial number 2315420958437414144, issuer "/CN=Test CA for PostgreSQL SSL regression test client certs"},
-#	]
-);
+	log_like => [
+		qr{Client certificate verification failed at depth 0: certificate revoked},
+		qr{Failed certificate data \(unverified\): subject "/CN=\\xce\\x9f\\xce\\xb4\\xcf\\x85\\xcf\\x83\\xcf\\x83\\xce\\xad\\xce\\xb1\\xcf\\x82", serial number \d+, issuer "/CN=Test CA for PostgreSQL SSL regression test client certs"},
+	]);
 
 done_testing();

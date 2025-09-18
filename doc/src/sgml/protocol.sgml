@@ -189,7 +189,7 @@
   </sect2>
 
   <sect2 id="protocol-versions">
-   <title>Protocol versions</title>
+   <title>Protocol Versions</title>
 
    <para>
     The current, latest version of the protocol is version 3.2. However, for
@@ -220,8 +220,13 @@
     was not supported by the server.
    </para>
 
-   <table>
-    <title>Protocol versions</title>
+   <para>
+    <xref linkend="protocol-versions-table"/> shows the currently supported
+    protocol versions.
+   </para>
+
+   <table id="protocol-versions-table">
+    <title>Protocol Versions</title>
 
     <tgroup cols="3">
      <thead>
@@ -238,7 +243,7 @@
       <entry>PostgreSQL 18 and later</entry>
       <entry>Current latest version. The secret key used in query
         cancellation was enlarged from 4 bytes to a variable length field. The
-        BackendKeyData message was changed to accomodate that, and the CancelRequest
+        BackendKeyData message was changed to accommodate that, and the CancelRequest
         message was redefined to have a variable length payload.
       </entry>
       </row>
@@ -7287,8 +7292,8 @@ psql "dbname=postgres replication=database" -c "IDENTIFY_SYSTEM;"
        <term>Int64 (XLogRecPtr)</term>
        <listitem>
         <para>
-         The LSN of the abort. This field is available since protocol version
-         4.
+         The LSN of the abort operation, present only when streaming is set to parallel.
+         This field is available since protocol version 4.
         </para>
        </listitem>
       </varlistentry>
@@ -7297,9 +7302,9 @@ psql "dbname=postgres replication=database" -c "IDENTIFY_SYSTEM;"
        <term>Int64 (TimestampTz)</term>
        <listitem>
         <para>
-         Abort timestamp of the transaction. The value is in number
-         of microseconds since PostgreSQL epoch (2000-01-01). This field is
-         available since protocol version 4.
+         Abort timestamp of the transaction, present only when streaming is set to
+         parallel. The value is in number of microseconds since PostgreSQL epoch (2000-01-01).
+         This field is available since protocol version 4.
         </para>
        </listitem>
       </varlistentry>

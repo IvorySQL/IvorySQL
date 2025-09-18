@@ -20,7 +20,8 @@ $node->init(
 $node->append_conf('postgresql.conf', "max_connections = 6");
 $node->append_conf('postgresql.conf', "reserved_connections = 2");
 $node->append_conf('postgresql.conf', "superuser_reserved_connections = 1");
-$node->append_conf('postgresql.conf', "log_connections = on");
+$node->append_conf('postgresql.conf',
+	"log_connections = 'receipt,authentication,authorization'");
 $node->append_conf('postgresql.conf', "log_min_messages=debug2");
 $node->start;
 
@@ -67,7 +68,8 @@ sub connect_fails_wait
 	my $log_location = -s $node->logfile;
 
 	$node->connect_fails($connstr, $test_name, %params);
-	$node->wait_for_log(qr/DEBUG:  (00000: )?client backend.*exited with exit code 1/,
+	$node->wait_for_log(
+		qr/DEBUG:  (00000: )?client backend.*exited with exit code 1/,
 		$log_location);
 	ok(1, "$test_name: client backend process exited");
 }

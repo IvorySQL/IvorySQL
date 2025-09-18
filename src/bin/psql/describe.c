@@ -303,6 +303,7 @@ describeFunctions(const char *functypes, const char *func_pattern,
 				  char **arg_patterns, int num_arg_patterns,
 				  bool verbose, bool showSystem)
 {
+	const char *df_options = "anptwSx+";
 	bool		showAggregate = strchr(functypes, 'a') != NULL;
 	bool		showNormal = strchr(functypes, 'n') != NULL;
 	bool		showProcedure = strchr(functypes, 'p') != NULL;
@@ -317,9 +318,9 @@ describeFunctions(const char *functypes, const char *func_pattern,
 	/* No "Parallel" column before 9.6 */
 	static const bool translate_columns_pre_96[] = {false, false, false, false, true, true, false, true, true, false, false, false, false};
 
-	if (strlen(functypes) != strspn(functypes, "anptwSx+"))
+	if (strlen(functypes) != strspn(functypes, df_options))
 	{
-		pg_log_error("\\df only takes [anptwSx+] as options");
+		pg_log_error("\\df only takes [%s] as options", df_options);
 		return true;
 	}
 
@@ -1232,7 +1233,9 @@ listDefaultACLs(const char *pattern)
 	printfPQExpBuffer(&buf,
 					  "SELECT pg_catalog.pg_get_userbyid(d.defaclrole) AS \"%s\",\n"
 					  "  n.nspname AS \"%s\",\n"
-					  "  CASE d.defaclobjtype WHEN '%c' THEN '%s' WHEN '%c' THEN '%s' WHEN '%c' THEN '%s' WHEN '%c' THEN '%s' WHEN '%c' THEN '%s' END AS \"%s\",\n"
+					  "  CASE d.defaclobjtype "
+					  "    WHEN '%c' THEN '%s' WHEN '%c' THEN '%s' WHEN '%c' THEN '%s'"
+					  "    WHEN '%c' THEN '%s' WHEN '%c' THEN '%s' WHEN '%c' THEN '%s' END AS \"%s\",\n"
 					  "  ",
 					  gettext_noop("Owner"),
 					  gettext_noop("Schema"),
@@ -1246,6 +1249,8 @@ listDefaultACLs(const char *pattern)
 					  gettext_noop("type"),
 					  DEFACLOBJ_NAMESPACE,
 					  gettext_noop("schema"),
+					  DEFACLOBJ_LARGEOBJECT,
+					  gettext_noop("large object"),
 					  gettext_noop("Type"));
 
 	printACLColumn(&buf, "d.defaclacl");
@@ -3161,7 +3166,8 @@ describeOneTableDetails(const char *schemaname,
 		{
 			printfPQExpBuffer(&buf,
 							  "SELECT c.conname, a.attname, c.connoinherit,\n"
-							  "  c.conislocal, c.coninhcount <> 0\n"
+							  "  c.conislocal, c.coninhcount <> 0,\n"
+							  "  c.convalidated\n"
 							  "FROM pg_catalog.pg_constraint c JOIN\n"
 							  "  pg_catalog.pg_attribute a ON\n"
 							  "    (a.attrelid = c.conrelid AND a.attnum = c.conkey[1])\n"
@@ -3184,14 +3190,16 @@ describeOneTableDetails(const char *schemaname,
 			{
 				bool		islocal = PQgetvalue(result, i, 3)[0] == 't';
 				bool		inherited = PQgetvalue(result, i, 4)[0] == 't';
+				bool		validated = PQgetvalue(result, i, 5)[0] == 't';
 
-				printfPQExpBuffer(&buf, "    \"%s\" NOT NULL \"%s\"%s",
+				printfPQExpBuffer(&buf, "    \"%s\" NOT NULL \"%s\"%s%s",
 								  PQgetvalue(result, i, 0),
 								  PQgetvalue(result, i, 1),
 								  PQgetvalue(result, i, 2)[0] == 't' ?
 								  " NO INHERIT" :
 								  islocal && inherited ? _(" (local, inherited)") :
-								  inherited ? _(" (inherited)") : "");
+								  inherited ? _(" (inherited)") : "",
+								  !validated ? " NOT VALID" : "");
 
 				printTableAddFooter(&cont, buf.data);
 			}
@@ -6362,8 +6370,8 @@ listExtensions(const char *pattern)
 					  "FROM pg_catalog.pg_extension e "
 					  "LEFT JOIN pg_catalog.pg_namespace n ON n.oid = e.extnamespace "
 					  "LEFT JOIN pg_catalog.pg_description d ON d.objoid = e.oid "
-					  "LEFT JOIN pg_catalog.pg_available_extensions() ae(name, default_version, comment) ON ae.name = e.extname "
-					  "AND d.classoid = 'pg_catalog.pg_extension'::pg_catalog.regclass\n",
+					  "AND d.classoid = 'pg_catalog.pg_extension'::pg_catalog.regclass "
+					  "LEFT JOIN pg_catalog.pg_available_extensions() ae(name, default_version, comment) ON ae.name = e.extname\n",
 					  gettext_noop("Name"),
 					  gettext_noop("Version"),
 					  gettext_noop("Default version"),

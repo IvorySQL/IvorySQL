@@ -21,16 +21,17 @@
 
 #include "catalog/pg_authid_d.h"
 #include "common/connect.h"
+#include "common/file_perm.h"
 #include "common/file_utils.h"
 #include "common/hashfn_unstable.h"
 #include "common/logging.h"
 #include "common/string.h"
+#include "connectdb.h"
 #include "dumputils.h"
 #include "fe_utils/string_utils.h"
 #include "oracle_fe_utils/ora_string_utils.h"
 #include "filter.h"
 #include "getopt_long.h"
-#include "pg_backup.h"
 
 /* version string we expect back from pg_dump */
 #define PGDUMP_VERSIONSTR "pg_dump (PostgreSQL) " PG_VERSION "\n"
@@ -66,28 +67,23 @@ static void dropTablespaces(PGconn *conn);
 static void dumpTablespaces(PGconn *conn);
 static void dropDBs(PGconn *conn);
 static void dumpUserConfig(PGconn *conn, const char *username);
-static void dumpDatabases(PGconn *conn);
+static void dumpDatabases(PGconn *conn, ArchiveFormat archDumpFormat);
 static void dumpTimestamp(const char *msg);
-static int	runPgDump(const char *dbname, const char *create_opts);
+static int	runPgDump(const char *dbname, const char *create_opts,
+					  char *dbfile, ArchiveFormat archDumpFormat);
 static void buildShSecLabels(PGconn *conn,
 							 const char *catalog_name, Oid objectId,
 							 const char *objtype, const char *objname,
 							 PQExpBuffer buffer);
-static PGconn *connectDatabase(const char *dbname,
-							   const char *connection_string, const char *pghost,
-							   const char *pgport, const char *pguser,
-							   trivalue prompt_password, bool fail_on_error);
-static char *constructConnStr(const char **keywords, const char **values);
-static PGresult *executeQuery(PGconn *conn, const char *query);
 static void executeCommand(PGconn *conn, const char *query);
 static void expand_dbname_patterns(PGconn *conn, SimpleStringList *patterns,
 								   SimpleStringList *names);
 static void read_dumpall_filters(const char *filename, SimpleStringList *pattern);
+static ArchiveFormat parseDumpFormat(const char *format);
 
 static char pg_dump_bin[MAXPGPATH];
-static const char *progname;
 static PQExpBuffer pgdumpopts;
-static char *connstr = "";
+static const char *connstr = "";
 static bool output_clean = false;
 static bool skip_acls = false;
 static bool verbose = false;
@@ -120,6 +116,7 @@ static int	server_version;
 static int	load_via_partition_root = 0;
 static int	on_conflict_do_nothing = 0;
 static int	statistics_only = 0;
+static int	sequence_data = 0;
 
 static char role_catalog[10];
 #define PG_AUTHID "pg_authid"
@@ -130,8 +127,6 @@ static char *filename = NULL;
 
 static SimpleStringList database_exclude_patterns = {NULL, NULL};
 static SimpleStringList database_exclude_names = {NULL, NULL};
-
-#define exit_nicely(code) exit(code)
 
 int
 main(int argc, char *argv[])
@@ -157,6 +152,7 @@ main(int argc, char *argv[])
 		{"password", no_argument, NULL, 'W'},
 		{"no-privileges", no_argument, NULL, 'x'},
 		{"no-acl", no_argument, NULL, 'x'},
+		{"format", required_argument, NULL, 'F'},
 
 		/*
 		 * the following options don't have an equivalent short option letter
@@ -196,6 +192,7 @@ main(int argc, char *argv[])
 		{"rows-per-insert", required_argument, NULL, 7},
 		{"statistics-only", no_argument, &statistics_only, 1},
 		{"filter", required_argument, NULL, 8},
+		{"sequence-data", no_argument, &sequence_data, 1},
 
 		{NULL, 0, NULL, 0}
 	};
@@ -206,6 +203,8 @@ main(int argc, char *argv[])
 	char	   *pgdb = NULL;
 	char	   *use_role = NULL;
 	const char *dumpencoding = NULL;
+	ArchiveFormat archDumpFormat = archNull;
+	const char *formatName = "p";
 	trivalue	prompt_password = TRI_DEFAULT;
 	bool		data_only = false;
 	bool		globals_only = false;
@@ -255,7 +254,7 @@ main(int argc, char *argv[])
 
 	pgdumpopts = createPQExpBuffer();
 
-	while ((c = getopt_long(argc, argv, "acd:E:f:gh:l:Op:rsS:tU:vwWx", long_options, &optindex)) != -1)
+	while ((c = getopt_long(argc, argv, "acd:E:f:F:gh:l:Op:rsS:tU:vwWx", long_options, &optindex)) != -1)
 	{
 		switch (c)
 		{
@@ -283,7 +282,9 @@ main(int argc, char *argv[])
 				appendPQExpBufferStr(pgdumpopts, " -f ");
 				appendShellString(pgdumpopts, filename);
 				break;
-
+			case 'F':
+				formatName = pg_strdup(optarg);
+				break;
 			case 'g':
 				globals_only = true;
 				break;
@@ -432,6 +433,21 @@ main(int argc, char *argv[])
 		exit_nicely(1);
 	}
 
+	/* Get format for dump. */
+	archDumpFormat = parseDumpFormat(formatName);
+
+	/*
+	 * If a non-plain format is specified, a file name is also required as the
+	 * path to the main directory.
+	 */
+	if (archDumpFormat != archNull &&
+		(!filename || strcmp(filename, "") == 0))
+	{
+		pg_log_error("option -F/--format=d|c|t requires option -f/--file");
+		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
+		exit_nicely(1);
+	}
+
 	/*
 	 * If password values are not required in the dump, switch to using
 	 * pg_roles which is equally useful, just more likely to have unrestricted
@@ -493,6 +509,35 @@ main(int argc, char *argv[])
 		appendPQExpBufferStr(pgdumpopts, " --on-conflict-do-nothing");
 	if (statistics_only)
 		appendPQExpBufferStr(pgdumpopts, " --statistics-only");
+	if (sequence_data)
+		appendPQExpBufferStr(pgdumpopts, " --sequence-data");
+
+	/*
+	 * Open the output file if required, otherwise use stdout.  If required,
+	 * then create new directory and global.dat file.
+	 */
+	if (archDumpFormat != archNull)
+	{
+		char		global_path[MAXPGPATH];
+
+		/* Create new directory or accept the empty existing directory. */
+		create_or_open_dir(filename);
+
+		snprintf(global_path, MAXPGPATH, "%s/global.dat", filename);
+
+		OPF = fopen(global_path, PG_BINARY_W);
+		if (!OPF)
+			pg_fatal("could not open file \"%s\": %m", global_path);
+	}
+	else if (filename)
+	{
+		OPF = fopen(filename, PG_BINARY_W);
+		if (!OPF)
+			pg_fatal("could not open output file \"%s\": %m",
+					 filename);
+	}
+	else
+		OPF = stdout;
 
 	/*
 	 * If there was a database specified on the command line, use that,
@@ -501,19 +546,22 @@ main(int argc, char *argv[])
 	 */
 	if (pgdb)
 	{
-		conn = connectDatabase(pgdb, connstr, pghost, pgport, pguser,
-							   prompt_password, false);
+		conn = ConnectDatabase(pgdb, connstr, pghost, pgport, pguser,
+							   prompt_password, false,
+							   progname, &connstr, &server_version, NULL, NULL);
 
 		if (!conn)
 			pg_fatal("could not connect to database \"%s\"", pgdb);
 	}
 	else
 	{
-		conn = connectDatabase("postgres", connstr, pghost, pgport, pguser,
-							   prompt_password, false);
+		conn = ConnectDatabase("postgres", connstr, pghost, pgport, pguser,
+							   prompt_password, false,
+							   progname, &connstr, &server_version, NULL, NULL);
 		if (!conn)
-			conn = connectDatabase("template1", connstr, pghost, pgport, pguser,
-								   prompt_password, true);
+			conn = ConnectDatabase("template1", connstr, pghost, pgport, pguser,
+								   prompt_password, true,
+								   progname, &connstr, &server_version, NULL, NULL);
 
 		if (!conn)
 		{
@@ -532,19 +580,6 @@ main(int argc, char *argv[])
 	 */
 	expand_dbname_patterns(conn, &database_exclude_patterns,
 						   &database_exclude_names);
-
-	/*
-	 * Open the output file if required, otherwise use stdout
-	 */
-	if (filename)
-	{
-		OPF = fopen(filename, PG_BINARY_W);
-		if (!OPF)
-			pg_fatal("could not open output file \"%s\": %m",
-					 filename);
-	}
-	else
-		OPF = stdout;
 
 	/*
 	 * Set the client encoding if requested.
@@ -646,7 +681,7 @@ main(int argc, char *argv[])
 	}
 
 	if (!globals_only && !roles_only && !tablespaces_only)
-		dumpDatabases(conn);
+		dumpDatabases(conn, archDumpFormat);
 
 	PQfinish(conn);
 
@@ -659,7 +694,7 @@ main(int argc, char *argv[])
 		fclose(OPF);
 
 		/* sync the resulting file, errors are not fatal */
-		if (dosync)
+		if (dosync && (archDumpFormat == archNull))
 			(void) fsync_fname(filename, false);
 	}
 
@@ -670,12 +705,14 @@ main(int argc, char *argv[])
 static void
 help(void)
 {
-	printf(_("%s extracts a PostgreSQL database cluster into an SQL script file.\n\n"), progname);
+	printf(_("%s exports a PostgreSQL database cluster as an SQL script or to other formats.\n\n"), progname);
 	printf(_("Usage:\n"));
 	printf(_("  %s [OPTION]...\n"), progname);
 
 	printf(_("\nGeneral options:\n"));
 	printf(_("  -f, --file=FILENAME          output file name\n"));
+	printf(_("  -F, --format=c|d|t|p         output file format (custom, directory, tar,\n"
+			 "                               plain text (default))\n"));
 	printf(_("  -v, --verbose                verbose mode\n"));
 	printf(_("  -V, --version                output version information, then exit\n"));
 	printf(_("  --lock-wait-timeout=TIMEOUT  fail after waiting TIMEOUT for a table lock\n"));
@@ -718,6 +755,7 @@ help(void)
 	printf(_("  --on-conflict-do-nothing     add ON CONFLICT DO NOTHING to INSERT commands\n"));
 	printf(_("  --quote-all-identifiers      quote all identifiers, even if not key words\n"));
 	printf(_("  --rows-per-insert=NROWS      number of rows per INSERT; implies --inserts\n"));
+	printf(_("  --sequence-data              include sequence data in dump\n"));
 	printf(_("  --statistics-only            dump only the statistics, not schema or data\n"));
 	printf(_("  --use-set-session-authorization\n"
 			 "                               use SET SESSION AUTHORIZATION commands instead of\n"
@@ -981,9 +1019,6 @@ dumpRoles(PGconn *conn)
 	 * We do it this way because config settings for roles could mention the
 	 * names of other roles.
 	 */
-	if (PQntuples(res) > 0)
-		fprintf(OPF, "\n--\n-- User Configurations\n--\n");
-
 	for (i = 0; i < PQntuples(res); i++)
 		dumpUserConfig(conn, PQgetvalue(res, i, i_rolname));
 
@@ -1222,7 +1257,7 @@ dumpRoleMembership(PGconn *conn)
 				{
 					if (optbuf->data[0] != '\0')
 						appendPQExpBufferStr(optbuf, ", ");
-					appendPQExpBuffer(optbuf, "SET FALSE");
+					appendPQExpBufferStr(optbuf, "SET FALSE");
 				}
 				if (optbuf->data[0] != '\0')
 					fprintf(OPF, " WITH %s", optbuf->data);
@@ -1498,6 +1533,7 @@ dumpUserConfig(PGconn *conn, const char *username)
 {
 	PQExpBuffer buf = createPQExpBuffer();
 	PGresult   *res;
+	static bool header_done = false;
 
 	printfPQExpBuffer(buf, "SELECT unnest(setconfig) FROM pg_db_role_setting "
 					  "WHERE setdatabase = 0 AND setrole = "
@@ -1509,7 +1545,13 @@ dumpUserConfig(PGconn *conn, const char *username)
 	res = executeQuery(conn, buf->data);
 
 	if (PQntuples(res) > 0)
+	{
+		if (!header_done)
+			fprintf(OPF, "\n--\n-- User Configurations\n--\n");
+		header_done = true;
+
 		fprintf(OPF, "\n--\n-- User Config \"%s\"\n--\n\n", username);
+	}
 
 	for (int i = 0; i < PQntuples(res); i++)
 	{
@@ -1583,10 +1625,13 @@ expand_dbname_patterns(PGconn *conn,
  * Dump contents of databases.
  */
 static void
-dumpDatabases(PGconn *conn)
+dumpDatabases(PGconn *conn, ArchiveFormat archDumpFormat)
 {
 	PGresult   *res;
 	int			i;
+	char		db_subdir[MAXPGPATH];
+	char		dbfilepath[MAXPGPATH];
+	FILE	   *map_file = NULL;
 
 	/*
 	 * Skip databases marked not datallowconn, since we'd be unable to connect
@@ -1600,18 +1645,42 @@ dumpDatabases(PGconn *conn)
 	 * doesn't have some failure mode with --clean.
 	 */
 	res = executeQuery(conn,
-					   "SELECT datname "
+					   "SELECT datname, oid "
 					   "FROM pg_database d "
 					   "WHERE datallowconn AND datconnlimit != -2 "
 					   "ORDER BY (datname <> 'template1'), datname");
 
-	if (PQntuples(res) > 0)
+	if (archDumpFormat == archNull && PQntuples(res) > 0)
 		fprintf(OPF, "--\n-- Databases\n--\n\n");
+
+	/*
+	 * If directory/tar/custom format is specified, create a subdirectory
+	 * under the main directory and each database dump file or subdirectory
+	 * will be created in that subdirectory by pg_dump.
+	 */
+	if (archDumpFormat != archNull)
+	{
+		char		map_file_path[MAXPGPATH];
+
+		snprintf(db_subdir, MAXPGPATH, "%s/databases", filename);
+
+		/* Create a subdirectory with 'databases' name under main directory. */
+		if (mkdir(db_subdir, pg_dir_create_mode) != 0)
+			pg_fatal("could not create directory \"%s\": %m", db_subdir);
+
+		snprintf(map_file_path, MAXPGPATH, "%s/map.dat", filename);
+
+		/* Create a map file (to store dboid and dbname) */
+		map_file = fopen(map_file_path, PG_BINARY_W);
+		if (!map_file)
+			pg_fatal("could not open file \"%s\": %m", map_file_path);
+	}
 
 	for (i = 0; i < PQntuples(res); i++)
 	{
 		char	   *dbname = PQgetvalue(res, i, 0);
-		const char *create_opts;
+		char	   *oid = PQgetvalue(res, i, 1);
+		const char *create_opts = "";
 		int			ret;
 
 		/* Skip template0, even if it's not marked !datallowconn. */
@@ -1625,9 +1694,27 @@ dumpDatabases(PGconn *conn)
 			continue;
 		}
 
+		/*
+		 * If this is not a plain format dump, then append dboid and dbname to
+		 * the map.dat file.
+		 */
+		if (archDumpFormat != archNull)
+		{
+			if (archDumpFormat == archCustom)
+				snprintf(dbfilepath, MAXPGPATH, "\"%s\"/\"%s\".dmp", db_subdir, oid);
+			else if (archDumpFormat == archTar)
+				snprintf(dbfilepath, MAXPGPATH, "\"%s\"/\"%s\".tar", db_subdir, oid);
+			else
+				snprintf(dbfilepath, MAXPGPATH, "\"%s\"/\"%s\"", db_subdir, oid);
+
+			/* Put one line entry for dboid and dbname in map file. */
+			fprintf(map_file, "%s %s\n", oid, dbname);
+		}
+
 		pg_log_info("dumping database \"%s\"", dbname);
 
-		fprintf(OPF, "--\n-- Database \"%s\" dump\n--\n\n", dbname);
+		if (archDumpFormat == archNull)
+			fprintf(OPF, "--\n-- Database \"%s\" dump\n--\n\n", dbname);
 
 		/*
 		 * We assume that "template1", "postgres", and "ivorysql" already exist in the
@@ -1643,12 +1730,9 @@ dumpDatabases(PGconn *conn)
 		{
 			if (output_clean)
 				create_opts = "--clean --create";
-			else
-			{
-				create_opts = "";
-				/* Since pg_dump won't emit a \connect command, we must */
+			/* Since pg_dump won't emit a \connect command, we must */
+			else if (archDumpFormat == archNull)
 				fprintf(OPF, "\\connect %s\n\n", dbname);
-			}
 		}
 		else
 			create_opts = "--create";
@@ -1656,18 +1740,29 @@ dumpDatabases(PGconn *conn)
 		if (filename)
 			fclose(OPF);
 
-		ret = runPgDump(dbname, create_opts);
+		ret = runPgDump(dbname, create_opts, dbfilepath, archDumpFormat);
 		if (ret != 0)
 			pg_fatal("pg_dump failed on database \"%s\", exiting", dbname);
 
 		if (filename)
 		{
-			OPF = fopen(filename, PG_BINARY_A);
+			char		global_path[MAXPGPATH];
+
+			if (archDumpFormat != archNull)
+				snprintf(global_path, MAXPGPATH, "%s/global.dat", filename);
+			else
+				snprintf(global_path, MAXPGPATH, "%s", filename);
+
+			OPF = fopen(global_path, PG_BINARY_A);
 			if (!OPF)
 				pg_fatal("could not re-open the output file \"%s\": %m",
-						 filename);
+						 global_path);
 		}
 	}
+
+	/* Close map file */
+	if (archDumpFormat != archNull)
+		fclose(map_file);
 
 	PQclear(res);
 }
@@ -1678,7 +1773,8 @@ dumpDatabases(PGconn *conn)
  * Run pg_dump on dbname, with specified options.
  */
 static int
-runPgDump(const char *dbname, const char *create_opts)
+runPgDump(const char *dbname, const char *create_opts, char *dbfile,
+		  ArchiveFormat archDumpFormat)
 {
 	PQExpBufferData connstrbuf;
 	PQExpBufferData cmd;
@@ -1687,17 +1783,36 @@ runPgDump(const char *dbname, const char *create_opts)
 	initPQExpBuffer(&connstrbuf);
 	initPQExpBuffer(&cmd);
 
-	printfPQExpBuffer(&cmd, "\"%s\" %s %s", pg_dump_bin,
-					  pgdumpopts->data, create_opts);
-
 	/*
-	 * If we have a filename, use the undocumented plain-append pg_dump
-	 * format.
+	 * If this is not a plain format dump, then append file name and dump
+	 * format to the pg_dump command to get archive dump.
 	 */
-	if (filename)
-		appendPQExpBufferStr(&cmd, " -Fa ");
+	if (archDumpFormat != archNull)
+	{
+		printfPQExpBuffer(&cmd, "\"%s\" -f %s %s", pg_dump_bin,
+						  dbfile, create_opts);
+
+		if (archDumpFormat == archDirectory)
+			appendPQExpBufferStr(&cmd, "  --format=directory ");
+		else if (archDumpFormat == archCustom)
+			appendPQExpBufferStr(&cmd, "  --format=custom ");
+		else if (archDumpFormat == archTar)
+			appendPQExpBufferStr(&cmd, "  --format=tar ");
+	}
 	else
-		appendPQExpBufferStr(&cmd, " -Fp ");
+	{
+		printfPQExpBuffer(&cmd, "\"%s\" %s %s", pg_dump_bin,
+						  pgdumpopts->data, create_opts);
+
+		/*
+		 * If we have a filename, use the undocumented plain-append pg_dump
+		 * format.
+		 */
+		if (filename)
+			appendPQExpBufferStr(&cmd, " -Fa ");
+		else
+			appendPQExpBufferStr(&cmd, " -Fp ");
+	}
 
 	/*
 	 * Append the database name to the already-constructed stem of connection
@@ -1745,256 +1860,6 @@ buildShSecLabels(PGconn *conn, const char *catalog_name, Oid objectId,
 
 	PQclear(res);
 	destroyPQExpBuffer(sql);
-}
-
-/*
- * Make a database connection with the given parameters.  An
- * interactive password prompt is automatically issued if required.
- *
- * If fail_on_error is false, we return NULL without printing any message
- * on failure, but preserve any prompted password for the next try.
- *
- * On success, the global variable 'connstr' is set to a connection string
- * containing the options used.
- */
-static PGconn *
-connectDatabase(const char *dbname, const char *connection_string,
-				const char *pghost, const char *pgport, const char *pguser,
-				trivalue prompt_password, bool fail_on_error)
-{
-	PGconn	   *conn;
-	bool		new_pass;
-	const char *remoteversion_str;
-	int			my_version;
-	const char **keywords = NULL;
-	const char **values = NULL;
-	PQconninfoOption *conn_opts = NULL;
-	static char *password = NULL;
-
-	if (prompt_password == TRI_YES && !password)
-		password = simple_prompt("Password: ", false);
-
-	/*
-	 * Start the connection.  Loop until we have a password if requested by
-	 * backend.
-	 */
-	do
-	{
-		int			argcount = 6;
-		PQconninfoOption *conn_opt;
-		char	   *err_msg = NULL;
-		int			i = 0;
-
-		free(keywords);
-		free(values);
-		PQconninfoFree(conn_opts);
-
-		/*
-		 * Merge the connection info inputs given in form of connection string
-		 * and other options.  Explicitly discard any dbname value in the
-		 * connection string; otherwise, PQconnectdbParams() would interpret
-		 * that value as being itself a connection string.
-		 */
-		if (connection_string)
-		{
-			conn_opts = PQconninfoParse(connection_string, &err_msg);
-			if (conn_opts == NULL)
-				pg_fatal("%s", err_msg);
-
-			for (conn_opt = conn_opts; conn_opt->keyword != NULL; conn_opt++)
-			{
-				if (conn_opt->val != NULL && conn_opt->val[0] != '\0' &&
-					strcmp(conn_opt->keyword, "dbname") != 0)
-					argcount++;
-			}
-
-			keywords = pg_malloc0((argcount + 1) * sizeof(*keywords));
-			values = pg_malloc0((argcount + 1) * sizeof(*values));
-
-			for (conn_opt = conn_opts; conn_opt->keyword != NULL; conn_opt++)
-			{
-				if (conn_opt->val != NULL && conn_opt->val[0] != '\0' &&
-					strcmp(conn_opt->keyword, "dbname") != 0)
-				{
-					keywords[i] = conn_opt->keyword;
-					values[i] = conn_opt->val;
-					i++;
-				}
-			}
-		}
-		else
-		{
-			keywords = pg_malloc0((argcount + 1) * sizeof(*keywords));
-			values = pg_malloc0((argcount + 1) * sizeof(*values));
-		}
-
-		if (pghost)
-		{
-			keywords[i] = "host";
-			values[i] = pghost;
-			i++;
-		}
-		if (pgport)
-		{
-			keywords[i] = "port";
-			values[i] = pgport;
-			i++;
-		}
-		if (pguser)
-		{
-			keywords[i] = "user";
-			values[i] = pguser;
-			i++;
-		}
-		if (password)
-		{
-			keywords[i] = "password";
-			values[i] = password;
-			i++;
-		}
-		if (dbname)
-		{
-			keywords[i] = "dbname";
-			values[i] = dbname;
-			i++;
-		}
-		keywords[i] = "fallback_application_name";
-		values[i] = progname;
-		i++;
-
-		new_pass = false;
-		conn = PQconnectdbParams(keywords, values, true);
-
-		if (!conn)
-			pg_fatal("could not connect to database \"%s\"", dbname);
-
-		if (PQstatus(conn) == CONNECTION_BAD &&
-			PQconnectionNeedsPassword(conn) &&
-			!password &&
-			prompt_password != TRI_NO)
-		{
-			PQfinish(conn);
-			password = simple_prompt("Password: ", false);
-			new_pass = true;
-		}
-	} while (new_pass);
-
-	/* check to see that the backend connection was successfully made */
-	if (PQstatus(conn) == CONNECTION_BAD)
-	{
-		if (fail_on_error)
-			pg_fatal("%s", PQerrorMessage(conn));
-		else
-		{
-			PQfinish(conn);
-
-			free(keywords);
-			free(values);
-			PQconninfoFree(conn_opts);
-
-			return NULL;
-		}
-	}
-
-	/*
-	 * Ok, connected successfully. Remember the options used, in the form of a
-	 * connection string.
-	 */
-	connstr = constructConnStr(keywords, values);
-
-	free(keywords);
-	free(values);
-	PQconninfoFree(conn_opts);
-
-	/* Check version */
-	remoteversion_str = PQparameterStatus(conn, "server_version");
-	if (!remoteversion_str)
-		pg_fatal("could not get server version");
-	server_version = PQserverVersion(conn);
-	if (server_version == 0)
-		pg_fatal("could not parse server version \"%s\"",
-				 remoteversion_str);
-
-	my_version = PG_VERSION_NUM;
-
-	/*
-	 * We allow the server to be back to 9.2, and up to any minor release of
-	 * our own major version.  (See also version check in pg_dump.c.)
-	 */
-	if (my_version != server_version
-		&& (server_version < 90200 ||
-			(server_version / 100) > (my_version / 100)))
-	{
-		pg_log_error("aborting because of server version mismatch");
-		pg_log_error_detail("server version: %s; %s version: %s",
-							remoteversion_str, progname, PG_VERSION);
-		exit_nicely(1);
-	}
-
-	PQclear(executeQuery(conn, ALWAYS_SECURE_SEARCH_PATH_SQL));
-
-	return conn;
-}
-
-/* ----------
- * Construct a connection string from the given keyword/value pairs. It is
- * used to pass the connection options to the pg_dump subprocess.
- *
- * The following parameters are excluded:
- *	dbname		- varies in each pg_dump invocation
- *	password	- it's not secure to pass a password on the command line
- *	fallback_application_name - we'll let pg_dump set it
- * ----------
- */
-static char *
-constructConnStr(const char **keywords, const char **values)
-{
-	PQExpBuffer buf = createPQExpBuffer();
-	char	   *connstr;
-	int			i;
-	bool		firstkeyword = true;
-
-	/* Construct a new connection string in key='value' format. */
-	for (i = 0; keywords[i] != NULL; i++)
-	{
-		if (strcmp(keywords[i], "dbname") == 0 ||
-			strcmp(keywords[i], "password") == 0 ||
-			strcmp(keywords[i], "fallback_application_name") == 0)
-			continue;
-
-		if (!firstkeyword)
-			appendPQExpBufferChar(buf, ' ');
-		firstkeyword = false;
-		appendPQExpBuffer(buf, "%s=", keywords[i]);
-		appendConnStrVal(buf, values[i]);
-	}
-
-	connstr = pg_strdup(buf->data);
-	destroyPQExpBuffer(buf);
-	return connstr;
-}
-
-/*
- * Run a query, return the results, exit program on failure.
- */
-static PGresult *
-executeQuery(PGconn *conn, const char *query)
-{
-	PGresult   *res;
-
-	pg_log_info("executing %s", query);
-
-	res = PQexec(conn, query);
-	if (!res ||
-		PQresultStatus(res) != PGRES_TUPLES_OK)
-	{
-		pg_log_error("query failed: %s", PQerrorMessage(conn));
-		pg_log_error_detail("Query was: %s", query);
-		PQfinish(conn);
-		exit_nicely(1);
-	}
-
-	return res;
 }
 
 /*
@@ -2091,4 +1956,37 @@ read_dumpall_filters(const char *filename, SimpleStringList *pattern)
 	}
 
 	filter_free(&fstate);
+}
+
+/*
+ * parseDumpFormat
+ *
+ * This will validate dump formats.
+ */
+static ArchiveFormat
+parseDumpFormat(const char *format)
+{
+	ArchiveFormat archDumpFormat;
+
+	if (pg_strcasecmp(format, "c") == 0)
+		archDumpFormat = archCustom;
+	else if (pg_strcasecmp(format, "custom") == 0)
+		archDumpFormat = archCustom;
+	else if (pg_strcasecmp(format, "d") == 0)
+		archDumpFormat = archDirectory;
+	else if (pg_strcasecmp(format, "directory") == 0)
+		archDumpFormat = archDirectory;
+	else if (pg_strcasecmp(format, "p") == 0)
+		archDumpFormat = archNull;
+	else if (pg_strcasecmp(format, "plain") == 0)
+		archDumpFormat = archNull;
+	else if (pg_strcasecmp(format, "t") == 0)
+		archDumpFormat = archTar;
+	else if (pg_strcasecmp(format, "tar") == 0)
+		archDumpFormat = archTar;
+	else
+		pg_fatal("unrecognized output format \"%s\"; please specify \"c\", \"d\", \"p\", or \"t\"",
+				 format);
+
+	return archDumpFormat;
 }

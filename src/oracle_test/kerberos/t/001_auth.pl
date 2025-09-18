@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2024, PostgreSQL Global Development Group
+# Copyright (c) 2021-2025, PostgreSQL Global Development Group
 
 # Sets up a KDC and then runs a variety of tests to make sure that the
 # GSSAPI/Kerberos authentication and encryption are working properly,
@@ -31,18 +31,20 @@ if ($ENV{with_gssapi} ne 'yes')
 }
 elsif (!$ENV{PG_TEST_EXTRA} || $ENV{PG_TEST_EXTRA} !~ /\bkerberos\b/)
 {
-	plan skip_all =>
-	  'Potentially unsafe test GSSAPI/Kerberos not enabled in PG_TEST_EXTRA';
+	plan skip_all => 'Potentially unsafe test GSSAPI/Kerberos not enabled in PG_TEST_EXTRA';
 }
 
 my $pgpass = "${PostgreSQL::Test::Utils::tmp_check}/.pgpass";
 
-my $dbname = 'postgres';
-my $username = 'test1';
+my $dbname      = 'postgres';
+my $username    = 'test1';
 my $application = '001_auth.pl';
 
 # Construct a pgpass file to make sure we don't use it
-append_to_file($pgpass, '*:*:*:*:abc123');
+append_to_file(
+	$pgpass,
+	'*:*:*:*:abc123'
+);
 
 chmod 0600, $pgpass or die $!;
 
@@ -64,7 +66,9 @@ $node->init;
 $node->append_conf(
 	'postgresql.conf', qq{
 listen_addresses = '$hostaddr'
-log_connections = on
+krb_server_keyfile = '$krb->{keytab}'
+log_connections = all
+log_min_messages = debug2
 lc_messages = 'C'
 });
 $node->start;
@@ -72,31 +76,24 @@ $node->start;
 my $port = $node->port();
 
 $node->safe_psql('postgres', 'CREATE USER test1;');
-$node->safe_psql('postgres',
-   "CREATE USER test2 WITH ENCRYPTED PASSWORD 'abc123';");
+$node->safe_psql('postgres', "CREATE USER test2 WITH ENCRYPTED PASSWORD 'abc123';");
 $node->safe_psql('postgres', 'CREATE EXTENSION postgres_fdw;');
 $node->safe_psql('postgres', 'CREATE EXTENSION dblink;');
-$node->safe_psql('postgres',
-   "CREATE SERVER s1 FOREIGN DATA WRAPPER postgres_fdw OPTIONS (host '$host', hostaddr '$hostaddr', port '$port', dbname 'postgres');");
-$node->safe_psql('postgres',
-   "CREATE SERVER s2 FOREIGN DATA WRAPPER postgres_fdw OPTIONS (port '$port', dbname 'postgres', passfile '$pgpass');");
+$node->safe_psql('postgres', "CREATE SERVER s1 FOREIGN DATA WRAPPER postgres_fdw OPTIONS (host '$host', hostaddr '$hostaddr', port '$port', dbname 'postgres');");
+$node->safe_psql('postgres', "CREATE SERVER s2 FOREIGN DATA WRAPPER postgres_fdw OPTIONS (port '$port', dbname 'postgres', passfile '$pgpass');");
 
 $node->safe_psql('postgres', 'GRANT USAGE ON FOREIGN SERVER s1 TO test1;');
 
-$node->safe_psql('postgres',
-   "CREATE USER MAPPING FOR test1 SERVER s1 OPTIONS (user 'test1');");
-$node->safe_psql('postgres',
-   "CREATE USER MAPPING FOR test1 SERVER s2 OPTIONS (user 'test2');");
+$node->safe_psql('postgres', "CREATE USER MAPPING FOR test1 SERVER s1 OPTIONS (user 'test1');");
+$node->safe_psql('postgres', "CREATE USER MAPPING FOR test1 SERVER s2 OPTIONS (user 'test2');");
 
 $node->safe_psql('postgres', "CREATE TABLE t1 (c1 int);");
 $node->safe_psql('postgres', "INSERT INTO t1 VALUES (1);");
-$node->safe_psql('postgres',
-   "CREATE FOREIGN TABLE tf1 (c1 int) SERVER s1 OPTIONS (schema_name 'public', table_name 't1');");
+$node->safe_psql('postgres', "CREATE FOREIGN TABLE tf1 (c1 int) SERVER s1 OPTIONS (schema_name 'public', table_name 't1');");
 $node->safe_psql('postgres', "GRANT SELECT ON t1 TO test1;");
 $node->safe_psql('postgres', "GRANT SELECT ON tf1 TO test1;");
 
-$node->safe_psql('postgres',
-   "CREATE FOREIGN TABLE tf2 (c1 int) SERVER s2 OPTIONS (schema_name 'public', table_name 't1');");
+$node->safe_psql('postgres', "CREATE FOREIGN TABLE tf2 (c1 int) SERVER s2 OPTIONS (schema_name 'public', table_name 't1');");
 $node->safe_psql('postgres', "GRANT SELECT ON tf2 TO test1;");
 
 # Set up a table for SYSTEM_USER parallel worker testing.
@@ -157,14 +154,13 @@ sub test_query
 
 	$node->connect_ok(
 		$connstr, $test_name,
-		sql => $query,
+		sql             => $query,
 		expected_stdout => $expected);
 	return;
 }
 
 unlink($node->data_dir . '/pg_hba.conf');
-$node->append_conf(
-	'pg_hba.conf',
+$node->append_conf('pg_hba.conf',
 	qq{
 local all test2 scram-sha-256
 host all all $hostaddr/32 gss map=mymap
@@ -280,14 +276,14 @@ $node->connect_fails(
 	  . " user=test1 host=$host hostaddr=$hostaddr gssencmode=disable require_auth=sspi",
 	"SSPI authentication requested, fails with non-encrypted GSS",
 	expected_stderr =>
-	  qr/authentication method "sspi" requirement failed: server requested GSSAPI authentication/
+	  qr/authentication method requirement "sspi" failed: server requested GSSAPI authentication/
 );
 $node->connect_fails(
 	$node->connstr('postgres')
 	  . " user=test1 host=$host hostaddr=$hostaddr gssencmode=require require_auth=sspi",
 	"SSPI authentication requested, fails with encrypted GSS",
 	expected_stderr =>
-	  qr/authentication method "sspi" requirement failed: server did not complete authentication/
+	  qr/authentication method requirement "sspi" failed: server did not complete authentication/
 );
 
 # Test that SYSTEM_USER works.
@@ -308,8 +304,7 @@ test_query(
 	'testing system_user with parallel workers');
 
 unlink($node->data_dir . '/pg_hba.conf');
-$node->append_conf(
-	'pg_hba.conf',
+$node->append_conf('pg_hba.conf',
 	qq{
     local all test2 scram-sha-256
 	hostgssenc all all $hostaddr/32 gss map=mymap
@@ -339,7 +334,8 @@ test_access(
 	"connection authorized: user=$username database=$dbname application_name=$application GSS (authenticated=yes, encrypted=yes, delegated_credentials=no, principal=test1\@$realm)"
 );
 
-$node->append_conf('postgresql.conf', qq{gss_accept_delegation=off});
+$node->append_conf('postgresql.conf',
+	qq{gss_accept_delegation=off});
 $node->restart;
 
 test_access(
@@ -363,7 +359,8 @@ test_access(
 	"connection authorized: user=$username database=$dbname application_name=$application GSS (authenticated=yes, encrypted=yes, delegated_credentials=no, principal=test1\@$realm)"
 );
 
-$node->append_conf('postgresql.conf', qq{gss_accept_delegation=on});
+$node->append_conf('postgresql.conf',
+	qq{gss_accept_delegation=on});
 $node->restart;
 
 test_access(
@@ -418,13 +415,9 @@ $psql_rc = $node->psql(
 	stdout => \$psql_out,
 	stderr => \$psql_stderr
 );
-is($psql_rc,'3',
-	'dblink attempt fails without delegated credentials');
-like($psql_stderr, 
-	qr/password or GSSAPI delegated credentials required/,
-	'dblink does not work without delegated credentials');
-like($psql_out, qr/^$/,
-	'dblink does not work without delegated credentials');
+is($psql_rc,'3','dblink attempt fails without delegated credentials');
+like($psql_stderr, qr/password or GSSAPI delegated credentials required/,'dblink does not work without delegated credentials');
+like($psql_out, qr/^$/,'dblink does not work without delegated credentials');
 
 $psql_out = '';
 $psql_stderr = '';
@@ -436,13 +429,9 @@ $psql_rc = $node->psql(
 	stdout => \$psql_out,
 	stderr => \$psql_stderr
 );
-is($psql_rc,'3',
-	'dblink does not work without delegated credentials and with passfile');
-like($psql_stderr,
-	qr/password or GSSAPI delegated credentials required/,
-	'dblink does not work without delegated credentials and with passfile');
-like($psql_out, qr/^$/,
-	'dblink does not work without delegated credentials and with passfile');
+is($psql_rc,'3','dblink does not work without delegated credentials and with passfile');
+like($psql_stderr, qr/password or GSSAPI delegated credentials required/,'dblink does not work without delegated credentials and with passfile');
+like($psql_out, qr/^$/,'dblink does not work without delegated credentials and with passfile');
 
 $psql_out = '';
 $psql_stderr = '';
@@ -454,13 +443,9 @@ $psql_rc = $node->psql(
 	stdout => \$psql_out,
 	stderr => \$psql_stderr
 );
-is($psql_rc,'3',
-	'postgres_fdw does not work without delegated credentials');
-like($psql_stderr, 
-	qr/password or GSSAPI delegated credentials required/,
-	'postgres_fdw does not work without delegated credentials');
-like($psql_out, qr/^$/,
-	'postgres_fdw does not work without delegated credentials');
+is($psql_rc,'3','postgres_fdw does not work without delegated credentials');
+like($psql_stderr, qr/password or GSSAPI delegated credentials required/,'postgres_fdw does not work without delegated credentials');
+like($psql_out, qr/^$/,'postgres_fdw does not work without delegated credentials');
 
 $psql_out = '';
 $psql_stderr = '';
@@ -472,13 +457,9 @@ $psql_rc = $node->psql(
 	stdout => \$psql_out,
 	stderr => \$psql_stderr
 );
-is($psql_rc,'3',
-	'postgres_fdw does not work without delegated credentials and with passfile');
-like($psql_stderr, 
-	qr/password or GSSAPI delegated credentials required/,
-	'postgres_fdw does not work without delegated credentials and with passfile');
-like($psql_out, qr/^$/,
-	'postgres_fdw does not work without delegated credentials and with passfile');
+is($psql_rc,'3','postgres_fdw does not work without delegated credentials and with passfile');
+like($psql_stderr, qr/password or GSSAPI delegated credentials required/,'postgres_fdw does not work without delegated credentials and with passfile');
+like($psql_out, qr/^$/,'postgres_fdw does not work without delegated credentials and with passfile');
 
 test_access($node, 'test1', 'SELECT true', 2, 'gssencmode=disable',
 	'fails with GSS encryption disabled and hostgssenc hba');
@@ -494,8 +475,7 @@ $node->connect_ok(
 	"multiple authentication types requested, works with GSS encryption");
 
 unlink($node->data_dir . '/pg_hba.conf');
-$node->append_conf(
-	'pg_hba.conf',
+$node->append_conf('pg_hba.conf',
 	qq{
     local all test2 scram-sha-256
 	hostnogssenc all all $hostaddr/32 gss map=mymap
@@ -531,8 +511,7 @@ test_query(
 	"SELECT * FROM dblink('user=test1 dbname=$dbname host=$host hostaddr=$hostaddr port=$port','select 1') as t1(c1 int);",
 	qr/^1$/s,
 	'gssencmode=prefer gssdelegation=1',
-	'dblink works not-encrypted (server not configured to accept encrypted GSSAPI connections)'
-);
+	'dblink works not-encrypted (server not configured to accept encrypted GSSAPI connections)');
 
 test_query(
 	$node,
@@ -540,8 +519,7 @@ test_query(
 	"TABLE tf1;",
 	qr/^1$/s,
 	'gssencmode=prefer gssdelegation=1',
-	'postgres_fdw works not-encrypted (server not configured to accept encrypted GSSAPI connections)'
-);
+	'postgres_fdw works not-encrypted (server not configured to accept encrypted GSSAPI connections)');
 
 $psql_out = '';
 $psql_stderr = '';
@@ -549,18 +527,13 @@ $psql_stderr = '';
 $psql_rc = $node->psql(
     'postgres',
 	"SELECT * FROM dblink('user=test2 dbname=$dbname port=$port passfile=$pgpass','select 1') as t1(c1 int);",
-	connstr =>
-	  "user=test1 host=$host hostaddr=$hostaddr gssencmode=prefer gssdelegation=1",
+	connstr => "user=test1 host=$host hostaddr=$hostaddr gssencmode=prefer gssdelegation=1",
 	stdout => \$psql_out,
 	stderr => \$psql_stderr
 );
-is($psql_rc,'3',
-	'dblink does not work with delegated credentials and with passfile');
-like($psql_stderr, 
-	qr/password or GSSAPI delegated credentials required/,
-	'dblink does not work with delegated credentials and with passfile');
-like($psql_out, qr/^$/,
-	'dblink does not work with delegated credentials and with passfile');
+is($psql_rc,'3','dblink does not work with delegated credentials and with passfile');
+like($psql_stderr, qr/password or GSSAPI delegated credentials required/,'dblink does not work with delegated credentials and with passfile');
+like($psql_out, qr/^$/,'dblink does not work with delegated credentials and with passfile');
 
 $psql_out = '';
 $psql_stderr = '';
@@ -572,18 +545,13 @@ $psql_rc = $node->psql(
 	stdout => \$psql_out,
 	stderr => \$psql_stderr
 );
-is($psql_rc,'3',
-	'postgres_fdw does not work with delegated credentials and with passfile');
-like($psql_stderr,
-	qr/password or GSSAPI delegated credentials required/,
-	'postgres_fdw does not work with delegated credentials and with passfile');
-like($psql_out, qr/^$/,
-	'postgres_fdw does not work with delegated credentials and with passfile');
+is($psql_rc,'3','postgres_fdw does not work with delegated credentials and with passfile');
+like($psql_stderr, qr/password or GSSAPI delegated credentials required/,'postgres_fdw does not work with delegated credentials and with passfile');
+like($psql_out, qr/^$/,'postgres_fdw does not work with delegated credentials and with passfile');
 
 truncate($node->data_dir . '/pg_ident.conf', 0);
 unlink($node->data_dir . '/pg_hba.conf');
-$node->append_conf(
-	'pg_hba.conf',
+$node->append_conf('pg_hba.conf',
 	qq{
     local all test2 scram-sha-256
 	host all all $hostaddr/32 gss include_realm=0
@@ -610,15 +578,17 @@ test_query(
 	'dblink works encrypted');
 
 test_query(
-	$node, 'test1', "TABLE tf1;", qr/^1$/s,
+	$node,
+	'test1',
+	"TABLE tf1;",
+	qr/^1$/s,
 	'gssencmode=require gssdelegation=1',
 	'postgres_fdw works encrypted');
 
 # Reset pg_hba.conf, and cause a usermap failure with an authentication
 # that has passed.
 unlink($node->data_dir . '/pg_hba.conf');
-$node->append_conf(
-	'pg_hba.conf',
+$node->append_conf('pg_hba.conf',
 	qq{
     local all test2 scram-sha-256
 	host all all $hostaddr/32 gss include_realm=0 krb_realm=EXAMPLE.ORG

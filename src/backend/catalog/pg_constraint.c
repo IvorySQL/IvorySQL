@@ -129,8 +129,9 @@ CreateConstraintEntry(const char *constraintName,
 	if (foreignNKeys > 0)
 	{
 		Datum	   *fkdatums;
+		int			nkeys = Max(foreignNKeys, numFkDeleteSetCols);
 
-		fkdatums = (Datum *) palloc(foreignNKeys * sizeof(Datum));
+		fkdatums = (Datum *) palloc(nkeys * sizeof(Datum));
 		for (i = 0; i < foreignNKeys; i++)
 			fkdatums[i] = Int16GetDatum(foreignKey[i]);
 		confkeyArray = construct_array_builtin(fkdatums, foreignNKeys, INT2OID);
@@ -494,6 +495,8 @@ ConstraintNameExists(const char *conname, Oid namespaceid)
  * name1, name2, and label are used the same way as for makeObjectName(),
  * except that the label can't be NULL; digits will be appended to the label
  * if needed to create a name that is unique within the specified namespace.
+ * If the given label is empty, we only consider names that include at least
+ * one added digit.
  *
  * 'others' can be a list of string names already chosen within the current
  * command (but not yet reflected into the catalogs); we will not choose
@@ -522,8 +525,11 @@ ChooseConstraintName(const char *name1, const char *name2,
 
 	conDesc = table_open(ConstraintRelationId, AccessShareLock);
 
-	/* try the unmodified label first */
-	strlcpy(modlabel, label, sizeof(modlabel));
+	/* try the unmodified label first, unless it's empty */
+	if (label[0] != '\0')
+		strlcpy(modlabel, label, sizeof(modlabel));
+	else
+		snprintf(modlabel, sizeof(modlabel), "%s%d", label, ++pass);
 
 	for (;;)
 	{
@@ -575,8 +581,8 @@ ChooseConstraintName(const char *name1, const char *name2,
 
 /*
  * Find and return a copy of the pg_constraint tuple that implements a
- * validated not-null constraint for the given column of the given relation.
- * If no such constraint exists, return NULL.
+ * (possibly not valid) not-null constraint for the given column of the
+ * given relation.  If no such constraint exists, return NULL.
  *
  * XXX This would be easier if we had pg_attribute.notnullconstr with the OID
  * of the constraint that implements the not-null constraint for that column.
@@ -605,12 +611,10 @@ findNotNullConstraintAttnum(Oid relid, AttrNumber attnum)
 		AttrNumber	conkey;
 
 		/*
-		 * We're looking for a NOTNULL constraint that's marked validated,
-		 * with the column we're looking for as the sole element in conkey.
+		 * We're looking for a NOTNULL constraint with the column we're
+		 * looking for as the sole element in conkey.
 		 */
 		if (con->contype != CONSTRAINT_NOTNULL)
-			continue;
-		if (!con->convalidated)
 			continue;
 
 		conkey = extractNotNullColumn(conTup);
@@ -629,9 +633,10 @@ findNotNullConstraintAttnum(Oid relid, AttrNumber attnum)
 }
 
 /*
- * Find and return the pg_constraint tuple that implements a validated
- * not-null constraint for the given column of the given relation.  If
- * no such column or no such constraint exists, return NULL.
+ * Find and return a copy of the pg_constraint tuple that implements a
+ * (possibly not valid) not-null constraint for the given column of the
+ * given relation.
+ * If no such column or no such constraint exists, return NULL.
  */
 HeapTuple
 findNotNullConstraint(Oid relid, const char *colname)
@@ -722,15 +727,19 @@ extractNotNullColumn(HeapTuple constrTup)
  *
  * If no not-null constraint is found for the column, return false.
  * Caller can create one.
+ *
  * If a constraint exists but the connoinherit flag is not what the caller
- * wants, throw an error about the incompatibility.  Otherwise, we adjust
- * conislocal/coninhcount and return true.
- * In the latter case, if is_local is true we flip conislocal true, or do
- * nothing if it's already true; otherwise we increment coninhcount by 1.
+ * wants, throw an error about the incompatibility.  If the desired
+ * constraint is valid but the existing constraint is not valid, also
+ * throw an error about that (the opposite case is acceptable).
+ *
+ * If everything checks out, we adjust conislocal/coninhcount and return
+ * true.  If is_local is true we flip conislocal true, or do nothing if
+ * it's already true; otherwise we increment coninhcount by 1.
  */
 bool
 AdjustNotNullInheritance(Oid relid, AttrNumber attnum,
-						 bool is_local, bool is_no_inherit)
+						 bool is_local, bool is_no_inherit, bool is_notvalid)
 {
 	HeapTuple	tup;
 
@@ -752,7 +761,21 @@ AdjustNotNullInheritance(Oid relid, AttrNumber attnum,
 			ereport(ERROR,
 					errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 					errmsg("cannot change NO INHERIT status of NOT NULL constraint \"%s\" on relation \"%s\"",
-						   NameStr(conform->conname), get_rel_name(relid)));
+						   NameStr(conform->conname), get_rel_name(relid)),
+					errhint("You might need to make the existing constraint inheritable using %s.",
+							"ALTER TABLE ... ALTER CONSTRAINT ... INHERIT"));
+
+		/*
+		 * Throw an error if the existing constraint is NOT VALID and caller
+		 * wants a valid one.
+		 */
+		if (!is_notvalid && !conform->convalidated)
+			ereport(ERROR,
+					errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+					errmsg("incompatible NOT VALID constraint \"%s\" on relation \"%s\"",
+						   NameStr(conform->conname), get_rel_name(relid)),
+					errhint("You might need to validate it using %s.",
+							"ALTER TABLE ... VALIDATE CONSTRAINT"));
 
 		if (!is_local)
 		{
@@ -831,7 +854,7 @@ RelationGetNotNullConstraints(Oid relid, bool cooked, bool include_noinh)
 			cooked->attnum = colnum;
 			cooked->expr = NULL;
 			cooked->is_enforced = true;
-			cooked->skip_validation = false;
+			cooked->skip_validation = !conForm->convalidated;
 			cooked->is_local = true;
 			cooked->inhcount = 0;
 			cooked->is_no_inherit = conForm->connoinherit;
@@ -851,7 +874,7 @@ RelationGetNotNullConstraints(Oid relid, bool cooked, bool include_noinh)
 			constr->keys = list_make1(makeString(get_attname(relid, colnum,
 															 false)));
 			constr->is_enforced = true;
-			constr->skip_validation = false;
+			constr->skip_validation = !conForm->convalidated;
 			constr->initially_valid = true;
 			constr->is_no_inherit = conForm->connoinherit;
 			notnulls = lappend(notnulls, constr);

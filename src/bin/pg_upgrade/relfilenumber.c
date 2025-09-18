@@ -36,7 +36,7 @@ static void transfer_relfile(FileNameMap *map, const char *type_suffix, bool vm_
  *
  *     // be sure to sync any remaining files in the queue
  *     sync_queue_sync_all();
- *     synq_queue_destroy();
+ *     sync_queue_destroy();
  */
 
 #define SYNC_QUEUE_MAX_LEN	(1024)
@@ -290,19 +290,19 @@ prepare_for_swap(const char *old_tablespace, Oid db_oid,
 
 	/* Create directory for stuff that is moved aside. */
 	if (pg_mkdir_p(moved_tblspc, pg_dir_create_mode) != 0 && errno != EEXIST)
-		pg_fatal("could not create directory \"%s\"", moved_tblspc);
+		pg_fatal("could not create directory \"%s\": %m", moved_tblspc);
 
 	/* Create directory for old catalog files. */
 	if (pg_mkdir_p(old_catalog_dir, pg_dir_create_mode) != 0)
-		pg_fatal("could not create directory \"%s\"", old_catalog_dir);
+		pg_fatal("could not create directory \"%s\": %m", old_catalog_dir);
 
 	/* Move the new cluster's database directory aside. */
 	if (rename(new_db_dir, moved_db_dir) != 0)
-		pg_fatal("could not rename \"%s\" to \"%s\"", new_db_dir, moved_db_dir);
+		pg_fatal("could not rename directory \"%s\" to \"%s\": %m", new_db_dir, moved_db_dir);
 
 	/* Move the old cluster's database directory into place. */
 	if (rename(old_db_dir, new_db_dir) != 0)
-		pg_fatal("could not rename \"%s\" to \"%s\"", old_db_dir, new_db_dir);
+		pg_fatal("could not rename directory \"%s\" to \"%s\": %m", old_db_dir, new_db_dir);
 
 	return true;
 }
@@ -390,7 +390,7 @@ swap_catalog_files(FileNameMap *maps, int size, const char *old_catalog_dir,
 
 		snprintf(dest, sizeof(dest), "%s/%s", old_catalog_dir, de->d_name);
 		if (rename(path, dest) != 0)
-			pg_fatal("could not rename \"%s\" to \"%s\": %m", path, dest);
+			pg_fatal("could not rename file \"%s\" to \"%s\": %m", path, dest);
 	}
 	if (errno)
 		pg_fatal("could not read directory \"%s\": %m", new_db_dir);
@@ -417,15 +417,15 @@ swap_catalog_files(FileNameMap *maps, int size, const char *old_catalog_dir,
 
 		snprintf(dest, sizeof(dest), "%s/%s", new_db_dir, de->d_name);
 		if (rename(path, dest) != 0)
-			pg_fatal("could not rename \"%s\" to \"%s\": %m", path, dest);
+			pg_fatal("could not rename file \"%s\" to \"%s\": %m", path, dest);
 
 		/*
 		 * We don't fsync() the database files in the file synchronization
 		 * stage of pg_upgrade in swap mode, so we need to synchronize them
 		 * ourselves.  We only do this for the catalog files because they were
 		 * created during pg_restore with fsync=off.  We assume that the user
-		 * data files files were properly persisted to disk when the user last
-		 * shut it down.
+		 * data files were properly persisted to disk when the user last shut
+		 * it down.
 		 */
 		if (user_opts.do_sync)
 			sync_queue_push(dest);

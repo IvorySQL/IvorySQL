@@ -193,6 +193,13 @@ typedef enum PLiSQL_resolve_option
 	PLISQL_RESOLVE_COLUMN		/* prefer table column to plpgsql var */
 } PLiSQL_resolve_option;
 
+typedef enum PLiSQL_rwopt
+{
+	PLISQL_RWOPT_UNKNOWN = 0,	/* applicability not determined yet */
+	PLISQL_RWOPT_NOPE,			/* cannot do any optimization */
+	PLISQL_RWOPT_TRANSFER,		/* transfer the old value into expr state */
+	PLISQL_RWOPT_INPLACE,		/* pass value as R/W to top-level function */
+} PLiSQL_rwopt;
 
 /**********************************************************************
  * Node and structure definitions
@@ -228,14 +235,25 @@ typedef struct PLiSQL_expr
 {
 	char	   *query;			/* query string, verbatim from function body */
 	RawParseMode parseMode;		/* raw_parser() mode to use */
+	struct PLiSQL_function *func;  /* function containing this expr */
+	struct PLiSQL_nsitem *ns;      /* namespace chain visible to this expr */
+
+	/*
+	 * These fields are used to help optimize assignments to expanded-datum
+	 * variables.  If this expression is the source of an assignment to a
+	 * simple variable, target_param holds that variable's dno (else it's -1),
+	 * and target_is_local indicates whether the target is declared inside the
+	 * closest exception block containing the assignment
+	 */
+	int			target_param;	/* dno of assign target, or -1 if none */
+	bool        target_is_local;        /* is it within nearest exception block? */
+
+	/*
+	 * Fields above are set during plpgsql parsing.  Remaining fields are left
+	 * as zeroes/NULLs until we first parse/plan the query.
+	 */
 	SPIPlanPtr	plan;			/* plan, or NULL if not made yet */
 	Bitmapset  *paramnos;		/* all dnos referenced by this query */
-
-	/* function containing this expr (not set until we first parse query) */
-	struct PLiSQL_function *func;
-
-	/* namespace chain visible to this expr */
-	struct PLiSQL_nsitem *ns;
 
 	/* fields for "simple expression" fast-path execution: */
 	Expr	   *expr_simple_expr;	/* NULL means not a simple expr */
@@ -244,14 +262,14 @@ typedef struct PLiSQL_expr
 	bool		expr_simple_mutable;	/* true if simple expr is mutable */
 
 	/*
-	 * These fields are used to optimize assignments to expanded-datum
-	 * variables.  If this expression is the source of an assignment to a
-	 * simple variable, target_param holds that variable's dno; else it's -1.
-	 * If we match a Param within expr_simple_expr to such a variable, that
-	 * Param's address is stored in expr_rw_param; then expression code
-	 * generation will allow the value for that Param to be passed read/write.
+	 * expr_rwopt tracks whether we have determined that assignment to a
+	 * read/write expanded object (stored in the target_param datum) can be
+	 * optimized by passing it to the expr as a read/write expanded-object
+	 * pointer.  If so, expr_rw_param identifies the specific Param that
+	 * should emit a read/write pointer; any others will emit read-only
+	 * pointers.
 	 */
-	int			target_param;	/* dno of assign target, or -1 if none */
+	PLiSQL_rwopt expr_rwopt;	/* can we apply R/W optimization? */
 	Param	   *expr_rw_param;	/* read/write Param within expr, if any */
 
 	/*
@@ -491,10 +509,13 @@ typedef struct PLiSQL_stmt
  */
 typedef struct PLiSQL_condition
 {
-	int			sqlerrstate;	/* SQLSTATE code */
+	int			sqlerrstate;	/* SQLSTATE code, or PLISQL_OTHERS */
 	char	   *condname;		/* condition name (for debugging) */
 	struct PLiSQL_condition *next;
 } PLiSQL_condition;
+
+/* This value mustn't match any possible output of MAKE_SQLSTATE() */
+#define PLISQL_OTHERS (-1)
 
 /*
  * EXCEPTION block
@@ -972,7 +993,7 @@ typedef struct PLiSQL_func_hashkey
 
 	/*
 	 * We include actual argument types in the hash key to support polymorphic
-	 * PLpgSQL functions.  Be careful that extra positions are zeroed!
+	 * PLiSQL functions.  Be careful that extra positions are zeroed!
 	 */
 	Oid			argtypes[FUNC_MAX_ARGS];
 } PLiSQL_func_hashkey;
@@ -1044,6 +1065,7 @@ typedef struct PLiSQL_function
 	/* data derived while parsing body */
 	unsigned int nstatements;	/* counter for assigning stmtids */
 	bool		requires_procedure_resowner;	/* contains CALL or DO? */
+	bool        has_exception_block;    /* contains BEGIN...EXCEPTION? */
 
 	/* these fields change when the function is used */
 	struct PLiSQL_execstate *cur_estate;
@@ -1230,6 +1252,18 @@ typedef struct PLwdatum
 	int			nname_used;		/* to find datum, we match idents n names */
 } PLwdatum;
 
+union YYSTYPE;
+#define YYLTYPE int
+#ifndef YY_TYPEDEF_YY_SCANNER_T
+#define YY_TYPEDEF_YY_SCANNER_T
+typedef void *yyscan_t;
+#endif
+typedef struct compile_error_callback_arg
+{
+	const char *proc_source;
+	yyscan_t	yyscanner;
+} compile_error_callback_arg;
+
 /**********************************************************************
  * Global variable declarations
  **********************************************************************/
@@ -1262,7 +1296,6 @@ extern int	plisql_extra_errors;
 extern bool plisql_check_syntax;
 extern bool plisql_DumpExecTree;
 
-extern PLiSQL_stmt_block *plisql_parse_result;
 
 extern int	plisql_nDatums;
 extern PLiSQL_datum **plisql_Datums;
@@ -1397,27 +1430,30 @@ extern PGDLLEXPORT const char *plisql_stmt_typename(PLiSQL_stmt *stmt);
 extern const char *plisql_getdiag_kindname(PLiSQL_getdiag_kind kind);
 extern void plisql_free_function_memory(PLiSQL_function *func,
 							int start_datum, int start_inlinefunc);
+extern void plisql_mark_local_assignment_targets(PLiSQL_function *func);
 extern void plisql_dumptree(PLiSQL_function *func, int start_datum, int start_subprocfunc); 
 
 /*
  * Scanner functions in pl_scanner.c
  */
-extern int	plisql_base_yylex(void);
-extern int	plisql_yylex(void);
-extern int	plisql_token_length(void);
-extern void plisql_push_back_token(int token);
+
+
+extern int	plisql_yylex(union YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner);
+extern int	plisql_token_length(yyscan_t yyscanner);
+extern void plisql_push_back_token(int token, union YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner);
 extern bool plisql_token_is_unreserved_keyword(int token);
 extern void plisql_append_source_text(StringInfo buf,
-									   int startlocation, int endlocation);
-extern int	plisql_peek(void);
+									   int startlocation, int endlocation,
+									   yyscan_t yyscanner);
+extern int	plisql_peek(yyscan_t yyscanner);
 extern void plisql_peek2(int *tok1_p, int *tok2_p, int *tok1_loc,
-						  int *tok2_loc);
-extern int	plisql_scanner_errposition(int location);
-pg_noreturn extern void plisql_yyerror(const char *message);
-extern int	plisql_location_to_lineno(int location);
-extern int	plisql_latest_lineno(void);
-extern void plisql_scanner_init(const char *str);
-extern void plisql_scanner_finish(void);
+						  int *tok2_loc, yyscan_t yyscanner);
+extern int	plisql_scanner_errposition(int location, yyscan_t yyscanner);
+pg_noreturn extern void plisql_yyerror(YYLTYPE *yyllocp, PLiSQL_stmt_block **plisql_parse_result_p, yyscan_t yyscanner, const char *message);
+extern int	plisql_location_to_lineno(int location, yyscan_t yyscanner);
+extern int	plisql_latest_lineno(yyscan_t yyscanner);
+extern yyscan_t plisql_scanner_init(const char *str);
+extern void plisql_scanner_finish(yyscan_t yyscanner);
 extern void *plisql_get_yylex_global_proper(void);
 extern void plisql_recover_yylex_global_proper(void *yylex_data);
 
@@ -1425,6 +1461,6 @@ extern void plisql_recover_yylex_global_proper(void *yylex_data);
 /*
  * Externs in gram.y
  */
-extern int	plisql_yyparse(void);
+extern int	plisql_yyparse(PLiSQL_stmt_block **plisql_parse_result_p, yyscan_t yyscanner);
 
-#endif							/* PLPGSQL_H */
+#endif							/* PLISQL_H */

@@ -5,6 +5,7 @@
 
 #include "btree_gist.h"
 #include "btree_utils_num.h"
+#include "utils/sortsupport.h"
 
 typedef struct boolkey
 {
@@ -12,9 +13,7 @@ typedef struct boolkey
 	bool		upper;
 } boolKEY;
 
-/*
-** bool ops
-*/
+/* GiST support functions */
 PG_FUNCTION_INFO_V1(gbt_bool_compress);
 PG_FUNCTION_INFO_V1(gbt_bool_fetch);
 PG_FUNCTION_INFO_V1(gbt_bool_union);
@@ -22,6 +21,7 @@ PG_FUNCTION_INFO_V1(gbt_bool_picksplit);
 PG_FUNCTION_INFO_V1(gbt_bool_consistent);
 PG_FUNCTION_INFO_V1(gbt_bool_penalty);
 PG_FUNCTION_INFO_V1(gbt_bool_same);
+PG_FUNCTION_INFO_V1(gbt_bool_sortsupport);
 
 static bool
 gbt_boolgt(const void *a, const void *b, FmgrInfo *flinfo)
@@ -82,9 +82,8 @@ static const gbtree_ninfo tinfo =
 
 
 /**************************************************
- * bool ops
+ * GiST support functions
  **************************************************/
-
 
 Datum
 gbt_bool_compress(PG_FUNCTION_ARGS)
@@ -124,7 +123,6 @@ gbt_bool_consistent(PG_FUNCTION_ARGS)
 									  GIST_LEAF(entry), &tinfo, fcinfo->flinfo));
 }
 
-
 Datum
 gbt_bool_union(PG_FUNCTION_ARGS)
 {
@@ -134,7 +132,6 @@ gbt_bool_union(PG_FUNCTION_ARGS)
 	*(int *) PG_GETARG_POINTER(1) = sizeof(boolKEY);
 	PG_RETURN_POINTER(gbt_num_union(out, entryvec, &tinfo, fcinfo->flinfo));
 }
-
 
 Datum
 gbt_bool_penalty(PG_FUNCTION_ARGS)
@@ -165,4 +162,25 @@ gbt_bool_same(PG_FUNCTION_ARGS)
 
 	*result = gbt_num_same((void *) b1, (void *) b2, &tinfo, fcinfo->flinfo);
 	PG_RETURN_POINTER(result);
+}
+
+static int
+gbt_bool_ssup_cmp(Datum x, Datum y, SortSupport ssup)
+{
+	boolKEY    *arg1 = (boolKEY *) DatumGetPointer(x);
+	boolKEY    *arg2 = (boolKEY *) DatumGetPointer(y);
+
+	/* for leaf items we expect lower == upper, so only compare lower */
+	return (int32) arg1->lower - (int32) arg2->lower;
+}
+
+Datum
+gbt_bool_sortsupport(PG_FUNCTION_ARGS)
+{
+	SortSupport ssup = (SortSupport) PG_GETARG_POINTER(0);
+
+	ssup->comparator = gbt_bool_ssup_cmp;
+	ssup->ssup_extra = NULL;
+
+	PG_RETURN_VOID();
 }

@@ -322,7 +322,7 @@ task:
         build
     EOF
 
-  build_script: su postgres -c 'ninja -C build -j${BUILD_JOBS}'
+  build_script: su postgres -c 'ninja -C build -j${BUILD_JOBS} ${MBUILD_TARGET}'
   upload_caches: ccache
 
   test_world_script: |
@@ -471,6 +471,7 @@ task:
             --enable-cassert --enable-injection-points --enable-debug \
             --enable-tap-tests --enable-nls \
             --with-segsize-blocks=6 \
+            --with-libnuma \
             --with-liburing \
             \
             ${LINUX_CONFIGURE_FEATURES} \
@@ -523,11 +524,21 @@ task:
             -Dllvm=disabled \
             --pkg-config-path /usr/lib/i386-linux-gnu/pkgconfig/ \
             -DPERL=perl5.36-i386-linux-gnu \
+            -Dlibnuma=disabled \
             build-32
         EOF
 
-      build_script: su postgres -c 'ninja -C build -j${BUILD_JOBS} ${MBUILD_TARGET}'
-      build_32_script: su postgres -c 'ninja -C build-32 -j${BUILD_JOBS} ${MBUILD_TARGET}'
+      build_script: |
+        su postgres <<-EOF
+          ninja -C build -j${BUILD_JOBS} ${MBUILD_TARGET}
+          ninja -C build -t missingdeps
+        EOF
+
+      build_32_script: |
+        su postgres <<-EOF
+          ninja -C build-32 -j${BUILD_JOBS} ${MBUILD_TARGET}
+          ninja -C build -t missingdeps
+        EOF
 
       upload_caches: ccache
 
@@ -727,6 +738,7 @@ task:
   build_script: |
     vcvarsall x64
     ninja -C build %MBUILD_TARGET%
+    ninja -C build -t missingdeps
 
   check_world_script: |
     vcvarsall x64

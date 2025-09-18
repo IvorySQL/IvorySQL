@@ -3946,6 +3946,59 @@ where t1.unique2 < 42 and t1.stringu1 > t2.stringu2;
 (1 row)
 
 -- variant that isn't quite a star-schema case
+explain (verbose, costs off)
+select ss1.d1 from
+  tenk1 as t1
+  inner join tenk1 as t2
+  on t1.tenthous = t2.ten
+  inner join
+    int8_tbl as i8
+    left join int4_tbl as i4
+      inner join (select 64::information_schema.cardinal_number as d1
+                  from tenk1 t3,
+                       lateral (select abs(t3.unique1) + random()) ss0(x)
+                  where t3.fivethous < 0) as ss1
+      on i4.f1 = ss1.d1
+    on i8.q1 = i4.f1
+  on t1.tenthous = ss1.d1
+where t1.unique1 < i4.f1;
+                                                                                                             QUERY PLAN                                                                                                              
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Nested Loop
+   Output: (64)::information_schema.cardinal_number
+   Join Filter: (t1.tenthous = ((64)::information_schema.cardinal_number)::pg_catalog.int4)
+   ->  Seq Scan on public.tenk1 t3
+         Output: t3.unique1, t3.unique2, t3.two, t3.four, t3.ten, t3.twenty, t3.hundred, t3.thousand, t3.twothousand, t3.fivethous, t3.tenthous, t3.odd, t3.even, t3.stringu1, t3.stringu2, t3.string4
+         Filter: (t3.fivethous < 0)
+   ->  Nested Loop
+         Output: t1.tenthous, t2.ten
+         ->  Nested Loop
+               Output: t1.tenthous, t2.ten, i4.f1
+               Join Filter: (t1.unique1 < i4.f1)
+               ->  Hash Join
+                     Output: t1.tenthous, t1.unique1, t2.ten
+                     Hash Cond: (t2.ten = t1.tenthous)
+                     ->  Seq Scan on public.tenk1 t2
+                           Output: t2.unique1, t2.unique2, t2.two, t2.four, t2.ten, t2.twenty, t2.hundred, t2.thousand, t2.twothousand, t2.fivethous, t2.tenthous, t2.odd, t2.even, t2.stringu1, t2.stringu2, t2.string4
+                     ->  Hash
+                           Output: t1.tenthous, t1.unique1
+                           ->  Nested Loop
+                                 Output: t1.tenthous, t1.unique1
+                                 ->  Subquery Scan on ss0
+                                       Output: ss0.x, (64)::information_schema.cardinal_number
+                                       ->  Result
+                                             Output: ((abs(t3.unique1))::pg_catalog.float8 + random())
+                                 ->  Index Scan using tenk1_thous_tenthous on public.tenk1 t1
+                                       Output: t1.unique1, t1.unique2, t1.two, t1.four, t1.ten, t1.twenty, t1.hundred, t1.thousand, t1.twothousand, t1.fivethous, t1.tenthous, t1.odd, t1.even, t1.stringu1, t1.stringu2, t1.string4
+                                       Index Cond: (t1.tenthous = (((64)::information_schema.cardinal_number))::pg_catalog.int4)
+               ->  Seq Scan on public.int4_tbl i4
+                     Output: i4.f1
+                     Filter: (i4.f1 = ((64)::information_schema.cardinal_number)::pg_catalog.int4)
+         ->  Seq Scan on public.int8_tbl i8
+               Output: i8.q1, i8.q2
+               Filter: (i8.q1 = ((64)::information_schema.cardinal_number)::pg_catalog.int4)
+(33 rows)
+
 select ss1.d1 from
   tenk1 as t1
   inner join tenk1 as t2
@@ -4034,6 +4087,195 @@ select * from
 ---+---+---
  1 | 2 | 2
 (1 row)
+
+-- This example demonstrates the folly of our old "have_dangerous_phv" logic
+begin;
+set local from_collapse_limit to 2;
+explain (verbose, costs off)
+select * from int8_tbl t1
+  left join
+    (select coalesce(t2.q1 + x, 0) from int8_tbl t2,
+       lateral (select t3.q1 as x from int8_tbl t3,
+                  lateral (select t2.q1, t3.q1 offset 0) s))
+  on true;
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Nested Loop Left Join
+   Output: t1.q1, t1.q2, (COALESCE(((t2.q1 + t3.q1))::number, '0'::number))
+   ->  Seq Scan on public.int8_tbl t1
+         Output: t1.q1, t1.q2
+   ->  Materialize
+         Output: (COALESCE(((t2.q1 + t3.q1))::number, '0'::number))
+         ->  Nested Loop
+               Output: COALESCE(((t2.q1 + t3.q1))::number, '0'::number)
+               ->  Seq Scan on public.int8_tbl t2
+                     Output: t2.q1, t2.q2
+               ->  Nested Loop
+                     Output: t3.q1
+                     ->  Seq Scan on public.int8_tbl t3
+                           Output: t3.q1, t3.q2
+                     ->  Result
+                           Output: NULL::pg_catalog.int8, NULL::pg_catalog.int8
+(16 rows)
+
+rollback;
+-- ... not that the initial replacement didn't have some bugs too
+begin;
+create temp table t(i int primary key);
+explain (verbose, costs off)
+select * from t t1
+    left join (select 1 as x, * from t t2(i2)) t2ss on t1.i = t2ss.i2
+    left join t t3(i3) on false
+    left join t t4(i4) on t4.i4 > t2ss.x;
+                        QUERY PLAN                        
+----------------------------------------------------------
+ Nested Loop Left Join
+   Output: t1.i, (1), t2.i2, i3, t4.i4
+   ->  Nested Loop Left Join
+         Output: t1.i, t2.i2, (1), i3
+         Join Filter: false
+         ->  Hash Left Join
+               Output: t1.i, t2.i2, (1)
+               Inner Unique: true
+               Hash Cond: (t1.i = t2.i2)
+               ->  Seq Scan on pg_temp.t t1
+                     Output: t1.i
+               ->  Hash
+                     Output: t2.i2, (1)
+                     ->  Seq Scan on pg_temp.t t2
+                           Output: t2.i2, 1
+         ->  Result
+               Output: i3
+               One-Time Filter: false
+   ->  Memoize
+         Output: t4.i4
+         Cache Key: (1)
+         Cache Mode: binary
+         ->  Index Only Scan using t_pkey on pg_temp.t t4
+               Output: t4.i4
+               Index Cond: (t4.i4 > (1))
+(25 rows)
+
+explain (verbose, costs off)
+select * from
+     (select k from
+         (select i, coalesce(i, j) as k from
+             (select i from t union all select 0)
+             join (select 1 as j limit 1) on i = j)
+         right join (select 2 as x) on true
+         join (select 3 as y) on i is not null
+     ),
+     lateral (select k as kl limit 1);
+                                          QUERY PLAN                                          
+----------------------------------------------------------------------------------------------
+ Nested Loop
+   Output: COALESCE((t.i)::number, ((1))::number), ((COALESCE((t.i)::number, ((1))::number)))
+   ->  Limit
+         Output: 1
+         ->  Result
+               Output: 1
+   ->  Nested Loop
+         Output: t.i, ((COALESCE((t.i)::number, ((1))::number)))
+         ->  Result
+               Output: t.i, COALESCE((t.i)::number, ((1))::number)
+               ->  Append
+                     ->  Index Only Scan using t_pkey on pg_temp.t
+                           Output: t.i
+                           Index Cond: (t.i = (1))
+                     ->  Result
+                           Output: 0
+                           One-Time Filter: ((1) = 0)
+         ->  Limit
+               Output: ((COALESCE((t.i)::number, ((1))::number)))
+               ->  Result
+                     Output: (COALESCE((t.i)::number, ((1))::number))
+(21 rows)
+
+rollback;
+-- PHVs containing SubLinks are quite tricky to get right
+explain (verbose, costs off)
+select *
+from int8_tbl i8
+  inner join
+    (select (select true) as x
+       from int4_tbl i4, lateral (select i4.f1 as y limit 1) ss1
+       where i4.f1 = 0) ss2 on true
+  right join (select false as z) ss3 on true,
+  lateral (select i8.q2 as q2l where x limit 1) ss4
+where i8.q2 = 123;
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Nested Loop
+   Output: i8.q1, i8.q2, (InitPlan 1).col1, false, (i8.q2)
+   InitPlan 1
+     ->  Result
+           Output: true
+   InitPlan 2
+     ->  Result
+           Output: true
+   ->  Seq Scan on public.int4_tbl i4
+         Output: i4.f1
+         Filter: (i4.f1 = 0)
+   ->  Nested Loop
+         Output: i8.q1, i8.q2, (i8.q2)
+         ->  Subquery Scan on ss1
+               Output: ss1.y, (InitPlan 1).col1
+               ->  Limit
+                     Output: NULL::pg_catalog.int4
+                     ->  Result
+                           Output: NULL::pg_catalog.int4
+         ->  Nested Loop
+               Output: i8.q1, i8.q2, (i8.q2)
+               ->  Seq Scan on public.int8_tbl i8
+                     Output: i8.q1, i8.q2
+                     Filter: (i8.q2 = 123)
+               ->  Limit
+                     Output: (i8.q2)
+                     ->  Result
+                           Output: i8.q2
+                           One-Time Filter: ((InitPlan 1).col1)
+(29 rows)
+
+explain (verbose, costs off)
+select *
+from int8_tbl i8
+  inner join
+    (select (select true) as x
+       from int4_tbl i4, lateral (select 1 as y limit 1) ss1
+       where i4.f1 = 0) ss2 on true
+  right join (select false as z) ss3 on true,
+  lateral (select i8.q2 as q2l where x limit 1) ss4
+where i8.q2 = 123;
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Nested Loop
+   Output: i8.q1, i8.q2, (InitPlan 1).col1, false, (i8.q2)
+   InitPlan 1
+     ->  Result
+           Output: true
+   InitPlan 2
+     ->  Result
+           Output: true
+   ->  Limit
+         Output: NULL::pg_catalog.int4
+         ->  Result
+               Output: NULL::pg_catalog.int4
+   ->  Nested Loop
+         Output: i8.q1, i8.q2, (i8.q2)
+         ->  Seq Scan on public.int4_tbl i4
+               Output: i4.f1, (InitPlan 1).col1
+               Filter: (i4.f1 = 0)
+         ->  Nested Loop
+               Output: i8.q1, i8.q2, (i8.q2)
+               ->  Seq Scan on public.int8_tbl i8
+                     Output: i8.q1, i8.q2
+                     Filter: (i8.q2 = 123)
+               ->  Limit
+                     Output: (i8.q2)
+                     ->  Result
+                           Output: i8.q2
+                           One-Time Filter: ((InitPlan 1).col1)
+(27 rows)
 
 -- Test proper handling of appendrel PHVs during useless-RTE removal
 explain (costs off)
@@ -7153,7 +7395,8 @@ on true;
                      ->  Seq Scan on emp1 t4
 (7 rows)
 
--- Check that SJE removes the whole PHVs correctly
+-- Try PHV, which could potentially be removed completely by SJE, but that's
+-- not implemented yet.
 explain (verbose, costs off)
 select 1 from emp1 t1 left join
     ((select 1 as x, * from emp1 t2) s1 inner join
@@ -7203,6 +7446,37 @@ on true;
          Output: t3.id, t1.id
 (7 rows)
 
+-- This is a degenerate case of PHV usage: it is evaluated and needed inside
+-- a baserel scan operation that the SJE removes.  The PHV in this test should
+-- be in the filter of parameterized Index Scan: the replace_nestloop_params()
+-- code will detect if the placeholder list doesn't have a reference to this
+-- parameter.
+--
+-- NOTE:  enable_hashjoin and enable_mergejoin must be disabled.
+CREATE TABLE tbl_phv(x int, y int PRIMARY KEY);
+CREATE INDEX tbl_phv_idx ON tbl_phv(x);
+INSERT INTO tbl_phv (x, y)
+  SELECT gs, gs FROM generate_series(1,100) AS gs;
+VACUUM ANALYZE tbl_phv;
+EXPLAIN (COSTS OFF, VERBOSE)
+SELECT 1 FROM tbl_phv t1 LEFT JOIN
+  (SELECT 1 extra, x, y FROM tbl_phv tl) t3 JOIN
+    (SELECT y FROM tbl_phv tr) t4
+  ON t4.y = t3.y
+ON true WHERE t3.extra IS NOT NULL AND t3.x = t1.x % 2;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Nested Loop
+   Output: 1
+   ->  Seq Scan on public.tbl_phv t1
+         Output: t1.x, t1.y
+   ->  Index Scan using tbl_phv_idx on public.tbl_phv tr
+         Output: tr.x, tr.y
+         Index Cond: (tr.x = (t1.x % 2))
+         Filter: (1 IS NOT NULL)
+(8 rows)
+
+DROP TABLE IF EXISTS tbl_phv;
 -- Check that SJE replaces join clauses involving the removed rel correctly
 explain (costs off)
 select * from emp1 t1
@@ -7231,7 +7505,21 @@ WHERE t1.id = emp1.id RETURNING emp1.id, emp1.code, t1.code;
                Index Cond: (id = emp1.id)
 (5 rows)
 
-INSERT INTO emp1 VALUES (1, 1), (2, 1);
+-- Check that SJE correctly replaces relations in OR-clauses
+EXPLAIN (COSTS OFF)
+SELECT * FROM emp1 t1
+   INNER JOIN emp1 t2 ON t1.id = t2.id
+    LEFT JOIN emp1 t3 ON t1.code = 1 AND (t2.code = t3.code OR t2.code = 1);
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Nested Loop Left Join
+   Join Filter: ((t2.code = 1) AND ((t2.code = t3.code) OR (t2.code = 1)))
+   ->  Seq Scan on emp1 t2
+   ->  Materialize
+         ->  Seq Scan on emp1 t3
+(5 rows)
+
+    INSERT INTO emp1 VALUES (1, 1), (2, 1);
 WITH t1 AS (SELECT * FROM emp1)
 UPDATE emp1 SET code = t1.code + 1 FROM t1
 WHERE t1.id = emp1.id RETURNING emp1.id, emp1.code, t1.code;

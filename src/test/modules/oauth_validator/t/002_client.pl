@@ -26,7 +26,7 @@ if (!$ENV{PG_TEST_EXTRA} || $ENV{PG_TEST_EXTRA} !~ /\boauth\b/)
 
 my $node = PostgreSQL::Test::Cluster->new('primary');
 $node->init;
-$node->append_conf('postgresql.conf', "log_connections = on\n");
+$node->append_conf('postgresql.conf', "log_connections = all\n");
 $node->append_conf('postgresql.conf',
 	"oauth_validator_libraries = 'validator'\n");
 $node->start;
@@ -47,8 +47,7 @@ local all test oauth issuer="$issuer" scope="$scope"
 });
 $node->reload;
 
-my ($log_start, $log_end);
-$log_start = $node->wait_for_log(qr/reloading configuration files/);
+my $log_start = $node->wait_for_log(qr/reloading configuration files/);
 
 $ENV{PGOAUTHDEBUG} = "UNSAFE";
 
@@ -111,7 +110,7 @@ if ($ENV{with_libcurl} ne 'yes')
 		"fails without custom hook installed",
 		flags => ["--no-hook"],
 		expected_stderr =>
-		  qr/no custom OAuth flows are available, and libpq was not built with libcurl support/
+		  qr/no OAuth flows are available \(try installing the libpq-oauth package\)/
 	);
 }
 
@@ -121,6 +120,9 @@ test(
 	"connect_timeout interrupts hung client flow",
 	flags => ["--hang-forever"],
 	expected_stderr => qr/failed: timeout expired/);
+
+# Remove the timeout for later tests.
+$common_connstr = "$base_connstr oauth_issuer=$issuer oauth_client_id=myID";
 
 # Test various misbehaviors of the client hook.
 my @cases = (

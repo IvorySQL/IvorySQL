@@ -9,7 +9,7 @@
 #include "access/xact.h"
 #include "plpy_elog.h"
 #include "plpy_subxactobject.h"
-#include "plpython.h"
+#include "plpy_util.h"
 #include "utils/memutils.h"
 
 List	   *explicit_subtransactions = NIL;
@@ -46,9 +46,9 @@ static PyType_Slot PLySubtransaction_slots[] =
 static PyType_Spec PLySubtransaction_spec =
 {
 	.name = "PLySubtransaction",
-		.basicsize = sizeof(PLySubtransactionObject),
-		.flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
-		.slots = PLySubtransaction_slots,
+	.basicsize = sizeof(PLySubtransactionObject),
+	.flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+	.slots = PLySubtransaction_slots,
 };
 
 static PyTypeObject *PLy_SubtransactionType;

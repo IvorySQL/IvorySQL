@@ -36,7 +36,7 @@
 
 #include "common/logging.h"
 #include "fe_utils/psqlscan.h"
-
+#include "mb/pg_wchar.h"
 #include "libpq-fe.h"
 }
 

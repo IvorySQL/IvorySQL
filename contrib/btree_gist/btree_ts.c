@@ -10,6 +10,7 @@
 #include "utils/fmgrprotos.h"
 #include "utils/timestamp.h"
 #include "utils/float.h"
+#include "utils/sortsupport.h"
 
 typedef struct
 {
@@ -17,9 +18,7 @@ typedef struct
 	Timestamp	upper;
 } tsKEY;
 
-/*
-** timestamp ops
-*/
+/* GiST support functions */
 PG_FUNCTION_INFO_V1(gbt_ts_compress);
 PG_FUNCTION_INFO_V1(gbt_tstz_compress);
 PG_FUNCTION_INFO_V1(gbt_ts_fetch);
@@ -31,6 +30,7 @@ PG_FUNCTION_INFO_V1(gbt_tstz_consistent);
 PG_FUNCTION_INFO_V1(gbt_tstz_distance);
 PG_FUNCTION_INFO_V1(gbt_ts_penalty);
 PG_FUNCTION_INFO_V1(gbt_ts_same);
+PG_FUNCTION_INFO_V1(gbt_ts_sortsupport);
 
 
 #ifdef USE_FLOAT8_BYVAL
@@ -39,6 +39,8 @@ PG_FUNCTION_INFO_V1(gbt_ts_same);
 #define TimestampGetDatumFast(X) PointerGetDatum(&(X))
 #endif
 
+
+/* define for comparison */
 
 static bool
 gbt_tsgt(const void *a, const void *b, FmgrInfo *flinfo)
@@ -95,7 +97,6 @@ gbt_tslt(const void *a, const void *b, FmgrInfo *flinfo)
 											TimestampGetDatumFast(*bb)));
 }
 
-
 static int
 gbt_tskey_cmp(const void *a, const void *b, FmgrInfo *flinfo)
 {
@@ -125,7 +126,6 @@ gbt_ts_dist(const void *a, const void *b, FmgrInfo *flinfo)
 											  TimestampGetDatumFast(*bb)));
 	return fabs(INTERVAL_TO_SEC(i));
 }
-
 
 static const gbtree_ninfo tinfo =
 {
@@ -190,11 +190,9 @@ tstz_dist(PG_FUNCTION_ARGS)
 	PG_RETURN_INTERVAL_P(abs_interval(r));
 }
 
-
 /**************************************************
- * timestamp ops
+ * GiST support functions
  **************************************************/
-
 
 static inline Timestamp
 tstz_to_ts_gmt(TimestampTz ts)
@@ -211,7 +209,6 @@ gbt_ts_compress(PG_FUNCTION_ARGS)
 
 	PG_RETURN_POINTER(gbt_num_compress(entry, &tinfo));
 }
-
 
 Datum
 gbt_tstz_compress(PG_FUNCTION_ARGS)
@@ -397,4 +394,27 @@ gbt_ts_same(PG_FUNCTION_ARGS)
 
 	*result = gbt_num_same((void *) b1, (void *) b2, &tinfo, fcinfo->flinfo);
 	PG_RETURN_POINTER(result);
+}
+
+static int
+gbt_ts_ssup_cmp(Datum x, Datum y, SortSupport ssup)
+{
+	tsKEY	   *arg1 = (tsKEY *) DatumGetPointer(x);
+	tsKEY	   *arg2 = (tsKEY *) DatumGetPointer(y);
+
+	/* for leaf items we expect lower == upper, so only compare lower */
+	return DatumGetInt32(DirectFunctionCall2(timestamp_cmp,
+											 TimestampGetDatumFast(arg1->lower),
+											 TimestampGetDatumFast(arg2->lower)));
+}
+
+Datum
+gbt_ts_sortsupport(PG_FUNCTION_ARGS)
+{
+	SortSupport ssup = (SortSupport) PG_GETARG_POINTER(0);
+
+	ssup->comparator = gbt_ts_ssup_cmp;
+	ssup->ssup_extra = NULL;
+
+	PG_RETURN_VOID();
 }

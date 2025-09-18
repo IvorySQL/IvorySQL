@@ -683,7 +683,8 @@ PrepareInvalidationState(void)
 {
 	TransInvalidationInfo *myInfo;
 
-	Assert(IsTransactionState());
+	/* PrepareToInvalidateCacheTuple() needs relcache */
+	AssertCouldGetRelation();
 	/* Can't queue transactional message while collecting inplace messages. */
 	Assert(inplaceInvalInfo == NULL);
 
@@ -752,7 +753,7 @@ PrepareInplaceInvalidationState(void)
 {
 	InvalidationInfo *myInfo;
 
-	Assert(IsTransactionState());
+	AssertCouldGetRelation();
 	/* limit of one inplace update under assembly */
 	Assert(inplaceInvalInfo == NULL);
 
@@ -928,6 +929,12 @@ InvalidateSystemCaches(void)
 void
 AcceptInvalidationMessages(void)
 {
+#ifdef USE_ASSERT_CHECKING
+	/* message handlers shall access catalogs only during transactions */
+	if (IsTransactionState())
+		AssertCouldGetRelation();
+#endif
+
 	ReceiveSharedInvalidMessages(LocalExecuteInvalidationMessage,
 								 InvalidateSystemCaches);
 
@@ -1200,7 +1207,7 @@ AtEOXact_Inval(bool isCommit)
 	/* Must be at top of stack */
 	Assert(transInvalInfo->my_level == 1 && transInvalInfo->parent == NULL);
 
-	INJECTION_POINT("AtEOXact_Inval-with-transInvalInfo");
+	INJECTION_POINT("transaction-end-process-inval", NULL);
 
 	if (isCommit)
 	{
@@ -1435,6 +1442,9 @@ CacheInvalidateHeapTupleCommon(Relation relation,
 	Oid			tupleRelId;
 	Oid			databaseId;
 	Oid			relationId;
+
+	/* PrepareToInvalidateCacheTuple() needs relcache */
+	AssertCouldGetRelation();
 
 	/* Do nothing during bootstrap */
 	if (IsBootstrapProcessingMode())
@@ -1744,7 +1754,7 @@ CacheInvalidateSmgr(RelFileLocatorBackend rlocator)
 
 	/* verify optimization stated above stays valid */
 	StaticAssertStmt(MAX_BACKENDS_BITS <= 23,
-					 "MAX_BACKEND_BITS is too big for inval.c");
+					 "MAX_BACKENDS_BITS is too big for inval.c");
 
 	msg.sm.id = SHAREDINVALSMGR_ID;
 	msg.sm.backend_hi = rlocator.backend >> 16;

@@ -33,10 +33,8 @@
 #include "optimizer/paths.h"
 #include "optimizer/prep.h"
 #include "optimizer/restrictinfo.h"
-#include "utils/array.h"
 #include "utils/lsyscache.h"
 #include "utils/selfuncs.h"
-#include "utils/syscache.h"
 
 
 /* XXX see PartCollMatchesExprColl */
@@ -3307,7 +3305,6 @@ match_orclause_to_indexcol(PlannerInfo *root,
 	BoolExpr   *orclause = (BoolExpr *) rinfo->orclause;
 	Node	   *indexExpr = NULL;
 	List	   *consts = NIL;
-	Node	   *arrayNode = NULL;
 	ScalarArrayOpExpr *saopexpr = NULL;
 	Oid			matchOpno = InvalidOid;
 	IndexClause *iclause;
@@ -3478,63 +3475,8 @@ match_orclause_to_indexcol(PlannerInfo *root,
 		return NULL;
 	}
 
-	/*
-	 * Assemble an array from the list of constants.  It seems more profitable
-	 * to build a const array.  But in the presence of other nodes, we don't
-	 * have a specific value here and must employ an ArrayExpr instead.
-	 */
-	if (haveNonConst)
-	{
-		ArrayExpr  *arrayExpr = makeNode(ArrayExpr);
-
-		/* array_collid will be set by parse_collate.c */
-		arrayExpr->element_typeid = consttype;
-		arrayExpr->array_typeid = arraytype;
-		arrayExpr->multidims = false;
-		arrayExpr->elements = consts;
-		arrayExpr->location = -1;
-
-		arrayNode = (Node *) arrayExpr;
-	}
-	else
-	{
-		int16		typlen;
-		bool		typbyval;
-		char		typalign;
-		Datum	   *elems;
-		int			i = 0;
-		ArrayType  *arrayConst;
-
-		get_typlenbyvalalign(consttype, &typlen, &typbyval, &typalign);
-
-		elems = (Datum *) palloc(sizeof(Datum) * list_length(consts));
-		foreach_node(Const, value, consts)
-		{
-			Assert(!value->constisnull);
-
-			elems[i++] = value->constvalue;
-		}
-
-		arrayConst = construct_array(elems, i, consttype,
-									 typlen, typbyval, typalign);
-		arrayNode = (Node *) makeConst(arraytype, -1, inputcollid,
-									   -1, PointerGetDatum(arrayConst),
-									   false, false);
-
-		pfree(elems);
-		list_free(consts);
-	}
-
-	/* Build the SAOP expression node */
-	saopexpr = makeNode(ScalarArrayOpExpr);
-	saopexpr->opno = matchOpno;
-	saopexpr->opfuncid = get_opcode(matchOpno);
-	saopexpr->hashfuncid = InvalidOid;
-	saopexpr->negfuncid = InvalidOid;
-	saopexpr->useOr = true;
-	saopexpr->inputcollid = inputcollid;
-	saopexpr->args = list_make2(indexExpr, arrayNode);
-	saopexpr->location = -1;
+	saopexpr = make_SAOP_expr(matchOpno, indexExpr, consttype, inputcollid,
+							  inputcollid, consts, haveNonConst);
 
 	/*
 	 * Finally, build an IndexClause based on the SAOP node.  Use
@@ -3816,12 +3758,12 @@ match_pathkeys_to_index(IndexOptInfo *index, List *pathkeys,
 	{
 		PathKey    *pathkey = (PathKey *) lfirst(lc1);
 		bool		found = false;
-		ListCell   *lc2;
+		EquivalenceMemberIterator it;
+		EquivalenceMember *member;
 
 
 		/* Pathkey must request default sort order for the target opfamily */
-		if (pathkey->pk_strategy != BTLessStrategyNumber ||
-			pathkey->pk_nulls_first)
+		if (pathkey->pk_cmptype != COMPARE_LT || pathkey->pk_nulls_first)
 			return;
 
 		/* If eclass is volatile, no hope of using an indexscan */
@@ -3836,9 +3778,10 @@ match_pathkeys_to_index(IndexOptInfo *index, List *pathkeys,
 		 * be considered to match more than one pathkey list, which is OK
 		 * here.  See also get_eclass_for_sort_expr.)
 		 */
-		foreach(lc2, pathkey->pk_eclass->ec_members)
+		setup_eclass_member_iterator(&it, pathkey->pk_eclass,
+									 index->rel->relids);
+		while ((member = eclass_member_iterator_next(&it)) != NULL)
 		{
-			EquivalenceMember *member = (EquivalenceMember *) lfirst(lc2);
 			int			indexcol;
 
 			/* No possibility of match if it references other relations */

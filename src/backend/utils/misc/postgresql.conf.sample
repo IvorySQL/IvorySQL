@@ -97,6 +97,7 @@
 #password_encryption = scram-sha-256	# scram-sha-256 or md5
 #scram_iterations = 4096
 #md5_password_warnings = on
+#oauth_validator_libraries = ''	# comma-separated list of trusted validator modules
 
 # GSSAPI using Kerberos
 #krb_server_keyfile = 'FILE:${sysconfdir}/krb5.keytab'
@@ -120,9 +121,6 @@
 #ssl_dh_params_file = ''
 #ssl_passphrase_command = ''
 #ssl_passphrase_command_supports_reload = off
-
-# OAuth
-#oauth_validator_libraries = ''	# comma-separated list of trusted validator modules
 
 
 #------------------------------------------------------------------------------
@@ -179,6 +177,8 @@
 
 #temp_file_limit = -1			# limits per-process temp file space
 					# in kilobytes, or -1 for no limit
+
+#file_copy_method = copy		# copy, clone (if supported by OS)
 
 #max_notify_queue_pages = 1048576	# limits the number of SLRU pages allocated
 					# for NOTIFY / LISTEN queue
@@ -427,6 +427,7 @@
 #enable_tidscan = on
 #enable_group_by_reordering = on
 #enable_distinct_reordering = on
+#enable_self_join_elimination = on
 
 # - Planner Cost Constants -
 
@@ -603,6 +604,7 @@
 					#   %d = database name
 					#   %r = remote host and port
 					#   %h = remote host
+					#   %L = local address
 					#   %b = backend type
 					#   %p = process ID
 					#   %P = process ID of parallel group leader
@@ -622,7 +624,7 @@
 					#   %% = '%'
 					# e.g. '<%u%%%d> '
 #log_lock_waits = off			# log lock waits >= deadlock_timeout
-#log_lock_failure = off		# log lock failures
+#log_lock_failures = off		# log lock failures
 #log_recovery_conflict_waits = off	# log standby recovery conflict waits
 					# >= deadlock_timeout
 #log_parameter_max_length = -1		# when logging statements, limit logged

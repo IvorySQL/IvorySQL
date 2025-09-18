@@ -62,7 +62,7 @@
 #include <time.h>
 
 #ifdef HAVE_SHM_OPEN
-#include "sys/mman.h"
+#include <sys/mman.h>
 #endif
 
 #include "access/xlog_internal.h"
@@ -1171,15 +1171,14 @@ test_config_settings(void)
 	 * for a given max_connections value.  Note that it has been carefully
 	 * crafted to provide specific values for the associated values in
 	 * trial_conns.  We want it to return autovacuum_worker_slots's initial
-	 * default value (16) for the maximum value in trial_conns (100), and we
-	 * want it to return close to the minimum value we'd consider (3, which is
-	 * the default of autovacuum_max_workers) for the minimum value in
-	 * trial_conns (25).
+	 * default value (16) for the maximum value in trial_conns[] (100), while
+	 * it mustn't return less than the default value of autovacuum_max_workers
+	 * (3) for the minimum value in trial_conns[].
 	 */
 #define AV_SLOTS_FOR_CONNS(nconns)	((nconns) / 6)
 
 	static const int trial_conns[] = {
-		100, 50, 40, 30, 25
+		100, 50, 40, 30, 20
 	};
 	static const int trial_bufs[] = {
 		16384, 8192, 4096, 3584, 3072, 2560, 2048, 1536,
@@ -1228,13 +1227,6 @@ test_config_settings(void)
 	n_connections = trial_conns[i];
 
 	printf("%d\n", n_connections);
-
-	/*
-	 * We chose the default for autovacuum_worker_slots during the
-	 * max_connections tests above, but we print a progress message anyway.
-	 */
-	printf(_("selecting default \"autovacuum_worker_slots\" ... %d\n"),
-		   n_av_slots);
 
 	printf(_("selecting default \"shared_buffers\" ... "));
 	fflush(stdout);
@@ -1711,9 +1703,9 @@ bootstrap_template1(void)
 			 backend_exec, caseswitchmode, boot_options, extra_options, pg_strcasecmp(dbmode, "pg") ? "-y oracle" : "-y pg");
 	appendPQExpBuffer(&cmd, " -X %d", wal_segment_size_mb * (1024 * 1024));
 	if (data_checksums)
-		appendPQExpBuffer(&cmd, " -k");
+		appendPQExpBufferStr(&cmd, " -k");
 	if (debug)
-		appendPQExpBuffer(&cmd, " -d 5");
+		appendPQExpBufferStr(&cmd, " -d 5");
 
 
 	PG_CMD_OPEN(cmd.data);

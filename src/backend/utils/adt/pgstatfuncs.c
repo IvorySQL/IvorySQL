@@ -640,10 +640,10 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 				values[28] = BoolGetDatum(false);	/* GSS credentials not
 													 * delegated */
 			}
-			if (beentry->st_query_id == 0)
+			if (beentry->st_query_id == INT64CONST(0))
 				nulls[30] = true;
 			else
-				values[30] = UInt64GetDatum(beentry->st_query_id);
+				values[30] = Int64GetDatum(beentry->st_query_id);
 		}
 		else
 		{
@@ -1510,7 +1510,7 @@ pg_stat_io_build_tuples(ReturnSetInfo *rsinfo,
 							bktype_stats->bytes[io_obj][io_context][io_op];
 
 						/* Convert to numeric */
-						snprintf(buf, sizeof buf, UINT64_FORMAT, byte);
+						snprintf(buf, sizeof buf, INT64_FORMAT, byte);
 						values[byte_idx] = DirectFunctionCall3(numeric_in,
 															   CStringGetDatum(buf),
 															   ObjectIdGetDatum(0),

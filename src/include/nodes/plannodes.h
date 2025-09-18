@@ -53,10 +53,10 @@ typedef struct PlannedStmt
 	CmdType		commandType;
 
 	/* query identifier (copied from Query) */
-	uint64		queryId;
+	int64		queryId;
 
 	/* plan identifier (can be set by plugins) */
-	uint64		planId;
+	int64		planId;
 
 	/* is it insert|update|delete|merge RETURNING? */
 	bool		hasReturning;
@@ -104,13 +104,6 @@ typedef struct PlannedStmt
 	/* rtable indexes of target relations for INSERT/UPDATE/DELETE/MERGE */
 	/* integer list of RT indexes, or NIL */
 	List	   *resultRelations;
-
-	/*
-	 * rtable indexes of first target relation in each ModifyTable node in the
-	 * plan for INSERT/UPDATE/DELETE/MERGE
-	 */
-	/* integer list of RT indexes, or NIL */
-	List	   *firstResultRels;
 
 	/* list of AppendRelInfo nodes */
 	List	   *appendRelations;

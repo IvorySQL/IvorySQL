@@ -26,7 +26,6 @@
 #include "partitioning/partdesc.h"
 #include "partitioning/partprune.h"
 #include "rewrite/rewriteManip.h"
-#include "storage/lmgr.h"
 #include "utils/acl.h"
 #include "utils/lsyscache.h"
 #include "utils/partcache.h"
@@ -191,7 +190,7 @@ static void InitPartitionPruneContext(PartitionPruneContext *context,
 									  PartitionKey partkey,
 									  PlanState *planstate,
 									  ExprContext *econtext);
-static void InitExecPartitionPruneContexts(PartitionPruneState *prunstate,
+static void InitExecPartitionPruneContexts(PartitionPruneState *prunestate,
 										   PlanState *parent_plan,
 										   Bitmapset *initially_valid_subplans,
 										   int n_total_subplans);
@@ -1771,14 +1770,13 @@ adjust_partition_colnos_using_map(List *colnos, AttrMap *attrMap)
  * ExecDoInitialPruning:
  *		Perform runtime "initial" pruning, if necessary, to determine the set
  *		of child subnodes that need to be initialized during ExecInitNode() for
- *		all plan nodes that contain a PartitionPruneInfo.  This also locks the
- *		leaf partitions whose subnodes will be initialized if needed.
+ *		all plan nodes that contain a PartitionPruneInfo.
  *
  * ExecInitPartitionExecPruning:
  *		Updates the PartitionPruneState found at given part_prune_index in
  *		EState.es_part_prune_states for use during "exec" pruning if required.
  *		Also returns the set of subplans to initialize that would be stored at
- *		part_prune_index in EState.es_part_prune_result by
+ *		part_prune_index in EState.es_part_prune_results by
  *		ExecDoInitialPruning().  Maps in PartitionPruneState are updated to
  *		account for initial pruning possibly having eliminated some of the
  *		subplans.
@@ -1798,8 +1796,7 @@ adjust_partition_colnos_using_map(List *colnos, AttrMap *attrMap)
  * ExecDoInitialPruning
  *		Perform runtime "initial" pruning, if necessary, to determine the set
  *		of child subnodes that need to be initialized during ExecInitNode() for
- *		plan nodes that support partition pruning.  This also locks the leaf
- *		partitions whose subnodes will be initialized if needed.
+ *		plan nodes that support partition pruning.
  *
  * This function iterates over each PartitionPruneInfo entry in
  * estate->es_part_prune_infos. For each entry, it creates a PartitionPruneState
@@ -1821,9 +1818,7 @@ adjust_partition_colnos_using_map(List *colnos, AttrMap *attrMap)
 void
 ExecDoInitialPruning(EState *estate)
 {
-	PlannedStmt *stmt = estate->es_plannedstmt;
 	ListCell   *lc;
-	List	   *locked_relids = NIL;
 
 	foreach(lc, estate->es_part_prune_infos)
 	{
@@ -1849,67 +1844,10 @@ ExecDoInitialPruning(EState *estate)
 		else
 			validsubplan_rtis = all_leafpart_rtis;
 
-		if (ExecShouldLockRelations(estate))
-		{
-			int			rtindex = -1;
-
-			while ((rtindex = bms_next_member(validsubplan_rtis,
-											  rtindex)) >= 0)
-			{
-				RangeTblEntry *rte = exec_rt_fetch(rtindex, estate);
-
-				Assert(rte->rtekind == RTE_RELATION &&
-					   rte->rellockmode != NoLock);
-				LockRelationOid(rte->relid, rte->rellockmode);
-				locked_relids = lappend_int(locked_relids, rtindex);
-			}
-		}
 		estate->es_unpruned_relids = bms_add_members(estate->es_unpruned_relids,
 													 validsubplan_rtis);
 		estate->es_part_prune_results = lappend(estate->es_part_prune_results,
 												validsubplans);
-	}
-
-	/*
-	 * Lock the first result relation of each ModifyTable node, even if it was
-	 * pruned.  This is required for ExecInitModifyTable(), which keeps its
-	 * first result relation if all other result relations have been pruned,
-	 * because some executor paths (e.g., in nodeModifyTable.c and
-	 * execPartition.c) rely on there being at least one result relation.
-	 *
-	 * There's room for improvement here --- we actually only need to do this
-	 * if all other result relations of the ModifyTable node were pruned, but
-	 * we don't have an easy way to tell that here.
-	 */
-	if (stmt->resultRelations && ExecShouldLockRelations(estate))
-	{
-		foreach(lc, stmt->firstResultRels)
-		{
-			Index		firstResultRel = lfirst_int(lc);
-
-			if (!bms_is_member(firstResultRel, estate->es_unpruned_relids))
-			{
-				RangeTblEntry *rte = exec_rt_fetch(firstResultRel, estate);
-
-				Assert(rte->rtekind == RTE_RELATION && rte->rellockmode != NoLock);
-				LockRelationOid(rte->relid, rte->rellockmode);
-				locked_relids = lappend_int(locked_relids, firstResultRel);
-			}
-		}
-	}
-
-	/*
-	 * Release the useless locks if the plan won't be executed.  This is the
-	 * same as what CheckCachedPlan() in plancache.c does.
-	 */
-	if (!ExecPlanStillValid(estate))
-	{
-		foreach(lc, locked_relids)
-		{
-			RangeTblEntry *rte = exec_rt_fetch(lfirst_int(lc), estate);
-
-			UnlockRelationOid(rte->relid, rte->rellockmode);
-		}
 	}
 }
 
@@ -1983,8 +1921,8 @@ ExecInitPartitionExecPruning(PlanState *planstate,
 	 * account for any that were removed due to initial pruning; refer to the
 	 * condition in InitExecPartitionPruneContexts() that is used to determine
 	 * whether to do this.  If no exec pruning needs to be done, we would thus
-	 * leave the maps to be in an invalid invalid state, but that's ok since
-	 * that data won't be consulted again (cf initial Assert in
+	 * leave the maps to be in an invalid state, but that's ok since that data
+	 * won't be consulted again (cf initial Assert in
 	 * ExecFindMatchingSubPlans).
 	 */
 	if (prunestate->do_exec_prune)
@@ -2109,7 +2047,7 @@ CreatePartitionPruneState(EState *estate, PartitionPruneInfo *pruneinfo,
 			 */
 			partrel = ExecGetRangeTableRelation(estate, pinfo->rtindex, false);
 
-			/* Remember for InitExecPartitionPruneContext(). */
+			/* Remember for InitExecPartitionPruneContexts(). */
 			pprune->partrel = partrel;
 
 			partkey = RelationGetPartitionKey(partrel);

@@ -377,17 +377,11 @@ endif
 ifdef REGRESS
 # things created by various check targets
 	rm -rf $(pg_regress_clean_files)
-ifeq ($(PORTNAME), win)
-	rm -f regress.def
-endif
 endif # REGRESS
 
 ifdef ORA_REGRESS
 # things created by various check targets
 	rm -rf $(oracle_regress_clean_files)
-ifeq ($(PORTNAME), win)
-	rm -f regress.def
-endif
 endif # ORA_REGRESS
 
 ifdef TAP_TESTS

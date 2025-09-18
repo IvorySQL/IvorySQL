@@ -195,7 +195,7 @@ pgstat_report_checksum_failures_in_db(Oid dboid, int failurecount)
 		return;
 	}
 
-	pgstat_lock_entry(entry_ref, false);
+	(void) pgstat_lock_entry(entry_ref, false);
 
 	sharedent = (PgStatShared_Database *) entry_ref->shared_stats;
 	sharedent->stats.checksum_failures += failurecount;
@@ -421,8 +421,8 @@ pgstat_reset_database_timestamp(Oid dboid, TimestampTz ts)
 /*
  * Flush out pending stats for the entry
  *
- * If nowait is true, this function returns false if lock could not
- * immediately acquired, otherwise true is returned.
+ * If nowait is true and the lock could not be immediately acquired, returns
+ * false without flushing the entry.  Otherwise returns true.
  */
 bool
 pgstat_database_flush_cb(PgStat_EntryRef *entry_ref, bool nowait)

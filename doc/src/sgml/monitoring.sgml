@@ -169,6 +169,11 @@ postgres   27093  0.0  0.0  30096  2752 ?        Ss   11:34   0:00 postgres: ser
   </para>
 
   <para>
+   The parameter <xref linkend="guc-track-cost-delay-timing"/> enables
+   monitoring of cost-based vacuum delay.
+  </para>
+
+  <para>
    The parameter <xref linkend="guc-track-counts"/> controls whether
    cumulative statistics are collected about table and index accesses.
   </para>
@@ -1156,7 +1161,7 @@ description | Waiting for a newly initialized WAL file to reach durable storage
    <note>
     <para>
      Extensions can add <literal>Extension</literal>,
-     <literal>InjectionPoint</literal>. and <literal>LWLock</literal> events
+     <literal>InjectionPoint</literal>, and <literal>LWLock</literal> events
      to the lists shown in <xref linkend="wait-event-extension-table"/> and
      <xref linkend="wait-event-lwlock-table"/>. In some cases, the name
      of an <literal>LWLock</literal> assigned by an extension will not be
@@ -4061,7 +4066,8 @@ description | Waiting for a newly initialized WAL file to reach durable storage
        <structfield>total_vacuum_time</structfield> <type>double precision</type>
       </para>
       <para>
-       Total time this table has been manually vacuumed, in milliseconds
+       Total time this table has been manually vacuumed, in milliseconds.
+       (This includes the time spent sleeping due to cost-based delays.)
       </para></entry>
      </row>
 
@@ -4071,7 +4077,8 @@ description | Waiting for a newly initialized WAL file to reach durable storage
       </para>
       <para>
        Total time this table has been vacuumed by the autovacuum daemon,
-       in milliseconds
+       in milliseconds. (This includes the time spent sleeping due to
+       cost-based delays.)
       </para></entry>
      </row>
 
@@ -4080,7 +4087,8 @@ description | Waiting for a newly initialized WAL file to reach durable storage
        <structfield>total_analyze_time</structfield> <type>double precision</type>
       </para>
       <para>
-       Total time this table has been manually analyzed, in milliseconds
+       Total time this table has been manually analyzed, in milliseconds.
+       (This includes the time spent sleeping due to cost-based delays.)
       </para></entry>
      </row>
 
@@ -4090,7 +4098,8 @@ description | Waiting for a newly initialized WAL file to reach durable storage
       </para>
       <para>
        Total time this table has been analyzed by the autovacuum daemon,
-       in milliseconds
+       in milliseconds. (This includes the time spent sleeping due to
+       cost-based delays.)
       </para></entry>
      </row>
     </tbody>
@@ -4263,7 +4272,10 @@ description | Waiting for a newly initialized WAL file to reach durable storage
      <replaceable>column_name</replaceable> =
      <replaceable>value2</replaceable> ...</literal> construct, though only
     when the optimizer transforms the construct into an equivalent
-    multi-valued array representation.
+    multi-valued array representation.  Similarly, when B-tree index scans use
+    the skip scan optimization, an index search is performed each time the
+    scan is repositioned to the next index leaf page that might have matching
+    tuples (see <xref linkend="indexes-multicolumn"/>).
    </para>
   </note>
   <tip>

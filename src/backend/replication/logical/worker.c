@@ -109,13 +109,6 @@
  * If ever a user needs to be aware of the tri-state value, they can fetch it
  * from the pg_subscription catalog (see column subtwophasestate).
  *
- * We don't allow to toggle two_phase option of a subscription because it can
- * lead to an inconsistent replica. Consider, initially, it was on and we have
- * received some prepare then we turn it off, now at commit time the server
- * will send the entire transaction data along with the commit. With some more
- * analysis, we can allow changing this option from off to on but not sure if
- * that alone would be useful.
- *
  * Finally, to avoid problems mentioned in previous paragraphs from any
  * subsequent (not READY) tablesyncs (need to toggle two_phase option from 'on'
  * to 'off' and then again back to 'on') there is a restriction for
@@ -413,6 +406,8 @@ static inline void reset_apply_error_context_info(void);
 
 static TransApplyAction get_transaction_apply_action(TransactionId xid,
 													 ParallelApplyWorkerInfo **winfo);
+
+static void replorigin_reset(int code, Datum arg);
 
 /*
  * Form the origin name for the subscription.
@@ -2457,7 +2452,7 @@ apply_handle_insert(StringInfo s)
 	{
 		ResultRelInfo *relinfo = edata->targetRelInfo;
 
-		ExecOpenIndices(relinfo, true);
+		ExecOpenIndices(relinfo, false);
 		apply_handle_insert_internal(edata, relinfo, remoteslot);
 		ExecCloseIndices(relinfo);
 	}
@@ -2680,7 +2675,7 @@ apply_handle_update_internal(ApplyExecutionData *edata,
 	MemoryContext oldctx;
 
 	EvalPlanQualInit(&epqstate, estate, NULL, NIL, -1, NIL);
-	ExecOpenIndices(relinfo, true);
+	ExecOpenIndices(relinfo, false);
 
 	found = FindReplTupleInLocalRel(edata, localrel,
 									&relmapentry->remoterel,
@@ -4516,6 +4511,14 @@ start_apply(XLogRecPtr origin_startpos)
 	}
 	PG_CATCH();
 	{
+		/*
+		 * Reset the origin state to prevent the advancement of origin
+		 * progress if we fail to apply. Otherwise, this will result in
+		 * transaction loss as that transaction won't be sent again by the
+		 * server.
+		 */
+		replorigin_reset(0, (Datum) 0);
+
 		if (MySubscription->disableonerr)
 			DisableSubscriptionAndExit();
 		else
@@ -4616,8 +4619,16 @@ run_apply_worker()
 		walrcv_startstreaming(LogRepWorkerWalRcvConn, &options);
 
 		StartTransactionCommand();
+
+		/*
+		 * Updating pg_subscription might involve TOAST table access, so
+		 * ensure we have a valid snapshot.
+		 */
+		PushActiveSnapshot(GetTransactionSnapshot());
+
 		UpdateTwoPhaseState(MySubscription->oid, LOGICALREP_TWOPHASE_STATE_ENABLED);
 		MySubscription->twophasestate = LOGICALREP_TWOPHASE_STATE_ENABLED;
+		PopActiveSnapshot();
 		CommitTransactionCommand();
 	}
 	else
@@ -4833,7 +4844,15 @@ DisableSubscriptionAndExit(void)
 
 	/* Disable the subscription */
 	StartTransactionCommand();
+
+	/*
+	 * Updating pg_subscription might involve TOAST table access, so ensure we
+	 * have a valid snapshot.
+	 */
+	PushActiveSnapshot(GetTransactionSnapshot());
+
 	DisableSubscription(MySubscription->oid);
+	PopActiveSnapshot();
 	CommitTransactionCommand();
 
 	/* Ensure we remove no-longer-useful entry for worker's start time */
@@ -4938,6 +4957,12 @@ clear_subscription_skip_lsn(XLogRecPtr finish_lsn)
 	}
 
 	/*
+	 * Updating pg_subscription might involve TOAST table access, so ensure we
+	 * have a valid snapshot.
+	 */
+	PushActiveSnapshot(GetTransactionSnapshot());
+
+	/*
 	 * Protect subskiplsn of pg_subscription from being concurrently updated
 	 * while clearing it.
 	 */
@@ -4995,6 +5020,8 @@ clear_subscription_skip_lsn(XLogRecPtr finish_lsn)
 	heap_freetuple(tup);
 	table_close(rel, NoLock);
 
+	PopActiveSnapshot();
+
 	if (started_tx)
 		CommitTransactionCommand();
 }
@@ -5004,22 +5031,11 @@ void
 apply_error_callback(void *arg)
 {
 	ApplyErrorCallbackArg *errarg = &apply_error_callback_arg;
-	int			elevel;
 
 	if (apply_error_callback_arg.command == 0)
 		return;
 
 	Assert(errarg->origin_name);
-
-	elevel = geterrlevel();
-
-	/*
-	 * Reset the origin state to prevent the advancement of origin progress if
-	 * we fail to apply. Otherwise, this will result in transaction loss as
-	 * that transaction won't be sent again by the server.
-	 */
-	if (elevel >= ERROR)
-		replorigin_reset(0, (Datum) 0);
 
 	if (errarg->rel == NULL)
 	{

@@ -52,7 +52,7 @@
 
 /* GUC variables */
 int			max_locks_per_xact; /* used to set the lock table size */
-bool		log_lock_failure = false;
+bool		log_lock_failures = false;
 
 #define NLOCKENTS() \
 	mul_size(max_locks_per_xact, add_size(MaxBackends, max_prepared_xacts))
@@ -211,9 +211,12 @@ int			FastPathLockGroupsPerBackend = 0;
  *
  * The selected constant (49157) is a prime not too close to 2^k, and it's
  * small enough to not cause overflows (in 64-bit).
+ *
+ * We can assume that FastPathLockGroupsPerBackend is a power-of-two per
+ * InitializeFastPathLocks().
  */
 #define FAST_PATH_REL_GROUP(rel) \
-	(((uint64) (rel) * 49157) % FastPathLockGroupsPerBackend)
+	(((uint64) (rel) * 49157) & (FastPathLockGroupsPerBackend - 1))
 
 /*
  * Given the group/slot indexes, calculate the slot index in the whole array

@@ -1491,7 +1491,7 @@ DescribeQuery(const char *query, double *elapsed_msec)
 				char	   *escname;
 
 				if (i > 0)
-					appendPQExpBufferStr(&buf, ",");
+					appendPQExpBufferChar(&buf, ',');
 
 				name = PQfname(result, i);
 				escname = PQescapeLiteral(pset.db, name, strlen(name));
@@ -1546,7 +1546,7 @@ DescribeQuery(const char *query, double *elapsed_msec)
  *
  * If a synchronisation point is found, we can stop discarding results as
  * the pipeline will switch back to a clean state.  If no synchronisation
- * point is available, we need to stop when ther are no more pending
+ * point is available, we need to stop when there are no more pending
  * results, otherwise, calling PQgetResult() would block.
  */
 static PGresult *
@@ -1563,6 +1563,23 @@ discardAbortedPipelineResults(void)
 			 * Found a synchronisation point.  The sync counter is decremented
 			 * by the caller.
 			 */
+			return res;
+		}
+		else if (res != NULL && result_status == PGRES_FATAL_ERROR)
+		{
+			/*
+			 * Found a FATAL error sent by the backend, and we cannot recover
+			 * from this state.  Instead, return the last result and let the
+			 * outer loop handle it.
+			 */
+			PGresult   *fatal_res PG_USED_FOR_ASSERTS_ONLY;
+
+			/*
+			 * Fetch result to consume the end of the current query being
+			 * processed.
+			 */
+			fatal_res = PQgetResult(pset.db);
+			Assert(fatal_res == NULL);
 			return res;
 		}
 		else if (res == NULL)
@@ -1936,6 +1953,33 @@ ExecQueryAndProcessResults(const char *query,
 			result_status == PGRES_COPY_OUT)
 		{
 			FILE	   *copy_stream = NULL;
+
+			if (PQpipelineStatus(pset.db) != PQ_PIPELINE_OFF)
+			{
+				/*
+				 * Running COPY within a pipeline can break the protocol
+				 * synchronisation in multiple ways, and psql shows its limits
+				 * when it comes to tracking this information.
+				 *
+				 * While in COPY mode, the backend process ignores additional
+				 * Sync messages and will not send the matching ReadyForQuery
+				 * expected by the frontend.
+				 *
+				 * Additionally, libpq automatically sends a Sync with the
+				 * Copy message, creating an unexpected synchronisation point.
+				 * A failure during COPY would leave the pipeline in an
+				 * aborted state while the backend would be in a clean state,
+				 * ready to process commands.
+				 *
+				 * Improving those issues would require modifications in how
+				 * libpq handles pipelines and COPY.  Hence, for the time
+				 * being, we forbid the use of COPY within a pipeline,
+				 * aborting the connection to avoid an inconsistent state on
+				 * psql side if trying to use a COPY command.
+				 */
+				pg_log_info("COPY in a pipeline is not supported, aborting connection");
+				exit(EXIT_BADCONN);
+			}
 
 			/*
 			 * For COPY OUT, direct the output to the default place (probably
@@ -2671,7 +2715,7 @@ clean_extended_state(void)
 
 	switch (pset.send_mode)
 	{
-		case PSQL_SEND_EXTENDED_CLOSE:	/* \close */
+		case PSQL_SEND_EXTENDED_CLOSE:	/* \close_prepared */
 			free(pset.stmtName);
 			break;
 		case PSQL_SEND_EXTENDED_PARSE:	/* \parse */

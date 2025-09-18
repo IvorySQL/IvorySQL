@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2024, PostgreSQL Global Development Group
+# Copyright (c) 2021-2025, PostgreSQL Global Development Group
 
 # Test collations, in particular nondeterministic ones
 # (only works with ICU)
@@ -17,7 +17,7 @@ if ($ENV{with_icu} ne 'yes')
 my $node_publisher = PostgreSQL::Test::Cluster->new('publisher');
 $node_publisher->init(
 	allows_streaming => 'logical',
-	extra => [ '--locale=C', '--encoding=UTF8' ]);
+	extra            => [ '--locale=C', '--encoding=UTF8' ]);
 $node_publisher->start;
 
 my $node_subscriber = PostgreSQL::Test::Cluster->new('subscriber');

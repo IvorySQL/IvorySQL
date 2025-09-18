@@ -41,6 +41,7 @@
 
 #include "common/file_utils.h"
 #include "compress_io.h"
+#include "dumputils.h"
 #include "parallel.h"
 #include "pg_backup_utils.h"
 
@@ -156,41 +157,8 @@ InitArchiveFmt_Directory(ArchiveHandle *AH)
 
 	if (AH->mode == archModeWrite)
 	{
-		struct stat st;
-		bool		is_empty = false;
-
 		/* we accept an empty existing directory */
-		if (stat(ctx->directory, &st) == 0 && S_ISDIR(st.st_mode))
-		{
-			DIR		   *dir = opendir(ctx->directory);
-
-			if (dir)
-			{
-				struct dirent *d;
-
-				is_empty = true;
-				while (errno = 0, (d = readdir(dir)))
-				{
-					if (strcmp(d->d_name, ".") != 0 && strcmp(d->d_name, "..") != 0)
-					{
-						is_empty = false;
-						break;
-					}
-				}
-
-				if (errno)
-					pg_fatal("could not read directory \"%s\": %m",
-							 ctx->directory);
-
-				if (closedir(dir))
-					pg_fatal("could not close directory \"%s\": %m",
-							 ctx->directory);
-			}
-		}
-
-		if (!is_empty && mkdir(ctx->directory, 0700) < 0)
-			pg_fatal("could not create directory \"%s\": %m",
-					 ctx->directory);
+		create_or_open_dir(ctx->directory);
 	}
 	else
 	{							/* Read Mode */
@@ -444,10 +412,15 @@ _LoadLOs(ArchiveHandle *AH, TocEntry *te)
 
 	/*
 	 * Note: before archive v16, there was always only one BLOBS TOC entry,
-	 * now there can be multiple.  We don't need to worry what version we are
-	 * reading though, because tctx->filename should be correct either way.
+	 * now there can be multiple.  Furthermore, although the actual filename
+	 * was always "blobs.toc" before v16, the value of tctx->filename did not
+	 * match that before commit 548e50976 fixed it.  For simplicity we assume
+	 * it must be "blobs.toc" in all archives before v16.
 	 */
-	setFilePath(AH, tocfname, tctx->filename);
+	if (AH->version < K_VERS_1_16)
+		setFilePath(AH, tocfname, "blobs.toc");
+	else
+		setFilePath(AH, tocfname, tctx->filename);
 
 	CFH = ctx->LOsTocFH = InitDiscoverCompressFileHandle(tocfname, PG_BINARY_R);
 

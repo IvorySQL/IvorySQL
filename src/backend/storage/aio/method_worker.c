@@ -42,6 +42,8 @@
 #include "storage/latch.h"
 #include "storage/proc.h"
 #include "tcop/tcopprot.h"
+#include "utils/injection_point.h"
+#include "utils/memdebug.h"
 #include "utils/ps_status.h"
 #include "utils/wait_event.h"
 
@@ -320,7 +322,7 @@ pgaio_worker_die(int code, Datum arg)
 }
 
 /*
- * Register the worker in shared memory, assign MyWorkerId and register a
+ * Register the worker in shared memory, assign MyIoWorkerId and register a
  * shutdown callback to release registration.
  */
 static void
@@ -459,7 +461,12 @@ IoWorkerMain(const void *startup_data, size_t startup_data_len)
 		int			nwakeups = 0;
 		int			worker;
 
-		/* Try to get a job to do. */
+		/*
+		 * Try to get a job to do.
+		 *
+		 * The lwlock acquisition also provides the necessary memory barrier
+		 * to ensure that we don't see an outdated data in the handle.
+		 */
 		LWLockAcquire(AioWorkerSubmissionQueueLock, LW_EXCLUSIVE);
 		if ((io_index = pgaio_worker_submission_queue_consume()) == UINT32_MAX)
 		{
@@ -524,10 +531,28 @@ IoWorkerMain(const void *startup_data, size_t startup_data_len)
 			 * To be able to exercise the reopen-fails path, allow injection
 			 * points to trigger a failure at this point.
 			 */
-			pgaio_io_call_inj(ioh, "AIO_WORKER_AFTER_REOPEN");
+			INJECTION_POINT("aio-worker-after-reopen", ioh);
 
 			error_errno = 0;
 			error_ioh = NULL;
+
+			/*
+			 * As part of IO completion the buffer will be marked as NOACCESS,
+			 * until the buffer is pinned again - which never happens in io
+			 * workers. Therefore the next time there is IO for the same
+			 * buffer, the memory will be considered inaccessible. To avoid
+			 * that, explicitly allow access to the memory before reading data
+			 * into it.
+			 */
+#ifdef USE_VALGRIND
+			{
+				struct iovec *iov;
+				uint16		iov_length = pgaio_io_get_iovec_length(ioh, &iov);
+
+				for (int i = 0; i < iov_length; i++)
+					VALGRIND_MAKE_MEM_UNDEFINED(iov[i].iov_base, iov[i].iov_len);
+			}
+#endif
 
 			/*
 			 * We don't expect this to ever fail with ERROR or FATAL, no need

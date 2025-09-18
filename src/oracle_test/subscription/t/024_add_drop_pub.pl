@@ -91,17 +91,29 @@ is($result, qq(20|1|10), 'check initial data is copied to subscriber');
 $node_publisher->safe_psql('postgres', "CREATE TABLE tab_3 (a int)");
 $node_subscriber->safe_psql('postgres', "CREATE TABLE tab_3 (a int)");
 
+my $oldpid = $node_publisher->safe_psql('postgres',
+	"SELECT pid FROM pg_stat_replication WHERE application_name = 'tap_sub' AND state = 'streaming';"
+);
+
 # Set the subscription with a missing publication
 $node_subscriber->safe_psql('postgres',
 	"ALTER SUBSCRIPTION tap_sub SET PUBLICATION tap_pub_3");
 
+# Wait for the walsender to restart after altering the subscription
+$node_publisher->poll_query_until('postgres',
+	"SELECT pid != $oldpid FROM pg_stat_replication WHERE application_name = 'tap_sub' AND state = 'streaming';"
+  )
+  or die
+  "Timed out while waiting for apply worker to restart after altering the subscription";
+
 my $offset = -s $node_publisher->logfile;
 
-$node_publisher->safe_psql('postgres',"INSERT INTO tab_3 values(1)");
+$node_publisher->safe_psql('postgres', "INSERT INTO tab_3 values(1)");
 
 # Verify that a warning is logged.
 $node_publisher->wait_for_log(
-	qr/WARNING: ( [A-Z0-9]+:)? skipped loading publication: tap_pub_3/, $offset);
+	qr/WARNING: ( [A-Z0-9]+:)? skipped loading publication "tap_pub_3"/,
+	$offset);
 
 $node_publisher->safe_psql('postgres',
 	"CREATE PUBLICATION tap_pub_3 FOR TABLE tab_3");
@@ -117,10 +129,11 @@ $node_publisher->wait_for_catchup('tap_sub');
 
 # Verify that the insert operation gets replicated to subscriber after
 # publication is created.
-$result = $node_subscriber->safe_psql('postgres',
-	"SELECT * FROM tab_3");
-is($result, qq(1
-2), 'check that the incremental data is replicated after the publication is created');
+$result = $node_subscriber->safe_psql('postgres', "SELECT * FROM tab_3");
+is( $result, qq(1
+2),
+	'check that the incremental data is replicated after the publication is created'
+);
 
 # shutdown
 $node_subscriber->stop('fast');

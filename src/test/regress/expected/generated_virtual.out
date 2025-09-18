@@ -553,15 +553,11 @@ CREATE TABLE gtest4 (
     a int,
     b double_int GENERATED ALWAYS AS ((a * 2, a * 3)) VIRTUAL
 );
-INSERT INTO gtest4 VALUES (1), (6);
-SELECT * FROM gtest4;
- a |    b    
----+---------
- 1 | (2,3)
- 6 | (12,18)
-(2 rows)
-
-DROP TABLE gtest4;
+ERROR:  virtual generated column "b" cannot have a user-defined type
+DETAIL:  Virtual generated columns that make use of user-defined types are not yet supported.
+--INSERT INTO gtest4 VALUES (1), (6);
+--SELECT * FROM gtest4;
+--DROP TABLE gtest4;
 DROP TYPE double_int;
 -- using tableoid is allowed
 CREATE TABLE gtest_tableoid (
@@ -604,9 +600,13 @@ INSERT INTO gtest11 VALUES (1, 10), (2, 20);
 GRANT SELECT (a, c) ON gtest11 TO regress_user11;
 CREATE FUNCTION gf1(a int) RETURNS int AS $$ SELECT a * 3 $$ IMMUTABLE LANGUAGE SQL;
 REVOKE ALL ON FUNCTION gf1(int) FROM PUBLIC;
-CREATE TABLE gtest12 (a int PRIMARY KEY, b int, c int GENERATED ALWAYS AS (gf1(b)) VIRTUAL);
-INSERT INTO gtest12 VALUES (1, 10), (2, 20);
-GRANT SELECT (a, c), INSERT ON gtest12 TO regress_user11;
+CREATE TABLE gtest12 (a int PRIMARY KEY, b int, c int GENERATED ALWAYS AS (gf1(b)) VIRTUAL);  -- fails, user-defined function
+ERROR:  generation expression uses user-defined function
+LINE 1: ...nt PRIMARY KEY, b int, c int GENERATED ALWAYS AS (gf1(b)) VI...
+                                                             ^
+DETAIL:  Virtual generated columns that make use of user-defined functions are not yet supported.
+--INSERT INTO gtest12 VALUES (1, 10), (2, 20);
+--GRANT SELECT (a, c), INSERT ON gtest12 TO regress_user11;
 SET ROLE regress_user11;
 SELECT a, b FROM gtest11;  -- not allowed
 ERROR:  permission denied for table gtest11
@@ -619,15 +619,12 @@ SELECT a, c FROM gtest11;  -- allowed
 
 SELECT gf1(10);  -- not allowed
 ERROR:  permission denied for function gf1
-INSERT INTO gtest12 VALUES (3, 30), (4, 40);  -- allowed (does not actually invoke the function)
-SELECT a, c FROM gtest12;  -- currently not allowed because of function permissions, should arguably be allowed
-ERROR:  permission denied for function gf1
+--INSERT INTO gtest12 VALUES (3, 30), (4, 40);  -- allowed (does not actually invoke the function)
+--SELECT a, c FROM gtest12;  -- currently not allowed because of function permissions, should arguably be allowed
 RESET ROLE;
-DROP FUNCTION gf1(int);  -- fail
-ERROR:  cannot drop function gf1(integer) because other objects depend on it
-DETAIL:  column c of table gtest12 depends on function gf1(integer)
-HINT:  Use DROP ... CASCADE to drop the dependent objects too.
-DROP TABLE gtest11, gtest12;
+--DROP FUNCTION gf1(int);  -- fail
+DROP TABLE gtest11;
+--DROP TABLE gtest12;
 DROP FUNCTION gf1(int);
 DROP USER regress_user11;
 -- check constraints
@@ -637,10 +634,10 @@ INSERT INTO gtest20 (a) VALUES (30);  -- violates constraint
 ERROR:  new row for relation "gtest20" violates check constraint "gtest20_b_check"
 DETAIL:  Failing row contains (30, virtual).
 ALTER TABLE gtest20 ALTER COLUMN b SET EXPRESSION AS (a * 100);  -- violates constraint (currently not supported)
-ERROR:  ALTER TABLE / SET EXPRESSION is not supported for virtual generated columns on tables with check constraints
+ERROR:  ALTER TABLE / SET EXPRESSION is not supported for virtual generated columns in tables with check constraints
 DETAIL:  Column "b" of relation "gtest20" is a virtual generated column.
 ALTER TABLE gtest20 ALTER COLUMN b SET EXPRESSION AS (a * 3);  -- ok (currently not supported)
-ERROR:  ALTER TABLE / SET EXPRESSION is not supported for virtual generated columns on tables with check constraints
+ERROR:  ALTER TABLE / SET EXPRESSION is not supported for virtual generated columns in tables with check constraints
 DETAIL:  Column "b" of relation "gtest20" is a virtual generated column.
 CREATE TABLE gtest20a (a int PRIMARY KEY, b int GENERATED ALWAYS AS (a * 2) VIRTUAL);
 INSERT INTO gtest20a (a) VALUES (10);
@@ -800,6 +797,23 @@ CREATE TABLE gtest24r (a int PRIMARY KEY, b gtestdomain1range GENERATED ALWAYS A
 ERROR:  virtual generated column "b" cannot have a domain type
 --INSERT INTO gtest24r (a) VALUES (4);  -- ok
 --INSERT INTO gtest24r (a) VALUES (6);  -- error
+CREATE TABLE gtest24at (a int PRIMARY KEY);
+ALTER TABLE gtest24at ADD COLUMN b gtestdomain1 GENERATED ALWAYS AS (a * 2) VIRTUAL;  -- error
+ERROR:  virtual generated column "b" cannot have a domain type
+CREATE TABLE gtest24ata (a int PRIMARY KEY, b int GENERATED ALWAYS AS (a * 2) VIRTUAL);
+ALTER TABLE gtest24ata ALTER COLUMN b TYPE gtestdomain1;  -- error
+ERROR:  virtual generated column "b" cannot have a domain type
+CREATE DOMAIN gtestdomainnn AS int CHECK (VALUE IS NOT NULL);
+CREATE TABLE gtest24nn (a int, b gtestdomainnn GENERATED ALWAYS AS (a * 2) VIRTUAL);
+ERROR:  virtual generated column "b" cannot have a domain type
+--INSERT INTO gtest24nn (a) VALUES (4);  -- ok
+--INSERT INTO gtest24nn (a) VALUES (NULL);  -- error
+-- using user-defined type not yet supported
+CREATE TABLE gtest24xxx (a gtestdomain1, b gtestdomain1, c int GENERATED ALWAYS AS (greatest(a, b)) VIRTUAL);  -- error
+ERROR:  generation expression uses user-defined type
+LINE 1: ...main1, b gtestdomain1, c int GENERATED ALWAYS AS (greatest(a...
+                                                             ^
+DETAIL:  Virtual generated columns that make use of user-defined types are not yet supported.
 -- typed tables (currently not supported)
 CREATE TYPE gtest_type AS (f1 integer, f2 text, f3 bigint);
 CREATE TABLE gtest28 OF gtest_type (f1 WITH OPTIONS GENERATED ALWAYS AS (f2 *2) VIRTUAL);
@@ -1465,7 +1479,8 @@ create table gtest32 (
   a int primary key,
   b int generated always as (a * 2),
   c int generated always as (10 + 10),
-  d int generated always as (coalesce(a, 100))
+  d int generated always as (coalesce(a, 100)),
+  e int
 );
 insert into gtest32 values (1), (2);
 analyze gtest32;
@@ -1549,41 +1564,44 @@ select t2.* from gtest32 t1 left join gtest32 t2 on false;
                       QUERY PLAN                      
 ------------------------------------------------------
  Nested Loop Left Join
-   Output: a, (a * 2), (20), (COALESCE(a, 100))
+   Output: a, (a * 2), (20), (COALESCE(a, 100)), e
    Join Filter: false
    ->  Seq Scan on generated_virtual_tests.gtest32 t1
-         Output: t1.a, t1.b, t1.c, t1.d
+         Output: t1.a, t1.b, t1.c, t1.d, t1.e
    ->  Result
-         Output: a, 20, COALESCE(a, 100)
+         Output: a, e, 20, COALESCE(a, 100)
          One-Time Filter: false
 (8 rows)
 
 select t2.* from gtest32 t1 left join gtest32 t2 on false;
- a | b | c | d 
----+---+---+---
-   |   |   |  
-   |   |   |  
+ a | b | c | d | e 
+---+---+---+---+---
+   |   |   |   |  
+   |   |   |   |  
 (2 rows)
 
 explain (verbose, costs off)
-select * from gtest32 t group by grouping sets (a, b, c, d) having c = 20;
+select * from gtest32 t group by grouping sets (a, b, c, d, e) having c = 20;
                      QUERY PLAN                      
 -----------------------------------------------------
  HashAggregate
-   Output: a, ((a * 2)), (20), (COALESCE(a, 100))
+   Output: a, ((a * 2)), (20), (COALESCE(a, 100)), e
    Hash Key: t.a
    Hash Key: (t.a * 2)
    Hash Key: 20
    Hash Key: COALESCE(t.a, 100)
+   Hash Key: t.e
    Filter: ((20) = 20)
    ->  Seq Scan on generated_virtual_tests.gtest32 t
-         Output: a, (a * 2), 20, COALESCE(a, 100)
-(9 rows)
+         Output: a, (a * 2), 20, COALESCE(a, 100), e
+(10 rows)
 
-select * from gtest32 t group by grouping sets (a, b, c, d) having c = 20;
- a | b | c  | d 
----+---+----+---
-   |   | 20 |  
+select * from gtest32 t group by grouping sets (a, b, c, d, e) having c = 20;
+ a | b | c  | d | e 
+---+---+----+---+---
+   |   | 20 |   |  
 (1 row)
 
+-- Ensure that the virtual generated columns in ALTER COLUMN TYPE USING expression are expanded
+alter table gtest32 alter column e type bigint using b;
 drop table gtest32;

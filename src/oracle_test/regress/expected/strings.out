@@ -148,17 +148,17 @@ SELECT U&'d\0061t\+000061' AS U&"d\0061t\+000061";
 ERROR:  unsafe use of string constant with Unicode escapes
 LINE 1: SELECT U&'d\0061t\+000061' AS U&"d\0061t\+000061";
                ^
-DETAIL:  String constants with Unicode escapes cannot be used when "standard_conforming_strings" is off.
+DETAIL:  String constants with Unicode escapes cannot be used when standard_conforming_strings is off.
 SELECT U&'d!0061t\+000061' UESCAPE '!' AS U&"d*0061t\+000061" UESCAPE '*';
 ERROR:  unsafe use of string constant with Unicode escapes
 LINE 1: SELECT U&'d!0061t\+000061' UESCAPE '!' AS U&"d*0061t\+000061...
                ^
-DETAIL:  String constants with Unicode escapes cannot be used when "standard_conforming_strings" is off.
+DETAIL:  String constants with Unicode escapes cannot be used when standard_conforming_strings is off.
 SELECT U&' \' UESCAPE '!' AS "tricky";
 ERROR:  unsafe use of string constant with Unicode escapes
 LINE 1: SELECT U&' \' UESCAPE '!' AS "tricky";
                ^
-DETAIL:  String constants with Unicode escapes cannot be used when "standard_conforming_strings" is off.
+DETAIL:  String constants with Unicode escapes cannot be used when standard_conforming_strings is off.
 SELECT 'tricky' AS U&"\" UESCAPE '!';
    \    
 --------
@@ -169,17 +169,17 @@ SELECT U&'wrong: \061';
 ERROR:  unsafe use of string constant with Unicode escapes
 LINE 1: SELECT U&'wrong: \061';
                ^
-DETAIL:  String constants with Unicode escapes cannot be used when "standard_conforming_strings" is off.
+DETAIL:  String constants with Unicode escapes cannot be used when standard_conforming_strings is off.
 SELECT U&'wrong: \+0061';
 ERROR:  unsafe use of string constant with Unicode escapes
 LINE 1: SELECT U&'wrong: \+0061';
                ^
-DETAIL:  String constants with Unicode escapes cannot be used when "standard_conforming_strings" is off.
+DETAIL:  String constants with Unicode escapes cannot be used when standard_conforming_strings is off.
 SELECT U&'wrong: +0061' UESCAPE '+';
 ERROR:  unsafe use of string constant with Unicode escapes
 LINE 1: SELECT U&'wrong: +0061' UESCAPE '+';
                ^
-DETAIL:  String constants with Unicode escapes cannot be used when "standard_conforming_strings" is off.
+DETAIL:  String constants with Unicode escapes cannot be used when standard_conforming_strings is off.
 RESET standard_conforming_strings;
 -- bytea
 SET bytea_output TO hex;
@@ -611,6 +611,73 @@ SELECT 'abcdefg' SIMILAR TO '_bcd%' ESCAPE NULL AS null;
 SELECT 'abcdefg' SIMILAR TO '_bcd#%' ESCAPE '##' AS error;
 ERROR:  invalid escape string
 HINT:  Escape string must be empty or one character.
+-- Characters that should be left alone in character classes when a
+-- SIMILAR TO regexp pattern is converted to POSIX style.
+-- Underscore "_"
+EXPLAIN (COSTS OFF) SELECT * FROM TEXT_TBL WHERE f1 SIMILAR TO '_[_[:alpha:]_]_';
+                   QUERY PLAN                   
+------------------------------------------------
+ Seq Scan on text_tbl
+   Filter: (f1 ~ '^(?:.[_[:alpha:]_].)$'::text)
+(2 rows)
+
+-- Percentage "%"
+EXPLAIN (COSTS OFF) SELECT * FROM TEXT_TBL WHERE f1 SIMILAR TO '%[%[:alnum:]%]%';
+                    QUERY PLAN                    
+--------------------------------------------------
+ Seq Scan on text_tbl
+   Filter: (f1 ~ '^(?:.*[%[:alnum:]%].*)$'::text)
+(2 rows)
+
+-- Dot "."
+EXPLAIN (COSTS OFF) SELECT * FROM TEXT_TBL WHERE f1 SIMILAR TO '.[.[:alnum:].].';
+                    QUERY PLAN                    
+--------------------------------------------------
+ Seq Scan on text_tbl
+   Filter: (f1 ~ '^(?:\.[.[:alnum:].]\.)$'::text)
+(2 rows)
+
+-- Dollar "$"
+EXPLAIN (COSTS OFF) SELECT * FROM TEXT_TBL WHERE f1 SIMILAR TO '$[$[:alnum:]$]$';
+                    QUERY PLAN                    
+--------------------------------------------------
+ Seq Scan on text_tbl
+   Filter: (f1 ~ '^(?:\$[$[:alnum:]$]\$)$'::text)
+(2 rows)
+
+-- Opening parenthesis "("
+EXPLAIN (COSTS OFF) SELECT * FROM TEXT_TBL WHERE f1 SIMILAR TO '()[([:alnum:](]()';
+                      QUERY PLAN                      
+------------------------------------------------------
+ Seq Scan on text_tbl
+   Filter: (f1 ~ '^(?:(?:)[([:alnum:](](?:))$'::text)
+(2 rows)
+
+-- Caret "^"
+EXPLAIN (COSTS OFF) SELECT * FROM TEXT_TBL WHERE f1 SIMILAR TO '^[^[:alnum:]^[^^][[^^]][\^][[\^]]\^]^';
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Seq Scan on text_tbl
+   Filter: (f1 ~ '^(?:\^[^[:alnum:]^[^^][[^^]][\^][[\^]]\^]\^)$'::text)
+(2 rows)
+
+-- Closing square bracket "]" at the beginning of character class
+EXPLAIN (COSTS OFF) SELECT * FROM TEXT_TBL WHERE f1 SIMILAR TO '[]%][^]%][^%]%';
+                   QUERY PLAN                   
+------------------------------------------------
+ Seq Scan on text_tbl
+   Filter: (f1 ~ '^(?:[]%][^]%][^%].*)$'::text)
+(2 rows)
+
+-- Closing square bracket effective after two carets at the beginning
+-- of character class.
+EXPLAIN (COSTS OFF) SELECT * FROM TEXT_TBL WHERE f1 SIMILAR TO '[^^]^';
+              QUERY PLAN               
+---------------------------------------
+ Seq Scan on text_tbl
+   Filter: (f1 ~ '^(?:[^^]\^)$'::text)
+(2 rows)
+
 -- Test backslash escapes in regexp_replace's replacement string
 SELECT regexp_replace('1112223333', E'(\\d{3})(\\d{3})(\\d{4})', E'(\\1) \\2-\\3');
  regexp_replace 
@@ -662,7 +729,7 @@ ERROR:  invalid regular expression option: "z"
 SELECT regexp_replace('A PostgreSQL function', 'A|e|i|o|u', 'X', 1);
     regexp_replace     
 -----------------------
- X PostgreSQL function
+ X PXstgrXSQL fXnctXXn
 (1 row)
 
 SELECT regexp_replace('A PostgreSQL function', 'A|e|i|o|u', 'X', 1, 2);
@@ -709,16 +776,12 @@ SELECT regexp_replace('A PostgreSQL function', 'A|e|i|o|u', 'X', 7, 0, 'i');
 
 -- 'g' flag should be ignored when N is specified
 SELECT regexp_replace('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, 1, 'g');
-    regexp_replace     
------------------------
- A PXstgreSQL function
-(1 row)
-
+ERROR:  illegal argument for function
 -- errors
 SELECT regexp_replace('A PostgreSQL function', 'a|e|i|o|u', 'X', -1, 0, 'i');
-ERROR:  invalid value for parameter "start": -1
+ERROR:  argument '-1' is out of range
 SELECT regexp_replace('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, -1, 'i');
-ERROR:  invalid value for parameter "n": -1
+ERROR:  argument '-1' is out of range
 -- erroneous invocation of non-extended form
 SELECT regexp_replace('A PostgreSQL function', 'a|e|i|o|u', 'X', '1');
 ERROR:  invalid regular expression option: "1"
@@ -761,10 +824,10 @@ SELECT regexp_count('ABCABCABCABC', 'Abc', 1, 'i');
 (1 row)
 
 -- errors
-SELECT regexp_count('123123123123', '123', 0);
-ERROR:  invalid value for parameter "start": 0
-SELECT regexp_count('123123123123', '123', -3);
-ERROR:  invalid value for parameter "start": -3
+SELECT sys.regexp_count('123123123123', '123', 0);
+ERROR:  argument "0" is out of range
+SELECT sys.regexp_count('123123123123', '123', -3);
+ERROR:  argument "-3" is out of range
 -- regexp_like tests
 SELECT regexp_like('Steven', '^Ste(v|ph)en$');
  regexp_like 
@@ -814,119 +877,123 @@ SELECT regexp_instr('abcabcabc', 'a.c');
 SELECT regexp_instr('abcabcabc', 'a.c', 2);
  regexp_instr 
 --------------
-            4
+ 4
 (1 row)
 
 SELECT regexp_instr('abcabcabc', 'a.c', 1, 3);
  regexp_instr 
 --------------
-            7
+ 7
 (1 row)
 
 SELECT regexp_instr('abcabcabc', 'a.c', 1, 4);
  regexp_instr 
 --------------
-            0
+ 0
 (1 row)
 
 SELECT regexp_instr('abcabcabc', 'A.C', 1, 2, 0, 'i');
  regexp_instr 
 --------------
-            4
+ 4
 (1 row)
 
 SELECT regexp_instr('1234567890', '(123)(4(56)(78))', 1, 1, 0, 'i', 0);
  regexp_instr 
 --------------
-            1
+ 1
 (1 row)
 
 SELECT regexp_instr('1234567890', '(123)(4(56)(78))', 1, 1, 0, 'i', 1);
  regexp_instr 
 --------------
-            1
+ 1
 (1 row)
 
 SELECT regexp_instr('1234567890', '(123)(4(56)(78))', 1, 1, 0, 'i', 2);
  regexp_instr 
 --------------
-            4
+ 4
 (1 row)
 
 SELECT regexp_instr('1234567890', '(123)(4(56)(78))', 1, 1, 0, 'i', 3);
  regexp_instr 
 --------------
-            5
+ 5
 (1 row)
 
 SELECT regexp_instr('1234567890', '(123)(4(56)(78))', 1, 1, 0, 'i', 4);
  regexp_instr 
 --------------
-            7
+ 7
 (1 row)
 
 SELECT regexp_instr('1234567890', '(123)(4(56)(78))', 1, 1, 0, 'i', 5);
  regexp_instr 
 --------------
-            0
+ 0
 (1 row)
 
 SELECT regexp_instr('1234567890', '(123)(4(56)(78))', 1, 1, 1, 'i', 0);
  regexp_instr 
 --------------
-            9
+ 9
 (1 row)
 
 SELECT regexp_instr('1234567890', '(123)(4(56)(78))', 1, 1, 1, 'i', 1);
  regexp_instr 
 --------------
-            4
+ 5
 (1 row)
 
 SELECT regexp_instr('1234567890', '(123)(4(56)(78))', 1, 1, 1, 'i', 2);
  regexp_instr 
 --------------
-            9
+ 10
 (1 row)
 
 SELECT regexp_instr('1234567890', '(123)(4(56)(78))', 1, 1, 1, 'i', 3);
  regexp_instr 
 --------------
-            7
+ 8
 (1 row)
 
 SELECT regexp_instr('1234567890', '(123)(4(56)(78))', 1, 1, 1, 'i', 4);
  regexp_instr 
 --------------
-            9
+ 10
 (1 row)
 
 SELECT regexp_instr('1234567890', '(123)(4(56)(78))', 1, 1, 1, 'i', 5);
  regexp_instr 
 --------------
-            0
+ 0
 (1 row)
 
 -- Check case where we have a match, but not a subexpression match
 SELECT regexp_instr('foo', 'foo(bar)?', 1, 1, 0, '', 1);
  regexp_instr 
 --------------
-            0
+ 0
 (1 row)
 
 -- errors
 SELECT regexp_instr('abcabcabc', 'a.c', 0, 1);
-ERROR:  invalid value for parameter "start": 0
+ERROR:  argument '0' is out of range
 SELECT regexp_instr('abcabcabc', 'a.c', 1, 0);
-ERROR:  invalid value for parameter "n": 0
+ERROR:  argument '0' is out of range
 SELECT regexp_instr('abcabcabc', 'a.c', 1, 1, -1);
-ERROR:  invalid value for parameter "endoption": -1
+ERROR:  argument '-1' is out of range
 SELECT regexp_instr('abcabcabc', 'a.c', 1, 1, 2);
-ERROR:  invalid value for parameter "endoption": 2
+ regexp_instr 
+--------------
+ 4
+(1 row)
+
 SELECT regexp_instr('abcabcabc', 'a.c', 1, 1, 0, 'g');
-ERROR:  regexp_instr() does not support the "global" option
+ERROR:  illegal argument for function
 SELECT regexp_instr('abcabcabc', 'a.c', 1, 1, 0, '', -1);
-ERROR:  invalid value for parameter "subexpr": -1
+ERROR:  argument '-1' is out of range
 -- regexp_substr tests
 SELECT regexp_substr('abcdefghi', 'd.f');
  regexp_substr 
@@ -1015,13 +1082,13 @@ SELECT regexp_substr('foo', 'foo(bar)?', 1, 1, '', 1) IS NULL AS t;
 
 -- errors
 SELECT regexp_substr('abcabcabc', 'a.c', 0, 1);
-ERROR:  invalid value for parameter "start": 0
+ERROR:  argument '0' is out of range
 SELECT regexp_substr('abcabcabc', 'a.c', 1, 0);
-ERROR:  invalid value for parameter "n": 0
+ERROR:  argument '0' is out of range
 SELECT regexp_substr('abcabcabc', 'a.c', 1, 1, 'g');
-ERROR:  regexp_substr() does not support the "global" option
+ERROR:  illegal argument for function
 SELECT regexp_substr('abcabcabc', 'a.c', 1, 1, '', -1);
-ERROR:  invalid value for parameter "subexpr": -1
+ERROR:  argument '-1' is out of range
 -- set so we can tell NULL from empty string
 \pset null '\\N'
 -- return all matches from regexp
@@ -2178,8 +2245,68 @@ select split_part('@joeuser@mydatabase@','@',-2) AS "mydatabase";
 (1 row)
 
 --
--- test to_hex
+-- test to_bin, to_oct, and to_hex
 --
+select to_bin(-1234) AS "11111111111111111111101100101110";
+ 11111111111111111111101100101110 
+----------------------------------
+ 11111111111111111111101100101110
+(1 row)
+
+select to_bin(-1234::bigint);
+                              to_bin                              
+------------------------------------------------------------------
+ 1111111111111111111111111111111111111111111111111111101100101110
+(1 row)
+
+select to_bin(256*256*256 - 1) AS "111111111111111111111111";
+ 111111111111111111111111 
+--------------------------
+ 111111111111111111111111
+(1 row)
+
+select to_bin(256::bigint*256::bigint*256::bigint*256::bigint - 1) AS "11111111111111111111111111111111";
+ 11111111111111111111111111111111 
+----------------------------------
+ 11111111111111111111111111111111
+(1 row)
+
+select to_oct(-1234) AS "37777775456";
+ 37777775456 
+-------------
+ 37777775456
+(1 row)
+
+select to_oct(-1234::bigint) AS "1777777777777777775456";
+ 1777777777777777775456 
+------------------------
+ 1777777777777777775456
+(1 row)
+
+select to_oct(256*256*256 - 1) AS "77777777";
+ 77777777 
+----------
+ 77777777
+(1 row)
+
+select to_oct(256::bigint*256::bigint*256::bigint*256::bigint - 1) AS "37777777777";
+ 37777777777 
+-------------
+ 37777777777
+(1 row)
+
+select to_hex(-1234) AS "fffffb2e";
+ fffffb2e 
+----------
+ fffffb2e
+(1 row)
+
+select to_hex(-1234::bigint) AS "fffffffffffffb2e";
+ fffffffffffffb2e 
+------------------
+ fffffffffffffb2e
+(1 row)
+
 select to_hex(256*256*256 - 1) AS "ffffff";
  ffffff 
 --------
@@ -2242,6 +2369,57 @@ SELECT sha512('The quick brown fox jumps over the lazy dog.');
                                                                sha512                                                               
 ------------------------------------------------------------------------------------------------------------------------------------
  \x91ea1245f20d46ae9a037a989f54f1f790f0a47607eeb8a14d12890cea77a1bbc6c7ed9cf205e67b7f2b8fd4c7dfd3a7a8617e45f3c463d481c7e586c39ac1ed
+(1 row)
+
+--
+-- CRC
+--
+SELECT crc32('');
+ crc32 
+-------
+     0
+(1 row)
+
+SELECT crc32('The quick brown fox jumps over the lazy dog.');
+   crc32    
+------------
+ 1368401385
+(1 row)
+
+SELECT crc32c('');
+ crc32c 
+--------
+      0
+(1 row)
+
+SELECT crc32c('The quick brown fox jumps over the lazy dog.');
+  crc32c   
+-----------
+ 419469235
+(1 row)
+
+SELECT crc32c(repeat('A', 127)::bytea);
+  crc32c   
+-----------
+ 291820082
+(1 row)
+
+SELECT crc32c(repeat('A', 128)::bytea);
+  crc32c   
+-----------
+ 816091258
+(1 row)
+
+SELECT crc32c(repeat('A', 129)::bytea);
+   crc32c   
+------------
+ 4213642571
+(1 row)
+
+SELECT crc32c(repeat('A', 800)::bytea);
+   crc32c   
+------------
+ 3134039419
 (1 row)
 
 --

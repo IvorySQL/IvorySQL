@@ -112,6 +112,16 @@ sub adjust_database_contents
 			'drop extension if exists test_ext7');
 	}
 
+	# we removed these test-support functions in v18
+	if ($old_version < 18)
+	{
+		_add_st($result, 'regression', 'drop function ttdummy()');
+		_add_st($result, 'regression', 'drop function set_ttdummy(integer)');
+		_add_st($result, 'regression', 'drop function autoinc()');
+		_add_st($result, 'regression', 'drop function check_foreign_key()');
+		_add_st($result, 'regression', 'drop function check_primary_key()');
+	}
+
 	# we removed this test-support function in v17
 	if ($old_version >= 15 && $old_version < 17)
 	{
@@ -528,6 +538,7 @@ my @_unused_view_qualifiers = (
 	{ obj => 'VIEW public.limit_thousand_v_2', qual => 'onek' },
 	{ obj => 'VIEW public.limit_thousand_v_3', qual => 'onek' },
 	{ obj => 'VIEW public.limit_thousand_v_4', qual => 'onek' },
+	{ obj => 'VIEW public.limit_thousand_v_5', qual => 'onek' },
 	# Since 14
 	{ obj => 'MATERIALIZED VIEW public.compressmv', qual => 'cmdata1' });
 
