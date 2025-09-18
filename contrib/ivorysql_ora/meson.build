@@ -25,6 +25,7 @@ ivorysql_ora_sources = files(
   'src/builtin_functions/misc_functions.c',
   'src/merge/ora_merge.c',
   'src/sysview/sysview_functions.c',
+  'src/xml_functions/ora_xml_functions.c',
 )
 
 if host_system == 'windows'
@@ -50,6 +51,11 @@ contrib_targets += ivorysql_ora
 install_data(
   'ivorysql_ora.control',
   kwargs: contrib_data_args,
+)
+
+install_data(
+  'preload_ora_misc.sql',
+  install_dir: dir_data,
 )
 
 tests += {
