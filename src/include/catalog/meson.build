@@ -167,6 +167,7 @@ ara_generated_catalog_headers = custom_target('ara_generated_catalog_headers',
     '@INPUT@',
     '-M=oracle'
   ],
+  depends: [generated_catalog_headers]
 )
 
 # Target for Oracle
@@ -187,7 +188,8 @@ ora_generated_catalog_headers = custom_target('ora_generated_catalog_headers',
     '--output=@OUTDIR@',
     '@INPUT@',
     '-M=oracle'
-  ]
+  ],
+  depends: [ara_generated_catalog_headers]
 )
 
 
