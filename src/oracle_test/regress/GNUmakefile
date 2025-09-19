@@ -13,7 +13,7 @@
 #
 #-------------------------------------------------------------------------
 
-PGFILEDESC = "pg_regress - test driver"
+PGFILEDESC = "ora_pg_regress - test driver"
 PGAPPICON = win32
 
 subdir = src/oracle_test/regress
