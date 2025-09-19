@@ -1,7 +1,7 @@
 CREATE EXTENSION injection_points;
 \getenv libdir PG_LIBDIR
 \getenv dlsuffix PG_DLSUFFIX
-\set regresslib :libdir '/regress' :dlsuffix
+\set regresslib :libdir '/oraregress' :dlsuffix
 CREATE FUNCTION wait_pid(int)
   RETURNS void
   AS :'regresslib'

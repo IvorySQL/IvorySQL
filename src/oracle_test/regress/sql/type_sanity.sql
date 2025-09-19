@@ -16,7 +16,7 @@
 \getenv libdir PG_LIBDIR
 \getenv dlsuffix PG_DLSUFFIX
 
-\set regresslib :libdir '/regress' :dlsuffix
+\set regresslib :libdir '/oraregress' :dlsuffix
 
 -- **************** pg_type ****************
 
