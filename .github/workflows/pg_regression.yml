@@ -24,7 +24,7 @@ jobs:
               tcl-dev libperl-dev gettext libxml2-dev libxslt-dev \
               libreadline-dev libedit-dev uuid-dev libossp-uuid-dev \
               libipc-run-perl libtime-hires-perl libtest-simple-perl \
-              libicu-dev
+              libicu-dev libnuma-dev
     - name: configure - linux
       if: ${{ matrix.os == 'ubuntu-latest' }}
       run: |
@@ -37,7 +37,7 @@ jobs:
             --with-python --with-gssapi --with-pam --with-ldap \
             --with-openssl --with-libedit-preferred --with-uuid=e2fs \
             --with-ossp-uuid  --with-libxml --with-libxslt  --with-perl \
-            --with-icu
+            --with-icu --with-libnuma --enable-injection-points
     - name: compile
       run: make && make install
 
