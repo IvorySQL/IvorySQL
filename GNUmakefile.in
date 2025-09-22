@@ -69,7 +69,7 @@ check check-tests installcheck installcheck-parallel installcheck-tests oracle-p
 check check-tests installcheck installcheck-parallel installcheck-tests oracle-pg-check: submake-generated-headers
 	$(MAKE) -C src/test/regress $@
 
-
+oracle-check-tests: | oracle-temp-install
 
 # add oracle regression
 oracle-check oracle-check-tests oracle-installcheck oracle-installcheck-parallel oracle-installcheck-tests: CHECKPREP_TOP=src/oracle_test/regress
