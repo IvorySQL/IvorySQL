@@ -27,6 +27,8 @@ project('postgresql',
   ]
 )
 
+# IvorySQL version
+ivorysql_version = '5.0'
 
 
 ###############################################################
@@ -152,6 +154,8 @@ cdata.set_quoted('PG_MAJORVERSION', pg_version_major.to_string())
 cdata.set('PG_MAJORVERSION_NUM', pg_version_major)
 cdata.set('PG_MINORVERSION_NUM', pg_version_minor)
 cdata.set('PG_VERSION_NUM', pg_version_num)
+
+cdata.set('PACKAGE_IVORYSQL_VERSION', ivorysql_version)
 # PG_VERSION_STR is built later, it depends on compiler test results
 cdata.set_quoted('CONFIGURE_ARGS', '')
 
@@ -487,7 +491,7 @@ pkg = 'postgresql'
 
 dir_prefix = get_option('prefix')
 
-dir_prefix_contains_pg = (dir_prefix.contains('pgsql') or dir_prefix.contains('postgres'))
+dir_prefix_contains_pg = (dir_prefix.contains('pgsql') or dir_prefix.contains('postgres') or dir_prefix.contains('IvorySQL'))
 
 dir_bin = get_option('bindir')
 
@@ -2973,9 +2977,9 @@ cdata.set_quoted('DLSUFFIX', dlsuffix)
 
 # built later than the rest of the version metadata, we need SIZEOF_VOID_P
 cdata.set_quoted('PG_VERSION_STR',
-  'PostgreSQL @0@ on @1@-@2@, compiled by @3@-@4@, @5@-bit'.format(
+  'PostgreSQL (IvorySQL @6@) @0@ on @1@-@2@, compiled by @3@-@4@, @5@-bit'.format(
     pg_version, host_machine.cpu_family(), host_system,
-    cc.get_id(), cc.version(), cdata.get('SIZEOF_VOID_P') * 8,
+    cc.get_id(), cc.version(), cdata.get('SIZEOF_VOID_P') * 8, cdata.get('PACKAGE_IVORYSQL_VERSION')
   )
 )
 
