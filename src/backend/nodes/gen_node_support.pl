@@ -108,8 +108,8 @@ my @nodetag_only_files = qw(
 # ABI stability during development.
 
 my $last_nodetag = 'WindowObjectData';
-my $last_nodetag_no = 479;
-
+# my $last_nodetag_no = 479; --PG
+my $last_nodetag_no = 490;
 # output file names
 my @output_files;
 
