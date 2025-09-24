@@ -341,12 +341,6 @@ typedef enum
 
 
 /*
- * HeapScanIsValid
- *		True iff the heap scan is valid.
- */
-#define HeapScanIsValid(scan) PointerIsValid(scan)
-
-/*
  * SetHintBits()
  *
  * Set commit/abort hint bits on a tuple, if appropriate at this time.

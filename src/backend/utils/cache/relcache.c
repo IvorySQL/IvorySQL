@@ -2958,7 +2958,7 @@ RelationForgetRelation(Oid rid)
 
 	RelationIdCacheLookup(rid, relation);
 
-	if (!PointerIsValid(relation))
+	if (!relation)
 		return;					/* not in cache, nothing to do */
 
 	if (!RelationHasReferenceCountZero(relation))
@@ -3003,7 +3003,7 @@ RelationCacheInvalidateEntry(Oid relationId)
 
 	RelationIdCacheLookup(relationId, relation);
 
-	if (PointerIsValid(relation))
+	if (relation)
 	{
 		relcacheInvalsReceived++;
 		RelationFlushRelation(relation);
