@@ -2,5 +2,9 @@
 /tab-complete.c
 /sql_help.h
 /sql_help.c
+/ora_psqlscanslash.c
+/psqlplusparse.c
+/psqlplusparse.h
+/psqlplusscan.c
 /psql
 /tmp_check/

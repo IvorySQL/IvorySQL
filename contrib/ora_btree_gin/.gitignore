@@ -1,0 +1,5 @@
+# Generated files
+/ivorysql_ora--1.0.sql
+# Generated subdirectories
+/log/
+/results/
