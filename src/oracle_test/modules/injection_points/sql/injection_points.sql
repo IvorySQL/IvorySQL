@@ -8,7 +8,7 @@ CREATE FUNCTION wait_pid(int)
   RETURNS void
   AS :'regresslib'
   LANGUAGE C STRICT;
-
+/
 -- Non-strict checks
 SELECT injection_points_run(NULL);
 SELECT injection_points_cached(NULL);
