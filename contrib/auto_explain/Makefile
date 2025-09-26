@@ -7,6 +7,7 @@ OBJS = \
 PGFILEDESC = "auto_explain - logging facility for execution plans"
 
 REGRESS = alter_reset
+ORA_REGRESS = alter_reset
 
 TAP_TESTS = 1
 
