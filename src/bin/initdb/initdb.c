@@ -2682,7 +2682,9 @@ usage(const char *progname)
 	printf(_("  -X, --waldir=WALDIR       location for the write-ahead log directory\n"));
 	printf(_("      --wal-segsize=SIZE    size of WAL segments, in megabytes\n"));
 	printf(_("  -m, --dbmode=MODE 	    set database mode, default is oracle\n"));
-	printf(_("  -C, --case-conversion-mode=MODE   set case conversion mode, default is interchange\n"));
+	printf(_("  -C, --case-conversion-mode=MODE\n"
+		     "                            set case conversion mode, options can be\n" 
+		     "                            normal/interchange/lowercase, default is interchange\n"));
 	printf(_("\nLess commonly used options:\n"));
 	printf(_("  -c, --set NAME=VALUE      override default setting for server parameter\n"));
 	printf(_("  -d, --debug               generate lots of debugging output\n"));
@@ -3474,7 +3476,9 @@ main(int argc, char *argv[])
 				}
 				else
 				{
-					printf(_("UnKnow case conversion mode, use the default interchange.\n"));
+					pg_log_error("Unknown case conversion mode： %s", switchmode);
+					pg_log_error_hint("Valid case conversion mode value is normal, interchange, lowercase.");
+					exit(1);
 				}
 				break;
 			case 'D':
