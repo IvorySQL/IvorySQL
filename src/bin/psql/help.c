@@ -171,6 +171,10 @@ slashUsage(unsigned short int pager)
 	HELP0("  \\gset [PREFIX]         execute query and store result in psql variables\n");
 	HELP0("  \\gx [(OPTIONS)] [FILE] as \\g, but forces expanded output mode\n");
 	HELP0("  \\q                     quit psql\n");
+	HELP0("  \\restrict RESTRICT_KEY\n"
+		  "                         enter restricted mode with provided key\n");
+	HELP0("  \\unrestrict RESTRICT_KEY\n"
+		  "                         exit restricted mode if key matches\n");
 	HELP0("  \\watch [[i=]SEC] [c=N] [m=MIN]\n"
 		  "                         execute query every SEC seconds, up to N times,\n"
 		  "                         stop if less than MIN rows are returned\n");
@@ -749,7 +753,7 @@ void
 print_copyright(void)
 {
 	puts("PostgreSQL Database Management System\n"
-		 "(formerly known as Postgres, then as Postgres95)\n\n"
+		 "(also known as Postgres, formerly known as Postgres95)\n\n"
 		 "Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group\n\n"
 		 "Portions Copyright (c) 1994, The Regents of the University of California\n\n"
 		 "Permission to use, copy, modify, and distribute this software and its\n"

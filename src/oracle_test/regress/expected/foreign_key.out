@@ -1357,7 +1357,7 @@ LINE 1: ...e ALTER CONSTRAINT fktable_fk_fkey NOT DEFERRABLE INITIALLY ...
 ALTER TABLE fktable ALTER CONSTRAINT fktable_fk_fkey NO INHERIT;
 ERROR:  constraint "fktable_fk_fkey" of relation "fktable" is not a not-null constraint
 ALTER TABLE fktable ALTER CONSTRAINT fktable_fk_fkey NOT VALID;
-ERROR:  FOREIGN KEY constraints cannot be marked NOT VALID
+ERROR:  constraints cannot be altered to be NOT VALID
 LINE 1: ...ER TABLE fktable ALTER CONSTRAINT fktable_fk_fkey NOT VALID;
                                                              ^
 ALTER TABLE fktable ALTER CONSTRAINT fktable_fk_fkey ENFORCED NOT ENFORCED;
@@ -1748,7 +1748,7 @@ Indexes:
 Referenced by:
     TABLE "fk_partitioned_fk" CONSTRAINT "fk_partitioned_fk_a_b_fkey" FOREIGN KEY (a, b) REFERENCES fk_notpartitioned_pk(a, b)
 
--- Check the exsting FK trigger
+-- Check the existing FK trigger
 SELECT conname, tgrelid::regclass as tgrel, regexp_replace(tgname, '[0-9]+', 'N') as tgname, tgtype
 FROM pg_trigger t JOIN pg_constraint c ON (t.tgconstraint = c.oid)
 WHERE tgrelid IN (SELECT relid FROM pg_partition_tree('fk_partitioned_fk'::regclass)

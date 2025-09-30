@@ -55,9 +55,6 @@ AggStrategy
 AggTransInfo
 Aggref
 AggregateInstrumentation
-AioWorkerControl
-AioWorkerSlot
-AioWorkerSubmissionQueue
 AlenState
 Alias
 AllocBlock
@@ -2176,8 +2173,12 @@ PgAioReturn
 PgAioTargetData
 PgAioTargetID
 PgAioTargetInfo
+PgAioUringCaps
 PgAioUringContext
 PgAioWaitRef
+PgAioWorkerControl
+PgAioWorkerSlot
+PgAioWorkerSubmissionQueue
 PgArchData
 PgBackendGSSStatus
 PgBackendSSLStatus

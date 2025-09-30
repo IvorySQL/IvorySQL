@@ -3399,8 +3399,9 @@ include_dir 'conf.d'
         This parameter enables compression of WAL using the specified
         compression method.
         When enabled, the <productname>PostgreSQL</productname>
-        server compresses full page images written to WAL when
-        <xref linkend="guc-full-page-writes"/> is on or during a base backup.
+        server compresses full page images written to WAL (e.g. when
+        <xref linkend="guc-full-page-writes"/> is on, during a base backup,
+        etc.).
         A compressed page image will be decompressed during WAL replay.
         The supported methods are <literal>pglz</literal>,
         <literal>lz4</literal> (if <productname>PostgreSQL</productname>
@@ -4618,10 +4619,12 @@ restore_command = 'copy "C:\\server\\archivedir\\%f" "%p"'  # Windows
       </term>
       <listitem>
        <para>
-        Invalidate replication slots that have remained idle longer than this
-        duration. If this value is specified without units, it is taken as
-        minutes. A value of zero (the default) disables the idle timeout
-        invalidation mechanism. This parameter can only be set in the
+        Invalidate replication slots that have remained inactive (not used by
+        a <link linkend="protocol-replication">replication connection</link>)
+        for longer than this duration.
+        If this value is specified without units, it is taken as seconds.
+        A value of zero (the default) disables the idle timeout
+        invalidation mechanism.  This parameter can only be set in the
         <filename>postgresql.conf</filename> file or on the server command
         line.
        </para>
@@ -11052,6 +11055,12 @@ extension_control_path = 'C:\tools\postgresql;H:\my_project\share;$system'
         The default value for this parameter is
         <literal>'$system'</literal>. If the value is set to an empty
         string, the default <literal>'$system'</literal> is also assumed.
+       </para>
+
+       <para>
+        If extensions with equal names are present in multiple directories in
+        the configured path, only the instance found first in the path will be
+        used.
        </para>
 
        <para>

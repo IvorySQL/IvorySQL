@@ -43,6 +43,7 @@
 	 (id) == PqMsg_RowDescription)
 
 
+static void handleFatalError(PGconn *conn);
 static void handleSyncLoss(PGconn *conn, char id, int msgLength);
 static int	getRowDescriptions(PGconn *conn, int msgLength);
 static int	getParamDescriptions(PGconn *conn, int msgLength);
@@ -120,12 +121,12 @@ pqParseInput3(PGconn *conn)
 									 conn))
 			{
 				/*
-				 * XXX add some better recovery code... plan is to skip over
-				 * the message using its length, then report an error. For the
-				 * moment, just treat this like loss of sync (which indeed it
-				 * might be!)
+				 * Abandon the connection.  There's not much else we can
+				 * safely do; we can't just ignore the message or we could
+				 * miss important changes to the connection state.
+				 * pqCheckInBufferSpace() already reported the error.
 				 */
-				handleSyncLoss(conn, id, msgLength);
+				handleFatalError(conn);
 			}
 			return;
 		}
@@ -456,6 +457,11 @@ pqParseInput3(PGconn *conn)
 			/* Normal case: parsing agrees with specified length */
 			pqParseDone(conn, conn->inCursor);
 		}
+		else if (conn->error_result && conn->status == CONNECTION_BAD)
+		{
+			/* The connection was abandoned and we already reported it */
+			return;
+		}
 		else
 		{
 			/* Trouble --- report it */
@@ -470,6 +476,23 @@ pqParseInput3(PGconn *conn)
 }
 
 /*
+ * handleFatalError: clean up after a nonrecoverable error
+ *
+ * This is for errors where we need to abandon the connection.  The caller has
+ * already saved the error message in conn->errorMessage.
+ */
+static void
+handleFatalError(PGconn *conn)
+{
+	/* build an error result holding the error message */
+	pqSaveErrorResult(conn);
+	conn->asyncStatus = PGASYNC_READY;	/* drop out of PQgetResult wait loop */
+	/* flush input data since we're giving up on processing it */
+	pqDropConnection(conn, true);
+	conn->status = CONNECTION_BAD;	/* No more connection to backend */
+}
+
+/*
  * handleSyncLoss: clean up after loss of message-boundary sync
  *
  * There isn't really a lot we can do here except abandon the connection.
@@ -478,13 +501,8 @@ static void
 handleSyncLoss(PGconn *conn, char id, int msgLength)
 {
 	libpq_append_conn_error(conn, "lost synchronization with server: got message type \"%c\", length %d",
-					  id, msgLength);
-	/* build an error result holding the error message */
-	pqSaveErrorResult(conn);
-	conn->asyncStatus = PGASYNC_READY;	/* drop out of PQgetResult wait loop */
-	/* flush input data since we're giving up on processing it */
-	pqDropConnection(conn, true);
-	conn->status = CONNECTION_BAD;	/* No more connection to backend */
+							id, msgLength);
+	handleFatalError(conn);
 }
 
 /*
@@ -1519,7 +1537,11 @@ getParameterStatus(PGconn *conn)
 		return EOF;
 	}
 	/* And save it */
-	pqSaveParameterStatus(conn, conn->workBuffer.data, valueBuf.data);
+	if (!pqSaveParameterStatus(conn, conn->workBuffer.data, valueBuf.data))
+	{
+		libpq_append_conn_error(conn, "out of memory");
+		handleFatalError(conn);
+	}
 	termPQExpBuffer(&valueBuf);
 	return 0;
 }
@@ -1547,12 +1569,33 @@ getBackendKeyData(PGconn *conn, int msgLength)
 
 	cancel_key_len = 5 + msgLength - (conn->inCursor - conn->inStart);
 
+	if (cancel_key_len != 4 && conn->pversion == PG_PROTOCOL(3, 0))
+	{
+		libpq_append_conn_error(conn, "received invalid BackendKeyData message: cancel key with length %d not allowed in protocol version 3.0 (must be 4 bytes)", cancel_key_len);
+		handleFatalError(conn);
+		return 0;
+	}
+
+	if (cancel_key_len < 4)
+	{
+		libpq_append_conn_error(conn, "received invalid BackendKeyData message: cancel key with length %d is too short (minimum 4 bytes)", cancel_key_len);
+		handleFatalError(conn);
+		return 0;
+	}
+
+	if (cancel_key_len > 256)
+	{
+		libpq_append_conn_error(conn, "received invalid BackendKeyData message: cancel key with length %d is too long (maximum 256 bytes)", cancel_key_len);
+		handleFatalError(conn);
+		return 0;
+	}
+
 	conn->be_cancel_key = malloc(cancel_key_len);
 	if (conn->be_cancel_key == NULL)
 	{
 		libpq_append_conn_error(conn, "out of memory");
-		/* discard the message */
-		return EOF;
+		handleFatalError(conn);
+		return 0;
 	}
 	if (pqGetnchar(conn->be_cancel_key, cancel_key_len, conn))
 	{
@@ -1589,7 +1632,17 @@ getNotify(PGconn *conn)
 	/* must save name while getting extra string */
 	svname = strdup(conn->workBuffer.data);
 	if (!svname)
-		return EOF;
+	{
+		/*
+		 * Notify messages can arrive at any state, so we cannot associate the
+		 * error with any particular query.  There's no way to return back an
+		 * "async error", so the best we can do is drop the connection.  That
+		 * seems better than silently ignoring the notification.
+		 */
+		libpq_append_conn_error(conn, "out of memory");
+		handleFatalError(conn);
+		return 0;
+	}
 	if (pqGets(&conn->workBuffer, conn))
 	{
 		free(svname);
@@ -1604,20 +1657,25 @@ getNotify(PGconn *conn)
 	nmlen = strlen(svname);
 	extralen = strlen(conn->workBuffer.data);
 	newNotify = (PGnotify *) malloc(sizeof(PGnotify) + nmlen + extralen + 2);
-	if (newNotify)
+	if (!newNotify)
 	{
-		newNotify->relname = (char *) newNotify + sizeof(PGnotify);
-		strcpy(newNotify->relname, svname);
-		newNotify->extra = newNotify->relname + nmlen + 1;
-		strcpy(newNotify->extra, conn->workBuffer.data);
-		newNotify->be_pid = be_pid;
-		newNotify->next = NULL;
-		if (conn->notifyTail)
-			conn->notifyTail->next = newNotify;
-		else
-			conn->notifyHead = newNotify;
-		conn->notifyTail = newNotify;
+		free(svname);
+		libpq_append_conn_error(conn, "out of memory");
+		handleFatalError(conn);
+		return 0;
 	}
+
+	newNotify->relname = (char *) newNotify + sizeof(PGnotify);
+	strcpy(newNotify->relname, svname);
+	newNotify->extra = newNotify->relname + nmlen + 1;
+	strcpy(newNotify->extra, conn->workBuffer.data);
+	newNotify->be_pid = be_pid;
+	newNotify->next = NULL;
+	if (conn->notifyTail)
+		conn->notifyTail->next = newNotify;
+	else
+		conn->notifyHead = newNotify;
+	conn->notifyTail = newNotify;
 
 	free(svname);
 	return 0;
@@ -1752,12 +1810,12 @@ getCopyDataMessage(PGconn *conn)
 									 conn))
 			{
 				/*
-				 * XXX add some better recovery code... plan is to skip over
-				 * the message using its length, then report an error. For the
-				 * moment, just treat this like loss of sync (which indeed it
-				 * might be!)
+				 * Abandon the connection.  There's not much else we can
+				 * safely do; we can't just ignore the message or we could
+				 * miss important changes to the connection state.
+				 * pqCheckInBufferSpace() already reported the error.
 				 */
-				handleSyncLoss(conn, id, msgLength);
+				handleFatalError(conn);
 				return -2;
 			}
 			return 0;
@@ -2186,12 +2244,12 @@ pqFunctionCall3(PGconn *conn, Oid fnid,
 									 conn))
 			{
 				/*
-				 * XXX add some better recovery code... plan is to skip over
-				 * the message using its length, then report an error. For the
-				 * moment, just treat this like loss of sync (which indeed it
-				 * might be!)
+				 * Abandon the connection.  There's not much else we can
+				 * safely do; we can't just ignore the message or we could
+				 * miss important changes to the connection state.
+				 * pqCheckInBufferSpace() already reported the error.
 				 */
-				handleSyncLoss(conn, id, msgLength);
+				handleFatalError(conn);
 				break;
 			}
 			continue;

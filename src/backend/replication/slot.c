@@ -154,7 +154,7 @@ int			max_replication_slots = 10; /* the maximum number of replication
  * Invalidate replication slots that have remained idle longer than this
  * duration; '0' disables it.
  */
-int			idle_replication_slot_timeout_mins = 0;
+int			idle_replication_slot_timeout_secs = 0;
 
 /*
  * This GUC lists streaming replication standby server slot names that
@@ -609,7 +609,7 @@ retry:
 	}
 	else
 	{
-		active_pid = MyProcPid;
+		s->active_pid = active_pid = MyProcPid;
 		ReplicationSlotSetInactiveSince(s, 0, true);
 	}
 	LWLockRelease(ReplicationSlotControlLock);
@@ -1612,13 +1612,10 @@ ReportSlotInvalidation(ReplicationSlotInvalidationCause cause,
 
 		case RS_INVAL_IDLE_TIMEOUT:
 			{
-				int			minutes = slot_idle_seconds / SECS_PER_MINUTE;
-				int			secs = slot_idle_seconds % SECS_PER_MINUTE;
-
 				/* translator: %s is a GUC variable name */
-				appendStringInfo(&err_detail, _("The slot's idle time of %dmin %02ds exceeds the configured \"%s\" duration of %dmin."),
-								 minutes, secs, "idle_replication_slot_timeout",
-								 idle_replication_slot_timeout_mins);
+				appendStringInfo(&err_detail, _("The slot's idle time of %lds exceeds the configured \"%s\" duration of %ds."),
+								 slot_idle_seconds, "idle_replication_slot_timeout",
+								 idle_replication_slot_timeout_secs);
 				/* translator: %s is a GUC variable name */
 				appendStringInfo(&err_hint, _("You might need to increase \"%s\"."),
 								 "idle_replication_slot_timeout");
@@ -1656,7 +1653,7 @@ ReportSlotInvalidation(ReplicationSlotInvalidationCause cause,
 static inline bool
 CanInvalidateIdleSlot(ReplicationSlot *s)
 {
-	return (idle_replication_slot_timeout_mins != 0 &&
+	return (idle_replication_slot_timeout_secs != 0 &&
 			!XLogRecPtrIsInvalid(s->data.restart_lsn) &&
 			s->inactive_since > 0 &&
 			!(RecoveryInProgress() && s->data.synced));
@@ -1717,9 +1714,9 @@ DetermineSlotInvalidationCause(uint32 possible_causes, ReplicationSlot *s,
 		if (CanInvalidateIdleSlot(s))
 		{
 			/*
-			 * We simulate the invalidation due to idle_timeout as the minimum
-			 * time idle time is one minute which makes tests take a long
-			 * time.
+			 * Simulate the invalidation due to idle_timeout to test the
+			 * timeout behavior promptly, without waiting for it to trigger
+			 * naturally.
 			 */
 #ifdef USE_INJECTION_POINTS
 			if (IS_INJECTION_POINT_ATTACHED("slot-timeout-inval"))
@@ -1734,7 +1731,7 @@ DetermineSlotInvalidationCause(uint32 possible_causes, ReplicationSlot *s,
 			 * idle_replication_slot_timeout GUC.
 			 */
 			if (TimestampDifferenceExceedsSeconds(s->inactive_since, now,
-												  idle_replication_slot_timeout_mins * SECS_PER_MINUTE))
+												  idle_replication_slot_timeout_secs))
 			{
 				*inactive_since = s->inactive_since;
 				return RS_INVAL_IDLE_TIMEOUT;
@@ -1891,15 +1888,6 @@ InvalidatePossiblyObsoleteSlot(uint32 possible_causes,
 		SpinLockRelease(&s->mutex);
 
 		/*
-		 * The logical replication slots shouldn't be invalidated as GUC
-		 * max_slot_wal_keep_size is set to -1 and
-		 * idle_replication_slot_timeout is set to 0 during the binary
-		 * upgrade. See check_old_cluster_for_valid_slots() where we ensure
-		 * that no invalidated before the upgrade.
-		 */
-		Assert(!(*invalidated && SlotIsLogical(s) && IsBinaryUpgrade));
-
-		/*
 		 * Calculate the idle time duration of the slot if slot is marked
 		 * invalidated with RS_INVAL_IDLE_TIMEOUT.
 		 */
@@ -2043,6 +2031,10 @@ restart:
 		ReplicationSlot *s = &ReplicationSlotCtl->replication_slots[i];
 
 		if (!s->in_use)
+			continue;
+
+		/* Prevent invalidation of logical slots during binary upgrade */
+		if (SlotIsLogical(s) && IsBinaryUpgrade)
 			continue;
 
 		if (InvalidatePossiblyObsoleteSlot(possible_causes, s, oldestLSN, dboid,
@@ -3056,23 +3048,4 @@ WaitForStandbyConfirmation(XLogRecPtr wait_for_lsn)
 	}
 
 	ConditionVariableCancelSleep();
-}
-
-/*
- * GUC check_hook for idle_replication_slot_timeout
- *
- * The value of idle_replication_slot_timeout must be set to 0 during
- * a binary upgrade. See start_postmaster() in pg_upgrade for more details.
- */
-bool
-check_idle_replication_slot_timeout(int *newval, void **extra, GucSource source)
-{
-	if (IsBinaryUpgrade && *newval != 0)
-	{
-		GUC_check_errdetail("\"%s\" must be set to 0 during binary upgrade mode.",
-							"idle_replication_slot_timeout");
-		return false;
-	}
-
-	return true;
 }
