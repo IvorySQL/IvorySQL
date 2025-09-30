@@ -55,4 +55,3 @@ jobs:
       with:
         name: results
         path: ${{ github.workspace }}/pg_regression.tar.gz
-
