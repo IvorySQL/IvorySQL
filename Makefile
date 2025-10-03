@@ -43,3 +43,8 @@ all check oracle-check all-check install installdirs installcheck oracle-install
 	   echo "You must use GNU make to build PostgreSQL." ; \
 	   false; \
 	 fi
+
+
+.PHONY: enable-git-hooks
+enable-git-hooks:
+	@bash tools/enable-git-hooks.sh

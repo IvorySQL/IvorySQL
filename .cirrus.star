@@ -39,7 +39,10 @@ def main():
         output += "\n# REPO_CI_CONFIG_URL was not set\n"
 
     # Add 3)
-    output += config_from(".cirrus.tasks.yml")
+    # output += config_from(".cirrus.tasks.yml")
+
+    # PR-only format check
+    output += config_from(".cirrus.format.yml")
 
     return output
 
