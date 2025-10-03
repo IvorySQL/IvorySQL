@@ -1,298 +1,157 @@
 English | [中文](README_CN.md)
-# IvorySQL-AutoInstall — User Guide 
+# IvorySQL Source Install Script — Usage Guide (English)
 
 
-## 1. Project Introduction
+## 1. What this is
 
-IvorySQL-AutoInstall is a professional automated installation script designed to simplify the process of compiling and installing the IvorySQL database. With a simple configuration file, users can complete the entire workflow—from building from source to starting the service—with one command, without manually executing complex build commands and configuration steps.
+This is a non-interactive, PR/CI‑friendly installer that **builds IvorySQL from source** and sets it up as a service.  
+All output is **ASCII, English‑only** with clear staged logs.
 
-### 1.1 Core Features
-- **Environment detection and validation**: Automatically detect the operating system type and version, and validate compatibility.
-- **Intelligent dependency management**: Automatically install build-time dependencies, supporting multiple platform package managers.
-- **Automated installation and configuration**: Automatically set permissions for the install directory, data directory, and log directory.
-- **Service integration**: Automatically create a systemd service (or a helper when systemd is absent) and configure environment variables.
-- **Comprehensive logging**: Record detailed installation steps to facilitate troubleshooting.
-- **Error handling and rollback**: Robust error detection and handling mechanisms.
-### 1.2 Supported Operating Systems
-| Family        | Distribution/ID                                     | Version Gate in Script                                  | Notes                        |
-|---------------|------------------------------------------------------|---------------------------------------------------------|------------------------------|
-| RHEL Family   | rhel / centos / almalinux / rocky / oracle | Explicitly **blocks 7**; code paths cover 8/9/10        | Oracle Linux has specifics   |
-| Debian/Ubuntu | debian / ubuntu                                     | Version validated; unsupported versions **fail fast**   | Uses `apt` for dependencies  |
-| SUSE Family   | opensuse-leap / sles                                 | openSUSE Leap **15**; SLES **12.5 / 15**                | Uses `zypper`                |
-| Arch          | arch                                                 | Rolling release                                         | Uses `pacman`                |
+- Script expects to live **inside** your source tree at `autoinstall_script/`:
+  ```text
+  IvorySQL/                # the source tree root
+  ├─ configure
+  ├─ src/
+  └─ autoinstall_script/
+     ├─ AutoInstall.sh
+     └─ ivorysql.conf
+  ```
+- The script locates the source root as the **parent** directory of its own folder.
 
-> **Note**: CentOS 7 is **not** supported by this project.
+Run:
+```bash
+cd autoinstall_script
+sudo bash ./AutoInstall.sh
+```
 
 ---
 
-## 2. Project Details
+## 2. Supported Platforms
 
-### 2.1 Configuration File Explained (`ivorysql.conf`)
-| Key           | Required | Default | Description                                                  |
-|---------------|----------|---------|--------------------------------------------------------------|
-| INSTALL_DIR   | Yes      | None    | Install directory for IvorySQL (absolute path required)      |
-| DATA_DIR      | Yes      | None    | Database data directory (absolute path required)             |
-| LOG_DIR       | Yes      | None    | Log directory (absolute path required)                       |
-| SERVICE_USER  | Yes      | None    | Service user (must not be a reserved system account)         |
-| SERVICE_GROUP | Yes      | None    | Service group (must not be a reserved system group)          |
+- **EL family**: RHEL / Rocky / Alma / Oracle Linux **8 / 9 / 10**
+- **CentOS Stream**: **9 / 10**
+- **Ubuntu**: **20.04 / 22.04 / 24.04**
+- **Debian**: **12 (Bookworm) / 13 (Trixie)**
 
-**Notes**
-- Paths must be absolute and contain no spaces.
-- User/group names must not be reserved names (e.g., `root`, `bin`, `daemon`).
+The script auto-detects the OS (`/etc/os-release`) and selects `dnf|yum` or `apt-get`. For EL/OL, it best‑effort enables **CRB / PowerTools / CodeReady Builder** and **EPEL** when applicable.
 
-**Example**
+> **Root required**: the script must be run as root (or with sudo).
+
+---
+
+## 3. Configuration (`ivorysql.conf`)
+
+Place `ivorysql.conf` in the **same directory** as the script. It must contain **only** `KEY=VALUE` lines, comments (`#`), or blank lines.
+
+**Required keys** (absolute paths are enforced and created if missing):
+
+| Key | What it sets | Notes |
+|---|---|---|
+| `INSTALL_DIR` | Installation prefix (binaries in `bin/`, libs in `lib/`) | e.g. `/usr/ivorysql` |
+| `DATA_DIR` | Cluster data directory | e.g. `/var/lib/ivorysql/data` |
+| `SERVICE_USER` | System user to run the service | auto‑created if absent |
+| `SERVICE_GROUP` | System group for the service | auto‑created if absent |
+| `LOG_DIR` | Install + server logs directory | e.g. `/var/log/ivorysql` |
+
+**Example** (matches your uploaded `ivorysql.conf`):
 ```ini
+# IvorySQL Automated Installation Configuration
 INSTALL_DIR=/usr/ivorysql
 DATA_DIR=/var/lib/ivorysql/data
-LOG_DIR=/var/log/ivorysql
 SERVICE_USER=ivorysql
 SERVICE_GROUP=ivorysql
+LOG_DIR=/var/log/ivorysql
 ```
 
-### 2.2 Dependency Management System
+---
 
-#### Core Dependencies (mandatory, installed automatically)
-- Toolchain: GCC, Make, Flex, Bison
-- Core libraries: readline, zlib, openssl
-- Perl environment: perl-core, perl-devel, perl-IPC-Run
+## 4. Environment variables (tunables)
 
-#### Optional Dependencies (smart detection; feature disabled if missing)
-| Library  | Probe Path(s)                                           | Automatic Handling                               |
-|----------|----------------------------------------------------------|--------------------------------------------------|
-| ICU      | `/usr/include/icu.h` or `/usr/include/unicode/utypes.h` | Add `--without-icu` if not detected              |
-| libxml2  | `/usr/include/libxml2/libxml/parser.h`                  | Add `--without-libxml` if not detected           |
-| Tcl      | `/usr/include/tcl.h`                                    | Add `--without-tcl` if not detected              |
-| Perl dev | headers present                                          | Add `--without-perl` if not detected             |
+These can be overridden via the shell when invoking the script.
 
-#### OS-Specific Install Commands
-| OS                          | Commands                                                                 |
-|-----------------------------|--------------------------------------------------------------------------|
-| CentOS/RHEL/Rocky/AlmaLinux/Oracle| `dnf group install "Development Tools"` <br> `dnf install readline-devel zlib-devel openssl-devel` |
-| Debian/Ubuntu               | `apt-get install build-essential libreadline-dev zlib1g-dev libssl-dev` |
-| SUSE/SLES                   | `zypper install gcc make flex bison readline-devel zlib-devel libopenssl-devel` |
-| Arch Linux                  | `pacman -S base-devel readline zlib openssl`                             |
+| Variable | Default | Purpose |
+|---|---:|---|
+| `RUN_TESTS` | `0` | If `1`, install & verify `IPC::Run` (Perl) to enable TAP‑style tests. If `0`, skip installing test deps. |
+| `INIT_MODE` | `oracle` | IvorySQL initdb mode: `oracle` or `pg`. |
+| `CASE_MODE` | `interchange` | Case handling for identifiers: `interchange` \| `normal` \| `lowercase`. |
+| `READY_TIMEOUT` | `90` | Seconds to wait for service readiness (`pg_ctl -w -t`, readiness loop). |
 
-**Toolchain verification**
+**Examples**
 ```bash
-for cmd in gcc make flex bison; do
-  command -v "$cmd" >/dev/null || echo "Warning: $cmd is not installed"
-done
+# Default install (no TAP tests)
+sudo bash ./AutoInstall.sh
+
+# Enable TAP tests (installs libipc-run-perl/perl-IPC-Run & cpanminus as needed)
+sudo RUN_TESTS=1 bash ./AutoInstall.sh
+
+# Initialize in PostgreSQL mode, normal case
+sudo INIT_MODE=pg CASE_MODE=normal bash ./AutoInstall.sh
+
+# Increase readiness timeout to 180s
+sudo READY_TIMEOUT=180 bash ./AutoInstall.sh
 ```
 
-### 2.3 Build Process
-#### Configure
-```bash
-./configure --prefix="$INSTALL_DIR" --with-openssl --with-readline             --without-icu \        # when ICU is not detected
-            --without-libxml \     # when libxml2 is not detected
-            --without-tcl \        # when Tcl is not detected
-            --without-perl         # when Perl dev env is not detected
-```
+---
 
-#### Parallel Compilation
-```bash
-make -j"$(nproc)"
-make install
-```
+## 5. What the script does (stages)
 
-#### Post-Install
-- Ensure `$DATA_DIR` exists, `chmod 700`, and correct ownership.
-- Optionally append `$INSTALL_DIR/bin` to the service user's PATH.
+1. **Load configuration**: read `ivorysql.conf`, validate required keys and absolute paths.  
+2. **Prepare filesystem & identities**: create `INSTALL_DIR`, `DATA_DIR`, `LOG_DIR`; ensure `SERVICE_USER`/`SERVICE_GROUP`; chown logs.  
+3. **Detect OS**: choose package manager; verify supported versions.  
+4. **Enable EL/OL repos** (best‑effort): CRB/PowerTools/CodeReady Builder + EPEL where applicable.  
+5. **Install dependencies**: compilers, headers and tools (readline, zlib, OpenSSL, libxml2/xslt, ICU, uuid, gettext, tcl, etc.). On EL, installs **Development Tools** group.  
+6. **Feature detection** for build flags:
+   - `--with-openssl` if OpenSSL headers found (else `--without-openssl`)
+   - `--with-icu` if ICU present (else `--without-icu`)
+   - `--with-uuid=e2fs` if `uuid/uuid.h` present (else `--without-uuid`)
+   - `--with-libxml` if libxml2 headers present (else `--without-libxml`)
+7. **Configure & build**:
+   - Runs `./configure --prefix="$INSTALL_DIR" --with-readline ...`
+   - On Debian/Ubuntu uses PIE **at compile time only** (`CFLAGS='-fPIE'`) to avoid leaking `-pie` into shared libs.
+   - `make -j$(nproc)` && `make install`
+8. **Initialize cluster**: `initdb -m "$INIT_MODE" -C "$CASE_MODE"` under `SERVICE_USER`.  
+   - The script sets `DATA_DIR` permissions; **initdb may tighten to 700** per PostgreSQL/IvorySQL defaults.
+9. **Service setup**:
+   - **systemd**: writes `/etc/systemd/system/ivorysql.service` with `PGDATA`, `LD_LIBRARY_PATH`, and `pg_ctl` (`READY_TIMEOUT` respected). `systemctl enable ivorysql`.
+   - **no systemd**: creates a helper `"$INSTALL_DIR/ivorysql-ctl"` with `start|stop|reload|status`.
+10. **Start & verify**:
+    - Start via `systemctl` or helper.
+    - Readiness loop using `pg_isready` on local socket/`127.0.0.1` fallback.
+    - Sanity SQL: `psql -Atc 'SELECT 1'` as `SERVICE_USER`.
+11. **Summary**: prints directories, service status, version, and useful commands.
 
-### 2.4 Service Management System
+---
 
-#### **systemd Path** 
-unit generated by the script
-```ini
-[Unit]
-Description=IvorySQL Database Server
-Documentation=https://www.ivorysql.org
-Requires=network.target local-fs.target
-After=network.target local-fs.target
+## 6. Logs & troubleshooting
 
-[Service]
-Type=forking
-User=ivorysql
-Group=ivorysql
-Environment=PGDATA=/var/lib/ivorysql/data
-Environment=LD_LIBRARY_PATH=/usr/ivorysql/lib:/usr/ivorysql/lib/postgresql
-PIDFile=/var/lib/ivorysql/data/postmaster.pid
-OOMScoreAdjust=-1000
-ExecStart=/usr/ivorysql/bin/pg_ctl start -D ${PGDATA} -s -w -t 90
-ExecStop=/usr/ivorysql/bin/pg_ctl stop -D ${PGDATA} -s -m fast
-ExecReload=/usr/ivorysql/bin/pg_ctl reload -D ${PGDATA}
-TimeoutSec=120
-Restart=on-failure
-RestartSec=5s
-
-[Install]
-WantedBy=multi-user.target
-```
-
-**Notes**
-- `PIDFile` is present in the generated unit.
-- `ExecStart` uses `-t 90` and `TimeoutSec` is **120** to match the script.
-- `OOMScoreAdjust=-1000` and `Type=forking` are configured.
-
-#### **Non-systemd Path**
-- Helper script: `"$INSTALL_DIR/ivorysql-ctl"` (created by the script)
-  - `start` → `pg_ctl start -D "$DATA_DIR" -s -w -t 90`
-  - `stop`  → `pg_ctl stop  -D "$DATA_DIR" -s -m fast`
-  - `reload`→ `pg_ctl reload -D "$DATA_DIR"`
-- **Note**: The script also has an internal fallback `svc_start` path that uses `-t 60` when not leveraging the helper; the helper defaults to **90 seconds**.
-
-### 2.5 Logging System
-
-```
-/var/log/ivorysql/
-├── install_YYYYmmdd_HHMMSS.log  # installer stdout
-├── error_YYYYmmdd_HHMMSS.log    # installer stderr
-├── initdb_YYYYmmdd_HHMMSS.log   # initdb logs
-└── postgresql.log               # server runtime log
-```
-
-- Ownership: `ivorysql:ivorysql`
-- Timestamped, step-tagged installer logs
-- PostgreSQL built-in runtime logging
-
-**Runtime logging (PostgreSQL server)**:
-- On systemd-based distros, PostgreSQL **defaults to journald**. View logs via:
+- **Install logs**:  
+  - `{LOG_DIR}/install_YYYYmmdd_HHMMSS.log`  
+  - `{LOG_DIR}/error_YYYYmmdd_HHMMSS.log`
+- **Server logs**: `{LOG_DIR}/server_*.log`, `{LOG_DIR}/server_ctl.log` (non‑systemd helper).
+- **Quick checks**:
   ```bash
-  journalctl -u ivorysql -f
+  # Status
+  systemctl status ivorysql    # or: $INSTALL_DIR/ivorysql-ctl status
+
+  # Live logs
+  journalctl -u ivorysql -f    # or: tail -f $LOG_DIR/*.log
+
+  # Connectivity
+  pg_isready -h 127.0.0.1 -p ${PGPORT:-5432}
+
+  # Permissions
+  ls -ld "$DATA_DIR" && ls -l "$DATA_DIR"
   ```
-- To write logs to files, enable in `postgresql.conf`:
-  ```conf
-  logging_collector = on
-  log_directory    = 'log'
-  log_filename     = 'postgresql-%Y-%m-%d_%H%M%S.log'
-  ```
-  Then review `$DATA_DIR/log/` (you may symlink this path into `LOG_DIR` if desired).
+
+> The script **does not** change firewall/SELinux. Open ports & policies as needed for your environment.
 
 ---
 
-## 3. User Guide
 
-### 3.1 Preparation
-0. **Placement** (important):
-   - This script **must reside inside the IvorySQL source repository**, typically at:
-     ```
-     <repo-root>/IvorySQL-AutoInstaller/
-     ```
-   - It **builds from the local source tree** already present on disk. The script **does not clone** sources.
-1. Switch to root:
-   ```bash
-   su -
-   # or
-   sudo -i
-   ```
+## 7. FAQ
 
-2. Enter the directory and add execute permission:
-   ```bash
-   cd IvorySQL/IvorySQL-AutoInstaller
-   ```
-   Add execute permission:
-   ```bash
-   chmod +x AutoInstall.sh
-   ```
-
-### 3.2 Configuration Changes (optional)
-1. Edit the configuration file:
-   ```bash
-   nano ivorysql.conf
-   ```
-2. Reference (absolute paths only; `LOG_DIR` is required):
-   ```ini
-   INSTALL_DIR=/usr/ivorysql
-   DATA_DIR=/var/lib/ivorysql/data
-   SERVICE_USER=ivorysql
-   SERVICE_GROUP=ivorysql
-   LOG_DIR=/var/log/ivorysql
-   ```
-
-### 3.3 Start Installation
-```bash
-sudo bash AutoInstall.sh
-```
-
-
-### 3.4 Installation Verification (exact format from the script)
-```
-================ Installation succeeded ================
-
-Install directory: /usr/ivorysql
-Data directory: /var/lib/ivorysql/data
-Log directory: /var/log/ivorysql
-Service: active
-Version: /usr/ivorysql/bin/postgres --version output
-
-Useful commands:
-  systemctl [start|stop|status] ivorysql
-  journalctl -u ivorysql -f
-  sudo -u ivorysql '/usr/ivorysql/bin/psql'
-
-Install time: <date>
-Elapsed: <seconds>s
-Build: local-source   Commit: N/A
-OS: <os_type> <os_version>
-```
-
-### 3.5 Service Management Commands
-| Action | Command | Notes |
-|---|---|---|
-| Start | `systemctl start ivorysql` | Start the database service |
-| Stop  | `systemctl stop ivorysql`  | Stop the database service  |
-| Status| `systemctl status ivorysql`| Inspect service state      |
-| Logs  | `journalctl -u ivorysql -f`| Follow service logs        |
-| Reload| `systemctl reload ivorysql`| Reload configurations      |
-| Connect | `sudo -u ivorysql /usr/ivorysql/bin/psql` | Connect to DB |
-| Version | `/usr/ivorysql/bin/postgres --version` | Show version |
-| Base Backup | `sudo -u ivorysql /usr/ivorysql/bin/pg_basebackup` | Create base backup |
-
----
-
-## 4. Troubleshooting
-
-### 4.1 Common Error Handling
-| Symptom | Likely Cause | Resolution |
-|---|---|---|
-| Configuration missing | Wrong file path | Ensure `ivorysql.conf` exists in the project directory |
-| Dependency install failed | Network or mirror issues | Check network; switch mirrors |
-| Build error | Unsupported environment | Check OS/version; inspect error log |
-| initdb failed | Ownership or permissions | `chown ivorysql:ivorysql /var/lib/ivorysql/data` |
-| Service failed | Port conflict or configuration | `ss -tulnp | grep 5432` |
-
-### 4.2 Diagnostic Commands
-```bash
-systemctl status ivorysql -l --no-pager
-journalctl -u ivorysql --since "1 hour ago" --no-pager
-sudo -u ivorysql /usr/ivorysql/bin/postgres -D /var/lib/ivorysql/data -c logging_collector=on
-ls -l IvorySQL-AutoInstaller/ivorysql.conf
-cat IvorySQL-AutoInstaller/ivorysql.conf
-```
-
-### 4.3 Log File Locations
-- Install logs: `/var/log/ivorysql/install_<timestamp>.log`
-- Error logs: `/var/log/ivorysql/error_<timestamp>.log`
-- initdb logs: `/var/log/ivorysql/initdb_<timestamp>.log`
-- DB logs: `$DATA_DIR/log/postgresql-*.log` (if logging_collector is enabled; you may symlink this directory into `LOG_DIR`)
-
-### 4.4 Special Handling
-#### Rocky Linux 10 / Oracle Linux 10
-- Auto-enable CRB/Devel repositories for dev headers (e.g., `libxml2-devel`).
-- Fallback `--allowerasing` strategy when appropriate.
-- Check status:
-  ```bash
-  grep "XML_SUPPORT" /var/log/ivorysql/install_*.log
-  ```
-
-#### Perl Environment
-- Auto-check `FindBin`, `IPC::Run`. Install via package manager or CPAN if missing.
-```bash
-dnf install -y perl-IPC-Run
-PERL_MM_USE_DEFAULT=1 cpan -i IPC::Run FindBin
-perl -MFindBin -e 1
-perl -MIPC::Run -e 1
-```
-
----
+- **Where must the script live?** In `autoinstall_script/` **under the source root**. It expects `configure` and `src/` one level up.  
+- **Can I change the port?** Use standard PostgreSQL methods (e.g., `postgresql.conf`). The script reads the actual port from `postmaster.pid` for readiness.  
+- **Why `LD_LIBRARY_PATH` in service/helper?** To prefer the freshly installed IvorySQL libs under `INSTALL_DIR/lib`.
 
 
