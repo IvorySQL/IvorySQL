@@ -1,291 +1,153 @@
 
 [English](README.md) | 中文
-## 1. 项目介绍
+## 1. 这是做什么的
 
-IvorySQL-AutoInstall 是一个专业的自动化安装脚本，旨在简化 IvorySQL 数据库的编译安装过程。通过简单的配置文件设置，用户可以一键完成从源码编译到服务启动的全过程，无需手动执行复杂的编译命令和配置步骤。
+一个**全英文、ASCII 输出**的无人值守安装器，用于**从源码构建 IvorySQL**并注册为服务，分阶段打印清晰日志。
 
-### 1.1 核心功能
-- **环境检测与验证**：自动检测操作系统类型和版本，验证系统兼容性。
-- **智能依赖管理**：自动安装编译所需依赖包，支持多平台包管理器。
-- **自动化安装配置**：自动设置安装目录、数据目录和日志目录的权限。
-- **服务集成**：自动创建 systemd 服务（或在无 systemd 时创建辅助脚本）并配置环境变量。
-- **全面日志记录**：详细记录安装过程，便于故障排查。
-- **错误处理与回滚**：完善的错误检测与处理机制。
+- 脚本要求放在源码树 **子目录** `autoinstall_script/`：
+  ```text
+  IvorySQL/                # 源码根目录
+  ├─ configure
+  ├─ src/
+  └─ autoinstall_script/
+     ├─ AutoInstall.sh
+     └─ ivorysql.conf
+  ```
+- 脚本将其**上一级目录**视为源码根目录（用于找到 `configure` 与 `src/`）。
 
-### 1.2 支持的操作系统
-| 家族 | 发行版/ID | 脚本中的版本门槛 | 说明 |
-|---|---|---|---|
-| RHEL 系 | rhel / centos / almalinux / rocky / oracle | 明确 **屏蔽 7**；涵盖 8/9/10 的分支 | Oracle Linux 有专项处理 |
-| Debian/Ubuntu | debian / ubuntu | 版本会被校验；不支持的版本 **快速失败** | 依赖安装使用 `apt` |
-| SUSE 系 | opensuse-leap / sles | openSUSE Leap **15**；SLES **12.5 / 15** | 使用 `zypper` |
-| Arch | arch | 滚动发布 | 使用 `pacman` |
-
-> **注意**：本项目不支持 CentOS 7。
+运行方式：
+```bash
+cd autoinstall_script
+sudo bash ./AutoInstall.sh
+```
 
 ---
 
-## 2. 项目细节
+## 2. 支持的操作系统
 
-### 2.1 配置文件详解（`ivorysql.conf`）
-| 配置项 | 是否必需 | 默认值 | 说明 |
-|---|---|---|---|
-| INSTALL_DIR | 是 | 无 | IvorySQL 安装目录（必须为绝对路径） |
-| DATA_DIR | 是 | 无 | 数据目录（必须为绝对路径） |
-| LOG_DIR | 是 | 无 | 日志目录（必须为绝对路径） |
-| SERVICE_USER | 是 | 无 | 服务用户（不可为保留系统账户） |
-| SERVICE_GROUP | 是 | 无 | 服务用户组（不可为保留系统组） |
+- **EL 家族**：RHEL / Rocky / Alma / Oracle Linux **8 / 9 / 10**
+- **CentOS Stream**：**9 / 10**
+- **Ubuntu**：**20.04 / 22.04 / 24.04**
+- **Debian**：**12（Bookworm）/ 13（Trixie）**
 
-**注意**
-- 所有路径必须为绝对路径，且不得包含空格。
-- 用户/组名称不得为系统保留名称（如 `root`、`bin`、`daemon`）。
+脚本自动读取 `/etc/os-release` 识别系统，并选择 `dnf|yum` 或 `apt-get`。在 EL/OL 上会**尽力启用** **CRB / PowerTools / CodeReady Builder** 与 **EPEL**。
 
-**示例**
+> **需要 root**：必须以 root 身份（或 sudo）执行。
+
+---
+
+## 3. 配置文件（`ivorysql.conf`）
+
+将 `ivorysql.conf` 与脚本放在**同一目录**。配置文件只允许出现 **`KEY=VALUE`** 行、注释（`#`）和空行。
+
+**必填键**（要求为**绝对路径**；不存在会自动创建）：
+
+| 键 | 作用 | 备注 |
+|---|---|---|
+| `INSTALL_DIR` | 安装前缀目录（`bin/`、`lib/` 等） | 如 `/usr/ivorysql` |
+| `DATA_DIR` | 数据目录 | 如 `/var/lib/ivorysql/data` |
+| `SERVICE_USER` | 运行服务的系统用户 | 若不存在会自动创建 |
+| `SERVICE_GROUP` | 服务所属系统用户组 | 若不存在会自动创建 |
+| `LOG_DIR` | 安装与服务日志目录 | 如 `/var/log/ivorysql` |
+
+**示例**（与你当前的 `ivorysql.conf` 一致）：
 ```ini
+# IvorySQL Automated Installation Configuration
 INSTALL_DIR=/usr/ivorysql
 DATA_DIR=/var/lib/ivorysql/data
-LOG_DIR=/var/log/ivorysql
 SERVICE_USER=ivorysql
 SERVICE_GROUP=ivorysql
+LOG_DIR=/var/log/ivorysql
 ```
-
-### 2.2 依赖管理系统
-
-#### 核心依赖（必装，自动执行）
-- 工具链：GCC、Make、Flex、Bison
-- 核心库：readline、zlib、openssl
-- Perl 环境：perl-core、perl-devel、perl-IPC-Run
-
-#### 可选依赖（智能检测，缺失则禁用对应特性）
-| 依赖库 | 检测路径 | 自动处理 |
-|---|---|---|
-| ICU | `/usr/include/icu.h` 或 `/usr/include/unicode/utypes.h` | 未检测到则添加 `--without-icu` |
-| libxml2 | `/usr/include/libxml2/libxml/parser.h` | 未检测到则添加 `--without-libxml` |
-| Tcl | `/usr/include/tcl.h` | 未检测到则添加 `--without-tcl` |
-| Perl 开发 | 头文件存在 | 未检测到则添加 `--without-perl` |
-
-#### 各发行版安装命令
-| 系统 | 命令 |
-|---|---|
-| CentOS/RHEL/Rocky/AlmaLinux/Oracle | `dnf group install "Development Tools"` <br> `dnf install readline-devel zlib-devel openssl-devel` |
-| Debian/Ubuntu | `apt-get install build-essential libreadline-dev zlib1g-dev libssl-dev` |
-| SUSE/SLES | `zypper install gcc make flex bison readline-devel zlib-devel libopenssl-devel` |
-| Arch Linux | `pacman -S base-devel readline zlib openssl` |
-
-**工具链自检**
-```bash
-for cmd in gcc make flex bison; do
-  command -v "$cmd" >/dev/null || echo "警告: 未安装 $cmd"
-done
-```
-
-### 2.3 编译流程
-#### 配置命令
-```bash
-./configure --prefix="$INSTALL_DIR" --with-openssl --with-readline             --without-icu \        # 未检测到 ICU 时
-            --without-libxml \     # 未检测到 libxml2 时
-            --without-tcl \        # 未检测到 Tcl 时
-            --without-perl         # 未检测到 Perl 开发环境时
-```
-
-#### 并行编译
-```bash
-make -j"$(nproc)"
-make install
-```
-
-#### 安装后处理
-- 确保 `$DATA_DIR` 存在，设置 `chmod 700`，并修正属主。
-- 可在服务用户的 PATH 中加入 `$INSTALL_DIR/bin`。
-
-### 2.4 服务管理系统
-
-#### **systemd 路径**
-脚本生成的单元
-```ini
-[Unit]
-Description=IvorySQL Database Server
-Documentation=https://www.ivorysql.org
-Requires=network.target local-fs.target
-After=network.target local-fs.target
-
-[Service]
-Type=forking
-User=ivorysql
-Group=ivorysql
-Environment=PGDATA=/var/lib/ivorysql/data
-Environment=LD_LIBRARY_PATH=/usr/ivorysql/lib:/usr/ivorysql/lib/postgresql
-PIDFile=/var/lib/ivorysql/data/postmaster.pid
-OOMScoreAdjust=-1000
-ExecStart=/usr/ivorysql/bin/pg_ctl start -D ${PGDATA} -s -w -t 90
-ExecStop=/usr/ivorysql/bin/pg_ctl stop -D ${PGDATA} -s -m fast
-ExecReload=/usr/ivorysql/bin/pg_ctl reload -D ${PGDATA}
-TimeoutSec=120
-Restart=on-failure
-RestartSec=5s
-
-[Install]
-WantedBy=multi-user.target
-```
-
-**说明**
-- 生成的单元包含 `PIDFile`。
-- `ExecStart` 使用 `-t 90`，`TimeoutSec` 为 **120**，与脚本一致。
-- 配置了 `OOMScoreAdjust=-1000` 与 `Type=forking`。
-
-#### **非 systemd 路径**
-- 辅助脚本：`"$INSTALL_DIR/ivorysql-ctl"`（由脚本生成）
-  - `start` → `pg_ctl start -D "$DATA_DIR" -s -w -t 90`
-  - `stop`  → `pg_ctl stop  -D "$DATA_DIR" -s -m fast`
-  - `reload`→ `pg_ctl reload -D "$DATA_DIR"`
-- **提示**：脚本还存在内部回退的 `svc_start` 路径，在不使用辅助脚本时采用 `-t 60`；辅助脚本默认 **90 秒**。
-
-### 2.5 日志系统
-```
-/var/log/ivorysql/
-├── install_YYYYmmdd_HHMMSS.log  # 安装器标准输出
-├── error_YYYYmmdd_HHMMSS.log    # 安装器标准错误
-├── initdb_YYYYmmdd_HHMMSS.log   # 初始化日志
-└── postgresql.log               # 运行期日志
-```
-
-- 目录属主：`ivorysql:ivorysql`
-- 安装日志带时间戳与步骤标记
-- 运行期使用 PostgreSQL 内置日志
-
-**运行期日志（PostgreSQL 服务器）**：
-- 在基于 systemd 的发行版上，PostgreSQL **默认写入 journald**。查看命令：
-  ```bash
-  journalctl -u ivorysql -f
-  ```
-- 若需要写入文件，请在 `postgresql.conf` 启用：
-  ```conf
-  logging_collector = on
-  log_directory    = 'log'
-  log_filename     = 'postgresql-%Y-%m-%d_%H%M%S.log'
-  ```
-  然后在 `$DATA_DIR/log/` 查看（如需要，可将该路径软链接到 `LOG_DIR`）。
 
 ---
 
-## 3. 使用指南
+## 4. 可调环境变量
 
-### 3.1 准备工作
-0. **放置路径（重要）**：
-   - 本脚本**必须位于 IvorySQL 源码仓库中**，推荐路径：
-     ```
-     <repo-root>/IvorySQL-AutoInstaller/
-     ```
-   - 本脚本**直接使用本地源码树进行编译**，**不负责拉取源码**。
-1. **使用 root 权限**：
-   ```bash
-   su -
-   # 或
-   sudo -i
-   ```
-2. **进入目录添加执行权限**：
-   ```bash
-   cd IvorySQL/IvorySQL-AutoInstaller
-   ```
-   **添加执行权限**：
-   ```bash
-   chmod +x AutoInstall.sh
-   ```
+以下变量可在执行脚本时通过环境变量覆盖：
 
-### 3.2 配置修改（可选）
-1. **编辑配置文件**：
-   ```bash
-   nano ivorysql.conf
-   ```
-2. **配置参考**（路径须为绝对路径；`LOG_DIR` 必填）：
-   ```ini
-   INSTALL_DIR=/usr/ivorysql
-   DATA_DIR=/var/lib/ivorysql/data
-   SERVICE_USER=ivorysql
-   SERVICE_GROUP=ivorysql
-   LOG_DIR=/var/log/ivorysql
-   ```
+| 变量 | 默认值 | 用途 |
+|---|---:|---|
+| `RUN_TESTS` | `0` | 设为 `1` 时安装并校验 Perl 的 `IPC::Run`，以支持 TAP 风格测试；为 `0` 时不装测试依赖。 |
+| `INIT_MODE` | `oracle` | 初始化模式：`oracle` 或 `pg`。 |
+| `CASE_MODE` | `interchange` | 标识符大小写：`interchange` \| `normal` \| `lowercase`。 |
+| `READY_TIMEOUT` | `90` | 等待服务就绪的时长（`pg_ctl -w -t` 与就绪轮询）。 |
 
-### 3.3 开始安装
+**示例**
 ```bash
-sudo bash AutoInstall.sh
+# 默认安装（不安装 TAP 测试依赖）
+sudo bash ./AutoInstall.sh
+
+# 启用 TAP 测试（将安装 libipc-run-perl/perl-IPC-Run 与 cpanminus）
+sudo RUN_TESTS=1 bash ./AutoInstall.sh
+
+# 以 PostgreSQL 模式、普通大小写初始化
+sudo INIT_MODE=pg CASE_MODE=normal bash ./AutoInstall.sh
+
+# 将就绪超时提高到 180 秒
+sudo READY_TIMEOUT=180 bash ./AutoInstall.sh
 ```
-
-
-### 3.4 安装验证（脚本实际输出格式）
-```
-================ Installation succeeded ================
-
-Install directory: /usr/ivorysql
-Data directory: /var/lib/ivorysql/data
-Log directory: /var/log/ivorysql
-Service: active
-Version: /usr/ivorysql/bin/postgres --version output
-
-Useful commands:
-  systemctl [start|stop|status] ivorysql
-  journalctl -u ivorysql -f
-  sudo -u ivorysql '/usr/ivorysql/bin/psql'
-
-Install time: <date>
-Elapsed: <seconds>s
-Build: local-source   Commit: N/A
-OS: <os_type> <os_version>
-```
-
-### 3.5 服务管理命令
-| 功能 | 命令 | 说明 |
-|---|---|---|
-| 启动 | `systemctl start ivorysql` | 启动数据库服务 |
-| 停止 | `systemctl stop ivorysql`  | 停止数据库服务 |
-| 状态 | `systemctl status ivorysql`| 查看服务状态   |
-| 日志 | `journalctl -u ivorysql -f`| 跟踪服务日志   |
-| 重载 | `systemctl reload ivorysql`| 重载配置       |
-| 连接 | `sudo -u ivorysql /usr/ivorysql/bin/psql` | 连接数据库 |
-| 版本 | `/usr/ivorysql/bin/postgres --version` | 查看版本 |
-| 基础备份 | `sudo -u ivorysql /usr/ivorysql/bin/pg_basebackup` | 创建基础备份 |
 
 ---
 
-## 4. 故障排查
+## 5. 安装流程（脚本的阶段）
 
-### 4.1 常见错误处理
-| 错误现象 | 可能原因 | 解决方案 |
-|---|---|---|
-| 配置文件缺失 | 路径错误 | 检查项目目录下是否存在 `ivorysql.conf` |
-| 依赖安装失败 | 网络或镜像问题 | 检查网络并尝试切换镜像 |
-| 构建错误 | 环境不受支持 | 检查系统版本并查看错误日志 |
-| initdb 失败 | 属主或权限问题 | `chown ivorysql:ivorysql /var/lib/ivorysql/data` |
-| 服务失败 | 端口冲突或配置错误 | `ss -tulnp | grep 5432` |
+1. **加载配置**：读取 `ivorysql.conf`，校验必填键与绝对路径。  
+2. **准备文件系统与账号**：创建 `INSTALL_DIR`、`DATA_DIR`、`LOG_DIR`；确保 `SERVICE_USER`/`SERVICE_GROUP`；日志目录授权到服务账号。  
+3. **检测操作系统**：选择包管理器并校验受支持版本。  
+4. **启用 EL/OL 仓库**（尽力而为）：在 EL/OL 上启用 CRB/PowerTools/CodeReady Builder 与 EPEL。  
+5. **安装依赖**：编译器、头文件与工具（readline、zlib、OpenSSL、libxml2/xslt、ICU、uuid、gettext、tcl 等）。EL 系列安装 **Development Tools** 组。  
+6. **构建特性探测**（据此决定 `configure` 开关）：
+   - 发现 OpenSSL 头文件则 `--with-openssl`（否则 `--without-openssl`）
+   - 发现 ICU 则 `--with-icu`（否则 `--without-icu`）
+   - 发现 `uuid/uuid.h` 则 `--with-uuid=e2fs`（否则 `--without-uuid`）
+   - 发现 libxml2 头文件则 `--with-libxml`（否则 `--without-libxml`）
+7. **配置与编译安装**：
+   - 执行 `./configure --prefix="$INSTALL_DIR" --with-readline ...`
+   - 在 Debian/Ubuntu 上仅对**编译阶段**增加 `-fPIE`，避免把 `-pie` 作用到共享库链接。
+   - `make -j$(nproc)` 并 `make install`
+8. **初始化集群**：以 `SERVICE_USER` 执行 `initdb -m "$INIT_MODE" -C "$CASE_MODE"`。  
+   - 脚本会设置 `DATA_DIR` 权限；**`initdb` 可能会收紧到 700**（符合 PostgreSQL/IvorySQL 默认）。
+9. **服务注册**：
+   - **systemd 环境**：生成 `/etc/systemd/system/ivorysql.service`，设置 `PGDATA`、`LD_LIBRARY_PATH` 与 `pg_ctl`（尊重 `READY_TIMEOUT`），并 `systemctl enable ivorysql`。  
+   - **无 systemd 环境**：生成 `"$INSTALL_DIR/ivorysql-ctl"` 辅助脚本，支持 `start|stop|reload|status`。
+10. **启动与就绪校验**：
+    - 通过 `systemctl` 或辅助脚本启动。
+    - 使用 `pg_isready` 在本地 socket/`127.0.0.1` 上轮询就绪。
+    - 以 `SERVICE_USER` 运行一次 `psql -Atc 'SELECT 1'` 做最小 SQL 验证。
+11. **汇总信息**：打印目录、服务状态、版本与常用命令备忘。
 
-### 4.2 诊断命令
-```bash
-systemctl status ivorysql -l --no-pager
-journalctl -u ivorysql --since "1 hour ago" --no-pager
-sudo -u ivorysql /usr/ivorysql/bin/postgres -D /var/lib/ivorysql/data -c logging_collector=on
-ls -l IvorySQL-AutoInstaller/ivorysql.conf
-cat IvorySQL-AutoInstaller/ivorysql.conf
-```
+---
 
-### 4.3 日志位置
-- 安装日志：`/var/log/ivorysql/install_<timestamp>.log`
-- 错误日志：`/var/log/ivorysql/error_<timestamp>.log`
-- 初始化日志：`/var/log/ivorysql/initdb_<timestamp>.log`
-- 数据库日志：`$DATA_DIR/log/postgresql-*.log`（如启用 logging_collector；可将该目录软链接到 LOG_DIR）
+## 6. 日志与排障
 
-### 4.4 特殊处理
-#### Rocky Linux 10 / Oracle Linux 10
-- 自动启用 CRB/Devel 仓库以获取开发头文件（如 `libxml2-devel`）。
-- 需要时采用 `--allowerasing` 的回退策略。
-- 状态检查：
+- **安装日志**：  
+  - `{LOG_DIR}/install_YYYYmmdd_HHMMSS.log`  
+  - `{LOG_DIR}/error_YYYYmmdd_HHMMSS.log`
+- **服务日志**：`{LOG_DIR}/server_*.log`、`{LOG_DIR}/server_ctl.log`（无 systemd 场景）。
+- **常用排障命令**：
   ```bash
-  grep "XML_SUPPORT" /var/log/ivorysql/install_*.log
+  # 状态
+  systemctl status ivorysql    # 或：$INSTALL_DIR/ivorysql-ctl status
+
+  # 实时日志
+  journalctl -u ivorysql -f    # 或：tail -f $LOG_DIR/*.log
+
+  # 连通性
+  pg_isready -h 127.0.0.1 -p ${PGPORT:-5432}
+
+  # 权限
+  ls -ld "$DATA_DIR" && ls -l "$DATA_DIR"
   ```
 
-#### Perl 环境
-- 自动检查 `FindBin`、`IPC::Run`；缺失时通过包管理器或 CPAN 安装。
-```bash
-dnf install -y perl-IPC-Run
-PERL_MM_USE_DEFAULT=1 cpan -i IPC::Run FindBin
-perl -MFindBin -e 1
-perl -MIPC::Run -e 1
-```
+> 脚本**不会**修改防火墙/SELinux。若需远程访问，请按环境策略开放端口与策略。
+
+---
+
+
+
+## 7. 常见问题
+
+- **脚本必须放在哪里？** 放在源码根目录下的 `autoinstall_script/` 中。脚本会把其**上一级目录**当作源码根，查找 `configure` 与 `src/`。  
+- **如何改端口？** 按 PostgreSQL 常规方式调整（如编辑 `postgresql.conf`）。脚本在就绪判定时会读取 `postmaster.pid` 的真实端口。  
+- **为什么要在服务/辅助脚本里设置 `LD_LIBRARY_PATH`？** 为了优先使用 `{INSTALL_DIR}/lib` 下新安装的 IvorySQL 库。
