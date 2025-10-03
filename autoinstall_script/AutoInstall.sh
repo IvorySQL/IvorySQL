@@ -444,14 +444,14 @@ LOG_DIR="__LOG__"
 export PATH="$INSTALL_DIR/bin:${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}"
 export LD_LIBRARY_PATH="$INSTALL_DIR/lib:$INSTALL_DIR/lib/postgresql:${LD_LIBRARY_PATH:-}"
 case "${1:-}" in
-  start)  "$INSTALL_DIR/bin/pg_ctl" start  -D "$PGDATA" -s -w -t 90 -l "$LOG_DIR/server_ctl.log" ;;
+  start)  "$INSTALL_DIR/bin/pg_ctl" start  -D "$PGDATA" -s -w -t __READY_TIMEOUT__ -l "$LOG_DIR/server_ctl.log" ;;
   stop)   "$INSTALL_DIR/bin/pg_ctl" stop   -D "$PGDATA" -s -m fast ;;
   reload) "$INSTALL_DIR/bin/pg_ctl" reload -D "$PGDATA" ;;
   status) "$INSTALL_DIR/bin/pg_ctl" status -D "$PGDATA" || true ;;
   *) echo "Usage: $0 {start|stop|reload|status}"; exit 1 ;;
 esac
 EOF
-    sed -i "s#__PGDATA__#$DATA_DIR#g; s#__INSTALL__#$INSTALL_DIR#g; s#__LOG__#$LOG_DIR#g" "$INSTALL_DIR/ivorysql-ctl"
+    sed -i "s#__PGDATA__#$DATA_DIR#g; s#__INSTALL__#$INSTALL_DIR#g; s#__LOG__#$LOG_DIR#g; s#__READY_TIMEOUT__#${READY_TIMEOUT}#g" "$INSTALL_DIR/ivorysql-ctl"
     chmod +x "$INSTALL_DIR/ivorysql-ctl"
     OK "Helper created: $INSTALL_DIR/ivorysql-ctl"
   fi
