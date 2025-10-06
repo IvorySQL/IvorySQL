@@ -47,6 +47,7 @@
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
+#include "utils/pg_lsn.h"
 #include "utils/resowner.h"
 #include "utils/syscache.h"
 #include "utils/varlena.h"
@@ -2615,7 +2616,7 @@ pg_sequence_parameters(PG_FUNCTION_ARGS)
 
 
 /*
- * Return the sequence tuple.
+ * Return the sequence tuple along with its page LSN.
  *
  * This is primarily intended for use by pg_dump to gather sequence data
  * without needing to individually query each sequence relation.
@@ -2623,7 +2624,7 @@ pg_sequence_parameters(PG_FUNCTION_ARGS)
 Datum
 pg_get_sequence_data(PG_FUNCTION_ARGS)
 {
-#define PG_GET_SEQUENCE_DATA_COLS	2
+#define PG_GET_SEQUENCE_DATA_COLS	3
 	Oid			relid = PG_GETARG_OID(0);
 	SeqTable	elm;
 	Relation	seqrel;
@@ -2638,6 +2639,8 @@ pg_get_sequence_data(PG_FUNCTION_ARGS)
 					   INT8OID, -1, 0);
 	TupleDescInitEntry(resultTupleDesc, (AttrNumber) 2, "is_called",
 					   BOOLOID, -1, 0);
+	TupleDescInitEntry(resultTupleDesc, (AttrNumber) 3, "page_lsn",
+					   LSNOID, -1, 0);
 	resultTupleDesc = BlessTupleDesc(resultTupleDesc);
 
 	init_sequence(relid, &elm, &seqrel);
@@ -2653,11 +2656,14 @@ pg_get_sequence_data(PG_FUNCTION_ARGS)
 		Buffer		buf;
 		HeapTupleData seqtuple;
 		Form_pg_sequence_data seq;
+		Page		page;
 
 		seq = read_seq_tuple(seqrel, &buf, &seqtuple);
+		page = BufferGetPage(buf);
 
 		values[0] = Int64GetDatum(seq->last_value);
 		values[1] = BoolGetDatum(seq->is_called);
+		values[2] = LSNGetDatum(PageGetLSN(page));
 
 		UnlockReleaseBuffer(buf);
 	}
