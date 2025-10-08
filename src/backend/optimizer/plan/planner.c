@@ -234,7 +234,6 @@ static void add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 									  RelOptInfo *partially_grouped_rel,
 									  const AggClauseCosts *agg_costs,
 									  grouping_sets_data *gd,
-									  double dNumGroups,
 									  GroupPathExtraData *extra);
 static RelOptInfo *create_partial_grouping_paths(PlannerInfo *root,
 												 RelOptInfo *grouped_rel,
@@ -4438,9 +4437,7 @@ create_ordinary_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
 							   GroupPathExtraData *extra,
 							   RelOptInfo **partially_grouped_rel_p)
 {
-	Path	   *cheapest_path = input_rel->cheapest_total_path;
 	RelOptInfo *partially_grouped_rel = NULL;
-	double		dNumGroups;
 	PartitionwiseAggregateType patype = PARTITIONWISE_AGGREGATE_NONE;
 
 	/*
@@ -4522,23 +4519,16 @@ create_ordinary_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
 
 	/* Gather any partially grouped partial paths. */
 	if (partially_grouped_rel && partially_grouped_rel->partial_pathlist)
-	{
 		gather_grouping_paths(root, partially_grouped_rel);
-		set_cheapest(partially_grouped_rel);
-	}
 
-	/*
-	 * Estimate number of groups.
-	 */
-	dNumGroups = get_number_of_groups(root,
-									  cheapest_path->rows,
-									  gd,
-									  extra->targetList);
+	/* Now choose the best path(s) for partially_grouped_rel. */
+	if (partially_grouped_rel && partially_grouped_rel->pathlist)
+		set_cheapest(partially_grouped_rel);
 
 	/* Build final grouping paths */
 	add_paths_to_grouping_rel(root, input_rel, grouped_rel,
 							  partially_grouped_rel, agg_costs, gd,
-							  dNumGroups, extra);
+							  extra);
 
 	/* Give a helpful error if we failed to find any implementation */
 	if (grouped_rel->pathlist == NIL)
@@ -7483,16 +7473,42 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 						  RelOptInfo *grouped_rel,
 						  RelOptInfo *partially_grouped_rel,
 						  const AggClauseCosts *agg_costs,
-						  grouping_sets_data *gd, double dNumGroups,
+						  grouping_sets_data *gd,
 						  GroupPathExtraData *extra)
 {
 	Query	   *parse = root->parse;
 	Path	   *cheapest_path = input_rel->cheapest_total_path;
+	Path	   *cheapest_partially_grouped_path = NULL;
 	ListCell   *lc;
 	bool		can_hash = (extra->flags & GROUPING_CAN_USE_HASH) != 0;
 	bool		can_sort = (extra->flags & GROUPING_CAN_USE_SORT) != 0;
 	List	   *havingQual = (List *) extra->havingQual;
 	AggClauseCosts *agg_final_costs = &extra->agg_final_costs;
+	double		dNumGroups = 0;
+	double		dNumFinalGroups = 0;
+
+	/*
+	 * Estimate number of groups for non-split aggregation.
+	 */
+	dNumGroups = get_number_of_groups(root,
+									  cheapest_path->rows,
+									  gd,
+									  extra->targetList);
+
+	if (partially_grouped_rel && partially_grouped_rel->pathlist)
+	{
+		cheapest_partially_grouped_path =
+			partially_grouped_rel->cheapest_total_path;
+
+		/*
+		 * Estimate number of groups for final phase of partial aggregation.
+		 */
+		dNumFinalGroups =
+			get_number_of_groups(root,
+								 cheapest_partially_grouped_path->rows,
+								 gd,
+								 extra->targetList);
+	}
 
 	if (can_sort)
 	{
@@ -7605,7 +7621,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 					path = make_ordered_path(root,
 											 grouped_rel,
 											 path,
-											 partially_grouped_rel->cheapest_total_path,
+											 cheapest_partially_grouped_path,
 											 info->pathkeys,
 											 -1.0);
 
@@ -7623,7 +7639,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 												 info->clauses,
 												 havingQual,
 												 agg_final_costs,
-												 dNumGroups));
+												 dNumFinalGroups));
 					else
 						add_path(grouped_rel, (Path *)
 								 create_group_path(root,
@@ -7631,7 +7647,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 												   path,
 												   info->clauses,
 												   havingQual,
-												   dNumGroups));
+												   dNumFinalGroups));
 
 				}
 			}
@@ -7673,19 +7689,17 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 		 */
 		if (partially_grouped_rel && partially_grouped_rel->pathlist)
 		{
-			Path	   *path = partially_grouped_rel->cheapest_total_path;
-
 			add_path(grouped_rel, (Path *)
 					 create_agg_path(root,
 									 grouped_rel,
-									 path,
+									 cheapest_partially_grouped_path,
 									 grouped_rel->reltarget,
 									 AGG_HASHED,
 									 AGGSPLIT_FINAL_DESERIAL,
 									 root->processed_groupClause,
 									 havingQual,
 									 agg_final_costs,
-									 dNumGroups));
+									 dNumFinalGroups));
 		}
 	}
 
@@ -7725,6 +7739,7 @@ create_partial_grouping_paths(PlannerInfo *root,
 {
 	Query	   *parse = root->parse;
 	RelOptInfo *partially_grouped_rel;
+	RelOptInfo *eager_agg_rel = NULL;
 	AggClauseCosts *agg_partial_costs = &extra->agg_partial_costs;
 	AggClauseCosts *agg_final_costs = &extra->agg_final_costs;
 	Path	   *cheapest_partial_path = NULL;
@@ -7734,6 +7749,15 @@ create_partial_grouping_paths(PlannerInfo *root,
 	ListCell   *lc;
 	bool		can_hash = (extra->flags & GROUPING_CAN_USE_HASH) != 0;
 	bool		can_sort = (extra->flags & GROUPING_CAN_USE_SORT) != 0;
+
+	/*
+	 * Check whether any partially aggregated paths have been generated
+	 * through eager aggregation.
+	 */
+	if (input_rel->grouped_rel &&
+		!IS_DUMMY_REL(input_rel->grouped_rel) &&
+		input_rel->grouped_rel->pathlist != NIL)
+		eager_agg_rel = input_rel->grouped_rel;
 
 	/*
 	 * Consider whether we should generate partially aggregated non-partial
@@ -7756,11 +7780,13 @@ create_partial_grouping_paths(PlannerInfo *root,
 
 	/*
 	 * If we can't partially aggregate partial paths, and we can't partially
-	 * aggregate non-partial paths, then don't bother creating the new
+	 * aggregate non-partial paths, and no partially aggregated paths were
+	 * generated by eager aggregation, then don't bother creating the new
 	 * RelOptInfo at all, unless the caller specified force_rel_creation.
 	 */
 	if (cheapest_total_path == NULL &&
 		cheapest_partial_path == NULL &&
+		eager_agg_rel == NULL &&
 		!force_rel_creation)
 		return NULL;
 
@@ -7983,6 +8009,51 @@ create_partial_grouping_paths(PlannerInfo *root,
 										 NIL,
 										 agg_partial_costs,
 										 dNumPartialPartialGroups));
+	}
+
+	/*
+	 * Add any partially aggregated paths generated by eager aggregation to
+	 * the new upper relation after applying projection steps as needed.
+	 */
+	if (eager_agg_rel)
+	{
+		/* Add the paths */
+		foreach(lc, eager_agg_rel->pathlist)
+		{
+			Path	   *path = (Path *) lfirst(lc);
+
+			/* Shouldn't have any parameterized paths anymore */
+			Assert(path->param_info == NULL);
+
+			path = (Path *) create_projection_path(root,
+												   partially_grouped_rel,
+												   path,
+												   partially_grouped_rel->reltarget);
+
+			add_path(partially_grouped_rel, path);
+		}
+
+		/*
+		 * Likewise add the partial paths, but only if parallelism is possible
+		 * for partially_grouped_rel.
+		 */
+		if (partially_grouped_rel->consider_parallel)
+		{
+			foreach(lc, eager_agg_rel->partial_pathlist)
+			{
+				Path	   *path = (Path *) lfirst(lc);
+
+				/* Shouldn't have any parameterized paths anymore */
+				Assert(path->param_info == NULL);
+
+				path = (Path *) create_projection_path(root,
+													   partially_grouped_rel,
+													   path,
+													   partially_grouped_rel->reltarget);
+
+				add_partial_path(partially_grouped_rel, path);
+			}
+		}
 	}
 
 	/*
@@ -8548,13 +8619,6 @@ create_partitionwise_grouping_paths(PlannerInfo *root,
 
 		add_paths_to_append_rel(root, partially_grouped_rel,
 								partially_grouped_live_children);
-
-		/*
-		 * We need call set_cheapest, since the finalization step will use the
-		 * cheapest path from the rel.
-		 */
-		if (partially_grouped_rel->pathlist)
-			set_cheapest(partially_grouped_rel);
 	}
 
 	/* If possible, create append paths for fully grouped children. */
