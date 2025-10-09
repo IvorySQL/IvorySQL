@@ -3,7 +3,7 @@
  * test_radixtree.c
  *		Test module for adapive radix tree.
  *
- * Copyright (c) 2024, PostgreSQL Global Development Group
+ * Copyright (c) 2024-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
  *
  * IDENTIFICATION
@@ -45,7 +45,7 @@
 		uint64		_expected = (expected_expr); \
 		if (_result != _expected) \
 			elog(ERROR, \
-				 "%s yielded " UINT64_HEX_FORMAT ", expected " UINT64_HEX_FORMAT " (%s) in file \"%s\" line %u", \
+				 "%s yielded %" PRIx64 ", expected %" PRIx64 " (%s) in file \"%s\" line %u", \
 				 #result_expr, _result, _expected, #expected_expr, __FILE__, __LINE__); \
 	} while (0)
 

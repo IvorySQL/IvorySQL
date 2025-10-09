@@ -6182,7 +6182,7 @@ exec_eval_expr(PLiSQL_execstate * estate,
 	/*
 	 * Else do it the hard way via exec_run_select
 	 */
-	rc = exec_run_select(estate, expr, 2, NULL);
+	rc = exec_run_select(estate, expr, 0, NULL);
 	if (rc != SPI_OK_SELECT)
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),

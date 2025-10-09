@@ -1059,14 +1059,14 @@ ValidateSlotSyncParams(int elevel)
 {
 	/*
 	 * Logical slot sync/creation requires wal_level >= logical.
-	 *
-	 * Since altering the wal_level requires a server restart, so error out in
-	 * this case regardless of elevel provided by caller.
 	 */
 	if (wal_level < WAL_LEVEL_LOGICAL)
-		ereport(ERROR,
+	{
+		ereport(elevel,
 				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				errmsg("replication slot synchronization requires \"wal_level\" >= \"logical\""));
+		return false;
+	}
 
 	/*
 	 * A physical replication slot(primary_slot_name) is required on the
@@ -1338,7 +1338,7 @@ reset_syncing_flag()
 	SpinLockRelease(&SlotSyncCtx->mutex);
 
 	syncing_slots = false;
-};
+}
 
 /*
  * The main loop of our worker process.
@@ -1477,13 +1477,14 @@ ReplSlotSyncWorkerMain(const void *startup_data, size_t startup_data_len)
 	 */
 	wrconn = walrcv_connect(PrimaryConnInfo, false, false, false,
 							app_name.data, &err);
-	pfree(app_name.data);
 
 	if (!wrconn)
 		ereport(ERROR,
 				errcode(ERRCODE_CONNECTION_FAILURE),
 				errmsg("synchronization worker \"%s\" could not connect to the primary server: %s",
 					   app_name.data, err));
+
+	pfree(app_name.data);
 
 	/*
 	 * Register the disconnection callback.

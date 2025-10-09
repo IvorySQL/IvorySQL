@@ -3110,7 +3110,7 @@ struct config_int ConfigureNamesInt[] =
 		},
 		&max_slot_wal_keep_size_mb,
 		-1, -1, MAX_KILOBYTES,
-		check_max_slot_wal_keep_size, NULL, NULL
+		NULL, NULL, NULL
 	},
 
 	{
@@ -3129,11 +3129,11 @@ struct config_int ConfigureNamesInt[] =
 			gettext_noop("Sets the duration a replication slot can remain idle before "
 						 "it is invalidated."),
 			NULL,
-			GUC_UNIT_MIN
+			GUC_UNIT_S
 		},
-		&idle_replication_slot_timeout_mins,
-		0, 0, INT_MAX / SECS_PER_MINUTE,
-		check_idle_replication_slot_timeout, NULL, NULL
+		&idle_replication_slot_timeout_secs,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
 	},
 
 	{

@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021-2024, PostgreSQL Global Development Group
+# Copyright (c) 2021-2025, PostgreSQL Global Development Group
 
 # Test the CREATE SUBSCRIPTION 'origin' parameter and its interaction with
 # 'copy_data' parameter.
@@ -163,7 +163,7 @@ is($result, qq(32), 'The node_A data replicated to node_B');
 $node_C->safe_psql('postgres', "UPDATE tab SET a = 33 WHERE a = 32;");
 
 $node_B->wait_for_log(
-	qr/conflict detected on relation "public.tab": conflict=update_origin_differs.*\n.*DETAIL:.* Updating the row that was modified by a different origin ".*" in transaction [0-9]+ at .*\n.*Existing local tuple \(32\); remote tuple \(33\); replica identity \(a\)=\(32\)/
+	qr/conflict detected on relation "public.tab": conflict=update_origin_differs.*\n.*DETAIL:.* Updating the row that was modified by a different origin ".*" in transaction [0-9]+ at .*\n.*Existing local row \(32\); remote row \(33\); replica identity \(a\)=\(32\)/
 );
 
 $node_B->safe_psql('postgres', "DELETE FROM tab;");
@@ -179,7 +179,7 @@ is($result, qq(33), 'The node_A data replicated to node_B');
 $node_C->safe_psql('postgres', "DELETE FROM tab WHERE a = 33;");
 
 $node_B->wait_for_log(
-	qr/conflict detected on relation "public.tab": conflict=delete_origin_differs.*\n.*DETAIL:.* Deleting the row that was modified by a different origin ".*" in transaction [0-9]+ at .*\n.*Existing local tuple \(33\); replica identity \(a\)=\(33\)/
+	qr/conflict detected on relation "public.tab": conflict=delete_origin_differs.*\n.*DETAIL:.* Deleting the row that was modified by a different origin ".*" in transaction [0-9]+ at .*\n.*Existing local row \(33\); replica identity \(a\)=\(33\)/
 );
 
 # The remaining tests no longer test conflict detection.

@@ -631,6 +631,7 @@ remove_leftjoinrel_from_query(PlannerInfo *root, int relid,
 	 * remove_join_clause_from_rels will touch it.)
 	 */
 	root->simple_rel_array[relid] = NULL;
+	root->simple_rte_array[relid] = NULL;
 
 	/* And nuke the RelOptInfo, just in case there's another access path */
 	pfree(rel);
@@ -1979,9 +1980,11 @@ remove_self_join_rel(PlannerInfo *root, PlanRowMark *kmark, PlanRowMark *rmark,
 	 * remove_join_clause_from_rels will touch it.)
 	 */
 	root->simple_rel_array[toRemove->relid] = NULL;
+	root->simple_rte_array[toRemove->relid] = NULL;
 
 	/* And nuke the RelOptInfo, just in case there's another access path. */
 	pfree(toRemove);
+
 
 	/*
 	 * Now repeat construction of attr_needed bits coming from all other
@@ -2142,21 +2145,21 @@ remove_self_joins_one_group(PlannerInfo *root, Relids relids)
 
 	while ((r = bms_next_member(relids, r)) > 0)
 	{
-		RelOptInfo *inner = root->simple_rel_array[r];
+		RelOptInfo *rrel = root->simple_rel_array[r];
 
 		k = r;
 
 		while ((k = bms_next_member(relids, k)) > 0)
 		{
 			Relids		joinrelids = NULL;
-			RelOptInfo *outer = root->simple_rel_array[k];
+			RelOptInfo *krel = root->simple_rel_array[k];
 			List	   *restrictlist;
 			List	   *selfjoinquals;
 			List	   *otherjoinquals;
 			ListCell   *lc;
 			bool		jinfo_check = true;
-			PlanRowMark *omark = NULL;
-			PlanRowMark *imark = NULL;
+			PlanRowMark *kmark = NULL;
+			PlanRowMark *rmark = NULL;
 			List	   *uclauses = NIL;
 
 			/* A sanity check: the relations have the same Oid. */
@@ -2194,21 +2197,21 @@ remove_self_joins_one_group(PlannerInfo *root, Relids relids)
 			{
 				PlanRowMark *rowMark = (PlanRowMark *) lfirst(lc);
 
-				if (rowMark->rti == k)
+				if (rowMark->rti == r)
 				{
-					Assert(imark == NULL);
-					imark = rowMark;
+					Assert(rmark == NULL);
+					rmark = rowMark;
 				}
-				else if (rowMark->rti == r)
+				else if (rowMark->rti == k)
 				{
-					Assert(omark == NULL);
-					omark = rowMark;
+					Assert(kmark == NULL);
+					kmark = rowMark;
 				}
 
-				if (omark && imark)
+				if (kmark && rmark)
 					break;
 			}
-			if (omark && imark && omark->markType != imark->markType)
+			if (kmark && rmark && kmark->markType != rmark->markType)
 				continue;
 
 			/*
@@ -2229,8 +2232,8 @@ remove_self_joins_one_group(PlannerInfo *root, Relids relids)
 			 * build_joinrel_restrictlist() routine.
 			 */
 			restrictlist = generate_join_implied_equalities(root, joinrelids,
-															inner->relids,
-															outer, NULL);
+															rrel->relids,
+															krel, NULL);
 			if (restrictlist == NIL)
 				continue;
 
@@ -2240,7 +2243,7 @@ remove_self_joins_one_group(PlannerInfo *root, Relids relids)
 			 * otherjoinquals.
 			 */
 			split_selfjoin_quals(root, restrictlist, &selfjoinquals,
-								 &otherjoinquals, inner->relid, outer->relid);
+								 &otherjoinquals, rrel->relid, krel->relid);
 
 			Assert(list_length(restrictlist) ==
 				   (list_length(selfjoinquals) + list_length(otherjoinquals)));
@@ -2251,17 +2254,17 @@ remove_self_joins_one_group(PlannerInfo *root, Relids relids)
 			 * degenerate case works only if both sides have the same clause.
 			 * So doesn't matter which side to add.
 			 */
-			selfjoinquals = list_concat(selfjoinquals, outer->baserestrictinfo);
+			selfjoinquals = list_concat(selfjoinquals, krel->baserestrictinfo);
 
 			/*
-			 * Determine if the inner table can duplicate outer rows.  We must
-			 * bypass the unique rel cache here since we're possibly using a
-			 * subset of join quals. We can use 'force_cache' == true when all
-			 * join quals are self-join quals.  Otherwise, we could end up
-			 * putting false negatives in the cache.
+			 * Determine if the rrel can duplicate outer rows. We must bypass
+			 * the unique rel cache here since we're possibly using a subset
+			 * of join quals. We can use 'force_cache' == true when all join
+			 * quals are self-join quals.  Otherwise, we could end up putting
+			 * false negatives in the cache.
 			 */
-			if (!innerrel_is_unique_ext(root, joinrelids, inner->relids,
-										outer, JOIN_INNER, selfjoinquals,
+			if (!innerrel_is_unique_ext(root, joinrelids, rrel->relids,
+										krel, JOIN_INNER, selfjoinquals,
 										list_length(otherjoinquals) == 0,
 										&uclauses))
 				continue;
@@ -2277,14 +2280,14 @@ remove_self_joins_one_group(PlannerInfo *root, Relids relids)
 			 * expressions, or we won't match the same row on each side of the
 			 * join.
 			 */
-			if (!match_unique_clauses(root, inner, uclauses, outer->relid))
+			if (!match_unique_clauses(root, rrel, uclauses, krel->relid))
 				continue;
 
 			/*
-			 * We can remove either relation, so remove the inner one in order
-			 * to simplify this loop.
+			 * Remove rrel ReloptInfo from the planner structures and the
+			 * corresponding row mark.
 			 */
-			remove_self_join_rel(root, omark, imark, outer, inner, restrictlist);
+			remove_self_join_rel(root, kmark, rmark, krel, rrel, restrictlist);
 
 			result = bms_add_member(result, r);
 

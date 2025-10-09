@@ -107,9 +107,9 @@ my @nodetag_only_files = qw(
 # In HEAD, these variables should be left undef, since we don't promise
 # ABI stability during development.
 
-my $last_nodetag = undef;
-my $last_nodetag_no = undef;
-
+my $last_nodetag = 'WindowObjectData';
+# my $last_nodetag_no = 479; --PG
+my $last_nodetag_no = 490;
 # output file names
 my @output_files;
 

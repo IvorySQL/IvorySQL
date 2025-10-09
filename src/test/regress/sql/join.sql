@@ -839,6 +839,13 @@ explain (costs off)
 select a.* from tenk1 a left join tenk1 b on a.unique1 = b.unique2
 where b.unique2 is null;
 
+-- check that we avoid de-duplicating columns redundantly
+set enable_memoize to off;
+explain (costs off)
+select 1 from tenk1
+where (hundred, thousand) in (select twothousand, twothousand from onek);
+reset enable_memoize;
+
 --
 -- regression test for bogus RTE_GROUP entries
 --
@@ -2417,6 +2424,69 @@ from t t1
              from t t2 left join t t3 on t2.a = t3.a) s
     on true
 where t1.a = s.c;
+
+rollback;
+
+-- check handling of semijoins after join removal: we must suppress
+-- unique-ification of known-constant values
+begin;
+
+create temp table t (a int unique, b int);
+insert into t values (1, 2);
+
+explain (verbose, costs off)
+select t1.a from t t1
+  left join t t2 on t1.a = t2.a
+       join t t3 on true
+where exists (select 1 from t t4
+                join t t5 on t4.b = t5.b
+                join t t6 on t5.b = t6.b
+              where t1.a = t4.a and t3.a = t5.a and t4.a = 1);
+
+select t1.a from t t1
+  left join t t2 on t1.a = t2.a
+       join t t3 on true
+where exists (select 1 from t t4
+                join t t5 on t4.b = t5.b
+                join t t6 on t5.b = t6.b
+              where t1.a = t4.a and t3.a = t5.a and t4.a = 1);
+
+rollback;
+
+-- check handling of semijoins if all RHS columns are equated to constants: we
+-- should suppress unique-ification in this case.
+begin;
+
+create temp table t (a int, b int);
+insert into t values (1, 2);
+
+explain (costs off)
+select * from t t1, t t2 where exists
+  (select 1 from t t3 where t1.a = t3.a and t2.b = t3.b and t3.a = 1 and t3.b = 2);
+
+select * from t t1, t t2 where exists
+  (select 1 from t t3 where t1.a = t3.a and t2.b = t3.b and t3.a = 1 and t3.b = 2);
+
+rollback;
+
+-- check handling of semijoin unique-ification for child relations if all RHS
+-- columns are equated to constants.
+begin;
+
+create temp table p (a int, b int) partition by range (a);
+create temp table p1 partition of p for values from (0) to (10);
+create temp table p2 partition of p for values from (10) to (20);
+insert into p values (1, 2);
+insert into p values (10, 20);
+
+set enable_partitionwise_join to on;
+
+explain (costs off)
+select * from p t1 where exists
+  (select 1 from p t2 where t1.a = t2.a and t1.a = 1);
+
+select * from p t1 where exists
+  (select 1 from p t2 where t1.a = t2.a and t1.a = 1);
 
 rollback;
 
