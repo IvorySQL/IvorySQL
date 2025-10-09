@@ -2615,22 +2615,28 @@ eval_const_expressions_mutator(Node *node,
 				 * length coercion; we want to preserve the typmod in the
 				 * eventual Const if so.
 				 */
-					if (FUNC_EXPR_FROM_PG_PROC(expr->function_from))
-					{
-						if (expr->ref_pkgtype)
-							set_pkgtype_from_funcexpr(expr);
 
-						simple = simplify_function(expr->funcid,
-										   expr->funcresulttype,
-										   exprTypmod(node),
-										   expr->funccollid,
-										   expr->inputcollid,
-										   &args,
-										   expr->funcvariadic,
-										   true,
-										   true,
-										   context);
-					}
+				/*
+				 * Only fold functions that originate from pg_proc.
+				 * Package/subprocedure invocations are engine-specific and
+				 * are not simplified here.
+				 */
+				if (FUNC_EXPR_FROM_PG_PROC(expr->function_from))
+				{
+					if (expr->ref_pkgtype)
+						set_pkgtype_from_funcexpr(expr);
+
+					simple = simplify_function(expr->funcid,
+											   expr->funcresulttype,
+											   exprTypmod(node),
+											   expr->funccollid,
+											   expr->inputcollid,
+											   &args,
+											   expr->funcvariadic,
+											   true,
+											   true,
+											   context);
+				}
 				if (simple)		/* successfully simplified it */
 					return (Node *) simple;
 
@@ -3236,9 +3242,9 @@ eval_const_expressions_mutator(Node *node,
 																  context);
 
 						/*
-						 * If the test condition is constant FALSE (or NULL), then
-						 * drop this WHEN clause completely, without processing
-						 * the result.
+						 * If the test condition is constant FALSE (or NULL),
+						 * then drop this WHEN clause completely, without
+						 * processing the result.
 						 */
 						if (casecond && IsA(casecond, Const))
 						{
@@ -3246,7 +3252,8 @@ eval_const_expressions_mutator(Node *node,
 
 							if (const_input->constisnull ||
 								!DatumGetBool(const_input->constvalue))
-								continue;	/* drop alternative with FALSE cond */
+								continue;	/* drop alternative with FALSE
+											 * cond */
 							/* Else it's constant TRUE */
 							const_true_cond = true;
 						}
@@ -3254,12 +3261,12 @@ eval_const_expressions_mutator(Node *node,
 					else
 					{
 						orig_casecond = eval_const_expressions_mutator((Node *) oldcasewhen->orig_expr,
-																  context);
+																	   context);
 
 						/*
-						 * If the test condition is constant FALSE (or NULL), then
-						 * drop this WHEN clause completely, without processing
-						 * the result.
+						 * If the test condition is constant FALSE (or NULL),
+						 * then drop this WHEN clause completely, without
+						 * processing the result.
 						 */
 						if (orig_casecond && IsA(orig_casecond, Const))
 						{
@@ -3269,7 +3276,8 @@ eval_const_expressions_mutator(Node *node,
 							{
 								if (orig_const_input->constisnull ||
 									!DatumGetBool(orig_const_input->constvalue))
-									continue;	/* drop alternative with FALSE cond */
+									continue;	/* drop alternative with FALSE
+												 * cond */
 							}
 							else
 							{
@@ -3279,7 +3287,7 @@ eval_const_expressions_mutator(Node *node,
 										continue;
 									else if (IsA(caseexpr->arg, CoerceViaIO))
 									{
-										Node *n = (Node *)((CoerceViaIO *) caseexpr->arg)->arg;
+										Node	   *n = (Node *) ((CoerceViaIO *) caseexpr->arg)->arg;
 
 										if (IsA(n, Const) && ((Const *) n)->constisnull)
 											continue;
@@ -3303,7 +3311,7 @@ eval_const_expressions_mutator(Node *node,
 									}
 									else if (IsA(caseexpr->arg, CoerceViaIO))
 									{
-										Node *n = (Node *)((CoerceViaIO *) caseexpr->arg)->arg;
+										Node	   *n = (Node *) ((CoerceViaIO *) caseexpr->arg)->arg;
 
 										if (IsA(n, Const))
 										{
@@ -3323,13 +3331,15 @@ eval_const_expressions_mutator(Node *node,
 								}
 								else
 								{
-eval_whenexpr1:
+							eval_whenexpr1:
 									casecond = eval_const_expressions_mutator((Node *) oldcasewhen->expr,
-																  context);
+																			  context);
+
 									/*
-									 * If the test condition is constant FALSE (or NULL), then
-									 * drop this WHEN clause completely, without processing
-									 * the result.
+									 * If the test condition is constant FALSE
+									 * (or NULL), then drop this WHEN clause
+									 * completely, without processing the
+									 * result.
 									 */
 									if (casecond && IsA(casecond, Const))
 									{
@@ -3339,7 +3349,8 @@ eval_whenexpr1:
 										{
 											if (const_input->constisnull ||
 												!DatumGetBool(const_input->constvalue))
-												continue;	/* drop alternative with FALSE cond */
+												continue;	/* drop alternative with
+															 * FALSE cond */
 											/* Else it's constant TRUE */
 											const_true_cond = true;
 										}
@@ -3353,22 +3364,25 @@ eval_whenexpr1:
 								continue;
 							else if (IsA(caseexpr->arg, CoerceViaIO))
 							{
-								/*Node *n = (Node *)((CoerceViaIO *) caseexpr->arg)->arg;
-
-								if (IsA(n, Const) && ((Const *) n)->constisnull)
-									continue;
-								else*/
-									goto eval_whenexpr2;
+								/*
+								 * Node *n = (Node *)((CoerceViaIO *)
+								 * caseexpr->arg)->arg;
+								 *
+								 * if (IsA(n, Const) && ((Const *)
+								 * n)->constisnull) continue; else
+								 */
+								goto eval_whenexpr2;
 							}
 							else
 							{
-eval_whenexpr2:
+						eval_whenexpr2:
 								casecond = eval_const_expressions_mutator((Node *) oldcasewhen->expr,
-																			context);
+																		  context);
+
 								/*
-								 * If the test condition is constant FALSE (or NULL), then
-								 * drop this WHEN clause completely, without processing
-								 * the result.
+								 * If the test condition is constant FALSE (or
+								 * NULL), then drop this WHEN clause
+								 * completely, without processing the result.
 								 */
 								if (casecond && IsA(casecond, Const))
 								{
@@ -3376,7 +3390,8 @@ eval_whenexpr2:
 
 									if (const_input->constisnull ||
 										!DatumGetBool(const_input->constvalue))
-										continue;	/* drop alternative with FALSE cond */
+										continue;	/* drop alternative with
+													 * FALSE cond */
 									/* Else it's constant TRUE */
 									const_true_cond = true;
 								}
@@ -4414,8 +4429,8 @@ expand_function_arguments(List *args, bool include_out_arguments,
 	/* argtype maybe from a package */
 	if (ORA_PARSER == compatible_db)
 	{
-		Size size_len = sizeof(Oid) * pronargs;
-		Oid *rel_proargtypes = palloc0(size_len);
+		Size		size_len = sizeof(Oid) * pronargs;
+		Oid		   *rel_proargtypes = palloc0(size_len);
 
 		memcpy(rel_proargtypes, proargtypes, size_len);
 		repl_func_real_argtype(func_tuple, rel_proargtypes, pronargs);
@@ -4663,7 +4678,7 @@ evaluate_function(Oid funcid, Oid result_type, int32 result_typmod,
 	 * null constant with no remaining indication of which concrete record
 	 * type it is.  For now, seems best to leave the function call unreduced.
 	 */
-	if (get_func_real_rettype(func_tuple) == RECORDOID) 
+	if (get_func_real_rettype(func_tuple) == RECORDOID)
 		return NULL;
 
 	/*
@@ -4800,7 +4815,7 @@ inline_function(Oid funcid, Oid result_type, Oid result_collid,
 		funcform->prokind != PROKIND_FUNCTION ||
 		funcform->prosecdef ||
 		funcform->proretset ||
-		get_func_real_rettype(func_tuple) == RECORDOID || 
+		get_func_real_rettype(func_tuple) == RECORDOID ||
 		!heap_attisnull(func_tuple, Anum_pg_proc_proconfig, NULL) ||
 		funcform->pronargs != list_length(args))
 		return NULL;
@@ -5384,7 +5399,7 @@ inline_set_returning_function(PlannerInfo *root, RangeTblEntry *rte)
 		funcform->prokind != PROKIND_FUNCTION ||
 		funcform->proisstrict ||
 		funcform->provolatile == PROVOLATILE_VOLATILE ||
-		get_func_real_rettype(func_tuple) == VOIDOID || 
+		get_func_real_rettype(func_tuple) == VOIDOID ||
 		funcform->prosecdef ||
 		!funcform->proretset ||
 		list_length(fexpr->args) != funcform->pronargs ||

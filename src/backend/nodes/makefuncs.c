@@ -607,6 +607,13 @@ makeFuncExpr(Oid funcid, Oid rettype, List *args,
 	funcexpr->funccollid = funccollid;
 	funcexpr->inputcollid = inputcollid;
 	funcexpr->args = args;
+
+	/*
+	 * Initialize origin and parent linkage: - function_from defaults to
+	 * pg_proc-backed functions; callers may override for package/subprocedure
+	 * cases. - parent_func is NULL since this node is not nested under
+	 * another routine unless explicitly linked by the caller.
+	 */
 	funcexpr->function_from = FUNC_FROM_PG_PROC;
 	funcexpr->parent_func = NULL;
 	funcexpr->function_name = NULL;

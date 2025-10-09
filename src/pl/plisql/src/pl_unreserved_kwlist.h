@@ -21,15 +21,14 @@
 /* There is deliberately not an #ifndef PL_UNRESERVED_KWLIST_H here. */
 
 /*
- * List of (keyword-name, keyword-token-value) pairs.
+ * Catalog of (keyword name, token code) pairs.
  *
- * Be careful not to put the same word into pl_reserved_kwlist.h.  Also be
- * sure that pl_gram.y's unreserved_keyword production agrees with this list.
+ * Do not duplicate any term that exists in pl_reserved_kwlist.h. Also
+ * keep pl_gram.y's unreserved_keyword production consistent with this list.
  *
- * Note: gen_keywordlist.pl requires the entries to appear in ASCII order.
+ * Reminder: gen_keywordlist.pl expects entries sorted in ASCII order.
  */
 
-/* name, value */
 PG_KEYWORD("absolute", K_ABSOLUTE)
 PG_KEYWORD("accessible", K_ACCESSIBLE)
 PG_KEYWORD("alias", K_ALIAS)
