@@ -384,9 +384,7 @@ print_expr(const Node *expr, const List *rtable)
 		getTypeOutputInfo(c->consttype,
 						  &typoutput, &typIsVarlena);
 
-		/*
-		 * Compatible oracle , pass typmod to output function
-		 */
+		/* Oracle compatibility: pass typmod to the output function */
 		if (ORA_PARSER == compatible_db &&
 			(c->consttype == YMINTERVALOID ||
 			 c->consttype == DSINTERVALOID))

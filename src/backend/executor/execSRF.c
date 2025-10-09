@@ -259,7 +259,7 @@ ExecMakeTableFunctionResult(SetExprState *setexpr,
 			if (first_time)
 			{
 				MemoryContext oldcontext =
-				MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
+					MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
 
 				tupstore = tuplestore_begin_heap(randomAccess, false, work_mem);
 				rsinfo.setResult = tupstore;
@@ -289,7 +289,7 @@ ExecMakeTableFunctionResult(SetExprState *setexpr,
 					if (tupdesc == NULL)
 					{
 						MemoryContext oldcontext =
-						MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
+							MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
 
 						/*
 						 * This is the first non-NULL result from the
@@ -394,7 +394,7 @@ no_function_result:
 	if (rsinfo.setResult == NULL)
 	{
 		MemoryContext oldcontext =
-		MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
+			MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
 
 		tupstore = tuplestore_begin_heap(randomAccess, false, work_mem);
 		rsinfo.setResult = tupstore;
@@ -700,11 +700,11 @@ init_sexpr(Oid foid, Oid input_collation, Expr *node,
 	AclResult	aclresult;
 	size_t		numargs = list_length(sexpr->args);
 
-	bool is_subproc_func = false;
+	bool		is_subproc_func = false;
 
 	if (node != NULL && nodeTag(node) == T_FuncExpr)
 	{
-		FuncExpr *funcexpr = (FuncExpr *) node;
+		FuncExpr   *funcexpr = (FuncExpr *) node;
 
 		if (!FUNC_EXPR_FROM_PG_PROC(funcexpr->function_from))
 			is_subproc_func = true;
@@ -712,7 +712,7 @@ init_sexpr(Oid foid, Oid input_collation, Expr *node,
 
 	if (!is_subproc_func)
 	{
-		/* Check permission to call function */
+		/* Verify EXECUTE privilege before invoking the function. */
 		aclresult = object_aclcheck(ProcedureRelationId, foid, GetUserId(), ACL_EXECUTE);
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, OBJECT_FUNCTION, get_func_name(foid));
