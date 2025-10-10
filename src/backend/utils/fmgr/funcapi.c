@@ -2071,7 +2071,14 @@ build_function_result_tupdesc_d(char prokind,
 			pfree(tname);
 		}
 
-		if (argnames)
+		/*
+		 * If the guc pararmeter out_parameter_column_position is set to true,
+		 * make out parameter column name to special,
+		 * so we can distinguish it from the return value
+		 */
+		if (out_parameter_column_position)
+			pname = psprintf("_column_%d", i + 1);
+		else if (argnames)
 			pname = TextDatumGetCString(argnames[i]);
 		else
 			pname = NULL;

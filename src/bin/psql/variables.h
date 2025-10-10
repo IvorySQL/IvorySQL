@@ -130,5 +130,6 @@ void		ListBindVariables(VariableSpace space, const char *name);
 void		PrintBindVariables(VariableSpace space, print_list *bvlist);
 bool		AssignBindVariable(VariableSpace space, const char *name, const char *value);
 bool		ValidBindVariableName(const char *name);
+struct _variable *BindVariableExist(VariableSpace space, const char *name);
 
 #endif							/* VARIABLES_H */

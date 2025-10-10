@@ -743,11 +743,13 @@ NOTICE:  10
 begin
 null;
 end;
+/
 <<
 main >>
 begin
 null;
 end;
+/
 <<
 main
 >>
@@ -1017,7 +1019,7 @@ drop function ftest;
 drop table t1;
 create or replace procedure protest 
 as 
-begin 
+begin
 raise notice 'protest';
 end;
 / 
@@ -1028,7 +1030,10 @@ LINE 1: CALL protest;
 CALL protest();
 NOTICE:  protest
 exec protest;      
-NOTICE:  protest
+ERROR:  syntax error at end of input
+LINE 1: BEGIN protest;      ; END
+                          ^
+QUERY:  BEGIN protest;      ; END
 exec protest();
 NOTICE:  protest
 drop  procedure protest ;
@@ -1056,6 +1061,10 @@ LINE 1: CALL test_proc1;
                        ^
 CALL test_proc1();
 EXEC test_proc1;   
+ERROR:  syntax error at end of input
+LINE 1: BEGIN test_proc1;   ; END
+                             ^
+QUERY:  BEGIN test_proc1;   ; END
 EXEC test_proc1();
 DROP PROCEDURE test_proc1;
 CREATE TABLE test1 (a int);
@@ -1116,11 +1125,8 @@ CALL test_proc5('abc');
 (1 row)
 
 EXEC test_proc5('abc');
-    a    
----------
- abc+abc
-(1 row)
-
+ERROR:  procedure parameter "a" is an output parameter but corresponding argument is not writable
+CONTEXT:  PL/iSQL function inline_code_block line 1 at CALL
 DROP PROCEDURE test_proc5;
 CREATE or replace PROCEDURE test_proc6(a int, INOUT b int, INOUT c int)
 AS 
@@ -1136,11 +1142,8 @@ CALL test_proc6(2, 3, 4);
 (1 row)
 
 EXEC test_proc6(2, 3, 4);
- b | c 
----+---
- 6 | 8
-(1 row)
-
+ERROR:  procedure parameter "b" is an output parameter but corresponding argument is not writable
+CONTEXT:  PL/iSQL function inline_code_block line 1 at CALL
 DROP PROCEDURE test_proc6;
 -- recursion with output arguments
 CREATE OR REPLACE PROCEDURE test_proc7(x int, INOUT a int, INOUT b numeric)
@@ -1160,11 +1163,8 @@ CALL test_proc7(100, -1, -1);
 (1 row)
 
 EXEC test_proc7(100, -1, -1);
- a | b 
----+---
- 0 | 1
-(1 row)
-
+ERROR:  procedure parameter "a" is an output parameter but corresponding argument is not writable
+CONTEXT:  PL/iSQL function inline_code_block line 1 at CALL
 DROP PROCEDURE test_proc7;
 CREATE OR REPLACE PROCEDURE test_proc8a(INOUT a int, INOUT b int)
 AS 
@@ -1175,19 +1175,11 @@ BEGIN
 END;
 /
 EXEC test_proc8a(10, 20);
-NOTICE:  a: 10, b: 20
-  a  | b  
------+----
- 100 | 30
-(1 row)
-
+ERROR:  procedure parameter "a" is an output parameter but corresponding argument is not writable
+CONTEXT:  PL/iSQL function inline_code_block line 1 at CALL
 EXEC test_proc8a(b => 20, a => 10);
-NOTICE:  a: 10, b: 20
-  a  | b  
------+----
- 100 | 30
-(1 row)
-
+ERROR:  procedure parameter "a" is an output parameter but corresponding argument is not writable
+CONTEXT:  PL/iSQL function inline_code_block line 1 at CALL
 DROP PROCEDURE test_proc8a;
 CREATE OR REPLACE PROCEDURE test_proc8b( a  int,  b  int)
 AS 

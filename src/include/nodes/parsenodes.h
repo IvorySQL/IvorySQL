@@ -3611,6 +3611,7 @@ typedef struct DoStmt
 	NodeTag		type;
 	List	   *args;			/* List of DefElem nodes */
 	List		*paramsmode;	/* List of parameter mode */
+	List		*paramslen;		/* List of length for parameter datatypes */
 } DoStmt;
 
 typedef struct InlineCodeBlock

@@ -75,7 +75,7 @@ const char *anonymous_paramete_str =
 "       id := :1;"
 "       :1 := id * 2 + 1;"
 "       :2 := :1 + 100;"
-"       :3 := ''this is a test ok'';"
+"       :3 := 'this is a test ok';"
 "       :4 := 23;"
 "       end;";
 

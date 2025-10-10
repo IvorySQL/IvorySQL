@@ -1,6 +1,7 @@
 --
 -- Information related to planning
 --
+\set EXECUTE_RUN_PREPARE on
 
 -- These tests require track_planning to be enabled.
 SET pg_stat_statements.track_planning = TRUE;

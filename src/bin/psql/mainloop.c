@@ -98,6 +98,8 @@ MainLoop(FILE *source)
 	/* main loop to get queries and execute them */
 	while (successResult == EXIT_SUCCESS)
 	{
+		bool	exec_dostmt = false;
+
 		/*
 		 * Clean up after a previous Control-C
 		 */
@@ -444,7 +446,11 @@ MainLoop(FILE *source)
 		 * Since we haven't implemented this continuation character yet, we
 		 * temporarily assume that these client commands are all single-line.
 		 */
-		if (db_mode == DB_ORACLE && pset.stmt_lineno == 1)
+		if (db_mode == DB_ORACLE &&
+			pset.stmt_lineno == 1 &&
+			prompt_status != (promptStatus_t) ORAPROMPT_DOLLARQUOTE &&
+			prompt_status != (promptStatus_t) ORAPROMPT_SINGLEQUOTE &&
+			prompt_status != (promptStatus_t) ORAPROMPT_DOUBLEQUOTE)
 		{
 		    PsqlScanState	pstate;
 		    yyscan_t		yyscanner;
@@ -539,12 +545,67 @@ MainLoop(FILE *source)
 		                    PrintBindVariables(pset.vars, pb->print_items);
 		                }
 		                break;
+					case PSQLPLUS_CMD_EXECUTE:
+						{
+							psqlplus_cmd_execute *exec = (psqlplus_cmd_execute *) pstate->psqlpluscmd;
+							char *tmpline = exec->plisqlstmts;
+							PQExpBuffer newline_buf;
+
+							if (pset.execute_run_prepare)
+								goto non_psqlplus_cmd;
+
+							tmpline = psqlplus_skip_space(tmpline);
+							if (*tmpline == '\0' ||
+								(tmpline[0] == '\n' && tmpline[1] == '\0'))
+							{
+								pg_log_error("Usage: EXEC[UTE] statement");
+								goto psqlplus_next;
+							}
+
+							newline_buf = createPQExpBuffer();
+							if (PQExpBufferBroken(newline_buf))
+							{
+								pg_log_error("out of memory");
+								exit(EXIT_FAILURE);
+							}
+
+							appendPQExpBufferStr(newline_buf, "BEGIN ");
+							appendPQExpBuffer(newline_buf, "%s", tmpline);
+							if (newline_buf->data[newline_buf->len - 1] != ';')
+								appendPQExpBufferChar(newline_buf, ';');
+							appendPQExpBufferStr(newline_buf, " END;");
+
+							/* Send anonymous directly without '/' */
+							exec_dostmt = true;
+
+							/* save client command in history */
+							if (pset.cur_cmd_interactive)
+							{
+								pg_append_history(psqlplus_line, history_buf);
+								pg_send_history(history_buf);
+							}
+
+							/* rescan */
+							ora_psql_scan_finish(ora_scan_state);
+							free(line);
+							line = pg_strdup(newline_buf->data);
+							destroyPQExpBuffer(newline_buf);
+							/* reset parsing state since we are rewritten whole line */
+							ora_psql_scan_reset(ora_scan_state);
+							ora_psql_scan_setup(ora_scan_state, line, strlen(line),
+											pset.encoding, standard_strings());
+
+							/* the query after rewriting is no longer a psqlplus command */
+							goto non_psqlplus_cmd;
+						}
+						break;
 
 		            default:
 		                pg_log_error("Invalid PSQL*PLUS client command.");
 		                break;
 		        }
 
+psqlplus_next:
 		        /* If in interactive mode, add command to history */
 		        if (pset.cur_cmd_interactive)
 		        {
@@ -574,7 +635,9 @@ MainLoop(FILE *source)
 		        token = strtokx(pstate->scanline, whitespace, NULL, NULL,
 		                        0, false, false, pset.encoding);
 
-		        if (token && pg_strcasecmp(token, "variable") == 0)
+			if (token && 
+				(pg_strcasecmp(token, "variable") == 0 ||
+				 pg_strcasecmp(token, "var") == 0))
 		        {
 		            token = strtokx(NULL, whitespace, NULL, NULL,
 		                            0, false, false, pset.encoding);
@@ -680,6 +743,7 @@ MainLoop(FILE *source)
 		        continue;
 		    }
 
+non_psqlplus_cmd:
 		    /* Not a compatible Oracle client command, release resources */
 		    psqlplus_scanner_finish(yyscanner);
 		    ora_psql_scan_destroy(pstate);
@@ -898,11 +962,19 @@ MainLoop(FILE *source)
 
 				/*
 				 * Send command if semicolon found, or if end of line and we're in
-				 * single-line mode.
+				 * single-line mode or in EXECUTE cmd.
 				 */
 				if (ora_scan_result == ORAPSCAN_SEMICOLON ||
-					(ora_scan_result == ORAPSCAN_EOL && pset.singleline))
+					(ora_scan_result == ORAPSCAN_EOL && pset.singleline) ||
+					(exec_dostmt && ora_scan_result == ORAPSCAN_EOL))
 				{
+					if (exec_dostmt)
+					{
+						line_saved_in_history = true;
+						exec_dostmt = false;
+						ora_psql_scan_reset(ora_scan_state);
+					}
+
 					/*
 					 * Save line in history.  We use history_buf to accumulate
 					 * multi-line queries into a single history entry.  Note that
@@ -919,7 +991,69 @@ MainLoop(FILE *source)
 					/* execute query unless we're in an inactive \if branch */
 					if (conditional_active(cond_stack))
 					{
-						success = SendQuery(query_buf->data);
+						HostVariable *hv = NULL;
+						PsqlScanState	pstate;
+						yyscan_t		yyscanner;
+						psql_YYSTYPE	lval;
+						int				token;
+						bool			hasparam = false;
+						bool			haserror = false;
+						char			*sql = pg_strdup(query_buf->data);
+
+						pstate = ora_psql_scan_create(&psqlplus_callbacks);
+						ora_psql_scan_setup(pstate, sql,
+											strlen(sql),
+											pset.encoding,
+											standard_strings());
+
+						yyscanner = psqlplus_scanner_init(pstate);
+						token = orapsql_yylex(&lval, yyscanner);
+						while(token)
+						{
+							if (token == BINDVARREF)
+							{
+								hasparam = true;
+								break;
+							}
+							token = orapsql_yylex(&lval, yyscanner);
+						}
+
+						psqlplus_scanner_finish(yyscanner);
+						ora_psql_scan_destroy(pstate);
+						pg_free(sql);
+
+						if (hasparam)
+							hv = get_hostvariables(query_buf->data, &haserror);
+
+						if (hv)
+						{
+							int	i;
+
+							success = SendQuery_PBE(query_buf->data, hv);
+
+							/* clean */
+							for (i = 0; i < hv->length; i++)
+							{
+								if (hv->hostvars && hv->hostvars[i].name)
+									pg_free(hv->hostvars[i].name);
+							}
+
+							if (hv->hostvars)
+								pg_free(hv->hostvars);
+							pg_free(hv);
+						}
+						else
+						{
+							/*
+							 * If get_hostvariables() fails due to a syntax error,
+							 * SendQuery() will also fail, and there is no need to
+							 * do transmission and parsing again.
+							 */
+							if (haserror)
+								success = false;
+							else
+								success = SendQuery(query_buf->data);
+						}
 						slashCmdStatus = success ? PSQL_CMD_SEND : PSQL_CMD_ERROR;
 						pset.stmt_lineno = 1;
 

@@ -36,15 +36,23 @@ static const PsqlScanKeyword psqlplus_keywords[] = {
 	PSQL_KEYWORD("binary_float", K_BINARY_FLOAT, UNRESERVED_PSQL_KEYWORD)
 	PSQL_KEYWORD("byte", K_BYTE, UNRESERVED_PSQL_KEYWORD)
 	PSQL_KEYWORD("char", K_CHAR, UNRESERVED_PSQL_KEYWORD)
+	PSQL_KEYWORD("exec", K_EXEC, UNRESERVED_PSQL_KEYWORD)
+	PSQL_KEYWORD("execute", K_EXECUTE, UNRESERVED_PSQL_KEYWORD)
 	PSQL_KEYWORD("nchar", K_NCHAR, UNRESERVED_PSQL_KEYWORD)
 	PSQL_KEYWORD("number", K_NUMBER, UNRESERVED_PSQL_KEYWORD)
 	PSQL_KEYWORD("nvarchar2", K_NVARCHAR2, UNRESERVED_PSQL_KEYWORD)
 	PSQL_KEYWORD("print", K_PRINT, UNRESERVED_PSQL_KEYWORD)
+	PSQL_KEYWORD("var", K_VAR, UNRESERVED_PSQL_KEYWORD)
 	PSQL_KEYWORD("varchar2", K_VARCHAR2, UNRESERVED_PSQL_KEYWORD)
 	PSQL_KEYWORD("variable", K_VARIABLE, UNRESERVED_PSQL_KEYWORD)
 };
 
 const int	NumKeywords = lengthof(psqlplus_keywords);
+
+/*
+ * Set the type of YYSTYPE.
+ */
+#define YYSTYPE psql_YYSTYPE
 
 static const PsqlScanKeyword *PsqlplusKeywordLookup(const char *text);
 static int process_integer_literal(const char *token, YYSTYPE *lval);
@@ -65,7 +73,7 @@ static char *litbufdup(char *prefix, yyscan_t yyscanner);
 %option nounput
 %option noyywrap
 %option warn
-%option prefix="psqlplus_yy"
+%option prefix="orapsql_yy"
 
 /*
  * Exclusive states:
@@ -120,6 +128,15 @@ ident_start		[A-Za-z\200-\377]
 ident_cont		[A-Za-z\200-\377_0-9\#\$]
 
 identifier		{ident_start}{ident_cont}*
+
+typecast		"::"
+
+/*
+ * This flex rule is not used in the syntax of bison,
+ * we just use it to detect whether a bind variable is
+ * referenced in a SQL text.
+ */
+bindvarref		:{identifier}
 
 /*
  * "self" is the set of chars that should be returned
@@ -217,6 +234,7 @@ xlinside		[^ ]+
 <xq>{quote}		{
 					BEGIN(INITIAL);
 					yylval->str = litbufdup(NULL, yyscanner);
+					cur_state->token_count++;
 					return SQCONST;
 				}
 
@@ -227,6 +245,7 @@ xlinside		[^ ]+
 					 */
 					BEGIN(INITIAL);
 					yylval->str = litbufdup("'", yyscanner);
+					cur_state->token_count++;
 					return SINGLE_QUOTE_NO_END;
 				}
 
@@ -245,33 +264,55 @@ xlinside		[^ ]+
 <xd>{dquote}	{
 					BEGIN(INITIAL);
 					yylval->str = litbufdup(NULL, yyscanner);
+					cur_state->token_count++;
 					return DQCONST;
 				}
 
 <xd><<EOF>>		{
 					BEGIN(INITIAL);
 					yylval->str = litbufdup("\"", yyscanner);
+					cur_state->token_count++;
 					return DOUBLE_QUOTE_NO_END;
 				}
 
+{typecast}		{
+					cur_state->token_count++;
+					return TYPECAST;
+				}
+
 {self}			{
+					cur_state->token_count++;
 					return yytext[0];
 				}
 
+{bindvarref}	{
+					/*
+					 * BINDVARREF is not a token number defined by bison,
+					 * it is just a simple macro within psqlplus.h.
+					 */
+					yylval->str = pg_strdup(yytext);
+					cur_state->token_count++;
+					return BINDVARREF;
+				}
+
 {integer}		{
+					cur_state->token_count++;
 					return process_integer_literal(yytext, yylval);
 				}
 {decimal}		{
+					cur_state->token_count++;
 					yylval->str = pg_strdup(yytext);
 					return FCONST;
 				}
 {decimalfail}	{
 					/* throw back the .., and treat as integer */
 					yyless(yyleng - 2);
+					cur_state->token_count++;
 					return process_integer_literal(yytext, yylval);
 				}
 {real}			{
 					yylval->str = pg_strdup(yytext);
+					cur_state->token_count++;
 					return FCONST;
 				}
 {realfail1}		{
@@ -280,11 +321,13 @@ xlinside		[^ ]+
 					 * remains is an {integer} or {decimal}.
 					 */
 					yyless(yyleng - 1);
+					cur_state->token_count++;
 					return process_integer_literal(yytext, yylval);
 				}
 {realfail2}		{
 					/* throw back the [Ee][+-], and proceed as above */
 					yyless(yyleng - 2);
+					cur_state->token_count++;
 					return process_integer_literal(yytext, yylval);
 				}
 
@@ -292,7 +335,6 @@ xlinside		[^ ]+
 					const PsqlScanKeyword *keyword;
 					char	   *ident;
 
-					cur_state->identifier_count++;
 					keyword = PsqlplusKeywordLookup(yytext);
 
 					if (keyword != NULL)
@@ -303,17 +345,22 @@ xlinside		[^ ]+
 						 * continue processing according to the native PG psql parsing
 						 * after returning, this command should not be sent to gram.y.
 						 */
-						if (cur_state->identifier_count == 1 &&
+						if (cur_state->token_count == 0 &&
 							(strcmp(keyword->name, "variable") == 0 ||
-							 strcmp(keyword->name, "print") == 0))
+							 strcmp(keyword->name, "var") == 0 ||
+							 strcmp(keyword->name, "print") == 0 ||
+							 strcmp(keyword->name, "execute") == 0 ||
+							 strcmp(keyword->name, "exec") == 0))
 							cur_state->is_sqlplus_cmd = true;
 
 						yylval->keyword = keyword->name;
+						cur_state->token_count++;
 						return keyword->value;
 					}
 
 					ident = psqlplus_downcase_identifier(yytext, yyleng);
 					yylval->str = ident;
+					cur_state->token_count++;
 					return IDENT;
 				}
 
@@ -330,12 +377,14 @@ xlinside		[^ ]+
 <xl>{space}		{
 					BEGIN(INITIAL);
 					yylval->str = litbufdup(NULL, yyscanner);
+					cur_state->token_count++;
 					return LITERAL;
 				}
 
 <xl><<EOF>>		{
 					BEGIN(INITIAL);
 					yylval->str = litbufdup(NULL, yyscanner);
+					cur_state->token_count++;
 					return LITERAL;
 				}
 
@@ -347,8 +396,7 @@ xlinside		[^ ]+
 
 /* LCOV_EXCL_STOP */
 
-void
-psqlplus_yyerror(yyscan_t yyscanner, const char *message)
+void orapsql_yyerror(yyscan_t yyscanner, const char *message)
 {
 	/* do nothing */
 }
@@ -365,7 +413,7 @@ psqlplus_scanner_init(PsqlScanState state)
 	/* Set current output target */
 	state->output_buf = NULL;
 
-	state->identifier_count = 0;
+	state->token_count = 0;
 	state->is_sqlplus_cmd = false;
 
 	/* initialize literal buffer */

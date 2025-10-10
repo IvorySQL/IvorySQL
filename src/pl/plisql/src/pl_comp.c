@@ -1380,9 +1380,9 @@ plisql_compile_inline(char *proc_source, ParamListInfo inparams)
 
 			/* Create datatype info */
 			argdtype = plisql_build_datatype(argtypeid,
-											 -1,
-											 function->fn_input_collation,
-											 NULL);
+								param->ptypmod,
+								function->fn_input_collation,
+								NULL);
 
 			/* Disallow pseudotype argument */
 			if (argdtype->ttype != PLISQL_TTYPE_SCALAR &&

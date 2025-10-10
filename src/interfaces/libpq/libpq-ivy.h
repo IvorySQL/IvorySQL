@@ -145,7 +145,22 @@ typedef enum IVY_HANDLE_TYPE
 	IVY_HANDLE_NO
 } ivy_handle_type;
 
+typedef struct HostVariableEntry
+{
+	char	*name;
+	int		position;
+} HostVariableEntry;
+
+typedef struct HostVariable
+{
+	HostVariableEntry *hostvars;
+	int		length;
+	bool	isdostmt;
+} HostVariable;
+
 extern Ivyconn *Ivyconnectdb(const char *conninfo);
+extern Ivyconn *Ivyconnectdb2(PGconn *conn);
+extern void Ivyfinish2(Ivyconn *conn);
 extern IvyPreparedStatement *IvyCreatePreparedStatement(const char *stmtName,
 								const char *query,
 								int nParams,
@@ -201,6 +216,11 @@ extern int IvyBindByName(IvyPreparedStatement *stmtHandle,
 extern Ivyresult *IvyStmtExecute(Ivyconn *tconn,
 					IvyPreparedStatement *stmtHandle,
 					IvyError *errhp);
+
+extern Ivyresult *IvyStmtExecute2(Ivyconn *tconn,
+					  				IvyPreparedStatement *stmtHandle,
+					  				IvyError *errhp,
+					  				HostVariable *host);
 
 extern int IvybindOutParameterByName(IvyPreparedStatement *stmtHandle,
 					IvyBindOutInfo **bindinfo,

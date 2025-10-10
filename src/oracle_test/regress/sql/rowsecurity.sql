@@ -2,6 +2,7 @@
 -- Test of Row-level security feature
 --
 
+\set EXECUTE_RUN_PREPARE on
 -- Clean up in case a prior regression run failed
 
 -- Suppress NOTICE messages when users/groups don't exist

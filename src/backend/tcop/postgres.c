@@ -1135,6 +1135,7 @@ exec_simple_query(const char *query_string)
 				paramsinfo->params[i].value = (Datum) 0;
 				paramtypes[i] = 23;
 				paramsinfo->params[i].pmode = 'o';
+				paramsinfo->params[i].ptypmod = -1;
 			}
 
 			params = paramsinfo;
@@ -1733,6 +1734,7 @@ exec_bind_message(StringInfo input_message)
 	ParamsErrorCbData params_data;
 	ErrorContextCallback params_errcxt;
 	List		*dostmt_modes = NIL;
+	List		*dostmt_plength = NIL;
 	ListCell   *lc;
 
 	/* Get the fixed part of the message */
@@ -1887,6 +1889,9 @@ exec_bind_message(StringInfo input_message)
 	{
 		DoStmt *dostmt = (DoStmt *)((RawStmt *)(psrc->raw_parse_tree)->stmt);
 		dostmt_modes = dostmt->paramsmode;
+
+		if (dostmt->paramslen)
+			dostmt_plength = dostmt->paramslen;
 	}
 
 	/*
@@ -1915,6 +1920,9 @@ exec_bind_message(StringInfo input_message)
 		{
 			elog(ERROR, "number of parameters modes isn't same as of params");
 		}
+
+		if (dostmt_plength != NIL && list_length(dostmt_plength) != numParams)
+			elog(ERROR, "the specified parameter length list does not match the number of parameters");
 
 		for (int paramno = 0; paramno < numParams; paramno++)
 		{
@@ -2128,6 +2136,32 @@ exec_bind_message(StringInfo input_message)
 			params->params[paramno].pflags = PARAM_FLAG_CONST;
 			params->params[paramno].ptype = ptype;
 			params->params[paramno].pmode = pmode;
+
+			if (dostmt_plength != NIL)
+			{
+				Integer *v= NULL;
+
+				v = (Integer *) list_nth(dostmt_plength, paramno);
+
+				switch(ptype)
+				{
+					case ORACHARCHAROID:
+					case ORACHARBYTEOID:
+					case ORAVARCHARCHAROID:
+					case ORAVARCHARBYTEOID:
+						/*
+						 * Simple enough, hardcoded to avoid constructing an ArrayType
+						 * representing typmod and calling the typmodin function.
+						 */
+						params->params[paramno].ptypmod = intVal(v) + VARHDRSZ;
+						break;
+					default:
+						params->params[paramno].ptypmod = -1;
+						break;
+				}
+			}
+			else
+				params->params[paramno].ptypmod = -1;
 		}
 
 		/* Pop the per-parameter error callback */

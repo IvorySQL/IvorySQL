@@ -3,6 +3,7 @@
 -- specific server features.
 -- The main features is compatible with Oracle SQL*PLUS client command.
 --
+\set EXECUTE_RUN_PREPARE off
 --
 -- VAR[IABLE] command
 --
@@ -478,6 +479,122 @@ string "'qqqqqq" missing terminating quote (').
 -- string ""qqqqqq" missing terminating quote (").
 variable a = "qqqqqq
 string ""qqqqqq" missing terminating quote (").
+-- VARIABLE can be abbreviated as VAR
+var my char(4) = '123'
+print my
+  MY  
+------
+ 123 
+
+var my = '1234';
+print my
+  MY  
+------
+ 1234
+
+var my = '12345'
+String beginning "12345" is too long.
+print my
+  MY  
+------
+ 1234
+
+var
+variable	a
+datatype	VARCHAR2(3)
+
+variable	a#b
+datatype	NUMBER
+
+variable	a$b
+datatype	NUMBER
+
+variable	a4b
+datatype	NUMBER
+
+variable	a_b
+datatype	NUMBER
+
+variable	aa
+datatype	CHAR(10 CHAR)
+
+variable	a中文b
+datatype	NUMBER
+
+variable	b
+datatype	VARCHAR2(10)
+
+variable	bb
+datatype	VARCHAR2(10 CHAR)
+
+variable	binary_double
+datatype	NUMBER
+
+variable	binary_float
+datatype	NUMBER
+
+variable	byte
+datatype	NUMBER
+
+variable	c
+datatype	VARCHAR2(10 CHAR)
+
+variable	cc
+datatype	VARCHAR2(10 CHAR)
+
+variable	char
+datatype	NUMBER
+
+variable	comment
+datatype	NUMBER
+
+variable	fail
+datatype	NUMBER
+
+variable	my
+datatype	CHAR(4)
+
+variable	nchar
+datatype	NUMBER
+
+variable	number
+datatype	NUMBER
+
+variable	nvarchar2
+datatype	NUMBER
+
+variable	print
+datatype	NUMBER
+
+variable	truncate
+datatype	VARCHAR2(30 CHAR)
+
+variable	v1
+datatype	NUMBER
+
+variable	v2
+datatype	BINARY_FLOAT
+
+variable	v3
+datatype	BINARY_DOUBLE
+
+variable	v4
+datatype	VARCHAR2(3 CHAR)
+
+variable	varchar2
+datatype	NUMBER
+
+variable	variable
+datatype	NUMBER
+
+variable	x
+datatype	NUMBER
+
+variable	y
+datatype	NUMBER
+
+variable	中文
+datatype	NUMBER
 --
 -- PRINT command
 --
@@ -502,9 +619,9 @@ print v3 v5
  char      
 
 print
- A 
----
- 
+  A  
+-----
+ qqq
 
  A#B 
 -----
@@ -569,6 +686,10 @@ print
  FAIL 
 ------
  
+
+  MY  
+------
+ 1234
 
  NCHAR 
 -------
@@ -671,35 +792,547 @@ invalid host/bind variable name.
 
 -- Unlike Oracle, these two syntaxes are the same
 print a'b'
- A 
----
- 
+  A  
+-----
+ qqq
 
 invalid host/bind variable name.
 
 print a 'b'
- A 
----
- 
+  A  
+-----
+ qqq
 
 invalid host/bind variable name.
 
 -- Unlike Oracle, these two syntaxes are the same
 print a "b"
- A 
----
- 
+  A  
+-----
+ qqq
 
  B 
 ---
  
 
 print a"b"
- A 
----
- 
+  A  
+-----
+ qqq
 
  B 
 ---
  
 
+--
+-- Referencing bind variables
+--
+-- Referencing bind variables within anonymous blocks.
+variable v1 number = 123
+variable v2 binary_float = 3.14
+variable v3 binary_double = 3.1415926
+variable v4 char = 't'
+variable v5 char(100) = 'this is char(100) datatype'
+variable v6 char(100 char) = 'this is char(100 char) datatype'
+variable v7 char(100 byte) = 'this is char(100 byte) datatype'
+variable v8 nchar(100) = 'this is nchar(100) datatype'
+variable v9 varchar2 = 't'
+variable v10 varchar2(100) = 'this is varchar2(100) datatype'
+variable v11 varchar2(100 char) = 'this is varchar2(100 char) datatype'
+variable v12 varchar2(100 byte) = 'this is varchar2(100 byte) datatype'
+-- can be used as an lvalue or an rvalue
+declare
+lval1 number;
+lval2 binary_float;
+lval3 binary_double;
+lval4 char;
+lval5 char(100);
+lval6 char(100 char);
+lval7 char(100 byte);
+lval8 nchar(100);
+lval9 varchar2;
+lval10 varchar2(100);
+lval11 varchar2(100 char);
+lval12 varchar2(100 byte);
+begin
+raise notice 'old value of v1 is %', :v1;
+raise notice 'old value of v2 is %', :v2;
+raise notice 'old value of v3 is %', :v3;
+raise notice 'old value of v4 is %', :v4;
+raise notice 'old value of v5 is %', :v5;
+raise notice 'old value of v6 is %', :v6;
+raise notice 'old value of v7 is %', :v7;
+raise notice 'old value of v8 is %', :v8;
+raise notice 'old value of v9 is %', :v9;
+raise notice 'old value of v10 is %', :v10;
+raise notice 'old value of v11 is %', :v11;
+raise notice 'old value of v12 is %', :v12;
+lval1 := :v1;
+lval2 := :v2;
+lval3 := :v3;
+lval4 := :v4;
+lval5 := :v5;
+lval6 := :v6;
+lval7 := :v7;
+lval8 := :v8;
+lval9 := :v9;
+lval10 := :v10;
+lval11 := :v11;
+lval12 := :v12;
+:v1 := 3.141592657;
+:v2 := 3.141592657;
+:v3 := 3.141592657;
+:v4 := 'f';
+:v5 := 'new value = ' || :v5;
+:v6 := 'new value = ' || :v6;
+:v7 := 'new value = ' || :v7;
+:v8 := 'new value = ' || :v8;
+:v9 := 'f';
+:v10 := 'new value = ' || :v10;
+:v11 := 'new value = ' || :v11;
+:v12 := 'new value = ' || :v12;
+raise notice 'new value of v1 is %', :v1;
+raise notice 'new value of v2 is %', :v2;
+raise notice 'new value of v3 is %', :v3;
+raise notice 'new value of v4 is %', :v4;
+raise notice 'new value of v5 is %', :v5;
+raise notice 'new value of v6 is %', :v6;
+raise notice 'new value of v7 is %', :v7;
+raise notice 'new value of v8 is %', :v8;
+raise notice 'new value of v9 is %', :v9;
+raise notice 'new value of v10 is %', :v10;
+raise notice 'new value of v11 is %', :v11;
+raise notice 'new value of v12 is %', :v12;
+raise notice 'the value of local variable is %', lval1;
+raise notice 'the value of local variable is %', lval2;
+raise notice 'the value of local variable is %', lval3;
+raise notice 'the value of local variable is %', lval4;
+raise notice 'the value of local variable is %', lval5;
+raise notice 'the value of local variable is %', lval6;
+raise notice 'the value of local variable is %', lval7;
+raise notice 'the value of local variable is %', lval8;
+raise notice 'the value of local variable is %', lval9;
+raise notice 'the value of local variable is %', lval10;
+raise notice 'the value of local variable is %', lval11;
+raise notice 'the value of local variable is %', lval12;
+end;
+/
+NOTICE:  old value of v1 is 123
+NOTICE:  old value of v2 is 3.14
+NOTICE:  old value of v3 is 3.1415926
+NOTICE:  old value of v4 is t
+NOTICE:  old value of v5 is this is char(100) datatype                                                                          
+NOTICE:  old value of v6 is this is char(100 char) datatype                                                                     
+NOTICE:  old value of v7 is this is char(100 byte) datatype                                                                     
+NOTICE:  old value of v8 is this is nchar(100) datatype                                                                         
+NOTICE:  old value of v9 is t
+NOTICE:  old value of v10 is this is varchar2(100) datatype
+NOTICE:  old value of v11 is this is varchar2(100 char) datatype
+NOTICE:  old value of v12 is this is varchar2(100 byte) datatype
+NOTICE:  new value of v1 is 3.141592657
+NOTICE:  new value of v2 is 3.1415927
+NOTICE:  new value of v3 is 3.141592657
+NOTICE:  new value of v4 is f
+NOTICE:  new value of v5 is new value = this is char(100) datatype
+NOTICE:  new value of v6 is new value = this is char(100 char) datatype
+NOTICE:  new value of v7 is new value = this is char(100 byte) datatype
+NOTICE:  new value of v8 is new value = this is nchar(100) datatype
+NOTICE:  new value of v9 is f
+NOTICE:  new value of v10 is new value = this is varchar2(100) datatype
+NOTICE:  new value of v11 is new value = this is varchar2(100 char) datatype
+NOTICE:  new value of v12 is new value = this is varchar2(100 byte) datatype
+NOTICE:  the value of local variable is 123
+NOTICE:  the value of local variable is 3.14
+NOTICE:  the value of local variable is 3.1415926
+NOTICE:  the value of local variable is t
+NOTICE:  the value of local variable is this is char(100) datatype                                                                          
+NOTICE:  the value of local variable is this is char(100 char) datatype                                                                     
+NOTICE:  the value of local variable is this is char(100 byte) datatype                                                                     
+NOTICE:  the value of local variable is this is nchar(100) datatype                                                                         
+NOTICE:  the value of local variable is t
+NOTICE:  the value of local variable is this is varchar2(100) datatype
+NOTICE:  the value of local variable is this is varchar2(100 char) datatype
+NOTICE:  the value of local variable is this is varchar2(100 byte) datatype
+print v1
+     V1      
+-------------
+ 3.141592657
+
+print v2
+    V2     
+-----------
+ 3.1415927
+
+print v3
+     V3      
+-------------
+ 3.141592657
+
+print v4
+ V4 
+----
+ f
+
+print v5
+                                                  V5                                                  
+------------------------------------------------------------------------------------------------------
+ new value = this is char(100) datatype                                                              
+
+print v6
+                                                  V6                                                  
+------------------------------------------------------------------------------------------------------
+ new value = this is char(100 char) datatype                                                         
+
+print v7
+                                                  V7                                                  
+------------------------------------------------------------------------------------------------------
+ new value = this is char(100 byte) datatype                                                         
+
+print v8
+                                                  V8                                                  
+------------------------------------------------------------------------------------------------------
+ new value = this is nchar(100) datatype                                                             
+
+print v9
+ V9 
+----
+ f
+
+print v10
+                    V10                     
+--------------------------------------------
+ new value = this is varchar2(100) datatype
+
+print v11
+                       V11                       
+-------------------------------------------------
+ new value = this is varchar2(100 char) datatype
+
+print v12
+                       V12                       
+-------------------------------------------------
+ new value = this is varchar2(100 byte) datatype
+
+-- error out of range
+var x char(3 byte) = 'abc'
+print x
+  X  
+-----
+ abc
+
+var x char(3 char) = '数据库'
+print x
+   X    
+--------
+ 数据库
+
+begin
+raise notice 'old value of :x is %', :x;
+:x := '瀚高集团';
+raise notice 'new value of :x is %', :x;
+end;
+/
+NOTICE:  old value of :x is 数据库
+NOTICE:  new value of :x is 瀚高集团
+String beginning "瀚高集团" is too long.
+print x
+   X    
+--------
+ 数据库
+
+-- catch exception
+begin
+raise notice 'old value of :x is %', :x;
+:x := '瀚高集团';
+EXCEPTION WHEN OTHERS THEN
+	raise notice 'Get an exception and reassign an acceptable value to the bind variable';
+	:x := '瀚高';
+raise notice 'new value of :x is %', :x;
+end;
+/
+NOTICE:  old value of :x is 数据库
+String beginning "瀚高集团" is too long.
+print x
+   X    
+--------
+ 数据库
+
+-- Referencing bind variables within non-anonymous block queries
+var x number = 4
+var y char(20) = 'bindvar_test'
+var z char(20) = 'select'
+var m number = 999
+var n char(5) = '888'
+print x
+ X 
+---
+ 4
+
+print y
+          Y           
+----------------------
+ bindvar_test        
+
+print z
+          Z           
+----------------------
+ select              
+
+print m
+  M  
+-----
+ 999
+
+print n
+   N   
+-------
+ 888  
+
+create table bindvar_test(a number);
+insert into bindvar_test values(1);
+insert into bindvar_test values(2);
+insert into bindvar_test values(3);
+insert into bindvar_test values(4);
+insert into bindvar_test values(5);
+select * from bindvar_test;
+ a 
+---
+ 1
+ 2
+ 3
+ 4
+ 5
+(5 rows)
+
+-- ok
+select * from bindvar_test where a = :x;
+ a 
+---
+ 4
+(1 row)
+
+-- ok
+insert into bindvar_test values(:m);
+insert into bindvar_test values(:n);
+select * from bindvar_test;
+  a  
+-----
+ 1
+ 2
+ 3
+ 4
+ 5
+ 999
+ 888
+(7 rows)
+
+-- ok
+delete from bindvar_test where a = :x;
+select * from bindvar_test;
+  a  
+-----
+ 1
+ 2
+ 3
+ 5
+ 999
+ 888
+(6 rows)
+
+-- error, cannot use input host variables to supply SQL keywords or the names of database objects or data definition statements. 
+select * from :y;
+ERROR:  syntax error at or near ":y"
+LINE 1: select * from get_parameter_description('select * from :y;')...
+                      ^
+:z * from bindvar_test;
+ERROR:  syntax error at or near ":z"
+LINE 1: select * from get_parameter_description(':z * from bindvar_t...
+        ^
+drop table :y;
+ERROR:  syntax error at or near ":y"
+LINE 1: select * from get_parameter_description('drop table :y;');
+                   ^
+drop table bindvar_test;
+-- Referencing bind variables in functions or procedures as input or output host variable.
+var x number=10
+var y number=20
+var z char(6)='input'
+CREATE OR REPLACE FUNCTION f_test (x NUMBER, y OUT NUMBER, z OUT char) return int AS
+BEGIN
+raise info '%', x;
+raise info '%', y;
+raise info '%', z;
+y := x;
+z := 'output';
+raise info '%', x;
+raise info '%', y;
+raise info '%', z;
+return 999;
+END;
+/
+-- error out within Oracle: ORA-06572: Function F_TEST has out arguments.
+-- error out within IvorySQL: ERROR:  OUT or IN OUT arguments of the funtion f_test must be variables.
+select f_test(:x, :y, :z) from dual;
+ERROR:  OUT or IN OUT arguments of the function f_test must be variables 
+-- error out within Oracle: ORA-06572: Function F_TEST has out arguments.
+-- IvorySQL can execute successfully. Will be changed in the future?
+select * from f_test(:x, :y, :z);
+INFO:  10
+INFO:  <NULL>
+INFO:  <NULL>
+INFO:  10
+INFO:  10
+INFO:  output
+ _column_2 | _column_3 | _RETVAL_ 
+-----------+-----------+----------
+ 10        | output    |      999
+(1 row)
+
+print x
+ X  
+----
+ 10
+
+print y
+ Y  
+----
+ 10
+
+print z
+   Z    
+--------
+ output
+
+-- CALL statement
+exec :x := 3.14
+exec :z := 'any'
+CREATE OR REPLACE PROCEDURE p_test (x NUMBER, y IN OUT NUMBER, z OUT char) AS
+BEGIN
+raise info '%', x;
+raise info '%', y;
+raise info '%', z;
+y := x;
+z := 'output';
+raise info '%', x;
+raise info '%', y;
+raise info '%', z;
+END;
+/
+call p_test(:x, :y, :z);
+INFO:  3.14
+INFO:  10
+INFO:  <NULL>
+INFO:  3.14
+INFO:  3.14
+INFO:  output
+print x
+  X   
+------
+ 3.14
+
+print y
+  Y   
+------
+ 3.14
+
+print z
+   Z    
+--------
+ output
+
+--clean
+drop function f_test;
+drop procedure p_test;
+--
+-- EXECUTE
+--
+var x number;
+print x
+ X 
+---
+ 
+
+-- there is not necessarily a space after exec.
+exec:x := 111;
+print x
+  X  
+-----
+ 111
+
+exec:x := 222
+print x
+  X  
+-----
+ 222
+
+exec :x := 333;
+print x
+  X  
+-----
+ 333
+
+exec :x := 444
+print x
+  X  
+-----
+ 444
+
+-- Usage: EXEC[UTE] statement
+exec
+Usage: EXEC[UTE] statement
+execute
+Usage: EXEC[UTE] statement
+/* Comments and whitespace are ignored */exec
+Usage: EXEC[UTE] statement
+/* Comments and whitespace are ignored */ execute
+Usage: EXEC[UTE] statement
+-- An error is reported on overflow
+var x char(3 char)
+exec :x := '数据库';
+print x
+   X    
+--------
+ 数据库
+
+exec :x := '数据库1';
+String beginning "数据库1" is too long.
+print x
+   X    
+--------
+ 数据库
+
+var x varchar2(3 char)
+exec :x := '数据库';
+print x
+   X    
+--------
+ 数据库
+
+exec :x := '数据库1';
+String beginning "数据库1" is too long.
+print x
+   X    
+--------
+ 数据库
+
+var x number
+exec :x := '3.14'
+print x
+  X   
+------
+ 3.14
+
+exec :x := 'abc'
+ERROR:  invalid input syntax for type numeric: "abc"
+LINE 1: :x := 'abc'
+              ^
+QUERY:  :x := 'abc'
+CONTEXT:  PL/iSQL function inline_code_block line 1 at assignment
+print x
+  X   
+------
+ 3.14
+
+-- host variable not exist
+exec :nohostvar := '123'
+Bind variable "nohostvar" not declared.
