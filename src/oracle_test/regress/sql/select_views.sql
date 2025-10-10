@@ -3,6 +3,7 @@
 -- test the views defined in CREATE_VIEWS
 --
 
+\set EXECUTE_RUN_PREPARE on
 SELECT * FROM street;
 
 SELECT name, #thepath FROM iexit ORDER BY name COLLATE "C", 2;

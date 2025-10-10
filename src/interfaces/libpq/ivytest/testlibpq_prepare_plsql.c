@@ -32,7 +32,7 @@ const char *anonymous_paramete_str =
 "		id1 := :m;"
 "       :x := id * 2 + 1;"
 "       :y := :x + 100;"
-"       :z := ''this is a test'';"
+"       :z := 'this is a test ok';"
 "       :f := 23;"
 " end;";
 

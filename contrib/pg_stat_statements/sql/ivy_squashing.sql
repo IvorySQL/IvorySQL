@@ -1,6 +1,7 @@
 --
 -- Const squashing functionality
 --
+\set EXECUTE_RUN_PREPARE on
 CREATE EXTENSION pg_stat_statements;
 
 --

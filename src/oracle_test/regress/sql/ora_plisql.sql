@@ -802,13 +802,14 @@ end;
 begin
 null;
 end;
-
+/
 
 <<
 main >>
 begin
 null;
 end;
+/
 
 <<
 main
@@ -965,7 +966,7 @@ drop table t1;
 
 create or replace procedure protest 
 as 
-begin 
+begin
 raise notice 'protest';
 end;
 / 

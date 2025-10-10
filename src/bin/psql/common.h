@@ -16,6 +16,7 @@
 #include "fe_utils/psqlscan.h"
 #include "oracle_fe_utils/ora_psqlscan.h" 
 #include "libpq-fe.h"
+#include "libpq-ivy.h"
 
 extern bool openQueryOutputFile(const char *fname, FILE **fout, bool *is_pipe);
 extern bool setQFout(const char *fname);
@@ -49,5 +50,8 @@ extern void expand_tilde(char **filename);
 extern void clean_extended_state(void);
 
 extern bool recognized_connection_string(const char *connstr);
+extern char *psqlplus_skip_space(char *query);
+extern HostVariable *get_hostvariables(const char *sql, bool *error);
+extern bool SendQuery_PBE(const char *query, HostVariable *hv);
 
 #endif							/* COMMON_H */

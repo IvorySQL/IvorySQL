@@ -1,6 +1,7 @@
 --
 -- SELECT statements
 --
+\set EXECUTE_RUN_PREPARE on
 CREATE EXTENSION pg_stat_statements;
 SET pg_stat_statements.track_utility = FALSE;
 SET pg_stat_statements.track_planning = TRUE;

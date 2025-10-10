@@ -652,10 +652,11 @@ static void determineLanguage(List *options);
 %type <list>		hash_partbound
 %type <defelt>		hash_partbound_elem
 
-%type <node> param_mode
 %type <node> param_mode_item
 %type <list> param_mode_list
+%type <list> params_length_list
 %type <str>  opt_param_name
+%type <node> param_mode
 
 %type <list>	identity_clause identity_options drop_identity
 %type <boolean>	opt_with opt_by
@@ -846,6 +847,8 @@ static void determineLanguage(List *options);
 %token <keyword> BINARY_FLOAT_NAN BINARY_FLOAT_INFINITY
 	BINARY_DOUBLE_NAN BINARY_DOUBLE_INFINITY
 %token <keyword> NAN_P INFINITE_P
+
+%token <keyword> PARAMSLENGTH
 
 %type <node> CreatePackageStmt CreatePackageBodyStmt AlterPackageStmt
 %type <node> package_proper_item
@@ -10236,6 +10239,17 @@ DoStmt: DO dostmt_opt_list
 					DoStmt *n = makeNode(DoStmt);
 					n->args = $2;
 					n->paramsmode = $4;
+					n->paramslen = NIL;
+					determineLanguage(n->args);
+					$$ = (Node *)n;
+				}
+
+			| DO dostmt_opt_list USING param_mode_list PARAMSLENGTH params_length_list
+				{
+					DoStmt *n = makeNode(DoStmt);
+					n->args = $2;
+					n->paramsmode = $4;
+					n->paramslen = $6;
 					determineLanguage(n->args);
 					$$ = (Node *)n;
 				}
@@ -10301,6 +10315,17 @@ param_mode:
 				| OUT_P                 { $$ = (Node *) makeString((char *) $1); }
 				| INOUT                 { $$ = (Node *) makeString((char *) $1); }
 				| IN_P OUT_P    		{ $$ = (Node *) makeString("inout"); }
+		;
+
+params_length_list:
+			SignedIconst
+				{
+					$$ = list_make1(makeInteger($1));
+				}
+			| params_length_list ',' SignedIconst
+				{
+					$$ = lappend($1, makeInteger($3));
+				}
 		;
 
 
@@ -20278,6 +20303,7 @@ unreserved_keyword:
 			| PARALLEL
 			| PARALLEL_ENABLE
 			| PARAMETER
+			| PARAMSLENGTH
 			| PARSER
 			| PARTIAL
 			| PARTITION
@@ -20984,6 +21010,7 @@ bare_label_keyword:
 			| PARALLEL
 			| PARALLEL_ENABLE
 			| PARAMETER
+			| PARAMSLENGTH
 			| PARSER
 			| PARTIAL
 			| PARTITION
