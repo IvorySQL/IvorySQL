@@ -3476,8 +3476,8 @@ main(int argc, char *argv[])
 				}
 				else
 				{
-					pg_log_error("Unknown case conversion mode： %s", switchmode);
-					pg_log_error_hint("Valid case conversion mode value is normal, interchange, lowercase.");
+					pg_log_error("Unknown case conversion mode: %s", switchmode);
+					pg_log_error_hint("Valid case conversion mode values are normal, interchange, or lowercase.");
 					exit(1);
 				}
 				break;
