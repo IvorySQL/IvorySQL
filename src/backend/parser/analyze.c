@@ -367,7 +367,7 @@ transformStmt(ParseState *pstate, Node *parseTree)
 			break;
 
 		case T_MergeStmt:
-			result = (*pg_transform_merge_stmt_hook)(pstate, (MergeStmt *) parseTree);
+			result = (*pg_transform_merge_stmt_hook) (pstate, (MergeStmt *) parseTree);
 			break;
 
 		case T_SelectStmt:
@@ -974,15 +974,15 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 		if (selectStmt->valuesIsrow == true)
 		{
 			/*
-			 * Transform the row variable into its fields form.
-			 * For example: INSERT INTO tablename VALUES row_variable; 
-			 * convert it to the equivalent statement: 
-			 * INSERT INTO tablename VALUES (row_variable.field1,...,row_variable.fieldN);
+			 * Transform the row variable into its fields form. For example:
+			 * INSERT INTO tablename VALUES row_variable; convert it to the
+			 * equivalent statement: INSERT INTO tablename VALUES
+			 * (row_variable.field1,...,row_variable.fieldN);
 			 */
 			exprList = transformRowExpression(pstate,
-							  (List *) linitial(valuesLists),
-							  EXPR_KIND_VALUES_SINGLE,
-							  true);
+											  (List *) linitial(valuesLists),
+											  EXPR_KIND_VALUES_SINGLE,
+											  true);
 
 			nattrs = list_length(icolumns);
 			nvalues = list_length(exprList);
@@ -999,13 +999,13 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 		else
 		{
 			/*
-			 * Do basic expression transformation (same as a ROW() expr, but allow
-			 * SetToDefault at top level)
+			 * Do basic expression transformation (same as a ROW() expr, but
+			 * allow SetToDefault at top level)
 			 */
 			exprList = transformExpressionList(pstate,
-							   (List *) linitial(valuesLists),
-							   EXPR_KIND_VALUES_SINGLE,
-							   true);
+											   (List *) linitial(valuesLists),
+											   EXPR_KIND_VALUES_SINGLE,
+											   true);
 		}
 
 		/* Prepare row for assignment to target table */
@@ -2547,7 +2547,7 @@ transformUpdateStmt(ParseState *pstate, UpdateStmt *stmt)
 		foreach(o_target, stmt->targetList)
 		{
 			ResTarget  *origTarget = (ResTarget *) lfirst(o_target);
-	
+
 			if (strcmp(origTarget->name, "rowid") == 0)
 				elog(ERROR, "cannot specify system column name \"%s\"", origTarget->name);
 		}
@@ -2688,14 +2688,14 @@ transformUpdateTargetList(ParseState *pstate, List *origTlist)
 		if (attrno == InvalidAttrNumber && compatible_db == PG_PARSER)
 		{
 			ereport(ERROR,
-			(errcode(ERRCODE_UNDEFINED_COLUMN),
-			 errmsg("column \"%s\" of relation \"%s\" does not exist",
-					origTarget->name,
-					RelationGetRelationName(pstate->p_target_relation)),
-			 (origTarget->indirection != NIL &&
-			  strcmp(origTarget->name, pstate->p_target_nsitem->p_names->aliasname) == 0) ?
-			 errhint("SET target columns cannot be qualified with the relation name.") : 0,
-			 parser_errposition(pstate, origTarget->location)));
+					(errcode(ERRCODE_UNDEFINED_COLUMN),
+					 errmsg("column \"%s\" of relation \"%s\" does not exist",
+							origTarget->name,
+							RelationGetRelationName(pstate->p_target_relation)),
+					 (origTarget->indirection != NIL &&
+					  strcmp(origTarget->name, pstate->p_target_nsitem->p_names->aliasname) == 0) ?
+					 errhint("SET target columns cannot be qualified with the relation name.") : 0,
+					 parser_errposition(pstate, origTarget->location)));
 		}
 
 		if (colname_temp)
@@ -3480,6 +3480,12 @@ transformCallStmt(ParseState *pstate, CallStmt *stmt)
 
 	ReleaseSysCache(proctup);
 
+/*
+ * Fast exit for non-pg_proc routines:
+ * when the target is resolved outside the pg_proc catalog, we have already
+ * prepared funcexpr and any OUT arguments; skip catalog-based checks and
+ * finalize the CALL as a utility Query node.
+ */
 SKIP_PG_PROC_CHECK:
 
 	/* represent the command as a utility Query */
@@ -3891,25 +3897,25 @@ transformUpdateRowTargetList(ParseState *pstate, List *origTlist)
 	List	   *tlist = NIL;
 	RTEPermissionInfo *target_perminfo = NULL;
 	ListCell   *tl;
-	int	nattrs;
-	int	nvalues;
-	int	attrno;
-	int	location;
+	int			nattrs;
+	int			nvalues;
+	int			attrno;
+	int			location;
 	ResTarget  *origTarget;
 
 	nvalues = list_length(origTlist);
 	origTarget = (ResTarget *) linitial(origTlist);
-	location = ((ResTarget *)lfirst_node(ResTarget, list_head(origTlist)))->location;
+	location = ((ResTarget *) lfirst_node(ResTarget, list_head(origTlist)))->location;
 
 	/*
-	 * some checkings 
+	 * some checkings
 	 */
-	 if (nvalues != 1)
+	if (nvalues != 1)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("too many values"),
 				 parser_errposition(pstate,
-							location)));
+									location)));
 
 	if (nodeTag(origTarget->val) == T_FuncCall ||
 		nodeTag(origTarget->val) == T_OraParamRef ||
@@ -3918,13 +3924,13 @@ transformUpdateRowTargetList(ParseState *pstate, List *origTlist)
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("unsupported target"),
 				 parser_errposition(pstate,
-							location)));
+									location)));
 
 	/* Transform the target list */
 	tlist = transformRowTargetList(pstate, origTlist,
-					EXPR_KIND_UPDATE_SOURCE);
+								   EXPR_KIND_UPDATE_SOURCE);
 
-	location = ((ResTarget *)lfirst_node(ResTarget, list_head(origTlist)))->location;
+	location = ((ResTarget *) lfirst_node(ResTarget, list_head(origTlist)))->location;
 
 	nattrs = RelationGetNumberOfAttributes(pstate->p_target_relation);
 	nvalues = list_length(tlist);
@@ -3934,14 +3940,14 @@ transformUpdateRowTargetList(ParseState *pstate, List *origTlist)
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("no enough values"),
 				 parser_errposition(pstate,
-							location)));
+									location)));
 
 	else if (nattrs < nvalues)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("too many values"),
 				 parser_errposition(pstate,
-							location)));
+									location)));
 
 	if (pstate->p_next_resno <= RelationGetNumberOfAttributes(pstate->p_target_relation))
 		pstate->p_next_resno = RelationGetNumberOfAttributes(pstate->p_target_relation) + 1;
@@ -3956,9 +3962,9 @@ transformUpdateRowTargetList(ParseState *pstate, List *origTlist)
 
 		att = TupleDescAttr(pstate->p_target_relation->rd_att, attrno);
 		updateTargetListEntry(pstate, tle, NameStr(att->attname),
-					  attrno + 1,
-					  NIL,
-					  location);
+							  attrno + 1,
+							  NIL,
+							  location);
 
 		/* Mark the target column as requiring update permissions */
 		target_perminfo->updatedCols = bms_add_member(target_perminfo->updatedCols, attrno - FirstLowInvalidHeapAttributeNumber);
@@ -3986,11 +3992,11 @@ transformIvyUpdateTargetList(ParseState *pstate, List *origTlist)
 {
 	List	   *tlist = NIL;
 	ListCell   *o_target;
-	int	target_has_row = false;
-	bool	cols_has_row = false;
-	int	col_is_complex = false;
-	int	row_no;
-	Oid	attrrowtype;
+	int			target_has_row = false;
+	bool		cols_has_row = false;
+	int			col_is_complex = false;
+	int			row_no;
+	Oid			attrrowtype;
 
 	target_has_row = 0;
 	row_no = 0;
@@ -3998,15 +4004,15 @@ transformIvyUpdateTargetList(ParseState *pstate, List *origTlist)
 	/* Check if the target name is "row" */
 	foreach(o_target, origTlist)
 	{
-		ResTarget  	*origTarget = (ResTarget *) lfirst(o_target);
-		int 		attrno;
+		ResTarget  *origTarget = (ResTarget *) lfirst(o_target);
+		int			attrno;
 
 		/* Check if there is a column named "row" */
 		if (pg_strcasecmp(origTarget->name, "row") == 0)
 		{
 			target_has_row = true;
 			attrno = attnameAttNum(pstate->p_target_relation,
-						   origTarget->name, true);
+								   origTarget->name, true);
 
 			if (attrno != InvalidAttrNumber)
 			{
@@ -4024,15 +4030,16 @@ transformIvyUpdateTargetList(ParseState *pstate, List *origTlist)
 	}
 
 	/*
-	 * If target_has_row is false, there should be no SET ROW = xx clause, 
+	 * If target_has_row is false, there should be no SET ROW = xx clause,
 	 * call transformUpdateTargetList to transform the targetlist.
 	 */
 	if (!target_has_row)
 		return transformUpdateTargetList(pstate, origTlist);
 
 	/*
-	 * cols_has_row is false, there should be no column named "row".
-	 * the UPDATE statment is UPDATE tablename SET ROW = record_var[WHERE ..] statement.
+	 * cols_has_row is false, there should be no column named "row". the
+	 * UPDATE statment is UPDATE tablename SET ROW = record_var[WHERE ..]
+	 * statement.
 	 */
 	if (!cols_has_row)
 	{
@@ -4040,11 +4047,11 @@ transformIvyUpdateTargetList(ParseState *pstate, List *origTlist)
 	}
 	else
 	{
-		TargetEntry 	*row_tle;
-		Oid		value_type;
+		TargetEntry *row_tle;
+		Oid			value_type;
 
 		tlist = transformTargetList(pstate, origTlist,
-						EXPR_KIND_UPDATE_SOURCE);
+									EXPR_KIND_UPDATE_SOURCE);
 
 		/* Get the transformed value of the target row */
 		row_tle = (TargetEntry *) list_nth(tlist, row_no);
@@ -4066,11 +4073,13 @@ transformIvyUpdateTargetList(ParseState *pstate, List *origTlist)
 		}
 		else
 		{
-			/* It is UPDATE tablename SET ROW = value,.. colN = value..[WHERE ..] statement */
+			/*
+			 * It is UPDATE tablename SET ROW = value,.. colN = value..[WHERE
+			 * ..] statement
+			 */
 			tlist = transformUpdateTargetList(pstate, origTlist);
 		}
 	}
 
 	return tlist;
 }
-

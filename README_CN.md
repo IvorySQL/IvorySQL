@@ -16,6 +16,12 @@ IvorySQL 项目采用 Apache 2.0 许可协议发布，并鼓励各种形式的�
 
 </br>
 
+## 开发者代码格式化
+- 提交前自动格式化（推荐）：
+  - 已克隆仓库：在仓库根目录执行 `make enable-git-hooks`（或 `bash tools/enable-git-hooks.sh`）
+- 提交时行为：Git 钩子会自动用 `pgindent` 格式化已暂存的 C/C++ 文件并回加到暂存区，未通过二次校验会阻止提交。
+- PR 阶段：Cirrus 将运行 `FormatCheck`（pgindent --check）对差异文件做只读校验。
+
 ## 我们致力于遵循开源理念的原则
 我们致力于遵循[开源之道](https://opensource.com/open-source-way)的原则，并坚定地相信构建一个健康且包容的社区至关重要。我们始终坚信，优秀的想法可以来源于任何地方，而最优的想法应当脱颖而出。只有在多元观点的碰撞下，才能做出最明智的决策。尽管 IvorySQL 的首个版本主要聚焦于 Oracle 兼容性功能，但未来的路线图和功能集将由社区以开源的方式共同决定。
 </br>

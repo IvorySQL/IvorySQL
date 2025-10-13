@@ -2125,12 +2125,12 @@ add_function_cost(PlannerInfo *root, Oid funcid, Node *node,
 
 	if (node != NULL && nodeTag(node) == T_FuncExpr)
 	{
-		FuncExpr *funcexpr = (FuncExpr *) node;
+		FuncExpr   *funcexpr = (FuncExpr *) node;
 
-		/* not pg_proc function use default cost */
+		/* For functions not coming from pg_proc, use a default cost. */
 		if (!FUNC_EXPR_FROM_PG_PROC(funcexpr->function_from))
 		{
-			/* use the default */
+			/* Apply the default per-tuple estimate. */
 			cost->per_tuple += 100 * cpu_operator_cost;
 			return;
 		}

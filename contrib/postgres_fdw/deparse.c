@@ -8,8 +8,8 @@
  * well as functions to construct the query text to be sent.  The latter
  * functionality is annoyingly duplicative of ruleutils.c, but there are
  * enough special considerations that it seems best to keep this separate.
- * One saving grace is that we only need deparse logic for node types that
- * we consider safe to send.
+ * One saving grace is that deparse logic is required only for node types
+ * considered safe to send.
  *
  * We assume that the remote session's search_path is exactly "pg_catalog",
  * and thus we need schema-qualify all and only names outside pg_catalog.
@@ -2976,7 +2976,7 @@ deparseVar(Var *node, deparse_expr_cxt *context)
 						 qualify_col);
 	else
 	{
-		/* Treat like a Param */
+		/* Treat as a Param */
 		if (context->params_list)
 		{
 			int			pindex = 0;
@@ -3409,7 +3409,7 @@ deparseOperatorName(StringInfo buf, Form_pg_operator opform)
 {
 	char	   *opname;
 
-	/* opname is not a SQL identifier, so we should not quote it. */
+/* opname is not a SQL identifier, so do not quote it. */
 	opname = NameStr(opform->oprname);
 
 	/* Print schema name only if it's not pg_catalog */

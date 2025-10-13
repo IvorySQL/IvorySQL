@@ -165,7 +165,7 @@ static void reportDependentObjects(const ObjectAddresses *targetObjects,
 								   DropBehavior behavior,
 								   int flags,
 								   const ObjectAddress *origObject,
-								   bool	*refinddepobjects);
+								   bool *refinddepobjects);
 static void deleteOneObject(const ObjectAddress *object,
 							Relation *depRel, int32 flags);
 static void doDeletion(const ObjectAddress *object, int flags);
@@ -287,7 +287,7 @@ performDeletion(const ObjectAddress *object,
 {
 	Relation	depRel;
 	ObjectAddresses *targetObjects;
-	bool	need_refinddepobj = false;
+	bool		need_refinddepobj = false;
 
 	/*
 	 * We save some cycles by opening pg_depend just once and passing the
@@ -363,7 +363,7 @@ performMultipleDeletions(const ObjectAddresses *objects,
 	Relation	depRel;
 	ObjectAddresses *targetObjects;
 	int			i;
-	bool	need_refinddepobj = false;
+	bool		need_refinddepobj = false;
 
 	/* No work if no objects... */
 	if (objects->numrefs <= 0)
@@ -427,7 +427,9 @@ performMultipleDeletions(const ObjectAddresses *objects,
 			const ObjectAddress *thisobj = objects->refs + i;
 
 			/*
-			 * Obtain a deletion lock for every target object.  (Preferably, this should have been handled by the caller, but in reality, many callers neglect to do so.)
+			 * Obtain a deletion lock for every target object.  (Preferably,
+			 * this should have been handled by the caller, but in reality,
+			 * many callers neglect to do so.)
 			 */
 			AcquireDeletionLock(thisobj, flags);
 
@@ -504,7 +506,7 @@ findDependentObjects(const ObjectAddress *object,
 	int			maxDependentObjects;
 	ObjectAddressStack mystack;
 	ObjectAddressExtra extra;
-	ObjectFunOrPkg		*dependentFuncPkgOids;
+	ObjectFunOrPkg *dependentFuncPkgOids;
 	int			numDependentFuncPkgOids;
 	int			maxDependentFuncPkgOids;
 
@@ -968,7 +970,7 @@ findDependentObjects(const ObjectAddress *object,
 		if (foundDep->deptype == DEPENDENCY_TYPE &&
 			(object->classId == RelationRelationId ||
 			 object->classId == PackageRelationId ||
-			 object->classId == PackageBodyRelationId ))
+			 object->classId == PackageBodyRelationId))
 		{
 			if (foundDep->classid == 0)
 				continue;
@@ -1106,17 +1108,17 @@ findDependentObjects(const ObjectAddress *object,
 		pg_qsort(dependentFuncPkgOids, numDependentFuncPkgOids,
 				 sizeof(ObjectFunOrPkg), object_funpkgoid_comparator);
 
-		numDependentFuncPkgOids = qunique((void *)dependentFuncPkgOids, numDependentFuncPkgOids,
-							sizeof(ObjectFunOrPkg), object_funpkgoid_comparator);
+		numDependentFuncPkgOids = qunique((void *) dependentFuncPkgOids, numDependentFuncPkgOids,
+										  sizeof(ObjectFunOrPkg), object_funpkgoid_comparator);
 	}
 
 	/*
-	 * Find out the dependent funciton which uses %TYPE or %ROWTYPE
-	 * in parameters datatype or return datatype.
+	 * Find out the dependent funciton which uses %TYPE or %ROWTYPE in
+	 * parameters datatype or return datatype.
 	 */
 	for (int i = 0; i < numDependentFuncPkgOids; i++)
 	{
-		Oid objectId = dependentFuncPkgOids[i].objectId;
+		Oid			objectId = dependentFuncPkgOids[i].objectId;
 
 		switch (dependentFuncPkgOids[i].flags)
 		{
@@ -1150,7 +1152,7 @@ findDependentObjects(const ObjectAddress *object,
 				{
 					PackageCacheKey pkey;
 					PackageCacheItem *item;
-					HeapTuple pkgbodyTup;
+					HeapTuple	pkgbodyTup;
 					Form_pg_package_body pkgbodyStruct;
 
 					/*
@@ -1269,7 +1271,7 @@ reportDependentObjects(const ObjectAddresses *targetObjects,
 	if (ORA_PARSER == compatible_db && behavior == DROP_RESTRICT)
 	{
 		/* Check if all dependencies that require CASCADE are views */
-		bool	all_cascade_dep_is_view = true;
+		bool		all_cascade_dep_is_view = true;
 		ObjectAddresses *viewObjects;
 
 		viewObjects = new_object_addresses();
@@ -1295,8 +1297,9 @@ reportDependentObjects(const ObjectAddresses *targetObjects,
 				continue;
 
 			/*
-			 * If the object was found via an automatic, internal, partition, or extension dependency,
-			 * it is permitted to be removed even with RESTRICT.
+			 * If the object was found via an automatic, internal, partition,
+			 * or extension dependency, it is permitted to be removed even
+			 * with RESTRICT.
 			 */
 			if (extra->flags & (DEPFLAG_AUTO |
 								DEPFLAG_INTERNAL |
@@ -1317,7 +1320,10 @@ reportDependentObjects(const ObjectAddresses *targetObjects,
 			}
 			else
 			{
-				/* If any dependent object is not a view, set flag and exit loop */
+				/*
+				 * If any dependent object is not a view, set flag and exit
+				 * loop
+				 */
 				if (get_rel_relkind(obj->objectId) != RELKIND_VIEW)
 				{
 					all_cascade_dep_is_view = false;
@@ -1330,7 +1336,10 @@ reportDependentObjects(const ObjectAddresses *targetObjects,
 			pfree(objDesc);
 		}
 
-		/* If all dependencies are views, mark them as invalid and trigger a recheck */
+		/*
+		 * If all dependencies are views, mark them as invalid and trigger a
+		 * recheck
+		 */
 		if (all_cascade_dep_is_view && viewObjects->numrefs > 0)
 		{
 			for (i = viewObjects->numrefs - 1; i >= 0; i--)
@@ -1339,7 +1348,8 @@ reportDependentObjects(const ObjectAddresses *targetObjects,
 			}
 
 			/*
-			 * After invalidating views, re-evaluate dependencies to ensure consistency.
+			 * After invalidating views, re-evaluate dependencies to ensure
+			 * consistency.
 			 */
 			if (refinddepobj)
 				*refinddepobj = true;
@@ -1709,7 +1719,7 @@ doDeletion(const ObjectAddress *object, int flags)
 					DeleteSequenceTuple(object->objectId);
 
 				if (ORA_PARSER == compatible_db && relKind == RELKIND_VIEW)
-					  DeleteForceView(object->objectId);
+					DeleteForceView(object->objectId);
 
 				break;
 			}
@@ -1851,7 +1861,7 @@ AcquireDeletionLock(const ObjectAddress *object, int flags)
 						 AccessExclusiveLock);
 	else
 	{
-		/* assume we should lock the whole object not a sub-object */
+		/* Assume we lock the whole object, not a sub-object */
 		LockDatabaseObject(object->classId, object->objectId, 0,
 						   AccessExclusiveLock);
 	}
@@ -1868,7 +1878,7 @@ ReleaseDeletionLock(const ObjectAddress *object)
 	if (object->classId == RelationRelationId)
 		UnlockRelationOid(object->objectId, AccessExclusiveLock);
 	else
-		/* assume we should lock the whole object not a sub-object */
+		/* Assume we lock the whole object, not a sub-object */
 		UnlockDatabaseObject(object->classId, object->objectId, 0,
 							 AccessExclusiveLock);
 }
@@ -2211,21 +2221,21 @@ find_expr_references_walker(Node *node,
 
 		if (FUNC_EXPR_FROM_PG_PROC(funcexpr->function_from))
 			add_object_address(ProcedureRelationId, funcexpr->funcid, 0,
-						   context->addrs);
+							   context->addrs);
 		else
 		{
 			Oid			funcoid = InvalidOid;
-			bool is_package = false;
+			bool		is_package = false;
 
 			funcoid = get_top_function_info(funcexpr, &is_package);
 			if (OidIsValid(funcoid))
 			{
 				if (is_package)
 					add_object_address(PackageRelationId, funcoid, 0,
-							context->addrs);
+									   context->addrs);
 				else
 					add_object_address(ProcedureRelationId, funcoid, 0,
-						   context->addrs);
+									   context->addrs);
 			}
 		}
 
@@ -2857,8 +2867,8 @@ object_address_comparator(const void *a, const void *b)
 int
 object_funpkgoid_comparator(const void *a, const void *b)
 {
-	const ObjectFunOrPkg *obja = (const ObjectFunOrPkg *) a;
-	const ObjectFunOrPkg *objb = (const ObjectFunOrPkg *) b;
+	const		ObjectFunOrPkg *obja = (const ObjectFunOrPkg *) a;
+	const		ObjectFunOrPkg *objb = (const ObjectFunOrPkg *) b;
 
 	if (obja->objectId > objb->objectId)
 		return -1;

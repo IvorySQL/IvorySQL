@@ -22,6 +22,11 @@ When it comes to C and C++ parts of IvorySQL, we try to follow PostgreSQL Coding
 
 For **C** and **Perl** code, please run pgindent if necessary. We recommend using **git diff --color** when reviewing your changes so that you don't have any spurious whitespace issues in the code that you submit.
 
+Formatting hooks and CI:
+- A pre-commit formatting hook is provided at `.githooks/pre-commit`. Enable it with `git config core.hooksPath .githooks`, or run `make enable-git-hooks` (equivalently `bash tools/enable-git-hooks.sh`).
+- The hook depends only on in-tree tools `src/tools/pgindent` and `src/tools/pg_bsd_indent`. On commit it formats staged C/C++ files with pgindent and re-adds them to the index. 
+- A Cirrus workflow `FormatCheck` runs `pgindent --check` on files changed in a PR.
+
 All new functionality that is contributed to IvorySQL should be covered by regression tests that are contributed alongside it. If you are uncertain about how to test or document your work, please raise the question on the ivorysql-hackers mailing list and the developer community will do its best to help you.
 
 At the very minimum, you should always be running make installcheck-world to make sure that you're not breaking anything.

@@ -77,7 +77,7 @@ exprType(const Node *expr)
 			break;
 		case T_FuncExpr:
 			{
-				FuncExpr *funcexpr = (FuncExpr *) expr;
+				FuncExpr   *funcexpr = (FuncExpr *) expr;
 
 				if (FUNC_EXPR_FROM_PACKAGE(funcexpr->function_from))
 					set_pkginfo_from_funcexpr(funcexpr);
@@ -235,7 +235,7 @@ exprType(const Node *expr)
 				type = TEXTOID;
 			else if (((const XmlExpr *) expr)->op == IS_UPDATEXML)
 			{
-				int32	typmod;
+				int32		typmod;
 
 				type = XMLOID;
 				(void) parseTypeString("XMLTYPE", &type, &typmod, NULL);
@@ -1715,6 +1715,7 @@ exprLocation(const Node *expr)
 		case T_ColumnRefOrFuncCall:
 			{
 				const ColumnRef *c = ((const ColumnRefOrFuncCall *) expr)->cref;
+
 				loc = c->location;
 			}
 			break;
@@ -1964,6 +1965,11 @@ check_functions_in_node(Node *node, check_function_callback checker,
 			{
 				FuncExpr   *expr = (FuncExpr *) node;
 
+				/*
+				 * Only invoke the checker for functions backed by pg_proc.
+				 * Package/subprocedure calls are skipped as they don't map to
+				 * a catalog function OID understood by generic checkers.
+				 */
 				if (FUNC_EXPR_FROM_PG_PROC(expr->function_from) &&
 					checker(expr->funcid, context))
 					return true;

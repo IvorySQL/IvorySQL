@@ -99,6 +99,7 @@ static void outDouble(StringInfo str, double d);
 #define WRITE_LOCATION_FIELD(fldname) \
 	appendStringInfo(str, " :" CppAsString(fldname) " %d", write_location_fields ? node->fldname : -1)
 
+/* Write a Void field */
 #define WRITE_VOID_FIELD(fldname) \
 	appendStringInfo(str, " :" CppAsString(fldname) " %d", 0)
 
