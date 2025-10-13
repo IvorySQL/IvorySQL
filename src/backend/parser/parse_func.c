@@ -180,10 +180,11 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 		bool		argin = true;
 
 		/*
-		 * Oid is 32 bit, the 32nd-30nd bit is used for special purpose. 32nd
-		 * bit means that it is '{? = call function/proc}' . 31nd bit means
-		 * that the function or procedure parameter mode is OUT. 30nd bit
-		 * means that the function or procedure parameter mode is IN. 29nd-1nd
+		 * Oid is 32 bit, the 32nd-30nd bit is used for special purpose.
+		 * 32nd bit means that it is '{? = call function/proc}' .
+		 * 31st bit means that the function or procedure parameter mode is OUT.
+		 * 30th bit means that the function or procedure parameter mode is IN.
+		 * 29th-1st bit used for the function or procedure parameter type OID.
 		 * bit used for the function or procedure parameter type OID.
 		 */
 		if (IsA(arg, Param) &&
