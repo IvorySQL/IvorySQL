@@ -1,12 +1,12 @@
 /*-------------------------------------------------------------------------
  * Copyright 2025 IvorySQL Global Development Team
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -30,32 +30,27 @@
 #ifdef IVY_GUC_VAR_DEFINE
 #define ISLOADIVORYSQL_ORA pg_transform_merge_stmt_hook
 
-int				identifier_case_switch = INTERCHANGE;
-bool  			identifier_case_from_pg_dump = false;
-bool			enable_case_switch = true;
+int			identifier_case_switch = INTERCHANGE;
+bool		identifier_case_from_pg_dump = false;
+bool		enable_case_switch = true;
 
 char	   *nls_territory = "AMERICA";
 char	   *nls_currency = "$";
 char	   *nls_iso_currency = "AMERICA";
-// int	   *nls_length_semantics = NULL;
-// char	   *nls_date_format = "";
-// char	   *nls_timestamp_format = "";
-// char	   *nls_timestamp_tz_format = "";
-// int 		datetime_ignore_nls_mask = 0;
 
-bool			enable_emptystring_to_NULL = false;
+bool		enable_emptystring_to_NULL = false;
 
-int	database_mode = DB_PG;
-int	compatible_db = PG_PARSER;
+int			database_mode = DB_PG;
+int			compatible_db = PG_PARSER;
 
-bool	allow_out_parameter_const = false;
-bool	out_parameter_column_position = false;
+bool		allow_out_parameter_const = false;
+bool		out_parameter_column_position = false;
 
-bool	seq_scale_fixed = false;
-bool	internal_warning = false;
+bool		seq_scale_fixed = false;
+bool		internal_warning = false;
 
-bool   default_with_rowids = false;
-int    rowid_seq_cache = 20;
+bool		default_with_rowids = false;
+int			rowid_seq_cache = 20;
 
 #endif
 
@@ -105,7 +100,7 @@ static bool check_nls_length_semantics(int *newval, void **extra, GucSource sour
 
 static bool check_compatible_mode(int *newval, void **extra, GucSource source);
 static bool check_database_mode(int *newval, void **extra, GucSource source);
-void assign_compatible_mode(int newval, void *extra);
+void		assign_compatible_mode(int newval, void *extra);
 
 static void nls_case_conversion(char **param, char type);
 static bool nls_length_check(char **newval, void **extra, GucSource source);
@@ -151,8 +146,9 @@ static struct config_bool Ivy_ConfigureNamesBool[] =
 	},
 
 	/*
-	 * if ivorysql.allow_out_parameter_const is false, out parameter must be a var.
-	 * if ivorysql.allow_out_parameter_const is true, out parameter can be a constant value
+	 * if ivorysql.allow_out_parameter_const is false, out parameter must be a
+	 * var. if ivorysql.allow_out_parameter_const is true, out parameter can
+	 * be a constant value
 	 */
 	{
 		{"ivorysql.allow_out_parameter_const", PGC_USERSET, DEVELOPER_OPTIONS,
@@ -241,7 +237,7 @@ static struct config_int Ivy_ConfigureNamesInt[] =
 		{"ivorysql.datetime_ignore_nls_mask", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
 			gettext_noop("Sets the datetime type input is not controlled by the NLS parameter."),
 			NULL,
-            GUC_NOT_IN_SAMPLE
+			GUC_NOT_IN_SAMPLE
 		},
 		&datetime_ignore_nls_mask,
 		0, 0, 15,
@@ -289,7 +285,7 @@ static struct config_string Ivy_ConfigureNamesString[] =
 		{"nls_date_format", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
 			gettext_noop("Compatible Oracle NLS parameter for date type."),
 			NULL,
-            GUC_NOT_IN_SAMPLE
+			GUC_NOT_IN_SAMPLE
 		},
 		&nls_date_format,
 		"YYYY-MM-DD",
@@ -300,7 +296,7 @@ static struct config_string Ivy_ConfigureNamesString[] =
 		{"nls_timestamp_format", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
 			gettext_noop("Compatible Oracle NLS parameter for timestamp type."),
 			NULL,
-            GUC_NOT_IN_SAMPLE
+			GUC_NOT_IN_SAMPLE
 		},
 		&nls_timestamp_format,
 		"YYYY-MM-DD HH24:MI:SS.FF6",
@@ -311,7 +307,7 @@ static struct config_string Ivy_ConfigureNamesString[] =
 		{"nls_timestamp_tz_format", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
 			gettext_noop("Compatible Oracle NLS parameter for timestamp with time zone type."),
 			NULL,
-            GUC_NOT_IN_SAMPLE
+			GUC_NOT_IN_SAMPLE
 		},
 		&nls_timestamp_tz_format,
 		"YYYY-MM-DD HH24:MI:SS.FF6 TZH:TZM",
@@ -408,8 +404,8 @@ static struct config_enum Ivy_ConfigureNamesEnum[] =
 			NULL
 		},
 		&identifier_case_switch,
-		INTERCHANGE,case_conversion_mode,
-		NULL,NULL,NULL
+		INTERCHANGE, case_conversion_mode,
+		NULL, NULL, NULL
 	},
 
 	{
@@ -450,28 +446,28 @@ check_nls_length_semantics(int *newval, void **extra, GucSource source)
 static bool
 check_compatible_mode(int *newval, void **extra, GucSource source)
 {
-	int		newmode = *newval;
+	int			newmode = *newval;
 
 	if (DB_PG == database_mode && newmode == ORA_PARSER)
-			ereport(ERROR,
+		ereport(ERROR,
 				(errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM),
-				errmsg("parameter ivorysql.compatible_mode cannot be changed in native PG mode.")));
+				 errmsg("parameter ivorysql.compatible_mode cannot be changed in native PG mode.")));
 
-	if(DB_ORACLE == database_mode
-		&&  (IsNormalProcessingMode() || (IsUnderPostmaster && MyProcPort)))
+	if (DB_ORACLE == database_mode
+		&& (IsNormalProcessingMode() || (IsUnderPostmaster && MyProcPort)))
 	{
 		if (newmode == ORA_PARSER)
 		{
 			if (ora_raw_parser == NULL)
 				ereport(ERROR,
-					(errcode(ERRCODE_SYSTEM_ERROR),
-					errmsg("liboracle_parser not found!"),
-					errhint("You must load liboracle_parser to use oracle parser.")));
+						(errcode(ERRCODE_SYSTEM_ERROR),
+						 errmsg("liboracle_parser not found!"),
+						 errhint("You must load liboracle_parser to use oracle parser.")));
 			if (!ISLOADIVORYSQL_ORA)
 				ereport(ERROR,
-					(errcode(ERRCODE_SYSTEM_ERROR),
-					errmsg("IVORYSQL_ORA library not found!"),
-					errhint("You must load IVORYSQL_ORA to use oracle parser..")));
+						(errcode(ERRCODE_SYSTEM_ERROR),
+						 errmsg("IVORYSQL_ORA library not found!"),
+						 errhint("You must load IVORYSQL_ORA to use oracle parser..")));
 		}
 	}
 	return true;
@@ -480,12 +476,12 @@ check_compatible_mode(int *newval, void **extra, GucSource source)
 static bool
 check_database_mode(int *newval, void **extra, GucSource source)
 {
-	int		newmode = *newval;
+	int			newmode = *newval;
 
 	if (DB_PG == database_mode && DB_ORACLE == newmode)
-			ereport(NOTICE,
+		ereport(NOTICE,
 				(errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM),
-				errmsg("parameter ivorysql.database_mode cannot be changed")));
+				 errmsg("parameter ivorysql.database_mode cannot be changed")));
 
 	return true;
 }
@@ -493,8 +489,8 @@ check_database_mode(int *newval, void **extra, GucSource source)
 void
 assign_compatible_mode(int newval, void *extra)
 {
-	if(DB_ORACLE == database_mode
-		&&  (IsNormalProcessingMode() || (IsUnderPostmaster && MyProcPort)))
+	if (DB_ORACLE == database_mode
+		&& (IsNormalProcessingMode() || (IsUnderPostmaster && MyProcPort)))
 	{
 		if (newval == ORA_PARSER)
 		{
@@ -522,7 +518,7 @@ assign_compatible_mode(int newval, void *extra)
 static void
 nls_case_conversion(char **param, char type)
 {
-	char   *p;
+	char	   *p;
 
 CASE_CONVERSION:
 	if (type == 'u')
@@ -541,8 +537,8 @@ CASE_CONVERSION:
 	}
 	else if (type == 'b')
 	{
-		bool    has_upper = false,
-				has_lower = false;
+		bool		has_upper = false,
+					has_lower = false;
 
 		for (p = *param; p < *param + strlen(*param); ++p)
 		{
@@ -570,7 +566,7 @@ static bool
 nls_length_check(char **newval, void **extra, GucSource source)
 {
 	if (DB_ORACLE == database_mode
-			&&  (IsNormalProcessingMode() || (IsUnderPostmaster && MyProcPort)))
+		&& (IsNormalProcessingMode() || (IsUnderPostmaster && MyProcPort)))
 	{
 		if (strlen(*newval) > 255)
 			ereport(ERROR, (errmsg("parameter value longer than 255 characters")));
@@ -578,7 +574,7 @@ nls_length_check(char **newval, void **extra, GucSource source)
 			ereport(ERROR, (errmsg("Cannot access NLS data files "
 								   "or invalid environment specified")));
 		else if (identifier_case_switch == INTERCHANGE)
-				nls_case_conversion(newval, 'b');
+			nls_case_conversion(newval, 'b');
 	}
 
 	return true;
@@ -588,7 +584,7 @@ static bool
 nls_territory_check(char **newval, void **extra, GucSource source)
 {
 	if (DB_ORACLE == database_mode
-			&&  (IsNormalProcessingMode() || (IsUnderPostmaster && MyProcPort)))
+		&& (IsNormalProcessingMode() || (IsUnderPostmaster && MyProcPort)))
 	{
 		if (pg_strcasecmp(*newval, "CHINA") == 0)
 			memcpy(*newval, "CHINA", 5);
