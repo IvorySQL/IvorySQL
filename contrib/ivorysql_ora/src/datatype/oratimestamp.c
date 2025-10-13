@@ -214,7 +214,7 @@ anytimestamp_typmodin(bool istz, ArrayType *ta)
 	{
 		ereport(WARNING,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("TIMESTAMP(%d)%s effective number of fractional seconds is 6,the part of excess is 0",
+				 errmsg("TIMESTAMP(%d)%s effective number of fractional seconds is 6, the part of excess is 0",
 						*tl, (istz ? " WITH TIME ZONE" : ""))));
 		typmod = *tl;
 	}
@@ -222,7 +222,7 @@ anytimestamp_typmodin(bool istz, ArrayType *ta)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("the precision of datetime out of rang")));
+				 errmsg("the precision of datetime out of range")));
 	}
 	else
 		typmod = *tl;
