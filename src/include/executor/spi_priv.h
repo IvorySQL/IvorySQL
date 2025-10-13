@@ -1,7 +1,8 @@
 /*-------------------------------------------------------------------------
  *
  * spi_priv.h
- *				Server Programming Interface private declarations
+ *				Server Programming Interface private
+ *declarations
  *
  * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
@@ -16,8 +17,7 @@
 #include "executor/spi.h"
 #include "utils/queryenvironment.h"
 
-
-#define _SPI_PLAN_MAGIC		569278163
+#define _SPI_PLAN_MAGIC 569278163
 
 typedef struct
 {
@@ -46,7 +46,9 @@ typedef struct
 	uint64		outer_processed;
 	SPITupleTable *outer_tuptable;
 	int			outer_result;
-	void		*current_func;	/* remember current invoke func */
+
+	/* remember current invoke func */
+	void	   *current_func;
 } _SPI_connection;
 
 /*

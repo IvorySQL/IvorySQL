@@ -546,7 +546,7 @@ static text *string_to_text(char *str);
 static char *flatten_reloptions(Oid relid);
 static void get_reloptions(StringInfo buf, Datum reloptions);
 static const char *standard_quote_identifier(const char *ident);
-Datum pg_get_functiondef_internal(PG_FUNCTION_ARGS);
+Datum		pg_get_functiondef_internal(PG_FUNCTION_ARGS);
 static void get_json_path_spec(Node *path_spec, deparse_context *context,
 							   bool showimplicit);
 static void get_json_table_columns(TableFunc *tf, JsonTablePathScan *scan,
@@ -561,12 +561,12 @@ static void get_json_table_nested_columns(TableFunc *tf, JsonTablePlan *plan,
 
 #define NUM_RETURN_COLUMNS		9
 static void pg_get_function_arg_reference_typerowtype_internal(Tuplestorestate **tupstore,
-								TupleDesc tupdesc,
-								char *typename,
-								int position,
-								Oid funcOid,
-								Datum values[9],
-								bool nulls[9]);
+															   TupleDesc tupdesc,
+															   char *typename,
+															   int position,
+															   Oid funcOid,
+															   Datum values[9],
+															   bool nulls[9]);
 
 
 /* ----------
@@ -2975,8 +2975,8 @@ pg_get_functiondef(PG_FUNCTION_ARGS)
  * function body.  To wit: the function body starts on a line that begins with
  * "AS ", "BEGIN ", or "RETURN ", and no preceding line will look like that.
  *
- * we rename pg_get_functiondef to pg_get_functiondef_internal for warp a
- * new pg_get_functiondef function.
+ * We rename pg_get_functiondef to pg_get_functiondef_internal to wrap
+ * a new pg_get_functiondef function.
  */
 Datum
 pg_get_functiondef_internal(PG_FUNCTION_ARGS)
@@ -3227,7 +3227,7 @@ pg_get_functiondef_internal(PG_FUNCTION_ARGS)
 /*
  * ivy_get_plisql_functiondef
  *		Returns the complete "CREATE OR REPLACE FUNCTION ..." statement for
- *		the specified plisql function.
+ *		the specified PL/iSQL function.
  *
  * Note: if you change the output format of this function, be careful not
  * to break psql's rules (in \ef and \sf) for identifying the start of the
@@ -3237,18 +3237,18 @@ pg_get_functiondef_internal(PG_FUNCTION_ARGS)
 Datum
 ivy_get_plisql_functiondef(PG_FUNCTION_ARGS)
 {
-	Oid 		funcid = PG_GETARG_OID(0);
+	Oid			funcid = PG_GETARG_OID(0);
 	StringInfoData buf;
-	HeapTuple proctup;
+	HeapTuple	proctup;
 	Form_pg_proc proc;
 	bool		isfunction;
-	Datum 	tmp;
+	Datum		tmp;
 	bool		isnull;
 	const char *prosrc;
 	const char *name;
 	const char *nsp;
 	float4		procost;
-	int 		oldlen;
+	int			oldlen;
 
 	initStringInfo(&buf);
 
@@ -3261,7 +3261,8 @@ ivy_get_plisql_functiondef(PG_FUNCTION_ARGS)
 	name = NameStr(proc->proname);
 
 	/*
-	 * sanity check, only functions created by plisql language is ok.
+	 * Sanity check: only functions created with the PL/iSQL language are
+	 * allowed.
 	 */
 	if (strcmp("plisql", get_language_name(proc->prolang, false)))
 		ereport(ERROR,
@@ -3286,7 +3287,7 @@ ivy_get_plisql_functiondef(PG_FUNCTION_ARGS)
 	(void) print_function_arguments(&buf, proctup, false, true);
 	appendStringInfoString(&buf, ")\n");
 
-	/* Oracle uses the RETURN keyword on the return sytax of function */
+/* Oracle uses the RETURN keyword in function return syntax */
 	if (isfunction)
 	{
 		appendStringInfoString(&buf, " RETURN ");
@@ -3300,14 +3301,16 @@ ivy_get_plisql_functiondef(PG_FUNCTION_ARGS)
 	 * need to be parsed later.
 	 */
 	if (proc->provolatile == PROVOLATILE_IMMUTABLE)
-		appendStringInfoString(&buf, " DETERMINISTIC"); /* IMMUTABLE => DETERMINISTIC */
+		appendStringInfoString(&buf, " DETERMINISTIC"); /* IMMUTABLE =>
+														 * DETERMINISTIC */
 
 	if (proc->proparallel == PROPARALLEL_SAFE)
-		appendStringInfoString(&buf, " PARALLEL_ENABLE"); /* PARALLEL SAFE => PARALLEL_ENABLE */
+		appendStringInfoString(&buf, " PARALLEL_ENABLE");	/* PARALLEL SAFE =>
+															 * PARALLEL_ENABLE */
 
 	/*
-	 * SECURITY DEFINER => AUTHID DEFINER
-	 * SECURITY INVOKER => AUTHID CURRENT_USER
+	 * SECURITY DEFINER => AUTHID DEFINER SECURITY INVOKER => AUTHID
+	 * CURRENT_USER
 	 */
 	if (proc->prosecdef)
 		appendStringInfoString(&buf, " AUTHID DEFINER");
@@ -3318,10 +3321,11 @@ ivy_get_plisql_functiondef(PG_FUNCTION_ARGS)
 	print_function_trftypes(&buf, proctup);
 
 	/*
-	 * No need LANGUAGE clause for plisql, we will automatically determine the language
-	 * in ora_gram.y, this make the function definition looks more like Oracle.
+	 * No LANGUAGE clause is required for PL/iSQL; the language is determined
+	 * automatically in ora_gram.y. This makes the function definition look
+	 * more like Oracle.
 	 */
-	//appendStringInfo(&buf, " LANGUAGE %s\n", "plisql");
+	/* appendStringInfo(&buf, " LANGUAGE %s\n", "plisql"); */
 
 	/* Emit some miscellaneous options on one line */
 	oldlen = buf.len;
@@ -3372,7 +3376,7 @@ ivy_get_plisql_functiondef(PG_FUNCTION_ARGS)
 
 	if (proc->prosupport)
 	{
-		Oid 		argtypes[1];
+		Oid			argtypes[1];
 
 		/*
 		 * We should qualify the support function's name if it wouldn't be
@@ -3393,7 +3397,7 @@ ivy_get_plisql_functiondef(PG_FUNCTION_ARGS)
 	if (!isnull)
 	{
 		ArrayType  *a = DatumGetArrayTypeP(tmp);
-		int 		i;
+		int			i;
 
 		Assert(ARR_ELEMTYPE(a) == TEXTOID);
 		Assert(ARR_NDIM(a) == 1);
@@ -3401,18 +3405,18 @@ ivy_get_plisql_functiondef(PG_FUNCTION_ARGS)
 
 		for (i = 1; i <= ARR_DIMS(a)[0]; i++)
 		{
-			Datum 	d;
+			Datum		d;
 
 			d = array_ref(a, 1, &i,
-							-1 /* varlenarray */ ,
-							-1 /* TEXT's typlen */ ,
-							false /* TEXT's typbyval */ ,
-							TYPALIGN_INT /* TEXT's typalign */ ,
-							&isnull);
+						  -1 /* varlenarray */ ,
+						  -1 /* TEXT's typlen */ ,
+						  false /* TEXT's typbyval */ ,
+						  TYPALIGN_INT /* TEXT's typalign */ ,
+						  &isnull);
 			if (!isnull)
 			{
-				char		 *configitem = TextDatumGetCString(d);
-				char		 *pos;
+				char	   *configitem = TextDatumGetCString(d);
+				char	   *pos;
 
 				pos = strchr(configitem, '=');
 				if (pos == NULL)
@@ -3440,8 +3444,8 @@ ivy_get_plisql_functiondef(PG_FUNCTION_ARGS)
 				 */
 				if (GetConfigOptionFlags(configitem, true) & GUC_LIST_QUOTE)
 				{
-					List		 *namelist;
-					ListCell	 *lc;
+					List	   *namelist;
+					ListCell   *lc;
 
 					/* Parse string into list of identifiers */
 					if (!SplitGUCList(pos, ',', &namelist))
@@ -3451,7 +3455,7 @@ ivy_get_plisql_functiondef(PG_FUNCTION_ARGS)
 					}
 					foreach(lc, namelist)
 					{
-						char		 *curname = (char *) lfirst(lc);
+						char	   *curname = (char *) lfirst(lc);
 
 						simple_quote_literal(&buf, curname);
 						if (lnext(namelist, lc))
@@ -3496,7 +3500,7 @@ ivy_get_plisql_functiondef(PG_FUNCTION_ARGS)
 Datum
 pg_get_package_head(PG_FUNCTION_ARGS)
 {
-	Oid 		pkgid = PG_GETARG_OID(0);
+	Oid			pkgid = PG_GETARG_OID(0);
 	StringInfoData buf;
 	HeapTuple	pkgtup;
 	Form_pg_package pkg_form;
@@ -3515,71 +3519,71 @@ pg_get_package_head(PG_FUNCTION_ARGS)
 	nsp = get_namespace_name(pkg_form->pkgnamespace);
 
 	appendStringInfo(&buf, "CREATE %s PACKAGE %s",
-					pkg_form->editable ? "EDITIONABLE" : "NONEDITIONABLE",
-					quote_qualified_identifier(nsp, name));
+					 pkg_form->editable ? "EDITIONABLE" : "NONEDITIONABLE",
+					 quote_qualified_identifier(nsp, name));
 
 	appendStringInfo(&buf, " AUTHID %s",
-					pkg_form->define_invok ? "DEFINER" : "CURRENT_USER");
+					 pkg_form->define_invok ? "DEFINER" : "CURRENT_USER");
 
 	if (pkg_form->use_collation)
 		appendStringInfo(&buf, " DEFAULT COLLATION %s",
-					"USING_NLS_COMP");
+						 "USING_NLS_COMP");
 
 	accesssource = SysCacheGetAttr(PKGOID, pkgtup,
-										 Anum_pg_package_accesssource,
-										 &isnull);
+								   Anum_pg_package_accesssource,
+								   &isnull);
 	if (!isnull)
 	{
-			char	   *str;
-			List	   *sourcelist;
-			ListCell	*lc;
-			char		*access_tag;
+		char	   *str;
+		List	   *sourcelist;
+		ListCell   *lc;
+		char	   *access_tag;
 
-			appendStringInfo(&buf, " ACCESSIBLE BY (");
+		appendStringInfo(&buf, " ACCESSIBLE BY (");
 
-			str = TextDatumGetCString(accesssource);
-			sourcelist = (List *) stringToNode(str);
+		str = TextDatumGetCString(accesssource);
+		sourcelist = (List *) stringToNode(str);
 
-			foreach (lc, sourcelist)
+		foreach(lc, sourcelist)
+		{
+			AccessorItem *access = (AccessorItem *) lfirst(lc);
+			char	   *unitname;
+
+			Assert(access->type == T_AccessorItem);
+
+			switch (access->unitkind)
 			{
-				AccessorItem *access = (AccessorItem *) lfirst(lc);
-				char *unitname;
-
-				Assert(access->type == T_AccessorItem);
-
-				switch (access->unitkind)
-				{
-					case ACCESSOR_FUNCTION:
-						access_tag = "FUNCTION";
-						break;
-					case ACCESSOR_PROCEDURE:
-						access_tag = "PROCEDURE";
-						break;
-					case ACCESSOR_PACKAGE:
-						access_tag = "PACKAGE";
-						break;
-					case ACCESSOR_TRIGGER:
-						access_tag = "TRIGGER";
-						break;
-					case ACCESSOR_TYPE:
-						access_tag = "TYPE";
-						break;
-					case ACCESSOR_UNKNOW:
-						access_tag = " ";
-						break;
-					default:
-						elog(ERROR, "unknown proper type %u", access->unitkind);
-						break;
-				}
-
-				unitname = NameListToString(access->unitname);
-				appendStringInfo(&buf, "%s %s,",
-									access_tag,
-									unitname);
-				pfree(unitname);
+				case ACCESSOR_FUNCTION:
+					access_tag = "FUNCTION";
+					break;
+				case ACCESSOR_PROCEDURE:
+					access_tag = "PROCEDURE";
+					break;
+				case ACCESSOR_PACKAGE:
+					access_tag = "PACKAGE";
+					break;
+				case ACCESSOR_TRIGGER:
+					access_tag = "TRIGGER";
+					break;
+				case ACCESSOR_TYPE:
+					access_tag = "TYPE";
+					break;
+				case ACCESSOR_UNKNOW:
+					access_tag = " ";
+					break;
+				default:
+					elog(ERROR, "unknown proper type %u", access->unitkind);
+					break;
 			}
-			/* replace last ',' to )' */
-			buf.data[buf.len] = ')';
+
+			unitname = NameListToString(access->unitname);
+			appendStringInfo(&buf, "%s %s,",
+							 access_tag,
+							 unitname);
+			pfree(unitname);
+		}
+		/* replace last ',' to )' */
+		buf.data[buf.len] = ')';
 	}
 
 	ReleaseSysCache(pkgtup);
@@ -3680,7 +3684,7 @@ print_function_rettype(StringInfo buf, HeapTuple proctup)
 	Form_pg_proc proc = (Form_pg_proc) GETSTRUCT(proctup);
 	int			ntabargs = 0;
 	StringInfoData rbuf;
-	char		*rettypename;
+	char	   *rettypename;
 
 	initStringInfo(&rbuf);
 
@@ -3702,13 +3706,14 @@ print_function_rettype(StringInfo buf, HeapTuple proctup)
 		/* Not a table function, so do the normal thing */
 		if (proc->proretset)
 			appendStringInfoString(&rbuf, "SETOF ");
+
 		/*
 		 * if type comes from a package, we use rettypename
 		 */
 		if (rettypename != NULL)
 		{
-			TypeName *t = (TypeName *) stringToNode(rettypename);
-			char	*tname = TypeNameToQuoteString(t);
+			TypeName   *t = (TypeName *) stringToNode(rettypename);
+			char	   *tname = TypeNameToQuoteString(t);
 
 			appendStringInfoString(&rbuf, tname);
 			pfree(tname);
@@ -3745,7 +3750,7 @@ print_function_arguments(StringInfo buf, HeapTuple proctup,
 	List	   *argdefaults = NIL;
 	ListCell   *nextargdefault = NULL;
 	int			i;
-	char		**argtypenames;
+	char	  **argtypenames;
 
 	numargs = get_func_arg_info(proctup,
 								&argtypes, &argnames, &argmodes);
@@ -3854,14 +3859,15 @@ print_function_arguments(StringInfo buf, HeapTuple proctup,
 		appendStringInfoString(buf, modename);
 		if (argname && argname[0])
 			appendStringInfo(buf, "%s ", quote_identifier(argname));
+
 		/*
-		 * construct argtypname, if it comes from a
-		 * package, we use argtypenames
+		 * construct argtypname, if it comes from a package, we use
+		 * argtypenames
 		 */
 		if (argtypenames != NULL && strcmp(argtypenames[i], "") != 0)
 		{
-			TypeName	*t = (TypeName *) stringToNode(argtypenames[i]);
-			char		*tname = TypeNameToQuoteString(t);
+			TypeName   *t = (TypeName *) stringToNode(argtypenames[i]);
+			char	   *tname = TypeNameToQuoteString(t);
 
 			appendStringInfoString(buf, tname);
 			pfree(t);
@@ -3879,7 +3885,7 @@ print_function_arguments(StringInfo buf, HeapTuple proctup,
 
 			if (!IsA(expr, NonDefValNode))
 				appendStringInfo(buf, " DEFAULT %s",
-					 deparse_expression(expr, NIL, false, false));
+								 deparse_expression(expr, NIL, false, false));
 		}
 		argsprinted++;
 
@@ -10553,11 +10559,11 @@ get_rule_expr(Node *node, deparse_context *context,
 						break;
 					case IS_DOCUMENT:
 						break;
-					/* Begin - ReqID:SRS-SQL-XML */
+						/* Begin - ReqID:SRS-SQL-XML */
 					case IS_UPDATEXML:
 						appendStringInfoString(buf, "UPDATEXML(");
 						break;
-					/* End - ReqID:SRS-SQL-XML */
+						/* End - ReqID:SRS-SQL-XML */
 				}
 				if (xexpr->op == IS_XMLPARSE || xexpr->op == IS_XMLSERIALIZE)
 				{
@@ -11317,14 +11323,14 @@ get_func_expr(FuncExpr *expr, deparse_context *context,
 
 	if (FUNC_EXPR_FROM_PG_PROC(expr->function_from))
 		appendStringInfo(buf, "%s(",
-					 generate_function_name(funcoid, nargs,
-											argnames, argtypes,
-											expr->funcvariadic,
-											&use_variadic,
-											context->inGroupBy));
+						 generate_function_name(funcoid, nargs,
+												argnames, argtypes,
+												expr->funcvariadic,
+												&use_variadic,
+												context->inGroupBy));
 	else
 		appendStringInfo(buf, "%s(",
-					 get_internal_function_name(expr));
+						 get_internal_function_name(expr));
 
 	nargs = 0;
 	foreach(l, expr->args)
@@ -11968,11 +11974,11 @@ get_const_expr(Const *constval, deparse_context *context, int showtype)
 					  &typoutput, &typIsVarlena);
 
 	/*
-	 * Compatible oracle , pass typmod to output function
+	 * Oracle compatibility: pass typmod to the output function
 	 */
 	if (ORA_PARSER == compatible_db &&
 		(constval->consttype == YMINTERVALOID ||
-		constval->consttype == DSINTERVALOID))
+		 constval->consttype == DSINTERVALOID))
 	{
 		extval = OidOutputFunctionCallWithTypmod(typoutput, constval->constvalue, constval->consttypmod);
 	}
@@ -13517,13 +13523,16 @@ printSubscripts(SubscriptingRef *sbsref, deparse_context *context)
 const char *
 quote_identifier(const char *ident)
 {
-	char		 *result;
+	char	   *result;
 
-	/* Slove the issue of using the same global variable in static lib and dynamic lib */
+	/*
+	 * Slove the issue of using the same global variable in static lib and
+	 * dynamic lib
+	 */
 	if (quote_identifier_hook && compatible_db != PG_PARSER)
-		result = (char *)(*quote_identifier_hook)(ident);
+		result = (char *) (*quote_identifier_hook) (ident);
 	else
-		result = (char *)standard_quote_identifier(ident);
+		result = (char *) standard_quote_identifier(ident);
 
 	return result;
 }
@@ -14191,7 +14200,7 @@ get_range_partbound_string(List *bound_datums)
 	foreach(cell, bound_datums)
 	{
 		PartitionRangeDatum *datum =
-		lfirst_node(PartitionRangeDatum, cell);
+			lfirst_node(PartitionRangeDatum, cell);
 
 		appendStringInfoString(buf, sep);
 		if (datum->kind == PARTITION_RANGE_DATUM_MINVALUE)
@@ -14225,9 +14234,9 @@ pg_get_function_arg_reference_typerowtype(PG_FUNCTION_ARGS)
 	Tuplestorestate *tupstore;
 	MemoryContext per_query_ctx;
 	MemoryContext oldcontext;
-	Relation proc_rel;
+	Relation	proc_rel;
 	SysScanDesc proc_sd;
-	HeapTuple proc_tuple;
+	HeapTuple	proc_tuple;
 
 	/* check to see if caller accepts a tuplestore */
 	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
@@ -14268,29 +14277,30 @@ pg_get_function_arg_reference_typerowtype(PG_FUNCTION_ARGS)
 					   TEXTOID, -1, 0);
 
 	/*
-	 * put all the tuples into a tuplestore by one scan of the hashtable.
-	 * this way we can avoid the possible issue of the hashtable changing between calls.
+	 * put all the tuples into a tuplestore by one scan of the hashtable. this
+	 * way we can avoid the possible issue of the hashtable changing between
+	 * calls.
 	 */
 	tupstore =
 		tuplestore_begin_heap(rsinfo->allowedModes & SFRM_Materialize_Random,
-						  false, work_mem);
+							  false, work_mem);
 
 	MemoryContextSwitchTo(oldcontext);
 
 	proc_rel = table_open(ProcedureRelationId, AccessShareLock);
 
 	proc_sd = systable_beginscan(proc_rel, InvalidOid, false,
-					NULL, 0, NULL);
+								 NULL, 0, NULL);
 
 	while ((proc_tuple = systable_getnext(proc_sd)) != NULL)
 	{
 		Form_pg_proc form_proc = (Form_pg_proc) GETSTRUCT(proc_tuple);
-		int	numargs = form_proc->pronargs;
-		char	**p_argtypeNames = NULL;
-		char 	*rettypename = NULL;
-		int	nth_arg;
-		Datum	values[NUM_RETURN_COLUMNS];
-		bool	nulls[NUM_RETURN_COLUMNS];
+		int			numargs = form_proc->pronargs;
+		char	  **p_argtypeNames = NULL;
+		char	   *rettypename = NULL;
+		int			nth_arg;
+		Datum		values[NUM_RETURN_COLUMNS];
+		bool		nulls[NUM_RETURN_COLUMNS];
 
 		get_func_typename_info(proc_tuple, &p_argtypeNames, &rettypename);
 
@@ -14301,10 +14311,10 @@ pg_get_function_arg_reference_typerowtype(PG_FUNCTION_ARGS)
 
 		if (rettypename != NULL)
 			pg_get_function_arg_reference_typerowtype_internal(&tupstore, tupdesc,
-										rettypename, 0, 
-										form_proc->oid, values, nulls);
+															   rettypename, 0,
+															   form_proc->oid, values, nulls);
 
-		if (p_argtypeNames!= NULL)
+		if (p_argtypeNames != NULL)
 		{
 			for (nth_arg = 0; nth_arg < numargs; nth_arg++)
 			{
@@ -14312,8 +14322,8 @@ pg_get_function_arg_reference_typerowtype(PG_FUNCTION_ARGS)
 
 				if (strcmp(p_argtypeNames[nth_arg], "") != 0)
 					pg_get_function_arg_reference_typerowtype_internal(&tupstore, tupdesc,
-												p_argtypeNames[nth_arg], nth_arg + 1, 
-												form_proc->oid, values, nulls);
+																	   p_argtypeNames[nth_arg], nth_arg + 1,
+																	   form_proc->oid, values, nulls);
 			}
 
 			pfree(p_argtypeNames);
@@ -14323,7 +14333,7 @@ pg_get_function_arg_reference_typerowtype(PG_FUNCTION_ARGS)
 	systable_endscan(proc_sd);
 
 	/* clean up and return the generated tuplestore */
-	//tuplestore_donestoring(tupstore);
+	/* tuplestore_donestoring(tupstore); */
 	table_close(proc_rel, NoLock);
 
 	rsinfo->returnMode = SFRM_Materialize;
@@ -14335,29 +14345,29 @@ pg_get_function_arg_reference_typerowtype(PG_FUNCTION_ARGS)
 
 static void
 pg_get_function_arg_reference_typerowtype_internal(Tuplestorestate **tupstore,
-								TupleDesc tupdesc,
-								char *typename,
-								int position,
-								Oid funcOid,
-								Datum values[NUM_RETURN_COLUMNS],
-								bool nulls[NUM_RETURN_COLUMNS])
+												   TupleDesc tupdesc,
+												   char *typename,
+												   int position,
+												   Oid funcOid,
+												   Datum values[NUM_RETURN_COLUMNS],
+												   bool nulls[NUM_RETURN_COLUMNS])
 {
-	TypeName 	*typeName;
-	char		*schema_name = NULL;
-	char		*relname = NULL;
+	TypeName   *typeName;
+	char	   *schema_name = NULL;
+	char	   *relname = NULL;
 	char		relkind;
-	char		*type_name = NULL;
-	char		*type_subname = NULL;
-	char		*type_object_name = NULL;
-	Oid 		relid = InvalidOid;
-	int 		data_length;
-	int 		data_precision;
-	int 		data_scale;
+	char	   *type_name = NULL;
+	char	   *type_subname = NULL;
+	char	   *type_object_name = NULL;
+	Oid			relid = InvalidOid;
+	int			data_length;
+	int			data_precision;
+	int			data_scale;
 	bool		is_rowtype = false;
 	bool		is_valid_type = false;
-	Oid 		fieldTypeId;
+	Oid			fieldTypeId;
 	int32		fieldTypMod;
-	Oid 		fieldCollation;
+	Oid			fieldCollation;
 
 	typeName = stringToNode(typename);
 	if (!typeName->pct_type && !typeName->row_type)
@@ -14377,7 +14387,7 @@ pg_get_function_arg_reference_typerowtype_internal(Tuplestorestate **tupstore,
 	}
 	else if (typeName->pct_type)
 	{
-		PkgType 	*pkgtype;
+		PkgType    *pkgtype;
 
 		pkgtype = LookupPkgTypeByTypename(typeName->names, false);
 		if (pkgtype != NULL)
@@ -14398,9 +14408,9 @@ pg_get_function_arg_reference_typerowtype_internal(Tuplestorestate **tupstore,
 		}
 		else
 		{
-			RangeVar   	*rel = makeRangeVar(NULL, NULL, typeName->location);
-			char	   	*field = NULL;
-			Oid 		relid;
+			RangeVar   *rel = makeRangeVar(NULL, NULL, typeName->location);
+			char	   *field = NULL;
+			Oid			relid;
 			AttrNumber	attnum;
 
 			/* deconstruct the name list */
@@ -14411,7 +14421,7 @@ pg_get_function_arg_reference_typerowtype_internal(Tuplestorestate **tupstore,
 							(errcode(ERRCODE_SYNTAX_ERROR),
 							 errmsg("improper %%TYPE reference (too few dotted names): %s",
 									NameListToString(typeName->names)),
-							 		parser_errposition(NULL, typeName->location)));
+							 parser_errposition(NULL, typeName->location)));
 					break;
 				case 2:
 					rel->relname = strVal(linitial(typeName->names));
@@ -14433,7 +14443,7 @@ pg_get_function_arg_reference_typerowtype_internal(Tuplestorestate **tupstore,
 							(errcode(ERRCODE_SYNTAX_ERROR),
 							 errmsg("improper %%TYPE reference (too many dotted names): %s",
 									NameListToString(typeName->names)),
-							 		parser_errposition(NULL, typeName->location)));
+							 parser_errposition(NULL, typeName->location)));
 					break;
 			}
 
@@ -14443,7 +14453,7 @@ pg_get_function_arg_reference_typerowtype_internal(Tuplestorestate **tupstore,
 			if (attnum != InvalidAttrNumber)
 			{
 				get_atttypetypmodcoll(relid, attnum,
-							  &fieldTypeId, &fieldTypMod, &fieldCollation);
+									  &fieldTypeId, &fieldTypMod, &fieldCollation);
 
 				/* this construct should never have an array indicator */
 				Assert(typeName->arrayBounds == NIL);
@@ -14495,8 +14505,8 @@ pg_get_function_arg_reference_typerowtype_internal(Tuplestorestate **tupstore,
 		values[4] = CStringGetTextDatum("_NULL_");
 
 		if (fieldTypeId == ORACHARCHAROID ||
-			fieldTypeId == ORACHARBYTEOID  ||
-			fieldTypeId == ORAVARCHARCHAROID  ||
+			fieldTypeId == ORACHARBYTEOID ||
+			fieldTypeId == ORAVARCHARCHAROID ||
 			fieldTypeId == ORAVARCHARBYTEOID ||
 			fieldTypeId == BPCHAROID ||
 			fieldTypeId == VARCHAROID)
@@ -14508,7 +14518,7 @@ pg_get_function_arg_reference_typerowtype_internal(Tuplestorestate **tupstore,
 			values[8] = CStringGetTextDatum(DatumGetCString(DirectFunctionCall1(regtypeout, fieldTypeId)));
 		}
 		else if (fieldTypeId == NUMERICOID ||
-				fieldTypeId == NUMBEROID)
+				 fieldTypeId == NUMBEROID)
 		{
 			/* precision (ie, max number of digits) is in upper bits of typmod */
 			data_precision = Int32GetDatum(((fieldTypMod - VARHDRSZ) >> 16) & 0xffff);
@@ -14536,4 +14546,3 @@ pg_get_function_arg_reference_typerowtype_internal(Tuplestorestate **tupstore,
 
 	pfree(typeName);
 }
-

@@ -864,19 +864,19 @@ clause_selectivity_ext(PlannerInfo *root,
 	{
 		FuncExpr   *funcclause = (FuncExpr *) clause;
 
-		/* Try to get an estimate from the support function, if any */
+		/* For non-pg_proc calls use a heuristic; otherwise consult support. */
 		if (!FUNC_EXPR_FROM_PG_PROC(funcclause->function_from))
 			s1 = (Selectivity) 0.3333333;
 		else
 			s1 = function_selectivity(root,
-								  funcclause->funcid,
-								  funcclause->args,
-								  funcclause->inputcollid,
-								  treat_as_join_clause(root, clause, rinfo,
-													   varRelid, sjinfo),
-								  varRelid,
-								  jointype,
-								  sjinfo);
+									  funcclause->funcid,
+									  funcclause->args,
+									  funcclause->inputcollid,
+									  treat_as_join_clause(root, clause, rinfo,
+														   varRelid, sjinfo),
+									  varRelid,
+									  jointype,
+									  sjinfo);
 	}
 	else if (IsA(clause, ScalarArrayOpExpr))
 	{
