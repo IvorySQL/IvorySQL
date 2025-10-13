@@ -1,12 +1,12 @@
 /*-------------------------------------------------------------------------
  * Copyright 2025 IvorySQL Global Development Team
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -131,6 +131,19 @@ PG_FUNCTION_INFO_V1(oratimestamptz_pl_number);
 PG_FUNCTION_INFO_V1(number_pl_oratimestamptz);
 
 
+/**
+ * Adjust the given Timestamp to the specified typmod precision by rounding
+ * fractional seconds to the requested number of decimal places.
+ *
+ * If *time is an infinite timestamp, it is left unchanged. A typmod of -1
+ * or MAX_TIMESTAMP_PRECISION means no adjustment is performed. For other
+ * typmod values the timestamp is rounded to the requested precision in-place.
+ * Rounding is performed to nearest with ties rounded away from zero.
+ *
+ * @param time Pointer to the Timestamp value to adjust; modified in place.
+ * @param typmod Requested fractional-second precision (0..MAX_TIMESTAMP_PRECISION),
+ *        or -1 to indicate no precision adjustment.
+ */
 void
 OraAdjustTimestampForTypmod(Timestamp *time, int32 typmod)
 {
@@ -163,8 +176,8 @@ OraAdjustTimestampForTypmod(Timestamp *time, int32 typmod)
 		if (typmod < 0 || typmod > MAX_TIMESTAMP_PRECISION)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				  errmsg("timestamp(%d) precision must be between %d and %d",
-						 typmod, 0, MAX_TIMESTAMP_PRECISION)));
+					 errmsg("timestamp(%d) precision must be between %d and %d",
+							typmod, 0, MAX_TIMESTAMP_PRECISION)));
 
 		/*
 		 * Note: this round-to-nearest code is not completely consistent about
@@ -186,7 +199,22 @@ OraAdjustTimestampForTypmod(Timestamp *time, int32 typmod)
 	}
 }
 
-/* common code for timestamptypmodin and timestamptztypmodin */
+/**
+ * Parse and validate a TIMESTAMP/TIMESTAMPTZ type modifier array.
+ *
+ * Extracts a single integer typmod from the provided ArrayType, validates its
+ * bounds, and returns the typmod to apply. If the typmod is greater than
+ * MAX_TIMESTAMP_PRECISION but less than or equal to ORACLE_MAX_TIMESTAMP_PRECISION,
+ * a warning is emitted and the value is accepted (effective fractional-second
+ * precision is 6).
+ *
+ * @param istz true if the target type includes a time zone (affects message text)
+ * @param ta array containing the typmod(s) supplied by the parser
+ * @returns The validated typmod value to use.
+ * @throws ERROR if the array does not contain exactly one modifier.
+ * @throws ERROR if the typmod is negative.
+ * @throws ERROR if the typmod exceeds ORACLE_MAX_TIMESTAMP_PRECISION.
+ */
 static int32
 anytimestamp_typmodin(bool istz, ArrayType *ta)
 {
@@ -214,15 +242,15 @@ anytimestamp_typmodin(bool istz, ArrayType *ta)
 	{
 		ereport(WARNING,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-		   errmsg("TIMESTAMP(%d)%s effective number of fractional seconds is 6,the part of excess is 0",
-				  *tl, (istz ? " WITH TIME ZONE" : ""))));
+				 errmsg("TIMESTAMP(%d)%s effective number of fractional seconds is 6,the part of excess is 0",
+						*tl, (istz ? " WITH TIME ZONE" : ""))));
 		typmod = *tl;
 	}
 	else if (*tl > ORACLE_MAX_TIMESTAMP_PRECISION)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-		   errmsg("the precision of datetime out of rang")));	
+				 errmsg("the precision of datetime out of rang")));
 	}
 	else
 		typmod = *tl;
@@ -276,8 +304,14 @@ timestamp2timestamptz(Timestamp timestamp)
  *	 USER I/O ROUTINES														 *
  *****************************************************************************/
 
-/* oratimestamp_in()
- * Convert a string to internal form.
+/**
+ * Parse an input string into an internal Timestamp according to the current NLS timestamp format.
+ *
+ * The input is interpreted using the configured NLS timestamp format (or the PostgreSQL format if configured or NLS is ignored),
+ * any timezone information is discarded, and the resulting Timestamp is rounded to the provided typmod precision.
+ *
+ * @returns A Datum containing the parsed Timestamp; if a typmod is specified the returned timestamp is rounded to that precision.
+ * @throws ERROR (ERRCODE_DATETIME_VALUE_OUT_OF_RANGE) if the converted timestamp is out of range.
  */
 Datum
 oratimestamp_in(PG_FUNCTION_ARGS)
@@ -288,7 +322,7 @@ oratimestamp_in(PG_FUNCTION_ARGS)
 	Oid			typelem = PG_GETARG_OID(1);
 #endif
 	int32		typmod = PG_GETARG_INT32(2);
-	Oid		collid = PG_GET_COLLATION();
+	Oid			collid = PG_GET_COLLATION();
 	Timestamp	result;
 	struct pg_tm tm;
 	fsec_t		fsec;
@@ -296,9 +330,9 @@ oratimestamp_in(PG_FUNCTION_ARGS)
 	if (strcmp(nls_timestamp_format, "pg") == 0 || DATETIME_IGNORE_NLS(datetime_ignore_nls_mask, ORATIMESTAMP_MASK))
 	{
 		return DirectFunctionCall3(timestamp_in,
-									CStringGetDatum(str),
-									ObjectIdGetDatum(InvalidOid),
-									Int32GetDatum(typmod));
+								   CStringGetDatum(str),
+								   ObjectIdGetDatum(InvalidOid),
+								   Int32GetDatum(typmod));
 	}
 	else
 	{
@@ -316,8 +350,12 @@ oratimestamp_in(PG_FUNCTION_ARGS)
 	}
 }
 
-/* oratimestamp_out()
- * Convert a oradate to external form.
+/**
+ * Format an internal Timestamp into an external C string using the configured NLS format.
+ *
+ * If the global `nls_timestamp_format` is not "pg", formats the timestamp with
+ * `timestamp_to_char` using that format; otherwise delegates to PostgreSQL's `timestamp_out`.
+ * @return C string containing the formatted timestamp.
  */
 Datum
 oratimestamp_out(PG_FUNCTION_ARGS)
@@ -330,8 +368,8 @@ oratimestamp_out(PG_FUNCTION_ARGS)
 		text	   *date_str;
 
 		date_str = DatumGetTextP(DirectFunctionCall2(timestamp_to_char,
-								  TimestampGetDatum(timestamp),
-								  PointerGetDatum(cstring_to_text(nls_timestamp_format))));
+													 TimestampGetDatum(timestamp),
+													 PointerGetDatum(cstring_to_text(nls_timestamp_format))));
 
 		result = text_to_cstring(date_str);
 		PG_RETURN_CSTRING(result);
@@ -704,6 +742,13 @@ oratimestamp_cmp_oratimestamptz(PG_FUNCTION_ARGS)
 	PG_RETURN_INT32(timestamp_cmp_internal(dt1, dt2));
 }
 
+/**
+ * Compare an Oracle-style timestamp (no time zone) with a timestamptz and produce ordering.
+ *
+ * @param timestampVal Timestamp value (no time zone) provided as the first argument.
+ * @param dt2 TimestampTz value (with time zone) provided as the second argument.
+ * @returns An int32 that is negative if `timestampVal` is less than `dt2`, zero if they are equal, and positive if `timestampVal` is greater than `dt2`.
+ */
 Datum
 oratimestamp_cmp_oratimestampltz(PG_FUNCTION_ARGS)
 {
@@ -716,9 +761,10 @@ oratimestamp_cmp_oratimestampltz(PG_FUNCTION_ARGS)
 	PG_RETURN_INT32(timestamp_cmp_internal(dt1, dt2));
 }
 
-/*****************************************************************************
- *	 Hash index support procedure 
- *****************************************************************************/
+/**
+ * Compute a hash suitable for hash indexes from an Oracle-style timestamp.
+ *
+ * @returns The hash computed from the 64-bit timestamp argument.
 Datum
 oratimestamp_hash(PG_FUNCTION_ARGS)
 {
@@ -763,9 +809,13 @@ oratimestamp_smaller(PG_FUNCTION_ARGS)
 	PG_RETURN_TIMESTAMP(result);
 }
 
-/*****************************************************************************
- *	 Converts a timestamp(n) type to the specified typmod size
- *****************************************************************************/
+/**
+ * Adjust a Timestamp value to the specified typmod precision.
+ *
+ * @param source Timestamp value to be adjusted.
+ * @param typmod Typmod precision to apply; use -1 to leave the input unchanged.
+ * @returns The resulting Timestamp rounded/clamped to the given typmod precision.
+ */
 Datum
 oratimestamp(PG_FUNCTION_ARGS)
 {
@@ -775,7 +825,7 @@ oratimestamp(PG_FUNCTION_ARGS)
 	/* No work if typmod is invalid */
 	if (typmod == -1)
 		PG_RETURN_TIMESTAMP(source);
-		
+
 	OraAdjustTimestampForTypmod(&source, typmod);
 	PG_RETURN_TIMESTAMP(source);
 }
@@ -842,16 +892,18 @@ oratimestamp_oratimestampltz(PG_FUNCTION_ARGS)
  * Datetime/Interval Arithmetic
  *
  *****************************************************************************/
-/* oradate - oratimestampltz
- * oradate - oratimestamptz
- * oratimestamp - oratimestampltz
- * oratimestamp - oratimestampltz
+/**
+ * Compute the interval difference between a Timestamp and a TimestampTz.
+ *
+ * @returns An Interval equal to (dt1 - dt2) with month and day fields set to 0 and the time portion normalized via interval_justify_hours.
+ *
+ * @throws ERRCODE_DATETIME_VALUE_OUT_OF_RANGE if either input is infinite (error message: "cannot subtract infinite timestamps") or if converting the timestamptz to a local Timestamp fails due to out-of-range values (error message: "timestamp out of range").
  */
 Datum
 oradate_mi_oratimestampltz(PG_FUNCTION_ARGS)
 {
 	Timestamp	dt1 = PG_GETARG_TIMESTAMP(0);
-	TimestampTz	dt2 = PG_GETARG_TIMESTAMP(1);
+	TimestampTz dt2 = PG_GETARG_TIMESTAMP(1);
 	Timestamp	timestamp;
 	struct pg_tm tt,
 			   *tm = &tt;
@@ -883,21 +935,29 @@ oradate_mi_oratimestampltz(PG_FUNCTION_ARGS)
 	result->day = 0;
 
 	result = DatumGetIntervalP(DirectFunctionCall1(interval_justify_hours,
-												 IntervalPGetDatum(result)));
+												   IntervalPGetDatum(result)));
 
 	PG_RETURN_INTERVAL_P(result);
 }
 
-/*
- * oratimestamptz - oratimestamp
- * oratimestampltz - oratimestamp
- * oratimestamptz - oradate
- * oratimestampltz - oradate
+/**
+ * Subtract an Oracle-style date (timestamp without time zone) from an Oracle-style
+ * timestamp with local time zone and return the elapsed interval.
+ *
+ * Converts the timestamptz operand to a timestamp in the session time zone,
+ * computes the difference (timestamptz - timestamp), and returns the result
+ * as a normalized Interval.
+ *
+ * @returns Interval representing the difference between the first (timestamptz)
+ *          and second (timestamp without time zone) arguments.
+ *
+ * @throws error if either input is an infinite timestamp or if conversion of the
+ *         timestamptz to a timestamp fails due to out-of-range values.
  */
 Datum
 oratimestampltz_mi_oradate(PG_FUNCTION_ARGS)
 {
-	TimestampTz	dt1 = PG_GETARG_TIMESTAMP(0);
+	TimestampTz dt1 = PG_GETARG_TIMESTAMP(0);
 	Timestamp	dt2 = PG_GETARG_TIMESTAMP(1);
 	Timestamp	timestamp;
 	struct pg_tm tt,
@@ -930,7 +990,7 @@ oratimestampltz_mi_oradate(PG_FUNCTION_ARGS)
 	result->day = 0;
 
 	result = DatumGetIntervalP(DirectFunctionCall1(interval_justify_hours,
-												 IntervalPGetDatum(result)));
+												   IntervalPGetDatum(result)));
 
 	PG_RETURN_INTERVAL_P(result);
 }
@@ -963,17 +1023,17 @@ oradate_mi(PG_FUNCTION_ARGS)
 	PG_RETURN_DATUM(DirectFunctionCall1(float8_numeric, Float8GetDatum(result)));
 }
 
-/*
- * Compatible oracle
- * The arithmetic operation of oratimestamp minus oratimestamp, Result
- * type is INTERVAL.
+/**
+ * Compute the interval difference between two Oracle-style timestamps.
  *
- * The other format arithmetic operation depend on this function,
- * include 'oratimestamp - oradate' and 'oradate - oratimestamp'.
+ * Computes the result of (dt1 - dt2) and returns it as an Interval; the
+ * returned Interval has its `month` and `day` fields set to 0 and its
+ * `time` field set to the microsecond difference (normalized).
  *
- * The only exception is that arithmetic operation 'oradate - oradate' , the result
- * type is NUMBER type.
- *
+ * @param dt1 Left-hand timestamp operand (minuend).
+ * @param dt2 Right-hand timestamp operand (subtrahend).
+ * @returns An Interval equal to dt1 - dt2 with months = 0 and days = 0.
+ * @throws ERRCODE_DATETIME_VALUE_OUT_OF_RANGE if either input is an infinite timestamp.
  */
 Datum
 oratimestamp_mi(PG_FUNCTION_ARGS)
@@ -995,17 +1055,26 @@ oratimestamp_mi(PG_FUNCTION_ARGS)
 	result->day = 0;
 
 	result = DatumGetIntervalP(DirectFunctionCall1(interval_justify_hours,
-												 IntervalPGetDatum(result)));
+												   IntervalPGetDatum(result)));
 
 	PG_RETURN_INTERVAL_P(result);
 }
 
 
-/*
- * Compatible oracle
- * The arithmetic operation of oradate plus interval, Result
- * type is oradate.
+/**
+ * Add an Interval to an oradate value and produce the resulting oradate.
  *
+ * The function applies the interval's month component by adjusting year/month
+ * with month overflow/underflow handling, validates the resulting day against
+ * the month's length, applies the day component via Julian date arithmetic,
+ * and finally adds the time component in microseconds. Fractional seconds are
+ * discarded to match oradate semantics.
+ *
+ * @param timestamp Input oradate value.
+ * @param span Interval to add (month, day, and time components are applied).
+ * @returns The resulting oradate Timestamp after adding the interval.
+ * @throws ERROR if input or intermediate timestamp values are out of range.
+ * @throws ERROR if the resulting day is not valid for the computed month.
  */
 Datum
 oradate_pl_interval(PG_FUNCTION_ARGS)
@@ -1050,7 +1119,7 @@ oradate_pl_interval(PG_FUNCTION_ARGS)
 
 			/* Compatible oracle oradate dont have fsec */
 			fsec = 0;
-			
+
 			if (tm2timestamp(tm, fsec, NULL, &timestamp) != 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
@@ -1076,7 +1145,7 @@ oradate_pl_interval(PG_FUNCTION_ARGS)
 
 			/* Compatible oracle oradate dont have fsec */
 			fsec = 0;
-			
+
 			if (tm2timestamp(tm, fsec, NULL, &timestamp) != 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
@@ -1431,10 +1500,17 @@ number_pl_oradate(PG_FUNCTION_ARGS)
 }
 
 
-/*
- * Compatible oracle
- * The arithmetic operation of oradate minus number, Result
- * type is oradate.
+/**
+ * Subtract a numeric number of days from an Oracle DATE value.
+ *
+ * If the timestamp is finite, interprets `num` as a count of days (fractional days allowed),
+ * converts it to microseconds (rounded to nearest microsecond), subtracts that interval from
+ * the input timestamp, and returns the resulting oradate. If the input timestamp is infinite,
+ * it is returned unchanged.
+ *
+ * @param timestamp The input Oracle DATE value.
+ * @param num The number of days to subtract (may be fractional).
+ * @returns The resulting Oracle DATE after subtraction, or the original infinite timestamp unchanged.
  */
 Datum
 oradate_mi_number(PG_FUNCTION_ARGS)
@@ -1456,10 +1532,17 @@ oradate_mi_number(PG_FUNCTION_ARGS)
 	PG_RETURN_TIMESTAMP(result);
 }
 
-/* 
- * Compatible oracle
- * The arithmetic operation of oratimestamp plus number, Result
- * type is oradate.
+/**
+ * Add a numeric number of days to a timestamp, producing a date-precision timestamp.
+ *
+ * Converts the input timestamp to a date (ignoring time zone and fractional seconds),
+ * adds the supplied numeric value interpreted as days (converted to microseconds using
+ * round-to-nearest), and returns the resulting timestamp. If the input timestamp is
+ * infinite, it is returned unchanged.
+ *
+ * @param timestamp Input timestamp to which days will be added.
+ * @param num Numeric value interpreted as a count of days (may be fractional).
+ * @returns The resulting timestamp after adding `num` days to the date portion of `timestamp`.
  */
 Datum
 oratimestamp_pl_number(PG_FUNCTION_ARGS)
@@ -1481,7 +1564,7 @@ oratimestamp_pl_number(PG_FUNCTION_ARGS)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 					 errmsg("timestamp out of range")));
-					 
+
 		/* Convert timestamp to date ignore time zone and fractional second */
 		if (tm2timestamp(tm, 0, NULL, &result) != 0)
 			ereport(ERROR,
@@ -1490,17 +1573,26 @@ oratimestamp_pl_number(PG_FUNCTION_ARGS)
 
 		addend = DatumGetFloat8(DirectFunctionCall1(numeric_float8, NumericGetDatum(num)));
 		addend = rint(addend * USECS_PER_DAY);
-		
+
 		result = result + addend;
 	}
 
 	PG_RETURN_TIMESTAMP(result);
 }
 
-/* 
- * Compatible oracle
- * The arithmetic operation of number plus oratimestamp, Result
- * type is oradate.
+/**
+ * Add a numeric number of days to an Oracle-style timestamp, treating the timestamp's
+ * time zone and fractional seconds as ignored for the date portion.
+ *
+ * The function converts the input timestamp to a date (zeroing fractional seconds),
+ * converts the numeric argument (interpreted as days) to microseconds (rounded to the
+ * nearest microsecond), adds that to the date-only timestamp, and returns the result.
+ * If the input timestamp is infinite, it is returned unchanged.
+ *
+ * @param num Numeric number of days to add (fractional days allowed).
+ * @param timestamp Base timestamp whose date portion will be adjusted.
+ * @returns The adjusted timestamp equal to `timestamp` (date-only) plus `num` days,
+ *          or the original infinite `timestamp` if it is not finite.
  */
 Datum
 number_pl_oratimestamp(PG_FUNCTION_ARGS)
@@ -1531,7 +1623,7 @@ number_pl_oratimestamp(PG_FUNCTION_ARGS)
 
 		addend = DatumGetFloat8(DirectFunctionCall1(numeric_float8, NumericGetDatum(num)));
 		addend = rint(addend * USECS_PER_DAY);
-		
+
 		result = result + addend;
 	}
 
@@ -1580,15 +1672,24 @@ oratimestamp_mi_number(PG_FUNCTION_ARGS)
 	PG_RETURN_TIMESTAMP(result);
 }
 
-/*
- * Compatible oracle
- * The arithmetic operation of oratimestamptz minus number, Result
- * type is oradate.
- */
+/**
+ * Subtract a number-of-days value from a timestamptz and return the resulting oradate.
+ *
+ * Converts the input TimestampTz to a Timestamp (dropping fractional seconds), converts the
+ * Numeric argument to a floating-point number of days, converts that to microseconds with
+ * rounding to the nearest microsecond, subtracts it from the date-only Timestamp, and returns
+ * the resulting Timestamp (oradate).
+ *
+ * @param timestamp Input TimestampTz value.
+ * @param num Numeric number of days to subtract (fractional days allowed).
+ * @returns The resulting Timestamp (oradate) after subtraction; if the input timestamp is
+ *          infinite it is returned unchanged.
+ *
+ * @note Raises an error if the input timestamp is out of range. */
 Datum
 oratimestamptz_mi_number(PG_FUNCTION_ARGS)
 {
-	TimestampTz	timestamp = PG_GETARG_TIMESTAMPTZ(0);
+	TimestampTz timestamp = PG_GETARG_TIMESTAMPTZ(0);
 	Numeric		num = PG_GETARG_NUMERIC(1);
 	float8		mi;
 	Timestamp	result;
@@ -1605,7 +1706,7 @@ oratimestamptz_mi_number(PG_FUNCTION_ARGS)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 					 errmsg("timestamp out of range")));
-					 
+
 		/* Convert timestamp to date ignore fractional second */
 		if (tm2timestamp(tm, 0, NULL, &result) != 0)
 			ereport(ERROR,
@@ -1620,15 +1721,15 @@ oratimestamptz_mi_number(PG_FUNCTION_ARGS)
 	PG_RETURN_TIMESTAMP(result);
 }
 
-/*
- * Compatible oracle
- * The arithmetic operation of oratimestamptz plus number, Result
- * type is oradate.
+/**
+ * Add a numeric number of days to a timestamptz and produce an oradate-style Timestamp with time zone and fractional seconds discarded.
+ *
+ * @returns `Timestamp` equal to the input timestamptz converted to a date (discarding time zone and fractional seconds) plus the numeric value interpreted as days; if the input is infinite, the same infinite timestamp is returned.
  */
 Datum
 oratimestamptz_pl_number(PG_FUNCTION_ARGS)
 {
-	TimestampTz	timestamp = PG_GETARG_TIMESTAMPTZ(0);
+	TimestampTz timestamp = PG_GETARG_TIMESTAMPTZ(0);
 	Numeric		num = PG_GETARG_NUMERIC(1);
 	float8		addend;
 	Timestamp	result;
@@ -1646,7 +1747,7 @@ oratimestamptz_pl_number(PG_FUNCTION_ARGS)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 					 errmsg("timestamp out of range")));
-					 
+
 		/* Convert timestamp to date ignore time zone and fractional second */
 		if (tm2timestamp(tm, 0, NULL, &result) != 0)
 			ereport(ERROR,
@@ -1655,23 +1756,30 @@ oratimestamptz_pl_number(PG_FUNCTION_ARGS)
 
 		addend = DatumGetFloat8(DirectFunctionCall1(numeric_float8, NumericGetDatum(num)));
 		addend = rint(addend * USECS_PER_DAY);
-		
+
 		result = result + addend;
 	}
 
 	PG_RETURN_TIMESTAMP(result);
 }
 
-/*
- * Compatible oracle
- * The arithmetic operation of number plus oratimestamptz, Result
- * type is oradate.
+/**
+ * Add a numeric number of days to a timestamptz after converting it to an Oracle date
+ * (the input timestamptz is converted to local tm, timezone is ignored, and fractional
+ * seconds are discarded before addition).
+ *
+ * The numeric argument is treated as days (fractional days allowed), converted to
+ * microseconds by multiplying by USECS_PER_DAY and rounding to the nearest microsecond.
+ * If the timestamptz input is infinite, that value is returned unchanged.
+ *
+ * @returns A Timestamp containing the date-only timestamptz value plus the numeric day
+ *          offset, or the original infinite timestamp if the input is not finite.
  */
 Datum
 number_pl_oratimestamptz(PG_FUNCTION_ARGS)
 {
 	Numeric		num = PG_GETARG_NUMERIC(0);
-	TimestampTz	timestamp = PG_GETARG_TIMESTAMPTZ(1);
+	TimestampTz timestamp = PG_GETARG_TIMESTAMPTZ(1);
 	float8		addend;
 	Timestamp	result;
 	struct pg_tm tt,
@@ -1697,10 +1805,9 @@ number_pl_oratimestamptz(PG_FUNCTION_ARGS)
 
 		addend = DatumGetFloat8(DirectFunctionCall1(numeric_float8, NumericGetDatum(num)));
 		addend = rint(addend * USECS_PER_DAY);
-		
+
 		result = result + addend;
 	}
 
 	PG_RETURN_TIMESTAMP(result);
 }
-

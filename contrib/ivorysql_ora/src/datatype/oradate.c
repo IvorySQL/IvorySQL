@@ -1,12 +1,12 @@
 /*-------------------------------------------------------------------------
  * Copyright 2025 IvorySQL Global Development Team
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -160,22 +160,30 @@ timestamp2timestamptz(Timestamp timestamp)
  *	 USER I/O ROUTINES														 *
  *****************************************************************************/
 
-/* oradate_in()
- * Convert a string to internal form.
+/**
+ * Parse textual representation of an Oracle DATE into an internal oradate value.
+ *
+ * When the NLS date format is "pg" or datetime NLS handling is disabled, delegates
+ * to the date/date_timestamp input path. Otherwise parses the input according to
+ * the current NLS date format, discards any time zone information, and truncates
+ * fractional seconds to produce an oradate (date-only Timestamp).
+ *
+ * @returns A Datum containing the parsed oradate Timestamp.
+ * @throws ERRCODE_DATETIME_VALUE_OUT_OF_RANGE if the resulting timestamp is out of range.
  */
 Datum
 oradate_in(PG_FUNCTION_ARGS)
 {
-	char		*str = PG_GETARG_CSTRING(0);
-	Oid		collid = PG_GET_COLLATION();
+	char	   *str = PG_GETARG_CSTRING(0);
+	Oid			collid = PG_GET_COLLATION();
 	Timestamp	result;
-	struct pg_tm	tm;
+	struct pg_tm tm;
 	fsec_t		fsec;
 
 	if (strcmp(nls_date_format, "pg") == 0 || DATETIME_IGNORE_NLS(datetime_ignore_nls_mask, ORADATE_MASK))
 	{
 		return DirectFunctionCall1(date_timestamp,
-									DirectFunctionCall1(date_in, CStringGetDatum(str)));
+								   DirectFunctionCall1(date_in, CStringGetDatum(str)));
 	}
 	else
 	{
@@ -192,8 +200,15 @@ oradate_in(PG_FUNCTION_ARGS)
 	}
 }
 
-/* oradate_out()
- * Convert a oradate to external form.
+/**
+ * Format an Oracle-compatible DATE value as a C string according to the current NLS date format.
+ *
+ * When the configured NLS date format is "pg", the function produces the platform's default
+ * PostgreSQL timestamp text representation. For any other NLS pattern, the function formats
+ * the input oradate using that pattern (fractional seconds truncated) and returns the result
+ * as a C string Datum.
+ *
+ * @returns A C string Datum containing the formatted date according to the active NLS format.
  */
 Datum
 oradate_out(PG_FUNCTION_ARGS)
@@ -206,8 +221,8 @@ oradate_out(PG_FUNCTION_ARGS)
 		text	   *date_str;
 
 		date_str = DatumGetTextP(DirectFunctionCall2(timestamp_to_char,
-								  TimestampGetDatum(timestamp),
-								  PointerGetDatum(cstring_to_text(nls_date_format))));
+													 TimestampGetDatum(timestamp),
+													 PointerGetDatum(cstring_to_text(nls_date_format))));
 
 		result = text_to_cstring(date_str);
 		PG_RETURN_CSTRING(result);
@@ -576,6 +591,16 @@ oradate_cmp_oratimestamptz(PG_FUNCTION_ARGS)
 	PG_RETURN_INT32(timestamp_cmp_internal(dt1, dt2));
 }
 
+/**
+ * Compare an Oracle DATE value to an Oracle TIMESTAMP WITH LOCAL TIME ZONE value.
+ *
+ * The first argument (internal Timestamp) is converted to a TimestampTz before comparison;
+ * the function then returns an integer indicating the ordering between the converted first
+ * operand and the second TimestampTz operand.
+ *
+ * @returns An integer less than, equal to, or greater than zero if the first operand is
+ *          respectively less than, equal to, or greater than the second operand.
+ */
 Datum
 oradate_cmp_oratimestampltz(PG_FUNCTION_ARGS)
 {
@@ -588,9 +613,11 @@ oradate_cmp_oratimestampltz(PG_FUNCTION_ARGS)
 	PG_RETURN_INT32(timestamp_cmp_internal(dt1, dt2));
 }
 
-/*****************************************************************************
- *	 Hash index support procedure 
- *****************************************************************************/
+/**
+ * Compute a hash value for an oradate value for use in hash indexes.
+ *
+ * @returns A Datum containing the hash of the 8-byte internal timestamp representation.
+ */
 Datum
 oradate_hash(PG_FUNCTION_ARGS)
 {
@@ -734,8 +761,11 @@ oradate_oratimestamptz(PG_FUNCTION_ARGS)
 	PG_RETURN_TIMESTAMPTZ(timestamp2timestamptz(timestamp));
 }
 
-/* oradate_oratimestampltz()
- * Convert oradate to oratimestampltz.
+/**
+ * Convert an Oracle DATE value (oradate) to a timestamptz value.
+ *
+ * @param timestamp Internal Timestamp representing the Oracle DATE input.
+ * @returns The equivalent TimestampTz representing the same absolute instant.
  */
 Datum
 oradate_oratimestampltz(PG_FUNCTION_ARGS)
@@ -744,4 +774,3 @@ oradate_oratimestampltz(PG_FUNCTION_ARGS)
 
 	PG_RETURN_TIMESTAMPTZ(timestamp2timestamptz(timestamp));
 }
-

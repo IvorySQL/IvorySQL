@@ -1,12 +1,12 @@
 /*-------------------------------------------------------------------------
  * Copyright 2025 IvorySQL Global Development Team
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -98,7 +98,22 @@ PG_FUNCTION_INFO_V1(oratimestamptz_oratimestamp);
 PG_FUNCTION_INFO_V1(oratimestamptz_oradate);
 
 
-/* common code for timestamptypmodin and timestamptztypmodin */
+/**
+ * Parse and validate a TIMESTAMP typmod array and return the resulting typmod.
+ *
+ * Validates that the array contains exactly one integer modifier, that the
+ * precision is not negative, and that it does not exceed the allowed maximums.
+ * If the precision is greater than the PostgreSQL-supported MAX_TIMESTAMP_PRECISION
+ * but within ORACLE_MAX_TIMESTAMP_PRECISION, a warning is emitted and the
+ * provided value is returned.
+ *
+ * @param istz true when parsing a TIMESTAMP WITH TIME ZONE typmod, false otherwise.
+ * @param ta ArrayType containing the integer typmod(s) supplied by the parser.
+ * @returns The parsed typmod value (precision) as an int32.
+ * @throws Invalid parameter value error when the number of modifiers is not one,
+ *         when the precision is negative, or when the precision exceeds
+ *         ORACLE_MAX_TIMESTAMP_PRECISION.
+ */
 static int32
 anytimestamp_typmodin(bool istz, ArrayType *ta)
 {
@@ -127,7 +142,7 @@ anytimestamp_typmodin(bool istz, ArrayType *ta)
 		ereport(WARNING,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("TIMESTAMP(%d)%s effective number of fractional seconds is 6,the part of excess is 0",
-				 *tl, (istz ? " WITH TIME ZONE" : ""))));
+						*tl, (istz ? " WITH TIME ZONE" : ""))));
 		typmod = *tl;
 	}
 	else if (*tl > ORACLE_MAX_TIMESTAMP_PRECISION)
@@ -187,30 +202,40 @@ timestamp2timestamptz(Timestamp timestamp)
  *	 USER I/O ROUTINES														 *
  *****************************************************************************/
 
-/* oratimestamptz_in()
- * Convert a string to internal form.
+/**
+ * Convert a textual representation to an internal TIMESTAMP WITH TIME ZONE value.
+ *
+ * Parses the input string according to the current NLS timestamp-with-time-zone
+ * format; if that format is "pg" or NLS masking indicates ignoring NLS, parsing
+ * is delegated to the core timestamptz input routine. The resulting value is
+ * adjusted for the supplied typmod before being returned.
+ *
+ * @returns Datum containing the parsed TimestampTz value.
+ *
+ * @throws ERRCODE_DATETIME_VALUE_OUT_OF_RANGE if the computed timestamp is out of range.
+ * @throws Parse error via DateTimeParseError if the input does not match the expected format.
  */
 Datum
 oratimestamptz_in(PG_FUNCTION_ARGS)
 {
-		char	   *str = PG_GETARG_CSTRING(0);
+	char	   *str = PG_GETARG_CSTRING(0);
 
 #ifdef NOT_USED
-		Oid			typelem = PG_GETARG_OID(1);
+	Oid			typelem = PG_GETARG_OID(1);
 #endif
-		int32		typmod = PG_GETARG_INT32(2);
-		Oid		collid = PG_GET_COLLATION();
+	int32		typmod = PG_GETARG_INT32(2);
+	Oid			collid = PG_GET_COLLATION();
 
 	if (strcmp(nls_timestamp_tz_format, "pg") == 0 || DATETIME_IGNORE_NLS(datetime_ignore_nls_mask, ORATIMESTAMPTZ_MASK))
 	{
 		return DirectFunctionCall3(timestamptz_in,
-									CStringGetDatum(str),
-									ObjectIdGetDatum(InvalidOid),
-									Int32GetDatum(typmod));
+								   CStringGetDatum(str),
+								   ObjectIdGetDatum(InvalidOid),
+								   Int32GetDatum(typmod));
 	}
 	else
 	{
-		TimestampTz	result;
+		TimestampTz result;
 		struct pg_tm tm;
 		fsec_t		fsec;
 		int			tz;
@@ -220,7 +245,7 @@ oratimestamptz_in(PG_FUNCTION_ARGS)
 
 		if (tm.tm_zone)
 		{
-			int		dterr = DecodeTimezone((char *)tm.tm_zone, &tz);
+			int			dterr = DecodeTimezone((char *) tm.tm_zone, &tz);
 
 			if (dterr)
 				DateTimeParseError(dterr, &extra, str, "timestamptz", NULL);
@@ -240,14 +265,20 @@ oratimestamptz_in(PG_FUNCTION_ARGS)
 	}
 }
 
-/*
- * oratimestamptz_out()
- * Convert a oradate to external form.
+/**
+ * Convert an internal oratimestamptz value to its external textual representation.
+ *
+ * If the global format mask `nls_timestamp_tz_format` is not "pg", the timestamp
+ * is formatted using that mask; otherwise the standard PostgreSQL timestamptz
+ * output is produced.
+ *
+ * @param timestamp The TimestampTz value to convert.
+ * @returns A null-terminated C string containing the formatted timestamp (allocated in the current memory context).
  */
 Datum
 oratimestamptz_out(PG_FUNCTION_ARGS)
 {
-	TimestampTz	timestamp = PG_GETARG_TIMESTAMPTZ(0);
+	TimestampTz timestamp = PG_GETARG_TIMESTAMPTZ(0);
 
 	if (strcmp(nls_timestamp_tz_format, "pg") != 0)
 	{
@@ -255,9 +286,9 @@ oratimestamptz_out(PG_FUNCTION_ARGS)
 		text	   *date_str;
 
 		date_str = DatumGetTextP(DirectFunctionCall2(timestamptz_to_char,
-													  TimestampTzGetDatum(timestamp),
-													  PointerGetDatum(cstring_to_text(nls_timestamp_tz_format))));
-		
+													 TimestampTzGetDatum(timestamp),
+													 PointerGetDatum(cstring_to_text(nls_timestamp_tz_format))));
+
 		result = text_to_cstring(date_str);
 		PG_RETURN_CSTRING(result);
 	}
@@ -589,19 +620,23 @@ oratimestamptz_ge_oratimestampltz(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL(timestamp_cmp_internal(dt1, dt2) >= 0);
 }
 
-/*****************************************************************************
- *	 Converts a oratimestamptz(n) type to the specified typmod size
- *****************************************************************************/
+/**
+ * Adjusts an oratimestamptz value to the specified typmod precision.
+ *
+ * @param source The input TIMESTAMP WITH TIME ZONE value (first PG_FUNCTION_ARGS).
+ * @param typmod The target typmod precision (second PG_FUNCTION_ARGS); a value of -1 leaves the input unchanged.
+ * @return The TIMESTAMP WITH TIME ZONE value adjusted to the requested typmod (or the original value if typmod is -1).
+ */
 Datum
 oratimestamptz(PG_FUNCTION_ARGS)
 {
-	TimestampTz	source = PG_GETARG_TIMESTAMPTZ(0);
+	TimestampTz source = PG_GETARG_TIMESTAMPTZ(0);
 	int32		typmod = PG_GETARG_INT32(1);
 
 	/* No work if typmod is invalid */
 	if (typmod == -1)
 		PG_RETURN_TIMESTAMPTZ(source);
-		
+
 	OraAdjustTimestampForTypmod(&source, typmod);
 	PG_RETURN_TIMESTAMPTZ(source);
 }
@@ -642,6 +677,12 @@ oratimestamptz_cmp_oratimestamp(PG_FUNCTION_ARGS)
 	PG_RETURN_INT32(timestamp_cmp_internal(dt1, dt2));
 }
 
+/**
+ * Compare two TIMESTAMP WITH TIME ZONE values and produce their ordering.
+ *
+ * @returns `<0` if the first timestamp is earlier than the second, `0` if they are equal,
+ *          `>0` if the first timestamp is later than the second.
+ */
 Datum
 oratimestamptz_cmp_oratimestampltz(PG_FUNCTION_ARGS)
 {
@@ -651,9 +692,11 @@ oratimestamptz_cmp_oratimestampltz(PG_FUNCTION_ARGS)
 	PG_RETURN_INT32(timestamp_cmp_internal(dt1, dt2));
 }
 
-/*****************************************************************************
- *	 Hash index support procedure 
- *****************************************************************************/
+/**
+ * Produce a hash for an oratimestamptz value for use by hash indexes.
+ *
+ * @returns Datum containing the 32-bit hash of the 64-bit internal timestamp value.
+ */
 Datum
 oratimestamptz_hash(PG_FUNCTION_ARGS)
 {
