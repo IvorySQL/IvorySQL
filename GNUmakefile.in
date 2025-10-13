@@ -158,7 +158,11 @@ headerscheck: submake-generated-headers
 cpluspluscheck: submake-generated-headers
 	$(top_srcdir)/src/tools/pginclude/headerscheck --cplusplus $(top_srcdir) $(abs_top_builddir)
 
+# ivorysql code format
+code-format: submake-generated-headers
+	@bash tools/enable-git-hooks.sh
+
 #.PHONY: dist distdir distcheck docs install-docs world check-world install-world installcheck-world headerscheck cpluspluscheck
 
-.PHONY: dist distcheck docs install-docs world check-world install-world installcheck-world headerscheck cpluspluscheck oracle-pg-check-world oracle-check-world oracle-installcheck-world all-check all-check-world all-installcheck-world
+.PHONY: dist distcheck docs install-docs world check-world install-world installcheck-world headerscheck cpluspluscheck oracle-pg-check-world oracle-check-world oracle-installcheck-world all-check all-check-world all-installcheck-world code-format
 
