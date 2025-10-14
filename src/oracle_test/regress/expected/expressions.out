@@ -62,7 +62,7 @@ WARNING:  TIME(7) WITH TIME ZONE precision reduced to maximum allowed, 6
 (1 row)
 
 SELECT current_timestamp = current_timestamp(7);
-WARNING:  TIMESTAMP(7) effective number of fractional seconds is 6,the part of excess is 0
+WARNING:  TIMESTAMP(7) effective number of fractional seconds is 6, the part of excess is 0
  ?column? 
 ----------
  t
@@ -76,7 +76,7 @@ WARNING:  TIME(7) precision reduced to maximum allowed, 6
 (1 row)
 
 SELECT localtimestamp = localtimestamp(7);
-WARNING:  TIMESTAMP(7) effective number of fractional seconds is 6,the part of excess is 0
+WARNING:  TIMESTAMP(7) effective number of fractional seconds is 6, the part of excess is 0
  ?column? 
 ----------
  t
