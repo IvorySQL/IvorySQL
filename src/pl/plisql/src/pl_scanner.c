@@ -11,7 +11,6 @@
  * IDENTIFICATION
  *	  src/pl/plisql/src/pl_scanner.c
  *
- * add the file for requirement "SQL PARSER"
  *
  *-------------------------------------------------------------------------
  */
@@ -107,8 +106,7 @@ typedef struct
  * pointer around is great enough to not want to do it without need.
  */
 
-/* The stuff the core lexer needs */
-/* static ora_core_yyscan_t yyscanner = NULL; */
+/* The stuff that the core lexer needs */
 static ora_core_yy_extra_type core_yy_extra;
 
 /* The original input string */
@@ -151,7 +149,7 @@ typedef struct PLiSQL_yylex_global_proper
 {
 
 	ora_core_yy_extra_type core_yy_extra;
-	/* ora_core_yyscan_t yyscanner; */
+
 	/* The original input string */
 	const char *scanorig;
 
@@ -768,7 +766,7 @@ plisql_scanner_finish(yyscan_t yyscanner)
 }
 
 /*
- * saved yylex global variable
+ * yylex global variable
  */
 void *
 plisql_get_yylex_global_proper(void)
@@ -780,7 +778,6 @@ plisql_get_yylex_global_proper(void)
 
 	yylex_data->core_yy_extra = core_yy_extra;
 	yylex_data->cur_line_end = cur_line_end;
-	/* yylex_data->cur_line_num = cur_line_num; */
 	yylex_data->cur_line_start = cur_line_start;
 	yylex_data->plisql_yyleng = plisql_yyleng;
 	yylex_data->plisql_yytoken = plisql_yytoken;
@@ -793,7 +790,6 @@ plisql_get_yylex_global_proper(void)
 	}
 
 	yylex_data->scanorig = scanorig;
-	/* yylex_data->yyscanner = plisql_scanner; */
 	yylex_data->plisql_yylval = plisql_yylval;
 	yylex_data->plisql_yylloc = plisql_yylloc;
 

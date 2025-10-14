@@ -10,7 +10,6 @@
  * IDENTIFICATION
  *	  src/pl/plisql/src/pl_handler.c
  *
- * add the file for requirement "SQL PARSER"
  *
  *-------------------------------------------------------------------------
  */
@@ -393,8 +392,8 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 	}
 
 	/*
-	 * Anonymous block has parameters, call forward_oraparam_stack, so that we
-	 * can check if the variable match
+	 * Anonymous block has parameters, call forward_oraparam_stack, 
+	 * so that we can check if the variable matches.
 	 */
 	if (codeblock->params != NULL &&
 		SPI_get_connected() == 0)
@@ -548,10 +547,7 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 		bool		typByVal;
 		MemoryContext old;
 
-		/*
-		 * use datumCopy to pass variables, first swith to saved memory
-		 * context
-		 */
+		/* use datumCopy to pass variables, first switch to saved memory context */
 		old = MemoryContextSwitchTo(Ora_spi_saved_memorycontext());
 		for (i = 0; i < fake_fcinfo->nargs; ++i)
 		{
@@ -573,7 +569,7 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 			}
 		}
 
-		/* return to old memory context */
+		/* switch to old memory context */
 		MemoryContextSwitchTo(old);
 	}
 

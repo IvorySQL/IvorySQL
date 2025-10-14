@@ -177,7 +177,7 @@ begin
 --print we are in main function
 --res = 45 a square function assign 11
 --
---there originial not like oracle
+--the originial is not like oracle
 --for out argmuments
 declare
   mds varchar(256);
@@ -699,7 +699,7 @@ begin
 end;
 /
 
----global variable the name as local variable
+---global variable has same name as local variable
 --test ok
 create or replace function test_subproc_func(a in out integer) return integer AS
   mds integer;
@@ -736,7 +736,7 @@ select * from test_subproc_func(21);
 drop function test_subproc_func(integer);
 set ivorysql.allow_out_parameter_const = false;
 
---function the name as global variable
+--function has same name as global variable
 --test failed
 declare
   mds integer;
@@ -787,8 +787,8 @@ end;
 /
 
 --ok
---this because out parameter we have don't handle
--- so it doesn't like oracle
+--this is because we don't handle out parameter,
+-- so it is not like oracle
 -- test out name=must be assign to null
 -- test_out.test_out name=must be assign to null
 -- name1= must be assign to null
@@ -822,7 +822,7 @@ begin
  /
 
 
----schema function and subproc function as the same name
+---schema function and subproc function has the same name
 create or replace function test_subproc(id integer) return integer
 AS
    var1 integer;
@@ -880,7 +880,7 @@ drop function test_subproc(integer);
 create type test_subproc_type as (id integer,name varchar(23));
 
 --test ok
---print var1=(23, "a object type")
+--print var1=(23, "an object type")
 declare
     var1 test_subproc_type;
     function test_subproc(id integer) return test_subproc_type
@@ -888,7 +888,7 @@ declare
         var1 test_subproc_type;
     begin
          var1.id := 23;
-	 var1.name := 'a object type';
+	 var1.name := 'an object type';
 	 return var1;
     end;
 begin
@@ -898,7 +898,7 @@ end;
 /
 
 --print id = (1, "welcome to beiing")
---print var1=(23, "a object type")
+--print var1=(23, "an object type")
 declare
     var1 test_subproc_type;
     function test_subproc(id test_subproc_type) return test_subproc_type
@@ -906,7 +906,7 @@ declare
         var1 test_subproc_type;
     begin
          var1.id := 23;
-	 var1.name := 'a object type';
+	 var1.name := 'an object type';
 	 raise info 'id = %',id;
 	 return var1;
     end;
@@ -1777,7 +1777,7 @@ begin
 end;
 /
 
---define before declare faield
+--define before declare failed
 declare
    function mds(id integer) return integer IS
       var1 integer;
@@ -1879,9 +1879,9 @@ END;
 
 --
 --
--- subproc function support polymorphic type
+-- subproc function supports polymorphic type
 --
---point raise error others is ok
+--point raise error, others is ok
 DECLARE
    var1 integer;
    var2 number;
@@ -2119,8 +2119,7 @@ end;
 /
 
 
---test extral
---error test_f is is out of scope
+--error test_f is out of scope
 declare
   var1 integer;
   function test_f(id integer,name varchar2) return integer IS
@@ -2239,7 +2238,7 @@ end;
 /
 
 
---oracle raise error,but we success
+--oracle raise error,but we succeed
 declare
   var1 integer;
   function test_f(id integer,name varchar2) return integer is
@@ -2268,7 +2267,7 @@ end;
 /
 
 
---oracle raiser error,but we sucess
+--oracle raiser error,but we succeed
 create or replace function test_f(id integer) return integer as
   function test_f(id integer) return integer is
   begin
@@ -2462,7 +2461,7 @@ begin
 end;
 /
 
---dynamic include subproc function ok var1=25
+--dynamically include subproc function ok var1=25
 declare
   var1 integer;
   function test_f(id integer) return integer IS
@@ -2616,7 +2615,7 @@ begin
 end;
 /
 
---oracle failed, but we sucess
+--oracle failed, but we succeed
 declare
   var1 integer;
   function test_f(id integer) return integer;
@@ -2662,7 +2661,7 @@ begin
 end;
 /
 
---surcess
+--success
 declare
   var1 integer;
 begin
@@ -2692,7 +2691,7 @@ begin
 end;
 /
 
---sucess
+--success
 declare
   var1 integer;
 begin
@@ -2732,7 +2731,7 @@ BEGIN
 end;
 /
 
---oracle failed,but we sucess
+--oracle failed,but we succeed
 DECLARE
 	type integer;
 begin
@@ -2754,7 +2753,7 @@ begin
 end;
 /
 
---oracle failed,but we success
+--oracle failed,but we succeed
 declare
   var1 integer;
   var2 integer;
@@ -2937,7 +2936,6 @@ DROP event TRIGGER regress_event_trigger;
 DROP FUNCTION test_event_trigger();
 drop table test_subproc_system;
 
---requite documents example
 --ok and print test_subprocproc and test_linefunc
 declare
   mds integer;
@@ -3356,7 +3354,7 @@ declare
  end;
  /
 
---oracle raise error,but we sucess
+--oracle raise error,but we succeed
 CREATE TABLE mds(id integer,name varchar2(256));
 
 DECLARE
