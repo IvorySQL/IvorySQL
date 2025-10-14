@@ -10,7 +10,7 @@
  * IDENTIFICATION
  *	  src/pl/plisql/src/pl_gram.y
  *
- * add the file for requirement "SQL PARSER"
+ * add the file for "SQL PARSER"
  *
  *-------------------------------------------------------------------------
  */
@@ -488,7 +488,7 @@ ora_outermost_pl_block		: ora_decl_sect K_BEGIN proc_sect exception_sect K_END o
 		{
 			PLiSQL_stmt_block *new;
 
-			/* package specification doesn't be allowed to include begin */
+			/* package specification doesn't allow to include begin */
 			if (plisql_compile_packageitem != NULL &&
 				!plisql_compile_packageitem->finish_compile_special)
 				yyerror(&yylloc, NULL, yyscanner,  "syntax error for package specificaion have a body");
@@ -526,8 +526,7 @@ ora_outermost_pl_block		: ora_decl_sect K_BEGIN proc_sect exception_sect K_END o
 	;
 
 /*
- * package and its body define for which
- * has no init block
+ * definition of package and its body which has no init block
  */
 ora_pl_package: ora_decl_sect K_END opt_label
 			{
@@ -820,7 +819,7 @@ decl_statement	: decl_varname decl_const decl_datatype decl_collate decl_notnull
 				/* function or procedure declare or define */
 				| function_heading function_properties ';'
 					{
-						/* check does it duplicate declare */
+						/* check if duplicate declare */
 						if ($1->has_declare)
 							yyerror(&yylloc, NULL, yyscanner, "duplicate declaration");
 						$1->has_declare = true;
@@ -864,7 +863,7 @@ decl_statement	: decl_varname decl_const decl_datatype decl_collate decl_notnull
 					}
 				| procedure_heading procedure_properties ';'
 					{
-						/* check does it duplicate declare */
+						/* check if duplicate declare */
 						if ($1->has_declare)
 							yyerror(&yylloc, NULL, yyscanner, "duplicate declaration");
 						plisql_check_subprocfunc_properties($1,$2, false);
@@ -3317,9 +3316,9 @@ unreserved_keyword	:
 				;
 
 /*
- * This is to solve the shift/reduce conflict of the access by which
- * accept package/trigger/type package/trigger/type as unit_kind or unit_name
- * which removes the three keywords K_PACAGE, K_TYPE, K_TRIGGER on the basis
+ * This is to solve the shift/reduce conflict of the access which
+ * accept package/trigger/type as unit_kind or unit_name 
+ * that removes the three keywords K_PACAGE, K_TYPE, K_TRIGGER on the basis
  * of the unreserved_keyword
  */
 unit_name_keyword:
@@ -4484,7 +4483,7 @@ check_assignable(PLiSQL_datum *datum, int location, yyscan_t yyscanner)
 }
 
 /*
- * check package datum can be assigned
+ * check if package datum can be assigned
  */
 static void
 check_packagedatum_assignable(PLiSQL_pkg_datum *pkg_datum, int location, yyscan_t yyscanner)

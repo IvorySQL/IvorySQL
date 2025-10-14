@@ -221,7 +221,7 @@ typedef struct PLiSQL_type
 	int32		atttypmod;		/* typmod (taken from someplace else) */
 	bool		notnull;		/* the type is built by variable%type,
 						 * isnull or notnull of the variable */
-	TypeName   *pctrowtypname;	/* type name only for the types that uses %TYPE or %ROWTYPE */
+	TypeName   *pctrowtypname;	/* type name only for the types that use %TYPE or %ROWTYPE */
 	/* Remaining fields are used only for named composite types (not RECORD) */
 	TypeName   *origtypname;	/* type name as written by user */
 	TypeCacheEntry *tcache;		/* typcache entry for composite type */
@@ -359,7 +359,7 @@ typedef struct PLiSQL_var
 	int			cursor_options;
 
 	char		info; /* record the argument mode which may be IN, OUT or IN OUT.
-			       * If variable is built in plsql block local, it is empty */
+			       * If variable is built in plisql block locally, it is empty */
 
 	/* Fields below here can change at runtime */
 
@@ -444,7 +444,7 @@ typedef struct PLiSQL_rec
 	int			firstfield;		/* dno of first RECFIELD, or -1 if none */
 
 	char		info;  /* record the argument mode which may be IN, OUT or IN OUT.
-				* If variable is built in plsql block local, it is empty */
+				* If variable is built in plisql block locally, it is empty */
 
 	/* Fields below here can change at runtime */
 
@@ -974,12 +974,12 @@ typedef struct PLiSQL_func_hashkey
 	bool		isTrigger;		/* true if called as a DML trigger */
 	bool		isEventTrigger; /* true if called as an event trigger */
 
-	/* be careful that pad bytes in this struct get zeroed! */
+	/* be careful that pad bytes in this struct may get zeroed! */
 
 	/*
 	 * For a trigger function, the OID of the trigger is part of the hash key
 	 * --- we want to compile the trigger function separately for each trigger
-	 * it is used with, in case the rowtype or transition table names are
+	 * it uses with, in case the rowtype or transition table names are
 	 * different.  Zero if not called as a DML trigger.
 	 */
 	Oid			trigOid;
@@ -1072,7 +1072,7 @@ typedef struct PLiSQL_function
 	unsigned long use_count;
 	int		fn_ret_vardno;	/* the variable dno for the function return value */
 	bool		fn_no_return;	/* when the function return type is not VOIDOID, if the body has not a RETURN statment,
-					 * the CREATE FUNCTION can execute successfully, but when the function is called,
+					 * the CREATE FUNCTION can be executed successfully, but when the function is called,
 					 * an error will be reported */
 	char		**paramnames;	/* saved do + using parameter'name */
 } PLiSQL_function;
@@ -1169,8 +1169,7 @@ typedef struct PLiSQL_execstate
  * variable "PLiSQL_plugin" and set it to point to a PLiSQL_plugin struct.
  * Typically the struct could just be static data in the plugin library.
  * We expect that a plugin would do this at library load time (_PG_init()).
- * It must also be careful to set the rendezvous variable back to NULL
- * if it is unloaded (_PG_fini()).
+ * Be careful to set the rendezvous variable back to NULL if it is unloaded (_PG_fini()).
  *
  * This structure is basically a collection of function pointers --- at
  * various interesting points in pl_exec.c, we call these functions
@@ -1249,7 +1248,7 @@ typedef struct PLwdatum
 	char	   *ident;			/* valid if simple name */
 	bool		quoted;
 	List	   *idents;			/* valid if composite name */
-	int			nname_used;		/* to find datum, we match idents n names */
+	int			nname_used;		/* to find datum, we match n names */
 } PLwdatum;
 
 union YYSTYPE;
