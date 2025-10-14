@@ -1739,10 +1739,10 @@ select * from timestpwtz_tb;
 drop table timestpwtz_tb;
 alter session set NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH.MI.SS.FF5 AM';
 CREATE TABLE timestp_tb(timestp_clo timestamp(7));
-WARNING:  TIMESTAMP(7) effective number of fractional seconds is 6,the part of excess is 0
+WARNING:  TIMESTAMP(7) effective number of fractional seconds is 6, the part of excess is 0
 LINE 1: CREATE TABLE timestp_tb(timestp_clo timestamp(7));
                                             ^
-WARNING:  TIMESTAMP(7) effective number of fractional seconds is 6,the part of excess is 0
+WARNING:  TIMESTAMP(7) effective number of fractional seconds is 6, the part of excess is 0
 insert into timestp_tb values ('2022-08-19 03.37.05 PM');
 select * from timestp_tb;
          timestp_clo          
