@@ -25,6 +25,7 @@ fe_utils_sources = files(
   'recovery_gen.c',
   'simple_list.c',
   'string_utils.c',
+  'version.c',
   'ora_keywords.c',
   'ora_string_utils.c',
 )
