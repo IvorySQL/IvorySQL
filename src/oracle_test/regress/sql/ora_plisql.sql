@@ -2,7 +2,7 @@
 -- PLISQL
 --
 
--- return is a non-reserved keyword, Can be used as object name.
+-- return is a non-reserved keyword, can be used as object name.
 CREATE TABLE RETURN (fooid INT, foosubid INT, fooname TEXT);
 INSERT INTO RETURN VALUES (1, 2, 'three');
 INSERT INTO RETURN VALUES (4, 5, 'six');
@@ -934,7 +934,7 @@ SELECT pg_get_functiondef('test_func'::regproc) from dual;
 SELECT pg_get_functiondef('test_proc'::regproc) from dual;
 SELECT pg_get_functiondef('test_subproc_func'::regproc) from dual;
 
--- ivy_get_plisql_functiondef is only using get plisql func/proc definition.
+-- ivy_get_plisql_functiondef is only used to get plisql func/proc definition.
 SELECT ivy_get_plisql_functiondef('test_func'::regproc) from dual;
 SELECT ivy_get_plisql_functiondef('test_proc'::regproc) from dual;
 SELECT ivy_get_plisql_functiondef('test_subproc_func'::regproc) from dual;
@@ -1056,7 +1056,7 @@ END;
 CALL test_proc6(2, 3, 4);
 EXEC test_proc6(2, 3, 4);
 DROP PROCEDURE test_proc6;
--- recursive with output arguments
+-- recursion with output arguments
 
 CREATE OR REPLACE PROCEDURE test_proc7(x int, INOUT a int, INOUT b numeric)
 AS
