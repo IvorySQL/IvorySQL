@@ -36,7 +36,7 @@
  * items.
  * ----------
  */
-static PLiSQL_nsitem *ns_top = NULL;
+static PLiSQL_nsitem * ns_top = NULL;
 
 
 /* ----------
@@ -50,7 +50,7 @@ plisql_ns_init(void)
 }
 
 void
-plisql_set_ns(PLiSQL_nsitem *cur)
+plisql_set_ns(PLiSQL_nsitem * cur)
 {
 	ns_top = cur;
 }
@@ -137,9 +137,9 @@ plisql_ns_additem(PLiSQL_nsitem_type itemtype, int itemno, const char *name)
  * ----------
  */
 PLiSQL_nsitem *
-plisql_ns_lookup(PLiSQL_nsitem *ns_cur, bool localmode,
-				  const char *name1, const char *name2, const char *name3,
-				  int *names_used)
+plisql_ns_lookup(PLiSQL_nsitem * ns_cur, bool localmode,
+				 const char *name1, const char *name2, const char *name3,
+				 int *names_used)
 {
 	/* Outer loop iterates once per block level in the namespace chain */
 	while (ns_cur != NULL)
@@ -202,7 +202,7 @@ plisql_ns_lookup(PLiSQL_nsitem *ns_cur, bool localmode,
  * ----------
  */
 PLiSQL_nsitem *
-plisql_ns_lookup_label(PLiSQL_nsitem *ns_cur, const char *name)
+plisql_ns_lookup_label(PLiSQL_nsitem * ns_cur, const char *name)
 {
 	while (ns_cur != NULL)
 	{
@@ -221,7 +221,7 @@ plisql_ns_lookup_label(PLiSQL_nsitem *ns_cur, const char *name)
  * ----------
  */
 PLiSQL_nsitem *
-plisql_ns_find_nearest_loop(PLiSQL_nsitem *ns_cur)
+plisql_ns_find_nearest_loop(PLiSQL_nsitem * ns_cur)
 {
 	while (ns_cur != NULL)
 	{
@@ -239,7 +239,7 @@ plisql_ns_find_nearest_loop(PLiSQL_nsitem *ns_cur)
  * Statement type as a string, for use in error messages etc.
  */
 const char *
-plisql_stmt_typename(PLiSQL_stmt *stmt)
+plisql_stmt_typename(PLiSQL_stmt * stmt)
 {
 	switch (stmt->cmd_type)
 	{
@@ -356,10 +356,10 @@ plisql_getdiag_kindname(PLiSQL_getdiag_kind kind)
  * plisql_statement_tree_walker().  The expression callback can be a
  * no-op if no per-expression behavior is needed.
  **********************************************************************/
-typedef void (*plisql_stmt_walker_callback) (PLiSQL_stmt *stmt,
-											  void *context);
-typedef void (*plisql_expr_walker_callback) (PLiSQL_expr *expr,
-											  void *context);
+typedef void (*plisql_stmt_walker_callback) (PLiSQL_stmt * stmt,
+											 void *context);
+typedef void (*plisql_expr_walker_callback) (PLiSQL_expr * expr,
+											 void *context);
 
 /*
  * As in nodeFuncs.h, we respectfully decline to support the C standard's
@@ -371,10 +371,10 @@ typedef void (*plisql_expr_walker_callback) (PLiSQL_expr *expr,
 									   (plisql_expr_walker_callback) (ew), c)
 
 static void
-plisql_statement_tree_walker_impl(PLiSQL_stmt *stmt,
-								   plisql_stmt_walker_callback stmt_callback,
-								   plisql_expr_walker_callback expr_callback,
-								   void *context)
+plisql_statement_tree_walker_impl(PLiSQL_stmt * stmt,
+								  plisql_stmt_walker_callback stmt_callback,
+								  plisql_expr_walker_callback expr_callback,
+								  void *context)
 {
 #define S_WALK(st) stmt_callback(st, context)
 #define E_WALK(ex) expr_callback(ex, context)
@@ -625,11 +625,11 @@ plisql_statement_tree_walker_impl(PLiSQL_stmt *stmt,
  * Within the recursion, local_dnos is a Bitmapset of dnos of variables
  * known to be declared within the current exception level.
  **********************************************************************/
-static void mark_stmt(PLiSQL_stmt *stmt, Bitmapset *local_dnos);
-static void mark_expr(PLiSQL_expr *expr, Bitmapset *local_dnos);
+static void mark_stmt(PLiSQL_stmt * stmt, Bitmapset *local_dnos);
+static void mark_expr(PLiSQL_expr * expr, Bitmapset *local_dnos);
 
 static void
-mark_stmt(PLiSQL_stmt *stmt, Bitmapset *local_dnos)
+mark_stmt(PLiSQL_stmt * stmt, Bitmapset *local_dnos)
 {
 	if (stmt == NULL)
 		return;
@@ -659,7 +659,7 @@ mark_stmt(PLiSQL_stmt *stmt, Bitmapset *local_dnos)
 			for (int i = 0; i < block->n_initvars; i++)
 				local_dnos = bms_add_member(local_dnos, block->initvarnos[i]);
 			plisql_statement_tree_walker(stmt, mark_stmt, mark_expr,
-										  local_dnos);
+										 local_dnos);
 			bms_free(local_dnos);
 		}
 	}
@@ -668,7 +668,7 @@ mark_stmt(PLiSQL_stmt *stmt, Bitmapset *local_dnos)
 }
 
 static void
-mark_expr(PLiSQL_expr *expr, Bitmapset *local_dnos)
+mark_expr(PLiSQL_expr * expr, Bitmapset *local_dnos)
 {
 	/*
 	 * If this expression has an assignment target, check whether the target
@@ -679,7 +679,7 @@ mark_expr(PLiSQL_expr *expr, Bitmapset *local_dnos)
 }
 
 void
-plisql_mark_local_assignment_targets(PLiSQL_function *func)
+plisql_mark_local_assignment_targets(PLiSQL_function * func)
 {
 	Bitmapset  *local_dnos;
 
@@ -700,11 +700,11 @@ plisql_mark_local_assignment_targets(PLiSQL_function *func)
  * The function tree itself, along with subsidiary data, is freed in
  * one swoop by freeing the function's permanent memory context.
  **********************************************************************/
-static void free_stmt(PLiSQL_stmt *stmt, void *context);
-static void free_expr(PLiSQL_expr *expr, void *context);
+static void free_stmt(PLiSQL_stmt * stmt, void *context);
+static void free_expr(PLiSQL_expr * expr, void *context);
 
 static void
-free_stmt(PLiSQL_stmt *stmt, void *context)
+free_stmt(PLiSQL_stmt * stmt, void *context)
 {
 	if (stmt == NULL)
 		return;
@@ -712,7 +712,7 @@ free_stmt(PLiSQL_stmt *stmt, void *context)
 }
 
 static void
-free_expr(PLiSQL_expr *expr, void *context)
+free_expr(PLiSQL_expr * expr, void *context)
 {
 	if (expr && expr->plan)
 	{
@@ -722,7 +722,7 @@ free_expr(PLiSQL_expr *expr, void *context)
 }
 
 void
-plisql_free_function_memory(PLiSQL_function *func,
+plisql_free_function_memory(PLiSQL_function * func,
 							int start_datum, int start_subprocfunc)
 {
 	int			i;
@@ -746,7 +746,7 @@ plisql_free_function_memory(PLiSQL_function *func,
 
 					free_expr(var->default_val, NULL);
 					free_expr(var->cursor_explicit_expr, NULL);
-					/* we should close package cursor explicitly */
+					/* Close package-level explicit cursor if open */
 					if (OidIsValid(var->pkgoid) &&
 						var->datatype->typoid == REFCURSOROID &&
 						plisql_cursor_is_open(var))
@@ -779,7 +779,7 @@ plisql_free_function_memory(PLiSQL_function *func,
 	/* release subproc function */
 	for (i = start_subprocfunc; i < func->nsubprocfuncs; i++)
 	{
-		ListCell *lc;
+		ListCell   *lc;
 		PLiSQL_subproc_function *subprocfunc = func->subprocfuncs[i];
 
 		foreach(lc, subprocfunc->arg)
@@ -797,7 +797,7 @@ plisql_free_function_memory(PLiSQL_function *func,
 			 */
 			if (subprocfunc->function->action != NULL)
 				plisql_free_function_memory(subprocfunc->function, subprocfunc->lastoutvardno,
-								subprocfunc->lastoutsubprocfno);
+											subprocfunc->lastoutsubprocfno);
 		}
 		else
 		{
@@ -817,7 +817,7 @@ plisql_free_function_memory(PLiSQL_function *func,
 
 				while ((entry = (plisql_HashEnt *) hash_seq_search(&status)) != NULL)
 				{
-					hash_search(subprocfunc->poly_tab, (void *)(&(entry->key)), HASH_REMOVE, NULL);
+					hash_search(subprocfunc->poly_tab, (void *) (&(entry->key)), HASH_REMOVE, NULL);
 					plisql_free_function_memory(entry->function, subprocfunc->lastoutvardno, subprocfunc->lastoutsubprocfno);
 				}
 			}
@@ -847,36 +847,36 @@ plisql_free_function_memory(PLiSQL_function *func,
 static int	dump_indent;
 
 static void dump_ind(void);
-static void dump_stmt(PLiSQL_stmt *stmt);
-static void dump_block(PLiSQL_stmt_block *block);
-static void dump_assign(PLiSQL_stmt_assign *stmt);
-static void dump_if(PLiSQL_stmt_if *stmt);
-static void dump_case(PLiSQL_stmt_case *stmt);
-static void dump_loop(PLiSQL_stmt_loop *stmt);
-static void dump_while(PLiSQL_stmt_while *stmt);
-static void dump_fori(PLiSQL_stmt_fori *stmt);
-static void dump_fors(PLiSQL_stmt_fors *stmt);
-static void dump_forc(PLiSQL_stmt_forc *stmt);
-static void dump_foreach_a(PLiSQL_stmt_foreach_a *stmt);
-static void dump_exit(PLiSQL_stmt_exit *stmt);
-static void dump_return(PLiSQL_stmt_return *stmt);
-static void dump_return_next(PLiSQL_stmt_return_next *stmt);
-static void dump_return_query(PLiSQL_stmt_return_query *stmt);
-static void dump_raise(PLiSQL_stmt_raise *stmt);
-static void dump_assert(PLiSQL_stmt_assert *stmt);
-static void dump_execsql(PLiSQL_stmt_execsql *stmt);
-static void dump_dynexecute(PLiSQL_stmt_dynexecute *stmt);
-static void dump_dynfors(PLiSQL_stmt_dynfors *stmt);
-static void dump_getdiag(PLiSQL_stmt_getdiag *stmt);
-static void dump_open(PLiSQL_stmt_open *stmt);
-static void dump_fetch(PLiSQL_stmt_fetch *stmt);
-static void dump_cursor_direction(PLiSQL_stmt_fetch *stmt);
-static void dump_close(PLiSQL_stmt_close *stmt);
-static void dump_perform(PLiSQL_stmt_perform *stmt);
-static void dump_call(PLiSQL_stmt_call *stmt);
-static void dump_commit(PLiSQL_stmt_commit *stmt);
-static void dump_rollback(PLiSQL_stmt_rollback *stmt);
-static void dump_expr(PLiSQL_expr *expr);
+static void dump_stmt(PLiSQL_stmt * stmt);
+static void dump_block(PLiSQL_stmt_block * block);
+static void dump_assign(PLiSQL_stmt_assign * stmt);
+static void dump_if(PLiSQL_stmt_if * stmt);
+static void dump_case(PLiSQL_stmt_case * stmt);
+static void dump_loop(PLiSQL_stmt_loop * stmt);
+static void dump_while(PLiSQL_stmt_while * stmt);
+static void dump_fori(PLiSQL_stmt_fori * stmt);
+static void dump_fors(PLiSQL_stmt_fors * stmt);
+static void dump_forc(PLiSQL_stmt_forc * stmt);
+static void dump_foreach_a(PLiSQL_stmt_foreach_a * stmt);
+static void dump_exit(PLiSQL_stmt_exit * stmt);
+static void dump_return(PLiSQL_stmt_return * stmt);
+static void dump_return_next(PLiSQL_stmt_return_next * stmt);
+static void dump_return_query(PLiSQL_stmt_return_query * stmt);
+static void dump_raise(PLiSQL_stmt_raise * stmt);
+static void dump_assert(PLiSQL_stmt_assert * stmt);
+static void dump_execsql(PLiSQL_stmt_execsql * stmt);
+static void dump_dynexecute(PLiSQL_stmt_dynexecute * stmt);
+static void dump_dynfors(PLiSQL_stmt_dynfors * stmt);
+static void dump_getdiag(PLiSQL_stmt_getdiag * stmt);
+static void dump_open(PLiSQL_stmt_open * stmt);
+static void dump_fetch(PLiSQL_stmt_fetch * stmt);
+static void dump_cursor_direction(PLiSQL_stmt_fetch * stmt);
+static void dump_close(PLiSQL_stmt_close * stmt);
+static void dump_perform(PLiSQL_stmt_perform * stmt);
+static void dump_call(PLiSQL_stmt_call * stmt);
+static void dump_commit(PLiSQL_stmt_commit * stmt);
+static void dump_rollback(PLiSQL_stmt_rollback * stmt);
+static void dump_expr(PLiSQL_expr * expr);
 
 
 static void
@@ -889,7 +889,7 @@ dump_ind(void)
 }
 
 static void
-dump_stmt(PLiSQL_stmt *stmt)
+dump_stmt(PLiSQL_stmt * stmt)
 {
 	printf("%3d:", stmt->lineno);
 	switch (stmt->cmd_type)
@@ -993,7 +993,7 @@ dump_stmts(List *stmts)
 }
 
 static void
-dump_block(PLiSQL_stmt_block *block)
+dump_block(PLiSQL_stmt_block * block)
 {
 	char	   *name;
 
@@ -1034,7 +1034,7 @@ dump_block(PLiSQL_stmt_block *block)
 }
 
 static void
-dump_assign(PLiSQL_stmt_assign *stmt)
+dump_assign(PLiSQL_stmt_assign * stmt)
 {
 	dump_ind();
 	printf("ASSIGN var %d := ", stmt->varno);
@@ -1043,7 +1043,7 @@ dump_assign(PLiSQL_stmt_assign *stmt)
 }
 
 static void
-dump_if(PLiSQL_stmt_if *stmt)
+dump_if(PLiSQL_stmt_if * stmt)
 {
 	ListCell   *l;
 
@@ -1073,7 +1073,7 @@ dump_if(PLiSQL_stmt_if *stmt)
 }
 
 static void
-dump_case(PLiSQL_stmt_case *stmt)
+dump_case(PLiSQL_stmt_case * stmt)
 {
 	ListCell   *l;
 
@@ -1111,7 +1111,7 @@ dump_case(PLiSQL_stmt_case *stmt)
 }
 
 static void
-dump_loop(PLiSQL_stmt_loop *stmt)
+dump_loop(PLiSQL_stmt_loop * stmt)
 {
 	dump_ind();
 	printf("LOOP\n");
@@ -1123,7 +1123,7 @@ dump_loop(PLiSQL_stmt_loop *stmt)
 }
 
 static void
-dump_while(PLiSQL_stmt_while *stmt)
+dump_while(PLiSQL_stmt_while * stmt)
 {
 	dump_ind();
 	printf("WHILE ");
@@ -1137,7 +1137,7 @@ dump_while(PLiSQL_stmt_while *stmt)
 }
 
 static void
-dump_fori(PLiSQL_stmt_fori *stmt)
+dump_fori(PLiSQL_stmt_fori * stmt)
 {
 	dump_ind();
 	printf("FORI %s %s\n", stmt->var->refname, (stmt->reverse) ? "REVERSE" : "NORMAL");
@@ -1167,7 +1167,7 @@ dump_fori(PLiSQL_stmt_fori *stmt)
 }
 
 static void
-dump_fors(PLiSQL_stmt_fors *stmt)
+dump_fors(PLiSQL_stmt_fors * stmt)
 {
 	dump_ind();
 	printf("FORS %s ", stmt->var->refname);
@@ -1181,7 +1181,7 @@ dump_fors(PLiSQL_stmt_fors *stmt)
 }
 
 static void
-dump_forc(PLiSQL_stmt_forc *stmt)
+dump_forc(PLiSQL_stmt_forc * stmt)
 {
 	dump_ind();
 	printf("FORC %s ", stmt->var->refname);
@@ -1204,7 +1204,7 @@ dump_forc(PLiSQL_stmt_forc *stmt)
 }
 
 static void
-dump_foreach_a(PLiSQL_stmt_foreach_a *stmt)
+dump_foreach_a(PLiSQL_stmt_foreach_a * stmt)
 {
 	dump_ind();
 	printf("FOREACHA var %d ", stmt->varno);
@@ -1221,7 +1221,7 @@ dump_foreach_a(PLiSQL_stmt_foreach_a *stmt)
 }
 
 static void
-dump_open(PLiSQL_stmt_open *stmt)
+dump_open(PLiSQL_stmt_open * stmt)
 {
 	dump_ind();
 	printf("OPEN curvar=%d\n", stmt->curvar);
@@ -1272,7 +1272,7 @@ dump_open(PLiSQL_stmt_open *stmt)
 }
 
 static void
-dump_fetch(PLiSQL_stmt_fetch *stmt)
+dump_fetch(PLiSQL_stmt_fetch * stmt)
 {
 	dump_ind();
 
@@ -1298,7 +1298,7 @@ dump_fetch(PLiSQL_stmt_fetch *stmt)
 }
 
 static void
-dump_cursor_direction(PLiSQL_stmt_fetch *stmt)
+dump_cursor_direction(PLiSQL_stmt_fetch * stmt)
 {
 	dump_indent += 2;
 	dump_ind();
@@ -1332,14 +1332,14 @@ dump_cursor_direction(PLiSQL_stmt_fetch *stmt)
 }
 
 static void
-dump_close(PLiSQL_stmt_close *stmt)
+dump_close(PLiSQL_stmt_close * stmt)
 {
 	dump_ind();
 	printf("CLOSE curvar=%d\n", stmt->curvar);
 }
 
 static void
-dump_perform(PLiSQL_stmt_perform *stmt)
+dump_perform(PLiSQL_stmt_perform * stmt)
 {
 	dump_ind();
 	printf("PERFORM expr = ");
@@ -1348,7 +1348,7 @@ dump_perform(PLiSQL_stmt_perform *stmt)
 }
 
 static void
-dump_call(PLiSQL_stmt_call *stmt)
+dump_call(PLiSQL_stmt_call * stmt)
 {
 	dump_ind();
 	printf("%s expr = ", stmt->is_call ? "CALL" : "DO");
@@ -1357,7 +1357,7 @@ dump_call(PLiSQL_stmt_call *stmt)
 }
 
 static void
-dump_commit(PLiSQL_stmt_commit *stmt)
+dump_commit(PLiSQL_stmt_commit * stmt)
 {
 	dump_ind();
 	if (stmt->chain)
@@ -1367,7 +1367,7 @@ dump_commit(PLiSQL_stmt_commit *stmt)
 }
 
 static void
-dump_rollback(PLiSQL_stmt_rollback *stmt)
+dump_rollback(PLiSQL_stmt_rollback * stmt)
 {
 	dump_ind();
 	if (stmt->chain)
@@ -1377,7 +1377,7 @@ dump_rollback(PLiSQL_stmt_rollback *stmt)
 }
 
 static void
-dump_exit(PLiSQL_stmt_exit *stmt)
+dump_exit(PLiSQL_stmt_exit * stmt)
 {
 	dump_ind();
 	printf("%s", stmt->is_exit ? "EXIT" : "CONTINUE");
@@ -1392,7 +1392,7 @@ dump_exit(PLiSQL_stmt_exit *stmt)
 }
 
 static void
-dump_return(PLiSQL_stmt_return *stmt)
+dump_return(PLiSQL_stmt_return * stmt)
 {
 	dump_ind();
 	printf("RETURN ");
@@ -1406,7 +1406,7 @@ dump_return(PLiSQL_stmt_return *stmt)
 }
 
 static void
-dump_return_next(PLiSQL_stmt_return_next *stmt)
+dump_return_next(PLiSQL_stmt_return_next * stmt)
 {
 	dump_ind();
 	printf("RETURN NEXT ");
@@ -1420,7 +1420,7 @@ dump_return_next(PLiSQL_stmt_return_next *stmt)
 }
 
 static void
-dump_return_query(PLiSQL_stmt_return_query *stmt)
+dump_return_query(PLiSQL_stmt_return_query * stmt)
 {
 	dump_ind();
 	if (stmt->query)
@@ -1457,7 +1457,7 @@ dump_return_query(PLiSQL_stmt_return_query *stmt)
 }
 
 static void
-dump_raise(PLiSQL_stmt_raise *stmt)
+dump_raise(PLiSQL_stmt_raise * stmt)
 {
 	ListCell   *lc;
 	int			i = 0;
@@ -1526,7 +1526,7 @@ dump_raise(PLiSQL_stmt_raise *stmt)
 }
 
 static void
-dump_assert(PLiSQL_stmt_assert *stmt)
+dump_assert(PLiSQL_stmt_assert * stmt)
 {
 	dump_ind();
 	printf("ASSERT ");
@@ -1545,7 +1545,7 @@ dump_assert(PLiSQL_stmt_assert *stmt)
 }
 
 static void
-dump_execsql(PLiSQL_stmt_execsql *stmt)
+dump_execsql(PLiSQL_stmt_execsql * stmt)
 {
 	dump_ind();
 	printf("EXECSQL ");
@@ -1564,7 +1564,7 @@ dump_execsql(PLiSQL_stmt_execsql *stmt)
 }
 
 static void
-dump_dynexecute(PLiSQL_stmt_dynexecute *stmt)
+dump_dynexecute(PLiSQL_stmt_dynexecute * stmt)
 {
 	dump_ind();
 	printf("EXECUTE ");
@@ -1601,7 +1601,7 @@ dump_dynexecute(PLiSQL_stmt_dynexecute *stmt)
 }
 
 static void
-dump_dynfors(PLiSQL_stmt_dynfors *stmt)
+dump_dynfors(PLiSQL_stmt_dynfors * stmt)
 {
 	dump_ind();
 	printf("FORS %s EXECUTE ", stmt->var->refname);
@@ -1632,7 +1632,7 @@ dump_dynfors(PLiSQL_stmt_dynfors *stmt)
 }
 
 static void
-dump_getdiag(PLiSQL_stmt_getdiag *stmt)
+dump_getdiag(PLiSQL_stmt_getdiag * stmt)
 {
 	ListCell   *lc;
 
@@ -1652,7 +1652,7 @@ dump_getdiag(PLiSQL_stmt_getdiag *stmt)
 }
 
 static void
-dump_expr(PLiSQL_expr *expr)
+dump_expr(PLiSQL_expr * expr)
 {
 	printf("'%s'", expr->query);
 	if (expr->target_param >= 0)
@@ -1661,7 +1661,7 @@ dump_expr(PLiSQL_expr *expr)
 }
 
 void
-plisql_dumptree(PLiSQL_function *func, int start_datum, int start_subprocfunc) 
+plisql_dumptree(PLiSQL_function * func, int start_datum, int start_subprocfunc)
 {
 	int			i;
 	PLiSQL_datum *d;
@@ -1767,24 +1767,24 @@ plisql_dumptree(PLiSQL_function *func, int start_datum, int start_subprocfunc)
 			printf("Arguments: 0\n");
 		else
 		{
-			ListCell *lc;
-			int j = 0;
+			ListCell   *lc;
+			int			j = 0;
 
 			printf("Arguments: %d\n", list_length(subprocfunc->arg));
-			foreach (lc, subprocfunc->arg)
+			foreach(lc, subprocfunc->arg)
 			{
 				PLiSQL_function_argitem *argitem = (PLiSQL_function_argitem *) lfirst(lc);
-				char *typname;
+				char	   *typname;
 
 				printf("    entry %d: ", j);
 				typname = argitem->type->typname;
 
 				printf("Argument: argno:%d, argname:%s, argtype:%s\n",
-						j++, argitem->argname, typname);
+					   j++, argitem->argname, typname);
 			}
 		}
 		plisql_dumptree(subprocfunc->function, subprocfunc->lastoutvardno,
-								subprocfunc->lastoutsubprocfno);
+						subprocfunc->lastoutsubprocfno);
 		printf("\nEnd of subprocfunction %s\n\n", subprocfunc->func_name);
 	}
 

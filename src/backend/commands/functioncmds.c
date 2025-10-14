@@ -100,13 +100,12 @@ compute_return_type(TypeName *returnType, Oid languageOid,
 	Oid			rettype;
 	Type		typtup;
 	AclResult	aclresult;
-	PkgType *pkgtype;
+	PkgType    *pkgtype;
 
 	/*
-	 * we first find it from a package
-	 * this is ok, because oracle doesn't
-	 * support table,type,package in the same
-	 * scheam share the same name
+	 * First, try to resolve the type from a package. This is acceptable
+	 * because, in Oracle, a schema does not allow a table, type, and package
+	 * to share the same name.
 	 */
 	*rettypename = NULL;
 
@@ -118,8 +117,8 @@ compute_return_type(TypeName *returnType, Oid languageOid,
 		if (pkgtype->pkgname_startloc == 1)
 		{
 			/* append pkgname schema */
-			List *saved_names = returnType->names;
-			char *pkgschema = get_namespace_name(get_package_namespace(pkgtype->pkgoid));
+			List	   *saved_names = returnType->names;
+			char	   *pkgschema = get_namespace_name(get_package_namespace(pkgtype->pkgoid));
 
 			returnType->names = lcons(makeString(pkgschema), (List *) copyObject(returnType->names));
 			*rettypename = nodeToString(returnType);
@@ -195,7 +194,7 @@ compute_return_type(TypeName *returnType, Oid languageOid,
 		namespaceId = QualifiedNameGetCreationNamespace(returnType->names,
 														&typname);
 		aclresult = object_aclcheck(NamespaceRelationId, namespaceId, GetUserId(),
-										  ACL_CREATE);
+									ACL_CREATE);
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, OBJECT_SCHEMA,
 						   get_namespace_name(namespaceId));
@@ -241,7 +240,7 @@ interpret_function_parameter_list(ParseState *pstate,
 								  List **inParameterNames_list,
 								  List **parameterDefaults,
 								  Oid *variadicArgType,
-								  Oid *requiredResultType, 
+								  Oid *requiredResultType,
 								  ArrayType **parametertypeNames)
 {
 	int			parameterCount = list_length(parameters);
@@ -256,9 +255,9 @@ interpret_function_parameter_list(ParseState *pstate,
 	bool		have_defaults = false;
 	ListCell   *x;
 	int			i;
-	Datum		*typeNames = NULL;
+	Datum	   *typeNames = NULL;
 	bool		has_pkg_type = false;
-	bool isplisql = false;
+	bool		isplisql = false;
 	bool		has_rel_type = false;
 
 	*variadicArgType = InvalidOid;	/* default result */
@@ -271,8 +270,7 @@ interpret_function_parameter_list(ParseState *pstate,
 	*parameterDefaults = NIL;
 
 	/*
-	 * only plisql language support package
-	 * type
+	 * Only the PL/iSQL language supports package types.
 	 */
 	if (languageOid == get_language_oid("plisql", true))
 	{
@@ -291,17 +289,16 @@ interpret_function_parameter_list(ParseState *pstate,
 		Oid			toid;
 		Type		typtup;
 		AclResult	aclresult;
-		PkgType *pkgtype;
+		PkgType    *pkgtype;
 
 		/* For our purposes here, a defaulted mode spec is identical to IN */
 		if (fpmode == FUNC_PARAM_DEFAULT)
 			fpmode = FUNC_PARAM_IN;
 
 		/*
-		 * we first find it from a package
-		 * this is ok, because oracle doesn't
-		 * support table,type,package in the same
-		 * scheam share the same name.
+		 * First, try to resolve the argument type from a package. In Oracle,
+		 * a schema does not allow a table, type, and package to share the
+		 * same name.
 		 */
 
 		if (isplisql &&
@@ -310,8 +307,8 @@ interpret_function_parameter_list(ParseState *pstate,
 			toid = pkgtype->basetypid;
 			if (pkgtype->pkgname_startloc == 1)
 			{
-				char *pkgschema = get_namespace_name(get_package_namespace(pkgtype->pkgoid));
-				List *saved_names = t->names;
+				char	   *pkgschema = get_namespace_name(get_package_namespace(pkgtype->pkgoid));
+				List	   *saved_names = t->names;
 
 				t->names = lcons(makeString(pkgschema), (List *) copyObject(t->names));
 				typeNames[i] = CStringGetTextDatum(nodeToString(t));
@@ -335,21 +332,24 @@ interpret_function_parameter_list(ParseState *pstate,
 						ereport(ERROR,
 								(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 								 errmsg("SQL function cannot accept shell type %s",
-												 TypeNameToString(t)),
+										TypeNameToString(t)),
 								 parser_errposition(pstate, t->location)));
 
-					/* We don't allow creating aggregates on shell types either */
+					/*
+					 * We don't allow creating aggregates on shell types
+					 * either
+					 */
 					else if (objtype == OBJECT_AGGREGATE)
 						ereport(ERROR,
 								(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 								 errmsg("aggregate cannot accept shell type %s",
-												 TypeNameToString(t)),
+										TypeNameToString(t)),
 								 parser_errposition(pstate, t->location)));
 					else
 						ereport(NOTICE,
 								(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 								 errmsg("argument type %s is only a shell",
-												 TypeNameToString(t)),
+										TypeNameToString(t)),
 								 parser_errposition(pstate, t->location)));
 				}
 				toid = typeTypeId(typtup);
@@ -361,7 +361,7 @@ interpret_function_parameter_list(ParseState *pstate,
 						(errcode(ERRCODE_UNDEFINED_OBJECT),
 						 errmsg("type %s does not exist",
 								TypeNameToString(t)),
-						parser_errposition(pstate, t->location)));
+						 parser_errposition(pstate, t->location)));
 				toid = InvalidOid;	/* keep compiler quiet */
 			}
 
@@ -517,7 +517,7 @@ interpret_function_parameter_list(ParseState *pstate,
 				compatible_db == ORA_PARSER)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
-				   errmsg("IN OUT formal parameters may have no default expressions")));
+						 errmsg("IN OUT formal parameters may have no default expressions")));
 
 
 			def = transformExpr(pstate, fp->defexpr,
@@ -557,54 +557,58 @@ interpret_function_parameter_list(ParseState *pstate,
 		{
 			if (compatible_db == PG_PARSER ||
 				(compatible_db == ORA_PARSER &&
-				LANG_PLISQL_OID != languageOid))
+				 LANG_PLISQL_OID != languageOid))
 			{
 
-			if (isinput && have_defaults)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
-						 errmsg("input parameters after one with a default value must also have defaults"),
-						 parser_errposition(pstate, fp->location)));
+				if (isinput && have_defaults)
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+							 errmsg("input parameters after one with a default value must also have defaults"),
+							 parser_errposition(pstate, fp->location)));
 
-			/*
-			 * For procedures, we also can't allow OUT parameters after one
-			 * with a default, because the same sort of confusion arises in a
-			 * CALL statement.
-			 */
-			if (objtype == OBJECT_PROCEDURE && have_defaults)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
-						 errmsg("procedure OUT parameters cannot appear after one with a default value"),
-						 parser_errposition(pstate, fp->location)));
+				/*
+				 * For procedures, we also can't allow OUT parameters after
+				 * one with a default, because the same sort of confusion
+				 * arises in a CALL statement.
+				 */
+				if (objtype == OBJECT_PROCEDURE && have_defaults)
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+							 errmsg("procedure OUT parameters cannot appear after one with a default value"),
+							 parser_errposition(pstate, fp->location)));
 			}
 			else if (compatible_db == ORA_PARSER &&
-					LANG_PLISQL_OID == languageOid &&
-					have_defaults)
+					 LANG_PLISQL_OID == languageOid &&
+					 have_defaults)
 			{
-				/* the parameters after default parameters are always NonDefValNode */
+				/*
+				 * the parameters after default parameters are always
+				 * NonDefValNode
+				 */
 				*parameterDefaults = lappend(*parameterDefaults, makeNode(NonDefValNode));
 			}
 		}
 
 		/*
-		 * Check if the datatype of function parameter is tablename.columnname%TYPE
+		 * Check if the datatype of function parameter is
+		 * tablename.columnname%TYPE
 		 */
 		if (!has_pkg_type &&
 			compatible_db == ORA_PARSER &&
 			LANG_PLISQL_OID == languageOid &&
 			t->pct_type)
 		{
-			RangeVar	*rel = makeRangeVar(NULL, NULL, t->location);
-			Oid 		relid;
+			RangeVar   *rel = makeRangeVar(NULL, NULL, t->location);
+			Oid			relid;
 
 			/* parse name list */
 			switch (list_length(t->names))
 			{
 				case 1:
 					ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("wrong %%TYPE reference (too few dotted names): %s",
-							NameListToString(t->names)),
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("wrong %%TYPE reference (too few dotted names): %s",
+									NameListToString(t->names)),
 							 parser_errposition(pstate, t->location)));
 					break;
 				case 2:
@@ -621,10 +625,10 @@ interpret_function_parameter_list(ParseState *pstate,
 					break;
 				default:
 					ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("wrong %%TYPE reference (too many dotted names): %s",
-							NameListToString(t->names)),
-						 	parser_errposition(pstate, t->location)));
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("wrong %%TYPE reference (too many dotted names): %s",
+									NameListToString(t->names)),
+							 parser_errposition(pstate, t->location)));
 					break;
 			}
 
@@ -637,14 +641,14 @@ interpret_function_parameter_list(ParseState *pstate,
 			}
 		}
 		else if (!has_pkg_type &&
-			compatible_db == ORA_PARSER &&
-			LANG_PLISQL_OID == languageOid &&
-			t->row_type)
+				 compatible_db == ORA_PARSER &&
+				 LANG_PLISQL_OID == languageOid &&
+				 t->row_type)
 		{
-			char		*schema_name = NULL;
-			char		*relname = NULL;
-			RangeVar   	*rel = NULL;
-			Oid 		relid;
+			char	   *schema_name = NULL;
+			char	   *relname = NULL;
+			RangeVar   *rel = NULL;
+			Oid			relid;
 
 			DeconstructQualifiedName(t->names, &schema_name, &relname);
 			rel = makeRangeVar(schema_name, relname, t->location);
@@ -697,7 +701,7 @@ interpret_function_parameter_list(ParseState *pstate,
 				typeNames[i] = CStringGetTextDatum("");
 		}
 		*parametertypeNames = construct_array(typeNames, parameterCount, TEXTOID,
-											-1, false, 'i');
+											  -1, false, 'i');
 	}
 	else
 	{
@@ -750,7 +754,7 @@ compute_common_attribute(ParseState *pstate,
 		*strict_item = defel;
 	}
 	else if (strcmp(defel->defname, "security") == 0 ||
-		(ORA_PARSER == compatible_db && strcmp(defel->defname, "authid") == 0))
+			 (ORA_PARSER == compatible_db && strcmp(defel->defname, "authid") == 0))
 	{
 		if (*security_item)
 			errorConflictingDefElem(defel, pstate);
@@ -798,7 +802,7 @@ compute_common_attribute(ParseState *pstate,
 		*support_item = defel;
 	}
 	else if (strcmp(defel->defname, "parallel") == 0 ||
-		(ORA_PARSER == compatible_db && strcmp(defel->defname, "parallel_enable") == 0))
+			 (ORA_PARSER == compatible_db && strcmp(defel->defname, "parallel_enable") == 0))
 	{
 		if (is_procedure)
 			goto procedure_error;
@@ -1338,8 +1342,8 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 	Form_pg_language languageStruct;
 	List	   *as_clause;
 	char		parallel;
-	ArrayType	*parametertypeNames = NULL;
-	char		*rettypeName = NULL;
+	ArrayType  *parametertypeNames = NULL;
+	char	   *rettypeName = NULL;
 
 	/* Convert list of names to a name and namespace */
 	namespaceId = QualifiedNameGetCreationNamespace(stmt->funcname,
@@ -1463,7 +1467,7 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 									  &variadicArgType,
 									  &requiredResultType,
 									  &parametertypeNames
-									  );
+		);
 
 	if (stmt->is_procedure)
 	{
@@ -1475,26 +1479,26 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 	{
 		/* explicit RETURNS clause */
 		compute_return_type(stmt->returnType, languageOid,
-							&prorettype, &returnsSet, &rettypeName); 
-		if (OidIsValid(requiredResultType) && prorettype != requiredResultType && 
-		    !(compatible_db == ORA_PARSER && LANG_PLISQL_OID == languageOid))
+							&prorettype, &returnsSet, &rettypeName);
+		if (OidIsValid(requiredResultType) && prorettype != requiredResultType &&
+			!(compatible_db == ORA_PARSER && LANG_PLISQL_OID == languageOid))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 					 errmsg("function result type must be %s because of OUT parameters",
 							format_type_be(requiredResultType))));
 
 		/*
-		 * in plisql function, there is no relationship between 
-		 * the function return datatype and out pararmeter datatype
+		 * In PL/iSQL functions, the function return datatype is independent
+		 * of the OUT parameter datatypes.
 		 */
 		if (LANG_PLISQL_OID == languageOid)
 		{
-			/* out parameter exists,  should't return setof */
+			/* If OUT parameters exist, the function must not return SETOF */
 			if (returnsSet && parameterModes != NULL)
 			{
-				char *paramModes = NULL;
-				int numparams = ARR_DIMS(parameterModes)[0];
-				int i;
+				char	   *paramModes = NULL;
+				int			numparams = ARR_DIMS(parameterModes)[0];
+				int			i;
 
 				if (ARR_NDIM(parameterModes) != 1 ||
 					ARR_HASNULL(parameterModes) ||
@@ -1614,14 +1618,14 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 }
 
 /*
- * Support oracle grammer:
+ * Support Oracle grammar such as
  * alter function func editionable|noneditionable or compile
- * In this function we don't support function arguments or 
- * searching pg_proc directly, if we found more than one or less
- * than one, we report error.
+ * This function does not consider function arguments and
+ * searches pg_proc directly; if more than one or fewer than one match is
+ * found, report an error.
  */
 ObjectAddress
-CompileFunction(CompileFunctionStmt *stmt)
+CompileFunction(CompileFunctionStmt * stmt)
 {
 	HeapTuple	tup;
 	Oid			funcOid;
@@ -1631,19 +1635,19 @@ CompileFunction(CompileFunctionStmt *stmt)
 	HeapTuple	languageTuple;
 	Form_pg_language langForm;
 	Oid			lanvalidator;
-	Oid relrettypoid = InvalidOid;
+	Oid			relrettypoid = InvalidOid;
 	Oid			argtypes[FUNC_MAX_ARGS];
 	bool		argtypes_change = false;
-	ArrayType	*all_argtypes;
+	ArrayType  *all_argtypes;
 	bool		alltype_change = false;
 	bool		nulls[Natts_pg_proc];
 	Datum		values[Natts_pg_proc];
 	bool		replaces[Natts_pg_proc];
-	int 		i;
-	HeapTuple 	newtuple;
-	ObjectAddress 	myself;
-	MemoryContext 	oldcontext = CurrentMemoryContext;
-	ResourceOwner 	oldowner = CurrentResourceOwner;
+	int			i;
+	HeapTuple	newtuple;
+	ObjectAddress myself;
+	MemoryContext oldcontext = CurrentMemoryContext;
+	ResourceOwner oldowner = CurrentResourceOwner;
 	bool		plisql_check_body = false;
 
 	rel = table_open(ProcedureRelationId, RowExclusiveLock);
@@ -1659,7 +1663,7 @@ CompileFunction(CompileFunctionStmt *stmt)
 	}
 	procForm = (Form_pg_proc) GETSTRUCT(tup);
 
-	/* The OID of plisql language is not fixed */
+	/* The OID of the PL/iSQL language is not fixed */
 	languageTuple = SearchSysCache1(LANGOID, ObjectIdGetDatum(procForm->prolang));
 	if (!HeapTupleIsValid(languageTuple))
 		elog(ERROR, "cache lookup failed for language %u", procForm->prolang);
@@ -1668,8 +1672,8 @@ CompileFunction(CompileFunctionStmt *stmt)
 	lanvalidator = langForm->lanvalidator;
 
 	/*
-	 * alter editable|noneditionable, we only support grammer
-	 * we only compile plisql function
+	 * For ALTER ... EDITIONABLE | NONEDITIONABLE, only grammar is supported;
+	 * compilation applies only to PL/iSQL functions.
 	 */
 	if (!stmt->is_compile || strcmp(NameStr(langForm->lanname), "plisql"))
 	{
@@ -1704,41 +1708,42 @@ CompileFunction(CompileFunctionStmt *stmt)
 		}
 
 		/*
-		 * if function argtypes or rettype is from
-		 * a package, its pg_proc tuple should be changed 
-		 * when its argumentstype or rettype is changed.
+		 * if function argtypes or rettype is from a package, its pg_proc
+		 * tuple should be changed when its argumentstype or rettype is
+		 * changed.
 		 */
 		relrettypoid = get_func_real_rettype(tup);
 		if (procForm->pronargs != 0)
 		{
 			memcpy(argtypes, procForm->proargtypes.values,
-				procForm->pronargs * sizeof(Oid));
+				   procForm->pronargs * sizeof(Oid));
 
 			repl_func_real_argtype(tup, argtypes, procForm->pronargs);
 
 			argtypes_change = (procForm->pronargs != 0 &&
-				memcmp(argtypes, procForm->proargtypes.values,
-				procForm->pronargs * sizeof(Oid)) != 0);
+							   memcmp(argtypes, procForm->proargtypes.values,
+									  procForm->pronargs * sizeof(Oid)) != 0);
 		}
 
 		all_argtypes = get_func_real_allargtype(tup);
 		if (all_argtypes != NULL)
 		{
-			Datum 	proallargtypes;
-			bool	isNull;
-			ArrayType *arr;
-			int	numargs;
+			Datum		proallargtypes;
+			bool		isNull;
+			ArrayType  *arr;
+			int			numargs;
 
 			/* find out the number of parameters and get the types */
 			proallargtypes = SysCacheGetAttr(PROCOID, tup,
-							 Anum_pg_proc_proallargtypes,
-							 &isNull);
+											 Anum_pg_proc_proallargtypes,
+											 &isNull);
 			Assert(!isNull);
 
 			/*
-			 * Expect the arrays to be 1-D arrays of the right types and verify that.  
+			 * Expect the arrays to be 1-D arrays of the right types and
+			 * verify that.
 			 */
-			arr = DatumGetArrayTypeP(proallargtypes);	
+			arr = DatumGetArrayTypeP(proallargtypes);
 			numargs = ARR_DIMS(arr)[0];
 
 			if (ARR_NDIM(arr) != 1 ||
@@ -1748,9 +1753,9 @@ CompileFunction(CompileFunctionStmt *stmt)
 			{
 				elog(ERROR, "proallargtypes is not a 1-D Oid array or it contains nulls");
 			}
-	
+
 			alltype_change = (memcmp(ARR_DATA_PTR(arr),
-						ARR_DATA_PTR(all_argtypes), sizeof(Oid) * numargs) != 0);
+									 ARR_DATA_PTR(all_argtypes), sizeof(Oid) * numargs) != 0);
 		}
 
 		if (relrettypoid != procForm->prorettype ||
@@ -1769,7 +1774,7 @@ CompileFunction(CompileFunctionStmt *stmt)
 			{
 				nulls[Anum_pg_proc_proargtypes - 1] = false;
 				values[Anum_pg_proc_proargtypes - 1] = PointerGetDatum(buildoidvector(argtypes,
-													procForm->pronargs));
+																					  procForm->pronargs));
 				replaces[Anum_pg_proc_proargtypes - 1] = true;
 			}
 
@@ -1817,8 +1822,9 @@ CompileFunction(CompileFunctionStmt *stmt)
 			if (procForm->prostatus == PROSTATUS_NA || procForm->prostatus == PROSTATUS_VALID)
 			{
 				/*
-				 * When lanvalidator failed, just update prostatus to be PROSTATUS_INVALID.
-				 * No need to update prorettype, proargtypes, proallargtypes.
+				 * When lanvalidator failed, just update prostatus to be
+				 * PROSTATUS_INVALID. No need to update prorettype,
+				 * proargtypes, proallargtypes.
 				 */
 				/* emit nuisance notice */
 				ereport(WARNING,
@@ -1911,7 +1917,10 @@ CompileFunction(CompileFunctionStmt *stmt)
 
 			if (plisql_check_body)
 			{
-				/* Commit the inner transaction, return to outer transaction context */
+				/*
+				 * Commit the inner transaction, return to outer transaction
+				 * context
+				 */
 				ReleaseCurrentSubTransaction();
 				MemoryContextSwitchTo(oldcontext);
 				CurrentResourceOwner = oldowner;
@@ -1957,8 +1966,9 @@ CompileFunction(CompileFunctionStmt *stmt)
 							 errposition(edata->cursorpos)));
 
 					/*
-					 * When lanvalidator failed, update prostatus to be PROSTATUS_INVALID.
-					 * no need to update prorettype, proargtypes, proallargtypes.
+					 * When lanvalidator failed, update prostatus to be
+					 * PROSTATUS_INVALID. no need to update prorettype,
+					 * proargtypes, proallargtypes.
 					 */
 					nulls[Anum_pg_proc_prostatus - 1] = false;
 					values[Anum_pg_proc_prostatus - 1] = CharGetDatum(PROSTATUS_INVALID);
@@ -2339,7 +2349,7 @@ CreateCast(CreateCastStmt *stmt)
 					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 					 errmsg("third argument of cast function must be type %s",
 							"boolean")));
-		if (!IsBinaryCoercibleWithCast(get_func_real_rettype(tuple), 
+		if (!IsBinaryCoercibleWithCast(get_func_real_rettype(tuple),
 									   targettypeid,
 									   &outcastid))
 			ereport(ERROR,
@@ -2603,7 +2613,7 @@ CreateTransform(CreateTransformStmt *stmt)
 		if (!HeapTupleIsValid(tuple))
 			elog(ERROR, "cache lookup failed for function %u", fromsqlfuncid);
 		procstruct = (Form_pg_proc) GETSTRUCT(tuple);
-		if (get_func_real_rettype(tuple) != INTERNALOID) 
+		if (get_func_real_rettype(tuple) != INTERNALOID)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 					 errmsg("return data type of FROM SQL function must be %s",
@@ -2782,8 +2792,8 @@ IsThereFunctionInNamespace(const char *proname, int pronargs,
  * See at ExecuteCallStmt() about the atomic argument.
  */
 void
-ExecuteDoStmt(ParseState *pstate, DoStmt *stmt, bool atomic, 
-		ParamListInfo params, DestReceiver *dest)
+ExecuteDoStmt(ParseState *pstate, DoStmt *stmt, bool atomic,
+			  ParamListInfo params, DestReceiver *dest)
 {
 	InlineCodeBlock *codeblock = makeNode(InlineCodeBlock);
 	ListCell   *arg;
@@ -2794,8 +2804,8 @@ ExecuteDoStmt(ParseState *pstate, DoStmt *stmt, bool atomic,
 	HeapTuple	languageTuple;
 	Form_pg_language languageStruct;
 	Datum		result;
-	int         oraparam_top_level = -1;
-	int         oraparam_cur_level = -1;
+	int			oraparam_top_level = -1;
+	int			oraparam_cur_level = -1;
 
 
 	/* Process options we got from gram.y */
@@ -2831,15 +2841,16 @@ ExecuteDoStmt(ParseState *pstate, DoStmt *stmt, bool atomic,
 	if (language_item)
 		language = strVal(language_item->arg);
 	else
-		{
-			/* anonymous block's language default value is plsql
-			 * in oracle compatibility mode
-			 */
-			if (ORA_PARSER == compatible_db)
-				language = "plisql";
-			else
-				language = "plpgsql";
-		}
+	{
+		/*
+		 * anonymous block's language default value is plsql in oracle
+		 * compatibility mode
+		 */
+		if (ORA_PARSER == compatible_db)
+			language = "plisql";
+		else
+			language = "plpgsql";
+	}
 
 	/* Look up the language and validate permissions */
 	languageTuple = SearchSysCache1(LANGNAME, PointerGetDatum(language));
@@ -2861,7 +2872,7 @@ ExecuteDoStmt(ParseState *pstate, DoStmt *stmt, bool atomic,
 		AclResult	aclresult;
 
 		aclresult = object_aclcheck(LanguageRelationId, codeblock->langOid, GetUserId(),
-										 ACL_USAGE);
+									ACL_USAGE);
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, OBJECT_LANGUAGE,
 						   NameStr(languageStruct->lanname));
@@ -2914,8 +2925,8 @@ ExecuteDoStmt(ParseState *pstate, DoStmt *stmt, bool atomic,
 	if (result != 0 && dest != NULL && stmt->paramsmode != NIL)
 	{
 		HeapTupleHeader td;
-		TupleDesc		tupdesc;
-		HeapTupleData	tmptup;
+		TupleDesc	tupdesc;
+		HeapTupleData tmptup;
 		Tuplestorestate *tupstore;
 		TupleTableSlot *scanslot;
 
@@ -3056,9 +3067,9 @@ SKIP_PG_PROC_CHECK:
 	}
 	else
 	{
-			/* Initialize function call structure */
-			InvokeFunctionExecuteHook(fexpr->funcid);
-			fmgr_info(fexpr->funcid, &flinfo);
+		/* Initialize function call structure */
+		InvokeFunctionExecuteHook(fexpr->funcid);
+		fmgr_info(fexpr->funcid, &flinfo);
 	}
 
 	fmgr_info_set_expr((Node *) fexpr, &flinfo);

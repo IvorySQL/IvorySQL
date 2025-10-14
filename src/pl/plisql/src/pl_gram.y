@@ -493,7 +493,7 @@ ora_outermost_pl_block		: ora_decl_sect K_BEGIN proc_sect exception_sect K_END o
 				!plisql_compile_packageitem->finish_compile_special)
 				yyerror(&yylloc, NULL, yyscanner,  "syntax error for package specificaion have a body");
 
-			/* we only consider package body level */
+			/* Only consider package body level here */
 			if (plisql_compile_packageitem != NULL &&
 				cur_compile_func_level == 0)
 			{
@@ -516,7 +516,7 @@ ora_outermost_pl_block		: ora_decl_sect K_BEGIN proc_sect exception_sect K_END o
 
 			check_labels($1.label, $6, @6, yyscanner);
 			/*
-			 * no decalre keyword, we don't add lable block namespace
+			 * No DECLARE keyword, so do not add a label block namespace
 			 */
 			if ($1.popname)
 				plisql_ns_pop();
@@ -555,7 +555,7 @@ ora_pl_package: ora_decl_sect K_END opt_label
 					plisql_compile_packageitem->status =
 								plisql_set_package_compile_status();
 				/*
-				 * no decalre keyword, we don't add lable block namespace
+				 * No DECLARE keyword, so do not add a label block namespace
 				 */
 				if ($1.popname)
 					plisql_ns_pop();
@@ -1815,9 +1815,9 @@ getdiag_item :
 getdiag_target	: T_DATUM
 					{
 						/*
-						 * In principle we should support a getdiag_target
-						 * that is an array element, but for now we don't, so
-						 * just throw an error if next token is '['.
+             * In principle, an array-element getdiag_target could be
+             * supported; currently it is not, so throw an error if the
+             * next token is '['.
 						 */
 						if (is_row_record_datum($1.datum) || 
 							plisql_peek(yyscanner) == '[')
@@ -2271,8 +2271,8 @@ for_control		: for_variable K_IN
  *
  * However, if we see a comma-separated list of names, we know that it
  * can't be an integer FOR loop and so it's OK to check the variables
- * immediately.  In particular, for T_WORD followed by comma, we should
- * complain that the name is not known rather than say it's a syntax error.
+ * immediately.  In particular, for T_WORD followed by comma, report that the
+ * name is not known rather than issuing a generic syntax error.
  * Note that the non-error result of this case sets *both* $$.scalar and
  * $$.row; see the for_control production.
  */
@@ -2640,8 +2640,8 @@ loop_body		: proc_sect K_END K_LOOP opt_label ';'
 /*
  * T_WORD+T_CWORD match any initial identifier that is not a known plisql
  * variable.  (The composite case is probably a syntax error, but we'll let
- * the core parser decide that.)  Normally, we should assume that such a
- * word is a SQL statement keyword that isn't also a plisql keyword.
+ * the core parser decide that.)  Normally, assume that such a word is a SQL
+ * statement keyword that isn't also a plisql keyword.
  * However, if the next token is assignment or '[' or '.', it can't be a valid
  * SQL statement, and what we're probably looking at is an intended variable
  * assignment.  Give an appropriate complaint for that, instead of letting
@@ -2971,9 +2971,9 @@ opt_transaction_chain:
 cursor_variable	: T_DATUM
 					{
 						/*
-						 * In principle we should support a cursor_variable
-						 * that is an array element, but for now we don't, so
-						 * just throw an error if next token is '['.
+             * In principle, a cursor_variable could be an array element;
+             * currently it is not supported, so throw an error if the next
+             * token is '['.
 						 *
 						 * maybe a package variable
 						 */
@@ -3629,7 +3629,7 @@ read_sql_construct(int until,
 		/*
 		 * End of function definition is an error, and we don't expect to
 		 * hit a semicolon either (unless it's the until symbol, in which
-		 * case we should have fallen out above).
+ * case we would have fallen out above).
 		 */
 		if (tok == 0 || tok == ';')
 		{
@@ -4551,8 +4551,8 @@ read_into_target(PLiSQL_variable **target, bool *strict, YYSTYPE *yylvalp, YYLTY
 	 * Currently, a row or record variable can be the single INTO target,
 	 * but not a member of a multi-target list.  So we throw error if there
 	 * is a comma after it, because that probably means the user tried to
-	 * write a multi-target list.  If this ever gets generalized, we should
-	 * probably refactor read_into_scalar_list so it handles all cases.
+ * write a multi-target list.  If this ever gets generalized, refactoring
+ * read_into_scalar_list to handle all cases would likely be required.
 	 */
 	switch (tok)
 	{

@@ -125,9 +125,16 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 	char		aggkind = 0;
 	ParseCallbackState pcbstate;
 
-	char function_from = FUNC_FROM_PG_PROC;
-	void *pfunc = NULL;
-	Oid pkgoid = InvalidOid;
+	/*
+	 * Routine origin and handle bookkeeping: - function_from starts as the
+	 * catalog path (pg_proc) and may be updated later if the name resolves to
+	 * a package or subprocedure. - pfunc is a placeholder for an
+	 * engine-specific routine pointer; it remains NULL until a non-pg_proc
+	 * target is identified.
+	 */
+	char		function_from = FUNC_FROM_PG_PROC;
+	void	   *pfunc = NULL;
+	Oid			pkgoid = InvalidOid;
 
 
 	/*
@@ -168,28 +175,29 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 	{
 		Node	   *arg = lfirst(l);
 		Oid			argtype = exprType(arg);
-		bool 		leftCall = false;
-		bool 		argout = false;
-		bool 		argin  = true;
+		bool		leftCall = false;
+		bool		argout = false;
+		bool		argin = true;
 
 		/*
 		 * Oid is 32 bit, the 32nd-30nd bit is used for special purpose.
 		 * 32nd bit means that it is '{? = call function/proc}' .
-		 * 31nd bit means that the function or procedure parameter mode is OUT.
-		 * 30nd bit means that the function or procedure parameter mode is IN.
-		 * 29nd-1nd bit used for the function or procedure parameter type OID.
+		 * 31st bit means that the function or procedure parameter mode is OUT.
+		 * 30th bit means that the function or procedure parameter mode is IN.
+		 * 29th-1st bit used for the function or procedure parameter type OID.
+		 * bit used for the function or procedure parameter type OID.
 		 */
 		if (IsA(arg, Param) &&
 			pstate->p_ref_hook_state &&
 			pstate->p_isVarParamState)
 		{
 			ParseVarParamState(pstate->p_ref_hook_state, arg,
-							&argout, &argin, &leftCall);
+							   &argout, &argin, &leftCall);
 		}
 
 		/*
-		 * If it is called by jdbc, drop the first argument in the parameter list.
-		 * As the first argument is the result.
+		 * If it is called by jdbc, drop the first argument in the parameter
+		 * list. As the first argument is the result.
 		 */
 		if (leftCall)
 		{
@@ -306,26 +314,26 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 	if (pstate->p_subprocfunc_hook != NULL)
 	{
 		fdresult = pstate->p_subprocfunc_hook(pstate, funcname, &fargs, argnames, nargs,
-											actual_arg_types,
-											!func_variadic, true, proc_call,
-											&funcid, &rettype, &retset,
-											&nvargs, &vatype,
-											&declared_arg_types, &argdefaults, &pfunc);
+											  actual_arg_types,
+											  !func_variadic, true, proc_call,
+											  &funcid, &rettype, &retset,
+											  &nvargs, &vatype,
+											  &declared_arg_types, &argdefaults, &pfunc);
 		if (fdresult != FUNCDETAIL_NOTFOUND)
 			function_from = FUNC_FROM_SUBPROCFUNC;
 		else if (list_length(funcname) == 1)
 		{
 			/* lookup standard package func */
-			List *new_funcname = lcons(makeString("standard"), copyObject(funcname));
+			List	   *new_funcname = lcons(makeString("standard"), copyObject(funcname));
 
 			fdresult = LookupPkgFunc(pstate, new_funcname, &fargs, argnames, nargs,
-											actual_arg_types,
-											!func_variadic, true, proc_call,
-											&funcid, &rettype, &retset,
-											&nvargs, &vatype,
-											&declared_arg_types, &argdefaults,
-											&pfunc, &pkgoid,
-											true);
+									 actual_arg_types,
+									 !func_variadic, true, proc_call,
+									 &funcid, &rettype, &retset,
+									 &nvargs, &vatype,
+									 &declared_arg_types, &argdefaults,
+									 &pfunc, &pkgoid,
+									 true);
 			list_free(new_funcname);
 			if (fdresult != FUNCDETAIL_NOTFOUND)
 				function_from = FUNC_FROM_PACKAGE;
@@ -334,24 +342,24 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 	if (fdresult == FUNCDETAIL_NOTFOUND)
 	{
 		fdresult = LookupPkgFunc(pstate, funcname, &fargs, argnames, nargs,
-											actual_arg_types,
-											!func_variadic, true, proc_call,
-											&funcid, &rettype, &retset,
-											&nvargs, &vatype,
-											&declared_arg_types, &argdefaults,
-											&pfunc, &pkgoid,
-											false);
+								 actual_arg_types,
+								 !func_variadic, true, proc_call,
+								 &funcid, &rettype, &retset,
+								 &nvargs, &vatype,
+								 &declared_arg_types, &argdefaults,
+								 &pfunc, &pkgoid,
+								 false);
 		if (fdresult != FUNCDETAIL_NOTFOUND)
 			function_from = FUNC_FROM_PACKAGE;
 	}
 
 	if (fdresult == FUNCDETAIL_NOTFOUND)
 		fdresult = func_get_detail(funcname, fargs, argnames, nargs,
-							   actual_arg_types,
-							   !func_variadic, true, proc_call,
-							   &funcid, &rettype, &retset,
-							   &nvargs, &vatype,
-							   &declared_arg_types, &argdefaults);
+								   actual_arg_types,
+								   !func_variadic, true, proc_call,
+								   &funcid, &rettype, &retset,
+								   &nvargs, &vatype,
+								   &declared_arg_types, &argdefaults);
 
 	cancel_parser_errposition_callback(&pcbstate);
 
@@ -374,16 +382,16 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 				 errhint("To call a function, use SELECT."),
 				 parser_errposition(pstate, location)));
 
-	/*  If this is a CALL func with setof by JDBC, reject it */
+	/* If this is a CALL func with setof by JDBC, reject it */
 	if (proc_call && retset && fdresult == FUNCDETAIL_NORMAL)
 		ereport(ERROR,
-			(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-			 errmsg("can't call %s with return sets",
-					func_signature_string(funcname, nargs,
-										  argnames,
-										  actual_arg_types)),
-			 errhint("To call a function, use SELECT."),
-			 parser_errposition(pstate, location)));
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("can't call %s with return sets",
+						func_signature_string(funcname, nargs,
+											  argnames,
+											  actual_arg_types)),
+				 errhint("To call a function, use SELECT."),
+				 parser_errposition(pstate, location)));
 
 	/* Conversely, if not a CALL, reject procedures */
 	if (fdresult == FUNCDETAIL_PROCEDURE && !proc_call)
@@ -451,7 +459,7 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 		if (ORA_PARSER == compatible_db)
 		{
 			HeapTuple	tup;
-			Form_pg_proc 	procstruct;
+			Form_pg_proc procstruct;
 
 			tup = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
 
@@ -462,15 +470,15 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 				if (procstruct->prolang == LANG_PLISQL_OID &&
 					procstruct->prostatus == PROSTATUS_INVALID &&
 					(procstruct->prokind == PROKIND_FUNCTION ||
-					procstruct->prokind == PROKIND_PROCEDURE))
+					 procstruct->prokind == PROKIND_PROCEDURE))
 				{
 					ReleaseSysCache(tup);
 
 					ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("%s %s is in invalid state",
-							(procstruct->prokind == PROKIND_FUNCTION) ? "function" : "procedure",
-								NameStr(procstruct->proname))));
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("%s %s is in invalid state",
+									(procstruct->prokind == PROKIND_FUNCTION) ? "function" : "procedure",
+									NameStr(procstruct->proname))));
 				}
 
 				ReleaseSysCache(tup);
@@ -887,8 +895,8 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 			if (list_length(funcname) == 2)
 			{
 				/* add pkg namespace */
-				List *pkg_funcname = (List *) copyObject(funcname);
-				char *pkgschema = get_namespace_name(get_package_namespace(pkgoid));
+				List	   *pkg_funcname = (List *) copyObject(funcname);
+				char	   *pkgschema = get_namespace_name(get_package_namespace(pkgoid));
 
 				pkg_funcname = lcons(makeString(pkgschema), pkg_funcname);
 				funcexpr->function_name = nodeToString(pkg_funcname);
@@ -899,22 +907,22 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 		}
 		else if (function_from == FUNC_FROM_PG_PROC)
 		{
-			char **p_argtypeNames = NULL;
-			char *rettypeName = NULL;
-			HeapTuple procTup;
+			char	  **p_argtypeNames = NULL;
+			char	   *rettypeName = NULL;
+			HeapTuple	procTup;
 
 			procTup = SearchSysCache1(PROCOID,
-							   ObjectIdGetDatum(funcid));
-			if (!HeapTupleIsValid(procTup))	/* should not happen */
+									  ObjectIdGetDatum(funcid));
+			if (!HeapTupleIsValid(procTup)) /* should not happen */
 				elog(ERROR, "cache lookup failed for function %u", funcid);
 
 			get_func_typename_info(procTup, &p_argtypeNames, &rettypeName);
 			if (p_argtypeNames != NULL || rettypeName != NULL)
 			{
-				bool rettyp_ref_pkgtype = false;
-				bool argtype_ref_pkgtype = false;
-				PkgType 	*pkgtype;
-				TypeName	*tname;
+				bool		rettyp_ref_pkgtype = false;
+				bool		argtype_ref_pkgtype = false;
+				PkgType    *pkgtype;
+				TypeName   *tname;
 
 				if (p_argtypeNames != NULL && strcmp(*p_argtypeNames, "") != 0)
 				{
@@ -1362,15 +1370,15 @@ func_select_candidate(int nargs,
 	{
 		/*
 		 *
-		 * There are more than one candidates, then check those namespace.
-		 * If they are not in the same namespace, then return the one in
-		 * the frontest namespace.
+		 * There are more than one candidates, then check those namespace. If
+		 * they are not in the same namespace, then return the one in the
+		 * frontest namespace.
 		 */
 		if (PG_PARSER == compatible_db)
-			return NULL;			/* failed to select a best candidate */
+			return NULL;		/* failed to select a best candidate */
 		else
 		{
-			int times;
+			int			times;
 
 			candidate = first_candidate;
 			times = 1;
@@ -1589,7 +1597,7 @@ func_select_candidate(int nargs,
 			else if (ncandidates > 1)
 			{
 				if (PG_PARSER == compatible_db)
-					return NULL;			/* failed to select a best candidate */
+					return NULL;	/* failed to select a best candidate */
 				else
 				{
 					candidate = first_candidate;
@@ -1880,8 +1888,8 @@ func_get_detail(List *funcname,
 		if (PG_PARSER == compatible_db &&
 			pform->prolang == LANG_PLISQL_OID)
 			ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("when ivorysql.compatible_mode is pg, can't execute a plisql procedural-language function")));
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("when ivorysql.compatible_mode is pg, can't execute a plisql procedural-language function")));
 
 		*rettype = pform->prorettype;
 		/* return a package.xxx */
@@ -2475,9 +2483,9 @@ LookupFuncWithArgs(ObjectType objtype, ObjectWithArgs *func, bool missing_ok)
 	ListCell   *args_item;
 	Oid			oid;
 	FuncLookupError lookupError;
-	Oid 		raw_argoids[FUNC_MAX_ARGS];
-	int 		raw_argcount = list_length(func->objargs);
-	int 		j = 0;
+	Oid			raw_argoids[FUNC_MAX_ARGS];
+	int			raw_argcount = list_length(func->objargs);
+	int			j = 0;
 
 
 	Assert(objtype == OBJECT_AGGREGATE ||
@@ -2527,7 +2535,7 @@ LookupFuncWithArgs(ObjectType objtype, ObjectWithArgs *func, bool missing_ok)
 				return InvalidOid;
 
 			j++;
-			
+
 			continue;
 		}
 
@@ -2565,8 +2573,8 @@ LookupFuncWithArgs(ObjectType objtype, ObjectWithArgs *func, bool missing_ok)
 	{
 		nargs = func->args_unspecified ? -1 : raw_argcount;
 		oid = LookupFuncNameInternal(func->args_unspecified ? objtype : OBJECT_ROUTINE,
-									func->objname, nargs, raw_argoids,
-									false, missing_ok, &lookupError);
+									 func->objname, nargs, raw_argoids,
+									 false, missing_ok, &lookupError);
 	}
 
 	/*
@@ -2977,4 +2985,3 @@ check_srf_call_placement(ParseState *pstate, Node *last_srf, int location)
 						ParseExprKindName(pstate->p_expr_kind)),
 				 parser_errposition(pstate, location)));
 }
-

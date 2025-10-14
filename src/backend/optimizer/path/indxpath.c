@@ -3028,8 +3028,13 @@ match_funcclause_to_indexcol(PlannerInfo *root,
 	int			indexarg;
 	ListCell   *lc;
 
+	/*
+	 * Only functions originating from pg_proc are eligible here.
+	 * Subprocedure/package calls are not supported for index-qual matching
+	 * and should never reach this path.
+	 */
 	if (!FUNC_EXPR_FROM_PG_PROC(clause->function_from))
-		elog(ERROR, "invalid funcexpr, because it is a subproc");
+		elog(ERROR, "invalid FuncExpr: subprocedure/package calls are not supported for index-qual matching");
 
 	/*
 	 * We have no built-in intelligence about function clauses, but if there's

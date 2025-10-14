@@ -1002,7 +1002,7 @@ ExplainPrintSerialize(ExplainState *es, SerializeMetrics *metrics)
 {
 	const char *format;
 
-	/* We shouldn't get called for EXPLAIN_SERIALIZE_NONE */
+/* Must not be called for EXPLAIN_SERIALIZE_NONE */
 	if (es->serialize == EXPLAIN_SERIALIZE_TEXT)
 		format = "text";
 	else
@@ -1343,7 +1343,7 @@ plan_is_disabled(Plan *plan)
  * (eg, "Outer", "Inner"); it can be null at top level.  plan_name is an
  * optional name to be attached to the node.
  *
- * In text format, es->indent is controlled in this function since we only
+ * In text format, es->indent is controlled here since we only
  * want it to change at plan-node boundaries (but a few subroutines will
  * transiently increment it).  In non-text formats, es->indent corresponds
  * to the nesting depth of logical output groups, and therefore is controlled
@@ -1699,7 +1699,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			{
 				BitmapIndexScan *bitmapindexscan = (BitmapIndexScan *) plan;
 				const char *indexname =
-				explain_get_index_name(bitmapindexscan->indexid);
+					explain_get_index_name(bitmapindexscan->indexid);
 
 				if (es->format == EXPLAIN_FORMAT_TEXT)
 					appendStringInfo(es->str, " on %s",
@@ -3116,13 +3116,12 @@ show_sort_info(SortState *sortstate, ExplainState *es)
 	}
 
 	/*
-	 * You might think we should just skip this stanza entirely when
-	 * es->hide_workers is true, but then we'd get no sort-method output at
-	 * all.  We have to make it look like worker 0's data is top-level data.
-	 * This is easily done by just skipping the OpenWorker/CloseWorker calls.
-	 * Currently, we don't worry about the possibility that there are multiple
-	 * workers in such a case; if there are, duplicate output fields will be
-	 * emitted.
+	 * It might seem better to skip this stanza entirely when es->hide_workers
+	 * is true, but then we'd get no sort-method output at all.  We have to
+	 * make it look like worker 0's data is top-level data. This is easily
+	 * done by just skipping the OpenWorker/CloseWorker calls. Currently, we
+	 * don't worry about the possibility that there are multiple workers in
+	 * such a case; if there are, duplicate output fields will be emitted.
 	 */
 	if (sortstate->shared_info != NULL)
 	{
@@ -3330,7 +3329,7 @@ show_incremental_sort_info(IncrementalSortState *incrsortstate,
 		for (n = 0; n < incrsortstate->shared_info->num_workers; n++)
 		{
 			IncrementalSortInfo *incsort_info =
-			&incrsortstate->shared_info->sinfo[n];
+				&incrsortstate->shared_info->sinfo[n];
 
 			/*
 			 * If a worker hasn't processed any sort groups at all, then
@@ -4831,7 +4830,7 @@ ExplainCustomChildren(CustomScanState *css, List *ancestors, ExplainState *es)
 {
 	ListCell   *cell;
 	const char *label =
-	(list_length(css->custom_ps) != 1 ? "children" : "child");
+		(list_length(css->custom_ps) != 1 ? "children" : "child");
 
 	foreach(cell, css->custom_ps)
 		ExplainNode((PlanState *) lfirst(cell), ancestors, label, NULL, es);

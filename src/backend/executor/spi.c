@@ -1237,7 +1237,7 @@ SPI_getvalue(HeapTuple tuple, TupleDesc tupdesc, int fnumber)
 	Oid			typoid,
 				foutoid;
 	bool		typisvarlena;
-	char		*value;
+	char	   *value;
 
 	SPI_result = 0;
 
@@ -1259,9 +1259,7 @@ SPI_getvalue(HeapTuple tuple, TupleDesc tupdesc, int fnumber)
 
 	getTypeOutputInfo(typoid, &foutoid, &typisvarlena);
 
-	/*
-	 * Compatible oracle , pass typmod to output function
-	 */
+	/* Oracle compatibility: pass typmod to the output function */
 	if (fnumber > 0 &&
 		ORA_PARSER == compatible_db &&
 		(typoid == YMINTERVALOID ||
@@ -3406,7 +3404,7 @@ SPI_register_trigger_data(TriggerData *tdata)
 	if (tdata->tg_newtable)
 	{
 		EphemeralNamedRelation enr =
-		palloc(sizeof(EphemeralNamedRelationData));
+			palloc(sizeof(EphemeralNamedRelationData));
 		int			rc;
 
 		enr->md.name = tdata->tg_trigger->tgnewtable;
@@ -3423,7 +3421,7 @@ SPI_register_trigger_data(TriggerData *tdata)
 	if (tdata->tg_oldtable)
 	{
 		EphemeralNamedRelation enr =
-		palloc(sizeof(EphemeralNamedRelationData));
+			palloc(sizeof(EphemeralNamedRelationData));
 		int			rc;
 
 		enr->md.name = tdata->tg_trigger->tgoldtable;
@@ -3462,7 +3460,7 @@ SPI_remember_func(void *func)
 /*
  * get current_func according to level
  */
-void*
+void *
 SPI_get_func(int level)
 {
 	if (level > _SPI_connected ||
@@ -3491,5 +3489,3 @@ Ora_spi_saved_memorycontext(void)
 {
 	return _SPI_current->savedcxt;
 }
-
-
