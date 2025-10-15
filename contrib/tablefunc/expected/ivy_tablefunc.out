@@ -14,6 +14,7 @@ SELECT avg(normal_rand)::int, count(*) FROM normal_rand(-1, 250, 0.2);
 ERROR:  number of rows cannot be negative
 --
 -- crosstab()
+-- Use 'orarowid' instead of 'rowid' to avoid conflict with system column
 --
 CREATE TABLE ct(id int, rowclass text, orarowid text, attribute text, val text);
 \copy ct from 'data/ct.data'
