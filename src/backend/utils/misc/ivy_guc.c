@@ -187,9 +187,19 @@ static struct config_bool Ivy_ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	/*
+ 	 * ivorysql.default_with_rowids
+	 *
+	 * When enabled, all newly created tables will automatically include
+	 * an Oracle-compatible ROWID pseudo-column. This provides compatibility
+	 * with Oracle applications that rely on ROWID for row identification.
+	 *
+	 * Default: off
+	 * Context: USERSET (can be changed by any user)
+ 	 */
 	{
 		{"ivorysql.default_with_rowids", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("Auto add rowid column for create new table."),
+			gettext_noop("Automatically add rowid column when creating new tables."),
 			NULL,
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
