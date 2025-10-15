@@ -221,22 +221,6 @@ extern PLiSQL_function * plisql_get_subproc_func(FunctionCallInfo fcinfo,
 extern void plisql_init_subprocfunc_globalvar(PLiSQL_execstate *estate,
 							FunctionCallInfo fcinfo);
 
-extern void plisql_assign_out_subprocfunc_globalvar(PLiSQL_execstate * estate,
-													FunctionCallInfo fcinfo);
-extern int	plisql_subprocfunc_ref(ParseState *pstate, List *funcname,
-								   List **fargs,	/* return value */
-								   List *fargnames, int nargs, Oid *argtypes,
-								   bool expand_variadic, bool expand_defaults,
-								   bool include_out_arguments,
-								   Oid *funcid, /* return value */
-								   Oid *rettype,	/* return value */
-								   bool *retset,	/* return value */
-								   int *nvargs, /* return value */
-								   Oid *vatype, /* return value */
-								   Oid **true_typeids,	/* return value */
-								   List **argdefaults,	/* return value */
-								   void **pfunc);	/* return value */
-
 extern void plisql_assign_out_subprocfunc_globalvar(PLiSQL_execstate *estate,
 							FunctionCallInfo fcinfo);
 extern int plisql_subprocfunc_ref(ParseState *pstate, List *funcname,
