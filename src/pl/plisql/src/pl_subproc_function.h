@@ -281,4 +281,3 @@ extern PLiSQL_function* plisql_dynamic_compile_subproc(FunctionCallInfo fcinfo,
 
 #endif   /* PL_SUBPROC_FUNCTION_H */
 
-#endif							/* PL_SUBPROC_FUNCTION_H */
