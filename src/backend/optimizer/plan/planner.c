@@ -1161,7 +1161,6 @@ subquery_planner(PlannerGlobal *glob, Query *parse, char *plan_name,
 	else
 		root->wt_param_id = -1;
 	root->non_recursive_path = NULL;
-	root->partColsUpdated = false;
 
 	/*
 	 * Create the top-level join domain.  This won't have valid contents until
@@ -2551,7 +2550,6 @@ grouping_planner(PlannerInfo *root, double tuple_fraction,
 										parse->canSetTag,
 										parse->resultRelation,
 										rootRelation,
-										root->partColsUpdated,
 										resultRelations,
 										updateColnosLists,
 										withCheckOptionLists,
