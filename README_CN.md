@@ -18,7 +18,7 @@ IvorySQL 项目采用 Apache 2.0 许可协议发布，并鼓励各种形式的�
 
 ## 开发者代码格式化
 - 提交前自动格式化（推荐）：
-  - 已克隆仓库：在仓库根目录执行 `make enable-git-hooks`（或 `bash tools/enable-git-hooks.sh`）
+  - 已克隆仓库：在仓库根目录执行 `make code-format`（或 `bash tools/enable-git-hooks.sh`）
 - 提交时行为：Git 钩子会自动用 `pgindent` 格式化已暂存的 C/C++ 文件并回加到暂存区，未通过二次校验会阻止提交。
 - PR 阶段：Cirrus 将运行 `FormatCheck`（pgindent --check）对差异文件做只读校验。
 

@@ -576,7 +576,7 @@ char	   *external_pid_file;
 
 char	   *application_name;
 
-int	   nls_length_semantics = NLS_LENGTH_BYTE;
+int			nls_length_semantics = NLS_LENGTH_BYTE;
 char	   *nls_date_format = "YYYY-MM-DD";
 char	   *nls_timestamp_format = "YYYY-MM-DD HH24:MI:SS.FF6";
 char	   *nls_timestamp_tz_format = "YYYY-MM-DD HH24:MI:SS.FF6 TZH:TZM";
@@ -2151,9 +2151,9 @@ struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
-	#define IVY_GUC_BOOL_PARAMS
-	#include "ivy_guc.c"
-	#undef IVY_GUC_BOOL_PARAMS
+#define IVY_GUC_BOOL_PARAMS
+#include "ivy_guc.c"
+#undef IVY_GUC_BOOL_PARAMS
 	{
 		{"md5_password_warnings", PGC_USERSET, CONN_AUTH_AUTH,
 			gettext_noop("Enables deprecation warnings for MD5 passwords."),
@@ -3889,9 +3889,9 @@ struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
-	#define IVY_GUC_INT_PARAMS
-	#include "ivy_guc.c"
-	#undef IVY_GUC_INT_PARAMS
+#define IVY_GUC_INT_PARAMS
+#include "ivy_guc.c"
+#undef IVY_GUC_INT_PARAMS
 
 	/* End-of-list marker */
 	{
@@ -4174,9 +4174,9 @@ struct config_real ConfigureNamesReal[] =
 		NULL, NULL, NULL
 	},
 
-	#define IVY_GUC_REAL_PARAMS
-	#include "ivy_guc.c"
-	#undef IVY_GUC_REAL_PARAMS
+#define IVY_GUC_REAL_PARAMS
+#include "ivy_guc.c"
+#undef IVY_GUC_REAL_PARAMS
 	{
 		{"vacuum_max_eager_freeze_failure_rate", PGC_USERSET, VACUUM_FREEZING,
 			gettext_noop("Fraction of pages in a relation vacuum can scan and fail to freeze before disabling eager scanning."),
@@ -4987,9 +4987,9 @@ struct config_string ConfigureNamesString[] =
 		check_synchronized_standby_slots, assign_synchronized_standby_slots, NULL
 	},
 
-	#define IVY_GUC_STRING_PARAMS
-	#include "ivy_guc.c"
-	#undef IVY_GUC_STRING_PARAMS
+#define IVY_GUC_STRING_PARAMS
+#include "ivy_guc.c"
+#undef IVY_GUC_STRING_PARAMS
 	{
 		{"restrict_nonsystem_relation_kind", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Prohibits access to non-system relations of specified kinds."),
@@ -5131,8 +5131,8 @@ struct config_enum ConfigureNamesEnum[] =
 
 	{
 		{"icu_validation_level", PGC_USERSET, CLIENT_CONN_LOCALE,
-		 gettext_noop("Log level for reporting invalid ICU locale strings."),
-		 NULL
+			gettext_noop("Log level for reporting invalid ICU locale strings."),
+			NULL
 		},
 		&icu_validation_level,
 		WARNING, icu_validation_level_options,
@@ -5447,9 +5447,9 @@ struct config_enum ConfigureNamesEnum[] =
 		NULL, NULL, NULL
 	},
 
-	#define IVY_GUC_ENUM_PARAMS
-	#include "ivy_guc.c"
-	#undef IVY_GUC_ENUM_PARAMS
+#define IVY_GUC_ENUM_PARAMS
+#include "ivy_guc.c"
+#undef IVY_GUC_ENUM_PARAMS
 	{
 		{"io_method", PGC_POSTMASTER, RESOURCES_IO,
 			gettext_noop("Selects the method for executing asynchronous I/O."),

@@ -1,12 +1,12 @@
 /*-------------------------------------------------------------------------
  * Copyright 2025 IvorySQL Global Development Team
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -163,8 +163,8 @@ OraAdjustTimestampForTypmod(Timestamp *time, int32 typmod)
 		if (typmod < 0 || typmod > MAX_TIMESTAMP_PRECISION)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				  errmsg("timestamp(%d) precision must be between %d and %d",
-						 typmod, 0, MAX_TIMESTAMP_PRECISION)));
+					 errmsg("timestamp(%d) precision must be between %d and %d",
+							typmod, 0, MAX_TIMESTAMP_PRECISION)));
 
 		/*
 		 * Note: this round-to-nearest code is not completely consistent about
@@ -214,15 +214,15 @@ anytimestamp_typmodin(bool istz, ArrayType *ta)
 	{
 		ereport(WARNING,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-		   errmsg("TIMESTAMP(%d)%s effective number of fractional seconds is 6,the part of excess is 0",
-				  *tl, (istz ? " WITH TIME ZONE" : ""))));
+				 errmsg("TIMESTAMP(%d)%s effective number of fractional seconds is 6, the part of excess is 0",
+						*tl, (istz ? " WITH TIME ZONE" : ""))));
 		typmod = *tl;
 	}
 	else if (*tl > ORACLE_MAX_TIMESTAMP_PRECISION)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-		   errmsg("the precision of datetime out of rang")));	
+				 errmsg("the precision of datetime out of range")));
 	}
 	else
 		typmod = *tl;
@@ -288,7 +288,7 @@ oratimestamp_in(PG_FUNCTION_ARGS)
 	Oid			typelem = PG_GETARG_OID(1);
 #endif
 	int32		typmod = PG_GETARG_INT32(2);
-	Oid		collid = PG_GET_COLLATION();
+	Oid			collid = PG_GET_COLLATION();
 	Timestamp	result;
 	struct pg_tm tm;
 	fsec_t		fsec;
@@ -296,9 +296,9 @@ oratimestamp_in(PG_FUNCTION_ARGS)
 	if (strcmp(nls_timestamp_format, "pg") == 0 || DATETIME_IGNORE_NLS(datetime_ignore_nls_mask, ORATIMESTAMP_MASK))
 	{
 		return DirectFunctionCall3(timestamp_in,
-									CStringGetDatum(str),
-									ObjectIdGetDatum(InvalidOid),
-									Int32GetDatum(typmod));
+								   CStringGetDatum(str),
+								   ObjectIdGetDatum(InvalidOid),
+								   Int32GetDatum(typmod));
 	}
 	else
 	{
@@ -330,8 +330,8 @@ oratimestamp_out(PG_FUNCTION_ARGS)
 		text	   *date_str;
 
 		date_str = DatumGetTextP(DirectFunctionCall2(timestamp_to_char,
-								  TimestampGetDatum(timestamp),
-								  PointerGetDatum(cstring_to_text(nls_timestamp_format))));
+													 TimestampGetDatum(timestamp),
+													 PointerGetDatum(cstring_to_text(nls_timestamp_format))));
 
 		result = text_to_cstring(date_str);
 		PG_RETURN_CSTRING(result);
@@ -717,7 +717,7 @@ oratimestamp_cmp_oratimestampltz(PG_FUNCTION_ARGS)
 }
 
 /*****************************************************************************
- *	 Hash index support procedure 
+ *	 Hash index support procedure
  *****************************************************************************/
 Datum
 oratimestamp_hash(PG_FUNCTION_ARGS)
@@ -775,7 +775,7 @@ oratimestamp(PG_FUNCTION_ARGS)
 	/* No work if typmod is invalid */
 	if (typmod == -1)
 		PG_RETURN_TIMESTAMP(source);
-		
+
 	OraAdjustTimestampForTypmod(&source, typmod);
 	PG_RETURN_TIMESTAMP(source);
 }
@@ -851,7 +851,7 @@ Datum
 oradate_mi_oratimestampltz(PG_FUNCTION_ARGS)
 {
 	Timestamp	dt1 = PG_GETARG_TIMESTAMP(0);
-	TimestampTz	dt2 = PG_GETARG_TIMESTAMP(1);
+	TimestampTz dt2 = PG_GETARG_TIMESTAMP(1);
 	Timestamp	timestamp;
 	struct pg_tm tt,
 			   *tm = &tt;
@@ -883,7 +883,7 @@ oradate_mi_oratimestampltz(PG_FUNCTION_ARGS)
 	result->day = 0;
 
 	result = DatumGetIntervalP(DirectFunctionCall1(interval_justify_hours,
-												 IntervalPGetDatum(result)));
+												   IntervalPGetDatum(result)));
 
 	PG_RETURN_INTERVAL_P(result);
 }
@@ -897,7 +897,7 @@ oradate_mi_oratimestampltz(PG_FUNCTION_ARGS)
 Datum
 oratimestampltz_mi_oradate(PG_FUNCTION_ARGS)
 {
-	TimestampTz	dt1 = PG_GETARG_TIMESTAMP(0);
+	TimestampTz dt1 = PG_GETARG_TIMESTAMP(0);
 	Timestamp	dt2 = PG_GETARG_TIMESTAMP(1);
 	Timestamp	timestamp;
 	struct pg_tm tt,
@@ -930,7 +930,7 @@ oratimestampltz_mi_oradate(PG_FUNCTION_ARGS)
 	result->day = 0;
 
 	result = DatumGetIntervalP(DirectFunctionCall1(interval_justify_hours,
-												 IntervalPGetDatum(result)));
+												   IntervalPGetDatum(result)));
 
 	PG_RETURN_INTERVAL_P(result);
 }
@@ -995,7 +995,7 @@ oratimestamp_mi(PG_FUNCTION_ARGS)
 	result->day = 0;
 
 	result = DatumGetIntervalP(DirectFunctionCall1(interval_justify_hours,
-												 IntervalPGetDatum(result)));
+												   IntervalPGetDatum(result)));
 
 	PG_RETURN_INTERVAL_P(result);
 }
@@ -1050,7 +1050,7 @@ oradate_pl_interval(PG_FUNCTION_ARGS)
 
 			/* Compatible oracle oradate dont have fsec */
 			fsec = 0;
-			
+
 			if (tm2timestamp(tm, fsec, NULL, &timestamp) != 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
@@ -1076,7 +1076,7 @@ oradate_pl_interval(PG_FUNCTION_ARGS)
 
 			/* Compatible oracle oradate dont have fsec */
 			fsec = 0;
-			
+
 			if (tm2timestamp(tm, fsec, NULL, &timestamp) != 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
@@ -1456,7 +1456,7 @@ oradate_mi_number(PG_FUNCTION_ARGS)
 	PG_RETURN_TIMESTAMP(result);
 }
 
-/* 
+/*
  * Compatible oracle
  * The arithmetic operation of oratimestamp plus number, Result
  * type is oradate.
@@ -1481,7 +1481,7 @@ oratimestamp_pl_number(PG_FUNCTION_ARGS)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 					 errmsg("timestamp out of range")));
-					 
+
 		/* Convert timestamp to date ignore time zone and fractional second */
 		if (tm2timestamp(tm, 0, NULL, &result) != 0)
 			ereport(ERROR,
@@ -1490,14 +1490,14 @@ oratimestamp_pl_number(PG_FUNCTION_ARGS)
 
 		addend = DatumGetFloat8(DirectFunctionCall1(numeric_float8, NumericGetDatum(num)));
 		addend = rint(addend * USECS_PER_DAY);
-		
+
 		result = result + addend;
 	}
 
 	PG_RETURN_TIMESTAMP(result);
 }
 
-/* 
+/*
  * Compatible oracle
  * The arithmetic operation of number plus oratimestamp, Result
  * type is oradate.
@@ -1531,7 +1531,7 @@ number_pl_oratimestamp(PG_FUNCTION_ARGS)
 
 		addend = DatumGetFloat8(DirectFunctionCall1(numeric_float8, NumericGetDatum(num)));
 		addend = rint(addend * USECS_PER_DAY);
-		
+
 		result = result + addend;
 	}
 
@@ -1588,7 +1588,7 @@ oratimestamp_mi_number(PG_FUNCTION_ARGS)
 Datum
 oratimestamptz_mi_number(PG_FUNCTION_ARGS)
 {
-	TimestampTz	timestamp = PG_GETARG_TIMESTAMPTZ(0);
+	TimestampTz timestamp = PG_GETARG_TIMESTAMPTZ(0);
 	Numeric		num = PG_GETARG_NUMERIC(1);
 	float8		mi;
 	Timestamp	result;
@@ -1605,7 +1605,7 @@ oratimestamptz_mi_number(PG_FUNCTION_ARGS)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 					 errmsg("timestamp out of range")));
-					 
+
 		/* Convert timestamp to date ignore fractional second */
 		if (tm2timestamp(tm, 0, NULL, &result) != 0)
 			ereport(ERROR,
@@ -1628,7 +1628,7 @@ oratimestamptz_mi_number(PG_FUNCTION_ARGS)
 Datum
 oratimestamptz_pl_number(PG_FUNCTION_ARGS)
 {
-	TimestampTz	timestamp = PG_GETARG_TIMESTAMPTZ(0);
+	TimestampTz timestamp = PG_GETARG_TIMESTAMPTZ(0);
 	Numeric		num = PG_GETARG_NUMERIC(1);
 	float8		addend;
 	Timestamp	result;
@@ -1646,7 +1646,7 @@ oratimestamptz_pl_number(PG_FUNCTION_ARGS)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 					 errmsg("timestamp out of range")));
-					 
+
 		/* Convert timestamp to date ignore time zone and fractional second */
 		if (tm2timestamp(tm, 0, NULL, &result) != 0)
 			ereport(ERROR,
@@ -1655,7 +1655,7 @@ oratimestamptz_pl_number(PG_FUNCTION_ARGS)
 
 		addend = DatumGetFloat8(DirectFunctionCall1(numeric_float8, NumericGetDatum(num)));
 		addend = rint(addend * USECS_PER_DAY);
-		
+
 		result = result + addend;
 	}
 
@@ -1671,7 +1671,7 @@ Datum
 number_pl_oratimestamptz(PG_FUNCTION_ARGS)
 {
 	Numeric		num = PG_GETARG_NUMERIC(0);
-	TimestampTz	timestamp = PG_GETARG_TIMESTAMPTZ(1);
+	TimestampTz timestamp = PG_GETARG_TIMESTAMPTZ(1);
 	float8		addend;
 	Timestamp	result;
 	struct pg_tm tt,
@@ -1697,10 +1697,9 @@ number_pl_oratimestamptz(PG_FUNCTION_ARGS)
 
 		addend = DatumGetFloat8(DirectFunctionCall1(numeric_float8, NumericGetDatum(num)));
 		addend = rint(addend * USECS_PER_DAY);
-		
+
 		result = result + addend;
 	}
 
 	PG_RETURN_TIMESTAMP(result);
 }
-
