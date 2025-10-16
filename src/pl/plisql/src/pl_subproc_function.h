@@ -35,8 +35,10 @@
 #define PL_SUBPROC_FUNCTION_H
 #include "funcapi.h"
 #include "parser/parse_func.h"
+
 /* the max nested level in inline function */
 #define FUNC_MAX_NEST_LEVEL 200
+
 enum
 {
 	ARGMODE_IN,					/* IN parameter */
@@ -191,24 +193,21 @@ extern void plisql_finish_subproc_func(PLiSQL_function * function);
 extern void plisql_push_subproc_func(void);
 extern void plisql_pop_subproc_func(void);
 
-extern void
-			plisql_build_variable_from_funcargs(PLiSQL_subproc_function * subprocfunc,
-												bool forValidator, FunctionCallInfo fcinfo,
-												int found_varno);
-extern void plisql_set_subprocfunc_action(PLiSQL_subproc_function * inlinefunc,
-										  PLiSQL_stmt_block * action);
-extern void
-			plisql_check_subprocfunc_properties(PLiSQL_subproc_function * subprocfunc,
-												List *properties, bool isdeclare);
-extern PLiSQL_subproc_function *
-plisql_build_subproc_function(char *funcname, List *args, PLiSQL_type * rettype,
-							  int location);
-extern void plisql_add_subproc_function(PLiSQL_subproc_function * inlinefunc);
+extern void plisql_build_variable_from_funcargs(PLiSQL_subproc_function *subprocfunc,
+							bool forValidator, FunctionCallInfo fcinfo,
+							int found_varno);
+extern void plisql_set_subprocfunc_action(PLiSQL_subproc_function *inlinefunc,
+							PLiSQL_stmt_block *action);
+extern void plisql_check_subprocfunc_properties(PLiSQL_subproc_function *subprocfunc,
+							List *properties, bool isdeclare);
+extern PLiSQL_subproc_function *plisql_build_subproc_function(char *funcname, List *args,
+							PLiSQL_type *rettype, int location); 
+extern void plisql_add_subproc_function(PLiSQL_subproc_function *inlinefunc);
 extern void plisql_register_internal_func(void);
 extern void plisql_unregister_internal_func(void);
 extern TupleDesc plisql_get_func_result_tupdesc(FuncExpr *fexpr);
-extern int	get_subprocfunc_arg_info(FuncExpr *funcexpr, Oid **p_argtypes,
-									 char ***p_argnames, char **p_argmodes);
+extern int get_subprocfunc_arg_info(FuncExpr *funcexpr, Oid **p_argtypes,
+							char ***p_argnames, char **p_argmodes);
 extern char *plisql_get_func_name(FuncExpr *fexpr);
 extern TypeFuncClass
 			plisql_get_subprocfunc_result_type(FuncExpr *fexpr, ReturnSetInfo *rsinfo,

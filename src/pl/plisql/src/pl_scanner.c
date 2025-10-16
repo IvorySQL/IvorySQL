@@ -11,7 +11,6 @@
  * IDENTIFICATION
  *	  src/pl/plisql/src/pl_scanner.c
  *
- * add the file for requirement "SQL PARSER"
  *
  *-------------------------------------------------------------------------
  */
@@ -107,8 +106,7 @@ typedef struct
  * pointer around is great enough to not want to do it without need.
  */
 
-/* The stuff the core lexer needs */
-/* static ora_core_yyscan_t yyscanner = NULL; */
+/* The stuff that the core lexer needs */
 static ora_core_yy_extra_type core_yy_extra;
 
 /* The original input string */
@@ -768,7 +766,7 @@ plisql_scanner_finish(yyscan_t yyscanner)
 }
 
 /*
- * saved yylex global variable
+ * yylex global variable
  */
 void *
 plisql_get_yylex_global_proper(void)

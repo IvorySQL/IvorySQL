@@ -2739,11 +2739,12 @@ exec_stmt_case(PLiSQL_execstate * estate, PLiSQL_stmt_case * stmt)
 			MemoryContext oldctx = NULL;
 
 			/*
-			 * package'var doesn't use plisql_copy_datum so we should swith
-			 * its function memorycontext maybe save origin datatype, but no
-			 * place to store it and when to recover we must not free its
-			 * origin datatype, maybe its is referenced by other place like
-			 * use define type
+			 * package'var doesn't use plisql_copy_datum, 
+			 * so we should switch its function memory context.
+			 * maybe save origin datatype, but no place
+			 * to store it and when to recover, 
+			 * we must not free its origin datatype, maybe it
+			 * is referenced by other place like user defined type.
 			 */
 			if (OidIsValid(t_var->pkgoid))
 			{
@@ -3418,10 +3419,7 @@ exec_stmt_return(PLiSQL_execstate * estate, PLiSQL_stmt_return * stmt)
 			 */
 			exec_assign_expr(estate, retvar, stmt->expr);
 
-			/*
-			 * the return stmt is contructed combinding all OUT parameters and
-			 * function return value
-			 */
+			/* the return stmt is constructed combinding all OUT parameters and function return value */
 			return exec_stmt_return(estate, (PLiSQL_stmt_return *)
 									llast(estate->func->action->body));
 		}
@@ -3503,10 +3501,9 @@ exec_stmt_return(PLiSQL_execstate * estate, PLiSQL_stmt_return * stmt)
 				}
 				break;
 
-				/*
-				 * there maybe return a package.var.id, so should handle
-				 * special
-				 */
+			/*
+			 * there may return a package.var.id, handle it specially.
+			 */
 			case PLISQL_DTYPE_RECFIELD:
 				{
 					int32		rettypmod;
@@ -5087,7 +5084,7 @@ exec_stmt_open(PLiSQL_execstate * estate, PLiSQL_stmt_open * stmt)
 	}
 
 	/*
-	 * pakcag global cursor var should holdable
+	 * package global cursor var should be holdable
 	 */
 	if (is_package_global_var(curvar))
 		portal->cursorOptions = portal->cursorOptions | CURSOR_OPT_HOLD;
@@ -5997,7 +5994,7 @@ plisql_exec_get_datum_type_info(PLiSQL_execstate * estate,
 /*
 * plisql_assign_in_global_var is similar to
 * exec_assign_value, we assign subproc global var
-* from its parents'var
+* with its parents'var
 */
 void
 plisql_assign_in_global_var(PLiSQL_execstate * estate,
@@ -6018,7 +6015,7 @@ plisql_assign_in_global_var(PLiSQL_execstate * estate,
 	Assert(parestate->datums[dno]->dtype != PLISQL_DTYPE_PACKAGE_DATUM);
 	Assert(!OidIsValid(parestate->datums[dno]->pkgoid));
 
-	/* get origin value */
+	/* get original value */
 	exec_eval_datum(parestate, parestate->datums[dno],
 					&typeid, &typetypmod,
 					&value, &isnull);
@@ -6030,12 +6027,12 @@ plisql_assign_in_global_var(PLiSQL_execstate * estate,
 	 */
 	if (parestate->datums[dno]->dtype == PLISQL_DTYPE_VAR)
 		value = MakeExpandedObjectReadOnly(value,
-										   isnull,
-										   ((PLiSQL_var *) parestate->datums[dno])->datatype->typlen);
+							isnull,
+							((PLiSQL_var *) parestate->datums[dno])->datatype->typlen);
 	else if (parestate->datums[dno]->dtype == PLISQL_DTYPE_REC)
 		value = MakeExpandedObjectReadOnly(value,
-										   isnull,
-										   -1);
+							isnull,
+							-1);
 
 	exec_assign_value(estate, estate->datums[dno],
 					  value, isnull, typeid, typetypmod);
@@ -6063,7 +6060,7 @@ plisql_assign_out_global_var(PLiSQL_execstate * estate,
 	Assert(parestate->datums[dno]->dtype != PLISQL_DTYPE_PACKAGE_DATUM);
 	Assert(!OidIsValid(parestate->datums[dno]->pkgoid));
 
-	/* get origin value */
+	/* get original value */
 	exec_eval_datum(estate, estate->datums[dno],
 					&typeid, &typetypmod,
 					&value, &isnull);
@@ -6599,7 +6596,7 @@ exec_eval_simple_expr(PLiSQL_execstate * estate,
 		Assert(cplan != NULL);
 
 		/*
-		 * This test probably can't fail either, but if it does, cope by
+		 * This test probably wouldn't fail either, but if it does, cope by
 		 * declaring the plan to be non-simple.  On success, we'll acquire a
 		 * refcount on the new plan, stored in simple_eval_resowner.
 		 */
@@ -6764,7 +6761,7 @@ setup_param_list(PLiSQL_execstate * estate, PLiSQL_expr * expr)
 		/*
 		 * Also make sure this is set before parser hooks need it.  There is
 		 * no need to save and restore, since the value is always correct once
-		 * set.  (Should be set already, but let's be sure.)
+		 * set.  (Should be set already, but let's make sure.)
 		 */
 		expr->func = estate->func;
 	}
@@ -6825,7 +6822,7 @@ plisql_param_fetch(ParamListInfo params,
 	if (!bms_is_member(dno, expr->paramnos))
 		ok = false;
 
-	/* may be come from a package var */
+	/* maybe come from a package var */
 	if (datum->dtype == PLISQL_DTYPE_PACKAGE_DATUM)
 	{
 		PLiSQL_pkg_datum *pkgdatum = (PLiSQL_pkg_datum *) datum;

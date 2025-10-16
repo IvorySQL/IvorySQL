@@ -355,9 +355,8 @@ typedef struct PLiSQL_var
 	int			cursor_explicit_argrow;
 	int			cursor_options;
 
-	char		info;			/* record the argument mode which may be IN,
-								 * OUT or IN OUT. If variable is built in
-								 * plsql block local, it is empty */
+	char		info; /* record the argument mode which may be IN, OUT or IN OUT.
+			       * If variable is built in plisql block locally, it is empty */
 
 	/* Fields below here can change at runtime */
 
@@ -441,9 +440,8 @@ typedef struct PLiSQL_rec
 	/* RECFIELDs for this record are chained together for easy access */
 	int			firstfield;		/* dno of first RECFIELD, or -1 if none */
 
-	char		info;			/* record the argument mode which may be IN,
-								 * OUT or IN OUT. If variable is built in
-								 * plsql block local, it is empty */
+	char		info;  /* record the argument mode which may be IN, OUT or IN OUT.
+				* If variable is built in plisql block locally, it is empty */
 
 	/* Fields below here can change at runtime */
 
@@ -973,12 +971,12 @@ typedef struct PLiSQL_func_hashkey
 	bool		isTrigger;		/* true if called as a DML trigger */
 	bool		isEventTrigger; /* true if called as an event trigger */
 
-	/* be careful that pad bytes in this struct get zeroed! */
+	/* be careful that pad bytes in this struct may get zeroed! */
 
 	/*
 	 * For a trigger function, the OID of the trigger is part of the hash key
 	 * --- we want to compile the trigger function separately for each trigger
-	 * it is used with, in case the rowtype or transition table names are
+	 * it uses with, in case the rowtype or transition table names are
 	 * different.  Zero if not called as a DML trigger.
 	 */
 	Oid			trigOid;
@@ -1171,8 +1169,7 @@ typedef struct PLiSQL_execstate
  * variable "PLiSQL_plugin" and set it to point to a PLiSQL_plugin struct.
  * Typically the struct could just be static data in the plugin library.
  * We expect that a plugin would do this at library load time (_PG_init()).
- * It must also be careful to set the rendezvous variable back to NULL
- * if it is unloaded (_PG_fini()).
+ * Be careful to set the rendezvous variable back to NULL if it is unloaded (_PG_fini()).
  *
  * This structure is basically a collection of function pointers --- at
  * various interesting points in pl_exec.c, we call these functions
@@ -1246,7 +1243,7 @@ typedef struct PLwdatum
 	char	   *ident;			/* valid if simple name */
 	bool		quoted;
 	List	   *idents;			/* valid if composite name */
-	int			nname_used;		/* to find datum, we match idents n names */
+	int			nname_used;		/* to find datum, we match n names */
 } PLwdatum;
 
 union YYSTYPE;
