@@ -10,7 +10,7 @@
  * IDENTIFICATION
  *	  src/pl/plisql/src/pl_funcs.c
  *
- * add the file for requirement "SQL PARSER"
+ * add the file for "SQL PARSER"
  *
  *-------------------------------------------------------------------------
  */
@@ -792,8 +792,8 @@ plisql_free_function_memory(PLiSQL_function * func,
 			subprocfunc->poly_tab == NULL)
 		{
 			/*
-			 * if no action, the lastoutvardno and lastoutinlinefno is invalid
-			 * we must not free its context
+			 * if there is no action, the lastoutvardno and lastoutinlinefno must be invalid,
+			 * we should not free its context.
 			 */
 			if (subprocfunc->function->action != NULL)
 				plisql_free_function_memory(subprocfunc->function, subprocfunc->lastoutvardno,
@@ -801,15 +801,15 @@ plisql_free_function_memory(PLiSQL_function * func,
 		}
 		else
 		{
-			/* free inline function from  hashtable */
+			/* free inline function from hashtable */
 			HASH_SEQ_STATUS status;
 			plisql_HashEnt *entry;
 
 			Assert(subprocfunc->poly_tab != NULL);
 
 			/*
-			 * if no action, the lastoutvardno and lastoutinlinefno is invalid
-			 * we must not free its context
+			 * if there is no action, the lastoutvardno and lastoutinlinefno must be invalid,
+			 * we should not free its context.
 			 */
 			if (subprocfunc->function->action != NULL)
 			{

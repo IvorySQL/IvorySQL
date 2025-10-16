@@ -13,7 +13,7 @@
  *
  * src/pl/plisql/src/pl_unreserved_kwlist.h
  *
- * add the file for requirement "SQL PARSER"
+ * add the file for "SQL PARSER"
  *
  *-------------------------------------------------------------------------
  */

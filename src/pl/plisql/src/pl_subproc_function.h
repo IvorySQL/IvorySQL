@@ -35,8 +35,10 @@
 #define PL_SUBPROC_FUNCTION_H
 #include "funcapi.h"
 #include "parser/parse_func.h"
+
 /* the max nested level in inline function */
 #define FUNC_MAX_NEST_LEVEL 200
+
 enum
 {
 	ARGMODE_IN,					/* IN parameter */
@@ -139,29 +141,26 @@ typedef struct PLiSQL_function_argitem
 
 typedef struct PLiSQL_subproc_function
 {
-	int			fno;			/* function datum number (dno) */
-	char	   *func_name;		/* function name */
-	List	   *arg;			/* function args; list of
-								 * PLiSQL_function_argitem */
-	List	   *properties;		/* function properties; list of
-								 * PLiSQL_subproc_proper */
+	int		fno;				/* function dno */
+	char	*func_name;				/* function name */
+	List *arg;					/* function'args, list of PLiSQL_function_argitem */
+	List *properties;				/* function propers, list of PLSQL_subproc_proper */
 	PLiSQL_type *rettype;
-	bool		is_proc;		/* whether it is procedure or function */
-	bool		has_poly_argument;	/* whether it has polymorphic argument(s) */
-	char	   *src;			/* source text for polymorphic-arg
-								 * function/procedure block */
-	PLiSQL_function *function;	/* compiled function; actions and datums */
-	bool		has_declare;	/* has DECLARE section */
+	bool		is_proc;			/* wether it is procedure or function */
+	bool		has_poly_argument;		/* wether it has poly argument */
+	char		*src;				/* block src for polymorphic argtype function or procedure */
+	PLiSQL_function *function;			/* function that save action and dautms */
+	bool		has_declare;			/* has declare or not */
 	int			nargdefaults;
-	int			noutargs;		/* number of OUT arguments */
+	int			noutargs;		/* the number of out arguments */
 	int			lastoutvardno;
 	int			lastassignvardno;
-	int			lastoutsubprocfno;	/* last subproc fno usable by this
-									 * function */
-	PLiSQL_nsitem *global_cur;	/* namespace used to search global variables */
-	HTAB	   *poly_tab;		/* hash table for polymorphic arg types */
-	int			location;		/* best error position */
-}			PLiSQL_subproc_function;
+	int			lastoutsubprocfno;	/* the last out subproc fno, which function can use */
+	PLiSQL_nsitem *global_cur;			/* the namespace in which function searches for global var */
+	HTAB		*poly_tab;			/* hash table for polymorphic argtype function or procedure */
+	int			location;		/* nice errors position */
+} PLiSQL_subproc_function;
+
 
 typedef struct PLiSQL_subprocfunc_proper
 {
@@ -191,24 +190,21 @@ extern void plisql_finish_subproc_func(PLiSQL_function * function);
 extern void plisql_push_subproc_func(void);
 extern void plisql_pop_subproc_func(void);
 
-extern void
-			plisql_build_variable_from_funcargs(PLiSQL_subproc_function * subprocfunc,
-												bool forValidator, FunctionCallInfo fcinfo,
-												int found_varno);
-extern void plisql_set_subprocfunc_action(PLiSQL_subproc_function * inlinefunc,
-										  PLiSQL_stmt_block * action);
-extern void
-			plisql_check_subprocfunc_properties(PLiSQL_subproc_function * subprocfunc,
-												List *properties, bool isdeclare);
-extern PLiSQL_subproc_function *
-plisql_build_subproc_function(char *funcname, List *args, PLiSQL_type * rettype,
-							  int location);
-extern void plisql_add_subproc_function(PLiSQL_subproc_function * inlinefunc);
+extern void plisql_build_variable_from_funcargs(PLiSQL_subproc_function *subprocfunc,
+							bool forValidator, FunctionCallInfo fcinfo,
+							int found_varno);
+extern void plisql_set_subprocfunc_action(PLiSQL_subproc_function *inlinefunc,
+							PLiSQL_stmt_block *action);
+extern void plisql_check_subprocfunc_properties(PLiSQL_subproc_function *subprocfunc,
+							List *properties, bool isdeclare);
+extern PLiSQL_subproc_function *plisql_build_subproc_function(char *funcname, List *args,
+							PLiSQL_type *rettype, int location); 
+extern void plisql_add_subproc_function(PLiSQL_subproc_function *inlinefunc);
 extern void plisql_register_internal_func(void);
 extern void plisql_unregister_internal_func(void);
 extern TupleDesc plisql_get_func_result_tupdesc(FuncExpr *fexpr);
-extern int	get_subprocfunc_arg_info(FuncExpr *funcexpr, Oid **p_argtypes,
-									 char ***p_argnames, char **p_argmodes);
+extern int get_subprocfunc_arg_info(FuncExpr *funcexpr, Oid **p_argtypes,
+							char ***p_argnames, char **p_argmodes);
 extern char *plisql_get_func_name(FuncExpr *fexpr);
 extern TypeFuncClass
 			plisql_get_subprocfunc_result_type(FuncExpr *fexpr, ReturnSetInfo *rsinfo,
@@ -222,44 +218,50 @@ extern char plisql_function_from(FunctionCallInfo fcinfo);
 extern PLiSQL_function * plisql_get_subproc_func(FunctionCallInfo fcinfo,
 												 bool forValidator);
 
-extern void plisql_init_subprocfunc_globalvar(PLiSQL_execstate * estate,
-											  FunctionCallInfo fcinfo);
+extern void plisql_init_subprocfunc_globalvar(PLiSQL_execstate *estate,
+							FunctionCallInfo fcinfo);
 
-extern void plisql_assign_out_subprocfunc_globalvar(PLiSQL_execstate * estate,
-													FunctionCallInfo fcinfo);
-extern int	plisql_subprocfunc_ref(ParseState *pstate, List *funcname,
-								   List **fargs,	/* return value */
-								   List *fargnames, int nargs, Oid *argtypes,
-								   bool expand_variadic, bool expand_defaults,
-								   bool include_out_arguments,
-								   Oid *funcid, /* return value */
-								   Oid *rettype,	/* return value */
-								   bool *retset,	/* return value */
-								   int *nvargs, /* return value */
-								   Oid *vatype, /* return value */
-								   Oid **true_typeids,	/* return value */
-								   List **argdefaults,	/* return value */
-								   void **pfunc);	/* return value */
+extern void plisql_assign_out_subprocfunc_globalvar(PLiSQL_execstate *estate,
+							FunctionCallInfo fcinfo);
+extern int plisql_subprocfunc_ref(ParseState *pstate, List *funcname,
+				List **fargs,	/* return value */
+				List *fargnames,
+				int nargs,
+				Oid *argtypes,
+				bool expand_variadic,
+				bool expand_defaults,
+				bool include_out_arguments,
+				Oid *funcid,	/* return value */
+				Oid *rettype,	/* return value */
+				bool *retset,	/* return value */
+				int *nvargs,	/* return value */
+				Oid *vatype,	/* return value */
+				Oid **true_typeids, /* return value */
+				List **argdefaults,	/* return value */
+				void **pfunc);	/* return value */
 
-extern FuncDetailCode
-			plisql_get_subprocfunc_detail(ParseState *pstate, PLiSQL_function * pfunc,
-										  PLiSQL_nsitem * nse, char *funcname, List **fargs,
-										  bool proc_call, List *fargnames, int nargs,
-										  Oid *argtypes, Oid *funcid,	/* return value */
-										  Oid *rettype, /* return value */
-										  bool *retset, /* return value */
-										  int *nvargs,	/* return value */
-										  Oid *vatype,	/* return value */
-										  Oid **true_typeids,	/* return value */
-										  List **argdefaults);
-extern int	get_subprocfunc_arg_info_from_arguments(List *args, Oid **p_argtypes,
-													char ***p_argnames,
-													char **p_argmodes);
-extern PLiSQL_function *
-plisql_subprocfunc_HashTableLookup(HTAB *hashp, PLiSQL_func_hashkey * func_key);
-extern PLiSQL_function *
-plisql_dynamic_compile_subproc(FunctionCallInfo fcinfo,
-							   PLiSQL_subproc_function * subprocfunc,
-							   bool forValidator);
+extern FuncDetailCode plisql_get_subprocfunc_detail(ParseState *pstate,
+							PLiSQL_function *pfunc,
+							PLiSQL_nsitem *nse,
+							char *funcname, List **fargs,
+							bool proc_call,
+							List *fargnames,
+							int nargs,
+							Oid *argtypes,
+							Oid *funcid,	/* return value */
+							Oid *rettype,	/* return value */
+							bool *retset,	/* return value */
+							int *nvargs,	/* return value */
+							Oid *vatype,	/* return value */
+							Oid **true_typeids, /* return value */
+							List **argdefaults);
+extern int get_subprocfunc_arg_info_from_arguments(List *args, Oid **p_argtypes,
+								char ***p_argnames, char **p_argmodes);
+extern PLiSQL_function *plisql_subprocfunc_HashTableLookup(HTAB *hashp,
+							PLiSQL_func_hashkey *func_key);
+extern PLiSQL_function* plisql_dynamic_compile_subproc(FunctionCallInfo fcinfo,
+								PLiSQL_subproc_function *subprocfunc,
+								bool forValidator);
 
-#endif							/* PL_SUBPROC_FUNCTION_H */
+#endif   /* PL_SUBPROC_FUNCTION_H */
+

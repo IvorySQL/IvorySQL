@@ -189,7 +189,7 @@ begin
 --print we are in main function
 --res = 45 a square function assign 11
 --
---there originial not like oracle
+--the originial not like oracle
 --for out argmuments
 do $$
 declare
@@ -413,7 +413,7 @@ begin
      test(name);
 end;$$ language plisql;
 
--- test subproc function'argument has default value
+-- test that subproc function'argument has default value
 --test ok
 --print 529
 do $$
@@ -734,7 +734,7 @@ begin
     raise info '%', ret;
 end; $$ language plisql;
 
----global variable the name as local variable
+---global variable has the name as local variable
 --test ok
 create or replace function test_subproc_func(a in out integer) returns integer AS
 $$
@@ -774,7 +774,7 @@ select * from test_subproc_func(21);
 drop function test_subproc_func(integer);
 set ivorysql.allow_out_parameter_const = false;
 
---function the name as global variable
+--function has the name as global variable
 --test failed
 do $$
 declare
@@ -827,8 +827,8 @@ begin
 end; $$ language plisql;
 
 --ok
---this because out parameter we have don't handle
--- so it doesn't like oracle
+--this is because we don't handle out parameter,
+-- so it is not like oracle
 -- test out name=must be assign to null
 -- test_out.test_out name=must be assign to null
 -- name1= must be assign to null
@@ -864,7 +864,7 @@ begin
  end; $$ language plisql;
 
 
----schema function and subproc function as the same name
+---schema function and subproc function has the same name
 create or replace function test_subproc(id integer) returns integer
 AS $$
 declare
@@ -925,7 +925,7 @@ drop function test_subproc(integer);
 create type test_subproc_type as (id integer,name varchar(23));
 
 --test ok
---print var1=(23, "a object type")
+--print var1=(23, "an object type")
 do $$
 declare
     var1 test_subproc_type;
@@ -935,7 +935,7 @@ declare
         var1 test_subproc_type;
     begin
          var1.id := 23;
-	 var1.name := 'a object type';
+	 var1.name := 'an object type';
 	 return var1;
     end;
 begin
@@ -944,7 +944,7 @@ begin
 end;$$ language plisql;
 
 --print id = (1, "welcome to beiing")
---print var1=(23, "a object type")
+--print var1=(23, "an object type")
 do $$
 declare
     var1 test_subproc_type;
@@ -954,7 +954,7 @@ declare
         var1 test_subproc_type;
     begin
          var1.id := 23;
-	 var1.name := 'a object type';
+	 var1.name := 'an object type';
 	 raise info 'id = %',id;
 	 return var1;
     end;
@@ -1884,7 +1884,7 @@ begin
   NULL;
 end; $$ language plisql;
 
---only declare but no define raise error
+--only declare but no definition, raise error
 do $$
 DECLARE
   var1 integer;
@@ -1903,7 +1903,7 @@ begin
   var1 := mds(23);
 end; $$ language plisql;
 
---define before declare faield
+--define before declare failed
 do $$
 declare
    function mds(id integer) return integer IS
@@ -2010,9 +2010,9 @@ END; $$ language plisql;
 
 --
 --
--- subproc function support polymorphic type
+-- subproc function supports polymorphic type
 --
---point raise error others is ok
+--point raise error, others is ok
 do $$
 DECLARE
    var1 integer;
@@ -2251,8 +2251,7 @@ BEGIN
 end; $$ language plisql;
 
 
---test extral
---error test_f is is out of scope
+--error test_f is out of scope
 do $$
 declare
   var1 integer;
@@ -2376,7 +2375,7 @@ begin
 end; $$ language plisql;
 
 
---oracle raise error,but we success
+--oracle raise error,but we succeed
 do $$
 declare
   var1 integer;
@@ -2405,7 +2404,7 @@ begin
 end; $$ language plisql;
 
 
---oracle raiser error,but we sucess
+--oracle raiser error,but we succeed
 create or replace function test_f(id integer) returns integer as
 $$
 declare
@@ -2602,7 +2601,7 @@ begin
   var1 := test_f();
 end;$$ language plisql;
 
---dynamic include subproc function ok var1=25
+--dynamically include subproc function ok var1=25
 do $$
 declare
   var1 integer;
@@ -2759,7 +2758,7 @@ begin
   test_p(var1);
 end; $$ language plisql;
 
---oracle failed, but we sucess
+--oracle failed, but we succeed
 do $$
 declare
   var1 integer;
@@ -2808,7 +2807,7 @@ begin
   var1 := test_proc1(23);
 end; $$ language plisql;
 
---surcess
+--success
 do $$
 declare
   var1 integer;
@@ -2840,7 +2839,7 @@ begin
    test_func1(var1);
 end; $$ language plisql;
 
---sucess
+--success
 do $$
 declare
   var1 integer;
@@ -2880,7 +2879,7 @@ BEGIN
 	trigger := 1;
 end; $$ language plisql;
 
---oracle failed,but we sucess
+--oracle failed,but we succeed
 do $$
 DECLARE
 	type integer;
@@ -2902,7 +2901,7 @@ begin
   var1 := test_f(23) + test_f(23);
 end; $$ language plisql;
 
---oracle failed,but we success
+--oracle failed,but we succeed
 do $$
 declare
   var1 integer;
@@ -3085,7 +3084,6 @@ DROP event TRIGGER regress_event_trigger;
 DROP FUNCTION test_event_trigger();
 drop table test_subproc_system;
 
---requite documents example
 --ok and print test_subprocproc and test_linefunc
 do $$
 declare
@@ -3530,7 +3528,7 @@ declare
     raise info '%', test_f(24.1);
  end; $$ language plisql;
 
---oracle raise error,but we sucess
+--oracle raise error,but we succeed
 CREATE TABLE mds(id integer,name varchar2(256));
 
 do $$

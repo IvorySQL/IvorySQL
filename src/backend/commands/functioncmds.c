@@ -1618,11 +1618,11 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 }
 
 /*
- * Support Oracle grammar such as
+ * Support oracle grammer:
  * alter function func editionable|noneditionable or compile
- * This function does not consider function arguments and
- * searches pg_proc directly; if more than one or fewer than one match is
- * found, report an error.
+ * In this function we don't support function arguments or 
+ * searching pg_proc directly, if we found more than one or less
+ * than one, we report error.
  */
 ObjectAddress
 CompileFunction(CompileFunctionStmt * stmt)
