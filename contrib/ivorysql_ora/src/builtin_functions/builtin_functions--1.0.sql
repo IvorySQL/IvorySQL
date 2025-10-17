@@ -1228,159 +1228,159 @@ AS $$
 $$ LANGUAGE SQL IMMUTABLE STRICT;
 
 /* Begin - SYS_CONTEXT */
-create or replace function sys.sys_context(a varchar2, b varchar2)
-return varchar2 as $$
-declare
+CREATE OR REPLACE FUNCTION sys.sys_context(a varchar2, b varchar2)
+RETURNS varchar2 AS $$
+DECLARE
 	res varchar2;
-begin
-	if upper(a) = 'USERENV' then
-	  case upper(b)
-		  when 'CURRENT_SCHEMA' then
-			select current_schema() into res;
-		  when 'CURRENT_SCHEMAID' then
-		  	select current_schema()::regnamespace::oid into res;
-		  when 'SESSION_USER' then
-			select session_user into res;
-		  when 'SESSION_USERID' then
-		  	select session_user::regrole::oid into res;
-		  when 'PROXY_USER' then
-		  	select session_user into res;
-		  when 'PROXY_USERID' then
-		  	select session_user::regrole::oid into res;
-		  when 'CURRENT_USER' then
-		    select current_user into res;
-		  when 'CURRENT_USERID' then
-		  	select current_user::regrole::oid into res;
-		  when 'CURRENT_EDITION_NAME' then
-		  	select version() into res;
-		  when 'CLIENT_PROGRAM_NAME' then
-		  	select application_name into res from pg_stat_activity where pid = pg_backend_pid();
-		  when 'IP_ADDRESS' then
-		    select client_addr into res from pg_stat_activity where pid = pg_backend_pid();
-		  when 'HOST' then
-		  	select client_hostname into res from pg_stat_activity where pid = pg_backend_pid();
-		  when 'ISDBA' then
-		  	select sys.get_isdba() into res;
-		  when 'LANGUAGE' then
-		  	select sys.get_language() into res;
-		  when 'LANG' then
-		  	select sys.get_lang() into res;
-		  when 'NLS_CURRENCY' then
-		  	select null into res;-- show nls_currency into res;
-		  when 'NLS_DATE_FORMAT' then
-		  	show nls_date_format into res;
-		  when 'NLS_DATE_LANGUAGE' then
-		  	select null into res;-- show nls_iso_currency into res;
-		  when 'NLS_SORT' then
-		  	select null into res;-- show nls_sort into res;
-		  when 'NLS_TERRITORY' then
-		  	select null into res;-- show nls_territory into res;
-		  when 'ORACLE_HOME' then
-		  	show data_directory into res;
-		  when 'PLATFORM_SLASH' then 
-		  	select 
-				case
-					when substring((select setting from pg_settings where name = 'data_directory') from 1 for 1) = '/' then 'LINUX'
-					else 'WINDOWS'
-				end into res;
-		  when 'DB_NAME' then
-		  	select current_database into res;
-		  when 'SESSION_DEFAULT_COLLATION' then
-		  	select null into res;-- show default_collation into res;
-		  when 'SID' then
-		  	select sys.get_sid() into res;
-		  when 'ACTION' then select NULL into res;
-		  when 'IS_APPLICATION_ROOT' then select NULL into res;
-		  when 'IS_APPLICATION_PDB' then select NULL into res;
-		  when 'AUDITED_CURSORID' then select NULL into res;
-		  when 'AUTHENTICATED_IDENTITY' then select NULL into res;
-		  when 'AUTHENTICATION_DATA' then select NULL into res;
-		  when 'AUTHENTICATION_METHOD' then select NULL into res;
-		  when 'BG_JOB_ID' then select NULL into res;
-		  when 'CDB_DOMAIN' then select NULL into res;
-		  when 'CDB_NAME' then select NULL into res;
-		  when 'CLIENT_IDENTIFIER' then select NULL into res;
-		  when 'CLIENT_INFO' then
-		  	select sys.get_client_info() into res;
-		  when 'CON_ID' then select NULL into res;
-		  when 'CON_NAME' then select NULL into res;
-		  when 'CURRENT_BIND' then select NULL into res;
-		  when 'CURRENT_EDITION_ID' then select NULL into res;
-		  when 'CURRENT_SQL' then select NULL into res;
-		  when 'CURRENT_SQL1' then select NULL into res;
-		  when 'CURRENT_SQL2' then select NULL into res;
-		  when 'CURRENT_SQL3' then select NULL into res;
-		  when 'CURRENT_SQL4' then select NULL into res;
-		  when 'CURRENT_SQL5' then select NULL into res;
-		  when 'CURRENT_SQL6' then select NULL into res;
-		  when 'CURRENT_SQL7' then select NULL into res;
-		  when 'CURRENT_SQL_LENGTH' then select NULL into res;
-		  when 'DATABASE_ROLE' then select NULL into res;
-		  when 'DB_DOMAIN' then select NULL into res;
-		  when 'DB_SUPPLEMENTAL_LOG_LEVEL' then select NULL into res;
-		  when 'DB_UNIQUE_NAME' then select NULL into res;
-		  when 'DBLINK_INFO' then select NULL into res;
-		  when 'DRAIN_STATUS' then select NULL into res;
-		  when 'ENTRYID' then
-		  	select sys.get_entryid() into res;
-		  when 'ENTERPRISE_IDENTITY' then select NULL into res;
-		  when 'FG_JOB_ID' then select NULL into res;
-		  when 'GLOBAL_CONTEXT_MEMORY' then select NULL into res;
-		  when 'GLOBAL_UID' then select NULL into res;
-		  when 'IDENTIFICATION_TYPE' then select NULL into res;
-		  when 'INSTANCE' then select NULL into res;
-		  when 'INSTANCE_NAME' then select NULL into res;
-		  when 'IS_APPLY_SERVER' then select 'FALSE' into res;
-		  when 'IS_DG_ROLLING_UPGRADE' then select 'FALSE' into res;
-		  when 'LDAP_SERVER_TYPE' then select NULL into res;
-		  when 'MODULE' then select NULL into res;
-		  when 'NETWORK_PROTOCOL' then select NULL into res;
-		  when 'NLS_CALENDAR' then select NULL into res;
-		  when 'OS_USER' then select NULL into res;
-		  when 'POLICY_INVOKER' then select NULL into res;
-		  when 'PROXY_ENTERPRISE_IDENTITY' then select NULL into res;
-		  when 'SCHEDULER_JOB' then select NULL into res;
-		  when 'SERVER_HOST' then select NULL into res;
-		  when 'SERVICE_NAME' then select NULL into res;
-		  when 'SESSION_EDITION_ID' then select NULL into res;
-		  when 'SESSION_EDITION_NAME' then select NULL into res;
-		  when 'SESSIONID' then
-		  	select sys.get_sessionid() into res;
-		  when 'STATEMENTID' then select NULL into res;
-		  when 'TERMINAL' then
-		  	select sys.get_terminal() into res;
-		  when 'UNIFIED_AUDIT_SESSIONID' then select NULL into res;
-		  else
-		  	RAISE EXCEPTION 'invalid USERENV parameter: %', b;
-	  end case;
-	elsif upper(a) = 'SYS_SESSION_ROLES' then
-		case upper(b)
-			when 'DBA' then
-				select sys.get_isdba() into res;
-			when 'LOGIN' then
-				select case when rolcanlogin = 't' then 'TRUE' else 'FALSE' end into res from pg_roles where oid = current_user::regrole::oid;
-			when 'CREATEROLE' then
-				select case when rolcreaterole = 't' then 'TRUE' else 'FALSE' end into res from pg_roles where oid = current_user::regrole::oid;
-			when 'CREATEDB' then
-				select case when rolcreatedb = 't' then 'TRUE' else 'FALSE' end into res from pg_roles where oid = current_user::regrole::oid;
-			else
+BEGIN
+	IF upper(a) = 'USERENV' THEN
+	  CASE upper(b)
+		  WHEN 'CURRENT_SCHEMA' THEN
+			SELECT current_schema() INTO res;
+		  WHEN 'CURRENT_SCHEMAID' THEN
+			SELECT current_schema()::regnamespace::oid INTO res;
+		  WHEN 'SESSION_USER' THEN
+			SELECT session_user INTO res;
+		  WHEN 'SESSION_USERID' THEN
+			SELECT session_user::regrole::oid INTO res;
+		  WHEN 'PROXY_USER' THEN
+			SELECT session_user INTO res;
+		  WHEN 'PROXY_USERID' THEN
+			SELECT session_user::regrole::oid INTO res;
+		  WHEN 'CURRENT_USER' THEN
+		    SELECT current_user INTO res;
+		  WHEN 'CURRENT_USERID' THEN
+			SELECT current_user::regrole::oid INTO res;
+		  WHEN 'CURRENT_EDITION_NAME' THEN
+			SELECT version() INTO res;
+		  WHEN 'CLIENT_PROGRAM_NAME' THEN
+			SELECT application_name INTO res FROM pg_stat_activity WHERE pid = pg_backend_pid();
+		  WHEN 'IP_ADDRESS' THEN
+		    SELECT client_addr INTO res FROM pg_stat_activity WHERE pid = pg_backend_pid();
+		  WHEN 'HOST' THEN
+			SELECT client_hostname INTO res FROM pg_stat_activity WHERE pid = pg_backend_pid();
+		  WHEN 'ISDBA' THEN
+			SELECT sys.get_isdba() INTO res;
+		  WHEN 'LANGUAGE' THEN
+			SELECT sys.get_language() INTO res;
+		  WHEN 'LANG' THEN
+			SELECT sys.get_lang() INTO res;
+		  WHEN 'NLS_CURRENCY' THEN
+			SELECT null INTO res;-- show nls_currency INTO res;
+		  WHEN 'NLS_DATE_FORMAT' THEN
+			show nls_date_format INTO res;
+		  WHEN 'NLS_DATE_LANGUAGE' THEN
+			SELECT null INTO res;-- show nls_iso_currency INTO res;
+		  WHEN 'NLS_SORT' THEN
+			SELECT null INTO res;-- show nls_sort INTO res;
+		  WHEN 'NLS_TERRITORY' THEN
+			SELECT null INTO res;-- show nls_territory INTO res;
+		  WHEN 'ORACLE_HOME' THEN
+			show data_directory INTO res;
+		  WHEN 'PLATFORM_SLASH' THEN
+			SELECT
+				CASE
+					WHEN substring((SELECT setting FROM pg_settings WHERE name = 'data_directory') FROM 1 for 1) = '/' THEN 'LINUX'
+					ELSE 'WINDOWS'
+				END INTO res;
+		  WHEN 'DB_NAME' THEN
+			SELECT current_database INTO res;
+		  WHEN 'SESSION_DEFAULT_COLLATION' THEN
+			SELECT null INTO res;-- show default_collation INTO res;
+		  WHEN 'SID' THEN
+			SELECT sys.get_sid() INTO res;
+		  WHEN 'ACTION' THEN SELECT NULL INTO res;
+		  WHEN 'IS_APPLICATION_ROOT' THEN SELECT NULL INTO res;
+		  WHEN 'IS_APPLICATION_PDB' THEN SELECT NULL INTO res;
+		  WHEN 'AUDITED_CURSORID' THEN SELECT NULL INTO res;
+		  WHEN 'AUTHENTICATED_IDENTITY' THEN SELECT NULL INTO res;
+		  WHEN 'AUTHENTICATION_DATA' THEN SELECT NULL INTO res;
+		  WHEN 'AUTHENTICATION_METHOD' THEN SELECT NULL INTO res;
+		  WHEN 'BG_JOB_ID' THEN SELECT NULL INTO res;
+		  WHEN 'CDB_DOMAIN' THEN SELECT NULL INTO res;
+		  WHEN 'CDB_NAME' THEN SELECT NULL INTO res;
+		  WHEN 'CLIENT_IDENTIFIER' THEN SELECT NULL INTO res;
+		  WHEN 'CLIENT_INFO' THEN
+			SELECT sys.get_client_info() INTO res;
+		  WHEN 'CON_ID' THEN SELECT NULL INTO res;
+		  WHEN 'CON_NAME' THEN SELECT NULL INTO res;
+		  WHEN 'CURRENT_BIND' THEN SELECT NULL INTO res;
+		  WHEN 'CURRENT_EDITION_ID' THEN SELECT NULL INTO res;
+		  WHEN 'CURRENT_SQL' THEN SELECT NULL INTO res;
+		  WHEN 'CURRENT_SQL1' THEN SELECT NULL INTO res;
+		  WHEN 'CURRENT_SQL2' THEN SELECT NULL INTO res;
+		  WHEN 'CURRENT_SQL3' THEN SELECT NULL INTO res;
+		  WHEN 'CURRENT_SQL4' THEN SELECT NULL INTO res;
+		  WHEN 'CURRENT_SQL5' THEN SELECT NULL INTO res;
+		  WHEN 'CURRENT_SQL6' THEN SELECT NULL INTO res;
+		  WHEN 'CURRENT_SQL7' THEN SELECT NULL INTO res;
+		  WHEN 'CURRENT_SQL_LENGTH' THEN SELECT NULL INTO res;
+		  WHEN 'DATABASE_ROLE' THEN SELECT NULL INTO res;
+		  WHEN 'DB_DOMAIN' THEN SELECT NULL INTO res;
+		  WHEN 'DB_SUPPLEMENTAL_LOG_LEVEL' THEN SELECT NULL INTO res;
+		  WHEN 'DB_UNIQUE_NAME' THEN SELECT NULL INTO res;
+		  WHEN 'DBLINK_INFO' THEN SELECT NULL INTO res;
+		  WHEN 'DRAIN_STATUS' THEN SELECT NULL INTO res;
+		  WHEN 'ENTRYID' THEN
+			SELECT sys.get_entryid() INTO res;
+		  WHEN 'ENTERPRISE_IDENTITY' THEN SELECT NULL INTO res;
+		  WHEN 'FG_JOB_ID' THEN SELECT NULL INTO res;
+		  WHEN 'GLOBAL_CONTEXT_MEMORY' THEN SELECT NULL INTO res;
+		  WHEN 'GLOBAL_UID' THEN SELECT NULL INTO res;
+		  WHEN 'IDENTIFICATION_TYPE' THEN SELECT NULL INTO res;
+		  WHEN 'INSTANCE' THEN SELECT NULL INTO res;
+		  WHEN 'INSTANCE_NAME' THEN SELECT NULL INTO res;
+		  WHEN 'IS_APPLY_SERVER' THEN SELECT 'FALSE' INTO res;
+		  WHEN 'IS_DG_ROLLING_UPGRADE' THEN SELECT 'FALSE' INTO res;
+		  WHEN 'LDAP_SERVER_TYPE' THEN SELECT NULL INTO res;
+		  WHEN 'MODULE' THEN SELECT NULL INTO res;
+		  WHEN 'NETWORK_PROTOCOL' THEN SELECT NULL INTO res;
+		  WHEN 'NLS_CALENDAR' THEN SELECT NULL INTO res;
+		  WHEN 'OS_USER' THEN SELECT NULL INTO res;
+		  WHEN 'POLICY_INVOKER' THEN SELECT NULL INTO res;
+		  WHEN 'PROXY_ENTERPRISE_IDENTITY' THEN SELECT NULL INTO res;
+		  WHEN 'SCHEDULER_JOB' THEN SELECT NULL INTO res;
+		  WHEN 'SERVER_HOST' THEN SELECT NULL INTO res;
+		  WHEN 'SERVICE_NAME' THEN SELECT NULL INTO res;
+		  WHEN 'SESSION_EDITION_ID' THEN SELECT NULL INTO res;
+		  WHEN 'SESSION_EDITION_NAME' THEN SELECT NULL INTO res;
+		  WHEN 'SESSIONID' THEN
+			SELECT sys.get_sessionid() INTO res;
+		  WHEN 'STATEMENTID' THEN SELECT NULL INTO res;
+		  WHEN 'TERMINAL' THEN
+			SELECT sys.get_terminal() INTO res;
+		  WHEN 'UNIFIED_AUDIT_SESSIONID' THEN SELECT NULL INTO res;
+		  ELSE
+			RAISE EXCEPTION 'invalid USERENV parameter: %', b;
+	  END CASE;
+	ELSIF upper(a) = 'SYS_SESSION_ROLES' THEN
+		CASE upper(b)
+			WHEN 'DBA' THEN
+				SELECT sys.get_isdba() INTO res;
+			WHEN 'LOGIN' THEN
+				SELECT CASE WHEN rolcanlogin = 't' THEN 'TRUE' ELSE 'FALSE' END INTO res FROM pg_roles WHERE oid = current_user::regrole::oid;
+			WHEN 'CREATEROLE' THEN
+				SELECT CASE WHEN rolcreaterole = 't' THEN 'TRUE' ELSE 'FALSE' END INTO res FROM pg_roles WHERE oid = current_user::regrole::oid;
+			WHEN 'CREATEDB' THEN
+				SELECT CASE WHEN rolcreatedb = 't' THEN 'TRUE' ELSE 'FALSE' END INTO res FROM pg_roles WHERE oid = current_user::regrole::oid;
+			ELSE
 				RAISE EXCEPTION 'invalid SYS_SESSION_ROLES parameter: %', b;
-		end case;
- 	else
-	  select current_setting(a||'.'||b, true) into res;
-	end if;
-	return res;
-end;
+		END CASE;
+	ELSE
+	  SELECT current_setting(a||'.'||b, true) INTO res;
+	END IF;
+	RETURN res;
+END;
 $$ LANGUAGE plisql SECURITY INVOKER;
 
 
-create or replace function sys.sys_context(a varchar2, b varchar2, c number)
-return varchar2 as $$
-declare
+CREATE or REPLACE FUNCTION sys.sys_context(a varchar2, b varchar2, c number)
+RETURNS varchar2 AS $$
+DECLARE
 	res varchar2;
-begin
-	select left(sys.sys_context(a, b), c::integer) into res;
-	return res;
-end;
+BEGIN
+	SELECT left(sys.sys_context(a, b), c::integer) INTO res;
+	RETURN res;
+END;
 $$ LANGUAGE plisql SECURITY INVOKER;
 /* End - SYS_CONTEXT */
