@@ -68,7 +68,7 @@
 #include "utils/ruleutils.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
-#include <math.h> 
+#include <math.h>
 #include "utils/guc.h"
 #include "utils/ora_compatible.h"
 
@@ -280,10 +280,12 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	if (cxt.inhRelations)
 	{
 		ListCell   *inher;
+
 		foreach(inher, cxt.inhRelations)
 		{
 			RangeVar   *inh = lfirst_node(RangeVar, inher);
 			Relation	prel;
+
 			prel = table_openrv(inh, AccessShareLock);
 			cxt.hasrowid = cxt.hasrowid || prel->rd_rel->relhasrowid;
 			table_close(prel, NoLock);
@@ -302,7 +304,8 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 		{
 			case T_ColumnDef:
 				{
-					ColumnDef *col = (ColumnDef *) element;
+					ColumnDef  *col = (ColumnDef *) element;
+
 					if (compatible_db == ORA_PARSER && strcmp(col->colname, "rowid") == 0)
 						elog(ERROR, "column name \"%s\" conflicts with a system column name", col->colname);
 					else
@@ -331,13 +334,14 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	 */
 	foreach(elements, cxt.columns)
 	{
-		ColumnDef          *element = lfirst(elements);
-		if(element->identity == ATTRIBUTE_IDENTITY_DEFAULT_ON_NULL ||
-				element->identity == ATTRIBUTE_ORA_IDENTITY_ALWAYS ||
-					element->identity == ATTRIBUTE_ORA_IDENTITY_BY_DEFAULT)
+		ColumnDef  *element = lfirst(elements);
+
+		if (element->identity == ATTRIBUTE_IDENTITY_DEFAULT_ON_NULL ||
+			element->identity == ATTRIBUTE_ORA_IDENTITY_ALWAYS ||
+			element->identity == ATTRIBUTE_ORA_IDENTITY_BY_DEFAULT)
 			ora_identity_cnt++;
 	}
-	if(ora_identity_cnt > 1)
+	if (ora_identity_cnt > 1)
 		elog(ERROR, "table can have only one identity column");
 
 	if (like_found && cxt.hasrowid)
@@ -348,7 +352,7 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 
 	if (cxt.hasrowid)
 	{
-		Oid	   snamespaceid;
+		Oid			snamespaceid;
 		char	   *snamespace;
 		char	   *sname;
 
@@ -368,28 +372,29 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 								   false);
 
 		/*
-		 * Build a CREATE SEQUENCE command to create the sequence object,
-		 * and add it to the list of things to be done before this CREATE/ALTER TABLE
+		 * Build a CREATE SEQUENCE command to create the sequence object, and
+		 * add it to the list of things to be done before this CREATE/ALTER
+		 * TABLE
 		 */
 		seqstmt = makeNode(CreateSeqStmt);
 		seqstmt->with_rowid = true;
 		seqstmt->sequence = makeRangeVar(snamespace, sname, -1);
 		seqstmt->options = lcons(makeDefElem("as",
-					 	(Node *) makeTypeNameFromOid(INT8OID, -1),
-						 -1),
-					 seqstmt->options);
+											 (Node *) makeTypeNameFromOid(INT8OID, -1),
+											 -1),
+								 seqstmt->options);
 		if (rowid_seq_cache > 1)
 		{
 			seqstmt->options = lcons(makeDefElem("cache",
-							 (Node *) makeInteger(rowid_seq_cache),
-							 -1),
-						 seqstmt->options);
+												 (Node *) makeInteger(rowid_seq_cache),
+												 -1),
+									 seqstmt->options);
 		}
 		else
 			seqstmt->options = lcons(makeDefElem("nocache",
-								 NULL,
-							 -1),
-						seqstmt->options);
+												 NULL,
+												 -1),
+									 seqstmt->options);
 
 		if (cxt.rel)
 			seqstmt->ownerId = cxt.rel->rd_rel->relowner;
@@ -397,18 +402,18 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 		cxt.blist = lappend(cxt.blist, seqstmt);
 
 		/*
-		 * Build an ALTER SEQUENCE ... OWNED BY command to mark the sequence as owned
-		 * by this table.
+		 * Build an ALTER SEQUENCE ... OWNED BY command to mark the sequence
+		 * as owned by this table.
 		 */
 		altseqstmt = makeNode(AlterSeqStmt);
 		altseqstmt->sequence = makeRangeVar(snamespace, sname, -1);
 
 		relnamelist = list_make3(makeString(snamespace),
-					 makeString(cxt.relation->relname),
-					 makeString(sname));
+								 makeString(cxt.relation->relname),
+								 makeString(sname));
 
 		altseqstmt->options = list_make1(makeDefElem("owned_by",
-								 (Node *) relnamelist, -1));
+													 (Node *) relnamelist, -1));
 		cxt.alist = lappend(cxt.alist, altseqstmt);
 	}
 
@@ -971,11 +976,14 @@ transformColumnDefinition(CreateStmtContext *cxt, ColumnDef *column)
 					ctype = typenameType(cxt->pstate, column->typeName, &typmod);
 					typeOid = ((Form_pg_type) GETSTRUCT(ctype))->oid;
 
-					/* Convert compatible identity smallint/int type column to bigint type */
+					/*
+					 * Convert compatible identity smallint/int type column to
+					 * bigint type
+					 */
 					if ((constraint->generated_when == ATTRIBUTE_IDENTITY_DEFAULT_ON_NULL
-							|| constraint->generated_when == ATTRIBUTE_ORA_IDENTITY_ALWAYS
-								|| constraint->generated_when == ATTRIBUTE_ORA_IDENTITY_BY_DEFAULT)
-									&& (typeOid == INT4OID || typeOid == INT2OID))
+						 || constraint->generated_when == ATTRIBUTE_ORA_IDENTITY_ALWAYS
+						 || constraint->generated_when == ATTRIBUTE_ORA_IDENTITY_BY_DEFAULT)
+						&& (typeOid == INT4OID || typeOid == INT2OID))
 					{
 						column->typeName = makeTypeName("int8");
 						typeOid = INT8OID;
@@ -1296,7 +1304,7 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 	if (relation->rd_rel->relkind == RELKIND_COMPOSITE_TYPE)
 	{
 		aclresult = object_aclcheck(TypeRelationId, relation->rd_rel->reltype, GetUserId(),
-									 ACL_USAGE);
+									ACL_USAGE);
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, OBJECT_TYPE,
 						   RelationGetRelationName(relation));
@@ -2690,7 +2698,7 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 				 * mentioned above.
 				 */
 				Datum		attoptions =
-				get_attoptions(RelationGetRelid(index_rel), i + 1);
+					get_attoptions(RelationGetRelid(index_rel), i + 1);
 
 				defopclass = GetDefaultOpClass(attform->atttypid,
 											   index_rel->rd_rel->relam);
@@ -3765,12 +3773,12 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 
 			case AT_AddRowidsRecurse:
 				{
-					Oid 			snamespaceid;
-					char	 		*snamespace;
-					char	 		*sname;
-					List 	 		*relnamelist;
-					CreateSeqStmt 	*seqstmt;
-					AlterSeqStmt 	*altseqstmt;
+					Oid			snamespaceid;
+					char	   *snamespace;
+					char	   *sname;
+					List	   *relnamelist;
+					CreateSeqStmt *seqstmt;
+					AlterSeqStmt *altseqstmt;
 
 					if (cmd->is_rowid)
 					{
@@ -3790,26 +3798,27 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 												   false);
 
 						/*
-						 * Build a CREATE SEQUENCE command to create the sequence object,
-						 * and add it to the list of things to be done before this CREATE/ALTER TABLE
+						 * Build a CREATE SEQUENCE command to create the
+						 * sequence object, and add it to the list of things
+						 * to be done before this CREATE/ALTER TABLE
 						 */
 						seqstmt = makeNode(CreateSeqStmt);
 						seqstmt->with_rowid = true;
 						seqstmt->sequence = makeRangeVar(snamespace, sname, -1);
 						seqstmt->options = lcons(makeDefElem("as",
-									 (Node *) makeTypeNameFromOid(INT8OID, -1),
-										 -1), seqstmt->options);
+															 (Node *) makeTypeNameFromOid(INT8OID, -1),
+															 -1), seqstmt->options);
 						if (rowid_seq_cache > 1)
 						{
 							seqstmt->options = lcons(makeDefElem("cache",
-									 (Node *) makeInteger(rowid_seq_cache),
-										 -1), seqstmt->options);
+																 (Node *) makeInteger(rowid_seq_cache),
+																 -1), seqstmt->options);
 						}
 						else
 							seqstmt->options = lcons(makeDefElem("nocache",
-										 NULL,
-										 -1),
-										seqstmt->options);
+																 NULL,
+																 -1),
+													 seqstmt->options);
 
 						if (cxt.rel)
 							seqstmt->ownerId = cxt.rel->rd_rel->relowner;
@@ -3817,18 +3826,18 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 						cxt.blist = lappend(cxt.blist, seqstmt);
 
 						/*
-						 * Build an ALTER SEQUENCE ... OWNED BY command to mark the sequence as owned
-						 * by this table.
+						 * Build an ALTER SEQUENCE ... OWNED BY command to
+						 * mark the sequence as owned by this table.
 						 */
 						altseqstmt = makeNode(AlterSeqStmt);
 						altseqstmt->sequence = makeRangeVar(snamespace, sname, -1);
 
 						relnamelist = list_make3(makeString(snamespace),
-									 makeString(cxt.relation->relname),
-									 makeString(sname));
+												 makeString(cxt.relation->relname),
+												 makeString(sname));
 
 						altseqstmt->options = list_make1(makeDefElem("owned_by",
-										 (Node *) relnamelist, -1));
+																	 (Node *) relnamelist, -1));
 						cxt.alist = lappend(cxt.alist, altseqstmt);
 
 						newcmds = lappend(newcmds, cmd);
@@ -4670,7 +4679,7 @@ transformPartitionRangeBounds(ParseState *pstate, List *blist,
 		 * as ColumnRefs.
 		 */
 		if (IsA(expr, ColumnRef) ||
-				IsA(expr, ColumnRefOrFuncCall))
+			IsA(expr, ColumnRefOrFuncCall))
 		{
 			ColumnRef  *cref = NULL;
 			char	   *cname = NULL;
