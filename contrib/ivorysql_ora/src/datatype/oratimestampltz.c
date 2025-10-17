@@ -1,12 +1,12 @@
 /*-------------------------------------------------------------------------
  * Copyright 2025 IvorySQL Global Development Team
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -126,15 +126,15 @@ anytimestamp_typmodin(bool istz, ArrayType *ta)
 	{
 		ereport(WARNING,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-		   errmsg("TIMESTAMP(%d)%s effective number of fractional seconds is 6,the part of excess is 0",
-				  *tl, (istz ? " WITH TIME ZONE" : ""))));
+				 errmsg("TIMESTAMP(%d)%s effective number of fractional seconds is 6, the part of excess is 0",
+						*tl, (istz ? " WITH TIME ZONE" : ""))));
 		typmod = *tl;
 	}
 	else if (*tl > ORACLE_MAX_TIMESTAMP_PRECISION)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-		   errmsg("the precision of datetime out of rang")));	
+				 errmsg("the precision of datetime out of range")));
 	}
 	else
 		typmod = *tl;
@@ -197,18 +197,19 @@ oratimestampltz_in(PG_FUNCTION_ARGS)
 	char	   *str = PG_GETARG_CSTRING(0);
 
 #ifdef NOT_USED
-	Oid		typelem = PG_GETARG_OID(1);
+	Oid			typelem = PG_GETARG_OID(1);
 #endif
 	int32		typmod = PG_GETARG_INT32(2);
-	Oid		collid = PG_GET_COLLATION();
-	TimestampTz	result;
+	Oid			collid = PG_GET_COLLATION();
+	TimestampTz result;
 	struct pg_tm tm;
 	fsec_t		fsec;
 	int			tz;
 
 	if (strcmp(nls_timestamp_format, "pg") == 0 || DATETIME_IGNORE_NLS(datetime_ignore_nls_mask, ORATIMESTAMPLTZ_MASK))
 	{
-		Datum	datum;
+		Datum		datum;
+
 		datum = DirectFunctionCall3(timestamp_in, CStringGetDatum(str), ObjectIdGetDatum(InvalidOid), Int32GetDatum(typmod));
 		PG_RETURN_TIMESTAMPTZ(timestamp2timestamptz(DatumGetTimestamp(datum)));
 	}
@@ -235,13 +236,13 @@ oratimestampltz_in(PG_FUNCTION_ARGS)
 Datum
 oratimestampltz_out(PG_FUNCTION_ARGS)
 {
-	TimestampTz	timestamp = PG_GETARG_TIMESTAMPTZ(0);
+	TimestampTz timestamp = PG_GETARG_TIMESTAMPTZ(0);
 	char	   *result;
 	text	   *date_str;
 
 	date_str = DatumGetTextP(DirectFunctionCall2(timestamptz_to_char,
-												  TimestampTzGetDatum(timestamp),
-												  PointerGetDatum(cstring_to_text(nls_timestamp_format))));
+												 TimestampTzGetDatum(timestamp),
+												 PointerGetDatum(cstring_to_text(nls_timestamp_format))));
 
 	result = text_to_cstring(date_str);
 	PG_RETURN_CSTRING(result);
@@ -577,13 +578,13 @@ oratimestampltz_ge_oratimestamptz(PG_FUNCTION_ARGS)
 Datum
 oratimestampltz(PG_FUNCTION_ARGS)
 {
-	TimestampTz	source = PG_GETARG_TIMESTAMPTZ(0);
+	TimestampTz source = PG_GETARG_TIMESTAMPTZ(0);
 	int32		typmod = PG_GETARG_INT32(1);
 
 	/* No work if typmod is invalid */
 	if (typmod == -1)
 		PG_RETURN_TIMESTAMPTZ(source);
-		
+
 	OraAdjustTimestampForTypmod(&source, typmod);
 	PG_RETURN_TIMESTAMPTZ(source);
 }
@@ -634,7 +635,7 @@ oratimestampltz_cmp_oratimestamptz(PG_FUNCTION_ARGS)
 }
 
 /*****************************************************************************
- *	 Hash index support procedure 
+ *	 Hash index support procedure
  *****************************************************************************/
 Datum
 oratimestampltz_hash(PG_FUNCTION_ARGS)
@@ -735,4 +736,3 @@ oratimestampltz_oratimestamp(PG_FUNCTION_ARGS)
 	}
 	PG_RETURN_TIMESTAMP(result);
 }
-

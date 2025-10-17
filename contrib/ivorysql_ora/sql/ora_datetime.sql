@@ -143,7 +143,7 @@ CREATE TABLE TEST_TIMESTAMP(a TIMESTAMP);
 
 SET NLS_TIMESTAMP_FORMAT='YYYY-MM-DD HH24:MI:SS.FF9';
 
--- effective number of fractional seconds is 6,the part of excess is 0
+-- effective number of fractional seconds is 6, the part of excess is 0
 INSERT INTO TEST_TIMESTAMP VALUES('1990-1-19 11:11:11.123456789');
 
 INSERT INTO TEST_TIMESTAMP VALUES('1990-2-19');		-- hour、minute、second、fractional second is zero.
@@ -276,7 +276,7 @@ CREATE TABLE TEST_TIMESTAMPTZ(a TIMESTAMP WITH TIME ZONE);
 SET NLS_TIMESTAMP_TZ_FORMAT='YYYY-MM-DD HH24:MI:SS.FF9';
 
 
--- effective number of fractional seconds is 6,the part of excess is 0
+-- effective number of fractional seconds is 6, the part of excess is 0
 INSERT INTO TEST_TIMESTAMPTZ VALUES('1990-1-19 11:11:11.123456789');
 
 INSERT INTO TEST_TIMESTAMPTZ VALUES('1990-2-19');		-- hour、minute、second、fractional second is zero.
