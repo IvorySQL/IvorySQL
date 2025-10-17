@@ -1,5 +1,5 @@
 --
--- Test Compatible Oracle ROWID pseudo
+-- Test Oracle-Compatible ROWID Pseudo-Column
 --
 
 --
@@ -111,12 +111,12 @@ alter table t2 set without rowid;
 
 select (rowid).rowno, * from t2;
 
--- clearup
+-- cleanup
 drop table t2;
 drop table t3;
 
 --
---3, CTEATE TABLE ... WITH ROWID 
+--3, CREATE TABLE ... WITH ROWID
 --
 create table t2 (a int, b int) with rowid;
 
