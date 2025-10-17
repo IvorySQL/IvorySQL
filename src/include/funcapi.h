@@ -156,55 +156,56 @@ typedef enum TypeFuncClass
 } TypeFuncClass;
 
 /*
- * function come from subproc
- * we should use function pointer to
- * get its informations, because its struct
- * is PLiSQL_xxx
+ * Subproc-provided function hooks
+ *
+ * Use function pointers to retrieve information about subproc-provided
+ * functions, since their concrete structures are PLiSQL_* and not visible
+ * to generic callers.
  */
 typedef struct
 {
-	TupleDesc (*get_internal_func_result_tupdesc) (FuncExpr *fexpr);
-	char* (*get_internal_func_name) (FuncExpr *fexpr);
+	TupleDesc	(*get_internal_func_result_tupdesc) (FuncExpr *fexpr);
+	char	   *(*get_internal_func_name) (FuncExpr *fexpr);
 	TypeFuncClass (*get_internal_func_result_type) (FuncExpr *fexpr,
-						 ReturnSetInfo *rsinfo,
-						 Oid *resultTypeId,
-						 TupleDesc *resultTupleDesc);
-	List* (*get_internal_func_outargs) (FuncExpr *fexpr);
-	char *(*get_inernal_func_result_name) (FuncExpr *fexpr);
-	void (*package_validator) (Oid objectId, bool is_body);
-	PackageCacheItem*  (*package_handle) (Oid objectId, bool is_body);
-	void* (*package_parse) (ParseState *pstate,
-							PackageCacheItem *item,
-							List *names,
-							int name_start,
-							package_parse_flags flag,
-							Oid *basetypeid, /* return value */
-							int32 *basetypmod,
-							int *entry_type, /* return value */
-							List **fargs, /* return value */
-							List *fargnames,
-							int nargs,
-							Oid *argtypes,
-							bool expand_variadic,
-							bool expand_defaults,
-							Oid *funcid,	/* return value */
-							Oid *rettype,	/* return value */
-							bool *retset,	/* return value */
-							int *nvargs,	/* return value */
-							Oid *vatype,	/* return value */
-							Oid **true_typeids, /* return value */
-							List **argdefaults, /* return value */
-							void **pfunc,		/* return value */
-							bool missing_ok);
-	void (*package_free) (PackageCacheItem *item);
-	void (*package_free_list) (List *pkglist);
-	Oid (*get_top_function_id) (void *function, bool *is_package);
-	void (*get_subprocs_from_package) (Oid pkgoid, TupleDesc tupdesc,
-									Tuplestorestate *tupstore);
-	void (*compile_inline_internal)(char *proc_source);
-	void (*function_free) (Oid funcOid);
-	bool isload;
-} PLiSQL_funcs_call;
+													ReturnSetInfo *rsinfo,
+													Oid *resultTypeId,
+													TupleDesc *resultTupleDesc);
+	List	   *(*get_internal_func_outargs) (FuncExpr *fexpr);
+	char	   *(*get_inernal_func_result_name) (FuncExpr *fexpr);
+	void		(*package_validator) (Oid objectId, bool is_body);
+	PackageCacheItem *(*package_handle) (Oid objectId, bool is_body);
+	void	   *(*package_parse) (ParseState *pstate,
+								  PackageCacheItem * item,
+								  List *names,
+								  int name_start,
+								  package_parse_flags flag,
+								  Oid *basetypeid,	/* return value */
+								  int32 *basetypmod,
+								  int *entry_type,	/* return value */
+								  List **fargs, /* return value */
+								  List *fargnames,
+								  int nargs,
+								  Oid *argtypes,
+								  bool expand_variadic,
+								  bool expand_defaults,
+								  Oid *funcid,	/* return value */
+								  Oid *rettype, /* return value */
+								  bool *retset, /* return value */
+								  int *nvargs,	/* return value */
+								  Oid *vatype,	/* return value */
+								  Oid **true_typeids,	/* return value */
+								  List **argdefaults,	/* return value */
+								  void **pfunc, /* return value */
+								  bool missing_ok);
+	void		(*package_free) (PackageCacheItem * item);
+	void		(*package_free_list) (List *pkglist);
+	Oid			(*get_top_function_id) (void *function, bool *is_package);
+	void		(*get_subprocs_from_package) (Oid pkgoid, TupleDesc tupdesc,
+											  Tuplestorestate *tupstore);
+	void		(*compile_inline_internal) (char *proc_source);
+	void		(*function_free) (Oid funcOid);
+	bool		isload;
+}			PLiSQL_funcs_call;
 
 extern PGDLLIMPORT PLiSQL_funcs_call plisql_internal_funcs;
 
@@ -238,14 +239,14 @@ extern TupleDesc build_function_result_tupdesc_d(char prokind,
 												 Datum proallargtypes,
 												 Datum proargmodes,
 												 Datum proargnames,
-												 Datum proargtypenames); 
+												 Datum proargtypenames);
 extern TupleDesc build_function_result_tupdesc_t(HeapTuple procTuple);
 extern TupleDesc build_plisql_function_result_tupdesc_d(char prokind,
-								Datum proallargtypes,
-								Datum proargmodes,
-								Datum proargnames,
-								Oid prorettype,
-								Datum proargtypenames);
+														Datum proallargtypes,
+														Datum proargmodes,
+														Datum proargnames,
+														Oid prorettype,
+														Datum proargtypenames);
 
 
 extern bool resolve_polymorphic_tupdesc(TupleDesc tupdesc,
@@ -253,21 +254,21 @@ extern bool resolve_polymorphic_tupdesc(TupleDesc tupdesc,
 										Node *call_expr);
 extern TypeFuncClass get_type_func_class(Oid typid, Oid *base_typeid);
 extern TupleDesc build_internal_function_result_tupdesc_t(FuncExpr *fexpr);
-extern char	*get_internal_function_name(FuncExpr *fexpr);
+extern char *get_internal_function_name(FuncExpr *fexpr);
 extern TypeFuncClass get_internal_function_result_type(FuncExpr *fexpr,
-						 ReturnSetInfo *rsinfo,
-						 Oid *resultTypeId,
-						 TupleDesc *resultTupleDesc);
+													   ReturnSetInfo *rsinfo,
+													   Oid *resultTypeId,
+													   TupleDesc *resultTupleDesc);
 extern TypeFuncClass external_get_type_func_class(Oid typid, Oid *base_typeid);
 extern List *get_internal_function_outargs(FuncExpr *fexpr);
 extern char *get_internal_function_result_name(FuncExpr *fexpr);
-extern bool	func_should_change_return_type(Oid functionId, Oid *rettype,
-								int32 *typmod, Oid *collationoid);
+extern bool func_should_change_return_type(Oid functionId, Oid *rettype,
+										   int32 *typmod, Oid *collationoid);
 
 
 extern void get_func_typename_info(HeapTuple procTup,
-					char ***p_argtypeNames,
-					char **rettypeName);
+								   char ***p_argtypeNames,
+								   char **rettypeName);
 
 extern char get_func_prostatus(HeapTuple procTup);
 extern void change_func_prostatus(Oid funcOid, char prostatus);
@@ -318,6 +319,7 @@ HeapTupleGetDatum(const HeapTupleData *tuple)
 {
 	return HeapTupleHeaderGetDatum(tuple->t_data);
 }
+
 /* obsolete version of above */
 #define TupleGetDatum(_slot, _tuple)	HeapTupleGetDatum(_tuple)
 

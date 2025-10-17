@@ -133,8 +133,8 @@ fmgr_info(Oid functionId, FmgrInfo *finfo)
 }
 
 /*
- * like fmgr_info, we handle function not from pg_proc
- * but we force it to plisql_call_handle
+ * Similar to fmgr_info, but handles functions not present in pg_proc by
+ * resolving to the PL/iSQL call handler.
  */
 void
 fmgr_subproc_info_cxt(Oid functionId, FmgrInfo *finfo, MemoryContext mcxt)
@@ -154,7 +154,7 @@ fmgr_subproc_info_cxt(Oid functionId, FmgrInfo *finfo, MemoryContext mcxt)
 	finfo->fn_mcxt = mcxt;
 	finfo->fn_expr = NULL;		/* caller may set this later */
 
-	finfo->fn_strict = false; /* inline function is awalys not strict */
+	finfo->fn_strict = false;	/* inline functions are always not strict */
 
 
 	languageTuple = SearchSysCache1(LANGOID, language);
@@ -2248,7 +2248,7 @@ CheckFunctionValidatorAccess(Oid validatorOid, Oid functionOid)
 
 	/* first validate that we have permissions to use the language */
 	aclresult = object_aclcheck(LanguageRelationId, procStruct->prolang, GetUserId(),
-									 ACL_USAGE);
+								ACL_USAGE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, OBJECT_LANGUAGE,
 					   NameStr(langStruct->lanname));

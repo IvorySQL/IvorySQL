@@ -10,7 +10,6 @@
  * IDENTIFICATION
  *	  src/pl/plisql/src/pl_handler.c
  *
- * add the file for requirement "SQL PARSER"
  *
  *-------------------------------------------------------------------------
  */
@@ -38,7 +37,7 @@
 static bool plisql_extra_checks_check_hook(char **newvalue, void **extra, GucSource source);
 static void plisql_extra_warnings_assign_hook(const char *newvalue, void *extra);
 static void plisql_extra_errors_assign_hook(const char *newvalue, void *extra);
-static void set_blocks_oraparam_level(PLiSQL_stmt_block *block, int top, int cur);
+static void set_blocks_oraparam_level(PLiSQL_stmt_block * block, int top, int cur);
 
 PG_MODULE_MAGIC_EXT(
 					.name = "plisql",
@@ -59,8 +58,8 @@ bool		plisql_print_strict_params = false;
 
 bool		plisql_check_asserts = true;
 
-static char	 *plisql_extra_warnings_string = NULL;
-static char	 *plisql_extra_errors_string = NULL;
+static char *plisql_extra_warnings_string = NULL;
+static char *plisql_extra_errors_string = NULL;
 int			plisql_extra_warnings;
 int			plisql_extra_errors;
 
@@ -130,7 +129,7 @@ plisql_extra_checks_check_hook(char **newvalue, void **extra, GucSource source)
 	if (!myextra)
 		return false;
 	*myextra = extrachecks;
-	*extra =  myextra;
+	*extra = myextra;
 
 	return true;
 }
@@ -218,13 +217,13 @@ _PG_init(void)
 	plisql_register_internal_func();
 
 	/* Set up a rendezvous point with optional instrumentation plugin */
-	plisql_plugin_ptr = (PLiSQL_plugin **) find_rendezvous_variable("PLiSQL_plugin");
+	plisql_plugin_ptr = (PLiSQL_plugin * *) find_rendezvous_variable("PLiSQL_plugin");
 
 	inited = true;
 }
 
 /*
- * unregister internel func
+ * Cleanup: deregister internal routines.
  */
 void
 _PG_fini(void)
@@ -251,9 +250,9 @@ plisql_call_handler(PG_FUNCTION_ARGS)
 	volatile Datum retval = (Datum) 0;
 	int			rc;
 
-	char	function_from = plisql_function_from(fcinfo);
-	int         oraparam_top_level = -1;
-	int         oraparam_cur_level = -1;
+	char		function_from = plisql_function_from(fcinfo);
+	int			oraparam_top_level = -1;
+	int			oraparam_cur_level = -1;
 
 	nonatomic = fcinfo->context &&
 		IsA(fcinfo->context, CallContext) &&
@@ -273,9 +272,8 @@ plisql_call_handler(PG_FUNCTION_ARGS)
 	}
 	else
 		func = plisql_compile(fcinfo, false);
-	/* End - nSRS-PLSQL-SUBPROC */
 
-	/* rember current func in SPI */
+	/* Record the active function for this SPI level. */
 	SPI_remember_func(func);
 
 	/* Must save and restore prior value of cur_estate */
@@ -307,18 +305,18 @@ plisql_call_handler(PG_FUNCTION_ARGS)
 		 */
 		if (CALLED_AS_TRIGGER(fcinfo))
 			retval = PointerGetDatum(plisql_exec_trigger(func,
-														  (TriggerData *) fcinfo->context));
+														 (TriggerData *) fcinfo->context));
 		else if (CALLED_AS_EVENT_TRIGGER(fcinfo))
 		{
 			plisql_exec_event_trigger(func,
-									   (EventTriggerData *) fcinfo->context);
+									  (EventTriggerData *) fcinfo->context);
 			/* there's no return value in this case */
 		}
 		else
 			retval = plisql_exec_function(func, fcinfo,
-										   NULL, NULL,
-										   procedure_resowner,
-										   !nonatomic);
+										  NULL, NULL,
+										  procedure_resowner,
+										  !nonatomic);
 	}
 	PG_FINALLY();
 	{
@@ -370,9 +368,9 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 	ResourceOwner simple_eval_resowner;
 	Datum		retval;
 	int			rc;
-	bool	ora_forward = false;
-	int         oraparam_top_level = -1;
-	int         oraparam_cur_level = -1;
+	bool		ora_forward = false;
+	int			oraparam_top_level = -1;
+	int			oraparam_cur_level = -1;
 
 	/*
 	 * Connect to SPI manager
@@ -381,7 +379,7 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 
 	if (codeblock->params != NULL)
 	{
-		bool check_var = get_doStmtCheckVar();
+		bool		check_var = get_doStmtCheckVar();
 
 		set_ParseDynSql(true);
 		set_parseDynDoStmt(true);
@@ -395,7 +393,7 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 
 	/*
 	 * Anonymous block has parameters, call forward_oraparam_stack, 
-	 * so that we can check if the variable match
+	 * so that we can check if the variable matches.
 	 */
 	if (codeblock->params != NULL &&
 		SPI_get_connected() == 0)
@@ -407,7 +405,7 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 	/* Compile the anonymous code block */
 	func = plisql_compile_inline(codeblock->source_text, codeblock->params);
 
-	/* rember current func in SPI */
+	/* Record the active function for this SPI level. */
 	SPI_remember_func(func);
 
 	/* check variables */
@@ -421,8 +419,8 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 		PG_CATCH();
 		{
 			plisql_subxact_cb(SUBXACT_EVENT_ABORT_SUB,
-						GetCurrentSubTransactionId(),
-						0, NULL);
+							  GetCurrentSubTransactionId(),
+							  0, NULL);
 
 			plisql_free_function_memory(func, 0, 0);
 
@@ -472,7 +470,7 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 
 	if (codeblock->params)
 	{
-		int		i;
+		int			i;
 
 		fake_fcinfo->nargs = codeblock->params->numParams;
 		for (i = 0; i < codeblock->params->numParams; ++i)
@@ -481,7 +479,7 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 			fake_fcinfo->args[i].isnull = codeblock->params->params[i].isnull;
 		}
 	}
-	push_oraparam_stack();		
+	push_oraparam_stack();
 	get_oraparam_level(&oraparam_top_level, &oraparam_cur_level);
 	set_blocks_oraparam_level(func->action, oraparam_top_level, oraparam_cur_level);
 
@@ -489,10 +487,10 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 	PG_TRY();
 	{
 		retval = plisql_exec_function(func, fake_fcinfo,
-									   simple_eval_estate,
-									   simple_eval_resowner,
-									   simple_eval_resowner,	/* see above */
-									   codeblock->atomic);
+									  simple_eval_estate,
+									  simple_eval_resowner,
+									  simple_eval_resowner, /* see above */
+									  codeblock->atomic);
 	}
 	PG_CATCH();
 	{
@@ -516,8 +514,8 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 		 * pay attention to its parentSubid argument.
 		 */
 		plisql_subxact_cb(SUBXACT_EVENT_ABORT_SUB,
-						   GetCurrentSubTransactionId(),
-						   0, NULL);
+						  GetCurrentSubTransactionId(),
+						  0, NULL);
 
 		/* Clean up the private EState and resowner */
 		FreeExecutorState(simple_eval_estate);
@@ -544,12 +542,12 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 
 	if (codeblock->params != NULL && codeblock->params->haveout)
 	{
-		int		i;
+		int			i;
 		int16		typLen;
 		bool		typByVal;
-		MemoryContext 	old;
+		MemoryContext old;
 
-		/* use datumCopy to pass variables, first swith to saved memory context */
+		/* use datumCopy to pass variables, first switch to saved memory context */
 		old = MemoryContextSwitchTo(Ora_spi_saved_memorycontext());
 		for (i = 0; i < fake_fcinfo->nargs; ++i)
 		{
@@ -557,7 +555,10 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 			{
 				get_typlenbyval(codeblock->params->params[i].ptype, &typLen, &typByVal);
 
-				/* use datumCopy because fake_fcinfo memory will be freed by FreeExecutorState */
+				/*
+				 * use datumCopy because fake_fcinfo memory will be freed by
+				 * FreeExecutorState
+				 */
 				codeblock->params->params[i].value = datumCopy(fake_fcinfo->args[i].value, typByVal, typLen);
 				codeblock->params->params[i].isnull = fake_fcinfo->args[i].isnull;
 			}
@@ -568,7 +569,7 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 			}
 		}
 
-		/* return to old memory context */
+		/* switch to old memory context */
 		MemoryContextSwitchTo(old);
 	}
 
@@ -731,7 +732,7 @@ plisql_validator(PG_FUNCTION_ARGS)
 }
 
 static void
-set_blocks_oraparam_level(PLiSQL_stmt_block *block, int top, int cur)
+set_blocks_oraparam_level(PLiSQL_stmt_block * block, int top, int cur)
 {
 	ListCell   *s;
 
@@ -745,14 +746,13 @@ set_blocks_oraparam_level(PLiSQL_stmt_block *block, int top, int cur)
 
 	foreach(s, block->body)
 	{
-		PLiSQL_stmt *stmt = (PLiSQL_stmt *)lfirst(s);
+		PLiSQL_stmt *stmt = (PLiSQL_stmt *) lfirst(s);
 
 		if (stmt != NULL && (enum PLiSQL_stmt_type) stmt->cmd_type == PLISQL_STMT_BLOCK)
 		{
-			set_blocks_oraparam_level((PLiSQL_stmt_block *)stmt, top, cur);		
-		}	
+			set_blocks_oraparam_level((PLiSQL_stmt_block *) stmt, top, cur);
+		}
 	}
 
 	return;
 }
-

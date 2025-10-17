@@ -776,11 +776,8 @@ msgstr "\"%s\" 是用于 \"%s\" 连接的无效认证方法"
 
 #: initdb.c:2521
 #, c-format
-msgid "	NOTICE: If you set this to gb18030,\n\
-		the database will initilized with gb18030_2000,but not gb18030_2022,\n\
-		if you want to use gb18030_2022,please set this option to gb18030_2022,\n"
-msgstr "    注意: 如果设置了这个参数为gb18030,数据库会以gb18030_2000标准进行初始化,\n\
-        如果想要使用gb18030_2022标准,将此选项设置为gb18030_2022\n"
+msgid "NOTICE: If you set this to gb18030, the database will initilized with gb18030_2000,but not gb18030_2022, if you want to use gb18030_2022,please set this option to gb18030_2022,\n"
+msgstr "注意: 如果设置了这个参数为gb18030, 数据库会以gb18030_2000标准进行初始化, 如果想要使用gb18030_2022标准,将此选项设置为gb18030_2022\n"
 
 #: initdb.c:2531
 #, c-format

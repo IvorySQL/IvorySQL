@@ -32,8 +32,8 @@ Furthermore, for more detailed installation instructions, please refer to the [I
 - [Source code installation](https://docs.ivorysql.org/en/ivorysql-doc/v4.5/v4.5/6#Source-code-installation)
 
 ## Developer Formatting hooks and CI:
-- A pre-commit formatting hook is provided at `.githooks/pre-commit`. Enable it with `git config core.hooksPath .githooks`, or run `make enable-git-hooks` (equivalently `bash tools/enable-git-hooks.sh`).
-- The hook depends only on in-tree tools `src/tools/pgindent` and `src/tools/pg_bsd_indent`. On commit it formats staged C/C++ files with pgindent and re-adds them to the index. 
+- A pre-commit formatting hook is provided at `.githooks/pre-commit`. Enable it with `git config core.hooksPath .githooks`, or run `make code-format` (equivalently `bash tools/enable-git-hooks.sh`).
+- The hook depends only on in-tree tools `src/tools/pgindent` and `src/tools/pg_bsd_indent`. On commit it formats staged C/C++ files with pgindent and re-adds them to the staged area. 
 - A Cirrus workflow `FormatCheck` runs `pgindent --check` on files changed in a PR.
 
 ## Contributing to the IvorySQL

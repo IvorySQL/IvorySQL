@@ -52,9 +52,9 @@
  */
 
 int	datums_alloc; 
-int			plisql_nDatums;
+int	plisql_nDatums;
 PLiSQL_datum **plisql_Datums;
-int	datums_last;
+int			datums_last;
 
 char	   *plisql_error_funcname;
 bool		plisql_DumpExecTree = false;
@@ -80,7 +80,7 @@ static HTAB *plisql_HashTable = NULL;
 typedef struct
 {
 	const char *label;
-	int			sqlerrstate;
+	int	sqlerrstate;
 } ExceptionLabelMap;
 
 static const ExceptionLabelMap exception_label_map[] = {
@@ -88,8 +88,9 @@ static const ExceptionLabelMap exception_label_map[] = {
 	{NULL, 0}
 };
 
-bool check_referenced_objects = false;
-List *plisql_referenced_objects = NIL;	/* the elements of list are ObjectAddress */
+bool		check_referenced_objects = false;
+List	   *plisql_referenced_objects = NIL;	/* the elements of list are
+												 * ObjectAddress */
 
 
 /* ----------
@@ -97,34 +98,34 @@ List *plisql_referenced_objects = NIL;	/* the elements of list are ObjectAddress
  * ----------
  */
 static PLiSQL_function *do_compile(FunctionCallInfo fcinfo,
-									HeapTuple procTup,
-									PLiSQL_function *function,
-									PLiSQL_func_hashkey *hashkey,
-									bool forValidator);
+					HeapTuple procTup,
+					PLiSQL_function *function,
+					PLiSQL_func_hashkey *hashkey,
+					bool forValidator);
 static Node *plisql_pre_column_ref(ParseState *pstate, ColumnRef *cref);
 static Node *plisql_post_column_ref(ParseState *pstate, ColumnRef *cref, Node *var);
 static Node *plisql_param_ref(ParseState *pstate, ParamRef *pref);
 static Node *resolve_column_ref(ParseState *pstate, PLiSQL_expr *expr,
-								ColumnRef *cref, bool error_if_no_field);
+					ColumnRef *cref, bool error_if_no_field);
 static Node *make_datum_param(PLiSQL_expr *expr, int dno, int location);
 static PLiSQL_type *build_datatype(HeapTuple typeTup, int32 typmod,
-									Oid collation, TypeName *origtypname);
+					Oid collation, TypeName *origtypname);
 static void compute_function_hashkey(FunctionCallInfo fcinfo,
-									 Form_pg_proc procStruct,
-									 PLiSQL_func_hashkey *hashkey,
-									 bool forValidator,
-									 HeapTuple procTup); 
+					 Form_pg_proc procStruct,
+					 PLiSQL_func_hashkey *hashkey,
+					 bool forValidator,
+					 HeapTuple procTup); 
 static PLiSQL_function *plisql_HashTableLookup(PLiSQL_func_hashkey *func_key);
 static void plisql_HashTableInsert(PLiSQL_function *function,
-									PLiSQL_func_hashkey *func_key);
+					PLiSQL_func_hashkey *func_key);
 static void plisql_HashTableDelete(PLiSQL_function *function);
 static void plisql_add_type_referenced_objects(TypeName *typeName);
-void delete_function(PLiSQL_function *func);
+void		delete_function(PLiSQL_function * func);
 
 /* ----------
- * plisql_compile		Make an execution tree for a PL/iSQL function.
+ * plisql_compile		Build an execution tree for a PL/iSQL function.
  *
- * If forValidator is true, we're only compiling for validation purposes,
+ * If forValidator is true, we're just compiling for validation purpose,
  * and so some checks are skipped.
  *
  * Note: it's important for this to fall through quickly if the function
@@ -134,17 +135,17 @@ void delete_function(PLiSQL_function *func);
 PLiSQL_function *
 plisql_compile(FunctionCallInfo fcinfo, bool forValidator)
 {
-	Oid			funcOid = fcinfo->flinfo->fn_oid;
+	Oid		funcOid = fcinfo->flinfo->fn_oid;
 	HeapTuple	procTup;
 	Form_pg_proc procStruct;
 	PLiSQL_function *function;
 	PLiSQL_func_hashkey hashkey;
 	bool		function_valid = false;
 	bool		hashkey_valid = false;
-	Oid rettypeoid = InvalidOid;
+	Oid			rettypeoid = InvalidOid;
 
 	/*
-	 * Lookup the pg_proc tuple by Oid; we'll need it in any case
+	 * Lookup the pg_proc tuple by Oid; we need it in any case
 	 */
 	procTup = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcOid));
 	if (!HeapTupleIsValid(procTup))
@@ -163,7 +164,7 @@ recheck:
 	if (!function)
 	{
 		/* Compute hashkey using function signature and actual arg types */
-		compute_function_hashkey(fcinfo, procStruct, &hashkey, forValidator, procTup); 
+		compute_function_hashkey(fcinfo, procStruct, &hashkey, forValidator, procTup);
 		hashkey_valid = true;
 
 		/* And do the lookup */
@@ -175,7 +176,7 @@ recheck:
 		/* We have a compiled function, but is it still valid? */
 		if (function->fn_xmin == HeapTupleHeaderGetRawXmin(procTup->t_data) &&
 			ItemPointerEquals(&function->fn_tid, &procTup->t_self) &&
-			(!OidIsValid(rettypeoid) || rettypeoid == function->fn_rettype)) 
+			(!OidIsValid(rettypeoid) || rettypeoid == function->fn_rettype))
 			function_valid = true;
 		else
 		{
@@ -218,23 +219,24 @@ recheck:
 			if (!forValidator &&
 				procStruct->prostatus == PROSTATUS_INVALID)
 				ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("%s %s is in an invalid state",
-						(procStruct->prokind == PROKIND_FUNCTION) ? "function" : "procedure",
-						NameStr(procStruct->proname))));
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("%s %s is in an invalid state",
+								(procStruct->prokind == PROKIND_FUNCTION) ? "function" : "procedure",
+								NameStr(procStruct->proname))));
+
 			/*
 			 * Calculate hashkey if we didn't already; we'll need it to store the
-			 * completed function.
+			 * compiled function.
 			 */
 			if (!hashkey_valid)
 				compute_function_hashkey(fcinfo, procStruct, &hashkey,
-							 forValidator, procTup); 
-	
+										 forValidator, procTup);
+
 			/*
 			 * Do the hard part.
 			 */
 			function = do_compile(fcinfo, procTup, function,
-						  &hashkey, forValidator);
+								  &hashkey, forValidator);
 		}
 
 		PG_CATCH();
@@ -251,7 +253,7 @@ recheck:
 	/*
 	 * Save pointer in FmgrInfo to avoid search on subsequent calls
 	 */
-	fcinfo->flinfo->fn_extra =  function;
+	fcinfo->flinfo->fn_extra = function;
 
 	/*
 	 * Finally return the compiled function
@@ -285,14 +287,14 @@ recheck:
 static PLiSQL_function *
 do_compile(FunctionCallInfo fcinfo,
 		   HeapTuple procTup,
-		   PLiSQL_function *function,
-		   PLiSQL_func_hashkey *hashkey,
+		   PLiSQL_function * function,
+		   PLiSQL_func_hashkey * hashkey,
 		   bool forValidator)
 {
 	Form_pg_proc procStruct = (Form_pg_proc) GETSTRUCT(procTup);
 	bool		is_dml_trigger = CALLED_AS_TRIGGER(fcinfo);
 	bool		is_event_trigger = CALLED_AS_EVENT_TRIGGER(fcinfo);
-	yyscan_t        scanner;
+	yyscan_t	scanner;
 	Datum		prosrcdatum;
 	char	   *proc_source;
 	HeapTuple	typeTup;
@@ -315,11 +317,11 @@ do_compile(FunctionCallInfo fcinfo,
 	MemoryContext func_cxt;
 
 	bool		is_plisql_function = false;
-	int		*all_arg_varnos = NULL;
+	int		   *all_arg_varnos = NULL;
 
-	char		**argtypenames = NULL;
-	char		*rettypename = NULL;
-	PLiSQL_type	*rettype = NULL;
+	char	  **argtypenames = NULL;
+	char	   *rettypename = NULL;
+	PLiSQL_type *rettype = NULL;
 
 	/*
 	 * Setup the scanner input and error info.
@@ -342,7 +344,7 @@ do_compile(FunctionCallInfo fcinfo,
 
 	/*
 	 * Do extra syntax checks when validating the function definition. We skip
-	 * this when actually compiling functions for execution, for performance
+	 * this when actually compiling functions for execution, due to performance
 	 * reasons.
 	 */
 	plisql_check_syntax = forValidator;
@@ -368,8 +370,8 @@ do_compile(FunctionCallInfo fcinfo,
 	 * per-function memory context, so it can be reclaimed easily.
 	 */
 	func_cxt = AllocSetContextCreate(TopMemoryContext,
-									 "PL/iSQL function",
-									 ALLOCSET_DEFAULT_SIZES);
+						 "PL/iSQL function",
+						 ALLOCSET_DEFAULT_SIZES);
 	plisql_compile_tmp_cxt = MemoryContextSwitchTo(func_cxt);
 
 	function->fn_signature = format_procedure(fcinfo->flinfo->fn_oid);
@@ -443,21 +445,21 @@ do_compile(FunctionCallInfo fcinfo,
 			MemoryContextSwitchTo(plisql_compile_tmp_cxt);
 
 			numargs = get_func_arg_info(procTup,
-										&argtypes, &argnames, &argmodes);
+							&argtypes, &argnames, &argmodes);
 
 			get_func_typename_info(procTup,
-									&argtypenames, &rettypename);
+							&argtypenames, &rettypename);
 
 			plisql_resolve_polymorphic_argtypes(numargs, argtypes, argmodes,
-												 fcinfo->flinfo->fn_expr,
-												 forValidator,
-												 plisql_error_funcname);
+								 fcinfo->flinfo->fn_expr,
+								 forValidator,
+								 plisql_error_funcname);
 
 			in_arg_varnos = (int *) palloc(numargs * sizeof(int));
 			if (is_plisql_function)
-				out_arg_variables = (PLiSQL_variable **) palloc((numargs + 1) * sizeof(PLiSQL_variable *));
+				out_arg_variables = (PLiSQL_variable * *) palloc((numargs + 1) * sizeof(PLiSQL_variable *));
 			else
-				out_arg_variables = (PLiSQL_variable **) palloc(numargs * sizeof(PLiSQL_variable *));
+				out_arg_variables = (PLiSQL_variable * *) palloc(numargs * sizeof(PLiSQL_variable *));
 
 			all_arg_varnos = (int *) palloc(numargs * sizeof(int));
 
@@ -469,7 +471,7 @@ do_compile(FunctionCallInfo fcinfo,
 			for (i = 0; i < numargs; i++)
 			{
 				char		buf[32];
-				Oid			argtypeid = argtypes[i];
+				Oid		argtypeid = argtypes[i];
 				char		argmode = argmodes ? argmodes[i] : PROARGMODE_IN;
 				PLiSQL_type *argdtype;
 				PLiSQL_variable *argvariable;
@@ -479,10 +481,10 @@ do_compile(FunctionCallInfo fcinfo,
 				snprintf(buf, sizeof(buf), "$%d", i + 1);
 
 				/* Create datatype info */
-				/* consider the argument type comes from a package */
+				/* consider the argument type that comes from a package */
 				if (argtypenames != NULL && strcmp(argtypenames[i], "") != 0)
 				{
-					TypeName	*tname;
+					TypeName   *tname;
 
 					tname = (TypeName *) stringToNode(argtypenames[i]);
 
@@ -500,16 +502,16 @@ do_compile(FunctionCallInfo fcinfo,
 						typtup = LookupOraTypeName(NULL, tname, NULL, true);
 						if (typtup == NULL)
 							ereport(ERROR,
-								(errcode(ERRCODE_UNDEFINED_OBJECT),
-								 errmsg("type \"%s\" does not exist",
-									TypeNameToString(tname)),
-								 	parser_errposition(NULL, tname->location)));
+									(errcode(ERRCODE_UNDEFINED_OBJECT),
+									 errmsg("type \"%s\" does not exist",
+											TypeNameToString(tname)),
+									 parser_errposition(NULL, tname->location)));
 
 						argtypeid = typeTypeId(typtup);
 						argdtype = plisql_build_datatype(argtypeid,
-										  -1,
-										  function->fn_input_collation,
-										  NULL);
+														 -1,
+														 function->fn_input_collation,
+														 NULL);
 						ReleaseSysCache(typtup);
 					}
 					pfree(tname);
@@ -517,15 +519,15 @@ do_compile(FunctionCallInfo fcinfo,
 				else
 				{
 					argdtype = plisql_build_datatype(argtypeid,
-									  -1,
-									  function->fn_input_collation,
-									  NULL);
+													 -1,
+													 function->fn_input_collation,
+													 NULL);
 				}
 
 
 				/* Disallow pseudotype argument */
-				/* (note we already replaced polymorphic types) */
-				/* (build_variable would do this, but wrong message) */
+				/* note we already replaced polymorphic types */
+				/* build_variable can do this, but with wrong message */
 				if (argdtype->ttype == PLISQL_TTYPE_PSEUDO)
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -537,40 +539,40 @@ do_compile(FunctionCallInfo fcinfo,
 				 * for the argument, use that as refname, else use $n name.
 				 */
 				argvariable = plisql_build_variable((argnames &&
-													  argnames[i][0] != '\0') ?
-													 argnames[i] : buf,
-													 0, argdtype, false);
+									 argnames[i][0] != '\0') ?
+									 argnames[i] : buf,
+									 0, argdtype, false);
 
 				if (argvariable->dtype == PLISQL_DTYPE_VAR)
 				{
 					argitemtype = PLISQL_NSTYPE_VAR;
 
-					/* 
-					 * remember the variable mode for IN, OUT and IN OUT,  
+					/*
+					 * remember the variable mode for IN, OUT and IN OUT,
 					 * variable of IN mode is not allowned to have value.
 					 */
 					if (argmode == PROARGMODE_IN ||
 						argmode == PROARGMODE_OUT ||
 						argmode == PROARGMODE_INOUT)
-						((PLiSQL_var *)argvariable)->info = argmode;
+						((PLiSQL_var *) argvariable)->info = argmode;
 					else
-						((PLiSQL_var *)argvariable)->info = PROARGMODE_IN;
+						((PLiSQL_var *) argvariable)->info = PROARGMODE_IN;
 				}
 				else
 				{
 					Assert(argvariable->dtype == PLISQL_DTYPE_REC);
 					argitemtype = PLISQL_NSTYPE_REC;
 
-					/* 
-					 * remember the variable mode for IN, OUT and IN OUT,  
+					/*
+					 * remember the variable mode for IN, OUT and IN OUT,
 					 * variable of IN mode is not allowned to have value.
 					 */
 					if (argmode == PROARGMODE_IN ||
 						argmode == PROARGMODE_OUT ||
 						argmode == PROARGMODE_INOUT)
-						((PLiSQL_rec *)argvariable)->info = argmode;
+						((PLiSQL_rec *) argvariable)->info = argmode;
 					else
-						((PLiSQL_rec *)argvariable)->info = PROARGMODE_IN;
+						((PLiSQL_rec *) argvariable)->info = PROARGMODE_IN;
 				}
 
 				/* Remember arguments in appropriate arrays */
@@ -596,7 +598,7 @@ do_compile(FunctionCallInfo fcinfo,
 
 			if (rettypename != NULL)
 			{
-				TypeName		*tname;
+				TypeName   *tname;
 
 				tname = (TypeName *) stringToNode(rettypename);
 				if (tname->pct_type || tname->row_type)
@@ -614,16 +616,16 @@ do_compile(FunctionCallInfo fcinfo,
 					typtup = LookupOraTypeName(NULL, tname, NULL, true);
 					if (typtup == NULL)
 						ereport(ERROR,
-							(errcode(ERRCODE_UNDEFINED_OBJECT),
-							 errmsg("type \"%s\" does not exist",
-								TypeNameToString(tname)),
+								(errcode(ERRCODE_UNDEFINED_OBJECT),
+								 errmsg("type \"%s\" does not exist",
+										TypeNameToString(tname)),
 								 parser_errposition(NULL, tname->location)));
 
 					rettypeid = typeTypeId(typtup);
 					rettype = plisql_build_datatype(rettypeid,
-									  -1,
-									  function->fn_input_collation,
-									  NULL);
+													-1,
+													function->fn_input_collation,
+													NULL);
 					ReleaseSysCache(typtup);
 				}
 				else
@@ -642,7 +644,7 @@ do_compile(FunctionCallInfo fcinfo,
 				if (procStruct->prorettype != VOIDOID)
 				{
 					char		buf[32];
-					Oid 		argtypeid = rettypeid;
+					Oid			argtypeid = rettypeid;
 					PLiSQL_type *argdtype;
 					PLiSQL_variable *argvariable;
 					PLiSQL_nsitem_type argitemtype;
@@ -665,10 +667,10 @@ do_compile(FunctionCallInfo fcinfo,
 							if (!OidIsValid(argtypeid))
 							{
 								ereport(ERROR,
-									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-										errmsg("could not know the actual return type "
-											"for polymorphic function \"%s\"",
-											plisql_error_funcname)));
+										(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+										 errmsg("could not know the actual return type "
+												"for polymorphic function \"%s\"",
+												plisql_error_funcname)));
 							}
 						}
 					}
@@ -676,11 +678,11 @@ do_compile(FunctionCallInfo fcinfo,
 					snprintf(buf, sizeof(buf), "$%d", i + 1);
 
 					argdtype = plisql_build_datatype(argtypeid, -1,
-									 function->fn_input_collation,
-									 NULL);
+													 function->fn_input_collation,
+													 NULL);
 
 					argvariable = plisql_build_variable("_RETVAL_",
-										 0, argdtype, false);
+														0, argdtype, false);
 
 					function->fn_ret_vardno = argvariable->dno;
 
@@ -689,7 +691,10 @@ do_compile(FunctionCallInfo fcinfo,
 					else
 						argitemtype = PLISQL_NSTYPE_REC;
 
-					/* the variable for function return value follows all function OUT args */
+					/*
+					 * the variable for function return value follows all
+					 * function OUT args
+					 */
 					out_arg_variables[num_out_args] = argvariable;
 					num_out_args++;
 
@@ -699,14 +704,16 @@ do_compile(FunctionCallInfo fcinfo,
 			}
 
 			/*
-			 * If there's at least one OUT parameter in a procedure, build a row that
-			 * holds all of them.  If there's at least one OUT parameter in a function,
-			 * and the return type is VOID, alos build a row that holds all of them.
+			 * If there's at least one OUT parameter in a procedure, build a
+			 * row that holds all of them.  If there's at least one OUT
+			 * parameter in a function, and the return type is VOID, alos
+			 * build a row that holds all of them.
 			 *
-			 * If the function return type is not VOID, build a row that combines all 
-			 * OUT parameters and return value.
+			 * If the function return type is not VOID, build a row that
+			 * combines all OUT parameters and return value.
 			 *
-			 * Procedures and functions return a row even for one OUT parameter.
+			 * Procedures and functions return a row even for one OUT
+			 * parameter.
 			 */
 			if (num_out_args > 0)
 			{
@@ -722,12 +729,12 @@ do_compile(FunctionCallInfo fcinfo,
 			 * one.  (In validation mode we arbitrarily assume we are dealing
 			 * with integers.)
 			 *
-			 * Note: errcode is FEATURE_NOT_SUPPORTED because it should always
-			 * work; if it doesn't we're in some context that fails to make
+			 * Note: errcode is FEATURE_NOT_SUPPORTED as it would always work; 
+			 * if it doesn't we're in some context that fails to make
 			 * the info available.
 			 */
 
-			/* If a function has out arguments, change ts return type to RECORDOID */
+			/* If a function has out arguments, change its return type to RECORDOID */
 			if (num_out_args > 0 &&
 				rettypeid != RECORDOID &&
 				is_plisql_function)
@@ -749,7 +756,6 @@ do_compile(FunctionCallInfo fcinfo,
 						rettypeid = INT4MULTIRANGEOID;
 					else		/* ANYELEMENT or ANYNONARRAY or ANYCOMPATIBLE */
 						rettypeid = INT4OID;
-					/* XXX what could we use for ANYENUM? */
 				}
 				else
 				{
@@ -778,7 +784,7 @@ do_compile(FunctionCallInfo fcinfo,
 			typeStruct = (Form_pg_type) GETSTRUCT(typeTup);
 
 			/* Disallow pseudotype result, except VOID or RECORD */
-			/* (note we already replaced polymorphic types) */
+			/* note we already replaced polymorphic types */
 			if (typeStruct->typtype == TYPTYPE_PSEUDO)
 			{
 				if (rettypeid == VOIDOID ||
@@ -809,11 +815,11 @@ do_compile(FunctionCallInfo fcinfo,
 				num_out_args == 0)
 			{
 				(void) plisql_build_variable("$0", 0,
-											  build_datatype(typeTup,
-															 -1,
-															 function->fn_input_collation,
-															 NULL),
-											  true);
+								  build_datatype(typeTup,
+								 -1,
+								 function->fn_input_collation,
+								 NULL),
+								  true);
 			}
 
 			ReleaseSysCache(typeTup);
@@ -844,110 +850,110 @@ do_compile(FunctionCallInfo fcinfo,
 
 			/* Add the variable tg_name */
 			var = plisql_build_variable("tg_name", 0,
-										 plisql_build_datatype(NAMEOID,
-																-1,
-																function->fn_input_collation,
-																NULL),
-										 true);
+							 plisql_build_datatype(NAMEOID,
+							-1,
+							function->fn_input_collation,
+							NULL),
+							 true);
 			Assert(var->dtype == PLISQL_DTYPE_VAR);
 			var->dtype = PLISQL_DTYPE_PROMISE;
 			((PLiSQL_var *) var)->promise = PLISQL_PROMISE_TG_NAME;
 
 			/* Add the variable tg_when */
 			var = plisql_build_variable("tg_when", 0,
-										 plisql_build_datatype(TEXTOID,
-																-1,
-																function->fn_input_collation,
-																NULL),
-										 true);
+							 plisql_build_datatype(TEXTOID,
+							-1,
+							function->fn_input_collation,
+							NULL),
+							 true);
 			Assert(var->dtype == PLISQL_DTYPE_VAR);
 			var->dtype = PLISQL_DTYPE_PROMISE;
 			((PLiSQL_var *) var)->promise = PLISQL_PROMISE_TG_WHEN;
 
 			/* Add the variable tg_level */
 			var = plisql_build_variable("tg_level", 0,
-										 plisql_build_datatype(TEXTOID,
-																-1,
-																function->fn_input_collation,
-																NULL),
-										 true);
+							 plisql_build_datatype(TEXTOID,
+							-1,
+							function->fn_input_collation,
+							NULL),
+							 true);
 			Assert(var->dtype == PLISQL_DTYPE_VAR);
 			var->dtype = PLISQL_DTYPE_PROMISE;
 			((PLiSQL_var *) var)->promise = PLISQL_PROMISE_TG_LEVEL;
 
 			/* Add the variable tg_op */
 			var = plisql_build_variable("tg_op", 0,
-										 plisql_build_datatype(TEXTOID,
-																-1,
-																function->fn_input_collation,
-																NULL),
-										 true);
+							 plisql_build_datatype(TEXTOID,
+							-1,
+							function->fn_input_collation,
+							NULL),
+							 true);
 			Assert(var->dtype == PLISQL_DTYPE_VAR);
 			var->dtype = PLISQL_DTYPE_PROMISE;
 			((PLiSQL_var *) var)->promise = PLISQL_PROMISE_TG_OP;
 
 			/* Add the variable tg_relid */
 			var = plisql_build_variable("tg_relid", 0,
-										 plisql_build_datatype(OIDOID,
-																-1,
-																InvalidOid,
-																NULL),
-										 true);
+							 plisql_build_datatype(OIDOID,
+							-1,
+							InvalidOid,
+							NULL),
+							 true);
 			Assert(var->dtype == PLISQL_DTYPE_VAR);
 			var->dtype = PLISQL_DTYPE_PROMISE;
 			((PLiSQL_var *) var)->promise = PLISQL_PROMISE_TG_RELID;
 
 			/* Add the variable tg_relname */
 			var = plisql_build_variable("tg_relname", 0,
-										 plisql_build_datatype(NAMEOID,
-																-1,
-																function->fn_input_collation,
-																NULL),
-										 true);
+							 plisql_build_datatype(NAMEOID,
+							-1,
+							function->fn_input_collation,
+							NULL),
+							 true);
 			Assert(var->dtype == PLISQL_DTYPE_VAR);
 			var->dtype = PLISQL_DTYPE_PROMISE;
 			((PLiSQL_var *) var)->promise = PLISQL_PROMISE_TG_TABLE_NAME;
 
-			/* tg_table_name is now preferred to tg_relname */
+			/* tg_table_name is now preferred to be tg_relname */
 			var = plisql_build_variable("tg_table_name", 0,
-										 plisql_build_datatype(NAMEOID,
-																-1,
-																function->fn_input_collation,
-																NULL),
-										 true);
+							 plisql_build_datatype(NAMEOID,
+							-1,
+							function->fn_input_collation,
+							NULL),
+							 true);
 			Assert(var->dtype == PLISQL_DTYPE_VAR);
 			var->dtype = PLISQL_DTYPE_PROMISE;
 			((PLiSQL_var *) var)->promise = PLISQL_PROMISE_TG_TABLE_NAME;
 
 			/* add the variable tg_table_schema */
 			var = plisql_build_variable("tg_table_schema", 0,
-										 plisql_build_datatype(NAMEOID,
-																-1,
-																function->fn_input_collation,
-																NULL),
-										 true);
+							 plisql_build_datatype(NAMEOID,
+							-1,
+							function->fn_input_collation,
+							NULL),
+							 true);
 			Assert(var->dtype == PLISQL_DTYPE_VAR);
 			var->dtype = PLISQL_DTYPE_PROMISE;
 			((PLiSQL_var *) var)->promise = PLISQL_PROMISE_TG_TABLE_SCHEMA;
 
 			/* Add the variable tg_nargs */
 			var = plisql_build_variable("tg_nargs", 0,
-										 plisql_build_datatype(INT4OID,
-																-1,
-																InvalidOid,
-																NULL),
-										 true);
+							 plisql_build_datatype(INT4OID,
+							-1,
+							InvalidOid,
+							NULL),
+							 true);
 			Assert(var->dtype == PLISQL_DTYPE_VAR);
 			var->dtype = PLISQL_DTYPE_PROMISE;
 			((PLiSQL_var *) var)->promise = PLISQL_PROMISE_TG_NARGS;
 
 			/* Add the variable tg_argv */
 			var = plisql_build_variable("tg_argv", 0,
-										 plisql_build_datatype(TEXTARRAYOID,
-																-1,
-																function->fn_input_collation,
-																NULL),
-										 true);
+							 plisql_build_datatype(TEXTARRAYOID,
+							-1,
+							function->fn_input_collation,
+							NULL),
+							 true);
 			Assert(var->dtype == PLISQL_DTYPE_VAR);
 			var->dtype = PLISQL_DTYPE_PROMISE;
 			((PLiSQL_var *) var)->promise = PLISQL_PROMISE_TG_ARGV;
@@ -969,22 +975,22 @@ do_compile(FunctionCallInfo fcinfo,
 
 			/* Add the variable tg_event */
 			var = plisql_build_variable("tg_event", 0,
-										 plisql_build_datatype(TEXTOID,
-																-1,
-																function->fn_input_collation,
-																NULL),
-										 true);
+							 plisql_build_datatype(TEXTOID,
+							-1,
+							function->fn_input_collation,
+							NULL),
+							 true);
 			Assert(var->dtype == PLISQL_DTYPE_VAR);
 			var->dtype = PLISQL_DTYPE_PROMISE;
 			((PLiSQL_var *) var)->promise = PLISQL_PROMISE_TG_EVENT;
 
 			/* Add the variable tg_tag */
 			var = plisql_build_variable("tg_tag", 0,
-										 plisql_build_datatype(TEXTOID,
-																-1,
-																function->fn_input_collation,
-																NULL),
-										 true);
+							 plisql_build_datatype(TEXTOID,
+							-1,
+							function->fn_input_collation,
+							NULL),
+							 true);
 			Assert(var->dtype == PLISQL_DTYPE_VAR);
 			var->dtype = PLISQL_DTYPE_PROMISE;
 			((PLiSQL_var *) var)->promise = PLISQL_PROMISE_TG_TAG;
@@ -1004,11 +1010,11 @@ do_compile(FunctionCallInfo fcinfo,
 	 * Create the magic FOUND variable.
 	 */
 	var = plisql_build_variable("found", 0,
-								 plisql_build_datatype(BOOLOID,
-														-1,
-														InvalidOid,
-														NULL),
-								 true);
+					 plisql_build_datatype(BOOLOID,
+					-1,
+					InvalidOid,
+					NULL),
+					 true);
 	function->found_varno = var->dno;
 
 	PG_TRY();
@@ -1031,7 +1037,9 @@ do_compile(FunctionCallInfo fcinfo,
 		is_plisql_function &&
 		procStruct->prorettype != VOIDOID &&
 		((PLiSQL_stmt *) llast(function->action->body))->cmd_type != PLISQL_STMT_RETURN)
+	{
 		function->fn_no_return = true;
+	}
 
 	/*
 	 * If it has OUT parameters or returns VOID or returns a set, we allow
@@ -1056,49 +1064,49 @@ do_compile(FunctionCallInfo fcinfo,
 	else
 	{
 		for (i = 0; i < function->fn_nargs; i++)
-			function->fn_argvarnos[i] = in_arg_varnos[i];	
+			function->fn_argvarnos[i] = in_arg_varnos[i];
 	}
 
 	plisql_finish_datums(function);
 	if (function->has_exception_block)
-			plisql_mark_local_assignment_targets(function);
+		plisql_mark_local_assignment_targets(function);
 	plisql_finish_subproc_func(function);
 
 	plisql_check_subproc_define(function, scanner);
 
 	/*
-	 * after plisql_check_subproc_define for nice error message
+	 * run after plisql_check_subproc_define for nice error message
 	 */
 	plisql_scanner_finish(scanner);
 	pfree(proc_source);
 
 	/* Debug dump for completed functions */
 	if (plisql_DumpExecTree)
-		plisql_dumptree(function, 0, 0); 
+		plisql_dumptree(function, 0, 0);
 
 	if (check_referenced_objects)
 	{
 		/*
-		 * we have builded a global list plisql_referenced_objects
+		 * we have built a global list plisql_referenced_objects
 		 * to store the objects referenced by %TYPE and %ROWTYPE
 		 * in function body. Consider whether there are
 		 * referenced objects in the function arguments datatype
 		 * and the function returned datatype.
 		 *
 		 */
-		char		**argtypenames = NULL;
-		char		*rettypename = NULL;
+		char	  **argtypenames = NULL;
+		char	   *rettypename = NULL;
 
 		get_func_typename_info(procTup, &argtypenames, &rettypename);
 		if (argtypenames != NULL)
 		{
-			int 	i = 0;
+			int			i = 0;
 
 			for (i = 0; i < procStruct->pronargs; i++)
 			{
 				if (strcmp(argtypenames[i], "") != 0)
 				{
-					TypeName	*typeName;
+					TypeName   *typeName;
 
 					typeName = (TypeName *) stringToNode(argtypenames[i]);
 					plisql_add_type_referenced_objects(typeName);
@@ -1108,13 +1116,13 @@ do_compile(FunctionCallInfo fcinfo,
 		}
 		if (rettypename != NULL && strcmp(rettypename, "") != 0)
 		{
-			TypeName	*typeName;
+			TypeName   *typeName;
 
 			typeName = (TypeName *) stringToNode(rettypename);
 			plisql_add_type_referenced_objects(typeName);
 			pfree(rettypename);
 		}
-	
+
 		/* All the referenced objects are in plisql_referenced_objects list */
 		if (plisql_referenced_objects != NIL)
 		{
@@ -1124,30 +1132,35 @@ do_compile(FunctionCallInfo fcinfo,
 			Relation	depRel;
 
 			/*
-			 * If the parameters datatype or return type of a function(procedure)
-			 * or the function body reference tablename.column%TYPE,
-			 * schemaname.tablename.column%TYPE, tablename%ROWTYPE,
-			 * schemaname.tablename%ROWTYPE, record the dependencies
-			 * between relation and function(procedure or package).
+			 * If the parameters datatype or return type of a
+			 * function(procedure) or the function body reference
+			 * tablename.column%TYPE, schemaname.tablename.column%TYPE,
+			 * tablename%ROWTYPE, schemaname.tablename%ROWTYPE, record the
+			 * dependencies between relation and function(procedure or
+			 * package).
 			 */
 			addrs = new_object_addresses();
 			ObjectAddressSet(myself, ProcedureRelationId, function->fn_oid);
 			depRel = table_open(DependRelationId, RowExclusiveLock);
 
-			/* Scan the parameters list and check if it references table name 
-			 * or tablename.columnname 
+			/*
+			 * Scan the parameters list and check if it references table name
+			 * or tablename.columnname
 			 */
 			foreach(x, plisql_referenced_objects)
 			{
 				ObjectAddress *obj = (ObjectAddress *) lfirst(x);
 				ObjectAddress referenced;
 				ScanKeyData key[3];
-				int 		nkeys;
+				int			nkeys;
 				SysScanDesc scan;
 				HeapTuple	tup;
 				bool		isduplicate = false;
 
-				/* Check duplicate dependencies that alreay been built in CREATE FUNCTION/PROCEDURE statment */
+				/*
+				 * Check duplicate dependencies that alreay been built in
+				 * CREATE FUNCTION/PROCEDURE statment
+				 */
 				ScanKeyInit(&key[0],
 							Anum_pg_depend_refclassid,
 							BTEqualStrategyNumber, F_OIDEQ,
@@ -1161,23 +1174,27 @@ do_compile(FunctionCallInfo fcinfo,
 				{
 					/* Consider dependencies of only this sub-object */
 					ScanKeyInit(&key[2],
-							Anum_pg_depend_refobjsubid,
-							BTEqualStrategyNumber, F_INT4EQ,
-							Int32GetDatum(obj->objectSubId));
+								Anum_pg_depend_refobjsubid,
+								BTEqualStrategyNumber, F_INT4EQ,
+								Int32GetDatum(obj->objectSubId));
 					nkeys = 3;
 				}
 				else
 				{
-					/* Consider dependencies of this object and any sub-objects */
+					/*
+					 * Consider dependencies of this object and any
+					 * sub-objects
+					 */
 					nkeys = 2;
 				}
 
 				scan = systable_beginscan(depRel, DependReferenceIndexId, true,
-							  NULL, nkeys, key);
+										  NULL, nkeys, key);
 
 				while (HeapTupleIsValid(tup = systable_getnext(scan)))
 				{
 					Form_pg_depend foundDep = (Form_pg_depend) GETSTRUCT(tup);
+
 					if (foundDep->objid == function->fn_oid)
 					{
 						isduplicate = true;
@@ -1190,7 +1207,8 @@ do_compile(FunctionCallInfo fcinfo,
 					continue;
 
 				/*
-				 * Record the dependencies between relation and function(procedure, or package).
+				 * Record the dependencies between relation and
+				 * function(procedure, or package).
 				 */
 				ObjectAddressSet(referenced, obj->classId, obj->objectId);
 				referenced.objectSubId = obj->objectSubId;
@@ -1238,7 +1256,7 @@ do_compile(FunctionCallInfo fcinfo,
 PLiSQL_function *
 plisql_compile_inline(char *proc_source, ParamListInfo inparams)
 {
-	yyscan_t        scanner;
+	yyscan_t	scanner;
 	struct compile_error_callback_arg cbarg;
 	char	   *func_name = "inline_code_block";
 	PLiSQL_function *function;
@@ -1277,8 +1295,8 @@ plisql_compile_inline(char *proc_source, ParamListInfo inparams)
 	 * its own memory context, so it can be reclaimed easily.
 	 */
 	func_cxt = AllocSetContextCreate(CurrentMemoryContext,
-									 "PL/iSQL inline code context",
-									 ALLOCSET_DEFAULT_SIZES);
+						 "PL/iSQL inline code context",
+						 ALLOCSET_DEFAULT_SIZES);
 	plisql_compile_tmp_cxt = MemoryContextSwitchTo(func_cxt);
 
 	function->fn_signature = pstrdup(func_name);
@@ -1290,8 +1308,8 @@ plisql_compile_inline(char *proc_source, ParamListInfo inparams)
 	function->print_strict_params = plisql_print_strict_params;
 
 	/*
-	 * don't do extra validation for inline code as we don't want to add spam
-	 * at runtime
+	 * don't do extra validation for inline code 
+	 * as we don't want to add spam at runtime.
 	 */
 	function->extra_warnings = 0;
 	function->extra_errors = 0;
@@ -1339,7 +1357,7 @@ plisql_compile_inline(char *proc_source, ParamListInfo inparams)
 	function->fn_nargs = 0;
 	if (inparams)
 	{
-		int	i;
+		int			i;
 
 		function->fn_nargs = inparams->numParams;
 		function->paramnames = inparams->paramnames;
@@ -1350,8 +1368,8 @@ plisql_compile_inline(char *proc_source, ParamListInfo inparams)
 			PLiSQL_variable *argvariable;
 			ParamExternData *param = &(inparams->params[i]);
 			char		buf[32];
-			Oid		argtypeid = param->ptype;
-			int		argitemtype;
+			Oid			argtypeid = param->ptype;
+			int			argitemtype;
 
 			/* Create $n name for variables */
 			if (inparams->paramnames != NULL &&
@@ -1362,33 +1380,33 @@ plisql_compile_inline(char *proc_source, ParamListInfo inparams)
 
 			/* Create datatype info */
 			argdtype = plisql_build_datatype(argtypeid,
-								-1,
-								function->fn_input_collation,
-								NULL);
+											 -1,
+											 function->fn_input_collation,
+											 NULL);
 
 			/* Disallow pseudotype argument */
 			if (argdtype->ttype != PLISQL_TTYPE_SCALAR &&
 				argdtype->ttype != PLISQL_TTYPE_REC)
 			{
 				ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					errmsg("PLI/SQL functions cannot accept type %s",
-					format_type_be(argtypeid))));
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("PLI/SQL functions cannot accept type %s",
+								format_type_be(argtypeid))));
 			}
 
-			/* Build variable and nsert into datum list */
+			/* Build variable and insert into datum list */
 			argvariable = plisql_build_variable(buf, 0, argdtype, false);
 
 			if (argvariable->dtype == PLISQL_DTYPE_VAR)
 			{
 				argitemtype = PLISQL_NSTYPE_VAR;
-				((PLiSQL_var *)argvariable)->info = param->pmode;
+				((PLiSQL_var *) argvariable)->info = param->pmode;
 			}
 			else
 			{
 				Assert(argvariable->dtype == PLISQL_DTYPE_REC);
 				argitemtype = PLISQL_NSTYPE_REC;
-				((PLiSQL_rec *)argvariable)->info = param->pmode;
+				((PLiSQL_rec *) argvariable)->info = param->pmode;
 			}
 
 			/* Add the $n name into namespace */
@@ -1396,7 +1414,7 @@ plisql_compile_inline(char *proc_source, ParamListInfo inparams)
 			function->fn_argvarnos[i] = argvariable->dno;
 		}
 
-		if (inparams->numParams> 0)
+		if (inparams->numParams > 0)
 			function->fn_prokind = PROKIND_ANONYMOUS_BLOCK;
 	}
 
@@ -1404,11 +1422,11 @@ plisql_compile_inline(char *proc_source, ParamListInfo inparams)
 	 * Create the magic FOUND variable.
 	 */
 	var = plisql_build_variable("found", 0,
-								 plisql_build_datatype(BOOLOID,
-														-1,
-														InvalidOid,
-														NULL),
-								 true);
+					 plisql_build_datatype(BOOLOID,
+					-1,
+					InvalidOid,
+					NULL),
+					 true);
 	function->found_varno = var->dno;
 
 	/*
@@ -1441,7 +1459,7 @@ plisql_compile_inline(char *proc_source, ParamListInfo inparams)
 		plisql_dumptree(function, 0, 0);
 
 	/*
-	 * after plisql_check_subproc_define for nice error message
+	 * run after plisql_check_subproc_define for nice error message
 	 */
 	plisql_scanner_finish(scanner);
 
@@ -1508,8 +1526,8 @@ add_parameter_name(PLiSQL_nsitem_type itemtype, int itemno, const char *name)
 	 * disambiguate.
 	 */
 	if (plisql_ns_lookup(plisql_ns_top(), true,
-						  name, NULL, NULL,
-						  NULL) != NULL)
+						 name, NULL, NULL,
+						 NULL) != NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 				 errmsg("parameter name \"%s\" used more than once",
@@ -1523,7 +1541,7 @@ add_parameter_name(PLiSQL_nsitem_type itemtype, int itemno, const char *name)
  * Add a dummy RETURN statement to the given function's body
  */
 void
-add_dummy_return(PLiSQL_function *function)
+add_dummy_return(PLiSQL_function * function)
 {
 	/*
 	 * If the outer block has an EXCEPTION clause, we need to make a new outer
@@ -1543,10 +1561,10 @@ add_dummy_return(PLiSQL_function *function)
 
 		function->action = new;
 	}
-	if (function->action->body == NIL || 
+	if (function->action->body == NIL ||
 		function->fn_ret_vardno != -1 ||
 		(function->fn_ret_vardno == -1 &&
-		((PLiSQL_stmt *) llast(function->action->body))->cmd_type != PLISQL_STMT_RETURN))
+		 ((PLiSQL_stmt *) llast(function->action->body))->cmd_type != PLISQL_STMT_RETURN))
 	{
 		PLiSQL_stmt_return *new;
 
@@ -1570,14 +1588,14 @@ add_dummy_return(PLiSQL_function *function)
  * previously been parsed and planned.
  */
 void
-plisql_parser_setup(struct ParseState *pstate, PLiSQL_expr *expr)
+plisql_parser_setup(struct ParseState *pstate, PLiSQL_expr * expr)
 {
 	pstate->p_pre_columnref_hook = plisql_pre_column_ref;
 	pstate->p_post_columnref_hook = plisql_post_column_ref;
 	pstate->p_paramref_hook = plisql_param_ref;
 	pstate->p_subprocfunc_hook = plisql_subprocfunc_ref;
 	/* no need to use p_coerce_param_hook */
-	pstate->p_ref_hook_state =  expr;
+	pstate->p_ref_hook_state = expr;
 }
 
 /*
@@ -1654,7 +1672,7 @@ plisql_param_ref(ParseState *pstate, ParamRef *pref)
 
 		if (expr->func->paramnames != NULL)
 		{
-			int i;
+			int			i;
 
 			for (i = 0; i < expr->func->fn_nargs; i++)
 				if (expr->func->paramnames[i] != NULL &&
@@ -1666,8 +1684,8 @@ plisql_param_ref(ParseState *pstate, ParamRef *pref)
 	snprintf(pname, sizeof(pname), "$%d", pref->number);
 
 	nse = plisql_ns_lookup(expr->ns, false,
-							pname, NULL, NULL,
-							NULL);
+						   pname, NULL, NULL,
+						   NULL);
 
 	if (nse == NULL)
 		return NULL;			/* name not known to plisql */
@@ -1684,7 +1702,7 @@ plisql_param_ref(ParseState *pstate, ParamRef *pref)
  * we are able to match a record/row name but don't find a field name match.
  */
 static Node *
-resolve_column_ref(ParseState *pstate, PLiSQL_expr *expr,
+resolve_column_ref(ParseState *pstate, PLiSQL_expr * expr,
 				   ColumnRef *cref, bool error_if_no_field)
 {
 	PLiSQL_execstate *estate;
@@ -1778,18 +1796,18 @@ resolve_column_ref(ParseState *pstate, PLiSQL_expr *expr,
 	}
 
 	nse = plisql_ns_lookup(expr->ns, false,
-							name1, name2, name3,
-							&nnames);
+					name1, name2, name3,
+					&nnames);
 	/* maybe a package var */
 	if (nse == NULL)
 	{
-		char		*refname;
+		char	   *refname;
 
 		refname = NameListToString(cref->fields);
 
 		nse = plisql_ns_lookup(expr->ns, false,
-							refname, NULL, NULL,
-							&nnames);
+							   refname, NULL, NULL,
+							   &nnames);
 		pfree(refname);
 		if (nse != NULL)
 		{
@@ -1834,7 +1852,7 @@ resolve_column_ref(ParseState *pstate, PLiSQL_expr *expr,
 				/*
 				 * We should not get here, because a RECFIELD datum should
 				 * have been built at parse time for every possible qualified
-				 * reference to fields of this record.  But if we do, handle
+				 * reference to fields of this record. But if we do, handle
 				 * it like field-not-found: throw error or return NULL.
 				 */
 				if (error_if_no_field)
@@ -1859,10 +1877,10 @@ resolve_column_ref(ParseState *pstate, PLiSQL_expr *expr,
 
 /*
  * Helper for columnref parsing: build a Param referencing a plisql datum,
- * and make sure that that datum is listed in the expression's paramnos.
+ * and make sure that datum is listed in the expression's paramnos.
  */
 static Node *
-make_datum_param(PLiSQL_expr *expr, int dno, int location)
+make_datum_param(PLiSQL_expr * expr, int dno, int location)
 {
 	PLiSQL_execstate *estate;
 	PLiSQL_datum *datum;
@@ -1885,10 +1903,10 @@ make_datum_param(PLiSQL_expr *expr, int dno, int location)
 	param->paramkind = PARAM_EXTERN;
 	param->paramid = dno + 1;
 	plisql_exec_get_datum_type_info(estate,
-									 datum,
-									 &param->paramtype,
-									 &param->paramtypmod,
-									 &param->paramcollid);
+					 datum,
+					 &param->paramtype,
+					 &param->paramtypmod,
+					 &param->paramcollid);
 	param->location = location;
 
 	return (Node *) param;
@@ -1916,7 +1934,7 @@ make_datum_param(PLiSQL_expr *expr, int dno, int location)
  */
 bool
 plisql_parse_word(char *paramname, char *word1, const char *yytxt, bool lookup,
-				   PLwdatum *wdatum, PLword *word)
+				  PLwdatum *wdatum, PLword *word)
 {
 	PLiSQL_nsitem *ns;
 
@@ -1931,8 +1949,8 @@ plisql_parse_word(char *paramname, char *word1, const char *yytxt, bool lookup,
 		 * Do a lookup in the current namespace stack
 		 */
 		ns = plisql_ns_lookup(plisql_ns_top(), false,
-							   paramname, NULL, NULL,
-							   NULL);
+							  paramname, NULL, NULL,
+							  NULL);
 
 		if (ns != NULL)
 		{
@@ -1947,9 +1965,9 @@ plisql_parse_word(char *paramname, char *word1, const char *yytxt, bool lookup,
 					wdatum->idents = NIL;
 					return true;
 
-					case PLISQL_NSTYPE_SUBPROC_FUNC:
-					case PLISQL_NSTYPE_SUBPROC_PROC:
-						break;
+				case PLISQL_NSTYPE_SUBPROC_FUNC:
+				case PLISQL_NSTYPE_SUBPROC_PROC:
+					break;
 
 				default:
 					/* plisql_ns_lookup should never return anything else */
@@ -1960,15 +1978,15 @@ plisql_parse_word(char *paramname, char *word1, const char *yytxt, bool lookup,
 		else if (!is_compile_standard_package())
 		{
 			/*
-			 * handle var come from standard.xxx
-			 * maybe a udt type construct func like udt_type(xx)
-			 * so we should parse package entry
+			 * Handle variables coming from standard.xxx; this might be a UDT
+			 * constructor function like udt_type(xx), so parse the package
+			 * entry.
 			 */
-			PkgEntry *entry;
-			size_t len = 8 + strlen(word1) + 2;
-			char *refname = (char *) palloc0(len);
-			List *idents =  list_make2(makeString("standard"),
-						makeString(word1));
+			PkgEntry   *entry;
+			size_t		len = 8 + strlen(word1) + 2;
+			char	   *refname = (char *) palloc0(len);
+			List	   *idents = list_make2(makeString("standard"),
+											makeString(word1));
 
 			snprintf(refname, len, "standard.%s", word1);
 
@@ -1986,8 +2004,8 @@ plisql_parse_word(char *paramname, char *word1, const char *yytxt, bool lookup,
 						wdatum->nname_used = 1;
 						/* add namespace */
 						if (plisql_ns_lookup(plisql_ns_top(), true,
-							word1, NULL, NULL,
-							NULL) == NULL)
+											 word1, NULL, NULL,
+											 NULL) == NULL)
 							add_parameter_name(PLISQL_NSTYPE_VAR, wdatum->datum->dno, word1);
 						return true;
 						break;
@@ -2000,25 +2018,25 @@ plisql_parse_word(char *paramname, char *word1, const char *yytxt, bool lookup,
 			}
 		}
 	}
+
 	/*
-	 * there, make sure the local namespace has not found or
-	 * we lookup standard'package first than local, which will
-	 * result mistake.
-	 * for example: exit when not found which then found, we
-	 * mustn't use standard'found
+	 * there, make sure the local namespace has not found or we lookup
+	 * standard'package first than local, which will result mistake. for
+	 * example: exit when not found which then found, we mustn't use
+	 * standard'found
 	 */
 	if (lookup &&
 		plisql_IdentifierLookup != IDENTIFIER_LOOKUP_DECLARE &&
 		!is_compile_standard_package() &&
 		plisql_ns_lookup(plisql_ns_top(), false,
-							   word1, NULL, NULL,
-							   NULL) == NULL)
+					   word1, NULL, NULL,
+					   NULL) == NULL)
 	{
-		PkgEntry *entry;
-		size_t len = 8 + strlen(word1) + 2;
-		char *refname = (char *) palloc0(len);
-		List *idents =  list_make2(makeString("standard"),
-					makeString(word1));
+		PkgEntry   *entry;
+		size_t		len = 8 + strlen(word1) + 2;
+		char	   *refname = (char *) palloc0(len);
+		List	   *idents = list_make2(makeString("standard"),
+										makeString(word1));
 
 		snprintf(refname, len, "standard.%s", word1);
 
@@ -2036,11 +2054,11 @@ plisql_parse_word(char *paramname, char *word1, const char *yytxt, bool lookup,
 					wdatum->nname_used = 1;
 					/* add namespace */
 					if (plisql_ns_lookup(plisql_ns_top(), true,
-						word1, NULL, NULL,
-						NULL) == NULL)
+										 word1, NULL, NULL,
+										 NULL) == NULL)
 						add_parameter_name(PLISQL_NSTYPE_VAR,
-										wdatum->datum->dno,
-										word1);
+										   wdatum->datum->dno,
+										   word1);
 					return true;
 					break;
 				case PKG_TYPE:
@@ -2053,8 +2071,7 @@ plisql_parse_word(char *paramname, char *word1, const char *yytxt, bool lookup,
 	}
 
 	/*
-	 * Nothing found - up to now it's a word without any special meaning for
-	 * us.
+	 * Nothing found - up to now it's a word without any special meaning for us.
 	 */
 	word->ident = word1;
 	word->quoted = (yytxt[0] == '"');
@@ -2069,7 +2086,7 @@ plisql_parse_word(char *paramname, char *word1, const char *yytxt, bool lookup,
  */
 bool
 plisql_parse_dblword(char *paramname, char *word1, char *word2,
-					  PLwdatum *wdatum, PLcword *cword)
+					 PLwdatum *wdatum, PLcword *cword)
 {
 	PLiSQL_nsitem *ns;
 	List	   *idents;
@@ -2090,8 +2107,8 @@ plisql_parse_dblword(char *paramname, char *word1, char *word2,
 		 * Do a lookup in the current namespace stack
 		 */
 		ns = plisql_ns_lookup(plisql_ns_top(), false,
-							   paramname, word2, NULL,
-							   &nnames);
+							  paramname, word2, NULL,
+							  &nnames);
 		if (ns != NULL)
 		{
 			switch (ns->itemtype)
@@ -2140,13 +2157,13 @@ plisql_parse_dblword(char *paramname, char *word1, char *word2,
 		else
 		{
 			/*
-			 * handle var come from package
-			 * maybe a udt type construct func like udt_type(xx)
-			 * so we should parse package entry
+			 * Handle variables coming from a package; this might be a UDT
+			 * constructor function like udt_type(xx), so parse the package
+			 * entry.
 			 */
-			PkgEntry *entry;
-			size_t len = strlen(word1) + strlen(word2) + 2;
-			char *refname = (char *) palloc0(len);
+			PkgEntry   *entry;
+			size_t		len = strlen(word1) + strlen(word2) + 2;
+			char	   *refname = (char *) palloc0(len);
 
 			snprintf(refname, len, "%s.%s", word1, word2);
 
@@ -2187,11 +2204,11 @@ plisql_parse_dblword(char *paramname, char *word1, char *word2,
  */
 bool
 plisql_parse_tripword(char *paramname, char *word1, char *word2, char *word3,
-					   PLwdatum *wdatum, PLcword *cword)
+					  PLwdatum *wdatum, PLcword *cword)
 {
 	PLiSQL_nsitem *ns;
 	List	   *idents;
-	int			nnames;
+	int	nnames;
 
 	/*
 	 * We should do nothing in DECLARE sections.  In SQL expressions, we need
@@ -2203,12 +2220,12 @@ plisql_parse_tripword(char *paramname, char *word1, char *word2, char *word3,
 	if (plisql_IdentifierLookup != IDENTIFIER_LOOKUP_DECLARE)
 	{
 		/*
-		 * Do a lookup in the current namespace stack.  Must find a record
-		 * reference, else ignore.
+		 * Do a lookup in the current namespace stack.  
+		 * Must find a record reference, else ignore.
 		 */
 		ns = plisql_ns_lookup(plisql_ns_top(), false,
-							   paramname, word2, word3,
-							   &nnames);
+					   paramname, word2, word3,
+					   &nnames);
 		if (ns != NULL)
 		{
 			switch (ns->itemtype)
@@ -2255,13 +2272,13 @@ plisql_parse_tripword(char *paramname, char *word1, char *word2, char *word3,
 		else
 		{
 			/*
-			 * handle var come from package
-			 * it maybe is udt_type constructor func
-			 * so we should parse package entry
+			 * Handle variables coming from a package; this may be a UDT
+			 * constructor function (e.g., udt_type(...)), so parse the
+			 * corresponding package entry.
 			 */
-			PkgEntry *entry;
-			size_t len = strlen(word1) + strlen(word2) + strlen(word3) + 3;
-			char *refname = (char *) palloc0(len);
+			PkgEntry   *entry;
+			size_t		len = strlen(word1) + strlen(word2) + strlen(word3) + 3;
+			char	   *refname = (char *) palloc0(len);
 
 			snprintf(refname, len, "%s.%s.%s", word1, word2, word3);
 			idents = list_make3(makeString(word1),
@@ -2311,29 +2328,28 @@ PLiSQL_type *
 plisql_parse_wordtype(char *ident)
 {
 	PLiSQL_nsitem *nse;
-	List		*idents;
-	PLiSQL_type 	*dtype;
+	List	   *idents;
+	PLiSQL_type *dtype;
 
 	/*
 	 * Do a lookup in the current namespace stack
 	 */
 	nse = plisql_ns_lookup(plisql_ns_top(), false,
-							ident, NULL, NULL,
-							NULL);
+					ident, NULL, NULL,
+					NULL);
 
 	if (nse != NULL)
 	{
 		switch (nse->itemtype)
 		{
 			case PLISQL_NSTYPE_VAR:
+
 				/*
-				 * Set the not null attribute of variable with notnull attribute of dtype.
-				 * For example, name has a NOT NULL constraint, surname inherits the NOT NULL constraint.
-				 * DECLARE
-				 *   name     VARCHAR(25) NOT NULL := 'Smith';
-				 *   surname  name%TYPE;
-				 * BEGIN
-				 * END;
+				 * Set the not null attribute of variable with notnull
+				 * attribute of dtype. For example, name has a NOT NULL
+				 * constraint, surname inherits the NOT NULL constraint.
+				 * DECLARE name     VARCHAR(25) NOT NULL := 'Smith'; surname
+				 * name%TYPE; BEGIN END;
 				 */
 				dtype = ((PLiSQL_var *) (plisql_Datums[nse->itemno]))->datatype;
 				dtype->notnull = ((PLiSQL_var *) (plisql_Datums[nse->itemno]))->notnull;
@@ -2351,7 +2367,7 @@ plisql_parse_wordtype(char *ident)
 		{
 			idents = list_make2(makeString("standard"), makeString(ident));
 			if ((dtype = plisql_parse_package_type(makeTypeNameFromNameList(idents),
-					parse_by_var_type, true)) != NULL)
+												   parse_by_var_type, true)) != NULL)
 			{
 				list_free(idents);
 				return dtype;
@@ -2389,7 +2405,7 @@ plisql_parse_cwordtype(List *idents)
 	HeapTuple	typetup = NULL;
 	Form_pg_attribute attrStruct;
 	MemoryContext oldCxt;
-	TypeName	*typeName;
+	TypeName   *typeName;
 
 	/* Avoid memory leaks in the long-term function context */
 	oldCxt = MemoryContextSwitchTo(plisql_compile_tmp_cxt);
@@ -2400,23 +2416,20 @@ plisql_parse_cwordtype(List *idents)
 		 * Do a lookup in the current namespace stack
 		 */
 		nse = plisql_ns_lookup(plisql_ns_top(), false,
-								strVal(linitial(idents)),
-								strVal(lsecond(idents)),
-								NULL,
-								&nnames);
+						strVal(linitial(idents)),
+						strVal(lsecond(idents)),
+						NULL,
+						&nnames);
 
 		if (nse != NULL && nse->itemtype == PLISQL_NSTYPE_VAR)
 		{
 			dtype = ((PLiSQL_var *) (plisql_Datums[nse->itemno]))->datatype;
 
 			/*
-			 * Set the not null attribute of variable with not null attribute of dtype.
-			 * For example, name has a NOT NULL constraint, surname gets the NOT NULL constraint.
-			 * DECLARE
-			 *	 name	  VARCHAR(25) NOT NULL := 'Steven';
-			 *	 surname  name%TYPE;
-			 * BEGIN
-			 * END;
+			 * Set the not null attribute of variable with not null attribute
+			 * of dtype. For example, name has a NOT NULL constraint, surname
+			 * gets the NOT NULL constraint. DECLARE name	  VARCHAR(25) NOT
+			 * NULL := 'Steven'; surname  name%TYPE; BEGIN END;
 			 */
 			dtype->notnull = ((PLiSQL_var *) (plisql_Datums[nse->itemno]))->notnull;
 			goto done;
@@ -2431,7 +2444,7 @@ plisql_parse_cwordtype(List *idents)
 
 		/* maybe type comes from package */
 		if ((dtype = plisql_parse_package_type(makeTypeNameFromNameList(idents),
-				parse_by_var_type, false)) != NULL)
+											   parse_by_var_type, false)) != NULL)
 		{
 			goto done;
 		}
@@ -2440,8 +2453,8 @@ plisql_parse_cwordtype(List *idents)
 		 * First word could also be a table name
 		 */
 		relvar = makeRangeVar(NULL,
-							  strVal(linitial(idents)),
-							  -1);
+					  strVal(linitial(idents)),
+					  -1);
 		fldname = strVal(lsecond(idents));
 	}
 	else
@@ -2459,7 +2472,7 @@ plisql_parse_cwordtype(List *idents)
 		if (list_length(idents) == 3)
 		{
 			if ((dtype = plisql_parse_package_type(makeTypeNameFromNameList(idents),
-							parse_by_var_type, false)) != NULL)
+												   parse_by_var_type, false)) != NULL)
 			{
 				goto done;
 			}
@@ -2485,7 +2498,7 @@ plisql_parse_cwordtype(List *idents)
 	attrStruct = (Form_pg_attribute) GETSTRUCT(attrtup);
 
 	typetup = SearchSysCache1(TYPEOID,
-							  ObjectIdGetDatum(attrStruct->atttypid));
+					  ObjectIdGetDatum(attrStruct->atttypid));
 	if (!HeapTupleIsValid(typetup))
 		elog(ERROR, "cache lookup failed for type %u", attrStruct->atttypid);
 
@@ -2501,24 +2514,24 @@ plisql_parse_cwordtype(List *idents)
 	typeName->row_type = false;
 
 	dtype = build_datatype(typetup,
-						   attrStruct->atttypmod,
-						   attrStruct->attcollation,
-						   typeName);
+				   attrStruct->atttypmod,
+				   attrStruct->attcollation,
+				   typeName);
 
 	/*
-	 * declare a variable which datatype is table.column%TYPE
-	 * or schema.table.column%TYPE in a function, procedure or package.
-	 * record the table or view OID, and column number(or 0 if not used).
+	 * declare a variable which datatype is table.column%TYPE or
+	 * schema.table.column%TYPE in a function, procedure or package. record
+	 * the table or view OID, and column number(or 0 if not used).
 	 */
 	if (check_referenced_objects)
 	{
 		ObjectAddress *refobj;
 
-		refobj = (ObjectAddress *)palloc(sizeof(ObjectAddress));
+		refobj = (ObjectAddress *) palloc(sizeof(ObjectAddress));
 		refobj->classId = RelationRelationId;
 		refobj->objectId = classOid;
 		refobj->objectSubId = attrStruct->attnum;
-		plisql_referenced_objects = lappend(plisql_referenced_objects, (void *)refobj);
+		plisql_referenced_objects = lappend(plisql_referenced_objects, (void *) refobj);
 	}
 
 	MemoryContextSwitchTo(plisql_compile_tmp_cxt);
@@ -2541,20 +2554,20 @@ done:
 PLiSQL_type *
 plisql_parse_wordrowtype(char *ident)
 {
-	Oid			classOid;
-	Oid			typOid;
+	Oid		classOid;
+	Oid		typOid;
 	PLiSQL_type	*result;
 	TypeName	*typname;
 	bool		missing_ok = false;
-	TypeName	*typeName;
+	TypeName   *typeName;
 
 	typname = typeStringToTypeName(ident, NULL);
 	if (list_length(typname->names) < 2 &&
 		!is_compile_standard_package())
 	{
 		/* may be a standard.type */
-		size_t len = 8 + strlen(ident) + 2;
-		char *refname = (char *) palloc0(len);
+		size_t		len = 8 + strlen(ident) + 2;
+		char	   *refname = (char *) palloc0(len);
 
 		snprintf(refname, len, "standard.%s", ident);
 		pfree(typname);
@@ -2564,7 +2577,8 @@ plisql_parse_wordrowtype(char *ident)
 	}
 	result = plisql_parse_package_type(typname, parse_by_var_rowtype, missing_ok);
 	if (result != NULL)
-	{	pfree(typname);
+	{
+		pfree(typname);
 		return result;
 	}
 	pfree(typname);
@@ -2591,19 +2605,19 @@ plisql_parse_wordrowtype(char *ident)
 						ident)));
 
 	/*
-	 * declare a variable which datatype is table%ROWTYPE
-	 * or schema.table%ROWTYPE in a function, procedure or package,
-	 * record the table or view OID.
+	 * declare a variable which datatype is table%ROWTYPE or
+	 * schema.table%ROWTYPE in a function, procedure or package, record the
+	 * table or view OID.
 	 */
 	if (check_referenced_objects)
 	{
 		ObjectAddress *refobj;
 
-		refobj = (ObjectAddress *)palloc(sizeof(ObjectAddress));
+		refobj = (ObjectAddress *) palloc(sizeof(ObjectAddress));
 		refobj->classId = RelationRelationId;
 		refobj->objectId = classOid;
 		refobj->objectSubId = InvalidAttrNumber;
-		plisql_referenced_objects = lappend(plisql_referenced_objects, (void *)refobj);
+		plisql_referenced_objects = lappend(plisql_referenced_objects, (void *) refobj);
 	}
 
 	typeName = makeTypeName(ident);
@@ -2612,7 +2626,7 @@ plisql_parse_wordrowtype(char *ident)
 
 	/* Build and return the row type struct */
 	return plisql_build_datatype(typOid, -1, InvalidOid,
-					  typeName);
+								 typeName);
 }
 
 /* ----------
@@ -2627,11 +2641,11 @@ plisql_parse_cwordrowtype(List *idents)
 	Oid			typOid;
 	RangeVar   *relvar;
 	MemoryContext oldCxt;
-	PLiSQL_type	*result;
-	TypeName	*typeName;
+	PLiSQL_type *result;
+	TypeName   *typeName;
 
 	result = plisql_parse_package_type(makeTypeNameFromNameList(idents),
-							parse_by_var_rowtype, false);
+									   parse_by_var_rowtype, false);
 	if (result != NULL)
 		return result;
 
@@ -2658,19 +2672,18 @@ plisql_parse_cwordrowtype(List *idents)
 	MemoryContextSwitchTo(oldCxt);
 
 	/*
-	 * declare a variable which datatype is schema.table%ROWTYPE
-	 * in a function, procedure or package,
-	 * record the table or view OID.
+	 * declare a variable which datatype is schema.table%ROWTYPE in a
+	 * function, procedure or package, record the table or view OID.
 	 */
 	if (check_referenced_objects)
 	{
 		ObjectAddress *refobj;
 
-		refobj = (ObjectAddress *)palloc(sizeof(ObjectAddress));
+		refobj = (ObjectAddress *) palloc(sizeof(ObjectAddress));
 		refobj->classId = RelationRelationId;
 		refobj->objectId = classOid;
 		refobj->objectSubId = InvalidAttrNumber;
-		plisql_referenced_objects = lappend(plisql_referenced_objects, (void *)refobj);
+		plisql_referenced_objects = lappend(plisql_referenced_objects, (void *) refobj);
 	}
 
 	typeName = makeTypeNameFromNameList(idents);
@@ -2679,7 +2692,7 @@ plisql_parse_cwordrowtype(List *idents)
 
 	/* Build and return the row type struct */
 	return plisql_build_datatype(typOid, -1, InvalidOid,
-					  typeName);
+								 typeName);
 }
 
 /*
@@ -2692,8 +2705,8 @@ plisql_parse_cwordrowtype(List *idents)
  * array, and optionally to the current namespace.
  */
 PLiSQL_variable *
-plisql_build_variable(const char *refname, int lineno, PLiSQL_type *dtype,
-					   bool add2namespace)
+plisql_build_variable(const char *refname, int lineno, PLiSQL_type * dtype,
+					  bool add2namespace)
 {
 	PLiSQL_variable *result;
 
@@ -2711,7 +2724,7 @@ plisql_build_variable(const char *refname, int lineno, PLiSQL_type *dtype,
 				var->datatype = dtype;
 				/* other fields are left as 0, might be changed by caller */
 
-				/* preset to NULL */
+				/* preset to be NULL */
 				var->value = 0;
 				var->isnull = true;
 				var->freeval = false;
@@ -2720,8 +2733,8 @@ plisql_build_variable(const char *refname, int lineno, PLiSQL_type *dtype,
 				plisql_adddatum((PLiSQL_datum *) var);
 				if (add2namespace)
 					plisql_ns_additem(PLISQL_NSTYPE_VAR,
-									   var->dno,
-									   refname);
+									  var->dno,
+									  refname);
 				result = (PLiSQL_variable *) var;
 				break;
 			}
@@ -2731,8 +2744,8 @@ plisql_build_variable(const char *refname, int lineno, PLiSQL_type *dtype,
 				PLiSQL_rec *rec;
 
 				rec = plisql_build_record(refname, lineno,
-										   dtype, dtype->typoid,
-										   add2namespace);
+							   dtype, dtype->typoid,
+							   add2namespace);
 				result = (PLiSQL_variable *) rec;
 				break;
 			}
@@ -2757,8 +2770,8 @@ plisql_build_variable(const char *refname, int lineno, PLiSQL_type *dtype,
  */
 PLiSQL_rec *
 plisql_build_record(const char *refname, int lineno,
-					 PLiSQL_type *dtype, Oid rectypeid,
-					 bool add2namespace)
+					PLiSQL_type * dtype, Oid rectypeid,
+					bool add2namespace)
 {
 	PLiSQL_rec *rec;
 
@@ -2776,12 +2789,13 @@ plisql_build_record(const char *refname, int lineno,
 		plisql_ns_additem(PLISQL_NSTYPE_REC, rec->dno, rec->refname);
 
 	rec->pkgoid = (plisql_compile_packageitem == NULL ? InvalidOid : plisql_compile_packageitem->source.fn_oid);
+
 	/*
 	 * there, if we compile package, and build a rec like table%rowtype
-	 * but others function or package first reference it first filed and then
+	 * but other function or package first reference it first filed and then
 	 * lookup it in package, but its doesn't find, because compile package
-	 * doesn't references it, should we add datum during exec?
-	 * this is not fine, so we add all recfiled in compile
+	 * doesn't references it, should we add datum during execution?
+	 * this is not good, so we add all recfiled in compile.
 	 * maybe it can expand out of package
 	 */
 	if (OidIsValid(rec->pkgoid))
@@ -2795,10 +2809,10 @@ plisql_build_record(const char *refname, int lineno,
  * Include a rowtupdesc, since we will need to materialize the row result.
  */
 PLiSQL_row *
-build_row_from_vars(PLiSQL_variable **vars, int numvars)
+build_row_from_vars(PLiSQL_variable * *vars, int numvars)
 {
 	PLiSQL_row *row;
-	int			i;
+	int	i;
 
 	row = palloc0(sizeof(PLiSQL_row));
 	row->dtype = PLISQL_DTYPE_ROW;
@@ -2859,10 +2873,10 @@ build_row_from_vars(PLiSQL_variable **vars, int numvars)
 /*
  * Build a RECFIELD datum for the named field of the specified record variable
  *
- * If there's already such a datum, just return it; we don't need duplicates.
+ * If there's already such a datum, just return it; we don't need duplicate one
  */
 PLiSQL_recfield *
-plisql_build_recfield(PLiSQL_rec *rec, const char *fldname)
+plisql_build_recfield(PLiSQL_rec * rec, const char *fldname)
 {
 	PLiSQL_recfield *recfield;
 	int			i;
@@ -2899,7 +2913,7 @@ plisql_build_recfield(PLiSQL_rec *rec, const char *fldname)
 
 /*
  * plisql_build_datatype
- *		Build PLiSQL_type struct given type OID, typmod, collation,
+ *		Build PLiSQL_type struct with given type OID, typmod, collation,
  *		and type's parsed name.
  *
  * If collation is not InvalidOid then it overrides the type's default
@@ -2911,7 +2925,7 @@ plisql_build_recfield(PLiSQL_rec *rec, const char *fldname)
  */
 PLiSQL_type *
 plisql_build_datatype(Oid typeOid, int32 typmod,
-					   Oid collation, TypeName *origtypname)
+			   Oid collation, TypeName *origtypname)
 {
 	HeapTuple	typeTup;
 	PLiSQL_type *typ;
@@ -3015,11 +3029,11 @@ build_datatype(HeapTuple typeTup, int32 typmod,
 		TypeCacheEntry *typentry;
 
 		typentry = lookup_type_cache(typ->typoid,
-									 TYPECACHE_TUPDESC |
-									 TYPECACHE_DOMAIN_BASE_INFO);
+						 TYPECACHE_TUPDESC |
+						 TYPECACHE_DOMAIN_BASE_INFO);
 		if (typentry->typtype == TYPTYPE_DOMAIN)
 			typentry = lookup_type_cache(typentry->domainBaseType,
-										 TYPECACHE_TUPDESC);
+							 TYPECACHE_TUPDESC);
 		if (typentry->tupDesc == NULL)
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
@@ -3038,10 +3052,11 @@ build_datatype(HeapTuple typeTup, int32 typmod,
 	}
 
 	/*
-	 * If it's a %TYPE or %ROWTYPE type, save the original type name in pctrowtypname.
+	 * If it's a %TYPE or %ROWTYPE type, save the original type name in
+	 * pctrowtypname.
 	 */
 	typ->notnull = false;
-	if (origtypname!= NULL &&
+	if (origtypname != NULL &&
 		(origtypname->pct_type || origtypname->row_type))
 		typ->pctrowtypname = origtypname;
 	else
@@ -3054,13 +3069,13 @@ build_datatype(HeapTuple typeTup, int32 typmod,
  * Build an array type for the element type specified as argument.
  */
 PLiSQL_type *
-plisql_build_datatype_arrayof(PLiSQL_type *dtype)
+plisql_build_datatype_arrayof(PLiSQL_type * dtype)
 {
 	Oid			array_typeid;
 
 	/*
-	 * If it's already an array type, use it as-is: Postgres doesn't do nested
-	 * arrays.
+	 * If it's already an array type, use it as-is: 
+	 * Postgres doesn't do nested arrays.
 	 */
 	if (dtype->typisarray)
 		return dtype;
@@ -3074,7 +3089,7 @@ plisql_build_datatype_arrayof(PLiSQL_type *dtype)
 
 	/* Note we inherit typmod and collation, if any, from the element type */
 	return plisql_build_datatype(array_typeid, dtype->atttypmod,
-								  dtype->collation, NULL);
+								 dtype->collation, NULL);
 }
 
 /*
@@ -3087,17 +3102,17 @@ plisql_build_datatype_arrayof(PLiSQL_type *dtype)
 int
 plisql_recognize_err_condition(const char *condname, bool allow_sqlstate)
 {
-	int			i;
+	int	i;
 
 	if (allow_sqlstate)
 	{
 		if (strlen(condname) == 5 &&
 			strspn(condname, "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ") == 5)
 			return MAKE_SQLSTATE(condname[0],
-								 condname[1],
-								 condname[2],
-								 condname[3],
-								 condname[4]);
+						 condname[1],
+						 condname[2],
+						 condname[3],
+						 condname[4]);
 	}
 
 	for (i = 0; exception_label_map[i].label != NULL; i++)
@@ -3117,19 +3132,18 @@ plisql_recognize_err_condition(const char *condname, bool allow_sqlstate)
  * plisql_parse_err_condition
  *		Generate PLiSQL_condition entry(s) for an exception condition name
  *
- * This has to be able to return a list because there are some duplicate
+ * This has to be able to return a list because there are some duplicated
  * names in the table of error code names.
  */
 PLiSQL_condition *
 plisql_parse_err_condition(char *condname)
 {
-	int			i;
+	int		i;
 	PLiSQL_condition *new;
 	PLiSQL_condition *prev;
 
 	/*
-	 * XXX Eventually we will want to look for user-defined exception names
-	 * here.
+	 * Eventually we will want to look for user-defined exception names here.
 	 */
 
 	if (strcmp(condname, "others") == 0)
@@ -3164,7 +3178,7 @@ plisql_parse_err_condition(char *condname)
 }
 
 /* ----------
- * plisql_start_datums			Initialize datum list at compile startup.
+ * plisql_start_datums			Initialize datum list at compiler startup.
  * ----------
  */
 void
@@ -3174,7 +3188,7 @@ plisql_start_datums(void)
 	plisql_nDatums = 0;
 	/* This is short-lived, so needn't allocate in function's cxt */
 	plisql_Datums = MemoryContextAlloc(plisql_compile_tmp_cxt,
-										sizeof(PLiSQL_datum *) * datums_alloc);
+						sizeof(PLiSQL_datum *) * datums_alloc);
 	/* datums_last tracks what's been seen by plisql_add_initdatums() */
 	datums_last = 0;
 }
@@ -3185,7 +3199,7 @@ plisql_start_datums(void)
  * ----------
  */
 void
-plisql_adddatum(PLiSQL_datum *newdatum)
+plisql_adddatum(PLiSQL_datum * newdatum)
 {
 	if (plisql_nDatums == datums_alloc)
 	{
@@ -3202,13 +3216,13 @@ plisql_adddatum(PLiSQL_datum *newdatum)
  * ----------
  */
 void
-plisql_finish_datums(PLiSQL_function *function)
+plisql_finish_datums(PLiSQL_function * function)
 {
 	Size		copiable_size = 0;
 	int			i;
 
 	/*
-	 * maybe compile a package body which function->ndatums not null
+	 * maybe compile a package body which function->ndatums is not null
 	 */
 	if (function->item != NULL)
 	{
@@ -3218,7 +3232,7 @@ plisql_finish_datums(PLiSQL_function *function)
 			return;
 		if (function->ndatums != 0)
 			function->datums = repalloc(function->datums,
-									sizeof(PLiSQL_datum *) * plisql_nDatums);
+								sizeof(PLiSQL_datum *) * plisql_nDatums);
 		else
 			function->datums = palloc(sizeof(PLiSQL_datum *) * plisql_nDatums);
 		function->ndatums = plisql_nDatums;
@@ -3324,10 +3338,10 @@ plisql_add_initdatums(int **varnos)
  */
 static void
 compute_function_hashkey(FunctionCallInfo fcinfo,
-						 Form_pg_proc procStruct,
-						 PLiSQL_func_hashkey *hashkey,
-						 bool forValidator, 
-						 HeapTuple procTup) 
+			 Form_pg_proc procStruct,
+			 PLiSQL_func_hashkey *hashkey,
+			 bool forValidator, 
+			 HeapTuple procTup) 
 {
 	/* Make sure any unused bytes of the struct are zero */
 	MemSet(hashkey, 0, sizeof(PLiSQL_func_hashkey));
@@ -3347,7 +3361,7 @@ compute_function_hashkey(FunctionCallInfo fcinfo,
 	 * leave trigOid zero; the hash entry built in this case will never be
 	 * used for any actual calls.
 	 *
-	 * We don't currently need to distinguish different event trigger usages
+	 * Currently We don't need to distinguish different event trigger usages
 	 * in the same way, since the special parameter variables don't vary in
 	 * type in that case.
 	 */
@@ -3364,21 +3378,21 @@ compute_function_hashkey(FunctionCallInfo fcinfo,
 	if (procStruct->pronargs > 0)
 	{
 		/* get the argument types */
-		Datum protypenames;
-		bool	isNull;
+		Datum		protypenames;
+		bool		isNull;
 		Datum	   *elems;
-		int			nelems;
+		int	nelems;
 		char **argtypenames = NULL;
 		int i;
 
 		protypenames = SysCacheGetAttr(PROCOID, procTup,
-									Anum_pg_proc_protypenames,
-									&isNull);
+							Anum_pg_proc_protypenames,
+							&isNull);
 		if (!isNull)
 		{
 			deconstruct_array(DatumGetArrayTypeP(protypenames),
-								TEXTOID, -1, false, 'i',
-								&elems, NULL, &nelems);
+							  TEXTOID, -1, false, 'i',
+							  &elems, NULL, &nelems);
 			argtypenames = (char **) palloc(sizeof(char *) * nelems);
 			for (i = 0; i < nelems; i++)
 				argtypenames[i] = TextDatumGetCString(elems[i]);
@@ -3390,8 +3404,8 @@ compute_function_hashkey(FunctionCallInfo fcinfo,
 				hashkey->argtypes[i] = procStruct->proargtypes.values[i];
 				if (strcmp(argtypenames[i], "") != 0)
 				{
-					TypeName	*tname;
-					PkgType *pkgtype;
+					TypeName   *tname;
+					PkgType    *pkgtype;
 
 					tname = (TypeName *) stringToNode(argtypenames[i]);
 
@@ -3424,15 +3438,15 @@ compute_function_hashkey(FunctionCallInfo fcinfo,
 		}
 		else
 			memcpy(hashkey->argtypes, procStruct->proargtypes.values,
-				procStruct->pronargs * sizeof(Oid));
+				   procStruct->pronargs * sizeof(Oid));
 
 		/* resolve any polymorphic argument types */
 		plisql_resolve_polymorphic_argtypes(procStruct->pronargs,
-											 hashkey->argtypes,
-											 NULL,
-											 fcinfo->flinfo->fn_expr,
-											 forValidator,
-											 NameStr(procStruct->proname));
+							 hashkey->argtypes,
+							 NULL,
+							 fcinfo->flinfo->fn_expr,
+							 forValidator,
+							 NameStr(procStruct->proname));
 	}
 }
 
@@ -3450,19 +3464,19 @@ compute_function_hashkey(FunctionCallInfo fcinfo,
  */
 void
 plisql_resolve_polymorphic_argtypes(int numargs,
-									 Oid *argtypes, char *argmodes,
-									 Node *call_expr, bool forValidator,
-									 const char *proname)
+					 Oid *argtypes, char *argmodes,
+					 Node *call_expr, bool forValidator,
+					 const char *proname)
 {
-	int			i;
+	int		i;
 
 	if (!forValidator)
 	{
-		int			inargno;
+		int		inargno;
 
 		/* normal case, pass to standard routine */
 		if (!resolve_polymorphic_argtypes(numargs, argtypes, argmodes,
-										  call_expr))
+						  call_expr))
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("could not determine actual argument "
@@ -3478,8 +3492,8 @@ plisql_resolve_polymorphic_argtypes(int numargs,
 				continue;
 			if (argtypes[i] == RECORDOID || argtypes[i] == RECORDARRAYOID)
 			{
-				Oid			resolvedtype = get_call_expr_argtype(call_expr,
-																 inargno);
+				Oid	resolvedtype = get_call_expr_argtype(call_expr,
+										 inargno);
 
 				if (OidIsValid(resolvedtype))
 					argtypes[i] = resolvedtype;
@@ -3496,7 +3510,7 @@ plisql_resolve_polymorphic_argtypes(int numargs,
 			{
 				case ANYELEMENTOID:
 				case ANYNONARRAYOID:
-				case ANYENUMOID:	/* XXX dubious */
+				case ANYENUMOID:	/* dubious */
 				case ANYCOMPATIBLEOID:
 				case ANYCOMPATIBLENONARRAYOID:
 					argtypes[i] = INT4OID;
@@ -3534,7 +3548,7 @@ plisql_resolve_polymorphic_argtypes(int numargs,
  * twice.
  */
 void
-delete_function(PLiSQL_function *func)
+delete_function(PLiSQL_function * func)
 {
 	/* remove function from hash table (might be done already) */
 	plisql_HashTableDelete(func);
@@ -3556,20 +3570,20 @@ plisql_HashTableInit(void)
 	ctl.keysize = sizeof(PLiSQL_func_hashkey);
 	ctl.entrysize = sizeof(plisql_HashEnt);
 	plisql_HashTable = hash_create("PLiSQL function hash",
-									FUNCS_PER_USER,
-									&ctl,
-									HASH_ELEM | HASH_BLOBS);
+					FUNCS_PER_USER,
+					&ctl,
+					HASH_ELEM | HASH_BLOBS);
 }
 
 static PLiSQL_function *
-plisql_HashTableLookup(PLiSQL_func_hashkey *func_key)
+plisql_HashTableLookup(PLiSQL_func_hashkey * func_key)
 {
 	plisql_HashEnt *hentry;
 
 	hentry = (plisql_HashEnt *) hash_search(plisql_HashTable,
-											 func_key,
-											 HASH_FIND,
-											 NULL);
+						 func_key,
+						 HASH_FIND,
+						 NULL);
 	if (hentry)
 		return hentry->function;
 	else
@@ -3578,15 +3592,15 @@ plisql_HashTableLookup(PLiSQL_func_hashkey *func_key)
 
 static void
 plisql_HashTableInsert(PLiSQL_function *function,
-						PLiSQL_func_hashkey *func_key)
+			PLiSQL_func_hashkey *func_key)
 {
 	plisql_HashEnt *hentry;
 	bool		found;
 
 	hentry = (plisql_HashEnt *) hash_search(plisql_HashTable,
-											 func_key,
-											 HASH_ENTER,
-											 &found);
+						 func_key,
+						 HASH_ENTER,
+						 &found);
 	if (found)
 		elog(WARNING, "trying to insert a function that already exists");
 
@@ -3596,7 +3610,7 @@ plisql_HashTableInsert(PLiSQL_function *function,
 }
 
 static void
-plisql_HashTableDelete(PLiSQL_function *function)
+plisql_HashTableDelete(PLiSQL_function * function)
 {
 	plisql_HashEnt *hentry;
 
@@ -3605,9 +3619,9 @@ plisql_HashTableDelete(PLiSQL_function *function)
 		return;
 
 	hentry = (plisql_HashEnt *) hash_search(plisql_HashTable,
-											 function->fn_hashkey,
-											 HASH_REMOVE,
-											 NULL);
+						 function->fn_hashkey,
+						 HASH_REMOVE,
+						 NULL);
 	if (hentry == NULL)
 		elog(WARNING, "trying to delete function that does not exist");
 
@@ -3616,19 +3630,19 @@ plisql_HashTableDelete(PLiSQL_function *function)
 }
 
 /* ----------
- * plisql_compile_inline_internal	
+ * plisql_compile_inline_internal
  * Only compile the function, but not store the compiled function.
  * ----------
  */
 void
 plisql_compile_inline_internal(char *proc_source)
 {
-	yyscan_t        scanner;
-	char   *func_name = "inline_code_block";
+	yyscan_t	scanner;
+	char	   *func_name = "inline_code_block";
 	PLiSQL_function *function;
 	struct compile_error_callback_arg cbarg;
 	ErrorContextCallback plerrcontext;
-	int	parse_rc;
+	int			parse_rc;
 	MemoryContext func_cxt;
 
 	/*
@@ -3657,12 +3671,12 @@ plisql_compile_inline_internal(char *proc_source)
 	plisql_curr_compile = function;
 
 	/*
-	 * Store all the rest of the compile-time storage (e.g. parse tree) in
-	 * its own memory context, so it can be reclaimed easily.
+	 * Store all the rest of the compile-time storage (e.g. parse tree) in its
+	 * own memory context, so it can be reclaimed easily.
 	 */
 	func_cxt = AllocSetContextCreate(CurrentMemoryContext,
-					 "PL/iSQL inline code context",
-					 ALLOCSET_DEFAULT_SIZES);
+									 "PL/iSQL inline code context",
+									 ALLOCSET_DEFAULT_SIZES);
 
 	plisql_compile_tmp_cxt = MemoryContextSwitchTo(func_cxt);
 
@@ -3704,7 +3718,7 @@ plisql_compile_inline_internal(char *proc_source)
 	function->fn_rettyplen = sizeof(int32);
 
 	/*
-	 * Remember if function is readonly.  
+	 * Remember if function is readonly.
 	 */
 	function->fn_readonly = false;
 
@@ -3714,7 +3728,7 @@ plisql_compile_inline_internal(char *proc_source)
 	function->fn_nargs = 0;
 
 	/*
-	 * If we only parse a anonymous, set the prokind to 
+	 * If we only parse an anonymous block, set the prokind to 
 	 * PROKIND_ANONYMOUS_BLOCK_ONLY_PARSE,
 	 */
 	function->fn_prokind = PROKIND_ANONYMOUS_BLOCK_ONLY_PARSE;
@@ -3757,7 +3771,7 @@ plisql_compile_inline_internal(char *proc_source)
 }
 
 /*
- * dynamic_build_func_vars  
+ * dynamic_build_func_vars
  * Build the variables dynamiclly.
  * If find a ORAPARAM token, and the function is PROKIND_ANONYMOUS_BLOCK_ONLY_PARSE,
  * Build the variables dynamiclly.
@@ -3770,23 +3784,23 @@ plisql_compile_inline_internal(char *proc_source)
  * end;');
  */
 void
-dynamic_build_func_vars(PLiSQL_function **function)
+dynamic_build_func_vars(PLiSQL_function * *function)
 {
 	char		buf[32];
-	Oid 		argtypeid = INT4OID;
+	Oid			argtypeid = INT4OID;
 	PLiSQL_type *argdtype;
 	PLiSQL_variable *argvariable;
-	int 		argitemtype;
-	int		fn_nargs = (*function)->fn_nargs;
+	int			argitemtype;
+	int			fn_nargs = (*function)->fn_nargs;
 
 	/* Create $n name for variable */
 	snprintf(buf, sizeof(buf), "$%d", fn_nargs + 1);
 
 	/* Create datatype info */
 	argdtype = plisql_build_datatype(argtypeid,
-						-1,
-						(*function)->fn_input_collation,
-						NULL);
+									 -1,
+									 (*function)->fn_input_collation,
+									 NULL);
 
 	/* Build variable and add to datum list */
 	argvariable = plisql_build_variable(buf, 0, argdtype, false);
@@ -3808,10 +3822,11 @@ void
 plisql_free_function(Oid funcOid)
 {
 	HeapTuple	procTup;
-	Form_pg_proc 	proc;
+	Form_pg_proc proc;
 	PLiSQL_function *function;
 	PLiSQL_func_hashkey hashkey;
 	char		functyptype;
+
 	LOCAL_FCINFO(fake_fcinfo, 0);
 	FmgrInfo	flinfo;
 	TriggerData trigdata;
@@ -3843,9 +3858,9 @@ plisql_free_function(Oid funcOid)
 				 proc->prorettype != VOIDOID &&
 				 !IsPolymorphicType(proc->prorettype))
 			ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("PL/iSQL functions cannot return type %s",
-					format_type_be(proc->prorettype))));
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("PL/iSQL functions cannot return type %s",
+							format_type_be(proc->prorettype))));
 	}
 
 	/*
@@ -3880,8 +3895,9 @@ plisql_free_function(Oid funcOid)
 
 	if (function)
 	{
-		/* We have a compiled function, and it is still valid, 
-		 * remove the function from hashtable 
+		/*
+		 * We have a compiled function, and it is still valid, remove the
+		 * function from hashtable
 		 */
 		if (function->fn_xmin == HeapTupleHeaderGetRawXmin(procTup->t_data) &&
 			ItemPointerEquals(&function->fn_tid, &procTup->t_self))
@@ -3901,7 +3917,7 @@ plisql_free_function(Oid funcOid)
 static void
 plisql_add_type_referenced_objects(TypeName *typeName)
 {
-	PkgType *pkgtype;
+	PkgType    *pkgtype;
 
 	pkgtype = LookupPkgTypeByTypename(typeName->names, false);
 
@@ -3909,7 +3925,7 @@ plisql_add_type_referenced_objects(TypeName *typeName)
 	{
 		ObjectAddress *refobj;
 
-		refobj = (ObjectAddress *)palloc(sizeof(ObjectAddress));
+		refobj = (ObjectAddress *) palloc(sizeof(ObjectAddress));
 		refobj->classId = PackageRelationId;
 		refobj->objectId = pkgtype->pkgoid;
 		refobj->objectSubId = InvalidAttrNumber;
@@ -3923,48 +3939,48 @@ plisql_add_type_referenced_objects(TypeName *typeName)
 		/* Handle %TYPE that reference to the type of an existing field */
 		RangeVar   *rel = makeRangeVar(NULL, NULL, typeName->location);
 		char	   *field = NULL;
-		Oid 		relid;
+		Oid			relid;
 		AttrNumber	attnum;
-		ObjectAddress 	*refobj;
+		ObjectAddress *refobj;
 
 		/* deconstruct the name list */
 		switch (list_length(typeName->names))
 		{
-		case 1:
-			ereport(ERROR,
-				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("improper %%TYPE reference (too few dotted names): %s",
-					NameListToString(typeName->names))));
-			break;
-		case 2:
-			rel->relname = strVal(linitial(typeName->names));
-			field = strVal(lsecond(typeName->names));
-			break;
-		case 3:
-			rel->schemaname = strVal(linitial(typeName->names));
-			rel->relname = strVal(lsecond(typeName->names));
-			field = strVal(lthird(typeName->names));
-			break;
-		case 4:
-			rel->catalogname = strVal(linitial(typeName->names));
-			rel->schemaname = strVal(lsecond(typeName->names));
-			rel->relname = strVal(lthird(typeName->names));
-			field = strVal(lfourth(typeName->names));
-			break;
-		default:
-			ereport(ERROR,
-				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("improper %%TYPE reference (too many dotted names): %s",
-					NameListToString(typeName->names))));
-			break;
+			case 1:
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("improper %%TYPE reference (too few dotted names): %s",
+								NameListToString(typeName->names))));
+				break;
+			case 2:
+				rel->relname = strVal(linitial(typeName->names));
+				field = strVal(lsecond(typeName->names));
+				break;
+			case 3:
+				rel->schemaname = strVal(linitial(typeName->names));
+				rel->relname = strVal(lsecond(typeName->names));
+				field = strVal(lthird(typeName->names));
+				break;
+			case 4:
+				rel->catalogname = strVal(linitial(typeName->names));
+				rel->schemaname = strVal(lsecond(typeName->names));
+				rel->relname = strVal(lthird(typeName->names));
+				field = strVal(lfourth(typeName->names));
+				break;
+			default:
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("improper %%TYPE reference (too many dotted names): %s",
+								NameListToString(typeName->names))));
+				break;
 		}
 
 		/*
 		 * Look up the field.
 		 *
 		 * As no lock is taken here, this might fail in the presence of
-		 * concurrent DDL. But taking a lock would carry a performance
-		 * penalty and would also require a permissions check.
+		 * concurrent DDL. But taking a lock would carry a performance penalty
+		 * and would also require a permissions check.
 		 */
 		relid = RangeVarGetRelid(rel, NoLock, false);
 		attnum = get_attnum(relid, field);
@@ -3972,23 +3988,23 @@ plisql_add_type_referenced_objects(TypeName *typeName)
 		if (attnum == InvalidAttrNumber)
 		{
 			ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_COLUMN),
-				 errmsg("column \"%s\" of relation \"%s\" does not exist",
-					field, rel->relname)));
+					(errcode(ERRCODE_UNDEFINED_COLUMN),
+					 errmsg("column \"%s\" of relation \"%s\" does not exist",
+							field, rel->relname)));
 		}
 
-		refobj = (ObjectAddress *)palloc(sizeof(ObjectAddress));
+		refobj = (ObjectAddress *) palloc(sizeof(ObjectAddress));
 		refobj->classId = RelationRelationId;
 		refobj->objectId = relid;
 		refobj->objectSubId = attnum;
-		plisql_referenced_objects = lappend(plisql_referenced_objects, (void *)refobj);
+		plisql_referenced_objects = lappend(plisql_referenced_objects, (void *) refobj);
 	}
 	else if (typeName != NULL && typeName->row_type)
 	{
-		char		*schema_name = NULL;
-		char		*relname = NULL;
-		RangeVar   	*rel;
-		Oid 		relid;
+		char	   *schema_name = NULL;
+		char	   *relname = NULL;
+		RangeVar   *rel;
+		Oid			relid;
 
 		DeconstructQualifiedName(typeName->names, &schema_name, &relname);
 		rel = makeRangeVar(schema_name, relname, typeName->location);
@@ -3998,14 +4014,13 @@ plisql_add_type_referenced_objects(TypeName *typeName)
 		{
 			ObjectAddress *refobj;
 
-			refobj = (ObjectAddress *)palloc(sizeof(ObjectAddress));
+			refobj = (ObjectAddress *) palloc(sizeof(ObjectAddress));
 			refobj->classId = RelationRelationId;
 			refobj->objectId = relid;
 			refobj->objectSubId = InvalidAttrNumber;
-			plisql_referenced_objects = lappend(plisql_referenced_objects, (void *)refobj);
+			plisql_referenced_objects = lappend(plisql_referenced_objects, (void *) refobj);
 		}
 	}
 
 	pfree(typeName);
 }
-

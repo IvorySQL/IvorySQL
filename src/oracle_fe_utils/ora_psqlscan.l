@@ -1869,7 +1869,7 @@ is_oracle_slash(PsqlScanState state, const char *line)
 				len = strlen(line);
 				for (i = 0; i < len; i++)
 				{
-					/* allowed special char */
+					/* allow special char */
 					if (line[i] == '\t' ||
 						line[i] == '\n' ||
 						line[i] == '\r' ||

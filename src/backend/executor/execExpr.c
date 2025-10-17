@@ -105,7 +105,7 @@ static void ExecBuildAggTransCall(ExprState *state, AggState *aggstate,
 								  int transno, int setno, int setoff, bool ishash,
 								  bool nullcheck);
 static void ExecInitFuncWithOutParams(Expr *node, ExprState *state,
-					Datum *resvalue, bool *resnull);
+									  Datum *resvalue, bool *resnull);
 
 static void ExecInitJsonExpr(JsonExpr *jsexpr, ExprState *state,
 							 Datum *resv, bool *resnull,
@@ -1306,8 +1306,8 @@ ExecInitExprRec(Expr *node, ExprState *state,
 
 				/* Check permission to call function */
 				aclresult = object_aclcheck(ProcedureRelationId, cmpfuncid,
-											 GetUserId(),
-											 ACL_EXECUTE);
+											GetUserId(),
+											ACL_EXECUTE);
 				if (aclresult != ACLCHECK_OK)
 					aclcheck_error(aclresult, OBJECT_FUNCTION,
 								   get_func_name(cmpfuncid));
@@ -1316,8 +1316,8 @@ ExecInitExprRec(Expr *node, ExprState *state,
 				if (OidIsValid(opexpr->hashfuncid))
 				{
 					aclresult = object_aclcheck(ProcedureRelationId, opexpr->hashfuncid,
-												 GetUserId(),
-												 ACL_EXECUTE);
+												GetUserId(),
+												ACL_EXECUTE);
 					if (aclresult != ACLCHECK_OK)
 						aclcheck_error(aclresult, OBJECT_FUNCTION,
 									   get_func_name(opexpr->hashfuncid));
@@ -2723,11 +2723,11 @@ ExecInitFunc(ExprEvalStep *scratch, Expr *node, List *args, Oid funcid,
 	FunctionCallInfo fcinfo;
 	int			argno;
 	ListCell   *lc;
-	bool is_subproc_func = false;
+	bool		is_subproc_func = false;
 
 	if (nodeTag(node) == T_FuncExpr)
 	{
-		FuncExpr *funcexpr = (FuncExpr *) node;
+		FuncExpr   *funcexpr = (FuncExpr *) node;
 
 		if (!FUNC_EXPR_FROM_PG_PROC(funcexpr->function_from))
 			is_subproc_func = true;
@@ -2735,7 +2735,7 @@ ExecInitFunc(ExprEvalStep *scratch, Expr *node, List *args, Oid funcid,
 
 	if (!is_subproc_func)
 	{
-		/* Check permission to call function */
+		/* Verify EXECUTE privilege before invoking the function. */
 		aclresult = object_aclcheck(ProcedureRelationId, funcid, GetUserId(), ACL_EXECUTE);
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, OBJECT_FUNCTION, get_func_name(funcid));
@@ -3257,7 +3257,7 @@ ExecInitWholeRowVar(ExprEvalStep *scratch, Var *variable, ExprState *state)
 			{
 				scratch->d.wholerow.junkFilter =
 					ExecInitJunkFilter(subplan->plan->targetlist,
-									ExecGetResultType(subplan)->tdhasrowid,
+									   ExecGetResultType(subplan)->tdhasrowid,
 									   ExecInitExtraTupleSlot(parent->state, NULL,
 															  &TTSOpsVirtual));
 			}
@@ -3885,7 +3885,7 @@ ExecBuildAggTrans(AggState *aggstate, AggStatePerPhase phase,
 			 * column sorted on.
 			 */
 			TargetEntry *source_tle =
-			(TargetEntry *) linitial(pertrans->aggref->args);
+				(TargetEntry *) linitial(pertrans->aggref->args);
 
 			Assert(list_length(pertrans->aggref->args) == 1);
 
@@ -5106,24 +5106,24 @@ ExecInitJsonCoercion(ExprState *state, JsonReturning *returning,
  */
 static void
 ExecInitFuncWithOutParams(Expr *node, ExprState *state,
-					Datum *resvalue, bool *resnull)
+						  Datum *resvalue, bool *resnull)
 {
 	if (compatible_db == ORA_PARSER)
 	{
-		FuncExpr	*funcexpr = (FuncExpr *) node;
-		Oid 		funcOid = funcexpr->funcid;
+		FuncExpr   *funcexpr = (FuncExpr *) node;
+		Oid			funcOid = funcexpr->funcid;
 		HeapTuple	func_tuple;
-		Oid 	   *argtypes = NULL;
+		Oid		   *argtypes = NULL;
 		char	  **argnames = NULL;
 		char	   *argmodes = NULL;
-		int 		i = 0;
-		int 		num_out_args = 0;
-		int 		num_all_args = 0;
-		Oid 		rettype;
+		int			i = 0;
+		int			num_out_args = 0;
+		int			num_all_args = 0;
+		Oid			rettype;
 		char	   *funcname = NULL;
 
 		func_tuple = SearchSysCache1(PROCOID,
-						 ObjectIdGetDatum(funcOid));
+									 ObjectIdGetDatum(funcOid));
 
 		if (!HeapTupleIsValid(func_tuple))
 			return;
@@ -5136,8 +5136,8 @@ ExecInitFuncWithOutParams(Expr *node, ExprState *state,
 		}
 
 		/*
-	 	 * get the argument names and modes 
-	 	 */
+		 * get the argument names and modes
+		 */
 		num_all_args = get_func_arg_info(func_tuple, &argtypes, &argnames, &argmodes);
 		rettype = ((Form_pg_proc) GETSTRUCT(func_tuple))->prorettype;
 		funcname = NameStr(((Form_pg_proc) GETSTRUCT(func_tuple))->proname);
@@ -5153,20 +5153,20 @@ ExecInitFuncWithOutParams(Expr *node, ExprState *state,
 
 		if (num_out_args > 0)
 		{
-			ListCell	 *lc;
+			ListCell   *lc;
 
 			if (SPI_get_connected() >= 0)
 			{
-				ExprEvalStep  scratch = {0};
+				ExprEvalStep scratch = {0};
 				ParamListInfo params = NULL;
-				int 		  nout = 0;
-				int 		 *paramids = NULL;
+				int			nout = 0;
+				int		   *paramids = NULL;
 
 				if (state->ext_params &&
 					state->ext_params->outparamSetup)
 					params = state->ext_params;
 				else if (state->parent &&
-					state->parent->state)
+						 state->parent->state)
 					params = state->parent->state->es_param_list_info;
 
 				if (!params || !params->outparamSetup)
@@ -5175,9 +5175,9 @@ ExecInitFuncWithOutParams(Expr *node, ExprState *state,
 						ReleaseSysCache(func_tuple);
 					if (!allow_out_parameter_const)
 						ereport(ERROR,
-							(errcode(ERRCODE_DATA_EXCEPTION),
-							errmsg("OUT or IN OUT arguments of the function %s must be variables",
-									funcname)));
+								(errcode(ERRCODE_DATA_EXCEPTION),
+								 errmsg("OUT or IN OUT arguments of the function %s must be variables",
+										funcname)));
 					return;
 				}
 
@@ -5187,7 +5187,7 @@ ExecInitFuncWithOutParams(Expr *node, ExprState *state,
 				i = 0;
 				foreach(lc, funcexpr->args)
 				{
-					Node *arg = (Node *) lfirst(lc);
+					Node	   *arg = (Node *) lfirst(lc);
 
 					if (argmodes[i] == PROARGMODE_OUT ||
 						argmodes[i] == PROARGMODE_INOUT)
@@ -5199,11 +5199,11 @@ ExecInitFuncWithOutParams(Expr *node, ExprState *state,
 							if (!allow_out_parameter_const)
 								ereport(ERROR,
 										(errcode(ERRCODE_DATA_EXCEPTION),
-										errmsg("OUT or IN OUT arguments of the function %s must be variables ",
+										 errmsg("OUT or IN OUT arguments of the function %s must be variables ",
 												funcname)));
 						}
 						else
-							paramids[nout++] = ((Param *)arg)->paramid - 1;
+							paramids[nout++] = ((Param *) arg)->paramid - 1;
 					}
 
 					i++;
@@ -5224,16 +5224,16 @@ ExecInitFuncWithOutParams(Expr *node, ExprState *state,
 			else
 			{
 				/*
-				 * a funciton in SQL, not in psql, is called.
-				 * If allow_out_parameter_const is false,
-				 * the out parameter of the function must be variable.
-				 * Else if allow_out_parameter_const is true,
-				 * the out parameter of the function can be const.
+				 * a funciton in SQL, not in psql, is called. If
+				 * allow_out_parameter_const is false, the out parameter of
+				 * the function must be variable. Else if
+				 * allow_out_parameter_const is true, the out parameter of the
+				 * function can be const.
 				 */
 				i = 0;
 				foreach(lc, funcexpr->args)
 				{
-					Node *arg = (Node *) lfirst(lc);
+					Node	   *arg = (Node *) lfirst(lc);
 
 					if (argmodes[i] == PROARGMODE_OUT ||
 						argmodes[i] == PROARGMODE_INOUT)
@@ -5243,7 +5243,7 @@ ExecInitFuncWithOutParams(Expr *node, ExprState *state,
 						if (!IsA(arg, Param) && !allow_out_parameter_const)
 							ereport(ERROR,
 									(errcode(ERRCODE_DATA_EXCEPTION),
-									errmsg("OUT or IN OUT arguments of the function %s must be variables ",
+									 errmsg("OUT or IN OUT arguments of the function %s must be variables ",
 											funcname)));
 					}
 
@@ -5257,4 +5257,3 @@ ExecInitFuncWithOutParams(Expr *node, ExprState *state,
 
 	return;
 }
-

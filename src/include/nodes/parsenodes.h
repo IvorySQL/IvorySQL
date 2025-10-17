@@ -4394,21 +4394,21 @@ typedef struct AccessibleByClause
 } AccessibleByClause;
 
 /*
- * support alter a function like
+ * support alter a function like:
  * alter function func editable|noneditable or compile
- * we doesn't use the AlterFunctionStmt, because we doesn't
+ * we don't use the AlterFunctionStmt, because we don't
  * want to use AlterFunction function, which will modify the
  * pg_proc catalog table,compile doesn't change the system catalog.
- * another reason is AlterFunction which fun should
+ * another reason is AlterFunction which should
  * bring function arguments and find function rely on its
- * arguments, this struct will doesn't consider function arguments.
+ * arguments, this struct will not consider function arguments.
  */
 typedef struct CompileFunctionStmt
 {
 	NodeTag		type;
 	ObjectType	objtype;
 	ObjectWithArgs *func;		/* name and args of function */
-	bool		is_compile;		/* if false, it is change the editable|noneditable */
+	bool		is_compile;		
 	bool		editable;
 	List		*parameters;
 } CompileFunctionStmt;

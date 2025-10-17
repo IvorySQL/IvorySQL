@@ -13,7 +13,7 @@
  *
  * src/pl/plisql/src/pl_reserved_kwlist.h
  *
- * add the file for requirement "SQL PARSER"
+ * add the file for "SQL PARSER"
  *
  *-------------------------------------------------------------------------
  */
@@ -21,14 +21,13 @@
 /* There is deliberately not an #ifndef PL_RESERVED_KWLIST_H here. */
 
 /*
- * List of (keyword-name, keyword-token-value) pairs.
+ * Catalog of (keyword name, token code) pairs.
  *
- * Be careful not to put the same word into pl_unreserved_kwlist.h.
+ * Do not list here any word that also appears in pl_unreserved_kwlist.h.
  *
- * Note: gen_keywordlist.pl requires the entries to appear in ASCII order.
+ * Requirement: gen_keywordlist.pl expects items in ASCII sort order.
  */
 
-/* name, value */
 PG_KEYWORD("all", K_ALL)
 PG_KEYWORD("begin", K_BEGIN)
 PG_KEYWORD("by", K_BY)

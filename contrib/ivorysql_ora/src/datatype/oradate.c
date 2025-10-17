@@ -1,12 +1,12 @@
 /*-------------------------------------------------------------------------
  * Copyright 2025 IvorySQL Global Development Team
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -166,16 +166,16 @@ timestamp2timestamptz(Timestamp timestamp)
 Datum
 oradate_in(PG_FUNCTION_ARGS)
 {
-	char		*str = PG_GETARG_CSTRING(0);
-	Oid		collid = PG_GET_COLLATION();
+	char	   *str = PG_GETARG_CSTRING(0);
+	Oid			collid = PG_GET_COLLATION();
 	Timestamp	result;
-	struct pg_tm	tm;
+	struct pg_tm tm;
 	fsec_t		fsec;
 
 	if (strcmp(nls_date_format, "pg") == 0 || DATETIME_IGNORE_NLS(datetime_ignore_nls_mask, ORADATE_MASK))
 	{
 		return DirectFunctionCall1(date_timestamp,
-									DirectFunctionCall1(date_in, CStringGetDatum(str)));
+								   DirectFunctionCall1(date_in, CStringGetDatum(str)));
 	}
 	else
 	{
@@ -206,8 +206,8 @@ oradate_out(PG_FUNCTION_ARGS)
 		text	   *date_str;
 
 		date_str = DatumGetTextP(DirectFunctionCall2(timestamp_to_char,
-								  TimestampGetDatum(timestamp),
-								  PointerGetDatum(cstring_to_text(nls_date_format))));
+													 TimestampGetDatum(timestamp),
+													 PointerGetDatum(cstring_to_text(nls_date_format))));
 
 		result = text_to_cstring(date_str);
 		PG_RETURN_CSTRING(result);
@@ -589,7 +589,7 @@ oradate_cmp_oratimestampltz(PG_FUNCTION_ARGS)
 }
 
 /*****************************************************************************
- *	 Hash index support procedure 
+ *	 Hash index support procedure
  *****************************************************************************/
 Datum
 oradate_hash(PG_FUNCTION_ARGS)
@@ -744,4 +744,3 @@ oradate_oratimestampltz(PG_FUNCTION_ARGS)
 
 	PG_RETURN_TIMESTAMPTZ(timestamp2timestamptz(timestamp));
 }
-

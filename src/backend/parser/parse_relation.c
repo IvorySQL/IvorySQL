@@ -1276,7 +1276,7 @@ chooseScalarFunctionAlias(Node *funcexpr, char *funcname,
 
 	/*
 	 * If the expression is a simple function call, and the function has a
-	 * single OUT parameter that is named, use the parameter's name.
+	 * single named OUT parameter, use the parameter's name.
 	 */
 	if (funcexpr && IsA(funcexpr, FuncExpr))
 	{
@@ -1344,9 +1344,10 @@ buildNSItemFromTupleDesc(RangeTblEntry *rte, Index rtindex,
 		nscolumns[varattno].p_varcollid = attr->attcollation;
 		nscolumns[varattno].p_varnosyn = rtindex;
 		nscolumns[varattno].p_varattnosyn = varattno + 1;
+
 		/*
-		 * For an invisible column, the entry will not
-		 * be included in star expansion.
+		 * For an invisible column, the entry will not be included in star
+		 * expansion.
 		 */
 		if (attr->attisinvisible)
 			nscolumns[varattno].p_dontexpand = true;
@@ -1529,17 +1530,20 @@ addRangeTableEntry(ParseState *pstate,
 	 * to a rel in a statement, we must open the rel with the proper lockmode.
 	 */
 	rel = parserOpenTable(pstate, relation, lockmode);
+
 	/*
-	 * The force view is compiled at this point. Although performing compilation here may not be ideal,
-	 * since it is a DDL operation, Oracle's SELECT statements will recursively compile force views.
-	 * For now, we handle the compilation in this location as a temporary solution.
+	 * The force view is compiled at this point. Although performing
+	 * compilation here may not be ideal, since it is a DDL operation,
+	 * Oracle's SELECT statements will recursively compile force views. For
+	 * now, we handle the compilation in this location as a temporary
+	 * solution.
 	 */
 	if (ORA_PARSER == compatible_db && rel_is_force_view(RelationGetRelid(rel)))
 	{
-		bool	compile_res;
-		char	*nspname;
-		char	*viewname;
-		Oid		viewoid;
+		bool		compile_res;
+		char	   *nspname;
+		char	   *viewname;
+		Oid			viewoid;
 
 		viewoid = RelationGetRelid(rel);
 		nspname = get_namespace_name(RelationGetNamespace(rel));

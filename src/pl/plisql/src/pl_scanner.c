@@ -11,7 +11,6 @@
  * IDENTIFICATION
  *	  src/pl/plisql/src/pl_scanner.c
  *
- * add the file for requirement "SQL PARSER"
  *
  *-------------------------------------------------------------------------
  */
@@ -107,8 +106,7 @@ typedef struct
  * pointer around is great enough to not want to do it without need.
  */
 
-/* The stuff the core lexer needs */
-//static ora_core_yyscan_t yyscanner = NULL;
+/* The stuff that the core lexer needs */
 static ora_core_yy_extra_type core_yy_extra;
 
 /* The original input string */
@@ -121,14 +119,17 @@ static int	plisql_yyleng;
 static int	plisql_yytoken;
 
 static yyscan_t plisql_scanner;
+
 /* The semantic value of the lookahead symbol.  */
 static YYSTYPE plisql_yylval;
+
 /* Location data for the lookahead symbol.  */
 static YYLTYPE plisql_yylloc
-# if defined YYLTYPE_IS_TRIVIAL && YYLTYPE_IS_TRIVIAL
-  = { 1, 1, 1, 1 }
-# endif
-;
+#if defined YYLTYPE_IS_TRIVIAL && YYLTYPE_IS_TRIVIAL
+= {1, 1, 1, 1}
+#endif
+		   ;
+
 /* Token pushback stack */
 #define MAX_PUSHBACKS 4
 
@@ -148,29 +149,29 @@ typedef struct PLiSQL_yylex_global_proper
 {
 
 	ora_core_yy_extra_type core_yy_extra;
-	//ora_core_yyscan_t yyscanner;
+
 	/* The original input string */
 	const char *scanorig;
 
 	/* Current token's length (corresponds to plsql_yylval and plsql_yylloc) */
-	int	plisql_yyleng;
+	int			plisql_yyleng;
 
 	/* Current token's code (corresponds to plsql_yylval and plsql_yylloc) */
-	int	plisql_yytoken;
+	int			plisql_yytoken;
 
-	int	num_pushbacks;
-	int	pushback_token[MAX_PUSHBACKS];
+	int			num_pushbacks;
+	int			pushback_token[MAX_PUSHBACKS];
 	TokenAuxData pushback_auxdata[MAX_PUSHBACKS];
 
 	/* from pl_gram.y */
-	YYSTYPE	plisql_yylval;
-	YYLTYPE	plisql_yylloc;
+	YYSTYPE		plisql_yylval;
+	YYLTYPE		plisql_yylloc;
 
 	/* State for plsql_location_to_lineno() */
 	const char *cur_line_start;
 	const char *cur_line_end;
-	int	cur_line_num;
-} PLiSQL_yylex_global_proper;
+	int			cur_line_num;
+}			PLiSQL_yylex_global_proper;
 
 /* Internal functions */
 static int	internal_yylex(TokenAuxData *auxdata, yyscan_t yyscanner);
@@ -206,35 +207,32 @@ plisql_yylex(YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 	int			tok1;
 	TokenAuxData aux1;
 	int			kwnum;
-	char        buf[32];
-	char		*paramname;
+	char		buf[32];
+	char	   *paramname;
 
 	tok1 = internal_yylex(&aux1, yyscanner);
 	if (tok1 == IDENT || tok1 == PARAM || tok1 == ORAPARAM)
 	{
-		int	tok2;
+		int			tok2;
 		TokenAuxData aux2;
 
 		paramname = aux1.lval.str;
 		if (tok1 == ORAPARAM)
 		{
-			int num;
+			int			num;
 
 			/*
-			 *  exmaple syntax:
-			 *****************************************
-			 * do $$
-			 * begin
-			 *   :x = 78;
-			 *   :y = 'thanks';
-			 * end; using y inout, x inout;
-			 ******************************************
+			 * exmaple syntax: ****************************************
+			 *
+			 * do $$ begin :x = 78; :y = 'thanks'; end; using y inout, x
+			 * inout; *****************************************
+			 *
 			 * the origin strings :x or :y are treated as the parameter name
 			 */
 
 			if (plisql_curr_compile->paramnames != NULL)
 			{
-				int i;
+				int			i;
 
 				for (i = 0; i < plisql_curr_compile->fn_nargs; i++)
 				{
@@ -291,11 +289,11 @@ plisql_yylex(YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 					if (tok5 == IDENT)
 					{
 						if (plisql_parse_tripword(paramname,
-												   aux1.lval.str,
-												   aux3.lval.str,
-												   aux5.lval.str,
-												   &aux1.lval.wdatum,
-												   &aux1.lval.cword))
+												  aux1.lval.str,
+												  aux3.lval.str,
+												  aux5.lval.str,
+												  &aux1.lval.wdatum,
+												  &aux1.lval.cword))
 							tok1 = T_DATUM;
 						else
 							tok1 = T_CWORD;
@@ -308,10 +306,10 @@ plisql_yylex(YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 						push_back_token(tok5, &aux5, yyscanner);
 						push_back_token(tok4, &aux4, yyscanner);
 						if (plisql_parse_dblword(paramname,
-												  aux1.lval.str,
-												  aux3.lval.str,
-												  &aux1.lval.wdatum,
-												  &aux1.lval.cword))
+												 aux1.lval.str,
+												 aux3.lval.str,
+												 &aux1.lval.wdatum,
+												 &aux1.lval.cword))
 							tok1 = T_DATUM;
 						else
 							tok1 = T_CWORD;
@@ -324,10 +322,10 @@ plisql_yylex(YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 					/* not A.B.C, so just process A.B */
 					push_back_token(tok4, &aux4, yyscanner);
 					if (plisql_parse_dblword(paramname,
-											  aux1.lval.str,
-											  aux3.lval.str,
-											  &aux1.lval.wdatum,
-											  &aux1.lval.cword))
+											 aux1.lval.str,
+											 aux3.lval.str,
+											 &aux1.lval.wdatum,
+											 &aux1.lval.cword))
 						tok1 = T_DATUM;
 					else
 						tok1 = T_CWORD;
@@ -341,11 +339,11 @@ plisql_yylex(YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 				push_back_token(tok3, &aux3, yyscanner);
 				push_back_token(tok2, &aux2, yyscanner);
 				if (plisql_parse_word(paramname,
-									   aux1.lval.str,
-									   yyextra->core_yy_extra.scanbuf + aux1.lloc,
-									   true,
-									   &aux1.lval.wdatum,
-									   &aux1.lval.word))
+									  aux1.lval.str,
+									  yyextra->core_yy_extra.scanbuf + aux1.lloc,
+									  true,
+									  &aux1.lval.wdatum,
+									  &aux1.lval.word))
 					tok1 = T_DATUM;
 				else if (!aux1.lval.word.quoted &&
 						 (kwnum = ScanKeywordLookup(aux1.lval.word.ident,
@@ -382,13 +380,13 @@ plisql_yylex(YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 			 * non-variable cases.
 			 */
 			if (plisql_parse_word(paramname,
-								   aux1.lval.str,
-								   yyextra->core_yy_extra.scanbuf + aux1.lloc,
-								   (!AT_STMT_START(plisql_yytoken) ||
-									(tok2 == '=' || tok2 == COLON_EQUALS ||
-									 tok2 == '[')),
-								   &aux1.lval.wdatum,
-								   &aux1.lval.word))
+								  aux1.lval.str,
+								  yyextra->core_yy_extra.scanbuf + aux1.lloc,
+								  (!AT_STMT_START(plisql_yytoken) ||
+								   (tok2 == '=' || tok2 == COLON_EQUALS ||
+									tok2 == '[')),
+								  &aux1.lval.wdatum,
+								  &aux1.lval.word))
 				tok1 = T_DATUM;
 			else if (!aux1.lval.word.quoted &&
 					 (kwnum = ScanKeywordLookup(aux1.lval.word.ident,
@@ -455,8 +453,8 @@ internal_yylex(TokenAuxData *auxdata, yyscan_t yyscanner)
 	else
 	{
 		token = ora_core_yylex(&auxdata->lval.core_yystype,
-						   &auxdata->lloc,
-						   yyscanner);
+							   &auxdata->lloc,
+							   yyscanner);
 
 		/* remember the length of yytext before it gets changed */
 		yytext = yyextra->core_yy_extra.scanbuf + auxdata->lloc;
@@ -545,8 +543,8 @@ plisql_token_is_unreserved_keyword(int token)
  */
 void
 plisql_append_source_text(StringInfo buf,
-						   int startlocation, int endlocation,
-						   yyscan_t yyscanner)
+						  int startlocation, int endlocation,
+						  yyscan_t yyscanner)
 {
 	Assert(startlocation <= endlocation);
 	appendBinaryStringInfo(buf, yyextra->scanorig + startlocation,
@@ -638,12 +636,12 @@ plisql_scanner_errposition(int location, yyscan_t yyscanner)
  * parsers report error as soon as the first unparsable token is reached.
  * Beware of using yyerror for other purposes, as the cursor position might
  * be misleading!
- * 
+ *
  * (The second argument is enforced by Bison to match the second argument of
  * yyparse(), but it is not used here.)
  */
 pg_noreturn void
-plisql_yyerror(YYLTYPE *yyllocp,  PLiSQL_stmt_block **plisql_parse_result_p, yyscan_t yyscanner,const char *message)
+plisql_yyerror(YYLTYPE *yyllocp, PLiSQL_stmt_block * *plisql_parse_result_p, yyscan_t yyscanner, const char *message)
 {
 	char	   *yytext = yyextra->core_yy_extra.scanbuf + *yyllocp;
 
@@ -737,7 +735,7 @@ plisql_scanner_init(const char *str)
 
 	/* Start up the core scanner */
 	yyscanner = ora_scanner_init(str, (ora_core_yy_extra_type *) yyext,
-							 &ReservedPLKeywords, ReservedPLKeywordTokens);
+								 &ReservedPLKeywords, ReservedPLKeywordTokens);
 
 	/*
 	 * scanorig points to the original string, which unlike the scanner's
@@ -768,19 +766,18 @@ plisql_scanner_finish(yyscan_t yyscanner)
 }
 
 /*
- * saved yylex global variable
+ * yylex global variable
  */
 void *
 plisql_get_yylex_global_proper(void)
 {
 	PLiSQL_yylex_global_proper *yylex_data;
-	int i;
+	int			i;
 
 	yylex_data = (PLiSQL_yylex_global_proper *) palloc0(sizeof(PLiSQL_yylex_global_proper));
 
 	yylex_data->core_yy_extra = core_yy_extra;
 	yylex_data->cur_line_end = cur_line_end;
-	//yylex_data->cur_line_num = cur_line_num;
 	yylex_data->cur_line_start = cur_line_start;
 	yylex_data->plisql_yyleng = plisql_yyleng;
 	yylex_data->plisql_yytoken = plisql_yytoken;
@@ -793,7 +790,6 @@ plisql_get_yylex_global_proper(void)
 	}
 
 	yylex_data->scanorig = scanorig;
-	//yylex_data->yyscanner = plisql_scanner;
 	yylex_data->plisql_yylval = plisql_yylval;
 	yylex_data->plisql_yylloc = plisql_yylloc;
 
@@ -807,7 +803,7 @@ void
 plisql_recover_yylex_global_proper(void *value)
 {
 	PLiSQL_yylex_global_proper *yylex_data;
-	int i;
+	int			i;
 
 	Assert(value != NULL);
 
@@ -815,23 +811,22 @@ plisql_recover_yylex_global_proper(void *value)
 
 	core_yy_extra = yylex_data->core_yy_extra;
 	cur_line_end = yylex_data->cur_line_end;
-	//cur_line_num = yylex_data->cur_line_num;
+	/* cur_line_num = yylex_data->cur_line_num; */
 	cur_line_start = yylex_data->cur_line_start;
 	plisql_yyleng = yylex_data->plisql_yyleng;
 	plisql_yytoken = yylex_data->plisql_yytoken;
 
 	num_pushbacks = yylex_data->num_pushbacks;
-	for (i = 0;i < num_pushbacks; i++)
+	for (i = 0; i < num_pushbacks; i++)
 	{
 		pushback_auxdata[i] = yylex_data->pushback_auxdata[i];
 		pushback_token[i] = yylex_data->pushback_token[i];
 	}
 
 	scanorig = yylex_data->scanorig;
-	//plisql_scanner = yylex_data->yyscanner;
+	/* plisql_scanner = yylex_data->yyscanner; */
 	plisql_yylval = yylex_data->plisql_yylval;
 	plisql_yylloc = yylex_data->plisql_yylloc;
 
 	return;
 }
-

@@ -23,9 +23,8 @@
 #include "commands/trigger.h"
 #include "executor/spi.h"
 #include "utils/expandedrecord.h"
-#include "utils/typcache.h"
 #include "utils/packagecache.h"
-
+#include "utils/typcache.h"
 
 /**********************************************************************
  * Definitions
@@ -46,19 +45,19 @@ typedef enum PLiSQL_nsitem_type
 	PLISQL_NSTYPE_LABEL,		/* block label */
 	PLISQL_NSTYPE_VAR,			/* scalar variable */
 	PLISQL_NSTYPE_REC,			/* composite variable */
-	PLISQL_NSTYPE_SUBPROC_FUNC,	/* subproc function */
+	PLISQL_NSTYPE_SUBPROC_FUNC, /* subproc function */
 	PLISQL_NSTYPE_SUBPROC_PROC	/* subproc proc */
-} PLiSQL_nsitem_type;
+}			PLiSQL_nsitem_type;
 
 /*
  * A PLISQL_NSTYPE_LABEL stack entry must be one of these types
  */
 typedef enum PLiSQL_label_type
 {
-	PLISQL_LABEL_BLOCK,		/* DECLARE/BEGIN block */
+	PLISQL_LABEL_BLOCK,			/* DECLARE/BEGIN block */
 	PLISQL_LABEL_LOOP,			/* looping construct */
 	PLISQL_LABEL_OTHER			/* anything else */
-} PLiSQL_label_type;
+}			PLiSQL_label_type;
 
 /*
  * Datum array node types
@@ -71,7 +70,7 @@ typedef enum PLiSQL_datum_type
 	PLISQL_DTYPE_RECFIELD,
 	PLISQL_DTYPE_PROMISE,
 	PLISQL_DTYPE_PACKAGE_DATUM,
-} PLiSQL_datum_type;
+}			PLiSQL_datum_type;
 
 /*
  * DTYPE_PROMISE datums have these possible ways of computing the promise
@@ -90,7 +89,7 @@ typedef enum PLiSQL_promise_type
 	PLISQL_PROMISE_TG_ARGV,
 	PLISQL_PROMISE_TG_EVENT,
 	PLISQL_PROMISE_TG_TAG
-} PLiSQL_promise_type;
+}			PLiSQL_promise_type;
 
 /*
  * Variants distinguished in PLiSQL_type structs
@@ -99,8 +98,8 @@ typedef enum PLiSQL_type_type
 {
 	PLISQL_TTYPE_SCALAR,		/* scalar types and domains */
 	PLISQL_TTYPE_REC,			/* composite types, including RECORD */
-	PLISQL_TTYPE_PSEUDO		/* pseudotypes */
-} PLiSQL_type_type;
+	PLISQL_TTYPE_PSEUDO			/* pseudotypes */
+}			PLiSQL_type_type;
 
 /*
  * Execution tree node types
@@ -134,17 +133,14 @@ typedef enum PLiSQL_stmt_type
 	PLISQL_STMT_CALL,
 	PLISQL_STMT_COMMIT,
 	PLISQL_STMT_ROLLBACK
-} PLiSQL_stmt_type;
+}			PLiSQL_stmt_type;
 
 /*
  * Execution node return codes
  */
 enum
 {
-	PLISQL_RC_OK,
-	PLISQL_RC_EXIT,
-	PLISQL_RC_RETURN,
-	PLISQL_RC_CONTINUE
+	PLISQL_RC_OK, PLISQL_RC_EXIT, PLISQL_RC_RETURN, PLISQL_RC_CONTINUE
 };
 
 /*
@@ -165,7 +161,7 @@ typedef enum PLiSQL_getdiag_kind
 	PLISQL_GETDIAG_MESSAGE_TEXT,
 	PLISQL_GETDIAG_TABLE_NAME,
 	PLISQL_GETDIAG_SCHEMA_NAME
-} PLiSQL_getdiag_kind;
+}			PLiSQL_getdiag_kind;
 
 /*
  * RAISE statement options
@@ -181,7 +177,7 @@ typedef enum PLiSQL_raise_option_type
 	PLISQL_RAISEOPTION_DATATYPE,
 	PLISQL_RAISEOPTION_TABLE,
 	PLISQL_RAISEOPTION_SCHEMA
-} PLiSQL_raise_option_type;
+}			PLiSQL_raise_option_type;
 
 /*
  * Behavioral modes for plpgsql variable resolution
@@ -191,7 +187,7 @@ typedef enum PLiSQL_resolve_option
 	PLISQL_RESOLVE_ERROR,		/* throw error if ambiguous */
 	PLISQL_RESOLVE_VARIABLE,	/* prefer plpgsql var to table column */
 	PLISQL_RESOLVE_COLUMN		/* prefer table column to plpgsql var */
-} PLiSQL_resolve_option;
+}			PLiSQL_resolve_option;
 
 typedef enum PLiSQL_rwopt
 {
@@ -199,7 +195,7 @@ typedef enum PLiSQL_rwopt
 	PLISQL_RWOPT_NOPE,			/* cannot do any optimization */
 	PLISQL_RWOPT_TRANSFER,		/* transfer the old value into expr state */
 	PLISQL_RWOPT_INPLACE,		/* pass value as R/W to top-level function */
-} PLiSQL_rwopt;
+}			PLiSQL_rwopt;
 
 /**********************************************************************
  * Node and structure definitions
@@ -212,7 +208,7 @@ typedef struct PLiSQL_type
 {
 	char	   *typname;		/* (simple) name of the type */
 	Oid			typoid;			/* OID of the data type */
-	PLiSQL_type_type ttype;	/* PLISQL_TTYPE_ code */
+	PLiSQL_type_type ttype;		/* PLISQL_TTYPE_ code */
 	int16		typlen;			/* stuff copied from its pg_type entry */
 	bool		typbyval;
 	char		typtype;
@@ -221,12 +217,12 @@ typedef struct PLiSQL_type
 	int32		atttypmod;		/* typmod (taken from someplace else) */
 	bool		notnull;		/* the type is built by variable%type,
 						 * isnull or notnull of the variable */
-	TypeName   *pctrowtypname;	/* type name only for the types that uses %TYPE or %ROWTYPE */
+	TypeName   *pctrowtypname;	/* type name only for the types that use %TYPE or %ROWTYPE */
 	/* Remaining fields are used only for named composite types (not RECORD) */
 	TypeName   *origtypname;	/* type name as written by user */
 	TypeCacheEntry *tcache;		/* typcache entry for composite type */
 	uint64		tupdesc_id;		/* last-seen tupdesc identifier */
-} PLiSQL_type;
+}			PLiSQL_type;
 
 /*
  * SQL Query to plan and execute
@@ -235,8 +231,8 @@ typedef struct PLiSQL_expr
 {
 	char	   *query;			/* query string, verbatim from function body */
 	RawParseMode parseMode;		/* raw_parser() mode to use */
-	struct PLiSQL_function *func;  /* function containing this expr */
-	struct PLiSQL_nsitem *ns;      /* namespace chain visible to this expr */
+	struct PLiSQL_function *func;	/* function containing this expr */
+	struct PLiSQL_nsitem *ns;	/* namespace chain visible to this expr */
 
 	/*
 	 * These fields are used to help optimize assignments to expanded-datum
@@ -246,7 +242,7 @@ typedef struct PLiSQL_expr
 	 * closest exception block containing the assignment
 	 */
 	int			target_param;	/* dno of assign target, or -1 if none */
-	bool        target_is_local;        /* is it within nearest exception block? */
+	bool		target_is_local;	/* is it within nearest exception block? */
 
 	/*
 	 * Fields above are set during plpgsql parsing.  Remaining fields are left
@@ -291,7 +287,7 @@ typedef struct PLiSQL_expr
 	ExprState  *expr_simple_state;	/* eval tree for expr_simple_expr */
 	bool		expr_simple_in_use; /* true if eval tree is active */
 	LocalTransactionId expr_simple_lxid;
-} PLiSQL_expr;
+}			PLiSQL_expr;
 
 /*
  * Generic datum array item
@@ -304,7 +300,7 @@ typedef struct PLiSQL_datum
 	PLiSQL_datum_type dtype;
 	int			dno;
 	Oid			pkgoid;
-} PLiSQL_datum;
+}			PLiSQL_datum;
 
 /*
  * Scalar or composite variable
@@ -322,7 +318,7 @@ typedef struct PLiSQL_variable
 	bool		isconst;
 	bool		notnull;
 	PLiSQL_expr *default_val;
-} PLiSQL_variable;
+}			PLiSQL_variable;
 
 /*
  * Scalar variable
@@ -359,7 +355,7 @@ typedef struct PLiSQL_var
 	int			cursor_options;
 
 	char		info; /* record the argument mode which may be IN, OUT or IN OUT.
-			       * If variable is built in plsql block local, it is empty */
+			       * If variable is built in plisql block locally, it is empty */
 
 	/* Fields below here can change at runtime */
 
@@ -373,7 +369,7 @@ typedef struct PLiSQL_var
 	 * been fulfilled, this is PLISQL_PROMISE_NONE.
 	 */
 	PLiSQL_promise_type promise;
-} PLiSQL_var;
+}			PLiSQL_var;
 
 /*
  * Row variable - this represents one or more variables that are listed in an
@@ -415,7 +411,7 @@ typedef struct PLiSQL_row
 	int			nfields;
 	char	  **fieldnames;
 	int		   *varnos;
-} PLiSQL_row;
+}			PLiSQL_row;
 
 /*
  * Record variable (any composite type, including RECORD)
@@ -444,13 +440,13 @@ typedef struct PLiSQL_rec
 	int			firstfield;		/* dno of first RECFIELD, or -1 if none */
 
 	char		info;  /* record the argument mode which may be IN, OUT or IN OUT.
-				* If variable is built in plsql block local, it is empty */
+				* If variable is built in plisql block locally, it is empty */
 
 	/* Fields below here can change at runtime */
 
 	/* We always store record variables as "expanded" records */
 	ExpandedRecordHeader *erh;
-} PLiSQL_rec;
+}			PLiSQL_rec;
 
 /*
  * Field in record
@@ -469,7 +465,7 @@ typedef struct PLiSQL_recfield
 	uint64		rectupledescid; /* record's tupledesc ID as of last lookup */
 	ExpandedRecordFieldInfo finfo;	/* field's attnum and type info */
 	/* if rectupledescid == INVALID_TUPLEDESC_IDENTIFIER, finfo isn't valid */
-} PLiSQL_recfield;
+}			PLiSQL_recfield;
 
 /*
  * Item in the compilers namespace tree
@@ -484,9 +480,9 @@ typedef struct PLiSQL_nsitem
 	 */
 	int			itemno;
 	struct PLiSQL_nsitem *prev;
-	List		*subprocfunc;
+	List	   *subprocfunc;
 	char		name[FLEXIBLE_ARRAY_MEMBER];	/* nul-terminated string */
-} PLiSQL_nsitem;
+}			PLiSQL_nsitem;
 
 /*
  * Generic execution node
@@ -502,7 +498,7 @@ typedef struct PLiSQL_stmt
 	 * per-statement metrics.
 	 */
 	unsigned int stmtid;
-} PLiSQL_stmt;
+}			PLiSQL_stmt;
 
 /*
  * One EXCEPTION condition name
@@ -512,7 +508,7 @@ typedef struct PLiSQL_condition
 	int			sqlerrstate;	/* SQLSTATE code, or PLISQL_OTHERS */
 	char	   *condname;		/* condition name (for debugging) */
 	struct PLiSQL_condition *next;
-} PLiSQL_condition;
+}			PLiSQL_condition;
 
 /* This value mustn't match any possible output of MAKE_SQLSTATE() */
 #define PLISQL_OTHERS (-1)
@@ -525,7 +521,7 @@ typedef struct PLiSQL_exception_block
 	int			sqlstate_varno;
 	int			sqlerrm_varno;
 	List	   *exc_list;		/* List of WHEN clauses */
-} PLiSQL_exception_block;
+}			PLiSQL_exception_block;
 
 /*
  * One EXCEPTION ... WHEN clause
@@ -535,7 +531,7 @@ typedef struct PLiSQL_exception
 	int			lineno;
 	PLiSQL_condition *conditions;
 	List	   *action;			/* List of statements */
-} PLiSQL_exception;
+}			PLiSQL_exception;
 
 /*
  * Block of statements
@@ -550,9 +546,9 @@ typedef struct PLiSQL_stmt_block
 	int			n_initvars;		/* Length of initvarnos[] */
 	int		   *initvarnos;		/* dnos of variables declared in this block */
 	PLiSQL_exception_block *exceptions;
-	int       ora_param_stack_top_level;
-	int       ora_param_stack_cur_level;
-} PLiSQL_stmt_block;
+	int			ora_param_stack_top_level;
+	int			ora_param_stack_cur_level;
+}			PLiSQL_stmt_block;
 
 /*
  * Assign statement
@@ -564,7 +560,7 @@ typedef struct PLiSQL_stmt_assign
 	unsigned int stmtid;
 	int			varno;
 	PLiSQL_expr *expr;
-} PLiSQL_stmt_assign;
+}			PLiSQL_stmt_assign;
 
 /*
  * PERFORM statement
@@ -575,7 +571,7 @@ typedef struct PLiSQL_stmt_perform
 	int			lineno;
 	unsigned int stmtid;
 	PLiSQL_expr *expr;
-} PLiSQL_stmt_perform;
+}			PLiSQL_stmt_perform;
 
 /*
  * CALL statement
@@ -588,7 +584,7 @@ typedef struct PLiSQL_stmt_call
 	PLiSQL_expr *expr;
 	bool		is_call;
 	PLiSQL_variable *target;
-} PLiSQL_stmt_call;
+}			PLiSQL_stmt_call;
 
 /*
  * COMMIT statement
@@ -599,7 +595,7 @@ typedef struct PLiSQL_stmt_commit
 	int			lineno;
 	unsigned int stmtid;
 	bool		chain;
-} PLiSQL_stmt_commit;
+}			PLiSQL_stmt_commit;
 
 /*
  * ROLLBACK statement
@@ -610,7 +606,7 @@ typedef struct PLiSQL_stmt_rollback
 	int			lineno;
 	unsigned int stmtid;
 	bool		chain;
-} PLiSQL_stmt_rollback;
+}			PLiSQL_stmt_rollback;
 
 /*
  * GET DIAGNOSTICS item
@@ -619,7 +615,7 @@ typedef struct PLiSQL_diag_item
 {
 	PLiSQL_getdiag_kind kind;	/* id for diagnostic value desired */
 	int			target;			/* where to assign it */
-} PLiSQL_diag_item;
+}			PLiSQL_diag_item;
 
 /*
  * GET DIAGNOSTICS statement
@@ -631,7 +627,7 @@ typedef struct PLiSQL_stmt_getdiag
 	unsigned int stmtid;
 	bool		is_stacked;		/* STACKED or CURRENT diagnostics area? */
 	List	   *diag_items;		/* List of PLiSQL_diag_item */
-} PLiSQL_stmt_getdiag;
+}			PLiSQL_stmt_getdiag;
 
 /*
  * IF statement
@@ -645,7 +641,7 @@ typedef struct PLiSQL_stmt_if
 	List	   *then_body;		/* List of statements */
 	List	   *elsif_list;		/* List of PLiSQL_if_elsif structs */
 	List	   *else_body;		/* List of statements */
-} PLiSQL_stmt_if;
+}			PLiSQL_stmt_if;
 
 /*
  * one ELSIF arm of IF statement
@@ -655,7 +651,7 @@ typedef struct PLiSQL_if_elsif
 	int			lineno;
 	PLiSQL_expr *cond;			/* boolean expression for this case */
 	List	   *stmts;			/* List of statements */
-} PLiSQL_if_elsif;
+}			PLiSQL_if_elsif;
 
 /*
  * CASE statement
@@ -670,7 +666,7 @@ typedef struct PLiSQL_stmt_case
 	List	   *case_when_list; /* List of PLiSQL_case_when structs */
 	bool		have_else;		/* flag needed because list could be empty */
 	List	   *else_stmts;		/* List of statements */
-} PLiSQL_stmt_case;
+}			PLiSQL_stmt_case;
 
 /*
  * one arm of CASE statement
@@ -680,7 +676,7 @@ typedef struct PLiSQL_case_when
 	int			lineno;
 	PLiSQL_expr *expr;			/* boolean expression for this case */
 	List	   *stmts;			/* List of statements */
-} PLiSQL_case_when;
+}			PLiSQL_case_when;
 
 /*
  * Unconditional LOOP statement
@@ -692,7 +688,7 @@ typedef struct PLiSQL_stmt_loop
 	unsigned int stmtid;
 	char	   *label;
 	List	   *body;			/* List of statements */
-} PLiSQL_stmt_loop;
+}			PLiSQL_stmt_loop;
 
 /*
  * WHILE cond LOOP statement
@@ -705,7 +701,7 @@ typedef struct PLiSQL_stmt_while
 	char	   *label;
 	PLiSQL_expr *cond;
 	List	   *body;			/* List of statements */
-} PLiSQL_stmt_while;
+}			PLiSQL_stmt_while;
 
 /*
  * FOR statement with integer loopvar
@@ -722,7 +718,7 @@ typedef struct PLiSQL_stmt_fori
 	PLiSQL_expr *step;			/* NULL means default (ie, BY 1) */
 	int			reverse;
 	List	   *body;			/* List of statements */
-} PLiSQL_stmt_fori;
+}			PLiSQL_stmt_fori;
 
 /*
  * PLiSQL_stmt_forq represents a FOR statement running over a SQL query.
@@ -737,7 +733,7 @@ typedef struct PLiSQL_stmt_forq
 	char	   *label;
 	PLiSQL_variable *var;		/* Loop variable (record or row) */
 	List	   *body;			/* List of statements */
-} PLiSQL_stmt_forq;
+}			PLiSQL_stmt_forq;
 
 /*
  * FOR statement running over SELECT
@@ -752,7 +748,7 @@ typedef struct PLiSQL_stmt_fors
 	List	   *body;			/* List of statements */
 	/* end of fields that must match PLiSQL_stmt_forq */
 	PLiSQL_expr *query;
-} PLiSQL_stmt_fors;
+}			PLiSQL_stmt_fors;
 
 /*
  * FOR statement running over cursor
@@ -768,7 +764,7 @@ typedef struct PLiSQL_stmt_forc
 	/* end of fields that must match PLiSQL_stmt_forq */
 	int			curvar;
 	PLiSQL_expr *argquery;		/* cursor arguments if any */
-} PLiSQL_stmt_forc;
+}			PLiSQL_stmt_forc;
 
 /*
  * FOR statement running over EXECUTE
@@ -784,7 +780,7 @@ typedef struct PLiSQL_stmt_dynfors
 	/* end of fields that must match PLiSQL_stmt_forq */
 	PLiSQL_expr *query;
 	List	   *params;			/* USING expressions */
-} PLiSQL_stmt_dynfors;
+}			PLiSQL_stmt_dynfors;
 
 /*
  * FOREACH item in array loop
@@ -799,7 +795,7 @@ typedef struct PLiSQL_stmt_foreach_a
 	int			slice;			/* slice dimension, or 0 */
 	PLiSQL_expr *expr;			/* array expression */
 	List	   *body;			/* List of statements */
-} PLiSQL_stmt_foreach_a;
+}			PLiSQL_stmt_foreach_a;
 
 /*
  * OPEN a curvar
@@ -815,7 +811,7 @@ typedef struct PLiSQL_stmt_open
 	PLiSQL_expr *query;
 	PLiSQL_expr *dynquery;
 	List	   *params;			/* USING expressions */
-} PLiSQL_stmt_open;
+}			PLiSQL_stmt_open;
 
 /*
  * FETCH or MOVE statement
@@ -832,7 +828,7 @@ typedef struct PLiSQL_stmt_fetch
 	PLiSQL_expr *expr;			/* count, if expression */
 	bool		is_move;		/* is this a fetch or move? */
 	bool		returns_multiple_rows;	/* can return more than one row? */
-} PLiSQL_stmt_fetch;
+}			PLiSQL_stmt_fetch;
 
 /*
  * CLOSE curvar
@@ -843,7 +839,7 @@ typedef struct PLiSQL_stmt_close
 	int			lineno;
 	unsigned int stmtid;
 	int			curvar;
-} PLiSQL_stmt_close;
+}			PLiSQL_stmt_close;
 
 /*
  * EXIT or CONTINUE statement
@@ -856,7 +852,7 @@ typedef struct PLiSQL_stmt_exit
 	bool		is_exit;		/* Is this an exit or a continue? */
 	char	   *label;			/* NULL if it's an unlabeled EXIT/CONTINUE */
 	PLiSQL_expr *cond;
-} PLiSQL_stmt_exit;
+}			PLiSQL_stmt_exit;
 
 /*
  * RETURN statement
@@ -868,7 +864,7 @@ typedef struct PLiSQL_stmt_return
 	unsigned int stmtid;
 	PLiSQL_expr *expr;
 	int			retvarno;
-} PLiSQL_stmt_return;
+}			PLiSQL_stmt_return;
 
 /*
  * RETURN NEXT statement
@@ -880,7 +876,7 @@ typedef struct PLiSQL_stmt_return_next
 	unsigned int stmtid;
 	PLiSQL_expr *expr;
 	int			retvarno;
-} PLiSQL_stmt_return_next;
+}			PLiSQL_stmt_return_next;
 
 /*
  * RETURN QUERY statement
@@ -890,10 +886,10 @@ typedef struct PLiSQL_stmt_return_query
 	PLiSQL_stmt_type cmd_type;
 	int			lineno;
 	unsigned int stmtid;
-	PLiSQL_expr *query;		/* if static query */
+	PLiSQL_expr *query;			/* if static query */
 	PLiSQL_expr *dynquery;		/* if dynamic query (RETURN QUERY EXECUTE) */
 	List	   *params;			/* USING arguments for dynamic query */
-} PLiSQL_stmt_return_query;
+}			PLiSQL_stmt_return_query;
 
 /*
  * RAISE statement
@@ -908,7 +904,7 @@ typedef struct PLiSQL_stmt_raise
 	char	   *message;		/* old-style message format literal, or NULL */
 	List	   *params;			/* list of expressions for old-style message */
 	List	   *options;		/* list of PLiSQL_raise_option */
-} PLiSQL_stmt_raise;
+}			PLiSQL_stmt_raise;
 
 /*
  * RAISE statement option
@@ -917,7 +913,7 @@ typedef struct PLiSQL_raise_option
 {
 	PLiSQL_raise_option_type opt_type;
 	PLiSQL_expr *expr;
-} PLiSQL_raise_option;
+}			PLiSQL_raise_option;
 
 /*
  * ASSERT statement
@@ -929,7 +925,7 @@ typedef struct PLiSQL_stmt_assert
 	unsigned int stmtid;
 	PLiSQL_expr *cond;
 	PLiSQL_expr *message;
-} PLiSQL_stmt_assert;
+}			PLiSQL_stmt_assert;
 
 /*
  * Generic SQL statement to execute
@@ -945,7 +941,7 @@ typedef struct PLiSQL_stmt_execsql
 	bool		into;			/* INTO supplied? */
 	bool		strict;			/* INTO STRICT flag */
 	PLiSQL_variable *target;	/* INTO target (record or row) */
-} PLiSQL_stmt_execsql;
+}			PLiSQL_stmt_execsql;
 
 /*
  * Dynamic SQL string to execute
@@ -955,14 +951,14 @@ typedef struct PLiSQL_stmt_dynexecute
 	PLiSQL_stmt_type cmd_type;
 	int			lineno;
 	unsigned int stmtid;
-	PLiSQL_expr *query;		/* string expression */
+	PLiSQL_expr *query;			/* string expression */
 	bool		into;			/* INTO supplied? */
 	bool		strict;			/* INTO STRICT flag */
 	PLiSQL_variable *target;	/* INTO target (record or row) */
 	List	   *params;			/* USING expressions */
-	bool        haveout;        /* "out" or "in out" mode */
-	PLiSQL_row *out;		/* OUT target, if row */
-} PLiSQL_stmt_dynexecute;
+	bool		haveout;		/* "out" or "in out" mode */
+	PLiSQL_row *out;			/* OUT target, if row */
+}			PLiSQL_stmt_dynexecute;
 
 /*
  * Hash lookup key for functions
@@ -974,12 +970,12 @@ typedef struct PLiSQL_func_hashkey
 	bool		isTrigger;		/* true if called as a DML trigger */
 	bool		isEventTrigger; /* true if called as an event trigger */
 
-	/* be careful that pad bytes in this struct get zeroed! */
+	/* be careful that pad bytes in this struct may get zeroed! */
 
 	/*
 	 * For a trigger function, the OID of the trigger is part of the hash key
 	 * --- we want to compile the trigger function separately for each trigger
-	 * it is used with, in case the rowtype or transition table names are
+	 * it uses with, in case the rowtype or transition table names are
 	 * different.  Zero if not called as a DML trigger.
 	 */
 	Oid			trigOid;
@@ -996,7 +992,7 @@ typedef struct PLiSQL_func_hashkey
 	 * PLiSQL functions.  Be careful that extra positions are zeroed!
 	 */
 	Oid			argtypes[FUNC_MAX_ARGS];
-} PLiSQL_func_hashkey;
+}			PLiSQL_func_hashkey;
 
 /*
  * Trigger type
@@ -1006,7 +1002,7 @@ typedef enum PLiSQL_trigtype
 	PLISQL_DML_TRIGGER,
 	PLISQL_EVENT_TRIGGER,
 	PLISQL_NOT_TRIGGER
-} PLiSQL_trigtype;
+}			PLiSQL_trigtype;
 
 /*
  * Complete compiled function
@@ -1054,10 +1050,10 @@ typedef struct PLiSQL_function
 	int			nsubprocfuncs;
 	struct PLiSQL_subproc_function **subprocfuncs;
 
-	PackageCacheItem	*item;	/* if this function comes from a package */
-	List				*funclist;	/* functions list which references to package */
-	List				*pkgcachelist;	/* references to package'cache list */
-	char				*namelabel;		/* for label */
+	PackageCacheItem *item;		/* if this function comes from a package */
+	List	   *funclist;		/* functions list which references to package */
+	List	   *pkgcachelist;	/* references to package'cache list */
+	char	   *namelabel;		/* for label */
 
 	/* function body parsetree */
 	PLiSQL_stmt_block *action;
@@ -1065,14 +1061,14 @@ typedef struct PLiSQL_function
 	/* data derived while parsing body */
 	unsigned int nstatements;	/* counter for assigning stmtids */
 	bool		requires_procedure_resowner;	/* contains CALL or DO? */
-	bool        has_exception_block;    /* contains BEGIN...EXCEPTION? */
+	bool		has_exception_block;	/* contains BEGIN...EXCEPTION? */
 
 	/* these fields change when the function is used */
 	struct PLiSQL_execstate *cur_estate;
 	unsigned long use_count;
 	int		fn_ret_vardno;	/* the variable dno for the function return value */
 	bool		fn_no_return;	/* when the function return type is not VOIDOID, if the body has not a RETURN statment,
-					 * the CREATE FUNCTION can execute successfully, but when the function is called,
+					 * the CREATE FUNCTION can be executed successfully, but when the function is called,
 					 * an error will be reported */
 	char		**paramnames;	/* saved do + using parameter'name */
 } PLiSQL_function;
@@ -1081,7 +1077,7 @@ typedef struct plisql_hashent
 {
 	PLiSQL_func_hashkey key;
 	PLiSQL_function *function;
-} plisql_HashEnt;
+}			plisql_HashEnt;
 
 /*
  * Runtime execution data
@@ -1161,7 +1157,7 @@ typedef struct PLiSQL_execstate
 	const char *err_text;		/* additional state info */
 
 	void	   *plugin_info;	/* reserved for use by optional plugin */
-} PLiSQL_execstate;
+}			PLiSQL_execstate;
 
 /*
  * A PLiSQL_plugin structure represents an instrumentation plugin.
@@ -1169,8 +1165,7 @@ typedef struct PLiSQL_execstate
  * variable "PLiSQL_plugin" and set it to point to a PLiSQL_plugin struct.
  * Typically the struct could just be static data in the plugin library.
  * We expect that a plugin would do this at library load time (_PG_init()).
- * It must also be careful to set the rendezvous variable back to NULL
- * if it is unloaded (_PG_fini()).
+ * Be careful to set the rendezvous variable back to NULL if it is unloaded (_PG_fini()).
  *
  * This structure is basically a collection of function pointers --- at
  * various interesting points in pl_exec.c, we call these functions
@@ -1204,29 +1199,24 @@ typedef struct PLiSQL_execstate
 typedef struct PLiSQL_plugin
 {
 	/* Function pointers set up by the plugin */
-	void		(*func_setup) (PLiSQL_execstate *estate, PLiSQL_function *func);
-	void		(*func_beg) (PLiSQL_execstate *estate, PLiSQL_function *func);
-	void		(*func_end) (PLiSQL_execstate *estate, PLiSQL_function *func);
-	void		(*stmt_beg) (PLiSQL_execstate *estate, PLiSQL_stmt *stmt);
-	void		(*stmt_end) (PLiSQL_execstate *estate, PLiSQL_stmt *stmt);
+	void		(*func_setup) (PLiSQL_execstate * estate, PLiSQL_function * func);
+	void		(*func_beg) (PLiSQL_execstate * estate, PLiSQL_function * func);
+	void		(*func_end) (PLiSQL_execstate * estate, PLiSQL_function * func);
+	void		(*stmt_beg) (PLiSQL_execstate * estate, PLiSQL_stmt * stmt);
+	void		(*stmt_end) (PLiSQL_execstate * estate, PLiSQL_stmt * stmt);
 
 	/* Function pointers set by PL/pgSQL itself */
 	void		(*error_callback) (void *arg);
-	void		(*assign_expr) (PLiSQL_execstate *estate,
-								PLiSQL_datum *target,
-								PLiSQL_expr *expr);
-	void		(*assign_value) (PLiSQL_execstate *estate,
-								 PLiSQL_datum *target,
-								 Datum value, bool isNull,
-								 Oid valtype, int32 valtypmod);
-	void		(*eval_datum) (PLiSQL_execstate *estate, PLiSQL_datum *datum,
-							   Oid *typeId, int32 *typetypmod,
-							   Datum *value, bool *isnull);
-	Datum		(*cast_value) (PLiSQL_execstate *estate,
-							   Datum value, bool *isnull,
-							   Oid valtype, int32 valtypmod,
-							   Oid reqtype, int32 reqtypmod);
-} PLiSQL_plugin;
+	void		(*assign_expr) (PLiSQL_execstate * estate, PLiSQL_datum * target,
+								PLiSQL_expr * expr);
+	void		(*assign_value) (PLiSQL_execstate * estate, PLiSQL_datum * target,
+								 Datum value, bool isNull, Oid valtype, int32 valtypmod);
+	void		(*eval_datum) (PLiSQL_execstate * estate, PLiSQL_datum * datum, Oid *typeId,
+							   int32 *typetypmod, Datum *value, bool *isnull);
+	Datum		(*cast_value) (PLiSQL_execstate * estate, Datum value, bool *isnull,
+							   Oid valtype, int32 valtypmod, Oid reqtype,
+							   int32 reqtypmod);
+}			PLiSQL_plugin;
 
 /*
  * Struct types used during parsing
@@ -1249,7 +1239,7 @@ typedef struct PLwdatum
 	char	   *ident;			/* valid if simple name */
 	bool		quoted;
 	List	   *idents;			/* valid if composite name */
-	int			nname_used;		/* to find datum, we match idents n names */
+	int			nname_used;		/* to find datum, we match n names */
 } PLwdatum;
 
 union YYSTYPE;
@@ -1262,7 +1252,7 @@ typedef struct compile_error_callback_arg
 {
 	const char *proc_source;
 	yyscan_t	yyscanner;
-} compile_error_callback_arg;
+}			compile_error_callback_arg;
 
 /**********************************************************************
  * Global variable declarations
@@ -1284,11 +1274,11 @@ extern bool plisql_print_strict_params;
 extern bool plisql_check_asserts;
 
 /* extra compile-time and run-time checks */
-#define PLISQL_XCHECK_NONE						0
-#define PLISQL_XCHECK_SHADOWVAR				(1 << 1)
-#define PLISQL_XCHECK_TOOMANYROWS				(1 << 2)
-#define PLISQL_XCHECK_STRICTMULTIASSIGNMENT	(1 << 3)
-#define PLISQL_XCHECK_ALL						((int) ~0)
+#define PLISQL_XCHECK_NONE 0
+#define PLISQL_XCHECK_SHADOWVAR (1 << 1)
+#define PLISQL_XCHECK_TOOMANYROWS (1 << 2)
+#define PLISQL_XCHECK_STRICTMULTIASSIGNMENT (1 << 3)
+#define PLISQL_XCHECK_ALL ((int)~0)
 
 extern int	plisql_extra_warnings;
 extern int	plisql_extra_errors;
@@ -1296,23 +1286,24 @@ extern int	plisql_extra_errors;
 extern bool plisql_check_syntax;
 extern bool plisql_DumpExecTree;
 
-
 extern int	plisql_nDatums;
-extern PLiSQL_datum **plisql_Datums;
+extern PLiSQL_datum * *plisql_Datums;
 
-extern int datums_last;
+extern int	datums_last;
 
-extern int datums_alloc;
+extern int	datums_alloc;
 
 extern char *plisql_error_funcname;
 
-extern PLiSQL_function *plisql_curr_compile;
+extern PLiSQL_function * plisql_curr_compile;
 extern MemoryContext plisql_compile_tmp_cxt;
 
-extern PLiSQL_plugin **plisql_plugin_ptr;
+extern PLiSQL_plugin * *plisql_plugin_ptr;
 
 extern bool check_referenced_objects;
-extern List *plisql_referenced_objects;	/*the elements in list are ObjectAddress */
+extern List
+		   *plisql_referenced_objects;	/* the elements in list are
+										 * ObjectAddress */
 
 /**********************************************************************
  * Function declarations
@@ -1321,135 +1312,137 @@ extern List *plisql_referenced_objects;	/*the elements in list are ObjectAddress
 /*
  * Functions in pl_comp.c
  */
-extern PGDLLEXPORT PLiSQL_function *plisql_compile(FunctionCallInfo fcinfo,
-													 bool forValidator);
+extern PGDLLEXPORT PLiSQL_function * plisql_compile(FunctionCallInfo fcinfo,
+													bool forValidator);
 
-extern PLiSQL_function *plisql_compile_inline(char *proc_source, ParamListInfo inparams);
+extern PLiSQL_function * plisql_compile_inline(char *proc_source,
+											   ParamListInfo inparams);
 extern PGDLLEXPORT void plisql_parser_setup(struct ParseState *pstate,
-								 PLiSQL_expr *expr);
-extern bool plisql_parse_word(char *paramname, char *word1, const char *yytxt, bool lookup,
-							   PLwdatum *wdatum, PLword *word);
+											PLiSQL_expr * expr);
+extern bool plisql_parse_word(char *paramname, char *word1, const char *yytxt,
+							  bool lookup, PLwdatum *wdatum, PLword *word);
 extern bool plisql_parse_dblword(char *paramname, char *word1, char *word2,
-								  PLwdatum *wdatum, PLcword *cword);
-extern bool plisql_parse_tripword(char *paramname, char *word1, char *word2, char *word3,
-								   PLwdatum *wdatum, PLcword *cword);
-extern PLiSQL_type *plisql_parse_wordtype(char *ident);
-extern PLiSQL_type *plisql_parse_cwordtype(List *idents);
-extern PLiSQL_type *plisql_parse_wordrowtype(char *ident);
-extern PLiSQL_type *plisql_parse_cwordrowtype(List *idents);
-extern PGDLLEXPORT PLiSQL_type *plisql_build_datatype(Oid typeOid, int32 typmod,
-											Oid collation,
-											TypeName *origtypname);
-extern PLiSQL_type *plisql_build_datatype_arrayof(PLiSQL_type *dtype);
-extern PLiSQL_variable *plisql_build_variable(const char *refname, int lineno,
-												PLiSQL_type *dtype,
-												bool add2namespace);
-extern PLiSQL_rec *plisql_build_record(const char *refname, int lineno,
-										 PLiSQL_type *dtype, Oid rectypeid,
-										 bool add2namespace);
-extern PLiSQL_recfield *plisql_build_recfield(PLiSQL_rec *rec,
-												const char *fldname);
-extern PGDLLEXPORT int	plisql_recognize_err_condition(const char *condname,
-											bool allow_sqlstate);
-extern PLiSQL_condition *plisql_parse_err_condition(char *condname);
-extern void plisql_adddatum(PLiSQL_datum *newdatum);
+								 PLwdatum *wdatum, PLcword *cword);
+extern bool plisql_parse_tripword(char *paramname, char *word1, char *word2,
+								  char *word3, PLwdatum *wdatum,
+								  PLcword *cword);
+extern PLiSQL_type * plisql_parse_wordtype(char *ident);
+extern PLiSQL_type * plisql_parse_cwordtype(List *idents);
+extern PLiSQL_type * plisql_parse_wordrowtype(char *ident);
+extern PLiSQL_type * plisql_parse_cwordrowtype(List *idents);
+extern PGDLLEXPORT PLiSQL_type * plisql_build_datatype(Oid typeOid, int32 typmod,
+													   Oid collation,
+													   TypeName *origtypname);
+extern PLiSQL_type * plisql_build_datatype_arrayof(PLiSQL_type * dtype);
+extern PLiSQL_variable * plisql_build_variable(const char *refname, int lineno,
+											   PLiSQL_type * dtype,
+											   bool add2namespace);
+extern PLiSQL_rec * plisql_build_record(const char *refname, int lineno,
+										PLiSQL_type * dtype, Oid rectypeid,
+										bool add2namespace);
+extern PLiSQL_recfield * plisql_build_recfield(PLiSQL_rec * rec,
+											   const char *fldname);
+extern PGDLLEXPORT int plisql_recognize_err_condition(const char *condname,
+													  bool allow_sqlstate);
+extern PLiSQL_condition * plisql_parse_err_condition(char *condname);
+extern void plisql_adddatum(PLiSQL_datum * newdatum);
 extern int	plisql_add_initdatums(int **varnos);
 extern void plisql_HashTableInit(void);
 
-extern void plisql_resolve_polymorphic_argtypes(int numargs,
-												 Oid *argtypes, char *argmodes,
-												 Node *call_expr, bool forValidator,
-												 const char *proname);
-extern void add_parameter_name(PLiSQL_nsitem_type itemtype, int itemno, const char *name);
-extern PLiSQL_row *build_row_from_vars(PLiSQL_variable **vars, int numvars);
-extern void add_dummy_return(PLiSQL_function *function);
+extern void plisql_resolve_polymorphic_argtypes(int numargs, Oid *argtypes,
+												char *argmodes, Node *call_expr,
+												bool forValidator,
+												const char *proname);
+extern void add_parameter_name(PLiSQL_nsitem_type itemtype, int itemno,
+							   const char *name);
+extern PLiSQL_row * build_row_from_vars(PLiSQL_variable * *vars, int numvars);
+extern void add_dummy_return(PLiSQL_function * function);
 extern void plisql_start_datums(void);
 extern void plisql_compile_error_callback(void *arg);
-extern void plisql_finish_datums(PLiSQL_function *function);
+extern void plisql_finish_datums(PLiSQL_function * function);
 
 extern void plisql_compile_inline_internal(char *proc_source);
-extern void dynamic_build_func_vars(PLiSQL_function **function);
+extern void dynamic_build_func_vars(PLiSQL_function * *function);
 
-extern void delete_function(PLiSQL_function *func);
+extern void delete_function(PLiSQL_function * func);
 
 extern void plisql_free_function(Oid funcOid);
 
 /*
  * Functions in pl_exec.c
  */
-extern Datum plisql_exec_function(PLiSQL_function *func,
-								   FunctionCallInfo fcinfo,
-								   EState *simple_eval_estate,
-								   ResourceOwner simple_eval_resowner,
-								   ResourceOwner procedure_resowner,
-								   bool atomic);
-extern HeapTuple plisql_exec_trigger(PLiSQL_function *func,
-									  TriggerData *trigdata);
-extern void plisql_exec_event_trigger(PLiSQL_function *func,
-									   EventTriggerData *trigdata);
+extern Datum plisql_exec_function(PLiSQL_function * func,
+								  FunctionCallInfo fcinfo,
+								  EState *simple_eval_estate,
+								  ResourceOwner simple_eval_resowner,
+								  ResourceOwner procedure_resowner,
+								  bool atomic);
+extern HeapTuple plisql_exec_trigger(PLiSQL_function * func,
+									 TriggerData *trigdata);
+extern void plisql_exec_event_trigger(PLiSQL_function * func,
+									  EventTriggerData *trigdata);
 extern void plisql_xact_cb(XactEvent event, void *arg);
 extern void plisql_subxact_cb(SubXactEvent event, SubTransactionId mySubid,
-							   SubTransactionId parentSubid, void *arg);
-extern PGDLLEXPORT Oid	plisql_exec_get_datum_type(PLiSQL_execstate *estate,
-										PLiSQL_datum *datum);
-extern void plisql_exec_get_datum_type_info(PLiSQL_execstate *estate,
-											 PLiSQL_datum *datum,
-											 Oid *typeId, int32 *typMod,
-											 Oid *collation);
+							  SubTransactionId parentSubid, void *arg);
+extern PGDLLEXPORT Oid plisql_exec_get_datum_type(PLiSQL_execstate * estate,
+												  PLiSQL_datum * datum);
+extern void plisql_exec_get_datum_type_info(PLiSQL_execstate * estate,
+											PLiSQL_datum * datum, Oid *typeId,
+											int32 *typMod, Oid *collation);
 
-extern void plisql_assign_in_global_var(PLiSQL_execstate *estate,
-													 PLiSQL_execstate *parestate,
-													 int dno);
-extern void plisql_assign_out_global_var(PLiSQL_execstate *estate,
-										 PLiSQL_execstate *parestate,
-										 int dno,
+extern void plisql_assign_in_global_var(PLiSQL_execstate * estate,
+										PLiSQL_execstate * parestate, int dno);
+extern void plisql_assign_out_global_var(PLiSQL_execstate * estate,
+										 PLiSQL_execstate * parestate, int dno,
 										 int spilevel);
-
 
 /*
  * Functions for namespace handling in pl_funcs.c
  */
 extern void plisql_ns_init(void);
-extern void plisql_set_ns(PLiSQL_nsitem *cur);
-extern void plisql_ns_push(const char *label,
-							PLiSQL_label_type label_type);
+extern void plisql_set_ns(PLiSQL_nsitem * cur);
+extern void plisql_ns_push(const char *label, PLiSQL_label_type label_type);
 extern void plisql_ns_pop(void);
-extern PLiSQL_nsitem *plisql_ns_top(void);
-extern void plisql_ns_additem(PLiSQL_nsitem_type itemtype, int itemno, const char *name);
-extern PGDLLEXPORT PLiSQL_nsitem *plisql_ns_lookup(PLiSQL_nsitem *ns_cur, bool localmode,
-										 const char *name1, const char *name2,
-										 const char *name3, int *names_used);
-extern PLiSQL_nsitem *plisql_ns_lookup_label(PLiSQL_nsitem *ns_cur,
-											   const char *name);
-extern PLiSQL_nsitem *plisql_ns_find_nearest_loop(PLiSQL_nsitem *ns_cur);
+extern PLiSQL_nsitem * plisql_ns_top(void);
+extern void plisql_ns_additem(PLiSQL_nsitem_type itemtype, int itemno,
+							  const char *name);
+extern PGDLLEXPORT PLiSQL_nsitem *
+plisql_ns_lookup(PLiSQL_nsitem * ns_cur, bool localmode, const char *name1,
+				 const char *name2, const char *name3, int *names_used);
+extern PLiSQL_nsitem * plisql_ns_lookup_label(PLiSQL_nsitem * ns_cur,
+											  const char *name);
+extern PLiSQL_nsitem * plisql_ns_find_nearest_loop(PLiSQL_nsitem * ns_cur);
 
 /*
  * Other functions in pl_funcs.c
  */
-extern PGDLLEXPORT const char *plisql_stmt_typename(PLiSQL_stmt *stmt);
+extern PGDLLEXPORT const char *plisql_stmt_typename(PLiSQL_stmt * stmt);
 extern const char *plisql_getdiag_kindname(PLiSQL_getdiag_kind kind);
-extern void plisql_free_function_memory(PLiSQL_function *func,
-							int start_datum, int start_inlinefunc);
-extern void plisql_mark_local_assignment_targets(PLiSQL_function *func);
-extern void plisql_dumptree(PLiSQL_function *func, int start_datum, int start_subprocfunc); 
+extern void plisql_free_function_memory(PLiSQL_function * func, int start_datum,
+										int start_inlinefunc);
+extern void plisql_mark_local_assignment_targets(PLiSQL_function * func);
+extern void plisql_dumptree(PLiSQL_function * func, int start_datum,
+							int start_subprocfunc);
 
 /*
  * Scanner functions in pl_scanner.c
  */
 
-
-extern int	plisql_yylex(union YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner);
+extern int	plisql_yylex(union YYSTYPE *yylvalp, YYLTYPE *yyllocp,
+						 yyscan_t yyscanner);
 extern int	plisql_token_length(yyscan_t yyscanner);
-extern void plisql_push_back_token(int token, union YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner);
+extern void plisql_push_back_token(int token, union YYSTYPE *yylvalp,
+								   YYLTYPE *yyllocp, yyscan_t yyscanner);
 extern bool plisql_token_is_unreserved_keyword(int token);
-extern void plisql_append_source_text(StringInfo buf,
-									   int startlocation, int endlocation,
-									   yyscan_t yyscanner);
+extern void plisql_append_source_text(StringInfo buf, int startlocation,
+									  int endlocation, yyscan_t yyscanner);
 extern int	plisql_peek(yyscan_t yyscanner);
-extern void plisql_peek2(int *tok1_p, int *tok2_p, int *tok1_loc,
-						  int *tok2_loc, yyscan_t yyscanner);
+extern void plisql_peek2(int *tok1_p, int *tok2_p, int *tok1_loc, int *tok2_loc,
+						 yyscan_t yyscanner);
 extern int	plisql_scanner_errposition(int location, yyscan_t yyscanner);
-pg_noreturn extern void plisql_yyerror(YYLTYPE *yyllocp, PLiSQL_stmt_block **plisql_parse_result_p, yyscan_t yyscanner, const char *message);
+pg_noreturn extern void
+			plisql_yyerror(YYLTYPE *yyllocp, PLiSQL_stmt_block * *plisql_parse_result_p,
+						   yyscan_t yyscanner, const char *message);
 extern int	plisql_location_to_lineno(int location, yyscan_t yyscanner);
 extern int	plisql_latest_lineno(yyscan_t yyscanner);
 extern yyscan_t plisql_scanner_init(const char *str);
@@ -1457,10 +1450,10 @@ extern void plisql_scanner_finish(yyscan_t yyscanner);
 extern void *plisql_get_yylex_global_proper(void);
 extern void plisql_recover_yylex_global_proper(void *yylex_data);
 
-
 /*
  * Externs in gram.y
  */
-extern int	plisql_yyparse(PLiSQL_stmt_block **plisql_parse_result_p, yyscan_t yyscanner);
+extern int	plisql_yyparse(PLiSQL_stmt_block * *plisql_parse_result_p,
+						   yyscan_t yyscanner);
 
 #endif							/* PLISQL_H */

@@ -9097,7 +9097,7 @@ implementation_package:
 			{
 				$$ = NIL;
 			}
-		/* reuse implementation_type temporary */
+		/* reuse implementation_type temporarily */
 		| implementation_package_type POLYMORPHIC implementation_type
 			{
 				$$ = $3;
@@ -9195,7 +9195,7 @@ opt_ora_func_args_with_defaults:
 	 * In order to avoid reduce/reduce conflict, we are compatible with Oracle
 	 * based on the original CREATE PROCEUDRE grammar rules of PG. The purpose
 	 * of adding this nonterminal is to try not to destroy the syntax of PG.
-	 * Although we can switch to the gram.y of native PG, try our best to Stick
+	 * Although we can switch to the gram.y of native PG, try our best to stick
 	 * to this principle.
 	 */
 	opt_procedure_args_with_defaults:
