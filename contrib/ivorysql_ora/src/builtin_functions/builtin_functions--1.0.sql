@@ -1266,17 +1266,17 @@ BEGIN
 		  WHEN 'LANG' THEN
 			SELECT sys.get_lang() INTO res;
 		  WHEN 'NLS_CURRENCY' THEN
-			SELECT null INTO res;-- show nls_currency INTO res;
+			SELECT null INTO res;
 		  WHEN 'NLS_DATE_FORMAT' THEN
-			show nls_date_format INTO res;
+			SELECT current_setting('nls_date_format') INTO res;
 		  WHEN 'NLS_DATE_LANGUAGE' THEN
-			SELECT null INTO res;-- show nls_iso_currency INTO res;
+			SELECT null INTO res;
 		  WHEN 'NLS_SORT' THEN
-			SELECT null INTO res;-- show nls_sort INTO res;
+			SELECT null INTO res;
 		  WHEN 'NLS_TERRITORY' THEN
-			SELECT null INTO res;-- show nls_territory INTO res;
+			SELECT null INTO res;
 		  WHEN 'ORACLE_HOME' THEN
-			show data_directory INTO res;
+			SELECT current_setting('data_directory') INTO res;
 		  WHEN 'PLATFORM_SLASH' THEN
 			SELECT
 				CASE
@@ -1284,9 +1284,9 @@ BEGIN
 					ELSE 'WINDOWS'
 				END INTO res;
 		  WHEN 'DB_NAME' THEN
-			SELECT current_database INTO res;
+			SELECT current_database() INTO res;
 		  WHEN 'SESSION_DEFAULT_COLLATION' THEN
-			SELECT null INTO res;-- show default_collation INTO res;
+			SELECT null INTO res;
 		  WHEN 'SID' THEN
 			SELECT sys.get_sid() INTO res;
 		  WHEN 'ACTION' THEN SELECT NULL INTO res;
