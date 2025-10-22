@@ -12545,6 +12545,9 @@
 { oid => '6292', descr => 'aggregate transition function',
   proname => 'any_value_transfn', prorettype => 'anyelement',
   proargtypes => 'anyelement anyelement', prosrc => 'any_value_transfn' },
+{ oid => '8488', descr => 'check if input is the null value',
+  proname => 'error_on_null', proisstrict => 'f', prorettype => 'anyelement',
+  proargtypes => 'anyelement', prosrc => 'pg_error_on_null' },
 
 { oid => '4642', descr => 'PostgreSQL connection mode',
   proname => 'pg_get_connection_mode', provolatile => 's', prorettype => 'text',
