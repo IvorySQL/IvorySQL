@@ -486,7 +486,7 @@ other			.
 
 <xc>{
 {xcstart}		{
-					/* Simply don't consider nesting for compatibility with Oracle's comments */
+					/* don't consider nesting for compatibility of Oracle's comments */
 					//(yyextra->xcdepth)++;
 					/* Put back any characters past slash-star; see above */
 					yyless(2);
@@ -846,7 +846,7 @@ other			.
 						int		len = 0;
 
 						BEGIN(INITIAL);
-						/* get q' escaped character,really character */
+						/* get q' escaped character, the real character */
 
 						oldstr = litbufdup(yyscanner);
 						len = strlen(oldstr);
@@ -942,7 +942,7 @@ other			.
 						yyerror("zero-length delimited identifier");
 					ident = litbufdup(yyscanner);
 
-					/* Convert the upper case identifier to the lower case, and the lower
+					/* Convert the upper case identifier to the lower case one, and the lower
 					 * case to the upper case, if the identifier is quoted by the double
 					 * quotes.
 					 */
@@ -1473,7 +1473,7 @@ ora_scanner_init(const char *str,
 
 
 /*
- * Called after parsing is done to clean up after ora_scanner_init()
+ * when parsing is done, clean up after ora_scanner_init()
  */
 void
 ora_scanner_finish(ora_core_yyscan_t yyscanner)
