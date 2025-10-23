@@ -397,18 +397,18 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 			while (token != 0 && token != ';')
 			{
 				/*
-				 * support anonymous block
+				 * support anonymous block.
 				 * In the PLSQL, the cursor declare must be 'CURSOR ...',
 				 * not '... CURSOR ...'.
 				 *
-				 * PLSQL support type xxx is ref cursor grammer
-				 * so we check the last token is ref
-				 * declare cursor don't support ref for the cursor name
+				 * PLSQL supports "type xxx is ref cursor" grammer
+				 * so we check the last token is ref or not.
+				 * declare cursor doesn't support ref for the cursor name.
 				 *
-				 * Inline function support cursor
-				 * we judge it is the cursor of SQL, if it next token
+				 * Inline function supports cursor
+				 * we know it is the cursor of SQL, if the next token
 				 * is WITH or FOR or WITHOUT. see details for ora_gram.y about
-				 * declare cursor stmt
+				 * declare cursor stmt.
 				 */
 				if (token == CURSOR)
 					has_cursor = true;
@@ -604,7 +604,7 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 					}
 
 					/*
-					 * there, maybe package body has init block
+					 * package body may have init block
 					 */
 					if (yyextra->body_style == OraBody_PACKAGEBODY &&
 						blocklevel == 0)
