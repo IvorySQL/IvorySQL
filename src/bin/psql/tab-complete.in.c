@@ -4583,13 +4583,10 @@ match_previous_words(int pattern_id,
 					  "ROUTINES IN SCHEMA",
 					  "SEQUENCES IN SCHEMA",
 					  "TABLES IN SCHEMA");
-	else if (TailMatches("GRANT|REVOKE", MatchAny, "ON", "FOREIGN") ||
-			 TailMatches("REVOKE", "GRANT", "OPTION", "FOR", MatchAny, "ON", "FOREIGN"))
-		COMPLETE_WITH("DATA WRAPPER", "SERVER");
 
 	/*
 	 * Complete "GRANT/REVOKE * ON DATABASE/DOMAIN/..." with a list of
-	 * appropriate objects.
+	 * appropriate objects or keywords.
 	 *
 	 * Complete "GRANT/REVOKE * ON *" with "TO/FROM".
 	 */
@@ -4602,10 +4599,19 @@ match_previous_words(int pattern_id,
 			COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_domains);
 		else if (TailMatches("FUNCTION"))
 			COMPLETE_WITH_VERSIONED_SCHEMA_QUERY(Query_for_list_of_functions);
+		else if (TailMatches("FOREIGN"))
+			COMPLETE_WITH("DATA WRAPPER", "SERVER");
 		else if (TailMatches("LANGUAGE"))
 			COMPLETE_WITH_QUERY(Query_for_list_of_languages);
 		else if (TailMatches("PACKAGE"))
 			COMPLETE_WITH_VERSIONED_SCHEMA_QUERY(Query_for_list_of_packages);
+		else if (TailMatches("LARGE"))
+		{
+			if (HeadMatches("ALTER", "DEFAULT", "PRIVILEGES"))
+				COMPLETE_WITH("OBJECTS");
+			else
+				COMPLETE_WITH("OBJECT");
+		}
 		else if (TailMatches("PROCEDURE"))
 			COMPLETE_WITH_VERSIONED_SCHEMA_QUERY(Query_for_list_of_procedures);
 		else if (TailMatches("ROUTINE"))
@@ -5563,7 +5569,8 @@ match_previous_words(int pattern_id,
 		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_views);
 	else if (TailMatchesCS("\\cd|\\e|\\edit|\\g|\\gx|\\i|\\include|"
 						   "\\ir|\\include_relative|\\o|\\out|"
-						   "\\s|\\w|\\write|\\lo_import"))
+						   "\\s|\\w|\\write|\\lo_import") ||
+			 TailMatchesCS("\\lo_export", MatchAny))
 		COMPLETE_WITH_FILES("\\", false);
 
 	/* gen_tabcomplete.pl ends special processing here */
