@@ -18201,9 +18201,12 @@ func_expr_common_subexpr:
 			/* End - ReqID:SRS-SQL-XML */
 			| USERENV '(' Sconst ')'
 				{
+					char *normalized_param = downcase_identifier($3, strlen($3), true, true);
+
 					#define CHECK_AND_CALL(param, func_name) \
-						if (strcmp(downcase_identifier($3, strlen($3), true, true), param) == 0) \
+						if (strcmp(normalized_param, param) == 0) \
 							$$ = (Node *) makeFuncCall(OracleSystemFuncName(func_name), NIL, COERCE_EXPLICIT_CALL, @1);
+
 					CHECK_AND_CALL("client_info", "get_client_info")
 					else CHECK_AND_CALL("entryid", "get_entryid")
 					else CHECK_AND_CALL("terminal", "get_terminal")
