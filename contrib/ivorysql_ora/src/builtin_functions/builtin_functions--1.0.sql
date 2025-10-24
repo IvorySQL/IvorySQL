@@ -970,7 +970,7 @@ IMMUTABLE;
  */
 /* SESSIONID */
 CREATE SEQUENCE sys.userenv_sessionid_sequence;
-GRANT ALL ON SEQUENCE sys.userenv_sessionid_sequence to public;
+GRANT SELECT, USAGE ON SEQUENCE sys.userenv_sessionid_sequence TO public;
 
 CREATE OR REPLACE FUNCTION sys.get_sessionid() RETURNS number AS $$
 DECLARE
