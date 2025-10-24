@@ -4420,7 +4420,8 @@ preprocessNamespacePath(const char *searchPath, Oid roleid,
 		char	   *curname = (char *) lfirst(l);
 		Oid			namespaceId;
 
-		if ((compatible_db == ORA_PARSER && enable_case_switch && identifier_case_switch != NORMAL) ?	/* IvorySQL: case sensitive indentify */
+		if ((compatible_db == ORA_PARSER && enable_case_switch && 
+		         identifier_case_switch != NORMAL) ?	/* IvorySQL: case-sensitive indentifier support */
 			pg_strcasecmp(curname, "$user") == 0 : strcmp(curname, "$user") == 0)
 		{
 			/* $user --- substitute namespace matching user name, if any */
@@ -5433,4 +5434,3 @@ get_nodefvalargposition(HeapTuple proctup, int pronargs)
 	}
 	return nodefvalargposition;
 }
-

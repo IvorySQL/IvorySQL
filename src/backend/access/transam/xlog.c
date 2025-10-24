@@ -5226,8 +5226,6 @@ BootStrapXLOG(uint32 data_checksum_version)
 	/* save database compatible level value */
 	ControlFile->dbmode = bootstrap_database_mode;
 	ControlFile->casemode = identifier_case_switch;
-	
-	
 
 	/* some additional ControlFile fields are set in WriteControlFile() */
 	WriteControlFile();
@@ -5425,7 +5423,7 @@ CleanupAfterArchiveRecovery(TimeLineID EndOfLogTLI, XLogRecPtr EndOfLog,
 	}
 }
 
-/* IvorySQL: BEGIN - case sensitive indentify
+/* IvorySQL: BEGIN - case-sensitive indentifier support
  * Read database compatibility mode from pg_control file
  *
  */
@@ -5519,7 +5517,7 @@ void SetCaseGucOption(char* path)
 
 	dbstyle = GetDatabaseStyleFromControl(path);
 
-	//the pg mode does not need to set
+	/* PG mode leaves identifier_case_switch unchanged. */
 	if (DB_ORACLE == dbstyle)
 	{
 		int casemode;
@@ -5545,6 +5543,7 @@ void SetCaseGucOption(char* path)
 					(errmsg("Incorrect case conversion mode value \"%d\"", casemode)));
 	}
 }
+/* IvorySQL: END - case-sensitive identifier support */
 
 /*
  * Check to see if required parameters are set high enough on this server
