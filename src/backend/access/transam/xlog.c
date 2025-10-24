@@ -5440,7 +5440,7 @@ int GetDatabaseStyleFromControl(char* path)
 	else
 		configdir = make_absolute_path(getenv("PGDATA"));
 
-	sprintf(pathname,"%s/%s",configdir,XLOG_CONTROL_FILE);
+	snprintf(pathname, sizeof(pathname), "%s/%s", configdir, XLOG_CONTROL_FILE);
 
 	fd = open(pathname, O_RDONLY | PG_BINARY, 0);
 
@@ -5482,7 +5482,7 @@ int GetCaseSwitchModeFromControl(char* path)
 	else
 		configdir = make_absolute_path(getenv("PGDATA"));
 
-	sprintf(pathname,"%s/%s",configdir,XLOG_CONTROL_FILE);
+	snprintf(pathname, sizeof(pathname), "%s/%s", configdir, XLOG_CONTROL_FILE);
 
 	fd = open(pathname, O_RDONLY | PG_BINARY, 0);
 
