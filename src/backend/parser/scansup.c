@@ -56,11 +56,11 @@ downcase_identifier(const char *ident, int len, bool warn, bool truncate)
 	/*
 	 * SQL99 specifies Unicode-aware case normalization, which we don't yet
 	 * have the infrastructure for.  Instead we use tolower() to provide a
-	 * locale-aware translation.  However, there are some locales where this
-	 * is not right either (eg, Turkish may do strange things with 'i' and
-	 * 'I').  Our current compromise is to use tolower() for characters with
-	 * the high bit set, as long as they aren't part of a multi-byte
-	 * character, and use an ASCII-only downcasing for 7-bit characters.
+	 * locale-aware translation.  However, in some locales (for example, 
+	 * Turkish with 'i' and 'I') this still is not correct.  Our compromise is
+	 * to use toupper() for characters with the high bit set, as long as they
+	 * aren't part of a multi-byte character, and use an ASCII-only approach
+	 * for 7-bit characters.
 	 */
 	for (i = 0; i < len; i++)
 	{
