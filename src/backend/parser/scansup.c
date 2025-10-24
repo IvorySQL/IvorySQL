@@ -58,7 +58,7 @@ downcase_identifier(const char *ident, int len, bool warn, bool truncate)
 	 * have the infrastructure for.  Instead we use tolower() to provide a
 	 * locale-aware translation.  However, in some locales (for example, 
 	 * Turkish with 'i' and 'I') this still is not correct.  Our compromise is
-	 * to use toupper() for characters with the high bit set, as long as they
+	 * to use tolower() for characters with the high bit set, as long as they
 	 * aren't part of a multi-byte character, and use an ASCII-only approach
 	 * for 7-bit characters.
 	 */
