@@ -5,11 +5,11 @@
      CURRENT_STAGE="install_deps"
      log "INFO" "Installing dependencies..."
 +    
-+    # 检查是否在Nix环境中运行
++    # Check if running in Nix environment
 +    if [ -n "${IN_NIX_SHELL:-}" ] || [ -n "${NIX_BUILD_TOP:-}" ]; then
 +        log "INFO" "Detected Nix environment, skipping system package installation"
 +        log "INFO" "Dependencies should be provided by the Nix environment"
-+        # 在Nix环境中，依赖应该已经通过flake.nix提供
++        # In Nix environment, dependencies are provided by flake.nix
 +        return 0
 +    fi
 +    
