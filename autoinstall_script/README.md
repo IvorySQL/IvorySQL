@@ -1,157 +1,163 @@
 English | [中文](README_CN.md)
-# IvorySQL Source Install Script — Usage Guide (English)
+# IvorySQL Automated Installation Script
 
+The IvorySQL automated installation script provides a fast and easy way to compile and install the IvorySQL database from source code on supported Linux systems.
 
-## 1. What this is
+## Table of Contents
 
-This is a non-interactive, PR/CI‑friendly installer that **builds IvorySQL from source** and sets it up as a service.  
-All output is **ASCII, English‑only** with clear staged logs.
+- [Features](#features)
+- [Supported Operating Systems](#supported-operating-systems)
+- [File Description](#file-description)
+- [Configuration File](#configuration-file)
+- [Environment Variables](#environment-variables)
+- [Command Line Options](#command-line-options)
+- [Usage](#usage)
+- [Logging and Troubleshooting](#logging-and-troubleshooting)
 
-- Script expects to live **inside** your source tree at `autoinstall_script/`:
-  ```text
-  IvorySQL/                # the source tree root
-  ├─ configure
-  ├─ src/
-  └─ autoinstall_script/
-     ├─ AutoInstall.sh
-     └─ ivorysql.conf
-  ```
-- The script locates the source root as the **parent** directory of its own folder.
+## Features
 
-Run:
+- Automatically detects operating system and package manager
+- Automatically installs all necessary dependencies
+- Compiles and installs IvorySQL from source code
+- Configures database service (supports both systemd and non-systemd systems)
+- Initializes database instance
+- Provides detailed logging and error handling
+- Supports Docker container environments
+- Supports Nix development environments
+
+## Supported Operating Systems
+
+- RHEL/Rocky/AlmaLinux/Oracle Linux 8/9/10
+- Ubuntu 20.04/22.04/24.04
+- Debian 12/13
+
+## File Description
+
+The autoinstall_script directory contains the following files:
+
+- `AutoInstall.sh` - Main installation script
+- `ivorysql.conf` - Installation configuration file
+- `flake.nix` - Nix package manager environment definition
+- `flake.lock` - Nix environment version lock file
+- `nix_support.patch` - Nix environment support patch for AutoInstall.sh
+- `README_CN.md` - Chinese version of this document
+- `README.md` - This document
+
+## Configuration File
+
+Installation configuration is done through the `ivorysql.conf` file, which contains the following configuration items:
+
 ```bash
-cd autoinstall_script
-sudo bash ./AutoInstall.sh
-```
-
----
-
-## 2. Supported Platforms
-
-- **EL family**: RHEL / Rocky / Alma / Oracle Linux **8 / 9 / 10**
-- **CentOS Stream**: **9 / 10**
-- **Ubuntu**: **20.04 / 22.04 / 24.04**
-- **Debian**: **12 (Bookworm) / 13 (Trixie)**
-
-The script auto-detects the OS (`/etc/os-release`) and selects `dnf|yum` or `apt-get`. For EL/OL, it best‑effort enables **CRB / PowerTools / CodeReady Builder** and **EPEL** when applicable.
-
-> **Root required**: the script must be run as root (or with sudo).
-
----
-
-## 3. Configuration (`ivorysql.conf`)
-
-Place `ivorysql.conf` in the **same directory** as the script. It must contain **only** `KEY=VALUE` lines, comments (`#`), or blank lines.
-
-**Required keys** (absolute paths are enforced and created if missing):
-
-| Key | What it sets | Notes |
-|---|---|---|
-| `INSTALL_DIR` | Installation prefix (binaries in `bin/`, libs in `lib/`) | e.g. `/usr/ivorysql` |
-| `DATA_DIR` | Cluster data directory | e.g. `/var/lib/ivorysql/data` |
-| `SERVICE_USER` | System user to run the service | auto‑created if absent |
-| `SERVICE_GROUP` | System group for the service | auto‑created if absent |
-| `LOG_DIR` | Install + server logs directory | e.g. `/var/log/ivorysql` |
-
-**Example** (matches your uploaded `ivorysql.conf`):
-```ini
 # IvorySQL Automated Installation Configuration
-INSTALL_DIR=/usr/ivorysql
-DATA_DIR=/var/lib/ivorysql/data
-SERVICE_USER=ivorysql
-SERVICE_GROUP=ivorysql
-LOG_DIR=/var/log/ivorysql
+INSTALL_DIR=/usr/ivorysql      # Installation directory
+DATA_DIR=/var/lib/ivorysql/data # Data directory
+SERVICE_USER=ivorysql           # Service user
+SERVICE_GROUP=ivorysql          # Service group
+LOG_DIR=/var/log/ivorysql       # Log directory
 ```
 
----
+## Environment Variables
 
-## 4. Environment variables (tunables)
+The following environment variables can be used to customize the installation process:
 
-These can be overridden via the shell when invoking the script.
+- `INIT_MODE` - Database initialization mode (oracle or pg, default is oracle)
+- `CASE_MODE` - Case sensitivity mode (interchange, normal, or lowercase, default is interchange)
+- `READY_TIMEOUT` - Service readiness check timeout in seconds (default is 90)
+- `RUN_TESTS` - Whether to run TAP tests (default is 0, do not run)
 
-| Variable | Default | Purpose |
-|---|---:|---|
-| `RUN_TESTS` | `0` | If `1`, install & verify `IPC::Run` (Perl) to enable TAP‑style tests. If `0`, skip installing test deps. |
-| `INIT_MODE` | `oracle` | IvorySQL initdb mode: `oracle` or `pg`. |
-| `CASE_MODE` | `interchange` | Case handling for identifiers: `interchange` \| `normal` \| `lowercase`. |
-| `READY_TIMEOUT` | `90` | Seconds to wait for service readiness (`pg_ctl -w -t`, readiness loop). |
+## Command Line Options
 
-**Examples**
+The AutoInstall.sh script supports the following command line options:
+
 ```bash
-# Default install (no TAP tests)
-sudo bash ./AutoInstall.sh
+# Display help information
+./AutoInstall.sh -h
+./AutoInstall.sh --help
 
-# Enable TAP tests (installs libipc-run-perl/perl-IPC-Run & cpanminus as needed)
-sudo RUN_TESTS=1 bash ./AutoInstall.sh
-
-# Initialize in PostgreSQL mode, normal case
-sudo INIT_MODE=pg CASE_MODE=normal bash ./AutoInstall.sh
-
-# Increase readiness timeout to 180s
-sudo READY_TIMEOUT=180 bash ./AutoInstall.sh
+# Display version information
+./AutoInstall.sh -v
+./AutoInstall.sh --version
 ```
 
----
+## Usage
 
-## 5. What the script does (stages)
+### Basic Installation
 
-1. **Load configuration**: read `ivorysql.conf`, validate required keys and absolute paths.  
-2. **Prepare filesystem & identities**: create `INSTALL_DIR`, `DATA_DIR`, `LOG_DIR`; ensure `SERVICE_USER`/`SERVICE_GROUP`; chown logs.  
-3. **Detect OS**: choose package manager; verify supported versions.  
-4. **Enable EL/OL repos** (best‑effort): CRB/PowerTools/CodeReady Builder + EPEL where applicable.  
-5. **Install dependencies**: compilers, headers and tools (readline, zlib, OpenSSL, libxml2/xslt, ICU, uuid, gettext, tcl, etc.). On EL, installs **Development Tools** group.  
-6. **Feature detection** for build flags:
-   - `--with-openssl` if OpenSSL headers found (else `--without-openssl`)
-   - `--with-icu` if ICU present (else `--without-icu`)
-   - `--with-uuid=e2fs` if `uuid/uuid.h` present (else `--without-uuid`)
-   - `--with-libxml` if libxml2 headers present (else `--without-libxml`)
-7. **Configure & build**:
-   - Runs `./configure --prefix="$INSTALL_DIR" --with-readline ...`
-   - On Debian/Ubuntu uses PIE **at compile time only** (`CFLAGS='-fPIE'`) to avoid leaking `-pie` into shared libs.
-   - `make -j$(nproc)` && `make install`
-8. **Initialize cluster**: `initdb -m "$INIT_MODE" -C "$CASE_MODE"` under `SERVICE_USER`.  
-   - The script sets `DATA_DIR` permissions; **initdb may tighten to 700** per PostgreSQL/IvorySQL defaults.
-9. **Service setup**:
-   - **systemd**: writes `/etc/systemd/system/ivorysql.service` with `PGDATA`, `LD_LIBRARY_PATH`, and `pg_ctl` (`READY_TIMEOUT` respected). `systemctl enable ivorysql`.
-   - **no systemd**: creates a helper `"$INSTALL_DIR/ivorysql-ctl"` with `start|stop|reload|status`.
-10. **Start & verify**:
-    - Start via `systemctl` or helper.
-    - Readiness loop using `pg_isready` on local socket/`127.0.0.1` fallback.
-    - Sanity SQL: `psql -Atc 'SELECT 1'` as `SERVICE_USER`.
-11. **Summary**: prints directories, service status, version, and useful commands.
+1. Ensure the script is run with root privileges:
+   ```bash
+   sudo bash AutoInstall.sh
+   ```
 
----
+2. The script will automatically perform the following steps:
+   - Detect operating system
+   - Install dependencies
+   - Compile and install IvorySQL
+   - Initialize database
+   - Configure and start service
 
-## 6. Logs & troubleshooting
+### Nix Environment Usage
 
-- **Install logs**:  
-  - `{LOG_DIR}/install_YYYYmmdd_HHMMSS.log`  
-  - `{LOG_DIR}/error_YYYYmmdd_HHMMSS.log`
-- **Server logs**: `{LOG_DIR}/server_*.log`, `{LOG_DIR}/server_ctl.log` (non‑systemd helper).
-- **Quick checks**:
-  ```bash
-  # Status
-  systemctl status ivorysql    # or: $INSTALL_DIR/ivorysql-ctl status
+In a Nix environment, you can use the provided flake.nix file to set up the development environment:
 
-  # Live logs
-  journalctl -u ivorysql -f    # or: tail -f $LOG_DIR/*.log
+```bash
+# Enter Nix development environment
+nix develop
 
-  # Connectivity
-  pg_isready -h 127.0.0.1 -p ${PGPORT:-5432}
+# Apply Nix support patch (if needed)
+patch -p1 < nix_support.patch
 
-  # Permissions
-  ls -ld "$DATA_DIR" && ls -l "$DATA_DIR"
-  ```
+# Run installation script
+bash AutoInstall.sh
+```
 
-> The script **does not** change firewall/SELinux. Open ports & policies as needed for your environment.
+### Docker Environment Usage
 
----
+In a Docker container, the script will automatically adapt to the container environment and use pg_ctl for service management.
 
+## Logging and Troubleshooting
 
-## 7. FAQ
+### Log Files
 
-- **Where must the script live?** In `autoinstall_script/` **under the source root**. It expects `configure` and `src/` one level up.  
-- **Can I change the port?** Use standard PostgreSQL methods (e.g., `postgresql.conf`). The script reads the actual port from `postmaster.pid` for readiness.  
-- **Why `LD_LIBRARY_PATH` in service/helper?** To prefer the freshly installed IvorySQL libs under `INSTALL_DIR/lib`.
+The following log files are generated during the installation process:
 
+- `$LOG_DIR/install_${TIMESTAMP}.log` - Installation log
+- `$LOG_DIR/error_${TIMESTAMP}.log` - Error log
+- `$LOG_DIR/initdb_${TIMESTAMP}.log` - Database initialization log
+- `$LOG_DIR/server_${TIMESTAMP}.log` - Server startup log
 
+### Service Management
+
+#### systemd Systems
+
+```bash
+# Check service status
+systemctl status ivorysql
+
+# Start/stop/restart service
+systemctl start ivorysql
+systemctl stop ivorysql
+systemctl restart ivorysql
+
+# View service logs
+journalctl -u ivorysql -f
+```
+
+#### Non-systemd Systems
+
+```bash
+# Use provided control script
+$INSTALL_DIR/ivorysql-ctl status
+$INSTALL_DIR/ivorysql-ctl start
+$INSTALL_DIR/ivorysql-ctl stop
+$INSTALL_DIR/ivorysql-ctl reload
+
+# View logs
+tail -f $LOG_DIR/*.log
+```
+
+### Common Issues
+
+1. **Permission issues**: Ensure the script is run with root privileges
+2. **Dependency installation failures**: Check if the system package manager is working properly
+3. **Compilation failures**: Check error messages in the installation log
+4. **Service startup failures**: Check configuration files and log files
