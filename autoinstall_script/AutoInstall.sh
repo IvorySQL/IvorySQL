@@ -521,17 +521,44 @@ OS               : $OS_ID $OS_VER
 EOF
 }
 
-main(){
-  CURRENT_STAGE "IvorySQL source build and install"
-  check_root
-  load_config
-  prepare_fs_and_users
-  init_logging
-  detect_os
-  install_deps
-  compile_install
-  init_db_and_service
-  start_and_verify
-  summary
+main() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -h|--help)
+                echo "IvorySQL 自动安装脚本"
+                echo "用法: $0 [选项]"
+                echo ""
+                echo "选项:"
+                echo "  -h, --help     显示此帮助信息"
+                echo "  -v, --version  显示版本信息"
+                echo ""
+                echo "不带参数运行将执行完整的安装流程。"
+                exit 0
+                ;;
+            -v|--version)
+                echo "IvorySQL 自动安装脚本 v1.0"
+                exit 0
+                ;;
+            *)
+                echo "未知参数: $1"
+                echo "使用 -h 或 --help 查看帮助信息"
+                exit 1
+                ;;
+        esac
+        shift
+    done
+    
+    CURRENT_STAGE "IvorySQL source build and install"
+    check_root
+    load_config
+    prepare_fs_and_users
+    init_logging
+    detect_os
+    install_deps
+    compile_install
+    init_db_and_service
+    start_and_verify
+    summary
 }
+
 main "$@"
