@@ -1,0 +1,18 @@
+--- a/autoinstall_script/AutoInstall.sh
++++ b/autoinstall_script/AutoInstall.sh
+@@ -197,6 +197,15 @@
+ install_deps() {
+     CURRENT_STAGE="install_deps"
+     log "INFO" "Installing dependencies..."
++    
++    # 检查是否在Nix环境中运行
++    if [ -n "${IN_NIX_SHELL:-}" ] || [ -n "${NIX_BUILD_TOP:-}" ]; then
++        log "INFO" "Detected Nix environment, skipping system package installation"
++        log "INFO" "Dependencies should be provided by the Nix environment"
++        # 在Nix环境中，依赖应该已经通过flake.nix提供
++        return 0
++    fi
++    
+     # Refresh package metadata
+     if command -v dnf &> /dev/null; then
+         dnf makecache -y
