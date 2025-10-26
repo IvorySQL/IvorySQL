@@ -98,8 +98,24 @@ load_config(){
   if grep -Evq '^\s*([A-Z_][A-Z0-9_]*\s*=\s*.*|#|$)' "$cfg"; then
     FAIL "Invalid lines detected in config (only KEY=VALUE, # comments, blanks)."
   fi
-  . "$cfg"
-  OK "Config loaded"
+  # Safe parse: read line-by-line, no command substitution evaluation
+  while IFS='=' read -r key value || [ -n "$key" ]; do
+    # Strip leading/trailing whitespace
+    key="$(echo "$key" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    value="$(echo "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    # Skip blank lines and comments
+    [[ -z "$key" || "$key" =~ ^# ]] && continue
+    # Whitelist known keys
+    case "$key" in
+      INSTALL_DIR|DATA_DIR|SERVICE_USER|SERVICE_GROUP|LOG_DIR)
+        declare -g "$key=$value"
+        ;;
+      *)
+        WARN "Unknown config key: $key"
+        ;;
+    esac
+  done < "$cfg"
+  OK "Config loaded (safe parse)"
 
   STEP "Validating required keys"
   for k in INSTALL_DIR DATA_DIR SERVICE_USER SERVICE_GROUP LOG_DIR; do
@@ -365,6 +381,12 @@ compile_install(){
 
   STEP "Install"
   (cd "$src_root" && make install) || FAIL "Install failed"
+  # Safety: prevent chown on system directories
+  case "$INSTALL_DIR" in
+    ""|"/"|"/usr"|"/usr/bin"|"/usr/lib"|"/var"|"/etc"|"/bin"|"/sbin")
+      FAIL "Refusing to chown system directory: $INSTALL_DIR"
+      ;;
+  esac
   chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR" || true
   OK "Installed to $INSTALL_DIR"
 }
@@ -525,23 +547,23 @@ main() {
     while [[ $# -gt 0 ]]; do
         case $1 in
             -h|--help)
-                echo "IvorySQL 自动安装脚本"
-                echo "用法: $0 [选项]"
+                echo "IvorySQL Automated Installation Script"
+                echo "Usage: $0 [options]"
                 echo ""
-                echo "选项:"
-                echo "  -h, --help     显示此帮助信息"
-                echo "  -v, --version  显示版本信息"
+                echo "Options:"
+                echo "  -h, --help     Display this help message"
+                echo "  -v, --version  Display version information"
                 echo ""
-                echo "不带参数运行将执行完整的安装流程。"
+                echo "Run without arguments to perform a complete installation."
                 exit 0
                 ;;
             -v|--version)
-                echo "IvorySQL 自动安装脚本 v1.0"
+                echo "IvorySQL Automated Installation Script v1.0"
                 exit 0
                 ;;
             *)
-                echo "未知参数: $1"
-                echo "使用 -h 或 --help 查看帮助信息"
+                echo "Unknown option: $1"
+                echo "Use -h or --help to see usage information"
                 exit 1
                 ;;
         esac
