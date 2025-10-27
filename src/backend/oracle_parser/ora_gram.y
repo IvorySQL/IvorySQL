@@ -18208,26 +18208,25 @@ func_expr_common_subexpr:
 			/* End - ReqID:SRS-SQL-XML */
 			| USERENV '(' Sconst ')'
 				{
-					if (strcmp(downcase_identifier($3, strlen($3), true, true), "client_info") == 0)
-						$$ = (Node *) makeFuncCall(OracleSystemFuncName("get_client_info"), NIL, COERCE_EXPLICIT_CALL, @1);
-					else if (strcmp(downcase_identifier($3, strlen($3), true, true), "entryid") == 0)
-						$$ = (Node *) makeFuncCall(OracleSystemFuncName("get_entryid"), NIL, COERCE_EXPLICIT_CALL, @1);
-					else if (strcmp(downcase_identifier($3, strlen($3), true, true), "terminal") == 0)
-						$$ = (Node *) makeFuncCall(OracleSystemFuncName("get_terminal"), NIL, COERCE_EXPLICIT_CALL, @1);
-					else if (strcmp(downcase_identifier($3, strlen($3), true, true), "isdba") == 0)
-						$$ = (Node *) makeFuncCall(OracleSystemFuncName("get_isdba"), NIL, COERCE_EXPLICIT_CALL, @1);
-					else if (strcmp(downcase_identifier($3, strlen($3), true, true), "lang") == 0)
-						$$ = (Node *) makeFuncCall(OracleSystemFuncName("get_lang"), NIL, COERCE_EXPLICIT_CALL, @1);
-					else if (strcmp(downcase_identifier($3, strlen($3), true, true), "language") == 0)
-						$$ = (Node *) makeFuncCall(OracleSystemFuncName("get_language"), NIL, COERCE_EXPLICIT_CALL, @1);
-					else if (strcmp(downcase_identifier($3, strlen($3), true, true), "sessionid") == 0)
-						$$ = (Node *) makeFuncCall(OracleSystemFuncName("get_sessionid"), NIL, COERCE_EXPLICIT_CALL, @1);
-					else if (strcmp(downcase_identifier($3, strlen($3), true, true), "sid") == 0)
-						$$ = (Node *) makeFuncCall(OracleSystemFuncName("get_sid"), NIL, COERCE_EXPLICIT_CALL, @1);
+					char *normalized_param = downcase_identifier($3, strlen($3), true, true);
+
+					#define CHECK_AND_CALL(param, func_name) \
+						if (strcmp(normalized_param, param) == 0) \
+							$$ = (Node *) makeFuncCall(OracleSystemFuncName(func_name), NIL, COERCE_EXPLICIT_CALL, @1);
+
+					CHECK_AND_CALL("client_info", "get_client_info")
+					else CHECK_AND_CALL("entryid", "get_entryid")
+					else CHECK_AND_CALL("terminal", "get_terminal")
+					else CHECK_AND_CALL("isdba", "get_isdba")
+					else CHECK_AND_CALL("lang", "get_lang")
+					else CHECK_AND_CALL("language", "get_language")
+					else CHECK_AND_CALL("sessionid", "get_sessionid")
+					else CHECK_AND_CALL("sid", "get_sid")
 					else
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								 errmsg("invalid USERENV parameter.")));
+								 errmsg("invalid USERENV parameter: \"%s\".", $3)));
+					#undef CHECK_AND_CALL
 				}
 			| JSON_OBJECT '(' func_arg_list ')'
 				{
