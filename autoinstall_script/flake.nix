@@ -41,6 +41,7 @@
               # Additional utilities
               which
               curl
+              cacert
             ];
           };
         });
