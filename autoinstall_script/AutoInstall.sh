@@ -216,6 +216,45 @@ enable_el_repos(){
 install_deps(){
   CURRENT_STAGE "Install build and runtime dependencies"
 
+  # Check if running in Nix environment
+  if [ -n "${IN_NIX_SHELL:-}" ] || [ -n "${NIX_BUILD_TOP:-}" ]; then
+    STEP "Detected Nix environment, skipping system package installation"
+    OK "Dependencies should be provided by the Nix environment"
+    
+    # In Nix environment, dependencies are provided by flake.nix
+    # But we still need to check for headers and Perl modules
+    STEP "Probe feature headers"
+    if [ -f /usr/include/libxml2/libxml/parser.h ] || [ -f /usr/include/libxml/parser.h ] || \
+       [ -f /nix/store/*/include/libxml2/libxml/parser.h ] || [ -f /nix/store/*/include/libxml/parser.h ]; then
+      XML_SUPPORT=1; OK "libxml2 headers: found"
+    else
+      XML_SUPPORT=0; WARN "libxml2 headers: not found (XML features disabled)"
+    fi
+    
+    if [ -f /usr/include/uuid/uuid.h ] || [ -f /usr/local/include/uuid/uuid.h ] || \
+       [ -f /nix/store/*/include/uuid/uuid.h ]; then
+      UUID_SUPPORT=1; OK "libuuid headers: found"
+    else
+      UUID_SUPPORT=0; WARN "libuuid headers: not found (uuid-ossp disabled)"
+    fi
+
+    STEP "Verify Perl modules (FindBin${RUN_TESTS:+, IPC::Run})"
+    if ! perl -MFindBin -e1 2>/dev/null; then
+      FAIL "Perl core module FindBin missing in Nix environment"
+    fi
+    OK "FindBin module found"
+
+    if [ "$RUN_TESTS" = "1" ]; then
+      if ! perl -MIPC::Run -e1 2>/dev/null; then
+        FAIL "Perl module IPC::Run missing in Nix environment"
+      fi
+      OK "IPC::Run module found"
+    fi
+    
+    OK "Nix environment ready"
+    return 0
+  fi
+
   STEP "Refresh package metadata"
   case "$PKG" in
     dnf|yum) retry 3 "$PKG" -y makecache || true ;;
