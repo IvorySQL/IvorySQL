@@ -224,19 +224,27 @@ install_deps(){
     # In Nix environment, dependencies are provided by flake.nix
     # But we still need to check for headers and Perl modules
     STEP "Probe feature headers"
-    if [ -f /usr/include/libxml2/libxml/parser.h ] || [ -f /usr/include/libxml/parser.h ] || \
-       [ -f /nix/store/*/include/libxml2/libxml/parser.h ] || [ -f /nix/store/*/include/libxml/parser.h ]; then
-      XML_SUPPORT=1; OK "libxml2 headers: found"
-    else
-      XML_SUPPORT=0; WARN "libxml2 headers: not found (XML features disabled)"
+    XML_SUPPORT=0
+    for hdr in /usr/include/libxml2/libxml/parser.h /usr/include/libxml/parser.h; do
+      [ -f "$hdr" ] && { XML_SUPPORT=1; break; }
+    done
+    if [ "$XML_SUPPORT" -eq 0 ] && [ -d /nix/store ]; then
+      while IFS= read -r -d '' dir; do
+        [ -f "$dir/libxml2/libxml/parser.h" ] || [ -f "$dir/libxml/parser.h" ] && { XML_SUPPORT=1; break; }
+      done < <(find /nix/store -maxdepth 2 -type d -name 'include' -print0 2>/dev/null)
     fi
+    [ "$XML_SUPPORT" -eq 1 ] && OK "libxml2 headers: found" || WARN "libxml2 headers: not found (XML features disabled)"
     
-    if [ -f /usr/include/uuid/uuid.h ] || [ -f /usr/local/include/uuid/uuid.h ] || \
-       [ -f /nix/store/*/include/uuid/uuid.h ]; then
-      UUID_SUPPORT=1; OK "libuuid headers: found"
-    else
-      UUID_SUPPORT=0; WARN "libuuid headers: not found (uuid-ossp disabled)"
+    UUID_SUPPORT=0
+    for hdr in /usr/include/uuid/uuid.h /usr/local/include/uuid/uuid.h; do
+      [ -f "$hdr" ] && { UUID_SUPPORT=1; break; }
+    done
+    if [ "$UUID_SUPPORT" -eq 0 ] && [ -d /nix/store ]; then
+      while IFS= read -r -d '' dir; do
+        [ -f "$dir/uuid/uuid.h" ] && { UUID_SUPPORT=1; break; }
+      done < <(find /nix/store -maxdepth 2 -type d -name 'include' -print0 2>/dev/null)
     fi
+    [ "$UUID_SUPPORT" -eq 1 ] && OK "libuuid headers: found" || WARN "libuuid headers: not found (uuid-ossp disabled)"
 
     STEP "Verify Perl modules (FindBin${RUN_TESTS:+, IPC::Run})"
     if ! perl -MFindBin -e1 2>/dev/null; then
