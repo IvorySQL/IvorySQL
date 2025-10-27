@@ -437,6 +437,15 @@ print v12
 var x char(3 byte) = 'abc'
 print x
 
+begin
+raise notice 'old value of :x is %', :x;
+:x := 'abcd';
+raise notice 'new value of :x is %', :x;
+end;
+/
+
+print x
+
 var x char(3 char) = '数据库'
 print x
 
@@ -580,11 +589,22 @@ execute
 /* Comments and whitespace are ignored */ execute
 
 -- An error is reported on overflow
+var x char(3 byte);
+exec :x := 'abc'
+print x
+exec :x := 'qwer'
+print x
 
 var x char(3 char)
 exec :x := '数据库';
 print x
 exec :x := '数据库1';
+print x
+
+var x varchar2(3 byte);
+exec :x := 'abc'
+print x
+exec :x := 'qwer'
 print x
 
 var x varchar2(3 char)

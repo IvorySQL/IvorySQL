@@ -60,6 +60,7 @@ extern void set_doStmtCheckVar(bool values);
 extern void set_parseDynDoStmt(bool value);
 extern bool get_bindByName(void);
 extern void set_bindByName(bool value);
+extern void setdynamic_callparser(bool value);
 extern int calculate_oraparamname(char ***paramnames);
 extern int calculate_oraparamname_position(Node *parsetree, char ***paramnames);
 

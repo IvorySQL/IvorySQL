@@ -933,10 +933,10 @@ NOTICE:  new value of v1 is 3.141592657
 NOTICE:  new value of v2 is 3.1415927
 NOTICE:  new value of v3 is 3.141592657
 NOTICE:  new value of v4 is f
-NOTICE:  new value of v5 is new value = this is char(100) datatype
-NOTICE:  new value of v6 is new value = this is char(100 char) datatype
-NOTICE:  new value of v7 is new value = this is char(100 byte) datatype
-NOTICE:  new value of v8 is new value = this is nchar(100) datatype
+NOTICE:  new value of v5 is new value = this is char(100) datatype                                                              
+NOTICE:  new value of v6 is new value = this is char(100 char) datatype                                                         
+NOTICE:  new value of v7 is new value = this is char(100 byte) datatype                                                         
+NOTICE:  new value of v8 is new value = this is nchar(100) datatype                                                             
 NOTICE:  new value of v9 is f
 NOTICE:  new value of v10 is new value = this is varchar2(100) datatype
 NOTICE:  new value of v11 is new value = this is varchar2(100 char) datatype
@@ -1020,6 +1020,21 @@ print x
 -----
  abc
 
+begin
+raise notice 'old value of :x is %', :x;
+:x := 'abcd';
+raise notice 'new value of :x is %', :x;
+end;
+/
+NOTICE:  old value of :x is abc
+ERROR:  value too long for type char(3 byte)
+CONTEXT:  PL/iSQL assignment ":x := 'abcd'"
+PL/iSQL function inline_code_block line 3 at assignment
+print x
+  X  
+-----
+ abc
+
 var x char(3 char) = '数据库'
 print x
    X    
@@ -1033,8 +1048,9 @@ raise notice 'new value of :x is %', :x;
 end;
 /
 NOTICE:  old value of :x is 数据库
-NOTICE:  new value of :x is 瀚高集团
-String beginning "瀚高集团" is too long.
+ERROR:  value too long for type char(3 char)
+CONTEXT:  PL/iSQL assignment ":x := '瀚高集团'"
+PL/iSQL function inline_code_block line 3 at assignment
 print x
    X    
 --------
@@ -1051,11 +1067,12 @@ raise notice 'new value of :x is %', :x;
 end;
 /
 NOTICE:  old value of :x is 数据库
-String beginning "瀚高集团" is too long.
+NOTICE:  Get an exception and reassign an acceptable value to the bind variable
+NOTICE:  new value of :x is 瀚高 
 print x
-   X    
---------
- 数据库
+   X   
+-------
+ 瀚高 
 
 -- Referencing bind variables within non-anonymous block queries
 var x number = 4
@@ -1287,6 +1304,22 @@ Usage: EXEC[UTE] statement
 /* Comments and whitespace are ignored */ execute
 Usage: EXEC[UTE] statement
 -- An error is reported on overflow
+var x char(3 byte);
+exec :x := 'abc'
+print x
+  X  
+-----
+ abc
+
+exec :x := 'qwer'
+ERROR:  value too long for type char(3 byte)
+CONTEXT:  PL/iSQL assignment ":x := 'qwer'"
+PL/iSQL function inline_code_block line 1 at assignment
+print x
+  X  
+-----
+ abc
+
 var x char(3 char)
 exec :x := '数据库';
 print x
@@ -1295,11 +1328,29 @@ print x
  数据库
 
 exec :x := '数据库1';
-String beginning "数据库1" is too long.
+ERROR:  value too long for type char(3 char)
+CONTEXT:  PL/iSQL assignment ":x := '数据库1'"
+PL/iSQL function inline_code_block line 1 at assignment
 print x
    X    
 --------
  数据库
+
+var x varchar2(3 byte);
+exec :x := 'abc'
+print x
+  X  
+-----
+ abc
+
+exec :x := 'qwer'
+ERROR:  value too long for type varchar2(3 byte)
+CONTEXT:  PL/iSQL assignment ":x := 'qwer'"
+PL/iSQL function inline_code_block line 1 at assignment
+print x
+  X  
+-----
+ abc
 
 var x varchar2(3 char)
 exec :x := '数据库';
@@ -1309,7 +1360,9 @@ print x
  数据库
 
 exec :x := '数据库1';
-String beginning "数据库1" is too long.
+ERROR:  value too long for type varchar2(3 char)
+CONTEXT:  PL/iSQL assignment ":x := '数据库1'"
+PL/iSQL function inline_code_block line 1 at assignment
 print x
    X    
 --------

@@ -371,6 +371,7 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 	bool		ora_forward = false;
 	int			oraparam_top_level = -1;
 	int			oraparam_cur_level = -1;
+	MemoryContext oldcontext = CurrentMemoryContext;
 
 	/*
 	 * Connect to SPI manager
@@ -403,7 +404,7 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 	}
 
 	/* Compile the anonymous code block */
-	func = plisql_compile_inline(codeblock->source_text, codeblock->params);
+	func = plisql_compile_inline(codeblock->source_text, codeblock->params, codeblock->do_from_call);
 
 	/* Record the active function for this SPI level. */
 	SPI_remember_func(func);
@@ -494,6 +495,23 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 	}
 	PG_CATCH();
 	{
+		if (codeblock->do_from_call && oldcontext != ErrorContext)
+		{
+			ErrorData  *edata;
+
+			/* Save error info */
+			MemoryContextSwitchTo(oldcontext);
+			edata = CopyErrorData();
+			FlushErrorState();
+			
+			/* For CALL statements expect only primary error message */
+			if (edata->message)
+				elog(ERROR, "%s", edata->message);
+			else
+				ThrowErrorData(edata);
+			FreeErrorData(edata);
+		}
+
 		pop_oraparam_stack(oraparam_top_level - 1, oraparam_cur_level);
 		if (ora_forward)
 			backward_oraparam_stack();

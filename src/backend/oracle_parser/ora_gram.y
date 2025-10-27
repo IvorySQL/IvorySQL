@@ -657,6 +657,7 @@ static void determineLanguage(List *options);
 %type <list> params_length_list
 %type <str>  opt_param_name
 %type <node> param_mode
+%type <boolean>	opt_do_from_where
 
 %type <list>	identity_clause identity_options drop_identity
 %type <boolean>	opt_with opt_by
@@ -1255,6 +1256,21 @@ CallStmt:	CALL func_application
 
 					n->funccall = castNode(FuncCall, $2);
 					$$ = (Node *) n;
+				}
+			| CALL func_application INTO ORAPARAM
+				{
+					CallStmt *n = makeNode(CallStmt);
+					OraParamRef *hostvar = makeNode(OraParamRef);
+					char	*callstr = NULL;
+					n->funccall = castNode(FuncCall, $2);
+					hostvar->number = 0;
+					hostvar->location = @4;
+					hostvar->name = $4;
+					n->hostvariable = hostvar;
+					callstr = pnstrdup(pg_yyget_extra(yyscanner)->core_yy_extra.scanbuf + @2, @3 - @2);
+					n->callinto = psprintf("%s := %s;", $4, callstr);
+					pfree(callstr);
+					$$ = (Node *)n;
 				}
 			| EXEC exec_func_application
 				{
@@ -9412,7 +9428,7 @@ func_arg_with_default:
 					$$ = $1;
 					$$->defexpr = $3;
 				}
-		| func_arg '=' a_expr
+		| func_arg plassign_equals a_expr
 				{
 					$$ = $1;
 					$$->defexpr = $3;
@@ -10244,12 +10260,13 @@ DoStmt: DO dostmt_opt_list
 					$$ = (Node *)n;
 				}
 
-			| DO dostmt_opt_list USING param_mode_list PARAMSLENGTH params_length_list
+			| DO dostmt_opt_list USING param_mode_list PARAMSLENGTH params_length_list opt_do_from_where
 				{
 					DoStmt *n = makeNode(DoStmt);
 					n->args = $2;
 					n->paramsmode = $4;
 					n->paramslen = $6;
+					n->do_from_call = $7;
 					determineLanguage(n->args);
 					$$ = (Node *)n;
 				}
@@ -10328,6 +10345,10 @@ params_length_list:
 				}
 		;
 
+opt_do_from_where:
+			GENERATED FROM CALL			{ $$ = true; }
+			| /*EMPTY*/					{ $$ = false; }
+		;
 
 /*****************************************************************************
  *

@@ -45,6 +45,7 @@ static int	ExecQueryAndProcessResults(const char *query,
 static bool command_no_begin(const char *query);
 static bool is_select_command(const char *query);
 static Ivyresult *psql_exec_pbe(const char *sql, HostVariable *hv, struct _variable **bindvar);
+static bool IvyPrintQueryResults(PGresult *results, bool quiet, bool isoracall);
 
 
 /*
@@ -1531,7 +1532,16 @@ DescribeQuery(const char *query, double *elapsed_msec)
 			}
 
 			if (OK && result)
-				OK = PrintQueryResult(result, true, NULL, NULL, NULL);
+			{
+				if (db_mode == DB_ORACLE)
+				{
+					OK = IvyPrintQueryResults(result, false, false);
+				}
+				else
+				{
+					OK = PrintQueryResult(result, true, NULL, NULL, NULL);
+				}
+			}
 
 			termPQExpBuffer(&buf);
 		}
@@ -3199,7 +3209,7 @@ PrintQueryStatus2(PGresult *results, char *cmdstatus)
  * Returns true if the query executed successfully, false otherwise.
  */
 static bool
-IvyPrintQueryResults(PGresult *results, bool quiet)
+IvyPrintQueryResults(PGresult *results, bool quiet, bool isoracall)
 {
 	bool		success;
 	const char *cmdstatus;
@@ -3218,7 +3228,13 @@ IvyPrintQueryResults(PGresult *results, bool quiet)
 			 * DO and CALL stmt with OUT parameters will generate result
 			 * tuples, we expect to suppress the output of result tuples.
 			 */
-			if (db_mode == DB_ORACLE && quiet && strncmp(cmdstatus, "DO", 2) == 0)
+			if (db_mode == DB_ORACLE && isoracall && strncmp(cmdstatus, "DO", 2) == 0)
+			{
+				PrintQueryStatus2(results, "\nCall completed.\n");
+				success = true;
+				break;
+			}
+			else if (db_mode == DB_ORACLE && quiet && strncmp(cmdstatus, "DO", 2) == 0)
 			{
 				PrintQueryStatus2(results, "\nPL/iSQL procedure successfully completed.\n");
 				success = true;
@@ -3250,9 +3266,10 @@ IvyPrintQueryResults(PGresult *results, bool quiet)
 			break;
 
 		case PGRES_COMMAND_OK:
-			/* Begin - ReqID:SRS-CMD-PSQL */
 			cmdstatus = PQcmdStatus(results);
-			if (db_mode == DB_ORACLE && strncmp(cmdstatus, "DO", 2) == 0)
+			if (db_mode == DB_ORACLE && isoracall && strncmp(cmdstatus, "DO", 2) == 0)
+				PrintQueryStatus2(results, "\nCall completed.\n");
+			else if (db_mode == DB_ORACLE && strncmp(cmdstatus, "DO", 2) == 0)
 				PrintQueryStatus2(results, "\nPL/iSQL procedure successfully completed.\n");
 			else if (db_mode == DB_ORACLE && strncmp(cmdstatus, "CALL", 4) == 0)
 				PrintQueryStatus2(results, "\nCall completed.\n");
@@ -3613,9 +3630,11 @@ get_hostvariables(const char *sql, bool *error)
 		int	ntuples = PQntuples(res);
 		int	i_name;
 		int	i_position;
+		int	i_hint;
 
 		i_name = PQfnumber(res, "name");
 		i_position = PQfnumber(res, "position");
+		i_hint = PQfnumber(res, "hint");
 
 		/* No placeholders do not need to use PBE */
 		if (ntuples == 1)
@@ -3624,16 +3643,27 @@ get_hostvariables(const char *sql, bool *error)
 		/* is an anonymous block and has placeholders */
 		if (ntuples > 1)
 		{
-			int	i;
+			char	*cmdtag = NULL;
+			int		i;
 
 			host = pg_malloc0(sizeof(HostVariable));
 			host->hostvars = (HostVariableEntry *) pg_malloc((ntuples - 1) * sizeof(HostVariableEntry));
 			host->length = ntuples - 1;
 
-			if (pg_strcasecmp(PQgetvalue(res, 0, i_name), "true")== 0)
+			cmdtag = PQgetvalue(res, 0, i_name);
+			if (pg_strcasecmp(cmdtag, "DO")== 0)
 				host->isdostmt = true;
+			else if (pg_strcasecmp(cmdtag, "CALL")== 0)
+			{
+				host->iscallstmt = true;
+				host->convertcall = PQgetisnull(res, 0, i_hint) ? NULL : pg_strdup(PQgetvalue(res, 0, i_hint));
+			}
 			else
+			{
 				host->isdostmt = false;
+				host->iscallstmt = false;
+				host->convertcall = NULL;
+			}
 
 			/* First tuple is not a placeholder info tuple, start with 1 */
 			for (i = 1; i < ntuples; i++)
@@ -3837,7 +3867,7 @@ SendQuery_PBE(const char *query, HostVariable *hv)
 
 				/* but printing results isn't: */
 				if (OK && results)
-					OK = IvyPrintQueryResults(results, true);
+					OK = IvyPrintQueryResults(results, true, hv->iscallstmt);
 			}
 		}
 		pg_free(bindvar);

@@ -90,6 +90,7 @@ static bool			IsParseDynDoStmt = true;
 static bool			HasPgParam = false;
 static bool			DoStmtCheckVar = false;
 static bool			IsBindByName = false;
+static bool			IsDynCallStmt = false;
 
 /*
  * store the OraParam name and position
@@ -575,6 +576,7 @@ push_oraparam_stack(void)
 		IsParseDynDoStmt = true;
 		HasPgParam = false;
 		DoStmtCheckVar = false;
+		IsDynCallStmt = false;
 		new->level = 1;
 	}
 	else
@@ -657,8 +659,14 @@ calculate_oraparamnumber(const char* name)
 		 for (i = 0; i < CurrentOraParamNode->param_count; ++i)
 		 {
 			 if (strcmp(CurrentOraParamNode->params[i].name, name) == 0)
-			 {			 
-				 return CurrentOraParamNode->params[i].number;
+			 {
+				/* ORA-06578: output parameter cannot be a duplicate bind */
+			 	if (IsDynCallStmt)
+					ereport(ERROR,
+							(errcode(ERRCODE_AMBIGUOUS_PARAMETER),
+							 errmsg("output parameter cannot be a duplicate bind")));
+				else
+					return CurrentOraParamNode->params[i].number;
 			 }
 		 }
 	 }
@@ -688,6 +696,15 @@ calculate_oraparamnumbers(List *parsetree_list)
 	foreach(parsetree_item, parsetree_list)
 	{
 		Node *parsetree = (Node *)lfirst(parsetree_item);
+
+		if (nodeTag(parsetree) == T_RawStmt &&
+			nodeTag(((RawStmt *)parsetree)->stmt) == T_CallStmt &&
+			CurrentOraParamNode &&
+			CurrentOraParamNode->param_count == 0)
+			setdynamic_callparser(true);
+		else
+			/* In any case, it should't affect other statements in the list */
+			setdynamic_callparser(false);
 
 		if (calculate_oraparamnumbers_walker(parsetree, NULL) == true)
 			return true;
@@ -2497,6 +2514,8 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 
 				if (walker(callstmt->funccall, context))
 					return true;
+				if (walker(callstmt->hostvariable, context))
+					return true;
 			}
 			break;
 
@@ -2590,6 +2609,15 @@ bool
 get_bindByName(void)
 {
 	return IsBindByName;
+}
+
+/*
+ *  * set dynamic CallStmt parser status
+ *   */
+void
+setdynamic_callparser(bool value)
+{
+	IsDynCallStmt = value;
 }
 
 int

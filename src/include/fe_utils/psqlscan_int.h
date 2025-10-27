@@ -242,6 +242,7 @@ typedef struct PsqlScanStateData
 	bool		anonymous_label_start;	/* T if the first token is "<<" */
 	bool		anonymous_label_ident;	/* T if the second token is an identifier */
 	bool		anonymous_label_end;	/* T if the third token is ">>" */
+	bool		xcstate;				/* T If a C-style comment is being parsed */
 
 	/*
 	 * Case 2: DECLARE BEGIN ... END is Oracle anonymous block sytax.

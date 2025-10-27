@@ -1038,6 +1038,9 @@ non_psqlplus_cmd:
 									pg_free(hv->hostvars[i].name);
 							}
 
+							if (hv->convertcall)
+								pg_free(hv->convertcall);
+
 							if (hv->hostvars)
 								pg_free(hv->hostvars);
 							pg_free(hv);
