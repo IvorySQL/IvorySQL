@@ -35,7 +35,6 @@ SUBDIRS = \
 	test/perl \
 	oracle_test/regress \
 	oracle_test/isolation \
-	oracle_test/modules \
 	oracle_test/perl
 
 ifeq ($(with_llvm), yes)
