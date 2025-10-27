@@ -3,17 +3,6 @@
 
 IvorySQL 自动安装脚本提供了一种快速、简便的方式来在支持的 Linux 系统上从源代码编译和安装 IvorySQL 数据库。
 
-## 目录
-
-- [功能特性](#功能特性)
-- [支持的操作系统](#支持的操作系统)
-- [文件说明](#文件说明)
-- [配置文件](#配置文件)
-- [环境变量](#环境变量)
-- [命令行选项](#命令行选项)
-- [使用方法](#使用方法)
-- [日志与排障](#日志与排障)
-
 ## 功能特性
 
 - 自动检测操作系统和包管理器
@@ -39,7 +28,6 @@ autoinstall_script 目录包含以下文件：
 - `ivorysql.conf` - 安装配置文件
 - `flake.nix` - Nix 包管理器环境定义
 - `flake.lock` - Nix 环境版本锁定文件
-- `nix_support.patch` - AutoInstall.sh 的 Nix 环境支持补丁
 - `README_CN.md` - 本文档
 - `README.md` - 英文版文档
 
@@ -103,12 +91,11 @@ AutoInstall.sh 脚本支持以下命令行选项：
 # 进入 Nix 开发环境
 nix develop
 
-# 应用 Nix 支持补丁（如果需要）
-patch -p1 < nix_support.patch
-
-# 运行安装脚本
+# 运行安装脚本（Nix 环境支持已直接集成）
 bash AutoInstall.sh
 ```
+
+AutoInstall.sh 脚本包含内置的 Nix 环境检测，并自动适应 Nix 环境，无需额外的补丁。
 
 ### Docker 环境使用
 
@@ -161,4 +148,3 @@ tail -f $LOG_DIR/*.log
 2. **依赖安装失败**：检查系统包管理器是否正常工作
 3. **编译失败**：查看安装日志中的错误信息
 4. **服务启动失败**：检查配置文件和日志文件
-
