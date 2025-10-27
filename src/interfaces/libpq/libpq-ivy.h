@@ -67,6 +67,7 @@ typedef enum IvyStmtType
 {
 	IVY_STMT_UNKNOW,
 	IVY_STMT_DO,
+	IVY_STMT_DOFROMCALL,
 	IVY_STMT_DOHANDLED,
 	IVY_STMT_OTHERS
 } IvyStmtType;
@@ -156,6 +157,8 @@ typedef struct HostVariable
 	HostVariableEntry *hostvars;
 	int		length;
 	bool	isdostmt;
+	bool	iscallstmt;
+	char	*convertcall;
 } HostVariable;
 
 extern Ivyconn *Ivyconnectdb(const char *conninfo);

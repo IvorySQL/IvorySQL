@@ -602,6 +602,7 @@ psqlplus_yyerror(yyscan_t yyscanner, const char *message)
 	/* do nothing */
 }
 
-/* ... and the yylval macro, which flex will have its own definition for */
+/* yylex and the yylval macro, which flex will have its own definition */
 #undef yylval
+#undef yylex
 

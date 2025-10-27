@@ -1,7 +1,9 @@
 testlibpq
 testlibpqstmt2
+testlibpqstmt2_call
 testlibpq_nullstmt
 testlibpq_allout
+testlibpq_call
 testlibpq_prepare_plsql
 testlibpq_prepare_dml
 testlibpq_binary_double

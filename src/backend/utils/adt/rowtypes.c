@@ -23,6 +23,7 @@
 #include "funcapi.h"
 #include "libpq/pqformat.h"
 #include "miscadmin.h"
+#include "tcop/utility.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/guc.h"
@@ -2085,8 +2086,15 @@ hash_record_extended(PG_FUNCTION_ARGS)
 Datum
 get_parameter_description(PG_FUNCTION_ARGS)
 {
+	typedef struct
+	{
+		OraParamLink			*extral;
+		const char			*cmdtag;
+		char				*callintoexpr;
+	} outparam_fctx;
+
 	FuncCallContext *funcctx = NULL;
-	OraParamLink *link = NULL;
+	outparam_fctx	*user_fctx;
 	bool	dostmt = false;
 
 	if (SRF_IS_FIRSTCALL())
@@ -2128,6 +2136,13 @@ get_parameter_description(PG_FUNCTION_ARGS)
 			set_ParseDynSql(false);
 			elog(ERROR, "only one parse tree is supported");
 		}
+
+		user_fctx = (outparam_fctx *) palloc(sizeof(outparam_fctx));
+		user_fctx->extral = NULL;
+		user_fctx->cmdtag = NULL;
+		user_fctx->callintoexpr = NULL;
+
+		user_fctx->cmdtag = CreateCommandName(linitial(parsetree));
 
 		if (nodeTag(linitial(parsetree)) == T_RawStmt &&
 			nodeTag(((RawStmt *)linitial(parsetree))->stmt) == T_DoStmt)
@@ -2217,6 +2232,13 @@ get_parameter_description(PG_FUNCTION_ARGS)
 			}
 		}
 
+		else if (nodeTag(linitial(parsetree)) == T_RawStmt &&
+				nodeTag(((RawStmt *)linitial(parsetree))->stmt) == T_CallStmt)
+		{
+			CallStmt	*stmt = (CallStmt *)(((RawStmt *)linitial(parsetree))->stmt);
+			user_fctx->callintoexpr = stmt->callinto ? pstrdup(stmt->callinto) : NULL;
+		}
+
 		backward_oraparam_stack();
 		pop_oraparam_stack(oraparam_top_level - 1, oraparam_cur_level);
 		set_ParseDynSql(false);
@@ -2229,52 +2251,55 @@ get_parameter_description(PG_FUNCTION_ARGS)
 		/*
 		 * build tupdesc for result tuples 
 		 */
-		tupdesc = CreateTemplateTupleDesc(2);
+		tupdesc = CreateTemplateTupleDesc(3);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "name",
 					   TEXTOID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "position",
 					   INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "hint",
+					   TEXTOID, -1, 0);
 
 		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
-		link = (OraParamLink *) palloc(sizeof(OraParamLink));
-		link->paramnames = paramnames;
-		link->total_params = nparams;
-		link->next_params = 0;
+		user_fctx->extral = (OraParamLink*) palloc(sizeof(OraParamLink));
+		user_fctx->extral->next_params = 0;
+		user_fctx->extral->total_params = nparams;
+		user_fctx->extral->paramnames = paramnames;
 
 		MemoryContextSwitchTo(oldcxt);
-		funcctx->user_fctx  = (void *) link;
+		funcctx->user_fctx  = (void *) user_fctx;
 	}
 
 	funcctx = SRF_PERCALL_SETUP();
-	link = (OraParamLink *) funcctx->user_fctx;
+	user_fctx = (outparam_fctx *) funcctx->user_fctx;
 
-	if (link->next_params <= link->total_params)
+	if (user_fctx->extral->next_params <= user_fctx->extral->total_params)
 	{
-		bool		nulls[2];
 		HeapTuple	tuple;
 		Datum		result;
-		Datum		values[2];
-
-		if (link->next_params == 0)
-		{
-			if (dostmt)
-				values[0] = CStringGetTextDatum("true");
-			else
-				values[0] = CStringGetTextDatum("false");
-
-			values[1] = Int32GetDatum(link->next_params);
-		}
-		else
-		{
-			values[0] = CStringGetTextDatum(link->paramnames[link->next_params]);
-			values[1] = Int32GetDatum(link->next_params);
-		}
+		Datum		values[3];
+		bool		nulls[3];
 
 		MemSet(nulls, 0, sizeof(nulls));
 
+		if (user_fctx->extral->next_params == 0)
+		{
+			values[0] = CStringGetTextDatum(user_fctx->cmdtag);
+			values[1] = Int32GetDatum(user_fctx->extral->next_params);
+			if (user_fctx->callintoexpr)
+				values[2] = CStringGetTextDatum(user_fctx->callintoexpr);
+			else
+				nulls[2] = true;
+		}
+		else
+		{
+			values[0] = CStringGetTextDatum(user_fctx->extral->paramnames[user_fctx->extral->next_params]);
+			values[1] = Int32GetDatum(user_fctx->extral->next_params);
+			nulls[2] = true;
+		}
+
 		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
 		result = HeapTupleGetDatum(tuple);
-		link->next_params++;
+		user_fctx->extral->next_params++;
 
 		SRF_RETURN_NEXT(funcctx, result);
 	}

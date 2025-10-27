@@ -1190,3 +1190,286 @@ CALL protest2();
 
 DROP PROCEDURE  protest2;
 DROP PROCEDURE  stest.protest;
+-- An empty parenthesis cannot be ignored
+create or replace procedure p_noarg()
+is
+begin
+raise notice 'this procedure without args';
+end;
+/
+
+-- fail
+call p_noarg;
+
+--ok
+call p_noarg();
+
+create or replace function f_noarg()
+return number
+is
+begin
+raise notice 'this function without args';
+return 999;
+end;
+/
+
+variable x number;
+
+-- fail
+call f_noarg into :x;
+
+--ok
+call f_noarg() into :x;
+print x
+
+-- function or procedure with default value
+create or replace procedure p_defs(a varchar2 default 'i am a default string')
+is
+begin
+raise notice '%', a;
+end;
+/
+
+-- fail
+call p_defs;
+
+-- ok
+call p_defs();
+--ok
+call p_defs('new string');
+
+create or replace function f_defs(a number default 1314)
+return number
+is
+begin
+raise notice '%', a;
+return a;
+end;
+/
+
+variable x number
+
+--fail
+call f_defs into :x;
+
+--ok
+call f_defs() into :x;
+print x
+
+--ok
+call f_defs(999) into :x;
+print x
+
+drop function f_defs;
+drop procedure p_defs;
+drop function f_noarg();
+drop procedure p_noarg();
+
+--
+-- Truncate when the bind variable and the function return type or param type
+-- are the same and the typmod of the bind variable overflows.
+-- Fails when the bind variable and the function return type are or param type
+-- not same but can cast and the typmod of the bind variable overflows.
+--
+create or replace procedure ff_proc(a varchar2, b varchar2)
+is
+begin
+raise notice '%', a;
+raise notice '%', b;
+raise notice '%', a||b;
+end;
+/
+
+-- ok
+call ff_proc('123456789', '123456789');
+
+create or replace function ff_test(a varchar2, b varchar2)
+return varchar2
+is
+begin
+raise notice '%', a;
+raise notice '%', b;
+return a||b;
+end;
+/
+
+-- ok
+variable x varchar2(10 char);
+call ff_test('123456789', '123456789') into :x;
+print x
+
+-- ok
+variable x varchar2(10 byte);
+call ff_test('123456789', '123456789') into :x;
+print x
+
+-- error
+variable x char(10 char);
+call ff_test('123456789', '123456789') into :x;
+print x
+
+-- error
+variable x char(10 byte);
+call ff_test('123456789', '123456789') into :x;
+print x
+
+-- ok
+variable x number;
+call ff_test('123456789', '123456789') into :x;
+print x
+
+-- error
+variable x number;
+call ff_test('abc', '123456789') into :x;
+print x
+
+create or replace procedure f_proc(a varchar2, b out varchar2)
+is
+begin
+raise notice '%', a;
+raise notice '%', b;
+b := a;
+end;
+/
+
+-- ok
+variable x varchar2(5 char)
+call f_proc('123456789', :x);
+print
+
+-- ok
+variable x varchar2(5 byte)
+call f_proc('123456789', :x);
+print
+
+-- error
+variable x char(5 char)
+call f_proc('123456789', :x);
+print
+
+-- error
+variable x char(5 byte)
+call f_proc('123456789', :x);
+print
+
+create or replace function f_test(a varchar2, b out varchar2)
+return varchar2
+is
+begin
+raise notice '%', a;
+raise notice '%', b;
+b := a;
+raise notice '%', a;
+raise notice '%', b;
+return a||b;
+end;
+/
+
+-- ok
+variable x varchar2(10) = '123456789'
+variable y varchar2(11)
+variable z varchar2(12 char)
+call f_test(:x, :y) INTO :z;
+print x y z
+
+-- ok
+variable x varchar2(10) = '123456789'
+variable y varchar2(11)
+variable z varchar2(12 byte)
+call f_test(:x, :y) INTO :z;
+print x y z
+
+-- ok
+variable x varchar2(10) = '123456789'
+variable y varchar2(5 char)
+variable z varchar2(20)
+call f_test(:x, :y) INTO :z;
+print x y z
+
+-- ok
+variable x varchar2(10) = '123456789'
+variable y varchar2(5 byte)
+variable z varchar2(20)
+call f_test(:x, :y) INTO :z;
+print x y z
+
+-- error
+variable x varchar2(10) = '123456789'
+variable y varchar2(11)
+variable z varchar2(12 char)
+
+begin
+:z := f_test(:x, :y);
+end;
+/
+print x y z
+
+-- error
+variable x char(10) = '123456789'
+variable y char(11)
+variable z char(12 char)
+call f_test(:x, :y) INTO :z;
+print x y z
+
+-- error
+variable x char(10) = '123456789'
+variable y char(11)
+variable z char(12 byte)
+call f_test(:x, :y) INTO :z;
+print x y z
+
+-- ok
+variable x char(10) = '123456789'
+variable y char(11)
+variable z char(20 char)
+call f_test(:x, :y) INTO :z;
+print x y z
+
+-- ok
+variable x char(10) = '123456789'
+variable y char(11)
+variable z char(20 byte)
+call f_test(:x, :y) INTO :z;
+print x y z
+
+-- error
+variable x char(10) = '123456789'
+variable y char(5 char)
+variable z char(20)
+call f_test(:x, :y) INTO :z;
+print x y z
+
+-- error
+variable x char(10) = '123456789'
+variable y char(5 byte)
+variable z char(20)
+call f_test(:x, :y) INTO :z;
+print x y z
+
+-- ok
+variable x char(10) = '123456789'
+variable y char(10 char)
+variable z char(20)
+call f_test(:x, :y) INTO :z;
+print x y z
+
+-- ok
+variable x char(10) = '123456789'
+variable y char(10 byte)
+variable z char(20)
+call f_test(:x, :y) INTO :z;
+print x y z
+
+-- ORA-06578: output parameter cannot be a duplicate bind.
+-- Cause: The bind variable corresponding to an IN/OUT or
+-- OUT parameter for a function or a procedure or a function
+-- return value in a CALL statement cannot be a duplicate bind variable.
+call f_test(:x, :x) INTO :z;
+call f_proc(:x, :x);
+
+--clean
+drop procedure ff_proc;
+drop procedure f_proc;
+drop function f_test;
+drop function ff_test;
+

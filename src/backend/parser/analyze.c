@@ -3015,13 +3015,27 @@ transformPLAssignStmt(ParseState *pstate, PLAssignStmt *stmt)
 		 */
 		Node	   *orig_expr = (Node *) tle->expr;
 
-		tle->expr = (Expr *)
-			coerce_to_target_type(pstate,
-								  orig_expr, type_id,
-								  targettype, targettypmod,
-								  COERCION_PLPGSQL,
-								  COERCE_IMPLICIT_CAST,
-								  -1);
+		if (pstate->do_from_call &&
+			(((type_id == ORACHARCHAROID || type_id == ORACHARBYTEOID) &&
+				(targettype == ORACHARCHAROID || targettype == ORACHARBYTEOID)) ||
+			((targettype == ORAVARCHARCHAROID || targettype == ORAVARCHARBYTEOID) &&
+				(targettype == ORAVARCHARCHAROID || targettype == ORAVARCHARBYTEOID))))
+			tle->expr = (Expr *)
+				coerce_to_target_type(pstate,
+									  orig_expr, type_id,
+									  targettype, targettypmod,
+									  COERCION_EXPLICIT,
+									  COERCE_IMPLICIT_CAST,
+									  -1);
+		else
+		/* End - ReqID:SRS-SQL-CALL */
+			tle->expr = (Expr *)
+				coerce_to_target_type(pstate,
+									  orig_expr, type_id,
+									  targettype, targettypmod,
+									  COERCION_PLPGSQL,
+									  COERCE_IMPLICIT_CAST,
+									  -1);
 		/* With COERCION_PLPGSQL, this error is probably unreachable */
 		if (tle->expr == NULL)
 			ereport(ERROR,

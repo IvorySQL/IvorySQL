@@ -46,10 +46,10 @@ char name2_out[256];
 int name3_out;
 int indp[3];
 
-char prestmt3_integer[256];
-char prestmt3_name3[256];
+int prestmt3_integer=0;
+int prestmt3_name3=0;
 char prestmt3_name32[256];
-char prestmt3_name33[256];
+int prestmt3_name33=0;
 int prestmt3_indp[4];
 
 
@@ -271,12 +271,11 @@ run_thread(int flag)
 	}
 
 	/* bind prestmt3 */
-	memset(prestmt3_integer,0x00,256);
 	if (IvybindOutParameterByPos(thread_data.stmt3,
 					&prestmt3_bindinfo[0],
 					1,
-					(void *) prestmt3_integer,
-					256,
+					(void *) &prestmt3_integer,
+					sizeof(int),
 					&prestmt3_indp[0],
 					1,
 					errmsg,
@@ -286,12 +285,11 @@ run_thread(int flag)
 		return;
 	}
 
-	memset(prestmt3_name3,0x00,256);
 	if (IvybindOutParameterByPos(thread_data.stmt3,
 					&prestmt3_bindinfo[1],
 					2,
-					(void *) prestmt3_name3,
-					256,
+					(void *) &prestmt3_name3,
+					sizeof(int),
 					&prestmt3_indp[1],
 					1,
 					errmsg,
@@ -316,12 +314,11 @@ run_thread(int flag)
 		return;
 	}
 
-	memset(prestmt3_name33, 0x00,256);
 	if (IvybindOutParameterByPos(thread_data.stmt3,
 					&prestmt3_bindinfo[3],
 					4,
-					(void *) prestmt3_name33,
-					256,
+					(void *) &prestmt3_name33,
+					sizeof(int),
 					&prestmt3_indp[3],
 					1,
 					errmsg,
@@ -350,7 +347,7 @@ run_thread(int flag)
 	}
 
 	printf("plsql_function_out: %s,%s,%d\n", name2_out, name_out,ntohl(name3_out));
-	printf("anonymous: %s,%s,%s,%s\n", prestmt3_integer, prestmt3_name3, prestmt3_name32,prestmt3_name33);
+	printf("anonymous: %d,%d,%s,%d\n", prestmt3_integer, prestmt3_name3, prestmt3_name32,prestmt3_name33);
 
 	return;
 }
@@ -366,7 +363,7 @@ run_execPrepared(Ivyconn *tconn, int flag)
 	argmodes1[2] = argmode_out;
 	argmodes1[3] = argmode_out;
 
-	argmodes3[0] = argmodes3[1] = argmodes3[2] = argmode_inout;
+	argmodes3[0] = argmodes3[1] = argmodes3[2] = argmodes3[3] = argmode_inout;
 
 	run_stmt(tconn, thread_data.stmt1, argmodes1);
 	run_stmt(tconn, thread_data.stmt3, argmodes3);

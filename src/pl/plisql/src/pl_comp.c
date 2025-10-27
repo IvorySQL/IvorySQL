@@ -1254,7 +1254,7 @@ do_compile(FunctionCallInfo fcinfo,
  * ----------
  */
 PLiSQL_function *
-plisql_compile_inline(char *proc_source, ParamListInfo inparams)
+plisql_compile_inline(char *proc_source, ParamListInfo inparams, bool fromcall)
 {
 	yyscan_t	scanner;
 	struct compile_error_callback_arg cbarg;
@@ -1321,6 +1321,7 @@ plisql_compile_inline(char *proc_source, ParamListInfo inparams)
 	function->fn_no_return = false;
 
 	function->namelabel = NULL;
+	function->do_from_call = fromcall;
 
 	check_referenced_objects = false;
 	plisql_referenced_objects = NIL;
@@ -1722,6 +1723,7 @@ resolve_column_ref(ParseState *pstate, PLiSQL_expr * expr,
 	 * plans when those types change ...
 	 */
 	estate = expr->func->cur_estate;
+	pstate->do_from_call = expr->func->do_from_call;
 
 	/*----------
 	 * The allowed syntaxes are:

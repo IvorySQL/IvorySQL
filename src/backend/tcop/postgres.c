@@ -1160,6 +1160,12 @@ exec_simple_query(const char *query_string)
 		const char *cmdtagname;
 		size_t		cmdtaglen;
 
+		if (parsetree->stmt->type == T_CallStmt &&
+			((CallStmt *) parsetree->stmt)->callinto != NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+					 errmsg("Simple query protocol does not support CALL INTO stmt")));
+
 		pgstat_report_query_id(0, true);
 		pgstat_report_plan_id(0, true);
 
