@@ -3,7 +3,7 @@
 -- 	  1). If the alphas in the identifier quoted by double quotes are all the upper case, convert the upper case to the lower case.
 -- 	  2). If the alphas in the identifier quoted by double quotes are all the lower case, convert the lower case to the upper case.
 -- 	  3). If the alphas in the identifier quoted by double quotes are case-mixed, leave the identifier unchanged.
--- 2. if guc parameter "identifier_case_switch" value is "lowcase", convert all identifiers to the lower case.
+-- 2. if guc parameter "identifier_case_switch" value is "lowercase", convert all identifiers to the lowercase.
 -- 3. if guc parameter "identifier_case_switch" value is "normal", The rules for converting identifiers are the same as for native PG.
 
 ----1. "identifier_case_switch" value is "interchange"

@@ -116,7 +116,7 @@ static struct config_bool Ivy_ConfigureNamesBool[] =
 	{
 		/* Not for general use --- used by pg_dump */
 		{"ivorysql.identifier_case_from_pg_dump", PGC_USERSET, UNGROUPED,
-			gettext_noop("Shows whether the identifer with quote is from pg dump."),
+			gettext_noop("Shows whether the identifier with quotes is from pg dump."),
 			NULL,
 			GUC_REPORT | GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
 		},

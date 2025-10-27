@@ -797,7 +797,7 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 
 			if (strcmp(nameptr, "database") == 0)
 			{
-				/* Oracle compatibility tranfor upper to lower */
+				/* Oracle compatibility: transform uppercase identifiers to lowercase. */
 				char *database_name = pstrdup(valptr);
 
 				if (ORA_PARSER == compatible_db && database_name != NULL)
@@ -850,7 +850,7 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 			}
 			else if (strcmp(nameptr, "user") == 0)
 			{
-				/* Oracle compatibility tranfor upper to lower */
+				/* Oracle compatibility: transform uppercase identifiers to lowercase. */
 				char *user_name = pstrdup(valptr);
 
 				if (ORA_PARSER == compatible_db && user_name != NULL)
