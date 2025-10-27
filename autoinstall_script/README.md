@@ -3,17 +3,6 @@ English | [中文](README_CN.md)
 
 The IvorySQL automated installation script provides a fast and easy way to compile and install the IvorySQL database from source code on supported Linux systems.
 
-## Table of Contents
-
-- [Features](#features)
-- [Supported Operating Systems](#supported-operating-systems)
-- [File Description](#file-description)
-- [Configuration File](#configuration-file)
-- [Environment Variables](#environment-variables)
-- [Command Line Options](#command-line-options)
-- [Usage](#usage)
-- [Logging and Troubleshooting](#logging-and-troubleshooting)
-
 ## Features
 
 - Automatically detects operating system and package manager
@@ -39,7 +28,6 @@ The autoinstall_script directory contains the following files:
 - `ivorysql.conf` - Installation configuration file
 - `flake.nix` - Nix package manager environment definition
 - `flake.lock` - Nix environment version lock file
-- `nix_support.patch` - Nix environment support patch for AutoInstall.sh
 - `README_CN.md` - Chinese version of this document
 - `README.md` - This document
 
@@ -103,12 +91,11 @@ In a Nix environment, you can use the provided flake.nix file to set up the deve
 # Enter Nix development environment
 nix develop
 
-# Apply Nix support patch (if needed)
-patch -p1 < nix_support.patch
-
-# Run installation script
+# Run installation script (Nix environment support is directly integrated)
 bash AutoInstall.sh
 ```
+
+The AutoInstall.sh script includes built-in Nix environment detection and automatically adapts to Nix environments without requiring additional patches.
 
 ### Docker Environment Usage
 
