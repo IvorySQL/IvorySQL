@@ -228,7 +228,9 @@ static const FormData_pg_attribute a6 = {
 };
 
 /*
- * Compatible Oracle ROWID pseudo column.
+ * Oracle-compatible ROWID pseudo-column.
+ * This system column provides a unique identifier for each row,
+ * compatible with Oracle's ROWID functionality.
  */
 static const FormData_pg_attribute a7 = {
    .attname = {"rowid"},

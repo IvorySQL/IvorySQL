@@ -18,8 +18,8 @@
  *
  * This file provides a string case conversion function
  *
- * upper_character() 	-- transfor lower to upper
- * down_character() 	-- transfor upper to lower
+ * upper_character() 	-- transform lowercase letters to uppercase
+ * down_character() 	-- transform uppercase letters to lowercase
  * is_all_upper() 	-- Determine whether the letters in the string are all uppercase letters
  * is_all_lower() 	-- Determine whether the letters in the string are all lowercase letters
  *
@@ -28,7 +28,7 @@
  *
  * src/port/identifier_alpha_transfor.c
  *
- * add the file for requirement "CASE SENSITIVE IDENTIFY" feature upgrade
+ * add the file for requirement "case-sensitive identifier" feature upgrade
  *
  *-------------------------------------------------------------------------
  */
@@ -40,7 +40,7 @@
 #include "common/fe_memutils.h"
 
 /*
- * transfor upper to lower
+ * transform upper to lower
  */
 char *
 down_character(const char *src, int len)
@@ -56,7 +56,7 @@ down_character(const char *src, int len)
 	res[len] = '\0';
 	s = res;
 
-	/* transfor */
+	/* transform */
 	for (i = 0; i < len ; i++)
 	{
 		*s = tolower(*s);
@@ -66,7 +66,7 @@ down_character(const char *src, int len)
 	return res;
 }
 /*
- * transfor lower to upper
+ * transform lower to upper
  */
 char *
 upper_character(const char *src, int len)
@@ -82,7 +82,7 @@ upper_character(const char *src, int len)
 	res[len] = '\0';
 	s = res;
 
-	/* transfor */
+	/* transform */
 	for (i = 0; i < len ; i++)
 	{
 		*s = toupper(*s);

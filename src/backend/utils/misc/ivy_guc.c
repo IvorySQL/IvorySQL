@@ -116,7 +116,7 @@ static struct config_bool Ivy_ConfigureNamesBool[] =
 	{
 		/* Not for general use --- used by pg_dump */
 		{"ivorysql.identifier_case_from_pg_dump", PGC_USERSET, UNGROUPED,
-			gettext_noop("Shows whether the identifer with quote is from pg dump."),
+			gettext_noop("Shows whether the identifier with quotes is from pg dump."),
 			NULL,
 			GUC_REPORT | GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
 		},
@@ -183,9 +183,19 @@ static struct config_bool Ivy_ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	/*
+ 	 * ivorysql.default_with_rowids
+	 *
+	 * When enabled, all newly created tables will automatically include
+	 * an Oracle-compatible ROWID pseudo-column. This provides compatibility
+	 * with Oracle applications that rely on ROWID for row identification.
+	 *
+	 * Default: off
+	 * Context: USERSET (can be changed by any user)
+ 	 */
 	{
 		{"ivorysql.default_with_rowids", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("Auto add rowid column for create new table."),
+			gettext_noop("Automatically add rowid column when creating new tables."),
 			NULL,
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},

@@ -3320,7 +3320,7 @@ initialize_data_directory(void)
 	make_template0(cmdfd);
 
 	make_postgres(cmdfd);
-	
+
 	make_ivorysql(cmdfd);
 
 	PG_CMD_CLOSE();
@@ -3691,7 +3691,7 @@ main(int argc, char *argv[])
 	if (strncmp(username, "pg_", 3) == 0)
 		pg_fatal("superuser name \"%s\" is disallowed; role names cannot begin with \"pg_\"", username);
 
-	/* Oracle compatibility username transfor upper to lower */
+	/* Oracle compatibility: transform uppercase usernames to lowercase. */
 	if (database_mode == DB_ORACLE && username != NULL
 		&& is_all_upper(username, strlen(username)))
 	{
