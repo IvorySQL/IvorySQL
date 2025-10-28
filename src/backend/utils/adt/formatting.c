@@ -1,4 +1,4 @@
-/* -----------------------------------------------------------------------
+/*-------------------------------------------------------------------------
  * formatting.c
  *
  * src/backend/utils/adt/formatting.c
@@ -55,7 +55,7 @@
  *	  than Oracle :-),
  *		to_char('Hello', 'X X X X X') -> 'H e l l o'
  *
- * -----------------------------------------------------------------------
+ *-------------------------------------------------------------------------
  */
 
 #ifdef DEBUG_TO_FROM_CHAR
@@ -93,34 +93,30 @@
 #include "utils/ora_compatible.h"
 #include "utils/pg_locale.h"
 #include "varatt.h"
-#include <time.h>
 
-/* ----------
+
+/*
  * Routines flags
- * ----------
  */
 #define DCH_FLAG		0x1		/* DATE-TIME flag	*/
 #define NUM_FLAG		0x2		/* NUMBER flag	*/
 #define STD_FLAG		0x4		/* STANDARD flag	*/
 
-/* ----------
+/*
  * KeyWord Index (ascii from position 32 (' ') to 126 (~))
- * ----------
  */
 #define KeyWord_INDEX_SIZE		('~' - ' ')
 #define KeyWord_INDEX_FILTER(_c)	((_c) <= ' ' || (_c) >= '~' ? 0 : 1)
 
-/* ----------
+/*
  * Maximal length of one node
- * ----------
  */
 #define DCH_MAX_ITEM_SIZ	   12	/* max localized day name		*/
 #define NUM_MAX_ITEM_SIZ		8	/* roman number (RN has 15 chars)	*/
 
 
-/* ----------
+/*
  * Format parser structs
- * ----------
  */
 typedef struct
 {
@@ -130,9 +126,8 @@ typedef struct
 				type;			/* prefix / postfix		*/
 } KeySuffix;
 
-/* ----------
+/*
  * FromCharDateMode
- * ----------
  *
  * This value is used to nominate one of several distinct (and mutually
  * exclusive) date conventions that a keyword can belong to.
@@ -175,9 +170,8 @@ typedef struct
 #define CLOCK_12_HOUR		1
 
 
-/* ----------
+/*
  * Full months
- * ----------
  */
 static const char *const months_full[] = {
 	"January", "February", "March", "April", "May", "June", "July",
@@ -188,9 +182,9 @@ static const char *const days_short[] = {
 	"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", NULL
 };
 
-/* ----------
+/*
  * AD / BC
- * ----------
+ *
  *	There is no 0 AD.  Years go from 1 BC to 1 AD, so we make it
  *	positive and map year == -1 to year zero, and shift all negative
  *	years up one.  For interval years, we just return the year.
@@ -221,9 +215,8 @@ static const char *const days_short[] = {
 static const char *const adbc_strings[] = {ad_STR, bc_STR, AD_STR, BC_STR, NULL};
 static const char *const adbc_strings_long[] = {a_d_STR, b_c_STR, A_D_STR, B_C_STR, NULL};
 
-/* ----------
+/*
  * AM / PM
- * ----------
  */
 #define A_M_STR		"A.M."
 #define a_m_STR		"a.m."
@@ -248,11 +241,10 @@ static const char *const adbc_strings_long[] = {a_d_STR, b_c_STR, A_D_STR, B_C_S
 static const char *const ampm_strings[] = {am_STR, pm_STR, AM_STR, PM_STR, NULL};
 static const char *const ampm_strings_long[] = {a_m_STR, p_m_STR, A_M_STR, P_M_STR, NULL};
 
-/* ----------
+/*
  * Months in roman-numeral
  * (Must be in reverse order for seq_search (in FROM_CHAR), because
  *	'VIII' must have higher precedence than 'V')
- * ----------
  */
 static const char *const rm_months_upper[] =
 {"XII", "XI", "X", "IX", "VIII", "VII", "VI", "V", "IV", "III", "II", "I", NULL};
@@ -260,9 +252,8 @@ static const char *const rm_months_upper[] =
 static const char *const rm_months_lower[] =
 {"xii", "xi", "x", "ix", "viii", "vii", "vi", "v", "iv", "iii", "ii", "i", NULL};
 
-/* ----------
+/*
  * Roman numerals
- * ----------
  */
 static const char *const rm1[] = {"I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", NULL};
 static const char *const rm10[] = {"X", "XX", "XXX", "XL", "L", "LX", "LXX", "LXXX", "XC", NULL};
@@ -294,23 +285,20 @@ static const char *const rm100[] = {"C", "CC", "CCC", "CD", "D", "DC", "DCC", "D
  */
 #define MAX_ROMAN_LEN	15
 
-/* ----------
+/*
  * Ordinal postfixes
- * ----------
  */
 static const char *const numTH[] = {"ST", "ND", "RD", "TH", NULL};
 static const char *const numth[] = {"st", "nd", "rd", "th", NULL};
 
-/* ----------
+/*
  * Flags & Options:
- * ----------
  */
 #define TH_UPPER		1
 #define TH_LOWER		2
 
-/* ----------
+/*
  * Number description struct
- * ----------
  */
 typedef struct
 {
@@ -325,9 +313,8 @@ typedef struct
 				need_locale;	/* needs it locale		  */
 } NUMDesc;
 
-/* ----------
+/*
  * Flags for NUMBER version
- * ----------
  */
 #define NUM_F_DECIMAL		(1 << 1)
 #define NUM_F_LDECIMAL		(1 << 2)
@@ -348,9 +335,8 @@ typedef struct
 #define NUM_LSIGN_POST	1
 #define NUM_LSIGN_NONE	0
 
-/* ----------
+/*
  * Tests
- * ----------
  */
 #define IS_DECIMAL(_f)	((_f)->flag & NUM_F_DECIMAL)
 #define IS_LDECIMAL(_f) ((_f)->flag & NUM_F_LDECIMAL)
@@ -365,7 +351,7 @@ typedef struct
 #define IS_MULTI(_f)	((_f)->flag & NUM_F_MULTI)
 #define IS_EEEE(_f)		((_f)->flag & NUM_F_EEEE)
 
-/* ----------
+/*
  * Format picture cache
  *
  * We will cache datetime format pictures up to DCH_CACHE_SIZE bytes long;
@@ -381,7 +367,6 @@ typedef struct
  *
  * The max number of entries in each cache is DCH_CACHE_ENTRIES
  * resp. NUM_CACHE_ENTRIES.
- * ----------
  */
 #define DCH_CACHE_OVERHEAD \
 	MAXALIGN(sizeof(bool) + sizeof(int))
@@ -424,9 +409,8 @@ static NUMCacheEntry *NUMCache[NUM_CACHE_ENTRIES];
 static int	n_NUMCache = 0;		/* current number of entries */
 static int	NUMCounter = 0;		/* aging-event counter */
 
-/* ----------
+/*
  * For char->date/time conversion
- * ----------
  */
 typedef struct
 {
@@ -468,9 +452,8 @@ struct fmt_tz					/* do_to_timestamp's timezone info output */
 	int			gmtoffset;		/* GMT offset in seconds */
 };
 
-/* ----------
+/*
  * Debug
- * ----------
  */
 #ifdef DEBUG_TO_FROM_CHAR
 #define DEBUG_TMFC(_X) \
@@ -488,6 +471,37 @@ struct fmt_tz					/* do_to_timestamp's timezone info output */
 #define DEBUG_TMFC(_X)
 #define DEBUG_TM(_X)
 #endif
+
+/*
+ * Datetime to char conversion
+ *
+ * To support intervals as well as timestamps, we use a custom "tm" struct
+ * that is almost like struct pg_tm, but has a 64-bit tm_hour field.
+ * We omit the tm_isdst and tm_zone fields, which are not used here.
+ */
+struct fmt_tm
+{
+	int			tm_sec;
+	int			tm_min;
+	int64		tm_hour;
+	int			tm_mday;
+	int			tm_mon;
+	int			tm_year;
+	int			tm_wday;
+	int			tm_yday;
+	long int	tm_gmtoff;
+};
+
+typedef struct TmToChar
+{
+	struct fmt_tm tm;			/* almost the classic 'tm' struct */
+	fsec_t		fsec;			/* fractional seconds */
+	const char *tzn;			/* timezone */
+} TmToChar;
+
+#define tmtcTm(_X)	(&(_X)->tm)
+#define tmtcTzn(_X) ((_X)->tzn)
+#define tmtcFsec(_X)	((_X)->fsec)
 
 /* Note: this is used to copy pg_tm to fmt_tm, so not quite a bitwise copy */
 #define COPY_tm(_DST, _SRC) \
@@ -534,9 +548,8 @@ do { \
  *			KeyWord definitions
  *****************************************************************************/
 
-/* ----------
+/*
  * Suffixes (FormatNode.suffix is an OR of these codes)
- * ----------
  */
 #define DCH_S_FM	0x01
 #define DCH_S_TH	0x02
@@ -544,9 +557,8 @@ do { \
 #define DCH_S_SP	0x08
 #define DCH_S_TM	0x10
 
-/* ----------
+/*
  * Suffix tests
- * ----------
  */
 #define S_THth(_s)	((((_s) & DCH_S_TH) || ((_s) & DCH_S_th)) ? 1 : 0)
 #define S_TH(_s)	(((_s) & DCH_S_TH) ? 1 : 0)
@@ -558,9 +570,8 @@ do { \
 #define S_SP(_s)	(((_s) & DCH_S_SP) ? 1 : 0)
 #define S_TM(_s)	(((_s) & DCH_S_TM) ? 1 : 0)
 
-/* ----------
+/*
  * Suffixes definition for DATE-TIME TO/FROM CHAR
- * ----------
  */
 #define TM_SUFFIX_LEN	2
 
@@ -577,7 +588,7 @@ static const KeySuffix DCH_suff[] = {
 };
 
 
-/* ----------
+/*
  * Format-pictures (KeyWord).
  *
  * The KeyWord field; alphabetic sorted, *BUT* strings alike is sorted
@@ -601,8 +612,6 @@ static const KeySuffix DCH_suff[] = {
  *	1)	see in index to index['M' - 32],
  *	2)	take keywords position (enum DCH_MI) from index
  *	3)	run sequential search in keywords[] from this position
- *
- * ----------
  */
 
 typedef enum
@@ -781,9 +790,8 @@ typedef enum
 	_NUM_last_
 }			NUM_poz;
 
-/* ----------
+/*
  * KeyWords for DATE-TIME version
- * ----------
  */
 static const KeyWord DCH_keywords[] = {
 /*	name, len, id, is_digit, date_mode */
@@ -918,11 +926,10 @@ static const KeyWord DCH_keywords[] = {
 	{NULL, 0, 0, 0, 0}
 };
 
-/* ----------
+/*
  * KeyWords for NUMBER version
  *
  * The is_digit and date_mode fields are not relevant here.
- * ----------
  */
 static const KeyWord NUM_keywords[] = {
 /*	name, len, id			is in Index */
@@ -968,9 +975,8 @@ static const KeyWord NUM_keywords[] = {
 };
 
 
-/* ----------
+/*
  * KeyWords index for DATE-TIME version
- * ----------
  */
 static const int DCH_index[KeyWord_INDEX_SIZE] = {
 /*
@@ -992,9 +998,8 @@ static const int DCH_index[KeyWord_INDEX_SIZE] = {
 	/*---- chars over 126 are skipped ----*/
 };
 
-/* ----------
+/*
  * KeyWords index for NUMBER version
- * ----------
  */
 static const int NUM_index[KeyWord_INDEX_SIZE] = {
 /*
@@ -1016,9 +1021,8 @@ static const int NUM_index[KeyWord_INDEX_SIZE] = {
 	/*---- chars over 126 are skipped ----*/
 };
 
-/* ----------
+/*
  * Number processor struct
- * ----------
  */
 typedef struct NUMProc
 {
@@ -1063,9 +1067,8 @@ typedef struct NUMProc
 #define AMOUNT_TEST(s)	(Np->inout_p <= Np->inout + (input_len - (s)))
 
 
-/* ----------
+/*
  * Functions
- * ----------
  */
 static const KeyWord *index_seq_search(const char *str, const KeyWord *kw,
 									   const int *index);
@@ -1133,11 +1136,10 @@ static bool ivy_getsep(const char *in);
 static int ivy_getnumlength(const char *in);
 
 
-/* ----------
+/*
  * Fast sequential search, use index for data selection which
  * go to seq. cycle (it is very fast for unwanted strings)
  * (can't be used binary search in format parsing)
- * ----------
  */
 static const KeyWord *
 index_seq_search(const char *str, const KeyWord *kw, const int *index)
@@ -1210,9 +1212,8 @@ is_separator_char(const char *str)
 			!(*str >= '0' && *str <= '9'));
 }
 
-/* ----------
+/*
  * Prepare NUMDesc (number description struct) via FormatNode struct
- * ----------
  */
 static void
 NUMDesc_prepare(NUMDesc *num, FormatNode *n)
@@ -1393,12 +1394,11 @@ NUMDesc_prepare(NUMDesc *num, FormatNode *n)
 				 errdetail("\"RN\" may only be used together with \"FM\".")));
 }
 
-/* ----------
+/*
  * Format parser, search small keywords and keyword's suffixes, and make
  * format-node tree.
  *
  * for DATE-TIME & NUMBER version
- * ----------
  */
 static void
 parse_format(FormatNode *node, const char *str, const KeyWord *kw,
@@ -1550,9 +1550,8 @@ parse_format(FormatNode *node, const char *str, const KeyWord *kw,
 	n->suffix = 0;
 }
 
-/* ----------
+/*
  * DEBUG: Dump the FormatNode Tree (debug)
- * ----------
  */
 #ifdef DEBUG_TO_FROM_CHAR
 
@@ -1590,10 +1589,9 @@ dump_node(FormatNode *node, int max)
  *			Private utils
  *****************************************************************************/
 
-/* ----------
+/*
  * Return ST/ND/RD/TH for simple (1..9) numbers
  * type --> 0 upper, 1 lower
- * ----------
  */
 static const char *
 get_th(char *num, int type)
@@ -1637,10 +1635,9 @@ get_th(char *num, int type)
 	}
 }
 
-/* ----------
+/*
  * Convert string-number to ordinal string-number
  * type --> 0 upper, 1 lower
- * ----------
  */
 static char *
 str_numth(char *dest, char *num, int type)
@@ -2042,11 +2039,10 @@ asc_toupper_z(const char *buff)
 /* asc_initcap_z is not currently needed */
 
 
-/* ----------
+/*
  * Skip TM / th in FROM_CHAR
  *
  * If S_THth is on, skip two chars, assuming there are two available
- * ----------
  */
 #define SKIP_THth(ptr, _suf) \
 	do { \
@@ -2059,10 +2055,9 @@ asc_toupper_z(const char *buff)
 
 
 #ifdef DEBUG_TO_FROM_CHAR
-/* -----------
+/*
  * DEBUG: Call for debug and for index checking; (Show ASCII char
  * and defined keyword for each used position
- * ----------
  */
 static void
 dump_index(const KeyWord *k, const int *index)
@@ -2091,9 +2086,8 @@ dump_index(const KeyWord *k, const int *index)
 }
 #endif							/* DEBUG */
 
-/* ----------
+/*
  * Return true if next format picture is not digit value
- * ----------
  */
 static bool
 is_next_separator(FormatNode *n)
@@ -2610,10 +2604,9 @@ from_char_seq_search(int *dest, const char **src, const char *const *array,
 	return true;
 }
 
-/* ----------
+/*
  * Process a TmToChar struct as denoted by a list of FormatNodes.
  * The formatted data is written to the string pointed to by 'out'.
- * ----------
  */
 static void
 DCH_to_char(FormatNode *node, bool is_interval, TmToChar *in, char *out, Oid collid)
@@ -4625,9 +4618,8 @@ datetime_to_char_body(TmToChar *tmtc, text *fmt, bool is_interval, Oid collid)
  *				Public routines
  ***************************************************************************/
 
-/* -------------------
+/*
  * TIMESTAMP to_char()
- * -------------------
  */
 Datum
 timestamp_to_char(PG_FUNCTION_ARGS)
@@ -4714,9 +4706,8 @@ timestamptz_to_char(PG_FUNCTION_ARGS)
 }
 
 
-/* -------------------
+/*
  * INTERVAL to_char()
- * -------------------
  */
 Datum
 interval_to_char(PG_FUNCTION_ARGS)
@@ -4756,12 +4747,11 @@ interval_to_char(PG_FUNCTION_ARGS)
 	PG_RETURN_TEXT_P(res);
 }
 
-/* ---------------------
+/*
  * TO_TIMESTAMP()
  *
  * Make Timestamp from date_str which is formatted at argument 'fmt'
  * ( to_timestamp is reverse to_char() )
- * ---------------------
  */
 Datum
 to_timestamp(PG_FUNCTION_ARGS)
@@ -4797,10 +4787,9 @@ to_timestamp(PG_FUNCTION_ARGS)
 	PG_RETURN_TIMESTAMP(result);
 }
 
-/* ----------
+/*
  * TO_DATE
  *	Make Date from date_str which is formatted at argument 'fmt'
- * ----------
  */
 Datum
 to_date(PG_FUNCTION_ARGS)
@@ -6075,9 +6064,8 @@ NUM_cache_fetch(const char *str)
 	return ent;
 }
 
-/* ----------
+/*
  * Cache routine for NUM to_char version
- * ----------
  */
 static FormatNode *
 NUM_cache(int len, NUMDesc *Num, text *pars_str, bool *shouldFree)
@@ -6348,9 +6336,8 @@ roman_to_int(NUMProc *Np, int input_len)
 }
 
 
-/* ----------
+/*
  * Locale
- * ----------
  */
 static void
 NUM_prepare_locale(NUMProc *Np)
@@ -6426,13 +6413,12 @@ NUM_prepare_locale(NUMProc *Np)
 	}
 }
 
-/* ----------
+/*
  * Return pointer of last relevant number after decimal point
  *	12.0500 --> last relevant is '5'
  *	12.0000 --> last relevant is '.'
  * If there is no decimal point, return NULL (which will result in same
  * behavior as if FM hadn't been specified).
- * ----------
  */
 static char *
 get_last_relevant_decnum(char *num)
@@ -6458,9 +6444,8 @@ get_last_relevant_decnum(char *num)
 	return result;
 }
 
-/* ----------
+/*
  * Number extraction for TO_NUMBER()
- * ----------
  */
 static void
 NUM_numpart_from_char(NUMProc *Np, int id, int input_len)
@@ -6673,9 +6658,8 @@ NUM_numpart_from_char(NUMProc *Np, int id, int input_len)
 		 *(_n)->number == '0' && \
 				 (_n)->Num->post != 0)
 
-/* ----------
+/*
  * Add digit or sign to number-string
- * ----------
  */
 static void
 NUM_numpart_to_char(NUMProc *Np, int id)
@@ -8006,10 +7990,9 @@ NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 	}
 }
 
-/* ----------
+/*
  * MACRO: Start part of NUM - for all NUM's to_char variants
  *	(sorry, but I hate copy same code - macro is better..)
- * ----------
  */
 #define NUM_TOCHAR_prepare \
 do { \
@@ -8020,9 +8003,8 @@ do { \
 	format	= NUM_cache(len, &Num, fmt, &shouldFree);		\
 } while (0)
 
-/* ----------
+/*
  * MACRO: Finish part of NUM
- * ----------
  */
 #define NUM_TOCHAR_finish \
 do { \
@@ -8042,9 +8024,8 @@ do { \
 	SET_VARSIZE(result, len + VARHDRSZ); \
 } while (0)
 
-/* -------------------
+/*
  * NUMERIC to_number() (convert string to numeric)
- * -------------------
  */
 Datum
 numeric_to_number(PG_FUNCTION_ARGS)
@@ -8101,9 +8082,8 @@ numeric_to_number(PG_FUNCTION_ARGS)
 	return result;
 }
 
-/* ------------------
+/*
  * NUMERIC to_char()
- * ------------------
  */
 Datum
 numeric_to_char(PG_FUNCTION_ARGS)
@@ -8229,9 +8209,8 @@ numeric_to_char(PG_FUNCTION_ARGS)
 	PG_RETURN_TEXT_P(result);
 }
 
-/* ---------------
+/*
  * INT4 to_char()
- * ---------------
  */
 Datum
 int4_to_char(PG_FUNCTION_ARGS)
@@ -8323,9 +8302,8 @@ int4_to_char(PG_FUNCTION_ARGS)
 	PG_RETURN_TEXT_P(result);
 }
 
-/* ---------------
+/*
  * INT8 to_char()
- * ---------------
  */
 Datum
 int8_to_char(PG_FUNCTION_ARGS)
@@ -8435,9 +8413,8 @@ int8_to_char(PG_FUNCTION_ARGS)
 	PG_RETURN_TEXT_P(result);
 }
 
-/* -----------------
+/*
  * FLOAT4 to_char()
- * -----------------
  */
 Datum
 float4_to_char(PG_FUNCTION_ARGS)
@@ -8548,9 +8525,8 @@ float4_to_char(PG_FUNCTION_ARGS)
 	PG_RETURN_TEXT_P(result);
 }
 
-/* -----------------
+/*
  * FLOAT8 to_char()
- * -----------------
  */
 Datum
 float8_to_char(PG_FUNCTION_ARGS)
