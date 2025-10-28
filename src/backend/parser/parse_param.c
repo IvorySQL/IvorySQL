@@ -2612,8 +2612,8 @@ get_bindByName(void)
 }
 
 /*
- *  * set dynamic CallStmt parser status
- *   */
+ * set dynamic CallStmt parser status
+ */
 void
 setdynamic_callparser(bool value)
 {

@@ -42,7 +42,7 @@ exec_prepare_func(Ivyconn *conn, int byname)
 	IvyError *errhp = NULL;
 	char	x[256] = "beijing";
 	char	y[256] = "welcome to beijing";
-	char	z[256] = "welcome to HighGo Software";
+	char	z[256] = "welcome to IvorySQL";
 	IvyBindInfo *bindinfo[3] = {NULL, NULL, NULL};
 	int index[3] = {0,0,0};
 
@@ -183,7 +183,7 @@ exec_prepare_proc(Ivyconn *conn, int byname)
 	IvyPreparedStatement *stmthandle = NULL;
 	IvyError *errhp = NULL;
 	char	x[256] = "welcome to ";
-	char	y[256] = "welcome to HighGo Software";
+	char	y[256] = "welcome to IvorySQL";
 	IvyBindInfo *bindinfo[2] = {NULL, NULL};
 	int index[2] = {0,0};
 

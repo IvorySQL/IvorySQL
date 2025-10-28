@@ -1043,13 +1043,13 @@ print x
 
 begin
 raise notice 'old value of :x is %', :x;
-:x := '瀚高集团';
+:x := 'IvorySQL社区';
 raise notice 'new value of :x is %', :x;
 end;
 /
 NOTICE:  old value of :x is 数据库
 ERROR:  value too long for type char(3 char)
-CONTEXT:  PL/iSQL assignment ":x := '瀚高集团'"
+CONTEXT:  PL/iSQL assignment ":x := 'IvorySQL社区'"
 PL/iSQL function inline_code_block line 3 at assignment
 print x
    X    
@@ -1059,20 +1059,20 @@ print x
 -- catch exception
 begin
 raise notice 'old value of :x is %', :x;
-:x := '瀚高集团';
+:x := 'IvorySQL社区';
 EXCEPTION WHEN OTHERS THEN
 	raise notice 'Get an exception and reassign an acceptable value to the bind variable';
-	:x := '瀚高';
+	:x := 'abc';
 raise notice 'new value of :x is %', :x;
 end;
 /
 NOTICE:  old value of :x is 数据库
 NOTICE:  Get an exception and reassign an acceptable value to the bind variable
-NOTICE:  new value of :x is 瀚高 
+NOTICE:  new value of :x is abc
 print x
-   X   
--------
- 瀚高 
+  X  
+-----
+ abc
 
 -- Referencing bind variables within non-anonymous block queries
 var x number = 4
@@ -1188,7 +1188,7 @@ return 999;
 END;
 /
 -- error out within Oracle: ORA-06572: Function F_TEST has out arguments.
--- error out within IvorySQL: ERROR:  OUT or IN OUT arguments of the funtion f_test must be variables.
+-- error out within IvorySQL: ERROR:  OUT or IN OUT arguments of the function f_test must be variables.
 select f_test(:x, :y, :z) from dual;
 ERROR:  OUT or IN OUT arguments of the function f_test must be variables 
 -- error out within Oracle: ORA-06572: Function F_TEST has out arguments.

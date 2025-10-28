@@ -451,7 +451,7 @@ print x
 
 begin
 raise notice 'old value of :x is %', :x;
-:x := '瀚高集团';
+:x := 'IvorySQL社区';
 raise notice 'new value of :x is %', :x;
 end;
 /
@@ -461,10 +461,10 @@ print x
 -- catch exception
 begin
 raise notice 'old value of :x is %', :x;
-:x := '瀚高集团';
+:x := 'IvorySQL社区';
 EXCEPTION WHEN OTHERS THEN
 	raise notice 'Get an exception and reassign an acceptable value to the bind variable';
-	:x := '瀚高';
+	:x := 'abc';
 raise notice 'new value of :x is %', :x;
 end;
 /
@@ -528,7 +528,7 @@ END;
 /
 
 -- error out within Oracle: ORA-06572: Function F_TEST has out arguments.
--- error out within IvorySQL: ERROR:  OUT or IN OUT arguments of the funtion f_test must be variables.
+-- error out within IvorySQL: ERROR:  OUT or IN OUT arguments of the function f_test must be variables.
 select f_test(:x, :y, :z) from dual;
 
 -- error out within Oracle: ORA-06572: Function F_TEST has out arguments.
