@@ -1927,6 +1927,7 @@ exec_bind_message(StringInfo input_message)
 			elog(ERROR, "number of parameters modes isn't same as of params");
 		}
 
+		/* Validate parameter length list length matches parameter count */
 		if (dostmt_plength != NIL && list_length(dostmt_plength) != numParams)
 			elog(ERROR, "the specified parameter length list does not match the number of parameters");
 
@@ -2155,10 +2156,7 @@ exec_bind_message(StringInfo input_message)
 					case ORACHARBYTEOID:
 					case ORAVARCHARCHAROID:
 					case ORAVARCHARBYTEOID:
-						/*
-						 * Simple enough, hardcoded to avoid constructing an ArrayType
-						 * representing typmod and calling the typmodin function.
-						 */
+						/* Hard-code typmod for Oracle char/varchar types to avoid ArrayType construction */
 						params->params[paramno].ptypmod = intVal(v) + VARHDRSZ;
 						break;
 					default:

@@ -3221,7 +3221,6 @@ IvyPrintQueryResults(PGresult *results, bool quiet, bool isoracall)
 	{
 		case PGRES_TUPLES_OK:
 
-			/* Begin - ReqID:SRS-CMD-PSQL */
 			cmdstatus = PQcmdStatus(results);
 
 			/*
@@ -3246,7 +3245,6 @@ IvyPrintQueryResults(PGresult *results, bool quiet, bool isoracall)
 				success = true;
 				break;
 			}
-			/* End - ReqID:SRS-CMD-PSQL */
 
 			/* store or execute or print the data ... */
 			if (pset.gset_prefix)
@@ -3275,7 +3273,6 @@ IvyPrintQueryResults(PGresult *results, bool quiet, bool isoracall)
 				PrintQueryStatus2(results, "\nCall completed.\n");
 			else
 				IvyPrintQueryStatus(results);
-			/* End - ReqID:SRS-CMD-PSQL */
 			success = true;
 			break;
 

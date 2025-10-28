@@ -3018,8 +3018,7 @@ transformPLAssignStmt(ParseState *pstate, PLAssignStmt *stmt)
 		if (pstate->do_from_call &&
 			(((type_id == ORACHARCHAROID || type_id == ORACHARBYTEOID) &&
 				(targettype == ORACHARCHAROID || targettype == ORACHARBYTEOID)) ||
-			((targettype == ORAVARCHARCHAROID || targettype == ORAVARCHARBYTEOID) &&
-				(targettype == ORAVARCHARCHAROID || targettype == ORAVARCHARBYTEOID))))
+			((targettype == ORAVARCHARCHAROID || targettype == ORAVARCHARBYTEOID))))
 			tle->expr = (Expr *)
 				coerce_to_target_type(pstate,
 									  orig_expr, type_id,

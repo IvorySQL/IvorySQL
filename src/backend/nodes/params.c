@@ -62,7 +62,7 @@ makeParamList(int numParams)
 	retval->numParams = numParams;
 	retval->outparamSetup = NULL;
 
-	/* set all the params mode to IN and typmod is -1 */
+	/* Initialize all parameters to IN mode with typmod -1 */
 	for (i = 0; i < numParams; i++)
 	{
 		retval->params[i].pmode = PROARGMODE_IN;

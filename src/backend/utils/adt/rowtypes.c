@@ -2147,7 +2147,6 @@ get_parameter_description(PG_FUNCTION_ARGS)
 		if (nodeTag(linitial(parsetree)) == T_RawStmt &&
 			nodeTag(((RawStmt *)linitial(parsetree))->stmt) == T_DoStmt)
 		{
-			/* Begin - BUG:M0000077 */
 			DoStmt		*stmt = (DoStmt *)(((RawStmt *)linitial(parsetree))->stmt);
 			ListCell	*arg;
 			DefElem		*as_item = NULL;

@@ -4005,7 +4005,7 @@ Ivyreplacenamebindtoposition(Ivyconn *tconn,
 
 		if (position == stmtHandle->nParams)
 		{
-			snprintf(errmsg, size_error_buf, "placehondvar \"%s\" not found",
+			snprintf(errmsg, size_error_buf, "placeholder variable \"%s\" not found",
 						tmp->name);
 			return 0;
 		}
@@ -4273,7 +4273,7 @@ Ivyreplacenamebindtoposition2(Ivyconn *tconn,
 
 		if (position == stmtHandle->nParams)
 		{
-			snprintf(errhp->error_msg, errhp->err_buf_size, "placehondvar \"%s\" not found",
+			snprintf(errhp->error_msg, errhp->err_buf_size, "placeholder variable \"%s\" not found",
 						tmp->name);
 			return 0;
 		}
@@ -4334,7 +4334,7 @@ Ivyreplacenamebindtoposition3(Ivyconn *tconn,
 	{
 		if (!host || host->length == 0)
 		{
-			snprintf(errhp->error_msg, errhp->err_buf_size, "%s", "No placehondvars specified");
+			snprintf(errhp->error_msg, errhp->err_buf_size, "%s", "No placeholder variables specified");
 			return 0;
 		}
 			
@@ -4452,7 +4452,7 @@ Ivyreplacenamebindtoposition3(Ivyconn *tconn,
 				break;
 		if (position == stmtHandle->nParams)
 		{
-			snprintf(errhp->error_msg, errhp->err_buf_size, "placehondvar \"%s\" not found",
+			snprintf(errhp->error_msg, errhp->err_buf_size, "placeholder variable \"%s\" not found",
 						tmp->name);
 			return 0;
 		}
