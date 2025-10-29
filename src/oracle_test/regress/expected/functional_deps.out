@@ -1,4 +1,5 @@
 -- from http://www.depesz.com/index.php/2010/04/19/getting-unique-elements/
+\set EXECUTE_RUN_PREPARE on
 CREATE TEMP TABLE articles (
     id int CONSTRAINT articles_pkey PRIMARY KEY,
     keywords text,

@@ -2,6 +2,7 @@
 -- TRANSACTIONS
 --
 
+\set EXECUTE_RUN_PREPARE on
 BEGIN;
 
 CREATE TABLE xacttest (a smallint, b real);

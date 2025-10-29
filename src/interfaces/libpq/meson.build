@@ -16,6 +16,8 @@ libpq_sources = files(
   'legacy-pqsignal.c',
   'libpq-events.c',
   'pqexpbuffer.c',
+  'ivy-exec.c',
+  'ivy_sema.c',
 )
 libpq_so_sources = [] # for shared lib, in addition to the above
 

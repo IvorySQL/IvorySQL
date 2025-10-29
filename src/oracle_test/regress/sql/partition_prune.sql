@@ -2,6 +2,7 @@
 -- Test partitioning planner code
 --
 
+\set EXECUTE_RUN_PREPARE on
 -- Helper function which can be used for masking out portions of EXPLAIN
 -- ANALYZE which could contain information that's not consistent on all
 -- platforms.
