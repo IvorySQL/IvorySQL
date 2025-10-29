@@ -2621,6 +2621,7 @@ header_checks = [
   'sys/signalfd.h',
   'sys/ucred.h',
   'termios.h',
+  'uchar.h',
   'ucred.h',
   'xlocale.h',
 ]

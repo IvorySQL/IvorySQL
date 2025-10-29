@@ -1601,6 +1601,7 @@ AC_CHECK_HEADERS(m4_normalize([
 	sys/signalfd.h
 	sys/ucred.h
 	termios.h
+	uchar.h
 	ucred.h
 	xlocale.h
 ]))
