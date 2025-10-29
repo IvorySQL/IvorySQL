@@ -441,7 +441,7 @@ typedef struct
 	bool		has_tz;			/* was there a TZ field? */
 	int			gmtoffset;		/* GMT offset of fixed-offset zone abbrev */
 	pg_tz	   *tzp;			/* pg_tz for dynamic abbrev */
-	char	   *abbrev;			/* dynamic abbrev */
+	const char *abbrev;			/* dynamic abbrev */
 } TmFromChar;
 
 #define ZERO_tmfc(_X) memset(_X, 0, sizeof(TmFromChar))
@@ -1057,8 +1057,8 @@ static void dump_index(const KeyWord *k, const int *index);
 static void dump_node(FormatNode *node, int max);
 #endif
 
-static const char *get_th(char *num, int type);
-static char *str_numth(char *dest, char *num, int type);
+static const char *get_th(const char *num, int type);
+static char *str_numth(char *dest, const char *num, int type);
 static int	adjust_partial_year_to_2020(int year);
 static int	ora_adjust_partial_year(int year, int id);
 static size_t strspace_len(const char *str);
@@ -1077,15 +1077,15 @@ static bool from_char_seq_search(int *dest, const char **src,
 								 const char *const *array,
 								 char **localized_array, Oid collid,
 								 FormatNode *node, Node *escontext);
-static bool do_to_timestamp(text *date_txt, text *fmt, Oid collid, bool std,
+static bool do_to_timestamp(const text *date_txt, const text *fmt, Oid collid, bool std,
 							struct pg_tm *tm, fsec_t *fsec, struct fmt_tz *tz,
 							int *fprec, uint32 *flags, Node *escontext);
 static char *fill_str(char *str, int c, int max);
-static FormatNode *NUM_cache(int len, NUMDesc *Num, text *pars_str, bool *shouldFree);
+static FormatNode *NUM_cache(int len, NUMDesc *Num, const text *pars_str, bool *shouldFree);
 static char *int_to_roman(int number);
 static int	roman_to_int(NUMProc *Np, size_t input_len);
 static void NUM_prepare_locale(NUMProc *Np);
-static char *get_last_relevant_decnum(char *num);
+static char *get_last_relevant_decnum(const char *num);
 static void NUM_numpart_from_char(NUMProc *Np, int id, size_t input_len);
 static void NUM_numpart_to_char(NUMProc *Np, int id);
 static char *NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
@@ -1561,7 +1561,7 @@ dump_node(FormatNode *node, int max)
  * type --> 0 upper, 1 lower
  */
 static const char *
-get_th(char *num, int type)
+get_th(const char *num, int type)
 {
 	size_t		len = strlen(num);
 	char		last;
@@ -1607,7 +1607,7 @@ get_th(char *num, int type)
  * type --> 0 upper, 1 lower
  */
 static char *
-str_numth(char *dest, char *num, int type)
+str_numth(char *dest, const char *num, int type)
 {
 	if (dest != num)
 		strcpy(dest, num);
@@ -4508,7 +4508,7 @@ DCH_cache_fetch(const char *str, bool std)
  *
  */
 text *
-datetime_to_char_body(TmToChar *tmtc, text *fmt, bool is_interval, Oid collid)
+datetime_to_char_body(TmToChar *tmtc, const text *fmt, bool is_interval, Oid collid)
 {
 	FormatNode *format;
 	char	   *fmt_str,
@@ -5020,7 +5020,7 @@ datetime_format_has_tz(const char *fmt_str)
  * struct 'tm', 'fsec', struct 'tz', and 'fprec'.
  */
 static bool
-do_to_timestamp(text *date_txt, text *fmt, Oid collid, bool std,
+do_to_timestamp(const text *date_txt, const text *fmt, Oid collid, bool std,
 				struct pg_tm *tm, fsec_t *fsec, struct fmt_tz *tz,
 				int *fprec, uint32 *flags, Node *escontext)
 {
@@ -6022,7 +6022,7 @@ NUM_cache_fetch(const char *str)
  * Cache routine for NUM to_char version
  */
 static FormatNode *
-NUM_cache(int len, NUMDesc *Num, text *pars_str, bool *shouldFree)
+NUM_cache(int len, NUMDesc *Num, const text *pars_str, bool *shouldFree)
 {
 	FormatNode *format = NULL;
 	char	   *str;
@@ -6374,7 +6374,7 @@ NUM_prepare_locale(NUMProc *Np)
  * behavior as if FM hadn't been specified).
  */
 static char *
-get_last_relevant_decnum(char *num)
+get_last_relevant_decnum(const char *num)
 {
 	char	   *result,
 			   *p = strchr(num, '.');
