@@ -108,6 +108,12 @@
 #endif
 
 /*
+ * Previously used PostgreSQL-specific spelling, for backward compatibility
+ * for extensions.
+ */
+#define pg_restrict restrict
+
+/*
  * Attribute macros
  *
  * GCC: https://gcc.gnu.org/onlinedocs/gcc/Function-Attributes.html
