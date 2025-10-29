@@ -751,6 +751,7 @@ XLogInsertRecord(XLogRecData *rdata,
 				 XLogRecPtr fpw_lsn,
 				 uint8 flags,
 				 int num_fpi,
+				 uint64 fpi_bytes,
 				 bool topxid_included)
 {
 	XLogCtlInsert *Insert = &XLogCtl->Insert;
@@ -1083,6 +1084,7 @@ XLogInsertRecord(XLogRecData *rdata,
 		pgWalUsage.wal_bytes += rechdr->xl_tot_len;
 		pgWalUsage.wal_records++;
 		pgWalUsage.wal_fpi += num_fpi;
+		pgWalUsage.wal_fpi_bytes += fpi_bytes;
 
 		/* Required for the flush of pending stats WAL data */
 		pgstat_report_fixed = true;
