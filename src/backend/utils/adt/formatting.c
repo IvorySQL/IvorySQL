@@ -2216,8 +2216,7 @@ from_char_set_mode(TmFromChar *tmfc, const FromCharDateMode mode,
 			ereturn(escontext, false,
 					(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
 					 errmsg("invalid combination of date conventions"),
-					 errhint("Do not mix Gregorian and ISO week date "
-							 "conventions in a formatting template.")));
+					 errhint("Do not mix Gregorian and ISO week date conventions in a formatting template.")));
 	}
 	return true;
 }
@@ -2240,8 +2239,7 @@ from_char_set_int(int *dest, const int value, const FormatNode *node,
 				(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
 				 errmsg("conflicting values for \"%s\" field in formatting string",
 						node->key->name),
-				 errdetail("This value contradicts a previous setting "
-						   "for the same field type.")));
+				 errdetail("This value contradicts a previous setting for the same field type.")));
 	*dest = value;
 	return true;
 }
@@ -2313,8 +2311,7 @@ from_char_parse_int_len(int *dest, const char **src, const size_t len, FormatNod
 							node->key->name),
 					 errdetail("Field requires %zu characters, but only %zu remain.",
 							   len, used),
-					 errhint("If your source string is not fixed-width, "
-							 "try using the \"FM\" modifier.")));
+					 errhint("If your source string is not fixed-width, try using the \"FM\" modifier.")));
 
 		errno = 0;
 		result = strtol(copy, &last, 10);
@@ -2327,8 +2324,7 @@ from_char_parse_int_len(int *dest, const char **src, const size_t len, FormatNod
 							copy, node->key->name),
 					 errdetail("Field requires %zu characters, but only %zu could be parsed.",
 							   len, used),
-					 errhint("If your source string is not fixed-width, "
-							 "try using the \"FM\" modifier.")));
+					 errhint("If your source string is not fixed-width, try using the \"FM\" modifier.")));
 
 		*src += used;
 	}
@@ -2553,8 +2549,7 @@ from_char_seq_search(int *dest, const char **src, const char *const *array,
 				(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
 				 errmsg("invalid value \"%s\" for \"%s\"",
 						copy, node->key->name),
-				 errdetail("The given value did not match any of "
-						   "the allowed values for this field.")));
+				 errdetail("The given value did not match any of the allowed values for this field.")));
 	}
 	*src += len;
 	return true;
@@ -3717,8 +3712,7 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 						 */
 						ereturn(escontext,,
 								(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
-								 errmsg("invalid value \"%s\" for \"%s\"",
-										s, n->key->name),
+								 errmsg("invalid value \"%s\" for \"%s\"", s, n->key->name),
 								 errdetail("Time zone abbreviation is not recognized.")));
 					}
 					/* otherwise parse it like OF */
@@ -3981,8 +3975,7 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 					if (matched < 2)
 						ereturn(escontext,,
 								(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
-								 errmsg("invalid value \"%s\" for \"%s\"",
-										s, "Y,YYY")));
+								 errmsg("invalid value \"%s\" for \"%s\"", s, "Y,YYY")));
 
 					/* years += (millennia * 1000); */
 					if (pg_mul_s32_overflow(millennia, 1000, &millennia) ||
@@ -4763,8 +4756,7 @@ to_date(PG_FUNCTION_ARGS)
 	if (!IS_VALID_JULIAN(tm.tm_year, tm.tm_mon, tm.tm_mday))
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				 errmsg("date out of range: \"%s\"",
-						text_to_cstring(date_txt))));
+				 errmsg("date out of range: \"%s\"", text_to_cstring(date_txt))));
 
 	result = date2j(tm.tm_year, tm.tm_mon, tm.tm_mday) - POSTGRES_EPOCH_JDATE;
 
@@ -4772,8 +4764,7 @@ to_date(PG_FUNCTION_ARGS)
 	if (!IS_VALID_DATE(result))
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				 errmsg("date out of range: \"%s\"",
-						text_to_cstring(date_txt))));
+				 errmsg("date out of range: \"%s\"", text_to_cstring(date_txt))));
 
 	PG_RETURN_DATEADT(result);
 }
@@ -4877,8 +4868,7 @@ parse_datetime(text *date_txt, text *fmt, Oid collid, bool strict,
 				if (!IS_VALID_JULIAN(tm.tm_year, tm.tm_mon, tm.tm_mday))
 					ereturn(escontext, (Datum) 0,
 							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-							 errmsg("date out of range: \"%s\"",
-									text_to_cstring(date_txt))));
+							 errmsg("date out of range: \"%s\"", text_to_cstring(date_txt))));
 
 				result = date2j(tm.tm_year, tm.tm_mon, tm.tm_mday) -
 					POSTGRES_EPOCH_JDATE;
@@ -4887,8 +4877,7 @@ parse_datetime(text *date_txt, text *fmt, Oid collid, bool strict,
 				if (!IS_VALID_DATE(result))
 					ereturn(escontext, (Datum) 0,
 							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-							 errmsg("date out of range: \"%s\"",
-									text_to_cstring(date_txt))));
+							 errmsg("date out of range: \"%s\"", text_to_cstring(date_txt))));
 
 				*typid = DATEOID;
 				return DateADTGetDatum(result);
@@ -5125,8 +5114,7 @@ do_to_timestamp(const text *date_txt, const text *fmt, Oid collid, bool std,
 		{
 			errsave(escontext,
 					(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
-					 errmsg("hour \"%d\" is invalid for the 12-hour clock",
-							tm->tm_hour),
+					 errmsg("hour \"%d\" is invalid for the 12-hour clock", tm->tm_hour),
 					 errhint("Use the 24-hour clock, or give an hour between 1 and 12.")));
 			goto fail;
 		}
