@@ -143,7 +143,7 @@ extern TupleHashTable BuildTupleHashTable(PlanState *parent,
 										  long nbuckets,
 										  Size additionalsize,
 										  MemoryContext metacxt,
-										  MemoryContext tablecxt,
+										  MemoryContext tuplescxt,
 										  MemoryContext tempcxt,
 										  bool use_variable_hash_iv);
 extern TupleHashEntry LookupTupleHashEntry(TupleHashTable hashtable,
