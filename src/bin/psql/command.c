@@ -4522,7 +4522,7 @@ connection_warnings(bool in_startup)
 		}
 		/* For version match, only print psql banner on startup. */
 		else if (in_startup)
-			printf("%s(%s), %s(%s)\n", pset.progname, PG_VERSION, "ivorysql", PACKAGE_IVORYSQL_VERSION);
+			printf("%s (%s)\n", pset.progname, PG_VERSION);
 
 		/*
 		 * Warn if server's major version is newer than ours, or if server
