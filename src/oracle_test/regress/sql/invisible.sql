@@ -1,4 +1,5 @@
 -- sanity check of system catalog
+\set EXECUTE_RUN_PREPARE on
 SELECT attrelid, attname, attisinvisible FROM pg_attribute WHERE attisinvisible;
 
 

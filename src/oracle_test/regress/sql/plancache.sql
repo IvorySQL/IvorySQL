@@ -2,6 +2,7 @@
 -- Tests to exercise the plan caching/invalidation mechanism
 --
 
+\set EXECUTE_RUN_PREPARE on
 set ivorysql.enable_emptystring_to_null to false;
 CREATE TEMP TABLE pcachetest AS SELECT * FROM int8_tbl;
 

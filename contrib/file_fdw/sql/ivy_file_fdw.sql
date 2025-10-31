@@ -2,6 +2,7 @@
 -- Test foreign-data wrapper file_fdw.
 --
 
+\set EXECUTE_RUN_PREPARE on
 -- directory paths are passed to us in environment variables
 \getenv abs_srcdir PG_ABS_SRCDIR
 

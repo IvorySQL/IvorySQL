@@ -1,3 +1,4 @@
+\set EXECUTE_RUN_PREPARE on
 set ivorysql.enable_emptystring_to_null to false;
 CREATE TABLE xmltest (
     id int,

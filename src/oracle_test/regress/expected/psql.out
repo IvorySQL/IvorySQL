@@ -2,6 +2,7 @@
 -- Tests for psql features that aren't closely connected to any
 -- specific server features
 --
+\set EXECUTE_RUN_PREPARE on
 -- \set
 -- fail: invalid name
 \set invalid/name foo

@@ -196,6 +196,12 @@ valid_bind_variable_value(const int typoid, const int typmod, const char *value)
 				}
 			}
 			break;
+		/* TODO */
+		//case REFCURSOR:
+		//case BLOB:
+		//case CLOB:
+		//case NCLOB:
+		//case BFILE:
 		default:
 			pg_log_error("The datatype of the bind variable is not supported.");
 			break;
@@ -1008,9 +1014,12 @@ AssignBindVariable(VariableSpace space, const char *name, const char *value)
 	{
 		char	*newvalue = valid_bind_variable_value(current->typoid, current->typmod, value);
 
-		if (current->value)
-			pg_free(current->value);
-		current->value = newvalue;
+		if (newvalue)
+		{
+			if (current->value)
+				pg_free(current->value);
+			current->value = newvalue;
+		}
 	}
 	else
 	{
@@ -1062,4 +1071,38 @@ ValidBindVariableName(const char *name)
 	}
 
 	return true;
+}
+
+/*
+ * Checks whether a bind variable exists,and returns the
+ * bind variable if exists, otherwise returns NULL.
+ */
+struct _variable *
+BindVariableExist(VariableSpace space, const char *name)
+{
+	struct _variable *current;
+
+	if (!space || !name)
+		return NULL;
+
+	if (!ValidBindVariableName(name))
+	{
+		/* If the name is illegal, it must not exist */
+		return NULL;
+	}
+
+	for (current = space->next; current; current = current->next)
+	{
+		int			cmp = strcmp(current->name, name);
+
+		if (cmp == 0 && current->varkind == PSQL_BIND_VAR)
+		{
+			return current;
+		}
+
+		if (cmp > 0)
+			break;	/* it's not there */
+	}
+
+	return NULL;
 }

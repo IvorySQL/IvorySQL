@@ -652,10 +652,12 @@ static void determineLanguage(List *options);
 %type <list>		hash_partbound
 %type <defelt>		hash_partbound_elem
 
-%type <node> param_mode
 %type <node> param_mode_item
 %type <list> param_mode_list
+%type <list> params_length_list
 %type <str>  opt_param_name
+%type <node> param_mode
+%type <boolean>	opt_do_from_where
 
 %type <list>	identity_clause identity_options drop_identity
 %type <boolean>	opt_with opt_by
@@ -846,6 +848,8 @@ static void determineLanguage(List *options);
 %token <keyword> BINARY_FLOAT_NAN BINARY_FLOAT_INFINITY
 	BINARY_DOUBLE_NAN BINARY_DOUBLE_INFINITY
 %token <keyword> NAN_P INFINITE_P
+
+%token <keyword> PARAMSLENGTH
 
 %type <node> CreatePackageStmt CreatePackageBodyStmt AlterPackageStmt
 %type <node> package_proper_item
@@ -1252,6 +1256,21 @@ CallStmt:	CALL func_application
 
 					n->funccall = castNode(FuncCall, $2);
 					$$ = (Node *) n;
+				}
+			| CALL func_application INTO ORAPARAM
+				{
+					CallStmt *n = makeNode(CallStmt);
+					OraParamRef *hostvar = makeNode(OraParamRef);
+					char	*callstr = NULL;
+					n->funccall = castNode(FuncCall, $2);
+					hostvar->number = 0;
+					hostvar->location = @4;
+					hostvar->name = $4;
+					n->hostvariable = hostvar;
+					callstr = pnstrdup(pg_yyget_extra(yyscanner)->core_yy_extra.scanbuf + @2, @3 - @2);
+					n->callinto = psprintf("%s := %s;", $4, callstr);
+					pfree(callstr);
+					$$ = (Node *)n;
 				}
 			| EXEC exec_func_application
 				{
@@ -9409,7 +9428,7 @@ func_arg_with_default:
 					$$ = $1;
 					$$->defexpr = $3;
 				}
-		| func_arg '=' a_expr
+		| func_arg plassign_equals a_expr
 				{
 					$$ = $1;
 					$$->defexpr = $3;
@@ -10236,6 +10255,18 @@ DoStmt: DO dostmt_opt_list
 					DoStmt *n = makeNode(DoStmt);
 					n->args = $2;
 					n->paramsmode = $4;
+					n->paramslen = NIL;
+					determineLanguage(n->args);
+					$$ = (Node *)n;
+				}
+
+			| DO dostmt_opt_list USING param_mode_list PARAMSLENGTH params_length_list opt_do_from_where
+				{
+					DoStmt *n = makeNode(DoStmt);
+					n->args = $2;
+					n->paramsmode = $4;
+					n->paramslen = $6;
+					n->do_from_call = $7;
 					determineLanguage(n->args);
 					$$ = (Node *)n;
 				}
@@ -10303,6 +10334,21 @@ param_mode:
 				| IN_P OUT_P    		{ $$ = (Node *) makeString("inout"); }
 		;
 
+params_length_list:
+			SignedIconst
+				{
+					$$ = list_make1(makeInteger($1));
+				}
+			| params_length_list ',' SignedIconst
+				{
+					$$ = lappend($1, makeInteger($3));
+				}
+		;
+
+opt_do_from_where:
+			GENERATED FROM CALL			{ $$ = true; }
+			| /*EMPTY*/					{ $$ = false; }
+		;
 
 /*****************************************************************************
  *
@@ -20278,6 +20324,7 @@ unreserved_keyword:
 			| PARALLEL
 			| PARALLEL_ENABLE
 			| PARAMETER
+			| PARAMSLENGTH
 			| PARSER
 			| PARTIAL
 			| PARTITION
@@ -20984,6 +21031,7 @@ bare_label_keyword:
 			| PARALLEL
 			| PARALLEL_ENABLE
 			| PARAMETER
+			| PARAMSLENGTH
 			| PARSER
 			| PARTIAL
 			| PARTITION

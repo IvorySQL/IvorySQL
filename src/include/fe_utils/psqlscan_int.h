@@ -172,6 +172,15 @@ typedef struct psqlplus_cmd_print
 } psqlplus_cmd_print;
 
 /*
+ * EXECUTE command node
+ */
+typedef struct psqlplus_cmd_execute
+{
+	psqlplus_cmd_type	cmd_type;
+	char				*plisqlstmts;	/* plisql statements text */
+} psqlplus_cmd_execute;
+
+/*
  * All working state of the lexer must be stored in PsqlScanStateData
  * between calls.  This allows us to have multiple open lexer operations,
  * which is needed for nested include files.  The lexer itself is not
@@ -233,6 +242,7 @@ typedef struct PsqlScanStateData
 	bool		anonymous_label_start;	/* T if the first token is "<<" */
 	bool		anonymous_label_ident;	/* T if the second token is an identifier */
 	bool		anonymous_label_end;	/* T if the third token is ">>" */
+	bool		xcstate;				/* T If a C-style comment is being parsed */
 
 	/*
 	 * Case 2: DECLARE BEGIN ... END is Oracle anonymous block sytax.

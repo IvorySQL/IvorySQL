@@ -23,6 +23,7 @@
 #include "funcapi.h"
 #include "libpq/pqformat.h"
 #include "miscadmin.h"
+#include "tcop/utility.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/guc.h"
@@ -2085,8 +2086,15 @@ hash_record_extended(PG_FUNCTION_ARGS)
 Datum
 get_parameter_description(PG_FUNCTION_ARGS)
 {
+	typedef struct
+	{
+		OraParamLink			*extral;
+		const char			*cmdtag;
+		char				*callintoexpr;
+	} outparam_fctx;
+
 	FuncCallContext *funcctx = NULL;
-	OraParamLink *link = NULL;
+	outparam_fctx	*user_fctx;
 	bool	dostmt = false;
 
 	if (SRF_IS_FIRSTCALL())
@@ -2099,7 +2107,7 @@ get_parameter_description(PG_FUNCTION_ARGS)
 		List		*parsetree = NULL;
 		char		**paramnames = NULL;
 		MemoryContext	oldcxt;
-		int		nparams;
+		int		nparams = 0;
 
 		funcctx = SRF_FIRSTCALL_INIT();
 		oldcxt = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
@@ -2122,57 +2130,112 @@ get_parameter_description(PG_FUNCTION_ARGS)
 		PG_END_TRY();
 
 		if (list_length(parsetree) != 1)
+		{
+			backward_oraparam_stack();
+			pop_oraparam_stack(oraparam_top_level - 1, oraparam_cur_level);
+			set_ParseDynSql(false);
 			elog(ERROR, "only one parse tree is supported");
+		}
+
+		user_fctx = (outparam_fctx *) palloc(sizeof(outparam_fctx));
+		user_fctx->extral = NULL;
+		user_fctx->cmdtag = NULL;
+		user_fctx->callintoexpr = NULL;
+
+		user_fctx->cmdtag = CreateCommandName(linitial(parsetree));
 
 		if (nodeTag(linitial(parsetree)) == T_RawStmt &&
 			nodeTag(((RawStmt *)linitial(parsetree))->stmt) == T_DoStmt)
 		{
+			DoStmt		*stmt = (DoStmt *)(((RawStmt *)linitial(parsetree))->stmt);
+			ListCell	*arg;
+			DefElem		*as_item = NULL;
+			DefElem		*language_item = NULL;
+			char		*language = NULL;
+			char		*source_text = NULL;
+
+			foreach(arg, stmt->args)
+			{
+				DefElem    *defel = (DefElem *) lfirst(arg);
+
+				if (strcmp(defel->defname, "as") == 0)
+				{
+					as_item = defel;
+				}
+				else if (strcmp(defel->defname, "language") == 0)
+				{
+					language_item = defel;
+				}
+			}
+			if (language_item)
+				language = strVal(language_item->arg);
+			if (as_item)
+				source_text = strVal(as_item->arg);
+
 			dostmt = true;
 
-			PG_TRY();
+			/*
+			 * Currently, only Oracle-compatible anonymous blocks support placeholders
+			 * for OUT parameters. For anonymous blocks in other PL languages, we only
+			 * return a {true, 0} tuple instead of reporting an error,Because interfaces
+			 * of libpq may implicitly call this function, if an error is reported, the
+			 * transaction block state of the display transaction will be destroyed.
+			 */
+			if (language &&
+				strcmp(language, "plisql") == 0 &&
+				stmt->paramsmode == NIL)
 			{
-				if (!plisql_internal_funcs.isload)
+				PG_TRY();
 				{
-					FmgrInfo	flinfo;
-					HeapTuple	languageTuple;
-					Form_pg_language languageStruct;
-					Oid 		laninline;
-
-					/* Look up the language */
-					languageTuple = SearchSysCache1(LANGOID, ObjectIdGetDatum(LANG_PLISQL_OID));
-					if (!HeapTupleIsValid(languageTuple))
+					if (!plisql_internal_funcs.isload)
 					{
-						ereport(ERROR,
-							(errcode(ERRCODE_UNDEFINED_OBJECT),
-							 errmsg("language plisql does not exist"),
-							 (extension_file_exists("plisql") ?
-							  errhint("load the plisql by CREATE EXTENSION plisql.") : 0)));
+						FmgrInfo	flinfo;
+						HeapTuple	languageTuple;
+						Form_pg_language languageStruct;
+						Oid 		laninline;
+
+						/* Look up the language and validate permissions */
+						languageTuple = SearchSysCache1(LANGOID, ObjectIdGetDatum(LANG_PLISQL_OID));
+						if (!HeapTupleIsValid(languageTuple))
+							ereport(ERROR,
+									(errcode(ERRCODE_UNDEFINED_OBJECT),
+									 errmsg("language plisql does not exist"),
+									 (extension_file_exists("plisql") ?
+									  errhint("Use CREATE EXTENSION to load the language into the database.") : 0)));
+
+						languageStruct = (Form_pg_language) GETSTRUCT(languageTuple);
+
+						/* get the handler function's OID */
+						laninline = languageStruct->laninline;
+						if (!OidIsValid(laninline))
+							ereport(ERROR,
+									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+									 errmsg("language \"%s\" does not support inline code execution",
+											NameStr(languageStruct->lanname))));
+
+						ReleaseSysCache(languageTuple);
+						fmgr_info(laninline, &flinfo);
 					}
-
-					languageStruct = (Form_pg_language) GETSTRUCT(languageTuple);
-
-					laninline = languageStruct->laninline;
-					if (!OidIsValid(laninline))
-					{
-						ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("plisql does not support inline code execution" )));
-					}
-
-					ReleaseSysCache(languageTuple);
-					fmgr_info(laninline, &flinfo);
+					//plisql_internal_funcs.compile_inline_internal(sql);
+					plisql_internal_funcs.compile_inline_internal(source_text);
+					nparams = calculate_oraparamname(&paramnames);
 				}
-				plisql_internal_funcs.compile_inline_internal(sql);
-				nparams = calculate_oraparamname(&paramnames);
+				PG_CATCH();
+				{
+					backward_oraparam_stack();
+					pop_oraparam_stack(oraparam_top_level - 1, oraparam_cur_level);
+					set_ParseDynSql(false);
+					PG_RE_THROW();
+				}
+				PG_END_TRY();
 			}
-			PG_CATCH();
-			{
-				backward_oraparam_stack();
-				pop_oraparam_stack(oraparam_top_level - 1, oraparam_cur_level);
-				set_ParseDynSql(false);
-				PG_RE_THROW();
-			}
-			PG_END_TRY();
+		}
+
+		else if (nodeTag(linitial(parsetree)) == T_RawStmt &&
+				nodeTag(((RawStmt *)linitial(parsetree))->stmt) == T_CallStmt)
+		{
+			CallStmt	*stmt = (CallStmt *)(((RawStmt *)linitial(parsetree))->stmt);
+			user_fctx->callintoexpr = stmt->callinto ? pstrdup(stmt->callinto) : NULL;
 		}
 
 		backward_oraparam_stack();
@@ -2187,52 +2250,55 @@ get_parameter_description(PG_FUNCTION_ARGS)
 		/*
 		 * build tupdesc for result tuples 
 		 */
-		tupdesc = CreateTemplateTupleDesc(2);
+		tupdesc = CreateTemplateTupleDesc(3);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "name",
 					   TEXTOID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "position",
 					   INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "hint",
+					   TEXTOID, -1, 0);
 
 		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
-		link = (OraParamLink *) palloc(sizeof(OraParamLink));
-		link->paramnames = paramnames;
-		link->total_params = nparams;
-		link->next_params = 0;
+		user_fctx->extral = (OraParamLink*) palloc(sizeof(OraParamLink));
+		user_fctx->extral->next_params = 0;
+		user_fctx->extral->total_params = nparams;
+		user_fctx->extral->paramnames = paramnames;
 
 		MemoryContextSwitchTo(oldcxt);
-		funcctx->user_fctx  = (void *) link;
+		funcctx->user_fctx  = (void *) user_fctx;
 	}
 
 	funcctx = SRF_PERCALL_SETUP();
-	link = (OraParamLink *) funcctx->user_fctx;
+	user_fctx = (outparam_fctx *) funcctx->user_fctx;
 
-	if (link->next_params <= link->total_params)
+	if (user_fctx->extral->next_params <= user_fctx->extral->total_params)
 	{
-		bool		nulls[2];
 		HeapTuple	tuple;
 		Datum		result;
-		Datum		values[2];
-
-		if (link->next_params == 0)
-		{
-			if (dostmt)
-				values[0] = CStringGetTextDatum("true");
-			else
-				values[0] = CStringGetTextDatum("false");
-
-			values[1] = Int32GetDatum(link->next_params);
-		}
-		else
-		{
-			values[0] = CStringGetTextDatum(link->paramnames[link->next_params]);
-			values[1] = Int32GetDatum(link->next_params);
-		}
+		Datum		values[3];
+		bool		nulls[3];
 
 		MemSet(nulls, 0, sizeof(nulls));
 
+		if (user_fctx->extral->next_params == 0)
+		{
+			values[0] = CStringGetTextDatum(user_fctx->cmdtag);
+			values[1] = Int32GetDatum(user_fctx->extral->next_params);
+			if (user_fctx->callintoexpr)
+				values[2] = CStringGetTextDatum(user_fctx->callintoexpr);
+			else
+				nulls[2] = true;
+		}
+		else
+		{
+			values[0] = CStringGetTextDatum(user_fctx->extral->paramnames[user_fctx->extral->next_params]);
+			values[1] = Int32GetDatum(user_fctx->extral->next_params);
+			nulls[2] = true;
+		}
+
 		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
 		result = HeapTupleGetDatum(tuple);
-		link->next_params++;
+		user_fctx->extral->next_params++;
 
 		SRF_RETURN_NEXT(funcctx, result);
 	}

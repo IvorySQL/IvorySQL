@@ -2,6 +2,7 @@
 -- Cursor regression tests
 --
 
+\set EXECUTE_RUN_PREPARE on
 BEGIN;
 
 DECLARE foo1 SCROLL CURSOR FOR SELECT * FROM tenk1 ORDER BY unique2;

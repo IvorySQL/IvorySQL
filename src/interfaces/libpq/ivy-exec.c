@@ -75,10 +75,15 @@ static int IvyhandleParamsValues(IvyPreparedStatement *stmtHandle,
 static int Ivyreplacenamebindtoposition(Ivyconn *tconn,
 						IvyPreparedStatement *stmtHandle,
 						char *errmsg,
-						size_t size_error_buf);
+						size_t size_error_buf,
+						bool *iscallinto);
 static int Ivyreplacenamebindtoposition2(Ivyconn *tconn,
 						IvyPreparedStatement *stmtHandle,
 						IvyError *errhp);
+static int Ivyreplacenamebindtoposition3(Ivyconn *tconn,
+						IvyPreparedStatement *stmtHandle,
+						IvyError *errhp,
+						HostVariable *host);
 static int IvybindOutParameterByPosInternel(IvyPreparedStatement *stmthandle,
 						IvyBindOutInfo **bindinfo,
 						int	position,
@@ -156,6 +161,82 @@ Ivyconnectdb(const char *conninfo)
 	ivyconn->conn = conn;
 	ivyconn->IvystmtHandleList = NULL;
 	return ivyconn;
+}
+
+/*
+ * A variant of Ivyconnectdb.
+ * this function constructs an Ivyconn using the PGconn structure.
+ */
+Ivyconn *
+Ivyconnectdb2(PGconn *conn)
+{
+	Ivyconn	*ivyconn = NULL;
+
+	ivyconn = (Ivyconn *) malloc(sizeof(Ivyconn));
+	if (ivyconn == NULL)
+		return NULL;
+
+	/* init self_lock */
+	if (PGSemaphoreCreate(&ivyconn->self_lock) == 0)
+	{
+		free(ivyconn);
+		return NULL;
+	}
+
+	/* init sock */
+	if (PGSemaphoreCreate(&ivyconn->lock) == 0)
+	{
+		ReleaseSemaphores(&ivyconn->self_lock);
+		free(ivyconn);
+		return NULL;
+	}
+
+	if (conn == NULL)
+	{
+		ReleaseSemaphores(&ivyconn->self_lock);
+		ReleaseSemaphores(&ivyconn->lock);
+		free(ivyconn);
+		return NULL;
+	}
+
+	ivyconn->conn = conn;
+	ivyconn->IvystmtHandleList = NULL;
+	return ivyconn;
+}
+
+/*
+ * like Ivyfinish, but we don't close the connection of tconn->conn.
+ */
+void
+Ivyfinish2(Ivyconn *tconn)
+{
+	if (tconn == NULL || tconn->conn == NULL)
+		return;
+
+	/* add lock */
+	PGSemaphoreLock(&tconn->self_lock);
+	if (tconn->conn == NULL)
+	{
+		PGSemaphoreUnlock(&tconn->self_lock);
+		return;
+	}
+
+	tconn->conn = NULL;
+	PGSemaphoreUnlock(&tconn->self_lock);
+	ReleaseSemaphores(&tconn->self_lock);
+
+	/* remove handle about its stmthandle */
+	PGSemaphoreLock(&tconn->lock);
+	IvyremoveConnRelation(tconn);
+
+	/*free stmt list */
+	Ivyfreelist(tconn->IvystmtHandleList);
+	PGSemaphoreUnlock(&tconn->lock);
+	ReleaseSemaphores(&tconn->lock);
+
+	free(tconn);
+	tconn = NULL;
+	return;
 }
 
 /*
@@ -250,6 +331,11 @@ IvyexecPreparedStatement(Ivyconn *tconn,
 	PGconn *conn = NULL;
 	PGresult *presult = NULL;
 	bool	sendPrepare = true;
+	bool	iscallinto = false;
+	char	**paramValues_p = (char **) paramValues;
+	int		*paramLengths_p = (int *) paramLengths;
+	int		*paramFormats_p = (int *) paramFormats;
+	Ivyargmode	*argmodes_p = (Ivyargmode *) argmodes;
 
 	if (tconn == NULL || tconn->conn == NULL ||
 		stmtHandle == NULL || stmtHandle->query == NULL)
@@ -287,21 +373,55 @@ IvyexecPreparedStatement(Ivyconn *tconn,
 	/* The placeholder varable is binded by name, change it to be by position */
 	if (stmtHandle->namebind != NULL &&
 		stmtHandle->name_replace == 0 &&
-		!Ivyreplacenamebindtoposition(tconn, stmtHandle, errmsg, size_error_buf))
+		!Ivyreplacenamebindtoposition(tconn, stmtHandle, errmsg, size_error_buf, &iscallinto))
 	{
 		PGSemaphoreUnlock(&stmtHandle->lock);
 		free(tresult);
 		return NULL;
 	}
 	else if (stmtHandle->stmttype == IVY_STMT_UNKNOW &&
-			!Ivyreplacenamebindtoposition(tconn, stmtHandle, errmsg, size_error_buf))
+			!Ivyreplacenamebindtoposition(tconn, stmtHandle, errmsg, size_error_buf, &iscallinto))
 	{
 		PGSemaphoreUnlock(&stmtHandle->lock);
 		free(tresult);
 		return NULL;
 	}
 
-	if (stmtHandle->stmttype == IVY_STMT_DO &&
+	/*
+	 * Adjust the position of array elements for CALL INTO stmt.
+	 */
+	if (stmtHandle->stmttype == IVY_STMT_DOFROMCALL && iscallinto && stmtHandle->nParams > 1)
+	{
+		char	*paramValues_tmp = NULL;
+		int		paramLengths_tmp, paramFormats_tmp;
+		int		i;
+		Ivyargmode	argmodes_tmp;
+		Oid		paramTypes_tmp;
+
+		paramValues_tmp = paramValues_p[nParams - 1];
+		paramLengths_tmp = paramLengths_p[nParams - 1];
+		paramFormats_tmp = paramFormats_p[nParams - 1];
+		argmodes_tmp = argmodes_p[nParams - 1];
+		paramTypes_tmp = stmtHandle->paramTypes[nParams - 1];
+
+		for (i = nParams -1; i >= 1; i--)
+		{
+			paramValues_p[i] = paramValues_p[i - 1];
+			paramLengths_p[i] = paramLengths_p[i - 1];
+			paramFormats_p[i] = paramFormats_p[i - 1];
+			argmodes_p[i] = argmodes_p[i - 1];
+			stmtHandle->paramTypes[i] = stmtHandle->paramTypes[i - 1];
+		}
+
+		paramValues_p[0] = paramValues_tmp;
+		paramLengths_p[0] = paramLengths_tmp;
+		paramFormats_p[0] = paramFormats_tmp;
+		argmodes_p[0] = argmodes_tmp;
+		stmtHandle->paramTypes[0] = paramTypes_tmp;
+	}
+
+	if ((stmtHandle->stmttype == IVY_STMT_DO ||
+		 stmtHandle->stmttype == IVY_STMT_DOFROMCALL) &&
 		!IvyHandleDostmt(tconn, stmtHandle, false, errmsg, size_error_buf))
 	{
 		PGSemaphoreUnlock(&stmtHandle->lock);
@@ -445,6 +565,11 @@ IvyexecPreparedStatement2(Ivyconn *tconn,
 	PGconn *conn = NULL;
 	PGresult *presult = NULL;
 	bool	sendPrepare = true;
+	bool	iscallinto = false;
+	char	**paramValues_p = (char **) paramValues;
+	int		*paramLengths_p = (int *) paramLengths;
+	int		*paramFormats_p = (int *) paramFormats;
+	Ivyargmode	*argmodes_p = (Ivyargmode *) argmodes;
 
 	if (tconn == NULL || tconn->conn == NULL ||
 		stmtHandle == NULL || stmtHandle->query == NULL)
@@ -485,24 +610,97 @@ IvyexecPreparedStatement2(Ivyconn *tconn,
 		return NULL;
 	}
 
+	/*
+	 * This routine does not support anonymous blocks, which may be a flaw.
+	 * Unfortunately I want this routine to support CALL INTO statement.
+	 * CALL INTO is converted into an anonymous block at the interface layer
+	 * for execution.
+	 */
+	if (stmtHandle->outbind == NULL && bindinfos != NULL)
+	{
+		IvyBindOutInfo *ptr = bindinfos;
+		IvyBindOutInfo *dumpbindinfo = NULL;
+		IvyBindOutInfo *preinfo = NULL;
+
+		while (ptr != NULL)
+		{
+			IvyBindOutInfo *tmp;
+			tmp = (IvyBindOutInfo *) malloc(sizeof(IvyBindOutInfo));
+			if (tmp == NULL)
+			{
+				PGSemaphoreUnlock(&stmtHandle->lock);
+				snprintf(errmsg, size_error_buf, "%s", "malloc failed");
+				free(tresult);
+				return NULL;
+			}
+
+			memcpy(tmp, ptr, sizeof(IvyBindOutInfo));
+			tmp->next = NULL;
+
+			if (dumpbindinfo == NULL)
+				dumpbindinfo = tmp;
+			else
+				preinfo->next = tmp;
+
+			preinfo = tmp;
+			ptr = ptr->next;
+		}
+
+		stmtHandle->outbind = dumpbindinfo;
+	}
+
 	/* The placeholder varable is binded by name, change it to be by position */
 	if (stmtHandle->namebind != NULL &&
 		stmtHandle->name_replace == 0 &&
-		Ivyreplacenamebindtoposition(tconn, stmtHandle, errmsg, size_error_buf) != 1)
+		Ivyreplacenamebindtoposition(tconn, stmtHandle, errmsg, size_error_buf, &iscallinto) != 1)
 	{
 		PGSemaphoreUnlock(&stmtHandle->lock);
 		free(tresult);
 		return NULL;
 	}
 	else if (stmtHandle->stmttype == IVY_STMT_UNKNOW &&
-			!Ivyreplacenamebindtoposition(tconn, stmtHandle, errmsg, size_error_buf))
+			!Ivyreplacenamebindtoposition(tconn, stmtHandle, errmsg, size_error_buf, &iscallinto))
 	{
 		PGSemaphoreUnlock(&stmtHandle->lock);
 		free(tresult);
 		return NULL;
 	}
 
-	if (stmtHandle->stmttype == IVY_STMT_DO &&
+	/*
+	 * Adjust the position of array elements for CALL INTO stmt.
+	 */
+	if (stmtHandle->stmttype == IVY_STMT_DOFROMCALL && iscallinto && stmtHandle->nParams > 1)
+	{
+		char	*paramValues_tmp = NULL;
+		int		paramLengths_tmp, paramFormats_tmp;
+		int		i;
+		Ivyargmode	argmodes_tmp;
+		Oid		paramTypes_tmp;
+
+		paramValues_tmp = paramValues_p[nParams - 1];
+		paramLengths_tmp = paramLengths_p[nParams - 1];
+		paramFormats_tmp = paramFormats_p[nParams - 1];
+		argmodes_tmp = argmodes_p[nParams - 1];
+		paramTypes_tmp = stmtHandle->paramTypes[nParams - 1];
+
+		for (i = nParams -1; i >= 1; i--)
+		{
+			paramValues_p[i] = paramValues_p[i - 1];
+			paramLengths_p[i] = paramLengths_p[i - 1];
+			paramFormats_p[i] = paramFormats_p[i - 1];
+			argmodes_p[i] = argmodes_p[i - 1];
+			stmtHandle->paramTypes[i] = stmtHandle->paramTypes[i - 1];
+		}
+
+		paramValues_p[0] = paramValues_tmp;
+		paramLengths_p[0] = paramLengths_tmp;
+		paramFormats_p[0] = paramFormats_tmp;
+		argmodes_p[0] = argmodes_tmp;
+		stmtHandle->paramTypes[0] = paramTypes_tmp;
+	}
+
+	if ((stmtHandle->stmttype == IVY_STMT_DO ||
+		 stmtHandle->stmttype == IVY_STMT_DOFROMCALL) &&
 		!IvyHandleDostmt(tconn, stmtHandle, false, errmsg, size_error_buf))
 	{
 		PGSemaphoreUnlock(&stmtHandle->lock);
@@ -544,8 +742,8 @@ IvyexecPreparedStatement2(Ivyconn *tconn,
 		char *send_query = NULL;
 
 		/* replace its parameter */
-		if (bindinfos != NULL)
-			IvyreplaceParamTypeByOutParameter(bindinfos,
+		if (stmtHandle->outbind != NULL)
+			IvyreplaceParamTypeByOutParameter(stmtHandle->outbind,
 								stmtHandle->nParams,
 								stmtHandle->paramTypes,
 								argmodes);
@@ -623,7 +821,7 @@ IvyexecPreparedStatement2(Ivyconn *tconn,
 	tresult->result = presult;
 
 	/* assign out parameters */
-	if (stmtHandle->stmttype == IVY_STMT_DO)
+	if (stmtHandle->stmttype == IVY_STMT_DOHANDLED)
 		IvyAssignPLISQLOutParameter(tresult, stmtHandle);
 	else
 		IvyassignOutParameters(tresult, bindinfos);
@@ -1550,9 +1748,9 @@ IvyHandleDostmt(Ivyconn *tconn,
 	PQExpBuffer	query_buf;
 	int nparams = 0;
 	int i = 0;
-	PGresult *res = NULL;
+	int	maxcharlen;
 
-	Assert(stmtHandle->stmttype == IVY_STMT_DO);
+	Assert(stmtHandle->stmttype == IVY_STMT_DO || stmtHandle->stmttype == IVY_STMT_DOFROMCALL);
 
 	if (stmtHandle->namebind == NULL &&
 		stmtHandle->outbind == NULL)
@@ -1574,34 +1772,10 @@ IvyHandleDostmt(Ivyconn *tconn,
 
 	query_buf = createPQExpBuffer();
 
-	/*
-	 * in plisql anonymous block, there may be single quote,
-	 * but in do $$ + using stmt, single quote will fail, 
-	 * so we should use select xxx::text to get realy query.
-	 */
-	appendPQExpBuffer(query_buf, "select '%s'::text", stmtHandle->query);
-
-	PGSemaphoreLock(&tconn->self_lock);
-	res = PQexec(tconn->conn, query_buf->data);
-
-	if (PQresultStatus(res) != PGRES_TUPLES_OK)
-	{
-		snprintf(errmsg, err_buf_size, "%s",
-			PQerrorMessage(tconn->conn));
-
-		destroyPQExpBuffer(query_buf);
-		PGSemaphoreUnlock(&tconn->self_lock);
-
-		return 0;
-	}
-
-	resetPQExpBuffer(query_buf);
-
 	/* append do $$ */
-	appendPQExpBuffer(query_buf, "do $$\n%s\n$$ using ", PQgetvalue(res, 0, 0));
+	appendPQExpBuffer(query_buf, "do $$ %s $$ using ", stmtHandle->query);
 
-	PGSemaphoreUnlock(&tconn->self_lock);
-	PQclear(res);
+	maxcharlen = pg_encoding_max_length(tconn->conn->client_encoding);
 
 	if (noparams_info)
 	{
@@ -1643,6 +1817,10 @@ IvyHandleDostmt(Ivyconn *tconn,
 			}
 
 			memset(stmtHandle->paramNames, 0x00, sizeof(char *) * nparams);
+
+			query_buf->data[query_buf->len - 1] = ' ';
+			appendPQExpBufferStr(query_buf, "paramslength ");
+
 			for (nameinfo = stmtHandle->namebind; 
 				nameinfo != NULL; 
 				nameinfo = nameinfo->next)
@@ -1664,6 +1842,21 @@ IvyHandleDostmt(Ivyconn *tconn,
 				memset(stmtHandle->paramNames[i], 0x00, size_char);
 				memcpy(stmtHandle->paramNames[i], nameinfo->name, size_char - 1);
 				stmtHandle->paramTypes[i++] = (Oid) nameinfo->dtype;
+
+				switch(UnSetModeOut(nameinfo->dtype))
+				{
+					case 9500:	/* ORACHARCHAROID */
+					case 9502:	/* ORAVARCHARCHAROID */
+						appendPQExpBuffer(query_buf, "%d,", ((int)nameinfo->val_size - 1) / maxcharlen);
+						break;
+					case 9501:	/* ORACHARBYTEOID */
+					case 9503:	/* ORAVARCHARBYTEOID */
+						appendPQExpBuffer(query_buf, "%d,", (int)nameinfo->val_size - 1);
+						break;
+					default:
+						appendPQExpBuffer(query_buf, "%d,", -1);
+						break;
+				}
 			}
 		}
 		else
@@ -1691,6 +1884,9 @@ IvyHandleDostmt(Ivyconn *tconn,
 				return 0;
 			}
 
+			query_buf->data[query_buf->len - 1] = ' ';
+			appendPQExpBufferStr(query_buf, "paramslength ");
+
 			for (i = 0; i < stmtHandle->nParams; i++)
 			{
 				for (info = stmtHandle->outbind; info != NULL; info = info->next)
@@ -1700,11 +1896,31 @@ IvyHandleDostmt(Ivyconn *tconn,
 				}
 
 				stmtHandle->paramTypes[i] = (Oid) info->dtype;
+
+				switch(UnSetModeOut(info->dtype))
+				{
+					case 9500:	/* ORACHARCHAROID */
+					case 9502:	/* ORAVARCHARCHAROID */
+						appendPQExpBuffer(query_buf, "%d,", ((int)info->val_size - 1) / maxcharlen);
+						break;
+					case 9501:	/* ORACHARBYTEOID */
+					case 9503:	/* ORAVARCHARBYTEOID */
+						appendPQExpBuffer(query_buf, "%d,", (int)info->val_size - 1);
+						break;
+					default:
+						appendPQExpBuffer(query_buf, "%d,", -1);
+						break;
+				}
 			}
 		}
 	}
 	else
 	{
+		PQExpBuffer	clause_buf;
+
+		clause_buf = createPQExpBuffer();
+		appendPQExpBufferStr(clause_buf, "paramslength ");
+
 		/* append parameter mode */
 		if (stmtHandle->namebind != NULL)
 		{
@@ -1716,12 +1932,31 @@ IvyHandleDostmt(Ivyconn *tconn,
 			for(; nameinfo != NULL; nameinfo = nameinfo->next)
 			{
 				appendPQExpBuffer(query_buf, "%s INOUT,", nameinfo->name);
+
+				switch(UnSetModeOut(nameinfo->dtype))
+				{
+					case 9500:	/* ORACHARCHAROID */
+					case 9502:	/* ORAVARCHARCHAROID */
+						appendPQExpBuffer(clause_buf, "%d,", ((int)nameinfo->val_size - 1) / maxcharlen);
+						break;
+					case 9501:	/* ORACHARBYTEOID */
+					case 9503:	/* ORAVARCHARBYTEOID */
+						appendPQExpBuffer(clause_buf, "%d,", (int)nameinfo->val_size - 1);
+						break;
+					default:
+						appendPQExpBuffer(clause_buf, "%d,", -1);
+						break;
+				}
+
 				nparams++;
 			}
 
 			/* others doesn't bind, we assume it is in mode */
 			for (; nparams < stmtHandle->nParams; nparams++)
+			{
 				appendPQExpBuffer(query_buf, "%s,", "IN");
+				appendPQExpBuffer(clause_buf, "%d,", -1);
+			}
 		}
 		else
 		{
@@ -1736,15 +1971,44 @@ IvyHandleDostmt(Ivyconn *tconn,
 				}
 
 				if (info != NULL)
+				{
 					appendPQExpBuffer(query_buf, "%s,", "INOUT");
+
+					switch(UnSetModeOut(info->dtype))
+					{
+						case 9500:	/* ORACHARCHAROID */
+						case 9502:	/* ORAVARCHARCHAROID */
+							appendPQExpBuffer(clause_buf, "%d,", ((int)info->val_size - 1) / maxcharlen);
+							break;
+						case 9501:	/* ORACHARBYTEOID */
+						case 9503:	/* ORAVARCHARBYTEOID */
+							appendPQExpBuffer(clause_buf, "%d,", (int)info->val_size - 1);
+							break;
+						default:
+							appendPQExpBuffer(clause_buf, "%d,", -1);
+							break;
+					}
+				}
 				else
+				{
 					appendPQExpBuffer(query_buf, "%s,", "IN");
+					appendPQExpBuffer(clause_buf, "%d,", -1);
+				}
 			}
 		}
+
+		query_buf->data[query_buf->len - 1] = ' ';
+		appendPQExpBuffer(query_buf, "%s", clause_buf->data);
+		destroyPQExpBuffer(clause_buf);
 	}
 
-	/* replace the last , to ; */
-	query_buf->data[query_buf->len - 1] = ';';
+	if (stmtHandle->stmttype == IVY_STMT_DOFROMCALL)
+	{
+		query_buf->data[query_buf->len - 1] = ' ';
+		appendPQExpBuffer(query_buf, "%s;", "GENERATED FROM CALL");
+	}
+	else
+		query_buf->data[query_buf->len - 1] = ';';	/* replace the last , to ; */
 
 	/* record in stmthandle */
 	stmtHandle->do_using_query = query_buf->data;
@@ -2060,6 +2324,14 @@ IvyStmtExecute(Ivyconn *tconn,
 		if (!PQsendPrepare(conn, stmtHandle->stmtName, send_query,
 					stmtHandle->nParams, stmtHandle->paramTypes))
 		{
+			/*
+			 * Put the error handle assignment in front of the SET command,
+			 * otherwise the execute of the SET command using the same connection
+			 * conn will overwrite the error message text, resulting in failure to
+			 * obtain the error message.
+			 */
+			snprintf(errhp->error_msg, errhp->err_buf_size, "%s", PQerrorMessage(conn));
+
 			IvyExecCommand(conn, "set ivorysql.out_parameter_column_position = false;");
 
 			PGSemaphoreUnlock(&tconn->self_lock);
@@ -2067,7 +2339,6 @@ IvyStmtExecute(Ivyconn *tconn,
 			PGSemaphoreUnlock(&tconn->lock);
 
 			free(tresult);
-			snprintf(errhp->error_msg, errhp->err_buf_size, "%s", PQerrorMessage(conn));
 
 			return NULL;
 		}
@@ -2076,6 +2347,14 @@ IvyStmtExecute(Ivyconn *tconn,
 		if (PQresultStatus(presult) != PGRES_COMMAND_OK)
 		{
 			/* failed */
+			/*
+			 * Put the error handle assignment in front of the SET command,
+			 * otherwise the execute of the SET command using the same connection
+			 * conn will overwrite the error message text, resulting in failure to
+			 * obtain the error message.
+			 */
+			snprintf(errhp->error_msg, errhp->err_buf_size, "%s", PQerrorMessage(conn));
+
 			IvyExecCommand(conn, "set ivorysql.out_parameter_column_position = false;");
 
 			PGSemaphoreUnlock(&tconn->self_lock);
@@ -2084,8 +2363,273 @@ IvyStmtExecute(Ivyconn *tconn,
 
 			PQclear(presult);
 			free(tresult);
+			return NULL;
+		}
+		PQclear(presult);
 
+		IvyExecCommand(conn, "set ivorysql.out_parameter_column_position = false;");
+
+		IvyaddRelationStmtHandleandConn(tconn, stmtHandle);
+	}
+	PGSemaphoreUnlock(&tconn->lock);
+
+	if (!IvyhandleParamsValues(stmtHandle, &paramValues, &paramLengths, &paramFormats))
+	{
+		PGSemaphoreUnlock(&tconn->self_lock);
+		PGSemaphoreUnlock(&stmtHandle->lock);
+		free(tresult);
+		tresult = NULL;
+		snprintf(errhp->error_msg, errhp->err_buf_size, "%s", "getParamsValues failed");
+		return NULL;
+	}
+
+	/* set ivorysql.out_parameter_column_position to true */
+	if (!IvyExecCommand(conn, "set ivorysql.out_parameter_column_position = true;"))
+	{
+		PGSemaphoreUnlock(&tconn->self_lock);
+		PGSemaphoreUnlock(&stmtHandle->lock);
+		free(tresult);
+		tresult = NULL;
+		snprintf(errhp->error_msg, errhp->err_buf_size, "%s", "ivorysql.out_parameter_column_position failed");
+		return NULL;
+	}
+
+	/* send query */
+	if (!PQsendQueryPrepared(conn, stmtHandle->stmtName, stmtHandle->nParams,
+							(const char *const *) paramValues,
+							paramLengths, paramFormats, resultFormat))
+	{
+		PGSemaphoreUnlock(&tconn->self_lock);
+		PGSemaphoreUnlock(&stmtHandle->lock);
+		free(tresult);
+		snprintf(errhp->error_msg, errhp->err_buf_size, "%s", PQerrorMessage(conn));
+		tresult = NULL;
+		goto ERROR_HANDLE;
+	}
+
+	/* get presult */
+	presult = PQexecFinish(conn);
+	if (PQresultStatus(presult) != PGRES_TUPLES_OK &&
+		PQresultStatus(presult) != PGRES_COMMAND_OK &&
+		PQresultStatus(presult) != PGRES_EMPTY_QUERY)
+	{
+		PQclear(presult);
+		PGSemaphoreUnlock(&tconn->self_lock);
+		PGSemaphoreUnlock(&stmtHandle->lock);
+		free(tresult);
+		snprintf(errhp->error_msg, errhp->err_buf_size, "%s", PQerrorMessage(conn));
+		tresult = NULL;
+		goto ERROR_HANDLE;
+	}
+	PGSemaphoreUnlock(&tconn->self_lock);
+	tresult->result = presult;
+	tresult->off = get_result_off(presult);
+	if (tresult->off == -1)
+	{
+		PQclear(presult);
+		free(tresult);
+		tresult = NULL;
+		snprintf(errhp->error_msg, errhp->err_buf_size, "result is wrong");
+		PGSemaphoreUnlock(&stmtHandle->lock);
+		goto ERROR_HANDLE;
+	}
+
+	/* assign out parameters */
+	if (stmtHandle->stmttype != IVY_STMT_DOHANDLED)
+		IvyassignOutParameters2(tresult, stmtHandle->outbind);
+	else
+		IvyAssignPLISQLOutParameter(tresult, stmtHandle);
+
+	PGSemaphoreUnlock(&stmtHandle->lock);
+
+ERROR_HANDLE:
+	IvyExecCommand(conn, "set ivorysql.out_parameter_column_position = false;");
+
+	for (i = 0; i < stmtHandle->nParams; i++)
+	{
+		if (paramValues[i] != NULL)
+			free(paramValues[i]);
+	}
+	free(paramValues);
+	free(paramLengths);
+	free(paramFormats);
+	paramValues = NULL;
+	paramLengths = NULL;
+	paramFormats = NULL;
+	return tresult;
+}
+
+/*
+ * IvyStmtExecute2
+ *
+ * This is a variant of IvyStmtExecute. In IvyStmtExecute we
+ * need to call get_parameter_description() to get the placeholder
+ * information. But in IvyStmtExecute2,it provided by the caller.
+ *
+ * In PSQL, in order to be compatible with Oracle, we need to verify
+ * whether the bind variable exists, so we must call get_parameter_description() 
+ * in advance. We add this interface to reduce the additional performance
+ * loss caused by meaningless calls to the get_parameter_description() function
+ * within IvyStmtExecute.
+ */
+Ivyresult *
+IvyStmtExecute2(Ivyconn *tconn,
+					  IvyPreparedStatement *stmtHandle,
+					  IvyError *errhp,
+					  HostVariable *host)
+{
+	Ivyresult *tresult = NULL;
+	PGconn *conn = NULL;
+	PGresult *presult = NULL;
+	bool	sendPrepare = true;
+	char 	**paramValues = NULL;
+	int *paramLengths = NULL;
+	int *paramFormats = NULL;
+	int	i;
+	int resultFormat = 0;
+
+	if (tconn == NULL || tconn->conn == NULL ||
+		stmtHandle == NULL || stmtHandle->query == NULL)
+	{
+		snprintf(errhp->error_msg, errhp->err_buf_size, "%s", "connection or stmt is null");
+		return NULL;
+	}
+
+	tresult = (Ivyresult *) malloc(sizeof(Ivyresult));
+	if (tresult == NULL)
+	{
+		snprintf(errhp->error_msg, errhp->err_buf_size, "%s", "malloc failed");
+		return NULL;
+	}
+
+	/* send prepare stmt */
+	/* first lock ivyconn and stmt */
+	PGSemaphoreLock(&stmtHandle->lock);
+	if (stmtHandle->query == NULL)
+	{
+		/* stmtHandle has already be freed */
+		PGSemaphoreUnlock(&stmtHandle->lock);
+		snprintf(errhp->error_msg, errhp->err_buf_size, "%s", "stmt has already be freed");
+		free(tresult);
+		return NULL;
+	}
+
+	/* handle placevar bind byname, we replace it bind by position */
+	if (stmtHandle->namebind != NULL &&
+		stmtHandle->name_replace == 0 &&
+		!Ivyreplacenamebindtoposition3(tconn, stmtHandle, errhp, host))
+	{
+		PGSemaphoreUnlock(&stmtHandle->lock);
+		free(tresult);
+		return NULL;
+	}
+	else if (stmtHandle->stmttype == IVY_STMT_UNKNOW &&
+			!Ivyreplacenamebindtoposition3(tconn, stmtHandle, errhp, host))
+	{
+		PGSemaphoreUnlock(&stmtHandle->lock);
+		free(tresult);
+		return NULL;
+	}
+
+	/* handle dostmt */
+	if ((stmtHandle->stmttype == IVY_STMT_DO || 
+		 stmtHandle->stmttype == IVY_STMT_DOFROMCALL) &&
+		!IvyHandleDostmt(tconn, stmtHandle, true, errhp->error_msg, errhp->err_buf_size))
+	{
+		PGSemaphoreUnlock(&stmtHandle->lock);
+		free(tresult);
+		return NULL;
+	}
+
+	PGSemaphoreLock(&tconn->self_lock);
+	conn = tconn->conn;
+
+	if (!PQexecStart(conn))
+	{
+		PGSemaphoreUnlock(&tconn->self_lock);
+		PGSemaphoreUnlock(&stmtHandle->lock);
+		snprintf(errhp->error_msg, errhp->err_buf_size, "%s", PQerrorMessage(conn));
+		free(tresult);
+		return NULL;
+	}
+
+	/* find this stmt has prepare in this connection */
+	PGSemaphoreLock(&tconn->lock);
+	if (tconn->IvystmtHandleList != NULL)
+	{
+		Ivylist *tmp;
+
+		for (tmp = tconn->IvystmtHandleList; tmp != NULL; tmp = tmp->next)
+		{
+			if (tmp->value == stmtHandle)
+			{
+				sendPrepare = false;
+				break;
+			}
+		}
+	}
+
+	/* if hasn't prepare */
+	if (sendPrepare)
+	{
+		char *send_query;
+
+		/* assing nparams */
+		if (stmtHandle->nParams == -1)
+			stmtHandle->nParams = IvyGetParameterNum(stmtHandle);
+
+		/* assign parame types */
+		if (stmtHandle->stmttype != IVY_STMT_DOHANDLED &&
+			!IvyAssignParameterTypes(errhp, stmtHandle))
+		{
+			PGSemaphoreUnlock(&tconn->self_lock);
+			PGSemaphoreUnlock(&stmtHandle->lock);
+			PGSemaphoreUnlock(&tconn->lock);
+			free(tresult);
+			tresult = NULL;
+			return NULL;
+		}
+
+		/* set ivorysql.out_parameter_column_position to true */
+		if (!IvyExecCommand(conn, "set ivorysql.out_parameter_column_position = true;"))
+		{
+			PGSemaphoreUnlock(&tconn->self_lock);
+			PGSemaphoreUnlock(&stmtHandle->lock);
+			PGSemaphoreUnlock(&tconn->lock);
+			free(tresult);
+			tresult = NULL;
+			snprintf(errhp->error_msg, errhp->err_buf_size, "%s", "ivorysql.out_parameter_column_position failed");
+			return NULL;
+		}
+
+		if (stmtHandle->stmttype == IVY_STMT_DOHANDLED)
+			send_query = stmtHandle->do_using_query;
+		else
+			send_query = stmtHandle->query;
+
+		/* third send Prepare */
+		if (!PQsendPrepare(conn, stmtHandle->stmtName, send_query,
+							stmtHandle->nParams, stmtHandle->paramTypes))
+		{
 			snprintf(errhp->error_msg, errhp->err_buf_size, "%s", PQerrorMessage(conn));
+			IvyExecCommand(conn, "set ivorysql.out_parameter_column_position = false;");
+			PGSemaphoreUnlock(&tconn->self_lock);
+			PGSemaphoreUnlock(&stmtHandle->lock);
+			PGSemaphoreUnlock(&tconn->lock);
+			free(tresult);
+			return NULL;
+		}
+		presult = PQexecFinish(conn);
+		if (PQresultStatus(presult) != PGRES_COMMAND_OK)
+		{
+			/* failed */
+			snprintf(errhp->error_msg, errhp->err_buf_size, "%s", PQerrorMessage(conn));
+			IvyExecCommand(conn, "set ivorysql.out_parameter_column_position = false;");
+			PGSemaphoreUnlock(&tconn->self_lock);
+			PGSemaphoreUnlock(&stmtHandle->lock);
+			PGSemaphoreUnlock(&tconn->lock);
+			PQclear(presult);
+			free(tresult);
 			return NULL;
 		}
 
@@ -2108,6 +2652,17 @@ IvyStmtExecute(Ivyconn *tconn,
 		snprintf(errhp->error_msg, errhp->err_buf_size, "%s", 
 			"IvyhandleParamsValues failed");
 
+		return NULL;
+	}
+
+	/* set ivorysql.out_parameter_column_position to true */
+	if (!IvyExecCommand(conn, "set ivorysql.out_parameter_column_position = true;"))
+	{
+		PGSemaphoreUnlock(&tconn->self_lock);
+		PGSemaphoreUnlock(&stmtHandle->lock);
+		free(tresult);
+		tresult = NULL;
+		snprintf(errhp->error_msg, errhp->err_buf_size, "%s", "ivorysql.out_parameter_column_position failed");
 		return NULL;
 	}
 
@@ -2167,6 +2722,8 @@ IvyStmtExecute(Ivyconn *tconn,
 	PGSemaphoreUnlock(&stmtHandle->lock);
 
 ERROR_HANDLE:
+	IvyExecCommand(conn, "set ivorysql.out_parameter_column_position = false;");
+
 	for (i = 0; i < stmtHandle->nParams; i++)
 	{
 		if (paramValues[i] != NULL)
@@ -2411,9 +2968,16 @@ IvyreplaceParamTypeByOutParameter(IvyBindOutInfo *bindinfo, int nParams, Oid *pa
 		{
 			/* just OUT mode parameter, we replace its oid with a virtual oid */
 			if (argmodes != NULL && argmodes[serbind->position - 1] == argmode_out)
+			{
 				SetModeOut(paramTypes[serbind->position - 1]);
-			else if (argmodes != NULL && argmodes[serbind->position - 1] == argmode_out)
+				serbind->dtype = paramTypes[serbind->position - 1];
+			}
+			else if (argmodes != NULL && argmodes[serbind->position - 1] == argmode_inout)
+			{
 				SetModeIn(paramTypes[serbind->position - 1]);
+				SetModeOut(paramTypes[serbind->position - 1]);
+				serbind->dtype = paramTypes[serbind->position - 1];
+			}
 		}
 		else
 		{
@@ -2848,34 +3412,34 @@ get_paramvalue_type(int type)
 		case 1790:	//REF_CURSOR
 		case 2201:	//REF_CURSOR_ARRAY
 		 /* oracle support type */
-		case 9000:	//ORACHARCHAR
-		case 9004:	//ORACHARCHAR_ARRAY
-		case 9001:	//ORACHARBYTE
-		case 9005:	//ORACHARBYTE_ARRAY
-		case 9002:	//ORAVARCHARCHAR
-		case 9006:	//ORAVARCHARCHAR_ARRAY
-		case 9003:	//ORAVARCHARBYTE
-		case 9007:	//ORAVARCHARBYTE_ARRAY
-		case 9008:	//ORADATE
-		case 9009:	//ORADATE_ARRAY
-		case 9010:	//ORATIMESTAMP
-		case 9011:	//ORATIMESTAMP_ARRAY
-		case 9012:	//ORATIMESTAMPTZ
-		case 9013:	//ORATIMESTAMPTZ_ARRAY
-		case 9014:	//ORATIMESTAMPLTZ
-		case 9015:	//ORATIMESTAMPLTZ_ARRAY
-		case 9016: // YMINTERVAL
-		case 9017: // YMINTERVAL_ARRAY
-		case 9018: // DSINTERVAL
-		case 9019: // DSINTERVAL_ARRAY
-		case 9020: // NUMBER
-		case 9021: // NUMBER_ARRAY
-		case 9022: // BINARY_FLOAT
-		case 9023: // BINARY_FLOAT_ARRAY
-		case 9024: // BINARY_DOUBLE
-		case 9025: // BINARY_DOUBLE_ARRAY
-		case 9030: // ORAREFCURSOR
-		case 9031:  // ORAREFCURSOR_ARRAY
+		case 9500:	//ORACHARCHAR
+		case 9504:	//ORACHARCHAR_ARRAY
+		case 9501:	//ORACHARBYTE
+		case 9505:	//ORACHARBYTE_ARRAY
+		case 9502:	//ORAVARCHARCHAR
+		case 9506:	//ORAVARCHARCHAR_ARRAY
+		case 9503:	//ORAVARCHARBYTE
+		case 9507:	//ORAVARCHARBYTE_ARRAY
+		case 9508:	//ORADATE
+		case 9509:	//ORADATE_ARRAY
+		case 9510:	//ORATIMESTAMP
+		case 9511:	//ORATIMESTAMP_ARRAY
+		case 9512:	//ORATIMESTAMPTZ
+		case 9513:	//ORATIMESTAMPTZ_ARRAY
+		case 9514:	//ORATIMESTAMPLTZ
+		case 9515:	//ORATIMESTAMPLTZ_ARRAY
+		case 9516: // YMINTERVAL
+		case 9517: // YMINTERVAL_ARRAY
+		case 9518: // DSINTERVAL
+		case 9519: // DSINTERVAL_ARRAY
+		case 9520: // NUMBER
+		case 9521: // NUMBER_ARRAY
+		case 9522: // BINARY_FLOAT
+		case 9523: // BINARY_FLOAT_ARRAY
+		case 9524: // BINARY_DOUBLE
+		case 9525: // BINARY_DOUBLE_ARRAY
+		case 9530: // ORAREFCURSOR
+		case 9531:  // ORAREFCURSOR_ARRAY
 			ret = IVY_VALUE_BYTE;
 			break;
 		default:
@@ -3196,7 +3760,8 @@ static int
 Ivyreplacenamebindtoposition(Ivyconn *tconn,
 				IvyPreparedStatement *stmtHandle,
 				char *errmsg,
-				size_t size_error_buf)
+				size_t size_error_buf,
+				bool *iscallinto)
 {
 	int i;
 	Ivyresult *res;
@@ -3218,8 +3783,13 @@ Ivyreplacenamebindtoposition(Ivyconn *tconn,
 		char	*first_name;
 		int	first_pos;
 		int	dostmt = 0;
+		bool	iscallstmt = false;
+		char	*convertcall = NULL;
+		char	*newsql = NULL;
+		char	*ptr = NULL;
+		int		i = 0;
 
-		query_len = stmtHandle->query_len + strlen("select * from get_parameter_description(") + 5;
+		query_len = (stmtHandle->query_len * 2) + strlen("select * from get_parameter_description(") + 5;
 		query = (char *) malloc(query_len);
 
 		if (query == NULL)
@@ -3228,8 +3798,21 @@ Ivyreplacenamebindtoposition(Ivyconn *tconn,
 			return 0;
 		}
 
+		newsql = malloc(stmtHandle->query_len * 2);	/* enough */
+		ptr = newsql;
+		while (stmtHandle->query[i] != '\0')
+		{
+			if (stmtHandle->query[i] == '\'')
+				*ptr++ = stmtHandle->query[i];
+			*ptr++ = stmtHandle->query[i];
+			i++;
+		}
+		*ptr = '\0';
+
 		memset(query, 0x00, query_len);
-		snprintf(query, query_len, "select * from get_parameter_description('%s');", stmtHandle->query);
+		snprintf(query, query_len, "select * from get_parameter_description('%s');", newsql);
+		free(newsql);
+
 		res = Ivyexec(tconn, query);
 		if (IvyresultStatus(res) != PGRES_TUPLES_OK)
 		{
@@ -3243,7 +3826,7 @@ Ivyreplacenamebindtoposition(Ivyconn *tconn,
 		n_tuples = Ivyntuples(res);
 
 		/* check if failed */
-		if (n_fields != 2 || n_tuples < 1)
+		if (n_fields != 3 || n_tuples < 1)
 		{
 			snprintf(errmsg, size_error_buf, "%s", 
 				"get_parameter_description return wrong fields or tuples");
@@ -3263,20 +3846,94 @@ Ivyreplacenamebindtoposition(Ivyconn *tconn,
 			return 0;
 		}
 
-		if (strcmp(first_name, "true") == 0)
+		if (strcmp(first_name, "DO") == 0)
 			dostmt = 1;
-		else if (strcmp(first_name, "false") != 0)
+		else if (strcmp(first_name, "CALL") == 0)
 		{
-			snprintf(errmsg, size_error_buf, "%s", 
-				"get_parameter_description returns wrong first_name");
-			Ivyclear(res);
-			return 0;
+			iscallstmt = true;
+			convertcall = PQgetisnull(res->result, 0, 2) ? NULL : Ivygetvalue(res, 0, 2);
 		}
 
 		/* process dostmt */
 		if (dostmt == 1)
 		{
 			stmtHandle->stmttype = IVY_STMT_DO;
+			Ivyclear(res);
+			return 1;
+		}
+
+		if (iscallstmt)
+		{
+			PQExpBuffer	dostmt_buf;
+			
+			dostmt_buf = createPQExpBuffer();
+			if (convertcall)
+			{
+				appendPQExpBuffer(dostmt_buf, "BEGIN %s END;", convertcall);
+				*iscallinto = true;
+			}
+			else
+			{
+				/*
+				 * It is the responsibility of the caller to
+				 * ensure that stmtHandle->query is not null.
+				 */
+				int	stmt_len = strlen(stmtHandle->query);
+
+				while (stmt_len > 0 && isspace((unsigned char) stmtHandle->query[stmt_len - 1]))
+					stmt_len--;
+
+				if (stmt_len > 0 && stmtHandle->query[stmt_len - 1] == ';')
+					appendPQExpBuffer(dostmt_buf, "BEGIN %s END;", stmtHandle->query);
+				else
+					appendPQExpBuffer(dostmt_buf, "BEGIN %s; END;", stmtHandle->query);
+
+				*iscallinto = false;
+			}
+
+			/* Rewrite IvyPreparedStatement */
+			if (stmtHandle->query != NULL)
+			{
+				free(stmtHandle->query);
+			}
+
+			stmtHandle->query = strdup(dostmt_buf->data);
+			stmtHandle->query_len = strlen(dostmt_buf->data);
+
+			/*
+			 * If there are multiple OUT parameters, the last OUT parameter
+			 * needs to be moved to the head of list.
+			 */
+			if (convertcall)
+			{
+				if (stmtHandle->outbind)
+				{
+					IvyBindInfo *tail = NULL;
+					IvyBindInfo *pre = NULL;
+
+					for(tail = stmtHandle->outbind; tail->next != NULL; tail = tail->next)
+					{
+						pre = tail;
+						pre->position += 1;
+					}
+
+					/*
+					 * If there is only one OUT parameter, there is no
+					 * need to adjust the position of the parameter.
+					 */
+					if (pre)
+					{
+						tail->position = 1;
+						pre->next = NULL;
+						tail->next = stmtHandle->outbind;
+						stmtHandle->outbind = tail;
+					}
+				}
+			}
+
+			destroyPQExpBuffer(dostmt_buf);
+
+			stmtHandle->stmttype = IVY_STMT_DOFROMCALL;
 			Ivyclear(res);
 			return 1;
 		}
@@ -3348,7 +4005,7 @@ Ivyreplacenamebindtoposition(Ivyconn *tconn,
 
 		if (position == stmtHandle->nParams)
 		{
-			snprintf(errmsg, size_error_buf, "placehondvar \"%s\" not found",
+			snprintf(errmsg, size_error_buf, "placeholder variable \"%s\" not found",
 						tmp->name);
 			return 0;
 		}
@@ -3411,8 +4068,13 @@ Ivyreplacenamebindtoposition2(Ivyconn *tconn,
 		int	first_pos;
 		char	*first_name;
 		int	dostmt = 0;
+		bool	iscallstmt = false;
+		char	*convertcall = NULL;
+		char	*newsql = NULL;
+		char	*ptr = NULL;
+		int		i = 0;
 
-		query_len = strlen(stmtHandle->query) + strlen("select * from get_parameter_description(") + 5;
+		query_len = (strlen(stmtHandle->query) * 2) + strlen("select * from get_parameter_description(") + 5;
 		query = (char *) malloc(query_len);
 
 		if (query == NULL)
@@ -3422,8 +4084,21 @@ Ivyreplacenamebindtoposition2(Ivyconn *tconn,
 			return 0;
 		}
 
+		newsql = malloc(strlen(stmtHandle->query) * 2);	/* enough */
+		ptr = newsql;
+		while (stmtHandle->query[i] != '\0')
+		{
+			if (stmtHandle->query[i] == '\'')
+				*ptr++ = stmtHandle->query[i];
+			*ptr++ = stmtHandle->query[i];
+			i++;
+		}
+		*ptr = '\0';
+
 		memset(query, 0x00, query_len);
-		snprintf(query, query_len, "select * from get_parameter_description('%s');", stmtHandle->query);
+		snprintf(query, query_len, "select * from get_parameter_description('%s');", newsql);
+		free(newsql);
+
 		res = Ivyexec(tconn, query);
 		if (IvyresultStatus(res) != PGRES_TUPLES_OK)
 		{
@@ -3437,7 +4112,7 @@ Ivyreplacenamebindtoposition2(Ivyconn *tconn,
 		n_tuples = Ivyntuples(res);
 
 		/* number of params doesn't match */
-		if (n_fields != 2 || n_tuples < 1)
+		if (n_fields != 3 || n_tuples < 1)
 		{
 			snprintf(errhp->error_msg, errhp->err_buf_size, "%s", 
 				"get_parameter_description return wrong fields or tuples");
@@ -3457,22 +4132,91 @@ Ivyreplacenamebindtoposition2(Ivyconn *tconn,
 			return 0;
 		}
 
-		if (strcmp(first_name, "true") == 0)
+		if (strcmp(first_name, "DO") == 0)
 		{
 			dostmt = 1;
 		}
-		else if (strcmp(first_name, "false") != 0)
+		else if (strcmp(first_name, "CALL") == 0)
 		{
-			snprintf(errhp->error_msg, errhp->err_buf_size, "%s", 
-				"get_parameter_description return wrong first_name");
-			Ivyclear(res);
-			return 0;
+			iscallstmt = true;
+			convertcall = PQgetisnull(res->result, 0, 2) ? NULL : Ivygetvalue(res, 0, 2);
 		}
 
 		/* process dostmt */
 		if (dostmt == 1)
 		{
 			stmtHandle->stmttype = IVY_STMT_DO;
+			Ivyclear(res);
+			return 1;
+		}
+
+		if (iscallstmt)
+		{
+			PQExpBuffer	dostmt_buf;
+			
+			dostmt_buf = createPQExpBuffer();
+			if (convertcall)
+				appendPQExpBuffer(dostmt_buf, "BEGIN %s END;", convertcall);
+			else
+			{
+				/*
+				 * It is the responsibility of the caller to
+				 * ensure that stmtHandle->query is not null.
+				 */
+				int	stmt_len = strlen(stmtHandle->query);
+
+				while (stmt_len > 0 && isspace((unsigned char) stmtHandle->query[stmt_len - 1]))
+					stmt_len--;
+
+				if (stmt_len > 0 && stmtHandle->query[stmt_len - 1] == ';')
+					appendPQExpBuffer(dostmt_buf, "BEGIN %s END;", stmtHandle->query);
+				else
+					appendPQExpBuffer(dostmt_buf, "BEGIN %s; END;", stmtHandle->query);
+			}
+
+			/* Rewrite IvyPreparedStatement */
+			if (stmtHandle->query != NULL)
+			{
+				free(stmtHandle->query);
+			}
+
+			stmtHandle->query = strdup(dostmt_buf->data);
+			stmtHandle->query_len = strlen(dostmt_buf->data);
+
+			/*
+			 * If there are multiple OUT parameters, the last OUT parameter
+			 * needs to be moved to the head of list.
+			 */
+			if (convertcall)
+			{
+				if (stmtHandle->outbind)
+				{
+					IvyBindInfo *tail = NULL;
+					IvyBindInfo *pre = NULL;
+
+					for(tail = stmtHandle->outbind; tail->next != NULL; tail = tail->next)
+					{
+						pre = tail;
+						pre->position += 1;
+					}
+
+					/*
+					 * If there is only one OUT parameter, there is no
+					 * need to adjust the position of the parameter.
+					 */
+					if (pre)
+					{
+						tail->position = 1;
+						pre->next = NULL;
+						tail->next = stmtHandle->outbind;
+						stmtHandle->outbind = tail;
+					}
+				}
+			}
+
+			destroyPQExpBuffer(dostmt_buf);
+
+			stmtHandle->stmttype = IVY_STMT_DOFROMCALL;
 			Ivyclear(res);
 			return 1;
 		}
@@ -3529,7 +4273,7 @@ Ivyreplacenamebindtoposition2(Ivyconn *tconn,
 
 		if (position == stmtHandle->nParams)
 		{
-			snprintf(errhp->error_msg, errhp->err_buf_size, "placehondvar \"%s\" not found",
+			snprintf(errhp->error_msg, errhp->err_buf_size, "placeholder variable \"%s\" not found",
 						tmp->name);
 			return 0;
 		}
@@ -3571,6 +4315,175 @@ error_handle:
 	free(stmtHandle->paramNames);
 	stmtHandle->paramNames = NULL;
 
+	return 0;
+}
+/*
+ * like Ivyreplacenamebindtoposition2
+ * but used by IvyStmtExecute2
+ */
+static int
+Ivyreplacenamebindtoposition3(Ivyconn *tconn,
+										IvyPreparedStatement *stmtHandle,
+										IvyError *errhp,
+										HostVariable *host)
+{
+	int i;
+	IvyBindNameInfo *tmp;
+
+	if (stmtHandle->paramNames == NULL)
+	{
+		if (!host || host->length == 0)
+		{
+			snprintf(errhp->error_msg, errhp->err_buf_size, "%s", "No placeholder variables specified");
+			return 0;
+		}
+			
+		/* dostmt should handle special */
+		if (host->isdostmt)
+		{
+			stmtHandle->stmttype = IVY_STMT_DO;
+			return 1;
+		}
+
+		if (host->iscallstmt)
+		{
+			PQExpBuffer	dostmt_buf;
+			
+			dostmt_buf = createPQExpBuffer();
+			if (host->convertcall)
+				appendPQExpBuffer(dostmt_buf, "BEGIN %s END;", host->convertcall);
+			else
+			{
+				/*
+				 * It is the responsibility of the caller to
+				 * ensure that stmtHandle->query is not null.
+				 */
+				int	stmt_len = strlen(stmtHandle->query);
+
+				while (stmt_len > 0 && isspace((unsigned char) stmtHandle->query[stmt_len - 1]))
+					stmt_len--;
+
+				if (stmt_len > 0 && stmtHandle->query[stmt_len - 1] == ';')
+					appendPQExpBuffer(dostmt_buf, "BEGIN %s END;", stmtHandle->query);
+				else
+					appendPQExpBuffer(dostmt_buf, "BEGIN %s; END;", stmtHandle->query);
+			}
+
+			/* Rewrite IvyPreparedStatement */
+			if (stmtHandle->query != NULL)
+			{
+				free(stmtHandle->query);
+			}
+
+			stmtHandle->query = strdup(dostmt_buf->data);
+			stmtHandle->query_len = strlen(dostmt_buf->data);
+
+			/*
+			 * If there are multiple OUT parameters, the last OUT parameter
+			 * needs to be moved to the head of list.
+			 */
+			if (host->convertcall)
+			{
+				if (stmtHandle->outbind)
+				{
+					IvyBindInfo *tail = NULL;
+					IvyBindInfo *pre = NULL;
+
+					for(tail = stmtHandle->outbind; tail->next != NULL; tail = tail->next)
+					{
+						pre = tail;
+						pre->position += 1;
+					}
+
+					/*
+					 * If there is only one OUT parameter, there is no
+					 * need to adjust the position of the parameter.
+					 */
+					if (pre)
+					{
+						tail->position = 1;
+						pre->next = NULL;
+						tail->next = stmtHandle->outbind;
+						stmtHandle->outbind = tail;
+					}
+				}
+			}
+
+			destroyPQExpBuffer(dostmt_buf);
+
+			stmtHandle->stmttype = IVY_STMT_DOFROMCALL;
+			return 1;
+		}
+
+		stmtHandle->stmttype = IVY_STMT_OTHERS;
+		stmtHandle->paramNames = (char **) malloc(sizeof(char *) * host->length);
+		stmtHandle->nParams = host->length;
+		memset(stmtHandle->paramNames, 0x00, sizeof(char *) * host->length);
+		for (i = 0; i < host->length; i++)
+		{
+			int position;
+			char *name;
+			size_t name_len;
+
+			position = host->hostvars[i].position - 1;
+			name = host->hostvars[i].name;
+
+			if (stmtHandle->paramNames[position] != NULL)
+				goto error_handle;
+			name_len = strlen(name) + 1;
+			stmtHandle->paramNames[position] = (char *) malloc(name_len);
+			if (stmtHandle->paramNames[position] == NULL)
+				goto error_handle;
+			snprintf(stmtHandle->paramNames[position], name_len, "%s", name);
+		}
+	}
+
+	/* according to paramnames to replace position */
+	for (tmp = stmtHandle->namebind; tmp != NULL; tmp = tmp->next)
+	{
+		int position;
+		int ret;
+
+		if (tmp->replace != 0)
+			continue;
+
+		for (position = 0; position < stmtHandle->nParams; position++)
+			if (strcmp(stmtHandle->paramNames[position], tmp->name) == 0)
+				break;
+		if (position == stmtHandle->nParams)
+		{
+			snprintf(errhp->error_msg, errhp->err_buf_size, "placeholder variable \"%s\" not found",
+						tmp->name);
+			return 0;
+		}
+		ret = IvyBindByPosInternel(stmtHandle,
+								tmp->bindinfo,
+								errhp,
+								position + 1,
+								tmp->var,
+								tmp->val_size,
+								tmp->dtype,
+								tmp->indp,
+								tmp->alenp,
+								tmp->recodep,
+								tmp->maxarr_len,
+								tmp->curelep,
+								tmp->mode,
+								false);
+		if (ret != 1)
+			return 0;
+		tmp->replace = 1;
+	}
+	stmtHandle->name_replace = 1;
+	return 1;
+
+error_handle:
+	snprintf(errhp->error_msg, errhp->err_buf_size, "%s", "Ivyreplacenamebindtoposition3 failed");
+	for (i = 0; i < stmtHandle->nParams; i++)
+		if (stmtHandle->paramNames[i] != NULL)
+			free(stmtHandle->paramNames[i]);
+	free(stmtHandle->paramNames);
+	stmtHandle->paramNames = NULL;
 	return 0;
 }
 
