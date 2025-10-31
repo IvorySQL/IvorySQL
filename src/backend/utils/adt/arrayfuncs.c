@@ -976,8 +976,8 @@ ending_error:
  */
 void
 CopyArrayEls(ArrayType *array,
-			 Datum *values,
-			 bool *nulls,
+			 const Datum *values,
+			 const bool *nulls,
 			 int nitems,
 			 int typlen,
 			 bool typbyval,
@@ -3649,7 +3649,7 @@ construct_empty_expanded_array(Oid element_type,
  * to hard-wire values if the element type is hard-wired.
  */
 void
-deconstruct_array(ArrayType *array,
+deconstruct_array(const ArrayType *array,
 				  Oid elmtype,
 				  int elmlen, bool elmbyval, char elmalign,
 				  Datum **elemsp, bool **nullsp, int *nelemsp)
@@ -3715,7 +3715,7 @@ deconstruct_array(ArrayType *array,
  * useful when manipulating arrays from/for system catalogs.
  */
 void
-deconstruct_array_builtin(ArrayType *array,
+deconstruct_array_builtin(const ArrayType *array,
 						  Oid elmtype,
 						  Datum **elemsp, bool **nullsp, int *nelemsp)
 {
@@ -3785,7 +3785,7 @@ deconstruct_array_builtin(ArrayType *array,
  * if the array *might* contain a null.
  */
 bool
-array_contains_nulls(ArrayType *array)
+array_contains_nulls(const ArrayType *array)
 {
 	int			nelems;
 	bits8	   *bitmap;
