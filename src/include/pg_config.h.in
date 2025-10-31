@@ -627,6 +627,9 @@
 /* PostgreSQL version as a number */
 #undef PG_VERSION_NUM
 
+/*IvorySQL version as a string*/
+#undef PACKAGE_IVORYSQL_VERSION
+
 /* A string containing the version number, platform, and C compiler */
 #undef PG_VERSION_STR
 
