@@ -42,7 +42,7 @@
 #include "mainloop.h"
 #include "pqexpbuffer.h"
 #include "psqlscanslash.h"
-#include "ora_psqlscanslash.h" 
+#include "ora_psqlscanslash.h"
 #include "settings.h"
 #include "variables.h"
 
@@ -311,7 +311,7 @@ HandleSlashCmds(PsqlScanState scan_state,
 	/* if there is a trailing \\, swallow it */
 	if (db_mode == DB_PG)
 		psql_scan_slash_command_end(scan_state);
-	else if(db_mode == DB_ORACLE)
+	else if (db_mode == DB_ORACLE)
 		ora_psql_scan_slash_command_end(scan_state);
 
 	free(cmd);
@@ -1059,6 +1059,7 @@ exec_command_d(PsqlScanState scan_state, bool active_branch, const char *cmd)
 		show_system = strchr(cmd, 'S') ? true : false;
 
 		getDbCompatibleMode(pset.db);
+
 		/*
 		 * The 'x' option turns expanded mode on for this command only. This
 		 * is allowed in all \d* commands, except \d by itself, since \dx is a
@@ -3628,6 +3629,7 @@ static backslashResult
 exec_command_parser(PsqlScanState scan_state, bool active_branch)
 {
 	bool		success = true;
+
 	if (active_branch)
 	{
 		getDbCompatibleMode(pset.db);
@@ -5286,7 +5288,7 @@ do_pset(const char *param, const char *value, printQueryOpt *popt, bool quiet)
 	/* header line width in expanded mode */
 	else if (strcmp(param, "xheader_width") == 0)
 	{
-		if (! value)
+		if (!value)
 			;
 		else if (pg_strcasecmp(value, "full") == 0)
 			popt->topt.expanded_header_width_type = PRINT_XHEADER_FULL;
@@ -5838,15 +5840,16 @@ pset_value_string(const char *param, printQueryOpt *popt)
 	else if (strcmp(param, "xheader_width") == 0)
 	{
 		if (popt->topt.expanded_header_width_type == PRINT_XHEADER_FULL)
-			return(pstrdup("full"));
+			return (pstrdup("full"));
 		else if (popt->topt.expanded_header_width_type == PRINT_XHEADER_COLUMN)
-			return(pstrdup("column"));
+			return (pstrdup("column"));
 		else if (popt->topt.expanded_header_width_type == PRINT_XHEADER_PAGE)
-			return(pstrdup("page"));
+			return (pstrdup("page"));
 		else
 		{
 			/* must be PRINT_XHEADER_EXACT_WIDTH */
-			char wbuff[32];
+			char		wbuff[32];
+
 			snprintf(wbuff, sizeof(wbuff), "%d",
 					 popt->topt.expanded_header_exact_width);
 			return pstrdup(wbuff);
