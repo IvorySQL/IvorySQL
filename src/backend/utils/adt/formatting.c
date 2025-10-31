@@ -166,9 +166,6 @@ typedef struct
 #define SUFFTYPE_PREFIX		1
 #define SUFFTYPE_POSTFIX	2
 
-#define CLOCK_24_HOUR		0
-#define CLOCK_12_HOUR		1
-
 
 /*
  * Full months
@@ -433,7 +430,7 @@ typedef struct
 	int			j;
 	int			us;
 	int			yysz;			/* is it YY or YYYY ? */
-	int			clock;			/* 12 or 24 hour clock? */
+	bool		clock_12_hour;	/* 12 or 24 hour clock? */
 	int			tzsign;			/* +1, -1, or 0 if no TZH/TZM fields */
 	int			tzh;
 	int			tzm;
@@ -461,7 +458,7 @@ struct fmt_tz					/* do_to_timestamp's timezone info output */
 			(_X)->mode, (_X)->hh, (_X)->pm, (_X)->mi, (_X)->ss, (_X)->ssss, \
 			(_X)->d, (_X)->dd, (_X)->ddd, (_X)->mm, (_X)->ms, (_X)->year, \
 			(_X)->bc, (_X)->ww, (_X)->w, (_X)->cc, (_X)->j, (_X)->us, \
-			(_X)->yysz, (_X)->clock)
+			(_X)->yysz, (_X)->clock_12_hour)
 #define DEBUG_TM(_X) \
 		elog(DEBUG_elog_output, "TM:\nsec %d\nyear %d\nmin %d\nwday %d\nhour %d\nyday %d\nmday %d\nnisdst %d\nmon %d\n",\
 			(_X)->tm_sec, (_X)->tm_year,\
@@ -3443,7 +3440,7 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 					return;
 				if (!from_char_set_int(&out->pm, value % 2, n, escontext))
 					return;
-				out->clock = CLOCK_12_HOUR;
+				out->clock_12_hour = true;
 				pmamflg = true;
 				break;
 			case DCH_AM:
@@ -3456,7 +3453,7 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 					return;
 				if (!from_char_set_int(&out->pm, value % 2, n, escontext))
 					return;
-				out->clock = CLOCK_12_HOUR;
+				out->clock_12_hour = true;
 				break;
 			case DCH_HH:
 			case DCH_HH12:
@@ -3480,7 +3477,7 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 				}
 				if (from_char_parse_int_len(&out->hh, &s, 2, n, escontext) < 0)
 					return;
-				out->clock = CLOCK_12_HOUR;
+				out->clock_12_hour = true;
 				SKIP_THth(s, n->suffix);
 				if (ORA_PARSER == compatible_db)
 				{
@@ -5107,7 +5104,7 @@ do_to_timestamp(const text *date_txt, const text *fmt, Oid collid, bool std,
 	if (tmfc.hh)
 		tm->tm_hour = tmfc.hh;
 
-	if (tmfc.clock == CLOCK_12_HOUR)
+	if (tmfc.clock_12_hour)
 	{
 		if (tm->tm_hour < 1 || tm->tm_hour > HOURS_PER_DAY / 2)
 		{
