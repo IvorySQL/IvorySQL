@@ -34,7 +34,6 @@
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
-#include "optimizer/optimizer.h"
 #include "utils/array.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
@@ -496,7 +495,7 @@ buildSubPlanHash(SubPlanState *node, ExprContext *econtext)
 	int			ncols = node->numCols;
 	ExprContext *innerecontext = node->innerecontext;
 	MemoryContext oldcontext;
-	long		nbuckets;
+	double		nentries;
 	TupleTableSlot *slot;
 
 	Assert(subplan->subLinkType == ANY_SUBLINK);
@@ -524,9 +523,7 @@ buildSubPlanHash(SubPlanState *node, ExprContext *econtext)
 	node->havehashrows = false;
 	node->havenullrows = false;
 
-	nbuckets = clamp_cardinality_to_long(planstate->plan->plan_rows);
-	if (nbuckets < 1)
-		nbuckets = 1;
+	nentries = planstate->plan->plan_rows;
 
 	if (node->hashtable)
 		ResetTupleHashTable(node->hashtable);
@@ -539,7 +536,7 @@ buildSubPlanHash(SubPlanState *node, ExprContext *econtext)
 											  node->tab_eq_funcoids,
 											  node->tab_hash_funcs,
 											  node->tab_collations,
-											  nbuckets,
+											  nentries,
 											  0,	/* no additional data */
 											  node->planstate->state->es_query_cxt,
 											  node->tuplesContext,
@@ -549,12 +546,12 @@ buildSubPlanHash(SubPlanState *node, ExprContext *econtext)
 	if (!subplan->unknownEqFalse)
 	{
 		if (ncols == 1)
-			nbuckets = 1;		/* there can only be one entry */
+			nentries = 1;		/* there can only be one entry */
 		else
 		{
-			nbuckets /= 16;
-			if (nbuckets < 1)
-				nbuckets = 1;
+			nentries /= 16;
+			if (nentries < 1)
+				nentries = 1;
 		}
 
 		if (node->hashnulls)
@@ -568,7 +565,7 @@ buildSubPlanHash(SubPlanState *node, ExprContext *econtext)
 												  node->tab_eq_funcoids,
 												  node->tab_hash_funcs,
 												  node->tab_collations,
-												  nbuckets,
+												  nentries,
 												  0,	/* no additional data */
 												  node->planstate->state->es_query_cxt,
 												  node->tuplesContext,
