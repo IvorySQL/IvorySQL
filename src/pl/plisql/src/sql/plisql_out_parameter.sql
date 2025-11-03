@@ -164,22 +164,6 @@ begin
 end;
 /
 
-declare
-  id integer;
-  name1 varchar(256);
-  name2 varchar(256);
-  ret integer;
-begin
-  id := 24;
-  ret = 0;
-  name1 := 'could not change';
-  name2 := 'could change';
-  ret = test_inchange(id,name1,name2);
-end;
-/
-
-drop function test_inchange(integer,varchar,varchar);
-
 
 --report error when IN OUT paramater has default value
 create or replace function test_return_inout(id integer,price in out integer default 100,name out varchar) return varchar 

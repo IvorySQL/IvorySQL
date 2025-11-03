@@ -209,6 +209,16 @@ extern Datum package_datumTransfer(Datum value, bool typByVal,
 extern bool is_compile_standard_package(void);
 extern void plisql_get_subprocs_from_package(Oid pkgoid, TupleDesc tupdesc,
 											Tuplestorestate *tupstore);
+extern int plisql_get_subproc_arg_info (FuncExpr *fexpr,
+						Oid **p_argtypes,
+						char ***p_argnames,
+						char **p_argmodes);
+extern char plisql_get_subproc_prokind (FuncExpr *fexpr);
+extern bool plisql_subproc_should_change_return_type(FuncExpr *fexpr,
+							Oid *rettype,
+							int32 *typmod,
+							Oid *collationoid);
+
 extern bool is_row_record_datum(PLiSQL_datum *datum);
 extern void release_package_func_usecount(FunctionCallInfo fcinfo);
 #endif

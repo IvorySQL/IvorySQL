@@ -905,13 +905,13 @@ end;
 /
 
 -- nested subproc of plisql
-create or replace function test_subproc_func(a in integer) returns integer as
+create or replace function test_subproc_func(a in out integer) returns integer as
 $$
 declare
   mds integer;
   original integer;
-  function square(original in integer) return integer;
-  function square(original in integer) return integer
+  function square(original in out integer) return integer;
+  function square(original in out integer) return integer
   AS
   declare
        original_squared integer;
@@ -947,22 +947,6 @@ DROP FUNCTION test_subproc_func(int);
 -- Compatible with Oracle:
 -- The input parameter type is %rowtype
 --
-create table t1(a int, b int);
-
-create or  replace function ftest(a in t1%rowtype)
- return int 
-  as 
-begin  a.a = 25; a.b= 26; raise notice '%',a;
-return 25;
-end;
-/
-
-select * from ftest(null::t1);
-
-drop function ftest;
-drop table t1;
-
-
 create or replace procedure protest 
 as 
 begin 

@@ -3005,6 +3005,11 @@ msgstr "  \\dg[S+] [模式]         列出角色\n"
 msgid "  \\di[S+] [PATTERN]      list indexes\n"
 msgstr "  \\di[S+] [模式]         列出索引\n"
 
+#: help.c:253
+#, c-format
+msgid "  \\dk[S+] [PATTERN]      list packages\n"
+msgstr "  \\dk[S+] [模式]         列出包\n"
+
 #: help.c:251
 #, c-format
 msgid "  \\dl                    list large objects, same as \\lo_list\n"

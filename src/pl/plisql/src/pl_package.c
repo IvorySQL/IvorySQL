@@ -3490,6 +3490,170 @@ plisql_get_subprocs_from_package(Oid pkgoid,
 }
 
 /*
+ * get subproc arginfo
+ */
+int
+plisql_get_subproc_arg_info (FuncExpr *fexpr,
+				Oid **p_argtypes,
+				char ***p_argnames,
+				char **p_argmodes)
+{
+	PLiSQL_function *function = NULL;
+	PLiSQL_subproc_function *subprocfunc = NULL;
+	ListCell *lc = NULL;
+	int nargs = 0;
+	int	i = 0;
+
+	if (FUNC_EXPR_FROM_PG_PROC(fexpr->function_from))
+		elog(ERROR, "FuncExpr is not an internal function");
+
+	if (fexpr->parent_func == NULL)
+		elog(ERROR, "parent_func has not been set");
+
+	function = (PLiSQL_function *) fexpr->parent_func;
+
+	if (fexpr->funcid < 0 || fexpr->funcid >= function->nsubprocfuncs)
+		elog(ERROR, "invalid fno %d", fexpr->funcid);
+
+	subprocfunc = function->subprocfuncs[fexpr->funcid];
+	nargs = list_length(subprocfunc->arg);
+
+	if (nargs == 0)
+		return nargs;
+
+	*p_argtypes = (Oid *) palloc(nargs * sizeof(Oid));
+	*p_argnames = (char **) palloc(nargs * sizeof(char *));
+	*p_argmodes = (char *) palloc0((nargs + 1) * sizeof(char));
+
+	foreach (lc, subprocfunc->arg)
+	{
+		PLiSQL_function_argitem *argitem = (PLiSQL_function_argitem *) lfirst(lc);
+		char argmode;
+
+		(*p_argtypes)[i] = argitem->type->typoid;
+		(*p_argnames)[i] = pstrdup(argitem->argname);
+
+		switch (argitem->argmode)
+		{
+			case ARGMODE_IN:
+				argmode = FUNC_PARAM_IN;
+				break;
+			case ARGMODE_OUT:
+				argmode = FUNC_PARAM_OUT;
+				break;
+			case ARGMODE_INOUT:
+				argmode = FUNC_PARAM_INOUT;
+				break;
+			default:
+				elog(ERROR, "invalid argmode %u", argitem->argmode);
+				break;
+		}
+
+		(*p_argmodes)[i++] = argmode;
+	}
+
+	return nargs;
+}
+
+
+/*
+ * get subproc kind
+ */
+char
+plisql_get_subproc_prokind (FuncExpr *fexpr)
+{
+	PLiSQL_function *function = NULL;
+	PLiSQL_subproc_function *subprocfunc = NULL;
+
+	if (FUNC_EXPR_FROM_PG_PROC(fexpr->function_from))
+		elog(ERROR, "FuncExpr is not an internal function");
+
+	if (fexpr->parent_func == NULL)
+		elog(ERROR, "parent_func has not been set");
+
+	function = (PLiSQL_function *) fexpr->parent_func;
+
+	if (fexpr->funcid < 0 || fexpr->funcid >= function->nsubprocfuncs)
+		elog(ERROR, "invalid fno %d", fexpr->funcid);
+
+	subprocfunc = function->subprocfuncs[fexpr->funcid];
+	return subprocfunc->function->fn_prokind;
+}
+
+
+/*
+ * like func_should_change_return_type, handle package'func.
+ */
+bool
+plisql_subproc_should_change_return_type(FuncExpr *fexpr,
+					Oid *rettype,
+					int32 *typmod,
+					Oid *collationoid)
+{
+	PLiSQL_function *function = NULL;
+	PLiSQL_subproc_function *subprocfunc = NULL;
+	Oid	real_retype;
+	int result = false;
+
+	if (FUNC_EXPR_FROM_PG_PROC(fexpr->function_from))
+		elog(ERROR, "FuncExpr is not an internal function");
+
+	if (fexpr->parent_func == NULL)
+		elog(ERROR, "parent_func has not been set");
+
+	function = (PLiSQL_function *) fexpr->parent_func;
+
+	if (fexpr->funcid < 0 || fexpr->funcid >= function->nsubprocfuncs)
+		elog(ERROR, "invalid fno %d", fexpr->funcid);
+
+	subprocfunc = function->subprocfuncs[fexpr->funcid];
+	real_retype = (subprocfunc->rettype == NULL ? VOIDOID : subprocfunc->rettype->typoid);
+
+	if (real_retype == RECORDOID)
+		return false;
+
+	/*
+	 * If there are more than one out-parameters, or only one out-parameter 
+	 * and return type does exist, change the rettype to be record. 
+	 */
+	if (subprocfunc->noutargs >= 2 ||
+		(subprocfunc->noutargs == 1 &&
+		real_retype != VOIDOID))
+	{
+		result = true;
+		*rettype = RECORDOID;
+		*typmod = -1;
+		*collationoid = 0;
+	}
+	else if (subprocfunc->noutargs == 1 &&
+		real_retype == VOIDOID)
+	{
+		/* only one out-parameter, change the rettype to be out-parameter type */
+		ListCell *lc;
+		bool found = false;
+
+		foreach (lc, subprocfunc->arg)
+		{
+			PLiSQL_function_argitem *argitem = (PLiSQL_function_argitem *) lfirst(lc);
+
+			if (argitem->argmode == ARGMODE_OUT ||
+				argitem->argmode == ARGMODE_INOUT)
+			{
+				found = true;
+				result = true;
+				*rettype = argitem->type->typoid;
+				*typmod = argitem->type->atttypmod;
+				*collationoid = argitem->type->collation;
+				break;
+			}
+		}
+		Assert(found);
+	}
+	return result;
+}
+
+
+/*
  * check the datum is PLiSQL_row or
  * PLiSQL_record variable in package
  */
