@@ -10,6 +10,8 @@ END
 $$ language plisql;
 /
 
+SET ivorysql.allow_out_parameter_const = true;
+
 --test sys.standard package
 CREATE OR REPLACE package sys.standard IS
 BINARY_FLOAT_NAN constant BINARY_FLOAT;
@@ -233,7 +235,7 @@ declare
  var2 mds%rowtype;
  var3 mds%rowtype;
  name varchar(256);
- function test_package(ids IN  mds%rowtype, ids1 mds%rowtype,name1  varchar) return mds%rowtype is
+ function test_package(ids out mds%rowtype, ids1 mds%rowtype,name1 out varchar) return mds%rowtype is
    var1 mds%rowtype;
  begin
      ids.id := ids1.id + 1;
@@ -2001,12 +2003,12 @@ drop package pkg;
 --test package references package
 create or replace package pkg is
 var1 mds%rowtype;
-function test(id integer, var2 mds%rowtype) return mds;
+function test(id integer, var2 out mds%rowtype) return mds%rowtype;
 end;
 /
 
 create or replace package body pkg is
- function test(id integer, var2 mds%rowtype) return mds is
+ function test(id integer, var2 out mds%rowtype) return mds%rowtype is
   var3 mds%rowtype;
  begin
    var2.id := 1;
@@ -2021,12 +2023,12 @@ end;
 create or replace package pkg1 is
  var1 mds%rowtype;
  var2 pkg.var1%type;
- function test(id integer, var3  mds%rowtype) return mds%rowtype;
+ function test(id integer, var3 out mds%rowtype) return mds%rowtype;
 end;
 /
 
 create or replace package body pkg1 is
-  function test(id integer, var3  mds%rowtype) return mds%rowtype is
+  function test(id integer, var3 out mds%rowtype) return mds%rowtype is
   var4 mds%rowtype;
   begin
     var3.id := 0;
@@ -2769,15 +2771,17 @@ end;
 --clean data
 drop package pkg;
 
+SET ivorysql.allow_out_parameter_const = true;
+
 --test
 create table emp2(empno int,ename char(10),job char(20),mgr int,hiredate date,sal number,comm number,deptno int);
 create or replace package pg_myfirst
 is
 procedure sp_emp_insert;
 function f_getename(i_empno number) return varchar2;
-function f_out(id integer, name varchar) return varchar;
-procedure f1_out(id integer, name varchar);
-function f2_out(id integer, var2 mds%rowtype) return mds%rowtype;
+function f_out(id integer, name out varchar) return varchar;
+procedure f1_out(id integer, name out varchar);
+function f2_out(id integer, var2 out mds%rowtype) return mds%rowtype;
 end pg_myfirst;
 /
 
@@ -2797,16 +2801,16 @@ begin
 select ename into v_ename from emp2 where empno=i_empno;
 return v_ename;
 end;
-function f_out(id integer, name varchar) return varchar is
+function f_out(id integer, name out varchar) return varchar is
 begin
    name := 'xiexie';
    return 'welcome';
 end;
-procedure f1_out(id integer, name varchar) is
+procedure f1_out(id integer, name out varchar) is
 begin
   name := 'jsdfljsf';
 end;
-function f2_out(id integer, var2 mds%rowtype) return mds%rowtype is
+function f2_out(id integer, var2 out mds%rowtype) return mds%rowtype is
   var1 mds%rowtype;
 begin
   var2.id := 1;
@@ -3036,12 +3040,12 @@ create table test1(id integer,name varchar(23));
 
 create or replace package pkg is
   id integer;
-  function test(id integer) return test1;
+  function test(id out integer) return test1;
 end;
 /
 
 create or replace package body pkg is
-  function test(id integer) return test1 is
+  function test(id out integer) return test1 is
     var1 test1%rowtype;
   begin
     id := pkg.id;
@@ -5071,42 +5075,45 @@ DROP USER test_user2;
 
 
 CREATE OR REPLACE package test_pkg IS
-	PROCEDURE proc1(number1 NUMBER);
-	PROCEDURE proc2(number2 NUMBER);
-	PROCEDURE proc3(number3 NUMBER);
-	PROCEDURE proc4(number4 NUMBER);
+    var1 number;
+	var2 number;
+	PROCEDURE proc1(number1 out NUMBER);
+	PROCEDURE proc2(number2 out NUMBER);
+	PROCEDURE proc3(number3 out NUMBER);
+	PROCEDURE proc4(number4 out NUMBER);
 end;
 /
 
 CREATE OR REPLACE package body test_pkg is
-	PROCEDURE proc2(number2 NUMBER) IS
+	PROCEDURE proc2(number2 out NUMBER) IS
 	BEGIN
 		call proc1(number2);
 		raise info '%', number2;
 		raise info '%','proc2';
 	END;
 
-	PROCEDURE proc4(number4 NUMBER) IS
+	PROCEDURE proc4(number4 out NUMBER) IS
 	BEGIN
 		raise info '%','proc4';
 		call proc3(number4);
 		raise info 'proc3 out %', number4;
 	END;
 
-	PROCEDURE proc1(number1 NUMBER) IS
+	PROCEDURE proc1(number1 out NUMBER) IS
 	BEGIN
 		raise info '%','proc1';
 		number1 := 0;
 	END;
 
-	PROCEDURE proc3(number3 NUMBER) IS
+	PROCEDURE proc3(number3 out NUMBER) IS
 	BEGIN
 		raise info '%', 'proc3';
 		number3 := 1;
 	END;
 BEGIN
-	call proc2(1);
-	call proc4(2);
+	call proc2(var1);
+	call proc4(var2);
+	raise info '%-%', var1,var2;
 END;
 /
 
@@ -5619,7 +5626,476 @@ DROP PROCEDURE test_p;
 DROP PROCEDURE test_p1;
 DROP package test_pkg;
 
+--test out parameter
+--raise info 23
+declare
+  var1 integer;
+  procedure test_p(id out integer) is
+  begin
+     id := 23;
+  end;
+begin
+  call test_p(var1);
+  raise info '%', var1;
+end;
+/
+
+declare
+  var1 integer;
+  procedure test_p(id out integer, name varchar2) is
+  begin
+     id := 23;
+  end;
+begin
+  call test_p(var1,'xiexie');
+  raise info '%', var1;
+end;
+/
+
+declare
+  var1 integer;
+  procedure test_p(id1 integer,id out integer, name varchar2) is
+  begin
+     raise info '%-%-%',id1, id, name;
+  end;
+begin
+  call test_p(23, var1,'xiexie');
+  raise info '%', var1;
+end;
+/
+
+
+declare
+  var1 integer;
+  var2 mds%rowtype;
+  procedure test_p(id1 IN out integer,id out mds, name varchar2) is
+  begin
+     raise info '%-%-%',id1, id, name;
+	 id.id := id1;
+	 id.name :=name;
+  end;
+BEGIN
+  var1 := 23;
+  call test_p(var1, var2,'xiexie');
+  raise info '%-%', var1, var2;
+end;
+/
+
+
+declare
+  var1 integer;
+  var2 mds%rowtype;
+  procedure test_p(id IN out mds) is
+  begin
+     raise info '%',id;
+	 id.id := var1;
+	 id.name := 'welcome';
+  end;
+BEGIN
+  var1 := 23;
+  call test_p(var2);
+  raise info '%',var2;
+end;
+/
+
+DECLARE
+  var1 integer;
+  var0 mds%rowtype;
+  PROCEDURE test_p(id out integer) IS
+    var2 integer;
+	PROCEDURE test_pp(id1 out mds%rowtype) IS
+    BEGIN
+        id1.id := id;
+		id1.name := 'welcome';
+    end;
+  BEGIN
+     id := 23;
+     call test_pp(var0);
+	 raise info '%', var0;
+  end;
+BEGIN
+    call test_p(var1);
+	raise info '%', var1;
+end;
+/
+
+
+DECLARE
+  var1 integer;
+  var0 mds%rowtype;
+  PROCEDURE test_p(id out integer) IS
+    var2 integer;
+	PROCEDURE test_pp(id1 out mds%rowtype) IS
+    BEGIN
+        id1.id := var2;
+		id1.name := 'welcome';
+    end;
+  BEGIN
+     id := 23;
+	 var2 := 24;
+     call test_pp(var0);
+	 raise info '%', var0;
+  end;
+BEGIN
+    call test_p(var1);
+	raise info '%', var1;
+end;
+/
+
+--test function
+DECLARE
+  var1 integer;
+  var2 integer;
+  FUNCTION test_f(id out integer) RETURN integer IS
+  BEGIN
+     id := var1;
+	 RETURN var1 + 1;
+  end;
+BEGIN
+  var2 := 23;
+  var1 := 24;
+  var1 := test_f(var2);
+  raise info '%-%', var1,var2;
+end;
+/
+
+
+declare
+  var1 integer;
+  var2 varchar2(256);
+  function test_f(id out integer) RETURN varchar2 is
+  begin
+     id := 23;
+	 RETURN 'xiexie';
+  end;
+begin
+  var2 := test_f(var1);
+  raise info '%-%', var1,var2;
+end;
+/
+
+declare
+  var1 integer;
+  var2 integer;
+  function test_f(id out integer, name varchar2) RETURN integer is
+  begin
+     id := 23;
+	 RETURN id + 1;
+  end;
+begin
+  var2 := test_f(var1,'xiexie');
+  raise info '%-%', var1, var2;
+end;
+/
+
+declare
+  var1 integer;
+  var2 integer;
+  FUNCTION  test_f(id1 integer,id out integer, name varchar2) RETURN integer is
+  begin
+     raise info '%-%-%',id1, id, name;
+	 RETURN id + 1;
+  end;
+begin
+  var2 := test_f(23, var1,'xiexie');
+  raise info '%-%', var1,var2;
+end;
+/
+
+
+declare
+  var1 integer;
+  var2 mds%rowtype;
+  var3 mds%rowtype;
+  function test_f(id1 IN out integer,id out mds, name varchar2) RETURN mds IS
+    var3 mds%rowtype;
+  begin
+     raise info '%-%-%',id1, id, name;
+	 id.id := id1;
+	 id.name :=name;
+     var3.id := id.id + 1;
+	 var3.name := 'name' || ' ' || id.name;
+	 RETURN var3;
+  end;
+BEGIN
+  var1 := 23;
+  var3 := test_f(var1, var2,'xiexie');
+  raise info '%-%-%', var1, var2, var3;
+end;
+/
+
+
+declare
+  var1 integer;
+  var2 mds%rowtype;
+  var3 integer;
+  function test_f(id IN out mds) RETURN integer is
+  begin
+     raise info '%',id;
+	 id.id := var1;
+	 id.name := 'welcome';
+	 RETURN id.id + 1;
+  end;
+BEGIN
+  var1 := 23;
+  var3 := test_f(var2);
+  raise info '%-%',var2, var3;
+end;
+/
+
+DECLARE
+  var1 integer;
+  var0 mds%rowtype;
+  var4 integer;
+  function test_f(id out integer) RETURN integer IS
+    var2 integer;
+	var3 varchar2(256);
+	function test_ff(id1 out mds%rowtype) RETURN varchar2 IS
+    BEGIN
+        id1.id := id;
+		id1.name := 'welcome';
+		RETURN 'xiexie';
+    end;
+  BEGIN
+     id := 23;
+     var3 := test_ff(var0);
+	 raise info '%-%', var0, var3;
+	 RETURN 267;
+  end;
+BEGIN
+    var4 := test_f(var1);
+	raise info '%-%', var1, var4;
+end;
+/
+
+
+DECLARE
+  var1 integer;
+  var0 mds%rowtype;
+  var4 varchar2(256);
+  function test_f(id out integer) RETURN varchar2 IS
+    var2 integer;
+	var3 mds%rowtype;
+	function test_ff(id1 out mds%rowtype) RETURN mds IS
+    BEGIN
+        id1.id := var2;
+		id1.name := 'welcome';
+		RETURN id1;
+    end;
+  BEGIN
+     id := 23;
+	 var2 := 24;
+     var3 := test_ff(var0);
+	 raise info '%-%', var0, var3;
+	 RETURN var0.name;
+  end;
+BEGIN
+    var4 := test_f(var1);
+	raise info '%-%', var1, var4;
+end;
+/
+
+CREATE OR REPLACE FUNCTION test_f(id out varchar2,id1 integer) RETURN integer IS
+  var2 mds%rowtype;
+  var1 integer;
+  FUNCTION test_ff(id2 out varchar2) RETURN integer IS
+  BEGIN
+     id2 := 'welcome';
+	 RETURN 23;
+  end;
+  PROCEDURE test_p(id3 out varchar2, id4 out mds) IS
+  BEGIN
+    id3 := 'to beijing';
+	id4.id := 12;
+	id4.name := 'welcome to hunan';
+  end;
+BEGIN
+  var1 := test_ff(id);
+  raise info '%-%', id, var1;
+  call test_p(id, var2);
+  raise info '%-%', id, var2;
+  RETURN var2.id;
+end;
+/
+
+DECLARE
+  var1 integer;
+  var2 varchar2(256);
+BEGIN
+  var1 := test_f(var2,23);
+  raise info '%-%', var2,var1;
+end;
+/
+
+
+--agian
+DECLARE
+  var1 integer;
+  var2 varchar2(256);
+BEGIN
+  var1 := test_f(var2,23);
+  raise info '%-%', var2,var1;
+end;
+/
+
+CREATE OR REPLACE procedure test_p(id out varchar2,id1 integer)  IS
+  var2 mds%rowtype;
+  var1 integer;
+  FUNCTION test_ff(id2 out varchar2) RETURN integer IS
+  BEGIN
+     id2 := 'welcome';
+	 RETURN 23;
+  end;
+  PROCEDURE test_p(id3 out varchar2, id4 out mds) IS
+  BEGIN
+    id3 := 'to beijing';
+	id4.id := 12;
+	id4.name := 'welcome to hunan';
+  end;
+BEGIN
+  var1 := test_ff(id);
+  raise info '%-%', id, var1;
+  call test_p(id, var2);
+  raise info '%-%', id, var2;
+end;
+/
+
+
+DECLARE
+  var2 varchar2(256);
+BEGIN
+  call test_p(var2,23);
+  raise info '%', var2;
+end;
+/
+
+--again
+DECLARE
+  var2 varchar2(256);
+BEGIN
+  call test_p(var2,23);
+  raise info '%', var2;
+end;
+/
+
+--clean
+DROP FUNCTION test_f;
+DROP PROCEDURE test_p;
+
+--package
+CREATE OR REPLACE package test_pkg IS
+ var1 integer;
+ var2 varchar2(256);
+ var3 mds%rowtype;
+ FUNCTION test_f(id out varchar2) RETURN integer;
+ FUNCTION test_f1(id out mds,name out varchar2) RETURN mds;
+ FUNCTION test_f2(id integer) RETURN mds;
+ PROCEDURE test_p(id out mds);
+ PROCEDURE test_p1(name out varchar2,id2 integer);
+end;
+/
+
+CREATE OR REPLACE package body test_pkg IS
+ FUNCTION test_f(id out varchar2) RETURN integer IS
+ BEGIN
+    id := 'welcome to ';
+	RETURN 23;
+ end;
+ FUNCTION test_f1(id out mds,name out varchar2) RETURN mds IS
+   var4 mds%rowtype;
+ begin
+   id.id := var1;
+   id.name := var2;
+   name := ' beijing';
+   var4.id := 1;
+   var4.name := 'welcome to hunan';
+   RETURN var4;
+ end;
+ FUNCTION test_f2(id integer) RETURN mds IS
+   var4 mds%rowtype;
+ BEGIN
+   var4.id := id;
+   var4.name := 'welcome to beijing';
+   RETURN var4;
+ end;
+ PROCEDURE test_p(id out mds) IS
+ BEGIN
+    id := var3;
+ end;
+ PROCEDURE test_p1(name out varchar2,id2 integer) IS
+ BEGIN
+    name := var3.name;
+ end;
+BEGIN
+  var1 := 23;
+  var2 := 'init a value';
+  var3.id := var1;
+  var3.name := var2;
+end;
+/
+
+SELECT test_pkg.test_f(NULL);
+SELECT test_pkg.test_f1(NULL, NULL);
+SELECT test_pkg.test_f2(23);
+SELECT * FROM test_pkg.test_f(NULL);
+SELECT * FROM test_pkg.test_f1(NULL, NULL);
+SELECT * FROM test_pkg.test_f2(23);
+call test_pkg.test_p(NULL);
+call test_pkg.test_p1(NULL, 23);
+
+DECLARE
+   var1 integer;
+   var2 varchar2(256);
+   var3 mds%rowtype;
+   var4 mds%rowtype;
+BEGIN
+   var1 := test_pkg.test_f(var2);
+   raise info '%-%', var2,var1;
+   var4 := test_pkg.test_f1(var3, var2);
+   raise info '%-%-%', var3, var2,var4;
+   var4 := test_pkg.test_f2(24);
+   raise info '%', var4;
+   call test_pkg.test_p(test_pkg.var3);
+   raise info '%', test_pkg.var3;
+   call test_pkg.test_p1(var2,23);
+   raise info '%', var2;
+end;
+/
+
+
+DECLARE
+   var1 integer;
+   var2 varchar2(256);
+   var3 mds%rowtype;
+   var4 mds%rowtype;
+BEGIN
+   var1 := test_pkg.test_f(var2);
+   raise info '%-%', var2,var1;
+   var4 := test_pkg.test_f1(var3, var2);
+   raise info '%-%-%', var3, var2,var4;
+   var4 := test_pkg.test_f2(24);
+   raise info '%', var4;
+   call test_pkg.test_p(test_pkg.var3);
+   raise info '%', test_pkg.var3;
+   call test_pkg.test_p1(var2,23);
+   raise info '%', var2;
+end;
+/
+
+
+SELECT test_pkg.test_f(NULL);
+SELECT test_pkg.test_f1(NULL, NULL);
+SELECT test_pkg.test_f2(23);
+SELECT * FROM test_pkg.test_f(NULL);
+SELECT * FROM test_pkg.test_f1(NULL, NULL);
+SELECT * FROM test_pkg.test_f2(23);
+call test_pkg.test_p(NULL);
+call test_pkg.test_p1(NULL, 23);
+
+DROP package test_pkg;
+
 --clean data
+RESET ivorysql.allow_out_parameter_const;
 DROP FUNCTION test_event_trigger;
 DROP TABLE mds;
 DROP TABLE mdss;

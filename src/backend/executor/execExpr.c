@@ -5122,25 +5122,38 @@ ExecInitFuncWithOutParams(Expr *node, ExprState *state,
 		Oid			rettype;
 		char	   *funcname = NULL;
 
-		func_tuple = SearchSysCache1(PROCOID,
-									 ObjectIdGetDatum(funcOid));
-
-		if (!HeapTupleIsValid(func_tuple))
-			return;
-
-		if (((Form_pg_proc) GETSTRUCT(func_tuple))->prokind != PROKIND_FUNCTION ||
-			LANG_PLISQL_OID != ((Form_pg_proc) GETSTRUCT(func_tuple))->prolang)
+		if (FUNC_EXPR_FROM_PG_PROC(funcexpr->function_from))
 		{
-			ReleaseSysCache(func_tuple);
-			return;
-		}
+			func_tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcOid));
 
-		/*
-		 * get the argument names and modes
-		 */
-		num_all_args = get_func_arg_info(func_tuple, &argtypes, &argnames, &argmodes);
-		rettype = ((Form_pg_proc) GETSTRUCT(func_tuple))->prorettype;
-		funcname = NameStr(((Form_pg_proc) GETSTRUCT(func_tuple))->proname);
+			if (!HeapTupleIsValid(func_tuple))
+				return;
+
+			if (((Form_pg_proc) GETSTRUCT(func_tuple))->prokind != PROKIND_FUNCTION ||
+				LANG_PLISQL_OID != ((Form_pg_proc) GETSTRUCT(func_tuple))->prolang)
+			{
+				ReleaseSysCache(func_tuple);
+				return;
+			}
+
+			/*
+			 * Get the argument names and modes 
+			 */
+			num_all_args = get_func_arg_info(func_tuple, &argtypes,
+								&argnames, &argmodes);
+			rettype = get_func_real_rettype(func_tuple);
+			funcname = NameStr(((Form_pg_proc) GETSTRUCT(func_tuple))->proname);
+		}
+		else
+		{
+			/* skip procedure */
+			if (get_subproc_kind(funcexpr) != PROKIND_FUNCTION)
+				return;
+			num_all_args = get_subproc_arg_info(funcexpr, &argtypes,
+										&argnames, &argmodes);
+			rettype = funcexpr->funcresulttype;
+			funcname = get_internal_function_name(funcexpr);
+		}
 
 		num_out_args = 0;
 		for (i = 0; i < num_all_args; i++)
@@ -5251,6 +5264,7 @@ ExecInitFuncWithOutParams(Expr *node, ExprState *state,
 				}
 			}
 		}
+		
 		if (FUNC_EXPR_FROM_PG_PROC(funcexpr->function_from))
 			ReleaseSysCache(func_tuple);
 	}

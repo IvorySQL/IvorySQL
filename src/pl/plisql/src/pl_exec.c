@@ -5305,32 +5305,6 @@ exec_assign_expr(PLiSQL_execstate * estate, PLiSQL_datum * target,
 		exec_prepare_plan(estate, expr, 0);
 
 	value = exec_eval_expr(estate, expr, &isnull, &valtype, &valtypmod);
-
-	if (target->dtype == PLISQL_DTYPE_VAR)
-	{
-		PLiSQL_var *var = (PLiSQL_var *) target;
-
-		if (var->info == PROARGMODE_IN)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_PLPGSQL_ERROR),
-					 errmsg("expression \"%s\" cannot be used as an assignment target",
-							var->refname)));
-		}
-	}
-	else if (target->dtype == PLISQL_DTYPE_REC)
-	{
-		PLiSQL_rec *rec = (PLiSQL_rec *) target;
-
-		if (rec->info == PROARGMODE_IN)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_PLPGSQL_ERROR),
-					 errmsg("expression \"%s\" cannot be used as an assignment target",
-							rec->refname)));
-		}
-	}
-
 	exec_assign_value(estate, target, value, isnull, valtype, valtypmod);
 	exec_eval_cleanup(estate);
 }

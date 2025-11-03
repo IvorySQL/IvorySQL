@@ -27,8 +27,8 @@ $$
 declare
   mds integer;
   original integer;
-  function square(original in integer) return integer;
-  function square(original in integer) return integer
+  function square(original in out integer) return integer;
+  function square(original in out integer) return integer
   AS
   declare
        original_squared integer;
@@ -45,7 +45,7 @@ begin
 end;$$ language plisql;
 /
 
---print 100 and 10
+--print 100 and 101
 select * from test_subproc_func(23);
 drop function test_subproc_func(integer);
 
@@ -187,10 +187,8 @@ begin
 
 --subproc use global variable
 --print we are in main function
---res = 45 a square function assign 11
+--res = 121 a square function assign 45
 --
---the originial not like oracle
---for out argmuments
 do $$
 declare
   mds varchar(256);
@@ -206,7 +204,7 @@ declare
        raise info '%', mds;
        mds := 'a square function assign';
        original := 45;
-       --return original_squared;
+       return original_squared;
    end;
 begin
     mds := 'we are in main function';
@@ -755,7 +753,7 @@ declare
 	   raise info 'local var a = %',a;
 	   raise info 'global a = %', test_subproc_func.a;
        original := original_squared + 1;
-       --return original_squared;
+       return original_squared;
    end;
 begin
     mds := 10;
@@ -798,13 +796,13 @@ end; $$ language plisql;
 do $$
 declare
   salary integer;
-  var2 record;
+  var2 integer;
   id integer;
-  function test_out(id in out integer, salary out integer) return record
+  function test_out(id in out integer, salary out integer) return integer
   IS
   declare
-       var1 record;
-       function test_out(id in out integer,salary out integer) return record
+       var1 integer;
+       function test_out(id in out integer,salary out integer) return integer
        IS
        declare
             var2 integer;
@@ -812,14 +810,14 @@ declare
 	     salary := 101;
 	     var2 := id + 2;
 	     id := 1;
-	     --return var2;
+	     return var2;
 	end;
    begin
      var1 := test_out(id, salary);
 	 raise info 'var=%', var1;
 	 salary := 102;
 	 id := 2;
-	 --return var1;
+	 return var1;
    end;
 begin
     var2 := test_out(id, salary);
@@ -827,12 +825,6 @@ begin
 end; $$ language plisql;
 
 --ok
---this is because we don't handle out parameter,
--- so it is not like oracle
--- test out name=must be assign to null
--- test_out.test_out name=must be assign to null
--- name1= must be assign to null
--- declare name=must be assign to null
 do $$
 declare
   name varchar(256);
@@ -1822,10 +1814,10 @@ end; $$ language plisql;
 --ret = (46, "test a nocopy")
 do $$
 declare
-   ret record;
+   ret integer;
    out_var integer;
    name varchar(256);
-   function square(id out nocopy integer, name in out nocopy varchar) return record
+   function square(id out nocopy integer, name in out nocopy varchar) return integer
    IS
    declare
      var1 integer;
@@ -1834,7 +1826,7 @@ declare
      id := var1 + 23;
      raise info 'id=%,name=%', id,name;
      name := 'test a nocopy';
-     --return var1;
+     return var1;
    end;
 begin
   name := 'before function';
@@ -2189,23 +2181,32 @@ END; $$ language plisql;
 do $$
 DECLARE
    r record;
+   var1 _int4;
+   var2 _number;
+   var3 _point;
    function f1(a anyelement, b anyarray,
                    c anycompatible, d anycompatible,
                    x OUT anyarray, y OUT anycompatiblearray) RETURN record
-	as
+	AS
+      r record;
 	begin
 	  x := a || b;
 	  y := array[c, d];
+	  RETURN r;
 	end;
 begin
-	r := f1(11, array[1, 2], 42, 34.5, NULL,NULL);
+	r := f1(11, array[1, 2], 42, 34.5, var1, var2);
 	raise info 'r=%',r;
-	r := f1(11, array[1, 2], point(1,2), point(3,4), NULL,NULL);
+	raise info '%-%',var1, var2;
+	r := f1(11, array[1, 2], point(1,2), point(3,4), var1,var3);
 	raise info 'r=%',r;
-	r := f1(11, '{1,2}', point(1,2), '(3,4)', NULL,NULL);
+	raise info '%-%',var1, var3;
+	r := f1(11, '{1,2}', point(1,2), '(3,4)', var1,var3);
 	raise info 'r=%',r;
-	r := f1(11, array[1, 2.2], 42, 34.5, NULL,NULL);  -- fail
+	raise info '%-%',var1, var3;
+	r := f1(11, array[1, 2.2], 42, 34.5, var1,var2);  -- fail
 	raise info 'r=%',r;
+	raise info '%-%',var1, var2;
 END; $$ language plisql;
 
 --
@@ -2215,39 +2216,51 @@ END; $$ language plisql;
 do $$
 DECLARE
    var1 integer;
+   var2 integer;
    function f1(i IN int, j out int) RETURN integer is
    begin
      j := i+1;
-     return;
+     RETURN 23;
    end;
 BEGIN
-  raise info '%', f1(42, 23);
-  SELECT f1(42,23) INTO var1;
-  raise info '%', var1;
+  raise info '%', f1(42, var1);
+  SELECT f1(42,var2) INTO var1;
+  raise info '%-%', var1, var2;
 end; $$ language plisql;
 
 do $$
-declare
-  function duplic(i IN anyelement, j out anyelement, k out anyarray) RETURN record is
+DECLARE
+  var1 _int4;
+  var2 _text;
+  var3 integer;
+  var4 text;
+  function duplic(i IN anyelement, j out anyelement, k out anyarray) RETURN integer is
    begin
 	  j := i;
 	  k := array[j,j];
-	  return;
+	  RETURN 23;
   end;
 BEGIN
-  raise info '%,%',duplic(42,45,NULL), duplic('foo'::text,'45',NULL);
+  raise info '%,%',duplic(42,var3,var1), duplic('foo'::text,var4,var2);
+  raise info '%-%', var1, var3;
+  raise info '%-%', var4, var2;
 END; $$ language plisql;
 
 do $$
-declare
-    function duplic(i IN anycompatiblerange, j out anycompatible, k out anycompatiblearray) RETURN record as
+DECLARE
+    var1 integer;
+	var2 _int4;
+    function duplic(i IN anycompatiblerange, j out anycompatible, k out anycompatiblearray) RETURN integer as
 	begin
 		j := lower(i);
 		k := array[lower(i),upper(i)];
-		return;
+		RETURN 23;
 	end;
 BEGIN
-	raise info '%,%',duplic(int4range(42,49), NULL,NULL),duplic(int4range('23', '45'), NULL,NULL);
+	raise info '%',duplic(int4range(42,49), var1,var2);
+	raise info '%-%', var1, var2;
+	raise info '%', duplic(int4range('23', '45'), var1,var2);
+	raise info '%-%', var1, var2;
 end; $$ language plisql;
 
 
@@ -2429,7 +2442,7 @@ DROP FUNCTION test_f(integer);
 do $$
 declare
   var1 integer;
-  function test_f(id integer) return integer is
+  function test_f(id out integer) return integer is
   begin
     id := 23;
 	var1 := id;
@@ -2534,11 +2547,11 @@ declare
   function test_f(id integer default 23,id2 out integer) return integer is
   begin
     id2 := id;
-    --return id;
+    return id;
   end;
 begin
   var1 := test_f(23,var2);
-  raise info 'var1=%', var1;
+  raise info 'var1=%, var2=%', var1, var2;
 end; $$ language plisql;
 
 --ok
@@ -2548,6 +2561,7 @@ declare
   function test_f(id out nocopy integer) return integer is
   begin
    id := 23;
+   RETURN 24;
   end;
 begin
   var1 := test_f(var1);
@@ -2572,6 +2586,7 @@ declare
   function test_f(id in out nocopy integer) return integer is
   begin
    id := 23;
+   RETURN 24;
   end;
 begin
   var1 := test_f(var1);

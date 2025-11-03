@@ -464,6 +464,11 @@ ParseParamVariable(Node *arg)
 		result = (Node *) ((ArrayCoerceExpr *)arg)->arg;
 		return ParseParamVariable(result);
 	}
+	else if (IsA(arg, ArrayCoerceExpr))
+	{
+		result = (Node *) ((ArrayCoerceExpr *)arg)->arg;
+		return ParseParamVariable(result);
+	}
 
 	return result;
 }

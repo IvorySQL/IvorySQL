@@ -51,7 +51,7 @@ typedef struct polymorphic_actuals
 	Oid			anymultirange_type; /* anymultirange mapping, if known */
 } polymorphic_actuals;
 
-PLiSQL_funcs_call plisql_internal_funcs = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, false};
+PLiSQL_funcs_call plisql_internal_funcs = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, false};
 
 static void shutdown_MultiFuncCall(Datum arg);
 static TypeFuncClass internal_get_result_type(Oid funcid,
@@ -1931,6 +1931,52 @@ get_func_typename_info(HeapTuple procTup,
 	}
 
 }
+
+/*
+ * get subproc prokind
+ */
+char
+get_subproc_kind(FuncExpr *fexpr)
+{
+	plisql_internel_funcs_init();
+
+	return plisql_internal_funcs.get_subproc_prokind(fexpr);
+}
+
+/*
+ * get subproc arginfo
+ */
+int
+get_subproc_arg_info(FuncExpr *fexpr,
+			Oid **p_argtypes,
+			char ***p_argnames,
+			char **p_argmodes)
+{
+	plisql_internel_funcs_init();
+
+	return plisql_internal_funcs.get_subproc_arg_info(fexpr,
+								p_argtypes,
+								p_argnames,
+								p_argmodes);
+}
+
+/*
+ * check if subproc should chanage its return type
+ */
+bool
+subproc_should_change_return_type(FuncExpr *fexpr,
+					Oid *rettype,
+					int32 *typmod,
+					Oid *collationoid)
+{
+	plisql_internel_funcs_init();
+
+	return plisql_internal_funcs.subproc_should_change_return_type(fexpr,
+								rettype,
+								typmod,
+								collationoid);
+}
+
 
 /*
  * build_function_result_tupdesc_d
