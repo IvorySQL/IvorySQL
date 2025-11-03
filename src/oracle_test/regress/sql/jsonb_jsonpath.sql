@@ -607,7 +607,10 @@ select jsonb_path_query_tz('"2023-08-15 12:34:56"', '$.timestamp_tz().string()')
 select jsonb_path_query('"2023-08-15 12:34:56 +5:30"', '$.timestamp_tz().string()');
 select jsonb_path_query('"2023-08-15 12:34:56"', '$.timestamp().string()');
 select jsonb_path_query('"12:34:56 +5:30"', '$.time_tz().string()');
+begin;
+set local timezone = '-7';
 select jsonb_path_query_tz('"12:34:56"', '$.time_tz().string()');
+rollback;
 select jsonb_path_query('"12:34:56"', '$.time().string()');
 select jsonb_path_query('"2023-08-15"', '$.date().string()');
 
