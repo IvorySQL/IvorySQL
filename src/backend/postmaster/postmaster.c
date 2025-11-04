@@ -970,7 +970,9 @@ PostmasterMain(int argc, char *argv[])
 
 	
 	{
+#if !defined(WIN32) || defined(_MSC_VER)
 		extern char **environ;
+#endif
 		char	  **p;
 
 		ereport(DEBUG3,
