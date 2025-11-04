@@ -2205,6 +2205,15 @@ ExecTypeFromTLInternal(List *targetList, bool hasrowid, bool skipjunk)
 				func->funcresulttype = resulttype;
 				func->funccollid = chcollationoid;
 			}
+			else if (!FUNC_EXPR_FROM_PG_PROC(func->function_from) &&
+				subproc_should_change_return_type(func, &resulttype, &chtypmod, &chcollationoid))
+			{
+				typoid = resulttype;
+				typmod = chtypmod;
+				collationoid = chcollationoid;
+				func->funcresulttype = resulttype;
+				func->funccollid = chcollationoid;
+			}
 		}
 
 		TupleDescInitEntry(typeInfo,

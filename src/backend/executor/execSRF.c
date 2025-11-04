@@ -20,6 +20,7 @@
 
 #include "access/htup_details.h"
 #include "catalog/objectaccess.h"
+#include "executor/spi.h"
 #include "catalog/pg_proc.h"
 #include "funcapi.h"
 #include "miscadmin.h"
@@ -31,6 +32,8 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/typcache.h"
+#include "utils/ora_compatible.h"
+#include "utils/guc.h"
 
 
 /* static function decls */
@@ -132,7 +135,39 @@ ExecMakeTableFunctionResult(SetExprState *setexpr,
 	MemoryContextReset(argContext);
 	callerContext = MemoryContextSwitchTo(argContext);
 
-	funcrettype = exprType((Node *) setexpr->expr);
+	if (nodeTag(setexpr->expr) == T_FuncExpr &&
+		SPI_get_connected() < 0 &&
+		DB_ORACLE == compatible_db)
+	{
+		FuncExpr *funcexpr = (FuncExpr *) setexpr->expr;
+		Oid		resulttype;
+		int32	chtypmod;
+		Oid		chcollationoid;
+
+		funcrettype = exprType((Node *) setexpr->expr);
+
+		if (FUNC_EXPR_FROM_PG_PROC(funcexpr->function_from) &&
+			func_should_change_return_type(funcexpr->funcid, &resulttype, &chtypmod, &chcollationoid))
+		{
+			funcrettype = resulttype;
+			funcexpr->funcresulttype = resulttype;
+			funcexpr->funccollid = chcollationoid;
+		}
+		else if (!FUNC_EXPR_FROM_PG_PROC(funcexpr->function_from) &&
+				subproc_should_change_return_type(funcexpr,
+									&resulttype,
+									&chtypmod,
+									&chcollationoid))
+		{
+			funcrettype = resulttype;
+			funcexpr->funcresulttype = resulttype;
+			funcexpr->funccollid = chcollationoid;
+		}
+	}
+	else
+	{
+		funcrettype = exprType((Node *) setexpr->expr);
+	}
 
 	returnsTuple = type_is_rowtype(funcrettype);
 
