@@ -244,6 +244,7 @@ slashUsage(unsigned short int pager)
 	HELP0("  \\dg[Sx+] [PATTERN]     list roles\n");
 	HELP0("  \\di[Sx+] [PATTERN]     list indexes\n");
 	HELP0("  \\dl[x+]                list large objects, same as \\lo_list\n");
+	HELP0("  \\dk[S+] [PATTERN]      list packages\n");
 	HELP0("  \\dL[Sx+] [PATTERN]     list procedural languages\n");
 	HELP0("  \\dm[Sx+] [PATTERN]     list materialized views\n");
 	HELP0("  \\dn[Sx+] [PATTERN]     list schemas\n");

@@ -3955,71 +3955,78 @@ interpretRowidOption(List *defList, bool allowRowid)
 static void
 check_funcexpr_outparams(List *funcexprs)
 {
-	HeapTuple		procTup;
-	Form_pg_proc		procStruct;
-	char			*proname = NULL;
-	FuncExpr *func = (FuncExpr *) linitial(funcexprs);
+	ListCell *lc;
 
-	if (list_length(funcexprs) <= 0)
+	if (allow_out_parameter_const)
 		return;
 
-	if (!IsA(func, FuncExpr))
-		return;
-
-	if (!FUNC_EXPR_FROM_PG_PROC(func->function_from))
-		return;
-
-	procTup = SearchSysCache1(PROCOID,
-					ObjectIdGetDatum(func->funcid));
-
-	if (!HeapTupleIsValid(procTup))
-		ereport(ERROR,
-			(errcode(ERRCODE_DATA_EXCEPTION),
-			 errmsg("cache lookup failed for function %u", func->funcid)));
-
-	procStruct = (Form_pg_proc) GETSTRUCT(procTup);
-
-	if (LANG_PLISQL_OID != procStruct->prolang)
+	foreach (lc, funcexprs)
 	{
-		ReleaseSysCache(procTup);
-		return;
-	}
+		FuncExpr *func = (FuncExpr *) lfirst(lc);
+		int			i;
+		ListCell 	*lc1;
+		Oid 	   *argtypes = NULL;
+		char	  **argnames = NULL;
+		char	   *argmodes= NULL;
+		HeapTuple		procTup = NULL;
+		char *proname = NULL;
 
-	if (!heap_attisnull(procTup, Anum_pg_proc_proargmodes, NULL) &&
-		!allow_out_parameter_const)
-	{
-		int		i;
-		ListCell 	*lc;
-		Oid 	   *argtypes;
-		char	  **argnames;
-		char	   *argmodes;
+		if (!IsA(func, FuncExpr))
+			return;
 
-		proname = pstrdup(NameStr(procStruct->proname));
-		get_func_arg_info(procTup, &argtypes, &argnames, &argmodes);
-
-		i = 0;
-		foreach(lc, func->args)
+		if (FUNC_EXPR_FROM_PG_PROC(func->function_from))
 		{
+			Form_pg_proc	procStruct;
+		
+			procTup = SearchSysCache1(PROCOID, ObjectIdGetDatum(func->funcid));
+
+			if (!HeapTupleIsValid(procTup))
+				ereport(ERROR,
+					(errcode(ERRCODE_DATA_EXCEPTION),
+					 errmsg("cache lookup failed for function %u", func->funcid)));
+
+			procStruct = (Form_pg_proc) GETSTRUCT(procTup);
+
+			if (LANG_PLISQL_OID != procStruct->prolang)
+			{
+				ReleaseSysCache(procTup);
+				continue;
+			}
+
+			proname = pstrdup(NameStr(procStruct->proname));
+			get_func_arg_info(procTup, &argtypes, &argnames, &argmodes);
+			ReleaseSysCache(procTup);
+
+			if (argmodes == NULL)
+				continue;
+		}
+		else 
+		{
+			get_subproc_arg_info(func, &argtypes,
+										&argnames, &argmodes);
+			proname = get_internal_function_name(func);
+		}
+		i = 0;
+
+		foreach(lc1, func->args)
+		{
+
 			if (argmodes[i] == PROARGMODE_OUT ||
 				argmodes[i] == PROARGMODE_INOUT)
 			{
-				Node *arg = (Node *) lfirst(lc);
+				Node *arg = (Node *) lfirst(lc1);
 
 				arg = ParseParamVariable(arg);
 				if (!IsA(arg, Param))
 				{
-					ReleaseSysCache(procTup);
 					ereport(ERROR,
 						(errcode(ERRCODE_DATA_EXCEPTION),
-						errmsg("OUT or IN OUT arguments of the function %s must be variables ",
+						errmsg("OUT or IN OUT arguments of the function %s must be variables.",
 								proname)));
 				}
 			}
 			i++;
 		}
 	}
-	ReleaseSysCache(procTup);
-
-	return;
 }
 

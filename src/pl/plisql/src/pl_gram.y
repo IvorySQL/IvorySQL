@@ -4464,6 +4464,31 @@ check_assignable(PLiSQL_datum *datum, int location, yyscan_t yyscanner)
 						 errmsg("variable \"%s\" is declared CONSTANT",
 								((PLiSQL_variable *) datum)->refname),
 						 parser_errposition(location)));
+
+			if (datum->dtype == PLISQL_DTYPE_VAR)
+			{
+				PLiSQL_var *var = (PLiSQL_var *) datum;
+
+				if (var->info == PROARGMODE_IN)
+					ereport(ERROR,
+							(errcode(ERRCODE_PLPGSQL_ERROR),
+							 errmsg("expression \"%s\" cannot be used as an assignment target",
+									var->refname)));
+			}
+			else if (datum->dtype ==  PLISQL_DTYPE_REC)
+			{
+				/*
+				 * Target is a record variable
+				 */
+				PLiSQL_rec *rec = (PLiSQL_rec *) datum;
+
+				if (rec->info == PROARGMODE_IN)
+					ereport(ERROR,
+							(errcode(ERRCODE_PLPGSQL_ERROR),
+							 errmsg("expression \"%s\" cannot be used as an assignment target",
+									rec->refname)));
+			}
+
 			break;
 		case PLISQL_DTYPE_ROW:
 			/* always assignable; member vars were checked at compile time */
@@ -4511,6 +4536,31 @@ check_packagedatum_assignable(PLiSQL_pkg_datum *pkg_datum, int location, yyscan_
 						 errmsg("variable \"%s\" is declared CONSTANT",
 								((PLiSQL_variable *) datum)->refname),
 						 parser_errposition(location)));
+
+			if (datum->dtype == PLISQL_DTYPE_VAR)
+			{
+				PLiSQL_var *var = (PLiSQL_var *) datum;
+
+				if (var->info == PROARGMODE_IN)
+					ereport(ERROR,
+							(errcode(ERRCODE_PLPGSQL_ERROR),
+							 errmsg("expression \"%s\" cannot be used as an assignment target",
+									var->refname)));
+			}
+			else if (datum->dtype ==  PLISQL_DTYPE_REC)
+			{
+				/*
+				 * Target is a record variable
+				 */
+				PLiSQL_rec *rec = (PLiSQL_rec *) datum;
+
+				if (rec->info == PROARGMODE_IN)
+					ereport(ERROR,
+							(errcode(ERRCODE_PLPGSQL_ERROR),
+							 errmsg("expression \"%s\" cannot be used as an assignment target",
+									rec->refname)));
+			}
+
 			break;
 		case PLISQL_DTYPE_ROW:
 			/* always assignable; member vars were checked at compile time */

@@ -6957,6 +6957,8 @@ alter_table_type_to_string(AlterTableType cmdtype)
 			return "ALTER TABLE ... SET WITH ROWID";
 		case AT_DropRowids:
 			return "ALTER TABLE ... SET WITHOUT ROWID";
+		case AT_ForceViewCompile:
+			return NULL;
 	}
 
 	return NULL;
