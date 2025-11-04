@@ -2781,7 +2781,7 @@ SplitIdentifierString(char *rawstring, char separator,
 		nextp++;				/* skip leading whitespace */
 
 	if (*nextp == '\0')
-		return true;			/* allow empty string */
+		return true;			/* empty string represents empty list */
 
 	/* At the top of the loop, we are at start of a new identifier. */
 	do
@@ -3025,7 +3025,7 @@ SplitDirectoriesString(char *rawstring, char separator,
 		nextp++;				/* skip leading whitespace */
 
 	if (*nextp == '\0')
-		return true;			/* allow empty string */
+		return true;			/* empty string represents empty list */
 
 	/* At the top of the loop, we are at start of a new directory. */
 	do
@@ -3146,7 +3146,7 @@ SplitGUCList(char *rawstring, char separator,
 		nextp++;				/* skip leading whitespace */
 
 	if (*nextp == '\0')
-		return true;			/* allow empty string */
+		return true;			/* empty string represents empty list */
 
 	/* At the top of the loop, we are at start of a new identifier. */
 	do
