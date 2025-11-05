@@ -121,7 +121,6 @@ static void init_params(ParseState *pstate, List *options, bool for_identity,
 						bool *is_called,
 						bool *need_seq_rewrite,
 						List **owned_by, SeqTable seqelm);
-static void do_setval(Oid relid, int64 next, bool iscalled);
 static void process_owned_by(Relation seqrel, List *owned_by, bool for_identity);
 static bool seq_is_scale(int16 seq_flag);
 static bool seq_is_extend(int16 seq_flag);
@@ -1249,8 +1248,8 @@ lastval(PG_FUNCTION_ARGS)
  * it is the only way to clear the is_called flag in an existing
  * sequence.
  */
-static void
-do_setval(Oid relid, int64 next, bool iscalled)
+void
+SetSequence(Oid relid, int64 next, bool iscalled)
 {
 	SeqTable	elm;
 	Relation	seqrel;
@@ -1351,7 +1350,7 @@ do_setval(Oid relid, int64 next, bool iscalled)
 
 /*
  * Implement the 2 arg setval procedure.
- * See do_setval for discussion.
+ * See SetSequence for discussion.
  */
 Datum
 setval_oid(PG_FUNCTION_ARGS)
@@ -1359,14 +1358,14 @@ setval_oid(PG_FUNCTION_ARGS)
 	Oid			relid = PG_GETARG_OID(0);
 	int64		next = PG_GETARG_INT64(1);
 
-	do_setval(relid, next, true);
+	SetSequence(relid, next, true);
 
 	PG_RETURN_INT64(next);
 }
 
 /*
  * Implement the 3 arg setval procedure.
- * See do_setval for discussion.
+ * See SetSequence for discussion.
  */
 Datum
 setval3_oid(PG_FUNCTION_ARGS)
@@ -1375,7 +1374,7 @@ setval3_oid(PG_FUNCTION_ARGS)
 	int64		next = PG_GETARG_INT64(1);
 	bool		iscalled = PG_GETARG_BOOL(2);
 
-	do_setval(relid, next, iscalled);
+	SetSequence(relid, next, iscalled);
 
 	PG_RETURN_INT64(next);
 }
@@ -2617,8 +2616,9 @@ pg_sequence_parameters(PG_FUNCTION_ARGS)
 /*
  * Return the sequence tuple along with its page LSN.
  *
- * This is primarily intended for use by pg_dump to gather sequence data
- * without needing to individually query each sequence relation.
+ * This is primarily used by pg_dump to efficiently collect sequence data
+ * without querying each sequence individually, and is also leveraged by
+ * logical replication while synchronizing sequences.
  */
 Datum
 pg_get_sequence_data(PG_FUNCTION_ARGS)
