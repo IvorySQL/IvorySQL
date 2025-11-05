@@ -4429,6 +4429,14 @@ typedef struct DropSubscriptionStmt
 	DropBehavior behavior;		/* RESTRICT or CASCADE behavior */
 } DropSubscriptionStmt;
 
+typedef struct WaitStmt
+{
+	NodeTag		type;
+	char	   *lsn_literal;	/* LSN string from grammar */
+	List	   *options;		/* List of DefElem nodes */
+} WaitStmt;
+
+
 typedef enum AccessorItemUnitKind
 {
 	ACCESSOR_FUNCTION,
