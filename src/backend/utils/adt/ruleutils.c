@@ -14229,25 +14229,26 @@ char *
 get_range_partbound_string(List *bound_datums)
 {
 	deparse_context context;
-	StringInfo	buf = makeStringInfo();
+	StringInfoData buf;
 	ListCell   *cell;
 	char	   *sep;
 
+	initStringInfo(&buf);
 	memset(&context, 0, sizeof(deparse_context));
-	context.buf = buf;
+	context.buf = &buf;
 
-	appendStringInfoChar(buf, '(');
+	appendStringInfoChar(&buf, '(');
 	sep = "";
 	foreach(cell, bound_datums)
 	{
 		PartitionRangeDatum *datum =
 			lfirst_node(PartitionRangeDatum, cell);
 
-		appendStringInfoString(buf, sep);
+		appendStringInfoString(&buf, sep);
 		if (datum->kind == PARTITION_RANGE_DATUM_MINVALUE)
-			appendStringInfoString(buf, "MINVALUE");
+			appendStringInfoString(&buf, "MINVALUE");
 		else if (datum->kind == PARTITION_RANGE_DATUM_MAXVALUE)
-			appendStringInfoString(buf, "MAXVALUE");
+			appendStringInfoString(&buf, "MAXVALUE");
 		else
 		{
 			Const	   *val = castNode(Const, datum->value);
@@ -14256,9 +14257,9 @@ get_range_partbound_string(List *bound_datums)
 		}
 		sep = ", ";
 	}
-	appendStringInfoChar(buf, ')');
+	appendStringInfoChar(&buf, ')');
 
-	return buf->data;
+	return buf.data;
 }
 
 /*
