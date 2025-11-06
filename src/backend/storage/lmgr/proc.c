@@ -146,6 +146,7 @@ ProcGlobalShmemSize(void)
 	size = add_size(size, sizeof(PROC_HDR));
 	size = add_size(size, sizeof(slock_t));
 
+	size = add_size(size, PGSemaphoreShmemSize(ProcGlobalSemas()));
 	size = add_size(size, PGProcShmemSize());
 	size = add_size(size, FastPathLockShmemSize());
 
@@ -287,6 +288,9 @@ InitProcGlobal(void)
 
 	/* For asserts checking we did not overflow. */
 	fpEndPtr = fpPtr + requestSize;
+
+	/* Reserve space for semaphores. */
+	PGReserveSemaphores(ProcGlobalSemas());
 
 	for (i = 0; i < TotalProcs; i++)
 	{
