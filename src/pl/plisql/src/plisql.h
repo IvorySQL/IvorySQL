@@ -1067,15 +1067,13 @@ typedef struct PLiSQL_function
 	/* these fields change when the function is used */
 	struct PLiSQL_execstate *cur_estate;
 	unsigned long use_count;
-	int			fn_ret_vardno;	/* the variable dno for the function return
-								 * value */
-	bool		fn_no_return;	/* when the function return type is not
-								 * VOIDOID, if the body has not a RETURN
-								 * statment, the CREATE FUNCTION can execute
-								 * successfully, but when the function is
-								 * called, an error will be reported */
-	char	  **paramnames;		/* saved do + using parameter'name */
-}			PLiSQL_function;
+	int		fn_ret_vardno;	/* the variable dno for the function return value */
+	bool		fn_no_return;	/* when the function return type is not VOIDOID, if the body has not a RETURN statment,
+					 * the CREATE FUNCTION can be executed successfully, but when the function is called,
+					 * an error will be reported */
+	bool		do_from_call;
+	char		**paramnames;	/* saved do + using parameter'name */
+} PLiSQL_function;
 
 typedef struct plisql_hashent
 {
@@ -1319,8 +1317,7 @@ extern List
 extern PGDLLEXPORT PLiSQL_function * plisql_compile(FunctionCallInfo fcinfo,
 													bool forValidator);
 
-extern PLiSQL_function * plisql_compile_inline(char *proc_source,
-											   ParamListInfo inparams);
+extern PLiSQL_function *plisql_compile_inline(char *proc_source, ParamListInfo inparams, bool fromcall);
 extern PGDLLEXPORT void plisql_parser_setup(struct ParseState *pstate,
 											PLiSQL_expr * expr);
 extern bool plisql_parse_word(char *paramname, char *word1, const char *yytxt,

@@ -1086,7 +1086,7 @@ SELECT
 	decode(bitand(s.flags, 16), 16, 'Y', 'N') AS scale_flag,
 	decode(bitand(s.flags, 2048), 2048, 'Y', 'N') AS extend_flag,null AS shared_flag,
 	decode(bitand(s.flags, 64), 64, 'Y', 'N') AS session_flag,null AS keep_value
-	FROM PG_SEQUENCE s,pg_class c where s.seqrelid = c.oid and c.relowner::regrole = current_user::regrole;
+	FROM PG_SEQUENCE s,pg_class c where s.seqrelid = c.oid and pg_get_userbyid(c.relowner) = current_user;
 
 CREATE OR REPLACE VIEW SYS.DBA_VIEWS AS
 SELECT

@@ -1135,6 +1135,7 @@ exec_simple_query(const char *query_string)
 				paramsinfo->params[i].value = (Datum) 0;
 				paramtypes[i] = 23;
 				paramsinfo->params[i].pmode = 'o';
+				paramsinfo->params[i].ptypmod = -1;
 			}
 
 			params = paramsinfo;
@@ -1158,6 +1159,12 @@ exec_simple_query(const char *query_string)
 		int16		format;
 		const char *cmdtagname;
 		size_t		cmdtaglen;
+
+		if (parsetree->stmt->type == T_CallStmt &&
+			((CallStmt *) parsetree->stmt)->callinto != NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+					 errmsg("Simple query protocol does not support CALL INTO stmt")));
 
 		pgstat_report_query_id(0, true);
 		pgstat_report_plan_id(0, true);
@@ -1733,6 +1740,7 @@ exec_bind_message(StringInfo input_message)
 	ParamsErrorCbData params_data;
 	ErrorContextCallback params_errcxt;
 	List		*dostmt_modes = NIL;
+	List		*dostmt_plength = NIL;
 	ListCell   *lc;
 
 	/* Get the fixed part of the message */
@@ -1887,6 +1895,9 @@ exec_bind_message(StringInfo input_message)
 	{
 		DoStmt *dostmt = (DoStmt *)((RawStmt *)(psrc->raw_parse_tree)->stmt);
 		dostmt_modes = dostmt->paramsmode;
+
+		if (dostmt->paramslen)
+			dostmt_plength = dostmt->paramslen;
 	}
 
 	/*
@@ -1915,6 +1926,10 @@ exec_bind_message(StringInfo input_message)
 		{
 			elog(ERROR, "number of parameters modes isn't same as of params");
 		}
+
+		/* Validate parameter length list length matches parameter count */
+		if (dostmt_plength != NIL && list_length(dostmt_plength) != numParams)
+			elog(ERROR, "the specified parameter length list does not match the number of parameters");
 
 		for (int paramno = 0; paramno < numParams; paramno++)
 		{
@@ -2128,6 +2143,29 @@ exec_bind_message(StringInfo input_message)
 			params->params[paramno].pflags = PARAM_FLAG_CONST;
 			params->params[paramno].ptype = ptype;
 			params->params[paramno].pmode = pmode;
+
+			if (dostmt_plength != NIL)
+			{
+				Integer *v= NULL;
+
+				v = (Integer *) list_nth(dostmt_plength, paramno);
+
+				switch(ptype)
+				{
+					case ORACHARCHAROID:
+					case ORACHARBYTEOID:
+					case ORAVARCHARCHAROID:
+					case ORAVARCHARBYTEOID:
+						/* Hard-code typmod for Oracle char/varchar types to avoid ArrayType construction */
+						params->params[paramno].ptypmod = intVal(v) + VARHDRSZ;
+						break;
+					default:
+						params->params[paramno].ptypmod = -1;
+						break;
+				}
+			}
+			else
+				params->params[paramno].ptypmod = -1;
 		}
 
 		/* Pop the per-parameter error callback */

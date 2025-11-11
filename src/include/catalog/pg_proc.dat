@@ -12583,8 +12583,8 @@
   proname => 'get_parameter_description', prorows => '8',
   proretset => 't', provolatile => 's', prorettype => 'record',
   proargtypes => 'text',
-  proallargtypes => '{text,text,int4}', proargmodes => '{i,o,o}',
-  proargnames => '{query,name,position}',
+  proallargtypes => '{text,text,int4,text}', proargmodes => '{i,o,o,o}',
+  proargnames => '{query,name,position,hint}',
   prosrc => 'get_parameter_description' },
 /*BEGIN Oracle Compatibility Metadatas*/
 { oid => '9101', descr => 'call this function for execution of PL/iSQL procedures',

@@ -2,6 +2,7 @@
 -- of the pg_prepared_statements view as prepared statements are
 -- created and removed.
 
+\set EXECUTE_RUN_PREPARE on
 SELECT name, statement, parameter_types, result_types FROM pg_prepared_statements;
 
 PREPARE q1 AS SELECT 1 AS a;

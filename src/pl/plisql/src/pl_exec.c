@@ -2514,6 +2514,14 @@ make_callstmt_target(PLiSQL_execstate * estate, PLiSQL_expr * expr)
 		{
 			Node	   *n = list_nth(stmt->outargs, nfields);
 
+			/*
+			 * I'm not sure if this is a bug, so I'm only temporarily
+			 * fixing it for scenarios that I care about.
+			 */
+			if (estate->func && estate->func->do_from_call &&
+				strcmp(estate->func->fn_signature, "inline_code_block") == 0)
+				n = ParseParamVariable(n);
+
 			if (IsA(n, Param))
 			{
 				Param	   *param = (Param *) n;
@@ -8631,12 +8639,35 @@ get_cast_hashentry(PLiSQL_execstate * estate,
 		if (srctype == UNKNOWNOID || srctype == RECORDOID)
 			cast_expr = NULL;
 		else
-			cast_expr = coerce_to_target_type(NULL,
-											  (Node *) placeholder, srctype,
-											  dsttype, dsttypmod,
-											  COERCION_PLPGSQL,
-											  COERCE_IMPLICIT_CAST,
-											  -1);
+		{
+			/*
+			 * The SQL CALL statement compatible with Oracle is implicitly converted to
+			 * DoStmt on the client side (libpq). According to the behavior of Oracle 21c,
+			 * if the parameter type declared by the subprogram is the same as the datatype
+			 * of the bind variable, the behavior of exceeding precision is truncated, 
+			 * otherwise an error will be reported.
+			 */
+			if (estate->func &&
+				estate->func->do_from_call &&
+				strcmp(estate->func->fn_signature, "inline_code_block") == 0 &&
+				(((srctype == ORACHARCHAROID || srctype == ORACHARBYTEOID) &&
+				  (dsttype == ORACHARCHAROID || dsttype == ORACHARBYTEOID)) ||
+				 ((srctype == ORAVARCHARCHAROID || srctype == ORAVARCHARBYTEOID) &&
+				  (dsttype == ORAVARCHARCHAROID || dsttype == ORAVARCHARBYTEOID))))
+				cast_expr = coerce_to_target_type(NULL,
+												  (Node *) placeholder, srctype,
+												  dsttype, dsttypmod,
+												  COERCION_EXPLICIT,
+												  COERCE_IMPLICIT_CAST,
+												  -1);
+			else
+				cast_expr = coerce_to_target_type(NULL,
+												  (Node *) placeholder, srctype,
+												  dsttype, dsttypmod,
+												  COERCION_PLPGSQL,
+												  COERCE_IMPLICIT_CAST,
+												  -1);
+		}
 
 		/*
 		 * If there's no cast path according to the parser, fall back to using

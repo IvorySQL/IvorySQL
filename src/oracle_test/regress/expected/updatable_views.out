@@ -1,6 +1,7 @@
 --
 -- UPDATABLE VIEWS
 --
+\set EXECUTE_RUN_PREPARE on
 set ivorysql.enable_emptystring_to_null to false;
 -- avoid bit-exact output here because operations may not be bit-exact.
 SET extra_float_digits = 0;
