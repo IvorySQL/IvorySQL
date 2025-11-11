@@ -1516,9 +1516,9 @@ LINE 6:     FROM INTERVAL_TBL;
                  ^
 -- internal overflow test case
 SELECT extract(epoch from interval '1000000000 days');
-ERROR:  syntax error at or near "from"
+ERROR:  syntax error at or near ")"
 LINE 1: SELECT extract(epoch from interval '1000000000 days');
-                             ^
+                                                            ^
 --
 -- test infinite intervals
 --
