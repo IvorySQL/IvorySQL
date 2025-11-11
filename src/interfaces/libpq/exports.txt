@@ -234,3 +234,6 @@ IvybindOutParameterByPos   331
 IvyexecPreparedStatement   332
 IvyFreePreparedStatement   333
 Ivyclear                   334
+Ivyconnectdb2              335
+Ivyfinish2                 336
+IvyStmtExecute2            337

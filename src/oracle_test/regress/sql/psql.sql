@@ -3,6 +3,7 @@
 -- specific server features
 --
 
+\set EXECUTE_RUN_PREPARE on
 -- \set
 
 -- fail: invalid name

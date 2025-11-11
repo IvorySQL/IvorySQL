@@ -3611,6 +3611,8 @@ typedef struct DoStmt
 	NodeTag		type;
 	List	   *args;			/* List of DefElem nodes */
 	List		*paramsmode;	/* List of parameter mode */
+	List		*paramslen;		/* List of length for parameter datatypes */
+	bool		do_from_call;	/* T if DoStmt is come from CallStmt */
 } DoStmt;
 
 typedef struct InlineCodeBlock
@@ -3622,6 +3624,7 @@ typedef struct InlineCodeBlock
 	Oid			langOid;		/* OID of selected language */
 	bool		langIsTrusted;	/* trusted property of the language */
 	bool		atomic;			/* atomic execution context */
+	bool		do_from_call;
 	ParamListInfo params;		
 } InlineCodeBlock;
 
@@ -3645,6 +3648,8 @@ typedef struct CallStmt
 	FuncExpr   *funcexpr;
 	/* transformed output-argument expressions */
 	List	   *outargs;
+	OraParamRef	*hostvariable;	/* only used for get_parameter_descr() */
+	char	   *callinto;		/* rewrite CALL INTO to a PL assign stmt */
 } CallStmt;
 
 typedef struct CallContext

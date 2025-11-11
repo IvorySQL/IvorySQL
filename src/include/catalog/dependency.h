@@ -100,7 +100,7 @@ typedef struct ObjectAddresses ObjectAddresses;
 
 /*
  * Used to store the functions or packages found in pg_depend.
- * If arguments or return datatype of funtions(package subprocedures) reference %TYPE and %ROWTYPE,
+ * If arguments or return datatype of functions(package subprocedures) reference %TYPE and %ROWTYPE,
  * record the dependencies between function(or package) and the relation.
  */
 typedef struct

@@ -1,6 +1,7 @@
 --
 -- PARALLEL
 --
+\set EXECUTE_RUN_PREPARE on
 -- Save parallel worker stats, used for comparison at the end
 select pg_stat_force_next_flush();
  pg_stat_force_next_flush 

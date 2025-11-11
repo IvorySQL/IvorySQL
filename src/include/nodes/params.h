@@ -96,6 +96,7 @@ typedef struct ParamExternData
 	uint16		pflags;			/* flag bits, see above */
 	Oid			ptype;			/* parameter's datatype, or 0 */
 	char 		pmode;			/* parameter's mode, IN, OUT, or INOUT */
+	int32		ptypmod;		/* the typmod of parameter's datatype, or -1 for types that do not need typmod */
 } ParamExternData;
 
 typedef struct ParamListInfoData *ParamListInfo;

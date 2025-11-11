@@ -64,21 +64,30 @@ typedef struct PsqlScanKeyword
 #define MaxOraCharLen 2000	/* Maximum length for CHAR */
 #define MaxOraVarcharLen 32767	/* Maximum length for VARCHAR2 */
 
-/*
- * Scanner interface functions
- * 
- * The type of yyscanner is opaque outside psqlplus.l, so we forward declare
- * YYSTYPE and declare the external functions needed by the parser.
- */
-union YYSTYPE;
+#define BINDVARREF 3000
 
+/*
+ * The scanner returns extra data about scanned tokens in this union type.
+ * Note that this is a subset of the fields used in YYSTYPE of the bison
+ * parsers built atop the scanner.
+ */
+typedef union psql_YYSTYPE
+{
+	int			ival;
+	char	   *str;
+	const char *keyword;
+} psql_YYSTYPE;
+
+union YYSTYPE;
 /* Scanner lifecycle management */
 extern yyscan_t psqlplus_scanner_init(PsqlScanState state);
 extern void psqlplus_scanner_finish(yyscan_t yyscanner);
 /* Parser interface functions */
 extern int psqlplus_yyparse(yyscan_t yyscanner);
 extern int psqlplus_yylex(union YYSTYPE *lvalp, yyscan_t yyscanner);
+extern int orapsql_yylex(psql_YYSTYPE *lvalp, yyscan_t yyscanner);
 extern void psqlplus_yyerror(yyscan_t yyscanner, const char *message);
+extern void orapsql_yyerror(yyscan_t yyscanner, const char *message);
 
 /* Callback functions for the flex lexer */
 static const Ora_psqlScanCallbacks psqlplus_callbacks = {
