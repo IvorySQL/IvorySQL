@@ -780,7 +780,7 @@ static void determineLanguage(List *options);
 	OVER OVERLAPS OVERLAY OVERRIDING OWNED OWNER PACKAGES 
 
 	PARALLEL PARAMETER PARSER PARTIAL PARTITION PASSING PASSWORD PATH
-	PGEXTRACT PLACING PLAN PLANS POLICY
+	EXTRACT PGEXTRACT PLACING PLAN PLANS POLICY
 	POSITION PRECEDING PRECISION PRESERVE PREPARE PREPARED PRIMARY
 	PRIOR PRIVILEGES PROCEDURAL PROCEDURE PROCEDURES PROGRAM PUBLICATION
 
@@ -18018,6 +18018,13 @@ func_expr_common_subexpr:
 											   COERCE_SQL_SYNTAX,
 											   @1);
 				}
+			| EXTRACT '(' extract_list ')'
+				{
+					$$ = (Node *) makeFuncCall(SystemFuncName("extract"),
+											   $3,
+											   COERCE_SQL_SYNTAX,
+											   @1);
+				}
 			/* End - ReqID:SRS-SQL-XML */
 			| NORMALIZE '(' a_expr ')'
 				{
@@ -20510,6 +20517,7 @@ col_name_keyword:
 			| DECIMAL_P
 			| DECODE
 			| EXISTS
+			| EXTRACT
 			| FLOAT_P
 			| GREATEST
 			| GROUPING
@@ -20868,6 +20876,7 @@ bare_label_keyword:
 			| EXTEND
 			| EXTENSION
 			| EXTERNAL
+			| EXTRACT
 			| FALSE_P
 			| FAMILY
 			| FINALIZE
