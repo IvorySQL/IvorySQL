@@ -719,6 +719,7 @@ GuessControlValues(void)
 	ControlFile.floatFormat = FLOATFORMAT_VALUE;
 	ControlFile.blcksz = BLCKSZ;
 	ControlFile.relseg_size = RELSEG_SIZE;
+	ControlFile.slru_pages_per_segment = SLRU_PAGES_PER_SEGMENT;
 	ControlFile.xlog_blcksz = XLOG_BLCKSZ;
 	ControlFile.xlog_seg_size = DEFAULT_XLOG_SEG_SIZE;
 	ControlFile.nameDataLen = NAMEDATALEN;
@@ -788,6 +789,8 @@ PrintControlValues(bool guessed)
 		   ControlFile.blcksz);
 	printf(_("Blocks per segment of large relation: %u\n"),
 		   ControlFile.relseg_size);
+	printf(_("Pages per SLRU segment:               %u\n"),
+		   ControlFile.slru_pages_per_segment);
 	printf(_("WAL block size:                       %u\n"),
 		   ControlFile.xlog_blcksz);
 	printf(_("Bytes per WAL segment:                %u\n"),
