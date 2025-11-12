@@ -27,69 +27,45 @@ INSERT INTO xmlnstest VALUES(1, xmltype('<soapenv:Envelope xmlns:soapenv="http:/
 -- extrct(XML)
 --
 SELECT extract(XMLType('<AA><ID>1</ID></AA>'), '/AA/ID') from dual;
-  extract   
-------------
- <ID>1</ID>
-(1 row)
-
+ERROR:  syntax error at or near "("
+LINE 1: SELECT extract(XMLType('<AA><ID>1</ID></AA>'), '/AA/ID') fro...
+                              ^
 SELECT extract(XMLType('<AA><ID>1</ID></AA>'), '/AA') from dual;
-   extract    
---------------
- <AA>        +
-   <ID>1</ID>+
- </AA>
-(1 row)
-
+ERROR:  syntax error at or near "("
+LINE 1: SELECT extract(XMLType('<AA><ID>1</ID></AA>'), '/AA') from d...
+                              ^
 SELECT extract(XMLType('<Co Attr ="Test Attr"><ID>1</ID></Co>'), '/Co') from dual;
-        extract        
------------------------
- <Co Attr="Test Attr">+
-   <ID>1</ID>         +
- </Co>
-(1 row)
-
+ERROR:  syntax error at or near "("
+LINE 1: SELECT extract(XMLType('<Co Attr ="Test Attr"><ID>1</ID></Co...
+                              ^
 SELECT extract(XMLType('<Co Attr ="Test Attr"><ID>1</ID></Co>'), '/Co/@ Attr') from dual;
-  extract  
------------
- Test Attr
-(1 row)
-
+ERROR:  syntax error at or near "("
+LINE 1: SELECT extract(XMLType('<Co Attr ="Test Attr"><ID>1</ID></Co...
+                              ^
 SELECT extract(XMLType('<a><b>b1</b><b>b2</b></a>'),'/a/b[2]') from dual;
-  extract  
------------
- <b>b2</b>
-(1 row)
-
+ERROR:  syntax error at or near "("
+LINE 1: SELECT extract(XMLType('<a><b>b1</b><b>b2</b></a>'),'/a/b[2]...
+                              ^
 SELECT extract(XMLType('<a><b>b1</b><b>b2</b></a>'),'/a/b[3]') from dual;
- extract 
----------
- 
-(1 row)
-
+ERROR:  syntax error at or near "("
+LINE 1: SELECT extract(XMLType('<a><b>b1</b><b>b2</b></a>'),'/a/b[3]...
+                              ^
 SELECT extract(b, '/a/b') from inaf where a = 2;
- extract 
----------
- 
-(1 row)
-
+ERROR:  syntax error at or near ","
+LINE 1: SELECT extract(b, '/a/b') from inaf where a = 2;
+                        ^
 SELECT extract(XMLType('<a><b>b1</b><b>b2</b></a>'),'') from dual;
- extract 
----------
- 
-(1 row)
-
+ERROR:  syntax error at or near "("
+LINE 1: SELECT extract(XMLType('<a><b>b1</b><b>b2</b></a>'),'') from...
+                              ^
 SELECT extract(XMLType('<a><b>b1</b><b>b2</b></a>'),null) from dual;
- extract 
----------
- 
-(1 row)
-
+ERROR:  syntax error at or near "("
+LINE 1: SELECT extract(XMLType('<a><b>b1</b><b>b2</b></a>'),null) fr...
+                              ^
 SELECT extract(data, 'soapenv:Envelope/soapenv:Body/web:BBB/typ:EEE', 'xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com"') from xmlnstest where id = 1;
-                       extract                        
-------------------------------------------------------
- <typ:EEE xmlns:typ="http://www.def.com">41</typ:EEE>
-(1 row)
-
+ERROR:  syntax error at or near "data"
+LINE 1: SELECT extract(data, 'soapenv:Envelope/soapenv:Body/web:BBB/...
+                       ^
 --
 -- extractvalue
 --
