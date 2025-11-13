@@ -30,7 +30,7 @@
 #ifdef IVY_GUC_VAR_DEFINE
 #define ISLOADIVORYSQL_ORA pg_transform_merge_stmt_hook
 
-int			identifier_case_switch = INTERCHANGE;
+int			identifier_case_switch = NORMAL;
 bool		identifier_case_from_pg_dump = false;
 bool		enable_case_switch = true;
 
@@ -414,7 +414,7 @@ static struct config_enum Ivy_ConfigureNamesEnum[] =
 			NULL
 		},
 		&identifier_case_switch,
-		INTERCHANGE, case_conversion_mode,
+		NORMAL, case_conversion_mode,
 		NULL, NULL, NULL
 	},
 
