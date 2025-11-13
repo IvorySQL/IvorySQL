@@ -199,8 +199,8 @@ static int	output_errno = 0;
 static char *pgdata_native;
 static char *preload_ora_misc;
 
-static char *switchmode = "interchange";
-static int   caseswitchmode = INTERCHANGE;
+static char *switchmode = "normal";
+static int   caseswitchmode = NORMAL;
 
 /* defaults */
 static int	n_connections = 10;
@@ -2684,7 +2684,7 @@ usage(const char *progname)
 	printf(_("  -m, --dbmode=MODE 	    set database mode, default is oracle\n"));
 	printf(_("  -C, --case-conversion-mode=MODE\n"
 			 "                            set case conversion mode, options can be\n"
-			 "                            normal/interchange/lowercase, default is interchange\n"));
+			 "                            normal/interchange/lowercase, default is normal\n"));
 	printf(_("\nLess commonly used options:\n"));
 	printf(_("  -c, --set NAME=VALUE      override default setting for server parameter\n"));
 	printf(_("  -d, --debug               generate lots of debugging output\n"));

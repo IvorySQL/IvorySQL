@@ -12,4 +12,4 @@
 
 ivorysql.enable_emptystring_to_NULL = 'on'
 shared_preload_libraries = 'liboracle_parser, ivorysql_ora'		# (change requires restart)
-#ivorysql.identifier_case_switch = interchange				# set the case conversion mode. range [normal,interchange,lowercase]
+#ivorysql.identifier_case_switch = normal				# set the case conversion mode. range [normal,interchange,lowercase]
