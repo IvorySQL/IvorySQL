@@ -27,13 +27,13 @@ IvorySQL 项目采用 Apache 2.0 许可协议发布，并鼓励各种形式的�
 </br>
 
 ## 安装
-建议参考[快速入门](https://docs.ivorysql.org/cn/ivorysql-doc/v4.5/v4.5/3#quick-installation)了解如何安装和运行IvorySQL。
+建议参考[快速入门](https://docs.ivorysql.org/cn/ivorysql-doc/v5.0/v5.0/3#quick-installation)了解如何安装和运行IvorySQL。
 
-此外，关于更详细的安装说明，请参阅[安装文档](https://docs.ivorysql.org/cn/ivorysql-doc/v4.5/v4.5/6#introduction)。我们提供以下四种 IvorySQL 的安装方法：
-- [Yum 安装](https://docs.ivorysql.org/cn/ivorysql-doc/v4.5/v4.5/6#yum源安装)
-- [Docker 安装](https://docs.ivorysql.org/cn/ivorysql-doc/v4.5/v4.5/6#docker安装)
-- [RPM 安装](https://docs.ivorysql.org/cn/ivorysql-doc/v4.5/v4.5/6#rpm安装)
-- [源代码安装](https://docs.ivorysql.org/cn/ivorysql-doc/v4.5/v4.5/6#源码安装)
+此外，关于更详细的安装说明，请参阅[安装文档](https://docs.ivorysql.org/cn/ivorysql-doc/v5.0/v5.0/6#introduction)。我们提供以下四种 IvorySQL 的安装方法：
+- [Yum 安装](https://docs.ivorysql.org/cn/ivorysql-doc/v5.0/v5.0/6#yum源安装)
+- [Docker 安装](https://docs.ivorysql.org/cn/ivorysql-doc/v5.0/v5.0/6#docker安装)
+- [RPM 安装](https://docs.ivorysql.org/cn/ivorysql-doc/v5.0/v5.0/6#rpm安装)
+- [源代码安装](https://docs.ivorysql.org/cn/ivorysql-doc/v5.0/v5.0/6#源码安装)
 
 
 
