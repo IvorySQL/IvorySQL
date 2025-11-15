@@ -6094,6 +6094,44 @@ call test_pkg.test_p1(NULL, 23);
 
 DROP package test_pkg;
 
+--test hello_pkg: basic package with initialization block
+-- Package Specification
+CREATE OR REPLACE PACKAGE hello_pkg IS
+  PROCEDURE say_hello;
+END hello_pkg;
+/
+
+-- Package Body (implementation)
+CREATE OR REPLACE PACKAGE BODY hello_pkg IS
+
+  PROCEDURE say_hello IS
+  BEGIN
+    DBMS_OUTPUT.PUT_LINE('Hello, World!');
+  END say_hello;
+
+BEGIN
+  -- Optional initialization block
+  -- This runs once, the first time the package is referenced in a session
+  DBMS_OUTPUT.PUT_LINE('hello_pkg loaded');
+END hello_pkg;
+/
+
+-- Test calling the procedure
+DECLARE
+BEGIN
+  hello_pkg.say_hello();
+END;
+/
+
+-- Call it again to verify init block only runs once
+DECLARE
+BEGIN
+  hello_pkg.say_hello();
+END;
+/
+
+DROP PACKAGE hello_pkg;
+
 --clean data
 RESET ivorysql.allow_out_parameter_const;
 DROP FUNCTION test_event_trigger;
