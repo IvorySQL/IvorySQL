@@ -26,18 +26,46 @@ BEGIN
 END;
 /
 
--- Test 4: PUT procedure (outputs immediately, no buffering)
+-- Test 4a: PUT procedure
+BEGIN
+  DBMS_OUTPUT.PUT('Part 1');
+END;
+/
+
+-- Test 4b: Multiple PUT calls
 BEGIN
   DBMS_OUTPUT.PUT('Part 1');
   DBMS_OUTPUT.PUT(' Part 2');
+END;
+/
+
+-- Test 4c: NEW_LINE procedure
+BEGIN
   DBMS_OUTPUT.NEW_LINE;
 END;
 /
 
--- Test 5: ENABLE and DISABLE (no-ops but should not error)
+-- Test 5a: ENABLE procedure
+BEGIN
+  DBMS_OUTPUT.ENABLE(20000);
+END;
+/
+
+-- Test 5b: ENABLE with PUT_LINE
 BEGIN
   DBMS_OUTPUT.ENABLE(20000);
   DBMS_OUTPUT.PUT_LINE('After enable');
+END;
+/
+
+-- Test 5c: DISABLE procedure
+BEGIN
+  DBMS_OUTPUT.DISABLE;
+END;
+/
+
+-- Test 5d: DISABLE with PUT_LINE
+BEGIN
   DBMS_OUTPUT.DISABLE;
   DBMS_OUTPUT.PUT_LINE('After disable');
 END;
@@ -132,12 +160,14 @@ END;
 -- 7. GET_LINES(lines, numlines)  - Retrieve multiple lines from buffer
 --
 -- IvorySQL Current Implementation Status:
--- ✓ PUT_LINE(text)               - Fully working (uses RAISE INFO)
--- ✗ PUT(text)                    - Syntax error
--- ✗ NEW_LINE                     - Syntax error
--- ✗ ENABLE(buffer_size)          - Syntax error
--- ✗ DISABLE                      - Syntax error
+-- ✓ PUT_LINE(text)               - Works (outputs via RAISE INFO)
+-- ✓ PUT(text)                    - Works (outputs via RAISE INFO)
+-- ✗ NEW_LINE                     - Syntax error (no-arg procedure call)
+-- ✓ ENABLE(buffer_size)          - Works (no-op)
+-- ✗ DISABLE                      - Syntax error (no-arg procedure call)
 -- ✗ GET_LINE(line, status)       - Not implemented
 -- ✗ GET_LINES(lines, numlines)   - Not implemented
 --
--- Note: Current implementation outputs immediately (no buffering)
+-- Note:
+-- - Output is immediate (no buffering)
+-- - NEW_LINE and DISABLE fail due to PL/iSQL parser limitation with no-arg procedures
