@@ -3987,7 +3987,7 @@ begin
 end;
 /
 INFO:  var1 = 2
---raise error no dbms_output
+--test dbms_output
 declare
   var1 integer;
 begin
@@ -3996,11 +3996,7 @@ begin
 end;
 /
 INFO:  var1 = 2
-ERROR:  schema "dbms_output" does not exist
-LINE 1: CALL dbms_output.put_line('xiexie')
-             ^
-QUERY:  CALL dbms_output.put_line('xiexie')
-CONTEXT:  PL/iSQL function inline_code_block line 5 at CALL
+INFO:  xiexie
 create or replace function test.test_f(id integer) return integer is
   var1 integer;
   function test_f(id integer) return integer;

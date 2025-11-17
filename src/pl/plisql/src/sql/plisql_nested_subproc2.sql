@@ -3614,7 +3614,7 @@ begin
 end;
 /
 
---raise error no dbms_output
+--test dbms_output
 
 declare
   var1 integer;

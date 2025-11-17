@@ -1,0 +1,141 @@
+--
+-- Tests for DBMS_OUTPUT package
+--
+-- Test 1: PUT_LINE basic functionality
+BEGIN
+  DBMS_OUTPUT.PUT_LINE('Test message 1');
+END;
+/
+INFO:  Test message 1
+-- Test 2: PUT_LINE with variable
+DECLARE
+  v_number NUMBER := 42;
+  v_text VARCHAR2(100) := 'Hello World';
+BEGIN
+  DBMS_OUTPUT.PUT_LINE('Number: ' || v_number);
+  DBMS_OUTPUT.PUT_LINE('Text: ' || v_text);
+END;
+/
+INFO:  Number: 42
+INFO:  Text: Hello World
+-- Test 3: Multiple PUT_LINE calls
+BEGIN
+  DBMS_OUTPUT.PUT_LINE('Line 1');
+  DBMS_OUTPUT.PUT_LINE('Line 2');
+  DBMS_OUTPUT.PUT_LINE('Line 3');
+END;
+/
+INFO:  Line 1
+INFO:  Line 2
+INFO:  Line 3
+-- Test 4: PUT procedure (outputs immediately, no buffering)
+BEGIN
+  DBMS_OUTPUT.PUT('Part 1');
+  DBMS_OUTPUT.PUT(' Part 2');
+  DBMS_OUTPUT.NEW_LINE;
+END;
+/
+ERROR:  syntax error at end of input
+LINE 5: END
+           ^
+QUERY:  BEGIN
+  DBMS_OUTPUT.PUT('Part 1');
+  DBMS_OUTPUT.PUT(' Part 2');
+  DBMS_OUTPUT.NEW_LINE;
+END
+-- Test 5: ENABLE and DISABLE (no-ops but should not error)
+BEGIN
+  DBMS_OUTPUT.ENABLE(20000);
+  DBMS_OUTPUT.PUT_LINE('After enable');
+  DBMS_OUTPUT.DISABLE;
+  DBMS_OUTPUT.PUT_LINE('After disable');
+END;
+/
+ERROR:  syntax error at end of input
+LINE 5:   DBMS_OUTPUT.PUT_LINE('After disable');
+           ^
+QUERY:  BEGIN
+  DBMS_OUTPUT.ENABLE(20000);
+  DBMS_OUTPUT.PUT_LINE('After enable');
+  DBMS_OUTPUT.DISABLE;
+  DBMS_OUTPUT.PUT_LINE('After disable');
+END
+-- Test 6: DBMS_OUTPUT in function
+CREATE OR REPLACE FUNCTION test_dbms_output_func(p_msg VARCHAR2) RETURN NUMBER IS
+BEGIN
+  DBMS_OUTPUT.PUT_LINE('Function says: ' || p_msg);
+  RETURN 1;
+END;
+/
+DECLARE
+  v_result NUMBER;
+BEGIN
+  v_result := test_dbms_output_func('Hello from function');
+  DBMS_OUTPUT.PUT_LINE('Result: ' || v_result);
+END;
+/
+INFO:  Function says: Hello from function
+INFO:  Result: 1
+DROP FUNCTION test_dbms_output_func;
+-- Test 7: DBMS_OUTPUT in procedure
+CREATE OR REPLACE PROCEDURE test_dbms_output_proc(p_msg VARCHAR2) IS
+BEGIN
+  DBMS_OUTPUT.PUT_LINE('Procedure says: ' || p_msg);
+END;
+/
+BEGIN
+  test_dbms_output_proc('Hello from procedure');
+END;
+/
+INFO:  Procedure says: Hello from procedure
+DROP PROCEDURE test_dbms_output_proc;
+-- Test 8: DBMS_OUTPUT in package
+CREATE OR REPLACE PACKAGE test_output_pkg IS
+  PROCEDURE show_message(p_msg VARCHAR2);
+END test_output_pkg;
+/
+CREATE OR REPLACE PACKAGE BODY test_output_pkg IS
+  PROCEDURE show_message(p_msg VARCHAR2) IS
+  BEGIN
+    DBMS_OUTPUT.PUT_LINE('Package says: ' || p_msg);
+  END show_message;
+BEGIN
+  -- Package initialization block
+  DBMS_OUTPUT.PUT_LINE('Package initialized');
+END test_output_pkg;
+/
+BEGIN
+  test_output_pkg.show_message('Hello from package');
+END;
+/
+INFO:  Package initialized
+INFO:  Package says: Hello from package
+DROP PACKAGE test_output_pkg;
+-- Test 9: NULL handling
+BEGIN
+  DBMS_OUTPUT.PUT_LINE(NULL);
+  DBMS_OUTPUT.PUT_LINE('After NULL');
+END;
+/
+INFO:  <NULL>
+INFO:  After NULL
+-- Test 10: Empty string
+BEGIN
+  DBMS_OUTPUT.PUT_LINE('');
+  DBMS_OUTPUT.PUT_LINE('After empty string');
+END;
+/
+INFO:  <NULL>
+INFO:  After empty string
+-- Test 11: Long string
+DECLARE
+  v_long VARCHAR2(1000) := RPAD('A', 500, 'B');
+BEGIN
+  DBMS_OUTPUT.PUT_LINE(v_long);
+END;
+/
+INFO:  ABBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
+-- Note: This implementation does NOT support:
+-- - GET_LINE / GET_LINES (not implemented)
+-- - Buffering (output is immediate)
+-- - Actual ENABLE/DISABLE functionality (always enabled)
