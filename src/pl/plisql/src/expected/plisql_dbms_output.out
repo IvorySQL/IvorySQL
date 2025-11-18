@@ -175,12 +175,14 @@ INFO:  ABBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
 -- 7. GET_LINES(lines, numlines)  - Retrieve multiple lines from buffer
 --
 -- IvorySQL Current Implementation Status:
--- ✓ PUT_LINE(text)               - Fully working (uses RAISE INFO)
--- ✗ PUT(text)                    - Syntax error
--- ✗ NEW_LINE                     - Syntax error
--- ✗ ENABLE(buffer_size)          - Syntax error
--- ✗ DISABLE                      - Syntax error
+-- ✓ PUT_LINE(text)               - Works (outputs via RAISE INFO)
+-- ✓ PUT(text)                    - Works (outputs via RAISE INFO)
+-- ✗ NEW_LINE                     - Syntax error (no-arg procedure call)
+-- ✓ ENABLE(buffer_size)          - Works (no-op)
+-- ✗ DISABLE                      - Syntax error (no-arg procedure call)
 -- ✗ GET_LINE(line, status)       - Not implemented
 -- ✗ GET_LINES(lines, numlines)   - Not implemented
 --
--- Note: Current implementation outputs immediately (no buffering)
+-- Note:
+-- - Output is immediate (no buffering)
+-- - NEW_LINE and DISABLE fail due to PL/iSQL parser limitation with no-arg procedures
