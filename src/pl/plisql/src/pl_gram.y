@@ -31,6 +31,7 @@
 #include "pl_subproc_function.h"
 
 #include "pl_package.h"
+#include "pl_exception_type.h"
 #include "pg_config.h"
 #include "pl_gram.h"
 #include "utils/ora_compatible.h"
@@ -345,6 +346,7 @@ static	PLiSQL_expr		*build_call_expr(int firsttoken, int location, YYSTYPE *yylv
 %token <keyword>	K_ERRCODE
 %token <keyword>	K_ERROR
 %token <keyword>	K_EXCEPTION
+%token <keyword>	K_EXCEPTION_INIT
 %token <keyword>	K_EXECUTE
 %token <keyword>	K_EXIT
 %token <keyword>	K_FETCH
@@ -390,6 +392,7 @@ static	PLiSQL_expr		*build_call_expr(int firsttoken, int location, YYSTYPE *yylv
 %token <keyword>	K_PG_EXCEPTION_HINT
 %token <keyword>	K_PIPELINED
 %token <keyword>	K_PG_ROUTINE_OID
+%token <keyword>	K_PRAGMA
 %token <keyword>	K_PRINT_STRICT_PARAMS
 %token <keyword>	K_PRIOR
 %token <keyword>	K_PROCEDURE
@@ -815,6 +818,18 @@ decl_statement	: decl_varname decl_const decl_datatype decl_collate decl_notnull
 						else
 							new->cursor_explicit_argrow = $5->dno;
 						new->cursor_options = CURSOR_OPT_FAST_PLAN | $2;
+					}
+				| decl_varname K_EXCEPTION ';'
+					{
+						PLiSQL_exception_var *exc;
+
+						exc = plisql_build_exception($1.name, $1.lineno, true);
+					}
+				| K_PRAGMA K_EXCEPTION_INIT '(' decl_varname ',' ICONST ')' ';'
+					{
+						plisql_process_pragma_exception_init($4.name,
+															 $6,
+															 @1, yyscanner);
 					}
 				/* function or procedure declare or define */
 				| function_heading function_properties ';'
@@ -2475,6 +2490,7 @@ stmt_raise		: K_RAISE
 						new->message	= NULL;
 						new->params		= NIL;
 						new->options	= NIL;
+					new->exception_var = NULL;
 
 						tok = yylex(&yylval, &yylloc, yyscanner);
 						if (tok == 0)
@@ -2581,12 +2597,22 @@ stmt_raise		: K_RAISE
 								}
 								else
 								{
+								/* Check if it is a user-defined exception variable */
+								if (tok == T_DATUM &&
+									plisql_datum_is_exception(yylval.wdatum.datum))
+								{
+									new->exception_var = (PLiSQL_exception_var *) yylval.wdatum.datum;
+								}
+								else
 									if (tok == T_WORD)
 										new->condname = yylval.word.ident;
 									else if (plisql_token_is_unreserved_keyword(tok))
 										new->condname = pstrdup(yylval.keyword);
 									else
 										yyerror(&yylloc, NULL, yyscanner,  "syntax error");
+
+								/* Validate condition name if not an exception variable */
+								if (new->exception_var == NULL)
 									plisql_recognize_err_condition(new->condname,
 																	false);
 								}
@@ -3252,6 +3278,7 @@ unreserved_keyword	:
 				| K_ERRCODE
 				| K_ERROR
 				| K_EXCEPTION
+				| K_EXCEPTION_INIT
 				| K_EXIT
 				| K_FETCH
 				| K_FIRST
@@ -3284,6 +3311,7 @@ unreserved_keyword	:
 				| K_PG_EXCEPTION_DETAIL
 				| K_PG_EXCEPTION_HINT
 				| K_PIPELINED
+				| K_PRAGMA
 				| K_PG_ROUTINE_OID
 				| K_PRINT_STRICT_PARAMS
 				| K_PRIOR
@@ -3359,6 +3387,7 @@ unit_name_keyword:
 				| K_ERRCODE
 				| K_ERROR
 				| K_EXCEPTION
+				| K_EXCEPTION_INIT
 				| K_EXIT
 				| K_FETCH
 				| K_FIRST

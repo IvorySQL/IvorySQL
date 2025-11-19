@@ -1,0 +1,114 @@
+--
+-- Test user-defined EXCEPTION type declarations
+--
+-- Note: This test verifies EXCEPTION type declarations compile correctly.
+-- RAISE and WHEN handler support for user-defined exceptions is not yet
+-- implemented and is commented out below.
+--
+-- Test 1: Basic EXCEPTION declaration in package body
+CREATE OR REPLACE PACKAGE test_exc_pkg1 IS
+  PROCEDURE test_proc;
+END test_exc_pkg1;
+/
+CREATE OR REPLACE PACKAGE BODY test_exc_pkg1 IS
+  bad_interval EXCEPTION;  -- User-defined exception
+  PROCEDURE test_proc IS
+  BEGIN
+    RAISE INFO 'Package with EXCEPTION compiled successfully';
+  END test_proc;
+END test_exc_pkg1;
+/
+-- Verify the package body was created
+SELECT 'Package test_exc_pkg1 created' AS result;
+            result             
+-------------------------------
+ Package test_exc_pkg1 created
+(1 row)
+
+-- Test 2: Multiple EXCEPTION declarations
+CREATE OR REPLACE PACKAGE test_exc_pkg2 IS
+  PROCEDURE multi_exc_test;
+END test_exc_pkg2;
+/
+CREATE OR REPLACE PACKAGE BODY test_exc_pkg2 IS
+  exc_invalid_data EXCEPTION;
+  exc_timeout EXCEPTION;
+  exc_not_found EXCEPTION;
+  PROCEDURE multi_exc_test IS
+  BEGIN
+    RAISE INFO 'Multiple exceptions declared successfully';
+  END multi_exc_test;
+END test_exc_pkg2;
+/
+SELECT 'Package test_exc_pkg2 with multiple exceptions created' AS result;
+                         result                         
+--------------------------------------------------------
+ Package test_exc_pkg2 with multiple exceptions created
+(1 row)
+
+-- Test 3: EXCEPTION in standalone procedure (should work in declaration block)
+CREATE OR REPLACE PROCEDURE test_standalone_exc IS
+  my_exception EXCEPTION;
+BEGIN
+  RAISE INFO 'Standalone procedure with EXCEPTION compiled';
+END;
+/
+SELECT 'Standalone procedure with EXCEPTION created' AS result;
+                   result                    
+---------------------------------------------
+ Standalone procedure with EXCEPTION created
+(1 row)
+
+-- Test 4: EXCEPTION mixed with other variable types
+CREATE OR REPLACE PACKAGE test_exc_pkg3 IS
+  PROCEDURE mixed_decl_test;
+END test_exc_pkg3;
+/
+CREATE OR REPLACE PACKAGE BODY test_exc_pkg3 IS
+  v_counter NUMBER := 0;
+  exc_custom EXCEPTION;
+  v_name VARCHAR2(100) := 'Test';
+  exc_another EXCEPTION;
+  v_date DATE;
+  PROCEDURE mixed_decl_test IS
+  BEGIN
+    RAISE INFO 'Mixed declarations compiled successfully';
+  END mixed_decl_test;
+END test_exc_pkg3;
+/
+SELECT 'Package test_exc_pkg3 with mixed declarations created' AS result;
+                        result                         
+-------------------------------------------------------
+ Package test_exc_pkg3 with mixed declarations created
+(1 row)
+
+--
+-- Test 5: RAISE and exception handling
+--
+CREATE OR REPLACE PACKAGE test_exc_raise IS
+  PROCEDURE test_raise_catch;
+END test_exc_raise;
+/
+CREATE OR REPLACE PACKAGE BODY test_exc_raise IS
+  custom_error EXCEPTION;
+  PROCEDURE test_raise_catch IS
+  BEGIN
+    RAISE custom_error;  -- Raise user-defined exception
+  EXCEPTION
+    WHEN custom_error THEN  -- Catch user-defined exception
+      RAISE INFO 'Successfully caught custom_error';
+  END test_raise_catch;
+END test_exc_raise;
+/
+-- Test execution
+BEGIN
+  test_exc_raise.test_raise_catch();
+END;
+/
+INFO:  Successfully caught custom_error
+DROP PACKAGE test_exc_raise;
+-- Cleanup
+DROP PACKAGE test_exc_pkg1;
+DROP PACKAGE test_exc_pkg2;
+DROP PACKAGE test_exc_pkg3;
+DROP PROCEDURE test_standalone_exc;

@@ -47,6 +47,7 @@ OBJS = \
 	pl_scanner.o \
 	pl_subproc_function.o \
 	pl_package.o \
+	pl_exception_type.o \
 	$(top_builddir)/src/backend/oracle_parser/ora_scan.o
 
 DATA = plisql.control plisql--1.0.sql
@@ -56,7 +57,8 @@ ORACLE_REGRESS_OPTS = --dbname=$(PL_TESTDB)
 REGRESS = plisql_array plisql_call plisql_control plisql_copy plisql_domain \
 	plisql_record plisql_cache plisql_simple plisql_transaction \
 	plisql_trap plisql_trigger plisql_varprops plisql_nested_subproc \
-	plisql_nested_subproc2 plisql_out_parameter plisql_type_rowtype
+	plisql_nested_subproc2 plisql_out_parameter plisql_type_rowtype \
+	plisql_exception
 
 # where to find ora_gen_keywordlist.pl and subsidiary files
 TOOLSDIR = $(top_srcdir)/src/tools

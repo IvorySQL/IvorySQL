@@ -3069,6 +3069,15 @@ is_const_datum(PLiSQL_execstate *estate, PLiSQL_datum *datum)
 				isconst = is_const_datum(estate, pkgdatum->pkgvar);
 			}
 			break;
+		case PLISQL_DTYPE_EXCEPTION:
+
+			/* Exception variables cannot be used here */
+
+			elog(ERROR, "exception variables cannot be used in this context");
+
+			break;
+
+
 		default:
 			elog(ERROR, "unrecognized dtype: %d", datum->dtype);
 			break;
