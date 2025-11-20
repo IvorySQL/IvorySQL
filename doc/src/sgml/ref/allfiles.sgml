@@ -25,6 +25,7 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY alterOperator      SYSTEM "alter_operator.sgml">
 <!ENTITY alterOperatorClass SYSTEM "alter_opclass.sgml">
 <!ENTITY alterOperatorFamily SYSTEM "alter_opfamily.sgml">
+<!ENTITY alterPackage       SYSTEM "alter_package.sgml">
 <!ENTITY alterPolicy        SYSTEM "alter_policy.sgml">
 <!ENTITY alterProcedure     SYSTEM "alter_procedure.sgml">
 <!ENTITY alterPublication   SYSTEM "alter_publication.sgml">
@@ -77,6 +78,8 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY createOperator     SYSTEM "create_operator.sgml">
 <!ENTITY createOperatorClass SYSTEM "create_opclass.sgml">
 <!ENTITY createOperatorFamily SYSTEM "create_opfamily.sgml">
+<!ENTITY createPackage      SYSTEM "create_package.sgml">
+<!ENTITY createPackageBody  SYSTEM "create_packagebody.sgml">
 <!ENTITY createPolicy       SYSTEM "create_policy.sgml">
 <!ENTITY createProcedure    SYSTEM "create_procedure.sgml">
 <!ENTITY createPublication  SYSTEM "create_publication.sgml">
@@ -125,6 +128,7 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY dropOperatorClass  SYSTEM "drop_opclass.sgml">
 <!ENTITY dropOperatorFamily  SYSTEM "drop_opfamily.sgml">
 <!ENTITY dropOwned          SYSTEM "drop_owned.sgml">
+<!ENTITY dropPackage        SYSTEM "drop_package.sgml">
 <!ENTITY dropPolicy         SYSTEM "drop_policy.sgml">
 <!ENTITY dropProcedure      SYSTEM "drop_procedure.sgml">
 <!ENTITY dropPublication    SYSTEM "drop_publication.sgml">
