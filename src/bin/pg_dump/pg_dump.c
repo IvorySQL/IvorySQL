@@ -118,6 +118,7 @@ typedef enum SeqType
 	SEQTYPE_SMALLINT,
 	SEQTYPE_INTEGER,
 	SEQTYPE_BIGINT,
+	SEQTYPE_CUSTINT,
 } SeqType;
 
 static const char *const SeqTypeNames[] =
@@ -125,9 +126,10 @@ static const char *const SeqTypeNames[] =
 	[SEQTYPE_SMALLINT] = "smallint",
 	[SEQTYPE_INTEGER] = "integer",
 	[SEQTYPE_BIGINT] = "bigint",
+	[SEQTYPE_CUSTINT] = "pg_catalog.int8",
 };
 
-StaticAssertDecl(lengthof(SeqTypeNames) == (SEQTYPE_BIGINT + 1),
+StaticAssertDecl(lengthof(SeqTypeNames) == (SEQTYPE_CUSTINT + 1),
 				 "array length mismatch");
 
 typedef struct
@@ -7193,7 +7195,7 @@ getTables(Archive *fout, int *numTables)
 						 "d.refobjsubid AS owning_col, "
 						 "tsp.spcname AS reltablespace, ");
 
-	if (fout->remoteVersion < 170000)
+	if (fout->remoteVersion < 180000)
 		appendPQExpBufferStr(query,
 							 "false AS relhasrowid, ");
 	else
