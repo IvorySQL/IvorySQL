@@ -107,7 +107,122 @@ END;
 /
 INFO:  Successfully caught custom_error
 DROP PACKAGE test_exc_raise;
+--
+-- Test 6: PRAGMA EXCEPTION_INIT basic usage
+--
+CREATE OR REPLACE PACKAGE test_pragma_init IS
+  PROCEDURE test_basic_pragma;
+END test_pragma_init;
+/
+CREATE OR REPLACE PACKAGE BODY test_pragma_init IS
+  my_exception EXCEPTION;
+  PRAGMA EXCEPTION_INIT(my_exception, 20001);
+  PROCEDURE test_basic_pragma IS
+  BEGIN
+    RAISE INFO 'PRAGMA EXCEPTION_INIT compiled successfully';
+  END test_basic_pragma;
+END test_pragma_init;
+/
+-- Test execution
+BEGIN
+  test_pragma_init.test_basic_pragma();
+END;
+/
+INFO:  PRAGMA EXCEPTION_INIT compiled successfully
+SELECT 'PRAGMA EXCEPTION_INIT basic test passed' AS result;
+                 result                  
+-----------------------------------------
+ PRAGMA EXCEPTION_INIT basic test passed
+(1 row)
+
+--
+-- Test 7: PRAGMA EXCEPTION_INIT with RAISE and WHEN
+--
+CREATE OR REPLACE PACKAGE test_pragma_raise IS
+  PROCEDURE test_pragma_exception;
+END test_pragma_raise;
+/
+CREATE OR REPLACE PACKAGE BODY test_pragma_raise IS
+  custom_exc EXCEPTION;
+  PRAGMA EXCEPTION_INIT(custom_exc, 20002);
+  PROCEDURE test_pragma_exception IS
+  BEGIN
+    RAISE custom_exc;
+  EXCEPTION
+    WHEN custom_exc THEN
+      RAISE INFO 'Caught exception with PRAGMA EXCEPTION_INIT';
+  END test_pragma_exception;
+END test_pragma_raise;
+/
+-- Test execution
+BEGIN
+  test_pragma_raise.test_pragma_exception();
+END;
+/
+INFO:  Caught exception with PRAGMA EXCEPTION_INIT
+--
+-- Test 8: PRAGMA EXCEPTION_INIT in procedure
+--
+CREATE OR REPLACE PROCEDURE test_pragma_proc IS
+  my_exc EXCEPTION;
+  PRAGMA EXCEPTION_INIT(my_exc, 20003);
+BEGIN
+  RAISE INFO 'PRAGMA EXCEPTION_INIT in procedure works';
+  RAISE my_exc;
+EXCEPTION
+  WHEN my_exc THEN
+    RAISE INFO 'Exception caught in procedure';
+END;
+/
+-- Test execution
+BEGIN
+  test_pragma_proc();
+END;
+/
+INFO:  PRAGMA EXCEPTION_INIT in procedure works
+INFO:  Exception caught in procedure
+SELECT 'PRAGMA EXCEPTION_INIT in procedure test passed' AS result;
+                     result                     
+------------------------------------------------
+ PRAGMA EXCEPTION_INIT in procedure test passed
+(1 row)
+
+--
+-- Test 9: Multiple PRAGMA EXCEPTION_INIT declarations
+--
+CREATE OR REPLACE PACKAGE test_multi_pragma IS
+  PROCEDURE test_multiple;
+END test_multi_pragma;
+/
+CREATE OR REPLACE PACKAGE BODY test_multi_pragma IS
+  exc1 EXCEPTION;
+  PRAGMA EXCEPTION_INIT(exc1, 20011);
+  exc2 EXCEPTION;
+  PRAGMA EXCEPTION_INIT(exc2, 20012);
+  exc3 EXCEPTION;
+  PRAGMA EXCEPTION_INIT(exc3, 20013);
+  PROCEDURE test_multiple IS
+  BEGIN
+    RAISE INFO 'Multiple PRAGMA EXCEPTION_INIT declarations work';
+  END test_multiple;
+END test_multi_pragma;
+/
+BEGIN
+  test_multi_pragma.test_multiple();
+END;
+/
+INFO:  Multiple PRAGMA EXCEPTION_INIT declarations work
+SELECT 'Multiple PRAGMA EXCEPTION_INIT test passed' AS result;
+                   result                   
+--------------------------------------------
+ Multiple PRAGMA EXCEPTION_INIT test passed
+(1 row)
+
 -- Cleanup
+DROP PACKAGE test_pragma_init;
+DROP PACKAGE test_pragma_raise;
+DROP PROCEDURE test_pragma_proc;
+DROP PACKAGE test_multi_pragma;
 DROP PACKAGE test_exc_pkg1;
 DROP PACKAGE test_exc_pkg2;
 DROP PACKAGE test_exc_pkg3;
