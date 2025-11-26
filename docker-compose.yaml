@@ -1,0 +1,16 @@
+services:
+  # Ubuntu-based development environment (recommended)
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ivorysql-dev
+    container_name: ivorysql-dev
+    volumes:
+      - .:/home/ivorysql/IvorySQL:rw
+    working_dir: /home/ivorysql/IvorySQL
+    command: ["sleep", "infinity"]
+  oracle:
+    image: container-registry.oracle.com/database/free:23.26.0.0-lite
+    environment:
+      ORACLE_PWD: orapwd
