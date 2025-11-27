@@ -31,13 +31,6 @@
 #include "plisql.h"
 
 /*
- * Exception datum type enum value
- * NOTE: This must be added to PLiSQL_datum_type enum in plisql.h:
- *       PLISQL_DTYPE_EXCEPTION = 7
- */
-#define PLISQL_DTYPE_EXCEPTION 7
-
-/*
  * User-defined exception variable
  *
  * This represents an EXCEPTION declaration in Oracle PL/SQL.
