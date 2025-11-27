@@ -116,7 +116,7 @@ END test_pragma_init;
 
 CREATE OR REPLACE PACKAGE BODY test_pragma_init IS
   my_exception EXCEPTION;
-  PRAGMA EXCEPTION_INIT(my_exception, 20001);
+  PRAGMA EXCEPTION_INIT(my_exception, -20001);
 
   PROCEDURE test_basic_pragma IS
   BEGIN
@@ -143,7 +143,7 @@ END test_pragma_raise;
 
 CREATE OR REPLACE PACKAGE BODY test_pragma_raise IS
   custom_exc EXCEPTION;
-  PRAGMA EXCEPTION_INIT(custom_exc, 20002);
+  PRAGMA EXCEPTION_INIT(custom_exc, -20002);
 
   PROCEDURE test_pragma_exception IS
   BEGIN
@@ -166,7 +166,7 @@ END;
 --
 CREATE OR REPLACE PROCEDURE test_pragma_proc IS
   my_exc EXCEPTION;
-  PRAGMA EXCEPTION_INIT(my_exc, 20003);
+  PRAGMA EXCEPTION_INIT(my_exc, -20003);
 BEGIN
   RAISE INFO 'PRAGMA EXCEPTION_INIT in procedure works';
   RAISE my_exc;
@@ -194,13 +194,13 @@ END test_multi_pragma;
 
 CREATE OR REPLACE PACKAGE BODY test_multi_pragma IS
   exc1 EXCEPTION;
-  PRAGMA EXCEPTION_INIT(exc1, 20011);
+  PRAGMA EXCEPTION_INIT(exc1, -20011);
 
   exc2 EXCEPTION;
-  PRAGMA EXCEPTION_INIT(exc2, 20012);
+  PRAGMA EXCEPTION_INIT(exc2, -20012);
 
   exc3 EXCEPTION;
-  PRAGMA EXCEPTION_INIT(exc3, 20013);
+  PRAGMA EXCEPTION_INIT(exc3, -20013);
 
   PROCEDURE test_multiple IS
   BEGIN
@@ -215,6 +215,105 @@ END;
 /
 
 SELECT 'Multiple PRAGMA EXCEPTION_INIT test passed' AS result;
+
+--
+-- Test 10: PRAGMA EXCEPTION_INIT with positive error codes
+-- Oracle documentation: Valid codes are 100 or any negative integer >= -1000000 (except -1403)
+-- This test verifies positive error codes: only 100 is accepted, all others are rejected.
+--
+
+-- Test 10a: Valid positive error code 100 (should succeed)
+CREATE OR REPLACE PACKAGE test_pragma_positive_100 IS
+  PROCEDURE test_positive;
+END test_pragma_positive_100;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_pragma_positive_100 IS
+  exc_100 EXCEPTION;
+  PRAGMA EXCEPTION_INIT(exc_100, 100);  -- Oracle accepts: ANSI NO_DATA_FOUND
+
+  PROCEDURE test_positive IS
+  BEGIN
+    RAISE INFO 'Error code 100 accepted (ANSI NO_DATA_FOUND)';
+  END test_positive;
+END test_pragma_positive_100;
+/
+
+BEGIN
+  test_pragma_positive_100.test_positive();
+END;
+/
+
+DROP PACKAGE test_pragma_positive_100;
+
+-- Test 10b: Invalid positive error code 1 (should fail with PLS-00701)
+CREATE OR REPLACE PACKAGE test_pragma_positive_1 IS
+  exc_1 EXCEPTION;
+  PRAGMA EXCEPTION_INIT(exc_1, 1);  -- Oracle rejects: positive except 100
+END test_pragma_positive_1;
+/
+
+-- Test 10c: Invalid positive error code 1000000 (should fail with PLS-00701)
+CREATE OR REPLACE PACKAGE test_pragma_positive_1000000 IS
+  exc_1000000 EXCEPTION;
+  PRAGMA EXCEPTION_INIT(exc_1000000, 1000000);  -- Oracle rejects: positive except 100
+END test_pragma_positive_1000000;
+/
+
+SELECT 'PRAGMA EXCEPTION_INIT positive error code tests completed' AS result;
+
+--
+-- Test 11: PRAGMA EXCEPTION_INIT with negative error codes and boundary
+-- Oracle documentation: Valid codes are 100 or any negative integer >= -1000000 (except -1403)
+-- This test verifies the -1000000 boundary and specifically rejected negative codes.
+--
+
+-- Test 11a: Valid error code -1000000 (should succeed - at boundary)
+CREATE OR REPLACE PACKAGE test_pragma_minus_1000000 IS
+  PROCEDURE test_boundary;
+END test_pragma_minus_1000000;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_pragma_minus_1000000 IS
+  exc_boundary EXCEPTION;
+  PRAGMA EXCEPTION_INIT(exc_boundary, -1000000);  -- At the boundary
+
+  PROCEDURE test_boundary IS
+  BEGIN
+    RAISE INFO 'Error code -1000000 accepted (at boundary)';
+  END test_boundary;
+END test_pragma_minus_1000000;
+/
+
+BEGIN
+  test_pragma_minus_1000000.test_boundary();
+END;
+/
+
+DROP PACKAGE test_pragma_minus_1000000;
+
+-- Test 11b: Invalid error code -1000001 (should fail with PLS-00701 - beyond boundary)
+CREATE OR REPLACE PACKAGE test_pragma_minus_1000001 IS
+  exc_beyond EXCEPTION;
+  PRAGMA EXCEPTION_INIT(exc_beyond, -1000001);  -- Beyond boundary
+END test_pragma_minus_1000001;
+/
+
+-- Test 11c: Invalid error code -1403 (should fail with PLS-00701)
+CREATE OR REPLACE PACKAGE test_pragma_minus_1403 IS
+  exc_1403 EXCEPTION;
+  PRAGMA EXCEPTION_INIT(exc_1403, -1403);  -- Oracle-specific NO_DATA_FOUND, must use 100
+END test_pragma_minus_1403;
+/
+
+-- Test 11d: Invalid error code 0 (should fail with PLS-00701)
+CREATE OR REPLACE PACKAGE test_pragma_zero IS
+  exc_zero EXCEPTION;
+  PRAGMA EXCEPTION_INIT(exc_zero, 0);  -- Zero is rejected by Oracle
+END test_pragma_zero;
+/
+
+SELECT 'PRAGMA EXCEPTION_INIT negative error code tests completed' AS result;
 
 -- Cleanup
 DROP PACKAGE test_pragma_init;

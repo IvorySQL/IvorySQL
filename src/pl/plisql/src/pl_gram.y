@@ -831,6 +831,12 @@ decl_statement	: decl_varname decl_const decl_datatype decl_collate decl_notnull
 															 $6,
 															 @1, yyscanner);
 					}
+				| K_PRAGMA K_EXCEPTION_INIT '(' any_identifier ',' '-' ICONST ')' ';'
+					{
+						plisql_process_pragma_exception_init($4,
+															 -$7,
+															 @1, yyscanner);
+					}
 				/* function or procedure declare or define */
 				| function_heading function_properties ';'
 					{

@@ -112,6 +112,45 @@ plisql_exception_set_sqlcode(PLiSQL_exception_var *exc, int sqlcode)
 }
 
 /*
+ * plisql_validate_exception_error_code
+ *		Validate error code for PRAGMA EXCEPTION_INIT (Oracle compatibility)
+ *
+ * Oracle documentation states valid error codes are:
+ *   - Error code 100 (ANSI NO_DATA_FOUND)
+ *   - Any negative integer >= -1000000, except -1403
+ *
+ * Oracle rejects at compile time with PLS-00701:
+ *   - Error code 0 (zero is not a valid error code)
+ *   - Error code -1403 (Oracle-specific NO_DATA_FOUND; must use 100 instead)
+ *   - All positive error codes EXCEPT 100
+ *   - Error codes less than -1000000
+ *
+ * Returns true if valid, false if invalid.
+ */
+static bool
+plisql_validate_exception_error_code(int sqlcode)
+{
+	/* Reject zero */
+	if (sqlcode == 0)
+		return false;
+
+	/* Reject -1403 (Oracle-specific NO_DATA_FOUND) */
+	if (sqlcode == -1403)
+		return false;
+
+	/* For positive codes, only 100 (ANSI NO_DATA_FOUND) is allowed */
+	if (sqlcode > 0 && sqlcode != 100)
+		return false;
+
+	/* For negative codes, must be >= -1000000 */
+	if (sqlcode < -1000000)
+		return false;
+
+	/* All other codes are valid */
+	return true;
+}
+
+/*
  * plisql_process_pragma_exception_init
  *		Process PRAGMA EXCEPTION_INIT directive at compile time
  *
@@ -141,6 +180,13 @@ plisql_process_pragma_exception_init(const char *exc_name, int sqlcode,
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("\"%s\" is not an exception", exc_name),
+				 plisql_scanner_errposition(location, yyscanner)));
+
+	/* Validate error code (Oracle compatibility) */
+	if (!plisql_validate_exception_error_code(sqlcode))
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("illegal ORACLE error number %d for PRAGMA EXCEPTION_INIT", sqlcode),
 				 plisql_scanner_errposition(location, yyscanner)));
 
 	/* Set the exception's sqlcode */
