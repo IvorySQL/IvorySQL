@@ -1941,6 +1941,7 @@ typedef struct TidScanState
  *		trss_mintid			the lowest TID in the scan range
  *		trss_maxtid			the highest TID in the scan range
  *		trss_inScan			is a scan currently in progress?
+ *		trss_pscanlen		size of parallel heap scan descriptor
  * ----------------
  */
 typedef struct TidRangeScanState
@@ -1950,6 +1951,7 @@ typedef struct TidRangeScanState
 	ItemPointerData trss_mintid;
 	ItemPointerData trss_maxtid;
 	bool		trss_inScan;
+	Size		trss_pscanlen;
 } TidRangeScanState;
 
 /* ----------------
