@@ -377,6 +377,41 @@ ExecInitExprList(List *nodes, PlanState *parent)
  * Caution: before PG v10, the targetList was a list of ExprStates; now it
  * should be the planner-created targetlist, since we do the compilation here.
  */
+
+/*
+ * Helper function to check if an expression contains ROWNUM
+ */
+static bool
+expression_contains_rownum_walker(Node *node, void *context)
+{
+	if (node == NULL)
+		return false;
+
+	if (IsA(node, RownumExpr))
+		return true;
+
+	return expression_tree_walker(node, expression_contains_rownum_walker, context);
+}
+
+/*
+ * Check if a target list contains ROWNUM expressions
+ */
+static bool
+targetlist_contains_rownum(List *targetList)
+{
+	ListCell   *lc;
+
+	foreach(lc, targetList)
+	{
+		TargetEntry *tle = lfirst_node(TargetEntry, lc);
+
+		if (expression_contains_rownum_walker((Node *) tle->expr, NULL))
+			return true;
+	}
+
+	return false;
+}
+
 ProjectionInfo *
 ExecBuildProjectionInfo(List *targetList,
 						ExprContext *econtext,
@@ -518,6 +553,13 @@ ExecBuildProjectionInfo(List *targetList,
 	ExprEvalPushStep(state, &scratch);
 
 	ExecReadyExpr(state);
+
+	/*
+	 * Check if the target list contains ROWNUM expressions.
+	 * If so, we need to materialize the result tuple to preserve the
+	 * ROWNUM values and prevent re-evaluation in outer queries.
+	 */
+	projInfo->pi_needsMaterialization = targetlist_contains_rownum(targetList);
 
 	return projInfo;
 }

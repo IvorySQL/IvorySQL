@@ -79,6 +79,7 @@ static Plan *create_scan_plan(PlannerInfo *root, Path *best_path,
 							  int flags);
 static List *build_path_tlist(PlannerInfo *root, Path *path);
 static bool use_physical_tlist(PlannerInfo *root, Path *path, int flags);
+static bool contain_rownum_expr(Node *node);
 static List *get_gating_quals(PlannerInfo *root, List *quals);
 static Plan *create_gating_plan(PlannerInfo *root, Path *path, Plan *plan,
 								List *gating_quals);
@@ -2067,6 +2068,178 @@ create_projection_plan(PlannerInfo *root, ProjectionPath *best_path, int flags)
 		subplan = create_plan_recurse(root, best_path->subpath, 0);
 		tlist = build_path_tlist(root, &best_path->path);
 		needs_result_node = !tlist_same_exprs(tlist, subplan->targetlist);
+
+		/*
+		 * Special handling for Oracle ROWNUM with Sort:
+		 * If the projection contains ROWNUM and the subplan is a Sort,
+		 * we need to ensure ROWNUM is evaluated BEFORE the sort, not after.
+		 * Oracle semantics require ROWNUM to be assigned during row retrieval,
+		 * before any ORDER BY clause is applied.
+		 */
+		if (needs_result_node &&
+			(IsA(subplan, Sort) || IsA(subplan, IncrementalSort)) &&
+			contain_rownum_expr((Node *) tlist))
+		{
+			Plan	   *sortinput;
+			List	   *new_input_tlist;
+			List	   *new_sort_tlist;
+			List	   *modified_tlist;
+			ListCell   *lc;
+			Index		new_resno;
+			Index		rownum_sort_attno;
+			Index		scan_rownum_start;
+			Index		scan_rownum_attno;
+			int			num_rownums;
+
+			/*
+			 * Get the Sort's input plan (the scan).
+			 * For both Sort and IncrementalSort, the input is in 'lefttree'.
+			 */
+			sortinput = subplan->lefttree;
+			new_resno = list_length(sortinput->targetlist) + 1;
+
+			/*
+			 * Remember where ROWNUM columns start in the scan's output.
+			 * We'll use this to create Vars in the Sort's target list.
+			 */
+			scan_rownum_start = new_resno;
+
+			/*
+			 * Build a new target list for the sort's input that includes
+			 * all existing columns plus any ROWNUM expressions from the
+			 * final projection.
+			 */
+			new_input_tlist = list_copy(sortinput->targetlist);
+
+			foreach(lc, tlist)
+			{
+				TargetEntry *tle = lfirst_node(TargetEntry, lc);
+
+				if (IsA(tle->expr, RownumExpr))
+				{
+					TargetEntry *new_tle;
+
+					/*
+					 * Add the ROWNUM expression to the scan's target list.
+					 * This will cause it to be evaluated during scan time,
+					 * when es_rownum has the correct value.
+					 */
+					new_tle = makeTargetEntry(copyObject(tle->expr),
+											  new_resno++,
+											  tle->resname,
+											  false);
+					new_input_tlist = lappend(new_input_tlist, new_tle);
+				}
+			}
+
+			/* Update the sort input's target list */
+			sortinput->targetlist = new_input_tlist;
+
+			/*
+			 * Also add the ROWNUM column(s) to the Sort's target list,
+			 * so they get passed through the sort.
+			 */
+			new_sort_tlist = list_copy(subplan->targetlist);
+
+			/*
+			 * Remember where the ROWNUM columns will start in the Sort's
+			 * output - we'll need this later to create Vars referencing them.
+			 */
+			rownum_sort_attno = list_length(new_sort_tlist) + 1;
+
+			/* Track which scan column we're referencing for each ROWNUM */
+			scan_rownum_attno = scan_rownum_start;
+
+			foreach(lc, tlist)
+			{
+				TargetEntry *tle = lfirst_node(TargetEntry, lc);
+
+				if (IsA(tle->expr, RownumExpr))
+				{
+					TargetEntry *new_tle;
+					Var		   *var;
+
+					/*
+					 * Create a Var that references the ROWNUM from the
+					 * scan's output.
+					 */
+					var = makeVar(OUTER_VAR,
+								  scan_rownum_attno++,
+								  INT8OID,
+								  -1,
+								  InvalidOid,
+								  0);
+
+					new_tle = makeTargetEntry((Expr *) var,
+											  list_length(new_sort_tlist) + 1,
+											  tle->resname,
+											  false);
+					new_sort_tlist = lappend(new_sort_tlist, new_tle);
+				}
+			}
+
+			subplan->targetlist = new_sort_tlist;
+
+			/*
+			 * Now modify the final projection tlist to replace RownumExpr
+			 * with Vars that reference the Sort's output columns.
+			 * This ensures the Result node doesn't re-evaluate ROWNUM.
+			 */
+			modified_tlist = NIL;
+
+			/* Count how many ROWNUM columns we added */
+			num_rownums = 0;
+			foreach(lc, tlist)
+			{
+				TargetEntry *tle = lfirst_node(TargetEntry, lc);
+
+				if (IsA(tle->expr, RownumExpr))
+					num_rownums++;
+			}
+
+			/* ROWNUM columns start at: total_length - num_rownums + 1 */
+			rownum_sort_attno = list_length(new_sort_tlist) - num_rownums + 1;
+
+			foreach(lc, tlist)
+			{
+				TargetEntry *tle = lfirst_node(TargetEntry, lc);
+				TargetEntry *new_tle;
+
+				if (IsA(tle->expr, RownumExpr))
+				{
+					Var		   *var;
+
+					/*
+					 * Replace the RownumExpr with a Var referencing the
+					 * ROWNUM column from the Sort's output.
+					 */
+					var = makeVar(OUTER_VAR,
+								  rownum_sort_attno++,
+								  INT8OID,
+								  -1,
+								  InvalidOid,
+								  0);
+
+					new_tle = makeTargetEntry((Expr *) var,
+											  list_length(modified_tlist) + 1,
+											  tle->resname,
+											  tle->resjunk);
+				}
+				else
+				{
+					/* Keep non-ROWNUM entries as-is */
+					new_tle = makeTargetEntry(copyObject(tle->expr),
+											  list_length(modified_tlist) + 1,
+											  tle->resname,
+											  tle->resjunk);
+				}
+
+				modified_tlist = lappend(modified_tlist, new_tle);
+			}
+
+			/* Use the modified tlist for the Result node */
+			tlist = modified_tlist;
+		}
 	}
 
 	/*
@@ -7410,6 +7583,31 @@ is_projection_capable_path(Path *path)
 			break;
 	}
 	return true;
+}
+
+/*
+ * contain_rownum_expr
+ *		Check whether a node tree contains any ROWNUM expressions.
+ *
+ * This is used to detect when we need special handling for Oracle ROWNUM
+ * pseudocolumn in combination with Sort nodes.
+ */
+static bool
+contain_rownum_expr_walker(Node *node, void *context)
+{
+	if (node == NULL)
+		return false;
+
+	if (IsA(node, RownumExpr))
+		return true;
+
+	return expression_tree_walker(node, contain_rownum_expr_walker, context);
+}
+
+static bool
+contain_rownum_expr(Node *node)
+{
+	return contain_rownum_expr_walker(node, NULL);
 }
 
 /*

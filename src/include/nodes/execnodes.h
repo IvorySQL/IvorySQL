@@ -380,6 +380,8 @@ typedef struct ProjectionInfo
 	ExprState	pi_state;
 	/* expression context in which to evaluate expression */
 	ExprContext *pi_exprContext;
+	/* true if projection contains volatile exprs like ROWNUM that need materialization */
+	bool		pi_needsMaterialization;
 } ProjectionInfo;
 
 /* ----------------

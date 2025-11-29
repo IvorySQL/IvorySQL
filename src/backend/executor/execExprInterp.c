@@ -3348,8 +3348,9 @@ ExecEvalRownum(ExprState *state, ExprEvalStep *op)
 {
 	PlanState  *planstate;
 	EState	   *estate = NULL;
+	int64		rownum_value = 1;  /* default */
 
-	/* Safely get the EState from the parent PlanState */
+	/* Safely get the PlanState and EState */
 	if (state && state->parent)
 	{
 		planstate = state->parent;
@@ -3358,15 +3359,14 @@ ExecEvalRownum(ExprState *state, ExprEvalStep *op)
 	}
 
 	/*
-	 * Return current row number as INT8 (bigint).
-	 * The counter starts at 1 and is incremented before each ExecProcNode call.
-	 * For standalone expressions without an estate, default to 1.
+	 * Use the estate-level ROWNUM counter.
+	 * When ROWNUM appears in a SELECT list, materialization (handled in
+	 * ExecScanExtended) ensures the value is captured and not re-evaluated.
 	 */
-	if (estate)
-		*op->resvalue = Int64GetDatum(estate->es_rownum);
-	else
-		*op->resvalue = Int64GetDatum(1);
+	if (estate && estate->es_rownum > 0)
+		rownum_value = estate->es_rownum;
 
+	*op->resvalue = Int64GetDatum(rownum_value);
 	*op->resnull = false;
 }
 

@@ -226,11 +226,30 @@ ExecScanExtended(ScanState *node,
 
 			if (projInfo)
 			{
+				TupleTableSlot *result;
+
 				/*
 				 * Form a projection tuple, store it in the result tuple slot
 				 * and return it.
 				 */
-				return ExecProject(projInfo);
+				result = ExecProject(projInfo);
+
+				/*
+				 * If the projection contains ROWNUM expressions, materialize
+				 * the virtual tuple to preserve the ROWNUM values as constants.
+				 * This prevents re-evaluation when the tuple is read by outer
+				 * queries (e.g., in subqueries with ORDER BY).
+				 *
+				 * Oracle materializes ROWNUM values in SELECT lists, so when
+				 * a subquery projects ROWNUM, the value must be captured NOW
+				 * and not re-evaluated later in different contexts.
+				 */
+				if (projInfo->pi_needsMaterialization)
+				{
+					ExecMaterializeSlot(result);
+				}
+
+				return result;
 			}
 			else
 			{

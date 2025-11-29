@@ -255,6 +255,88 @@ SELECT id, name FROM rownum_test WHERE ROWNUM <= 5 OFFSET 2;
 SELECT id, name FROM rownum_test WHERE ROWNUM <= 8 FETCH FIRST 3 ROWS ONLY;
 
 --
+-- ROWNUM in SELECT list with ORDER BY (Issue: ORDER BY bug fix)
+-- These test the fix for ROWNUM being evaluated at wrong level when combined with ORDER BY
+--
+
+-- Basic case: ROWNUM in SELECT with ORDER BY
+-- ROWNUM values should reflect row position BEFORE sort, not after
+SELECT * FROM (
+    SELECT ROWNUM as rn, id, name, value
+    FROM rownum_test
+    ORDER BY value DESC
+) sub WHERE rn <= 3;
+
+-- Verify ROWNUM values are assigned before ORDER BY (not sequential 1,2,3)
+SELECT ROWNUM as rn, id, name, value
+FROM rownum_test
+ORDER BY value DESC;
+
+-- ROWNUM in SELECT with ORDER BY and outer filter
+SELECT * FROM (
+    SELECT ROWNUM as rn, id, name, value
+    FROM rownum_test
+    ORDER BY value DESC
+) sub WHERE rn > 2 AND rn <= 5;
+
+-- Multiple ROWNUM columns at different nesting levels
+SELECT ROWNUM as outer_rn, * FROM (
+    SELECT ROWNUM as middle_rn, * FROM (
+        SELECT ROWNUM as inner_rn, id, name, value
+        FROM rownum_test
+        ORDER BY value DESC
+    ) sub1
+    ORDER BY value ASC
+) sub2
+ORDER BY id
+LIMIT 5;
+
+-- ROWNUM in SELECT with ORDER BY and JOIN
+SELECT * FROM (
+    SELECT ROWNUM as rn, e.id, e.name, e.value, d.dept_name
+    FROM rownum_test e
+    JOIN dept d ON e.dept_id = d.dept_id
+    ORDER BY e.value DESC
+) sub WHERE rn <= 4;
+
+-- Test that ROWNUM is materialized (not re-evaluated in outer query)
+-- This tests the materialization fix
+SELECT rn, id, name FROM (
+    SELECT ROWNUM as rn, id, name, value
+    FROM rownum_test
+    ORDER BY value DESC
+) sub
+ORDER BY rn  -- Sorting by rn should not re-evaluate ROWNUM
+LIMIT 5;
+
+-- EXPLAIN: Verify ROWNUM is pushed to scan level before Sort
+EXPLAIN (COSTS OFF, VERBOSE)
+SELECT * FROM (
+    SELECT ROWNUM as rn, id, name, value
+    FROM rownum_test
+    ORDER BY value DESC
+) sub WHERE rn <= 3;
+
+--
+-- Issue #14: ROWNUM counter not reset in correlated subqueries (KNOWN BUG)
+-- This test demonstrates a bug where es_rownum is not reset between
+-- correlated subquery invocations. Expected: all values should be 1.
+-- Actual: values increment across invocations (3, 6, 9, 12, 15).
+-- Bug report: https://github.com/rophy/IvorySQL/issues/14
+--
+SELECT
+    id,
+    name,
+    (SELECT ROWNUM FROM (
+        SELECT * FROM rownum_test t2
+        WHERE t2.id = t1.id
+        ORDER BY value DESC
+    ) sub) as correlated_rn
+FROM rownum_test t1
+ORDER BY id
+LIMIT 5;
+
+--
 -- Cleanup
 --
 

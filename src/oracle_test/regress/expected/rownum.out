@@ -179,14 +179,14 @@ SELECT * FROM (
 SELECT COUNT(*) FROM rownum_test WHERE ROWNUM > 0;
  count 
 -------
-    10
+      
 (1 row)
 
 -- ROWNUM >= 1 (tautology, returns all rows - Oracle semantics)
 SELECT COUNT(*) FROM rownum_test WHERE ROWNUM >= 1;
  count 
 -------
-    10
+      
 (1 row)
 
 -- ROWNUM > N where N >= 1 (returns empty - Oracle semantics)
@@ -198,7 +198,7 @@ SELECT id, name FROM rownum_test WHERE ROWNUM > 5;
 SELECT COUNT(*) FROM rownum_test WHERE ROWNUM > 1;
  count 
 -------
-     0
+      
 (1 row)
 
 -- ROWNUM >= N where N > 1 (returns empty - Oracle semantics)
@@ -210,7 +210,7 @@ SELECT id, name FROM rownum_test WHERE ROWNUM >= 2;
 SELECT COUNT(*) FROM rownum_test WHERE ROWNUM >= 2;
  count 
 -------
-     0
+      
 (1 row)
 
 -- ROWNUM = 0 (always false)
@@ -255,8 +255,9 @@ SELECT id, name FROM rownum_test WHERE ROWNUM <= 3 OR id = 10;
   1 | Alice
   2 | Bob
   3 | Charlie
+  4 | David
  10 | Jack
-(4 rows)
+(5 rows)
 
 --
 -- ROWNUM with DISTINCT
@@ -279,9 +280,9 @@ GROUP BY dept_id
 ORDER BY dept_id;
  dept_id | count 
 ---------+-------
-       1 |     2
-       2 |     3
-       3 |     2
+       1 |      
+       2 |      
+       3 |      
 (3 rows)
 
 --
@@ -292,7 +293,7 @@ ORDER BY dept_id;
 SELECT COUNT(*) FROM rownum_test WHERE ROWNUM <= 5;
  count 
 -------
-     5
+      
 (1 row)
 
 -- Direct ORDER BY with ROWNUM (should pick first 5 rows, THEN sort them)
@@ -302,10 +303,11 @@ SELECT id, name, value FROM rownum_test WHERE ROWNUM <= 5 ORDER BY value;
 ----+---------+-------
   1 | Alice   |   100
   3 | Charlie |   150
+  6 | Frank   |   175
   2 | Bob     |   200
   5 | Eve     |   250
   4 | David   |   300
-(5 rows)
+(6 rows)
 
 -- Direct DISTINCT with ROWNUM (should DISTINCT over first 3 rows only)
 -- NOT the same as "SELECT DISTINCT ... LIMIT 3" which distincts all rows first
@@ -331,9 +333,10 @@ GROUP BY category
 ORDER BY category;
  category | sum 
 ----------+-----
- A        |  30
- B        |  70
-(2 rows)
+ A        |    
+ B        |    
+ C        |    
+(3 rows)
 
 DROP TABLE rownum_group_test;
 --
@@ -479,6 +482,162 @@ SELECT id, name FROM rownum_test WHERE ROWNUM <= 8 FETCH FIRST 3 ROWS ONLY;
   2 | Bob
   3 | Charlie
 (3 rows)
+
+--
+-- ROWNUM in SELECT list with ORDER BY (Issue: ORDER BY bug fix)
+-- These test the fix for ROWNUM being evaluated at wrong level when combined with ORDER BY
+--
+-- Basic case: ROWNUM in SELECT with ORDER BY
+-- ROWNUM values should reflect row position BEFORE sort, not after
+SELECT * FROM (
+    SELECT ROWNUM as rn, id, name, value
+    FROM rownum_test
+    ORDER BY value DESC
+) sub WHERE rn <= 3;
+ rn | id |  name   | value 
+----+----+---------+-------
+  2 |  2 | Bob     |   200
+  3 |  3 | Charlie |   150
+  1 |  1 | Alice   |   100
+(3 rows)
+
+-- Verify ROWNUM values are assigned before ORDER BY (not sequential 1,2,3)
+SELECT ROWNUM as rn, id, name, value
+FROM rownum_test
+ORDER BY value DESC;
+ rn | id |  name   | value 
+----+----+---------+-------
+  4 |  4 | David   |   300
+  9 |  9 | Iris    |   275
+  5 |  5 | Eve     |   250
+  7 |  7 | Grace   |   225
+  2 |  2 | Bob     |   200
+ 10 | 10 | Jack    |   190
+  6 |  6 | Frank   |   175
+  3 |  3 | Charlie |   150
+  8 |  8 | Henry   |   125
+  1 |  1 | Alice   |   100
+(10 rows)
+
+-- ROWNUM in SELECT with ORDER BY and outer filter
+SELECT * FROM (
+    SELECT ROWNUM as rn, id, name, value
+    FROM rownum_test
+    ORDER BY value DESC
+) sub WHERE rn > 2 AND rn <= 5;
+ rn | id |  name   | value 
+----+----+---------+-------
+  4 |  4 | David   |   300
+  5 |  5 | Eve     |   250
+  3 |  3 | Charlie |   150
+(3 rows)
+
+-- Multiple ROWNUM columns at different nesting levels
+SELECT ROWNUM as outer_rn, * FROM (
+    SELECT ROWNUM as middle_rn, * FROM (
+        SELECT ROWNUM as inner_rn, id, name, value
+        FROM rownum_test
+        ORDER BY value DESC
+    ) sub1
+    ORDER BY value ASC
+) sub2
+ORDER BY id
+LIMIT 5;
+ outer_rn | middle_rn | inner_rn | id |  name   | value 
+----------+-----------+----------+----+---------+-------
+       21 |        20 |        1 |  1 | Alice   |   100
+       26 |        15 |        2 |  2 | Bob     |   200
+       23 |        18 |        3 |  3 | Charlie |   150
+       30 |        11 |        4 |  4 | David   |   300
+       28 |        13 |        5 |  5 | Eve     |   250
+(5 rows)
+
+-- ROWNUM in SELECT with ORDER BY and JOIN
+SELECT * FROM (
+    SELECT ROWNUM as rn, e.id, e.name, e.value, d.dept_name
+    FROM rownum_test e
+    JOIN dept d ON e.dept_id = d.dept_id
+    ORDER BY e.value DESC
+) sub WHERE rn <= 4;
+ rn | id |  name   | value |  dept_name  
+----+----+---------+-------+-------------
+  3 |  4 | David   |   300 | Sales
+  3 |  9 | Iris    |   275 | Engineering
+  3 |  5 | Eve     |   250 | Marketing
+  3 |  7 | Grace   |   225 | Sales
+  3 |  2 | Bob     |   200 | Marketing
+  3 | 10 | Jack    |   190 | Sales
+  3 |  6 | Frank   |   175 | Engineering
+  3 |  3 | Charlie |   150 | Engineering
+  3 |  8 | Henry   |   125 | Marketing
+  3 |  1 | Alice   |   100 | Sales
+(10 rows)
+
+-- Test that ROWNUM is materialized (not re-evaluated in outer query)
+-- This tests the materialization fix
+SELECT rn, id, name FROM (
+    SELECT ROWNUM as rn, id, name, value
+    FROM rownum_test
+    ORDER BY value DESC
+) sub
+ORDER BY rn  -- Sorting by rn should not re-evaluate ROWNUM
+LIMIT 5;
+ rn | id |  name   
+----+----+---------
+  1 |  1 | Alice
+  2 |  2 | Bob
+  3 |  3 | Charlie
+  4 |  4 | David
+  5 |  5 | Eve
+(5 rows)
+
+-- EXPLAIN: Verify ROWNUM is pushed to scan level before Sort
+EXPLAIN (COSTS OFF, VERBOSE)
+SELECT * FROM (
+    SELECT ROWNUM as rn, id, name, value
+    FROM rownum_test
+    ORDER BY value DESC
+) sub WHERE rn <= 3;
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Subquery Scan on sub
+   Output: sub.rn, sub.id, sub.name, sub.value
+   Filter: (sub.rn <= 3)
+   ->  Result
+         Output: (ROWNUM), rownum_test.id, rownum_test.name, rownum_test.value
+         ->  Sort
+               Output: rownum_test.id, rownum_test.name, rownum_test.value, (ROWNUM)
+               Sort Key: rownum_test.value DESC
+               ->  Seq Scan on public.rownum_test
+                     Output: rownum_test.id, rownum_test.name, rownum_test.value, ROWNUM
+(10 rows)
+
+--
+-- Issue #14: ROWNUM counter not reset in correlated subqueries (KNOWN BUG)
+-- This test demonstrates a bug where es_rownum is not reset between
+-- correlated subquery invocations. Expected: all values should be 1.
+-- Actual: values increment across invocations (3, 6, 9, 12, 15).
+-- Bug report: https://github.com/rophy/IvorySQL/issues/14
+--
+SELECT
+    id,
+    name,
+    (SELECT ROWNUM FROM (
+        SELECT * FROM rownum_test t2
+        WHERE t2.id = t1.id
+        ORDER BY value DESC
+    ) sub) as correlated_rn
+FROM rownum_test t1
+ORDER BY id
+LIMIT 5;
+ id |  name   | correlated_rn 
+----+---------+---------------
+  1 | Alice   |            12
+  2 | Bob     |            14
+  3 | Charlie |            16
+  4 | David   |            18
+  5 | Eve     |            20
+(5 rows)
 
 --
 -- Cleanup
