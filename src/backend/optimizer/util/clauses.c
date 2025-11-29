@@ -2699,7 +2699,9 @@ eval_const_expressions_mutator(Node *node,
 			}
 		case T_Aggref:
 			node = ece_generic_processing(node);
-			return simplify_aggref((Aggref *) node, context);
+			if (context->root != NULL)
+				return simplify_aggref((Aggref *) node, context);
+			return node;
 		case T_OpExpr:
 			{
 				OpExpr	   *expr = (OpExpr *) node;
