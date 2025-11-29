@@ -686,6 +686,22 @@ transformColumnRefInternal(ParseState *pstate, ColumnRef *cref, bool missing_ok)
 				colname = strVal(field1);
 				set_merge_on_attrno(pstate, colname);
 
+				/*
+				 * Check for ROWNUM pseudocolumn in Oracle mode.
+				 * ROWNUM is only recognized as a pseudocolumn when:
+				 * 1. Database is in Oracle compatibility mode
+				 * 2. The identifier is exactly "rownum" (case-insensitive)
+				 * 3. It's unqualified (no table/schema prefix)
+				 */
+				if (database_mode == DB_ORACLE && pg_strcasecmp(colname, "rownum") == 0)
+				{
+					RownumExpr *rexpr;
+
+					rexpr = makeNode(RownumExpr);
+					rexpr->location = cref->location;
+					return (Node *) rexpr;
+				}
+
 				/* Try to identify as an unqualified column */
 				node = colNameToVar(pstate, colname, false, cref->location);
 

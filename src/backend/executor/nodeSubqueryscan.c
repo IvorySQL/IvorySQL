@@ -46,11 +46,29 @@ static TupleTableSlot *
 SubqueryNext(SubqueryScanState *node)
 {
 	TupleTableSlot *slot;
+	bool		first_call = !node->rownum_reset;
+
+	if (first_call)
+		node->rownum_reset = true;
 
 	/*
 	 * Get the next tuple from the sub-query.
 	 */
 	slot = ExecProcNode(node->subplan);
+
+	/*
+	 * For Oracle ROWNUM compatibility: reset the ROWNUM counter after
+	 * the first call to ExecProcNode.  This is necessary because inner
+	 * plan nodes (e.g., SeqScan feeding a Sort) may increment es_rownum
+	 * while buffering tuples during the first call.  We want the
+	 * SubqueryScan's ROWNUM values to start at 1, not continue from
+	 * where the inner scans left off.
+	 *
+	 * The reset happens after ExecProcNode because blocking operators
+	 * like Sort fetch all input tuples on the first call.
+	 */
+	if (first_call)
+		node->ss.ps.state->es_rownum = 0;
 
 	/*
 	 * We just return the subplan's result slot, rather than expending extra
@@ -112,6 +130,7 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	subquerystate->ss.ps.plan = (Plan *) node;
 	subquerystate->ss.ps.state = estate;
 	subquerystate->ss.ps.ExecProcNode = ExecSubqueryScan;
+	subquerystate->rownum_reset = false;
 
 	/*
 	 * Miscellaneous initialization
@@ -182,6 +201,12 @@ ExecEndSubqueryScan(SubqueryScanState *node)
 void
 ExecReScanSubqueryScan(SubqueryScanState *node)
 {
+	/*
+	 * Reset ROWNUM tracking flag for Oracle compatibility.
+	 * This ensures each SubqueryScan rescan resets ROWNUM on first tuple.
+	 */
+	node->rownum_reset = false;
+
 	ExecScanReScan(&node->ss);
 
 	/*

@@ -1,0 +1,928 @@
+--
+-- ROWNUM
+-- Test Oracle ROWNUM pseudocolumn functionality
+--
+-- Setup test data
+CREATE TABLE rownum_test (
+    id int,
+    name varchar(50),
+    value int
+);
+INSERT INTO rownum_test VALUES
+    (1, 'Alice', 100),
+    (2, 'Bob', 200),
+    (3, 'Charlie', 150),
+    (4, 'David', 300),
+    (5, 'Eve', 250),
+    (6, 'Frank', 175),
+    (7, 'Grace', 225),
+    (8, 'Henry', 125),
+    (9, 'Iris', 275),
+    (10, 'Jack', 190);
+--
+-- Basic ROWNUM queries
+--
+-- ROWNUM <= N (should use LIMIT optimization)
+SELECT id, name FROM rownum_test WHERE ROWNUM <= 5;
+ id |  name   
+----+---------
+  1 | Alice
+  2 | Bob
+  3 | Charlie
+  4 | David
+  5 | Eve
+(5 rows)
+
+-- ROWNUM = 1 (should use LIMIT 1)
+SELECT id, name FROM rownum_test WHERE ROWNUM = 1;
+ id | name  
+----+-------
+  1 | Alice
+(1 row)
+
+-- ROWNUM < N (should use LIMIT N-1)
+SELECT id, name FROM rownum_test WHERE ROWNUM < 4;
+ id |  name   
+----+---------
+  1 | Alice
+  2 | Bob
+  3 | Charlie
+(3 rows)
+
+-- ROWNUM in SELECT list
+SELECT ROWNUM, id, name FROM rownum_test WHERE ROWNUM <= 3;
+ rownum | id |  name   
+--------+----+---------
+      1 |  1 | Alice
+      2 |  2 | Bob
+      3 |  3 | Charlie
+(3 rows)
+
+--
+-- ROWNUM with ORDER BY
+-- (requires subquery pattern to order first, then limit)
+--
+-- Top-N by value (descending)
+SELECT * FROM (
+    SELECT id, name, value
+    FROM rownum_test
+    ORDER BY value DESC
+) WHERE ROWNUM <= 3;
+ id | name  | value 
+----+-------+-------
+  4 | David |   300
+  9 | Iris  |   275
+  5 | Eve   |   250
+(3 rows)
+
+-- Top-N by name (ascending)
+SELECT * FROM (
+    SELECT id, name
+    FROM rownum_test
+    ORDER BY name
+) WHERE ROWNUM <= 5;
+ id |  name   
+----+---------
+  1 | Alice
+  2 | Bob
+  3 | Charlie
+  4 | David
+  5 | Eve
+(5 rows)
+
+-- ROWNUM = 1 with ORDER BY (get minimum)
+SELECT * FROM (
+    SELECT id, name, value
+    FROM rownum_test
+    ORDER BY value
+) WHERE ROWNUM = 1;
+ id | name  | value 
+----+-------+-------
+  1 | Alice |   100
+(1 row)
+
+--
+-- ROWNUM in nested subqueries
+--
+-- Subquery with ROWNUM in WHERE clause
+SELECT name FROM (
+    SELECT id, name FROM rownum_test WHERE ROWNUM <= 7
+) sub WHERE id > 3;
+ name  
+-------
+ David
+ Eve
+ Frank
+ Grace
+(4 rows)
+
+-- Multiple levels of ROWNUM
+SELECT * FROM (
+    SELECT * FROM (
+        SELECT id, name FROM rownum_test WHERE ROWNUM <= 8
+    ) WHERE ROWNUM <= 5
+) WHERE ROWNUM <= 3;
+ id |  name   
+----+---------
+  1 | Alice
+  2 | Bob
+  3 | Charlie
+(3 rows)
+
+--
+-- ROWNUM with JOINs
+--
+CREATE TABLE dept (
+    dept_id int,
+    dept_name varchar(50)
+);
+INSERT INTO dept VALUES
+    (1, 'Engineering'),
+    (2, 'Sales'),
+    (3, 'Marketing');
+-- Update test data to include dept_id
+ALTER TABLE rownum_test ADD COLUMN dept_id int;
+UPDATE rownum_test SET dept_id = (id % 3) + 1;
+-- ROWNUM with JOIN
+SELECT e.id, e.name, d.dept_name
+FROM (SELECT * FROM rownum_test WHERE ROWNUM <= 5) e
+JOIN dept d ON e.dept_id = d.dept_id
+ORDER BY e.id;
+ id |  name   |  dept_name  
+----+---------+-------------
+  1 | Alice   | Sales
+  2 | Bob     | Marketing
+  3 | Charlie | Engineering
+  4 | David   | Sales
+  5 | Eve     | Marketing
+(5 rows)
+
+-- JOIN with ORDER BY and ROWNUM
+SELECT * FROM (
+    SELECT e.id, e.name, e.value, d.dept_name
+    FROM rownum_test e
+    JOIN dept d ON e.dept_id = d.dept_id
+    ORDER BY e.value DESC
+) WHERE ROWNUM <= 4;
+ id | name  | value |  dept_name  
+----+-------+-------+-------------
+  4 | David |   300 | Sales
+  9 | Iris  |   275 | Engineering
+  5 | Eve   |   250 | Marketing
+  7 | Grace |   225 | Sales
+(4 rows)
+
+--
+-- Edge cases and non-optimizable patterns
+--
+-- ROWNUM > 0 (tautology, returns all rows - Oracle semantics)
+SELECT COUNT(*) FROM rownum_test WHERE ROWNUM > 0;
+ count 
+-------
+    10
+(1 row)
+
+-- ROWNUM >= 1 (tautology, returns all rows - Oracle semantics)
+SELECT COUNT(*) FROM rownum_test WHERE ROWNUM >= 1;
+ count 
+-------
+    10
+(1 row)
+
+-- ROWNUM > N where N >= 1 (returns empty - Oracle semantics)
+SELECT id, name FROM rownum_test WHERE ROWNUM > 5;
+ id | name 
+----+------
+(0 rows)
+
+SELECT COUNT(*) FROM rownum_test WHERE ROWNUM > 1;
+ count 
+-------
+     0
+(1 row)
+
+-- ROWNUM >= N where N > 1 (returns empty - Oracle semantics)
+SELECT id, name FROM rownum_test WHERE ROWNUM >= 2;
+ id | name 
+----+------
+(0 rows)
+
+SELECT COUNT(*) FROM rownum_test WHERE ROWNUM >= 2;
+ count 
+-------
+     0
+(1 row)
+
+-- ROWNUM = 0 (always false)
+SELECT id, name FROM rownum_test WHERE ROWNUM = 0;
+ id | name 
+----+------
+(0 rows)
+
+-- ROWNUM = 2 (not optimizable, returns empty - Oracle semantics)
+SELECT id, name FROM rownum_test WHERE ROWNUM = 2;
+ id | name 
+----+------
+(0 rows)
+
+-- ROWNUM = 3 (not optimizable, returns empty - Oracle semantics)
+SELECT id, name FROM rownum_test WHERE ROWNUM = 3;
+ id | name 
+----+------
+(0 rows)
+
+-- ROWNUM with negative number
+SELECT id, name FROM rownum_test WHERE ROWNUM <= -1;
+ id | name 
+----+------
+(0 rows)
+
+-- ROWNUM in complex WHERE clause (AND)
+SELECT id, name FROM rownum_test WHERE ROWNUM <= 5 AND id > 2;
+ id |  name   
+----+---------
+  3 | Charlie
+  4 | David
+  5 | Eve
+  6 | Frank
+  7 | Grace
+(5 rows)
+
+-- ROWNUM in complex WHERE clause (OR - not optimizable)
+SELECT id, name FROM rownum_test WHERE ROWNUM <= 3 OR id = 10;
+ id |  name   
+----+---------
+  1 | Alice
+  2 | Bob
+  3 | Charlie
+ 10 | Jack
+(4 rows)
+
+--
+-- ROWNUM with DISTINCT
+--
+SELECT DISTINCT dept_id FROM rownum_test WHERE ROWNUM <= 6;
+ dept_id 
+---------
+       3
+       2
+       1
+(3 rows)
+
+--
+-- ROWNUM with aggregate functions
+--
+-- ROWNUM with GROUP BY (applied before grouping)
+SELECT dept_id, COUNT(*)
+FROM (SELECT * FROM rownum_test WHERE ROWNUM <= 7)
+GROUP BY dept_id
+ORDER BY dept_id;
+ dept_id | count 
+---------+-------
+       1 |     2
+       2 |     3
+       3 |     2
+(3 rows)
+
+--
+-- Issue #12: ROWNUM with same-level ORDER BY, DISTINCT, GROUP BY, aggregation
+-- These should NOT be transformed to LIMIT because of semantic differences
+--
+-- Direct COUNT with ROWNUM (should count only first 5 rows, not all rows)
+SELECT COUNT(*) FROM rownum_test WHERE ROWNUM <= 5;
+ count 
+-------
+     5
+(1 row)
+
+-- Direct ORDER BY with ROWNUM (should pick first 5 rows, THEN sort them)
+-- NOT the same as "ORDER BY value LIMIT 5" which sorts all rows first
+SELECT id, name, value FROM rownum_test WHERE ROWNUM <= 5 ORDER BY value;
+ id |  name   | value 
+----+---------+-------
+  1 | Alice   |   100
+  3 | Charlie |   150
+  2 | Bob     |   200
+  5 | Eve     |   250
+  4 | David   |   300
+(5 rows)
+
+-- Direct DISTINCT with ROWNUM (should DISTINCT over first 3 rows only)
+-- NOT the same as "SELECT DISTINCT ... LIMIT 3" which distincts all rows first
+CREATE TABLE rownum_distinct_test (category varchar(10));
+INSERT INTO rownum_distinct_test VALUES ('A'), ('A'), ('B'), ('B'), ('C'), ('C');
+SELECT DISTINCT category FROM rownum_distinct_test WHERE ROWNUM <= 3;
+ category 
+----------
+ B
+ A
+(2 rows)
+
+DROP TABLE rownum_distinct_test;
+-- Direct GROUP BY with ROWNUM (should group only first 4 rows)
+-- NOT the same as "GROUP BY ... LIMIT N" which groups all rows first
+CREATE TABLE rownum_group_test (category varchar(10), amount int);
+INSERT INTO rownum_group_test VALUES
+    ('A', 10), ('A', 20), ('B', 30), ('B', 40), ('C', 50), ('C', 60);
+SELECT category, SUM(amount)
+FROM rownum_group_test
+WHERE ROWNUM <= 4
+GROUP BY category
+ORDER BY category;
+ category | sum 
+----------+-----
+ A        |  30
+ B        |  70
+(2 rows)
+
+DROP TABLE rownum_group_test;
+--
+-- Verify optimizer transformation with EXPLAIN
+--
+-- Should show Limit node for ROWNUM <= N
+EXPLAIN (COSTS OFF) SELECT id, name FROM rownum_test WHERE ROWNUM <= 5;
+          QUERY PLAN           
+-------------------------------
+ Limit
+   ->  Seq Scan on rownum_test
+(2 rows)
+
+-- Should show Limit node for ROWNUM = 1
+EXPLAIN (COSTS OFF) SELECT id, name FROM rownum_test WHERE ROWNUM = 1;
+          QUERY PLAN           
+-------------------------------
+ Limit
+   ->  Seq Scan on rownum_test
+(2 rows)
+
+-- Should show Limit node for ROWNUM < N
+EXPLAIN (COSTS OFF) SELECT id, name FROM rownum_test WHERE ROWNUM < 4;
+          QUERY PLAN           
+-------------------------------
+ Limit
+   ->  Seq Scan on rownum_test
+(2 rows)
+
+-- Subquery pattern should show Limit node
+EXPLAIN (COSTS OFF)
+SELECT * FROM (
+    SELECT id, name, value
+    FROM rownum_test
+    ORDER BY value DESC
+) WHERE ROWNUM <= 3;
+                QUERY PLAN                
+------------------------------------------
+ Limit
+   ->  Sort
+         Sort Key: rownum_test.value DESC
+         ->  Seq Scan on rownum_test
+(4 rows)
+
+-- ROWNUM > 0 (tautology, should remove qual entirely)
+EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM rownum_test WHERE ROWNUM > 0;
+          QUERY PLAN           
+-------------------------------
+ Aggregate
+   ->  Seq Scan on rownum_test
+(2 rows)
+
+-- ROWNUM >= 1 (tautology, should remove qual entirely)
+EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM rownum_test WHERE ROWNUM >= 1;
+          QUERY PLAN           
+-------------------------------
+ Aggregate
+   ->  Seq Scan on rownum_test
+(2 rows)
+
+-- ROWNUM > 5 (should show One-Time Filter: false)
+EXPLAIN (COSTS OFF) SELECT id, name FROM rownum_test WHERE ROWNUM > 5;
+        QUERY PLAN        
+--------------------------
+ Result
+   One-Time Filter: false
+(2 rows)
+
+-- ROWNUM > 1 with aggregation (should show One-Time Filter: false)
+EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM rownum_test WHERE ROWNUM > 1;
+           QUERY PLAN           
+--------------------------------
+ Aggregate
+   ->  Result
+         One-Time Filter: false
+(3 rows)
+
+-- ROWNUM >= 2 (should show One-Time Filter: false)
+EXPLAIN (COSTS OFF) SELECT id, name FROM rownum_test WHERE ROWNUM >= 2;
+        QUERY PLAN        
+--------------------------
+ Result
+   One-Time Filter: false
+(2 rows)
+
+-- ROWNUM = 2 should NOT be optimized to LIMIT (should show One-Time Filter: false)
+EXPLAIN (COSTS OFF) SELECT id, name FROM rownum_test WHERE ROWNUM = 2;
+        QUERY PLAN        
+--------------------------
+ Result
+   One-Time Filter: false
+(2 rows)
+
+-- Issue #12: These should NOT show Limit because of same-level operations
+-- Direct COUNT with ROWNUM (has aggregation, should not use LIMIT)
+EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM rownum_test WHERE ROWNUM <= 5;
+          QUERY PLAN           
+-------------------------------
+ Aggregate
+   ->  Seq Scan on rownum_test
+         Filter: (ROWNUM <= 5)
+(3 rows)
+
+-- Direct ORDER BY with ROWNUM (has ORDER BY, should not use LIMIT)
+EXPLAIN (COSTS OFF) SELECT id, name FROM rownum_test WHERE ROWNUM <= 5 ORDER BY value;
+          QUERY PLAN           
+-------------------------------
+ Sort
+   Sort Key: value
+   ->  Seq Scan on rownum_test
+         Filter: (ROWNUM <= 5)
+(4 rows)
+
+-- Direct DISTINCT with ROWNUM (has DISTINCT, should not use LIMIT)
+EXPLAIN (COSTS OFF) SELECT DISTINCT dept_id FROM rownum_test WHERE ROWNUM <= 5;
+          QUERY PLAN           
+-------------------------------
+ HashAggregate
+   Group Key: dept_id
+   ->  Seq Scan on rownum_test
+         Filter: (ROWNUM <= 5)
+(4 rows)
+
+--
+-- ROWNUM with other clauses
+--
+-- ROWNUM with OFFSET (not standard Oracle, but test interaction)
+SELECT id, name FROM rownum_test WHERE ROWNUM <= 5 OFFSET 2;
+ id |  name   
+----+---------
+  3 | Charlie
+  4 | David
+  5 | Eve
+  6 | Frank
+  7 | Grace
+(5 rows)
+
+-- ROWNUM with FETCH FIRST (should work together)
+SELECT id, name FROM rownum_test WHERE ROWNUM <= 8 FETCH FIRST 3 ROWS ONLY;
+ id |  name   
+----+---------
+  1 | Alice
+  2 | Bob
+  3 | Charlie
+(3 rows)
+
+--
+-- ROWNUM in SELECT list with ORDER BY (Issue: ORDER BY bug fix)
+-- These test the fix for ROWNUM being evaluated at wrong level when combined with ORDER BY
+--
+-- Basic case: ROWNUM in SELECT with ORDER BY
+-- ROWNUM values should reflect row position BEFORE sort, not after
+SELECT * FROM (
+    SELECT ROWNUM as rn, id, name, value
+    FROM rownum_test
+    ORDER BY value DESC
+) sub WHERE rn <= 3;
+ rn | id |  name   | value 
+----+----+---------+-------
+  2 |  2 | Bob     |   200
+  3 |  3 | Charlie |   150
+  1 |  1 | Alice   |   100
+(3 rows)
+
+-- Verify ROWNUM values are assigned before ORDER BY (not sequential 1,2,3)
+SELECT ROWNUM as rn, id, name, value
+FROM rownum_test
+ORDER BY value DESC;
+ rn | id |  name   | value 
+----+----+---------+-------
+  4 |  4 | David   |   300
+  9 |  9 | Iris    |   275
+  5 |  5 | Eve     |   250
+  7 |  7 | Grace   |   225
+  2 |  2 | Bob     |   200
+ 10 | 10 | Jack    |   190
+  6 |  6 | Frank   |   175
+  3 |  3 | Charlie |   150
+  8 |  8 | Henry   |   125
+  1 |  1 | Alice   |   100
+(10 rows)
+
+-- ROWNUM in SELECT with ORDER BY and outer filter
+SELECT * FROM (
+    SELECT ROWNUM as rn, id, name, value
+    FROM rownum_test
+    ORDER BY value DESC
+) sub WHERE rn > 2 AND rn <= 5;
+ rn | id |  name   | value 
+----+----+---------+-------
+  4 |  4 | David   |   300
+  5 |  5 | Eve     |   250
+  3 |  3 | Charlie |   150
+(3 rows)
+
+-- Multiple ROWNUM columns at different nesting levels
+SELECT ROWNUM as outer_rn, * FROM (
+    SELECT ROWNUM as middle_rn, * FROM (
+        SELECT ROWNUM as inner_rn, id, name, value
+        FROM rownum_test
+        ORDER BY value DESC
+    ) sub1
+    ORDER BY value ASC
+) sub2
+ORDER BY id
+LIMIT 5;
+ outer_rn | middle_rn | inner_rn | id |  name   | value 
+----------+-----------+----------+----+---------+-------
+        1 |        10 |        1 |  1 | Alice   |   100
+        6 |         5 |        2 |  2 | Bob     |   200
+        3 |         8 |        3 |  3 | Charlie |   150
+       10 |         1 |        4 |  4 | David   |   300
+        8 |         3 |        5 |  5 | Eve     |   250
+(5 rows)
+
+-- ROWNUM in SELECT with ORDER BY and JOIN
+SELECT * FROM (
+    SELECT ROWNUM as rn, e.id, e.name, e.value, d.dept_name
+    FROM rownum_test e
+    JOIN dept d ON e.dept_id = d.dept_id
+    ORDER BY e.value DESC
+) sub WHERE rn <= 4;
+ rn | id |  name   | value |  dept_name  
+----+----+---------+-------+-------------
+  3 |  4 | David   |   300 | Sales
+  3 |  9 | Iris    |   275 | Engineering
+  3 |  5 | Eve     |   250 | Marketing
+  3 |  7 | Grace   |   225 | Sales
+  3 |  2 | Bob     |   200 | Marketing
+  3 | 10 | Jack    |   190 | Sales
+  3 |  6 | Frank   |   175 | Engineering
+  3 |  3 | Charlie |   150 | Engineering
+  3 |  8 | Henry   |   125 | Marketing
+  3 |  1 | Alice   |   100 | Sales
+(10 rows)
+
+-- Test that ROWNUM is materialized (not re-evaluated in outer query)
+-- This tests the materialization fix
+SELECT rn, id, name FROM (
+    SELECT ROWNUM as rn, id, name, value
+    FROM rownum_test
+    ORDER BY value DESC
+) sub
+ORDER BY rn  -- Sorting by rn should not re-evaluate ROWNUM
+LIMIT 5;
+ rn | id |  name   
+----+----+---------
+  1 |  1 | Alice
+  2 |  2 | Bob
+  3 |  3 | Charlie
+  4 |  4 | David
+  5 |  5 | Eve
+(5 rows)
+
+-- EXPLAIN: Verify ROWNUM is pushed to scan level before Sort
+EXPLAIN (COSTS OFF, VERBOSE)
+SELECT * FROM (
+    SELECT ROWNUM as rn, id, name, value
+    FROM rownum_test
+    ORDER BY value DESC
+) sub WHERE rn <= 3;
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Subquery Scan on sub
+   Output: sub.rn, sub.id, sub.name, sub.value
+   Filter: (sub.rn <= 3)
+   ->  Result
+         Output: (ROWNUM), rownum_test.id, rownum_test.name, rownum_test.value
+         ->  Sort
+               Output: rownum_test.id, rownum_test.name, rownum_test.value, (ROWNUM)
+               Sort Key: rownum_test.value DESC
+               ->  Seq Scan on public.rownum_test
+                     Output: rownum_test.id, rownum_test.name, rownum_test.value, ROWNUM
+(10 rows)
+
+--
+-- Issue #14: ROWNUM counter reset in correlated subqueries
+-- ROWNUM counter must reset to 0 for each correlated subquery invocation.
+-- This matches Oracle behavior where each subquery execution starts fresh.
+-- Bug report: https://github.com/rophy/IvorySQL/issues/14
+--
+SELECT
+    id,
+    name,
+    (SELECT ROWNUM FROM (
+        SELECT * FROM rownum_test t2
+        WHERE t2.id = t1.id
+        ORDER BY value DESC
+    ) sub) as correlated_rn
+FROM rownum_test t1
+ORDER BY id
+LIMIT 5;
+ id |  name   | correlated_rn 
+----+---------+---------------
+  1 | Alice   |             1
+  2 | Bob     |             1
+  3 | Charlie |             1
+  4 | David   |             1
+  5 | Eve     |             1
+(5 rows)
+
+-- Additional test: max ROWNUM in correlated subquery
+-- Each group should have max_rn = 3 (not incrementing values)
+SELECT
+    id,
+    (SELECT MAX(ROWNUM) FROM rownum_test t2 WHERE t2.id = t1.id) as max_rn
+FROM rownum_test t1
+WHERE id <= 5
+GROUP BY id
+ORDER BY id;
+ id | max_rn 
+----+--------
+  1 |      1
+  2 |      1
+  3 |      1
+  4 |      1
+  5 |      1
+(5 rows)
+
+-- Test multiple correlated subqueries in same query
+-- Both should reset independently
+SELECT
+    id,
+    (SELECT COUNT(*) FROM rownum_test t2 WHERE t2.id = t1.id AND ROWNUM <= 2) as cnt_first_2,
+    (SELECT MIN(ROWNUM) FROM rownum_test t2 WHERE t2.id = t1.id) as min_rn
+FROM rownum_test t1
+WHERE id <= 3
+GROUP BY id
+ORDER BY id;
+ id | cnt_first_2 | min_rn 
+----+-------------+--------
+  1 |           1 |      1
+  2 |           1 |      1
+  3 |           1 |      1
+(3 rows)
+
+-- Nested correlated subqueries
+-- Inner and outer subqueries should both reset ROWNUM
+SELECT
+    id,
+    (SELECT
+        (SELECT ROWNUM FROM rownum_test t3 WHERE t3.id = t2.id ORDER BY value LIMIT 1)
+     FROM rownum_test t2 WHERE t2.id = t1.id LIMIT 1) as nested_rn
+FROM rownum_test t1
+WHERE id <= 3
+ORDER BY id;
+ id | nested_rn 
+----+-----------
+  1 |         1
+  2 |         1
+  3 |         1
+(3 rows)
+
+-- Correlated subquery with ROWNUM in JOIN condition
+SELECT
+    t1.id,
+    (SELECT COUNT(*)
+     FROM rownum_test t2
+     JOIN rownum_test t3 ON t2.id = t3.id
+     WHERE t2.id = t1.id AND ROWNUM <= 1) as join_count
+FROM rownum_test t1
+WHERE id <= 3
+GROUP BY id
+ORDER BY id;
+ id | join_count 
+----+------------
+  1 |          0
+  2 |          0
+  3 |          0
+(3 rows)
+
+--
+-- Nested ROWNUM expression tests (CodeRabbit improvements)
+--
+-- ROWNUM in arithmetic expressions with ORDER BY
+SELECT
+    id,
+    value,
+    ROWNUM * 10 as rownum_x10,
+    ROWNUM + value as rownum_plus_value
+FROM rownum_test
+WHERE id <= 5
+ORDER BY value DESC;
+ id | value | rownum_x10 | rownum_plus_value 
+----+-------+------------+-------------------
+  4 |   300 |         40 |               304
+  5 |   250 |         50 |               255
+  2 |   200 |         20 |               202
+  3 |   150 |         30 |               153
+  1 |   100 |         10 |               101
+(5 rows)
+
+-- ROWNUM in CASE expression with ORDER BY
+SELECT
+    id,
+    value,
+    CASE
+        WHEN ROWNUM <= 2 THEN 'Top 2'
+        WHEN ROWNUM <= 5 THEN 'Top 5'
+        ELSE 'Other'
+    END as tier
+FROM rownum_test
+ORDER BY value DESC
+LIMIT 7;
+ id | value | tier  
+----+-------+-------
+  4 |   300 | Top 5
+  9 |   275 | Other
+  5 |   250 | Top 5
+  7 |   225 | Other
+  2 |   200 | Top 2
+ 10 |   190 | Other
+  6 |   175 | Other
+(7 rows)
+
+-- ROWNUM in function calls with ORDER BY
+SELECT
+    id,
+    value,
+    COALESCE(ROWNUM, 0) as coalesced_rn,
+    GREATEST(ROWNUM, 1) as greatest_rn
+FROM rownum_test
+WHERE id <= 5
+ORDER BY value;
+ id | value | coalesced_rn | greatest_rn 
+----+-------+--------------+-------------
+  1 |   100 | 1            |           1
+  3 |   150 | 3            |           3
+  2 |   200 | 2            |           2
+  5 |   250 | 5            |           5
+  4 |   300 | 4            |           4
+(5 rows)
+
+-- Multiple nested ROWNUM expressions in same SELECT
+SELECT
+    id,
+    ROWNUM as rn1,
+    ROWNUM * 2 as rn2,
+    CASE WHEN ROWNUM <= 3 THEN ROWNUM * 100 ELSE 0 END as rn3
+FROM rownum_test
+WHERE id <= 5
+ORDER BY value DESC;
+ id | rn1 | rn2 | rn3 
+----+-----+-----+-----
+  4 |   4 |   8 |   0
+  5 |   5 |  10 |   0
+  2 |   2 |   4 | 200
+  3 |   3 |   6 | 300
+  1 |   1 |   2 | 100
+(5 rows)
+
+-- ROWNUM in subquery expression with ORDER BY
+SELECT
+    id,
+    value,
+    (SELECT ROWNUM) as subquery_rn,
+    ROWNUM + (SELECT 10) as expr_rn
+FROM rownum_test
+WHERE id <= 5
+ORDER BY value;
+ id | value | subquery_rn | expr_rn 
+----+-------+-------------+---------
+  1 |   100 |           1 |      11
+  3 |   150 |           1 |      13
+  2 |   200 |           1 |      12
+  5 |   250 |           1 |      15
+  4 |   300 |           1 |      14
+(5 rows)
+
+-- ROWNUM in aggregate function with ORDER BY
+SELECT
+    dept_id,
+    MAX(ROWNUM) as max_rownum,
+    MIN(ROWNUM) as min_rownum,
+    COUNT(ROWNUM) as count_rownum
+FROM (
+    SELECT dept_id, ROWNUM
+    FROM rownum_test
+    ORDER BY value DESC
+) sub
+GROUP BY dept_id
+ORDER BY dept_id;
+ dept_id | max_rownum | min_rownum | count_rownum 
+---------+------------+------------+--------------
+       1 |         10 |         10 |            3
+       2 |         10 |         10 |            4
+       3 |         10 |         10 |            3
+(3 rows)
+
+--
+-- Projection capability tests (change_plan_targetlist usage)
+--
+-- Test ROWNUM with Material node (non-projection-capable)
+SELECT DISTINCT ON (dept_id)
+    dept_id,
+    ROWNUM as rn,
+    value
+FROM rownum_test
+ORDER BY dept_id, value DESC;
+ dept_id | rn | value 
+---------+----+-------
+       1 | 10 |   275
+       2 | 10 |   300
+       3 | 10 |   250
+(3 rows)
+
+-- Test ROWNUM with Sort -> Unique pipeline
+SELECT DISTINCT
+    ROWNUM as rn,
+    dept_id
+FROM (
+    SELECT dept_id, ROWNUM
+    FROM rownum_test
+    ORDER BY value DESC
+) sub
+WHERE ROWNUM <= 5;
+ rn | dept_id 
+----+---------
+  5 |       2
+  2 |       3
+  3 |       3
+  4 |       1
+  1 |       2
+(5 rows)
+
+-- Test ROWNUM with SetOp (non-projection-capable)
+SELECT ROWNUM as rn, id FROM rownum_test WHERE id <= 3
+UNION
+SELECT ROWNUM as rn, id FROM rownum_test WHERE id > 7
+ORDER BY rn, id;
+ rn | id 
+----+----
+  1 |  1
+  2 |  2
+  3 |  3
+  4 |  8
+  5 |  9
+  6 | 10
+(6 rows)
+
+--
+-- Edge cases for ROWNUM reset
+--
+-- ROWNUM in EXISTS correlated subquery
+SELECT
+    id,
+    EXISTS(SELECT 1 FROM rownum_test t2 WHERE t2.id = t1.id AND ROWNUM = 1) as has_first
+FROM rownum_test t1
+WHERE id <= 5
+ORDER BY id;
+ id | has_first 
+----+-----------
+  1 | t
+  2 | t
+  3 | t
+  4 | t
+  5 | t
+(5 rows)
+
+-- ROWNUM in NOT EXISTS correlated subquery
+SELECT
+    id,
+    NOT EXISTS(SELECT 1 FROM rownum_test t2 WHERE t2.id = t1.id AND ROWNUM > 5) as all_within_5
+FROM rownum_test t1
+WHERE id <= 3
+ORDER BY id;
+ id | all_within_5 
+----+--------------
+  1 | t
+  2 | t
+  3 | t
+(3 rows)
+
+-- ROWNUM in IN correlated subquery
+SELECT
+    id,
+    1 IN (SELECT ROWNUM FROM rownum_test t2 WHERE t2.id = t1.id) as has_rownum_1
+FROM rownum_test t1
+WHERE id <= 3
+ORDER BY id;
+ id | has_rownum_1 
+----+--------------
+  1 | t
+  2 | t
+  3 | t
+(3 rows)
+
+--
+-- Cleanup
+--
+DROP TABLE rownum_test CASCADE;
+DROP TABLE dept CASCADE;

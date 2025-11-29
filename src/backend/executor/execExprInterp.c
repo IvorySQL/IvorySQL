@@ -552,6 +552,7 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 		&&CASE_EEOP_SQLVALUEFUNCTION,
 		&&CASE_EEOP_CURRENTOFEXPR,
 		&&CASE_EEOP_NEXTVALUEEXPR,
+		&&CASE_EEOP_ROWNUM,
 		&&CASE_EEOP_RETURNINGEXPR,
 		&&CASE_EEOP_ARRAYEXPR,
 		&&CASE_EEOP_ARRAYCOERCE,
@@ -1589,6 +1590,18 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 			 * efficiency-wise.
 			 */
 			ExecEvalNextValueExpr(state, op);
+
+			EEO_NEXT();
+		}
+
+		EEO_CASE(EEOP_ROWNUM)
+		{
+			/*
+			 * Oracle ROWNUM pseudocolumn: return the current row number.
+			 * The row number is incremented by the executor for each row
+			 * emitted.
+			 */
+			ExecEvalRownum(state, op);
 
 			EEO_NEXT();
 		}
@@ -3319,6 +3332,41 @@ ExecEvalNextValueExpr(ExprState *state, ExprEvalStep *op)
 			elog(ERROR, "unsupported sequence type %u",
 				 op->d.nextvalueexpr.seqtypid);
 	}
+	*op->resnull = false;
+}
+
+/*
+ * Evaluate Oracle ROWNUM pseudocolumn.
+ *
+ * Returns the current row number from the executor state. The row number
+ * is incremented for each row emitted during query execution.
+ *
+ * ROWNUM starts at 1 and increments before any ORDER BY is applied.
+ */
+void
+ExecEvalRownum(ExprState *state, ExprEvalStep *op)
+{
+	PlanState  *planstate;
+	EState	   *estate = NULL;
+	int64		rownum_value = 1;  /* default */
+
+	/* Safely get the PlanState and EState */
+	if (state && state->parent)
+	{
+		planstate = state->parent;
+		if (planstate)
+			estate = planstate->state;
+	}
+
+	/*
+	 * Use the estate-level ROWNUM counter.
+	 * When ROWNUM appears in a SELECT list, materialization (handled in
+	 * ExecScanExtended) ensures the value is captured and not re-evaluated.
+	 */
+	if (estate && estate->es_rownum > 0)
+		rownum_value = estate->es_rownum;
+
+	*op->resvalue = Int64GetDatum(rownum_value);
 	*op->resnull = false;
 }
 

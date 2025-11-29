@@ -380,6 +380,8 @@ typedef struct ProjectionInfo
 	ExprState	pi_state;
 	/* expression context in which to evaluate expression */
 	ExprContext *pi_exprContext;
+	/* true if projection contains volatile exprs like ROWNUM that need materialization */
+	bool		pi_needsMaterialization;
 } ProjectionInfo;
 
 /* ----------------
@@ -746,6 +748,13 @@ typedef struct EState
 
 	/* The per-query shared memory area to use for parallel execution. */
 	struct dsa_area *es_query_dsa;
+
+	/*
+	 * Oracle ROWNUM support: current row number counter.
+	 * This is incremented for each row emitted during query execution.
+	 * Only used when database_mode == DB_ORACLE.
+	 */
+	int64		es_rownum;
 
 	/*
 	 * JIT information. es_jit_flags indicates whether JIT should be performed
@@ -1937,12 +1946,15 @@ typedef struct TidRangeScanState
  *
  *		SubqueryScanState is used for scanning a sub-query in the range table.
  *		ScanTupleSlot references the current output tuple of the sub-query.
+ *		rownum_reset tracks whether ROWNUM counter has been reset for Oracle
+ *		compatibility (inner plans may increment before SubqueryScan runs).
  * ----------------
  */
 typedef struct SubqueryScanState
 {
 	ScanState	ss;				/* its first field is NodeTag */
 	PlanState  *subplan;
+	bool		rownum_reset;	/* has ROWNUM been reset for this scan? */
 } SubqueryScanState;
 
 /* ----------------

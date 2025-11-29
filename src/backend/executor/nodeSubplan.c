@@ -66,6 +66,7 @@ ExecSubPlan(SubPlanState *node,
 	SubPlan    *subplan = node->subplan;
 	EState	   *estate = node->planstate->state;
 	ScanDirection dir = estate->es_direction;
+	int64		save_rownum = estate->es_rownum;
 	Datum		retval;
 
 	CHECK_FOR_INTERRUPTS();
@@ -82,14 +83,22 @@ ExecSubPlan(SubPlanState *node,
 	/* Force forward-scan mode for evaluation */
 	estate->es_direction = ForwardScanDirection;
 
+	/*
+	 * Reset ROWNUM counter for Oracle compatibility.
+	 * Each correlated subquery invocation should start with ROWNUM=0,
+	 * matching Oracle's behavior.
+	 */
+	estate->es_rownum = 0;
+
 	/* Select appropriate evaluation strategy */
 	if (subplan->useHashTable)
 		retval = ExecHashSubPlan(node, econtext, isNull);
 	else
 		retval = ExecScanSubPlan(node, econtext, isNull);
 
-	/* restore scan direction */
+	/* restore scan direction and ROWNUM counter */
 	estate->es_direction = dir;
+	estate->es_rownum = save_rownum;
 
 	return retval;
 }
@@ -261,6 +270,12 @@ ExecScanSubPlan(SubPlanState *node,
 
 	/* with that done, we can reset the subplan */
 	ExecReScan(planstate);
+
+	/*
+	 * Reset ROWNUM counter for Oracle compatibility.
+	 * This ensures correlated subqueries start fresh for each outer row.
+	 */
+	planstate->state->es_rownum = 0;
 
 	/*
 	 * For all sublink types except EXPR_SUBLINK and ARRAY_SUBLINK, the result
@@ -1104,6 +1119,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext)
 	SubLinkType subLinkType = subplan->subLinkType;
 	EState	   *estate = planstate->state;
 	ScanDirection dir = estate->es_direction;
+	int64		save_rownum = estate->es_rownum;
 	MemoryContext oldcontext;
 	TupleTableSlot *slot;
 	ListCell   *l;
@@ -1123,6 +1139,12 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext)
 	 * impossible to get here in backward scan, so make it work anyway.
 	 */
 	estate->es_direction = ForwardScanDirection;
+
+	/*
+	 * Reset ROWNUM counter for Oracle compatibility.
+	 * InitPlans should start with ROWNUM=0, matching Oracle's behavior.
+	 */
+	estate->es_rownum = 0;
 
 	/* Initialize ArrayBuildStateAny in caller's context, if needed */
 	if (subLinkType == ARRAY_SUBLINK)
@@ -1257,8 +1279,9 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext)
 
 	MemoryContextSwitchTo(oldcontext);
 
-	/* restore scan direction */
+	/* restore scan direction and ROWNUM counter */
 	estate->es_direction = dir;
+	estate->es_rownum = save_rownum;
 }
 
 /*
