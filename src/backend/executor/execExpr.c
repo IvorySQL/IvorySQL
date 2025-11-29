@@ -2646,6 +2646,14 @@ ExecInitExprRec(Expr *node, ExprState *state,
 				break;
 			}
 
+		case T_RownumExpr:
+			{
+				/* Oracle ROWNUM pseudocolumn */
+				scratch.opcode = EEOP_ROWNUM;
+				ExprEvalPushStep(state, &scratch);
+				break;
+			}
+
 		case T_ReturningExpr:
 			{
 				ReturningExpr *rexpr = (ReturningExpr *) node;

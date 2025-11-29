@@ -200,6 +200,7 @@ typedef enum ExprEvalOp
 	EEOP_SQLVALUEFUNCTION,
 	EEOP_CURRENTOFEXPR,
 	EEOP_NEXTVALUEEXPR,
+	EEOP_ROWNUM,
 	EEOP_RETURNINGEXPR,
 	EEOP_ARRAYEXPR,
 	EEOP_ARRAYCOERCE,
@@ -884,6 +885,7 @@ extern void ExecEvalCoerceViaIOSafe(ExprState *state, ExprEvalStep *op);
 extern void ExecEvalSQLValueFunction(ExprState *state, ExprEvalStep *op);
 extern void ExecEvalCurrentOfExpr(ExprState *state, ExprEvalStep *op);
 extern void ExecEvalNextValueExpr(ExprState *state, ExprEvalStep *op);
+extern void ExecEvalRownum(ExprState *state, ExprEvalStep *op);
 extern void ExecEvalRowNull(ExprState *state, ExprEvalStep *op,
 							ExprContext *econtext);
 extern void ExecEvalRowNotNull(ExprState *state, ExprEvalStep *op,

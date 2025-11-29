@@ -748,6 +748,13 @@ typedef struct EState
 	struct dsa_area *es_query_dsa;
 
 	/*
+	 * Oracle ROWNUM support: current row number counter.
+	 * This is incremented for each row emitted during query execution.
+	 * Only used when database_mode == DB_ORACLE.
+	 */
+	int64		es_rownum;
+
+	/*
 	 * JIT information. es_jit_flags indicates whether JIT should be performed
 	 * and with which options.  es_jit is created on-demand when JITing is
 	 * performed.

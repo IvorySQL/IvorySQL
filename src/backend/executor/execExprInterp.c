@@ -552,6 +552,7 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 		&&CASE_EEOP_SQLVALUEFUNCTION,
 		&&CASE_EEOP_CURRENTOFEXPR,
 		&&CASE_EEOP_NEXTVALUEEXPR,
+		&&CASE_EEOP_ROWNUM,
 		&&CASE_EEOP_RETURNINGEXPR,
 		&&CASE_EEOP_ARRAYEXPR,
 		&&CASE_EEOP_ARRAYCOERCE,
@@ -1589,6 +1590,18 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 			 * efficiency-wise.
 			 */
 			ExecEvalNextValueExpr(state, op);
+
+			EEO_NEXT();
+		}
+
+		EEO_CASE(EEOP_ROWNUM)
+		{
+			/*
+			 * Oracle ROWNUM pseudocolumn: return the current row number.
+			 * The row number is incremented by the executor for each row
+			 * emitted.
+			 */
+			ExecEvalRownum(state, op);
 
 			EEO_NEXT();
 		}
@@ -3319,6 +3332,41 @@ ExecEvalNextValueExpr(ExprState *state, ExprEvalStep *op)
 			elog(ERROR, "unsupported sequence type %u",
 				 op->d.nextvalueexpr.seqtypid);
 	}
+	*op->resnull = false;
+}
+
+/*
+ * Evaluate Oracle ROWNUM pseudocolumn.
+ *
+ * Returns the current row number from the executor state. The row number
+ * is incremented for each row emitted during query execution.
+ *
+ * ROWNUM starts at 1 and increments before any ORDER BY is applied.
+ */
+void
+ExecEvalRownum(ExprState *state, ExprEvalStep *op)
+{
+	PlanState  *planstate;
+	EState	   *estate = NULL;
+
+	/* Safely get the EState from the parent PlanState */
+	if (state && state->parent)
+	{
+		planstate = state->parent;
+		if (planstate)
+			estate = planstate->state;
+	}
+
+	/*
+	 * Return current row number as INT8 (bigint).
+	 * The counter starts at 1 and is incremented before each ExecProcNode call.
+	 * For standalone expressions without an estate, default to 1.
+	 */
+	if (estate)
+		*op->resvalue = Int64GetDatum(estate->es_rownum);
+	else
+		*op->resvalue = Int64GetDatum(1);
+
 	*op->resnull = false;
 }
 

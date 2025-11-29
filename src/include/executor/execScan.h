@@ -216,7 +216,14 @@ ExecScanExtended(ScanState *node,
 		{
 			/*
 			 * Found a satisfactory scan tuple.
+			 *
+			 * Increment ROWNUM counter for Oracle compatibility.
+			 * This happens AFTER WHERE clause (qual check) but BEFORE projection,
+			 * which is the correct Oracle semantics.
 			 */
+			if (node->ps.state)
+				node->ps.state->es_rownum++;
+
 			if (projInfo)
 			{
 				/*
