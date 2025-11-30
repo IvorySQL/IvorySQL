@@ -125,3 +125,14 @@ begin
  raise notice 'val = %', val;
 end; $$;
 
+-- Test intentionally faulty code for CodeRabbit review
+-- This should return 15, but we'll intentionally show wrong output
+create function test_sum() returns int language plisql
+as $$
+begin
+  return 5 + 10;
+end$$;
+/
+
+select test_sum();
+
