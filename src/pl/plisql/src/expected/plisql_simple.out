@@ -139,3 +139,80 @@ begin
  raise notice 'val = %', val;
 end; $$;
 NOTICE:  val = 42
+-- Check SELECT INTO with parenthesized expressions (IvorySQL issue #981)
+do $$
+declare
+ x int := 50;
+ result numeric;
+begin
+ -- Test parenthesized expression at start of SELECT list
+ select (100 - x) * 0.01 into result from dual;
+ raise notice 'Test 1 (parentheses): %', result;
+
+ -- Test without parentheses (should still work)
+ select 100 - x into result from dual;
+ raise notice 'Test 2 (no parentheses): %', result;
+
+ -- Test multiple parenthesized expressions
+ select (100 - x) * (0.01 + x) into result from dual;
+ raise notice 'Test 3 (multiple parentheses): %', result;
+
+ -- Test nested parentheses
+ select ((100 - x) * 0.01) into result from dual;
+ raise notice 'Test 4 (nested parentheses): %', result;
+end; $$;
+NOTICE:  Test 1 (parentheses): 0.50
+NOTICE:  Test 2 (no parentheses): 50
+NOTICE:  Test 3 (multiple parentheses): 2500.50
+NOTICE:  Test 4 (nested parentheses): 0.50
+-- Edge case: nested SELECT with parenthesized expressions
+do $$
+declare
+ result int;
+begin
+ select (select (10 + 5) from dual) into result from dual;
+ raise notice 'Nested SELECT: %', result;
+end; $$;
+NOTICE:  Nested SELECT: 15
+-- Edge case: function call in parentheses (not just arithmetic)
+create function test_func(int) returns int language plisql
+as $$begin return $1 * 2; end$$;
+/
+do $$
+declare
+ result int;
+begin
+ select (test_func(25)) into result from dual;
+ raise notice 'Function in parens: %', result;
+end; $$;
+NOTICE:  Function in parens: 50
+-- Edge case: CASE expression in parentheses
+do $$
+declare
+ x int := 10;
+ result int;
+begin
+ select (case when x > 5 then x * 2 else x end) into result from dual;
+ raise notice 'CASE in parens: %', result;
+end; $$;
+NOTICE:  CASE in parens: 20
+-- Edge case: SELECT with CAST in parentheses
+do $$
+declare
+ result varchar;
+begin
+ select (cast(123 as varchar)) into result from dual;
+ raise notice 'CAST in parens: %', result;
+end; $$;
+NOTICE:  CAST in parens: 123
+-- Edge case: Complex nested expression
+do $$
+declare
+ x int := 10;
+ y int := 5;
+ result numeric;
+begin
+ select ((x + y) * (x - y)) / 2.0 into result from dual;
+ raise notice 'Complex expression: %', result;
+end; $$;
+NOTICE:  Complex expression: 37.5000000000000000
