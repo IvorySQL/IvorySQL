@@ -80,6 +80,15 @@ static Plan *create_scan_plan(PlannerInfo *root, Path *best_path,
 static List *build_path_tlist(PlannerInfo *root, Path *path);
 static bool use_physical_tlist(PlannerInfo *root, Path *path, int flags);
 static bool contain_rownum_expr(Node *node);
+static List *collect_rownum_exprs(List *tlist);
+
+typedef struct replace_rownum_context
+{
+	List	   *rownum_vars;	/* List of Vars to replace RownumExprs */
+	int			rownum_idx;		/* Current index in rownum_vars list */
+} replace_rownum_context;
+
+static Node *replace_rownum_expr_mutator(Node *node, replace_rownum_context *context);
 static List *get_gating_quals(PlannerInfo *root, List *quals);
 static Plan *create_gating_plan(PlannerInfo *root, Path *path, Plan *plan,
 								List *gating_quals);
@@ -2082,163 +2091,134 @@ create_projection_plan(PlannerInfo *root, ProjectionPath *best_path, int flags)
 		{
 			Plan	   *sortinput;
 			List	   *new_input_tlist;
-			List	   *new_sort_tlist;
-			List	   *modified_tlist;
+			List	   *rownum_tles;
+			List	   *rownum_vars;
 			ListCell   *lc;
-			Index		new_resno;
-			Index		rownum_sort_attno;
-			Index		scan_rownum_start;
-			Index		scan_rownum_attno;
-			int			num_rownums;
+			AttrNumber	new_resno;
+			AttrNumber	scan_rownum_start;
+			replace_rownum_context context;
 
 			/*
 			 * Get the Sort's input plan (the scan).
 			 * For both Sort and IncrementalSort, the input is in 'lefttree'.
 			 */
 			sortinput = subplan->lefttree;
-			new_resno = list_length(sortinput->targetlist) + 1;
 
 			/*
-			 * Remember where ROWNUM columns start in the scan's output.
-			 * We'll use this to create Vars in the Sort's target list.
+			 * Collect all target entries containing ROWNUM expressions
+			 * (including nested ones).
 			 */
-			scan_rownum_start = new_resno;
+			rownum_tles = collect_rownum_exprs(tlist);
+
+			if (rownum_tles == NIL)
+			{
+				/* No ROWNUM found, nothing to do */
+				goto skip_rownum_handling;
+			}
 
 			/*
 			 * Build a new target list for the sort's input that includes
-			 * all existing columns plus any ROWNUM expressions from the
-			 * final projection.
+			 * all existing columns plus ROWNUM expressions.
 			 */
 			new_input_tlist = list_copy(sortinput->targetlist);
+			new_resno = list_length(new_input_tlist) + 1;
+			scan_rownum_start = new_resno;
 
-			foreach(lc, tlist)
-			{
-				TargetEntry *tle = lfirst_node(TargetEntry, lc);
-
-				if (IsA(tle->expr, RownumExpr))
-				{
-					TargetEntry *new_tle;
-
-					/*
-					 * Add the ROWNUM expression to the scan's target list.
-					 * This will cause it to be evaluated during scan time,
-					 * when es_rownum has the correct value.
-					 */
-					new_tle = makeTargetEntry(copyObject(tle->expr),
-											  new_resno++,
-											  tle->resname,
-											  false);
-					new_input_tlist = lappend(new_input_tlist, new_tle);
-				}
-			}
-
-			/* Update the sort input's target list */
-			sortinput->targetlist = new_input_tlist;
-
-			/*
-			 * Also add the ROWNUM column(s) to the Sort's target list,
-			 * so they get passed through the sort.
-			 */
-			new_sort_tlist = list_copy(subplan->targetlist);
-
-			/*
-			 * Remember where the ROWNUM columns will start in the Sort's
-			 * output - we'll need this later to create Vars referencing them.
-			 */
-			rownum_sort_attno = list_length(new_sort_tlist) + 1;
-
-			/* Track which scan column we're referencing for each ROWNUM */
-			scan_rownum_attno = scan_rownum_start;
-
-			foreach(lc, tlist)
-			{
-				TargetEntry *tle = lfirst_node(TargetEntry, lc);
-
-				if (IsA(tle->expr, RownumExpr))
-				{
-					TargetEntry *new_tle;
-					Var		   *var;
-
-					/*
-					 * Create a Var that references the ROWNUM from the
-					 * scan's output.
-					 */
-					var = makeVar(OUTER_VAR,
-								  scan_rownum_attno++,
-								  INT8OID,
-								  -1,
-								  InvalidOid,
-								  0);
-
-					new_tle = makeTargetEntry((Expr *) var,
-											  list_length(new_sort_tlist) + 1,
-											  tle->resname,
-											  false);
-					new_sort_tlist = lappend(new_sort_tlist, new_tle);
-				}
-			}
-
-			subplan->targetlist = new_sort_tlist;
-
-			/*
-			 * Now modify the final projection tlist to replace RownumExpr
-			 * with Vars that reference the Sort's output columns.
-			 * This ensures the Result node doesn't re-evaluate ROWNUM.
-			 */
-			modified_tlist = NIL;
-
-			/* Count how many ROWNUM columns we added */
-			num_rownums = 0;
-			foreach(lc, tlist)
-			{
-				TargetEntry *tle = lfirst_node(TargetEntry, lc);
-
-				if (IsA(tle->expr, RownumExpr))
-					num_rownums++;
-			}
-
-			/* ROWNUM columns start at: total_length - num_rownums + 1 */
-			rownum_sort_attno = list_length(new_sort_tlist) - num_rownums + 1;
-
-			foreach(lc, tlist)
+			/* Add ROWNUM expressions to the scan's target list */
+			foreach(lc, rownum_tles)
 			{
 				TargetEntry *tle = lfirst_node(TargetEntry, lc);
 				TargetEntry *new_tle;
+				RownumExpr *rownum_expr;
 
+				/* Extract just the RownumExpr (may be nested) */
 				if (IsA(tle->expr, RownumExpr))
 				{
-					Var		   *var;
-
-					/*
-					 * Replace the RownumExpr with a Var referencing the
-					 * ROWNUM column from the Sort's output.
-					 */
-					var = makeVar(OUTER_VAR,
-								  rownum_sort_attno++,
-								  INT8OID,
-								  -1,
-								  InvalidOid,
-								  0);
-
-					new_tle = makeTargetEntry((Expr *) var,
-											  list_length(modified_tlist) + 1,
-											  tle->resname,
-											  tle->resjunk);
+					rownum_expr = (RownumExpr *) tle->expr;
 				}
 				else
 				{
-					/* Keep non-ROWNUM entries as-is */
-					new_tle = makeTargetEntry(copyObject(tle->expr),
-											  list_length(modified_tlist) + 1,
-											  tle->resname,
-											  tle->resjunk);
+					/*
+					 * For nested cases, we still add a RownumExpr to evaluate.
+					 * The replacement will happen in the final tlist.
+					 */
+					rownum_expr = makeNode(RownumExpr);
 				}
 
-				modified_tlist = lappend(modified_tlist, new_tle);
+				new_tle = makeTargetEntry((Expr *) rownum_expr,
+										  new_resno++,
+										  NULL,
+										  false);
+				new_input_tlist = lappend(new_input_tlist, new_tle);
 			}
 
-			/* Use the modified tlist for the Result node */
-			tlist = modified_tlist;
+			/*
+			 * Update the sort input's target list.
+			 * Use change_plan_targetlist to handle non-projection-capable nodes.
+			 */
+			sortinput = change_plan_targetlist(sortinput, new_input_tlist,
+												sortinput->parallel_safe);
+			subplan->lefttree = sortinput;
+
+			/*
+			 * Build list of Vars referencing the ROWNUM columns from scan output.
+			 * These will be used to replace ROWNUM expressions in the final tlist.
+			 */
+			rownum_vars = NIL;
+			new_resno = scan_rownum_start;
+
+			foreach(lc, rownum_tles)
+			{
+				TargetEntry *tle = lfirst_node(TargetEntry, lc);
+				Var		   *var;
+				Oid			rownum_type;
+
+				/* Use exprType to get the actual type instead of hardcoding */
+				if (IsA(tle->expr, RownumExpr))
+					rownum_type = exprType((Node *) tle->expr);
+				else
+					rownum_type = INT8OID;	/* Default for ROWNUM */
+
+				var = makeVar(OUTER_VAR,
+							  new_resno++,
+							  rownum_type,
+							  -1,
+							  InvalidOid,
+							  0);
+
+				rownum_vars = lappend(rownum_vars, var);
+			}
+
+			/*
+			 * Add ROWNUM columns to Sort's target list so they pass through.
+			 */
+			new_input_tlist = list_copy(subplan->targetlist);
+
+			foreach(lc, rownum_vars)
+			{
+				Var *var = lfirst_node(Var, lc);
+				TargetEntry *new_tle;
+
+				new_tle = makeTargetEntry((Expr *) copyObject(var),
+										  list_length(new_input_tlist) + 1,
+										  NULL,
+										  false);
+				new_input_tlist = lappend(new_input_tlist, new_tle);
+			}
+
+			subplan->targetlist = new_input_tlist;
+
+			/*
+			 * Now replace all ROWNUM expressions in the final tlist
+			 * (including nested ones) with Vars referencing Sort's output.
+			 */
+			context.rownum_vars = rownum_vars;
+			context.rownum_idx = 0;
+
+			tlist = (List *) replace_rownum_expr_mutator((Node *) tlist, &context);
+
+skip_rownum_handling:
+			;	/* Empty statement for label */
 		}
 	}
 
@@ -7608,6 +7588,60 @@ static bool
 contain_rownum_expr(Node *node)
 {
 	return contain_rownum_expr_walker(node, NULL);
+}
+
+/*
+ * replace_rownum_expr_mutator
+ *		Replace all RownumExpr nodes with corresponding Vars from context.
+ *
+ * This handles nested ROWNUM expressions within complex expressions,
+ * not just top-level RownumExpr in target entries.
+ */
+static Node *
+replace_rownum_expr_mutator(Node *node, replace_rownum_context *context)
+{
+	if (node == NULL)
+		return NULL;
+
+	if (IsA(node, RownumExpr))
+	{
+		/* Replace with the next Var from our list */
+		if (context->rownum_idx < list_length(context->rownum_vars))
+		{
+			Var *replacement = (Var *) list_nth(context->rownum_vars,
+												 context->rownum_idx);
+			context->rownum_idx++;
+			return (Node *) copyObject(replacement);
+		}
+		/* Should not happen if we counted correctly */
+		elog(ERROR, "ran out of replacement Vars for ROWNUM expressions");
+	}
+
+	return expression_tree_mutator(node, replace_rownum_expr_mutator, context);
+}
+
+/*
+ * collect_rownum_exprs
+ *		Collect all ROWNUM expressions from a target list.
+ *
+ * Returns a list of TargetEntry nodes that contain ROWNUM expressions
+ * (either top-level or nested).
+ */
+static List *
+collect_rownum_exprs(List *tlist)
+{
+	List	   *rownum_tles = NIL;
+	ListCell   *lc;
+
+	foreach(lc, tlist)
+	{
+		TargetEntry *tle = lfirst_node(TargetEntry, lc);
+
+		if (contain_rownum_expr((Node *) tle->expr))
+			rownum_tles = lappend(rownum_tles, tle);
+	}
+
+	return rownum_tles;
 }
 
 /*
