@@ -80,6 +80,7 @@ static Plan *create_scan_plan(PlannerInfo *root, Path *best_path,
 static List *build_path_tlist(PlannerInfo *root, Path *path);
 static bool use_physical_tlist(PlannerInfo *root, Path *path, int flags);
 static bool contain_rownum_expr(Node *node);
+static int count_rownum_exprs(Node *node);
 static List *collect_rownum_exprs(List *tlist);
 
 typedef struct replace_rownum_context
@@ -2124,32 +2125,32 @@ create_projection_plan(PlannerInfo *root, ProjectionPath *best_path, int flags)
 			new_resno = list_length(new_input_tlist) + 1;
 			scan_rownum_start = new_resno;
 
-			/* Add ROWNUM expressions to the scan's target list */
+			/*
+			 * Add ROWNUM expressions to the scan's target list.
+			 * We need to add one RownumExpr for each occurrence, not just
+			 * one per target entry (a single TLE might reference ROWNUM multiple times).
+			 */
 			foreach(lc, rownum_tles)
 			{
 				TargetEntry *tle = lfirst_node(TargetEntry, lc);
-				TargetEntry *new_tle;
-				RownumExpr *rownum_expr;
+				int num_rownums = count_rownum_exprs((Node *) tle->expr);
+				int i;
 
-				/* Extract just the RownumExpr (may be nested) */
-				if (IsA(tle->expr, RownumExpr))
+				/*
+				 * Add one RownumExpr to scan output for each ROWNUM reference
+				 * in this target entry.
+				 */
+				for (i = 0; i < num_rownums; i++)
 				{
-					rownum_expr = (RownumExpr *) tle->expr;
-				}
-				else
-				{
-					/*
-					 * For nested cases, we still add a RownumExpr to evaluate.
-					 * The replacement will happen in the final tlist.
-					 */
-					rownum_expr = makeNode(RownumExpr);
-				}
+					TargetEntry *new_tle;
+					RownumExpr *rownum_expr = makeNode(RownumExpr);
 
-				new_tle = makeTargetEntry((Expr *) rownum_expr,
-										  new_resno++,
-										  NULL,
-										  false);
-				new_input_tlist = lappend(new_input_tlist, new_tle);
+					new_tle = makeTargetEntry((Expr *) rownum_expr,
+											  new_resno++,
+											  NULL,
+											  false);
+					new_input_tlist = lappend(new_input_tlist, new_tle);
+				}
 			}
 
 			/*
@@ -2163,6 +2164,7 @@ create_projection_plan(PlannerInfo *root, ProjectionPath *best_path, int flags)
 			/*
 			 * Build list of Vars referencing the ROWNUM columns from scan output.
 			 * These will be used to replace ROWNUM expressions in the final tlist.
+			 * Create one Var for each ROWNUM occurrence.
 			 */
 			rownum_vars = NIL;
 			new_resno = scan_rownum_start;
@@ -2170,23 +2172,26 @@ create_projection_plan(PlannerInfo *root, ProjectionPath *best_path, int flags)
 			foreach(lc, rownum_tles)
 			{
 				TargetEntry *tle = lfirst_node(TargetEntry, lc);
-				Var		   *var;
-				Oid			rownum_type;
+				int num_rownums = count_rownum_exprs((Node *) tle->expr);
+				int i;
 
-				/* Use exprType to get the actual type instead of hardcoding */
-				if (IsA(tle->expr, RownumExpr))
-					rownum_type = exprType((Node *) tle->expr);
-				else
-					rownum_type = INT8OID;	/* Default for ROWNUM */
+				/*
+				 * Create one Var for each ROWNUM expression in this target entry.
+				 */
+				for (i = 0; i < num_rownums; i++)
+				{
+					Var		   *var;
+					Oid			rownum_type = INT8OID;  /* ROWNUM is always int8 */
 
-				var = makeVar(OUTER_VAR,
-							  new_resno++,
-							  rownum_type,
-							  -1,
-							  InvalidOid,
-							  0);
+					var = makeVar(OUTER_VAR,
+								  new_resno++,
+								  rownum_type,
+								  -1,
+								  InvalidOid,
+								  0);
 
-				rownum_vars = lappend(rownum_vars, var);
+					rownum_vars = lappend(rownum_vars, var);
+				}
 			}
 
 			/*
@@ -7618,6 +7623,37 @@ replace_rownum_expr_mutator(Node *node, replace_rownum_context *context)
 	}
 
 	return expression_tree_mutator(node, replace_rownum_expr_mutator, context);
+}
+
+/*
+ * count_rownum_exprs_walker
+ *		Count the number of RownumExpr nodes in an expression tree.
+ */
+static bool
+count_rownum_exprs_walker(Node *node, int *count)
+{
+	if (node == NULL)
+		return false;
+
+	if (IsA(node, RownumExpr))
+	{
+		(*count)++;
+		return false;  /* Don't recurse into RownumExpr */
+	}
+
+	return expression_tree_walker(node, count_rownum_exprs_walker, count);
+}
+
+/*
+ * count_rownum_exprs
+ *		Count how many RownumExpr nodes are in an expression.
+ */
+static int
+count_rownum_exprs(Node *node)
+{
+	int count = 0;
+	count_rownum_exprs_walker(node, &count);
+	return count;
 }
 
 /*

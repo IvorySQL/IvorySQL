@@ -345,6 +345,168 @@ WHERE id <= 5
 GROUP BY id
 ORDER BY id;
 
+-- Test multiple correlated subqueries in same query
+-- Both should reset independently
+SELECT
+    id,
+    (SELECT COUNT(*) FROM rownum_test t2 WHERE t2.id = t1.id AND ROWNUM <= 2) as cnt_first_2,
+    (SELECT MIN(ROWNUM) FROM rownum_test t2 WHERE t2.id = t1.id) as min_rn
+FROM rownum_test t1
+WHERE id <= 3
+GROUP BY id
+ORDER BY id;
+
+-- Nested correlated subqueries
+-- Inner and outer subqueries should both reset ROWNUM
+SELECT
+    id,
+    (SELECT
+        (SELECT ROWNUM FROM rownum_test t3 WHERE t3.id = t2.id ORDER BY value LIMIT 1)
+     FROM rownum_test t2 WHERE t2.id = t1.id LIMIT 1) as nested_rn
+FROM rownum_test t1
+WHERE id <= 3
+ORDER BY id;
+
+-- Correlated subquery with ROWNUM in JOIN condition
+SELECT
+    t1.id,
+    (SELECT COUNT(*)
+     FROM rownum_test t2
+     JOIN rownum_test t3 ON t2.id = t3.id
+     WHERE t2.id = t1.id AND ROWNUM <= 1) as join_count
+FROM rownum_test t1
+WHERE id <= 3
+GROUP BY id
+ORDER BY id;
+
+--
+-- Nested ROWNUM expression tests (CodeRabbit improvements)
+--
+
+-- ROWNUM in arithmetic expressions with ORDER BY
+SELECT
+    id,
+    value,
+    ROWNUM * 10 as rownum_x10,
+    ROWNUM + value as rownum_plus_value
+FROM rownum_test
+WHERE id <= 5
+ORDER BY value DESC;
+
+-- ROWNUM in CASE expression with ORDER BY
+SELECT
+    id,
+    value,
+    CASE
+        WHEN ROWNUM <= 2 THEN 'Top 2'
+        WHEN ROWNUM <= 5 THEN 'Top 5'
+        ELSE 'Other'
+    END as tier
+FROM rownum_test
+ORDER BY value DESC
+LIMIT 7;
+
+-- ROWNUM in function calls with ORDER BY
+SELECT
+    id,
+    value,
+    COALESCE(ROWNUM, 0) as coalesced_rn,
+    GREATEST(ROWNUM, 1) as greatest_rn
+FROM rownum_test
+WHERE id <= 5
+ORDER BY value;
+
+-- Multiple nested ROWNUM expressions in same SELECT
+SELECT
+    id,
+    ROWNUM as rn1,
+    ROWNUM * 2 as rn2,
+    CASE WHEN ROWNUM <= 3 THEN ROWNUM * 100 ELSE 0 END as rn3
+FROM rownum_test
+WHERE id <= 5
+ORDER BY value DESC;
+
+-- ROWNUM in subquery expression with ORDER BY
+SELECT
+    id,
+    value,
+    (SELECT ROWNUM) as subquery_rn,
+    ROWNUM + (SELECT 10) as expr_rn
+FROM rownum_test
+WHERE id <= 5
+ORDER BY value;
+
+-- ROWNUM in aggregate function with ORDER BY
+SELECT
+    dept_id,
+    MAX(ROWNUM) as max_rownum,
+    MIN(ROWNUM) as min_rownum,
+    COUNT(ROWNUM) as count_rownum
+FROM (
+    SELECT dept_id, ROWNUM
+    FROM rownum_test
+    ORDER BY value DESC
+) sub
+GROUP BY dept_id
+ORDER BY dept_id;
+
+--
+-- Projection capability tests (change_plan_targetlist usage)
+--
+
+-- Test ROWNUM with Material node (non-projection-capable)
+SELECT DISTINCT ON (dept_id)
+    dept_id,
+    ROWNUM as rn,
+    value
+FROM rownum_test
+ORDER BY dept_id, value DESC;
+
+-- Test ROWNUM with Sort -> Unique pipeline
+SELECT DISTINCT
+    ROWNUM as rn,
+    dept_id
+FROM (
+    SELECT dept_id, ROWNUM
+    FROM rownum_test
+    ORDER BY value DESC
+) sub
+WHERE rn <= 5;
+
+-- Test ROWNUM with SetOp (non-projection-capable)
+SELECT ROWNUM as rn, id FROM rownum_test WHERE id <= 3
+UNION
+SELECT ROWNUM as rn, id FROM rownum_test WHERE id > 7
+ORDER BY rn, id;
+
+--
+-- Edge cases for ROWNUM reset
+--
+
+-- ROWNUM in EXISTS correlated subquery
+SELECT
+    id,
+    EXISTS(SELECT 1 FROM rownum_test t2 WHERE t2.id = t1.id AND ROWNUM = 1) as has_first
+FROM rownum_test t1
+WHERE id <= 5
+ORDER BY id;
+
+-- ROWNUM in NOT EXISTS correlated subquery
+SELECT
+    id,
+    NOT EXISTS(SELECT 1 FROM rownum_test t2 WHERE t2.id = t1.id AND ROWNUM > 5) as all_within_5
+FROM rownum_test t1
+WHERE id <= 3
+ORDER BY id;
+
+-- ROWNUM in IN correlated subquery
+SELECT
+    id,
+    1 IN (SELECT ROWNUM FROM rownum_test t2 WHERE t2.id = t1.id) as has_rownum_1
+FROM rownum_test t1
+WHERE id <= 3
+ORDER BY id;
+
 --
 -- Cleanup
 --
