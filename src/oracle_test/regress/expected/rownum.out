@@ -852,10 +852,17 @@ FROM (
     FROM rownum_test
     ORDER BY value DESC
 ) sub
-WHERE rn <= 5;
-ERROR:  "rn": invalid identifier
-LINE 9: WHERE rn <= 5;
-              ^
+WHERE ROWNUM <= 5;
+ rn | dept_id 
+----+---------
+  9 |       3
+ 12 |       2
+  8 |       3
+ 10 |       1
+  7 |       2
+ 11 |       1
+(6 rows)
+
 -- Test ROWNUM with SetOp (non-projection-capable)
 SELECT ROWNUM as rn, id FROM rownum_test WHERE id <= 3
 UNION

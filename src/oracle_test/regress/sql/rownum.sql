@@ -471,7 +471,7 @@ FROM (
     FROM rownum_test
     ORDER BY value DESC
 ) sub
-WHERE rn <= 5;
+WHERE ROWNUM <= 5;
 
 -- Test ROWNUM with SetOp (non-projection-capable)
 SELECT ROWNUM as rn, id FROM rownum_test WHERE id <= 3
