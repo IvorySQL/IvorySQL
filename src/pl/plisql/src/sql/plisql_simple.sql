@@ -125,3 +125,79 @@ begin
  raise notice 'val = %', val;
 end; $$;
 
+-- Check SELECT INTO with parenthesized expressions (IvorySQL issue #981)
+
+do $$
+declare
+ x int := 50;
+ result numeric;
+begin
+ -- Test parenthesized expression at start of SELECT list
+ select (100 - x) * 0.01 into result from dual;
+ raise notice 'Test 1 (parentheses): %', result;
+
+ -- Test without parentheses (should still work)
+ select 100 - x into result from dual;
+ raise notice 'Test 2 (no parentheses): %', result;
+
+ -- Test multiple parenthesized expressions
+ select (100 - x) * (0.01 + x) into result from dual;
+ raise notice 'Test 3 (multiple parentheses): %', result;
+
+ -- Test nested parentheses
+ select ((100 - x) * 0.01) into result from dual;
+ raise notice 'Test 4 (nested parentheses): %', result;
+end; $$;
+
+-- Edge case: nested SELECT with parenthesized expressions
+do $$
+declare
+ result int;
+begin
+ select (select (10 + 5) from dual) into result from dual;
+ raise notice 'Nested SELECT: %', result;
+end; $$;
+
+-- Edge case: function call in parentheses (not just arithmetic)
+create function test_func(int) returns int language plisql
+as $$begin return $1 * 2; end$$;
+/
+
+do $$
+declare
+ result int;
+begin
+ select (test_func(25)) into result from dual;
+ raise notice 'Function in parens: %', result;
+end; $$;
+
+-- Edge case: CASE expression in parentheses
+do $$
+declare
+ x int := 10;
+ result int;
+begin
+ select (case when x > 5 then x * 2 else x end) into result from dual;
+ raise notice 'CASE in parens: %', result;
+end; $$;
+
+-- Edge case: SELECT with CAST in parentheses
+do $$
+declare
+ result varchar;
+begin
+ select (cast(123 as varchar)) into result from dual;
+ raise notice 'CAST in parens: %', result;
+end; $$;
+
+-- Edge case: Complex nested expression
+do $$
+declare
+ x int := 10;
+ y int := 5;
+ result numeric;
+begin
+ select ((x + y) * (x - y)) / 2.0 into result from dual;
+ raise notice 'Complex expression: %', result;
+end; $$;
+
