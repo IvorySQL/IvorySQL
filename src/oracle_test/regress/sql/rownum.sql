@@ -318,10 +318,9 @@ SELECT * FROM (
 ) sub WHERE rn <= 3;
 
 --
--- Issue #14: ROWNUM counter not reset in correlated subqueries (KNOWN BUG)
--- This test demonstrates a bug where es_rownum is not reset between
--- correlated subquery invocations. Expected: all values should be 1.
--- Actual: values increment across invocations (3, 6, 9, 12, 15).
+-- Issue #14: ROWNUM counter reset in correlated subqueries
+-- ROWNUM counter must reset to 0 for each correlated subquery invocation.
+-- This matches Oracle behavior where each subquery execution starts fresh.
 -- Bug report: https://github.com/rophy/IvorySQL/issues/14
 --
 SELECT
@@ -335,6 +334,16 @@ SELECT
 FROM rownum_test t1
 ORDER BY id
 LIMIT 5;
+
+-- Additional test: max ROWNUM in correlated subquery
+-- Each group should have max_rn = 3 (not incrementing values)
+SELECT
+    id,
+    (SELECT MAX(ROWNUM) FROM rownum_test t2 WHERE t2.id = t1.id) as max_rn
+FROM rownum_test t1
+WHERE id <= 5
+GROUP BY id
+ORDER BY id;
 
 --
 -- Cleanup

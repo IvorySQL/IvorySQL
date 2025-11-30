@@ -66,6 +66,7 @@ ExecSubPlan(SubPlanState *node,
 	SubPlan    *subplan = node->subplan;
 	EState	   *estate = node->planstate->state;
 	ScanDirection dir = estate->es_direction;
+	int64		save_rownum = estate->es_rownum;
 	Datum		retval;
 
 	CHECK_FOR_INTERRUPTS();
@@ -82,14 +83,22 @@ ExecSubPlan(SubPlanState *node,
 	/* Force forward-scan mode for evaluation */
 	estate->es_direction = ForwardScanDirection;
 
+	/*
+	 * Reset ROWNUM counter for Oracle compatibility.
+	 * Each correlated subquery invocation should start with ROWNUM=0,
+	 * matching Oracle's behavior.
+	 */
+	estate->es_rownum = 0;
+
 	/* Select appropriate evaluation strategy */
 	if (subplan->useHashTable)
 		retval = ExecHashSubPlan(node, econtext, isNull);
 	else
 		retval = ExecScanSubPlan(node, econtext, isNull);
 
-	/* restore scan direction */
+	/* restore scan direction and ROWNUM counter */
 	estate->es_direction = dir;
+	estate->es_rownum = save_rownum;
 
 	return retval;
 }
