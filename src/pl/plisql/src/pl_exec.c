@@ -43,6 +43,7 @@
 #include "pl_subproc_function.h"
 #include "pl_package.h"
 #include "pl_exception_type.h"
+#include "pl_autonomous.h"
 #include "storage/proc.h"
 #include "tcop/cmdtag.h"
 #include "tcop/pquery.h"
@@ -487,24 +488,30 @@ static void plisql_anonymous_return_out_parameter(PLiSQL_execstate * estate, PLi
 
 
 
-/* ----------
- * plisql_exec_function	Called by the call handler for
- *				function execution.
+/**
+ * Execute a PL/iSQL function or anonymous DO block and produce its return Datum.
  *
- * This is also used to execute inline code blocks (DO blocks).  The only
- * difference that this code is aware of is that for a DO block, we want
- * to use a private simple_eval_estate and a private simple_eval_resowner,
- * which are created and passed in by the caller.  For regular functions,
- * pass NULL, which implies using shared_simple_eval_estate and
- * shared_simple_eval_resowner.  (When using a private simple_eval_estate,
- * we must also use a private cast hashtable, but that's taken care of
- * within plisql_estate_setup.)
- * procedure_resowner is a resowner that will survive for the duration
- * of execution of this function/procedure.  It is needed only if we
- * are doing non-atomic execution and there are CALL or DO statements
- * in the function; otherwise it can be NULL.  We use it to hold refcounts
- * on the CALL/DO statements' plans.
- * ----------
+ * Sets up execution state, initializes local datums from the function definition
+ * and call arguments, executes the top-level PL/iSQL block (including support
+ * for autonomous transactions and set-returning results), coerces the return
+ * value to the declared result type as required, handles OUT/INOUT parameters
+ * for anonymous blocks, and performs necessary cleanup of evaluation contexts
+ * and temporary state.
+ *
+ * @param func The PLiSQL_function descriptor to execute.
+ * @param fcinfo Call context and argument/return storage (FunctionCallInfo).
+ *               May be NULL in some internal contexts.
+ * @param simple_eval_estate Optional EState to use for simple-expression
+ *               evaluation; pass NULL to use the session-shared evaluator.
+ * @param simple_eval_resowner Optional ResourceOwner associated with
+ *               simple_eval_estate; pass NULL when using the shared evaluator.
+ * @param procedure_resowner Optional ResourceOwner that will survive for the
+ *               duration of non-atomic CALL/DO execution; may be NULL.
+ * @param atomic True when execution should be treated as atomic (no persistent
+ *               procedure-level resources are retained).
+ *
+ * @returns The Datum holding the function's return value. The nullness of the
+ *          result is indicated by fcinfo->isnull.
  */
 Datum
 plisql_exec_function(PLiSQL_function * func, FunctionCallInfo fcinfo,
@@ -674,6 +681,34 @@ plisql_exec_function(PLiSQL_function * func, FunctionCallInfo fcinfo,
 	 */
 	if (*plisql_plugin_ptr && (*plisql_plugin_ptr)->func_beg)
 		((*plisql_plugin_ptr)->func_beg) (&estate, func);
+
+	/*
+	 * If this is an autonomous transaction function, delegate to dblink.
+	 * Skip if we're already inside an autonomous transaction (prevents recursion).
+	 * Also skip if we're being called during procedure compilation/validation.
+	 */
+	if (func->fn_is_autonomous &&
+		!plisql_inside_autonomous_transaction &&
+		fcinfo != NULL &&
+		fcinfo->flinfo != NULL &&
+		fcinfo->flinfo->fn_oid == func->fn_oid)  /* Real call, not validation */
+	{
+		Datum result;
+
+		result = plisql_exec_autonomous_function(func, fcinfo,
+												 simple_eval_estate,
+												 simple_eval_resowner);
+
+		/* Let the instrumentation plugin see function end */
+		if (*plisql_plugin_ptr && (*plisql_plugin_ptr)->func_end)
+			((*plisql_plugin_ptr)->func_end) (&estate, func);
+
+		/* Clean up and return */
+		plisql_destroy_econtext(&estate);
+		exec_eval_cleanup(&estate);
+		error_context_stack = plerrcontext.previous;
+		return result;
+	}
 
 	/*
 	 * Now call the toplevel block of statements

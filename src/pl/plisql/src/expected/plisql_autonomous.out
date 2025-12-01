@@ -1,0 +1,227 @@
+NOTICE:  extension "dblink" already exists, skipping
+CREATE EXTENSION
+CREATE TABLE
+CREATE PROCEDURE
+WARNING:  there is no transaction in progress
+COMMIT
+CALL
+ id |    msg     | tx_state  
+----+------------+-----------
+  1 | basic test | committed
+(1 row)
+
+CREATE PROCEDURE
+WARNING:  there is no transaction in progress
+COMMIT
+CALL
+ id |     msg     | tx_state  
+----+-------------+-----------
+  2 | with params | committed
+(1 row)
+
+CREATE PROCEDURE
+WARNING:  there is no transaction in progress
+COMMIT
+BEGIN
+INSERT 0 1
+CALL
+INSERT 0 1
+ROLLBACK
+ id  |    msg     | tx_state  
+-----+------------+-----------
+ 200 | autonomous | committed
+(1 row)
+
+CREATE PROCEDURE
+WARNING:  there is no transaction in progress
+COMMIT
+CALL
+ id |          msg           
+----+------------------------
+  4 | multi-type (bool=true)
+(1 row)
+
+CREATE PROCEDURE
+WARNING:  there is no transaction in progress
+COMMIT
+CALL
+ id |   msg    
+----+----------
+  5 | NULL msg
+(1 row)
+
+CREATE PROCEDURE
+WARNING:  there is no transaction in progress
+COMMIT
+CALL
+CALL
+CALL
+ id |    msg     
+----+------------
+  6 | sequential
+  7 | sequential
+  8 | sequential
+(3 rows)
+
+TRUNCATE TABLE
+CREATE PROCEDURE
+WARNING:  there is no transaction in progress
+COMMIT
+BEGIN
+INSERT 0 1
+CALL
+INSERT 0 1
+ count_in_tx 
+-------------
+           3
+(1 row)
+
+ROLLBACK
+  id  |      msg       | tx_state  
+------+----------------+-----------
+ 2000 | should persist | committed
+(1 row)
+
+CREATE PROCEDURE
+WARNING:  there is no transaction in progress
+COMMIT
+CALL
+DROP EXTENSION
+CREATE EXTENSION
+CALL
+ id |   msg    
+----+----------
+  9 | oid test
+ 10 | oid test
+(2 rows)
+
+CREATE FUNCTION
+WARNING:  there is no transaction in progress
+COMMIT
+ doubled_value 
+---------------
+           100
+(1 row)
+
+ id |      msg      
+----+---------------
+ 50 | function test
+(1 row)
+
+CREATE FUNCTION
+WARNING:  there is no transaction in progress
+COMMIT
+ null_result 
+-------------
+ 
+(1 row)
+
+ id |       msg        
+----+------------------
+ 51 | null return test
+(1 row)
+
+CREATE FUNCTION
+WARNING:  there is no transaction in progress
+COMMIT
+ERROR:  relation "nonexistent_table" does not exist
+CONTEXT:  PL/iSQL function test_function_error() line 6 at SQL statement
+while executing query on unnamed dblink connection
+SQL statement "SELECT * FROM dblink('dbname=''testdb'' host=localhost port=5432', 'SET ivorysql.compatible_mode = oracle; SET plisql.inside_autonomous_transaction = true; SELECT public.test_function_error();') AS t(result pg_catalog.int4)"
+PL/iSQL function test_function_error() during function entry
+CREATE FUNCTION
+WARNING:  there is no transaction in progress
+COMMIT
+      text_result      
+-----------------------
+ test data - processed
+(1 row)
+
+ id |          msg          
+----+-----------------------
+ 52 | test data - processed
+(1 row)
+
+CREATE FUNCTION
+CREATE FUNCTION
+WARNING:  there is no transaction in progress
+COMMIT
+ nested_result 
+---------------
+           175
+(1 row)
+
+ id  |      msg       
+-----+----------------
+  60 | outer function
+ 160 | inner function
+(2 rows)
+
+CREATE FUNCTION
+WARNING:  there is no transaction in progress
+COMMIT
+ numeric_result 
+----------------
+       115.5750
+(1 row)
+
+ id |        msg        
+----+-------------------
+ 53 | numeric: 115.5750
+(1 row)
+
+CREATE FUNCTION
+WARNING:  there is no transaction in progress
+COMMIT
+ date_result 
+-------------
+ 2025-12-05
+(1 row)
+
+ id |       msg        
+----+------------------
+ 54 | date: 2025-12-05
+(1 row)
+
+CREATE FUNCTION
+WARNING:  there is no transaction in progress
+COMMIT
+ bool_true_result 
+------------------
+ t
+(1 row)
+
+ bool_false_result 
+-------------------
+ f
+(1 row)
+
+ id |      msg       
+----+----------------
+ 55 | boolean: true
+ 55 | boolean: false
+(2 rows)
+
+                   status                   
+--------------------------------------------
+ All autonomous transaction tests completed
+(1 row)
+
+DROP PROCEDURE
+DROP PROCEDURE
+DROP PROCEDURE
+DROP PROCEDURE
+DROP PROCEDURE
+DROP PROCEDURE
+DROP PROCEDURE
+DROP PROCEDURE
+DROP FUNCTION
+DROP FUNCTION
+DROP FUNCTION
+DROP FUNCTION
+DROP FUNCTION
+DROP FUNCTION
+DROP FUNCTION
+DROP FUNCTION
+DROP FUNCTION
+DROP TABLE
