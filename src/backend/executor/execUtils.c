@@ -162,7 +162,7 @@ CreateExecutorState(void)
 	estate->es_parallel_workers_to_launch = 0;
 	estate->es_parallel_workers_launched = 0;
 
-	/* Oracle ROWNUM support: initialize row counter to 0 */
+	/* Oracle ROWNUM support: initialize row counter */
 	estate->es_rownum = 0;
 
 	estate->es_jit_flags = 0;
