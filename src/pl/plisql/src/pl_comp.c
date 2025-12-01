@@ -1094,21 +1094,21 @@ do_compile(FunctionCallInfo fcinfo,
 		 * and the function returned datatype.
 		 *
 		 */
-		char	  **argtypenames = NULL;
-		char	   *rettypename = NULL;
+		argtypenames = NULL;
+		rettypename = NULL;
 
 		get_func_typename_info(procTup, &argtypenames, &rettypename);
 		if (argtypenames != NULL)
 		{
-			int			i = 0;
+			int			j = 0;
 
-			for (i = 0; i < procStruct->pronargs; i++)
+			for (j = 0; j < procStruct->pronargs; j++)
 			{
-				if (strcmp(argtypenames[i], "") != 0)
+				if (strcmp(argtypenames[j], "") != 0)
 				{
 					TypeName   *typeName;
 
-					typeName = (TypeName *) stringToNode(argtypenames[i]);
+					typeName = (TypeName *) stringToNode(argtypenames[j]);
 					plisql_add_type_referenced_objects(typeName);
 				}
 			}

@@ -562,12 +562,15 @@ Datum
 ora_sys_guid(PG_FUNCTION_ARGS)
 {
     bytea *result;
+#ifdef HAVE_UUID_OSSP
+    uuid_t      *uuid;
+    uuid_rc_t   rc;
+#endif
+
     result = (bytea *)palloc(VARHDRSZ + SYS_GUID_LENGTH);
     SET_VARSIZE(result, VARHDRSZ + SYS_GUID_LENGTH);
 
 #ifdef HAVE_UUID_OSSP
-    uuid_t      *uuid;
-    uuid_rc_t   rc;
     uuid = get_cached_uuid_t(0);
     rc = uuid_make(uuid, UUID_MAKE_V4, NULL, NULL);
     if (rc != UUID_RC_OK) {
