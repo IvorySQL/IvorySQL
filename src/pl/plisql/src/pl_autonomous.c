@@ -130,16 +130,20 @@ get_procedure_name(Oid funcoid)
 	nspname = get_namespace_name(procstruct->pronamespace);
 	if (nspname == NULL)
 	{
-		/* Schema was dropped concurrently; use pg_catalog as fallback */
-		nspname = pstrdup("pg_catalog");
+		Oid nspoid = procstruct->pronamespace;
+		ReleaseSysCache(proctup);
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_SCHEMA),
+				 errmsg("schema for function \"%s\" (OID %u) was dropped concurrently",
+						procname, funcoid),
+				 errdetail("Schema OID %u no longer exists.", nspoid)));
 	}
 
 	/* Build schema-qualified name */
 	result = psprintf("%s.%s", quote_identifier(nspname), quote_identifier(procname));
 
 	ReleaseSysCache(proctup);
-	if (nspname)
-		pfree(nspname);
+	pfree(nspname);
 	return result;
 }
 
@@ -227,6 +231,11 @@ build_autonomous_call(PLiSQL_function *func, FunctionCallInfo fcinfo, bool *is_f
 
 	/* Determine if this is a function (returns value) or procedure (void) */
 	*is_function = (procstruct->prorettype != VOIDOID);
+
+	/* Validate argument count */
+	if (fcinfo->nargs > procstruct->pronargs)
+		elog(ERROR, "argument count mismatch: got %d, expected %d",
+			 fcinfo->nargs, procstruct->pronargs);
 
 	/* Format arguments */
 	for (i = 0; i < fcinfo->nargs; i++)
@@ -325,6 +334,7 @@ execute_autonomous_function(char *connstr, char *sql, Oid rettype, FunctionCallI
 	int16 typlen;
 	bool typbyval;
 	MemoryContext oldcontext;
+	bool spi_connected = false;
 
 	/* Look up dblink() function if not cached */
 	if (!OidIsValid(dblink_oid))
@@ -354,6 +364,7 @@ execute_autonomous_function(char *connstr, char *sql, Oid rettype, FunctionCallI
 					(errcode(ERRCODE_INTERNAL_ERROR),
 					 errmsg("could not connect to SPI for autonomous function execution"),
 					 errdetail("SPI_connect returned %d", ret)));
+		spi_connected = true;
 
 		/* Execute the query */
 		ret = SPI_execute(query, true, 1);
@@ -395,7 +406,8 @@ execute_autonomous_function(char *connstr, char *sql, Oid rettype, FunctionCallI
 	PG_CATCH();
 	{
 		/* Clean up on error */
-		SPI_finish();
+		if (spi_connected)
+			SPI_finish();
 		pfree(query);
 		PG_RE_THROW();
 	}
