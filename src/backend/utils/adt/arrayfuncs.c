@@ -465,7 +465,7 @@ ReadArrayDimensions(char **srcptr, int *ndim_p, int *dim, int *lBound,
 			if (!ReadDimensionInt(&p, &ub, origStr, escontext))
 				return false;
 			if (p == q)			/* no digits? */
-				return(escontext, false, 
+				ereturn(escontext, false, 
 						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 						 errmsg("malformed array literal: \"%s\"", origStr),
 						 errdetail("Missing array dimension value.")));

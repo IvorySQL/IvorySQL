@@ -3636,7 +3636,7 @@ get_hostvariables(const char *sql, bool *error)
 	HostVariable *host = NULL;
 	char		*newsql = NULL;
 	char		*ptr = NULL;
-	int			i = 0;
+	int			j = 0;
 
 	*error = false;
 	if (!sql)
@@ -3645,12 +3645,12 @@ get_hostvariables(const char *sql, bool *error)
 	/* double write quote */
 	newsql = pg_malloc0(strlen(sql) * 2);	/* enough */
 	ptr = newsql;
-	while (sql[i] != '\0')
+	while (sql[j] != '\0')
 	{
-		if (sql[i] == '\'')
-			*ptr++ = sql[i];
-		*ptr++ = sql[i];
-		i++;
+		if (sql[j] == '\'')
+			*ptr++ = sql[j];
+		*ptr++ = sql[j];
+		j++;
 	}
 	*ptr = '\0';
 
@@ -3730,7 +3730,7 @@ SendQuery_PBE(const char *query, HostVariable *hv)
 	PGTransactionStatusType transaction_status;
 	double		elapsed_msec = 0;
 	bool		OK = false;
-	int			i;
+	int		i = 0;
 	bool		on_error_rollback_savepoint = false;
 	static bool on_error_rollback_warning = false;
 
@@ -3837,7 +3837,7 @@ SendQuery_PBE(const char *query, HostVariable *hv)
 		struct _variable **bindvar;
 		char	*p = NULL;
 		bool	missing = false;
-		int		i;
+		int		j;
 		instr_time	before,
 					after;
 
@@ -3851,13 +3851,13 @@ SendQuery_PBE(const char *query, HostVariable *hv)
 		 * the order of detection in the Oracle error message is from the
 		 * back to the front.
 		 */
-		for (i = hv->length; i > 0; i--)
+		for (j = hv->length; j > 0; j--)
 		{
-			p = hv->hostvars[i - 1].name;
+			p = hv->hostvars[j - 1].name;
 			p++;	/* skip colon */
-			bindvar[i - 1] = BindVariableExist(pset.vars, p);
+			bindvar[j - 1] = BindVariableExist(pset.vars, p);
 
-			if (bindvar[i - 1] == NULL)
+			if (bindvar[j - 1] == NULL)
 			{
 				missing= true;
 				break;

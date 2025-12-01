@@ -411,7 +411,7 @@ plisql_build_variable_from_funcargs(PLiSQL_subproc_function * subprocfunc, bool 
 		{
 			char		buf[32];
 			PLiSQL_type *argdtype;
-			PLiSQL_variable *argvariable;
+			//PLiSQL_variable *argvariable;
 			PLiSQL_nsitem_type argitemtype;
 			Oid 		argtypeid = subprocfunc->rettype->typoid;
 
