@@ -2668,7 +2668,13 @@ stmt_execsql	: K_IMPORT
 						if (tok == '=' || tok == COLON_EQUALS ||
 							tok == '[' || tok == '.')
 							word_is_not_variable(&($1), @1, yyscanner);
-						if (tok == '(' || tok == ';')
+						/*
+						 * Check for SELECT keyword - must be treated as EXECSQL even
+						 * when followed by '(' to allow parenthesized expressions
+						 * like SELECT (100 - x) * 0.01 INTO ...
+						 */
+						if ((tok == '(' || tok == ';') &&
+							pg_strcasecmp($1.ident, "select") != 0)
 						{
 							PLiSQL_stmt_call *new;
 
