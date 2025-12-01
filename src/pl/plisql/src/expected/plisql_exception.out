@@ -1,0 +1,351 @@
+--
+-- Test user-defined EXCEPTION type declarations
+--
+-- Note: This test verifies EXCEPTION type declarations compile correctly.
+-- RAISE and WHEN handler support for user-defined exceptions is not yet
+-- implemented and is commented out below.
+--
+-- Test 1: Basic EXCEPTION declaration in package body
+CREATE OR REPLACE PACKAGE test_exc_pkg1 IS
+  PROCEDURE test_proc;
+END test_exc_pkg1;
+/
+CREATE OR REPLACE PACKAGE BODY test_exc_pkg1 IS
+  bad_interval EXCEPTION;  -- User-defined exception
+  PROCEDURE test_proc IS
+  BEGIN
+    RAISE INFO 'Package with EXCEPTION compiled successfully';
+  END test_proc;
+END test_exc_pkg1;
+/
+-- Verify the package body was created
+SELECT 'Package test_exc_pkg1 created' AS result;
+            result             
+-------------------------------
+ Package test_exc_pkg1 created
+(1 row)
+
+-- Test 2: Multiple EXCEPTION declarations
+CREATE OR REPLACE PACKAGE test_exc_pkg2 IS
+  PROCEDURE multi_exc_test;
+END test_exc_pkg2;
+/
+CREATE OR REPLACE PACKAGE BODY test_exc_pkg2 IS
+  exc_invalid_data EXCEPTION;
+  exc_timeout EXCEPTION;
+  exc_not_found EXCEPTION;
+  PROCEDURE multi_exc_test IS
+  BEGIN
+    RAISE INFO 'Multiple exceptions declared successfully';
+  END multi_exc_test;
+END test_exc_pkg2;
+/
+SELECT 'Package test_exc_pkg2 with multiple exceptions created' AS result;
+                         result                         
+--------------------------------------------------------
+ Package test_exc_pkg2 with multiple exceptions created
+(1 row)
+
+-- Test 3: EXCEPTION in standalone procedure (should work in declaration block)
+CREATE OR REPLACE PROCEDURE test_standalone_exc IS
+  my_exception EXCEPTION;
+BEGIN
+  RAISE INFO 'Standalone procedure with EXCEPTION compiled';
+END;
+/
+SELECT 'Standalone procedure with EXCEPTION created' AS result;
+                   result                    
+---------------------------------------------
+ Standalone procedure with EXCEPTION created
+(1 row)
+
+-- Test 4: EXCEPTION mixed with other variable types
+CREATE OR REPLACE PACKAGE test_exc_pkg3 IS
+  PROCEDURE mixed_decl_test;
+END test_exc_pkg3;
+/
+CREATE OR REPLACE PACKAGE BODY test_exc_pkg3 IS
+  v_counter NUMBER := 0;
+  exc_custom EXCEPTION;
+  v_name VARCHAR2(100) := 'Test';
+  exc_another EXCEPTION;
+  v_date DATE;
+  PROCEDURE mixed_decl_test IS
+  BEGIN
+    RAISE INFO 'Mixed declarations compiled successfully';
+  END mixed_decl_test;
+END test_exc_pkg3;
+/
+SELECT 'Package test_exc_pkg3 with mixed declarations created' AS result;
+                        result                         
+-------------------------------------------------------
+ Package test_exc_pkg3 with mixed declarations created
+(1 row)
+
+--
+-- Test 5: RAISE and exception handling
+--
+CREATE OR REPLACE PACKAGE test_exc_raise IS
+  PROCEDURE test_raise_catch;
+END test_exc_raise;
+/
+CREATE OR REPLACE PACKAGE BODY test_exc_raise IS
+  custom_error EXCEPTION;
+  PROCEDURE test_raise_catch IS
+  BEGIN
+    RAISE custom_error;  -- Raise user-defined exception
+  EXCEPTION
+    WHEN custom_error THEN  -- Catch user-defined exception
+      RAISE INFO 'Successfully caught custom_error';
+  END test_raise_catch;
+END test_exc_raise;
+/
+-- Test execution
+BEGIN
+  test_exc_raise.test_raise_catch();
+END;
+/
+INFO:  Successfully caught custom_error
+DROP PACKAGE test_exc_raise;
+--
+-- Test 6: PRAGMA EXCEPTION_INIT basic usage
+--
+CREATE OR REPLACE PACKAGE test_pragma_init IS
+  PROCEDURE test_basic_pragma;
+END test_pragma_init;
+/
+CREATE OR REPLACE PACKAGE BODY test_pragma_init IS
+  my_exception EXCEPTION;
+  PRAGMA EXCEPTION_INIT(my_exception, -20001);
+  PROCEDURE test_basic_pragma IS
+  BEGIN
+    RAISE INFO 'PRAGMA EXCEPTION_INIT compiled successfully';
+  END test_basic_pragma;
+END test_pragma_init;
+/
+-- Test execution
+BEGIN
+  test_pragma_init.test_basic_pragma();
+END;
+/
+INFO:  PRAGMA EXCEPTION_INIT compiled successfully
+SELECT 'PRAGMA EXCEPTION_INIT basic test passed' AS result;
+                 result                  
+-----------------------------------------
+ PRAGMA EXCEPTION_INIT basic test passed
+(1 row)
+
+--
+-- Test 7: PRAGMA EXCEPTION_INIT with RAISE and WHEN
+--
+CREATE OR REPLACE PACKAGE test_pragma_raise IS
+  PROCEDURE test_pragma_exception;
+END test_pragma_raise;
+/
+CREATE OR REPLACE PACKAGE BODY test_pragma_raise IS
+  custom_exc EXCEPTION;
+  PRAGMA EXCEPTION_INIT(custom_exc, -20002);
+  PROCEDURE test_pragma_exception IS
+  BEGIN
+    RAISE custom_exc;
+  EXCEPTION
+    WHEN custom_exc THEN
+      RAISE INFO 'Caught exception with PRAGMA EXCEPTION_INIT';
+  END test_pragma_exception;
+END test_pragma_raise;
+/
+-- Test execution
+BEGIN
+  test_pragma_raise.test_pragma_exception();
+END;
+/
+INFO:  Caught exception with PRAGMA EXCEPTION_INIT
+--
+-- Test 8: PRAGMA EXCEPTION_INIT in procedure
+--
+CREATE OR REPLACE PROCEDURE test_pragma_proc IS
+  my_exc EXCEPTION;
+  PRAGMA EXCEPTION_INIT(my_exc, -20003);
+BEGIN
+  RAISE INFO 'PRAGMA EXCEPTION_INIT in procedure works';
+  RAISE my_exc;
+EXCEPTION
+  WHEN my_exc THEN
+    RAISE INFO 'Exception caught in procedure';
+END;
+/
+-- Test execution
+BEGIN
+  test_pragma_proc();
+END;
+/
+INFO:  PRAGMA EXCEPTION_INIT in procedure works
+INFO:  Exception caught in procedure
+SELECT 'PRAGMA EXCEPTION_INIT in procedure test passed' AS result;
+                     result                     
+------------------------------------------------
+ PRAGMA EXCEPTION_INIT in procedure test passed
+(1 row)
+
+--
+-- Test 9: Multiple PRAGMA EXCEPTION_INIT declarations
+--
+CREATE OR REPLACE PACKAGE test_multi_pragma IS
+  PROCEDURE test_multiple;
+END test_multi_pragma;
+/
+CREATE OR REPLACE PACKAGE BODY test_multi_pragma IS
+  exc1 EXCEPTION;
+  PRAGMA EXCEPTION_INIT(exc1, -20011);
+  exc2 EXCEPTION;
+  PRAGMA EXCEPTION_INIT(exc2, -20012);
+  exc3 EXCEPTION;
+  PRAGMA EXCEPTION_INIT(exc3, -20013);
+  PROCEDURE test_multiple IS
+  BEGIN
+    RAISE INFO 'Multiple PRAGMA EXCEPTION_INIT declarations work';
+  END test_multiple;
+END test_multi_pragma;
+/
+BEGIN
+  test_multi_pragma.test_multiple();
+END;
+/
+INFO:  Multiple PRAGMA EXCEPTION_INIT declarations work
+SELECT 'Multiple PRAGMA EXCEPTION_INIT test passed' AS result;
+                   result                   
+--------------------------------------------
+ Multiple PRAGMA EXCEPTION_INIT test passed
+(1 row)
+
+--
+-- Test 10: PRAGMA EXCEPTION_INIT with positive error codes
+-- Oracle documentation: Valid codes are 100 or any negative integer >= -1000000 (except -1403)
+-- This test verifies positive error codes: only 100 is accepted, all others are rejected.
+--
+-- Test 10a: Valid positive error code 100 (should succeed)
+CREATE OR REPLACE PACKAGE test_pragma_positive_100 IS
+  PROCEDURE test_positive;
+END test_pragma_positive_100;
+/
+CREATE OR REPLACE PACKAGE BODY test_pragma_positive_100 IS
+  exc_100 EXCEPTION;
+  PRAGMA EXCEPTION_INIT(exc_100, 100);  -- Oracle accepts: ANSI NO_DATA_FOUND
+  PROCEDURE test_positive IS
+  BEGIN
+    RAISE INFO 'Error code 100 accepted (ANSI NO_DATA_FOUND)';
+  END test_positive;
+END test_pragma_positive_100;
+/
+BEGIN
+  test_pragma_positive_100.test_positive();
+END;
+/
+INFO:  Error code 100 accepted (ANSI NO_DATA_FOUND)
+DROP PACKAGE test_pragma_positive_100;
+-- Test 10b: Invalid positive error code 1 (should fail with PLS-00701)
+CREATE OR REPLACE PACKAGE test_pragma_positive_1 IS
+  exc_1 EXCEPTION;
+  PRAGMA EXCEPTION_INIT(exc_1, 1);  -- Oracle rejects: positive except 100
+END test_pragma_positive_1;
+/
+ERROR:  illegal ORACLE error number 1 for PRAGMA EXCEPTION_INIT
+LINE 2:   PRAGMA EXCEPTION_INIT(exc_1, 1);  -- Oracle rejects: posit...
+          ^
+QUERY:  exc_1 EXCEPTION;
+  PRAGMA EXCEPTION_INIT(exc_1, 1);  -- Oracle rejects: positive except 100
+END test_pragma_positive_1
+-- Test 10c: Invalid positive error code 1000000 (should fail with PLS-00701)
+CREATE OR REPLACE PACKAGE test_pragma_positive_1000000 IS
+  exc_1000000 EXCEPTION;
+  PRAGMA EXCEPTION_INIT(exc_1000000, 1000000);  -- Oracle rejects: positive except 100
+END test_pragma_positive_1000000;
+/
+ERROR:  illegal ORACLE error number 1000000 for PRAGMA EXCEPTION_INIT
+LINE 2:   PRAGMA EXCEPTION_INIT(exc_1000000, 1000000);  -- Oracle re...
+          ^
+QUERY:  exc_1000000 EXCEPTION;
+  PRAGMA EXCEPTION_INIT(exc_1000000, 1000000);  -- Oracle rejects: positive except 100
+END test_pragma_positive_1000000
+SELECT 'PRAGMA EXCEPTION_INIT positive error code tests completed' AS result;
+                          result                           
+-----------------------------------------------------------
+ PRAGMA EXCEPTION_INIT positive error code tests completed
+(1 row)
+
+--
+-- Test 11: PRAGMA EXCEPTION_INIT with negative error codes and boundary
+-- Oracle documentation: Valid codes are 100 or any negative integer >= -1000000 (except -1403)
+-- This test verifies the -1000000 boundary and specifically rejected negative codes.
+--
+-- Test 11a: Valid error code -1000000 (should succeed - at boundary)
+CREATE OR REPLACE PACKAGE test_pragma_minus_1000000 IS
+  PROCEDURE test_boundary;
+END test_pragma_minus_1000000;
+/
+CREATE OR REPLACE PACKAGE BODY test_pragma_minus_1000000 IS
+  exc_boundary EXCEPTION;
+  PRAGMA EXCEPTION_INIT(exc_boundary, -1000000);  -- At the boundary
+  PROCEDURE test_boundary IS
+  BEGIN
+    RAISE INFO 'Error code -1000000 accepted (at boundary)';
+  END test_boundary;
+END test_pragma_minus_1000000;
+/
+BEGIN
+  test_pragma_minus_1000000.test_boundary();
+END;
+/
+INFO:  Error code -1000000 accepted (at boundary)
+DROP PACKAGE test_pragma_minus_1000000;
+-- Test 11b: Invalid error code -1000001 (should fail with PLS-00701 - beyond boundary)
+CREATE OR REPLACE PACKAGE test_pragma_minus_1000001 IS
+  exc_beyond EXCEPTION;
+  PRAGMA EXCEPTION_INIT(exc_beyond, -1000001);  -- Beyond boundary
+END test_pragma_minus_1000001;
+/
+ERROR:  illegal ORACLE error number -1000001 for PRAGMA EXCEPTION_INIT
+LINE 2:   PRAGMA EXCEPTION_INIT(exc_beyond, -1000001);  -- Beyond bo...
+          ^
+QUERY:  exc_beyond EXCEPTION;
+  PRAGMA EXCEPTION_INIT(exc_beyond, -1000001);  -- Beyond boundary
+END test_pragma_minus_1000001
+-- Test 11c: Invalid error code -1403 (should fail with PLS-00701)
+CREATE OR REPLACE PACKAGE test_pragma_minus_1403 IS
+  exc_1403 EXCEPTION;
+  PRAGMA EXCEPTION_INIT(exc_1403, -1403);  -- Oracle-specific NO_DATA_FOUND, must use 100
+END test_pragma_minus_1403;
+/
+ERROR:  illegal ORACLE error number -1403 for PRAGMA EXCEPTION_INIT
+LINE 2:   PRAGMA EXCEPTION_INIT(exc_1403, -1403);  -- Oracle-specifi...
+          ^
+QUERY:  exc_1403 EXCEPTION;
+  PRAGMA EXCEPTION_INIT(exc_1403, -1403);  -- Oracle-specific NO_DATA_FOUND, must use 100
+END test_pragma_minus_1403
+-- Test 11d: Invalid error code 0 (should fail with PLS-00701)
+CREATE OR REPLACE PACKAGE test_pragma_zero IS
+  exc_zero EXCEPTION;
+  PRAGMA EXCEPTION_INIT(exc_zero, 0);  -- Zero is rejected by Oracle
+END test_pragma_zero;
+/
+ERROR:  illegal ORACLE error number 0 for PRAGMA EXCEPTION_INIT
+LINE 2:   PRAGMA EXCEPTION_INIT(exc_zero, 0);  -- Zero is rejected b...
+          ^
+QUERY:  exc_zero EXCEPTION;
+  PRAGMA EXCEPTION_INIT(exc_zero, 0);  -- Zero is rejected by Oracle
+END test_pragma_zero
+SELECT 'PRAGMA EXCEPTION_INIT negative error code tests completed' AS result;
+                          result                           
+-----------------------------------------------------------
+ PRAGMA EXCEPTION_INIT negative error code tests completed
+(1 row)
+
+-- Cleanup
+DROP PACKAGE test_pragma_init;
+DROP PACKAGE test_pragma_raise;
+DROP PROCEDURE test_pragma_proc;
+DROP PACKAGE test_multi_pragma;
+DROP PACKAGE test_exc_pkg1;
+DROP PACKAGE test_exc_pkg2;
+DROP PACKAGE test_exc_pkg3;
+DROP PROCEDURE test_standalone_exc;

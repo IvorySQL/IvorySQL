@@ -70,6 +70,7 @@ typedef enum PLiSQL_datum_type
 	PLISQL_DTYPE_RECFIELD,
 	PLISQL_DTYPE_PROMISE,
 	PLISQL_DTYPE_PACKAGE_DATUM,
+	PLISQL_DTYPE_EXCEPTION,
 }			PLiSQL_datum_type;
 
 /*
@@ -904,6 +905,7 @@ typedef struct PLiSQL_stmt_raise
 	char	   *message;		/* old-style message format literal, or NULL */
 	List	   *params;			/* list of expressions for old-style message */
 	List	   *options;		/* list of PLiSQL_raise_option */
+	struct PLiSQL_exception_var *exception_var;	/* user-defined exception, or NULL */
 }			PLiSQL_stmt_raise;
 
 /*

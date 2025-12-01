@@ -20,6 +20,7 @@
 #include "plisql.h"
 #include "pl_subproc_function.h"
 #include "pl_package.h"
+#include "pl_exception_type.h"
 #include "utils/memutils.h"
 
 /* ----------
@@ -765,6 +766,8 @@ plisql_free_function_memory(PLiSQL_function * func,
 			case PLISQL_DTYPE_RECFIELD:
 				break;
 			case PLISQL_DTYPE_PACKAGE_DATUM:
+				break;
+			case PLISQL_DTYPE_EXCEPTION:
 				break;
 			default:
 				elog(ERROR, "unrecognized data type: %d", d->dtype);
@@ -1750,6 +1753,9 @@ plisql_dumptree(PLiSQL_function * func, int start_datum, int start_subprocfunc)
 
 					printf("PACKAGE VAR :%s\n", pkg_datum->refname);
 				}
+				break;
+			case PLISQL_DTYPE_EXCEPTION:
+				plisql_dump_exception((PLiSQL_exception_var *) d);
 				break;
 			default:
 				printf("??? unknown data type %d\n", d->dtype);

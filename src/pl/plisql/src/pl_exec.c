@@ -42,6 +42,7 @@
 #include "plisql.h"
 #include "pl_subproc_function.h"
 #include "pl_package.h"
+#include "pl_exception_type.h"
 #include "storage/proc.h"
 #include "tcop/cmdtag.h"
 #include "tcop/pquery.h"
@@ -915,6 +916,15 @@ plisql_exec_function(PLiSQL_function * func, FunctionCallInfo fcinfo,
 				case PLISQL_DTYPE_ROW:
 					fcinfo->args[i].isnull = false;
 					break;
+				case PLISQL_DTYPE_EXCEPTION:
+
+					/* Exception variables cannot be used here */
+
+					elog(ERROR, "exception variables cannot be used in this context");
+
+					break;
+
+
 				default:
 					elog(ERROR, "unrecognized dtype: %d", func->datums[i]->dtype);
 			}
@@ -1497,6 +1507,15 @@ copy_plisql_datums(PLiSQL_execstate * estate,
 				outdatum = indatum;
 				break;
 
+			case PLISQL_DTYPE_EXCEPTION:
+				/*
+				 * Exception variables - nothing to do
+				 */
+				outdatum = indatum;
+				break;
+
+
+
 			default:
 				elog(ERROR, "unrecognized dtype: %d", indatum->dtype);
 				outdatum = NULL;	/* keep compiler quiet */
@@ -1892,6 +1911,14 @@ exec_stmt_block(PLiSQL_execstate * estate, PLiSQL_stmt_block * block)
 			case PLISQL_DTYPE_PACKAGE_DATUM:
 				/* package'var doesn't need init */
 				break;
+
+			case PLISQL_DTYPE_EXCEPTION:
+				/*
+				 * Exception variables - nothing to do
+				 */
+				break;
+
+
 
 			default:
 				elog(ERROR, "unrecognized dtype: %d", datum->dtype);
@@ -3525,6 +3552,14 @@ exec_stmt_return(PLiSQL_execstate * estate, PLiSQL_stmt_return * stmt)
 				}
 				break;
 
+			case PLISQL_DTYPE_EXCEPTION:
+				/*
+				 * Exception variables - nothing to do
+				 */
+				break;
+
+
+
 			default:
 				elog(ERROR, "unrecognized dtype: %d", retvar->dtype);
 		}
@@ -3699,6 +3734,14 @@ exec_stmt_return_next(PLiSQL_execstate * estate,
 			case PLISQL_DTYPE_PACKAGE_DATUM:
 				elog(ERROR, "doesn't support");
 				break;
+
+			case PLISQL_DTYPE_EXCEPTION:
+				/*
+				 * Exception variables - nothing to do
+				 */
+				break;
+
+
 
 			default:
 				elog(ERROR, "unrecognized dtype: %d", retvar->dtype);
@@ -4003,7 +4046,7 @@ exec_stmt_raise(PLiSQL_execstate * estate, PLiSQL_stmt_raise * stmt)
 
 	/* RAISE with no parameters: re-throw current exception */
 	if (stmt->condname == NULL && stmt->message == NULL &&
-		stmt->options == NIL)
+		stmt->options == NIL && stmt->exception_var == NULL)
 	{
 		if (estate->cur_error != NULL)
 			ReThrowError(estate->cur_error);
@@ -4016,7 +4059,21 @@ exec_stmt_raise(PLiSQL_execstate * estate, PLiSQL_stmt_raise * stmt)
 	/* We'll need to accumulate the various strings in stmt_mcontext */
 	stmt_mcontext = get_stmt_mcontext(estate);
 
-	if (stmt->condname)
+	/* Check for user-defined exception variable */
+	if (stmt->exception_var)
+	{
+		PLiSQL_exception_var *exc = stmt->exception_var;
+
+		/* Use the exception's sqlcode */
+		err_code = exc->sqlcode;
+		condname = MemoryContextStrdup(stmt_mcontext, exc->refname);
+
+		/* If no custom message, use Oracle default */
+		if (!stmt->message && stmt->options == NIL)
+			err_message = MemoryContextStrdup(stmt_mcontext,
+												 "User-Defined Exception");
+	}
+	else if (stmt->condname)
 	{
 		err_code = plisql_recognize_err_condition(stmt->condname, true);
 		condname = MemoryContextStrdup(stmt_mcontext, stmt->condname);
@@ -5586,6 +5643,14 @@ exec_assign_value(PLiSQL_execstate * estate,
 				break;
 			}
 
+		case PLISQL_DTYPE_EXCEPTION:
+			/*
+			 * Exception variables - nothing to do
+			 */
+			break;
+
+
+
 		default:
 			elog(ERROR, "unrecognized dtype: %d", target->dtype);
 	}
@@ -5765,6 +5830,14 @@ exec_eval_datum(PLiSQL_execstate * estate,
 				break;
 			}
 
+		case PLISQL_DTYPE_EXCEPTION:
+			/*
+			 * Exception variables - nothing to do
+			 */
+			break;
+
+
+
 		default:
 			elog(ERROR, "unrecognized dtype: %d", datum->dtype);
 	}
@@ -5856,6 +5929,14 @@ plisql_exec_get_datum_type(PLiSQL_execstate * estate,
 				plisql_exec_get_datum_type(estate, datum);
 				break;
 			}
+
+		case PLISQL_DTYPE_EXCEPTION:
+			/*
+			 * Exception variables - nothing to do
+			 */
+			break;
+
+
 
 		default:
 			elog(ERROR, "unrecognized dtype: %d", datum->dtype);
@@ -5963,6 +6044,14 @@ plisql_exec_get_datum_type_info(PLiSQL_execstate * estate,
 												typeId, typMod, collation);
 				break;
 			}
+
+		case PLISQL_DTYPE_EXCEPTION:
+			/*
+			 * Exception variables - nothing to do
+			 */
+			break;
+
+
 
 		default:
 			elog(ERROR, "unrecognized dtype: %d", datum->dtype);
@@ -9159,6 +9248,15 @@ exec_check_packagedatum_assignable(PLiSQL_pkg_datum * pkg_datum, PLiSQL_execstat
 			/* assignable if parent record is */
 			exec_check_assignable(estate, ((PLiSQL_recfield *) datum)->recparentno);
 			break;
+		case PLISQL_DTYPE_EXCEPTION:
+
+			/* Exception variables cannot be used here */
+
+			elog(ERROR, "exception variables cannot be used in this context");
+
+			break;
+
+
 		default:
 			elog(ERROR, "unrecognized dtype: %d", datum->dtype);
 			break;
@@ -9228,6 +9326,15 @@ exec_check_assignable(PLiSQL_execstate * estate, int dno)
 		case PLISQL_DTYPE_PACKAGE_DATUM:
 			exec_check_packagedatum_assignable((PLiSQL_pkg_datum *) datum, estate);
 			break;
+		case PLISQL_DTYPE_EXCEPTION:
+
+			/* Exception variables cannot be used here */
+
+			elog(ERROR, "exception variables cannot be used in this context");
+
+			break;
+
+
 		default:
 			elog(ERROR, "unrecognized dtype: %d", datum->dtype);
 			break;

@@ -29,6 +29,7 @@
 #include "plisql.h"
 #include "pl_subproc_function.h"
 #include "pl_package.h"
+#include "pl_exception_type.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
@@ -2851,6 +2852,13 @@ build_row_from_vars(PLiSQL_variable * *vars, int numvars)
 				typcoll = InvalidOid;	/* composite types have no collation */
 				break;
 
+			case PLISQL_DTYPE_EXCEPTION:
+				/* Exception variables have no PostgreSQL type */
+				typoid = VOIDOID;
+				typmod = -1;
+				typcoll = InvalidOid;
+				break;
+
 			default:
 				elog(ERROR, "unrecognized dtype: %d", var->dtype);
 				typoid = InvalidOid;	/* keep compiler quiet */
@@ -3144,10 +3152,18 @@ plisql_parse_err_condition(char *condname)
 	PLiSQL_condition *new;
 	PLiSQL_condition *prev;
 
-	/*
-	 * Eventually we will want to look for user-defined exception names here.
-	 */
+	/* First check for user-defined exceptions */
+	PLiSQL_exception_var *exc = plisql_lookup_exception(condname);
+	if (exc != NULL)
+	{
+		new = palloc(sizeof(PLiSQL_condition));
+		new->sqlerrstate = exc->sqlcode;
+		new->condname = condname;
+		new->next = NULL;
+		return new;
+	}
 
+	/* Check for OTHERS */
 	if (strcmp(condname, "others") == 0)
 	{
 		new = palloc(sizeof(PLiSQL_condition));
