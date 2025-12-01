@@ -6,6 +6,7 @@
 #include <limits.h>
 
 #include "access/stratnum.h"
+#include "nodes/miscnodes.h"
 #include "utils/builtins.h"
 #include "utils/date.h"
 #include "utils/float.h"
