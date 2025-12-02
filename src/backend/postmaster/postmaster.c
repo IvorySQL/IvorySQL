@@ -3503,7 +3503,7 @@ LaunchMissingBackgroundProcesses(void)
 			Shutdown <= SmartShutdown)
 		{
 			WalReceiverPMChild = StartChildProcess(B_WAL_RECEIVER);
-			if (WalReceiverPMChild != 0)
+			if (WalReceiverPMChild != NULL)
 				WalReceiverRequested = false;
 			/* else leave the flag set, so we'll try again later */
 		}
