@@ -1283,6 +1283,7 @@ create_append_plan(PlannerInfo *root, AppendPath *best_path, int flags)
 	plan->plan.lefttree = NULL;
 	plan->plan.righttree = NULL;
 	plan->apprelids = rel->relids;
+	plan->is_union = best_path->is_union;
 
 	if (pathkeys != NIL)
 	{
@@ -1573,6 +1574,7 @@ create_merge_append_plan(PlannerInfo *root, MergeAppendPath *best_path,
 	}
 
 	node->mergeplans = subplans;
+	node->is_union = best_path->is_union;
 
 	/*
 	 * If prepare_sort_from_pathkeys added sort columns, but we were told to

@@ -860,6 +860,7 @@ WHERE ROWNUM <= 5;
 (5 rows)
 
 -- Test ROWNUM with SetOp (non-projection-capable)
+-- With UNION ROWNUM fix, each branch has independent ROWNUM (Oracle behavior)
 SELECT ROWNUM as rn, id FROM rownum_test WHERE id <= 3
 UNION
 SELECT ROWNUM as rn, id FROM rownum_test WHERE id > 7
@@ -867,11 +868,11 @@ ORDER BY rn, id;
  rn | id 
 ----+----
   1 |  1
+  1 |  8
   2 |  2
+  2 |  9
   3 |  3
-  4 |  8
-  5 |  9
-  6 | 10
+  3 | 10
 (6 rows)
 
 --
@@ -921,6 +922,116 @@ ORDER BY id;
   3 | t
 (3 rows)
 
+--
+-- UNION ALL with ROWNUM
+-- In Oracle, each UNION branch has independent ROWNUM counter.
+-- The counter resets when switching between UNION branches.
+--
+-- Basic UNION ALL with ROWNUM
+SELECT ROWNUM, id FROM (SELECT 1 AS id FROM DUAL UNION ALL SELECT 2 FROM DUAL UNION ALL SELECT 3 FROM DUAL)
+UNION ALL
+SELECT ROWNUM, id FROM (SELECT 4 AS id FROM DUAL UNION ALL SELECT 5 FROM DUAL UNION ALL SELECT 6 FROM DUAL);
+ rownum | id 
+--------+----
+      1 |  1
+      2 |  2
+      3 |  3
+      1 |  4
+      2 |  5
+      3 |  6
+(6 rows)
+
+-- UNION ALL with tables
+SELECT ROWNUM, id FROM (SELECT id FROM rownum_test WHERE id <= 3 ORDER BY id)
+UNION ALL
+SELECT ROWNUM, id FROM (SELECT id FROM rownum_test WHERE id BETWEEN 4 AND 6 ORDER BY id);
+ rownum | id 
+--------+----
+      1 |  1
+      2 |  2
+      3 |  3
+      1 |  4
+      2 |  5
+      3 |  6
+(6 rows)
+
+-- Multiple UNION ALL branches
+SELECT ROWNUM, 'a' as src FROM (SELECT 1 FROM DUAL UNION ALL SELECT 2 FROM DUAL)
+UNION ALL
+SELECT ROWNUM, 'b' as src FROM (SELECT 1 FROM DUAL UNION ALL SELECT 2 FROM DUAL)
+UNION ALL
+SELECT ROWNUM, 'c' as src FROM (SELECT 1 FROM DUAL UNION ALL SELECT 2 FROM DUAL);
+ rownum | src 
+--------+-----
+      1 | a
+      2 | a
+      1 | b
+      2 | b
+      1 | c
+      2 | c
+(6 rows)
+
+--
+-- UNION (not UNION ALL) with ROWNUM
+-- UNION uses MergeAppend + Unique nodes, so needs different ROWNUM reset handling.
+-- Each UNION branch should have independent ROWNUM counting.
+--
+-- Test 1: Simple UNION with ROWNUM
+-- Creates two tables to avoid relying on ordering within branches
+CREATE TABLE test1 (id int);
+CREATE TABLE test2 (id int);
+INSERT INTO test1 VALUES (1), (2), (3);
+INSERT INTO test2 VALUES (4), (5), (6);
+-- Each branch should have ROWNUM 1,2,3 independently
+-- Result is sorted by the UNION's deduplication process
+SELECT ROWNUM as rn, id FROM test1
+UNION
+SELECT ROWNUM as rn, id FROM test2
+ORDER BY rn, id;
+ rn | id 
+----+----
+  1 |  1
+  1 |  4
+  2 |  2
+  2 |  5
+  3 |  3
+  3 |  6
+(6 rows)
+
+-- Test 2: UNION with ORDER BY in subqueries
+SELECT ROWNUM as rn, id FROM (SELECT id FROM test1 ORDER BY id)
+UNION
+SELECT ROWNUM as rn, id FROM (SELECT id FROM test2 ORDER BY id)
+ORDER BY rn, id;
+ rn | id 
+----+----
+  1 |  1
+  1 |  4
+  2 |  2
+  2 |  5
+  3 |  3
+  3 |  6
+(6 rows)
+
+-- Test 3: Multiple UNION branches
+SELECT ROWNUM, 'a' as src FROM (SELECT 1 FROM DUAL UNION ALL SELECT 2 FROM DUAL)
+UNION
+SELECT ROWNUM, 'b' as src FROM (SELECT 1 FROM DUAL UNION ALL SELECT 2 FROM DUAL)
+UNION
+SELECT ROWNUM, 'c' as src FROM (SELECT 1 FROM DUAL UNION ALL SELECT 2 FROM DUAL)
+ORDER BY src, rownum;
+ rownum | src 
+--------+-----
+      1 | a
+      2 | a
+      1 | b
+      2 | b
+      1 | c
+      2 | c
+(6 rows)
+
+DROP TABLE test1;
+DROP TABLE test2;
 --
 -- Cleanup
 --

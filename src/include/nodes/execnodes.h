@@ -1518,6 +1518,7 @@ struct AppendState
 	Bitmapset  *as_valid_subplans;
 	Bitmapset  *as_valid_asyncplans;	/* valid asynchronous plans indexes */
 	bool		(*choose_next_subplan) (AppendState *);
+	bool		as_is_union;	/* true if UNION, reset ROWNUM on branch switch */
 };
 
 /* ----------------
@@ -1547,6 +1548,7 @@ typedef struct MergeAppendState
 	bool		ms_initialized; /* are subplans started? */
 	struct PartitionPruneState *ms_prune_state;
 	Bitmapset  *ms_valid_subplans;
+	bool		ms_is_union;	/* true if UNION, reset ROWNUM per branch */
 } MergeAppendState;
 
 /* ----------------

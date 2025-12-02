@@ -2067,6 +2067,7 @@ typedef struct AppendPath
 	/* Index of first partial path in subpaths; list_length(subpaths) if none */
 	int			first_partial_path;
 	Cardinality limit_tuples;	/* hard limit on output tuples, or -1 */
+	bool		is_union;		/* true if from UNION/UNION ALL operation */
 } AppendPath;
 
 #define IS_DUMMY_APPEND(p) \
@@ -2089,6 +2090,7 @@ typedef struct MergeAppendPath
 	Path		path;
 	List	   *subpaths;		/* list of component Paths */
 	Cardinality limit_tuples;	/* hard limit on output tuples, or -1 */
+	bool		is_union;		/* true if from UNION/UNION ALL operation */
 } MergeAppendPath;
 
 /*
