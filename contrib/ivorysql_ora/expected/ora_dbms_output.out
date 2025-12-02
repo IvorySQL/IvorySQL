@@ -50,7 +50,7 @@ BEGIN
     RAISE NOTICE 'Test 1.3 - Empty string: [%], Status: %', line, status;
 END;
 /
-NOTICE:  Test 1.3 - Empty string: [], Status: 0
+NOTICE:  Test 1.3 - Empty string: [<NULL>], Status: 0
 -- Test 1.4: NULL handling (should output empty line)
 DECLARE
     line TEXT;
@@ -62,7 +62,7 @@ BEGIN
     RAISE NOTICE 'Test 1.4 - NULL input: [%], Status: %', line, status;
 END;
 /
-NOTICE:  Test 1.4 - NULL input: [], Status: 0
+NOTICE:  Test 1.4 - NULL input: [<NULL>], Status: 0
 -- Test 1.5: GET_LINE when buffer is empty (status should be 1)
 DECLARE
     line TEXT;
