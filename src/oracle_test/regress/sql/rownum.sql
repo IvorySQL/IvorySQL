@@ -569,6 +569,89 @@ DROP TABLE test1;
 DROP TABLE test2;
 
 --
+-- INTERSECT and EXCEPT with ROWNUM
+-- NOTE: Oracle resets ROWNUM for each side of INTERSECT/EXCEPT independently.
+-- Current IvorySQL implementation shares ROWNUM counter across both sides,
+-- which produces different results than Oracle.
+--
+
+-- INTERSECT with ROWNUM
+-- Oracle: Each side produces (1,1), (2,2), (3,3) independently, intersection = 3 rows
+-- IvorySQL: Left side produces (1,1), (2,2), (3,3), right side produces (4,1), (5,2), (6,3)
+--           No intersection because ROWNUM values differ
+SELECT ROWNUM as rn, id FROM (SELECT 1 as id FROM dual UNION ALL SELECT 2 FROM dual UNION ALL SELECT 3 FROM dual)
+INTERSECT
+SELECT ROWNUM as rn, id FROM (SELECT 1 as id FROM dual UNION ALL SELECT 2 FROM dual UNION ALL SELECT 3 FROM dual)
+ORDER BY rn;
+
+-- EXCEPT with ROWNUM
+-- Oracle: Left (1,1),(2,2),(3,3) EXCEPT Right (1,2) = (1,1),(2,2),(3,3) (no match on rn)
+-- IvorySQL: Left (1,1),(2,2),(3,3) EXCEPT Right (4,2) = (1,1),(2,2),(3,3)
+SELECT ROWNUM as rn, id FROM (SELECT 1 as id FROM dual UNION ALL SELECT 2 FROM dual UNION ALL SELECT 3 FROM dual)
+EXCEPT
+SELECT ROWNUM as rn, id FROM (SELECT 2 as id FROM dual)
+ORDER BY rn;
+
+--
+-- LATERAL join with ROWNUM
+-- NOTE: Oracle resets ROWNUM for each outer row in LATERAL/CROSS APPLY.
+-- Current IvorySQL implementation does not reset, counter continues across outer rows.
+--
+
+CREATE TABLE lat_test (id int);
+INSERT INTO lat_test VALUES (1), (2), (3);
+
+-- LATERAL subquery with ROWNUM
+-- Oracle produces: (1,1), (2,1), (2,2), (3,1), (3,2), (3,3) - resets for each outer row
+-- IvorySQL produces: (1,1), (2,2), (2,3), (3,4), (3,5), (3,6) - counter continues
+SELECT t.id as outer_id, sub.rn
+FROM lat_test t,
+LATERAL (SELECT ROWNUM as rn FROM lat_test lt WHERE lt.id <= t.id) sub
+ORDER BY t.id, sub.rn;
+
+DROP TABLE lat_test;
+
+--
+-- DELETE with ROWNUM
+-- Oracle supports DELETE WHERE ROWNUM <= N to delete first N rows
+--
+
+CREATE TABLE del_test (id int, val varchar(10));
+INSERT INTO del_test VALUES (1, 'a'), (2, 'b'), (3, 'c'), (4, 'd'), (5, 'e');
+
+-- Delete first 2 rows
+DELETE FROM del_test WHERE ROWNUM <= 2;
+SELECT * FROM del_test ORDER BY id;
+
+DROP TABLE del_test;
+
+--
+-- UPDATE with ROWNUM
+-- Oracle supports UPDATE ... WHERE ROWNUM <= N to update first N rows
+--
+
+CREATE TABLE upd_test (id int, val varchar(10));
+INSERT INTO upd_test VALUES (1, 'a'), (2, 'b'), (3, 'c'), (4, 'd'), (5, 'e');
+
+-- Update first 2 rows
+UPDATE upd_test SET val = 'updated' WHERE ROWNUM <= 2;
+SELECT * FROM upd_test ORDER BY id;
+
+DROP TABLE upd_test;
+
+--
+-- ROWNUM with empty table
+--
+
+CREATE TABLE empty_test (id int);
+
+-- ROWNUM on empty table should return no rows
+SELECT ROWNUM, id FROM empty_test;
+SELECT COUNT(*) FROM empty_test WHERE ROWNUM <= 5;
+
+DROP TABLE empty_test;
+
+--
 -- Cleanup
 --
 

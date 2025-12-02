@@ -634,6 +634,12 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
  * aggregation, while Oracle's ROWNUM is applied BEFORE these operations.
  * Therefore, we only transform when there are no higher-level relational
  * operations that would change semantics.
+ *
+ * Coverage limitations (not handled, future work):
+ * - Commutative forms: "10 >= ROWNUM" is not recognized (only "ROWNUM <= 10")
+ * - Nested expressions: "ROWNUM + 0 <= 5" is not optimized
+ * - OR clauses: "ROWNUM <= 3 OR id = 1" cannot be transformed to LIMIT
+ * - Non-integer constants: ROWNUM comparisons with floats/decimals are skipped
  *--------------------
  */
 static void
@@ -755,13 +761,70 @@ transform_rownum_to_limit(Query *parse)
 			continue;
 		}
 
-		/* Extract the integer value */
-		n = DatumGetInt64(constval->constvalue);
+		/*
+		 * Validate that the constant is a numeric type we can safely convert
+		 * to int64. This prevents undefined behavior from unexpected types.
+		 */
+		if (constval->consttype != INT8OID &&
+			constval->consttype != INT4OID &&
+			constval->consttype != INT2OID)
+		{
+			pfree(opname);
+			continue;
+		}
+
+		/* Extract the integer value based on type */
+		switch (constval->consttype)
+		{
+			case INT8OID:
+				n = DatumGetInt64(constval->constvalue);
+				break;
+			case INT4OID:
+				n = (int64) DatumGetInt32(constval->constvalue);
+				break;
+			case INT2OID:
+				n = (int64) DatumGetInt16(constval->constvalue);
+				break;
+			default:
+				/* Should not reach here due to check above */
+				pfree(opname);
+				continue;
+		}
 
 		if (strcmp(opname, "<=") == 0)
 		{
-			/* ROWNUM <= N  ->  LIMIT N (only for simple queries) */
-			if (can_use_limit)
+			/*
+			 * ROWNUM <= N:
+			 *   N <= 0: always false (ROWNUM starts at 1)
+			 *   N > 0: can be optimized to LIMIT N (only for simple queries)
+			 */
+			if (n <= 0)
+			{
+				/* Always false - rewrite as FALSE constant */
+				BoolExpr   *newand;
+				Const	   *falseconst = (Const *) makeBoolConst(false, false);
+
+				andlist = list_delete_ptr(andlist, qual);
+				andlist = lappend(andlist, falseconst);
+
+				/* Rebuild WHERE clause */
+				if (list_length(andlist) == 0)
+					jointree->quals = NULL;
+				else if (list_length(andlist) == 1)
+					jointree->quals = (Node *) linitial(andlist);
+				else
+				{
+					newand = makeNode(BoolExpr);
+					newand->boolop = AND_EXPR;
+					newand->args = andlist;
+					newand->location = -1;
+					jointree->quals = (Node *) newand;
+				}
+
+				pfree(opname);
+				return;
+			}
+			else if (can_use_limit)
 			{
 				limit_value = n;
 				rownum_qual = qual;
@@ -818,13 +881,40 @@ transform_rownum_to_limit(Query *parse)
 		}
 		else if (strcmp(opname, "<") == 0)
 		{
-			/* ROWNUM < N  ->  LIMIT N-1 (only for simple queries) */
-			if (can_use_limit)
+			/*
+			 * ROWNUM < N:
+			 *   N <= 1: always false (ROWNUM starts at 1, so < 1 is impossible)
+			 *   N > 1: can be optimized to LIMIT N-1 (only for simple queries)
+			 */
+			if (n <= 1)
 			{
-				if (n > 0)
-					limit_value = n - 1;
+				/* Always false - rewrite as FALSE constant */
+				BoolExpr   *newand;
+				Const	   *falseconst = (Const *) makeBoolConst(false, false);
+
+				andlist = list_delete_ptr(andlist, qual);
+				andlist = lappend(andlist, falseconst);
+
+				/* Rebuild WHERE clause */
+				if (list_length(andlist) == 0)
+					jointree->quals = NULL;
+				else if (list_length(andlist) == 1)
+					jointree->quals = (Node *) linitial(andlist);
 				else
-					limit_value = 0;
+				{
+					newand = makeNode(BoolExpr);
+					newand->boolop = AND_EXPR;
+					newand->args = andlist;
+					newand->location = -1;
+					jointree->quals = (Node *) newand;
+				}
+
+				pfree(opname);
+				return;
+			}
+			else if (can_use_limit)
+			{
+				limit_value = n - 1;
 				rownum_qual = qual;
 			}
 			pfree(opname);
@@ -909,11 +999,11 @@ transform_rownum_to_limit(Query *parse)
 	/* If we found a ROWNUM predicate, transform it */
 	if (rownum_qual != NULL && limit_value > 0)
 	{
-		/* Create the LIMIT constant */
+		/* Create the LIMIT constant (INT8 is pass-by-value on 64-bit systems) */
 		parse->limitCount = (Node *) makeConst(INT8OID, -1, InvalidOid,
 											   sizeof(int64),
 											   Int64GetDatum(limit_value),
-											   false, FLOAT8PASSBYVAL);
+											   false, true);
 
 		/* Remove the ROWNUM predicate from the WHERE clause */
 		andlist = list_delete_ptr(andlist, rownum_qual);
