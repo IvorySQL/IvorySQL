@@ -116,6 +116,20 @@ static SimpleEcontextStackEntry *simple_econtext_stack = NULL;
 static ResourceOwner shared_simple_eval_resowner = NULL;
 
 /*
+ * Stack of currently active execution states. The topmost entry is the
+ * currently executing function.
+ */
+static PLiSQL_execstate *active_estate = NULL;
+
+/*
+ * Pointer to the estate currently handling an exception. This is separate
+ * from active_estate because when we call functions (like DBMS_UTILITY
+ * package functions) from within an exception handler, active_estate
+ * changes but we still need access to the original handler's context.
+ */
+static PLiSQL_execstate *exception_handling_estate = NULL;
+
+/*
  * Memory management within a plisql function generally works with three
  * contexts:
  *
@@ -524,6 +538,7 @@ plisql_exec_function(PLiSQL_function * func, FunctionCallInfo fcinfo,
 	ErrorContextCallback plerrcontext;
 	int			i;
 	int			rc;
+	PLiSQL_execstate *save_active_estate;
 
 	char		function_from;
 	bool		anonymous_have_outparam = false;
@@ -532,6 +547,12 @@ plisql_exec_function(PLiSQL_function * func, FunctionCallInfo fcinfo,
 	Assert(fcinfo != NULL);
 
 	function_from = plisql_function_from(fcinfo);
+
+	/*
+	 * Save the previous active estate so we can restore it on exit.
+	 * Must save this BEFORE plisql_estate_setup() which will change it.
+	 */
+	save_active_estate = active_estate;
 
 	/*
 	 * Setup the execution state
@@ -972,6 +993,11 @@ plisql_exec_function(PLiSQL_function * func, FunctionCallInfo fcinfo,
 	}
 
 	/*
+	 * Restore the previous active estate
+	 */
+	active_estate = save_active_estate;
+
+	/*
 	 * Return the function's result
 	 */
 	return estate.retval;
@@ -1113,6 +1139,13 @@ plisql_exec_trigger(PLiSQL_function * func,
 	PLiSQL_rec *rec_new,
 			   *rec_old;
 	HeapTuple	rettup;
+	PLiSQL_execstate *save_active_estate;
+
+	/*
+	 * Save the previous active estate so we can restore it on exit.
+	 * Must save this BEFORE plisql_estate_setup() which will change it.
+	 */
+	save_active_estate = active_estate;
 
 	/*
 	 * Setup the execution state
@@ -1332,6 +1365,11 @@ plisql_exec_trigger(PLiSQL_function * func,
 	error_context_stack = plerrcontext.previous;
 
 	/*
+	 * Restore the previous active estate
+	 */
+	active_estate = save_active_estate;
+
+	/*
 	 * Return the trigger's result
 	 */
 	return rettup;
@@ -1348,6 +1386,13 @@ plisql_exec_event_trigger(PLiSQL_function * func, EventTriggerData *trigdata)
 	PLiSQL_execstate estate;
 	ErrorContextCallback plerrcontext;
 	int			rc;
+	PLiSQL_execstate *save_active_estate;
+
+	/*
+	 * Save the previous active estate so we can restore it on exit.
+	 * Must save this BEFORE plisql_estate_setup() which will change it.
+	 */
+	save_active_estate = active_estate;
 
 	/*
 	 * Setup the execution state
@@ -1405,6 +1450,11 @@ plisql_exec_event_trigger(PLiSQL_function * func, EventTriggerData *trigdata)
 	 * Pop the error context stack
 	 */
 	error_context_stack = plerrcontext.previous;
+
+	/*
+	 * Restore the previous active estate
+	 */
+	active_estate = save_active_estate;
 }
 
 /*
@@ -1978,6 +2028,7 @@ exec_stmt_block(PLiSQL_execstate * estate, PLiSQL_stmt_block * block)
 		ResourceOwner oldowner = CurrentResourceOwner;
 		ExprContext *old_eval_econtext = estate->eval_econtext;
 		ErrorData  *save_cur_error = estate->cur_error;
+		PLiSQL_execstate *save_exception_handling_estate = exception_handling_estate;
 		MemoryContext stmt_mcontext;
 
 		estate->err_text = gettext_noop("during statement block entry");
@@ -2127,9 +2178,39 @@ exec_stmt_block(PLiSQL_execstate * estate, PLiSQL_stmt_block * block)
 					 */
 					estate->cur_error = edata;
 
+					/*
+					 * Store the exception context string in estate storage
+					 * so that DBMS_UTILITY.FORMAT_ERROR_BACKTRACE and similar
+					 * functions can access it. This provides Oracle compatibility.
+					 * We use the estate's datum_context (SPI Proc context) for storage
+					 * so it's cleaned up automatically when the function completes.
+					 */
+					if (estate->current_exception_context)
+					{
+						pfree(estate->current_exception_context);
+						estate->current_exception_context = NULL;
+					}
+					if (edata->context)
+					{
+						estate->current_exception_context =
+							MemoryContextStrdup(estate->datum_context, edata->context);
+					}
+
 					estate->err_text = NULL;
 
+					/*
+					 * Set exception_handling_estate so that functions called
+					 * from within the exception handler (like DBMS_UTILITY
+					 * package functions) can access the exception context.
+					 */
+					exception_handling_estate = estate;
+
 					rc = exec_stmts(estate, exception->action);
+
+					/*
+					 * Restore exception_handling_estate after handler execution.
+					 */
+					exception_handling_estate = save_exception_handling_estate;
 
 					break;
 				}
@@ -2141,6 +2222,16 @@ exec_stmt_block(PLiSQL_execstate * estate, PLiSQL_stmt_block * block)
 			 * some inner block's exception handler.
 			 */
 			estate->cur_error = save_cur_error;
+
+			/*
+			 * Clear the exception context now that we've finished
+			 * handling the exception.
+			 */
+			if (estate->current_exception_context)
+			{
+				pfree(estate->current_exception_context);
+				estate->current_exception_context = NULL;
+			}
 
 			/* If no match found, re-throw the error */
 			if (e == NULL)
@@ -4367,6 +4458,10 @@ plisql_estate_setup(PLiSQL_execstate * estate,
 
 	estate->exitlabel = NULL;
 	estate->cur_error = NULL;
+	estate->current_exception_context = NULL;
+
+	/* Track this as the active estate for exception context access */
+	active_estate = estate;
 
 	estate->tuple_store = NULL;
 	estate->tuple_store_desc = NULL;
@@ -10040,4 +10135,27 @@ plisql_anonymous_return_out_parameter(PLiSQL_execstate * estate, PLiSQL_function
 	estate->retistuple = true;
 
 	return;
+}
+
+/*
+ * plisql_get_current_exception_context
+ *
+ * Returns the current exception context string if we're in an exception handler,
+ * otherwise returns NULL. This is used by Oracle-compatible functions like
+ * DBMS_UTILITY.FORMAT_ERROR_BACKTRACE.
+ *
+ * The returned string is managed by PL/iSQL and should not be freed by the caller.
+ */
+const char *
+plisql_get_current_exception_context(void)
+{
+	/*
+	 * Return the exception context from the estate currently handling
+	 * an exception. This is separate from active_estate because when
+	 * we call functions from within an exception handler, active_estate
+	 * changes but we still need access to the original handler's context.
+	 */
+	if (exception_handling_estate != NULL)
+		return exception_handling_estate->current_exception_context;
+	return NULL;
 }

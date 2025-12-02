@@ -41,6 +41,7 @@ OBJS = \
 	$(WIN32RES) \
 	pl_autonomous.o \
 	pl_comp.o \
+	pl_dbms_utility.o \
 	pl_exec.o \
 	pl_funcs.o \
 	pl_gram.o \
@@ -63,7 +64,7 @@ REGRESS = plisql_array plisql_call plisql_control plisql_copy plisql_domain \
 	plisql_record plisql_cache plisql_simple plisql_transaction \
 	plisql_trap plisql_trigger plisql_varprops plisql_nested_subproc \
 	plisql_nested_subproc2 plisql_out_parameter plisql_type_rowtype \
-	plisql_exception plisql_for_loop_implicit plisql_autonomous
+	plisql_exception plisql_for_loop_implicit plisql_autonomous dbms_utility
 
 # where to find ora_gen_keywordlist.pl and subsidiary files
 TOOLSDIR = $(top_srcdir)/src/tools
