@@ -201,6 +201,7 @@ ensure_lines_capacity(void)
  *
  * Add a completed line to the buffer.
  * Checks for buffer overflow based on byte usage (Oracle behavior).
+ * NULL lines are stored as NULL pointers (Oracle behavior).
  */
 static void
 add_line_to_buffer(const char *line)
@@ -210,7 +211,8 @@ add_line_to_buffer(const char *line)
 	char	   *line_copy;
 
 	/* Calculate bytes for this line (Oracle counts actual bytes) */
-	line_bytes = strlen(line);
+	/* NULL lines count as 0 bytes */
+	line_bytes = (line != NULL) ? strlen(line) : 0;
 
 	/* Check buffer overflow BEFORE adding (Oracle behavior) */
 	if (output_buffer->buffer_used + line_bytes > output_buffer->buffer_size)
@@ -224,7 +226,8 @@ add_line_to_buffer(const char *line)
 
 	/* Store line in buffer memory context */
 	oldcontext = MemoryContextSwitchTo(output_buffer->buffer_mcxt);
-	line_copy = pstrdup(line);
+	/* Store NULL as NULL pointer, not as empty string */
+	line_copy = (line != NULL) ? pstrdup(line) : NULL;
 	output_buffer->lines[output_buffer->line_count++] = line_copy;
 	output_buffer->buffer_used += line_bytes;
 	MemoryContextSwitchTo(oldcontext);
@@ -307,20 +310,24 @@ ora_dbms_output_disable(PG_FUNCTION_ARGS)
  *
  * Output a line to the buffer (with newline).
  * If there's pending PUT text, append it first (Oracle behavior).
- * Oracle behavior: NULL is treated as empty string.
+ * Oracle behavior: NULL stores actual NULL in buffer (not empty string).
  */
 Datum
 ora_dbms_output_put_line(PG_FUNCTION_ARGS)
 {
 	char	   *line_str;
+	bool		is_null = false;
 
 	/* Silently discard if buffer not enabled (Oracle behavior) */
 	if (output_buffer == NULL || !output_buffer->enabled)
 		PG_RETURN_VOID();
 
-	/* Handle NULL argument - treat as empty string (Oracle behavior) */
+	/* Handle NULL argument - Oracle stores actual NULL */
 	if (PG_ARGISNULL(0))
-		line_str = "";
+	{
+		line_str = NULL;
+		is_null = true;
+	}
 	else
 	{
 		text	   *line_text = PG_GETARG_TEXT_PP(0);
@@ -330,13 +337,15 @@ ora_dbms_output_put_line(PG_FUNCTION_ARGS)
 	/* If there's pending PUT text, append it first (Oracle behavior) */
 	if (output_buffer->current_line->len > 0)
 	{
-		appendStringInfoString(output_buffer->current_line, line_str);
+		/* Append non-NULL text to current line */
+		if (!is_null)
+			appendStringInfoString(output_buffer->current_line, line_str);
 		add_line_to_buffer(output_buffer->current_line->data);
 		resetStringInfo(output_buffer->current_line);
 	}
 	else
 	{
-		/* No pending PUT text, just add the line */
+		/* No pending PUT text, just add the line (may be NULL) */
 		add_line_to_buffer(line_str);
 	}
 
@@ -439,7 +448,16 @@ ora_dbms_output_get_line(PG_FUNCTION_ARGS)
 		/* Return next line */
 		char	   *line = output_buffer->lines[output_buffer->read_position++];
 
-		values[0] = CStringGetTextDatum(line);
+		/* Handle NULL lines (Oracle behavior: PUT_LINE(NULL) stores actual NULL) */
+		if (line == NULL)
+		{
+			nulls[0] = true;
+			values[0] = (Datum) 0;
+		}
+		else
+		{
+			values[0] = CStringGetTextDatum(line);
+		}
 		values[1] = Int32GetDatum(0);	/* status = 0 (success) */
 	}
 
@@ -493,17 +511,33 @@ ora_dbms_output_get_lines(PG_FUNCTION_ARGS)
 
 		if (actual_lines > 0)
 		{
+			bool	   *line_nulls;
+			int			lbound = 1;  /* 1-based array indexing */
+
 			line_datums = (Datum *) palloc(sizeof(Datum) * actual_lines);
+			line_nulls = (bool *) palloc(sizeof(bool) * actual_lines);
 
 			for (i = 0; i < actual_lines; i++)
 			{
 				char	   *line = output_buffer->lines[output_buffer->read_position++];
 
-				line_datums[i] = CStringGetTextDatum(line);
+				/* Handle NULL lines (Oracle behavior) */
+				if (line == NULL)
+				{
+					line_nulls[i] = true;
+					line_datums[i] = (Datum) 0;
+				}
+				else
+				{
+					line_nulls[i] = false;
+					line_datums[i] = CStringGetTextDatum(line);
+				}
 			}
 
-			lines_array = construct_array(line_datums, actual_lines, TEXTOID, -1, false, TYPALIGN_INT);
+			lines_array = construct_md_array(line_datums, line_nulls, 1, &actual_lines, &lbound,
+											 TEXTOID, -1, false, TYPALIGN_INT);
 			pfree(line_datums);
+			pfree(line_nulls);
 		}
 		else
 		{
