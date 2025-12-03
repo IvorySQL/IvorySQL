@@ -59,6 +59,9 @@ typedef struct DbmsOutputBuffer
 /* Global buffer - one per backend process */
 static DbmsOutputBuffer *output_buffer = NULL;
 
+/* Oracle line length limit: 32767 bytes per line */
+#define DBMS_OUTPUT_MAX_LINE_LENGTH 32767
+
 /* Internal function declarations */
 static void init_output_buffer(int buffer_size);
 static void cleanup_output_buffer(void);
@@ -311,12 +314,14 @@ ora_dbms_output_disable(PG_FUNCTION_ARGS)
  * Output a line to the buffer (with newline).
  * If there's pending PUT text, append it first (Oracle behavior).
  * Oracle behavior: NULL stores actual NULL in buffer (not empty string).
+ * Oracle behavior: raises ORU-10028 if line exceeds 32767 bytes.
  */
 Datum
 ora_dbms_output_put_line(PG_FUNCTION_ARGS)
 {
 	char	   *line_str;
 	bool		is_null = false;
+	int			line_len = 0;
 
 	/* Silently discard if buffer not enabled (Oracle behavior) */
 	if (output_buffer == NULL || !output_buffer->enabled)
@@ -332,11 +337,19 @@ ora_dbms_output_put_line(PG_FUNCTION_ARGS)
 	{
 		text	   *line_text = PG_GETARG_TEXT_PP(0);
 		line_str = text_to_cstring(line_text);
+		line_len = strlen(line_str);
 	}
 
 	/* If there's pending PUT text, append it first (Oracle behavior) */
 	if (output_buffer->current_line->len > 0)
 	{
+		/* Check line length limit BEFORE appending (Oracle behavior) */
+		if (output_buffer->current_line->len + line_len > DBMS_OUTPUT_MAX_LINE_LENGTH)
+			ereport(ERROR,
+					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+					 errmsg("ORU-10028: line length overflow, limit of %d bytes per line",
+							DBMS_OUTPUT_MAX_LINE_LENGTH)));
+
 		/* Append non-NULL text to current line */
 		if (!is_null)
 			appendStringInfoString(output_buffer->current_line, line_str);
@@ -345,7 +358,14 @@ ora_dbms_output_put_line(PG_FUNCTION_ARGS)
 	}
 	else
 	{
-		/* No pending PUT text, just add the line (may be NULL) */
+		/* No pending PUT text - check line length for direct add */
+		if (line_len > DBMS_OUTPUT_MAX_LINE_LENGTH)
+			ereport(ERROR,
+					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+					 errmsg("ORU-10028: line length overflow, limit of %d bytes per line",
+							DBMS_OUTPUT_MAX_LINE_LENGTH)));
+
+		/* Just add the line (may be NULL) */
 		add_line_to_buffer(line_str);
 	}
 
@@ -358,11 +378,13 @@ ora_dbms_output_put_line(PG_FUNCTION_ARGS)
  * Output text without newline (accumulates in current_line).
  * Oracle behavior: not retrievable until NEW_LINE or PUT_LINE is called.
  * Oracle behavior: NULL is treated as empty string (appends nothing).
+ * Oracle behavior: raises ORU-10028 if line exceeds 32767 bytes.
  */
 Datum
 ora_dbms_output_put(PG_FUNCTION_ARGS)
 {
 	char	   *str;
+	int			str_len;
 
 	/* Silently discard if buffer not enabled */
 	if (output_buffer == NULL || !output_buffer->enabled)
@@ -370,12 +392,21 @@ ora_dbms_output_put(PG_FUNCTION_ARGS)
 
 	/* Handle NULL argument - treat as empty string (Oracle behavior) */
 	if (PG_ARGISNULL(0))
-		str = "";
-	else
+		PG_RETURN_VOID();  /* NULL appends nothing */
+
 	{
 		text	   *text_arg = PG_GETARG_TEXT_PP(0);
 		str = text_to_cstring(text_arg);
 	}
+
+	str_len = strlen(str);
+
+	/* Check line length limit BEFORE appending (Oracle behavior) */
+	if (output_buffer->current_line->len + str_len > DBMS_OUTPUT_MAX_LINE_LENGTH)
+		ereport(ERROR,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("ORU-10028: line length overflow, limit of %d bytes per line",
+						DBMS_OUTPUT_MAX_LINE_LENGTH)));
 
 	/* Accumulate in current_line without creating a line yet */
 	appendStringInfoString(output_buffer->current_line, str);
