@@ -449,29 +449,29 @@ SELECT id, msg FROM autonomous_test WHERE id = 53;
 -- Test 19: Function returning DATE (pass-by-value)
 -- Tests date type handling
 --
-CREATE OR REPLACE FUNCTION test_function_date(p_days_offset INT) RETURN DATE AS
+CREATE OR REPLACE FUNCTION test_function_date(p_base_date DATE, p_days_offset INT) RETURN DATE AS
 DECLARE
     PRAGMA AUTONOMOUS_TRANSACTION;
     v_result DATE;
 BEGIN
-    v_result := CURRENT_DATE + p_days_offset;
+    v_result := p_base_date + p_days_offset;
     INSERT INTO autonomous_test VALUES (54, 'date: ' || v_result::TEXT, 'committed');
     RETURN v_result;
 END;
 /
 COMMIT;
 WARNING:  there is no transaction in progress
--- Returns date 7 days from now
-SELECT test_function_date(7) AS date_result;
+-- Returns date 7 days from base date (using fixed date for deterministic test)
+SELECT test_function_date('2025-01-01'::DATE, 7) AS date_result;
  date_result 
 -------------
- 2025-12-08
+ 2025-01-08
 (1 row)
 
 SELECT id, msg FROM autonomous_test WHERE id = 54;
  id |       msg        
 ----+------------------
- 54 | date: 2025-12-08
+ 54 | date: 2025-01-08
 (1 row)
 
 --
@@ -534,6 +534,6 @@ DROP FUNCTION test_function_text(TEXT);
 DROP FUNCTION inner_function(INT);
 DROP FUNCTION outer_function(INT);
 DROP FUNCTION test_function_numeric(NUMERIC);
-DROP FUNCTION test_function_date(INT);
+DROP FUNCTION test_function_date(DATE, INT);
 DROP FUNCTION test_function_boolean(INT);
 DROP TABLE autonomous_test;

@@ -500,7 +500,7 @@ static void plisql_anonymous_return_out_parameter(PLiSQL_execstate * estate, PLi
  *
  * @param func The PLiSQL_function descriptor to execute.
  * @param fcinfo Call context and argument/return storage (FunctionCallInfo).
- *               May be NULL in some internal contexts.
+ *               Must be non-NULL for executable calls.
  * @param simple_eval_estate Optional EState to use for simple-expression
  *               evaluation; pass NULL to use the session-shared evaluator.
  * @param simple_eval_resowner Optional ResourceOwner associated with
@@ -525,8 +525,13 @@ plisql_exec_function(PLiSQL_function * func, FunctionCallInfo fcinfo,
 	int			i;
 	int			rc;
 
-	char		function_from = plisql_function_from(fcinfo);
+	char		function_from;
 	bool		anonymous_have_outparam = false;
+
+	/* fcinfo must be non-NULL for executable calls */
+	Assert(fcinfo != NULL);
+
+	function_from = plisql_function_from(fcinfo);
 
 	/*
 	 * Setup the execution state
