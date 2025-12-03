@@ -201,9 +201,12 @@ extern PGDLLIMPORT int32 *LocalRefCount;
 /*
  * Buffer content lock modes (mode argument for LockBuffer())
  */
-#define BUFFER_LOCK_UNLOCK		0
-#define BUFFER_LOCK_SHARE		1
-#define BUFFER_LOCK_EXCLUSIVE	2
+typedef enum BufferLockMode
+{
+	BUFFER_LOCK_UNLOCK,
+	BUFFER_LOCK_SHARE,
+	BUFFER_LOCK_EXCLUSIVE,
+} BufferLockMode;
 
 
 /*
@@ -239,7 +242,7 @@ extern void WaitReadBuffers(ReadBuffersOperation *operation);
 extern void ReleaseBuffer(Buffer buffer);
 extern void UnlockReleaseBuffer(Buffer buffer);
 extern bool BufferIsLockedByMe(Buffer buffer);
-extern bool BufferIsLockedByMeInMode(Buffer buffer, int mode);
+extern bool BufferIsLockedByMeInMode(Buffer buffer, BufferLockMode mode);
 extern bool BufferIsDirty(Buffer buffer);
 extern void MarkBufferDirty(Buffer buffer);
 extern void IncrBufferRefCount(Buffer buffer);
@@ -300,7 +303,7 @@ extern void BufferGetTag(Buffer buffer, RelFileLocator *rlocator,
 extern void MarkBufferDirtyHint(Buffer buffer, bool buffer_std);
 
 extern void UnlockBuffers(void);
-extern void LockBuffer(Buffer buffer, int mode);
+extern void LockBuffer(Buffer buffer, BufferLockMode mode);
 extern bool ConditionalLockBuffer(Buffer buffer);
 extern void LockBufferForCleanup(Buffer buffer);
 extern bool ConditionalLockBufferForCleanup(Buffer buffer);
