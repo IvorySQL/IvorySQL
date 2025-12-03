@@ -35,4 +35,4 @@ jobs:
             --with-ossp-uuid  --with-libxml --with-libxslt  --with-perl \
             --with-icu --with-libnuma --enable-injection-points
     - name: compile
-      run: make
+      run: make CFLAGS="$CFLAGS  -Wshadow=compatible-local -Werror=missing-variable-declarations -Werror=maybe-uninitialized -Werror=unused-value -Werror=unused-but-set-variable -Werror=missing-prototypes -Werror=unused-variable"
