@@ -47,7 +47,7 @@ static const PsqlScanKeyword psqlplus_keywords[] = {
 	PSQL_KEYWORD("variable", K_VARIABLE, UNRESERVED_PSQL_KEYWORD)
 };
 
-const int	NumKeywords = lengthof(psqlplus_keywords);
+static const int	NumKeywords = lengthof(psqlplus_keywords);
 
 /*
  * Set the type of YYSTYPE.

@@ -71,8 +71,8 @@ typedef struct OraParamNumbers
 	struct OraParamNumbers* prev;
 }OraParamNumbers;
 
-OraParamNumbers *TopOraParamNode = NULL;
-OraParamNumbers *CurrentOraParamNode = NULL;
+static OraParamNumbers *TopOraParamNode = NULL;
+static OraParamNumbers *CurrentOraParamNode = NULL;
 
 /*
  * dynamic sql stmt parse information

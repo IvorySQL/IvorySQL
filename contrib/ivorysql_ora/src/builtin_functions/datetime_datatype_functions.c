@@ -153,7 +153,7 @@ static const int month_days[] = {
 	31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31
 };
 
-const char *const ora_days[] = {"Sunday", "Monday", "Tuesday", "Wednesday",
+static const char *const ora_days[] = {"Sunday", "Monday", "Tuesday", "Wednesday",
 "Thursday", "Friday", "Saturday", NULL};
 
 #define CASE_fmt_YYYY	case 0: case 1: case 2: case 3: case 4: case 5: case 6:
@@ -169,7 +169,7 @@ const char *const ora_days[] = {"Sunday", "Monday", "Tuesday", "Wednesday",
 #define CASE_fmt_HH	case 27: case 28: case 29:
 #define CASE_fmt_MI	case 30:
 
-const char *const date_fmt[] =
+static const char *const date_fmt[] =
 {
 	"Y", "Yy", "Yyy", "Yyyy", "Year", "Syyyy", "syear",
 	"I", "Iy", "Iyy", "Iyyy",
@@ -195,7 +195,7 @@ const char *const date_fmt[] =
 #define CASE_timezone_10	case 15: case 16:
 #define CASE_timezone_11	case 17:
 
-const char *const date_timezone[] =
+static const char *const date_timezone[] =
 {
 	"GMT", "ADT", "NST", "AST", "EDT", "CDT",
 	"EST", "CST", "MDT", "MST", "PDT", "PST",

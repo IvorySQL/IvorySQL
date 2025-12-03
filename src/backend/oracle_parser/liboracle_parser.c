@@ -49,7 +49,7 @@ PG_MODULE_MAGIC_EXT(
 static raw_parser_hook_type prev_raw_parser = NULL;
 static get_keywords_hook_type prev_pg_get_keywords = NULL;
 static fill_in_constant_lengths_hook_type prev_fill_in_contant_lengths = NULL;
-quote_identifier_hook_type prev_quote_identifier = NULL;
+static quote_identifier_hook_type prev_quote_identifier = NULL;
 
 void _PG_init(void);
 void _PG_fini(void);

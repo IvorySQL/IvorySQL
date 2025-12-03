@@ -19,6 +19,9 @@ jobs:
       if: ${{ matrix.os == 'ubuntu-latest' }}
       run: |
         sudo apt-get update
+        sudo apt-get install -y gcc-14 g++-14
+        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
+        sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
         sudo apt-get install -y build-essential git lcov bison flex \
               libkrb5-dev libssl-dev libldap-dev libpam-dev python3-dev \
               tcl-dev libperl-dev gettext libxml2-dev libxslt-dev \
@@ -35,4 +38,4 @@ jobs:
             --with-ossp-uuid  --with-libxml --with-libxslt  --with-perl \
             --with-icu --with-libnuma --enable-injection-points
     - name: compile
-      run: make
+      run: make CFLAGS="$CFLAGS  -Wshadow=compatible-local -Werror=missing-variable-declarations -Werror=maybe-uninitialized -Werror=unused-value -Werror=unused-but-set-variable -Werror=missing-prototypes -Werror=unused-variable"

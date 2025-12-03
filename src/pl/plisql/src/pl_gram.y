@@ -821,9 +821,10 @@ decl_statement	: decl_varname decl_const decl_datatype decl_collate decl_notnull
 					}
 				| decl_varname K_EXCEPTION ';'
 					{
-						PLiSQL_exception_var *exc;
+						/* PLiSQL_exception_var *exc;
 
-						exc = plisql_build_exception($1.name, $1.lineno, true);
+						exc = */
+						plisql_build_exception($1.name, $1.lineno, true);
 					}
 				| K_PRAGMA K_EXCEPTION_INIT '(' any_identifier ',' ICONST ')' ';'
 					{
