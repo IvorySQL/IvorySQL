@@ -19,7 +19,8 @@
  * package for IvorySQL.
  *
  * Provides session-level buffering for PUT_LINE, PUT, NEW_LINE,
- * GET_LINE, and GET_LINES functions with full Oracle compatibility.
+ * GET_LINE, and GET_LINES functions with high Oracle compatibility.
+ * See ora_dbms_output.sql tests for known behavioral differences.
  *
  * contrib/ivorysql_ora/src/builtin_packages/dbms_output/dbms_output.c
  *
@@ -83,14 +84,17 @@ PG_FUNCTION_INFO_V1(ora_dbms_output_get_lines);
  * init_output_buffer
  *
  * Initialize or re-initialize the output buffer.
- * CRITICAL: Oracle behavior - ENABLE always clears existing buffer.
+ *
+ * IvorySQL behavior: ENABLE always clears existing buffer.
+ * Note: Oracle preserves buffer on re-ENABLE; this is an intentional
+ * IvorySQL simplification. See GitHub issue #26 for tracking.
  */
 static void
 init_output_buffer(int buffer_size)
 {
 	MemoryContext oldcontext;
 
-	/* Oracle behavior: ENABLE always clears existing buffer */
+	/* IvorySQL behavior: ENABLE clears existing buffer (differs from Oracle) */
 	if (output_buffer != NULL)
 		cleanup_output_buffer();
 
@@ -266,8 +270,12 @@ dbms_output_xact_callback(XactEvent event, void *arg)
  *
  * Enable output buffering with optional size limit.
  * NULL parameter means UNLIMITED (Oracle 10g R2+).
- * Oracle constraints: 2000 to 1000000 bytes when explicitly specified.
- * Default (from SQL): 20000 bytes.
+ *
+ * IvorySQL-enforced range: 2000 to 1000000 bytes when explicitly specified.
+ * Note: Oracle silently clamps below-min values to 2000 and has no upper limit.
+ * See GitHub issue #22 for tracking this difference.
+ *
+ * Default (from SQL wrapper): 20000 bytes.
  */
 Datum
 ora_dbms_output_enable(PG_FUNCTION_ARGS)
@@ -281,7 +289,7 @@ ora_dbms_output_enable(PG_FUNCTION_ARGS)
 	{
 		buffer_size = PG_GETARG_INT32(0);
 
-		/* Oracle constraints: 2000 to 1000000 bytes when explicitly specified */
+		/* IvorySQL-enforced range (stricter than Oracle, see issue #22) */
 		if (buffer_size < 2000 || buffer_size > 1000000)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
