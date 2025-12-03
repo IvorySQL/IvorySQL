@@ -96,8 +96,8 @@ typedef struct SeqTableData
 typedef SeqTableData *SeqTable;
 
 static HTAB *seqhashtab = NULL; /* hash table for SeqTable items */
-int64	session_id = 0;
-int32	scale_value = 0;
+static int64	session_id = 0;
+static int32	scale_value = 0;
 
 /*
  * last_used_seq is updated by nextval() to point to the last used
