@@ -218,7 +218,8 @@ add_line_to_buffer(const char *line)
 	line_bytes = (line != NULL) ? strlen(line) : 0;
 
 	/* Check buffer overflow BEFORE adding (Oracle behavior) */
-	if (output_buffer->buffer_used + line_bytes > output_buffer->buffer_size)
+	/* Use subtraction to avoid potential integer overflow in addition */
+	if (line_bytes > output_buffer->buffer_size - output_buffer->buffer_used)
 		ereport(ERROR,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("ORU-10027: buffer overflow, limit of %d bytes",
@@ -519,6 +520,10 @@ ora_dbms_output_get_lines(PG_FUNCTION_ARGS)
 	HeapTuple	tuple;
 
 	requested_lines = PG_GETARG_INT32(0);
+
+	/* Normalize negative values to 0 (Oracle behavior) */
+	if (requested_lines < 0)
+		requested_lines = 0;
 
 	/* Build tuple descriptor for return type */
 	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
