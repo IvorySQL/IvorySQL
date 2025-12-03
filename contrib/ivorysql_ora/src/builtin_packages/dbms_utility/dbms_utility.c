@@ -29,6 +29,7 @@
 #include "postgres.h"
 #include "fmgr.h"
 #include "utils/builtins.h"
+#include "utils/errcodes.h"
 #include "mb/pg_wchar.h"
 
 #ifndef WIN32
@@ -36,52 +37,65 @@
 #endif
 
 PG_FUNCTION_INFO_V1(ora_format_error_backtrace);
+PG_FUNCTION_INFO_V1(ora_format_error_stack);
+PG_FUNCTION_INFO_V1(ora_format_call_stack);
 
 /*
- * Function pointer type for plisql_get_current_exception_context.
+ * Function pointer types for plisql API functions.
  * We use dynamic lookup to avoid link-time dependency on plisql.so.
  */
 typedef const char *(*plisql_get_context_fn)(void);
+typedef const char *(*plisql_get_message_fn)(void);
+typedef int (*plisql_get_sqlerrcode_fn)(void);
+typedef char *(*plisql_get_call_stack_fn)(void);
 
 /*
- * Cached function pointer for plisql_get_current_exception_context.
+ * Cached function pointers for plisql functions.
  * Looked up once on first use.
  */
 static plisql_get_context_fn get_exception_context_fn = NULL;
+static plisql_get_message_fn get_exception_message_fn = NULL;
+static plisql_get_sqlerrcode_fn get_exception_sqlerrcode_fn = NULL;
+static plisql_get_call_stack_fn get_call_stack_fn = NULL;
 static bool lookup_attempted = false;
 
 /*
- * Look up the plisql_get_current_exception_context function dynamically.
- * Returns the function pointer, or NULL if not found.
+ * Look up the plisql API functions dynamically.
+ * All lookups are attempted once and cached.
  */
-static plisql_get_context_fn
-lookup_plisql_get_exception_context(void)
+static void
+lookup_plisql_functions(void)
 {
-	void *fn;
-
 	if (lookup_attempted)
-		return get_exception_context_fn;
+		return;
 
 	lookup_attempted = true;
 
 #ifndef WIN32
 	/*
 	 * Use RTLD_DEFAULT to search all loaded shared objects.
-	 * plisql.so should already be loaded when this function is called
-	 * from within a PL/iSQL exception handler.
+	 * plisql.so should already be loaded when these functions are called
+	 * from within a PL/iSQL context.
 	 */
+	void *fn;
+
 	fn = dlsym(RTLD_DEFAULT, "plisql_get_current_exception_context");
 	if (fn != NULL)
 		get_exception_context_fn = (plisql_get_context_fn) fn;
-#else
-	/*
-	 * On Windows, we'd need to use GetProcAddress with the module handle.
-	 * For now, just return NULL - this feature requires plisql.
-	 */
-	fn = NULL;
-#endif
 
-	return get_exception_context_fn;
+	fn = dlsym(RTLD_DEFAULT, "plisql_get_current_exception_message");
+	if (fn != NULL)
+		get_exception_message_fn = (plisql_get_message_fn) fn;
+
+	fn = dlsym(RTLD_DEFAULT, "plisql_get_current_exception_sqlerrcode");
+	if (fn != NULL)
+		get_exception_sqlerrcode_fn = (plisql_get_sqlerrcode_fn) fn;
+
+	fn = dlsym(RTLD_DEFAULT, "plisql_get_call_stack");
+	if (fn != NULL)
+		get_call_stack_fn = (plisql_get_call_stack_fn) fn;
+#endif
+	/* On Windows, function pointers remain NULL - features require plisql */
 }
 
 /*
@@ -216,18 +230,17 @@ ora_format_error_backtrace(PG_FUNCTION_ARGS)
 	char	   *line;
 	char	   *saveptr;
 	StringInfoData result;
-	plisql_get_context_fn get_context;
 
-	/* Look up the PL/iSQL function dynamically */
-	get_context = lookup_plisql_get_exception_context();
-	if (get_context == NULL)
+	/* Look up the PL/iSQL functions dynamically */
+	lookup_plisql_functions();
+	if (get_exception_context_fn == NULL)
 	{
 		/* plisql not loaded or function not found */
 		PG_RETURN_NULL();
 	}
 
 	/* Get the current exception context from PL/iSQL */
-	pg_context = get_context();
+	pg_context = get_exception_context_fn();
 
 	/* If no context available (not in exception handler), return NULL */
 	if (pg_context == NULL || pg_context[0] == '\0')
@@ -250,6 +263,204 @@ ora_format_error_backtrace(PG_FUNCTION_ARGS)
 	}
 
 	pfree(context_copy);
+
+	PG_RETURN_TEXT_P(cstring_to_text(result.data));
+}
+
+/*
+ * Convert SQLSTATE error code to Oracle error number string.
+ * Oracle uses "ORA-XXXXX" format for most errors.
+ * For PL/SQL user-defined errors, uses "ORA-06510" (user-defined exception).
+ */
+static const char *
+sqlstate_to_ora_errnum(int sqlerrcode)
+{
+	/*
+	 * Map some common PostgreSQL SQLSTATE codes to Oracle error numbers.
+	 * For most cases, we use a generic error number.
+	 */
+	switch (sqlerrcode)
+	{
+		case ERRCODE_DIVISION_BY_ZERO:
+			return "ORA-01476";		/* divisor is equal to zero */
+		case ERRCODE_NO_DATA_FOUND:
+		case ERRCODE_NO_DATA:
+			return "ORA-01403";		/* no data found */
+		case ERRCODE_TOO_MANY_ROWS:
+			return "ORA-01422";		/* exact fetch returns more than requested number of rows */
+		case ERRCODE_NULL_VALUE_NOT_ALLOWED:
+			return "ORA-06502";		/* PL/SQL: numeric or value error */
+		case ERRCODE_INVALID_CURSOR_STATE:
+			return "ORA-01001";		/* invalid cursor */
+		case ERRCODE_RAISE_EXCEPTION:
+			return "ORA-06510";		/* PL/SQL: unhandled user-defined exception */
+		default:
+			return "ORA-06502";		/* PL/SQL: numeric or value error (generic) */
+	}
+}
+
+/*
+ * ora_format_error_stack - FORMAT_ERROR_STACK implementation
+ *
+ * Returns formatted error stack string in Oracle format.
+ * Returns NULL if not in exception handler context.
+ *
+ * Oracle format example:
+ *   ORA-06510: PL/SQL: unhandled user-defined exception
+ *   ORA-06512: at "SCOTT.TEST_PROC", line 5
+ */
+Datum
+ora_format_error_stack(PG_FUNCTION_ARGS)
+{
+	const char *message;
+	int sqlerrcode;
+	StringInfoData result;
+
+	/* Look up the PL/iSQL functions dynamically */
+	lookup_plisql_functions();
+	if (get_exception_message_fn == NULL || get_exception_sqlerrcode_fn == NULL)
+	{
+		/* plisql not loaded or function not found */
+		PG_RETURN_NULL();
+	}
+
+	/* Get the current exception message and code from PL/iSQL */
+	message = get_exception_message_fn();
+	sqlerrcode = get_exception_sqlerrcode_fn();
+
+	/* If no exception context (not in exception handler), return NULL */
+	if (message == NULL || sqlerrcode == 0)
+		PG_RETURN_NULL();
+
+	initStringInfo(&result);
+
+	/* Format: ORA-XXXXX: <message> */
+	appendStringInfo(&result, "%s: %s\n", sqlstate_to_ora_errnum(sqlerrcode), message);
+
+	PG_RETURN_TEXT_P(cstring_to_text(result.data));
+}
+
+/*
+ * ora_format_call_stack - FORMAT_CALL_STACK implementation
+ *
+ * Returns formatted call stack string in Oracle format.
+ * Returns NULL if not in any PL/iSQL function.
+ *
+ * Oracle format example:
+ *   ----- PL/SQL Call Stack -----
+ *     object      line  object
+ *     handle    number  name
+ *   0x7f8b0c0     5  procedure SCOTT.INNER_PROC
+ *   0x7f8b0a0     3  procedure SCOTT.OUTER_PROC
+ *   0x7f8b080     2  anonymous block
+ */
+Datum
+ora_format_call_stack(PG_FUNCTION_ARGS)
+{
+	char *raw_stack;
+	char *stack_copy;
+	char *line;
+	char *saveptr;
+	StringInfoData result;
+	int frame_count = 0;
+	bool found_any = false;
+
+	/* Look up the PL/iSQL functions dynamically */
+	lookup_plisql_functions();
+	if (get_call_stack_fn == NULL)
+	{
+		/* plisql not loaded or function not found */
+		PG_RETURN_NULL();
+	}
+
+	/* Get the current call stack from PL/iSQL */
+	raw_stack = get_call_stack_fn();
+
+	/* If no call stack (not in any PL/iSQL function), return NULL */
+	if (raw_stack == NULL)
+		PG_RETURN_NULL();
+
+	initStringInfo(&result);
+
+	/* Add Oracle-style header */
+	appendStringInfo(&result, "----- PL/SQL Call Stack -----\n");
+	appendStringInfo(&result, "  object      line  object\n");
+	appendStringInfo(&result, "  handle    number  name\n");
+
+	/*
+	 * Parse the raw stack returned by plisql_get_call_stack.
+	 * Format from plisql: "handle\tlineno\tsignature" per line
+	 *
+	 * Skip the first frame which is the FORMAT_CALL_STACK package function.
+	 */
+	stack_copy = pstrdup(raw_stack);
+	line = strtok_r(stack_copy, "\n", &saveptr);
+
+	while (line != NULL)
+	{
+		char *handle_str;
+		char *lineno_str;
+		char *signature;
+		char *tab1;
+		char *tab2;
+		char *func_upper;
+		int i;
+
+		frame_count++;
+
+		/* Skip the first frame (FORMAT_CALL_STACK itself) */
+		if (frame_count == 1)
+		{
+			line = strtok_r(NULL, "\n", &saveptr);
+			continue;
+		}
+
+		/* Parse: handle\tlineno\tsignature */
+		tab1 = strchr(line, '\t');
+		if (!tab1)
+		{
+			line = strtok_r(NULL, "\n", &saveptr);
+			continue;
+		}
+
+		handle_str = pnstrdup(line, tab1 - line);
+		tab2 = strchr(tab1 + 1, '\t');
+		if (!tab2)
+		{
+			pfree(handle_str);
+			line = strtok_r(NULL, "\n", &saveptr);
+			continue;
+		}
+
+		lineno_str = pnstrdup(tab1 + 1, tab2 - tab1 - 1);
+		signature = tab2 + 1;
+
+		/* Convert function name to uppercase for Oracle compatibility */
+		func_upper = pstrdup(signature);
+		for (i = 0; func_upper[i]; i++)
+			func_upper[i] = pg_toupper((unsigned char) func_upper[i]);
+
+		/* Format each stack frame */
+		appendStringInfo(&result, "%s  %5s  function %s\n",
+						 handle_str, lineno_str, func_upper);
+		found_any = true;
+
+		pfree(handle_str);
+		pfree(lineno_str);
+		pfree(func_upper);
+
+		line = strtok_r(NULL, "\n", &saveptr);
+	}
+
+	pfree(stack_copy);
+	pfree(raw_stack);
+
+	/* If we only had the FORMAT_CALL_STACK frame, return NULL */
+	if (!found_any)
+	{
+		pfree(result.data);
+		PG_RETURN_NULL();
+	}
 
 	PG_RETURN_TEXT_P(cstring_to_text(result.data));
 }

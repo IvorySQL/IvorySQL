@@ -10079,3 +10079,88 @@ plisql_get_current_exception_context(void)
 		return exception_handling_estate->cur_error->context;
 	return NULL;
 }
+
+/*
+ * plisql_get_current_exception_message
+ *
+ * Returns the current exception message if we're in an exception handler,
+ * otherwise returns NULL. This is used by DBMS_UTILITY.FORMAT_ERROR_STACK.
+ */
+const char *
+plisql_get_current_exception_message(void)
+{
+	if (exception_handling_estate != NULL &&
+		exception_handling_estate->cur_error != NULL)
+		return exception_handling_estate->cur_error->message;
+	return NULL;
+}
+
+/*
+ * plisql_get_current_exception_sqlerrcode
+ *
+ * Returns the current exception SQLSTATE error code if we're in an exception handler,
+ * otherwise returns 0. This is used by DBMS_UTILITY.FORMAT_ERROR_STACK.
+ */
+int
+plisql_get_current_exception_sqlerrcode(void)
+{
+	if (exception_handling_estate != NULL &&
+		exception_handling_estate->cur_error != NULL)
+		return exception_handling_estate->cur_error->sqlerrcode;
+	return 0;
+}
+
+/*
+ * plisql_get_call_stack
+ *
+ * Returns the current PL/iSQL call stack as a formatted string.
+ * This walks the error_context_stack looking for PL/iSQL function contexts.
+ * Used by DBMS_UTILITY.FORMAT_CALL_STACK.
+ *
+ * Returns NULL if not inside any PL/iSQL function.
+ * The returned string is palloc'd in the current memory context.
+ */
+char *
+plisql_get_call_stack(void)
+{
+	ErrorContextCallback *context;
+	StringInfoData buf;
+	bool found_any = false;
+
+	initStringInfo(&buf);
+
+	/* Walk the error context stack */
+	for (context = error_context_stack; context != NULL; context = context->previous)
+	{
+		/* Check if this is a PL/iSQL execution context */
+		if (context->callback == plisql_exec_error_callback)
+		{
+			PLiSQL_execstate *estate = (PLiSQL_execstate *) context->arg;
+			int lineno = 0;
+
+			/* Get current line number */
+			if (estate->err_stmt != NULL)
+				lineno = estate->err_stmt->lineno;
+			else if (estate->err_var != NULL)
+				lineno = estate->err_var->lineno;
+
+			/* Add to stack output */
+			if (found_any)
+				appendStringInfoChar(&buf, '\n');
+
+			appendStringInfo(&buf, "%p\t%d\t%s",
+							 (void *) estate->func,
+							 lineno,
+							 estate->func->fn_signature);
+			found_any = true;
+		}
+	}
+
+	if (!found_any)
+	{
+		pfree(buf.data);
+		return NULL;
+	}
+
+	return buf.data;
+}

@@ -268,3 +268,174 @@ CALL test_nested_outer();
 
 DROP PROCEDURE test_nested_outer;
 DROP PROCEDURE test_nested_inner;
+
+-- ============================================================
+-- Tests for FORMAT_ERROR_STACK
+-- ============================================================
+
+-- Test 11: FORMAT_ERROR_STACK - Basic exception
+CREATE OR REPLACE PROCEDURE test_error_stack_basic AS
+  v_stack VARCHAR2(4000);
+BEGIN
+  RAISE EXCEPTION 'Test error message';
+EXCEPTION
+  WHEN OTHERS THEN
+    v_stack := DBMS_UTILITY.FORMAT_ERROR_STACK;
+    RAISE INFO 'Error stack: %', v_stack;
+END;
+/
+
+CALL test_error_stack_basic();
+
+DROP PROCEDURE test_error_stack_basic;
+
+-- Test 12: FORMAT_ERROR_STACK - Division by zero
+CREATE OR REPLACE PROCEDURE test_error_stack_divzero AS
+  v_stack VARCHAR2(4000);
+  v_num NUMBER;
+BEGIN
+  v_num := 1 / 0;
+EXCEPTION
+  WHEN OTHERS THEN
+    v_stack := DBMS_UTILITY.FORMAT_ERROR_STACK;
+    RAISE INFO 'Division error stack: %', v_stack;
+END;
+/
+
+CALL test_error_stack_divzero();
+
+DROP PROCEDURE test_error_stack_divzero;
+
+-- Test 13: FORMAT_ERROR_STACK - No exception (should return NULL)
+CREATE OR REPLACE PROCEDURE test_error_stack_no_error AS
+  v_stack VARCHAR2(4000);
+BEGIN
+  v_stack := DBMS_UTILITY.FORMAT_ERROR_STACK;
+  RAISE INFO 'No error - stack: [%]', v_stack;
+END;
+/
+
+CALL test_error_stack_no_error();
+
+DROP PROCEDURE test_error_stack_no_error;
+
+-- ============================================================
+-- Tests for FORMAT_CALL_STACK
+-- ============================================================
+
+-- Test 14: FORMAT_CALL_STACK - Basic single procedure (verify structure)
+-- Note: Addresses vary between runs, so we just verify the stack is not null
+-- and contains the expected function name pattern
+CREATE OR REPLACE PROCEDURE test_call_stack_basic AS
+  v_stack VARCHAR2(4000);
+BEGIN
+  v_stack := DBMS_UTILITY.FORMAT_CALL_STACK;
+  IF v_stack IS NOT NULL AND v_stack LIKE '%----- PL/SQL Call Stack -----%' THEN
+    -- Extract just the function name part for verification
+    IF v_stack LIKE '%TEST_CALL_STACK_BASIC%' THEN
+      RAISE INFO 'Call stack contains expected function';
+    END IF;
+  END IF;
+END;
+/
+
+CALL test_call_stack_basic();
+
+DROP PROCEDURE test_call_stack_basic;
+
+-- Test 15: FORMAT_CALL_STACK - Nested procedure calls (verify count)
+CREATE OR REPLACE PROCEDURE test_call_stack_level3 AS
+  v_stack VARCHAR2(4000);
+  v_count INTEGER;
+BEGIN
+  v_stack := DBMS_UTILITY.FORMAT_CALL_STACK;
+  -- Count the number of function entries (look for 'function ' pattern)
+  v_count := (LENGTH(v_stack) - LENGTH(REPLACE(v_stack, 'function ', ''))) / 9;
+  RAISE INFO 'Call stack has % function entries', v_count;
+END;
+/
+
+CREATE OR REPLACE PROCEDURE test_call_stack_level2 AS
+BEGIN
+  test_call_stack_level3();
+END;
+/
+
+CREATE OR REPLACE PROCEDURE test_call_stack_level1 AS
+BEGIN
+  test_call_stack_level2();
+END;
+/
+
+CALL test_call_stack_level1();
+
+DROP PROCEDURE test_call_stack_level1;
+DROP PROCEDURE test_call_stack_level2;
+DROP PROCEDURE test_call_stack_level3;
+
+-- Test 16: FORMAT_CALL_STACK - In exception handler
+CREATE OR REPLACE PROCEDURE test_call_stack_exception AS
+  v_stack VARCHAR2(4000);
+BEGIN
+  RAISE EXCEPTION 'Test error';
+EXCEPTION
+  WHEN OTHERS THEN
+    v_stack := DBMS_UTILITY.FORMAT_CALL_STACK;
+    IF v_stack IS NOT NULL AND v_stack LIKE '%TEST_CALL_STACK_EXCEPTION%' THEN
+      RAISE INFO 'Call stack in exception handler: OK';
+    END IF;
+END;
+/
+
+CALL test_call_stack_exception();
+
+DROP PROCEDURE test_call_stack_exception;
+
+-- Test 17: All three functions together (verify they return expected content)
+CREATE OR REPLACE PROCEDURE test_all_functions_inner AS
+BEGIN
+  RAISE EXCEPTION 'Inner error for all functions test';
+END;
+/
+
+CREATE OR REPLACE PROCEDURE test_all_functions_outer AS
+  v_backtrace VARCHAR2(4000);
+  v_error_stack VARCHAR2(4000);
+  v_call_stack VARCHAR2(4000);
+  v_all_ok BOOLEAN := TRUE;
+BEGIN
+  test_all_functions_inner();
+EXCEPTION
+  WHEN OTHERS THEN
+    v_backtrace := DBMS_UTILITY.FORMAT_ERROR_BACKTRACE;
+    v_error_stack := DBMS_UTILITY.FORMAT_ERROR_STACK;
+    v_call_stack := DBMS_UTILITY.FORMAT_CALL_STACK;
+
+    -- Verify FORMAT_ERROR_BACKTRACE
+    IF v_backtrace IS NULL OR v_backtrace NOT LIKE '%ORA-06512%' THEN
+      v_all_ok := FALSE;
+      RAISE INFO 'FORMAT_ERROR_BACKTRACE: FAILED';
+    END IF;
+
+    -- Verify FORMAT_ERROR_STACK
+    IF v_error_stack IS NULL OR v_error_stack NOT LIKE '%ORA-%' THEN
+      v_all_ok := FALSE;
+      RAISE INFO 'FORMAT_ERROR_STACK: FAILED';
+    END IF;
+
+    -- Verify FORMAT_CALL_STACK
+    IF v_call_stack IS NULL OR v_call_stack NOT LIKE '%----- PL/SQL Call Stack -----%' THEN
+      v_all_ok := FALSE;
+      RAISE INFO 'FORMAT_CALL_STACK: FAILED';
+    END IF;
+
+    IF v_all_ok THEN
+      RAISE INFO 'All three DBMS_UTILITY functions: OK';
+    END IF;
+END;
+/
+
+CALL test_all_functions_outer();
+
+DROP PROCEDURE test_all_functions_outer;
+DROP PROCEDURE test_all_functions_inner;

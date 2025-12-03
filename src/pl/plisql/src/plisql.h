@@ -1465,5 +1465,8 @@ extern int	plisql_yyparse(PLiSQL_stmt_block * *plisql_parse_result_p,
  * Externs in pl_exec.c for exception context access (used by DBMS_UTILITY)
  */
 extern PGDLLEXPORT const char *plisql_get_current_exception_context(void);
+extern PGDLLEXPORT const char *plisql_get_current_exception_message(void);
+extern PGDLLEXPORT int plisql_get_current_exception_sqlerrcode(void);
+extern PGDLLEXPORT char *plisql_get_call_stack(void);
 
 #endif							/* PLISQL_H */
