@@ -501,6 +501,48 @@ END;
 /
 
 -- =============================================================================
+-- Section 9: Line Length Limit (32767 bytes)
+-- =============================================================================
+-- Test 9.1: PUT_LINE at exactly 32767 bytes (should succeed)
+DECLARE
+    long_line TEXT := repeat('X', 32767);
+    line TEXT;
+    status INTEGER;
+BEGIN
+    dbms_output.enable(100000);
+    dbms_output.put_line(long_line);
+    dbms_output.get_line(line, status);
+    RAISE NOTICE 'Test 9.1 - Max line (32767 bytes): length=%, Status=%', length(line), status;
+END;
+/
+
+-- Test 9.2: PUT_LINE exceeding 32767 bytes (should fail with ORU-10028)
+DECLARE
+    long_line TEXT := repeat('X', 32768);
+BEGIN
+    dbms_output.enable(100000);
+    dbms_output.put_line(long_line);
+    RAISE NOTICE 'Test 9.2 - Should not reach here';
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'Test 9.2 - Line overflow error: %', SQLERRM;
+END;
+/
+
+-- Test 9.3: PUT accumulating to exceed 32767 bytes (should fail with ORU-10028)
+DECLARE
+    chunk TEXT := repeat('X', 32767);
+BEGIN
+    dbms_output.enable(100000);
+    dbms_output.put(chunk);
+    dbms_output.put('Y');  -- This triggers the overflow
+    dbms_output.new_line();
+    RAISE NOTICE 'Test 9.3 - Should not reach here';
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'Test 9.3 - PUT overflow error: %', SQLERRM;
+END;
+/
+
+-- =============================================================================
 -- Cleanup
 -- =============================================================================
 DROP PROCEDURE test_output_proc;
