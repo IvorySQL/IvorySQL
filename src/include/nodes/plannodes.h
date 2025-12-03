@@ -359,6 +359,12 @@ typedef struct Append
 	 * run-time pruning is used.
 	 */
 	int			part_prune_index;
+
+	/*
+	 * True if this Append is from a UNION/UNION ALL operation. Used to reset
+	 * ROWNUM counter when switching between UNION branches (Oracle behavior).
+	 */
+	bool		is_union;
 } Append;
 
 /* ----------------
@@ -398,6 +404,12 @@ typedef struct MergeAppend
 	 * run-time pruning is used.
 	 */
 	int			part_prune_index;
+
+	/*
+	 * True if this MergeAppend is from a UNION/UNION ALL operation. Used to
+	 * reset ROWNUM counter before each branch starts (Oracle behavior).
+	 */
+	bool		is_union;
 } MergeAppend;
 
 /* ----------------

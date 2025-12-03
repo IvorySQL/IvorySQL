@@ -9337,6 +9337,7 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 		case T_SQLValueFunction:
 		case T_XmlExpr:
 		case T_NextValueExpr:
+		case T_RownumExpr:
 		case T_NullIfExpr:
 		case T_Aggref:
 		case T_GroupingFunc:
@@ -10835,6 +10836,11 @@ get_rule_expr(Node *node, deparse_context *context,
 															NIL));
 				appendStringInfoChar(buf, ')');
 			}
+			break;
+
+		case T_RownumExpr:
+			/* Oracle ROWNUM pseudocolumn */
+			appendStringInfoString(buf, "ROWNUM");
 			break;
 
 		case T_InferenceElem:
