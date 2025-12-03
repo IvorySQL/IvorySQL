@@ -35,4 +35,4 @@ jobs:
             --with-ossp-uuid  --with-libxml --with-libxslt  --with-perl \
             --with-icu --with-libnuma --enable-injection-points
     - name: compile
-      run: make
+      run: make CFLAGS="$CFLAGS -Werror -Wshadow"
