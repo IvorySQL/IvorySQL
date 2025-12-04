@@ -1,0 +1,27 @@
+<!--
+doc/src/sgml/ref/drop_package.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-droppackage">
+ <indexterm zone="sql-droppackage">
+  <primary>DROP PACKAGE</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>DROP PACKAGE</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>DROP PACKAGE</refname>
+  <refpurpose>drop a package</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+DROP PACKAGE [BODY] [schema.] <replaceable class="parameter">package_name</replaceable> ;
+</synopsis>
+</refsynopsisdiv>
+</refentry>

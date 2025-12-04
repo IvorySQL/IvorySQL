@@ -1,0 +1,33 @@
+<!--
+doc/src/sgml/ref/alter_package.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-alterpackage">
+ <indexterm zone="sql-alterpackage">
+  <primary>ALTER PACKAGE</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>ALTER PACKAGE</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>ALTER PACKAGE</refname>
+  <refpurpose>alter a package</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+ALTER PACKAGE [schema.] <replaceable class="parameter">package_name</replaceable> { package_compile_clause | { EDITIONABLE | NONEDITIONABLE } } ;
+
+package_compile_clause:
+    COMPILE [ DEBUG ] [ compiler_parameters_clause ... ] [ REUSE SETTINGS ]
+	
+compiler_parameters_clause:
+    parameter_name = parameter_value
+</synopsis>
+</refsynopsisdiv>
+</refentry>
