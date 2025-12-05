@@ -429,6 +429,29 @@ SELECT test_function_boolean(25) AS bool_false_result;
 SELECT id, msg FROM autonomous_test WHERE id = 55 ORDER BY id;
 
 --
+-- Test 21: Autonomous transaction in package procedure
+-- Tests that PRAGMA AUTONOMOUS_TRANSACTION works inside package bodies
+--
+CREATE OR REPLACE PACKAGE test_pkg AUTHID DEFINER AS
+  PROCEDURE pkg_test_with_params(p_id INT, p_msg TEXT);
+END;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_pkg AS
+  PROCEDURE pkg_test_with_params(p_id INT, p_msg TEXT) AS
+    PRAGMA AUTONOMOUS_TRANSACTION;
+  BEGIN
+    INSERT INTO autonomous_test VALUES (p_id, p_msg, 'committed');
+  END pkg_test_with_params;
+END test_pkg;
+/
+
+COMMIT;
+
+CALL test_pkg.pkg_test_with_params(76, 'package procedure test');
+SELECT id, msg FROM autonomous_test WHERE id = 76;
+
+--
 -- Summary: Show all test results
 --
 SELECT 'All autonomous transaction tests completed' AS status;
@@ -451,4 +474,6 @@ DROP FUNCTION outer_function(INT);
 DROP FUNCTION test_function_numeric(NUMERIC);
 DROP FUNCTION test_function_date(DATE, INT);
 DROP FUNCTION test_function_boolean(INT);
+DROP PACKAGE BODY test_pkg;
+DROP PACKAGE test_pkg;
 DROP TABLE autonomous_test;
