@@ -1064,6 +1064,7 @@ typedef struct PLiSQL_function
 	unsigned int nstatements;	/* counter for assigning stmtids */
 	bool		requires_procedure_resowner;	/* contains CALL or DO? */
 	bool		has_exception_block;	/* contains BEGIN...EXCEPTION? */
+	bool		fn_is_autonomous;	/* PRAGMA AUTONOMOUS_TRANSACTION? */
 
 	/* these fields change when the function is used */
 	struct PLiSQL_execstate *cur_estate;
@@ -1275,6 +1276,8 @@ extern int	plisql_variable_conflict;
 extern bool plisql_print_strict_params;
 
 extern bool plisql_check_asserts;
+
+extern bool plisql_inside_autonomous_transaction;
 
 /* extra compile-time and run-time checks */
 #define PLISQL_XCHECK_NONE 0
