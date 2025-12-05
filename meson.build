@@ -9,7 +9,7 @@
 
 project('postgresql',
   ['c'],
-  version: '18.0',
+  version: '18.1',
   license: 'PostgreSQL',
 
   # We want < 0.56 for python 3.5 compatibility on old platforms. EPEL for
@@ -28,7 +28,7 @@ project('postgresql',
 )
 
 # IvorySQL version
-ivorysql_version = '5.0'
+ivorysql_version = '5.1'
 
 
 ###############################################################
@@ -1587,7 +1587,10 @@ if uuidopt != 'none'
   elif uuidopt == 'ossp'
     # In upstream, the package and library is called just 'uuid', but many
     # distros change it to 'ossp-uuid'.
-    uuid = dependency('ossp-uuid', 'uuid', required: false)
+    uuid = dependency('ossp-uuid', required: false)
+    if not uuid.found()
+      uuid = dependency('uuid', required: false)
+    endif
     uuidfunc = 'uuid_export'
     uuidheader = 'uuid.h'
 

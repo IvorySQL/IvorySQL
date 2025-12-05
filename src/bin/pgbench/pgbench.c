@@ -3059,7 +3059,14 @@ commandFailed(CState *st, const char *cmd, const char *message)
 static void
 commandError(CState *st, const char *message)
 {
-	Assert(sql_script[st->use_file].commands[st->command]->type == SQL_COMMAND);
+	/*
+	 * Errors should only be detected during an SQL command or the
+	 * \endpipeline meta command. Any other case triggers an assertion
+	 * failure.
+	 */
+	Assert(sql_script[st->use_file].commands[st->command]->type == SQL_COMMAND ||
+		   sql_script[st->use_file].commands[st->command]->meta == META_ENDPIPELINE);
+
 	pg_log_info("client %d got an error in command %d (SQL) of script %d; %s",
 				st->id, st->command, st->use_file, message);
 }
@@ -3349,8 +3356,22 @@ readCommandResponse(CState *st, MetaCommand meta, char *varprefix)
 				st->num_syncs--;
 				if (st->num_syncs == 0 && PQexitPipelineMode(st->con) != 1)
 					pg_log_error("client %d failed to exit pipeline mode: %s", st->id,
-								 PQerrorMessage(st->con));
+								 PQresultErrorMessage(res));
 				break;
+
+			case PGRES_COPY_IN:
+			case PGRES_COPY_OUT:
+			case PGRES_COPY_BOTH:
+				pg_log_error("COPY is not supported in pgbench, aborting");
+
+				/*
+				 * We need to exit the copy state.  Otherwise, PQgetResult()
+				 * will always return an empty PGresult as an effect of
+				 * getCopyResult(), leading to an infinite loop in the error
+				 * cleanup done below.
+				 */
+				PQendcopy(st->con);
+				goto error;
 
 			case PGRES_NONFATAL_ERROR:
 			case PGRES_FATAL_ERROR:
@@ -3359,7 +3380,7 @@ readCommandResponse(CState *st, MetaCommand meta, char *varprefix)
 				if (canRetryError(st->estatus))
 				{
 					if (verbose_errors)
-						commandError(st, PQerrorMessage(st->con));
+						commandError(st, PQresultErrorMessage(res));
 					goto error;
 				}
 				/* fall through */
@@ -3368,7 +3389,7 @@ readCommandResponse(CState *st, MetaCommand meta, char *varprefix)
 				/* anything else is unexpected */
 				pg_log_error("client %d script %d aborted in command %d query %d: %s",
 							 st->id, st->use_file, st->command, qrynum,
-							 PQerrorMessage(st->con));
+							 PQresultErrorMessage(res));
 				goto error;
 		}
 

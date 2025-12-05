@@ -83,6 +83,14 @@ DROP STATISTICS ab1_a_b_stats;
 ALTER STATISTICS ab1_a_b_stats RENAME TO ab1_a_b_stats_new;
 RESET SESSION AUTHORIZATION;
 DROP ROLE regress_stats_ext;
+CREATE STATISTICS pg_temp.stats_ext_temp ON a, b FROM ab1;
+SELECT regexp_replace(pg_describe_object(tableoid, oid, 0),
+                      'pg_temp_[0-9]*', 'pg_temp_REDACTED') AS descr,
+       pg_statistics_obj_is_visible(oid) AS visible
+  FROM pg_statistic_ext
+ WHERE stxname = 'stats_ext_temp';
+DROP STATISTICS stats_ext_temp;  -- shall fail
+DROP STATISTICS pg_temp.stats_ext_temp;
 
 CREATE STATISTICS IF NOT EXISTS ab1_a_b_stats ON a, b FROM ab1;
 DROP STATISTICS ab1_a_b_stats;
@@ -1751,6 +1759,39 @@ SELECT statistics_name, most_common_vals FROM pg_stats_ext x
 SELECT statistics_name, most_common_vals FROM pg_stats_ext_exprs x
     WHERE tablename = 'stats_ext_tbl' ORDER BY ROW(x.*);
 
+-- CREATE STATISTICS checks for CREATE on the schema
+RESET SESSION AUTHORIZATION;
+CREATE SCHEMA sts_sch1 CREATE TABLE sts_sch1.tbl (a INT, b INT, c INT GENERATED ALWAYS AS (b * 2) STORED);
+CREATE SCHEMA sts_sch2;
+GRANT USAGE ON SCHEMA sts_sch1, sts_sch2 TO regress_stats_user1;
+ALTER TABLE sts_sch1.tbl OWNER TO regress_stats_user1;
+SET SESSION AUTHORIZATION regress_stats_user1;
+CREATE STATISTICS ON a, b, c FROM sts_sch1.tbl;
+CREATE STATISTICS sts_sch2.fail ON a, b, c FROM sts_sch1.tbl;
+RESET SESSION AUTHORIZATION;
+GRANT CREATE ON SCHEMA sts_sch1 TO regress_stats_user1;
+SET SESSION AUTHORIZATION regress_stats_user1;
+CREATE STATISTICS ON a, b, c FROM sts_sch1.tbl;
+CREATE STATISTICS sts_sch2.fail ON a, b, c FROM sts_sch1.tbl;
+RESET SESSION AUTHORIZATION;
+REVOKE CREATE ON SCHEMA sts_sch1 FROM regress_stats_user1;
+GRANT CREATE ON SCHEMA sts_sch2 TO regress_stats_user1;
+SET SESSION AUTHORIZATION regress_stats_user1;
+CREATE STATISTICS ON a, b, c FROM sts_sch1.tbl;
+CREATE STATISTICS sts_sch2.pass1 ON a, b, c FROM sts_sch1.tbl;
+RESET SESSION AUTHORIZATION;
+GRANT CREATE ON SCHEMA sts_sch1, sts_sch2 TO regress_stats_user1;
+SET SESSION AUTHORIZATION regress_stats_user1;
+CREATE STATISTICS ON a, b, c FROM sts_sch1.tbl;
+CREATE STATISTICS sts_sch2.pass2 ON a, b, c FROM sts_sch1.tbl;
+
+-- re-creating statistics via ALTER TABLE bypasses checks for CREATE on schema
+RESET SESSION AUTHORIZATION;
+REVOKE CREATE ON SCHEMA sts_sch1, sts_sch2 FROM regress_stats_user1;
+SET SESSION AUTHORIZATION regress_stats_user1;
+ALTER TABLE sts_sch1.tbl ALTER COLUMN a TYPE SMALLINT;
+ALTER TABLE sts_sch1.tbl ALTER COLUMN c SET EXPRESSION AS (a * 3);
+
 -- Tidy up
 DROP OPERATOR <<< (int, int);
 DROP FUNCTION op_leak(int, int);
@@ -1759,6 +1800,7 @@ DROP FUNCTION op_leak(record, record);
 RESET SESSION AUTHORIZATION;
 DROP TABLE stats_ext_tbl;
 DROP SCHEMA tststats CASCADE;
+DROP SCHEMA sts_sch1, sts_sch2 CASCADE;
 DROP USER regress_stats_user1;
 
 CREATE TABLE grouping_unique (x integer);

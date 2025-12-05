@@ -832,6 +832,9 @@ ALTER TABLE notnull_tbl1 ADD CONSTRAINT nn NOT NULL a;
 -- cannot add primary key on a column with an invalid not-null
 ALTER TABLE notnull_tbl1 ADD PRIMARY KEY (a);
 
+-- cannot set column as generated-as-identity if it has an invalid not-null
+ALTER TABLE notnull_tbl1 ALTER COLUMN a ADD GENERATED ALWAYS AS IDENTITY;
+
 -- ALTER column SET NOT NULL validates an invalid constraint (but this fails
 -- because of rows with null values)
 ALTER TABLE notnull_tbl1 ALTER a SET NOT NULL;
@@ -1049,3 +1052,8 @@ CREATE DOMAIN constraint_comments_dom AS int;
 
 ALTER DOMAIN constraint_comments_dom ADD CONSTRAINT inv_ck CHECK (value > 0) NOT VALID;
 COMMENT ON CONSTRAINT inv_ck ON DOMAIN constraint_comments_dom IS 'comment on invalid constraint';
+
+-- Create a table that exercises pg_upgrade
+CREATE TABLE regress_notnull1 (a integer);
+CREATE TABLE regress_notnull2 () INHERITS (regress_notnull1);
+ALTER TABLE ONLY regress_notnull2 ALTER COLUMN a SET NOT NULL;
