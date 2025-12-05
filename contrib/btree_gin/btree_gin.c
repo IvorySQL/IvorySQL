@@ -50,7 +50,7 @@ gin_btree_extract_value(FunctionCallInfo fcinfo, bool is_varlena)
 {
 	Datum		datum = PG_GETARG_DATUM(0);
 	int32	   *nentries = (int32 *) PG_GETARG_POINTER(1);
-	Datum	   *entries = (Datum *) palloc(sizeof(Datum));
+	Datum	   *entries = palloc_object(Datum);
 
 	/* Ensure that values stored in the index are not toasted */
 	if (is_varlena)
@@ -73,9 +73,9 @@ gin_btree_extract_query(FunctionCallInfo fcinfo,
 	StrategyNumber strategy = PG_GETARG_UINT16(2);
 	bool	  **partialmatch = (bool **) PG_GETARG_POINTER(3);
 	Pointer   **extra_data = (Pointer **) PG_GETARG_POINTER(4);
-	Datum	   *entries = (Datum *) palloc(sizeof(Datum));
-	QueryInfo  *data = (QueryInfo *) palloc(sizeof(QueryInfo));
-	bool	   *ptr_partialmatch = (bool *) palloc(sizeof(bool));
+	Datum	   *entries = palloc_object(Datum);
+	QueryInfo  *data = palloc_object(QueryInfo);
+	bool	   *ptr_partialmatch = palloc_object(bool);
 	int			btree_strat,
 				rhs_code;
 
@@ -138,7 +138,7 @@ gin_btree_extract_query(FunctionCallInfo fcinfo,
 	data->orig_datum = datum;
 	data->entry_datum = entries[0];
 	data->typecmp = cmp_fns[rhs_code];
-	*extra_data = (Pointer *) palloc(sizeof(Pointer));
+	*extra_data = palloc_object(Pointer);
 	**extra_data = (Pointer) data;
 
 	PG_RETURN_POINTER(entries);
@@ -491,7 +491,7 @@ GIN_SUPPORT(time, leftmostvalue_time, time_rhs_is_varlena, NULL, time_cmp_fns)
 static Datum
 leftmostvalue_timetz(void)
 {
-	TimeTzADT  *v = palloc(sizeof(TimeTzADT));
+	TimeTzADT  *v = palloc_object(TimeTzADT);
 
 	v->time = 0;
 	v->zone = -24 * 3600;		/* XXX is that true? */
@@ -524,7 +524,7 @@ GIN_SUPPORT(date, leftmostvalue_date, date_rhs_is_varlena, NULL, date_cmp_fns)
 static Datum
 leftmostvalue_interval(void)
 {
-	Interval   *v = palloc(sizeof(Interval));
+	Interval   *v = palloc_object(Interval);
 
 	INTERVAL_NOBEGIN(v);
 
@@ -542,7 +542,7 @@ GIN_SUPPORT(interval, leftmostvalue_interval, interval_rhs_is_varlena, NULL, int
 static Datum
 leftmostvalue_macaddr(void)
 {
-	macaddr    *v = palloc0(sizeof(macaddr));
+	macaddr    *v = palloc0_object(macaddr);
 
 	return MacaddrPGetDatum(v);
 }
@@ -558,7 +558,7 @@ GIN_SUPPORT(macaddr, leftmostvalue_macaddr, macaddr_rhs_is_varlena, NULL, macadd
 static Datum
 leftmostvalue_macaddr8(void)
 {
-	macaddr8   *v = palloc0(sizeof(macaddr8));
+	macaddr8   *v = palloc0_object(macaddr8);
 
 	return Macaddr8PGetDatum(v);
 }
@@ -784,7 +784,7 @@ leftmostvalue_uuid(void)
 	 * palloc0 will create the UUID with all zeroes:
 	 * "00000000-0000-0000-0000-000000000000"
 	 */
-	pg_uuid_t  *retval = (pg_uuid_t *) palloc0(sizeof(pg_uuid_t));
+	pg_uuid_t  *retval = palloc0_object(pg_uuid_t);
 
 	return UUIDPGetDatum(retval);
 }
