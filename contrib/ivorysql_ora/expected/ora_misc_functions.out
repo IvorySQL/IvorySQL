@@ -2913,9 +2913,9 @@ LINE 1: select decode(5,%^*&,'south',2,'north',4,'changsha');
                             ^
 --3.result输入非法值：
 select decode(5,1,'south',2,'north',3,&%￥#,4,'changsha');--报错
-ERROR:  syntax error at or near ","
+ERROR:  "￥#": invalid identifier
 LINE 1: select decode(5,1,'south',2,'north',3,&%￥#,4,'changsha');
-                                                   ^
+                                                ^
 --参数expr为任意数据类型，且expr和search类型一致
 --数值类型：
 --1.smallint:
