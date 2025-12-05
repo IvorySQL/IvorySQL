@@ -609,3 +609,73 @@ END
 $$;
 
 ROLLBACK;
+
+-- Test for issue #1006: Mixed positional and named parameters with variables
+-- calling package procedures with default parameters
+
+CREATE OR REPLACE PACKAGE test_mixed_params_pkg AS
+  PROCEDURE proc_with_defaults(
+    p1 VARCHAR2,
+    p2 VARCHAR2 DEFAULT 'default_p2',
+    p3 VARCHAR2 DEFAULT 'default_p3'
+  );
+END test_mixed_params_pkg;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_mixed_params_pkg AS
+  PROCEDURE proc_with_defaults(
+    p1 VARCHAR2,
+    p2 VARCHAR2 DEFAULT 'default_p2',
+    p3 VARCHAR2 DEFAULT 'default_p3'
+  ) IS
+  BEGIN
+    RAISE NOTICE 'p1=%, p2=%, p3=%', p1, p2, p3;
+  END;
+END test_mixed_params_pkg;
+/
+
+-- Test 1: All positional parameters (should work)
+DO $$
+BEGIN
+  test_mixed_params_pkg.proc_with_defaults('a', 'b', 'c');
+END;
+$$;
+
+-- Test 2: All named parameters with variable (should work)
+DO $$
+DECLARE
+  v_val VARCHAR2(20) := 'var_value';
+BEGIN
+  test_mixed_params_pkg.proc_with_defaults(p1=>'a', p2=>'b', p3=>v_val);
+END;
+$$;
+
+-- Test 3: Mixed positional and named with literal (should work)
+DO $$
+BEGIN
+  test_mixed_params_pkg.proc_with_defaults('a', p3=>'c');
+END;
+$$;
+
+-- Test 4: Mixed positional and named with variable (issue #1006)
+-- This would fail before the fix with:
+-- ERROR: failed to find conversion function from unknown to varchar2
+DO $$
+DECLARE
+  v_val VARCHAR2(20) := 'var_value';
+BEGIN
+  test_mixed_params_pkg.proc_with_defaults('a', p3=>v_val);
+END;
+$$;
+
+-- Test 5: Multiple variables with mixed notation
+DO $$
+DECLARE
+  v1 VARCHAR2(20) := 'value1';
+  v2 VARCHAR2(20) := 'value2';
+BEGIN
+  test_mixed_params_pkg.proc_with_defaults(v1, p3=>v2);
+END;
+$$;
+
+DROP PACKAGE test_mixed_params_pkg;
