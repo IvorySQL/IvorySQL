@@ -3282,6 +3282,43 @@ plisql_finish_datums(PLiSQL_function * function)
 }
 
 
+/*
+ * plisql_datum_belongs_to_subproc
+ *		Check if a datum index falls within any subproc's datum range.
+ *
+ * Subproc datums (parameters and local variables) should not be initialized
+ * by the parent block, as they have their own initialization logic.
+ * Each subproc's datum range is [lastassignvardno, lastoutvardno).
+ */
+static bool
+plisql_datum_belongs_to_subproc(int datum_idx)
+{
+	int		j;
+
+	for (j = 0; j < plisql_nsubprocFuncs; j++)
+	{
+		PLiSQL_subproc_function *subproc = plisql_subprocFuncs[j];
+
+		/*
+		 * Skip subprocs that don't have a function body yet (forward declarations).
+		 * Also skip if lastoutvardno is 0 (not yet set).
+		 */
+		if (subproc->function == NULL || subproc->lastoutvardno == 0)
+			continue;
+
+		/*
+		 * Check if datum_idx falls within [lastassignvardno, lastoutvardno).
+		 * lastassignvardno is set before building subproc args.
+		 * lastoutvardno is set after the subproc body is fully compiled.
+		 */
+		if (datum_idx >= subproc->lastassignvardno &&
+			datum_idx < subproc->lastoutvardno)
+			return true;
+	}
+
+	return false;
+}
+
 /* ----------
  * plisql_add_initdatums		Make an array of the datum numbers of
  *					all the initializable datums created since the last call
@@ -3308,6 +3345,19 @@ plisql_add_initdatums(int **varnos)
 	 */
 	for (i = datums_last; i < plisql_nDatums; i++)
 	{
+		/*
+		 * Skip datums that belong to subprocs. These datums (parameters and
+		 * local variables of nested functions/procedures) should not be
+		 * initialized by the parent block. They have their own initialization
+		 * logic within the subproc's execution context.
+		 *
+		 * This prevents crashes when a subproc's local variable has a default
+		 * expression that references the subproc's parameters, which don't
+		 * exist in the parent's execution context.
+		 */
+		if (plisql_datum_belongs_to_subproc(i))
+			continue;
+
 		switch (plisql_Datums[i]->dtype)
 		{
 			case PLISQL_DTYPE_VAR:
@@ -3329,6 +3379,10 @@ plisql_add_initdatums(int **varnos)
 			n = 0;
 			for (i = datums_last; i < plisql_nDatums; i++)
 			{
+				/* Skip subproc datums */
+				if (plisql_datum_belongs_to_subproc(i))
+					continue;
+
 				switch (plisql_Datums[i]->dtype)
 				{
 					case PLISQL_DTYPE_VAR:
