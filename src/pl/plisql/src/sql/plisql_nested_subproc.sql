@@ -3770,3 +3770,123 @@ end; $$ language plisql;
 
 DROP TABLE rec_typ2;
 DROP TABLE r1;
+
+-- Test for issue #1005: subproc with local variable initialized from parameter
+-- This should not crash when the parent function is called
+
+-- Test 1: Package with private procedure that has param-initialized local var
+CREATE OR REPLACE PACKAGE test_pkg_1005 IS
+    FUNCTION get_value RETURN NUMBER;
+END test_pkg_1005;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_pkg_1005 IS
+    PROCEDURE private_proc(p_val NUMBER) IS
+        v_local NUMBER := p_val;  -- local var initialized from parameter
+    BEGIN
+        NULL;  -- private_proc does nothing visible
+    END private_proc;
+
+    FUNCTION get_value RETURN NUMBER IS
+    BEGIN
+        RETURN 42;
+    END get_value;
+END test_pkg_1005;
+/
+
+-- Should return 42 without crash (private_proc is never called)
+SELECT test_pkg_1005.get_value() FROM dual;
+
+-- Test 2: Call the private procedure to verify it works when actually invoked
+CREATE OR REPLACE PACKAGE BODY test_pkg_1005 IS
+    PROCEDURE private_proc(p_val NUMBER) IS
+        v_local NUMBER := p_val;
+    BEGIN
+        RAISE INFO 'v_local=%', v_local;
+    END private_proc;
+
+    FUNCTION get_value RETURN NUMBER IS
+    BEGIN
+        private_proc(100);  -- now call private_proc
+        RETURN 42;
+    END get_value;
+END test_pkg_1005;
+/
+
+-- Should print v_local=100 and return 42
+SELECT test_pkg_1005.get_value() FROM dual;
+
+DROP PACKAGE test_pkg_1005;
+
+-- Test 3: Standalone function with nested procedure (not in package)
+CREATE OR REPLACE FUNCTION test_func_1005(p_input NUMBER) RETURN NUMBER AS
+    v_result NUMBER := 0;
+
+    PROCEDURE helper(p_val NUMBER) IS
+        v_local NUMBER := p_val;  -- local var initialized from parameter
+    BEGIN
+        v_result := v_local * 2;
+    END helper;
+BEGIN
+    helper(p_input);
+    RETURN v_result;
+END;
+/
+
+-- Should return 200 (100 * 2)
+SELECT test_func_1005(100) FROM dual;
+
+DROP FUNCTION test_func_1005;
+
+-- Test 4: Nested function with param-initialized local var that is never called
+CREATE OR REPLACE FUNCTION test_func_1005_nocall(p_input NUMBER) RETURN NUMBER AS
+    FUNCTION never_called(p_val NUMBER) RETURN NUMBER IS
+        v_local NUMBER := p_val;
+    BEGIN
+        RETURN v_local;
+    END never_called;
+BEGIN
+    -- never_called is declared but never invoked
+    RETURN p_input + 1;
+END;
+/
+
+-- Should return 101 without any issues
+SELECT test_func_1005_nocall(100) FROM dual;
+
+DROP FUNCTION test_func_1005_nocall;
+
+-- Test 5: Multiple nested subprocs with param-initialized local vars
+-- Note: func1 is intentionally not called due to issue #1124
+CREATE OR REPLACE FUNCTION test_func_1005_multi(p_input NUMBER) RETURN NUMBER AS
+    v_sum NUMBER := 0;
+
+    PROCEDURE proc1(p_val NUMBER) IS
+        v_local1 NUMBER := p_val;
+    BEGIN
+        v_sum := v_sum + v_local1;
+    END proc1;
+
+    PROCEDURE proc2(p_val NUMBER) IS
+        v_local2 NUMBER := p_val * 2;
+    BEGIN
+        v_sum := v_sum + v_local2;
+    END proc2;
+
+    FUNCTION func1(p_val NUMBER) RETURN NUMBER IS
+        v_local3 NUMBER := p_val * 3;
+    BEGIN
+        RETURN v_local3;
+    END func1;
+BEGIN
+    proc1(10);      -- v_sum = 10
+    proc2(10);      -- v_sum = 10 + 20 = 30
+    -- Not calling: v_sum := v_sum + func1(10) due to issue #1124
+    RETURN v_sum;
+END;
+/
+
+-- Should return 30 (proc1 adds 10, proc2 adds 20)
+SELECT test_func_1005_multi(10) FROM dual;
+
+DROP FUNCTION test_func_1005_multi;
