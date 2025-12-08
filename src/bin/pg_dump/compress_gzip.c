@@ -20,6 +20,15 @@
 #ifdef HAVE_LIBZ
 #include <zlib.h>
 
+/*
+ * We don't use the gzgetc() macro, because zlib's configuration logic is not
+ * robust enough to guarantee that the macro will have the same ideas about
+ * struct field layout as the library itself does; see for example
+ * https://gnats.netbsd.org/cgi-bin/query-pr-single.pl?number=59711
+ * Instead, #undef the macro and fall back to the underlying function.
+ */
+#undef gzgetc
+
 /*----------------------
  * Compressor API
  *----------------------
@@ -256,6 +265,10 @@ Gzip_read(void *ptr, size_t size, CompressFileHandle *CFH)
 {
 	gzFile		gzfp = (gzFile) CFH->private_data;
 	int			gzret;
+
+	/* Reading zero bytes must be a no-op */
+	if (size == 0)
+		return 0;
 
 	gzret = gzread(gzfp, ptr, size);
 

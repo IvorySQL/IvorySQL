@@ -258,31 +258,68 @@ ReplicationSlotShmemExit(int code, Datum arg)
 /*
  * Check whether the passed slot name is valid and report errors at elevel.
  *
- * Slot names may consist out of [a-z0-9_]{1,NAMEDATALEN-1} which should allow
- * the name to be used as a directory name on every supported OS.
- *
- * Returns whether the directory name is valid or not if elevel < ERROR.
+ * See comments for ReplicationSlotValidateNameInternal().
  */
 bool
 ReplicationSlotValidateName(const char *name, int elevel)
+{
+	int			err_code;
+	char	   *err_msg = NULL;
+	char	   *err_hint = NULL;
+
+	if (!ReplicationSlotValidateNameInternal(name, &err_code, &err_msg,
+											 &err_hint))
+	{
+		/*
+		 * Use errmsg_internal() and errhint_internal() instead of errmsg()
+		 * and errhint(), since the messages from
+		 * ReplicationSlotValidateNameInternal() are already translated. This
+		 * avoids double translation.
+		 */
+		ereport(elevel,
+				errcode(err_code),
+				errmsg_internal("%s", err_msg),
+				(err_hint != NULL) ? errhint_internal("%s", err_hint) : 0);
+
+		pfree(err_msg);
+		if (err_hint != NULL)
+			pfree(err_hint);
+		return false;
+	}
+
+	return true;
+}
+
+/*
+ * Check whether the passed slot name is valid.
+ *
+ * Slot names may consist out of [a-z0-9_]{1,NAMEDATALEN-1} which should allow
+ * the name to be used as a directory name on every supported OS.
+ *
+ * Returns true if the slot name is valid. Otherwise, returns false and stores
+ * the error code, error message, and optional hint in err_code, err_msg, and
+ * err_hint, respectively. The caller is responsible for freeing err_msg and
+ * err_hint, which are palloc'd.
+ */
+bool
+ReplicationSlotValidateNameInternal(const char *name, int *err_code,
+									char **err_msg, char **err_hint)
 {
 	const char *cp;
 
 	if (strlen(name) == 0)
 	{
-		ereport(elevel,
-				(errcode(ERRCODE_INVALID_NAME),
-				 errmsg("replication slot name \"%s\" is too short",
-						name)));
+		*err_code = ERRCODE_INVALID_NAME;
+		*err_msg = psprintf(_("replication slot name \"%s\" is too short"), name);
+		*err_hint = NULL;
 		return false;
 	}
 
 	if (strlen(name) >= NAMEDATALEN)
 	{
-		ereport(elevel,
-				(errcode(ERRCODE_NAME_TOO_LONG),
-				 errmsg("replication slot name \"%s\" is too long",
-						name)));
+		*err_code = ERRCODE_NAME_TOO_LONG;
+		*err_msg = psprintf(_("replication slot name \"%s\" is too long"), name);
+		*err_hint = NULL;
 		return false;
 	}
 
@@ -292,11 +329,9 @@ ReplicationSlotValidateName(const char *name, int elevel)
 			  || (*cp >= '0' && *cp <= '9')
 			  || (*cp == '_')))
 		{
-			ereport(elevel,
-					(errcode(ERRCODE_INVALID_NAME),
-					 errmsg("replication slot name \"%s\" contains invalid character",
-							name),
-					 errhint("Replication slot names may only contain lower case letters, numbers, and the underscore character.")));
+			*err_code = ERRCODE_INVALID_NAME;
+			*err_msg = psprintf(_("replication slot name \"%s\" contains invalid character"), name);
+			*err_hint = psprintf(_("Replication slot names may only contain lower case letters, numbers, and the underscore character."));
 			return false;
 		}
 	}
@@ -1670,17 +1705,16 @@ static ReplicationSlotInvalidationCause
 DetermineSlotInvalidationCause(uint32 possible_causes, ReplicationSlot *s,
 							   XLogRecPtr oldestLSN, Oid dboid,
 							   TransactionId snapshotConflictHorizon,
-							   TransactionId initial_effective_xmin,
-							   TransactionId initial_catalog_effective_xmin,
-							   XLogRecPtr initial_restart_lsn,
 							   TimestampTz *inactive_since, TimestampTz now)
 {
 	Assert(possible_causes != RS_INVAL_NONE);
 
 	if (possible_causes & RS_INVAL_WAL_REMOVED)
 	{
-		if (initial_restart_lsn != InvalidXLogRecPtr &&
-			initial_restart_lsn < oldestLSN)
+		XLogRecPtr	restart_lsn = s->data.restart_lsn;
+
+		if (restart_lsn != InvalidXLogRecPtr &&
+			restart_lsn < oldestLSN)
 			return RS_INVAL_WAL_REMOVED;
 	}
 
@@ -1690,12 +1724,15 @@ DetermineSlotInvalidationCause(uint32 possible_causes, ReplicationSlot *s,
 		if (SlotIsLogical(s) &&
 			(dboid == InvalidOid || dboid == s->data.database))
 		{
-			if (TransactionIdIsValid(initial_effective_xmin) &&
-				TransactionIdPrecedesOrEquals(initial_effective_xmin,
+			TransactionId effective_xmin = s->effective_xmin;
+			TransactionId catalog_effective_xmin = s->effective_catalog_xmin;
+
+			if (TransactionIdIsValid(effective_xmin) &&
+				TransactionIdPrecedesOrEquals(effective_xmin,
 											  snapshotConflictHorizon))
 				return RS_INVAL_HORIZON;
-			else if (TransactionIdIsValid(initial_catalog_effective_xmin) &&
-					 TransactionIdPrecedesOrEquals(initial_catalog_effective_xmin,
+			else if (TransactionIdIsValid(catalog_effective_xmin) &&
+					 TransactionIdPrecedesOrEquals(catalog_effective_xmin,
 												   snapshotConflictHorizon))
 				return RS_INVAL_HORIZON;
 		}
@@ -1764,11 +1801,6 @@ InvalidatePossiblyObsoleteSlot(uint32 possible_causes,
 {
 	int			last_signaled_pid = 0;
 	bool		released_lock = false;
-	bool		terminated = false;
-	TransactionId initial_effective_xmin = InvalidTransactionId;
-	TransactionId initial_catalog_effective_xmin = InvalidTransactionId;
-	XLogRecPtr	initial_restart_lsn = InvalidXLogRecPtr;
-	ReplicationSlotInvalidationCause invalidation_cause_prev PG_USED_FOR_ASSERTS_ONLY = RS_INVAL_NONE;
 	TimestampTz inactive_since = 0;
 
 	for (;;)
@@ -1811,42 +1843,12 @@ InvalidatePossiblyObsoleteSlot(uint32 possible_causes,
 
 		/* we do nothing if the slot is already invalid */
 		if (s->data.invalidated == RS_INVAL_NONE)
-		{
-			/*
-			 * The slot's mutex will be released soon, and it is possible that
-			 * those values change since the process holding the slot has been
-			 * terminated (if any), so record them here to ensure that we
-			 * would report the correct invalidation cause.
-			 *
-			 * Unlike other slot attributes, slot's inactive_since can't be
-			 * changed until the acquired slot is released or the owning
-			 * process is terminated. So, the inactive slot can only be
-			 * invalidated immediately without being terminated.
-			 */
-			if (!terminated)
-			{
-				initial_restart_lsn = s->data.restart_lsn;
-				initial_effective_xmin = s->effective_xmin;
-				initial_catalog_effective_xmin = s->effective_catalog_xmin;
-			}
-
 			invalidation_cause = DetermineSlotInvalidationCause(possible_causes,
 																s, oldestLSN,
 																dboid,
 																snapshotConflictHorizon,
-																initial_effective_xmin,
-																initial_catalog_effective_xmin,
-																initial_restart_lsn,
 																&inactive_since,
 																now);
-		}
-
-		/*
-		 * The invalidation cause recorded previously should not change while
-		 * the process owning the slot (if any) has been terminated.
-		 */
-		Assert(!(invalidation_cause_prev != RS_INVAL_NONE && terminated &&
-				 invalidation_cause_prev != invalidation_cause));
 
 		/* if there's no invalidation, we're done */
 		if (invalidation_cause == RS_INVAL_NONE)
@@ -1864,6 +1866,11 @@ InvalidatePossiblyObsoleteSlot(uint32 possible_causes,
 		 * If the slot can be acquired, do so and mark it invalidated
 		 * immediately.  Otherwise we'll signal the owning process, below, and
 		 * retry.
+		 *
+		 * Note: Unlike other slot attributes, slot's inactive_since can't be
+		 * changed until the acquired slot is released or the owning process
+		 * is terminated. So, the inactive slot can only be invalidated
+		 * immediately without being terminated.
 		 */
 		if (active_pid == 0)
 		{
@@ -1938,8 +1945,6 @@ InvalidatePossiblyObsoleteSlot(uint32 possible_causes,
 					(void) kill(active_pid, SIGTERM);
 
 				last_signaled_pid = active_pid;
-				terminated = true;
-				invalidation_cause_prev = invalidation_cause;
 			}
 
 			/* Wait until the slot is released. */
@@ -1950,6 +1955,14 @@ InvalidatePossiblyObsoleteSlot(uint32 possible_causes,
 			 * Re-acquire lock and start over; we expect to invalidate the
 			 * slot next time (unless another process acquires the slot in the
 			 * meantime).
+			 *
+			 * Note: It is possible for a slot to advance its restart_lsn or
+			 * xmin values sufficiently between when we release the mutex and
+			 * when we recheck, moving from a conflicting state to a non
+			 * conflicting state.  This is intentional and safe: if the slot
+			 * has caught up while we're busy here, the resources we were
+			 * concerned about (WAL segments or tuples) have not yet been
+			 * removed, and there's no reason to invalidate the slot.
 			 */
 			LWLockAcquire(ReplicationSlotControlLock, LW_SHARED);
 			continue;
@@ -2332,6 +2345,7 @@ SaveSlotToPath(ReplicationSlot *slot, const char *dir, int elevel)
 
 		pgstat_report_wait_end();
 		CloseTransientFile(fd);
+		unlink(tmppath);
 		LWLockRelease(&slot->io_in_progress_lock);
 
 		/* if write didn't set errno, assume problem is no disk space */
@@ -2352,7 +2366,9 @@ SaveSlotToPath(ReplicationSlot *slot, const char *dir, int elevel)
 
 		pgstat_report_wait_end();
 		CloseTransientFile(fd);
+		unlink(tmppath);
 		LWLockRelease(&slot->io_in_progress_lock);
+
 		errno = save_errno;
 		ereport(elevel,
 				(errcode_for_file_access(),
@@ -2366,7 +2382,9 @@ SaveSlotToPath(ReplicationSlot *slot, const char *dir, int elevel)
 	{
 		int			save_errno = errno;
 
+		unlink(tmppath);
 		LWLockRelease(&slot->io_in_progress_lock);
+
 		errno = save_errno;
 		ereport(elevel,
 				(errcode_for_file_access(),
@@ -2380,7 +2398,9 @@ SaveSlotToPath(ReplicationSlot *slot, const char *dir, int elevel)
 	{
 		int			save_errno = errno;
 
+		unlink(tmppath);
 		LWLockRelease(&slot->io_in_progress_lock);
+
 		errno = save_errno;
 		ereport(elevel,
 				(errcode_for_file_access(),
@@ -2701,53 +2721,32 @@ GetSlotInvalidationCauseName(ReplicationSlotInvalidationCause cause)
 static bool
 validate_sync_standby_slots(char *rawname, List **elemlist)
 {
-	bool		ok;
-
 	/* Verify syntax and parse string into a list of identifiers */
-	ok = SplitIdentifierString(rawname, ',', elemlist);
-
-	if (!ok)
+	if (!SplitIdentifierString(rawname, ',', elemlist))
 	{
 		GUC_check_errdetail("List syntax is invalid.");
+		return false;
 	}
-	else if (MyProc)
+
+	/* Iterate the list to validate each slot name */
+	foreach_ptr(char, name, *elemlist)
 	{
-		/*
-		 * Check that each specified slot exist and is physical.
-		 *
-		 * Because we need an LWLock, we cannot do this on processes without a
-		 * PGPROC, so we skip it there; but see comments in
-		 * StandbySlotsHaveCaughtup() as to why that's not a problem.
-		 */
-		LWLockAcquire(ReplicationSlotControlLock, LW_SHARED);
+		int			err_code;
+		char	   *err_msg = NULL;
+		char	   *err_hint = NULL;
 
-		foreach_ptr(char, name, *elemlist)
+		if (!ReplicationSlotValidateNameInternal(name, &err_code, &err_msg,
+												 &err_hint))
 		{
-			ReplicationSlot *slot;
-
-			slot = SearchNamedReplicationSlot(name, false);
-
-			if (!slot)
-			{
-				GUC_check_errdetail("Replication slot \"%s\" does not exist.",
-									name);
-				ok = false;
-				break;
-			}
-
-			if (!SlotIsPhysical(slot))
-			{
-				GUC_check_errdetail("\"%s\" is not a physical replication slot.",
-									name);
-				ok = false;
-				break;
-			}
+			GUC_check_errcode(err_code);
+			GUC_check_errdetail("%s", err_msg);
+			if (err_hint != NULL)
+				GUC_check_errhint("%s", err_hint);
+			return false;
 		}
-
-		LWLockRelease(ReplicationSlotControlLock);
 	}
 
-	return ok;
+	return true;
 }
 
 /*
@@ -2905,12 +2904,6 @@ StandbySlotsHaveCaughtup(XLogRecPtr wait_for_lsn, int elevel)
 		/*
 		 * If a slot name provided in synchronized_standby_slots does not
 		 * exist, report a message and exit the loop.
-		 *
-		 * Though validate_sync_standby_slots (the GUC check_hook) tries to
-		 * avoid this, it can nonetheless happen because the user can specify
-		 * a nonexistent slot name before server startup. That function cannot
-		 * validate such a slot during startup, as ReplicationSlotCtl is not
-		 * initialized by then.  Also, the user might have dropped one slot.
 		 */
 		if (!slot)
 		{

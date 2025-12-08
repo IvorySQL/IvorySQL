@@ -18,6 +18,8 @@ DATA = postgres_fdw--1.0.sql postgres_fdw--1.0--1.1.sql postgres_fdw--1.1--1.2.s
 
 REGRESS = postgres_fdw query_cancel
 ORA_REGRESS = ivy_postgres_fdw
+ISOLATION = eval_plan_qual
+ISOLATION_OPTS = --load-extension=postgres_fdw
 TAP_TESTS = 1
 
 ifdef USE_PGXS
