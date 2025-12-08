@@ -89,7 +89,7 @@ typedef struct replace_rownum_context
 	int			rownum_idx;		/* Current index in rownum_vars list */
 } replace_rownum_context;
 
-static Node *replace_rownum_expr_mutator(Node *node, replace_rownum_context *context);
+static Node *replace_rownum_expr_mutator(Node *node, void *context);
 static List *get_gating_quals(PlannerInfo *root, List *quals);
 static Plan *create_gating_plan(PlannerInfo *root, Path *path, Plan *plan,
 								List *gating_quals);
@@ -7605,26 +7605,28 @@ contain_rownum_expr(Node *node)
  * not just top-level RownumExpr in target entries.
  */
 static Node *
-replace_rownum_expr_mutator(Node *node, replace_rownum_context *context)
+replace_rownum_expr_mutator(Node *node, void *context)
 {
+	replace_rownum_context *ctx = (replace_rownum_context *) context;
+
 	if (node == NULL)
 		return NULL;
 
 	if (IsA(node, RownumExpr))
 	{
 		/* Replace with the next Var from our list */
-		if (context->rownum_idx < list_length(context->rownum_vars))
+		if (ctx->rownum_idx < list_length(ctx->rownum_vars))
 		{
-			Var *replacement = (Var *) list_nth(context->rownum_vars,
-												 context->rownum_idx);
-			context->rownum_idx++;
+			Var *replacement = (Var *) list_nth(ctx->rownum_vars,
+												ctx->rownum_idx);
+			ctx->rownum_idx++;
 			return (Node *) copyObject(replacement);
 		}
 		/* Should not happen if we counted correctly */
 		elog(ERROR, "ran out of replacement Vars for ROWNUM expressions");
 	}
 
-	return expression_tree_mutator(node, replace_rownum_expr_mutator, context);
+	return expression_tree_mutator(node, replace_rownum_expr_mutator, ctx);
 }
 
 /*
