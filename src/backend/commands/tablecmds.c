@@ -15652,11 +15652,6 @@ RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
 		 FuncPkgDepend = true;
 		dependentFuncPkgOids = *dependentFuncPkg;
 	}
-	else
-	{
-		dependentFuncPkgOids = (ObjectFunOrPkg *)
-		palloc((*maxDependentFuncPkgOids) * sizeof(ObjectFunOrPkg));
-	}
 
 
 	Assert(subtype == AT_AlterColumnType || subtype == AT_SetExpression);
