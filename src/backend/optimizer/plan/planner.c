@@ -999,11 +999,11 @@ transform_rownum_to_limit(Query *parse)
 	/* If we found a ROWNUM predicate, transform it */
 	if (rownum_qual != NULL && limit_value > 0)
 	{
-		/* Create the LIMIT constant (INT8 is pass-by-value on 64-bit systems) */
+		/* Create the LIMIT constant */
 		parse->limitCount = (Node *) makeConst(INT8OID, -1, InvalidOid,
 											   sizeof(int64),
 											   Int64GetDatum(limit_value),
-											   false, true);
+											   false, get_typbyval(INT8OID));
 
 		/* Remove the ROWNUM predicate from the WHERE clause */
 		andlist = list_delete_ptr(andlist, rownum_qual);

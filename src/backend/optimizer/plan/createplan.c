@@ -7632,8 +7632,10 @@ replace_rownum_expr_mutator(Node *node, replace_rownum_context *context)
  *		Count the number of RownumExpr nodes in an expression tree.
  */
 static bool
-count_rownum_exprs_walker(Node *node, int *count)
+count_rownum_exprs_walker(Node *node, void *context)
 {
+	int *count = (int *) context;
+
 	if (node == NULL)
 		return false;
 
@@ -7643,7 +7645,7 @@ count_rownum_exprs_walker(Node *node, int *count)
 		return false;  /* Don't recurse into RownumExpr */
 	}
 
-	return expression_tree_walker(node, count_rownum_exprs_walker, count);
+	return expression_tree_walker(node, count_rownum_exprs_walker, context);
 }
 
 /*
