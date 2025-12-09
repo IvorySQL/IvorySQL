@@ -3636,7 +3636,6 @@ get_hostvariables(const char *sql, bool *error)
 	HostVariable *host = NULL;
 	char		*newsql = NULL;
 	char		*ptr = NULL;
-	int			j = 0;
 
 	*error = false;
 	if (!sql)
@@ -3645,12 +3644,13 @@ get_hostvariables(const char *sql, bool *error)
 	/* double write quote */
 	newsql = pg_malloc0(strlen(sql) * 2);	/* enough */
 	ptr = newsql;
-	while (sql[j] != '\0')
+
+	while (*sql != '\0')
 	{
-		if (sql[j] == '\'')
-			*ptr++ = sql[j];
-		*ptr++ = sql[j];
-		j++;
+		if (*sql == '\'')
+			*ptr++ = *sql;
+		*ptr++ = *sql;
+		sql++;
 	}
 	*ptr = '\0';
 
