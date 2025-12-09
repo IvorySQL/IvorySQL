@@ -5112,7 +5112,7 @@ ExecInitFuncWithOutParams(Expr *node, ExprState *state,
 	{
 		FuncExpr   *funcexpr = (FuncExpr *) node;
 		Oid			funcOid = funcexpr->funcid;
-		HeapTuple	func_tuple;
+		HeapTuple	func_tuple = NULL;
 		Oid		   *argtypes = NULL;
 		char	  **argnames = NULL;
 		char	   *argmodes = NULL;

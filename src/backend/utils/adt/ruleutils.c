@@ -14410,7 +14410,6 @@ pg_get_function_arg_reference_typerowtype_internal(Tuplestorestate **tupstore,
 		{
 			RangeVar   *rel = makeRangeVar(NULL, NULL, typeName->location);
 			char	   *field = NULL;
-			Oid		relid_1;
 			AttrNumber	attnum;
 
 			/* deconstruct the name list */
@@ -14447,12 +14446,12 @@ pg_get_function_arg_reference_typerowtype_internal(Tuplestorestate **tupstore,
 					break;
 			}
 
-			relid_1 = RangeVarGetRelid(rel, NoLock, true);
-			attnum = get_attnum(relid_1, field);
+			relid = RangeVarGetRelid(rel, NoLock, true);
+			attnum = get_attnum(relid, field);
 
 			if (attnum != InvalidAttrNumber)
 			{
-				get_atttypetypmodcoll(relid_1, attnum,
+				get_atttypetypmodcoll(relid, attnum,
 									  &fieldTypeId, &fieldTypMod, &fieldCollation);
 
 				/* this construct should never have an array indicator */

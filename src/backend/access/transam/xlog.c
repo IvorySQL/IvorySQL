@@ -108,7 +108,7 @@
 #include "utils/memutils.h"
 #endif
 
-extern int       bootstrap_database_mode;
+
 /* timeline ID to be used when bootstrapping */
 #define BootstrapTimeLineID		1
 

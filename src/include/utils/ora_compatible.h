@@ -58,5 +58,5 @@ typedef enum
 	NLS_LENGTH_BYTE,
 	NLS_LENGTH_CHAR
 } NlsLengthSemantics;
-
+extern int       bootstrap_database_mode;
 #endif							/* ORA_COMPATIBLE_H */
