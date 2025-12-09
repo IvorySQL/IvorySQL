@@ -24,6 +24,7 @@
 #include "plisql.h"
 #include "pl_subproc_function.h"
 #include "pl_package.h"
+#include "pl_autonomous.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
@@ -57,6 +58,9 @@ int			plisql_variable_conflict = PLISQL_RESOLVE_ERROR;
 bool		plisql_print_strict_params = false;
 
 bool		plisql_check_asserts = true;
+
+/* Flag to prevent recursive autonomous transaction execution */
+bool		plisql_inside_autonomous_transaction = false;
 
 static char *plisql_extra_warnings_string = NULL;
 static char *plisql_extra_errors_string = NULL;
@@ -147,10 +151,17 @@ plisql_extra_errors_assign_hook(const char *newvalue, void *extra)
 }
 
 
-/*
- * _PG_init()			- library load-time initialization
+/**
+ * Initialize the PL/iSQL shared library at load time.
  *
- * DO NOT make this static nor change its name!
+ * Registers module GUC variables (including hooks for extra checks), reserves
+ * the PL/iSQL GUC prefix, initializes module state and hash tables, registers
+ * transaction and subtransaction callbacks, registers internal functions,
+ * establishes the plugin rendezvous point, and initializes autonomous-transaction
+ * support.
+ *
+ * DO NOT make this function static or rename it; PostgreSQL calls it at library
+ * load time.
  */
 void
 _PG_init(void)
@@ -188,6 +199,21 @@ _PG_init(void)
 							 PGC_USERSET, 0,
 							 NULL, NULL, NULL);
 
+	/*
+	 * Note: Must use PGC_USERSET (not PGC_INTERNAL) because autonomous
+	 * transactions execute via dblink in a separate connection, which must
+	 * be able to SET this flag via SQL to prevent infinite recursion.
+	 * Hidden from users via GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL.
+	 */
+	DefineCustomBoolVariable("plisql.inside_autonomous_transaction",
+							 gettext_noop("Internal flag to prevent recursive autonomous transaction execution."),
+							 NULL,
+							 &plisql_inside_autonomous_transaction,
+							 false,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL,
+							 NULL, NULL, NULL);
+
 	DefineCustomStringVariable("plisql.extra_warnings",
 							   gettext_noop("List of programming constructs that should produce a warning."),
 							   NULL,
@@ -218,6 +244,9 @@ _PG_init(void)
 
 	/* Set up a rendezvous point with optional instrumentation plugin */
 	plisql_plugin_ptr = (PLiSQL_plugin * *) find_rendezvous_variable("PLiSQL_plugin");
+
+	/* Register invalidation callback for cached dblink OID */
+	plisql_autonomous_init();
 
 	inited = true;
 }

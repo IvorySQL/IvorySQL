@@ -10,6 +10,7 @@ plisql_sources = files(
   'pl_subproc_function.c',
   'pl_package.c',
   'pl_exception_type.c',
+  'pl_autonomous.c',
 )
 
 pl_gram = custom_target('gram',
