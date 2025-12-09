@@ -156,8 +156,8 @@ record_in(PG_FUNCTION_ARGS)
 		my_extra->ncolumns = ncolumns;
 	}
 
-	values = (Datum *) palloc(ncolumns * sizeof(Datum));
-	nulls = (bool *) palloc(ncolumns * sizeof(bool));
+	values = palloc_array(Datum, ncolumns);
+	nulls = palloc_array(bool, ncolumns);
 
 	/*
 	 * Scan the string.  We use "buf" to accumulate the de-quoted data for
@@ -399,8 +399,8 @@ record_out(PG_FUNCTION_ARGS)
 		my_extra->ncolumns = ncolumns;
 	}
 
-	values = (Datum *) palloc(ncolumns * sizeof(Datum));
-	nulls = (bool *) palloc(ncolumns * sizeof(bool));
+	values = palloc_array(Datum, ncolumns);
+	nulls = palloc_array(bool, ncolumns);
 
 	/* Break down the tuple into fields */
 	heap_deform_tuple(&tuple, tupdesc, values, nulls);
@@ -567,8 +567,8 @@ record_recv(PG_FUNCTION_ARGS)
 		my_extra->ncolumns = ncolumns;
 	}
 
-	values = (Datum *) palloc(ncolumns * sizeof(Datum));
-	nulls = (bool *) palloc(ncolumns * sizeof(bool));
+	values = palloc_array(Datum, ncolumns);
+	nulls = palloc_array(bool, ncolumns);
 
 	/* Fetch number of columns user thinks it has */
 	usercols = pq_getmsgint(buf, 4);
@@ -769,8 +769,8 @@ record_send(PG_FUNCTION_ARGS)
 		my_extra->ncolumns = ncolumns;
 	}
 
-	values = (Datum *) palloc(ncolumns * sizeof(Datum));
-	nulls = (bool *) palloc(ncolumns * sizeof(bool));
+	values = palloc_array(Datum, ncolumns);
+	nulls = palloc_array(bool, ncolumns);
 
 	/* Break down the tuple into fields */
 	heap_deform_tuple(&tuple, tupdesc, values, nulls);
@@ -1891,8 +1891,8 @@ hash_record(PG_FUNCTION_ARGS)
 	}
 
 	/* Break down the tuple into fields */
-	values = (Datum *) palloc(ncolumns * sizeof(Datum));
-	nulls = (bool *) palloc(ncolumns * sizeof(bool));
+	values = palloc_array(Datum, ncolumns);
+	nulls = palloc_array(bool, ncolumns);
 	heap_deform_tuple(&tuple, tupdesc, values, nulls);
 
 	for (int i = 0; i < ncolumns; i++)
@@ -2012,8 +2012,8 @@ hash_record_extended(PG_FUNCTION_ARGS)
 	}
 
 	/* Break down the tuple into fields */
-	values = (Datum *) palloc(ncolumns * sizeof(Datum));
-	nulls = (bool *) palloc(ncolumns * sizeof(bool));
+	values = palloc_array(Datum, ncolumns);
+	nulls = palloc_array(bool, ncolumns);
 	heap_deform_tuple(&tuple, tupdesc, values, nulls);
 
 	for (int i = 0; i < ncolumns; i++)

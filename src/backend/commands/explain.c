@@ -4992,7 +4992,7 @@ ExplainCreateWorkersState(int num_workers)
 {
 	ExplainWorkersState *wstate;
 
-	wstate = (ExplainWorkersState *) palloc(sizeof(ExplainWorkersState));
+	wstate = palloc_object(ExplainWorkersState);
 	wstate->num_workers = num_workers;
 	wstate->worker_inited = (bool *) palloc0(num_workers * sizeof(bool));
 	wstate->worker_str = (StringInfoData *)
