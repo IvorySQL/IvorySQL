@@ -8,7 +8,7 @@
 # because GNU make uses a make file named "GNUmakefile" in preference
 # to "Makefile" if it exists. PostgreSQL is shipped with a
 # "GNUmakefile". If the user hasn't run the configure script yet, the
-# GNUmakefile won't exist yet, so we catch that case as well.
+# GNUmakefile won't exist yet, so we catch that case as well. 
 
 
 # AIX make defaults to building *every* target of the first rule.  Start with
