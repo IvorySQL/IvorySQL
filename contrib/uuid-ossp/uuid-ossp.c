@@ -565,6 +565,11 @@ ora_sys_guid(PG_FUNCTION_ARGS)
 #ifdef HAVE_UUID_OSSP
     uuid_t      *uuid;
     uuid_rc_t   rc;
+#elif defined(HAVE_UUID_E2FS)
+	uuid_t uu;
+#else	/* BSD */
+	int i;
+	unsigned char byte_array[SYS_GUID_LENGTH];
 #endif
 
     result = (bytea *)palloc(VARHDRSZ + SYS_GUID_LENGTH);
@@ -579,13 +584,10 @@ ora_sys_guid(PG_FUNCTION_ARGS)
     memcpy(VARDATA(result), (unsigned char *)uuid, SYS_GUID_LENGTH);
 
 #elif defined(HAVE_UUID_E2FS)
-    uuid_t uu;
     uuid_generate_random(uu);
     memcpy(VARDATA(result), uu, SYS_GUID_LENGTH);
 
 #else	/* BSD */
-	int i;
-    unsigned char byte_array[SYS_GUID_LENGTH];
     for (i = 0; i < SYS_GUID_LENGTH; i++) {
         byte_array[i] = (unsigned char)arc4random();
     }
