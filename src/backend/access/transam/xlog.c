@@ -2886,7 +2886,9 @@ XLogFlush(XLogRecPtr record)
 		if (CommitDelay > 0 && enableFsync &&
 			MinimumActiveBackends(CommitSiblings))
 		{
+			pgstat_report_wait_start(WAIT_EVENT_COMMIT_DELAY);
 			pg_usleep(CommitDelay);
+			pgstat_report_wait_end();
 
 			/*
 			 * Re-check how far we can now flush the WAL. It's generally not
