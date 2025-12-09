@@ -813,6 +813,8 @@ generate_union_paths(SetOperationStmt *op, PlannerInfo *root,
 	 */
 	apath = (Path *) create_append_path(root, result_rel, cheapest_pathlist,
 										NIL, NIL, NULL, 0, false, -1);
+	/* Mark as UNION for ROWNUM reset between branches (Oracle compatibility) */
+	((AppendPath *) apath)->is_union = true;
 
 	/*
 	 * Estimate number of groups.  For now we just assume the output is unique
@@ -860,6 +862,8 @@ generate_union_paths(SetOperationStmt *op, PlannerInfo *root,
 			create_append_path(root, result_rel, NIL, partial_pathlist,
 							   NIL, NULL, parallel_workers,
 							   enable_parallel_append, -1);
+		/* Mark as UNION for ROWNUM reset between branches (Oracle compatibility) */
+		((AppendPath *) papath)->is_union = true;
 		gpath = (Path *)
 			create_gather_path(root, result_rel, papath,
 							   result_rel->reltarget, NULL, NULL);
@@ -968,6 +972,8 @@ generate_union_paths(SetOperationStmt *op, PlannerInfo *root,
 													 ordered_pathlist,
 													 union_pathkeys,
 													 NULL);
+			/* Mark as UNION for ROWNUM reset between branches (Oracle compatibility) */
+			((MergeAppendPath *) path)->is_union = true;
 
 			/* and make the MergeAppend unique */
 			path = (Path *) create_upper_unique_path(root,

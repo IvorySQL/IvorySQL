@@ -206,6 +206,16 @@ ExecScanExtended(ScanState *node,
 		econtext->ecxt_scantuple = slot;
 
 		/*
+		 * For Oracle ROWNUM compatibility: pre-increment ROWNUM before the
+		 * qual check so that ROWNUM conditions (like ROWNUM <= 5) see the
+		 * correct value.  If the row fails the qual, we'll revert the
+		 * increment.  This matches Oracle's behavior where ROWNUM is assigned
+		 * to each candidate row before checking the WHERE clause.
+		 */
+		if (node->ps.state)
+			node->ps.state->es_rownum++;
+
+		/*
 		 * check that the current tuple satisfies the qual-clause
 		 *
 		 * check for non-null qual here to avoid a function call to ExecQual()
@@ -216,14 +226,34 @@ ExecScanExtended(ScanState *node,
 		{
 			/*
 			 * Found a satisfactory scan tuple.
+			 * The ROWNUM increment is already done.
 			 */
 			if (projInfo)
 			{
+				TupleTableSlot *result;
+
 				/*
 				 * Form a projection tuple, store it in the result tuple slot
 				 * and return it.
 				 */
-				return ExecProject(projInfo);
+				result = ExecProject(projInfo);
+
+				/*
+				 * If the projection contains ROWNUM expressions, materialize
+				 * the virtual tuple to preserve the ROWNUM values as constants.
+				 * This prevents re-evaluation when the tuple is read by outer
+				 * queries (e.g., in subqueries with ORDER BY).
+				 *
+				 * Oracle materializes ROWNUM values in SELECT lists, so when
+				 * a subquery projects ROWNUM, the value must be captured NOW
+				 * and not re-evaluated later in different contexts.
+				 */
+				if (projInfo->pi_needsMaterialization)
+				{
+					ExecMaterializeSlot(result);
+				}
+
+				return result;
 			}
 			else
 			{
@@ -234,7 +264,18 @@ ExecScanExtended(ScanState *node,
 			}
 		}
 		else
+		{
+			/*
+			 * Row failed qual check.  Revert the ROWNUM increment so that
+			 * only rows that pass quals consume ROWNUM values.  This matches
+			 * Oracle's behavior where ROWNUM is only assigned to rows that
+			 * are actually "selected".
+			 */
+			if (node->ps.state)
+				node->ps.state->es_rownum--;
+
 			InstrCountFiltered1(node, 1);
+		}
 
 		/*
 		 * Tuple fails qual, so free per-tuple memory and try again.
