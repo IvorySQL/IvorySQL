@@ -225,6 +225,8 @@ _PG_init(void)
 /*
  * Cleanup: deregister internal routines.
  */
+void _PG_fini(void);
+
 void
 _PG_fini(void)
 {

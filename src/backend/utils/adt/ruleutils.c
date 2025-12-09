@@ -14410,7 +14410,6 @@ pg_get_function_arg_reference_typerowtype_internal(Tuplestorestate **tupstore,
 		{
 			RangeVar   *rel = makeRangeVar(NULL, NULL, typeName->location);
 			char	   *field = NULL;
-			Oid			relid;
 			AttrNumber	attnum;
 
 			/* deconstruct the name list */

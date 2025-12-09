@@ -15667,7 +15667,7 @@ RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
 	ScanKeyData key[3];
 	SysScanDesc scan;
 	HeapTuple	depTup;
-	ObjectFunOrPkg *dependentFuncPkgOids;
+	ObjectFunOrPkg *dependentFuncPkgOids = NULL;
 	bool		FuncPkgDepend = false;
 
 	if(NULL != numDependentFuncPkgOids  &&
@@ -15677,6 +15677,7 @@ RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
 		 FuncPkgDepend = true;
 		dependentFuncPkgOids = *dependentFuncPkg;
 	}
+
 
 	Assert(subtype == AT_AlterColumnType || subtype == AT_SetExpression);
 

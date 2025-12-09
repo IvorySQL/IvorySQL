@@ -1118,10 +1118,27 @@ sub lookup_oids
 			push @lookupoids, $lookupname;
 			if ($lookupname eq '-' or $lookupname eq '0')
 			{
-				warn sprintf
-				  "invalid zero OID reference in %s.dat field %s line %s\n",
-				  $catname, $attname, $bki_values->{line_number}
-				  if !$lookup_opt;
+				if (defined($bki_values->{type_name}) 
+				and $bki_values->{type_name} ne 'oracharchar' 
+				and $bki_values->{type_name} ne 'oracharbyte' 
+				and $bki_values->{type_name} ne 'oravarcharchar' 
+				and $bki_values->{type_name} ne 'oravarcharbyte' 
+				and $bki_values->{type_name} ne 'oradate' 
+				and $bki_values->{type_name} ne 'oratimestamp' 
+				and $bki_values->{type_name} ne 'oratimestamptz' 
+				and $bki_values->{type_name} ne 'oratimestampltz' 
+				and $bki_values->{type_name} ne 'yminterval' 
+				and $bki_values->{type_name} ne 'dsinterval' 
+				and $bki_values->{type_name} ne 'number' 
+				and $bki_values->{type_name} ne 'binary_float' 
+				and $bki_values->{type_name} ne 'binary_double' 
+				)
+				{
+					warn sprintf
+				  	  "invalid zero OID reference in %s.dat field %s line %s\n",
+				  	  $catname, $attname, $bki_values->{line_number}
+				  	  if !$lookup_opt;
+				}
 			}
 			else
 			{

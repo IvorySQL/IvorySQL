@@ -19124,7 +19124,7 @@ dumpSequence(Archive *fout, const TableInfo *tbinfo)
 		default_minv = is_ascending ? 1 : PG_INT64_MIN;
 		default_maxv = is_ascending ? PG_INT64_MAX : -1;
 	}
-	else if (db_mode == DB_PG)
+	else
 	{
 		pg_fatal("unrecognized sequence type: %d", seq->seqtype);
 		default_minv = default_maxv = 0;	/* keep compiler quiet */

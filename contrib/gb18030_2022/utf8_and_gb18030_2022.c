@@ -22,8 +22,8 @@
 
 PG_MODULE_MAGIC;
 
-gb18030_2022_to_utf8_hook_type pre_gb18030_2022_to_utf8_hook = NULL;
-utf8_to_gb18030_2022_hook_type pre_utf8_to_gb18030_2022_hook = NULL;
+static gb18030_2022_to_utf8_hook_type pre_gb18030_2022_to_utf8_hook = NULL;
+static utf8_to_gb18030_2022_hook_type pre_utf8_to_gb18030_2022_hook = NULL;
 
 int gb18030_2022_to_utf8(const unsigned char *iso, int len,
 								unsigned char *utf, bool noError);
