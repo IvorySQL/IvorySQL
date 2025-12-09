@@ -1,0 +1,18 @@
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: .devcontainer/Dockerfile
+    image: ivorysql-dev
+    container_name: ivorysql-dev
+    volumes:
+      - .:/home/ivorysql/IvorySQL:rw
+    working_dir: /home/ivorysql/IvorySQL
+    command: ["sleep", "infinity"]
+ 
+  # docker compose --profile ora up -d
+  oracle:
+    profiles: [ora]
+    image: container-registry.oracle.com/database/free:23.26.0.0-lite
+    environment:
+      ORACLE_PWD: orapwd
