@@ -2,3 +2,4 @@ src/datatype/datatype
 src/builtin_functions/builtin_functions
 src/sysview/sysview
 src/xml_functions/xml_functions
+src/builtin_packages/dbms_utility/dbms_utility
