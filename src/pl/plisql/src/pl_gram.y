@@ -2718,6 +2718,9 @@ stmt_execsql	: K_IMPORT
 							new->expr = build_call_expr(T_WORD, @1, &yylval, &yylloc, yyscanner);
 							new->is_call = true;
 
+							/* Remember we may need a procedure resource owner */
+							plisql_curr_compile->requires_procedure_resowner = true;
+
 							$$ = (PLiSQL_stmt *)new;
 						}
 						else
@@ -2744,6 +2747,9 @@ stmt_execsql	: K_IMPORT
 							new->stmtid = ++plisql_curr_compile->nstatements;
 							new->expr = build_call_expr(T_CWORD, @1, &yylval, &yylloc, yyscanner);
 							new->is_call = true;
+
+							/* Remember we may need a procedure resource owner */
+							plisql_curr_compile->requires_procedure_resowner = true;
 
 							$$ = (PLiSQL_stmt *)new;
 						}

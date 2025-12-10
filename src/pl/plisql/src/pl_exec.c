@@ -5318,7 +5318,18 @@ exec_stmt_commit(PLiSQL_execstate * estate, PLiSQL_stmt_commit * stmt)
 	/*
 	 * We need to build new simple-expression infrastructure, since the old
 	 * data structures are gone.
+	 *
+	 * In some execution contexts (e.g., multi-statement queries with implicit
+	 * transaction blocks), the transaction callbacks may not be fired even
+	 * though SPI_commit succeeded. In such cases, the econtext stack would
+	 * retain stale entries pointing to freed memory. Clear the stack here to
+	 * handle both cases uniformly - if the callback already cleared it, this
+	 * is harmless; if not, this prevents stack corruption.
 	 */
+	simple_econtext_stack = NULL;
+	shared_simple_eval_estate = NULL;
+	shared_simple_eval_resowner = NULL;
+
 	estate->simple_eval_estate = NULL;
 	estate->simple_eval_resowner = NULL;
 	plisql_create_econtext(estate);
@@ -5342,7 +5353,18 @@ exec_stmt_rollback(PLiSQL_execstate * estate, PLiSQL_stmt_rollback * stmt)
 	/*
 	 * We need to build new simple-expression infrastructure, since the old
 	 * data structures are gone.
+	 *
+	 * In some execution contexts (e.g., multi-statement queries with implicit
+	 * transaction blocks), the transaction callbacks may not be fired even
+	 * though SPI_rollback succeeded. In such cases, the econtext stack would
+	 * retain stale entries pointing to freed memory. Clear the stack here to
+	 * handle both cases uniformly - if the callback already cleared it, this
+	 * is harmless; if not, this prevents stack corruption.
 	 */
+	simple_econtext_stack = NULL;
+	shared_simple_eval_estate = NULL;
+	shared_simple_eval_resowner = NULL;
+
 	estate->simple_eval_estate = NULL;
 	estate->simple_eval_resowner = NULL;
 	plisql_create_econtext(estate);
