@@ -1516,8 +1516,33 @@ plisql_get_subprocfunc_detail(ParseState *pstate,
 			}
 		}
 		if (fargnames != NIL || defaultnumber != NIL)
+		{
 			*fargs = plisql_expand_and_reorder_functionargs(pstate, subprocfunc, best_candidate->nargs,
 															*fargs, defaultnumber, argdefaults);
+
+			/*
+			 * After reordering fargs to declared order, we must also rebuild
+			 * true_typeids (which becomes declared_arg_types in the caller) to
+			 * match. The original best_candidate->args is in call order for
+			 * overload resolution, but make_fn_arguments needs declared order
+			 * to match the reordered fargs.
+			 */
+			if (best_candidate->argnumbers != NULL)
+			{
+				Oid		   *declared_order_types;
+				ListCell   *lc;
+				int			i = 0;
+
+				declared_order_types = palloc(best_candidate->nargs * sizeof(Oid));
+				foreach(lc, subprocfunc->arg)
+				{
+					PLiSQL_function_argitem *argitem = lfirst(lc);
+
+					declared_order_types[i++] = argitem->type->typoid;
+				}
+				*true_typeids = declared_order_types;
+			}
+		}
 
 		if (subprocfunc->is_proc)
 			return FUNCDETAIL_PROCEDURE;

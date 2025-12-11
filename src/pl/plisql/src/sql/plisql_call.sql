@@ -609,3 +609,185 @@ END
 $$;
 
 ROLLBACK;
+
+-- Test for issue #1006: Mixed positional and named parameters with variables
+-- calling package procedures with default parameters
+
+CREATE OR REPLACE PACKAGE test_mixed_params_pkg AS
+  PROCEDURE proc_with_defaults(
+    p1 VARCHAR2,
+    p2 VARCHAR2 DEFAULT 'default_p2',
+    p3 VARCHAR2 DEFAULT 'default_p3'
+  );
+END test_mixed_params_pkg;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_mixed_params_pkg AS
+  PROCEDURE proc_with_defaults(
+    p1 VARCHAR2,
+    p2 VARCHAR2 DEFAULT 'default_p2',
+    p3 VARCHAR2 DEFAULT 'default_p3'
+  ) IS
+  BEGIN
+    RAISE NOTICE 'p1=%, p2=%, p3=%', p1, p2, p3;
+  END;
+END test_mixed_params_pkg;
+/
+
+-- Test 1: All positional parameters (should work)
+DO $$
+BEGIN
+  test_mixed_params_pkg.proc_with_defaults('a', 'b', 'c');
+END;
+$$;
+
+-- Test 2: All named parameters with variable (should work)
+DO $$
+DECLARE
+  v_val VARCHAR2(20) := 'var_value';
+BEGIN
+  test_mixed_params_pkg.proc_with_defaults(p1=>'a', p2=>'b', p3=>v_val);
+END;
+$$;
+
+-- Test 3: Mixed positional and named with literal (should work)
+DO $$
+BEGIN
+  test_mixed_params_pkg.proc_with_defaults('a', p3=>'c');
+END;
+$$;
+
+-- Test 4: Mixed positional and named with variable (issue #1006)
+-- This would fail before the fix with:
+-- ERROR: failed to find conversion function from unknown to varchar2
+DO $$
+DECLARE
+  v_val VARCHAR2(20) := 'var_value';
+BEGIN
+  test_mixed_params_pkg.proc_with_defaults('a', p3=>v_val);
+END;
+$$;
+
+-- Test 5: Multiple variables with mixed notation
+DO $$
+DECLARE
+  v1 VARCHAR2(20) := 'value1';
+  v2 VARCHAR2(20) := 'value2';
+BEGIN
+  test_mixed_params_pkg.proc_with_defaults(v1, p3=>v2);
+END;
+$$;
+
+DROP PACKAGE test_mixed_params_pkg;
+
+-- Test subprocedures with mixed positional and named parameters (Issue #1006)
+-- This tests the same bug scenario but for subprocedures instead of packages
+DO $$
+DECLARE
+    v_name VARCHAR2(100) := 'Test Name';
+    v_value NUMBER := 42;
+    v_result VARCHAR2(200);
+
+    PROCEDURE test_subproc(p_id NUMBER, p_name VARCHAR2, p_value NUMBER DEFAULT 0) AS
+    BEGIN
+        RAISE NOTICE 'test_subproc called: id=%, name=%, value=%', p_id, p_name, p_value;
+    END;
+
+    FUNCTION test_subfunc(p_id NUMBER, p_name VARCHAR2, p_value NUMBER DEFAULT 0) RETURN VARCHAR2 AS
+    BEGIN
+        RETURN 'id=' || p_id || ', name=' || p_name || ', value=' || p_value;
+    END;
+BEGIN
+    -- Test 1: All positional parameters
+    test_subproc(1, 'literal', 10);
+
+    -- Test 2: All named parameters with variables
+    test_subproc(p_id => 2, p_name => v_name, p_value => v_value);
+
+    -- Test 3: Mixed positional and named with literals
+    test_subproc(3, p_name => 'mixed literal');
+
+    -- Test 4: Mixed positional and named with variables (the bug case)
+    test_subproc(4, p_name => v_name);
+
+    -- Test 5: Multiple variables with mixed notation
+    test_subproc(5, p_name => v_name, p_value => v_value);
+
+    -- Test 6: Function with mixed parameters and variables
+    v_result := test_subfunc(6, p_name => v_name, p_value => v_value);
+    RAISE NOTICE 'Function result: %', v_result;
+END;
+$$ LANGUAGE plisql;
+
+-- Test subprocedure overloading still works with the fix
+DO $$
+DECLARE
+    v_int INTEGER := 10;
+    v_str VARCHAR2(50) := 'hello';
+    v_result INTEGER;
+
+    FUNCTION overloaded(p_val INTEGER) RETURN INTEGER AS
+    BEGIN
+        RAISE NOTICE 'overloaded(INTEGER) called with %', p_val;
+        RETURN p_val * 2;
+    END;
+
+    FUNCTION overloaded(p_val VARCHAR2) RETURN INTEGER AS
+    BEGIN
+        RAISE NOTICE 'overloaded(VARCHAR2) called with %', p_val;
+        RETURN LENGTH(p_val);
+    END;
+
+    FUNCTION overloaded(p_id INTEGER, p_name VARCHAR2) RETURN INTEGER AS
+    BEGIN
+        RAISE NOTICE 'overloaded(INTEGER, VARCHAR2) called with %, %', p_id, p_name;
+        RETURN p_id + LENGTH(p_name);
+    END;
+BEGIN
+    -- Test overload resolution with different types
+    v_result := overloaded(v_int);
+    RAISE NOTICE 'Result 1: %', v_result;
+
+    v_result := overloaded(v_str);
+    RAISE NOTICE 'Result 2: %', v_result;
+
+    -- Test overload with multiple args
+    v_result := overloaded(5, 'test');
+    RAISE NOTICE 'Result 3: %', v_result;
+
+    -- Test overload with named parameters
+    v_result := overloaded(p_id => v_int, p_name => v_str);
+    RAISE NOTICE 'Result 4: %', v_result;
+END;
+$$ LANGUAGE plisql;
+
+-- Minimal test case for issue #1006 subprocedure fix
+-- This is the exact bug scenario: mixed positional + named params with variable
+-- The bug occurs when argument types need coercion after reordering
+-- Before fix: ERROR: failed to find conversion function from unknown to varchar2
+DO $$
+DECLARE
+    v_str VARCHAR2(50) := 'test_value';
+    v_num NUMBER := 99;
+
+    -- Test with different type combinations that require proper type alignment
+    PROCEDURE test_types(p_num NUMBER, p_str VARCHAR2, p_extra NUMBER DEFAULT 0) AS
+    BEGIN
+        RAISE NOTICE 'test_types: num=%, str=%, extra=%', p_num, p_str, p_extra;
+    END;
+BEGIN
+    -- Case 1: Mixed positional + named with variable (varchar arg)
+    -- Call order: (1, p_str => v_str)
+    -- Declared order: (p_num NUMBER, p_str VARCHAR2, p_extra NUMBER)
+    test_types(1, p_str => v_str);
+
+    -- Case 2: Mixed positional + named with variable (number arg)
+    test_types(2, p_str => 'literal', p_extra => v_num);
+
+    -- Case 3: Named parameters in different order than declared
+    test_types(p_str => v_str, p_num => 3);
+
+    -- Case 4: All named with variables
+    test_types(p_num => v_num, p_str => v_str, p_extra => 10);
+END;
+$$ LANGUAGE plisql;
