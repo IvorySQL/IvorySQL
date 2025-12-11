@@ -1348,6 +1348,7 @@ extern PGDLLEXPORT int plisql_recognize_err_condition(const char *condname,
 													  bool allow_sqlstate);
 extern PLiSQL_condition * plisql_parse_err_condition(char *condname);
 extern void plisql_adddatum(PLiSQL_datum * newdatum);
+extern void plisql_adddatum_keep_dno(PLiSQL_datum * datum);
 extern int	plisql_add_initdatums(int **varnos);
 extern void plisql_HashTableInit(void);
 

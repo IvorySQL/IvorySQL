@@ -7028,7 +7028,6 @@ plisql_param_compile(ParamListInfo params, Param *param,
 
 	/* now we can access the target datum */
 	datum = plisql_get_datum(estate, estate->datums[dno]);
-	dno = datum->dno;
 
 	scratch.opcode = EEOP_PARAM_CALLBACK;
 	scratch.resvalue = resv;
@@ -7053,7 +7052,15 @@ plisql_param_compile(ParamListInfo params, Param *param,
 	{
 		bool		isvarlena = (((PLiSQL_var *) datum)->datatype->typlen == -1);
 
-		if (isvarlena && dno == expr->target_param && expr->expr_simple_expr)
+		/*
+		 * The RW-optimization requires paramid to match target_param + 1.
+		 * For package variables, paramid uses datum->dno (package's datum index)
+		 * which differs from the function's datum index used for target_param.
+		 * Exclude package variables from RW-optimization to avoid assertion
+		 * failures in exec_check_rw_parameter().
+		 */
+		if (isvarlena && !OidIsValid(datum->pkgoid) &&
+			dno == expr->target_param && expr->expr_simple_expr)
 			scratch.d.cparam.paramfunc = plisql_param_eval_var_check;
 		else if (isvarlena)
 			scratch.d.cparam.paramfunc = plisql_param_eval_var_ro;
@@ -7084,10 +7091,21 @@ plisql_param_compile(ParamListInfo params, Param *param,
 	 */
 	scratch.d.cparam.paramarg = expr;
 	scratch.d.cparam.paramarg2 = param;
-	scratch.d.cparam.paramid = param->paramid;
 	scratch.d.cparam.paramtype = param->paramtype;
 	scratch.d.cparam.pkgoid = datum->pkgoid;
-	scratch.d.cparam.paramid = dno + 1;
+	/*
+	 * For package variables, we must use datum->dno because it's the index
+	 * within the package's datums array (used by get_package_datum_bydno).
+	 * For non-package variables (normal functions with nested functions),
+	 * we use param->paramid which is safe because the datum lookup at
+	 * runtime uses estate->datums[dno], not datum->dno. Using datum->dno
+	 * for non-package variables would be wrong if the datum was shared with
+	 * a nested function that modified datum->dno during compilation (Bug #1124).
+	 */
+	if (OidIsValid(datum->pkgoid))
+		scratch.d.cparam.paramid = datum->dno + 1;
+	else
+		scratch.d.cparam.paramid = param->paramid;
 	ExprEvalPushStep(state, &scratch);
 }
 
@@ -7327,10 +7345,38 @@ plisql_param_eval_var_ro(ExprState *state, ExprEvalStep *op,
 	/*
 	 * Inlined version of exec_eval_datum() ... and while we're at it, force
 	 * expanded datums to read-only.
+	 *
+	 * IMPORTANT (Bug #1124 fix): For varlena types that are NOT expanded
+	 * objects, we must make a copy of the value into the eval_mcontext,
+	 * rather than just returning a pointer to the variable's storage. This is
+	 * because nested function calls (a PL/iSQL feature) can happen during
+	 * expression evaluation, and when they return, they copy back their global
+	 * variables to the parent. This copy-back operation frees the parent's old
+	 * variable storage, which would leave us with a dangling pointer if we had
+	 * just returned var->value directly.
+	 *
+	 * For expanded objects (like composite types), we use
+	 * MakeExpandedObjectReadOnly which handles them properly.
+	 *
+	 * By copying to eval_mcontext here, we ensure the value survives for the
+	 * duration of the expression evaluation, even if the original variable
+	 * storage is freed and reallocated.
 	 */
-	*op->resvalue = MakeExpandedObjectReadOnly(var->value,
-											   var->isnull,
-											   -1);
+	if (!var->isnull && var->datatype->typlen == -1 &&
+		!VARATT_IS_EXTERNAL_EXPANDED(DatumGetPointer(var->value)))
+	{
+		/* Non-expanded varlena type - make a copy in eval_mcontext */
+		MemoryContext oldcxt = MemoryContextSwitchTo(get_eval_mcontext(estate));
+		*op->resvalue = datumCopy(var->value, false, -1);
+		MemoryContextSwitchTo(oldcxt);
+	}
+	else
+	{
+		/* Expanded object, pass-by-value, or null - use standard handling */
+		*op->resvalue = MakeExpandedObjectReadOnly(var->value,
+												   var->isnull,
+												   -1);
+	}
 	*op->resnull = var->isnull;
 
 	/* safety check -- an assertion should be sufficient */

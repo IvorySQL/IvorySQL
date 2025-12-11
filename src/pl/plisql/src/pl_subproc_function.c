@@ -2809,7 +2809,7 @@ plisql_init_subprocfunc_compile(PLiSQL_subproc_function * subprocfunc)
 
 	/* Initialize datums using the template function */
 	for (i = 0; i < subprocfunc->lastoutvardno; i++)
-		plisql_adddatum(subprocfunc->function->datums[i]);
+		plisql_adddatum_keep_dno(subprocfunc->function->datums[i]);
 	Assert(subprocfunc->lastoutvardno == plisql_nDatums);
 
 	/* Initialize subproc list using the template function */

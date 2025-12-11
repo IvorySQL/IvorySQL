@@ -3230,6 +3230,29 @@ plisql_adddatum(PLiSQL_datum * newdatum)
 }
 
 /* ----------
+ * plisql_adddatum_keep_dno		Add a datum to the compiler's list
+ *					without modifying its dno field.
+ *
+ * This is used when inheriting datums from a parent function during
+ * nested function compilation. The datum's dno must be preserved
+ * because it's shared with the parent function and used for parameter
+ * resolution in expressions.
+ * ----------
+ */
+void
+plisql_adddatum_keep_dno(PLiSQL_datum * datum)
+{
+	if (plisql_nDatums == datums_alloc)
+	{
+		datums_alloc *= 2;
+		plisql_Datums = repalloc(plisql_Datums, sizeof(PLiSQL_datum *) * datums_alloc);
+	}
+
+	/* Do NOT modify datum->dno - it must match the parent's datum array index */
+	plisql_Datums[plisql_nDatums++] = datum;
+}
+
+/* ----------
  * plisql_finish_datums	Copy completed datum info into function struct.
  * ----------
  */
