@@ -679,3 +679,7 @@ END;
 $$;
 
 DROP PACKAGE test_mixed_params_pkg;
+
+-- TODO: Subprocedures also need the fix for mixed parameters with variables,
+-- but applying the same fix breaks overload resolution for subprocedures.
+-- This requires further investigation. See design/1006/investigation-notes.md

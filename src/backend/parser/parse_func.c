@@ -364,6 +364,33 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 	cancel_parser_errposition_callback(&pcbstate);
 
 	/*
+	 * If we found a package function/procedure, the fargs list may have been
+	 * reordered and expanded with default arguments. We need to rebuild the
+	 * actual_arg_types array to match the new argument order, otherwise type
+	 * coercion will fail when trying to match reordered arguments.
+	 *
+	 * Note: This currently only handles FUNC_FROM_PACKAGE. Subprocedures
+	 * (FUNC_FROM_SUBPROCFUNC) also reorder arguments but applying this fix
+	 * to them breaks overload resolution. This needs further investigation.
+	 * See design/1006/investigation-notes.md for details.
+	 */
+	if (function_from == FUNC_FROM_PACKAGE &&
+		fdresult != FUNCDETAIL_NOTFOUND)
+	{
+		ListCell   *lc;
+		int			i = 0;
+
+		foreach(lc, fargs)
+		{
+			Node	   *arg = lfirst(lc);
+
+			actual_arg_types[i++] = exprType(arg);
+		}
+		/* Update nargs to reflect the reordered/expanded argument list */
+		nargs = i;
+	}
+
+	/*
 	 * Check for various wrong-kind-of-routine cases.
 	 */
 
