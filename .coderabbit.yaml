@@ -8,3 +8,16 @@ reviews:
     enabled: true
     drafts: false
     base_branches: ["master", "IVORY_REL_5_STABLE"]
+  path_filters:
+    - "**/*.out"  # Include test output files
+  path_instructions:
+    - path: "**/expected/*.out"
+      instructions: |
+        These are expected test outputs from pg_regress. Review for:
+        - Correctness of query results
+        - Proper Oracle compatibility behavior
+        - Edge case coverage
+        - Consistency with corresponding .sql test files
+    - path: "**/sql/*.sql"
+      instructions: |
+        Test SQL files. Ensure comprehensive coverage of features.
