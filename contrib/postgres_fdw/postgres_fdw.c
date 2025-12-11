@@ -633,7 +633,7 @@ postgresGetForeignRelSize(PlannerInfo *root,
 	 * We use PgFdwRelationInfo to pass various information to subsequent
 	 * functions.
 	 */
-	fpinfo = (PgFdwRelationInfo *) palloc0(sizeof(PgFdwRelationInfo));
+	fpinfo = palloc0_object(PgFdwRelationInfo);
 	baserel->fdw_private = fpinfo;
 
 	/* Base foreign tables need to be pushed down always. */
@@ -1517,7 +1517,7 @@ postgresBeginForeignScan(ForeignScanState *node, int eflags)
 	/*
 	 * We'll save private state in node->fdw_state.
 	 */
-	fsstate = (PgFdwScanState *) palloc0(sizeof(PgFdwScanState));
+	fsstate = palloc0_object(PgFdwScanState);
 	node->fdw_state = fsstate;
 
 	/*
@@ -2664,7 +2664,7 @@ postgresBeginDirectModify(ForeignScanState *node, int eflags)
 	/*
 	 * We'll save private state in node->fdw_state.
 	 */
-	dmstate = (PgFdwDirectModifyState *) palloc0(sizeof(PgFdwDirectModifyState));
+	dmstate = palloc0_object(PgFdwDirectModifyState);
 	node->fdw_state = dmstate;
 
 	/*
@@ -3978,7 +3978,7 @@ create_foreign_modify(EState *estate,
 	ListCell   *lc;
 
 	/* Begin constructing PgFdwModifyState. */
-	fmstate = (PgFdwModifyState *) palloc0(sizeof(PgFdwModifyState));
+	fmstate = palloc0_object(PgFdwModifyState);
 	fmstate->rel = rel;
 
 	/* Identify which user to do the remote access as. */
@@ -4015,7 +4015,7 @@ create_foreign_modify(EState *estate,
 
 	/* Prepare for output conversion of parameters used in prepared stmt. */
 	n_params = list_length(fmstate->target_attrs) + 1;
-	fmstate->p_flinfo = (FmgrInfo *) palloc0(sizeof(FmgrInfo) * n_params);
+	fmstate->p_flinfo = palloc0_array(FmgrInfo, n_params);
 	fmstate->p_nums = 0;
 
 	if (operation == CMD_UPDATE || operation == CMD_DELETE)
@@ -4815,7 +4815,7 @@ prepare_query_params(PlanState *node,
 	Assert(numParams > 0);
 
 	/* Prepare for output conversion of parameters used in remote query. */
-	*param_flinfo = (FmgrInfo *) palloc0(sizeof(FmgrInfo) * numParams);
+	*param_flinfo = palloc0_array(FmgrInfo, numParams);
 
 	i = 0;
 	foreach(lc, fdw_exprs)
@@ -6298,7 +6298,7 @@ postgresGetForeignJoinPaths(PlannerInfo *root,
 	 * if found safe. Once we know that this join can be pushed down, we fill
 	 * the entry.
 	 */
-	fpinfo = (PgFdwRelationInfo *) palloc0(sizeof(PgFdwRelationInfo));
+	fpinfo = palloc0_object(PgFdwRelationInfo);
 	fpinfo->pushdown_safe = false;
 	joinrel->fdw_private = fpinfo;
 	/* attrs_used is only for base relations. */
@@ -6667,7 +6667,7 @@ postgresGetForeignUpperPaths(PlannerInfo *root, UpperRelationKind stage,
 		output_rel->fdw_private)
 		return;
 
-	fpinfo = (PgFdwRelationInfo *) palloc0(sizeof(PgFdwRelationInfo));
+	fpinfo = palloc0_object(PgFdwRelationInfo);
 	fpinfo->pushdown_safe = false;
 	fpinfo->stage = stage;
 	output_rel->fdw_private = fpinfo;
@@ -6892,7 +6892,7 @@ add_foreign_ordered_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	fpinfo->pushdown_safe = true;
 
 	/* Construct PgFdwPathExtraData */
-	fpextra = (PgFdwPathExtraData *) palloc0(sizeof(PgFdwPathExtraData));
+	fpextra = palloc0_object(PgFdwPathExtraData);
 	fpextra->target = root->upper_targets[UPPERREL_ORDERED];
 	fpextra->has_final_sort = true;
 
@@ -7126,7 +7126,7 @@ add_foreign_final_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	fpinfo->pushdown_safe = true;
 
 	/* Construct PgFdwPathExtraData */
-	fpextra = (PgFdwPathExtraData *) palloc0(sizeof(PgFdwPathExtraData));
+	fpextra = palloc0_object(PgFdwPathExtraData);
 	fpextra->target = root->upper_targets[UPPERREL_FINAL];
 	fpextra->has_final_sort = has_final_sort;
 	fpextra->has_limit = extra->limit_needed;
