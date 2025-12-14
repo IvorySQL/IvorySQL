@@ -91,10 +91,32 @@
  */
 #define BUF_DROP_FULL_SCAN_THRESHOLD		(uint64) (NBuffers / 32)
 
+/*
+ * This is separated out from PrivateRefCountEntry to allow for copying all
+ * the data members via struct assignment.
+ */
+typedef struct PrivateRefCountData
+{
+	/*
+	 * How many times has the buffer been pinned by this backend.
+	 */
+	int32		refcount;
+} PrivateRefCountData;
+
 typedef struct PrivateRefCountEntry
 {
+	/*
+	 * Note that this needs to be same as the entry's corresponding
+	 * PrivateRefCountArrayKeys[i], if the entry is stored in the array. We
+	 * store it in both places as this is used for the hashtable key and
+	 * because it is more convenient (passing around a PrivateRefCountEntry
+	 * suffices to identify the buffer) and faster (checking the keys array is
+	 * faster when checking many entries, checking the entry is faster if just
+	 * checking a single entry).
+	 */
 	Buffer		buffer;
-	int32		refcount;
+
+	PrivateRefCountData data;
 } PrivateRefCountEntry;
 
 /* 64 bytes, about the size of a cache line on common systems */
@@ -195,7 +217,8 @@ static BufferDesc *PinCountWaitBuf = NULL;
  *
  * To avoid - as we used to - requiring an array with NBuffers entries to keep
  * track of local buffers, we use a small sequentially searched array
- * (PrivateRefCountArray) and an overflow hash table (PrivateRefCountHash) to
+ * (PrivateRefCountArrayKeys, with the corresponding data stored in
+ * PrivateRefCountArray) and an overflow hash table (PrivateRefCountHash) to
  * keep track of backend local pins.
  *
  * Until no more than REFCOUNT_ARRAY_ENTRIES buffers are pinned at once, all
@@ -213,11 +236,12 @@ static BufferDesc *PinCountWaitBuf = NULL;
  * memory allocations in NewPrivateRefCountEntry() which can be important
  * because in some scenarios it's called with a spinlock held...
  */
+static Buffer PrivateRefCountArrayKeys[REFCOUNT_ARRAY_ENTRIES];
 static struct PrivateRefCountEntry PrivateRefCountArray[REFCOUNT_ARRAY_ENTRIES];
 static HTAB *PrivateRefCountHash = NULL;
 static int32 PrivateRefCountOverflowed = 0;
 static uint32 PrivateRefCountClock = 0;
-static PrivateRefCountEntry *ReservedRefCountEntry = NULL;
+static int	ReservedRefCountSlot = -1;
 
 static uint32 MaxProportionalPins;
 
@@ -260,7 +284,7 @@ static void
 ReservePrivateRefCountEntry(void)
 {
 	/* Already reserved (or freed), nothing to do */
-	if (ReservedRefCountEntry != NULL)
+	if (ReservedRefCountSlot != -1)
 		return;
 
 	/*
@@ -272,16 +296,19 @@ ReservePrivateRefCountEntry(void)
 
 		for (i = 0; i < REFCOUNT_ARRAY_ENTRIES; i++)
 		{
-			PrivateRefCountEntry *res;
-
-			res = &PrivateRefCountArray[i];
-
-			if (res->buffer == InvalidBuffer)
+			if (PrivateRefCountArrayKeys[i] == InvalidBuffer)
 			{
-				ReservedRefCountEntry = res;
-				return;
+				ReservedRefCountSlot = i;
+
+				/*
+				 * We could return immediately, but iterating till the end of
+				 * the array allows compiler-autovectorization.
+				 */
 			}
 		}
+
+		if (ReservedRefCountSlot != -1)
+			return;
 	}
 
 	/*
@@ -293,27 +320,37 @@ ReservePrivateRefCountEntry(void)
 		 * Move entry from the current clock position in the array into the
 		 * hashtable. Use that slot.
 		 */
+		int			victim_slot;
+		PrivateRefCountEntry *victim_entry;
 		PrivateRefCountEntry *hashent;
 		bool		found;
 
 		/* select victim slot */
-		ReservedRefCountEntry =
-			&PrivateRefCountArray[PrivateRefCountClock++ % REFCOUNT_ARRAY_ENTRIES];
+		victim_slot = PrivateRefCountClock++ % REFCOUNT_ARRAY_ENTRIES;
+		victim_entry = &PrivateRefCountArray[victim_slot];
+		ReservedRefCountSlot = victim_slot;
 
 		/* Better be used, otherwise we shouldn't get here. */
-		Assert(ReservedRefCountEntry->buffer != InvalidBuffer);
+		Assert(PrivateRefCountArrayKeys[victim_slot] != InvalidBuffer);
+		Assert(PrivateRefCountArray[victim_slot].buffer != InvalidBuffer);
+		Assert(PrivateRefCountArrayKeys[victim_slot] == PrivateRefCountArray[victim_slot].buffer);
 
 		/* enter victim array entry into hashtable */
 		hashent = hash_search(PrivateRefCountHash,
-							  &(ReservedRefCountEntry->buffer),
+							  &PrivateRefCountArrayKeys[victim_slot],
 							  HASH_ENTER,
 							  &found);
 		Assert(!found);
-		hashent->refcount = ReservedRefCountEntry->refcount;
+		/* move data from the entry in the array to the hash entry */
+		hashent->data = victim_entry->data;
 
 		/* clear the now free array slot */
-		ReservedRefCountEntry->buffer = InvalidBuffer;
-		ReservedRefCountEntry->refcount = 0;
+		PrivateRefCountArrayKeys[victim_slot] = InvalidBuffer;
+		victim_entry->buffer = InvalidBuffer;
+
+		/* clear the whole data member, just for future proofing */
+		memset(&victim_entry->data, 0, sizeof(victim_entry->data));
+		victim_entry->data.refcount = 0;
 
 		PrivateRefCountOverflowed++;
 	}
@@ -328,15 +365,17 @@ NewPrivateRefCountEntry(Buffer buffer)
 	PrivateRefCountEntry *res;
 
 	/* only allowed to be called when a reservation has been made */
-	Assert(ReservedRefCountEntry != NULL);
+	Assert(ReservedRefCountSlot != -1);
 
 	/* use up the reserved entry */
-	res = ReservedRefCountEntry;
-	ReservedRefCountEntry = NULL;
+	res = &PrivateRefCountArray[ReservedRefCountSlot];
 
 	/* and fill it */
+	PrivateRefCountArrayKeys[ReservedRefCountSlot] = buffer;
 	res->buffer = buffer;
-	res->refcount = 0;
+	res->data.refcount = 0;
+
+	ReservedRefCountSlot = -1;
 
 	return res;
 }
@@ -348,10 +387,11 @@ NewPrivateRefCountEntry(Buffer buffer)
  * do_move is true, and the entry resides in the hashtable the entry is
  * optimized for frequent access by moving it to the array.
  */
-static PrivateRefCountEntry *
+static inline PrivateRefCountEntry *
 GetPrivateRefCountEntry(Buffer buffer, bool do_move)
 {
 	PrivateRefCountEntry *res;
+	int			match = -1;
 	int			i;
 
 	Assert(BufferIsValid(buffer));
@@ -363,11 +403,15 @@ GetPrivateRefCountEntry(Buffer buffer, bool do_move)
 	 */
 	for (i = 0; i < REFCOUNT_ARRAY_ENTRIES; i++)
 	{
-		res = &PrivateRefCountArray[i];
-
-		if (res->buffer == buffer)
-			return res;
+		if (PrivateRefCountArrayKeys[i] == buffer)
+		{
+			match = i;
+			/* see ReservePrivateRefCountEntry() for why we don't return */
+		}
 	}
+
+	if (match != -1)
+		return &PrivateRefCountArray[match];
 
 	/*
 	 * By here we know that the buffer, if already pinned, isn't residing in
@@ -398,14 +442,18 @@ GetPrivateRefCountEntry(Buffer buffer, bool do_move)
 		ReservePrivateRefCountEntry();
 
 		/* Use up the reserved slot */
-		Assert(ReservedRefCountEntry != NULL);
-		free = ReservedRefCountEntry;
-		ReservedRefCountEntry = NULL;
+		Assert(ReservedRefCountSlot != -1);
+		free = &PrivateRefCountArray[ReservedRefCountSlot];
+		Assert(PrivateRefCountArrayKeys[ReservedRefCountSlot] == free->buffer);
 		Assert(free->buffer == InvalidBuffer);
 
 		/* and fill it */
 		free->buffer = buffer;
-		free->refcount = res->refcount;
+		free->data = res->data;
+		PrivateRefCountArrayKeys[ReservedRefCountSlot] = buffer;
+
+		ReservedRefCountSlot = -1;
+
 
 		/* delete from hashtable */
 		hash_search(PrivateRefCountHash, &buffer, HASH_REMOVE, &found);
@@ -438,7 +486,7 @@ GetPrivateRefCount(Buffer buffer)
 
 	if (ref == NULL)
 		return 0;
-	return ref->refcount;
+	return ref->data.refcount;
 }
 
 /*
@@ -448,19 +496,21 @@ GetPrivateRefCount(Buffer buffer)
 static void
 ForgetPrivateRefCountEntry(PrivateRefCountEntry *ref)
 {
-	Assert(ref->refcount == 0);
+	Assert(ref->data.refcount == 0);
 
 	if (ref >= &PrivateRefCountArray[0] &&
 		ref < &PrivateRefCountArray[REFCOUNT_ARRAY_ENTRIES])
 	{
 		ref->buffer = InvalidBuffer;
+		PrivateRefCountArrayKeys[ref - PrivateRefCountArray] = InvalidBuffer;
+
 
 		/*
 		 * Mark the just used entry as reserved - in many scenarios that
 		 * allows us to avoid ever having to search the array/hash for free
 		 * entries.
 		 */
-		ReservedRefCountEntry = ref;
+		ReservedRefCountSlot = ref - PrivateRefCountArray;
 	}
 	else
 	{
@@ -3074,7 +3124,7 @@ PinBuffer(BufferDesc *buf, BufferAccessStrategy strategy,
 	PrivateRefCountEntry *ref;
 
 	Assert(!BufferIsLocal(b));
-	Assert(ReservedRefCountEntry != NULL);
+	Assert(ReservedRefCountSlot != -1);
 
 	ref = GetPrivateRefCountEntry(b, true);
 
@@ -3146,8 +3196,8 @@ PinBuffer(BufferDesc *buf, BufferAccessStrategy strategy,
 		 */
 		result = (pg_atomic_read_u32(&buf->state) & BM_VALID) != 0;
 
-		Assert(ref->refcount > 0);
-		ref->refcount++;
+		Assert(ref->data.refcount > 0);
+		ref->data.refcount++;
 		ResourceOwnerRememberBuffer(CurrentResourceOwner, b);
 	}
 
@@ -3264,9 +3314,9 @@ UnpinBufferNoOwner(BufferDesc *buf)
 	/* not moving as we're likely deleting it soon anyway */
 	ref = GetPrivateRefCountEntry(b, false);
 	Assert(ref != NULL);
-	Assert(ref->refcount > 0);
-	ref->refcount--;
-	if (ref->refcount == 0)
+	Assert(ref->data.refcount > 0);
+	ref->data.refcount--;
+	if (ref->data.refcount == 0)
 	{
 		uint32		old_buf_state;
 
@@ -3306,7 +3356,7 @@ TrackNewBufferPin(Buffer buf)
 	PrivateRefCountEntry *ref;
 
 	ref = NewPrivateRefCountEntry(buf);
-	ref->refcount++;
+	ref->data.refcount++;
 
 	ResourceOwnerRememberBuffer(CurrentResourceOwner, buf);
 
@@ -4019,6 +4069,7 @@ InitBufferManagerAccess(void)
 	MaxProportionalPins = NBuffers / (MaxBackends + NUM_AUXILIARY_PROCS);
 
 	memset(&PrivateRefCountArray, 0, sizeof(PrivateRefCountArray));
+	memset(&PrivateRefCountArrayKeys, 0, sizeof(PrivateRefCountArrayKeys));
 
 	hash_ctl.keysize = sizeof(Buffer);
 	hash_ctl.entrysize = sizeof(PrivateRefCountEntry);
@@ -4068,10 +4119,10 @@ CheckForBufferLeaks(void)
 	/* check the array */
 	for (i = 0; i < REFCOUNT_ARRAY_ENTRIES; i++)
 	{
-		res = &PrivateRefCountArray[i];
-
-		if (res->buffer != InvalidBuffer)
+		if (PrivateRefCountArrayKeys[i] != InvalidBuffer)
 		{
+			res = &PrivateRefCountArray[i];
+
 			s = DebugPrintBufferRefcount(res->buffer);
 			elog(WARNING, "buffer refcount leak: %s", s);
 			pfree(s);
@@ -5408,7 +5459,7 @@ IncrBufferRefCount(Buffer buffer)
 
 		ref = GetPrivateRefCountEntry(buffer, true);
 		Assert(ref != NULL);
-		ref->refcount++;
+		ref->data.refcount++;
 	}
 	ResourceOwnerRememberBuffer(CurrentResourceOwner, buffer);
 }
