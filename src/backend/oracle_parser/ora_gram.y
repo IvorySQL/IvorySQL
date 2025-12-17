@@ -139,14 +139,20 @@ typedef struct KeyActions
 } KeyActions;
 
 /* ConstraintAttributeSpec yields an integer bitmask of these flags: */
-#define CAS_NOT_DEFERRABLE			0x01
-#define CAS_DEFERRABLE				0x02
-#define CAS_INITIALLY_IMMEDIATE		0x04
-#define CAS_INITIALLY_DEFERRED		0x08
-#define CAS_NOT_VALID				0x10
-#define CAS_NO_INHERIT				0x20
-#define CAS_NOT_ENFORCED			0x40
-#define CAS_ENFORCED				0x80
+#define CAS_NOT_DEFERRABLE          0x001
+#define CAS_DEFERRABLE              0x002
+#define CAS_INITIALLY_IMMEDIATE     0x004
+#define CAS_INITIALLY_DEFERRED      0x008
+#define CAS_NOT_VALID               0x010
+#define CAS_NO_INHERIT              0x020
+#define CAS_NOT_ENFORCED            0x040
+#define CAS_ENFORCED                0x080
+
+/* extra syntax */
+#define CAS_ENABLE                  0x100
+#define CAS_ENABLE_NOT_VALID        0x200
+#define CAS_DISABLE                 0x400
+#define CAS_DISABLE_VALID           0x800
 
 
 #define parser_yyerror(msg)  ora_scanner_yyerror(msg, yyscanner)
@@ -606,7 +612,7 @@ static void determineLanguage(List *options);
 %type <ival>	key_match
 %type <keyaction> key_delete key_update key_action
 %type <keyactions> key_actions
-%type <ival>	ConstraintAttributeSpec ConstraintAttributeElem
+%type <ival>	ConstraintAttributeSpec ConstraintAttributeElem OraConstraintAttributeElem
 %type <str>		ExistingIndex
 
 %type <list>	constraints_set_list
@@ -772,7 +778,7 @@ static void determineLanguage(List *options);
 	NAME_P NAMES NATIONAL NATURAL NCHAR NESTED NEW NEXT NFC NFD NFKC NFKD NO NOCACHE NOCYCLE
 	NOMAXVALUE NOMINVALUE NONE NOORDER
 	NOEXTEND NOKEEP NORMALIZE NORMALIZED NOSCALE NOSHARD	
-	NOT NOTHING NOTIFY NOTNULL NOWAIT NULL_P NULLIF
+	NOT NOTHING NOTIFY NOTNULL NOVALIDATE NOWAIT NULL_P NULLIF
 	NULLS_P NUMBER_P NUMERIC NVL NVL2
 
 	OBJECT_P OBJECTS_P OF OFF OFFSET OIDS OLD OMIT ON ONLY OPERATOR OPTION OPTIONS OR
@@ -4281,6 +4287,18 @@ ColConstraintElem:
 					n->initially_valid = true;
 					$$ = (Node *) n;
 				}
+			| NOT NULL_P OraConstraintAttributeElem
+				{
+					Constraint *n = makeNode(Constraint);
+
+					n->contype = CONSTR_NOTNULL;
+					n->location = @1;
+					processCASbits($3, @3, "NOT NULL",
+								   NULL, NULL, NULL, &n->skip_validation,
+								   &n->is_no_inherit, yyscanner);
+					n->initially_valid = !n->skip_validation;
+					$$ = (Node *) n;
+				}
 			| NULL_P
 				{
 					Constraint *n = makeNode(Constraint);
@@ -4302,6 +4320,22 @@ ColConstraintElem:
 					n->indexspace = $4;
 					$$ = (Node *) n;
 				}
+			| UNIQUE opt_unique_null_treatment opt_definition OptConsTableSpace OraConstraintAttributeElem
+				{
+					Constraint *n = makeNode(Constraint);
+
+					n->contype = CONSTR_UNIQUE;
+					n->location = @1;
+					n->nulls_not_distinct = !$2;
+					n->keys = NULL;
+					n->options = $3;
+					n->indexname = NULL;
+					n->indexspace = $4;
+					processCASbits($5, @5, "UNIQUE",
+								   &n->deferrable, &n->initdeferred, NULL,
+								   NULL, NULL, yyscanner);
+					$$ = (Node *) n;
+				}
 			| PRIMARY KEY opt_definition OptConsTableSpace
 				{
 					Constraint *n = makeNode(Constraint);
@@ -4312,6 +4346,21 @@ ColConstraintElem:
 					n->options = $3;
 					n->indexname = NULL;
 					n->indexspace = $4;
+					$$ = (Node *) n;
+				}
+			| PRIMARY KEY opt_definition OptConsTableSpace OraConstraintAttributeElem
+				{
+					Constraint *n = makeNode(Constraint);
+
+					n->contype = CONSTR_PRIMARY;
+					n->location = @1;
+					n->keys = NULL;
+					n->options = $3;
+					n->indexname = NULL;
+					n->indexspace = $4;
+					processCASbits($5, @5, "PRIMARY KEY",
+								   &n->deferrable, &n->initdeferred, NULL,
+								   NULL, NULL, yyscanner);
 					$$ = (Node *) n;
 				}
 			| CHECK '(' a_expr ')' opt_no_inherit
@@ -4326,6 +4375,22 @@ ColConstraintElem:
 					n->is_enforced = true;
 					n->skip_validation = false;
 					n->initially_valid = true;
+					$$ = (Node *) n;
+				}
+			| CHECK '(' a_expr ')' opt_no_inherit OraConstraintAttributeElem
+				{
+					Constraint *n = makeNode(Constraint);
+
+					n->contype = CONSTR_CHECK;
+					n->location = @1;
+					n->is_no_inherit = $5;
+					n->raw_expr = $3;
+					n->cooked_expr = NULL;
+					processCASbits($6, @6, "CHECK",
+								   &n->deferrable, &n->initdeferred,
+								   &n->is_enforced, &n->skip_validation,
+								   &n->is_no_inherit, yyscanner);
+					n->initially_valid = !n->skip_validation;
 					$$ = (Node *) n;
 				}
 			| DEFAULT b_expr
@@ -4392,6 +4457,26 @@ ColConstraintElem:
 					n->is_enforced = true;
 					n->skip_validation = false;
 					n->initially_valid = true;
+					$$ = (Node *) n;
+				}
+			| REFERENCES qualified_name opt_column_list key_match key_actions OraConstraintAttributeElem
+				{
+					Constraint *n = makeNode(Constraint);
+
+					n->contype = CONSTR_FOREIGN;
+					n->location = @1;
+					n->pktable = $2;
+					n->fk_attrs = NIL;
+					n->pk_attrs = $3;
+					n->fk_matchtype = $4;
+					n->fk_upd_action = ($5)->updateAction->action;
+					n->fk_del_action = ($5)->deleteAction->action;
+					n->fk_del_set_cols = ($5)->deleteAction->cols;
+					processCASbits($6, @6, "FOREIGN KEY",
+								   &n->deferrable, &n->initdeferred,
+								   &n->is_enforced, &n->skip_validation, NULL,
+								   yyscanner);
+					n->initially_valid = !n->skip_validation;
 					$$ = (Node *) n;
 				}
 		;
@@ -6594,6 +6679,16 @@ ConstraintAttributeElem:
 			| NO INHERIT					{ $$ = CAS_NO_INHERIT; }
 			| NOT ENFORCED					{ $$ = CAS_NOT_ENFORCED; }
 			| ENFORCED						{ $$ = CAS_ENFORCED; }
+			| OraConstraintAttributeElem
+		;
+
+OraConstraintAttributeElem:
+			ENABLE_P						{ $$ = CAS_ENABLE; }
+			| ENABLE_P VALIDATE				{ $$ = CAS_ENABLE; }
+			| ENABLE_P NOVALIDATE			{ $$ = CAS_ENABLE_NOT_VALID; }
+			| DISABLE_P						{ $$ = CAS_DISABLE; }
+			| DISABLE_P VALIDATE			{ $$ = CAS_DISABLE_VALID; }
+			| DISABLE_P NOVALIDATE			{ $$ = CAS_DISABLE; }
 		;
 
 
@@ -20308,6 +20403,7 @@ unreserved_keyword:
 			| NOSHARD
 			| NOTHING
 			| NOTIFY
+			| NOVALIDATE
 			| NOWAIT
 			| NULLS_P
 			| OBJECT_P
@@ -21008,6 +21104,7 @@ bare_label_keyword:
 			| NOT
 			| NOTHING
 			| NOTIFY
+			| NOVALIDATE
 			| NOWAIT
 			| NULL_P
 			| NULLIF
@@ -22058,6 +22155,65 @@ processCASbits(int cas_bits, int location, const char *constrType,
 		*not_valid = false;
 	if (is_enforced)
 		*is_enforced = true;
+
+	if ((strcmp(constrType, "PRIMARY KEY") == 0) ||
+		(strcmp(constrType, "UNIQUE") == 0) ||
+		(strcmp(constrType, "NOT NULL") == 0))
+	{
+		if (cas_bits & CAS_ENABLE)
+		{
+			cas_bits = 0;
+			ereport(LOG,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("%s ENABLE is the default.", constrType),
+					errhint("Update your PRIMARY KEY definition."),
+					parser_errposition(location)));
+		}
+
+		if (cas_bits & CAS_DISABLE)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("%s DISABLE is not supported.",
+							constrType),
+					errhint("Update your CONSTRAINT definition."),
+					parser_errposition(location)));
+
+		if (cas_bits & CAS_ENABLE_NOT_VALID)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("%s ENABLE NOVALIDATE is not supported.",
+							constrType),
+					errhint("Update your CONSTRAINT definition."),
+					parser_errposition(location)));
+	}
+	else if ((strcmp(constrType, "FOREIGN KEY") == 0) ||
+			 (strcmp(constrType, "CHECK") == 0))
+	{
+		if (cas_bits & CAS_ENABLE_NOT_VALID)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("%s ENABLE NOVALIDATE is not supported.",
+							constrType),
+					errhint("Update your CONSTRAINT definition."),
+					parser_errposition(location)));
+	}
+
+	if (cas_bits & CAS_ENABLE)
+		cas_bits = CAS_ENFORCED;
+
+	if (cas_bits & CAS_ENABLE_NOT_VALID)
+		cas_bits = CAS_NOT_VALID;
+
+	if (cas_bits & CAS_DISABLE)
+		cas_bits = CAS_NOT_ENFORCED;
+
+	/* supported syntax but unsupported feature */
+	if (cas_bits & CAS_DISABLE_VALID)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("%s DISABLE VALIDATE is not supported.", constrType),
+				 errhint("Update your CONSTRAINT definition."),
+				 parser_errposition(location)));
 
 	if (cas_bits & (CAS_DEFERRABLE | CAS_INITIALLY_DEFERRED))
 	{
