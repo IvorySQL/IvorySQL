@@ -2727,7 +2727,7 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 		}
 
 		/* Close the index relation but keep the lock */
-		relation_close(index_rel, NoLock);
+		index_close(index_rel, NoLock);
 
 		index->indexOid = index_oid;
 	}
