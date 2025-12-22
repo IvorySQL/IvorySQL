@@ -56,7 +56,7 @@ static const int	NumKeywords = lengthof(psqlplus_keywords);
 
 static const PsqlScanKeyword *PsqlplusKeywordLookup(const char *text);
 static int process_integer_literal(const char *token, YYSTYPE *lval);
-static char *psqlplus_downcase_identifier(const char *str, int len, int encoding);
+static char *psqlplus_downcase_identifier(const char *str, int len);
 static void startlit(yyscan_t yyscanner);
 static void addlitchar(unsigned char ychar, yyscan_t yyscanner);
 static void addlit(char *ytext, int yleng, yyscan_t yyscanner);
@@ -358,8 +358,7 @@ xlinside		[^ ]+
 						return keyword->value;
 					}
 
-					ident = psqlplus_downcase_identifier(yytext, yyleng,
-														 cur_state->encoding);
+					ident = psqlplus_downcase_identifier(yytext, yyleng);
 					yylval->str = ident;
 					cur_state->token_count++;
 					return IDENT;
@@ -455,42 +454,18 @@ psqlplus_scanner_finish(yyscan_t yyscanner)
  * Do downcasing and returns a palloc'd string.
  */
 static char *
-psqlplus_downcase_identifier(const char *str, int len, int encoding)
+psqlplus_downcase_identifier(const char *str, int len)
 {
 	char	   *result;
-	int			i = 0;
-	int			out = 0;
-	bool		enc_is_single_byte = (pg_encoding_max_length(encoding) == 1);
+	int			i;
 
 	result = (char *) pg_malloc(len + 1);
-
-	while (i < len)
+	for (i = 0; i < len; i++)
 	{
-		unsigned char ch = (unsigned char) str[i];
-
-		if (!enc_is_single_byte && IS_HIGHBIT_SET(ch))
-		{
-			int			mblen = pg_encoding_mblen(encoding, str + i);
-
-			if (mblen <= 0 || i + mblen > len)
-				mblen = 1;
-			memcpy(result + out, str + i, mblen);
-			out += mblen;
-			i += mblen;
-		}
-		else
-		{
-			if (ch >= 'A' && ch <= 'Z')
-				ch += 'a' - 'A';
-			else if (enc_is_single_byte && IS_HIGHBIT_SET(ch) && isupper(ch))
-				ch = tolower(ch);
-
-			result[out++] = (char) ch;
-			i++;
-		}
+		result[i] = (char) pg_tolower((unsigned char) str[i]);
 	}
 
-	result[out] = '\0';
+	result[i] = '\0';
 
 	return result;
 }
