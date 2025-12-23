@@ -149,7 +149,30 @@ xlog_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 			 * can restart from there.
 			 */
 			break;
-		case XLOG_PARAMETER_CHANGE:
+		case XLOG_LOGICAL_DECODING_STATUS_CHANGE:
+			{
+				bool		logical_decoding;
+
+				memcpy(&logical_decoding, XLogRecGetData(buf->record), sizeof(bool));
+
+				/*
+				 * Error out as we should not decode this WAL record.
+				 *
+				 * Logical decoding is disabled, and existing logical slots on
+				 * the standby are invalidated when this WAL record is
+				 * replayed. No logical decoder can process this WAL record
+				 * until replay completes, and by then the slots are already
+				 * invalidated. Furthermore, no new logical slots can be
+				 * created while logical decoding is disabled. This cannot
+				 * occur even on primary either, since it will not restart
+				 * with wal_level < replica if any logical slots exist.
+				 */
+				elog(ERROR, "unexpected logical decoding status change %d",
+					 logical_decoding);
+
+				break;
+			}
+        case XLOG_PARAMETER_CHANGE:
 			{
 				xl_parameter_change *xlrec =
 				(xl_parameter_change *) XLogRecGetData(buf->record);
