@@ -29,7 +29,6 @@
 
 #include "postgres.h"
 
-#include "access/xact.h"
 #include "fmgr.h"
 #include "funcapi.h"
 #include "lib/stringinfo.h"
@@ -41,7 +40,7 @@
  * DBMS_OUTPUT buffer structure
  *
  * This is a per-backend global buffer that stores output lines.
- * The buffer is transaction-scoped and cleared on COMMIT/ROLLBACK.
+ * The buffer is session-scoped and persists across transactions (Oracle behavior).
  */
 typedef struct DbmsOutputBuffer
 {
@@ -52,7 +51,6 @@ typedef struct DbmsOutputBuffer
 	bool		enabled;		/* Buffer enabled/disabled state */
 	StringInfo	current_line;	/* Accumulator for PUT calls (not yet a line) */
 	int			read_position;	/* Current position for GET_LINE/GET_LINES */
-	bool		callback_registered; /* Track if xact callback is registered */
 	MemoryContext buffer_mcxt;	/* Memory context for buffer allocations */
 	int			lines_allocated; /* Size of lines array */
 } DbmsOutputBuffer;
@@ -75,7 +73,6 @@ static DbmsOutputBuffer *output_buffer = NULL;
 static void init_output_buffer(int buffer_size);
 static void cleanup_output_buffer(void);
 static void add_line_to_buffer(const char *line);
-static void dbms_output_xact_callback(XactEvent event, void *arg);
 static void ensure_lines_capacity(void);
 
 /* SQL-callable function declarations */
@@ -136,36 +133,21 @@ init_output_buffer(int buffer_size)
 	output_buffer->line_count = 0;
 	output_buffer->buffer_used = 0;
 	output_buffer->read_position = 0;
-	output_buffer->callback_registered = false;
 
 	MemoryContextSwitchTo(oldcontext);
-
-	/* Register transaction callback (only once per buffer lifecycle) */
-	if (!output_buffer->callback_registered)
-	{
-		RegisterXactCallback(dbms_output_xact_callback, NULL);
-		output_buffer->callback_registered = true;
-	}
 }
 
 /*
  * cleanup_output_buffer
  *
  * Free all buffer resources and reset to NULL.
- * Called on transaction end (COMMIT/ROLLBACK) and when ENABLE is called.
+ * Called when ENABLE is called to re-initialize the buffer.
  */
 static void
 cleanup_output_buffer(void)
 {
 	if (output_buffer == NULL)
 		return;
-
-	/* Unregister callback if it was registered */
-	if (output_buffer->callback_registered)
-	{
-		UnregisterXactCallback(dbms_output_xact_callback, NULL);
-		output_buffer->callback_registered = false;
-	}
 
 	/* Delete memory context (automatically frees all lines and current_line) */
 	MemoryContextDelete(output_buffer->buffer_mcxt);
@@ -238,32 +220,6 @@ add_line_to_buffer(const char *line)
 	output_buffer->lines[output_buffer->line_count++] = line_copy;
 	output_buffer->buffer_used += line_bytes;
 	MemoryContextSwitchTo(oldcontext);
-}
-
-/*
- * dbms_output_xact_callback
- *
- * Transaction callback to clean up buffer on COMMIT/ROLLBACK.
- * Oracle behavior: buffer is transaction-scoped, not session-scoped.
- */
-static void
-dbms_output_xact_callback(XactEvent event, void *arg)
-{
-	switch (event)
-	{
-		case XACT_EVENT_ABORT:
-		case XACT_EVENT_PARALLEL_ABORT:
-		case XACT_EVENT_COMMIT:
-		case XACT_EVENT_PARALLEL_COMMIT:
-		case XACT_EVENT_PREPARE:
-			/* Clean up buffer at transaction end */
-			cleanup_output_buffer();
-			break;
-
-		default:
-			/* XACT_EVENT_PRE_COMMIT, etc. - ignore */
-			break;
-	}
 }
 
 /*
