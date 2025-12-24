@@ -238,13 +238,13 @@ END;
 -- Test 4.4: Buffer size above maximum (should fail)
 CALL dbms_output.enable(1000001);
 
--- Test 4.5: NULL buffer size uses default
+-- Test 4.5: NULL buffer size uses maximum (1000000)
 DECLARE
     line TEXT;
     status INTEGER;
 BEGIN
     dbms_output.enable(NULL);
-    dbms_output.put_line('NULL buffer uses default');
+    dbms_output.put_line('NULL buffer uses max');
     dbms_output.get_line(line, status);
     RAISE NOTICE 'Test 4.5 - NULL buffer: [%]', line;
 END;

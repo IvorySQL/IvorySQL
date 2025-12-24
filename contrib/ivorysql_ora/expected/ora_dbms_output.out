@@ -242,18 +242,18 @@ CALL dbms_output.enable(1000001);
 ERROR:  buffer size must be between 2000 and 1000000
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_output_enable(buffer_size)"
 PL/iSQL function enable line 3 at PERFORM
--- Test 4.5: NULL buffer size uses default
+-- Test 4.5: NULL buffer size uses maximum (1000000)
 DECLARE
     line TEXT;
     status INTEGER;
 BEGIN
     dbms_output.enable(NULL);
-    dbms_output.put_line('NULL buffer uses default');
+    dbms_output.put_line('NULL buffer uses max');
     dbms_output.get_line(line, status);
     RAISE NOTICE 'Test 4.5 - NULL buffer: [%]', line;
 END;
 /
-NOTICE:  Test 4.5 - NULL buffer: [NULL buffer uses default]
+NOTICE:  Test 4.5 - NULL buffer: [NULL buffer uses max]
 -- =============================================================================
 -- Section 5: Buffer overflow
 -- =============================================================================
