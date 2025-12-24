@@ -22166,7 +22166,7 @@ processCASbits(int cas_bits, int location, const char *constrType,
 			ereport(LOG,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					errmsg("%s ENABLE is the default.", constrType),
-					errhint("Update your PRIMARY KEY definition."),
+					errhint("Update your %s CONSTRAINT definition.", constrType),
 					parser_errposition(location)));
 		}
 
