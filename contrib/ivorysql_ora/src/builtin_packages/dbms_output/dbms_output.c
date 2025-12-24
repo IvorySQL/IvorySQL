@@ -63,6 +63,14 @@ static DbmsOutputBuffer *output_buffer = NULL;
 /* Oracle line length limit: 32767 bytes per line */
 #define DBMS_OUTPUT_MAX_LINE_LENGTH 32767
 
+/* Buffer size limits (IvorySQL-enforced, stricter than Oracle) */
+#define DBMS_OUTPUT_MIN_BUFFER_SIZE 2000
+#define DBMS_OUTPUT_MAX_BUFFER_SIZE 1000000
+
+/* Initial line array allocation parameters */
+#define DBMS_OUTPUT_MIN_LINES_ALLOCATED 100
+#define DBMS_OUTPUT_ESTIMATED_LINE_LENGTH 80
+
 /* Internal function declarations */
 static void init_output_buffer(int buffer_size);
 static void cleanup_output_buffer(void);
@@ -87,7 +95,7 @@ PG_FUNCTION_INFO_V1(ora_dbms_output_get_lines);
  *
  * IvorySQL behavior: ENABLE always clears existing buffer.
  * Note: Oracle preserves buffer on re-ENABLE; this is an intentional
- * IvorySQL simplification. See GitHub issue #26 for tracking.
+ * IvorySQL simplification.
  */
 static void
 init_output_buffer(int buffer_size)
@@ -111,25 +119,16 @@ init_output_buffer(int buffer_size)
 
 	MemoryContextSwitchTo(output_buffer->buffer_mcxt);
 
-	/* Oracle tracks buffer in BYTES, not lines */
-	if (buffer_size < 0)
-		output_buffer->buffer_size = INT_MAX;  /* NULL = unlimited (Oracle 10g R2+) */
-	else
-		output_buffer->buffer_size = buffer_size;
+	/* Store buffer size in bytes (IvorySQL enforces 2000-1000000 range) */
+	output_buffer->buffer_size = buffer_size;
 
 	/*
 	 * Pre-allocate line array with reasonable initial size.
-	 * For unlimited (INT_MAX), don't allocate huge array upfront -
-	 * we'll grow dynamically via ensure_lines_capacity().
+	 * Estimate based on average line length, with a minimum allocation.
 	 */
-	if (output_buffer->buffer_size == INT_MAX)
-		output_buffer->lines_allocated = 1000;  /* Start with 1000 lines for unlimited */
-	else
-	{
-		output_buffer->lines_allocated = output_buffer->buffer_size / 80;
-		if (output_buffer->lines_allocated < 100)
-			output_buffer->lines_allocated = 100;  /* Minimum array size */
-	}
+	output_buffer->lines_allocated = buffer_size / DBMS_OUTPUT_ESTIMATED_LINE_LENGTH;
+	if (output_buffer->lines_allocated < DBMS_OUTPUT_MIN_LINES_ALLOCATED)
+		output_buffer->lines_allocated = DBMS_OUTPUT_MIN_LINES_ALLOCATED;
 
 	output_buffer->lines = (char **) palloc0(sizeof(char *) * output_buffer->lines_allocated);
 	output_buffer->current_line = makeStringInfo();
@@ -253,7 +252,9 @@ dbms_output_xact_callback(XactEvent event, void *arg)
 	switch (event)
 	{
 		case XACT_EVENT_ABORT:
+		case XACT_EVENT_PARALLEL_ABORT:
 		case XACT_EVENT_COMMIT:
+		case XACT_EVENT_PARALLEL_COMMIT:
 		case XACT_EVENT_PREPARE:
 			/* Clean up buffer at transaction end */
 			cleanup_output_buffer();
@@ -269,31 +270,33 @@ dbms_output_xact_callback(XactEvent event, void *arg)
  * ora_dbms_output_enable
  *
  * Enable output buffering with optional size limit.
- * NULL parameter means UNLIMITED (Oracle 10g R2+).
  *
- * IvorySQL-enforced range: 2000 to 1000000 bytes when explicitly specified.
- * Note: Oracle silently clamps below-min values to 2000 and has no upper limit.
- * See GitHub issue #22 for tracking this difference.
+ * IvorySQL-enforced range: 2000 to 1000000 bytes.
+ * - NULL parameter uses maximum (1000000 bytes) for safety.
+ * - Default (from SQL wrapper): 20000 bytes.
  *
- * Default (from SQL wrapper): 20000 bytes.
+ * Note: Oracle allows unlimited buffer with NULL and silently clamps
+ * below-min values to 2000. IvorySQL enforces stricter limits as a
+ * protective measure for the initial implementation.
  */
 Datum
 ora_dbms_output_enable(PG_FUNCTION_ARGS)
 {
 	int32		buffer_size;
 
-	/* Handle NULL argument (means UNLIMITED) */
+	/* Handle NULL argument - use maximum allowed size */
 	if (PG_ARGISNULL(0))
-		buffer_size = -1;  /* -1 = unlimited */
+		buffer_size = DBMS_OUTPUT_MAX_BUFFER_SIZE;
 	else
 	{
 		buffer_size = PG_GETARG_INT32(0);
 
-		/* IvorySQL-enforced range (stricter than Oracle, see issue #22) */
-		if (buffer_size < 2000 || buffer_size > 1000000)
+		/* IvorySQL-enforced range (stricter than Oracle) */
+		if (buffer_size < DBMS_OUTPUT_MIN_BUFFER_SIZE || buffer_size > DBMS_OUTPUT_MAX_BUFFER_SIZE)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("buffer size must be between 2000 and 1000000")));
+					 errmsg("buffer size must be between %d and %d",
+							DBMS_OUTPUT_MIN_BUFFER_SIZE, DBMS_OUTPUT_MAX_BUFFER_SIZE)));
 	}
 
 	/* Initialize buffer (clears existing if present) */
