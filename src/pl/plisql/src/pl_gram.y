@@ -2337,12 +2337,24 @@ for_variable	: T_DATUM
 						$$.name = $1.ident;
 						$$.lineno = plisql_location_to_lineno(@1, yyscanner);
 						$$.scalar = NULL;
-						$$.row = NULL;
 						/* check for comma-separated list */
 						tok = yylex(&yylval, &yylloc, yyscanner);
 						plisql_push_back_token(tok, &yylval, &yylloc, yyscanner);
 						if (tok == ',')
+						{
 							word_is_not_variable(&($1), @1, yyscanner);
+							$$.row = NULL;
+						}
+						else
+						{
+							/* Oracle compatibility: implicitly create RECORD variable for FOR loop */
+							$$.row = (PLiSQL_datum *)
+								plisql_build_record($1.ident,
+													plisql_location_to_lineno(@1, yyscanner),
+													NULL,
+													RECORDOID,
+													true);
+						}
 					}
 				| T_CWORD
 					{
