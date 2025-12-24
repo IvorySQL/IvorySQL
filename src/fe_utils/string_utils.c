@@ -104,14 +104,15 @@ getFmtEncoding(void)
 const char *
 fmtIdEnc(const char *rawid, int encoding)
 {
-	if (DB_ORACLE == db_mode)
-		return ora_fmtId(rawid);
-
-	PQExpBuffer id_return = getLocalPQExpBuffer();
-
+	PQExpBuffer id_return;
 	const char *cp;
 	bool		need_quotes = false;
 	size_t		remaining = strlen(rawid);
+
+	if (DB_ORACLE == db_mode)
+		return ora_fmtId(rawid);
+
+	id_return = getLocalPQExpBuffer();
 
 	/*
 	 * These checks need to match the identifier production in scan.l. Don't

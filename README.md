@@ -23,13 +23,44 @@ We are committed to abiding by the principles of [open-source ways](https://open
 </br>
 
 ## Installation
-We recommend following our [Quick Start](https://docs.ivorysql.org/en/ivorysql-doc/v5.0/v5.0/3.1#quick-installation) for how to install and running IvorySQL.
+We recommend following our [Quick Start](https://docs.ivorysql.org/en/ivorysql-doc/v5.1/v5.1/3.1#quick-installation) for how to install and running IvorySQL.
 
-Furthermore, for more detailed installation instructions, please refer to the [Installation Docs](https://docs.ivorysql.org/en/ivorysql-doc/v5.0/v5.0/4.1#introduction). We provide four installation methods for IvorySQL, as outlined below:
-- [Yum installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.0/v5.0/4.1#Yum-installation)
-- [Docker installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.0/v5.0/4.1#Docker-installation)
-- [Rpm installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.0/v5.0/4.1#Rpm-installation)
-- [Source code installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.0/v5.0/4.1#Source-code-installation)
+Furthermore, for more detailed installation instructions, please refer to the [Installation Docs](https://docs.ivorysql.org/en/ivorysql-doc/v5.1/v5.1/4.1#introduction). We provide four installation methods for IvorySQL, as outlined below:
+- [Yum installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.1/v5.1/4.1#Yum-installation)
+- [Docker installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.1/v5.1/4.1#Docker-installation)
+- [Rpm installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.1/v5.1/4.1#Rpm-installation)
+- [Source code installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.1/v5.1/4.1#Source-code-installation)
+
+## Development with Docker
+
+For a consistent development environment, we provide a Docker-based setup that includes all build dependencies.
+
+### Quick Start
+
+```bash
+# Start the development containers
+docker compose up -d
+
+# Enter the development container
+docker compose exec dev bash
+
+# Configure and build IvorySQL
+./configure --prefix=/home/ivorysql/ivorysql \
+    --enable-debug --enable-cassert \
+    --with-uuid=e2fs --with-libxml
+
+make -j$(nproc)
+make install
+
+# Initialize database in Oracle mode
+initdb -D data_ora -m oracle
+
+# Start the server
+pg_ctl -D data_ora start
+
+# Run tests
+make oracle-check
+```
 
 ## Developer Formatting hooks and CI:
 - A pre-commit formatting hook is provided at `.githooks/pre-commit`. Enable it with `git config core.hooksPath .githooks`, or run `make code-format` (equivalently `bash tools/enable-git-hooks.sh`).

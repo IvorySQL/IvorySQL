@@ -396,8 +396,8 @@ main(int argc, char *argv[])
 			}
 			else if (cell->action == ACT_SINGLE_SLASH)
 			{
-				PsqlScanState scan_state;
-				ConditionalStack cond_stack;
+				PsqlScanState scan_state = NULL;
+				ConditionalStack cond_stack = NULL;
 
 				pg_logging_config(PG_LOG_FLAG_TERSE);
 

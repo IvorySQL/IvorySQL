@@ -2997,6 +2997,10 @@ IvyreplaceParamTypeByOutParameter(IvyBindOutInfo *bindinfo, int nParams, Oid *pa
 static Ivylist*
 IvyaddValueToList(Ivylist *list, void *value)
 {
+	Ivylist *pre = NULL;
+	Ivylist *tmp = NULL;
+	int find = 0;
+
 	if (list == NULL)
 	{
 		Ivylist *new = (Ivylist *) malloc(sizeof(Ivylist));
@@ -3013,10 +3017,6 @@ IvyaddValueToList(Ivylist *list, void *value)
 
 		return new;
 	}
-
-	Ivylist *pre = NULL;
-	Ivylist *tmp = NULL;
-	int find = 0;
 
 	for (tmp = list, pre = list; tmp != NULL; pre = tmp, tmp = tmp->next)
 	{
@@ -3763,7 +3763,6 @@ Ivyreplacenamebindtoposition(Ivyconn *tconn,
 				size_t size_error_buf,
 				bool *iscallinto)
 {
-	int i;
 	Ivyresult *res;
 	IvyBindOutNameInfo *tmp;
 
@@ -3787,7 +3786,7 @@ Ivyreplacenamebindtoposition(Ivyconn *tconn,
 		char	*convertcall = NULL;
 		char	*newsql = NULL;
 		char	*ptr = NULL;
-		int		i = 0;
+		const char *query_ptr = NULL;
 
 		query_len = (stmtHandle->query_len * 2) + strlen("select * from get_parameter_description(") + 5;
 		query = (char *) malloc(query_len);
@@ -3800,12 +3799,14 @@ Ivyreplacenamebindtoposition(Ivyconn *tconn,
 
 		newsql = malloc(stmtHandle->query_len * 2);	/* enough */
 		ptr = newsql;
-		while (stmtHandle->query[i] != '\0')
+		query_ptr = stmtHandle->query;
+		
+		while (*query_ptr != '\0')
 		{
-			if (stmtHandle->query[i] == '\'')
-				*ptr++ = stmtHandle->query[i];
-			*ptr++ = stmtHandle->query[i];
-			i++;
+			if (*query_ptr == '\'')
+				*ptr++ = *query_ptr;
+			*ptr++ = *query_ptr;
+			query_ptr++;
 		}
 		*ptr = '\0';
 
@@ -3965,7 +3966,7 @@ Ivyreplacenamebindtoposition(Ivyconn *tconn,
 
 		stmtHandle->paramNames = (char **) malloc(sizeof(char *) * (n_tuples - 1));
 		memset(stmtHandle->paramNames, 0x00, sizeof(char *) * (n_tuples - 1));
-		for (i = 1; i < n_tuples; i++)
+		for (int i = 1; i < n_tuples; i++)
 		{
 			int position;
 			char *name;
@@ -4034,7 +4035,7 @@ error_handle:
 		"get_parameter_description return failed");
 
 	Ivyclear(res);
-	for (i = 0; i < stmtHandle->nParams; i++)
+	for (int i = 0; i < stmtHandle->nParams; i++)
 	{
 		if (stmtHandle->paramNames[i] != NULL)
 			free(stmtHandle->paramNames[i]);
@@ -4055,9 +4056,9 @@ Ivyreplacenamebindtoposition2(Ivyconn *tconn,
 				IvyPreparedStatement *stmtHandle,
 				IvyError *errhp)
 {
-	int i;
 	Ivyresult *res;
 	IvyBindNameInfo *tmp;
+
 
 	if (stmtHandle->paramNames == NULL)
 	{
@@ -4072,7 +4073,7 @@ Ivyreplacenamebindtoposition2(Ivyconn *tconn,
 		char	*convertcall = NULL;
 		char	*newsql = NULL;
 		char	*ptr = NULL;
-		int		i = 0;
+		const char *query_ptr = NULL;
 
 		query_len = (strlen(stmtHandle->query) * 2) + strlen("select * from get_parameter_description(") + 5;
 		query = (char *) malloc(query_len);
@@ -4086,12 +4087,14 @@ Ivyreplacenamebindtoposition2(Ivyconn *tconn,
 
 		newsql = malloc(strlen(stmtHandle->query) * 2);	/* enough */
 		ptr = newsql;
-		while (stmtHandle->query[i] != '\0')
+		query_ptr = stmtHandle->query;
+		
+		while (*query_ptr != '\0')
 		{
-			if (stmtHandle->query[i] == '\'')
-				*ptr++ = stmtHandle->query[i];
-			*ptr++ = stmtHandle->query[i];
-			i++;
+			if (*query_ptr == '\'')
+				*ptr++ = *query_ptr;
+			*ptr++ = *query_ptr;
+			query_ptr++;
 		}
 		*ptr = '\0';
 
@@ -4233,7 +4236,7 @@ Ivyreplacenamebindtoposition2(Ivyconn *tconn,
 		stmtHandle->paramNames = (char **) malloc(sizeof(char *) * (n_tuples - 1));
 		stmtHandle->nParams = n_tuples - 1;
 		memset(stmtHandle->paramNames, 0x00, sizeof(char *) * (n_tuples - 1));
-		for (i = 1; i < n_tuples; i++)
+		for (int i = 1; i < n_tuples; i++)
 		{
 			int position;
 			char *name;
@@ -4306,7 +4309,7 @@ error_handle:
 		"get_parameter_description return failed");
 
 	Ivyclear(res);
-	for (i = 0; i < stmtHandle->nParams; i++)
+	for (int i = 0; i < stmtHandle->nParams; i++)
 	{
 		if (stmtHandle->paramNames[i] != NULL)
 			free(stmtHandle->paramNames[i]);
