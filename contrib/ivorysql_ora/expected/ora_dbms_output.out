@@ -646,8 +646,7 @@ BEGIN
     END IF;
 END;
 $$;
-ERROR:  procedure parameter "line" is an output parameter but corresponding argument is not writable
-CONTEXT:  PL/iSQL function inline_code_block line 8 at CALL
+NOTICE:  Test 11.1 - VARCHAR2 GET_LINE: [VARCHAR2 test line]
 -- Test 11.2: GET_LINES with VARCHAR2[] OUT parameter
 DO $$
 DECLARE
@@ -665,8 +664,7 @@ BEGIN
     END IF;
 END;
 $$;
-ERROR:  procedure parameter "lines" is an output parameter but corresponding argument is not writable
-CONTEXT:  PL/iSQL function inline_code_block line 9 at CALL
+NOTICE:  Test 11.2 - VARCHAR2[] GET_LINES: 2 lines
 -- =============================================================================
 -- Cleanup
 -- =============================================================================
