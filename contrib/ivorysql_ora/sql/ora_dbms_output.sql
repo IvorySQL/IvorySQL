@@ -543,6 +543,70 @@ END;
 /
 
 -- =============================================================================
+-- Section 10: Session Scope (buffer persists across transactions)
+-- =============================================================================
+
+-- Test 10.1: Buffer persists after block ends (implicit commit)
+-- Write in first block
+DO $$
+BEGIN
+    dbms_output.enable(1000000);
+    dbms_output.put_line('Written in block 1');
+END;
+$$;
+
+-- Read in second block (different transaction)
+DO $$
+DECLARE
+    v_line TEXT;
+    v_status INTEGER;
+BEGIN
+    dbms_output.get_line(v_line, v_status);
+    IF v_status = 0 THEN
+        RAISE NOTICE 'Test 10.1 - Read after commit: [%]', v_line;
+    ELSE
+        RAISE NOTICE 'Test 10.1 FAILED - Buffer was cleared (status=%)', v_status;
+    END IF;
+END;
+$$;
+
+-- Test 10.2: Multiple blocks accumulate in buffer
+DO $$
+BEGIN
+    dbms_output.enable(1000000);
+    dbms_output.put_line('Line from block A');
+END;
+$$;
+
+DO $$
+BEGIN
+    dbms_output.put_line('Line from block B');
+END;
+$$;
+
+DO $$
+BEGIN
+    dbms_output.put_line('Line from block C');
+END;
+$$;
+
+DO $$
+DECLARE
+    v_line TEXT;
+    v_status INTEGER;
+    v_count INTEGER := 0;
+BEGIN
+    LOOP
+        dbms_output.get_line(v_line, v_status);
+        EXIT WHEN v_status != 0;
+        v_count := v_count + 1;
+        RAISE NOTICE 'Test 10.2 - Line %: [%]', v_count, v_line;
+    END LOOP;
+    RAISE NOTICE 'Test 10.2 - Total lines read: %', v_count;
+END;
+$$;
+
+-- =============================================================================
 -- Cleanup
 -- =============================================================================
 DROP PROCEDURE test_output_proc;
