@@ -607,6 +607,46 @@ END;
 $$;
 
 -- =============================================================================
+-- Section 11: VARCHAR2 Parameter Compatibility (Oracle standard type)
+-- =============================================================================
+
+-- Test 11.1: GET_LINE with VARCHAR2 OUT parameter
+-- Oracle uses VARCHAR2 for GET_LINE, migrated code commonly uses VARCHAR2 variables
+DO $$
+DECLARE
+    v_line VARCHAR2(32767);
+    v_status INTEGER;
+BEGIN
+    dbms_output.enable(1000000);
+    dbms_output.put_line('VARCHAR2 test line');
+    dbms_output.get_line(v_line, v_status);
+    IF v_status = 0 THEN
+        RAISE NOTICE 'Test 11.1 - VARCHAR2 GET_LINE: [%]', v_line;
+    ELSE
+        RAISE NOTICE 'Test 11.1 FAILED - status=%', v_status;
+    END IF;
+END;
+$$;
+
+-- Test 11.2: GET_LINES with VARCHAR2[] OUT parameter
+DO $$
+DECLARE
+    v_lines VARCHAR2(32767)[];
+    v_numlines INTEGER := 10;
+BEGIN
+    dbms_output.enable(1000000);
+    dbms_output.put_line('Line A');
+    dbms_output.put_line('Line B');
+    dbms_output.get_lines(v_lines, v_numlines);
+    IF v_numlines = 2 THEN
+        RAISE NOTICE 'Test 11.2 - VARCHAR2[] GET_LINES: % lines', v_numlines;
+    ELSE
+        RAISE NOTICE 'Test 11.2 FAILED - got % lines', v_numlines;
+    END IF;
+END;
+$$;
+
+-- =============================================================================
 -- Cleanup
 -- =============================================================================
 DROP PROCEDURE test_output_proc;
