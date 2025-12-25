@@ -208,7 +208,7 @@ END;
 -- Section 4: Buffer size limits
 -- =============================================================================
 
--- Test 4.1: Buffer size below minimum (should fail)
+-- Test 4.1: Buffer size below minimum (silently clamped to 2000, Oracle behavior)
 CALL dbms_output.enable(1000);
 
 -- Test 4.2: Buffer size at minimum (should succeed)
@@ -235,10 +235,10 @@ BEGIN
 END;
 /
 
--- Test 4.4: Buffer size above maximum (should fail)
+-- Test 4.4: Buffer size above 1000000 (now allowed, no max limit)
 CALL dbms_output.enable(1000001);
 
--- Test 4.5: NULL buffer size uses maximum (1000000)
+-- Test 4.5: NULL buffer size uses unlimited (starts at 20000, grows dynamically)
 DECLARE
     line TEXT;
     status INTEGER;
@@ -272,6 +272,34 @@ BEGIN
     END LOOP;
     IF NOT overflow_occurred THEN
         RAISE NOTICE 'Test 5.1 - No overflow occurred (unexpected)';
+    END IF;
+END;
+/
+
+-- Test 5.2: User limit honored even after internal buffer expansion
+-- Small lines cause internal buffer to expand (2-byte overhead per line)
+-- but user-perceived content limit should still be enforced
+DECLARE
+    v_count INTEGER := 0;
+BEGIN
+    dbms_output.enable(2000);  -- 2000 byte content limit
+    -- Write 1-byte lines until overflow
+    -- Internal: 1-byte lines need 3 bytes each (2 prefix + 1 data)
+    -- Buffer will expand from 2000 to accommodate overhead
+    -- But content limit (2000 bytes) should still be enforced
+    FOR i IN 1..3000 LOOP
+        BEGIN
+            dbms_output.put_line('X');
+            v_count := i;
+        EXCEPTION WHEN OTHERS THEN
+            EXIT;
+        END;
+    END LOOP;
+    -- Should write exactly 2000 lines (2000 bytes content)
+    IF v_count = 2000 THEN
+        RAISE NOTICE 'Test 5.2 - User limit honored after expansion: PASSED (% lines)', v_count;
+    ELSE
+        RAISE NOTICE 'Test 5.2 - FAILED: expected 2000 lines, got %', v_count;
     END IF;
 END;
 /
@@ -643,6 +671,44 @@ BEGIN
     ELSE
         RAISE NOTICE 'Test 11.2 FAILED - got % lines', v_numlines;
     END IF;
+END;
+$$;
+
+-- =============================================================================
+-- Section 12: Buffer Space Recycling (Oracle recycles space after GET_LINE)
+-- =============================================================================
+
+-- Test 12.1: Buffer space should be recycled after GET_LINE
+-- Oracle frees buffer space when lines are read, allowing reuse
+DO $$
+DECLARE
+    v_line TEXT;
+    v_status INTEGER;
+    v_chunk TEXT := RPAD('X', 50, 'X');  -- 50 byte line
+BEGIN
+    dbms_output.enable(2000);  -- 2000 byte buffer
+
+    -- Phase 1: Write 30 lines (approx 1500 bytes, within limit)
+    FOR i IN 1..30 LOOP
+        dbms_output.put_line(v_chunk);
+    END LOOP;
+
+    -- Phase 2: Read 20 lines (should free ~1000 bytes)
+    FOR i IN 1..20 LOOP
+        dbms_output.get_line(v_line, v_status);
+    END LOOP;
+
+    -- Phase 3: Write 20 more lines (~1000 bytes)
+    -- With recycling: ~500 bytes unread + 1000 new = 1500 bytes (OK)
+    -- Without recycling: 1500 + 1000 = 2500 bytes (overflow)
+    BEGIN
+        FOR i IN 1..20 LOOP
+            dbms_output.put_line(v_chunk);
+        END LOOP;
+        RAISE NOTICE 'Test 12.1 - Buffer recycling: PASSED';
+    EXCEPTION WHEN OTHERS THEN
+        RAISE NOTICE 'Test 12.1 - Buffer recycling FAILED: %', SQLERRM;
+    END;
 END;
 $$;
 
