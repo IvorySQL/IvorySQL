@@ -26,6 +26,7 @@ ivorysql_ora_sources = files(
   'src/merge/ora_merge.c',
   'src/sysview/sysview_functions.c',
   'src/xml_functions/ora_xml_functions.c',
+  'src/builtin_packages/dbms_utility/dbms_utility.c',
 )
 
 if host_system == 'windows'
