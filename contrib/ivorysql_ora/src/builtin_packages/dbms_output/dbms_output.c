@@ -37,26 +37,40 @@
 #include "utils/memutils.h"
 
 /*
+ * DbmsOutputLine - a single line in the output buffer
+ *
+ * Lines are stored in a singly-linked list. Each node contains:
+ * - next: pointer to next line (NULL for last line)
+ * - len: length of line data (-1 indicates NULL line)
+ * - data: flexible array member containing line content
+ *
+ * This design allows:
+ * - O(1) append (via tail pointer)
+ * - O(1) consume from head
+ * - Immediate memory reclamation via pfree (AllocSet handles recycling)
+ * - No buffer expansion overhead for large buffers
+ */
+typedef struct DbmsOutputLine
+{
+	struct DbmsOutputLine *next;
+	int			len;			/* -1 for NULL line, else byte length */
+	char		data[FLEXIBLE_ARRAY_MEMBER];
+} DbmsOutputLine;
+
+/*
  * DBMS_OUTPUT buffer structure
  *
  * This is a per-backend global buffer that stores output lines.
  * The buffer is session-scoped and persists across transactions (Oracle behavior).
  *
- * Uses a contiguous ring buffer with length-prefixed strings to allow buffer
- * space recycling when lines are read via GET_LINE/GET_LINES (Oracle behavior).
- *
- * Each line is stored as: [2-byte length][data bytes]
- * NULL lines use length = 0xFFFF as a marker.
- *
- * The buffer grows dynamically when internal storage is full but user-perceived
- * content limit is not reached (length prefixes don't count toward user limit).
+ * Uses a linked list of lines. Memory is allocated per-line and freed
+ * immediately when lines are consumed via GET_LINE/GET_LINES.
+ * PostgreSQL's AllocSet maintains internal free lists for efficient reuse.
  */
 typedef struct DbmsOutputBuffer
 {
-	char	   *buffer;			/* Contiguous ring buffer */
-	int			capacity;		/* Current internal buffer size (bytes) */
-	int			head;			/* Next write position (byte offset) */
-	int			tail;			/* Next read position (byte offset) */
+	DbmsOutputLine *head;		/* First line (for reading) */
+	DbmsOutputLine *tail;		/* Last line (for appending) */
 	int64		buffer_size;	/* User-specified content limit, -1 = unlimited */
 	int			buffer_used;	/* Content bytes only (user-perceived usage) */
 	int			line_count;		/* Number of lines currently in buffer */
@@ -68,7 +82,7 @@ typedef struct DbmsOutputBuffer
 /* Global buffer - one per backend process */
 static DbmsOutputBuffer *output_buffer = NULL;
 
-/* Oracle line length limit: 32767 bytes per line (fits in 2-byte length prefix) */
+/* Oracle line length limit: 32767 bytes per line */
 #define DBMS_OUTPUT_MAX_LINE_LENGTH 32767
 
 /* Buffer size constants */
@@ -76,22 +90,14 @@ static DbmsOutputBuffer *output_buffer = NULL;
 #define DBMS_OUTPUT_DEFAULT_BUFFER_SIZE 20000
 #define DBMS_OUTPUT_UNLIMITED ((int64) -1)
 
-/* Length prefix size and NULL marker */
-#define DBMS_OUTPUT_LENGTH_PREFIX_SIZE 2
-#define DBMS_OUTPUT_NULL_MARKER 0xFFFF
-
-/* Dynamic growth factor */
-#define DBMS_OUTPUT_GROWTH_FACTOR 0.20
+/* Marker for NULL lines */
+#define DBMS_OUTPUT_NULL_LINE_LEN (-1)
 
 /* Internal function declarations */
 static void init_output_buffer(int64 buffer_size);
 static void cleanup_output_buffer(void);
-static void expand_buffer(int needed_space);
 static void add_line_to_buffer(const char *line, int line_len);
-static void ring_write(int pos, const char *data, int len);
-static void ring_read(int pos, char *data, int len);
-static uint16 ring_read_uint16(int pos);
-static void ring_write_uint16(int pos, uint16 value);
+static DbmsOutputLine *pop_line_from_buffer(void);
 
 /* SQL-callable function declarations */
 PG_FUNCTION_INFO_V1(ora_dbms_output_enable);
@@ -110,13 +116,6 @@ PG_FUNCTION_INFO_V1(ora_dbms_output_get_lines);
  *
  * buffer_size: user-specified content limit in bytes, or -1 for unlimited.
  *
- * Initial allocation strategy:
- * - For fixed size: allocate buffer_size bytes initially
- * - For unlimited (-1): allocate DBMS_OUTPUT_DEFAULT_BUFFER_SIZE bytes initially
- *
- * The buffer grows dynamically when internal storage is full but user limit
- * is not reached.
- *
  * IvorySQL behavior: ENABLE always clears existing buffer.
  * Note: Oracle preserves buffer on re-ENABLE; this is an intentional
  * IvorySQL simplification.
@@ -125,7 +124,6 @@ static void
 init_output_buffer(int64 buffer_size)
 {
 	MemoryContext oldcontext;
-	int			initial_capacity;
 
 	/* IvorySQL behavior: ENABLE clears existing buffer (differs from Oracle) */
 	if (output_buffer != NULL)
@@ -144,27 +142,17 @@ init_output_buffer(int64 buffer_size)
 
 	MemoryContextSwitchTo(output_buffer->buffer_mcxt);
 
+	/* Initialize linked list as empty */
+	output_buffer->head = NULL;
+	output_buffer->tail = NULL;
+
 	/* Store buffer size (user limit, or -1 for unlimited) */
 	output_buffer->buffer_size = buffer_size;
-
-	/*
-	 * Initial capacity: allocate claimed size, or default for unlimited.
-	 * Buffer will grow dynamically if internal storage fills up before
-	 * user-perceived content limit is reached.
-	 */
-	if (buffer_size == DBMS_OUTPUT_UNLIMITED)
-		initial_capacity = DBMS_OUTPUT_DEFAULT_BUFFER_SIZE;
-	else
-		initial_capacity = (int) buffer_size;
-
-	output_buffer->capacity = initial_capacity;
-	output_buffer->buffer = (char *) palloc(output_buffer->capacity);
-	output_buffer->current_line = makeStringInfo();
-	output_buffer->enabled = true;
-	output_buffer->head = 0;
-	output_buffer->tail = 0;
 	output_buffer->buffer_used = 0;
 	output_buffer->line_count = 0;
+
+	output_buffer->current_line = makeStringInfo();
+	output_buffer->enabled = true;
 
 	MemoryContextSwitchTo(oldcontext);
 }
@@ -181,7 +169,7 @@ cleanup_output_buffer(void)
 	if (output_buffer == NULL)
 		return;
 
-	/* Delete memory context (automatically frees buffer and current_line) */
+	/* Delete memory context (automatically frees all lines and current_line) */
 	MemoryContextDelete(output_buffer->buffer_mcxt);
 
 	/* Free buffer structure itself */
@@ -190,190 +178,27 @@ cleanup_output_buffer(void)
 }
 
 /*
- * expand_buffer
- *
- * Expand the internal buffer capacity when it's full but user-perceived
- * content limit is not reached.
- *
- * Growth strategy:
- * - Fixed buffer: min(buffer_size, max(DEFAULT_BUFFER_SIZE, capacity * GROWTH_FACTOR))
- * - Unlimited: max(DEFAULT_BUFFER_SIZE, capacity * GROWTH_FACTOR)
- *
- * This involves "packing" the ring buffer: linearizing any wrapped data
- * into a new larger buffer.
- */
-static void
-expand_buffer(int needed_space)
-{
-	MemoryContext oldcontext;
-	int			growth;
-	int			new_capacity;
-	char	   *new_buffer;
-	int			internal_used;
-
-	/* Calculate current internal usage */
-	internal_used = output_buffer->buffer_used +
-		(output_buffer->line_count * DBMS_OUTPUT_LENGTH_PREFIX_SIZE);
-
-	/* Calculate base growth: max(DEFAULT_BUFFER_SIZE, capacity * GROWTH_FACTOR) */
-	growth = (int) (output_buffer->capacity * DBMS_OUTPUT_GROWTH_FACTOR);
-	if (growth < DBMS_OUTPUT_DEFAULT_BUFFER_SIZE)
-		growth = DBMS_OUTPUT_DEFAULT_BUFFER_SIZE;
-
-	/* For fixed-size buffers, cap growth at buffer_size */
-	if (output_buffer->buffer_size != DBMS_OUTPUT_UNLIMITED)
-	{
-		if (growth > output_buffer->buffer_size)
-			growth = (int) output_buffer->buffer_size;
-	}
-
-	/* Ensure we grow enough to fit needed_space */
-	while (output_buffer->capacity + growth < internal_used + needed_space)
-	{
-		if (output_buffer->buffer_size != DBMS_OUTPUT_UNLIMITED)
-			growth += (int) output_buffer->buffer_size;
-		else
-			growth += DBMS_OUTPUT_DEFAULT_BUFFER_SIZE;
-	}
-
-	new_capacity = output_buffer->capacity + growth;
-
-	/* Allocate new buffer in buffer memory context */
-	oldcontext = MemoryContextSwitchTo(output_buffer->buffer_mcxt);
-	new_buffer = (char *) palloc(new_capacity);
-	MemoryContextSwitchTo(oldcontext);
-
-	/*
-	 * Pack (linearize) the ring buffer data into new buffer.
-	 * Ring buffer may have wrapped: [....DATA2....][head] [tail][DATA1....]
-	 * After packing: [DATA1....DATA2....]
-	 */
-	if (internal_used > 0)
-	{
-		int			tail_wrap = output_buffer->tail % output_buffer->capacity;
-		int			head_wrap = output_buffer->head % output_buffer->capacity;
-
-		if (tail_wrap < head_wrap)
-		{
-			/* Data is contiguous: tail to head */
-			memcpy(new_buffer, output_buffer->buffer + tail_wrap, internal_used);
-		}
-		else
-		{
-			/* Data wraps around: tail to end, then start to head */
-			int			first_chunk = output_buffer->capacity - tail_wrap;
-
-			memcpy(new_buffer, output_buffer->buffer + tail_wrap, first_chunk);
-			memcpy(new_buffer + first_chunk, output_buffer->buffer, head_wrap);
-		}
-	}
-
-	/* Free old buffer and update pointers */
-	pfree(output_buffer->buffer);
-	output_buffer->buffer = new_buffer;
-	output_buffer->capacity = new_capacity;
-	output_buffer->tail = 0;
-	output_buffer->head = internal_used;
-}
-
-/*
- * ring_write
- *
- * Write data to the ring buffer at the given position, handling wrap-around.
- */
-static void
-ring_write(int pos, const char *data, int len)
-{
-	int			wrap_pos = pos % output_buffer->capacity;
-	int			first_chunk = output_buffer->capacity - wrap_pos;
-
-	if (first_chunk >= len)
-	{
-		/* No wrap needed */
-		memcpy(output_buffer->buffer + wrap_pos, data, len);
-	}
-	else
-	{
-		/* Data wraps around */
-		memcpy(output_buffer->buffer + wrap_pos, data, first_chunk);
-		memcpy(output_buffer->buffer, data + first_chunk, len - first_chunk);
-	}
-}
-
-/*
- * ring_read
- *
- * Read data from the ring buffer at the given position, handling wrap-around.
- */
-static void
-ring_read(int pos, char *data, int len)
-{
-	int			wrap_pos = pos % output_buffer->capacity;
-	int			first_chunk = output_buffer->capacity - wrap_pos;
-
-	if (first_chunk >= len)
-	{
-		/* No wrap needed */
-		memcpy(data, output_buffer->buffer + wrap_pos, len);
-	}
-	else
-	{
-		/* Data wraps around */
-		memcpy(data, output_buffer->buffer + wrap_pos, first_chunk);
-		memcpy(data + first_chunk, output_buffer->buffer, len - first_chunk);
-	}
-}
-
-/*
- * ring_read_uint16
- *
- * Read a 2-byte unsigned integer from the ring buffer, handling wrap-around.
- */
-static uint16
-ring_read_uint16(int pos)
-{
-	unsigned char bytes[2];
-
-	ring_read(pos, (char *) bytes, 2);
-	return (uint16) bytes[0] | ((uint16) bytes[1] << 8);
-}
-
-/*
- * ring_write_uint16
- *
- * Write a 2-byte unsigned integer to the ring buffer.
- */
-static void
-ring_write_uint16(int pos, uint16 value)
-{
-	unsigned char bytes[2];
-
-	bytes[0] = value & 0xFF;
-	bytes[1] = (value >> 8) & 0xFF;
-	ring_write(pos, (char *) bytes, 2);
-}
-
-/*
  * add_line_to_buffer
  *
- * Add a completed line to the ring buffer.
+ * Add a completed line to the linked list buffer.
+ *
+ * line: pointer to line data, or NULL for a NULL line
+ * line_len: length of line data (ignored if line is NULL)
  *
  * Overflow check (Oracle behavior):
- * 1. Check user-perceived limit (content bytes only, not counting length prefixes)
- * 2. If internal storage is full but user limit not reached, expand buffer
- *
- * NULL lines use a special marker (0xFFFF) as length.
+ * - Only content bytes count toward user limit (not node overhead)
+ * - Raises ORU-10027 if limit exceeded
  */
 static void
 add_line_to_buffer(const char *line, int line_len)
 {
-	int			entry_size;
-	int			internal_used;
-	int			internal_needed;
+	MemoryContext oldcontext;
+	DbmsOutputLine *node;
+	Size		node_size;
 
 	/*
 	 * Check user-perceived buffer limit BEFORE adding (Oracle behavior).
-	 * Only content bytes count toward limit, not length prefixes.
+	 * Only content bytes count toward limit, not node overhead.
 	 * Skip check for unlimited buffer (buffer_size == -1).
 	 */
 	if (output_buffer->buffer_size != DBMS_OUTPUT_UNLIMITED)
@@ -386,39 +211,77 @@ add_line_to_buffer(const char *line, int line_len)
 							(long long) output_buffer->buffer_size)));
 	}
 
-	/* Calculate total entry size: 2-byte length prefix + data */
-	entry_size = DBMS_OUTPUT_LENGTH_PREFIX_SIZE + (line != NULL ? line_len : 0);
+	/* Allocate node with embedded data in buffer memory context */
+	oldcontext = MemoryContextSwitchTo(output_buffer->buffer_mcxt);
 
-	/*
-	 * Check if internal buffer needs expansion.
-	 * Internal storage = content bytes + (line_count * 2 bytes for prefixes)
-	 */
-	internal_used = output_buffer->buffer_used +
-		(output_buffer->line_count * DBMS_OUTPUT_LENGTH_PREFIX_SIZE);
-	internal_needed = internal_used + entry_size;
-
-	if (internal_needed > output_buffer->capacity)
-	{
-		/* Expand buffer to accommodate the new entry */
-		expand_buffer(entry_size);
-	}
-
-	/* Write length prefix (or NULL marker) */
 	if (line == NULL)
 	{
-		ring_write_uint16(output_buffer->head, DBMS_OUTPUT_NULL_MARKER);
+		/* NULL line: just allocate the header */
+		node_size = offsetof(DbmsOutputLine, data);
+		node = (DbmsOutputLine *) palloc(node_size);
+		node->len = DBMS_OUTPUT_NULL_LINE_LEN;
 	}
 	else
 	{
-		ring_write_uint16(output_buffer->head, (uint16) line_len);
-		/* Write line data */
+		/* Regular line: allocate header + data */
+		node_size = offsetof(DbmsOutputLine, data) + line_len;
+		node = (DbmsOutputLine *) palloc(node_size);
+		node->len = line_len;
 		if (line_len > 0)
-			ring_write(output_buffer->head + DBMS_OUTPUT_LENGTH_PREFIX_SIZE, line, line_len);
+			memcpy(node->data, line, line_len);
+	}
+	node->next = NULL;
+
+	MemoryContextSwitchTo(oldcontext);
+
+	/* Append to linked list */
+	if (output_buffer->tail == NULL)
+	{
+		/* Empty list */
+		output_buffer->head = node;
+		output_buffer->tail = node;
+	}
+	else
+	{
+		/* Append to end */
+		output_buffer->tail->next = node;
+		output_buffer->tail = node;
 	}
 
-	output_buffer->head += entry_size;
 	output_buffer->buffer_used += line_len;
 	output_buffer->line_count++;
+}
+
+/*
+ * pop_line_from_buffer
+ *
+ * Remove and return the first line from the buffer.
+ * Caller is responsible for freeing the returned node with pfree().
+ *
+ * Returns NULL if buffer is empty.
+ */
+static DbmsOutputLine *
+pop_line_from_buffer(void)
+{
+	DbmsOutputLine *node;
+
+	if (output_buffer == NULL || output_buffer->head == NULL)
+		return NULL;
+
+	node = output_buffer->head;
+	output_buffer->head = node->next;
+
+	/* If list is now empty, clear tail pointer too */
+	if (output_buffer->head == NULL)
+		output_buffer->tail = NULL;
+
+	/* Update usage tracking (NULL lines have len = -1, don't count) */
+	if (node->len > 0)
+		output_buffer->buffer_used -= node->len;
+
+	output_buffer->line_count--;
+
+	return node;
 }
 
 /*
@@ -609,7 +472,7 @@ ora_dbms_output_new_line(PG_FUNCTION_ARGS)
 /*
  * ora_dbms_output_get_line
  *
- * Retrieve one line from buffer and recycle its space (Oracle behavior).
+ * Retrieve one line from buffer and free its memory.
  * Returns: (line TEXT, status INTEGER)
  * - status = 0: success, line contains data
  * - status = 1: no more lines, line is NULL (Oracle behavior)
@@ -621,6 +484,7 @@ ora_dbms_output_get_line(PG_FUNCTION_ARGS)
 	Datum		values[2];
 	bool		nulls[2] = {false, false};
 	HeapTuple	tuple;
+	DbmsOutputLine *node;
 
 	/* Build tuple descriptor for return type */
 	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
@@ -630,7 +494,9 @@ ora_dbms_output_get_line(PG_FUNCTION_ARGS)
 
 	tupdesc = BlessTupleDesc(tupdesc);
 
-	if (output_buffer == NULL || output_buffer->line_count == 0)
+	node = pop_line_from_buffer();
+
+	if (node == NULL)
 	{
 		/* No more lines available - return NULL, not empty string (Oracle behavior) */
 		nulls[0] = true;		/* line = NULL */
@@ -639,36 +505,21 @@ ora_dbms_output_get_line(PG_FUNCTION_ARGS)
 	}
 	else
 	{
-		/* Read length prefix from ring buffer */
-		uint16		line_len = ring_read_uint16(output_buffer->tail);
-		int			entry_size;
-
-		if (line_len == DBMS_OUTPUT_NULL_MARKER)
+		if (node->len == DBMS_OUTPUT_NULL_LINE_LEN)
 		{
 			/* NULL line */
 			nulls[0] = true;
 			values[0] = (Datum) 0;
-			entry_size = DBMS_OUTPUT_LENGTH_PREFIX_SIZE;
-			/* NULL lines don't count toward buffer_used */
 		}
 		else
 		{
-			/* Read line data */
-			char	   *line_data = palloc(line_len + 1);
-
-			ring_read(output_buffer->tail + DBMS_OUTPUT_LENGTH_PREFIX_SIZE,
-					  line_data, line_len);
-			line_data[line_len] = '\0';
-			values[0] = CStringGetTextDatum(line_data);
-			pfree(line_data);
-			entry_size = DBMS_OUTPUT_LENGTH_PREFIX_SIZE + line_len;
-			output_buffer->buffer_used -= line_len;
+			/* Regular line - create text datum from embedded data */
+			values[0] = PointerGetDatum(cstring_to_text_with_len(node->data, node->len));
 		}
 		values[1] = Int32GetDatum(0);	/* status = 0 (success) */
 
-		/* Advance tail to recycle buffer space */
-		output_buffer->tail += entry_size;
-		output_buffer->line_count--;
+		/* Free the node - AllocSet will recycle the memory */
+		pfree(node);
 	}
 
 	tuple = heap_form_tuple(tupdesc, values, nulls);
@@ -678,7 +529,7 @@ ora_dbms_output_get_line(PG_FUNCTION_ARGS)
 /*
  * ora_dbms_output_get_lines
  *
- * Retrieve multiple lines from buffer and recycle their space (Oracle behavior).
+ * Retrieve multiple lines from buffer and free their memory.
  * Input: numlines (max lines to retrieve)
  * Returns: (lines TEXT[], actual_count INTEGER)
  * - actual_count is set to number of lines actually retrieved
@@ -690,6 +541,7 @@ ora_dbms_output_get_lines(PG_FUNCTION_ARGS)
 	int32		actual_lines = 0;
 	ArrayType  *lines_array;
 	Datum	   *line_datums;
+	bool	   *line_nulls;
 	int			i;
 	TupleDesc	tupdesc;
 	Datum		values[2];
@@ -710,9 +562,9 @@ ora_dbms_output_get_lines(PG_FUNCTION_ARGS)
 
 	tupdesc = BlessTupleDesc(tupdesc);
 
-	if (output_buffer == NULL)
+	if (output_buffer == NULL || output_buffer->line_count == 0 || requested_lines == 0)
 	{
-		/* No buffer, return empty array */
+		/* No buffer or no lines requested, return empty array */
 		lines_array = construct_empty_array(TEXTOID);
 		actual_lines = 0;
 	}
@@ -722,46 +574,40 @@ ora_dbms_output_get_lines(PG_FUNCTION_ARGS)
 		actual_lines = (requested_lines < output_buffer->line_count) ?
 			requested_lines : output_buffer->line_count;
 
+		line_datums = (Datum *) palloc(sizeof(Datum) * actual_lines);
+		line_nulls = (bool *) palloc(sizeof(bool) * actual_lines);
+
+		for (i = 0; i < actual_lines; i++)
+		{
+			DbmsOutputLine *node = pop_line_from_buffer();
+
+			if (node == NULL)
+			{
+				/* Shouldn't happen, but handle gracefully */
+				actual_lines = i;
+				break;
+			}
+
+			if (node->len == DBMS_OUTPUT_NULL_LINE_LEN)
+			{
+				/* NULL line */
+				line_nulls[i] = true;
+				line_datums[i] = (Datum) 0;
+			}
+			else
+			{
+				/* Regular line */
+				line_nulls[i] = false;
+				line_datums[i] = PointerGetDatum(cstring_to_text_with_len(node->data, node->len));
+			}
+
+			/* Free the node - AllocSet will recycle the memory */
+			pfree(node);
+		}
+
 		if (actual_lines > 0)
 		{
-			bool	   *line_nulls;
-			int			lbound = 1;  /* 1-based array indexing */
-
-			line_datums = (Datum *) palloc(sizeof(Datum) * actual_lines);
-			line_nulls = (bool *) palloc(sizeof(bool) * actual_lines);
-
-			for (i = 0; i < actual_lines; i++)
-			{
-				/* Read length prefix from ring buffer */
-				uint16		line_len = ring_read_uint16(output_buffer->tail);
-				int			entry_size;
-
-				if (line_len == DBMS_OUTPUT_NULL_MARKER)
-				{
-					/* NULL line */
-					line_nulls[i] = true;
-					line_datums[i] = (Datum) 0;
-					entry_size = DBMS_OUTPUT_LENGTH_PREFIX_SIZE;
-				}
-				else
-				{
-					/* Read line data */
-					char	   *line_data = palloc(line_len + 1);
-
-					ring_read(output_buffer->tail + DBMS_OUTPUT_LENGTH_PREFIX_SIZE,
-							  line_data, line_len);
-					line_data[line_len] = '\0';
-					line_nulls[i] = false;
-					line_datums[i] = CStringGetTextDatum(line_data);
-					pfree(line_data);
-					entry_size = DBMS_OUTPUT_LENGTH_PREFIX_SIZE + line_len;
-					output_buffer->buffer_used -= line_len;
-				}
-
-				/* Advance tail to recycle buffer space */
-				output_buffer->tail += entry_size;
-				output_buffer->line_count--;
-			}
+			int		lbound = 1;  /* 1-based array indexing */
 
 			lines_array = construct_md_array(line_datums, line_nulls, 1, &actual_lines, &lbound,
 											 TEXTOID, -1, false, TYPALIGN_INT);
@@ -771,6 +617,8 @@ ora_dbms_output_get_lines(PG_FUNCTION_ARGS)
 		else
 		{
 			lines_array = construct_empty_array(TEXTOID);
+			pfree(line_datums);
+			pfree(line_nulls);
 		}
 	}
 
