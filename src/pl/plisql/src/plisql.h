@@ -1160,12 +1160,6 @@ typedef struct PLiSQL_execstate
 	PLiSQL_variable *err_var;	/* current variable, if in a DECLARE section */
 	const char *err_text;		/* additional state info */
 
-	/*
-	 * Exception context for this execution, used by DBMS_UTILITY.FORMAT_ERROR_BACKTRACE.
-	 * Stored per-estate to handle nested exception handlers correctly.
-	 */
-	char	   *current_exception_context;
-
 	void	   *plugin_info;	/* reserved for use by optional plugin */
 }			PLiSQL_execstate;
 
@@ -1468,7 +1462,7 @@ extern int	plisql_yyparse(PLiSQL_stmt_block * *plisql_parse_result_p,
 						   yyscan_t yyscanner);
 
 /*
- * Externs in pl_exec.c for exception context access
+ * Externs in pl_exec.c for exception context access (used by DBMS_UTILITY)
  */
 extern PGDLLEXPORT const char *plisql_get_current_exception_context(void);
 

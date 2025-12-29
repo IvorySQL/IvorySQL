@@ -41,7 +41,6 @@ OBJS = \
 	$(WIN32RES) \
 	pl_autonomous.o \
 	pl_comp.o \
-	pl_dbms_utility.o \
 	pl_exec.o \
 	pl_funcs.o \
 	pl_gram.o \

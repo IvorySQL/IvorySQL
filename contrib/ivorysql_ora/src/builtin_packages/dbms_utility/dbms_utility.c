@@ -13,34 +13,76 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * pl_dbms_utility.c
+ * dbms_utility.c
  *
- * This file contains the implementation of Oracle's DBMS_UTILITY package
- * functions. These functions are part of the PL/iSQL language runtime
- * because they need access to PL/iSQL internals (exception context, etc.)
+ * Implementation of Oracle's DBMS_UTILITY package functions.
+ * This module is part of ivorysql_ora extension but calls the PL/iSQL
+ * API to access exception context information.
  *
  * Portions Copyright (c) 2025, IvorySQL Global Development Team
  *
- * src/pl/plisql/src/pl_dbms_utility.c
+ * contrib/ivorysql_ora/src/builtin_packages/dbms_utility/dbms_utility.c
  *
  *-------------------------------------------------------------------------
  */
 
 #include "postgres.h"
 #include "fmgr.h"
-#include "funcapi.h"
-#include "catalog/pg_collation.h"
-#include "catalog/pg_proc.h"
-#include "catalog/pg_namespace.h"
 #include "utils/builtins.h"
-#include "utils/elog.h"
-#include "utils/formatting.h"
-#include "utils/lsyscache.h"
-#include "utils/syscache.h"
 #include "mb/pg_wchar.h"
-#include "plisql.h"
+
+#ifndef WIN32
+#include <dlfcn.h>
+#endif
 
 PG_FUNCTION_INFO_V1(ora_format_error_backtrace);
+
+/*
+ * Function pointer type for plisql_get_current_exception_context.
+ * We use dynamic lookup to avoid link-time dependency on plisql.so.
+ */
+typedef const char *(*plisql_get_context_fn)(void);
+
+/*
+ * Cached function pointer for plisql_get_current_exception_context.
+ * Looked up once on first use.
+ */
+static plisql_get_context_fn get_exception_context_fn = NULL;
+static bool lookup_attempted = false;
+
+/*
+ * Look up the plisql_get_current_exception_context function dynamically.
+ * Returns the function pointer, or NULL if not found.
+ */
+static plisql_get_context_fn
+lookup_plisql_get_exception_context(void)
+{
+	void *fn;
+
+	if (lookup_attempted)
+		return get_exception_context_fn;
+
+	lookup_attempted = true;
+
+#ifndef WIN32
+	/*
+	 * Use RTLD_DEFAULT to search all loaded shared objects.
+	 * plisql.so should already be loaded when this function is called
+	 * from within a PL/iSQL exception handler.
+	 */
+	fn = dlsym(RTLD_DEFAULT, "plisql_get_current_exception_context");
+	if (fn != NULL)
+		get_exception_context_fn = (plisql_get_context_fn) fn;
+#else
+	/*
+	 * On Windows, we'd need to use GetProcAddress with the module handle.
+	 * For now, just return NULL - this feature requires plisql.
+	 */
+	fn = NULL;
+#endif
+
+	return get_exception_context_fn;
+}
 
 /*
  * Transform a single line from PostgreSQL error context format to Oracle format.
@@ -152,8 +194,7 @@ transform_and_append_line(StringInfo result, const char *line)
 	pfree(func_name);
 	pfree(func_upper);
 	pfree(schema_upper);
-	if (schema_name)
-		pfree(schema_name);
+	pfree(schema_name);
 
 	return true;
 }
@@ -164,9 +205,8 @@ transform_and_append_line(StringInfo result, const char *line)
  * Returns formatted error backtrace string in Oracle format.
  * Returns NULL if not in exception handler context.
  *
- * This Oracle-compatible function automatically retrieves the exception
- * context from PL/iSQL's session storage, which is set when entering
- * an exception handler.
+ * This Oracle-compatible function retrieves the exception context from
+ * PL/iSQL via dynamic lookup of plisql_get_current_exception_context().
  */
 Datum
 ora_format_error_backtrace(PG_FUNCTION_ARGS)
@@ -176,9 +216,18 @@ ora_format_error_backtrace(PG_FUNCTION_ARGS)
 	char	   *line;
 	char	   *saveptr;
 	StringInfoData result;
+	plisql_get_context_fn get_context;
 
-	/* Get the current exception context from PL/iSQL session storage */
-	pg_context = plisql_get_current_exception_context();
+	/* Look up the PL/iSQL function dynamically */
+	get_context = lookup_plisql_get_exception_context();
+	if (get_context == NULL)
+	{
+		/* plisql not loaded or function not found */
+		PG_RETURN_NULL();
+	}
+
+	/* Get the current exception context from PL/iSQL */
+	pg_context = get_context();
 
 	/* If no context available (not in exception handler), return NULL */
 	if (pg_context == NULL || pg_context[0] == '\0')
@@ -201,9 +250,6 @@ ora_format_error_backtrace(PG_FUNCTION_ARGS)
 	}
 
 	pfree(context_copy);
-
-	/* Oracle always ends with a newline - don't remove it */
-	/* The transform_and_append_line function already adds newlines */
 
 	PG_RETURN_TEXT_P(cstring_to_text(result.data));
 }
