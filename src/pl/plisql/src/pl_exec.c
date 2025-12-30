@@ -116,6 +116,13 @@ static SimpleEcontextStackEntry *simple_econtext_stack = NULL;
 static ResourceOwner shared_simple_eval_resowner = NULL;
 
 /*
+ * Pointer to the estate currently handling an exception. This is used by
+ * DBMS_UTILITY.FORMAT_ERROR_BACKTRACE to access the exception context from
+ * within the exception handler, even when nested function calls occur.
+ */
+static PLiSQL_execstate *exception_handling_estate = NULL;
+
+/*
  * Memory management within a plisql function generally works with three
  * contexts:
  *
@@ -1978,6 +1985,7 @@ exec_stmt_block(PLiSQL_execstate * estate, PLiSQL_stmt_block * block)
 		ResourceOwner oldowner = CurrentResourceOwner;
 		ExprContext *old_eval_econtext = estate->eval_econtext;
 		ErrorData  *save_cur_error = estate->cur_error;
+		PLiSQL_execstate *save_exception_handling_estate = exception_handling_estate;
 		MemoryContext stmt_mcontext;
 
 		estate->err_text = gettext_noop("during statement block entry");
@@ -2129,7 +2137,19 @@ exec_stmt_block(PLiSQL_execstate * estate, PLiSQL_stmt_block * block)
 
 					estate->err_text = NULL;
 
+					/*
+					 * Set exception_handling_estate so that functions called
+					 * from within the exception handler (like DBMS_UTILITY
+					 * package functions) can access the exception context.
+					 */
+					exception_handling_estate = estate;
+
 					rc = exec_stmts(estate, exception->action);
+
+					/*
+					 * Restore exception_handling_estate after handler execution.
+					 */
+					exception_handling_estate = save_exception_handling_estate;
 
 					break;
 				}
@@ -10040,4 +10060,107 @@ plisql_anonymous_return_out_parameter(PLiSQL_execstate * estate, PLiSQL_function
 	estate->retistuple = true;
 
 	return;
+}
+
+/*
+ * plisql_get_current_exception_context
+ *
+ * Returns the current exception context string if we're in an exception handler,
+ * otherwise returns NULL. This is used by Oracle-compatible functions like
+ * DBMS_UTILITY.FORMAT_ERROR_BACKTRACE.
+ *
+ * The returned string is managed by PL/iSQL and should not be freed by the caller.
+ */
+const char *
+plisql_get_current_exception_context(void)
+{
+	if (exception_handling_estate != NULL &&
+		exception_handling_estate->cur_error != NULL)
+		return exception_handling_estate->cur_error->context;
+	return NULL;
+}
+
+/*
+ * plisql_get_current_exception_message
+ *
+ * Returns the current exception message if we're in an exception handler,
+ * otherwise returns NULL. This is used by DBMS_UTILITY.FORMAT_ERROR_STACK.
+ */
+const char *
+plisql_get_current_exception_message(void)
+{
+	if (exception_handling_estate != NULL &&
+		exception_handling_estate->cur_error != NULL)
+		return exception_handling_estate->cur_error->message;
+	return NULL;
+}
+
+/*
+ * plisql_get_current_exception_sqlerrcode
+ *
+ * Returns the current exception SQLSTATE error code if we're in an exception handler,
+ * otherwise returns 0. This is used by DBMS_UTILITY.FORMAT_ERROR_STACK.
+ */
+int
+plisql_get_current_exception_sqlerrcode(void)
+{
+	if (exception_handling_estate != NULL &&
+		exception_handling_estate->cur_error != NULL)
+		return exception_handling_estate->cur_error->sqlerrcode;
+	return 0;
+}
+
+/*
+ * plisql_get_call_stack
+ *
+ * Returns the current PL/iSQL call stack as a formatted string.
+ * This walks the error_context_stack looking for PL/iSQL function contexts.
+ * Used by DBMS_UTILITY.FORMAT_CALL_STACK.
+ *
+ * Returns NULL if not inside any PL/iSQL function.
+ * The returned string is palloc'd in the current memory context.
+ */
+char *
+plisql_get_call_stack(void)
+{
+	ErrorContextCallback *context;
+	StringInfoData buf;
+	bool found_any = false;
+
+	initStringInfo(&buf);
+
+	/* Walk the error context stack */
+	for (context = error_context_stack; context != NULL; context = context->previous)
+	{
+		/* Check if this is a PL/iSQL execution context */
+		if (context->callback == plisql_exec_error_callback)
+		{
+			PLiSQL_execstate *estate = (PLiSQL_execstate *) context->arg;
+			int lineno = 0;
+
+			/* Get current line number */
+			if (estate->err_stmt != NULL)
+				lineno = estate->err_stmt->lineno;
+			else if (estate->err_var != NULL)
+				lineno = estate->err_var->lineno;
+
+			/* Add to stack output */
+			if (found_any)
+				appendStringInfoChar(&buf, '\n');
+
+			appendStringInfo(&buf, "%p\t%d\t%s",
+							 (void *) estate->func,
+							 lineno,
+							 estate->func->fn_signature);
+			found_any = true;
+		}
+	}
+
+	if (!found_any)
+	{
+		pfree(buf.data);
+		return NULL;
+	}
+
+	return buf.data;
 }
