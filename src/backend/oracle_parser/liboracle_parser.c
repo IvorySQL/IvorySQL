@@ -1293,7 +1293,9 @@ oracle_quote_identifier(const char *ident)
 
 		if ((ch >= 'a' && ch <= 'z') ||
 			(ch >= '0' && ch <= '9') ||
-			(ch == '_'))
+			(ch == '_') ||
+			(ch == '#') ||
+			(ch == '$'))
 		{
 			/* okay */
 		}
