@@ -1291,7 +1291,6 @@ other			.
 						}
 					}
 
-
 					SET_YYLLOC();
 
 					/* Is it a keyword? */
