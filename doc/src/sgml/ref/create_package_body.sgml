@@ -1,0 +1,57 @@
+<!--
+doc/src/sgml/ref/create_package_body.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-createpackagebody">
+ <indexterm zone="sql-createpackagebody">
+  <primary>CREATE PACKAGE BODY</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>CREATE PACKAGE BODY</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>CREATE PACKAGE BODY</refname>
+  <refpurpose>define a new package body</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+
+CREATE [ OR REPLACE ] [ EDITIONABLE | NONEDITIONABLE ] PACKAGE BODY [schema.] package_name [ sharing_clause ] [IS | AS] declare_section [ initialize_section ] END [ package_name ] ;
+
+sharing_clause:
+    SHARING = { METADATA | NONE }
+	
+declare_section:
+    { item_list_1 [ item_list_2 ] | item_list_2 }
+	
+initialize_section:
+    BEGIN statement...
+      [ EXCEPTION exception_handler... ]
+	  
+item_list_1:
+    { type_definition
+    | cursor_declaration
+    | item_declaration
+    | function_declaration
+    | procedure_declaration
+    }
+     ...
+    
+item_list_2:
+    { cursor_declaration
+    | cursor_definition
+    | function_declaration
+    | function_definition
+    | procedure_declaration
+    | procedure_definition
+    }
+     ...
+</synopsis>
+</refsynopsisdiv>
+</refentry>

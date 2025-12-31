@@ -53,6 +53,7 @@
    &alterOperator;
    &alterOperatorClass;
    &alterOperatorFamily;
+   &alterPackage;
    &alterPolicy;
    &alterProcedure;
    &alterPublication;
@@ -106,6 +107,8 @@
    &createOperatorClass;
    &createOperatorFamily;
    &createPolicy;
+   &createPackage;
+   &createPackageBody;
    &createProcedure;
    &createPublication;
    &createRole;
@@ -153,6 +156,7 @@
    &dropOperatorClass;
    &dropOperatorFamily;
    &dropOwned;
+   &dropPackage;
    &dropPolicy;
    &dropProcedure;
    &dropPublication;
