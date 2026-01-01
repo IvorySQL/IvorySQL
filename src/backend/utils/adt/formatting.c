@@ -5,7 +5,7 @@
  *
  *
  * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
- *	 Portions Copyright (c) 1999-2025, PostgreSQL Global Development Group
+ *	 Portions Copyright (c) 1999-2026, PostgreSQL Global Development Group
  *
  *
  *	 TO_CHAR(); TO_TIMESTAMP(); TO_DATE(); TO_NUMBER();

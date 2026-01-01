@@ -35,7 +35,7 @@
  *
  *
  * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
- * Copyright (c) 2008-2025, PostgreSQL Global Development Group
+ * Copyright (c) 2008-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/pg_stat_statements/pg_stat_statements.c

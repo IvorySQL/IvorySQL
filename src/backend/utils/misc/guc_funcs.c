@@ -6,7 +6,7 @@
  *
  *
  * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
- * Copyright (c) 2000-2025, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2026, PostgreSQL Global Development Group
  * Written by Peter Eisentraut <peter_e@gmx.net>.
  *
  * IDENTIFICATION
