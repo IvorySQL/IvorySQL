@@ -7387,10 +7387,38 @@ plisql_param_eval_var_ro(ExprState *state, ExprEvalStep *op,
 	/*
 	 * Inlined version of exec_eval_datum() ... and while we're at it, force
 	 * expanded datums to read-only.
+	 *
+	 * IMPORTANT (Bug #1124 fix): For varlena types that are NOT expanded
+	 * objects, we must make a copy of the value into the eval_mcontext,
+	 * rather than just returning a pointer to the variable's storage. This is
+	 * because nested function calls (a PL/iSQL feature) can happen during
+	 * expression evaluation, and when they return, they copy back their global
+	 * variables to the parent. This copy-back operation frees the parent's old
+	 * variable storage, which would leave us with a dangling pointer if we had
+	 * just returned var->value directly.
+	 *
+	 * For expanded objects (like composite types), we use
+	 * MakeExpandedObjectReadOnly which handles them properly.
+	 *
+	 * By copying to eval_mcontext here, we ensure the value survives for the
+	 * duration of the expression evaluation, even if the original variable
+	 * storage is freed and reallocated.
 	 */
-	*op->resvalue = MakeExpandedObjectReadOnly(var->value,
-											   var->isnull,
-											   -1);
+	if (!var->isnull && var->datatype->typlen == -1 &&
+		!VARATT_IS_EXTERNAL_EXPANDED(DatumGetPointer(var->value)))
+	{
+		/* Non-expanded varlena type - make a copy in eval_mcontext */
+		MemoryContext oldcxt = MemoryContextSwitchTo(get_eval_mcontext(estate));
+		*op->resvalue = datumCopy(var->value, false, -1);
+		MemoryContextSwitchTo(oldcxt);
+	}
+	else
+	{
+		/* Expanded object, pass-by-value, or null - use standard handling */
+		*op->resvalue = MakeExpandedObjectReadOnly(var->value,
+												   var->isnull,
+												   -1);
+	}
 	*op->resnull = var->isnull;
 
 	/* safety check -- an assertion should be sufficient */
