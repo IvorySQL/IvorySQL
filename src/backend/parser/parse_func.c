@@ -364,6 +364,34 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 	cancel_parser_errposition_callback(&pcbstate);
 
 	/*
+	 * If we found a package function/procedure or subprocedure, the fargs
+	 * list may have been reordered and expanded with default arguments. We
+	 * need to rebuild the actual_arg_types array to match the new argument
+	 * order, otherwise type coercion will fail when trying to match reordered
+	 * arguments.
+	 *
+	 * For subprocedures, the fix in pl_subproc_function.c also rebuilds
+	 * true_typeids (declared_arg_types) in declared order after reordering,
+	 * so that both arrays match the reordered fargs.
+	 */
+	if ((function_from == FUNC_FROM_PACKAGE ||
+		 function_from == FUNC_FROM_SUBPROCFUNC) &&
+		fdresult != FUNCDETAIL_NOTFOUND)
+	{
+		ListCell   *lc;
+		int			i = 0;
+
+		foreach(lc, fargs)
+		{
+			Node	   *arg = lfirst(lc);
+
+			actual_arg_types[i++] = exprType(arg);
+		}
+		/* Update nargs to reflect the reordered/expanded argument list */
+		nargs = i;
+	}
+
+	/*
 	 * Check for various wrong-kind-of-routine cases.
 	 */
 
