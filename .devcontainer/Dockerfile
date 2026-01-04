@@ -10,6 +10,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
     # Build tools
     build-essential git lcov bison flex pkg-config cppcheck \
+    # For meson/ninja installation
+    curl unzip \
     # Core dependencies
     libkrb5-dev libssl-dev libldap-dev libpam-dev \
     libxml2-dev libxslt-dev libreadline-dev libedit-dev \
@@ -17,7 +19,7 @@ RUN apt-get update && apt-get install -y \
     # ICU support
     libicu-dev \
     # Language support
-    python3-dev tcl-dev libperl-dev gettext \
+    python3-dev python3-setuptools tcl-dev libperl-dev gettext \
     # Perl test modules
     libipc-run-perl libtime-hires-perl libtest-simple-perl \
     # LLVM/Clang
@@ -33,6 +35,15 @@ RUN apt-get update && apt-get install -y \
     # For dev containers
     sudo tini \
     && rm -rf /var/lib/apt/lists/*
+
+# Install meson and ninja from source (matching workflow versions)
+RUN curl -L "https://github.com/mesonbuild/meson/releases/download/1.0.1/meson-1.0.1.tar.gz" -o /tmp/meson-1.0.1.tar.gz \
+    && curl -L "https://github.com/ninja-build/ninja/releases/download/v1.10.1/ninja-linux.zip" -o /tmp/ninja-linux.zip \
+    && unzip -o /tmp/ninja-linux.zip -d /tmp \
+    && cp /tmp/ninja /usr/bin/ \
+    && tar xzf /tmp/meson-1.0.1.tar.gz -C /tmp \
+    && cd /tmp/meson-1.0.1 && python3 setup.py install \
+    && rm -rf /tmp/meson-1.0.1* /tmp/ninja*
 
 # Set up locale
 RUN locale-gen en_US.UTF-8
