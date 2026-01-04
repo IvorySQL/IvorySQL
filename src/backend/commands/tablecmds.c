@@ -1353,7 +1353,8 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 			idxstmt =
 				generateClonedIndexStmt(NULL, idxRel,
 										attmap, &constraintOid);
-			DefineIndex(RelationGetRelid(rel),
+			DefineIndex(NULL,
+						RelationGetRelid(rel),
 						idxstmt,
 						InvalidOid,
 						RelationGetRelid(idxRel),
@@ -10198,7 +10199,8 @@ ATExecAddIndex(AlteredTableInfo *tab, Relation rel,
 	/* suppress notices when rebuilding existing index */
 	quiet = is_rebuild;
 
-	address = DefineIndex(RelationGetRelid(rel),
+	address = DefineIndex(NULL,
+						  RelationGetRelid(rel),
 						  stmt,
 						  InvalidOid,	/* no predefined OID */
 						  InvalidOid,	/* no parent index */
@@ -21548,7 +21550,8 @@ AttachPartitionEnsureIndexes(List **wqueue, Relation rel, Relation attachrel)
 			stmt = generateClonedIndexStmt(NULL,
 										   idxRel, attmap,
 										   &conOid);
-			DefineIndex(RelationGetRelid(attachrel), stmt, InvalidOid,
+			DefineIndex(NULL,
+						RelationGetRelid(attachrel), stmt, InvalidOid,
 						RelationGetRelid(idxRel),
 						conOid,
 						-1,

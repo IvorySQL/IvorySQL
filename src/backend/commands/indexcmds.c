@@ -75,7 +75,8 @@
 /* non-export function prototypes */
 static bool CompareOpclassOptions(const Datum *opts1, const Datum *opts2, int natts);
 static void CheckPredicate(Expr *predicate);
-static void ComputeIndexAttrs(IndexInfo *indexInfo,
+static void ComputeIndexAttrs(ParseState *pstate,
+							  IndexInfo *indexInfo,
 							  Oid *typeOids,
 							  Oid *collationOids,
 							  Oid *opclassOids,
@@ -248,7 +249,7 @@ CheckIndexCompatible(Oid oldId,
 	opclassIds = palloc_array(Oid, numberOfAttributes);
 	opclassOptions = palloc_array(Datum, numberOfAttributes);
 	coloptions = palloc_array(int16, numberOfAttributes);
-	ComputeIndexAttrs(indexInfo,
+	ComputeIndexAttrs(NULL, indexInfo,
 					  typeIds, collationIds, opclassIds, opclassOptions,
 					  coloptions, attributeList,
 					  exclusionOpNames, relationId,
@@ -515,6 +516,8 @@ WaitForOlderSnapshots(TransactionId limitXmin, bool progress)
  * consider offering one DDL command for catalog setup and a separate DDL
  * command for steps that run opaque expressions.
  *
+ * 'pstate': ParseState struct (used only for error reports; pass NULL if
+ *		not available)
  * 'tableId': the OID of the table relation on which the index is to be
  *		created
  * 'stmt': IndexStmt describing the properties of the new index.
@@ -538,7 +541,8 @@ WaitForOlderSnapshots(TransactionId limitXmin, bool progress)
  * Returns the object address of the created index.
  */
 ObjectAddress
-DefineIndex(Oid tableId,
+DefineIndex(ParseState *pstate,
+			Oid tableId,
 			IndexStmt *stmt,
 			Oid indexRelationId,
 			Oid parentIndexId,
@@ -933,7 +937,8 @@ DefineIndex(Oid tableId,
 	opclassIds = palloc_array(Oid, numberOfAttributes);
 	opclassOptions = palloc_array(Datum, numberOfAttributes);
 	coloptions = palloc_array(int16, numberOfAttributes);
-	ComputeIndexAttrs(indexInfo,
+	ComputeIndexAttrs(pstate,
+					  indexInfo,
 					  typeIds, collationIds, opclassIds, opclassOptions,
 					  coloptions, allIndexParams,
 					  stmt->excludeOpNames, tableId,
@@ -1518,7 +1523,8 @@ DefineIndex(Oid tableId,
 					SetUserIdAndSecContext(root_save_userid,
 										   root_save_sec_context);
 					childAddr =
-						DefineIndex(childRelid, childStmt,
+						DefineIndex(NULL,	/* original pstate not applicable */
+									childRelid, childStmt,
 									InvalidOid, /* no predefined OID */
 									indexRelationId,	/* this is our child */
 									createdConstraintId,
@@ -1867,7 +1873,8 @@ CheckPredicate(Expr *predicate)
  * InvalidOid, and other ddl_* arguments are undefined.
  */
 static void
-ComputeIndexAttrs(IndexInfo *indexInfo,
+ComputeIndexAttrs(ParseState *pstate,
+				  IndexInfo *indexInfo,
 				  Oid *typeOids,
 				  Oid *collationOids,
 				  Oid *opclassOids,
@@ -1952,12 +1959,14 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 					ereport(ERROR,
 							(errcode(ERRCODE_UNDEFINED_COLUMN),
 							 errmsg("column \"%s\" named in key does not exist",
-									attribute->name)));
+									attribute->name),
+							 parser_errposition(pstate, attribute->location)));
 				else
 					ereport(ERROR,
 							(errcode(ERRCODE_UNDEFINED_COLUMN),
 							 errmsg("column \"%s\" does not exist",
-									attribute->name)));
+									attribute->name),
+							 parser_errposition(pstate, attribute->location)));
 			}
 			attform = (Form_pg_attribute) GETSTRUCT(atttuple);
 			indexInfo->ii_IndexAttrNumbers[attn] = attform->attnum;
@@ -1975,7 +1984,8 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 			if (attn >= nkeycols)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("expressions are not supported in included columns")));
+						 errmsg("expressions are not supported in included columns"),
+						 parser_errposition(pstate, attribute->location)));
 			atttype = exprType(expr);
 			attcollation = exprCollation(expr);
 
@@ -2016,7 +2026,8 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 				if (contain_mutable_functions_after_planning((Expr *) expr))
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-							 errmsg("functions in index expression must be marked IMMUTABLE")));
+							 errmsg("functions in index expression must be marked IMMUTABLE"),
+							 parser_errposition(pstate, attribute->location)));
 			}
 		}
 
@@ -2031,19 +2042,23 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 			if (attribute->collation)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						 errmsg("including column does not support a collation")));
+						 errmsg("including column does not support a collation"),
+						 parser_errposition(pstate, attribute->location)));
 			if (attribute->opclass)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						 errmsg("including column does not support an operator class")));
+						 errmsg("including column does not support an operator class"),
+						 parser_errposition(pstate, attribute->location)));
 			if (attribute->ordering != SORTBY_DEFAULT)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						 errmsg("including column does not support ASC/DESC options")));
+						 errmsg("including column does not support ASC/DESC options"),
+						 parser_errposition(pstate, attribute->location)));
 			if (attribute->nulls_ordering != SORTBY_NULLS_DEFAULT)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						 errmsg("including column does not support NULLS FIRST/LAST options")));
+						 errmsg("including column does not support NULLS FIRST/LAST options"),
+						 parser_errposition(pstate, attribute->location)));
 
 			opclassOids[attn] = InvalidOid;
 			opclassOptions[attn] = (Datum) 0;
@@ -2087,7 +2102,8 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 				ereport(ERROR,
 						(errcode(ERRCODE_INDETERMINATE_COLLATION),
 						 errmsg("could not determine which collation to use for index expression"),
-						 errhint("Use the COLLATE clause to set the collation explicitly.")));
+						 errhint("Use the COLLATE clause to set the collation explicitly."),
+						 parser_errposition(pstate, attribute->location)));
 		}
 		else
 		{
@@ -2095,7 +2111,8 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 				ereport(ERROR,
 						(errcode(ERRCODE_DATATYPE_MISMATCH),
 						 errmsg("collations are not supported by type %s",
-								format_type_be(atttype))));
+								format_type_be(atttype)),
+						 parser_errposition(pstate, attribute->location)));
 		}
 
 		collationOids[attn] = attcollation;
@@ -2163,7 +2180,8 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 						 errmsg("operator %s is not commutative",
 								format_operator(opid)),
-						 errdetail("Only commutative operators can be used in exclusion constraints.")));
+						 errdetail("Only commutative operators can be used in exclusion constraints."),
+						 parser_errposition(pstate, attribute->location)));
 
 			/*
 			 * Operator must be a member of the right opfamily, too
@@ -2176,7 +2194,8 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 						 errmsg("operator %s is not a member of operator family \"%s\"",
 								format_operator(opid),
 								get_opfamily_name(opfamily, false)),
-						 errdetail("The exclusion operator must be related to the index operator class for the constraint.")));
+						 errdetail("The exclusion operator must be related to the index operator class for the constraint."),
+						 parser_errposition(pstate, attribute->location)));
 
 			indexInfo->ii_ExclusionOps[attn] = opid;
 			indexInfo->ii_ExclusionProcs[attn] = get_opcode(opid);
@@ -2226,12 +2245,14 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("access method \"%s\" does not support ASC/DESC options",
-								accessMethodName)));
+								accessMethodName),
+						 parser_errposition(pstate, attribute->location)));
 			if (attribute->nulls_ordering != SORTBY_NULLS_DEFAULT)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("access method \"%s\" does not support NULLS FIRST/LAST options",
-								accessMethodName)));
+								accessMethodName),
+						 parser_errposition(pstate, attribute->location)));
 		}
 
 		/* Set up the per-column opclass options (attoptions field). */
