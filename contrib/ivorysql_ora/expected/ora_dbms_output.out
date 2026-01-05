@@ -725,6 +725,43 @@ END;
 $$;
 NOTICE:  Test 12.1 - Buffer recycling: PASSED
 -- =============================================================================
+-- Section 13: DISCARD ALL clears DBMS_OUTPUT buffer
+-- =============================================================================
+-- Test 13.1: DISCARD ALL should clear DBMS_OUTPUT buffer
+-- This is important for connection pooling environments (e.g., PgBouncer)
+-- to prevent session state leakage between users.
+-- Note: DISCARD ALL calls ResetPackageCaches() which should clear DBMS_OUTPUT.
+--
+-- Test design: We check that after DISCARD ALL, the buffer is NULL (not just empty).
+-- If DISCARD ALL properly clears the buffer, get_line returns status=1.
+-- If the buffer survives DISCARD ALL, get_line would return the buffered lines.
+DO $$
+BEGIN
+    dbms_output.enable();
+    dbms_output.put_line('Line before DISCARD');
+    dbms_output.put_line('Should be cleared');
+END;
+$$;
+DISCARD ALL;
+-- After DISCARD ALL, buffer should be completely reset (NULL).
+-- We intentionally do NOT call enable() here to verify the buffer was cleared.
+-- If buffer survived DISCARD ALL, get_line would still return buffered data.
+DO $$
+DECLARE
+    v_line TEXT;
+    v_status INTEGER;
+BEGIN
+    -- Don't call enable() - we want to see if old buffer survived
+    dbms_output.get_line(v_line, v_status);
+    IF v_status = 1 THEN
+        RAISE NOTICE 'Test 13.1 - DISCARD ALL cleared buffer: PASSED (status=1, buffer is NULL)';
+    ELSE
+        RAISE NOTICE 'Test 13.1 - DISCARD ALL FAILED: buffer not cleared, got [%]', v_line;
+    END IF;
+END;
+$$;
+NOTICE:  Test 13.1 - DISCARD ALL cleared buffer: PASSED (status=1, buffer is NULL)
+-- =============================================================================
 -- Cleanup
 -- =============================================================================
 DROP PROCEDURE test_output_proc;
