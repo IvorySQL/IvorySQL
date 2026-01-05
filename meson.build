@@ -2634,13 +2634,11 @@ endif
 # XXX: Might be worth conditioning some checks on the OS, to avoid doing
 # unnecessary checks over and over, particularly on windows.
 header_checks = [
-  'atomic.h',
   'copyfile.h',
   'crtdefs.h',
   'execinfo.h',
   'getopt.h',
   'ifaddrs.h',
-  'mbarrier.h',
   'strings.h',
   'sys/epoll.h',
   'sys/event.h',
