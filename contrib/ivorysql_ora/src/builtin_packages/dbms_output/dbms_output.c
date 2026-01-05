@@ -72,7 +72,7 @@ typedef struct DbmsOutputBuffer
 	DbmsOutputLine *head;		/* First line (for reading) */
 	DbmsOutputLine *tail;		/* Last line (for appending) */
 	int64		buffer_size;	/* User-specified content limit, -1 = unlimited */
-	int			buffer_used;	/* Content bytes only (user-perceived usage) */
+	int64		buffer_used;	/* Content bytes only (user-perceived usage) */
 	int			line_count;		/* Number of lines currently in buffer */
 	bool		enabled;		/* Buffer enabled/disabled state */
 	StringInfo	current_line;	/* Accumulator for PUT calls (not yet a line) */
@@ -420,11 +420,7 @@ ora_dbms_output_put(PG_FUNCTION_ARGS)
 	if (PG_ARGISNULL(0))
 		PG_RETURN_VOID();  /* NULL appends nothing */
 
-	{
-		text	   *text_arg = PG_GETARG_TEXT_PP(0);
-		str = text_to_cstring(text_arg);
-	}
-
+	str = text_to_cstring(PG_GETARG_TEXT_PP(0));
 	str_len = strlen(str);
 
 	/* Check line length limit BEFORE appending (Oracle behavior) */
