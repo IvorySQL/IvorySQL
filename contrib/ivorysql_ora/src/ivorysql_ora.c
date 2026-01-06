@@ -43,10 +43,6 @@
 #include "include/guc.h"
 #include "include/ivorysql_ora.h"
 
-/* DBMS_OUTPUT reset function from builtin_packages/dbms_output/dbms_output.c */
-extern void ora_dbms_output_reset(void);
-
-
 /* Only include it once in any C file */
 PG_MODULE_MAGIC_EXT(
 					.name = "ivorysql_ora",

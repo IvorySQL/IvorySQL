@@ -36,6 +36,8 @@
 #include "utils/builtins.h"
 #include "utils/memutils.h"
 
+#include "../../include/ivorysql_ora.h"
+
 /*
  * DbmsOutputLine - a single line in the output buffer
  *
