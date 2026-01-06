@@ -719,7 +719,7 @@ $$;
 -- Test 13.1: DISCARD ALL should clear DBMS_OUTPUT buffer
 -- This is important for connection pooling environments (e.g., PgBouncer)
 -- to prevent session state leakage between users.
--- Note: DISCARD ALL calls ResetPackageCaches() which should clear DBMS_OUTPUT.
+-- Note: ivorysql_ora intercepts DISCARD ALL via ProcessUtility hook and calls ora_dbms_output_reset().
 --
 -- Test design: We check that after DISCARD ALL, the buffer is NULL (not just empty).
 -- If DISCARD ALL properly clears the buffer, get_line returns status=1.
