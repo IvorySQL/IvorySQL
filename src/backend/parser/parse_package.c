@@ -19,7 +19,7 @@
  *		Definitions for the PLISQL Package parser
  *
  *
- * Portions Copyright (c) 2024-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2024-2026, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *	  src/backend/parser/parse_package.c

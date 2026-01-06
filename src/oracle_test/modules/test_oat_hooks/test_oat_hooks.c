@@ -4,7 +4,7 @@
  *		Code for testing mandatory access control (MAC) using object access hooks.
  *
  * Copyright (c) 2015-2024, PostgreSQL Global Development Group
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *		src/test/modules/test_oat_hooks/test_oat_hooks.c

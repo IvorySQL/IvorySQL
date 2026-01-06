@@ -13,7 +13,7 @@
 # limitations under the License.
 
 # plisql extension
-# Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+# Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
 comment = 'PL/iSQL procedural language'
 default_version = '1.0'
 module_pathname = '$libdir/plisql'
