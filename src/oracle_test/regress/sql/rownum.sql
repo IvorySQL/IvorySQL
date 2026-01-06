@@ -652,6 +652,67 @@ SELECT COUNT(*) FROM empty_test WHERE ROWNUM <= 5;
 DROP TABLE empty_test;
 
 --
+-- ROWNUM pagination with nested subqueries
+-- Common Oracle pagination pattern: SELECT FROM (SELECT ... ROWNUM) WHERE rnum >= N
+--
+
+CREATE TABLE eemp(
+    empno NUMBER(4) NOT NULL CONSTRAINT emp_pk PRIMARY KEY,
+    ename VARCHAR2(10),
+    sal NUMBER(7,2)
+);
+
+INSERT INTO eemp VALUES (7369,'SMITH',800);
+INSERT INTO eemp VALUES (7499,'ALLEN',1600);
+INSERT INTO eemp VALUES (7521,'WARD',1250);
+INSERT INTO eemp VALUES (7566,'JONES',2975);
+INSERT INTO eemp VALUES (7654,'MARTIN',1250);
+INSERT INTO eemp VALUES (7698,'BLAKE',2850);
+INSERT INTO eemp VALUES (7782,'CLARK',2450);
+INSERT INTO eemp VALUES (7788,'SCOTT',3000);
+INSERT INTO eemp VALUES (7839,'KING',5000);
+INSERT INTO eemp VALUES (7844,'TURNER',1500);
+INSERT INTO eemp VALUES (7876,'ADAMS',1100);
+INSERT INTO eemp VALUES (7900,'JAMES',950);
+INSERT INTO eemp VALUES (7902,'FORD',3000);
+INSERT INTO eemp VALUES (7934,'MILLER',1300);
+
+-- Pagination query: get rows 8-12 (sorted by sal)
+-- This is the standard Oracle pagination pattern
+SELECT *
+FROM (
+    SELECT a.*, rownum rnum
+    FROM (
+        SELECT empno, sal
+        FROM eemp
+        ORDER BY sal
+    ) a
+    WHERE rownum <= 12
+)
+WHERE rnum >= 8;
+
+-- Expected result:
+--  empno |   sal   | rnum
+-- -------+---------+------
+--  7499  | 1600.00 |    8
+--  7782  | 2450.00 |    9
+--  7698  | 2850.00 |   10
+--  7566  | 2975.00 |   11
+--  7902  | 3000.00 |   12
+-- (5 rows)
+
+-- Verify ROWNUM values are consecutive in inner query
+SELECT empno, sal, rownum as rnum
+FROM (
+    SELECT empno, sal
+    FROM eemp
+    ORDER BY sal
+) a
+WHERE rownum <= 12;
+
+DROP TABLE eemp;
+
+--
 -- Cleanup
 --
 
