@@ -752,7 +752,7 @@ typedef struct EState
 	/*
 	 * Oracle ROWNUM support: current row number counter.
 	 * This is incremented for each row emitted during query execution.
-	 * Only used when database_mode == DB_ORACLE.
+	 * Only used when compatible_db == ORA_PARSER.
 	 */
 	int64		es_rownum;
 

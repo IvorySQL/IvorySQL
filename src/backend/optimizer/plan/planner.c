@@ -654,7 +654,7 @@ transform_rownum_to_limit(Query *parse)
 	bool		can_use_limit;
 
 	/* Only apply in Oracle compatibility mode */
-	if (database_mode != DB_ORACLE)
+	if (compatible_db != ORA_PARSER)
 		return;
 
 	/*
