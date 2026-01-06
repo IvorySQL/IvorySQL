@@ -713,6 +713,22 @@ WHERE rownum <= 12;
 DROP TABLE eemp;
 
 --
+-- ROWNUM with GROUP BY validation
+-- ROWNUM must appear in GROUP BY clause or be used in aggregate function
+--
+
+CREATE TABLE grp_test (id int, category varchar(10));
+INSERT INTO grp_test VALUES (1, 'A'), (2, 'A'), (3, 'B'), (4, 'B'), (5, 'C');
+
+-- Error: ROWNUM not in GROUP BY and not in aggregate
+SELECT rownum FROM grp_test GROUP BY category;
+
+-- OK: ROWNUM in GROUP BY clause
+SELECT rownum FROM grp_test GROUP BY rownum ORDER BY rownum;
+
+DROP TABLE grp_test;
+
+--
 -- Cleanup
 --
 

@@ -1415,6 +1415,24 @@ substitute_grouped_columns_mutator(Node *node,
 		return node;
 
 	/*
+	 * For Oracle ROWNUM compatibility: ROWNUM must appear in the GROUP BY
+	 * clause or be used in an aggregate function, just like a regular column.
+	 * If we reach here, it wasn't matched as a GROUP BY item above.
+	 */
+	if (IsA(node, RownumExpr))
+	{
+		RownumExpr *rexpr = (RownumExpr *) node;
+
+		if (context->sublevels_up == 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_GROUPING_ERROR),
+					 errmsg("ROWNUM: must appear in the GROUP BY clause or be used in an aggregate function"),
+					 parser_errposition(context->pstate, rexpr->location)));
+		/* If not at current level, it's from outer query - not our problem */
+		return node;
+	}
+
+	/*
 	 * If we have an ungrouped Var of the original query level, we have a
 	 * failure.  Vars below the original query level are not a problem, and
 	 * neither are Vars from above it.  (If such Vars are ungrouped as far as
