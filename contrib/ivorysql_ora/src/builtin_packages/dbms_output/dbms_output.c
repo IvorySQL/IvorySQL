@@ -625,3 +625,17 @@ ora_dbms_output_get_lines(PG_FUNCTION_ARGS)
 	tuple = heap_form_tuple(tupdesc, values, nulls);
 	PG_RETURN_DATUM(HeapTupleGetDatum(tuple));
 }
+
+/*
+ * ora_dbms_output_reset
+ *
+ * Reset DBMS_OUTPUT buffer state. Called by DISCARD ALL/PACKAGES
+ * to ensure session state is properly cleared, which is important
+ * for connection pooling environments (e.g., PgBouncer).
+ */
+void
+ora_dbms_output_reset(void)
+{
+	if (output_buffer != NULL)
+		cleanup_output_buffer();
+}
