@@ -20,7 +20,7 @@
  *   For the interface and high-level design, see pl_subproc_function.h to
  *   avoid duplication between .c and .h.
  *
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *	  src/pl/plisql/src/pl_subproc_function.c

@@ -4,7 +4,7 @@
  *	  Utility and convenience functions for fmgr functions that return
  *	  sets and/or composite types, or deal with VARIADIC inputs.
  *
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  * Copyright (c) 2002-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION

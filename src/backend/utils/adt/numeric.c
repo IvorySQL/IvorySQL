@@ -11,7 +11,7 @@
  * Transactions on Mathematical Software, Vol. 24, No. 4, December 1998,
  * pages 359-367.
  *
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  * Copyright (c) 1998-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
