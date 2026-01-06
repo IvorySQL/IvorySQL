@@ -729,6 +729,32 @@ SELECT rownum FROM grp_test GROUP BY rownum ORDER BY rownum;
 DROP TABLE grp_test;
 
 --
+-- ROWNUM with aggregate functions
+-- Aggregate functions should evaluate ROWNUM for each row during scan
+--
+
+CREATE TABLE agg_test (id int, val int);
+INSERT INTO agg_test VALUES (1, 10), (2, 20), (3, 30), (4, 40), (5, 50), (6, 60);
+
+-- MIN/MAX/SUM/AVG with ROWNUM
+-- For 6 rows: MIN=1, MAX=6, SUM=21, AVG=3.5
+SELECT MIN(rownum), MAX(rownum), SUM(rownum), AVG(rownum) FROM agg_test;
+
+-- COUNT with ROWNUM
+SELECT COUNT(*), COUNT(rownum) FROM agg_test;
+
+-- Aggregate with ROWNUM expression
+SELECT SUM(rownum * 2), SUM(rownum) * 2 FROM agg_test;
+
+-- Aggregate with ROWNUM and GROUP BY
+SELECT val / 20 as grp, MIN(rownum), MAX(rownum)
+FROM agg_test
+GROUP BY val / 20
+ORDER BY grp;
+
+DROP TABLE agg_test;
+
+--
 -- Cleanup
 --
 
