@@ -46,29 +46,25 @@ static TupleTableSlot *
 SubqueryNext(SubqueryScanState *node)
 {
 	TupleTableSlot *slot;
-	bool		first_call = !node->rownum_reset;
+	EState	   *estate = node->ss.ps.state;
+	int64		save_rownum = estate->es_rownum;
 
-	if (first_call)
-		node->rownum_reset = true;
+	/*
+	 * For Oracle ROWNUM compatibility: each subquery maintains its own
+	 * local ROWNUM counter. Save the outer query's counter, swap in
+	 * this subquery's counter, execute the subplan, then restore.
+	 * This allows nested subqueries to have independent ROWNUM sequences.
+	 */
+	estate->es_rownum = node->sub_rownum;
 
 	/*
 	 * Get the next tuple from the sub-query.
 	 */
 	slot = ExecProcNode(node->subplan);
 
-	/*
-	 * For Oracle ROWNUM compatibility: reset the ROWNUM counter after
-	 * the first call to ExecProcNode.  This is necessary because inner
-	 * plan nodes (e.g., SeqScan feeding a Sort) may increment es_rownum
-	 * while buffering tuples during the first call.  We want the
-	 * SubqueryScan's ROWNUM values to start at 1, not continue from
-	 * where the inner scans left off.
-	 *
-	 * The reset happens after ExecProcNode because blocking operators
-	 * like Sort fetch all input tuples on the first call.
-	 */
-	if (first_call)
-		node->ss.ps.state->es_rownum = 0;
+	/* Update local counter and restore outer query's counter */
+	node->sub_rownum = estate->es_rownum;
+	estate->es_rownum = save_rownum;
 
 	/*
 	 * We just return the subplan's result slot, rather than expending extra
@@ -130,7 +126,7 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	subquerystate->ss.ps.plan = (Plan *) node;
 	subquerystate->ss.ps.state = estate;
 	subquerystate->ss.ps.ExecProcNode = ExecSubqueryScan;
-	subquerystate->rownum_reset = false;
+	subquerystate->sub_rownum = 0;
 
 	/*
 	 * Miscellaneous initialization
@@ -202,10 +198,10 @@ void
 ExecReScanSubqueryScan(SubqueryScanState *node)
 {
 	/*
-	 * Reset ROWNUM tracking flag for Oracle compatibility.
-	 * This ensures each SubqueryScan rescan resets ROWNUM on first tuple.
+	 * Reset local ROWNUM counter for Oracle compatibility.
+	 * Each rescan starts with ROWNUM = 1.
 	 */
-	node->rownum_reset = false;
+	node->sub_rownum = 0;
 
 	ExecScanReScan(&node->ss);
 
