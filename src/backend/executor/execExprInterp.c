@@ -3128,7 +3128,7 @@ ExecEvalParamExtern(ExprState *state, ExprEvalStep *op, ExprContext *econtext)
 
 /*
  * Set value of a param (currently always PARAM_EXEC) from
- * state->res{value,null}.
+ * op->res{value,null}.
  */
 void
 ExecEvalParamSet(ExprState *state, ExprEvalStep *op, ExprContext *econtext)
@@ -3140,8 +3140,8 @@ ExecEvalParamSet(ExprState *state, ExprEvalStep *op, ExprContext *econtext)
 	/* Shouldn't have a pending evaluation anymore */
 	Assert(prm->execPlan == NULL);
 
-	prm->value = state->resvalue;
-	prm->isnull = state->resnull;
+	prm->value = *op->resvalue;
+	prm->isnull = *op->resnull;
 }
 
 /*
