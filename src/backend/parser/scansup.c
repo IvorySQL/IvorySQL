@@ -16,6 +16,7 @@
 #include "postgres.h"
 
 #include <ctype.h>
+#include <stdbool.h>
 
 #include "mb/pg_wchar.h"
 #include "parser/scansup.h"
@@ -40,8 +41,23 @@ downcase_truncate_identifier(const char *ident, int len, bool warn)
 	return downcase_identifier(ident, len, warn, true);
 }
 
-/*
- * a workhorse for downcase_truncate_identifier
+/**
+ * Produce a downcased copy of an identifier substring.
+ *
+ * Creates and returns a palloc'd, NUL-terminated string containing a
+ * downcased form of the first `len` bytes of `ident`. ASCII letters
+ * are converted to lower-case; for single-byte encodings, high-bit
+ * characters are converted using `tolower()` when appropriate. Multi-byte
+ * character sequences are preserved unchanged. If `truncate` is true and
+ * the converted name is longer than NAMEDATALEN-1 bytes, the result is
+ * truncated in-place to that length; if `warn` is true a NOTICE is emitted
+ * when truncation occurs.
+ *
+ * @param ident input identifier bytes (not necessarily NUL-terminated)
+ * @param len number of bytes from `ident` to process
+ * @param warn emit a NOTICE if truncation occurs
+ * @param truncate truncate the result to NAMEDATALEN-1 when necessary
+ * @returns a palloc'd, NUL-terminated downcased string representing the input
  */
 char *
 downcase_identifier(const char *ident, int len, bool warn, bool truncate)
@@ -56,15 +72,22 @@ downcase_identifier(const char *ident, int len, bool warn, bool truncate)
 	/*
 	 * SQL99 specifies Unicode-aware case normalization, which we don't yet
 	 * have the infrastructure for.  Instead we use tolower() to provide a
-	 * locale-aware translation.  However, in some locales (for example, 
+	 * locale-aware translation.  However, in some locales (for example,
 	 * Turkish with 'i' and 'I') this still is not correct.  Our compromise is
 	 * to use tolower() for characters with the high bit set, as long as they
 	 * aren't part of a multi-byte character, and use an ASCII-only approach
 	 * for 7-bit characters.
 	 */
+	strncpy(result, ident, len);
 	for (i = 0; i < len; i++)
 	{
 		unsigned char ch = (unsigned char) ident[i];
+		int mblen = pg_mblen(ident + i);
+		if (mblen > 1)
+		{
+			i += mblen - 1;
+			continue;
+		}
 
 		if (ch >= 'A' && ch <= 'Z')
 			ch += 'a' - 'A';
@@ -80,6 +103,22 @@ downcase_identifier(const char *ident, int len, bool warn, bool truncate)
 	return result;
 }
 
+/**
+ * Produce an upcased form of an identifier, suitable for use by the lexer.
+ *
+ * The function returns a newly allocated, NUL-terminated string containing
+ * an upper-case version of the first `len` bytes of `ident`. Multi-byte
+ * characters are preserved (not transformed) and single-byte characters are
+ * converted to upper-case where appropriate. If `truncate` is true and the
+ * converted identifier exceeds NAMEDATALEN-1 bytes, it will be truncated;
+ * if `warn` is true a NOTICE will be issued when truncation occurs.
+ *
+ * @param ident Input identifier (not necessarily NUL-terminated within `len`).
+ * @param len Number of bytes from `ident` to convert.
+ * @param warn If true, emit a NOTICE when truncation happens.
+ * @param truncate If true, truncate the result to NAMEDATALEN-1 bytes when necessary.
+ * @return A palloc'd, NUL-terminated string containing the upcased identifier.
+ */
 char *
 upcase_identifier(const char *ident, int len, bool warn, bool truncate)
 {
@@ -100,9 +139,16 @@ upcase_identifier(const char *ident, int len, bool warn, bool truncate)
 	 * the high bit set, as long as they aren't part of a multi-byte
 	 * character, and use an ASCII-only downcasing for 7-bit characters.
 	 */
+	strncpy(result, ident, len);
 	for (i = 0; i < len; i++)
 	{
 		unsigned char ch = (unsigned char) ident[i];
+		int mblen = pg_mblen(ident + i);
+		if (mblen > 1)
+		{
+			i += mblen - 1;
+			continue;
+		}
 
 		if (ch >= 'a' && ch <= 'z')
 			ch -= 'a' - 'A';
@@ -171,14 +217,13 @@ truncate_identifier(char *ident, int len, bool warn)
 	}
 }
 
-/*
- * scanner_isspace() --- return true if flex scanner considers char whitespace
+/**
+ * Report whether the scanner treats a character as whitespace.
  *
- * This should be used instead of the potentially locale-dependent isspace()
- * function when it's important to match the lexer's behavior.
+ * Matches the flex scanner's definition of whitespace used in scan.l:
+ * space, horizontal tab, newline, carriage return, vertical tab, or form feed.
  *
- * In principle we might need similar functions for isalnum etc, but for the
- * moment only isspace seems needed.
+ * @return `true` if `ch` is one of those whitespace characters, `false` otherwise.
  */
 bool
 scanner_isspace(char ch)
@@ -192,4 +237,75 @@ scanner_isspace(char ch)
 		ch == '\f')
 		return true;
 	return false;
+}
+
+/**
+ * Check whether every alphabetic character in the given identifier is lowercase.
+ *
+ * Multibyte character sequences are treated as indivisible units and are not
+ * examined for case; only single-byte characters are checked.
+ *
+ * @param ident Pointer to the identifier bytes to examine.
+ * @param len Number of bytes from ident to consider.
+ * @returns `true` if every alphabetic character in the examined bytes is lowercase, `false` otherwise.
+ */
+ bool
+ identifier_is_all_lower(const char *ident, int len)
+{
+	int i;
+	const char* s;
+
+	s = ident;
+
+	for (i = 0; i < len; i++)
+	{
+		int mblen = pg_mblen(s);
+
+		if (mblen > 1)
+		{
+			s += mblen;
+			i += mblen - 1;
+			continue;
+		}
+
+		if (isalpha(*s) && isupper(*s))
+			return false;
+		s++;
+	}
+	return true;
+}
+
+/**
+ * Determine whether all alphabetic characters in ident are uppercase.
+ *
+ * Multibyte character sequences are skipped and not inspected for case.
+ *
+ * @param ident string to test (may not be NUL-terminated; only the first len bytes are examined)
+ * @param len number of bytes to examine in ident
+ * @returns `true` if every alphabetic character within the first len bytes is uppercase, `false` otherwise.
+ */
+ bool
+ identifier_is_all_upper(const char *ident, int len)
+{
+	int i;
+	const char* s;
+
+	s = ident;
+
+	for (i = 0; i < len; i++)
+	{
+		int mblen = pg_mblen(s);
+
+		if (mblen > 1)
+		{
+			s += mblen;
+			i += mblen - 1;
+			continue;
+		}
+
+		if (isalpha(*s) && islower(*s))
+			return false;
+		s++;
+	}
+	return true;
 }

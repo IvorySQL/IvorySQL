@@ -44,6 +44,7 @@
 #include "utils/ps_status.h"
 #include "utils/timeout.h"
 #include "utils/varlena.h"
+#include "parser/scansup.h"
 
 /* GUCs */
 bool		Trace_connection_negotiation = false;
@@ -522,23 +523,29 @@ reject:
 	return STATUS_ERROR;
 }
 
-/*
- * Read a client's startup packet and do something according to it.
+/**
+ * Read and process a client's startup packet, performing protocol negotiation
+ * and populating the given Port structure with startup parameters.
  *
- * Returns STATUS_OK or STATUS_ERROR, or might call ereport(FATAL) and
- * not return at all.
+ * The function handles special request codes (SSL/GSS negotiation and cancel),
+ * negotiates encryption when requested, validates protocol version, parses
+ * startup name/value pairs (database, user, options, replication, etc.),
+ * collects unrecognized protocol options, and stores generic GUC pairs in
+ * port->guc_options. It may send a NegotiateProtocolVersion message if the
+ * client's minor version is newer than supported or if unrecognized protocol
+ * options were present.
  *
- * (Note that ereport(FATAL) stuff is sent to the client, so only use it
- * if that's what you want.  Return STATUS_ERROR if you don't want to
- * send anything to the client, which would typically be appropriate
- * if we detect a communications failure.)
+ * @param port Port object to populate with connection and startup information.
+ * @param ssl_done true if SSL negotiation has already completed for this
+ *                 connection; set to true on successful SSL negotiation.
+ * @param gss_done true if GSSAPI encryption negotiation has already completed;
+ *                 set to true on successful GSSAPI negotiation.
  *
- * Set ssl_done and/or gss_done when negotiation of an encrypted layer
- * (currently, TLS or GSSAPI) is completed. A successful negotiation of either
- * encryption layer sets both flags, but a rejected negotiation sets only the
- * flag for that layer, since the client may wish to try the other one. We
- * should make no assumption here about the order in which the client may make
- * requests.
+ * @returns STATUS_OK on successful processing and population of Port;
+ *          STATUS_ERROR on recoverable communication or protocol errors that
+ *          should close the connection without sending a server-side FATAL.
+ *          The function may also call ereport(FATAL) and not return for fatal
+ *          protocol or authorization errors.
  */
 static int
 ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
@@ -803,9 +810,9 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 				if (ORA_PARSER == compatible_db && database_name != NULL)
 				{
 					if (identifier_case_switch == LOWERCASE &&
-						is_all_upper(database_name, strlen(database_name)))
+						identifier_is_all_upper(database_name, strlen(database_name)))
 					{
-						port->database_name = down_character(database_name, strlen(database_name));
+						port->database_name = downcase_identifier(database_name, strlen(database_name), false, false);
 						pfree(database_name);
 					}
 					else if (identifier_case_switch == INTERCHANGE)
@@ -834,9 +841,9 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 							pfree(database_name);
 							pfree(casename);
 						}
-						else if (is_all_upper(database_name, strlen(database_name)))
+						else if (identifier_is_all_upper(database_name, strlen(database_name)))
 						{
-							port->database_name = down_character(database_name, strlen(database_name));
+							port->database_name = downcase_identifier(database_name, strlen(database_name), false, false);
 							pfree(database_name);
 						}
 						else
@@ -856,9 +863,9 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 				if (ORA_PARSER == compatible_db && user_name != NULL)
 				{
 					if (identifier_case_switch == LOWERCASE &&
-						is_all_upper(user_name, strlen(user_name)))
+						identifier_is_all_upper(user_name, strlen(user_name)))
 					{
-						port->user_name = down_character(user_name, strlen(user_name));
+						port->user_name = downcase_identifier(user_name, strlen(user_name), false, false);
 						pfree(user_name);
 					}
 					else if (identifier_case_switch == INTERCHANGE)
@@ -887,9 +894,9 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 							pfree(user_name);
 							pfree(casename);
 						}
-						else if (is_all_upper(user_name, strlen(user_name)))
+						else if (identifier_is_all_upper(user_name, strlen(user_name)))
 						{
-							port->user_name = down_character(user_name, strlen(user_name));
+							port->user_name = downcase_identifier(user_name, strlen(user_name), false, false);
 							pfree(user_name);
 						}
 						else

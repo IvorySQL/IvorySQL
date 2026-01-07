@@ -26,6 +26,8 @@
 
 #include "oracle_parser/ora_keywords.h"
 
+#include "mb/pg_wchar.h"
+
 
 static PQExpBuffer oraDefaultGetLocalPQExpBuffer(void);
 
@@ -140,7 +142,16 @@ ora_fmtId(const char *rawid)
 	return id_return->data;
 }
 
-/* get specificed database compatibility mode of current session */
+/**
+ * Determine and record the current session's database compatibility mode.
+ *
+ * Queries the session setting "ivorysql.compatible_mode" and sets the global
+ * `db_mode` to DB_ORACLE when the setting is equal to "oracle" (case-insensitive);
+ * otherwise sets `db_mode` to DB_PG. If the query does not return a tuple result,
+ * `db_mode` is set to DB_PG. The function clears any PGresult it obtains.
+ *
+ * @param conn Connection to the database whose session mode is queried.
+ */
 void
 getDbCompatibleMode(PGconn *conn)
 {
@@ -164,4 +175,166 @@ getDbCompatibleMode(PGconn *conn)
 
 	if (res)
 		PQclear(res);
+}
+
+/**
+ * Convert ASCII single-byte characters in a buffer to lowercase while preserving multibyte sequences.
+ *
+ * Modifies the input buffer in place for up to `len` bytes. For encodings where characters
+ * occupy multiple bytes, multibyte sequences are left unchanged; only single-byte characters
+ * are converted using the C locale `tolower` behavior.
+ *
+ * @param src Pointer to the byte buffer to transform; must be writable and at least `len` bytes long.
+ * @param len Number of bytes from `src` to process.
+ * @param encoding Server encoding identifier used by pg_encoding_mblen to determine multibyte lengths.
+ * @returns Pointer to the original buffer (`src`), after in-place modification.
+ */
+char *
+down_character(const char *src, int len, int encoding)
+{
+	char	*s;
+	char	*res;
+	int		i;
+	Assert(src != NULL);
+	Assert(len >= 0);
+
+	s = (char *) src;
+	res = s;
+
+	/* transform */
+	for (i = 0; i < len ; i++)
+	{
+		int mblen = pg_encoding_mblen(encoding, s);
+
+		if (mblen > 1)
+		{
+			s += mblen;
+			i += (mblen - 1);
+			continue;
+		}
+
+		*s = tolower(*s);
+		s++;
+	}
+
+	return res;
+}
+
+/**
+ * Convert ASCII single-byte characters in a buffer to uppercase, preserving multibyte characters.
+ *
+ * Processes up to `len` bytes of `src`, uppercasing single-byte characters in place while skipping
+ * multibyte sequences as determined by `encoding`.
+ *
+ * @param src Buffer whose contents will be modified; must be non-NULL.
+ * @param len Number of bytes from `src` to process; must be >= 0.
+ * @param encoding Server encoding used to determine multibyte character lengths.
+ * @returns Pointer to the input buffer `src` (modified in place).
+ */
+char *
+upper_character(const char *src, int len, int encoding)
+{
+	char	*s;
+	char	*res;
+	int		i;
+	Assert(src != NULL);
+	Assert(len >= 0);
+
+	s = (char *) src;
+	res = s;
+
+	/* transform */
+	for (i = 0; i < len ; i++)
+	{
+		int mblen = pg_encoding_mblen(encoding, s);
+
+		if (mblen > 1)
+		{
+			s += mblen;
+			i += (mblen - 1);
+			continue;
+		}
+
+		*s = toupper(*s);
+		s++;
+	}
+
+	return res;
+}
+
+/**
+ * Check whether all alphabetic characters in a byte string are lowercase for the given encoding.
+ *
+ * Multibyte character sequences (per pg_encoding_mblen) are skipped and not examined; only single-byte
+ * characters are tested with C locale character functions.
+ *
+ * @param src Pointer to the byte string to examine.
+ * @param len Number of bytes from src to examine.
+ * @param encoding Encoding identifier used to determine multibyte character lengths.
+ * @returns `true` if every alphabetic character encountered is lowercase, `false` otherwise.
+ */
+bool
+is_all_lower(const char *src, int len, int encoding)
+{
+	int		i;
+	const char	*s;
+
+	s = src;
+
+	for (i = 0; i < len; i++)
+	{
+		int mblen = pg_encoding_mblen(encoding, s);
+
+		if (mblen > 1)
+		{
+			s += mblen;
+			i += (mblen - 1);
+			continue;
+		}
+
+		if (isalpha(*s) && isupper(*s))
+			return false;
+		s++;
+	}
+
+	return true;
+}
+
+/**
+ * Check whether all alphabetic characters in the given byte sequence are uppercase.
+ *
+ * Examines up to `len` bytes starting at `src`, treating multibyte characters according
+ * to `encoding` (multibyte sequences are skipped). Non-alphabetic characters do not
+ * affect the result.
+ *
+ * @param src Pointer to the byte sequence to examine.
+ * @param len Number of bytes from `src` to examine.
+ * @param encoding Server encoding identifier used with pg_encoding_mblen to detect multibyte sequences.
+ * @return `true` if every alphabetic character encountered is uppercase, `false` otherwise.
+ */
+bool
+is_all_upper(const char *src, int len, int encoding)
+{
+	int		i;
+	const char	*s;
+
+	s = src;
+
+	for (i = 0; i < len; i++)
+	{
+		int mblen = pg_encoding_mblen(encoding, s);
+
+		if (mblen > 1)
+		{
+			s += mblen;
+			i += (mblen - 1);
+			continue;
+		}
+
+		if (isalpha(*s) && islower(*s))
+			return false;
+		s++;
+	}
+
+	return true;
 }
