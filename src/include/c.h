@@ -570,6 +570,7 @@ typedef uint32 bits32;			/* >= 32 bits */
 /* snprintf format strings to use for 64-bit integers */
 #define INT64_FORMAT "%" PRId64
 #define UINT64_FORMAT "%" PRIu64
+#define OID8_FORMAT "%" PRIu64
 
 /*
  * 128-bit signed and unsigned integers
@@ -658,7 +659,7 @@ typedef double float8;
 #define FLOAT8PASSBYVAL true
 
 /*
- * Oid, RegProcedure, TransactionId, SubTransactionId, MultiXactId,
+ * Oid, Oid8, RegProcedure, TransactionId, SubTransactionId, MultiXactId,
  * CommandId
  */
 
@@ -690,6 +691,11 @@ typedef uint32 CommandId;
 #define FirstCommandId	((CommandId) 0)
 #define InvalidCommandId	(~(CommandId)0)
 
+/* 8-byte Object ID */
+typedef uint64 Oid8;
+
+#define InvalidOid8		((Oid8) 0)
+#define OID8_MAX	UINT64_MAX
 
 /* ----------------
  *		Variable-length datatypes all share the 'struct varlena' header.
@@ -789,6 +795,8 @@ typedef NameData *Name;
 		((void *)((char *) base + offset))
 
 #define OidIsValid(objectId)  ((bool) ((objectId) != InvalidOid))
+
+#define Oid8IsValid(objectId)  ((bool) ((objectId) != InvalidOid8))
 
 #define RegProcedureIsValid(p)	OidIsValid(p)
 
