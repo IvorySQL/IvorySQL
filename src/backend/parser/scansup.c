@@ -16,6 +16,7 @@
 #include "postgres.h"
 
 #include <ctype.h>
+#include <stdbool.h>
 
 #include "mb/pg_wchar.h"
 #include "parser/scansup.h"
@@ -49,6 +50,8 @@ downcase_identifier(const char *ident, int len, bool warn, bool truncate)
 	char	   *result;
 	int			i;
 	bool		enc_is_single_byte;
+	Assert(ident != NULL);
+	Assert(len >= 0);
 
 	result = palloc(len + 1);
 	enc_is_single_byte = pg_database_encoding_max_length() == 1;
@@ -56,15 +59,25 @@ downcase_identifier(const char *ident, int len, bool warn, bool truncate)
 	/*
 	 * SQL99 specifies Unicode-aware case normalization, which we don't yet
 	 * have the infrastructure for.  Instead we use tolower() to provide a
-	 * locale-aware translation.  However, in some locales (for example, 
+	 * locale-aware translation.  However, in some locales (for example,
 	 * Turkish with 'i' and 'I') this still is not correct.  Our compromise is
 	 * to use tolower() for characters with the high bit set, as long as they
 	 * aren't part of a multi-byte character, and use an ASCII-only approach
 	 * for 7-bit characters.
 	 */
+	memcpy(result, ident, len);
 	for (i = 0; i < len; i++)
 	{
 		unsigned char ch = (unsigned char) ident[i];
+		if (!enc_is_single_byte)
+		{
+			int mblen = pg_mblen(ident + i);
+			if (mblen > 1)
+			{
+				i += (mblen - 1);
+				continue;
+			}
+		}
 
 		if (ch >= 'A' && ch <= 'Z')
 			ch += 'a' - 'A';
@@ -86,6 +99,8 @@ upcase_identifier(const char *ident, int len, bool warn, bool truncate)
 	char	   *result;
 	int			i;
 	bool		enc_is_single_byte;
+	Assert(ident != NULL);
+	Assert(len >= 0);
 
 	result = palloc(len + 1);
 	enc_is_single_byte = pg_database_encoding_max_length() == 1;
@@ -100,9 +115,19 @@ upcase_identifier(const char *ident, int len, bool warn, bool truncate)
 	 * the high bit set, as long as they aren't part of a multi-byte
 	 * character, and use an ASCII-only downcasing for 7-bit characters.
 	 */
+	memcpy(result, ident, len);
 	for (i = 0; i < len; i++)
 	{
 		unsigned char ch = (unsigned char) ident[i];
+		if (!enc_is_single_byte)
+		{
+			int mblen = pg_mblen(ident + i);
+			if (mblen > 1)
+			{
+				i += (mblen - 1);
+				continue;
+			}
+		}
 
 		if (ch >= 'a' && ch <= 'z')
 			ch -= 'a' - 'A';
@@ -192,4 +217,62 @@ scanner_isspace(char ch)
 		ch == '\f')
 		return true;
 	return false;
+}
+
+/*
+ *  Detemine whether the letters in the string are all lowercase letters
+ */
+ bool
+ identifier_is_all_lower(const char *ident, int len)
+{
+	int i;
+	const char* s;
+
+	s = ident;
+
+	for (i = 0; i < len; i++)
+	{
+		int mblen = pg_mblen(s);
+
+		if (mblen > 1)
+		{
+			s += mblen;
+			i += (mblen - 1);
+			continue;
+		}
+
+		if (isalpha(*s) && isupper(*s))
+			return false;
+		s++;
+	}
+	return true;
+}
+
+/*
+ *  Detemine whether the letters in the string are all uppercase letters
+ */
+ bool
+ identifier_is_all_upper(const char *ident, int len)
+{
+	int i;
+	const char* s;
+
+	s = ident;
+
+	for (i = 0; i < len; i++)
+	{
+		int mblen = pg_mblen(s);
+
+		if (mblen > 1)
+		{
+			s += mblen;
+			i += (mblen - 1);
+			continue;
+		}
+
+		if (isalpha(*s) && islower(*s))
+			return false;
+		s++;
+	}
+	return true;
 }

@@ -67,5 +67,4 @@ extern void patternToSQLRegex(int encoding, PQExpBuffer dbnamebuf,
 							  PQExpBuffer schemabuf, PQExpBuffer namebuf,
 							  const char *pattern, bool force_escape,
 							  bool want_literal_dbname, int *dotcnt);
-
 #endif							/* STRING_UTILS_H */
