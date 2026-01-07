@@ -1699,7 +1699,7 @@ bootstrap_template1(void)
 
 	initPQExpBuffer(&cmd);
 
-	printfPQExpBuffer(&cmd, "\"%s\" --boot -C ivorysql.identifier_case_switch=%d %s %s %s", 
+	printfPQExpBuffer(&cmd, "\"%s\" --boot -C ivorysql.identifier_case_switch=%d %s %s %s",
 			 backend_exec, caseswitchmode, boot_options, extra_options, pg_strcasecmp(dbmode, "pg") ? "-y oracle" : "-y pg");
 	appendPQExpBuffer(&cmd, " -X %d", wal_segment_size_mb * (1024 * 1024));
 	if (data_checksums)
@@ -3694,12 +3694,20 @@ main(int argc, char *argv[])
 	if (strncmp(username, "pg_", 3) == 0)
 		pg_fatal("superuser name \"%s\" is disallowed; role names cannot begin with \"pg_\"", username);
 
+	set_info_version();
+
+	setup_data_file_paths();
+
+	setup_locale_encoding();
+
+	setup_text_search();
+
 	/* Oracle compatibility: transform uppercase usernames to lowercase. */
 	if (database_mode == DB_ORACLE && username != NULL
-		&& is_all_upper(username, strlen(username)))
+		&& is_all_upper(username, strlen(username), encodingid))
 	{
 		char *lowerusername = username;
-		username = down_character(username, strlen(username));
+		username = down_character(username, strlen(username), encodingid);
 		free(lowerusername);
 	}
 
@@ -3708,13 +3716,6 @@ main(int argc, char *argv[])
 			 "This user must also own the server process.\n\n"),
 		   effective_user);
 
-	set_info_version();
-
-	setup_data_file_paths();
-
-	setup_locale_encoding();
-
-	setup_text_search();
 
 	printf("\n");
 

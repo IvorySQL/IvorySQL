@@ -165,3 +165,131 @@ getDbCompatibleMode(PGconn *conn)
 	if (res)
 		PQclear(res);
 }
+
+/*
+ * transform upper to lower
+*/
+char *
+down_character(const char *src, int len, int encoding)
+{
+	char	*s;
+	char	*res;
+	int		i;
+	Assert(src != NULL);
+	Assert(len >= 0);
+
+	s = (char *) src;
+	res = s;
+
+	/* transform */
+	for (i = 0; i < len ; i++)
+	{
+		int mblen = pg_encoding_mblen(encoding, s);
+
+		if (mblen > 1)
+		{
+			s += mblen;
+			i += (mblen - 1);
+			continue;
+		}
+
+		*s = tolower(*s);
+		s++;
+	}
+
+	return res;
+}
+
+/*
+ * transform lower to upper
+*/
+char *
+upper_character(const char *src, int len, int encoding)
+{
+	char	*s;
+	char	*res;
+	int		i;
+	Assert(src != NULL);
+	Assert(len >= 0);
+
+	s = (char *) src;
+	res = s;
+
+	/* transform */
+	for (i = 0; i < len ; i++)
+	{
+		int mblen = pg_encoding_mblen(encoding, s);
+
+		if (mblen > 1)
+		{
+			s += mblen;
+			i += (mblen - 1);
+			continue;
+		}
+
+		*s = toupper(*s);
+		s++;
+	}
+
+	return res;
+}
+
+/*
+ * Determine whether the letters in the string are all lowercase letters
+ */
+bool
+is_all_lower(const char *src, int len, int encoding)
+{
+	int		i;
+	const char	*s;
+
+	s = src;
+
+	for (i = 0; i < len; i++)
+	{
+		int mblen = pg_encoding_mblen(encoding, s);
+
+		if (mblen > 1)
+		{
+			s += mblen;
+			i += (mblen - 1);
+			continue;
+		}
+
+		if (isalpha(*s) && isupper(*s))
+			return false;
+		s++;
+	}
+
+	return true;
+}
+
+/*
+ * Determine whether the letters in the string are all uppercase letters
+ */
+bool
+is_all_upper(const char *src, int len, int encoding)
+{
+	int		i;
+	const char	*s;
+
+	s = src;
+
+	for (i = 0; i < len; i++)
+	{
+		int mblen = pg_encoding_mblen(encoding, s);
+
+		if (mblen > 1)
+		{
+			s += mblen;
+			i += (mblen - 1);
+			continue;
+		}
+
+		if (isalpha(*s) && islower(*s))
+			return false;
+		s++;
+	}
+
+	return true;
+}

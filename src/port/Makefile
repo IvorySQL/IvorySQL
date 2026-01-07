@@ -62,8 +62,6 @@ OBJS = \
 	strerror.o \
 	tar.o
 
-override OBJS := $(OBJS) identifier_alpha_transfor.o
-
 # libpgport.a, libpgport_shlib.a, and libpgport_srv.a contain the same files
 # foo.o, foo_shlib.o, and foo_srv.o are all built from foo.c
 OBJS_SHLIB = $(OBJS:%.o=%_shlib.o)
