@@ -788,6 +788,97 @@ SELECT AVG(max_rn) FROM (
 DROP TABLE agg_nest_test;
 
 --
+-- ROWNUM with aggregate functions + GROUP BY + ORDER BY
+-- Test that aggregate column order doesn't affect query execution
+-- Bug: "Aggref found in non-Agg plan node" when ROWNUM aggregate wasn't last
+--
+
+CREATE TABLE agg_order_test (a int, b int);
+INSERT INTO agg_order_test VALUES (1, 10), (1, 20), (2, 30), (2, 40), (3, 50);
+
+-- Test 1: SUM(rownum) first, then COUNT(*) with ORDER BY
+-- For a=1: rows 1,2 → sum=3, count=2
+-- For a=2: rows 3,4 → sum=7, count=2
+-- For a=3: row 5 → sum=5, count=1
+SELECT a, SUM(rownum), COUNT(*) FROM agg_order_test GROUP BY a ORDER BY a;
+
+-- Test 2: COUNT(*) first, then SUM(rownum) with ORDER BY (different column order)
+SELECT a, COUNT(*), SUM(rownum) FROM agg_order_test GROUP BY a ORDER BY a;
+
+-- Test 3: Multiple aggregates with ROWNUM in various positions
+SELECT a, MIN(rownum), MAX(rownum), AVG(rownum), SUM(rownum), COUNT(*)
+FROM agg_order_test GROUP BY a ORDER BY a;
+
+-- Test 4: ORDER BY aggregate result
+SELECT a, SUM(rownum) as s FROM agg_order_test GROUP BY a ORDER BY s;
+
+-- Test 5: ORDER BY DESC
+SELECT a, SUM(rownum), COUNT(*) FROM agg_order_test GROUP BY a ORDER BY a DESC;
+
+DROP TABLE agg_order_test;
+
+--
+-- Multi-layer nested aggregation with ROWNUM + GROUP BY + ORDER BY
+-- Test multiple levels of aggregation where ROWNUM is used at the innermost level
+--
+
+CREATE TABLE multi_agg_test (a int, b int, c int);
+INSERT INTO multi_agg_test VALUES
+    (1, 1, 10), (1, 1, 20), (1, 2, 30),
+    (2, 1, 40), (2, 2, 50), (2, 2, 60);
+
+-- Test 1: Two layers of aggregation
+-- Inner: aggregate ROWNUM by (a, b)
+-- Outer: aggregate by (a) with ORDER BY
+SELECT a, SUM(inner_sum) as total_sum, COUNT(*) as group_count
+FROM (
+    SELECT a, b, SUM(rownum) as inner_sum, COUNT(*) as inner_count
+    FROM multi_agg_test
+    GROUP BY a, b
+    ORDER BY a, b
+) sub
+GROUP BY a
+ORDER BY a;
+
+-- Test 2: Three layers of aggregation
+SELECT MAX(mid_sum) as max_mid_sum
+FROM (
+    SELECT a, SUM(inner_sum) as mid_sum
+    FROM (
+        SELECT a, b, SUM(rownum) as inner_sum
+        FROM multi_agg_test
+        GROUP BY a, b
+        ORDER BY a, b
+    ) layer1
+    GROUP BY a
+    ORDER BY a
+) layer2;
+
+-- Test 3: Different aggregate functions at each layer with ORDER BY
+SELECT a, AVG(inner_max), SUM(inner_min), COUNT(*)
+FROM (
+    SELECT a, b, MAX(rownum) as inner_max, MIN(rownum) as inner_min
+    FROM multi_agg_test
+    GROUP BY a, b
+    ORDER BY a, b
+) sub
+GROUP BY a
+ORDER BY a;
+
+-- Test 4: Nested aggregation with ROWNUM in arithmetic expression
+SELECT a, SUM(rownum_doubled) as total_doubled
+FROM (
+    SELECT a, b, SUM(rownum * 2) as rownum_doubled
+    FROM multi_agg_test
+    GROUP BY a, b
+    ORDER BY a
+) sub
+GROUP BY a
+ORDER BY a DESC;
+
+DROP TABLE multi_agg_test;
+
+--
 -- Cleanup
 --
 

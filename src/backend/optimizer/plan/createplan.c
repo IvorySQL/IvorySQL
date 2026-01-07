@@ -84,8 +84,6 @@ static int count_rownum_exprs(Node *node);
 static List *collect_rownum_exprs(List *tlist);
 static bool aggref_args_contain_rownum(List *tlist);
 static bool aggref_args_contain_rownum_walker(Node *node, void *context);
-static int count_rownum_in_aggref_args(List *tlist);
-static Node *replace_rownum_in_aggref_args_mutator(Node *node, void *context);
 
 typedef struct replace_rownum_context
 {
@@ -2091,10 +2089,16 @@ create_projection_plan(PlannerInfo *root, ProjectionPath *best_path, int flags)
 		 * we need to ensure ROWNUM is evaluated BEFORE the sort, not after.
 		 * Oracle semantics require ROWNUM to be assigned during row retrieval,
 		 * before any ORDER BY clause is applied.
+		 *
+		 * NOTE: If ROWNUM only appears inside aggregate function arguments
+		 * (like SUM(ROWNUM)), skip this handling because the aggregate
+		 * correctly gets ROWNUM from its input (the scan). The ROWNUM inside
+		 * aggregates is already properly evaluated during the Agg phase.
 		 */
 		if (needs_result_node &&
 			(IsA(subplan, Sort) || IsA(subplan, IncrementalSort)) &&
-			contain_rownum_expr((Node *) tlist))
+			contain_rownum_expr((Node *) tlist) &&
+			!aggref_args_contain_rownum(tlist))
 		{
 			Plan	   *sortinput;
 			List	   *new_input_tlist;
@@ -2221,12 +2225,19 @@ create_projection_plan(PlannerInfo *root, ProjectionPath *best_path, int flags)
 
 			/*
 			 * Now replace all ROWNUM expressions in the final tlist
-			 * (including nested ones) with Vars referencing Sort's output.
+			 * with Vars referencing Sort's output (which has the ROWNUM
+			 * values from the scan).
 			 */
 			context.rownum_vars = rownum_vars;
 			context.rownum_idx = 0;
-
 			tlist = (List *) replace_rownum_expr_mutator((Node *) tlist, &context);
+
+			/*
+			 * The tlist now has ROWNUM replaced with Vars. If needs_result_node
+			 * is still true, a Result node will be created on top of Sort.
+			 * This is fine for bare ROWNUM (no Aggrefs) because setrefs can
+			 * handle Vars in Result's tlist by looking them up in Sort's output.
+			 */
 
 skip_rownum_handling:
 			;	/* Empty statement for label */
@@ -2241,6 +2252,7 @@ skip_rownum_handling:
 	 * of the sortcolumn setup logic into Path creation, but that would add
 	 * expense to creating Paths we might end up not using.)
 	 */
+
 	if (!needs_result_node)
 	{
 		/* Don't need a separate Result, just assign tlist to subplan */
@@ -7779,123 +7791,6 @@ aggref_args_contain_rownum(List *tlist)
 	}
 
 	return false;
-}
-
-/*
- * count_rownum_in_aggref_args_walker
- *		Count ROWNUM expressions inside Aggref arguments.
- */
-static bool
-count_rownum_in_aggref_args_walker(Node *node, void *context)
-{
-	int		   *count = (int *) context;
-
-	if (node == NULL)
-		return false;
-
-	if (IsA(node, Aggref))
-	{
-		Aggref	   *aggref = (Aggref *) node;
-		ListCell   *lc;
-
-		/* Count in each argument */
-		foreach(lc, aggref->args)
-		{
-			TargetEntry *tle = lfirst_node(TargetEntry, lc);
-			*count += count_rownum_exprs((Node *) tle->expr);
-		}
-
-		/* Count in direct args */
-		foreach(lc, aggref->aggdirectargs)
-		{
-			*count += count_rownum_exprs((Node *) lfirst(lc));
-		}
-
-		/* Count in filter */
-		if (aggref->aggfilter)
-			*count += count_rownum_exprs((Node *) aggref->aggfilter);
-	}
-
-	return expression_tree_walker(node, count_rownum_in_aggref_args_walker, context);
-}
-
-/*
- * count_rownum_in_aggref_args
- *		Count the total number of ROWNUM expressions in all Aggref arguments
- *		in the target list.
- */
-static int
-count_rownum_in_aggref_args(List *tlist)
-{
-	int			count = 0;
-	ListCell   *lc;
-
-	foreach(lc, tlist)
-	{
-		TargetEntry *tle = lfirst_node(TargetEntry, lc);
-		count_rownum_in_aggref_args_walker((Node *) tle->expr, &count);
-	}
-
-	return count;
-}
-
-/*
- * replace_rownum_in_aggref_args_mutator
- *		Replace ROWNUM expressions inside Aggref arguments with Vars.
- *
- * This mutator walks the expression tree and when it finds an Aggref,
- * it replaces any RownumExpr in its arguments with the corresponding
- * Var from the context.
- */
-static Node *
-replace_rownum_in_aggref_args_mutator(Node *node, void *context)
-{
-	replace_rownum_context *ctx = (replace_rownum_context *) context;
-
-	if (node == NULL)
-		return NULL;
-
-	if (IsA(node, Aggref))
-	{
-		Aggref	   *aggref = (Aggref *) copyObject(node);
-		ListCell   *lc;
-
-		/* Replace ROWNUM in args */
-		foreach(lc, aggref->args)
-		{
-			TargetEntry *tle = lfirst_node(TargetEntry, lc);
-
-			if (contain_rownum_expr((Node *) tle->expr))
-			{
-				tle->expr = (Expr *) replace_rownum_expr_mutator((Node *) tle->expr, ctx);
-			}
-		}
-
-		/* Replace ROWNUM in direct args */
-		if (aggref->aggdirectargs != NIL)
-		{
-			ListCell   *lc2;
-
-			foreach(lc2, aggref->aggdirectargs)
-			{
-				Node *arg = (Node *) lfirst(lc2);
-				if (contain_rownum_expr(arg))
-				{
-					lfirst(lc2) = replace_rownum_expr_mutator(arg, ctx);
-				}
-			}
-		}
-
-		/* Replace ROWNUM in filter */
-		if (aggref->aggfilter && contain_rownum_expr((Node *) aggref->aggfilter))
-		{
-			aggref->aggfilter = (Expr *) replace_rownum_expr_mutator((Node *) aggref->aggfilter, ctx);
-		}
-
-		return (Node *) aggref;
-	}
-
-	return expression_tree_mutator(node, replace_rownum_in_aggref_args_mutator, ctx);
 }
 
 /*
