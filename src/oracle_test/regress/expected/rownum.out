@@ -1287,6 +1287,52 @@ ORDER BY grp;
 
 DROP TABLE agg_test;
 --
+-- ROWNUM with nested aggregate functions
+-- Test that ROWNUM works correctly in nested subqueries with aggregates
+--
+CREATE TABLE agg_nest_test (id int, val int);
+INSERT INTO agg_nest_test VALUES (1, 10), (2, 20), (3, 30), (4, 40), (5, 50), (6, 60);
+-- Subquery with aggregate containing ROWNUM
+SELECT * FROM (
+    SELECT MIN(rownum) as min_rn, MAX(rownum) as max_rn, SUM(rownum) as sum_rn
+    FROM agg_nest_test
+) sub;
+ min_rn | max_rn | sum_rn 
+--------+--------+--------
+      1 |      6 |     21
+(1 row)
+
+-- Aggregate of subquery with ROWNUM
+SELECT SUM(rn) FROM (SELECT rownum as rn FROM agg_nest_test) sub;
+ sum 
+-----
+  21
+(1 row)
+
+-- Nested subquery aggregates (use float division for Oracle compatibility)
+SELECT MAX(sum_rn) FROM (
+    SELECT val/20.0 as grp, SUM(rownum) as sum_rn
+    FROM agg_nest_test
+    GROUP BY val/20.0
+) sub;
+ max 
+-----
+   6
+(1 row)
+
+-- Multiple levels of aggregation
+SELECT AVG(max_rn) FROM (
+    SELECT val/30.0 as grp, MAX(rownum) as max_rn
+    FROM agg_nest_test
+    GROUP BY val/30.0
+) sub;
+        avg         
+--------------------
+ 3.5000000000000000
+(1 row)
+
+DROP TABLE agg_nest_test;
+--
 -- Cleanup
 --
 DROP TABLE rownum_test CASCADE;
