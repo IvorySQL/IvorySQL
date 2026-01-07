@@ -26,6 +26,8 @@
 
 #include "oracle_parser/ora_keywords.h"
 
+#include "mb/pg_wchar.h"
+
 
 static PQExpBuffer oraDefaultGetLocalPQExpBuffer(void);
 
