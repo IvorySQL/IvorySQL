@@ -879,6 +879,50 @@ ORDER BY a DESC;
 DROP TABLE multi_agg_test;
 
 --
+-- SCROLL CURSOR with ROWNUM
+-- Bug: FETCH PRIOR/NEXT re-evaluates ROWNUM instead of using materialized values
+-- https://github.com/IvorySQL/IvorySQL/pull/1000#issuecomment-3717658753
+--
+
+CREATE TABLE cursor_rownum_test (c1 serial, c2 int);
+INSERT INTO cursor_rownum_test (c2) SELECT generate_series(1, 20);
+
+-- Test scroll cursor with ROWNUM in subquery
+BEGIN;
+
+-- Declare a scroll cursor with ROWNUM in subquery
+DECLARE cursor_rn SCROLL CURSOR FOR
+SELECT *
+FROM (SELECT *, rownum rn FROM cursor_rownum_test WHERE rownum <= 10) AS foo
+WHERE rn > 3 LIMIT 5;
+
+-- Fetch all rows - should get rows with rn 4,5,6,7,8
+FETCH ALL IN cursor_rn;
+
+-- FETCH FIRST should return row with rn=4
+FETCH FIRST IN cursor_rn;
+
+-- FETCH LAST should return row with rn=8
+FETCH LAST IN cursor_rn;
+
+-- FETCH PRIOR from LAST should return row with rn=7 (not a new incremented value)
+FETCH PRIOR IN cursor_rn;
+
+-- FETCH NEXT should return row with rn=8 again (not a new incremented value)
+FETCH NEXT IN cursor_rn;
+
+-- FETCH ABSOLUTE 2 should return row with rn=5
+FETCH ABSOLUTE 2 IN cursor_rn;
+
+-- FETCH RELATIVE -1 should return row with rn=4
+FETCH RELATIVE -1 IN cursor_rn;
+
+CLOSE cursor_rn;
+COMMIT;
+
+DROP TABLE cursor_rownum_test;
+
+--
 -- Cleanup
 --
 
