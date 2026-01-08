@@ -74,7 +74,6 @@ replace_funcs_neg = [
   ['mkdtemp'],
   ['strlcat'],
   ['strlcpy'],
-  ['strnlen'],
   ['strsep'],
   ['timingsafe_bcmp'],
 ]

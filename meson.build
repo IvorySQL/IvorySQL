@@ -2674,7 +2674,6 @@ decl_checks = [
   ['posix_fadvise', 'fcntl.h'],
   ['strlcat', 'string.h'],
   ['strlcpy', 'string.h'],
-  ['strnlen', 'string.h'],
   ['strsep',  'string.h'],
   ['timingsafe_bcmp',  'string.h'],
 ]
@@ -2922,7 +2921,6 @@ func_checks = [
   ['strerror_r', {'dependencies': [thread_dep]}],
   ['strlcat'],
   ['strlcpy'],
-  ['strnlen'],
   ['strsep'],
   ['strsignal'],
   ['sync_file_range'],
