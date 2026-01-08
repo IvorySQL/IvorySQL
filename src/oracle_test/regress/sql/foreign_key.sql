@@ -2393,19 +2393,19 @@ SET search_path to fkpart14;
 
 CREATE TABLE fk_r (id NUMBER PRIMARY KEY, name VARCHAR2(100));
 
--- Default
+-- ENFORCED
 CREATE TABLE fk_p1 (id NUMBER PRIMARY KEY, name VARCHAR2(100), fk_r_id NUMBER REFERENCES fk_r(id) ENABLE);
 SELECT conname, contype, conenforced, convalidated
 FROM pg_constraint
 WHERE conname = 'fk_p1_fk_r_id_fkey';
 
--- Default
+-- VALIDATE .. ENFORCED
 CREATE TABLE fk_p2 (id NUMBER PRIMARY KEY, name VARCHAR2(100), fk_r_id NUMBER REFERENCES fk_r(id) ENABLE VALIDATE);
 SELECT conname, contype, conenforced, convalidated
 FROM pg_constraint
 WHERE conname = 'fk_p2_fk_r_id_fkey';
 
--- Not supported - XXX NOT VALID supported on ALTER TABLE
+-- Not supported: ENFORCED NOT VALID
 CREATE TABLE fk_p3 (id NUMBER PRIMARY KEY, name VARCHAR2(100), fk_r_id NUMBER REFERENCES fk_r(id) ENABLE NOVALIDATE);
 SELECT conname, contype, conenforced, convalidated
 FROM pg_constraint
@@ -2417,33 +2417,33 @@ SELECT conname, contype, conenforced, convalidated
 FROM pg_constraint
 WHERE conname = 'fk_p4_fk_r_id_fkey';
 
--- Not supported
+-- Not supported: VALIDATE .. NOT ENFORCED
 CREATE TABLE fk_p5 (id NUMBER PRIMARY KEY, name VARCHAR2(100), fk_r_id NUMBER REFERENCES fk_r(id) DISABLE VALIDATE);
 SELECT conname, contype, conenforced, convalidated
 FROM pg_constraint
 WHERE conname = 'fk_p5_fk_r_id_fkey';
 
--- NOT ENFORCED
+-- NOT ENFORCED NOT VALID
 CREATE TABLE fk_p6 (id NUMBER PRIMARY KEY, name VARCHAR2(100), fk_r_id NUMBER REFERENCES fk_r(id) DISABLE NOVALIDATE);
 SELECT conname, contype, conenforced, convalidated
 FROM pg_constraint
 WHERE conname = 'fk_p6_fk_r_id_fkey';
 
--- Default
+-- ENFORCED
 CREATE TABLE fk_p11 (id NUMBER PRIMARY KEY, name VARCHAR2(100), fk_r_id NUMBER,
     FOREIGN KEY (fk_r_id) REFERENCES fk_r(id) ENABLE);
 SELECT conname, contype, conenforced, convalidated
 FROM pg_constraint
 WHERE conname = 'fk_p11_fk_r_id_fkey';
 
--- Default
+-- VALIDATE .. ENFORCED
 CREATE TABLE fk_p12 (id NUMBER PRIMARY KEY, name VARCHAR2(100), fk_r_id NUMBER,
     FOREIGN KEY (fk_r_id) REFERENCES fk_r(id) ENABLE VALIDATE);
 SELECT conname, contype, conenforced, convalidated
 FROM pg_constraint
 WHERE conname = 'fk_p12_fk_r_id_fkey';
 
--- Not supported - XXX NOT VALID supported on ALTER TABLE
+-- ENFORCED NOT VALID - saved as ENFORCED VALID
 CREATE TABLE fk_p13 (id NUMBER PRIMARY KEY, name VARCHAR2(100), fk_r_id NUMBER,
     FOREIGN KEY (fk_r_id) REFERENCES fk_r(id) ENABLE NOVALIDATE);
 SELECT conname, contype, conenforced, convalidated
@@ -2457,35 +2457,35 @@ SELECT conname, contype, conenforced, convalidated
 FROM pg_constraint
 WHERE conname = 'fk_p14_fk_r_id_fkey';
 
--- Not supported
+-- VALIDATE .. NOT ENFORCED - saved as NOT ENFORCED NOT VALID
 CREATE TABLE fk_p15 (id NUMBER PRIMARY KEY, name VARCHAR2(100), fk_r_id NUMBER,
     FOREIGN KEY (fk_r_id) REFERENCES fk_r(id) DISABLE VALIDATE);
 SELECT conname, contype, conenforced, convalidated
 FROM pg_constraint
 WHERE conname = 'fk_p15_fk_r_id_fkey';
 
--- NOT ENFORCED
+-- NOT ENFORCED NOT VALID
 CREATE TABLE fk_p16 (id NUMBER PRIMARY KEY, name VARCHAR2(100), fk_r_id NUMBER,
     FOREIGN KEY (fk_r_id) REFERENCES fk_r(id) DISABLE NOVALIDATE);
 SELECT conname, contype, conenforced, convalidated
 FROM pg_constraint
 WHERE conname = 'fk_p16_fk_r_id_fkey';
 
--- Default
+-- ENFORCED
 CREATE TABLE fk_p21 (id NUMBER PRIMARY KEY, name VARCHAR2(100), fk_r_id NUMBER,
     CONSTRAINT fk_fk_p21 FOREIGN KEY (fk_r_id) REFERENCES fk_r(id) ENABLE);
 SELECT conname, contype, conenforced, convalidated
 FROM pg_constraint
 WHERE conname = 'fk_fk_p21';
 
--- Default
+-- VALIDATE .. ENFORCED
 CREATE TABLE fk_p22 (id NUMBER PRIMARY KEY, name VARCHAR2(100), fk_r_id NUMBER,
     CONSTRAINT fk_fk_p22 FOREIGN KEY (fk_r_id) REFERENCES fk_r(id) ENABLE VALIDATE);
 SELECT conname, contype, conenforced, convalidated
 FROM pg_constraint
 WHERE conname = 'fk_fk_p22';
 
--- Not supported - XXX NOT VALID supported on ALTER TABLE
+-- ENFORCED NOT VALID - saved as ENFORCED VALID
 CREATE TABLE fk_p23 (id NUMBER PRIMARY KEY, name VARCHAR2(100), fk_r_id NUMBER,
     CONSTRAINT fk_fk_p23 FOREIGN KEY (fk_r_id) REFERENCES fk_r(id) ENABLE NOVALIDATE);
 SELECT conname, contype, conenforced, convalidated
@@ -2499,18 +2499,60 @@ SELECT conname, contype, conenforced, convalidated
 FROM pg_constraint
 WHERE conname = 'fk_fk_p24';
 
--- Not supported
+-- VALIDATE .. NOT ENFORCED - saved as NOT ENFORCED NOT VALID
 CREATE TABLE fk_p25 (id NUMBER PRIMARY KEY, name VARCHAR2(100), fk_r_id NUMBER,
     CONSTRAINT fk_fk_p25 FOREIGN KEY (fk_r_id) REFERENCES fk_r(id) DISABLE VALIDATE);
 SELECT conname, contype, conenforced, convalidated
 FROM pg_constraint
 WHERE conname = 'fk_fk_p25';
 
--- NOT ENFORCED
+-- NOT ENFORCED NOT VALID
 CREATE TABLE fk_p26 (id NUMBER PRIMARY KEY, name VARCHAR2(100), fk_r_id NUMBER,
     CONSTRAINT fk_fk_p26 FOREIGN KEY (fk_r_id) REFERENCES fk_r(id) DISABLE NOVALIDATE);
 SELECT conname, contype, conenforced, convalidated
 FROM pg_constraint
 WHERE conname = 'fk_fk_p26';
+
+-- ENFORCED
+CREATE TABLE fk_p31 (id NUMBER PRIMARY KEY, name VARCHAR2(100), fk_r_id NUMBER);
+ALTER TABLE fk_p31 ADD FOREIGN KEY (fk_r_id) REFERENCES fk_r(id) ENABLE;
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'fk_p31_fk_r_id_fkey';
+
+-- VALIDATE .. ENFORCED
+CREATE TABLE fk_p32 (id NUMBER PRIMARY KEY, name VARCHAR2(100), fk_r_id NUMBER);
+ALTER TABLE fk_p32 ADD FOREIGN KEY (fk_r_id) REFERENCES fk_r(id) ENABLE VALIDATE;
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'fk_p32_fk_r_id_fkey';
+
+-- ENFORCED NOT VALID
+CREATE TABLE fk_p33 (id NUMBER PRIMARY KEY, name VARCHAR2(100), fk_r_id NUMBER);
+ALTER TABLE fk_p33 ADD FOREIGN KEY (fk_r_id) REFERENCES fk_r(id) ENABLE NOVALIDATE;
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'fk_p33_fk_r_id_fkey';
+
+-- NOT ENFORCED
+CREATE TABLE fk_p34 (id NUMBER PRIMARY KEY, name VARCHAR2(100), fk_r_id NUMBER);
+ALTER TABLE fk_p34 ADD FOREIGN KEY (fk_r_id) REFERENCES fk_r(id) DISABLE;
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'fk_p34_fk_r_id_fkey';
+
+-- VALIDATE .. NOT ENFORCED - saved as NOT ENFORCED NOT VALID
+CREATE TABLE fk_p35 (id NUMBER PRIMARY KEY, name VARCHAR2(100), fk_r_id NUMBER);
+ALTER TABLE fk_p35 ADD FOREIGN KEY (fk_r_id) REFERENCES fk_r(id) DISABLE VALIDATE;
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'fk_p35_fk_r_id_fkey';
+
+-- NOT ENFORCED NOT VALID
+CREATE TABLE fk_p36 (id NUMBER PRIMARY KEY, name VARCHAR2(100), fk_r_id NUMBER);
+ALTER TABLE fk_p36 ADD FOREIGN KEY (fk_r_id) REFERENCES fk_r(id) DISABLE NOVALIDATE;
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'fk_p36_fk_r_id_fkey';
 
 DROP SCHEMA fkpart14 CASCADE;
