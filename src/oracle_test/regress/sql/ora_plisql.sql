@@ -1462,13 +1462,9 @@ drop function ff_test;
 -- Oracle allows ROWNUM as parameter/variable name in PL/SQL.
 -- https://github.com/IvorySQL/IvorySQL/pull/1000#issuecomment-3717690863
 --
--- Current IvorySQL behavior: Fails because ROWNUM is treated as keyword
--- TODO: These should work to match Oracle behavior
---
 
 -- Test 1: Function with 'rownum' as parameter name
 -- Oracle: Creates successfully
--- IvorySQL: Currently fails with syntax error
 CREATE OR REPLACE FUNCTION test_rownum_param(rownum IN VARCHAR2) RETURN INTEGER IS
 BEGIN
     RAISE NOTICE 'Parameter value: %', rownum;
@@ -1478,7 +1474,6 @@ END;
 
 -- Test 2: Call the function with variable named 'rownum'
 -- Oracle: Runs successfully
--- IvorySQL: Currently fails
 DECLARE
     rownum VARCHAR2(256) := 'hello';
     ret INTEGER;
@@ -1490,7 +1485,6 @@ END;
 
 -- Test 3: Named parameter call using 'rownum =>'
 -- Oracle: Runs successfully
--- IvorySQL: Currently fails
 DECLARE
     ret INTEGER;
 BEGIN
