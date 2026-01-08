@@ -3707,8 +3707,7 @@ main(int argc, char *argv[])
 	if (database_mode == DB_ORACLE && username != NULL
 		&& caseswitchmode != NORMAL
 		&& is_all_upper(username, strlen(username), encodingid)
-		&& !strchr(username, '/')
-		&& !strchr(username, '.'))
+		&& !strchr(username, '/'))
 	{
 		char *lowerusername = username;
 		username = down_character(username, strlen(username), encodingid);

@@ -151,7 +151,7 @@ identifier_case_transform(const char *ident, int len)
 
 	for (i = 0; i < len; i++)
 	{
-		if (ident[i] == '/' || ident[i] == '.')
+		if (ident[i] == '/')
 		{
 			result = palloc0(len + 1);
 			memcpy(result, ident, len);
