@@ -920,6 +920,38 @@ FETCH RELATIVE -1 IN cursor_rn;
 CLOSE cursor_rn;
 COMMIT;
 
+-- Test scroll cursor with deeply nested ROWNUM (multiple levels)
+BEGIN;
+
+DECLARE cursor_nested SCROLL CURSOR FOR
+SELECT * FROM (
+    SELECT rownum as outer_rn, * FROM (
+        SELECT rownum as inner_rn, c1, c2
+        FROM cursor_rownum_test
+        WHERE rownum <= 8
+    ) sub1
+    WHERE rownum <= 6
+) sub2
+WHERE outer_rn <= 4;
+
+-- Fetch all rows
+FETCH ALL IN cursor_nested;
+
+-- FETCH LAST
+FETCH LAST IN cursor_nested;
+
+-- FETCH PRIOR - should preserve both outer_rn and inner_rn values
+FETCH PRIOR IN cursor_nested;
+
+-- FETCH FIRST
+FETCH FIRST IN cursor_nested;
+
+-- FETCH NEXT - should preserve both outer_rn and inner_rn values
+FETCH NEXT IN cursor_nested;
+
+CLOSE cursor_nested;
+COMMIT;
+
 DROP TABLE cursor_rownum_test;
 
 --
