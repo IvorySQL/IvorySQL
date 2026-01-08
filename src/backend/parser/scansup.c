@@ -50,6 +50,8 @@ downcase_identifier(const char *ident, int len, bool warn, bool truncate)
 	char	   *result;
 	int			i;
 	bool		enc_is_single_byte;
+	Assert(ident != NULL);
+	Assert(len >= 0);
 
 	result = palloc(len + 1);
 	enc_is_single_byte = pg_database_encoding_max_length() == 1;
@@ -63,15 +65,18 @@ downcase_identifier(const char *ident, int len, bool warn, bool truncate)
 	 * aren't part of a multi-byte character, and use an ASCII-only approach
 	 * for 7-bit characters.
 	 */
-	strncpy(result, ident, len);
+	memcpy(result, ident, len);
 	for (i = 0; i < len; i++)
 	{
 		unsigned char ch = (unsigned char) ident[i];
-		int mblen = pg_mblen(ident + i);
-		if (mblen > 1)
+		if (!enc_is_single_byte)
 		{
-			i += mblen - 1;
-			continue;
+			int mblen = pg_mblen(ident + i);
+			if (mblen > 1)
+			{
+				i += (mblen - 1);
+				continue;
+			}
 		}
 
 		if (ch >= 'A' && ch <= 'Z')
@@ -94,6 +99,8 @@ upcase_identifier(const char *ident, int len, bool warn, bool truncate)
 	char	   *result;
 	int			i;
 	bool		enc_is_single_byte;
+	Assert(ident != NULL);
+	Assert(len >= 0);
 
 	result = palloc(len + 1);
 	enc_is_single_byte = pg_database_encoding_max_length() == 1;
@@ -108,15 +115,18 @@ upcase_identifier(const char *ident, int len, bool warn, bool truncate)
 	 * the high bit set, as long as they aren't part of a multi-byte
 	 * character, and use an ASCII-only downcasing for 7-bit characters.
 	 */
-	strncpy(result, ident, len);
+	memcpy(result, ident, len);
 	for (i = 0; i < len; i++)
 	{
 		unsigned char ch = (unsigned char) ident[i];
-		int mblen = pg_mblen(ident + i);
-		if (mblen > 1)
+		if (!enc_is_single_byte)
 		{
-			i += mblen - 1;
-			continue;
+			int mblen = pg_mblen(ident + i);
+			if (mblen > 1)
+			{
+				i += (mblen - 1);
+				continue;
+			}
 		}
 
 		if (ch >= 'a' && ch <= 'z')
@@ -227,7 +237,7 @@ scanner_isspace(char ch)
 		if (mblen > 1)
 		{
 			s += mblen;
-			i += mblen - 1;
+			i += (mblen - 1);
 			continue;
 		}
 
@@ -256,7 +266,7 @@ scanner_isspace(char ch)
 		if (mblen > 1)
 		{
 			s += mblen;
-			i += mblen - 1;
+			i += (mblen - 1);
 			continue;
 		}
 
