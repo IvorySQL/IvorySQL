@@ -739,7 +739,7 @@ DefineDomain(ParseState *pstate, CreateDomainStmt *stmt)
 
 	/* Check we have creation rights in target namespace */
 	aclresult = object_aclcheck(NamespaceRelationId, domainNamespace, GetUserId(),
-									  ACL_CREATE);
+								ACL_CREATE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, OBJECT_SCHEMA,
 					   get_namespace_name(domainNamespace));
@@ -1031,6 +1031,8 @@ DefineDomain(ParseState *pstate, CreateDomainStmt *stmt)
 
 			case CONSTR_ATTR_ENFORCED:
 			case CONSTR_ATTR_NOT_ENFORCED:
+			case CONSTR_ATTR_ENABLE:
+			case CONSTR_ATTR_DISABLE:
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 						 errmsg("specifying constraint enforceability not supported for domains"),
@@ -1816,8 +1818,8 @@ makeRangeConstructors(const char *name, Oid namespace,
 								 InvalidOid,	/* prosupport */
 								 1.0,	/* procost */
 								 0.0,	/* prorows */
-								 PointerGetDatum(NULL), 
-								 NULL); 
+								 PointerGetDatum(NULL),
+								 NULL);
 
 
 		/*
@@ -3917,8 +3919,8 @@ AlterTypeOwner(List *names, Oid newOwnerId, ObjectType objecttype)
 
 			/* New owner must have CREATE privilege on namespace */
 			aclresult = object_aclcheck(NamespaceRelationId, typTup->typnamespace,
-											  newOwnerId,
-											  ACL_CREATE);
+										newOwnerId,
+										ACL_CREATE);
 			if (aclresult != ACLCHECK_OK)
 				aclcheck_error(aclresult, OBJECT_SCHEMA,
 							   get_namespace_name(typTup->typnamespace));
