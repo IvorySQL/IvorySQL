@@ -1509,14 +1509,14 @@ FETCH LAST IN cursor_rn;
 FETCH PRIOR IN cursor_rn;
  c1 | c2 | rn 
 ----+----+----
-  7 |  7 |  9
+  7 |  7 |  7
 (1 row)
 
 -- FETCH NEXT should return row with rn=8 again (not a new incremented value)
 FETCH NEXT IN cursor_rn;
  c1 | c2 | rn 
 ----+----+----
-  8 |  8 | 10
+  8 |  8 |  8
 (1 row)
 
 -- FETCH ABSOLUTE 2 should return row with rn=5
@@ -1530,7 +1530,7 @@ FETCH ABSOLUTE 2 IN cursor_rn;
 FETCH RELATIVE -1 IN cursor_rn;
  c1 | c2 | rn 
 ----+----+----
-  4 |  4 |  6
+  4 |  4 |  4
 (1 row)
 
 CLOSE cursor_rn;
