@@ -115,7 +115,7 @@ $node2->stop();
 # load_balance_hosts=disable should continue trying hosts until it finds a
 # working one.
 $node3->connect_ok("host=pg-loadbalancetest port=$port load_balance_hosts=disable",
-	"load_balance_hosts=disable continues until it connects to the a working node",
+	"load_balance_hosts=disable continues until it connects to a working node",
 	sql => "SELECT 'connect3'",
 	log_like => [qr/statement: SELECT 'connect3'/]);
 
@@ -123,7 +123,7 @@ $node3->connect_ok("host=pg-loadbalancetest port=$port load_balance_hosts=disabl
 # ones are down. Connect a few times to make sure it's not just lucky.
 foreach my $i (1 .. 5) {
 	$node3->connect_ok("host=pg-loadbalancetest port=$port load_balance_hosts=random",
-		"load_balance_hosts=random continues until it connects to the a working node",
+		"load_balance_hosts=random continues until it connects to a working node",
 		sql => "SELECT 'connect4'",
 		log_like => [qr/statement: SELECT 'connect4'/]);
 }
