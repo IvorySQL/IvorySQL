@@ -29,7 +29,9 @@
 #include "parser/parse_type.h"
 #include "parser/parsetree.h"
 #include "utils/builtins.h"
+#include "utils/guc.h"
 #include "utils/lsyscache.h"
+#include "utils/ora_compatible.h"
 #include "utils/rel.h"
 
 static void markTargetListOrigin(ParseState *pstate, TargetEntry *tle,
@@ -92,6 +94,25 @@ transformTargetEntry(ParseState *pstate,
 			expr = node;
 		else
 			expr = transformExpr(pstate, node, exprKind);
+	}
+
+	/*
+	 * In Oracle compatibility mode, reject ROWNUM and ROWID as explicit
+	 * column aliases. Oracle treats these as reserved pseudocolumns that
+	 * cannot be used as aliases.
+	 */
+	if (compatible_db == ORA_PARSER && colname != NULL)
+	{
+		if (pg_strcasecmp(colname, "rownum") == 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("ROWNUM cannot be used as a column alias"),
+					 parser_errposition(pstate, exprLocation(node))));
+		if (pg_strcasecmp(colname, "rowid") == 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("ROWID cannot be used as a column alias"),
+					 parser_errposition(pstate, exprLocation(node))));
 	}
 
 	if (colname == NULL && !resjunk)

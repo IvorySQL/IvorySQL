@@ -959,26 +959,20 @@ DROP TABLE cursor_rownum_test;
 -- Oracle does NOT allow ROWNUM as column alias (with or without AS) or table alias.
 -- https://github.com/IvorySQL/IvorySQL/pull/1000#issuecomment-3717690863
 --
--- Current IvorySQL behavior: Allows ROWNUM as alias (differs from Oracle)
--- TODO: These should produce errors to match Oracle behavior
---
 
 CREATE TABLE alias_test (id int, name varchar(10), job varchar(10));
 INSERT INTO alias_test VALUES (1, 'SMITH', 'CLERK'), (2, 'ALLEN', 'SALESMAN');
 
 -- Test 1: ROWNUM as column alias without AS
 -- Oracle: ERROR ORA-00923: FROM keyword not found where expected
--- IvorySQL: Currently allows this (incorrectly treats 'rownum' as alias for 'job')
 SELECT id, name, job rownum FROM alias_test;
 
 -- Test 2: ROWNUM as column alias with AS
 -- Oracle: ERROR ORA-00923: FROM keyword not found where expected
--- IvorySQL: Currently allows this
 SELECT id, name, job AS rownum FROM alias_test;
 
 -- Test 3: ROWNUM as table alias
 -- Oracle: ERROR ORA-00923: FROM keyword not found where expected
--- IvorySQL: Currently allows this
 SELECT rownum.id FROM alias_test rownum;
 
 DROP TABLE alias_test;
