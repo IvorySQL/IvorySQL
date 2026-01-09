@@ -19,7 +19,7 @@
  * 		Function which converts all-uppercase text to all-lowercase text 
  * 		and vice versa.
  *
- * Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
  * Identification:
  *		contrib/ivorysql_ora/src/sysview/sysview_functions.c

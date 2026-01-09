@@ -4,7 +4,7 @@
  *    Performance test program for both flavors of the JSON parser
  *
  * Copyright (c) 2024, PostgreSQL Global Development Group
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *    src/test/modules/test_json_parser/test_json_parser_perf.c

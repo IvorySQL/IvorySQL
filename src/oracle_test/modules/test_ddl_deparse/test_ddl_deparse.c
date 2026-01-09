@@ -3,7 +3,7 @@
  *		Support functions for the test_ddl_deparse module
  *
  * Copyright (c) 2014-2024, PostgreSQL Global Development Group
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *	  src/oracle_test/modules/test_ddl_deparse/test_ddl_deparse.c

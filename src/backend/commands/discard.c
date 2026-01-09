@@ -3,7 +3,7 @@
  * discard.c
  *	  The implementation of the DISCARD command
  *
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  * Copyright (c) 1996-2025, PostgreSQL Global Development Group
  *
  *

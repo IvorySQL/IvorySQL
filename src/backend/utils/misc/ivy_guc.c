@@ -20,7 +20,7 @@
  *
  * Authored by lanke@highgo.com, 20220819.
  *
- * Copyright (c) 2022-2025, IvorySQL Global Development Team
+ * Copyright (c) 2022-2026, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *        src/backend/utils/misc/ivy_guc.c
