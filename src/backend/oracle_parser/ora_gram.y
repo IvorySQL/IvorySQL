@@ -724,7 +724,7 @@ static void determineLanguage(List *options);
 	ASENSITIVE ASSERTION ASSIGNMENT ASYMMETRIC ATOMIC AT ATTACH ATTRIBUTE AUTHORIZATION
 
 	BACKWARD BEFORE BEGIN_P BETWEEN BIGINT BINARY BINARY_DOUBLE
-	BINARY_FLOAT BIT BODY 
+	BINARY_FLOAT BIT BODY
 	BOOLEAN_P BOTH BREADTH BY BYTE_P
 
 	CACHE CALL CALLED CASCADE CASCADED CASE CAST CATALOG_P CHAIN CHAR_P
@@ -771,13 +771,13 @@ static void determineLanguage(List *options);
 
 	NAME_P NAMES NATIONAL NATURAL NCHAR NESTED NEW NEXT NFC NFD NFKC NFKD NO NOCACHE NOCYCLE
 	NOMAXVALUE NOMINVALUE NONE NOORDER
-	NOEXTEND NOKEEP NORMALIZE NORMALIZED NOSCALE NOSHARD	
+	NOEXTEND NOKEEP NORMALIZE NORMALIZED NOSCALE NOSHARD
 	NOT NOTHING NOTIFY NOTNULL NOWAIT NULL_P NULLIF
 	NULLS_P NUMBER_P NUMERIC NVL NVL2
 
 	OBJECT_P OBJECTS_P OF OFF OFFSET OIDS OLD OMIT ON ONLY OPERATOR OPTION OPTIONS OR
 	ORDER ORDINALITY OTHERS OUT_P OUTER_P
-	OVER OVERLAPS OVERLAY OVERRIDING OWNED OWNER PACKAGES 
+	OVER OVERLAPS OVERLAY OVERRIDING OWNED OWNER PACKAGES
 
 	PARALLEL PARAMETER PARSER PARTIAL PARTITION PASSING PASSWORD PATH
 	EXTRACT PGEXTRACT PLACING PLAN PLANS POLICY
@@ -874,7 +874,7 @@ static void determineLanguage(List *options);
  * FORMAT_LA, NULLS_LA, WITH_LA, and WITHOUT_LA are needed to make the grammar
  * LALR(1).
  */
-%token		FORMAT_LA NOT_LA NULLS_LA WITH_LA WITHOUT_LA PACKAGE_BODY 
+%token		FORMAT_LA NOT_LA NULLS_LA WITH_LA WITHOUT_LA PACKAGE_BODY
 
 /*
  * The grammar likewise thinks these tokens are keywords, but they are never
@@ -1303,7 +1303,7 @@ exec_func_application :
 					n->agg_order = $4;
 					$$ = (Node *) n;
 				}
-		; 
+		;
 /*****************************************************************************
  *
  * Create a new Postgres DBMS role
@@ -2906,7 +2906,7 @@ alter_table_cmd:
 			| ADD_P '(' TableConstraint ')'
 				{
 					AlterTableCmd *n = makeNode(AlterTableCmd);
-										
+
 					n->subtype = AT_AddConstraint;
 					n->def = $3;
 					$$ = (Node *) n;
@@ -7873,6 +7873,8 @@ fetch_args:	cursor_name
 					n->portalname = $1;
 					n->direction = FETCH_FORWARD;
 					n->howMany = 1;
+					n->location = -1;
+					n->direction_keyword = FETCH_KEYWORD_NONE;
 					$$ = (Node *) n;
 				}
 			| from_in cursor_name
@@ -7882,60 +7884,8 @@ fetch_args:	cursor_name
 					n->portalname = $2;
 					n->direction = FETCH_FORWARD;
 					n->howMany = 1;
-					$$ = (Node *) n;
-				}
-			| NEXT opt_from_in cursor_name
-				{
-					FetchStmt *n = makeNode(FetchStmt);
-
-					n->portalname = $3;
-					n->direction = FETCH_FORWARD;
-					n->howMany = 1;
-					$$ = (Node *) n;
-				}
-			| PRIOR opt_from_in cursor_name
-				{
-					FetchStmt *n = makeNode(FetchStmt);
-
-					n->portalname = $3;
-					n->direction = FETCH_BACKWARD;
-					n->howMany = 1;
-					$$ = (Node *) n;
-				}
-			| FIRST_P opt_from_in cursor_name
-				{
-					FetchStmt *n = makeNode(FetchStmt);
-
-					n->portalname = $3;
-					n->direction = FETCH_ABSOLUTE;
-					n->howMany = 1;
-					$$ = (Node *) n;
-				}
-			| LAST_P opt_from_in cursor_name
-				{
-					FetchStmt *n = makeNode(FetchStmt);
-
-					n->portalname = $3;
-					n->direction = FETCH_ABSOLUTE;
-					n->howMany = -1;
-					$$ = (Node *) n;
-				}
-			| ABSOLUTE_P SignedIconst opt_from_in cursor_name
-				{
-					FetchStmt *n = makeNode(FetchStmt);
-
-					n->portalname = $4;
-					n->direction = FETCH_ABSOLUTE;
-					n->howMany = $2;
-					$$ = (Node *) n;
-				}
-			| RELATIVE_P SignedIconst opt_from_in cursor_name
-				{
-					FetchStmt *n = makeNode(FetchStmt);
-
-					n->portalname = $4;
-					n->direction = FETCH_RELATIVE;
-					n->howMany = $2;
+					n->location = -1;
+					n->direction_keyword = FETCH_KEYWORD_NONE;
 					$$ = (Node *) n;
 				}
 			| SignedIconst opt_from_in cursor_name
@@ -7945,6 +7895,74 @@ fetch_args:	cursor_name
 					n->portalname = $3;
 					n->direction = FETCH_FORWARD;
 					n->howMany = $1;
+					n->location = @1;
+					n->direction_keyword = FETCH_KEYWORD_NONE;
+					$$ = (Node *) n;
+				}
+			| NEXT opt_from_in cursor_name
+				{
+					FetchStmt *n = makeNode(FetchStmt);
+
+					n->portalname = $3;
+					n->direction = FETCH_FORWARD;
+					n->howMany = 1;
+					n->location = -1;
+					n->direction_keyword = FETCH_KEYWORD_NEXT;
+					$$ = (Node *) n;
+				}
+			| PRIOR opt_from_in cursor_name
+				{
+					FetchStmt *n = makeNode(FetchStmt);
+
+					n->portalname = $3;
+					n->direction = FETCH_BACKWARD;
+					n->howMany = 1;
+					n->location = -1;
+					n->direction_keyword = FETCH_KEYWORD_PRIOR;
+					$$ = (Node *) n;
+				}
+			| FIRST_P opt_from_in cursor_name
+				{
+					FetchStmt *n = makeNode(FetchStmt);
+
+					n->portalname = $3;
+					n->direction = FETCH_ABSOLUTE;
+					n->howMany = 1;
+					n->location = -1;
+					n->direction_keyword = FETCH_KEYWORD_FIRST;
+					$$ = (Node *) n;
+				}
+			| LAST_P opt_from_in cursor_name
+				{
+					FetchStmt *n = makeNode(FetchStmt);
+
+					n->portalname = $3;
+					n->direction = FETCH_ABSOLUTE;
+					n->howMany = -1;
+					n->location = -1;
+					n->direction_keyword = FETCH_KEYWORD_LAST;
+					$$ = (Node *) n;
+				}
+			| ABSOLUTE_P SignedIconst opt_from_in cursor_name
+				{
+					FetchStmt *n = makeNode(FetchStmt);
+
+					n->portalname = $4;
+					n->direction = FETCH_ABSOLUTE;
+					n->howMany = $2;
+					n->location = @2;
+					n->direction_keyword = FETCH_KEYWORD_ABSOLUTE;
+					$$ = (Node *) n;
+				}
+			| RELATIVE_P SignedIconst opt_from_in cursor_name
+				{
+					FetchStmt *n = makeNode(FetchStmt);
+
+					n->portalname = $4;
+					n->direction = FETCH_RELATIVE;
+					n->howMany = $2;
+					n->location = @2;
+					n->direction_keyword = FETCH_KEYWORD_RELATIVE;
 					$$ = (Node *) n;
 				}
 			| ALL opt_from_in cursor_name
@@ -7954,6 +7972,8 @@ fetch_args:	cursor_name
 					n->portalname = $3;
 					n->direction = FETCH_FORWARD;
 					n->howMany = FETCH_ALL;
+					n->location = -1;
+					n->direction_keyword = FETCH_KEYWORD_ALL;
 					$$ = (Node *) n;
 				}
 			| FORWARD opt_from_in cursor_name
@@ -7963,6 +7983,8 @@ fetch_args:	cursor_name
 					n->portalname = $3;
 					n->direction = FETCH_FORWARD;
 					n->howMany = 1;
+					n->location = -1;
+					n->direction_keyword = FETCH_KEYWORD_FORWARD;
 					$$ = (Node *) n;
 				}
 			| FORWARD SignedIconst opt_from_in cursor_name
@@ -7972,6 +7994,8 @@ fetch_args:	cursor_name
 					n->portalname = $4;
 					n->direction = FETCH_FORWARD;
 					n->howMany = $2;
+					n->location = @2;
+					n->direction_keyword = FETCH_KEYWORD_FORWARD;
 					$$ = (Node *) n;
 				}
 			| FORWARD ALL opt_from_in cursor_name
@@ -7981,6 +8005,8 @@ fetch_args:	cursor_name
 					n->portalname = $4;
 					n->direction = FETCH_FORWARD;
 					n->howMany = FETCH_ALL;
+					n->location = -1;
+					n->direction_keyword = FETCH_KEYWORD_FORWARD_ALL;
 					$$ = (Node *) n;
 				}
 			| BACKWARD opt_from_in cursor_name
@@ -7990,6 +8016,8 @@ fetch_args:	cursor_name
 					n->portalname = $3;
 					n->direction = FETCH_BACKWARD;
 					n->howMany = 1;
+					n->location = -1;
+					n->direction_keyword = FETCH_KEYWORD_BACKWARD;
 					$$ = (Node *) n;
 				}
 			| BACKWARD SignedIconst opt_from_in cursor_name
@@ -7999,6 +8027,8 @@ fetch_args:	cursor_name
 					n->portalname = $4;
 					n->direction = FETCH_BACKWARD;
 					n->howMany = $2;
+					n->location = @2;
+					n->direction_keyword = FETCH_KEYWORD_BACKWARD;
 					$$ = (Node *) n;
 				}
 			| BACKWARD ALL opt_from_in cursor_name
@@ -8008,6 +8038,8 @@ fetch_args:	cursor_name
 					n->portalname = $4;
 					n->direction = FETCH_BACKWARD;
 					n->howMany = FETCH_ALL;
+					n->location = -1;
+					n->direction_keyword = FETCH_KEYWORD_BACKWARD_ALL;
 					$$ = (Node *) n;
 				}
 		;
@@ -12497,7 +12529,7 @@ ViewStmt: CREATE OptTemp OptViewForce VIEW qualified_name opt_column_list opt_re
 				{
 					ViewStmt   *n = makeNode(ViewStmt);
 
-					char	*stmt_iteral = NULL; 
+					char	*stmt_iteral = NULL;
 					n->view = $5;
 					n->view->relpersistence = $2;
 					n->aliases = $6;
@@ -15688,8 +15720,8 @@ SimpleTypename:
 			| Numeric								{ $$ = $1; }
 			| Bit									{ $$ = $1; }
 			| Character								{ $$ = $1; }
-			| OracleCharacter						{ $$ = $1; }	
-			| Datetime								{ $$ = $1; }	
+			| OracleCharacter						{ $$ = $1; }
+			| Datetime								{ $$ = $1; }
 			| LongTypename 							{ $$ = $1; }
 //			| ConstDatetime							{ $$ = $1; }
 			| ConstInterval opt_interval_type
@@ -17596,7 +17628,7 @@ c_expr:		columnref								{ $$ = $1; }
 				{
 					OraParamRef *p = makeNode(OraParamRef);
 					p->number = 0;
-					p->location = @1;					
+					p->location = @1;
 					p->name = $1;
 					if ($2)
 					{
@@ -20131,7 +20163,7 @@ unreserved_keyword:
 			| BACKWARD
 			| BEFORE
 			| BEGIN_P
-			| BODY		
+			| BODY
 			| BREADTH
 			| BY
 			| CACHE
@@ -20327,7 +20359,7 @@ unreserved_keyword:
 			| OWNED
 			| OWNER
 			| PACKAGE
-			| PACKAGES	
+			| PACKAGES
 			| PARALLEL
 			| PARALLEL_ENABLE
 			| PARAMETER
@@ -20757,7 +20789,7 @@ bare_label_keyword:
 			| BINARY_FLOAT_INFINITY
 			| BINARY_FLOAT_NAN
 			| BIT
-			| BODY			
+			| BODY
 			| BOOLEAN_P
 			| BOTH
 			| BREADTH
@@ -21036,7 +21068,7 @@ bare_label_keyword:
 			| OWNED
 			| OWNER
 			| PACKAGE
-			| PACKAGES	
+			| PACKAGES
 			| PARALLEL
 			| PARALLEL_ENABLE
 			| PARAMETER
@@ -21109,7 +21141,7 @@ bare_label_keyword:
 			| RULE
 			| SAVEPOINT
 			| SCALAR
-			| SCALE	
+			| SCALE
 			| SCHEMA
 			| SCHEMAS
 			| SCROLL
