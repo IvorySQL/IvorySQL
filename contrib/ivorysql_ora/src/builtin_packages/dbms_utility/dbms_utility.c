@@ -19,7 +19,7 @@
  * This module is part of ivorysql_ora extension but calls the PL/iSQL
  * API to access exception context information.
  *
- * Portions Copyright (c) 2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2025-2026, IvorySQL Global Development Team
  *
  * contrib/ivorysql_ora/src/builtin_packages/dbms_utility/dbms_utility.c
  *

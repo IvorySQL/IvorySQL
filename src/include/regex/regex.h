@@ -4,7 +4,7 @@
  * regular expressions
  *
  * Copyright (c) 1998, 1999 Henry Spencer.  All rights reserved.
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
  * Development of this software was funded, in part, by Cray Research Inc.,
  * UUNET Communications Services Inc., Sun Microsystems Inc., and Scriptics

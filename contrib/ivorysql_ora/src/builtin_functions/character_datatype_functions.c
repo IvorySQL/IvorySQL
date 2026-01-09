@@ -18,7 +18,7 @@
  * This file contains the implementation of Oracle's
  * character data type related built-in functions.
  *
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
  * contrib/ivorysql_ora/src/builtin_functions/character_datatype_functions.c
  *

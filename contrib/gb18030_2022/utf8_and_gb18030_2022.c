@@ -6,7 +6,7 @@
  * 		support encoding conversion between gb18030_2022 and utf8 using radix tree in ./Maps/\*.map.
  *
  *
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
  * Identification:
  *		contrib/gb18030_2022

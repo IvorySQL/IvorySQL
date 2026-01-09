@@ -24,7 +24,7 @@
  * is_all_lower() 	-- Determine whether the letters in the string are all lowercase letters
  *
  *
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
  * src/port/identifier_alpha_transfor.c
  *

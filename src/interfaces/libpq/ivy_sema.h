@@ -11,7 +11,7 @@
  * be provided by each port.
  *
  *
- * Portions Copyright (c) 2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2025-2026, IvorySQL Global Development Team
  *
  * src/interfaces/libpq/ivy_sema.h
  *

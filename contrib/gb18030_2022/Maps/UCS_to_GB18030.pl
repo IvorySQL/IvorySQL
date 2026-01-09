@@ -10,7 +10,7 @@
 # 	http://source.icu-project.org/repos/icu/data/trunk/charset/data/xml/
 #
 #
-#  Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+#  Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
 #
 # Identification:
 #		contrib/gb18030_2022/Maps/UCS_to_GB18030.pl
