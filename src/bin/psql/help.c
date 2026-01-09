@@ -40,36 +40,6 @@
 
 
 /*
- * Check if the input version is valid or not.
- */
-extern bool is_valid_ivy_version(const char* str);
-
-bool is_valid_ivy_version(const char* str)
-{
-	unsigned int len = 0;
-	unsigned int dot_num = 0;
-	
-	len = strlen(str);
-	
-	/* The first and last character should be digits. */
-	if(!isdigit(str[0]) || !isdigit(str[len-1]))
-		return false;
-		
-	/* find out the number of dot. */
-	for(int i=0; i<len; i++)
-	{
-		if(str[i] == '.')
-			dot_num++;
-	}
-	
-	/* only one dot is allowed. */
-	if(dot_num != 1)
-		return false;
-		
-	return true;
-}
-
-/*
  * usage
  *
  * print out command line arguments
@@ -738,16 +708,11 @@ helpSQL(const char *topic, unsigned short int pager)
 
 					initPQExpBuffer(&buffer);
 					QL_HELP[i].syntaxfunc(&buffer);
-					//url = psprintf("https://www.postgresql.org/docs/%s/%s.html",
 					if (pg_strncasecmp(QL_HELP[i].docbook_id, "sql-createpackage", 17) == 0 || 
 					    pg_strncasecmp(QL_HELP[i].docbook_id, "sql-droppackage", 15) == 0 || 
 					    pg_strncasecmp(QL_HELP[i].docbook_id, "sql-alterpackage", 16) == 0) 
 					{
-						if(is_valid_ivy_version(PACKAGE_IVORYSQL_VERSION))
-							url = psprintf("https://docs.ivorysql.org/en/ivorysql-doc/%s/7.12", 
-									PACKAGE_IVORYSQL_VERSION);
-						else
-							url= psprintf("https://docs.ivorysql.org/en/ivorysql-doc/master/7.12");
+						url= psprintf("https://docs.ivorysql.org/en/ivorysql-doc");
 					}
 					else
 					{
