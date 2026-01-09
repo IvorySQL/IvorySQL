@@ -708,9 +708,19 @@ helpSQL(const char *topic, unsigned short int pager)
 
 					initPQExpBuffer(&buffer);
 					QL_HELP[i].syntaxfunc(&buffer);
-					url = psprintf("https://www.postgresql.org/docs/%s/%s.html",
+					if (pg_strncasecmp(QL_HELP[i].docbook_id, "sql-createpackage", 17) == 0 || 
+					    pg_strncasecmp(QL_HELP[i].docbook_id, "sql-droppackage", 15) == 0 || 
+					    pg_strncasecmp(QL_HELP[i].docbook_id, "sql-alterpackage", 16) == 0) 
+					{
+						url= psprintf("https://docs.ivorysql.org/en/ivorysql-doc");
+					}
+					else
+					{
+						url = psprintf("https://www.postgresql.org/docs/%s/%s.html",
 								   strstr(PG_VERSION, "devel") ? "devel" : PG_MAJORVERSION,
 								   QL_HELP[i].docbook_id);
+					}
+
 					/* # of newlines in format must match constant above! */
 					fprintf(output, _("Command:     %s\n"
 									  "Description: %s\n"
