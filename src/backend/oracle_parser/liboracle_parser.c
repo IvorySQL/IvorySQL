@@ -1272,8 +1272,9 @@ oracle_quote_identifier(const char *ident)
 {
 	/*
 	 * Can avoid quoting if ident starts with a lowercase letter or underscore
-	 * and contains only lowercase letters, digits, and underscores, *and* is
-	 * not any SQL keyword.  Otherwise, supply quotes.
+	 * and contains only lowercase letters, digits, underscores, and the
+	 * special characters # and $ (for Oracle compatibility), *and* is not any
+	 * SQL keyword.  Otherwise, supply quotes.
 	 */
 	int			nquotes = 0;
 	bool		safe;

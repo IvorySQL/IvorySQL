@@ -44,6 +44,7 @@ SELECT B'1010' # B'1100' AS bit_xor;
 -- Verify JSON path operators work without spaces (issue was potential conflict)
 SELECT '{"a":1}'::json#>'{a}' AS json_path_no_space;
 SELECT '{"b":2}'::jsonb#>>'{b}' AS jsonb_path_no_space;
+SELECT '{"a":1,"b":2}'::jsonb#-'{a}' AS jsonb_delete_no_space;
 
 -- Clean up
 DROP TABLE test_hash_ident;

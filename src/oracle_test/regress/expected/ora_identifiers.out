@@ -82,5 +82,11 @@ SELECT '{"b":2}'::jsonb#>>'{b}' AS jsonb_path_no_space;
  2
 (1 row)
 
+SELECT '{"a":1,"b":2}'::jsonb#-'{a}' AS jsonb_delete_no_space;
+ jsonb_delete_no_space 
+-----------------------
+ {"b": 2}
+(1 row)
+
 -- Clean up
 DROP TABLE test_hash_ident;
