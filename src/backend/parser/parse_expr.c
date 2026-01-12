@@ -42,10 +42,8 @@
 #include "utils/lsyscache.h"
 #include "utils/timestamp.h"
 #include "utils/ora_compatible.h"
-
+#include "utils/typcache.h"
 #include "utils/xml.h"
-#include "utils/fmgroids.h"
-#include "access/htup_details.h"
 
 
 /* GUC parameters */
