@@ -20,32 +20,38 @@ $primary->start;
 # file is chosen to be around 640kB.  This has proven to be large enough to
 # detect some issues related to LZ4, and low enough to not impact the runtime
 # of the test significantly.
-my $junk_data = $primary->safe_psql(
-	'postgres', qq(
-		SELECT string_agg(encode(sha256(i::bytea), 'hex'), '')
-		FROM generate_series(1, 10240) s(i);));
-my $data_dir = $primary->data_dir;
-my $junk_file = "$data_dir/junk";
-open my $jf, '>', $junk_file
-  or die "Could not create junk file: $!";
-print $jf $junk_data;
-close $jf;
+{
+	my $junk_data = $primary->safe_psql(
+		'postgres', qq(
+			SELECT string_agg(encode(sha256(i::bytea), 'hex'), '')
+			FROM generate_series(1, 10240) s(i);));
+	my $data_dir = $primary->data_dir;
+	my $junk_file = "$data_dir/junk";
+	open my $jf, '>', $junk_file
+	or die "Could not create junk file: $!";
+	print $jf $junk_data;
+	close $jf;
+}
+
 
 # Create file with some random data and an arbitrary size, useful to check
 # the solidity of the compression and decompression logic.  The size of the
 # file is chosen to be around 640kB.  This has proven to be large enough to
 # detect some issues related to LZ4, and low enough to not impact the runtime
 # of the test significantly.
-my $junk_data = $primary->safe_psql(
-	'postgres', qq(
-		SELECT string_agg(encode(sha256(i::bytea), 'hex'), '')
-		FROM generate_series(1, 10240) s(i);));
-my $data_dir = $primary->data_dir;
-my $junk_file = "$data_dir/junk";
-open my $jf, '>', $junk_file
-  or die "Could not create junk file: $!";
-print $jf $junk_data;
-close $jf;
+{
+	my $junk_data = $primary->safe_psql(
+		'postgres', qq(
+			SELECT string_agg(encode(sha256(i::bytea), 'hex'), '')
+			FROM generate_series(1, 10240) s(i);));
+	my $data_dir = $primary->data_dir;
+	my $junk_file = "$data_dir/junk";
+	open my $jf, '>', $junk_file
+	or die "Could not create junk file: $!";
+	print $jf $junk_data;
+	close $jf;
+}
+
 
 my $backup_path = $primary->backup_dir . '/client-backup';
 my $extract_path = $primary->backup_dir . '/extracted-backup';
