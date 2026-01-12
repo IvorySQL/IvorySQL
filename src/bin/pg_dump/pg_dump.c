@@ -2392,8 +2392,8 @@ selectDumpableObject(DumpableObject *dobj, Archive *fout)
 static int
 dumpTableData_copy(Archive *fout, const void *dcontext)
 {
-	TableDataInfo *tdinfo = (TableDataInfo *) dcontext;
-	TableInfo  *tbinfo = tdinfo->tdtable;
+	const TableDataInfo *tdinfo = dcontext;
+	const TableInfo *tbinfo = tdinfo->tdtable;
 	const char *classname = tbinfo->dobj.name;
 	PQExpBuffer q = createPQExpBuffer();
 
@@ -2560,8 +2560,8 @@ dumpTableData_copy(Archive *fout, const void *dcontext)
 static int
 dumpTableData_insert(Archive *fout, const void *dcontext)
 {
-	TableDataInfo *tdinfo = (TableDataInfo *) dcontext;
-	TableInfo  *tbinfo = tdinfo->tdtable;
+	const TableDataInfo *tdinfo = dcontext;
+	const TableInfo *tbinfo = tdinfo->tdtable;
 	DumpOptions *dopt = fout->dopt;
 	PQExpBuffer q = createPQExpBuffer();
 	PQExpBuffer insertStmt = NULL;
@@ -2631,7 +2631,7 @@ dumpTableData_insert(Archive *fout, const void *dcontext)
 		 */
 		if (insertStmt == NULL)
 		{
-			TableInfo  *targettab;
+			const TableInfo *targettab;
 
 			insertStmt = createPQExpBuffer();
 
@@ -2883,7 +2883,7 @@ static void
 dumpTableData(Archive *fout, const TableDataInfo *tdinfo)
 {
 	DumpOptions *dopt = fout->dopt;
-	TableInfo  *tbinfo = tdinfo->tdtable;
+	const TableInfo *tbinfo = tdinfo->tdtable;
 	PQExpBuffer copyBuf = createPQExpBuffer();
 	PQExpBuffer clistBuf = createPQExpBuffer();
 	DataDumperPtr dumpFn;
@@ -2904,7 +2904,7 @@ dumpTableData(Archive *fout, const TableDataInfo *tdinfo)
 		(dopt->load_via_partition_root ||
 		 forcePartitionRootLoad(tbinfo)))
 	{
-		TableInfo  *parentTbinfo;
+		const TableInfo *parentTbinfo;
 		char	   *sanitized;
 
 		parentTbinfo = getRootTableInfo(tbinfo);
