@@ -3706,8 +3706,7 @@ main(int argc, char *argv[])
 	/* Oracle compatibility: transform uppercase usernames to lowercase. */
 	if (database_mode == DB_ORACLE && username != NULL
 		&& caseswitchmode != NORMAL
-		&& is_all_upper(username, strlen(username), encodingid)
-		&& !strchr(username, '/'))
+		&& is_all_upper(username, strlen(username), encodingid))
 	{
 		username = down_character(username, strlen(username), encodingid);
 	}
