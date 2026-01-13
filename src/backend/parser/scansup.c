@@ -147,9 +147,9 @@ char *
 identifier_case_transform(const char *ident, int len)
 {
 	char *upper_ident = NULL, *lower_ident = NULL, *result = NULL;
-	int		i;
+	/*int		i;
 
-	/*for (i = 0; i < len; i++)
+	for (i = 0; i < len; i++)
 	{
 		if (ident[i] == '/')
 		{
