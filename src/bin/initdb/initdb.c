@@ -3709,9 +3709,7 @@ main(int argc, char *argv[])
 		&& is_all_upper(username, strlen(username), encodingid)
 		&& !strchr(username, '/'))
 	{
-		char *lowerusername = username;
 		username = down_character(username, strlen(username), encodingid);
-		free(lowerusername);
 	}
 
 	printf(_("The files belonging to this database system will be owned "
