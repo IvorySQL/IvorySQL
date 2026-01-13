@@ -149,7 +149,7 @@ identifier_case_transform(const char *ident, int len)
 	char *upper_ident = NULL, *lower_ident = NULL, *result = NULL;
 	int		i;
 
-	for (i = 0; i < len; i++)
+	/*for (i = 0; i < len; i++)
 	{
 		if (ident[i] == '/')
 		{
@@ -157,7 +157,7 @@ identifier_case_transform(const char *ident, int len)
 			memcpy(result, ident, len);
 			return result;
 		}
-	}
+	}*/
 
 	upper_ident = upcase_identifier(ident, len, true, true);
 	lower_ident = downcase_identifier(ident, len, true, true);
