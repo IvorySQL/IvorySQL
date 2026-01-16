@@ -31,6 +31,7 @@ CREATE TABLE cmdata2 (f1 int COMPRESSION pglz);
 -- test externally stored compressed data
 CREATE OR REPLACE FUNCTION large_val() RETURNS TEXT LANGUAGE SQL AS
 'select array_agg(fipshash(g::text))::text from generate_series(1, 256) g';
+/
 CREATE TABLE cmdata2 (f1 text COMPRESSION pglz);
 INSERT INTO cmdata2 SELECT large_val() || repeat('a', 4000);
 SELECT pg_column_compression(f1) FROM cmdata2;

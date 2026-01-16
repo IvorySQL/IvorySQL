@@ -10,10 +10,10 @@ CREATE TABLE cmdata(f1 text COMPRESSION pglz);
 CREATE INDEX idx ON cmdata(f1);
 INSERT INTO cmdata VALUES(repeat('1234567890', 1000));
 \d+ cmdata
-                                         Table "pglz.cmdata"
- Column | Type | Collation | Nullable | Default | Storage  | Compression | Stats target | Description 
---------+------+-----------+----------+---------+----------+-------------+--------------+-------------
- f1     | text |           |          |         | extended | pglz        |              | 
+                                               Table "pglz.cmdata"
+ Column | Type | Collation | Nullable | Default | Invisible | Storage  | Compression | Stats target | Description 
+--------+------+-----------+----------+---------+-----------+----------+-------------+--------------+-------------
+ f1     | text |           |          |         |           | extended | pglz        |              | 
 Indexes:
     "idx" btree (f1)
 
@@ -34,10 +34,10 @@ SELECT SUBSTR(f1, 200, 5) FROM cmdata;
 -- copy with table creation
 SELECT * INTO cmmove1 FROM cmdata;
 \d+ cmmove1
-                                         Table "pglz.cmmove1"
- Column | Type | Collation | Nullable | Default | Storage  | Compression | Stats target | Description 
---------+------+-----------+----------+---------+----------+-------------+--------------+-------------
- f1     | text |           |          |         | extended |             |              | 
+                                               Table "pglz.cmmove1"
+ Column | Type | Collation | Nullable | Default | Invisible | Storage  | Compression | Stats target | Description 
+--------+------+-----------+----------+---------+-----------+----------+-------------+--------------+-------------
+ f1     | text |           |          |         |           | extended |             |              | 
 
 SELECT pg_column_compression(f1) FROM cmmove1;
  pg_column_compression 
@@ -47,10 +47,11 @@ SELECT pg_column_compression(f1) FROM cmmove1;
 
 -- try setting compression for incompressible data type
 CREATE TABLE cmdata2 (f1 int COMPRESSION pglz);
-ERROR:  column data type integer does not support compression
+ERROR:  column data type pg_catalog.int4 does not support compression
 -- test externally stored compressed data
 CREATE OR REPLACE FUNCTION large_val() RETURNS TEXT LANGUAGE SQL AS
 'select array_agg(fipshash(g::text))::text from generate_series(1, 256) g';
+/
 CREATE TABLE cmdata2 (f1 text COMPRESSION pglz);
 INSERT INTO cmdata2 SELECT large_val() || repeat('a', 4000);
 SELECT pg_column_compression(f1) FROM cmdata2;
@@ -69,48 +70,48 @@ DROP TABLE cmdata2;
 --test column type update varlena/non-varlena
 CREATE TABLE cmdata2 (f1 int);
 \d+ cmdata2
-                                          Table "pglz.cmdata2"
- Column |  Type   | Collation | Nullable | Default | Storage | Compression | Stats target | Description 
---------+---------+-----------+----------+---------+---------+-------------+--------------+-------------
- f1     | integer |           |          |         | plain   |             |              | 
+                                                    Table "pglz.cmdata2"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Compression | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+-------------+--------------+-------------
+ f1     | pg_catalog.int4 |           |          |         |           | plain   |             |              | 
 
 ALTER TABLE cmdata2 ALTER COLUMN f1 TYPE varchar;
 \d+ cmdata2
-                                               Table "pglz.cmdata2"
- Column |       Type        | Collation | Nullable | Default | Storage  | Compression | Stats target | Description 
---------+-------------------+-----------+----------+---------+----------+-------------+--------------+-------------
- f1     | character varying |           |          |         | extended |             |              | 
+                                                    Table "pglz.cmdata2"
+ Column |      Type      | Collation | Nullable | Default | Invisible | Storage  | Compression | Stats target | Description 
+--------+----------------+-----------+----------+---------+-----------+----------+-------------+--------------+-------------
+ f1     | varchar2(4000) |           |          |         |           | extended |             |              | 
 
 ALTER TABLE cmdata2 ALTER COLUMN f1 TYPE int USING f1::integer;
 \d+ cmdata2
-                                          Table "pglz.cmdata2"
- Column |  Type   | Collation | Nullable | Default | Storage | Compression | Stats target | Description 
---------+---------+-----------+----------+---------+---------+-------------+--------------+-------------
- f1     | integer |           |          |         | plain   |             |              | 
+                                                    Table "pglz.cmdata2"
+ Column |      Type       | Collation | Nullable | Default | Invisible | Storage | Compression | Stats target | Description 
+--------+-----------------+-----------+----------+---------+-----------+---------+-------------+--------------+-------------
+ f1     | pg_catalog.int4 |           |          |         |           | plain   |             |              | 
 
 --changing column storage should not impact the compression method
 --but the data should not be compressed
 ALTER TABLE cmdata2 ALTER COLUMN f1 TYPE varchar;
 ALTER TABLE cmdata2 ALTER COLUMN f1 SET COMPRESSION pglz;
 \d+ cmdata2
-                                               Table "pglz.cmdata2"
- Column |       Type        | Collation | Nullable | Default | Storage  | Compression | Stats target | Description 
---------+-------------------+-----------+----------+---------+----------+-------------+--------------+-------------
- f1     | character varying |           |          |         | extended | pglz        |              | 
+                                                    Table "pglz.cmdata2"
+ Column |      Type      | Collation | Nullable | Default | Invisible | Storage  | Compression | Stats target | Description 
+--------+----------------+-----------+----------+---------+-----------+----------+-------------+--------------+-------------
+ f1     | varchar2(4000) |           |          |         |           | extended | pglz        |              | 
 
 ALTER TABLE cmdata2 ALTER COLUMN f1 SET STORAGE plain;
 \d+ cmdata2
-                                               Table "pglz.cmdata2"
- Column |       Type        | Collation | Nullable | Default | Storage | Compression | Stats target | Description 
---------+-------------------+-----------+----------+---------+---------+-------------+--------------+-------------
- f1     | character varying |           |          |         | plain   | pglz        |              | 
+                                                   Table "pglz.cmdata2"
+ Column |      Type      | Collation | Nullable | Default | Invisible | Storage | Compression | Stats target | Description 
+--------+----------------+-----------+----------+---------+-----------+---------+-------------+--------------+-------------
+ f1     | varchar2(4000) |           |          |         |           | plain   | pglz        |              | 
 
 INSERT INTO cmdata2 VALUES (repeat('123456789', 800));
+ERROR:  value too long for type varchar2(4000 byte)
 SELECT pg_column_compression(f1) FROM cmdata2;
  pg_column_compression 
 -----------------------
- 
-(1 row)
+(0 rows)
 
 -- test compression with inheritance
 CREATE TABLE cmdata3(f1 text);
@@ -127,10 +128,10 @@ SET default_toast_compression = 'pglz';
 \set VERBOSITY default
 ALTER TABLE cmdata2 ALTER COLUMN f1 SET COMPRESSION default;
 \d+ cmdata2
-                                               Table "pglz.cmdata2"
- Column |       Type        | Collation | Nullable | Default | Storage | Compression | Stats target | Description 
---------+-------------------+-----------+----------+---------+---------+-------------+--------------+-------------
- f1     | character varying |           |          |         | plain   |             |              | 
+                                                   Table "pglz.cmdata2"
+ Column |      Type      | Collation | Nullable | Default | Invisible | Storage | Compression | Stats target | Description 
+--------+----------------+-----------+----------+---------+-----------+---------+-------------+--------------+-------------
+ f1     | varchar2(4000) |           |          |         |           | plain   |             |              | 
 
 DROP TABLE cmdata2;
 -- VACUUM FULL does not recompress
