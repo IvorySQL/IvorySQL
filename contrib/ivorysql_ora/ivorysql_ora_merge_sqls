@@ -1,6 +1,7 @@
 src/datatype/datatype
 src/builtin_functions/builtin_functions
 src/builtin_packages/dbms_output/dbms_output
+src/builtin_packages/utl_file/utl_file
 src/sysview/sysview
 src/xml_functions/xml_functions
 src/builtin_packages/dbms_utility/dbms_utility
