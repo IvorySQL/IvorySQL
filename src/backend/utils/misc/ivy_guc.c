@@ -56,7 +56,7 @@ int			rowid_seq_cache = 20;
 
 #ifdef IVY_GUC_VAR_STRUCT
 
-/* The comments shown as blow define the
+/* The comments shown as below define the
  * value range of guc parameters "database_mode"
  * and "compatible_db".
  */
@@ -126,7 +126,7 @@ static struct config_bool Ivy_ConfigureNamesBool[] =
 	},
 	{
 		{"ivorysql.enable_case_switch", PGC_USERSET, CLIENT_CONN_STATEMENT,
-			gettext_noop("whether enable case conversion feature in oracle compatible mode."),
+			gettext_noop("Whether to enable case conversion feature in Oracle compatible mode."),
 			NULL,
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
 		},
@@ -137,7 +137,7 @@ static struct config_bool Ivy_ConfigureNamesBool[] =
 
 	{
 		{"ivorysql.enable_emptystring_to_NULL", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
-			gettext_noop("whether convert empty string to NULL."),
+			gettext_noop("Whether to convert empty string to NULL."),
 			NULL
 		},
 		&enable_emptystring_to_NULL,
@@ -369,7 +369,7 @@ static struct config_real Ivy_ConfigureNamesReal[] =
 {
 #endif
 #ifdef IVY_GUC_REAL_PARAMS
-	/* Add real guc param at here */
+	/* Add real guc param here */
 
 #endif
 #if 0
@@ -420,7 +420,7 @@ static struct config_enum Ivy_ConfigureNamesEnum[] =
 
 	{
 		{"nls_length_semantics", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
-			gettext_noop("Compatible Oracle NLS parameter for charater data type."),
+			gettext_noop("Compatible Oracle NLS parameter for character data type."),
 			gettext_noop("Valid values are CHAR, BYTE."),
 			GUC_IS_NAME | GUC_NOT_IN_SAMPLE
 		},
@@ -477,7 +477,7 @@ check_compatible_mode(int *newval, void **extra, GucSource source)
 				ereport(ERROR,
 						(errcode(ERRCODE_SYSTEM_ERROR),
 						 errmsg("IVORYSQL_ORA library not found!"),
-						 errhint("You must load IVORYSQL_ORA to use oracle parser..")));
+						 errhint("You must load IVORYSQL_ORA to use oracle parser.")));
 		}
 	}
 	return true;
@@ -529,28 +529,15 @@ static void
 nls_case_conversion(char **param, char type)
 {
 	char	   *p;
+	size_t		len;
 
-CASE_CONVERSION:
-	if (type == 'u')
-	{
-		for (p = *param; p < *param + strlen(*param); ++p)
-			if (97 <= *p && *p <= 122)
-				*p -= 32;
-		*p = '\0';
-	}
-	else if (type == 'l')
-	{
-		for (p = *param; p < *param + strlen(*param); ++p)
-			if (65 <= *p && *p <= 90)
-				*p += 32;
-		*p = '\0';
-	}
-	else if (type == 'b')
+	while (type == 'b')
 	{
 		bool		has_upper = false,
 					has_lower = false;
 
-		for (p = *param; p < *param + strlen(*param); ++p)
+		len = strlen(*param);
+		for (p = *param; p < *param + len; ++p)
 		{
 			if (65 <= *p && *p <= 90)
 				has_upper = true;
@@ -561,15 +548,26 @@ CASE_CONVERSION:
 		}
 
 		if (has_upper && !has_lower)
-		{
 			type = 'l';
-			goto CASE_CONVERSION;
-		}
 		else if (!has_upper && has_lower)
-		{
 			type = 'u';
-			goto CASE_CONVERSION;
-		}
+		else
+			return;
+	}
+
+	if (type == 'u')
+	{
+		len = strlen(*param);
+		for (p = *param; p < *param + len; ++p)
+			if (97 <= *p && *p <= 122)
+				*p -= 32;
+	}
+	else if (type == 'l')
+	{
+		len = strlen(*param);
+		for (p = *param; p < *param + len; ++p)
+			if (65 <= *p && *p <= 90)
+				*p += 32;
 	}
 }
 static bool
