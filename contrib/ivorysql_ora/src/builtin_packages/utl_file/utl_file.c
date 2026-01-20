@@ -118,22 +118,19 @@ static char *safe_named_location(text *location);
 static char *get_safe_path(text *location, text *filename);
 
 /*
- * get_descriptor(FILE *file) find any free slot for FILE pointer.
- * If isn't realloc array slots and add 32 new free slots.
- *
+ * reserve_file_handle_slot(FILE *file) find any free slot for FILE pointer.
  */
 static int
-get_descriptor(FILE *file, int max_linesize, int encoding)
+reserve_file_handle_slot(FILE *file, int max_linesize, int encoding)
 {
-	int i;
-
-	for (i = 0; i < MAX_SLOTS; i++)
+	for (int i = 0; i < MAX_SLOTS; i++)
 	{
 		if (slots[i].id == INVALID_SLOTID)
 		{
 			slots[i].id = ++slotid;
-			if (slots[i].id == INVALID_SLOTID)
-				slots[i].id = ++slotid;	/* skip INVALID_SLOTID */
+			/* XXX - to be removed. unnecessary check */
+			//if (slots[i].id == INVALID_SLOTID)
+			//	slots[i].id = ++slotid;	/* skip INVALID_SLOTID */
 			slots[i].file = file;
 			slots[i].max_linesize = max_linesize;
 			slots[i].encoding = encoding;
@@ -250,7 +247,7 @@ ora_utl_file_fopen(PG_FUNCTION_ARGS)
 	if (!file)
 		IO_EXCEPTION();
 
-	d = get_descriptor(file, max_linesize, encoding);
+	d = reserve_file_handle_slot(file, max_linesize, encoding);
 	if (d == INVALID_SLOTID)
 	{
 		fclose(file);
