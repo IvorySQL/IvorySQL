@@ -166,7 +166,7 @@ IO_EXCEPTION(void)
  *			   [, encoding text ])
  *          RETURNS UTL_FILE.FILE_TYPE;
  *
- * The FOPEN function opens specified file and returns file handle.
+ * The FOPEN function opens specified file and returns file handle (i.e. FILE_TYPE).
  *  open_mode: ['R', 'W', 'A']
  *  max_linesize: [1 .. 32767]
  *
@@ -182,7 +182,7 @@ ora_utl_file_fopen(PG_FUNCTION_ARGS)
 	const char *mode = NULL;
 	FILE	   *file;
 	char	   *fullname;
-	int			d;
+	int			slot_id;
 
 	NOT_NULL_ARG(0);
 	NOT_NULL_ARG(1);
@@ -247,8 +247,8 @@ ora_utl_file_fopen(PG_FUNCTION_ARGS)
 	if (!file)
 		IO_EXCEPTION();
 
-	d = reserve_file_handle_slot(file, max_linesize, encoding);
-	if (d == INVALID_SLOTID)
+	slot_id = reserve_file_handle_slot(file, max_linesize, encoding);
+	if (slot_id == INVALID_SLOTID)
 	{
 		fclose(file);
 		ereport(ERROR,
@@ -258,7 +258,7 @@ ora_utl_file_fopen(PG_FUNCTION_ARGS)
 		     errhint("You can have a maximum of %d files open simultaneously.", MAX_SLOTS)));
 	}
 
-	PG_RETURN_INT32(d);
+	PG_RETURN_INT32(slot_id);
 }
 
 Datum
