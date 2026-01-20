@@ -6905,6 +6905,28 @@ getPackages(Archive *fout, int *numPkgs)
 	int			i_rolname;
 	int			i_pkgacl;
 	int			i_acldefault;
+
+
+	/*
+	 * Check if pg_package table exists. This is needed for pg_upgrade from
+	 * PostgreSQL to IvorySQL, where the source database is PostgreSQL which
+	 * doesn't have pg_package table.
+	 */
+	res = ExecuteSqlQuery(fout,
+						  "SELECT 1 FROM pg_catalog.pg_class c "
+						  "JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid "
+						  "WHERE n.nspname = 'pg_catalog' AND c.relname = 'pg_package'",
+						  PGRES_TUPLES_OK);
+	if (PQntuples(res) == 0)
+	{
+		/* pg_package table doesn't exist, return empty result */
+		PQclear(res);
+		destroyPQExpBuffer(query);
+		*numPkgs = 0;
+		return (PkgInfo *) pg_malloc0(sizeof(PkgInfo));
+	}
+	PQclear(res);
+
 	appendPQExpBuffer(query,
 					"SELECT p.tableoid, p.pkgname, p.oid, p.pkgnamespace,"
 					"p.pkgowner,"
@@ -7142,12 +7164,31 @@ getTables(Archive *fout, int *numTables)
 						 "d.refobjsubid AS owning_col, "
 						 "tsp.spcname AS reltablespace, ");
 
-	if (fout->remoteVersion < 170000)
-		appendPQExpBufferStr(query,
-							 "false AS relhasrowid, ");
-	else
-		appendPQExpBufferStr(query,
-							 "c.relhasrowid, ");
+	/*
+	 * Check if relhasrowid column exists. This column is IvorySQL-specific
+	 * for Oracle ROWID compatibility, and doesn't exist in native PostgreSQL.
+	 * We need to check at runtime rather than relying on remoteVersion because
+	 * when upgrading from PostgreSQL to IvorySQL, the source database is
+	 * PostgreSQL which may have the same version number but lacks this column.
+	 */
+	{
+		PGresult   *res_rowid;
+		bool		relhasrowid_exists = false;
+
+		res_rowid = ExecuteSqlQuery(fout,
+							  "SELECT 1 FROM pg_catalog.pg_attribute "
+							  "WHERE attrelid = 'pg_class'::regclass "
+							  "AND attname = 'relhasrowid' "
+							  "AND attnum > 0 LIMIT 1",
+							  PGRES_TUPLES_OK);
+		relhasrowid_exists = (PQntuples(res_rowid) > 0);
+		PQclear(res_rowid);
+
+		if (relhasrowid_exists)
+			appendPQExpBufferStr(query, "c.relhasrowid, ");
+		else
+			appendPQExpBufferStr(query, "false AS relhasrowid, ");
+	}
 
 	if (fout->remoteVersion >= 120000)
 		appendPQExpBufferStr(query,
@@ -9232,13 +9273,31 @@ getTableAttrs(Archive *fout, TableInfo *tblinfo, int numTables)
 		appendPQExpBufferStr(q,
 							 "'' AS attcompression,\n");
 	
-	if (fout->remoteVersion >= 170000)
-		appendPQExpBuffer(q,
-						"a.attisinvisible,\n");
-	else
-		appendPQExpBuffer(q,
-							"'f' AS attisinvisible,\n");
+	/*
+	 * Check if attisinvisible column exists. This column is IvorySQL-specific
+	 * for Oracle compatibility, and doesn't exist in native PostgreSQL.
+	 * We need to check at runtime rather than relying on remoteVersion because
+	 * when upgrading from PostgreSQL to IvorySQL, the source database is
+	 * PostgreSQL which may have the same version number but lacks this column.
+	 */
+	{
+		PGresult   *res_invisible;
+		bool		attisinvisible_exists = false;
 
+		res_invisible = ExecuteSqlQuery(fout,
+							  "SELECT 1 FROM pg_catalog.pg_attribute "
+							  "WHERE attrelid = 'pg_attribute'::regclass "
+							  "AND attname = 'attisinvisible' "
+							  "AND attnum > 0 LIMIT 1",
+							  PGRES_TUPLES_OK);
+		attisinvisible_exists = (PQntuples(res_invisible) > 0);
+		PQclear(res_invisible);
+
+		if (attisinvisible_exists)
+			appendPQExpBufferStr(q, "a.attisinvisible,\n");
+		else
+			appendPQExpBufferStr(q, "'f' AS attisinvisible,\n");
+	}
 
 	if (fout->remoteVersion >= 100000)
 		appendPQExpBufferStr(q,
