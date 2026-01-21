@@ -40,6 +40,7 @@
 #include "miscadmin.h"
 #include "port.h"
 #include "storage/fd.h"
+#include "storage/ipc.h"
 #include "utils/builtins.h"
 #include "utils/memutils.h"
 
@@ -55,16 +56,29 @@
 #define VALUE_ERROR				"VALUE_ERROR"
 #define WRITE_ERROR				"WRITE_ERROR"
 
+/* ora_utl_file functions */
 PG_FUNCTION_INFO_V1(ora_utl_file_fopen);
 PG_FUNCTION_INFO_V1(ora_utl_file_is_open);
 PG_FUNCTION_INFO_V1(ora_utl_file_fclose);
 PG_FUNCTION_INFO_V1(ora_utl_file_fclose_all);
 
+/* Helper functions */
 static void check_secure_locality(const char *path);
 static char *safe_named_location(text *location);
 static char *get_safe_path(text *location, text *filename);
 static void close_all_files(void);
 
+/* Cleanup callback functions */
+static void BeforeShmemExit_Files(int code, Datum arg);
+static void
+resource_cleanup_callback(ResourceReleasePhase phase,
+                         bool isCommit,
+                         bool isTopLevel,
+                         void *arg);
+static FILE *free_slot(uint32 sid);
+static uint32 reserve_slot(FILE *fd, int max_linesize, int encoding);
+
+/* Helper macros */
 #define CUSTOM_EXCEPTION(msg, detail) \
 	ereport(ERROR, \
 		(errcode(ERRCODE_RAISE_EXCEPTION), \
@@ -160,6 +174,7 @@ static FILE *
 free_slot(uint32 sid)
 {
 	FILE *fd = NULL;
+
 	for (int i = 0; i < MAX_SLOTS; i++)
 	{
 		if (slots[i].id == sid)
@@ -213,13 +228,14 @@ IO_EXCEPTION(void)
 Datum
 ora_utl_file_fopen(PG_FUNCTION_ARGS)
 {
-	text	   *open_mode;
-	int			max_linesize;
-	int			encoding;
-	const char *mode = NULL;
-	FILE	   *fd;
-	char	   *fullname;
-	uint32		sid;
+	text			*open_mode;
+	int				max_linesize;
+	int				encoding;
+	const char		*mode = NULL;
+	FILE			*fd;
+	const char		*fullname;
+	uint32			sid;
+	static bool 	callback_registered = false;
 
 	NOT_NULL_ARG(0);
 	NOT_NULL_ARG(1);
@@ -292,6 +308,20 @@ ora_utl_file_fopen(PG_FUNCTION_ARGS)
 		     errmsg("program limit exceeded"),
 		     errdetail("Maximum number of open files exceeded"),
 		     errhint("You can have a maximum of %d files open simultaneously.", MAX_SLOTS)));
+	}
+
+	/* Register cleanup callbacks */
+	if(!callback_registered)
+	{
+		/* Register cleanup callback only once */
+		RegisterResourceReleaseCallback(resource_cleanup_callback, NULL);
+
+		/*
+		* Register before-shmem-exit hook to ensure temp files are dropped while
+		* we can still report stats.
+		*/
+		before_shmem_exit(BeforeShmemExit_Files, 0);
+		callback_registered = true;
 	}
 
 	PG_RETURN_UINT32(sid);
@@ -578,4 +608,42 @@ close_all_files(void)
 	/* some file(s) were not closed, throw exception */
 	if(report_error)
 		STRERROR_EXCEPTION(WRITE_ERROR);
+}
+
+/*
+ * Callback function that closes all opened files
+ * Runs when session ends abnormally (crash, disconnect, commit/rollback/abort)
+ */
+static void
+resource_cleanup_callback(ResourceReleasePhase phase,
+                         bool isCommit,
+                         bool isTopLevel,
+                         void *arg)
+{
+	/*
+	 * Only run in the final cleanup phase
+     * isTopLevel = true only for top-level transaction (session end)
+     * When session ends, this is always true
+     */
+    if (phase != RESOURCE_RELEASE_AFTER_LOCKS || !isTopLevel)
+	{
+        return;
+	}
+
+	/* Close all files if session ended abnormally */
+	if(!isCommit)
+	{
+		close_all_files();
+	}
+}
+
+/*
+ * BeforeShmemExit_Files
+ *
+ * before_shmem_exit hook to closes all opened files during backend shutdown.
+ */
+static void
+BeforeShmemExit_Files(int code, Datum arg)
+{
+	close_all_files();
 }
