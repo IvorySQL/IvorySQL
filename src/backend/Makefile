@@ -82,7 +82,7 @@ override LDFLAGS := $(LDFLAGS) $(LDFLAGS_EX) $(LDFLAGS_EX_BE)
 
 ##########################################################################
 
-all: submake-libpgport submake-catalog-headers submake-utils-headers postgres $(POSTGRES_IMP)
+all: submake-libpgport submake-catalog-headers submake-utils-headers postgres
 
 ifneq ($(PORTNAME), cygwin)
 ifneq ($(PORTNAME), win32)
@@ -220,12 +220,8 @@ install-postgres-bitcode: $(OBJS) all
 	$(call install_llvm_module,postgres,$(call expand_subsys, $(filter-out $(top_builddir)/src/timezone/objfiles.txt, $(SUBDIROBJS))))
 endif
 
-install-bin: postgres $(POSTGRES_IMP) installdirs
+install-bin: postgres installdirs
 	$(INSTALL_PROGRAM) postgres$(X) '$(DESTDIR)$(bindir)/postgres$(X)'
-ifeq ($(MAKE_EXPORTS), true)
-	$(INSTALL_DATA) $(POSTGRES_IMP) '$(DESTDIR)$(pkglibdir)/$(POSTGRES_IMP)'
-	$(INSTALL_PROGRAM) $(MKLDEXPORT) '$(DESTDIR)$(pgxsdir)/$(MKLDEXPORT_DIR)/mkldexport.sh'
-endif
 
 .PHONY: install-bin
 
@@ -241,20 +237,12 @@ ifeq ($(MAKE_DLL), true)
 	$(MKDIR_P) '$(DESTDIR)$(libdir)'
 endif
 endif
-ifeq ($(MAKE_EXPORTS), true)
-	$(MKDIR_P) '$(DESTDIR)$(pkglibdir)'
-	$(MKDIR_P) '$(DESTDIR)$(pgxsdir)/$(MKLDEXPORT_DIR)'
-endif
 
 
 ##########################################################################
 
 uninstall:
 	rm -f '$(DESTDIR)$(bindir)/postgres$(X)'
-ifeq ($(MAKE_EXPORTS), true)
-	rm -f '$(DESTDIR)$(pkglibdir)/$(POSTGRES_IMP)'
-	rm -f '$(DESTDIR)$(pgxsdir)/$(MKLDEXPORT_DIR)/mkldexport.sh'
-endif
 ifeq ($(PORTNAME), cygwin)
 ifeq ($(MAKE_DLL), true)
 	rm -f '$(DESTDIR)$(libdir)/libpostgres.a'
@@ -279,7 +267,7 @@ endif
 ##########################################################################
 
 clean:
-	rm -f $(LOCALOBJS) postgres$(X) $(POSTGRES_IMP)
+	rm -f $(LOCALOBJS) postgres$(X)
 ifeq ($(PORTNAME), cygwin)
 	rm -f postgres.dll libpostgres.a
 endif
