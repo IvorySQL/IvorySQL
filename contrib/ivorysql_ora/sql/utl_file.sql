@@ -1,6 +1,7 @@
 -- insert few directory objects for testing
 INSERT INTO sys.ora_utl_file_dir VALUES('/tmp/','TMP_DIR');
 
+-- test cases for UTL_FILE.FOPEN, UTL_FILE.FCLOSE, UTL_FILE.IS_OPEN
 DECLARE
     ft sys.ORA_UTL_FILE_FILE_TYPE;
     dir_obj_name TEXT;
@@ -14,47 +15,88 @@ BEGIN
     END IF;
 
     SELECT UTL_FILE.IS_OPEN(ft) INTO STRICT file_status;
-    RAISE NOTICE 'Is file with ID: % open? %', ft.id, file_status;
-
+    RAISE NOTICE 'Is file still open? file ID: % - (%)', ft.id, file_status;
     UTL_FILE.FCLOSE(ft);
-    RAISE NOTICE 'File with ID: % closed successfully.', ft.id;
+    SELECT UTL_FILE.IS_OPEN(ft) INTO STRICT file_status;
+    RAISE NOTICE 'Is file still open? file ID: % - (%)', ft.id, file_status;
 END;
 /
 
+-- test case for UTL_FILE.FOPEN with invalid directory object name
 DECLARE
     ft sys.ORA_UTL_FILE_FILE_TYPE;
     dir_obj_name TEXT;
 BEGIN
     dir_obj_name := 'RANDOM_DIR';  -- an invalid directory object name
-    ft := UTL_FILE.FOPEN(dir_obj_name,'test_file2.txt','a',2048);
+    ft := UTL_FILE.FOPEN(dir_obj_name,'test_file1.txt','a',2048);
+END;
+/
 
-    IF ft.id IS NOT NULL THEN
-        RAISE NOTICE 'File opened successfully with ID: %, directory name: %, file name: %', ft.id, dir_obj_name, 'test_file2.txt';
-    END IF;
+-- test case for UTL_FILE.FCLOSE_ALL
+DECLARE
+    ft1 sys.ORA_UTL_FILE_FILE_TYPE;
+    ft2 sys.ORA_UTL_FILE_FILE_TYPE;
+    ft3 sys.ORA_UTL_FILE_FILE_TYPE;
+    dir_obj_name TEXT;
+    file_status1 BOOLEAN;
+    file_status2 BOOLEAN;
+    file_status3 BOOLEAN;
+BEGIN
+    dir_obj_name := 'TMP_DIR';  -- a valid directory object name
+    ft1 := UTL_FILE.FOPEN(dir_obj_name,'test_file1.txt','a',2048);
+    ft2 := UTL_FILE.FOPEN(dir_obj_name,'test_file2.txt','a',2048);
+    ft3 := UTL_FILE.FOPEN(dir_obj_name,'test_file3.txt','a',2048);
+
+    SELECT UTL_FILE.IS_OPEN(ft1), UTL_FILE.IS_OPEN(ft2), UTL_FILE.IS_OPEN(ft3) INTO STRICT file_status1, file_status2, file_status3;
+    RAISE NOTICE 'Check if files are still open? file ID: % - (%), file ID: % - (%), file ID: % - (%)', ft1.id, file_status1, ft2.id, file_status2, ft3.id, file_status3;
+    UTL_FILE.FCLOSE_ALL();
+    SELECT UTL_FILE.IS_OPEN(ft1), UTL_FILE.IS_OPEN(ft2), UTL_FILE.IS_OPEN(ft3) INTO STRICT file_status1, file_status2, file_status3;
+    RAISE NOTICE 'Check if files are still open? file ID: % - (%), file ID: % - (%), file ID: % - (%)', ft1.id, file_status1, ft2.id, file_status2, ft3.id, file_status3;
+END;
+/
+
+-- test cases for automatic file closing on session abnormally closing session or COMMIT/ROLLBACK/ABORT
+DECLARE
+    ft1 sys.ORA_UTL_FILE_FILE_TYPE;
+    ft2 sys.ORA_UTL_FILE_FILE_TYPE;
+    dir_obj_name TEXT;
+    file_status1 BOOLEAN;
+    file_status2 BOOLEAN;
+BEGIN
+    dir_obj_name := 'TMP_DIR';  -- a valid directory object name
+    ft1 := UTL_FILE.FOPEN(dir_obj_name,'test_file1.txt','a',2048);
+    ft2 := UTL_FILE.FOPEN(dir_obj_name,'test_file2.txt','a',2048);
+
+    SELECT UTL_FILE.IS_OPEN(ft1), UTL_FILE.IS_OPEN(ft2) INTO STRICT file_status1, file_status2;
+    RAISE NOTICE 'Check if files are still open? file ID: % - (%), file ID: % - (%)', ft1.id, file_status1, ft2.id, file_status2;
+    COMMIT;
+    SELECT UTL_FILE.IS_OPEN(ft1), UTL_FILE.IS_OPEN(ft2) INTO STRICT file_status1, file_status2;
+    RAISE NOTICE 'Check if files are still open? file ID: % - (%), file ID: % - (%)', ft1.id, file_status1, ft2.id, file_status2;
 END;
 /
 
 DECLARE
     ft1 sys.ORA_UTL_FILE_FILE_TYPE;
     ft2 sys.ORA_UTL_FILE_FILE_TYPE;
-    ft3 sys.ORA_UTL_FILE_FILE_TYPE;
     dir_obj_name TEXT;
+    file_status1 BOOLEAN;
+    file_status2 BOOLEAN;
 BEGIN
     dir_obj_name := 'TMP_DIR';  -- a valid directory object name
-    ft1 := UTL_FILE.FOPEN(dir_obj_name,'test_file2.txt','a',2048);
-    IF ft1.id IS NOT NULL THEN
-        RAISE NOTICE 'File opened successfully with ID: %, directory name: %, file name: %', ft1.id, dir_obj_name, 'test_file2.txt';
-    END IF;
-    ft2 := UTL_FILE.FOPEN(dir_obj_name,'test_file3.txt','a',2048);
-    IF ft2.id IS NOT NULL THEN
-        RAISE NOTICE 'File opened successfully with ID: %, directory name: %, file name: %', ft2.id, dir_obj_name, 'test_file3.txt';
-    END IF;
-    ft3 := UTL_FILE.FOPEN(dir_obj_name,'test_file4.txt','a',2048);
-    IF ft3.id IS NOT NULL THEN
-        RAISE NOTICE 'File opened successfully with ID: %, directory name: %, file name: %', ft3.id, dir_obj_name, 'test_file4.txt';
-    END IF;
+    ft1 := UTL_FILE.FOPEN(dir_obj_name,'test_file1.txt','a',2048);
+    ft2 := UTL_FILE.FOPEN(dir_obj_name,'test_file2.txt','a',2048);
 
-    UTL_FILE.FCLOSE_ALL();
-    RAISE NOTICE 'All files closed successfully.';
+    SELECT UTL_FILE.IS_OPEN(ft1), UTL_FILE.IS_OPEN(ft2) INTO STRICT file_status1, file_status2;
+    RAISE NOTICE 'Check if files are still open? file ID: % - (%), file ID: % - (%)', ft1.id, file_status1, ft2.id, file_status2;
+    ROLLBACK;
+    SELECT UTL_FILE.IS_OPEN(ft1), UTL_FILE.IS_OPEN(ft2) INTO STRICT file_status1, file_status2;
+    RAISE NOTICE 'Check if files are still open? file ID: % - (%), file ID: % - (%)', ft1.id, file_status1, ft2.id, file_status2;
+
+    RAISE NOTICE 'All files closed automatically by resource_cleanup_callback.';
 END;
+/
+
+BEGIN;
+SELECT UTL_FILE.FOPEN('TMP_DIR','test_file1.txt','a',2048);
+ABORT;
 /
