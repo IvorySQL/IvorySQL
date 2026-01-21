@@ -101,44 +101,79 @@ PG_FUNCTION_INFO_V1(ora_utl_file_fclose_all);
 
 typedef struct FileSlot
 {
-	FILE   *file;
+	FILE   *fd;
 	int		max_linesize;
 	int		encoding;
-	int32	id;
+	uint32	id;
 } FileSlot;
 
 #define MAX_SLOTS		50			/* Oracle 10g supports 50 files */
 #define INVALID_SLOTID	0			/* invalid slot id */
 
-static FileSlot	slots[MAX_SLOTS];	/* initilaized with zeros */
-static int32	slotid = INVALID_SLOTID;			/* next slot id */
+static FileSlot	slots[MAX_SLOTS];	/* initialized with zeros */
+
+static uint32	slotid = INVALID_SLOTID;			/* next slot id */
+#define NEXT_SLOTID(sid) \
+    ((sid) == UINT32_MAX ? 1 : (sid) + 1)
 
 static void check_secure_locality(const char *path);
 static char *safe_named_location(text *location);
 static char *get_safe_path(text *location, text *filename);
 
 /*
- * reserve_file_handle_slot(FILE *file) find any free slot for FILE pointer.
+ * Find any free slot, saves handle in that
+ * Returns slot ID or INVALID_SLOTID if no free slot found
  */
-static int
-reserve_file_handle_slot(FILE *file, int max_linesize, int encoding)
+static uint32
+reserve_slot(FILE *fd, int max_linesize, int encoding)
 {
+	if(fd == NULL)
+	{
+		INVALID_FILEHANDLE_WARNING();
+		return INVALID_SLOTID;
+	}
+
 	for (int i = 0; i < MAX_SLOTS; i++)
 	{
-		if (slots[i].id == INVALID_SLOTID)
-		{
-			slots[i].id = ++slotid;
-			/* XXX - to be removed. unnecessary check */
-			//if (slots[i].id == INVALID_SLOTID)
-			//	slots[i].id = ++slotid;	/* skip INVALID_SLOTID */
-			slots[i].file = file;
-			slots[i].max_linesize = max_linesize;
-			slots[i].encoding = encoding;
-			return slots[i].id;
-		}
+		if (slots[i].id != INVALID_SLOTID)
+			continue;
+
+		slots[i].id = NEXT_SLOTID(slotid);
+		slots[i].fd = fd;
+		slots[i].max_linesize = max_linesize;
+		slots[i].encoding = encoding;
+
+		return slots[i].id;
 	}
 
 	return INVALID_SLOTID;
+}
+
+/*
+ * Clears the slot with given ID
+ * Returns File* that was stored in the slot
+ * Caller must close the returned handle, if not required anymore.
+ */
+static FILE *
+free_slot(uint32 sid)
+{
+	FILE *fd = NULL;
+	for (int i = 0; i < MAX_SLOTS; i++)
+	{
+		if (slots[i].id == sid)
+		{
+			fd = slots[i].fd;
+
+			slots[i].id = INVALID_SLOTID;
+			slots[i].fd = NULL;
+			slots[i].max_linesize = 0;
+			slots[i].encoding = 0;
+
+			return fd;
+		}
+	}
+
+	return NULL;
 }
 
 static void
@@ -180,9 +215,9 @@ ora_utl_file_fopen(PG_FUNCTION_ARGS)
 	int			max_linesize;
 	int			encoding;
 	const char *mode = NULL;
-	FILE	   *file;
+	FILE	   *fd;
 	char	   *fullname;
-	int			slot_id;
+	uint32		sid;
 
 	NOT_NULL_ARG(0);
 	NOT_NULL_ARG(1);
@@ -232,7 +267,6 @@ ora_utl_file_fopen(PG_FUNCTION_ARGS)
 			CUSTOM_EXCEPTION(INVALID_MODE, "open mode is different than [R,W,A]");
 	}
 
-	/* open file */
 	fullname = get_safe_path(PG_GETARG_TEXT_P(0), PG_GETARG_TEXT_P(1));
 
 	/*
@@ -242,15 +276,15 @@ ora_utl_file_fopen(PG_FUNCTION_ARGS)
 	 * we implement separate file handling.
 	 */
 
-	file = fopen(fullname, mode);
+	fd = fopen(fullname, mode);
 
-	if (!file)
+	if (fd == NULL)
 		IO_EXCEPTION();
 
-	slot_id = reserve_file_handle_slot(file, max_linesize, encoding);
-	if (slot_id == INVALID_SLOTID)
+	sid = reserve_slot(fd, max_linesize, encoding);
+	if (sid == INVALID_SLOTID)
 	{
-		fclose(file);
+		fclose(fd);
 		ereport(ERROR,
 		    (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 		     errmsg("program limit exceeded"),
@@ -258,22 +292,21 @@ ora_utl_file_fopen(PG_FUNCTION_ARGS)
 		     errhint("You can have a maximum of %d files open simultaneously.", MAX_SLOTS)));
 	}
 
-	PG_RETURN_INT32(slot_id);
+	PG_RETURN_UINT32(sid);
 }
 
 Datum
 ora_utl_file_is_open(PG_FUNCTION_ARGS)
 {
-	if (!PG_ARGISNULL(0))
-	{
-		int	i;
-		int	d = PG_GETARG_INT32(0);
+	int	sid = PG_GETARG_INT32(0);
 
-		for (i = 0; i < MAX_SLOTS; i++)
-		{
-			if (slots[i].id == d)
-				PG_RETURN_BOOL(slots[i].file != NULL);
-		}
+	if(sid == INVALID_SLOTID)
+		PG_RETURN_BOOL(false);
+
+	for (int i = 0; i < MAX_SLOTS; i++)
+	{
+		if (slots[i].id == sid)
+			PG_RETURN_BOOL(slots[i].fd != NULL);
 	}
 
 	PG_RETURN_BOOL(false);
@@ -295,28 +328,22 @@ ora_utl_file_is_open(PG_FUNCTION_ARGS)
 Datum
 ora_utl_file_fclose(PG_FUNCTION_ARGS)
 {
-	int i;
-	int	d = PG_GETARG_INT32(0);
+	FILE *fd = free_slot(PG_GETARG_INT32(0));
 
-	for (i = 0; i < MAX_SLOTS; i++)
+	if(fd == NULL)
 	{
-		if (slots[i].id == d)
-		{
-			if (slots[i].file && fclose(slots[i].file) != 0)
-			{
-				if (errno == EBADF)
-					INVALID_FILEHANDLE_EXCEPTION();
-				else
-					STRERROR_EXCEPTION(WRITE_ERROR);
-			}
-			slots[i].file = NULL;
-			slots[i].id = INVALID_SLOTID;
-			PG_RETURN_NULL();
-		}
+		INVALID_FILEHANDLE_WARNING();
+		PG_RETURN_NULL();
 	}
 
-	INVALID_FILEHANDLE_WARNING();
-	PG_RETURN_NULL();
+	if (fclose(fd) == 0)
+		PG_RETURN_NULL();
+
+	/* file was not closed, throw appropriate exception */
+	if (errno == EBADF)
+		INVALID_FILEHANDLE_EXCEPTION();
+	else
+		STRERROR_EXCEPTION(WRITE_ERROR);
 }
 
 
