@@ -737,7 +737,7 @@ AppendSeconds(char *cp, int sec, fsec_t fsec, int precision, bool fillzeros, siz
  * Interpret time structure as a delta time and convert to string.
  */
 static void
-EncodeDsinterval(struct pg_tm * tm, fsec_t fsec, int style, char *str, int day_precision, int second_precision)
+EncodeDsinterval(struct pg_tm * tm, fsec_t fsec, int style, char *str, size_t str_size, int day_precision, int second_precision)
 {
 	char	   *cp = str;
 	int			year = tm->tm_year;
@@ -788,9 +788,9 @@ EncodeDsinterval(struct pg_tm * tm, fsec_t fsec, int style, char *str, int day_p
 				/* Compatible oracle, the value of interval is zero should show "+00 00:00:00.000000" */
 				if (!has_negative && !has_positive)
 				{
-					snprintf(cp, sizeof(str) - (cp - str) - 1, "%0*d %02d:%02d:", day_precision, mday, hour, min);
+					snprintf(cp, str_size - (cp - str) - 1, "%0*d %02d:%02d:", day_precision, mday, hour, min);
 					cp += strlen(cp);
-					AppendSeconds(cp, sec, fsec, second_precision, true, sizeof(str) - (cp - str) - 1);
+					AppendSeconds(cp, sec, fsec, second_precision, true, str_size - (cp - str) - 1);
 				}
 				else if (!sql_standard_value)
 				{
@@ -804,28 +804,28 @@ EncodeDsinterval(struct pg_tm * tm, fsec_t fsec, int style, char *str, int day_p
 					char		sec_sign = (hour < 0 || min < 0 ||
 											sec < 0 || fsec < 0) ? '-' : '+';
 
-					snprintf(cp, sizeof(str) - (cp - str) - 1, "%c%d-%d %c%d %c%d:%02d:",
+					snprintf(cp, str_size - (cp - str) - 1, "%c%d-%d %c%d %c%d:%02d:",
 							year_sign, abs(year), abs(mon),
 							day_sign, abs(mday),
 							sec_sign, abs(hour), abs(min));
 					cp += strlen(cp);
-					AppendSeconds(cp, sec, fsec, second_precision, true, sizeof(str) - (cp - str) - 1);
+					AppendSeconds(cp, sec, fsec, second_precision, true, str_size - (cp - str) - 1);
 				}
 				else if (has_year_month)
 				{
-					snprintf(cp, sizeof(str) - (cp - str) - 1, "%d-%d", year, mon);
+					snprintf(cp, str_size - (cp - str) - 1, "%d-%d", year, mon);
 				}
 				else if (has_day)
 				{
-					snprintf(cp, sizeof(str) - (cp - str) - 1, "%0*d %02d:%02d:", day_precision, mday, hour, min);
+					snprintf(cp, str_size - (cp - str) - 1, "%0*d %02d:%02d:", day_precision, mday, hour, min);
 					cp += strlen(cp);
-					AppendSeconds(cp, sec, fsec, second_precision, true, sizeof(str) - (cp - str) - 1);
+					AppendSeconds(cp, sec, fsec, second_precision, true, str_size - (cp - str) - 1);
 				}
 				else
 				{
-					snprintf(cp, sizeof(str) - (cp - str) - 1, "%0*d %02d:%02d:", day_precision, 0, hour, min);
+					snprintf(cp, str_size - (cp - str) - 1, "%0*d %02d:%02d:", day_precision, 0, hour, min);
 					cp += strlen(cp);
-					AppendSeconds(cp, sec, fsec, second_precision, true, sizeof(str) - (cp - str) - 1);
+					AppendSeconds(cp, sec, fsec, second_precision, true, str_size - (cp - str) - 1);
 				}
 			}
 			break;
@@ -1849,7 +1849,7 @@ dsinterval_out(PG_FUNCTION_ARGS)
 		second_precision = ORACLE_MAX_INTERVAL_PRECISION;
 	}
 
-	EncodeDsinterval(tm, fsec, INTSTYLE_SQL_STANDARD, buf, day_precision, second_precision);
+	EncodeDsinterval(tm, fsec, INTSTYLE_SQL_STANDARD, buf, sizeof(buf), day_precision, second_precision);
 
 	result = pstrdup(buf);
 	PG_RETURN_CSTRING(result);
