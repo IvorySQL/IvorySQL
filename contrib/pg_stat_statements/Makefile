@@ -30,7 +30,8 @@ REGRESS = \
 	level_tracking \
 	planning \
 	user_activity \
-	wal entry_timestamp \
+	wal \
+	entry_timestamp \
 	privileges \
 	extended \
 	parallel \
