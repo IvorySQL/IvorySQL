@@ -60,6 +60,11 @@ PG_FUNCTION_INFO_V1(ora_utl_file_is_open);
 PG_FUNCTION_INFO_V1(ora_utl_file_fclose);
 PG_FUNCTION_INFO_V1(ora_utl_file_fclose_all);
 
+static void check_secure_locality(const char *path);
+static char *safe_named_location(text *location);
+static char *get_safe_path(text *location, text *filename);
+static void close_all_files(void);
+
 #define CUSTOM_EXCEPTION(msg, detail) \
 	ereport(ERROR, \
 		(errcode(ERRCODE_RAISE_EXCEPTION), \
@@ -99,9 +104,10 @@ PG_FUNCTION_INFO_V1(ora_utl_file_fclose_all);
 			CUSTOM_EXCEPTION(INVALID_MAXLINESIZE, "The MAX_LINESIZE value for FOPEN() is invalid; it should be within the range 1 to 32767."); \
 	} while(0)
 
+
 typedef struct FileSlot
 {
-	FILE   *fd;
+	FILE	*fd;
 	int		max_linesize;
 	int		encoding;
 	uint32	id;
@@ -114,11 +120,7 @@ static FileSlot	slots[MAX_SLOTS];	/* initialized with zeros */
 
 static uint32	slotid = INVALID_SLOTID;			/* next slot id */
 #define NEXT_SLOTID(sid) \
-    ((sid) == UINT32_MAX ? 1 : (sid) + 1)
-
-static void check_secure_locality(const char *path);
-static char *safe_named_location(text *location);
-static char *get_safe_path(text *location, text *filename);
+    ((sid) == UINT32_MAX ? 1 : (++(sid)))
 
 /*
  * Find any free slot, saves handle in that
@@ -346,6 +348,20 @@ ora_utl_file_fclose(PG_FUNCTION_ARGS)
 		STRERROR_EXCEPTION(WRITE_ERROR);
 }
 
+/*
+ * FUNCTION UTL_FILE.FCLOSE_ALL()
+ *          RETURNS void
+ *
+ * Closes all open file handles
+ *
+ * Exceptions: WRITE_ERROR
+ */
+Datum
+ora_utl_file_fclose_all(PG_FUNCTION_ARGS)
+{
+	close_all_files();
+	PG_RETURN_VOID();
+}
 
 /*
  * sys.ora_utl_file_dir security .. is solved with aux. table.
@@ -520,4 +536,46 @@ get_safe_path(text *location_or_dirname, text *filename)
 		check_secure_locality(fullname);
 
 	return fullname;
+}
+
+static void
+close_all_files(void)
+{
+	FILE *fd = NULL;
+	bool report_error = false;
+
+	for (int i = 0; i < MAX_SLOTS; i++)
+	{
+		if (slots[i].id != INVALID_SLOTID)
+		{
+			fd = slots[i].fd;
+
+			slots[i].id = INVALID_SLOTID;
+			slots[i].fd = NULL;
+			slots[i].max_linesize = 0;
+			slots[i].encoding = 0;
+
+			/* 
+			 * Oracle documentation says: FCLOSE_ALL does not alter the state of the 
+			 * open file handles held by the user. This means that an IS_OPEN test on
+			 * a file handle after an FCLOSE_ALL call still returns TRUE, even though
+			 * the file has been closed. No further read or write operations can be
+			 * performed on a file that was open before an FCLOSE_ALL. 
+			 * 
+			 * However, 
+			 * 
+			 * we choose to close the file handles and free the slots here 
+			 * to avoid dangling file handles.
+			 */
+
+			if(fd != NULL && fclose(fd) == 0)
+				continue;
+			else
+				report_error = true;
+		}
+	}
+
+	/* some file(s) were not closed, throw exception */
+	if(report_error)
+		STRERROR_EXCEPTION(WRITE_ERROR);
 }

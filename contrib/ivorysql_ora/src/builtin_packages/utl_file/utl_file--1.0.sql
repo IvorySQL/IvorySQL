@@ -32,6 +32,11 @@ RETURNS INTEGER
 AS 'MODULE_PATHNAME','ora_utl_file_fclose'
 LANGUAGE C VOLATILE;
 
+CREATE FUNCTION sys.ora_utl_file_fclose_all()
+RETURNS void
+AS 'MODULE_PATHNAME','ora_utl_file_fclose_all'
+LANGUAGE C VOLATILE;
+
 
 -- for UTL_FILE Security Model compliance
 /* table carry all safe directories */
@@ -50,6 +55,8 @@ CREATE OR REPLACE PACKAGE UTL_FILE IS
     PROCEDURE FCLOSE(
         ft IN OUT ORA_UTL_FILE_FILE_TYPE
     );
+
+    PROCEDURE FCLOSE_ALL;
 
     FUNCTION FOPEN(
         location IN VARCHAR2,
@@ -72,6 +79,11 @@ CREATE OR REPLACE PACKAGE BODY UTL_FILE IS
     ) IS
     BEGIN
         PERFORM sys.ora_utl_file_fclose(ft.id);
+    END;
+
+    PROCEDURE FCLOSE_ALL IS
+    BEGIN
+        PERFORM sys.ora_utl_file_fclose_all();
     END;
 
     FUNCTION FOPEN(
