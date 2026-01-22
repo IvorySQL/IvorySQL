@@ -2158,6 +2158,7 @@ typedef struct NextValueExpr
  */
 typedef struct RownumExpr
 {
+	pg_node_attr(no_query_jumble)
 	Expr		xpr;
 	ParseLoc	location;		/* token location, or -1 if unknown */
 } RownumExpr;
