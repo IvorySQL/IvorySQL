@@ -1,5 +1,5 @@
 -- insert few directory objects for testing
-INSERT INTO sys.ora_utl_file_dir VALUES('/tmp/','TMP_DIR');
+INSERT INTO sys.utl_file_directory(dir, dirname) VALUES('/tmp/','TMP_DIR');
 
 -- test cases for UTL_FILE.FOPEN, UTL_FILE.FCLOSE, UTL_FILE.IS_OPEN
 DECLARE
