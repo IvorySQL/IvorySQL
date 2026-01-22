@@ -4,7 +4,7 @@
  *
  * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
  * src/oracle_test/isolation/isolation_main.c
  *
@@ -18,9 +18,9 @@
 #include "lib/stringinfo.h"
 #include "pg_regress.h"
 
-char		saved_argv0[MAXPGPATH];
-char		isolation_exec[MAXPGPATH];
-bool		looked_up_isolation_exec = false;
+static char		saved_argv0[MAXPGPATH];
+static char		isolation_exec[MAXPGPATH];
+static bool		looked_up_isolation_exec = false;
 
 #define PG_ISOLATION_VERSIONSTR "isolationtester (PostgreSQL) " PG_VERSION "\n"
 

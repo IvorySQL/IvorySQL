@@ -3,7 +3,7 @@
  * sysv_ivysema.c copy from sysv_sema.c
  *	  Implement PGSemaphores using SysV semaphore facilities
  *
- * Portions Copyright (c) 2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2025-2026, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *	  src/interfaces/libpq/sysv_ivysema.c

@@ -1,5 +1,5 @@
 # Copyright (c) 2022-2024, PostgreSQL Global Development Group
-# Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+# Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
 
 plisql_sources = files(
   'pl_comp.c',
@@ -10,6 +10,7 @@ plisql_sources = files(
   'pl_subproc_function.c',
   'pl_package.c',
   'pl_exception_type.c',
+  'pl_autonomous.c',
 )
 
 pl_gram = custom_target('gram',

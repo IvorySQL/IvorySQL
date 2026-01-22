@@ -10,7 +10,7 @@
  * analyze.c and related files.
  *
  *
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -49,7 +49,7 @@ PG_MODULE_MAGIC_EXT(
 static raw_parser_hook_type prev_raw_parser = NULL;
 static get_keywords_hook_type prev_pg_get_keywords = NULL;
 static fill_in_constant_lengths_hook_type prev_fill_in_contant_lengths = NULL;
-quote_identifier_hook_type prev_quote_identifier = NULL;
+static quote_identifier_hook_type prev_quote_identifier = NULL;
 
 void _PG_init(void);
 void _PG_fini(void);
@@ -1272,8 +1272,9 @@ oracle_quote_identifier(const char *ident)
 {
 	/*
 	 * Can avoid quoting if ident starts with a lowercase letter or underscore
-	 * and contains only lowercase letters, digits, and underscores, *and* is
-	 * not any SQL keyword.  Otherwise, supply quotes.
+	 * and contains only lowercase letters, digits, underscores, and the
+	 * special characters # and $ (for Oracle compatibility), *and* is not any
+	 * SQL keyword.  Otherwise, supply quotes.
 	 */
 	int			nquotes = 0;
 	bool		safe;
@@ -1293,7 +1294,9 @@ oracle_quote_identifier(const char *ident)
 
 		if ((ch >= 'a' && ch <= 'z') ||
 			(ch >= '0' && ch <= '9') ||
-			(ch == '_'))
+			(ch == '_') ||
+			(ch == '#') ||
+			(ch == '$'))
 		{
 			/* okay */
 		}

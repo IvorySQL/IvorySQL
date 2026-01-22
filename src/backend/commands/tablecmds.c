@@ -5,7 +5,7 @@
  *
  * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
  *
  * IDENTIFICATION
@@ -15642,7 +15642,7 @@ RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
 	ScanKeyData key[3];
 	SysScanDesc scan;
 	HeapTuple	depTup;
-	ObjectFunOrPkg *dependentFuncPkgOids;
+	ObjectFunOrPkg *dependentFuncPkgOids = NULL;
 	bool		FuncPkgDepend = false;
 
 	if(NULL != numDependentFuncPkgOids  &&
@@ -15652,6 +15652,7 @@ RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
 		 FuncPkgDepend = true;
 		dependentFuncPkgOids = *dependentFuncPkg;
 	}
+
 
 	Assert(subtype == AT_AlterColumnType || subtype == AT_SetExpression);
 

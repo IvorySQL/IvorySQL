@@ -17,7 +17,7 @@
  *
  * Definition enumeration structure is fro supporting different compatibility modes.
  *
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
  * src/include/utils/ora_compatible.h
  *
@@ -58,5 +58,5 @@ typedef enum
 	NLS_LENGTH_BYTE,
 	NLS_LENGTH_CHAR
 } NlsLengthSemantics;
-
+extern int       bootstrap_database_mode;
 #endif							/* ORA_COMPATIBLE_H */

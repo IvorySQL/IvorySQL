@@ -15,7 +15,7 @@
  */
 
 /* src/pl/plisql/src/plisql--1.0.sql */
-/* Portions Copyright (c) 2023-2025, IvorySQL Global Development Team */
+/* Portions Copyright (c) 2023-2026, IvorySQL Global Development Team */
 
 -- The language object, but not the functions, can be owned by a non-superuser.
 ALTER LANGUAGE plisql OWNER TO @extowner@;

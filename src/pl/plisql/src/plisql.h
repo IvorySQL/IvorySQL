@@ -3,7 +3,7 @@
  * plisql.h		- Definitions for the PL/iSQL
  *			  procedural language
  *
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -1064,6 +1064,7 @@ typedef struct PLiSQL_function
 	unsigned int nstatements;	/* counter for assigning stmtids */
 	bool		requires_procedure_resowner;	/* contains CALL or DO? */
 	bool		has_exception_block;	/* contains BEGIN...EXCEPTION? */
+	bool		fn_is_autonomous;	/* PRAGMA AUTONOMOUS_TRANSACTION? */
 
 	/* these fields change when the function is used */
 	struct PLiSQL_execstate *cur_estate;
@@ -1276,6 +1277,8 @@ extern bool plisql_print_strict_params;
 
 extern bool plisql_check_asserts;
 
+extern bool plisql_inside_autonomous_transaction;
+
 /* extra compile-time and run-time checks */
 #define PLISQL_XCHECK_NONE 0
 #define PLISQL_XCHECK_SHADOWVAR (1 << 1)
@@ -1457,5 +1460,13 @@ extern void plisql_recover_yylex_global_proper(void *yylex_data);
  */
 extern int	plisql_yyparse(PLiSQL_stmt_block * *plisql_parse_result_p,
 						   yyscan_t yyscanner);
+
+/*
+ * Externs in pl_exec.c for exception context access (used by DBMS_UTILITY)
+ */
+extern PGDLLEXPORT const char *plisql_get_current_exception_context(void);
+extern PGDLLEXPORT const char *plisql_get_current_exception_message(void);
+extern PGDLLEXPORT int plisql_get_current_exception_sqlerrcode(void);
+extern PGDLLEXPORT char *plisql_get_call_stack(void);
 
 #endif							/* PLISQL_H */

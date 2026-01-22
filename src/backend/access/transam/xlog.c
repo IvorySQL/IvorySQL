@@ -30,7 +30,7 @@
  *
  * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
  * src/backend/access/transam/xlog.c
  *
@@ -108,7 +108,7 @@
 #include "utils/memutils.h"
 #endif
 
-extern int       bootstrap_database_mode;
+
 /* timeline ID to be used when bootstrapping */
 #define BootstrapTimeLineID		1
 

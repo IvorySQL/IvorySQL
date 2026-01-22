@@ -5,7 +5,7 @@
  *
  * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
  *
  * IDENTIFICATION
@@ -96,8 +96,8 @@ typedef struct SeqTableData
 typedef SeqTableData *SeqTable;
 
 static HTAB *seqhashtab = NULL; /* hash table for SeqTable items */
-int64	session_id = 0;
-int32	scale_value = 0;
+static int64	session_id = 0;
+static int32	scale_value = 0;
 
 /*
  * last_used_seq is updated by nextval() to point to the last used
@@ -2399,7 +2399,7 @@ process_owned_by(Relation seqrel, List *owned_by, bool for_identity)
 	DependencyType deptype;
 	int			nnames;
 	Relation	tablerel;
-	AttrNumber	attnum;
+	AttrNumber	attnum = InvalidAttrNumber;
 	char		*seqname;
 
 	deptype = for_identity ? DEPENDENCY_INTERNAL : DEPENDENCY_AUTO;

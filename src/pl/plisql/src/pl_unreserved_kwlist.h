@@ -7,7 +7,7 @@
  * by the PG_KEYWORD macro, which is not defined in this file; it can
  * be defined by the caller for special purposes.
  *
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -37,6 +37,7 @@ PG_KEYWORD("array", K_ARRAY)
 PG_KEYWORD("as", K_AS)
 PG_KEYWORD("assert", K_ASSERT)
 PG_KEYWORD("authid", K_AUTHID)
+PG_KEYWORD("autonomous_transaction", K_AUTONOMOUS_TRANSACTION)
 PG_KEYWORD("backward", K_BACKWARD)
 PG_KEYWORD("call", K_CALL)
 PG_KEYWORD("chain", K_CHAIN)

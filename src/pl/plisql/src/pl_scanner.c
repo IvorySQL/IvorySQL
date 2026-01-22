@@ -4,7 +4,7 @@
  *	  lexical scanning for PL/iSQL
  *
  *
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -118,7 +118,6 @@ static int	plisql_yyleng;
 /* Current token's code (corresponds to plisql_yylval and plisql_yylloc) */
 static int	plisql_yytoken;
 
-//static yyscan_t plisql_scanner;
 
 /* The semantic value of the lookahead symbol.  */
 static YYSTYPE plisql_yylval;
@@ -140,7 +139,6 @@ static TokenAuxData pushback_auxdata[MAX_PUSHBACKS];
 /* State for plisql_location_to_lineno() */
 static const char *cur_line_start;
 static const char *cur_line_end;
-//static int	cur_line_num;
 
 /*
  * yylex used global variable in pl_scanner.c

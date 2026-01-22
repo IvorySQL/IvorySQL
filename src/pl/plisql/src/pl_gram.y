@@ -3,7 +3,7 @@
  *
  * pl_gram.y			- Parser for the PL/iSQL procedural language
  *
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -32,6 +32,7 @@
 
 #include "pl_package.h"
 #include "pl_exception_type.h"
+#include "pl_autonomous.h"
 #include "pg_config.h"
 #include "pl_gram.h"
 #include "utils/ora_compatible.h"
@@ -311,6 +312,7 @@ static	PLiSQL_expr		*build_call_expr(int firsttoken, int location, YYSTYPE *yylv
 %token <keyword>	K_AS
 %token <keyword>	K_ASSERT
 %token <keyword>	K_AUTHID
+%token <keyword>	K_AUTONOMOUS_TRANSACTION
 %token <keyword>	K_BACKWARD
 %token <keyword>	K_BEGIN
 %token <keyword>	K_BY
@@ -821,9 +823,10 @@ decl_statement	: decl_varname decl_const decl_datatype decl_collate decl_notnull
 					}
 				| decl_varname K_EXCEPTION ';'
 					{
-						PLiSQL_exception_var *exc;
+						/* PLiSQL_exception_var *exc;
 
-						exc = plisql_build_exception($1.name, $1.lineno, true);
+						exc = */
+						plisql_build_exception($1.name, $1.lineno, true);
 					}
 				| K_PRAGMA K_EXCEPTION_INIT '(' any_identifier ',' ICONST ')' ';'
 					{
@@ -836,6 +839,11 @@ decl_statement	: decl_varname decl_const decl_datatype decl_collate decl_notnull
 						plisql_process_pragma_exception_init($4,
 															 -$7,
 															 @1, yyscanner);
+					}
+				| K_PRAGMA K_AUTONOMOUS_TRANSACTION ';'
+					{
+						plisql_mark_autonomous_transaction(plisql_curr_compile,
+														   @1, yyscanner);
 					}
 				/* function or procedure declare or define */
 				| function_heading function_properties ';'
@@ -2329,12 +2337,24 @@ for_variable	: T_DATUM
 						$$.name = $1.ident;
 						$$.lineno = plisql_location_to_lineno(@1, yyscanner);
 						$$.scalar = NULL;
-						$$.row = NULL;
 						/* check for comma-separated list */
 						tok = yylex(&yylval, &yylloc, yyscanner);
 						plisql_push_back_token(tok, &yylval, &yylloc, yyscanner);
 						if (tok == ',')
+						{
 							word_is_not_variable(&($1), @1, yyscanner);
+							$$.row = NULL;
+						}
+						else
+						{
+							/* Oracle compatibility: implicitly create RECORD variable for FOR loop */
+							$$.row = (PLiSQL_datum *)
+								plisql_build_record($1.ident,
+													plisql_location_to_lineno(@1, yyscanner),
+													NULL,
+													RECORDOID,
+													true);
+						}
 					}
 				| T_CWORD
 					{

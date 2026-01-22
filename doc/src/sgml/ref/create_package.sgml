@@ -1,0 +1,56 @@
+<!--
+doc/src/sgml/ref/create_package.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-createpackage">
+ <indexterm zone="sql-createpackage">
+  <primary>CREATE PACKAGE</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>CREATE PACKAGE</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>CREATE PACKAGE</refname>
+  <refpurpose>create a new package</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+CREATE [ OR REPLACE ] [ EDITIONABLE | NONEDITIONABLE ] PACKAGE [schema.] package_name [ sharing_clause ] [ { default_collation_clause | invoker_rights_clause | accessible_by_clause }... ]  { IS | AS } package_item_list END [ package_name ] ;
+
+sharing_clause:
+    SHARING = { METADATA | NONE }
+	
+default_collation_clause:
+    DEFAULT COLLATION "collation_option"
+
+collation_option: 
+	USING_NLS_COMP
+
+invoker_rights_clause:
+    AUTHID [CURRENT_USER | DEFINER]
+	
+accessible_by_clause:
+    ACCESSIBLE BY ( accessor [, accessor ]... )
+	
+accessor:
+    [ unit_kind ] [schema.]unit_name 
+	
+unit_kind:
+    [ FUNCTION | PROCEDURE | PACKAGE | TRIGGER | TYPE ]
+	
+package_item_list:
+    { type_definition 
+    | cursor_declaration 
+    | item_declaration 
+    | package_function_declaration 
+    | package_procedure_declaration } 
+...
+</synopsis>
+</refsynopsisdiv>
+</refentry>

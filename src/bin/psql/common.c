@@ -1,7 +1,7 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  * Copyright (c) 2000-2025, PostgreSQL Global Development Group
  *
  * src/bin/psql/common.c
@@ -3601,7 +3601,6 @@ get_hostvariables(const char *sql, bool *error)
 	HostVariable *host = NULL;
 	char		*newsql = NULL;
 	char		*ptr = NULL;
-	int			j = 0;
 
 	*error = false;
 	if (!sql)
@@ -3610,12 +3609,13 @@ get_hostvariables(const char *sql, bool *error)
 	/* double write quote */
 	newsql = pg_malloc0(strlen(sql) * 2);	/* enough */
 	ptr = newsql;
-	while (sql[j] != '\0')
+
+	while (*sql != '\0')
 	{
-		if (sql[j] == '\'')
-			*ptr++ = sql[j];
-		*ptr++ = sql[j];
-		j++;
+		if (*sql == '\'')
+			*ptr++ = *sql;
+		*ptr++ = *sql;
+		sql++;
 	}
 	*ptr = '\0';
 
@@ -3695,7 +3695,6 @@ SendQuery_PBE(const char *query, HostVariable *hv)
 	PGTransactionStatusType transaction_status;
 	double		elapsed_msec = 0;
 	bool		OK = false;
-	int		i = 0;
 	bool		on_error_rollback_savepoint = false;
 	static bool on_error_rollback_warning = false;
 
@@ -3802,7 +3801,6 @@ SendQuery_PBE(const char *query, HostVariable *hv)
 		struct _variable **bindvar;
 		char	*p = NULL;
 		bool	missing = false;
-		int		j;
 		instr_time	before,
 					after;
 
@@ -3816,13 +3814,13 @@ SendQuery_PBE(const char *query, HostVariable *hv)
 		 * the order of detection in the Oracle error message is from the
 		 * back to the front.
 		 */
-		for (j = hv->length; j > 0; j--)
+		for (int i = hv->length; i > 0; i--)
 		{
-			p = hv->hostvars[j - 1].name;
+			p = hv->hostvars[i - 1].name;
 			p++;	/* skip colon */
-			bindvar[j - 1] = BindVariableExist(pset.vars, p);
+			bindvar[i - 1] = BindVariableExist(pset.vars, p);
 
-			if (bindvar[j - 1] == NULL)
+			if (bindvar[i - 1] == NULL)
 			{
 				missing= true;
 				break;
@@ -4004,7 +4002,7 @@ sendquery_cleanup:
 
 	/* reset \crosstabview trigger */
 	pset.crosstab_flag = false;
-	for (i = 0; i < lengthof(pset.ctv_args); i++)
+	for (int i = 0; i < lengthof(pset.ctv_args); i++)
 	{
 		pg_free(pset.ctv_args[i]);
 		pset.ctv_args[i] = NULL;

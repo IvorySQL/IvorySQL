@@ -8,7 +8,7 @@
  *
  * Authored by zhenmingyang@highgo.com, 20221221.
  *
- * Copyright (c) 2022-2025, IvorySQL Global Development Team
+ * Copyright (c) 2022-2026, IvorySQL Global Development Team
  *
  * Identification:
  *		src/bin/psql/psqlplusscan.l
@@ -47,7 +47,7 @@ static const PsqlScanKeyword psqlplus_keywords[] = {
 	PSQL_KEYWORD("variable", K_VARIABLE, UNRESERVED_PSQL_KEYWORD)
 };
 
-const int	NumKeywords = lengthof(psqlplus_keywords);
+static const int	NumKeywords = lengthof(psqlplus_keywords);
 
 /*
  * Set the type of YYSTYPE.

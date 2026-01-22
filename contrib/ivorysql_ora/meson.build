@@ -1,5 +1,5 @@
 # Copyright (c) 2022-2024, PostgreSQL Global Development Group
-# Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+# Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
 
 ivorysql_ora_sources = files(
   'src/ivorysql_ora.c',
@@ -23,9 +23,11 @@ ivorysql_ora_sources = files(
   'src/builtin_functions/datetime_datatype_functions.c',
   'src/builtin_functions/numeric_datatype_functions.c',
   'src/builtin_functions/misc_functions.c',
+  'src/builtin_packages/dbms_output/dbms_output.c',
   'src/merge/ora_merge.c',
   'src/sysview/sysview_functions.c',
   'src/xml_functions/ora_xml_functions.c',
+  'src/builtin_packages/dbms_utility/dbms_utility.c',
 )
 
 if host_system == 'windows'

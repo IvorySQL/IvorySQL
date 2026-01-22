@@ -20,7 +20,7 @@
  *
  * Authored by lanke@highgo.com, 20220819.
  *
- * Copyright (c) 2022-2025, IvorySQL Global Development Team
+ * Copyright (c) 2022-2026, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *        src/backend/utils/misc/ivy_guc.c
@@ -34,9 +34,9 @@ int			identifier_case_switch = INTERCHANGE;
 bool		identifier_case_from_pg_dump = false;
 bool		enable_case_switch = true;
 
-char	   *nls_territory = "AMERICA";
-char	   *nls_currency = "$";
-char	   *nls_iso_currency = "AMERICA";
+static char	   *nls_territory = "AMERICA";
+static char	   *nls_currency = "$";
+static char	   *nls_iso_currency = "AMERICA";
 
 bool		enable_emptystring_to_NULL = false;
 

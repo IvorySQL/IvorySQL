@@ -3,7 +3,7 @@
  * pl_exec.c		- Executor for the PL/iSQL
  *			  procedural language
  *
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -43,6 +43,7 @@
 #include "pl_subproc_function.h"
 #include "pl_package.h"
 #include "pl_exception_type.h"
+#include "pl_autonomous.h"
 #include "storage/proc.h"
 #include "tcop/cmdtag.h"
 #include "tcop/pquery.h"
@@ -113,6 +114,13 @@ static SimpleEcontextStackEntry *simple_econtext_stack = NULL;
  * same way described above for shared_simple_eval_estate.)
  */
 static ResourceOwner shared_simple_eval_resowner = NULL;
+
+/*
+ * Pointer to the estate currently handling an exception. This is used by
+ * DBMS_UTILITY.FORMAT_ERROR_BACKTRACE to access the exception context from
+ * within the exception handler, even when nested function calls occur.
+ */
+static PLiSQL_execstate *exception_handling_estate = NULL;
 
 /*
  * Memory management within a plisql function generally works with three
@@ -487,24 +495,30 @@ static void plisql_anonymous_return_out_parameter(PLiSQL_execstate * estate, PLi
 
 
 
-/* ----------
- * plisql_exec_function	Called by the call handler for
- *				function execution.
+/**
+ * Execute a PL/iSQL function or anonymous DO block and produce its return Datum.
  *
- * This is also used to execute inline code blocks (DO blocks).  The only
- * difference that this code is aware of is that for a DO block, we want
- * to use a private simple_eval_estate and a private simple_eval_resowner,
- * which are created and passed in by the caller.  For regular functions,
- * pass NULL, which implies using shared_simple_eval_estate and
- * shared_simple_eval_resowner.  (When using a private simple_eval_estate,
- * we must also use a private cast hashtable, but that's taken care of
- * within plisql_estate_setup.)
- * procedure_resowner is a resowner that will survive for the duration
- * of execution of this function/procedure.  It is needed only if we
- * are doing non-atomic execution and there are CALL or DO statements
- * in the function; otherwise it can be NULL.  We use it to hold refcounts
- * on the CALL/DO statements' plans.
- * ----------
+ * Sets up execution state, initializes local datums from the function definition
+ * and call arguments, executes the top-level PL/iSQL block (including support
+ * for autonomous transactions and set-returning results), coerces the return
+ * value to the declared result type as required, handles OUT/INOUT parameters
+ * for anonymous blocks, and performs necessary cleanup of evaluation contexts
+ * and temporary state.
+ *
+ * @param func The PLiSQL_function descriptor to execute.
+ * @param fcinfo Call context and argument/return storage (FunctionCallInfo).
+ *               Must be non-NULL for executable calls.
+ * @param simple_eval_estate Optional EState to use for simple-expression
+ *               evaluation; pass NULL to use the session-shared evaluator.
+ * @param simple_eval_resowner Optional ResourceOwner associated with
+ *               simple_eval_estate; pass NULL when using the shared evaluator.
+ * @param procedure_resowner Optional ResourceOwner that will survive for the
+ *               duration of non-atomic CALL/DO execution; may be NULL.
+ * @param atomic True when execution should be treated as atomic (no persistent
+ *               procedure-level resources are retained).
+ *
+ * @returns The Datum holding the function's return value. The nullness of the
+ *          result is indicated by fcinfo->isnull.
  */
 Datum
 plisql_exec_function(PLiSQL_function * func, FunctionCallInfo fcinfo,
@@ -518,8 +532,13 @@ plisql_exec_function(PLiSQL_function * func, FunctionCallInfo fcinfo,
 	int			i;
 	int			rc;
 
-	char		function_from = plisql_function_from(fcinfo);
+	char		function_from;
 	bool		anonymous_have_outparam = false;
+
+	/* fcinfo must be non-NULL for executable calls */
+	Assert(fcinfo != NULL);
+
+	function_from = plisql_function_from(fcinfo);
 
 	/*
 	 * Setup the execution state
@@ -674,6 +693,34 @@ plisql_exec_function(PLiSQL_function * func, FunctionCallInfo fcinfo,
 	 */
 	if (*plisql_plugin_ptr && (*plisql_plugin_ptr)->func_beg)
 		((*plisql_plugin_ptr)->func_beg) (&estate, func);
+
+	/*
+	 * If this is an autonomous transaction function, delegate to dblink.
+	 * Skip if we're already inside an autonomous transaction (prevents recursion).
+	 * Also skip if we're being called during procedure compilation/validation.
+	 */
+	if (func->fn_is_autonomous &&
+		!plisql_inside_autonomous_transaction &&
+		fcinfo != NULL &&
+		fcinfo->flinfo != NULL &&
+		fcinfo->flinfo->fn_oid == func->fn_oid)  /* Real call, not validation */
+	{
+		Datum result;
+
+		result = plisql_exec_autonomous_function(func, fcinfo,
+												 simple_eval_estate,
+												 simple_eval_resowner);
+
+		/* Let the instrumentation plugin see function end */
+		if (*plisql_plugin_ptr && (*plisql_plugin_ptr)->func_end)
+			((*plisql_plugin_ptr)->func_end) (&estate, func);
+
+		/* Clean up and return */
+		plisql_destroy_econtext(&estate);
+		exec_eval_cleanup(&estate);
+		error_context_stack = plerrcontext.previous;
+		return result;
+	}
 
 	/*
 	 * Now call the toplevel block of statements
@@ -1938,6 +1985,7 @@ exec_stmt_block(PLiSQL_execstate * estate, PLiSQL_stmt_block * block)
 		ResourceOwner oldowner = CurrentResourceOwner;
 		ExprContext *old_eval_econtext = estate->eval_econtext;
 		ErrorData  *save_cur_error = estate->cur_error;
+		PLiSQL_execstate *save_exception_handling_estate = exception_handling_estate;
 		MemoryContext stmt_mcontext;
 
 		estate->err_text = gettext_noop("during statement block entry");
@@ -2089,7 +2137,19 @@ exec_stmt_block(PLiSQL_execstate * estate, PLiSQL_stmt_block * block)
 
 					estate->err_text = NULL;
 
+					/*
+					 * Set exception_handling_estate so that functions called
+					 * from within the exception handler (like DBMS_UTILITY
+					 * package functions) can access the exception context.
+					 */
+					exception_handling_estate = estate;
+
 					rc = exec_stmts(estate, exception->action);
+
+					/*
+					 * Restore exception_handling_estate after handler execution.
+					 */
+					exception_handling_estate = save_exception_handling_estate;
 
 					break;
 				}
@@ -7327,10 +7387,38 @@ plisql_param_eval_var_ro(ExprState *state, ExprEvalStep *op,
 	/*
 	 * Inlined version of exec_eval_datum() ... and while we're at it, force
 	 * expanded datums to read-only.
+	 *
+	 * IMPORTANT (Bug #1124 fix): For varlena types that are NOT expanded
+	 * objects, we must make a copy of the value into the eval_mcontext,
+	 * rather than just returning a pointer to the variable's storage. This is
+	 * because nested function calls (a PL/iSQL feature) can happen during
+	 * expression evaluation, and when they return, they copy back their global
+	 * variables to the parent. This copy-back operation frees the parent's old
+	 * variable storage, which would leave us with a dangling pointer if we had
+	 * just returned var->value directly.
+	 *
+	 * For expanded objects (like composite types), we use
+	 * MakeExpandedObjectReadOnly which handles them properly.
+	 *
+	 * By copying to eval_mcontext here, we ensure the value survives for the
+	 * duration of the expression evaluation, even if the original variable
+	 * storage is freed and reallocated.
 	 */
-	*op->resvalue = MakeExpandedObjectReadOnly(var->value,
-											   var->isnull,
-											   -1);
+	if (!var->isnull && var->datatype->typlen == -1 &&
+		!VARATT_IS_EXTERNAL_EXPANDED(DatumGetPointer(var->value)))
+	{
+		/* Non-expanded varlena type - make a copy in eval_mcontext */
+		MemoryContext oldcxt = MemoryContextSwitchTo(get_eval_mcontext(estate));
+		*op->resvalue = datumCopy(var->value, false, -1);
+		MemoryContextSwitchTo(oldcxt);
+	}
+	else
+	{
+		/* Expanded object, pass-by-value, or null - use standard handling */
+		*op->resvalue = MakeExpandedObjectReadOnly(var->value,
+												   var->isnull,
+												   -1);
+	}
 	*op->resnull = var->isnull;
 
 	/* safety check -- an assertion should be sufficient */
@@ -10000,4 +10088,107 @@ plisql_anonymous_return_out_parameter(PLiSQL_execstate * estate, PLiSQL_function
 	estate->retistuple = true;
 
 	return;
+}
+
+/*
+ * plisql_get_current_exception_context
+ *
+ * Returns the current exception context string if we're in an exception handler,
+ * otherwise returns NULL. This is used by Oracle-compatible functions like
+ * DBMS_UTILITY.FORMAT_ERROR_BACKTRACE.
+ *
+ * The returned string is managed by PL/iSQL and should not be freed by the caller.
+ */
+const char *
+plisql_get_current_exception_context(void)
+{
+	if (exception_handling_estate != NULL &&
+		exception_handling_estate->cur_error != NULL)
+		return exception_handling_estate->cur_error->context;
+	return NULL;
+}
+
+/*
+ * plisql_get_current_exception_message
+ *
+ * Returns the current exception message if we're in an exception handler,
+ * otherwise returns NULL. This is used by DBMS_UTILITY.FORMAT_ERROR_STACK.
+ */
+const char *
+plisql_get_current_exception_message(void)
+{
+	if (exception_handling_estate != NULL &&
+		exception_handling_estate->cur_error != NULL)
+		return exception_handling_estate->cur_error->message;
+	return NULL;
+}
+
+/*
+ * plisql_get_current_exception_sqlerrcode
+ *
+ * Returns the current exception SQLSTATE error code if we're in an exception handler,
+ * otherwise returns 0. This is used by DBMS_UTILITY.FORMAT_ERROR_STACK.
+ */
+int
+plisql_get_current_exception_sqlerrcode(void)
+{
+	if (exception_handling_estate != NULL &&
+		exception_handling_estate->cur_error != NULL)
+		return exception_handling_estate->cur_error->sqlerrcode;
+	return 0;
+}
+
+/*
+ * plisql_get_call_stack
+ *
+ * Returns the current PL/iSQL call stack as a formatted string.
+ * This walks the error_context_stack looking for PL/iSQL function contexts.
+ * Used by DBMS_UTILITY.FORMAT_CALL_STACK.
+ *
+ * Returns NULL if not inside any PL/iSQL function.
+ * The returned string is palloc'd in the current memory context.
+ */
+char *
+plisql_get_call_stack(void)
+{
+	ErrorContextCallback *context;
+	StringInfoData buf;
+	bool found_any = false;
+
+	initStringInfo(&buf);
+
+	/* Walk the error context stack */
+	for (context = error_context_stack; context != NULL; context = context->previous)
+	{
+		/* Check if this is a PL/iSQL execution context */
+		if (context->callback == plisql_exec_error_callback)
+		{
+			PLiSQL_execstate *estate = (PLiSQL_execstate *) context->arg;
+			int lineno = 0;
+
+			/* Get current line number */
+			if (estate->err_stmt != NULL)
+				lineno = estate->err_stmt->lineno;
+			else if (estate->err_var != NULL)
+				lineno = estate->err_var->lineno;
+
+			/* Add to stack output */
+			if (found_any)
+				appendStringInfoChar(&buf, '\n');
+
+			appendStringInfo(&buf, "%p\t%d\t%s",
+							 (void *) estate->func,
+							 lineno,
+							 estate->func->fn_signature);
+			found_any = true;
+		}
+	}
+
+	if (!found_any)
+	{
+		pfree(buf.data);
+		return NULL;
+	}
+
+	return buf.data;
 }

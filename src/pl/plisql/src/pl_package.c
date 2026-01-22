@@ -18,7 +18,7 @@
  * Abstract:
  * 	 Executor for the PLiSQL package
  *
- * Copyright (c) 2024-2025, IvorySQL Global Development Team
+ * Copyright (c) 2024-2026, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *    src/pl/plisql/src/pl_package.c
@@ -2730,9 +2730,7 @@ static void
 plisql_remove_function_references(PLiSQL_function *func, PackageCacheItem *item)
 {
 	PLiSQL_package *psource = (PLiSQL_package *) item->source;
-	int pre_len;
-
-	pre_len = list_length(psource->source.funclist);
+	int pre_len = list_length(psource->source.funclist);
 
 	psource->source.funclist = list_delete_ptr(psource->source.funclist, (void *) func);
 
