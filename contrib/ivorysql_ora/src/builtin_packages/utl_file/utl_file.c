@@ -394,7 +394,7 @@ ora_utl_file_fclose_all(PG_FUNCTION_ARGS)
 }
 
 /*
- * sys.ora_utl_file_dir security .. is solved with aux. table.
+ * sys.utl_file_directory security .. is solved with aux. table.
  *
  * Raise exception if don't find string in table.
  */
@@ -409,7 +409,7 @@ check_secure_locality(const char *path)
 	values[0] = CStringGetTextDatum(path);
 
 	/*
-	 * SELECT 1 FROM sys.ora_utl_file_dir
+	 * SELECT 1 FROM sys.utl_file_directory
 	 *   WHERE CASE WHEN substring(dir from '.$') = '/' THEN
 	 *     substring($1, 1, length(dir)) = dir
 	 *   ELSE
@@ -432,7 +432,7 @@ check_secure_locality(const char *path)
 		 * the '_' and '%' special handling.
 		 */
 		SPIPlanPtr p = SPI_prepare(
-		    "SELECT 1 FROM sys.ora_utl_file_dir"
+		    "SELECT 1 FROM sys.utl_file_directory"
 	 	        " WHERE CASE WHEN substring(dir from '.$') = '/' THEN"
 	 	        "  substring($1, 1, length(dir)) = dir"
 	 	        " ELSE"
@@ -456,7 +456,7 @@ check_secure_locality(const char *path)
 			(errcode(ERRCODE_RAISE_EXCEPTION),
 			 errmsg(INVALID_PATH),
 			 errdetail("File location is invalid."),
-			 errhint("locality is not found in sys.ora_utl_file_dir table")));
+			 errhint("locality is not found in sys.utl_file_directory table")));
 	SPI_finish();
 }
 
@@ -485,7 +485,7 @@ safe_named_location(text *location)
 
 		/* Don't use LIKE not to escape '_' and '%' */
 		SPIPlanPtr p = SPI_prepare(
-		    "SELECT dir FROM sys.ora_utl_file_dir WHERE dirname = $1",
+		    "SELECT dir FROM sys.utl_file_directory WHERE dirname = $1",
 		    1, argtypes);
 
 		if (p == NULL || (plan = SPI_saveplan(p)) == NULL)

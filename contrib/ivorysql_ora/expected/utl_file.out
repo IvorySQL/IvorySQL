@@ -1,5 +1,5 @@
 -- insert few directory objects for testing
-INSERT INTO sys.ora_utl_file_dir VALUES('/tmp/','TMP_DIR');
+INSERT INTO sys.utl_file_directory(dir, dirname) VALUES('/tmp/','TMP_DIR');
 -- test cases for UTL_FILE.FOPEN, UTL_FILE.FCLOSE, UTL_FILE.IS_OPEN
 DECLARE
     ft sys.ORA_UTL_FILE_FILE_TYPE;
@@ -32,7 +32,7 @@ END;
 /
 ERROR:  INVALID_PATH
 DETAIL:  File location is invalid.
-HINT:  locality is not found in sys.ora_utl_file_dir table
+HINT:  locality is not found in sys.utl_file_directory table
 CONTEXT:  PL/iSQL function fopen line 22 at assignment
 PL/iSQL function inline_code_block line 6 at assignment
 -- test case for UTL_FILE.FCLOSE_ALL

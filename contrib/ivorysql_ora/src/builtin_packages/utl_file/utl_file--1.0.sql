@@ -40,10 +40,13 @@ LANGUAGE C VOLATILE;
 
 -- for UTL_FILE Security Model compliance
 /* table carry all safe directories */
-CREATE TABLE sys.ora_utl_file_dir(dir text, dirname text unique);
+CREATE TABLE IF NOT EXISTS sys.utl_file_directory(
+    dir TEXT,
+    dirname name PRIMARY KEY
+);
 /* allow only read on utl_file.utl_file_dir to unprivileged users */
-REVOKE ALL ON sys.ora_utl_file_dir FROM PUBLIC;
-GRANT SELECT ON TABLE sys.ora_utl_file_dir TO PUBLIC;
+REVOKE ALL ON sys.utl_file_directory FROM PUBLIC;
+GRANT SELECT ON TABLE sys.utl_file_directory TO PUBLIC;
 
 -- ORA_UTL_FILE_FILE_TYPE Definition
 -- XXX - I could not find a way to define a type inside a package and use it
