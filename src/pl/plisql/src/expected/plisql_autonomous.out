@@ -348,7 +348,7 @@ SELECT test_function_error();
 ERROR:  relation "nonexistent_table" does not exist
 CONTEXT:  PL/iSQL function test_function_error() line 6 at SQL statement
 while executing query on unnamed dblink connection
-SQL statement "SELECT * FROM dblink('dbname=''pl_regression'' port=65312', 'SET ivorysql.compatible_mode = oracle; SET plisql.inside_autonomous_transaction = true; SELECT public.test_function_error();') AS t(result pg_catalog.int4)"
+SQL statement "SELECT * FROM dblink('dbname=''pl_regression'' port=58928', 'SET ivorysql.compatible_mode = oracle; SET plisql.inside_autonomous_transaction = true; SELECT public.test_function_error();') AS t(result pg_catalog.int4)"
 PL/iSQL function test_function_error() during function entry
 -- \set ON_ERROR_STOP on
 --
