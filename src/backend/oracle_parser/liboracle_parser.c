@@ -313,8 +313,9 @@ token_is_col_id(int token)
 			break;
 	}
 
-	if (OraScanKeywordCategories[i]== UNRESERVED_KEYWORD ||
-		OraScanKeywordCategories[i]== COL_NAME_KEYWORD)
+	if (i < OraScanKeywords.num_keywords &&
+		(OraScanKeywordCategories[i]== UNRESERVED_KEYWORD ||
+		OraScanKeywordCategories[i]== COL_NAME_KEYWORD))
 		return true;
 	return false;
 }
