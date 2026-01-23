@@ -128,7 +128,7 @@ static uint32 reserve_slot(FILE *fd, int max_linesize, int encoding);
 #define CHECK_LINESIZE(max_linesize) \
 	do { \
 		if ((max_linesize) < 1 || (max_linesize) > MAX_LINESIZE) \
-			CUSTOM_EXCEPTION(INVALID_MAXLINESIZE, "The MAX_LINESIZE value for FOPEN() is invalid; it should be within the range 1 to 32767."); \
+			CUSTOM_EXCEPTION(INVALID_MAXLINESIZE, "The max_linesize value for FOPEN() is invalid; it should be within the range 1 to 32767."); \
 	} while(0)
 
 #define CHECK_ERRNO_PUT()  \
@@ -287,7 +287,7 @@ ora_utl_file_fopen(PG_FUNCTION_ARGS)
 		encoding = GetDatabaseEncoding();
 
 	if (VARSIZE(open_mode) - VARHDRSZ != 1)
-		CUSTOM_EXCEPTION(INVALID_MODE, "open mode is different than [R,W,A]");
+		CUSTOM_EXCEPTION(INVALID_MODE, "The open_mode parameter in FOPEN is invalid.");
 
 	switch (*((char*)VARDATA(open_mode)))
 	{
@@ -307,7 +307,7 @@ ora_utl_file_fopen(PG_FUNCTION_ARGS)
 			break;
 
 		default:
-			CUSTOM_EXCEPTION(INVALID_MODE, "open mode is different than [R,W,A]");
+			CUSTOM_EXCEPTION(INVALID_MODE, "The open_mode parameter in FOPEN is invalid.");
 	}
 
 	fullname = get_safe_path(PG_GETARG_TEXT_P(0), PG_GETARG_TEXT_P(1));
