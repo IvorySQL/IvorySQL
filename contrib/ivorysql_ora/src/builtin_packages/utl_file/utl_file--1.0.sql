@@ -89,15 +89,28 @@ CREATE OR REPLACE PACKAGE UTL_FILE IS
     )
     RETURN ORA_UTL_FILE_FILE_TYPE;
 
+    FUNCTION FOPEN_NCHAR(
+        location IN VARCHAR2,
+        filename IN VARCHAR2,
+        open_mode IN VARCHAR2,
+        max_linesize IN INTEGER DEFAULT 1024
+    )
+    RETURN ORA_UTL_FILE_FILE_TYPE;
+
     FUNCTION IS_OPEN(
         file IN ORA_UTL_FILE_FILE_TYPE
     )
     RETURN BOOLEAN;
-    
+
     PROCEDURE PUT_LINE(
         file IN ORA_UTL_FILE_FILE_TYPE,
         buffer IN VARCHAR2,
         autoflush IN BOOLEAN
+    );
+
+    PROCEDURE PUT_LINE_NCHAR(
+        file IN ORA_UTL_FILE_FILE_TYPE,
+        buffer IN TEXT -- use TEXT as NVARCHAR2 is not supported yet
     );
 END UTL_FILE;
 
@@ -128,6 +141,19 @@ CREATE OR REPLACE PACKAGE BODY UTL_FILE IS
         RETURN file;
     END;
 
+    FUNCTION FOPEN_NCHAR(
+        location IN VARCHAR2,
+        filename IN VARCHAR2,
+        open_mode IN VARCHAR2,
+        max_linesize IN INTEGER DEFAULT 1024
+    )
+    RETURN ORA_UTL_FILE_FILE_TYPE IS
+    file ORA_UTL_FILE_FILE_TYPE;
+    BEGIN
+        file.id := sys.ora_utl_file_fopen(location, filename, open_mode, max_linesize, 'UTF8');
+        RETURN file;
+    END;
+
     FUNCTION IS_OPEN(
         file IN ORA_UTL_FILE_FILE_TYPE
     )
@@ -145,5 +171,15 @@ CREATE OR REPLACE PACKAGE BODY UTL_FILE IS
         status BOOLEAN;
     BEGIN
         SELECT sys.ora_utl_file_put_line(file.id, buffer, autoflush) INTO status;
+    END;
+
+    PROCEDURE PUT_LINE_NCHAR(
+        file IN ORA_UTL_FILE_FILE_TYPE,
+        buffer IN TEXT
+    ) IS
+    DECLARE
+        status BOOLEAN;
+    BEGIN
+        SELECT sys.ora_utl_file_put_line(file.id, buffer, true) INTO status;
     END;
 END UTL_FILE;
