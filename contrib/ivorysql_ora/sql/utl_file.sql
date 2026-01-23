@@ -1,4 +1,4 @@
--- insert few directory objects for testing
+-- insert a few directory objects for testing
 INSERT INTO sys.utl_file_directory(dirname, dir)
 SELECT 'data_directory', current_setting('data_directory');
 
