@@ -813,16 +813,32 @@ plisql_free_function_memory(PLiSQL_function * func,
 			/*
 			 * if there is no action, the lastoutvardno and lastoutinlinefno must be invalid,
 			 * we should not free its context.
+			 *
+			 * IMPORTANT: We must collect all entries in a list first before deleting them.
+			 * Deleting entries during hash_seq_search() iteration can cause undefined
+			 * behavior - entries may be skipped or the iterator may become corrupted.
 			 */
 			if (subprocfunc->function->action != NULL)
 			{
-				hash_seq_init(&status, subprocfunc->poly_tab);
+				List	   *entries_to_delete = NIL;
+				ListCell   *lc;
 
+				/* First pass: collect all entries from the hash table */
+				hash_seq_init(&status, subprocfunc->poly_tab);
 				while ((entry = (plisql_HashEnt *) hash_seq_search(&status)) != NULL)
 				{
+					entries_to_delete = lappend(entries_to_delete, entry);
+				}
+
+				/* Second pass: delete each collected entry */
+				foreach(lc, entries_to_delete)
+				{
+					entry = (plisql_HashEnt *) lfirst(lc);
 					hash_search(subprocfunc->poly_tab, (void *) (&(entry->key)), HASH_REMOVE, NULL);
 					plisql_free_function_memory(entry->function, subprocfunc->lastoutvardno, subprocfunc->lastoutsubprocfno);
 				}
+
+				list_free(entries_to_delete);
 			}
 			hash_destroy(subprocfunc->poly_tab);
 		}
