@@ -13,6 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
+ * This file contains code borrowed from orafce by Pavel Stehule (0-Clause BSD)
+ * 
  * utl_file.c
  *
  * Implementation of Oracle's UTL_FILE package functions.
