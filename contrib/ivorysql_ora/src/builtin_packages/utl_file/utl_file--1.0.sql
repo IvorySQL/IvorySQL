@@ -37,12 +37,32 @@ RETURNS void
 AS 'MODULE_PATHNAME','ora_utl_file_fclose_all'
 LANGUAGE C VOLATILE;
 
+CREATE FUNCTION sys.ora_utl_file_put_line(file INTEGER, buffer text)
+RETURNS bool
+AS 'MODULE_PATHNAME','ora_utl_file_put_line'
+LANGUAGE C VOLATILE;
+
+CREATE FUNCTION sys.ora_utl_file_put_line(file INTEGER, buffer text, autoflush bool)
+RETURNS bool
+AS 'MODULE_PATHNAME','ora_utl_file_put_line'
+LANGUAGE C VOLATILE;
+
+CREATE FUNCTION sys.ora_utl_file_put_line(file INTEGER, buffer anyelement)
+RETURNS bool
+AS $$SELECT sys.ora_utl_file_put_line($1, $2::text); $$
+LANGUAGE SQL VOLATILE;
+
+CREATE FUNCTION sys.ora_utl_file_put_line(file INTEGER, buffer anyelement, autoflush bool)
+RETURNS bool
+AS $$SELECT sys.ora_utl_file_put_line($1, $2::text, autoflush); $$
+LANGUAGE SQL VOLATILE;
+
 
 -- for UTL_FILE Security Model compliance
 /* table carry all safe directories */
 CREATE TABLE IF NOT EXISTS sys.utl_file_directory(
-    dir TEXT,
-    dirname name PRIMARY KEY
+    dirname name PRIMARY KEY,
+    dir TEXT
 );
 /* allow only read on utl_file.utl_file_dir to unprivileged users */
 REVOKE ALL ON sys.utl_file_directory FROM PUBLIC;
@@ -56,7 +76,7 @@ CREATE TYPE sys.ORA_UTL_FILE_FILE_TYPE AS(id INTEGER, datatype INTEGER, byte_mod
 -- UTL_FILE package Header
 CREATE OR REPLACE PACKAGE UTL_FILE IS
     PROCEDURE FCLOSE(
-        ft IN OUT ORA_UTL_FILE_FILE_TYPE
+        file IN OUT ORA_UTL_FILE_FILE_TYPE
     );
 
     PROCEDURE FCLOSE_ALL;
@@ -70,18 +90,24 @@ CREATE OR REPLACE PACKAGE UTL_FILE IS
     RETURN ORA_UTL_FILE_FILE_TYPE;
 
     FUNCTION IS_OPEN(
-        ft IN ORA_UTL_FILE_FILE_TYPE
+        file IN ORA_UTL_FILE_FILE_TYPE
     )
     RETURN BOOLEAN;
+    
+    PROCEDURE PUT_LINE(
+        file IN ORA_UTL_FILE_FILE_TYPE,
+        buffer IN VARCHAR2,
+        autoflush IN BOOLEAN
+    );
 END UTL_FILE;
 
 -- UTL_FILE package Body
 CREATE OR REPLACE PACKAGE BODY UTL_FILE IS
     PROCEDURE FCLOSE(
-        ft IN OUT ORA_UTL_FILE_FILE_TYPE
+        file IN OUT ORA_UTL_FILE_FILE_TYPE
     ) IS
     BEGIN
-        PERFORM sys.ora_utl_file_fclose(ft.id);
+        PERFORM sys.ora_utl_file_fclose(file.id);
     END;
 
     PROCEDURE FCLOSE_ALL IS
@@ -96,17 +122,28 @@ CREATE OR REPLACE PACKAGE BODY UTL_FILE IS
         max_linesize IN INTEGER DEFAULT 1024
     )
     RETURN ORA_UTL_FILE_FILE_TYPE IS
-    ft ORA_UTL_FILE_FILE_TYPE;
+    file ORA_UTL_FILE_FILE_TYPE;
     BEGIN
-        ft.id := sys.ora_utl_file_fopen(location, filename, open_mode, max_linesize);
-        RETURN ft;
+        file.id := sys.ora_utl_file_fopen(location, filename, open_mode, max_linesize);
+        RETURN file;
     END;
 
     FUNCTION IS_OPEN(
-        ft IN ORA_UTL_FILE_FILE_TYPE
+        file IN ORA_UTL_FILE_FILE_TYPE
     )
     RETURN boolean IS
     BEGIN
-        RETURN sys.ora_utl_file_is_open(ft.id);
+        RETURN sys.ora_utl_file_is_open(file.id);
+    END;
+
+    PROCEDURE PUT_LINE(
+        file IN ORA_UTL_FILE_FILE_TYPE,
+        buffer IN VARCHAR2,
+        autoflush IN BOOLEAN
+    ) IS
+    DECLARE
+        status BOOLEAN;
+    BEGIN
+        SELECT sys.ora_utl_file_put_line(file.id, buffer, autoflush) INTO status;
     END;
 END UTL_FILE;

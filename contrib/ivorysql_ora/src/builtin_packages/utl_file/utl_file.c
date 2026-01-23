@@ -61,12 +61,23 @@ PG_FUNCTION_INFO_V1(ora_utl_file_fopen);
 PG_FUNCTION_INFO_V1(ora_utl_file_is_open);
 PG_FUNCTION_INFO_V1(ora_utl_file_fclose);
 PG_FUNCTION_INFO_V1(ora_utl_file_fclose_all);
+PG_FUNCTION_INFO_V1(ora_utl_file_put_line);
 
 /* Helper functions */
 static void check_secure_locality(const char *path);
 static char *safe_named_location(text *location);
 static char *get_safe_path(text *location, text *filename);
 static void close_all_files(void);
+static void put_lines(FILE *fd, int lines);
+static FILE *do_put(PG_FUNCTION_ARGS);
+static size_t
+do_write(PG_FUNCTION_ARGS, int n, FILE *fd,
+	size_t max_linesize, int encoding);
+static FILE *
+get_file_handle_from_slot(uint32 sid, size_t *max_linesize, int *encoding);
+static void do_flush(FILE *fd);
+static char *
+encode_text(int encoding, text *t, size_t *length);
 
 /* Cleanup callback functions */
 static void BeforeShmemExit_Files(int code, Datum arg);
@@ -118,6 +129,18 @@ static uint32 reserve_slot(FILE *fd, int max_linesize, int encoding);
 			CUSTOM_EXCEPTION(INVALID_MAXLINESIZE, "The MAX_LINESIZE value for FOPEN() is invalid; it should be within the range 1 to 32767."); \
 	} while(0)
 
+#define CHECK_ERRNO_PUT()  \
+	switch (errno) \
+	{ \
+		case EBADF: \
+			CUSTOM_EXCEPTION(INVALID_OPERATION, "File could not be opened or operated on as requested."); \
+			break; \
+		default: \
+			STRERROR_EXCEPTION(WRITE_ERROR); \
+	}
+
+#define PG_GETARG_IF_EXISTS(n, type, defval) \
+	((PG_NARGS() > (n) && !PG_ARGISNULL(n)) ? PG_GETARG_##type(n) : (defval))
 
 typedef struct FileSlot
 {
@@ -393,6 +416,24 @@ ora_utl_file_fclose_all(PG_FUNCTION_ARGS)
 	PG_RETURN_VOID();
 }
 
+Datum
+ora_utl_file_put_line(PG_FUNCTION_ARGS)
+{
+	FILE   *fd;
+	bool	autoflush;
+
+	fd = do_put(fcinfo);
+
+	autoflush = PG_GETARG_IF_EXISTS(2, BOOL, false);
+
+	put_lines(fd, 1);
+
+	if (autoflush)
+		do_flush(fd);
+
+	PG_RETURN_BOOL(true);
+}
+
 /*
  * sys.utl_file_directory security .. is solved with aux. table.
  *
@@ -646,4 +687,106 @@ static void
 BeforeShmemExit_Files(int code, Datum arg)
 {
 	close_all_files();
+}
+
+static void
+put_lines(FILE *fd, int lines)
+{
+	for (int i = 0; i < lines; i++)
+	{
+		if (fputc('\n', fd) == EOF)
+		    CHECK_ERRNO_PUT();
+	}
+}
+
+static FILE *
+do_put(PG_FUNCTION_ARGS)
+{
+	FILE   *fd;
+	size_t	max_linesize = 0;
+	int		encoding = 0;
+
+	if (PG_ARGISNULL(0))
+		INVALID_FILEHANDLE_EXCEPTION();
+
+	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), &max_linesize, &encoding);
+
+	NOT_NULL_ARG(1);
+	do_write(fcinfo, 1, fd, max_linesize, encoding);
+	return fd;
+}
+
+/* fwrite(encode(args[n], encoding), fd) */
+static size_t
+do_write(PG_FUNCTION_ARGS, int n, FILE *fd, size_t max_linesize, int encoding)
+{
+	text	*arg = PG_GETARG_TEXT_P(n);
+	char	*str;
+	size_t	len;
+
+	str = encode_text(encoding, arg, &len);
+	CHECK_LENGTH(len);
+
+	if (fwrite(str, 1, len, fd) != len)
+		CHECK_ERRNO_PUT();
+
+	if (VARDATA(arg) != str)
+		pfree(str);
+	PG_FREE_IF_COPY(arg, n);
+
+	return len;
+}
+
+/* 
+ * Returns stored FILE handle
+ * Also, sets max_linesize and encoding
+ */
+static FILE *
+get_file_handle_from_slot(uint32 sid, size_t *max_linesize, int *encoding)
+{
+	int i;
+
+	if (sid == INVALID_SLOTID)
+		INVALID_FILEHANDLE_EXCEPTION();
+
+	for (i = 0; i < MAX_SLOTS; i++)
+	{
+		if (slots[i].id == sid)
+		{
+			if (max_linesize)
+				*max_linesize = slots[i].max_linesize;
+			if (encoding)
+				*encoding = slots[i].encoding;
+			return slots[i].fd;
+		}
+	}
+
+	INVALID_FILEHANDLE_WARNING();
+	return NULL;
+}
+
+static void
+do_flush(FILE *fd)
+{
+	if (fflush(fd) != 0)
+	{
+		if (errno == EBADF)
+			CUSTOM_EXCEPTION(INVALID_OPERATION, "File could not be opened or operated on as requested.");
+		else
+			STRERROR_EXCEPTION(WRITE_ERROR);
+	}
+}
+
+/* encode(t, encoding) */
+static char *
+encode_text(int encoding, text *t, size_t *length)
+{
+	char	   *src = VARDATA_ANY(t);
+	char	   *encoded;
+
+	encoded = (char *) pg_do_encoding_conversion((unsigned char *) src,
+					VARSIZE_ANY_EXHDR(t), GetDatabaseEncoding(), encoding);
+
+	*length = (src == encoded ? VARSIZE_ANY_EXHDR(t) : strlen(encoded));
+	return encoded;
 }
