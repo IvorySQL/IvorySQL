@@ -64,9 +64,17 @@ PG_FUNCTION_INFO_V1(ora_utl_file_fopen);
 PG_FUNCTION_INFO_V1(ora_utl_file_is_open);
 PG_FUNCTION_INFO_V1(ora_utl_file_fclose);
 PG_FUNCTION_INFO_V1(ora_utl_file_fclose_all);
+PG_FUNCTION_INFO_V1(ora_utl_file_fcopy);
+PG_FUNCTION_INFO_V1(ora_utl_file_fflush);
+PG_FUNCTION_INFO_V1(ora_utl_file_fgetattr);
 PG_FUNCTION_INFO_V1(ora_utl_file_fremove);
+PG_FUNCTION_INFO_V1(ora_utl_file_frename);
+PG_FUNCTION_INFO_V1(ora_utl_file_fseek);
+PG_FUNCTION_INFO_V1(ora_utl_file_ftell);
 PG_FUNCTION_INFO_V1(ora_utl_file_get_line);
+PG_FUNCTION_INFO_V1(ora_utl_file_new_line);
 PG_FUNCTION_INFO_V1(ora_utl_file_put);
+PG_FUNCTION_INFO_V1(ora_utl_file_putf);
 PG_FUNCTION_INFO_V1(ora_utl_file_put_line);
 PG_FUNCTION_INFO_V1(ora_utl_file_put_raw);
 
@@ -77,6 +85,8 @@ static text *
 get_line(FILE *fd, size_t max_linesize, int encoding, bool *iseof);
 static char *get_safe_path(text *location, text *filename);
 static void close_all_files(void);
+static int copy_text_file(FILE *srcfile, FILE *dstfile,
+						  int start_line, int end_line);
 static void put_lines(FILE *fd, int lines);
 static FILE *do_put(PG_FUNCTION_ARGS);
 static size_t
@@ -435,6 +445,141 @@ ora_utl_file_fclose_all(PG_FUNCTION_ARGS)
 }
 
 /*
+ * CREATE FUNCTION utl_file.fcopy(
+ *     src_location		text,
+ *     src_filename		text,
+ *     dest_location	text,
+ *     dest_filename	text,
+ *     start_line		integer DEFAULT NULL
+ *     end_line			integer DEFAULT NULL)
+ */
+Datum
+ora_utl_file_fcopy(PG_FUNCTION_ARGS)
+{
+	char	   *srcpath;
+	char	   *dstpath;
+	int			start_line;
+	int			end_line;
+	FILE	   *srcfile;
+	FILE	   *dstfile;
+
+	NOT_NULL_ARG(0);
+	NOT_NULL_ARG(1);
+	NOT_NULL_ARG(2);
+	NOT_NULL_ARG(3);
+
+	srcpath = get_safe_path(PG_GETARG_TEXT_P(0), PG_GETARG_TEXT_P(1));
+	dstpath = get_safe_path(PG_GETARG_TEXT_P(2), PG_GETARG_TEXT_P(3));
+
+	start_line = PG_GETARG_IF_EXISTS(4, INT32, 1);
+	if (start_line <= 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("start_line must be positive (%d passed)", start_line)));
+
+	end_line = PG_GETARG_IF_EXISTS(5, INT32, INT_MAX);
+	if (end_line <= 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("end_line must be positive (%d passed)", end_line)));
+
+	srcfile = fopen(srcpath, "rt");
+
+	if (srcfile == NULL)
+	{
+		/* failed to open src file. */
+		IO_EXCEPTION();
+	}
+
+	dstfile = fopen(dstpath, "wt");
+
+	if (dstfile == NULL)
+	{
+		/* failed to open dst file. */
+		fclose(srcfile);
+		IO_EXCEPTION();
+	}
+
+	if (copy_text_file(srcfile, dstfile, start_line, end_line))
+		IO_EXCEPTION();
+
+	fclose(srcfile);
+	fclose(dstfile);
+
+	PG_RETURN_VOID();
+}
+
+/*
+ * FUNCTION UTL_FILE.FFLUSH(file UTL_FILE.FILE_TYPE)
+ *          RETURNS void;
+ *
+ * This function makes sure that all pending data for the specified file is written
+ * physically out to file.
+ *
+ * Exceptions:
+ *  INVALID_FILEHANDLE, INVALID_OPERATION, WRITE_ERROR
+ */
+Datum
+ora_utl_file_fflush(PG_FUNCTION_ARGS)
+{
+	FILE *fd;
+
+	CHECK_FILE_HANDLE();
+	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), NULL, NULL);
+	do_flush(fd);
+
+	PG_RETURN_VOID();
+}
+
+/*
+ * CREATE FUNCTION utl_file.fgetattr(
+ *     location		text,
+ *     filename		text
+ * ) RETURNS (
+ *     fexists		boolean,
+ *     file_length	number,
+ *     blocksize	integer)
+ */
+Datum
+ora_utl_file_fgetattr(PG_FUNCTION_ARGS)
+{
+	char	   *fullname;
+	struct stat	st;
+	TupleDesc	tupdesc;
+	Datum		result;
+	HeapTuple	tuple;
+	Datum		values[3];
+	bool		nulls[3] = { 0 };
+
+	NOT_NULL_ARG(0);
+	NOT_NULL_ARG(1);
+
+	/* Build a tuple descriptor for our result type */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		elog(ERROR, "return type must be a row type");
+
+	fullname = get_safe_path(PG_GETARG_TEXT_P(0), PG_GETARG_TEXT_P(1));
+
+	if (stat(fullname, &st) == 0)
+	{
+		values[0] = BoolGetDatum(true);
+		values[1] = Int64GetDatum(st.st_size);
+		values[2] = Int32GetDatum(st.st_blksize);
+	}
+	else
+	{
+		values[0] = BoolGetDatum(false);
+		nulls[1] = true;
+		nulls[2] = true;
+	}
+
+	tuple = heap_form_tuple(tupdesc, values, nulls);
+	result = HeapTupleGetDatum(tuple);
+
+	PG_RETURN_DATUM(result);
+}
+
+/*
  * CREATE FUNCTION utl_file.fremove(
  *     location		text,
  *     filename		text)
@@ -453,6 +598,82 @@ ora_utl_file_fremove(PG_FUNCTION_ARGS)
 		IO_EXCEPTION();
 
 	PG_RETURN_VOID();
+}
+
+/*
+ * CREATE FUNCTION utl_file.frename(
+ *     location		text,
+ *     filename		text,
+ *     dest_dir		text,
+ *     dest_file	text,
+ *     overwrite	boolean DEFAULT false)
+ */
+Datum
+ora_utl_file_frename(PG_FUNCTION_ARGS)
+{
+	char *srcpath;
+	char *dstpath;
+	bool overwrite;
+
+	NOT_NULL_ARG(0);
+	NOT_NULL_ARG(1);
+	NOT_NULL_ARG(2);
+	NOT_NULL_ARG(3);
+
+	overwrite = PG_GETARG_IF_EXISTS(4, BOOL, false);
+	srcpath = get_safe_path(PG_GETARG_TEXT_P(0), PG_GETARG_TEXT_P(1));
+	dstpath = get_safe_path(PG_GETARG_TEXT_P(2), PG_GETARG_TEXT_P(3));
+
+	if (!overwrite)
+	{
+		struct stat	st;
+		if (stat(dstpath, &st) == 0)
+			CUSTOM_EXCEPTION(WRITE_ERROR, "Destination file already exists");
+		else if (errno != ENOENT)
+			IO_EXCEPTION();
+	}
+
+	/* rename() overwrites existing files. */
+	if (rename(srcpath, dstpath) != 0)
+		IO_EXCEPTION();
+
+	PG_RETURN_VOID();
+}
+
+/*
+ * utl_file.fseek(
+ *     file			integer,
+ *     absolute_offset	integer,
+ *     relative_offset	integer)
+ */
+Datum
+ora_utl_file_fseek(PG_FUNCTION_ARGS)
+{
+	FILE   *fd;
+	long	abs_offset = 0;
+	long	rel_offset = 0;
+
+	CHECK_FILE_HANDLE();
+	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), NULL, NULL);
+
+	abs_offset = PG_GETARG_IF_EXISTS(1, INT32, 0);
+	rel_offset = PG_GETARG_IF_EXISTS(2, INT32, 0);
+
+	if (fseek(fd, abs_offset + rel_offset, SEEK_SET) != 0)
+	{
+		CUSTOM_EXCEPTION(INVALID_OFFSET, "Provided offsets are invalid.");
+	}
+
+	PG_RETURN_VOID();
+}
+
+Datum
+ora_utl_file_ftell(PG_FUNCTION_ARGS)
+{
+	FILE   *fd;
+	CHECK_FILE_HANDLE();
+	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), NULL, NULL);
+	PG_RETURN_INT32(ftell(fd));
 }
 
 /*
@@ -500,9 +721,101 @@ ora_utl_file_get_line(PG_FUNCTION_ARGS)
 }
 
 Datum
+ora_utl_file_new_line(PG_FUNCTION_ARGS)
+{
+	FILE   *fd;
+	int		lines;
+
+	CHECK_FILE_HANDLE();
+	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), NULL, NULL);
+	lines = PG_GETARG_IF_EXISTS(1, INT32, 1);
+
+	put_lines(fd, lines);
+
+	PG_RETURN_BOOL(true);
+}
+
+Datum
 ora_utl_file_put(PG_FUNCTION_ARGS)
 {
 	do_put(fcinfo);
+	PG_RETURN_BOOL(true);
+}
+
+/*
+ * FUNCTION UTL_FILE.PUTF(file UTL_FILE.FILE_TYPE,
+ *			format text,
+ *			arg1 text,
+ *			arg2 text,
+ *			arg3 text,
+ *			arg4 text,
+ *			arg5 text)
+ *		RETURNS bool;
+ *
+ * Puts formatted data to file.
+ * Substitute %s with the string value of the next argument in the argument list.
+ * Substitute \n with the appropriate platform-specific line terminator.
+ *
+ * Exception:
+ *  INVALID_FILEHANDLE, INVALID_OPERATION, WRITE_ERROR
+ */
+Datum
+ora_utl_file_putf(PG_FUNCTION_ARGS)
+{
+	FILE   *fd;
+	char   *format;
+	size_t	max_linesize;
+	int		encoding;
+	size_t	format_length;
+	char   *fpt;
+	int		cur_par = 0;
+	size_t	cur_len = 0;
+
+	CHECK_FILE_HANDLE();
+	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), &max_linesize, &encoding);
+
+	NOT_NULL_ARG(1);
+	format = encode_text(encoding, PG_GETARG_TEXT_P(1), &format_length);
+
+	for (fpt = format; format_length > 0; fpt++, format_length--)
+	{
+		if (format_length == 1)
+		{
+			/* last char */
+			CHECK_LENGTH(++cur_len);
+			if (fputc(*fpt, fd) == EOF)
+				CHECK_ERRNO_PUT();
+			continue;
+		}
+		/* ansi compatible string */
+		if (fpt[0] == '\\' && fpt[1] == 'n')
+		{
+			CHECK_LENGTH(++cur_len);
+			if (fputc('\n', fd) == EOF)
+				CHECK_ERRNO_PUT();
+			fpt++; format_length--;
+			continue;
+		}
+		if (fpt[0] == '%')
+		{
+			if (fpt[1] == '%')
+			{
+				CHECK_LENGTH(++cur_len);
+				if (fputc('%', fd) == EOF)
+					CHECK_ERRNO_PUT();
+			}
+			else if (fpt[1] == 's' && ++cur_par <= 5 && !PG_ARGISNULL(cur_par + 1))
+			{
+				cur_len += do_write(fcinfo, cur_par + 1, fd, max_linesize - cur_len, encoding);
+			}
+			fpt++; format_length--;
+			continue;
+		}
+		CHECK_LENGTH(++cur_len);
+		if (fputc(fpt[0], fd) == EOF)
+			CHECK_ERRNO_PUT();
+	}
+
 	PG_RETURN_BOOL(true);
 }
 
@@ -753,6 +1066,51 @@ close_all_files(void)
 	/* some file(s) were not closed, throw exception */
 	if(report_error)
 		STRERROR_EXCEPTION(WRITE_ERROR);
+}
+
+/*
+ * Copy srcfile to dstfile. Return 0 if succeeded, or non-0 if error.
+ */
+static int
+copy_text_file(FILE *srcfile, FILE *dstfile, int start_line, int end_line)
+{
+	char	   *buffer;
+	size_t		len;
+	int			i;
+
+	buffer = palloc(MAX_LINESIZE);
+
+	errno = 0;
+
+	/* skip first start_line. */
+	for (i = 1; i < start_line; i++)
+	{
+		CHECK_FOR_INTERRUPTS();
+		do
+		{
+			if (fgets(buffer, MAX_LINESIZE, srcfile) == NULL)
+				return errno;
+			len = strlen(buffer);
+		} while(buffer[len - 1] != '\n');
+	}
+
+	/* copy until end_line. */
+	for (; i <= end_line; i++)
+	{
+		CHECK_FOR_INTERRUPTS();
+		do
+		{
+			if (fgets(buffer, MAX_LINESIZE, srcfile) == NULL)
+				return errno;
+			len = strlen(buffer);
+			if (fwrite(buffer, 1, len, dstfile) != len)
+				return errno;
+		} while(buffer[len - 1] != '\n');
+	}
+
+	pfree(buffer);
+
+	return 0;
 }
 
 /*
