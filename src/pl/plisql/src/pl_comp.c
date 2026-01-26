@@ -34,6 +34,7 @@
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
+#include "utils/ora_compatible.h"
 #include "utils/memutils.h"
 #include "utils/regproc.h"
 #include "utils/syscache.h"
@@ -1610,8 +1611,34 @@ plisql_pre_column_ref(ParseState *pstate, ColumnRef *cref)
 
 	if (expr->func->resolve_option == PLISQL_RESOLVE_VARIABLE)
 		return resolve_column_ref(pstate, expr, cref, false);
-	else
-		return NULL;
+
+	/*
+	 * Even when resolve_option is not PLISQL_RESOLVE_VARIABLE, we need to
+	 * check if the identifier is ROWNUM or ROWID and exists as a PL/iSQL
+	 * variable. This is necessary because the SQL parser would otherwise
+	 * convert these to pseudocolumn references before the post-columnref
+	 * hook has a chance to resolve them as variables.
+	 *
+	 * This matches Oracle behavior where ROWNUM/ROWID can be used as
+	 * variable names in PL/SQL.
+	 */
+	if (compatible_db == ORA_PARSER && list_length(cref->fields) == 1)
+	{
+		Node	   *field1 = (Node *) linitial(cref->fields);
+		const char *name1 = strVal(field1);
+
+		if (pg_strcasecmp(name1, "rownum") == 0 ||
+			pg_strcasecmp(name1, "rowid") == 0)
+		{
+			Node	   *result;
+
+			result = resolve_column_ref(pstate, expr, cref, false);
+			if (result != NULL)
+				return result;
+		}
+	}
+
+	return NULL;
 }
 
 /*

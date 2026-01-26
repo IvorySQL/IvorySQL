@@ -22,6 +22,8 @@
 #include "executor/executor.h"
 #include "executor/tstoreReceiver.h"
 #include "miscadmin.h"
+#include "nodes/nodeFuncs.h"
+#include "nodes/plannodes.h"
 #include "pg_trace.h"
 #include "tcop/pquery.h"
 #include "tcop/utility.h"
@@ -60,6 +62,130 @@ static uint64 DoPortalRunFetch(Portal portal,
 							   DestReceiver *dest);
 static void DoPortalRewind(Portal portal);
 static TupleDesc CreateTupleDescFromParams(ParamListInfo params);
+static bool plan_contains_rownum_walker(Node *node, void *context);
+static bool plan_contains_rownum(Plan *plan);
+static void FillPortalStoreForSelect(Portal portal);
+
+/*
+ * Helper function to check if an expression contains ROWNUM
+ */
+static bool
+plan_contains_rownum_walker(Node *node, void *context)
+{
+	if (node == NULL)
+		return false;
+
+	if (IsA(node, RownumExpr))
+		return true;
+
+	return expression_tree_walker(node, plan_contains_rownum_walker, context);
+}
+
+/*
+ * Check if a plan tree contains ROWNUM expressions in targetlists.
+ * This is used to determine if scroll cursor results need materialization.
+ */
+static bool
+plan_contains_rownum(Plan *plan)
+{
+	ListCell   *lc;
+
+	if (plan == NULL)
+		return false;
+
+	/* Check the plan's targetlist */
+	foreach(lc, plan->targetlist)
+	{
+		TargetEntry *tle = lfirst_node(TargetEntry, lc);
+
+		if (plan_contains_rownum_walker((Node *) tle->expr, NULL))
+			return true;
+	}
+
+	/* Recursively check standard child plans */
+	if (plan->lefttree && plan_contains_rownum(plan->lefttree))
+		return true;
+	if (plan->righttree && plan_contains_rownum(plan->righttree))
+		return true;
+
+	/* Handle special plan node types with additional child plans */
+	switch (nodeTag(plan))
+	{
+		case T_SubqueryScan:
+			{
+				SubqueryScan *splan = (SubqueryScan *) plan;
+				if (plan_contains_rownum(splan->subplan))
+					return true;
+			}
+			break;
+
+		case T_Append:
+			{
+				Append *aplan = (Append *) plan;
+				foreach(lc, aplan->appendplans)
+				{
+					if (plan_contains_rownum((Plan *) lfirst(lc)))
+						return true;
+				}
+			}
+			break;
+
+		case T_MergeAppend:
+			{
+				MergeAppend *mplan = (MergeAppend *) plan;
+				foreach(lc, mplan->mergeplans)
+				{
+					if (plan_contains_rownum((Plan *) lfirst(lc)))
+						return true;
+				}
+			}
+			break;
+
+		default:
+			/* Most plan nodes only have lefttree/righttree children */
+			break;
+	}
+
+	return false;
+}
+
+/*
+ * FillPortalStoreForSelect
+ *		Run a PORTAL_ONE_SELECT query and store results in portal's holdStore.
+ *
+ * This is used for scroll cursors that contain ROWNUM expressions.
+ * We need to materialize results so that FETCH PRIOR/NEXT don't re-evaluate
+ * ROWNUM values.
+ */
+static void
+FillPortalStoreForSelect(Portal portal)
+{
+	QueryDesc  *queryDesc = portal->queryDesc;
+	DestReceiver *treceiver;
+
+	Assert(queryDesc != NULL);
+	Assert(portal->holdStore == NULL);
+
+	PortalCreateHoldStore(portal);
+	treceiver = CreateDestReceiver(DestTuplestore);
+	SetTuplestoreDestReceiverParams(treceiver,
+									portal->holdStore,
+									portal->holdContext,
+									false,
+									NULL,
+									NULL);
+
+	/* Run the query to completion, storing results in tuplestore */
+	PushActiveSnapshot(queryDesc->snapshot);
+	queryDesc->dest = treceiver;
+	ExecutorRun(queryDesc, ForwardScanDirection, 0);
+	PopActiveSnapshot();
+
+	treceiver->rDestroy(treceiver);
+
+	/* Reset the tuplestore to start */
+	tuplestore_rescan(portal->holdStore);
+}
 
 /*
  * CreateQueryDesc
@@ -891,6 +1017,21 @@ PortalRunSelect(Portal portal,
 
 	/* Caller messed up if we have neither a ready query nor held data. */
 	Assert(queryDesc || portal->holdStore);
+
+	/*
+	 * For scroll cursors with ROWNUM in the plan, we need to materialize
+	 * all results on first execution. This ensures that FETCH PRIOR/NEXT
+	 * return the same ROWNUM values that were computed during the initial
+	 * forward scan, rather than re-evaluating ROWNUM (which would give
+	 * incorrect incrementing values).
+	 */
+	if (queryDesc != NULL &&
+		portal->holdStore == NULL &&
+		(portal->cursorOptions & CURSOR_OPT_SCROLL) &&
+		plan_contains_rownum(queryDesc->plannedstmt->planTree))
+	{
+		FillPortalStoreForSelect(portal);
+	}
 
 	/*
 	 * Force the queryDesc destination to the right thing.  This supports
