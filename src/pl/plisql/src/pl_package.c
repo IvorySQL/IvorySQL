@@ -3068,11 +3068,12 @@ is_const_datum(PLiSQL_execstate *estate, PLiSQL_datum *datum)
 			}
 			break;
 		case PLISQL_DTYPE_EXCEPTION:
-
-			/* Exception variables cannot be used here */
-
-			elog(ERROR, "exception variables cannot be used in this context");
-
+			/*
+			 * Exception variables are constant identifiers - they cannot be
+			 * assigned to. Return true to indicate they are constant and
+			 * should be skipped by callers that iterate over datums.
+			 */
+			isconst = true;
 			break;
 
 
