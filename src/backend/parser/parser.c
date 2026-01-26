@@ -92,7 +92,7 @@ standard_raw_parser(const char *str, RawParseMode mode)
 			scanner_finish(yyscanner);
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("when ivorysql.compatible_mode is pg, not support a plisql procedural-language function statement")));
+					 errmsg("when ivorysql.compatible_mode is set to pg, any plisql procedural language function statement is not supported.")));
 		}
 
 		yyextra.have_lookahead = true;
