@@ -42,6 +42,12 @@
 
 #include "../include/common_datatypes.h"
 
+#include "catalog/pg_type.h"
+#include "utils/date.h"
+#include "utils/timestamp.h"
+
+#include "utils/guc.h"
+
 PG_FUNCTION_INFO_V1(oracharlen);
 PG_FUNCTION_INFO_V1(oracharoctetlen);
 PG_FUNCTION_INFO_V1(oravarcharlen);
@@ -68,6 +74,7 @@ PG_FUNCTION_INFO_V1(oracle_instr_4);
 PG_FUNCTION_INFO_V1(ora_asciistr);
 PG_FUNCTION_INFO_V1(ora_to_multi_byte);
 PG_FUNCTION_INFO_V1(ora_to_single_byte);
+PG_FUNCTION_INFO_V1(ora_ascii);
 
 #define PG_STR_GET_TEXT(str_) \
 	DatumGetTextP(DirectFunctionCall1(textin, CStringGetDatum(str_)))
@@ -2315,4 +2322,124 @@ ora_to_single_byte(PG_FUNCTION_ARGS)
 	SET_VARSIZE(dst, VARHDRSZ + dstlen);
 
 	PG_RETURN_TEXT_P(dst);
+}
+
+
+
+/*******************************************************************
+ * ora_ascii 
+ *
+ * Purpose:
+ *   Implementation of Oracle ASCII function.
+ *
+ *   It takes as input parameter:
+ *   - a number, 
+ *   - a binary float,
+ *   - a binary double,
+ *   - a date, 
+ *   - a timestamp 
+ *   - a timestamp with time zone
+ *   - a string
+ * 
+ *   and returns ASCII codepoint of the first character 
+ *   of the corresponding string.
+ *
+ *******************************************************************/
+Datum
+ora_ascii(PG_FUNCTION_ARGS)
+{
+    Oid argtype = get_fn_expr_argtype(fcinfo->flinfo, 0);
+    char *str = NULL;
+
+    if (PG_ARGISNULL(0))
+        PG_RETURN_NULL();
+
+	
+    switch (argtype)
+    {
+      	/*
+		 *  Oracle data types only defined in src/bin/psql/psqlplus.h
+		 *  and in src/include/catalog/pg_type_d.h
+		 */
+		case NUMBEROID: {
+			/* number */
+			int32 val = PG_GETARG_INT32(0);
+            str = psprintf("%d", val);
+            break;
+		}
+		case BINARY_FLOATOID:
+		case BINARY_DOUBLEOID: {
+            float8 val = PG_GETARG_FLOAT8(0);
+            str = psprintf("%g", val);
+            break;
+        }
+		case  ORACHARCHAROID: 
+		case  ORAVARCHARCHAROID : {
+			/* char, varchar, varchar2 */
+			text *txt = PG_GETARG_TEXT_PP(0);
+            str = text_to_cstring(txt);
+            break;
+		}
+		case ORADATEOID: {
+			/*
+			 * oradate_out code duplicated here: not possible to have a include file for oradate_out ?
+			 */
+			char	   *nls_date_format;
+			Timestamp	timestamp = PG_GETARG_TIMESTAMP(0);
+            text       *date_str;
+
+			nls_date_format = GetConfigOptionByName("nls_date_format", NULL, false);
+			if (!nls_date_format) {
+				nls_date_format = "YYYY-MM-DD";
+			}
+            date_str = DatumGetTextP(DirectFunctionCall2(timestamp_to_char,
+                                                         TimestampGetDatum(timestamp),
+                                                         PointerGetDatum(cstring_to_text(nls_date_format))));
+
+            str = text_to_cstring(date_str);
+			break;
+		}	
+		case ORATIMESTAMPOID: {
+			char	   *nls_timestamp_format;
+			Timestamp 	val = PG_GETARG_TIMESTAMP(0);
+			text       *timestamp_str;
+
+			nls_timestamp_format = GetConfigOptionByName("nls_timestamp_format", NULL, false);
+			if (!nls_timestamp_format) {
+				nls_timestamp_format = "YYYY-MM-DD HH24:MI:SS.FF";
+			}
+			timestamp_str = DatumGetTextP(DirectFunctionCall2(timestamp_to_char, 
+			  							  TimestampGetDatum(val),
+								        PointerGetDatum(cstring_to_text(nls_timestamp_format))));
+			str = text_to_cstring(timestamp_str);
+            break;
+		}
+		case ORATIMESTAMPTZOID: {
+			char	   *nls_timestamp_tz_format;
+			TimestampTz val = PG_GETARG_TIMESTAMPTZ(0);
+			text       *timestamptz_str;
+			
+			nls_timestamp_tz_format = GetConfigOptionByName("nls_timestamp_tz_format", NULL, false);
+			if (!nls_timestamp_tz_format) {
+				nls_timestamp_tz_format = "YYYY-MM-DD HH24:MI:SS.FF TZH:TZM";
+			}
+			timestamptz_str = DatumGetTextP(DirectFunctionCall2(timestamptz_to_char, 
+											 TimestampTzGetDatum(val),
+											 PointerGetDatum(cstring_to_text(nls_timestamp_tz_format))));
+			str = text_to_cstring(timestamptz_str);
+            break;
+		}
+
+		default: {
+	    	ereport(ERROR,
+            	   	(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+		 				errmsg("Data type oid=%d not yet implemented", argtype)));
+	    	break;
+	 	}
+    }
+
+    if (str == NULL || str[0] == '\0')
+        PG_RETURN_INT32(0);
+
+    PG_RETURN_INT32((unsigned char) str[0]);
 }
