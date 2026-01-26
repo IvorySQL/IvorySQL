@@ -52,6 +52,7 @@
 #define INVALID_FILEHANDLE		"INVALID_FILEHANDLE"
 #define INVALID_MAXLINESIZE		"INVALID_MAXLINESIZE"
 #define INVALID_MODE			"INVALID_MODE"
+#define INVALID_OFFSET			"INVALID_OFFSET"
 #define INVALID_OPERATION		"INVALID_OPERATION"
 #define	INVALID_PATH			"INVALID_PATH"
 #define READ_ERROR				"READ_ERROR"
@@ -63,11 +64,17 @@ PG_FUNCTION_INFO_V1(ora_utl_file_fopen);
 PG_FUNCTION_INFO_V1(ora_utl_file_is_open);
 PG_FUNCTION_INFO_V1(ora_utl_file_fclose);
 PG_FUNCTION_INFO_V1(ora_utl_file_fclose_all);
+PG_FUNCTION_INFO_V1(ora_utl_file_fremove);
+PG_FUNCTION_INFO_V1(ora_utl_file_get_line);
+PG_FUNCTION_INFO_V1(ora_utl_file_put);
 PG_FUNCTION_INFO_V1(ora_utl_file_put_line);
+PG_FUNCTION_INFO_V1(ora_utl_file_put_raw);
 
 /* Helper functions */
 static void check_secure_locality(const char *path);
 static char *safe_named_location(text *location);
+static text *
+get_line(FILE *fd, size_t max_linesize, int encoding, bool *iseof);
 static char *get_safe_path(text *location, text *filename);
 static void close_all_files(void);
 static void put_lines(FILE *fd, int lines);
@@ -92,20 +99,25 @@ static FILE *free_slot(uint32 sid);
 static uint32 reserve_slot(FILE *fd, int max_linesize, int encoding);
 
 /* Helper macros */
+#define IS_VALID_DETAIL(d) ((d) != (NULL))
+
 #define CUSTOM_EXCEPTION(msg, detail) \
-	ereport(ERROR, \
-		(errcode(ERRCODE_RAISE_EXCEPTION), \
-		 errmsg("%s", msg), \
-		 errdetail("%s", detail)))
+    ereport(ERROR, \
+        (errcode(ERRCODE_RAISE_EXCEPTION), \
+         errmsg("%s", msg), \
+         IS_VALID_DETAIL(detail) ? errdetail("%s", (char*)detail) : 0))
 
 #define CUSTOM_WARNING(msg, detail) \
-	ereport(WARNING, \
-		(errcode(ERRCODE_RAISE_EXCEPTION), \
-		 errmsg("%s", msg), \
-		 errdetail("%s", detail)))
+    ereport(WARNING, \
+        (errcode(ERRCODE_RAISE_EXCEPTION), \
+         errmsg("%s", msg), \
+         IS_VALID_DETAIL(detail) ? errdetail("%s", (char*)detail) : 0))
 
 #define STRERROR_EXCEPTION(msg) \
 	do { char *strerr = strerror(errno); CUSTOM_EXCEPTION(msg, strerr); } while(0);
+
+#define STRERROR_WARNING(msg) \
+	do { char *strerr = strerror(errno); CUSTOM_WARNING(msg, strerr); } while(0);
 
 #define INVALID_FILEHANDLE_EXCEPTION()	CUSTOM_EXCEPTION(INVALID_FILEHANDLE, "File handle is invalid.")
 #define INVALID_FILEHANDLE_WARNING()	CUSTOM_WARNING(INVALID_FILEHANDLE, "File handle is invalid.")
@@ -141,8 +153,16 @@ static uint32 reserve_slot(FILE *fd, int max_linesize, int encoding);
 			STRERROR_EXCEPTION(WRITE_ERROR); \
 	}
 
+#define CHECK_FILE_HANDLE() \
+	if (PG_ARGISNULL(0)) \
+		INVALID_FILEHANDLE_EXCEPTION();
+
 #define PG_GETARG_IF_EXISTS(n, type, defval) \
 	((PG_NARGS() > (n) && !PG_ARGISNULL(n)) ? PG_GETARG_##type(n) : (defval))
+
+#define CHECK_LENGTH(l) \
+	if (l > max_linesize) \
+		CUSTOM_EXCEPTION(VALUE_ERROR, "buffer is too short");
 
 typedef struct FileSlot
 {
@@ -355,7 +375,7 @@ ora_utl_file_fopen(PG_FUNCTION_ARGS)
 Datum
 ora_utl_file_is_open(PG_FUNCTION_ARGS)
 {
-	int	sid = PG_GETARG_INT32(0);
+	uint32	sid = PG_GETARG_UINT32(0);
 
 	if(sid == INVALID_SLOTID)
 		PG_RETURN_BOOL(false);
@@ -368,10 +388,6 @@ ora_utl_file_is_open(PG_FUNCTION_ARGS)
 
 	PG_RETURN_BOOL(false);
 }
-
-#define CHECK_LENGTH(l) \
-	if (l > max_linesize) \
-		CUSTOM_EXCEPTION(VALUE_ERROR, "buffer is too short");
 
 /*
  * FUNCTION UTL_FILE.FCLOSE(file UTL_FILE.FILE_TYPE)
@@ -418,6 +434,78 @@ ora_utl_file_fclose_all(PG_FUNCTION_ARGS)
 	PG_RETURN_VOID();
 }
 
+/*
+ * CREATE FUNCTION utl_file.fremove(
+ *     location		text,
+ *     filename		text)
+ */
+Datum
+ora_utl_file_fremove(PG_FUNCTION_ARGS)
+{
+	char	   *fullname;
+
+	NOT_NULL_ARG(0);
+	NOT_NULL_ARG(1);
+
+	fullname = get_safe_path(PG_GETARG_TEXT_P(0), PG_GETARG_TEXT_P(1));
+
+	if (unlink(fullname) != 0)
+		IO_EXCEPTION();
+
+	PG_RETURN_VOID();
+}
+
+/*
+ * FUNCTION UTL_FILE.GET_LINE(file UTL_TYPE.FILE_TYPE, line int DEFAULT NULL)
+ *          RETURNS text;
+ *
+ * Reads one line from file.
+ *
+ * Exceptions:
+ *  NO_DATA_FOUND, INVALID_FILEHANDLE, INVALID_OPERATION, READ_ERROR
+ */
+Datum
+ora_utl_file_get_line(PG_FUNCTION_ARGS)
+{
+	size_t	max_linesize = 0;
+	int		encoding = 0;
+	FILE   *fd;
+	text   *result;
+	bool	iseof;
+
+	CHECK_FILE_HANDLE();
+	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), &max_linesize, &encoding);
+
+	/* 'len' overwrites max_linesize, but must be smaller than max_linesize */
+	if (PG_NARGS() > 1 && !PG_ARGISNULL(1))
+	{
+		size_t	len = (size_t) PG_GETARG_INT32(1);
+		CHECK_LINESIZE(len);
+		if (max_linesize > len)
+			max_linesize = len;
+	}
+
+	result = get_line(fd, max_linesize, encoding, &iseof);
+
+	if (iseof)
+	{
+		ereport(LOG,
+			(errcode(ERRCODE_NO_DATA_FOUND),
+					errmsg("no data found")));
+
+		PG_RETURN_NULL();
+	}
+
+	PG_RETURN_TEXT_P(result);
+}
+
+Datum
+ora_utl_file_put(PG_FUNCTION_ARGS)
+{
+	do_put(fcinfo);
+	PG_RETURN_BOOL(true);
+}
+
 Datum
 ora_utl_file_put_line(PG_FUNCTION_ARGS)
 {
@@ -434,6 +522,20 @@ ora_utl_file_put_line(PG_FUNCTION_ARGS)
 		do_flush(fd);
 
 	PG_RETURN_BOOL(true);
+}
+
+Datum ora_utl_file_put_raw(PG_FUNCTION_ARGS)
+{
+	FILE   *fd;
+	size_t	max_linesize = 0;
+	int		encoding = 0;
+
+	CHECK_FILE_HANDLE();
+	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), &max_linesize, &encoding);
+
+	NOT_NULL_ARG(1);
+	do_write(fcinfo, 1, fd, max_linesize, encoding);
+	PG_RETURN_VOID();
 }
 
 /*
@@ -791,4 +893,84 @@ encode_text(int encoding, text *t, size_t *length)
 
 	*length = (src == encoded ? VARSIZE_ANY_EXHDR(t) : strlen(encoded));
 	return encoded;
+}
+
+/* 
+ * Reads a line from the file and sets eof to true if it is EOF
+ * Returns the line
+ */
+static text *
+get_line(FILE *fd, size_t max_linesize, int encoding, bool *iseof)
+{
+	int c;
+	char *buffer = NULL;
+	char *bpt;
+	size_t csize = 0;
+	text *result = NULL;
+	bool eof = true;
+
+	buffer = palloc(max_linesize + 2);
+	bpt = buffer;
+
+	errno = 0;
+
+	while (csize < max_linesize && (c = fgetc(fd)) != EOF)
+	{
+		eof = false; 	/* I was able read one char */
+
+		if (c == '\r')  /* lookin ahead \n */
+		{
+			c = fgetc(fd);
+			if (c == EOF)
+				break;  /* last char */
+
+			if (c != '\n')
+				ungetc(c, fd);
+			/* skip \r\n */
+			break;
+		}
+		else if (c == '\n')
+			break;
+
+		++csize;
+		*bpt++ = c;
+	}
+
+	if (!eof)
+	{
+		char   *decoded;
+		size_t		len;
+
+		pg_verify_mbstr(encoding, buffer, size2int(csize), false);
+		decoded = (char *) pg_do_encoding_conversion((unsigned char *) buffer,
+									 size2int(csize), encoding, GetDatabaseEncoding());
+		len = (decoded == buffer ? csize : strlen(decoded));
+		result = palloc(len + VARHDRSZ);
+		memcpy(VARDATA(result), decoded, len);
+		SET_VARSIZE(result, len + VARHDRSZ);
+		if (decoded != buffer)
+			pfree(decoded);
+		*iseof = false;
+	}
+	else
+	{
+		switch (errno)
+		{
+			case 0:
+				break;
+
+			case EBADF:
+				CUSTOM_EXCEPTION(INVALID_OPERATION, "File could not be opened or operated on as requested.");
+				break;
+
+			default:
+				STRERROR_EXCEPTION(READ_ERROR);
+				break;
+		}
+
+		*iseof = true;
+	}
+
+	pfree(buffer);
+	return result;
 }
