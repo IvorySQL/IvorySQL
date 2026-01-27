@@ -2392,14 +2392,10 @@ ora_ascii(PG_FUNCTION_ARGS)
             break;
 		}
 		case ORADATEOID: {
-			/*
-			 * oradate_out code duplicated here: not possible to have a include file for oradate_out ?
-			 */
-			char	   *nls_date_format;
 			Timestamp	timestamp = PG_GETARG_TIMESTAMP(0);
             text       *date_str;
 
-			            date_str = DatumGetTextP(DirectFunctionCall2(timestamp_to_char,
+			date_str = DatumGetTextP(DirectFunctionCall2(timestamp_to_char,
                                                          TimestampGetDatum(timestamp),
                                                          PointerGetDatum(cstring_to_text(nls_date_format))));
 
@@ -2407,18 +2403,16 @@ ora_ascii(PG_FUNCTION_ARGS)
 			break;
 		}	
 		case ORATIMESTAMPOID: {
-			char	   *nls_timestamp_format;
 			Timestamp 	val = PG_GETARG_TIMESTAMP(0);
 			text       *timestamp_str;
 
 			timestamp_str = DatumGetTextP(DirectFunctionCall2(timestamp_to_char, 
 			  							  TimestampGetDatum(val),
-								        PointerGetDatum(cstring_to_text(nls_timestamp_format))));
+								          PointerGetDatum(cstring_to_text(nls_timestamp_format))));
 			str = text_to_cstring(timestamp_str);
             break;
 		}
 		case ORATIMESTAMPTZOID: {
-			char	   *nls_timestamp_tz_format;
 			TimestampTz val = PG_GETARG_TIMESTAMPTZ(0);
 			text       *timestamptz_str;
 			
