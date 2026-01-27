@@ -2431,8 +2431,13 @@ ora_ascii(PG_FUNCTION_ARGS)
 	 	}
     }
 
-    if (str == NULL || str[0] == '\0')
-        PG_RETURN_INT32(0);
+    if (str == NULL || str[0] == '\0') {
+		/* 1. Set the null flag */
+		fcinfo->isnull = true;
+
+		/* 2. Return a placeholder value */
+		PG_RETURN_VOID();
+	}
 
     PG_RETURN_INT32((unsigned char) str[0]);
 }

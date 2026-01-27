@@ -50,3 +50,9 @@ select ascii(to_char('2026-01-22 01:02:03.00 +01:00'::timestamptz,'DD-MON-YYYY H
     50
 (1 row)
 
+select ascii('') is null from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
