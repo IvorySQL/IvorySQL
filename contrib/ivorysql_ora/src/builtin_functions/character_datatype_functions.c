@@ -2367,10 +2367,14 @@ ora_ascii(PG_FUNCTION_ARGS)
             str = psprintf("%d", val);
             break;
 		}
-		case BINARY_FLOATOID:
+		case BINARY_FLOATOID: {
+            float4 val = PG_GETARG_FLOAT4(0);
+            str = psprintf("%f", val);
+            break;
+        }
 		case BINARY_DOUBLEOID: {
             float8 val = PG_GETARG_FLOAT8(0);
-            str = psprintf("%g", val);
+            str = psprintf("%f", val);
             break;
         }
 		case  ORACHARCHAROID: 
