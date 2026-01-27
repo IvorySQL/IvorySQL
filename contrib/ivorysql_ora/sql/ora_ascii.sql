@@ -12,11 +12,8 @@ select ascii('abc') from dual;
 
 select ascii('xyz') from dual;
 
-set nls_date_format='DD-MON-YYYY HH24:MI:SS';
-select ascii('01-JAN-2026 01:02:03') from dual;
+select ascii(to_char('2026-01-01'::date,'DD-MON-YYYY HH24:MI:SS')) from dual;
 
-set nls_timestamp_format='DD-MON-YYYY HH24:MI:SS.FF6';
-select ascii('11-JAN-2026 01:02:03.00') from dual;
+select ascii(to_char('2026-01-11 01:02:03.00'::timestamp,'DD-MON-YYYY HH24:MI:SS.FF6')) from dual;
 
-set nls_timestamp_tz_format='DD-MON-YYYY HH24:MI:SS TZH:TZM';
-select ascii('22-JAN-2026 01:02:03.00 +01:00') from dual;
+select ascii(to_char('2026-01-22 01:02:03.00 +01:00'::timestamptz,'DD-MON-YYYY HH24:MI:SS TZH:TZM')) from dual;

@@ -2345,6 +2345,13 @@ ora_to_single_byte(PG_FUNCTION_ARGS)
  *   of the corresponding string.
  *
  *******************************************************************/
+
+ /* 
+  * cannot find include files
+ */
+extern Datum binary_float_out(PG_FUNCTION_ARGS);
+extern Datum binary_double_out(PG_FUNCTION_ARGS);
+
 Datum
 ora_ascii(PG_FUNCTION_ARGS)
 {
@@ -2363,18 +2370,18 @@ ora_ascii(PG_FUNCTION_ARGS)
 		 */
 		case NUMBEROID: {
 			/* number */
-			int32 val = PG_GETARG_INT32(0);
-            str = psprintf("%d", val);
+			Numeric val = PG_GETARG_NUMERIC(0);
+            str = DatumGetCString(DirectFunctionCall1(numeric_out, NumericGetDatum(val)));
             break;
 		}
 		case BINARY_FLOATOID: {
             float4 val = PG_GETARG_FLOAT4(0);
-            str = psprintf("%f", val);
+			str = DatumGetCString(DirectFunctionCall1(binary_float_out, Float4GetDatum(val)));
             break;
         }
 		case BINARY_DOUBLEOID: {
             float8 val = PG_GETARG_FLOAT8(0);
-            str = psprintf("%f", val);
+			str = DatumGetCString(DirectFunctionCall1(binary_double_out, Float8GetDatum(val)));
             break;
         }
 		case  ORACHARCHAROID: 
@@ -2392,11 +2399,7 @@ ora_ascii(PG_FUNCTION_ARGS)
 			Timestamp	timestamp = PG_GETARG_TIMESTAMP(0);
             text       *date_str;
 
-			nls_date_format = GetConfigOptionByName("nls_date_format", NULL, false);
-			if (!nls_date_format) {
-				nls_date_format = "YYYY-MM-DD";
-			}
-            date_str = DatumGetTextP(DirectFunctionCall2(timestamp_to_char,
+			            date_str = DatumGetTextP(DirectFunctionCall2(timestamp_to_char,
                                                          TimestampGetDatum(timestamp),
                                                          PointerGetDatum(cstring_to_text(nls_date_format))));
 
@@ -2408,10 +2411,6 @@ ora_ascii(PG_FUNCTION_ARGS)
 			Timestamp 	val = PG_GETARG_TIMESTAMP(0);
 			text       *timestamp_str;
 
-			nls_timestamp_format = GetConfigOptionByName("nls_timestamp_format", NULL, false);
-			if (!nls_timestamp_format) {
-				nls_timestamp_format = "YYYY-MM-DD HH24:MI:SS.FF";
-			}
 			timestamp_str = DatumGetTextP(DirectFunctionCall2(timestamp_to_char, 
 			  							  TimestampGetDatum(val),
 								        PointerGetDatum(cstring_to_text(nls_timestamp_format))));
@@ -2423,10 +2422,6 @@ ora_ascii(PG_FUNCTION_ARGS)
 			TimestampTz val = PG_GETARG_TIMESTAMPTZ(0);
 			text       *timestamptz_str;
 			
-			nls_timestamp_tz_format = GetConfigOptionByName("nls_timestamp_tz_format", NULL, false);
-			if (!nls_timestamp_tz_format) {
-				nls_timestamp_tz_format = "YYYY-MM-DD HH24:MI:SS.FF TZH:TZM";
-			}
 			timestamptz_str = DatumGetTextP(DirectFunctionCall2(timestamptz_to_char, 
 											 TimestampTzGetDatum(val),
 											 PointerGetDatum(cstring_to_text(nls_timestamp_tz_format))));
