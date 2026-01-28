@@ -10,6 +10,7 @@ encodings = {
     'euc_tw_and_big5/euc_tw_and_big5.c',
     'euc_tw_and_big5/big5.c',
   ],
+  'gb18030_and_gbk': ['gb18030_and_gbk/gb18030_and_gbk.c'],
   'latin2_and_win1250': ['latin2_and_win1250/latin2_and_win1250.c'],
   'latin_and_mic': ['latin_and_mic/latin_and_mic.c'],
   'utf8_and_big5': ['utf8_and_big5/utf8_and_big5.c'],
