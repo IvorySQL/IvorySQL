@@ -42,3 +42,10 @@ jobs:
     - name: compile
       run: |
         cd build && ninja -j1
+
+    - name: run postgres test
+      run: |
+        cd build
+        meson test || true
+      continue-on-error: true
+      timeout-minutes: 90
