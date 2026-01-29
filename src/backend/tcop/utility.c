@@ -67,6 +67,7 @@
 #include "utils/acl.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
+#include "utils/ora_compatible.h"
 
 /* Hook for plugins to get control in ProcessUtility() */
 ProcessUtility_hook_type ProcessUtility_hook = NULL;
@@ -713,7 +714,25 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			break;
 
 		case T_DoStmt:
-			ExecuteDoStmt(pstate, (DoStmt *) parsetree, isAtomicContext, params, dest);
+			/*
+			 * In Oracle compatibility mode, anonymous blocks are non-atomic
+			 * by default when executed at the top level or in a non-atomic
+			 * context, allowing COMMIT/ROLLBACK within the block and in
+			 * any procedures called from it.  However, if we're already in
+			 * an atomic context (e.g., called from a function), we must
+			 * respect that.
+			 */
+			{
+				bool	doAtomicContext = isAtomicContext;
+
+				if (compatible_db == ORA_PARSER &&
+					(context == PROCESS_UTILITY_TOPLEVEL ||
+					 context == PROCESS_UTILITY_QUERY_NONATOMIC))
+					doAtomicContext = false;
+
+				ExecuteDoStmt(pstate, (DoStmt *) parsetree,
+							  doAtomicContext, params, dest);
+			}
 			break;
 
 		case T_CreateTableSpaceStmt:
@@ -857,7 +876,24 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			break;
 
 		case T_CallStmt:
-			ExecuteCallStmt(castNode(CallStmt, parsetree), params, isAtomicContext, dest);
+			/*
+			 * In Oracle compatibility mode, CALL statements are non-atomic
+			 * by default when executed at the top level or in a non-atomic
+			 * context, allowing COMMIT/ROLLBACK within the called procedure
+			 * and any nested calls.  However, if we're already in an atomic
+			 * context (e.g., called from a function), we must respect that.
+			 */
+			{
+				bool	callAtomicContext = isAtomicContext;
+
+				if (compatible_db == ORA_PARSER &&
+					(context == PROCESS_UTILITY_TOPLEVEL ||
+					 context == PROCESS_UTILITY_QUERY_NONATOMIC))
+					callAtomicContext = false;
+
+				ExecuteCallStmt(castNode(CallStmt, parsetree), params,
+								callAtomicContext, dest);
+			}
 			break;
 
 		case T_ClusterStmt:
