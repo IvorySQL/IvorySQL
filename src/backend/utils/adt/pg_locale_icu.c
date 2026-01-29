@@ -597,6 +597,8 @@ make_icu_collator(const char *iculocstr, const char *icurules)
 							iculocstr, icurules, u_errorName(status))));
 		}
 
+		pfree(my_rules);
+		pfree(all_rules);
 		return collator_all_rules;
 	}
 }
@@ -1105,6 +1107,9 @@ strnxfrm_prefix_icu(char *dest, size_t destsize,
 		ereport(ERROR,
 				(errmsg("sort key generation failed: %s",
 						u_errorName(status))));
+
+	if (buf != sbuf)
+		pfree(buf);
 
 	return result_bsize;
 }
