@@ -624,7 +624,7 @@ get_control_data(ClusterInfo *cluster)
 		(!got_large_object &&
 		 cluster->controldata.ctrl_ver >= LARGE_OBJECT_SIZE_PG_CONTROL_VER) ||
 		!got_date_is_int || !got_data_checksum_version ||
-		!got_database_mode_is_oracle ||
+		//!got_database_mode_is_oracle ||
         (!got_default_char_signedness &&
             cluster->controldata.cat_ver >= DEFAULT_CHAR_SIGNEDNESS_CAT_VER))	
 	{
@@ -767,8 +767,8 @@ check_control_data(ControlData *oldctrl,
 	else if (oldctrl->data_checksum_version != newctrl->data_checksum_version)
 		pg_fatal("old and new cluster pg_controldata checksum versions do not match");
 
-	if (oldctrl->database_mode_is_oracle != newctrl->database_mode_is_oracle)
-		pg_fatal("old and new pg_controldata database mode do not match\n");
+//	if (oldctrl->database_mode_is_oracle != newctrl->database_mode_is_oracle)
+//		pg_fatal("old and new pg_controldata database mode do not match\n");
 }
 
 
