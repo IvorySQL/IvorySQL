@@ -1800,7 +1800,7 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 	 * any parameters that would affect future nextval allocations.
 	 */
 	if (isInit)
-		*reset_state = 0;
+		*reset_state = true;
 
 	if (start_value && !isInit && !restart_value &&
 			compatible_db == ORA_PARSER && !for_identity)
@@ -1882,7 +1882,7 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 							errmsg("INCREMENT must not be zero")));
-				*reset_state = 0;
+				*reset_state = true;
 			}
 			PG_CATCH();
 			{
@@ -1900,7 +1900,7 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 						seqform->seqincrement = PG_INT64_MIN;
 					else
 						seqform->seqincrement = PG_INT64_MAX;
-					*reset_state = 0;
+					*reset_state = true;
 				}
 				else if (errcod == ERRCODE_INVALID_TEXT_REPRESENTATION || errcod == ERRCODE_INVALID_PARAMETER_VALUE)
 				{
@@ -1917,7 +1917,7 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						errmsg("INCREMENT must not be zero")));
-			*reset_state = 0;
+			*reset_state = true;
 		}
 	}
 	else if (isInit)
@@ -2322,13 +2322,73 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 	/* CACHE */
 	if (cache_value != NULL)
 	{
-		seqform->seqcache = defGetInt64(cache_value);
-		if (seqform->seqcache <= 0)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("CACHE (%" PRId64 ") must be greater than zero",
-							seqform->seqcache)));
-		*reset_state = true;;
+		if (compatible_db == ORA_PARSER)
+		{
+			PG_TRY();
+			{
+				seqform->seqcache = defGetInt64(cache_value);
+				if (seqform->seqcache <= 1)
+				{
+					char		buf[100];
+
+					snprintf(buf, sizeof(buf), INT64_FORMAT, seqform->seqcache);
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							errmsg("the number of values to CACHE must be greater than 1")));
+				}
+				*reset_state = true;
+			}
+			PG_CATCH();
+			{
+				int		errcod;
+				
+				errcod = geterrcode();
+				if (errcod == ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE)
+				{
+					if(internal_warning)	
+						ereport(WARNING,
+								(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+								errmsg("Cache value is out of range for data type bigint")));
+
+					if (seqform->seqincrement < 0)
+						seqform->seqcache = PG_INT64_MIN;
+					else
+						seqform->seqcache = PG_INT64_MAX;
+					if (seqform->seqcache <= 0)
+					{
+						char		buf[100];
+
+						snprintf(buf, sizeof(buf), INT64_FORMAT, seqform->seqcache);
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+								errmsg("CACHE (%s) must be greater than zero",
+										buf)));
+					}
+					*reset_state = true;
+				}
+				else if (errcod == ERRCODE_INVALID_TEXT_REPRESENTATION || errcod == ERRCODE_INVALID_PARAMETER_VALUE)
+				{
+					PG_RE_THROW();
+				}
+				FlushErrorState();
+			}
+			PG_END_TRY();
+		}
+		else
+		{
+			seqform->seqcache = defGetInt64(cache_value);
+			if (seqform->seqcache <= 0)
+			{
+				char		buf[100];
+
+				snprintf(buf, sizeof(buf), INT64_FORMAT, seqform->seqcache);
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("CACHE (%s) must be greater than zero",
+								buf)));
+			}
+			*reset_state = true;
+		}
 	}
 	else if (isInit)
 	{
