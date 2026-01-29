@@ -47,7 +47,7 @@
 #include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/ora_compatible.h"
-#include "executor/spi.h" 
+#include "executor/spi.h"
 #include "parser/parse_param.h"
 }
 
@@ -954,7 +954,7 @@ other			.
 						&& !identifier_case_from_pg_dump)
 					{
 						if (identifier_case_switch == LOWERCASE
-							 && is_all_upper(ident, strlen(ident)))
+							 && identifier_is_all_upper(ident, strlen(ident)))
 						{
 							char *lowerident = ident;
 
@@ -1701,4 +1701,3 @@ ora_core_yyfree(void *ptr, ora_core_yyscan_t yyscanner)
 	if (ptr)
 		pfree(ptr);
 }
-

@@ -283,29 +283,32 @@ TrimTrailingZeros(char *str)
  * precision is the max number of fraction digits, fillzeros says to
  * pad to two integral-seconds digits.
  * Note that any sign is stripped from the input seconds values.
+ * bufsize is the size of the buffer cp to prevent overflow.
  */
 static void
-AppendSeconds(char *cp, int sec, fsec_t fsec, int precision, bool fillzeros)
+AppendSeconds(char *cp, int sec, fsec_t fsec, int precision, bool fillzeros, size_t bufsize)
 {
+	size_t		bufsize_copy = bufsize;
+
 	if (fsec == 0)
 	{
 		if (fillzeros)
-			sprintf(cp, "%02d", abs(sec));
+			snprintf(cp, bufsize_copy, "%02d", abs(sec));
 		else
-			sprintf(cp, "%d", abs(sec));
+			snprintf(cp, bufsize_copy, "%d", abs(sec));
 	}
 	else
 	{
 #ifdef HAVE_INT64_TIMESTAMP
 		if (fillzeros)
-			sprintf(cp, "%02d.%0*d", abs(sec), precision, (int) Abs(fsec));
+			snprintf(cp, bufsize_copy, "%02d.%0*d", abs(sec), precision, (int) Abs(fsec));
 		else
-			sprintf(cp, "%d.%0*d", abs(sec), precision, (int) Abs(fsec));
+			snprintf(cp, bufsize_copy, "%d.%0*d", abs(sec), precision, (int) Abs(fsec));
 #else
 		if (fillzeros)
-			sprintf(cp, "%0*.*f", precision + 3, precision, fabs(sec + fsec));
+			snprintf(cp, bufsize_copy, "%0*.*f", precision + 3, precision, fabs(sec + fsec));
 		else
-			sprintf(cp, "%.*f", precision, fabs(sec + fsec));
+			snprintf(cp, bufsize_copy, "%.*f", precision, fabs(sec + fsec));
 #endif
 		TrimTrailingZeros(cp);
 	}
@@ -319,6 +322,7 @@ static void
 EncodeYminterval(struct pg_tm * tm, fsec_t fsec, int style, char *str, int precision)
 {
 	char	   *cp = str;
+	size_t		remaining_bufsize;
 	int			year = tm->tm_year;
 	int			mon = tm->tm_mon;
 	int			mday = tm->tm_mday;
@@ -369,11 +373,12 @@ EncodeYminterval(struct pg_tm * tm, fsec_t fsec, int style, char *str, int preci
 				/* Compatible oracle, show sign '+' or '-' */
 				if (!has_negative)
 					*cp++ = '+';
-				
+
 				/* Compatible oracle, the value of interval is zero should show "+00-00" */
 				if (!has_negative && !has_positive)
 				{
-					sprintf(cp, "%0*d-%02d", precision, year, mon);
+					remaining_bufsize = MAXDATELEN - (cp - str);
+					snprintf(cp, remaining_bufsize, "%0*d-%02d", precision, year, mon);
 				}
 				else if (!sql_standard_value)
 				{
@@ -387,28 +392,35 @@ EncodeYminterval(struct pg_tm * tm, fsec_t fsec, int style, char *str, int preci
 					char		sec_sign = (hour < 0 || min < 0 ||
 											sec < 0 || fsec < 0) ? '-' : '+';
 
-					sprintf(cp, "%c%d-%d %c%d %c%d:%02d:",
+					remaining_bufsize = MAXDATELEN - (cp - str);
+					snprintf(cp, remaining_bufsize, "%c%d-%d %c%d %c%d:%02d:",
 							year_sign, abs(year), abs(mon),
 							day_sign, abs(mday),
 							sec_sign, abs(hour), abs(min));
 					cp += strlen(cp);
-					AppendSeconds(cp, sec, fsec, MAX_INTERVAL_PRECISION, true);
+					remaining_bufsize = MAXDATELEN - (cp - str);
+					AppendSeconds(cp, sec, fsec, MAX_INTERVAL_PRECISION, true, remaining_bufsize);
 				}
 				else if (has_year_month)
 				{
-					sprintf(cp, "%0*d-%02d", precision, year, mon);
+					remaining_bufsize = MAXDATELEN - (cp - str);
+					snprintf(cp, remaining_bufsize, "%0*d-%02d", precision, year, mon);
 				}
 				else if (has_day)
 				{
-					sprintf(cp, "%d %d:%02d:", mday, hour, min);
+					remaining_bufsize = MAXDATELEN - (cp - str);
+					snprintf(cp, remaining_bufsize, "%d %d:%02d:", mday, hour, min);
 					cp += strlen(cp);
-					AppendSeconds(cp, sec, fsec, MAX_INTERVAL_PRECISION, true);
+					remaining_bufsize = MAXDATELEN - (cp - str);
+					AppendSeconds(cp, sec, fsec, MAX_INTERVAL_PRECISION, true, remaining_bufsize);
 				}
 				else
 				{
-					sprintf(cp, "%d:%02d:", hour, min);
+					remaining_bufsize = MAXDATELEN - (cp - str);
+					snprintf(cp, remaining_bufsize, "%d:%02d:", hour, min);
 					cp += strlen(cp);
-					AppendSeconds(cp, sec, fsec, MAX_INTERVAL_PRECISION, true);
+					remaining_bufsize = MAXDATELEN - (cp - str);
+					AppendSeconds(cp, sec, fsec, MAX_INTERVAL_PRECISION, true, remaining_bufsize);
 				}
 			}
 			break;
