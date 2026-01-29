@@ -510,7 +510,7 @@ InitProcess(void)
 	MyProc->recoveryConflictPending = false;
 
 	/* Initialize fields for sync rep */
-	MyProc->waitLSN = 0;
+	MyProc->waitLSN = InvalidXLogRecPtr;
 	MyProc->syncRepState = SYNC_REP_NOT_WAITING;
 	dlist_node_init(&MyProc->syncRepLinks);
 
