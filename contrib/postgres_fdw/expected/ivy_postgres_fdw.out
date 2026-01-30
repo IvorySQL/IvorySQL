@@ -5848,27 +5848,33 @@ SELECT ft2.*, ft4.* FROM ft2 LEFT JOIN
    ->  Sort
          Output: ft2.c1, ft2.c2, ft2.c3, ft2.c4, ft2.c5, ft2.c6, ft2.c7, ft2.c8, ft4.c1, ft4.c2, ft4.c3
          Sort Key: ft2.c1
-         ->  Hash Left Join
+         ->  Merge Right Join
                Output: ft2.c1, ft2.c2, ft2.c3, ft2.c4, ft2.c5, ft2.c6, ft2.c7, ft2.c8, ft4.c1, ft4.c2, ft4.c3
-               Hash Cond: (ft2.c2 = ft4.c1)
-               ->  Foreign Scan on public.ft2
-                     Output: ft2.c1, ft2.c2, ft2.c3, ft2.c4, ft2.c5, ft2.c6, ft2.c7, ft2.c8
-                     Filter: (ft2.c1 > '900'::number)
-                     Remote SQL: SELECT "C 1", c2, c3, c4, c5, c6, c7, c8 FROM "S 1"."T 1"
-               ->  Hash
+               Merge Cond: (ft4.c1 = ft2.c2)
+               ->  Nested Loop
                      Output: ft4.c1, ft4.c2, ft4.c3
-                     ->  Hash Semi Join
-                           Output: ft4.c1, ft4.c2, ft4.c3
-                           Hash Cond: (ft4.c1 = ft5.c1)
-                           ->  Foreign Scan on public.ft4
-                                 Output: ft4.c1, ft4.c2, ft4.c3
-                                 Remote SQL: SELECT c1, c2, c3 FROM "S 1"."T 3"
-                           ->  Hash
+                     Join Filter: (ft4.c1 = ft5.c1)
+                     ->  Unique
+                           Output: ft5.c1
+                           ->  Sort
                                  Output: ft5.c1
+                                 Sort Key: ft5.c1
                                  ->  Foreign Scan on public.ft5
                                        Output: ft5.c1
                                        Remote SQL: SELECT c1 FROM "S 1"."T 4"
-(25 rows)
+                     ->  Materialize
+                           Output: ft4.c1, ft4.c2, ft4.c3
+                           ->  Foreign Scan on public.ft4
+                                 Output: ft4.c1, ft4.c2, ft4.c3
+                                 Remote SQL: SELECT c1, c2, c3 FROM "S 1"."T 3"
+               ->  Sort
+                     Output: ft2.c1, ft2.c2, ft2.c3, ft2.c4, ft2.c5, ft2.c6, ft2.c7, ft2.c8
+                     Sort Key: ft2.c2
+                     ->  Foreign Scan on public.ft2
+                           Output: ft2.c1, ft2.c2, ft2.c3, ft2.c4, ft2.c5, ft2.c6, ft2.c7, ft2.c8
+                           Filter: (ft2.c1 > '900'::number)
+                           Remote SQL: SELECT "C 1", c2, c3, c4, c5, c6, c7, c8 FROM "S 1"."T 1"
+(31 rows)
 
 SELECT ft2.*, ft4.* FROM ft2 LEFT JOIN
   (SELECT * FROM ft4 WHERE
@@ -6105,42 +6111,43 @@ SELECT ft1.c1 FROM ft1 JOIN ft2 on ft1.c1 = ft2.c1 WHERE
 	ft1.c1 IN (
 		SELECT ft2.c1 FROM ft2 JOIN ft4 ON ft2.c1 = ft4.c1)
 	ORDER BY ft1.c1 LIMIT 5;
-                                  QUERY PLAN                                  
-------------------------------------------------------------------------------
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
  Limit
    Output: ft1.c1
    ->  Nested Loop
          Output: ft1.c1
          Join Filter: (ft2.c1 = ft1.c1)
-         ->  Merge Semi Join
+         ->  Nested Loop
                Output: ft1.c1, ft2_1.c1, ft4.c1
-               Merge Cond: (ft1.c1 = ft2_1.c1)
-               ->  Sort
+               Join Filter: (ft2_1.c1 = ft1.c1)
+               ->  Unique
+                     Output: ft2_1.c1, ft4.c1
+                     ->  Sort
+                           Output: ft2_1.c1, ft4.c1
+                           Sort Key: ft2_1.c1
+                           ->  Hash Join
+                                 Output: ft2_1.c1, ft4.c1
+                                 Hash Cond: (ft2_1.c1 = ft4.c1)
+                                 ->  Foreign Scan on public.ft2 ft2_1
+                                       Output: ft2_1.c1
+                                       Remote SQL: SELECT "C 1" FROM "S 1"."T 1"
+                                 ->  Hash
+                                       Output: ft4.c1
+                                       ->  Foreign Scan on public.ft4
+                                             Output: ft4.c1
+                                             Remote SQL: SELECT c1 FROM "S 1"."T 3"
+               ->  Materialize
                      Output: ft1.c1
-                     Sort Key: ft1.c1
                      ->  Foreign Scan on public.ft1
                            Output: ft1.c1
                            Remote SQL: SELECT "C 1" FROM "S 1"."T 1"
-               ->  Sort
-                     Output: ft2_1.c1, ft4.c1
-                     Sort Key: ft2_1.c1
-                     ->  Hash Join
-                           Output: ft2_1.c1, ft4.c1
-                           Hash Cond: (ft2_1.c1 = ft4.c1)
-                           ->  Foreign Scan on public.ft2 ft2_1
-                                 Output: ft2_1.c1
-                                 Remote SQL: SELECT "C 1" FROM "S 1"."T 1"
-                           ->  Hash
-                                 Output: ft4.c1
-                                 ->  Foreign Scan on public.ft4
-                                       Output: ft4.c1
-                                       Remote SQL: SELECT c1 FROM "S 1"."T 3"
          ->  Materialize
                Output: ft2.c1
                ->  Foreign Scan on public.ft2
                      Output: ft2.c1
                      Remote SQL: SELECT "C 1" FROM "S 1"."T 1"
-(33 rows)
+(34 rows)
 
 -- ===================================================================
 -- test writable foreign table stuff
