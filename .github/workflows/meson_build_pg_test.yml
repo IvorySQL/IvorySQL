@@ -15,7 +15,7 @@ jobs:
       
     steps:
     - uses: actions/checkout@v3
-    - name: dependancy - linux
+    - name: dependency - linux
       run: |
         sudo apt-get update
         sudo apt-get install -y build-essential git lcov bison flex \
@@ -47,7 +47,7 @@ jobs:
       id: test_postgres
       run: |
         cd build
-        meson test -j1 --verbose --no-rebuild
+        meson test --verbose --no-rebuild
       timeout-minutes: 30
 
     - name: collect test logs
