@@ -55,9 +55,6 @@ AggStrategy
 AggTransInfo
 Aggref
 AggregateInstrumentation
-AioWorkerControl
-AioWorkerSlot
-AioWorkerSubmissionQueue
 AlenState
 Alias
 AllocBlock
@@ -74,6 +71,7 @@ AlterDatabaseSetStmt
 AlterDatabaseStmt
 AlterDefaultPrivilegesStmt
 AlterDomainStmt
+AlterDomainType
 AlterEnumStmt
 AlterEventTrigStmt
 AlterExtensionContentsStmt
@@ -521,7 +519,6 @@ CopyFormatOptions
 CopyFromRoutine
 CopyFromState
 CopyFromStateData
-CopyHeaderChoice
 CopyInsertMethod
 CopyLogVerbosityChoice
 CopyMethod
@@ -601,6 +598,7 @@ DR_intorel
 DR_printtup
 DR_sqlfunction
 DR_transientrel
+DSMREntryType
 DSMRegistryCtxStruct
 DSMRegistryEntry
 DWORD
@@ -805,6 +803,7 @@ FastPathStrongRelationLockData
 FdwInfo
 FdwRoutine
 FetchDirection
+FetchDirectionKeywords
 FetchStmt
 FieldSelect
 FieldStore
@@ -1289,6 +1288,7 @@ InjectionPointCacheEntry
 InjectionPointCallback
 InjectionPointCondition
 InjectionPointConditionType
+InjectionPointData
 InjectionPointEntry
 InjectionPointSharedState
 InjectionPointsCtl
@@ -1736,6 +1736,9 @@ Name
 NameData
 NameHashEntry
 NamedArgExpr
+NamedDSAState
+NamedDSHState
+NamedDSMState
 NamedLWLockTranche
 NamedLWLockTrancheRequest
 NamedTuplestoreScan
@@ -1756,6 +1759,7 @@ NonEmptyRange
 Notification
 NotificationList
 NotifyStmt
+NotnullHashEntry
 Nsrt
 NtDllRoutine
 NtFlushBuffersFileEx_t
@@ -1878,7 +1882,6 @@ PGTargetServerType
 PGTernaryBool
 PGTransactionStatusType
 PGVerbosity
-PG_Locale_Strategy
 PG_Lock_Status
 PG_init_t
 PGauthData
@@ -2176,8 +2179,12 @@ PgAioReturn
 PgAioTargetData
 PgAioTargetID
 PgAioTargetInfo
+PgAioUringCaps
 PgAioUringContext
 PgAioWaitRef
+PgAioWorkerControl
+PgAioWorkerSlot
+PgAioWorkerSubmissionQueue
 PgArchData
 PgBackendGSSStatus
 PgBackendSSLStatus
@@ -2268,6 +2275,7 @@ PlanInvalItem
 PlanRowMark
 PlanState
 PlannedStmt
+PlannedStmtOrigin
 PlannerGlobal
 PlannerInfo
 PlannerParamItem
@@ -2559,6 +2567,8 @@ RestrictInfo
 Result
 ResultRelInfo
 ResultState
+RetainDeadTuplesData
+RetainDeadTuplesPhase
 ReturnSetInfo
 ReturnStmt
 ReturningClause
@@ -3006,6 +3016,7 @@ Tcl_Obj
 Tcl_Size
 Tcl_Time
 TempNamespaceStatus
+TestDSMRegistryHashEntry
 TestDSMRegistryStruct
 TestDecodingData
 TestDecodingTxnData
@@ -3475,6 +3486,8 @@ bloom_filter
 boolKEY
 brin_column_state
 brin_serialize_callback_type
+btree_gin_convert_function
+btree_gin_leftmost_function
 bytea
 cached_re_str
 canonicalize_state
@@ -3744,6 +3757,7 @@ leafSegmentInfo
 leaf_item
 libpq_gettext_func
 libpq_source
+libpqsrv_PGresult
 line_t
 lineno_t
 list_sort_comparator

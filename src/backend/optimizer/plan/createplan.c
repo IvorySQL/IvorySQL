@@ -297,7 +297,10 @@ static Material *make_material(Plan *lefttree);
 static Memoize *make_memoize(Plan *lefttree, Oid *hashoperators,
 							 Oid *collations, List *param_exprs,
 							 bool singlerow, bool binary_mode,
-							 uint32 est_entries, Bitmapset *keyparamids);
+							 uint32 est_entries, Bitmapset *keyparamids,
+							 Cardinality est_calls,
+							 Cardinality est_unique_keys,
+							 double est_hit_ratio);
 static WindowAgg *make_windowagg(List *tlist, WindowClause *wc,
 								 int partNumCols, AttrNumber *partColIdx, Oid *partOperators, Oid *partCollations,
 								 int ordNumCols, AttrNumber *ordColIdx, Oid *ordOperators, Oid *ordCollations,
@@ -1332,6 +1335,7 @@ create_append_plan(PlannerInfo *root, AppendPath *best_path, int flags)
 			Oid		   *sortOperators;
 			Oid		   *collations;
 			bool	   *nullsFirst;
+			int			presorted_keys;
 
 			/*
 			 * Compute sort column info, and adjust subplan's tlist as needed.
@@ -1367,14 +1371,38 @@ create_append_plan(PlannerInfo *root, AppendPath *best_path, int flags)
 						  numsortkeys * sizeof(bool)) == 0);
 
 			/* Now, insert a Sort node if subplan isn't sufficiently ordered */
-			if (!pathkeys_contained_in(pathkeys, subpath->pathkeys))
+			if (!pathkeys_count_contained_in(pathkeys, subpath->pathkeys,
+											 &presorted_keys))
 			{
-				Sort	   *sort = make_sort(subplan, numsortkeys,
+				Plan	   *sort_plan;
+
+				/*
+				 * We choose to use incremental sort if it is enabled and
+				 * there are presorted keys; otherwise we use full sort.
+				 */
+				if (enable_incremental_sort && presorted_keys > 0)
+				{
+					sort_plan = (Plan *)
+						make_incrementalsort(subplan, numsortkeys, presorted_keys,
 											 sortColIdx, sortOperators,
 											 collations, nullsFirst);
 
-				label_sort_with_costsize(root, sort, best_path->limit_tuples);
-				subplan = (Plan *) sort;
+					label_incrementalsort_with_costsize(root,
+														(IncrementalSort *) sort_plan,
+														pathkeys,
+														best_path->limit_tuples);
+				}
+				else
+				{
+					sort_plan = (Plan *) make_sort(subplan, numsortkeys,
+												   sortColIdx, sortOperators,
+												   collations, nullsFirst);
+
+					label_sort_with_costsize(root, (Sort *) sort_plan,
+											 best_path->limit_tuples);
+				}
+
+				subplan = sort_plan;
 			}
 		}
 
@@ -1505,6 +1533,7 @@ create_merge_append_plan(PlannerInfo *root, MergeAppendPath *best_path,
 		Oid		   *sortOperators;
 		Oid		   *collations;
 		bool	   *nullsFirst;
+		int			presorted_keys;
 
 		/* Build the child plan */
 		/* Must insist that all children return the same tlist */
@@ -1539,14 +1568,38 @@ create_merge_append_plan(PlannerInfo *root, MergeAppendPath *best_path,
 					  numsortkeys * sizeof(bool)) == 0);
 
 		/* Now, insert a Sort node if subplan isn't sufficiently ordered */
-		if (!pathkeys_contained_in(pathkeys, subpath->pathkeys))
+		if (!pathkeys_count_contained_in(pathkeys, subpath->pathkeys,
+										 &presorted_keys))
 		{
-			Sort	   *sort = make_sort(subplan, numsortkeys,
+			Plan	   *sort_plan;
+
+			/*
+			 * We choose to use incremental sort if it is enabled and there
+			 * are presorted keys; otherwise we use full sort.
+			 */
+			if (enable_incremental_sort && presorted_keys > 0)
+			{
+				sort_plan = (Plan *)
+					make_incrementalsort(subplan, numsortkeys, presorted_keys,
 										 sortColIdx, sortOperators,
 										 collations, nullsFirst);
 
-			label_sort_with_costsize(root, sort, best_path->limit_tuples);
-			subplan = (Plan *) sort;
+				label_incrementalsort_with_costsize(root,
+													(IncrementalSort *) sort_plan,
+													pathkeys,
+													best_path->limit_tuples);
+			}
+			else
+			{
+				sort_plan = (Plan *) make_sort(subplan, numsortkeys,
+											   sortColIdx, sortOperators,
+											   collations, nullsFirst);
+
+				label_sort_with_costsize(root, (Sort *) sort_plan,
+										 best_path->limit_tuples);
+			}
+
+			subplan = sort_plan;
 		}
 
 		subplans = lappend(subplans, subplan);
@@ -1718,7 +1771,8 @@ create_memoize_plan(PlannerInfo *root, MemoizePath *best_path, int flags)
 
 	plan = make_memoize(subplan, operators, collations, param_exprs,
 						best_path->singlerow, best_path->binary_mode,
-						best_path->est_entries, keyparamids);
+						best_path->est_entries, keyparamids, best_path->est_calls,
+						best_path->est_unique_keys, best_path->est_hit_ratio);
 
 	copy_generic_path_info(&plan->plan, (Path *) best_path);
 
@@ -6907,7 +6961,9 @@ materialize_finished_plan(Plan *subplan)
 static Memoize *
 make_memoize(Plan *lefttree, Oid *hashoperators, Oid *collations,
 			 List *param_exprs, bool singlerow, bool binary_mode,
-			 uint32 est_entries, Bitmapset *keyparamids)
+			 uint32 est_entries, Bitmapset *keyparamids,
+			 Cardinality est_calls, Cardinality est_unique_keys,
+			 double est_hit_ratio)
 {
 	Memoize    *node = makeNode(Memoize);
 	Plan	   *plan = &node->plan;
@@ -6925,6 +6981,9 @@ make_memoize(Plan *lefttree, Oid *hashoperators, Oid *collations,
 	node->binary_mode = binary_mode;
 	node->est_entries = est_entries;
 	node->keyparamids = keyparamids;
+	node->est_calls = est_calls;
+	node->est_unique_keys = est_unique_keys;
+	node->est_hit_ratio = est_hit_ratio;
 
 	return node;
 }

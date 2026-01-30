@@ -177,6 +177,7 @@ plpgsql_compile_callback(FunctionCallInfo fcinfo,
 	yyscan_t	scanner;
 	Datum		prosrcdatum;
 	char	   *proc_source;
+	char	   *proc_signature;
 	HeapTuple	typeTup;
 	Form_pg_type typeStruct;
 	PLpgSQL_variable *var;
@@ -223,6 +224,9 @@ plpgsql_compile_callback(FunctionCallInfo fcinfo,
 	plpgsql_check_syntax = forValidator;
 	plpgsql_curr_compile = function;
 
+	/* format_procedure leaks memory, so run it in temp context */
+	proc_signature = format_procedure(fcinfo->flinfo->fn_oid);
+
 	/*
 	 * All the permanent output of compilation (e.g. parse tree) is kept in a
 	 * per-function memory context, so it can be reclaimed easily.
@@ -237,7 +241,7 @@ plpgsql_compile_callback(FunctionCallInfo fcinfo,
 									 ALLOCSET_DEFAULT_SIZES);
 	plpgsql_compile_tmp_cxt = MemoryContextSwitchTo(func_cxt);
 
-	function->fn_signature = format_procedure(fcinfo->flinfo->fn_oid);
+	function->fn_signature = pstrdup(proc_signature);
 	MemoryContextSetIdentifier(func_cxt, function->fn_signature);
 	function->fn_oid = fcinfo->flinfo->fn_oid;
 	function->fn_input_collation = fcinfo->fncollation;
@@ -1211,17 +1215,22 @@ resolve_column_ref(ParseState *pstate, PLpgSQL_expr *expr,
 				}
 
 				/*
-				 * We should not get here, because a RECFIELD datum should
-				 * have been built at parse time for every possible qualified
-				 * reference to fields of this record.  But if we do, handle
-				 * it like field-not-found: throw error or return NULL.
+				 * Ideally we'd never get here, because a RECFIELD datum
+				 * should have been built at parse time for every qualified
+				 * reference to a field of this record that appears in the
+				 * source text.  However, plpgsql_yylex will not build such a
+				 * datum unless the field name lexes as token type IDENT.
+				 * Hence, if the would-be field name is a PL/pgSQL reserved
+				 * word, we lose.  Assume that that's what happened and tell
+				 * the user to quote it, unless the caller prefers we just
+				 * return NULL.
 				 */
 				if (error_if_no_field)
 					ereport(ERROR,
-							(errcode(ERRCODE_UNDEFINED_COLUMN),
-							 errmsg("record \"%s\" has no field \"%s\"",
-									(nnames_field == 1) ? name1 : name2,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("field name \"%s\" is a reserved key word",
 									colname),
+							 errhint("Use double quotes to quote it."),
 							 parser_errposition(pstate, cref->location)));
 			}
 			break;
@@ -1668,6 +1677,11 @@ plpgsql_parse_wordrowtype(char *ident)
 {
 	Oid			classOid;
 	Oid			typOid;
+	TypeName   *typName;
+	MemoryContext oldCxt;
+
+	/* Avoid memory leaks in long-term function context */
+	oldCxt = MemoryContextSwitchTo(plpgsql_compile_tmp_cxt);
 
 	/*
 	 * Look up the relation.  Note that because relation rowtypes have the
@@ -1690,9 +1704,12 @@ plpgsql_parse_wordrowtype(char *ident)
 				 errmsg("relation \"%s\" does not have a composite type",
 						ident)));
 
+	typName = makeTypeName(ident);
+
+	MemoryContextSwitchTo(oldCxt);
+
 	/* Build and return the row type struct */
-	return plpgsql_build_datatype(typOid, -1, InvalidOid,
-								  makeTypeName(ident));
+	return plpgsql_build_datatype(typOid, -1, InvalidOid, typName);
 }
 
 /* ----------
@@ -1706,6 +1723,7 @@ plpgsql_parse_cwordrowtype(List *idents)
 	Oid			classOid;
 	Oid			typOid;
 	RangeVar   *relvar;
+	TypeName   *typName;
 	MemoryContext oldCxt;
 
 	/*
@@ -1728,11 +1746,12 @@ plpgsql_parse_cwordrowtype(List *idents)
 				 errmsg("relation \"%s\" does not have a composite type",
 						relvar->relname)));
 
+	typName = makeTypeNameFromNameList(idents);
+
 	MemoryContextSwitchTo(oldCxt);
 
 	/* Build and return the row type struct */
-	return plpgsql_build_datatype(typOid, -1, InvalidOid,
-								  makeTypeNameFromNameList(idents));
+	return plpgsql_build_datatype(typOid, -1, InvalidOid, typName);
 }
 
 /*
@@ -1947,6 +1966,8 @@ plpgsql_build_recfield(PLpgSQL_rec *rec, const char *fldname)
  * origtypname is the parsed form of what the user wrote as the type name.
  * It can be NULL if the type could not be a composite type, or if it was
  * identified by OID to begin with (e.g., it's a function argument type).
+ * origtypname is in short-lived storage and must be copied if we choose
+ * to incorporate it into the function's parse tree.
  */
 PLpgSQL_type *
 plpgsql_build_datatype(Oid typeOid, int32 typmod,
@@ -2065,7 +2086,7 @@ build_datatype(HeapTuple typeTup, int32 typmod,
 					 errmsg("type %s is not composite",
 							format_type_be(typ->typoid))));
 
-		typ->origtypname = origtypname;
+		typ->origtypname = copyObject(origtypname);
 		typ->tcache = typentry;
 		typ->tupdesc_id = typentry->tupDesc_identifier;
 	}

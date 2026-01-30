@@ -439,8 +439,13 @@ DROP TABLE test_stats_temp;
 -- Checkpoint twice: The checkpointer reports stats after reporting completion
 -- of the checkpoint. But after a second checkpoint we'll see at least the
 -- results of the first.
-CHECKPOINT;
-CHECKPOINT;
+--
+-- While at it, test checkpoint options.  Note that we don't test MODE SPREAD
+-- because it would prolong the test.
+CHECKPOINT (WRONG);
+CHECKPOINT (MODE WRONG);
+CHECKPOINT (MODE FAST, FLUSH_UNLOGGED FALSE);
+CHECKPOINT (FLUSH_UNLOGGED);
 
 SELECT num_requested > :rqst_ckpts_before FROM pg_stat_checkpointer;
 SELECT wal_bytes > :wal_bytes_before FROM pg_stat_wal;

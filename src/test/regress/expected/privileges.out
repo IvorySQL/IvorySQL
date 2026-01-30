@@ -2568,6 +2568,26 @@ SELECT makeaclitem('regress_priv_user1'::regrole, 'regress_priv_user2'::regrole,
 SELECT makeaclitem('regress_priv_user1'::regrole, 'regress_priv_user2'::regrole,
 	'SELECT, fake_privilege', FALSE);  -- error
 ERROR:  unrecognized privilege type: "fake_privilege"
+-- Test quoting and dequoting of user names in ACLs
+CREATE ROLE "regress_""quoted";
+SELECT makeaclitem('regress_"quoted'::regrole, 'regress_"quoted'::regrole,
+                   'SELECT', TRUE);
+               makeaclitem                
+------------------------------------------
+ "regress_""quoted"=r*/"regress_""quoted"
+(1 row)
+
+SELECT '"regress_""quoted"=r*/"regress_""quoted"'::aclitem;
+                 aclitem                  
+------------------------------------------
+ "regress_""quoted"=r*/"regress_""quoted"
+(1 row)
+
+SELECT '""=r*/""'::aclitem;  -- used to be misparsed as """"
+ERROR:  a name must follow the "/" sign
+LINE 1: SELECT '""=r*/""'::aclitem;
+               ^
+DROP ROLE "regress_""quoted";
 -- Test non-throwing aclitem I/O
 SELECT pg_input_is_valid('regress_priv_user1=r/regress_priv_user2', 'aclitem');
  pg_input_is_valid 
@@ -3220,7 +3240,8 @@ REVOKE MAINTAIN ON lock_table FROM regress_locktable_user;
 DROP TABLE lock_table;
 DROP USER regress_locktable_user;
 -- test to check privileges of system views pg_shmem_allocations,
--- pg_shmem_allocations_numa and pg_backend_memory_contexts.
+-- pg_shmem_allocations_numa, pg_dsm_registry_allocations, and
+-- pg_backend_memory_contexts.
 -- switch to superuser
 \c -
 CREATE ROLE regress_readallstats;
@@ -3248,6 +3269,12 @@ SELECT has_table_privilege('regress_readallstats','pg_shmem_allocations_numa','S
  f
 (1 row)
 
+SELECT has_table_privilege('regress_readallstats','pg_dsm_registry_allocations','SELECT'); -- no
+ has_table_privilege 
+---------------------
+ f
+(1 row)
+
 GRANT pg_read_all_stats TO regress_readallstats;
 SELECT has_table_privilege('regress_readallstats','pg_aios','SELECT'); -- yes
  has_table_privilege 
@@ -3268,6 +3295,12 @@ SELECT has_table_privilege('regress_readallstats','pg_shmem_allocations','SELECT
 (1 row)
 
 SELECT has_table_privilege('regress_readallstats','pg_shmem_allocations_numa','SELECT'); -- yes
+ has_table_privilege 
+---------------------
+ t
+(1 row)
+
+SELECT has_table_privilege('regress_readallstats','pg_dsm_registry_allocations','SELECT'); -- yes
  has_table_privilege 
 ---------------------
  t

@@ -67,10 +67,9 @@ static void dropTablespaces(PGconn *conn);
 static void dumpTablespaces(PGconn *conn);
 static void dropDBs(PGconn *conn);
 static void dumpUserConfig(PGconn *conn, const char *username);
-static void dumpDatabases(PGconn *conn, ArchiveFormat archDumpFormat);
+static void dumpDatabases(PGconn *conn);
 static void dumpTimestamp(const char *msg);
-static int	runPgDump(const char *dbname, const char *create_opts,
-					  char *dbfile, ArchiveFormat archDumpFormat);
+static int	runPgDump(const char *dbname, const char *create_opts);
 static void buildShSecLabels(PGconn *conn,
 							 const char *catalog_name, Oid objectId,
 							 const char *objtype, const char *objname,
@@ -79,7 +78,6 @@ static void executeCommand(PGconn *conn, const char *query);
 static void expand_dbname_patterns(PGconn *conn, SimpleStringList *patterns,
 								   SimpleStringList *names);
 static void read_dumpall_filters(const char *filename, SimpleStringList *pattern);
-static ArchiveFormat parseDumpFormat(const char *format);
 
 static char pg_dump_bin[MAXPGPATH];
 static PQExpBuffer pgdumpopts;
@@ -109,8 +107,6 @@ static int	no_subscriptions = 0;
 static int	no_toast_compression = 0;
 static int	no_unlogged_table_data = 0;
 static int	no_role_passwords = 0;
-static int	with_data = 0;
-static int	with_schema = 0;
 static int	with_statistics = 0;
 static int	server_version;
 static int	load_via_partition_root = 0;
@@ -152,7 +148,6 @@ main(int argc, char *argv[])
 		{"password", no_argument, NULL, 'W'},
 		{"no-privileges", no_argument, NULL, 'x'},
 		{"no-acl", no_argument, NULL, 'x'},
-		{"format", required_argument, NULL, 'F'},
 
 		/*
 		 * the following options don't have an equivalent short option letter
@@ -185,11 +180,9 @@ main(int argc, char *argv[])
 		{"no-sync", no_argument, NULL, 4},
 		{"no-toast-compression", no_argument, &no_toast_compression, 1},
 		{"no-unlogged-table-data", no_argument, &no_unlogged_table_data, 1},
-		{"with-data", no_argument, &with_data, 1},
-		{"with-schema", no_argument, &with_schema, 1},
-		{"with-statistics", no_argument, &with_statistics, 1},
 		{"on-conflict-do-nothing", no_argument, &on_conflict_do_nothing, 1},
 		{"rows-per-insert", required_argument, NULL, 7},
+		{"statistics", no_argument, &with_statistics, 1},
 		{"statistics-only", no_argument, &statistics_only, 1},
 		{"filter", required_argument, NULL, 8},
 		{"sequence-data", no_argument, &sequence_data, 1},
@@ -203,8 +196,6 @@ main(int argc, char *argv[])
 	char	   *pgdb = NULL;
 	char	   *use_role = NULL;
 	const char *dumpencoding = NULL;
-	ArchiveFormat archDumpFormat = archNull;
-	const char *formatName = "p";
 	trivalue	prompt_password = TRI_DEFAULT;
 	bool		data_only = false;
 	bool		globals_only = false;
@@ -254,7 +245,7 @@ main(int argc, char *argv[])
 
 	pgdumpopts = createPQExpBuffer();
 
-	while ((c = getopt_long(argc, argv, "acd:E:f:F:gh:l:Op:rsS:tU:vwWx", long_options, &optindex)) != -1)
+	while ((c = getopt_long(argc, argv, "acd:E:f:gh:l:Op:rsS:tU:vwWx", long_options, &optindex)) != -1)
 	{
 		switch (c)
 		{
@@ -282,9 +273,7 @@ main(int argc, char *argv[])
 				appendPQExpBufferStr(pgdumpopts, " -f ");
 				appendShellString(pgdumpopts, filename);
 				break;
-			case 'F':
-				formatName = pg_strdup(optarg);
-				break;
+
 			case 'g':
 				globals_only = true;
 				break;
@@ -433,21 +422,6 @@ main(int argc, char *argv[])
 		exit_nicely(1);
 	}
 
-	/* Get format for dump. */
-	archDumpFormat = parseDumpFormat(formatName);
-
-	/*
-	 * If a non-plain format is specified, a file name is also required as the
-	 * path to the main directory.
-	 */
-	if (archDumpFormat != archNull &&
-		(!filename || strcmp(filename, "") == 0))
-	{
-		pg_log_error("option -F/--format=d|c|t requires option -f/--file");
-		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
-		exit_nicely(1);
-	}
-
 	/*
 	 * If password values are not required in the dump, switch to using
 	 * pg_roles which is equally useful, just more likely to have unrestricted
@@ -499,45 +473,14 @@ main(int argc, char *argv[])
 		appendPQExpBufferStr(pgdumpopts, " --no-toast-compression");
 	if (no_unlogged_table_data)
 		appendPQExpBufferStr(pgdumpopts, " --no-unlogged-table-data");
-	if (with_data)
-		appendPQExpBufferStr(pgdumpopts, " --with-data");
-	if (with_schema)
-		appendPQExpBufferStr(pgdumpopts, " --with-schema");
 	if (with_statistics)
-		appendPQExpBufferStr(pgdumpopts, " --with-statistics");
+		appendPQExpBufferStr(pgdumpopts, " --statistics");
 	if (on_conflict_do_nothing)
 		appendPQExpBufferStr(pgdumpopts, " --on-conflict-do-nothing");
 	if (statistics_only)
 		appendPQExpBufferStr(pgdumpopts, " --statistics-only");
 	if (sequence_data)
 		appendPQExpBufferStr(pgdumpopts, " --sequence-data");
-
-	/*
-	 * Open the output file if required, otherwise use stdout.  If required,
-	 * then create new directory and global.dat file.
-	 */
-	if (archDumpFormat != archNull)
-	{
-		char		global_path[MAXPGPATH];
-
-		/* Create new directory or accept the empty existing directory. */
-		create_or_open_dir(filename);
-
-		snprintf(global_path, MAXPGPATH, "%s/global.dat", filename);
-
-		OPF = fopen(global_path, PG_BINARY_W);
-		if (!OPF)
-			pg_fatal("could not open file \"%s\": %m", global_path);
-	}
-	else if (filename)
-	{
-		OPF = fopen(filename, PG_BINARY_W);
-		if (!OPF)
-			pg_fatal("could not open output file \"%s\": %m",
-					 filename);
-	}
-	else
-		OPF = stdout;
 
 	/*
 	 * If there was a database specified on the command line, use that,
@@ -580,6 +523,19 @@ main(int argc, char *argv[])
 	 */
 	expand_dbname_patterns(conn, &database_exclude_patterns,
 						   &database_exclude_names);
+
+	/*
+	 * Open the output file if required, otherwise use stdout
+	 */
+	if (filename)
+	{
+		OPF = fopen(filename, PG_BINARY_W);
+		if (!OPF)
+			pg_fatal("could not open output file \"%s\": %m",
+					 filename);
+	}
+	else
+		OPF = stdout;
 
 	/*
 	 * Set the client encoding if requested.
@@ -638,7 +594,7 @@ main(int argc, char *argv[])
 	fprintf(OPF, "SET ivorysql.identifier_case_switch = normal;\n");
 	fprintf(OPF, "\n");
 
-	if (!data_only)
+	if (!data_only && !statistics_only && !no_schema)
 	{
 		/*
 		 * If asked to --clean, do that first.  We can avoid detailed
@@ -681,7 +637,7 @@ main(int argc, char *argv[])
 	}
 
 	if (!globals_only && !roles_only && !tablespaces_only)
-		dumpDatabases(conn, archDumpFormat);
+		dumpDatabases(conn);
 
 	PQfinish(conn);
 
@@ -694,7 +650,7 @@ main(int argc, char *argv[])
 		fclose(OPF);
 
 		/* sync the resulting file, errors are not fatal */
-		if (dosync && (archDumpFormat == archNull))
+		if (dosync)
 			(void) fsync_fname(filename, false);
 	}
 
@@ -705,14 +661,12 @@ main(int argc, char *argv[])
 static void
 help(void)
 {
-	printf(_("%s exports a PostgreSQL database cluster as an SQL script or to other formats.\n\n"), progname);
+	printf(_("%s exports a PostgreSQL database cluster as an SQL script.\n\n"), progname);
 	printf(_("Usage:\n"));
 	printf(_("  %s [OPTION]...\n"), progname);
 
 	printf(_("\nGeneral options:\n"));
 	printf(_("  -f, --file=FILENAME          output file name\n"));
-	printf(_("  -F, --format=c|d|t|p         output file format (custom, directory, tar,\n"
-			 "                               plain text (default))\n"));
 	printf(_("  -v, --verbose                verbose mode\n"));
 	printf(_("  -V, --version                output version information, then exit\n"));
 	printf(_("  --lock-wait-timeout=TIMEOUT  fail after waiting TIMEOUT for a table lock\n"));
@@ -756,13 +710,11 @@ help(void)
 	printf(_("  --quote-all-identifiers      quote all identifiers, even if not key words\n"));
 	printf(_("  --rows-per-insert=NROWS      number of rows per INSERT; implies --inserts\n"));
 	printf(_("  --sequence-data              include sequence data in dump\n"));
+	printf(_("  --statistics                 dump the statistics\n"));
 	printf(_("  --statistics-only            dump only the statistics, not schema or data\n"));
 	printf(_("  --use-set-session-authorization\n"
 			 "                               use SET SESSION AUTHORIZATION commands instead of\n"
 			 "                               ALTER OWNER commands to set ownership\n"));
-	printf(_("  --with-data                  dump the data\n"));
-	printf(_("  --with-schema                dump the schema\n"));
-	printf(_("  --with-statistics            dump the statistics\n"));
 
 	printf(_("\nConnection options:\n"));
 	printf(_("  -d, --dbname=CONNSTR     connect using connection string\n"));
@@ -1019,6 +971,9 @@ dumpRoles(PGconn *conn)
 	 * We do it this way because config settings for roles could mention the
 	 * names of other roles.
 	 */
+	if (PQntuples(res) > 0)
+		fprintf(OPF, "\n--\n-- User Configurations\n--\n");
+
 	for (i = 0; i < PQntuples(res); i++)
 		dumpUserConfig(conn, PQgetvalue(res, i, i_rolname));
 
@@ -1533,7 +1488,6 @@ dumpUserConfig(PGconn *conn, const char *username)
 {
 	PQExpBuffer buf = createPQExpBuffer();
 	PGresult   *res;
-	static bool header_done = false;
 
 	printfPQExpBuffer(buf, "SELECT unnest(setconfig) FROM pg_db_role_setting "
 					  "WHERE setdatabase = 0 AND setrole = "
@@ -1545,13 +1499,7 @@ dumpUserConfig(PGconn *conn, const char *username)
 	res = executeQuery(conn, buf->data);
 
 	if (PQntuples(res) > 0)
-	{
-		if (!header_done)
-			fprintf(OPF, "\n--\n-- User Configurations\n--\n");
-		header_done = true;
-
 		fprintf(OPF, "\n--\n-- User Config \"%s\"\n--\n\n", username);
-	}
 
 	for (int i = 0; i < PQntuples(res); i++)
 	{
@@ -1625,13 +1573,10 @@ expand_dbname_patterns(PGconn *conn,
  * Dump contents of databases.
  */
 static void
-dumpDatabases(PGconn *conn, ArchiveFormat archDumpFormat)
+dumpDatabases(PGconn *conn)
 {
 	PGresult   *res;
 	int			i;
-	char		db_subdir[MAXPGPATH];
-	char		dbfilepath[MAXPGPATH];
-	FILE	   *map_file = NULL;
 
 	/*
 	 * Skip databases marked not datallowconn, since we'd be unable to connect
@@ -1645,42 +1590,18 @@ dumpDatabases(PGconn *conn, ArchiveFormat archDumpFormat)
 	 * doesn't have some failure mode with --clean.
 	 */
 	res = executeQuery(conn,
-					   "SELECT datname, oid "
+					   "SELECT datname "
 					   "FROM pg_database d "
 					   "WHERE datallowconn AND datconnlimit != -2 "
 					   "ORDER BY (datname <> 'template1'), datname");
 
-	if (archDumpFormat == archNull && PQntuples(res) > 0)
+	if (PQntuples(res) > 0)
 		fprintf(OPF, "--\n-- Databases\n--\n\n");
-
-	/*
-	 * If directory/tar/custom format is specified, create a subdirectory
-	 * under the main directory and each database dump file or subdirectory
-	 * will be created in that subdirectory by pg_dump.
-	 */
-	if (archDumpFormat != archNull)
-	{
-		char		map_file_path[MAXPGPATH];
-
-		snprintf(db_subdir, MAXPGPATH, "%s/databases", filename);
-
-		/* Create a subdirectory with 'databases' name under main directory. */
-		if (mkdir(db_subdir, pg_dir_create_mode) != 0)
-			pg_fatal("could not create directory \"%s\": %m", db_subdir);
-
-		snprintf(map_file_path, MAXPGPATH, "%s/map.dat", filename);
-
-		/* Create a map file (to store dboid and dbname) */
-		map_file = fopen(map_file_path, PG_BINARY_W);
-		if (!map_file)
-			pg_fatal("could not open file \"%s\": %m", map_file_path);
-	}
 
 	for (i = 0; i < PQntuples(res); i++)
 	{
 		char	   *dbname = PQgetvalue(res, i, 0);
-		char	   *oid = PQgetvalue(res, i, 1);
-		const char *create_opts = "";
+		const char *create_opts;
 		int			ret;
 
 		/* Skip template0, even if it's not marked !datallowconn. */
@@ -1694,27 +1615,9 @@ dumpDatabases(PGconn *conn, ArchiveFormat archDumpFormat)
 			continue;
 		}
 
-		/*
-		 * If this is not a plain format dump, then append dboid and dbname to
-		 * the map.dat file.
-		 */
-		if (archDumpFormat != archNull)
-		{
-			if (archDumpFormat == archCustom)
-				snprintf(dbfilepath, MAXPGPATH, "\"%s\"/\"%s\".dmp", db_subdir, oid);
-			else if (archDumpFormat == archTar)
-				snprintf(dbfilepath, MAXPGPATH, "\"%s\"/\"%s\".tar", db_subdir, oid);
-			else
-				snprintf(dbfilepath, MAXPGPATH, "\"%s\"/\"%s\"", db_subdir, oid);
-
-			/* Put one line entry for dboid and dbname in map file. */
-			fprintf(map_file, "%s %s\n", oid, dbname);
-		}
-
 		pg_log_info("dumping database \"%s\"", dbname);
 
-		if (archDumpFormat == archNull)
-			fprintf(OPF, "--\n-- Database \"%s\" dump\n--\n\n", dbname);
+		fprintf(OPF, "--\n-- Database \"%s\" dump\n--\n\n", dbname);
 
 		/*
 		 * We assume that "template1", "postgres", and "ivorysql" already exist in the
@@ -1730,9 +1633,12 @@ dumpDatabases(PGconn *conn, ArchiveFormat archDumpFormat)
 		{
 			if (output_clean)
 				create_opts = "--clean --create";
-			/* Since pg_dump won't emit a \connect command, we must */
-			else if (archDumpFormat == archNull)
+			else
+			{
+				create_opts = "";
+				/* Since pg_dump won't emit a \connect command, we must */
 				fprintf(OPF, "\\connect %s\n\n", dbname);
+			}
 		}
 		else
 			create_opts = "--create";
@@ -1740,29 +1646,18 @@ dumpDatabases(PGconn *conn, ArchiveFormat archDumpFormat)
 		if (filename)
 			fclose(OPF);
 
-		ret = runPgDump(dbname, create_opts, dbfilepath, archDumpFormat);
+		ret = runPgDump(dbname, create_opts);
 		if (ret != 0)
 			pg_fatal("pg_dump failed on database \"%s\", exiting", dbname);
 
 		if (filename)
 		{
-			char		global_path[MAXPGPATH];
-
-			if (archDumpFormat != archNull)
-				snprintf(global_path, MAXPGPATH, "%s/global.dat", filename);
-			else
-				snprintf(global_path, MAXPGPATH, "%s", filename);
-
-			OPF = fopen(global_path, PG_BINARY_A);
+			OPF = fopen(filename, PG_BINARY_A);
 			if (!OPF)
 				pg_fatal("could not re-open the output file \"%s\": %m",
-						 global_path);
+						 filename);
 		}
 	}
-
-	/* Close map file */
-	if (archDumpFormat != archNull)
-		fclose(map_file);
 
 	PQclear(res);
 }
@@ -1773,8 +1668,7 @@ dumpDatabases(PGconn *conn, ArchiveFormat archDumpFormat)
  * Run pg_dump on dbname, with specified options.
  */
 static int
-runPgDump(const char *dbname, const char *create_opts, char *dbfile,
-		  ArchiveFormat archDumpFormat)
+runPgDump(const char *dbname, const char *create_opts)
 {
 	PQExpBufferData connstrbuf;
 	PQExpBufferData cmd;
@@ -1783,36 +1677,17 @@ runPgDump(const char *dbname, const char *create_opts, char *dbfile,
 	initPQExpBuffer(&connstrbuf);
 	initPQExpBuffer(&cmd);
 
+	printfPQExpBuffer(&cmd, "\"%s\" %s %s", pg_dump_bin,
+					  pgdumpopts->data, create_opts);
+
 	/*
-	 * If this is not a plain format dump, then append file name and dump
-	 * format to the pg_dump command to get archive dump.
+	 * If we have a filename, use the undocumented plain-append pg_dump
+	 * format.
 	 */
-	if (archDumpFormat != archNull)
-	{
-		printfPQExpBuffer(&cmd, "\"%s\" -f %s %s", pg_dump_bin,
-						  dbfile, create_opts);
-
-		if (archDumpFormat == archDirectory)
-			appendPQExpBufferStr(&cmd, "  --format=directory ");
-		else if (archDumpFormat == archCustom)
-			appendPQExpBufferStr(&cmd, "  --format=custom ");
-		else if (archDumpFormat == archTar)
-			appendPQExpBufferStr(&cmd, "  --format=tar ");
-	}
+	if (filename)
+		appendPQExpBufferStr(&cmd, " -Fa ");
 	else
-	{
-		printfPQExpBuffer(&cmd, "\"%s\" %s %s", pg_dump_bin,
-						  pgdumpopts->data, create_opts);
-
-		/*
-		 * If we have a filename, use the undocumented plain-append pg_dump
-		 * format.
-		 */
-		if (filename)
-			appendPQExpBufferStr(&cmd, " -Fa ");
-		else
-			appendPQExpBufferStr(&cmd, " -Fp ");
-	}
+		appendPQExpBufferStr(&cmd, " -Fp ");
 
 	/*
 	 * Append the database name to the already-constructed stem of connection
@@ -1956,37 +1831,4 @@ read_dumpall_filters(const char *filename, SimpleStringList *pattern)
 	}
 
 	filter_free(&fstate);
-}
-
-/*
- * parseDumpFormat
- *
- * This will validate dump formats.
- */
-static ArchiveFormat
-parseDumpFormat(const char *format)
-{
-	ArchiveFormat archDumpFormat;
-
-	if (pg_strcasecmp(format, "c") == 0)
-		archDumpFormat = archCustom;
-	else if (pg_strcasecmp(format, "custom") == 0)
-		archDumpFormat = archCustom;
-	else if (pg_strcasecmp(format, "d") == 0)
-		archDumpFormat = archDirectory;
-	else if (pg_strcasecmp(format, "directory") == 0)
-		archDumpFormat = archDirectory;
-	else if (pg_strcasecmp(format, "p") == 0)
-		archDumpFormat = archNull;
-	else if (pg_strcasecmp(format, "plain") == 0)
-		archDumpFormat = archNull;
-	else if (pg_strcasecmp(format, "t") == 0)
-		archDumpFormat = archTar;
-	else if (pg_strcasecmp(format, "tar") == 0)
-		archDumpFormat = archTar;
-	else
-		pg_fatal("unrecognized output format \"%s\"; please specify \"c\", \"d\", \"p\", or \"t\"",
-				 format);
-
-	return archDumpFormat;
 }

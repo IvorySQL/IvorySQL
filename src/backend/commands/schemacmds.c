@@ -215,6 +215,7 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString,
 		wrapper->utilityStmt = stmt;
 		wrapper->stmt_location = stmt_location;
 		wrapper->stmt_len = stmt_len;
+		wrapper->planOrigin = PLAN_STMT_INTERNAL;
 
 		/* do this step */
 		ProcessUtility(wrapper,

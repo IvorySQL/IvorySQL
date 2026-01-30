@@ -32,6 +32,8 @@
 #endif
 
 #include "catalog/pg_class_d.h"
+#include "catalog/pg_largeobject_metadata_d.h"
+#include "catalog/pg_shdepend_d.h"
 #include "common/string.h"
 #include "compress_io.h"
 #include "dumputils.h"
@@ -86,7 +88,7 @@ static int	RestoringToDB(ArchiveHandle *AH);
 static void dump_lo_buf(ArchiveHandle *AH);
 static void dumpTimestamp(ArchiveHandle *AH, const char *msg, time_t tim);
 static void SetOutput(ArchiveHandle *AH, const char *filename,
-					  const pg_compress_specification compression_spec, bool append_data);
+					  const pg_compress_specification compression_spec);
 static CompressFileHandle *SaveOutput(ArchiveHandle *AH);
 static void RestoreOutput(ArchiveHandle *AH, CompressFileHandle *savedOutput);
 
@@ -338,14 +340,9 @@ ProcessArchiveRestoreOptions(Archive *AHX)
 		StrictNamesCheck(ropt);
 }
 
-/*
- * RestoreArchive
- *
- * If append_data is set, then append data into file as we are restoring dump
- * of multiple databases which was taken by pg_dumpall.
- */
+/* Public */
 void
-RestoreArchive(Archive *AHX, bool append_data)
+RestoreArchive(Archive *AHX)
 {
 	ArchiveHandle *AH = (ArchiveHandle *) AHX;
 	RestoreOptions *ropt = AH->public.ropt;
@@ -461,7 +458,7 @@ RestoreArchive(Archive *AHX, bool append_data)
 	 */
 	sav = SaveOutput(AH);
 	if (ropt->filename || ropt->compression_spec.algorithm != PG_COMPRESSION_NONE)
-		SetOutput(AH, ropt->filename, ropt->compression_spec, append_data);
+		SetOutput(AH, ropt->filename, ropt->compression_spec);
 
 	ahprintf(AH, "--\n-- PostgreSQL database dump\n--\n\n");
 
@@ -1300,7 +1297,7 @@ PrintTOCSummary(Archive *AHX)
 
 	sav = SaveOutput(AH);
 	if (ropt->filename)
-		SetOutput(AH, ropt->filename, out_compression_spec, false);
+		SetOutput(AH, ropt->filename, out_compression_spec);
 
 	if (strftime(stamp_str, sizeof(stamp_str), PGDUMP_STRFTIME_FMT,
 				 localtime(&AH->createDate)) == 0)
@@ -1679,8 +1676,7 @@ archprintf(Archive *AH, const char *fmt,...)
 
 static void
 SetOutput(ArchiveHandle *AH, const char *filename,
-		  const pg_compress_specification compression_spec,
-		  bool append_data)
+		  const pg_compress_specification compression_spec)
 {
 	CompressFileHandle *CFH;
 	const char *mode;
@@ -1700,7 +1696,7 @@ SetOutput(ArchiveHandle *AH, const char *filename,
 	else
 		fn = fileno(stdout);
 
-	if (append_data || AH->mode == archModeAppend)
+	if (AH->mode == archModeAppend)
 		mode = PG_BINARY_A;
 	else
 		mode = PG_BINARY_W;
@@ -2973,6 +2969,19 @@ _tocEntryRequired(TocEntry *te, teSection curSection, ArchiveHandle *AH)
 {
 	int			res = REQ_SCHEMA | REQ_DATA;
 	RestoreOptions *ropt = AH->public.ropt;
+
+	/*
+	 * For binary upgrade mode, dump pg_largeobject_metadata and the
+	 * associated pg_shdepend rows. This is faster to restore than the
+	 * equivalent set of large object commands.  We can only do this for
+	 * upgrades from v12 and newer; in older versions, pg_largeobject_metadata
+	 * was created WITH OIDS, so the OID column is hidden and won't be dumped.
+	 */
+	if (ropt->binary_upgrade && AH->public.remoteVersion >= 120000 &&
+		strcmp(te->desc, "TABLE DATA") == 0 &&
+		(te->catalogId.oid == LargeObjectMetadataRelationId ||
+		 te->catalogId.oid == SharedDependRelationId))
+		return REQ_DATA;
 
 	/* These items are treated specially */
 	if (strcmp(te->desc, "ENCODING") == 0 ||

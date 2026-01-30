@@ -2744,12 +2744,10 @@ ExtendBufferedRelShared(BufferManagerRelation bmr,
 		 * because mdread doesn't complain about reads beyond EOF (when
 		 * zero_damaged_pages is ON) and so a previous attempt to read a block
 		 * beyond EOF could have left a "valid" zero-filled buffer.
-		 * Unfortunately, we have also seen this case occurring because of
-		 * buggy Linux kernels that sometimes return an lseek(SEEK_END) result
-		 * that doesn't account for a recent write. In that situation, the
-		 * pre-existing buffer would contain valid data that we don't want to
-		 * overwrite.  Since the legitimate cases should always have left a
-		 * zero-filled buffer, complain if not PageIsNew.
+		 *
+		 * This has also been observed when relation was overwritten by
+		 * external process. Since the legitimate cases should always have
+		 * left a zero-filled buffer, complain if not PageIsNew.
 		 */
 		if (existing_id >= 0)
 		{
@@ -2779,8 +2777,7 @@ ExtendBufferedRelShared(BufferManagerRelation bmr,
 				ereport(ERROR,
 						(errmsg("unexpected data beyond EOF in block %u of relation %s",
 								existing_hdr->tag.blockNum,
-								relpath(bmr.smgr->smgr_rlocator, fork).str),
-						 errhint("This has been seen to occur with buggy kernels; consider updating your system.")));
+								relpath(bmr.smgr->smgr_rlocator, fork).str)));
 
 			/*
 			 * We *must* do smgr[zero]extend before succeeding, else the page
@@ -3340,10 +3337,10 @@ UnpinBufferNoOwner(BufferDesc *buf)
  * BufferSync -- Write out all dirty buffers in the pool.
  *
  * This is called at checkpoint time to write out all dirty shared buffers.
- * The checkpoint request flags should be passed in.  If CHECKPOINT_IMMEDIATE
- * is set, we disable delays between writes; if CHECKPOINT_IS_SHUTDOWN,
- * CHECKPOINT_END_OF_RECOVERY or CHECKPOINT_FLUSH_ALL is set, we write even
- * unlogged buffers, which are otherwise skipped.  The remaining flags
+ * The checkpoint request flags should be passed in.  If CHECKPOINT_FAST is
+ * set, we disable delays between writes; if CHECKPOINT_IS_SHUTDOWN,
+ * CHECKPOINT_END_OF_RECOVERY or CHECKPOINT_FLUSH_UNLOGGED is set, we write
+ * even unlogged buffers, which are otherwise skipped.  The remaining flags
  * currently have no effect here.
  */
 static void
@@ -3368,7 +3365,7 @@ BufferSync(int flags)
 	 * recovery, we write all dirty buffers.
 	 */
 	if (!((flags & (CHECKPOINT_IS_SHUTDOWN | CHECKPOINT_END_OF_RECOVERY |
-					CHECKPOINT_FLUSH_ALL))))
+					CHECKPOINT_FLUSH_UNLOGGED))))
 		mask |= BM_PERMANENT;
 
 	/*
@@ -4551,11 +4548,9 @@ DropRelationBuffers(SMgrRelation smgr_reln, ForkNumber *forkNum,
 	if (RelFileLocatorBackendIsTemp(rlocator))
 	{
 		if (rlocator.backend == MyProcNumber)
-		{
-			for (j = 0; j < nforks; j++)
-				DropRelationLocalBuffers(rlocator.locator, forkNum[j],
-										 firstDelBlock[j]);
-		}
+			DropRelationLocalBuffers(rlocator.locator, forkNum, nforks,
+									 firstDelBlock);
+
 		return;
 	}
 

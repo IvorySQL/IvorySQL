@@ -16,8 +16,7 @@
 #include "utils/relcache.h"
 #include "miscadmin.h"
 
-/* Typedefs for callback functions for amcheck_lock_relation_and_check */
-typedef void (*IndexCheckableCallback) (Relation index);
+/* Typedef for callback function for amcheck_lock_relation_and_check */
 typedef void (*IndexDoCheckCallback) (Relation rel,
 									  Relation heaprel,
 									  void *state,
@@ -27,5 +26,3 @@ extern void amcheck_lock_relation_and_check(Oid indrelid,
 											Oid am_id,
 											IndexDoCheckCallback check,
 											LOCKMODE lockmode, void *state);
-
-extern bool index_checkable(Relation rel, Oid am_id);
