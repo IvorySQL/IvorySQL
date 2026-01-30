@@ -80,46 +80,31 @@ sub sql_merge
 	shift @ARGV;
 	foreach my $v (@ARGV)
 	{
-		# Delete ivorysql_ora--x.x(--x.x).sql files generated before.
-		unlink(File::Spec->rel2abs("ivorysql_ora--$v.sql"))
-			if (-e File::Spec->rel2abs("ivorysql_ora--$v.sql"));
+		# For Make mode, delete the old file first.
+		if ($first_arg ne 'meson') {
+			unlink(File::Spec->rel2abs("ivorysql_ora--$v.sql"))
+				if (-e File::Spec->rel2abs("ivorysql_ora--$v.sql"));
 
-		# Open(create if necessary) ivorysql_ora--x.x(--x.x).sql.
-		if ($first_arg eq 'meson'){
-			open(OUTFILE, ">contrib/ivorysql_ora/ivorysql_ora--$v.sql")
-                        || croak "Could not open ivorysql_ora--$v.sql : $!";
-		}
-		else {
+			# Open output file for Make mode (meson mode uses STDOUT captured by meson)
 			open(OUTFILE, ">ivorysql_ora--$v.sql")
-			|| croak "Could not open ivorysql_ora--$v.sql : $!";
+				|| croak "Could not open ivorysql_ora--$v.sql : $!";
 		}
 
-		# Write "extension file loading information" into it.
+		# Write "extension file loading information".
 		# Create extension when this version is "x.x".
 		if ($v =~ /^\d+\.\d+$/)
 		{
-			if ($first_arg eq 'meson'){
-				print STDOUT '\echo Use "CREATE EXTENSION ivorysql_ora"';
-				print STDOUT " to load this file. \\quit\n";
-			}
-			else
-			{
-				print OUTFILE '\echo Use "CREATE EXTENSION ivorysql_ora"';
-				print OUTFILE " to load this file. \\quit\n";
-			}
+			my $fh = ($first_arg eq 'meson') ? *STDOUT : *OUTFILE;
+			print $fh '\echo Use "CREATE EXTENSION ivorysql_ora"';
+			print $fh " to load this file. \\quit\n";
 		}
 		# Update extension when this version is "x.x--x.x".
 		elsif ($v =~ /^\d+\.\d+\-\-\d+\.\d+$/)
 		{
 			my $up2ver = (split("--", $v))[1];
-			if ($first_arg eq 'meson'){
-				print STDOUT '\echo Use "ALTER EXTENSION ivorysql_ora UPDATE';
-				print STDOUT " TO \'$up2ver\'\" to load this file. \\quit\n";
-                        }
-                        else{
-				print OUTFILE '\echo Use "ALTER EXTENSION ivorysql_ora UPDATE';
-				print OUTFILE " TO \'$up2ver\'\" to load this file. \\quit\n";
-                        }
+			my $fh = ($first_arg eq 'meson') ? *STDOUT : *OUTFILE;
+			print $fh '\echo Use "ALTER EXTENSION ivorysql_ora UPDATE';
+			print $fh " TO \'$up2ver\'\" to load this file. \\quit\n";
 		}
 		else
 		{
@@ -135,7 +120,9 @@ sub sql_merge
 			if (-e "$set--$v.sql")
 			{
 				# Add a newline.
-				print OUTFILE "\n";
+				my $fh = ($first_arg eq 'meson') ? *STDOUT : *OUTFILE;
+				print $fh "\n";
+
 				# Open a sql file.
 				open(INFILE, "<", File::Spec->rel2abs("$set--$v.sql"));
 				while (my $line = <INFILE>)
@@ -143,17 +130,13 @@ sub sql_merge
 					# Delete the last tailing "\n" of this line.
 					chomp($line);
 					# Write.
-					if ($first_arg eq 'meson'){
-						print STDOUT "$line\n";
-					}
-					else{
-						print OUTFILE "$line\n";
-					}
+					print $fh "$line\n";
 				}
 				close INFILE;
 			}
 		}
 
-		close OUTFILE;
+		# Close OUTFILE for Make mode (meson mode doesn't open it)
+		close OUTFILE if ($first_arg ne 'meson');
 	}
 }
