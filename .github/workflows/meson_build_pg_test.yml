@@ -41,11 +41,59 @@ jobs:
 
     - name: compile
       run: |
-        cd build && ninja -j1
+        cd build && ninja
 
     - name: run postgres test
+      id: test_postgres
       run: |
         cd build
-        meson test || true
-      continue-on-error: true
-      timeout-minutes: 90
+        meson test -j1 --verbose --no-rebuild
+      timeout-minutes: 30
+
+    - name: collect test logs
+      if: always()
+      run: |
+        mkdir -p ${{ github.workspace }}/test-logs
+
+        # Collect Meson test logs
+        if [ -d build/meson-logs ] && [ "$(ls -A build/meson-logs 2>/dev/null)" ]; then
+          cp build/meson-logs/* ${{ github.workspace }}/test-logs/ 2>/dev/null || true
+          echo "Copied meson log"
+        else
+          echo "No meson log found"
+        fi
+
+        # test results
+        if [ -d build/testrun ]; then
+          find build/testrun -type f \( -name "*.log" -o -name "*.diff" -o -name "regression.diffs" \) -exec cp {} ${{ github.workspace }}/test-logs/ \; 2>/dev/null || true
+          echo "Collected test run logs"
+        fi
+
+        # create summary
+        {
+          echo "IvorySQL Meson Test Summary"
+          echo "=========================="
+          echo "Workflow: ${{ github.workflow }}"
+          echo "Run ID: ${{ github.run_id }}"
+          echo "Run Number: ${{ github.run_number }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "Branch: ${{ github.ref }}"
+          echo "Event: ${{ github.event_name }}"
+          echo "Date: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+        } > ${{ github.workspace }}/test-logs/SUMMARY.txt
+
+        # Compress logs
+        cd ${{ github.workspace }}
+        tar -czf test-logs.tar.gz test-logs/
+        echo "Compressed test logs: $(du -h test-logs.tar.gz | cut -f1)"
+
+    - name: upload failure logs (raw directories for deep debugging)
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: postgres-test-failures-${{ github.sha }}.raw
+        path: |
+          build/meson-logs/
+          build/testrun/
+        retention-days: 30
+        compression-level: 6
