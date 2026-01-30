@@ -73,27 +73,28 @@ install_headers(
   install_dir: dir_include_server
 )
 
-
-tests += {
-  'name': 'plisql',
-  'sd': meson.current_source_dir(),
-  'bd': meson.current_build_dir(),
-  'regress': {
-    'sql': [
-      'plisql_array',
-      'plisql_call',
-      'plisql_control',
-      'plisql_copy',
-      'plisql_domain',
-      'plisql_record',
-      'plisql_cache',
-      'plisql_simple',
-      'plisql_transaction',
-      'plisql_trap',
-      'plisql_trigger',
-      'plisql_varprops',
-    ],
-  },
-}
+# IvorySQL: plisql is Oracle-compatible procedural language, not needed in meson test
+# Use 'make oracle-check' to run plisql tests
+# tests += {
+#   'name': 'plisql',
+#   'sd': meson.current_source_dir(),
+#   'bd': meson.current_build_dir(),
+#   'regress': {
+#     'sql': [
+#       'plisql_array',
+#       'plisql_call',
+#       'plisql_control',
+#       'plisql_copy',
+#       'plisql_domain',
+#       'plisql_record',
+#       'plisql_cache',
+#       'plisql_simple',
+#       'plisql_transaction',
+#       'plisql_trap',
+#       'plisql_trigger',
+#       'plisql_varprops',
+#     ],
+#   },
+# }
 
 subdir('po', if_found: libintl)
