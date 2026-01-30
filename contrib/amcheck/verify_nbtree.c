@@ -876,7 +876,7 @@ heap_entry_is_visible(BtreeCheckState *state, ItemPointer tid)
 }
 
 /*
- * Prepare an error message for unique constrain violation in
+ * Prepare an error message for unique constraint violation in
  * a btree index and report ERROR.
  */
 static void

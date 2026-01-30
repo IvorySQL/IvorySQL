@@ -46,11 +46,25 @@ static TupleTableSlot *
 SubqueryNext(SubqueryScanState *node)
 {
 	TupleTableSlot *slot;
+	EState	   *estate = node->ss.ps.state;
+	int64		save_rownum = estate->es_rownum;
+
+	/*
+	 * For Oracle ROWNUM compatibility: each subquery maintains its own
+	 * local ROWNUM counter. Save the outer query's counter, swap in
+	 * this subquery's counter, execute the subplan, then restore.
+	 * This allows nested subqueries to have independent ROWNUM sequences.
+	 */
+	estate->es_rownum = node->sub_rownum;
 
 	/*
 	 * Get the next tuple from the sub-query.
 	 */
 	slot = ExecProcNode(node->subplan);
+
+	/* Update local counter and restore outer query's counter */
+	node->sub_rownum = estate->es_rownum;
+	estate->es_rownum = save_rownum;
 
 	/*
 	 * We just return the subplan's result slot, rather than expending extra
@@ -112,6 +126,7 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	subquerystate->ss.ps.plan = (Plan *) node;
 	subquerystate->ss.ps.state = estate;
 	subquerystate->ss.ps.ExecProcNode = ExecSubqueryScan;
+	subquerystate->sub_rownum = 0;
 
 	/*
 	 * Miscellaneous initialization
@@ -182,6 +197,12 @@ ExecEndSubqueryScan(SubqueryScanState *node)
 void
 ExecReScanSubqueryScan(SubqueryScanState *node)
 {
+	/*
+	 * Reset local ROWNUM counter for Oracle compatibility.
+	 * Each rescan starts with ROWNUM = 1.
+	 */
+	node->sub_rownum = 0;
+
 	ExecScanReScan(&node->ss);
 
 	/*

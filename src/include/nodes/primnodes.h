@@ -2148,6 +2148,22 @@ typedef struct NextValueExpr
 } NextValueExpr;
 
 /*
+ * RownumExpr - Oracle ROWNUM pseudocolumn
+ *
+ * Returns a number indicating the order in which a row was selected from
+ * a table or set of joined rows. The first row selected has a ROWNUM of 1,
+ * the second has 2, and so on.
+ *
+ * Only active when compatible_mode = 'oracle'.
+ */
+typedef struct RownumExpr
+{
+	pg_node_attr(no_query_jumble)
+	Expr		xpr;
+	ParseLoc	location;		/* token location, or -1 if unknown */
+} RownumExpr;
+
+/*
  * InferenceElem - an element of a unique index inference specification
  *
  * This mostly matches the structure of IndexElems, but having a dedicated

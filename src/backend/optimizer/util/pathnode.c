@@ -1360,6 +1360,7 @@ create_append_path(PlannerInfo *root,
 	}
 	pathnode->first_partial_path = list_length(subpaths);
 	pathnode->subpaths = list_concat(subpaths, partial_subpaths);
+	pathnode->is_union = false;	/* caller must set true for UNION paths */
 
 	/*
 	 * Apply query-wide LIMIT if known and path is for sole base relation.
@@ -1594,6 +1595,8 @@ create_merge_append_path(PlannerInfo *root,
 						  input_disabled_nodes,
 						  input_startup_cost, input_total_cost,
 						  pathnode->path.rows);
+
+	pathnode->is_union = false;  /* caller must set true for UNION paths */
 
 	return pathnode;
 }

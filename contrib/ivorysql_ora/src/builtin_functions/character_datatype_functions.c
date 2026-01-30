@@ -42,6 +42,12 @@
 
 #include "../include/common_datatypes.h"
 
+#include "catalog/pg_type.h"
+#include "utils/date.h"
+#include "utils/timestamp.h"
+
+#include "utils/guc.h"
+
 PG_FUNCTION_INFO_V1(oracharlen);
 PG_FUNCTION_INFO_V1(oracharoctetlen);
 PG_FUNCTION_INFO_V1(oravarcharlen);
@@ -68,6 +74,7 @@ PG_FUNCTION_INFO_V1(oracle_instr_4);
 PG_FUNCTION_INFO_V1(ora_asciistr);
 PG_FUNCTION_INFO_V1(ora_to_multi_byte);
 PG_FUNCTION_INFO_V1(ora_to_single_byte);
+PG_FUNCTION_INFO_V1(ora_ascii);
 
 #define PG_STR_GET_TEXT(str_) \
 	DatumGetTextP(DirectFunctionCall1(textin, CStringGetDatum(str_)))
@@ -2315,4 +2322,122 @@ ora_to_single_byte(PG_FUNCTION_ARGS)
 	SET_VARSIZE(dst, VARHDRSZ + dstlen);
 
 	PG_RETURN_TEXT_P(dst);
+}
+
+
+
+/*******************************************************************
+ * ora_ascii 
+ *
+ * Purpose:
+ *   Implementation of Oracle ASCII function.
+ *
+ *   It takes as input parameter:
+ *   - a number, 
+ *   - a binary float,
+ *   - a binary double,
+ *   - a date, 
+ *   - a timestamp 
+ *   - a timestamp with time zone
+ *   - a string
+ * 
+ *   and returns ASCII codepoint of the first character 
+ *   of the corresponding string.
+ *
+ *******************************************************************/
+
+ /* 
+  * cannot find include files
+ */
+extern Datum binary_float_out(PG_FUNCTION_ARGS);
+extern Datum binary_double_out(PG_FUNCTION_ARGS);
+
+Datum
+ora_ascii(PG_FUNCTION_ARGS)
+{
+    Oid argtype = get_fn_expr_argtype(fcinfo->flinfo, 0);
+    char *str = NULL;
+
+    if (PG_ARGISNULL(0))
+        PG_RETURN_NULL();
+
+	
+    switch (argtype)
+    {
+      	/*
+		 *  Oracle data types only defined in src/bin/psql/psqlplus.h
+		 *  and in src/include/catalog/pg_type_d.h
+		 */
+		case NUMBEROID: {
+			/* number */
+			Numeric val = PG_GETARG_NUMERIC(0);
+            str = DatumGetCString(DirectFunctionCall1(numeric_out, NumericGetDatum(val)));
+            break;
+		}
+		case BINARY_FLOATOID: {
+            float4 val = PG_GETARG_FLOAT4(0);
+			str = DatumGetCString(DirectFunctionCall1(binary_float_out, Float4GetDatum(val)));
+            break;
+        }
+		case BINARY_DOUBLEOID: {
+            float8 val = PG_GETARG_FLOAT8(0);
+			str = DatumGetCString(DirectFunctionCall1(binary_double_out, Float8GetDatum(val)));
+            break;
+        }
+		case  ORACHARCHAROID: 
+		case  ORAVARCHARCHAROID : {
+			/* char, varchar, varchar2 */
+			text *txt = PG_GETARG_TEXT_PP(0);
+            str = text_to_cstring(txt);
+            break;
+		}
+		case ORADATEOID: {
+			Timestamp	timestamp = PG_GETARG_TIMESTAMP(0);
+            text       *date_str;
+
+			date_str = DatumGetTextP(DirectFunctionCall2(timestamp_to_char,
+                                                         TimestampGetDatum(timestamp),
+                                                         PointerGetDatum(cstring_to_text(nls_date_format))));
+
+            str = text_to_cstring(date_str);
+			break;
+		}	
+		case ORATIMESTAMPOID: {
+			Timestamp 	val = PG_GETARG_TIMESTAMP(0);
+			text       *timestamp_str;
+
+			timestamp_str = DatumGetTextP(DirectFunctionCall2(timestamp_to_char, 
+			  							  TimestampGetDatum(val),
+								          PointerGetDatum(cstring_to_text(nls_timestamp_format))));
+			str = text_to_cstring(timestamp_str);
+            break;
+		}
+		case ORATIMESTAMPTZOID: {
+			TimestampTz val = PG_GETARG_TIMESTAMPTZ(0);
+			text       *timestamptz_str;
+			
+			timestamptz_str = DatumGetTextP(DirectFunctionCall2(timestamptz_to_char, 
+											 TimestampTzGetDatum(val),
+											 PointerGetDatum(cstring_to_text(nls_timestamp_tz_format))));
+			str = text_to_cstring(timestamptz_str);
+            break;
+		}
+
+		default: {
+	    	ereport(ERROR,
+            	   	(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+		 				errmsg("Data type oid=%d not yet implemented", argtype)));
+	    	break;
+	 	}
+    }
+
+    if (str == NULL || str[0] == '\0') {
+		/* 1. Set the null flag */
+		fcinfo->isnull = true;
+
+		/* 2. Return a placeholder value */
+		PG_RETURN_VOID();
+	}
+
+    PG_RETURN_INT32((unsigned char) str[0]);
 }

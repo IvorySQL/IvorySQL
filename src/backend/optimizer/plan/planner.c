@@ -59,7 +59,9 @@
 #include "partitioning/partdesc.h"
 #include "rewrite/rewriteManip.h"
 #include "utils/backend_status.h"
+#include "utils/guc.h"
 #include "utils/lsyscache.h"
+#include "utils/ora_compatible.h"
 #include "utils/rel.h"
 #include "utils/selfuncs.h"
 
@@ -247,6 +249,7 @@ static Path *make_ordered_path(PlannerInfo *root,
 							   double limit_tuples);
 static void gather_grouping_paths(PlannerInfo *root, RelOptInfo *rel);
 static bool can_partial_agg(PlannerInfo *root);
+static void transform_rownum_to_limit(Query *parse);
 static void apply_scanjoin_target_to_paths(PlannerInfo *root,
 										   RelOptInfo *rel,
 										   List *scanjoin_targets,
@@ -617,6 +620,420 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 
 
 /*--------------------
+ * transform_rownum_to_limit
+ *	  Transform Oracle ROWNUM predicates into LIMIT clauses
+ *
+ * For Oracle compatibility, we need to convert WHERE clauses like:
+ *   WHERE ROWNUM <= N  ->  LIMIT N
+ *   WHERE ROWNUM = 1   ->  LIMIT 1
+ *   WHERE ROWNUM < N   ->  LIMIT N-1
+ *
+ * This must be done early in planning, before expression preprocessing.
+ * This function recursively processes subqueries in the range table.
+ *
+ * IMPORTANT: This optimization is only safe for simple SELECT queries.
+ * PostgreSQL's LIMIT is applied AFTER ORDER BY, DISTINCT, GROUP BY, and
+ * aggregation, while Oracle's ROWNUM is applied BEFORE these operations.
+ * Therefore, we only transform when there are no higher-level relational
+ * operations that would change semantics.
+ *
+ * Coverage limitations (not handled, future work):
+ * - Commutative forms: "10 >= ROWNUM" is not recognized (only "ROWNUM <= 10")
+ * - Nested expressions: "ROWNUM + 0 <= 5" is not optimized
+ * - OR clauses: "ROWNUM <= 3 OR id = 1" cannot be transformed to LIMIT
+ * - Non-integer constants: ROWNUM comparisons with floats/decimals are skipped
+ *--------------------
+ */
+static void
+transform_rownum_to_limit(Query *parse)
+{
+	FromExpr   *jointree;
+	Node	   *quals;
+	List	   *andlist;
+	ListCell   *lc;
+	Node	   *rownum_qual = NULL;
+	int64		limit_value = 0;
+	bool		can_use_limit;
+
+	/* Only apply in Oracle compatibility mode */
+	if (compatible_db != ORA_PARSER)
+		return;
+
+	/*
+	 * First, recursively process any subqueries in the range table.
+	 * This ensures subqueries are transformed before the main query.
+	 */
+	foreach(lc, parse->rtable)
+	{
+		RangeTblEntry *rte = (RangeTblEntry *) lfirst(lc);
+
+		if (rte->rtekind == RTE_SUBQUERY && rte->subquery)
+		{
+			/* Recursively transform the subquery */
+			transform_rownum_to_limit(rte->subquery);
+		}
+	}
+
+	/* Already has LIMIT? Don't transform */
+	if (parse->limitCount != NULL)
+		return;
+
+	/* No WHERE clause? Nothing to do */
+	if (parse->jointree == NULL)
+		return;
+
+	if (parse->jointree->quals == NULL)
+		return;
+
+	jointree = parse->jointree;
+	quals = jointree->quals;
+
+	/* Convert quals to a list for easier processing */
+	if (IsA(quals, BoolExpr) && ((BoolExpr *) quals)->boolop == AND_EXPR)
+		andlist = ((BoolExpr *) quals)->args;
+	else
+		andlist = list_make1(quals);
+
+	/*
+	 * Determine if we can safely transform ROWNUM to LIMIT.
+	 * Only transform for simple SELECT queries with no higher-level
+	 * relational processing. PostgreSQL applies LIMIT after ORDER BY,
+	 * DISTINCT, GROUP BY, aggregation, window functions, etc., while
+	 * Oracle applies ROWNUM before these operations. Transforming in
+	 * the presence of these operations would change query semantics.
+	 *
+	 * However, Oracle special semantics (ROWNUM >, >=, = for non-1)
+	 * must ALWAYS be processed regardless of query complexity.
+	 *
+	 * See GitHub issue #12 for detailed examples of incorrect behavior.
+	 */
+	can_use_limit = !(parse->groupClause != NIL ||
+					  parse->groupingSets != NIL ||
+					  parse->hasAggs ||
+					  parse->distinctClause != NIL ||
+					  parse->hasDistinctOn ||
+					  parse->sortClause != NIL ||
+					  parse->hasWindowFuncs ||
+					  parse->setOperations != NULL ||
+					  parse->hasTargetSRFs);
+
+	/* Search for ROWNUM predicates in the AND list */
+	foreach(lc, andlist)
+	{
+		Node	   *qual = (Node *) lfirst(lc);
+		OpExpr	   *opexpr;
+		Node	   *leftop;
+		Node	   *rightop;
+		char	   *opname;
+		Const	   *constval;
+		int64		n;
+
+		/* We're looking for OpExpr nodes (comparison operators) */
+		if (!IsA(qual, OpExpr))
+			continue;
+
+		opexpr = (OpExpr *) qual;
+
+		/* Need exactly 2 arguments */
+		if (list_length(opexpr->args) != 2)
+			continue;
+
+		leftop = (Node *) linitial(opexpr->args);
+		rightop = (Node *) lsecond(opexpr->args);
+
+		/* Check if left operand is ROWNUM */
+		if (!IsA(leftop, RownumExpr))
+			continue;
+
+		/* Right operand must be a constant */
+		if (!IsA(rightop, Const))
+			continue;
+
+		/* Get the operator name */
+		opname = get_opname(opexpr->opno);
+		if (opname == NULL)
+			continue;
+
+		/* Now handle different operators */
+		constval = (Const *) rightop;
+
+		if (constval->constisnull)
+		{
+			pfree(opname);
+			continue;
+		}
+
+		/*
+		 * Validate that the constant is a numeric type we can safely convert
+		 * to int64. This prevents undefined behavior from unexpected types.
+		 */
+		if (constval->consttype != INT8OID &&
+			constval->consttype != INT4OID &&
+			constval->consttype != INT2OID)
+		{
+			pfree(opname);
+			continue;
+		}
+
+		/* Extract the integer value based on type */
+		switch (constval->consttype)
+		{
+			case INT8OID:
+				n = DatumGetInt64(constval->constvalue);
+				break;
+			case INT4OID:
+				n = (int64) DatumGetInt32(constval->constvalue);
+				break;
+			case INT2OID:
+				n = (int64) DatumGetInt16(constval->constvalue);
+				break;
+			default:
+				/* Should not reach here due to check above */
+				pfree(opname);
+				continue;
+		}
+
+		if (strcmp(opname, "<=") == 0)
+		{
+			/*
+			 * ROWNUM <= N:
+			 *   N <= 0: always false (ROWNUM starts at 1)
+			 *   N > 0: can be optimized to LIMIT N (only for simple queries)
+			 */
+			if (n <= 0)
+			{
+				/* Always false - rewrite as FALSE constant */
+				BoolExpr   *newand;
+				Const	   *falseconst = (Const *) makeBoolConst(false, false);
+
+				andlist = list_delete_ptr(andlist, qual);
+				andlist = lappend(andlist, falseconst);
+
+				/* Rebuild WHERE clause */
+				if (list_length(andlist) == 0)
+					jointree->quals = NULL;
+				else if (list_length(andlist) == 1)
+					jointree->quals = (Node *) linitial(andlist);
+				else
+				{
+					newand = makeNode(BoolExpr);
+					newand->boolop = AND_EXPR;
+					newand->args = andlist;
+					newand->location = -1;
+					jointree->quals = (Node *) newand;
+				}
+
+				pfree(opname);
+				return;
+			}
+			else if (can_use_limit)
+			{
+				limit_value = n;
+				rownum_qual = qual;
+			}
+			pfree(opname);
+			break;
+		}
+		else if (strcmp(opname, "=") == 0)
+		{
+			/*
+			 * ROWNUM = 1 can be optimized to LIMIT 1 (only for simple queries).
+			 * ROWNUM = N where N != 1 is always false (Oracle semantics) - always process.
+			 */
+			if (n == 1 && can_use_limit)
+			{
+				limit_value = n;
+				rownum_qual = qual;
+			}
+			else if (n != 1)
+			{
+				/* ROWNUM = N where N != 1 is always false */
+				BoolExpr   *newand;
+				Const	   *falseconst;
+
+				falseconst = (Const *) makeBoolConst(false, false);
+
+				/* Replace this qual with FALSE in the AND list */
+				andlist = list_delete_ptr(andlist, qual);
+				andlist = lappend(andlist, falseconst);
+
+				/* Rebuild the WHERE clause */
+				if (list_length(andlist) == 0)
+				{
+					jointree->quals = NULL;
+				}
+				else if (list_length(andlist) == 1)
+				{
+					jointree->quals = (Node *) linitial(andlist);
+				}
+				else
+				{
+					newand = makeNode(BoolExpr);
+					newand->boolop = AND_EXPR;
+					newand->args = andlist;
+					newand->location = -1;
+					jointree->quals = (Node *) newand;
+				}
+
+				pfree(opname);
+				return;
+			}
+			pfree(opname);
+			break;
+		}
+		else if (strcmp(opname, "<") == 0)
+		{
+			/*
+			 * ROWNUM < N:
+			 *   N <= 1: always false (ROWNUM starts at 1, so < 1 is impossible)
+			 *   N > 1: can be optimized to LIMIT N-1 (only for simple queries)
+			 */
+			if (n <= 1)
+			{
+				/* Always false - rewrite as FALSE constant */
+				BoolExpr   *newand;
+				Const	   *falseconst = (Const *) makeBoolConst(false, false);
+
+				andlist = list_delete_ptr(andlist, qual);
+				andlist = lappend(andlist, falseconst);
+
+				/* Rebuild WHERE clause */
+				if (list_length(andlist) == 0)
+					jointree->quals = NULL;
+				else if (list_length(andlist) == 1)
+					jointree->quals = (Node *) linitial(andlist);
+				else
+				{
+					newand = makeNode(BoolExpr);
+					newand->boolop = AND_EXPR;
+					newand->args = andlist;
+					newand->location = -1;
+					jointree->quals = (Node *) newand;
+				}
+
+				pfree(opname);
+				return;
+			}
+			else if (can_use_limit)
+			{
+				limit_value = n - 1;
+				rownum_qual = qual;
+			}
+			pfree(opname);
+			break;
+		}
+		else if (strcmp(opname, ">") == 0)
+		{
+			/*
+			 * ROWNUM > N:
+			 *   N >= 1: always false
+			 *   N < 1: tautology, remove qual
+			 */
+			BoolExpr   *newand;
+
+			andlist = list_delete_ptr(andlist, qual);
+
+			if (n >= 1)
+			{
+				/* Always false - add FALSE constant */
+				Const *falseconst = (Const *) makeBoolConst(false, false);
+				andlist = lappend(andlist, falseconst);
+			}
+			/* else: tautology, just remove qual */
+
+			/* Rebuild WHERE clause */
+			if (list_length(andlist) == 0)
+				jointree->quals = NULL;
+			else if (list_length(andlist) == 1)
+				jointree->quals = (Node *) linitial(andlist);
+			else
+			{
+				newand = makeNode(BoolExpr);
+				newand->boolop = AND_EXPR;
+				newand->args = andlist;
+				newand->location = -1;
+				jointree->quals = (Node *) newand;
+			}
+
+			pfree(opname);
+			return;
+		}
+		else if (strcmp(opname, ">=") == 0)
+		{
+			/*
+			 * ROWNUM >= N:
+			 *   N > 1: always false
+			 *   N <= 1: tautology, remove qual
+			 */
+			BoolExpr   *newand;
+
+			andlist = list_delete_ptr(andlist, qual);
+
+			if (n > 1)
+			{
+				/* Always false - add FALSE constant */
+				Const *falseconst = (Const *) makeBoolConst(false, false);
+				andlist = lappend(andlist, falseconst);
+			}
+			/* else: tautology, just remove qual */
+
+			/* Rebuild WHERE clause */
+			if (list_length(andlist) == 0)
+				jointree->quals = NULL;
+			else if (list_length(andlist) == 1)
+				jointree->quals = (Node *) linitial(andlist);
+			else
+			{
+				newand = makeNode(BoolExpr);
+				newand->boolop = AND_EXPR;
+				newand->args = andlist;
+				newand->location = -1;
+				jointree->quals = (Node *) newand;
+			}
+
+			pfree(opname);
+			return;
+		}
+
+		pfree(opname);
+	}
+
+	/* If we found a ROWNUM predicate, transform it */
+	if (rownum_qual != NULL && limit_value > 0)
+	{
+		/* Create the LIMIT constant */
+		parse->limitCount = (Node *) makeConst(INT8OID, -1, InvalidOid,
+											   sizeof(int64),
+											   Int64GetDatum(limit_value),
+											   false, get_typbyval(INT8OID));
+
+		/* Remove the ROWNUM predicate from the WHERE clause */
+		andlist = list_delete_ptr(andlist, rownum_qual);
+
+		if (list_length(andlist) == 0)
+		{
+			/* No quals left */
+			jointree->quals = NULL;
+		}
+		else if (list_length(andlist) == 1)
+		{
+			/* Single qual remaining */
+			jointree->quals = (Node *) linitial(andlist);
+		}
+		else
+		{
+			/* Multiple quals remaining, keep as AND expression */
+			BoolExpr   *newand = makeNode(BoolExpr);
+
+			newand->boolop = AND_EXPR;
+			newand->args = andlist;
+			newand->location = -1;
+			jointree->quals = (Node *) newand;
+		}
+	}
+}
+
+/*--------------------
  * subquery_planner
  *	  Invokes the planner on a subquery.  We recurse to here for each
  *	  sub-SELECT found in the query tree.
@@ -709,6 +1126,13 @@ subquery_planner(PlannerGlobal *glob, Query *parse, PlannerInfo *parent_root,
 	 * that so we can build EquivalenceClasses referencing it.
 	 */
 	root->join_domains = list_make1(makeNode(JoinDomain));
+
+	/*
+	 * Transform Oracle ROWNUM predicates to LIMIT clauses EARLY, before any
+	 * subquery processing. This ensures both the main query and any subqueries
+	 * get transformed.
+	 */
+	transform_rownum_to_limit(parse);
 
 	/*
 	 * If there is a WITH list, process each WITH query and either convert it

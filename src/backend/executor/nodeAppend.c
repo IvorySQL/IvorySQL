@@ -290,6 +290,9 @@ ExecInitAppend(Append *node, EState *estate, int eflags)
 	/* For parallel query, this will be overridden later. */
 	appendstate->choose_next_subplan = choose_next_subplan_locally;
 
+	/* Copy is_union flag for ROWNUM reset handling (Oracle compatibility) */
+	appendstate->as_is_union = node->is_union;
+
 	return appendstate;
 }
 
@@ -386,6 +389,13 @@ ExecAppend(PlanState *pstate)
 		/* choose new sync subplan; if no sync/async subplans, we're done */
 		if (!node->choose_next_subplan(node) && node->as_nasyncremain == 0)
 			return ExecClearTuple(node->ps.ps_ResultTupleSlot);
+
+		/*
+		 * For UNION queries, reset ROWNUM when switching to a new branch.
+		 * In Oracle, each UNION branch has its own independent ROWNUM counter.
+		 */
+		if (node->as_is_union)
+			node->ps.state->es_rownum = 0;
 	}
 }
 

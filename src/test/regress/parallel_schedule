@@ -140,3 +140,6 @@ test: fast_default
 # run tablespace test at the end because it drops the tablespace created during
 # setup that other tests may use.
 test: tablespace
+
+# Test that Oracle keywords (ROWNUM, ROWID, etc.) have no special meaning in PostgreSQL mode
+test: ora_keywords_pg

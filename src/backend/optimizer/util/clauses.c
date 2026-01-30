@@ -464,6 +464,12 @@ contain_mutable_functions_walker(Node *node, void *context)
 		return true;
 	}
 
+	if (IsA(node, RownumExpr))
+	{
+		/* RownumExpr is volatile - changes for every row */
+		return true;
+	}
+
 	/*
 	 * It should be safe to treat MinMaxExpr as immutable, because it will
 	 * depend on a non-cross-type btree comparison function, and those should
@@ -586,6 +592,12 @@ contain_volatile_functions_walker(Node *node, void *context)
 	if (IsA(node, NextValueExpr))
 	{
 		/* NextValueExpr is volatile */
+		return true;
+	}
+
+	if (IsA(node, RownumExpr))
+	{
+		/* RownumExpr is volatile - changes for every row */
 		return true;
 	}
 
