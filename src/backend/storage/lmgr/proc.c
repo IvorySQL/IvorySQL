@@ -507,7 +507,6 @@ InitProcess(void)
 			Assert(dlist_is_empty(&(MyProc->myProcLocks[i])));
 	}
 #endif
-	MyProc->recoveryConflictPending = false;
 
 	/* Initialize fields for sync rep */
 	MyProc->waitLSN = InvalidXLogRecPtr;
