@@ -6,23 +6,17 @@ CREATE EXTENSION postgres_fdw;
 SET ivorysql.identifier_case_switch = normal;
 \set EXECUTE_RUN_PREPARE on
 
+SELECT current_database() AS current_database,
+  current_setting('ivorysql.port') AS current_port
+\gset
+
 CREATE SERVER testserver1 FOREIGN DATA WRAPPER postgres_fdw;
-DO $d$
-    BEGIN
-        EXECUTE $$CREATE SERVER loopback FOREIGN DATA WRAPPER postgres_fdw
-            OPTIONS (dbname '$$||current_database()||$$',
-                     port '$$||current_setting('ivorysql.port')||$$'
-            )$$;
-        EXECUTE $$CREATE SERVER loopback2 FOREIGN DATA WRAPPER postgres_fdw
-            OPTIONS (dbname '$$||current_database()||$$',
-                     port '$$||current_setting('ivorysql.port')||$$'
-            )$$;
-        EXECUTE $$CREATE SERVER loopback3 FOREIGN DATA WRAPPER postgres_fdw
-            OPTIONS (dbname '$$||current_database()||$$',
-                     port '$$||current_setting('ivorysql.port')||$$'
-            )$$;
-    END;
-$d$;
+CREATE SERVER loopback FOREIGN DATA WRAPPER postgres_fdw
+	OPTIONS (dbname :'current_database', port :'current_port');
+CREATE SERVER loopback2 FOREIGN DATA WRAPPER postgres_fdw
+	OPTIONS (dbname :'current_database', port :'current_port');
+CREATE SERVER loopback3 FOREIGN DATA WRAPPER postgres_fdw
+	OPTIONS (dbname :'current_database', port :'current_port');
 
 CREATE USER MAPPING FOR public SERVER testserver1
 	OPTIONS (user 'value', password 'value');
@@ -297,12 +291,7 @@ ALTER FOREIGN TABLE ft2 ALTER COLUMN c1 OPTIONS (column_name 'C 1');
 SELECT c3, c4 FROM ft1 ORDER BY c3, c1 LIMIT 1;  -- should work
 ALTER SERVER loopback OPTIONS (SET dbname 'no such database');
 SELECT c3, c4 FROM ft1 ORDER BY c3, c1 LIMIT 1;  -- should fail
-DO $d$
-    BEGIN
-        EXECUTE $$ALTER SERVER loopback
-            OPTIONS (SET dbname '$$||current_database()||$$')$$;
-    END;
-$d$;
+ALTER SERVER loopback OPTIONS (SET dbname :'current_database');
 SELECT c3, c4 FROM ft1 ORDER BY c3, c1 LIMIT 1;  -- should work again
 
 -- Test that alteration of user mapping options causes reconnection
@@ -3481,14 +3470,8 @@ SET ROLE regress_nosuper;
 SHOW is_superuser;
 
 -- This will be OK, we can create the FDW
-DO $d$
-    BEGIN
-        EXECUTE $$CREATE SERVER loopback_nopw FOREIGN DATA WRAPPER postgres_fdw
-            OPTIONS (dbname '$$||current_database()||$$',
-                     port '$$||current_setting('ivorysql.port')||$$'
-            )$$;
-    END;
-$d$;
+CREATE SERVER loopback_nopw FOREIGN DATA WRAPPER postgres_fdw
+	OPTIONS (dbname :'current_database', port :'current_port');
 
 -- But creation of user mappings for non-superusers should fail
 CREATE USER MAPPING FOR public SERVER loopback_nopw;
