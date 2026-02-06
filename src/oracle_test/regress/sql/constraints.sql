@@ -1358,8 +1358,6 @@ SELECT conname, contype, conenforced, convalidated
 FROM pg_constraint
 WHERE conname = 'notnull_disable_novalidate_id_not_null';
 
-
-
 -- CONSTRAINT PRIMARY KEY
 CREATE TABLE acpk_enable (id NUMBER, name VARCHAR2(100));
 ALTER TABLE acpk_enable ADD PRIMARY KEY (id) ENABLE;
@@ -1530,6 +1528,67 @@ WHERE conname = 'acnotnull_disable_novalidate_id_not_null';
 
 -- Invalid syntax
 CREATE TABLE syntax_error (id NUMBER ENABLE, name VARCHAR2(100));
+
+-- redundant options are accepted
+CREATE TABLE enable_enforced (id NUMBER, name VARCHAR2(100),
+    PRIMARY KEY (id) ENABLE ENFORCED);
+
+-- redundant options are accepted
+CREATE TABLE enable_noconflict (id NUMBER, name VARCHAR2(100));
+ALTER TABLE enable_noconflict ADD CHECK (id > 2)   ENABLE ENABLE;
+ALTER TABLE enable_noconflict ADD CHECK (id > 2)   ENABLE ENFORCED;
+ALTER TABLE enable_noconflict ADD CHECK (id > 2) ENFORCED ENFORCED;
+ALTER TABLE enable_noconflict ADD CHECK (id > 2) ENFORCED ENABLE;
+SELECT conname, contype, conenforced, convalidated FROM pg_constraint
+WHERE conrelid = 'enable_noconflict'::regclass;
+
+-- redundant options are accepted
+CREATE TABLE disable_noconflict (id NUMBER, name VARCHAR2(100));
+ALTER TABLE disable_noconflict ADD CHECK (id > 2)      DISABLE DISABLE;
+ALTER TABLE disable_noconflict ADD CHECK (id > 2)      DISABLE NOT ENFORCED;
+ALTER TABLE disable_noconflict ADD CHECK (id > 2) NOT ENFORCED NOT ENFORCED;
+ALTER TABLE disable_noconflict ADD CHECK (id > 2) NOT ENFORCED DISABLE;
+SELECT conname, contype, conenforced, convalidated FROM pg_constraint
+WHERE conrelid = 'disable_noconflict'::regclass;
+
+-- redundant options are accepted
+CREATE TABLE validate_noconflict (id NUMBER, name VARCHAR2(100));
+ALTER TABLE validate_noconflict ADD CHECK (id > 2) VALIDATE VALIDATE;
+SELECT conname, contype, conenforced, convalidated FROM pg_constraint
+WHERE conrelid = 'validate_noconflict'::regclass;
+
+-- redundant options are accepted
+CREATE TABLE novalidate_noconflict (id NUMBER, name VARCHAR2(100));
+ALTER TABLE novalidate_noconflict ADD CHECK (id > 2) NOVALIDATE NOVALIDATE;
+ALTER TABLE novalidate_noconflict ADD CHECK (id > 2)  NOT VALID NOT VALID;
+SELECT conname, contype, conenforced, convalidated FROM pg_constraint
+WHERE conrelid = 'novalidate_noconflict'::regclass;
+
+-- opposite options are rejected
+CREATE TABLE clause_conflicts (id NUMBER, name VARCHAR2(100));
+ALTER TABLE clause_conflicts ADD CHECK (id > 2)      DISABLE ENABLE;
+ALTER TABLE clause_conflicts ADD CHECK (id > 2)      DISABLE ENFORCED;
+ALTER TABLE clause_conflicts ADD CHECK (id > 2)       ENABLE DISABLE;
+ALTER TABLE clause_conflicts ADD CHECK (id > 2)       ENABLE NOT ENFORCED;
+ALTER TABLE clause_conflicts ADD CHECK (id > 2) NOT ENFORCED ENFORCED;
+ALTER TABLE clause_conflicts ADD CHECK (id > 2) NOT ENFORCED ENABLE;
+ALTER TABLE clause_conflicts ADD CHECK (id > 2)     ENFORCED NOT ENFORCED;
+ALTER TABLE clause_conflicts ADD CHECK (id > 2)     ENFORCED DISABLE;
+ALTER TABLE clause_conflicts ADD CHECK (id > 2) NOVALIDATE VALIDATE;
+ALTER TABLE clause_conflicts ADD CHECK (id > 2)   VALIDATE NOVALIDATE;
+ALTER TABLE clause_conflicts ADD CHECK (id > 2)   VALIDATE NOT VALID;
+SELECT conname, contype, conenforced, convalidated FROM pg_constraint
+WHERE conrelid = 'clause_conflicts'::regclass;
+
+-- opposite options are rejected
+CREATE TABLE enable_disable (id NUMBER, name VARCHAR2(100),
+    PRIMARY KEY (id) ENABLE DISABLE);
+-- opposite options are rejected
+CREATE TABLE enable_notenforced (id NUMBER, name VARCHAR2(100),
+    PRIMARY KEY (id) ENABLE NOT ENFORCED);
+-- opposite options are rejected
+CREATE TABLE enable_notenforced (id NUMBER, name VARCHAR2(100),
+    PRIMARY KEY (id) ENFORCED NOT ENFORCED);
 
 -- Cleanup
 DROP SCHEMA ivo_regress_enable CASCADE;

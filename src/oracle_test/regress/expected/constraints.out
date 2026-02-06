@@ -2573,9 +2573,136 @@ CREATE TABLE syntax_error (id NUMBER ENABLE, name VARCHAR2(100));
 ERROR:  misplaced ENABLE clause
 LINE 1: CREATE TABLE syntax_error (id NUMBER ENABLE, name VARCHAR2(1...
                                              ^
+-- redundant options are accepted
+CREATE TABLE enable_enforced (id NUMBER, name VARCHAR2(100),
+    PRIMARY KEY (id) ENABLE ENFORCED);
+-- redundant options are accepted
+CREATE TABLE enable_noconflict (id NUMBER, name VARCHAR2(100));
+ALTER TABLE enable_noconflict ADD CHECK (id > 2)   ENABLE ENABLE;
+ALTER TABLE enable_noconflict ADD CHECK (id > 2)   ENABLE ENFORCED;
+ALTER TABLE enable_noconflict ADD CHECK (id > 2) ENFORCED ENFORCED;
+ALTER TABLE enable_noconflict ADD CHECK (id > 2) ENFORCED ENABLE;
+SELECT conname, contype, conenforced, convalidated FROM pg_constraint
+WHERE conrelid = 'enable_noconflict'::regclass;
+           conname           | contype | conenforced | convalidated 
+-----------------------------+---------+-------------+--------------
+ enable_noconflict_id_check  | c       | t           | t
+ enable_noconflict_id_check1 | c       | t           | t
+ enable_noconflict_id_check2 | c       | t           | t
+ enable_noconflict_id_check3 | c       | t           | t
+(4 rows)
+
+-- redundant options are accepted
+CREATE TABLE disable_noconflict (id NUMBER, name VARCHAR2(100));
+ALTER TABLE disable_noconflict ADD CHECK (id > 2)      DISABLE DISABLE;
+ALTER TABLE disable_noconflict ADD CHECK (id > 2)      DISABLE NOT ENFORCED;
+ALTER TABLE disable_noconflict ADD CHECK (id > 2) NOT ENFORCED NOT ENFORCED;
+ALTER TABLE disable_noconflict ADD CHECK (id > 2) NOT ENFORCED DISABLE;
+SELECT conname, contype, conenforced, convalidated FROM pg_constraint
+WHERE conrelid = 'disable_noconflict'::regclass;
+           conname            | contype | conenforced | convalidated 
+------------------------------+---------+-------------+--------------
+ disable_noconflict_id_check  | c       | f           | f
+ disable_noconflict_id_check1 | c       | f           | f
+ disable_noconflict_id_check2 | c       | f           | f
+ disable_noconflict_id_check3 | c       | f           | f
+(4 rows)
+
+-- redundant options are accepted
+CREATE TABLE validate_noconflict (id NUMBER, name VARCHAR2(100));
+ALTER TABLE validate_noconflict ADD CHECK (id > 2) VALIDATE VALIDATE;
+SELECT conname, contype, conenforced, convalidated FROM pg_constraint
+WHERE conrelid = 'validate_noconflict'::regclass;
+           conname            | contype | conenforced | convalidated 
+------------------------------+---------+-------------+--------------
+ validate_noconflict_id_check | c       | t           | t
+(1 row)
+
+-- redundant options are accepted
+CREATE TABLE novalidate_noconflict (id NUMBER, name VARCHAR2(100));
+ALTER TABLE novalidate_noconflict ADD CHECK (id > 2) NOVALIDATE NOVALIDATE;
+ALTER TABLE novalidate_noconflict ADD CHECK (id > 2)  NOT VALID NOT VALID;
+SELECT conname, contype, conenforced, convalidated FROM pg_constraint
+WHERE conrelid = 'novalidate_noconflict'::regclass;
+             conname             | contype | conenforced | convalidated 
+---------------------------------+---------+-------------+--------------
+ novalidate_noconflict_id_check  | c       | t           | f
+ novalidate_noconflict_id_check1 | c       | t           | f
+(2 rows)
+
+-- opposite options are rejected
+CREATE TABLE clause_conflicts (id NUMBER, name VARCHAR2(100));
+ALTER TABLE clause_conflicts ADD CHECK (id > 2)      DISABLE ENABLE;
+ERROR:  conflicting constraint properties
+LINE 1: ...BLE clause_conflicts ADD CHECK (id > 2)      DISABLE ENABLE;
+                                                                ^
+ALTER TABLE clause_conflicts ADD CHECK (id > 2)      DISABLE ENFORCED;
+ERROR:  conflicting constraint properties
+LINE 1: ...E clause_conflicts ADD CHECK (id > 2)      DISABLE ENFORCED;
+                                                              ^
+ALTER TABLE clause_conflicts ADD CHECK (id > 2)       ENABLE DISABLE;
+ERROR:  conflicting constraint properties
+LINE 1: ...LE clause_conflicts ADD CHECK (id > 2)       ENABLE DISABLE;
+                                                               ^
+ALTER TABLE clause_conflicts ADD CHECK (id > 2)       ENABLE NOT ENFORCED;
+ERROR:  conflicting constraint properties
+LINE 1: ... clause_conflicts ADD CHECK (id > 2)       ENABLE NOT ENFORC...
+                                                             ^
+ALTER TABLE clause_conflicts ADD CHECK (id > 2) NOT ENFORCED ENFORCED;
+ERROR:  conflicting constraint properties
+LINE 1: ...E clause_conflicts ADD CHECK (id > 2) NOT ENFORCED ENFORCED;
+                                                              ^
+ALTER TABLE clause_conflicts ADD CHECK (id > 2) NOT ENFORCED ENABLE;
+ERROR:  conflicting constraint properties
+LINE 1: ...BLE clause_conflicts ADD CHECK (id > 2) NOT ENFORCED ENABLE;
+                                                                ^
+ALTER TABLE clause_conflicts ADD CHECK (id > 2)     ENFORCED NOT ENFORCED;
+ERROR:  conflicting constraint properties
+LINE 1: ... clause_conflicts ADD CHECK (id > 2)     ENFORCED NOT ENFORC...
+                                                             ^
+ALTER TABLE clause_conflicts ADD CHECK (id > 2)     ENFORCED DISABLE;
+ERROR:  conflicting constraint properties
+LINE 1: ...LE clause_conflicts ADD CHECK (id > 2)     ENFORCED DISABLE;
+                                                               ^
+ALTER TABLE clause_conflicts ADD CHECK (id > 2) NOVALIDATE VALIDATE;
+ERROR:  conflicting constraint properties
+LINE 1: ...BLE clause_conflicts ADD CHECK (id > 2) NOVALIDATE VALIDATE;
+                                                              ^
+ALTER TABLE clause_conflicts ADD CHECK (id > 2)   VALIDATE NOVALIDATE;
+ERROR:  conflicting constraint properties
+LINE 1: ...LE clause_conflicts ADD CHECK (id > 2)   VALIDATE NOVALIDATE...
+                                                             ^
+ALTER TABLE clause_conflicts ADD CHECK (id > 2)   VALIDATE NOT VALID;
+ERROR:  conflicting constraint properties
+LINE 1: ...LE clause_conflicts ADD CHECK (id > 2)   VALIDATE NOT VALID;
+                                                             ^
+SELECT conname, contype, conenforced, convalidated FROM pg_constraint
+WHERE conrelid = 'clause_conflicts'::regclass;
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- opposite options are rejected
+CREATE TABLE enable_disable (id NUMBER, name VARCHAR2(100),
+    PRIMARY KEY (id) ENABLE DISABLE);
+ERROR:  conflicting constraint properties
+LINE 2:     PRIMARY KEY (id) ENABLE DISABLE);
+                                    ^
+-- opposite options are rejected
+CREATE TABLE enable_notenforced (id NUMBER, name VARCHAR2(100),
+    PRIMARY KEY (id) ENABLE NOT ENFORCED);
+ERROR:  conflicting constraint properties
+LINE 2:     PRIMARY KEY (id) ENABLE NOT ENFORCED);
+                                    ^
+-- opposite options are rejected
+CREATE TABLE enable_notenforced (id NUMBER, name VARCHAR2(100),
+    PRIMARY KEY (id) ENFORCED NOT ENFORCED);
+ERROR:  conflicting constraint properties
+LINE 2:     PRIMARY KEY (id) ENFORCED NOT ENFORCED);
+                                      ^
 -- Cleanup
 DROP SCHEMA ivo_regress_enable CASCADE;
-NOTICE:  drop cascades to 46 other objects
+NOTICE:  drop cascades to 52 other objects
 DETAIL:  drop cascades to table cpk_enable
 drop cascades to table cpk_enable_validate
 drop cascades to table pk_enable
@@ -2622,4 +2749,10 @@ drop cascades to table acnotnull_enable_novalidate
 drop cascades to table acnotnull_disable
 drop cascades to table acnotnull_disable_validate
 drop cascades to table acnotnull_disable_novalidate
+drop cascades to table enable_enforced
+drop cascades to table enable_noconflict
+drop cascades to table disable_noconflict
+drop cascades to table validate_noconflict
+drop cascades to table novalidate_noconflict
+drop cascades to table clause_conflicts
 RESET search_path;

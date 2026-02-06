@@ -6721,7 +6721,12 @@ ConstraintAttributeSpec:
 					/* generic message for other conflicts */
 					if ((newspec & (CAS_NOT_DEFERRABLE | CAS_DEFERRABLE)) == (CAS_NOT_DEFERRABLE | CAS_DEFERRABLE) ||
 						(newspec & (CAS_INITIALLY_IMMEDIATE | CAS_INITIALLY_DEFERRED)) == (CAS_INITIALLY_IMMEDIATE | CAS_INITIALLY_DEFERRED) ||
-						(newspec & (CAS_NOT_ENFORCED | CAS_ENFORCED)) == (CAS_NOT_ENFORCED | CAS_ENFORCED))
+						(newspec & (CAS_NOT_ENFORCED | CAS_ENFORCED)) == (CAS_NOT_ENFORCED | CAS_ENFORCED) ||
+						(newspec & (CAS_NOT_ENFORCED | CAS_ENABLE))   == (CAS_NOT_ENFORCED | CAS_ENABLE) ||
+						(newspec & (CAS_DISABLE | CAS_ENABLE))   == (CAS_DISABLE | CAS_ENABLE) ||
+						(newspec & (CAS_DISABLE | CAS_ENFORCED)) == (CAS_DISABLE | CAS_ENFORCED) ||
+						(newspec & (CAS_VALIDATE | CAS_NOVALIDATE)) == (CAS_VALIDATE | CAS_NOVALIDATE) ||
+						(newspec & (CAS_VALIDATE | CAS_NOT_VALID))  == (CAS_VALIDATE | CAS_NOT_VALID))
 						ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
 								 errmsg("conflicting constraint properties"),
