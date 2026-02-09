@@ -6094,6 +6094,42 @@ call test_pkg.test_p1(NULL, 23);
 
 DROP package test_pkg;
 
+-- Test COMMIT in nested package procedure calls (Issue #1007)
+CREATE TABLE test_nested_commit (id int);
+
+CREATE OR REPLACE PACKAGE pkg_commit_test IS
+  PROCEDURE do_commit;
+  PROCEDURE main;
+END;
+/
+
+CREATE OR REPLACE PACKAGE BODY pkg_commit_test IS
+  PROCEDURE do_commit IS
+  BEGIN
+    INSERT INTO test_nested_commit VALUES (1);
+    COMMIT;
+    INSERT INTO test_nested_commit VALUES (2);
+  END;
+
+  PROCEDURE main IS
+  BEGIN
+    INSERT INTO test_nested_commit VALUES (0);
+    do_commit();
+    INSERT INTO test_nested_commit VALUES (3);
+  END;
+END;
+/
+
+TRUNCATE test_nested_commit;
+BEGIN
+  pkg_commit_test.main();
+END;
+/
+SELECT * FROM test_nested_commit ORDER BY id;
+
+DROP PACKAGE pkg_commit_test;
+DROP TABLE test_nested_commit;
+
 --clean data
 RESET ivorysql.allow_out_parameter_const;
 DROP FUNCTION test_event_trigger;
