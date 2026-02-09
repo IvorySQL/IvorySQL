@@ -1236,14 +1236,14 @@ SELECT
         WHEN VARTYPE = 'bool'    THEN 1
         WHEN VARTYPE = 'integer' THEN 3
         ELSE 2
-    END AS TYPE,
+    END::NUMBER AS TYPE,
     SETTING::VARCHAR2(80) AS VALUE,
     BOOT_VAL::VARCHAR2(255) AS DEFAULT_VALUE,
     -- Mapping update levels
     CASE
         WHEN setting = boot_val THEN 'TRUE'
         ELSE 'FALSE'
-    END AS ISDEFAULT,
+    END::VARCHAR2(5) AS ISDEFAULT,
     CASE
         WHEN CONTEXT IN ('user', 'superuser') THEN 'TRUE'
         ELSE 'FALSE'
