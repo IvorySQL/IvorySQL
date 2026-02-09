@@ -1248,7 +1248,6 @@ SELECT
         WHEN CONTEXT IN ('user', 'superuser') THEN 'TRUE'
         ELSE 'FALSE'
     END::VARCHAR2(5) AS ISSES_MODIFIABLE,
-    END AS ISSES_MODIFIABLE,
     CASE
         WHEN CONTEXT IN ('user', 'superuser') THEN 'IMMEDIATE'
         WHEN CONTEXT = 'postmaster' THEN 'FALSE'
