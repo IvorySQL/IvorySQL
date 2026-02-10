@@ -59,23 +59,3 @@ install_data(
   'preload_ora_misc.sql',
   install_dir: dir_data,
 )
-
-tests += {
-  'name': 'ivorysql_ora',
-  'sd': meson.current_source_dir(),
-  'bd': meson.current_build_dir(),
-  'regress': {
-    'sql': [
-      'check',
-      'check_btree',
-      'check_heap',
-    ],
-  },
-  'tap': {
-    'tests': [
-      't/001_verify_heapam.pl',
-      't/002_cic.pl',
-      't/003_cic_2pc.pl',
-    ],
-  },
-}
