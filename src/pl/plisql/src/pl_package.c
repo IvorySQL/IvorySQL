@@ -3636,7 +3636,6 @@ plisql_subproc_should_change_return_type(FuncExpr *fexpr,
 	{
 		/* only one out-parameter, change the rettype to be out-parameter type */
 		ListCell *lc;
-		bool found = false;
 
 		foreach (lc, subprocfunc->arg)
 		{
@@ -3645,7 +3644,6 @@ plisql_subproc_should_change_return_type(FuncExpr *fexpr,
 			if (argitem->argmode == ARGMODE_OUT ||
 				argitem->argmode == ARGMODE_INOUT)
 			{
-				found = true;
 				result = true;
 				*rettype = argitem->type->typoid;
 				*typmod = argitem->type->atttypmod;
@@ -3653,7 +3651,7 @@ plisql_subproc_should_change_return_type(FuncExpr *fexpr,
 				break;
 			}
 		}
-		Assert(found);
+		Assert(result);
 	}
 	return result;
 }
