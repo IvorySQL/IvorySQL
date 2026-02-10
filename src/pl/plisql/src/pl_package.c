@@ -2731,8 +2731,11 @@ plisql_remove_function_references(PLiSQL_function *func, PackageCacheItem *item)
 {
 	PLiSQL_package *psource = (PLiSQL_package *) item->source;
 
-	Assert(list_member_ptr(psource->source.funclist, func));
-
+	if (!list_member_ptr(psource->source.funclist, func))
+	{
+		Assert(false);
+		return;
+	}
 	psource->source.funclist = list_delete_ptr(psource->source.funclist, (void *) func);
 	psource->source.use_count--;
 
