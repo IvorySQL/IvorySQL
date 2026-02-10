@@ -1,5 +1,5 @@
 # ivorysql_ora extension
-comment = 'Oracle Compatible extenison on Postgres Database'
+comment = 'Oracle Compatible extension on Postgres Database'
 default_version = '1.0'
 module_pathname = '$libdir/ivorysql_ora'
 superuser = true
