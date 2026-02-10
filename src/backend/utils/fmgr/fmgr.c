@@ -1862,8 +1862,8 @@ OidSendFunctionCall(Oid functionId, Datum val)
  *-------------------------------------------------------------------------
  */
 
-struct varlena *
-pg_detoast_datum(struct varlena *datum)
+varlena *
+pg_detoast_datum(varlena *datum)
 {
 	if (VARATT_IS_EXTENDED(datum))
 		return detoast_attr(datum);
@@ -1871,8 +1871,8 @@ pg_detoast_datum(struct varlena *datum)
 		return datum;
 }
 
-struct varlena *
-pg_detoast_datum_copy(struct varlena *datum)
+varlena *
+pg_detoast_datum_copy(varlena *datum)
 {
 	if (VARATT_IS_EXTENDED(datum))
 		return detoast_attr(datum);
@@ -1880,22 +1880,22 @@ pg_detoast_datum_copy(struct varlena *datum)
 	{
 		/* Make a modifiable copy of the varlena object */
 		Size		len = VARSIZE(datum);
-		struct varlena *result = (struct varlena *) palloc(len);
+		varlena    *result = (varlena *) palloc(len);
 
 		memcpy(result, datum, len);
 		return result;
 	}
 }
 
-struct varlena *
-pg_detoast_datum_slice(struct varlena *datum, int32 first, int32 count)
+varlena *
+pg_detoast_datum_slice(varlena *datum, int32 first, int32 count)
 {
 	/* Only get the specified portion from the toast rel */
 	return detoast_attr_slice(datum, first, count);
 }
 
-struct varlena *
-pg_detoast_datum_packed(struct varlena *datum)
+varlena *
+pg_detoast_datum_packed(varlena *datum)
 {
 	if (VARATT_IS_COMPRESSED(datum) || VARATT_IS_EXTERNAL(datum))
 		return detoast_attr(datum);
