@@ -109,19 +109,19 @@ static FILE *free_slot(uint32 sid);
 static uint32 reserve_slot(FILE *fd, int max_linesize, int encoding);
 
 /* Helper macros */
-#define IS_VALID_DETAIL(d) ((d) != (NULL))
+#define IS_VALID_PTR(d) ((d) != (NULL))
 
 #define CUSTOM_EXCEPTION(msg, detail) \
     ereport(ERROR, \
         (errcode(ERRCODE_RAISE_EXCEPTION), \
          errmsg("%s", msg), \
-         IS_VALID_DETAIL(detail) ? errdetail("%s", (char*)detail) : 0))
+         IS_VALID_PTR(detail) ? errdetail("%s", (char*)detail) : 0))
 
 #define CUSTOM_WARNING(msg, detail) \
     ereport(WARNING, \
         (errcode(ERRCODE_RAISE_EXCEPTION), \
          errmsg("%s", msg), \
-         IS_VALID_DETAIL(detail) ? errdetail("%s", (char*)detail) : 0))
+         IS_VALID_PTR(detail) ? errdetail("%s", (char*)detail) : 0))
 
 #define STRERROR_EXCEPTION(msg) \
 	do { char *strerr = strerror(errno); CUSTOM_EXCEPTION(msg, strerr); } while(0);
