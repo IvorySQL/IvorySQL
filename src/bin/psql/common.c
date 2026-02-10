@@ -2860,7 +2860,7 @@ ExecQueryUsingCursor(const char *query, double *elapsed_msec)
 	int			flush_error;
 
 	*elapsed_msec = 0;
-	before.ticks = 0;
+	INSTR_TIME_SET_ZERO(before);
 
 	/* initialize print options for partial table output */
 	my_popt.topt.start_table = true;
