@@ -1102,6 +1102,8 @@ transformColumnDefinition(CreateStmtContext *cxt, ColumnDef *column)
 			case CONSTR_ATTR_IMMEDIATE:
 			case CONSTR_ATTR_ENFORCED:
 			case CONSTR_ATTR_NOT_ENFORCED:
+			case CONSTR_ATTR_ENABLE:
+			case CONSTR_ATTR_DISABLE:
 				/* transformConstraintAttrs took care of these */
 				break;
 
@@ -1243,6 +1245,8 @@ transformTableConstraint(CreateStmtContext *cxt, Constraint *constraint)
 		case CONSTR_ATTR_IMMEDIATE:
 		case CONSTR_ATTR_ENFORCED:
 		case CONSTR_ATTR_NOT_ENFORCED:
+		case CONSTR_ATTR_ENABLE:
+		case CONSTR_ATTR_DISABLE:
 			elog(ERROR, "invalid context for constraint type %d",
 				 constraint->contype);
 			break;
@@ -4234,6 +4238,41 @@ transformConstraintAttrs(CreateStmtContext *cxt, List *constraintList)
 				lastprimarycon->is_enforced = true;
 				break;
 
+			case CONSTR_ATTR_ENABLE:
+				if (con->skip_validation)
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("ENABLE NOVALIDATE clause is not supported"),
+							 errhint("Update your CONSTRAINT definition."),
+							 parser_errposition(cxt->pstate, con->location)));
+
+				if (lastprimarycon == NULL ||
+					(lastprimarycon->contype != CONSTR_PRIMARY &&
+					 lastprimarycon->contype != CONSTR_CHECK &&
+					 lastprimarycon->contype != CONSTR_UNIQUE &&
+					 lastprimarycon->contype != CONSTR_NOTNULL &&
+					 lastprimarycon->contype != CONSTR_FOREIGN))
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("misplaced ENABLE clause"),
+							 parser_errposition(cxt->pstate, con->location)));
+				}
+				if (saw_enforced)
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("multiple ENABLE/DISABLE clauses not allowed"),
+							 parser_errposition(cxt->pstate, con->location)));
+				con->contype = CONSTR_ATTR_ENFORCED;
+				saw_enforced = true;
+				lastprimarycon->is_enforced = true;
+				if (con->skip_validation)
+				{
+					lastprimarycon->skip_validation = true;
+					lastprimarycon->initially_valid = false;
+				}
+				break;
+
 			case CONSTR_ATTR_NOT_ENFORCED:
 				if (lastprimarycon == NULL ||
 					(lastprimarycon->contype != CONSTR_CHECK &&
@@ -4247,6 +4286,35 @@ transformConstraintAttrs(CreateStmtContext *cxt, List *constraintList)
 							(errcode(ERRCODE_SYNTAX_ERROR),
 							 errmsg("multiple ENFORCED/NOT ENFORCED clauses not allowed"),
 							 parser_errposition(cxt->pstate, con->location)));
+				saw_enforced = true;
+				lastprimarycon->is_enforced = false;
+
+				/* A NOT ENFORCED constraint must be marked as invalid. */
+				lastprimarycon->skip_validation = true;
+				lastprimarycon->initially_valid = false;
+				break;
+
+			case CONSTR_ATTR_DISABLE:
+				if (!con->skip_validation)
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("DISABLE VALIDATE clause is not supported"),
+							 errhint("Update your CONSTRAINT definition."),
+							 parser_errposition(cxt->pstate, con->location)));
+				if (lastprimarycon == NULL ||
+					(lastprimarycon->contype != CONSTR_CHECK &&
+					 lastprimarycon->contype != CONSTR_FOREIGN))
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("DISABLE clause is not supported"),
+							 parser_errposition(cxt->pstate, con->location)));
+				if (saw_enforced)
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("multiple ENABLE/DISABLE clauses not allowed"),
+							 errhint("Update your CONSTRAINT definition."),
+							 parser_errposition(cxt->pstate, con->location)));
+				con->contype = CONSTR_ATTR_NOT_ENFORCED;
 				saw_enforced = true;
 				lastprimarycon->is_enforced = false;
 

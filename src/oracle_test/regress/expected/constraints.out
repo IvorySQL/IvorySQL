@@ -1689,3 +1689,937 @@ DROP TABLE constraint_comments_tbl;
 DROP DOMAIN constraint_comments_dom;
 DROP ROLE regress_constraint_comments;
 DROP ROLE regress_constraint_comments_noaccess;
+--- tests for CREATE TABLE (<column> .. ENABLE|DISABLE ..)
+CREATE SCHEMA ivo_regress_enable;
+SET search_path to ivo_regress_enable;
+-- CONSTRAINT PRIMARY KEY
+CREATE TABLE cpk_enable (id NUMBER, name VARCHAR2(100),
+    CONSTRAINT cpk_pk_enable PRIMARY KEY (id) ENABLE);
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'cpk_pk_enable';
+    conname    | contype | conenforced | convalidated 
+---------------+---------+-------------+--------------
+ cpk_pk_enable | p       | t           | t
+(1 row)
+
+-- VALIDATE .. ENFORCED
+CREATE TABLE cpk_enable_validate (id NUMBER, name VARCHAR2(100),
+    CONSTRAINT cpk_pk_enable_validate PRIMARY KEY (id) ENABLE VALIDATE);
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'cpk_pk_enable_validate';
+        conname         | contype | conenforced | convalidated 
+------------------------+---------+-------------+--------------
+ cpk_pk_enable_validate | p       | t           | t
+(1 row)
+
+-- Not supported: ENFORCED NOT VALID
+CREATE TABLE cpk_enable_novalidate (id NUMBER, name VARCHAR2(100),
+    CONSTRAINT cpk_pk_enable_novalidate PRIMARY KEY (id) ENABLE NOVALIDATE);
+ERROR:  PRIMARY KEY ENABLE NOVALIDATE is not supported
+LINE 2: ...STRAINT cpk_pk_enable_novalidate PRIMARY KEY (id) ENABLE NOV...
+                                                             ^
+HINT:  Update your CONSTRAINT definition.
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'cpk_pk_enable_novalidate';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- Not supported: NOT ENFORCED
+CREATE TABLE cpk_disable (id NUMBER, name VARCHAR2(100),
+    CONSTRAINT cpk_pk_disable PRIMARY KEY (id) DISABLE);
+ERROR:  PRIMARY KEY DISABLE is not supported
+LINE 2:     CONSTRAINT cpk_pk_disable PRIMARY KEY (id) DISABLE);
+                                                       ^
+HINT:  Update your CONSTRAINT definition.
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'cpk_pk_disable';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- Not supported: VALIDATE .. NOT ENFORCED
+CREATE TABLE cpk_disable_validate (id NUMBER, name VARCHAR2(100),
+    CONSTRAINT cpk_pk_disable_validate PRIMARY KEY (id) DISABLE VALIDATE);
+ERROR:  PRIMARY KEY DISABLE VALIDATE is not supported
+LINE 2: ...NSTRAINT cpk_pk_disable_validate PRIMARY KEY (id) DISABLE VA...
+                                                             ^
+HINT:  Update your CONSTRAINT definition.
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'cpk_pk_disable_validate';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- Not supported: NOT ENFORCED NOT VALID
+CREATE TABLE cpk_disable_novalidate (id NUMBER, name VARCHAR2(100),
+    CONSTRAINT cpk_pk_disable_novalidate PRIMARY KEY (id) DISABLE NOVALIDATE);
+ERROR:  PRIMARY KEY DISABLE NOVALIDATE is not supported
+LINE 2: ...TRAINT cpk_pk_disable_novalidate PRIMARY KEY (id) DISABLE NO...
+                                                             ^
+HINT:  Update your CONSTRAINT definition.
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'cpk_pk_disable_novalidate';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- PRIMARY KEY
+CREATE TABLE pk_enable (id NUMBER PRIMARY KEY ENABLE, name VARCHAR2(100));
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'pk_enable_pkey';
+    conname     | contype | conenforced | convalidated 
+----------------+---------+-------------+--------------
+ pk_enable_pkey | p       | t           | t
+(1 row)
+
+-- VALIDATE .. ENFORCED
+CREATE TABLE pk_enable_validate (id NUMBER PRIMARY KEY ENABLE VALIDATE, name VARCHAR2(100));
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'pk_enable_validate_pkey';
+         conname         | contype | conenforced | convalidated 
+-------------------------+---------+-------------+--------------
+ pk_enable_validate_pkey | p       | t           | t
+(1 row)
+
+-- Not supported: ENFORCED NOT VALID
+CREATE TABLE pk_enable_novalidate (id NUMBER PRIMARY KEY ENABLE NOVALIDATE, name VARCHAR2(100));
+ERROR:  ENABLE NOVALIDATE clause is not supported
+LINE 1: ...TABLE pk_enable_novalidate (id NUMBER PRIMARY KEY ENABLE NOV...
+                                                             ^
+HINT:  Update your CONSTRAINT definition.
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'pk_enable_novalidate_pkey';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- Not supported: NOT ENFORCED
+CREATE TABLE pk_disable (id NUMBER PRIMARY KEY DISABLE, name VARCHAR2(100));
+ERROR:  DISABLE clause is not supported
+LINE 1: CREATE TABLE pk_disable (id NUMBER PRIMARY KEY DISABLE, name...
+                                                       ^
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'pk_disable_pkey';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- Not supported: VALIDATE .. NOT ENFORCED
+CREATE TABLE pk_disable_validate (id NUMBER PRIMARY KEY DISABLE VALIDATE, name VARCHAR2(100));
+ERROR:  DISABLE VALIDATE clause is not supported
+LINE 1: ... TABLE pk_disable_validate (id NUMBER PRIMARY KEY DISABLE VA...
+                                                             ^
+HINT:  Update your CONSTRAINT definition.
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'pk_disable_validate_pkey';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- Not supported: NOT ENFORCED NOT VALID
+CREATE TABLE pk_disable_novalidate (id NUMBER PRIMARY KEY DISABLE NOVALIDATE, name VARCHAR2(100));
+ERROR:  DISABLE clause is not supported
+LINE 1: ...ABLE pk_disable_novalidate (id NUMBER PRIMARY KEY DISABLE NO...
+                                                             ^
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'pk_disable_novalidate_pkey';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- CONSTRAINT UNIQUE
+CREATE TABLE cunique_enable (id NUMBER, name VARCHAR2(100),
+    CONSTRAINT cunique_unique_enable UNIQUE (id) ENABLE);
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'cunique_unique_enable';
+        conname        | contype | conenforced | convalidated 
+-----------------------+---------+-------------+--------------
+ cunique_unique_enable | u       | t           | t
+(1 row)
+
+-- VALIDATE .. ENFORCED
+CREATE TABLE cunique_enable_validate (id NUMBER, name VARCHAR2(100),
+    CONSTRAINT cunique_unique_enable_validate UNIQUE (id) ENABLE VALIDATE);
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'cunique_unique_enable_validate';
+            conname             | contype | conenforced | convalidated 
+--------------------------------+---------+-------------+--------------
+ cunique_unique_enable_validate | u       | t           | t
+(1 row)
+
+-- Not supported: ENFORCED NOT VALID
+CREATE TABLE cunique_enable_novalidate (id NUMBER, name VARCHAR2(100),
+    CONSTRAINT cunique_unique_enable_novalidate UNIQUE (id) ENABLE NOVALIDATE);
+ERROR:  UNIQUE ENABLE NOVALIDATE is not supported
+LINE 2: ...AINT cunique_unique_enable_novalidate UNIQUE (id) ENABLE NOV...
+                                                             ^
+HINT:  Update your CONSTRAINT definition.
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'cunique_unique_enable_novalidate';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- Not supported: NOT ENFORCED
+CREATE TABLE cunique_disable (id NUMBER, name VARCHAR2(100),
+    CONSTRAINT cunique_unique_disable UNIQUE (id) DISABLE);
+ERROR:  UNIQUE DISABLE is not supported
+LINE 2:     CONSTRAINT cunique_unique_disable UNIQUE (id) DISABLE);
+                                                          ^
+HINT:  Update your CONSTRAINT definition.
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'cunique_unique_disable';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- Not supported: VALIDATE .. NOT ENFORCED
+CREATE TABLE cunique_disable_validate (id NUMBER, name VARCHAR2(100),
+    CONSTRAINT cunique_unique_disable_validate UNIQUE (id) DISABLE VALIDATE);
+ERROR:  UNIQUE DISABLE VALIDATE is not supported
+LINE 2: ...RAINT cunique_unique_disable_validate UNIQUE (id) DISABLE VA...
+                                                             ^
+HINT:  Update your CONSTRAINT definition.
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'cunique_unique_disable_validate';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- Not supported: NOT ENFORCED NOT VALID
+CREATE TABLE cunique_disable_novalidate (id NUMBER, name VARCHAR2(100),
+    CONSTRAINT cunique_unique_disable_novalidate UNIQUE (id) DISABLE NOVALIDATE);
+ERROR:  UNIQUE DISABLE NOVALIDATE is not supported
+LINE 2: ...INT cunique_unique_disable_novalidate UNIQUE (id) DISABLE NO...
+                                                             ^
+HINT:  Update your CONSTRAINT definition.
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'cunique_unique_disable_novalidate';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- UNIQUE
+CREATE TABLE unique_enable (id NUMBER UNIQUE ENABLE, name VARCHAR2(100));
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'unique_enable_id_key';
+       conname        | contype | conenforced | convalidated 
+----------------------+---------+-------------+--------------
+ unique_enable_id_key | u       | t           | t
+(1 row)
+
+-- VALIDATE .. ENFORCED
+CREATE TABLE unique_enable_validate (id NUMBER UNIQUE ENABLE VALIDATE, name VARCHAR2(100));
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'unique_enable_validate_id_key';
+            conname            | contype | conenforced | convalidated 
+-------------------------------+---------+-------------+--------------
+ unique_enable_validate_id_key | u       | t           | t
+(1 row)
+
+-- Not supported: ENFORCED NOT VALID
+CREATE TABLE unique_enable_novalidate (id NUMBER UNIQUE ENABLE NOVALIDATE, name VARCHAR2(100));
+ERROR:  ENABLE NOVALIDATE clause is not supported
+LINE 1: ... TABLE unique_enable_novalidate (id NUMBER UNIQUE ENABLE NOV...
+                                                             ^
+HINT:  Update your CONSTRAINT definition.
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'unique_enable_novalidate_id_key';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- Not supported: NOT ENFORCED
+CREATE TABLE unique_disable (id NUMBER UNIQUE DISABLE, name VARCHAR2(100));
+ERROR:  DISABLE clause is not supported
+LINE 1: CREATE TABLE unique_disable (id NUMBER UNIQUE DISABLE, name ...
+                                                      ^
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'unique_disable_id_key';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- Not supported: VALIDATE .. NOT ENFORCED
+CREATE TABLE unique_disable_validate (id NUMBER UNIQUE DISABLE VALIDATE, name VARCHAR2(100));
+ERROR:  DISABLE VALIDATE clause is not supported
+LINE 1: ...E TABLE unique_disable_validate (id NUMBER UNIQUE DISABLE VA...
+                                                             ^
+HINT:  Update your CONSTRAINT definition.
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'unique_disable_validate_id_key';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- Not supported: NOT ENFORCED NOT VALID
+CREATE TABLE unique_disable_novalidate (id NUMBER UNIQUE DISABLE NOVALIDATE, name VARCHAR2(100));
+ERROR:  DISABLE clause is not supported
+LINE 1: ...TABLE unique_disable_novalidate (id NUMBER UNIQUE DISABLE NO...
+                                                             ^
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'unique_disable_novalidate_id_key';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- CONSTRAINT CHECK
+CREATE TABLE ccheck_enable (id NUMBER, name VARCHAR2(100),
+    CONSTRAINT ccheck_check_enable CHECK (id > 0) ENABLE);
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'ccheck_check_enable';
+       conname       | contype | conenforced | convalidated 
+---------------------+---------+-------------+--------------
+ ccheck_check_enable | c       | t           | t
+(1 row)
+
+-- VALIDATE .. ENFORCED
+CREATE TABLE ccheck_enable_validate (id NUMBER, name VARCHAR2(100),
+    CONSTRAINT ccheck_check_enable_validate CHECK (id > 0) ENABLE VALIDATE);
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'ccheck_check_enable_validate';
+           conname            | contype | conenforced | convalidated 
+------------------------------+---------+-------------+--------------
+ ccheck_check_enable_validate | c       | t           | t
+(1 row)
+
+-- ENFORCED NOT VALID - saved as ENFORCED VALID
+CREATE TABLE ccheck_enable_novalidate (id NUMBER, name VARCHAR2(100),
+    CONSTRAINT ccheck_check_enable_novalidate CHECK (id > 0) ENABLE NOVALIDATE);
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'ccheck_check_enable_novalidate';
+            conname             | contype | conenforced | convalidated 
+--------------------------------+---------+-------------+--------------
+ ccheck_check_enable_novalidate | c       | t           | t
+(1 row)
+
+-- NOT ENFORCED
+CREATE TABLE ccheck_disable (id NUMBER, name VARCHAR2(100),
+    CONSTRAINT ccheck_check_disable CHECK (id > 0) DISABLE);
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'ccheck_check_disable';
+       conname        | contype | conenforced | convalidated 
+----------------------+---------+-------------+--------------
+ ccheck_check_disable | c       | f           | f
+(1 row)
+
+-- VALIDATE .. NOT ENFORCED - saved as NOT ENFORCED NOT VALID
+CREATE TABLE ccheck_disable_validate (id NUMBER, name VARCHAR2(100),
+    CONSTRAINT ccheck_check_disable_validate CHECK (id > 0) DISABLE VALIDATE);
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'ccheck_check_disable_validate';
+            conname            | contype | conenforced | convalidated 
+-------------------------------+---------+-------------+--------------
+ ccheck_check_disable_validate | c       | f           | f
+(1 row)
+
+-- NOT ENFORCED NOT VALID
+CREATE TABLE ccheck_disable_novalidate (id NUMBER, name VARCHAR2(100),
+    CONSTRAINT ccheck_check_disable_novalidate CHECK (id > 0) DISABLE NOVALIDATE);
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'ccheck_check_disable_novalidate';
+             conname             | contype | conenforced | convalidated 
+---------------------------------+---------+-------------+--------------
+ ccheck_check_disable_novalidate | c       | f           | f
+(1 row)
+
+-- CHECK
+CREATE TABLE check_enable (id NUMBER CHECK (id>0) ENABLE, name VARCHAR2(100));
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'check_enable_id_check';
+        conname        | contype | conenforced | convalidated 
+-----------------------+---------+-------------+--------------
+ check_enable_id_check | c       | t           | t
+(1 row)
+
+-- VALIDATE .. ENFORCED
+CREATE TABLE check_enable_validate (id NUMBER CHECK (id>0) ENABLE VALIDATE, name VARCHAR2(100));
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'check_enable_validate_id_check';
+            conname             | contype | conenforced | convalidated 
+--------------------------------+---------+-------------+--------------
+ check_enable_validate_id_check | c       | t           | t
+(1 row)
+
+-- Not supported: ENFORCED NOT VALID
+CREATE TABLE check_enable_novalidate (id NUMBER CHECK (id>0) ENABLE NOVALIDATE, name VARCHAR2(100));
+ERROR:  ENABLE NOVALIDATE clause is not supported
+LINE 1: ...E check_enable_novalidate (id NUMBER CHECK (id>0) ENABLE NOV...
+                                                             ^
+HINT:  Update your CONSTRAINT definition.
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'check_enable_novalidate_id_check';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- NOT ENFORCED
+CREATE TABLE check_disable (id NUMBER CHECK (id>0) DISABLE, name VARCHAR2(100));
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'check_disable_id_check';
+        conname         | contype | conenforced | convalidated 
+------------------------+---------+-------------+--------------
+ check_disable_id_check | c       | f           | f
+(1 row)
+
+-- Not supported: VALIDATE .. NOT ENFORCED
+CREATE TABLE check_disable_validate (id NUMBER CHECK (id>0) DISABLE VALIDATE, name VARCHAR2(100));
+ERROR:  DISABLE VALIDATE clause is not supported
+LINE 1: ...LE check_disable_validate (id NUMBER CHECK (id>0) DISABLE VA...
+                                                             ^
+HINT:  Update your CONSTRAINT definition.
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'check_disable_validate_id_check';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- NOT ENFORCED NOT VALID
+CREATE TABLE check_disable_novalidate (id NUMBER CHECK (id>0) DISABLE NOVALIDATE, name VARCHAR2(100));
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'check_disable_novalidate_id_check';
+              conname              | contype | conenforced | convalidated 
+-----------------------------------+---------+-------------+--------------
+ check_disable_novalidate_id_check | c       | f           | f
+(1 row)
+
+-- CONSTRAINT NOT NULL
+CREATE TABLE cnotnull_enable (id NUMBER, name VARCHAR2(100),
+    CONSTRAINT cnotnull_notnull_enable NOT NULL id ENABLE);
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'cnotnull_notnull_enable';
+         conname         | contype | conenforced | convalidated 
+-------------------------+---------+-------------+--------------
+ cnotnull_notnull_enable | n       | t           | t
+(1 row)
+
+-- VALIDATE .. ENFORCED
+CREATE TABLE cnotnull_enable_validate (id NUMBER, name VARCHAR2(100),
+    CONSTRAINT cnotnull_notnull_enable_validate NOT NULL id ENABLE VALIDATE);
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'cnotnull_notnull_enable_validate';
+             conname              | contype | conenforced | convalidated 
+----------------------------------+---------+-------------+--------------
+ cnotnull_notnull_enable_validate | n       | t           | t
+(1 row)
+
+-- Not supported: ENFORCED NOT VALID
+CREATE TABLE cnotnull_enable_novalidate (id NUMBER, name VARCHAR2(100),
+    CONSTRAINT cnotnull_notnull_enable_novalidate NOT NULL id ENABLE NOVALIDATE);
+ERROR:  NOT NULL ENABLE NOVALIDATE is not supported
+LINE 2: ...NT cnotnull_notnull_enable_novalidate NOT NULL id ENABLE NOV...
+                                                             ^
+HINT:  Update your CONSTRAINT definition.
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'cnotnull_notnull_enable_novalidate';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- Not supported: NOT ENFORCED
+CREATE TABLE cnotnull_disable (id NUMBER, name VARCHAR2(100),
+    CONSTRAINT cnotnull_notnull_disable NOT NULL id DISABLE);
+ERROR:  NOT NULL DISABLE is not supported
+LINE 2: ...   CONSTRAINT cnotnull_notnull_disable NOT NULL id DISABLE);
+                                                              ^
+HINT:  Update your CONSTRAINT definition.
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'cnotnull_notnull_disable';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- Not supported: VALIDATE .. NOT ENFORCED
+CREATE TABLE cnotnull_disable_validate (id NUMBER, name VARCHAR2(100),
+    CONSTRAINT cnotnull_notnull_disable_validate NOT NULL id DISABLE VALIDATE);
+ERROR:  NOT NULL DISABLE VALIDATE is not supported
+LINE 2: ...INT cnotnull_notnull_disable_validate NOT NULL id DISABLE VA...
+                                                             ^
+HINT:  Update your CONSTRAINT definition.
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'cnotnull_notnull_disable_validate';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- Not supported: NOT ENFORCED NOT VALID
+CREATE TABLE cnotnull_disable_novalidate (id NUMBER, name VARCHAR2(100),
+    CONSTRAINT cnotnull_notnull_disable_novalidate NOT NULL id DISABLE NOVALIDATE);
+ERROR:  NOT NULL DISABLE NOVALIDATE is not supported
+LINE 2: ...T cnotnull_notnull_disable_novalidate NOT NULL id DISABLE NO...
+                                                             ^
+HINT:  Update your CONSTRAINT definition.
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'cnotnull_notnull_disable_novalidate';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- NOT NULL
+CREATE TABLE notnull_enable (id NUMBER NOT NULL ENABLE, name VARCHAR2(100));
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'notnull_enable_id_not_null';
+          conname           | contype | conenforced | convalidated 
+----------------------------+---------+-------------+--------------
+ notnull_enable_id_not_null | n       | t           | t
+(1 row)
+
+-- VALIDATE .. ENFORCED
+CREATE TABLE notnull_enable_validate (id NUMBER NOT NULL ENABLE VALIDATE, name VARCHAR2(100));
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'notnull_enable_validate_id_not_null';
+               conname               | contype | conenforced | convalidated 
+-------------------------------------+---------+-------------+--------------
+ notnull_enable_validate_id_not_null | n       | t           | t
+(1 row)
+
+-- Not supported: ENFORCED NOT VALID
+CREATE TABLE notnull_enable_novalidate (id NUMBER NOT NULL ENABLE NOVALIDATE, name VARCHAR2(100));
+ERROR:  ENABLE NOVALIDATE clause is not supported
+LINE 1: ...BLE notnull_enable_novalidate (id NUMBER NOT NULL ENABLE NOV...
+                                                             ^
+HINT:  Update your CONSTRAINT definition.
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'notnull_enable_novalidate_id_not_null';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- Not supported: NOT ENFORCED
+CREATE TABLE notnull_disable (id NUMBER NOT NULL DISABLE, name VARCHAR2(100));
+ERROR:  DISABLE clause is not supported
+LINE 1: CREATE TABLE notnull_disable (id NUMBER NOT NULL DISABLE, na...
+                                                         ^
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'notnull_disable_id_not_null';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- Not supported: VALIDATE .. NOT ENFORCED
+CREATE TABLE notnull_disable_validate (id NUMBER NOT NULL DISABLE VALIDATE, name VARCHAR2(100));
+ERROR:  DISABLE VALIDATE clause is not supported
+LINE 1: ...ABLE notnull_disable_validate (id NUMBER NOT NULL DISABLE VA...
+                                                             ^
+HINT:  Update your CONSTRAINT definition.
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'notnull_disable_validate_id_not_null';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- Not supported: NOT ENFORCED NOT VALID
+CREATE TABLE notnull_disable_novalidate (id NUMBER NOT NULL DISABLE NOVALIDATE, name VARCHAR2(100));
+ERROR:  DISABLE clause is not supported
+LINE 1: ...LE notnull_disable_novalidate (id NUMBER NOT NULL DISABLE NO...
+                                                             ^
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'notnull_disable_novalidate_id_not_null';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- CONSTRAINT PRIMARY KEY
+CREATE TABLE acpk_enable (id NUMBER, name VARCHAR2(100));
+ALTER TABLE acpk_enable ADD PRIMARY KEY (id) ENABLE;
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'acpk_enable_pkey';
+     conname      | contype | conenforced | convalidated 
+------------------+---------+-------------+--------------
+ acpk_enable_pkey | p       | t           | t
+(1 row)
+
+-- VALIDATE .. ENFORCED
+CREATE TABLE acpk_enable_validate (id NUMBER, name VARCHAR2(100));
+ALTER TABLE acpk_enable_validate ADD PRIMARY KEY (id) ENABLE VALIDATE;
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'acpk_enable_validate_pkey';
+          conname          | contype | conenforced | convalidated 
+---------------------------+---------+-------------+--------------
+ acpk_enable_validate_pkey | p       | t           | t
+(1 row)
+
+-- Not supported: ENFORCED NOT VALID
+CREATE TABLE acpk_enable_novalidate (id NUMBER, name VARCHAR2(100));
+ALTER TABLE acpk_enable_novalidate ADD PRIMARY KEY (id) ENABLE NOVALIDATE;
+ERROR:  PRIMARY KEY ENABLE NOVALIDATE is not supported
+LINE 1: ...TABLE acpk_enable_novalidate ADD PRIMARY KEY (id) ENABLE NOV...
+                                                             ^
+HINT:  Update your CONSTRAINT definition.
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'acpk_enable_novalidate_pkey';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- Not supported: NOT ENFORCED
+CREATE TABLE acpk_disable (id NUMBER, name VARCHAR2(100));
+ALTER TABLE acpk_disable ADD PRIMARY KEY (id) DISABLE;
+ERROR:  PRIMARY KEY DISABLE is not supported
+LINE 1: ALTER TABLE acpk_disable ADD PRIMARY KEY (id) DISABLE;
+                                                      ^
+HINT:  Update your CONSTRAINT definition.
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'acpk_disable_pkey';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- Not supported: VALIDATE .. NOT ENFORCED
+CREATE TABLE acpk_disable_validate (id NUMBER, name VARCHAR2(100));
+ALTER TABLE acpk_disable_validate ADD PRIMARY KEY (id) DISABLE VALIDATE;
+ERROR:  PRIMARY KEY DISABLE VALIDATE is not supported
+LINE 1: ... TABLE acpk_disable_validate ADD PRIMARY KEY (id) DISABLE VA...
+                                                             ^
+HINT:  Update your CONSTRAINT definition.
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'acpk_disable_validate_pkey';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- Not supported: NOT ENFORCED NOT VALID
+CREATE TABLE acpk_disable_novalidate (id NUMBER, name VARCHAR2(100));
+ALTER TABLE acpk_disable_novalidate ADD PRIMARY KEY (id) DISABLE NOVALIDATE;
+ERROR:  PRIMARY KEY DISABLE NOVALIDATE is not supported
+LINE 1: ...ABLE acpk_disable_novalidate ADD PRIMARY KEY (id) DISABLE NO...
+                                                             ^
+HINT:  Update your CONSTRAINT definition.
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'acpk_disable_novalidate_pkey';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- CONSTRAINT UNIQUE
+CREATE TABLE acunique_enable (id NUMBER, name VARCHAR2(100));
+ALTER TABLE acunique_enable ADD UNIQUE (id) ENABLE;
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'acunique_enable_id_key';
+        conname         | contype | conenforced | convalidated 
+------------------------+---------+-------------+--------------
+ acunique_enable_id_key | u       | t           | t
+(1 row)
+
+-- VALIDATE .. ENFORCED
+CREATE TABLE acunique_enable_validate (id NUMBER, name VARCHAR2(100));
+ALTER TABLE acunique_enable_validate ADD UNIQUE (id) ENABLE VALIDATE;
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'acunique_enable_validate_id_key';
+             conname             | contype | conenforced | convalidated 
+---------------------------------+---------+-------------+--------------
+ acunique_enable_validate_id_key | u       | t           | t
+(1 row)
+
+-- Not supported: ENFORCED NOT VALID
+CREATE TABLE acunique_enable_novalidate (id NUMBER, name VARCHAR2(100));
+ALTER TABLE acunique_enable_novalidate ADD UNIQUE (id) ENABLE NOVALIDATE;
+ERROR:  UNIQUE ENABLE NOVALIDATE is not supported
+LINE 1: ... TABLE acunique_enable_novalidate ADD UNIQUE (id) ENABLE NOV...
+                                                             ^
+HINT:  Update your CONSTRAINT definition.
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'acunique_enable_novalidate_id_key';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- Not supported: NOT ENFORCED
+CREATE TABLE acunique_disable (id NUMBER, name VARCHAR2(100));
+ALTER TABLE acunique_disable ADD UNIQUE (id) DISABLE;
+ERROR:  UNIQUE DISABLE is not supported
+LINE 1: ALTER TABLE acunique_disable ADD UNIQUE (id) DISABLE;
+                                                     ^
+HINT:  Update your CONSTRAINT definition.
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'acunique_disable_id_key';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- Not supported: VALIDATE .. NOT ENFORCED
+CREATE TABLE acunique_disable_validate (id NUMBER, name VARCHAR2(100));
+ALTER TABLE acunique_disable_validate ADD UNIQUE (id) DISABLE VALIDATE;
+ERROR:  UNIQUE DISABLE VALIDATE is not supported
+LINE 1: ...R TABLE acunique_disable_validate ADD UNIQUE (id) DISABLE VA...
+                                                             ^
+HINT:  Update your CONSTRAINT definition.
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'acunique_disable_validate_id_key';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- Not supported: NOT ENFORCED NOT VALID
+CREATE TABLE acunique_disable_novalidate (id NUMBER, name VARCHAR2(100));
+ALTER TABLE acunique_disable_novalidate ADD UNIQUE (id) DISABLE NOVALIDATE;
+ERROR:  UNIQUE DISABLE NOVALIDATE is not supported
+LINE 1: ...TABLE acunique_disable_novalidate ADD UNIQUE (id) DISABLE NO...
+                                                             ^
+HINT:  Update your CONSTRAINT definition.
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'acunique_disable_novalidate_id_key';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- CONSTRAINT ADD CHECK
+CREATE TABLE accheck_enable (id NUMBER, name VARCHAR2(100));
+ALTER TABLE accheck_enable ADD CHECK (id > 0) ENABLE;
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'accheck_enable_id_check';
+         conname         | contype | conenforced | convalidated 
+-------------------------+---------+-------------+--------------
+ accheck_enable_id_check | c       | t           | t
+(1 row)
+
+-- VALIDATE .. ENFORCED
+CREATE TABLE accheck_enable_validate (id NUMBER, name VARCHAR2(100));
+ALTER TABLE accheck_enable_validate ADD CHECK (id > 0) ENABLE VALIDATE;
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'accheck_enable_validate_id_check';
+             conname              | contype | conenforced | convalidated 
+----------------------------------+---------+-------------+--------------
+ accheck_enable_validate_id_check | c       | t           | t
+(1 row)
+
+-- ENFORCED NOT VALID
+CREATE TABLE accheck_enable_novalidate (id NUMBER, name VARCHAR2(100));
+ALTER TABLE accheck_enable_novalidate ADD CHECK (id > 0) ENABLE NOVALIDATE;
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'accheck_enable_novalidate_id_check';
+              conname               | contype | conenforced | convalidated 
+------------------------------------+---------+-------------+--------------
+ accheck_enable_novalidate_id_check | c       | t           | f
+(1 row)
+
+-- NOT ENFORCED
+CREATE TABLE accheck_disable (id NUMBER, name VARCHAR2(100));
+ALTER TABLE accheck_disable ADD CHECK (id > 0) DISABLE;
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'accheck_disable_id_check';
+         conname          | contype | conenforced | convalidated 
+--------------------------+---------+-------------+--------------
+ accheck_disable_id_check | c       | f           | f
+(1 row)
+
+-- VALIDATE .. NOT ENFORCED - saved as NOT ENFORCED NOT VALID
+CREATE TABLE accheck_disable_validate (id NUMBER, name VARCHAR2(100));
+ALTER TABLE accheck_disable_validate ADD CHECK (id > 0) DISABLE VALIDATE;
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'accheck_disable_validate_id_check';
+              conname              | contype | conenforced | convalidated 
+-----------------------------------+---------+-------------+--------------
+ accheck_disable_validate_id_check | c       | f           | f
+(1 row)
+
+-- NOT ENFORCED NOT VALID
+CREATE TABLE accheck_disable_novalidate (id NUMBER, name VARCHAR2(100));
+ALTER TABLE accheck_disable_novalidate ADD CHECK (id > 0) DISABLE NOVALIDATE;
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'accheck_disable_novalidate_id_check';
+               conname               | contype | conenforced | convalidated 
+-------------------------------------+---------+-------------+--------------
+ accheck_disable_novalidate_id_check | c       | f           | f
+(1 row)
+
+-- CONSTRAINT NOT NULL
+CREATE TABLE acnotnull_enable (id NUMBER, name VARCHAR2(100));
+ALTER TABLE acnotnull_enable ADD NOT NULL id ENABLE;
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'acnotnull_enable_id_not_null';
+           conname            | contype | conenforced | convalidated 
+------------------------------+---------+-------------+--------------
+ acnotnull_enable_id_not_null | n       | t           | t
+(1 row)
+
+-- VALIDATE .. ENFORCED
+CREATE TABLE acnotnull_enable_validate (id NUMBER, name VARCHAR2(100));
+ALTER TABLE acnotnull_enable_validate ADD NOT NULL id ENABLE VALIDATE;
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'acnotnull_enable_validate_id_not_null';
+                conname                | contype | conenforced | convalidated 
+---------------------------------------+---------+-------------+--------------
+ acnotnull_enable_validate_id_not_null | n       | t           | t
+(1 row)
+
+-- Not supported: ENFORCED NOT VALID
+CREATE TABLE acnotnull_enable_novalidate (id NUMBER, name VARCHAR2(100));
+ALTER TABLE acnotnull_enable_novalidate ADD NOT NULL id ENABLE NOVALIDATE;
+ERROR:  NOT NULL ENABLE NOVALIDATE is not supported
+LINE 1: ...TABLE acnotnull_enable_novalidate ADD NOT NULL id ENABLE NOV...
+                                                             ^
+HINT:  Update your CONSTRAINT definition.
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'acnotnull_enable_novalidate_id_not_null';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- Not supported: NOT ENFORCED
+CREATE TABLE acnotnull_disable (id NUMBER, name VARCHAR2(100));
+ALTER TABLE acnotnull_disable ADD NOT NULL id DISABLE;
+ERROR:  NOT NULL DISABLE is not supported
+LINE 1: ALTER TABLE acnotnull_disable ADD NOT NULL id DISABLE;
+                                                      ^
+HINT:  Update your CONSTRAINT definition.
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'acnotnull_disable_id_not_null';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- Not supported: VALIDATE .. NOT ENFORCED
+CREATE TABLE acnotnull_disable_validate (id NUMBER, name VARCHAR2(100));
+ALTER TABLE acnotnull_disable_validate ADD NOT NULL id DISABLE VALIDATE;
+ERROR:  NOT NULL DISABLE VALIDATE is not supported
+LINE 1: ... TABLE acnotnull_disable_validate ADD NOT NULL id DISABLE VA...
+                                                             ^
+HINT:  Update your CONSTRAINT definition.
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'acnotnull_disable_validate_id_not_null';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- Not supported: NOT ENFORCED NOT VALID
+CREATE TABLE acnotnull_disable_novalidate (id NUMBER, name VARCHAR2(100));
+ALTER TABLE acnotnull_disable_novalidate ADD NOT NULL id DISABLE NOVALIDATE;
+ERROR:  NOT NULL DISABLE NOVALIDATE is not supported
+LINE 1: ...ABLE acnotnull_disable_novalidate ADD NOT NULL id DISABLE NO...
+                                                             ^
+HINT:  Update your CONSTRAINT definition.
+SELECT conname, contype, conenforced, convalidated
+FROM pg_constraint
+WHERE conname = 'acnotnull_disable_novalidate_id_not_null';
+ conname | contype | conenforced | convalidated 
+---------+---------+-------------+--------------
+(0 rows)
+
+-- Invalid syntax
+CREATE TABLE syntax_error (id NUMBER ENABLE, name VARCHAR2(100));
+ERROR:  misplaced ENABLE clause
+LINE 1: CREATE TABLE syntax_error (id NUMBER ENABLE, name VARCHAR2(1...
+                                             ^
+-- Cleanup
+DROP SCHEMA ivo_regress_enable CASCADE;
+NOTICE:  drop cascades to 46 other objects
+DETAIL:  drop cascades to table cpk_enable
+drop cascades to table cpk_enable_validate
+drop cascades to table pk_enable
+drop cascades to table pk_enable_validate
+drop cascades to table cunique_enable
+drop cascades to table cunique_enable_validate
+drop cascades to table unique_enable
+drop cascades to table unique_enable_validate
+drop cascades to table ccheck_enable
+drop cascades to table ccheck_enable_validate
+drop cascades to table ccheck_enable_novalidate
+drop cascades to table ccheck_disable
+drop cascades to table ccheck_disable_validate
+drop cascades to table ccheck_disable_novalidate
+drop cascades to table check_enable
+drop cascades to table check_enable_validate
+drop cascades to table check_disable
+drop cascades to table check_disable_novalidate
+drop cascades to table cnotnull_enable
+drop cascades to table cnotnull_enable_validate
+drop cascades to table notnull_enable
+drop cascades to table notnull_enable_validate
+drop cascades to table acpk_enable
+drop cascades to table acpk_enable_validate
+drop cascades to table acpk_enable_novalidate
+drop cascades to table acpk_disable
+drop cascades to table acpk_disable_validate
+drop cascades to table acpk_disable_novalidate
+drop cascades to table acunique_enable
+drop cascades to table acunique_enable_validate
+drop cascades to table acunique_enable_novalidate
+drop cascades to table acunique_disable
+drop cascades to table acunique_disable_validate
+drop cascades to table acunique_disable_novalidate
+drop cascades to table accheck_enable
+drop cascades to table accheck_enable_validate
+drop cascades to table accheck_enable_novalidate
+drop cascades to table accheck_disable
+drop cascades to table accheck_disable_validate
+drop cascades to table accheck_disable_novalidate
+drop cascades to table acnotnull_enable
+drop cascades to table acnotnull_enable_validate
+drop cascades to table acnotnull_enable_novalidate
+drop cascades to table acnotnull_disable
+drop cascades to table acnotnull_disable_validate
+drop cascades to table acnotnull_disable_novalidate
+RESET search_path;
