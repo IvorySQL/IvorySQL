@@ -66,6 +66,7 @@ static bool lookup_attempted = false;
 static void
 lookup_plisql_functions(void)
 {
+	void *fn;
 	if (lookup_attempted)
 		return;
 
@@ -77,8 +78,6 @@ lookup_plisql_functions(void)
 	 * plisql.so should already be loaded when these functions are called
 	 * from within a PL/iSQL context.
 	 */
-	void *fn;
-
 	fn = dlsym(RTLD_DEFAULT, "plisql_get_current_exception_context");
 	if (fn != NULL)
 		get_exception_context_fn = (plisql_get_context_fn) fn;
