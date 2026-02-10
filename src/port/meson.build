@@ -25,7 +25,6 @@ pgport_sources = [
   'snprintf.c',
   'strerror.c',
   'tar.c',
-  'identifier_alpha_transfor.c',
 ]
 
 if host_system == 'windows'
