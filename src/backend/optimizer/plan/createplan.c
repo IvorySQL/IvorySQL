@@ -1276,6 +1276,7 @@ create_append_plan(PlannerInfo *root, AppendPath *best_path, int flags)
 	plan->plan.lefttree = NULL;
 	plan->plan.righttree = NULL;
 	plan->apprelids = rel->relids;
+	plan->child_append_relid_sets = best_path->child_append_relid_sets;
 	plan->is_union = best_path->is_union;
 
 	if (pathkeys != NIL)
@@ -1489,6 +1490,7 @@ create_merge_append_plan(PlannerInfo *root, MergeAppendPath *best_path,
 	plan->lefttree = NULL;
 	plan->righttree = NULL;
 	node->apprelids = rel->relids;
+	node->child_append_relid_sets = best_path->child_append_relid_sets;
 
 	/*
 	 * Compute sort column info, and adjust MergeAppend's tlist as needed.
