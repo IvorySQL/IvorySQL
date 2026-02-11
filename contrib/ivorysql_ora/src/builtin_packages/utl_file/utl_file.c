@@ -43,7 +43,9 @@
 #include "port.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
+#include "utils/acl.h"
 #include "utils/builtins.h"
+#include "utils/guc.h"
 #include "utils/memutils.h"
 
 #define int2size(v)			v
@@ -78,6 +80,11 @@ PG_FUNCTION_INFO_V1(ora_utl_file_putf);
 PG_FUNCTION_INFO_V1(ora_utl_file_put_line);
 PG_FUNCTION_INFO_V1(ora_utl_file_put_raw);
 
+static int	utl_file_umask = 077;
+extern char *utl_file_umask_str;
+char	   *utl_file_umask_str = NULL;
+static Oid	utl_file_set_umask_roleid = InvalidOid;
+
 /* Helper functions */
 static void check_secure_locality(const char *path);
 static char *safe_named_location(text *location);
@@ -97,6 +104,10 @@ get_file_handle_from_slot(uint32 sid, size_t *max_linesize, int *encoding);
 static void do_flush(FILE *fd);
 static char *
 encode_text(int encoding, text *t, size_t *length);
+void
+utl_file_umask_assign_hook(const char *newvalue, void *extra);
+bool
+utl_file_umask_check_hook(char **newval, void **extra, GucSource source);
 
 /* Cleanup callback functions */
 static void BeforeShmemExit_Files(int code, Datum arg);
@@ -291,6 +302,7 @@ ora_utl_file_fopen(PG_FUNCTION_ARGS)
 	const char		*fullname;
 	uint32			sid;
 	static bool 	callback_registered = false;
+	mode_t			oldmask;
 
 	NOT_NULL_ARG(0);
 	NOT_NULL_ARG(1);
@@ -349,7 +361,9 @@ ora_utl_file_fopen(PG_FUNCTION_ARGS)
 	 * we implement separate file handling.
 	 */
 
+	oldmask = umask((mode_t) utl_file_umask);
 	fd = fopen(fullname, mode);
+	umask(oldmask);
 
 	if (fd == NULL)
 		IO_EXCEPTION();
@@ -1332,3 +1346,73 @@ get_line(FILE *fd, size_t max_linesize, int encoding, bool *iseof)
 	pfree(buffer);
 	return result;
 }
+
+
+void
+utl_file_umask_assign_hook(const char *newvalue, void *extra)
+{
+	utl_file_umask = *((int *) extra);
+}
+
+bool
+utl_file_umask_check_hook(char **newval, void **extra, GucSource source)
+{
+	int			digits = 0;
+	char	   *ptr = *newval;
+	int		   *myextra;
+
+	if (IsNormalProcessingMode() && IsTransactionState())
+	{
+		if (!superuser())
+		{
+			if (!OidIsValid(utl_file_set_umask_roleid))
+				utl_file_set_umask_roleid = get_role_oid("utl_file_set_umask", false);
+
+			if (!has_privs_of_role(GetUserId(), utl_file_set_umask_roleid))
+			{
+				GUC_check_errcode(ERRCODE_INSUFFICIENT_PRIVILEGE);
+				GUC_check_errmsg("permission denied to set \"utl_file.umask\"");
+				GUC_check_errdetail("Only roles with privileges of the \"utl_file_set_umask\" can set \"utl_file.umask\".");
+
+				return false;
+			}
+		}
+	}
+
+	while (*ptr)
+	{
+		if (*ptr < '0' || *ptr > '7')
+		{
+			GUC_check_errdetail("invalid octal digit");
+			return false;
+		}
+
+		if (digits > 3)
+		{
+			GUC_check_errdetail("number is too big (only four digits are allowed");
+			return false;
+		}
+
+		ptr++;
+		digits++;
+	}
+
+#if PG_VERSION_NUM >=  160000
+
+	myextra = (int *) guc_malloc(LOG, sizeof(int));
+
+#else
+
+	myextra = (int *) malloc(sizeof(int));
+
+#endif
+
+	if (!myextra)
+		return false;
+
+	*myextra = (int) strtol(*newval, NULL, 8);
+	*extra = (void *) myextra;
+
+	return true;
+}
+
