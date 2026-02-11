@@ -83,7 +83,7 @@ PG_FUNCTION_INFO_V1(ora_utl_file_put_raw);
 static int	utl_file_umask = 077;
 extern char *utl_file_umask_str;
 char	   *utl_file_umask_str = NULL;
-static Oid	utl_file_set_umask_roleid = InvalidOid;
+/* static Oid	utl_file_set_umask_roleid = InvalidOid; */
 
 /* Helper functions */
 static void check_secure_locality(const char *path);
@@ -1372,14 +1372,23 @@ utl_file_umask_check_hook(char **newval, void **extra, GucSource source)
 	{
 		if (!superuser())
 		{
+			/* 
+			 * XXX - role 'utl_file_set_umask' causing failures in pg_dump regression tests, 
+			 * so we skip it till we find a viable solution.
+			 * For now, only super user can set 'utl_file.umask'
+			 */
+
+			/*
 			if (!OidIsValid(utl_file_set_umask_roleid))
 				utl_file_set_umask_roleid = get_role_oid("utl_file_set_umask", false);
 
 			if (!has_privs_of_role(GetUserId(), utl_file_set_umask_roleid))
+			*/
 			{
 				GUC_check_errcode(ERRCODE_INSUFFICIENT_PRIVILEGE);
 				GUC_check_errmsg("permission denied to set \"utl_file.umask\"");
-				GUC_check_errdetail("Only roles with privileges of the \"utl_file_set_umask\" can set \"utl_file.umask\".");
+				/* GUC_check_errdetail("Only roles with privileges of the \"utl_file_set_umask\" can set \"utl_file.umask\"."); */
+				GUC_check_errdetail("Only roles with privileges of the super user can set \"utl_file.umask\".");
 
 				return false;
 			}

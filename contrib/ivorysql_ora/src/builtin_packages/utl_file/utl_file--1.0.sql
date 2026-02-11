@@ -190,13 +190,15 @@ GRANT SELECT ON TABLE sys.utl_file_directory TO PUBLIC;
 -- XXX - I could not find a way to define a type inside a package and use it
 CREATE TYPE sys.ORA_UTL_FILE_FILE_TYPE AS(id INTEGER, datatype INTEGER, byte_mode BOOLEAN);
 
-DO $$
-BEGIN
-  IF NOT EXISTS(SELECT * FROM pg_roles where rolname = 'utl_file_set_umask') THEN
-    CREATE ROLE utl_file_set_umask INHERIT NOLOGIN;
-  END IF;
-END;
-$$;
+-- XXX - role 'utl_file_set_umask' causing failures in pg_dump regression tests, 
+-- so we skip it till we find a viable solution.
+-- DO $$
+-- BEGIN
+--   IF NOT EXISTS(SELECT * FROM pg_roles where rolname = 'utl_file_set_umask') THEN
+--     CREATE ROLE utl_file_set_umask INHERIT NOLOGIN;
+--   END IF;
+-- END;
+-- $$;
 
 -- UTL_FILE Package Definition
 -- UTL_FILE package Header
