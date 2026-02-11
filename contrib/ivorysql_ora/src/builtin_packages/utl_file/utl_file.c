@@ -670,6 +670,9 @@ ora_utl_file_fseek(PG_FUNCTION_ARGS)
 	CHECK_FILE_HANDLE();
 	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), NULL, NULL);
 
+	if(fd == NULL)
+		INVALID_FILEHANDLE_EXCEPTION();
+
 	abs_offset = PG_GETARG_IF_EXISTS(1, INT32, 0);
 	rel_offset = PG_GETARG_IF_EXISTS(2, INT32, 0);
 
@@ -687,6 +690,10 @@ ora_utl_file_ftell(PG_FUNCTION_ARGS)
 	FILE   *fd;
 	CHECK_FILE_HANDLE();
 	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), NULL, NULL);
+
+	if(fd == NULL)
+		INVALID_FILEHANDLE_EXCEPTION();
+
 	PG_RETURN_INT32(ftell(fd));
 }
 
