@@ -2388,7 +2388,8 @@ end;
 ERROR:  function func_relay_pkg(pg_catalog.int4, mdss) does not exist
 LINE 1: id := func_relay_pkg(23, var1)
               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No function of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 QUERY:  id := func_relay_pkg(23, var1)
 CONTEXT:  PL/iSQL function inline_code_block line 7 at assignment
 --create schema function which return type is in package
@@ -2444,7 +2445,8 @@ end;
 ERROR:  function func_relay_pkg(pg_catalog.int4, mdss) does not exist
 LINE 1: id := func_relay_pkg(23, var1)
               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No function of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 QUERY:  id := func_relay_pkg(23, var1)
 CONTEXT:  PL/iSQL function inline_code_block line 7 at assignment
 --test failed
@@ -2473,7 +2475,8 @@ end;
 ERROR:  function test_out(pg_catalog.int4, varchar2) does not exist
 LINE 1: var1 := test_out(23, var2)
                 ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No function of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 QUERY:  var1 := test_out(23, var2)
 CONTEXT:  PL/iSQL function inline_code_block line 5 at assignment
 --recoreate package
@@ -3345,7 +3348,8 @@ SELECT test_f(1.45) FROM dual;
 ERROR:  function test_f(pg_catalog.numeric) does not exist
 LINE 1: SELECT test_f(1.45) FROM dual;
                ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No function of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 SELECT * FROM test_f_view_f;
 ERROR:  package, relation or view does not exist
 --clean data
@@ -4811,7 +4815,8 @@ INFO:  var1=43,var2=5.5
 ERROR:  operator does not exist: point + pg_catalog.int4
 LINE 1: x + 1
           ^
-HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No operator of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 QUERY:  x + 1
 CONTEXT:  PL/iSQL function f1 line 3 at RETURN
 PL/iSQL function inline_code_block line 5 at assignment

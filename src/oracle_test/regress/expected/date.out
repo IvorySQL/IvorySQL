@@ -812,7 +812,8 @@ SELECT DATE_TRUNC('MILLENNIUM', DATE '1970-03-20'); -- 1001-01-01
 ERROR:  function date_trunc(unknown, date) does not exist
 LINE 1: SELECT DATE_TRUNC('MILLENNIUM', DATE '1970-03-20');
                ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No function of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 SELECT DATE_TRUNC('CENTURY', TIMESTAMP '1970-03-20 04:30:00.00000'); -- 1901
         date_trunc        
 --------------------------
@@ -823,29 +824,34 @@ SELECT DATE_TRUNC('CENTURY', DATE '1970-03-20'); -- 1901
 ERROR:  function date_trunc(unknown, date) does not exist
 LINE 1: SELECT DATE_TRUNC('CENTURY', DATE '1970-03-20');
                ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No function of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 SELECT DATE_TRUNC('CENTURY', DATE '2004-08-10'); -- 2001-01-01
 ERROR:  function date_trunc(unknown, date) does not exist
 LINE 1: SELECT DATE_TRUNC('CENTURY', DATE '2004-08-10');
                ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No function of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 SELECT DATE_TRUNC('CENTURY', DATE '0002-02-04'); -- 0001-01-01
 ERROR:  function date_trunc(unknown, date) does not exist
 LINE 1: SELECT DATE_TRUNC('CENTURY', DATE '0002-02-04');
                ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No function of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 SELECT DATE_TRUNC('CENTURY', DATE '0055-08-10 BC'); -- 0100-01-01 BC
 ERROR:  trailing characters remain in input string after datetime format
 SELECT DATE_TRUNC('DECADE', DATE '1993-12-25'); -- 1990-01-01
 ERROR:  function date_trunc(unknown, date) does not exist
 LINE 1: SELECT DATE_TRUNC('DECADE', DATE '1993-12-25');
                ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No function of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 SELECT DATE_TRUNC('DECADE', DATE '0004-12-25'); -- 0001-01-01 BC
 ERROR:  function date_trunc(unknown, date) does not exist
 LINE 1: SELECT DATE_TRUNC('DECADE', DATE '0004-12-25');
                ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No function of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 SELECT DATE_TRUNC('DECADE', DATE '0002-12-31 BC'); -- 0011-01-01 BC
 ERROR:  trailing characters remain in input string after datetime format
 --
