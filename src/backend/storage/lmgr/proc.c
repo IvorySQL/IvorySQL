@@ -67,15 +67,6 @@ bool		log_lock_waits = true;
 /* Pointer to this process's PGPROC struct, if any */
 PGPROC	   *MyProc = NULL;
 
-/*
- * This spinlock protects the freelist of recycled PGPROC structures.
- * We cannot use an LWLock because the LWLock manager depends on already
- * having a PGPROC and a wait semaphore!  But these structures are touched
- * relatively infrequently (only at backend startup or shutdown) and not for
- * very long, so a spinlock is okay.
- */
-NON_EXEC_STATIC slock_t *ProcStructLock = NULL;
-
 /* Pointers to shared-memory structures */
 PROC_HDR   *ProcGlobal = NULL;
 NON_EXEC_STATIC PGPROC *AuxiliaryProcs = NULL;
@@ -215,6 +206,7 @@ InitProcGlobal(void)
 	 * Initialize the data structures.
 	 */
 	ProcGlobal->spins_per_delay = DEFAULT_SPINS_PER_DELAY;
+	SpinLockInit(&ProcGlobal->freeProcsLock);
 	dlist_init(&ProcGlobal->freeProcs);
 	dlist_init(&ProcGlobal->autovacFreeProcs);
 	dlist_init(&ProcGlobal->bgworkerFreeProcs);
@@ -379,12 +371,6 @@ InitProcGlobal(void)
 	 */
 	AuxiliaryProcs = &procs[MaxBackends];
 	PreparedXactProcs = &procs[MaxBackends + NUM_AUXILIARY_PROCS];
-
-	/* Create ProcStructLock spinlock, too */
-	ProcStructLock = (slock_t *) ShmemInitStruct("ProcStructLock spinlock",
-												 sizeof(slock_t),
-												 &found);
-	SpinLockInit(ProcStructLock);
 }
 
 /*
@@ -430,17 +416,17 @@ InitProcess(void)
 	 * Try to get a proc struct from the appropriate free list.  If this
 	 * fails, we must be out of PGPROC structures (not to mention semaphores).
 	 *
-	 * While we are holding the ProcStructLock, also copy the current shared
+	 * While we are holding the spinlock, also copy the current shared
 	 * estimate of spins_per_delay to local storage.
 	 */
-	SpinLockAcquire(ProcStructLock);
+	SpinLockAcquire(&ProcGlobal->freeProcsLock);
 
 	set_spins_per_delay(ProcGlobal->spins_per_delay);
 
 	if (!dlist_is_empty(procgloballist))
 	{
 		MyProc = dlist_container(PGPROC, links, dlist_pop_head_node(procgloballist));
-		SpinLockRelease(ProcStructLock);
+		SpinLockRelease(&ProcGlobal->freeProcsLock);
 	}
 	else
 	{
@@ -450,7 +436,7 @@ InitProcess(void)
 		 * error message.  XXX do we need to give a different failure message
 		 * in the autovacuum case?
 		 */
-		SpinLockRelease(ProcStructLock);
+		SpinLockRelease(&ProcGlobal->freeProcsLock);
 		if (AmWalSenderProcess())
 			ereport(FATAL,
 					(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
@@ -635,13 +621,13 @@ InitAuxiliaryProcess(void)
 		RegisterPostmasterChildActive();
 
 	/*
-	 * We use the ProcStructLock to protect assignment and releasing of
+	 * We use the freeProcsLock to protect assignment and releasing of
 	 * AuxiliaryProcs entries.
 	 *
-	 * While we are holding the ProcStructLock, also copy the current shared
+	 * While we are holding the spinlock, also copy the current shared
 	 * estimate of spins_per_delay to local storage.
 	 */
-	SpinLockAcquire(ProcStructLock);
+	SpinLockAcquire(&ProcGlobal->freeProcsLock);
 
 	set_spins_per_delay(ProcGlobal->spins_per_delay);
 
@@ -656,7 +642,7 @@ InitAuxiliaryProcess(void)
 	}
 	if (proctype >= NUM_AUXILIARY_PROCS)
 	{
-		SpinLockRelease(ProcStructLock);
+		SpinLockRelease(&ProcGlobal->freeProcsLock);
 		elog(FATAL, "all AuxiliaryProcs are in use");
 	}
 
@@ -664,7 +650,7 @@ InitAuxiliaryProcess(void)
 	/* use volatile pointer to prevent code rearrangement */
 	((volatile PGPROC *) auxproc)->pid = MyProcPid;
 
-	SpinLockRelease(ProcStructLock);
+	SpinLockRelease(&ProcGlobal->freeProcsLock);
 
 	MyProc = auxproc;
 	MyProcNumber = GetNumberFromPGProc(MyProc);
@@ -790,7 +776,7 @@ HaveNFreeProcs(int n, int *nfree)
 	Assert(n > 0);
 	Assert(nfree);
 
-	SpinLockAcquire(ProcStructLock);
+	SpinLockAcquire(&ProcGlobal->freeProcsLock);
 
 	*nfree = 0;
 	dlist_foreach(iter, &ProcGlobal->freeProcs)
@@ -800,7 +786,7 @@ HaveNFreeProcs(int n, int *nfree)
 			break;
 	}
 
-	SpinLockRelease(ProcStructLock);
+	SpinLockRelease(&ProcGlobal->freeProcsLock);
 
 	return (*nfree == n);
 }
@@ -981,9 +967,9 @@ ProcKill(int code, Datum arg)
 				procgloballist = leader->procgloballist;
 
 				/* Leader exited first; return its PGPROC. */
-				SpinLockAcquire(ProcStructLock);
+				SpinLockAcquire(&ProcGlobal->freeProcsLock);
 				dlist_push_head(procgloballist, &leader->links);
-				SpinLockRelease(ProcStructLock);
+				SpinLockRelease(&ProcGlobal->freeProcsLock);
 			}
 		}
 		else if (leader != MyProc)
@@ -1014,7 +1000,7 @@ ProcKill(int code, Datum arg)
 	proc->vxid.lxid = InvalidTransactionId;
 
 	procgloballist = proc->procgloballist;
-	SpinLockAcquire(ProcStructLock);
+	SpinLockAcquire(&ProcGlobal->freeProcsLock);
 
 	/*
 	 * If we're still a member of a locking group, that means we're a leader
@@ -1033,7 +1019,7 @@ ProcKill(int code, Datum arg)
 	/* Update shared estimate of spins_per_delay */
 	ProcGlobal->spins_per_delay = update_spins_per_delay(ProcGlobal->spins_per_delay);
 
-	SpinLockRelease(ProcStructLock);
+	SpinLockRelease(&ProcGlobal->freeProcsLock);
 }
 
 /*
@@ -1073,7 +1059,7 @@ AuxiliaryProcKill(int code, Datum arg)
 	MyProcNumber = INVALID_PROC_NUMBER;
 	DisownLatch(&proc->procLatch);
 
-	SpinLockAcquire(ProcStructLock);
+	SpinLockAcquire(&ProcGlobal->freeProcsLock);
 
 	/* Mark auxiliary proc no longer in use */
 	proc->pid = 0;
@@ -1083,7 +1069,7 @@ AuxiliaryProcKill(int code, Datum arg)
 	/* Update shared estimate of spins_per_delay */
 	ProcGlobal->spins_per_delay = update_spins_per_delay(ProcGlobal->spins_per_delay);
 
-	SpinLockRelease(ProcStructLock);
+	SpinLockRelease(&ProcGlobal->freeProcsLock);
 }
 
 /*
