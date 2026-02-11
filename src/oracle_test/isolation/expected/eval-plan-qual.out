@@ -1448,7 +1448,7 @@ starting permutation: sys1 sysmerge2 c1 c2
 step sys1: 
 	UPDATE pg_class SET reltuples = 123 WHERE oid = 'accounts'::regclass;
 
-step sysmerge2:
+step sysmerge2: 
 	MERGE INTO pg_class
 	USING (SELECT 'accounts'::regclass AS o) j
 	ON o = oid
