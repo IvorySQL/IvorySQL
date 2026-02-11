@@ -359,8 +359,6 @@ extern PGDLLIMPORT bool	allow_out_parameter_const;
 extern PGDLLIMPORT bool optimize_bounded_sort;
 #endif
 
-extern PGDLLIMPORT const char *const log_min_messages_process_types[];
-
 /*
  * Declarations for options for enum values
  *
