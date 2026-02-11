@@ -362,8 +362,8 @@ BEGIN
 END; $$;
 /
 
-CREATE TABLE evtrig_nontemp_table (f1 int primary key, f2 int default 42);
-DROP TABLE evtrig_nontemp_table;
+CREATE TABLE evtrg_nontemp_table (f1 int primary key, f2 int default 42);
+DROP TABLE evtrg_nontemp_table;
 CREATE TEMP TABLE a_temp_tbl (f1 int primary key, f2 int default 42);
 DROP TABLE a_temp_tbl;
 
