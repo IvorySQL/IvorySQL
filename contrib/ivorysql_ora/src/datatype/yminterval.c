@@ -285,27 +285,27 @@ TrimTrailingZeros(char *str)
  * Note that any sign is stripped from the input seconds values.
  */
 static void
-AppendSeconds(char *cp, int sec, fsec_t fsec, int precision, bool fillzeros)
+AppendSeconds(char *cp, int sec, fsec_t fsec, int precision, bool fillzeros, size_t bufsize)
 {
 	if (fsec == 0)
 	{
 		if (fillzeros)
-			sprintf(cp, "%02d", abs(sec));
+			snprintf(cp, bufsize, "%02d", abs(sec));
 		else
-			sprintf(cp, "%d", abs(sec));
+			snprintf(cp, bufsize, "%d", abs(sec));
 	}
 	else
 	{
 #ifdef HAVE_INT64_TIMESTAMP
 		if (fillzeros)
-			sprintf(cp, "%02d.%0*d", abs(sec), precision, (int) Abs(fsec));
+			snprintf(cp, bufsize, "%02d.%0*d", abs(sec), precision, (int) Abs(fsec));
 		else
-			sprintf(cp, "%d.%0*d", abs(sec), precision, (int) Abs(fsec));
+			snprintf(cp, bufsize, "%d.%0*d", abs(sec), precision, (int) Abs(fsec));
 #else
 		if (fillzeros)
-			sprintf(cp, "%0*.*f", precision + 3, precision, fabs(sec + fsec));
+			snprintf(cp, bufsize, "%0*.*f", precision + 3, precision, fabs(sec + fsec));
 		else
-			sprintf(cp, "%.*f", precision, fabs(sec + fsec));
+			snprintf(cp, bufsize, "%.*f", precision, fabs(sec + fsec));
 #endif
 		TrimTrailingZeros(cp);
 	}
@@ -316,7 +316,7 @@ AppendSeconds(char *cp, int sec, fsec_t fsec, int precision, bool fillzeros)
  * Interpret time structure as a delta time and convert to string.
  */
 static void
-EncodeYminterval(struct pg_tm * tm, fsec_t fsec, int style, char *str, int precision)
+EncodeYminterval(struct pg_tm * tm, fsec_t fsec, int style, char *str, int precision, size_t bufsize)
 {
 	char	   *cp = str;
 	int			year = tm->tm_year;
@@ -373,7 +373,7 @@ EncodeYminterval(struct pg_tm * tm, fsec_t fsec, int style, char *str, int preci
 				/* Compatible oracle, the value of interval is zero should show "+00-00" */
 				if (!has_negative && !has_positive)
 				{
-					sprintf(cp, "%0*d-%02d", precision, year, mon);
+					snprintf(cp, bufsize - (cp - str), "%0*d-%02d", precision, year, mon);
 				}
 				else if (!sql_standard_value)
 				{
@@ -387,28 +387,28 @@ EncodeYminterval(struct pg_tm * tm, fsec_t fsec, int style, char *str, int preci
 					char		sec_sign = (hour < 0 || min < 0 ||
 											sec < 0 || fsec < 0) ? '-' : '+';
 
-					sprintf(cp, "%c%d-%d %c%d %c%d:%02d:",
+					snprintf(cp, bufsize - (cp - str), "%c%d-%d %c%d %c%d:%02d:",
 							year_sign, abs(year), abs(mon),
 							day_sign, abs(mday),
 							sec_sign, abs(hour), abs(min));
 					cp += strlen(cp);
-					AppendSeconds(cp, sec, fsec, MAX_INTERVAL_PRECISION, true);
+					AppendSeconds(cp, sec, fsec, MAX_INTERVAL_PRECISION, true, bufsize);
 				}
 				else if (has_year_month)
 				{
-					sprintf(cp, "%0*d-%02d", precision, year, mon);
+					snprintf(cp, bufsize - (cp - str), "%0*d-%02d", precision, year, mon);
 				}
 				else if (has_day)
 				{
-					sprintf(cp, "%d %d:%02d:", mday, hour, min);
+					snprintf(cp, bufsize - (cp - str), "%d %d:%02d:", mday, hour, min);
 					cp += strlen(cp);
-					AppendSeconds(cp, sec, fsec, MAX_INTERVAL_PRECISION, true);
+					AppendSeconds(cp, sec, fsec, MAX_INTERVAL_PRECISION, true, bufsize - (cp - str));
 				}
 				else
 				{
-					sprintf(cp, "%d:%02d:", hour, min);
+					snprintf(cp, bufsize - (cp - str), "%d:%02d:", hour, min);
 					cp += strlen(cp);
-					AppendSeconds(cp, sec, fsec, MAX_INTERVAL_PRECISION, true);
+					AppendSeconds(cp, sec, fsec, MAX_INTERVAL_PRECISION, true, bufsize - (cp - str));
 				}
 			}
 			break;
@@ -1522,7 +1522,7 @@ yminterval_out(PG_FUNCTION_ARGS)
 		precision = ORACLE_MAX_INTERVAL_PRECISION;
 	}
 
-	EncodeYminterval(tm, fsec, INTSTYLE_SQL_STANDARD, buf, precision);
+	EncodeYminterval(tm, fsec, INTSTYLE_SQL_STANDARD, buf, precision, sizeof(buf));
 
 	result = pstrdup(buf);
 	PG_RETURN_CSTRING(result);
