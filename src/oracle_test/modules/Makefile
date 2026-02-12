@@ -16,6 +16,7 @@ SUBDIRS = \
 		  plsample \
 		  spgist_name_ops \
 		  test_aio \
+		  test_bitmapset \
 		  test_bloomfilter \
 		  test_copy_callbacks \
 		  test_custom_rmgrs \
