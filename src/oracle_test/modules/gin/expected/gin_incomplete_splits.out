@@ -189,6 +189,7 @@ select verify(:next_i);
 SELECT injection_points_detach('gin-finish-incomplete-split');
  injection_points_detach 
 -------------------------
- 
+
 (1 row)
 
+drop extension injection_points;
