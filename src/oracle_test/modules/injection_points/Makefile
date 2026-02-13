@@ -14,7 +14,10 @@ PGFILEDESC = "injection_points - facility for injection points"
 ORA_REGRESS = injection_points hashagg reindex_conc vacuum
 ORACLE_REGRESS_OPTS = --dlpath=$(top_builddir)/src/oracle_test/regress
 
-ISOLATION = basic inplace syscache-update-pruned
+ISOLATION = basic \
+	    inplace \
+	    syscache-update-pruned \
+	    heap_lock_update
 
 TAP_TESTS = 1
 
