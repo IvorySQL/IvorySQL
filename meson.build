@@ -361,6 +361,8 @@ xmllint_bin = find_program(get_option('XMLLINT'), native: true, required: false)
 xsltproc_bin = find_program(get_option('XSLTPROC'), native: true, required: false)
 nm = find_program('nm', required: false, native: true)
 ln = find_program('ln', required: false, native: true)
+ditaa = find_program('ditaa', native: true, required: false)
+dot = find_program('dot', native: true, required: false)
 
 bison_flags = []
 if bison.found()
