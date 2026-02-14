@@ -1192,3 +1192,81 @@ WHERE
   AND PG_GET_USERBYID(C.RELOWNER) = CURRENT_USER;
 GRANT SELECT ON SYS.USER_VIEWS TO PUBLIC;
 
+------------------------------------------------
+-- V$ DYNAMIC VIEWS
+------------------------------------------------
+
+-- V$SESSION:
+-- 1. For SID we use PG_STAT_ACTIVITY.PID and do not set SERIAL#:
+-- we should avoid implementing "killing by SID" without either an additional counter or second factor like PG_STAT_ACTIVITY.BACKEND_START.
+-- 2. SQL_ID is based on PG_STAT_ACTIVITY.QUERY_ID which depends on compute_query_id setting: SQL_ID is NULL if compute_query_id is 'off'.
+-- 
+-- We do not grant SELECT privilege on V$SESSION to PUBLIC because SQL_TEXT is retrieved.
+-- We do not grant SELECT privilege on V$PROCESS or on V$PARAMETER to PUBLIC
+-- because it contradicts with least security privilege principle.
+
+CREATE OR REPLACE VIEW SYS.V$SESSION AS
+SELECT
+    PG_STAT_ACTIVITY.PID::NUMBER AS SID,
+    USENAME::VARCHAR2(128) AS USERNAME,
+    CASE WHEN STATE = 'active' OR STATE = 'fastpath function call' THEN 'ACTIVE'
+         WHEN STATE = 'idle' OR STATE = 'idle in transaction'
+               OR STATE = 'idle in transaction (aborted)' THEN 'INACTIVE'
+         ELSE 'INACTIVE' 
+         END::VARCHAR2(40) AS STATUS,
+    COALESCE(CLIENT_HOSTNAME, HOST(CLIENT_ADDR),CLIENT_ADDR::TEXT) ::VARCHAR2(128) AS MACHINE,
+    APPLICATION_NAME::VARCHAR2(256) AS PROGRAM,
+    CASE WHEN BACKEND_TYPE = 'client backend' THEN 'USER'
+    ELSE 'BACKGROUND'
+    END::VARCHAR2(30) AS TYPE,
+    BACKEND_START AS LOGON_TIME,
+    QUERY_START AS SQL_EXEC_START,
+    QUERY_ID::VARCHAR2(19) AS SQL_ID,
+    QUERY::VARCHAR2(4000) AS SQL_TEXT,
+    (PG_CATALOG.PG_BLOCKING_PIDS(PID))[1]::NUMBER AS BLOCKING_SESSION,
+    WAIT_EVENT::VARCHAR2(64) AS EVENT,
+    WAIT_EVENT_TYPE::VARCHAR2(64) AS WAIT_CLASS,
+    XACT_START AS TRANSACTION_START,
+    CLIENT_PORT::NUMBER AS PORT
+FROM PG_STAT_ACTIVITY;
+
+
+CREATE OR REPLACE VIEW SYS.V$PROCESS AS
+SELECT
+    PID::NUMBER AS SPID,
+    USENAME::VARCHAR2(128) AS USERNAME,
+    APPLICATION_NAME::VARCHAR2(256) AS PROGRAM,
+    CLIENT_ADDR::VARCHAR2(128) AS MACHINE,
+    BACKEND_TYPE::VARCHAR2(30) AS PNAME,
+    CASE WHEN BACKEND_TYPE =  'client backend' THEN NULL
+         ELSE '1'
+    END::VARCHAR2(1) AS BACKGROUND
+FROM PG_STAT_ACTIVITY;
+
+CREATE OR REPLACE VIEW SYS.V$PARAMETER AS
+SELECT
+    NAME::VARCHAR2(80) AS NAME,
+    CASE
+        WHEN VARTYPE = 'bool'    THEN 1
+        WHEN VARTYPE = 'integer' THEN 3
+        ELSE 2
+    END::NUMBER AS TYPE,
+    SETTING::VARCHAR2(80) AS VALUE,
+    BOOT_VAL::VARCHAR2(255) AS DEFAULT_VALUE,
+    -- Mapping update levels
+    CASE
+        WHEN setting = boot_val THEN 'TRUE'
+        ELSE 'FALSE'
+    END::VARCHAR2(5) AS ISDEFAULT,
+    CASE
+        WHEN CONTEXT IN ('user', 'superuser') THEN 'TRUE'
+        ELSE 'FALSE'
+    END::VARCHAR2(5) AS ISSES_MODIFIABLE,
+    CASE
+        WHEN CONTEXT IN ('user', 'superuser') THEN 'IMMEDIATE'
+        WHEN CONTEXT = 'postmaster' THEN 'FALSE'
+        ELSE 'DEFERRED'
+    END::VARCHAR2(9) AS ISSYS_MODIFIABLE,
+    SHORT_DESC::VARCHAR2(255) AS DESCRIPTION
+FROM PG_SETTINGS;
+
