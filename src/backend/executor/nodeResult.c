@@ -104,6 +104,7 @@ ExecResult(PlanState *pstate)
 	 */
 	if (!node->rs_done)
 	{
+		TupleTableSlot *result;
 		outerPlan = outerPlanState(node);
 
 		if (outerPlan != NULL)
@@ -132,7 +133,7 @@ ExecResult(PlanState *pstate)
 		}
 
 		/* form the result tuple using ExecProject(), and return it */
-		TupleTableSlot *result = ExecProject(node->ps.ps_ProjInfo);
+		result = ExecProject(node->ps.ps_ProjInfo);
 
 		/*
 		 * If the projection contains ROWNUM expressions, materialize

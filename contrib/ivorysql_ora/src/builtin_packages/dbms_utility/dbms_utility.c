@@ -72,28 +72,28 @@ lookup_plisql_functions(void)
 	lookup_attempted = true;
 
 #ifndef WIN32
-	/*
-	 * Use RTLD_DEFAULT to search all loaded shared objects.
-	 * plisql.so should already be loaded when these functions are called
-	 * from within a PL/iSQL context.
-	 */
-	void *fn;
+	{
+		/*
+		* Use RTLD_DEFAULT to search all loaded shared objects.
+		* plisql.so should already be loaded when these functions are called
+		* from within a PL/iSQL context.
+		*/
+		void *fn = dlsym(RTLD_DEFAULT, "plisql_get_current_exception_context");
+		if (fn != NULL)
+			get_exception_context_fn = (plisql_get_context_fn) fn;
 
-	fn = dlsym(RTLD_DEFAULT, "plisql_get_current_exception_context");
-	if (fn != NULL)
-		get_exception_context_fn = (plisql_get_context_fn) fn;
+		fn = dlsym(RTLD_DEFAULT, "plisql_get_current_exception_message");
+		if (fn != NULL)
+			get_exception_message_fn = (plisql_get_message_fn) fn;
 
-	fn = dlsym(RTLD_DEFAULT, "plisql_get_current_exception_message");
-	if (fn != NULL)
-		get_exception_message_fn = (plisql_get_message_fn) fn;
+		fn = dlsym(RTLD_DEFAULT, "plisql_get_current_exception_sqlerrcode");
+		if (fn != NULL)
+			get_exception_sqlerrcode_fn = (plisql_get_sqlerrcode_fn) fn;
 
-	fn = dlsym(RTLD_DEFAULT, "plisql_get_current_exception_sqlerrcode");
-	if (fn != NULL)
-		get_exception_sqlerrcode_fn = (plisql_get_sqlerrcode_fn) fn;
-
-	fn = dlsym(RTLD_DEFAULT, "plisql_get_call_stack");
-	if (fn != NULL)
-		get_call_stack_fn = (plisql_get_call_stack_fn) fn;
+		fn = dlsym(RTLD_DEFAULT, "plisql_get_call_stack");
+		if (fn != NULL)
+			get_call_stack_fn = (plisql_get_call_stack_fn) fn;
+	}
 #endif
 	/* On Windows, function pointers remain NULL - features require plisql */
 }
