@@ -1575,7 +1575,7 @@ reportDependentObjects(const ObjectAddresses *targetObjects,
 static void
 DropObjectById(const ObjectAddress *object)
 {
-	int			cacheId;
+	SysCacheIdentifier cacheId;
 	Relation	rel;
 	HeapTuple	tup;
 
