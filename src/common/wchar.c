@@ -2110,12 +2110,12 @@ pg_utf8_islegal(const unsigned char *source, int length)
 			a = source[3];
 			if (a < 0x80 || a > 0xBF)
 				return false;
-			/* FALL THRU */
+			pg_fallthrough;
 		case 3:
 			a = source[2];
 			if (a < 0x80 || a > 0xBF)
 				return false;
-			/* FALL THRU */
+			pg_fallthrough;
 		case 2:
 			a = source[1];
 			switch (*source)
@@ -2141,7 +2141,7 @@ pg_utf8_islegal(const unsigned char *source, int length)
 						return false;
 					break;
 			}
-			/* FALL THRU */
+			pg_fallthrough;
 		case 1:
 			a = *source;
 			if (a >= 0x80 && a < 0xC2)

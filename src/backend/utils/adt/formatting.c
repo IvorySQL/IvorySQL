@@ -1268,7 +1268,7 @@ NUMDesc_prepare(NUMDesc *num, FormatNode *n)
 		case NUM_D:
 			num->flag |= NUM_F_LDECIMAL;
 			num->need_locale = true;
-			/* FALLTHROUGH */
+			pg_fallthrough;
 		case NUM_DEC:
 			if (IS_DECIMAL(num))
 				ereport(ERROR,
@@ -3165,7 +3165,7 @@ DCH_to_char(FormatNode *node, bool is_interval, TmToChar *in, char *out, Oid col
 				s += strlen(s);
 				break;
 			case DCH_RM:
-				/* FALLTHROUGH */
+				pg_fallthrough;
 			case DCH_rm:
 
 				/*
@@ -3625,7 +3625,7 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 			case DCH_FF8:
 			case DCH_FF9:
 				out->ff = n->key->id - DCH_FF1 + 1;
-				/* FALLTHROUGH */
+				pg_fallthrough;
 			case DCH_FF:
 				if (n->key->id == DCH_FF)
 					out->ff = 6;	/* FF default precision */
@@ -3736,7 +3736,7 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 					}
 					/* otherwise parse it like OF */
 				}
-				/* FALLTHROUGH */
+				pg_fallthrough;
 			case DCH_OF:
 				/* OF is equivalent to TZH or TZH:TZM */
 				/* see TZH comments below */

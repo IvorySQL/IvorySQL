@@ -2162,7 +2162,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			show_tablesample(((SampleScan *) plan)->tablesample,
 							 planstate, ancestors, es);
 			/* fall through to print additional fields the same as SeqScan */
-			/* FALLTHROUGH */
+			pg_fallthrough;
 		case T_SeqScan:
 		case T_ValuesScan:
 		case T_CteScan:

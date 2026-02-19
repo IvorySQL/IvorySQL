@@ -238,7 +238,7 @@ BootstrapModeMain(int argc, char *argv[], bool check_only)
 							(errcode(ERRCODE_SYNTAX_ERROR),
 							 errmsg("--%s must be first argument", optarg)));
 
-				/* FALLTHROUGH */
+				pg_fallthrough;
 			case 'C':
 			case 'c':
 				{

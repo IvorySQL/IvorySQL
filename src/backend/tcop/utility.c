@@ -2040,7 +2040,7 @@ ExecDropStmt(DropStmt *stmt, bool isTopLevel)
 			if (stmt->concurrent)
 				PreventInTransactionBlock(isTopLevel,
 										  "DROP INDEX CONCURRENTLY");
-			/* fall through */
+			pg_fallthrough;
 
 		case OBJECT_TABLE:
 		case OBJECT_SEQUENCE:
