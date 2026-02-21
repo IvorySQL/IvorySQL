@@ -242,6 +242,12 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 				(errcode(ERRCODE_INVALID_NAME),
 				 errmsg("tablespace location cannot contain single quotes")));
 
+	/* Report error if name has \n or \r character. */
+	if (strpbrk(stmt->tablespacename, "\n\r"))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("tablespace name \"%s\" contains a newline or carriage return character", stmt->tablespacename)));
+
 	in_place = allow_in_place_tablespaces && strlen(location) == 0;
 
 	/*
@@ -970,6 +976,12 @@ RenameTableSpace(const char *oldname, const char *newname)
 				(errcode(ERRCODE_RESERVED_NAME),
 				 errmsg("unacceptable tablespace name \"%s\"", newname),
 				 errdetail("The prefix \"pg_\" is reserved for system tablespaces.")));
+
+	/* Report error if name has \n or \r character. */
+	if (strpbrk(newname, "\n\r"))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("tablespace name \"%s\" contains a newline or carriage return character", newname)));
 
 	/*
 	 * If built with appropriate switch, whine when regression-testing

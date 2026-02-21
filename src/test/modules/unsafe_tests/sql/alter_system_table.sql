@@ -64,6 +64,10 @@ ALTER TABLE pg_description SET SCHEMA public;
 -- reserved tablespace name
 CREATE TABLESPACE pg_foo LOCATION '/no/such/location';
 
+-- contains \n\r tablespace name
+CREATE TABLESPACE "invalid
+name" LOCATION '/no/such/location';
+
 -- triggers
 CREATE FUNCTION tf1() RETURNS trigger
 LANGUAGE plpgsql
