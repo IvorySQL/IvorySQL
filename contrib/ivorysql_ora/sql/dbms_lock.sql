@@ -39,6 +39,16 @@ begin
  delete from handle;
 end;
 /
+do
+$$
+declare
+ v_lockmode text = 'not found';
+begin
+ select mode into v_lockmode from pg_locks where pid = pg_backend_pid() and mode = 'ShareLock';
+ raise notice 'mode=%', v_lockmode;
+end
+$$;
+--
 commit;
 --
 -- test DBMS_LOCK.X
@@ -73,4 +83,13 @@ begin
  delete from handle;
 end;
 /
+do
+$$
+declare
+ v_lockmode text = 'not found';
+begin
+ select mode into v_lockmode from pg_locks where pid = pg_backend_pid() and mode = 'ShareLock';
+ raise notice 'mode=%', v_lockmode;
+end
+$$;
 commit;
