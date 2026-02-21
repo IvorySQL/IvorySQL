@@ -75,7 +75,8 @@ ORA_REGRESS = \
 	ora_xml_functions \
 	dbms_utility \
 	ora_dbms_output \
-	ora_ascii
+	ora_ascii \
+        dbms_lock
 
 SHLIB_LINK += -lxml2
 

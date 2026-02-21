@@ -1,0 +1,79 @@
+--
+-- dbms_lock.sql
+--
+-- tests for DBMS_LOCK
+--
+call dbms_lock.sleep(1);
+drop table if exists handle;
+NOTICE:  table "handle" does not exist, skipping
+create table handle(h text);
+--
+-- test DBMS_LOCK.S
+--
+begin;
+declare
+ v_lockname varchar2(10) = 'LOCKS';
+ v_handle text;
+ v_rc int;
+begin
+ dbms_lock.allocate_unique(v_lockname, v_handle);
+ v_rc := dbms_lock.request(v_handle, dbms_lock.s_mode, 0);  
+ insert into handle values(v_handle);
+end;
+/
+do
+$$
+declare
+ v_lockmode text;
+begin
+ select mode into v_lockmode from pg_locks where pid = pg_backend_pid() and mode = 'ShareLock';
+ raise notice 'mode=%', v_lockmode;
+end
+$$;
+NOTICE:  mode=ShareLock
+--
+declare
+ v_rc int;
+ v_handle text;
+begin
+ select h into v_handle from handle;
+ v_rc := dbms_lock.release(v_handle); 
+ delete from handle;
+end;
+/
+commit;
+--
+-- test DBMS_LOCK.X
+--
+begin;
+declare
+ v_lockname varchar2(10) = 'LOCKX';
+ v_handle text;
+ v_rc int;
+begin
+ dbms_lock.allocate_unique(v_lockname, v_handle);
+ v_rc := dbms_lock.request(v_handle, dbms_lock.x_mode, 0);  
+ insert into handle values(v_handle);
+end;
+/
+do
+$$
+declare
+ v_lockmode text;
+begin
+ select mode into v_lockmode from pg_locks where pid = pg_backend_pid() and mode = 'ExclusiveLock';
+ raise notice 'mode=%', v_lockmode;
+end
+$$;
+NOTICE:  mode=ExclusiveLock
+--
+declare
+ v_rc int;
+ v_handle text;
+begin
+ select h into v_handle from handle;
+ v_rc := dbms_lock.release(v_handle); 
+ delete from handle;
+end;
+/
+commit;

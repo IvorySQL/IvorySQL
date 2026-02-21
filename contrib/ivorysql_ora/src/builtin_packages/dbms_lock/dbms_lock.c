@@ -57,7 +57,7 @@
 #define DBMS_LOCK_ALREADY_OWNED   4 
 #define DBMS_LOCK_INVALID_HANDLE  5 
 
-#define DBMS_LOCK_HANDLE_LENGTH	32
+#define DBMS_LOCK_HANDLE_LENGTH 64	
 /*
  * 0x9e3779b9 = 2654435769 
  * derived from 2**32/PHI(golden ratio)
@@ -75,6 +75,7 @@
                          (uint32) ((key64) >> 32), \
                          (uint32) (key64), \
                          1)
+
 /* Hash lock name into int64 advisory key */
 static int64
 lockname_to_key(text *lockname)
@@ -115,7 +116,6 @@ ivorysql_dbms_lock_allocate_unique(PG_FUNCTION_ARGS)
 {
     char *lockname_text = text_to_cstring(PG_GETARG_TEXT_PP(0));
     char handle[DBMS_LOCK_HANDLE_LENGTH];
-    int expiration_secs = PG_GETARG_INT32(2);
 
     /* Use PostgreSQL 64-bit stable hash */
     uint64 hash =
@@ -141,10 +141,10 @@ PG_FUNCTION_INFO_V1(ivorysql_dbms_lock_request);
 Datum
 ivorysql_dbms_lock_request(PG_FUNCTION_ARGS)
 {
-    text *lockname = PG_GETARG_TEXT_PP(0);
+    text *lockhandle = PG_GETARG_TEXT_PP(0);
     int mode = PG_GETARG_INT32(1);     /* Oracle lock mode 1–6 */
     int timeout = PG_GETARG_INT32(2);  /* seconds */
-    int64 key = lockname_to_key(lockname);
+    int64 key = lockname_to_key(lockhandle);
     bool exclusive = is_exclusive_mode(mode);
     TimestampTz start = GetCurrentTimestamp();
     LOCKTAG     locktag;
@@ -207,15 +207,30 @@ ivorysql_dbms_lock_release(PG_FUNCTION_ARGS)
 {
     text *lockname = PG_GETARG_TEXT_PP(0);
     int64 key = lockname_to_key(lockname);
+    LOCKTAG     locktag;
+    bool released = false;
 
-    bool released = DatumGetBool(
-        DirectFunctionCall1(pg_advisory_unlock_int8,
-                            Int64GetDatum(key)));
+    SET_LOCKTAG_INT64(locktag, key);
 
-    if (released)
+    /* 
+     * try first shared mode to avoid exclusive warning
+     */
+    if (LockHeldByMe(&locktag, ShareLock, false)) {
+        released = DatumGetBool(
+            DirectFunctionCall1(pg_advisory_unlock_shared_int8,
+                                Int64GetDatum(key)));
+    }
+    else if (LockHeldByMe(&locktag, ExclusiveLock, false)) {
+        released = DatumGetBool(
+            DirectFunctionCall1(pg_advisory_unlock_int8,
+                                Int64GetDatum(key)));
+    }
+
+    if (released) {
         PG_RETURN_INT32(DBMS_LOCK_SUCCESS);
-    else
-        PG_RETURN_INT32(DBMS_LOCK_PARAM_ERROR);
+    }
+
+    PG_RETURN_INT32(DBMS_LOCK_PARAM_ERROR);
 }
 
 /*

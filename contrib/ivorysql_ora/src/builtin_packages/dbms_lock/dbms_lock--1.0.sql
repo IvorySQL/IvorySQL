@@ -5,7 +5,7 @@
  ***************************************************************
 */
 
-CREATE FUNCTION dbms_lock_allocate_unique(text, integer)
+CREATE FUNCTION dbms_lock_allocate_unique(text)
 RETURNS text 
 AS 'MODULE_PATHNAME', 'ivorysql_dbms_lock_allocate_unique'
 LANGUAGE C STRICT;
@@ -41,12 +41,12 @@ CREATE PACKAGE dbms_lock AS
     illegal_handle    CONSTANT INTEGER := 5;
 
     
-    PROCEDURE allocate_unique(lockname text, lockname_handle OUT text, expiration_secs integer); 
+    PROCEDURE allocate_unique(lockname text, lockname_handle OUT text); 
 
-    FUNCTION request(lockname text, mode integer, timeout integer)
+    FUNCTION request(lockname_handle text, mode integer, timeout integer)
         RETURN int;
 
-    FUNCTION release(lockname text)
+    FUNCTION release(lockname_handle text)
         RETURN int;
 
     PROCEDURE sleep(seconds double precision);
@@ -54,21 +54,23 @@ END;
 
 CREATE PACKAGE BODY dbms_lock AS
 
-    PROCEDURE allocate_unique(lockname text, lockname_handle OUT text, expiration_secs integer) IS
+    PROCEDURE allocate_unique(lockname text, lockname_handle OUT text) IS
+       v_handle text;
     BEGIN
-	lockname_handle := dbms_lock_allocate_unique(lockname, expiration_secs);
+       v_handle := dbms_lock_allocate_unique(lockname);
+       lockname_handle := v_handle;  
     END;
 
-    FUNCTION request(lockname text, mode integer, timeout integer)
+    FUNCTION request(lockname_handle text, mode integer, timeout integer)
     RETURN int IS
     BEGIN
-        RETURN dbms_lock_request(lockname, mode, timeout);
+        RETURN dbms_lock_request(lockname_handle, mode, timeout);
     END;
 
-    FUNCTION release(lockname text)
+    FUNCTION release(lockname_handle text)
     RETURN int IS
     BEGIN
-        RETURN dbms_lock_release(lockname);
+        RETURN dbms_lock_release(lockname_handle);
     END;
 
     PROCEDURE sleep(seconds double precision) IS
