@@ -22,16 +22,13 @@
  *
  *-------------------------------------------------------------------------
  */
-#include "pg_config.h" 
-#include "c.h" 
-#include "miscadmin.h" 
-#include "pgtime.h" 
 #include "postgres.h"
 #include "fmgr.h"
+#include "miscadmin.h" 
+#include "pgtime.h" 
 #include "utils/builtins.h"
 #include "utils/timestamp.h"
 #include "storage/lwlock.h"
-#include "miscadmin.h"
 #include "catalog/pg_type.h"
 #include "utils/elog.h"
 #include "utils/timeout.h"
@@ -46,8 +43,8 @@
  * LOCK_S_MODE
  * LOCK_X_MODE
  */
-#define DBMS_LOCK_S_MODE      1
-#define DBMS_LOCK_X_MODE      2
+#define DBMS_LOCK_S_MODE      4
+#define DBMS_LOCK_X_MODE      6
 
 /* Oracle compatible return codes */
 #define DBMS_LOCK_SUCCESS         0
@@ -142,14 +139,14 @@ Datum
 ivorysql_dbms_lock_request(PG_FUNCTION_ARGS)
 {
     text *lockhandle = PG_GETARG_TEXT_PP(0);
-    int mode = PG_GETARG_INT32(1);     /* Oracle lock mode 1–6 */
+    int mode = PG_GETARG_INT32(1);     /* Oracle lock mode S=4, X=6 */
     int timeout = PG_GETARG_INT32(2);  /* seconds */
     int64 key = lockname_to_key(lockhandle);
     bool exclusive = is_exclusive_mode(mode);
     TimestampTz start = GetCurrentTimestamp();
     LOCKTAG     locktag;
 
-    if (mode != DBMS_LOCK_S_MODE && mode != DBMS_LOCK_X_MODE)
+    if (timeout < 0)
         PG_RETURN_INT32(DBMS_LOCK_PARAM_ERROR);
 
     SET_LOCKTAG_INT64(locktag, key);
@@ -241,13 +238,29 @@ PG_FUNCTION_INFO_V1(ivorysql_dbms_lock_sleep);
 Datum
 ivorysql_dbms_lock_sleep(PG_FUNCTION_ARGS)
 {
+    long total_usec;
+    long remaining;
+
     float8 seconds = PG_GETARG_FLOAT8(0);
 
     if (seconds < 0)
-        PG_RETURN_INT32(DBMS_LOCK_PARAM_ERROR);
+        ereport(ERROR,
+                (errmsg("DBMS_LOCK.SLEEP: seconds must be non-negative")));
 
-    pg_usleep(seconds * 1000000);
+    if (seconds > 100000000)
+        ereport(ERROR,
+                (errmsg("DBMS_LOCK.SLEEP: seconds too large")));
 
-    PG_RETURN_VOID();
+    total_usec = (long)(seconds * 1000000);
+    remaining = total_usec;
+    while (remaining > 0)
+    {
+        long chunk = (remaining > 1000000) ? 1000000 : remaining;
+        pg_usleep(chunk);
+        remaining -= chunk;
+        CHECK_FOR_INTERRUPTS();
+    }
+
+    PG_RETURN_INT32(DBMS_LOCK_SUCCESS);
 }
 

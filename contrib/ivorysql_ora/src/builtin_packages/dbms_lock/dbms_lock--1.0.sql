@@ -21,7 +21,7 @@ AS 'MODULE_PATHNAME', 'ivorysql_dbms_lock_release'
 LANGUAGE C STRICT;
 
 CREATE FUNCTION dbms_lock_sleep(float8)
-returns int
+returns void 
 AS 'MODULE_PATHNAME', 'ivorysql_dbms_lock_sleep'
 LANGUAGE C STRICT;
 
@@ -29,8 +29,8 @@ LANGUAGE C STRICT;
 CREATE PACKAGE dbms_lock AS
 
     -- lock modes
-    s_mode   CONSTANT INTEGER := 1;
-    x_mode   CONSTANT INTEGER := 2;
+    s_mode   CONSTANT INTEGER := 4;
+    x_mode   CONSTANT INTEGER := 6;
 
     -- return codes
     success           CONSTANT INTEGER := 0;
