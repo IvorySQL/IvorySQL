@@ -88,7 +88,7 @@ $$
 declare
  v_lockmode text = 'not found';
 begin
- select mode into v_lockmode from pg_locks where pid = pg_backend_pid() and mode = 'ShareLock';
+ select mode into v_lockmode from pg_locks where pid = pg_backend_pid() and mode = 'ExclusiveLock';
  raise notice 'mode=%', v_lockmode;
 end
 $$;
