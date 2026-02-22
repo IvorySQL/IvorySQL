@@ -375,8 +375,16 @@ typedef struct PGPROC
 	 ************************************************************************/
 
 	uint32		wait_event_info;	/* proc's wait information */
-} PGPROC;
+}
 
+/*
+ * If compiler understands aligned pragma, use it to align the struct at cache
+ * line boundaries.  This is just for performance, to avoid false sharing.
+ */
+#if defined(pg_attribute_aligned)
+			pg_attribute_aligned(PG_CACHE_LINE_SIZE)
+#endif
+PGPROC;
 
 extern PGDLLIMPORT PGPROC *MyProc;
 
