@@ -37,6 +37,7 @@
 #include "storage/lock.h"
 #include "storage/lmgr.h"
 #include "storage/lockdefs.h"
+#include "c.h"
 
 /* Oracle compatible lock modes */
 /* we support only:
@@ -260,7 +261,7 @@ ivorysql_dbms_lock_request(PG_FUNCTION_ARGS)
             acquired = DatumGetBool(DirectFunctionCall1(pg_try_advisory_lock_shared_int8, Int64GetDatum(key)));
 
         if (acquired) {
-	    elog(DEBUG1, "dbms_lock_request: key=%lu mode=%d", key, lockmode);
+	    elog(DEBUG1, "dbms_lock_request: key="INT64_FORMAT" mode=%d", key, lockmode);
             dbms_lock_record_acquire(key, lockmode);
             PG_RETURN_INT32(DBMS_LOCK_SUCCESS);
 	}
@@ -304,18 +305,18 @@ ivorysql_dbms_lock_release(PG_FUNCTION_ARGS)
     if (lock_s_held) {
        lockmode = DBMS_LOCK_S_MODE;
        released = DatumGetBool(DirectFunctionCall1(pg_advisory_unlock_shared_int8, Int64GetDatum(key)));
-	elog(DEBUG1, "unlock S: key=%lu mode=%d released=%d", key, lockmode, released);
+	elog(DEBUG1, "unlock S: key="INT64_FORMAT"  mode=%d released=%d", key, lockmode, released);
     } else {
       lock_x_held = dbms_lock_check(key, DBMS_LOCK_X_MODE);
       if (lock_x_held) {
        lockmode = DBMS_LOCK_X_MODE;
        released = DatumGetBool(DirectFunctionCall1(pg_advisory_unlock_int8, Int64GetDatum(key)));
-       elog(DEBUG1, "unlock X: key=%lu mode=%d released=%d", key, lockmode, released);
+       elog(DEBUG1, "unlock X: key="INT64_FORMAT" mode=%d released=%d", key, lockmode, released);
       }
     };
 
     if (released) {
-	elog(DEBUG1, "dbms_lock_release: key=%lu mode=%d", key, lockmode);
+	elog(DEBUG1, "dbms_lock_release: key="INT64_FORMAT" mode=%d", key, lockmode);
 	dbms_lock_record_release(key,lockmode);
         PG_RETURN_INT32(DBMS_LOCK_SUCCESS);
     }
@@ -356,6 +357,6 @@ ivorysql_dbms_lock_sleep(PG_FUNCTION_ARGS)
         CHECK_FOR_INTERRUPTS();
     }
 
-    PG_RETURN_INT32(DBMS_LOCK_SUCCESS);
+    PG_RETURN_VOID();
 }
 

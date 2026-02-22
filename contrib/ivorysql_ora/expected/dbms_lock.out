@@ -86,6 +86,9 @@ declare
  v_lockmode text;
 begin
  select mode into v_lockmode from pg_locks where pid = pg_backend_pid() and locktype='advisory' and mode = 'ExclusiveLock';
+ if not found then
+  v_lockmode := 'not found';
+ end if;
  raise notice 'mode=%', v_lockmode;
 end
 $$;
