@@ -50,6 +50,7 @@ CREATE PACKAGE dbms_lock AS
         RETURN int;
 
     PROCEDURE sleep(seconds double precision);
+
 END;
 
 CREATE PACKAGE BODY dbms_lock AS
@@ -77,4 +78,5 @@ CREATE PACKAGE BODY dbms_lock AS
     BEGIN
         PERFORM dbms_lock_sleep(seconds);
     END;
+
 END;

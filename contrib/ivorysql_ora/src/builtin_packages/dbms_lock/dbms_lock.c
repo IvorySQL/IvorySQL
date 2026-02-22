@@ -64,14 +64,111 @@
 
 
 /*
- * from lockfuncs.c
+ * private hash table for backend locks
  */
-#define SET_LOCKTAG_INT64(tag, key64) \
-    SET_LOCKTAG_ADVISORY(tag, \
-                         MyDatabaseId, \
-                         (uint32) ((key64) >> 32), \
-                         (uint32) (key64), \
-                         1)
+
+#define DBMS_LOCK_MAX	128
+typedef struct
+{
+    int64       key;        /* hash key */
+    int8        mode;        /* last mode we recorded */
+} lock_entry;
+
+static HTAB *dbms_lock_hash_table = NULL;
+
+/*
+ * static routines
+ */
+static void dbms_lock_init_hash_table();
+static void dbms_lock_record_acquire(int64, int8);
+static bool dbms_lock_check(int64, int8);
+static bool dbms_lock_record_release(int64, int8);
+
+/*
+ * init private lock hash table
+ */
+
+
+static void
+dbms_lock_init_hash_table(void)
+{
+    HASHCTL ctl;
+
+    MemSet(&ctl, 0, sizeof(ctl));
+    ctl.keysize = sizeof(int64);
+    ctl.entrysize = sizeof(lock_entry);
+    ctl.hash = tag_hash;
+
+    dbms_lock_hash_table = hash_create("pg_dbms_lock table",
+                             DBMS_LOCK_MAX,         
+                             &ctl,
+                             HASH_ELEM | HASH_FUNCTION);
+}
+
+/*
+ * store lock acquire
+ */
+static void
+dbms_lock_record_acquire(int64 key, int8 mode)
+{
+    bool        found;
+    lock_entry *entry;
+
+    entry = (lock_entry *) hash_search(dbms_lock_hash_table,
+                                        (void *) &key,
+                                        HASH_ENTER,
+                                        &found);
+
+    entry->key = key;
+    entry->mode = mode;
+}
+
+/*
+ * check lock is held
+ */
+static bool
+dbms_lock_check(int64 key, int8 mode)
+{
+   bool        found;
+   lock_entry *entry;
+
+   entry = (lock_entry *) hash_search(dbms_lock_hash_table,
+                                          (void *) &key,
+                                          HASH_FIND,
+                                          &found);
+   if (found  && entry->mode == mode)
+        return true;
+
+    return false;
+}
+
+/*
+ * store lock release
+ */
+
+static bool
+dbms_lock_record_release(int64 key, int8 mode)
+{
+    bool        found;
+    lock_entry *entry;
+
+    entry = (lock_entry *) hash_search(dbms_lock_hash_table,
+                                        (void *) &key,
+                                        HASH_FIND,
+                                        &found);
+
+    if (!found)
+        return false;
+
+    if (entry->mode != mode)
+	    return false;
+
+    hash_search(dbms_lock_hash_table, (void *) &key, HASH_REMOVE, &found);
+
+    return true;
+}
+
+
 
 /* Hash lock name into int64 advisory key */
 static int64
@@ -126,6 +223,9 @@ ivorysql_dbms_lock_allocate_unique(PG_FUNCTION_ARGS)
              "%llu",
              (unsigned long long) hash);
 
+    if (dbms_lock_hash_table == NULL)
+	    dbms_lock_init_hash_table();
+
     PG_RETURN_TEXT_P(cstring_to_text(handle));
 
 }
@@ -139,43 +239,31 @@ Datum
 ivorysql_dbms_lock_request(PG_FUNCTION_ARGS)
 {
     text *lockhandle = PG_GETARG_TEXT_PP(0);
-    int mode = PG_GETARG_INT32(1);     /* Oracle lock mode S=4, X=6 */
+    int lockmode = PG_GETARG_INT32(1);     /* Oracle lock mode S=4, X=6 */
     int timeout = PG_GETARG_INT32(2);  /* seconds */
     int64 key = lockname_to_key(lockhandle);
-    bool exclusive = is_exclusive_mode(mode);
+    bool exclusive = is_exclusive_mode(lockmode);
     TimestampTz start = GetCurrentTimestamp();
-    LOCKTAG     locktag;
+    bool acquired = false;
+
+    if (dbms_lock_hash_table == NULL)
+	    dbms_lock_init_hash_table();
 
     if (timeout < 0)
         PG_RETURN_INT32(DBMS_LOCK_PARAM_ERROR);
 
-    SET_LOCKTAG_INT64(locktag, key);
-    
-     
-     if (exclusive && LockHeldByMe(&locktag, ExclusiveLock, false)) 
-     {
-    	/* Logic for when the lock is already held by us */
-	PG_RETURN_INT32(DBMS_LOCK_ALREADY_OWNED);
-     }
-     if (!exclusive && LockHeldByMe(&locktag, ShareLock, false)) 
-     {
-    	/* Logic for when the lock is already held by us */
-	PG_RETURN_INT32(DBMS_LOCK_ALREADY_OWNED);
-     }
-
     while (true)
     {
-        bool acquired;
-
         if (exclusive)
-            acquired = DirectFunctionCall1(pg_try_advisory_lock_int8,
-                                           Int64GetDatum(key)) != 0;
+            acquired = DatumGetBool(DirectFunctionCall1(pg_try_advisory_lock_int8, Int64GetDatum(key)));
         else
-            acquired = DirectFunctionCall1(pg_try_advisory_lock_shared_int8,
-                                           Int64GetDatum(key)) != 0;
+            acquired = DatumGetBool(DirectFunctionCall1(pg_try_advisory_lock_shared_int8, Int64GetDatum(key)));
 
-        if (acquired)
+        if (acquired) {
+	    elog(DEBUG1, "dbms_lock_request: key=%lu mode=%d", key, lockmode);
+            dbms_lock_record_acquire(key, lockmode);
             PG_RETURN_INT32(DBMS_LOCK_SUCCESS);
+	}
 
         if (timeout == 0)
             PG_RETURN_INT32(DBMS_LOCK_TIMEOUT);
@@ -202,28 +290,33 @@ PG_FUNCTION_INFO_V1(ivorysql_dbms_lock_release);
 Datum
 ivorysql_dbms_lock_release(PG_FUNCTION_ARGS)
 {
-    text *lockname = PG_GETARG_TEXT_PP(0);
-    int64 key = lockname_to_key(lockname);
-    LOCKTAG     locktag;
+    text *lockhandle = PG_GETARG_TEXT_PP(0);
+    int64 key = lockname_to_key(lockhandle);
+    bool lock_s_held = false;
+    bool lock_x_held = false;
     bool released = false;
+    int8 lockmode;
 
-    SET_LOCKTAG_INT64(locktag, key);
-
-    /* 
-     * try first shared mode to avoid exclusive warning
-     */
-    if (LockHeldByMe(&locktag, ShareLock, false)) {
-        released = DatumGetBool(
-            DirectFunctionCall1(pg_advisory_unlock_shared_int8,
-                                Int64GetDatum(key)));
-    }
-    else if (LockHeldByMe(&locktag, ExclusiveLock, false)) {
-        released = DatumGetBool(
-            DirectFunctionCall1(pg_advisory_unlock_int8,
-                                Int64GetDatum(key)));
-    }
+    if (dbms_lock_hash_table == NULL)
+	    dbms_lock_init_hash_table();
+	
+    lock_s_held = dbms_lock_check(key, DBMS_LOCK_S_MODE);
+    if (lock_s_held) {
+       lockmode = DBMS_LOCK_S_MODE;
+       released = DatumGetBool(DirectFunctionCall1(pg_advisory_unlock_shared_int8, Int64GetDatum(key)));
+	elog(DEBUG1, "unlock S: key=%lu mode=%d released=%d", key, lockmode, released);
+    } else {
+      lock_x_held = dbms_lock_check(key, DBMS_LOCK_X_MODE);
+      if (lock_x_held) {
+       lockmode = DBMS_LOCK_X_MODE;
+       released = DatumGetBool(DirectFunctionCall1(pg_advisory_unlock_int8, Int64GetDatum(key)));
+       elog(DEBUG1, "unlock X: key=%lu mode=%d released=%d", key, lockmode, released);
+      }
+    };
 
     if (released) {
+	elog(DEBUG1, "dbms_lock_release: key=%lu mode=%d", key, lockmode);
+	dbms_lock_record_release(key,lockmode);
         PG_RETURN_INT32(DBMS_LOCK_SUCCESS);
     }
 
@@ -240,8 +333,10 @@ ivorysql_dbms_lock_sleep(PG_FUNCTION_ARGS)
 {
     long total_usec;
     long remaining;
-
     float8 seconds = PG_GETARG_FLOAT8(0);
+
+    if (dbms_lock_hash_table == NULL)
+	    dbms_lock_init_hash_table();
 
     if (seconds < 0)
         ereport(ERROR,
