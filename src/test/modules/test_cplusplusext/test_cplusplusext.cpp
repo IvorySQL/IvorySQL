@@ -55,5 +55,15 @@ test_cplusplus_add(PG_FUNCTION_ARGS)
 	list_free(list);
 	pfree(node);
 
+	switch (a)
+	{
+		case 1:
+			elog(DEBUG1, "1");
+			pg_fallthrough;
+		case 2:
+			elog(DEBUG1, "2");
+			break;
+	}
+
 	PG_RETURN_INT32(a + b);
 }
