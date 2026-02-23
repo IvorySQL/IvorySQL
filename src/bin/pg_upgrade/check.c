@@ -602,9 +602,9 @@ check_and_dump_old_cluster(void)
 	check_for_connection_status(&old_cluster);
 
 	/*
-	 * Validate database, user, role and tablespace names from the old cluster.
-	 * No need to check in 19 or newer as newline and carriage return are
-	 * not allowed at the creation time of the object.
+	 * Validate database, user, role and tablespace names from the old
+	 * cluster. No need to check in 19 or newer as newline and carriage return
+	 * are not allowed at the creation time of the object.
 	 */
 	if (GET_MAJOR_VERSION(old_cluster.major_version) < 1900)
 		check_old_cluster_global_names(&old_cluster);
@@ -2520,18 +2520,18 @@ static void
 check_old_cluster_global_names(ClusterInfo *cluster)
 {
 	int			i;
-	PGconn		*conn_template1;
-	PGresult	*res;
+	PGconn	   *conn_template1;
+	PGresult   *res;
 	int			ntups;
-	FILE		*script = NULL;
+	FILE	   *script = NULL;
 	char		output_path[MAXPGPATH];
 	int			count = 0;
 
 	prep_status("Checking names of databases, roles and tablespaces");
 
 	snprintf(output_path, sizeof(output_path), "%s/%s",
-			log_opts.basedir,
-			"db_role_tablespace_invalid_names.txt");
+			 log_opts.basedir,
+			 "db_role_tablespace_invalid_names.txt");
 
 	conn_template1 = connectToServer(cluster, "template1");
 
@@ -2540,18 +2540,18 @@ check_old_cluster_global_names(ClusterInfo *cluster)
 	 * pg_authid because only superusers can view it.
 	 */
 	res = executeQueryOrDie(conn_template1,
-			"SELECT datname AS objname, 'database' AS objtype "
-			"FROM pg_catalog.pg_database UNION ALL "
-			"SELECT rolname AS objname, 'role' AS objtype "
-			"FROM pg_catalog.pg_roles UNION ALL "
-			"SELECT spcname AS objname, 'tablespace' AS objtype "
-			"FROM pg_catalog.pg_tablespace ORDER BY 2 ");
+							"SELECT datname AS objname, 'database' AS objtype "
+							"FROM pg_catalog.pg_database UNION ALL "
+							"SELECT rolname AS objname, 'role' AS objtype "
+							"FROM pg_catalog.pg_roles UNION ALL "
+							"SELECT spcname AS objname, 'tablespace' AS objtype "
+							"FROM pg_catalog.pg_tablespace ORDER BY 2 ");
 
 	ntups = PQntuples(res);
 	for (i = 0; i < ntups; i++)
 	{
-		char	*objname = PQgetvalue(res, i, 0);
-		char	*objtype = PQgetvalue(res, i, 1);
+		char	   *objname = PQgetvalue(res, i, 0);
+		char	   *objtype = PQgetvalue(res, i, 1);
 
 		/* If name has \n or \r, then report it. */
 		if (strpbrk(objname, "\n\r"))
@@ -2571,10 +2571,10 @@ check_old_cluster_global_names(ClusterInfo *cluster)
 		fclose(script);
 		pg_log(PG_REPORT, "fatal");
 		pg_fatal("All the database, role and tablespace names should have only valid characters. A newline or \n"
-				"carriage return character is not allowed in these object names.  To fix this, please \n"
-				"rename these names with valid names. \n"
-				"To see all %d invalid object names, refer db_role_tablespace_invalid_names.txt file. \n"
-				"    %s", count, output_path);
+				 "carriage return character is not allowed in these object names.  To fix this, please \n"
+				 "rename these names with valid names. \n"
+				 "To see all %d invalid object names, refer db_role_tablespace_invalid_names.txt file. \n"
+				 "    %s", count, output_path);
 	}
 	else
 		check_ok();
