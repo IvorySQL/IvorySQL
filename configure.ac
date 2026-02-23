@@ -1953,7 +1953,6 @@ PGAC_CHECK_BUILTIN_FUNC([__builtin_bswap64], [long int x])
 # We assume that we needn't test all widths of these explicitly:
 PGAC_CHECK_BUILTIN_FUNC([__builtin_clz], [unsigned int x])
 PGAC_CHECK_BUILTIN_FUNC([__builtin_ctz], [unsigned int x])
-PGAC_CHECK_BUILTIN_FUNC([__builtin_popcount], [unsigned int x])
 # __builtin_frame_address may draw a diagnostic for non-constant argument,
 # so it needs a different test function.
 PGAC_CHECK_BUILTIN_FUNC_PTR([__builtin_frame_address], [0])

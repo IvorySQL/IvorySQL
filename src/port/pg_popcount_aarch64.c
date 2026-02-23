@@ -298,11 +298,6 @@ pg_popcount_masked_optimized(const char *buf, int bytes, bits8 mask)
 static inline int
 pg_popcount64_neon(uint64 word)
 {
-	/*
-	 * For some compilers, __builtin_popcountl() already emits Neon
-	 * instructions.  The line below should compile to the same code on those
-	 * systems.
-	 */
 	return vaddv_u8(vcnt_u8(vld1_u8((const uint8 *) &word)));
 }
 

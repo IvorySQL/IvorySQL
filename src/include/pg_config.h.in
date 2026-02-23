@@ -535,9 +535,6 @@
 /* Define to 1 if your compiler understands __builtin_$op_overflow. */
 #undef HAVE__BUILTIN_OP_OVERFLOW
 
-/* Define to 1 if your compiler understands __builtin_popcount. */
-#undef HAVE__BUILTIN_POPCOUNT
-
 /* Define to 1 if your compiler understands __builtin_types_compatible_p. */
 #undef HAVE__BUILTIN_TYPES_COMPATIBLE_P
 
