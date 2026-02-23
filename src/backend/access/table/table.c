@@ -25,7 +25,7 @@
 #include "access/table.h"
 #include "utils/rel.h"
 
-static inline void validate_relation_kind(Relation r);
+static inline void validate_relation_as_table(Relation r);
 
 /* ----------------
  *		table_open - open a table relation by relation OID
@@ -43,7 +43,7 @@ table_open(Oid relationId, LOCKMODE lockmode)
 
 	r = relation_open(relationId, lockmode);
 
-	validate_relation_kind(r);
+	validate_relation_as_table(r);
 
 	return r;
 }
@@ -67,7 +67,7 @@ try_table_open(Oid relationId, LOCKMODE lockmode)
 	if (!r)
 		return NULL;
 
-	validate_relation_kind(r);
+	validate_relation_as_table(r);
 
 	return r;
 }
@@ -86,7 +86,7 @@ table_openrv(const RangeVar *relation, LOCKMODE lockmode)
 
 	r = relation_openrv(relation, lockmode);
 
-	validate_relation_kind(r);
+	validate_relation_as_table(r);
 
 	return r;
 }
@@ -108,7 +108,7 @@ table_openrv_extended(const RangeVar *relation, LOCKMODE lockmode,
 	r = relation_openrv_extended(relation, lockmode, missing_ok);
 
 	if (r)
-		validate_relation_kind(r);
+		validate_relation_as_table(r);
 
 	return r;
 }
@@ -129,14 +129,14 @@ table_close(Relation relation, LOCKMODE lockmode)
 }
 
 /* ----------------
- *		validate_relation_kind - check the relation's kind
+ *		validate_relation_as_table
  *
- *		Make sure relkind is table-like.  In particular, this excludes indexes
- *		and composite types, which cannot be read from in a query.
+ *		Make sure relkind is table-like, that is, something that could be read
+ *		from or written to directly in a query.
  * ----------------
  */
 static inline void
-validate_relation_kind(Relation r)
+validate_relation_as_table(Relation r)
 {
 	if (r->rd_rel->relkind != RELKIND_RELATION &&
 		r->rd_rel->relkind != RELKIND_SEQUENCE &&
