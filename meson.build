@@ -2162,7 +2162,6 @@ common_warning_flags = [
   '-Werror=unguarded-availability-new',
   '-Wendif-labels',
   '-Wmissing-format-attribute',
-  '-Wimplicit-fallthrough=5',
   '-Wcast-function-type',
   '-Wshadow=compatible-local',
   # This was included in -Wall/-Wformat in older GCC versions
@@ -2173,6 +2172,24 @@ cflags_warn += cc.get_supported_arguments(common_warning_flags)
 if have_cxx
   cxxflags_warn += cxx.get_supported_arguments(common_warning_flags)
 endif
+
+# To require fallthrough attribute annotations, use
+# -Wimplicit-fallthrough=5 with gcc and -Wimplicit-fallthrough with
+# clang.  The latter is also accepted on gcc but does not enforce
+# attribute annotations, so test the former first.
+fallthrough_warning_flags = ['-Wimplicit-fallthrough=5', '-Wimplicit-fallthrough']
+foreach w : fallthrough_warning_flags
+  if cc.has_argument(w)
+    cflags_warn += w
+    break
+  endif
+endforeach
+foreach w : fallthrough_warning_flags
+  if have_cxx and cxx.has_argument(w)
+    cxxflags_warn += w
+    break
+  endif
+endforeach
 
 # A few places with imported code get a pass on -Wdeclaration-after-statement, remember
 # the result for them

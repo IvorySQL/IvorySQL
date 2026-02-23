@@ -644,8 +644,22 @@ if test "$GCC" = yes -a "$ICC" = no; then
   PGAC_PROG_CXX_CFLAGS_OPT([-Wendif-labels])
   PGAC_PROG_CC_CFLAGS_OPT([-Wmissing-format-attribute])
   PGAC_PROG_CXX_CFLAGS_OPT([-Wmissing-format-attribute])
+
+  # To require fallthrough attribute annotations, use
+  # -Wimplicit-fallthrough=5 with gcc and -Wimplicit-fallthrough with
+  # clang.  The latter is also accepted on gcc but does not enforce
+  # attribute annotations, so test the former first.
+  save_CFLAGS=$CFLAGS
   PGAC_PROG_CC_CFLAGS_OPT([-Wimplicit-fallthrough=5])
+  if test x"$save_CFLAGS" = x"$CFLAGS"; then
+    PGAC_PROG_CC_CFLAGS_OPT([-Wimplicit-fallthrough])
+  fi
+  save_CXXFLAGS=$CXXFLAGS
   PGAC_PROG_CXX_CFLAGS_OPT([-Wimplicit-fallthrough=5])
+  if test x"$save_CXXFLAGS" = x"$CXXFLAGS"; then
+    PGAC_PROG_CXX_CFLAGS_OPT([-Wimplicit-fallthrough])
+  fi
+
   PGAC_PROG_CC_CFLAGS_OPT([-Wcast-function-type])
   PGAC_PROG_CXX_CFLAGS_OPT([-Wcast-function-type])
   PGAC_PROG_CC_CFLAGS_OPT([-Wshadow=compatible-local])
