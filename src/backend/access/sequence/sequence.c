@@ -63,7 +63,7 @@ sequence_close(Relation relation, LOCKMODE lockmode)
 /* ----------------
  *		validate_relation_kind - check the relation's kind
  *
- *		Make sure relkind is from a sequence.
+ *		Make sure relkind is a sequence.
  * ----------------
  */
 static inline void
@@ -72,7 +72,6 @@ validate_relation_kind(Relation r)
 	if (r->rd_rel->relkind != RELKIND_SEQUENCE)
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("cannot open relation \"%s\"",
-						RelationGetRelationName(r)),
-				 errdetail_relkind_not_supported(r->rd_rel->relkind)));
+				 errmsg("\"%s\" is not a sequence",
+						RelationGetRelationName(r))));
 }
