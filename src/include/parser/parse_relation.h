@@ -15,6 +15,7 @@
 #define PARSE_RELATION_H
 
 #include "parser/parse_node.h"
+#include "storage/lockdefs.h"
 
 
 extern ParseNamespaceItem *refnameNamespaceItem(ParseState *pstate,
@@ -44,7 +45,7 @@ extern Node *colNameToVar(ParseState *pstate, const char *colname, bool localonl
 extern void markNullableIfNeeded(ParseState *pstate, Var *var);
 extern void markVarForSelectPriv(ParseState *pstate, Var *var);
 extern Relation parserOpenTable(ParseState *pstate, const RangeVar *relation,
-								int lockmode);
+								LOCKMODE lockmode);
 extern ParseNamespaceItem *addRangeTableEntry(ParseState *pstate,
 											  RangeVar *relation,
 											  Alias *alias,
@@ -52,7 +53,7 @@ extern ParseNamespaceItem *addRangeTableEntry(ParseState *pstate,
 											  bool inFromCl);
 extern ParseNamespaceItem *addRangeTableEntryForRelation(ParseState *pstate,
 														 Relation rel,
-														 int lockmode,
+														 LOCKMODE lockmode,
 														 Alias *alias,
 														 bool inh,
 														 bool inFromCl);
