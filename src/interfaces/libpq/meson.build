@@ -67,6 +67,7 @@ libpq_st = static_library('libpq',
   dependencies: [frontend_stlib_code, libpq_deps],
   kwargs: default_lib_args,
 )
+libpq_targets += libpq_st
 
 libpq_so = shared_library('libpq',
   libpq_sources + libpq_so_sources,
@@ -81,6 +82,7 @@ libpq_so = shared_library('libpq',
   link_args: export_fmt.format(export_file.full_path()),
   kwargs: default_lib_args,
 )
+libpq_targets += libpq_so
 
 libpq = declare_dependency(
   link_with: [libpq_so],

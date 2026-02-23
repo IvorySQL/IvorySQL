@@ -3129,6 +3129,7 @@ add_project_link_arguments(ldflags, language: ['c', 'cpp'])
 # list of targets for various alias targets
 backend_targets = []
 bin_targets = []
+libpq_targets = []
 pl_targets = []
 contrib_targets = []
 testprep_targets = []
@@ -3556,19 +3557,12 @@ endif
 installed_targets = [
   backend_targets,
   bin_targets,
-  libpq_st,
+  libpq_targets,
   pl_targets,
   contrib_targets,
   nls_mo_targets,
   ecpg_targets,
 ]
-
-if oauth_flow_supported
-  installed_targets += [
-    libpq_oauth_so,
-    libpq_oauth_st,
-  ]
-endif
 
 # all targets that require building code
 all_built = [
@@ -3907,7 +3901,7 @@ add_test_setup('running',
 ###############################################################
 
 alias_target('backend', backend_targets)
-alias_target('bin', bin_targets + [libpq_st])
+alias_target('bin', bin_targets + libpq_targets)
 alias_target('pl', pl_targets)
 alias_target('contrib', contrib_targets)
 alias_target('testprep', testprep_targets)

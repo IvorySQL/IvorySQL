@@ -32,6 +32,7 @@ libpq_oauth_st = static_library('libpq-oauth',
   ],
   kwargs: default_lib_args,
 )
+libpq_targets += libpq_oauth_st
 
 # This is an internal module; we don't want an SONAME and therefore do not set
 # SO_MAJOR_VERSION.
@@ -47,6 +48,7 @@ libpq_oauth_so = shared_module(libpq_oauth_name,
   link_args: export_fmt.format(export_file.full_path()),
   kwargs: default_lib_args,
 )
+libpq_targets += libpq_oauth_so
 
 libpq_oauth_test_deps = []
 
