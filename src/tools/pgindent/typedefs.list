@@ -600,6 +600,7 @@ CustomScanMethods
 CustomScanState
 CycleCtr
 DBState
+DbOidName
 DCHCacheEntry
 DEADLOCK_INFO
 DECountItem

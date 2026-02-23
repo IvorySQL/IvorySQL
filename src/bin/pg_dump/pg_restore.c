@@ -2,7 +2,7 @@
  *
  * pg_restore.c
  *	pg_restore is an utility extracting postgres database definitions
- *	from a backup archive created by pg_dump using the archiver
+ *	from a backup archive created by pg_dump/pg_dumpall using the archiver
  *	interface.
  *
  *	pg_restore will read the backup archive and
@@ -41,12 +41,16 @@
 #include "postgres_fe.h"
 
 #include <ctype.h>
+#include <sys/stat.h>
 #ifdef HAVE_TERMIOS_H
 #include <termios.h>
 #endif
 
+#include "common/string.h"
+#include "connectdb.h"
 #include "dumputils.h"
 #include "fe_utils/option_utils.h"
+#include "fe_utils/string_utils.h"
 #include "filter.h"
 #include "getopt_long.h"
 #include "parallel.h"
@@ -54,18 +58,41 @@
 
 static void usage(const char *progname);
 static void read_restore_filters(const char *filename, RestoreOptions *opts);
+static bool file_exists_in_directory(const char *dir, const char *filename);
+static int	restore_one_database(const char *inputFileSpec, RestoreOptions *opts,
+								 int numWorkers, bool append_data);
+static int	restore_global_objects(const char *inputFileSpec, RestoreOptions *opts);
+
+static int	restore_all_databases(const char *inputFileSpec,
+								  SimpleStringList db_exclude_patterns, RestoreOptions *opts, int numWorkers);
+static int	get_dbnames_list_to_restore(PGconn *conn,
+										SimplePtrList *dbname_oid_list,
+										SimpleStringList db_exclude_patterns);
+static int	get_dbname_oid_list_from_mfile(char *dumpdirpath,
+										   SimplePtrList *dbname_oid_list);
+
+/*
+ * Stores a database OID and the corresponding name.
+ */
+typedef struct DbOidName
+{
+	Oid			oid;
+	char		str[FLEXIBLE_ARRAY_MEMBER]; /* null-terminated string here */
+} DbOidName;
+
 
 int
 main(int argc, char **argv)
 {
 	RestoreOptions *opts;
 	int			c;
-	int			exit_code;
 	int			numWorkers = 1;
-	Archive    *AH;
 	char	   *inputFileSpec;
 	bool		data_only = false;
 	bool		schema_only = false;
+	int			n_errors = 0;
+	bool		globals_only = false;
+	SimpleStringList db_exclude_patterns = {NULL, NULL};
 	static int	disable_triggers = 0;
 	static int	enable_row_security = 0;
 	static int	if_exists = 0;
@@ -89,6 +116,7 @@ main(int argc, char **argv)
 		{"clean", 0, NULL, 'c'},
 		{"create", 0, NULL, 'C'},
 		{"data-only", 0, NULL, 'a'},
+		{"globals-only", 0, NULL, 'g'},
 		{"dbname", 1, NULL, 'd'},
 		{"exit-on-error", 0, NULL, 'e'},
 		{"exclude-schema", 1, NULL, 'N'},
@@ -142,6 +170,7 @@ main(int argc, char **argv)
 		{"statistics-only", no_argument, &statistics_only, 1},
 		{"filter", required_argument, NULL, 4},
 		{"restrict-key", required_argument, NULL, 6},
+		{"exclude-database", required_argument, NULL, 7},
 
 		{NULL, 0, NULL, 0}
 	};
@@ -170,7 +199,7 @@ main(int argc, char **argv)
 		}
 	}
 
-	while ((c = getopt_long(argc, argv, "acCd:ef:F:h:I:j:lL:n:N:Op:P:RsS:t:T:U:vwWx1",
+	while ((c = getopt_long(argc, argv, "acCd:ef:F:gh:I:j:lL:n:N:Op:P:RsS:t:T:U:vwWx1",
 							cmdopts, NULL)) != -1)
 	{
 		switch (c)
@@ -197,11 +226,14 @@ main(int argc, char **argv)
 				if (strlen(optarg) != 0)
 					opts->formatName = pg_strdup(optarg);
 				break;
+			case 'g':
+				/* restore only global sql commands. */
+				globals_only = true;
+				break;
 			case 'h':
 				if (strlen(optarg) != 0)
 					opts->cparams.pghost = pg_strdup(optarg);
 				break;
-
 			case 'j':			/* number of restore jobs */
 				if (!option_parse_int(optarg, "-j/--jobs", 1,
 									  PG_MAX_JOBS,
@@ -321,6 +353,10 @@ main(int argc, char **argv)
 				opts->restrict_key = pg_strdup(optarg);
 				break;
 
+			case 7:				/* database patterns to skip */
+				simple_string_list_append(&db_exclude_patterns, optarg);
+				break;
+
 			default:
 				/* getopt_long already emitted a complaint */
 				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
@@ -346,6 +382,14 @@ main(int argc, char **argv)
 	/* Complain if neither -f nor -d was specified (except if dumping TOC) */
 	if (!opts->cparams.dbname && !opts->filename && !opts->tocSummary)
 		pg_fatal("one of -d/--dbname and -f/--file must be specified");
+
+	if (db_exclude_patterns.head != NULL && globals_only)
+	{
+		pg_log_error("option %s cannot be used together with %s",
+					 "--exclude-database", "-g/--globals-only");
+		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
+		exit_nicely(1);
+	}
 
 	/* Should get at most one of -d and -f, else user is confused */
 	if (opts->cparams.dbname)
@@ -420,6 +464,31 @@ main(int argc, char **argv)
 		pg_fatal("options %s and %s cannot be used together",
 				 "-1/--single-transaction", "--transaction-size");
 
+	if (opts->single_txn && globals_only)
+		pg_fatal("options %s and %s cannot be used together when restoring an archive created by pg_dumpall",
+				 "--single-transaction", "-g/--globals-only");
+
+	if (opts->txn_size && globals_only)
+		pg_fatal("options %s and %s cannot be used together when restoring an archive created by pg_dumpall",
+				 "--transaction-size", "-g/--globals-only");
+
+	if (opts->exit_on_error && globals_only)
+		pg_fatal("options %s and %s cannot be used together when restoring an archive created by pg_dumpall",
+				 "--exit-on-error", "-g/--globals-only");
+
+	if (data_only && globals_only)
+		pg_fatal("options %s and %s cannot be used together",
+				 "-a/--data-only", "-g/--globals-only");
+	if (schema_only && globals_only)
+		pg_fatal("options %s and %s cannot be used together",
+				 "-s/--schema-only", "-g/--globals-only");
+	if (statistics_only && globals_only)
+		pg_fatal("options %s and %s cannot be used together",
+				 "--statistics-only", "-g/--globals-only");
+	if (with_statistics && globals_only)
+		pg_fatal("options %s and %s cannot be used together",
+				 "--statistics", "-g/--globals-only");
+
 	/*
 	 * -C is not compatible with -1, because we can't create a database inside
 	 * a transaction block.
@@ -485,6 +554,183 @@ main(int argc, char **argv)
 					 opts->formatName);
 	}
 
+	/*
+	 * If toc.glo file is present, then restore all the databases from
+	 * map.dat, but skip restoring those matching --exclude-database patterns.
+	 */
+	if (inputFileSpec != NULL &&
+		(file_exists_in_directory(inputFileSpec, "toc.glo")))
+	{
+		char		global_path[MAXPGPATH];
+		RestoreOptions *tmpopts = pg_malloc0_object(RestoreOptions);
+
+		opts->format = archUnknown;
+
+		memcpy(tmpopts, opts, sizeof(RestoreOptions));
+
+		/*
+		 * Can only use --list or --use-list options with a single database
+		 * dump.
+		 */
+		if (opts->tocSummary)
+			pg_fatal("option %s cannot be used when restoring an archive created by pg_dumpall",
+					 "-l/--list");
+		if (opts->tocFile)
+			pg_fatal("option %s cannot be used when restoring an archive created by pg_dumpall",
+					 "-L/--use-list");
+
+		if (opts->strict_names)
+			pg_fatal("option %s cannot be used when restoring an archive created by pg_dumpall",
+					 "--strict-names");
+		if (globals_only && opts->dropSchema)
+			pg_fatal("options %s and %s cannot be used together when restoring an archive created by pg_dumpall",
+					 "--clean", "-g/--globals-only");
+
+		/*
+		 * For pg_dumpall archives, --clean implies --if-exists since global
+		 * objects may not exist in the target cluster.
+		 */
+		if (opts->dropSchema && !opts->if_exists)
+		{
+			opts->if_exists = 1;
+			pg_log_info("--if-exists is implied by --clean for pg_dumpall archives");
+		}
+
+		if (no_schema)
+			pg_fatal("option %s cannot be used when restoring an archive created by pg_dumpall",
+					 "--no-schema");
+
+		if (data_only)
+			pg_fatal("option %s cannot be used when restoring an archive created by pg_dumpall",
+					 "-a/--data-only");
+
+		if (statistics_only)
+			pg_fatal("option %s cannot be used when restoring an archive created by pg_dumpall",
+					 "--statistics-only");
+
+		if (!(opts->dumpSections & DUMP_PRE_DATA))
+			pg_fatal("option %s cannot exclude %s when restoring a pg_dumpall archive",
+					 "--section", "--pre-data");
+
+		/*
+		 * To restore from a pg_dumpall archive, -C (create database) option
+		 * must be specified unless we are only restoring globals.
+		 */
+		if (!globals_only && opts->createDB != 1)
+		{
+			pg_log_error("option %s must be specified when restoring an archive created by pg_dumpall",
+						 "-C/--create");
+			pg_log_error_hint("Try \"%s --help\" for more information.", progname);
+			pg_log_error_hint("Individual databases can be restored using their specific archives.");
+			exit_nicely(1);
+		}
+
+		/*
+		 * Always restore global objects, even if --exclude-database results
+		 * in zero databases to process. If 'globals-only' is set, exit
+		 * immediately.
+		 */
+		snprintf(global_path, MAXPGPATH, "%s/toc.glo", inputFileSpec);
+
+		n_errors = restore_global_objects(global_path, tmpopts);
+
+		if (globals_only)
+			pg_log_info("database restoring skipped because option %s was specified",
+						"-g/--globals-only");
+		else
+		{
+			/* Now restore all the databases from map.dat */
+			n_errors = n_errors + restore_all_databases(inputFileSpec, db_exclude_patterns,
+														opts, numWorkers);
+		}
+
+		/* Free db pattern list. */
+		simple_string_list_destroy(&db_exclude_patterns);
+	}
+	else
+	{
+		if (db_exclude_patterns.head != NULL)
+		{
+			simple_string_list_destroy(&db_exclude_patterns);
+			pg_fatal("option %s can be used only when restoring an archive created by pg_dumpall",
+					 "--exclude-database");
+		}
+
+		if (globals_only)
+			pg_fatal("option %s can be used only when restoring an archive created by pg_dumpall",
+					 "-g/--globals-only");
+
+		/* Process if toc.glo file does not exist. */
+		n_errors = restore_one_database(inputFileSpec, opts, numWorkers, false);
+	}
+
+	/* Done, print a summary of ignored errors during restore. */
+	if (n_errors)
+	{
+		pg_log_warning("errors ignored on restore: %d", n_errors);
+		return 1;
+	}
+
+	return 0;
+}
+
+/*
+ * restore_global_objects
+ *
+ * This restore all global objects.
+ */
+static int
+restore_global_objects(const char *inputFileSpec, RestoreOptions *opts)
+{
+	Archive    *AH;
+	int			nerror = 0;
+
+	/* Set format as custom so that toc.glo file can be read. */
+	opts->format = archCustom;
+	opts->txn_size = 0;
+
+	AH = OpenArchive(inputFileSpec, opts->format);
+
+	SetArchiveOptions(AH, NULL, opts);
+
+	on_exit_close_archive(AH);
+
+	/* Let the archiver know how noisy to be */
+	AH->verbose = opts->verbose;
+
+	/* Don't output TOC entry comments when restoring globals */
+	((ArchiveHandle *) AH)->noTocComments = 1;
+
+	AH->exit_on_error = false;
+
+	/* Parallel execution is not supported for global object restoration. */
+	AH->numWorkers = 1;
+
+	ProcessArchiveRestoreOptions(AH);
+	RestoreArchive(AH, false);
+
+	nerror = AH->n_errors;
+
+	/* AH may be freed in CloseArchive? */
+	CloseArchive(AH);
+
+	return nerror;
+}
+
+/*
+ * restore_one_database
+ *
+ * This will restore one database using toc.dat file.
+ *
+ * returns the number of errors while doing restore.
+ */
+static int
+restore_one_database(const char *inputFileSpec, RestoreOptions *opts,
+					 int numWorkers, bool append_data)
+{
+	Archive    *AH;
+	int			n_errors;
+
 	AH = OpenArchive(inputFileSpec, opts->format);
 
 	SetArchiveOptions(AH, NULL, opts);
@@ -492,9 +738,15 @@ main(int argc, char **argv)
 	/*
 	 * We don't have a connection yet but that doesn't matter. The connection
 	 * is initialized to NULL and if we terminate through exit_nicely() while
-	 * it's still NULL, the cleanup function will just be a no-op.
+	 * it's still NULL, the cleanup function will just be a no-op. If we are
+	 * restoring multiple databases, then only update AX handle for cleanup as
+	 * the previous entry was already in the array and we had closed previous
+	 * connection, so we can use the same array slot.
 	 */
-	on_exit_close_archive(AH);
+	if (!append_data)
+		on_exit_close_archive(AH);
+	else
+		replace_on_exit_close_archive(AH);
 
 	/* Let the archiver know how noisy to be */
 	AH->verbose = opts->verbose;
@@ -514,25 +766,21 @@ main(int argc, char **argv)
 	else
 	{
 		ProcessArchiveRestoreOptions(AH);
-		RestoreArchive(AH);
+		RestoreArchive(AH, append_data);
 	}
 
-	/* done, print a summary of ignored errors */
-	if (AH->n_errors)
-		pg_log_warning("errors ignored on restore: %d", AH->n_errors);
+	n_errors = AH->n_errors;
 
 	/* AH may be freed in CloseArchive? */
-	exit_code = AH->n_errors ? 1 : 0;
-
 	CloseArchive(AH);
 
-	return exit_code;
+	return n_errors;
 }
 
 static void
 usage(const char *progname)
 {
-	printf(_("%s restores a PostgreSQL database from an archive created by pg_dump.\n\n"), progname);
+	printf(_("%s restores PostgreSQL databases from archives created by pg_dump or pg_dumpall.\n\n"), progname);
 	printf(_("Usage:\n"));
 	printf(_("  %s [OPTION]... [FILE]\n"), progname);
 
@@ -550,6 +798,7 @@ usage(const char *progname)
 	printf(_("  -c, --clean                  clean (drop) database objects before recreating\n"));
 	printf(_("  -C, --create                 create the target database\n"));
 	printf(_("  -e, --exit-on-error          exit on error, default is to continue\n"));
+	printf(_("  -g, --globals-only           restore only global objects, no databases\n"));
 	printf(_("  -I, --index=NAME             restore named index\n"));
 	printf(_("  -j, --jobs=NUM               use this many parallel jobs to restore\n"));
 	printf(_("  -L, --use-list=FILENAME      use table of contents from this file for\n"
@@ -566,6 +815,7 @@ usage(const char *progname)
 	printf(_("  -1, --single-transaction     restore as a single transaction\n"));
 	printf(_("  --disable-triggers           disable triggers during data-only restore\n"));
 	printf(_("  --enable-row-security        enable row security\n"));
+	printf(_("  --exclude-database=PATTERN   do not restore the specified database(s)\n"));
 	printf(_("  --filter=FILENAME            restore or skip objects based on expressions\n"
 			 "                               in FILENAME\n"));
 	printf(_("  --if-exists                  use IF EXISTS when dropping objects\n"));
@@ -601,8 +851,8 @@ usage(const char *progname)
 	printf(_("  --role=ROLENAME          do SET ROLE before restore\n"));
 
 	printf(_("\n"
-			 "The options -I, -n, -N, -P, -t, -T, and --section can be combined and specified\n"
-			 "multiple times to select multiple objects.\n"));
+			 "The options -I, -n, -N, -P, -t, -T, --section, and --exclude-database can be\n"
+			 "combined and specified multiple times to select multiple objects.\n"));
 	printf(_("\nIf no input file name is supplied, then standard input is used.\n\n"));
 	printf(_("Report bugs to <%s>.\n"), PACKAGE_BUGREPORT);
 	printf(_("%s home page: <%s>\n"), PACKAGE_NAME, PACKAGE_URL);
@@ -706,4 +956,423 @@ read_restore_filters(const char *filename, RestoreOptions *opts)
 	}
 
 	filter_free(&fstate);
+}
+
+/*
+ * file_exists_in_directory
+ *
+ * Returns true if the file exists in the given directory.
+ */
+static bool
+file_exists_in_directory(const char *dir, const char *filename)
+{
+	struct stat st;
+	char		buf[MAXPGPATH];
+
+	if (snprintf(buf, MAXPGPATH, "%s/%s", dir, filename) >= MAXPGPATH)
+		pg_fatal("directory name too long: \"%s\"", dir);
+
+	return (stat(buf, &st) == 0 && S_ISREG(st.st_mode));
+}
+
+/*
+ * get_dbnames_list_to_restore
+ *
+ * This will mark for skipping any entries from dbname_oid_list that pattern match an
+ * entry in the db_exclude_patterns list.
+ *
+ * Returns the number of database to be restored.
+ *
+ */
+static int
+get_dbnames_list_to_restore(PGconn *conn,
+							SimplePtrList *dbname_oid_list,
+							SimpleStringList db_exclude_patterns)
+{
+	int			count_db = 0;
+	PQExpBuffer query;
+	PQExpBuffer db_lit;
+	PGresult   *res;
+
+	query = createPQExpBuffer();
+	db_lit = createPQExpBuffer();
+
+	/*
+	 * Process one by one all dbnames and if specified to skip restoring, then
+	 * remove dbname from list.
+	 */
+	for (SimplePtrListCell *db_cell = dbname_oid_list->head;
+		 db_cell; db_cell = db_cell->next)
+	{
+		DbOidName  *dbidname = (DbOidName *) db_cell->ptr;
+		bool		skip_db_restore = false;
+
+		resetPQExpBuffer(query);
+		resetPQExpBuffer(db_lit);
+
+		appendStringLiteralConn(db_lit, dbidname->str, conn);
+
+		for (SimpleStringListCell *pat_cell = db_exclude_patterns.head; pat_cell; pat_cell = pat_cell->next)
+		{
+			/*
+			 * If there is an exact match then we don't need to try a pattern
+			 * match
+			 */
+			if (pg_strcasecmp(dbidname->str, pat_cell->val) == 0)
+				skip_db_restore = true;
+			/* Otherwise, try a pattern match if there is a connection */
+			else
+			{
+				int			dotcnt;
+
+				appendPQExpBufferStr(query, "SELECT 1 ");
+				processSQLNamePattern(conn, query, pat_cell->val, false,
+									  false, NULL, db_lit->data,
+									  NULL, NULL, NULL, &dotcnt);
+
+				if (dotcnt > 0)
+				{
+					pg_log_error("improper qualified name (too many dotted names): %s",
+								 dbidname->str);
+					PQfinish(conn);
+					exit_nicely(1);
+				}
+
+				res = executeQuery(conn, query->data);
+
+				if (PQntuples(res))
+				{
+					skip_db_restore = true;
+					pg_log_info("database name \"%s\" matches --exclude-database pattern \"%s\"", dbidname->str, pat_cell->val);
+				}
+
+				PQclear(res);
+				resetPQExpBuffer(query);
+			}
+
+			if (skip_db_restore)
+				break;
+		}
+
+		/*
+		 * Mark db to be skipped or increment the counter of dbs to be
+		 * restored
+		 */
+		if (skip_db_restore)
+		{
+			pg_log_info("excluding database \"%s\"", dbidname->str);
+			dbidname->oid = InvalidOid;
+		}
+		else
+			count_db++;
+	}
+
+	destroyPQExpBuffer(query);
+	destroyPQExpBuffer(db_lit);
+
+	return count_db;
+}
+
+/*
+ * get_dbname_oid_list_from_mfile
+ *
+ * Open map.dat file and read line by line and then prepare a list of database
+ * names and corresponding db_oid.
+ *
+ * Returns, total number of database names in map.dat file.
+ */
+static int
+get_dbname_oid_list_from_mfile(char *dumpdirpath, SimplePtrList *dbname_oid_list)
+{
+	StringInfoData linebuf;
+	FILE	   *pfile;
+	char		map_file_path[MAXPGPATH];
+	int			count = 0;
+	int			len;
+
+
+	/*
+	 * If there is no map.dat file in dump, then return from here as there is
+	 * no database to restore.
+	 */
+	if (!file_exists_in_directory(dumpdirpath, "map.dat"))
+	{
+		pg_log_info("database restoring is skipped because file \"%s\" does not exist in directory \"%s\"", "map.dat", dumpdirpath);
+		return 0;
+	}
+
+	len = strlen(dumpdirpath);
+
+	/* Trim slash from directory name. */
+	while (len > 1 && dumpdirpath[len - 1] == '/')
+	{
+		dumpdirpath[len - 1] = '\0';
+		len--;
+	}
+
+	snprintf(map_file_path, MAXPGPATH, "%s/map.dat", dumpdirpath);
+
+	/* Open map.dat file. */
+	pfile = fopen(map_file_path, PG_BINARY_R);
+
+	if (pfile == NULL)
+		pg_fatal("could not open file \"%s\": %m", map_file_path);
+
+	initStringInfo(&linebuf);
+
+	/* Append all the dbname/db_oid combinations to the list. */
+	while (pg_get_line_buf(pfile, &linebuf))
+	{
+		Oid			db_oid = InvalidOid;
+		char	   *dbname;
+		DbOidName  *dbidname;
+		int			namelen;
+		char	   *p = linebuf.data;
+
+		/* look for the dboid. */
+		while (isdigit((unsigned char) *p))
+			p++;
+
+		/* ignore lines that don't begin with a digit */
+		if (p == linebuf.data)
+			continue;
+
+		if (*p == ' ')
+		{
+			sscanf(linebuf.data, "%u", &db_oid);
+			p++;
+		}
+
+		/* dbname is the rest of the line */
+		dbname = p;
+		namelen = strlen(dbname);
+
+		/* Strip trailing newline */
+		if (namelen > 0 && dbname[namelen - 1] == '\n')
+			dbname[--namelen] = '\0';
+
+		/* Report error and exit if the file has any corrupted data. */
+		if (!OidIsValid(db_oid) || namelen < 1)
+			pg_fatal("invalid entry in file \"%s\" on line %d", map_file_path,
+					 count + 1);
+
+		dbidname = pg_malloc(offsetof(DbOidName, str) + namelen + 1);
+		dbidname->oid = db_oid;
+		strlcpy(dbidname->str, dbname, namelen + 1);
+
+		pg_log_info("found database \"%s\" (OID: %u) in file \"%s\"",
+					dbidname->str, db_oid, map_file_path);
+
+		simple_ptr_list_append(dbname_oid_list, dbidname);
+		count++;
+	}
+
+	/* Close map.dat file. */
+	fclose(pfile);
+
+	pfree(linebuf.data);
+
+	return count;
+}
+
+/*
+ * restore_all_databases
+ *
+ * This will restore databases those dumps are present in
+ * directory based on map.dat file mapping.
+ *
+ * This will skip restoring for databases that are specified with
+ * exclude-database option.
+ *
+ * returns, number of errors while doing restore.
+ */
+static int
+restore_all_databases(const char *inputFileSpec,
+					  SimpleStringList db_exclude_patterns, RestoreOptions *opts,
+					  int numWorkers)
+{
+	SimplePtrList dbname_oid_list = {NULL, NULL};
+	int			num_db_restore = 0;
+	int			num_total_db;
+	int			n_errors_total = 0;
+	char	   *connected_db = NULL;
+	PGconn	   *conn = NULL;
+	RestoreOptions *original_opts = pg_malloc0_object(RestoreOptions);
+	RestoreOptions *tmpopts = pg_malloc0_object(RestoreOptions);
+
+	memcpy(original_opts, opts, sizeof(RestoreOptions));
+
+	/* Save db name to reuse it for all the database. */
+	if (opts->cparams.dbname)
+		connected_db = opts->cparams.dbname;
+
+	num_total_db = get_dbname_oid_list_from_mfile((char *) inputFileSpec, &dbname_oid_list);
+
+	pg_log_info(ngettext("found %d database name in \"%s\"",
+						 "found %d database names in \"%s\"",
+						 num_total_db),
+				num_total_db, "map.dat");
+
+	/*
+	 * If exclude-patterns is given, connect to the database to process them.
+	 */
+	if (db_exclude_patterns.head != NULL)
+	{
+		if (opts->cparams.dbname)
+		{
+			conn = ConnectDatabase(opts->cparams.dbname, NULL, opts->cparams.pghost,
+								   opts->cparams.pgport, opts->cparams.username, TRI_DEFAULT,
+								   false, progname, NULL, NULL, NULL, NULL);
+
+			if (!conn)
+				pg_fatal("could not connect to database \"%s\"", opts->cparams.dbname);
+		}
+
+		if (!conn)
+		{
+			pg_log_info("trying to connect to database \"%s\"", "postgres");
+
+			conn = ConnectDatabase("postgres", NULL, opts->cparams.pghost,
+								   opts->cparams.pgport, opts->cparams.username, TRI_DEFAULT,
+								   false, progname, NULL, NULL, NULL, NULL);
+
+			/* Try with template1. */
+			if (!conn)
+			{
+				pg_log_info("trying to connect to database \"%s\"", "template1");
+
+				conn = ConnectDatabase("template1", NULL, opts->cparams.pghost,
+									   opts->cparams.pgport, opts->cparams.username, TRI_DEFAULT,
+									   false, progname, NULL, NULL, NULL, NULL);
+				if (!conn)
+				{
+					pg_log_error("could not connect to databases \"postgres\" or \"template1\"\n"
+								 "Please specify an alternative database.");
+					pg_log_error_hint("Try \"%s --help\" for more information.", progname);
+					exit_nicely(1);
+				}
+			}
+		}
+
+		/* Filter the db list according to the exclude patterns. */
+		num_db_restore = get_dbnames_list_to_restore(conn, &dbname_oid_list,
+													 db_exclude_patterns);
+		PQfinish(conn);
+	}
+	else
+		num_db_restore = num_total_db;
+
+	/* Exit if no db needs to be restored. */
+	if (num_db_restore == 0)
+	{
+		pg_log_info(ngettext("no database needs restoring out of %d database",
+							 "no database needs restoring out of %d databases", num_total_db),
+					num_total_db);
+		pg_free(original_opts);
+		pg_free(tmpopts);
+		return 0;
+	}
+
+	pg_log_info("need to restore %d databases out of %d databases", num_db_restore, num_total_db);
+
+	/*
+	 * We have a list of databases to restore after processing the
+	 * exclude-database switch(es).  Now we can restore them one by one.
+	 */
+	for (SimplePtrListCell *db_cell = dbname_oid_list.head;
+		 db_cell; db_cell = db_cell->next)
+	{
+		DbOidName  *dbidname = (DbOidName *) db_cell->ptr;
+		char		subdirpath[MAXPGPATH];
+		char		subdirdbpath[MAXPGPATH];
+		char		dbfilename[MAXPGPATH];
+		int			n_errors;
+
+		/* ignore dbs marked for skipping */
+		if (dbidname->oid == InvalidOid)
+			continue;
+
+		/*
+		 * Since pg_backup_archiver.c may modify RestoreOptions during the
+		 * previous restore, we must provide a fresh copy of the original
+		 * "opts" for each call to restore_one_database.
+		 */
+		memcpy(tmpopts, original_opts, sizeof(RestoreOptions));
+
+		/*
+		 * We need to reset override_dbname so that objects can be restored
+		 * into an already created database. (used with -d/--dbname option)
+		 */
+		if (tmpopts->cparams.override_dbname)
+		{
+			pfree(tmpopts->cparams.override_dbname);
+			tmpopts->cparams.override_dbname = NULL;
+		}
+
+		snprintf(subdirdbpath, MAXPGPATH, "%s/databases", inputFileSpec);
+
+		/*
+		 * Look for the database dump file/dir. If there is an {oid}.tar or
+		 * {oid}.dmp file, use it. Otherwise try to use a directory called
+		 * {oid}
+		 */
+		snprintf(dbfilename, MAXPGPATH, "%u.tar", dbidname->oid);
+		if (file_exists_in_directory(subdirdbpath, dbfilename))
+			snprintf(subdirpath, MAXPGPATH, "%s/databases/%u.tar", inputFileSpec, dbidname->oid);
+		else
+		{
+			snprintf(dbfilename, MAXPGPATH, "%u.dmp", dbidname->oid);
+
+			if (file_exists_in_directory(subdirdbpath, dbfilename))
+				snprintf(subdirpath, MAXPGPATH, "%s/databases/%u.dmp", inputFileSpec, dbidname->oid);
+			else
+				snprintf(subdirpath, MAXPGPATH, "%s/databases/%u", inputFileSpec, dbidname->oid);
+		}
+
+		pg_log_info("restoring database \"%s\"", dbidname->str);
+
+		/* If database is already created, then don't set createDB flag. */
+		if (tmpopts->cparams.dbname)
+		{
+			PGconn	   *test_conn;
+
+			test_conn = ConnectDatabase(dbidname->str, NULL, tmpopts->cparams.pghost,
+										tmpopts->cparams.pgport, tmpopts->cparams.username, TRI_DEFAULT,
+										false, progname, NULL, NULL, NULL, NULL);
+			if (test_conn)
+			{
+				PQfinish(test_conn);
+
+				/* Use already created database for connection. */
+				tmpopts->createDB = 0;
+				tmpopts->cparams.dbname = dbidname->str;
+			}
+			else
+			{
+				/* We'll have to create it */
+				tmpopts->createDB = 1;
+				tmpopts->cparams.dbname = connected_db;
+			}
+		}
+
+		/* Restore the single database. */
+		n_errors = restore_one_database(subdirpath, tmpopts, numWorkers, true);
+
+		n_errors_total += n_errors;
+
+		/* Print a summary of ignored errors during single database restore. */
+		if (n_errors)
+			pg_log_warning("errors ignored on database \"%s\" restore: %d", dbidname->str, n_errors);
+	}
+
+	/* Log number of processed databases. */
+	pg_log_info("number of restored databases is %d", num_db_restore);
+
+	/* Free dbname and dboid list. */
+	simple_ptr_list_destroy(&dbname_oid_list);
+
+	pg_free(original_opts);
+	pg_free(tmpopts);
+
+	return n_errors_total;
 }
