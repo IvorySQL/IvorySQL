@@ -21,6 +21,7 @@ project('postgresql',
     'warning_level=1', #-Wall equivalent
     'b_pch=false',
     'buildtype=debugoptimized', # -O2 + debug
+    'default_library=both',
     # For compatibility with the autoconf build, set a default prefix. This
     # works even on windows, where it's a drive-relative path (i.e. when on
     # d:/somepath it'll install to d:/usr/local/pgsql)
@@ -52,6 +53,32 @@ endif
 not_found_dep = dependency('', required: false)
 thread_dep = dependency('threads')
 auto_features = get_option('auto_features')
+
+# Declare variables to disable static or shared libraries.  This
+# makes the 'default_library' option work even though we don't use the
+# library() function but instead shared_library() and static_library()
+# separately.
+#
+# build_shared_lib/build_static_lib control building/installing the two
+# versions of libraries that we can build both versions of (e.g., libpq).
+# There are also libraries that we only build a static version of (e.g.,
+# libpgport).  These are always built, since we need them while building,
+# but they are installed only if install_internal_static_lib is true.
+#
+# Note: at present, -Ddefault_library=static doesn't actually work, because
+# psql and other programs insist on linking to the shared version of libpq.
+# This could be fixed if there was interest, but so far there is not.
+default_library_opt = get_option('default_library')
+build_shared_lib = true
+build_static_lib = true
+install_internal_static_lib = true
+if default_library_opt == 'shared'
+  build_static_lib = false
+  install_internal_static_lib = false
+elif default_library_opt == 'static'
+  build_shared_lib = false
+  error('-Ddefault_library=static is not yet supported')
+endif
 
 
 

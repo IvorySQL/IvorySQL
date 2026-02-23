@@ -2807,6 +2807,17 @@ ninja install
       </listitem>
      </varlistentry>
 
+     <varlistentry id="configure-default-library-meson">
+      <term><option>-Ddefault_library={ both | shared }</option></term>
+      <listitem>
+       <para>
+        This option selects whether both shared and static libraries are built
+        (the default), or only shared libraries.  (The third variant of only
+        building static libraries is currently not supported.)
+       </para>
+      </listitem>
+     </varlistentry>
+
      <varlistentry id="configure-extra-include-dirs-meson">
       <term><option>-Dextra_include_dirs=<replaceable>DIRECTORIES</replaceable></option></term>
       <listitem>

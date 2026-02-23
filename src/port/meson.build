@@ -193,6 +193,7 @@ foreach name, opts : pgport_variants
       c_pch: pch_c_h,
       kwargs: opts + {
         'dependencies': opts['dependencies'] + [ssl],
+        'install': install_internal_static_lib and name != '_srv',
       }
     )
   pgport += {name: lib}

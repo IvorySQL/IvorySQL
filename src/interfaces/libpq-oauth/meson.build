@@ -21,6 +21,7 @@ export_file = custom_target('libpq-oauth.exports',
 # port needs to be in include path due to pthread-win32.h
 libpq_oauth_inc = include_directories('.', '../libpq', '../../port')
 
+if build_static_lib
 libpq_oauth_st = static_library('libpq-oauth',
   libpq_oauth_sources,
   include_directories: [libpq_oauth_inc, postgres_inc],
@@ -33,11 +34,13 @@ libpq_oauth_st = static_library('libpq-oauth',
   kwargs: default_lib_args,
 )
 libpq_targets += libpq_oauth_st
+endif
 
 # This is an internal module; we don't want an SONAME and therefore do not set
 # SO_MAJOR_VERSION.
 libpq_oauth_name = 'libpq-oauth-@0@'.format(pg_version_major)
 
+if build_shared_lib
 libpq_oauth_so = shared_module(libpq_oauth_name,
   libpq_oauth_sources + libpq_oauth_so_sources,
   include_directories: [libpq_oauth_inc, postgres_inc],
@@ -49,6 +52,7 @@ libpq_oauth_so = shared_module(libpq_oauth_name,
   kwargs: default_lib_args,
 )
 libpq_targets += libpq_oauth_so
+endif
 
 libpq_oauth_test_deps = []
 
