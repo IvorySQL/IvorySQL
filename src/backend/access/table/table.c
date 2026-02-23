@@ -131,15 +131,20 @@ table_close(Relation relation, LOCKMODE lockmode)
 /* ----------------
  *		validate_relation_kind - check the relation's kind
  *
- *		Make sure relkind is not index or composite type
+ *		Make sure relkind is table-like.  In particular, this excludes indexes
+ *		and composite types, which cannot be read from in a query.
  * ----------------
  */
 static inline void
 validate_relation_kind(Relation r)
 {
-	if (r->rd_rel->relkind == RELKIND_INDEX ||
-		r->rd_rel->relkind == RELKIND_PARTITIONED_INDEX ||
-		r->rd_rel->relkind == RELKIND_COMPOSITE_TYPE)
+	if (r->rd_rel->relkind != RELKIND_RELATION &&
+		r->rd_rel->relkind != RELKIND_SEQUENCE &&
+		r->rd_rel->relkind != RELKIND_TOASTVALUE &&
+		r->rd_rel->relkind != RELKIND_VIEW &&
+		r->rd_rel->relkind != RELKIND_MATVIEW &&
+		r->rd_rel->relkind != RELKIND_FOREIGN_TABLE &&
+		r->rd_rel->relkind != RELKIND_PARTITIONED_TABLE)
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("cannot open relation \"%s\"",
