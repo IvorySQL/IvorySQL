@@ -46,6 +46,8 @@
  *		typedef struct FormData_pg_opclass
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_opclass,2616,OperatorClassRelationId)
 {
 	Oid			oid;			/* oid */
@@ -74,6 +76,8 @@ CATALOG(pg_opclass,2616,OperatorClassRelationId)
 	/* type of data in index, or InvalidOid if same as input column type */
 	Oid			opckeytype BKI_DEFAULT(0) BKI_LOOKUP_OPT(pg_type);
 } FormData_pg_opclass;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_opclass corresponds to a pointer to a tuple with

@@ -32,6 +32,8 @@
  *	nspacl				access privilege list
  * ----------------------------------------------------------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_namespace,2615,NamespaceRelationId)
 {
 	Oid			oid;			/* oid */
@@ -43,6 +45,8 @@ CATALOG(pg_namespace,2615,NamespaceRelationId)
 	aclitem		nspacl[1];
 #endif
 } FormData_pg_namespace;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_namespace corresponds to a pointer to a tuple with

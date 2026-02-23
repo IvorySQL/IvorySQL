@@ -28,6 +28,8 @@
  *		typedef struct FormData_pg_statistic_ext_data
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_statistic_ext_data,3429,StatisticExtDataRelationId)
 {
 	Oid			stxoid BKI_LOOKUP(pg_statistic_ext);	/* statistics object
@@ -44,6 +46,8 @@ CATALOG(pg_statistic_ext_data,3429,StatisticExtDataRelationId)
 #endif
 
 } FormData_pg_statistic_ext_data;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_statistic_ext_data corresponds to a pointer to a tuple with

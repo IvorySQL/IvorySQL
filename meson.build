@@ -1835,32 +1835,29 @@ endif
 
 # Determine memory alignment requirements for the basic C data types.
 
-alignof_types = ['short', 'int', 'long', 'double']
+alignof_types = ['short', 'int', 'int64_t', 'double']
 foreach t : alignof_types
-  align = cc.alignment(t, args: test_c_args)
+  align = cc.alignment(t, args: test_c_args, prefix: '#include <stdint.h>')
   cdata.set('ALIGNOF_@0@'.format(t.to_upper()), align)
 endforeach
 
 # Compute maximum alignment of any basic type.
 #
-# We require 'double' to have the strictest alignment among the basic types,
-# because otherwise the C ABI might impose 8-byte alignment on some of the
-# other C types that correspond to TYPALIGN_DOUBLE SQL types.  That could
-# cause a mismatch between the tuple layout and the C struct layout of a
-# catalog tuple.  We used to carefully order catalog columns such that any
-# fixed-width, attalign=4 columns were at offsets divisible by 8 regardless
-# of MAXIMUM_ALIGNOF to avoid that, but we no longer support any platforms
-# where TYPALIGN_DOUBLE != MAXIMUM_ALIGNOF.
-#
-# We assume without checking that int64_t's alignment is at least as strong
-# as long, char, short, or int.  Note that we intentionally do not consider
-# any types wider than 64 bits, as allowing MAXIMUM_ALIGNOF to exceed 8
-# would be too much of a penalty for disk and memory space.
+# We assume without checking that the maximum alignment requirement is that
+# of int64_t and/or double.  (On most platforms those are the same, but not
+# everywhere.)  For historical reasons, both int8 and float8 datatypes have
+# typalign 'd', and therefore will be aligned per ALIGNOF_DOUBLE in database
+# tuples even if ALIGNOF_INT64_T is more.  Note that we intentionally do not
+# consider any types wider than 64 bits, as allowing MAXIMUM_ALIGNOF to exceed
+# 8 would be too much of a penalty for disk and memory space.
+
+alignof_int64_t = cdata.get('ALIGNOF_INT64_T')
 alignof_double = cdata.get('ALIGNOF_DOUBLE')
-if cc.alignment('int64_t', args: test_c_args, prefix: '#include <stdint.h>') > alignof_double
-  error('alignment of int64_t is greater than the alignment of double')
+if alignof_int64_t > alignof_double
+  cdata.set('MAXIMUM_ALIGNOF', alignof_int64_t)
+else
+  cdata.set('MAXIMUM_ALIGNOF', alignof_double)
 endif
-cdata.set('MAXIMUM_ALIGNOF', alignof_double)
 
 cdata.set('SIZEOF_LONG', cc.sizeof('long', args: test_c_args))
 cdata.set('SIZEOF_LONG_LONG', cc.sizeof('long long', args: test_c_args))

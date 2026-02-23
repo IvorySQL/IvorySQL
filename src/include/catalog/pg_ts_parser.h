@@ -26,6 +26,8 @@
  *		typedef struct FormData_pg_ts_parser
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_ts_parser,3601,TSParserRelationId)
 {
 	Oid			oid;			/* oid */
@@ -51,6 +53,8 @@ CATALOG(pg_ts_parser,3601,TSParserRelationId)
 	/* return descriptions of lexeme's types */
 	regproc		prslextype BKI_LOOKUP(pg_proc);
 } FormData_pg_ts_parser;
+
+END_CATALOG_STRUCT
 
 typedef FormData_pg_ts_parser *Form_pg_ts_parser;
 

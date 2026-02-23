@@ -26,6 +26,8 @@
  *		typedef struct FormData_pg_event_trigger
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_event_trigger,3466,EventTriggerRelationId)
 {
 	Oid			oid;			/* oid */
@@ -41,6 +43,8 @@ CATALOG(pg_event_trigger,3466,EventTriggerRelationId)
 	text		evttags[1];		/* command TAGs this event trigger targets */
 #endif
 } FormData_pg_event_trigger;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_event_trigger corresponds to a pointer to a tuple with

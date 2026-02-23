@@ -17268,41 +17268,6 @@ _ACEOF
 
 # The cast to long int works around a bug in the HP C Compiler,
 # see AC_CHECK_SIZEOF for more information.
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking alignment of long" >&5
-$as_echo_n "checking alignment of long... " >&6; }
-if ${ac_cv_alignof_long+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  if ac_fn_c_compute_int "$LINENO" "(long int) offsetof (ac__type_alignof_, y)" "ac_cv_alignof_long"        "$ac_includes_default
-#ifndef offsetof
-# define offsetof(type, member) ((char *) &((type *) 0)->member - (char *) 0)
-#endif
-typedef struct { char x; long y; } ac__type_alignof_;"; then :
-
-else
-  if test "$ac_cv_type_long" = yes; then
-     { { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
-$as_echo "$as_me: error: in \`$ac_pwd':" >&2;}
-as_fn_error 77 "cannot compute alignment of long
-See \`config.log' for more details" "$LINENO" 5; }
-   else
-     ac_cv_alignof_long=0
-   fi
-fi
-
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_alignof_long" >&5
-$as_echo "$ac_cv_alignof_long" >&6; }
-
-
-
-cat >>confdefs.h <<_ACEOF
-#define ALIGNOF_LONG $ac_cv_alignof_long
-_ACEOF
-
-
-# The cast to long int works around a bug in the HP C Compiler,
-# see AC_CHECK_SIZEOF for more information.
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking alignment of int64_t" >&5
 $as_echo_n "checking alignment of int64_t... " >&6; }
 if ${ac_cv_alignof_int64_t+:} false; then :
@@ -17374,27 +17339,18 @@ _ACEOF
 
 # Compute maximum alignment of any basic type.
 #
-# We require 'double' to have the strictest alignment among the basic types,
-# because otherwise the C ABI might impose 8-byte alignment on some of the
-# other C types that correspond to TYPALIGN_DOUBLE SQL types.  That could
-# cause a mismatch between the tuple layout and the C struct layout of a
-# catalog tuple.  We used to carefully order catalog columns such that any
-# fixed-width, attalign=4 columns were at offsets divisible by 8 regardless
-# of MAXIMUM_ALIGNOF to avoid that, but we no longer support any platforms
-# where TYPALIGN_DOUBLE != MAXIMUM_ALIGNOF.
-#
-# We assume without checking that long's alignment is at least as strong as
-# char, short, or int.  Note that we intentionally do not consider any types
-# wider than 64 bits, as allowing MAXIMUM_ALIGNOF to exceed 8 would be too
-# much of a penalty for disk and memory space.
+# We assume without checking that the maximum alignment requirement is that
+# of int64_t and/or double.  (On most platforms those are the same, but not
+# everywhere.)  For historical reasons, both int8 and float8 datatypes have
+# typalign 'd', and therefore will be aligned per ALIGNOF_DOUBLE in database
+# tuples even if ALIGNOF_INT64_T is more.  Note that we intentionally do not
+# consider any types wider than 64 bits, as allowing MAXIMUM_ALIGNOF to exceed
+# 8 would be too much of a penalty for disk and memory space.
 
-MAX_ALIGNOF=$ac_cv_alignof_double
-
-if test $ac_cv_alignof_long -gt $MAX_ALIGNOF ; then
-  as_fn_error $? "alignment of 'long' is greater than the alignment of 'double'" "$LINENO" 5
-fi
-if test $ac_cv_alignof_int64_t -gt $MAX_ALIGNOF ; then
-  as_fn_error $? "alignment of 'int64_t' is greater than the alignment of 'double'" "$LINENO" 5
+if test $ac_cv_alignof_int64_t -gt $ac_cv_alignof_double ; then
+  MAX_ALIGNOF=$ac_cv_alignof_int64_t
+else
+  MAX_ALIGNOF=$ac_cv_alignof_double
 fi
 
 cat >>confdefs.h <<_ACEOF

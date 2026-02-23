@@ -27,6 +27,8 @@
  *		typedef struct FormData_pg_attrdef
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_attrdef,2604,AttrDefaultRelationId)
 {
 	Oid			oid;			/* oid */
@@ -40,6 +42,8 @@ CATALOG(pg_attrdef,2604,AttrDefaultRelationId)
 											 * default */
 #endif
 } FormData_pg_attrdef;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_attrdef corresponds to a pointer to a tuple with

@@ -26,6 +26,8 @@
  *		typedef struct FormData_pg_opfamily
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_opfamily,2753,OperatorFamilyRelationId)
 {
 	Oid			oid;			/* oid */
@@ -42,6 +44,8 @@ CATALOG(pg_opfamily,2753,OperatorFamilyRelationId)
 	/* opfamily owner */
 	Oid			opfowner BKI_DEFAULT(POSTGRES) BKI_LOOKUP(pg_authid);
 } FormData_pg_opfamily;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_opfamily corresponds to a pointer to a tuple with

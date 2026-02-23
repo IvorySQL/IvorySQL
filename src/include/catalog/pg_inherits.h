@@ -29,6 +29,8 @@
  *		typedef struct FormData_pg_inherits
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_inherits,2611,InheritsRelationId)
 {
 	Oid			inhrelid BKI_LOOKUP(pg_class);
@@ -36,6 +38,8 @@ CATALOG(pg_inherits,2611,InheritsRelationId)
 	int32		inhseqno;
 	bool		inhdetachpending;
 } FormData_pg_inherits;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_inherits corresponds to a pointer to a tuple with

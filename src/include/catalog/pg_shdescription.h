@@ -38,6 +38,8 @@
  *		typedef struct FormData_pg_shdescription
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_shdescription,2396,SharedDescriptionRelationId) BKI_SHARED_RELATION
 {
 	Oid			objoid;			/* OID of object itself */
@@ -47,6 +49,8 @@ CATALOG(pg_shdescription,2396,SharedDescriptionRelationId) BKI_SHARED_RELATION
 	text		description BKI_FORCE_NOT_NULL; /* description of object */
 #endif
 } FormData_pg_shdescription;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_shdescription corresponds to a pointer to a tuple with

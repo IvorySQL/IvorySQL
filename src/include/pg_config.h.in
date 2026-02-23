@@ -12,9 +12,6 @@
 /* The normal alignment of `int64_t', in bytes. */
 #undef ALIGNOF_INT64_T
 
-/* The normal alignment of `long', in bytes. */
-#undef ALIGNOF_LONG
-
 /* The normal alignment of `PG_INT128_TYPE', in bytes. */
 #undef ALIGNOF_PG_INT128_TYPE
 

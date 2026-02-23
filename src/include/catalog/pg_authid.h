@@ -28,6 +28,8 @@
  *		typedef struct FormData_pg_authid
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_authid,1260,AuthIdRelationId) BKI_SHARED_RELATION BKI_ROWTYPE_OID(2842,AuthIdRelation_Rowtype_Id) BKI_SCHEMA_MACRO
 {
 	Oid			oid;			/* oid */
@@ -47,6 +49,8 @@ CATALOG(pg_authid,1260,AuthIdRelationId) BKI_SHARED_RELATION BKI_ROWTYPE_OID(284
 	timestamptz rolvaliduntil;	/* password expiration time, if any */
 #endif
 } FormData_pg_authid;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_authid corresponds to a pointer to a tuple with

@@ -43,6 +43,8 @@
  *		typedef struct FormData_pg_init_privs
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_init_privs,3394,InitPrivsRelationId)
 {
 	Oid			objoid;			/* OID of object itself */
@@ -55,6 +57,8 @@ CATALOG(pg_init_privs,3394,InitPrivsRelationId)
 	aclitem		initprivs[1] BKI_FORCE_NOT_NULL;	/* initial privs on object */
 #endif
 } FormData_pg_init_privs;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_init_privs corresponds to a pointer to a tuple with

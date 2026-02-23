@@ -26,6 +26,8 @@
  *		typedef struct FormData_pg_policy
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_policy,3256,PolicyRelationId)
 {
 	Oid			oid;			/* oid */
@@ -42,6 +44,8 @@ CATALOG(pg_policy,3256,PolicyRelationId)
 	pg_node_tree polwithcheck;	/* WITH CHECK quals. */
 #endif
 } FormData_pg_policy;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_policy corresponds to a pointer to a row with

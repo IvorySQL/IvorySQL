@@ -27,6 +27,8 @@
  *		typedef struct FormData_pg_replication_origin
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_replication_origin,6000,ReplicationOriginRelationId) BKI_SHARED_RELATION
 {
 	/*
@@ -51,6 +53,8 @@ CATALOG(pg_replication_origin,6000,ReplicationOriginRelationId) BKI_SHARED_RELAT
 #ifdef CATALOG_VARLEN			/* further variable-length fields */
 #endif
 } FormData_pg_replication_origin;
+
+END_CATALOG_STRUCT
 
 typedef FormData_pg_replication_origin *Form_pg_replication_origin;
 

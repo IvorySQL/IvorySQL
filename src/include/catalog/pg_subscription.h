@@ -40,6 +40,8 @@
  * here, be sure to update that (or, if the new column is not to be publicly
  * readable, update associated comments and catalogs.sgml instead).
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_subscription,6100,SubscriptionRelationId) BKI_SHARED_RELATION BKI_ROWTYPE_OID(6101,SubscriptionRelation_Rowtype_Id) BKI_SCHEMA_MACRO
 {
 	Oid			oid;			/* oid */
@@ -110,6 +112,8 @@ CATALOG(pg_subscription,6100,SubscriptionRelationId) BKI_SHARED_RELATION BKI_ROW
 	text		suborigin BKI_DEFAULT(LOGICALREP_ORIGIN_ANY);
 #endif
 } FormData_pg_subscription;
+
+END_CATALOG_STRUCT
 
 typedef FormData_pg_subscription *Form_pg_subscription;
 

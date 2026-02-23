@@ -45,6 +45,8 @@
  *		typedef struct FormData_pg_description
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_description,2609,DescriptionRelationId)
 {
 	Oid			objoid;			/* OID of object itself */
@@ -55,6 +57,8 @@ CATALOG(pg_description,2609,DescriptionRelationId)
 	text		description BKI_FORCE_NOT_NULL; /* description of object */
 #endif
 } FormData_pg_description;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_description corresponds to a pointer to a tuple with

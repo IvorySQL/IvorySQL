@@ -27,6 +27,8 @@
  *		typedef struct FormData_pg_partitioned_table
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_partitioned_table,3350,PartitionedRelationId)
 {
 	Oid			partrelid BKI_LOOKUP(pg_class); /* partitioned table oid */
@@ -56,6 +58,8 @@ CATALOG(pg_partitioned_table,3350,PartitionedRelationId)
 								 * one item for each zero entry in partattrs[] */
 #endif
 } FormData_pg_partitioned_table;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_partitioned_table corresponds to a pointer to a tuple with

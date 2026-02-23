@@ -33,6 +33,8 @@
  *		See struct FormData_pg_attribute for details.
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_type,1247,TypeRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(71,TypeRelation_Rowtype_Id) BKI_SCHEMA_MACRO
 {
 	Oid			oid;			/* oid */
@@ -252,6 +254,8 @@ CATALOG(pg_type,1247,TypeRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(71,TypeRelati
 	aclitem		typacl[1] BKI_DEFAULT(_null_);
 #endif
 } FormData_pg_type;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_type corresponds to a pointer to a row with

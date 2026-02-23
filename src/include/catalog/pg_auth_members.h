@@ -27,6 +27,8 @@
  *		typedef struct FormData_pg_auth_members
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_auth_members,1261,AuthMemRelationId) BKI_SHARED_RELATION BKI_ROWTYPE_OID(2843,AuthMemRelation_Rowtype_Id) BKI_SCHEMA_MACRO
 {
 	Oid			oid;			/* oid */
@@ -37,6 +39,8 @@ CATALOG(pg_auth_members,1261,AuthMemRelationId) BKI_SHARED_RELATION BKI_ROWTYPE_
 	bool		inherit_option;	/* exercise privileges without SET ROLE? */
 	bool		set_option;		/* use SET ROLE to the target role? */
 } FormData_pg_auth_members;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_auth_members corresponds to a pointer to a tuple with

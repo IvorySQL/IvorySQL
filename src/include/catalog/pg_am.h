@@ -26,6 +26,8 @@
  *		typedef struct FormData_pg_am
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_am,2601,AccessMethodRelationId)
 {
 	Oid			oid;			/* oid */
@@ -39,6 +41,8 @@ CATALOG(pg_am,2601,AccessMethodRelationId)
 	/* see AMTYPE_xxx constants below */
 	char		amtype;
 } FormData_pg_am;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_am corresponds to a pointer to a tuple with

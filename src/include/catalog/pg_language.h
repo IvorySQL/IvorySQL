@@ -26,6 +26,8 @@
  *		typedef struct FormData_pg_language
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_language,2612,LanguageRelationId)
 {
 	Oid			oid;			/* oid */
@@ -56,6 +58,8 @@ CATALOG(pg_language,2612,LanguageRelationId)
 	aclitem		lanacl[1] BKI_DEFAULT(_null_);
 #endif
 } FormData_pg_language;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_language corresponds to a pointer to a tuple with

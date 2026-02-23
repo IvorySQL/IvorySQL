@@ -28,6 +28,8 @@
  *		typedef struct FormData_pg_subscription_rel
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_subscription_rel,6102,SubscriptionRelRelationId)
 {
 	Oid			srsubid BKI_LOOKUP(pg_subscription);	/* Oid of subscription */
@@ -46,6 +48,8 @@ CATALOG(pg_subscription_rel,6102,SubscriptionRelRelationId)
 											 * valid */
 #endif
 } FormData_pg_subscription_rel;
+
+END_CATALOG_STRUCT
 
 typedef FormData_pg_subscription_rel *Form_pg_subscription_rel;
 
