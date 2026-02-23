@@ -1895,6 +1895,7 @@ PerformWalRecovery(void)
 					recoveryPausesHere(true);
 
 					/* drop into promote */
+					pg_fallthrough;
 
 				case RECOVERY_TARGET_ACTION_PROMOTE:
 					break;

@@ -296,6 +296,7 @@ main(int argc, char **argv)
 		 * done earlier.
 		 */
 		force_nl = false;
+		break;
 	    case form_feed:
 		break;
 	    case comment:

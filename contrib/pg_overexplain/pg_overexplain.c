@@ -258,6 +258,7 @@ overexplain_per_node_hook(PlanState *planstate, List *ancestors,
 					overexplain_bitmapset("RTIs",
 										  ((Result *) plan)->relids,
 										  es);
+				break;
 			default:
 				break;
 		}
