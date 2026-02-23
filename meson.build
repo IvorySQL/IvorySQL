@@ -234,7 +234,38 @@ endif
 # that purpose.
 portname = host_system
 
-if host_system == 'cygwin'
+if host_system == 'aix'
+  sema_kind = 'unnamed_posix'
+  library_path_var = 'LIBPATH'
+  export_file_format = 'aix'
+  export_fmt = '-Wl,-bE:@0@'
+  mod_link_args_fmt = ['-Wl,-bI:@0@']
+  mod_link_with_dir = 'libdir'
+  mod_link_with_name = '@0@.imp'
+
+  # We force 64-bit builds, because AIX doesn't play very nice with dynamic
+  # library loading in 32-bit mode: there's not enough address space.
+  cppflags += '-maix64'
+  ldflags += '-maix64'
+  # Note: it's also necessary to tell programs like 'ar' to work in 64-bit
+  # mode.  Since meson, in its infinite wisdom, doesn't allow us either
+  # to pass '-X64' to ar or to set the OBJECT_MODE environment variable
+  # from here, we have to tell the user to set OBJECT_MODE.
+
+  # M:SRE sets a flag indicating that an object is a shared library.
+  ldflags_sl += '-Wl,-bM:SRE'
+  # -brtllib indicates binaries should use runtime-loaded shared libraries.
+  ldflags_be += '-Wl,-brtllib'
+
+  # On AIX, shared libraries are wrapped in static libraries and can have
+  # the same extension '.a'.  Therefore we must refrain from trying to build
+  # static libraries alongside shared ones, or meson will complain about
+  # duplicate targets.  Note however that we leave dlsuffix with its default
+  # value of '.so'; this results in using '.so' for loadable modules, which
+  # is fine.
+  build_static_lib = false
+
+elif host_system == 'cygwin'
   sema_kind = 'unnamed_posix'
   cppflags += '-D_GNU_SOURCE'
   dlsuffix = '.dll'

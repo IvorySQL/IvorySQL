@@ -97,6 +97,11 @@ python_ldlibrary=`${PYTHON} -c "import sysconfig; print(' '.join(filter(None,sys
 
 # If LDLIBRARY exists and has a shlib extension, use it verbatim.
 ldlibrary=`echo "${python_ldlibrary}" | sed -e 's/\.so$//' -e 's/\.dll$//' -e 's/\.dylib$//' -e 's/\.sl$//'`
+if test "$PORTNAME" = "aix"; then
+  # On AIX, '.a' should also be believed to be a shlib.
+  ldlibrary=`echo "${ldlibrary}" | sed -e 's/\.a$//'`
+fi
+
 if test -e "${python_libdir}/${python_ldlibrary}" -a x"${python_ldlibrary}" != x"${ldlibrary}"
 then
 	ldlibrary=`echo "${ldlibrary}" | sed "s/^lib//"`

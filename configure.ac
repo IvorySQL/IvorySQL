@@ -67,6 +67,7 @@ PGAC_ARG_REQ(with, template, [NAME], [override operating system template],
 # --with-template not given
 
 case $host_os in
+     aix*) template=aix ;;
   cygwin*|msys*) template=cygwin ;;
   darwin*) template=darwin ;;
 dragonfly*) template=netbsd ;;
@@ -1571,7 +1572,8 @@ if test "$with_zstd" = yes ; then
   AC_CHECK_LIB(zstd, ZSTD_compress, [], [AC_MSG_ERROR([library 'zstd' is required for ZSTD support])])
 fi
 
-# Note: We can test for libldap_r only after we know PTHREAD_LIBS
+# Note: We can test for libldap_r only after we know PTHREAD_LIBS;
+# also, on AIX, we may need to have openssl in LIBS for this step.
 if test "$with_ldap" = yes ; then
   _LIBS="$LIBS"
   if test "$PORTNAME" != "win32"; then

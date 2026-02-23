@@ -3450,7 +3450,7 @@ export MANPATH
   <para>
    <productname>PostgreSQL</productname> can be expected to work on current
    versions of these operating systems: Linux, Windows,
-   FreeBSD, OpenBSD, NetBSD, DragonFlyBSD, macOS, Solaris, and illumos.
+   FreeBSD, OpenBSD, NetBSD, DragonFlyBSD, macOS, AIX, Solaris, and illumos.
    Other Unix-like systems may also work but are not currently
    being tested.  In most cases, all CPU architectures supported by
    a given operating system will work.  Look in
@@ -3472,7 +3472,7 @@ export MANPATH
    Historical versions of <productname>PostgreSQL</productname> or POSTGRES
    also ran on CPU architectures including Alpha, Itanium, M32R, M68K,
    M88K, NS32K, PA-RISC, SuperH, and VAX,
-   and operating systems including 4.3BSD, AIX, BEOS,
+   and operating systems including 4.3BSD, BEOS,
    BSD/OS, DG/UX, Dynix, HP-UX, IRIX, NeXTSTEP, QNX, SCO, SINIX, Sprite, SunOS,
    Tru64 UNIX, and ULTRIX.
   </para>
@@ -3494,6 +3494,42 @@ export MANPATH
    Platforms that are not covered here have no known platform-specific
    installation issues.
   </para>
+
+  <sect2 id="installation-notes-aix">
+   <title>AIX</title>
+
+   <indexterm zone="installation-notes-aix">
+    <primary>AIX</primary>
+    <secondary>installation on</secondary>
+   </indexterm>
+
+   <para>
+    You must use GCC
+    to build <productname>PostgreSQL</productname>
+    on <productname>AIX</productname>.
+    The native IBM compiler <command>xlc</command> is not supported.
+   </para>
+
+   <para>
+    Also, only 64-bit builds are supported.  While the make-based build
+    system will automatically create 64-bit executables and libraries,
+    the meson build system requires you to
+    set <varname>OBJECT_MODE</varname> before building:
+<programlisting>
+export OBJECT_MODE=64
+meson setup ...
+</programlisting>
+    Failure to do that will usually manifest as complaints
+    from <application>ar</application> about files having the wrong
+    object file mode.
+   </para>
+
+   <para>
+    <productname>AIX</productname> versions before 7.2 are no longer
+    tested nor supported by the <productname>PostgreSQL</productname>
+    community.
+   </para>
+  </sect2>
 
   <sect2 id="installation-notes-cygwin">
    <title>Cygwin</title>

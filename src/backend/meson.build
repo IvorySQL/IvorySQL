@@ -95,6 +95,25 @@ if cc.get_id() == 'msvc'
   # be restricted to b_pch=true.
   backend_link_with += postgres_lib
 
+elif host_system == 'aix'
+  # The '.' argument leads mkldexport.sh to emit "#! .", which refers to the
+  # main executable, allowing extension libraries to resolve their undefined
+  # symbols to symbols in the postgres binary.
+  postgres_imp = custom_target('postgres.imp',
+    command: [files('port/aix/mkldexport.sh'), '@INPUT@', '.'],
+    input: postgres_lib,
+    output: 'postgres.imp',
+    capture: true,
+    install: true,
+    install_dir: dir_lib_pkg,
+    build_by_default: false,
+  )
+  # -Wl,-bE:exportfile indicates these symbols are exported by postgres binary
+  backend_link_args += '-Wl,-bE:@0@'.format(postgres_imp.full_path())
+  backend_link_depends += postgres_imp
+  install_data(
+	'port/aix/mkldexport.sh',
+	install_dir: dir_pgxs / 'src/backend/port/aix')
 endif
 
 backend_input = []
