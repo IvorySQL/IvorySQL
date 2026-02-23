@@ -18405,7 +18405,7 @@ if test x"$USE_SSE42_CRC32C" = x"1"; then
 
 $as_echo "#define USE_SSE42_CRC32C 1" >>confdefs.h
 
-  PG_CRC32C_OBJS="pg_crc32c_sse42.o pg_crc32c_sse42_choose.o"
+  PG_CRC32C_OBJS="pg_crc32c_sse42.o"
   { $as_echo "$as_me:${as_lineno-$LINENO}: result: SSE 4.2" >&5
 $as_echo "SSE 4.2" >&6; }
 else
@@ -18413,7 +18413,7 @@ else
 
 $as_echo "#define USE_SSE42_CRC32C_WITH_RUNTIME_CHECK 1" >>confdefs.h
 
-    PG_CRC32C_OBJS="pg_crc32c_sse42.o pg_crc32c_sb8.o pg_crc32c_sse42_choose.o"
+    PG_CRC32C_OBJS="pg_crc32c_sse42.o pg_crc32c_sb8.o"
     { $as_echo "$as_me:${as_lineno-$LINENO}: result: SSE 4.2 with runtime check" >&5
 $as_echo "SSE 4.2 with runtime check" >&6; }
   else
