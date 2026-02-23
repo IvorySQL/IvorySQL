@@ -294,7 +294,24 @@ md5_crypt_verify(const char *role, const char *shadow_pass,
 	}
 
 	if (strcmp(client_pass, crypt_pwd) == 0)
+	{
 		retval = STATUS_OK;
+
+		if (md5_password_warnings)
+		{
+			MemoryContext oldcontext;
+			char	   *warning;
+			char	   *detail;
+
+			oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+
+			warning = pstrdup(_("authenticated with an MD5-encrypted password"));
+			detail = pstrdup(_("MD5 password support is deprecated and will be removed in a future release of PostgreSQL."));
+			StoreConnectionWarning(warning, detail);
+
+			MemoryContextSwitchTo(oldcontext);
+		}
+	}
 	else
 	{
 		*logdetail = psprintf(_("Password does not match for user \"%s\"."),
