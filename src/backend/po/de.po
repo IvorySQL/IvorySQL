@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PostgreSQL 14\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
-"POT-Creation-Date: 2026-02-07 09:17+0000\n"
+"POT-Creation-Date: 2026-02-18 15:13+0000\n"
 "PO-Revision-Date: 2025-08-25 21:56+0200\n"
 "Last-Translator: Peter Eisentraut <peter@eisentraut.org>\n"
 "Language-Team: German <pgsql-translators@postgresql.org>\n"
@@ -25,7 +25,7 @@ msgid "not recorded"
 msgstr "nicht aufgezeichnet"
 
 #: ../common/controldata_utils.c:78 ../common/controldata_utils.c:83
-#: commands/copyfrom.c:1526 commands/extension.c:3482 utils/adt/genfile.c:128
+#: commands/copyfrom.c:1526 commands/extension.c:3612 utils/adt/genfile.c:128
 #, c-format
 msgid "could not open file \"%s\" for reading: %m"
 msgstr "konnte Datei »%s« nicht zum Lesen öffnen: %m"
@@ -37,7 +37,7 @@ msgstr "konnte Datei »%s« nicht zum Lesen öffnen: %m"
 #: access/transam/xlog.c:11784 access/transam/xlog.c:12239
 #: access/transam/xlog.c:12319 access/transam/xlog.c:12356
 #: access/transam/xlog.c:12416 access/transam/xlogfuncs.c:703
-#: access/transam/xlogfuncs.c:722 commands/extension.c:3492 libpq/hba.c:534
+#: access/transam/xlogfuncs.c:722 commands/extension.c:3622 libpq/hba.c:534
 #: replication/basebackup.c:2016 replication/logical/origin.c:729
 #: replication/logical/origin.c:765 replication/logical/reorderbuffer.c:5090
 #: replication/logical/snapbuild.c:1919 replication/logical/snapbuild.c:1961
@@ -170,8 +170,8 @@ msgstr "konnte Datei »%s« nicht fsyncen: %m"
 #: utils/adt/formatting.c:1823 utils/adt/formatting.c:1948
 #: utils/adt/pg_locale.c:451 utils/adt/pg_locale.c:615 utils/adt/regexp.c:223
 #: utils/fmgr/dfmgr.c:229 utils/hash/dynahash.c:513 utils/hash/dynahash.c:613
-#: utils/hash/dynahash.c:1116 utils/mb/mbutils.c:402 utils/mb/mbutils.c:430
-#: utils/mb/mbutils.c:815 utils/mb/mbutils.c:842 utils/misc/guc.c:5061
+#: utils/hash/dynahash.c:1116 utils/mb/mbutils.c:410 utils/mb/mbutils.c:438
+#: utils/mb/mbutils.c:823 utils/mb/mbutils.c:850 utils/misc/guc.c:5061
 #: utils/misc/guc.c:5077 utils/misc/guc.c:5090 utils/misc/guc.c:8447
 #: utils/misc/tzparser.c:476 utils/mmgr/aset.c:476 utils/mmgr/dsa.c:702
 #: utils/mmgr/dsa.c:724 utils/mmgr/dsa.c:805 utils/mmgr/generation.c:234
@@ -240,7 +240,7 @@ msgstr "kann NULL-Zeiger nicht kopieren (interner Fehler)\n"
 #: access/transam/xlog.c:11504 access/transam/xlog.c:11542
 #: access/transam/xlog.c:11759 access/transam/xlogarchive.c:110
 #: access/transam/xlogarchive.c:227 commands/copyfrom.c:1536
-#: commands/copyto.c:730 commands/extension.c:3471 commands/tablespace.c:805
+#: commands/copyto.c:730 commands/extension.c:3601 commands/tablespace.c:805
 #: commands/tablespace.c:894 guc-file.l:1062 postmaster/pgarch.c:696
 #: replication/basebackup.c:439 replication/basebackup.c:622
 #: replication/basebackup.c:698 replication/logical/snapbuild.c:1700
@@ -889,7 +889,7 @@ msgid "To fix this, do REINDEX INDEX \"%s\"."
 msgstr "Um das zu reparieren, führen Sie REINDEX INDEX \"%s\" aus."
 
 #: access/gin/ginutil.c:145 executor/execExpr.c:2177
-#: utils/adt/arrayfuncs.c:3873 utils/adt/arrayfuncs.c:6543
+#: utils/adt/arrayfuncs.c:4034 utils/adt/arrayfuncs.c:6704
 #: utils/adt/rowtypes.c:957
 #, c-format
 msgid "could not identify a comparison function for type %s"
@@ -968,19 +968,19 @@ msgstr "Operatorfamilie »%s« für Zugriffsmethode %s enthält nicht unterstüt
 msgid "operator family \"%s\" of access method %s contains incorrect ORDER BY opfamily specification for operator %s"
 msgstr "Operatorfamilie »%s« für Zugriffsmethode %s enthält ungültige ORDER-BY-Operatorfamilienangabe für Operator %s"
 
-#: access/hash/hashfunc.c:278 access/hash/hashfunc.c:335
+#: access/hash/hashfunc.c:280 access/hash/hashfunc.c:337
 #: utils/adt/varchar.c:993 utils/adt/varchar.c:1054
 #, c-format
 msgid "could not determine which collation to use for string hashing"
 msgstr "konnte die für das Zeichenketten-Hashing zu verwendende Sortierfolge nicht bestimmen"
 
-#: access/hash/hashfunc.c:279 access/hash/hashfunc.c:336 catalog/heap.c:714
+#: access/hash/hashfunc.c:281 access/hash/hashfunc.c:338 catalog/heap.c:714
 #: catalog/heap.c:720 commands/createas.c:206 commands/createas.c:515
 #: commands/indexcmds.c:1971 commands/tablecmds.c:17208 commands/view.c:86
 #: regex/regc_pg_locale.c:263 utils/adt/formatting.c:1666
 #: utils/adt/formatting.c:1790 utils/adt/formatting.c:1915 utils/adt/like.c:194
 #: utils/adt/like_support.c:1004 utils/adt/varchar.c:733
-#: utils/adt/varchar.c:994 utils/adt/varchar.c:1055 utils/adt/varlena.c:1517
+#: utils/adt/varchar.c:994 utils/adt/varchar.c:1055 utils/adt/varlena.c:1563
 #, c-format
 msgid "Use the COLLATE clause to set the collation explicitly."
 msgstr "Verwenden Sie die COLLATE-Klausel, um die Sortierfolge explizit zu setzen."
@@ -1676,7 +1676,7 @@ msgstr "kann nicht bis MultiXact %u trunkieren, weil sie nicht auf der Festplatt
 msgid "cannot truncate up to MultiXact %u because it has invalid offset, skipping truncation"
 msgstr "kann nicht bis MultiXact %u trunkieren, weil es ein ungültiges Offset hat, Trunkierung wird ausgelassen"
 
-#: access/transam/multixact.c:3498
+#: access/transam/multixact.c:3489
 #, c-format
 msgid "invalid MultiXactId: %u"
 msgstr "ungültige MultiXactId: %u"
@@ -3133,8 +3133,8 @@ msgid "Did you mean to use pg_stop_backup('f')?"
 msgstr "Meinten Sie pg_stop_backup('f')?"
 
 #: access/transam/xlogfuncs.c:185 commands/event_trigger.c:1311
-#: commands/event_trigger.c:1869 commands/extension.c:1966
-#: commands/extension.c:2074 commands/extension.c:2359 commands/prepare.c:713
+#: commands/event_trigger.c:1869 commands/extension.c:2096
+#: commands/extension.c:2204 commands/extension.c:2489 commands/prepare.c:713
 #: executor/execExpr.c:2518 executor/execSRF.c:738 executor/functions.c:1074
 #: foreign/foreign.c:530 libpq/hba.c:2726 replication/logical/launcher.c:937
 #: replication/logical/logicalfuncs.c:157 replication/logical/origin.c:1494
@@ -3144,23 +3144,23 @@ msgstr "Meinten Sie pg_stop_backup('f')?"
 #: utils/adt/jsonfuncs.c:2056 utils/adt/jsonfuncs.c:2244
 #: utils/adt/jsonfuncs.c:2353 utils/adt/jsonfuncs.c:3814
 #: utils/adt/mcxtfuncs.c:132 utils/adt/misc.c:219 utils/adt/pgstatfuncs.c:477
-#: utils/adt/pgstatfuncs.c:587 utils/adt/pgstatfuncs.c:1887
-#: utils/adt/varlena.c:4821 utils/fmgr/funcapi.c:74 utils/misc/guc.c:10088
+#: utils/adt/pgstatfuncs.c:587 utils/adt/pgstatfuncs.c:1899
+#: utils/adt/varlena.c:4867 utils/fmgr/funcapi.c:74 utils/misc/guc.c:10088
 #: utils/mmgr/portalmem.c:1145
 #, c-format
 msgid "set-valued function called in context that cannot accept a set"
 msgstr "Funktion mit Mengenergebnis in einem Zusammenhang aufgerufen, der keine Mengenergebnisse verarbeiten kann"
 
 #: access/transam/xlogfuncs.c:189 commands/event_trigger.c:1315
-#: commands/event_trigger.c:1873 commands/extension.c:1970
-#: commands/extension.c:2078 commands/extension.c:2363 commands/prepare.c:717
+#: commands/event_trigger.c:1873 commands/extension.c:2100
+#: commands/extension.c:2208 commands/extension.c:2493 commands/prepare.c:717
 #: foreign/foreign.c:535 libpq/hba.c:2730 replication/logical/launcher.c:941
 #: replication/logical/logicalfuncs.c:161 replication/logical/origin.c:1498
 #: replication/slotfuncs.c:259 replication/walsender.c:3350
 #: storage/ipc/shmem.c:558 utils/adt/datetime.c:4816 utils/adt/genfile.c:511
 #: utils/adt/genfile.c:594 utils/adt/mcxtfuncs.c:136 utils/adt/misc.c:223
 #: utils/adt/pgstatfuncs.c:481 utils/adt/pgstatfuncs.c:591
-#: utils/adt/pgstatfuncs.c:1891 utils/adt/varlena.c:4825 utils/misc/guc.c:10092
+#: utils/adt/pgstatfuncs.c:1903 utils/adt/varlena.c:4871 utils/misc/guc.c:10092
 #: utils/misc/pg_config.c:43 utils/mmgr/portalmem.c:1149
 #, c-format
 msgid "materialize mode required, but it is not allowed in this context"
@@ -3532,9 +3532,9 @@ msgstr "Large Object %u existiert nicht"
 #: commands/dbcommands.c:230 commands/dbcommands.c:239
 #: commands/dbcommands.c:261 commands/dbcommands.c:1541
 #: commands/dbcommands.c:1550 commands/dbcommands.c:1559
-#: commands/dbcommands.c:1568 commands/extension.c:1757
-#: commands/extension.c:1767 commands/extension.c:1777
-#: commands/extension.c:3074 commands/foreigncmds.c:550
+#: commands/dbcommands.c:1568 commands/extension.c:1887
+#: commands/extension.c:1897 commands/extension.c:1907
+#: commands/extension.c:3204 commands/foreigncmds.c:550
 #: commands/foreigncmds.c:559 commands/functioncmds.c:606
 #: commands/functioncmds.c:772 commands/functioncmds.c:781
 #: commands/functioncmds.c:790 commands/functioncmds.c:799
@@ -4518,8 +4518,8 @@ msgstr "Relation »%s.%s« existiert nicht"
 msgid "relation \"%s\" does not exist"
 msgstr "Relation »%s« existiert nicht"
 
-#: catalog/namespace.c:501 catalog/namespace.c:3079 commands/extension.c:1541
-#: commands/extension.c:1547
+#: catalog/namespace.c:501 catalog/namespace.c:3079 commands/extension.c:1671
+#: commands/extension.c:1677
 #, c-format
 msgid "no schema has been selected to create in"
 msgstr "kein Schema für die Objekterzeugung ausgewählt"
@@ -5275,27 +5275,27 @@ msgstr "Konversion »%s« existiert bereits"
 msgid "default conversion for %s to %s already exists"
 msgstr "Standardumwandlung von %s nach %s existiert bereits"
 
-#: catalog/pg_depend.c:218 commands/extension.c:3370
+#: catalog/pg_depend.c:220 commands/extension.c:3500
 #, c-format
 msgid "%s is already a member of extension \"%s\""
 msgstr "%s ist schon Mitglied der Erweiterung »%s«"
 
-#: catalog/pg_depend.c:225 catalog/pg_depend.c:276 commands/extension.c:3410
+#: catalog/pg_depend.c:227 catalog/pg_depend.c:278 commands/extension.c:3540
 #, c-format
 msgid "%s is not a member of extension \"%s\""
 msgstr "%s ist kein Mitglied der Erweiterung »%s«"
 
-#: catalog/pg_depend.c:228
+#: catalog/pg_depend.c:230
 #, c-format
 msgid "An extension is not allowed to replace an object that it does not own."
 msgstr "Eine Erweiterung darf kein Objekt ersetzen, das ihr nicht gehört."
 
-#: catalog/pg_depend.c:279
+#: catalog/pg_depend.c:281
 #, c-format
 msgid "An extension may only use CREATE ... IF NOT EXISTS to skip object creation if the conflicting object is one that it already owns."
 msgstr "Eine Erweiterung darf CREATE .. IF NOT EXISTS zum Überspringen der Erzeugung eines Objekts nur verwenden, wenn ihr das vorhandene Objekt schon gehört."
 
-#: catalog/pg_depend.c:644
+#: catalog/pg_depend.c:646
 #, c-format
 msgid "cannot remove dependency on %s because it is a system object"
 msgstr "kann Abhängigkeit von %s nicht entfernen, weil es ein Systemobjekt ist"
@@ -5376,7 +5376,7 @@ msgstr "»%s« ist kein gültiger Operatorname"
 msgid "only binary operators can have commutators"
 msgstr "nur binäre Operatoren können Kommutatoren haben"
 
-#: catalog/pg_operator.c:374 commands/operatorcmds.c:507
+#: catalog/pg_operator.c:374 commands/operatorcmds.c:538
 #, c-format
 msgid "only binary operators can have join selectivity"
 msgstr "nur binäre Operatoren können Join-Selectivity haben"
@@ -5396,12 +5396,12 @@ msgstr "nur binäre Operatoren können eine Hash-Funktion haben"
 msgid "only boolean operators can have negators"
 msgstr "nur Boole’sche Operatoren können Negatoren haben"
 
-#: catalog/pg_operator.c:397 commands/operatorcmds.c:515
+#: catalog/pg_operator.c:397 commands/operatorcmds.c:546
 #, c-format
 msgid "only boolean operators can have restriction selectivity"
 msgstr "nur Boole’sche Operatoren können Restriction-Selectivity haben"
 
-#: catalog/pg_operator.c:401 commands/operatorcmds.c:519
+#: catalog/pg_operator.c:401 commands/operatorcmds.c:550
 #, c-format
 msgid "only boolean operators can have join selectivity"
 msgstr "nur Boole’sche Operatoren können Join-Selectivity haben"
@@ -6371,7 +6371,7 @@ msgstr "Generierte Spalten können nicht in COPY verwendet werden."
 #: commands/copy.c:786 commands/indexcmds.c:1842 commands/statscmds.c:265
 #: commands/tablecmds.c:2344 commands/tablecmds.c:3000
 #: commands/tablecmds.c:3508 parser/parse_relation.c:3651
-#: parser/parse_relation.c:3671 utils/adt/tsvector_op.c:2683
+#: parser/parse_relation.c:3671 utils/adt/tsvector_op.c:2687
 #, c-format
 msgid "column \"%s\" does not exist"
 msgstr "Spalte »%s« existiert nicht"
@@ -6457,7 +6457,7 @@ msgstr "Spalte »%s« mit FORCE_NOT_NULL wird von COPY nicht verwendet"
 msgid "FORCE_NULL column \"%s\" not referenced by COPY"
 msgstr "Spalte »%s« mit FORCE_NULL wird von COPY nicht verwendet"
 
-#: commands/copyfrom.c:1343 utils/mb/mbutils.c:386
+#: commands/copyfrom.c:1343 utils/mb/mbutils.c:394
 #, c-format
 msgid "default conversion function for encoding \"%s\" to \"%s\" does not exist"
 msgstr "Standardumwandlung von Kodierung »%s« nach »%s« existiert nicht"
@@ -7290,255 +7290,255 @@ msgstr "EXPLAIN-Option WAL erfordert ANALYZE"
 msgid "EXPLAIN option TIMING requires ANALYZE"
 msgstr "EXPLAIN-Option TIMING erfordert ANALYZE"
 
-#: commands/extension.c:173 commands/extension.c:3032
+#: commands/extension.c:195 commands/extension.c:3162
 #, c-format
 msgid "extension \"%s\" does not exist"
 msgstr "Erweiterung »%s« existiert nicht"
 
-#: commands/extension.c:272 commands/extension.c:281 commands/extension.c:293
-#: commands/extension.c:303
+#: commands/extension.c:402 commands/extension.c:411 commands/extension.c:423
+#: commands/extension.c:433
 #, c-format
 msgid "invalid extension name: \"%s\""
 msgstr "ungültiger Erweiterungsname: »%s«"
 
-#: commands/extension.c:273
+#: commands/extension.c:403
 #, c-format
 msgid "Extension names must not be empty."
 msgstr "Erweiterungsnamen dürfen nicht leer sein."
 
-#: commands/extension.c:282
+#: commands/extension.c:412
 #, c-format
 msgid "Extension names must not contain \"--\"."
 msgstr "Erweiterungsnamen dürfen nicht »--« enthalten."
 
-#: commands/extension.c:294
+#: commands/extension.c:424
 #, c-format
 msgid "Extension names must not begin or end with \"-\"."
 msgstr "Erweiterungsnamen dürfen nicht mit »-« anfangen oder aufhören."
 
-#: commands/extension.c:304
+#: commands/extension.c:434
 #, c-format
 msgid "Extension names must not contain directory separator characters."
 msgstr "Erweiterungsnamen dürfen keine Verzeichnistrennzeichen enthalten."
 
-#: commands/extension.c:319 commands/extension.c:328 commands/extension.c:337
-#: commands/extension.c:347
+#: commands/extension.c:449 commands/extension.c:458 commands/extension.c:467
+#: commands/extension.c:477
 #, c-format
 msgid "invalid extension version name: \"%s\""
 msgstr "ungültiger Erweiterungsversionsname: »%s«"
 
-#: commands/extension.c:320
+#: commands/extension.c:450
 #, c-format
 msgid "Version names must not be empty."
 msgstr "Versionsnamen dürfen nicht leer sein."
 
-#: commands/extension.c:329
+#: commands/extension.c:459
 #, c-format
 msgid "Version names must not contain \"--\"."
 msgstr "Versionsnamen dürfen nicht »--« enthalten."
 
-#: commands/extension.c:338
+#: commands/extension.c:468
 #, c-format
 msgid "Version names must not begin or end with \"-\"."
 msgstr "Versionsnamen dürfen nicht mit »-« anfangen oder aufhören."
 
-#: commands/extension.c:348
+#: commands/extension.c:478
 #, c-format
 msgid "Version names must not contain directory separator characters."
 msgstr "Versionsnamen dürfen keine Verzeichnistrennzeichen enthalten."
 
-#: commands/extension.c:498
+#: commands/extension.c:628
 #, c-format
 msgid "could not open extension control file \"%s\": %m"
 msgstr "konnte Erweiterungskontrolldatei »%s« nicht öffnen: %m"
 
-#: commands/extension.c:520 commands/extension.c:530
+#: commands/extension.c:650 commands/extension.c:660
 #, c-format
 msgid "parameter \"%s\" cannot be set in a secondary extension control file"
 msgstr "Parameter »%s« kann nicht in einer sekundären Erweitungskontrolldatei gesetzt werden"
 
-#: commands/extension.c:552 commands/extension.c:560 commands/extension.c:568
+#: commands/extension.c:682 commands/extension.c:690 commands/extension.c:698
 #: utils/misc/guc.c:7118
 #, c-format
 msgid "parameter \"%s\" requires a Boolean value"
 msgstr "Parameter »%s« erfordert einen Boole’schen Wert"
 
-#: commands/extension.c:577
+#: commands/extension.c:707
 #, c-format
 msgid "\"%s\" is not a valid encoding name"
 msgstr "»%s« ist kein gültiger Kodierungsname"
 
-#: commands/extension.c:591
+#: commands/extension.c:721
 #, c-format
 msgid "parameter \"%s\" must be a list of extension names"
 msgstr "Parameter »%s« muss eine Liste von Erweiterungsnamen sein"
 
-#: commands/extension.c:598
+#: commands/extension.c:728
 #, c-format
 msgid "unrecognized parameter \"%s\" in file \"%s\""
 msgstr "unbekannter Parameter »%s« in Datei »%s«"
 
-#: commands/extension.c:607
+#: commands/extension.c:737
 #, c-format
 msgid "parameter \"schema\" cannot be specified when \"relocatable\" is true"
 msgstr "Parameter »schema« kann nicht angegeben werden, wenn »relocatable« an ist"
 
-#: commands/extension.c:785
+#: commands/extension.c:915
 #, c-format
 msgid "transaction control statements are not allowed within an extension script"
 msgstr "Transaktionskontrollanweisungen sind nicht in einem Erweiterungsskript erlaubt"
 
-#: commands/extension.c:862
+#: commands/extension.c:992
 #, c-format
 msgid "permission denied to create extension \"%s\""
 msgstr "keine Berechtigung, um Erweiterung »%s« zu erzeugen"
 
-#: commands/extension.c:865
+#: commands/extension.c:995
 #, c-format
 msgid "Must have CREATE privilege on current database to create this extension."
 msgstr "CREATE-Privileg für die aktuelle Datenbank wird benötigt, um diese Erweiterung anzulegen."
 
-#: commands/extension.c:866
+#: commands/extension.c:996
 #, c-format
 msgid "Must be superuser to create this extension."
 msgstr "Nur Superuser können diese Erweiterung anlegen."
 
-#: commands/extension.c:870
+#: commands/extension.c:1000
 #, c-format
 msgid "permission denied to update extension \"%s\""
 msgstr "keine Berechtigung, um Erweiterung »%s« zu aktualisieren"
 
-#: commands/extension.c:873
+#: commands/extension.c:1003
 #, c-format
 msgid "Must have CREATE privilege on current database to update this extension."
 msgstr "CREATE-Privileg für die aktuelle Datenbank wird benötigt, um diese Erweiterung zu aktualisieren."
 
-#: commands/extension.c:874
+#: commands/extension.c:1004
 #, c-format
 msgid "Must be superuser to update this extension."
 msgstr "Nur Superuser können diese Erweiterung aktualisieren."
 
-#: commands/extension.c:1003
+#: commands/extension.c:1133
 #, c-format
 msgid "invalid character in extension owner: must not contain any of \"%s\""
 msgstr "ungültiges Zeichen im Erweiterungseigentümer: darf keins aus »%s« enthalten"
 
-#: commands/extension.c:1027
+#: commands/extension.c:1157
 #, c-format
 msgid "invalid character in extension \"%s\" schema: must not contain any of \"%s\""
 msgstr "ungültiges Zeichen in Schema von Erweiterung »%s«: darf keins aus »%s« enthalten"
 
-#: commands/extension.c:1222
+#: commands/extension.c:1352
 #, c-format
 msgid "extension \"%s\" has no update path from version \"%s\" to version \"%s\""
 msgstr "Erweiterung »%s« hat keinen Aktualisierungspfad von Version »%s« auf Version »%s«"
 
-#: commands/extension.c:1430 commands/extension.c:3093
+#: commands/extension.c:1560 commands/extension.c:3223
 #, c-format
 msgid "version to install must be specified"
 msgstr "die zu installierende Version muss angegeben werden"
 
-#: commands/extension.c:1467
+#: commands/extension.c:1597
 #, c-format
 msgid "extension \"%s\" has no installation script nor update path for version \"%s\""
 msgstr "Erweiterung »%s« hat kein Installationsskript und keinen Aktualisierungspfad für Version »%s«"
 
-#: commands/extension.c:1501
+#: commands/extension.c:1631
 #, c-format
 msgid "extension \"%s\" must be installed in schema \"%s\""
 msgstr "Erweiterung »%s« muss in Schema »%s« installiert werden"
 
-#: commands/extension.c:1661
+#: commands/extension.c:1791
 #, c-format
 msgid "cyclic dependency detected between extensions \"%s\" and \"%s\""
 msgstr "zyklische Abhängigkeit zwischen Erweiterungen »%s« und »%s« entdeckt"
 
-#: commands/extension.c:1666
+#: commands/extension.c:1796
 #, c-format
 msgid "installing required extension \"%s\""
 msgstr "installiere benötigte Erweiterung »%s«"
 
-#: commands/extension.c:1689
+#: commands/extension.c:1819
 #, c-format
 msgid "required extension \"%s\" is not installed"
 msgstr "benötigte Erweiterung »%s« ist nicht installiert"
 
-#: commands/extension.c:1692
+#: commands/extension.c:1822
 #, c-format
 msgid "Use CREATE EXTENSION ... CASCADE to install required extensions too."
 msgstr "Verwenden Sie CREATE EXTENSION ... CASCADE, um die benötigten Erweiterungen ebenfalls zu installieren."
 
-#: commands/extension.c:1727
+#: commands/extension.c:1857
 #, c-format
 msgid "extension \"%s\" already exists, skipping"
 msgstr "Erweiterung »%s« existiert bereits, wird übersprungen"
 
-#: commands/extension.c:1734
+#: commands/extension.c:1864
 #, c-format
 msgid "extension \"%s\" already exists"
 msgstr "Erweiterung »%s« existiert bereits"
 
-#: commands/extension.c:1745
+#: commands/extension.c:1875
 #, c-format
 msgid "nested CREATE EXTENSION is not supported"
 msgstr "geschachteltes CREATE EXTENSION wird nicht unterstützt"
 
-#: commands/extension.c:1918
+#: commands/extension.c:2048
 #, c-format
 msgid "cannot drop extension \"%s\" because it is being modified"
 msgstr "Erweiterung »%s« kann nicht gelöscht werden, weil sie gerade geändert wird"
 
-#: commands/extension.c:2479
+#: commands/extension.c:2609
 #, c-format
 msgid "%s can only be called from an SQL script executed by CREATE EXTENSION"
 msgstr "%s kann nur von einem SQL-Skript aufgerufen werden, das von CREATE EXTENSION ausgeführt wird"
 
-#: commands/extension.c:2491
+#: commands/extension.c:2621
 #, c-format
 msgid "OID %u does not refer to a table"
 msgstr "OID %u bezieht sich nicht auf eine Tabelle"
 
-#: commands/extension.c:2496
+#: commands/extension.c:2626
 #, c-format
 msgid "table \"%s\" is not a member of the extension being created"
 msgstr "Tabelle »%s« ist kein Mitglied der anzulegenden Erweiterung"
 
-#: commands/extension.c:2850
+#: commands/extension.c:2980
 #, c-format
 msgid "cannot move extension \"%s\" into schema \"%s\" because the extension contains the schema"
 msgstr "kann Erweiterung »%s« nicht in Schema »%s« verschieben, weil die Erweiterung das Schema enthält"
 
-#: commands/extension.c:2891 commands/extension.c:2951
+#: commands/extension.c:3021 commands/extension.c:3081
 #, c-format
 msgid "extension \"%s\" does not support SET SCHEMA"
 msgstr "Erweiterung »%s« unterstützt SET SCHEMA nicht"
 
-#: commands/extension.c:2953
+#: commands/extension.c:3083
 #, c-format
 msgid "%s is not in the extension's schema \"%s\""
 msgstr "%s ist nicht im Schema der Erweiterung (»%s«)"
 
-#: commands/extension.c:3012
+#: commands/extension.c:3142
 #, c-format
 msgid "nested ALTER EXTENSION is not supported"
 msgstr "geschachteltes ALTER EXTENSION wird nicht unterstützt"
 
-#: commands/extension.c:3104
+#: commands/extension.c:3234
 #, c-format
 msgid "version \"%s\" of extension \"%s\" is already installed"
 msgstr "Version »%s« von Erweiterung »%s« ist bereits installiert"
 
-#: commands/extension.c:3316
+#: commands/extension.c:3446
 #, c-format
 msgid "cannot add an object of this type to an extension"
 msgstr "ein Objekt dieses Typs kann nicht zu einer Erweiterung hinzugefügt werden"
 
-#: commands/extension.c:3382
+#: commands/extension.c:3512
 #, c-format
 msgid "cannot add schema \"%s\" to extension \"%s\" because the schema contains the extension"
 msgstr "kann Schema »%s« nicht zu Erweiterung »%s« hinzufügen, weil das Schema die Erweiterung enthält"
 
-#: commands/extension.c:3476
+#: commands/extension.c:3606
 #, c-format
 msgid "file \"%s\" is too large"
 msgstr "Datei »%s« ist zu groß"
@@ -8560,7 +8560,7 @@ msgstr "Operatorfamilie »%s« für Zugriffsmethode »%s« existiert bereits in 
 msgid "SETOF type not allowed for operator argument"
 msgstr "SETOF-Typ nicht als Operatorargument erlaubt"
 
-#: commands/operatorcmds.c:152 commands/operatorcmds.c:479
+#: commands/operatorcmds.c:152 commands/operatorcmds.c:510
 #, c-format
 msgid "operator attribute \"%s\" not recognized"
 msgstr "Operator-Attribut »%s« unbekannt"
@@ -8585,22 +8585,32 @@ msgstr "rechtes Argument des Operators muss angegeben werden"
 msgid "Postfix operators are not supported."
 msgstr "Postfix-Operatoren werden nicht unterstützt."
 
-#: commands/operatorcmds.c:290
+#: commands/operatorcmds.c:289
 #, c-format
 msgid "restriction estimator function %s must return type %s"
 msgstr "Restriktionsschätzfunktion %s muss Typ %s zurückgeben"
 
-#: commands/operatorcmds.c:333
+#: commands/operatorcmds.c:307
+#, c-format
+msgid "must be superuser to specify a non-built-in restriction estimator function"
+msgstr "nur Superuser können eine nicht eingebaute Restriktionsschätzfunktion angeben"
+
+#: commands/operatorcmds.c:352
 #, c-format
 msgid "join estimator function %s has multiple matches"
 msgstr "Join-Schätzfunktion %s hat mehrere Übereinstimmungen"
 
-#: commands/operatorcmds.c:348
+#: commands/operatorcmds.c:367
 #, c-format
 msgid "join estimator function %s must return type %s"
 msgstr "Join-Schätzfunktion %s muss Typ %s zurückgeben"
 
-#: commands/operatorcmds.c:473
+#: commands/operatorcmds.c:376
+#, c-format
+msgid "must be superuser to specify a non-built-in join estimator function"
+msgstr "nur Superuser können eine nicht eingebaute Join-Schätzfunktion angeben"
+
+#: commands/operatorcmds.c:504
 #, c-format
 msgid "operator attribute \"%s\" cannot be changed"
 msgstr "Operator-Attribut »%s« kann nicht geändert werden"
@@ -8662,7 +8672,7 @@ msgid "cannot create a cursor WITH HOLD within security-restricted operation"
 msgstr "kann WITH-HOLD-Cursor nicht in einer sicherheitsbeschränkten Operation erzeugen"
 
 #: commands/portalcmds.c:189 commands/portalcmds.c:242
-#: executor/execCurrent.c:70 utils/adt/xml.c:2637 utils/adt/xml.c:2807
+#: executor/execCurrent.c:70 utils/adt/xml.c:2636 utils/adt/xml.c:2806
 #, c-format
 msgid "cursor \"%s\" does not exist"
 msgstr "Cursor »%s« existiert nicht"
@@ -12086,8 +12096,8 @@ msgstr "Arrayelement mit Typ %s kann nicht in ARRAY-Konstrukt mit Elementtyp %s 
 
 #: executor/execExprInterp.c:2789 utils/adt/arrayfuncs.c:264
 #: utils/adt/arrayfuncs.c:564 utils/adt/arrayfuncs.c:1306
-#: utils/adt/arrayfuncs.c:3429 utils/adt/arrayfuncs.c:5425
-#: utils/adt/arrayfuncs.c:5944 utils/adt/arraysubs.c:150
+#: utils/adt/arrayfuncs.c:3515 utils/adt/arrayfuncs.c:5586
+#: utils/adt/arrayfuncs.c:6105 utils/adt/arraysubs.c:150
 #: utils/adt/arraysubs.c:488
 #, c-format
 msgid "number of array dimensions (%d) exceeds the maximum allowed (%d)"
@@ -12104,8 +12114,8 @@ msgstr "mehrdimensionale Arrays müssen Arraysausdrücke mit gleicher Anzahl Dim
 #: utils/adt/arrayfuncs.c:2630 utils/adt/arrayfuncs.c:2646
 #: utils/adt/arrayfuncs.c:2907 utils/adt/arrayfuncs.c:2961
 #: utils/adt/arrayfuncs.c:2976 utils/adt/arrayfuncs.c:3317
-#: utils/adt/arrayfuncs.c:3459 utils/adt/arrayfuncs.c:6036
-#: utils/adt/arrayfuncs.c:6377 utils/adt/arrayutils.c:88
+#: utils/adt/arrayfuncs.c:3545 utils/adt/arrayfuncs.c:6197
+#: utils/adt/arrayfuncs.c:6538 utils/adt/arrayutils.c:88
 #: utils/adt/arrayutils.c:97 utils/adt/arrayutils.c:104
 #, c-format
 msgid "array size exceeds the maximum allowed (%d)"
@@ -12363,8 +12373,8 @@ msgstr "gleichzeitiges Löschen, versuche erneut"
 
 #: executor/execReplication.c:277 parser/parse_cte.c:302
 #: parser/parse_oper.c:233 utils/adt/array_userfuncs.c:724
-#: utils/adt/array_userfuncs.c:867 utils/adt/arrayfuncs.c:3709
-#: utils/adt/arrayfuncs.c:4263 utils/adt/arrayfuncs.c:6257
+#: utils/adt/array_userfuncs.c:867 utils/adt/arrayfuncs.c:3870
+#: utils/adt/arrayfuncs.c:4424 utils/adt/arrayfuncs.c:6418
 #: utils/adt/rowtypes.c:1203
 #, c-format
 msgid "could not identify an equality operator for type %s"
@@ -13104,8 +13114,8 @@ msgstr "WITH TIES kann nicht ohne ORDER-BY-Klausel angegeben werden"
 msgid "improper use of \"*\""
 msgstr "unzulässige Verwendung von »*«"
 
-#: gram.y:16630 gram.y:16647 tsearch/spell.c:984 tsearch/spell.c:1001
-#: tsearch/spell.c:1018 tsearch/spell.c:1035 tsearch/spell.c:1101
+#: gram.y:16630 gram.y:16647 tsearch/spell.c:982 tsearch/spell.c:998
+#: tsearch/spell.c:1014 tsearch/spell.c:1030 tsearch/spell.c:1095
 #, c-format
 msgid "syntax error"
 msgstr "Syntaxfehler"
@@ -13257,8 +13267,8 @@ msgstr "konnte Konfigurationsverzeichnis »%s« nicht öffnen: %m"
 
 #: jsonpath_gram.y:528 jsonpath_scan.l:519 jsonpath_scan.l:530
 #: jsonpath_scan.l:540 jsonpath_scan.l:582 utils/adt/encode.c:482
-#: utils/adt/encode.c:547 utils/adt/jsonfuncs.c:629 utils/adt/varlena.c:336
-#: utils/adt/varlena.c:377
+#: utils/adt/encode.c:547 utils/adt/jsonfuncs.c:629 utils/adt/varlena.c:337
+#: utils/adt/varlena.c:378
 #, c-format
 msgid "invalid input syntax for type %s"
 msgstr "ungültige Eingabesyntax für Typ %s"
@@ -14419,7 +14429,7 @@ msgstr "Authentifizierungsoption »%s« ist nur gültig für Authentifizierungsm
 #: libpq/hba.c:1673 libpq/hba.c:1731 libpq/hba.c:1748 libpq/hba.c:1761
 #: libpq/hba.c:1773 libpq/hba.c:1792 libpq/hba.c:1879 libpq/hba.c:1897
 #: libpq/hba.c:1991 libpq/hba.c:2010 libpq/hba.c:2039 libpq/hba.c:2052
-#: libpq/hba.c:2075 libpq/hba.c:2097 libpq/hba.c:2111 tsearch/ts_locale.c:232
+#: libpq/hba.c:2075 libpq/hba.c:2097 libpq/hba.c:2111 tsearch/ts_locale.c:205
 #, c-format
 msgid "line %d of configuration file \"%s\""
 msgstr "Zeile %d in Konfigurationsdatei »%s«"
@@ -17740,7 +17750,7 @@ msgstr "ungültiges Unicode-Escape-Zeichen"
 msgid "invalid Unicode escape value"
 msgstr "ungültiger Unicode-Escape-Wert"
 
-#: parser/parser.c:468 scan.l:677 utils/adt/varlena.c:6555
+#: parser/parser.c:468 scan.l:677 utils/adt/varlena.c:6604
 #, c-format
 msgid "invalid Unicode escape"
 msgstr "ungültiges Unicode-Escape"
@@ -17751,7 +17761,7 @@ msgid "Unicode escapes must be \\XXXX or \\+XXXXXX."
 msgstr "Unicode-Escapes müssen \\XXXX oder \\+XXXXXX sein."
 
 #: parser/parser.c:497 scan.l:638 scan.l:654 scan.l:670
-#: utils/adt/varlena.c:6580
+#: utils/adt/varlena.c:6629
 #, c-format
 msgid "invalid Unicode surrogate pair"
 msgstr "ungültiges Unicode-Surrogatpaar"
@@ -19833,7 +19843,7 @@ msgid "Free one or increase max_replication_slots."
 msgstr "Geben Sie einen frei oder erhöhen Sie max_replication_slots."
 
 #: replication/slot.c:431 replication/slotfuncs.c:761
-#: utils/adt/pgstatfuncs.c:2228
+#: utils/adt/pgstatfuncs.c:2240
 #, c-format
 msgid "replication slot \"%s\" does not exist"
 msgstr "Replikations-Slot »%s« existiert nicht"
@@ -22038,64 +22048,64 @@ msgstr "unbekannter Thesaurus-Parameter: »%s«"
 msgid "missing Dictionary parameter"
 msgstr "Parameter »Dictionary« fehlt"
 
-#: tsearch/spell.c:382 tsearch/spell.c:399 tsearch/spell.c:408
-#: tsearch/spell.c:1065
+#: tsearch/spell.c:383 tsearch/spell.c:400 tsearch/spell.c:409
+#: tsearch/spell.c:1060
 #, c-format
 msgid "invalid affix flag \"%s\""
 msgstr "ungültiges Affix-Flag »%s«"
 
-#: tsearch/spell.c:386 tsearch/spell.c:1069
+#: tsearch/spell.c:387 tsearch/spell.c:1064
 #, c-format
 msgid "affix flag \"%s\" is out of range"
 msgstr "Affix-Flag »%s« ist außerhalb des gültigen Bereichs"
 
-#: tsearch/spell.c:416
+#: tsearch/spell.c:417
 #, c-format
 msgid "invalid character in affix flag \"%s\""
 msgstr "ungültiges Zeichen in Affix-Flag »%s«"
 
-#: tsearch/spell.c:436
+#: tsearch/spell.c:437
 #, c-format
 msgid "invalid affix flag \"%s\" with \"long\" flag value"
 msgstr "ungültiges Affix-Flag »%s« mit Flag-Wert »long«"
 
-#: tsearch/spell.c:526
+#: tsearch/spell.c:527
 #, c-format
 msgid "could not open dictionary file \"%s\": %m"
 msgstr "konnte Wörterbuchdatei »%s« nicht öffnen: %m"
 
-#: tsearch/spell.c:765 utils/adt/regexp.c:208
+#: tsearch/spell.c:766 utils/adt/regexp.c:208
 #, c-format
 msgid "invalid regular expression: %s"
 msgstr "ungültiger regulärer Ausdruck: %s"
 
-#: tsearch/spell.c:1193 tsearch/spell.c:1205 tsearch/spell.c:1765
-#: tsearch/spell.c:1770 tsearch/spell.c:1775
+#: tsearch/spell.c:1187 tsearch/spell.c:1199 tsearch/spell.c:1758
+#: tsearch/spell.c:1763 tsearch/spell.c:1768
 #, c-format
 msgid "invalid affix alias \"%s\""
 msgstr "ungültiges Affixalias »%s«"
 
-#: tsearch/spell.c:1246 tsearch/spell.c:1317 tsearch/spell.c:1466
+#: tsearch/spell.c:1240 tsearch/spell.c:1311 tsearch/spell.c:1460
 #, c-format
 msgid "could not open affix file \"%s\": %m"
 msgstr "konnte Affixdatei »%s« nicht öffnen: %m"
 
-#: tsearch/spell.c:1300
+#: tsearch/spell.c:1294
 #, c-format
 msgid "Ispell dictionary supports only \"default\", \"long\", and \"num\" flag values"
 msgstr "Ispell-Wörterbuch unterstützt nur die Flag-Werte »default«, »long« und »num«"
 
-#: tsearch/spell.c:1344
+#: tsearch/spell.c:1338
 #, c-format
 msgid "invalid number of flag vector aliases"
 msgstr "ungültige Anzahl Flag-Vektor-Aliasse"
 
-#: tsearch/spell.c:1367
+#: tsearch/spell.c:1361
 #, c-format
 msgid "number of aliases exceeds specified number %d"
 msgstr "Anzahl der Aliasse überschreitet angegebene Zahl %d"
 
-#: tsearch/spell.c:1582
+#: tsearch/spell.c:1575
 #, c-format
 msgid "affix file contains both old-style and new-style commands"
 msgstr "Affixdatei enthält Befehle im alten und im neuen Stil"
@@ -22105,12 +22115,12 @@ msgstr "Affixdatei enthält Befehle im alten und im neuen Stil"
 msgid "string is too long for tsvector (%d bytes, max %d bytes)"
 msgstr "Zeichenkette ist zu lang für tsvector (%d Bytes, maximal %d Bytes)"
 
-#: tsearch/ts_locale.c:227
+#: tsearch/ts_locale.c:200
 #, c-format
 msgid "line %d of configuration file \"%s\": \"%s\""
 msgstr "Zeile %d in Konfigurationsdatei »%s«: »%s«"
 
-#: tsearch/ts_locale.c:307
+#: tsearch/ts_locale.c:280
 #, c-format
 msgid "conversion from wchar_t to server encoding failed: %m"
 msgstr "Umwandlung von wchar_t in Serverkodierung fehlgeschlagen: %m"
@@ -22142,27 +22152,27 @@ msgstr "konnte Stoppwortdatei »%s« nicht öffnen: %m"
 msgid "text search parser does not support headline creation"
 msgstr "Textsucheparser unterstützt das Erzeugen von Headlines nicht"
 
-#: tsearch/wparser_def.c:2593
+#: tsearch/wparser_def.c:2594
 #, c-format
 msgid "unrecognized headline parameter: \"%s\""
 msgstr "unbekannter Headline-Parameter: »%s«"
 
-#: tsearch/wparser_def.c:2612
+#: tsearch/wparser_def.c:2613
 #, c-format
 msgid "MinWords should be less than MaxWords"
 msgstr "»MinWords« sollte kleiner als »MaxWords« sein"
 
-#: tsearch/wparser_def.c:2616
+#: tsearch/wparser_def.c:2617
 #, c-format
 msgid "MinWords should be positive"
 msgstr "»MinWords« sollte positiv sein"
 
-#: tsearch/wparser_def.c:2620
+#: tsearch/wparser_def.c:2621
 #, c-format
 msgid "ShortWord should be >= 0"
 msgstr "»ShortWord« sollte >= 0 sein"
 
-#: tsearch/wparser_def.c:2624
+#: tsearch/wparser_def.c:2625
 #, c-format
 msgid "MaxFragments should be >= 0"
 msgstr "»MaxFragments« sollte >= 0 sein"
@@ -22292,15 +22302,15 @@ msgstr "Eingabedatentyp ist kein Array"
 
 #: utils/adt/array_userfuncs.c:129 utils/adt/array_userfuncs.c:181
 #: utils/adt/float.c:1233 utils/adt/float.c:1307 utils/adt/float.c:4052
-#: utils/adt/float.c:4066 utils/adt/int.c:757 utils/adt/int.c:779
-#: utils/adt/int.c:793 utils/adt/int.c:807 utils/adt/int.c:838
-#: utils/adt/int.c:859 utils/adt/int.c:976 utils/adt/int.c:990
-#: utils/adt/int.c:1004 utils/adt/int.c:1037 utils/adt/int.c:1051
-#: utils/adt/int.c:1065 utils/adt/int.c:1096 utils/adt/int.c:1178
-#: utils/adt/int.c:1242 utils/adt/int.c:1310 utils/adt/int.c:1316
+#: utils/adt/float.c:4066 utils/adt/int.c:786 utils/adt/int.c:808
+#: utils/adt/int.c:822 utils/adt/int.c:836 utils/adt/int.c:867
+#: utils/adt/int.c:888 utils/adt/int.c:1005 utils/adt/int.c:1019
+#: utils/adt/int.c:1033 utils/adt/int.c:1066 utils/adt/int.c:1080
+#: utils/adt/int.c:1094 utils/adt/int.c:1125 utils/adt/int.c:1207
+#: utils/adt/int.c:1271 utils/adt/int.c:1339 utils/adt/int.c:1345
 #: utils/adt/int8.c:1299 utils/adt/numeric.c:1784 utils/adt/numeric.c:4247
-#: utils/adt/varbit.c:1195 utils/adt/varbit.c:1596 utils/adt/varlena.c:1114
-#: utils/adt/varlena.c:3422
+#: utils/adt/varbit.c:1195 utils/adt/varbit.c:1596 utils/adt/varlena.c:1157
+#: utils/adt/varlena.c:3468
 #, c-format
 msgid "integer out of range"
 msgstr "integer ist außerhalb des gültigen Bereichs"
@@ -22433,8 +22443,8 @@ msgstr "Mehrdimensionale Arrays müssen Arraysausdrücke mit gleicher Anzahl Dim
 msgid "Junk after closing right brace."
 msgstr "Müll nach schließender rechter geschweifter Klammer."
 
-#: utils/adt/arrayfuncs.c:1302 utils/adt/arrayfuncs.c:3425
-#: utils/adt/arrayfuncs.c:5940
+#: utils/adt/arrayfuncs.c:1302 utils/adt/arrayfuncs.c:3511
+#: utils/adt/arrayfuncs.c:6101
 #, c-format
 msgid "invalid number of dimensions: %d"
 msgstr "ungültige Anzahl Dimensionen: %d"
@@ -22473,8 +22483,8 @@ msgstr "Auswählen von Stücken aus Arrays mit fester Länge ist nicht implement
 
 #: utils/adt/arrayfuncs.c:2257 utils/adt/arrayfuncs.c:2279
 #: utils/adt/arrayfuncs.c:2328 utils/adt/arrayfuncs.c:2582
-#: utils/adt/arrayfuncs.c:2927 utils/adt/arrayfuncs.c:5926
-#: utils/adt/arrayfuncs.c:5952 utils/adt/arrayfuncs.c:5963
+#: utils/adt/arrayfuncs.c:2927 utils/adt/arrayfuncs.c:6087
+#: utils/adt/arrayfuncs.c:6113 utils/adt/arrayfuncs.c:6124
 #: utils/adt/json.c:1141 utils/adt/json.c:1216 utils/adt/jsonb.c:1316
 #: utils/adt/jsonb.c:1402 utils/adt/jsonfuncs.c:4438 utils/adt/jsonfuncs.c:4592
 #: utils/adt/jsonfuncs.c:4704 utils/adt/jsonfuncs.c:4753
@@ -22513,85 +22523,85 @@ msgstr "Wenn ein Slice eines leeren Array-Wertes zugewiesen wird, dann müssen d
 msgid "source array too small"
 msgstr "Quellarray ist zu klein"
 
-#: utils/adt/arrayfuncs.c:3583
+#: utils/adt/arrayfuncs.c:3669
 #, c-format
 msgid "null array element not allowed in this context"
 msgstr "NULL-Werte im Array sind in diesem Zusammenhang nicht erlaubt"
 
-#: utils/adt/arrayfuncs.c:3685 utils/adt/arrayfuncs.c:3856
-#: utils/adt/arrayfuncs.c:4246
+#: utils/adt/arrayfuncs.c:3846 utils/adt/arrayfuncs.c:4017
+#: utils/adt/arrayfuncs.c:4407
 #, c-format
 msgid "cannot compare arrays of different element types"
 msgstr "kann Arrays mit verschiedenen Elementtypen nicht vergleichen"
 
-#: utils/adt/arrayfuncs.c:4034 utils/adt/multirangetypes.c:2743
+#: utils/adt/arrayfuncs.c:4195 utils/adt/multirangetypes.c:2743
 #: utils/adt/multirangetypes.c:2815 utils/adt/rangetypes.c:1343
 #: utils/adt/rangetypes.c:1407 utils/adt/rowtypes.c:1858
 #, c-format
 msgid "could not identify a hash function for type %s"
 msgstr "konnte keine Hash-Funktion für Typ %s ermitteln"
 
-#: utils/adt/arrayfuncs.c:4161 utils/adt/rowtypes.c:1979
+#: utils/adt/arrayfuncs.c:4322 utils/adt/rowtypes.c:1979
 #, c-format
 msgid "could not identify an extended hash function for type %s"
 msgstr "konnte keine erweiterte Hash-Funktion für Typ %s ermitteln"
 
-#: utils/adt/arrayfuncs.c:5338
+#: utils/adt/arrayfuncs.c:5499
 #, c-format
 msgid "data type %s is not an array type"
 msgstr "Datentyp %s ist kein Array-Typ"
 
-#: utils/adt/arrayfuncs.c:5393
+#: utils/adt/arrayfuncs.c:5554
 #, c-format
 msgid "cannot accumulate null arrays"
 msgstr "Arrays, die NULL sind, können nicht akkumuliert werden"
 
-#: utils/adt/arrayfuncs.c:5421
+#: utils/adt/arrayfuncs.c:5582
 #, c-format
 msgid "cannot accumulate empty arrays"
 msgstr "leere Arrays können nicht akkumuliert werden"
 
-#: utils/adt/arrayfuncs.c:5448 utils/adt/arrayfuncs.c:5454
+#: utils/adt/arrayfuncs.c:5609 utils/adt/arrayfuncs.c:5615
 #, c-format
 msgid "cannot accumulate arrays of different dimensionality"
 msgstr "Arrays unterschiedlicher Dimensionalität können nicht akkumuliert werden"
 
-#: utils/adt/arrayfuncs.c:5824 utils/adt/arrayfuncs.c:5864
+#: utils/adt/arrayfuncs.c:5985 utils/adt/arrayfuncs.c:6025
 #, c-format
 msgid "dimension array or low bound array cannot be null"
 msgstr "Dimensions-Array oder Untergrenzen-Array darf nicht NULL sein"
 
-#: utils/adt/arrayfuncs.c:5927 utils/adt/arrayfuncs.c:5953
+#: utils/adt/arrayfuncs.c:6088 utils/adt/arrayfuncs.c:6114
 #, c-format
 msgid "Dimension array must be one dimensional."
 msgstr "Dimensions-Array muss eindimensional sein."
 
-#: utils/adt/arrayfuncs.c:5932 utils/adt/arrayfuncs.c:5958
+#: utils/adt/arrayfuncs.c:6093 utils/adt/arrayfuncs.c:6119
 #, c-format
 msgid "dimension values cannot be null"
 msgstr "Dimensionswerte dürfen nicht NULL sein"
 
-#: utils/adt/arrayfuncs.c:5964
+#: utils/adt/arrayfuncs.c:6125
 #, c-format
 msgid "Low bound array has different size than dimensions array."
 msgstr "Untergrenzen-Array hat andere Größe als Dimensions-Array."
 
-#: utils/adt/arrayfuncs.c:6242
+#: utils/adt/arrayfuncs.c:6403
 #, c-format
 msgid "removing elements from multidimensional arrays is not supported"
 msgstr "Entfernen von Elementen aus mehrdimensionalen Arrays wird nicht unterstützt"
 
-#: utils/adt/arrayfuncs.c:6519
+#: utils/adt/arrayfuncs.c:6680
 #, c-format
 msgid "thresholds must be one-dimensional array"
 msgstr "Parameter »thresholds« muss ein eindimensionales Array sein"
 
-#: utils/adt/arrayfuncs.c:6524
+#: utils/adt/arrayfuncs.c:6685
 #, c-format
 msgid "thresholds array must not contain NULLs"
 msgstr "»thresholds«-Array darf keine NULL-Werte enthalten"
 
-#: utils/adt/arrayfuncs.c:6757
+#: utils/adt/arrayfuncs.c:6918
 #, c-format
 msgid "number of elements to trim must be between 0 and %d"
 msgstr "Anzahl der zu entfernenden Elemente muss zwischen 0 und %d sein"
@@ -22661,8 +22671,8 @@ msgid "money out of range"
 msgstr "money ist außerhalb des gültigen Bereichs"
 
 #: utils/adt/cash.c:162 utils/adt/cash.c:723 utils/adt/float.c:104
-#: utils/adt/int.c:822 utils/adt/int.c:938 utils/adt/int.c:1018
-#: utils/adt/int.c:1080 utils/adt/int.c:1118 utils/adt/int.c:1146
+#: utils/adt/int.c:851 utils/adt/int.c:967 utils/adt/int.c:1047
+#: utils/adt/int.c:1109 utils/adt/int.c:1147 utils/adt/int.c:1175
 #: utils/adt/int8.c:600 utils/adt/int8.c:658 utils/adt/int8.c:985
 #: utils/adt/int8.c:1065 utils/adt/int8.c:1127 utils/adt/int8.c:1207
 #: utils/adt/numeric.c:3047 utils/adt/numeric.c:3070 utils/adt/numeric.c:3155
@@ -22710,7 +22720,7 @@ msgid "date out of range: \"%s\""
 msgstr "date ist außerhalb des gültigen Bereichs: »%s«"
 
 #: utils/adt/date.c:214 utils/adt/date.c:525 utils/adt/date.c:549
-#: utils/adt/xml.c:2253
+#: utils/adt/xml.c:2252
 #, c-format
 msgid "date out of range"
 msgstr "date ist außerhalb des gültigen Bereichs"
@@ -22772,8 +22782,8 @@ msgstr "»date«-Einheit »%s« nicht erkannt"
 #: utils/adt/timestamp.c:5575 utils/adt/timestamp.c:5662
 #: utils/adt/timestamp.c:5703 utils/adt/timestamp.c:5707
 #: utils/adt/timestamp.c:5776 utils/adt/timestamp.c:5780
-#: utils/adt/timestamp.c:5794 utils/adt/timestamp.c:5828 utils/adt/xml.c:2275
-#: utils/adt/xml.c:2282 utils/adt/xml.c:2302 utils/adt/xml.c:2309
+#: utils/adt/timestamp.c:5794 utils/adt/timestamp.c:5828 utils/adt/xml.c:2274
+#: utils/adt/xml.c:2281 utils/adt/xml.c:2301 utils/adt/xml.c:2308
 #, c-format
 msgid "timestamp out of range"
 msgstr "timestamp ist außerhalb des gültigen Bereichs"
@@ -22789,8 +22799,8 @@ msgid "time field value out of range: %d:%02d:%02g"
 msgstr "Zeit-Feldwert ist außerhalb des gültigen Bereichs: %d:%02d:%02g"
 
 #: utils/adt/date.c:2109 utils/adt/date.c:2643 utils/adt/float.c:1047
-#: utils/adt/float.c:1123 utils/adt/int.c:614 utils/adt/int.c:661
-#: utils/adt/int.c:696 utils/adt/int8.c:499 utils/adt/numeric.c:2451
+#: utils/adt/float.c:1123 utils/adt/int.c:643 utils/adt/int.c:690
+#: utils/adt/int.c:725 utils/adt/int8.c:499 utils/adt/numeric.c:2451
 #: utils/adt/timestamp.c:3388 utils/adt/timestamp.c:3419
 #: utils/adt/timestamp.c:3450
 #, c-format
@@ -22972,9 +22982,9 @@ msgstr "»%s« ist außerhalb des gültigen Bereichs für Typ real"
 msgid "\"%s\" is out of range for type double precision"
 msgstr "»%s« ist außerhalb des gültigen Bereichs für Typ double precision"
 
-#: utils/adt/float.c:1258 utils/adt/float.c:1332 utils/adt/int.c:334
-#: utils/adt/int.c:872 utils/adt/int.c:894 utils/adt/int.c:908
-#: utils/adt/int.c:922 utils/adt/int.c:954 utils/adt/int.c:1192
+#: utils/adt/float.c:1258 utils/adt/float.c:1332 utils/adt/int.c:363
+#: utils/adt/int.c:901 utils/adt/int.c:923 utils/adt/int.c:937
+#: utils/adt/int.c:951 utils/adt/int.c:983 utils/adt/int.c:1221
 #: utils/adt/int8.c:1320 utils/adt/numeric.c:4359 utils/adt/numeric.c:4364
 #, c-format
 msgid "smallint out of range"
@@ -23293,12 +23303,12 @@ msgstr "Verwenden Sie die 24-Stunden-Uhr oder geben Sie eine Stunde zwischen 1 u
 msgid "cannot calculate day of year without year information"
 msgstr "kann Tag des Jahres nicht berechnen ohne Jahrinformationen"
 
-#: utils/adt/formatting.c:5606
+#: utils/adt/formatting.c:5608
 #, c-format
 msgid "\"EEEE\" not supported for input"
 msgstr "»E« wird nicht bei der Eingabe unterstützt"
 
-#: utils/adt/formatting.c:5618
+#: utils/adt/formatting.c:5620
 #, c-format
 msgid "\"RN\" not supported for input"
 msgstr "»RN« wird nicht bei der Eingabe unterstützt"
@@ -23319,8 +23329,8 @@ msgid "path must be in or below the current directory"
 msgstr "Pfad muss in oder unter aktuellem Verzeichnis sein"
 
 #: utils/adt/genfile.c:119 utils/adt/oracle_compat.c:187
-#: utils/adt/oracle_compat.c:285 utils/adt/oracle_compat.c:835
-#: utils/adt/oracle_compat.c:1130
+#: utils/adt/oracle_compat.c:285 utils/adt/oracle_compat.c:844
+#: utils/adt/oracle_compat.c:1139
 #, c-format
 msgid "requested length too large"
 msgstr "verlangte Länge zu groß"
@@ -23416,22 +23426,27 @@ msgstr "kann Kreis mit Radius null nicht in Polygon umwandeln"
 msgid "must request at least 2 points"
 msgstr "mindestens 2 Punkte müssen angefordert werden"
 
-#: utils/adt/int.c:164
+#: utils/adt/int.c:158
+#, c-format
+msgid "array is not a valid int2vector"
+msgstr "Array ist kein gültiger int2vector"
+
+#: utils/adt/int.c:188
 #, c-format
 msgid "int2vector has too many elements"
 msgstr "int2vector-Wert hat zu viele Elemente"
 
-#: utils/adt/int.c:237
+#: utils/adt/int.c:265
 #, c-format
 msgid "invalid int2vector data"
 msgstr "ungültige int2vector-Daten"
 
-#: utils/adt/int.c:243 utils/adt/oid.c:215 utils/adt/oid.c:296
+#: utils/adt/int.c:271 utils/adt/oid.c:239 utils/adt/oid.c:324
 #, c-format
 msgid "oidvector has too many elements"
 msgstr "oidvector-Wert hat zu viele Elemente"
 
-#: utils/adt/int.c:1508 utils/adt/int8.c:1446 utils/adt/numeric.c:1631
+#: utils/adt/int.c:1537 utils/adt/int8.c:1446 utils/adt/numeric.c:1631
 #: utils/adt/timestamp.c:5879 utils/adt/timestamp.c:5959
 #, c-format
 msgid "step size cannot equal zero"
@@ -23958,7 +23973,7 @@ msgstr "Wert kann nicht von %s nach %s konvertiert werden ohne Verwendung von Ze
 msgid "Use *_tz() function for time zone support."
 msgstr "Verwenden Sie die *_tz()-Funktion für Zeitzonenunterstützung."
 
-#: utils/adt/levenshtein.c:133
+#: utils/adt/levenshtein.c:135
 #, c-format
 msgid "levenshtein argument exceeds maximum length of %d characters"
 msgstr "Levenshtein-Argument überschreitet die maximale Länge von %d Zeichen"
@@ -23983,12 +23998,12 @@ msgstr "nichtdeterministische Sortierfolgen werden von ILIKE nicht unterstützt"
 msgid "LIKE pattern must not end with escape character"
 msgstr "LIKE-Muster darf nicht mit Escape-Zeichen enden"
 
-#: utils/adt/like_match.c:293 utils/adt/regexp.c:701
+#: utils/adt/like_match.c:293 utils/adt/regexp.c:703
 #, c-format
 msgid "invalid escape string"
 msgstr "ungültige ESCAPE-Zeichenkette"
 
-#: utils/adt/like_match.c:294 utils/adt/regexp.c:702
+#: utils/adt/like_match.c:294 utils/adt/regexp.c:704
 #, c-format
 msgid "Escape string must be empty or one character."
 msgstr "ESCAPE-Zeichenkette muss null oder ein Zeichen lang sein."
@@ -24318,27 +24333,32 @@ msgstr "Ein Feld mit Präzision %d, Skala %d kann keinen unendlichen Wert enthal
 msgid "value \"%s\" is out of range for 8-bit integer"
 msgstr "Wert »%s« ist außerhalb des gültigen Bereichs für 8-Bit-Ganzzahl"
 
-#: utils/adt/oid.c:290
+#: utils/adt/oid.c:211
+#, c-format
+msgid "array is not a valid oidvector"
+msgstr "Array ist kein gültiger oidvector"
+
+#: utils/adt/oid.c:318
 #, c-format
 msgid "invalid oidvector data"
 msgstr "ungültige oidvector-Daten"
 
-#: utils/adt/oracle_compat.c:972
+#: utils/adt/oracle_compat.c:981
 #, c-format
 msgid "requested character too large"
 msgstr "verlangtes Zeichen zu groß"
 
-#: utils/adt/oracle_compat.c:1022 utils/adt/oracle_compat.c:1084
+#: utils/adt/oracle_compat.c:1031 utils/adt/oracle_compat.c:1093
 #, c-format
 msgid "requested character too large for encoding: %d"
 msgstr "gewünschtes Zeichen ist zu groß für die Kodierung: %d"
 
-#: utils/adt/oracle_compat.c:1063
+#: utils/adt/oracle_compat.c:1072
 #, c-format
 msgid "requested character not valid for encoding: %d"
 msgstr "gewünschtes Zeichen ist nicht gültig für die Kodierung: %d"
 
-#: utils/adt/oracle_compat.c:1077
+#: utils/adt/oracle_compat.c:1086
 #, c-format
 msgid "null character not permitted"
 msgstr "Null-Zeichen ist nicht erlaubt"
@@ -24551,7 +24571,7 @@ msgstr "Zu viele Kommas."
 msgid "Junk after right parenthesis or bracket."
 msgstr "Müll nach rechter runder oder eckiger Klammer."
 
-#: utils/adt/regexp.c:289 utils/adt/regexp.c:1612 utils/adt/varlena.c:4549
+#: utils/adt/regexp.c:289 utils/adt/regexp.c:1614 utils/adt/varlena.c:4595
 #, c-format
 msgid "regular expression failed: %s"
 msgstr "regulärer Ausdruck fehlgeschlagen: %s"
@@ -24561,23 +24581,23 @@ msgstr "regulärer Ausdruck fehlgeschlagen: %s"
 msgid "invalid regular expression option: \"%.*s\""
 msgstr "ungültige Option für regulären Ausdruck: »%.*s«"
 
-#: utils/adt/regexp.c:848
+#: utils/adt/regexp.c:850
 #, c-format
 msgid "SQL regular expression may not contain more than two escape-double-quote separators"
 msgstr "SQL regulärer Ausdruck darf nicht mehr als zwei Escape-Double-Quote-Separatoren enthalten"
 
 #. translator: %s is a SQL function name
-#: utils/adt/regexp.c:1050 utils/adt/regexp.c:1432 utils/adt/regexp.c:1487
+#: utils/adt/regexp.c:1052 utils/adt/regexp.c:1434 utils/adt/regexp.c:1489
 #, c-format
 msgid "%s does not support the \"global\" option"
 msgstr "%s unterstützt die »Global«-Option nicht"
 
-#: utils/adt/regexp.c:1052
+#: utils/adt/regexp.c:1054
 #, c-format
 msgid "Use the regexp_matches function instead."
 msgstr "Verwenden Sie stattdessen die Funktion regexp_matches."
 
-#: utils/adt/regexp.c:1234
+#: utils/adt/regexp.c:1236
 #, c-format
 msgid "too many regular expression matches"
 msgstr "zu viele Treffer für regulären Ausdruck"
@@ -24605,7 +24625,7 @@ msgstr "Geben Sie zwei Argumente für den Operator an."
 
 #: utils/adt/regproc.c:1639 utils/adt/regproc.c:1663 utils/adt/regproc.c:1764
 #: utils/adt/regproc.c:1788 utils/adt/regproc.c:1890 utils/adt/regproc.c:1895
-#: utils/adt/varlena.c:3698 utils/adt/varlena.c:3703
+#: utils/adt/varlena.c:3744 utils/adt/varlena.c:3749
 #, c-format
 msgid "invalid name syntax"
 msgstr "ungültige Namenssyntax"
@@ -25036,37 +25056,37 @@ msgstr "unbekannte Gewichtung: »%c«"
 msgid "ts_stat query must return one tsvector column"
 msgstr "ts_stat-Anfrage muss eine tsvector-Spalte zurückgeben"
 
-#: utils/adt/tsvector_op.c:2618
+#: utils/adt/tsvector_op.c:2622
 #, c-format
 msgid "tsvector column \"%s\" does not exist"
 msgstr "tsvector-Spalte »%s« existiert nicht"
 
-#: utils/adt/tsvector_op.c:2625
+#: utils/adt/tsvector_op.c:2629
 #, c-format
 msgid "column \"%s\" is not of tsvector type"
 msgstr "Spalte »%s« hat nicht Typ tsvector"
 
-#: utils/adt/tsvector_op.c:2637
+#: utils/adt/tsvector_op.c:2641
 #, c-format
 msgid "configuration column \"%s\" does not exist"
 msgstr "Konfigurationsspalte »%s« existiert nicht"
 
-#: utils/adt/tsvector_op.c:2643
+#: utils/adt/tsvector_op.c:2647
 #, c-format
 msgid "column \"%s\" is not of regconfig type"
 msgstr "Spalte »%s« hat nicht Typ regconfig"
 
-#: utils/adt/tsvector_op.c:2650
+#: utils/adt/tsvector_op.c:2654
 #, c-format
 msgid "configuration column \"%s\" must not be null"
 msgstr "Konfigurationsspalte »%s« darf nicht NULL sein"
 
-#: utils/adt/tsvector_op.c:2663
+#: utils/adt/tsvector_op.c:2667
 #, c-format
 msgid "text search configuration name \"%s\" must be schema-qualified"
 msgstr "Textsuchekonfigurationsname »%s« muss Schemaqualifikation haben"
 
-#: utils/adt/tsvector_op.c:2688
+#: utils/adt/tsvector_op.c:2692
 #, c-format
 msgid "column \"%s\" is not of a character type"
 msgstr "Spalte »%s« hat keinen Zeichentyp"
@@ -25076,12 +25096,12 @@ msgstr "Spalte »%s« hat keinen Zeichentyp"
 msgid "syntax error in tsvector: \"%s\""
 msgstr "Syntaxfehler in tsvector: »%s«"
 
-#: utils/adt/tsvector_parser.c:200
+#: utils/adt/tsvector_parser.c:199
 #, c-format
 msgid "there is no escaped character: \"%s\""
 msgstr "es gibt kein escaptes Zeichen: »%s«"
 
-#: utils/adt/tsvector_parser.c:318
+#: utils/adt/tsvector_parser.c:313
 #, c-format
 msgid "wrong position info in tsvector: \"%s\""
 msgstr "falsche Positionsinformationen in tsvector: »%s«"
@@ -25131,9 +25151,9 @@ msgstr "ungültige Länge in externer Bitkette"
 msgid "bit string too long for type bit varying(%d)"
 msgstr "Bitkette ist zu lang für Typ bit varying(%d)"
 
-#: utils/adt/varbit.c:1081 utils/adt/varbit.c:1191 utils/adt/varlena.c:890
-#: utils/adt/varlena.c:953 utils/adt/varlena.c:1110 utils/adt/varlena.c:3340
-#: utils/adt/varlena.c:3418
+#: utils/adt/varbit.c:1081 utils/adt/varbit.c:1191 utils/adt/varlena.c:894
+#: utils/adt/varlena.c:958 utils/adt/varlena.c:1153 utils/adt/varlena.c:3386
+#: utils/adt/varlena.c:3464
 #, c-format
 msgid "negative substring length not allowed"
 msgstr "negative Teilzeichenkettenlänge nicht erlaubt"
@@ -25158,7 +25178,7 @@ msgstr "binäres »Exklusiv-Oder« nicht mit Bitketten unterschiedlicher Länge 
 msgid "bit index %d out of valid range (0..%d)"
 msgstr "Bitindex %d ist außerhalb des gültigen Bereichs (0..%d)"
 
-#: utils/adt/varbit.c:1833 utils/adt/varlena.c:3622
+#: utils/adt/varbit.c:1833 utils/adt/varlena.c:3668
 #, c-format
 msgid "new bit must be 0 or 1"
 msgstr "neues Bit muss 0 oder 1 sein"
@@ -25173,107 +25193,107 @@ msgstr "Wert zu lang für Typ character(%d)"
 msgid "value too long for type character varying(%d)"
 msgstr "Wert zu lang für Typ character varying(%d)"
 
-#: utils/adt/varchar.c:732 utils/adt/varlena.c:1516
+#: utils/adt/varchar.c:732 utils/adt/varlena.c:1562
 #, c-format
 msgid "could not determine which collation to use for string comparison"
 msgstr "konnte die für den Zeichenkettenvergleich zu verwendende Sortierfolge nicht bestimmen"
 
-#: utils/adt/varlena.c:1209 utils/adt/varlena.c:1956
+#: utils/adt/varlena.c:1252 utils/adt/varlena.c:2002
 #, c-format
 msgid "nondeterministic collations are not supported for substring searches"
 msgstr "nichtdeterministische Sortierfolgen werden für Teilzeichenkettensuchen nicht unterstützt"
 
-#: utils/adt/varlena.c:1615 utils/adt/varlena.c:1628
+#: utils/adt/varlena.c:1661 utils/adt/varlena.c:1674
 #, c-format
 msgid "could not convert string to UTF-16: error code %lu"
 msgstr "konnte Zeichenkette nicht in UTF-16 umwandeln: Fehlercode %lu"
 
-#: utils/adt/varlena.c:1643
+#: utils/adt/varlena.c:1689
 #, c-format
 msgid "could not compare Unicode strings: %m"
 msgstr "konnte Unicode-Zeichenketten nicht vergleichen: %m"
 
-#: utils/adt/varlena.c:1694 utils/adt/varlena.c:2406
+#: utils/adt/varlena.c:1740 utils/adt/varlena.c:2452
 #, c-format
 msgid "collation failed: %s"
 msgstr "Vergleichung fehlgeschlagen: %s"
 
-#: utils/adt/varlena.c:2613
+#: utils/adt/varlena.c:2659
 #, c-format
 msgid "sort key generation failed: %s"
 msgstr "Sortierschlüsselerzeugung fehlgeschlagen: %s"
 
-#: utils/adt/varlena.c:3506 utils/adt/varlena.c:3573
+#: utils/adt/varlena.c:3552 utils/adt/varlena.c:3619
 #, c-format
 msgid "index %d out of valid range, 0..%d"
 msgstr "Index %d ist außerhalb des gültigen Bereichs, 0..%d"
 
-#: utils/adt/varlena.c:3537 utils/adt/varlena.c:3609
+#: utils/adt/varlena.c:3583 utils/adt/varlena.c:3655
 #, c-format
 msgid "index %lld out of valid range, 0..%lld"
 msgstr "Index %lld ist außerhalb des gültigen Bereichs, 0..%lld"
 
-#: utils/adt/varlena.c:4645
+#: utils/adt/varlena.c:4691
 #, c-format
 msgid "field position must not be zero"
 msgstr "Feldposition darf nicht null sein"
 
-#: utils/adt/varlena.c:5686
+#: utils/adt/varlena.c:5735
 #, c-format
 msgid "unterminated format() type specifier"
 msgstr "Typspezifikation in format() nicht abgeschlossen"
 
-#: utils/adt/varlena.c:5687 utils/adt/varlena.c:5821 utils/adt/varlena.c:5942
+#: utils/adt/varlena.c:5736 utils/adt/varlena.c:5870 utils/adt/varlena.c:5991
 #, c-format
 msgid "For a single \"%%\" use \"%%%%\"."
 msgstr "Für ein einzelnes »%%« geben Sie »%%%%« an."
 
-#: utils/adt/varlena.c:5819 utils/adt/varlena.c:5940
+#: utils/adt/varlena.c:5868 utils/adt/varlena.c:5989
 #, c-format
 msgid "unrecognized format() type specifier \"%.*s\""
 msgstr "unbekannte Typspezifikation in format(): »%.*s«"
 
-#: utils/adt/varlena.c:5832 utils/adt/varlena.c:5889
+#: utils/adt/varlena.c:5881 utils/adt/varlena.c:5938
 #, c-format
 msgid "too few arguments for format()"
 msgstr "zu wenige Argumente für format()"
 
-#: utils/adt/varlena.c:5985 utils/adt/varlena.c:6167
+#: utils/adt/varlena.c:6034 utils/adt/varlena.c:6216
 #, c-format
 msgid "number is out of range"
 msgstr "Zahl ist außerhalb des gültigen Bereichs"
 
-#: utils/adt/varlena.c:6048 utils/adt/varlena.c:6076
+#: utils/adt/varlena.c:6097 utils/adt/varlena.c:6125
 #, c-format
 msgid "format specifies argument 0, but arguments are numbered from 1"
 msgstr "Format gibt Argument 0 an, aber die Argumente sind von 1 an nummeriert"
 
-#: utils/adt/varlena.c:6069
+#: utils/adt/varlena.c:6118
 #, c-format
 msgid "width argument position must be ended by \"$\""
 msgstr "Argumentposition der Breitenangabe muss mit »$« enden"
 
-#: utils/adt/varlena.c:6114
+#: utils/adt/varlena.c:6163
 #, c-format
 msgid "null values cannot be formatted as an SQL identifier"
 msgstr "NULL-Werte können nicht als SQL-Bezeichner formatiert werden"
 
-#: utils/adt/varlena.c:6240
+#: utils/adt/varlena.c:6289
 #, c-format
 msgid "Unicode normalization can only be performed if server encoding is UTF8"
 msgstr "Unicode-Normalisierung kann nur durchgeführt werden, wenn die Serverkodierung UTF8 ist"
 
-#: utils/adt/varlena.c:6253
+#: utils/adt/varlena.c:6302
 #, c-format
 msgid "invalid normalization form: %s"
 msgstr "ungültige Normalisierungsform: %s"
 
-#: utils/adt/varlena.c:6456 utils/adt/varlena.c:6491 utils/adt/varlena.c:6526
+#: utils/adt/varlena.c:6505 utils/adt/varlena.c:6540 utils/adt/varlena.c:6575
 #, c-format
 msgid "invalid Unicode code point: %04X"
 msgstr "ungültiger Unicode-Codepunkt: %04X"
 
-#: utils/adt/varlena.c:6556
+#: utils/adt/varlena.c:6605
 #, c-format
 msgid "Unicode escapes must be \\XXXX, \\+XXXXXX, \\uXXXX, or \\UXXXXXXXX."
 msgstr "Unicode-Escapes müssen \\XXXX, \\+XXXXXX, \\uXXXX oder \\UXXXXXXXX sein."
@@ -25308,7 +25328,7 @@ msgstr "nicht unterstützte XML-Funktionalität"
 msgid "This functionality requires the server to be built with libxml support."
 msgstr "Diese Funktionalität verlangt, dass der Server mit Libxml-Unterstützung gebaut wird."
 
-#: utils/adt/xml.c:253 utils/mb/mbutils.c:628
+#: utils/adt/xml.c:253 utils/mb/mbutils.c:636
 #, c-format
 msgid "invalid encoding name \"%s\""
 msgstr "ungültiger Kodierungsname »%s«"
@@ -25392,67 +25412,67 @@ msgstr "Beim Parsen der XML-Deklaration: »?>« erwartet."
 msgid "Unrecognized libxml error code: %d."
 msgstr "Unbekannter Libxml-Fehlercode: %d."
 
-#: utils/adt/xml.c:2254
+#: utils/adt/xml.c:2253
 #, c-format
 msgid "XML does not support infinite date values."
 msgstr "XML unterstützt keine unendlichen Datumswerte."
 
-#: utils/adt/xml.c:2276 utils/adt/xml.c:2303
+#: utils/adt/xml.c:2275 utils/adt/xml.c:2302
 #, c-format
 msgid "XML does not support infinite timestamp values."
 msgstr "XML unterstützt keine unendlichen timestamp-Werte."
 
-#: utils/adt/xml.c:2719
+#: utils/adt/xml.c:2718
 #, c-format
 msgid "invalid query"
 msgstr "ungültige Anfrage"
 
-#: utils/adt/xml.c:2811
+#: utils/adt/xml.c:2810
 #, c-format
 msgid "portal \"%s\" does not return tuples"
 msgstr "Portal »%s« gibt keine Tupel zurück"
 
-#: utils/adt/xml.c:4063
+#: utils/adt/xml.c:4062
 #, c-format
 msgid "invalid array for XML namespace mapping"
 msgstr "ungültiges Array for XML-Namensraumabbildung"
 
-#: utils/adt/xml.c:4064
+#: utils/adt/xml.c:4063
 #, c-format
 msgid "The array must be two-dimensional with length of the second axis equal to 2."
 msgstr "Das Array muss zweidimensional sein und die Länge der zweiten Achse muss gleich 2 sein."
 
-#: utils/adt/xml.c:4088
+#: utils/adt/xml.c:4087
 #, c-format
 msgid "empty XPath expression"
 msgstr "leerer XPath-Ausdruck"
 
-#: utils/adt/xml.c:4140
+#: utils/adt/xml.c:4139
 #, c-format
 msgid "neither namespace name nor URI may be null"
 msgstr "weder Namensraumname noch URI dürfen NULL sein"
 
-#: utils/adt/xml.c:4147
+#: utils/adt/xml.c:4146
 #, c-format
 msgid "could not register XML namespace with name \"%s\" and URI \"%s\""
 msgstr "konnte XML-Namensraum mit Namen »%s« und URI »%s« nicht registrieren"
 
-#: utils/adt/xml.c:4504
+#: utils/adt/xml.c:4503
 #, c-format
 msgid "DEFAULT namespace is not supported"
 msgstr "DEFAULT-Namensraum wird nicht unterstützt"
 
-#: utils/adt/xml.c:4533
+#: utils/adt/xml.c:4532
 #, c-format
 msgid "row path filter must not be empty string"
 msgstr "Zeilenpfadfilter darf nicht leer sein"
 
-#: utils/adt/xml.c:4567
+#: utils/adt/xml.c:4566
 #, c-format
 msgid "column path filter must not be empty string"
 msgstr "Spaltenpfadfilter darf nicht leer sein"
 
-#: utils/adt/xml.c:4714
+#: utils/adt/xml.c:4713
 #, c-format
 msgid "more than one value returned by column XPath expression"
 msgstr "XPath-Ausdruck für Spalte gab mehr als einen Wert zurück"
@@ -26109,48 +26129,48 @@ msgstr "unerwartete Kodierungs-ID %d für ISO-8859-Zeichensatz"
 msgid "unexpected encoding ID %d for WIN character sets"
 msgstr "unerwartete Kodierungs-ID %d für WIN-Zeichensatz"
 
-#: utils/mb/mbutils.c:298 utils/mb/mbutils.c:901
+#: utils/mb/mbutils.c:306 utils/mb/mbutils.c:909
 #, c-format
 msgid "conversion between %s and %s is not supported"
 msgstr "Umwandlung zwischen %s und %s wird nicht unterstützt"
 
-#: utils/mb/mbutils.c:403 utils/mb/mbutils.c:431 utils/mb/mbutils.c:816
-#: utils/mb/mbutils.c:843
+#: utils/mb/mbutils.c:411 utils/mb/mbutils.c:439 utils/mb/mbutils.c:824
+#: utils/mb/mbutils.c:851
 #, c-format
 msgid "String of %d bytes is too long for encoding conversion."
 msgstr "Zeichenkette mit %d Bytes ist zu lang für Kodierungsumwandlung."
 
-#: utils/mb/mbutils.c:569
+#: utils/mb/mbutils.c:577
 #, c-format
 msgid "invalid source encoding name \"%s\""
 msgstr "ungültiger Quellkodierungsname »%s«"
 
-#: utils/mb/mbutils.c:574
+#: utils/mb/mbutils.c:582
 #, c-format
 msgid "invalid destination encoding name \"%s\""
 msgstr "ungültiger Zielkodierungsname »%s«"
 
-#: utils/mb/mbutils.c:714
+#: utils/mb/mbutils.c:722
 #, c-format
 msgid "invalid byte value for encoding \"%s\": 0x%02x"
 msgstr "ungültiger Byte-Wert für Kodierung »%s«: 0x%02x"
 
-#: utils/mb/mbutils.c:878
+#: utils/mb/mbutils.c:886
 #, c-format
 msgid "invalid Unicode code point"
 msgstr "ungültiger Unicode-Codepunkt"
 
-#: utils/mb/mbutils.c:1147
+#: utils/mb/mbutils.c:1272
 #, c-format
 msgid "bind_textdomain_codeset failed"
 msgstr "bind_textdomain_codeset fehlgeschlagen"
 
-#: utils/mb/mbutils.c:1668
+#: utils/mb/mbutils.c:1800
 #, c-format
 msgid "invalid byte sequence for encoding \"%s\": %s"
 msgstr "ungültige Byte-Sequenz für Kodierung »%s«: %s"
 
-#: utils/mb/mbutils.c:1709
+#: utils/mb/mbutils.c:1847
 #, c-format
 msgid "character with byte sequence %s in encoding \"%s\" has no equivalent in encoding \"%s\""
 msgstr "Zeichen mit Byte-Folge %s in Kodierung »%s« hat keine Entsprechung in Kodierung »%s«"
