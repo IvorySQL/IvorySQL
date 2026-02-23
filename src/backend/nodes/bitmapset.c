@@ -553,14 +553,8 @@ bms_member_index(Bitmapset *a, int x)
 	bitnum = BITNUM(x);
 
 	/* count bits in preceding words */
-	for (int i = 0; i < wordnum; i++)
-	{
-		bitmapword	w = a->words[i];
-
-		/* No need to count the bits in a zero word */
-		if (w != 0)
-			result += bmw_popcount(w);
-	}
+	result += pg_popcount((const char *) a->words,
+						  wordnum * sizeof(bitmapword));
 
 	/*
 	 * Now add bits of the last word, but only those before the item. We can
@@ -749,26 +743,17 @@ bms_get_singleton_member(const Bitmapset *a, int *member)
 int
 bms_num_members(const Bitmapset *a)
 {
-	int			result = 0;
-	int			nwords;
-	int			wordnum;
-
 	Assert(bms_is_valid_set(a));
 
 	if (a == NULL)
 		return 0;
 
-	nwords = a->nwords;
-	wordnum = 0;
-	do
-	{
-		bitmapword	w = a->words[wordnum];
+	/* fast-path for common case */
+	if (a->nwords == 1)
+		return bmw_popcount(a->words[0]);
 
-		/* No need to count the bits in a zero word */
-		if (w != 0)
-			result += bmw_popcount(w);
-	} while (++wordnum < nwords);
-	return result;
+	return pg_popcount((const char *) a->words,
+					   a->nwords * sizeof(bitmapword));
 }
 
 /*
