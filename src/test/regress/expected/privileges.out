@@ -2175,6 +2175,53 @@ SELECT lo_truncate(lo_open(2001, x'20000'::int), 10);
            0
 (1 row)
 
+\c -
+-- confirm role with privileges of pg_read_all_data can read large objects
+SET SESSION AUTHORIZATION regress_priv_user6;
+SELECT loread(lo_open(1002, x'40000'::int), 32);
+ loread 
+--------
+ \x
+(1 row)
+
+SELECT lo_get(1002);
+ lo_get 
+--------
+ \x
+(1 row)
+
+SELECT lowrite(lo_open(1002, x'20000'::int), 'abcd');	-- to be denied
+ERROR:  permission denied for large object 1002
+SELECT lo_put(1002, 1, 'abcd');							-- to be denied
+ERROR:  permission denied for large object 1002
+SELECT lo_truncate(lo_open(1002, x'20000'::int), 0);	-- to be denied
+ERROR:  permission denied for large object 1002
+SELECT lo_unlink(1002);									-- to be denied
+ERROR:  must be owner of large object 1002
+\c -
+-- confirm role with privileges of pg_write_all_data can write large objects
+GRANT SELECT ON LARGE OBJECT 1002 TO regress_priv_user7;
+SET SESSION AUTHORIZATION regress_priv_user7;
+SELECT lowrite(lo_open(1002, x'20000'::int), 'abcd');
+ lowrite 
+---------
+       4
+(1 row)
+
+SELECT lo_put(1002, 1, 'abcd');
+ lo_put 
+--------
+ 
+(1 row)
+
+SELECT lo_truncate(lo_open(1002, x'20000'::int), 0);
+ lo_truncate 
+-------------
+           0
+(1 row)
+
+SELECT lo_unlink(1002);									-- to be denied
+ERROR:  must be owner of large object 1002
 -- has_largeobject_privilege function
 -- superuser
 \c -
@@ -2727,7 +2774,7 @@ SELECT has_largeobject_privilege('regress_priv_user2', 1008, 'SELECT'); -- yes
  t
 (1 row)
 
-SELECT has_largeobject_privilege('regress_priv_user6', 1008, 'SELECT'); -- no
+SELECT has_largeobject_privilege('regress_priv_user3', 1008, 'SELECT'); -- no
  has_largeobject_privilege 
 ---------------------------
  f

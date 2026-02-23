@@ -3883,6 +3883,24 @@ pg_largeobject_aclmask_snapshot(Oid lobj_oid, Oid roleid,
 
 	table_close(pg_lo_meta, AccessShareLock);
 
+	/*
+	 * Check if ACL_SELECT is being checked and, if so, and not set already as
+	 * part of the result, then check if the user has privileges of the
+	 * pg_read_all_data role, which allows read access to all large objects.
+	 */
+	if (mask & ACL_SELECT && !(result & ACL_SELECT) &&
+		has_privs_of_role(roleid, ROLE_PG_READ_ALL_DATA))
+		result |= ACL_SELECT;
+
+	/*
+	 * Check if ACL_UPDATE is being checked and, if so, and not set already as
+	 * part of the result, then check if the user has privileges of the
+	 * pg_write_all_data role, which allows write access to all large objects.
+	 */
+	if (mask & ACL_UPDATE && !(result & ACL_UPDATE) &&
+		has_privs_of_role(roleid, ROLE_PG_WRITE_ALL_DATA))
+		result |= ACL_UPDATE;
+
 	return result;
 }
 
