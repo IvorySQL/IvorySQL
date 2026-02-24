@@ -344,7 +344,7 @@ format_numeric_locale(const char *my_str)
 		return pg_strdup(my_str);
 
 	new_len = strlen(my_str) + additional_numeric_locale_len(my_str);
-	new_str = pg_malloc(new_len + 1);
+	new_str = pg_malloc_array(char, (new_len + 1));
 	new_str_pos = 0;
 	int_len = integer_digits(my_str);
 
@@ -692,18 +692,18 @@ print_aligned_text(const printTableContent *cont, FILE *fout, bool is_pager)
 	if (cont->ncolumns > 0)
 	{
 		col_count = cont->ncolumns;
-		width_header = pg_malloc0(col_count * sizeof(*width_header));
-		width_average = pg_malloc0(col_count * sizeof(*width_average));
-		max_width = pg_malloc0(col_count * sizeof(*max_width));
-		width_wrap = pg_malloc0(col_count * sizeof(*width_wrap));
-		max_nl_lines = pg_malloc0(col_count * sizeof(*max_nl_lines));
-		curr_nl_line = pg_malloc0(col_count * sizeof(*curr_nl_line));
-		col_lineptrs = pg_malloc0(col_count * sizeof(*col_lineptrs));
-		max_bytes = pg_malloc0(col_count * sizeof(*max_bytes));
-		format_buf = pg_malloc0(col_count * sizeof(*format_buf));
-		header_done = pg_malloc0(col_count * sizeof(*header_done));
-		bytes_output = pg_malloc0(col_count * sizeof(*bytes_output));
-		wrap = pg_malloc0(col_count * sizeof(*wrap));
+		width_header = pg_malloc0_array(unsigned int, col_count);
+		width_average = pg_malloc0_array(unsigned int, col_count);
+		max_width = pg_malloc0_array(unsigned int, col_count);
+		width_wrap = pg_malloc0_array(unsigned int, col_count);
+		max_nl_lines = pg_malloc0_array(unsigned int, col_count);
+		curr_nl_line = pg_malloc0_array(unsigned int, col_count);
+		col_lineptrs = pg_malloc0_array(struct lineptr *, col_count);
+		max_bytes = pg_malloc0_array(unsigned int, col_count);
+		format_buf = pg_malloc0_array(unsigned char *, col_count);
+		header_done = pg_malloc0_array(bool, col_count);
+		bytes_output = pg_malloc0_array(int, col_count);
+		wrap = pg_malloc0_array(printTextLineWrap, col_count);
 	}
 	else
 	{
@@ -798,10 +798,10 @@ print_aligned_text(const printTableContent *cont, FILE *fout, bool is_pager)
 	for (i = 0; i < col_count; i++)
 	{
 		/* Add entry for ptr == NULL array termination */
-		col_lineptrs[i] = pg_malloc0((max_nl_lines[i] + 1) *
-									 sizeof(**col_lineptrs));
+		col_lineptrs[i] = pg_malloc0_array(struct lineptr,
+										   (max_nl_lines[i] + 1));
 
-		format_buf[i] = pg_malloc(max_bytes[i] + 1);
+		format_buf[i] = pg_malloc_array(unsigned char, (max_bytes[i] + 1));
 
 		col_lineptrs[i]->ptr = format_buf[i];
 	}
@@ -1408,8 +1408,8 @@ print_aligned_vertical(const printTableContent *cont,
 	 * We now have all the information we need to setup the formatting
 	 * structures
 	 */
-	dlineptr = pg_malloc((sizeof(*dlineptr)) * (dheight + 1));
-	hlineptr = pg_malloc((sizeof(*hlineptr)) * (hheight + 1));
+	dlineptr = pg_malloc_array(struct lineptr, (dheight + 1));
+	hlineptr = pg_malloc_array(struct lineptr, (hheight + 1));
 
 	dlineptr->ptr = pg_malloc(dformatsize);
 	hlineptr->ptr = pg_malloc(hformatsize);
@@ -3197,7 +3197,7 @@ printTableInit(printTableContent *const content, const printTableOpt *opt,
 	content->ncolumns = ncolumns;
 	content->nrows = nrows;
 
-	content->headers = pg_malloc0((ncolumns + 1) * sizeof(*content->headers));
+	content->headers = pg_malloc0_array(const char *, (ncolumns + 1));
 
 	total_cells = (uint64) ncolumns * nrows;
 	/* Catch possible overflow.  Using >= here allows adding 1 below */
@@ -3208,12 +3208,12 @@ printTableInit(printTableContent *const content, const printTableOpt *opt,
 				SIZE_MAX / sizeof(*content->cells));
 		exit(EXIT_FAILURE);
 	}
-	content->cells = pg_malloc0((total_cells + 1) * sizeof(*content->cells));
+	content->cells = pg_malloc0_array(const char *, (total_cells + 1));
 
 	content->cellmustfree = NULL;
 	content->footers = NULL;
 
-	content->aligns = pg_malloc0((ncolumns + 1) * sizeof(*content->align));
+	content->aligns = pg_malloc0_array(char, (ncolumns + 1));
 
 	content->header = content->headers;
 	content->cell = content->cells;
@@ -3304,7 +3304,7 @@ printTableAddCell(printTableContent *const content, char *cell,
 	{
 		if (content->cellmustfree == NULL)
 			content->cellmustfree =
-				pg_malloc0((total_cells + 1) * sizeof(bool));
+				pg_malloc0_array(bool, (total_cells + 1));
 
 		content->cellmustfree[content->cellsadded] = true;
 	}
@@ -3329,7 +3329,7 @@ printTableAddFooter(printTableContent *const content, const char *footer)
 {
 	printTableFooter *f;
 
-	f = pg_malloc0(sizeof(*f));
+	f = pg_malloc0_object(printTableFooter);
 	f->data = pg_strdup(footer);
 
 	if (content->footers == NULL)
@@ -3476,7 +3476,7 @@ count_table_lines(const printTableContent *cont,
 	 * Scan all column headers and determine their heights.  Cache the values
 	 * since vertical mode repeats the headers for every record.
 	 */
-	header_height = (int *) pg_malloc(cont->ncolumns * sizeof(int));
+	header_height = pg_malloc_array(int, cont->ncolumns);
 	for (i = 0; i < cont->ncolumns; i++)
 	{
 		pg_wcssize((const unsigned char *) cont->headers[i],
