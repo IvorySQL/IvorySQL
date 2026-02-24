@@ -2528,7 +2528,7 @@ pg_available_extension_versions(PG_FUNCTION_ARGS)
 
 				/*
 				 * Ignore already-found names.  They are not reachable by the
-				 * path search, so don't shown them.
+				 * path search, so don't show them.
 				 */
 				extname_str = makeString(extname);
 				if (list_member(found_ext, extname_str))

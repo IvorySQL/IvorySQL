@@ -2723,7 +2723,7 @@ typedef struct AccessPriv
  * Note: because of the parsing ambiguity with the GRANT <privileges>
  * statement, granted_roles is a list of AccessPriv; the execution code
  * should complain if any column lists appear.  grantee_roles is a list
- * of role names, as String values.
+ * of role names, as RoleSpec values.
  * ----------------------
  */
 typedef struct GrantRoleStmt

@@ -769,7 +769,7 @@ delete_pg_statistic_ext_data(Oid stxoid, bool inherited)
 	HeapTuple	oldtup;
 	bool		result = false;
 
-	/* Is there already a pg_statistic tuple for this attribute? */
+	/* Is there already a pg_statistic_ext_data tuple for this attribute? */
 	oldtup = SearchSysCache2(STATEXTDATASTXOID,
 							 ObjectIdGetDatum(stxoid),
 							 BoolGetDatum(inherited));

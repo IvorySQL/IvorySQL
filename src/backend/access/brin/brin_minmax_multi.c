@@ -712,7 +712,7 @@ brin_range_serialize(Ranges *range)
 
 /*
  * brin_range_deserialize
- *	  Serialize the in-memory representation into a compact varlena value.
+ *	  Deserialize a compact varlena value into the in-memory representation.
  *
  * Simply copy the header and then also the individual values, as stored
  * in the in-memory value array.
