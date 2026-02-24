@@ -43,6 +43,12 @@ backend_link_args = []
 backend_link_depends = []
 
 
+# On Windows also make the backend depend on dbghelp, for backtrace support
+if host_system == 'windows' and cc.get_id() == 'msvc'
+  backend_build_deps += cc.find_library('dbghelp')
+endif
+
+
 # On windows when compiling with msvc we need to make postgres export all its
 # symbols so that extension libraries can use them. For that we need to scan
 # the constituting objects and generate a file specifying all the functions as
