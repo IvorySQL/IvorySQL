@@ -199,8 +199,16 @@ typedef struct FileSlot
 static FileSlot	slots[MAX_SLOTS];	/* initialized with zeros */
 
 static uint32	slotid = INVALID_SLOTID;			/* next slot id */
-#define NEXT_SLOTID(sid) \
-    ((sid) == UINT32_MAX ? 1 : (++(sid)))
+static inline uint32
+next_slotid(void)
+{
+    if (slotid == UINT32_MAX)
+        slotid = 1;
+    else
+        slotid++;
+
+    return slotid;
+}
 
 /*
  * Find any free slot, saves handle in that
@@ -220,7 +228,7 @@ reserve_slot(FILE *fd, int max_linesize, int encoding)
 		if (slots[i].id != INVALID_SLOTID)
 			continue;
 
-		slots[i].id = NEXT_SLOTID(slotid);
+		slots[i].id = next_slotid();
 		slots[i].fd = fd;
 		slots[i].max_linesize = max_linesize;
 		slots[i].encoding = encoding;
@@ -425,7 +433,7 @@ ora_utl_file_is_open(PG_FUNCTION_ARGS)
 Datum
 ora_utl_file_fclose(PG_FUNCTION_ARGS)
 {
-	FILE *fd = free_slot(PG_GETARG_INT32(0));
+	FILE *fd = free_slot(PG_GETARG_UINT32(0));
 
 	if(fd == NULL)
 	{
