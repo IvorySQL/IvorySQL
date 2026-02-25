@@ -1012,7 +1012,6 @@ get_safe_path(text *location_or_dirname, text *filename)
 {
 	char	   *fullname;
 	char	   *location;
-	bool		check_locality;
 
 	NON_EMPTY_TEXT(location_or_dirname);
 	NON_EMPTY_TEXT(filename);
@@ -1030,7 +1029,6 @@ get_safe_path(text *location_or_dirname, text *filename)
 		fullname[aux_pos + aux_len + 1] = '\0';
 
 		/* location is safe (ensured by dirname) */
-		check_locality = false;
 		pfree(location);
 	}
 	else
@@ -1043,15 +1041,11 @@ get_safe_path(text *location_or_dirname, text *filename)
 		fullname[aux_pos] = '/';
 		memcpy(fullname + aux_pos + 1, VARDATA(filename), aux_len);
 		fullname[aux_pos + aux_len + 1] = '\0';
-
-		check_locality = true;
 	}
 
 	/* check locality in canonizalized form of path */
 	canonicalize_path(fullname);
-
-	if (check_locality)
-		check_secure_locality(fullname);
+	check_secure_locality(fullname);
 
 	return fullname;
 }
@@ -1253,8 +1247,7 @@ get_file_handle_from_slot(uint32 sid, size_t *max_linesize, int *encoding)
 		}
 	}
 
-	INVALID_FILEHANDLE_WARNING();
-	return NULL;
+	INVALID_FILEHANDLE_EXCEPTION();
 }
 
 static void
