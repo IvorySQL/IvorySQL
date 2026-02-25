@@ -74,7 +74,7 @@ end;
 -- test fgetattr, fcopy, fremove, frename
 declare
     fexists boolean;
-    file_length integer;
+    file_length number;
     block_size integer;
 begin
     utl_file.fgetattr('data_directory', 'regress.txt', fexists, file_length, block_size);

@@ -47,6 +47,7 @@
 #include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/memutils.h"
+#include "utils/numeric.h"
 
 #define int2size(v)			v
 #define size2int(v)			v
@@ -585,7 +586,7 @@ ora_utl_file_fgetattr(PG_FUNCTION_ARGS)
 	if (stat(fullname, &st) == 0)
 	{
 		values[0] = BoolGetDatum(true);
-		values[1] = Int64GetDatum(st.st_size);
+		values[1] = NumericGetDatum(int64_to_numeric(st.st_size));
 		values[2] = Int32GetDatum(st.st_blksize);
 	}
 	else

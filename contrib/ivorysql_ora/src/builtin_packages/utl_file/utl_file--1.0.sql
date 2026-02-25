@@ -58,7 +58,7 @@ AS 'MODULE_PATHNAME','ora_utl_file_fflush'
 LANGUAGE C VOLATILE;
 
 -- Create composite types for ora_utl_file_fgetattr return values
-CREATE TYPE sys.ora_utl_file_fgetattr_result AS (fexists bool, file_length integer, block_size integer);
+CREATE TYPE sys.ora_utl_file_fgetattr_result AS (fexists bool, file_length number, block_size integer);
 
 CREATE FUNCTION sys.ora_utl_file_fgetattr(location text, filename text)
 RETURNS sys.ora_utl_file_fgetattr_result
@@ -226,7 +226,7 @@ CREATE OR REPLACE PACKAGE UTL_FILE IS
         location     IN VARCHAR2,
         filename     IN VARCHAR2,
         fexists      OUT BOOLEAN,
-        file_length  OUT INTEGER,
+        file_length  OUT NUMBER,
         block_size   OUT INTEGER
     );
 
@@ -362,7 +362,7 @@ CREATE OR REPLACE PACKAGE BODY UTL_FILE IS
         location     IN VARCHAR2,
         filename     IN VARCHAR2,
         fexists      OUT BOOLEAN,
-        file_length  OUT INTEGER,
+        file_length  OUT NUMBER,
         block_size   OUT INTEGER
     ) IS
     result sys.ora_utl_file_fgetattr_result;
