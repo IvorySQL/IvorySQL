@@ -12,11 +12,11 @@ step insert1: INSERT INTO upsert VALUES (1, 11, 111)
 step update2a: UPDATE upsert SET i = i + 10 WHERE i = 1;
 step c2: COMMIT;
 step insert1: <... completed>
-step select1: SELECT * FROM upsert;
+step select1: SELECT * FROM upsert ORDER BY i;
  i| j|  k
 --+--+---
-11|10|100
  1|11|111
+11|10|100
 (2 rows)
 
 step c1: COMMIT;
@@ -33,7 +33,7 @@ step insert1: INSERT INTO upsert VALUES (1, 11, 111)
 step update2b: UPDATE upsert SET i = i + 150 WHERE i = 1;
 step c2: COMMIT;
 step insert1: <... completed>
-step select1: SELECT * FROM upsert;
+step select1: SELECT * FROM upsert ORDER BY i;
   i| j|  k
 ---+--+---
   1|11|111
@@ -54,7 +54,7 @@ step insert1: INSERT INTO upsert VALUES (1, 11, 111)
 step delete2: DELETE FROM upsert WHERE i = 1;
 step c2: COMMIT;
 step insert1: <... completed>
-step select1: SELECT * FROM upsert;
+step select1: SELECT * FROM upsert ORDER BY i;
 i| j|  k
 -+--+---
 1|11|111
