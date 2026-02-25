@@ -82,7 +82,6 @@ PG_FUNCTION_INFO_V1(ora_utl_file_put_line);
 PG_FUNCTION_INFO_V1(ora_utl_file_put_raw);
 
 static int	utl_file_umask = 077;
-extern char *utl_file_umask_str;
 char	   *utl_file_umask_str = NULL;
 /* static Oid	utl_file_set_umask_roleid = InvalidOid; */
 
