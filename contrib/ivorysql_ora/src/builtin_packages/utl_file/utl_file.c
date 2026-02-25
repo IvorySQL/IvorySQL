@@ -1112,9 +1112,9 @@ copy_text_file(FILE *srcfile, FILE *dstfile, int start_line, int end_line)
 		do
 		{
 			if (fgets(buffer, MAX_LINESIZE, srcfile) == NULL)
-				return errno;
+				return errno;  /* EOF or error */
 			len = strlen(buffer);
-		} while(buffer[len - 1] != '\n');
+		}while(len > 0 && buffer[len - 1] != '\n');
 	}
 
 	/* copy until end_line. */
@@ -1124,11 +1124,11 @@ copy_text_file(FILE *srcfile, FILE *dstfile, int start_line, int end_line)
 		do
 		{
 			if (fgets(buffer, MAX_LINESIZE, srcfile) == NULL)
-				return errno;
+				return errno;  /* EOF or error */
 			len = strlen(buffer);
 			if (fwrite(buffer, 1, len, dstfile) != len)
 				return errno;
-		} while(buffer[len - 1] != '\n');
+		} while(len > 0 && buffer[len - 1] != '\n');
 	}
 
 	pfree(buffer);
