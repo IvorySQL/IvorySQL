@@ -1039,8 +1039,9 @@ typedef struct NUMProc
 	char	   *number,			/* string with number	*/
 			   *number_p,		/* pointer to current number position */
 			   *inout,			/* in / out buffer	*/
-			   *inout_p,		/* pointer to current inout position */
-			   *last_relevant,	/* last relevant number after decimal point */
+			   *inout_p;		/* pointer to current inout position */
+
+	const char *last_relevant,	/* last relevant number after decimal point */
 
 			   *L_negative_sign,	/* Locale */
 			   *L_positive_sign,
