@@ -482,6 +482,7 @@ ora_utl_file_fcopy(PG_FUNCTION_ARGS)
 	char	   *dstpath;
 	int			start_line;
 	int			end_line;
+	int 		copy_result;
 	FILE	   *srcfile;
 	FILE	   *dstfile;
 
@@ -522,11 +523,13 @@ ora_utl_file_fcopy(PG_FUNCTION_ARGS)
 		IO_EXCEPTION();
 	}
 
-	if (copy_text_file(srcfile, dstfile, start_line, end_line))
-		IO_EXCEPTION();
+	copy_result = copy_text_file(srcfile, dstfile, start_line, end_line);
 
 	fclose(srcfile);
 	fclose(dstfile);
+
+	if (copy_result)
+		IO_EXCEPTION();
 
 	PG_RETURN_VOID();
 }
