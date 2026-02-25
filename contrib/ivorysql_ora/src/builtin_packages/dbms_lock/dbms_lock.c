@@ -81,7 +81,7 @@ static HTAB *dbms_lock_hash_table = NULL;
  * static routines
  */
 static void dbms_lock_init_hash_table();
-static void dbms_lock_record_acquire(int64, int8);
+static bool dbms_lock_record_acquire(int64, int8);
 static bool dbms_lock_check(int64, int8);
 static bool dbms_lock_record_release(int64, int8);
 
@@ -107,9 +107,9 @@ dbms_lock_init_hash_table(void)
 }
 
 /*
- * store lock acquire
+ * store lock acquire: returns false in case of error
  */
-static void
+static bool 
 dbms_lock_record_acquire(int64 key, int8 mode)
 {
     bool        found;
@@ -120,8 +120,13 @@ dbms_lock_record_acquire(int64 key, int8 mode)
                                         HASH_ENTER,
                                         &found);
 
+    if (entry == NULL) {
+       return false;
+    }
+
     entry->key = key;
     entry->mode = mode;
+    return true;
 }
 
 /*
@@ -210,7 +215,7 @@ Datum
 ivorysql_dbms_lock_allocate_unique(PG_FUNCTION_ARGS)
 {
     char *lockname_text = text_to_cstring(PG_GETARG_TEXT_PP(0));
-    char handle[DBMS_LOCK_HANDLE_LENGTH];
+    char handle[DBMS_LOCK_HANDLE_LENGTH + 1];
 
     /* Use PostgreSQL 64-bit stable hash */
     uint64 hash =
@@ -246,6 +251,7 @@ ivorysql_dbms_lock_request(PG_FUNCTION_ARGS)
     bool exclusive = is_exclusive_mode(lockmode);
     TimestampTz start = GetCurrentTimestamp();
     bool acquired = false;
+    bool hash_enter_is_ok = false;
 
     if (dbms_lock_hash_table == NULL)
 	    dbms_lock_init_hash_table();
@@ -262,8 +268,11 @@ ivorysql_dbms_lock_request(PG_FUNCTION_ARGS)
 
         if (acquired) {
 	    elog(DEBUG1, "dbms_lock_request: key="INT64_FORMAT" mode=%d", key, lockmode);
-            dbms_lock_record_acquire(key, lockmode);
-            PG_RETURN_INT32(DBMS_LOCK_SUCCESS);
+            hash_enter_is_ok = dbms_lock_record_acquire(key, lockmode);
+	    if (hash_enter_is_ok)
+	            PG_RETURN_INT32(DBMS_LOCK_SUCCESS);
+	    else  elog(ERROR, "failed to record lock in hash table");
+ 
 	}
 
         if (timeout == 0)

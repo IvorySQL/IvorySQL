@@ -5,22 +5,22 @@
  ***************************************************************
 */
 
-CREATE FUNCTION dbms_lock_allocate_unique(text)
+CREATE FUNCTION sys.dbms_lock_allocate_unique(text)
 RETURNS text 
 AS 'MODULE_PATHNAME', 'ivorysql_dbms_lock_allocate_unique'
 LANGUAGE C STRICT;
 
-CREATE FUNCTION dbms_lock_request(text, int, int)
+CREATE FUNCTION sys.dbms_lock_request(text, int, int)
 RETURNS int
 AS 'MODULE_PATHNAME', 'ivorysql_dbms_lock_request'
 LANGUAGE C STRICT;
 
-CREATE FUNCTION dbms_lock_release(text)
+CREATE FUNCTION sys.dbms_lock_release(text)
 RETURNS int
 AS 'MODULE_PATHNAME', 'ivorysql_dbms_lock_release'
 LANGUAGE C STRICT;
 
-CREATE FUNCTION dbms_lock_sleep(float8)
+CREATE FUNCTION sys.dbms_lock_sleep(float8)
 returns void 
 AS 'MODULE_PATHNAME', 'ivorysql_dbms_lock_sleep'
 LANGUAGE C STRICT;
