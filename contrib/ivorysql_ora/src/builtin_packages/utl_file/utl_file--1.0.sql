@@ -167,7 +167,7 @@ LANGUAGE SQL VOLATILE;
 
 CREATE FUNCTION sys.ora_utl_file_put_line(file INTEGER, buffer anyelement, autoflush bool)
 RETURNS bool
-AS $$SELECT sys.ora_utl_file_put_line($1, $2::text, autoflush); $$
+AS $$SELECT sys.ora_utl_file_put_line($1, $2::text, $3); $$
 LANGUAGE SQL VOLATILE;
 
 CREATE FUNCTION sys.ora_utl_file_put_raw(file integer, buffer bytea, autoflush bool)
