@@ -36,6 +36,8 @@
 
 #include "port/pg_crc32c.h"
 
+#ifndef USE_SLICING_BY_8_CRC32C
+
 /*
  * Does XGETBV say the ZMM registers are enabled?
  *
@@ -109,5 +111,7 @@ pg_comp_crc32c_choose(pg_crc32c crc, const void *data, size_t len)
 }
 
 pg_crc32c	(*pg_comp_crc32c) (pg_crc32c crc, const void *data, size_t len) = pg_comp_crc32c_choose;
+
+#endif
 
 #endif							/* defined(USE_SSE2) || defined(__i386__) */
