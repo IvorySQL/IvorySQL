@@ -1414,7 +1414,7 @@ utl_file_umask_check_hook(char **newval, void **extra, GucSource source)
 
 		if (digits > 3)
 		{
-			GUC_check_errdetail("number is too big (only four digits are allowed");
+			GUC_check_errdetail("number is too big (only four digits are allowed)");
 			return false;
 		}
 
