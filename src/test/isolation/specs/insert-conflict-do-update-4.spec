@@ -23,7 +23,7 @@ session s1
 setup           { BEGIN ISOLATION LEVEL READ COMMITTED; }
 step insert1    { INSERT INTO upsert VALUES (1, 11, 111)
                   ON CONFLICT (i) DO UPDATE SET k = EXCLUDED.k; }
-step select1    { SELECT * FROM upsert; }
+step select1    { SELECT * FROM upsert ORDER BY i; }
 step c1         { COMMIT; }
 
 session s2
