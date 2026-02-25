@@ -38,6 +38,7 @@
 #include "storage/lmgr.h"
 #include "storage/lockdefs.h"
 #include "c.h"
+#include "utils/float.h"
 
 /* Oracle compatible lock modes */
 /* we support only:
@@ -224,6 +225,8 @@ ivorysql_dbms_lock_allocate_unique(PG_FUNCTION_ARGS)
                 (unsigned char *) lockname_text,
                 strlen(lockname_text),
                 0));
+    if (lockname_text != NULL)
+	    pfree((void *)lockname_text);
 
     snprintf(handle, sizeof(handle),
              "%llu",
@@ -354,7 +357,9 @@ ivorysql_dbms_lock_sleep(PG_FUNCTION_ARGS)
 
     if (seconds > 100000000)
         ereport(ERROR,
-                (errmsg("DBMS_LOCK.SLEEP: seconds too large")));
+     		(errmsg("DBMS_LOCK.SLEEP: seconds too large: %s", float8out_internal(seconds))));
+
+
 
     total_usec = (long)(seconds * 1000000);
     remaining = total_usec;
