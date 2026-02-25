@@ -880,6 +880,7 @@ ora_utl_file_put_line(PG_FUNCTION_ARGS)
 Datum ora_utl_file_put_raw(PG_FUNCTION_ARGS)
 {
 	FILE   *fd;
+	bool    autoflush;
 
 	CHECK_FILE_HANDLE();
 	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), NULL, NULL);
@@ -892,6 +893,10 @@ Datum ora_utl_file_put_raw(PG_FUNCTION_ARGS)
 
 		if (fwrite(buf, 1, len, fd) != len)
 			CHECK_ERRNO_PUT();
+
+		autoflush = PG_GETARG_IF_EXISTS(2, BOOL, false);
+		if (autoflush)
+			do_flush(fd);
 
 		PG_FREE_IF_COPY(data, 1);
 	}	PG_RETURN_VOID();
