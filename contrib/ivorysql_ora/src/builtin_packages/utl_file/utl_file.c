@@ -672,23 +672,31 @@ Datum
 ora_utl_file_fseek(PG_FUNCTION_ARGS)
 {
 	FILE   *fd;
-	long	abs_offset = 0;
-	long	rel_offset = 0;
-
 	CHECK_FILE_HANDLE();
 	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), NULL, NULL);
-
 	if(fd == NULL)
 		INVALID_FILEHANDLE_EXCEPTION();
-
-	abs_offset = PG_GETARG_IF_EXISTS(1, INT32, 0);
-	rel_offset = PG_GETARG_IF_EXISTS(2, INT32, 0);
-
-	if (fseek(fd, abs_offset + rel_offset, SEEK_SET) != 0)
+	if (PG_NARGS() > 1 && !PG_ARGISNULL(1))
 	{
-		CUSTOM_EXCEPTION(INVALID_OFFSET, "Provided offsets are invalid.");
+		/* absolute_offset: seek from beginning */
+		long abs_offset = (long) PG_GETARG_INT32(1);
+		rewind(fd); /* first, reset pos to beginning */
+		if (fseek(fd, abs_offset, SEEK_SET) != 0)
+			CUSTOM_EXCEPTION(INVALID_OFFSET, "Provided offsets are invalid.");
 	}
-
+	if (PG_NARGS() > 2 && !PG_ARGISNULL(2))
+	{
+		/* relative_offset: seek from current position */
+		long rel_offset = (long) PG_GETARG_INT32(2);
+		if (fseek(fd, rel_offset, SEEK_CUR) != 0)
+			CUSTOM_EXCEPTION(INVALID_OFFSET, "Provided offsets are invalid.");
+	}
+	else
+	{
+		/* no offset provided: no-op or reset to beginning */
+		if (fseek(fd, 0, SEEK_SET) != 0)
+			CUSTOM_EXCEPTION(INVALID_OFFSET, "Provided offsets are invalid.");
+	}
 	PG_RETURN_VOID();
 }
 
