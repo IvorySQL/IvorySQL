@@ -1247,6 +1247,7 @@ get_file_handle_from_slot(uint32 sid, size_t *max_linesize, int *encoding)
 	}
 
 	INVALID_FILEHANDLE_EXCEPTION();
+	pg_unreachable();  /* ereport(ERROR) does not return */
 }
 
 static void
