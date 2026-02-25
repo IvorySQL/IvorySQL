@@ -869,15 +869,21 @@ ora_utl_file_put_line(PG_FUNCTION_ARGS)
 Datum ora_utl_file_put_raw(PG_FUNCTION_ARGS)
 {
 	FILE   *fd;
-	size_t	max_linesize = 0;
-	int		encoding = 0;
 
 	CHECK_FILE_HANDLE();
-	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), &max_linesize, &encoding);
+	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), NULL, NULL);
 
 	NOT_NULL_ARG(1);
-	do_write(fcinfo, 1, fd, max_linesize, encoding);
-	PG_RETURN_VOID();
+	{
+		bytea  *data = PG_GETARG_BYTEA_PP(1);
+		char   *buf = VARDATA_ANY(data);
+		size_t  len = VARSIZE_ANY_EXHDR(data);
+
+		if (fwrite(buf, 1, len, fd) != len)
+			CHECK_ERRNO_PUT();
+
+		PG_FREE_IF_COPY(data, 1);
+	}	PG_RETURN_VOID();
 }
 
 /*
