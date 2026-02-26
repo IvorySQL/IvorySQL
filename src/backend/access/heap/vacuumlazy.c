@@ -313,18 +313,19 @@ typedef struct LVRelState
 	BlockNumber new_frozen_tuple_pages; /* # pages with newly frozen tuples */
 
 	/* # pages newly set all-visible in the VM */
-	BlockNumber vm_new_visible_pages;
+	BlockNumber new_all_visible_pages;
 
 	/*
 	 * # pages newly set all-visible and all-frozen in the VM. This is a
-	 * subset of vm_new_visible_pages. That is, vm_new_visible_pages includes
-	 * all pages set all-visible, but vm_new_visible_frozen_pages includes
-	 * only those which were also set all-frozen.
+	 * subset of new_all_visible_pages. That is, new_all_visible_pages
+	 * includes all pages set all-visible, but
+	 * new_all_visible_all_frozen_pages includes only those which were also
+	 * set all-frozen.
 	 */
-	BlockNumber vm_new_visible_frozen_pages;
+	BlockNumber new_all_visible_all_frozen_pages;
 
 	/* # all-visible pages newly set all-frozen in the VM */
-	BlockNumber vm_new_frozen_pages;
+	BlockNumber new_all_frozen_pages;
 
 	BlockNumber lpdead_item_pages;	/* # pages with LP_DEAD items */
 	BlockNumber missed_dead_pages;	/* # pages with missed dead tuples */
@@ -774,9 +775,9 @@ heap_vacuum_rel(Relation rel, const VacuumParams params,
 	vacrel->recently_dead_tuples = 0;
 	vacrel->missed_dead_tuples = 0;
 
-	vacrel->vm_new_visible_pages = 0;
-	vacrel->vm_new_visible_frozen_pages = 0;
-	vacrel->vm_new_frozen_pages = 0;
+	vacrel->new_all_visible_pages = 0;
+	vacrel->new_all_visible_all_frozen_pages = 0;
+	vacrel->new_all_frozen_pages = 0;
 
 	/*
 	 * Get cutoffs that determine which deleted tuples are considered DEAD,
@@ -1093,10 +1094,10 @@ heap_vacuum_rel(Relation rel, const VacuumParams params,
 
 			appendStringInfo(&buf,
 							 _("visibility map: %u pages set all-visible, %u pages set all-frozen (%u were all-visible)\n"),
-							 vacrel->vm_new_visible_pages,
-							 vacrel->vm_new_visible_frozen_pages +
-							 vacrel->vm_new_frozen_pages,
-							 vacrel->vm_new_frozen_pages);
+							 vacrel->new_all_visible_pages,
+							 vacrel->new_all_visible_all_frozen_pages +
+							 vacrel->new_all_frozen_pages,
+							 vacrel->new_all_frozen_pages);
 			if (vacrel->do_index_vacuuming)
 			{
 				if (vacrel->nindexes == 0 || vacrel->num_index_scans == 0)
@@ -1939,8 +1940,8 @@ lazy_scan_new_or_empty(LVRelState *vacrel, Buffer buf, BlockNumber blkno,
 			END_CRIT_SECTION();
 
 			/* Count the newly all-frozen pages for logging */
-			vacrel->vm_new_visible_pages++;
-			vacrel->vm_new_visible_frozen_pages++;
+			vacrel->new_all_visible_pages++;
+			vacrel->new_all_visible_all_frozen_pages++;
 		}
 
 		freespace = PageGetHeapFreeSpace(page);
@@ -2228,17 +2229,17 @@ lazy_scan_prune(LVRelState *vacrel,
 	 */
 	if ((old_vmbits & VISIBILITYMAP_ALL_VISIBLE) == 0)
 	{
-		vacrel->vm_new_visible_pages++;
+		vacrel->new_all_visible_pages++;
 		if (presult.all_frozen)
 		{
-			vacrel->vm_new_visible_frozen_pages++;
+			vacrel->new_all_visible_all_frozen_pages++;
 			*vm_page_frozen = true;
 		}
 	}
 	else if ((old_vmbits & VISIBILITYMAP_ALL_FROZEN) == 0 &&
 			 presult.all_frozen)
 	{
-		vacrel->vm_new_frozen_pages++;
+		vacrel->new_all_frozen_pages++;
 		*vm_page_frozen = true;
 	}
 
@@ -2974,9 +2975,9 @@ lazy_vacuum_heap_page(LVRelState *vacrel, BlockNumber blkno, Buffer buffer,
 	{
 		/* Count the newly set VM page for logging */
 		LockBuffer(vmbuffer, BUFFER_LOCK_UNLOCK);
-		vacrel->vm_new_visible_pages++;
+		vacrel->new_all_visible_pages++;
 		if (all_frozen)
-			vacrel->vm_new_visible_frozen_pages++;
+			vacrel->new_all_visible_all_frozen_pages++;
 	}
 
 	/* Revert to the previous phase information for error traceback */
