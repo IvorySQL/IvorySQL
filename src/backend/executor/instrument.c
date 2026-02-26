@@ -170,7 +170,7 @@ InstrAggNode(Instrumentation *dst, Instrumentation *add)
 		dst->firsttuple = add->firsttuple;
 	}
 	else if (dst->running && add->running &&
-			 INSTR_TIME_LT(dst->firsttuple, add->firsttuple))
+			 INSTR_TIME_GT(dst->firsttuple, add->firsttuple))
 		dst->firsttuple = add->firsttuple;
 
 	INSTR_TIME_ADD(dst->counter, add->counter);

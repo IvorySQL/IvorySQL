@@ -28,6 +28,8 @@
  *
  * INSTR_TIME_ACCUM_DIFF(x, y, z)	x += (y - z)
  *
+ * INSTR_TIME_GT(x, y)				x > y
+ *
  * INSTR_TIME_GET_DOUBLE(t)			convert t to double (in seconds)
  *
  * INSTR_TIME_GET_MILLISEC(t)		convert t to double (in milliseconds)
@@ -184,7 +186,7 @@ GetTimerFrequency(void)
 #define INSTR_TIME_ACCUM_DIFF(x,y,z) \
 	((x).ticks += (y).ticks - (z).ticks)
 
-#define INSTR_TIME_LT(x,y) \
+#define INSTR_TIME_GT(x,y) \
 	((x).ticks > (y).ticks)
 
 #define INSTR_TIME_GET_DOUBLE(t) \
