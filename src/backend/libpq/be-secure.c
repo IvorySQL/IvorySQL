@@ -29,6 +29,7 @@
 
 #include "libpq/libpq.h"
 #include "miscadmin.h"
+#include "storage/latch.h"
 #include "tcop/tcopprot.h"
 #include "utils/injection_point.h"
 #include "utils/wait_event.h"

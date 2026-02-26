@@ -21,6 +21,7 @@
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "port/pg_bswap.h"
+#include "storage/latch.h"
 #include "utils/injection_point.h"
 #include "utils/memutils.h"
 

@@ -18,7 +18,10 @@
 
 #include "lib/stringinfo.h"
 #include "libpq/libpq-be.h"
-#include "storage/latch.h"
+
+
+/* avoid including waiteventset.h */
+typedef struct WaitEventSet WaitEventSet;
 
 
 /*
