@@ -1040,7 +1040,7 @@ heapam_scan_analyze_next_block(TableScanDesc scan, ReadStream *stream)
 }
 
 static bool
-heapam_scan_analyze_next_tuple(TableScanDesc scan, TransactionId OldestXmin,
+heapam_scan_analyze_next_tuple(TableScanDesc scan,
 							   double *liverows, double *deadrows,
 							   TupleTableSlot *slot)
 {
@@ -1061,6 +1061,7 @@ heapam_scan_analyze_next_tuple(TableScanDesc scan, TransactionId OldestXmin,
 		ItemId		itemid;
 		HeapTuple	targtuple = &hslot->base.tupdata;
 		bool		sample_it = false;
+		TransactionId dead_after;
 
 		itemid = PageGetItemId(targpage, hscan->rs_cindex);
 
@@ -1083,8 +1084,9 @@ heapam_scan_analyze_next_tuple(TableScanDesc scan, TransactionId OldestXmin,
 		targtuple->t_data = (HeapTupleHeader) PageGetItem(targpage, itemid);
 		targtuple->t_len = ItemIdGetLength(itemid);
 
-		switch (HeapTupleSatisfiesVacuum(targtuple, OldestXmin,
-										 hscan->rs_cbuf))
+		switch (HeapTupleSatisfiesVacuumHorizon(targtuple,
+												hscan->rs_cbuf,
+												&dead_after))
 		{
 			case HEAPTUPLE_LIVE:
 				sample_it = true;

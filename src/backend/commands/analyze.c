@@ -1213,7 +1213,6 @@ acquire_sample_rows(Relation onerel, int elevel,
 	double		rowstoskip = -1;	/* -1 means not set yet */
 	uint32		randseed;		/* Seed for block sampler(s) */
 	BlockNumber totalblocks;
-	TransactionId OldestXmin;
 	BlockSamplerData bs;
 	ReservoirStateData rstate;
 	TupleTableSlot *slot;
@@ -1225,9 +1224,6 @@ acquire_sample_rows(Relation onerel, int elevel,
 	Assert(targrows > 0);
 
 	totalblocks = RelationGetNumberOfBlocks(onerel);
-
-	/* Need a cutoff xmin for HeapTupleSatisfiesVacuum */
-	OldestXmin = GetOldestNonRemovableTransactionId(onerel);
 
 	/* Prepare for sampling block numbers */
 	randseed = pg_prng_uint32(&pg_global_prng_state);
@@ -1261,7 +1257,7 @@ acquire_sample_rows(Relation onerel, int elevel,
 	{
 		vacuum_delay_point(true);
 
-		while (table_scan_analyze_next_tuple(scan, OldestXmin, &liverows, &deadrows, slot))
+		while (table_scan_analyze_next_tuple(scan, &liverows, &deadrows, slot))
 		{
 			/*
 			 * The first targrows sample rows are simply copied into the
