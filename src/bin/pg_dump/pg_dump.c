@@ -17539,6 +17539,9 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 						appendPQExpBuffer(q, "CONSTRAINT %s NOT NULL %s",
 										  tbinfo->notnull_constrs[j],
 										  fmtId(tbinfo->attnames[j]));
+
+					if (tbinfo->notnull_noinh[j])
+						appendPQExpBufferStr(q, " NO INHERIT");
 				}
 			}
 
