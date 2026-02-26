@@ -11,7 +11,6 @@
 #ifndef PGSTAT_H
 #define PGSTAT_H
 
-#include "access/transam.h"		/* for FullTransactionId */
 #include "datatype/timestamp.h"
 #include "portability/instr_time.h"
 #include "postmaster/pgarch.h"	/* for MAX_XFN_CHARS */
@@ -19,8 +18,14 @@
 #include "utils/backend_progress.h" /* for backward compatibility */	/* IWYU pragma: export */
 #include "utils/backend_status.h"	/* for backward compatibility */	/* IWYU pragma: export */
 #include "utils/pgstat_kind.h"
-#include "utils/relcache.h"
 #include "utils/wait_event.h"	/* for backward compatibility */	/* IWYU pragma: export */
+
+
+/* avoid including access/transam.h */
+typedef struct FullTransactionId FullTransactionId;
+
+/* avoid including utils/relcache.h */
+typedef struct RelationData *Relation;
 
 
 /* ----------
