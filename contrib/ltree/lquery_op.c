@@ -101,7 +101,7 @@ ltree_label_match(const char *pred, size_t pred_len, const char *label,
 
 	if (locale->ctype_is_c)
 	{
-		if (pred_len > label_len)
+		if (pred_len > label_len || (!prefix && pred_len != label_len))
 			return false;
 
 		for (int i = 0; i < pred_len; i++)
