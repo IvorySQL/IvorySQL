@@ -1213,8 +1213,8 @@ parseCheckAggregates(ParseState *pstate, Query *qry)
 	}
 
 	/*
-	 * Build a list of the acceptable GROUP BY expressions for use by
-	 * substitute_grouped_columns().
+	 * Build a list of the acceptable GROUP BY expressions to save in the
+	 * RTE_GROUP RTE, and for use by substitute_grouped_columns().
 	 *
 	 * We get the TLE, not just the expr, because GROUPING wants to know the
 	 * sortgroupref.
@@ -1229,6 +1229,23 @@ parseCheckAggregates(ParseState *pstate, Query *qry)
 			continue;			/* probably cannot happen */
 
 		groupClauses = lappend(groupClauses, expr);
+	}
+
+	/*
+	 * If there are any acceptable GROUP BY expressions, build an RTE and
+	 * nsitem for the result of the grouping step.  (It's important to do this
+	 * before flattening join alias vars in groupClauses, because the RTE
+	 * should preserve any alias vars that were in the input.)
+	 */
+	if (groupClauses)
+	{
+		pstate->p_grouping_nsitem =
+			addRangeTableEntryForGroup(pstate, groupClauses);
+
+		/* Set qry->rtable again in case it was previously NIL */
+		qry->rtable = pstate->p_rtable;
+		/* Mark the Query as having RTE_GROUP RTE */
+		qry->hasGroupRTE = true;
 	}
 
 	/*
@@ -1264,21 +1281,6 @@ parseCheckAggregates(ParseState *pstate, Query *qry)
 		{
 			groupClauseCommonVars = lappend(groupClauseCommonVars, tle->expr);
 		}
-	}
-
-	/*
-	 * If there are any acceptable GROUP BY expressions, build an RTE and
-	 * nsitem for the result of the grouping step.
-	 */
-	if (groupClauses)
-	{
-		pstate->p_grouping_nsitem =
-			addRangeTableEntryForGroup(pstate, groupClauses);
-
-		/* Set qry->rtable again in case it was previously NIL */
-		qry->rtable = pstate->p_rtable;
-		/* Mark the Query as having RTE_GROUP RTE */
-		qry->hasGroupRTE = true;
 	}
 
 	/*
