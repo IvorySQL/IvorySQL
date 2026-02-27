@@ -176,6 +176,7 @@
 #include "miscadmin.h"
 #include "storage/dsm_registry.h"
 #include "storage/ipc.h"
+#include "storage/latch.h"
 #include "storage/lmgr.h"
 #include "storage/procsignal.h"
 #include "tcop/tcopprot.h"

@@ -20,6 +20,7 @@
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "replication/logicalworker.h"
+#include "storage/latch.h"
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
 

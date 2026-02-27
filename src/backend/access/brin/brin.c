@@ -33,6 +33,7 @@
 #include "postmaster/autovacuum.h"
 #include "storage/bufmgr.h"
 #include "storage/freespace.h"
+#include "storage/proc.h"
 #include "tcop/tcopprot.h"
 #include "utils/acl.h"
 #include "utils/datum.h"

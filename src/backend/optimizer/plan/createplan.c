@@ -17,6 +17,7 @@
 #include "postgres.h"
 
 #include "access/sysattr.h"
+#include "access/transam.h"
 #include "catalog/pg_class.h"
 #include "foreign/fdwapi.h"
 #include "miscadmin.h"

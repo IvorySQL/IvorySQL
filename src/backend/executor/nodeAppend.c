@@ -64,6 +64,7 @@
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "storage/latch.h"
+#include "storage/lwlock.h"
 
 /* Shared state for parallel-aware Append. */
 struct ParallelAppendState

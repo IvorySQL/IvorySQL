@@ -27,6 +27,7 @@
 #include "nodes/execnodes.h"
 #include "pgstat.h"
 #include "storage/bufmgr.h"
+#include "storage/proc.h"
 #include "storage/predicate.h"
 #include "tcop/tcopprot.h"
 #include "utils/datum.h"

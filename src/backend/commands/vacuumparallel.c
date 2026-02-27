@@ -35,6 +35,7 @@
 #include "optimizer/paths.h"
 #include "pgstat.h"
 #include "storage/bufmgr.h"
+#include "storage/proc.h"
 #include "tcop/tcopprot.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
