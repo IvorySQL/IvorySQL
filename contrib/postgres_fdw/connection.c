@@ -466,8 +466,9 @@ disconnect_pg_server(ConnCacheEntry *entry)
 }
 
 /*
- * Return true if the password_required is defined and false for this user
- * mapping, otherwise false. The mapping has been pre-validated.
+ * Check and return the value of password_required, if defined; otherwise,
+ * return true, which is the default value of it.  The mapping has been
+ * pre-validated.
  */
 static bool
 UserMappingPasswordRequired(UserMapping *user)
