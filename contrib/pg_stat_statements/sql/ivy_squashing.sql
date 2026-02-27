@@ -295,6 +295,12 @@ select where '1' IN ('1'::int::text, '2'::int::text);
 select where '1' = ANY (array['1'::int::text, '2'::int::text]);
 SELECT query, calls FROM pg_stat_statements ORDER BY query COLLATE "C";
 
+-- IN and ANY clauses with Vars are not squashed.
+SELECT * FROM test_squash a, test_squash b WHERE a.id IN (1, 2, 3, b.id, b.id + 1);
+SELECT * FROM test_squash a, test_squash b WHERE a.id = ANY (array[1, ((b.id + b.id * 2)), 5]);
+SELECT * FROM test_squash a, test_squash b WHERE a.id IN ($1, $2, $3, b.id, b.id + $4) \bind 1 2 3 1
+;
+
 --
 -- cleanup
 --

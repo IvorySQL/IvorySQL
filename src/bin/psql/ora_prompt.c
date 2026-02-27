@@ -179,6 +179,21 @@ ora_get_prompt(Ora_promptStatus_t status, ConditionalStack cstack)
 					}
 					break;
 
+					/* pipeline status */
+				case 'P':
+					if (pset.db)
+					{
+						PGpipelineStatus status = PQpipelineStatus(pset.db);
+
+						if (status == PQ_PIPELINE_ON)
+							strlcpy(buf, "on", sizeof(buf));
+						else if (status == PQ_PIPELINE_ABORTED)
+							strlcpy(buf, "abort", sizeof(buf));
+						else
+							strlcpy(buf, "off", sizeof(buf));
+					}
+					break;
+
 				case '0':
 				case '1':
 				case '2':
