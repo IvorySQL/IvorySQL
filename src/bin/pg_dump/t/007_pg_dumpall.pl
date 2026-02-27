@@ -352,6 +352,9 @@ foreach my $run (sort keys %pgdumpall_runs)
 			$pgdumpall_runs{$run}->{unlike},
 			"should not dump $run");
 	}
+
+	$target_node->stop;
+	$target_node->clean_node;
 }
 
 # Some negative test case with dump of pg_dumpall and restore using pg_restore
