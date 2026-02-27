@@ -1,12 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * pg_cpu_x86.c
- *	  Choose between Intel SSE 4.2 and software CRC-32C implementation.
- *
- * On first call, checks if the CPU we're running on supports Intel SSE
- * 4.2. If it does, use the special SSE instructions for CRC-32C
- * computation. Otherwise, fall back to the pure software implementation
- * (slicing-by-8).
+ *	  Runtime CPU feature detection for x86
  *
  * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
@@ -34,9 +29,11 @@
 #include <immintrin.h>
 #endif
 
-#include "port/pg_crc32c.h"
+#include "port/pg_cpu.h"
 
-#ifndef USE_SLICING_BY_8_CRC32C
+
+/* array indexed by enum X86FeatureId */
+bool		X86Features[X86FeaturesSize] = {0};
 
 /*
  * Does XGETBV say the ZMM registers are enabled?
@@ -58,21 +55,12 @@ zmm_regs_available(void)
 }
 
 /*
- * This gets called on the first call. It replaces the function pointer
- * so that subsequent calls are routed directly to the chosen implementation.
+ * Parse the CPU ID info for runtime checks.
  */
-static pg_crc32c
-pg_comp_crc32c_choose(pg_crc32c crc, const void *data, size_t len)
+void
+set_x86_features(void)
 {
 	unsigned int exx[4] = {0, 0, 0, 0};
-
-	/*
-	 * Set fallback. We must guard since slicing-by-8 is not visible
-	 * everywhere.
-	 */
-#ifdef USE_SSE42_CRC32C_WITH_RUNTIME_CHECK
-	pg_comp_crc32c = pg_comp_crc32c_sb8;
-#endif
 
 #if defined(HAVE__GET_CPUID)
 	__get_cpuid(1, &exx[0], &exx[1], &exx[2], &exx[3]);
@@ -82,36 +70,33 @@ pg_comp_crc32c_choose(pg_crc32c crc, const void *data, size_t len)
 #error cpuid instruction not available
 #endif
 
-	if ((exx[2] & (1 << 20)) != 0)	/* SSE 4.2 */
+	X86Features[PG_SSE4_2] = exx[2] >> 20 & 1;
+	X86Features[PG_POPCNT] = exx[2] >> 23 & 1;
+
+	/* All these features depend on OSXSAVE */
+	if (exx[2] & (1 << 27))
 	{
-		pg_comp_crc32c = pg_comp_crc32c_sse42;
+		/* second cpuid call on leaf 7 to check extended AVX-512 support */
 
-		if (exx[2] & (1 << 27) &&	/* OSXSAVE */
-			zmm_regs_available())
-		{
-			/* second cpuid call on leaf 7 to check extended AVX-512 support */
-
-			memset(exx, 0, 4 * sizeof(exx[0]));
+		memset(exx, 0, 4 * sizeof(exx[0]));
 
 #if defined(HAVE__GET_CPUID_COUNT)
-			__get_cpuid_count(7, 0, &exx[0], &exx[1], &exx[2], &exx[3]);
+		__get_cpuid_count(7, 0, &exx[0], &exx[1], &exx[2], &exx[3]);
 #elif defined(HAVE__CPUIDEX)
-			__cpuidex(exx, 7, 0);
+		__cpuidex(exx, 7, 0);
 #endif
 
-#ifdef USE_AVX512_CRC32C_WITH_RUNTIME_CHECK
-			if (exx[2] & (1 << 10) &&	/* VPCLMULQDQ */
-				exx[1] & (1 << 31)) /* AVX512-VL */
-				pg_comp_crc32c = pg_comp_crc32c_avx512;
-#endif
+		if (zmm_regs_available())
+		{
+			X86Features[PG_AVX512_BW] = exx[1] >> 30 & 1;
+			X86Features[PG_AVX512_VL] = exx[1] >> 31 & 1;
+
+			X86Features[PG_AVX512_VPCLMULQDQ] = exx[2] >> 10 & 1;
+			X86Features[PG_AVX512_VPOPCNTDQ] = exx[2] >> 14 & 1;
 		}
 	}
 
-	return pg_comp_crc32c(crc, data, len);
+	X86Features[INIT_PG_X86] = true;
 }
-
-pg_crc32c	(*pg_comp_crc32c) (pg_crc32c crc, const void *data, size_t len) = pg_comp_crc32c_choose;
-
-#endif
 
 #endif							/* defined(USE_SSE2) || defined(__i386__) */

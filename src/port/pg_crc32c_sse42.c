@@ -19,7 +19,10 @@
 #include <immintrin.h>
 #endif
 
+#include "port/pg_cpu.h"
 #include "port/pg_crc32c.h"
+
+static pg_crc32c pg_comp_crc32c_choose(pg_crc32c crc, const void *data, size_t len);
 
 pg_attribute_no_sanitize_alignment()
 pg_attribute_target("sse4.2")
@@ -158,4 +161,33 @@ pg_comp_crc32c_avx512(pg_crc32c crc, const void *data, size_t len)
 	return pg_comp_crc32c_sse42(crc0, buf, len);
 }
 
+#endif							/* USE_AVX512_CRC32C_WITH_RUNTIME_CHECK */
+
+/*
+ * This gets called on the first call. It replaces the function pointer
+ * so that subsequent calls are routed directly to the chosen implementation.
+ */
+static pg_crc32c
+pg_comp_crc32c_choose(pg_crc32c crc, const void *data, size_t len)
+{
+	/*
+	 * Set fallback. We must guard since slicing-by-8 is not visible
+	 * everywhere.
+	 */
+#ifdef USE_SSE42_CRC32C_WITH_RUNTIME_CHECK
+	pg_comp_crc32c = pg_comp_crc32c_sb8;
 #endif
+
+	if (x86_feature_available(PG_SSE4_2))
+		pg_comp_crc32c = pg_comp_crc32c_sse42;
+
+#ifdef USE_AVX512_CRC32C_WITH_RUNTIME_CHECK
+	if (x86_feature_available(PG_AVX512_VL) &&
+		x86_feature_available(PG_AVX512_VPCLMULQDQ))
+		pg_comp_crc32c = pg_comp_crc32c_avx512;
+#endif
+
+	return pg_comp_crc32c(crc, data, len);
+}
+
+pg_crc32c	(*pg_comp_crc32c) (pg_crc32c crc, const void *data, size_t len) = pg_comp_crc32c_choose;
