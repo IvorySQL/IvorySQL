@@ -121,14 +121,14 @@ astreamer_lz4_compressor_content(astreamer *streamer,
 								 astreamer_archive_context context)
 {
 	astreamer_lz4_frame *mystreamer;
-	uint8	   *next_in,
-			   *next_out;
+	const uint8 *next_in;
+	uint8	   *next_out;
 	size_t		out_bound,
 				compressed_size,
 				avail_out;
 
 	mystreamer = (astreamer_lz4_frame *) streamer;
-	next_in = (uint8 *) data;
+	next_in = (const uint8 *) data;
 
 	/* Write header before processing the first input chunk. */
 	if (!mystreamer->header_written)
@@ -315,13 +315,13 @@ astreamer_lz4_decompressor_content(astreamer *streamer,
 								   astreamer_archive_context context)
 {
 	astreamer_lz4_frame *mystreamer;
-	uint8	   *next_in,
-			   *next_out;
+	const uint8 *next_in;
+	uint8	   *next_out;
 	size_t		avail_in,
 				avail_out;
 
 	mystreamer = (astreamer_lz4_frame *) streamer;
-	next_in = (uint8 *) data;
+	next_in = (const uint8 *) data;
 	next_out = (uint8 *) mystreamer->base.bbs_buffer.data + mystreamer->bytes_written;
 	avail_in = len;
 	avail_out = mystreamer->base.bbs_buffer.maxlen - mystreamer->bytes_written;

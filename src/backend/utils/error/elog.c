@@ -2932,7 +2932,6 @@ GetACPEncoding(void)
 static void
 write_eventlog(int level, const char *line, int len)
 {
-	WCHAR	   *utf16;
 	int			eventlevel = EVENTLOG_ERROR_TYPE;
 	static HANDLE evtHandle = INVALID_HANDLE_VALUE;
 
@@ -2989,9 +2988,13 @@ write_eventlog(int level, const char *line, int len)
 		CurrentMemoryContext != NULL &&
 		GetMessageEncoding() != GetACPEncoding())
 	{
+		WCHAR	   *utf16;
+
 		utf16 = pgwin32_message_to_UTF16(line, len, NULL);
 		if (utf16)
 		{
+			const WCHAR *utf16_const = utf16;
+
 			ReportEventW(evtHandle,
 						 eventlevel,
 						 0,
@@ -2999,7 +3002,7 @@ write_eventlog(int level, const char *line, int len)
 						 NULL,
 						 1,
 						 0,
-						 (LPCWSTR *) &utf16,
+						 &utf16_const,
 						 NULL);
 			/* XXX Try ReportEventA() when ReportEventW() fails? */
 

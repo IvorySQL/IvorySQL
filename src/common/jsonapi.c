@@ -2167,9 +2167,9 @@ json_lex_string(JsonLexContext *lex)
 			 * can batch calls to jsonapi_appendBinaryStringInfo.
 			 */
 			while (p < end - sizeof(Vector8) &&
-				   !pg_lfind8('\\', (uint8 *) p, sizeof(Vector8)) &&
-				   !pg_lfind8('"', (uint8 *) p, sizeof(Vector8)) &&
-				   !pg_lfind8_le(31, (uint8 *) p, sizeof(Vector8)))
+				   !pg_lfind8('\\', (const uint8 *) p, sizeof(Vector8)) &&
+				   !pg_lfind8('"', (const uint8 *) p, sizeof(Vector8)) &&
+				   !pg_lfind8_le(31, (const uint8 *) p, sizeof(Vector8)))
 				p += sizeof(Vector8);
 
 			for (; p < end; p++)

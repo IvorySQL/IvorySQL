@@ -372,6 +372,7 @@ xml_recv(PG_FUNCTION_ARGS)
 #ifdef USE_LIBXML
 	StringInfo	buf = (StringInfo) PG_GETARG_POINTER(0);
 	xmltype    *result;
+	const char *input;
 	char	   *str;
 	char	   *newstr;
 	int			nbytes;
@@ -385,7 +386,7 @@ xml_recv(PG_FUNCTION_ARGS)
 	 * parse that before converting to server encoding.
 	 */
 	nbytes = buf->len - buf->cursor;
-	str = (char *) pq_getmsgbytes(buf, nbytes);
+	input = pq_getmsgbytes(buf, nbytes);
 
 	/*
 	 * We need a null-terminated string to pass to parse_xml_decl().  Rather
@@ -394,7 +395,7 @@ xml_recv(PG_FUNCTION_ARGS)
 	 */
 	result = palloc(nbytes + 1 + VARHDRSZ);
 	SET_VARSIZE(result, nbytes + VARHDRSZ);
-	memcpy(VARDATA(result), str, nbytes);
+	memcpy(VARDATA(result), input, nbytes);
 	str = VARDATA(result);
 	str[nbytes] = '\0';
 
