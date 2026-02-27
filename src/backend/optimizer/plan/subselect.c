@@ -1643,7 +1643,13 @@ convert_EXISTS_sublink_to_join(PlannerInfo *root, SubLink *sublink,
  * Note: by suppressing the targetlist we could cause an observable behavioral
  * change, namely that any errors that might occur in evaluating the tlist
  * won't occur, nor will other side-effects of volatile functions.  This seems
- * unlikely to bother anyone in practice.
+ * unlikely to bother anyone in practice.  Note that any column privileges are
+ * still checked even if the reference is removed here.
+ *
+ * The SQL standard specifies that a SELECT * immediately inside EXISTS
+ * expands to not all columns but an arbitrary literal.  That is kind of the
+ * same idea, but our optimization goes further in that it throws away the
+ * entire targetlist, and not only if it was written as *.
  *
  * Returns true if was able to discard the targetlist, else false.
  */
