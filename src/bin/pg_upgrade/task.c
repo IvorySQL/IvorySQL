@@ -116,7 +116,7 @@ typedef struct UpgradeTaskSlot
 UpgradeTask *
 upgrade_task_create(void)
 {
-	UpgradeTask *task = pg_malloc0(sizeof(UpgradeTask));
+	UpgradeTask *task = pg_malloc0_object(UpgradeTask);
 
 	task->queries = createPQExpBuffer();
 
@@ -154,8 +154,8 @@ upgrade_task_add_step(UpgradeTask *task, const char *query,
 {
 	UpgradeTaskStep *new_step;
 
-	task->steps = pg_realloc(task->steps,
-							 ++task->num_steps * sizeof(UpgradeTaskStep));
+	task->steps = pg_realloc_array(task->steps, UpgradeTaskStep,
+								   ++task->num_steps);
 
 	new_step = &task->steps[task->num_steps - 1];
 	new_step->process_cb = process_cb;
@@ -421,7 +421,7 @@ void
 upgrade_task_run(const UpgradeTask *task, const ClusterInfo *cluster)
 {
 	int			jobs = Max(1, user_opts.jobs);
-	UpgradeTaskSlot *slots = pg_malloc0(sizeof(UpgradeTaskSlot) * jobs);
+	UpgradeTaskSlot *slots = pg_malloc0_array(UpgradeTaskSlot, jobs);
 
 	dbs_complete = 0;
 	dbs_processing = 0;

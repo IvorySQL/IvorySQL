@@ -26,7 +26,7 @@ static void SlruFlush(SlruSegState *state);
 static SlruSegState *
 AllocSlruSegState(const char *dir)
 {
-	SlruSegState *state = pg_malloc(sizeof(*state));
+	SlruSegState *state = pg_malloc_object(SlruSegState);
 
 	state->dir = pstrdup(dir);
 	state->fn = NULL;

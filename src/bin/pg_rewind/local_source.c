@@ -39,7 +39,7 @@ init_local_source(const char *datadir)
 {
 	local_source *src;
 
-	src = pg_malloc0(sizeof(local_source));
+	src = pg_malloc0_object(local_source);
 
 	src->common.traverse_files = local_traverse_files;
 	src->common.fetch_file = local_fetch_file;

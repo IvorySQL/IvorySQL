@@ -3862,7 +3862,7 @@ describeRoles(const char *pattern, bool verbose, bool showSystem)
 		return false;
 
 	nrows = PQntuples(res);
-	attr = pg_malloc0((nrows + 1) * sizeof(*attr));
+	attr = pg_malloc0_array(char *, nrows + 1);
 
 	printTableInit(&cont, &myopt, _("List of roles"), ncols, nrows);
 
@@ -5487,7 +5487,7 @@ listSchemas(const char *pattern, bool verbose, bool showSystem)
 			 * storing "Publications:" string) + publication schema mapping
 			 * count +  1 (for storing NULL).
 			 */
-			footers = (char **) pg_malloc((1 + pub_schema_tuples + 1) * sizeof(char *));
+			footers = pg_malloc_array(char *, 1 + pub_schema_tuples + 1);
 			footers[0] = pg_strdup(_("Publications:"));
 
 			/* Might be an empty set - that's ok */

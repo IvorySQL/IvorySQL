@@ -820,7 +820,7 @@ main(int argc, char **argv)
 					}
 
 					noptions += 1;
-					options = pg_realloc(options, sizeof(char *) * noptions * 2);
+					options = pg_realloc_array(options, char *, noptions * 2);
 
 					options[(noptions - 1) * 2] = data;
 					options[(noptions - 1) * 2 + 1] = val;

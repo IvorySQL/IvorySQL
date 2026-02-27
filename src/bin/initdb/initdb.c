@@ -460,7 +460,7 @@ escape_quotes_bki(const char *src)
 static void
 add_stringlist_item(_stringlist **listhead, const char *str)
 {
-	_stringlist *newentry = pg_malloc(sizeof(_stringlist));
+	_stringlist *newentry = pg_malloc_object(_stringlist);
 	_stringlist *oldentry;
 
 	newentry->str = pg_strdup(str);
@@ -703,7 +703,7 @@ readfile(const char *path)
 	initStringInfo(&line);
 
 	maxlines = 1024;
-	result = (char **) pg_malloc(maxlines * sizeof(char *));
+	result = pg_malloc_array(char *, maxlines);
 
 	n = 0;
 	while (pg_get_line_buf(infile, &line))
@@ -712,7 +712,7 @@ readfile(const char *path)
 		if (n >= maxlines - 1)
 		{
 			maxlines *= 2;
-			result = (char **) pg_realloc(result, maxlines * sizeof(char *));
+			result = pg_realloc_array(result, char *, maxlines);
 		}
 
 		result[n++] = pg_strdup(line.data);

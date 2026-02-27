@@ -1338,7 +1338,7 @@ extend_pattern_info_array(PatternInfoArray *pia)
 	PatternInfo *result;
 
 	pia->len++;
-	pia->data = (PatternInfo *) pg_realloc(pia->data, pia->len * sizeof(PatternInfo));
+	pia->data = pg_realloc_array(pia->data, PatternInfo, pia->len);
 	result = &pia->data[pia->len - 1];
 	memset(result, 0, sizeof(*result));
 
@@ -1593,7 +1593,7 @@ compile_database_list(PGconn *conn, SimplePtrList *databases,
 
 	if (initial_dbname)
 	{
-		DatabaseInfo *dat = (DatabaseInfo *) pg_malloc0(sizeof(DatabaseInfo));
+		DatabaseInfo *dat = pg_malloc0_object(DatabaseInfo);
 
 		/* This database is included.  Add to list */
 		if (opts.verbose)
@@ -1738,7 +1738,7 @@ compile_database_list(PGconn *conn, SimplePtrList *databases,
 			if (opts.verbose)
 				pg_log_info("including database \"%s\"", datname);
 
-			dat = (DatabaseInfo *) pg_malloc0(sizeof(DatabaseInfo));
+			dat = pg_malloc0_object(DatabaseInfo);
 			dat->datname = pstrdup(datname);
 			simple_ptr_list_append(databases, dat);
 		}
@@ -2202,7 +2202,7 @@ compile_relation_list_one_db(PGconn *conn, SimplePtrList *relations,
 		{
 			/* Current record pertains to a relation */
 
-			RelationInfo *rel = (RelationInfo *) pg_malloc0(sizeof(RelationInfo));
+			RelationInfo *rel = pg_malloc0_object(RelationInfo);
 
 			Assert(OidIsValid(oid));
 			Assert((is_heap && !is_btree) || (is_btree && !is_heap));

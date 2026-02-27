@@ -120,7 +120,7 @@ reconstruct_from_incremental_file(char *input_filename,
 	 * Every block must come either from the latest version of the file or
 	 * from one of the prior backups.
 	 */
-	source = pg_malloc0(sizeof(rfile *) * (1 + n_prior_backups));
+	source = pg_malloc0_array(rfile *, 1 + n_prior_backups);
 
 	/*
 	 * Use the information from the latest incremental file to figure out how
@@ -135,8 +135,8 @@ reconstruct_from_incremental_file(char *input_filename,
 	 * need to obtain it and at what offset in that file it's stored.
 	 * sourcemap gives us the first of these things, and offsetmap the latter.
 	 */
-	sourcemap = pg_malloc0(sizeof(rfile *) * block_length);
-	offsetmap = pg_malloc0(sizeof(off_t) * block_length);
+	sourcemap = pg_malloc0_array(rfile *, block_length);
+	offsetmap = pg_malloc0_array(off_t, block_length);
 
 	/*
 	 * Every block that is present in the newest incremental file should be
@@ -483,7 +483,7 @@ make_incremental_rfile(char *filename)
 	if (rf->num_blocks > 0)
 	{
 		rf->relative_block_numbers =
-			pg_malloc0(sizeof(BlockNumber) * rf->num_blocks);
+			pg_malloc0_array(BlockNumber, rf->num_blocks);
 		read_bytes(rf, rf->relative_block_numbers,
 				   sizeof(BlockNumber) * rf->num_blocks);
 	}
@@ -512,7 +512,7 @@ make_rfile(char *filename, bool missing_ok)
 {
 	rfile	   *rf;
 
-	rf = pg_malloc0(sizeof(rfile));
+	rf = pg_malloc0_object(rfile);
 	rf->filename = pstrdup(filename);
 	if ((rf->fd = open(filename, O_RDONLY | PG_BINARY, 0)) < 0)
 	{

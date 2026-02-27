@@ -197,7 +197,7 @@ unlimit_core_size(void)
 void
 add_stringlist_item(_stringlist **listhead, const char *str)
 {
-	_stringlist *newentry = pg_malloc(sizeof(_stringlist));
+	_stringlist *newentry = pg_malloc_object(_stringlist);
 	_stringlist *oldentry;
 
 	newentry->str = pg_strdup(str);
@@ -675,7 +675,7 @@ load_resultmap(void)
 		 */
 		if (string_matches_pattern(host_platform, platform))
 		{
-			_resultmap *entry = pg_malloc(sizeof(_resultmap));
+			_resultmap *entry = pg_malloc_object(_resultmap);
 
 			entry->test = pg_strdup(buf);
 			entry->type = pg_strdup(file_type);
@@ -1557,7 +1557,7 @@ wait_for_tests(PID_TYPE * pids, int *statuses, instr_time *stoptimes,
 	int			i;
 
 #ifdef WIN32
-	PID_TYPE   *active_pids = pg_malloc(num_tests * sizeof(PID_TYPE));
+	PID_TYPE   *active_pids = pg_malloc_array(PID_TYPE, num_tests);
 
 	memcpy(active_pids, pids, num_tests * sizeof(PID_TYPE));
 #endif

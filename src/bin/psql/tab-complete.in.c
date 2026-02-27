@@ -6357,8 +6357,7 @@ append_variable_names(char ***varnames, int *nvars,
 	if (*nvars >= *maxvars)
 	{
 		*maxvars *= 2;
-		*varnames = (char **) pg_realloc(*varnames,
-										 ((*maxvars) + 1) * sizeof(char *));
+		*varnames = pg_realloc_array(*varnames, char *, (*maxvars) + 1);
 	}
 
 	(*varnames)[(*nvars)++] = psprintf("%s%s%s", prefix, varname, suffix);
@@ -6383,7 +6382,7 @@ complete_from_variables(const char *text, const char *prefix, const char *suffix
 	int			i;
 	struct _variable *ptr;
 
-	varnames = (char **) pg_malloc((maxvars + 1) * sizeof(char *));
+	varnames = pg_malloc_array(char *, maxvars + 1);
 
 	for (ptr = pset.vars->next; ptr; ptr = ptr->next)
 	{
@@ -6961,7 +6960,7 @@ get_previous_words(int point, char **buffer, int *nwords)
 	 * This is usually much more space than we need, but it's cheaper than
 	 * doing a separate malloc() for each word.
 	 */
-	previous_words = (char **) pg_malloc(point * sizeof(char *));
+	previous_words = pg_malloc_array(char *, point);
 	*buffer = outptr = (char *) pg_malloc(point * 2);
 
 	/*
