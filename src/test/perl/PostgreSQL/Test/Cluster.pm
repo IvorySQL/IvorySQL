@@ -1625,9 +1625,9 @@ sub new
 	  or
 	  BAIL_OUT("could not create data directory \"$node->{_basedir}\": $!");
 
-	$node->dump_info;
-
 	$node->_set_pg_version;
+
+	$node->dump_info;
 
 	my $ver = $node->{_pg_version};
 

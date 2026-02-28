@@ -31,6 +31,7 @@ tests += {
       't/001_emergency_vacuum.pl',
       't/002_limits.pl',
       't/003_wraparounds.pl',
+      't/004_notify_freeze.pl',
     ],
   },
 }

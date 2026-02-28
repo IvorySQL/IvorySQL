@@ -156,7 +156,7 @@ pgaio_uring_check_capabilities(void)
 	 * also has a secondary benefit: We can determine precisely how much
 	 * memory we need for each io_uring instance.
 	 */
-#if defined(HAVE_LIBURING_QUEUE_INIT_MEM) && defined(IORING_SETUP_NO_MMAP)
+#if defined(HAVE_IO_URING_QUEUE_INIT_MEM) && defined(IORING_SETUP_NO_MMAP)
 	{
 		struct io_uring test_ring;
 		size_t		ring_size;
@@ -341,7 +341,7 @@ pgaio_uring_shmem_init(bool first_time)
 		 * with its data in shared memory. Otherwise fall back io_uring
 		 * creating a memory mapping for each ring.
 		 */
-#if defined(HAVE_LIBURING_QUEUE_INIT_MEM) && defined(IORING_SETUP_NO_MMAP)
+#if defined(HAVE_IO_URING_QUEUE_INIT_MEM) && defined(IORING_SETUP_NO_MMAP)
 		if (pgaio_uring_caps.mem_init_size > 0)
 		{
 			struct io_uring_params p = {0};
@@ -559,13 +559,14 @@ pgaio_uring_drain_locked(PgAioUringContext *context)
 		for (int i = 0; i < ncqes; i++)
 		{
 			struct io_uring_cqe *cqe = cqes[i];
-			PgAioHandle *ioh;
+			PgAioHandle *ioh = io_uring_cqe_get_data(cqe);
+			int			result = cqe->res;
 
-			ioh = io_uring_cqe_get_data(cqe);
 			errcallback.arg = ioh;
+
 			io_uring_cqe_seen(&context->io_uring_ring, cqe);
 
-			pgaio_io_process_completion(ioh, cqe->res);
+			pgaio_io_process_completion(ioh, result);
 			errcallback.arg = NULL;
 		}
 

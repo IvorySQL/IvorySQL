@@ -366,7 +366,7 @@ pg_buffercache_numa_pages(PG_FUNCTION_ARGS)
 
 		/* Used to determine the NUMA node for all OS pages at once */
 		os_page_ptrs = palloc0(sizeof(void *) * os_page_count);
-		os_page_status = palloc(sizeof(uint64) * os_page_count);
+		os_page_status = palloc(sizeof(int) * os_page_count);
 
 		/* Fill pointers for all the memory pages. */
 		idx = 0;
@@ -526,8 +526,18 @@ pg_buffercache_numa_pages(PG_FUNCTION_ARGS)
 		values[1] = Int64GetDatum(fctx->record[i].page_num);
 		nulls[1] = false;
 
-		values[2] = Int32GetDatum(fctx->record[i].numa_node);
-		nulls[2] = false;
+		/* status is valid node number */
+		if (fctx->record[i].numa_node >= 0)
+		{
+			values[2] = Int32GetDatum(fctx->record[i].numa_node);
+			nulls[2] = false;
+		}
+		else
+		{
+			/* some kind of error (e.g. pages moved to swap) */
+			values[2] = (Datum) 0;
+			nulls[2] = true;
+		}
 
 		/* Build and return the tuple. */
 		tuple = heap_form_tuple(fctx->tupdesc, values, nulls);

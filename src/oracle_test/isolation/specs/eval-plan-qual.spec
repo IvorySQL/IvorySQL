@@ -205,6 +205,7 @@ step sys1	{
 }
 
 step s1pp1 { UPDATE another_parttbl SET b = b + 1 WHERE a = 1; }
+step updateformergevalues { UPDATE accounts SET balance = balance + 100; }
 
 session s2
 setup		{ BEGIN ISOLATION LEVEL READ COMMITTED; }
@@ -316,6 +317,15 @@ step r2	{ ROLLBACK; }
 step s2pp1 { SET plan_cache_mode TO force_generic_plan; }
 step s2pp2 { PREPARE epd AS DELETE FROM another_parttbl WHERE a = $1; }
 step s2pp3 { EXECUTE epd(1); }
+step s2pp4 { DELETE FROM another_parttbl WHERE a = (SELECT 1); }
+
+step mergevalues {
+	MERGE INTO accounts
+	USING (VALUES ('checking', 610), ('savings', 620)) v(accountid, balance)
+	ON v.accountid = accounts.accountid
+	WHEN MATCHED THEN UPDATE SET balance = v.balance
+	WHEN NOT MATCHED THEN INSERT VALUES ('unmatched', -1);
+}
 
 session s3
 setup		{ BEGIN ISOLATION LEVEL READ COMMITTED; }
@@ -423,3 +433,7 @@ permutation sys1 sysmerge2 c1 c2
 
 # Exercise run-time partition pruning code in an EPQ recheck
 permutation s1pp1 s2pp1 s2pp2 s2pp3 c1 c2
+permutation s1pp1 s2pp4 c1 c2
+
+# test EPQ recheck in MERGE from VALUES_RTE, cf bug #19355
+permutation updateformergevalues mergevalues c1 c2 read

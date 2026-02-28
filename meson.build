@@ -9,7 +9,7 @@
 
 project('postgresql',
   ['c'],
-  version: '18.1',
+  version: '18.2',
   license: 'PostgreSQL',
 
   # We want < 0.56 for python 3.5 compatibility on old platforms. EPEL for
@@ -455,6 +455,14 @@ if get_option('segsize_blocks') != 0
   segsize = get_option('segsize_blocks')
 else
   segsize = (get_option('segsize') * 1024 * 1024 * 1024) / blocksize
+endif
+
+# If we don't have largefile support, can't handle segment size >= 2GB.
+if cc.sizeof('off_t', args: test_c_args) < 8
+  segsize_bytes = segsize * blocksize
+  if segsize_bytes >= (2 * 1024 * 1024 * 1024)
+    error('Large file support is not enabled. Segment size cannot be larger than 1GB.')
+  endif
 endif
 
 cdata.set('BLCKSZ', blocksize, description:
@@ -1001,7 +1009,7 @@ if liburing.found()
 
   if cc.has_function('io_uring_queue_init_mem',
       dependencies: liburing, args: test_c_args)
-    cdata.set('HAVE_LIBURING_QUEUE_INIT_MEM', 1)
+    cdata.set('HAVE_IO_URING_QUEUE_INIT_MEM', 1)
   endif
 
 endif
@@ -2856,7 +2864,7 @@ gnugetopt_dep = cc.find_library('gnugetopt', required: false)
 #   (i.e., allow '-' as a flag character), so use our version on those platforms
 # - We want to use system's getopt_long() only if the system provides struct
 #   option
-always_replace_getopt = host_system in ['windows', 'cygwin', 'openbsd', 'solaris']
+always_replace_getopt = host_system in ['windows', 'cygwin', 'openbsd', 'sunos']
 always_replace_getopt_long = host_system in ['windows', 'cygwin'] or not cdata.has('HAVE_STRUCT_OPTION')
 
 # Required on BSDs
