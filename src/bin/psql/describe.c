@@ -5069,7 +5069,7 @@ listEventTriggers(const char *pattern, bool verbose)
  * Describes extended statistics.
  */
 bool
-listExtendedStats(const char *pattern)
+listExtendedStats(const char *pattern, bool verbose)
 {
 	PQExpBufferData buf;
 	PGresult   *res;
@@ -5129,6 +5129,11 @@ listExtendedStats(const char *pattern)
 						  "END AS \"%s\" ",
 						  gettext_noop("MCV"));
 	}
+
+	if (verbose)
+		appendPQExpBuffer(&buf,
+						  ", \npg_catalog.obj_description(oid, 'pg_statistic_ext') AS \"%s\"\n",
+						  gettext_noop("Description"));
 
 	appendPQExpBufferStr(&buf,
 						 " \nFROM pg_catalog.pg_statistic_ext es \n");
@@ -6755,6 +6760,8 @@ describePublications(const char *pattern)
 	bool		has_pubgencols;
 	bool		has_pubviaroot;
 	bool		has_pubsequence;
+	int			ncols = 6;
+	int			nrows = 1;
 
 	PQExpBufferData title;
 	printTableContent cont;
@@ -6819,6 +6826,9 @@ describePublications(const char *pattern)
 							 ", false AS pubviaroot");
 
 	appendPQExpBufferStr(&buf,
+						 ", pg_catalog.obj_description(oid, 'pg_publication')");
+
+	appendPQExpBufferStr(&buf,
 						 "\nFROM pg_catalog.pg_publication\n");
 
 	if (!validateSQLNamePattern(&buf, pattern, false, false,
@@ -6855,24 +6865,22 @@ describePublications(const char *pattern)
 		return false;
 	}
 
+	if (has_pubsequence)
+		ncols++;
+	if (has_pubtruncate)
+		ncols++;
+	if (has_pubgencols)
+		ncols++;
+	if (has_pubviaroot)
+		ncols++;
+
 	for (i = 0; i < PQntuples(res); i++)
 	{
 		const char	align = 'l';
-		int			ncols = 5;
-		int			nrows = 1;
 		char	   *pubid = PQgetvalue(res, i, 0);
 		char	   *pubname = PQgetvalue(res, i, 1);
 		bool		puballtables = strcmp(PQgetvalue(res, i, 3), "t") == 0;
 		printTableOpt myopt = pset.popt.topt;
-
-		if (has_pubsequence)
-			ncols++;
-		if (has_pubtruncate)
-			ncols++;
-		if (has_pubgencols)
-			ncols++;
-		if (has_pubviaroot)
-			ncols++;
 
 		initPQExpBuffer(&title);
 		printfPQExpBuffer(&title, _("Publication %s"), pubname);
@@ -6891,6 +6899,7 @@ describePublications(const char *pattern)
 			printTableAddHeader(&cont, gettext_noop("Generated columns"), true, align);
 		if (has_pubviaroot)
 			printTableAddHeader(&cont, gettext_noop("Via root"), true, align);
+		printTableAddHeader(&cont, gettext_noop("Description"), true, align);
 
 		printTableAddCell(&cont, PQgetvalue(res, i, 2), false, false);
 		printTableAddCell(&cont, PQgetvalue(res, i, 3), false, false);
@@ -6905,6 +6914,7 @@ describePublications(const char *pattern)
 			printTableAddCell(&cont, PQgetvalue(res, i, 9), false, false);
 		if (has_pubviaroot)
 			printTableAddCell(&cont, PQgetvalue(res, i, 10), false, false);
+		printTableAddCell(&cont, PQgetvalue(res, i, 11), false, false);
 
 		if (!puballtables)
 		{
@@ -6987,7 +6997,7 @@ describeSubscriptions(const char *pattern, bool verbose)
 	printQueryOpt myopt = pset.popt;
 	static const bool translate_columns[] = {false, false, false, false,
 		false, false, false, false, false, false, false, false, false, false,
-	false, false, false, false, false};
+	false, false, false, false, false, false};
 
 	if (pset.sversion < 100000)
 	{
@@ -7086,6 +7096,10 @@ describeSubscriptions(const char *pattern, bool verbose)
 			appendPQExpBuffer(&buf,
 							  ", subskiplsn AS \"%s\"\n",
 							  gettext_noop("Skip LSN"));
+
+		appendPQExpBuffer(&buf,
+						  ",  pg_catalog.obj_description(oid, 'pg_subscription') AS \"%s\"\n",
+						  gettext_noop("Description"));
 	}
 
 	/* Only display subscriptions in current database. */

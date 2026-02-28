@@ -2182,7 +2182,7 @@ SELECT $1 \parse stmt1
       </varlistentry>
 
       <varlistentry id="app-psql-meta-command-dx-uc">
-        <term><literal>\dX[x] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
+        <term><literal>\dX[x+] [ <link linkend="app-psql-patterns"><replaceable class="parameter">pattern</replaceable></link> ]</literal></term>
         <listitem>
         <para>
         Lists extended statistics.
@@ -2191,6 +2191,8 @@ SELECT $1 \parse stmt1
         pattern are listed.
         If <literal>x</literal> is appended to the command name, the results
         are displayed in expanded mode.
+        If <literal>+</literal> is appended to the command name, each object
+        is listed with its associated description.
         </para>
 
         <para>

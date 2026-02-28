@@ -268,7 +268,7 @@ slashUsage(unsigned short int pager)
 	HELP0("  \\du[Sx+] [PATTERN]     list roles\n");
 	HELP0("  \\dv[Sx+] [PATTERN]     list views\n");
 	HELP0("  \\dx[x+]  [PATTERN]     list extensions\n");
-	HELP0("  \\dX[x]   [PATTERN]     list extended statistics\n");
+	HELP0("  \\dX[x+]  [PATTERN]     list extended statistics\n");
 	HELP0("  \\dy[x+]  [PATTERN]     list event triggers\n");
 	HELP0("  \\l[x+]   [PATTERN]     list databases\n");
 	HELP0("  \\sf[+]   FUNCNAME      show a function's definition\n");
