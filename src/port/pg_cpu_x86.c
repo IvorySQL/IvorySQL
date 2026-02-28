@@ -31,32 +31,34 @@
 
 #include "port/pg_cpu.h"
 
+/*
+ * XSAVE state component bits that we need
+ *
+ * https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-vol-1-manual.pdf
+ * Chapter "MANAGING STATE USING THE XSAVE FEATURE SET"
+ */
+#define XMM			(1<<1)
+#define YMM			(1<<2)
+#define OPMASK		(1<<5)
+#define ZMM0_15		(1<<6)
+#define ZMM16_31	(1<<7)
+
 
 /* array indexed by enum X86FeatureId */
 bool		X86Features[X86FeaturesSize] = {0};
 
-/*
- * Does XGETBV say the ZMM registers are enabled?
- *
- * NB: Caller is responsible for verifying that osxsave is available
- * before calling this.
- */
-#ifdef HAVE_XSAVE_INTRINSICS
-pg_attribute_target("xsave")
-#endif
 static bool
-zmm_regs_available(void)
+mask_available(uint32 value, uint32 mask)
 {
-#ifdef HAVE_XSAVE_INTRINSICS
-	return (_xgetbv(0) & 0xe6) == 0xe6;
-#else
-	return false;
-#endif
+	return (value & mask) == mask;
 }
 
 /*
  * Parse the CPU ID info for runtime checks.
  */
+#ifdef HAVE_XSAVE_INTRINSICS
+pg_attribute_target("xsave")
+#endif
 void
 set_x86_features(void)
 {
@@ -76,6 +78,8 @@ set_x86_features(void)
 	/* All these features depend on OSXSAVE */
 	if (exx[2] & (1 << 27))
 	{
+		uint32		xcr0_val = 0;
+
 		/* second cpuid call on leaf 7 to check extended AVX-512 support */
 
 		memset(exx, 0, 4 * sizeof(exx[0]));
@@ -86,7 +90,14 @@ set_x86_features(void)
 		__cpuidex(exx, 7, 0);
 #endif
 
-		if (zmm_regs_available())
+#ifdef HAVE_XSAVE_INTRINSICS
+		/* get value of Extended Control Register */
+		xcr0_val = _xgetbv(0);
+#endif
+
+		/* Are ZMM registers enabled? */
+		if (mask_available(xcr0_val, XMM | YMM |
+						   OPMASK | ZMM0_15 | ZMM16_31))
 		{
 			X86Features[PG_AVX512_BW] = exx[1] >> 30 & 1;
 			X86Features[PG_AVX512_VL] = exx[1] >> 31 & 1;
