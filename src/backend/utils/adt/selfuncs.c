@@ -4350,10 +4350,11 @@ estimate_multivariate_bucketsize(PlannerInfo *root, RelOptInfo *inner,
  * This attempts to determine two values:
  *
  * 1. The frequency of the most common value of the expression (returns
- * zero into *mcv_freq if we can't get that).
+ * zero into *mcv_freq if we can't get that).  This will be frequency
+ * relative to the entire underlying table.
  *
  * 2. The "bucketsize fraction", ie, average number of entries in a bucket
- * divided by total tuples in relation.
+ * divided by total number of tuples to be hashed.
  *
  * XXX This is really pretty bogus since we're effectively assuming that the
  * distribution of hash keys will be the same after applying restriction
@@ -4426,8 +4427,8 @@ estimate_hash_bucket_stats(PlannerInfo *root, Node *hashkey, double nbuckets,
 			 * If there are no recorded MCVs, but we do have a histogram, then
 			 * assume that ANALYZE determined that the column is unique.
 			 */
-			if (vardata.rel && vardata.rel->rows > 0)
-				*mcv_freq = 1.0 / vardata.rel->rows;
+			if (vardata.rel && vardata.rel->tuples > 0)
+				*mcv_freq = 1.0 / vardata.rel->tuples;
 		}
 	}
 
