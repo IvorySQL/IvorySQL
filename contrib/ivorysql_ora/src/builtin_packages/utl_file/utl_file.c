@@ -529,7 +529,10 @@ ora_utl_file_fcopy(PG_FUNCTION_ARGS)
 	fclose(dstfile);
 
 	if (copy_result)
+	{
+		errno = copy_result;
 		IO_EXCEPTION();
+	}
 
 	PG_RETURN_VOID();
 }
