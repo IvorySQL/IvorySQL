@@ -28,7 +28,7 @@ project('postgresql',
 )
 
 # IvorySQL version
-ivorysql_version = '5.1'
+ivorysql_version = '5.3'
 
 
 ###############################################################
