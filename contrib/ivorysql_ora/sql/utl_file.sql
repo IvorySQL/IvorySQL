@@ -165,5 +165,5 @@ end;
 /
 
 -- clean up
-truncate sys.utl_file_directory;
+delete from sys.utl_file_directory where dirname = 'data_directory';
 /
