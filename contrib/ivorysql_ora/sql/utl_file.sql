@@ -132,6 +132,10 @@ begin
     utl_file.fseek(f1, line2_pos, NULL); -- seek to line 2 position
     utl_file.get_line(f1, line);
     raise notice '>>%<<', line;
+    raise notice 'lets print line#2 again via relative seek';
+    utl_file.fseek(f1, NULL, -7); -- move back one fixed "line X\n"
+    utl_file.get_line(f1, line);
+    raise notice '>>%<<', line;
 
     utl_file.fclose_all();
 
