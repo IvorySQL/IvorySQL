@@ -438,8 +438,7 @@ ora_utl_file_fclose(PG_FUNCTION_ARGS)
 
 	if(fd == NULL)
 	{
-		INVALID_FILEHANDLE_WARNING();
-		PG_RETURN_NULL();
+		INVALID_FILEHANDLE_EXCEPTION();
 	}
 
 	if (fclose(fd) == 0)
