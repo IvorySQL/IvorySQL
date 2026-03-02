@@ -686,14 +686,14 @@ ora_utl_file_fseek(PG_FUNCTION_ARGS)
 		long abs_offset = (long) PG_GETARG_INT32(1);
 		rewind(fd); /* first, reset pos to beginning */
 		if (fseek(fd, abs_offset, SEEK_SET) != 0)
-			CUSTOM_EXCEPTION(INVALID_OFFSET, "Provided offsets are invalid.");
+			CUSTOM_EXCEPTION(INVALID_OFFSET, "Provided absolute offsets are invalid.");
 	}
-	if (PG_NARGS() > 2 && !PG_ARGISNULL(2))
+	else if (PG_NARGS() > 2 && !PG_ARGISNULL(2))
 	{
 		/* relative_offset: seek from current position */
 		long rel_offset = (long) PG_GETARG_INT32(2);
 		if (fseek(fd, rel_offset, SEEK_CUR) != 0)
-			CUSTOM_EXCEPTION(INVALID_OFFSET, "Provided offsets are invalid.");
+			CUSTOM_EXCEPTION(INVALID_OFFSET, "Provided relative offsets are invalid.");
 	}
 	else
 	{
