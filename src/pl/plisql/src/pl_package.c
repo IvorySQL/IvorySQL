@@ -2730,12 +2730,10 @@ static void
 plisql_remove_function_references(PLiSQL_function *func, PackageCacheItem *item)
 {
 	PLiSQL_package *psource = (PLiSQL_package *) item->source;
-	int pre_len = list_length(psource->source.funclist);
+
+	Assert(list_member_ptr(psource->source.funclist, func));
 
 	psource->source.funclist = list_delete_ptr(psource->source.funclist, (void *) func);
-
-	Assert(pre_len == list_length(psource->source.funclist) + 1);
-
 	psource->source.use_count--;
 
 	/*
@@ -3638,7 +3636,6 @@ plisql_subproc_should_change_return_type(FuncExpr *fexpr,
 	{
 		/* only one out-parameter, change the rettype to be out-parameter type */
 		ListCell *lc;
-		bool found = false;
 
 		foreach (lc, subprocfunc->arg)
 		{
@@ -3647,7 +3644,6 @@ plisql_subproc_should_change_return_type(FuncExpr *fexpr,
 			if (argitem->argmode == ARGMODE_OUT ||
 				argitem->argmode == ARGMODE_INOUT)
 			{
-				found = true;
 				result = true;
 				*rettype = argitem->type->typoid;
 				*typmod = argitem->type->atttypmod;
@@ -3655,7 +3651,7 @@ plisql_subproc_should_change_return_type(FuncExpr *fexpr,
 				break;
 			}
 		}
-		Assert(found);
+		Assert(result);
 	}
 	return result;
 }
