@@ -5,3 +5,4 @@ src/builtin_packages/utl_file/utl_file
 src/sysview/sysview
 src/xml_functions/xml_functions
 src/builtin_packages/dbms_utility/dbms_utility
+src/builtin_packages/dbms_lock/dbms_lock

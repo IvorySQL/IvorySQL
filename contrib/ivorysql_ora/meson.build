@@ -29,6 +29,7 @@ ivorysql_ora_sources = files(
   'src/sysview/sysview_functions.c',
   'src/xml_functions/ora_xml_functions.c',
   'src/builtin_packages/dbms_utility/dbms_utility.c',
+  'src/builtin_packages/dbms_lock/dbms_lock.c'
 )
 
 if host_system == 'windows'
