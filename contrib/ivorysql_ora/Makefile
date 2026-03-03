@@ -77,11 +77,8 @@ ORA_REGRESS = \
 	dbms_utility \
 	ora_dbms_output \
 	ora_ascii \
-<<<<<<< dbms_lock
-        dbms_lock
-=======
+	dbms_lock \
 	utl_file
->>>>>>> master
 
 SHLIB_LINK += -lxml2
 
