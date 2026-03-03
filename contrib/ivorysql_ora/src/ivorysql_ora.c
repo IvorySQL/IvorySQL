@@ -49,6 +49,9 @@ PG_MODULE_MAGIC_EXT(
 					.version = PG_VERSION
 );
 
+extern char *utl_file_umask_str;
+extern void utl_file_umask_assign_hook(const char *newvalue, void *extra);
+extern bool utl_file_umask_check_hook(char **newval, void **extra, GucSource source);
 
 /* Saved hook value in case of unload */
 static oracle_datatype_precedence_hook_type pre_oracle_datatype_precedence_hook = NULL;
@@ -113,6 +116,16 @@ _PG_init(void)
 	/* ProcessUtility hook for DISCARD ALL/PACKAGES */
 	prev_ProcessUtility_hook = ProcessUtility_hook;
 	ProcessUtility_hook = ivorysql_ora_ProcessUtility;
+
+	DefineCustomStringVariable("utl_file.umask",
+								"Specify umask used by utl_file.fopen.",
+								NULL,
+								&utl_file_umask_str,
+								"0077",
+								PGC_USERSET,
+								0,
+								utl_file_umask_check_hook,
+								utl_file_umask_assign_hook, NULL);
 }
 
 /*
