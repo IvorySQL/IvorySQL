@@ -126,6 +126,8 @@ _PG_init(void)
 								0,
 								utl_file_umask_check_hook,
 								utl_file_umask_assign_hook, NULL);
+
+	MarkGUCPrefixReserved("ivorysql");
 }
 
 /*
