@@ -1835,7 +1835,7 @@ WHEN MATCHED AND t.c > s.cnt THEN
                Output: s.a, s.b, s.c, s.d, s.ctid
                ->  Seq Scan on public.src s
                      Output: s.a, s.b, s.c, s.d, s.ctid
-         SubPlan 1
+         SubPlan array_1
            ->  Aggregate
                  Output: count(*)
                  ->  Seq Scan on public.ref r
@@ -1847,10 +1847,10 @@ WHEN MATCHED AND t.c > s.cnt THEN
            ->  Seq Scan on public.ref r_2
                  Output: r_2.ab, r_2.cd
                  Filter: ((r_2.ab = (s.a + s.b)) AND (r_2.cd = (s.c - s.d)))
-   SubPlan 3
+   SubPlan expr_2
      ->  Result
-           Output: s.b, (InitPlan 2).col1
-           InitPlan 2
+           Output: s.b, (InitPlan minmax_2).col1
+           InitPlan minmax_2
              ->  Aggregate
                    Output: count(*)
                    ->  Seq Scan on public.ref r_1

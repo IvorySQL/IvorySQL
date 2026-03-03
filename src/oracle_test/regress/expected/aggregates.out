@@ -783,9 +783,9 @@ select array(select sum(x+y) s
                             QUERY PLAN                             
 -------------------------------------------------------------------
  Function Scan on pg_catalog.generate_series x
-   Output: ARRAY(SubPlan 1)
+   Output: ARRAY(SubPlan array_1)
    Function Call: generate_series(1, 3)
-   SubPlan 1
+   SubPlan array_1
      ->  Sort
            Output: (sum((x.x + y.y))), y.y
            Sort Key: (sum((x.x + y.y)))
@@ -961,7 +961,7 @@ explain (costs off)
 ------------------------------------------------------------
  Result
    Replaces: MinMaxAggregate
-   InitPlan 1
+   InitPlan minmax_1
      ->  Limit
            ->  Index Only Scan using tenk1_unique1 on tenk1
                  Index Cond: (unique1 IS NOT NULL)
@@ -979,7 +979,7 @@ explain (costs off)
 ---------------------------------------------------------------------
  Result
    Replaces: MinMaxAggregate
-   InitPlan 1
+   InitPlan minmax_1
      ->  Limit
            ->  Index Only Scan Backward using tenk1_unique1 on tenk1
                  Index Cond: (unique1 IS NOT NULL)
@@ -997,7 +997,7 @@ explain (costs off)
 ------------------------------------------------------------------------
  Result
    Replaces: MinMaxAggregate
-   InitPlan 1
+   InitPlan minmax_1
      ->  Limit
            ->  Index Only Scan Backward using tenk1_unique1 on tenk1
                  Index Cond: ((unique1 IS NOT NULL) AND (unique1 < 42))
@@ -1015,7 +1015,7 @@ explain (costs off)
 ------------------------------------------------------------------------
  Result
    Replaces: MinMaxAggregate
-   InitPlan 1
+   InitPlan minmax_1
      ->  Limit
            ->  Index Only Scan Backward using tenk1_unique1 on tenk1
                  Index Cond: ((unique1 IS NOT NULL) AND (unique1 > 42))
@@ -1039,7 +1039,7 @@ explain (costs off)
 ---------------------------------------------------------------------------
  Result
    Replaces: MinMaxAggregate
-   InitPlan 1
+   InitPlan minmax_1
      ->  Limit
            ->  Index Only Scan Backward using tenk1_unique1 on tenk1
                  Index Cond: ((unique1 IS NOT NULL) AND (unique1 > 42000))
@@ -1059,7 +1059,7 @@ explain (costs off)
 ----------------------------------------------------------------------------
  Result
    Replaces: MinMaxAggregate
-   InitPlan 1
+   InitPlan minmax_1
      ->  Limit
            ->  Index Only Scan Backward using tenk1_thous_tenthous on tenk1
                  Index Cond: ((thousand = 33) AND (tenthous IS NOT NULL))
@@ -1077,7 +1077,7 @@ explain (costs off)
 --------------------------------------------------------------------------
  Result
    Replaces: MinMaxAggregate
-   InitPlan 1
+   InitPlan minmax_1
      ->  Limit
            ->  Index Only Scan using tenk1_thous_tenthous on tenk1
                  Index Cond: ((thousand = 33) AND (tenthous IS NOT NULL))
@@ -1096,10 +1096,10 @@ explain (costs off)
                                        QUERY PLAN                                        
 -----------------------------------------------------------------------------------------
  Seq Scan on int4_tbl
-   SubPlan 2
+   SubPlan expr_1
      ->  Result
            Replaces: MinMaxAggregate
-           InitPlan 1
+           InitPlan minmax_1
              ->  Limit
                    ->  Index Only Scan using tenk1_unique1 on tenk1
                          Index Cond: ((unique1 IS NOT NULL) AND (unique1 > int4_tbl.f1))
@@ -1122,8 +1122,8 @@ explain (costs off)
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  HashAggregate
-   Group Key: (InitPlan 1).col1
-   InitPlan 1
+   Group Key: (InitPlan minmax_1).col1
+   InitPlan minmax_1
      ->  Limit
            ->  Index Only Scan Backward using tenk1_unique2 on tenk1
                  Index Cond: (unique2 IS NOT NULL)
@@ -1142,8 +1142,8 @@ explain (costs off)
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Sort
-   Sort Key: ((InitPlan 1).col1)
-   InitPlan 1
+   Sort Key: ((InitPlan minmax_1).col1)
+   InitPlan minmax_1
      ->  Limit
            ->  Index Only Scan Backward using tenk1_unique2 on tenk1
                  Index Cond: (unique2 IS NOT NULL)
@@ -1162,8 +1162,8 @@ explain (costs off)
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Sort
-   Sort Key: ((InitPlan 1).col1)
-   InitPlan 1
+   Sort Key: ((InitPlan minmax_1).col1)
+   InitPlan minmax_1
      ->  Limit
            ->  Index Only Scan Backward using tenk1_unique2 on tenk1
                  Index Cond: (unique2 IS NOT NULL)
@@ -1182,8 +1182,8 @@ explain (costs off)
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Sort
-   Sort Key: (((InitPlan 1).col1 + 1))
-   InitPlan 1
+   Sort Key: (((InitPlan minmax_1).col1 + 1))
+   InitPlan minmax_1
      ->  Limit
            ->  Index Only Scan Backward using tenk1_unique2 on tenk1
                  Index Cond: (unique2 IS NOT NULL)
@@ -1203,7 +1203,7 @@ explain (costs off)
 ---------------------------------------------------------------------
  Sort
    Sort Key: (generate_series(1, 3)) DESC
-   InitPlan 1
+   InitPlan minmax_1
      ->  Limit
            ->  Index Only Scan Backward using tenk1_unique2 on tenk1
                  Index Cond: (unique2 IS NOT NULL)
@@ -1227,7 +1227,7 @@ explain (costs off)
 ----------------------------------------------------
  Result
    Replaces: MinMaxAggregate
-   InitPlan 1
+   InitPlan minmax_1
      ->  Limit
            ->  Result
                  One-Time Filter: (100 IS NOT NULL)
@@ -1259,7 +1259,7 @@ explain (costs off)
 ---------------------------------------------------------------------------------------------
  Result
    Replaces: MinMaxAggregate
-   InitPlan 1
+   InitPlan minmax_1
      ->  Limit
            ->  Merge Append
                  Sort Key: minmaxtest.f1
@@ -1270,7 +1270,7 @@ explain (costs off)
                  ->  Index Only Scan Backward using minmaxtest2i on minmaxtest2 minmaxtest_3
                        Index Cond: (f1 IS NOT NULL)
                  ->  Index Only Scan using minmaxtest3i on minmaxtest3 minmaxtest_4
-   InitPlan 2
+   InitPlan minmax_2
      ->  Limit
            ->  Merge Append
                  Sort Key: minmaxtest_5.f1 DESC
@@ -1295,7 +1295,7 @@ explain (costs off)
                                          QUERY PLAN                                          
 ---------------------------------------------------------------------------------------------
  Unique
-   InitPlan 1
+   InitPlan minmax_1
      ->  Limit
            ->  Merge Append
                  Sort Key: minmaxtest.f1
@@ -1306,7 +1306,7 @@ explain (costs off)
                  ->  Index Only Scan Backward using minmaxtest2i on minmaxtest2 minmaxtest_3
                        Index Cond: (f1 IS NOT NULL)
                  ->  Index Only Scan using minmaxtest3i on minmaxtest3 minmaxtest_4
-   InitPlan 2
+   InitPlan minmax_2
      ->  Limit
            ->  Merge Append
                  Sort Key: minmaxtest_5.f1 DESC
@@ -1318,7 +1318,7 @@ explain (costs off)
                        Index Cond: (f1 IS NOT NULL)
                  ->  Index Only Scan Backward using minmaxtest3i on minmaxtest3 minmaxtest_9
    ->  Sort
-         Sort Key: ((InitPlan 1).col1), ((InitPlan 2).col1)
+         Sort Key: ((InitPlan minmax_1).col1), ((InitPlan minmax_2).col1)
          ->  Result
                Replaces: MinMaxAggregate
 (27 rows)
@@ -1343,10 +1343,10 @@ explain (costs off)
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Seq Scan on int4_tbl t0
-   SubPlan 2
+   SubPlan expr_1
      ->  HashAggregate
-           Group Key: (InitPlan 1).col1
-           InitPlan 1
+           Group Key: (InitPlan minmax_1).col1
+           InitPlan minmax_1
              ->  Limit
                    ->  Seq Scan on int4_tbl t1
                          Filter: ((f1 IS NOT NULL) AND (f1 = t0.f1))
