@@ -1480,11 +1480,6 @@ setup_config(void)
 									  "0640", false);
 	}
 
-#if USE_LZ4
-	conflines = replace_guc_value(conflines, "default_toast_compression",
-								  "lz4", true);
-#endif
-
 	/*
 	 * Now replace anything that's overridden via -c switches.
 	 */
