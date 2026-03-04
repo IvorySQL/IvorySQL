@@ -692,6 +692,7 @@ typedef struct _PublicationInfo
 	bool		pubtruncate;
 	bool		pubviaroot;
 	PublishGencolsType pubgencols_type;
+	SimplePtrList except_tables;
 } PublicationInfo;
 
 /*

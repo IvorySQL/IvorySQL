@@ -203,6 +203,7 @@ static void processCASbits(int cas_bits, int location, const char *constrType,
 static PartitionStrategy parsePartitionStrategy(char *strategy, int location,
 												core_yyscan_t yyscanner);
 static void preprocess_pub_all_objtype_list(List *all_objects_list,
+											List **pubobjects,
 											bool *all_tables,
 											bool *all_sequences,
 											core_yyscan_t yyscanner);
@@ -455,6 +456,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 				TriggerTransitions TriggerReferencing
 				vacuum_relation_list opt_vacuum_relation_list
 				drop_option_list pub_obj_list pub_all_obj_type_list
+				pub_except_obj_list opt_pub_except_clause
 
 %type <retclause> returning_clause
 %type <node>	returning_option
@@ -592,6 +594,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <node>	var_value zone_value
 %type <rolespec> auth_ident RoleSpec opt_granted_by
 %type <publicationobjectspec> PublicationObjSpec
+%type <publicationobjectspec> PublicationExceptObjSpec
 %type <publicationallobjectspec> PublicationAllObjSpec
 
 %type <keyword> unreserved_keyword type_func_name_keyword
@@ -10796,7 +10799,7 @@ AlterOwnerStmt: ALTER AGGREGATE aggregate_with_argtypes OWNER TO RoleSpec
  *
  * pub_all_obj_type is one of:
  *
- *		TABLES
+ *		TABLES [EXCEPT TABLE ( table [, ...] )]
  *		SEQUENCES
  *
  * CREATE PUBLICATION FOR pub_obj [, ...] [WITH options]
@@ -10822,7 +10825,8 @@ CreatePublicationStmt:
 					CreatePublicationStmt *n = makeNode(CreatePublicationStmt);
 
 					n->pubname = $3;
-					preprocess_pub_all_objtype_list($5, &n->for_all_tables,
+					preprocess_pub_all_objtype_list($5, &n->pubobjects,
+													&n->for_all_tables,
 													&n->for_all_sequences,
 													yyscanner);
 					n->options = $6;
@@ -10937,11 +10941,17 @@ pub_obj_list:	PublicationObjSpec
 					{ $$ = lappend($1, $3); }
 	;
 
+opt_pub_except_clause:
+			EXCEPT TABLE '(' pub_except_obj_list ')'	{ $$ = $4; }
+			| /*EMPTY*/									{ $$ = NIL; }
+		;
+
 PublicationAllObjSpec:
-				ALL TABLES
+				ALL TABLES opt_pub_except_clause
 					{
 						$$ = makeNode(PublicationAllObjSpec);
 						$$->pubobjtype = PUBLICATION_ALL_TABLES;
+						$$->except_tables = $3;
 						$$->location = @1;
 					}
 				| ALL SEQUENCES
@@ -10958,6 +10968,23 @@ pub_all_obj_type_list:	PublicationAllObjSpec
 					{ $$ = lappend($1, $3); }
 	;
 
+PublicationExceptObjSpec:
+			 relation_expr
+				{
+					$$ = makeNode(PublicationObjSpec);
+					$$->pubobjtype = PUBLICATIONOBJ_EXCEPT_TABLE;
+					$$->pubtable = makeNode(PublicationTable);
+					$$->pubtable->except = true;
+					$$->pubtable->relation = $1;
+					$$->location = @1;
+				}
+	;
+
+pub_except_obj_list: PublicationExceptObjSpec
+					{ $$ = list_make1($1); }
+			| pub_except_obj_list ',' PublicationExceptObjSpec
+					{ $$ = lappend($1, $3); }
+	;
 
 /*****************************************************************************
  *
@@ -19816,8 +19843,9 @@ parsePartitionStrategy(char *strategy, int location, core_yyscan_t yyscanner)
  * Also, checks if the pub_object_type has been specified more than once.
  */
 static void
-preprocess_pub_all_objtype_list(List *all_objects_list, bool *all_tables,
-								bool *all_sequences, core_yyscan_t yyscanner)
+preprocess_pub_all_objtype_list(List *all_objects_list, List **pubobjects,
+								bool *all_tables, bool *all_sequences,
+								core_yyscan_t yyscanner)
 {
 	if (!all_objects_list)
 		return;
@@ -19837,6 +19865,7 @@ preprocess_pub_all_objtype_list(List *all_objects_list, bool *all_tables,
 						parser_errposition(obj->location));
 
 			*all_tables = true;
+			*pubobjects = list_concat(*pubobjects, obj->except_tables);
 		}
 		else if (obj->pubobjtype == PUBLICATION_ALL_SEQUENCES)
 		{
