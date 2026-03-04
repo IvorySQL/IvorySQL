@@ -679,28 +679,49 @@ test_random_operations(PG_FUNCTION_ARGS)
 		bms_free(result);
 	}
 
-	pfree(members);
 	bms_free(bms1);
 	bms_free(bms2);
 
-	for (int i = 0; i < num_ops; i++)
+	/*
+	 * Phase 4: mix of operations on a single set, cross-checking a bitmap
+	 * with a secondary state, "members".
+	 */
+	num_members = 0;
+
+	for (int op = 0; op < num_ops; op++)
 	{
-		member = pg_prng_uint32(&state) % max_range + min_value;
 		switch (pg_prng_uint32(&state) % 3)
 		{
 			case 0:				/* add */
+				member = pg_prng_uint32(&state) % max_range + min_value;
+				if (!bms_is_member(member, bms))
+					members[num_members++] = member;
 				bms = bms_add_member(bms, member);
 				break;
 			case 1:				/* delete */
-				if (bms != NULL)
+				if (num_members > 0)
 				{
+					int			pos = pg_prng_uint32(&state) % num_members;
+
+					member = members[pos];
+					if (!bms_is_member(member, bms))
+						elog(ERROR, "expected %d to be a valid member", member);
+
 					bms = bms_del_member(bms, member);
+
+					/*
+					 * Move the final array member at the position of the
+					 * member just deleted, reducing the array size by one.
+					 */
+					members[pos] = members[--num_members];
 				}
 				break;
 			case 2:				/* test membership */
-				if (bms != NULL)
+				/* Verify that bitmap contains all members */
+				for (int i = 0; i < num_members; i++)
 				{
-					bms_is_member(member, bms);
+					if (!bms_is_member(members[i], bms))
+						elog(ERROR, "missing member %d", members[i]);
 				}
 				break;
 		}
@@ -708,6 +729,7 @@ test_random_operations(PG_FUNCTION_ARGS)
 	}
 
 	bms_free(bms);
+	pfree(members);
 
 	PG_RETURN_INT32(total_ops);
 }

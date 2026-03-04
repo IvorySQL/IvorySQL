@@ -14,6 +14,7 @@
 
 ora_fe_utils_sources = files(
   'ora_string_utils.c',
+  'ora_version.c',
 )
 
 ora_psqlscan = custom_target('ora_psqlscan',
