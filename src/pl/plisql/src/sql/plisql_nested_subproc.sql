@@ -3890,3 +3890,77 @@ END;
 SELECT test_func_1005_multi(10) FROM dual;
 
 DROP FUNCTION test_func_1005_multi;
+CREATE TABLE test_subproc_recfield(id integer, name varchar2(256));
+
+CREATE OR REPLACE FUNCTION trig_subproc_recfield1() RETURNS TRIGGER AS $$
+DECLARE
+    v_id integer := new.id;
+    FUNCTION get_id() RETURN integer IS
+    BEGIN
+        RETURN v_id;
+    END;
+BEGIN
+    RAISE INFO 'id: %', get_id();
+    RETURN new;
+END;
+$$ LANGUAGE plisql;
+/
+
+CREATE TRIGGER trig_subproc_recfield1_trig
+    AFTER INSERT ON test_subproc_recfield
+    FOR EACH ROW EXECUTE PROCEDURE trig_subproc_recfield1();
+
+INSERT INTO test_subproc_recfield VALUES(42, 'hello');
+
+DROP TRIGGER trig_subproc_recfield1_trig ON test_subproc_recfield;
+DROP FUNCTION trig_subproc_recfield1();
+
+CREATE OR REPLACE FUNCTION trig_subproc_recfield2() RETURNS TRIGGER AS $$
+DECLARE
+    v_id     integer := new.id;
+    v_result integer := 0;
+    PROCEDURE accumulate(p_val integer) IS
+    BEGIN
+        v_result := v_result + p_val;
+    END;
+BEGIN
+    accumulate(v_id);
+    RAISE INFO 'result: %', v_result;
+    RETURN new;
+END;
+$$ LANGUAGE plisql;
+/
+
+CREATE TRIGGER trig_subproc_recfield2_trig
+    AFTER INSERT ON test_subproc_recfield
+    FOR EACH ROW EXECUTE PROCEDURE trig_subproc_recfield2();
+
+INSERT INTO test_subproc_recfield VALUES(10, 'world');
+
+DROP TRIGGER trig_subproc_recfield2_trig ON test_subproc_recfield;
+DROP FUNCTION trig_subproc_recfield2();
+
+CREATE OR REPLACE FUNCTION trig_subproc_recfield3() RETURNS TRIGGER AS $$
+DECLARE
+    v_id   integer      := new.id;
+    v_name varchar2(256) := new.name;
+    FUNCTION summary() RETURN text IS
+    BEGIN
+        RETURN v_id::text || ':' || v_name;
+    END;
+BEGIN
+    RAISE INFO '%', summary();
+    RETURN new;
+END;
+$$ LANGUAGE plisql;
+/
+
+CREATE TRIGGER trig_subproc_recfield3_trig
+    AFTER INSERT ON test_subproc_recfield
+    FOR EACH ROW EXECUTE PROCEDURE trig_subproc_recfield3();
+
+INSERT INTO test_subproc_recfield VALUES(5, 'test');
+
+DROP TRIGGER trig_subproc_recfield3_trig ON test_subproc_recfield;
+DROP FUNCTION trig_subproc_recfield3();
+DROP TABLE test_subproc_recfield;
