@@ -299,6 +299,7 @@ do_compile(FunctionCallInfo fcinfo,
 	yyscan_t	scanner;
 	Datum		prosrcdatum;
 	char	   *proc_source;
+	char	   *proc_signature;
 	HeapTuple	typeTup;
 	Form_pg_type typeStruct;
 	PLiSQL_variable *var;
@@ -367,6 +368,9 @@ do_compile(FunctionCallInfo fcinfo,
 	}
 	plisql_curr_compile = function;
 
+    /* format_procedure leaks memory, so run it in temp context */
+	proc_signature = format_procedure(fcinfo->flinfo->fn_oid);
+
 	/*
 	 * All the permanent output of compilation (e.g. parse tree) is kept in a
 	 * per-function memory context, so it can be reclaimed easily.
@@ -376,7 +380,7 @@ do_compile(FunctionCallInfo fcinfo,
 						 ALLOCSET_DEFAULT_SIZES);
 	plisql_compile_tmp_cxt = MemoryContextSwitchTo(func_cxt);
 
-	function->fn_signature = format_procedure(fcinfo->flinfo->fn_oid);
+	function->fn_signature = pstrdup(proc_signature);
 	MemoryContextSetIdentifier(func_cxt, function->fn_signature);
 	function->fn_oid = fcinfo->flinfo->fn_oid;
 	function->fn_xmin = HeapTupleHeaderGetRawXmin(procTup->t_data);
@@ -1880,17 +1884,22 @@ resolve_column_ref(ParseState *pstate, PLiSQL_expr * expr,
 				}
 
 				/*
-				 * We should not get here, because a RECFIELD datum should
-				 * have been built at parse time for every possible qualified
-				 * reference to fields of this record. But if we do, handle
-				 * it like field-not-found: throw error or return NULL.
+				 * Ideally we'd never get here, because a RECFIELD datum
+				 * should have been built at parse time for every qualified
+				 * reference to a field of this record that appears in the
+				 * source text.  However, plpgsql_yylex will not build such a
+				 * datum unless the field name lexes as token type IDENT.
+				 * Hence, if the would-be field name is a PL/pgSQL reserved
+				 * word, we lose.  Assume that that's what happened and tell
+				 * the user to quote it, unless the caller prefers we just
+				 * return NULL.
 				 */
 				if (error_if_no_field)
 					ereport(ERROR,
-							(errcode(ERRCODE_UNDEFINED_COLUMN),
-							 errmsg("record \"%s\" has no field \"%s\"",
-									(nnames_field == 1) ? name1 : name2,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("field name \"%s\" is a reserved key word",
 									colname),
+                             errhint("Use double quotes to quote it."),
 							 parser_errposition(pstate, cref->location)));
 			}
 			break;
@@ -2590,6 +2599,10 @@ plisql_parse_wordrowtype(char *ident)
 	TypeName	*typname;
 	bool		missing_ok = false;
 	TypeName   *typeName;
+    MemoryContext oldCxt;
+
+    /* Avoid memory leaks in long-term function context */
+	oldCxt = MemoryContextSwitchTo(plisql_compile_tmp_cxt);
 
 	typname = typeStringToTypeName(ident, NULL);
 	if (list_length(typname->names) < 2 &&
@@ -2608,6 +2621,7 @@ plisql_parse_wordrowtype(char *ident)
 	result = plisql_parse_package_type(typname, parse_by_var_rowtype, missing_ok);
 	if (result != NULL)
 	{
+        MemoryContextSwitchTo(oldCxt);
 		pfree(typname);
 		return result;
 	}
@@ -2641,6 +2655,8 @@ plisql_parse_wordrowtype(char *ident)
 	 */
 	if (check_referenced_objects)
 	{
+        MemoryContextSwitchTo(oldCxt);
+
 		ObjectAddress *refobj;
 
 		refobj = (ObjectAddress *) palloc(sizeof(ObjectAddress));
@@ -2648,11 +2664,15 @@ plisql_parse_wordrowtype(char *ident)
 		refobj->objectId = classOid;
 		refobj->objectSubId = InvalidAttrNumber;
 		plisql_referenced_objects = lappend(plisql_referenced_objects, (void *) refobj);
+
+        MemoryContextSwitchTo(plisql_compile_tmp_cxt);  // 切换回 tmp_cxt 继续
 	}
 
 	typeName = makeTypeName(ident);
 	typeName->pct_type = false;
 	typeName->row_type = true;
+
+    MemoryContextSwitchTo(oldCxt);
 
 	/* Build and return the row type struct */
 	return plisql_build_datatype(typOid, -1, InvalidOid,
@@ -2699,6 +2719,10 @@ plisql_parse_cwordrowtype(List *idents)
 				 errmsg("relation \"%s\" does not have a composite type",
 						relvar->relname)));
 
+	typeName = makeTypeNameFromNameList(idents);
+	typeName->pct_type = false;
+	typeName->row_type = true;
+
 	MemoryContextSwitchTo(oldCxt);
 
 	/*
@@ -2715,10 +2739,6 @@ plisql_parse_cwordrowtype(List *idents)
 		refobj->objectSubId = InvalidAttrNumber;
 		plisql_referenced_objects = lappend(plisql_referenced_objects, (void *) refobj);
 	}
-
-	typeName = makeTypeNameFromNameList(idents);
-	typeName->pct_type = false;
-	typeName->row_type = true;
 
 	/* Build and return the row type struct */
 	return plisql_build_datatype(typOid, -1, InvalidOid,
@@ -3077,7 +3097,7 @@ build_datatype(HeapTuple typeTup, int32 typmod,
 					 errmsg("type %s is not composite",
 							format_type_be(typ->typoid))));
 
-		typ->origtypname = origtypname;
+		typ->origtypname = copyObject(origtypname);
 		typ->tcache = typentry;
 		typ->tupdesc_id = typentry->tupDesc_identifier;
 	}
@@ -3095,7 +3115,7 @@ build_datatype(HeapTuple typeTup, int32 typmod,
 	typ->notnull = false;
 	if (origtypname != NULL &&
 		(origtypname->pct_type || origtypname->row_type))
-		typ->pctrowtypname = origtypname;
+		typ->pctrowtypname = copyObject(origtypname);
 	else
 		typ->pctrowtypname = NULL;
 
