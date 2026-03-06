@@ -168,6 +168,14 @@ ora_get_prompt(Ora_promptStatus_t status, ConditionalStack cstack)
 					if (pset.db)
 						strlcpy(buf, session_username(), sizeof(buf));
 					break;
+					/* service name */
+				case 's':
+					{
+						const char *service_name = GetVariable(pset.vars, "SERVICE");
+
+						if (service_name)
+							strlcpy(buf, service_name, sizeof(buf));
+					}
 					/* backend pid */
 				case 'p':
 					if (pset.db)
