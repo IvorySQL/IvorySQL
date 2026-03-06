@@ -254,6 +254,7 @@ static void reapply_stacked_values(struct config_generic *variable,
 								   const char *curvalue,
 								   GucContext curscontext, GucSource cursource,
 								   Oid cursrole);
+static void free_placeholder(struct config_string *pHolder);
 static bool validate_option_array_item(const char *name, const char *value,
 									   bool skipIfNoPermissions);
 static void write_auto_conf_file(int fd, const char *filename, ConfigVariable *head);
@@ -4727,8 +4728,13 @@ AlterSystemSetConfigFile(AlterSystemStmt *altersysstmt)
 			 * the config file cannot cause postmaster start to fail, so we
 			 * don't have to be too tense about possibly installing a bad
 			 * value.)
+			 *
+			 * As an exception, we skip this check if this is a RESET command
+			 * for an unknown custom GUC, else there'd be no way for users to
+			 * remove such settings with reserved prefixes.
 			 */
-			(void) assignable_custom_variable_name(name, false, ERROR);
+			if (value || !valid_custom_variable_name(name))
+				(void) assignable_custom_variable_name(name, false, ERROR);
 		}
 
 		/*
@@ -5023,16 +5029,8 @@ define_custom_variable(struct config_generic *variable)
 		set_config_sourcefile(name, pHolder->gen.sourcefile,
 							  pHolder->gen.sourceline);
 
-	/*
-	 * Free up as much as we conveniently can of the placeholder structure.
-	 * (This neglects any stack items, so it's possible for some memory to be
-	 * leaked.  Since this can only happen once per session per variable, it
-	 * doesn't seem worth spending much code on.)
-	 */
-	set_string_field(pHolder, pHolder->variable, NULL);
-	set_string_field(pHolder, &pHolder->reset_val, NULL);
-
-	guc_free(pHolder);
+	/* Now we can free the no-longer-referenced placeholder variable */
+	free_placeholder(pHolder);
 }
 
 /*
@@ -5129,6 +5127,25 @@ reapply_stacked_values(struct config_generic *variable,
 			}
 		}
 	}
+}
+
+/*
+ * Free up a no-longer-referenced placeholder GUC variable.
+ *
+ * This neglects any stack items, so it's possible for some memory to be
+ * leaked.  Since this can only happen once per session per variable, it
+ * doesn't seem worth spending much code on.
+ */
+static void
+free_placeholder(struct config_string *pHolder)
+{
+	/* Placeholders are always STRING type, so free their values */
+	Assert(pHolder->gen.vartype == PGC_STRING);
+	set_string_field(pHolder, pHolder->variable, NULL);
+	set_string_field(pHolder, &pHolder->reset_val, NULL);
+
+	guc_free(unconstify(char *, pHolder->gen.name));
+	guc_free(pHolder);
 }
 
 /*
@@ -5291,9 +5308,7 @@ MarkGUCPrefixReserved(const char *className)
 
 	/*
 	 * Check for existing placeholders.  We must actually remove invalid
-	 * placeholders, else future parallel worker startups will fail.  (We
-	 * don't bother trying to free associated memory, since this shouldn't
-	 * happen often.)
+	 * placeholders, else future parallel worker startups will fail.
 	 */
 	hash_seq_init(&status, guc_hashtab);
 	while ((hentry = (GUCHashEntry *) hash_seq_search(&status)) != NULL)
@@ -5317,6 +5332,8 @@ MarkGUCPrefixReserved(const char *className)
 						NULL);
 			/* Remove it from any lists it's in, too */
 			RemoveGUCFromLists(var);
+			/* And free it */
+			free_placeholder((struct config_string *) var);
 		}
 	}
 
@@ -6716,6 +6733,7 @@ validate_option_array_item(const char *name, const char *value,
 
 {
 	struct config_generic *gconf;
+	bool		reset_custom;
 
 	/*
 	 * There are three cases to consider:
@@ -6734,16 +6752,21 @@ validate_option_array_item(const char *name, const char *value,
 	 * it's assumed to be fully validated.)
 	 *
 	 * name is not known and can't be created as a placeholder.  Throw error,
-	 * unless skipIfNoPermissions is true, in which case return false.
+	 * unless skipIfNoPermissions or reset_custom is true.  If reset_custom is
+	 * true, this is a RESET or RESET ALL operation for an unknown custom GUC
+	 * with a reserved prefix, in which case we want to fall through to the
+	 * placeholder case described in the preceding paragraph (else there'd be
+	 * no way for users to remove them).  Otherwise, return false.
 	 */
-	gconf = find_option(name, true, skipIfNoPermissions, ERROR);
-	if (!gconf)
+	reset_custom = (!value && valid_custom_variable_name(name));
+	gconf = find_option(name, true, skipIfNoPermissions || reset_custom, ERROR);
+	if (!gconf && !reset_custom)
 	{
 		/* not known, failed to make a placeholder */
 		return false;
 	}
 
-	if (gconf->flags & GUC_CUSTOM_PLACEHOLDER)
+	if (!gconf || gconf->flags & GUC_CUSTOM_PLACEHOLDER)
 	{
 		/*
 		 * We cannot do any meaningful check on the value, so only permissions

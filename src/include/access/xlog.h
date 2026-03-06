@@ -140,10 +140,9 @@ extern PGDLLIMPORT bool XLOG_DEBUG;
 #define CHECKPOINT_IS_SHUTDOWN	0x0001	/* Checkpoint is for shutdown */
 #define CHECKPOINT_END_OF_RECOVERY	0x0002	/* Like shutdown checkpoint, but
 											 * issued at end of WAL recovery */
-#define CHECKPOINT_IMMEDIATE	0x0004	/* Do it without delays */
+#define CHECKPOINT_FAST			0x0004	/* Do it without delays */
 #define CHECKPOINT_FORCE		0x0008	/* Force even if no activity */
-#define CHECKPOINT_FLUSH_ALL	0x0010	/* Flush all pages, including those
-										 * belonging to unlogged tables */
+#define CHECKPOINT_FLUSH_UNLOGGED	0x0010	/* Flush unlogged tables */
 /* These are important to RequestCheckpoint */
 #define CHECKPOINT_WAIT			0x0020	/* Wait for completion */
 #define CHECKPOINT_REQUESTED	0x0040	/* Checkpoint request has been made */
