@@ -321,7 +321,6 @@ my %pgdump_runs = (
 			'--file' => "$tempdir/pg_dumpall_globals.sql",
 			'--globals-only',
 			'--no-sync',
-			'--statistics',
 		],
 	},
 	pg_dumpall_globals_clean => {
@@ -331,7 +330,6 @@ my %pgdump_runs = (
 			'--globals-only',
 			'--clean',
 			'--no-sync',
-			'--statistics',
 		],
 	},
 	pg_dumpall_dbprivs => {
