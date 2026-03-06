@@ -69,6 +69,7 @@
 #include "utils/rel.h"
 #include "utils/resowner.h"
 #include "utils/timestamp.h"
+#include "utils/wait_event.h"
 
 
 /* Note: these two macros only work on shared buffers, not local ones! */
