@@ -137,3 +137,47 @@ WHERE OBJECT_NAME = 'FUNC_WITH_DEFAULT';
 
 -- clean data
 DROP FUNCTION IF EXISTS FUNC_WITH_DEFAULT;
+-- Oracle dynamic views
+\d SYS.V$SESSION
+                            View "sys.v$session"
+      Column       |          Type          | Collation | Nullable | Default 
+-------------------+------------------------+-----------+----------+---------
+ sid               | number                 |           |          | 
+ username          | varchar2(128)          | C         |          | 
+ status            | varchar2(40)           |           |          | 
+ machine           | varchar2(128)          |           |          | 
+ program           | varchar2(256)          |           |          | 
+ type              | varchar2(30)           |           |          | 
+ logon_time        | pg_catalog.timestamptz |           |          | 
+ sql_exec_start    | pg_catalog.timestamptz |           |          | 
+ sql_id            | varchar2(19)           |           |          | 
+ sql_text          | varchar2(4000)         |           |          | 
+ blocking_session  | number                 |           |          | 
+ event             | varchar2(64)           |           |          | 
+ wait_class        | varchar2(64)           |           |          | 
+ transaction_start | pg_catalog.timestamptz |           |          | 
+ port              | number                 |           |          | 
+
+\d SYS.V$PROCESS
+                    View "sys.v$process"
+   Column   |     Type      | Collation | Nullable | Default 
+------------+---------------+-----------+----------+---------
+ spid       | number        |           |          | 
+ username   | varchar2(128) | C         |          | 
+ program    | varchar2(256) |           |          | 
+ pname      | varchar2(30)  |           |          | 
+ background | varchar2(1)   |           |          | 
+
+SELECT * 
+FROM SYS.V$PARAMETER 
+WHERE NAME IN ('listen_addresses','application_name','archive_command','archive_mode','block_size')
+ORDER BY NAME;
+       name       | type |         value          | default_value | isdefault | isses_modifiable | issys_modifiable |                            description                            
+------------------+------+------------------------+---------------+-----------+------------------+------------------+-------------------------------------------------------------------
+ application_name | 2    | pg_regress/ora_sysview |               | FALSE     | TRUE             | IMMEDIATE        | Sets the application name to be reported in statistics and logs.
+ archive_command  | 2    | (disabled)             |               | FALSE     | FALSE            | IMMEDIATE        | Sets the shell command that will be called to archive a WAL file.
+ archive_mode     | 2    | off                    | off           | TRUE      | FALSE            | FALSE            | Allows archiving of WAL files using "archive_command".
+ block_size       | 3    | 8192                   | 8192          | TRUE      | FALSE            | FALSE            | Shows the size of a disk block.
+ listen_addresses | 2    |                        | localhost     | FALSE     | FALSE            | FALSE            | Sets the host name or IP address(es) to listen to.
+(5 rows)
+
