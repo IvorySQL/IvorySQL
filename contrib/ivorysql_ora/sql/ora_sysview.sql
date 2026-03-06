@@ -82,3 +82,11 @@ SELECT ARGUMENT_NAME, IN_OUT, POSITION, DEFAULTED FROM ALL_ARGUMENTS
 WHERE OBJECT_NAME = 'FUNC_WITH_DEFAULT';
 -- clean data
 DROP FUNCTION IF EXISTS FUNC_WITH_DEFAULT;
+
+-- Oracle dynamic views
+\d SYS.V$SESSION
+\d SYS.V$PROCESS
+SELECT * 
+FROM SYS.V$PARAMETER 
+WHERE NAME IN ('listen_addresses','application_name','archive_command','archive_mode','block_size')
+ORDER BY NAME;
