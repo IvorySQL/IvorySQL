@@ -6466,7 +6466,7 @@ CreateTrigStmt:
 					n->whenClause = $15;
 					n->transitionRels = NIL;
 					processCASbits($11, @11, "TRIGGER",
-								   &n->deferrable, &n->initdeferred, NULL,
+								   &n->deferrable, &n->initdeferred, &dummy,
 								   NULL, NULL, yyscanner);
 					n->constrrel = $10;
 					$$ = (Node *) n;
