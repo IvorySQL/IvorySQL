@@ -19323,7 +19323,7 @@ dumpSequence(Archive *fout, const TableInfo *tbinfo)
 			else if (owning_tab->attidentity[tbinfo->owning_col - 1] == ATTRIBUTE_ORA_IDENTITY_BY_DEFAULT)
 				appendPQExpBufferStr(query, "BY DEFAULT");
 			else if (owning_tab->attidentity[tbinfo->owning_col - 1] == ATTRIBUTE_IDENTITY_DEFAULT_ON_NULL)
-				appendPQExpBufferStr(query, "BY DEFAULT NO NULL");
+				appendPQExpBufferStr(query, "BY DEFAULT ON NULL");
 			appendPQExpBuffer(query, " AS IDENTITY (\n");
 		}
 	}

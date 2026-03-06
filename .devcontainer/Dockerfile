@@ -34,6 +34,8 @@ RUN apt-get update && apt-get install -y \
     locales \
     # For dev containers
     sudo tini \
+    # Debugging tools
+    gdb \
     && rm -rf /var/lib/apt/lists/*
 
 # Install meson and ninja from source (matching workflow versions)

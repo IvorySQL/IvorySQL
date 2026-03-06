@@ -56,7 +56,7 @@ int			rowid_seq_cache = 20;
 
 #ifdef IVY_GUC_VAR_STRUCT
 
-/* The comments shown as blow define the
+/* The comments shown as below define the
  * value range of guc parameters "database_mode"
  * and "compatible_db".
  */
@@ -184,7 +184,7 @@ static struct config_bool Ivy_ConfigureNamesBool[] =
 	},
 
 	/*
- 	 * ivorysql.default_with_rowids
+	 * ivorysql.default_with_rowids
 	 *
 	 * When enabled, all newly created tables will automatically include
 	 * an Oracle-compatible ROWID pseudo-column. This provides compatibility
@@ -192,7 +192,7 @@ static struct config_bool Ivy_ConfigureNamesBool[] =
 	 *
 	 * Default: off
 	 * Context: USERSET (can be changed by any user)
- 	 */
+	 */
 	{
 		{"ivorysql.default_with_rowids", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Automatically add rowid column when creating new tables."),
@@ -420,7 +420,7 @@ static struct config_enum Ivy_ConfigureNamesEnum[] =
 
 	{
 		{"nls_length_semantics", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
-			gettext_noop("Compatible Oracle NLS parameter for charater data type."),
+			gettext_noop("Compatible Oracle NLS parameter for character data type."),
 			gettext_noop("Valid values are CHAR, BYTE."),
 			GUC_IS_NAME | GUC_NOT_IN_SAMPLE
 		},
@@ -477,7 +477,7 @@ check_compatible_mode(int *newval, void **extra, GucSource source)
 				ereport(ERROR,
 						(errcode(ERRCODE_SYSTEM_ERROR),
 						 errmsg("IVORYSQL_ORA library not found!"),
-						 errhint("You must load IVORYSQL_ORA to use oracle parser..")));
+						 errhint("You must load IVORYSQL_ORA to use oracle parser.")));
 		}
 	}
 	return true;
@@ -529,19 +529,21 @@ static void
 nls_case_conversion(char **param, char type)
 {
 	char	   *p;
+	size_t	  len;
 
 CASE_CONVERSION:
+	len = strlen(*param);
 	if (type == 'u')
 	{
-		for (p = *param; p < *param + strlen(*param); ++p)
-			if (97 <= *p && *p <= 122)
+		for (p = *param; p < *param + len; ++p)
+			if ('a' <= *p && *p <= 'z')
 				*p -= 32;
 		*p = '\0';
 	}
 	else if (type == 'l')
 	{
-		for (p = *param; p < *param + strlen(*param); ++p)
-			if (65 <= *p && *p <= 90)
+		for (p = *param; p < *param + len; ++p)
+			if ('A' <= *p && *p <= 'Z')
 				*p += 32;
 		*p = '\0';
 	}
@@ -550,11 +552,11 @@ CASE_CONVERSION:
 		bool		has_upper = false,
 					has_lower = false;
 
-		for (p = *param; p < *param + strlen(*param); ++p)
+		for (p = *param; p < *param + len; ++p)
 		{
-			if (65 <= *p && *p <= 90)
+			if ('A' <= *p && *p <= 'Z')
 				has_upper = true;
-			else if (97 <= *p && *p <= 122)
+			else if ('a' <= *p && *p <= 'z')
 				has_lower = true;
 			if (has_upper && has_lower)
 				return;
@@ -579,10 +581,14 @@ nls_length_check(char **newval, void **extra, GucSource source)
 		&& (IsNormalProcessingMode() || (IsUnderPostmaster && MyProcPort)))
 	{
 		if (strlen(*newval) > 255)
-			ereport(ERROR, (errmsg("parameter value longer than 255 characters")));
+			ereport(ERROR,
+					(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
+					 errmsg("parameter value longer than 255 characters")));
 		else if (isdigit(**newval))
-			ereport(ERROR, (errmsg("Cannot access NLS data files "
-								   "or invalid environment specified")));
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("Cannot access NLS data files "
+							"or invalid environment specified")));
 		else if (identifier_case_switch == INTERCHANGE)
 			nls_case_conversion(newval, 'b');
 	}
@@ -601,8 +607,10 @@ nls_territory_check(char **newval, void **extra, GucSource source)
 		else if (pg_strcasecmp(*newval, "AMERICA") == 0)
 			memcpy(*newval, "AMERICA", 7);
 		else
-			ereport(ERROR, (errmsg("Cannot access NLS data files "
-								   "or invalid environment specified")));
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("Cannot access NLS data files "
+							"or invalid environment specified")));
 	}
 
 	return true;

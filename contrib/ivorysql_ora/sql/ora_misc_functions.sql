@@ -2345,3 +2345,6 @@ reset nls_date_format;
 reset nls_timestamp_format;
 reset nls_timestamp_tz_format;
 reset default_text_search_config;
+-- should throw errors, because dummy_config is not a valid configuration name
+set ivorysql.dummy_config to dummy;
+reset ivorysql.dummy_config;

@@ -4483,17 +4483,12 @@ raw_expression_tree_walker_impl(Node *node,
 			break;
 		case T_ColumnRefOrFuncCall:
 			{
-				FuncCall   *fcall = ((ColumnRefOrFuncCall *) node)->func;
+				ColumnRefOrFuncCall *colf = (ColumnRefOrFuncCall *) node;
 
-				if (WALK(fcall->args))
+				if (colf->cref && WALK(colf->cref))
 					return true;
-				if (WALK(fcall->agg_order))
+				if (colf->func && WALK(colf->func))
 					return true;
-				if (WALK(fcall->agg_filter))
-					return true;
-				if (WALK(fcall->over))
-					return true;
-				/* function name is deemed uninteresting */
 			}
 			break;
 		case T_NamedArgExpr:

@@ -3024,7 +3024,6 @@ plisql_dynamic_compile_subproc(FunctionCallInfo fcinfo,
 static void
 plsql_init_glovalvar_from_stack(PLiSQL_execstate * estate, int dno, int *start_level)
 {
-	bool		match = false;
 	int			connected;
 	PLiSQL_execstate *parestate;
 	PLiSQL_function *func;
@@ -3042,11 +3041,11 @@ plsql_init_glovalvar_from_stack(PLiSQL_execstate * estate, int dno, int *start_l
 		if (dno >= parestate->ndatums)
 			continue;
 		plisql_assign_in_global_var(estate, parestate, dno);
-		match = true;
 		*start_level = connected;
-		break;
+
+		return;
 	}
-	Assert(match);
+	Assert(false);
 	return;
 }
 
@@ -3056,7 +3055,6 @@ plsql_init_glovalvar_from_stack(PLiSQL_execstate * estate, int dno, int *start_l
 static void
 plsql_assign_out_glovalvar_from_stack(PLiSQL_execstate * estate, int dno, int *start_level)
 {
-	bool		match = false;
 	int			connected;
 	PLiSQL_execstate *parestate;
 	PLiSQL_function *func;
@@ -3075,10 +3073,10 @@ plsql_assign_out_glovalvar_from_stack(PLiSQL_execstate * estate, int dno, int *s
 			continue;
 		plisql_assign_out_global_var(estate, parestate, dno, connected);
 		*start_level = connected;
-		match = true;
-		break;
+
+		return;
 	}
-	Assert(match);
+	Assert(false);
 	return;
 }
 

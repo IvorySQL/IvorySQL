@@ -3221,7 +3221,8 @@ SplitGUCList(char *rawstring, char separator,
 			char	   *new_name;
 
 			new_name = identifier_case_transform(curname, strlen(curname));
-			strncpy(curname, new_name, strlen(new_name));
+			memcpy(curname, new_name, strlen(new_name));
+			curname[strlen(new_name)] = '\0';
 			pfree(new_name);
 		}
 

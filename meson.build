@@ -3603,6 +3603,7 @@ sys.exit(sp.returncode)
 ''',
        test_initdb_template,
        temp_install_bindir / 'initdb',
+       '-m', 'pg',
        '--auth', 'trust', '--no-sync', '--no-instructions', '--lc-messages=C',
        '--no-clean'
      ],

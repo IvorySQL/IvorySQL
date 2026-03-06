@@ -24,10 +24,12 @@ ivorysql_ora_sources = files(
   'src/builtin_functions/numeric_datatype_functions.c',
   'src/builtin_functions/misc_functions.c',
   'src/builtin_packages/dbms_output/dbms_output.c',
+  'src/builtin_packages/utl_file/utl_file.c',
   'src/merge/ora_merge.c',
   'src/sysview/sysview_functions.c',
   'src/xml_functions/ora_xml_functions.c',
   'src/builtin_packages/dbms_utility/dbms_utility.c',
+  'src/builtin_packages/dbms_lock/dbms_lock.c'
 )
 
 if host_system == 'windows'
@@ -59,23 +61,3 @@ install_data(
   'preload_ora_misc.sql',
   install_dir: dir_data,
 )
-
-tests += {
-  'name': 'ivorysql_ora',
-  'sd': meson.current_source_dir(),
-  'bd': meson.current_build_dir(),
-  'regress': {
-    'sql': [
-      'check',
-      'check_btree',
-      'check_heap',
-    ],
-  },
-  'tap': {
-    'tests': [
-      't/001_verify_heapam.pl',
-      't/002_cic.pl',
-      't/003_cic_2pc.pl',
-    ],
-  },
-}
