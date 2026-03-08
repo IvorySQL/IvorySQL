@@ -1265,6 +1265,24 @@ plisql_init_subprocfunc_globalvar(PLiSQL_execstate * estate, FunctionCallInfo fc
 		if (estate->datums[i]->dtype == PLISQL_DTYPE_ROW)
 			continue;
 
+		/*
+		 * Skip RECFIELD datums.  A RECFIELD carries no independent value;
+		 * it is purely field-reference metadata (recparentno + fieldname).
+		 * Such datums can appear in the outer-scope range as a compile-time
+		 * side-effect: when scanning a DEFAULT expression that references a
+		 * record field (e.g. "var1 integer := new.id"), plisql_build_recfield
+		 * is called by the lexer before lastassignvardno is recorded, placing
+		 * the RECFIELD at an index below lastassignvardno.  The parent record
+		 * (e.g. NEW/OLD) is propagated separately, so there is nothing to do
+		 * here.
+		 */
+		if (estate->datums[i]->dtype == PLISQL_DTYPE_RECFIELD)
+		{
+			/* Parent record must precede its RECFIELD in the datum array */
+			Assert(((PLiSQL_recfield *) estate->datums[i])->recparentno < i);
+			continue;
+		}
+
 		/* Ignore datums that don't require assignment */
 		if (is_subprocfunc_argnum(pfunc, i))
 			continue;
@@ -1327,6 +1345,13 @@ plisql_assign_out_subprocfunc_globalvar(PLiSQL_execstate * estate,
 		/* Skip internal row-typed datums */
 		if (estate->datums[i]->dtype == PLISQL_DTYPE_ROW)
 			continue;
+
+		/* See comment in plisql_init_subprocfunc_globalvar */
+		if (estate->datums[i]->dtype == PLISQL_DTYPE_RECFIELD)
+		{
+			Assert(((PLiSQL_recfield *) estate->datums[i])->recparentno < i);
+			continue;
+		}
 
 		/* Ignore datums that don't require assignment */
 		if (is_subprocfunc_argnum(pfunc, i))
