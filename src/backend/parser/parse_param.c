@@ -112,7 +112,7 @@ static bool check_parameter_resolution_walker(Node *node, ParseState *pstate);
 static bool query_contains_extern_params_walker(Node *node, void *context);
 static bool calculate_oraparamnumbers_walker(Node *node, void *context);
 static bool raw_calculate_oraparamnumbers_walker(Node *node,
-							bool(*walker) (),
+							tree_walker_callback walker,
 							void *context);
 static bool calculate_oraparamname_walker(Node *node, void *state);
 
@@ -752,10 +752,12 @@ calculate_oraparamnumbers_walker(Node *node, void *context)
 
 static bool
 raw_calculate_oraparamnumbers_walker(Node *node,
-					bool(*walker) (),
+					tree_walker_callback walker,
 					void *context)
 {
 	ListCell   *temp = NULL;
+
+#define WALK(n) walker((Node *) (n), context)
 
 	/*
 	* recurse into any sub-nodes that current node has.
@@ -770,63 +772,63 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		case T_CreateDomainStmt:
 		{
 			CreateDomainStmt    *stmt = (CreateDomainStmt *)node;
-			if (walker(stmt->domainname, context))
+			if (WALK(stmt->domainname))
 				return true;
-			if (walker(stmt->typeName, context))
+			if (WALK(stmt->typeName))
 				return true;
-			if (walker(stmt->constraints, context))
+			if (WALK(stmt->constraints))
 				return true;
 		}
 			break;
 		case T_AlterDomainStmt:
 		{
 			AlterDomainStmt    *stmt = (AlterDomainStmt *)node;
-			if (walker(stmt->typeName, context))
+			if (WALK(stmt->typeName))
 				return true;
-			if (walker(stmt->def, context))
+			if (WALK(stmt->def))
 				return true;
 		}	
 			break;
 		case T_CreatePolicyStmt:
 		{
 			CreatePolicyStmt    *stmt = (CreatePolicyStmt *)node;
-			if (walker(stmt->table, context))
+			if (WALK(stmt->table))
 				return true;
-			if (walker(stmt->roles, context))
+			if (WALK(stmt->roles))
 				return true;
-			if (walker(stmt->qual, context))
+			if (WALK(stmt->qual))
 				return true;
-			if (walker(stmt->with_check, context))
+			if (WALK(stmt->with_check))
 				return true;
 		}
 			break;
 		case T_AlterPolicyStmt:
 		{
 			AlterPolicyStmt    *stmt = (AlterPolicyStmt *)node;
-			if (walker(stmt->table, context))
+			if (WALK(stmt->table))
 				return true;
-			if (walker(stmt->roles, context))
+			if (WALK(stmt->roles))
 				return true;
-			if (walker(stmt->qual, context))
+			if (WALK(stmt->qual))
 				return true;
-			if (walker(stmt->with_check, context))
+			if (WALK(stmt->with_check))
 				return true;
 		}
 			break;
 		case T_CreateTrigStmt:
 		{
 			CreateTrigStmt    *stmt = (CreateTrigStmt *)node;
-			if (walker(stmt->relation, context))
+			if (WALK(stmt->relation))
 				return true;
-			if (walker(stmt->whenClause, context))
+			if (WALK(stmt->whenClause))
 				return true;
-			if (walker(stmt->funcname, context))
+			if (WALK(stmt->funcname))
 				return true;
-			if (walker(stmt->args, context))
+			if (WALK(stmt->args))
 				return true;
-			if (walker(stmt->columns, context))
+			if (WALK(stmt->columns))
 				return true;
-			if (walker(stmt->constrrel, context))
+			if (WALK(stmt->constrrel))
 				return true;
 		
 		}
@@ -834,76 +836,76 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		case T_IndexStmt:
 		{
 			IndexStmt    *stmt = (IndexStmt *)node;
-			if (walker(stmt->relation, context))
+			if (WALK(stmt->relation))
 				return true;
-			if (walker(stmt->indexParams, context))
+			if (WALK(stmt->indexParams))
 				return true;
-			if (walker(stmt->options, context))
+			if (WALK(stmt->options))
 				return true;
-			if (walker(stmt->whereClause, context))
+			if (WALK(stmt->whereClause))
 				return true;
-			if (walker(stmt->excludeOpNames, context))
+			if (WALK(stmt->excludeOpNames))
 				return true;		
 		}
 			break;
 		case T_RuleStmt:
 		{
 			RuleStmt    *stmt = (RuleStmt *)node;
-			if (walker(stmt->relation, context))
+			if (WALK(stmt->relation))
 				return true;
-			if (walker(stmt->whereClause, context))
+			if (WALK(stmt->whereClause))
 				return true;
-			if (walker(stmt->actions, context))
+			if (WALK(stmt->actions))
 				return true;		
 		}
 			break;
 		case T_DeleteStmt:
 		{
 			DeleteStmt    *stmt = (DeleteStmt *)node;
-			if (walker(stmt->relation, context))
+			if (WALK(stmt->relation))
 				return true;
-			if (walker(stmt->usingClause, context))
+			if (WALK(stmt->usingClause))
 				return true;
-			if (walker(stmt->whereClause, context))
+			if (WALK(stmt->whereClause))
 				return true;
-			if (walker(stmt->returningClause, context))
+			if (WALK(stmt->returningClause))
 				return true;		
-			if (walker(stmt->withClause, context))
+			if (WALK(stmt->withClause))
 				return true;		
 		}
 			break;
 		case T_UpdateStmt:
 		{
 			UpdateStmt    *stmt = (UpdateStmt *)node;
-			if (walker(stmt->relation, context))
+			if (WALK(stmt->relation))
 				return true;
-			if (walker(stmt->targetList, context))
+			if (WALK(stmt->targetList))
 				return true;
-			if (walker(stmt->fromClause, context))
+			if (WALK(stmt->fromClause))
 				return true;
-			if (walker(stmt->whereClause, context))
+			if (WALK(stmt->whereClause))
 				return true;		
-			if (walker(stmt->returningClause, context))
+			if (WALK(stmt->returningClause))
 				return true;		
-			if (walker(stmt->withClause, context))
+			if (WALK(stmt->withClause))
 				return true;		
 		}
 			break;
 		case T_AlterTableStmt:
 		{
 			AlterTableStmt    *stmt = (AlterTableStmt *)node;
-			if (walker(stmt->relation, context))
+			if (WALK(stmt->relation))
 				return true;
-			if (walker(stmt->cmds, context))
+			if (WALK(stmt->cmds))
 				return true;			
 		}
 			break;
 		case T_AlterTableCmd:
 		{
 			AlterTableCmd    *stmt = (AlterTableCmd *)node;
-			if (walker(stmt->newowner, context))
+			if (WALK(stmt->newowner))
 				return true;
-			if (walker(stmt->def, context))
+			if (WALK(stmt->def))
 				return true;
 			
 		}
@@ -911,13 +913,13 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		case T_CreateFunctionStmt:
 		{
 			CreateFunctionStmt *stmt = (CreateFunctionStmt*)node;
-			if (walker(stmt->funcname,context))
+			if (WALK(stmt->funcname))
 				return true;
-			if (walker(stmt->parameters,context))
+			if (WALK(stmt->parameters))
 				return true;
-			if (walker(stmt->returnType,context))
+			if (WALK(stmt->returnType))
 				return true;
-			if (walker(stmt->options,context))
+			if (WALK(stmt->options))
 				return true;
 		}
 			break;
@@ -925,35 +927,35 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			 SelectStmt *stmt = (SelectStmt *)node;
 
-			 if (walker(stmt->distinctClause, context))
+			 if (WALK(stmt->distinctClause))
 				 return true;
-			 if (walker(stmt->intoClause, context))
+			 if (WALK(stmt->intoClause))
 				 return true;
-			 if (walker(stmt->targetList, context))
+			 if (WALK(stmt->targetList))
 				 return true;
-			 if (walker(stmt->fromClause, context))
+			 if (WALK(stmt->fromClause))
 				 return true;
-			 if (walker(stmt->whereClause, context))
+			 if (WALK(stmt->whereClause))
 				 return true;		 
-			 if (walker(stmt->groupClause, context))
+			 if (WALK(stmt->groupClause))
 				 return true;		 
-			 if (walker(stmt->havingClause, context))
+			 if (WALK(stmt->havingClause))
 				 return true;
-			 if (walker(stmt->windowClause, context))
+			 if (WALK(stmt->windowClause))
 				 return true;
-			 if (walker(stmt->valuesLists, context))
+			 if (WALK(stmt->valuesLists))
 				 return true;
-			 if (walker(stmt->sortClause, context))
+			 if (WALK(stmt->sortClause))
 				 return true;
-			 if (walker(stmt->limitOffset, context))
+			 if (WALK(stmt->limitOffset))
 				 return true;
-			 if (walker(stmt->lockingClause, context))
+			 if (WALK(stmt->lockingClause))
 				 return true;
-			 if (walker(stmt->withClause, context))
+			 if (WALK(stmt->withClause))
 				 return true;
-			 if (walker(stmt->larg, context))
+			 if (WALK(stmt->larg))
 				 return true;
-			 if (walker(stmt->rarg, context))
+			 if (WALK(stmt->rarg))
 				 return true;
 		}
 			break;
@@ -961,17 +963,17 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			 InsertStmt *stmt = (InsertStmt *)node;
 
-			 if (walker(stmt->relation, context))
+			 if (WALK(stmt->relation))
 				 return true;
-			 if (walker(stmt->cols, context))
+			 if (WALK(stmt->cols))
 				 return true;
-			 if (walker(stmt->selectStmt, context))
+			 if (WALK(stmt->selectStmt))
 				 return true;
-			 if (walker(stmt->onConflictClause, context))
+			 if (WALK(stmt->onConflictClause))
 				 return true;
-			 if (walker(stmt->returningClause, context))
+			 if (WALK(stmt->returningClause))
 				 return true;
-			 if (walker(stmt->withClause, context))
+			 if (WALK(stmt->withClause))
 				 return true;
 		}
 			break;
@@ -979,9 +981,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			 CreateSchemaStmt *stmt = (CreateSchemaStmt *)node;
 	
-			 if (walker(stmt->authrole, context))
+			 if (WALK(stmt->authrole))
 		  		 return true;
-			 if (walker(stmt->schemaElts, context))
+			 if (WALK(stmt->schemaElts))
 				 return true;
 		}
 			break;
@@ -989,21 +991,21 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			 AlterObjectSchemaStmt *stmt = (AlterObjectSchemaStmt *)node;
 	
-			if (walker(stmt->relation, context))
+			if (WALK(stmt->relation))
 				return true;
-			 if (walker(stmt->object, context))
+			 if (WALK(stmt->object))
 				 return true;
 		}
 			break;
 		case T_ExecuteStmt:
-			return walker(((ExecuteStmt *)node)->params, context);
+			return WALK(((ExecuteStmt *)node)->params);
 		case T_CreateTableAsStmt:
 		{
 			 CreateTableAsStmt *stmt = (CreateTableAsStmt *)node;
 	
-			 if (walker(stmt->query, context))
+			 if (WALK(stmt->query))
 				 return true;
-			 if (walker(stmt->into, context))
+			 if (WALK(stmt->into))
 				 return true;
 		}
 			break;
@@ -1011,17 +1013,17 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			 CreateStmt *stmt = (CreateStmt *)node;
 
-			 if (walker(stmt->relation, context))
+			 if (WALK(stmt->relation))
 				 return true;
-			 if (walker(stmt->tableElts, context))
+			 if (WALK(stmt->tableElts))
 				 return true;
-			 if (walker(stmt->inhRelations, context))
+			 if (WALK(stmt->inhRelations))
 				 return true;
-			 if (walker(stmt->ofTypename, context))
+			 if (WALK(stmt->ofTypename))
 				 return true;
-			 if (walker(stmt->constraints, context))
+			 if (WALK(stmt->constraints))
 				 return true;
-			 if (walker(stmt->options, context))
+			 if (WALK(stmt->options))
 				 return true;
 		}
 			break;			
@@ -1029,19 +1031,19 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			 CreateForeignTableStmt *stmt = (CreateForeignTableStmt *)node;
 
-			 if (walker(stmt->base.relation, context))
+			 if (WALK(stmt->base.relation))
 				 return true;
-			 if (walker(stmt->base.tableElts, context))
+			 if (WALK(stmt->base.tableElts))
 				 return true;
-			 if (walker(stmt->base.inhRelations, context))
+			 if (WALK(stmt->base.inhRelations))
 				 return true;
-			 if (walker(stmt->base.ofTypename, context))
+			 if (WALK(stmt->base.ofTypename))
 				 return true;
-			 if (walker(stmt->base.constraints, context))
+			 if (WALK(stmt->base.constraints))
 				 return true;
-			 if (walker(stmt->base.options, context))
+			 if (WALK(stmt->base.options))
 				 return true;
-			 if (walker(stmt->options, context))
+			 if (WALK(stmt->options))
 				 return true;
 		}
 			break;			
@@ -1049,9 +1051,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			 AlterExtensionContentsStmt *stmt = (AlterExtensionContentsStmt *)node;
 
-			 if (walker(stmt->extname, context))
+			 if (WALK(stmt->extname))
 				 return true;
-			 if (walker(stmt->object, context))
+			 if (WALK(stmt->object))
 				 return true;
 		}
 			break;			
@@ -1059,13 +1061,13 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			 CreateOpClassStmt *stmt = (CreateOpClassStmt *)node;
 
-			 if (walker(stmt->opclassname, context))
+			 if (WALK(stmt->opclassname))
 				 return true;
-			 if (walker(stmt->datatype, context))
+			 if (WALK(stmt->datatype))
 				 return true;
-			 if (walker(stmt->opfamilyname, context))
+			 if (WALK(stmt->opfamilyname))
 				 return true;
-			 if (walker(stmt->items, context))
+			 if (WALK(stmt->items))
 				 return true;
 		}
 			break;			
@@ -1073,9 +1075,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			 AlterOpFamilyStmt *stmt = (AlterOpFamilyStmt *)node;
 
-			 if (walker(stmt->opfamilyname, context))
+			 if (WALK(stmt->opfamilyname))
 				 return true;
-			 if (walker(stmt->items, context))
+			 if (WALK(stmt->items))
 				 return true;
 		}
 			break;			
@@ -1083,7 +1085,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			 DropStmt *stmt = (DropStmt *)node;
 
-			 if (walker(stmt->objects, context))
+			 if (WALK(stmt->objects))
 				 return true;
 		}
 			break;			
@@ -1091,7 +1093,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			 CommentStmt *stmt = (CommentStmt *)node;
 
-			 if (walker(stmt->object, context))
+			 if (WALK(stmt->object))
 				 return true;
 		}
 			break;			
@@ -1099,7 +1101,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			 SecLabelStmt *stmt = (SecLabelStmt *)node;
 
-			 if (walker(stmt->object, context))
+			 if (WALK(stmt->object))
 				 return true;
 		}
 			break;			
@@ -1107,11 +1109,11 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			 CreateCastStmt *stmt = (CreateCastStmt *)node;
 
-			 if (walker(stmt->sourcetype, context))
+			 if (WALK(stmt->sourcetype))
 				 return true;
-			 if (walker(stmt->targettype, context))
+			 if (WALK(stmt->targettype))
 				 return true;
-			 if (walker(stmt->func, context))
+			 if (WALK(stmt->func))
 				 return true;
 		}
 			break;			
@@ -1119,11 +1121,11 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			 CreateTransformStmt *stmt = (CreateTransformStmt *)node;
 
-			 if (walker(stmt->type_name, context))
+			 if (WALK(stmt->type_name))
 				 return true;
-			 if (walker(stmt->fromsql, context))
+			 if (WALK(stmt->fromsql))
 				 return true;
-			 if (walker(stmt->tosql, context))
+			 if (WALK(stmt->tosql))
 				 return true;
 		}
 			break;			
@@ -1131,11 +1133,11 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			 DefineStmt *stmt = (DefineStmt *)node;
 
-			 if (walker(stmt->defnames, context))
+			 if (WALK(stmt->defnames))
 				 return true;
-			 if (walker(stmt->args, context))
+			 if (WALK(stmt->args))
 				 return true;
-			 if (walker(stmt->definition, context))
+			 if (WALK(stmt->definition))
 				 return true;
 		}
 			break;			
@@ -1143,11 +1145,11 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			 AlterOwnerStmt *stmt = (AlterOwnerStmt *)node;
 
-			if (walker(stmt->relation, context))
+			if (WALK(stmt->relation))
 				 return true;
-			 if (walker(stmt->object, context))
+			 if (WALK(stmt->object))
 				 return true;
-			 if (walker(stmt->newowner, context))
+			 if (WALK(stmt->newowner))
 				 return true;
 		}
 			break;			
@@ -1155,9 +1157,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			 PrepareStmt *stmt = (PrepareStmt *)node;
 
-			 if (walker(stmt->argtypes, context))
+			 if (WALK(stmt->argtypes))
 				 return true;
-			 if (walker(stmt->query, context))
+			 if (WALK(stmt->query))
 				 return true;
 		}
 			break;			
@@ -1165,9 +1167,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			 CreateTableSpaceStmt *stmt = (CreateTableSpaceStmt *)node;
 
-			 if (walker(stmt->owner, context))
+			 if (WALK(stmt->owner))
 				 return true;
-			 if (walker(stmt->options, context))
+			 if (WALK(stmt->options))
 				 return true;
 		}
 			break;					
@@ -1175,13 +1177,13 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			 ViewStmt *stmt = (ViewStmt *)node;
 
-			if (walker(stmt->view, context))
+			if (WALK(stmt->view))
 				 return true;
-			 if (walker(stmt->aliases, context))
+			 if (WALK(stmt->aliases))
 				 return true;
-			 if (walker(stmt->query, context))
+			 if (WALK(stmt->query))
 				 return true;
-			 if (walker(stmt->options, context))
+			 if (WALK(stmt->options))
 				 return true;
 		}
 			break;			
@@ -1189,9 +1191,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			 RenameStmt *stmt = (RenameStmt *)node;
 
-			if (walker(stmt->relation, context))
+			if (WALK(stmt->relation))
 				 return true;
-			 if (walker(stmt->object, context))
+			 if (WALK(stmt->object))
 				 return true;
 		}
 			break;			
@@ -1199,9 +1201,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			 AlterFunctionStmt *stmt = (AlterFunctionStmt *)node;
 
-			 if (walker(stmt->func, context))
+			 if (WALK(stmt->func))
 				 return true;
-			 if (walker(stmt->actions, context))
+			 if (WALK(stmt->actions))
 				 return true;
 		}
 			break;			
@@ -1209,7 +1211,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			 AlterTableSpaceOptionsStmt *stmt = (AlterTableSpaceOptionsStmt *)node;
 
-			 if (walker(stmt->options, context))
+			 if (WALK(stmt->options))
 				 return true;
 		}
 			break;			
@@ -1217,9 +1219,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			 AlterTSDictionaryStmt *stmt = (AlterTSDictionaryStmt *)node;
 
-			 if (walker(stmt->dictname, context))
+			 if (WALK(stmt->dictname))
 				 return true;
-			 if (walker(stmt->options, context))
+			 if (WALK(stmt->options))
 				 return true;
 		}
 			break;			
@@ -1227,11 +1229,11 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			 GrantStmt *stmt = (GrantStmt *)node;
 
-			 if (walker(stmt->objects, context))
+			 if (WALK(stmt->objects))
 				 return true;
-			 if (walker(stmt->privileges, context))
+			 if (WALK(stmt->privileges))
 				 return true;
-			 if (walker(stmt->grantees, context))
+			 if (WALK(stmt->grantees))
 				 return true;
 		}
 			break;		
@@ -1239,11 +1241,11 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			 GrantRoleStmt *stmt = (GrantRoleStmt *)node;
 
-			 if (walker(stmt->granted_roles, context))
+			 if (WALK(stmt->granted_roles))
 				 return true;
-			 if (walker(stmt->grantee_roles, context))
+			 if (WALK(stmt->grantee_roles))
 				 return true;
-			 if (walker(stmt->grantor, context))
+			 if (WALK(stmt->grantor))
 				 return true;
 		}
 			break;	
@@ -1251,9 +1253,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			 AlterDefaultPrivilegesStmt *stmt = (AlterDefaultPrivilegesStmt *)node;
 
-			 if (walker(stmt->options, context))
+			 if (WALK(stmt->options))
 				 return true;
-			 if (walker(stmt->action, context))
+			 if (WALK(stmt->action))
 				 return true;		
 		}
 			break;			
@@ -1261,7 +1263,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			 AccessPriv *stmt = (AccessPriv *)node;
 	
-			 if (walker(stmt->cols, context))
+			 if (WALK(stmt->cols))
 				 return true;
 		}
 			break;		
@@ -1269,11 +1271,11 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			 GroupingFunc *stmt = (GroupingFunc *)node;
 	
-			 if (walker(stmt->args, context))
+			 if (WALK(stmt->args))
 				 return true;
-			 if (walker(stmt->refs, context))
+			 if (WALK(stmt->refs))
 				 return true;
-			 if (walker(stmt->cols, context))
+			 if (WALK(stmt->cols))
 				 return true;
 		}
 			break;	
@@ -1281,43 +1283,43 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			Query *stmt = (Query*)node;
 
-			if (walker(stmt->utilityStmt, context))
+			if (WALK(stmt->utilityStmt))
 				return true;
-			 if (walker(stmt->cteList, context))
+			 if (WALK(stmt->cteList))
 				 return true;
-			 if (walker(stmt->rtable, context))
+			 if (WALK(stmt->rtable))
 				 return true;
-			 if (walker(stmt->jointree, context))
+			 if (WALK(stmt->jointree))
 				 return true;		
-			if (walker(stmt->targetList, context))
+			if (WALK(stmt->targetList))
 				return true;
-			if (walker(stmt->onConflict, context))
+			if (WALK(stmt->onConflict))
 				return true;
-			if (walker(stmt->returningList, context))
+			if (WALK(stmt->returningList))
 				return true;
-			if (walker(stmt->groupClause, context))
+			if (WALK(stmt->groupClause))
 				return true;
-			if (walker(stmt->groupingSets, context))
+			if (WALK(stmt->groupingSets))
 				return true;
-			if (walker(stmt->havingQual, context))
+			if (WALK(stmt->havingQual))
 				return true;
-			if (walker(stmt->windowClause, context))
+			if (WALK(stmt->windowClause))
 				return true;
-			if (walker(stmt->distinctClause, context))
+			if (WALK(stmt->distinctClause))
 				return true;
-			if (walker(stmt->sortClause, context))
+			if (WALK(stmt->sortClause))
 				return true;
-			if (walker(stmt->limitOffset, context))
+			if (WALK(stmt->limitOffset))
 				return true;
-			if (walker(stmt->limitCount, context))
+			if (WALK(stmt->limitCount))
 				return true;		
-			if (walker(stmt->rowMarks, context))
+			if (WALK(stmt->rowMarks))
 				return true;
-			if (walker(stmt->setOperations, context))
+			if (WALK(stmt->setOperations))
 				return true;
-			if (walker(stmt->constraintDeps, context))
+			if (WALK(stmt->constraintDeps))
 				return true;
-			if (walker(stmt->withCheckOptions, context))
+			if (WALK(stmt->withCheckOptions))
 				return true;
 		}
 			break;
@@ -1325,11 +1327,11 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			TypeName *stmt = (TypeName*)node;
 
-			if (walker(stmt->names, context))
+			if (WALK(stmt->names))
 				return true;
-			 if (walker(stmt->typmods, context))
+			 if (WALK(stmt->typmods))
 				 return true;
-			 if (walker(stmt->arrayBounds, context))
+			 if (WALK(stmt->arrayBounds))
 				 return true;
 		}
 			break;
@@ -1337,7 +1339,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			ColumnRef *stmt = (ColumnRef*)node;
 
-			if (walker(stmt->fields, context))
+			if (WALK(stmt->fields))
 				return true;		 
 		}
 			break;
@@ -1345,11 +1347,11 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			A_Expr *stmt = (A_Expr*)node;
 
-			if (walker(stmt->name, context))
+			if (WALK(stmt->name))
 				return true;
-			if (walker(stmt->lexpr, context))
+			if (WALK(stmt->lexpr))
 				return true;
-			if (walker(stmt->rexpr, context))
+			if (WALK(stmt->rexpr))
 				return true;		 
 		}
 			break;
@@ -1357,9 +1359,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   TypeCast   *stmt = (TypeCast *)node;
 
-		   if (walker(stmt->arg, context))
+		   if (WALK(stmt->arg))
 			   return true;
-		   if (walker(stmt->typeName, context))
+		   if (WALK(stmt->typeName))
 			   return true;
 		}
 			break;
@@ -1367,9 +1369,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   CollateClause   *stmt = (CollateClause *)node;
 	
-		   if (walker(stmt->arg, context))
+		   if (WALK(stmt->arg))
 			   return true;
-		   if (walker(stmt->collname, context))
+		   if (WALK(stmt->collname))
 			   return true;
 		}
 			break;
@@ -1377,15 +1379,15 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			FuncCall   *stmt = (FuncCall *)node;
 	
-			if (walker(stmt->funcname, context))
+			if (WALK(stmt->funcname))
 				return true;
-			if (walker(stmt->args, context))
+			if (WALK(stmt->args))
 				return true;
-			if (walker(stmt->agg_order, context))
+			if (WALK(stmt->agg_order))
 				return true;
-			if (walker(stmt->agg_filter, context))
+			if (WALK(stmt->agg_filter))
 				return true;
-			if (walker(stmt->over, context))
+			if (WALK(stmt->over))
 				return true;
 		}
 			break;
@@ -1393,9 +1395,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   A_Indices   *stmt = (A_Indices *)node;
 	
-		   if (walker(stmt->lidx, context))
+		   if (WALK(stmt->lidx))
 			   return true;
-		   if (walker(stmt->uidx, context))
+		   if (WALK(stmt->uidx))
 			   return true;
 		}
 			break;
@@ -1403,9 +1405,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   A_Indirection   *stmt = (A_Indirection *)node;
 	
-		   if (walker(stmt->arg, context))
+		   if (WALK(stmt->arg))
 			   return true;
-		   if (walker(stmt->indirection, context))
+		   if (WALK(stmt->indirection))
 			   return true;
 		}
 			break;
@@ -1413,7 +1415,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   A_ArrayExpr   *stmt = (A_ArrayExpr *)node;
 	
-		   if (walker(stmt->elements, context))
+		   if (WALK(stmt->elements))
 			   return true;
 		}
 			break;
@@ -1421,9 +1423,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   ResTarget   *stmt = (ResTarget *)node;
 	
-		   if (walker(stmt->indirection, context))
+		   if (WALK(stmt->indirection))
 			   return true;
-		   if (walker(stmt->val, context))
+		   if (WALK(stmt->val))
 			   return true;
 		}
 			break;
@@ -1431,7 +1433,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   MultiAssignRef   *stmt = (MultiAssignRef *)node;
 	
-		   if (walker(stmt->source, context))
+		   if (WALK(stmt->source))
 			   return true;	   
 		}
 			break;
@@ -1439,9 +1441,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   SortBy   *stmt = (SortBy *)node;
 	
-		   if (walker(stmt->node, context))
+		   if (WALK(stmt->node))
 			   return true;
-		   if (walker(stmt->useOp, context))
+		   if (WALK(stmt->useOp))
 			   return true;
 		}
 			break;
@@ -1449,13 +1451,13 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   WindowDef   *stmt = (WindowDef *)node;
 	
-		   if (walker(stmt->partitionClause, context))
+		   if (WALK(stmt->partitionClause))
 			   return true;
-		   if (walker(stmt->orderClause, context))
+		   if (WALK(stmt->orderClause))
 			   return true;
-		   if (walker(stmt->startOffset, context))
+		   if (WALK(stmt->startOffset))
 			   return true;
-		   if (walker(stmt->endOffset, context))
+		   if (WALK(stmt->endOffset))
 			   return true;
 		}
 			break;
@@ -1463,9 +1465,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			 RangeSubselect *rs = (RangeSubselect *)node;
 
-			 if (walker(rs->subquery, context))
+			 if (WALK(rs->subquery))
 				 return true;
-			 if (walker(rs->alias, context))
+			 if (WALK(rs->alias))
 				 return true;
 		}
 			break;
@@ -1473,11 +1475,11 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			RangeFunction *rf = (RangeFunction *)node;
 
-			if (walker(rf->functions, context))
+			if (WALK(rf->functions))
 				return true;
-			if (walker(rf->alias, context))
+			if (WALK(rf->alias))
 				return true;
-			if (walker(rf->coldeflist, context))
+			if (WALK(rf->coldeflist))
 				return true;
 		}
 			break;
@@ -1485,14 +1487,14 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			RangeTableSample *rts = (RangeTableSample *)node;
 
-			if (walker(rts->relation, context))
+			if (WALK(rts->relation))
 				return true;
 			/* method name is deemed uninteresting */
-			if (walker(rts->method, context))
+			if (WALK(rts->method))
 				return true;
-			if (walker(rts->args, context))
+			if (WALK(rts->args))
 				return true;
-			if (walker(rts->repeatable, context))
+			if (WALK(rts->repeatable))
 				return true;
 		}
 			break;
@@ -1500,17 +1502,17 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			ColumnDef  *coldef = (ColumnDef *)node;
 
-			if (walker(coldef->typeName, context))
+			if (WALK(coldef->typeName))
 				return true;
-			if (walker(coldef->raw_default, context))
+			if (WALK(coldef->raw_default))
 				return true;
-			if (walker(coldef->cooked_default, context))
+			if (WALK(coldef->cooked_default))
 				return true;
-			if (walker(coldef->collClause, context))
+			if (WALK(coldef->collClause))
 				return true;
-			if (walker(coldef->constraints, context))
+			if (WALK(coldef->constraints))
 				return true;
-			if (walker(coldef->fdwoptions, context))
+			if (WALK(coldef->fdwoptions))
 				return true;							
 		}
 			break;
@@ -1518,7 +1520,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			TableLikeClause  *stmt = (TableLikeClause *)node;
 
-			if (walker(stmt->relation, context))
+			if (WALK(stmt->relation))
 				return true;						
 		}
 			break;
@@ -1526,11 +1528,11 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			IndexElem  *stmt = (IndexElem *)node;
 
-			if (walker(stmt->expr, context))
+			if (WALK(stmt->expr))
 				return true;
-			if (walker(stmt->collation, context))
+			if (WALK(stmt->collation))
 				return true;
-			if (walker(stmt->opclass, context))
+			if (WALK(stmt->opclass))
 				return true;		
 		}
 			break;
@@ -1538,7 +1540,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			DefElem  *stmt = (DefElem *)node;
 
-			if (walker(stmt->arg, context))
+			if (WALK(stmt->arg))
 				return true;						
 		}
 			break;
@@ -1546,7 +1548,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			LockingClause  *stmt = (LockingClause *)node;
 
-			if (walker(stmt->lockedRels, context))
+			if (WALK(stmt->lockedRels))
 				return true;						
 		}
 			break;
@@ -1554,9 +1556,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			XmlSerialize  *stmt = (XmlSerialize *)node;
 
-			if (walker(stmt->expr, context))
+			if (WALK(stmt->expr))
 				return true;
-			if (walker(stmt->typeName, context))
+			if (WALK(stmt->typeName))
 				return true;						
 		}
 			break;
@@ -1564,31 +1566,31 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			RangeTblEntry  *stmt = (RangeTblEntry *)node;
 	
-			if (walker(stmt->tablesample, context))
+			if (WALK(stmt->tablesample))
 				return true;
-			if (walker(stmt->subquery, context))
+			if (WALK(stmt->subquery))
 				return true;
-			if (walker(stmt->jointype, context))
+			if (WALK(stmt->jointype))
 				return true;
-			if (walker(stmt->joinaliasvars, context))
+			if (WALK(stmt->joinaliasvars))
 				return true;
-			if (walker(stmt->functions, context))
+			if (WALK(stmt->functions))
 				return true;
-			if (walker(stmt->values_lists, context))
+			if (WALK(stmt->values_lists))
 				return true;
-			if (walker(stmt->ctename, context))			
+			if (WALK(stmt->ctename))
 				return true;
-			if (walker(stmt->coltypes, context))
+			if (WALK(stmt->coltypes))
 				return true;
-			if (walker(stmt->coltypmods, context))
+			if (WALK(stmt->coltypmods))
 				return true;
-			if (walker(stmt->colcollations, context))
+			if (WALK(stmt->colcollations))
 				return true;
-			if (walker(stmt->alias, context))
+			if (WALK(stmt->alias))
 				return true;
-			if (walker(stmt->eref, context))
+			if (WALK(stmt->eref))
 				return true;
-			if (walker(stmt->securityQuals, context))
+			if (WALK(stmt->securityQuals))
 				return true;
 		}
 			break;
@@ -1596,15 +1598,15 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			RangeTblFunction  *stmt = (RangeTblFunction *)node;
 	
-			if (walker(stmt->funcexpr, context))
+			if (WALK(stmt->funcexpr))
 				return true;
-			if (walker(stmt->funccolnames, context))
+			if (WALK(stmt->funccolnames))
 				return true;
-			if (walker(stmt->funccoltypes, context))
+			if (WALK(stmt->funccoltypes))
 				return true;
-			if (walker(stmt->funccoltypmods, context))
+			if (WALK(stmt->funccoltypmods))
 				return true;
-			if (walker(stmt->funccolcollations, context))
+			if (WALK(stmt->funccolcollations))
 				return true;
 		}
 			break;
@@ -1612,9 +1614,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			TableSampleClause  *stmt = (TableSampleClause *)node;
 	
-			if (walker(stmt->args, context))
+			if (WALK(stmt->args))
 				return true;
-			if (walker(stmt->repeatable, context))
+			if (WALK(stmt->repeatable))
 				return true;
 		}
 			break;
@@ -1622,23 +1624,23 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			WithCheckOption  *stmt = (WithCheckOption *)node;
 	
-			if (walker(stmt->qual, context))
+			if (WALK(stmt->qual))
 				return true;
 		}
 			break;		
 		case T_GroupingSet:
-			return walker(((GroupingSet *)node)->content, context);
+			return WALK(((GroupingSet *)node)->content);
 		case T_WindowClause:
 		{
 			WindowClause  *stmt = (WindowClause *)node;
 	
-			if (walker(stmt->partitionClause, context))
+			if (WALK(stmt->partitionClause))
 				return true;
-			if (walker(stmt->orderClause, context))
+			if (WALK(stmt->orderClause))
 				return true;
-			if (walker(stmt->startOffset, context))
+			if (WALK(stmt->startOffset))
 				return true;
-			if (walker(stmt->endOffset, context))
+			if (WALK(stmt->endOffset))
 				return true;		
 		}
 			break;
@@ -1646,7 +1648,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			WithClause *stmt = (WithClause *)node;
 
-			if (walker(stmt->ctes, context))
+			if (WALK(stmt->ctes))
 				return true;
 		}
 			break;	
@@ -1654,9 +1656,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			InferClause *stmt = (InferClause *)node;
 
-			if (walker(stmt->indexElems, context))
+			if (WALK(stmt->indexElems))
 				return true;
-			if (walker(stmt->whereClause, context))
+			if (WALK(stmt->whereClause))
 				return true;
 		}
 			break;
@@ -1664,11 +1666,11 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			OnConflictClause *stmt = (OnConflictClause *)node;
 
-			if (walker(stmt->infer, context))
+			if (WALK(stmt->infer))
 				return true;
-			if (walker(stmt->targetList, context))
+			if (WALK(stmt->targetList))
 				return true;
-			if (walker(stmt->whereClause, context))
+			if (WALK(stmt->whereClause))
 				return true;
 		}
 			break;
@@ -1676,17 +1678,17 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			CommonTableExpr *stmt = (CommonTableExpr *)node;
 
-			if (walker(stmt->aliascolnames, context))
+			if (WALK(stmt->aliascolnames))
 				return true;
-			if (walker(stmt->ctequery, context))
+			if (WALK(stmt->ctequery))
 				return true;
-			if (walker(stmt->ctecolnames, context))
+			if (WALK(stmt->ctecolnames))
 				return true;
-			if (walker(stmt->ctecoltypes, context))
+			if (WALK(stmt->ctecoltypes))
 				return true;
-			if (walker(stmt->ctecoltypmods, context))
+			if (WALK(stmt->ctecoltypmods))
 				return true;
-			if (walker(stmt->ctecolcollations, context))
+			if (WALK(stmt->ctecolcollations))
 				return true;
 		}
 			break;		
@@ -1694,17 +1696,17 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   SetOperationStmt *stmt = (SetOperationStmt *)node;	
 						
-			if (walker(stmt->larg, context))
+			if (WALK(stmt->larg))
 				return true;
-			if (walker(stmt->rarg, context))
+			if (WALK(stmt->rarg))
 				return true;
-			if (walker(stmt->colTypes, context))
+			if (WALK(stmt->colTypes))
 				return true;
-			if (walker(stmt->colTypmods, context))
+			if (WALK(stmt->colTypmods))
 				return true;
-			if (walker(stmt->colCollations, context))
+			if (WALK(stmt->colCollations))
 				return true;
-			if (walker(stmt->groupClauses, context))
+			if (WALK(stmt->groupClauses))
 				return true;		
 		}
 			break;		
@@ -1712,13 +1714,13 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   CopyStmt *stmt = (CopyStmt *)node;
 						
-			if (walker(stmt->relation, context))
+			if (WALK(stmt->relation))
 				return true;
-			if (walker(stmt->query, context))
+			if (WALK(stmt->query))
 				return true;
-			if (walker(stmt->attlist, context))
+			if (WALK(stmt->attlist))
 				return true;
-			if (walker(stmt->options, context))
+			if (WALK(stmt->options))
 				return true;
 		}
 			break;				
@@ -1726,7 +1728,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   VariableSetStmt *stmt = (VariableSetStmt *)node;	
 						
-			if (walker(stmt->args, context))
+			if (WALK(stmt->args))
 				return true;	
 		}
 			break;				
@@ -1734,23 +1736,23 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   Constraint *stmt = (Constraint *)node;	
 						
-			if (walker(stmt->raw_expr, context))
+			if (WALK(stmt->raw_expr))
 				return true;
-			if (walker(stmt->keys, context))
+			if (WALK(stmt->keys))
 				return true;
-			if (walker(stmt->exclusions, context))
+			if (WALK(stmt->exclusions))
 				return true;
-			if (walker(stmt->options, context))
+			if (WALK(stmt->options))
 				return true;	
-			if (walker(stmt->where_clause, context))
+			if (WALK(stmt->where_clause))
 				return true;
-			if (walker(stmt->pktable, context))
+			if (WALK(stmt->pktable))
 				return true;
-			if (walker(stmt->fk_attrs, context))
+			if (WALK(stmt->fk_attrs))
 				return true;
-			if (walker(stmt->pk_attrs, context))
+			if (WALK(stmt->pk_attrs))
 				return true;
-			if (walker(stmt->old_conpfeqop, context))
+			if (WALK(stmt->old_conpfeqop))
 				return true;
 		}
 			break;	
@@ -1758,7 +1760,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   AlterTableMoveAllStmt *stmt = (AlterTableMoveAllStmt *)node;	
 						
-			if (walker(stmt->roles, context))
+			if (WALK(stmt->roles))
 				return true;		
 		}
 			break;	
@@ -1766,7 +1768,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   CreateExtensionStmt *stmt = (CreateExtensionStmt *)node;	
 						
-			if (walker(stmt->options, context))
+			if (WALK(stmt->options))
 				return true;		
 		}
 			break;	
@@ -1774,7 +1776,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   AlterExtensionStmt *stmt = (AlterExtensionStmt *)node;	
 						
-			if (walker(stmt->options, context))
+			if (WALK(stmt->options))
 				return true;		
 		}
 			break;	
@@ -1782,9 +1784,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   CreateFdwStmt *stmt = (CreateFdwStmt *)node;	
 						
-			if (walker(stmt->func_options, context))
+			if (WALK(stmt->func_options))
 				return true;
-			if (walker(stmt->options, context))
+			if (WALK(stmt->options))
 				return true;		
 		}
 			break;	
@@ -1792,9 +1794,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   AlterFdwStmt *stmt = (AlterFdwStmt *)node;	
 						
-			if (walker(stmt->func_options, context))
+			if (WALK(stmt->func_options))
 				return true;
-			if (walker(stmt->options, context))
+			if (WALK(stmt->options))
 				return true;		
 		}
 			break;				
@@ -1802,7 +1804,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   CreateForeignServerStmt *stmt = (CreateForeignServerStmt *)node;	
 						
-			if (walker(stmt->options, context))
+			if (WALK(stmt->options))
 				return true;		
 		}
 			break;	
@@ -1810,7 +1812,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   AlterForeignServerStmt *stmt = (AlterForeignServerStmt *)node;	
 						
-			if (walker(stmt->options, context))
+			if (WALK(stmt->options))
 				return true;		
 		}
 			break;	
@@ -1818,9 +1820,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   CreateUserMappingStmt *stmt = (CreateUserMappingStmt *)node;						
 
-			if (walker(stmt->user, context))
+			if (WALK(stmt->user))
 				return true;
-			if (walker(stmt->options, context))
+			if (WALK(stmt->options))
 				return true;		
 		}
 			break;		
@@ -1828,9 +1830,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   AlterUserMappingStmt *stmt = (AlterUserMappingStmt *)node;						
 	
-			if (walker(stmt->user, context))
+			if (WALK(stmt->user))
 				return true;
-			if (walker(stmt->options, context))
+			if (WALK(stmt->options))
 				return true;		
 		}
 			break;		
@@ -1838,7 +1840,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   DropUserMappingStmt *stmt = (DropUserMappingStmt *)node;						
 	
-			if (walker(stmt->user, context))
+			if (WALK(stmt->user))
 				return true;	
 		}
 			break;		
@@ -1846,9 +1848,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   ImportForeignSchemaStmt *stmt = (ImportForeignSchemaStmt *)node;						
 	
-			if (walker(stmt->table_list, context))
+			if (WALK(stmt->table_list))
 				return true;
-			if (walker(stmt->options, context))
+			if (WALK(stmt->options))
 				return true;		
 		}
 			break;	
@@ -1856,9 +1858,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   CreateEventTrigStmt *stmt = (CreateEventTrigStmt *)node;						
 	
-			if (walker(stmt->whenclause, context))
+			if (WALK(stmt->whenclause))
 				return true;
-			if (walker(stmt->funcname, context))
+			if (WALK(stmt->funcname))
 				return true;		
 		}
 			break;	
@@ -1866,11 +1868,11 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   CreatePLangStmt *stmt = (CreatePLangStmt *)node;						
 	
-			if (walker(stmt->plhandler, context))
+			if (WALK(stmt->plhandler))
 				return true;
-			if (walker(stmt->plinline, context))
+			if (WALK(stmt->plinline))
 				return true;
-			if (walker(stmt->plvalidator, context))
+			if (WALK(stmt->plvalidator))
 				return true;	
 		}
 			break;	
@@ -1878,7 +1880,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   CreateRoleStmt *stmt = (CreateRoleStmt *)node;	
 						
-			if (walker(stmt->options, context))
+			if (WALK(stmt->options))
 				return true;		
 		}
 			break;	
@@ -1886,9 +1888,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   AlterRoleStmt *stmt = (AlterRoleStmt *)node;	
 						
-			if (walker(stmt->role, context))
+			if (WALK(stmt->role))
 				return true;
-			if (walker(stmt->options, context))
+			if (WALK(stmt->options))
 				return true;		
 		}
 			break;	
@@ -1896,9 +1898,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   AlterRoleSetStmt *stmt = (AlterRoleSetStmt *)node;						
 	
-			if (walker(stmt->role, context))
+			if (WALK(stmt->role))
 				return true;
-			if (walker(stmt->setstmt, context))
+			if (WALK(stmt->setstmt))
 				return true;		
 		}
 			break;	
@@ -1906,7 +1908,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   DropRoleStmt *stmt = (DropRoleStmt *)node;						
 	
-			if (walker(stmt->roles, context))
+			if (WALK(stmt->roles))
 				return true;	
 		}
 			break;			
@@ -1914,9 +1916,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   CreateSeqStmt *stmt = (CreateSeqStmt *)node;	
 						
-			if (walker(stmt->sequence, context))
+			if (WALK(stmt->sequence))
 				return true;
-			if (walker(stmt->options, context))
+			if (WALK(stmt->options))
 				return true;		
 		}
 			break;		
@@ -1924,13 +1926,13 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   CreateOpClassItem *stmt = (CreateOpClassItem *)node;	
 						
-			if (walker(stmt->name, context))
+			if (WALK(stmt->name))
 				return true;
-			if (walker(stmt->order_family, context))
+			if (WALK(stmt->order_family))
 				return true;
-			if (walker(stmt->class_args, context))
+			if (WALK(stmt->class_args))
 				return true;
-			if (walker(stmt->storedtype, context))
+			if (WALK(stmt->storedtype))
 				return true;		
 		}
 			break;		
@@ -1938,7 +1940,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   CreateOpFamilyStmt *stmt = (CreateOpFamilyStmt *)node;	
 						
-			if (walker(stmt->opfamilyname, context))
+			if (WALK(stmt->opfamilyname))
 				return true;	
 		}
 			break;			
@@ -1946,7 +1948,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   TruncateStmt *stmt = (TruncateStmt *)node;	
 						
-			if (walker(stmt->relations, context))
+			if (WALK(stmt->relations))
 				return true;
 		}
 			break;		
@@ -1954,14 +1956,14 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   DeclareCursorStmt *stmt = (DeclareCursorStmt *)node;	
 						
-			if (walker(stmt->query, context))
+			if (WALK(stmt->query))
 				return true;		
 		}
 			break;		
 		case T_FunctionParameter:
 		{
 			FunctionParameter *stmt = (FunctionParameter*)node;
-			if (walker(stmt->defexpr,context))
+			if (WALK(stmt->defexpr))
 				return true;
 		}
 			break;
@@ -1969,7 +1971,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   DoStmt *stmt = (DoStmt *)node;	
 						
-			if (walker(stmt->args, context))
+			if (WALK(stmt->args))
 				return true;
 		}
 			break;		
@@ -1977,7 +1979,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   InlineCodeBlock *stmt = (InlineCodeBlock *)node;	
 						
-			if (walker(stmt->params, context))
+			if (WALK(stmt->params))
 				return true;		
 		}
 			break;		
@@ -1985,7 +1987,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   TransactionStmt *stmt = (TransactionStmt *)node;	
 
-			if (walker(stmt->options, context))
+			if (WALK(stmt->options))
 				return true;		
 		}
 			break;		
@@ -1993,9 +1995,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   CompositeTypeStmt *stmt = (CompositeTypeStmt *)node;	
 	
-			if (walker(stmt->typevar, context))
+			if (WALK(stmt->typevar))
 				return true;
-			if (walker(stmt->coldeflist, context))
+			if (WALK(stmt->coldeflist))
 				return true;		
 		}
 			break;		
@@ -2003,9 +2005,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   CreateEnumStmt *stmt = (CreateEnumStmt *)node;	
 	
-			if (walker(stmt->typeName, context))
+			if (WALK(stmt->typeName))
 				return true;
-			if (walker(stmt->vals, context))
+			if (WALK(stmt->vals))
 				return true;		
 		}
 			break;		
@@ -2013,9 +2015,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   CreateRangeStmt *stmt = (CreateRangeStmt *)node;	
 	
-			if (walker(stmt->typeName, context))
+			if (WALK(stmt->typeName))
 				return true;
-			if (walker(stmt->params, context))
+			if (WALK(stmt->params))
 				return true;		
 		}
 			break;		
@@ -2023,7 +2025,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   AlterEnumStmt *stmt = (AlterEnumStmt *)node;	
 	
-			if (walker(stmt->typeName, context))
+			if (WALK(stmt->typeName))
 				return true;		
 		}
 			break;		
@@ -2031,7 +2033,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   CreatedbStmt *stmt = (CreatedbStmt *)node;	
 	
-			if (walker(stmt->options, context))
+			if (WALK(stmt->options))
 				return true;		
 		}
 			break;		
@@ -2039,7 +2041,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   AlterDatabaseStmt *stmt = (AlterDatabaseStmt *)node;	
 	
-			if (walker(stmt->options, context))
+			if (WALK(stmt->options))
 				return true;		
 		}
 			break;		
@@ -2047,7 +2049,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   AlterDatabaseSetStmt *stmt = (AlterDatabaseSetStmt *)node;	
 	
-			if (walker(stmt->setstmt, context))
+			if (WALK(stmt->setstmt))
 				return true;		
 		}
 			break;		
@@ -2055,7 +2057,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   AlterSystemStmt *stmt = (AlterSystemStmt *)node;	
 	
-			if (walker(stmt->setstmt, context))
+			if (WALK(stmt->setstmt))
 				return true;		
 		}
 			break;		
@@ -2063,7 +2065,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   ClusterStmt *stmt = (ClusterStmt *)node;	
 	
-			if (walker(stmt->relation, context))
+			if (WALK(stmt->relation))
 				return true;		
 		}
 			break;		
@@ -2071,9 +2073,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   VacuumStmt *stmt = (VacuumStmt *)node;	
 	
-			if (walker(stmt->options, context))
+			if (WALK(stmt->options))
 				return true;
-			if (walker(stmt->rels, context))
+			if (WALK(stmt->rels))
 				return true;		
 		}
 			break;		
@@ -2081,9 +2083,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   ExplainStmt *stmt = (ExplainStmt *)node;	
 	
-			if (walker(stmt->query, context))
+			if (WALK(stmt->query))
 				return true;
-			if (walker(stmt->options, context))
+			if (WALK(stmt->options))
 				return true;		
 		}
 			break;		
@@ -2091,7 +2093,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   RefreshMatViewStmt *stmt = (RefreshMatViewStmt *)node;	
 	
-			if (walker(stmt->relation, context))
+			if (WALK(stmt->relation))
 				return true;
 		}
 			break;		
@@ -2100,7 +2102,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   LockStmt *stmt = (LockStmt *)node;	
 	
-			if (walker(stmt->relations, context))
+			if (WALK(stmt->relations))
 				return true;
 		}
 			break;		
@@ -2109,7 +2111,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   ConstraintsSetStmt *stmt = (ConstraintsSetStmt *)node;	
 	
-			if (walker(stmt->constraints, context))
+			if (WALK(stmt->constraints))
 				return true;		
 		}
 			break;	
@@ -2117,7 +2119,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   ReindexStmt *stmt = (ReindexStmt *)node;	
 	
-			if (walker(stmt->relation, context))
+			if (WALK(stmt->relation))
 				return true;	
 		}
 			break;				
@@ -2126,9 +2128,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   CreateConversionStmt *stmt = (CreateConversionStmt *)node;	
 	
-			if (walker(stmt->conversion_name, context))
+			if (WALK(stmt->conversion_name))
 				return true;
-			if (walker(stmt->func_name, context))
+			if (WALK(stmt->func_name))
 				return true;
 		}
 			break;					
@@ -2136,7 +2138,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   DropOwnedStmt *stmt = (DropOwnedStmt *)node;	
 	
-			if (walker(stmt->roles, context))
+			if (WALK(stmt->roles))
 				return true;	
 		}
 			break;					
@@ -2144,9 +2146,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   ReassignOwnedStmt *stmt = (ReassignOwnedStmt *)node;	
 	
-			if (walker(stmt->roles, context))
+			if (WALK(stmt->roles))
 				return true;
-			if (walker(stmt->newrole, context))
+			if (WALK(stmt->newrole))
 				return true;	
 		}
 			break;		
@@ -2154,11 +2156,11 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   AlterTSConfigurationStmt *stmt = (AlterTSConfigurationStmt *)node;	
 	
-			if (walker(stmt->cfgname, context))
+			if (WALK(stmt->cfgname))
 				return true;
-			if (walker(stmt->tokentype, context))
+			if (WALK(stmt->tokentype))
 				return true;
-			if (walker(stmt->dicts, context))
+			if (WALK(stmt->dicts))
 				return true;	
 		}
 			break;					
@@ -2166,7 +2168,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   Alias *stmt = (Alias *)node;	
 	
-			if (walker(stmt->colnames, context))
+			if (WALK(stmt->colnames))
 				return true;
 		}
 			break;		
@@ -2174,7 +2176,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   RangeVar *stmt = (RangeVar *)node;	
 	
-			if (walker(stmt->alias, context))
+			if (WALK(stmt->alias))
 				return true;
 		}
 			break;		
@@ -2182,15 +2184,15 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   Aggref *stmt = (Aggref *)node;	
 	
-			if (walker(stmt->aggdirectargs, context))
+			if (WALK(stmt->aggdirectargs))
 				return true;
-			if (walker(stmt->args, context))
+			if (WALK(stmt->args))
 				return true;
-			if (walker(stmt->aggorder, context))
+			if (WALK(stmt->aggorder))
 				return true;
-			if (walker(stmt->aggdistinct, context))
+			if (WALK(stmt->aggdistinct))
 				return true;
-			if (walker(stmt->aggfilter, context))
+			if (WALK(stmt->aggfilter))
 				return true;
 		}
 			break;		
@@ -2198,9 +2200,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   WindowFunc *stmt = (WindowFunc *)node;
 
-			if (walker(stmt->args, context))
+			if (WALK(stmt->args))
 				return true;
-			if (walker(stmt->aggfilter, context))
+			if (WALK(stmt->aggfilter))
 				return true;
 		}
 			break;		
@@ -2208,13 +2210,13 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   SubscriptingRef *stmt = (SubscriptingRef *)node;
 
-			if (walker(stmt->refupperindexpr, context))
+			if (WALK(stmt->refupperindexpr))
 				return true;
-			if (walker(stmt->reflowerindexpr, context))
+			if (WALK(stmt->reflowerindexpr))
 				return true;
-			if (walker(stmt->refexpr, context))
+			if (WALK(stmt->refexpr))
 				return true;
-			if (walker(stmt->refassgnexpr, context))
+			if (WALK(stmt->refassgnexpr))
 				return true;
 		}
 			break;		
@@ -2222,7 +2224,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			NamedArgExpr *stmt = (NamedArgExpr *)node;
 
-			if (walker(stmt->arg, context))
+			if (WALK(stmt->arg))
 				return true;		
 		}
 			break;		
@@ -2230,7 +2232,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   FuncExpr *stmt = (FuncExpr *)node;
 
-			if (walker(stmt->args, context))
+			if (WALK(stmt->args))
 				return true;
 		}
 			break;		
@@ -2238,7 +2240,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			OpExpr *stmt = (OpExpr *)node;
 
-			 if (walker(stmt->args, context))
+			 if (WALK(stmt->args))
 				 return true;
 		}
 			break;		
@@ -2246,7 +2248,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			ScalarArrayOpExpr *stmt = (ScalarArrayOpExpr *)node;
 
-			 if (walker(stmt->args, context))
+			 if (WALK(stmt->args))
 				 return true;
 		}
 			break;		
@@ -2254,7 +2256,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			BoolExpr *stmt = (BoolExpr *)node;
 		
-			 if (walker(stmt->args, context))
+			 if (WALK(stmt->args))
 				 return true;
 		}
 			break;		
@@ -2262,11 +2264,11 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			SubLink    *sublink = (SubLink *)node;
 
-			if (walker(sublink->testexpr, context))
+			if (WALK(sublink->testexpr))
 				return true;
-			if (walker(sublink->operName, context))
+			if (WALK(sublink->operName))
 				return true;
-			if (walker(sublink->subselect, context))
+			if (WALK(sublink->subselect))
 				return true;
 		}
 			break;
@@ -2274,15 +2276,15 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   SubPlan *stmt = (SubPlan *)node;
 	
-			if (walker(stmt->testexpr, context))
+			if (WALK(stmt->testexpr))
 				return true;
-			if (walker(stmt->paramIds, context))
+			if (WALK(stmt->paramIds))
 				return true;
-			if (walker(stmt->setParam, context))
+			if (WALK(stmt->setParam))
 				return true;
-			if (walker(stmt->parParam, context))
+			if (WALK(stmt->parParam))
 				return true;
-			if (walker(stmt->args, context))
+			if (WALK(stmt->args))
 				return true;
 		}
 			break;		
@@ -2290,7 +2292,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   AlternativeSubPlan *stmt = (AlternativeSubPlan *)node;
 
-			if (walker(stmt->subplans, context))
+			if (WALK(stmt->subplans))
 				return true;
 		}
 			break;		
@@ -2298,7 +2300,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   FieldSelect *stmt = (FieldSelect *)node;
 
-			if (walker(stmt->arg, context))
+			if (WALK(stmt->arg))
 				return true;
 		}
 			break;		
@@ -2306,11 +2308,11 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   FieldStore *stmt = (FieldStore *)node;
 	
-			if (walker(stmt->arg, context))
+			if (WALK(stmt->arg))
 				return true;
-			if (walker(stmt->newvals, context))
+			if (WALK(stmt->newvals))
 				return true;
-			if (walker(stmt->fieldnums, context))
+			if (WALK(stmt->fieldnums))
 				return true;
 		}
 			break;		
@@ -2318,7 +2320,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   RelabelType *stmt = (RelabelType *)node;
 	
-			if (walker(stmt->arg, context))
+			if (WALK(stmt->arg))
 				return true;
 		}
 			break;		
@@ -2326,7 +2328,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   CoerceViaIO *stmt = (CoerceViaIO *)node;
 	
-			if (walker(stmt->arg, context))
+			if (WALK(stmt->arg))
 				return true;
 		}
 			break;		
@@ -2334,7 +2336,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   ArrayCoerceExpr *stmt = (ArrayCoerceExpr *)node;
 	
-			if (walker(stmt->arg, context))
+			if (WALK(stmt->arg))
 				return true;
 		}
 			break;		
@@ -2342,7 +2344,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   ConvertRowtypeExpr *stmt = (ConvertRowtypeExpr *)node;
 	
-			if (walker(stmt->arg, context))
+			if (WALK(stmt->arg))
 				return true;
 		}
 			break;		
@@ -2350,7 +2352,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   CollateExpr *stmt = (CollateExpr *)node;
 	
-			if (walker(stmt->arg, context))
+			if (WALK(stmt->arg))
 				return true;
 		}
 			break;		
@@ -2358,9 +2360,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			CaseWhen   *when = (CaseWhen *)node;
 		  
-		   if (walker(when->expr, context))
+		   if (WALK(when->expr))
 			   return true;
-		   if (walker(when->result, context))
+		   if (WALK(when->result))
 			   return true;
 		}
 			break;		
@@ -2368,11 +2370,11 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   CaseExpr   *caseexpr = (CaseExpr *)node;
 
-		   if (walker(caseexpr->arg, context))
+		   if (WALK(caseexpr->arg))
 			   return true;
-		   if (walker(caseexpr->args, context))
+		   if (WALK(caseexpr->args))
 			   return true;
-		   if (walker(caseexpr->defresult, context))
+		   if (WALK(caseexpr->defresult))
 			   return true;
 		}
 			break;
@@ -2380,9 +2382,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   RowExpr   *stmt = (RowExpr *)node;
 	
-		   if (walker(stmt->args, context))
+		   if (WALK(stmt->args))
 			   return true;
-		   if (walker(stmt->colnames, context))
+		   if (WALK(stmt->colnames))
 			   return true;
 		}
 			break;
@@ -2390,50 +2392,50 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   RowCompareExpr *stmt = (RowCompareExpr *)node;
 	
-			if (walker(stmt->opnos, context))
+			if (WALK(stmt->opnos))
 				return true;
-			if (walker(stmt->opfamilies, context))
+			if (WALK(stmt->opfamilies))
 				return true;
-			if (walker(stmt->inputcollids, context))
+			if (WALK(stmt->inputcollids))
 				return true;
-			if (walker(stmt->largs, context))
+			if (WALK(stmt->largs))
 				return true;
-			if (walker(stmt->rargs, context))
+			if (WALK(stmt->rargs))
 				return true;
 		}
 			break;		
 		case T_CoalesceExpr:
-			return walker(((CoalesceExpr *)node)->args, context);
+			return WALK(((CoalesceExpr *)node)->args);
 		case T_MinMaxExpr:
-			return walker(((MinMaxExpr *)node)->args, context);
+			return WALK(((MinMaxExpr *)node)->args);
 		case T_XmlExpr:
 		{
 			XmlExpr    *xexpr = (XmlExpr *)node;
 
-			if (walker(xexpr->named_args, context))
+			if (WALK(xexpr->named_args))
 				return true;
-			if (walker(xexpr->arg_names, context))
+			if (WALK(xexpr->arg_names))
 				return true;
-			if (walker(xexpr->args, context))
+			if (WALK(xexpr->args))
 				return true;
 		}
 			break;
 		case T_NullTest:
-			return walker(((NullTest *)node)->arg, context);
+			return WALK(((NullTest *)node)->arg);
 		case T_BooleanTest:
-			return walker(((BooleanTest *)node)->arg, context);
+			return WALK(((BooleanTest *)node)->arg);
 		case T_CoerceToDomain:
-			return walker(((CoerceToDomain *)node)->arg, context);
+			return WALK(((CoerceToDomain *)node)->arg);
 		case T_InferenceElem:
-			return walker(((InferenceElem *)node)->expr, context);
+			return WALK(((InferenceElem *)node)->expr);
 		case T_TargetEntry:
-			return walker(((TargetEntry *)node)->expr, context);
+			return WALK(((TargetEntry *)node)->expr);
 		case T_FromExpr:
 		{
   		    FromExpr *stmt = (FromExpr *)node;
-			if (walker(stmt->fromlist, context))
+			if (WALK(stmt->fromlist))
 				return true;
-			if (walker(stmt->quals, context))
+			if (WALK(stmt->quals))
 				return true;
 		}
 			break;				
@@ -2441,15 +2443,15 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   JoinExpr   *join = (JoinExpr *)node;
 
-		   if (walker(join->larg, context))
+		   if (WALK(join->larg))
 			   return true;
-		   if (walker(join->rarg, context))
+		   if (WALK(join->rarg))
 			   return true;
-		   if (walker(join->usingClause, context))
+		   if (WALK(join->usingClause))
 			   return true;
-		   if (walker(join->quals, context))
+		   if (WALK(join->quals))
 			   return true;
-		   if (walker(join->alias, context))
+		   if (WALK(join->alias))
 			   return true;
 		}
 			break;
@@ -2457,15 +2459,15 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 		   OnConflictExpr *stmt = (OnConflictExpr *)node;
 	
-			if (walker(stmt->arbiterElems, context))
+			if (WALK(stmt->arbiterElems))
 				return true;
-			if (walker(stmt->arbiterWhere, context))
+			if (WALK(stmt->arbiterWhere))
 				return true;
-			if (walker(stmt->onConflictSet, context))
+			if (WALK(stmt->onConflictSet))
 				return true;
-			if (walker(stmt->onConflictWhere, context))
+			if (WALK(stmt->onConflictWhere))
 				return true;
-			if (walker(stmt->exclRelTlist, context))
+			if (WALK(stmt->exclRelTlist))
 				return true;
 		}
 			break;				
@@ -2473,20 +2475,20 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			IntoClause *into = (IntoClause *)node;
 
-			if (walker(into->rel, context))
+			if (WALK(into->rel))
 				return true;
-			if (walker(into->colNames, context))
+			if (WALK(into->colNames))
 				return true;
-			if (walker(into->options, context))
+			if (WALK(into->options))
 				return true;
-			if (walker(into->viewQuery, context))
+			if (WALK(into->viewQuery))
 				return true;
 		}
 			break;
 		case T_List:
 		foreach(temp, (List *)node)
 		{
-			if (walker((Node *)lfirst(temp), context))
+			if (WALK((Node *) lfirst(temp)))
 				return true;
 		}
 			break;
@@ -2494,7 +2496,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			RawStmt *raw = (RawStmt *)node;
 
-			if (walker(raw->stmt, context))
+			if (WALK(raw->stmt))
 				return true;
 		}
 			break;
@@ -2502,9 +2504,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			PLAssignStmt *assign = (PLAssignStmt *)node;
 
-			if (walker(assign->indirection, context))
+			if (WALK(assign->indirection))
 				return true;
-			if (walker(assign->val, context))
+			if (WALK(assign->val))
 				return true;
 		}
 			break;
@@ -2512,9 +2514,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 			{
 				CallStmt *callstmt = (CallStmt *)node;
 
-				if (walker(callstmt->funccall, context))
+				if (WALK(callstmt->funccall))
 					return true;
-				if (walker(callstmt->hostvariable, context))
+				if (WALK(callstmt->hostvariable))
 					return true;
 			}
 			break;
@@ -2647,6 +2649,8 @@ calculate_oraparamname_position(Node *parsetree, char ***paramnames)
 	return state.numParams;
 }
 
+#undef WALK
+
 static bool
 calculate_oraparamname_walker(Node *node, void *state)
 {
@@ -2714,4 +2718,3 @@ calculate_oraparamname(char ***paramnames)
 
 	return state.numParams;
 }
-
