@@ -2748,6 +2748,8 @@ CreateCommandTag(Node *parsetree)
 				tag = CMDTAG_ALTER_PROCEDURE;
 			else if (((CompileFunctionStmt *) parsetree)->objtype == OBJECT_FUNCTION)
 				tag = CMDTAG_ALTER_FUNCTION;
+			else
+				tag = CMDTAG_UNKNOWN;
 			break;
 
 		case T_GrantStmt:
