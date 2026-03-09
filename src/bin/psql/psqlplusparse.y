@@ -73,6 +73,7 @@ psqlplus_toplevel_stmt:
 		variable_stmt opt_semi
 			{
 				psql_yyget_extra(yyscanner)->psqlpluscmd = $1;
+				(void) yynerrs;		/* suppress compiler warning */
 			}
 		| print_stmt opt_semi
 			{
