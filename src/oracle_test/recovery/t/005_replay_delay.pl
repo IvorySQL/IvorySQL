@@ -52,11 +52,9 @@ $node_standby->poll_query_until('postgres',
   or die "standby never caught up";
 
 # This test is successful if and only if the LSN has been applied with at least
-# the configured apply delay.
-ok(time() - $primary_insert_time >= $delay,
-	"standby applies WAL only after replication delay");
-
-
+# the configured apply_delay.
+cmp_ok(time() - $primary_insert_time,
+	'>=', $delay, "standby applies WAL only after replication delay");
 # Check that recovery can be paused or resumed expectedly.
 my $node_standby2 = PostgreSQL::Test::Cluster->new('standby2');
 $node_standby2->init_from_backup($node_primary, $backup_name,
