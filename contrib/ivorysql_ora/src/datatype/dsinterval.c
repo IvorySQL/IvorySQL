@@ -52,7 +52,6 @@
 
 #include "../include/common_datatypes.h"
 
-
 PG_FUNCTION_INFO_V1(dsinterval_in);
 PG_FUNCTION_INFO_V1(dsinterval_out);
 PG_FUNCTION_INFO_V1(dsinterval_recv);
@@ -2333,7 +2332,7 @@ dsinterval_mul(PG_FUNCTION_ARGS)
 	result->day += (int32) month_remainder_days;
 #ifdef HAVE_INT64_TIMESTAMP
 	result_double = rint(span->time * factor + sec_remainder * USECS_PER_SEC);
-	if (result_double > PG_INT64_MAX || result_double < PG_INT64_MIN)
+	if (isnan(result_double) || !FLOAT8_FITS_IN_INT64(result_double))
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 				 errmsg("interval out of range")));
