@@ -711,8 +711,6 @@ ProcArrayEndTransaction(PGPROC *proc, TransactionId latestXid)
 		/* be sure this is cleared in abort */
 		proc->delayChkptFlags = 0;
 
-		pg_atomic_write_u32(&proc->pendingRecoveryConflicts, 0);
-
 		/* must be cleared with xid/xmin: */
 		/* avoid unnecessarily dirtying shared cachelines */
 		if (proc->statusFlags & PROC_VACUUM_STATE_MASK)
@@ -752,8 +750,6 @@ ProcArrayEndTransactionInternal(PGPROC *proc, TransactionId latestXid)
 
 	/* be sure this is cleared in abort */
 	proc->delayChkptFlags = 0;
-
-	pg_atomic_write_u32(&proc->pendingRecoveryConflicts, 0);
 
 	/* must be cleared with xid/xmin: */
 	/* avoid unnecessarily dirtying shared cachelines */
@@ -936,7 +932,6 @@ ProcArrayClearTransaction(PGPROC *proc)
 
 	proc->vxid.lxid = InvalidLocalTransactionId;
 	proc->xmin = InvalidTransactionId;
-	pg_atomic_write_u32(&proc->pendingRecoveryConflicts, 0);
 
 	Assert(!(proc->statusFlags & PROC_VACUUM_STATE_MASK));
 	Assert(!proc->delayChkptFlags);
@@ -3527,7 +3522,7 @@ SignalRecoveryConflictWithVirtualXID(VirtualTransactionId vxid, RecoveryConflict
 }
 
 /*
- * SignalRecoveryConflictWithDatabase --- signal all backends specified database
+ * SignalRecoveryConflictWithDatabase -- signal backends using specified database
  *
  * Like SignalRecoveryConflict, but signals all backends using the database.
  */
