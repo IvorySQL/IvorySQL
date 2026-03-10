@@ -5333,7 +5333,6 @@ ExecEvalJsonCoercionFinish(ExprState *state, ExprEvalStep *op)
 		 * JsonBehavior expression.
 		 */
 		jsestate->escontext.error_occurred = false;
-		jsestate->escontext.error_occurred = false;
 		jsestate->escontext.details_wanted = true;
 	}
 }

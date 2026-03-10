@@ -6310,7 +6310,7 @@ exec_eval_expr(PLiSQL_execstate * estate,
 	/*
 	 * Else do it the hard way via exec_run_select
 	 */
-	rc = exec_run_select(estate, expr, 2, NULL);
+	rc = exec_run_select(estate, expr, 0, NULL);
 	if (rc != SPI_OK_SELECT)
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
@@ -9439,6 +9439,15 @@ exec_set_found(PLiSQL_execstate * estate, bool state)
 	PLiSQL_var *var;
 
 	var = (PLiSQL_var *) (estate->datums[estate->found_varno]);
+
+	/*
+	 * Use pg_assume() to avoid a spurious warning with some compilers, by
+	 * telling the compiler that the VARATT_IS_EXTERNAL_NON_EXPANDED() branch
+	 * in assign_simple_var() will never be reached when called from here, due
+	 * to "found" being a boolean (i.e. a byvalue type), not a varlena.
+	 */
+	pg_assume(var->datatype->typlen != -1);
+
 	assign_simple_var(estate, var, BoolGetDatum(state), false, false);
 }
 

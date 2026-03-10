@@ -1283,6 +1283,15 @@ CREATE TABLE gtest31_1 (a int, b text GENERATED ALWAYS AS ('hello') VIRTUAL, c t
 CREATE TABLE gtest31_2 (x int, y gtest31_1);
 ALTER TABLE gtest31_1 ALTER COLUMN b TYPE varchar;  -- fails
 ERROR:  cannot alter table "gtest31_1" because column "gtest31_2.y" uses its row type
+-- bug #18970
+ALTER TABLE gtest31_2 ADD CONSTRAINT cc CHECK ((y).b IS NOT NULL);
+ALTER TABLE gtest31_1 ALTER COLUMN b SET EXPRESSION AS ('hello1');
+ALTER TABLE gtest31_2 DROP CONSTRAINT cc;
+CREATE STATISTICS gtest31_2_stat ON ((y).b is not null) FROM gtest31_2;
+ALTER TABLE gtest31_1 ALTER COLUMN b SET EXPRESSION AS ('hello2');
+DROP STATISTICS gtest31_2_stat;
+CREATE INDEX gtest31_2_y_idx ON gtest31_2(((y).b));
+ALTER TABLE gtest31_1 ALTER COLUMN b SET EXPRESSION AS ('hello3');
 DROP TABLE gtest31_1, gtest31_2;
 -- Check it for a partitioned table, too
 CREATE TABLE gtest31_1 (a int, b text GENERATED ALWAYS AS ('hello') VIRTUAL, c text) PARTITION BY LIST (a);
@@ -1541,11 +1550,11 @@ where coalesce(t2.b, 1) = 2;
 explain (costs off)
 select t1.a from gtest32 t1 left join gtest32 t2 on t1.a = t2.a
 where coalesce(t2.b, 1) = 2 or t1.a is null;
-                         QUERY PLAN                          
--------------------------------------------------------------
+               QUERY PLAN                
+-----------------------------------------
  Hash Left Join
    Hash Cond: (t1.a = t2.a)
-   Filter: ((COALESCE((t2.a * 2), 1) = 2) OR (t1.a IS NULL))
+   Filter: (COALESCE((t2.a * 2), 1) = 2)
    ->  Seq Scan on gtest32 t1
    ->  Hash
          ->  Seq Scan on gtest32 t2
@@ -1604,4 +1613,26 @@ select * from gtest32 t group by grouping sets (a, b, c, d, e) having c = 20;
 
 -- Ensure that the virtual generated columns in ALTER COLUMN TYPE USING expression are expanded
 alter table gtest32 alter column e type bigint using b;
+-- Ensure that virtual generated column references within SubLinks that should
+-- be transformed into joins can get expanded
+explain (costs off)
+select 1 from gtest32 t1 where exists
+  (select 1 from gtest32 t2 where t1.a > t2.a and t2.b = 2);
+             QUERY PLAN              
+-------------------------------------
+ Nested Loop Semi Join
+   Join Filter: (t1.a > t2.a)
+   ->  Seq Scan on gtest32 t1
+   ->  Materialize
+         ->  Seq Scan on gtest32 t2
+               Filter: ((a * 2) = 2)
+(6 rows)
+
+select 1 from gtest32 t1 where exists
+  (select 1 from gtest32 t2 where t1.a > t2.a and t2.b = 2);
+ ?column? 
+----------
+        1
+(1 row)
+
 drop table gtest32;
