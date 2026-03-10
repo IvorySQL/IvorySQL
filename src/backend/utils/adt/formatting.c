@@ -444,6 +444,8 @@ typedef struct
 	const char *abbrev;			/* dynamic abbrev */
 } TmFromChar;
 
+#define ZERO_tmfc(_X) memset(_X, 0, sizeof(TmFromChar))
+
 struct fmt_tz					/* do_to_timestamp's timezone info output */
 {
 	bool		has_tz;			/* was there any TZ/TZH/TZM field? */
