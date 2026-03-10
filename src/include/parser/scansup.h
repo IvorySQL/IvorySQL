@@ -29,4 +29,7 @@ extern void truncate_identifier(char *ident, int len, bool warn);
 
 extern bool scanner_isspace(char ch);
 
+extern bool identifier_is_all_lower(const char *ident, int len);
+extern bool identifier_is_all_upper(const char *ident, int len);
+
 #endif							/* SCANSUP_H */
