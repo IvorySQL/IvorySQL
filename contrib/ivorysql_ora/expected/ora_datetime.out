@@ -1172,6 +1172,10 @@ SELECT interval'365 11:11:11' day(3) to second * 12.34;
  +000004509 20:26:24.140000000
 (1 row)
 
+-- interval day to second * huge number (overflow)
+SELECT interval'365 11:11:11' day(3) to second * 100000000000000000000;
+ERROR:  interval out of range
+
 -- interval year to month / number
 SELECT interval'10-11' year to month / 12.34;
    ?column?    
@@ -1185,6 +1189,10 @@ SELECT interval'365 11:11:11' day(3) to second / 12.34;
 -------------------------------
  +000000029 14:47:35.024311000
 (1 row)
+
+-- interval day to second / tiny number (overflow)
+SELECT interval'365 11:11:11' day(3) to second / 0.00000000000000000001;
+ERROR:  interval out of range
 
 -- number + oradate
 SELECT 123.456 + date'2016-11-26';
@@ -1235,4 +1243,3 @@ select 25::number <= to_char('1990-01-01'::oradate, 'yyyy');
 ----------
  t
 (1 row)
-

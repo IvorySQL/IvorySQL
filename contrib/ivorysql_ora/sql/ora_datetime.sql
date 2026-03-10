@@ -570,11 +570,17 @@ SELECT interval'10-11' year to month * 12.34;
 -- interval day to second * number
 SELECT interval'365 11:11:11' day(3) to second * 12.34;
 
+-- interval day to second * huge number (overflow)
+SELECT interval'365 11:11:11' day(3) to second * 100000000000000000000;
+
 -- interval year to month / number
 SELECT interval'10-11' year to month / 12.34;
 
 -- interval day to second / number
 SELECT interval'365 11:11:11' day(3) to second / 12.34;
+
+-- interval day to second / tiny number (overflow)
+SELECT interval'365 11:11:11' day(3) to second / 0.00000000000000000001;
 
 -- number + oradate
 SELECT 123.456 + date'2016-11-26';
