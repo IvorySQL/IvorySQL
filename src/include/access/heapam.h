@@ -400,9 +400,37 @@ typedef struct PruneFreezeResult
 
 
 /*
- * SetHintBits()
+ * To be allowed to set hint bits, SetHintBits() needs to call
+ * BufferBeginSetHintBits(). However, that's not free, and some callsites call
+ * SetHintBits() on many tuples in a row. For those it makes sense to amortize
+ * the cost of BufferBeginSetHintBits(). Additionally it's desirable to defer
+ * the cost of BufferBeginSetHintBits() until a hint bit needs to actually be
+ * set. This enum serves as the necessary state space passed to
+ * SetHintBitsExt().
+ */
+typedef enum SetHintBitsState
+{
+	/* not yet checked if hint bits may be set */
+	SHB_INITIAL,
+	/* failed to get permission to set hint bits, don't check again */
+	SHB_DISABLED,
+	/* allowed to set hint bits */
+	SHB_ENABLED,
+} SetHintBitsState;
+
+/*
+ * SetHintBitsExt()
  *
  * Set commit/abort hint bits on a tuple, if appropriate at this time.
+ *
+ * To be allowed to set a hint bit on a tuple, the page must not be undergoing
+ * IO at this time (otherwise we e.g. could corrupt PG's page checksum or even
+ * the filesystem's, as is known to happen with btrfs).
+ *
+ * The right to set a hint bit can be acquired on a page level with
+ * BufferBeginSetHintBits(). Only a single backend gets the right to set hint
+ * bits at a time.  Alternatively, if called with a NULL SetHintBitsState*,
+ * hint bits are set with BufferSetHintBits16().
  *
  * It is only safe to set a transaction-committed hint bit if we know the
  * transaction's commit record is guaranteed to be flushed to disk before the
@@ -431,24 +459,67 @@ typedef struct PruneFreezeResult
  * InvalidTransactionId if no check is needed.
  */
 static inline void
-SetHintBits(HeapTupleHeader tuple, Buffer buffer,
-			uint16 infomask, TransactionId xid)
+SetHintBitsExt(HeapTupleHeader tuple, Buffer buffer,
+			   uint16 infomask, TransactionId xid, SetHintBitsState *state)
 {
+	/*
+	 * In batched mode, if we previously did not get permission to set hint
+	 * bits, don't try again - in all likelihood IO is still going on.
+	 */
+	if (state && *state == SHB_DISABLED)
+		return;
+
 	if (TransactionIdIsValid(xid))
 	{
-		/* NB: xid must be known committed here! */
-		XLogRecPtr	commitLSN = TransactionIdGetCommitLSN(xid);
-
-		if (BufferIsPermanent(buffer) && XLogNeedsFlush(commitLSN) &&
-			BufferGetLSNAtomic(buffer) < commitLSN)
+		if (BufferIsPermanent(buffer))
 		{
-			/* not flushed and no LSN interlock, so don't set hint */
-			return;
+			/* NB: xid must be known committed here! */
+			XLogRecPtr	commitLSN = TransactionIdGetCommitLSN(xid);
+
+			if (XLogNeedsFlush(commitLSN) &&
+				BufferGetLSNAtomic(buffer) < commitLSN)
+			{
+				/* not flushed and no LSN interlock, so don't set hint */
+				return;
+			}
 		}
 	}
 
+	/*
+	 * If we're not operating in batch mode, use BufferSetHintBits16() to mark
+	 * the page dirty, that's cheaper than
+	 * BufferBeginSetHintBits()/BufferFinishSetHintBits(). That's important
+	 * for cases where we set a lot of hint bits on a page individually.
+	 */
+	if (!state)
+	{
+		BufferSetHintBits16(&tuple->t_infomask,
+							tuple->t_infomask | infomask, buffer);
+		return;
+	}
+
+	if (*state == SHB_INITIAL)
+	{
+		if (!BufferBeginSetHintBits(buffer))
+		{
+			*state = SHB_DISABLED;
+			return;
+		}
+
+		*state = SHB_ENABLED;
+	}
 	tuple->t_infomask |= infomask;
-	MarkBufferDirtyHint(buffer, true);
+}
+
+/*
+ * Simple wrapper around SetHintBitExt(), use when operating on a single
+ * tuple.
+ */
+static inline void
+SetHintBits(HeapTupleHeader tuple, Buffer buffer,
+			uint16 infomask, TransactionId xid)
+{
+	SetHintBitsExt(tuple, buffer, infomask, xid, NULL);
 }
 
 /*
