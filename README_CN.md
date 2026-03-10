@@ -46,3 +46,7 @@ IvorySQL 项目采用 Apache 2.0 许可协议发布，并鼓励各种形式的�
 
 ## 文档
 请查看[在线文档](https://docs.ivorysql.org/)。
+
+## Star History
+
+![Star History Chart](https://api.star-history.com/svg?repos=IvorySQL/IvorySQL&type=Date)
