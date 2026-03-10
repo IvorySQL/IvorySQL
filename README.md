@@ -97,3 +97,7 @@ by the IvorySQL community.
 
 ## Documentation
 Please check the [online documentation](https://docs.ivorysql.org/).
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/image?repos=ivorysql/ivorysql&type=date&legend=top-left)](https://www.star-history.com/?repos=ivorysql%2Fivorysql&type=date&legend=top-left)
