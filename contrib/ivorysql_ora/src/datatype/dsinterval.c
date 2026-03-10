@@ -2287,14 +2287,14 @@ dsinterval_mul(PG_FUNCTION_ARGS)
 	result = (Interval *) palloc(sizeof(Interval));
 
 	result_double = span->month * factor;
-	if (result_double > INT_MAX || result_double < INT_MIN)
+	if (isnan(result_double) || !FLOAT8_FITS_IN_INT32(result_double))
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 				 errmsg("interval out of range")));
 	result->month = (int32) result_double;
 
 	result_double = span->day * factor;
-	if (result_double > INT_MAX || result_double < INT_MIN)
+	if (isnan(result_double) || !FLOAT8_FITS_IN_INT32(result_double))
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 				 errmsg("interval out of range")));
