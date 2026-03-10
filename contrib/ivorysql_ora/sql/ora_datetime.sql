@@ -576,6 +576,9 @@ SELECT interval'365 11:11:11' day(3) to second * 12.34;
 -- interval day to second * huge number (overflow)
 SELECT interval'365 11:11:11' day(3) to second * 100000000000000000000;
 
+-- interval day to second * NaN number (overflow)
+SELECT interval'365 11:11:11' day(3) to second * 'NaN'::number;
+
 -- interval year to month / number
 SELECT interval'10-11' year to month / 12.34;
 
