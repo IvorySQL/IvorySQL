@@ -93,7 +93,7 @@
 #include "utils/ora_compatible.h"
 #include "utils/pg_locale.h"
 #include "varatt.h"
-
+#include <time.h>
 
 /*
  * Routines flags
@@ -471,37 +471,6 @@ struct fmt_tz					/* do_to_timestamp's timezone info output */
 #define DEBUG_TMFC(_X)
 #define DEBUG_TM(_X)
 #endif
-
-/*
- * Datetime to char conversion
- *
- * To support intervals as well as timestamps, we use a custom "tm" struct
- * that is almost like struct pg_tm, but has a 64-bit tm_hour field.
- * We omit the tm_isdst and tm_zone fields, which are not used here.
- */
-struct fmt_tm
-{
-	int			tm_sec;
-	int			tm_min;
-	int64		tm_hour;
-	int			tm_mday;
-	int			tm_mon;
-	int			tm_year;
-	int			tm_wday;
-	int			tm_yday;
-	long int	tm_gmtoff;
-};
-
-typedef struct TmToChar
-{
-	struct fmt_tm tm;			/* almost the classic 'tm' struct */
-	fsec_t		fsec;			/* fractional seconds */
-	const char *tzn;			/* timezone */
-} TmToChar;
-
-#define tmtcTm(_X)	(&(_X)->tm)
-#define tmtcTzn(_X) ((_X)->tzn)
-#define tmtcFsec(_X)	((_X)->fsec)
 
 /* Note: this is used to copy pg_tm to fmt_tm, so not quite a bitwise copy */
 #define COPY_tm(_DST, _SRC) \
