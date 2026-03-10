@@ -1051,8 +1051,6 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 		{
 			 AlterExtensionContentsStmt *stmt = (AlterExtensionContentsStmt *)node;
 
-			 if (WALK(stmt->extname))
-				 return true;
 			 if (WALK(stmt->object))
 				 return true;
 		}
@@ -1570,15 +1568,11 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 				return true;
 			if (WALK(stmt->subquery))
 				return true;
-			if (WALK(stmt->jointype))
-				return true;
 			if (WALK(stmt->joinaliasvars))
 				return true;
 			if (WALK(stmt->functions))
 				return true;
 			if (WALK(stmt->values_lists))
-				return true;
-			if (WALK(stmt->ctename))
 				return true;
 			if (WALK(stmt->coltypes))
 				return true;
