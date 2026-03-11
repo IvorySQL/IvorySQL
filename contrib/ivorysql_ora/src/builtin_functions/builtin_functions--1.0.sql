@@ -489,6 +489,13 @@ AS 'MODULE_PATHNAME','ora_replace'
 LANGUAGE C
 IMMUTABLE;
 
+CREATE FUNCTION sys.replace(text, text, text default NULL)
+RETURNS text 
+AS 'MODULE_PATHNAME', 'ora_replace'
+LANGUAGE C 
+PARALLEL SAFE 
+IMMUTABLE;
+
 CREATE FUNCTION sys.instrb(varchar2, varchar2, number default 1, number default 1)
 RETURNS int
 AS 'MODULE_PATHNAME','ora_instrb'

@@ -1304,3 +1304,8 @@ select to_single_byte('１．２');
 select to_single_byte(１．２);
 select to_single_byte(3.4);
 select to_single_byte(NULL);
+
+-- replace(...) --> sys.replace(...) 
+select REPLACE(('192.168.1.1'), '''', '');
+select REPLACE(('192.168.1.1')::varchar, '''', '');
+select REPLACE(('192.168.1.1')::char(100), '''', '');

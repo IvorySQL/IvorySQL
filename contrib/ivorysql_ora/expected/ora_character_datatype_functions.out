@@ -3568,3 +3568,22 @@ select to_single_byte(NULL);
  
 (1 row)
 
+-- replace(...) --> sys.replace(...) 
+select REPLACE(('192.168.1.1'), '''', '');
+   replace   
+-------------
+ 192.168.1.1
+(1 row)
+
+select REPLACE(('192.168.1.1')::varchar, '''', '');
+   replace   
+-------------
+ 192.168.1.1
+(1 row)
+
+select REPLACE(('192.168.1.1')::char(100), '''', '');
+   replace   
+-------------
+ 192.168.1.1
+(1 row)
+
