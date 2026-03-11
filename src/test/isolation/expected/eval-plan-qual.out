@@ -1230,7 +1230,7 @@ step c2: COMMIT;
 step read: SELECT * FROM accounts ORDER BY accountid;
 accountid|balance|balance2
 ---------+-------+--------
-checking |    900|    1800
+checking |    900|    1400
 savings  |    600|    1200
 (2 rows)
 
