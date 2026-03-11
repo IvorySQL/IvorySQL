@@ -4578,7 +4578,6 @@ create table atref (c1 int references attbl(p1));
 alter table attbl alter column p1 set data type bigint;
 alter table atref alter column c1 set data type bigint;
 drop table attbl, atref;
-/* End test case for bug #17409 */
 /* Test case for bug #18970 */
 create table attbl(a int);
 create table atref(b attbl check ((b).a is not null));
