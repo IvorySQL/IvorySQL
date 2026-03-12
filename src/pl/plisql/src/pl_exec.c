@@ -3235,28 +3235,14 @@ exec_stmt_return(PLiSQL_execstate *estate, PLiSQL_stmt_return *stmt)
 				}
 				break;
 
+			case PLISQL_DTYPE_ROW:
 			case PLISQL_DTYPE_REC:
 				{
-					PLiSQL_rec *rec = (PLiSQL_rec *) retvar;
-
-					/* If record is empty, we return NULL not a row of nulls */
-					if (rec->erh && !ExpandedRecordIsEmpty(rec->erh))
-					{
-						estate->retval = ExpandedRecordGetDatum(rec->erh);
-						estate->retisnull = false;
-						estate->rettype = rec->rectypeid;
-					}
-				}
-				break;
-
-			case PLISQL_DTYPE_ROW:
-				{
-					PLiSQL_row *row = (PLiSQL_row *) retvar;
+					/* exec_eval_datum can handle these cases */
 					int32		rettypmod;
 
-					/* We get here if there are multiple OUT parameters */
 					exec_eval_datum(estate,
-									(PLiSQL_datum *) row,
+									retvar,
 									&estate->rettype,
 									&rettypmod,
 									&estate->retval,
