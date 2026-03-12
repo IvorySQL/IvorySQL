@@ -1,0 +1,8 @@
+ ?column? 
+----------
+ t
+(1 row)
+
+ owner | constraint_name | table_name | column_name | position 
+------+-----------------+------------+-------------+----------
+(0 rows)
