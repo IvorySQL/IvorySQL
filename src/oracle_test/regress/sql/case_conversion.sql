@@ -112,6 +112,27 @@ SELECT * FROM "abc";
 DROP TABLE "ABC";
 DROP TABLE "abc";
 
+--schema
+CREATE SCHEMA "中国ABC中国";
+SELECT nspname FROM pg_namespace WHERE nspname = '中国abc中国';
+SET search_path TO "中国ABC中国", public;
+SHOW search_path;
+SELECT current_schemas(false);
+SET ivorysql.identifier_case_switch = normal;
+DROP SCHEMA "中国abc中国";
+SET ivorysql.identifier_case_switch = interchange;
+RESET search_path;
+
+CREATE SCHEMA "中国def中国";
+SELECT nspname FROM pg_namespace WHERE nspname = '中国DEF中国';
+SET search_path TO "中国DEF中国";
+SHOW search_path;
+SELECT current_schemas(false);
+CREATE TABLE "中国DEF中国".t_case_path_qualified(i int);
+CREATE TABLE t_case_path_unqualified(i int);
+DROP SCHEMA "中国def中国";
+RESET search_path;
+
 --database
 create database db1;
 create database DB2;
@@ -169,6 +190,17 @@ SELECT * FROM Abc; -- ERROR
 
 DROP TABLE "Abc";
 
+--schema
+CREATE SCHEMA "中国ABC中国";
+SELECT nspname FROM pg_namespace WHERE nspname = '中国abc中国';
+SET search_path TO "中国ABC中国", public;
+SHOW search_path;
+SELECT current_schemas(false);
+SET ivorysql.identifier_case_switch = normal;
+DROP SCHEMA "中国abc中国";
+SET ivorysql.identifier_case_switch = lowercase;
+RESET search_path;
+
 --database
 create database db1;
 create database DB2;
@@ -225,6 +257,17 @@ SELECT * FROM abc; -- ERROR
 SELECT * FROM Abc; -- ERROR
 
 DROP TABLE "Abc";
+
+--schema
+CREATE SCHEMA "中国ABC中国";
+SELECT nspname FROM pg_namespace WHERE nspname = '中国ABC中国';
+SET search_path TO "中国ABC中国", public;
+SHOW search_path;
+SELECT current_schemas(false);
+SET ivorysql.identifier_case_switch = interchange;
+DROP SCHEMA "中国abc中国";
+SET ivorysql.identifier_case_switch = normal;
+RESET search_path;
 
 --database
 create database db1;
