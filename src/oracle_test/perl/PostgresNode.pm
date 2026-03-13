@@ -1944,6 +1944,7 @@ sub background_psql
 
 	local %ENV = $self->_get_env();
 
+    my $replication = $params{replication};
 	my $timeout = undef;
 
 	my @psql_params = (
