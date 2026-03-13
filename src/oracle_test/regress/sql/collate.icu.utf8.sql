@@ -298,6 +298,7 @@ begin
 end
 $$;
 /
+
 SELECT mylt2('a', 'B' collate "en-x-icu") as t, mylt2('a', 'B' collate "C") as f;
 
 CREATE OR REPLACE FUNCTION
@@ -324,6 +325,7 @@ SELECT * FROM unnest((SELECT array_agg(b ORDER BY b) FROM collate_test3)) ORDER 
 CREATE FUNCTION dup (anyelement) RETURNS anyelement
     AS 'select $1' LANGUAGE sql;
 /
+
 SELECT a, dup(b) FROM collate_test1 ORDER BY 2;
 SELECT a, dup(b) FROM collate_test2 ORDER BY 2;
 SELECT a, dup(b) FROM collate_test3 ORDER BY 2;
