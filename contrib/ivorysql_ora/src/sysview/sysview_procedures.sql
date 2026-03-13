@@ -278,3 +278,18 @@ ORDER BY
 /* GRANT SELECT PRIVILEGE TO PUBLIC */
 GRANT SELECT ON SYS.USER_PROCEDURES TO PUBLIC;
 /* End - ReqID:SRS-SQL-SYSVIEW */
+-- Create DBA_CONS_COLUMNS view for Oracle compatibility
+CREATE OR REPLACE VIEW sys.dba_cons_columns AS
+SELECT
+    pg_get_userbyid(n.oid)::name AS owner,
+    c.conname::name AS constraint_name,
+    cl.relname::name AS table_name,
+    a.attname::name AS column_name,
+    (row_number() OVER (PARTITION BY c.oid ORDER BY a.attnum))::int AS position
+FROM pg_constraint c
+JOIN pg_class cl ON c.conrelid = cl.oid
+JOIN pg_namespace n ON cl.relnamespace = n.oid
+JOIN pg_attribute a ON a.attrelid = cl.oid AND a.attnum = ANY(c.conkey)
+WHERE cl.relkind = 'r'
+  AND a.attisdropped = false
+  AND n.nspname NOT IN ('pg_catalog', 'information_schema');
