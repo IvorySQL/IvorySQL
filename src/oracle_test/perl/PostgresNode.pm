@@ -1944,7 +1944,7 @@ sub background_psql
 
 	local %ENV = $self->_get_env();
 
-    my $replication = $params{replication};
+	my $replication = $params{replication};
 	my $timeout = undef;
 
 	my @psql_params = (
@@ -2377,7 +2377,7 @@ sub issues_sql_like
 
 =pod
 
-=item $node->log_check($offset, $test_name, %parameters)
+=item $node->log_check($test_name, $offset, %params)
 
 Check contents of server logs.
 
