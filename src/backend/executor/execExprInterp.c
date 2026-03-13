@@ -4847,7 +4847,7 @@ ExecEvalJsonIsPredicate(ExprState *state, ExprEvalStep *op)
 {
 	JsonIsPredicate *pred = op->d.is_json.pred;
 	Datum		js = *op->resvalue;
-	Oid			exprtype;
+	Oid			exprtype = pred->exprBaseType;
 	bool		res;
 
 	if (*op->resnull)
@@ -4855,8 +4855,6 @@ ExecEvalJsonIsPredicate(ExprState *state, ExprEvalStep *op)
 		*op->resvalue = BoolGetDatum(false);
 		return;
 	}
-
-	exprtype = exprType(pred->expr);
 
 	if (exprtype == TEXTOID || exprtype == JSONOID)
 	{
