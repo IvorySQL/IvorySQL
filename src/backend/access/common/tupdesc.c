@@ -225,6 +225,9 @@ CreateTupleDesc(int natts, Form_pg_attribute *attrs, bool tdhasrowid, bool is_sy
 		memcpy(TupleDescAttr(desc, i), attrs[i], ATTRIBUTE_FIXED_PART_SIZE);
 		populate_compact_attribute(desc, i);
 	}
+
+	TupleDescFinalize(desc);
+
 	return desc;
 }
 
@@ -271,6 +274,8 @@ CreateTupleDescCopy(TupleDesc tupdesc)
 	desc->tdtypeid = tupdesc->tdtypeid;
 	desc->tdtypmod = tupdesc->tdtypmod;
 
+	TupleDescFinalize(desc);
+
 	return desc;
 }
 
@@ -316,6 +321,8 @@ CreateTupleDescTruncatedCopy(TupleDesc tupdesc, int natts)
 	/* We can copy the tuple type identification, too */
 	desc->tdtypeid = tupdesc->tdtypeid;
 	desc->tdtypmod = tupdesc->tdtypmod;
+
+	TupleDescFinalize(desc);
 
 	return desc;
 }
@@ -403,6 +410,8 @@ CreateTupleDescCopyConstr(TupleDesc tupdesc)
 	desc->tdtypeid = tupdesc->tdtypeid;
 	desc->tdtypmod = tupdesc->tdtypmod;
 
+	TupleDescFinalize(desc);
+
 	return desc;
 }
 
@@ -445,6 +454,8 @@ TupleDescCopy(TupleDesc dst, TupleDesc src)
 	 * source's refcount would be wrong in any case.)
 	 */
 	dst->tdrefcount = -1;
+
+	TupleDescFinalize(dst);
 }
 
 /*
@@ -1075,6 +1086,8 @@ BuildDescFromLists(const List *names, const List *types, const List *typmods, co
 		TupleDescInitEntry(desc, attnum, attname, atttypid, atttypmod, 0);
 		TupleDescInitEntryCollation(desc, attnum, attcollation);
 	}
+
+	TupleDescFinalize(desc);
 
 	return desc;
 }

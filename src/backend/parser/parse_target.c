@@ -1593,6 +1593,8 @@ expandRecordVariable(ParseState *pstate, Var *var, int levelsup)
 		}
 		Assert(lname == NULL && lvar == NULL);	/* lists same length? */
 
+		TupleDescFinalize(tupleDesc);
+
 		return tupleDesc;
 	}
 

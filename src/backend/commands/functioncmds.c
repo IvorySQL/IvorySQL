@@ -3295,6 +3295,7 @@ CallStmtResultDesc(CallStmt *stmt)
 							   -1,
 							   0);
 		}
+		TupleDescFinalize(tupdesc);
 	}
 
 	return tupdesc;
