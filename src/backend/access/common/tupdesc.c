@@ -198,6 +198,10 @@ CreateTemplateTupleDesc(int natts)
 	desc->tdrefcount = -1;		/* assume not reference-counted */
 	desc->tdhasrowid = false;
 
+	/* This will be set to the correct value by TupleDescFinalize() */
+	desc->firstNonCachedOffsetAttr = -1;
+	desc->firstNonGuaranteedAttr = -1;
+
 	return desc;
 }
 
@@ -464,6 +468,9 @@ TupleDescCopy(TupleDesc dst, TupleDesc src)
  *		descriptor to another.
  *
  * !!! Constraints and defaults are not copied !!!
+ *
+ * The caller must take care of calling TupleDescFinalize() on 'dst' once all
+ * TupleDesc changes have been made.
  */
 void
 TupleDescCopyEntry(TupleDesc dst, AttrNumber dstAttno,
@@ -494,6 +501,50 @@ TupleDescCopyEntry(TupleDesc dst, AttrNumber dstAttno,
 	dstAtt->attgenerated = '\0';
 
 	populate_compact_attribute(dst, dstAttno - 1);
+}
+
+/*
+ * TupleDescFinalize
+ *		Finalize the given TupleDesc.  This must be called after the
+ *		attributes arrays have been populated or adjusted by any code.
+ *
+ * Must be called after populate_compact_attribute() and before
+ * BlessTupleDesc().
+ */
+void
+TupleDescFinalize(TupleDesc tupdesc)
+{
+	int			firstNonCachedOffsetAttr = 0;
+	int			firstNonGuaranteedAttr = tupdesc->natts;
+	int			off = 0;
+
+	for (int i = 0; i < tupdesc->natts; i++)
+	{
+		CompactAttribute *cattr = TupleDescCompactAttr(tupdesc, i);
+
+		/*
+		 * Find the highest attnum which is guaranteed to exist in all tuples
+		 * in the table.  We currently only pay attention to byval attributes
+		 * to allow additional optimizations during tuple deformation.
+		 */
+		if (firstNonGuaranteedAttr == tupdesc->natts &&
+			(cattr->attnullability != ATTNULLABLE_VALID || !cattr->attbyval ||
+			 cattr->atthasmissing || cattr->attisdropped || cattr->attlen <= 0))
+			firstNonGuaranteedAttr = i;
+
+		if (cattr->attlen <= 0)
+			break;
+
+		off = att_nominal_alignby(off, cattr->attalignby);
+
+		cattr->attcacheoff = off;
+
+		off += cattr->attlen;
+		firstNonCachedOffsetAttr = i + 1;
+	}
+
+	tupdesc->firstNonCachedOffsetAttr = firstNonCachedOffsetAttr;
+	tupdesc->firstNonGuaranteedAttr = firstNonGuaranteedAttr;
 }
 
 /*
