@@ -851,6 +851,8 @@ static void determineLanguage(List *options);
 
 %token <keyword> PARAMSLENGTH
 
+%token <keyword> LISTAGG
+
 %type <node> CreatePackageStmt CreatePackageBodyStmt AlterPackageStmt
 %type <node> package_proper_item
 %type <list> package_proper package_proper_list package_names package_names_list
@@ -17863,6 +17865,28 @@ func_expr: func_application within_group_clause filter_clause over_clause
 				}
 			| func_expr_common_subexpr
 				{ $$ = $1; }
+
+
+                        | LISTAGG '(' func_arg_list opt_sort_clause ')' within_group_clause filter_clause over_clause 
+                	{
+	                    FuncCall *string_agg_n;
+
+	                    string_agg_n = makeFuncCall(SystemFuncName("string_agg"),
+        	                                        $3,
+                	                                COERCE_EXPLICIT_CALL, @1);
+			    /*
+	                     * string_agg_n->agg_order = $6;
+                             * ERROR:  pg_catalog.string_agg is not an ordered-set aggregate, so it cannot have WITHIN GROUP
+                             * string_agg_n->agg_within_group = true;
+                             */
+			
+	                    string_agg_n->agg_order = $4;
+                            string_agg_n->agg_filter = $7;
+                            string_agg_n->over = $8;
+	                    $$ = (Node *) string_agg_n;
+
+			  }
+
 		;
 
 /*
@@ -20668,6 +20692,7 @@ reserved_keyword:
 			| LATERAL_P
 			| LEADING
 			| LIMIT
+                        | LISTAGG
 			| LOCALTIME
 			| LOCALTIMESTAMP
 			| NAN_P
@@ -20954,6 +20979,7 @@ bare_label_keyword:
 			| LEFT
 			| LEVEL
 			| LIKE
+                        | LISTAGG
 			| LISTEN
 			| LOAD
 			| LOCAL
