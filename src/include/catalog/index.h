@@ -35,6 +35,11 @@ typedef struct ReindexParams
 	bits32		options;		/* bitmask of REINDEXOPT_* */
 	Oid			tablespaceOid;	/* New tablespace to move indexes to.
 								 * InvalidOid to do nothing. */
+	int			nworkers;		/* Parallel worker override for Oracle REBUILD:
+								 *   0  = auto (plan_create_index_workers decides)
+								 *  -1  = force serial (NOPARALLEL)
+								 *  >0  = explicit background-worker count
+								 * Non-Oracle callers use {0}, getting nworkers=0. */
 } ReindexParams;
 
 /* flag bits for ReindexParams->flags */

@@ -2815,6 +2815,303 @@ ChooseIndexColumnNames(const List *indexElems)
 }
 
 /*
+ * ExecOraAlterIndexRebuild
+ *
+ * Primary entry point for Oracle-compatible ALTER INDEX ... REBUILD.
+ *
+ * Supported options (from OraAlterIndexRebuildStmt.options):
+ *
+ *   ONLINE       -> maps to REINDEXOPT_CONCURRENTLY.
+ *                   Rebuilds the index without blocking concurrent DML,
+ *                   equivalent to REINDEX ... CONCURRENTLY.
+ *                   Must run outside an explicit transaction block.
+ *
+ *   TABLESPACE t -> move the rebuilt index into tablespace t.
+ *                   Requires CREATE privilege on the target tablespace.
+ *
+ *   PARTITION p  -> rebuild only the leaf index partition that belongs to
+ *                   the table partition named p.  The parent index must be a
+ *                   partitioned index (RELKIND_PARTITIONED_INDEX).
+ *
+ *   PARALLEL N   -> request N parallel workers for the rebuild.
+ *                   Oracle DOP N = N total participants (coordinator idle);
+ *                   PostgreSQL leader also participates, so N-1 background
+ *                   workers are requested.  PARALLEL 1 is equivalent to
+ *                   serial.  PARALLEL (no number) uses the table's
+ *                   parallel_workers reloption or auto-calculation.
+ *                   Note: max_parallel_maintenance_workers and safety checks
+ *                   (temporary tables, VOLATILE functions) still apply.
+ *
+ *   NOPARALLEL   -> force serial rebuild regardless of GUC settings.
+ *
+ * All options may be combined (e.g. REBUILD ONLINE TABLESPACE t).
+ * For the non-PARTITION path the existing ReindexIndex() infrastructure is
+ * reused directly so that locking, event-trigger collection, and pgstat
+ * progress reporting follow the same code path as REINDEX INDEX.
+ */
+void
+ExecOraAlterIndexRebuild(ParseState *pstate,
+						 const OraAlterIndexRebuildStmt *stmt,
+						 bool isTopLevel)
+{
+	ReindexParams params = {0};
+	bool		online = false;
+	char	   *tablespacename = NULL;
+	char	   *partitionname = NULL;
+	bool		has_parallel = false;
+	bool		has_noparallel = false;
+	int			parallel_degree = 0;	/* 0 = auto; N >= 1 = explicit DOP */
+	ListCell   *lc;
+
+	/*
+	 * Synthetic ReindexStmt: the existing REINDEX helpers (ReindexIndex,
+	 * reindex_index, ReindexRelationConcurrently) accept a const ReindexStmt*
+	 * only to pass it through to lower-level event-trigger and error-context
+	 * callbacks.  We fill in the fields they actually use.
+	 */
+	ReindexStmt reindex_stub = {
+		.type = T_ReindexStmt,
+		.kind = REINDEX_OBJECT_INDEX,
+		.relation = (RangeVar *) stmt->relation,	/* cast away const */
+		.name = NULL,
+		.params = NIL,
+	};
+
+	/*
+	 * Parse the DefElem option list produced by the grammar.
+	 */
+	foreach(lc, stmt->options)
+	{
+		DefElem    *opt = (DefElem *) lfirst(lc);
+
+		if (strcmp(opt->defname, "online") == 0)
+			online = defGetBoolean(opt);
+		else if (strcmp(opt->defname, "tablespace") == 0)
+			tablespacename = defGetString(opt);
+		else if (strcmp(opt->defname, "partition") == 0)
+			partitionname = defGetString(opt);
+		else if (strcmp(opt->defname, "parallel") == 0)
+		{
+			if (has_noparallel)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("cannot use PARALLEL and NOPARALLEL together"),
+						 parser_errposition(pstate, opt->location)));
+			if (has_parallel)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("duplicate PARALLEL option"),
+						 parser_errposition(pstate, opt->location)));
+			has_parallel = true;
+			parallel_degree = intVal(opt->arg);	/* 0 = auto, N >= 1 = explicit */
+		}
+		else if (strcmp(opt->defname, "noparallel") == 0)
+		{
+			if (has_parallel)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("cannot use PARALLEL and NOPARALLEL together"),
+						 parser_errposition(pstate, opt->location)));
+			if (has_noparallel)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("duplicate NOPARALLEL option"),
+						 parser_errposition(pstate, opt->location)));
+			has_noparallel = true;
+		}
+		else
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("unrecognized ALTER INDEX REBUILD option \"%s\"",
+							opt->defname),
+					 parser_errposition(pstate, opt->location)));
+	}
+
+	/*
+	 * Map Oracle PARALLEL/NOPARALLEL to params.nworkers:
+	 *
+	 *   NOPARALLEL:            nworkers = -1  (force serial)
+	 *   PARALLEL (no degree):  nworkers =  0  (auto, same as plain REBUILD)
+	 *   PARALLEL 1:            nworkers = -1  (force serial)
+	 *                          Oracle PARALLEL 1 = coordinator only, no PX Servers.
+	 *                          PG leader also participates, so 1 total participant
+	 *                          = leader only = serial.  Must use -1 (not 0) to
+	 *                          prevent index_build() from re-running auto estimation
+	 *                          which could launch workers on a large table.
+	 *   PARALLEL N (N >= 2):   nworkers = N-1 background workers
+	 *                          (Oracle: N PX Servers, coordinator idle;
+	 *                           PG: N-1 bg workers + 1 active leader = N total)
+	 *   (not specified):       nworkers =  0  (auto, from {0} initialiser)
+	 */
+	if (has_noparallel)
+		params.nworkers = -1;
+	else if (has_parallel && parallel_degree == 1)
+		params.nworkers = -1;			/* PARALLEL 1 = serial, same as NOPARALLEL */
+	else if (has_parallel && parallel_degree >= 2)
+		params.nworkers = parallel_degree - 1;
+	/* else: params.nworkers = 0 (auto), already set by {0} initializer */
+
+	/*
+	 * PARALLEL/NOPARALLEL hints are applied via reindex_index() -> index_build()
+	 * for the normal (non-concurrent) rebuild path.  The concurrent rebuild path
+	 * (ONLINE) goes through ReindexRelationConcurrently -> index_concurrently_build(),
+	 * which rebuilds the index in a separate transaction and does not consult
+	 * params->nworkers.  Warn the user so the ignored hint does not cause
+	 * confusion.
+	 */
+	if (online && (has_parallel || has_noparallel))
+		ereport(WARNING,
+				(errmsg("PARALLEL/NOPARALLEL option is ignored when ONLINE is specified"),
+				 errhint("Online (concurrent) index rebuild determines parallelism automatically.")));
+
+	/*
+	 * ONLINE -> CONCURRENTLY.
+	 * Like REINDEX CONCURRENTLY, this must run outside a transaction block
+	 * because it commits and starts new transactions internally.
+	 */
+	if (online)
+		PreventInTransactionBlock(isTopLevel,
+								  "ALTER INDEX ... REBUILD ONLINE");
+
+	params.options = online ? REINDEXOPT_CONCURRENTLY : 0;
+
+	/*
+	 * Resolve TABLESPACE option.
+	 * Uses the same permission-check logic as ExecReindex().
+	 */
+	if (tablespacename != NULL)
+	{
+		params.tablespaceOid = get_tablespace_oid(tablespacename, false);
+
+		/*
+		 * Check CREATE privilege on the target tablespace, except when
+		 * moving to the database's default tablespace (consistent with
+		 * ExecReindex).
+		 */
+		if (OidIsValid(params.tablespaceOid) &&
+			params.tablespaceOid != MyDatabaseTableSpace)
+		{
+			AclResult	aclresult;
+
+			aclresult = object_aclcheck(TableSpaceRelationId,
+										params.tablespaceOid,
+										GetUserId(), ACL_CREATE);
+			if (aclresult != ACLCHECK_OK)
+				aclcheck_error(aclresult, OBJECT_TABLESPACE,
+							   get_tablespace_name(params.tablespaceOid));
+		}
+	}
+	else
+		params.tablespaceOid = InvalidOid;
+
+	/*
+	 * Dispatch based on whether PARTITION was specified.
+	 */
+	if (partitionname != NULL)
+	{
+		/*
+		 * REBUILD PARTITION <partition_name>
+		 *
+		 * Oracle-compatible syntax: <partition_name> is the name of the TABLE
+		 * partition, not the name of the index partition.  We search the direct
+		 * children of the parent partitioned index for the child index that
+		 * belongs to the table partition named <partition_name>.
+		 *
+		 * Locking strategy mirrors ReindexIndex():
+		 *   - concurrent (ONLINE): ShareUpdateExclusiveLock on both the
+		 *     parent index and the leaf partition.
+		 *   - non-concurrent:      AccessExclusiveLock.
+		 */
+		struct ReindexIndexCallbackState cbstate;
+		LOCKMODE	lockmode;
+		Oid			parentIndexOid;
+		List	   *children;
+		Oid			partIndexOid = InvalidOid;
+		ListCell   *lc2;
+		char		persistence;
+		ReindexParams newparams;
+
+		lockmode = online ? ShareUpdateExclusiveLock : AccessExclusiveLock;
+		cbstate.params = params;
+		cbstate.locked_table_oid = InvalidOid;
+
+		/*
+		 * Resolve and lock the parent partitioned index.
+		 * RangeVarCallbackForReindexIndex additionally locks the heap table
+		 * to avoid deadlocks.
+		 */
+		parentIndexOid = RangeVarGetRelidExtended(
+			stmt->relation,
+			lockmode,
+			0,
+			RangeVarCallbackForReindexIndex,
+			&cbstate);
+
+		if (get_rel_relkind(parentIndexOid) != RELKIND_PARTITIONED_INDEX)
+			ereport(ERROR,
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+					 errmsg("\"%s\" is not a partitioned index",
+							stmt->relation->relname),
+					 errhint("REBUILD PARTITION is only valid for a partitioned index.")));
+
+		/*
+		 * Search the direct children of the partitioned index for the child
+		 * index that belongs to the table partition named <partitionname>.
+		 * For each child index, call IndexGetRelation() to get its heap table
+		 * OID, then compare the table's name with the requested partition name.
+		 */
+		children = find_inheritance_children(parentIndexOid, lockmode);
+		foreach(lc2, children)
+		{
+			Oid		childOid = lfirst_oid(lc2);
+			Oid		childHeapOid = IndexGetRelation(childOid, true);
+			char	   *childHeapName;
+
+			if (!OidIsValid(childHeapOid))
+				continue;
+
+			childHeapName = get_rel_name(childHeapOid);
+			if (childHeapName && strcmp(childHeapName, partitionname) == 0)
+			{
+				partIndexOid = childOid;
+				break;
+			}
+		}
+
+		if (!OidIsValid(partIndexOid))
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("partition \"%s\" of index \"%s\" does not exist",
+							partitionname,
+							stmt->relation->relname)));
+
+		/*
+		 * Rebuild the leaf partition.  Enable progress reporting so
+		 * pg_stat_progress_create_index shows the operation, consistent
+		 * with the non-PARTITION path in ReindexIndex().
+		 */
+		persistence = get_rel_persistence(partIndexOid);
+		newparams = params;
+		newparams.options |= REINDEXOPT_REPORT_PROGRESS;
+
+		if (online && persistence != RELPERSISTENCE_TEMP)
+			ReindexRelationConcurrently(&reindex_stub, partIndexOid, &newparams);
+		else
+			reindex_index(&reindex_stub, partIndexOid, false, persistence,
+						  &newparams);
+	}
+	else
+	{
+		/*
+		 * No PARTITION clause: delegate to ReindexIndex(), which handles
+		 * regular indexes, partitioned indexes (rebuilds all leaf partitions),
+		 * CONCURRENTLY, TABLESPACE, and progress reporting.
+		 */
+		ReindexIndex(&reindex_stub, &params, isTopLevel);
+	}
+}
+
+/*
  * ExecReindex
  *
  * Primary entry point for manual REINDEX commands.  This is mainly a

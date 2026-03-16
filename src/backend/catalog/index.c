@@ -3033,10 +3033,12 @@ index_build(Relation heapRelation,
 	 * Note that planner considers parallel safety for us.
 	 */
 	if (parallel && IsNormalProcessingMode() &&
-		indexRelation->rd_indam->amcanbuildparallel)
+		indexRelation->rd_indam->amcanbuildparallel &&
+		indexInfo->ii_ParallelWorkers == 0)
 		indexInfo->ii_ParallelWorkers =
 			plan_create_index_workers(RelationGetRelid(heapRelation),
-									  RelationGetRelid(indexRelation));
+									  RelationGetRelid(indexRelation),
+									  0);	/* 0 = auto, no override */
 
 	if (indexInfo->ii_ParallelWorkers == 0)
 		ereport(DEBUG1,
@@ -3628,6 +3630,7 @@ reindex_index(const ReindexStmt *stmt, Oid indexId,
 	PGRUsage	ru0;
 	bool		progress = ((params->options & REINDEXOPT_REPORT_PROGRESS) != 0);
 	bool		set_tablespace = false;
+	bool		use_parallel;
 
 	pg_rusage_init(&ru0);
 
@@ -3817,9 +3820,41 @@ reindex_index(const ReindexStmt *stmt, Oid indexId,
 	/* Create a new physical relation for the index */
 	RelationSetNewRelfilenumber(iRel, persistence);
 
+	/*
+	 * Determine parallelism for this rebuild, honouring any Oracle
+	 * PARALLEL/NOPARALLEL override carried in params->nworkers:
+	 *
+	 *   nworkers ==  0: auto -- index_build() calls plan_create_index_workers()
+	 *   nworkers == -1: NOPARALLEL -- pass parallel=false, skip all parallel logic
+	 *   nworkers  >  0: PARALLEL N -- pre-set ii_ParallelWorkers so index_build()
+	 *                   skips plan_create_index_workers() (guard added there)
+	 */
+	use_parallel = true;
+
+	if (params->nworkers == -1)
+	{
+		/* NOPARALLEL: force serial */
+		use_parallel = false;
+	}
+	else if (params->nworkers > 0 &&
+			 IsNormalProcessingMode() &&
+			 iRel->rd_indam->amcanbuildparallel)
+	{
+		/*
+		 * PARALLEL N: pre-compute worker count with the explicit override.
+		 * Gates 1 and 2 in plan_create_index_workers() still apply.
+		 * Gate 4 (32 MB memory cap) is skipped, consistent with the
+		 * parallel_workers reloption behaviour.
+		 */
+		indexInfo->ii_ParallelWorkers =
+			plan_create_index_workers(RelationGetRelid(heapRelation),
+									  RelationGetRelid(iRel),
+									  params->nworkers);
+	}
+
 	/* Initialize the index and rebuild */
 	/* Note: we do not need to re-establish pkey setting */
-	index_build(heapRelation, iRel, indexInfo, true, true);
+	index_build(heapRelation, iRel, indexInfo, true, use_parallel);
 
 	/* Re-allow use of target index */
 	ResetReindexProcessing();
