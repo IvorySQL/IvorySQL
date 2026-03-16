@@ -31,6 +31,7 @@
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/tuplestore.h"
 #include "utils/typcache.h"
 #include "utils/ora_compatible.h"
 #include "utils/guc.h"

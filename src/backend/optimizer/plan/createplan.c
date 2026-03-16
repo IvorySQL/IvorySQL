@@ -19,6 +19,7 @@
 #include "access/sysattr.h"
 #include "access/transam.h"
 #include "catalog/pg_class.h"
+#include "catalog/pg_type_d.h"
 #include "foreign/fdwapi.h"
 #include "miscadmin.h"
 #include "nodes/extensible.h"

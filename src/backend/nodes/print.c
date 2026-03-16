@@ -22,6 +22,7 @@
 
 #include "funcapi.h"
 #include "access/printtup.h"
+#include "catalog/pg_type_d.h"
 #include "lib/stringinfo.h"
 #include "nodes/nodeFuncs.h"
 #include "nodes/pathnodes.h"

@@ -46,6 +46,7 @@
 #include "access/genam.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
+#include "utils/tuplestore.h"
 
 
 PLiSQL_package *plisql_compile_packageitem;

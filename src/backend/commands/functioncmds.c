@@ -75,6 +75,7 @@
 #include "utils/ora_compatible.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
+#include "utils/tuplestore.h"
 #include "utils/typcache.h"
 #include "parser/parse_param.h"
 #include "access/printtup.h"
