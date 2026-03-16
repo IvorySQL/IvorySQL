@@ -2330,7 +2330,7 @@ constructSetOpTargetlist(ParseState *pstate, SetOperationStmt *op,
 				 errmsg("each %s query must have the same number of columns",
 						context),
 				 parser_errposition(pstate,
-									exprLocation((Node *) rtargetlist))));
+									exprLocation((const Node *) rtargetlist))));
 
 	if (targetlist)
 		*targetlist = NIL;
