@@ -18025,6 +18025,20 @@ func_expr_common_subexpr:
 											   COERCE_SQL_SYNTAX,
 											   @1);
 				}
+			| EXTRACT '(' a_expr ',' a_expr ')'
+				{
+					$$ = (Node *) makeFuncCall(list_make1(makeString("extract")),
+											   list_make2($3, $5),
+											   COERCE_EXPLICIT_CALL,
+											   @1);
+				}
+			| EXTRACT '(' a_expr ',' a_expr ',' a_expr ')'
+				{
+					$$ = (Node *) makeFuncCall(list_make1(makeString("extract")),
+											   list_make3($3, $5, $7),
+											   COERCE_EXPLICIT_CALL,
+											   @1);
+				}
 			/* End - ReqID:SRS-SQL-XML */
 			| NORMALIZE '(' a_expr ')'
 				{
