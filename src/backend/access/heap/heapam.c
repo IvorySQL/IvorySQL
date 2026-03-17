@@ -58,6 +58,7 @@
 #include "pgstat.h"
 #include "port/atomics.h"
 #include "port/pg_bitutils.h"
+#include "replication/logicalrelation.h"
 #include "storage/bufmgr.h"
 #include "storage/freespace.h"
 #include "storage/lmgr.h"
@@ -2974,7 +2975,7 @@ l1:
 
 		if (old_key_tuple != NULL)
 		{
-			if (relation->rd_rel->relreplident == REPLICA_IDENTITY_FULL)
+			if (logicalrep_identity_is_full(relation))
 				xlrec.flags |= XLH_DELETE_CONTAINS_OLD_TUPLE;
 			else
 				xlrec.flags |= XLH_DELETE_CONTAINS_OLD_KEY;
@@ -8607,7 +8608,7 @@ log_heap_update(Relation reln, Buffer oldbuf,
 		xlrec.flags |= XLH_UPDATE_CONTAINS_NEW_TUPLE;
 		if (old_key_tuple)
 		{
-			if (reln->rd_rel->relreplident == REPLICA_IDENTITY_FULL)
+			if (logicalrep_identity_is_full(reln))
 				xlrec.flags |= XLH_UPDATE_CONTAINS_OLD_TUPLE;
 			else
 				xlrec.flags |= XLH_UPDATE_CONTAINS_OLD_KEY;
@@ -8834,7 +8835,7 @@ ExtractReplicaIdentity(Relation relation, HeapTuple tp, bool key_changed,
 	if (replident == REPLICA_IDENTITY_NOTHING)
 		return NULL;
 
-	if (replident == REPLICA_IDENTITY_FULL)
+	if (logicalrep_identity_is_full(relation))
 	{
 		/*
 		 * When logging the entire old tuple, it very well could contain

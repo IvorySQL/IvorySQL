@@ -17,6 +17,7 @@
 #include "catalog/pg_type.h"
 #include "libpq/pqformat.h"
 #include "replication/logicalproto.h"
+#include "replication/logicalrelation.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
@@ -396,6 +397,7 @@ void
 logicalrep_write_rel(StringInfo out, TransactionId xid, Relation rel)
 {
 	char	   *relname;
+	char		relreplident = rel->rd_rel->relreplident;
 
 	pq_sendbyte(out, LOGICAL_REP_MSG_RELATION);
 
@@ -412,7 +414,9 @@ logicalrep_write_rel(StringInfo out, TransactionId xid, Relation rel)
 	pq_sendstring(out, relname);
 
 	/* send replica identity */
-	pq_sendbyte(out, rel->rd_rel->relreplident);
+	if (logicalrep_identity_is_full(rel))
+		relreplident = REPLICA_IDENTITY_FULL;
+	pq_sendbyte(out, relreplident);
 
 	/* send the attribute info */
 	logicalrep_write_attrs(out, rel);
@@ -666,7 +670,7 @@ logicalrep_write_attrs(StringInfo out, Relation rel)
 	pq_sendint16(out, nliveatts);
 
 	/* fetch bitmap of REPLICATION IDENTITY attributes */
-	replidentfull = (rel->rd_rel->relreplident == REPLICA_IDENTITY_FULL);
+	replidentfull = logicalrep_identity_is_full(rel);
 	if (!replidentfull)
 		idattrs = RelationGetIdentityKeyBitmap(rel);
 
