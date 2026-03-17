@@ -20,6 +20,7 @@
 #include <fcntl.h>
 
 #include "access/amapi.h"
+#include "access/genam.h"
 #include "access/htup_details.h"
 #include "access/relation.h"
 #include "access/sysattr.h"
@@ -30,6 +31,7 @@
 #include "catalog/pg_collation.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_depend.h"
+#include "catalog/pg_rewrite.h"
 #include "catalog/pg_language.h"
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
@@ -1567,6 +1569,116 @@ char *
 pg_get_statisticsobjdef_string(Oid statextid)
 {
 	return pg_get_statisticsobj_worker(statextid, false, false);
+}
+
+/*
+ * pg_get_view_createcommand
+ *		Get the full CREATE OR REPLACE VIEW command for a view, suitable for
+ *		use in rebuilding the view after an ALTER TABLE ... ALTER COLUMN TYPE
+ *		operation.  Returns a palloc'd string.
+ *
+ * This function reads pg_rewrite directly (without SPI) to obtain the view's
+ * stored query, then deparses it.  The returned string includes the view's
+ * schema-qualified name and any view options (security_barrier, check_option).
+ */
+char *
+pg_get_view_createcommand(Oid viewoid)
+{
+	StringInfoData buf;
+	Relation	viewrel;
+	HeapTuple	ruletup;
+	Form_pg_rewrite ruleform;
+	Datum		dat;
+	bool		isnull;
+	char	   *ev_action_str;
+	List	   *actions;
+	Query	   *query;
+	char	   *nsp;
+	Relation	rewriteRel;
+	TupleDesc	rewriteTupdesc;
+	ScanKeyData key[2];
+	SysScanDesc scan;
+
+	initStringInfo(&buf);
+
+	/* Open the view relation to get its name, schema, and options */
+	viewrel = table_open(viewoid, AccessShareLock);
+
+	Assert(viewrel->rd_rel->relkind == RELKIND_VIEW);
+
+	nsp = get_namespace_name(RelationGetNamespace(viewrel));
+
+	/* Build the CREATE OR REPLACE VIEW prefix */
+	appendStringInfoString(&buf, "CREATE OR REPLACE VIEW ");
+	appendStringInfo(&buf, "%s.%s",
+					 quote_identifier(nsp),
+					 quote_identifier(RelationGetRelationName(viewrel)));
+
+	/* Add security_barrier option if applicable */
+	if (RelationIsSecurityView(viewrel))
+		appendStringInfoString(&buf, " WITH (security_barrier='true')");
+
+	appendStringInfoString(&buf, " AS ");
+
+	/*
+	 * Look up the view's SELECT rule in pg_rewrite using the
+	 * (ev_class, rulename) index.
+	 */
+	rewriteRel = table_open(RewriteRelationId, AccessShareLock);
+	rewriteTupdesc = RelationGetDescr(rewriteRel);
+
+	ScanKeyInit(&key[0],
+				Anum_pg_rewrite_ev_class,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(viewoid));
+	ScanKeyInit(&key[1],
+				Anum_pg_rewrite_rulename,
+				BTEqualStrategyNumber, F_NAMEEQ,
+				PointerGetDatum(ViewSelectRuleName));
+
+	scan = systable_beginscan(rewriteRel, RewriteRelRulenameIndexId, true,
+							  NULL, 2, key);
+
+	ruletup = systable_getnext(scan);
+	if (!HeapTupleIsValid(ruletup))
+		elog(ERROR, "could not find SELECT rule for view %u", viewoid);
+
+	ruleform = (Form_pg_rewrite) GETSTRUCT(ruletup);
+
+	if (ruleform->ev_type != '1' || !ruleform->is_instead)
+		elog(ERROR, "unexpected rule type for view %u", viewoid);
+
+	/* Get and deparse the ev_action (stored query tree) */
+	dat = heap_getattr(ruletup, Anum_pg_rewrite_ev_action, rewriteTupdesc, &isnull);
+	Assert(!isnull);
+	ev_action_str = TextDatumGetCString(dat);
+	actions = (List *) stringToNode(ev_action_str);
+	pfree(ev_action_str);
+
+	systable_endscan(scan);
+	table_close(rewriteRel, AccessShareLock);
+
+	if (list_length(actions) != 1)
+		elog(ERROR, "unexpected number of actions for view %u", viewoid);
+
+	query = (Query *) linitial(actions);
+
+	/*
+	 * Deparse the query into the buffer.  We use the view's tuple descriptor
+	 * as resultDesc so that output column names match the view definition.
+	 */
+	get_query_def(query, &buf, NIL, RelationGetDescr(viewrel),
+				  true, PRETTYFLAG_INDENT, WRAP_COLUMN_DEFAULT, 0);
+
+	/* Append WITH CHECK OPTION if the view was defined with it */
+	if (RelationHasLocalCheckOption(viewrel))
+		appendStringInfoString(&buf, " WITH LOCAL CHECK OPTION");
+	else if (RelationHasCascadedCheckOption(viewrel))
+		appendStringInfoString(&buf, " WITH CASCADED CHECK OPTION");
+
+	table_close(viewrel, AccessShareLock);
+
+	return buf.data;
 }
 
 /*

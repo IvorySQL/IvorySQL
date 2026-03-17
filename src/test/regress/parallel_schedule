@@ -122,6 +122,7 @@ test: json jsonb json_encoding jsonpath jsonpath_encoding jsonb_jsonpath
 # so keep this parallel group to at most 19 tests
 # ----------
 test: plancache limit plpgsql copy2 temp domain rangefuncs prepare conversion truncate alter_table sequence polymorphism rowtypes returning largeobject with xml
+test: alter_table_view_rebuild
 
 # ----------
 # Another group of parallel tests
