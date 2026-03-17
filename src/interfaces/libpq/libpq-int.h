@@ -358,7 +358,8 @@ typedef struct pg_conn_host
 	pg_conn_host_type type;		/* type of host address */
 	char	   *host;			/* host name or socket path */
 	char	   *hostaddr;		/* host numeric IP address */
-	char	   *port;			/* port number (always provided) */
+	char	   *port;			/* port number (if NULL or empty, use
+								 * DEF_PGPORT[_STR]) */
 	char	   *password;		/* password for this host, read from the
 								 * password file; NULL if not sought or not
 								 * found in password file. */
@@ -392,6 +393,8 @@ struct pg_conn
 	char	   *dbName;			/* database name */
 	char	   *replication;	/* connect as the replication standby? */
 	char	   *pgservice;		/* Postgres service, if any */
+	char	   *pgservicefile;	/* path to a service file containing
+								 * service(s) */
 	char	   *pguser;			/* Postgres username and password, if any */
 	char	   *pgpass;
 	char	   *pgpassfile;		/* path to a file containing password(s) */

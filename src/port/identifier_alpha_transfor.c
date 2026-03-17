@@ -34,10 +34,13 @@
  */
 
 
+#ifndef FRONTEND
 #include "postgres.h"
-
-#include "c.h"
-#include "common/fe_memutils.h"
+#define ALLOC(size) palloc(size)
+#else
+#include "postgres_fe.h"
+#define ALLOC(size) pg_malloc(size)
+#endif
 
 /*
  * transform upper to lower
@@ -51,7 +54,7 @@ down_character(const char *src, int len)
 	Assert(src != NULL);
 	Assert(len >= 0);
 
-	res = (char*)palloc(len + 1);
+	res = ALLOC(len + 1);
 	memcpy(res, src, len);
 	res[len] = '\0';
 	s = res;
@@ -77,7 +80,7 @@ upper_character(const char *src, int len)
 	Assert(src != NULL);
 	Assert(len >= 0);
 
-	res = (char*)palloc(len + 1);
+	res = ALLOC(len + 1);
 	memcpy(res, src, len);
 	res[len] = '\0';
 	s = res;

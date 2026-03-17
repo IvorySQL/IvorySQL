@@ -21,6 +21,13 @@
 #define PG_REPLSLOT_DIR     "pg_replslot"
 
 /*
+ * The reserved name for a replication slot used to retain dead tuples for
+ * conflict detection in logical replication. See
+ * maybe_advance_nonremovable_xid() for detail.
+ */
+#define CONFLICT_DETECTION_SLOT "pg_conflict_detection"
+
+/*
  * Behaviour of replication slots, upon release or crash.
  *
  * Slots marked as PERSISTENT are crash-safe and will not be dropped when
@@ -220,6 +227,25 @@ typedef struct ReplicationSlot
 	 * Latest restart_lsn that has been flushed to disk. For persistent slots
 	 * the flushed LSN should be taken into account when calculating the
 	 * oldest LSN for WAL segments removal.
+	 *
+	 * Do not assume that restart_lsn will always move forward, i.e., that the
+	 * previously flushed restart_lsn is always behind data.restart_lsn. In
+	 * streaming replication using a physical slot, the restart_lsn is updated
+	 * based on the flushed WAL position reported by the walreceiver.
+	 *
+	 * This replication mode allows duplicate WAL records to be received and
+	 * overwritten. If the walreceiver receives older WAL records and then
+	 * reports them as flushed to the walsender, the restart_lsn may appear to
+	 * move backward.
+	 *
+	 * This typically occurs at the beginning of replication. One reason is
+	 * that streaming replication starts at the beginning of a segment, so, if
+	 * restart_lsn is in the middle of a segment, it will be updated to an
+	 * earlier LSN, see RequestXLogStreaming. Another reason is that the
+	 * walreceiver chooses its startpoint based on the replayed LSN, so, if
+	 * some records have been received but not yet applied, they will be
+	 * received again and leads to updating the restart_lsn to an earlier
+	 * position.
 	 */
 	XLogRecPtr	last_saved_restart_lsn;
 
@@ -266,7 +292,7 @@ extern PGDLLIMPORT ReplicationSlot *MyReplicationSlot;
 /* GUCs */
 extern PGDLLIMPORT int max_replication_slots;
 extern PGDLLIMPORT char *synchronized_standby_slots;
-extern PGDLLIMPORT int idle_replication_slot_timeout_mins;
+extern PGDLLIMPORT int idle_replication_slot_timeout_secs;
 
 /* shmem initialization functions */
 extern Size ReplicationSlotsShmemSize(void);
@@ -292,7 +318,9 @@ extern void ReplicationSlotMarkDirty(void);
 
 /* misc stuff */
 extern void ReplicationSlotInitialize(void);
-extern bool ReplicationSlotValidateName(const char *name, int elevel);
+extern bool ReplicationSlotValidateName(const char *name,
+										bool allow_reserved_name,
+										int elevel);
 extern void ReplicationSlotReserveWal(void);
 extern void ReplicationSlotsComputeRequiredXmin(bool already_locked);
 extern void ReplicationSlotsComputeRequiredLSN(void);

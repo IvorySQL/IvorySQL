@@ -401,8 +401,6 @@ static void mXactCachePut(MultiXactId multi, int nmembers,
 static char *mxstatus_to_string(MultiXactStatus status);
 
 /* management of SLRU infrastructure */
-static int	ZeroMultiXactOffsetPage(int64 pageno, bool writeXlog);
-static int	ZeroMultiXactMemberPage(int64 pageno, bool writeXlog);
 static bool MultiXactOffsetPagePrecedes(int64 page1, int64 page2);
 static bool MultiXactMemberPagePrecedes(int64 page1, int64 page2);
 static bool MultiXactOffsetPrecedes(MultiXactOffset offset1,
@@ -413,7 +411,6 @@ static bool MultiXactOffsetWouldWrap(MultiXactOffset boundary,
 									 MultiXactOffset start, uint32 distance);
 static bool SetOffsetVacuumLimit(bool is_startup);
 static bool find_multixact_start(MultiXactId multi, MultiXactOffset *result);
-static void WriteMZeroPageXlogRec(int64 pageno, uint8 info);
 static void WriteMTruncateXlogRec(Oid oldestMultiDB,
 								  MultiXactId startTruncOff,
 								  MultiXactId endTruncOff,
@@ -1847,7 +1844,7 @@ AtPrepare_MultiXact(void)
  *		Clean up after successful PREPARE TRANSACTION
  */
 void
-PostPrepare_MultiXact(TransactionId xid)
+PostPrepare_MultiXact(FullTransactionId fxid)
 {
 	MultiXactId myOldestMember;
 
@@ -1858,7 +1855,7 @@ PostPrepare_MultiXact(TransactionId xid)
 	myOldestMember = OldestMemberMXactId[MyProcNumber];
 	if (MultiXactIdIsValid(myOldestMember))
 	{
-		ProcNumber	dummyProcNumber = TwoPhaseGetDummyProcNumber(xid, false);
+		ProcNumber	dummyProcNumber = TwoPhaseGetDummyProcNumber(fxid, false);
 
 		/*
 		 * Even though storing MultiXactId is atomic, acquire lock to make
@@ -1896,10 +1893,10 @@ PostPrepare_MultiXact(TransactionId xid)
  *		Recover the state of a prepared transaction at startup
  */
 void
-multixact_twophase_recover(TransactionId xid, uint16 info,
+multixact_twophase_recover(FullTransactionId fxid, uint16 info,
 						   void *recdata, uint32 len)
 {
-	ProcNumber	dummyProcNumber = TwoPhaseGetDummyProcNumber(xid, false);
+	ProcNumber	dummyProcNumber = TwoPhaseGetDummyProcNumber(fxid, false);
 	MultiXactId oldestMember;
 
 	/*
@@ -1917,10 +1914,10 @@ multixact_twophase_recover(TransactionId xid, uint16 info,
  *		Similar to AtEOXact_MultiXact but for COMMIT PREPARED
  */
 void
-multixact_twophase_postcommit(TransactionId xid, uint16 info,
+multixact_twophase_postcommit(FullTransactionId fxid, uint16 info,
 							  void *recdata, uint32 len)
 {
-	ProcNumber	dummyProcNumber = TwoPhaseGetDummyProcNumber(xid, true);
+	ProcNumber	dummyProcNumber = TwoPhaseGetDummyProcNumber(fxid, true);
 
 	Assert(len == sizeof(MultiXactId));
 
@@ -1932,10 +1929,10 @@ multixact_twophase_postcommit(TransactionId xid, uint16 info,
  *		This is actually just the same as the COMMIT case.
  */
 void
-multixact_twophase_postabort(TransactionId xid, uint16 info,
+multixact_twophase_postabort(FullTransactionId fxid, uint16 info,
 							 void *recdata, uint32 len)
 {
-	multixact_twophase_postcommit(xid, info, recdata, len);
+	multixact_twophase_postcommit(fxid, info, recdata, len);
 }
 
 /*
@@ -2033,70 +2030,9 @@ check_multixact_member_buffers(int *newval, void **extra, GucSource source)
 void
 BootStrapMultiXact(void)
 {
-	int			slotno;
-	LWLock	   *lock;
-
-	lock = SimpleLruGetBankLock(MultiXactOffsetCtl, 0);
-	LWLockAcquire(lock, LW_EXCLUSIVE);
-
-	/* Create and zero the first page of the offsets log */
-	slotno = ZeroMultiXactOffsetPage(0, false);
-
-	/* Make sure it's written out */
-	SimpleLruWritePage(MultiXactOffsetCtl, slotno);
-	Assert(!MultiXactOffsetCtl->shared->page_dirty[slotno]);
-
-	LWLockRelease(lock);
-
-	lock = SimpleLruGetBankLock(MultiXactMemberCtl, 0);
-	LWLockAcquire(lock, LW_EXCLUSIVE);
-
-	/* Create and zero the first page of the members log */
-	slotno = ZeroMultiXactMemberPage(0, false);
-
-	/* Make sure it's written out */
-	SimpleLruWritePage(MultiXactMemberCtl, slotno);
-	Assert(!MultiXactMemberCtl->shared->page_dirty[slotno]);
-
-	LWLockRelease(lock);
-}
-
-/*
- * Initialize (or reinitialize) a page of MultiXactOffset to zeroes.
- * If writeXlog is true, also emit an XLOG record saying we did this.
- *
- * The page is not actually written, just set up in shared memory.
- * The slot number of the new page is returned.
- *
- * Control lock must be held at entry, and will be held at exit.
- */
-static int
-ZeroMultiXactOffsetPage(int64 pageno, bool writeXlog)
-{
-	int			slotno;
-
-	slotno = SimpleLruZeroPage(MultiXactOffsetCtl, pageno);
-
-	if (writeXlog)
-		WriteMZeroPageXlogRec(pageno, XLOG_MULTIXACT_ZERO_OFF_PAGE);
-
-	return slotno;
-}
-
-/*
- * Ditto, for MultiXactMember
- */
-static int
-ZeroMultiXactMemberPage(int64 pageno, bool writeXlog)
-{
-	int			slotno;
-
-	slotno = SimpleLruZeroPage(MultiXactMemberCtl, pageno);
-
-	if (writeXlog)
-		WriteMZeroPageXlogRec(pageno, XLOG_MULTIXACT_ZERO_MEM_PAGE);
-
-	return slotno;
+	/* Zero the initial pages and flush them to disk */
+	SimpleLruZeroAndWritePage(MultiXactOffsetCtl, 0);
+	SimpleLruZeroAndWritePage(MultiXactMemberCtl, 0);
 }
 
 /*
@@ -2134,7 +2070,7 @@ MaybeExtendOffsetSlru(void)
 		 * with creating a new segment file even if the page we're writing is
 		 * not the first in it, so this is enough.
 		 */
-		slotno = ZeroMultiXactOffsetPage(pageno, false);
+		slotno = SimpleLruZeroPage(MultiXactOffsetCtl, pageno);
 		SimpleLruWritePage(MultiXactOffsetCtl, slotno);
 	}
 
@@ -2568,8 +2504,10 @@ ExtendMultiXactOffset(MultiXactId multi)
 
 	LWLockAcquire(lock, LW_EXCLUSIVE);
 
-	/* Zero the page and make an XLOG entry about it */
-	ZeroMultiXactOffsetPage(pageno, true);
+	/* Zero the page and make a WAL entry about it */
+	SimpleLruZeroPage(MultiXactOffsetCtl, pageno);
+	XLogSimpleInsertInt64(RM_MULTIXACT_ID, XLOG_MULTIXACT_ZERO_OFF_PAGE,
+						  pageno);
 
 	LWLockRelease(lock);
 }
@@ -2611,8 +2549,10 @@ ExtendMultiXactMember(MultiXactOffset offset, int nmembers)
 
 			LWLockAcquire(lock, LW_EXCLUSIVE);
 
-			/* Zero the page and make an XLOG entry about it */
-			ZeroMultiXactMemberPage(pageno, true);
+			/* Zero the page and make a WAL entry about it */
+			SimpleLruZeroPage(MultiXactMemberCtl, pageno);
+			XLogSimpleInsertInt64(RM_MULTIXACT_ID,
+								  XLOG_MULTIXACT_ZERO_MEM_PAGE, pageno);
 
 			LWLockRelease(lock);
 		}
@@ -3348,18 +3288,6 @@ MultiXactOffsetPrecedes(MultiXactOffset offset1, MultiXactOffset offset2)
 }
 
 /*
- * Write an xlog record reflecting the zeroing of either a MEMBERs or
- * OFFSETs page (info shows which)
- */
-static void
-WriteMZeroPageXlogRec(int64 pageno, uint8 info)
-{
-	XLogBeginInsert();
-	XLogRegisterData(&pageno, sizeof(pageno));
-	(void) XLogInsert(RM_MULTIXACT_ID, info);
-}
-
-/*
  * Write a TRUNCATE xlog record
  *
  * We must flush the xlog record to disk before returning --- see notes in
@@ -3401,36 +3329,16 @@ multixact_redo(XLogReaderState *record)
 	if (info == XLOG_MULTIXACT_ZERO_OFF_PAGE)
 	{
 		int64		pageno;
-		int			slotno;
-		LWLock	   *lock;
 
 		memcpy(&pageno, XLogRecGetData(record), sizeof(pageno));
-
-		lock = SimpleLruGetBankLock(MultiXactOffsetCtl, pageno);
-		LWLockAcquire(lock, LW_EXCLUSIVE);
-
-		slotno = ZeroMultiXactOffsetPage(pageno, false);
-		SimpleLruWritePage(MultiXactOffsetCtl, slotno);
-		Assert(!MultiXactOffsetCtl->shared->page_dirty[slotno]);
-
-		LWLockRelease(lock);
+		SimpleLruZeroAndWritePage(MultiXactOffsetCtl, pageno);
 	}
 	else if (info == XLOG_MULTIXACT_ZERO_MEM_PAGE)
 	{
 		int64		pageno;
-		int			slotno;
-		LWLock	   *lock;
 
 		memcpy(&pageno, XLogRecGetData(record), sizeof(pageno));
-
-		lock = SimpleLruGetBankLock(MultiXactMemberCtl, pageno);
-		LWLockAcquire(lock, LW_EXCLUSIVE);
-
-		slotno = ZeroMultiXactMemberPage(pageno, false);
-		SimpleLruWritePage(MultiXactMemberCtl, slotno);
-		Assert(!MultiXactMemberCtl->shared->page_dirty[slotno]);
-
-		LWLockRelease(lock);
+		SimpleLruZeroAndWritePage(MultiXactMemberCtl, pageno);
 	}
 	else if (info == XLOG_MULTIXACT_CREATE_ID)
 	{

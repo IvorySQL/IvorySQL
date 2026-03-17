@@ -1418,7 +1418,8 @@ ExecDeletePrologue(IvyModifyTableContext *context, ResultRelInfo *resultRelInfo,
 
 		return ExecBRDeleteTriggers(context->estate, context->epqstate,
 									resultRelInfo, tupleid, oldtuple,
-									epqreturnslot, result, &context->tmfd);
+									epqreturnslot, result, &context->tmfd,
+									context->mtstate->operation == CMD_MERGE);
 	}
 
 	return true;
@@ -2061,7 +2062,8 @@ ExecUpdatePrologue(IvyModifyTableContext *context, ResultRelInfo *resultRelInfo,
 
 		return ExecBRUpdateTriggers(context->estate, context->epqstate,
 									resultRelInfo, tupleid, oldtuple, slot,
-									result, &context->tmfd);
+									result, &context->tmfd,
+									context->mtstate->operation == CMD_MERGE);
 	}
 
 	return true;

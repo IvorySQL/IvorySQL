@@ -2247,7 +2247,7 @@ append_nonpartial_cost(List *subpaths, int numpaths, int parallel_workers)
  *	  Determines and returns the cost of an Append node.
  */
 void
-cost_append(AppendPath *apath)
+cost_append(AppendPath *apath, PlannerInfo *root)
 {
 	ListCell   *l;
 
@@ -2309,26 +2309,52 @@ cost_append(AppendPath *apath)
 			foreach(l, apath->subpaths)
 			{
 				Path	   *subpath = (Path *) lfirst(l);
-				Path		sort_path;	/* dummy for result of cost_sort */
+				int			presorted_keys;
+				Path		sort_path;	/* dummy for result of
+										 * cost_sort/cost_incremental_sort */
 
-				if (!pathkeys_contained_in(pathkeys, subpath->pathkeys))
+				if (!pathkeys_count_contained_in(pathkeys, subpath->pathkeys,
+												 &presorted_keys))
 				{
 					/*
 					 * We'll need to insert a Sort node, so include costs for
-					 * that.  We can use the parent's LIMIT if any, since we
+					 * that.  We choose to use incremental sort if it is
+					 * enabled and there are presorted keys; otherwise we use
+					 * full sort.
+					 *
+					 * We can use the parent's LIMIT if any, since we
 					 * certainly won't pull more than that many tuples from
 					 * any child.
 					 */
-					cost_sort(&sort_path,
-							  NULL, /* doesn't currently need root */
-							  pathkeys,
-							  subpath->disabled_nodes,
-							  subpath->total_cost,
-							  subpath->rows,
-							  subpath->pathtarget->width,
-							  0.0,
-							  work_mem,
-							  apath->limit_tuples);
+					if (enable_incremental_sort && presorted_keys > 0)
+					{
+						cost_incremental_sort(&sort_path,
+											  root,
+											  pathkeys,
+											  presorted_keys,
+											  subpath->disabled_nodes,
+											  subpath->startup_cost,
+											  subpath->total_cost,
+											  subpath->rows,
+											  subpath->pathtarget->width,
+											  0.0,
+											  work_mem,
+											  apath->limit_tuples);
+					}
+					else
+					{
+						cost_sort(&sort_path,
+								  root,
+								  pathkeys,
+								  subpath->disabled_nodes,
+								  subpath->total_cost,
+								  subpath->rows,
+								  subpath->pathtarget->width,
+								  0.0,
+								  work_mem,
+								  apath->limit_tuples);
+					}
+
 					subpath = &sort_path;
 				}
 
@@ -2546,13 +2572,13 @@ cost_memoize_rescan(PlannerInfo *root, MemoizePath *mpath,
 	Cost		input_startup_cost = mpath->subpath->startup_cost;
 	Cost		input_total_cost = mpath->subpath->total_cost;
 	double		tuples = mpath->subpath->rows;
-	double		calls = mpath->calls;
+	Cardinality est_calls = mpath->est_calls;
 	int			width = mpath->subpath->pathtarget->width;
 
 	double		hash_mem_bytes;
 	double		est_entry_bytes;
-	double		est_cache_entries;
-	double		ndistinct;
+	Cardinality est_cache_entries;
+	Cardinality ndistinct;
 	double		evict_ratio;
 	double		hit_ratio;
 	Cost		startup_cost;
@@ -2578,7 +2604,7 @@ cost_memoize_rescan(PlannerInfo *root, MemoizePath *mpath,
 	est_cache_entries = floor(hash_mem_bytes / est_entry_bytes);
 
 	/* estimate on the distinct number of parameter values */
-	ndistinct = estimate_num_groups(root, mpath->param_exprs, calls, NULL,
+	ndistinct = estimate_num_groups(root, mpath->param_exprs, est_calls, NULL,
 									&estinfo);
 
 	/*
@@ -2590,7 +2616,10 @@ cost_memoize_rescan(PlannerInfo *root, MemoizePath *mpath,
 	 * certainly mean a MemoizePath will never survive add_path().
 	 */
 	if ((estinfo.flags & SELFLAG_USED_DEFAULT) != 0)
-		ndistinct = calls;
+		ndistinct = est_calls;
+
+	/* Remember the ndistinct estimate for EXPLAIN */
+	mpath->est_unique_keys = ndistinct;
 
 	/*
 	 * Since we've already estimated the maximum number of entries we can
@@ -2618,8 +2647,11 @@ cost_memoize_rescan(PlannerInfo *root, MemoizePath *mpath,
 	 * must look at how many scans are estimated in total for this node and
 	 * how many of those scans we expect to get a cache hit.
 	 */
-	hit_ratio = ((calls - ndistinct) / calls) *
+	hit_ratio = ((est_calls - ndistinct) / est_calls) *
 		(est_cache_entries / Max(ndistinct, est_cache_entries));
+
+	/* Remember the hit ratio estimate for EXPLAIN */
+	mpath->est_hit_ratio = hit_ratio;
 
 	Assert(hit_ratio >= 0 && hit_ratio <= 1.0);
 

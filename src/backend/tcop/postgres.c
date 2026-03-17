@@ -993,6 +993,7 @@ pg_plan_queries(List *querytrees, const char *query_string, int cursorOptions,
 			stmt->stmt_location = query->stmt_location;
 			stmt->stmt_len = query->stmt_len;
 			stmt->queryId = query->queryId;
+			stmt->planOrigin = PLAN_STMT_INTERNAL;
 		}
 		else
 		{
