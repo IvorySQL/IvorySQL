@@ -36,6 +36,7 @@
 #include "catalog/pg_collation.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_depend.h"
+#include "catalog/pg_rewrite.h"
 #include "catalog/pg_foreign_table.h"
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_namespace.h"
@@ -79,6 +80,7 @@
 #include "partitioning/partdesc.h"
 #include "pgstat.h"
 #include "rewrite/rewriteDefine.h"
+#include "rewrite/rewriteSupport.h"
 #include "rewrite/rewriteHandler.h"
 #include "rewrite/rewriteManip.h"
 #include "storage/bufmgr.h"
@@ -191,6 +193,8 @@ typedef struct AlteredTableInfo
 	char	   *clusterOnIndex; /* index to use for CLUSTER */
 	List	   *changedStatisticsOids;	/* OIDs of statistics to rebuild */
 	List	   *changedStatisticsDefs;	/* string definitions of same */
+	List	   *changedViewOids;	/* OIDs of views to rebuild */
+	List	   *changedViewDefs;	/* CREATE OR REPLACE VIEW strings for same */
 } AlteredTableInfo;
 
 /* Struct describing one new constraint to check in Phase 3 scan */
@@ -526,6 +530,7 @@ static ObjectAddress ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 static void RememberConstraintForRebuilding(Oid conoid, AlteredTableInfo *tab);
 static void RememberIndexForRebuilding(Oid indoid, AlteredTableInfo *tab);
 static void RememberStatisticsForRebuilding(Oid indoid, AlteredTableInfo *tab);
+static void RememberViewForRebuilding(Oid viewOid, AlteredTableInfo *tab);
 static void ATPostAlterTypeCleanup(List **wqueue, AlteredTableInfo *tab,
 								   LOCKMODE lockmode);
 static void ATPostAlterTypeParse(Oid oldId, Oid oldRelId, Oid refRelId,
@@ -12437,18 +12442,68 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 				break;
 
 			case OCLASS_REWRITE:
-
+			{
 				/*
-				 * View/rule bodies have pretty much the same issues as
-				 * function bodies.  FIXME someday.
+				 * If the dependent object is a view's SELECT rule, we can
+				 * rebuild the view automatically after the type change.
+				 * For user-defined rules on regular tables we still reject
+				 * the operation.
 				 */
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("cannot alter type of a column used by a view or rule"),
-						 errdetail("%s depends on column \"%s\"",
-								   getObjectDescription(&foundObject, false),
-								   colName)));
+				Relation	rewriteRel;
+				ScanKeyData rkey[1];
+				SysScanDesc rscan;
+				HeapTuple	rtup;
+				Oid			viewOid = InvalidOid;
+				bool		is_view_select_rule = false;
+
+				rewriteRel = table_open(RewriteRelationId, AccessShareLock);
+				ScanKeyInit(&rkey[0],
+							Anum_pg_rewrite_oid,
+							BTEqualStrategyNumber, F_OIDEQ,
+							ObjectIdGetDatum(foundObject.objectId));
+				rscan = systable_beginscan(rewriteRel, RewriteOidIndexId,
+										   true, NULL, 1, rkey);
+				rtup = systable_getnext(rscan);
+				if (HeapTupleIsValid(rtup))
+				{
+					Form_pg_rewrite ruleform = (Form_pg_rewrite) GETSTRUCT(rtup);
+
+					viewOid = ruleform->ev_class;
+					/*
+					 * Only rebuild if this is a view's ON SELECT rule:
+					 * ev_type='1', is_instead=true, rulename="_RETURN", and
+					 * the owning relation is a view.
+					 */
+					if (ruleform->ev_type == '1' &&
+						ruleform->is_instead &&
+						strcmp(NameStr(ruleform->rulename),
+							   ViewSelectRuleName) == 0 &&
+						get_rel_relkind(viewOid) == RELKIND_VIEW)
+						is_view_select_rule = true;
+				}
+				systable_endscan(rscan);
+				table_close(rewriteRel, AccessShareLock);
+
+				if (is_view_select_rule)
+				{
+					/*
+					 * Remember this view (and any views that depend on it)
+					 * for rebuilding after the type change.
+					 */
+					RememberViewForRebuilding(viewOid, tab);
+				}
+				else
+				{
+					/* Non-view rules cannot be auto-rebuilt */
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("cannot alter type of a column used by a view or rule"),
+							 errdetail("%s depends on column \"%s\"",
+									   getObjectDescription(&foundObject, false),
+									   colName)));
+				}
 				break;
+			}
 
 			case OCLASS_TRIGGER:
 
@@ -12882,6 +12937,110 @@ RememberStatisticsForRebuilding(Oid stxoid, AlteredTableInfo *tab)
 }
 
 /*
+ * Subroutine for ATExecAlterColumnType: remember that a view needs to be
+ * rebuilt after the column type change.  Also recursively finds any views
+ * that depend on this view and remembers them too (in dependency order so
+ * that recreation will succeed).
+ */
+static void
+RememberViewForRebuilding(Oid viewOid, AlteredTableInfo *tab)
+{
+	char	   *defstring;
+	Relation	depRel;
+	ScanKeyData key[2];
+	SysScanDesc scan;
+	HeapTuple	depTup;
+
+	/*
+	 * De-duplication check: if already remembered, skip.  This also prevents
+	 * infinite recursion for view dependency cycles (which shouldn't exist,
+	 * but be safe).
+	 */
+	if (list_member_oid(tab->changedViewOids, viewOid))
+		return;
+
+	/*
+	 * Capture the view's definition string before any type changes happen.
+	 * pg_get_view_createcommand() reads the current catalog state.
+	 */
+	defstring = pg_get_view_createcommand(viewOid);
+
+	tab->changedViewOids = lappend_oid(tab->changedViewOids, viewOid);
+	tab->changedViewDefs = lappend(tab->changedViewDefs, defstring);
+
+	/*
+	 * Now find any views that depend on this view and remember them too.
+	 * We need to do this recursively so that when we recreate views, we
+	 * can do so in topological order (base views first).
+	 */
+	depRel = table_open(DependRelationId, AccessShareLock);
+
+	ScanKeyInit(&key[0],
+				Anum_pg_depend_refclassid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(RelationRelationId));
+	ScanKeyInit(&key[1],
+				Anum_pg_depend_refobjid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(viewOid));
+
+	scan = systable_beginscan(depRel, DependReferenceIndexId, true,
+							  NULL, 2, key);
+
+	while (HeapTupleIsValid(depTup = systable_getnext(scan)))
+	{
+		Form_pg_depend foundDep = (Form_pg_depend) GETSTRUCT(depTup);
+
+		/*
+		 * We're looking for rewrite rules that depend on this view as a
+		 * whole (not on a specific column).  These correspond to views that
+		 * SELECT from this view.
+		 */
+		if (foundDep->classid == RewriteRelationId &&
+			foundDep->deptype != DEPENDENCY_PIN)
+		{
+			Relation	rewriteRel;
+			ScanKeyData rkey[1];
+			SysScanDesc rscan;
+			HeapTuple	rtup;
+
+			rewriteRel = table_open(RewriteRelationId, AccessShareLock);
+			ScanKeyInit(&rkey[0],
+						Anum_pg_rewrite_oid,
+						BTEqualStrategyNumber, F_OIDEQ,
+						ObjectIdGetDatum(foundDep->objid));
+			rscan = systable_beginscan(rewriteRel, RewriteOidIndexId,
+									   true, NULL, 1, rkey);
+			rtup = systable_getnext(rscan);
+			if (HeapTupleIsValid(rtup))
+			{
+				Form_pg_rewrite ruleform = (Form_pg_rewrite) GETSTRUCT(rtup);
+				Oid			depViewOid = ruleform->ev_class;
+
+				/*
+				 * Only process SELECT rules of views (not other rule types
+				 * or rules on regular tables).
+				 */
+				if (ruleform->ev_type == '1' &&
+					ruleform->is_instead &&
+					strcmp(NameStr(ruleform->rulename),
+						   ViewSelectRuleName) == 0 &&
+					get_rel_relkind(depViewOid) == RELKIND_VIEW)
+				{
+					/* Recursively remember this dependent view */
+					RememberViewForRebuilding(depViewOid, tab);
+				}
+			}
+			systable_endscan(rscan);
+			table_close(rewriteRel, AccessShareLock);
+		}
+	}
+
+	systable_endscan(scan);
+	table_close(depRel, AccessShareLock);
+}
+
+/*
  * Cleanup after we've finished all the ALTER TYPE operations for a
  * particular relation.  We have to drop and recreate all the indexes
  * and constraints that depend on the altered columns.  We do the
@@ -13035,16 +13194,61 @@ ATPostAlterTypeCleanup(List **wqueue, AlteredTableInfo *tab, LOCKMODE lockmode)
 	}
 
 	/*
+	 * Add views to the drop list.  We must drop them here and recreate them
+	 * later (via afterStmts), because CREATE OR REPLACE VIEW refuses to
+	 * change a view's output column types.  All dependent views (including
+	 * transitively dependent ones) were already collected in changedViewOids
+	 * by RememberViewForRebuilding, so DROP_RESTRICT is still safe.
+	 */
+	foreach(oid_item, tab->changedViewOids)
+	{
+		Oid			viewOid = lfirst_oid(oid_item);
+
+		ObjectAddressSet(obj, RelationRelationId, viewOid);
+		add_exact_object_address(&obj, objects);
+	}
+
+	/*
 	 * It should be okay to use DROP_RESTRICT here, since nothing else should
-	 * be depending on these objects.
+	 * be depending on these objects.  All transitive view dependencies have
+	 * been collected in changedViewOids, so DROP_RESTRICT will not fail due
+	 * to unrecorded dependents.
 	 */
 	performMultipleDeletions(objects, DROP_RESTRICT, PERFORM_DELETION_INTERNAL);
 
 	free_object_addresses(objects);
 
 	/*
-	 * The objects will get recreated during subsequent passes over the work
-	 * queue.
+	 * Queue up CREATE OR REPLACE VIEW statements to recreate the dropped
+	 * views.  They will be executed (in order) at the end of Phase 3 via
+	 * tab->afterStmts, after all the work-queue entries have run.
+	 *
+	 * The views are in changedViewOids/changedViewDefs in dependency order
+	 * (base views first), so they will be recreated in the correct order.
+	 */
+	foreach(def_item, tab->changedViewDefs)
+	{
+		char	   *viewcmd = (char *) lfirst(def_item);
+		List	   *raw_parsetree_list;
+		ListCell   *lc;
+
+		/*
+		 * Parse the saved CREATE OR REPLACE VIEW command.  If the new column
+		 * type is incompatible with the view's query (e.g., an operator is
+		 * not available), this will fail and roll back the whole ALTER TABLE.
+		 */
+		raw_parsetree_list = raw_parser(viewcmd, RAW_PARSE_DEFAULT);
+
+		foreach(lc, raw_parsetree_list)
+		{
+			tab->afterStmts = lappend(tab->afterStmts,
+									  ((RawStmt *) lfirst(lc))->stmt);
+		}
+	}
+
+	/*
+	 * The constraint/index/statistics objects will get recreated during
+	 * subsequent passes over the work queue.
 	 */
 }
 
