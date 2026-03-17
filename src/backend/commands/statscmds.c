@@ -62,7 +62,7 @@ compare_int16(const void *a, const void *b)
  *		CREATE STATISTICS
  */
 ObjectAddress
-CreateStatistics(CreateStatsStmt *stmt)
+CreateStatistics(CreateStatsStmt *stmt, bool check_rights)
 {
 	int16		attnums[STATS_MAX_DIMENSIONS];
 	int			nattnums = 0;
@@ -139,7 +139,13 @@ CreateStatistics(CreateStatsStmt *stmt)
 					 errmsg("relation \"%s\" is not a table, foreign table, or materialized view",
 							RelationGetRelationName(rel))));
 
-		/* You must own the relation to create stats on it */
+		/*
+		 * You must own the relation to create stats on it.
+		 *
+		 * NB: Concurrent changes could cause this function's lookup to find a
+		 * different relation than a previous lookup by the caller, so we must
+		 * perform this check even when check_rights == false.
+		 */
 		if (!pg_class_ownercheck(RelationGetRelid(rel), stxowner))
 			aclcheck_error(ACLCHECK_NOT_OWNER, get_relkind_objtype(rel->rd_rel->relkind),
 						   RelationGetRelationName(rel));
@@ -174,6 +180,20 @@ CreateStatistics(CreateStatsStmt *stmt)
 											  namespaceId);
 	}
 	namestrcpy(&stxname, namestr);
+
+	/*
+	 * Check we have creation rights in target namespace.  Skip check if
+	 * caller doesn't want it.
+	 */
+	if (check_rights)
+	{
+		AclResult	aclresult;
+
+		aclresult = pg_namespace_aclcheck(namespaceId, GetUserId(), ACL_CREATE);
+		if (aclresult != ACLCHECK_OK)
+			aclcheck_error(aclresult, OBJECT_SCHEMA,
+						   get_namespace_name(namespaceId));
+	}
 
 	/*
 	 * Deal with the possibility that the statistics object already exists.

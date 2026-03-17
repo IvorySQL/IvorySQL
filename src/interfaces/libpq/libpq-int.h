@@ -335,7 +335,8 @@ typedef struct pg_conn_host
 	pg_conn_host_type type;		/* type of host address */
 	char	   *host;			/* host name or socket path */
 	char	   *hostaddr;		/* host numeric IP address */
-	char	   *port;			/* port number (always provided) */
+	char	   *port;			/* port number (if NULL or empty, use
+								 * DEF_PGPORT[_STR]) */
 	char	   *password;		/* password for this host, read from the
 								 * password file; NULL if not sought or not
 								 * found in password file. */
@@ -478,7 +479,16 @@ struct pg_conn
 	PGContextVisibility show_context;	/* whether to show CONTEXT field */
 	PGlobjfuncs *lobjfuncs;		/* private state for large-object access fns */
 
-	/* Buffer for data received from backend and not yet processed */
+	/*
+	 * Buffer for data received from backend and not yet processed.
+	 *
+	 * NB: We rely on a maximum inBufSize/outBufSize of INT_MAX (and therefore
+	 * an INT_MAX upper bound on the size of any and all packet contents) to
+	 * avoid overflow; for example in reportErrorPosition(). Changing the type
+	 * would require not only an adjustment to the overflow protection in
+	 * pqCheck{In,Out}BufferSpace(), but also a careful audit of all libpq
+	 * code that uses ints during size calculations.
+	 */
 	char	   *inBuffer;		/* currently allocated buffer */
 	int			inBufSize;		/* allocated size of buffer */
 	int			inStart;		/* offset to first unconsumed data in buffer */

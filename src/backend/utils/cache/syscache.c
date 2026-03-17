@@ -39,6 +39,7 @@
 #include "catalog/pg_description.h"
 #include "catalog/pg_enum.h"
 #include "catalog/pg_event_trigger.h"
+#include "catalog/pg_extension.h"
 #include "catalog/pg_foreign_data_wrapper.h"
 #include "catalog/pg_foreign_server.h"
 #include "catalog/pg_foreign_table.h"
@@ -994,6 +995,18 @@ static const struct cachedesc cacheinfo[] = {
 			0
 		},
 		2
+	},
+	/* intentionally out of alphabetical order, to avoid an ABI break: */
+	{ExtensionRelationId,		/* EXTENSIONOID */
+		ExtensionOidIndexId,
+		1,
+		{
+			Anum_pg_extension_oid,
+			0,
+			0,
+			0
+		},
+		2
 	}
 };
 
@@ -1265,8 +1278,7 @@ SearchSysCacheLocked1(int cacheId,
 
 		/*
 		 * If an inplace update just finished, ensure we process the syscache
-		 * inval.  XXX this is insufficient: the inplace updater may not yet
-		 * have reached AtEOXact_Inval().  See test at inplace-inval.spec.
+		 * inval.
 		 *
 		 * If a heap_update() call just released its LOCKTAG_TUPLE, we'll
 		 * probably find the old tuple and reach "tuple concurrently updated".

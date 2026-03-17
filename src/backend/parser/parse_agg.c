@@ -35,6 +35,8 @@ typedef struct
 	ParseState *pstate;
 	int			min_varlevel;
 	int			min_agglevel;
+	int			min_ctelevel;
+	RangeTblEntry *min_cte;
 	int			sublevels_up;
 } check_agg_arguments_context;
 
@@ -54,7 +56,8 @@ typedef struct
 static int	check_agg_arguments(ParseState *pstate,
 								List *directargs,
 								List *args,
-								Expr *filter);
+								Expr *filter,
+								int agglocation);
 static bool check_agg_arguments_walker(Node *node,
 									   check_agg_arguments_context *context);
 static void check_ungrouped_columns(Node *node, ParseState *pstate, Query *qry,
@@ -332,7 +335,8 @@ check_agglevels_and_constraints(ParseState *pstate, Node *expr)
 	min_varlevel = check_agg_arguments(pstate,
 									   directargs,
 									   args,
-									   filter);
+									   filter,
+									   location);
 
 	*p_levelsup = min_varlevel;
 
@@ -633,7 +637,8 @@ static int
 check_agg_arguments(ParseState *pstate,
 					List *directargs,
 					List *args,
-					Expr *filter)
+					Expr *filter,
+					int agglocation)
 {
 	int			agglevel;
 	check_agg_arguments_context context;
@@ -641,6 +646,8 @@ check_agg_arguments(ParseState *pstate,
 	context.pstate = pstate;
 	context.min_varlevel = -1;	/* signifies nothing found yet */
 	context.min_agglevel = -1;
+	context.min_ctelevel = -1;
+	context.min_cte = NULL;
 	context.sublevels_up = 0;
 
 	(void) check_agg_arguments_walker((Node *) args, &context);
@@ -679,6 +686,20 @@ check_agg_arguments(ParseState *pstate,
 	}
 
 	/*
+	 * If there's a non-local CTE that's below the aggregate's semantic level,
+	 * complain.  It's not quite clear what we should do to fix up such a case
+	 * (treating the CTE reference like a Var seems wrong), and it's also
+	 * unclear whether there is a real-world use for such cases.
+	 */
+	if (context.min_ctelevel >= 0 && context.min_ctelevel < agglevel)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("outer-level aggregate cannot use a nested CTE"),
+				 errdetail("CTE \"%s\" is below the aggregate's semantic level.",
+						   context.min_cte->eref->aliasname),
+				 parser_errposition(pstate, agglocation)));
+
+	/*
 	 * Now check for vars/aggs in the direct arguments, and throw error if
 	 * needed.  Note that we allow a Var of the agg's semantic level, but not
 	 * an Agg of that level.  In principle such Aggs could probably be
@@ -691,6 +712,7 @@ check_agg_arguments(ParseState *pstate,
 	{
 		context.min_varlevel = -1;
 		context.min_agglevel = -1;
+		context.min_ctelevel = -1;
 		(void) check_agg_arguments_walker((Node *) directargs, &context);
 		if (context.min_varlevel >= 0 && context.min_varlevel < agglevel)
 			ereport(ERROR,
@@ -706,6 +728,13 @@ check_agg_arguments(ParseState *pstate,
 					 parser_errposition(pstate,
 										locate_agg_of_level((Node *) directargs,
 															context.min_agglevel))));
+		if (context.min_ctelevel >= 0 && context.min_ctelevel < agglevel)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("outer-level aggregate cannot use a nested CTE"),
+					 errdetail("CTE \"%s\" is below the aggregate's semantic level.",
+							   context.min_cte->eref->aliasname),
+					 parser_errposition(pstate, agglocation)));
 	}
 	return agglevel;
 }
@@ -783,6 +812,30 @@ check_agg_arguments_walker(Node *node,
 					 parser_errposition(context->pstate,
 										((WindowFunc *) node)->location)));
 	}
+
+	if (IsA(node, RangeTblEntry))
+	{
+		RangeTblEntry *rte = (RangeTblEntry *) node;
+
+		if (rte->rtekind == RTE_CTE)
+		{
+			int			ctelevelsup = rte->ctelevelsup;
+
+			/* convert levelsup to frame of reference of original query */
+			ctelevelsup -= context->sublevels_up;
+			/* ignore local CTEs of subqueries */
+			if (ctelevelsup >= 0)
+			{
+				if (context->min_ctelevel < 0 ||
+					context->min_ctelevel > ctelevelsup)
+				{
+					context->min_ctelevel = ctelevelsup;
+					context->min_cte = rte;
+				}
+			}
+		}
+		return false;			/* allow range_table_walker to continue */
+	}
 	if (IsA(node, Query))
 	{
 		/* Recurse into subselects */
@@ -792,7 +845,7 @@ check_agg_arguments_walker(Node *node,
 		result = query_tree_walker((Query *) node,
 								   check_agg_arguments_walker,
 								   (void *) context,
-								   0);
+								   QTW_EXAMINE_RTES_BEFORE);
 		context->sublevels_up--;
 		return result;
 	}

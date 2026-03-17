@@ -47,11 +47,18 @@
  * don't want the other side to send arbitrarily huge packets as we
  * would have to allocate memory for them to then pass them to GSSAPI.
  *
- * Therefore, these two #define's are effectively part of the protocol
+ * Therefore, this #define is effectively part of the protocol
  * spec and can't ever be changed.
  */
-#define PQ_GSS_SEND_BUFFER_SIZE 16384
-#define PQ_GSS_RECV_BUFFER_SIZE 16384
+#define PQ_GSS_MAX_PACKET_SIZE 16384	/* includes uint32 header word */
+
+/*
+ * However, during the authentication exchange we must cope with whatever
+ * message size the GSSAPI library wants to send (because our protocol
+ * doesn't support splitting those messages).  Depending on configuration
+ * those messages might be as much as 64kB.
+ */
+#define PQ_GSS_AUTH_BUFFER_SIZE 65536	/* includes uint32 header word */
 
 /*
  * We need these state variables per-connection.  To allow the functions
@@ -105,16 +112,16 @@ pg_GSS_write(PGconn *conn, const void *ptr, size_t len)
 	 * again, so if it offers a len less than that, something is wrong.
 	 *
 	 * Note: it may seem attractive to report partial write completion once
-	 * we've successfully sent any encrypted packets.  However, that can cause
-	 * problems for callers; notably, pqPutMsgEnd's heuristic to send only
-	 * full 8K blocks interacts badly with such a hack.  We won't save much,
+	 * we've successfully sent any encrypted packets.  However, doing that
+	 * expands the state space of this processing and has been responsible for
+	 * bugs in the past (cf. commit d053a879b).  We won't save much,
 	 * typically, by letting callers discard data early, so don't risk it.
 	 */
 	if (len < PqGSSSendConsumed)
 	{
 		appendPQExpBufferStr(&conn->errorMessage,
 							 "GSSAPI caller failed to retransmit all data needing to be retried\n");
-		errno = EINVAL;
+		SOCK_ERRNO_SET(EINVAL);
 		return -1;
 	}
 
@@ -192,7 +199,7 @@ pg_GSS_write(PGconn *conn, const void *ptr, size_t len)
 		if (major != GSS_S_COMPLETE)
 		{
 			pg_GSS_error(libpq_gettext("GSSAPI wrap error"), conn, major, minor);
-			errno = EIO;		/* for lack of a better idea */
+			SOCK_ERRNO_SET(EIO);	/* for lack of a better idea */
 			goto cleanup;
 		}
 
@@ -200,17 +207,17 @@ pg_GSS_write(PGconn *conn, const void *ptr, size_t len)
 		{
 			appendPQExpBufferStr(&conn->errorMessage,
 								 libpq_gettext("outgoing GSSAPI message would not use confidentiality\n"));
-			errno = EIO;		/* for lack of a better idea */
+			SOCK_ERRNO_SET(EIO);	/* for lack of a better idea */
 			goto cleanup;
 		}
 
-		if (output.length > PQ_GSS_SEND_BUFFER_SIZE - sizeof(uint32))
+		if (output.length > PQ_GSS_MAX_PACKET_SIZE - sizeof(uint32))
 		{
 			appendPQExpBuffer(&conn->errorMessage,
 							  libpq_gettext("client tried to send oversize GSSAPI packet (%zu > %zu)\n"),
 							  (size_t) output.length,
-							  PQ_GSS_SEND_BUFFER_SIZE - sizeof(uint32));
-			errno = EIO;		/* for lack of a better idea */
+							  PQ_GSS_MAX_PACKET_SIZE - sizeof(uint32));
+			SOCK_ERRNO_SET(EIO);	/* for lack of a better idea */
 			goto cleanup;
 		}
 
@@ -336,7 +343,7 @@ pg_GSS_read(PGconn *conn, void *ptr, size_t len)
 			/* If we still haven't got the length, return to the caller */
 			if (PqGSSRecvLength < sizeof(uint32))
 			{
-				errno = EWOULDBLOCK;
+				SOCK_ERRNO_SET(EWOULDBLOCK);
 				return -1;
 			}
 		}
@@ -344,13 +351,13 @@ pg_GSS_read(PGconn *conn, void *ptr, size_t len)
 		/* Decode the packet length and check for overlength packet */
 		input.length = pg_ntoh32(*(uint32 *) PqGSSRecvBuffer);
 
-		if (input.length > PQ_GSS_RECV_BUFFER_SIZE - sizeof(uint32))
+		if (input.length > PQ_GSS_MAX_PACKET_SIZE - sizeof(uint32))
 		{
 			appendPQExpBuffer(&conn->errorMessage,
 							  libpq_gettext("oversize GSSAPI packet sent by the server (%zu > %zu)\n"),
 							  (size_t) input.length,
-							  PQ_GSS_RECV_BUFFER_SIZE - sizeof(uint32));
-			errno = EIO;		/* for lack of a better idea */
+							  PQ_GSS_MAX_PACKET_SIZE - sizeof(uint32));
+			SOCK_ERRNO_SET(EIO);	/* for lack of a better idea */
 			return -1;
 		}
 
@@ -369,7 +376,7 @@ pg_GSS_read(PGconn *conn, void *ptr, size_t len)
 		/* If we don't yet have the whole packet, return to the caller */
 		if (PqGSSRecvLength - sizeof(uint32) < input.length)
 		{
-			errno = EWOULDBLOCK;
+			SOCK_ERRNO_SET(EWOULDBLOCK);
 			return -1;
 		}
 
@@ -389,7 +396,7 @@ pg_GSS_read(PGconn *conn, void *ptr, size_t len)
 			pg_GSS_error(libpq_gettext("GSSAPI unwrap error"), conn,
 						 major, minor);
 			ret = -1;
-			errno = EIO;		/* for lack of a better idea */
+			SOCK_ERRNO_SET(EIO);	/* for lack of a better idea */
 			goto cleanup;
 		}
 
@@ -398,7 +405,7 @@ pg_GSS_read(PGconn *conn, void *ptr, size_t len)
 			appendPQExpBufferStr(&conn->errorMessage,
 								 libpq_gettext("incoming GSSAPI message did not use confidentiality\n"));
 			ret = -1;
-			errno = EIO;		/* for lack of a better idea */
+			SOCK_ERRNO_SET(EIO);	/* for lack of a better idea */
 			goto cleanup;
 		}
 
@@ -434,7 +441,8 @@ gss_read(PGconn *conn, void *recv_buffer, size_t length, ssize_t *ret)
 	*ret = pqsecure_raw_read(conn, recv_buffer, length);
 	if (*ret < 0)
 	{
-		if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+		if (SOCK_ERRNO == EAGAIN || SOCK_ERRNO == EWOULDBLOCK ||
+			SOCK_ERRNO == EINTR)
 			return PGRES_POLLING_READING;
 		else
 			return PGRES_POLLING_FAILED;
@@ -454,7 +462,8 @@ gss_read(PGconn *conn, void *recv_buffer, size_t length, ssize_t *ret)
 		*ret = pqsecure_raw_read(conn, recv_buffer, length);
 		if (*ret < 0)
 		{
-			if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+			if (SOCK_ERRNO == EAGAIN || SOCK_ERRNO == EWOULDBLOCK ||
+				SOCK_ERRNO == EINTR)
 				return PGRES_POLLING_READING;
 			else
 				return PGRES_POLLING_FAILED;
@@ -488,12 +497,15 @@ pqsecure_open_gss(PGconn *conn)
 	 * initialize state variables.  By malloc'ing the buffers separately, we
 	 * ensure that they are sufficiently aligned for the length-word accesses
 	 * that we do in some places in this file.
+	 *
+	 * We'll use PQ_GSS_AUTH_BUFFER_SIZE-sized buffers until transport
+	 * negotiation is complete, then switch to PQ_GSS_MAX_PACKET_SIZE.
 	 */
 	if (PqGSSSendBuffer == NULL)
 	{
-		PqGSSSendBuffer = malloc(PQ_GSS_SEND_BUFFER_SIZE);
-		PqGSSRecvBuffer = malloc(PQ_GSS_RECV_BUFFER_SIZE);
-		PqGSSResultBuffer = malloc(PQ_GSS_RECV_BUFFER_SIZE);
+		PqGSSSendBuffer = malloc(PQ_GSS_AUTH_BUFFER_SIZE);
+		PqGSSRecvBuffer = malloc(PQ_GSS_AUTH_BUFFER_SIZE);
+		PqGSSResultBuffer = malloc(PQ_GSS_AUTH_BUFFER_SIZE);
 		if (!PqGSSSendBuffer || !PqGSSRecvBuffer || !PqGSSResultBuffer)
 		{
 			appendPQExpBufferStr(&conn->errorMessage,
@@ -514,7 +526,8 @@ pqsecure_open_gss(PGconn *conn)
 		ret = pqsecure_raw_write(conn, PqGSSSendBuffer + PqGSSSendNext, amount);
 		if (ret < 0)
 		{
-			if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+			if (SOCK_ERRNO == EAGAIN || SOCK_ERRNO == EWOULDBLOCK ||
+				SOCK_ERRNO == EINTR)
 				return PGRES_POLLING_WRITING;
 			else
 				return PGRES_POLLING_FAILED;
@@ -568,13 +581,13 @@ pqsecure_open_gss(PGconn *conn)
 			 * so leave a spot at the end for a NULL byte too) and report that
 			 * back to the caller.
 			 */
-			result = gss_read(conn, PqGSSRecvBuffer + PqGSSRecvLength, PQ_GSS_RECV_BUFFER_SIZE - PqGSSRecvLength - 1, &ret);
+			result = gss_read(conn, PqGSSRecvBuffer + PqGSSRecvLength, PQ_GSS_AUTH_BUFFER_SIZE - PqGSSRecvLength - 1, &ret);
 			if (result != PGRES_POLLING_OK)
 				return result;
 
 			PqGSSRecvLength += ret;
 
-			Assert(PqGSSRecvLength < PQ_GSS_RECV_BUFFER_SIZE);
+			Assert(PqGSSRecvLength < PQ_GSS_AUTH_BUFFER_SIZE);
 			PqGSSRecvBuffer[PqGSSRecvLength] = '\0';
 			appendPQExpBuffer(&conn->errorMessage, "%s\n", PqGSSRecvBuffer + 1);
 
@@ -588,12 +601,12 @@ pqsecure_open_gss(PGconn *conn)
 
 		/* Get the length and check for over-length packet */
 		input.length = pg_ntoh32(*(uint32 *) PqGSSRecvBuffer);
-		if (input.length > PQ_GSS_RECV_BUFFER_SIZE - sizeof(uint32))
+		if (input.length > PQ_GSS_AUTH_BUFFER_SIZE - sizeof(uint32))
 		{
 			appendPQExpBuffer(&conn->errorMessage,
 							  libpq_gettext("oversize GSSAPI packet sent by the server (%zu > %zu)\n"),
 							  (size_t) input.length,
-							  PQ_GSS_RECV_BUFFER_SIZE - sizeof(uint32));
+							  PQ_GSS_AUTH_BUFFER_SIZE - sizeof(uint32));
 			return PGRES_POLLING_FAILED;
 		}
 
@@ -656,11 +669,33 @@ pqsecure_open_gss(PGconn *conn)
 		gss_release_buffer(&minor, &output);
 
 		/*
+		 * Release the large authentication buffers and allocate the ones we
+		 * want for normal operation.  (This maneuver is safe only because
+		 * pqDropConnection will drop the buffers; otherwise, during a
+		 * reconnection we'd be at risk of using undersized buffers during
+		 * negotiation.)
+		 */
+		free(PqGSSSendBuffer);
+		free(PqGSSRecvBuffer);
+		free(PqGSSResultBuffer);
+		PqGSSSendBuffer = malloc(PQ_GSS_MAX_PACKET_SIZE);
+		PqGSSRecvBuffer = malloc(PQ_GSS_MAX_PACKET_SIZE);
+		PqGSSResultBuffer = malloc(PQ_GSS_MAX_PACKET_SIZE);
+		if (!PqGSSSendBuffer || !PqGSSRecvBuffer || !PqGSSResultBuffer)
+		{
+			appendPQExpBufferStr(&conn->errorMessage,
+								 libpq_gettext("out of memory\n"));
+			return PGRES_POLLING_FAILED;
+		}
+		PqGSSSendLength = PqGSSSendNext = PqGSSSendConsumed = 0;
+		PqGSSRecvLength = PqGSSResultLength = PqGSSResultNext = 0;
+
+		/*
 		 * Determine the max packet size which will fit in our buffer, after
 		 * accounting for the length.  pg_GSS_write will need this.
 		 */
 		major = gss_wrap_size_limit(&minor, conn->gctx, 1, GSS_C_QOP_DEFAULT,
-									PQ_GSS_SEND_BUFFER_SIZE - sizeof(uint32),
+									PQ_GSS_MAX_PACKET_SIZE - sizeof(uint32),
 									&PqGSSMaxPktSize);
 
 		if (GSS_ERROR(major))
@@ -674,10 +709,12 @@ pqsecure_open_gss(PGconn *conn)
 	}
 
 	/* Must have output.length > 0 */
-	if (output.length > PQ_GSS_SEND_BUFFER_SIZE - sizeof(uint32))
+	if (output.length > PQ_GSS_AUTH_BUFFER_SIZE - sizeof(uint32))
 	{
-		pg_GSS_error(libpq_gettext("GSSAPI context establishment error"),
-					 conn, major, minor);
+		appendPQExpBuffer(&conn->errorMessage,
+						  libpq_gettext("client tried to send oversize GSSAPI packet (%zu > %zu)\n"),
+						  (size_t) output.length,
+						  PQ_GSS_AUTH_BUFFER_SIZE - sizeof(uint32));
 		gss_release_buffer(&minor, &output);
 		return PGRES_POLLING_FAILED;
 	}

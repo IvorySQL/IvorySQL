@@ -574,10 +574,10 @@ return x
 $$ LANGUAGE plpython3u;
 SELECT * FROM test_type_conversion_array_date(ARRAY[[['2016-09-21','2016-09-22',NULL],[NULL,'2016-10-21','2016-10-22']],
             [[NULL,'2016-11-21','2016-10-21'],['2015-09-21','2015-09-22','2014-09-21']]]::date[]);
-INFO:  ([[['2016-09-21', '2016-09-22', None], [None, '2016-10-21', '2016-10-22']], [[None, '2016-11-21', '2016-10-21'], ['2015-09-21', '2015-09-22', '2014-09-21']]], <class 'list'>)
+INFO:  ([[['09-21-2016', '09-22-2016', None], [None, '10-21-2016', '10-22-2016']], [[None, '11-21-2016', '10-21-2016'], ['09-21-2015', '09-22-2015', '09-21-2014']]], <class 'list'>)
                                                  test_type_conversion_array_date                                                 
 ---------------------------------------------------------------------------------------------------------------------------------
- {{{2016-09-21,2016-09-22,NULL},{NULL,2016-10-21,2016-10-22}},{{NULL,2016-11-21,2016-10-21},{2015-09-21,2015-09-22,2014-09-21}}}
+ {{{09-21-2016,09-22-2016,NULL},{NULL,10-21-2016,10-22-2016}},{{NULL,11-21-2016,10-21-2016},{09-21-2015,09-22-2015,09-21-2014}}}
 (1 row)
 
 CREATE FUNCTION test_type_conversion_array_timestamp(x timestamp[]) RETURNS timestamp[] AS $$
@@ -588,9 +588,12 @@ SELECT * FROM test_type_conversion_array_timestamp(ARRAY[[['2016-09-21 15:34:24.
             [NULL,'2016-10-21 11:34:25.078792-04','2016-10-21 11:34:24.098792-04']],
             [[NULL,'2016-01-21 11:34:24.078792-04','2016-11-21 11:34:24.108792-04'],
             ['2015-09-21 11:34:24.079792-04','2014-09-21 11:34:24.078792-04','2013-09-21 11:34:24.078792-04']]]::timestamp[]);
-ERROR:  datetime format picture ends before converting entire input string
-LINE 1: ...FROM test_type_conversion_array_timestamp(ARRAY[[['2016-09-2...
-                                                             ^
+INFO:  ([[['Wed Sep 21 15:34:24.078792 2016', 'Sat Oct 22 11:34:24.078795 2016', None], [None, 'Fri Oct 21 11:34:25.078792 2016', 'Fri Oct 21 11:34:24.098792 2016']], [[None, 'Thu Jan 21 11:34:24.078792 2016', 'Mon Nov 21 11:34:24.108792 2016'], ['Mon Sep 21 11:34:24.079792 2015', 'Sun Sep 21 11:34:24.078792 2014', 'Sat Sep 21 11:34:24.078792 2013']]], <class 'list'>)
+                                                                                                                                                      test_type_conversion_array_timestamp                                                                                                                                                      
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {{{"Wed Sep 21 15:34:24.078792 2016","Sat Oct 22 11:34:24.078795 2016",NULL},{NULL,"Fri Oct 21 11:34:25.078792 2016","Fri Oct 21 11:34:24.098792 2016"}},{{NULL,"Thu Jan 21 11:34:24.078792 2016","Mon Nov 21 11:34:24.108792 2016"},{"Mon Sep 21 11:34:24.079792 2015","Sun Sep 21 11:34:24.078792 2014","Sat Sep 21 11:34:24.078792 2013"}}}
+(1 row)
+
 CREATE OR REPLACE FUNCTION pyreturnmultidemint4(h int4, i int4, j int4, k int4 ) RETURNS int4[] AS $BODY$
 m = [[[[x for x in range(h)] for y in range(i)] for z in range(j)] for w in range(k)]
 plpy.info(m, type(m))
@@ -828,7 +831,7 @@ PL/Python function "test_type_conversion_array_domain_check_violation"
 CREATE FUNCTION test_read_uint2_array(x uint2[]) RETURNS uint2 AS $$
 plpy.info(x, type(x))
 return x[0]
-$$ LANGUAGE plpython3u;
+$$ LANGUAGE plpythonu;
 select test_read_uint2_array(array[1::uint2]);
 INFO:  ([1], <class 'list'>)
  test_read_uint2_array 
@@ -838,7 +841,7 @@ INFO:  ([1], <class 'list'>)
 
 CREATE FUNCTION test_build_uint2_array(x int2) RETURNS uint2[] AS $$
 return [x, x]
-$$ LANGUAGE plpython3u;
+$$ LANGUAGE plpythonu;
 select test_build_uint2_array(1::int2);
  test_build_uint2_array 
 ------------------------
@@ -857,7 +860,7 @@ PL/Python function "test_build_uint2_array"
 CREATE FUNCTION test_type_conversion_domain_array(x integer[])
   RETURNS ordered_pair_domain[] AS $$
 return [x, x]
-$$ LANGUAGE plpython3u;
+$$ LANGUAGE plpythonu;
 select test_type_conversion_domain_array(array[2,4]);
 ERROR:  return value of function with array return type is not a Python sequence
 CONTEXT:  while creating return value
@@ -870,7 +873,7 @@ CREATE FUNCTION test_type_conversion_domain_array2(x ordered_pair_domain)
   RETURNS integer AS $$
 plpy.info(x, type(x))
 return x[1]
-$$ LANGUAGE plpython3u;
+$$ LANGUAGE plpythonu;
 select test_type_conversion_domain_array2(array[2,4]);
 INFO:  ([2, 4], <class 'list'>)
  test_type_conversion_domain_array2 
@@ -884,7 +887,7 @@ CREATE FUNCTION test_type_conversion_array_domain_array(x ordered_pair_domain[])
   RETURNS ordered_pair_domain AS $$
 plpy.info(x, type(x))
 return x[0]
-$$ LANGUAGE plpython3u;
+$$ LANGUAGE plpythonu;
 select test_type_conversion_array_domain_array(array[array[2,4]::ordered_pair_domain]);
 INFO:  ([[2, 4]], <class 'list'>)
  test_type_conversion_array_domain_array 
@@ -953,7 +956,7 @@ SELECT test_composite_type_input(row(1, 2));
 CREATE TYPE nnint_container AS (f1 int, f2 nnint);
 CREATE FUNCTION nnint_test(x int, y int) RETURNS nnint_container AS $$
 return {'f1': x, 'f2': y}
-$$ LANGUAGE plpython3u;
+$$ LANGUAGE plpythonu;
 SELECT nnint_test(null, 3);
  nnint_test 
 ------------
@@ -970,7 +973,7 @@ PL/Python function "nnint_test"
 CREATE DOMAIN ordered_named_pair AS named_pair_2 CHECK((VALUE).i <= (VALUE).j);
 CREATE FUNCTION read_ordered_named_pair(p ordered_named_pair) RETURNS integer AS $$
 return p['i'] + p['j']
-$$ LANGUAGE plpython3u;
+$$ LANGUAGE plpythonu;
 SELECT read_ordered_named_pair(row(1, 2));
  read_ordered_named_pair 
 -------------------------
@@ -981,7 +984,7 @@ SELECT read_ordered_named_pair(row(2, 1));  -- fail
 ERROR:  value for domain ordered_named_pair violates check constraint "ordered_named_pair_check"
 CREATE FUNCTION build_ordered_named_pair(i int, j int) RETURNS ordered_named_pair AS $$
 return {'i': i, 'j': j}
-$$ LANGUAGE plpython3u;
+$$ LANGUAGE plpythonu;
 SELECT build_ordered_named_pair(1,2);
  build_ordered_named_pair 
 --------------------------
@@ -994,7 +997,7 @@ CONTEXT:  while creating return value
 PL/Python function "build_ordered_named_pair"
 CREATE FUNCTION build_ordered_named_pairs(i int, j int) RETURNS ordered_named_pair[] AS $$
 return [{'i': i, 'j': j}, {'i': i, 'j': j+1}]
-$$ LANGUAGE plpython3u;
+$$ LANGUAGE plpythonu;
 SELECT build_ordered_named_pairs(1,2);
  build_ordered_named_pairs 
 ---------------------------

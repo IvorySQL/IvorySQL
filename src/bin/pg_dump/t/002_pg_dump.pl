@@ -268,6 +268,29 @@ my %pgdump_runs = (
 			'postgres',
 		],
 	},
+	no_subscriptions => {
+		dump_cmd => [
+			'pg_dump', '--no-sync',
+			'--file' => "$tempdir/no_subscriptions.sql",
+			'--no-subscriptions',
+			'postgres',
+		],
+	},
+	no_subscriptions_restore => {
+		dump_cmd => [
+			'pg_dump', '--no-sync',
+			'--format' => 'custom',
+			'--file' => "$tempdir/no_subscriptions_restore.dump",
+			'postgres',
+		],
+		restore_cmd => [
+			'pg_restore',
+			'--format' => 'custom',
+			'--file' => "$tempdir/no_subscriptions_restore.sql",
+			'--no-subscriptions',
+			"$tempdir/no_subscriptions_restore.dump",
+		],
+	},
 	only_dump_test_schema => {
 		dump_cmd => [
 			'pg_dump', '--no-sync',
@@ -420,12 +443,24 @@ my %full_runs = (
 	no_blobs                 => 1,
 	no_owner                 => 1,
 	no_privs                 => 1,
+	no_subscriptions => 1,
+	no_subscriptions_restore => 1,
 	pg_dumpall_dbprivs       => 1,
 	pg_dumpall_exclude       => 1,
 	schema_only              => 1,);
 
 # This is where the actual tests are defined.
 my %tests = (
+	'restrict' => {
+		all_runs => 1,
+		regexp => qr/^\\restrict [a-zA-Z0-9]+$/m,
+	},
+
+	'unrestrict' => {
+		all_runs => 1,
+		regexp => qr/^\\unrestrict [a-zA-Z0-9]+$/m,
+	},
+
 	'ALTER DEFAULT PRIVILEGES FOR ROLE regress_dump_test_role GRANT' => {
 		create_order => 14,
 		create_sql   => 'ALTER DEFAULT PRIVILEGES
@@ -1121,6 +1156,10 @@ my %tests = (
 		regexp =>
 		  qr/^COMMENT ON SUBSCRIPTION sub1 IS 'comment on subscription';/m,
 		like => { %full_runs, section_post_data => 1, },
+		unlike => {
+			no_subscriptions => 1,
+			no_subscriptions_restore => 1,
+		},
 	},
 
 	'COMMENT ON TEXT SEARCH CONFIGURATION dump_test.alt_ts_conf1' => {
@@ -1447,6 +1486,27 @@ my %tests = (
 			pg_dumpall_globals       => 1,
 			pg_dumpall_globals_clean => 1,
 		},
+	},
+
+	'newline of role or table name in comment' => {
+		create_sql => qq{CREATE ROLE regress_newline;
+						 ALTER ROLE regress_newline SET enable_seqscan = off;
+						 ALTER ROLE regress_newline
+							RENAME TO "regress_newline\nattack";
+
+						 -- meet getPartitioningInfo() "unsafe" condition
+						 CREATE TYPE pp_colors AS
+							ENUM ('green', 'blue', 'black');
+						 CREATE TABLE pp_enumpart (a pp_colors)
+							PARTITION BY HASH (a);
+						 CREATE TABLE pp_enumpart1 PARTITION OF pp_enumpart
+							FOR VALUES WITH (MODULUS 2, REMAINDER 0);
+						 CREATE TABLE pp_enumpart2 PARTITION OF pp_enumpart
+							FOR VALUES WITH (MODULUS 2, REMAINDER 1);
+						 ALTER TABLE pp_enumpart
+							RENAME TO "pp_enumpart\nattack";},
+		regexp => qr/\n--[^\n]*\nattack/s,
+		like => {},
 	},
 
 	'CREATE DATABASE regression_invalid...' => {
@@ -2370,6 +2430,10 @@ my %tests = (
 			\QCREATE SUBSCRIPTION sub1 CONNECTION 'dbname=doesnotexist' PUBLICATION pub1 WITH (connect = false, slot_name = 'sub1');\E
 			/xm,
 		like => { %full_runs, section_post_data => 1, },
+		unlike => {
+			no_subscriptions => 1,
+			no_subscriptions_restore => 1,
+		},
 	},
 
 	'ALTER PUBLICATION pub1 ADD TABLE test_table' => {
@@ -2938,6 +3002,8 @@ my %tests = (
 			no_blobs                => 1,
 			no_privs                => 1,
 			no_owner                => 1,
+			no_subscriptions => 1,
+			no_subscriptions_restore => 1,
 			only_dump_test_schema   => 1,
 			pg_dumpall_dbprivs      => 1,
 			pg_dumpall_exclude      => 1,
@@ -2956,7 +3022,6 @@ my %tests = (
 	},
 
 	'ALTER TABLE measurement PRIMARY KEY' => {
-		all_runs     => 1,
 		catch_all    => 'CREATE ... commands',
 		create_order => 93,
 		create_sql =>
@@ -2993,7 +3058,6 @@ my %tests = (
 	},
 
 	'ALTER INDEX ... ATTACH PARTITION (primary key)' => {
-		all_runs  => 1,
 		catch_all => 'CREATE ... commands',
 		regexp    => qr/^
 		\QALTER INDEX dump_test.measurement_pkey ATTACH PARTITION dump_test_second_schema.measurement_y2006m2_pkey\E
@@ -3011,6 +3075,8 @@ my %tests = (
 			no_blobs                 => 1,
 			no_privs                 => 1,
 			no_owner                 => 1,
+			no_subscriptions => 1,
+			no_subscriptions_restore => 1,
 			pg_dumpall_dbprivs       => 1,
 			pg_dumpall_exclude       => 1,
 			role                     => 1,
@@ -3973,9 +4039,10 @@ foreach my $run (sort keys %pgdump_runs)
 			next;
 		}
 
-		# Run the test listed as a like, unless it is specifically noted
-		# as an unlike (generally due to an explicit exclusion or similar).
-		if ($tests{$test}->{like}->{$test_key}
+		# Run the test if all_runs is set or if listed as a like, unless it is
+		# specifically noted as an unlike (generally due to an explicit
+		# exclusion or similar).
+		if (($tests{$test}->{like}->{$test_key} || $tests{$test}->{all_runs})
 			&& !defined($tests{$test}->{unlike}->{$test_key}))
 		{
 			if (!ok($output_file =~ $tests{$test}->{regexp},

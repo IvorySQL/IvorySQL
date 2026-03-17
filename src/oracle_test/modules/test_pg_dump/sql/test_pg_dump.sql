@@ -117,4 +117,13 @@ DROP ROLE regress_dump_test_role;
 DROP EXTENSION test_pg_dump;
 
 -- shouldn't be anything left in pg_init_privs
-SELECT * FROM pg_init_privs WHERE privtype = 'e';
+-- (exclude ivorysql_ora extension which is created during initdb)
+SELECT p.* FROM pg_init_privs p
+WHERE p.privtype = 'e'
+AND NOT EXISTS (
+    SELECT 1 FROM pg_depend d
+    JOIN pg_extension e ON d.refobjid = e.oid
+    WHERE d.objid = p.objoid
+    AND d.classid = p.classoid
+    AND e.extname = 'ivorysql_ora'
+);

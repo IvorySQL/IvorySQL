@@ -686,6 +686,7 @@ ExtensibleNodeMethods
 ExtensionControlFile
 ExtensionInfo
 ExtensionMemberId
+ExtensionSiblingCache
 ExtensionVersionInfo
 FDWCollateState
 FD_SET
@@ -1156,8 +1157,8 @@ InternalDefaultACL
 InternalGrant
 Interval
 IntoClause
-InvalidationChunk
-InvalidationListHeader
+InvalMessageArray
+InvalidationMsgsGroup
 IpcMemoryId
 IpcMemoryKey
 IpcMemoryState

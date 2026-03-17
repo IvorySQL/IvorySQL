@@ -32,7 +32,9 @@
 #include "utils/guc.h"
 #include "utils/ps_status.h"
 
+#if !defined(WIN32) || defined(_MSC_VER)
 extern char **environ;
+#endif
 bool		update_process_title = true;
 
 
@@ -71,9 +73,9 @@ bool		update_process_title = true;
 #define PS_USE_PSTAT
 #elif defined(HAVE_PS_STRINGS)
 #define PS_USE_PS_STRINGS
-#elif (defined(BSD) || defined(__hurd__)) && !defined(__darwin__)
+#elif defined(BSD) && !defined(__darwin__)
 #define PS_USE_CHANGE_ARGV
-#elif defined(__linux__) || defined(_AIX) || defined(__sgi) || (defined(sun) && !defined(BSD)) || defined(__svr5__) || defined(__darwin__)
+#elif defined(__linux__) || defined(_AIX) || defined(__sgi) || (defined(sun) && !defined(BSD)) || defined(__svr5__) || defined(__darwin__) || defined(__GNU__)
 #define PS_USE_CLOBBER_ARGV
 #elif defined(WIN32)
 #define PS_USE_WIN32
@@ -83,7 +85,7 @@ bool		update_process_title = true;
 
 
 /* Different systems want the buffer padded differently */
-#if defined(_AIX) || defined(__linux__) || defined(__darwin__)
+#if defined(_AIX) || defined(__linux__) || defined(__darwin__) || defined(__GNU__)
 #define PS_PADDING '\0'
 #else
 #define PS_PADDING ' '

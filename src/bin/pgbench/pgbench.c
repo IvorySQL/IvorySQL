@@ -3083,14 +3083,28 @@ readCommandResponse(CState *st, MetaCommand meta, char *varprefix)
 				pg_log_debug("client %d pipeline ending", st->id);
 				if (PQexitPipelineMode(st->con) != 1)
 					pg_log_error("client %d failed to exit pipeline mode: %s", st->id,
-								 PQerrorMessage(st->con));
+								 PQresultErrorMessage(res));
 				break;
+
+			case PGRES_COPY_IN:
+			case PGRES_COPY_OUT:
+			case PGRES_COPY_BOTH:
+				pg_log_error("COPY is not supported in pgbench, aborting");
+
+				/*
+				 * We need to exit the copy state.  Otherwise, PQgetResult()
+				 * will always return an empty PGresult as an effect of
+				 * getCopyResult(), leading to an infinite loop in the error
+				 * cleanup done below.
+				 */
+				PQendcopy(st->con);
+				goto error;
 
 			default:
 				/* anything else is unexpected */
 				pg_log_error("client %d script %d aborted in command %d query %d: %s",
 							 st->id, st->use_file, st->command, qrynum,
-							 PQerrorMessage(st->con));
+							 PQresultErrorMessage(res));
 				goto error;
 		}
 

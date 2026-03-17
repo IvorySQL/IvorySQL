@@ -1244,6 +1244,8 @@ CREATE INDEX hash_i4_index ON hash_i4_heap USING hash (random int4_ops);
 CREATE INDEX hash_name_index ON hash_name_heap USING hash (random name_ops);
 CREATE INDEX hash_txt_index ON hash_txt_heap USING hash (random text_ops);
 CREATE INDEX hash_f8_index ON hash_f8_heap USING hash (random float8_ops) WITH (fillfactor=60);
+CREATE INDEX hash_i4_partial_index ON hash_i4_heap USING hash (seqno)
+  WHERE seqno = 9999;
 CREATE UNLOGGED TABLE unlogged_hash_table (id int4);
 CREATE INDEX unlogged_hash_index ON unlogged_hash_table USING hash (id int4_ops);
 DROP TABLE unlogged_hash_table;
@@ -1587,8 +1589,8 @@ DROP TABLE cwi_test;
 --
 CREATE TABLE syscol_table (a INT);
 -- System columns cannot be indexed
-CREATE INDEX ON syscolcol_table (ctid);
-ERROR:  relation "syscolcol_table" does not exist
+CREATE INDEX ON syscol_table (ctid);
+ERROR:  index creation on system columns is not supported
 -- nor used in expressions
 CREATE INDEX ON syscol_table ((ctid >= '(1000,0)'));
 ERROR:  index creation on system columns is not supported

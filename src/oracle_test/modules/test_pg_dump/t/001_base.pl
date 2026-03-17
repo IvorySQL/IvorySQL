@@ -286,16 +286,17 @@ my %pgdump_runs = (
 # Tests which are considered 'full' dumps by pg_dump, but there
 # are flags used to exclude specific items (ACLs, blobs, etc).
 my %full_runs = (
-	binary_upgrade    => 1,
-	clean             => 1,
-	clean_if_exists   => 1,
-	createdb          => 1,
-	defaults          => 1,
-	exclude_table     => 1,
-	no_privs          => 1,
-	no_owner          => 1,
-	with_extension    => 1,
-	without_extension => 1);
+	binary_upgrade      => 1,
+	clean               => 1,
+	clean_if_exists     => 1,
+	createdb            => 1,
+	defaults            => 1,
+	exclude_table       => 1,
+	no_privs            => 1,
+	no_owner            => 1,
+	privileged_internals => 1,
+	with_extension      => 1,
+	without_extension   => 1);
 
 my %tests = (
 	'ALTER EXTENSION test_pg_dump' => {
@@ -328,6 +329,16 @@ my %tests = (
 		create_order => 1,
 		create_sql   => 'CREATE ROLE regress_dump_test_role;',
 		regexp       => qr/^CREATE ROLE regress_dump_test_role;\n/m,
+		like         => { pg_dumpall_globals => 1, },
+	},
+
+	'CREATE ROLE regress_dump_login_role' => {
+		create_order => 1,
+		create_sql   => 'CREATE ROLE regress_dump_login_role LOGIN;',
+		regexp       => qr/^
+			\QCREATE ROLE regress_dump_login_role;\E
+			\n\QALTER ROLE regress_dump_login_role WITH \E.*\Q LOGIN \E.*;
+			\n/xm,
 		like         => { pg_dumpall_globals => 1, },
 	},
 
@@ -678,6 +689,7 @@ my %tests = (
 			section_pre_data   => 1,
 			# Excludes this schema as extension is not listed.
 			without_extension_explicit_schema => 1,
+			privileged_internals => 1,
 		},
 	},
 
@@ -694,6 +706,7 @@ my %tests = (
 			section_pre_data   => 1,
 			# Excludes this schema as extension is not listed.
 			without_extension_explicit_schema => 1,
+			privileged_internals => 1,
 		},
 	},
 
@@ -712,6 +725,9 @@ my %tests = (
 			section_pre_data => 1,
 			# Excludes the extension and keeps the schema's data.
 			without_extension_internal_schema => 1,
+		},
+		unlike => {
+			privileged_internals => 1,
 		},
 	},);
 

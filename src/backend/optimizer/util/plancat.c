@@ -634,6 +634,11 @@ get_relation_foreign_keys(PlannerInfo *root, RelOptInfo *rel,
  * the purposes of inference.  If no opclass (or collation) is specified, then
  * all matching indexes (that may or may not match the default in terms of
  * each attribute opclass/collation) are used for inference.
+ *
+ * Note: during index CONCURRENTLY operations, different transactions may
+ * reference different sets of arbiter indexes. This can lead to false unique
+ * constraint violations that wouldn't occur during normal operations.  For
+ * more information, see insert.sgml.
  */
 List *
 infer_arbiter_indexes(PlannerInfo *root)
@@ -2199,6 +2204,56 @@ has_row_triggers(PlannerInfo *root, Index rti, CmdType event)
 			/* There is no separate event for MERGE, only INSERT/UPDATE/DELETE */
 		case CMD_MERGE:
 			result = false;
+			break;
+		default:
+			elog(ERROR, "unrecognized CmdType: %d", (int) event);
+			break;
+	}
+
+	table_close(relation, NoLock);
+	return result;
+}
+
+/*
+ * has_transition_tables
+ *
+ * Detect whether the specified relation has any transition tables for event.
+ */
+bool
+has_transition_tables(PlannerInfo *root, Index rti, CmdType event)
+{
+	RangeTblEntry *rte = planner_rt_fetch(rti, root);
+	Relation	relation;
+	TriggerDesc *trigDesc;
+	bool		result = false;
+
+	Assert(rte->rtekind == RTE_RELATION);
+
+	/* Currently foreign tables cannot have transition tables */
+	if (rte->relkind == RELKIND_FOREIGN_TABLE)
+		return result;
+
+	/* Assume we already have adequate lock */
+	relation = table_open(rte->relid, NoLock);
+
+	trigDesc = relation->trigdesc;
+	switch (event)
+	{
+		case CMD_INSERT:
+			if (trigDesc &&
+				trigDesc->trig_insert_new_table)
+				result = true;
+			break;
+		case CMD_UPDATE:
+			if (trigDesc &&
+				(trigDesc->trig_update_old_table ||
+				 trigDesc->trig_update_new_table))
+				result = true;
+			break;
+		case CMD_DELETE:
+			if (trigDesc &&
+				trigDesc->trig_delete_old_table)
+				result = true;
 			break;
 		default:
 			elog(ERROR, "unrecognized CmdType: %d", (int) event);

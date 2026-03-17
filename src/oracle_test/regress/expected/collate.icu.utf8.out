@@ -813,10 +813,13 @@ SELECT a, CAST(b AS varchar) FROM collate_test3 ORDER BY 2;
 -- and plpgsql functions too
 CREATE FUNCTION mylt (text, text) RETURNS boolean LANGUAGE sql
     AS $$ select $1 < $2 $$;
+/
 CREATE FUNCTION mylt_noninline (text, text) RETURNS boolean LANGUAGE sql
     AS $$ select $1 < $2 limit 1 $$;
+/
 CREATE FUNCTION mylt_plpgsql (text, text) RETURNS boolean LANGUAGE plpgsql
     AS $$ begin return $1 < $2; end $$;
+/
 SELECT a.b AS a, b.b AS b, a.b < b.b AS lt,
        mylt(a.b, b.b), mylt_noninline(a.b, b.b), mylt_plpgsql(a.b, b.b)
 FROM collate_test1 a, collate_test1 b
@@ -875,6 +878,7 @@ begin
   return xx < yy;
 end
 $$;
+/
 SELECT mylt2('a', 'B' collate "en-x-icu") as t, mylt2('a', 'B' collate "C") as f;
  t | f 
 ---+---
@@ -890,6 +894,7 @@ begin
   return xx < yy;
 end
 $$;
+/
 SELECT mylt2('a', 'B') as f;
  f 
 ---
@@ -936,6 +941,7 @@ SELECT * FROM unnest((SELECT array_agg(b ORDER BY b) FROM collate_test3)) ORDER 
 
 CREATE FUNCTION dup (anyelement) RETURNS anyelement
     AS 'select $1' LANGUAGE sql;
+/
 SELECT a, dup(b) FROM collate_test1 ORDER BY 2;
  a | dup 
 ---+-----
@@ -1519,15 +1525,15 @@ SELECT x FROM test3bpci WHERE x = 'abc';
   x  
 -----
  abc
- ABC
-(2 rows)
+(1 row)
 
 SELECT x FROM test3bpci WHERE x <> 'abc';
   x  
 -----
+ ABC
  def
  ghi
-(2 rows)
+(3 rows)
 
 SELECT x FROM test3bpci WHERE x LIKE 'a%';
 ERROR:  nondeterministic collations are not supported for LIKE
@@ -1540,71 +1546,75 @@ ERROR:  nondeterministic collations are not supported for regular expressions
 SELECT x FROM test1bpci UNION SELECT x FROM test2bpci ORDER BY x;
   x  
 -----
+ ABC
  abc
  def
  ghi
-(3 rows)
+(4 rows)
 
 SELECT x FROM test2bpci UNION SELECT x FROM test1bpci ORDER BY x;
   x  
 -----
  ABC
+ abc
  def
  ghi
-(3 rows)
+(4 rows)
 
 SELECT x FROM test1bpci INTERSECT SELECT x FROM test2bpci ORDER BY x;
   x  
 -----
- abc
  ghi
-(2 rows)
+(1 row)
 
 SELECT x FROM test2bpci INTERSECT SELECT x FROM test1bpci ORDER BY x;
   x  
 -----
- ABC
  ghi
-(2 rows)
+(1 row)
 
 SELECT x FROM test1bpci EXCEPT SELECT x FROM test2bpci;
   x  
 -----
+ abc
  def
-(1 row)
+(2 rows)
 
 SELECT x FROM test2bpci EXCEPT SELECT x FROM test1bpci;
- x 
----
-(0 rows)
+  x  
+-----
+ ABC
+(1 row)
 
 SELECT DISTINCT x FROM test3bpci ORDER BY x;
   x  
 -----
+ ABC
  abc
  def
  ghi
-(3 rows)
+(4 rows)
 
 SELECT count(DISTINCT x) FROM test3bpci;
  count 
 -------
-     3
+     4
 (1 row)
 
 SELECT x, count(*) FROM test3bpci GROUP BY x ORDER BY x;
   x  | count 
 -----+-------
- abc |     2
+ ABC |     1
+ abc |     1
  def |     1
  ghi |     1
-(3 rows)
+(4 rows)
 
 SELECT x, row_number() OVER (ORDER BY x), rank() OVER (ORDER BY x) FROM test3bpci ORDER BY x;
   x  | row_number | rank 
 -----+------------+------
  abc |          1 |    1
- ABC |          2 |    1
+ ABC |          2 |    2
  def |          3 |    3
  ghi |          4 |    4
 (4 rows)
@@ -1659,7 +1669,7 @@ SELECT 'ὀδυσσεύς' = 'ὈΔΥΣΣΕΎΣ' COLLATE case_sensitive;
 SELECT 'ὀδυσσεύς' = 'ὈΔΥΣΣΕΎΣ' COLLATE case_insensitive;
  ?column? 
 ----------
- t
+ f
 (1 row)
 
 -- name vs. text comparison operators

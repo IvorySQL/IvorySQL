@@ -113,7 +113,8 @@ typedef struct
 
 #define LQUERY_HASNOT		0x01
 
-#define ISALNUM(x)	( t_isalpha(x) || t_isdigit(x)	|| ( pg_mblen(x) == 1 && t_iseq((x), '_') ) )
+/* Caller has already called mblen, so we can use _unbounded variants safely. */
+#define ISALNUM(x)	( t_isalpha_unbounded(x) || t_isdigit_unbounded(x) || ( pg_mblen_unbounded(x) == 1 && t_iseq((x), '_') ) )
 
 /* full text query */
 
@@ -142,6 +143,8 @@ typedef struct
 	int32		size;
 	char		data[FLEXIBLE_ARRAY_MEMBER];
 } ltxtquery;
+
+typedef bool (*ltree_prefix_eq_func) (const char *, size_t, const char *, size_t);
 
 #define HDRSIZEQT		MAXALIGN(VARHDRSZ + sizeof(int32))
 #define COMPUTESIZE(size,lenofoperand)	( HDRSIZEQT + (size) * sizeof(ITEM) + (lenofoperand) )
@@ -193,10 +196,11 @@ bool		ltree_execute(ITEM *curitem, void *checkval,
 
 int			ltree_compare(const ltree *a, const ltree *b);
 bool		inner_isparent(const ltree *c, const ltree *p);
-bool		compare_subnode(ltree_level *t, char *q, int len,
-							int (*cmpptr) (const char *, const char *, size_t), bool anyend);
+bool		compare_subnode(ltree_level *t, char *qn, int len,
+							ltree_prefix_eq_func prefix_eq, bool anyend);
 ltree	   *lca_inner(ltree **a, int len);
-int			ltree_strncasecmp(const char *a, const char *b, size_t s);
+bool		ltree_prefix_eq(const char *a, size_t a_sz, const char *b, size_t b_sz);
+bool		ltree_prefix_eq_ci(const char *a, size_t a_sz, const char *b, size_t b_sz);
 
 /* fmgr macros for ltree objects */
 #define DatumGetLtreeP(X)			((ltree *) PG_DETOAST_DATUM(X))

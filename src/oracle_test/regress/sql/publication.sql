@@ -215,6 +215,41 @@ DROP PUBLICATION testpub_fortbl;
 
 DROP SCHEMA pub_test CASCADE;
 
+-- Test that the INSERT ON CONFLICT command correctly checks REPLICA IDENTITY
+-- when the target table is published.
+CREATE TABLE testpub_insert_onconfl_no_ri (a int unique, b int);
+CREATE TABLE testpub_insert_onconfl_parted (a int unique, b int) PARTITION by RANGE (a);
+CREATE TABLE testpub_insert_onconfl_part_no_ri PARTITION OF testpub_insert_onconfl_parted FOR VALUES FROM (1) TO (10);
+
+SET client_min_messages = 'ERROR';
+CREATE PUBLICATION pub1 FOR ALL TABLES;
+RESET client_min_messages;
+
+-- fail - missing REPLICA IDENTITY
+INSERT INTO testpub_insert_onconfl_no_ri VALUES (1, 1) ON CONFLICT (a) DO UPDATE SET b = 2;
+
+-- ok - no updates
+INSERT INTO testpub_insert_onconfl_no_ri VALUES (1, 1) ON CONFLICT DO NOTHING;
+
+-- fail - missing REPLICA IDENTITY in partition testpub_insert_onconfl_no_ri
+INSERT INTO testpub_insert_onconfl_parted VALUES (1, 1) ON CONFLICT (a) DO UPDATE SET b = 2;
+
+-- ok - no updates
+INSERT INTO testpub_insert_onconfl_parted VALUES (1, 1) ON CONFLICT DO NOTHING;
+
+DROP PUBLICATION pub1;
+DROP TABLE testpub_insert_onconfl_no_ri;
+DROP TABLE testpub_insert_onconfl_parted;
+
 RESET SESSION AUTHORIZATION;
 DROP ROLE regress_publication_user, regress_publication_user2;
 DROP ROLE regress_publication_user_dummy;
+
+-- stage objects for pg_dump tests
+CREATE SCHEMA pubme CREATE TABLE t0 (c int, d int) CREATE TABLE t1 (c int);
+SET client_min_messages = 'ERROR';
+CREATE PUBLICATION dump_pub_1ct FOR TABLE ONLY pubme.t0;
+CREATE PUBLICATION dump_pub_2ct FOR TABLE ONLY pubme.t0, pubme.t1;
+CREATE PUBLICATION dump_pub_all FOR TABLE ONLY pubme.t0, pubme.t1
+  WITH (publish_via_partition_root = true);
+RESET client_min_messages;

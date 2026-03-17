@@ -1529,6 +1529,7 @@ xml_parse(text *data, XmlOptionType xmloption_arg, bool preserve_whitespace,
 	PgXmlErrorContext *xmlerrcxt;
 	volatile xmlParserCtxtPtr ctxt = NULL;
 	volatile xmlDocPtr doc = NULL;
+	volatile int save_keep_blanks = -1;
 
 	len = VARSIZE_ANY_EXHDR(data);	/* will be useful later */
 	string = xml_text2xmlChar(data);
@@ -1545,7 +1546,6 @@ xml_parse(text *data, XmlOptionType xmloption_arg, bool preserve_whitespace,
 	PG_TRY();
 	{
 		bool		parse_as_document = false;
-		int			options;
 		int			res_code;
 		size_t		count = 0;
 		xmlChar    *version = NULL;
@@ -1571,24 +1571,27 @@ xml_parse(text *data, XmlOptionType xmloption_arg, bool preserve_whitespace,
 				parse_as_document = true;
 		}
 
-		/*
-		 * Select parse options.
-		 *
-		 * Note that here we try to apply DTD defaults (XML_PARSE_DTDATTR)
-		 * according to SQL/XML:2008 GR 10.16.7.d: 'Default values defined by
-		 * internal DTD are applied'.  As for external DTDs, we try to support
-		 * them too (see SQL/XML:2008 GR 10.16.7.e), but that doesn't really
-		 * happen because xmlPgEntityLoader prevents it.
-		 */
-		options = XML_PARSE_NOENT | XML_PARSE_DTDATTR
-			| (preserve_whitespace ? 0 : XML_PARSE_NOBLANKS);
-
 		if (parse_as_document)
 		{
+			int			options;
+
+			/* set up parser context used by xmlCtxtReadDoc */
 			ctxt = xmlNewParserCtxt();
 			if (ctxt == NULL || xmlerrcxt->err_occurred)
 				xml_ereport(xmlerrcxt, ERROR, ERRCODE_OUT_OF_MEMORY,
 							"could not allocate parser context");
+
+			/*
+			 * Select parse options.
+			 *
+			 * Note that here we try to apply DTD defaults (XML_PARSE_DTDATTR)
+			 * according to SQL/XML:2008 GR 10.16.7.d: 'Default values defined
+			 * by internal DTD are applied'.  As for external DTDs, we try to
+			 * support them too (see SQL/XML:2008 GR 10.16.7.e), but that
+			 * doesn't really happen because xmlPgEntityLoader prevents it.
+			 */
+			options = XML_PARSE_NOENT | XML_PARSE_DTDATTR
+				| (preserve_whitespace ? 0 : XML_PARSE_NOBLANKS);
 
 			doc = xmlCtxtReadDoc(ctxt, utf8string,
 								 NULL,	/* no URL */
@@ -1608,36 +1611,22 @@ xml_parse(text *data, XmlOptionType xmloption_arg, bool preserve_whitespace,
 		}
 		else
 		{
-			xmlNodePtr	root;
-
-			/* set up document with empty root node to be the context node */
+			/* set up document that xmlParseBalancedChunkMemory will add to */
 			doc = xmlNewDoc(version);
 			Assert(doc->encoding == NULL);
 			doc->encoding = xmlStrdup((const xmlChar *) "UTF-8");
 			doc->standalone = standalone;
 
-			root = xmlNewNode(NULL, (const xmlChar *) "content-root");
-			if (root == NULL || xmlerrcxt->err_occurred)
-				xml_ereport(xmlerrcxt, ERROR, ERRCODE_OUT_OF_MEMORY,
-							"could not allocate xml node");
-			/* This attaches root to doc, so we need not free it separately. */
-			xmlDocSetRootElement(doc, root);
+			/* set parse options --- have to do this the ugly way */
+			save_keep_blanks = xmlKeepBlanksDefault(preserve_whitespace ? 1 : 0);
 
 			/* allow empty content */
 			if (*(utf8string + count))
 			{
-				xmlNodePtr	node_list = NULL;
-				xmlParserErrors res;
-
-				res = xmlParseInNodeContext(root,
-											(char *) utf8string + count,
-											strlen((char *) utf8string + count),
-											options,
-											&node_list);
-
-				xmlFreeNodeList(node_list);
-
-				if (res != XML_ERR_OK || xmlerrcxt->err_occurred)
+				res_code = xmlParseBalancedChunkMemory(doc, NULL, NULL, 0,
+													   utf8string + count,
+													   NULL);
+				if (res_code != 0 || xmlerrcxt->err_occurred)
 					xml_ereport(xmlerrcxt, ERROR, ERRCODE_INVALID_XML_CONTENT,
 								"invalid XML content");
 			}
@@ -1645,6 +1634,8 @@ xml_parse(text *data, XmlOptionType xmloption_arg, bool preserve_whitespace,
 	}
 	PG_CATCH();
 	{
+		if (save_keep_blanks != -1)
+			xmlKeepBlanksDefault(save_keep_blanks);
 		if (doc != NULL)
 			xmlFreeDoc(doc);
 		if (ctxt != NULL)
@@ -1655,6 +1646,9 @@ xml_parse(text *data, XmlOptionType xmloption_arg, bool preserve_whitespace,
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
+
+	if (save_keep_blanks != -1)
+		xmlKeepBlanksDefault(save_keep_blanks);
 
 	if (ctxt != NULL)
 		xmlFreeParserCtxt(ctxt);
@@ -2043,8 +2037,7 @@ sqlchar_to_unicode(const char *s)
 	char	   *utf8string;
 	pg_wchar	ret[2];			/* need space for trailing zero */
 
-	/* note we're not assuming s is null-terminated */
-	utf8string = pg_server_to_any(s, pg_mblen(s), PG_UTF8);
+	utf8string = pg_server_to_any(s, pg_mblen_cstr(s), PG_UTF8);
 
 	pg_encoding_mb2wchar_with_len(PG_UTF8, utf8string, ret,
 								  pg_encoding_mblen(PG_UTF8, utf8string));
@@ -2097,7 +2090,7 @@ map_sql_identifier_to_xml_name(const char *ident, bool fully_escaped,
 
 	initStringInfo(&buf);
 
-	for (p = ident; *p; p += pg_mblen(p))
+	for (p = ident; *p; p += pg_mblen_cstr(p))
 	{
 		if (*p == ':' && (p == ident || fully_escaped))
 			appendStringInfoString(&buf, "_x003A_");
@@ -2122,7 +2115,7 @@ map_sql_identifier_to_xml_name(const char *ident, bool fully_escaped,
 				: !is_valid_xml_namechar(u))
 				appendStringInfo(&buf, "_x%04X_", (unsigned int) u);
 			else
-				appendBinaryStringInfo(&buf, p, pg_mblen(p));
+				appendBinaryStringInfo(&buf, p, pg_mblen_cstr(p));
 		}
 	}
 
@@ -2145,7 +2138,7 @@ map_xml_name_to_sql_identifier(const char *name)
 
 	initStringInfo(&buf);
 
-	for (p = name; *p; p += pg_mblen(p))
+	for (p = name; *p; p += pg_mblen_cstr(p))
 	{
 		if (*p == '_' && *(p + 1) == 'x'
 			&& isxdigit((unsigned char) *(p + 2))
@@ -2163,7 +2156,7 @@ map_xml_name_to_sql_identifier(const char *name)
 			p += 6;
 		}
 		else
-			appendBinaryStringInfo(&buf, p, pg_mblen(p));
+			appendBinaryStringInfo(&buf, p, pg_mblen_cstr(p));
 	}
 
 	return buf.data;

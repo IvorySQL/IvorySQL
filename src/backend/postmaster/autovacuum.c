@@ -2321,6 +2321,12 @@ do_autovacuum(void)
 						get_namespace_name(classForm->relnamespace),
 						NameStr(classForm->relname))));
 
+		/*
+		 * Deletion might involve TOAST table access, so ensure we have a
+		 * valid snapshot.
+		 */
+		PushActiveSnapshot(GetTransactionSnapshot());
+
 		object.classId = RelationRelationId;
 		object.objectId = relid;
 		object.objectSubId = 0;
@@ -2333,6 +2339,7 @@ do_autovacuum(void)
 		 * To commit the deletion, end current transaction and start a new
 		 * one.  Note this also releases the locks we took.
 		 */
+		PopActiveSnapshot();
 		CommitTransactionCommand();
 		StartTransactionCommand();
 
@@ -2616,7 +2623,10 @@ deleted:
 		workitem->avw_active = true;
 		LWLockRelease(AutovacuumLock);
 
+		PushActiveSnapshot(GetTransactionSnapshot());
 		perform_work_item(workitem);
+		if (ActiveSnapshotSet())	/* transaction could have aborted */
+			PopActiveSnapshot();
 
 		/*
 		 * Check for config changes before acquiring lock for further jobs.

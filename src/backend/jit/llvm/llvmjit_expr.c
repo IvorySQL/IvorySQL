@@ -612,8 +612,8 @@ llvm_compile_expr(ExprState *state)
 						LLVMBuildStore(b, l_sbool_const(1), v_resnullp);
 
 						/* create blocks for checking args, one for each */
-						b_checkargnulls =
-							palloc(sizeof(LLVMBasicBlockRef *) * op->d.func.nargs);
+						b_checkargnulls = (LLVMBasicBlockRef *)
+							palloc(sizeof(LLVMBasicBlockRef) * op->d.func.nargs);
 						for (int argno = 0; argno < op->d.func.nargs; argno++)
 							b_checkargnulls[argno] =
 								l_bb_before_v(b_nonull, "b.%d.isnull.%d", opno,
@@ -2065,7 +2065,7 @@ llvm_compile_expr(ExprState *state)
 					v_nullsp = l_ptr_const(nulls, l_ptr(TypeStorageBool));
 
 					/* create blocks for checking args */
-					b_checknulls = palloc(sizeof(LLVMBasicBlockRef *) * nargs);
+					b_checknulls = palloc(sizeof(LLVMBasicBlockRef) * nargs);
 					for (int argno = 0; argno < nargs; argno++)
 					{
 						b_checknulls[argno] =
