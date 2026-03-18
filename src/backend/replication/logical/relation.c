@@ -25,7 +25,10 @@
 #include "replication/logicalrelation.h"
 #include "replication/worker_internal.h"
 #include "utils/inval.h"
+#include "utils/syscache.h"
 
+
+bool		logical_replication_fallback_to_full_identity = false;
 
 static MemoryContext LogicalRepRelMapContext = NULL;
 
@@ -702,4 +705,29 @@ logicalrep_partition_open(LogicalRepRelMapEntry *root,
 	MemoryContextSwitchTo(oldctx);
 
 	return entry;
+}
+
+/*
+ * logicalrep_identity_is_full
+ *
+ * Check whether the replica identity of the relation is full or not.
+ * When a table's replica identity is default, but there is no primary key,
+ * if logical_replication_fallback_to_full_identity is true, we consider the
+ * replica identity as full. This function should only be called on the
+ * publisher.
+ */
+bool
+logicalrep_identity_is_full(Relation relation)
+{
+	Form_pg_class relform = RelationGetForm(relation);
+
+	if (relform->relreplident == REPLICA_IDENTITY_FULL)
+		return true;
+
+	if (relform->relreplident == REPLICA_IDENTITY_DEFAULT &&
+		logical_replication_fallback_to_full_identity &&
+		!OidIsValid(RelationGetReplicaIndex(relation)))
+		return true;
+
+	return false;
 }

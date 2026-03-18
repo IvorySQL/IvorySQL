@@ -13,7 +13,11 @@
 #define LOGICALRELATION_H
 
 #include "access/attmap.h"
+#include "catalog/index.h"
 #include "replication/logicalproto.h"
+
+/* GUC variables */
+extern PGDLLIMPORT bool logical_replication_fallback_to_full_identity;
 
 typedef struct LogicalRepRelMapEntry
 {
@@ -46,5 +50,6 @@ extern LogicalRepRelMapEntry *logicalrep_partition_open(LogicalRepRelMapEntry *r
 														Relation partrel, AttrMap *map);
 extern void logicalrep_rel_close(LogicalRepRelMapEntry *rel,
 								 LOCKMODE lockmode);
+extern bool logicalrep_identity_is_full(Relation relation);
 
 #endif							/* LOGICALRELATION_H */
