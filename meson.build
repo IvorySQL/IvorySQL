@@ -4033,6 +4033,21 @@ add_test_setup('running',
 
 
 ###############################################################
+# headerscheck
+###############################################################
+
+headerscheck = files('src/tools/pginclude/headerscheck')
+run_target('headerscheck',
+  command: [headerscheck, meson.project_source_root(), meson.project_build_root()]
+)
+
+run_target('cpluspluscheck',
+  command: [headerscheck, '--cplusplus', meson.project_source_root(), meson.project_build_root()]
+)
+
+
+
+###############################################################
 # Pseudo targets
 ###############################################################
 
