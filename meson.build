@@ -1692,6 +1692,7 @@ if sslopt in ['auto', 'openssl']
       ['X509_get_signature_info'],
       ['SSL_CTX_set_num_tickets'],
       ['SSL_CTX_set_keylog_callback'],
+      ['SSL_CTX_set_client_hello_cb'],
     ]
 
     are_openssl_funcs_complete = true
