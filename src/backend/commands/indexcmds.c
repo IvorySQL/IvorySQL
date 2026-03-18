@@ -4495,52 +4495,64 @@ PopulateGlobalSpool(Relation idxRel, Relation heapRel, IndexStmt *stmt)
 	SetUserIdAndSecContext(heapRel->rd_rel->relowner,
 						   root_save_sec_context | SECURITY_RESTRICTED_OPERATION);
 
-	idxinfo = makeIndexInfo(numberOfAttributes,
-							numberOfKeyAttributes,
-							accessMethodId,
-							NIL,	/* expressions, NIL for now */
-							make_ands_implicit((Expr *) stmt->whereClause),
-							stmt->unique,
-							stmt->nulls_not_distinct,
-							!concurrent,
-							concurrent);
-
-	typeObjectId = (Oid *) palloc(numberOfAttributes * sizeof(Oid));
-	collationObjectId = (Oid *) palloc(numberOfAttributes * sizeof(Oid));
-	classObjectId = (Oid *) palloc(numberOfAttributes * sizeof(Oid));
-	coloptions = (int16 *) palloc(numberOfAttributes * sizeof(int16));
-	amcanorder = amRoutine->amcanorder;
-
-	pfree(amRoutine);
-	ReleaseSysCache(tuple);
-
-	ComputeIndexAttrs(idxinfo,
-					  typeObjectId, collationObjectId, classObjectId,
-					  coloptions, allIndexParams,
-					  stmt->excludeOpNames, RelationGetRelid(heapRel),
-					  accessMethodName, accessMethodId,
-					  amcanorder, stmt->isconstraint, root_save_userid,
-					  root_save_sec_context, &root_save_nestlevel);
-
-	/* Fill global unique index related parameters */
-	idxinfo->ii_GlobalIndexPart = stmt->globalIndexPart;
-	idxinfo->ii_BuildGlobalSpool = true;
-	idxinfo->ii_Nparts = stmt->nparts;
-	idxinfo->ii_Global_index = stmt->global_index;
-
-	/*
-	 * Determine worker process details for parallel CREATE INDEX.  Currently,
-	 * only btree has support for parallel builds.
-	 */
-	if (IsNormalProcessingMode() && idxRel->rd_rel->relam == BTREE_AM_OID)
+	PG_TRY();
 	{
-		idxinfo->ii_ParallelWorkers =
-			plan_create_index_workers(RelationGetRelid(heapRel),
-									  RelationGetRelid(idxRel));
-	}
+		idxinfo = makeIndexInfo(numberOfAttributes,
+								numberOfKeyAttributes,
+								accessMethodId,
+								NIL,	/* expressions, NIL for now */
+								make_ands_implicit((Expr *) stmt->whereClause),
+								stmt->unique,
+								!concurrent,
+								concurrent);
 
-	idxRel->rd_indam->ambuild(heapRel, idxRel,
-							  idxinfo);
+		typeObjectId = (Oid *) palloc(numberOfAttributes * sizeof(Oid));
+		collationObjectId = (Oid *) palloc(numberOfAttributes * sizeof(Oid));
+		classObjectId = (Oid *) palloc(numberOfAttributes * sizeof(Oid));
+		coloptions = (int16 *) palloc(numberOfAttributes * sizeof(int16));
+		amcanorder = amRoutine->amcanorder;
+
+		pfree(amRoutine);
+		ReleaseSysCache(tuple);
+
+		ComputeIndexAttrs(idxinfo,
+						  typeObjectId, collationObjectId, classObjectId,
+						  coloptions, allIndexParams,
+						  stmt->excludeOpNames, RelationGetRelid(heapRel),
+						  accessMethodName, accessMethodId,
+						  amcanorder, stmt->isconstraint, root_save_userid,
+						  root_save_sec_context, &root_save_nestlevel);
+
+		/* Fill global unique index related parameters */
+		idxinfo->ii_GlobalIndexPart = stmt->globalIndexPart;
+		idxinfo->ii_BuildGlobalSpool = true;
+		idxinfo->ii_Nparts = stmt->nparts;
+		idxinfo->ii_Global_index = stmt->global_index;
+
+		/*
+		 * Determine worker process details for parallel CREATE INDEX.
+		 * Currently, only btree has support for parallel builds.
+		 */
+		if (IsNormalProcessingMode() && idxRel->rd_rel->relam == BTREE_AM_OID)
+		{
+			idxinfo->ii_ParallelWorkers =
+				plan_create_index_workers(RelationGetRelid(heapRel),
+										  RelationGetRelid(idxRel));
+		}
+
+		idxRel->rd_indam->ambuild(heapRel, idxRel, idxinfo);
+	}
+	PG_CATCH();
+	{
+		/* Restore security context before re-throwing */
+		AtEOXact_GUC(false, root_save_nestlevel);
+		SetUserIdAndSecContext(root_save_userid, root_save_sec_context);
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	AtEOXact_GUC(false, root_save_nestlevel);
+	SetUserIdAndSecContext(root_save_userid, root_save_sec_context);
 
 	return true;
 }

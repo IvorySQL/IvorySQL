@@ -427,6 +427,7 @@ heap_create(const char *relname,
 				break;
 
 			case RELKIND_INDEX:
+			case RELKIND_GLOBAL_INDEX:
 			case RELKIND_SEQUENCE:
 				RelationCreateStorage(rel->rd_node, relpersistence);
 				break;
@@ -1023,6 +1024,7 @@ AddNewRelationTuple(Relation pg_class_desc,
 		case RELKIND_RELATION:
 		case RELKIND_MATVIEW:
 		case RELKIND_INDEX:
+		case RELKIND_GLOBAL_INDEX:
 		case RELKIND_TOASTVALUE:
 			/* The relation is real, but as yet empty */
 			new_rel_reltup->relpages = 0;

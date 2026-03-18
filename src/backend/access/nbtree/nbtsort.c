@@ -318,7 +318,6 @@ btinit_global_spool(Relation heap, Relation index, BTBuildState *buildstate)
 
 	global_btspool->sortstate =
 		tuplesort_begin_index_btree(heap, index, buildstate->isunique,
-									buildstate->nulls_not_distinct,
 									maintenance_work_mem, NULL,
 									false);
 
@@ -654,7 +653,6 @@ _bt_spools_heapscan(Relation heap, Relation index, BTBuildState *buildstate,
 			 "parallel index build case");
 		buildstate->spoolglobal->sortstate =
 			tuplesort_begin_index_btree(heap, index, buildstate->isunique,
-										buildstate->nulls_not_distinct,
 										maintenance_work_mem, coordinateglobal,
 										false);
 	}
@@ -2280,7 +2278,7 @@ _bt_parallel_scan_and_sort(BTSpool *btspool, BTSpool *btspool2,
 		coordinate3->sharedsort = sharedsortglobal;
 		global_btspool->sortstate =
 			tuplesort_begin_index_btree(global_btspool->heap, global_btspool->index, global_btspool->isunique,
-										btspool->nulls_not_distinct, sortmem, coordinate3,
+										sortmem, coordinate3,
 										false);
 	}
 

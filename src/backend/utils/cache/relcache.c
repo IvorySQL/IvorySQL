@@ -41,6 +41,7 @@
 #include "access/tupdesc_details.h"
 #include "access/xact.h"
 #include "access/xlog.h"
+#include "catalog/binary_upgrade.h"
 #include "catalog/catalog.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
@@ -3731,23 +3732,33 @@ RelationSetNewRelfilenode(Relation relation, char persistence)
 	else if (relation->rd_rel->relkind == RELKIND_INDEX ||
 			 relation->rd_rel->relkind == RELKIND_GLOBAL_INDEX)
 	{
-		if (!OidIsValid(binary_upgrade_next_index_pg_class_relfilenode))
+		/*
+		 * In PG14, the OID and relfilenode are the same. Use the index OID
+		 * override variable (binary_upgrade_next_index_pg_class_relfilenode
+		 * was added in PG15 and is not available here).
+		 */
+		if (!OidIsValid(binary_upgrade_next_index_pg_class_oid))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("index relfilenode value not set when in binary upgrade mode")));
 
-		newrelfilenode = binary_upgrade_next_index_pg_class_relfilenode;
-		binary_upgrade_next_index_pg_class_relfilenode = InvalidOid;
+		newrelfilenode = binary_upgrade_next_index_pg_class_oid;
+		binary_upgrade_next_index_pg_class_oid = InvalidOid;
 	}
 	else if (relation->rd_rel->relkind == RELKIND_RELATION)
 	{
-		if (!OidIsValid(binary_upgrade_next_heap_pg_class_relfilenode))
+		/*
+		 * In PG14, the OID and relfilenode are the same. Use the heap OID
+		 * override variable (binary_upgrade_next_heap_pg_class_relfilenode
+		 * was added in PG15 and is not available here).
+		 */
+		if (!OidIsValid(binary_upgrade_next_heap_pg_class_oid))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("heap relfilenode value not set when in binary upgrade mode")));
 
-		newrelfilenode = binary_upgrade_next_heap_pg_class_relfilenode;
-		binary_upgrade_next_heap_pg_class_relfilenode = InvalidOid;
+		newrelfilenode = binary_upgrade_next_heap_pg_class_oid;
+		binary_upgrade_next_heap_pg_class_oid = InvalidOid;
 	}
 	else
 		ereport(ERROR,
@@ -3786,6 +3797,7 @@ RelationSetNewRelfilenode(Relation relation, char persistence)
 	switch (relation->rd_rel->relkind)
 	{
 		case RELKIND_INDEX:
+		case RELKIND_GLOBAL_INDEX:
 		case RELKIND_SEQUENCE:
 			{
 				/* handle these directly, at least for now */

@@ -920,21 +920,11 @@ index_create(Relation heapRelation,
 			indexRelationId = binary_upgrade_next_index_pg_class_oid;
 			binary_upgrade_next_index_pg_class_oid = InvalidOid;
 
-			/* Override the index relfilenode */
-			if ((relkind == RELKIND_INDEX || relkind == RELKIND_GLOBAL_INDEX) &&
-				(!OidIsValid(binary_upgrade_next_index_pg_class_relfilenode)))
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("index relfilenode value not set when in binary upgrade mode")));
-			relFileNode = binary_upgrade_next_index_pg_class_relfilenode;
-			binary_upgrade_next_index_pg_class_relfilenode = InvalidOid;
-
 			/*
-			 * Note that we want create_storage = true for binary upgrade. The
-			 * storage we create here will be replaced later, but we need to
-			 * have something on disk in the meanwhile.
+			 * In PG14, the OID is the relfilenode. No separate relfilenode
+			 * override is needed (binary_upgrade_next_index_pg_class_relfilenode
+			 * was added in PG15).
 			 */
-			Assert(create_storage);
 		}
 		else
 		{
