@@ -10708,6 +10708,7 @@ getForeignDataWrappers(Archive *fout)
 	int			i_fdwowner;
 	int			i_fdwhandler;
 	int			i_fdwvalidator;
+	int			i_fdwconnection;
 	int			i_fdwacl;
 	int			i_acldefault;
 	int			i_fdwoptions;
@@ -10717,7 +10718,14 @@ getForeignDataWrappers(Archive *fout)
 	appendPQExpBufferStr(query, "SELECT tableoid, oid, fdwname, "
 						 "fdwowner, "
 						 "fdwhandler::pg_catalog.regproc, "
-						 "fdwvalidator::pg_catalog.regproc, "
+						 "fdwvalidator::pg_catalog.regproc, ");
+
+	if (fout->remoteVersion >= 190000)
+		appendPQExpBufferStr(query, "fdwconnection::pg_catalog.regproc, ");
+	else
+		appendPQExpBufferStr(query, "'-' AS fdwconnection, ");
+
+	appendPQExpBufferStr(query,
 						 "fdwacl, "
 						 "acldefault('F', fdwowner) AS acldefault, "
 						 "array_to_string(ARRAY("
@@ -10740,6 +10748,7 @@ getForeignDataWrappers(Archive *fout)
 	i_fdwowner = PQfnumber(res, "fdwowner");
 	i_fdwhandler = PQfnumber(res, "fdwhandler");
 	i_fdwvalidator = PQfnumber(res, "fdwvalidator");
+	i_fdwconnection = PQfnumber(res, "fdwconnection");
 	i_fdwacl = PQfnumber(res, "fdwacl");
 	i_acldefault = PQfnumber(res, "acldefault");
 	i_fdwoptions = PQfnumber(res, "fdwoptions");
@@ -10759,6 +10768,7 @@ getForeignDataWrappers(Archive *fout)
 		fdwinfo[i].rolname = getRoleName(PQgetvalue(res, i, i_fdwowner));
 		fdwinfo[i].fdwhandler = pg_strdup(PQgetvalue(res, i, i_fdwhandler));
 		fdwinfo[i].fdwvalidator = pg_strdup(PQgetvalue(res, i, i_fdwvalidator));
+		fdwinfo[i].fdwconnection = pg_strdup(PQgetvalue(res, i, i_fdwconnection));
 		fdwinfo[i].fdwoptions = pg_strdup(PQgetvalue(res, i, i_fdwoptions));
 
 		/* Decide whether we want to dump it */
@@ -16529,6 +16539,9 @@ dumpForeignDataWrapper(Archive *fout, const FdwInfo *fdwinfo)
 
 	if (strcmp(fdwinfo->fdwvalidator, "-") != 0)
 		appendPQExpBuffer(q, " VALIDATOR %s", fdwinfo->fdwvalidator);
+
+	if (strcmp(fdwinfo->fdwconnection, "-") != 0)
+		appendPQExpBuffer(q, " CONNECTION %s", fdwinfo->fdwconnection);
 
 	if (strlen(fdwinfo->fdwoptions) > 0)
 		appendPQExpBuffer(q, " OPTIONS (\n    %s\n)", fdwinfo->fdwoptions);
