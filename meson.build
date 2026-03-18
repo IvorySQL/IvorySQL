@@ -1282,6 +1282,7 @@ endif
 
 perlopt = get_option('plperl')
 perl_dep = not_found_dep
+perl_includespec = ''
 perlversion = ''
 if not perlopt.disabled()
   perl_may_work = true
@@ -1306,6 +1307,7 @@ if not perlopt.disabled()
     useshrplib = run_command(perl_conf_cmd, 'useshrplib', check: true).stdout()
 
     perl_inc_dir = '@0@/CORE'.format(archlibexp)
+    perl_includespec = '-I@0@'.format(perl_inc_dir)
 
     if perlversion.version_compare('< 5.14')
       perl_may_work = false
@@ -1324,6 +1326,7 @@ if not perlopt.disabled()
     if not fs.is_file('@0@/perl.h'.format(perl_inc_dir)) and \
        fs.is_file('@0@@1@/perl.h'.format(pg_sysroot, perl_inc_dir))
       perl_ccflags = ['-iwithsysroot', perl_inc_dir]
+      perl_includespec = '-iwithsysroot @0@/CORE'.format(archlibexp)
     endif
 
     # check compiler finds header
@@ -1428,6 +1431,7 @@ endif
 
 pyopt = get_option('plpython')
 python3_dep = not_found_dep
+python_includespec = ''
 if not pyopt.disabled()
   pm = import('python')
   python3_inst = pm.find_installation(python.full_path(), required: pyopt)
@@ -1456,6 +1460,11 @@ if not pyopt.disabled()
     if not cc.check_header('Python.h', args: python3_header_check_args, dependencies: python3_dep, required: pyopt, include_directories: postgres_inc)
       python3_dep = not_found_dep
     endif
+  endif
+
+  if python3_dep.found()
+    command = [python, '-c', 'import sysconfig; print("-I" + sysconfig.get_config_var("INCLUDEPY"))']
+    python_includespec = run_command(command, check: true).stdout().strip()
   endif
 endif
 
