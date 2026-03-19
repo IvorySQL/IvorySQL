@@ -75,6 +75,7 @@
 #include "postmaster/syslogger.h"
 #include "postmaster/walwriter.h"
 #include "replication/logicallauncher.h"
+#include "replication/logicalrelation.h"
 #include "replication/reorderbuffer.h"
 #include "replication/slot.h"
 #include "replication/syncrep.h"
@@ -1220,6 +1221,15 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&track_commit_timestamp,
+		false,
+		NULL, NULL, NULL
+	},
+	{
+		{"logical_replication_fallback_to_full_identity", PGC_SIGHUP, REPLICATION_SENDING,
+			gettext_noop("Use REPLICA IDENTITY FULL automatically when a table with DEFAULT identity has no primary key."),
+			gettext_noop("When enabled, logical replication will automatically send full-row data for tables that specify REPLICA IDENTITY DEFAULT but lack a primary key, instead of raising an error.")
+		},
+		&logical_replication_fallback_to_full_identity,
 		false,
 		NULL, NULL, NULL
 	},

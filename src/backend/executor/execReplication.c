@@ -29,6 +29,7 @@
 #include "storage/bufmgr.h"
 #include "storage/lmgr.h"
 #include "utils/builtins.h"
+#include "replication/logicalrelation.h"
 #include "utils/datum.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
@@ -594,8 +595,8 @@ CheckCmdReplicaIdentity(Relation rel, CmdType cmd)
 		return;
 
 	/* If relation has replica identity we are always good. */
-	if (rel->rd_rel->relreplident == REPLICA_IDENTITY_FULL ||
-		OidIsValid(RelationGetReplicaIndex(rel)))
+	if (OidIsValid(RelationGetReplicaIndex(rel)) ||
+		logicalrep_identity_is_full(rel))
 		return;
 
 	/*

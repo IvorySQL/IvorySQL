@@ -304,6 +304,8 @@
 #wal_sender_timeout = 60s	# in milliseconds; 0 disables
 #track_commit_timestamp = off	# collect timestamp of transaction commit
 				# (change requires restart)
+#logical_replication_fallback_to_full_identity = off	# fallback default
+				# replication identity to full if no primary key
 
 # - Primary Server -
 
