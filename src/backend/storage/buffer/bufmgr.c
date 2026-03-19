@@ -3028,6 +3028,7 @@ RelationGetNumberOfBlocksInFork(Relation relation, ForkNumber forkNum)
 		case RELKIND_SEQUENCE:
 		case RELKIND_INDEX:
 		case RELKIND_PARTITIONED_INDEX:
+		case RELKIND_GLOBAL_INDEX:
 			return smgrnblocks(RelationGetSmgr(relation), forkNum);
 
 		case RELKIND_RELATION:

@@ -43,5 +43,6 @@ extern bool SharedFileSetDelete(SharedFileSet *fileset, const char *name,
 								bool error_on_failure);
 extern void SharedFileSetDeleteAll(SharedFileSet *fileset);
 extern void SharedFileSetUnregister(SharedFileSet *input_fileset);
+extern void SharedFileSetRegisterCleanupCallback(SharedFileSet *fileset, dsm_segment *seg);
 
 #endif

@@ -728,7 +728,19 @@ DefineIndex(Oid relationId,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("cannot create exclusion constraints on partitioned table \"%s\"",
 							RelationGetRelationName(rel))));
+
+		if (stmt->global_index && !stmt->unique)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("cannot create global index without unique on partitioned table \"%s\"",
+							RelationGetRelationName(rel))));
 	}
+
+	if (stmt->global_index && rel->rd_rel->relkind == RELKIND_RELATION && !rel->rd_rel->relispartition)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot create global index on non-partitioned table \"%s\"",
+						RelationGetRelationName(rel))));
 
 	/*
 	 * Don't try to CREATE INDEX on temp tables of other backends.
@@ -939,7 +951,7 @@ DefineIndex(Oid relationId,
 	 * We could lift this limitation if we had global indexes, but those have
 	 * their own problems, so this is a useful feature combination.
 	 */
-	if (partitioned && (stmt->unique || stmt->primary))
+	if (partitioned && (stmt->unique || stmt->primary) && !stmt->global_index)
 	{
 		PartitionKey key = RelationGetPartitionKey(rel);
 		const char *constraint_type;
@@ -1045,7 +1057,7 @@ DefineIndex(Oid relationId,
 				}
 			}
 
-			if (!found)
+			if (!found && !stmt->global_index)
 			{
 				Form_pg_attribute att;
 
@@ -1152,6 +1164,13 @@ DefineIndex(Oid relationId,
 		flags |= INDEX_CREATE_PARTITIONED;
 	if (stmt->primary)
 		flags |= INDEX_CREATE_IS_PRIMARY;
+	/* copy the partition indication -1 = first, 0 = N/A, 1 = last */
+	if (stmt->global_index)
+	{
+		indexInfo->ii_Global_index = stmt->global_index;
+		indexInfo->ii_GlobalIndexPart = stmt->globalIndexPart;
+		indexInfo->ii_Nparts = stmt->nparts;
+	}
 
 	/*
 	 * If the table is partitioned, and recursion was declined but partitions
@@ -1164,6 +1183,8 @@ DefineIndex(Oid relationId,
 		if (pd->nparts != 0)
 			flags |= INDEX_CREATE_INVALID;
 	}
+	if (stmt->global_index)
+		flags |= INDEX_CREATE_GLOBAL;
 
 	if (stmt->deferrable)
 		constr_flags |= INDEX_CONSTR_CREATE_DEFERRABLE;
@@ -1385,6 +1406,24 @@ DefineIndex(Oid relationId,
 					bool		found_whole_row;
 					ListCell   *lc;
 					ObjectAddress childAddr;
+
+					if (i == nparts - 1 && stmt->global_index)
+					{
+						elog(DEBUG2, "mark as last partitioned to scan");
+						childStmt->globalIndexPart = 1;
+					}
+
+					if (i == 0 && stmt->global_index)
+					{
+						elog(DEBUG2, "mark as first partitioned to scan");
+						childStmt->globalIndexPart = -1;
+					}
+
+					if (stmt->global_index)
+					{
+						childStmt->nparts = nparts;
+						elog(DEBUG2, "total partitions to build global index %d", childStmt->nparts);
+					}
 
 					/*
 					 * We can't use the same index name for the child index,
@@ -2827,6 +2866,7 @@ RangeVarCallbackForReindexIndex(const RangeVar *relation,
 	if (!relkind)
 		return;
 	if (relkind != RELKIND_INDEX &&
+		relkind != RELKIND_GLOBAL_INDEX &&
 		relkind != RELKIND_PARTITIONED_INDEX)
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
@@ -3210,6 +3250,7 @@ ReindexPartitions(Oid relid, ReindexParams *params, bool isTopLevel)
 			continue;
 
 		Assert(partkind == RELKIND_INDEX ||
+			   partkind == RELKIND_GLOBAL_INDEX ||
 			   partkind == RELKIND_RELATION);
 
 		/* Save partition OID */
@@ -3303,7 +3344,8 @@ ReindexMultipleInternal(List *relids, ReindexParams *params)
 			(void) ReindexRelationConcurrently(relid, &newparams);
 			/* ReindexRelationConcurrently() does the verbose output */
 		}
-		else if (relkind == RELKIND_INDEX)
+		else if (relkind == RELKIND_INDEX ||
+				 relkind == RELKIND_GLOBAL_INDEX)
 		{
 			ReindexParams newparams = *params;
 
@@ -3562,6 +3604,7 @@ ReindexRelationConcurrently(Oid relationOid, ReindexParams *params)
 				break;
 			}
 		case RELKIND_INDEX:
+		case RELKIND_GLOBAL_INDEX:
 			{
 				Oid			heapId = IndexGetRelation(relationOid,
 													  (params->options & REINDEXOPT_MISSING_OK) != 0);
@@ -4170,7 +4213,8 @@ ReindexRelationConcurrently(Oid relationOid, ReindexParams *params)
 	/* Log what we did */
 	if ((params->options & REINDEXOPT_VERBOSE) != 0)
 	{
-		if (relkind == RELKIND_INDEX)
+		if (relkind == RELKIND_INDEX ||
+			relkind == RELKIND_GLOBAL_INDEX)
 			ereport(INFO,
 					(errmsg("index \"%s.%s\" was reindexed",
 							relationNamespace, relationName),
@@ -4223,6 +4267,7 @@ IndexSetParentIndex(Relation partitionIdx, Oid parentOid)
 
 	/* Make sure this is an index */
 	Assert(partitionIdx->rd_rel->relkind == RELKIND_INDEX ||
+		   partitionIdx->rd_rel->relkind == RELKIND_GLOBAL_INDEX ||
 		   partitionIdx->rd_rel->relkind == RELKIND_PARTITIONED_INDEX);
 
 	/*
@@ -4395,4 +4440,149 @@ set_indexsafe_procflags(void)
 	MyProc->statusFlags |= PROC_IN_SAFE_IC;
 	ProcGlobal->statusFlags[MyProc->pgxactoff] = MyProc->statusFlags;
 	LWLockRelease(ProcArrayLock);
+}
+
+bool
+PopulateGlobalSpool(Relation idxRel, Relation heapRel, IndexStmt *stmt)
+{
+	IndexInfo  *idxinfo;
+	int			numberOfKeyAttributes;
+	int			numberOfAttributes;
+	List	   *allIndexParams;
+	Oid			accessMethodId;
+	Form_pg_am	accessMethodForm;
+	char	   *accessMethodName;
+	HeapTuple	tuple;
+	bool		concurrent;
+	Oid		   *typeObjectId;
+	Oid		   *collationObjectId;
+	Oid		   *classObjectId;
+	int16	   *coloptions;
+	IndexAmRoutine *amRoutine;
+	bool		amcanorder;
+	Oid			root_save_userid;
+	int			root_save_sec_context;
+	int			root_save_nestlevel;
+
+	root_save_nestlevel = NewGUCNestLevel();
+
+	if (stmt->concurrent && get_rel_persistence(RelationGetRelid(heapRel)) != RELPERSISTENCE_TEMP)
+		concurrent = true;
+	else
+		concurrent = false;
+
+	allIndexParams = list_concat_copy(stmt->indexParams,
+									  stmt->indexIncludingParams);
+
+	numberOfKeyAttributes = list_length(stmt->indexParams);
+	numberOfAttributes = list_length(allIndexParams);
+
+	accessMethodName = stmt->accessMethod;
+	tuple = SearchSysCache1(AMNAME, PointerGetDatum(accessMethodName));
+	if (!HeapTupleIsValid(tuple))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("access method \"%s\" does not exist",
+						accessMethodName)));
+	}
+
+	accessMethodForm = (Form_pg_am) GETSTRUCT(tuple);
+	accessMethodId = accessMethodForm->oid;
+	amRoutine = GetIndexAmRoutine(accessMethodForm->amhandler);
+
+	GetUserIdAndSecContext(&root_save_userid, &root_save_sec_context);
+	SetUserIdAndSecContext(heapRel->rd_rel->relowner,
+						   root_save_sec_context | SECURITY_RESTRICTED_OPERATION);
+
+	PG_TRY();
+	{
+		idxinfo = makeIndexInfo(numberOfAttributes,
+								numberOfKeyAttributes,
+								accessMethodId,
+								NIL,	/* expressions, NIL for now */
+								make_ands_implicit((Expr *) stmt->whereClause),
+								stmt->unique,
+								!concurrent,
+								concurrent);
+
+		typeObjectId = (Oid *) palloc(numberOfAttributes * sizeof(Oid));
+		collationObjectId = (Oid *) palloc(numberOfAttributes * sizeof(Oid));
+		classObjectId = (Oid *) palloc(numberOfAttributes * sizeof(Oid));
+		coloptions = (int16 *) palloc(numberOfAttributes * sizeof(int16));
+		amcanorder = amRoutine->amcanorder;
+
+		pfree(amRoutine);
+		ReleaseSysCache(tuple);
+
+		ComputeIndexAttrs(idxinfo,
+						  typeObjectId, collationObjectId, classObjectId,
+						  coloptions, allIndexParams,
+						  stmt->excludeOpNames, RelationGetRelid(heapRel),
+						  accessMethodName, accessMethodId,
+						  amcanorder, stmt->isconstraint, root_save_userid,
+						  root_save_sec_context, &root_save_nestlevel);
+
+		/* Fill global unique index related parameters */
+		idxinfo->ii_GlobalIndexPart = stmt->globalIndexPart;
+		idxinfo->ii_BuildGlobalSpool = true;
+		idxinfo->ii_Nparts = stmt->nparts;
+		idxinfo->ii_Global_index = stmt->global_index;
+
+		/*
+		 * Determine worker process details for parallel CREATE INDEX.
+		 * Currently, only btree has support for parallel builds.
+		 */
+		if (IsNormalProcessingMode() && idxRel->rd_rel->relam == BTREE_AM_OID)
+		{
+			idxinfo->ii_ParallelWorkers =
+				plan_create_index_workers(RelationGetRelid(heapRel),
+										  RelationGetRelid(idxRel));
+		}
+
+		idxRel->rd_indam->ambuild(heapRel, idxRel, idxinfo);
+	}
+	PG_CATCH();
+	{
+		/* Restore security context before re-throwing */
+		AtEOXact_GUC(false, root_save_nestlevel);
+		SetUserIdAndSecContext(root_save_userid, root_save_sec_context);
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	AtEOXact_GUC(false, root_save_nestlevel);
+	SetUserIdAndSecContext(root_save_userid, root_save_sec_context);
+
+	return true;
+}
+
+void
+ChangeRelKind(Relation idxRel, char kind)
+{
+	Relation	pg_class;
+	HeapTuple	tuple;
+	Form_pg_class classform;
+
+	/*
+	 * Get a writable copy of the pg_class tuple for the given relation.
+	 */
+	pg_class = table_open(RelationRelationId, RowExclusiveLock);
+
+	tuple = SearchSysCacheCopy1(RELOID,
+								ObjectIdGetDatum(RelationGetRelid(idxRel)));
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "could not find tuple for relation %u",
+			 RelationGetRelid(idxRel));
+
+	classform = (Form_pg_class) GETSTRUCT(tuple);
+
+	classform->relkind = kind;
+	idxRel->rd_rel->relkind = kind;
+
+	CatalogTupleUpdate(pg_class, &tuple->t_self, tuple);
+
+	heap_freetuple(tuple);
+
+	table_close(pg_class, RowExclusiveLock);
 }

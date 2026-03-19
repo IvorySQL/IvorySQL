@@ -1787,6 +1787,7 @@ ExecGrant_Relation(InternalGrant *istmt)
 
 		/* Not sensible to grant on an index */
 		if (pg_class_tuple->relkind == RELKIND_INDEX ||
+			pg_class_tuple->relkind == RELKIND_GLOBAL_INDEX ||
 			pg_class_tuple->relkind == RELKIND_PARTITIONED_INDEX)
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
@@ -5661,6 +5662,7 @@ recordExtObjInitPriv(Oid objoid, Oid classoid)
 		 * restrictions in ALTER EXTENSION ADD, but let's check anyway.)
 		 */
 		if (pg_class_tuple->relkind == RELKIND_INDEX ||
+			pg_class_tuple->relkind == RELKIND_GLOBAL_INDEX ||
 			pg_class_tuple->relkind == RELKIND_PARTITIONED_INDEX ||
 			pg_class_tuple->relkind == RELKIND_COMPOSITE_TYPE)
 		{
@@ -5955,6 +5957,7 @@ removeExtObjInitPriv(Oid objoid, Oid classoid)
 		 * restrictions in ALTER EXTENSION DROP, but let's check anyway.)
 		 */
 		if (pg_class_tuple->relkind == RELKIND_INDEX ||
+			pg_class_tuple->relkind == RELKIND_GLOBAL_INDEX ||
 			pg_class_tuple->relkind == RELKIND_PARTITIONED_INDEX ||
 			pg_class_tuple->relkind == RELKIND_COMPOSITE_TYPE)
 		{

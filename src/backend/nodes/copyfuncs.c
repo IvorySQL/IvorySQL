@@ -3724,6 +3724,7 @@ _copyIndexStmt(const IndexStmt *from)
 	COPY_SCALAR_FIELD(concurrent);
 	COPY_SCALAR_FIELD(if_not_exists);
 	COPY_SCALAR_FIELD(reset_default_tblspc);
+	COPY_SCALAR_FIELD(global_index);
 
 	return newnode;
 }
