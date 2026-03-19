@@ -104,6 +104,7 @@ typedef struct
 	AclMode		privileges;
 	List	   *grantees;
 	bool		grant_option;
+	RoleSpec   *grantor;
 	DropBehavior behavior;
 } InternalDefaultACL;
 
@@ -409,22 +410,6 @@ ExecuteGrantStmt(GrantStmt *stmt)
 	const char *errormsg;
 	AclMode		all_privileges;
 
-	if (stmt->grantor)
-	{
-		Oid			grantor;
-
-		grantor = get_rolespec_oid(stmt->grantor, false);
-
-		/*
-		 * Currently, this clause is only for SQL compatibility, not very
-		 * interesting otherwise.
-		 */
-		if (grantor != GetUserId())
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("grantor must be current user")));
-	}
-
 	/*
 	 * Turn the regular GrantStmt into the InternalGrant form.
 	 */
@@ -452,6 +437,7 @@ ExecuteGrantStmt(GrantStmt *stmt)
 	istmt.col_privs = NIL;		/* may get filled below */
 	istmt.grantees = NIL;		/* filled below */
 	istmt.grant_option = stmt->grant_option;
+	istmt.grantor = stmt->grantor;
 	istmt.behavior = stmt->behavior;
 
 	/*
@@ -1036,6 +1022,7 @@ ExecAlterDefaultPrivilegesStmt(ParseState *pstate, AlterDefaultPrivilegesStmt *s
 	/* privileges to be filled below */
 	iacls.grantees = NIL;		/* filled below */
 	iacls.grant_option = action->grant_option;
+	iacls.grantor = action->grantor;
 	iacls.behavior = action->behavior;
 
 	/*
@@ -1579,6 +1566,7 @@ RemoveRoleFromObjectACL(Oid roleid, Oid classid, Oid objid)
 		iacls.privileges = ACL_NO_RIGHTS;
 		iacls.grantees = list_make1_oid(roleid);
 		iacls.grant_option = false;
+		iacls.grantor = NULL;
 		iacls.behavior = DROP_CASCADE;
 
 		/* Do it */
@@ -1635,6 +1623,7 @@ RemoveRoleFromObjectACL(Oid roleid, Oid classid, Oid objid)
 		istmt.col_privs = NIL;
 		istmt.grantees = list_make1_oid(roleid);
 		istmt.grant_option = false;
+		istmt.grantor = NULL;
 		istmt.behavior = DROP_CASCADE;
 
 		ExecGrantStmt_oids(&istmt);
@@ -1792,7 +1781,7 @@ ExecGrant_Attribute(InternalGrant *istmt, Oid relOid, const char *relname,
 	merged_acl = aclconcat(old_rel_acl, old_acl);
 
 	/* Determine ID to do the grant as, and available grant options */
-	select_best_grantor(GetUserId(), col_privileges,
+	select_best_grantor(istmt->grantor, col_privileges,
 						merged_acl, ownerId,
 						&grantorId, &avail_goptions);
 
@@ -2077,7 +2066,7 @@ ExecGrant_Relation(InternalGrant *istmt)
 			ObjectType	objtype;
 
 			/* Determine ID to do the grant as, and available grant options */
-			select_best_grantor(GetUserId(), this_privileges,
+			select_best_grantor(istmt->grantor, this_privileges,
 								old_acl, ownerId,
 								&grantorId, &avail_goptions);
 
@@ -2283,7 +2272,7 @@ ExecGrant_Package(InternalGrant *istmt)
 		}
 
 		/* Determine ID to do the grant as, and package grant options */
-		select_best_grantor(GetUserId(), istmt->privileges,
+		select_best_grantor(istmt->grantor, istmt->privileges,
 							old_acl, ownerId,
 							&grantorId, &avail_goptions);
 
@@ -2422,7 +2411,7 @@ ExecGrant_common(InternalGrant *istmt, Oid classid, AclMode default_privs,
 		}
 
 		/* Determine ID to do the grant as, and available grant options */
-		select_best_grantor(GetUserId(), istmt->privileges,
+		select_best_grantor(istmt->grantor, istmt->privileges,
 							old_acl, ownerId,
 							&grantorId, &avail_goptions);
 
@@ -2577,7 +2566,7 @@ ExecGrant_Largeobject(InternalGrant *istmt)
 		}
 
 		/* Determine ID to do the grant as, and available grant options */
-		select_best_grantor(GetUserId(), istmt->privileges,
+		select_best_grantor(istmt->grantor, istmt->privileges,
 							old_acl, ownerId,
 							&grantorId, &avail_goptions);
 
@@ -2723,7 +2712,7 @@ ExecGrant_Parameter(InternalGrant *istmt)
 		}
 
 		/* Determine ID to do the grant as, and available grant options */
-		select_best_grantor(GetUserId(), istmt->privileges,
+		select_best_grantor(istmt->grantor, istmt->privileges,
 							old_acl, ownerId,
 							&grantorId, &avail_goptions);
 
