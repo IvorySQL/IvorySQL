@@ -1716,7 +1716,7 @@ EventTriggerUndoInhibitCommandCollection(void)
 void
 EventTriggerCollectSimpleCommand(ObjectAddress address,
 								 ObjectAddress secondaryObject,
-								 Node *parsetree)
+								 const Node *parsetree)
 {
 	MemoryContext oldcxt;
 	CollectedCommand *command;
@@ -1752,7 +1752,7 @@ EventTriggerCollectSimpleCommand(ObjectAddress address,
  * add it to the command list.
  */
 void
-EventTriggerAlterTableStart(Node *parsetree)
+EventTriggerAlterTableStart(const Node *parsetree)
 {
 	MemoryContext oldcxt;
 	CollectedCommand *command;
@@ -1804,7 +1804,7 @@ EventTriggerAlterTableRelid(Oid objectId)
  * internally, so that's all that this code needs to handle at the moment.
  */
 void
-EventTriggerCollectAlterTableSubcmd(Node *subcmd, ObjectAddress address)
+EventTriggerCollectAlterTableSubcmd(const Node *subcmd, ObjectAddress address)
 {
 	MemoryContext oldcxt;
 	CollectedATSubcmd *newsub;
@@ -1921,7 +1921,7 @@ EventTriggerCollectGrant(InternalGrant *istmt)
  *		executed
  */
 void
-EventTriggerCollectAlterOpFam(AlterOpFamilyStmt *stmt, Oid opfamoid,
+EventTriggerCollectAlterOpFam(const AlterOpFamilyStmt *stmt, Oid opfamoid,
 							  List *operators, List *procedures)
 {
 	MemoryContext oldcxt;
@@ -1954,7 +1954,7 @@ EventTriggerCollectAlterOpFam(AlterOpFamilyStmt *stmt, Oid opfamoid,
  *		Save data about a CREATE OPERATOR CLASS command being executed
  */
 void
-EventTriggerCollectCreateOpClass(CreateOpClassStmt *stmt, Oid opcoid,
+EventTriggerCollectCreateOpClass(const CreateOpClassStmt *stmt, Oid opcoid,
 								 List *operators, List *procedures)
 {
 	MemoryContext oldcxt;
@@ -1988,7 +1988,7 @@ EventTriggerCollectCreateOpClass(CreateOpClassStmt *stmt, Oid opcoid,
  *		executed
  */
 void
-EventTriggerCollectAlterTSConfig(AlterTSConfigurationStmt *stmt, Oid cfgId,
+EventTriggerCollectAlterTSConfig(const AlterTSConfigurationStmt *stmt, Oid cfgId,
 								 Oid *dictIds, int ndicts)
 {
 	MemoryContext oldcxt;
@@ -2026,7 +2026,7 @@ EventTriggerCollectAlterTSConfig(AlterTSConfigurationStmt *stmt, Oid cfgId,
  *		executed
  */
 void
-EventTriggerCollectAlterDefPrivs(AlterDefaultPrivilegesStmt *stmt)
+EventTriggerCollectAlterDefPrivs(const AlterDefaultPrivilegesStmt *stmt)
 {
 	MemoryContext oldcxt;
 	CollectedCommand *command;
