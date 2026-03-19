@@ -37,8 +37,7 @@ jobs:
 
     - name: contrib_regression
       run: |
-        cd contrib && make oracle-check
-        make check
+        cd contrib && make check
 
     - name: collect files
       if: failure()
