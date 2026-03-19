@@ -546,10 +546,10 @@ extern bool HeapTupleIsSurelyDead(HeapTuple htup,
 /* in heap/heapam.c */
 extern bool DoesMultiXactIdConflict(MultiXactId multi, uint16 infomask,
 								  LockTupleMode lockmode, bool *current_is_member);
-extern bool heap_acquire_tuplock(Relation relation, ItemPointer tid, LockTupleMode mode,
+extern bool heap_acquire_tuplock(Relation relation, const ItemPointerData *tid, LockTupleMode mode,
 								  LockWaitPolicy wait_policy, bool *have_tuple_lock);
 extern void MultiXactIdWait(MultiXactId multi, MultiXactStatus status, uint16 infomask,
-							  Relation rel, ItemPointer ctid, XLTW_Oper oper, int *remaining);
+							  Relation rel, const ItemPointerData *ctid, XLTW_Oper oper, int *remaining);
 extern void UpdateXmaxHintBits(HeapTupleHeader tuple, Buffer buffer, TransactionId xid);
 extern HeapTuple ExtractReplicaIdentity(Relation relation, HeapTuple tp, bool key_changed,
 							  bool *copy);
