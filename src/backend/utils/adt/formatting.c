@@ -3115,7 +3115,7 @@ DCH_to_char(FormatNode *node, bool is_interval, TmToChar *in, char *out, Oid col
 			case DCH_YYYY:
 			case DCH_IYYY:
 				sprintf(s, "%0*d",
-						S_FM(n->suffix) ? 0 :
+						IS_SUFFIX_FM(n->suffix) ? 0 :
 						(ADJUST_YEAR(tm->tm_year, is_interval) >= 0) ? 4 : 5,
 						((n->key->id == DCH_YYYY || n->key->id == DCH_RRRR) ?
 						 ADJUST_YEAR(tm->tm_year, is_interval) :
@@ -3123,7 +3123,7 @@ DCH_to_char(FormatNode *node, bool is_interval, TmToChar *in, char *out, Oid col
 												  tm->tm_mon,
 												  tm->tm_mday),
 									 is_interval)));
-				if (S_THth(n->suffix))
+				if (IS_SUFFIX_THth(n->suffix))
 					str_numth(s, s, SUFFIX_TH_TYPE(n->suffix));
 				s += strlen(s);
 				break;
@@ -4261,7 +4261,7 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 		}
 	}
 
-	if (!pmamflg && out->clock == CLOCK_12_HOUR && out->hh == 12 && out->pm == 0)
+	if (!pmamflg && out->clock_12_hour && out->hh == 12 && out->pm == 0)
 		out->pm = 1;
 	/*
 	 * Standard parsing mode doesn't allow unmatched format patterns or
@@ -5643,7 +5643,7 @@ ora_do_to_timestamp(text *date_txt, text *fmt, Oid collid, bool std,
 	if (tmfc.hh)
 		tm->tm_hour = tmfc.hh;
 
-	if (tmfc.clock == CLOCK_12_HOUR)
+	if (tmfc.clock_12_hour)
 	{
 		if (tm->tm_hour < 1 || tm->tm_hour > HOURS_PER_DAY / 2)
 		{
