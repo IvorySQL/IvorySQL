@@ -531,8 +531,6 @@ typedef uint32 bits32;			/* >= 32 bits */
 /* snprintf format strings to use for 64-bit integers */
 #define INT64_FORMAT "%" PRId64
 #define UINT64_FORMAT "%" PRIu64
-#define INT64_HEX_FORMAT "%" PRIx64
-#define UINT64_HEX_FORMAT "%" PRIx64
 
 /*
  * 128-bit signed and unsigned integers
@@ -614,11 +612,11 @@ typedef signed int Offset;
 typedef float float4;
 typedef double float8;
 
-#ifdef USE_FLOAT8_BYVAL
+/*
+ * float8, int8, and related datatypes are now always pass-by-value.
+ * We keep this symbol to avoid breaking extension code that may use it.
+ */
 #define FLOAT8PASSBYVAL true
-#else
-#define FLOAT8PASSBYVAL false
-#endif
 
 /*
  * Oid, RegProcedure, TransactionId, SubTransactionId, MultiXactId,

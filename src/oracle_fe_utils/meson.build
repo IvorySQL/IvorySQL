@@ -25,7 +25,7 @@ generated_sources += ora_psqlscan
 ora_fe_utils_sources += ora_psqlscan
 
 ora_fe_utils = static_library('liborafeutils',
-  ora_fe_utils_sources + generated_headers,
+  ora_fe_utils_sources,
   c_pch: pch_postgres_fe_h,
   include_directories: [postgres_inc, libpq_inc],
   c_args: host_system == 'windows' ? ['-DFD_SETSIZE=1024'] : [],

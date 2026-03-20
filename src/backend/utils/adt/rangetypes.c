@@ -285,8 +285,7 @@ range_send(PG_FUNCTION_ARGS)
 
 	if (RANGE_HAS_LBOUND(flags))
 	{
-		Datum		bound = PointerGetDatum(SendFunctionCall(&cache->typioproc,
-															 lower.val));
+		bytea	   *bound = SendFunctionCall(&cache->typioproc, lower.val);
 		uint32		bound_len = VARSIZE(bound) - VARHDRSZ;
 		char	   *bound_data = VARDATA(bound);
 
@@ -296,8 +295,7 @@ range_send(PG_FUNCTION_ARGS)
 
 	if (RANGE_HAS_UBOUND(flags))
 	{
-		Datum		bound = PointerGetDatum(SendFunctionCall(&cache->typioproc,
-															 upper.val));
+		bytea	   *bound = SendFunctionCall(&cache->typioproc, upper.val);
 		uint32		bound_len = VARSIZE(bound) - VARHDRSZ;
 		char	   *bound_data = VARDATA(bound);
 
@@ -1077,8 +1075,8 @@ range_union_internal(TypeCacheEntry *typcache, RangeType *r1, RangeType *r2,
 		return r1;
 
 	if (strict &&
-		!DatumGetBool(range_overlaps_internal(typcache, r1, r2)) &&
-		!DatumGetBool(range_adjacent_internal(typcache, r1, r2)))
+		!range_overlaps_internal(typcache, r1, r2) &&
+		!range_adjacent_internal(typcache, r1, r2))
 		ereport(ERROR,
 				(errcode(ERRCODE_DATA_EXCEPTION),
 				 errmsg("result of range union would not be contiguous")));
@@ -1345,9 +1343,9 @@ range_fast_cmp(Datum a, Datum b, SortSupport ssup)
 			cmp = range_cmp_bounds(typcache, &upper1, &upper2);
 	}
 
-	if ((Datum) range_a != a)
+	if ((Pointer) range_a != DatumGetPointer(a))
 		pfree(range_a);
-	if ((Datum) range_b != b)
+	if ((Pointer) range_b != DatumGetPointer(b))
 		pfree(range_b);
 
 	return cmp;
@@ -1358,7 +1356,7 @@ range_fast_cmp(Datum a, Datum b, SortSupport ssup)
 Datum
 range_lt(PG_FUNCTION_ARGS)
 {
-	int			cmp = range_cmp(fcinfo);
+	int			cmp = DatumGetInt32(range_cmp(fcinfo));
 
 	PG_RETURN_BOOL(cmp < 0);
 }
@@ -1366,7 +1364,7 @@ range_lt(PG_FUNCTION_ARGS)
 Datum
 range_le(PG_FUNCTION_ARGS)
 {
-	int			cmp = range_cmp(fcinfo);
+	int			cmp = DatumGetInt32(range_cmp(fcinfo));
 
 	PG_RETURN_BOOL(cmp <= 0);
 }
@@ -1374,7 +1372,7 @@ range_le(PG_FUNCTION_ARGS)
 Datum
 range_ge(PG_FUNCTION_ARGS)
 {
-	int			cmp = range_cmp(fcinfo);
+	int			cmp = DatumGetInt32(range_cmp(fcinfo));
 
 	PG_RETURN_BOOL(cmp >= 0);
 }
@@ -1382,7 +1380,7 @@ range_ge(PG_FUNCTION_ARGS)
 Datum
 range_gt(PG_FUNCTION_ARGS)
 {
-	int			cmp = range_cmp(fcinfo);
+	int			cmp = DatumGetInt32(range_cmp(fcinfo));
 
 	PG_RETURN_BOOL(cmp > 0);
 }
@@ -1444,7 +1442,7 @@ hash_range(PG_FUNCTION_ARGS)
 		upper_hash = 0;
 
 	/* Merge hashes of flags and bounds */
-	result = hash_uint32((uint32) flags);
+	result = hash_bytes_uint32((uint32) flags);
 	result ^= lower_hash;
 	result = pg_rotate_left32(result, 1);
 	result ^= upper_hash;

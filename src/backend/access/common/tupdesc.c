@@ -824,10 +824,10 @@ hashRowType(TupleDesc desc)
 	uint32		s;
 	int			i;
 
-	s = hash_combine(0, hash_uint32(desc->natts));
-	s = hash_combine(s, hash_uint32(desc->tdtypeid));
+	s = hash_combine(0, hash_bytes_uint32(desc->natts));
+	s = hash_combine(s, hash_bytes_uint32(desc->tdtypeid));
 	for (i = 0; i < desc->natts; ++i)
-		s = hash_combine(s, hash_uint32(TupleDescAttr(desc, i)->atttypid));
+		s = hash_combine(s, hash_bytes_uint32(TupleDescAttr(desc, i)->atttypid));
 
 	return s;
 }
@@ -1004,7 +1004,7 @@ TupleDescInitBuiltinEntry(TupleDesc desc,
 
 		case INT8OID:
 			att->attlen = 8;
-			att->attbyval = FLOAT8PASSBYVAL;
+			att->attbyval = true;
 			att->attalign = TYPALIGN_DOUBLE;
 			att->attstorage = TYPSTORAGE_PLAIN;
 			att->attcompression = InvalidCompressionMethod;

@@ -1164,7 +1164,7 @@ add_local_string_reloption(local_relopts *relopts, const char *name,
  * but we declare them as Datums to avoid including array.h in reloptions.h.
  */
 Datum
-transformRelOptions(Datum oldOptions, List *defList, const char *namspace,
+transformRelOptions(Datum oldOptions, List *defList, const char *nameSpace,
 					const char *const validnsps[], bool acceptOidsOff, bool isReset)
 {
 	Datum		result;
@@ -1190,8 +1190,8 @@ transformRelOptions(Datum oldOptions, List *defList, const char *namspace,
 
 		for (i = 0; i < noldoptions; i++)
 		{
-			char	   *text_str = VARDATA(oldoptions[i]);
-			int			text_len = VARSIZE(oldoptions[i]) - VARHDRSZ;
+			char	   *text_str = VARDATA(DatumGetPointer(oldoptions[i]));
+			int			text_len = VARSIZE(DatumGetPointer(oldoptions[i])) - VARHDRSZ;
 
 			/* Search for a match in defList */
 			foreach(cell, defList)
@@ -1200,14 +1200,14 @@ transformRelOptions(Datum oldOptions, List *defList, const char *namspace,
 				int			kw_len;
 
 				/* ignore if not in the same namespace */
-				if (namspace == NULL)
+				if (nameSpace == NULL)
 				{
 					if (def->defnamespace != NULL)
 						continue;
 				}
 				else if (def->defnamespace == NULL)
 					continue;
-				else if (strcmp(def->defnamespace, namspace) != 0)
+				else if (strcmp(def->defnamespace, nameSpace) != 0)
 					continue;
 
 				kw_len = strlen(def->defname);
@@ -1280,14 +1280,14 @@ transformRelOptions(Datum oldOptions, List *defList, const char *namspace,
 				continue;
 
 			/* ignore if not in the same namespace */
-			if (namspace == NULL)
+			if (nameSpace == NULL)
 			{
 				if (def->defnamespace != NULL)
 					continue;
 			}
 			else if (def->defnamespace == NULL)
 				continue;
-			else if (strcmp(def->defnamespace, namspace) != 0)
+			else if (strcmp(def->defnamespace, nameSpace) != 0)
 				continue;
 
 			/*
@@ -1459,8 +1459,8 @@ parseRelOptionsInternal(Datum options, bool validate,
 
 	for (i = 0; i < noptions; i++)
 	{
-		char	   *text_str = VARDATA(optiondatums[i]);
-		int			text_len = VARSIZE(optiondatums[i]) - VARHDRSZ;
+		char	   *text_str = VARDATA(DatumGetPointer(optiondatums[i]));
+		int			text_len = VARSIZE(DatumGetPointer(optiondatums[i])) - VARHDRSZ;
 		int			j;
 
 		/* Search for a match in reloptions */

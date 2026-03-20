@@ -1485,11 +1485,6 @@ StartReadBuffersImpl(ReadBuffersOperation *operation,
  * buffers must remain valid until WaitReadBuffers() is called, and any
  * forwarded buffers must also be preserved for a continuing call unless
  * they are explicitly released.
- *
- * Currently the I/O is only started with optional operating system advice if
- * requested by the caller with READ_BUFFERS_ISSUE_ADVICE, and the real I/O
- * happens synchronously in WaitReadBuffers().  In future work, true I/O could
- * be initiated here.
  */
 bool
 StartReadBuffers(ReadBuffersOperation *operation,
@@ -6371,8 +6366,8 @@ ckpt_buforder_comparator(const CkptSortItem *a, const CkptSortItem *b)
 static int
 ts_ckpt_progress_comparator(Datum a, Datum b, void *arg)
 {
-	CkptTsStatus *sa = (CkptTsStatus *) a;
-	CkptTsStatus *sb = (CkptTsStatus *) b;
+	CkptTsStatus *sa = (CkptTsStatus *) DatumGetPointer(a);
+	CkptTsStatus *sb = (CkptTsStatus *) DatumGetPointer(b);
 
 	/* we want a min-heap, so return 1 for the a < b */
 	if (sa->progress < sb->progress)

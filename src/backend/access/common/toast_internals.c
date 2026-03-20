@@ -64,11 +64,11 @@ toast_compress_datum(Datum value, char cmethod)
 	switch (cmethod)
 	{
 		case TOAST_PGLZ_COMPRESSION:
-			tmp = pglz_compress_datum((const struct varlena *) value);
+			tmp = pglz_compress_datum((const struct varlena *) DatumGetPointer(value));
 			cmid = TOAST_PGLZ_COMPRESSION_ID;
 			break;
 		case TOAST_LZ4_COMPRESSION:
-			tmp = lz4_compress_datum((const struct varlena *) value);
+			tmp = lz4_compress_datum((const struct varlena *) DatumGetPointer(value));
 			cmid = TOAST_LZ4_COMPRESSION_ID;
 			break;
 		default:
@@ -144,7 +144,7 @@ toast_save_datum(Relation rel, Datum value,
 	int			num_indexes;
 	int			validIndex;
 
-	Assert(!VARATT_IS_EXTERNAL(value));
+	Assert(!VARATT_IS_EXTERNAL(dval));
 
 	/*
 	 * Open the toast relation and its indexes.  We can use the index to check

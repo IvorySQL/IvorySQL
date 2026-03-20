@@ -290,7 +290,7 @@ postgres=# select * from pg_logical_slot_get_changes('regression_slot', NULL, NU
     <para>
      A logical slot will emit each change just once in normal operation.
      The current position of each slot is persisted only at checkpoint, so in
-     the case of a crash the slot may return to an earlier LSN, which will
+     the case of a crash the slot might return to an earlier LSN, which will
      then cause recent changes to be sent again when the server restarts.
      Logical decoding clients are responsible for avoiding ill effects from
      handling the same message more than once.  Clients may wish to record
@@ -409,7 +409,7 @@ postgres=# select * from pg_logical_slot_get_changes('regression_slot', NULL, NU
       should be used with caution. Unlike automatic synchronization, it does not
       include cyclic retries, making it more prone to synchronization failures,
       particularly during initial sync scenarios where the required WAL files
-      or catalog rows for the slot may have already been removed or are at risk
+      or catalog rows for the slot might have already been removed or are at risk
       of being removed on the standby. In contrast, automatic synchronization
       via <varname>sync_replication_slots</varname> provides continuous slot
       updates, enabling seamless failover and supporting high availability.
@@ -420,18 +420,18 @@ postgres=# select * from pg_logical_slot_get_changes('regression_slot', NULL, NU
     <para>
      When slot synchronization is configured as recommended,
      and the initial synchronization is performed either automatically or
-     manually via pg_sync_replication_slot, the standby can persist the
-     synchronized slot only if the following condition is met: The logical
-     replication slot on the primary must retain WALs and system catalog
-     rows that are still available on the standby. This ensures data
+     manually via <function>pg_sync_replication_slots</function>, the standby
+     can persist the synchronized slot only if the following condition is met:
+     The logical replication slot on the primary must retain WALs and system
+     catalog rows that are still available on the standby. This ensures data
      integrity and allows logical replication to continue smoothly after
      promotion.
      If the required WALs or catalog rows have already been purged from the
      standby, the slot will not be persisted to avoid data loss. In such
      cases, the following log message may appear:
 <programlisting>
-     LOG:  could not synchronize replication slot "failover_slot"
-     DETAIL:  Synchronization could lead to data loss as the remote slot needs WAL at LSN 0/03003F28 and catalog xmin 754, but the standby has LSN 0/03003F28 and catalog xmin 756
+LOG:  could not synchronize replication slot "failover_slot"
+DETAIL:  Synchronization could lead to data loss, because the remote slot needs WAL at LSN 0/03003F28 and catalog xmin 754, but the standby has LSN 0/03003F28 and catalog xmin 756.
 </programlisting>
      If the logical replication slot is actively used by a consumer, no
      manual intervention is needed; the slot will advance automatically,
@@ -574,6 +574,170 @@ postgres=# select * from pg_logical_slot_get_changes('regression_slot', NULL, NU
 
   <sect1 id="logicaldecoding-output-plugin">
    <title>Logical Decoding Output Plugins</title>
+
+   <para>
+    <productname>PostgreSQL</productname> provides two logical decoding
+    output plugins, <xref linkend="logicaldecoding-pgoutput"/> and
+    <xref linkend="test-decoding"/>.  You can also develop custom output plugins
+    (see <xref linkend="logicaldecoding-output-plugin-writing"/> for details).
+   </para>
+
+   <sect2 id="logicaldecoding-pgoutput" xreflabel="pgoutput">
+    <title>pgoutput &mdash; Standard Logical Decoding Output Plugin</title>
+
+    <indexterm zone="logicaldecoding-pgoutput">
+     <primary>pgoutput</primary>
+    </indexterm>
+
+    <para>
+     <filename>pgoutput</filename> is the standard logical decoding output
+     plugin provided by <productname>PostgreSQL</productname>.
+     It's used for the built-in <link linkend="logical-replication">
+     logical replication</link>.
+    </para>
+
+    <sect3 id="logicaldecoding-pgoutput-options">
+     <title>Options</title>
+
+     <variablelist>
+      <varlistentry id="pgoutput-options-proto-version">
+       <term><varname>proto_version</varname> (<type>integer</type>)</term>
+       <listitem>
+        <para>
+         Specifies the protocol version.
+         Currently versions <literal>1</literal>, <literal>2</literal>,
+         <literal>3</literal>, and <literal>4</literal> are supported.  A valid
+         version is required.
+        </para>
+        <para>
+         Version <literal>2</literal> is supported on server version 14
+         and above, and is required when <varname>streaming</varname>
+         is set to <literal>on</literal> to stream large in-progress
+         transactions.
+        </para>
+        <para>
+         Version <literal>3</literal> is supported on server version 15
+         and above, and is required when <varname>two_phase</varname>
+         is enabled to stream two-phase commits.
+        </para>
+        <para>
+         Version <literal>4</literal> is supported on server version 16
+         and above, and is required when <varname>streaming</varname>
+         is set to <literal>parallel</literal> to stream large in-progress
+         transactions to be applied in parallel.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="pgoutput-options-publication-names">
+       <term><varname>publication_names</varname> (<type>string</type>)</term>
+       <listitem>
+        <para>
+         A comma-separated list of publication names to subscribe to.
+         The individual publication names are treated
+         as standard objects names and can be quoted the same as needed.
+         At least one publication name is required.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="pgoutput-options-binary">
+       <term><varname>binary</varname> (<type>boolean</type>)</term>
+       <listitem>
+        <para>
+         Enables binary transfer mode.  Binary mode is faster
+         than the text mode but slightly less robust.
+         The default is <literal>off</literal>.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="pgoutput-options-messages">
+       <term><varname>messages</varname> (<type>boolean</type>)</term>
+       <listitem>
+        <para>
+         Enables sending the messages that are written by
+         <function><link linkend="pg-logical-emit-message">pg_logical_emit_message</link></function>.
+         The default is <literal>off</literal>.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="pgoutput-options-streaming">
+       <term><varname>streaming</varname> (<type>enum</type>)</term>
+       <listitem>
+        <para>
+         Enables streaming of in-progress transactions. Valid values are
+         <literal>off</literal> (the default), <literal>on</literal> and
+         <literal>parallel</literal>.
+        </para>
+        <para>
+         When set to <literal>off</literal>, <filename>pgoutput</filename>
+         fully decodes a transaction before sending it as a whole.
+         This mode works with any protocol version.
+        </para>
+        <para>
+         When set to <literal>on</literal>, <filename>pgoutput</filename>
+         streams large in-progress transactions.
+         This requires protocol version 2 or higher.
+        </para>
+        <para>
+         When set to <literal>parallel</literal>, <filename>pgoutput</filename>
+         streams large in-progress transactions and also sends
+         extra information in some messages to support parallel processing.
+         This requires protocol version 4 or higher.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="pgoutput-options-two-phase">
+       <term><varname>two_phase</varname> (<type>boolean</type>)</term>
+       <listitem>
+        <para>
+         Enables sending two-phase transactions.
+         Minimum protocol version 3 is required to turn it on.
+         The default is <literal>off</literal>.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="pgoutput-options-origin">
+       <term><varname>origin</varname> (<type>enum</type>)</term>
+       <listitem>
+        <para>
+         Specifies whether to send changes by their origin.  Possible values are
+         <literal>none</literal> to only send the changes that have no origin
+         associated, or <literal>any</literal>
+         to send the changes regardless of their origin.  This can be used
+         to avoid loops (infinite replication of the same data) among
+         replication nodes.
+         The default is <literal>any</literal>.
+        </para>
+       </listitem>
+      </varlistentry>
+     </variablelist>
+
+    </sect3>
+
+    <sect3 id="logicaldecoding-pgoutput-notes">
+     <title>Notes</title>
+
+     <para>
+      <filename>pgoutput</filename> produces binary output,
+      so functions expecting textual data (
+      <function><link linkend="pg-logical-slot-peek-changes">pg_logical_slot_peek_changes</link></function> and
+      <function><link linkend="pg-logical-slot-get-changes">pg_logical_slot_get_changes</link></function>)
+      cannot be used with it.  Use
+      <function><link linkend="pg-logical-slot-peek-binary-changes">pg_logical_slot_peek_binary_changes</link></function> or
+      <function><link linkend="pg-logical-slot-get-binary-changes">pg_logical_slot_get_binary_changes</link></function>
+      instead.
+     </para>
+    </sect3>
+   </sect2>
+  </sect1>
+
+  <sect1 id="logicaldecoding-output-plugin-writing">
+   <title>Writing Logical Decoding Output Plugins</title>
    <para>
     An example output plugin can be found in the
     <link linkend="test-decoding">

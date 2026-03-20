@@ -15,6 +15,7 @@
 
 #include <limits.h>
 
+#include "catalog/pg_attribute_d.h"
 #include "catalog/pg_class_d.h"
 #include "common.h"
 #include "common/connect.h"
@@ -912,10 +913,26 @@ retrieve_objects(PGconn *conn, vacuumingOptions *vacopts,
 	 */
 	if ((objfilter & OBJFILTER_TABLE) == 0)
 	{
-		appendPQExpBufferStr(&catalog_query,
-							 " AND c.relkind OPERATOR(pg_catalog.=) ANY (array["
-							 CppAsString2(RELKIND_RELATION) ", "
-							 CppAsString2(RELKIND_MATVIEW) "])\n");
+		/*
+		 * vacuumdb should generally follow the behavior of the underlying
+		 * VACUUM and ANALYZE commands. If analyze_only is true, process
+		 * regular tables, materialized views, and partitioned tables, just
+		 * like ANALYZE (with no specific target tables) does. Otherwise,
+		 * process only regular tables and materialized views, since VACUUM
+		 * skips partitioned tables when no target tables are specified.
+		 */
+		if (vacopts->analyze_only)
+			appendPQExpBufferStr(&catalog_query,
+								 " AND c.relkind OPERATOR(pg_catalog.=) ANY (array["
+								 CppAsString2(RELKIND_RELATION) ", "
+								 CppAsString2(RELKIND_MATVIEW) ", "
+								 CppAsString2(RELKIND_PARTITIONED_TABLE) "])\n");
+		else
+			appendPQExpBufferStr(&catalog_query,
+								 " AND c.relkind OPERATOR(pg_catalog.=) ANY (array["
+								 CppAsString2(RELKIND_RELATION) ", "
+								 CppAsString2(RELKIND_MATVIEW) "])\n");
+
 	}
 
 	/*
@@ -958,6 +975,8 @@ retrieve_objects(PGconn *conn, vacuumingOptions *vacopts,
 							 " AND a.attnum OPERATOR(pg_catalog.>) 0::pg_catalog.int2\n"
 							 " AND NOT a.attisdropped\n"
 							 " AND a.attstattarget IS DISTINCT FROM 0::pg_catalog.int2\n"
+							 " AND a.attgenerated OPERATOR(pg_catalog.<>) "
+							 CppAsString2(ATTRIBUTE_GENERATED_VIRTUAL) "\n"
 							 " AND NOT EXISTS (SELECT NULL FROM pg_catalog.pg_statistic s\n"
 							 " WHERE s.starelid OPERATOR(pg_catalog.=) a.attrelid\n"
 							 " AND s.staattnum OPERATOR(pg_catalog.=) a.attnum\n"
@@ -995,6 +1014,8 @@ retrieve_objects(PGconn *conn, vacuumingOptions *vacopts,
 							 " AND a.attnum OPERATOR(pg_catalog.>) 0::pg_catalog.int2\n"
 							 " AND NOT a.attisdropped\n"
 							 " AND a.attstattarget IS DISTINCT FROM 0::pg_catalog.int2\n"
+							 " AND a.attgenerated OPERATOR(pg_catalog.<>) "
+							 CppAsString2(ATTRIBUTE_GENERATED_VIRTUAL) "\n"
 							 " AND c.relhassubclass\n"
 							 " AND NOT p.inherited\n"
 							 " AND EXISTS (SELECT NULL FROM pg_catalog.pg_inherits h\n"

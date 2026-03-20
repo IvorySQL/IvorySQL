@@ -1327,7 +1327,10 @@ CREATE VIEW pg_stat_progress_basebackup AS
         CASE S.param2 WHEN -1 THEN NULL ELSE S.param2 END AS backup_total,
         S.param3 AS backup_streamed,
         S.param4 AS tablespaces_total,
-        S.param5 AS tablespaces_streamed
+        S.param5 AS tablespaces_streamed,
+        CASE S.param6 WHEN 1 THEN 'full'
+                      WHEN 2 THEN 'incremental'
+                      END AS backup_type
     FROM pg_stat_get_progress_info('BASEBACKUP') AS S;
 
 
@@ -1399,6 +1402,7 @@ CREATE VIEW pg_stat_subscription_stats AS
         ss.confl_insert_exists,
         ss.confl_update_origin_differs,
         ss.confl_update_exists,
+        ss.confl_update_deleted,
         ss.confl_update_missing,
         ss.confl_delete_origin_differs,
         ss.confl_delete_missing,
