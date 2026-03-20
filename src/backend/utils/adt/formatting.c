@@ -3112,8 +3112,18 @@ DCH_to_char(FormatNode *node, bool is_interval, TmToChar *in, char *out, Oid col
 					str_numth(s, s, SUFFIX_TH_TYPE(n->suffix));
 				s += strlen(s);
 				break;
+			case DCH_SYYYY:
+				sprintf(s, "%0*d",
+						IS_SUFFIX_FM(n->suffix) ? 0 :
+						(ORAADJUST_YEAR(tm->tm_year, is_interval) >= 0) ? 4 : 5,
+						ORAADJUST_YEAR(tm->tm_year, is_interval));
+				if (IS_SUFFIX_THth(n->suffix))
+					str_numth(s, s, SUFFIX_TH_TYPE(n->suffix));
+				s += strlen(s);
+				break;
 			case DCH_YYYY:
 			case DCH_IYYY:
+			case DCH_RRRR:
 				sprintf(s, "%0*d",
 						IS_SUFFIX_FM(n->suffix) ? 0 :
 						(ADJUST_YEAR(tm->tm_year, is_interval) >= 0) ? 4 : 5,
