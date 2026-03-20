@@ -1,12 +1,12 @@
 /*-------------------------------------------------------------------------
  * Copyright 2025 IvorySQL Global Development Team
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -51,7 +51,6 @@
 #include "utils/numeric.h"
 
 #include "../include/common_datatypes.h"
-
 
 PG_FUNCTION_INFO_V1(dsinterval_in);
 PG_FUNCTION_INFO_V1(dsinterval_out);
@@ -123,10 +122,10 @@ ParseFractionalSecond(char *cp, fsec_t *fsec)
 
 static int
 DecodeTime(char *str, int fmask, int range,
-				int *tmask, struct tm * tm, fsec_t *fsec)
+		   int *tmask, struct tm *tm, fsec_t *fsec)
 {
-	char		*cp;
-	int			 dterr;
+	char	   *cp;
+	int			dterr;
 
 	*tmask = DTK_TIME_M;
 
@@ -183,15 +182,14 @@ DecodeTime(char *str, int fmask, int range,
 		return DTERR_BAD_FORMAT;
 
 	/*
-	 * do a sanity check
-	 * for 'tm->tm_min > MINS_PER_HOUR - 1' and 'tm->tm_sec > SECS_PER_MINUTE' check
-	 * we will do this check in 'dsinterval_in' function, because the initial value
-	 * is INT_MAX,so Cancel check in here.
+	 * do a sanity check for 'tm->tm_min > MINS_PER_HOUR - 1' and 'tm->tm_sec
+	 * > SECS_PER_MINUTE' check we will do this check in 'dsinterval_in'
+	 * function, because the initial value is INT_MAX,so Cancel check in here.
 	 *
-	 * if compatible_level is oracle, when interval range is 'MINUTE TO SECOND',
-	 * the value of 'tm->tm_min' can greater than MINS_PER_HOUR. Because the field 'MINUTE'
-	 * is leading field, not trailing field.
-	*/
+	 * if compatible_level is oracle, when interval range is 'MINUTE TO
+	 * SECOND', the value of 'tm->tm_min' can greater than MINS_PER_HOUR.
+	 * Because the field 'MINUTE' is leading field, not trailing field.
+	 */
 #ifdef HAVE_INT64_TIMESTAMP
 	if (tm->tm_hour < 0 || tm->tm_min < 0 || tm->tm_sec < 0 ||
 		*fsec < INT64CONST(0) ||
@@ -217,7 +215,7 @@ DecodeTime(char *str, int fmask, int range,
  * we can not know  the '0' is initial value or the value of the input.
  */
 static inline void
-ClearPgTm(struct tm * tm, fsec_t *fsec)
+ClearPgTm(struct tm *tm, fsec_t *fsec)
 {
 	tm->tm_year = INT_MAX;
 	tm->tm_mon = INT_MAX;
@@ -233,7 +231,7 @@ ClearPgTm(struct tm * tm, fsec_t *fsec)
  * We assume the input frac is less than 1 so overflow is not an issue.
  */
 static void
-AdjustFractSeconds(double frac, struct tm * tm, fsec_t *fsec, int scale)
+AdjustFractSeconds(double frac, struct tm *tm, fsec_t *fsec, int scale)
 {
 	int			sec;
 
@@ -241,10 +239,10 @@ AdjustFractSeconds(double frac, struct tm * tm, fsec_t *fsec, int scale)
 		return;
 	frac *= scale;
 	sec = (int) frac;
-	
+
 	if (tm->tm_sec == INT_MAX)
 		tm->tm_sec = 0;
-	
+
 	tm->tm_sec += sec;
 	frac -= sec;
 #ifdef HAVE_INT64_TIMESTAMP
@@ -256,7 +254,7 @@ AdjustFractSeconds(double frac, struct tm * tm, fsec_t *fsec, int scale)
 
 /* As above, but initial scale produces days */
 static void
-AdjustFractDays(double frac, struct tm * tm, fsec_t *fsec, int scale)
+AdjustFractDays(double frac, struct tm *tm, fsec_t *fsec, int scale)
 {
 	int			extra_days;
 
@@ -264,7 +262,7 @@ AdjustFractDays(double frac, struct tm * tm, fsec_t *fsec, int scale)
 		return;
 	frac *= scale;
 	extra_days = (int) frac;
-	
+
 	if (tm->tm_mday == INT_MAX)
 		tm->tm_mday = 0;
 	tm->tm_mday += extra_days;
@@ -272,16 +270,16 @@ AdjustFractDays(double frac, struct tm * tm, fsec_t *fsec, int scale)
 	AdjustFractSeconds(frac, tm, fsec, SECS_PER_DAY);
 }
 
-/* 
+/*
  * The same as function 'Decodeinterval' except that we don`t care
  * about year field and month field.
  */
 static int
 DecodeDsinterval(char **field, int *ftype, int nf, int range,
-			   int *dtype, struct tm * tm, fsec_t *fsec)
+				 int *dtype, struct tm *tm, fsec_t *fsec)
 {
 	bool		is_before = false;
-	char		*cp;
+	char	   *cp;
 	int			fmask = 0,
 				tmask,
 				type;
@@ -360,7 +358,7 @@ DecodeDsinterval(char **field, int *ftype, int nf, int range,
 						case INTERVAL_MASK(MONTH):
 						case INTERVAL_MASK(YEAR) | INTERVAL_MASK(MONTH):
 							return DTERR_BAD_FORMAT;
-							
+
 						case INTERVAL_MASK(DAY):
 							type = DTK_DAY;
 							break;
@@ -510,7 +508,7 @@ DecodeDsinterval(char **field, int *ftype, int nf, int range,
 						{
 							if (tm->tm_mon == INT_MAX)
 								tm->tm_mon = 0;
-							
+
 							tm->tm_mon += fval * MONTHS_PER_YEAR * 10;
 						}
 						tmask = DTK_M(DECADE);
@@ -524,7 +522,7 @@ DecodeDsinterval(char **field, int *ftype, int nf, int range,
 						{
 							if (tm->tm_mon == INT_MAX)
 								tm->tm_mon = 0;
-							
+
 							tm->tm_mon += fval * MONTHS_PER_YEAR * 100;
 						}
 						tmask = DTK_M(CENTURY);
@@ -538,7 +536,7 @@ DecodeDsinterval(char **field, int *ftype, int nf, int range,
 						{
 							if (tm->tm_mon == INT_MAX)
 								tm->tm_mon = 0;
-							
+
 							tm->tm_mon += fval * MONTHS_PER_YEAR * 1000;
 						}
 						tmask = DTK_M(MILLENNIUM);
@@ -666,18 +664,18 @@ DecodeDsinterval(char **field, int *ftype, int nf, int range,
 	return 0;
 }
 
-/* 
+/*
  * Change Note:
- * 
+ *
  * Add one parameter 'trimnum' recode the number of zero to trimed .
- * 
+ *
  */
 static void
 TrimTrailingZeros(char *str, int trimnum)
 {
 	int			len = strlen(str);
 	int			i = 0;
-	
+
 	while (len > 1 && *(str + len - 1) == '0' && *(str + len - 2) != '.' && i < trimnum)
 	{
 		len--;
@@ -697,14 +695,17 @@ TrimTrailingZeros(char *str, int trimnum)
 static void
 AppendSeconds(char *cp, int sec, fsec_t fsec, int precision, bool fillzeros)
 {
-	/* Compatible oracle, do 'fsec' as a nanosecond*/
+	/* Compatible oracle, do 'fsec' as a nanosecond */
 	fsec *= 1000;
 
 	if (fsec == 0)
 	{
 		if (fillzeros)
 		{
-			/* Compatible oracle ,if the precision of fractional second is zero ,dont show */
+			/*
+			 * Compatible oracle ,if the precision of fractional second is
+			 * zero ,dont show
+			 */
 			if (precision == 0)
 				sprintf(cp, "%02d", abs(sec));
 			else
@@ -737,7 +738,7 @@ AppendSeconds(char *cp, int sec, fsec_t fsec, int precision, bool fillzeros)
  * Interpret time structure as a delta time and convert to string.
  */
 static void
-EncodeDsinterval(struct pg_tm * tm, fsec_t fsec, int style, char *str, int day_precision, int second_precision)
+EncodeDsinterval(struct pg_tm *tm, fsec_t fsec, int style, char *str, int day_precision, int second_precision)
 {
 	char	   *cp = str;
 	int			year = tm->tm_year;
@@ -746,24 +747,24 @@ EncodeDsinterval(struct pg_tm * tm, fsec_t fsec, int style, char *str, int day_p
 	int			hour = tm->tm_hour;
 	int			min = tm->tm_min;
 	int			sec = tm->tm_sec;
-	
+
 	switch (style)
 	{
 			/* SQL Standard interval format */
 		case INTSTYLE_SQL_STANDARD:
 			{
 				bool		has_negative = year < 0 || mon < 0 ||
-				mday < 0 || hour < 0 ||
-				min < 0 || sec < 0 || fsec < 0;
+					mday < 0 || hour < 0 ||
+					min < 0 || sec < 0 || fsec < 0;
 				bool		has_positive = year > 0 || mon > 0 ||
-				mday > 0 || hour > 0 ||
-				min > 0 || sec > 0 || fsec > 0;
+					mday > 0 || hour > 0 ||
+					min > 0 || sec > 0 || fsec > 0;
 				bool		has_year_month = year != 0 || mon != 0;
 				bool		has_day_time = mday != 0 || hour != 0 ||
-				min != 0 || sec != 0 || fsec != 0;
+					min != 0 || sec != 0 || fsec != 0;
 				bool		has_day = mday != 0;
 				bool		sql_standard_value = !(has_negative && has_positive) &&
-				!(has_year_month && has_day_time);
+					!(has_year_month && has_day_time);
 
 				/*
 				 * SQL Standard wants only 1 "<sign>" preceding the whole
@@ -785,7 +786,10 @@ EncodeDsinterval(struct pg_tm * tm, fsec_t fsec, int style, char *str, int day_p
 				if (!has_negative)
 					*cp++ = '+';
 
-				/* Compatible oracle, the value of interval is zero should show "+00 00:00:00.000000" */
+				/*
+				 * Compatible oracle, the value of interval is zero should
+				 * show "+00 00:00:00.000000"
+				 */
 				if (!has_negative && !has_positive)
 				{
 					sprintf(cp, "%0*d %02d:%02d:", day_precision, mday, hour, min);
@@ -978,9 +982,9 @@ AdjustIntervalForTypmod(Interval *interval, int32 typmod)
 			if (second_precision < 0 || second_precision > ORACLE_MAX_INTERVAL_PRECISION)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				   errmsg("interval(%d) precision must be between %d and %d",
-						  second_precision, 0, MAX_INTERVAL_PRECISION)));
-						  
+						 errmsg("interval(%d) precision must be between %d and %d",
+								second_precision, 0, MAX_INTERVAL_PRECISION)));
+
 			if (second_precision > MAX_INTERVAL_PRECISION)
 				second_precision = MAX_INTERVAL_PRECISION;
 
@@ -1012,9 +1016,9 @@ AdjustIntervalForTypmod(Interval *interval, int32 typmod)
 				IntervalScales[second_precision];
 #endif
 		}
-		
+
 	}
-	
+
 	/* Convert interval->time to interval->day */
 	interval->day += interval->time / USECS_PER_DAY;
 	interval->time = interval->time % USECS_PER_DAY;
@@ -1036,7 +1040,7 @@ AdjustTypmodForDay(Interval *interval, int32 typmod)
 		{
 			/* interval'-100' day */
 			interval_day = abs(interval->day);
-			switch(day_precision)
+			switch (day_precision)
 			{
 				case 0:
 					if (interval_day != 0)
@@ -1150,7 +1154,7 @@ ora_ParseISO8601Number(const char *str, char **endptr, int *ipart, double *fpart
  */
 static int
 ora_DecodeISO8601Interval(char *str,
-					  int *dtype, struct /* pg_ */ tm *tm, fsec_t *fsec)
+						  int *dtype, struct /* pg_ */ tm *tm, fsec_t *fsec)
 {
 	bool		datepart = true;
 	bool		havefield = false;
@@ -1378,7 +1382,7 @@ interval2tm(Interval span, struct pg_tm *tm, fsec_t *fsec)
 }
 
 static int
-tm2dsinterval(struct tm * tm, fsec_t fsec, Interval *span)
+tm2dsinterval(struct tm *tm, fsec_t fsec, Interval *span)
 {
 	double		total_months = (double) tm->tm_year * MONTHS_PER_YEAR + tm->tm_mon;
 
@@ -1389,11 +1393,11 @@ tm2dsinterval(struct tm * tm, fsec_t fsec, Interval *span)
 #ifdef HAVE_INT64_TIMESTAMP
 	span->time = (((((tm->tm_hour * INT64CONST(60)) +
 					 tm->tm_min) * INT64CONST(60)) +
-					 tm->tm_sec) * USECS_PER_SEC) + fsec;
+				   tm->tm_sec) * USECS_PER_SEC) + fsec;
 #else
 	span->time = (((tm->tm_hour * (double) MINS_PER_HOUR) +
-					 tm->tm_min) * (double) SECS_PER_MINUTE) +
-					 tm->tm_sec + fsec;
+				   tm->tm_min) * (double) SECS_PER_MINUTE) +
+		tm->tm_sec + fsec;
 #endif
 
 	return 0;
@@ -1412,10 +1416,10 @@ dsinterval_cmp_value(const Interval *interval)
 	span = interval->time;
 
 #ifdef HAVE_INT64_TIMESTAMP
-//	span += interval->month * INT64CONST(30) * USECS_PER_DAY;
+/* 	span += interval->month * INT64CONST(30) * USECS_PER_DAY; */
 	span += interval->day * INT64CONST(24) * USECS_PER_HOUR;
 #else
-//	span += interval->month * ((double) DAYS_PER_MONTH * SECS_PER_DAY);
+/* 	span += interval->month * ((double) DAYS_PER_MONTH * SECS_PER_DAY); */
 	span += interval->day * ((double) HOURS_PER_DAY * SECS_PER_HOUR);
 #endif
 
@@ -1452,7 +1456,7 @@ dsinterval_in(PG_FUNCTION_ARGS)
 	int32		typmod = PG_GETARG_INT32(2);
 	Interval   *result;
 	fsec_t		fsec;
-	struct		tm tt,
+	struct tm	tt,
 			   *tm = &tt;
 	int			dtype = -1;
 	int			nf = 0;
@@ -1462,8 +1466,8 @@ dsinterval_in(PG_FUNCTION_ARGS)
 	int			ftype[MAXDATEFIELDS];
 	char		workbuf[256];
 	bool		isiso = false;
-	char 		*strsrc;
-	char 		*strold;
+	char	   *strsrc;
+	char	   *strold;
 	DateTimeErrorExtra extra;
 
 	tm->tm_year = INT_MAX;
@@ -1518,15 +1522,15 @@ dsinterval_in(PG_FUNCTION_ARGS)
 						  ftype, MAXDATEFIELDS, &nf);
 
 	/*
-	 * Compatible oracle 
-	 * interval'+1 +1:1:1' is error in oracle db.(istz > 1)
-	 * interval'1 +1:1:1' is error in oracle db. (istz == 1 && ftype[0] != DTK_TZ)
-	 * Only leading field can specify '-' or '+'
+	 * Compatible oracle interval'+1 +1:1:1' is error in oracle db.(istz > 1)
+	 * interval'1 +1:1:1' is error in oracle db. (istz == 1 && ftype[0] !=
+	 * DTK_TZ) Only leading field can specify '-' or '+'
 	 */
 	if (nf > 1 && dterr == 0)
 	{
-		int		i;
-		int		istz = 0;
+		int			i;
+		int			istz = 0;
+
 		for (i = 0; i < nf; i++)
 		{
 			if (ftype[i] == DTK_TZ)
@@ -1540,13 +1544,13 @@ dsinterval_in(PG_FUNCTION_ARGS)
 
 	if (dterr == 0)
 		dterr = DecodeDsinterval(field, ftype, nf, range,
-							   &dtype, tm, &fsec);
+								 &dtype, tm, &fsec);
 
 	/* if those functions think it's a bad format, try ISO8601 style */
 	if (dterr == DTERR_BAD_FORMAT)
 	{
 		dterr = ora_DecodeISO8601Interval(str,
-									  &dtype, tm, &fsec);
+										  &dtype, tm, &fsec);
 		isiso = true;
 	}
 
@@ -1559,24 +1563,23 @@ dsinterval_in(PG_FUNCTION_ARGS)
 
 	/*
 	 * compatible oracle, the valid range of values for the trailing field
-	 * HOUR: 0 to 23
-	 * MINUTE: 0 to 59
-	 * SECOND: 0 to 59.999999999
+	 * HOUR: 0 to 23 MINUTE: 0 to 59 SECOND: 0 to 59.999999999
 	 *
-	 * In oracle, the string and interval fields is exact matched,
-	 * for example:interval'1:1' hour to second and interval'1 1:1:1' hour to second is error.
-	 * change the initial value of 'pg_tm *tm' to INT_MAX, because if the value of 'pg_tm *tm' is 0,
-	 * we can not know  the '0' is initial value or the value of the input.
+	 * In oracle, the string and interval fields is exact matched, for
+	 * example:interval'1:1' hour to second and interval'1 1:1:1' hour to
+	 * second is error. change the initial value of 'pg_tm *tm' to INT_MAX,
+	 * because if the value of 'pg_tm *tm' is 0, we can not know  the '0' is
+	 * initial value or the value of the input.
 	 */
 	if (!isiso)
 	{
-		switch(range)
+		switch (range)
 		{
 			case INTERVAL_MASK(DAY):
 				if (abs(tm->tm_year) != INT_MAX ||
-					abs(tm->tm_mon)  != INT_MAX ||
-					abs(tm->tm_min)  != INT_MAX ||
-					abs(tm->tm_sec)  != INT_MAX ||
+					abs(tm->tm_mon) != INT_MAX ||
+					abs(tm->tm_min) != INT_MAX ||
+					abs(tm->tm_sec) != INT_MAX ||
 					abs(tm->tm_hour) != INT_MAX ||
 					abs(tm->tm_mday) == INT_MAX)
 					ereport(ERROR,
@@ -1586,9 +1589,9 @@ dsinterval_in(PG_FUNCTION_ARGS)
 
 			case INTERVAL_MASK(DAY) | INTERVAL_MASK(HOUR):
 				if (abs(tm->tm_year) != INT_MAX ||
-					abs(tm->tm_mon) != INT_MAX  ||
-					abs(tm->tm_min) != INT_MAX  ||
-					abs(tm->tm_sec) != INT_MAX  ||
+					abs(tm->tm_mon) != INT_MAX ||
+					abs(tm->tm_min) != INT_MAX ||
+					abs(tm->tm_sec) != INT_MAX ||
 					abs(tm->tm_hour) == INT_MAX ||
 					abs(tm->tm_mday) == INT_MAX)
 					ereport(ERROR,
@@ -1603,8 +1606,8 @@ dsinterval_in(PG_FUNCTION_ARGS)
 
 			case INTERVAL_MASK(DAY) | INTERVAL_MASK(HOUR) | INTERVAL_MASK(MINUTE):
 				if (abs(tm->tm_year) != INT_MAX ||
-					abs(tm->tm_mon) != INT_MAX  ||
-					abs(tm->tm_sec) != INT_MAX  ||
+					abs(tm->tm_mon) != INT_MAX ||
+					abs(tm->tm_sec) != INT_MAX ||
 					abs(tm->tm_mday) == INT_MAX ||
 					abs(tm->tm_hour) == INT_MAX ||
 					abs(tm->tm_min) == INT_MAX)
@@ -1626,11 +1629,11 @@ dsinterval_in(PG_FUNCTION_ARGS)
 			case INTERVAL_FULL_RANGE:
 			case INTERVAL_MASK(DAY) | INTERVAL_MASK(HOUR) | INTERVAL_MASK(MINUTE) | INTERVAL_MASK(SECOND):
 				if (abs(tm->tm_year) != INT_MAX ||
-					abs(tm->tm_mon)  != INT_MAX ||
+					abs(tm->tm_mon) != INT_MAX ||
 					abs(tm->tm_mday) == INT_MAX ||
 					abs(tm->tm_hour) == INT_MAX ||
-					abs(tm->tm_min)  == INT_MAX ||
-					abs(tm->tm_sec)  == INT_MAX)
+					abs(tm->tm_min) == INT_MAX ||
+					abs(tm->tm_sec) == INT_MAX)
 					ereport(ERROR,
 							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 							 errmsg("The character string you specified is not a valid interval")));
@@ -1652,10 +1655,10 @@ dsinterval_in(PG_FUNCTION_ARGS)
 				break;
 			case INTERVAL_MASK(HOUR):
 				if (abs(tm->tm_year) != INT_MAX ||
-					abs(tm->tm_mon)  != INT_MAX ||
+					abs(tm->tm_mon) != INT_MAX ||
 					abs(tm->tm_mday) != INT_MAX ||
-					abs(tm->tm_min)  != INT_MAX ||
-					abs(tm->tm_sec)  != INT_MAX ||
+					abs(tm->tm_min) != INT_MAX ||
+					abs(tm->tm_sec) != INT_MAX ||
 					abs(tm->tm_hour) == INT_MAX)
 					ereport(ERROR,
 							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
@@ -1663,11 +1666,11 @@ dsinterval_in(PG_FUNCTION_ARGS)
 				break;
 			case INTERVAL_MASK(HOUR) | INTERVAL_MASK(MINUTE):
 				if (abs(tm->tm_year) != INT_MAX ||
-					abs(tm->tm_mon)  != INT_MAX ||
+					abs(tm->tm_mon) != INT_MAX ||
 					abs(tm->tm_mday) != INT_MAX ||
-					abs(tm->tm_sec)  != INT_MAX ||
+					abs(tm->tm_sec) != INT_MAX ||
 					abs(tm->tm_hour) == INT_MAX ||
-					abs(tm->tm_min)  == INT_MAX)
+					abs(tm->tm_min) == INT_MAX)
 					ereport(ERROR,
 							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 							 errmsg("The character string you specified is not a valid interval")));
@@ -1679,11 +1682,11 @@ dsinterval_in(PG_FUNCTION_ARGS)
 				break;
 			case INTERVAL_MASK(HOUR) | INTERVAL_MASK(MINUTE) | INTERVAL_MASK(SECOND):
 				if (abs(tm->tm_year) != INT_MAX ||
-					abs(tm->tm_mon)  != INT_MAX ||
+					abs(tm->tm_mon) != INT_MAX ||
 					abs(tm->tm_mday) != INT_MAX ||
 					abs(tm->tm_hour) == INT_MAX ||
-					abs(tm->tm_min)  == INT_MAX ||
-					abs(tm->tm_sec)  == INT_MAX)
+					abs(tm->tm_min) == INT_MAX ||
+					abs(tm->tm_sec) == INT_MAX)
 					ereport(ERROR,
 							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 							 errmsg("The character string you specified is not a valid interval")));
@@ -1700,22 +1703,22 @@ dsinterval_in(PG_FUNCTION_ARGS)
 				break;
 			case INTERVAL_MASK(MINUTE):
 				if (abs(tm->tm_year) != INT_MAX ||
-					abs(tm->tm_mon)  != INT_MAX ||
+					abs(tm->tm_mon) != INT_MAX ||
 					abs(tm->tm_mday) != INT_MAX ||
 					abs(tm->tm_hour) != INT_MAX ||
-					abs(tm->tm_sec)  != INT_MAX ||
-					abs(tm->tm_min)  == INT_MAX)
+					abs(tm->tm_sec) != INT_MAX ||
+					abs(tm->tm_min) == INT_MAX)
 					ereport(ERROR,
 							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 							 errmsg("The character string you specified is not a valid interval")));
 				break;
 			case INTERVAL_MASK(MINUTE) | INTERVAL_MASK(SECOND):
 				if (abs(tm->tm_year) != INT_MAX ||
-					abs(tm->tm_mon)  != INT_MAX ||
+					abs(tm->tm_mon) != INT_MAX ||
 					abs(tm->tm_mday) != INT_MAX ||
 					abs(tm->tm_hour) != INT_MAX ||
-					abs(tm->tm_min)  == INT_MAX ||
-					abs(tm->tm_sec)  == INT_MAX)
+					abs(tm->tm_min) == INT_MAX ||
+					abs(tm->tm_sec) == INT_MAX)
 					ereport(ERROR,
 							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 							 errmsg("The character string you specified is not a valid interval")));
@@ -1727,11 +1730,11 @@ dsinterval_in(PG_FUNCTION_ARGS)
 				break;
 			case INTERVAL_MASK(SECOND):
 				if (abs(tm->tm_year) != INT_MAX ||
-					abs(tm->tm_mon)  != INT_MAX ||
+					abs(tm->tm_mon) != INT_MAX ||
 					abs(tm->tm_mday) != INT_MAX ||
 					abs(tm->tm_hour) != INT_MAX ||
-					abs(tm->tm_min)  != INT_MAX ||
-					abs(tm->tm_sec)  == INT_MAX)
+					abs(tm->tm_min) != INT_MAX ||
+					abs(tm->tm_sec) == INT_MAX)
 					ereport(ERROR,
 							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 							 errmsg("The character string you specified is not a valid interval")));
@@ -1748,7 +1751,8 @@ dsinterval_in(PG_FUNCTION_ARGS)
 		tm->tm_hour = (abs(tm->tm_hour) == INT_MAX) ? 0 : tm->tm_hour;
 		tm->tm_mday = (abs(tm->tm_mday) == INT_MAX) ? 0 : tm->tm_mday;
 
-		/* Compatible oracle: if interval type is INTERVAL DAY TO SECOND that
+		/*
+		 * Compatible oracle: if interval type is INTERVAL DAY TO SECOND that
 		 * year and month are invalid.
 		 */
 		tm->tm_mon = 0;
@@ -1756,7 +1760,8 @@ dsinterval_in(PG_FUNCTION_ARGS)
 	}
 	else
 	{
-		/* Interval is ISO8601 format
+		/*
+		 * Interval is ISO8601 format
 		 *
 		 * Compatible oracle: if interval type is INTERVAL DAY TO SECOND that
 		 * year and month can not be specified.
@@ -1773,7 +1778,7 @@ dsinterval_in(PG_FUNCTION_ARGS)
 	}
 
 	result = (Interval *) palloc(sizeof(Interval));
-	
+
 	switch (dtype)
 	{
 		case DTK_DELTA:
@@ -1805,7 +1810,7 @@ dsinterval_out(PG_FUNCTION_ARGS)
 	int32		typmod;
 	char	   *result;
 	int			second_precision;
-	int			day_precision;	
+	int			day_precision;
 	struct pg_tm tt,
 			   *tm = &tt;
 	fsec_t		fsec;
@@ -1829,8 +1834,8 @@ dsinterval_out(PG_FUNCTION_ARGS)
 		{
 			ereport(WARNING,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-			  errmsg("The typmod in dsinterval_out is invalid, second_precision reduced to maximum allowed, %d",
-					 ORACLE_MAX_INTERVAL_PRECISION)));
+					 errmsg("The typmod in dsinterval_out is invalid, second_precision reduced to maximum allowed, %d",
+							ORACLE_MAX_INTERVAL_PRECISION)));
 			second_precision = ORACLE_MAX_INTERVAL_PRECISION;
 		}
 
@@ -1838,8 +1843,8 @@ dsinterval_out(PG_FUNCTION_ARGS)
 		{
 			ereport(WARNING,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-			  errmsg("The typmod in dsinterval_out is invalid, day_precision reduced to maximum allowed, %d",
-					 ORACLE_MAX_INTERVAL_PRECISION)));
+					 errmsg("The typmod in dsinterval_out is invalid, day_precision reduced to maximum allowed, %d",
+							ORACLE_MAX_INTERVAL_PRECISION)));
 			day_precision = ORACLE_MAX_INTERVAL_PRECISION;
 		}
 	}
@@ -1919,12 +1924,12 @@ dsintervaltypmodin(PG_FUNCTION_ARGS)
 	tl = ArrayGetIntegerTypmods(ta, &n);
 
 	/*
-	 * tl[0] - interval range (fields bitmask)
-	 * tl[1] - precision (day_precision)
-	 * tl[2] - precision (second_precision)
+	 * tl[0] - interval range (fields bitmask) tl[1] - precision
+	 * (day_precision) tl[2] - precision (second_precision)
 	 *
-	 * tl[0] can not be INTERVAL_FULL_RANGE, because interval'100' is error syntax in oracle,
-	 * 'precison' come from gram.y, so the value of 'n' must be equal or greater than 2.
+	 * tl[0] can not be INTERVAL_FULL_RANGE, because interval'100' is error
+	 * syntax in oracle, 'precison' come from gram.y, so the value of 'n' must
+	 * be equal or greater than 2.
 	 */
 	if (n >= 2)
 	{
@@ -1954,8 +1959,8 @@ dsintervaltypmodin(PG_FUNCTION_ARGS)
 							ereport(ERROR,
 									(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 									 errmsg("interval precision is out of range")));
-						
-						typmod = INTERVAL_DAY_TYPMOD(tl[1], tl[0]);	
+
+						typmod = INTERVAL_DAY_TYPMOD(tl[1], tl[0]);
 					}
 				}
 				break;
@@ -1978,7 +1983,7 @@ dsintervaltypmodin(PG_FUNCTION_ARGS)
 							ereport(ERROR,
 									(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 									 errmsg("interval precision is out of range")));
-						
+
 						typmod = INTERVAL_DS_TYPMOD(tl[1], 2, tl[0]);
 					}
 					else if (n == 3)
@@ -1992,8 +1997,8 @@ dsintervaltypmodin(PG_FUNCTION_ARGS)
 							ereport(ERROR,
 									(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 									 errmsg("interval precision is out of range")));
-						
-						typmod = INTERVAL_DS_TYPMOD(tl[2], tl[1], tl[0]);	
+
+						typmod = INTERVAL_DS_TYPMOD(tl[2], tl[1], tl[0]);
 					}
 				}
 				break;
@@ -2005,7 +2010,7 @@ dsintervaltypmodin(PG_FUNCTION_ARGS)
 					{
 						ereport(ERROR,
 								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("invalid INTERVAL type modifier")));	
+								 errmsg("invalid INTERVAL type modifier")));
 					}
 					else
 					{
@@ -2018,7 +2023,7 @@ dsintervaltypmodin(PG_FUNCTION_ARGS)
 							ereport(ERROR,
 									(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 									 errmsg("interval precision is out of range")));
-						
+
 						typmod = INTERVAL_DS_TYPMOD(tl[2], tl[1], tl[0]);
 					}
 				}
@@ -2048,7 +2053,8 @@ dsintervaltypmodout(PG_FUNCTION_ARGS)
 	int32		typmod = PG_GETARG_INT32(0);
 	char	   *res = (char *) palloc(64);
 	int			fields;
-	int			day_precision, second_precision;
+	int			day_precision,
+				second_precision;
 
 	if (typmod < 0)
 	{
@@ -2073,7 +2079,7 @@ dsintervaltypmodout(PG_FUNCTION_ARGS)
 		case INTERVAL_MASK(HOUR) | INTERVAL_MASK(MINUTE) | INTERVAL_MASK(SECOND):
 		case INTERVAL_MASK(MINUTE) | INTERVAL_MASK(SECOND):
 			{
-				if (day_precision >= 0 && second_precision >=0)
+				if (day_precision >= 0 && second_precision >= 0)
 					snprintf(res, 64, "%s(%d)%s(%d)", " day", day_precision, " to second", second_precision);
 				else
 					ereport(ERROR,
@@ -2200,10 +2206,10 @@ dsinterval_pl(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 				 errmsg("interval out of range")));
 
-	/* 
-	 * compatible oracle 
-	 * For Interval day to second, the field of datetime 'YEAR' and 'MONTH' will be zero.
-	 * Recompute the value of result->day and result->time .
+	/*
+	 * compatible oracle For Interval day to second, the field of datetime
+	 * 'YEAR' and 'MONTH' will be zero. Recompute the value of result->day and
+	 * result->time .
 	 */
 	result->month = 0;
 	result->day += result->time / USECS_PER_DAY;
@@ -2228,21 +2234,21 @@ dsinterval_mi(PG_FUNCTION_ARGS)
 
 	span1_usecs = span1->time;
 	span1_usecs += span1->day * INT64CONST(24) * USECS_PER_HOUR;
-	
+
 	span2_usecs = span2->time;
 	span2_usecs += span2->day * INT64CONST(24) * USECS_PER_HOUR;
 
 	result = (Interval *) palloc(sizeof(Interval));
 
-	/* 
-	 * Compatible oracle 
-	 * For Interval day to second, the field of datetime 'YEAR' 'MONTH' will be zero.
-	 * Recompute the value of result->day and result->time .
+	/*
+	 * Compatible oracle For Interval day to second, the field of datetime
+	 * 'YEAR' 'MONTH' will be zero. Recompute the value of result->day and
+	 * result->time .
 	 */
 	result->month = 0;
 	result->day = (span1_usecs - span2_usecs) / USECS_PER_DAY;
 	result->time = (span1_usecs - span2_usecs) % USECS_PER_DAY;
-	
+
 	/* overflow check copied from int4mi */
 	if (!SAMESIGN(span1->day, span2->day) &&
 		!SAMESIGN(result->day, span1->day))
@@ -2261,7 +2267,7 @@ dsinterval_mi(PG_FUNCTION_ARGS)
 
 /*
  * '*' operator function
- * left operand = interval day to second 
+ * left operand = interval day to second
  * right operand = number
  */
 Datum
@@ -2281,14 +2287,14 @@ dsinterval_mul(PG_FUNCTION_ARGS)
 	result = (Interval *) palloc(sizeof(Interval));
 
 	result_double = span->month * factor;
-	if (result_double > INT_MAX || result_double < INT_MIN)
+	if (isnan(result_double) || !FLOAT8_FITS_IN_INT32(result_double))
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 				 errmsg("interval out of range")));
 	result->month = (int32) result_double;
 
 	result_double = span->day * factor;
-	if (result_double > INT_MAX || result_double < INT_MIN)
+	if (isnan(result_double) || !FLOAT8_FITS_IN_INT32(result_double))
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 				 errmsg("interval out of range")));
@@ -2315,7 +2321,7 @@ dsinterval_mul(PG_FUNCTION_ARGS)
 	month_remainder_days = (orig_month * factor - result->month) * DAYS_PER_MONTH;
 	month_remainder_days = TSROUND(month_remainder_days);
 	sec_remainder = (orig_day * factor - result->day +
-		   month_remainder_days - (int) month_remainder_days) * SECS_PER_DAY;
+					 month_remainder_days - (int) month_remainder_days) * SECS_PER_DAY;
 	sec_remainder = TSROUND(sec_remainder);
 
 	/*
@@ -2333,7 +2339,7 @@ dsinterval_mul(PG_FUNCTION_ARGS)
 	result->day += (int32) month_remainder_days;
 #ifdef HAVE_INT64_TIMESTAMP
 	result_double = rint(span->time * factor + sec_remainder * USECS_PER_SEC);
-	if (result_double > PG_INT64_MAX || result_double < PG_INT64_MIN)
+	if (isnan(result_double) || !FLOAT8_FITS_IN_INT64(result_double))
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 				 errmsg("interval out of range")));
@@ -2342,9 +2348,9 @@ dsinterval_mul(PG_FUNCTION_ARGS)
 	result->time = span->time * factor + sec_remainder;
 #endif
 
-	/* 
-	 * compatible oracle 
-	 * For Interval day to second, the field of datetime 'year' 'month' will be truncated.
+	/*
+	 * compatible oracle For Interval day to second, the field of datetime
+	 * 'year' 'month' will be truncated.
 	 */
 	result->month = 0;
 	result->day += result->time / USECS_PER_DAY;
@@ -2356,7 +2362,7 @@ dsinterval_mul(PG_FUNCTION_ARGS)
 /*
  * '*' operator function
  * left operand = number
- * right operand = interval day to second 
+ * right operand = interval day to second
  */
 Datum
 mul_d_dsinterval(PG_FUNCTION_ARGS)
@@ -2381,6 +2387,7 @@ dsinterval_div(PG_FUNCTION_ARGS)
 	float8		factor;
 	double		month_remainder_days,
 				sec_remainder;
+	double		result_double;
 	int32		orig_month = span->month,
 				orig_day = span->day;
 	Interval   *result;
@@ -2402,7 +2409,7 @@ dsinterval_div(PG_FUNCTION_ARGS)
 	month_remainder_days = (orig_month / factor - result->month) * DAYS_PER_MONTH;
 	month_remainder_days = TSROUND(month_remainder_days);
 	sec_remainder = (orig_day / factor - result->day +
-		   month_remainder_days - (int) month_remainder_days) * SECS_PER_DAY;
+					 month_remainder_days - (int) month_remainder_days) * SECS_PER_DAY;
 	sec_remainder = TSROUND(sec_remainder);
 	if (Abs(sec_remainder) >= SECS_PER_DAY)
 	{
@@ -2413,15 +2420,20 @@ dsinterval_div(PG_FUNCTION_ARGS)
 	/* cascade units down */
 	result->day += (int32) month_remainder_days;
 #ifdef HAVE_INT64_TIMESTAMP
-	result->time = rint(span->time / factor + sec_remainder * USECS_PER_SEC);
+	result_double = rint(span->time / factor + sec_remainder * USECS_PER_SEC);
+	if (isnan(result_double) || !FLOAT8_FITS_IN_INT64(result_double))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("interval out of range")));
+	result->time = (int64) result_double;
 #else
 	/* See TSROUND comment in interval_mul(). */
 	result->time = span->time / factor + sec_remainder;
 #endif
 
-	/* 
-	 * compatible oracle
-	 * For Interval day to second, the field of datetime 'year' 'month' will be truncated.
+	/*
+	 * compatible oracle For Interval day to second, the field of datetime
+	 * 'year' 'month' will be truncated.
 	 */
 	result->month = 0;
 	result->day += result->time / USECS_PER_DAY;
@@ -2475,9 +2487,9 @@ in_range_dsinterval_dsinterval(PG_FUNCTION_ARGS)
 }
 
 /*****************************************************************************
- *	 Hash index support procedure 
+ *	 Hash index support procedure
  *****************************************************************************/
- 
+
 /*
  * Hashing for intervals
  *
@@ -2510,7 +2522,7 @@ dsinterval_hash_extended(PG_FUNCTION_ARGS)
 
 
 /*****************************************************************************
- *	 AGGREGATE FUNCTION 
+ *	 AGGREGATE FUNCTION
  *****************************************************************************/
 Datum
 dsinterval_smaller(PG_FUNCTION_ARGS)
