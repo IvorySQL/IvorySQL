@@ -4167,6 +4167,8 @@ typedef struct ReindexStmt
  *   "online"     -> Boolean true      -- REBUILD ONLINE
  *   "tablespace" -> String name       -- REBUILD TABLESPACE tbs
  *   "partition"  -> String name       -- REBUILD PARTITION p
+ *   "parallel"   -> Integer degree    -- REBUILD PARALLEL [N] (0 = auto)
+ *   "noparallel" -> Boolean true      -- REBUILD NOPARALLEL
  * ----------------------
  */
 typedef struct OraAlterIndexRebuildStmt

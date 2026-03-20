@@ -77,15 +77,23 @@ DROP TABLE temp_items;
 
 -- T09: move to default tablespace
 ALTER INDEX idx_employees_val REBUILD TABLESPACE pg_default;
+-- verify the index actually landed in pg_default (reltablespace = 0)
+SELECT reltablespace = 0 AS in_default_tablespace
+  FROM pg_class WHERE relname = 'idx_employees_val';
 
 -- T10: index is still usable after REBUILD TABLESPACE
+SET enable_seqscan = off;
 EXPLAIN (COSTS OFF) SELECT val FROM employees WHERE val = 'val100';
+RESET enable_seqscan;
 
 -- T11: non-existent tablespace (must error)
 ALTER INDEX idx_employees_val REBUILD TABLESPACE no_such_tablespace;
 
 -- T12: partitioned parent index TABLESPACE
 ALTER INDEX idx_sales_uniq REBUILD TABLESPACE pg_default;
+-- verify the partitioned index landed in pg_default (reltablespace = 0)
+SELECT reltablespace = 0 AS in_default_tablespace
+  FROM pg_class WHERE relname = 'idx_sales_uniq';
 
 -- ============================================================
 -- GROUP 4: REBUILD PARTITION
@@ -106,8 +114,17 @@ ALTER INDEX idx_sales_id REBUILD PARTITION no_such_partition;
 -- T17: PARTITION on a non-partitioned index (must error)
 ALTER INDEX idx_employees_val REBUILD PARTITION sales_p1;
 
+-- T17b: PARTITION on a child (leaf) partition index must error
+-- Leaf partition indexes are plain (non-partitioned) indexes; only the root
+-- partitioned index supports the PARTITION option.
+CREATE INDEX idx_sales_p1_leaf ON sales_p1(id);
+ALTER INDEX idx_sales_p1_leaf REBUILD PARTITION sales_p1;
+DROP INDEX idx_sales_p1_leaf;
+
 -- T18: partition query still uses correct index after REBUILD PARTITION
+SET enable_seqscan = off;
 EXPLAIN (COSTS OFF) SELECT id FROM sales WHERE id = 500;
+RESET enable_seqscan;
 
 -- ============================================================
 -- GROUP 5: Option combinations (any order)
@@ -149,7 +166,9 @@ ALTER INDEX idx_employees_val REBUILD;
 COMMIT;
 
 -- T28: primary key index still uses Index Only Scan after REBUILD
+SET enable_seqscan = off;
 EXPLAIN (COSTS OFF) SELECT id FROM employees WHERE id = 42;
+RESET enable_seqscan;
 
 -- T29: unique constraint still enforced after REBUILD
 INSERT INTO employees VALUES (1, 'duplicate_check');
@@ -174,6 +193,12 @@ ALTER INDEX idx_products_b SET TABLESPACE pg_default;
 SELECT count(*) FROM employees WHERE id BETWEEN 1 AND 100;
 ALTER INDEX employees_pkey REBUILD;
 SELECT count(*) FROM employees WHERE id BETWEEN 1 AND 100;
+
+-- T34: PARALLEL + PARTITION
+ALTER INDEX idx_sales_id REBUILD PARALLEL 2 PARTITION sales_p1;
+
+-- T35: NOPARALLEL + PARTITION
+ALTER INDEX idx_sales_id REBUILD NOPARALLEL PARTITION sales_p1;
 
 -- ============================================================
 -- Cleanup
@@ -280,6 +305,12 @@ ALTER INDEX rp_idx REBUILD NOPARALLEL ONLINE;
 SELECT count(*) FROM rp_t WHERE id BETWEEN 1 AND 5000;
 ALTER INDEX rp_idx REBUILD PARALLEL 4;
 SELECT count(*) FROM rp_t WHERE id BETWEEN 1 AND 5000;
+
+-- TP11: PARALLEL + TABLESPACE
+ALTER INDEX rp_idx REBUILD PARALLEL 2 TABLESPACE pg_default;
+
+-- TP12: NOPARALLEL + TABLESPACE
+ALTER INDEX rp_idx REBUILD NOPARALLEL TABLESPACE pg_default;
 
 -- Cleanup GROUP 8
 DROP TABLE rp_t CASCADE;
