@@ -4,7 +4,7 @@
  * This file contains definitions for structures and
  * externs for functions used by frontend applications.
  *
- * Portions Copyright (c) 2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2025-2026, IvorySQL Global Development Team
  *
  * src/interfaces/libpq/libpq-ivy.h
  *

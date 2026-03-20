@@ -160,3 +160,15 @@ test: emptystring_to_null
 test: ora_package
 
 test: ora_force_view
+
+# ----------
+# Oracle ROWNUM pseudocolumn
+# ----------
+
+test: rownum
+
+# ----------
+# Oracle identifier syntax (#1002)
+# ----------
+
+test: ora_identifiers

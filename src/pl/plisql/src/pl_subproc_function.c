@@ -20,7 +20,7 @@
  *   For the interface and high-level design, see pl_subproc_function.h to
  *   avoid duplication between .c and .h.
  *
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *	  src/pl/plisql/src/pl_subproc_function.c
@@ -1516,8 +1516,33 @@ plisql_get_subprocfunc_detail(ParseState *pstate,
 			}
 		}
 		if (fargnames != NIL || defaultnumber != NIL)
+		{
 			*fargs = plisql_expand_and_reorder_functionargs(pstate, subprocfunc, best_candidate->nargs,
 															*fargs, defaultnumber, argdefaults);
+
+			/*
+			 * After reordering fargs to declared order, we must also rebuild
+			 * true_typeids (which becomes declared_arg_types in the caller) to
+			 * match. The original best_candidate->args is in call order for
+			 * overload resolution, but make_fn_arguments needs declared order
+			 * to match the reordered fargs.
+			 */
+			if (best_candidate->argnumbers != NULL)
+			{
+				Oid		   *declared_order_types;
+				ListCell   *lc;
+				int			i = 0;
+
+				declared_order_types = palloc(best_candidate->nargs * sizeof(Oid));
+				foreach(lc, subprocfunc->arg)
+				{
+					PLiSQL_function_argitem *argitem = lfirst(lc);
+
+					declared_order_types[i++] = argitem->type->typoid;
+				}
+				*true_typeids = declared_order_types;
+			}
+		}
 
 		if (subprocfunc->is_proc)
 			return FUNCDETAIL_PROCEDURE;
@@ -2999,7 +3024,6 @@ plisql_dynamic_compile_subproc(FunctionCallInfo fcinfo,
 static void
 plsql_init_glovalvar_from_stack(PLiSQL_execstate * estate, int dno, int *start_level)
 {
-	bool		match = false;
 	int			connected;
 	PLiSQL_execstate *parestate;
 	PLiSQL_function *func;
@@ -3017,11 +3041,11 @@ plsql_init_glovalvar_from_stack(PLiSQL_execstate * estate, int dno, int *start_l
 		if (dno >= parestate->ndatums)
 			continue;
 		plisql_assign_in_global_var(estate, parestate, dno);
-		match = true;
 		*start_level = connected;
-		break;
+
+		return;
 	}
-	Assert(match);
+	Assert(false);
 	return;
 }
 
@@ -3031,7 +3055,6 @@ plsql_init_glovalvar_from_stack(PLiSQL_execstate * estate, int dno, int *start_l
 static void
 plsql_assign_out_glovalvar_from_stack(PLiSQL_execstate * estate, int dno, int *start_level)
 {
-	bool		match = false;
 	int			connected;
 	PLiSQL_execstate *parestate;
 	PLiSQL_function *func;
@@ -3050,10 +3073,10 @@ plsql_assign_out_glovalvar_from_stack(PLiSQL_execstate * estate, int dno, int *s
 			continue;
 		plisql_assign_out_global_var(estate, parestate, dno, connected);
 		*start_level = connected;
-		match = true;
-		break;
+
+		return;
 	}
-	Assert(match);
+	Assert(false);
 	return;
 }
 

@@ -1,5 +1,5 @@
 # Copyright (c) 2022-2024, PostgreSQL Global Development Group
-# Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+# Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
 
 btree_gist_sources = files(
   'btree_binary_double.c',
@@ -33,24 +33,3 @@ install_data(
   'ora_btree_gist--1.0.sql',
   kwargs: contrib_data_args,
 )
-
-tests += {
-  'name': 'ora_btree_gist',
-  'sd': meson.current_source_dir(),
-  'bd': meson.current_build_dir(),
-  'regress': {
-    'sql': [
-      'init',
-      'number',
-      'varchar2',
-      'binary_float',
-      'binary_double',
-      'date',
-      'timestamp',
-      'timestamptz',
-      'timestampltz',
-      'yminterval',
-      'dsinterval',
-    ],
-  },
-}

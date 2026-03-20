@@ -1,7 +1,7 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  * Copyright (c) 2000-2025, PostgreSQL Global Development Group
  *
  * src/bin/psql/common.c
@@ -2860,6 +2860,7 @@ ExecQueryUsingCursor(const char *query, double *elapsed_msec)
 	int			flush_error;
 
 	*elapsed_msec = 0;
+	INSTR_TIME_SET_ZERO(before);
 
 	/* initialize print options for partial table output */
 	my_popt.topt.start_table = true;

@@ -15,7 +15,7 @@
 #
 # Makefile for the PL/iSQL procedural language
 #
-# Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+# Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
 #
 # src/pl/plisql/src/Makefile
 #
@@ -63,7 +63,7 @@ REGRESS = plisql_array plisql_call plisql_control plisql_copy plisql_domain \
 	plisql_record plisql_cache plisql_simple plisql_transaction \
 	plisql_trap plisql_trigger plisql_varprops plisql_nested_subproc \
 	plisql_nested_subproc2 plisql_out_parameter plisql_type_rowtype \
-	plisql_exception plisql_autonomous
+	plisql_exception plisql_for_loop_implicit plisql_autonomous plisql_bugs plisql_rownum
 
 # where to find ora_gen_keywordlist.pl and subsidiary files
 TOOLSDIR = $(top_srcdir)/src/tools

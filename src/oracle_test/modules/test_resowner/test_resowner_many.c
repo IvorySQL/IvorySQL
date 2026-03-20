@@ -4,7 +4,7 @@
  *		Test ResourceOwner functionality with lots of resources
  *
  * Copyright (c) 2022-2024, PostgreSQL Global Development Group
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *		src/oracle_test/modules/test_resowner/test_resowner_many.c

@@ -4,7 +4,7 @@
  *
  * like fe-exec.c but contains ivy functions.         
  *
- * Portions Copyright (c) 2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2025-2026, IvorySQL Global Development Team
  *
  * src/interfaces/libpq/ivy-exec.c
  *

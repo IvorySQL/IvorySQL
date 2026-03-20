@@ -4,7 +4,7 @@
  *
  * Test the C version of LIBPQ, the POSTGRES frontend library.  
  *
- * Portions Copyright (c) 2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2025-2026, IvorySQL Global Development Team
  *
  * src/interfaces/libpq/ivytest/testlibpq.c
  *

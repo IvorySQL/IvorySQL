@@ -5,7 +5,7 @@
  *
  * copyright (c) Oliver Elphick <olly@lfix.co.uk>, 2001;
  * license: BSD
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
  * src/bin/pg_controldata/pg_controldata.c
  */

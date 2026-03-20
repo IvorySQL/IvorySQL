@@ -3,7 +3,7 @@
  *
  * pl_gram.y			- Parser for the PL/iSQL procedural language
  *
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -2337,12 +2337,24 @@ for_variable	: T_DATUM
 						$$.name = $1.ident;
 						$$.lineno = plisql_location_to_lineno(@1, yyscanner);
 						$$.scalar = NULL;
-						$$.row = NULL;
 						/* check for comma-separated list */
 						tok = yylex(&yylval, &yylloc, yyscanner);
 						plisql_push_back_token(tok, &yylval, &yylloc, yyscanner);
 						if (tok == ',')
+						{
 							word_is_not_variable(&($1), @1, yyscanner);
+							$$.row = NULL;
+						}
+						else
+						{
+							/* Oracle compatibility: implicitly create RECORD variable for FOR loop */
+							$$.row = (PLiSQL_datum *)
+								plisql_build_record($1.ident,
+													plisql_location_to_lineno(@1, yyscanner),
+													NULL,
+													RECORDOID,
+													true);
+						}
 					}
 				| T_CWORD
 					{
@@ -2725,6 +2737,9 @@ stmt_execsql	: K_IMPORT
 							new->expr = build_call_expr(T_WORD, @1, &yylval, &yylloc, yyscanner);
 							new->is_call = true;
 
+							/* Remember we may need a procedure resource owner */
+							plisql_curr_compile->requires_procedure_resowner = true;
+
 							$$ = (PLiSQL_stmt *)new;
 						}
 						else
@@ -2751,6 +2766,9 @@ stmt_execsql	: K_IMPORT
 							new->stmtid = ++plisql_curr_compile->nstatements;
 							new->expr = build_call_expr(T_CWORD, @1, &yylval, &yylloc, yyscanner);
 							new->is_call = true;
+
+							/* Remember we may need a procedure resource owner */
+							plisql_curr_compile->requires_procedure_resowner = true;
 
 							$$ = (PLiSQL_stmt *)new;
 						}

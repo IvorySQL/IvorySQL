@@ -1,4 +1,4 @@
-#Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+#Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
 # Copyright (c) 2022-2025, PostgreSQL Global Development Group
 
 # Entry point for building PostgreSQL with meson
@@ -3595,6 +3595,7 @@ sys.exit(sp.returncode)
 ''',
        test_initdb_template,
        temp_install_bindir / 'initdb',
+       '-m', 'pg',
        '--auth', 'trust', '--no-sync', '--no-instructions', '--lc-messages=C',
        '--no-clean'
      ],

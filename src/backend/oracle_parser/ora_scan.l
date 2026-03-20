@@ -23,7 +23,7 @@
  *
  * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *	  src/backend/oracle_parser/ora_scan.l
@@ -152,8 +152,6 @@ static void check_escape_warning(ora_core_yyscan_t yyscanner);
 %option 8bit
 %option never-interactive
 %option nodefault
-%option noinput
-%option nounput
 %option noyywrap
 %option noyyalloc
 %option noyyrealloc
@@ -350,8 +348,13 @@ xcstop			\*+\/
 xcinside		[^*/]+
 
 ident_start		[A-Za-z\200-\377_]
-ident_cont		[A-Za-z\200-\377_0-9\$]
+ident_cont		[A-Za-z\200-\377_0-9\$#]
 
+/*
+ * Oracle allows # in identifiers (e.g., STATISTIC#).
+ * The identifier action code uses lookahead to distinguish between
+ * identifiers ending with # and JSON operators (#>, #>>, #-).
+ */
 identifier		{ident_start}{ident_cont}*
 
 /* Assorted special-case operators and operator-like tokens */
@@ -1260,6 +1263,33 @@ other			.
 {identifier}	{
 					int			kwnum;
 					char	   *ident;
+					int			len = yyleng;
+					int			nextchar;
+
+					/*
+					 * Oracle mode: Check if identifier ends with # and is followed
+					 * by operator chars (>, -) which would make it a JSON path
+					 * operator (#>, #>>, #-). If so, push back the # so the operator
+					 * gets lexed as a whole.
+					 * This allows both "STATISTIC#" (identifier) and "json#>path"
+					 * to work without requiring spaces.
+					 */
+					if (len >= 2 && yytext[len - 1] == '#')
+					{
+						/* Identifier ends with #. Peek at next character */
+						nextchar = input(yyscanner);
+						if (nextchar == '>' || nextchar == '-')
+						{
+							/* Followed by > or -, so this # starts an operator */
+							unput(nextchar);
+							yyless(len - 1);  /* Push back the # */
+						}
+						else if (nextchar != EOF)
+						{
+							/* Not an operator, keep the # as part of identifier */
+							unput(nextchar);
+						}
+					}
 
 					SET_YYLLOC();
 

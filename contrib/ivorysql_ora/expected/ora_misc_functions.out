@@ -2913,9 +2913,9 @@ LINE 1: select decode(5,%^*&,'south',2,'north',4,'changsha');
                             ^
 --3.result输入非法值：
 select decode(5,1,'south',2,'north',3,&%￥#,4,'changsha');--报错
-ERROR:  syntax error at or near ","
+ERROR:  "￥#": invalid identifier
 LINE 1: select decode(5,1,'south',2,'north',3,&%￥#,4,'changsha');
-                                                   ^
+                                                ^
 --参数expr为任意数据类型，且expr和search类型一致
 --数值类型：
 --1.smallint:
@@ -4181,3 +4181,10 @@ reset nls_date_format;
 reset nls_timestamp_format;
 reset nls_timestamp_tz_format;
 reset default_text_search_config;
+-- should throw errors, because dummy_config is not a valid configuration name
+set ivorysql.dummy_config to dummy;
+ERROR:  invalid configuration parameter name "ivorysql.dummy_config"
+DETAIL:  "ivorysql" is a reserved prefix.
+reset ivorysql.dummy_config;
+ERROR:  invalid configuration parameter name "ivorysql.dummy_config"
+DETAIL:  "ivorysql" is a reserved prefix.

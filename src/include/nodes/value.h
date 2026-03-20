@@ -4,7 +4,7 @@
  *	  interface for value nodes
  *
  *
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  * Copyright (c) 2003-2025, PostgreSQL Global Development Group
  *
  * src/include/nodes/value.h

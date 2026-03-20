@@ -62,6 +62,25 @@ pg_ctl -D data_ora start
 make oracle-check
 ```
 
+### Meson Build (Alternative)
+
+```bash
+# Enter the development container
+docker compose exec dev bash
+
+# Configure with meson
+meson setup build -Dcassert=true -Dbuildtype=debug
+
+# Build with ninja
+ninja -C build
+
+# Run from build directory
+./build/src/backend/postgres --version
+```
+
+Note: Meson requires a clean source tree. If you previously ran `./configure`,
+run `make distclean` first.
+
 ## Developer Formatting hooks and CI:
 - A pre-commit formatting hook is provided at `.githooks/pre-commit`. Enable it with `git config core.hooksPath .githooks`, or run `make code-format` (equivalently `bash tools/enable-git-hooks.sh`).
 - The hook depends only on in-tree tools `src/tools/pgindent` and `src/tools/pg_bsd_indent`. On commit it formats staged C/C++ files with pgindent and re-adds them to the staged area. 

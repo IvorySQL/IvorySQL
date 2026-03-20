@@ -40,7 +40,7 @@
  *
  * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
  * src/bin/initdb/initdb.c
  *
@@ -2091,7 +2091,10 @@ load_plpgsql(FILE *cmdfd)
 static void
 load_plisql(FILE *cmdfd)
 {
+	/* Switch to oracle mode to allow CREATE PACKAGE in extension SQL */
+	PG_CMD_PUTS("set ivorysql.compatible_mode to oracle;\n\n");
 	PG_CMD_PUTS("CREATE EXTENSION plisql;\n\n");
+	PG_CMD_PUTS("set ivorysql.compatible_mode to pg;\n\n");
 }
 
 static void

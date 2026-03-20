@@ -4,7 +4,7 @@
  * src/backend/utils/adt/formatting.c
  *
  *
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *	 Portions Copyright (c) 1999-2025, PostgreSQL Global Development Group
  *
  *

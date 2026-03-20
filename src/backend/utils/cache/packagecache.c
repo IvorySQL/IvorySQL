@@ -21,7 +21,7 @@
  *
  * Authored by dwdai@highgo.com,20220929.
  *
- * Copyright (c) 2022-2025, IvorySQL Global Development Team
+ * Copyright (c) 2022-2026, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *	  src/backend/utils/cache/packagecache.c

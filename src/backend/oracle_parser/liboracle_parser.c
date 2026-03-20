@@ -10,7 +10,7 @@
  * analyze.c and related files.
  *
  *
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -313,8 +313,9 @@ token_is_col_id(int token)
 			break;
 	}
 
-	if (OraScanKeywordCategories[i]== UNRESERVED_KEYWORD ||
-		OraScanKeywordCategories[i]== COL_NAME_KEYWORD)
+	if (i < OraScanKeywords.num_keywords &&
+		(OraScanKeywordCategories[i]== UNRESERVED_KEYWORD ||
+		OraScanKeywordCategories[i]== COL_NAME_KEYWORD))
 		return true;
 	return false;
 }
@@ -1272,8 +1273,9 @@ oracle_quote_identifier(const char *ident)
 {
 	/*
 	 * Can avoid quoting if ident starts with a lowercase letter or underscore
-	 * and contains only lowercase letters, digits, and underscores, *and* is
-	 * not any SQL keyword.  Otherwise, supply quotes.
+	 * and contains only lowercase letters, digits, underscores, and the
+	 * special characters # and $ (for Oracle compatibility), *and* is not any
+	 * SQL keyword.  Otherwise, supply quotes.
 	 */
 	int			nquotes = 0;
 	bool		safe;
@@ -1293,7 +1295,9 @@ oracle_quote_identifier(const char *ident)
 
 		if ((ch >= 'a' && ch <= 'z') ||
 			(ch >= '0' && ch <= '9') ||
-			(ch == '_'))
+			(ch == '_') ||
+			(ch == '#') ||
+			(ch == '$'))
 		{
 			/* okay */
 		}

@@ -9,7 +9,7 @@
  * Copyright (c) 2000, Philip Warner
  *	Rights are granted to use this software in any way so long
  *	as this notice is not removed.
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
  *	The author is not responsible for loss or damages that may
  *	result from its use.

@@ -18,7 +18,7 @@
  * Abstract:
  * 	 Executor for the PLiSQL package
  *
- * Copyright (c) 2024-2025, IvorySQL Global Development Team
+ * Copyright (c) 2024-2026, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *    src/pl/plisql/src/pl_package.c
@@ -2730,12 +2730,10 @@ static void
 plisql_remove_function_references(PLiSQL_function *func, PackageCacheItem *item)
 {
 	PLiSQL_package *psource = (PLiSQL_package *) item->source;
-	int pre_len = list_length(psource->source.funclist);
+
+	Assert(list_member_ptr(psource->source.funclist, func));
 
 	psource->source.funclist = list_delete_ptr(psource->source.funclist, (void *) func);
-
-	Assert(pre_len == list_length(psource->source.funclist) + 1);
-
 	psource->source.use_count--;
 
 	/*
@@ -3068,11 +3066,12 @@ is_const_datum(PLiSQL_execstate *estate, PLiSQL_datum *datum)
 			}
 			break;
 		case PLISQL_DTYPE_EXCEPTION:
-
-			/* Exception variables cannot be used here */
-
-			elog(ERROR, "exception variables cannot be used in this context");
-
+			/*
+			 * Exception variables are constant identifiers - they cannot be
+			 * assigned to. Return true to indicate they are constant and
+			 * should be skipped by callers that iterate over datums.
+			 */
+			isconst = true;
 			break;
 
 
@@ -3637,7 +3636,6 @@ plisql_subproc_should_change_return_type(FuncExpr *fexpr,
 	{
 		/* only one out-parameter, change the rettype to be out-parameter type */
 		ListCell *lc;
-		bool found = false;
 
 		foreach (lc, subprocfunc->arg)
 		{
@@ -3646,7 +3644,6 @@ plisql_subproc_should_change_return_type(FuncExpr *fexpr,
 			if (argitem->argmode == ARGMODE_OUT ||
 				argitem->argmode == ARGMODE_INOUT)
 			{
-				found = true;
 				result = true;
 				*rettype = argitem->type->typoid;
 				*typmod = argitem->type->atttypmod;
@@ -3654,7 +3651,7 @@ plisql_subproc_should_change_return_type(FuncExpr *fexpr,
 				break;
 			}
 		}
-		Assert(found);
+		Assert(result);
 	}
 	return result;
 }

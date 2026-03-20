@@ -1457,3 +1457,42 @@ drop procedure f_proc;
 drop function f_test;
 drop function ff_test;
 
+--
+-- ROWNUM as function parameter and variable name
+-- Oracle allows ROWNUM as parameter/variable name in PL/SQL.
+-- https://github.com/IvorySQL/IvorySQL/pull/1000#issuecomment-3717690863
+--
+
+-- Test 1: Function with 'rownum' as parameter name
+-- Oracle: Creates successfully
+CREATE OR REPLACE FUNCTION test_rownum_param(rownum IN VARCHAR2) RETURN INTEGER IS
+BEGIN
+    RAISE NOTICE 'Parameter value: %', rownum;
+    RETURN 23;
+END;
+/
+
+-- Test 2: Call the function with variable named 'rownum'
+-- Oracle: Runs successfully
+DECLARE
+    rownum VARCHAR2(256) := 'hello';
+    ret INTEGER;
+BEGIN
+    ret := test_rownum_param(rownum);
+    RAISE NOTICE 'Return value: %', ret;
+END;
+/
+
+-- Test 3: Named parameter call using 'rownum =>'
+-- Oracle: Runs successfully
+DECLARE
+    ret INTEGER;
+BEGIN
+    ret := test_rownum_param(rownum => 'world');
+    RAISE NOTICE 'Named param return: %', ret;
+END;
+/
+
+-- Cleanup (may fail if function wasn't created)
+DROP FUNCTION IF EXISTS test_rownum_param;
+

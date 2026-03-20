@@ -5,7 +5,7 @@
  *
  * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
  *
  * IDENTIFICATION
@@ -3994,7 +3994,8 @@ SplitGUCList(char *rawstring, char separator,
 			char	   *new_name;
 
 			new_name = identifier_case_transform(curname, strlen(curname));
-			strncpy(curname, new_name, strlen(new_name));
+			memcpy(curname, new_name, strlen(new_name));
+			curname[strlen(new_name)] = '\0';
 			pfree(new_name);
 		}
 

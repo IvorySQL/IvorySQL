@@ -8,7 +8,7 @@
  * IDENTIFICATION
  *		src/oracle_test/modules/test_ginpostinglist/test_ginpostinglist.c
  *
- * Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
  * -------------------------------------------------------------------------
  */

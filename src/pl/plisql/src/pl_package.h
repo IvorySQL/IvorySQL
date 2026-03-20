@@ -21,7 +21,7 @@
  *
  *
  *
- * Copyright (c) 2024-2025, IvorySQL Global Development Team
+ * Copyright (c) 2024-2026, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *	  src/pl/plisql/src/pl_package.h

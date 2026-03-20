@@ -3996,11 +3996,6 @@ begin
 end;
 /
 INFO:  var1 = 2
-ERROR:  schema "dbms_output" does not exist
-LINE 1: CALL dbms_output.put_line('xiexie')
-             ^
-QUERY:  CALL dbms_output.put_line('xiexie')
-CONTEXT:  PL/iSQL function inline_code_block line 5 at CALL
 create or replace function test.test_f(id integer) return integer is
   var1 integer;
   function test_f(id integer) return integer;

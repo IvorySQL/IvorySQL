@@ -17,7 +17,7 @@
  *
  * Compatible with Oracle's INTERVAL YEAR TO MONTH data type.
  *
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
  * contrib/ivorysql_ora/src/datatype/yminterval.c
  *

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 # src/pl/plisql/src/nls.mk
-# Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+# Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
 
 CATALOG_NAME     = plisql
 GETTEXT_FILES    = pl_comp.c \

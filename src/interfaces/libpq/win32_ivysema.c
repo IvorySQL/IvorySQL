@@ -3,7 +3,7 @@
  * win32_ivysema.c copy from win32_sema.c
  *	  Microsoft Windows Win32 Semaphores Emulation
  *
- * Portions Copyright (c) 2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2025-2026, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *	  src/interfaces/libpq/win32_ivysema.c

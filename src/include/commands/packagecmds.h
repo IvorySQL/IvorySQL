@@ -19,7 +19,7 @@
  *		Definitions for the PLISQL Package
  *
  *
- * Copyright (c) 2024-2025, IvorySQL Global Development Team
+ * Copyright (c) 2024-2026, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *	  src/include/commands/packagecmds.h

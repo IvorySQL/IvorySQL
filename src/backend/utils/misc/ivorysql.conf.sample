@@ -1,7 +1,7 @@
 #------------------------------------------------------------------------------
 #Oracle COMPATIBLE Mode GUC parameters
 #
-#Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+#Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
 #------------------------------------------------------------------------------
 
 #ivorysql.listen_addresses = 'localhost'		# what IP address(es) of Oracle mode to listen on;

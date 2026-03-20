@@ -1513,6 +1513,25 @@ addRangeTableEntry(ParseState *pstate,
 
 	Assert(pstate != NULL);
 
+	/*
+	 * In Oracle compatibility mode, reject ROWNUM and ROWID as explicit
+	 * table aliases. Oracle treats these as reserved pseudocolumns that
+	 * cannot be used as table aliases.
+	 */
+	if (compatible_db == ORA_PARSER && alias != NULL)
+	{
+		if (pg_strcasecmp(alias->aliasname, "rownum") == 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("ROWNUM cannot be used as a table alias"),
+					 parser_errposition(pstate, relation->location)));
+		if (pg_strcasecmp(alias->aliasname, "rowid") == 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("ROWID cannot be used as a table alias"),
+					 parser_errposition(pstate, relation->location)));
+	}
+
 	rte->rtekind = RTE_RELATION;
 	rte->alias = alias;
 
@@ -1718,6 +1737,23 @@ addRangeTableEntryForSubquery(ParseState *pstate,
 	ParseNamespaceItem *nsitem;
 
 	Assert(pstate != NULL);
+
+	/*
+	 * In Oracle compatibility mode, reject ROWNUM and ROWID as explicit
+	 * subquery aliases. Oracle treats these as reserved pseudocolumns that
+	 * cannot be used as table aliases.
+	 */
+	if (compatible_db == ORA_PARSER && alias != NULL)
+	{
+		if (pg_strcasecmp(alias->aliasname, "rownum") == 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("ROWNUM cannot be used as a table alias")));
+		if (pg_strcasecmp(alias->aliasname, "rowid") == 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("ROWID cannot be used as a table alias")));
+	}
 
 	rte->rtekind = RTE_SUBQUERY;
 	rte->subquery = subquery;

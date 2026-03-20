@@ -4,7 +4,7 @@
  *	  Support routines for index access methods' amvalidate and
  *	  amadjustmembers functions.
  *
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  * Copyright (c) 2016-2025, PostgreSQL Global Development Group
  *
  *

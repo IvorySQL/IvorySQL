@@ -9,7 +9,7 @@
  *
  * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
  * src/include/nodes/primnodes.h
  *
@@ -2146,6 +2146,22 @@ typedef struct NextValueExpr
 	Oid			seqid;
 	Oid			typeId;
 } NextValueExpr;
+
+/*
+ * RownumExpr - Oracle ROWNUM pseudocolumn
+ *
+ * Returns a number indicating the order in which a row was selected from
+ * a table or set of joined rows. The first row selected has a ROWNUM of 1,
+ * the second has 2, and so on.
+ *
+ * Only active when compatible_mode = 'oracle'.
+ */
+typedef struct RownumExpr
+{
+	pg_node_attr(no_query_jumble)
+	Expr		xpr;
+	ParseLoc	location;		/* token location, or -1 if unknown */
+} RownumExpr;
 
 /*
  * InferenceElem - an element of a unique index inference specification

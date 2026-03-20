@@ -6,7 +6,7 @@
  *
  * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
  *
  * IDENTIFICATION
@@ -9337,6 +9337,7 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 		case T_SQLValueFunction:
 		case T_XmlExpr:
 		case T_NextValueExpr:
+		case T_RownumExpr:
 		case T_NullIfExpr:
 		case T_Aggref:
 		case T_GroupingFunc:
@@ -10835,6 +10836,11 @@ get_rule_expr(Node *node, deparse_context *context,
 															NIL));
 				appendStringInfoChar(buf, ')');
 			}
+			break;
+
+		case T_RownumExpr:
+			/* Oracle ROWNUM pseudocolumn */
+			appendStringInfoString(buf, "ROWNUM");
 			break;
 
 		case T_InferenceElem:

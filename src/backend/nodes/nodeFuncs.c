@@ -5,7 +5,7 @@
  *
  * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
  *
  * IDENTIFICATION
@@ -290,6 +290,10 @@ exprType(const Node *expr)
 			break;
 		case T_NextValueExpr:
 			type = ((const NextValueExpr *) expr)->typeId;
+			break;
+		case T_RownumExpr:
+			/* ROWNUM returns a numeric value */
+			type = INT8OID;
 			break;
 		case T_InferenceElem:
 			{
@@ -1072,6 +1076,10 @@ exprCollation(const Node *expr)
 			/* NextValueExpr's result is an integer type ... */
 			coll = InvalidOid;	/* ... so it has no collation */
 			break;
+		case T_RownumExpr:
+			/* RownumExpr's result is an integer type ... */
+			coll = InvalidOid;	/* ... so it has no collation */
+			break;
 		case T_InferenceElem:
 			coll = exprCollation((Node *) ((const InferenceElem *) expr)->expr);
 			break;
@@ -1327,6 +1335,10 @@ exprSetCollation(Node *expr, Oid collation)
 			break;
 		case T_NextValueExpr:
 			/* NextValueExpr's result is an integer type ... */
+			Assert(!OidIsValid(collation)); /* ... so never set a collation */
+			break;
+		case T_RownumExpr:
+			/* RownumExpr's result is an integer type ... */
 			Assert(!OidIsValid(collation)); /* ... so never set a collation */
 			break;
 		default:
@@ -2164,6 +2176,7 @@ expression_tree_walker_impl(Node *node,
 		case T_SetToDefault:
 		case T_CurrentOfExpr:
 		case T_NextValueExpr:
+		case T_RownumExpr:
 		case T_RangeTblRef:
 		case T_SortGroupClause:
 		case T_CTESearchClause:
@@ -3045,6 +3058,7 @@ expression_tree_mutator_impl(Node *node,
 		case T_SetToDefault:
 		case T_CurrentOfExpr:
 		case T_NextValueExpr:
+		case T_RownumExpr:
 		case T_RangeTblRef:
 		case T_SortGroupClause:
 		case T_CTESearchClause:
@@ -4469,17 +4483,12 @@ raw_expression_tree_walker_impl(Node *node,
 			break;
 		case T_ColumnRefOrFuncCall:
 			{
-				FuncCall   *fcall = ((ColumnRefOrFuncCall *) node)->func;
+				ColumnRefOrFuncCall *colf = (ColumnRefOrFuncCall *) node;
 
-				if (WALK(fcall->args))
+				if (colf->cref && WALK(colf->cref))
 					return true;
-				if (WALK(fcall->agg_order))
+				if (colf->func && WALK(colf->func))
 					return true;
-				if (WALK(fcall->agg_filter))
-					return true;
-				if (WALK(fcall->over))
-					return true;
-				/* function name is deemed uninteresting */
 			}
 			break;
 		case T_NamedArgExpr:

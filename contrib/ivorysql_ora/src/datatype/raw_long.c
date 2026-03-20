@@ -17,7 +17,7 @@
  *
  * Auxiliary routine for compatible with Oracle's LONG RAW data type.
  *
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
  * contrib/ivorysql_ora/src/datatype/raw_long.c
  *

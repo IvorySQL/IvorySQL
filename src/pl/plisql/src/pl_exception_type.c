@@ -6,7 +6,7 @@
  * This module implements user-defined exception variables as found in
  * Oracle PL/SQL.
  *
- * Portions Copyright (c) 2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2025-2026, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *	  src/pl/plisql/src/pl_exception_type.c

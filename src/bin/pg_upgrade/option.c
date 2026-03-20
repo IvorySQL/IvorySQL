@@ -3,7 +3,7 @@
  *
  *	options functions
  *
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *	Copyright (c) 2010-2025, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/option.c
  */
@@ -115,8 +115,8 @@ parseCommandLine(int argc, char *argv[])
 	if (os_user_effective_id == 0)
 		pg_fatal("%s: cannot be run as root", os_info.progname);
 
-	while ((option = getopt_long(argc, argv, "b:B:cd:D:j:kNo:O:p:P:q:Q:rs:U:v",	
-								 long_options, &optindex)) != -1)
+	while ((option = getopt_long(argc, argv, "b:B:cd:D:gj:kNo:O:p:P:q:Q:rs:U:v",
+					long_options, &optindex)) != -1)
 	{
 		switch (option)
 		{

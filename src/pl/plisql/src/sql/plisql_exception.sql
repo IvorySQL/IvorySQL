@@ -315,6 +315,45 @@ END test_pragma_zero;
 
 SELECT 'PRAGMA EXCEPTION_INIT negative error code tests completed' AS result;
 
+--
+-- Test 12: SQLERRM in procedures when package has EXCEPTION variables (issue #1151)
+-- When a package declares user-defined EXCEPTION variables at package scope,
+-- passing SQLERRM to procedures from exception handlers should work.
+--
+CREATE OR REPLACE PACKAGE test_sqlerrm_with_exc IS
+  my_exception EXCEPTION;  -- User-defined exception at package scope
+  PROCEDURE log_error(p_msg VARCHAR2);
+  PROCEDURE test_sqlerrm;
+END test_sqlerrm_with_exc;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_sqlerrm_with_exc IS
+  PROCEDURE log_error(p_msg VARCHAR2) IS
+  BEGIN
+    RAISE INFO 'Logged: %', p_msg;
+  END log_error;
+
+  PROCEDURE test_sqlerrm IS
+  BEGIN
+    RAISE my_exception;
+  EXCEPTION
+    WHEN my_exception THEN
+      -- This should work: passing SQLERRM to procedure
+      log_error(SQLERRM);
+  END test_sqlerrm;
+END test_sqlerrm_with_exc;
+/
+
+-- Test execution - this used to fail with "exception variables cannot be used in this context"
+BEGIN
+  test_sqlerrm_with_exc.test_sqlerrm();
+END;
+/
+
+SELECT 'SQLERRM with package EXCEPTION test passed (issue #1151)' AS result;
+
+DROP PACKAGE test_sqlerrm_with_exc;
+
 -- Cleanup
 DROP PACKAGE test_pragma_init;
 DROP PACKAGE test_pragma_raise;

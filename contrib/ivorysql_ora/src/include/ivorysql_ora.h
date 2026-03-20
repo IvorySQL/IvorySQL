@@ -17,7 +17,7 @@
  *
  * This file contains extern declarations for ivorysql_ora itself.
  *
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
  * contrib/ivorysql_ora/src/include/ivorysql_ora.h
  *
@@ -49,5 +49,8 @@ extern Query* IvytransformMergeStmt(ParseState *pstate, MergeStmt *stmt);
 /* Begin - ReqID:SRS-SQL-XML */
 extern xmltype* updatexml(List *args);
 /* End - ReqID:SRS-SQL-XML */
+
+/* DBMS_OUTPUT */
+extern void ora_dbms_output_reset(void);
 
 #endif	/* IVORYSQL_ORA_H_ */

@@ -20,7 +20,7 @@
  * by the PG_KEYWORD macro, which is not defined in this file; it can
  * be defined by the caller for special purposes.
  *
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
  * IDENTIFICATION
  *	  src/include/oracle_parser/ora_kwlist.h
@@ -458,6 +458,7 @@ PG_KEYWORD("routine", ROUTINE, UNRESERVED_KEYWORD, BARE_LABEL)
 PG_KEYWORD("routines", ROUTINES, UNRESERVED_KEYWORD, BARE_LABEL)
 PG_KEYWORD("row", ROW, COL_NAME_KEYWORD, BARE_LABEL)
 PG_KEYWORD("rowid", ROWID, UNRESERVED_KEYWORD, BARE_LABEL)
+PG_KEYWORD("rownum", ROWNUM, UNRESERVED_KEYWORD, BARE_LABEL)
 PG_KEYWORD("rows", ROWS, UNRESERVED_KEYWORD, BARE_LABEL)
 PG_KEYWORD("rowtype", ROWTYPE, UNRESERVED_KEYWORD, BARE_LABEL)
 PG_KEYWORD("rule", RULE, UNRESERVED_KEYWORD, BARE_LABEL)

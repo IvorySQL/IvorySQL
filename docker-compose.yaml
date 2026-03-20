@@ -3,12 +3,15 @@ services:
     build:
       context: .
       dockerfile: .devcontainer/Dockerfile
-    image: ivorysql-dev
-    container_name: ivorysql-dev
     volumes:
       - .:/home/ivorysql/IvorySQL:rw
     working_dir: /home/ivorysql/IvorySQL
     command: ["sleep", "infinity"]
+    # Enable ptrace for gdb debugging
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp:unconfined
  
   # docker compose --profile ora up -d
   oracle:

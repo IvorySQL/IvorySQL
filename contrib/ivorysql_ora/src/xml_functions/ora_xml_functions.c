@@ -18,7 +18,7 @@
  * Abstract:
  * 		This file implements the C functions that support the XML SQL functions
  *
- * Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
  * Identification:
  *		contrib/ivorysql_ora/src/xml_functions/ora_xml_functions.c

@@ -3,7 +3,7 @@
  * pl_comp.c		- Compiler part of the PL/iSQL
  *			  procedural language
  *
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -34,6 +34,7 @@
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
+#include "utils/ora_compatible.h"
 #include "utils/memutils.h"
 #include "utils/regproc.h"
 #include "utils/syscache.h"
@@ -1610,8 +1611,34 @@ plisql_pre_column_ref(ParseState *pstate, ColumnRef *cref)
 
 	if (expr->func->resolve_option == PLISQL_RESOLVE_VARIABLE)
 		return resolve_column_ref(pstate, expr, cref, false);
-	else
-		return NULL;
+
+	/*
+	 * Even when resolve_option is not PLISQL_RESOLVE_VARIABLE, we need to
+	 * check if the identifier is ROWNUM or ROWID and exists as a PL/iSQL
+	 * variable. This is necessary because the SQL parser would otherwise
+	 * convert these to pseudocolumn references before the post-columnref
+	 * hook has a chance to resolve them as variables.
+	 *
+	 * This matches Oracle behavior where ROWNUM/ROWID can be used as
+	 * variable names in PL/SQL.
+	 */
+	if (compatible_db == ORA_PARSER && list_length(cref->fields) == 1)
+	{
+		Node	   *field1 = (Node *) linitial(cref->fields);
+		const char *name1 = strVal(field1);
+
+		if (pg_strcasecmp(name1, "rownum") == 0 ||
+			pg_strcasecmp(name1, "rowid") == 0)
+		{
+			Node	   *result;
+
+			result = resolve_column_ref(pstate, expr, cref, false);
+			if (result != NULL)
+				return result;
+		}
+	}
+
+	return NULL;
 }
 
 /*
@@ -3282,6 +3309,43 @@ plisql_finish_datums(PLiSQL_function * function)
 }
 
 
+/*
+ * plisql_datum_belongs_to_subproc
+ *		Check if a datum index falls within any subproc's datum range.
+ *
+ * Subproc datums (parameters and local variables) should not be initialized
+ * by the parent block, as they have their own initialization logic.
+ * Each subproc's datum range is [lastassignvardno, lastoutvardno).
+ */
+static bool
+plisql_datum_belongs_to_subproc(int datum_idx)
+{
+	int		j;
+
+	for (j = 0; j < plisql_nsubprocFuncs; j++)
+	{
+		PLiSQL_subproc_function *subproc = plisql_subprocFuncs[j];
+
+		/*
+		 * Skip subprocs that don't have a function body yet (forward declarations).
+		 * Also skip if lastoutvardno is 0 (not yet set).
+		 */
+		if (subproc->function == NULL || subproc->lastoutvardno == 0)
+			continue;
+
+		/*
+		 * Check if datum_idx falls within [lastassignvardno, lastoutvardno).
+		 * lastassignvardno is set before building subproc args.
+		 * lastoutvardno is set after the subproc body is fully compiled.
+		 */
+		if (datum_idx >= subproc->lastassignvardno &&
+			datum_idx < subproc->lastoutvardno)
+			return true;
+	}
+
+	return false;
+}
+
 /* ----------
  * plisql_add_initdatums		Make an array of the datum numbers of
  *					all the initializable datums created since the last call
@@ -3308,6 +3372,19 @@ plisql_add_initdatums(int **varnos)
 	 */
 	for (i = datums_last; i < plisql_nDatums; i++)
 	{
+		/*
+		 * Skip datums that belong to subprocs. These datums (parameters and
+		 * local variables of nested functions/procedures) should not be
+		 * initialized by the parent block. They have their own initialization
+		 * logic within the subproc's execution context.
+		 *
+		 * This prevents crashes when a subproc's local variable has a default
+		 * expression that references the subproc's parameters, which don't
+		 * exist in the parent's execution context.
+		 */
+		if (plisql_datum_belongs_to_subproc(i))
+			continue;
+
 		switch (plisql_Datums[i]->dtype)
 		{
 			case PLISQL_DTYPE_VAR:
@@ -3329,6 +3406,10 @@ plisql_add_initdatums(int **varnos)
 			n = 0;
 			for (i = datums_last; i < plisql_nDatums; i++)
 			{
+				/* Skip subproc datums */
+				if (plisql_datum_belongs_to_subproc(i))
+					continue;
+
 				switch (plisql_Datums[i]->dtype)
 				{
 					case PLISQL_DTYPE_VAR:

@@ -6,7 +6,7 @@
  * ora_gram.y
  *	  IvorySQL BISON rules/actions  (Oracle compatible)
  *
- * Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+ * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -789,7 +789,7 @@ static void determineLanguage(List *options);
 	RANGE READ REAL REASSIGN RECHECK RECURSIVE REF_P REFERENCES REFERENCING
 	REFRESH REINDEX RELATIVE_P RELEASE RENAME REPEATABLE REPLACE REPLICA
 	RESET RESTART RESTRICT RETURN RETURNING RETURNS REVOKE RIGHT ROLE ROLLBACK ROLLUP
-	ROUTINE ROUTINES ROW ROWID ROWS  ROWTYPE RULE
+	ROUTINE ROUTINES ROW ROWID ROWNUM ROWS  ROWTYPE RULE
 
 	SAVEPOINT SCALAR SCALE SCHEMA SCHEMAS SCROLL SEARCH SECOND_P SECURITY SELECT
 	SEQUENCE SEQUENCES
@@ -20387,6 +20387,7 @@ unreserved_keyword:
 			| ROUTINE
 			| ROUTINES
 			| ROWID
+			| ROWNUM
 			| ROWS
 			| ROWTYPE
 			| RULE
@@ -21104,6 +21105,7 @@ bare_label_keyword:
 			| ROUTINES
 			| ROW
 			| ROWID
+			| ROWNUM
 			| ROWS
 			| ROWTYPE
 			| RULE

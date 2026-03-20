@@ -1,4 +1,4 @@
-# Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
+# Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
 
 gb18030_2022_src_files = files(
   'utf8_and_gb18030_2022.c'

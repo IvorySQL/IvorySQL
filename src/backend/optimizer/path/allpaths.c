@@ -1334,9 +1334,31 @@ add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 	List	   *all_child_outers = NIL;
 	ListCell   *l;
 	double		partial_rows = -1;
+	bool		is_union_all = false;
 
 	/* If appropriate, consider parallel append */
 	pa_subpaths_valid = enable_parallel_append && rel->consider_parallel;
+
+	/*
+	 * Check if this appendrel came from a UNION ALL operation.
+	 * UNION ALL appendrels have all children with rtekind == RTE_SUBQUERY.
+	 * We need to detect this to reset ROWNUM when switching branches
+	 * (Oracle compatibility).
+	 */
+	if (live_childrels != NIL)
+	{
+		is_union_all = true;
+		foreach(l, live_childrels)
+		{
+			RelOptInfo *childrel = lfirst(l);
+
+			if (childrel->rtekind != RTE_SUBQUERY)
+			{
+				is_union_all = false;
+				break;
+			}
+		}
+	}
 
 	/*
 	 * For every non-dummy child, remember the cheapest path.  Also, identify
@@ -1523,14 +1545,27 @@ add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 	 * if we have zero or one live subpath due to constraint exclusion.)
 	 */
 	if (subpaths_valid)
-		add_path(rel, (Path *) create_append_path(root, rel, subpaths, NIL,
-												  NIL, NULL, 0, false,
-												  -1));
+	{
+		AppendPath *appendpath;
+
+		appendpath = create_append_path(root, rel, subpaths, NIL,
+										NIL, NULL, 0, false, -1);
+		/* Mark UNION ALL appendrels for ROWNUM reset (Oracle compatibility) */
+		appendpath->is_union = is_union_all;
+		add_path(rel, (Path *) appendpath);
+	}
 
 	/* build an AppendPath for the cheap startup paths, if valid */
 	if (startup_subpaths_valid)
-		add_path(rel, (Path *) create_append_path(root, rel, startup_subpaths,
-												  NIL, NIL, NULL, 0, false, -1));
+	{
+		AppendPath *appendpath;
+
+		appendpath = create_append_path(root, rel, startup_subpaths,
+										NIL, NIL, NULL, 0, false, -1);
+		/* Mark UNION ALL appendrels for ROWNUM reset (Oracle compatibility) */
+		appendpath->is_union = is_union_all;
+		add_path(rel, (Path *) appendpath);
+	}
 
 	/*
 	 * Consider an append of unordered, unparameterized partial paths.  Make
@@ -1574,6 +1609,8 @@ add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 										NIL, NULL, parallel_workers,
 										enable_parallel_append,
 										-1);
+		/* Mark UNION ALL appendrels for ROWNUM reset (Oracle compatibility) */
+		appendpath->is_union = is_union_all;
 
 		/*
 		 * Make sure any subsequent partial paths use the same row count
@@ -1623,6 +1660,8 @@ add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 										pa_partial_subpaths,
 										NIL, NULL, parallel_workers, true,
 										partial_rows);
+		/* Mark UNION ALL appendrels for ROWNUM reset (Oracle compatibility) */
+		appendpath->is_union = is_union_all;
 		add_partial_path(rel, (Path *) appendpath);
 	}
 
