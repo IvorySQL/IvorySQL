@@ -229,7 +229,9 @@ RESET client_min_messages;
 -- DEBUG1 must show "with request for 3 parallel workers".
 SET client_min_messages = DEBUG1;
 SET max_parallel_maintenance_workers = 4;
+SET log_temp_files = -1;
 ALTER INDEX rp_idx REBUILD PARALLEL 4;
+RESET log_temp_files;
 RESET client_min_messages;
 RESET max_parallel_maintenance_workers;
 
