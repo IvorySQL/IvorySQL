@@ -2459,24 +2459,24 @@ Datum
 ora_listagg_check (PG_FUNCTION_ARGS)
 {
         text      *value = PG_GETARG_TEXT_PP(0);
-
-        if (!PG_ARGISNULL(0))
+        if (PG_ARGISNULL(0))
         {
-                int       len = VARSIZE_ANY_EXHDR(value);  // payload length only
-
-                if (len < 4000)
-                {
-                    PG_RETURN_TEXT_P(value);
-		    
-                }
-                else
-                {
-                    elog(ERROR, "result of aggregation exceeds 4000 bytes");
-                }
-
+                PG_RETURN_NULL();
         }
+        else
+        {
+                text      *value = PG_GETARG_TEXT_PP(0);
+                 int       len = VARSIZE_ANY_EXHDR(value);  // payload length only
 
-        PG_RETURN_TEXT_P(value);
+                 if (len < 4000)
+                 {
+                     PG_RETURN_TEXT_P(value);
+                 }
+                 else
+                 {
+                     elog(ERROR, "result of aggregation exceeds 4000 bytes");
+                 }
+         }
 
 }
 
