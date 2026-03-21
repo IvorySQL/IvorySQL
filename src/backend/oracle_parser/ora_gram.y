@@ -851,6 +851,8 @@ static void determineLanguage(List *options);
 
 %token <keyword> PARAMSLENGTH
 
+%token <keyword> LISTAGG
+
 %type <node> CreatePackageStmt CreatePackageBodyStmt AlterPackageStmt
 %type <node> package_proper_item
 %type <list> package_proper package_proper_list package_names package_names_list
@@ -17924,6 +17926,34 @@ func_expr: func_application within_group_clause filter_clause over_clause
 				}
 			| func_expr_common_subexpr
 				{ $$ = $1; }
+
+
+                        | LISTAGG '(' func_arg_list ')' within_group_clause filter_clause over_clause 
+                	{
+	                    FuncCall *string_agg_n;
+	                    FuncCall *check_n;
+
+                            if ($5 == NIL)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("LISTAGG requires WITHIN GROUP (ORDER BY ...)"),
+								 parser_errposition(@1)));
+
+	                    string_agg_n = makeFuncCall(SystemFuncName("string_agg"),
+        	                                        $3,
+                	                                COERCE_EXPLICIT_CALL, @1);
+	                    string_agg_n->agg_order = $5;
+                            string_agg_n->agg_filter = $6;
+                            string_agg_n->over = $7;
+
+			    /* Wrap with sys.listagg_check to enforce the 4000-byte limit */
+			    check_n = makeFuncCall(OracleSystemFuncName("ora_listagg_check"),
+			    			   list_make1((Node *) string_agg_n),
+						 COERCE_EXPLICIT_CALL, @1);
+			    $$ = (Node *) check_n;
+
+			  }
+
 		;
 
 /*
@@ -20729,6 +20759,7 @@ reserved_keyword:
 			| LATERAL_P
 			| LEADING
 			| LIMIT
+                        | LISTAGG
 			| LOCALTIME
 			| LOCALTIMESTAMP
 			| NAN_P
@@ -21015,6 +21046,7 @@ bare_label_keyword:
 			| LEFT
 			| LEVEL
 			| LIKE
+                        | LISTAGG
 			| LISTEN
 			| LOAD
 			| LOCAL
