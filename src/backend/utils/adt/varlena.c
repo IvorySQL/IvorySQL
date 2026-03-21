@@ -5803,13 +5803,6 @@ string_agg_transfn(PG_FUNCTION_ARGS)
 		}
 
 		appendStringInfoText(state, value);
-
-		/*
-		 * IvorySQL limit for LISTAGG
-		 */
-		if (state->len > 4000) {
-			elog(ERROR, "result of aggregation exceeds 4000 bytes");
-		}
 	}
 
 	/*
