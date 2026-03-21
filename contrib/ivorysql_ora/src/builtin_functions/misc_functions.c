@@ -32,8 +32,10 @@
 #include "miscadmin.h"
 #include "utils/formatting.h"
 #include "utils/numeric.h"
+#include "varatt.h"
 
 PG_FUNCTION_INFO_V1(uid);
+PG_FUNCTION_INFO_V1(listagg_check);
 
 
 Datum
@@ -41,3 +43,32 @@ uid(PG_FUNCTION_ARGS)
 {
 	PG_RETURN_UINT32(GetUserId());
 }
+
+/*
+ * returns true if string takes less then 4000 bytes
+ * otherwise raise an error
+ */
+Datum
+listagg_check (PG_FUNCTION_ARGS)
+{
+
+        if (!PG_ARGISNULL(1))
+        {
+                text      *value = PG_GETARG_TEXT_PP(1);
+		int       len = VARSIZE_ANY_EXHDR(value);  // payload length only
+
+		if (len < 4000)
+		{
+		    PG_RETURN_BOOL(true);
+		}
+		else
+		{
+                    elog(ERROR, "result of aggregation exceeds 4000 bytes");
+		}
+
+        }
+
+        PG_RETURN_BOOL(true);
+
+}
+

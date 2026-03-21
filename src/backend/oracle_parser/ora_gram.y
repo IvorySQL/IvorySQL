@@ -17867,23 +17867,29 @@ func_expr: func_application within_group_clause filter_clause over_clause
 				{ $$ = $1; }
 
 
-                        | LISTAGG '(' func_arg_list opt_sort_clause ')' within_group_clause filter_clause over_clause 
+                        | LISTAGG '(' func_arg_list ')' within_group_clause filter_clause over_clause 
                 	{
 	                    FuncCall *string_agg_n;
+	                    FuncCall *check_n;
+
+                            if ($5 == NIL)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("LISTAGG requires WITHIN GROUP (ORDER BY ...)"),
+								 parser_errposition(@1)));
 
 	                    string_agg_n = makeFuncCall(SystemFuncName("string_agg"),
         	                                        $3,
                 	                                COERCE_EXPLICIT_CALL, @1);
-			    /*
-	                     * string_agg_n->agg_order = $6;
-                             * ERROR:  pg_catalog.string_agg is not an ordered-set aggregate, so it cannot have WITHIN GROUP
-                             * string_agg_n->agg_within_group = true;
-                             */
-			
-	                    string_agg_n->agg_order = $4;
-                            string_agg_n->agg_filter = $7;
-                            string_agg_n->over = $8;
-	                    $$ = (Node *) string_agg_n;
+	                    string_agg_n->agg_order = $5;
+                            string_agg_n->agg_filter = $6;
+                            string_agg_n->over = $7;
+
+			    /* Wrap with sys.listagg_check to enforce the 4000-byte limit */
+			    check_n = makeFuncCall(OracleSystemFuncName("ora_listagg_check"),
+			    			   list_make1((Node *) string_agg_n),
+						 COERCE_EXPLICIT_CALL, @1);
+			    $$ = (Node *) check_n;
 
 			  }
 
