@@ -2458,7 +2458,6 @@ ora_ascii(PG_FUNCTION_ARGS)
 Datum
 ora_listagg_check (PG_FUNCTION_ARGS)
 {
-        text      *value = PG_GETARG_TEXT_PP(0);
         if (PG_ARGISNULL(0))
         {
                 PG_RETURN_NULL();
