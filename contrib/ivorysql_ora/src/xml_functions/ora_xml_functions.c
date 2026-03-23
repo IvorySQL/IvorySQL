@@ -1048,23 +1048,15 @@ ivy_extractvalue(PG_FUNCTION_ARGS)
 				errmsg("EXTRACTVALUE returns value of only one node")));
 	}
 
-	/* Begin - Bug#Z203, Bug#Z214 */
-	if (res->nodesetval && res->nodesetval->nodeTab &&
-		res->nodesetval->nodeTab[0]->parent->type == XML_DOCUMENT_NODE)
+	if (res->nodesetval && res->nodesetval->nodeNr > 0 && 
+	    res->nodesetval->nodeTab &&
+	    res->nodesetval->nodeTab[0]->children != NULL &&
+		res->nodesetval->nodeTab[0]->children->type == XML_ELEMENT_NODE)
 	{
 		cleanup_ws(&ws);
 		ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION),
 				errmsg("EXTRACTVALUE can only retrieve value of leaf node")));
 	}
-
-	if (res->nodesetval && res->nodesetval->nodeTab &&
-		res->nodesetval->nodeTab[0]->children->type == XML_ELEMENT_NODE)
-	{
-		cleanup_ws(&ws);
-		ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION),
-				errmsg("EXTRACTVALUE returns value of only one node")));
-	}
-	/* End - Bug#Z203, Bug#Z214 */
 
 	ret = ivy_xml_xpathobjtostring(res);
 
@@ -1123,23 +1115,15 @@ ivy_extractvalue2(PG_FUNCTION_ARGS)
 				errmsg("EXTRACTVALUE returns value of only one node")));
 	}
 
-	/* Begin - Bug#Z203, Bug#Z214 */
-	if (res->nodesetval && res->nodesetval->nodeTab &&
-		res->nodesetval->nodeTab[0]->parent->type == XML_DOCUMENT_NODE)
+	if (res->nodesetval && res->nodesetval->nodeNr > 0 &&
+	    res->nodesetval->nodeTab &&
+	    res->nodesetval->nodeTab[0]->children != NULL &&
+		res->nodesetval->nodeTab[0]->children->type == XML_ELEMENT_NODE)
 	{
 		cleanup_ws(&ws);
 		ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION),
 				errmsg("EXTRACTVALUE can only retrieve value of leaf node")));
 	}
-
-	if (res->nodesetval && res->nodesetval->nodeTab &&
-		res->nodesetval->nodeTab[0]->children->type == XML_ELEMENT_NODE)
-	{
-		cleanup_ws(&ws);
-		ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION),
-				errmsg("EXTRACTVALUE returns value of only one node")));
-	}
-	/* End - Bug#Z203, Bug#Z214 */
 
 	ret = ivy_xml_xpathobjtostring(res);
 
