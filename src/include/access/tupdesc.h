@@ -180,6 +180,8 @@ TupleDescAttr(TupleDesc tupdesc, int i)
 {
 	FormData_pg_attribute *attrs = TupleDescAttrAddress(tupdesc);
 
+	Assert(i >= 0 && i < tupdesc->natts);
+
 	return &attrs[i];
 }
 
