@@ -16,7 +16,7 @@
 #define NAMESPACE_H
 
 #include "nodes/primnodes.h"
-#include "storage/lock.h"
+#include "storage/lockdefs.h"
 #include "storage/procnumber.h"
 
 

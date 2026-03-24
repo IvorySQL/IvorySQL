@@ -27,6 +27,7 @@
 #include "parser/parse_type.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
+#include "utils/hsearch.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/ora_compatible.h"
