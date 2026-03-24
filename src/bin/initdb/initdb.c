@@ -2064,6 +2064,8 @@ setup_schema(FILE *cmdfd)
 {
 	setup_run_file(cmdfd, info_schema_file);
 
+	setup_run_file(cmdfd, "oracle_compat_views.sql");
+
 	PG_CMD_PRINTF("UPDATE information_schema.sql_implementation_info "
 				  "  SET character_value = '%s' "
 				  "  WHERE implementation_info_name = 'DBMS VERSION';\n\n",
