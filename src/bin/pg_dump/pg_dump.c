@@ -11365,7 +11365,7 @@ fetchAttributeStats(Archive *fout)
 
 		if (fout->remoteVersion >= 190000)
 		{
-			RelStatsInfo *rsinfo = (RelStatsInfo *) te->defnDumperArg;
+			const RelStatsInfo *rsinfo = (const RelStatsInfo *) te->defnDumperArg;
 			char		relid[32];
 
 			sprintf(relid, "%u", rsinfo->relid);
