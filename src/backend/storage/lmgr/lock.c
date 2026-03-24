@@ -40,6 +40,7 @@
 #include "access/xlogutils.h"
 #include "miscadmin.h"
 #include "pg_trace.h"
+#include "pgstat.h"
 #include "storage/lmgr.h"
 #include "storage/proc.h"
 #include "storage/procarray.h"
@@ -1018,6 +1019,14 @@ LockAcquireExtended(const LOCKTAG *locktag,
 				GrantLockLocal(locallock, owner);
 				return LOCKACQUIRE_OK;
 			}
+		}
+		else
+		{
+			/*
+			 * Increment the lock statistics counter if lock could not be
+			 * acquired via the fast-path.
+			 */
+			pgstat_count_lock_fastpath_exceeded(locallock->tag.lock.locktag_type);
 		}
 	}
 
