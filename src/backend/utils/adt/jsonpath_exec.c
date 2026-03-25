@@ -1517,7 +1517,7 @@ executeItemOptUnwrapTarget(JsonPathExecContext *cxt, JsonPathItem *jsp,
 					/* Convert numstr to Numeric with typmod */
 					Assert(numstr != NULL);
 					noerr = DirectInputFunctionCallSafe(numeric_in, numstr,
-														InvalidOid, dtypmod,
+														InvalidOid, DatumGetInt32(dtypmod),
 														(Node *) &escontext,
 														&numdatum);
 
@@ -3074,8 +3074,8 @@ JsonItemFromDatum(Datum val, Oid typid, int32 typmod, JsonbValue *res)
 		case TEXTOID:
 		case VARCHAROID:
 			res->type = jbvString;
-			res->val.string.val = VARDATA_ANY(val);
-			res->val.string.len = VARSIZE_ANY_EXHDR(val);
+			res->val.string.val = VARDATA_ANY(DatumGetPointer(val));
+			res->val.string.len = VARSIZE_ANY_EXHDR(DatumGetPointer(val));
 			break;
 		case DATEOID:
 		case TIMEOID:

@@ -2027,7 +2027,7 @@ each_worker_jsonb(FunctionCallInfo fcinfo, const char *funcname, bool as_text)
 				{
 					/* a json null is an sql null in text mode */
 					nulls[1] = true;
-					values[1] = (Datum) NULL;
+					values[1] = (Datum) 0;
 				}
 				else
 					values[1] = PointerGetDatum(JsonbValueAsText(&v));
@@ -2266,7 +2266,7 @@ elements_worker_jsonb(FunctionCallInfo fcinfo, const char *funcname,
 				{
 					/* a json null is an sql null in text mode */
 					nulls[0] = true;
-					values[0] = (Datum) NULL;
+					values[0] = (Datum) 0;
 				}
 				else
 					values[0] = PointerGetDatum(JsonbValueAsText(&v));
@@ -2389,7 +2389,7 @@ elements_array_element_end(void *state, bool isnull)
 	if (isnull && _state->normalize_results)
 	{
 		nulls[0] = true;
-		values[0] = (Datum) NULL;
+		values[0] = (Datum) 0;
 	}
 	else if (_state->next_scalar)
 	{
@@ -4766,8 +4766,8 @@ jsonb_delete_array(PG_FUNCTION_ARGS)
 					continue;
 
 				/* We rely on the array elements not being toasted */
-				keyptr = VARDATA_ANY(keys_elems[i]);
-				keylen = VARSIZE_ANY_EXHDR(keys_elems[i]);
+				keyptr = VARDATA_ANY(DatumGetPointer(keys_elems[i]));
+				keylen = VARSIZE_ANY_EXHDR(DatumGetPointer(keys_elems[i]));
 				if (keylen == v.val.string.len &&
 					memcmp(keyptr, v.val.string.val, keylen) == 0)
 				{

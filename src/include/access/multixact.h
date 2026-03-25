@@ -111,6 +111,9 @@ extern bool MultiXactIdIsRunning(MultiXactId multi, bool isLockOnly);
 extern void MultiXactIdSetOldestMember(void);
 extern int	GetMultiXactIdMembers(MultiXactId multi, MultiXactMember **members,
 								  bool from_pgupgrade, bool isLockOnly);
+extern bool GetMultiXactInfo(uint32 *multixacts, MultiXactOffset *members,
+							 MultiXactId *oldestMultiXactId,
+							 MultiXactOffset *oldestOffset);
 extern bool MultiXactIdPrecedes(MultiXactId multi1, MultiXactId multi2);
 extern bool MultiXactIdPrecedesOrEquals(MultiXactId multi1,
 										MultiXactId multi2);
@@ -158,5 +161,6 @@ extern void multixact_desc(StringInfo buf, XLogReaderState *record);
 extern const char *multixact_identify(uint8 info);
 extern char *mxid_to_string(MultiXactId multi, int nmembers,
 							MultiXactMember *members);
+extern char *mxstatus_to_string(MultiXactStatus status);
 
 #endif							/* MULTIXACT_H */

@@ -107,7 +107,7 @@ missing_hash(const void *key, Size keysize)
 {
 	const missing_cache_key *entry = (missing_cache_key *) key;
 
-	return hash_bytes((const unsigned char *) entry->value, entry->len);
+	return hash_bytes((const unsigned char *) DatumGetPointer(entry->value), entry->len);
 }
 
 static int
@@ -191,7 +191,7 @@ getmissingattr(TupleDesc tupleDesc,
 			if (att->attlen > 0)
 				key.len = att->attlen;
 			else
-				key.len = VARSIZE_ANY(attrmiss->am_value);
+				key.len = VARSIZE_ANY(DatumGetPointer(attrmiss->am_value));
 			key.value = attrmiss->am_value;
 
 			entry = hash_search(missing_cache, &key, HASH_ENTER, &found);
@@ -934,9 +934,9 @@ expand_tuple(HeapTuple *targetHeapTuple,
 												  att->attlen,
 												  attrmiss[attnum].am_value);
 
-				targetDataLen = att_addlength_pointer(targetDataLen,
-													  att->attlen,
-													  attrmiss[attnum].am_value);
+				targetDataLen = att_addlength_datum(targetDataLen,
+													att->attlen,
+													attrmiss[attnum].am_value);
 			}
 			else
 			{

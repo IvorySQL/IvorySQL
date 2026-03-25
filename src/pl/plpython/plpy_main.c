@@ -9,6 +9,7 @@
 #include "access/htup_details.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
+#include "commands/event_trigger.h"
 #include "commands/trigger.h"
 #include "executor/spi.h"
 #include "miscadmin.h"
@@ -38,7 +39,7 @@ PG_FUNCTION_INFO_V1(plpython3_call_handler);
 PG_FUNCTION_INFO_V1(plpython3_inline_handler);
 
 
-static bool PLy_procedure_is_trigger(Form_pg_proc procStruct);
+static PLyTrigType PLy_procedure_is_trigger(Form_pg_proc procStruct);
 static void plpython_error_callback(void *arg);
 static void plpython_inline_error_callback(void *arg);
 static void PLy_init_interp(void);
@@ -163,7 +164,7 @@ plpython3_validator(PG_FUNCTION_ARGS)
 	Oid			funcoid = PG_GETARG_OID(0);
 	HeapTuple	tuple;
 	Form_pg_proc procStruct;
-	bool		is_trigger;
+	PLyTrigType is_trigger;
 
 	if (!CheckFunctionValidatorAccess(fcinfo->flinfo->fn_oid, funcoid))
 		PG_RETURN_VOID();
@@ -235,14 +236,21 @@ plpython3_call_handler(PG_FUNCTION_ARGS)
 			Relation	tgrel = ((TriggerData *) fcinfo->context)->tg_relation;
 			HeapTuple	trv;
 
-			proc = PLy_procedure_get(funcoid, RelationGetRelid(tgrel), true);
+			proc = PLy_procedure_get(funcoid, RelationGetRelid(tgrel), PLPY_TRIGGER);
 			exec_ctx->curr_proc = proc;
 			trv = PLy_exec_trigger(fcinfo, proc);
 			retval = PointerGetDatum(trv);
 		}
+		else if (CALLED_AS_EVENT_TRIGGER(fcinfo))
+		{
+			proc = PLy_procedure_get(funcoid, InvalidOid, PLPY_EVENT_TRIGGER);
+			exec_ctx->curr_proc = proc;
+			PLy_exec_event_trigger(fcinfo, proc);
+			retval = (Datum) 0;
+		}
 		else
 		{
-			proc = PLy_procedure_get(funcoid, InvalidOid, false);
+			proc = PLy_procedure_get(funcoid, InvalidOid, PLPY_NOT_TRIGGER);
 			exec_ctx->curr_proc = proc;
 			retval = PLy_exec_function(fcinfo, proc);
 		}
@@ -336,10 +344,25 @@ plpython3_inline_handler(PG_FUNCTION_ARGS)
 	PG_RETURN_VOID();
 }
 
-static bool
+static PLyTrigType
 PLy_procedure_is_trigger(Form_pg_proc procStruct)
 {
-	return (procStruct->prorettype == TRIGGEROID);
+	PLyTrigType ret;
+
+	switch (procStruct->prorettype)
+	{
+		case TRIGGEROID:
+			ret = PLPY_TRIGGER;
+			break;
+		case EVENT_TRIGGEROID:
+			ret = PLPY_EVENT_TRIGGER;
+			break;
+		default:
+			ret = PLPY_NOT_TRIGGER;
+			break;
+	}
+
+	return ret;
 }
 
 static void

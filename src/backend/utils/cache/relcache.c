@@ -3246,7 +3246,7 @@ AssertPendingSyncs_RelationCache(void)
 		if ((LockTagType) locallock->tag.lock.locktag_type !=
 			LOCKTAG_RELATION)
 			continue;
-		relid = ObjectIdGetDatum(locallock->tag.lock.locktag_field2);
+		relid = locallock->tag.lock.locktag_field2;
 		r = RelationIdGetRelation(relid);
 		if (!RelationIsValid(r))
 			continue;
@@ -7061,5 +7061,5 @@ ResOwnerReleaseRelation(Datum res)
 	Assert(rel->rd_refcnt > 0);
 	rel->rd_refcnt -= 1;
 
-	RelationCloseCleanup((Relation) res);
+	RelationCloseCleanup((Relation) DatumGetPointer(res));
 }

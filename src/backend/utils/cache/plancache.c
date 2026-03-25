@@ -470,8 +470,7 @@ CompleteCachedPlan(CachedPlanSource *plansource,
 
 	/*
 	 * Save the final parameter types (or other parameter specification data)
-	 * into the source_context, as well as our other parameters.  Also save
-	 * the result tuple descriptor.
+	 * into the source_context, as well as our other parameters.
 	 */
 	MemoryContextSwitchTo(source_context);
 
@@ -487,15 +486,37 @@ CompleteCachedPlan(CachedPlanSource *plansource,
 	plansource->parserSetupArg = parserSetupArg;
 	plansource->cursor_options = cursor_options;
 	plansource->fixed_result = fixed_result;
+
+	/*
+	 * Also save the result tuple descriptor.  PlanCacheComputeResultDesc may
+	 * leak some cruft; normally we just accept that to save a copy step, but
+	 * in USE_VALGRIND mode be tidy by running it in the caller's context.
+	 */
+#ifdef USE_VALGRIND
+	MemoryContextSwitchTo(oldcxt);
+	plansource->resultDesc = PlanCacheComputeResultDesc(querytree_list);
+    if (num_params > 0 && param_modes)
+	{
+		plansource->param_modes = (char *) palloc0(num_params * sizeof(char));
+		memcpy(plansource->param_modes, param_modes, num_params * sizeof(char));
+	}
+	if (plansource->resultDesc)
+	{
+		MemoryContextSwitchTo(source_context);
+		plansource->resultDesc = CreateTupleDescCopy(plansource->resultDesc);
+		MemoryContextSwitchTo(oldcxt);
+	}
+#else
 	plansource->resultDesc = PlanCacheComputeResultDesc(querytree_list);
 
-	if (num_params > 0 && param_modes)
+    if (num_params > 0 && param_modes)
 	{
 		plansource->param_modes = (char *) palloc0(num_params * sizeof(char));
 		memcpy(plansource->param_modes, param_modes, num_params * sizeof(char));
 	}
 
 	MemoryContextSwitchTo(oldcxt);
+#endif
 
 	plansource->is_complete = true;
 	plansource->is_valid = true;
