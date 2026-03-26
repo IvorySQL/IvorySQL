@@ -1593,7 +1593,7 @@ create table gidxpart1 partition of gidxpart for values from (0) to (10);
 create table gidxpart2 partition of gidxpart for values from (10) to (100);
 create unique index gidx_u on gidxpart using btree(b) global;
 select relname, relhasindex, relkind from pg_class where relname like '%gidx%' order by oid;
-     relname     | relhasindex | relkind
+     relname     | relhasindex | relkind 
 -----------------+-------------+---------
  gidxpart        | t           | p
  gidxpart1       | t           | r
@@ -1605,11 +1605,11 @@ select relname, relhasindex, relkind from pg_class where relname like '%gidx%' o
 
 \d+ gidxpart
                             Partitioned table "public.gidxpart"
- Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
+ Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+---------+-----------+----------+---------+----------+--------------+-------------
- a      | integer |           |          |         | plain    |              |
- b      | integer |           |          |         | plain    |              |
- c      | text    |           |          |         | extended |              |
+ a      | integer |           |          |         | plain    |              | 
+ b      | integer |           |          |         | plain    |              | 
+ c      | text    |           |          |         | extended |              | 
 Partition key: RANGE (a)
 Indexes:
     "gidx_u" UNIQUE, btree (b)
@@ -1618,9 +1618,9 @@ Partitions: gidxpart1 FOR VALUES FROM (0) TO (10),
 
 \d+ gidx_u
                Partitioned index "public.gidx_u"
- Column |  Type   | Key? | Definition | Storage | Stats target
+ Column |  Type   | Key? | Definition | Storage | Stats target 
 --------+---------+------+------------+---------+--------------
- b      | integer | yes  | b          | plain   |
+ b      | integer | yes  | b          | plain   | 
 unique, btree, for table "public.gidxpart"
 Partitions: gidxpart1_b_idx,
             gidxpart2_b_idx
@@ -1645,7 +1645,7 @@ DETAIL:  Key (b)=(1) already exists.
 update gidxpart set b=12 where a=12;
 update gidxpart set b=2 where a=2;
 select * from gidxpart;
- a  | b  |    c
+ a  | b  |    c     
 ----+----+----------
   1 |  1 | first
   2 |  2 | second
@@ -1656,7 +1656,7 @@ select * from gidxpart;
 -- cross-partition uniqueness check applys to newly created partition
 create table gidxpart3 partition of gidxpart for values from (100) to (200);
 select relname, relkind from pg_class where relname = 'gidxpart3_b_idx';
-     relname     | relkind
+     relname     | relkind 
 -----------------+---------
  gidxpart3_b_idx | g
 (1 row)
@@ -1693,14 +1693,14 @@ DETAIL:  Key (b)=(572814) is duplicated.
 update gidxpart2 set b = 5000;
 alter table gidxpart attach partition gidxpart2 for values from (100000) to (199999);
 select relname, relkind from pg_class where relname = 'gidxpart2_b_idx'; -- should be g
-     relname     | relkind
+     relname     | relkind 
 -----------------+---------
  gidxpart2_b_idx | g
 (1 row)
 
 alter table gidxpart detach partition gidxpart2;
 select relname, relkind from pg_class where relname = 'gidxpart2_b_idx'; -- should be i
-     relname     | relkind
+     relname     | relkind 
 -----------------+---------
  gidxpart2_b_idx | i
 (1 row)
@@ -1716,7 +1716,7 @@ create table gidxpart2 (a int, b int, c text);
 create unique index on gidxpart2 (b);
 insert into gidxpart2 (a, b, c) values (150000, 572814, 'dup inserted on gidxpart2');
 select relname, relkind from pg_class where relname = 'gidxpart2_b_idx'; -- should be i
-     relname     | relkind
+     relname     | relkind 
 -----------------+---------
  gidxpart2_b_idx | i
 (1 row)
@@ -1727,7 +1727,7 @@ DETAIL:  Key (b)=(572814) is duplicated.
 update gidxpart2 set b = 5000;
 alter table gidxpart attach partition gidxpart2 for values from (100000) to (199999);
 select relname, relkind from pg_class where relname = 'gidxpart2_b_idx'; -- should be g
-     relname     | relkind
+     relname     | relkind 
 -----------------+---------
  gidxpart2_b_idx | g
 (1 row)
