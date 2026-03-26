@@ -518,8 +518,8 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 							   &tuple_fraction, es);
 
 	/* primary planning entry point (may recurse for subqueries) */
-	root = subquery_planner(glob, parse, NULL, NULL, false, tuple_fraction,
-							NULL);
+	root = subquery_planner(glob, parse, NULL, NULL, NULL, false,
+							tuple_fraction, NULL);
 
 	/* Select best Path and turn it into a Plan */
 	final_rel = fetch_upper_rel(root, UPPERREL_FINAL, NULL);
@@ -1133,6 +1133,8 @@ transform_rownum_to_limit(Query *parse)
  * parse is the querytree produced by the parser & rewriter.
  * plan_name is the name to assign to this subplan (NULL at the top level).
  * parent_root is the immediate parent Query's info (NULL at the top level).
+ * alternative_root is a previously created PlannerInfo for which this query
+ * level is an alternative implementation, or else NULL.
  * hasRecursion is true if this is a recursive WITH query.
  * tuple_fraction is the fraction of tuples we expect will be retrieved.
  * tuple_fraction is interpreted as explained for grouping_planner, below.
@@ -1159,8 +1161,9 @@ transform_rownum_to_limit(Query *parse)
  */
 PlannerInfo *
 subquery_planner(PlannerGlobal *glob, Query *parse, char *plan_name,
-				 PlannerInfo *parent_root, bool hasRecursion,
-				 double tuple_fraction, SetOperationStmt *setops)
+				 PlannerInfo *parent_root, PlannerInfo *alternative_root,
+				 bool hasRecursion, double tuple_fraction,
+				 SetOperationStmt *setops)
 {
 	PlannerInfo *root;
 	List	   *newWithCheckOptions;
@@ -1176,6 +1179,10 @@ subquery_planner(PlannerGlobal *glob, Query *parse, char *plan_name,
 	root->glob = glob;
 	root->query_level = parent_root ? parent_root->query_level + 1 : 1;
 	root->plan_name = plan_name;
+	if (alternative_root != NULL)
+		root->alternative_plan_name = alternative_root->plan_name;
+	else
+		root->alternative_plan_name = plan_name;
 	root->parent_root = parent_root;
 	root->plan_params = NIL;
 	root->outer_params = NULL;
