@@ -631,6 +631,7 @@ void
 RequestNamedLWLockTranche(const char *tranche_name, int num_lwlocks)
 {
 	NamedLWLockTrancheRequest *request;
+	MemoryContext oldcontext;
 
 	if (!process_shmem_requests_in_progress)
 		elog(FATAL, "cannot request additional LWLocks outside shmem_request_hook");
@@ -653,10 +654,17 @@ RequestNamedLWLockTranche(const char *tranche_name, int num_lwlocks)
 				 errdetail("No more than %d tranches may be registered.",
 						   MAX_USER_DEFINED_TRANCHES)));
 
-	request = MemoryContextAllocZero(PostmasterContext, sizeof(NamedLWLockTrancheRequest));
+	if (IsPostmasterEnvironment)
+		oldcontext = MemoryContextSwitchTo(PostmasterContext);
+	else
+		oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+
+	request = palloc0(sizeof(NamedLWLockTrancheRequest));
 	strlcpy(request->tranche_name, tranche_name, NAMEDATALEN);
 	request->num_lwlocks = num_lwlocks;
 	NamedLWLockTrancheRequests = lappend(NamedLWLockTrancheRequests, request);
+
+	MemoryContextSwitchTo(oldcontext);
 }
 
 /*
