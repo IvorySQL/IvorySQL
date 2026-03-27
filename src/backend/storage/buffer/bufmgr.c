@@ -2562,8 +2562,7 @@ again:
 			XLogNeedsFlush(BufferGetLSN(buf_hdr)) &&
 			StrategyRejectBuffer(strategy, buf_hdr, from_ring))
 		{
-			LockBuffer(buf, BUFFER_LOCK_UNLOCK);
-			UnpinBuffer(buf_hdr);
+			UnlockReleaseBuffer(buf);
 			goto again;
 		}
 

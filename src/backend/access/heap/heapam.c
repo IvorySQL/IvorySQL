@@ -1623,8 +1623,7 @@ heap_fetch(Relation relation,
 	offnum = ItemPointerGetOffsetNumber(tid);
 	if (offnum < FirstOffsetNumber || offnum > PageGetMaxOffsetNumber(page))
 	{
-		LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
-		ReleaseBuffer(buffer);
+		UnlockReleaseBuffer(buffer);
 		*userbuf = InvalidBuffer;
 		tuple->t_data = NULL;
 		return false;
@@ -1640,8 +1639,7 @@ heap_fetch(Relation relation,
 	 */
 	if (!ItemIdIsNormal(lp))
 	{
-		LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
-		ReleaseBuffer(buffer);
+		UnlockReleaseBuffer(buffer);
 		*userbuf = InvalidBuffer;
 		tuple->t_data = NULL;
 		return false;
