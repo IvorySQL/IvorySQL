@@ -17877,10 +17877,16 @@ func_expr: func_application within_group_clause filter_clause over_clause
 								(errcode(ERRCODE_SYNTAX_ERROR),
 								 errmsg("LISTAGG requires WITHIN GROUP (ORDER BY ...)"),
 								 parser_errposition(@1)));
+						/*
+						* If no delimiter provided (single arg), append empty string
+						* so string_agg always receives exactly 2 arguments.
+						*/
+						if (list_length($3) == 1)
+							$3 = lappend($3, makeStringConst("", @3));
 
-	                    string_agg_n = makeFuncCall(SystemFuncName("string_agg"),
-        	                                        $3,
-                	                                COERCE_EXPLICIT_CALL, @1);
+						string_agg_n = makeFuncCall(SystemFuncName("string_agg"),
+													$3,
+													COERCE_EXPLICIT_CALL, @1);
 	                    string_agg_n->agg_order = $5;
                             string_agg_n->agg_filter = $6;
                             string_agg_n->over = $7;
@@ -20698,7 +20704,7 @@ reserved_keyword:
 			| LATERAL_P
 			| LEADING
 			| LIMIT
-                        | LISTAGG
+			| LISTAGG
 			| LOCALTIME
 			| LOCALTIMESTAMP
 			| NAN_P
@@ -20985,7 +20991,7 @@ bare_label_keyword:
 			| LEFT
 			| LEVEL
 			| LIKE
-                        | LISTAGG
+			| LISTAGG
 			| LISTEN
 			| LOAD
 			| LOCAL
