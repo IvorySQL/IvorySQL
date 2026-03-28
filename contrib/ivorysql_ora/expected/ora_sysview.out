@@ -181,3 +181,11 @@ ORDER BY NAME;
  listen_addresses | 2    |                        | localhost     | FALSE     | FALSE            | FALSE            | Sets the host name or IP address(es) to listen to.
 (5 rows)
 
+view_exists 
+-------------
+ t
+(1 row)
+
+ owner | constraint_name | table_name | column_name | position | nullable 
+-------+-----------------+------------+-------------+----------+----------
+(0 rows)
