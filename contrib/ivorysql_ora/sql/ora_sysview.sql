@@ -90,3 +90,10 @@ SELECT *
 FROM SYS.V$PARAMETER 
 WHERE NAME IN ('listen_addresses','application_name','archive_command','archive_mode','block_size')
 ORDER BY NAME;
+
+-- Test DBA_CONS_COLUMNS view
+SELECT count(*) > 0 AS view_exists
+FROM information_schema.views
+WHERE table_schema = 'sys' AND table_name = 'dba_cons_columns';
+
+SELECT * FROM sys.dba_cons_columns LIMIT 5;
