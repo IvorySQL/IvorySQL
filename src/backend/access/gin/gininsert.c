@@ -2189,7 +2189,10 @@ typedef struct
  * we simply copy the whole Datum, so that we don't have to care about stuff
  * like endianess etc. We could make it a little bit smaller, but it's not
  * worth it - it's a tiny fraction of the data, and we need to MAXALIGN the
- * start of the TID list anyway. So we wouldn't save anything.
+ * start of the TID list anyway. So we wouldn't save anything. (This would
+ * not be a good idea for the permanent in-index data, since we'd prefer
+ * that that not depend on sizeof(Datum). But this is just a transient
+ * representation to use while sorting the data.)
  *
  * The TID list is serialized as compressed - it's highly compressible, and
  * we already have ginCompressPostingList for this purpose. The list may be
@@ -2233,7 +2236,7 @@ _gin_build_tuple(OffsetNumber attrnum, unsigned char category,
 	else if (typlen > 0)
 		keylen = typlen;
 	else if (typlen == -1)
-		keylen = VARSIZE_ANY(key);
+		keylen = VARSIZE_ANY(DatumGetPointer(key));
 	else if (typlen == -2)
 		keylen = strlen(DatumGetPointer(key)) + 1;
 	else

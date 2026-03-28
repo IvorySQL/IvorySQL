@@ -319,7 +319,7 @@ extern YY_BUFFER_STATE ora_psqlscan_prepare_buffer(PsqlScanState state, const ch
 extern void ora_psqlscan_emit(PsqlScanState state, const char *txt, int len);
 extern char * ora_psqlscan_extract_substring(PsqlScanState state, const char *txt, int len);
 extern void ora_psqlscan_escape_variable(PsqlScanState state, const char *txt, int len,
-								 PsqlScanQuoteType quote);
+							 Ora_psqlScanQuoteType quote);
 extern void ora_psqlscan_test_variable(PsqlScanState state, const char *txt, int len);
 
 #endif							/* PSQLSCAN_INT_H */

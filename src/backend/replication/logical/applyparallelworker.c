@@ -778,10 +778,10 @@ LogicalParallelApplyLoop(shm_mq_handle *mqh)
 
 			/*
 			 * The first byte of messages sent from leader apply worker to
-			 * parallel apply workers can only be 'w'.
+			 * parallel apply workers can only be PqReplMsg_WALData.
 			 */
 			c = pq_getmsgbyte(&s);
-			if (c != 'w')
+			if (c != PqReplMsg_WALData)
 				elog(ERROR, "unexpected message \"%c\"", c);
 
 			/*
@@ -1007,7 +1007,7 @@ ProcessParallelApplyMessage(StringInfo msg)
 
 	switch (msgtype)
 	{
-		case 'E':				/* ErrorResponse */
+		case PqMsg_ErrorResponse:
 			{
 				ErrorData	edata;
 
@@ -1044,11 +1044,11 @@ ProcessParallelApplyMessage(StringInfo msg)
 
 			/*
 			 * Don't need to do anything about NoticeResponse and
-			 * NotifyResponse as the logical replication worker doesn't need
-			 * to send messages to the client.
+			 * NotificationResponse as the logical replication worker doesn't
+			 * need to send messages to the client.
 			 */
-		case 'N':
-		case 'A':
+		case PqMsg_NoticeResponse:
+		case PqMsg_NotificationResponse:
 			break;
 
 		default:

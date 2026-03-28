@@ -110,7 +110,7 @@ static const int dbObjectTypePriority[] =
 	[DO_EXTENSION] = PRIO_EXTENSION,
 	[DO_TYPE] = PRIO_TYPE,
 	[DO_SHELL_TYPE] = PRIO_TYPE,
-	[PRIO_PACKAGE] = PRIO_PACKAGE,
+	[DO_PACKAGE] = PRIO_PACKAGE,
 	[DO_FUNC] = PRIO_FUNC,
 	[DO_AGG] = PRIO_AGG,
 	[DO_OPERATOR] = PRIO_OPERATOR,
@@ -420,6 +420,19 @@ DOTypeNameCompare(const void *p1, const void *p2)
 			if (cmpval != 0)
 				return cmpval;
 		}
+	}
+	else if (obj1->objType == DO_DEFAULT_ACL)
+	{
+		DefaultACLInfo *daclobj1 = *(DefaultACLInfo *const *) p1;
+		DefaultACLInfo *daclobj2 = *(DefaultACLInfo *const *) p2;
+
+		/*
+		 * Sort by defaclrole, per pg_default_acl_role_nsp_obj_index.  The
+		 * (namespace, name) match (defaclnamespace, defaclobjtype).
+		 */
+		cmpval = strcmp(daclobj1->defaclrole, daclobj2->defaclrole);
+		if (cmpval != 0)
+			return cmpval;
 	}
 	else if (obj1->objType == DO_PUBLICATION_REL)
 	{

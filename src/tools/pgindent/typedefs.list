@@ -1990,6 +1990,7 @@ PLyScalarToOb
 PLySubtransactionData
 PLySubtransactionObject
 PLyTransformToOb
+PLyTrigType
 PLyTupleToOb
 PLyUnicode_FromStringAndSize_t
 PLy_elog_impl_t
@@ -3159,7 +3160,6 @@ UnicodeNormalizationForm
 UnicodeNormalizationQC
 Unique
 UniquePath
-UniquePathMethod
 UniqueRelInfo
 UniqueState
 UnlistenStmt
@@ -3175,7 +3175,6 @@ UpgradeTaskSlotState
 UpgradeTaskStep
 UploadManifestCmd
 UpperRelationKind
-UpperUniquePath
 UserAuth
 UserContext
 UserMapping

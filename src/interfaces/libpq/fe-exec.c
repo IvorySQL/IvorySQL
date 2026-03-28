@@ -1073,8 +1073,12 @@ pqSaveMessageField(PGresult *res, char code, const char *value)
 
 /*
  * pqSaveParameterStatus - remember parameter status sent by backend
+ *
+ * Returns 1 on success, 0 on out-of-memory.  (Note that on out-of-memory, we
+ * have already released the old value of the parameter, if any.  The only
+ * really safe way to recover is to terminate the connection.)
  */
-void
+int
 pqSaveParameterStatus(PGconn *conn, const char *name, const char *value)
 {
 	pgParameterStatus *pstatus;
@@ -1115,6 +1119,11 @@ pqSaveParameterStatus(PGconn *conn, const char *name, const char *value)
 		strcpy(ptr, value);
 		pstatus->next = conn->pstatus;
 		conn->pstatus = pstatus;
+	}
+	else
+	{
+		/* out of memory */
+		return 0;
 	}
 
 	/*
@@ -1187,6 +1196,8 @@ pqSaveParameterStatus(PGconn *conn, const char *name, const char *value)
 	{
 		conn->scram_sha_256_iterations = atoi(value);
 	}
+
+	return 1;
 }
 
 

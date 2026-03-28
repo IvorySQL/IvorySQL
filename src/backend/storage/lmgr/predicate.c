@@ -1146,7 +1146,7 @@ void
 PredicateLockShmemInit(void)
 {
 	HASHCTL		info;
-	long		max_table_size;
+	int64		max_table_size;
 	Size		requestSize;
 	bool		found;
 
