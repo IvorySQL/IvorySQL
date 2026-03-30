@@ -47,6 +47,8 @@ extern bool CheckIndexCompatible(Oid oldId,
 extern Oid	GetDefaultOpClass(Oid type_id, Oid am_id);
 extern Oid	ResolveOpClass(List *opclass, Oid attrType,
 						   const char *accessMethodName, Oid accessMethodId);
+extern bool PopulateGlobalSpool(Relation ixsRel, Relation heapRel, IndexStmt *stmt);
+extern void ChangeRelKind(Relation idxRel, char kind);
 
 /* commands/functioncmds.c */
 extern ObjectAddress CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt);
