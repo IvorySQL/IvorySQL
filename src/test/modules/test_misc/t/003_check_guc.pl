@@ -74,6 +74,8 @@ while (my $line = <$contents>)
 		next;
 	}
 	# Make sure each line starts with either a # or whitespace
+	# Skip IvorySQL's include directive for ivorysql.conf
+	next if $line =~ /^include_if_exists = 'ivorysql\.conf'/;
 	fail("$line missing initial # in postgresql.conf.sample")
 	  if $line =~ /^\s*[^#\s]/;
 }
