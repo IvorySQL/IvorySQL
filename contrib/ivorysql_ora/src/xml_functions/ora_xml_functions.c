@@ -138,6 +138,21 @@ static xmlChar *ivy_xmlCharStrndup(const char *str, size_t len);
 #endif
 
 #ifdef USE_LIBXML
+
+static bool 
+ivy_xml_has_element_child(xmlNodePtr node) 
+{
+	xmlNodePtr	child;   
+
+	for (child = node ? node->children : NULL; child != NULL; child = child->next)
+	{
+		if (child->type == XML_ELEMENT_NODE)
+			return true;
+	}
+
+	return false;
+}
+
 /*
  * Initialize for xml parsing.
  *
@@ -1050,8 +1065,7 @@ ivy_extractvalue(PG_FUNCTION_ARGS)
 
 	if (res->nodesetval && res->nodesetval->nodeNr > 0 && 
 	    res->nodesetval->nodeTab &&
-	    res->nodesetval->nodeTab[0]->children != NULL &&
-		res->nodesetval->nodeTab[0]->children->type == XML_ELEMENT_NODE)
+	    ivy_xml_has_element_child(res->nodesetval->nodeTab[0]))
 	{
 		cleanup_ws(&ws);
 		ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION),
@@ -1117,8 +1131,7 @@ ivy_extractvalue2(PG_FUNCTION_ARGS)
 
 	if (res->nodesetval && res->nodesetval->nodeNr > 0 &&
 	    res->nodesetval->nodeTab &&
-	    res->nodesetval->nodeTab[0]->children != NULL &&
-		res->nodesetval->nodeTab[0]->children->type == XML_ELEMENT_NODE)
+	    ivy_xml_has_element_child(res->nodesetval->nodeTab[0]))
 	{
 		cleanup_ws(&ws);
 		ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION),
