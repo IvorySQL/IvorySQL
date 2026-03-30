@@ -472,7 +472,8 @@ systable_beginscan(Relation heapRelation,
 		}
 
 		sysscan->iscan = index_beginscan(heapRelation, irel,
-										 snapshot, NULL, nkeys, 0);
+										 snapshot, NULL, nkeys, 0,
+										 SO_NONE);
 		index_rescan(sysscan->iscan, idxkey, nkeys, NULL, 0);
 		sysscan->scan = NULL;
 
@@ -733,7 +734,8 @@ systable_beginscan_ordered(Relation heapRelation,
 		bsysscan = true;
 
 	sysscan->iscan = index_beginscan(heapRelation, indexRelation,
-									 snapshot, NULL, nkeys, 0);
+									 snapshot, NULL, nkeys, 0,
+									 SO_NONE);
 	index_rescan(sysscan->iscan, idxkey, nkeys, NULL, 0);
 	sysscan->scan = NULL;
 
