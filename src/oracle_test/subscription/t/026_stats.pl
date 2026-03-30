@@ -78,7 +78,7 @@ sub create_sub_pub_w_errors
 		$db,
 		qq[
 	SELECT count(1) = 1 FROM pg_stat_subscription_stats
-	WHERE subname = '$sub_name' AND seq_sync_error_count > 0 AND sync_error_count > 0
+	WHERE subname = '$sub_name' AND sync_seq_error_count > 0 AND sync_table_error_count > 0
 	])
 	  or die
 	  qq(Timed out while waiting for sequencesync errors and tablesync errors for subscription '$sub_name');
@@ -158,8 +158,8 @@ my ($pub1_name, $sub1_name) =
 is( $node_subscriber->safe_psql(
 		$db,
 		qq(SELECT apply_error_count > 0,
-	seq_sync_error_count > 0,
-	sync_error_count > 0,
+	sync_seq_error_count > 0,
+	sync_table_error_count > 0,
 	stats_reset IS NULL
 	FROM pg_stat_subscription_stats
 	WHERE subname = '$sub1_name')
@@ -178,8 +178,8 @@ $node_subscriber->safe_psql($db,
 is( $node_subscriber->safe_psql(
 		$db,
 		qq(SELECT apply_error_count = 0,
-	seq_sync_error_count = 0,
-	sync_error_count = 0,
+	sync_seq_error_count = 0,
+	sync_table_error_count = 0,
 	stats_reset IS NOT NULL
 	FROM pg_stat_subscription_stats
 	WHERE subname = '$sub1_name')
@@ -221,8 +221,8 @@ my ($pub2_name, $sub2_name) =
 is( $node_subscriber->safe_psql(
 		$db,
 		qq(SELECT apply_error_count > 0,
-	seq_sync_error_count > 0,
-	sync_error_count > 0,
+	sync_seq_error_count > 0,
+	sync_table_error_count > 0,
 	stats_reset IS NULL
 	FROM pg_stat_subscription_stats
 	WHERE subname = '$sub2_name')
@@ -240,8 +240,8 @@ $node_subscriber->safe_psql($db,
 is( $node_subscriber->safe_psql(
 		$db,
 		qq(SELECT apply_error_count = 0,
-	seq_sync_error_count = 0,
-	sync_error_count = 0,
+	sync_seq_error_count = 0,
+	sync_table_error_count = 0,
 	stats_reset IS NOT NULL
 	FROM pg_stat_subscription_stats
 	WHERE subname = '$sub1_name')
@@ -253,8 +253,8 @@ is( $node_subscriber->safe_psql(
 is( $node_subscriber->safe_psql(
 		$db,
 		qq(SELECT apply_error_count = 0,
-	seq_sync_error_count = 0,
-	sync_error_count = 0,
+	sync_seq_error_count = 0,
+	sync_table_error_count = 0,
 	stats_reset IS NOT NULL
 	FROM pg_stat_subscription_stats
 	WHERE subname = '$sub2_name')
