@@ -1528,6 +1528,17 @@ boolvarsel(PlannerInfo *root, Node *arg, int varRelid)
 		selec = var_eq_const(&vardata, BooleanEqualOperator, InvalidOid,
 							 BoolGetDatum(true), false, true, false);
 	}
+	else if (is_funcclause(arg))
+	{
+		/*
+		 * If we have no stats and it's a function call, estimate 0.3333333.
+		 * This seems a pretty unprincipled choice, but Postgres has been
+		 * using that estimate for function calls since 1992.  The hoariness
+		 * of this behavior suggests that we should not be in too much hurry
+		 * to use another value.
+		 */
+		selec = 0.3333333;
+	}
 	else
 	{
 		/* Otherwise, the default estimate is 0.5 */
@@ -6561,6 +6572,13 @@ get_actual_variable_range(PlannerInfo *root, VariableStatData *vardata,
 		 * get_relation_info hook --- don't try to access them.
 		 */
 		if (index->hypothetical)
+			continue;
+
+		/*
+		 * get_actual_variable_endpoint uses the index-only-scan machinery, so
+		 * ignore indexes that can't use it on their first column.
+		 */
+		if (!index->canreturn[0])
 			continue;
 
 		/*

@@ -54,6 +54,25 @@ CREATE STATISTICS tst ON (x || 'x'), (x || 'x'), y FROM ext_stats_test;
 ERROR:  duplicate expression in statistics definition
 CREATE STATISTICS tst (unrecognized) ON x, y FROM ext_stats_test;
 ERROR:  unrecognized statistics kind "unrecognized"
+-- unsupported targets
+CREATE STATISTICS tst ON a FROM (VALUES (x)) AS foo;
+ERROR:  CREATE STATISTICS only supports relation names in the FROM clause
+CREATE STATISTICS tst ON a FROM foo NATURAL JOIN bar;
+ERROR:  CREATE STATISTICS only supports relation names in the FROM clause
+CREATE STATISTICS tst ON a FROM (SELECT * FROM ext_stats_test) AS foo;
+ERROR:  CREATE STATISTICS only supports relation names in the FROM clause
+CREATE STATISTICS tst ON a FROM ext_stats_test s TABLESAMPLE system (x);
+ERROR:  CREATE STATISTICS only supports relation names in the FROM clause
+CREATE STATISTICS tst ON a FROM XMLTABLE('foo' PASSING 'bar' COLUMNS a text);
+ERROR:  CREATE STATISTICS only supports relation names in the FROM clause
+CREATE STATISTICS tst ON a FROM JSON_TABLE(jsonb '123', '$' COLUMNS (item int));
+ERROR:  CREATE STATISTICS only supports relation names in the FROM clause
+CREATE FUNCTION tftest(int) returns table(a int, b int) as $$
+SELECT $1, $1+i FROM generate_series(1,5) g(i);
+$$ LANGUAGE sql IMMUTABLE STRICT;
+CREATE STATISTICS alt_stat2 ON a FROM tftest(1);
+ERROR:  CREATE STATISTICS only supports relation names in the FROM clause
+DROP FUNCTION tftest;
 -- incorrect expressions
 CREATE STATISTICS tst ON (y) FROM ext_stats_test; -- single column reference
 ERROR:  extended statistics require at least 2 columns
@@ -103,6 +122,20 @@ ALTER STATISTICS ab1_a_b_stats RENAME TO ab1_a_b_stats_new;
 ERROR:  must be owner of statistics object ab1_a_b_stats
 RESET SESSION AUTHORIZATION;
 DROP ROLE regress_stats_ext;
+CREATE STATISTICS pg_temp.stats_ext_temp ON a, b FROM ab1;
+SELECT regexp_replace(pg_describe_object(tableoid, oid, 0),
+                      'pg_temp_[0-9]*', 'pg_temp_REDACTED') AS descr,
+       pg_statistics_obj_is_visible(oid) AS visible
+  FROM pg_statistic_ext
+ WHERE stxname = 'stats_ext_temp';
+                       descr                       | visible 
+---------------------------------------------------+---------
+ statistics object pg_temp_REDACTED.stats_ext_temp | f
+(1 row)
+
+DROP STATISTICS stats_ext_temp;  -- shall fail
+ERROR:  statistics object "stats_ext_temp" does not exist
+DROP STATISTICS pg_temp.stats_ext_temp;
 CREATE STATISTICS IF NOT EXISTS ab1_a_b_stats ON a, b FROM ab1;
 NOTICE:  statistics object "ab1_a_b_stats" already exists, skipping
 DROP STATISTICS ab1_a_b_stats;
@@ -3518,4 +3551,24 @@ SELECT FROM sb_1 LEFT JOIN sb_2
 
 RESET enable_nestloop;
 RESET enable_mergejoin;
+-- Check that we can use statistics on a bool-valued function.
+CREATE FUNCTION extstat_small(x numeric) RETURNS bool
+STRICT IMMUTABLE LANGUAGE plpgsql
+AS $$ BEGIN RETURN x < 1; END $$;
+SELECT * FROM check_estimated_rows('SELECT * FROM sb_2 WHERE extstat_small(y)');
+ estimated | actual 
+-----------+--------
+      3333 |    196
+(1 row)
+
+CREATE STATISTICS extstat_sb_2_small ON extstat_small(y) FROM sb_2;
+ANALYZE sb_2;
+SELECT * FROM check_estimated_rows('SELECT * FROM sb_2 WHERE extstat_small(y)');
+ estimated | actual 
+-----------+--------
+       196 |    196
+(1 row)
+
+-- Tidy up
 DROP TABLE sb_1, sb_2 CASCADE;
+DROP FUNCTION extstat_small(x numeric);

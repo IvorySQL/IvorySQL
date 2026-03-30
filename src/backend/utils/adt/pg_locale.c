@@ -45,6 +45,7 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/pg_locale.h"
+#include "utils/pg_locale_c.h"
 #include "utils/relcache.h"
 #include "utils/syscache.h"
 
@@ -99,14 +100,17 @@ char	   *localized_full_days[7 + 1];
 char	   *localized_abbrev_months[12 + 1];
 char	   *localized_full_months[12 + 1];
 
-/* is the databases's LC_CTYPE the C locale? */
-bool		database_ctype_is_c = false;
-
 static pg_locale_t default_locale = NULL;
 
 /* indicates whether locale information cache is valid */
 static bool CurrentLocaleConvValid = false;
 static bool CurrentLCTimeValid = false;
+
+static struct pg_locale_struct c_locale = {
+	.deterministic = true,
+	.collate_is_c = true,
+	.ctype_is_c = true,
+};
 
 /* Cache for collation-related knowledge */
 
@@ -1149,9 +1153,25 @@ init_database_collation(void)
 		PGLOCALE_SUPPORT_ERROR(dbform->datlocprovider);
 
 	result->is_default = true;
+
+	Assert((result->collate_is_c && result->collate == NULL) ||
+		   (!result->collate_is_c && result->collate != NULL));
+
+	Assert((result->ctype_is_c && result->ctype == NULL) ||
+		   (!result->ctype_is_c && result->ctype != NULL));
+
 	ReleaseSysCache(tup);
 
 	default_locale = result;
+}
+
+/*
+ * Get database default locale.
+ */
+pg_locale_t
+pg_database_locale(void)
+{
+	return pg_newlocale_from_collation(DEFAULT_COLLATION_OID);
 }
 
 /*
@@ -1170,6 +1190,13 @@ pg_newlocale_from_collation(Oid collid)
 
 	if (collid == DEFAULT_COLLATION_OID)
 		return default_locale;
+
+	/*
+	 * Some callers expect C_COLLATION_OID to succeed even without catalog
+	 * access.
+	 */
+	if (collid == C_COLLATION_OID)
+		return &c_locale;
 
 	if (!OidIsValid(collid))
 		elog(ERROR, "cache lookup failed for collation %u", collid);
@@ -1393,6 +1420,134 @@ pg_strnxfrm_prefix(char *dest, size_t destsize, const char *src,
 				   ssize_t srclen, pg_locale_t locale)
 {
 	return locale->collate->strnxfrm_prefix(dest, destsize, src, srclen, locale);
+}
+
+bool
+pg_iswdigit(pg_wchar wc, pg_locale_t locale)
+{
+	if (locale->ctype == NULL)
+		return (wc <= (pg_wchar) 127 &&
+				(pg_char_properties[wc] & PG_ISDIGIT));
+	else
+		return locale->ctype->wc_isdigit(wc, locale);
+}
+
+bool
+pg_iswalpha(pg_wchar wc, pg_locale_t locale)
+{
+	if (locale->ctype == NULL)
+		return (wc <= (pg_wchar) 127 &&
+				(pg_char_properties[wc] & PG_ISALPHA));
+	else
+		return locale->ctype->wc_isalpha(wc, locale);
+}
+
+bool
+pg_iswalnum(pg_wchar wc, pg_locale_t locale)
+{
+	if (locale->ctype == NULL)
+		return (wc <= (pg_wchar) 127 &&
+				(pg_char_properties[wc] & PG_ISALNUM));
+	else
+		return locale->ctype->wc_isalnum(wc, locale);
+}
+
+bool
+pg_iswupper(pg_wchar wc, pg_locale_t locale)
+{
+	if (locale->ctype == NULL)
+		return (wc <= (pg_wchar) 127 &&
+				(pg_char_properties[wc] & PG_ISUPPER));
+	else
+		return locale->ctype->wc_isupper(wc, locale);
+}
+
+bool
+pg_iswlower(pg_wchar wc, pg_locale_t locale)
+{
+	if (locale->ctype == NULL)
+		return (wc <= (pg_wchar) 127 &&
+				(pg_char_properties[wc] & PG_ISLOWER));
+	else
+		return locale->ctype->wc_islower(wc, locale);
+}
+
+bool
+pg_iswgraph(pg_wchar wc, pg_locale_t locale)
+{
+	if (locale->ctype == NULL)
+		return (wc <= (pg_wchar) 127 &&
+				(pg_char_properties[wc] & PG_ISGRAPH));
+	else
+		return locale->ctype->wc_isgraph(wc, locale);
+}
+
+bool
+pg_iswprint(pg_wchar wc, pg_locale_t locale)
+{
+	if (locale->ctype == NULL)
+		return (wc <= (pg_wchar) 127 &&
+				(pg_char_properties[wc] & PG_ISPRINT));
+	else
+		return locale->ctype->wc_isprint(wc, locale);
+}
+
+bool
+pg_iswpunct(pg_wchar wc, pg_locale_t locale)
+{
+	if (locale->ctype == NULL)
+		return (wc <= (pg_wchar) 127 &&
+				(pg_char_properties[wc] & PG_ISPUNCT));
+	else
+		return locale->ctype->wc_ispunct(wc, locale);
+}
+
+bool
+pg_iswspace(pg_wchar wc, pg_locale_t locale)
+{
+	if (locale->ctype == NULL)
+		return (wc <= (pg_wchar) 127 &&
+				(pg_char_properties[wc] & PG_ISSPACE));
+	else
+		return locale->ctype->wc_isspace(wc, locale);
+}
+
+bool
+pg_iswxdigit(pg_wchar wc, pg_locale_t locale)
+{
+	if (locale->ctype == NULL)
+		return (wc <= (pg_wchar) 127 &&
+				((pg_char_properties[wc] & PG_ISDIGIT) ||
+				 ((wc >= 'A' && wc <= 'F') ||
+				  (wc >= 'a' && wc <= 'f'))));
+	else
+		return locale->ctype->wc_isxdigit(wc, locale);
+}
+
+pg_wchar
+pg_towupper(pg_wchar wc, pg_locale_t locale)
+{
+	if (locale->ctype == NULL)
+	{
+		if (wc <= (pg_wchar) 127)
+			return pg_ascii_toupper((unsigned char) wc);
+		return wc;
+	}
+	else
+		return locale->ctype->wc_toupper(wc, locale);
+}
+
+pg_wchar
+pg_towlower(pg_wchar wc, pg_locale_t locale)
+{
+	if (locale->ctype == NULL)
+	{
+		if (wc <= (pg_wchar) 127)
+			return pg_ascii_tolower((unsigned char) wc);
+		return wc;
+	}
+	else
+		return locale->ctype->wc_tolower(wc, locale);
 }
 
 /*

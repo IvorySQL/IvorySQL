@@ -751,6 +751,7 @@ XLogInsertRecord(XLogRecData *rdata,
 				 XLogRecPtr fpw_lsn,
 				 uint8 flags,
 				 int num_fpi,
+				 uint64 fpi_bytes,
 				 bool topxid_included)
 {
 	XLogCtlInsert *Insert = &XLogCtl->Insert;
@@ -1083,6 +1084,7 @@ XLogInsertRecord(XLogRecData *rdata,
 		pgWalUsage.wal_bytes += rechdr->xl_tot_len;
 		pgWalUsage.wal_records++;
 		pgWalUsage.wal_fpi += num_fpi;
+		pgWalUsage.wal_fpi_bytes += fpi_bytes;
 
 		/* Required for the flush of pending stats WAL data */
 		pgstat_report_fixed = true;
@@ -2940,6 +2942,13 @@ XLogFlush(XLogRecPtr record)
 			 "xlog flush request %X/%08X is not satisfied --- flushed only to %X/%08X",
 			 LSN_FORMAT_ARGS(record),
 			 LSN_FORMAT_ARGS(LogwrtResult.Flush));
+
+	/*
+	 * Cross-check XLogNeedsFlush().  Some of the checks of XLogFlush() and
+	 * XLogNeedsFlush() are duplicated, and this assertion ensures that these
+	 * remain consistent.
+	 */
+	Assert(!XLogNeedsFlush(record));
 }
 
 /*
@@ -3104,10 +3113,16 @@ XLogBackgroundFlush(void)
 }
 
 /*
- * Test whether XLOG data has been flushed up to (at least) the given position.
+ * Test whether XLOG data has been flushed up to (at least) the given
+ * position, or whether the minimum recovery point has been updated past
+ * the given position.
  *
- * Returns true if a flush is still needed.  (It may be that someone else
- * is already in process of flushing that far, however.)
+ * Returns true if a flush is still needed, or if the minimum recovery point
+ * must be updated.
+ *
+ * It is possible that someone else is already in the process of flushing
+ * that far, or has updated the minimum recovery point up to the given
+ * position.
  */
 bool
 XLogNeedsFlush(XLogRecPtr record)
@@ -3116,9 +3131,17 @@ XLogNeedsFlush(XLogRecPtr record)
 	 * During recovery, we don't flush WAL but update minRecoveryPoint
 	 * instead. So "needs flush" is taken to mean whether minRecoveryPoint
 	 * would need to be updated.
+	 *
+	 * Using XLogInsertAllowed() rather than RecoveryInProgress() matters for
+	 * the case of an end-of-recovery checkpoint, where WAL data is flushed.
+	 * This check should be consistent with the one in XLogFlush().
 	 */
-	if (RecoveryInProgress())
+	if (!XLogInsertAllowed())
 	{
+		/* Quick exit if already known to be updated or cannot be updated */
+		if (!updateMinRecoveryPoint || record <= LocalMinRecoveryPoint)
+			return false;
+
 		/*
 		 * An invalid minRecoveryPoint means that we need to recover all the
 		 * WAL, i.e., we're doing crash recovery.  We never modify the control
@@ -3128,11 +3151,10 @@ XLogNeedsFlush(XLogRecPtr record)
 		 * it has not replayed all WAL available when doing crash recovery.
 		 */
 		if (XLogRecPtrIsInvalid(LocalMinRecoveryPoint) && InRecovery)
+		{
 			updateMinRecoveryPoint = false;
-
-		/* Quick exit if already known to be updated or cannot be updated */
-		if (record <= LocalMinRecoveryPoint || !updateMinRecoveryPoint)
 			return false;
+		}
 
 		/*
 		 * Update local copy of minRecoveryPoint. But if the lock is busy,
@@ -7470,9 +7492,7 @@ CreateCheckPoint(int flags)
 	if (PriorRedoPtr != InvalidXLogRecPtr)
 		UpdateCheckPointDistanceEstimate(RedoRecPtr - PriorRedoPtr);
 
-#ifdef USE_INJECTION_POINTS
 	INJECTION_POINT("checkpoint-before-old-wal-removal", NULL);
-#endif
 
 	/*
 	 * Delete old log files, those no longer needed for last checkpoint to
@@ -8518,6 +8538,14 @@ xlog_redo(XLogReaderState *record)
 							checkPoint.ThisTimeLineID, replayTLI)));
 
 		RecoveryRestartPoint(&checkPoint, record);
+
+		/*
+		 * After replaying a checkpoint record, free all smgr objects.
+		 * Otherwise we would never do so for dropped relations, as the
+		 * startup does not process shared invalidation messages or call
+		 * AtEOXact_SMgr().
+		 */
+		smgrdestroyall();
 	}
 	else if (info == XLOG_CHECKPOINT_ONLINE)
 	{
@@ -8571,6 +8599,14 @@ xlog_redo(XLogReaderState *record)
 							checkPoint.ThisTimeLineID, replayTLI)));
 
 		RecoveryRestartPoint(&checkPoint, record);
+
+		/*
+		 * After replaying a checkpoint record, free all smgr objects.
+		 * Otherwise we would never do so for dropped relations, as the
+		 * startup does not process shared invalidation messages or call
+		 * AtEOXact_SMgr().
+		 */
+		smgrdestroyall();
 	}
 	else if (info == XLOG_OVERWRITE_CONTRECORD)
 	{
@@ -9615,11 +9651,10 @@ GetOldestRestartPoint(XLogRecPtr *oldrecptr, TimeLineID *oldtli)
 void
 XLogShutdownWalRcv(void)
 {
-	ShutdownWalRcv();
+	Assert(AmStartupProcess() || !IsUnderPostmaster);
 
-	LWLockAcquire(ControlFileLock, LW_EXCLUSIVE);
-	XLogCtl->InstallXLogFileSegmentActive = false;
-	LWLockRelease(ControlFileLock);
+	ShutdownWalRcv();
+	ResetInstallXLogFileSegmentActive();
 }
 
 /* Enable WAL file recycling and preallocation. */
@@ -9628,6 +9663,15 @@ SetInstallXLogFileSegmentActive(void)
 {
 	LWLockAcquire(ControlFileLock, LW_EXCLUSIVE);
 	XLogCtl->InstallXLogFileSegmentActive = true;
+	LWLockRelease(ControlFileLock);
+}
+
+/* Disable WAL file recycling and preallocation. */
+void
+ResetInstallXLogFileSegmentActive(void)
+{
+	LWLockAcquire(ControlFileLock, LW_EXCLUSIVE);
+	XLogCtl->InstallXLogFileSegmentActive = false;
 	LWLockRelease(ControlFileLock);
 }
 

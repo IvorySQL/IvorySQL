@@ -103,6 +103,7 @@
 #include "storage/proc.h"
 #include "storage/procarray.h"
 #include "utils/builtins.h"
+#include "utils/injection_point.h"
 #include "utils/memutils.h"
 #include "utils/timestamp.h"
 
@@ -2332,11 +2333,16 @@ RecordTransactionCommitPrepared(TransactionId xid,
 	replorigin = (replorigin_session_origin != InvalidRepOriginId &&
 				  replorigin_session_origin != DoNotReplicateId);
 
+	/* Load the injection point before entering the critical section */
+	INJECTION_POINT_LOAD("commit-after-delay-checkpoint");
+
 	START_CRIT_SECTION();
 
 	/* See notes in RecordTransactionCommit */
 	Assert((MyProc->delayChkptFlags & DELAY_CHKPT_IN_COMMIT) == 0);
 	MyProc->delayChkptFlags |= DELAY_CHKPT_IN_COMMIT;
+
+	INJECTION_POINT_CACHED("commit-after-delay-checkpoint", NULL);
 
 	/*
 	 * Ensures the DELAY_CHKPT_IN_COMMIT flag write is globally visible before
@@ -2808,4 +2814,59 @@ LookupGXactBySubid(Oid subid)
 	LWLockRelease(TwoPhaseStateLock);
 
 	return found;
+}
+
+/*
+ * TwoPhaseGetOldestXidInCommit
+ *		Return the oldest transaction ID from prepared transactions that are
+ *		currently in the commit critical section.
+ *
+ * This function only considers transactions in the currently connected
+ * database. If no matching transactions are found, it returns
+ * InvalidTransactionId.
+ */
+TransactionId
+TwoPhaseGetOldestXidInCommit(void)
+{
+	TransactionId oldestRunningXid = InvalidTransactionId;
+
+	LWLockAcquire(TwoPhaseStateLock, LW_SHARED);
+
+	for (int i = 0; i < TwoPhaseState->numPrepXacts; i++)
+	{
+		GlobalTransaction gxact = TwoPhaseState->prepXacts[i];
+		PGPROC	   *commitproc;
+		TransactionId xid;
+
+		if (!gxact->valid)
+			continue;
+
+		if (gxact->locking_backend == INVALID_PROC_NUMBER)
+			continue;
+
+		/*
+		 * Get the backend that is handling the transaction. It's safe to
+		 * access this backend while holding TwoPhaseStateLock, as the backend
+		 * can only be destroyed after either removing or unlocking the
+		 * current global transaction, both of which require an exclusive
+		 * TwoPhaseStateLock.
+		 */
+		commitproc = GetPGProcByNumber(gxact->locking_backend);
+
+		if (MyDatabaseId != commitproc->databaseId)
+			continue;
+
+		if ((commitproc->delayChkptFlags & DELAY_CHKPT_IN_COMMIT) == 0)
+			continue;
+
+		xid = XidFromFullTransactionId(gxact->fxid);
+
+		if (!TransactionIdIsValid(oldestRunningXid) ||
+			TransactionIdPrecedes(xid, oldestRunningXid))
+			oldestRunningXid = xid;
+	}
+
+	LWLockRelease(TwoPhaseStateLock);
+
+	return oldestRunningXid;
 }

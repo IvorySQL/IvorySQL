@@ -73,15 +73,13 @@ typedef union LWLockPadded
 
 extern PGDLLIMPORT LWLockPadded *MainLWLockArray;
 
-/* struct for storing named tranche information */
-typedef struct NamedLWLockTranche
-{
-	int			trancheId;
-	char	   *trancheName;
-} NamedLWLockTranche;
+/* forward declaration of private type for use only by lwlock.c */
+typedef struct NamedLWLockTrancheRequest NamedLWLockTrancheRequest;
 
-extern PGDLLIMPORT NamedLWLockTranche *NamedLWLockTrancheArray;
+extern PGDLLIMPORT char **LWLockTrancheNames;
 extern PGDLLIMPORT int NamedLWLockTrancheRequests;
+extern PGDLLIMPORT NamedLWLockTrancheRequest *NamedLWLockTrancheRequestArray;
+extern PGDLLIMPORT int *LWLockCounter;
 
 /*
  * It's a bit odd to declare NUM_BUFFER_PARTITIONS and NUM_LOCK_PARTITIONS
@@ -157,19 +155,11 @@ extern LWLockPadded *GetNamedLWLockTranche(const char *tranche_name);
 
 /*
  * There is another, more flexible method of obtaining lwlocks. First, call
- * LWLockNewTrancheId just once to obtain a tranche ID; this allocates from
- * a shared counter.  Next, each individual process using the tranche should
- * call LWLockRegisterTranche() to associate that tranche ID with a name.
- * Finally, LWLockInitialize should be called just once per lwlock, passing
- * the tranche ID as an argument.
- *
- * It may seem strange that each process using the tranche must register it
- * separately, but dynamic shared memory segments aren't guaranteed to be
- * mapped at the same address in all coordinating backends, so storing the
- * registration in the main shared memory segment wouldn't work for that case.
+ * LWLockNewTrancheId to obtain a tranche ID; this allocates from a shared
+ * counter.  Second, LWLockInitialize should be called just once per lwlock,
+ * passing the tranche ID as an argument.
  */
-extern int	LWLockNewTrancheId(void);
-extern void LWLockRegisterTranche(int tranche_id, const char *tranche_name);
+extern int	LWLockNewTrancheId(const char *name);
 extern void LWLockInitialize(LWLock *lock, int tranche_id);
 
 /*

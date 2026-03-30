@@ -15,7 +15,6 @@
 #include "catalog/pg_collation.h"
 #include "common/unicode_case.h"
 #include "common/unicode_category.h"
-#include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "utils/builtins.h"
 #include "utils/pg_locale.h"
@@ -36,6 +35,23 @@ struct WordBoundaryState
 };
 
 /*
+ * In UTF-8, pg_wchar is guaranteed to be the code point value.
+ */
+static inline char32_t
+to_char32(pg_wchar wc)
+{
+	Assert(GetDatabaseEncoding() == PG_UTF8);
+	return (char32_t) wc;
+}
+
+static inline pg_wchar
+to_pg_wchar(char32_t c32)
+{
+	Assert(GetDatabaseEncoding() == PG_UTF8);
+	return (pg_wchar) c32;
+}
+
+/*
  * Simple word boundary iterator that draws boundaries each time the result of
  * pg_u_isalnum() changes.
  */
@@ -47,7 +63,7 @@ initcap_wbnext(void *state)
 	while (wbstate->offset < wbstate->len &&
 		   wbstate->str[wbstate->offset] != '\0')
 	{
-		pg_wchar	u = utf8_to_unicode((unsigned char *) wbstate->str +
+		char32_t	u = utf8_to_unicode((unsigned char *) wbstate->str +
 										wbstate->offset);
 		bool		curr_alnum = pg_u_isalnum(u, wbstate->posix);
 
@@ -72,7 +88,7 @@ strlower_builtin(char *dest, size_t destsize, const char *src, ssize_t srclen,
 				 pg_locale_t locale)
 {
 	return unicode_strlower(dest, destsize, src, srclen,
-							locale->info.builtin.casemap_full);
+							locale->builtin.casemap_full);
 }
 
 static size_t
@@ -83,13 +99,13 @@ strtitle_builtin(char *dest, size_t destsize, const char *src, ssize_t srclen,
 		.str = src,
 		.len = srclen,
 		.offset = 0,
-		.posix = !locale->info.builtin.casemap_full,
+		.posix = !locale->builtin.casemap_full,
 		.init = false,
 		.prev_alnum = false,
 	};
 
 	return unicode_strtitle(dest, destsize, src, srclen,
-							locale->info.builtin.casemap_full,
+							locale->builtin.casemap_full,
 							initcap_wbnext, &wbstate);
 }
 
@@ -98,7 +114,7 @@ strupper_builtin(char *dest, size_t destsize, const char *src, ssize_t srclen,
 				 pg_locale_t locale)
 {
 	return unicode_strupper(dest, destsize, src, srclen,
-							locale->info.builtin.casemap_full);
+							locale->builtin.casemap_full);
 }
 
 static size_t
@@ -106,61 +122,67 @@ strfold_builtin(char *dest, size_t destsize, const char *src, ssize_t srclen,
 				pg_locale_t locale)
 {
 	return unicode_strfold(dest, destsize, src, srclen,
-						   locale->info.builtin.casemap_full);
+						   locale->builtin.casemap_full);
 }
 
 static bool
 wc_isdigit_builtin(pg_wchar wc, pg_locale_t locale)
 {
-	return pg_u_isdigit(wc, !locale->info.builtin.casemap_full);
+	return pg_u_isdigit(to_char32(wc), !locale->builtin.casemap_full);
 }
 
 static bool
 wc_isalpha_builtin(pg_wchar wc, pg_locale_t locale)
 {
-	return pg_u_isalpha(wc);
+	return pg_u_isalpha(to_char32(wc));
 }
 
 static bool
 wc_isalnum_builtin(pg_wchar wc, pg_locale_t locale)
 {
-	return pg_u_isalnum(wc, !locale->info.builtin.casemap_full);
+	return pg_u_isalnum(to_char32(wc), !locale->builtin.casemap_full);
 }
 
 static bool
 wc_isupper_builtin(pg_wchar wc, pg_locale_t locale)
 {
-	return pg_u_isupper(wc);
+	return pg_u_isupper(to_char32(wc));
 }
 
 static bool
 wc_islower_builtin(pg_wchar wc, pg_locale_t locale)
 {
-	return pg_u_islower(wc);
+	return pg_u_islower(to_char32(wc));
 }
 
 static bool
 wc_isgraph_builtin(pg_wchar wc, pg_locale_t locale)
 {
-	return pg_u_isgraph(wc);
+	return pg_u_isgraph(to_char32(wc));
 }
 
 static bool
 wc_isprint_builtin(pg_wchar wc, pg_locale_t locale)
 {
-	return pg_u_isprint(wc);
+	return pg_u_isprint(to_char32(wc));
 }
 
 static bool
 wc_ispunct_builtin(pg_wchar wc, pg_locale_t locale)
 {
-	return pg_u_ispunct(wc, !locale->info.builtin.casemap_full);
+	return pg_u_ispunct(to_char32(wc), !locale->builtin.casemap_full);
 }
 
 static bool
 wc_isspace_builtin(pg_wchar wc, pg_locale_t locale)
 {
-	return pg_u_isspace(wc);
+	return pg_u_isspace(to_char32(wc));
+}
+
+static bool
+wc_isxdigit_builtin(pg_wchar wc, pg_locale_t locale)
+{
+	return pg_u_isxdigit(to_char32(wc), !locale->builtin.casemap_full);
 }
 
 static bool
@@ -173,13 +195,13 @@ char_is_cased_builtin(char ch, pg_locale_t locale)
 static pg_wchar
 wc_toupper_builtin(pg_wchar wc, pg_locale_t locale)
 {
-	return unicode_uppercase_simple(wc);
+	return to_pg_wchar(unicode_uppercase_simple(to_char32(wc)));
 }
 
 static pg_wchar
 wc_tolower_builtin(pg_wchar wc, pg_locale_t locale)
 {
-	return unicode_lowercase_simple(wc);
+	return to_pg_wchar(unicode_lowercase_simple(to_char32(wc)));
 }
 
 static const struct ctype_methods ctype_methods_builtin = {
@@ -196,6 +218,7 @@ static const struct ctype_methods ctype_methods_builtin = {
 	.wc_isprint = wc_isprint_builtin,
 	.wc_ispunct = wc_ispunct_builtin,
 	.wc_isspace = wc_isspace_builtin,
+	.wc_isxdigit = wc_isxdigit_builtin,
 	.char_is_cased = char_is_cased_builtin,
 	.wc_tolower = wc_tolower_builtin,
 	.wc_toupper = wc_toupper_builtin,
@@ -238,8 +261,8 @@ create_pg_locale_builtin(Oid collid, MemoryContext context)
 
 	result = MemoryContextAllocZero(context, sizeof(struct pg_locale_struct));
 
-	result->info.builtin.locale = MemoryContextStrdup(context, locstr);
-	result->info.builtin.casemap_full = (strcmp(locstr, "PG_UNICODE_FAST") == 0);
+	result->builtin.locale = MemoryContextStrdup(context, locstr);
+	result->builtin.casemap_full = (strcmp(locstr, "PG_UNICODE_FAST") == 0);
 	result->deterministic = true;
 	result->collate_is_c = true;
 	result->ctype_is_c = (strcmp(locstr, "C") == 0);

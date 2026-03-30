@@ -94,8 +94,6 @@
 
 /* ----------------------------------------------------------------
  *				Section 1: compiler characteristics
- *
- * type prefixes (const, signed, volatile, inline) are handled in pg_config.h.
  * ----------------------------------------------------------------
  */
 
@@ -110,12 +108,17 @@
 #endif
 
 /*
+ * Previously used PostgreSQL-specific spelling, for backward compatibility
+ * for extensions.
+ */
+#define pg_restrict restrict
+
+/*
  * Attribute macros
  *
  * GCC: https://gcc.gnu.org/onlinedocs/gcc/Function-Attributes.html
  * GCC: https://gcc.gnu.org/onlinedocs/gcc/Type-Attributes.html
  * Clang: https://clang.llvm.org/docs/AttributeReference.html
- * Sunpro: https://docs.oracle.com/cd/E18659_01/html/821-1384/gjzke.html
  */
 
 /*
@@ -158,7 +161,7 @@
  */
 #if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
 #define pg_noreturn _Noreturn
-#elif defined(__GNUC__) || defined(__SUNPRO_C)
+#elif defined(__GNUC__)
 #define pg_noreturn __attribute__((noreturn))
 #elif defined(_MSC_VER)
 #define pg_noreturn __declspec(noreturn)
@@ -234,8 +237,8 @@
 #define pg_attribute_printf(f,a)
 #endif
 
-/* GCC and Sunpro support aligned and packed */
-#if defined(__GNUC__) || defined(__SUNPRO_C)
+/* GCC supports aligned and packed */
+#if defined(__GNUC__)
 #define pg_attribute_aligned(a) __attribute__((aligned(a)))
 #define pg_attribute_packed() __attribute__((packed))
 #elif defined(_MSC_VER)
@@ -260,8 +263,8 @@
  * choose not to.  But, if possible, don't force inlining in unoptimized
  * debug builds.
  */
-#if (defined(__GNUC__) && __GNUC__ > 3 && defined(__OPTIMIZE__)) || defined(__SUNPRO_C)
-/* GCC > 3 and Sunpro support always_inline via __attribute__ */
+#if defined(__GNUC__) && defined(__OPTIMIZE__)
+/* GCC supports always_inline via __attribute__ */
 #define pg_attribute_always_inline __attribute__((always_inline)) inline
 #elif defined(_MSC_VER)
 /* MSVC has a special keyword for this */
@@ -277,8 +280,8 @@
  * for proper cost attribution.  Note that unlike the pg_attribute_XXX macros
  * above, this should be placed before the function's return type and name.
  */
-/* GCC and Sunpro support noinline via __attribute__ */
-#if (defined(__GNUC__) && __GNUC__ > 2) || defined(__SUNPRO_C)
+/* GCC supports noinline via __attribute__ */
+#if defined(__GNUC__)
 #define pg_noinline __attribute__((noinline))
 /* msvc via declspec */
 #elif defined(_MSC_VER)
@@ -334,6 +337,32 @@
 #endif
 
 /*
+ * Define a compiler-independent macro for determining if an expression is a
+ * compile-time integer const.  We don't define this macro to return 0 when
+ * unsupported due to the risk of users of the macro misbehaving if we return
+ * 0 when the expression *is* an integer constant.  Callers may check if this
+ * macro is defined by checking if HAVE_PG_INTEGER_CONSTANT_P is defined.
+ */
+#if defined(HAVE__BUILTIN_CONSTANT_P)
+
+/* When __builtin_constant_p() is available, use it. */
+#define pg_integer_constant_p(x) __builtin_constant_p(x)
+#define HAVE_PG_INTEGER_CONSTANT_P
+#elif defined(_MSC_VER) && defined(__STDC_VERSION__)
+
+/*
+ * With MSVC we can use a trick with _Generic to make this work.  This has
+ * been borrowed from:
+ * https://stackoverflow.com/questions/49480442/detecting-integer-constant-expressions-in-macros
+ * and only works with integer constants.  Compilation will fail if given a
+ * constant or variable of any type other than an integer.
+ */
+#define pg_integer_constant_p(x) \
+	_Generic((1 ? ((void *) ((x) * (uintptr_t) 0)) : &(int) {1}), int *: 1, void *: 0)
+#define HAVE_PG_INTEGER_CONSTANT_P
+#endif
+
+/*
  * pg_assume(expr) states that we assume `expr` to evaluate to true. In assert
  * enabled builds pg_assume() is turned into an assertion, in optimized builds
  * we try to clue the compiler into the fact that `expr` is true.
@@ -370,7 +399,7 @@
  * These should only be used sparingly, in very hot code paths. It's very easy
  * to mis-estimate likelihoods.
  */
-#if __GNUC__ >= 3
+#ifdef __GNUC__
 #define likely(x)	__builtin_expect((x) != 0, 1)
 #define unlikely(x) __builtin_expect((x) != 0, 0)
 #else
@@ -663,7 +692,7 @@ typedef uint32 CommandId;
  * representation is no longer convenient.  It's recommended that code always
  * use macros VARDATA_ANY, VARSIZE_ANY, VARSIZE_ANY_EXHDR, VARDATA, VARSIZE,
  * and SET_VARSIZE instead of relying on direct mentions of the struct fields.
- * See postgres.h for details of the TOASTed form.
+ * See varatt.h for details of the TOASTed form.
  * ----------------
  */
 struct varlena
@@ -738,12 +767,6 @@ typedef NameData *Name;
  *		True iff bool is valid.
  */
 #define BoolIsValid(boolean)	((boolean) == false || (boolean) == true)
-
-/*
- * PointerIsValid
- *		True iff pointer is valid.
- */
-#define PointerIsValid(pointer) ((const void*)(pointer) != NULL)
 
 /*
  * PointerIsAligned
@@ -1360,6 +1383,29 @@ typedef intptr_t sigjmp_buf[5];
 
 /* /port compatibility functions */
 #include "port.h"
+
+/*
+ * char16_t and char32_t
+ *      Unicode code points.
+ *
+ * uchar.h should always be available in C11, but it's not available on
+ * Mac. However, these types are keywords in C++11, so when using C++, we
+ * can't redefine the types.
+ *
+ * XXX: when uchar.h is available everywhere, we can remove this check and
+ * just include uchar.h unconditionally.
+ *
+ * XXX: this section is out of place because uchar.h needs to be included
+ * after port.h, due to an interaction with win32_port.h in some cases.
+ */
+#ifdef HAVE_UCHAR_H
+#include <uchar.h>
+#else
+#ifndef __cplusplus
+typedef uint16_t char16_t;
+typedef uint32_t char32_t;
+#endif
+#endif
 
 /* IWYU pragma: end_exports */
 

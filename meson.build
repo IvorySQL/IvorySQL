@@ -1615,7 +1615,10 @@ if uuidopt != 'none'
   elif uuidopt == 'ossp'
     # In upstream, the package and library is called just 'uuid', but many
     # distros change it to 'ossp-uuid'.
-    uuid = dependency('ossp-uuid', 'uuid', required: false)
+    uuid = dependency('ossp-uuid', required: false)
+    if not uuid.found()
+      uuid = dependency('uuid', required: false)
+    endif
     uuidfunc = 'uuid_export'
     uuidheader = 'uuid.h'
 
@@ -1817,7 +1820,7 @@ if cc.links('''
   if not meson.is_cross_build()
     r = cc.run('''
     /* This must match the corresponding code in c.h: */
-    #if defined(__GNUC__) || defined(__SUNPRO_C)
+    #if defined(__GNUC__)
     #define pg_attribute_aligned(a) __attribute__((aligned(a)))
     #elif defined(_MSC_VER)
     #define pg_attribute_aligned(a) __declspec(align(a))
@@ -2618,6 +2621,7 @@ header_checks = [
   'sys/signalfd.h',
   'sys/ucred.h',
   'termios.h',
+  'uchar.h',
   'ucred.h',
   'xlocale.h',
 ]
@@ -2808,13 +2812,12 @@ int main(void)
 endforeach
 
 
-# MSVC doesn't cope well with defining restrict to __restrict, the spelling it
-# understands, because it conflicts with __declspec(restrict). Therefore we
-# define pg_restrict to the appropriate definition, which presumably won't
-# conflict.
-#
-# We assume C99 support, so we don't need to make this conditional.
-cdata.set('pg_restrict', '__restrict')
+# Even though restrict is in C99 and should be supported by all
+# supported compilers, this indirection is useful because __restrict
+# also works in C++ in all supported compilers.  (If not, then we
+# might have to write a real test.)  (restrict is not part of the C++
+# standard.)
+cdata.set('restrict', '__restrict')
 
 
 # Most libraries are included only if they demonstrably provide a function we
@@ -3295,6 +3298,7 @@ libpq_deps += [
 ]
 
 libpq_oauth_deps += [
+  thread_dep,
   libcurl,
 ]
 

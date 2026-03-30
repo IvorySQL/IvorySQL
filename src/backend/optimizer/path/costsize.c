@@ -257,32 +257,6 @@ clamp_width_est(int64 tuple_width)
 	return (int32) tuple_width;
 }
 
-/*
- * clamp_cardinality_to_long
- *		Cast a Cardinality value to a sane long value.
- */
-long
-clamp_cardinality_to_long(Cardinality x)
-{
-	/*
-	 * Just for paranoia's sake, ensure we do something sane with negative or
-	 * NaN values.
-	 */
-	if (isnan(x))
-		return LONG_MAX;
-	if (x <= 0)
-		return 0;
-
-	/*
-	 * If "long" is 64 bits, then LONG_MAX cannot be represented exactly as a
-	 * double.  Casting it to double and back may well result in overflow due
-	 * to rounding, so avoid doing that.  We trust that any double value that
-	 * compares strictly less than "(double) LONG_MAX" will cast to a
-	 * representable "long" value.
-	 */
-	return (x < (double) LONG_MAX) ? (long) x : LONG_MAX;
-}
-
 
 /*
  * cost_seqscan
@@ -4570,10 +4544,24 @@ cost_subplan(PlannerInfo *root, SubPlan *subplan, Plan *plan)
 {
 	QualCost	sp_cost;
 
-	/* Figure any cost for evaluating the testexpr */
+	/*
+	 * Figure any cost for evaluating the testexpr.
+	 *
+	 * Usually, SubPlan nodes are built very early, before we have constructed
+	 * any RelOptInfos for the parent query level, which means the parent root
+	 * does not yet contain enough information to safely consult statistics.
+	 * Therefore, we pass root as NULL here.  cost_qual_eval() is already
+	 * well-equipped to handle a NULL root.
+	 *
+	 * One exception is SubPlan nodes built for the initplans of MIN/MAX
+	 * aggregates from indexes (cf. SS_make_initplan_from_plan).  In this
+	 * case, having a NULL root is safe because testexpr will be NULL.
+	 * Besides, an initplan will by definition not consult anything from the
+	 * parent plan.
+	 */
 	cost_qual_eval(&sp_cost,
 				   make_ands_implicit((Expr *) subplan->testexpr),
-				   root);
+				   NULL);
 
 	if (subplan->useHashTable)
 	{

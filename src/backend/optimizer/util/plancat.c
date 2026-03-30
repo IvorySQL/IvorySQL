@@ -42,6 +42,7 @@
 #include "parser/parse_relation.h"
 #include "parser/parsetree.h"
 #include "partitioning/partdesc.h"
+#include "rewrite/rewriteHandler.h"
 #include "rewrite/rewriteManip.h"
 #include "statistics/statistics.h"
 #include "storage/bufmgr.h"
@@ -62,7 +63,7 @@ get_relation_info_hook_type get_relation_info_hook = NULL;
 typedef struct NotnullHashEntry
 {
 	Oid			relid;			/* OID of the relation */
-	Relids		notnullattnums; /* attnums of NOT NULL columns */
+	Bitmapset  *notnullattnums; /* attnums of NOT NULL columns */
 } NotnullHashEntry;
 
 
@@ -77,7 +78,8 @@ static List *get_relation_constraints(PlannerInfo *root,
 									  bool include_partition);
 static List *build_index_tlist(PlannerInfo *root, IndexOptInfo *index,
 							   Relation heapRelation);
-static List *get_relation_statistics(RelOptInfo *rel, Relation relation);
+static List *get_relation_statistics(PlannerInfo *root, RelOptInfo *rel,
+									 Relation relation);
 static void set_relation_partition_info(PlannerInfo *root, RelOptInfo *rel,
 										Relation relation);
 static PartitionScheme find_partition_scheme(PlannerInfo *root,
@@ -508,7 +510,7 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 
 	rel->indexlist = indexinfos;
 
-	rel->statlist = get_relation_statistics(rel, relation);
+	rel->statlist = get_relation_statistics(root, rel, relation);
 
 	/* Grab foreign-table info using the relcache, while we have it */
 	if (relation->rd_rel->relkind == RELKIND_FOREIGN_TABLE)
@@ -682,7 +684,7 @@ get_relation_notnullatts(PlannerInfo *root, Relation relation)
 	Oid			relid = RelationGetRelid(relation);
 	NotnullHashEntry *hentry;
 	bool		found;
-	Relids		notnullattnums = NULL;
+	Bitmapset  *notnullattnums = NULL;
 
 	/* bail out if the relation has no not-null constraints */
 	if (relation->rd_att->constr == NULL ||
@@ -749,7 +751,7 @@ get_relation_notnullatts(PlannerInfo *root, Relation relation)
  *	  Searches the hash table and returns the column not-null constraint
  *	  information for a given relation.
  */
-Relids
+Bitmapset *
 find_relation_notnullatts(PlannerInfo *root, Oid relid)
 {
 	NotnullHashEntry *hentry;
@@ -787,6 +789,11 @@ find_relation_notnullatts(PlannerInfo *root, Oid relid)
  * the purposes of inference.  If no opclass (or collation) is specified, then
  * all matching indexes (that may or may not match the default in terms of
  * each attribute opclass/collation) are used for inference.
+ *
+ * Note: during index CONCURRENTLY operations, different transactions may
+ * reference different sets of arbiter indexes. This can lead to false unique
+ * constraint violations that wouldn't occur during normal operations.  For
+ * more information, see insert.sgml.
  */
 List *
 infer_arbiter_indexes(PlannerInfo *root)
@@ -1407,6 +1414,14 @@ get_relation_constraints(PlannerInfo *root,
 			cexpr = stringToNode(constr->check[i].ccbin);
 
 			/*
+			 * Fix Vars to have the desired varno.  This must be done before
+			 * const-simplification because eval_const_expressions reduces
+			 * NullTest for Vars based on varno.
+			 */
+			if (varno != 1)
+				ChangeVarNodes(cexpr, 1, varno, 0);
+
+			/*
 			 * Run each expression through const-simplification and
 			 * canonicalization.  This is not just an optimization, but is
 			 * necessary, because we will be comparing it to
@@ -1419,10 +1434,6 @@ get_relation_constraints(PlannerInfo *root,
 			cexpr = eval_const_expressions(root, cexpr);
 
 			cexpr = (Node *) canonicalize_qual((Expr *) cexpr, true);
-
-			/* Fix Vars to have the desired varno */
-			if (varno != 1)
-				ChangeVarNodes(cexpr, 1, varno, 0);
 
 			/*
 			 * Finally, convert to implicit-AND format (that is, a List) and
@@ -1476,6 +1487,14 @@ get_relation_constraints(PlannerInfo *root,
 		set_baserel_partition_constraint(relation, rel);
 		result = list_concat(result, rel->partition_qual);
 	}
+
+	/*
+	 * Expand virtual generated columns in the constraint expressions.
+	 */
+	if (result)
+		result = (List *) expand_generated_columns_in_expr((Node *) result,
+														   relation,
+														   varno);
 
 	table_close(relation, NoLock);
 
@@ -1572,7 +1591,8 @@ get_relation_statistics_worker(List **stainfos, RelOptInfo *rel,
  * just the identifying metadata.  Only stats actually built are considered.
  */
 static List *
-get_relation_statistics(RelOptInfo *rel, Relation relation)
+get_relation_statistics(PlannerInfo *root, RelOptInfo *rel,
+						Relation relation)
 {
 	Index		varno = rel->relid;
 	List	   *statoidlist;
@@ -1604,8 +1624,8 @@ get_relation_statistics(RelOptInfo *rel, Relation relation)
 			keys = bms_add_member(keys, staForm->stxkeys.values[i]);
 
 		/*
-		 * Preprocess expressions (if any). We read the expressions, run them
-		 * through eval_const_expressions, and fix the varnos.
+		 * Preprocess expressions (if any). We read the expressions, fix the
+		 * varnos, and run them through eval_const_expressions.
 		 *
 		 * XXX We don't know yet if there are any data for this stats object,
 		 * with either stxdinherit value. But it's reasonable to assume there
@@ -1629,6 +1649,18 @@ get_relation_statistics(RelOptInfo *rel, Relation relation)
 				pfree(exprsString);
 
 				/*
+				 * Modify the copies we obtain from the relcache to have the
+				 * correct varno for the parent relation, so that they match
+				 * up correctly against qual clauses.
+				 *
+				 * This must be done before const-simplification because
+				 * eval_const_expressions reduces NullTest for Vars based on
+				 * varno.
+				 */
+				if (varno != 1)
+					ChangeVarNodes((Node *) exprs, 1, varno, 0);
+
+				/*
 				 * Run the expressions through eval_const_expressions. This is
 				 * not just an optimization, but is necessary, because the
 				 * planner will be comparing them to similarly-processed qual
@@ -1636,18 +1668,10 @@ get_relation_statistics(RelOptInfo *rel, Relation relation)
 				 * We must not use canonicalize_qual, however, since these
 				 * aren't qual expressions.
 				 */
-				exprs = (List *) eval_const_expressions(NULL, (Node *) exprs);
+				exprs = (List *) eval_const_expressions(root, (Node *) exprs);
 
 				/* May as well fix opfuncids too */
 				fix_opfuncids((Node *) exprs);
-
-				/*
-				 * Modify the copies we obtain from the relcache to have the
-				 * correct varno for the parent relation, so that they match
-				 * up correctly against qual clauses.
-				 */
-				if (varno != 1)
-					ChangeVarNodes((Node *) exprs, 1, varno, 0);
 			}
 		}
 
@@ -2124,9 +2148,8 @@ join_selectivity(PlannerInfo *root,
 /*
  * function_selectivity
  *
- * Returns the selectivity of a specified boolean function clause.
- * This code executes registered procedures stored in the
- * pg_proc relation, by calling the function manager.
+ * Attempt to estimate the selectivity of a specified boolean function clause
+ * by asking its support function.  If the function lacks support, return -1.
  *
  * See clause_selectivity() for the meaning of the additional parameters.
  */
@@ -2144,15 +2167,8 @@ function_selectivity(PlannerInfo *root,
 	SupportRequestSelectivity req;
 	SupportRequestSelectivity *sresult;
 
-	/*
-	 * If no support function is provided, use our historical default
-	 * estimate, 0.3333333.  This seems a pretty unprincipled choice, but
-	 * Postgres has been using that estimate for function calls since 1992.
-	 * The hoariness of this behavior suggests that we should not be in too
-	 * much hurry to use another value.
-	 */
 	if (!prosupport)
-		return (Selectivity) 0.3333333;
+		return (Selectivity) -1;	/* no support function */
 
 	req.type = T_SupportRequestSelectivity;
 	req.root = root;
@@ -2169,9 +2185,8 @@ function_selectivity(PlannerInfo *root,
 		DatumGetPointer(OidFunctionCall1(prosupport,
 										 PointerGetDatum(&req)));
 
-	/* If support function fails, use default */
 	if (sresult != &req)
-		return (Selectivity) 0.3333333;
+		return (Selectivity) -1;	/* function did not honor request */
 
 	if (req.selectivity < 0.0 || req.selectivity > 1.0)
 		elog(ERROR, "invalid function selectivity: %f", req.selectivity);
@@ -2512,7 +2527,7 @@ get_dependent_generated_columns(PlannerInfo *root, Index rti,
 			Bitmapset  *attrs_used = NULL;
 
 			/* skip if not generated column */
-			if (!TupleDescAttr(tupdesc, defval->adnum - 1)->attgenerated)
+			if (!TupleDescCompactAttr(tupdesc, defval->adnum - 1)->attgenerated)
 				continue;
 
 			/* identify columns this generated column depends on */

@@ -31,6 +31,31 @@ env:
   TEMP_CONFIG: ${CIRRUS_WORKING_DIR}/src/tools/ci/pg_ci_base.conf
   PG_TEST_EXTRA: kerberos ldap ssl libpq_encryption load_balance oauth
 
+  # Postgres config args for the meson builds, shared between all meson tasks
+  # except the 'SanityCheck' task
+  MESON_COMMON_PG_CONFIG_ARGS: -Dcassert=true -Dinjection_points=true
+
+  # Meson feature flags shared by all meson tasks, except:
+  # SanityCheck: uses almost no dependencies.
+  # Windows - VS: has fewer dependencies than listed here, so defines its own.
+  # Linux: uses the 'auto' feature option to test meson feature autodetection.
+  MESON_COMMON_FEATURES: >-
+    -Dauto_features=disabled
+    -Dldap=enabled
+    -Dssl=openssl
+    -Dtap_tests=enabled
+    -Dplperl=enabled
+    -Dplpython=enabled
+    -Ddocs=enabled
+    -Dicu=enabled
+    -Dlibxml=enabled
+    -Dlibxslt=enabled
+    -Dlz4=enabled
+    -Dpltcl=enabled
+    -Dreadline=enabled
+    -Dzlib=enabled
+    -Dzstd=enabled
+
 
 # What files to preserve in case tests fail
 on_failure_ac: &on_failure_ac
@@ -78,7 +103,7 @@ task:
     CPUS: 4
     BUILD_JOBS: 8
     TEST_JOBS: 8
-    IMAGE_FAMILY: pg-ci-bookworm
+    IMAGE_FAMILY: pg-ci-trixie
     CCACHE_DIR: ${CIRRUS_WORKING_DIR}/ccache_dir
     # no options enabled, should be small
     CCACHE_MAXSIZE: "150M"
@@ -164,6 +189,15 @@ task:
       -c debug_parallel_query=regress
     PG_TEST_PG_UPGRADE_MODE: --link
 
+    MESON_FEATURES: >-
+      -Ddtrace=enabled
+      -Dgssapi=enabled
+      -Dlibcurl=enabled
+      -Dnls=enabled
+      -Dpam=enabled
+      -Dtcl_version=tcl86
+      -Duuid=bsd
+
   <<: *freebsd_task_template
 
   depends_on: SanityCheck
@@ -196,10 +230,10 @@ task:
   configure_script: |
     su postgres <<-EOF
       meson setup \
+        ${MESON_COMMON_PG_CONFIG_ARGS} \
         --buildtype=debug \
-        -Dcassert=true -Dinjection_points=true \
-        -Duuid=bsd -Dtcl_version=tcl86 -Ddtrace=auto \
         -Dextra_lib_dirs=/usr/local/lib -Dextra_include_dirs=/usr/local/include/ \
+        ${MESON_COMMON_FEATURES} ${MESON_FEATURES} \
         build
     EOF
   build_script: su postgres -c 'ninja -C build -j${BUILD_JOBS} ${MBUILD_TARGET}'
@@ -270,6 +304,12 @@ task:
         LC_ALL: "C"
         # -Duuid is not set for the NetBSD, see the comment below, above
         # configure_script, for more information.
+        MESON_FEATURES: >-
+          -Dgssapi=enabled
+          -Dlibcurl=enabled
+          -Dnls=enabled
+          -Dpam=enabled
+
       setup_additional_packages_script: |
         #pkgin -y install ...
       <<: *netbsd_task_template
@@ -282,8 +322,13 @@ task:
         OS_NAME: openbsd
         IMAGE_FAMILY: pg-ci-openbsd-postgres
         PKGCONFIG_PATH: '/usr/lib/pkgconfig:/usr/local/lib/pkgconfig'
-        UUID: -Duuid=e2fs
-        TCL: -Dtcl_version=tcl86
+
+        MESON_FEATURES: >-
+          -Dbsd_auth=enabled
+          -Dlibcurl=enabled
+          -Dtcl_version=tcl86
+          -Duuid=e2fs
+
       setup_additional_packages_script: |
         #pkg_add -I ...
       # Always core dump to ${CORE_DUMP_DIR}
@@ -317,11 +362,10 @@ task:
   configure_script: |
     su postgres <<-EOF
       meson setup \
+        ${MESON_COMMON_PG_CONFIG_ARGS} \
         --buildtype=debugoptimized \
         --pkg-config-path ${PKGCONFIG_PATH} \
-        -Dcassert=true -Dinjection_points=true \
-        -Dssl=openssl ${UUID} ${TCL} \
-        -DPG_TEST_EXTRA="$PG_TEST_EXTRA" \
+        ${MESON_COMMON_FEATURES} ${MESON_FEATURES} \
         build
     EOF
 
@@ -368,10 +412,6 @@ LINUX_CONFIGURE_FEATURES: &LINUX_CONFIGURE_FEATURES >-
   --with-uuid=ossp
   --with-zstd
 
-LINUX_MESON_FEATURES: &LINUX_MESON_FEATURES >-
-  -Dllvm=enabled
-  -Duuid=e2fs
-
 
 # Check SPECIAL in the matrix: below
 task:
@@ -379,7 +419,7 @@ task:
     CPUS: 4
     BUILD_JOBS: 4
     TEST_JOBS: 8 # experimentally derived to be a decent choice
-    IMAGE_FAMILY: pg-ci-bookworm
+    IMAGE_FAMILY: pg-ci-trixie
 
     CCACHE_DIR: /tmp/ccache_dir
     DEBUGINFOD_URLS: "https://debuginfod.debian.net"
@@ -400,7 +440,7 @@ task:
     # print_stacktraces=1,verbosity=2, duh
     # detect_leaks=0: too many uninteresting leak errors in short-lived binaries
     UBSAN_OPTIONS: print_stacktrace=1:disable_coredump=0:abort_on_error=1:verbosity=2
-    ASAN_OPTIONS: print_stacktrace=1:disable_coredump=0:abort_on_error=1:detect_leaks=0
+    ASAN_OPTIONS: print_stacktrace=1:disable_coredump=0:abort_on_error=1:detect_leaks=0:detect_stack_use_after_return=0
 
     # SANITIZER_FLAGS is set in the tasks below
     CFLAGS: -Og -ggdb -fno-sanitize-recover=all $SANITIZER_FLAGS
@@ -408,11 +448,10 @@ task:
     LDFLAGS: $SANITIZER_FLAGS
     CC: ccache gcc
     CXX: ccache g++
-    # GCC emits a warning for llvm-14, so switch to a newer one.
-    LLVM_CONFIG: llvm-config-16
 
     LINUX_CONFIGURE_FEATURES: *LINUX_CONFIGURE_FEATURES
-    LINUX_MESON_FEATURES: *LINUX_MESON_FEATURES
+    LINUX_MESON_FEATURES: >-
+      -Duuid=e2fs
 
   <<: *linux_task_template
 
@@ -456,7 +495,7 @@ task:
     # - Uses address sanitizer, sanitizer failures are typically printed in
     #   the server log
     # - Configures postgres with a small segment size
-    - name: Linux - Debian Bookworm - Autoconf
+    - name: Linux - Debian Trixie - Autoconf
 
       env:
         SANITIZER_FLAGS: -fsanitize=address
@@ -479,7 +518,7 @@ task:
             \
             ${LINUX_CONFIGURE_FEATURES} \
             \
-            CLANG="ccache clang-16"
+            CLANG="ccache clang"
         EOF
       build_script: su postgres -c "make -s -j${BUILD_JOBS} world-bin"
       upload_caches: ccache
@@ -498,7 +537,8 @@ task:
     #   are typically printed in the server log
     # - Test both 64bit and 32 bit builds
     # - uses io_method=io_uring
-    - name: Linux - Debian Bookworm - Meson
+    # - Uses meson feature autodetection
+    - name: Linux - Debian Trixie - Meson
 
       env:
         CCACHE_MAXSIZE: "400M" # tests two different builds
@@ -509,9 +549,9 @@ task:
       configure_script: |
         su postgres <<-EOF
           meson setup \
+            ${MESON_COMMON_PG_CONFIG_ARGS} \
             --buildtype=debug \
-            -Dcassert=true -Dinjection_points=true \
-            ${LINUX_MESON_FEATURES} \
+            ${LINUX_MESON_FEATURES} -Dllvm=enabled \
             build
         EOF
 
@@ -521,13 +561,11 @@ task:
         su postgres <<-EOF
           export CC='ccache gcc -m32'
           meson setup \
+            ${MESON_COMMON_PG_CONFIG_ARGS} \
             --buildtype=debug \
-            -Dcassert=true -Dinjection_points=true \
-            ${LINUX_MESON_FEATURES} \
-            -Dllvm=disabled \
             --pkg-config-path /usr/lib/i386-linux-gnu/pkgconfig/ \
-            -DPERL=perl5.36-i386-linux-gnu \
-            -Dlibnuma=disabled \
+            -DPERL=perl5.40-i386-linux-gnu \
+            ${LINUX_MESON_FEATURES} -Dlibnuma=disabled \
             build-32
         EOF
 
@@ -576,7 +614,7 @@ task:
 # SPECIAL:
 # - Enables --clone for pg_upgrade and pg_combinebackup
 task:
-  name: macOS - Sonoma - Meson
+  name: macOS - Sequoia - Meson
 
   env:
     CPUS: 4 # always get that much for cirrusci macOS instances
@@ -585,11 +623,19 @@ task:
     # work OK. See
     # https://postgr.es/m/20220927040208.l3shfcidovpzqxfh%40awork3.anarazel.de
     TEST_JOBS: 8
-    IMAGE: ghcr.io/cirruslabs/macos-runner:sonoma
+    IMAGE: ghcr.io/cirruslabs/macos-runner:sequoia
 
     CIRRUS_WORKING_DIR: ${HOME}/pgsql/
     CCACHE_DIR: ${HOME}/ccache
     MACPORTS_CACHE: ${HOME}/macports-cache
+
+    MESON_FEATURES: >-
+      -Dbonjour=enabled
+      -Ddtrace=enabled
+      -Dgssapi=enabled
+      -Dlibcurl=enabled
+      -Dnls=enabled
+      -Duuid=e2fs
 
     MACOS_PACKAGE_LIST: >-
       ccache
@@ -660,11 +706,11 @@ task:
   configure_script: |
     export PKG_CONFIG_PATH="/opt/local/lib/pkgconfig/"
     meson setup \
+      ${MESON_COMMON_PG_CONFIG_ARGS} \
       --buildtype=debug \
       -Dextra_include_dirs=/opt/local/include \
       -Dextra_lib_dirs=/opt/local/lib \
-      -Dcassert=true -Dinjection_points=true \
-      -Duuid=e2fs -Ddtrace=auto \
+      ${MESON_COMMON_FEATURES} ${MESON_FEATURES} \
       build
 
   build_script: ninja -C build -j${BUILD_JOBS} ${MBUILD_TARGET}
@@ -704,7 +750,7 @@ WINDOWS_ENVIRONMENT_BASE: &WINDOWS_ENVIRONMENT_BASE
 
 
 task:
-  name: Windows - Server 2019, VS 2019 - Meson & ninja
+  name: Windows - Server 2022, VS 2019 - Meson & ninja
   << : *WINDOWS_ENVIRONMENT_BASE
 
   env:
@@ -718,6 +764,14 @@ task:
     # given that it explicitly prevents crash dumps from working...
     # 0x8001 is SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX
     CIRRUS_WINDOWS_ERROR_MODE: 0x8001
+
+    MESON_FEATURES:
+      -Dauto_features=disabled
+      -Dldap=enabled
+      -Dssl=openssl
+      -Dtap_tests=enabled
+      -Dplperl=enabled
+      -Dplpython=enabled
 
   <<: *windows_task_template
 
@@ -735,7 +789,7 @@ task:
 
   configure_script: |
     vcvarsall x64
-    meson setup --backend ninja --buildtype debug -Dcassert=true -Dinjection_points=true -Db_pch=true -Dextra_lib_dirs=c:\openssl\1.1\lib -Dextra_include_dirs=c:\openssl\1.1\include -DTAR=%TAR% build
+    meson setup --backend ninja %MESON_COMMON_PG_CONFIG_ARGS% --buildtype debug -Db_pch=true -Dextra_lib_dirs=c:\openssl\1.1\lib -Dextra_include_dirs=c:\openssl\1.1\include -DTAR=%TAR% %MESON_FEATURES% build
 
   build_script: |
     vcvarsall x64
@@ -755,7 +809,7 @@ task:
 
 task:
   << : *WINDOWS_ENVIRONMENT_BASE
-  name: Windows - Server 2019, MinGW64 - Meson
+  name: Windows - Server 2022, MinGW64 - Meson
 
   # See REPO_CI_AUTOMATIC_TRIGGER_TASKS in .cirrus.star.
   trigger_type: $CI_TRIGGER_TYPE_MINGW
@@ -777,6 +831,11 @@ task:
     CHERE_INVOKING: 1
     BASH: C:\msys64\usr\bin\bash.exe -l
 
+    # Keep -Dnls explicitly disabled, as the number of files it creates causes a
+    # noticeable slowdown.
+    MESON_FEATURES: >-
+      -Dnls=disabled
+
   <<: *windows_task_template
 
   ccache_cache:
@@ -791,9 +850,8 @@ task:
     %BASH% -c "where perl"
     %BASH% -c "perl --version"
 
-  # disable -Dnls as the number of files it creates cause a noticable slowdown
   configure_script: |
-    %BASH% -c "meson setup -Ddebug=true -Doptimization=g -Dcassert=true -Dinjection_points=true -Db_pch=true -Dnls=disabled -DTAR=%TAR% build"
+    %BASH% -c "meson setup %MESON_COMMON_PG_CONFIG_ARGS% -Ddebug=true -Doptimization=g -Db_pch=true %MESON_COMMON_FEATURES% %MESON_FEATURES% -DTAR=%TAR% build"
 
   build_script: |
     %BASH% -c "ninja -C build ${MBUILD_TARGET}"
@@ -822,7 +880,7 @@ task:
   env:
     CPUS: 4
     BUILD_JOBS: 4
-    IMAGE_FAMILY: pg-ci-bookworm
+    IMAGE_FAMILY: pg-ci-trixie
 
     # Use larger ccache cache, as this task compiles with multiple compilers /
     # flag combinations
@@ -830,10 +888,6 @@ task:
     CCACHE_DIR: "/tmp/ccache_dir"
 
     LINUX_CONFIGURE_FEATURES: *LINUX_CONFIGURE_FEATURES
-    LINUX_MESON_FEATURES: *LINUX_MESON_FEATURES
-
-    # GCC emits a warning for llvm-14, so switch to a newer one.
-    LLVM_CONFIG: llvm-config-16
 
   <<: *linux_task_template
 
@@ -870,7 +924,7 @@ task:
         --cache gcc.cache \
         --enable-dtrace \
         ${LINUX_CONFIGURE_FEATURES} \
-        CC="ccache gcc" CXX="ccache g++" CLANG="ccache clang-16"
+        CC="ccache gcc" CXX="ccache g++" CLANG="ccache clang"
       make -s -j${BUILD_JOBS} clean
       time make -s -j${BUILD_JOBS} world-bin
 
@@ -881,7 +935,7 @@ task:
         --cache gcc.cache \
         --enable-cassert \
         ${LINUX_CONFIGURE_FEATURES} \
-        CC="ccache gcc" CXX="ccache g++" CLANG="ccache clang-16"
+        CC="ccache gcc" CXX="ccache g++" CLANG="ccache clang"
       make -s -j${BUILD_JOBS} clean
       time make -s -j${BUILD_JOBS} world-bin
 
@@ -891,7 +945,7 @@ task:
       time ./configure \
         --cache clang.cache \
         ${LINUX_CONFIGURE_FEATURES} \
-        CC="ccache clang" CXX="ccache clang++-16" CLANG="ccache clang-16"
+        CC="ccache clang" CXX="ccache clang++" CLANG="ccache clang"
       make -s -j${BUILD_JOBS} clean
       time make -s -j${BUILD_JOBS} world-bin
 
@@ -903,7 +957,7 @@ task:
         --enable-cassert \
         --enable-dtrace \
         ${LINUX_CONFIGURE_FEATURES} \
-        CC="ccache clang" CXX="ccache clang++-16" CLANG="ccache clang-16"
+        CC="ccache clang" CXX="ccache clang++" CLANG="ccache clang"
       make -s -j${BUILD_JOBS} clean
       time make -s -j${BUILD_JOBS} world-bin
 
@@ -911,11 +965,11 @@ task:
   always:
     mingw_cross_warning_script: |
       time ./configure \
-        --host=x86_64-w64-mingw32 \
+        --host=x86_64-w64-mingw32ucrt \
         --enable-cassert \
         --without-icu \
-        CC="ccache x86_64-w64-mingw32-gcc" \
-        CXX="ccache x86_64-w64-mingw32-g++"
+        CC="ccache x86_64-w64-mingw32ucrt-gcc" \
+        CXX="ccache x86_64-w64-mingw32ucrt-g++"
       make -s -j${BUILD_JOBS} clean
       time make -s -j${BUILD_JOBS} world-bin
 
@@ -927,7 +981,7 @@ task:
     docs_build_script: |
       time ./configure \
         --cache gcc.cache \
-        CC="ccache gcc" CXX="ccache g++" CLANG="ccache clang-16"
+        CC="ccache gcc" CXX="ccache g++" CLANG="ccache clang"
       make -s -j${BUILD_JOBS} clean
       time make -s -j${BUILD_JOBS} -C doc
 
@@ -943,7 +997,7 @@ task:
       time ./configure \
         ${LINUX_CONFIGURE_FEATURES} \
         --quiet \
-        CC="gcc" CXX"=g++" CLANG="clang-16"
+        CC="gcc" CXX"=g++" CLANG="clang"
       make -s -j${BUILD_JOBS} clean
       time make -s headerscheck EXTRAFLAGS='-fmax-errors=10'
     headers_cpluspluscheck_script: |

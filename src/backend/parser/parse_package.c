@@ -32,6 +32,7 @@
 #include "utils/packagecache.h"
 #include "utils/acl.h"
 #include "utils/guc.h"
+#include "utils/lsyscache.h"
 #include "utils/ora_compatible.h"
 #include "catalog/namespace.h"
 #include "commands/packagecmds.h"

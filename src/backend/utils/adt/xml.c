@@ -84,7 +84,6 @@
 #include "catalog/namespace.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_type.h"
-#include "commands/dbcommands.h"
 #include "executor/spi.h"
 #include "executor/tablefunc.h"
 #include "fmgr.h"
@@ -892,8 +891,8 @@ xmltotext_with_options(xmltype *data, XmlOptionType xmloption_arg, bool indent)
 
 xmltype *
 xmlelement(XmlExpr *xexpr,
-		   Datum *named_argvalue, bool *named_argnull,
-		   Datum *argvalue, bool *argnull)
+		   const Datum *named_argvalue, const bool *named_argnull,
+		   const Datum *argvalue, const bool *argnull)
 {
 #ifdef USE_LIBXML
 	xmltype    *result;
@@ -4896,7 +4895,7 @@ XmlTableSetColumnFilter(TableFuncScanState *state, const char *path, int colnum)
 	XmlTableBuilderData *xtCxt;
 	xmlChar    *xstr;
 
-	Assert(PointerIsValid(path));
+	Assert(path);
 
 	xtCxt = GetXmlTableBuilderPrivateData(state, "XmlTableSetColumnFilter");
 

@@ -1955,10 +1955,11 @@ UpdateDecodingStats(LogicalDecodingContext *ctx)
 	PgStat_StatReplSlotEntry repSlotStat;
 
 	/* Nothing to do if we don't have any replication stats to be sent. */
-	if (rb->spillBytes <= 0 && rb->streamBytes <= 0 && rb->totalBytes <= 0)
+	if (rb->spillBytes <= 0 && rb->streamBytes <= 0 && rb->totalBytes <= 0 &&
+		rb->memExceededCount <= 0)
 		return;
 
-	elog(DEBUG2, "UpdateDecodingStats: updating stats %p %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64,
+	elog(DEBUG2, "UpdateDecodingStats: updating stats %p %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64,
 		 rb,
 		 rb->spillTxns,
 		 rb->spillCount,
@@ -1966,6 +1967,7 @@ UpdateDecodingStats(LogicalDecodingContext *ctx)
 		 rb->streamTxns,
 		 rb->streamCount,
 		 rb->streamBytes,
+		 rb->memExceededCount,
 		 rb->totalTxns,
 		 rb->totalBytes);
 
@@ -1975,6 +1977,7 @@ UpdateDecodingStats(LogicalDecodingContext *ctx)
 	repSlotStat.stream_txns = rb->streamTxns;
 	repSlotStat.stream_count = rb->streamCount;
 	repSlotStat.stream_bytes = rb->streamBytes;
+	repSlotStat.mem_exceeded_count = rb->memExceededCount;
 	repSlotStat.total_txns = rb->totalTxns;
 	repSlotStat.total_bytes = rb->totalBytes;
 
@@ -1986,6 +1989,7 @@ UpdateDecodingStats(LogicalDecodingContext *ctx)
 	rb->streamTxns = 0;
 	rb->streamCount = 0;
 	rb->streamBytes = 0;
+	rb->memExceededCount = 0;
 	rb->totalTxns = 0;
 	rb->totalBytes = 0;
 }
@@ -2082,7 +2086,7 @@ LogicalSlotAdvanceAndCheckSnapState(XLogRecPtr moveto,
 									bool *found_consistent_snapshot)
 {
 	LogicalDecodingContext *ctx;
-	ResourceOwner old_resowner = CurrentResourceOwner;
+	ResourceOwner old_resowner PG_USED_FOR_ASSERTS_ONLY = CurrentResourceOwner;
 	XLogRecPtr	retlsn;
 
 	Assert(moveto != InvalidXLogRecPtr);
@@ -2141,20 +2145,23 @@ LogicalSlotAdvanceAndCheckSnapState(XLogRecPtr moveto,
 			 * might still have critical updates to do.
 			 */
 			if (record)
+			{
 				LogicalDecodingProcessRecord(ctx, ctx->reader);
+
+				/*
+				 * We used to have bugs where logical decoding would fail to
+				 * preserve the resource owner.  That's important here, so
+				 * verify that that doesn't happen anymore.  XXX this could be
+				 * removed once it's been battle-tested.
+				 */
+				Assert(CurrentResourceOwner == old_resowner);
+			}
 
 			CHECK_FOR_INTERRUPTS();
 		}
 
 		if (found_consistent_snapshot && DecodingContextReady(ctx))
 			*found_consistent_snapshot = true;
-
-		/*
-		 * Logical decoding could have clobbered CurrentResourceOwner during
-		 * transaction management, so restore the executor's value.  (This is
-		 * a kluge, but it's not worth cleaning up right now.)
-		 */
-		CurrentResourceOwner = old_resowner;
 
 		if (ctx->reader->EndRecPtr != InvalidXLogRecPtr)
 		{

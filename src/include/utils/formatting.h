@@ -92,7 +92,7 @@ extern Datum parse_datetime(text *date_txt, text *fmt, Oid collid, bool strict,
 extern bool datetime_format_has_tz(const char *fmt_str);
 
 /* export datetime_to_char_body from formatting.c used in ivorysql_ora */
-extern text *datetime_to_char_body(TmToChar *tmtc, text *fmt,
+extern text *datetime_to_char_body(TmToChar *tmtc, const text *fmt,
 											bool is_interval, Oid collid);
 
 extern void

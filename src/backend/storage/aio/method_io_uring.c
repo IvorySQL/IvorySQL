@@ -377,7 +377,7 @@ pgaio_uring_shmem_init(bool first_time)
 			else if (-ret == ENOSYS)
 			{
 				err = ERRCODE_FEATURE_NOT_SUPPORTED;
-				hint = _("Kernel does not support io_uring.");
+				hint = _("The kernel does not support io_uring.");
 			}
 
 			/* update errno to allow %m to work */
@@ -660,7 +660,7 @@ pgaio_uring_sq_from_io(PgAioHandle *ioh, struct io_uring_sqe *sqe)
 {
 	struct iovec *iov;
 
-	switch (ioh->op)
+	switch ((PgAioOp) ioh->op)
 	{
 		case PGAIO_OP_READV:
 			iov = &pgaio_ctl->iovecs[ioh->iovec_off];

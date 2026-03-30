@@ -220,9 +220,10 @@ ExecVacuum(ParseState *pstate, VacuumStmt *vacstmt, bool isTopLevel)
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("BUFFER_USAGE_LIMIT option must be 0 or between %d kB and %d kB",
+						 errmsg("%s option must be 0 or between %d kB and %d kB",
+								"BUFFER_USAGE_LIMIT",
 								MIN_BAS_VAC_RING_SIZE_KB, MAX_BAS_VAC_RING_SIZE_KB),
-						 hintmsg ? errhint("%s", _(hintmsg)) : 0));
+						 hintmsg ? errhint_internal("%s", _(hintmsg)) : 0));
 			}
 
 			ring_size = result;
@@ -266,35 +267,24 @@ ExecVacuum(ParseState *pstate, VacuumStmt *vacstmt, bool isTopLevel)
 			params.truncate = get_vacoptval_from_boolean(opt);
 		else if (strcmp(opt->defname, "parallel") == 0)
 		{
-			if (opt->arg == NULL)
-			{
+			int			nworkers = defGetInt32(opt);
+
+			if (nworkers < 0 || nworkers > MAX_PARALLEL_WORKER_LIMIT)
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("parallel option requires a value between 0 and %d",
+						 errmsg("%s option must be between 0 and %d",
+								"PARALLEL",
 								MAX_PARALLEL_WORKER_LIMIT),
 						 parser_errposition(pstate, opt->location)));
-			}
+
+			/*
+			 * Disable parallel vacuum, if user has specified parallel degree
+			 * as zero.
+			 */
+			if (nworkers == 0)
+				params.nworkers = -1;
 			else
-			{
-				int			nworkers;
-
-				nworkers = defGetInt32(opt);
-				if (nworkers < 0 || nworkers > MAX_PARALLEL_WORKER_LIMIT)
-					ereport(ERROR,
-							(errcode(ERRCODE_SYNTAX_ERROR),
-							 errmsg("parallel workers for vacuum must be between 0 and %d",
-									MAX_PARALLEL_WORKER_LIMIT),
-							 parser_errposition(pstate, opt->location)));
-
-				/*
-				 * Disable parallel vacuum, if user has specified parallel
-				 * degree as zero.
-				 */
-				if (nworkers == 0)
-					params.nworkers = -1;
-				else
-					params.nworkers = nworkers;
-			}
+				params.nworkers = nworkers;
 		}
 		else if (strcmp(opt->defname, "skip_database_stats") == 0)
 			skip_database_stats = defGetBoolean(opt);
@@ -416,8 +406,12 @@ ExecVacuum(ParseState *pstate, VacuumStmt *vacstmt, bool isTopLevel)
 	/* user-invoked vacuum is never "for wraparound" */
 	params.is_wraparound = false;
 
-	/* user-invoked vacuum uses VACOPT_VERBOSE instead of log_min_duration */
-	params.log_min_duration = -1;
+	/*
+	 * user-invoked vacuum uses VACOPT_VERBOSE instead of
+	 * log_vacuum_min_duration and log_analyze_min_duration
+	 */
+	params.log_vacuum_min_duration = -1;
+	params.log_analyze_min_duration = -1;
 
 	/*
 	 * Later, in vacuum_rel(), we check if a reloption override was specified.
@@ -2073,7 +2067,7 @@ vacuum_rel(Oid relid, RangeVar *relation, VacuumParams params,
 
 	/* open the relation and get the appropriate lock on it */
 	rel = vacuum_open_relation(relid, relation, params.options,
-							   params.log_min_duration >= 0, lmode);
+							   params.log_vacuum_min_duration >= 0, lmode);
 
 	/* leave if relation could not be opened or locked */
 	if (!rel)

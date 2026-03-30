@@ -2630,7 +2630,8 @@ select decode(NULL,1);--报错
 ERROR:  function decode(unknown, pg_catalog.int4) does not exist
 LINE 1: select decode(NULL,1);
                ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No function of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 select decode();--报错
 ERROR:  syntax error at or near ")"
 LINE 1: select decode();
@@ -3160,7 +3161,8 @@ SELECT decode (col1,NULL,0,point'(5,8)',7000)from test1;--报错
 ERROR:  operator does not exist: point = unknown
 LINE 1: SELECT decode (col1,NULL,0,point'(5,8)',7000)from test1;
                        ^
-HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No operator of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 drop table test1;
 --2.line:
 create table test1(col1 line,col2  int);
@@ -3209,7 +3211,8 @@ SELECT decode (col1,NULL,0,polygon(box '((0,0),(1,1))'),7000)from test1;--报错
 ERROR:  operator does not exist: polygon = unknown
 LINE 1: SELECT decode (col1,NULL,0,polygon(box '((0,0),(1,1))'),7000...
                        ^
-HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No operator of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 drop table test1;
 --7.circle:
 create table test1(col1 circle,col2  int);
@@ -3303,7 +3306,8 @@ SELECT decode (col1,NULL,0,'5'::json,7000)from test1;--报错
 ERROR:  operator does not exist: json = unknown
 LINE 1: SELECT decode (col1,NULL,0,'5'::json,7000)from test1;
                        ^
-HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No operator of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 drop table test1;
 --Arrays:
 create table test1(col1 int[],col2  int);
@@ -3551,7 +3555,8 @@ SELECT decode (point(5,8),NULL,0,col1,7000)from test1;--报错
 ERROR:  operator does not exist: point = unknown
 LINE 1: SELECT decode (point(5,8),NULL,0,col1,7000)from test1;
                        ^
-HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No operator of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 drop table test1;
 --2.line:
 create table test1(col1 line,col2  int);
@@ -3600,7 +3605,8 @@ SELECT decode (polygon(box '((0,0),(1,1))'),NULL,0,col1,7000)from test1;--报错
 ERROR:  operator does not exist: polygon = unknown
 LINE 1: SELECT decode (polygon(box '((0,0),(1,1))'),NULL,0,col1,7000...
                        ^
-HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No operator of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 drop table test1;
 --7.circle:
 create table test1(col1 circle,col2  int);
@@ -3694,7 +3700,8 @@ SELECT decode ('5'::json,NULL,0,col1,7000)from test1;--报错
 ERROR:  operator does not exist: json = unknown
 LINE 1: SELECT decode ('5'::json,NULL,0,col1,7000)from test1;
                        ^
-HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No operator of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 drop table test1;
 --Arrays:
 create table test1(col1 int[],col2  int);

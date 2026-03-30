@@ -33,12 +33,14 @@
 #include "access/xloginsert.h"
 #include "catalog/pg_control.h"
 #include "common/pg_lzcompress.h"
+#include "executor/instrument.h"
 #include "miscadmin.h"
 #include "pg_trace.h"
 #include "replication/origin.h"
 #include "storage/bufmgr.h"
 #include "storage/proc.h"
 #include "utils/memutils.h"
+#include "utils/pgstat_internal.h"
 
 /*
  * Guess the maximum buffer size required to store a compressed version of
@@ -137,6 +139,7 @@ static MemoryContext xloginsert_cxt;
 static XLogRecData *XLogRecordAssemble(RmgrId rmid, uint8 info,
 									   XLogRecPtr RedoRecPtr, bool doPageWrites,
 									   XLogRecPtr *fpw_lsn, int *num_fpi,
+									   uint64 *fpi_bytes,
 									   bool *topxid_included);
 static bool XLogCompressBackupBlock(const PageData *page, uint16 hole_offset,
 									uint16 hole_length, void *dest, uint16 *dlen);
@@ -258,7 +261,8 @@ XLogRegisterBuffer(uint8 block_id, Buffer buffer, uint8 flags)
 	 */
 #ifdef USE_ASSERT_CHECKING
 	if (!(flags & REGBUF_NO_CHANGE))
-		Assert(BufferIsExclusiveLocked(buffer) && BufferIsDirty(buffer));
+		Assert(BufferIsLockedByMeInMode(buffer, BUFFER_LOCK_EXCLUSIVE) &&
+			   BufferIsDirty(buffer));
 #endif
 
 	if (block_id >= max_registered_block_id)
@@ -509,6 +513,7 @@ XLogInsert(RmgrId rmid, uint8 info)
 		XLogRecPtr	fpw_lsn;
 		XLogRecData *rdt;
 		int			num_fpi = 0;
+		uint64		fpi_bytes = 0;
 
 		/*
 		 * Get values needed to decide whether to do full-page writes. Since
@@ -518,10 +523,11 @@ XLogInsert(RmgrId rmid, uint8 info)
 		GetFullPageWriteInfo(&RedoRecPtr, &doPageWrites);
 
 		rdt = XLogRecordAssemble(rmid, info, RedoRecPtr, doPageWrites,
-								 &fpw_lsn, &num_fpi, &topxid_included);
+								 &fpw_lsn, &num_fpi, &fpi_bytes,
+								 &topxid_included);
 
 		EndPos = XLogInsertRecord(rdt, fpw_lsn, curinsert_flags, num_fpi,
-								  topxid_included);
+								  fpi_bytes, topxid_included);
 	} while (EndPos == InvalidXLogRecPtr);
 
 	XLogResetInsertion();
@@ -559,7 +565,8 @@ XLogSimpleInsertInt64(RmgrId rmid, uint8 info, int64 value)
 static XLogRecData *
 XLogRecordAssemble(RmgrId rmid, uint8 info,
 				   XLogRecPtr RedoRecPtr, bool doPageWrites,
-				   XLogRecPtr *fpw_lsn, int *num_fpi, bool *topxid_included)
+				   XLogRecPtr *fpw_lsn, int *num_fpi, uint64 *fpi_bytes,
+				   bool *topxid_included)
 {
 	XLogRecData *rdt;
 	uint64		total_len = 0;
@@ -795,6 +802,9 @@ XLogRecordAssemble(RmgrId rmid, uint8 info,
 			}
 
 			total_len += bimg.length;
+
+			/* Track the WAL full page images in bytes */
+			*fpi_bytes += bimg.length;
 		}
 
 		if (needs_data)

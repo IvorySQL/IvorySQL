@@ -42,6 +42,7 @@ AfterTriggersTableData
 AfterTriggersTransData
 Agg
 AggClauseCosts
+AggClauseInfo
 AggInfo
 AggPath
 AggSplit
@@ -1075,6 +1076,7 @@ GinQualCounts
 GinScanEntry
 GinScanItem
 GinScanKey
+GinScanKeyData
 GinScanOpaque
 GinScanOpaqueData
 GinSegmentInfo
@@ -1110,6 +1112,7 @@ GroupPathExtraData
 GroupResultPath
 GroupState
 GroupVarInfo
+GroupingExprInfo
 GroupingFunc
 GroupingSet
 GroupingSetData
@@ -1319,7 +1322,6 @@ IsForeignRelUpdatable_function
 IsForeignScanParallelSafe_function
 IsoConnInfo
 IspellDict
-Item
 ItemArray
 ItemId
 ItemIdData
@@ -1756,6 +1758,7 @@ NextValueExpr
 Node
 NodeTag
 NonEmptyRange
+NoneCompressorState
 Notification
 NotificationList
 NotifyStmt
@@ -2352,12 +2355,15 @@ PsqlScanStateData
 PsqlSettings
 Publication
 PublicationActions
+PublicationAllObjSpec
+PublicationAllObjType
 PublicationDesc
 PublicationInfo
 PublicationObjSpec
 PublicationObjSpecType
 PublicationPartOpt
 PublicationRelInfo
+PublicationRelKind
 PublicationSchemaInfo
 PublicationTable
 PublishGencolsType
@@ -2473,6 +2479,7 @@ ReindexObjectType
 ReindexParams
 ReindexStmt
 ReindexType
+RelAggInfo
 RelFileLocator
 RelFileLocatorBackend
 RelFileNumber
@@ -2568,6 +2575,7 @@ RestrictInfo
 Result
 ResultRelInfo
 ResultState
+ResultType
 RetainDeadTuplesData
 RetainDeadTuplesPhase
 ReturnSetInfo
@@ -2603,6 +2611,7 @@ RtlNtStatusToDosError_t
 RuleInfo
 RuleLock
 RuleStmt
+RunMode
 RunningTransactions
 RunningTransactionsData
 SASLStatus
@@ -2683,6 +2692,7 @@ SecLabelStmt
 SeenRelsEntry
 SelectLimit
 SelectStmt
+SelectStmtPassthrough
 Selectivity
 SelfJoinCandidate
 SemTPadded
@@ -2914,7 +2924,7 @@ SyncRepStandbyData
 SyncRequestHandler
 SyncRequestType
 SyncStandbySlotsConfigData
-SyncingTablesState
+SyncingRelationsState
 SysFKRelationship
 SysScanDesc
 SyscacheCallbackFunction
@@ -3496,6 +3506,8 @@ cb_cleanup_dir
 cb_options
 cb_tablespace
 cb_tablespace_mapping
+char16_t
+char32_t
 check_agg_arguments_context
 check_function_callback
 check_network_data
@@ -3613,6 +3625,7 @@ fe_scram_state
 fe_scram_state_enum
 fetch_range_request
 file_action_t
+file_content_type_t
 file_entry_t
 file_type_t
 filehash_hash
@@ -3635,10 +3648,6 @@ float8
 float8KEY
 floating_decimal_32
 floating_decimal_64
-fmAggrefPtr
-fmExprContextCallbackFunction
-fmNodePtr
-fmStringInfo
 fmgr_hook_type
 foreign_glob_cxt
 foreign_loc_cxt
@@ -3687,7 +3696,6 @@ gss_key_value_set_desc
 gss_name_t
 gtrgm_consistent_cache
 gzFile
-hbaPort
 heap_page_items_state
 help_handler
 hlCheck
@@ -3803,7 +3811,6 @@ memoize_iterator
 metastring
 missing_cache_key
 mix_data_t
-mixedStruct
 mode_t
 movedb_failure_params
 multirange_bsearch_comparison

@@ -126,8 +126,7 @@ _bt_dedup_pass(Relation rel, Buffer buf, IndexTuple newitem, Size newitemsz,
 		Size		hitemsz = ItemIdGetLength(hitemid);
 		IndexTuple	hitem = (IndexTuple) PageGetItem(page, hitemid);
 
-		if (PageAddItem(newpage, (Item) hitem, hitemsz, P_HIKEY,
-						false, false) == InvalidOffsetNumber)
+		if (PageAddItem(newpage, hitem, hitemsz, P_HIKEY, false, false) == InvalidOffsetNumber)
 			elog(ERROR, "deduplication failed to add highkey");
 	}
 
@@ -570,8 +569,7 @@ _bt_dedup_finish_pending(Page newpage, BTDedupState state)
 		tuplesz = IndexTupleSize(state->base);
 		Assert(tuplesz == MAXALIGN(IndexTupleSize(state->base)));
 		Assert(tuplesz <= BTMaxItemSize);
-		if (PageAddItem(newpage, (Item) state->base, tuplesz, tupoff,
-						false, false) == InvalidOffsetNumber)
+		if (PageAddItem(newpage, state->base, tuplesz, tupoff, false, false) == InvalidOffsetNumber)
 			elog(ERROR, "deduplication failed to add tuple to page");
 
 		spacesaving = 0;
@@ -590,8 +588,7 @@ _bt_dedup_finish_pending(Page newpage, BTDedupState state)
 
 		Assert(tuplesz == MAXALIGN(IndexTupleSize(final)));
 		Assert(tuplesz <= BTMaxItemSize);
-		if (PageAddItem(newpage, (Item) final, tuplesz, tupoff, false,
-						false) == InvalidOffsetNumber)
+		if (PageAddItem(newpage, final, tuplesz, tupoff, false, false) == InvalidOffsetNumber)
 			elog(ERROR, "deduplication failed to add tuple to page");
 
 		pfree(final);
@@ -862,7 +859,7 @@ _bt_singleval_fillfactor(Page page, BTDedupState state, Size newitemsz)
  * returned posting list tuple (they must be included in htids array.)
  */
 IndexTuple
-_bt_form_posting(IndexTuple base, ItemPointer htids, int nhtids)
+_bt_form_posting(IndexTuple base, const ItemPointerData *htids, int nhtids)
 {
 	uint32		keysize,
 				newsize;

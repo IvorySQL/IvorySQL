@@ -24,8 +24,8 @@
 #include "utils/lsyscache.h"
 #include "utils/memdebug.h"
 #include "utils/memutils.h"
+#include "varatt.h"
 #include "utils/ora_compatible.h"
-
 
 
 static void printtup_startup(DestReceiver *self, int operation,

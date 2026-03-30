@@ -1036,9 +1036,24 @@ ERROR:  cannot use generated column in partition key
 LINE 1: ...NERATED ALWAYS AS (f2 * 2) VIRTUAL) PARTITION BY RANGE (f3);
                                                                    ^
 DETAIL:  Column "f3" is a generated column.
+CREATE TABLE gtest_part_key (f1 date NOT NULL, f2 bigint, f3 bigint GENERATED ALWAYS AS (f2 * 2) VIRTUAL) PARTITION BY RANGE ((f3));
+ERROR:  cannot use generated column in partition key
+LINE 1: ...RATED ALWAYS AS (f2 * 2) VIRTUAL) PARTITION BY RANGE ((f3));
+                                                                 ^
+DETAIL:  Column "f3" is a generated column.
 CREATE TABLE gtest_part_key (f1 date NOT NULL, f2 bigint, f3 bigint GENERATED ALWAYS AS (f2 * 2) VIRTUAL) PARTITION BY RANGE ((f3 * 3));
 ERROR:  cannot use generated column in partition key
 LINE 1: ...D ALWAYS AS (f2 * 2) VIRTUAL) PARTITION BY RANGE ((f3 * 3));
+                                                             ^
+DETAIL:  Column "f3" is a generated column.
+CREATE TABLE gtest_part_key (f1 date NOT NULL, f2 bigint, f3 bigint GENERATED ALWAYS AS (f2 * 2) VIRTUAL) PARTITION BY RANGE ((gtest_part_key));
+ERROR:  cannot use generated column in partition key
+LINE 1: ...D ALWAYS AS (f2 * 2) VIRTUAL) PARTITION BY RANGE ((gtest_par...
+                                                             ^
+DETAIL:  Column "f3" is a generated column.
+CREATE TABLE gtest_part_key (f1 date NOT NULL, f2 bigint, f3 bigint GENERATED ALWAYS AS (f2 * 2) VIRTUAL) PARTITION BY RANGE ((gtest_part_key is not null));
+ERROR:  cannot use generated column in partition key
+LINE 1: ...D ALWAYS AS (f2 * 2) VIRTUAL) PARTITION BY RANGE ((gtest_par...
                                                              ^
 DETAIL:  Column "f3" is a generated column.
 -- ALTER TABLE ... ADD COLUMN
@@ -1570,17 +1585,18 @@ where coalesce(t2.b, 1) = 2 or t1.a is null;
 -- Ensure that the generation expressions are wrapped into PHVs if needed
 explain (verbose, costs off)
 select t2.* from gtest32 t1 left join gtest32 t2 on false;
-                      QUERY PLAN                      
-------------------------------------------------------
+                          QUERY PLAN                           
+---------------------------------------------------------------
  Nested Loop Left Join
-   Output: a, (a * 2), (20), (COALESCE(a, 100)), e
+   Output: t2.a, (t2.a * 2), (20), (COALESCE(t2.a, 100)), t2.e
    Join Filter: false
    ->  Seq Scan on generated_virtual_tests.gtest32 t1
          Output: t1.a, t1.b, t1.c, t1.d, t1.e
    ->  Result
-         Output: a, e, 20, COALESCE(a, 100)
+         Output: t2.a, t2.e, 20, COALESCE(t2.a, 100)
+         Replaces: Scan on t2
          One-Time Filter: false
-(8 rows)
+(9 rows)
 
 select t2.* from gtest32 t1 left join gtest32 t2 on false;
  a | b | c | d | e 
@@ -1636,3 +1652,28 @@ select 1 from gtest32 t1 where exists
 (1 row)
 
 drop table gtest32;
+-- Ensure that virtual generated columns in constraint expressions are expanded
+create table gtest33 (a int, b int generated always as (a * 2) virtual not null, check (b > 10));
+set constraint_exclusion to on;
+-- should get a dummy Result, not a seq scan
+explain (costs off)
+select * from gtest33 where b < 10;
+         QUERY PLAN          
+-----------------------------
+ Result
+   Replaces: Scan on gtest33
+   One-Time Filter: false
+(3 rows)
+
+-- should get a dummy Result, not a seq scan
+explain (costs off)
+select * from gtest33 where b is null;
+         QUERY PLAN          
+-----------------------------
+ Result
+   Replaces: Scan on gtest33
+   One-Time Filter: false
+(3 rows)
+
+reset constraint_exclusion;
+drop table gtest33;

@@ -29,7 +29,6 @@
 #include "catalog/index.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_inherits.h"
-#include "commands/dbcommands.h"
 #include "commands/progress.h"
 #include "commands/tablecmds.h"
 #include "commands/vacuum.h"
@@ -139,7 +138,7 @@ analyze_rel(Oid relid, RangeVar *relation,
 	 * Make sure to generate only logs for ANALYZE in this case.
 	 */
 	onerel = vacuum_open_relation(relid, relation, params.options & ~(VACOPT_VACUUM),
-								  params.log_min_duration >= 0,
+								  params.log_analyze_min_duration >= 0,
 								  ShareUpdateExclusiveLock);
 
 	/* leave if relation could not be opened or locked */
@@ -311,7 +310,7 @@ do_analyze_rel(Relation onerel, const VacuumParams params,
 
 	verbose = (params.options & VACOPT_VERBOSE) != 0;
 	instrument = (verbose || (AmAutoVacuumWorkerProcess() &&
-							  params.log_min_duration >= 0));
+							  params.log_analyze_min_duration >= 0));
 	if (inh)
 		ereport(elevel,
 				(errmsg("analyzing \"%s.%s\" inheritance tree",
@@ -736,9 +735,9 @@ do_analyze_rel(Relation onerel, const VacuumParams params,
 	{
 		TimestampTz endtime = GetCurrentTimestamp();
 
-		if (verbose || params.log_min_duration == 0 ||
+		if (verbose || params.log_analyze_min_duration == 0 ||
 			TimestampDifferenceExceeds(starttime, endtime,
-									   params.log_min_duration))
+									   params.log_analyze_min_duration))
 		{
 			long		delay_in_ms;
 			WalUsage	walusage;
@@ -832,10 +831,11 @@ do_analyze_rel(Relation onerel, const VacuumParams params,
 							 total_blks_read,
 							 total_blks_dirtied);
 			appendStringInfo(&buf,
-							 _("WAL usage: %" PRId64 " records, %" PRId64 " full page images, %" PRIu64 " bytes, %" PRId64 " buffers full\n"),
+							 _("WAL usage: %" PRId64 " records, %" PRId64 " full page images, %" PRIu64 " bytes, %" PRIu64 " full page image bytes, %" PRId64 " buffers full\n"),
 							 walusage.wal_records,
 							 walusage.wal_fpi,
 							 walusage.wal_bytes,
+							 walusage.wal_fpi_bytes,
 							 walusage.wal_buffers_full);
 			appendStringInfo(&buf, _("system usage: %s"), pg_rusage_show(&ru0));
 
@@ -1712,10 +1712,9 @@ update_attstats(Oid relid, bool inh, int natts, VacAttrStats **vacattrstats)
 		i = Anum_pg_statistic_stanumbers1 - 1;
 		for (k = 0; k < STATISTIC_NUM_SLOTS; k++)
 		{
-			int			nnum = stats->numnumbers[k];
-
-			if (nnum > 0)
+			if (stats->stanumbers[k] != NULL)
 			{
+				int			nnum = stats->numnumbers[k];
 				Datum	   *numdatums = (Datum *) palloc(nnum * sizeof(Datum));
 				ArrayType  *arry;
 
@@ -1733,7 +1732,7 @@ update_attstats(Oid relid, bool inh, int natts, VacAttrStats **vacattrstats)
 		i = Anum_pg_statistic_stavalues1 - 1;
 		for (k = 0; k < STATISTIC_NUM_SLOTS; k++)
 		{
-			if (stats->numvalues[k] > 0)
+			if (stats->stavalues[k] != NULL)
 			{
 				ArrayType  *arry;
 

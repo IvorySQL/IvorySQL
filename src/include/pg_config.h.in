@@ -472,6 +472,9 @@
 /* Define to 1 if you have the <termios.h> header file. */
 #undef HAVE_TERMIOS_H
 
+/* Define to 1 if you have the <uchar.h> header file. */
+#undef HAVE_UCHAR_H
+
 /* Define to 1 if curl_global_init() is guaranteed to be thread-safe. */
 #undef HAVE_THREADSAFE_CURL_GLOBAL_INIT
 
@@ -810,10 +813,6 @@
 #ifndef __cplusplus
 #undef inline
 #endif
-
-/* Define to keyword to use for C99 restrict support, or to nothing if not
-   supported */
-#undef pg_restrict
 
 /* Define to the equivalent of the C99 'restrict' keyword, or to
    nothing if this is not supported.  Do not define if restrict is

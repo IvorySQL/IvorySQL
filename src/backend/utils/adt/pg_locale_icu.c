@@ -128,6 +128,11 @@ char_is_cased_icu(char ch, pg_locale_t locale)
 		(ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z');
 }
 
+/*
+ * XXX: many of the functions below rely on casts directly from pg_wchar to
+ * UChar32, which is correct for the UTF-8 encoding, but not in general.
+ */
+
 static pg_wchar
 toupper_icu(pg_wchar wc, pg_locale_t locale)
 {
@@ -212,6 +217,12 @@ wc_isspace_icu(pg_wchar wc, pg_locale_t locale)
 	return u_isspace(wc);
 }
 
+static bool
+wc_isxdigit_icu(pg_wchar wc, pg_locale_t locale)
+{
+	return u_isxdigit(wc);
+}
+
 static const struct ctype_methods ctype_methods_icu = {
 	.strlower = strlower_icu,
 	.strtitle = strtitle_icu,
@@ -226,6 +237,7 @@ static const struct ctype_methods ctype_methods_icu = {
 	.wc_isprint = wc_isprint_icu,
 	.wc_ispunct = wc_ispunct_icu,
 	.wc_isspace = wc_isspace_icu,
+	.wc_isxdigit = wc_isxdigit_icu,
 	.char_is_cased = char_is_cased_icu,
 	.wc_toupper = toupper_icu,
 	.wc_tolower = tolower_icu,
@@ -290,8 +302,8 @@ create_pg_locale_icu(Oid collid, MemoryContext context)
 	collator = make_icu_collator(iculocstr, icurules);
 
 	result = MemoryContextAllocZero(context, sizeof(struct pg_locale_struct));
-	result->info.icu.locale = MemoryContextStrdup(context, iculocstr);
-	result->info.icu.ucol = collator;
+	result->icu.locale = MemoryContextStrdup(context, iculocstr);
+	result->icu.ucol = collator;
 	result->deterministic = deterministic;
 	result->collate_is_c = false;
 	result->ctype_is_c = false;
@@ -571,7 +583,7 @@ strncoll_icu_utf8(const char *arg1, ssize_t len1, const char *arg2, ssize_t len2
 	Assert(GetDatabaseEncoding() == PG_UTF8);
 
 	status = U_ZERO_ERROR;
-	result = ucol_strcollUTF8(locale->info.icu.ucol,
+	result = ucol_strcollUTF8(locale->icu.ucol,
 							  arg1, len1,
 							  arg2, len2,
 							  &status);
@@ -608,7 +620,7 @@ strnxfrm_icu(char *dest, size_t destsize, const char *src, ssize_t srclen,
 
 	ulen = uchar_convert(icu_converter, uchar, ulen + 1, src, srclen);
 
-	result_bsize = ucol_getSortKey(locale->info.icu.ucol,
+	result_bsize = ucol_getSortKey(locale->icu.ucol,
 								   uchar, ulen,
 								   (uint8_t *) dest, destsize);
 
@@ -644,7 +656,7 @@ strnxfrm_prefix_icu_utf8(char *dest, size_t destsize,
 	uiter_setUTF8(&iter, src, srclen);
 	state[0] = state[1] = 0;	/* won't need that again */
 	status = U_ZERO_ERROR;
-	result = ucol_nextSortKeyPart(locale->info.icu.ucol,
+	result = ucol_nextSortKeyPart(locale->icu.ucol,
 								  &iter,
 								  state,
 								  (uint8_t *) dest,
@@ -755,7 +767,7 @@ icu_convert_case(ICU_Convert_Func func, pg_locale_t mylocale,
 	*buff_dest = palloc(len_dest * sizeof(**buff_dest));
 	status = U_ZERO_ERROR;
 	len_dest = func(*buff_dest, len_dest, buff_source, len_source,
-					mylocale->info.icu.locale, &status);
+					mylocale->icu.locale, &status);
 	if (status == U_BUFFER_OVERFLOW_ERROR)
 	{
 		/* try again with adjusted length */
@@ -763,7 +775,7 @@ icu_convert_case(ICU_Convert_Func func, pg_locale_t mylocale,
 		*buff_dest = palloc(len_dest * sizeof(**buff_dest));
 		status = U_ZERO_ERROR;
 		len_dest = func(*buff_dest, len_dest, buff_source, len_source,
-						mylocale->info.icu.locale, &status);
+						mylocale->icu.locale, &status);
 	}
 	if (U_FAILURE(status))
 		ereport(ERROR,
@@ -859,7 +871,7 @@ strncoll_icu(const char *arg1, ssize_t len1,
 	ulen1 = uchar_convert(icu_converter, uchar1, ulen1 + 1, arg1, len1);
 	ulen2 = uchar_convert(icu_converter, uchar2, ulen2 + 1, arg2, len2);
 
-	result = ucol_strcoll(locale->info.icu.ucol,
+	result = ucol_strcoll(locale->icu.ucol,
 						  uchar1, ulen1,
 						  uchar2, ulen2);
 
@@ -904,7 +916,7 @@ strnxfrm_prefix_icu(char *dest, size_t destsize,
 	uiter_setString(&iter, uchar, ulen);
 	state[0] = state[1] = 0;	/* won't need that again */
 	status = U_ZERO_ERROR;
-	result_bsize = ucol_nextSortKeyPart(locale->info.icu.ucol,
+	result_bsize = ucol_nextSortKeyPart(locale->icu.ucol,
 										&iter,
 										state,
 										(uint8_t *) dest,

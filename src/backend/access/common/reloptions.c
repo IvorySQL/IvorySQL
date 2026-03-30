@@ -322,8 +322,17 @@ static relopt_int intRelOpts[] =
 	{
 		{
 			"log_autovacuum_min_duration",
-			"Sets the minimum execution time above which autovacuum actions will be logged",
+			"Sets the minimum execution time above which vacuum actions by autovacuum will be logged",
 			RELOPT_KIND_HEAP | RELOPT_KIND_TOAST,
+			ShareUpdateExclusiveLock
+		},
+		-1, -1, INT_MAX
+	},
+	{
+		{
+			"log_autoanalyze_min_duration",
+			"Sets the minimum execution time above which analyze actions by autovacuum will be logged",
+			RELOPT_KIND_HEAP,
 			ShareUpdateExclusiveLock
 		},
 		-1, -1, INT_MAX
@@ -1179,7 +1188,7 @@ transformRelOptions(Datum oldOptions, List *defList, const char *nameSpace,
 	astate = NULL;
 
 	/* Copy any oldOptions that aren't to be replaced */
-	if (PointerIsValid(DatumGetPointer(oldOptions)))
+	if (DatumGetPointer(oldOptions) != NULL)
 	{
 		ArrayType  *array = DatumGetArrayTypeP(oldOptions);
 		Datum	   *oldoptions;
@@ -1360,7 +1369,7 @@ untransformRelOptions(Datum options)
 	int			i;
 
 	/* Nothing to do if no options */
-	if (!PointerIsValid(DatumGetPointer(options)))
+	if (DatumGetPointer(options) == NULL)
 		return result;
 
 	array = DatumGetArrayTypeP(options);
@@ -1552,7 +1561,7 @@ parseRelOptions(Datum options, bool validate, relopt_kind kind,
 	}
 
 	/* Done if no options */
-	if (PointerIsValid(DatumGetPointer(options)))
+	if (DatumGetPointer(options) != NULL)
 		parseRelOptionsInternal(options, validate, reloptions, numoptions);
 
 	*numrelopts = numoptions;
@@ -1898,7 +1907,9 @@ default_reloptions(Datum reloptions, bool validate, relopt_kind kind)
 		{"autovacuum_multixact_freeze_table_age", RELOPT_TYPE_INT,
 		offsetof(StdRdOptions, autovacuum) + offsetof(AutoVacOpts, multixact_freeze_table_age)},
 		{"log_autovacuum_min_duration", RELOPT_TYPE_INT,
-		offsetof(StdRdOptions, autovacuum) + offsetof(AutoVacOpts, log_min_duration)},
+		offsetof(StdRdOptions, autovacuum) + offsetof(AutoVacOpts, log_vacuum_min_duration)},
+		{"log_autoanalyze_min_duration", RELOPT_TYPE_INT,
+		offsetof(StdRdOptions, autovacuum) + offsetof(AutoVacOpts, log_analyze_min_duration)},
 		{"toast_tuple_target", RELOPT_TYPE_INT,
 		offsetof(StdRdOptions, toast_tuple_target)},
 		{"autovacuum_vacuum_cost_delay", RELOPT_TYPE_REAL,
@@ -2095,7 +2106,7 @@ index_reloptions(amoptions_function amoptions, Datum reloptions, bool validate)
 	Assert(amoptions != NULL);
 
 	/* Assume function is strict */
-	if (!PointerIsValid(DatumGetPointer(reloptions)))
+	if (DatumGetPointer(reloptions) == NULL)
 		return NULL;
 
 	return amoptions(reloptions, validate);

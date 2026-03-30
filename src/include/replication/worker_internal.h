@@ -94,6 +94,9 @@ typedef struct LogicalRepWorker
 	 * The logical replication launcher manages an internal replication slot
 	 * named "pg_conflict_detection". It asynchronously collects this ID to
 	 * decide when to advance the xmin value of the slot.
+	 *
+	 * This ID is set to InvalidTransactionId when the apply worker stops
+	 * retaining information needed for conflict detection.
 	 */
 	TransactionId oldest_nonremovable_xid;
 
@@ -248,8 +251,11 @@ extern PGDLLIMPORT bool in_remote_transaction;
 
 extern PGDLLIMPORT bool InitializingApplyWorker;
 
+extern PGDLLIMPORT List *table_states_not_ready;
+
 extern void logicalrep_worker_attach(int slot);
-extern LogicalRepWorker *logicalrep_worker_find(Oid subid, Oid relid,
+extern LogicalRepWorker *logicalrep_worker_find(LogicalRepWorkerType wtype,
+												Oid subid, Oid relid,
 												bool only_running);
 extern List *logicalrep_workers_find(Oid subid, bool only_running,
 									 bool acquire_lock);
@@ -258,9 +264,11 @@ extern bool logicalrep_worker_launch(LogicalRepWorkerType wtype,
 									 Oid userid, Oid relid,
 									 dsm_handle subworker_dsm,
 									 bool retain_dead_tuples);
-extern void logicalrep_worker_stop(Oid subid, Oid relid);
+extern void logicalrep_worker_stop(LogicalRepWorkerType wtype, Oid subid,
+								   Oid relid);
 extern void logicalrep_pa_worker_stop(ParallelApplyWorkerInfo *winfo);
-extern void logicalrep_worker_wakeup(Oid subid, Oid relid);
+extern void logicalrep_worker_wakeup(LogicalRepWorkerType wtype, Oid subid,
+									 Oid relid);
 extern void logicalrep_worker_wakeup_ptr(LogicalRepWorker *worker);
 
 extern int	logicalrep_sync_worker_count(Oid subid);
@@ -269,11 +277,16 @@ extern void ReplicationOriginNameForLogicalRep(Oid suboid, Oid relid,
 											   char *originname, Size szoriginname);
 
 extern bool AllTablesyncsReady(void);
+extern bool HasSubscriptionTablesCached(void);
 extern void UpdateTwoPhaseState(Oid suboid, char new_state);
 
-extern void process_syncing_tables(XLogRecPtr current_lsn);
-extern void invalidate_syncing_table_states(Datum arg, int cacheid,
-											uint32 hashvalue);
+extern void ProcessSyncingTablesForSync(XLogRecPtr current_lsn);
+extern void ProcessSyncingTablesForApply(XLogRecPtr current_lsn);
+
+pg_noreturn extern void FinishSyncWorker(void);
+extern void InvalidateSyncingRelStates(Datum arg, int cacheid, uint32 hashvalue);
+extern void ProcessSyncingRelations(XLogRecPtr current_lsn);
+extern bool FetchRelationStates(bool *started_tx);
 
 extern void stream_start_internal(TransactionId xid, bool first_segment);
 extern void stream_stop_internal(TransactionId xid);

@@ -511,7 +511,7 @@ extern unsigned int SpGistGetInnerTypeSize(SpGistTypeDesc *att, Datum datum);
 extern Size SpGistGetLeafTupleSize(TupleDesc tupleDescriptor,
 								   const Datum *datums, const bool *isnulls);
 extern SpGistLeafTuple spgFormLeafTuple(SpGistState *state,
-										ItemPointer heapPtr,
+										const ItemPointerData *heapPtr,
 										const Datum *datums, const bool *isnulls);
 extern SpGistNodeTuple spgFormNodeTuple(SpGistState *state,
 										Datum label, bool isnull);
@@ -526,7 +526,7 @@ extern void spgDeformLeafTuple(SpGistLeafTuple tup, TupleDesc tupleDescriptor,
 extern Datum *spgExtractNodeLabels(SpGistState *state,
 								   SpGistInnerTuple innerTuple);
 extern OffsetNumber SpGistPageAddNewItem(SpGistState *state, Page page,
-										 Item item, Size size,
+										 const void *item, Size size,
 										 OffsetNumber *startOffset,
 										 bool errorOK);
 extern bool spgproperty(Oid index_oid, int attno,
@@ -541,7 +541,7 @@ extern void spgPageIndexMultiDelete(SpGistState *state, Page page,
 									int firststate, int reststate,
 									BlockNumber blkno, OffsetNumber offnum);
 extern bool spgdoinsert(Relation index, SpGistState *state,
-						ItemPointer heapPtr, Datum *datums, bool *isnulls);
+						const ItemPointerData *heapPtr, const Datum *datums, const bool *isnulls);
 
 /* spgproc.c */
 extern double *spg_key_orderbys_distances(Datum key, bool isLeaf,

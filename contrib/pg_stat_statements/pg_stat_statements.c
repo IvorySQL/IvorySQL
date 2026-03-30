@@ -48,6 +48,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "access/htup_details.h"
 #include "access/parallel.h"
 #include "catalog/pg_authid.h"
 #include "common/int.h"
@@ -144,7 +145,6 @@ typedef enum pgssStoreKind
  * If you add a new key to this struct, make sure to teach pgss_store() to
  * zero the padding bytes.  Otherwise, things will break, because pgss_hash is
  * created using HASH_BLOBS, and thus tag_hash is used to hash this.
-
  */
 typedef struct pgssHashKey
 {
@@ -343,7 +343,8 @@ static void pgss_post_parse_analyze(ParseState *pstate, Query *query,
 static PlannedStmt *pgss_planner(Query *parse,
 								 const char *query_string,
 								 int cursorOptions,
-								 ParamListInfo boundParams);
+								 ParamListInfo boundParams,
+								 ExplainState *es);
 static void pgss_ExecutorStart(QueryDesc *queryDesc, int eflags);
 static void pgss_ExecutorRun(QueryDesc *queryDesc,
 							 ScanDirection direction,
@@ -901,7 +902,8 @@ static PlannedStmt *
 pgss_planner(Query *parse,
 			 const char *query_string,
 			 int cursorOptions,
-			 ParamListInfo boundParams)
+			 ParamListInfo boundParams,
+			 ExplainState *es)
 {
 	PlannedStmt *result;
 
@@ -936,10 +938,10 @@ pgss_planner(Query *parse,
 		{
 			if (prev_planner_hook)
 				result = prev_planner_hook(parse, query_string, cursorOptions,
-										   boundParams);
+										   boundParams, es);
 			else
 				result = standard_planner(parse, query_string, cursorOptions,
-										  boundParams);
+										  boundParams, es);
 		}
 		PG_FINALLY();
 		{
@@ -985,10 +987,10 @@ pgss_planner(Query *parse,
 		{
 			if (prev_planner_hook)
 				result = prev_planner_hook(parse, query_string, cursorOptions,
-										   boundParams);
+										   boundParams, es);
 			else
 				result = standard_planner(parse, query_string, cursorOptions,
-										  boundParams);
+										  boundParams, es);
 		}
 		PG_FINALLY();
 		{
@@ -2959,9 +2961,8 @@ generate_normalized_query(JumbleState *jstate, const char *query,
  * have originated from within the authoritative parser, this should not be
  * a problem.
  *
- * Duplicate constant pointers are possible, and will have their lengths
- * marked as '-1', so that they are later ignored.  (Actually, we assume the
- * lengths were initialized as -1 to start with, and don't change them here.)
+ * Multiple constants can have the same location.  We reset lengths of those
+ * past the first to -1 so that they can later be ignored.
  *
  * If query_loc > 0, then "query" has been advanced by that much compared to
  * the original string start, so we need to translate the provided locations
@@ -2992,8 +2993,6 @@ standard_fill_in_constant_lengths(JumbleState *jstate, const char *query,
 	core_yy_extra_type yyextra;
 	core_YYSTYPE yylval;
 	YYLTYPE		yylloc;
-	int			last_loc = -1;
-	int			i;
 
 	/*
 	 * Sort the records by location so that we can process them in order while
@@ -3014,23 +3013,29 @@ standard_fill_in_constant_lengths(JumbleState *jstate, const char *query,
 	yyextra.escape_string_warning = false;
 
 	/* Search for each constant, in sequence */
-	for (i = 0; i < jstate->clocations_count; i++)
+	for (int i = 0; i < jstate->clocations_count; i++)
 	{
-		int			loc = locs[i].location;
+		int			loc;
 		int			tok;
 
-		/* Adjust recorded location if we're dealing with partial string */
-		loc -= query_loc;
-
-		Assert(loc >= 0);
+		/* Ignore constants after the first one in the same location */
+		if (i > 0 && locs[i].location == locs[i - 1].location)
+		{
+			locs[i].length = -1;
+			continue;
+		}
 
 		if (locs[i].squashed)
 			continue;			/* squashable list, ignore */
 
-		if (loc <= last_loc)
-			continue;			/* Duplicate constant, ignore */
+		/* Adjust recorded location if we're dealing with partial string */
+		loc = locs[i].location - query_loc;
+		Assert(loc >= 0);
 
-		/* Lex tokens until we find the desired constant */
+		/*
+		 * We have a valid location for a constant that's not a dupe. Lex
+		 * tokens until we find the desired constant.
+		 */
 		for (;;)
 		{
 			tok = core_yylex(&yylval, &yylloc, yyscanner);
@@ -3076,8 +3081,6 @@ standard_fill_in_constant_lengths(JumbleState *jstate, const char *query,
 		/* If we hit end-of-string, give up, leaving remaining lengths -1 */
 		if (tok == 0)
 			break;
-
-		last_loc = loc;
 	}
 
 	scanner_finish(yyscanner);

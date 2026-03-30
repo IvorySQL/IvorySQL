@@ -32,7 +32,7 @@ tdr_init_shmem(void *ptr)
 {
 	TestDSMRegistryStruct *state = (TestDSMRegistryStruct *) ptr;
 
-	LWLockInitialize(&state->lck, LWLockNewTrancheId());
+	LWLockInitialize(&state->lck, LWLockNewTrancheId("test_dsm_registry"));
 	state->val = 0;
 }
 
@@ -45,7 +45,6 @@ tdr_attach_shmem(void)
 								   sizeof(TestDSMRegistryStruct),
 								   tdr_init_shmem,
 								   &found);
-	LWLockRegisterTranche(tdr_state->lck.tranche, "test_dsm_registry");
 }
 
 PG_FUNCTION_INFO_V1(set_val_in_shmem);

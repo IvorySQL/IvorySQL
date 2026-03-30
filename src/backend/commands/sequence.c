@@ -47,6 +47,7 @@
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
+#include "utils/pg_lsn.h"
 #include "utils/resowner.h"
 #include "utils/syscache.h"
 #include "utils/varlena.h"
@@ -417,8 +418,7 @@ fill_seq_fork_with_data(Relation rel, HeapTuple tuple, ForkNumber forkNum)
 
 	MarkBufferDirty(buf);
 
-	offnum = PageAddItem(page, (Item) tuple->t_data, tuple->t_len,
-						 InvalidOffsetNumber, false, false);
+	offnum = PageAddItem(page, tuple->t_data, tuple->t_len, InvalidOffsetNumber, false, false);
 	if (offnum != FirstOffsetNumber)
 		elog(ERROR, "failed to add sequence tuple to page");
 
@@ -2615,7 +2615,7 @@ pg_sequence_parameters(PG_FUNCTION_ARGS)
 
 
 /*
- * Return the sequence tuple.
+ * Return the sequence tuple along with its page LSN.
  *
  * This is primarily intended for use by pg_dump to gather sequence data
  * without needing to individually query each sequence relation.
@@ -2623,7 +2623,7 @@ pg_sequence_parameters(PG_FUNCTION_ARGS)
 Datum
 pg_get_sequence_data(PG_FUNCTION_ARGS)
 {
-#define PG_GET_SEQUENCE_DATA_COLS	2
+#define PG_GET_SEQUENCE_DATA_COLS	3
 	Oid			relid = PG_GETARG_OID(0);
 	SeqTable	elm;
 	Relation	seqrel;
@@ -2638,6 +2638,8 @@ pg_get_sequence_data(PG_FUNCTION_ARGS)
 					   INT8OID, -1, 0);
 	TupleDescInitEntry(resultTupleDesc, (AttrNumber) 2, "is_called",
 					   BOOLOID, -1, 0);
+	TupleDescInitEntry(resultTupleDesc, (AttrNumber) 3, "page_lsn",
+					   LSNOID, -1, 0);
 	resultTupleDesc = BlessTupleDesc(resultTupleDesc);
 
 	init_sequence(relid, &elm, &seqrel);
@@ -2653,11 +2655,14 @@ pg_get_sequence_data(PG_FUNCTION_ARGS)
 		Buffer		buf;
 		HeapTupleData seqtuple;
 		Form_pg_sequence_data seq;
+		Page		page;
 
 		seq = read_seq_tuple(seqrel, &buf, &seqtuple);
+		page = BufferGetPage(buf);
 
 		values[0] = Int64GetDatum(seq->last_value);
 		values[1] = BoolGetDatum(seq->is_called);
+		values[2] = LSNGetDatum(PageGetLSN(page));
 
 		UnlockReleaseBuffer(buf);
 	}
@@ -2740,7 +2745,7 @@ seq_redo(XLogReaderState *record)
 		elog(PANIC, "seq_redo: unknown op code %u", info);
 
 	buffer = XLogInitBufferForRedo(record, 0);
-	page = (Page) BufferGetPage(buffer);
+	page = BufferGetPage(buffer);
 
 	/*
 	 * We always reinit the page.  However, since this WAL record type is also
@@ -2760,8 +2765,7 @@ seq_redo(XLogReaderState *record)
 	item = (char *) xlrec + sizeof(xl_seq_rec);
 	itemsz = XLogRecGetDataLen(record) - sizeof(xl_seq_rec);
 
-	if (PageAddItem(localpage, (Item) item, itemsz,
-					FirstOffsetNumber, false, false) == InvalidOffsetNumber)
+	if (PageAddItem(localpage, item, itemsz, FirstOffsetNumber, false, false) == InvalidOffsetNumber)
 		elog(PANIC, "seq_redo: failed to add item to page");
 
 	PageSetLSN(localpage, lsn);

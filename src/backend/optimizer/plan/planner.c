@@ -75,6 +75,12 @@ bool		enable_distinct_reordering = true;
 /* Hook for plugins to get control in planner() */
 planner_hook_type planner_hook = NULL;
 
+/* Hook for plugins to get control after PlannerGlobal is initialized */
+planner_setup_hook_type planner_setup_hook = NULL;
+
+/* Hook for plugins to get control before PlannerGlobal is discarded */
+planner_shutdown_hook_type planner_shutdown_hook = NULL;
+
 /* Hook for plugins to get control when grouping_planner() plans upper rels */
 create_upper_paths_hook_type create_upper_paths_hook = NULL;
 
@@ -234,7 +240,6 @@ static void add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 									  RelOptInfo *partially_grouped_rel,
 									  const AggClauseCosts *agg_costs,
 									  grouping_sets_data *gd,
-									  double dNumGroups,
 									  GroupPathExtraData *extra);
 static RelOptInfo *create_partial_grouping_paths(PlannerInfo *root,
 												 RelOptInfo *grouped_rel,
@@ -283,6 +288,23 @@ static void create_partial_unique_paths(PlannerInfo *root, RelOptInfo *input_rel
  *
  *	   Query optimizer entry point
  *
+ * Inputs:
+ *	parse: an analyzed-and-rewritten query tree for an optimizable statement
+ *	query_string: source text for the query tree (used for error reports)
+ *	cursorOptions: bitmask of CURSOR_OPT_XXX flags, see parsenodes.h
+ *	boundParams: passed-in parameter values, or NULL if none
+ *	es: ExplainState if being called from EXPLAIN, else NULL
+ *
+ * The result is a PlannedStmt tree.
+ *
+ * PARAM_EXTERN Param nodes within the parse tree can be replaced by Consts
+ * using values from boundParams, if those values are marked PARAM_FLAG_CONST.
+ * Parameter values not so marked are still relied on for estimation purposes.
+ *
+ * The ExplainState pointer is not currently used by the core planner, but it
+ * is passed through to some planner hooks so that they can report information
+ * back to EXPLAIN extension hooks.
+ *
  * To support loadable plugins that monitor or modify planner behavior,
  * we provide a hook variable that lets a plugin get control before and
  * after the standard planning process.  The plugin would normally call
@@ -294,14 +316,16 @@ static void create_partial_unique_paths(PlannerInfo *root, RelOptInfo *input_rel
  *****************************************************************************/
 PlannedStmt *
 planner(Query *parse, const char *query_string, int cursorOptions,
-		ParamListInfo boundParams)
+		ParamListInfo boundParams, ExplainState *es)
 {
 	PlannedStmt *result;
 
 	if (planner_hook)
-		result = (*planner_hook) (parse, query_string, cursorOptions, boundParams);
+		result = (*planner_hook) (parse, query_string, cursorOptions,
+								  boundParams, es);
 	else
-		result = standard_planner(parse, query_string, cursorOptions, boundParams);
+		result = standard_planner(parse, query_string, cursorOptions,
+								  boundParams, es);
 
 	pgstat_report_plan_id(result->planId, false);
 
@@ -310,7 +334,7 @@ planner(Query *parse, const char *query_string, int cursorOptions,
 
 PlannedStmt *
 standard_planner(Query *parse, const char *query_string, int cursorOptions,
-				 ParamListInfo boundParams)
+				 ParamListInfo boundParams, ExplainState *es)
 {
 	PlannedStmt *result;
 	PlannerGlobal *glob;
@@ -441,8 +465,13 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 		tuple_fraction = 0.0;
 	}
 
+	/* Allow plugins to take control after we've initialized "glob" */
+	if (planner_setup_hook)
+		(*planner_setup_hook) (glob, parse, query_string, &tuple_fraction, es);
+
 	/* primary planning entry point (may recurse for subqueries) */
-	root = subquery_planner(glob, parse, NULL, false, tuple_fraction, NULL);
+	root = subquery_planner(glob, parse, NULL, NULL, false, tuple_fraction,
+							NULL);
 
 	/* Select best Path and turn it into a Plan */
 	final_rel = fetch_upper_rel(root, UPPERREL_FINAL, NULL);
@@ -618,6 +647,10 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 		if (jit_tuple_deforming)
 			result->jitFlags |= PGJIT_DEFORM;
 	}
+
+	/* Allow plugins to take control before we discard "glob" */
+	if (planner_shutdown_hook)
+		(*planner_shutdown_hook) (glob, parse, query_string, result);
 
 	if (glob->partition_directory != NULL)
 		DestroyPartitionDirectory(glob->partition_directory);
@@ -1047,6 +1080,7 @@ transform_rownum_to_limit(Query *parse)
  *
  * glob is the global state for the current planner run.
  * parse is the querytree produced by the parser & rewriter.
+ * plan_name is the name to assign to this subplan (NULL at the top level).
  * parent_root is the immediate parent Query's info (NULL at the top level).
  * hasRecursion is true if this is a recursive WITH query.
  * tuple_fraction is the fraction of tuples we expect will be retrieved.
@@ -1073,9 +1107,9 @@ transform_rownum_to_limit(Query *parse)
  *--------------------
  */
 PlannerInfo *
-subquery_planner(PlannerGlobal *glob, Query *parse, PlannerInfo *parent_root,
-				 bool hasRecursion, double tuple_fraction,
-				 SetOperationStmt *setops)
+subquery_planner(PlannerGlobal *glob, Query *parse, char *plan_name,
+				 PlannerInfo *parent_root, bool hasRecursion,
+				 double tuple_fraction, SetOperationStmt *setops)
 {
 	PlannerInfo *root;
 	List	   *newWithCheckOptions;
@@ -1090,6 +1124,7 @@ subquery_planner(PlannerGlobal *glob, Query *parse, PlannerInfo *parent_root,
 	root->parse = parse;
 	root->glob = glob;
 	root->query_level = parent_root ? parent_root->query_level + 1 : 1;
+	root->plan_name = plan_name;
 	root->parent_root = parent_root;
 	root->plan_params = NIL;
 	root->outer_params = NULL;
@@ -1120,12 +1155,12 @@ subquery_planner(PlannerGlobal *glob, Query *parse, PlannerInfo *parent_root,
 	root->hasAlternativeSubPlans = false;
 	root->placeholdersFrozen = false;
 	root->hasRecursion = hasRecursion;
+	root->assumeReplanning = false;
 	if (hasRecursion)
 		root->wt_param_id = assign_special_exec_param(root);
 	else
 		root->wt_param_id = -1;
 	root->non_recursive_path = NULL;
-	root->partColsUpdated = false;
 
 	/*
 	 * Create the top-level join domain.  This won't have valid contents until
@@ -1517,14 +1552,27 @@ subquery_planner(PlannerGlobal *glob, Query *parse, PlannerInfo *parent_root,
 		parse->hasTargetSRFs = expression_returns_set((Node *) parse->targetList);
 
 	/*
+	 * If we have grouping sets, expand the groupingSets tree of this query to
+	 * a flat list of grouping sets.  We need to do this before optimizing
+	 * HAVING, since we can't easily tell if there's an empty grouping set
+	 * until we have this representation.
+	 */
+	if (parse->groupingSets)
+	{
+		parse->groupingSets =
+			expand_grouping_sets(parse->groupingSets, parse->groupDistinct, -1);
+	}
+
+	/*
 	 * In some cases we may want to transfer a HAVING clause into WHERE. We
 	 * cannot do so if the HAVING clause contains aggregates (obviously) or
 	 * volatile functions (since a HAVING clause is supposed to be executed
-	 * only once per group).  We also can't do this if there are any nonempty
-	 * grouping sets and the clause references any columns that are nullable
-	 * by the grouping sets; moving such a clause into WHERE would potentially
-	 * change the results.  (If there are only empty grouping sets, then the
-	 * HAVING clause must be degenerate as discussed below.)
+	 * only once per group).  We also can't do this if there are any grouping
+	 * sets and the clause references any columns that are nullable by the
+	 * grouping sets; the nulled values of those columns are not available
+	 * before the grouping step.  (The test on groupClause might seem wrong,
+	 * but it's okay: it's just an optimization to avoid running pull_varnos
+	 * when there cannot be any Vars in the HAVING clause.)
 	 *
 	 * Also, it may be that the clause is so expensive to execute that we're
 	 * better off doing it only once per group, despite the loss of
@@ -1534,19 +1582,19 @@ subquery_planner(PlannerGlobal *glob, Query *parse, PlannerInfo *parent_root,
 	 * clause into WHERE, in hopes of eliminating tuples before aggregation
 	 * instead of after.
 	 *
-	 * If the query has explicit grouping then we can simply move such a
+	 * If the query has no empty grouping set then we can simply move such a
 	 * clause into WHERE; any group that fails the clause will not be in the
 	 * output because none of its tuples will reach the grouping or
-	 * aggregation stage.  Otherwise we must have a degenerate (variable-free)
-	 * HAVING clause, which we put in WHERE so that query_planner() can use it
-	 * in a gating Result node, but also keep in HAVING to ensure that we
-	 * don't emit a bogus aggregated row. (This could be done better, but it
-	 * seems not worth optimizing.)
+	 * aggregation stage.  Otherwise we have to keep the clause in HAVING to
+	 * ensure that we don't emit a bogus aggregated row.  But then the HAVING
+	 * clause must be degenerate (variable-free), so we can copy it into WHERE
+	 * so that query_planner() can use it in a gating Result node. (This could
+	 * be done better, but it seems not worth optimizing.)
 	 *
 	 * Note that a HAVING clause may contain expressions that are not fully
 	 * preprocessed.  This can happen if these expressions are part of
 	 * grouping items.  In such cases, they are replaced with GROUP Vars in
-	 * the parser and then replaced back after we've done with expression
+	 * the parser and then replaced back after we're done with expression
 	 * preprocessing on havingQual.  This is not an issue if the clause
 	 * remains in HAVING, because these expressions will be matched to lower
 	 * target items in setrefs.c.  However, if the clause is moved or copied
@@ -1571,8 +1619,11 @@ subquery_planner(PlannerGlobal *glob, Query *parse, PlannerInfo *parent_root,
 			/* keep it in HAVING */
 			newHaving = lappend(newHaving, havingclause);
 		}
-		else if (parse->groupClause)
+		else if (parse->groupClause &&
+				 (parse->groupingSets == NIL ||
+				  (List *) linitial(parse->groupingSets) != NIL))
 		{
+			/* There is GROUP BY, but no empty grouping set */
 			Node	   *whereclause;
 
 			/* Preprocess the HAVING clause fully */
@@ -1585,6 +1636,7 @@ subquery_planner(PlannerGlobal *glob, Query *parse, PlannerInfo *parent_root,
 		}
 		else
 		{
+			/* There is an empty grouping set (perhaps implicitly) */
 			Node	   *whereclause;
 
 			/* Preprocess the HAVING clause fully */
@@ -2515,7 +2567,6 @@ grouping_planner(PlannerInfo *root, double tuple_fraction,
 										parse->canSetTag,
 										parse->resultRelation,
 										rootRelation,
-										root->partColsUpdated,
 										resultRelations,
 										updateColnosLists,
 										withCheckOptionLists,
@@ -2571,10 +2622,13 @@ grouping_planner(PlannerInfo *root, double tuple_fraction,
 }
 
 /*
- * Do preprocessing for groupingSets clause and related data.  This handles the
- * preliminary steps of expanding the grouping sets, organizing them into lists
- * of rollups, and preparing annotations which will later be filled in with
- * size estimates.
+ * Do preprocessing for groupingSets clause and related data.
+ *
+ * We expect that parse->groupingSets has already been expanded into a flat
+ * list of grouping sets (that is, just integer Lists of ressortgroupref
+ * numbers) by expand_grouping_sets().  This function handles the preliminary
+ * steps of organizing the grouping sets into lists of rollups, and preparing
+ * annotations which will later be filled in with size estimates.
  */
 static grouping_sets_data *
 preprocess_grouping_sets(PlannerInfo *root)
@@ -2585,18 +2639,17 @@ preprocess_grouping_sets(PlannerInfo *root)
 	ListCell   *lc_set;
 	grouping_sets_data *gd = palloc0(sizeof(grouping_sets_data));
 
-	parse->groupingSets = expand_grouping_sets(parse->groupingSets, parse->groupDistinct, -1);
-
-	gd->any_hashable = false;
-	gd->unhashable_refs = NULL;
-	gd->unsortable_refs = NULL;
-	gd->unsortable_sets = NIL;
-
 	/*
 	 * We don't currently make any attempt to optimize the groupClause when
 	 * there are grouping sets, so just duplicate it in processed_groupClause.
 	 */
 	root->processed_groupClause = parse->groupClause;
+
+	/* Detect unhashable and unsortable grouping expressions */
+	gd->any_hashable = false;
+	gd->unhashable_refs = NULL;
+	gd->unsortable_refs = NULL;
+	gd->unsortable_sets = NIL;
 
 	if (parse->groupClause)
 	{
@@ -4434,9 +4487,7 @@ create_ordinary_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
 							   GroupPathExtraData *extra,
 							   RelOptInfo **partially_grouped_rel_p)
 {
-	Path	   *cheapest_path = input_rel->cheapest_total_path;
 	RelOptInfo *partially_grouped_rel = NULL;
-	double		dNumGroups;
 	PartitionwiseAggregateType patype = PARTITIONWISE_AGGREGATE_NONE;
 
 	/*
@@ -4518,23 +4569,16 @@ create_ordinary_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
 
 	/* Gather any partially grouped partial paths. */
 	if (partially_grouped_rel && partially_grouped_rel->partial_pathlist)
-	{
 		gather_grouping_paths(root, partially_grouped_rel);
-		set_cheapest(partially_grouped_rel);
-	}
 
-	/*
-	 * Estimate number of groups.
-	 */
-	dNumGroups = get_number_of_groups(root,
-									  cheapest_path->rows,
-									  gd,
-									  extra->targetList);
+	/* Now choose the best path(s) for partially_grouped_rel. */
+	if (partially_grouped_rel && partially_grouped_rel->pathlist)
+		set_cheapest(partially_grouped_rel);
 
 	/* Build final grouping paths */
 	add_paths_to_grouping_rel(root, input_rel, grouped_rel,
 							  partially_grouped_rel, agg_costs, gd,
-							  dNumGroups, extra);
+							  extra);
 
 	/* Give a helpful error if we failed to find any implementation */
 	if (grouped_rel->pathlist == NIL)
@@ -7479,16 +7523,42 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 						  RelOptInfo *grouped_rel,
 						  RelOptInfo *partially_grouped_rel,
 						  const AggClauseCosts *agg_costs,
-						  grouping_sets_data *gd, double dNumGroups,
+						  grouping_sets_data *gd,
 						  GroupPathExtraData *extra)
 {
 	Query	   *parse = root->parse;
 	Path	   *cheapest_path = input_rel->cheapest_total_path;
+	Path	   *cheapest_partially_grouped_path = NULL;
 	ListCell   *lc;
 	bool		can_hash = (extra->flags & GROUPING_CAN_USE_HASH) != 0;
 	bool		can_sort = (extra->flags & GROUPING_CAN_USE_SORT) != 0;
 	List	   *havingQual = (List *) extra->havingQual;
 	AggClauseCosts *agg_final_costs = &extra->agg_final_costs;
+	double		dNumGroups = 0;
+	double		dNumFinalGroups = 0;
+
+	/*
+	 * Estimate number of groups for non-split aggregation.
+	 */
+	dNumGroups = get_number_of_groups(root,
+									  cheapest_path->rows,
+									  gd,
+									  extra->targetList);
+
+	if (partially_grouped_rel && partially_grouped_rel->pathlist)
+	{
+		cheapest_partially_grouped_path =
+			partially_grouped_rel->cheapest_total_path;
+
+		/*
+		 * Estimate number of groups for final phase of partial aggregation.
+		 */
+		dNumFinalGroups =
+			get_number_of_groups(root,
+								 cheapest_partially_grouped_path->rows,
+								 gd,
+								 extra->targetList);
+	}
 
 	if (can_sort)
 	{
@@ -7601,7 +7671,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 					path = make_ordered_path(root,
 											 grouped_rel,
 											 path,
-											 partially_grouped_rel->cheapest_total_path,
+											 cheapest_partially_grouped_path,
 											 info->pathkeys,
 											 -1.0);
 
@@ -7619,7 +7689,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 												 info->clauses,
 												 havingQual,
 												 agg_final_costs,
-												 dNumGroups));
+												 dNumFinalGroups));
 					else
 						add_path(grouped_rel, (Path *)
 								 create_group_path(root,
@@ -7627,7 +7697,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 												   path,
 												   info->clauses,
 												   havingQual,
-												   dNumGroups));
+												   dNumFinalGroups));
 
 				}
 			}
@@ -7669,19 +7739,17 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 		 */
 		if (partially_grouped_rel && partially_grouped_rel->pathlist)
 		{
-			Path	   *path = partially_grouped_rel->cheapest_total_path;
-
 			add_path(grouped_rel, (Path *)
 					 create_agg_path(root,
 									 grouped_rel,
-									 path,
+									 cheapest_partially_grouped_path,
 									 grouped_rel->reltarget,
 									 AGG_HASHED,
 									 AGGSPLIT_FINAL_DESERIAL,
 									 root->processed_groupClause,
 									 havingQual,
 									 agg_final_costs,
-									 dNumGroups));
+									 dNumFinalGroups));
 		}
 	}
 
@@ -7721,6 +7789,7 @@ create_partial_grouping_paths(PlannerInfo *root,
 {
 	Query	   *parse = root->parse;
 	RelOptInfo *partially_grouped_rel;
+	RelOptInfo *eager_agg_rel = NULL;
 	AggClauseCosts *agg_partial_costs = &extra->agg_partial_costs;
 	AggClauseCosts *agg_final_costs = &extra->agg_final_costs;
 	Path	   *cheapest_partial_path = NULL;
@@ -7730,6 +7799,15 @@ create_partial_grouping_paths(PlannerInfo *root,
 	ListCell   *lc;
 	bool		can_hash = (extra->flags & GROUPING_CAN_USE_HASH) != 0;
 	bool		can_sort = (extra->flags & GROUPING_CAN_USE_SORT) != 0;
+
+	/*
+	 * Check whether any partially aggregated paths have been generated
+	 * through eager aggregation.
+	 */
+	if (input_rel->grouped_rel &&
+		!IS_DUMMY_REL(input_rel->grouped_rel) &&
+		input_rel->grouped_rel->pathlist != NIL)
+		eager_agg_rel = input_rel->grouped_rel;
 
 	/*
 	 * Consider whether we should generate partially aggregated non-partial
@@ -7752,11 +7830,13 @@ create_partial_grouping_paths(PlannerInfo *root,
 
 	/*
 	 * If we can't partially aggregate partial paths, and we can't partially
-	 * aggregate non-partial paths, then don't bother creating the new
+	 * aggregate non-partial paths, and no partially aggregated paths were
+	 * generated by eager aggregation, then don't bother creating the new
 	 * RelOptInfo at all, unless the caller specified force_rel_creation.
 	 */
 	if (cheapest_total_path == NULL &&
 		cheapest_partial_path == NULL &&
+		eager_agg_rel == NULL &&
 		!force_rel_creation)
 		return NULL;
 
@@ -7979,6 +8059,51 @@ create_partial_grouping_paths(PlannerInfo *root,
 										 NIL,
 										 agg_partial_costs,
 										 dNumPartialPartialGroups));
+	}
+
+	/*
+	 * Add any partially aggregated paths generated by eager aggregation to
+	 * the new upper relation after applying projection steps as needed.
+	 */
+	if (eager_agg_rel)
+	{
+		/* Add the paths */
+		foreach(lc, eager_agg_rel->pathlist)
+		{
+			Path	   *path = (Path *) lfirst(lc);
+
+			/* Shouldn't have any parameterized paths anymore */
+			Assert(path->param_info == NULL);
+
+			path = (Path *) create_projection_path(root,
+												   partially_grouped_rel,
+												   path,
+												   partially_grouped_rel->reltarget);
+
+			add_path(partially_grouped_rel, path);
+		}
+
+		/*
+		 * Likewise add the partial paths, but only if parallelism is possible
+		 * for partially_grouped_rel.
+		 */
+		if (partially_grouped_rel->consider_parallel)
+		{
+			foreach(lc, eager_agg_rel->partial_pathlist)
+			{
+				Path	   *path = (Path *) lfirst(lc);
+
+				/* Shouldn't have any parameterized paths anymore */
+				Assert(path->param_info == NULL);
+
+				path = (Path *) create_projection_path(root,
+													   partially_grouped_rel,
+													   path,
+													   partially_grouped_rel->reltarget);
+
+				add_partial_path(partially_grouped_rel, path);
+			}
+		}
 	}
 
 	/*
@@ -8544,13 +8669,6 @@ create_partitionwise_grouping_paths(PlannerInfo *root,
 
 		add_paths_to_append_rel(root, partially_grouped_rel,
 								partially_grouped_live_children);
-
-		/*
-		 * We need call set_cheapest, since the finalization step will use the
-		 * cheapest path from the rel.
-		 */
-		if (partially_grouped_rel->pathlist)
-			set_cheapest(partially_grouped_rel);
 	}
 
 	/* If possible, create append paths for fully grouped children. */
@@ -8708,8 +8826,8 @@ generate_setop_child_grouplist(SetOperationStmt *op, List *targetlist)
  *    the needs of the semijoin represented by sjinfo.  If it is not possible
  *    to identify how to make the data unique, NULL is returned.
  *
- * If used at all, this is likely to be called repeatedly on the same rel;
- * So we cache the result.
+ * If used at all, this is likely to be called repeatedly on the same rel,
+ * so we cache the result.
  */
 RelOptInfo *
 create_unique_paths(PlannerInfo *root, RelOptInfo *rel, SpecialJoinInfo *sjinfo)
@@ -8729,6 +8847,15 @@ create_unique_paths(PlannerInfo *root, RelOptInfo *rel, SpecialJoinInfo *sjinfo)
 
 	/* If it's not possible to unique-ify, return NULL */
 	if (!(sjinfo->semi_can_btree || sjinfo->semi_can_hash))
+		return NULL;
+
+	/*
+	 * Punt if this is a child relation and we failed to build a unique-ified
+	 * relation for its parent.  This can happen if all the RHS columns were
+	 * found to be equated to constants when unique-ifying the parent table,
+	 * leaving no columns to unique-ify.
+	 */
+	if (IS_OTHER_REL(rel) && rel->top_parent->unique_rel == NULL)
 		return NULL;
 
 	/*
@@ -8799,9 +8926,14 @@ create_unique_paths(PlannerInfo *root, RelOptInfo *rel, SpecialJoinInfo *sjinfo)
 		 * variables of the input rel's targetlist.  We have to add any such
 		 * expressions to the unique rel's targetlist.
 		 *
-		 * While in the loop, build the lists of SortGroupClause's that
-		 * represent the ordering for the sort-based implementation and the
-		 * grouping for the hash-based implementation.
+		 * To complicate matters, some of the values to be unique-ified may be
+		 * known redundant by the EquivalenceClass machinery (e.g., because
+		 * they have been equated to constants).  There is no need to compare
+		 * such values during unique-ification, and indeed we had better not
+		 * try because the Vars involved may not have propagated as high as
+		 * the semijoin's level.  We use make_pathkeys_for_sortclauses to
+		 * detect such cases, which is a tad inefficient but it doesn't seem
+		 * worth building specialized infrastructure for this.
 		 */
 		newtlist = make_tlist_from_pathtarget(rel->reltarget);
 		nextresno = list_length(newtlist) + 1;
@@ -8810,8 +8942,9 @@ create_unique_paths(PlannerInfo *root, RelOptInfo *rel, SpecialJoinInfo *sjinfo)
 		{
 			Expr	   *uniqexpr = lfirst(lc1);
 			Oid			in_oper = lfirst_oid(lc2);
-			Oid			sortop = InvalidOid;
+			Oid			sortop;
 			TargetEntry *tle;
+			bool		made_tle = false;
 
 			tle = tlist_member(uniqexpr, newtlist);
 			if (!tle)
@@ -8822,18 +8955,20 @@ create_unique_paths(PlannerInfo *root, RelOptInfo *rel, SpecialJoinInfo *sjinfo)
 									  false);
 				newtlist = lappend(newtlist, tle);
 				nextresno++;
+				made_tle = true;
 			}
 
-			if (sjinfo->semi_can_btree)
+			/*
+			 * Try to build an ORDER BY list to sort the input compatibly.  We
+			 * do this for each sortable clause even when the clauses are not
+			 * all sortable, so that we can detect clauses that are redundant
+			 * according to the pathkey machinery.
+			 */
+			sortop = get_ordering_op_for_equality_op(in_oper, false);
+			if (OidIsValid(sortop))
 			{
-				/* Create an ORDER BY list to sort the input compatibly */
 				Oid			eqop;
 				SortGroupClause *sortcl;
-
-				sortop = get_ordering_op_for_equality_op(in_oper, false);
-				if (!OidIsValid(sortop))	/* shouldn't happen */
-					elog(ERROR, "could not find ordering operator for equality operator %u",
-						 in_oper);
 
 				/*
 				 * The Unique node will need equality operators.  Normally
@@ -8854,7 +8989,32 @@ create_unique_paths(PlannerInfo *root, RelOptInfo *rel, SpecialJoinInfo *sjinfo)
 				sortcl->nulls_first = false;
 				sortcl->hashable = false;	/* no need to make this accurate */
 				sortList = lappend(sortList, sortcl);
+
+				/*
+				 * At each step, convert the SortGroupClause list to pathkey
+				 * form.  If the just-added SortGroupClause is redundant, the
+				 * result will be shorter than the SortGroupClause list.
+				 */
+				sortPathkeys = make_pathkeys_for_sortclauses(root, sortList,
+															 newtlist);
+				if (list_length(sortPathkeys) != list_length(sortList))
+				{
+					/* Drop the redundant SortGroupClause */
+					sortList = list_delete_last(sortList);
+					Assert(list_length(sortPathkeys) == list_length(sortList));
+					/* Undo tlist addition, if we made one */
+					if (made_tle)
+					{
+						newtlist = list_delete_last(newtlist);
+						nextresno--;
+					}
+					/* We need not consider this clause for hashing, either */
+					continue;
+				}
 			}
+			else if (sjinfo->semi_can_btree)	/* shouldn't happen */
+				elog(ERROR, "could not find ordering operator for equality operator %u",
+					 in_oper);
 
 			if (sjinfo->semi_can_hash)
 			{
@@ -8884,8 +9044,27 @@ create_unique_paths(PlannerInfo *root, RelOptInfo *rel, SpecialJoinInfo *sjinfo)
 			}
 		}
 
+		/*
+		 * Done building the sortPathkeys and groupClause.  But the
+		 * sortPathkeys are bogus if not all the clauses were sortable.
+		 */
+		if (!sjinfo->semi_can_btree)
+			sortPathkeys = NIL;
+
+		/*
+		 * It can happen that all the RHS columns are equated to constants.
+		 * We'd have to do something special to unique-ify in that case, and
+		 * it's such an unlikely-in-the-real-world case that it's not worth
+		 * the effort.  So just punt if we found no columns to unique-ify.
+		 */
+		if (sortPathkeys == NIL && groupClause == NIL)
+		{
+			MemoryContextSwitchTo(oldcontext);
+			return NULL;
+		}
+
+		/* Convert the required targetlist back to PathTarget form */
 		unique_rel->reltarget = create_pathtarget(root, newtlist);
-		sortPathkeys = make_pathkeys_for_sortclauses(root, sortList, newtlist);
 	}
 
 	/* build unique paths based on input rel's pathlist */
@@ -9194,5 +9373,72 @@ create_partial_unique_paths(PlannerInfo *root, RelOptInfo *input_rel,
 		create_final_unique_paths(root, partial_unique_rel,
 								  sortPathkeys, groupClause,
 								  sjinfo, unique_rel);
+	}
+}
+
+/*
+ * Choose a unique name for some subroot.
+ *
+ * Modifies glob->subplanNames to track names already used.
+ */
+char *
+choose_plan_name(PlannerGlobal *glob, const char *name, bool always_number)
+{
+	unsigned	n;
+
+	/*
+	 * If a numeric suffix is not required, then search the list of
+	 * previously-assigned names for a match. If none is found, then we can
+	 * use the provided name without modification.
+	 */
+	if (!always_number)
+	{
+		bool		found = false;
+
+		foreach_ptr(char, subplan_name, glob->subplanNames)
+		{
+			if (strcmp(subplan_name, name) == 0)
+			{
+				found = true;
+				break;
+			}
+		}
+
+		if (!found)
+		{
+			/* pstrdup here is just to avoid cast-away-const */
+			char	   *chosen_name = pstrdup(name);
+
+			glob->subplanNames = lappend(glob->subplanNames, chosen_name);
+			return chosen_name;
+		}
+	}
+
+	/*
+	 * If a numeric suffix is required or if the un-suffixed name is already
+	 * in use, then loop until we find a positive integer that produces a
+	 * novel name.
+	 */
+	for (n = 1; true; ++n)
+	{
+		char	   *proposed_name = psprintf("%s_%u", name, n);
+		bool		found = false;
+
+		foreach_ptr(char, subplan_name, glob->subplanNames)
+		{
+			if (strcmp(subplan_name, proposed_name) == 0)
+			{
+				found = true;
+				break;
+			}
+		}
+
+		if (!found)
+		{
+			glob->subplanNames = lappend(glob->subplanNames, proposed_name);
+			return proposed_name;
+		}
+
+		pfree(proposed_name);
 	}
 }

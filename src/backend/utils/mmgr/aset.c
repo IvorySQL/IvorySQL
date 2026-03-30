@@ -190,24 +190,18 @@ typedef struct AllocBlockData
 }			AllocBlockData;
 
 /*
- * AllocPointerIsValid
- *		True iff pointer is valid allocation pointer.
- */
-#define AllocPointerIsValid(pointer) PointerIsValid(pointer)
-
-/*
  * AllocSetIsValid
  *		True iff set is valid allocation set.
  */
 #define AllocSetIsValid(set) \
-	(PointerIsValid(set) && IsA(set, AllocSetContext))
+	((set) && IsA(set, AllocSetContext))
 
 /*
  * AllocBlockIsValid
  *		True iff block is valid block of allocation set.
  */
 #define AllocBlockIsValid(block) \
-	(PointerIsValid(block) && AllocSetIsValid((block)->aset))
+	((block) && AllocSetIsValid((block)->aset))
 
 /*
  * We always store external chunks on a dedicated block.  This makes fetching
@@ -1674,9 +1668,9 @@ AllocSetCheck(MemoryContext context)
 		 prevblock = block, block = block->next)
 	{
 		char	   *bpoz = ((char *) block) + ALLOC_BLOCKHDRSZ;
-		long		blk_used = block->freeptr - bpoz;
-		long		blk_data = 0;
-		long		nchunks = 0;
+		Size		blk_used = block->freeptr - bpoz;
+		Size		blk_data = 0;
+		Size		nchunks = 0;
 		bool		has_external_chunk = false;
 
 		if (IsKeeperBlock(set, block))

@@ -3,7 +3,7 @@
  * pgstat_relation.c
  *	  Implementation of relation statistics.
  *
- * This file contains the implementation of function relation. It is kept
+ * This file contains the implementation of relation statistics. It is kept
  * separate from pgstat.c to enforce the line between the statistics access /
  * storage implementation and the details about individual types of
  * statistics.
@@ -908,6 +908,12 @@ pgstat_relation_delete_pending_cb(PgStat_EntryRef *entry_ref)
 
 	if (pending->relation)
 		pgstat_unlink_relation(pending->relation);
+}
+
+void
+pgstat_relation_reset_timestamp_cb(PgStatShared_Common *header, TimestampTz ts)
+{
+	((PgStatShared_Relation *) header)->stats.stat_reset_time = ts;
 }
 
 /*

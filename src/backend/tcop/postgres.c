@@ -38,6 +38,7 @@
 #include "catalog/pg_type.h"
 #include "commands/async.h"
 #include "commands/event_trigger.h"
+#include "commands/explain_state.h"
 #include "commands/prepare.h"
 #include "common/pg_prng.h"
 #include "jit/jit.h"
@@ -654,6 +655,10 @@ pg_parse_query(const char *query_string)
 
 	TRACE_POSTGRESQL_QUERY_PARSE_DONE(query_string);
 
+	if (Debug_print_raw_parse)
+		elog_node_display(LOG, "raw parse tree", raw_parsetree_list,
+						  Debug_pretty_print);
+
 	return raw_parsetree_list;
 }
 
@@ -885,7 +890,7 @@ pg_rewrite_query(Query *query)
  */
 PlannedStmt *
 pg_plan_query(Query *querytree, const char *query_string, int cursorOptions,
-			  ParamListInfo boundParams)
+			  ParamListInfo boundParams, ExplainState *es)
 {
 	PlannedStmt *plan;
 
@@ -902,7 +907,7 @@ pg_plan_query(Query *querytree, const char *query_string, int cursorOptions,
 		ResetUsage();
 
 	/* call the optimizer */
-	plan = planner(querytree, query_string, cursorOptions, boundParams);
+	plan = planner(querytree, query_string, cursorOptions, boundParams, es);
 
 	if (log_planner_stats)
 		ShowUsage("PLANNER STATISTICS");
@@ -998,7 +1003,7 @@ pg_plan_queries(List *querytrees, const char *query_string, int cursorOptions,
 		else
 		{
 			stmt = pg_plan_query(query, query_string, cursorOptions,
-								 boundParams);
+								 boundParams, NULL);
 		}
 
 		stmt_list = lappend(stmt_list, stmt);
@@ -2529,6 +2534,16 @@ exec_execute_message(const char *portal_name, long max_rows)
 			 * message.  The next protocol message will start a fresh timeout.
 			 */
 			disable_statement_timeout();
+
+			/*
+			 * We completed fetching from an unnamed portal.  There is no need
+			 * for it beyond this point, so drop it now rather than wait for
+			 * the next Bind message to do this cleanup.  This ensures that
+			 * the correct statement is logged when cleaning up temporary file
+			 * usage.
+			 */
+			if (portal->name[0] == '\0')
+				PortalDrop(portal, false);
 		}
 
 		/* Send appropriate CommandComplete to client */
@@ -3904,7 +3919,10 @@ set_debug_options(int debug_flag, GucContext context, GucSource source)
 	if (debug_flag >= 2)
 		SetConfigOption("log_statement", "all", context, source);
 	if (debug_flag >= 3)
+	{
+		SetConfigOption("debug_print_raw_parse", "true", context, source);
 		SetConfigOption("debug_print_parse", "true", context, source);
+	}
 	if (debug_flag >= 4)
 		SetConfigOption("debug_print_plan", "true", context, source);
 	if (debug_flag >= 5)

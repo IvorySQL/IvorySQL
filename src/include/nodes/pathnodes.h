@@ -110,6 +110,9 @@ typedef struct PlannerGlobal
 	/* PlannerInfos for SubPlan nodes */
 	List	   *subroots pg_node_attr(read_write_ignore);
 
+	/* names already used for subplans (list of C strings) */
+	List	   *subplanNames pg_node_attr(read_write_ignore);
+
 	/* indices of subplans that require REWIND */
 	Bitmapset  *rewindPlanIDs;
 
@@ -182,6 +185,10 @@ typedef struct PlannerGlobal
 
 	/* hash table for NOT NULL attnums of relations */
 	struct HTAB *rel_notnullatts_hash pg_node_attr(read_write_ignore);
+
+	/* extension state */
+	void	  **extension_state pg_node_attr(read_write_ignore);
+	int			extension_state_allocated;
 } PlannerGlobal;
 
 /* macro for fetching the Plan associated with a SubPlan node */
@@ -198,9 +205,6 @@ typedef struct PlannerGlobal
  * original Query.  Note that at present the planner extensively modifies
  * the passed-in Query data structure; someday that should stop.
  *
- * For reasons explained in optimizer/optimizer.h, we define the typedef
- * either here or in that header, whichever is read first.
- *
  * Not all fields are printed.  (In some cases, there is no print support for
  * the field type; in others, doing so would lead to infinite recursion or
  * bloat dump output more than seems useful.)
@@ -211,10 +215,7 @@ typedef struct PlannerGlobal
  * correctly replaced with the keeping one.
  *----------
  */
-#ifndef HAVE_PLANNERINFO_TYPEDEF
 typedef struct PlannerInfo PlannerInfo;
-#define HAVE_PLANNERINFO_TYPEDEF 1
-#endif
 
 struct PlannerInfo
 {
@@ -233,6 +234,9 @@ struct PlannerInfo
 
 	/* NULL at outermost Query */
 	PlannerInfo *parent_root pg_node_attr(read_write_ignore);
+
+	/* Subplan name for EXPLAIN and debugging purposes (NULL at top level) */
+	char	   *plan_name;
 
 	/*
 	 * plan_params contains the expressions that this query level needs to
@@ -397,6 +401,15 @@ struct PlannerInfo
 	/* list of PlaceHolderInfos */
 	List	   *placeholder_list;
 
+	/* list of AggClauseInfos */
+	List	   *agg_clause_list;
+
+	/* list of GroupExprInfos */
+	List	   *group_expr_list;
+
+	/* list of plain Vars contained in targetlist and havingQual */
+	List	   *tlist_vars;
+
 	/* array of PlaceHolderInfos indexed by phid */
 	struct PlaceHolderInfo **placeholder_array pg_node_attr(read_write_ignore, array_size(placeholder_array_size));
 	/* allocated size of array */
@@ -532,6 +545,8 @@ struct PlannerInfo
 	bool		placeholdersFrozen;
 	/* true if planning a recursive WITH item */
 	bool		hasRecursion;
+	/* true if a planner extension may replan this subquery */
+	bool		assumeReplanning;
 
 	/*
 	 * The rangetable index for the RTE_GROUP RTE, or 0 if there is no
@@ -578,14 +593,12 @@ struct PlannerInfo
 	bool	   *isAltSubplan pg_node_attr(read_write_ignore);
 	bool	   *isUsedSubplan pg_node_attr(read_write_ignore);
 
-	/* optional private data for join_search_hook, e.g., GEQO */
-	void	   *join_search_private pg_node_attr(read_write_ignore);
-
-	/* Does this query modify any partition key columns? */
-	bool		partColsUpdated;
-
 	/* PartitionPruneInfos added in this query's plan. */
 	List	   *partPruneInfos;
+
+	/* extension state */
+	void	  **extension_state pg_node_attr(read_write_ignore);
+	int			extension_state_allocated;
 };
 
 
@@ -1047,6 +1060,14 @@ typedef struct RelOptInfo
 	bool		consider_partitionwise_join;
 
 	/*
+	 * used by eager aggregation:
+	 */
+	/* information needed to create grouped paths */
+	struct RelAggInfo *agg_info;
+	/* the partially-aggregated version of the relation */
+	struct RelOptInfo *grouped_rel;
+
+	/*
 	 * inheritance links, if this is an otherrel (otherwise NULL):
 	 */
 	/* Immediate parent relation (dumping it would be too verbose) */
@@ -1097,6 +1118,10 @@ typedef struct RelOptInfo
 	List	  **partexprs pg_node_attr(read_write_ignore);
 	/* Nullable partition key expressions */
 	List	  **nullable_partexprs pg_node_attr(read_write_ignore);
+
+	/* extension state */
+	void	  **extension_state pg_node_attr(read_write_ignore);
+	int			extension_state_allocated;
 } RelOptInfo;
 
 /*
@@ -1131,6 +1156,63 @@ typedef struct RelOptInfo
 	 bms_equal((sjinfo)->syn_righthand, (rel)->relids))
 
 /*
+ * Is the given relation a grouped relation?
+ */
+#define IS_GROUPED_REL(rel) \
+	((rel)->agg_info != NULL)
+
+/*
+ * RelAggInfo
+ *		Information needed to create paths for a grouped relation.
+ *
+ * "target" is the default result targetlist for Paths scanning this grouped
+ * relation; list of Vars/Exprs, cost, width.
+ *
+ * "agg_input" is the output tlist for the paths that provide input to the
+ * grouped paths.  One difference from the reltarget of the non-grouped
+ * relation is that agg_input has its sortgrouprefs[] initialized.
+ *
+ * "group_clauses" and "group_exprs" are lists of SortGroupClauses and the
+ * corresponding grouping expressions.
+ *
+ * "apply_agg_at" tracks the set of relids at which partial aggregation is
+ * applied in the paths of this grouped relation.
+ *
+ * "grouped_rows" is the estimated number of result tuples of the grouped
+ * relation.
+ *
+ * "agg_useful" is a flag to indicate whether the grouped paths are considered
+ * useful.  It is set true if the average partial group size is no less than
+ * min_eager_agg_group_size, suggesting a significant row count reduction.
+ */
+typedef struct RelAggInfo
+{
+	pg_node_attr(no_copy_equal, no_read, no_query_jumble)
+
+	NodeTag		type;
+
+	/* the output tlist for the grouped paths */
+	struct PathTarget *target;
+
+	/* the output tlist for the input paths */
+	struct PathTarget *agg_input;
+
+	/* a list of SortGroupClauses */
+	List	   *group_clauses;
+	/* a list of grouping expressions */
+	List	   *group_exprs;
+
+	/* the set of relids partial aggregation is applied at */
+	Relids		apply_agg_at;
+
+	/* estimated number of result tuples */
+	Cardinality grouped_rows;
+
+	/* the grouped paths are considered useful? */
+	bool		agg_useful;
+} RelAggInfo;
+
+/*
  * IndexOptInfo
  *		Per-index information for planning/optimization
  *
@@ -1161,14 +1243,10 @@ typedef struct RelOptInfo
  *		(by plancat.c), indrestrictinfo and predOK are set later, in
  *		check_index_predicates().
  */
-#ifndef HAVE_INDEXOPTINFO_TYPEDEF
-typedef struct IndexOptInfo IndexOptInfo;
-#define HAVE_INDEXOPTINFO_TYPEDEF 1
-#endif
 
 struct IndexPath;				/* forward declaration */
 
-struct IndexOptInfo
+typedef struct IndexOptInfo
 {
 	pg_node_attr(no_copy_equal, no_read, no_query_jumble)
 
@@ -1270,7 +1348,7 @@ struct IndexOptInfo
 	/* AM's cost estimator */
 	/* Rather than include amapi.h here, we declare amcostestimate like this */
 	void		(*amcostestimate) (struct PlannerInfo *, struct IndexPath *, double, Cost *, Cost *, Selectivity *, double *, double *) pg_node_attr(read_write_ignore);
-};
+} IndexOptInfo;
 
 /*
  * ForeignKeyOptInfo
@@ -2530,7 +2608,6 @@ typedef struct ModifyTablePath
 	bool		canSetTag;		/* do we set the command tag/es_processed? */
 	Index		nominalRelation;	/* Parent RT index for use of EXPLAIN */
 	Index		rootRelation;	/* Root RT index, if partitioned/inherited */
-	bool		partColsUpdated;	/* some part key in hierarchy updated? */
 	List	   *resultRelations;	/* integer list of RT indexes */
 	List	   *updateColnosLists;	/* per-target-table update_colnos lists */
 	List	   *withCheckOptionLists;	/* per-target-table WCO lists */
@@ -3033,12 +3110,7 @@ typedef struct PlaceHolderVar
  * We also create transient SpecialJoinInfos for child joins during
  * partitionwise join planning, which are also not present in join_info_list.
  */
-#ifndef HAVE_SPECIALJOININFO_TYPEDEF
-typedef struct SpecialJoinInfo SpecialJoinInfo;
-#define HAVE_SPECIALJOININFO_TYPEDEF 1
-#endif
-
-struct SpecialJoinInfo
+typedef struct SpecialJoinInfo
 {
 	pg_node_attr(no_read, no_query_jumble)
 
@@ -3059,7 +3131,7 @@ struct SpecialJoinInfo
 	bool		semi_can_hash;	/* true if semi_operators are all hash */
 	List	   *semi_operators; /* OIDs of equality join operators */
 	List	   *semi_rhs_exprs; /* righthand-side expressions of these ops */
-};
+} SpecialJoinInfo;
 
 /*
  * Transient outer-join clause info.
@@ -3284,6 +3356,49 @@ typedef struct MinMaxAggInfo
 	/* param for subplan's output */
 	Param	   *param;
 } MinMaxAggInfo;
+
+/*
+ * For each distinct Aggref node that appears in the targetlist and HAVING
+ * clauses, we store an AggClauseInfo node in the PlannerInfo node's
+ * agg_clause_list.  Each AggClauseInfo records the set of relations referenced
+ * by the aggregate expression.  This information is used to determine how far
+ * the aggregate can be safely pushed down in the join tree.
+ */
+typedef struct AggClauseInfo
+{
+	pg_node_attr(no_read, no_query_jumble)
+
+	NodeTag		type;
+
+	/* the Aggref expr */
+	Aggref	   *aggref;
+
+	/* lowest level we can evaluate this aggregate at */
+	Relids		agg_eval_at;
+} AggClauseInfo;
+
+/*
+ * For each grouping expression that appears in grouping clauses, we store a
+ * GroupingExprInfo node in the PlannerInfo node's group_expr_list.  Each
+ * GroupingExprInfo records the expression being grouped on, its sortgroupref,
+ * and the EquivalenceClass it belongs to.  This information is necessary to
+ * reproduce correct grouping semantics at different levels of the join tree.
+ */
+typedef struct GroupingExprInfo
+{
+	pg_node_attr(no_read, no_query_jumble)
+
+	NodeTag		type;
+
+	/* the represented expression */
+	Expr	   *expr;
+
+	/* the tleSortGroupRef of the corresponding SortGroupClause */
+	Index		sortgroupref;
+
+	/* the equivalence class the expression belongs to */
+	EquivalenceClass *ec pg_node_attr(copy_as_scalar, equal_as_scalar);
+} GroupingExprInfo;
 
 /*
  * At runtime, PARAM_EXEC slots are used to pass values around from one plan

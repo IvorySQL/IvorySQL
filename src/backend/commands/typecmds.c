@@ -3260,7 +3260,6 @@ validateDomainCheckConstraint(Oid domainoid, const char *ccbin, LOCKMODE lockmod
 				Datum		d;
 				bool		isNull;
 				Datum		conResult;
-				Form_pg_attribute attr = TupleDescAttr(tupdesc, attnum - 1);
 
 				d = slot_getattr(slot, attnum, &isNull);
 
@@ -3273,6 +3272,8 @@ validateDomainCheckConstraint(Oid domainoid, const char *ccbin, LOCKMODE lockmod
 
 				if (!isNull && !DatumGetBool(conResult))
 				{
+					Form_pg_attribute attr = TupleDescAttr(tupdesc, attnum - 1);
+
 					/*
 					 * In principle the auxiliary information for this error
 					 * should be errdomainconstraint(), but errtablecol()

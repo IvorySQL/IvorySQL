@@ -71,7 +71,7 @@ static int	_SPI_execute_plan(SPIPlanPtr plan, const SPIExecuteOptions *options,
 							  bool fire_triggers);
 
 static ParamListInfo _SPI_convert_params(int nargs, Oid *argtypes,
-										 Datum *Values, const char *Nulls);
+										 const Datum *Values, const char *Nulls);
 
 static int	_SPI_pquery(QueryDesc *queryDesc, bool fire_triggers, uint64 tcount);
 
@@ -679,7 +679,7 @@ SPI_execute_extended(const char *src,
 
 /* Execute a previously prepared plan */
 int
-SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
+SPI_execute_plan(SPIPlanPtr plan, const Datum *Values, const char *Nulls,
 				 bool read_only, long tcount)
 {
 	SPIExecuteOptions options;
@@ -781,7 +781,7 @@ SPI_execute_plan_with_paramlist(SPIPlanPtr plan, ParamListInfo params,
  */
 int
 SPI_execute_snapshot(SPIPlanPtr plan,
-					 Datum *Values, const char *Nulls,
+					 const Datum *Values, const char *Nulls,
 					 Snapshot snapshot, Snapshot crosscheck_snapshot,
 					 bool read_only, bool fire_triggers, long tcount)
 {
@@ -821,7 +821,7 @@ SPI_execute_snapshot(SPIPlanPtr plan,
 int
 SPI_execute_with_args(const char *src,
 					  int nargs, Oid *argtypes,
-					  Datum *Values, const char *Nulls,
+					  const Datum *Values, const char *Nulls,
 					  bool read_only, long tcount)
 {
 	int			res;
@@ -1470,7 +1470,7 @@ SPI_freetuptable(SPITupleTable *tuptable)
  */
 Portal
 SPI_cursor_open(const char *name, SPIPlanPtr plan,
-				Datum *Values, const char *Nulls,
+				const Datum *Values, const char *Nulls,
 				bool read_only)
 {
 	Portal		portal;
@@ -2876,7 +2876,7 @@ fail:
  */
 static ParamListInfo
 _SPI_convert_params(int nargs, Oid *argtypes,
-					Datum *Values, const char *Nulls)
+					const Datum *Values, const char *Nulls)
 {
 	ParamListInfo paramLI;
 

@@ -16,6 +16,7 @@ SUBDIRS = \
 		  spgist_name_ops \
 		  test_aio \
 		  test_binaryheap \
+		  test_bitmapset \
 		  test_bloomfilter \
 		  test_copy_callbacks \
 		  test_custom_rmgrs \
@@ -29,6 +30,7 @@ SUBDIRS = \
 		  test_integerset \
 		  test_json_parser \
 		  test_lfind \
+		  test_lwlock_tranches \
 		  test_misc \
 		  test_oat_hooks \
 		  test_parser \
