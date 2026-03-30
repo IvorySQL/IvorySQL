@@ -813,7 +813,7 @@ typedef struct TableLikeClause
 {
 	NodeTag		type;
 	RangeVar   *relation;
-	bits32		options;		/* OR of TableLikeOption flags */
+	uint32		options;		/* OR of TableLikeOption flags */
 	Oid			relationOid;	/* If table has been looked up, its OID */
 } TableLikeClause;
 

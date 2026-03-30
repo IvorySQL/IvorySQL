@@ -2301,7 +2301,7 @@ ExecUpdateEpilogue(IvyModifyTableContext *context, IvyUpdateContext *updateCxt,
 	/* insert index entries for tuple if necessary */
 	if (resultRelInfo->ri_NumIndices > 0 && (updateCxt->updateIndexes != TU_None))
 	{
-		bits32		flags = EIIT_IS_UPDATE;
+		uint32		flags = EIIT_IS_UPDATE;
 
 		if (updateCxt->updateIndexes == TU_Summarizing)
 			flags |= EIIT_ONLY_SUMMARIZING;

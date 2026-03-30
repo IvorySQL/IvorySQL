@@ -594,7 +594,7 @@ static relopt_string stringRelOpts[] =
 };
 
 static relopt_gen **relOpts = NULL;
-static bits32 last_assigned_kind = RELOPT_KIND_LAST_DEFAULT;
+static uint32 last_assigned_kind = RELOPT_KIND_LAST_DEFAULT;
 
 static int	num_custom_options = 0;
 static relopt_gen **custom_options = NULL;
@@ -830,7 +830,7 @@ add_local_reloption(local_relopts *relopts, relopt_gen *newoption, int offset)
  *		(for types other than string)
  */
 static relopt_gen *
-allocate_reloption(bits32 kinds, int type, const char *name, const char *desc,
+allocate_reloption(uint32 kinds, int type, const char *name, const char *desc,
 				   LOCKMODE lockmode)
 {
 	MemoryContext oldcxt;
@@ -890,7 +890,7 @@ allocate_reloption(bits32 kinds, int type, const char *name, const char *desc,
  *		Allocate and initialize a new boolean reloption
  */
 static relopt_bool *
-init_bool_reloption(bits32 kinds, const char *name, const char *desc,
+init_bool_reloption(uint32 kinds, const char *name, const char *desc,
 					bool default_val, LOCKMODE lockmode)
 {
 	relopt_bool *newoption;
@@ -907,7 +907,7 @@ init_bool_reloption(bits32 kinds, const char *name, const char *desc,
  *		Add a new boolean reloption
  */
 void
-add_bool_reloption(bits32 kinds, const char *name, const char *desc,
+add_bool_reloption(uint32 kinds, const char *name, const char *desc,
 				   bool default_val, LOCKMODE lockmode)
 {
 	relopt_bool *newoption = init_bool_reloption(kinds, name, desc,
@@ -938,7 +938,7 @@ add_local_bool_reloption(local_relopts *relopts, const char *name,
  *		Allocate and initialize a new ternary reloption
  */
 static relopt_ternary *
-init_ternary_reloption(bits32 kinds, const char *name, const char *desc,
+init_ternary_reloption(uint32 kinds, const char *name, const char *desc,
 					   LOCKMODE lockmode)
 {
 	relopt_ternary *newoption;
@@ -954,7 +954,7 @@ init_ternary_reloption(bits32 kinds, const char *name, const char *desc,
  *		Add a new ternary reloption
  */
 void
-add_ternary_reloption(bits32 kinds, const char *name, const char *desc,
+add_ternary_reloption(uint32 kinds, const char *name, const char *desc,
 					  LOCKMODE lockmode)
 {
 	relopt_ternary *newoption;
@@ -988,7 +988,7 @@ add_local_ternary_reloption(local_relopts *relopts, const char *name,
  *		Allocate and initialize a new integer reloption
  */
 static relopt_int *
-init_int_reloption(bits32 kinds, const char *name, const char *desc,
+init_int_reloption(uint32 kinds, const char *name, const char *desc,
 				   int default_val, int min_val, int max_val,
 				   LOCKMODE lockmode)
 {
@@ -1008,7 +1008,7 @@ init_int_reloption(bits32 kinds, const char *name, const char *desc,
  *		Add a new integer reloption
  */
 void
-add_int_reloption(bits32 kinds, const char *name, const char *desc, int default_val,
+add_int_reloption(uint32 kinds, const char *name, const char *desc, int default_val,
 				  int min_val, int max_val, LOCKMODE lockmode)
 {
 	relopt_int *newoption = init_int_reloption(kinds, name, desc,
@@ -1041,7 +1041,7 @@ add_local_int_reloption(local_relopts *relopts, const char *name,
  *		Allocate and initialize a new real reloption
  */
 static relopt_real *
-init_real_reloption(bits32 kinds, const char *name, const char *desc,
+init_real_reloption(uint32 kinds, const char *name, const char *desc,
 					double default_val, double min_val, double max_val,
 					LOCKMODE lockmode)
 {
@@ -1061,7 +1061,7 @@ init_real_reloption(bits32 kinds, const char *name, const char *desc,
  *		Add a new float reloption
  */
 void
-add_real_reloption(bits32 kinds, const char *name, const char *desc,
+add_real_reloption(uint32 kinds, const char *name, const char *desc,
 				   double default_val, double min_val, double max_val,
 				   LOCKMODE lockmode)
 {
@@ -1096,7 +1096,7 @@ add_local_real_reloption(local_relopts *relopts, const char *name,
  *		Allocate and initialize a new enum reloption
  */
 static relopt_enum *
-init_enum_reloption(bits32 kinds, const char *name, const char *desc,
+init_enum_reloption(uint32 kinds, const char *name, const char *desc,
 					relopt_enum_elt_def *members, int default_val,
 					const char *detailmsg, LOCKMODE lockmode)
 {
@@ -1125,7 +1125,7 @@ init_enum_reloption(bits32 kinds, const char *name, const char *desc,
  * they are valid throughout the life of the process.
  */
 void
-add_enum_reloption(bits32 kinds, const char *name, const char *desc,
+add_enum_reloption(uint32 kinds, const char *name, const char *desc,
 				   relopt_enum_elt_def *members, int default_val,
 				   const char *detailmsg, LOCKMODE lockmode)
 {
@@ -1160,7 +1160,7 @@ add_local_enum_reloption(local_relopts *relopts, const char *name,
  *		Allocate and initialize a new string reloption
  */
 static relopt_string *
-init_string_reloption(bits32 kinds, const char *name, const char *desc,
+init_string_reloption(uint32 kinds, const char *name, const char *desc,
 					  const char *default_val,
 					  validate_string_relopt validator,
 					  fill_string_relopt filler,
@@ -1205,7 +1205,7 @@ init_string_reloption(bits32 kinds, const char *name, const char *desc,
  * the validation.
  */
 void
-add_string_reloption(bits32 kinds, const char *name, const char *desc,
+add_string_reloption(uint32 kinds, const char *name, const char *desc,
 					 const char *default_val, validate_string_relopt validator,
 					 LOCKMODE lockmode)
 {

@@ -81,7 +81,7 @@ static void resolve_anymultirange_from_others(polymorphic_actuals *actuals);
  * RECORD datatype.
  */
 void
-InitMaterializedSRF(FunctionCallInfo fcinfo, bits32 flags)
+InitMaterializedSRF(FunctionCallInfo fcinfo, uint32 flags)
 {
 	bool		random_access;
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
