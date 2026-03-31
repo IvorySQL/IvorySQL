@@ -172,3 +172,9 @@ test: rownum
 # ----------
 
 test: ora_identifiers
+
+# ----------
+# Oracle ALTER INDEX ... REBUILD syntax (#1064)
+# ----------
+
+test: alter_index
