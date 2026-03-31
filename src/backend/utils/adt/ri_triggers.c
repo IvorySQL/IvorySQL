@@ -24,6 +24,7 @@
 
 #include "postgres.h"
 
+#include "access/genam.h"
 #include "access/htup_details.h"
 #include "access/skey.h"
 #include "access/sysattr.h"
@@ -47,6 +48,7 @@
 #include "utils/datum.h"
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
+#include "utils/hsearch.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
