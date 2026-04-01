@@ -2781,8 +2781,8 @@ compute_infobits(uint16 infomask, uint16 infomask2)
  */
 TM_Result
 heap_delete(Relation relation, const ItemPointerData *tid,
-			CommandId cid, Snapshot crosscheck, bool wait,
-			TM_FailureData *tmfd, bool changingPart)
+			CommandId cid, uint32 options, Snapshot crosscheck,
+			bool wait, TM_FailureData *tmfd)
 {
 	TM_Result	result;
 	TransactionId xid = GetCurrentTransactionId();
@@ -2795,6 +2795,7 @@ heap_delete(Relation relation, const ItemPointerData *tid,
 	TransactionId new_xmax;
 	uint16		new_infomask,
 				new_infomask2;
+	bool		changingPart = (options & TABLE_DELETE_CHANGING_PARTITION) != 0;
 	bool		have_tuple_lock = false;
 	bool		iscombo;
 	bool		all_visible_cleared = false;
@@ -3209,9 +3210,11 @@ simple_heap_delete(Relation relation, const ItemPointerData *tid)
 	TM_FailureData tmfd;
 
 	result = heap_delete(relation, tid,
-						 GetCurrentCommandId(true), InvalidSnapshot,
+						 GetCurrentCommandId(true),
+						 0,
+						 InvalidSnapshot,
 						 true /* wait for commit */ ,
-						 &tmfd, false /* changingPart */ );
+						 &tmfd);
 	switch (result)
 	{
 		case TM_SelfModified:
@@ -3250,7 +3253,7 @@ simple_heap_delete(Relation relation, const ItemPointerData *tid)
  */
 TM_Result
 heap_update(Relation relation, const ItemPointerData *otid, HeapTuple newtup,
-			CommandId cid, Snapshot crosscheck, bool wait,
+			CommandId cid, uint32 options pg_attribute_unused(), Snapshot crosscheck, bool wait,
 			TM_FailureData *tmfd, LockTupleMode *lockmode,
 			TU_UpdateIndexes *update_indexes)
 {
@@ -4514,7 +4517,8 @@ simple_heap_update(Relation relation, const ItemPointerData *otid, HeapTuple tup
 	LockTupleMode lockmode;
 
 	result = heap_update(relation, otid, tup,
-						 GetCurrentCommandId(true), InvalidSnapshot,
+						 GetCurrentCommandId(true), 0,
+						 InvalidSnapshot,
 						 true /* wait for commit */ ,
 						 &tmfd, &lockmode, update_indexes);
 	switch (result)
