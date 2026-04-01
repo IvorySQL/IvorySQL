@@ -335,6 +335,8 @@ static void determineLanguage(List *options);
 
 %type <node>	alter_table_cmd alter_type_cmd opt_collate_clause
 	   replica_identity partition_cmd index_partition_cmd
+%type <list>	rebuild_index_opt_list
+%type <defelt>	rebuild_index_opt
 %type <list>	alter_table_cmds alter_type_cmds
 %type <list>    alter_identity_column_option_list
 %type <defelt>  alter_identity_column_option
@@ -771,12 +773,12 @@ static void determineLanguage(List *options);
 	MINUTE_P MINVALUE MODE MODIFY MONTH_P MOVE
 
 	NAME_P NAMES NATIONAL NATURAL NCHAR NESTED NEW NEXT NFC NFD NFKC NFKD NO NOCACHE NOCYCLE
-	NOMAXVALUE NOMINVALUE NONE NOORDER
+	NOMAXVALUE NOMINVALUE NONE NOORDER NOPARALLEL
 	NOEXTEND NOKEEP NORMALIZE NORMALIZED NOSCALE NOSHARD
 	NOT NOTHING NOTIFY NOTNULL NOWAIT NULL_P NULLIF
 	NULLS_P NUMBER_P NUMERIC NVL NVL2
 
-	OBJECT_P OBJECTS_P OF OFF OFFSET OIDS OLD OMIT ON ONLY OPERATOR OPTION OPTIONS OR
+	OBJECT_P OBJECTS_P OF OFF OFFSET OIDS OLD OMIT ON ONLINE ONLY OPERATOR OPTION OPTIONS OR
 	ORDER ORDINALITY OTHERS OUT_P OUTER_P
 	OVER OVERLAPS OVERLAY OVERRIDING OWNED OWNER PACKAGES
 
@@ -787,7 +789,7 @@ static void determineLanguage(List *options);
 
 	QUOTE QUOTES
 
-	RANGE READ REAL REASSIGN RECHECK RECURSIVE REF_P REFERENCES REFERENCING
+	RANGE READ REAL REASSIGN REBUILD RECHECK RECURSIVE REF_P REFERENCES REFERENCING
 	REFRESH REINDEX RELATIVE_P RELEASE RENAME REPEATABLE REPLACE REPLICA
 	RESET RESPECT_P RESTART RESTRICT RETURN RETURNING RETURNS REVOKE RIGHT ROLE ROLLBACK ROLLUP
 	ROUTINE ROUTINES ROW ROWID ROWNUM ROWS  ROWTYPE RULE
@@ -2386,6 +2388,14 @@ AlterTableStmt:
 					n->missing_ok = false;
 					$$ = (Node *) n;
 				}
+		|	ALTER INDEX qualified_name REBUILD rebuild_index_opt_list
+				{
+					OraAlterIndexRebuildStmt *n = makeNode(OraAlterIndexRebuildStmt);
+
+					n->relation = $3;
+					n->options = $5;
+					$$ = (Node *) n;
+				}
 		|	ALTER INDEX ALL IN_P TABLESPACE name SET TABLESPACE name opt_nowait
 				{
 					AlterTableMoveAllStmt *n =
@@ -2605,6 +2615,63 @@ index_partition_cmd:
 					$$ = (Node *) n;
 				}
 		;
+
+/*
+ * rebuild_index_opt_list / rebuild_index_opt
+ *
+ * Options following REBUILD.  Options may appear in any order.
+ * Duplicate options are rejected at execution time.
+ */
+rebuild_index_opt_list:
+		rebuild_index_opt_list rebuild_index_opt
+				{ $$ = lappend($1, $2); }
+		| /* EMPTY */
+				{ $$ = NIL; }
+	;
+
+rebuild_index_opt:
+		ONLINE
+				{
+					$$ = makeDefElem("online", (Node *) makeBoolean(true), @1);
+				}
+		| TABLESPACE name
+				{
+					$$ = makeDefElem("tablespace", (Node *) makeString($2), @1);
+				}
+		| PARTITION name
+				{
+					$$ = makeDefElem("partition", (Node *) makeString($2), @1);
+				}
+		| PARALLEL Iconst
+				{
+					/*
+					 * PARALLEL N: explicit degree of parallelism.
+					 * Oracle DOP N means N total participants (coordinator idle).
+					 * PostgreSQL leader also participates, so we store N here and
+					 * let ExecOraAlterIndexRebuild() convert to N-1 bg workers.
+					 */
+					if ($2 <= 0)
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+								 errmsg("PARALLEL degree must be at least 1"),
+								 parser_errposition(@2)));
+					$$ = makeDefElem("parallel", (Node *) makeInteger($2), @1);
+				}
+		| PARALLEL
+				{
+					/*
+					 * PARALLEL (no degree): use table's parallel_workers reloption
+					 * or auto-calculate via plan_create_index_workers().
+					 * Represented as parallel degree 0 (auto).
+					 */
+					$$ = makeDefElem("parallel", (Node *) makeInteger(0), @1);
+				}
+		| NOPARALLEL
+				{
+					/* NOPARALLEL: force serial rebuild */
+					$$ = makeDefElem("noparallel", (Node *) makeBoolean(true), @1);
+				}
+	;
 
 alter_table_cmd:
 			/* ALTER TABLE <name> ADD <coldef> */
@@ -20411,6 +20478,7 @@ unreserved_keyword:
 			| NOMINVALUE
 			| NONEDITIONABLE
 			| NOORDER
+			| NOPARALLEL
 			| NORMALIZED
 			| NOSCALE
 			| NOSHARD
@@ -20425,6 +20493,7 @@ unreserved_keyword:
 			| OIDS
 			| OLD
 			| OMIT
+			| ONLINE
 			| OPERATOR
 			| OPTION
 			| OPTIONS
@@ -20468,6 +20537,7 @@ unreserved_keyword:
 			| RAW_P
 			| READ
 			| REASSIGN
+			| REBUILD
 			| RECHECK
 			| RECURSIVE
 			| REF_P
@@ -21112,6 +21182,7 @@ bare_label_keyword:
 			| NOMINVALUE
 			| NONE
 			| NONEDITIONABLE
+			| NOPARALLEL
 			| NORMALIZE
 			| NORMALIZED
 			| NOSCALE
@@ -21134,6 +21205,7 @@ bare_label_keyword:
 			| OIDS
 			| OLD
 			| OMIT
+			| ONLINE
 			| ONLY
 			| OPERATOR
 			| OPTION
@@ -21186,6 +21258,7 @@ bare_label_keyword:
 			| READ
 			| REAL
 			| REASSIGN
+			| REBUILD
 			| RECHECK
 			| RECURSIVE
 			| REF_P

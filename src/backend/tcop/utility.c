@@ -287,6 +287,7 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 
 		case T_ClusterStmt:
 		case T_ReindexStmt:
+		case T_OraAlterIndexRebuildStmt:	/* Oracle-compat ALTER INDEX ... REBUILD */
 		case T_VacuumStmt:
 			{
 				/*
@@ -1575,6 +1576,24 @@ ProcessUtilitySlow(ParseState *pstate,
 				ExecReindex(pstate, (ReindexStmt *) parsetree, isTopLevel);
 
 				/* EventTriggerCollectSimpleCommand is called directly */
+				commandCollected = true;
+				break;
+
+			case T_OraAlterIndexRebuildStmt:
+				/*
+				 * Oracle-compatible ALTER INDEX ... REBUILD statement.
+				 *
+				 * Delegate to ExecOraAlterIndexRebuild(), which translates
+				 * the OraAlterIndexRebuildStmt options (ONLINE, TABLESPACE,
+				 * PARTITION) into the appropriate ReindexParams and calls
+				 * into the existing REINDEX infrastructure.
+				 *
+				 * Event trigger collection is handled internally by the
+				 * REINDEX infrastructure invoked from ExecOraAlterIndexRebuild().
+				 */
+				ExecOraAlterIndexRebuild(pstate,
+										 (OraAlterIndexRebuildStmt *) parsetree,
+										 isTopLevel);
 				commandCollected = true;
 				break;
 
@@ -3047,6 +3066,16 @@ CreateCommandTag(Node *parsetree)
 			tag = CMDTAG_REINDEX;
 			break;
 
+		case T_OraAlterIndexRebuildStmt:
+			/*
+			 * Oracle-compatible ALTER INDEX ... REBUILD.
+			 * Reuse the existing CMDTAG_ALTER_INDEX so clients see
+			 * "ALTER INDEX" in pg_stat_activity and command completion tags,
+			 * consistent with other ALTER INDEX subcommands.
+			 */
+			tag = CMDTAG_ALTER_INDEX;
+			break;
+
 		case T_CreateConversionStmt:
 			tag = CMDTAG_CREATE_CONVERSION;
 			break;
@@ -3680,6 +3709,15 @@ GetCommandLogLevel(Node *parsetree)
 
 		case T_ReindexStmt:
 			lev = LOGSTMT_ALL;	/* should this be DDL? */
+			break;
+
+		case T_OraAlterIndexRebuildStmt:
+			/*
+			 * REBUILD rewrites index files on disk.  Use LOGSTMT_ALL
+			 * (same as REINDEX) so the statement appears in the server
+			 * log whenever log_statement = 'all' is set.
+			 */
+			lev = LOGSTMT_ALL;
 			break;
 
 		case T_CreateConversionStmt:

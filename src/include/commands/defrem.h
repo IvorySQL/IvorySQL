@@ -38,6 +38,9 @@ extern ObjectAddress DefineIndex(Oid tableId,
 								 bool skip_build,
 								 bool quiet);
 extern void ExecReindex(ParseState *pstate, const ReindexStmt *stmt, bool isTopLevel);
+extern void ExecOraAlterIndexRebuild(ParseState *pstate,
+									 const OraAlterIndexRebuildStmt *stmt,
+									 bool isTopLevel);
 extern char *makeObjectName(const char *name1, const char *name2,
 							const char *label);
 extern char *ChooseRelationName(const char *name1, const char *name2,

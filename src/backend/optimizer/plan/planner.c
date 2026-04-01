@@ -7386,7 +7386,7 @@ plan_cluster_use_sort(Oid tableOid, Oid indexOid)
  * index.
  */
 int
-plan_create_index_workers(Oid tableOid, Oid indexOid)
+plan_create_index_workers(Oid tableOid, Oid indexOid, int override_workers)
 {
 	PlannerInfo *root;
 	Query	   *query;
@@ -7462,6 +7462,23 @@ plan_create_index_workers(Oid tableOid, Oid indexOid)
 		!is_parallel_safe(root, (Node *) RelationGetIndexPredicate(index)))
 	{
 		parallel_workers = 0;
+		goto done;
+	}
+
+	/*
+	 * Oracle REBUILD PARALLEL N override: the caller has specified an explicit
+	 * degree of parallelism.  Gates 1 (max_parallel_maintenance_workers == 0)
+	 * and 2 (safety checks above) are still enforced.  Gate 4 (32 MB memory
+	 * cap) is intentionally skipped, consistent with parallel_workers reloption
+	 * behavior -- the caller's explicit request takes precedence.
+	 *
+	 * Oracle DOP N means N total participants (N PX Servers, coordinator idle).
+	 * PostgreSQL leader also participates, so DOP N -> N-1 background workers.
+	 * The caller is responsible for this mapping; we just cap at the GUC.
+	 */
+	if (override_workers > 0)
+	{
+		parallel_workers = Min(override_workers, max_parallel_maintenance_workers);
 		goto done;
 	}
 

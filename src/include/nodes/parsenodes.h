@@ -4163,6 +4163,25 @@ typedef struct ReindexStmt
 } ReindexStmt;
 
 /* ----------------------
+ *		Oracle-compatible ALTER INDEX ... REBUILD Statement
+ *
+ * Represents Oracle-compatible ALTER INDEX ... REBUILD syntax.
+ * options is a List of DefElem nodes:
+ *   "online"     -> Boolean true      -- REBUILD ONLINE
+ *   "tablespace" -> String name       -- REBUILD TABLESPACE tbs
+ *   "partition"  -> String name       -- REBUILD PARTITION p
+ *   "parallel"   -> Integer degree    -- REBUILD PARALLEL [N] (0 = auto)
+ *   "noparallel" -> Boolean true      -- REBUILD NOPARALLEL
+ * ----------------------
+ */
+typedef struct OraAlterIndexRebuildStmt
+{
+	NodeTag		type;
+	RangeVar   *relation;		/* index to rebuild */
+	List	   *options;		/* List of DefElem */
+} OraAlterIndexRebuildStmt;
+
+/* ----------------------
  *		CREATE CONVERSION Statement
  * ----------------------
  */
