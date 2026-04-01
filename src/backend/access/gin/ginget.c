@@ -489,7 +489,7 @@ restartScanEntry:
 static int
 entryIndexByFrequencyCmp(const void *a1, const void *a2, void *arg)
 {
-	const GinScanKey key = (const GinScanKey) arg;
+	const GinScanKeyData *key = arg;
 	int			i1 = *(const int *) a1;
 	int			i2 = *(const int *) a2;
 	uint32		n1 = key->scanEntry[i1]->predictNumberResult;
@@ -1327,6 +1327,8 @@ scanGetItem(IndexScanDesc scan, ItemPointerData advancePast,
 	 */
 	do
 	{
+		CHECK_FOR_INTERRUPTS();
+
 		ItemPointerSetMin(item);
 		match = true;
 		for (i = 0; i < so->nkeys && match; i++)
@@ -1966,8 +1968,6 @@ gingetbitmap(IndexScanDesc scan, TIDBitmap *tbm)
 
 	for (;;)
 	{
-		CHECK_FOR_INTERRUPTS();
-
 		if (!scanGetItem(scan, iptr, &iptr, &recheck))
 			break;
 

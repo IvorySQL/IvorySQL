@@ -808,11 +808,11 @@ index_create(Relation heapRelation,
 				 errmsg("user-defined indexes on system catalog tables are not supported")));
 
 	/*
-	 * Btree text_pattern_ops uses text_eq as the equality operator, which is
-	 * fine as long as the collation is deterministic; text_eq then reduces to
+	 * Btree text_pattern_ops uses texteq as the equality operator, which is
+	 * fine as long as the collation is deterministic; texteq then reduces to
 	 * bitwise equality and so it is semantically compatible with the other
 	 * operators and functions in that opclass.  But with a nondeterministic
-	 * collation, text_eq could yield results that are incompatible with the
+	 * collation, texteq could yield results that are incompatible with the
 	 * actual behavior of the index (which is determined by the opclass's
 	 * comparison function).  We prevent such problems by refusing creation of
 	 * an index with that opclass and a nondeterministic collation.
@@ -822,7 +822,7 @@ index_create(Relation heapRelation,
 	 * opclasses as incompatible with nondeterminism; but for now, this small
 	 * hack suffices.
 	 *
-	 * Another solution is to use a special operator, not text_eq, as the
+	 * Another solution is to use a special operator, not texteq, as the
 	 * equality opclass member; but that is undesirable because it would
 	 * prevent index usage in many queries that work fine today.
 	 */
@@ -3022,9 +3022,9 @@ index_build(Relation heapRelation,
 	 * sanity checks
 	 */
 	Assert(RelationIsValid(indexRelation));
-	Assert(PointerIsValid(indexRelation->rd_indam));
-	Assert(PointerIsValid(indexRelation->rd_indam->ambuild));
-	Assert(PointerIsValid(indexRelation->rd_indam->ambuildempty));
+	Assert(indexRelation->rd_indam);
+	Assert(indexRelation->rd_indam->ambuild);
+	Assert(indexRelation->rd_indam->ambuildempty);
 
 	/*
 	 * Determine worker process details for parallel CREATE INDEX.  Currently,
@@ -3033,10 +3033,12 @@ index_build(Relation heapRelation,
 	 * Note that planner considers parallel safety for us.
 	 */
 	if (parallel && IsNormalProcessingMode() &&
-		indexRelation->rd_indam->amcanbuildparallel)
+		indexRelation->rd_indam->amcanbuildparallel &&
+		indexInfo->ii_ParallelWorkers == 0)
 		indexInfo->ii_ParallelWorkers =
 			plan_create_index_workers(RelationGetRelid(heapRelation),
-									  RelationGetRelid(indexRelation));
+									  RelationGetRelid(indexRelation),
+									  0);	/* 0 = auto, no override */
 
 	if (indexInfo->ii_ParallelWorkers == 0)
 		ereport(DEBUG1,
@@ -3085,7 +3087,7 @@ index_build(Relation heapRelation,
 	 */
 	stats = indexRelation->rd_indam->ambuild(heapRelation, indexRelation,
 											 indexInfo);
-	Assert(PointerIsValid(stats));
+	Assert(stats);
 
 	/*
 	 * If this is an unlogged index, we may need to write out an init fork for
@@ -3628,6 +3630,7 @@ reindex_index(const ReindexStmt *stmt, Oid indexId,
 	PGRUsage	ru0;
 	bool		progress = ((params->options & REINDEXOPT_REPORT_PROGRESS) != 0);
 	bool		set_tablespace = false;
+	bool		use_parallel;
 
 	pg_rusage_init(&ru0);
 
@@ -3817,9 +3820,41 @@ reindex_index(const ReindexStmt *stmt, Oid indexId,
 	/* Create a new physical relation for the index */
 	RelationSetNewRelfilenumber(iRel, persistence);
 
+	/*
+	 * Determine parallelism for this rebuild, honouring any Oracle
+	 * PARALLEL/NOPARALLEL override carried in params->nworkers:
+	 *
+	 *   nworkers ==  0: auto -- index_build() calls plan_create_index_workers()
+	 *   nworkers == -1: NOPARALLEL -- pass parallel=false, skip all parallel logic
+	 *   nworkers  >  0: PARALLEL N -- pre-set ii_ParallelWorkers so index_build()
+	 *                   skips plan_create_index_workers() (guard added there)
+	 */
+	use_parallel = true;
+
+	if (params->nworkers == -1)
+	{
+		/* NOPARALLEL: force serial */
+		use_parallel = false;
+	}
+	else if (params->nworkers > 0 &&
+			 IsNormalProcessingMode() &&
+			 iRel->rd_indam->amcanbuildparallel)
+	{
+		/*
+		 * PARALLEL N: pre-compute worker count with the explicit override.
+		 * Gates 1 and 2 in plan_create_index_workers() still apply.
+		 * Gate 4 (32 MB memory cap) is skipped, consistent with the
+		 * parallel_workers reloption behaviour.
+		 */
+		indexInfo->ii_ParallelWorkers =
+			plan_create_index_workers(RelationGetRelid(heapRelation),
+									  RelationGetRelid(iRel),
+									  params->nworkers);
+	}
+
 	/* Initialize the index and rebuild */
 	/* Note: we do not need to re-establish pkey setting */
-	index_build(heapRelation, iRel, indexInfo, true, true);
+	index_build(heapRelation, iRel, indexInfo, true, use_parallel);
 
 	/* Re-allow use of target index */
 	ResetReindexProcessing();

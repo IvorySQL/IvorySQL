@@ -40,6 +40,7 @@ OBJS = \
 	recovery_gen.o \
 	simple_list.o \
 	string_utils.o \
+	version.o \
 	ora_keywords.o \
 	ora_string_utils.o
 

@@ -12,6 +12,7 @@
 #include "utils/builtins.h"
 #include "utils/pg_locale.h"
 #include "utils/rel.h"
+#include "varatt.h"
 
 /* used for key sorting */
 typedef struct

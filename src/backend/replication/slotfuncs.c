@@ -566,7 +566,7 @@ pg_replication_slot_advance(PG_FUNCTION_ARGS)
 	if (moveto < minlsn)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("cannot advance replication slot to %X/%X, minimum is %X/%X",
+				 errmsg("cannot advance replication slot to %X/%08X, minimum is %X/%08X",
 						LSN_FORMAT_ARGS(moveto), LSN_FORMAT_ARGS(minlsn))));
 
 	/* Do the actual slot update, depending on the slot type */
@@ -921,13 +921,14 @@ pg_sync_replication_slots(PG_FUNCTION_ARGS)
 	/* Connect to the primary server. */
 	wrconn = walrcv_connect(PrimaryConnInfo, false, false, false,
 							app_name.data, &err);
-	pfree(app_name.data);
 
 	if (!wrconn)
 		ereport(ERROR,
 				errcode(ERRCODE_CONNECTION_FAILURE),
 				errmsg("synchronization worker \"%s\" could not connect to the primary server: %s",
 					   app_name.data, err));
+
+	pfree(app_name.data);
 
 	SyncReplicationSlots(wrconn);
 

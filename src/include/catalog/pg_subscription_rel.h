@@ -85,11 +85,14 @@ typedef struct SubscriptionRelState
 extern void AddSubscriptionRelState(Oid subid, Oid relid, char state,
 									XLogRecPtr sublsn, bool retain_lock);
 extern void UpdateSubscriptionRelState(Oid subid, Oid relid, char state,
-									   XLogRecPtr sublsn);
+									   XLogRecPtr sublsn, bool already_locked);
 extern char GetSubscriptionRelState(Oid subid, Oid relid, XLogRecPtr *sublsn);
 extern void RemoveSubscriptionRel(Oid subid, Oid relid);
 
-extern bool HasSubscriptionRelations(Oid subid);
-extern List *GetSubscriptionRelations(Oid subid, bool not_ready);
+extern bool HasSubscriptionTables(Oid subid);
+extern List *GetSubscriptionRelations(Oid subid, bool tables, bool sequences,
+									  bool not_ready);
+
+extern void UpdateDeadTupleRetentionStatus(Oid subid, bool active);
 
 #endif							/* PG_SUBSCRIPTION_REL_H */

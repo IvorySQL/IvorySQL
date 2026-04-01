@@ -30,7 +30,7 @@ subdir = src/oracle_fe_utils
 top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 
-override CPPFLAGS := -DFRONTEND -I$(libpq_srcdir) $(CPPFLAGS)
+override CPPFLAGS := -DFRONTEND -I$(libpq_srcdir) -I$(top_builddir)/src/include/oracle_fe_utils $(CPPFLAGS)
 
 OBJS = ora_string_utils.o \
 	ora_psqlscan.o

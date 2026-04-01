@@ -390,6 +390,7 @@ ReorderBufferAllocate(void)
 	buffer->streamTxns = 0;
 	buffer->streamCount = 0;
 	buffer->streamBytes = 0;
+	buffer->memExceededCount = 0;
 	buffer->totalTxns = 0;
 	buffer->totalBytes = 0;
 
@@ -1415,7 +1416,7 @@ ReorderBufferIterTXNNext(ReorderBuffer *rb, ReorderBufferIterTXNState *state)
 	int32		off;
 
 	/* nothing there anymore */
-	if (state->heap->bh_size == 0)
+	if (binaryheap_empty(state->heap))
 		return NULL;
 
 	off = DatumGetInt32(binaryheap_first(state->heap));
@@ -2215,6 +2216,7 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 {
 	bool		using_subtxn;
 	MemoryContext ccxt = CurrentMemoryContext;
+	ResourceOwner cowner = CurrentResourceOwner;
 	ReorderBufferIterTXNState *volatile iterstate = NULL;
 	volatile XLogRecPtr prev_lsn = InvalidXLogRecPtr;
 	ReorderBufferChange *volatile specinsert = NULL;
@@ -2599,7 +2601,7 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 
 			if (++changes_count >= CHANGES_THRESHOLD)
 			{
-				rb->update_progress_txn(rb, txn, change->lsn);
+				rb->update_progress_txn(rb, txn, prev_lsn);
 				changes_count = 0;
 			}
 		}
@@ -2692,7 +2694,11 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 		}
 
 		if (using_subtxn)
+		{
 			RollbackAndReleaseCurrentSubTransaction();
+			MemoryContextSwitchTo(ccxt);
+			CurrentResourceOwner = cowner;
+		}
 
 		/*
 		 * We are here due to one of the four reasons: 1. Decoding an
@@ -2751,7 +2757,11 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 		}
 
 		if (using_subtxn)
+		{
 			RollbackAndReleaseCurrentSubTransaction();
+			MemoryContextSwitchTo(ccxt);
+			CurrentResourceOwner = cowner;
+		}
 
 		/*
 		 * The error code ERRCODE_TRANSACTION_ROLLBACK indicates a concurrent
@@ -2821,7 +2831,7 @@ ReorderBufferReplay(ReorderBufferTXN *txn,
 
 	txn->final_lsn = commit_lsn;
 	txn->end_lsn = end_lsn;
-	txn->xact_time.commit_time = commit_time;
+	txn->commit_time = commit_time;
 	txn->origin_id = origin_id;
 	txn->origin_lsn = origin_lsn;
 
@@ -2913,7 +2923,7 @@ ReorderBufferRememberPrepareInfo(ReorderBuffer *rb, TransactionId xid,
 	 */
 	txn->final_lsn = prepare_lsn;
 	txn->end_lsn = end_lsn;
-	txn->xact_time.prepare_time = prepare_time;
+	txn->prepare_time = prepare_time;
 	txn->origin_id = origin_id;
 	txn->origin_lsn = origin_lsn;
 
@@ -2970,7 +2980,7 @@ ReorderBufferPrepare(ReorderBuffer *rb, TransactionId xid,
 	txn->gid = pstrdup(gid);
 
 	ReorderBufferReplay(txn, rb, xid, txn->final_lsn, txn->end_lsn,
-						txn->xact_time.prepare_time, txn->origin_id, txn->origin_lsn);
+						txn->prepare_time, txn->origin_id, txn->origin_lsn);
 
 	/*
 	 * Send a prepare if not already done so. This might occur if we have
@@ -3009,7 +3019,7 @@ ReorderBufferFinishPrepared(ReorderBuffer *rb, TransactionId xid,
 	 * be later used for rollback.
 	 */
 	prepare_end_lsn = txn->end_lsn;
-	prepare_time = txn->xact_time.prepare_time;
+	prepare_time = txn->prepare_time;
 
 	/* add the gid in the txn */
 	txn->gid = pstrdup(gid);
@@ -3041,12 +3051,12 @@ ReorderBufferFinishPrepared(ReorderBuffer *rb, TransactionId xid,
 		 * prepared after the restart.
 		 */
 		ReorderBufferReplay(txn, rb, xid, txn->final_lsn, txn->end_lsn,
-							txn->xact_time.prepare_time, txn->origin_id, txn->origin_lsn);
+							txn->prepare_time, txn->origin_id, txn->origin_lsn);
 	}
 
 	txn->final_lsn = commit_lsn;
 	txn->end_lsn = end_lsn;
-	txn->xact_time.commit_time = commit_time;
+	txn->commit_time = commit_time;
 	txn->origin_id = origin_id;
 	txn->origin_lsn = origin_lsn;
 
@@ -3086,7 +3096,7 @@ ReorderBufferAbort(ReorderBuffer *rb, TransactionId xid, XLogRecPtr lsn,
 	if (txn == NULL)
 		return;
 
-	txn->xact_time.abort_time = abort_time;
+	txn->abort_time = abort_time;
 
 	/* For streamed transactions notify the remote node about the abort. */
 	if (rbtxn_is_streamed(txn))
@@ -3244,6 +3254,8 @@ ReorderBufferImmediateInvalidation(ReorderBuffer *rb, uint32 ninvalidations,
 								   SharedInvalidationMessage *invalidations)
 {
 	bool		use_subtxn = IsTransactionOrTransactionBlock();
+	MemoryContext ccxt = CurrentMemoryContext;
+	ResourceOwner cowner = CurrentResourceOwner;
 	int			i;
 
 	if (use_subtxn)
@@ -3262,7 +3274,11 @@ ReorderBufferImmediateInvalidation(ReorderBuffer *rb, uint32 ninvalidations,
 		LocalExecuteInvalidationMessage(&invalidations[i]);
 
 	if (use_subtxn)
+	{
 		RollbackAndReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(ccxt);
+		CurrentResourceOwner = cowner;
+	}
 }
 
 /*
@@ -3883,14 +3899,26 @@ static void
 ReorderBufferCheckMemoryLimit(ReorderBuffer *rb)
 {
 	ReorderBufferTXN *txn;
+	bool		update_stats = true;
 
-	/*
-	 * Bail out if debug_logical_replication_streaming is buffered and we
-	 * haven't exceeded the memory limit.
-	 */
-	if (debug_logical_replication_streaming == DEBUG_LOGICAL_REP_STREAMING_BUFFERED &&
-		rb->size < logical_decoding_work_mem * (Size) 1024)
+	if (rb->size >= logical_decoding_work_mem * (Size) 1024)
+	{
+		/*
+		 * Update the statistics as the memory usage has reached the limit. We
+		 * report the statistics update later in this function since we can
+		 * update the slot statistics altogether while streaming or
+		 * serializing transactions in most cases.
+		 */
+		rb->memExceededCount += 1;
+	}
+	else if (debug_logical_replication_streaming == DEBUG_LOGICAL_REP_STREAMING_BUFFERED)
+	{
+		/*
+		 * Bail out if debug_logical_replication_streaming is buffered and we
+		 * haven't exceeded the memory limit.
+		 */
 		return;
+	}
 
 	/*
 	 * If debug_logical_replication_streaming is immediate, loop until there's
@@ -3950,7 +3978,16 @@ ReorderBufferCheckMemoryLimit(ReorderBuffer *rb)
 		 */
 		Assert(txn->size == 0);
 		Assert(txn->nentries_mem == 0);
+
+		/*
+		 * We've reported the memExceededCount update while streaming or
+		 * serializing the transaction.
+		 */
+		update_stats = false;
 	}
+
+	if (update_stats)
+		UpdateDecodingStats((LogicalDecodingContext *) rb->private_data);
 
 	/* We must be under the memory limit now. */
 	Assert(rb->size < logical_decoding_work_mem * (Size) 1024);
@@ -4917,7 +4954,7 @@ StartupReorderBuffer(void)
 			continue;
 
 		/* if it cannot be a slot, skip the directory */
-		if (!ReplicationSlotValidateName(logical_de->d_name, DEBUG2))
+		if (!ReplicationSlotValidateName(logical_de->d_name, true, DEBUG2))
 			continue;
 
 		/*
@@ -5097,7 +5134,7 @@ ReorderBufferToastReplace(ReorderBuffer *rb, ReorderBufferTXN *txn,
 
 	for (natt = 0; natt < desc->natts; natt++)
 	{
-		Form_pg_attribute attr = TupleDescAttr(desc, natt);
+		CompactAttribute *attr = TupleDescCompactAttr(desc, natt);
 		ReorderBufferToastEnt *ent;
 		struct varlena *varlena;
 
@@ -5108,10 +5145,6 @@ ReorderBufferToastReplace(ReorderBuffer *rb, ReorderBufferTXN *txn,
 		struct varlena *reconstructed;
 		dlist_iter	it;
 		Size		data_done = 0;
-
-		/* system columns aren't toasted */
-		if (attr->attnum < 0)
-			continue;
 
 		if (attr->attisdropped)
 			continue;

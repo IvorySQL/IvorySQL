@@ -173,11 +173,11 @@ static void FormPartitionKeyDatum(PartitionDispatch pd,
 								  EState *estate,
 								  Datum *values,
 								  bool *isnull);
-static int	get_partition_for_tuple(PartitionDispatch pd, Datum *values,
-									bool *isnull);
+static int	get_partition_for_tuple(PartitionDispatch pd, const Datum *values,
+									const bool *isnull);
 static char *ExecBuildSlotPartitionKeyDescription(Relation rel,
-												  Datum *values,
-												  bool *isnull,
+												  const Datum *values,
+												  const bool *isnull,
 												  int maxfieldlen);
 static List *adjust_partition_colnos(List *colnos, ResultRelInfo *leaf_part_rri);
 static List *adjust_partition_colnos_using_map(List *colnos, AttrMap *attrMap);
@@ -360,8 +360,12 @@ ExecFindPartition(ModifyTableState *mtstate,
 											   true, false);
 				if (rri)
 				{
+					ModifyTable *node = (ModifyTable *) mtstate->ps.plan;
+
 					/* Verify this ResultRelInfo allows INSERTs */
-					CheckValidResultRel(rri, CMD_INSERT, NIL);
+					CheckValidResultRel(rri, CMD_INSERT,
+										node ? node->onConflictAction : ONCONFLICT_NONE,
+										NIL);
 
 					/*
 					 * Initialize information needed to insert this and
@@ -527,7 +531,8 @@ ExecInitPartitionInfo(ModifyTableState *mtstate, EState *estate,
 	 * partition-key becomes a DELETE+INSERT operation, so this check is still
 	 * required when the operation is CMD_UPDATE.
 	 */
-	CheckValidResultRel(leaf_part_rri, CMD_INSERT, NIL);
+	CheckValidResultRel(leaf_part_rri, CMD_INSERT,
+						node ? node->onConflictAction : ONCONFLICT_NONE, NIL);
 
 	/*
 	 * Open partition indices.  The user may have asked to check for conflicts
@@ -1391,7 +1396,7 @@ FormPartitionKeyDatum(PartitionDispatch pd,
  * found or -1 if none found.
  */
 static int
-get_partition_for_tuple(PartitionDispatch pd, Datum *values, bool *isnull)
+get_partition_for_tuple(PartitionDispatch pd, const Datum *values, const bool *isnull)
 {
 	int			bound_offset = -1;
 	int			part_index = -1;
@@ -1612,8 +1617,8 @@ get_partition_for_tuple(PartitionDispatch pd, Datum *values, bool *isnull)
  */
 static char *
 ExecBuildSlotPartitionKeyDescription(Relation rel,
-									 Datum *values,
-									 bool *isnull,
+									 const Datum *values,
+									 const bool *isnull,
 									 int maxfieldlen)
 {
 	StringInfoData buf;

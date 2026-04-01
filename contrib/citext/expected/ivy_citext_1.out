@@ -1594,22 +1594,26 @@ SELECT trim('    trim    '::citext)               = 'trim' AS t;
 ERROR:  function sys.trim(citext) does not exist
 LINE 1: SELECT trim('    trim    '::citext)               = 'trim' A...
                ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No function of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 SELECT trim('xxxxxtrimxxxx'::citext, 'x'::citext) = 'trim' AS t;
 ERROR:  function sys.trim(citext, citext) does not exist
 LINE 1: SELECT trim('xxxxxtrimxxxx'::citext, 'x'::citext) = 'trim' A...
                ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No function of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 SELECT trim('xxxxxxtrimxxxx'::text,  'x'::citext) = 'trim' AS t;
 ERROR:  function sys.trim(text, citext) does not exist
 LINE 1: SELECT trim('xxxxxxtrimxxxx'::text,  'x'::citext) = 'trim' A...
                ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No function of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 SELECT trim('xxxxxtrimxxxx'::text,   'x'::citext) = 'trim' AS t;
 ERROR:  function sys.trim(text, citext) does not exist
 LINE 1: SELECT trim('xxxxxtrimxxxx'::text,   'x'::citext) = 'trim' A...
                ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No function of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 SELECT upper( name ) = upper( name::text ) AS t FROM srt;
  t 
 ---

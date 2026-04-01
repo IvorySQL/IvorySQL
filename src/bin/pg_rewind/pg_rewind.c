@@ -147,6 +147,7 @@ main(int argc, char **argv)
 	TimeLineID	source_tli;
 	TimeLineID	target_tli;
 	XLogRecPtr	target_wal_endrec;
+	XLogSegNo	last_common_segno;
 	size_t		size;
 	char	   *buffer;
 	bool		no_ensure_shutdown = false;
@@ -393,9 +394,15 @@ main(int argc, char **argv)
 								   targetHistory, targetNentries,
 								   &divergerec, &lastcommontliIndex);
 
-		pg_log_info("servers diverged at WAL location %X/%X on timeline %u",
+		pg_log_info("servers diverged at WAL location %X/%08X on timeline %u",
 					LSN_FORMAT_ARGS(divergerec),
 					targetHistory[lastcommontliIndex].tli);
+
+		/*
+		 * Convert the divergence LSN to a segment number, that will be used
+		 * to decide how WAL segments should be processed.
+		 */
+		XLByteToSeg(divergerec, last_common_segno, ControlFile_target.xlog_seg_size);
 
 		/*
 		 * Don't need the source history anymore. The target history is still
@@ -461,7 +468,7 @@ main(int argc, char **argv)
 
 	findLastCheckpoint(datadir_target, divergerec, lastcommontliIndex,
 					   &chkptrec, &chkpttli, &chkptredo, restore_command);
-	pg_log_info("rewinding from last common checkpoint at %X/%X on timeline %u",
+	pg_log_info("rewinding from last common checkpoint at %X/%08X on timeline %u",
 				LSN_FORMAT_ARGS(chkptrec), chkpttli);
 
 	/* Initialize the hash table to track the status of each file */
@@ -492,7 +499,7 @@ main(int argc, char **argv)
 	 * We have collected all information we need from both systems. Decide
 	 * what to do with each file.
 	 */
-	filemap = decide_file_actions();
+	filemap = decide_file_actions(last_common_segno);
 	if (showprogress)
 		calculate_totals(filemap);
 
@@ -902,7 +909,7 @@ getTimelineHistory(TimeLineID tli, bool is_source, int *nentries)
 			TimeLineHistoryEntry *entry;
 
 			entry = &history[i];
-			pg_log_debug("%u: %X/%X - %X/%X", entry->tli,
+			pg_log_debug("%u: %X/%08X - %X/%08X", entry->tli,
 						 LSN_FORMAT_ARGS(entry->begin),
 						 LSN_FORMAT_ARGS(entry->end));
 		}
@@ -981,8 +988,8 @@ createBackupLabel(XLogRecPtr startpoint, TimeLineID starttli, XLogRecPtr checkpo
 	strftime(strfbuf, sizeof(strfbuf), "%Y-%m-%d %H:%M:%S %Z", tmp);
 
 	len = snprintf(buf, sizeof(buf),
-				   "START WAL LOCATION: %X/%X (file %s)\n"
-				   "CHECKPOINT LOCATION: %X/%X\n"
+				   "START WAL LOCATION: %X/%08X (file %s)\n"
+				   "CHECKPOINT LOCATION: %X/%08X\n"
 				   "BACKUP METHOD: pg_rewind\n"
 				   "BACKUP FROM: standby\n"
 				   "START TIME: %s\n",

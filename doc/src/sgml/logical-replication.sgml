@@ -102,16 +102,18 @@
    A <firstterm>publication</firstterm> can be defined on any physical
    replication primary.  The node where a publication is defined is referred to
    as <firstterm>publisher</firstterm>.  A publication is a set of changes
-   generated from a table or a group of tables, and might also be described as
-   a change set or replication set.  Each publication exists in only one database.
+   generated from a table, a group of tables or the current state of all
+   sequences, and might also be described as a change set or replication set.
+   Each publication exists in only one database.
   </para>
 
   <para>
    Publications are different from schemas and do not affect how the table is
    accessed.  Each table can be added to multiple publications if needed.
-   Publications may currently only contain tables and all tables in schema.
-   Objects must be added explicitly, except when a publication is created for
-   <literal>ALL TABLES</literal>.
+   Publications may currently only contain tables or sequences. Objects must be
+   added explicitly, except when a publication is created using
+   <literal>FOR TABLES IN SCHEMA</literal>, <literal>FOR ALL TABLES</literal>,
+   or <literal>FOR ALL SEQUENCES</literal>.
   </para>
 
   <para>
@@ -542,8 +544,8 @@
     it manually before the subscription can be activated. The steps to create
     the slot and activate the subscription are shown in the following examples.
     These examples specify the standard logical decoding output plugin
-    (<literal>pgoutput</literal>), which is what the built-in logical
-    replication uses.
+    (<xref linkend="logicaldecoding-pgoutput"/>),
+    which is what the built-in logical replication uses.
    </para>
    <para>
     First, create a publication for the examples to use.
@@ -575,8 +577,8 @@ HINT:  To initiate replication, you must manually create the replication slot, e
 <programlisting>
 /* pub # */ SELECT * FROM pg_create_logical_replication_slot('sub1', 'pgoutput');
  slot_name |    lsn
------------+-----------
- sub1      | 0/19404D0
+-----------+------------
+ sub1      | 0/019404D0
 (1 row)
 </programlisting></para>
      </listitem>
@@ -617,8 +619,8 @@ HINT:  To initiate replication, you must manually create the replication slot, e
 <programlisting>
 /* pub # */ SELECT * FROM pg_create_logical_replication_slot('myslot', 'pgoutput');
  slot_name |    lsn
------------+-----------
- myslot    | 0/19059A0
+-----------+------------
+ myslot    | 0/019059A0
 (1 row)
 </programlisting></para>
      </listitem>
@@ -655,8 +657,8 @@ HINT:  To initiate replication, you must manually create the replication slot, e
 <programlisting>
 /* pub # */ SELECT * FROM pg_create_logical_replication_slot('myslot', 'pgoutput');
  slot_name |    lsn
------------+-----------
- myslot    | 0/1905930
+-----------+------------
+ myslot    | 0/01905930
 (1 row)
 </programlisting></para>
      </listitem>
@@ -709,8 +711,8 @@ HINT:  To initiate replication, you must manually create the replication slot, e
   </para>
 
   <para>
-   To confirm that the standby server is indeed ready for failover, follow these
-   steps to verify that all necessary logical replication slots have been
+   To confirm that the standby server is indeed ready for failover for a given subscriber, follow these
+   steps to verify that all the logical replication slots required by that subscriber have been
    synchronized to the standby server:
   </para>
 
@@ -764,7 +766,7 @@ HINT:  To initiate replication, you must manually create the replication slot, e
      Check that the logical replication slots identified above exist on
      the standby server and are ready for failover.
 <programlisting>
-/* standby # */ SELECT slot_name, (synced AND NOT temporary AND NOT conflicting) AS failover_ready
+/* standby # */ SELECT slot_name, (synced AND NOT temporary AND invalidation_reason IS NULL) AS failover_ready
                FROM pg_replication_slots
                WHERE slot_name IN
                    ('sub1','sub2','sub3', 'pg_16394_sync_16385_7394666715149055164');
@@ -782,10 +784,42 @@ HINT:  To initiate replication, you must manually create the replication slot, e
   <para>
    If all the slots are present on the standby server and the result
    (<literal>failover_ready</literal>) of the above SQL query is true, then
-   existing subscriptions can continue subscribing to publications now on the
-   new primary server.
+   existing subscriptions can continue subscribing to publications on the new
+   primary server.
   </para>
 
+  <para>
+   The first two steps in the above procedure are meant for a
+   <productname>PostgreSQL</productname> subscriber. It is recommended to run
+   these steps on each subscriber node, that will be served by the designated
+   standby after failover, to obtain the complete list of replication
+   slots. This list can then be verified in Step 3 to ensure failover readiness.
+   Non-<productname>PostgreSQL</productname> subscribers, on the other hand, may
+   use their own methods to identify the replication slots used by their
+   respective subscriptions.
+  </para>
+
+  <para>
+   In some cases, such as during a planned failover, it is necessary to confirm
+   that all subscribers, whether <productname>PostgreSQL</productname> or
+   non-<productname>PostgreSQL</productname>, will be able to continue
+   replication after failover to a given standby server. In such cases, use the
+   following SQL, instead of performing the first two steps above, to identify
+   which replication slots on the primary need to be synced to the standby that
+   is intended for promotion. This query returns the relevant replication slots
+   associated with all the failover-enabled subscriptions.
+  </para>
+
+   <para>
+<programlisting>
+/* primary # */ SELECT array_agg(quote_literal(r.slot_name)) AS slots
+               FROM pg_replication_slots r
+               WHERE r.failover AND NOT r.temporary;
+ slots
+-------
+ {'sub1','sub2','sub3', 'pg_16394_sync_16385_7394666715149055164'}
+(1 row)
+</programlisting></para>
  </sect1>
 
  <sect1 id="logical-replication-row-filter">
@@ -1016,28 +1050,28 @@ HINT:  To initiate replication, you must manually create the replication slot, e
     defined) for each publication.
 <programlisting><![CDATA[
 /* pub # */ \dRp+
-          Publication p1
-  Owner   | All tables | Inserts | Updates | Deletes | Truncates | Via root
-----------+------------+---------+---------+---------+-----------+----------
- postgres | f          | t       | t       | t       | t         | f
+                                         Publication p1
+  Owner   | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root
+----------+------------+---------------+---------+---------+---------+-----------+-------------------+----------
+ postgres | f          | f             | t       | t       | t       | t         | none              | f
 Tables:
- "public.t1" WHERE ((a > 5) AND (c = 'NSW'::text))
+    "public.t1" WHERE ((a > 5) AND (c = 'NSW'::text))
 
-          Publication p2
-  Owner   | All tables | Inserts | Updates | Deletes | Truncates | Via root
-----------+------------+---------+---------+---------+-----------+----------
- postgres | f          | t       | t       | t       | t         | f
+                                                Publication p2
+  Owner   | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root
+----------+------------+---------------+---------+---------+---------+-----------+-------------------+----------
+ postgres | f          | f             | t       | t       | t       | t         | none              | f
 Tables:
- "public.t1"
- "public.t2" WHERE (e = 99)
+    "public.t1"
+    "public.t2" WHERE (e = 99)
 
-          Publication p3
-  Owner   | All tables | Inserts | Updates | Deletes | Truncates | Via root
-----------+------------+---------+---------+---------+-----------+----------
- postgres | f          | t       | t       | t       | t         | f
+                                                Publication p3
+  Owner   | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root
+----------+------------+---------------+---------+---------+---------+-----------+-------------------+----------
+ postgres | f          | f             | t       | t       | t       | t         | none              | f
 Tables:
- "public.t2" WHERE (d = 10)
- "public.t3" WHERE (g = 10)
+    "public.t2" WHERE (d = 10)
+    "public.t3" WHERE (g = 10)
 ]]></programlisting></para>
 
    <para>
@@ -1459,10 +1493,10 @@ Publications:
      for each publication.
 <programlisting>
 /* pub # */ \dRp+
-                               Publication p1
-  Owner   | All tables | Inserts | Updates | Deletes | Truncates | Via root
-----------+------------+---------+---------+---------+-----------+----------
- postgres | f          | t       | t       | t       | t         | f
+                                                Publication p1
+  Owner   | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root
+----------+------------+---------------+---------+---------+---------+-----------+-------------------+----------
+ postgres | f          | f             | t       | t       | t       | t         | none              | f
 Tables:
     "public.t1" (id, a, b, d)
 </programlisting></para>
@@ -1772,11 +1806,27 @@ Publications:
       </para>
      </listitem>
     </varlistentry>
+    <varlistentry id="conflict-update-deleted" xreflabel="update_deleted">
+     <term><literal>update_deleted</literal></term>
+     <listitem>
+      <para>
+       The tuple to be updated was concurrently deleted by another origin. The
+       update will simply be skipped in this scenario. Note that this conflict
+       can only be detected when
+       <link linkend="guc-track-commit-timestamp"><varname>track_commit_timestamp</varname></link>
+       and <link linkend="sql-createsubscription-params-with-retain-dead-tuples"><literal>retain_dead_tuples</literal></link>
+       are enabled. Note that if a tuple cannot be found due to the table being
+       truncated, only a <literal>update_missing</literal> conflict will
+       arise. Additionally, if the tuple was deleted by the same origin, an
+       <literal>update_missing</literal> conflict will arise.
+      </para>
+     </listitem>
+    </varlistentry>
     <varlistentry id="conflict-update-missing" xreflabel="update_missing">
      <term><literal>update_missing</literal></term>
      <listitem>
       <para>
-       The tuple to be updated was not found. The update will simply be
+       The row to be updated was not found. The update will simply be
        skipped in this scenario.
       </para>
      </listitem>
@@ -1797,7 +1847,7 @@ Publications:
      <term><literal>delete_missing</literal></term>
      <listitem>
       <para>
-       The tuple to be deleted was not found. The delete will simply be
+       The row to be deleted was not found. The delete will simply be
        skipped in this scenario.
       </para>
      </listitem>
@@ -1831,8 +1881,8 @@ DETAIL:  <replaceable class="parameter">detailed_explanation</replaceable>.
 <phrase>where <replaceable class="parameter">detail_values</replaceable> is one of:</phrase>
 
     <literal>Key</literal> (<replaceable>column_name</replaceable> <optional>, ...</optional>)=(<replaceable>column_value</replaceable> <optional>, ...</optional>)
-    <literal>existing local tuple</literal> <optional>(<replaceable>column_name</replaceable> <optional>, ...</optional>)=</optional>(<replaceable>column_value</replaceable> <optional>, ...</optional>)
-    <literal>remote tuple</literal> <optional>(<replaceable>column_name</replaceable> <optional>, ...</optional>)=</optional>(<replaceable>column_value</replaceable> <optional>, ...</optional>)
+    <literal>existing local row</literal> <optional>(<replaceable>column_name</replaceable> <optional>, ...</optional>)=</optional>(<replaceable>column_value</replaceable> <optional>, ...</optional>)
+    <literal>remote row</literal> <optional>(<replaceable>column_name</replaceable> <optional>, ...</optional>)=</optional>(<replaceable>column_value</replaceable> <optional>, ...</optional>)
     <literal>replica identity</literal> {(<replaceable>column_name</replaceable> <optional>, ...</optional>)=(<replaceable>column_value</replaceable> <optional>, ...</optional>) | full <optional>(<replaceable>column_name</replaceable> <optional>, ...</optional>)=</optional>(<replaceable>column_value</replaceable> <optional>, ...</optional>)}
 </synopsis>
 
@@ -1866,32 +1916,32 @@ DETAIL:  <replaceable class="parameter">detailed_explanation</replaceable>.
         <para>
          <replaceable class="parameter">detailed_explanation</replaceable> includes
          the origin, transaction ID, and commit timestamp of the transaction that
-         modified the existing local tuple, if available.
+         modified the existing local row, if available.
         </para>
        </listitem>
        <listitem>
         <para>
          The <literal>Key</literal> section includes the key values of the local
-         tuple that violated a unique constraint for
+         row that violated a unique constraint for
          <literal>insert_exists</literal>, <literal>update_exists</literal> or
          <literal>multiple_unique_conflicts</literal> conflicts.
         </para>
        </listitem>
        <listitem>
         <para>
-         The <literal>existing local tuple</literal> section includes the local
-         tuple if its origin differs from the remote tuple for
+         The <literal>existing local row</literal> section includes the local
+         row if its origin differs from the remote row for
          <literal>update_origin_differs</literal> or <literal>delete_origin_differs</literal>
-         conflicts, or if the key value conflicts with the remote tuple for
+         conflicts, or if the key value conflicts with the remote row for
          <literal>insert_exists</literal>, <literal>update_exists</literal> or
          <literal>multiple_unique_conflicts</literal> conflicts.
         </para>
        </listitem>
        <listitem>
         <para>
-         The <literal>remote tuple</literal> section includes the new tuple from
+         The <literal>remote row</literal> section includes the new row from
          the remote insert or update operation that caused the conflict. Note that
-         for an update operation, the column value of the new tuple will be null
+         for an update operation, the column value of the new row will be null
          if the value is unchanged and toasted.
         </para>
        </listitem>
@@ -1899,7 +1949,7 @@ DETAIL:  <replaceable class="parameter">detailed_explanation</replaceable>.
         <para>
          The <literal>replica identity</literal> section includes the replica
          identity key values that were used to search for the existing local
-         tuple to be updated or deleted. This may include the full tuple value
+         row to be updated or deleted. This may include the full row value
          if the local relation is marked with
          <link linkend="sql-altertable-replica-identity-full"><literal>REPLICA IDENTITY FULL</literal></link>.
         </para>
@@ -1907,7 +1957,7 @@ DETAIL:  <replaceable class="parameter">detailed_explanation</replaceable>.
        <listitem>
         <para>
          <replaceable class="parameter">column_name</replaceable> is the column name.
-         For <literal>existing local tuple</literal>, <literal>remote tuple</literal>,
+         For <literal>existing local row</literal>, <literal>remote row</literal>,
          and <literal>replica identity full</literal> cases, column names are
          logged only if the user lacks the privilege to access all columns of
          the table. If column names are present, they appear in the same order
@@ -1964,16 +2014,16 @@ DETAIL:  <replaceable class="parameter">detailed_explanation</replaceable>.
 <screen>
 ERROR:  conflict detected on relation "public.test": conflict=insert_exists
 DETAIL:  Key already exists in unique index "t_pkey", which was modified locally in transaction 740 at 2024-06-26 10:47:04.727375+08.
-Key (c)=(1); existing local tuple (1, 'local'); remote tuple (1, 'remote').
-CONTEXT:  processing remote data for replication origin "pg_16395" during "INSERT" for replication target relation "public.test" in transaction 725 finished at 0/14C0378
+Key (c)=(1); existing local row (1, 'local'); remote row (1, 'remote').
+CONTEXT:  processing remote data for replication origin "pg_16395" during "INSERT" for replication target relation "public.test" in transaction 725 finished at 0/014C0378
 </screen>
    The LSN of the transaction that contains the change violating the constraint and
-   the replication origin name can be found from the server log (LSN 0/14C0378 and
+   the replication origin name can be found from the server log (LSN 0/014C0378 and
    replication origin <literal>pg_16395</literal> in the above case).  The
    transaction that produced the conflict can be skipped by using
    <link linkend="sql-altersubscription-params-skip"><command>ALTER SUBSCRIPTION ... SKIP</command></link>
    with the finish LSN
-   (i.e., LSN 0/14C0378).  The finish LSN could be an LSN at which the transaction
+   (i.e., LSN 0/014C0378).  The finish LSN could be an LSN at which the transaction
    is committed or prepared on the publisher.  Alternatively, the transaction can
    also be skipped by calling the <link linkend="pg-replication-origin-advance">
    <function>pg_replication_origin_advance()</function></link> function.
@@ -1984,7 +2034,7 @@ CONTEXT:  processing remote data for replication origin "pg_16395" during "INSER
    <link linkend="sql-createsubscription-params-with-disable-on-error"><literal>disable_on_error</literal></link>
    option. Then, you can use <function>pg_replication_origin_advance()</function>
    function with the <parameter>node_name</parameter> (i.e., <literal>pg_16395</literal>)
-   and the next LSN of the finish LSN (i.e., 0/14C0379).  The current position of
+   and the next LSN of the finish LSN (i.e., 0/014C0379).  The current position of
    origins can be seen in the <link linkend="view-pg-replication-origin-status">
    <structname>pg_replication_origin_status</structname></link> system view.
    Please note that skipping the whole transaction includes skipping changes that
@@ -2125,8 +2175,8 @@ CONTEXT:  processing remote data for replication origin "pg_16395" during "INSER
    implemented by <literal>walsender</literal> and <literal>apply</literal>
    processes.  The walsender process starts logical decoding (described
    in <xref linkend="logicaldecoding"/>) of the WAL and loads the standard
-   logical decoding output plugin (<literal>pgoutput</literal>).  The plugin
-   transforms the changes read
+   logical decoding output plugin (<xref linkend="logicaldecoding-pgoutput"/>).
+   The plugin transforms the changes read
    from WAL to the logical replication protocol
    (see <xref linkend="protocol-logical-replication"/>) and filters the data
    according to the publication specification.  The data is then continuously
@@ -2365,6 +2415,12 @@ CONTEXT:  processing remote data for replication origin "pg_16395" during "INSER
    </para>
 
    <para>
+    <link linkend="guc-max-replication-slots"><varname>max_replication_slots</varname></link>
+    must be set to at least 1 when <link linkend="sql-createsubscription-params-with-retain-dead-tuples"><literal>retain_dead_tuples</literal></link>
+    is enabled for any subscription.
+   </para>
+
+   <para>
     <link linkend="guc-max-logical-replication-workers"><varname>max_logical_replication_workers</varname></link>
     must be set to at least the number of subscriptions (for leader apply
     workers), plus some reserve for the table synchronization workers and
@@ -2500,6 +2556,22 @@ CONTEXT:  processing remote data for replication origin "pg_16395" during "INSER
     dependencies on clusters before version 17.0 will silently be ignored.
    </para>
 
+   <note>
+    <para>
+     Commit timestamps and origin data are not preserved during the upgrade.
+     As a result, even if
+     <link linkend="sql-createsubscription-params-with-retain-dead-tuples"><literal>retain_dead_tuples</literal></link>
+     is enabled, the upgraded subscriber may be unable to detect conflicts or
+     log relevant commit timestamps and origins when applying changes from the
+     publisher occurred before the upgrade. Additionally, immediately after the
+     upgrade, the vacuum may remove the deleted rows that are required for
+     conflict detection. This can affect the changes that were not replicated
+     before the upgrade. To ensure consistent conflict tracking, users should
+     ensure that all potentially conflicting changes are replicated to the
+     subscriber before initiating the upgrade.
+    </para>
+   </note>
+
    <para>
     There are some prerequisites for <application>pg_upgrade</application> to
     be able to upgrade the subscriptions. If these are not met an error
@@ -2529,6 +2601,16 @@ CONTEXT:  processing remote data for replication origin "pg_16395" during "INSER
       <link linkend="guc-max-active-replication-origins"><varname>max_active_replication_origins</varname></link>
       configured to a value greater than or equal to the number of
       subscriptions present in the old cluster.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      If there are subscriptions with retain_dead_tuples enabled, the reserved
+      replication slot <quote><literal>pg_conflict_detection</literal></quote>
+      must not exist on the new cluster. Additionally, the
+      <link linkend="guc-wal-level"><varname>wal_level</varname></link> on the
+      new cluster must be set to <literal>replica</literal> or
+      <literal>logical</literal>.
      </para>
     </listitem>
    </itemizedlist>

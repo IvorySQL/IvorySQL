@@ -19,6 +19,7 @@
 
 #include "access/stratnum.h"
 #include "access/sysattr.h"
+#include "access/transam.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_amop.h"
 #include "catalog/pg_operator.h"
@@ -3330,9 +3331,9 @@ match_orclause_to_indexcol(PlannerInfo *root,
 	/*
 	 * Try to convert a list of OR-clauses to a single SAOP expression. Each
 	 * OR entry must be in the form: (indexkey operator constant) or (constant
-	 * operator indexkey).  Operators of all the entries must match.  To be
-	 * effective, give up on the first non-matching entry.  Exit is
-	 * implemented as a break from the loop, which is catched afterwards.
+	 * operator indexkey).  Operators of all the entries must match.  On
+	 * discovery of anything unsupported, we give up by breaking out of the
+	 * loop immediately and returning NULL.
 	 */
 	foreach(lc, orclause->args)
 	{
@@ -3470,9 +3471,9 @@ match_orclause_to_indexcol(PlannerInfo *root,
 	}
 
 	/*
-	 * Catch the break from the loop above.  Normally, a foreach() loop ends
-	 * up with a NULL list cell.  A non-NULL list cell indicates a break from
-	 * the foreach() loop.  Free the consts list and return NULL then.
+	 * Handle failed conversion from breaking out of the loop because of an
+	 * unsupported qual.  Free the consts list and return NULL to indicate the
+	 * conversion failed.
 	 */
 	if (lc != NULL)
 	{
@@ -4150,46 +4151,25 @@ ec_member_matches_indexcol(PlannerInfo *root, RelOptInfo *rel,
  *	  a set of equality conditions, because the conditions constrain all
  *	  columns of some unique index.
  *
- * The conditions can be represented in either or both of two ways:
- * 1. A list of RestrictInfo nodes, where the caller has already determined
- * that each condition is a mergejoinable equality with an expression in
- * this relation on one side, and an expression not involving this relation
- * on the other.  The transient outer_is_left flag is used to identify which
- * side we should look at: left side if outer_is_left is false, right side
- * if it is true.
- * 2. A list of expressions in this relation, and a corresponding list of
- * equality operators. The caller must have already checked that the operators
- * represent equality.  (Note: the operators could be cross-type; the
- * expressions should correspond to their RHS inputs.)
+ * The conditions are provided as a list of RestrictInfo nodes, where the
+ * caller has already determined that each condition is a mergejoinable
+ * equality with an expression in this relation on one side, and an
+ * expression not involving this relation on the other.  The transient
+ * outer_is_left flag is used to identify which side we should look at:
+ * left side if outer_is_left is false, right side if it is true.
  *
  * The caller need only supply equality conditions arising from joins;
  * this routine automatically adds in any usable baserestrictinfo clauses.
  * (Note that the passed-in restrictlist will be destructively modified!)
+ *
+ * If extra_clauses isn't NULL, return baserestrictinfo clauses which were used
+ * to derive uniqueness.
  */
 bool
 relation_has_unique_index_for(PlannerInfo *root, RelOptInfo *rel,
-							  List *restrictlist,
-							  List *exprlist, List *oprlist)
-{
-	return relation_has_unique_index_ext(root, rel, restrictlist,
-										 exprlist, oprlist, NULL);
-}
-
-/*
- * relation_has_unique_index_ext
- *	  Same as relation_has_unique_index_for(), but supports extra_clauses
- *	  parameter.  If extra_clauses isn't NULL, return baserestrictinfo clauses
- *	  which were used to derive uniqueness.
- */
-bool
-relation_has_unique_index_ext(PlannerInfo *root, RelOptInfo *rel,
-							  List *restrictlist,
-							  List *exprlist, List *oprlist,
-							  List **extra_clauses)
+							  List *restrictlist, List **extra_clauses)
 {
 	ListCell   *ic;
-
-	Assert(list_length(exprlist) == list_length(oprlist));
 
 	/* Short-circuit if no indexes... */
 	if (rel->indexlist == NIL)
@@ -4233,7 +4213,7 @@ relation_has_unique_index_ext(PlannerInfo *root, RelOptInfo *rel,
 	}
 
 	/* Short-circuit the easy case */
-	if (restrictlist == NIL && exprlist == NIL)
+	if (restrictlist == NIL)
 		return false;
 
 	/* Examine each index of the relation ... */
@@ -4255,14 +4235,12 @@ relation_has_unique_index_ext(PlannerInfo *root, RelOptInfo *rel,
 			continue;
 
 		/*
-		 * Try to find each index column in the lists of conditions.  This is
+		 * Try to find each index column in the list of conditions.  This is
 		 * O(N^2) or worse, but we expect all the lists to be short.
 		 */
 		for (c = 0; c < ind->nkeycolumns; c++)
 		{
-			bool		matched = false;
 			ListCell   *lc;
-			ListCell   *lc2;
 
 			foreach(lc, restrictlist)
 			{
@@ -4292,8 +4270,6 @@ relation_has_unique_index_ext(PlannerInfo *root, RelOptInfo *rel,
 
 				if (match_index_to_operand(rexpr, c, ind))
 				{
-					matched = true; /* column is unique */
-
 					if (bms_membership(rinfo->clause_relids) == BMS_SINGLETON)
 					{
 						MemoryContext oldMemCtx =
@@ -4311,43 +4287,11 @@ relation_has_unique_index_ext(PlannerInfo *root, RelOptInfo *rel,
 						MemoryContextSwitchTo(oldMemCtx);
 					}
 
-					break;
+					break;		/* found a match; column is unique */
 				}
 			}
 
-			if (matched)
-				continue;
-
-			forboth(lc, exprlist, lc2, oprlist)
-			{
-				Node	   *expr = (Node *) lfirst(lc);
-				Oid			opr = lfirst_oid(lc2);
-
-				/* See if the expression matches the index key */
-				if (!match_index_to_operand(expr, c, ind))
-					continue;
-
-				/*
-				 * The equality operator must be a member of the index
-				 * opfamily, else it is not asserting the right kind of
-				 * equality behavior for this index.  We assume the caller
-				 * determined it is an equality operator, so we don't need to
-				 * check any more tightly than this.
-				 */
-				if (!op_in_opfamily(opr, ind->opfamily[c]))
-					continue;
-
-				/*
-				 * XXX at some point we may need to check collations here too.
-				 * For the moment we assume all collations reduce to the same
-				 * notion of equality.
-				 */
-
-				matched = true; /* column is unique */
-				break;
-			}
-
-			if (!matched)
+			if (lc == NULL)
 				break;			/* no match; this index doesn't help us */
 		}
 

@@ -11,6 +11,7 @@
 #ifndef MULTIXACT_H
 #define MULTIXACT_H
 
+#include "access/transam.h"
 #include "access/xlogreader.h"
 #include "lib/stringinfo.h"
 #include "storage/sync.h"
@@ -110,6 +111,9 @@ extern bool MultiXactIdIsRunning(MultiXactId multi, bool isLockOnly);
 extern void MultiXactIdSetOldestMember(void);
 extern int	GetMultiXactIdMembers(MultiXactId multi, MultiXactMember **members,
 								  bool from_pgupgrade, bool isLockOnly);
+extern bool GetMultiXactInfo(uint32 *multixacts, MultiXactOffset *members,
+							 MultiXactId *oldestMultiXactId,
+							 MultiXactOffset *oldestOffset);
 extern bool MultiXactIdPrecedes(MultiXactId multi1, MultiXactId multi2);
 extern bool MultiXactIdPrecedesOrEquals(MultiXactId multi1,
 										MultiXactId multi2);
@@ -119,7 +123,7 @@ extern int	multixactmemberssyncfiletag(const FileTag *ftag, char *path);
 
 extern void AtEOXact_MultiXact(void);
 extern void AtPrepare_MultiXact(void);
-extern void PostPrepare_MultiXact(TransactionId xid);
+extern void PostPrepare_MultiXact(FullTransactionId fxid);
 
 extern Size MultiXactShmemSize(void);
 extern void MultiXactShmemInit(void);
@@ -145,11 +149,11 @@ extern void MultiXactAdvanceNextMXact(MultiXactId minMulti,
 extern void MultiXactAdvanceOldest(MultiXactId oldestMulti, Oid oldestMultiDB);
 extern int	MultiXactMemberFreezeThreshold(void);
 
-extern void multixact_twophase_recover(TransactionId xid, uint16 info,
+extern void multixact_twophase_recover(FullTransactionId fxid, uint16 info,
 									   void *recdata, uint32 len);
-extern void multixact_twophase_postcommit(TransactionId xid, uint16 info,
+extern void multixact_twophase_postcommit(FullTransactionId fxid, uint16 info,
 										  void *recdata, uint32 len);
-extern void multixact_twophase_postabort(TransactionId xid, uint16 info,
+extern void multixact_twophase_postabort(FullTransactionId fxid, uint16 info,
 										 void *recdata, uint32 len);
 
 extern void multixact_redo(XLogReaderState *record);
@@ -157,5 +161,6 @@ extern void multixact_desc(StringInfo buf, XLogReaderState *record);
 extern const char *multixact_identify(uint8 info);
 extern char *mxid_to_string(MultiXactId multi, int nmembers,
 							MultiXactMember *members);
+extern char *mxstatus_to_string(MultiXactStatus status);
 
 #endif							/* MULTIXACT_H */

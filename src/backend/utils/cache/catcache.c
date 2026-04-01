@@ -117,10 +117,10 @@ static CatCTup *CatalogCacheCreateEntry(CatCache *cache, HeapTuple ntp,
 
 static void ReleaseCatCacheWithOwner(HeapTuple tuple, ResourceOwner resowner);
 static void ReleaseCatCacheListWithOwner(CatCList *list, ResourceOwner resowner);
-static void CatCacheFreeKeys(TupleDesc tupdesc, int nkeys, int *attnos,
-							 Datum *keys);
-static void CatCacheCopyKeys(TupleDesc tupdesc, int nkeys, int *attnos,
-							 Datum *srckeys, Datum *dstkeys);
+static void CatCacheFreeKeys(TupleDesc tupdesc, int nkeys, const int *attnos,
+							 const Datum *keys);
+static void CatCacheCopyKeys(TupleDesc tupdesc, int nkeys, const int *attnos,
+							 const Datum *srckeys, Datum *dstkeys);
 
 
 /*
@@ -213,7 +213,7 @@ namehashfast(Datum datum)
 {
 	char	   *key = NameStr(*DatumGetName(datum));
 
-	return hash_any((unsigned char *) key, strlen(key));
+	return hash_bytes((unsigned char *) key, strlen(key));
 }
 
 static bool
@@ -317,6 +317,7 @@ GetCCHashEqFuncs(Oid keytype, CCHashFN *hashfunc, RegProcedure *eqfunc, CCFastEq
 		case REGDICTIONARYOID:
 		case REGROLEOID:
 		case REGNAMESPACEOID:
+		case REGDATABASEOID:
 			*hashfunc = int4hashfast;
 			*fasteqfunc = int4eqfast;
 			*eqfunc = F_OIDEQ;
@@ -2278,21 +2279,18 @@ CatalogCacheCreateEntry(CatCache *cache, HeapTuple ntp, Datum *arguments,
  * Helper routine that frees keys stored in the keys array.
  */
 static void
-CatCacheFreeKeys(TupleDesc tupdesc, int nkeys, int *attnos, Datum *keys)
+CatCacheFreeKeys(TupleDesc tupdesc, int nkeys, const int *attnos, const Datum *keys)
 {
 	int			i;
 
 	for (i = 0; i < nkeys; i++)
 	{
 		int			attnum = attnos[i];
-		Form_pg_attribute att;
 
 		/* system attribute are not supported in caches */
 		Assert(attnum > 0);
 
-		att = TupleDescAttr(tupdesc, attnum - 1);
-
-		if (!att->attbyval)
+		if (!TupleDescCompactAttr(tupdesc, attnum - 1)->attbyval)
 			pfree(DatumGetPointer(keys[i]));
 	}
 }
@@ -2303,8 +2301,8 @@ CatCacheFreeKeys(TupleDesc tupdesc, int nkeys, int *attnos, Datum *keys)
  * context.
  */
 static void
-CatCacheCopyKeys(TupleDesc tupdesc, int nkeys, int *attnos,
-				 Datum *srckeys, Datum *dstkeys)
+CatCacheCopyKeys(TupleDesc tupdesc, int nkeys, const int *attnos,
+				 const Datum *srckeys, Datum *dstkeys)
 {
 	int			i;
 
@@ -2389,7 +2387,7 @@ PrepareToInvalidateCacheTuple(Relation relation,
 	 */
 	Assert(RelationIsValid(relation));
 	Assert(HeapTupleIsValid(tuple));
-	Assert(PointerIsValid(function));
+	Assert(function);
 	Assert(CacheHdr != NULL);
 
 	reloid = RelationGetRelid(relation);

@@ -53,14 +53,8 @@
  * validity checking; in actual use, this file should always be included
  * from the body of a flex file, where these symbols are already defined.
  */
-#ifndef YY_TYPEDEF_YY_BUFFER_STATE
-#define YY_TYPEDEF_YY_BUFFER_STATE
 typedef struct yy_buffer_state *YY_BUFFER_STATE;
-#endif
-#ifndef YY_TYPEDEF_YY_SCANNER_T
-#define YY_TYPEDEF_YY_SCANNER_T
 typedef void *yyscan_t;
-#endif
 
 /*
  * We use a stack of flex buffers to handle substitution of psql variables.
@@ -319,7 +313,7 @@ extern YY_BUFFER_STATE ora_psqlscan_prepare_buffer(PsqlScanState state, const ch
 extern void ora_psqlscan_emit(PsqlScanState state, const char *txt, int len);
 extern char * ora_psqlscan_extract_substring(PsqlScanState state, const char *txt, int len);
 extern void ora_psqlscan_escape_variable(PsqlScanState state, const char *txt, int len,
-								 PsqlScanQuoteType quote);
+							 Ora_psqlScanQuoteType quote);
 extern void ora_psqlscan_test_variable(PsqlScanState state, const char *txt, int len);
 
 #endif							/* PSQLSCAN_INT_H */

@@ -14,6 +14,7 @@
 #ifndef EXECUTOR_H
 #define EXECUTOR_H
 
+#include "datatype/timestamp.h"
 #include "executor/execdesc.h"
 #include "fmgr.h"
 #include "nodes/lockoptions.h"
@@ -101,12 +102,12 @@ extern PGDLLIMPORT ExecutorCheckPerms_hook_type ExecutorCheckPerms_hook;
 /*
  * prototypes from functions in execAmi.c
  */
-struct Path;					/* avoid including pathnodes.h here */
+typedef struct Path Path;		/* avoid including pathnodes.h here */
 
 extern void ExecReScan(PlanState *node);
 extern void ExecMarkPos(PlanState *node);
 extern void ExecRestrPos(PlanState *node);
-extern bool ExecSupportsMarkRestore(struct Path *pathnode);
+extern bool ExecSupportsMarkRestore(Path *pathnode);
 extern bool ExecSupportsBackwardScan(Plan *node);
 extern bool ExecMaterializesOutput(NodeTag plantype);
 
@@ -139,10 +140,10 @@ extern TupleHashTable BuildTupleHashTable(PlanState *parent,
 										  const Oid *eqfuncoids,
 										  FmgrInfo *hashfunctions,
 										  Oid *collations,
-										  long nbuckets,
+										  double nelements,
 										  Size additionalsize,
 										  MemoryContext metacxt,
-										  MemoryContext tablecxt,
+										  MemoryContext tuplescxt,
 										  MemoryContext tempcxt,
 										  bool use_variable_hash_iv);
 extern TupleHashEntry LookupTupleHashEntry(TupleHashTable hashtable,
@@ -158,6 +159,9 @@ extern TupleHashEntry FindTupleHashEntry(TupleHashTable hashtable,
 										 ExprState *eqcomp,
 										 ExprState *hashexpr);
 extern void ResetTupleHashTable(TupleHashTable hashtable);
+extern Size EstimateTupleHashTableSpace(double nentries,
+										Size tupleWidth,
+										Size additionalsize);
 
 #ifndef FRONTEND
 /*
@@ -243,7 +247,9 @@ extern void standard_ExecutorEnd(QueryDesc *queryDesc);
 extern void ExecutorRewind(QueryDesc *queryDesc);
 extern bool ExecCheckPermissions(List *rangeTable,
 								 List *rteperminfos, bool ereport_on_violation);
+extern bool ExecCheckOneRelPerms(RTEPermissionInfo *perminfo);
 extern void CheckValidResultRel(ResultRelInfo *resultRelInfo, CmdType operation,
+								OnConflictAction onConflictAction,
 								List *mergeActions);
 extern void InitResultRelInfo(ResultRelInfo *resultRelInfo,
 							  Relation resultRelationDesc,
@@ -745,11 +751,11 @@ extern List *ExecInsertIndexTuples(ResultRelInfo *resultRelInfo,
 extern bool ExecCheckIndexConstraints(ResultRelInfo *resultRelInfo,
 									  TupleTableSlot *slot,
 									  EState *estate, ItemPointer conflictTid,
-									  ItemPointer tupleid,
+									  const ItemPointerData *tupleid,
 									  List *arbiterIndexes);
 extern void check_exclusion_constraint(Relation heap, Relation index,
 									   IndexInfo *indexInfo,
-									   ItemPointer tupleid,
+									   const ItemPointerData *tupleid,
 									   const Datum *values, const bool *isnull,
 									   EState *estate, bool newIndex);
 
@@ -762,7 +768,18 @@ extern bool RelationFindReplTupleByIndex(Relation rel, Oid idxoid,
 										 TupleTableSlot *outslot);
 extern bool RelationFindReplTupleSeq(Relation rel, LockTupleMode lockmode,
 									 TupleTableSlot *searchslot, TupleTableSlot *outslot);
-
+extern bool RelationFindDeletedTupleInfoSeq(Relation rel,
+											TupleTableSlot *searchslot,
+											TransactionId oldestxmin,
+											TransactionId *delete_xid,
+											RepOriginId *delete_origin,
+											TimestampTz *delete_time);
+extern bool RelationFindDeletedTupleInfoByIndex(Relation rel, Oid idxoid,
+												TupleTableSlot *searchslot,
+												TransactionId oldestxmin,
+												TransactionId *delete_xid,
+												RepOriginId *delete_origin,
+												TimestampTz *delete_time);
 extern void ExecSimpleRelationInsert(ResultRelInfo *resultRelInfo,
 									 EState *estate, TupleTableSlot *slot);
 extern void ExecSimpleRelationUpdate(ResultRelInfo *resultRelInfo,
@@ -773,8 +790,8 @@ extern void ExecSimpleRelationDelete(ResultRelInfo *resultRelInfo,
 									 TupleTableSlot *searchslot);
 extern void CheckCmdReplicaIdentity(Relation rel, CmdType cmd);
 
-extern void CheckSubscriptionRelkind(char relkind, const char *nspname,
-									 const char *relname);
+extern void CheckSubscriptionRelkind(char localrelkind, char remoterelkind,
+									 const char *nspname, const char *relname);
 
 /*
  * prototypes from functions in nodeModifyTable.c

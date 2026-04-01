@@ -67,6 +67,7 @@
 #include "libpq/pqsignal.h"
 #include "miscadmin.h"
 #include "pgstat.h"
+#include "port/atomics.h"
 #include "portability/instr_time.h"
 #include "postmaster/postmaster.h"
 #include "storage/fd.h"
@@ -2009,7 +2010,7 @@ ResOwnerReleaseWaitEventSet(Datum res)
  * NB: be sure to save and restore errno around it.  (That's standard practice
  * in most signal handlers, of course, but we used to omit it in handlers that
  * only set a flag.) XXX
-  *
+ *
  * NB: this function is called from critical sections and signal handlers so
  * throwing an error is not a good idea.
  *

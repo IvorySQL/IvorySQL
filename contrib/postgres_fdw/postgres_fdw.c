@@ -240,7 +240,6 @@ typedef struct PgFdwDirectModifyState
 	PGresult   *result;			/* result for query */
 	int			num_tuples;		/* # of result tuples */
 	int			next_tuple;		/* index of next one to return */
-	MemoryContextCallback result_cb;	/* ensures result will get freed */
 	Relation	resultRel;		/* relcache entry for the target relation */
 	AttrNumber *attnoMap;		/* array of attnums of input user columns */
 	AttrNumber	ctidAttno;		/* attnum of input ctid column */
@@ -1703,13 +1702,9 @@ postgresReScanForeignScan(ForeignScanState *node)
 		return;
 	}
 
-	/*
-	 * We don't use a PG_TRY block here, so be careful not to throw error
-	 * without releasing the PGresult.
-	 */
 	res = pgfdw_exec_query(fsstate->conn, sql, fsstate->conn_state);
 	if (PQresultStatus(res) != PGRES_COMMAND_OK)
-		pgfdw_report_error(ERROR, res, fsstate->conn, true, sql);
+		pgfdw_report_error(res, fsstate->conn, sql);
 	PQclear(res);
 
 	/* Now force a fresh FETCH. */
@@ -2673,17 +2668,6 @@ postgresBeginDirectModify(ForeignScanState *node, int eflags)
 	node->fdw_state = dmstate;
 
 	/*
-	 * We use a memory context callback to ensure that the dmstate's PGresult
-	 * (if any) will be released, even if the query fails somewhere that's
-	 * outside our control.  The callback is always armed for the duration of
-	 * the query; this relies on PQclear(NULL) being a no-op.
-	 */
-	dmstate->result_cb.func = (MemoryContextCallbackFunction) PQclear;
-	dmstate->result_cb.arg = NULL;
-	MemoryContextRegisterResetCallback(CurrentMemoryContext,
-									   &dmstate->result_cb);
-
-	/*
 	 * Identify which user to do the remote access as.  This should match what
 	 * ExecCheckPermissions() does.
 	 */
@@ -2830,13 +2814,7 @@ postgresEndDirectModify(ForeignScanState *node)
 		return;
 
 	/* Release PGresult */
-	if (dmstate->result)
-	{
-		PQclear(dmstate->result);
-		dmstate->result = NULL;
-		/* ... and don't forget to disable the callback */
-		dmstate->result_cb.arg = NULL;
-	}
+	PQclear(dmstate->result);
 
 	/* Release remote connection */
 	ReleaseConnection(dmstate->conn);
@@ -3508,6 +3486,13 @@ estimate_path_cost_size(PlannerInfo *root,
 			{
 				Assert(foreignrel->reloptkind == RELOPT_UPPER_REL &&
 					   fpinfo->stage == UPPERREL_GROUP_AGG);
+
+				/*
+				 * We can only get here when this function is called from
+				 * add_foreign_ordered_paths() or add_foreign_final_paths();
+				 * in which cases, the passed-in fpextra should not be NULL.
+				 */
+				Assert(fpextra);
 				adjust_foreign_grouping_path_cost(root, pathkeys,
 												  retrieved_rows, width,
 												  fpextra->limit_tuples,
@@ -3620,41 +3605,32 @@ get_remote_estimate(const char *sql, PGconn *conn,
 					double *rows, int *width,
 					Cost *startup_cost, Cost *total_cost)
 {
-	PGresult   *volatile res = NULL;
+	PGresult   *res;
+	char	   *line;
+	char	   *p;
+	int			n;
 
-	/* PGresult must be released before leaving this function. */
-	PG_TRY();
-	{
-		char	   *line;
-		char	   *p;
-		int			n;
+	/*
+	 * Execute EXPLAIN remotely.
+	 */
+	res = pgfdw_exec_query(conn, sql, NULL);
+	if (PQresultStatus(res) != PGRES_TUPLES_OK)
+		pgfdw_report_error(res, conn, sql);
 
-		/*
-		 * Execute EXPLAIN remotely.
-		 */
-		res = pgfdw_exec_query(conn, sql, NULL);
-		if (PQresultStatus(res) != PGRES_TUPLES_OK)
-			pgfdw_report_error(ERROR, res, conn, false, sql);
-
-		/*
-		 * Extract cost numbers for topmost plan node.  Note we search for a
-		 * left paren from the end of the line to avoid being confused by
-		 * other uses of parentheses.
-		 */
-		line = PQgetvalue(res, 0, 0);
-		p = strrchr(line, '(');
-		if (p == NULL)
-			elog(ERROR, "could not interpret EXPLAIN output: \"%s\"", line);
-		n = sscanf(p, "(cost=%lf..%lf rows=%lf width=%d)",
-				   startup_cost, total_cost, rows, width);
-		if (n != 4)
-			elog(ERROR, "could not interpret EXPLAIN output: \"%s\"", line);
-	}
-	PG_FINALLY();
-	{
-		PQclear(res);
-	}
-	PG_END_TRY();
+	/*
+	 * Extract cost numbers for topmost plan node.  Note we search for a left
+	 * paren from the end of the line to avoid being confused by other uses of
+	 * parentheses.
+	 */
+	line = PQgetvalue(res, 0, 0);
+	p = strrchr(line, '(');
+	if (p == NULL)
+		elog(ERROR, "could not interpret EXPLAIN output: \"%s\"", line);
+	n = sscanf(p, "(cost=%lf..%lf rows=%lf width=%d)",
+			   startup_cost, total_cost, rows, width);
+	if (n != 4)
+		elog(ERROR, "could not interpret EXPLAIN output: \"%s\"", line);
+	PQclear(res);
 }
 
 /*
@@ -3794,17 +3770,14 @@ create_cursor(ForeignScanState *node)
 	 */
 	if (!PQsendQueryParams(conn, buf.data, numParams,
 						   NULL, values, NULL, NULL, 0))
-		pgfdw_report_error(ERROR, NULL, conn, false, buf.data);
+		pgfdw_report_error(NULL, conn, buf.data);
 
 	/*
 	 * Get the result, and check for success.
-	 *
-	 * We don't use a PG_TRY block here, so be careful not to throw error
-	 * without releasing the PGresult.
 	 */
 	res = pgfdw_get_result(conn);
 	if (PQresultStatus(res) != PGRES_COMMAND_OK)
-		pgfdw_report_error(ERROR, res, conn, true, fsstate->query);
+		pgfdw_report_error(res, conn, fsstate->query);
 	PQclear(res);
 
 	/* Mark the cursor as created, and show no tuples have been retrieved */
@@ -3826,7 +3799,10 @@ static void
 fetch_more_data(ForeignScanState *node)
 {
 	PgFdwScanState *fsstate = (PgFdwScanState *) node->fdw_state;
-	PGresult   *volatile res = NULL;
+	PGconn	   *conn = fsstate->conn;
+	PGresult   *res;
+	int			numrows;
+	int			i;
 	MemoryContext oldcontext;
 
 	/*
@@ -3837,74 +3813,63 @@ fetch_more_data(ForeignScanState *node)
 	MemoryContextReset(fsstate->batch_cxt);
 	oldcontext = MemoryContextSwitchTo(fsstate->batch_cxt);
 
-	/* PGresult must be released before leaving this function. */
-	PG_TRY();
+	if (fsstate->async_capable)
 	{
-		PGconn	   *conn = fsstate->conn;
-		int			numrows;
-		int			i;
+		Assert(fsstate->conn_state->pendingAreq);
 
-		if (fsstate->async_capable)
-		{
-			Assert(fsstate->conn_state->pendingAreq);
+		/*
+		 * The query was already sent by an earlier call to
+		 * fetch_more_data_begin.  So now we just fetch the result.
+		 */
+		res = pgfdw_get_result(conn);
+		/* On error, report the original query, not the FETCH. */
+		if (PQresultStatus(res) != PGRES_TUPLES_OK)
+			pgfdw_report_error(res, conn, fsstate->query);
 
-			/*
-			 * The query was already sent by an earlier call to
-			 * fetch_more_data_begin.  So now we just fetch the result.
-			 */
-			res = pgfdw_get_result(conn);
-			/* On error, report the original query, not the FETCH. */
-			if (PQresultStatus(res) != PGRES_TUPLES_OK)
-				pgfdw_report_error(ERROR, res, conn, false, fsstate->query);
-
-			/* Reset per-connection state */
-			fsstate->conn_state->pendingAreq = NULL;
-		}
-		else
-		{
-			char		sql[64];
-
-			/* This is a regular synchronous fetch. */
-			snprintf(sql, sizeof(sql), "FETCH %d FROM c%u",
-					 fsstate->fetch_size, fsstate->cursor_number);
-
-			res = pgfdw_exec_query(conn, sql, fsstate->conn_state);
-			/* On error, report the original query, not the FETCH. */
-			if (PQresultStatus(res) != PGRES_TUPLES_OK)
-				pgfdw_report_error(ERROR, res, conn, false, fsstate->query);
-		}
-
-		/* Convert the data into HeapTuples */
-		numrows = PQntuples(res);
-		fsstate->tuples = (HeapTuple *) palloc0(numrows * sizeof(HeapTuple));
-		fsstate->num_tuples = numrows;
-		fsstate->next_tuple = 0;
-
-		for (i = 0; i < numrows; i++)
-		{
-			Assert(IsA(node->ss.ps.plan, ForeignScan));
-
-			fsstate->tuples[i] =
-				make_tuple_from_result_row(res, i,
-										   fsstate->rel,
-										   fsstate->attinmeta,
-										   fsstate->retrieved_attrs,
-										   node,
-										   fsstate->temp_cxt);
-		}
-
-		/* Update fetch_ct_2 */
-		if (fsstate->fetch_ct_2 < 2)
-			fsstate->fetch_ct_2++;
-
-		/* Must be EOF if we didn't get as many tuples as we asked for. */
-		fsstate->eof_reached = (numrows < fsstate->fetch_size);
+		/* Reset per-connection state */
+		fsstate->conn_state->pendingAreq = NULL;
 	}
-	PG_FINALLY();
+	else
 	{
-		PQclear(res);
+		char		sql[64];
+
+		/* This is a regular synchronous fetch. */
+		snprintf(sql, sizeof(sql), "FETCH %d FROM c%u",
+				 fsstate->fetch_size, fsstate->cursor_number);
+
+		res = pgfdw_exec_query(conn, sql, fsstate->conn_state);
+		/* On error, report the original query, not the FETCH. */
+		if (PQresultStatus(res) != PGRES_TUPLES_OK)
+			pgfdw_report_error(res, conn, fsstate->query);
 	}
-	PG_END_TRY();
+
+	/* Convert the data into HeapTuples */
+	numrows = PQntuples(res);
+	fsstate->tuples = (HeapTuple *) palloc0(numrows * sizeof(HeapTuple));
+	fsstate->num_tuples = numrows;
+	fsstate->next_tuple = 0;
+
+	for (i = 0; i < numrows; i++)
+	{
+		Assert(IsA(node->ss.ps.plan, ForeignScan));
+
+		fsstate->tuples[i] =
+			make_tuple_from_result_row(res, i,
+									   fsstate->rel,
+									   fsstate->attinmeta,
+									   fsstate->retrieved_attrs,
+									   node,
+									   fsstate->temp_cxt);
+	}
+
+	/* Update fetch_ct_2 */
+	if (fsstate->fetch_ct_2 < 2)
+		fsstate->fetch_ct_2++;
+
+	/* Must be EOF if we didn't get as many tuples as we asked for. */
+	fsstate->eof_reached = (numrows < fsstate->fetch_size);
+
+	PQclear(res);
 
 	MemoryContextSwitchTo(oldcontext);
 }
@@ -3978,14 +3943,9 @@ close_cursor(PGconn *conn, unsigned int cursor_number,
 	PGresult   *res;
 
 	snprintf(sql, sizeof(sql), "CLOSE c%u", cursor_number);
-
-	/*
-	 * We don't use a PG_TRY block here, so be careful not to throw error
-	 * without releasing the PGresult.
-	 */
 	res = pgfdw_exec_query(conn, sql, conn_state);
 	if (PQresultStatus(res) != PGRES_COMMAND_OK)
-		pgfdw_report_error(ERROR, res, conn, true, sql);
+		pgfdw_report_error(res, conn, sql);
 	PQclear(res);
 }
 
@@ -4193,18 +4153,15 @@ execute_foreign_modify(EState *estate,
 							 NULL,
 							 NULL,
 							 0))
-		pgfdw_report_error(ERROR, NULL, fmstate->conn, false, fmstate->query);
+		pgfdw_report_error(NULL, fmstate->conn, fmstate->query);
 
 	/*
 	 * Get the result, and check for success.
-	 *
-	 * We don't use a PG_TRY block here, so be careful not to throw error
-	 * without releasing the PGresult.
 	 */
 	res = pgfdw_get_result(fmstate->conn);
 	if (PQresultStatus(res) !=
 		(fmstate->has_returning ? PGRES_TUPLES_OK : PGRES_COMMAND_OK))
-		pgfdw_report_error(ERROR, res, fmstate->conn, true, fmstate->query);
+		pgfdw_report_error(res, fmstate->conn, fmstate->query);
 
 	/* Check number of rows affected, and fetch RETURNING tuple if any */
 	if (fmstate->has_returning)
@@ -4263,17 +4220,14 @@ prepare_foreign_modify(PgFdwModifyState *fmstate)
 					   fmstate->query,
 					   0,
 					   NULL))
-		pgfdw_report_error(ERROR, NULL, fmstate->conn, false, fmstate->query);
+		pgfdw_report_error(NULL, fmstate->conn, fmstate->query);
 
 	/*
 	 * Get the result, and check for success.
-	 *
-	 * We don't use a PG_TRY block here, so be careful not to throw error
-	 * without releasing the PGresult.
 	 */
 	res = pgfdw_get_result(fmstate->conn);
 	if (PQresultStatus(res) != PGRES_COMMAND_OK)
-		pgfdw_report_error(ERROR, res, fmstate->conn, true, fmstate->query);
+		pgfdw_report_error(res, fmstate->conn, fmstate->query);
 	PQclear(res);
 
 	/* This action shows that the prepare has been done. */
@@ -4364,37 +4318,25 @@ convert_prep_stmt_params(PgFdwModifyState *fmstate,
 /*
  * store_returning_result
  *		Store the result of a RETURNING clause
- *
- * On error, be sure to release the PGresult on the way out.  Callers do not
- * have PG_TRY blocks to ensure this happens.
  */
 static void
 store_returning_result(PgFdwModifyState *fmstate,
 					   TupleTableSlot *slot, PGresult *res)
 {
-	PG_TRY();
-	{
-		HeapTuple	newtup;
+	HeapTuple	newtup;
 
-		newtup = make_tuple_from_result_row(res, 0,
-											fmstate->rel,
-											fmstate->attinmeta,
-											fmstate->retrieved_attrs,
-											NULL,
-											fmstate->temp_cxt);
+	newtup = make_tuple_from_result_row(res, 0,
+										fmstate->rel,
+										fmstate->attinmeta,
+										fmstate->retrieved_attrs,
+										NULL,
+										fmstate->temp_cxt);
 
-		/*
-		 * The returning slot will not necessarily be suitable to store
-		 * heaptuples directly, so allow for conversion.
-		 */
-		ExecForceStoreHeapTuple(newtup, slot, true);
-	}
-	PG_CATCH();
-	{
-		PQclear(res);
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
+	/*
+	 * The returning slot will not necessarily be suitable to store heaptuples
+	 * directly, so allow for conversion.
+	 */
+	ExecForceStoreHeapTuple(newtup, slot, true);
 }
 
 /*
@@ -4430,14 +4372,9 @@ deallocate_query(PgFdwModifyState *fmstate)
 		return;
 
 	snprintf(sql, sizeof(sql), "DEALLOCATE %s", fmstate->p_name);
-
-	/*
-	 * We don't use a PG_TRY block here, so be careful not to throw error
-	 * without releasing the PGresult.
-	 */
 	res = pgfdw_exec_query(fmstate->conn, sql, fmstate->conn_state);
 	if (PQresultStatus(res) != PGRES_COMMAND_OK)
-		pgfdw_report_error(ERROR, res, fmstate->conn, true, sql);
+		pgfdw_report_error(res, fmstate->conn, sql);
 	PQclear(res);
 	pfree(fmstate->p_name);
 	fmstate->p_name = NULL;
@@ -4605,23 +4542,23 @@ execute_dml_stmt(ForeignScanState *node)
 	 */
 	if (!PQsendQueryParams(dmstate->conn, dmstate->query, numParams,
 						   NULL, values, NULL, NULL, 0))
-		pgfdw_report_error(ERROR, NULL, dmstate->conn, false, dmstate->query);
+		pgfdw_report_error(NULL, dmstate->conn, dmstate->query);
 
 	/*
 	 * Get the result, and check for success.
-	 *
-	 * We use a memory context callback to ensure that the PGresult will be
-	 * released, even if the query fails somewhere that's outside our control.
-	 * The callback is already registered, just need to fill in its arg.
 	 */
-	Assert(dmstate->result == NULL);
 	dmstate->result = pgfdw_get_result(dmstate->conn);
-	dmstate->result_cb.arg = dmstate->result;
-
 	if (PQresultStatus(dmstate->result) !=
 		(dmstate->has_returning ? PGRES_TUPLES_OK : PGRES_COMMAND_OK))
-		pgfdw_report_error(ERROR, dmstate->result, dmstate->conn, false,
+		pgfdw_report_error(dmstate->result, dmstate->conn,
 						   dmstate->query);
+
+	/*
+	 * The result potentially needs to survive across multiple executor row
+	 * cycles, so move it to the context where the dmstate is.
+	 */
+	dmstate->result = libpqsrv_PGresultSetParent(dmstate->result,
+												 GetMemoryChunkContext(dmstate));
 
 	/* Get the number of rows affected. */
 	if (dmstate->has_returning)
@@ -4959,7 +4896,7 @@ postgresAnalyzeForeignTable(Relation relation,
 	UserMapping *user;
 	PGconn	   *conn;
 	StringInfoData sql;
-	PGresult   *volatile res = NULL;
+	PGresult   *res;
 
 	/* Return the row-analysis function pointer */
 	*func = postgresAcquireSampleRowsFunc;
@@ -4985,22 +4922,14 @@ postgresAnalyzeForeignTable(Relation relation,
 	initStringInfo(&sql);
 	deparseAnalyzeSizeSql(&sql, relation);
 
-	/* In what follows, do not risk leaking any PGresults. */
-	PG_TRY();
-	{
-		res = pgfdw_exec_query(conn, sql.data, NULL);
-		if (PQresultStatus(res) != PGRES_TUPLES_OK)
-			pgfdw_report_error(ERROR, res, conn, false, sql.data);
+	res = pgfdw_exec_query(conn, sql.data, NULL);
+	if (PQresultStatus(res) != PGRES_TUPLES_OK)
+		pgfdw_report_error(res, conn, sql.data);
 
-		if (PQntuples(res) != 1 || PQnfields(res) != 1)
-			elog(ERROR, "unexpected result from deparseAnalyzeSizeSql query");
-		*totalpages = strtoul(PQgetvalue(res, 0, 0), NULL, 10);
-	}
-	PG_FINALLY();
-	{
-		PQclear(res);
-	}
-	PG_END_TRY();
+	if (PQntuples(res) != 1 || PQnfields(res) != 1)
+		elog(ERROR, "unexpected result from deparseAnalyzeSizeSql query");
+	*totalpages = strtoul(PQgetvalue(res, 0, 0), NULL, 10);
+	PQclear(res);
 
 	ReleaseConnection(conn);
 
@@ -5021,9 +4950,9 @@ postgresGetAnalyzeInfoForForeignTable(Relation relation, bool *can_tablesample)
 	UserMapping *user;
 	PGconn	   *conn;
 	StringInfoData sql;
-	PGresult   *volatile res = NULL;
-	volatile double reltuples = -1;
-	volatile char relkind = 0;
+	PGresult   *res;
+	double		reltuples;
+	char		relkind;
 
 	/* assume the remote relation does not support TABLESAMPLE */
 	*can_tablesample = false;
@@ -5042,24 +4971,15 @@ postgresGetAnalyzeInfoForForeignTable(Relation relation, bool *can_tablesample)
 	initStringInfo(&sql);
 	deparseAnalyzeInfoSql(&sql, relation);
 
-	/* In what follows, do not risk leaking any PGresults. */
-	PG_TRY();
-	{
-		res = pgfdw_exec_query(conn, sql.data, NULL);
-		if (PQresultStatus(res) != PGRES_TUPLES_OK)
-			pgfdw_report_error(ERROR, res, conn, false, sql.data);
+	res = pgfdw_exec_query(conn, sql.data, NULL);
+	if (PQresultStatus(res) != PGRES_TUPLES_OK)
+		pgfdw_report_error(res, conn, sql.data);
 
-		if (PQntuples(res) != 1 || PQnfields(res) != 2)
-			elog(ERROR, "unexpected result from deparseAnalyzeInfoSql query");
-		reltuples = strtod(PQgetvalue(res, 0, 0), NULL);
-		relkind = *(PQgetvalue(res, 0, 1));
-	}
-	PG_FINALLY();
-	{
-		if (res)
-			PQclear(res);
-	}
-	PG_END_TRY();
+	if (PQntuples(res) != 1 || PQnfields(res) != 2)
+		elog(ERROR, "unexpected result from deparseAnalyzeInfoSql query");
+	reltuples = strtod(PQgetvalue(res, 0, 0), NULL);
+	relkind = *(PQgetvalue(res, 0, 1));
+	PQclear(res);
 
 	ReleaseConnection(conn);
 
@@ -5099,10 +5019,12 @@ postgresAcquireSampleRowsFunc(Relation relation, int elevel,
 	int			server_version_num;
 	PgFdwSamplingMethod method = ANALYZE_SAMPLE_AUTO;	/* auto is default */
 	double		sample_frac = -1.0;
-	double		reltuples;
+	double		reltuples = -1.0;
 	unsigned int cursor_number;
 	StringInfoData sql;
-	PGresult   *volatile res = NULL;
+	PGresult   *res;
+	char		fetch_sql[64];
+	int			fetch_size;
 	ListCell   *lc;
 
 	/* Initialize workspace state */
@@ -5279,91 +5201,76 @@ postgresAcquireSampleRowsFunc(Relation relation, int elevel,
 
 	deparseAnalyzeSql(&sql, relation, method, sample_frac, &astate.retrieved_attrs);
 
-	/* In what follows, do not risk leaking any PGresults. */
-	PG_TRY();
-	{
-		char		fetch_sql[64];
-		int			fetch_size;
+	res = pgfdw_exec_query(conn, sql.data, NULL);
+	if (PQresultStatus(res) != PGRES_COMMAND_OK)
+		pgfdw_report_error(res, conn, sql.data);
+	PQclear(res);
 
-		res = pgfdw_exec_query(conn, sql.data, NULL);
-		if (PQresultStatus(res) != PGRES_COMMAND_OK)
-			pgfdw_report_error(ERROR, res, conn, false, sql.data);
-		PQclear(res);
-		res = NULL;
+	/*
+	 * Determine the fetch size.  The default is arbitrary, but shouldn't be
+	 * enormous.
+	 */
+	fetch_size = 100;
+	foreach(lc, server->options)
+	{
+		DefElem    *def = (DefElem *) lfirst(lc);
+
+		if (strcmp(def->defname, "fetch_size") == 0)
+		{
+			(void) parse_int(defGetString(def), &fetch_size, 0, NULL);
+			break;
+		}
+	}
+	foreach(lc, table->options)
+	{
+		DefElem    *def = (DefElem *) lfirst(lc);
+
+		if (strcmp(def->defname, "fetch_size") == 0)
+		{
+			(void) parse_int(defGetString(def), &fetch_size, 0, NULL);
+			break;
+		}
+	}
+
+	/* Construct command to fetch rows from remote. */
+	snprintf(fetch_sql, sizeof(fetch_sql), "FETCH %d FROM c%u",
+			 fetch_size, cursor_number);
+
+	/* Retrieve and process rows a batch at a time. */
+	for (;;)
+	{
+		int			numrows;
+		int			i;
+
+		/* Allow users to cancel long query */
+		CHECK_FOR_INTERRUPTS();
 
 		/*
-		 * Determine the fetch size.  The default is arbitrary, but shouldn't
-		 * be enormous.
+		 * XXX possible future improvement: if rowstoskip is large, we could
+		 * issue a MOVE rather than physically fetching the rows, then just
+		 * adjust rowstoskip and samplerows appropriately.
 		 */
-		fetch_size = 100;
-		foreach(lc, server->options)
-		{
-			DefElem    *def = (DefElem *) lfirst(lc);
 
-			if (strcmp(def->defname, "fetch_size") == 0)
-			{
-				(void) parse_int(defGetString(def), &fetch_size, 0, NULL);
-				break;
-			}
-		}
-		foreach(lc, table->options)
-		{
-			DefElem    *def = (DefElem *) lfirst(lc);
+		/* Fetch some rows */
+		res = pgfdw_exec_query(conn, fetch_sql, NULL);
+		/* On error, report the original query, not the FETCH. */
+		if (PQresultStatus(res) != PGRES_TUPLES_OK)
+			pgfdw_report_error(res, conn, sql.data);
 
-			if (strcmp(def->defname, "fetch_size") == 0)
-			{
-				(void) parse_int(defGetString(def), &fetch_size, 0, NULL);
-				break;
-			}
-		}
+		/* Process whatever we got. */
+		numrows = PQntuples(res);
+		for (i = 0; i < numrows; i++)
+			analyze_row_processor(res, i, &astate);
 
-		/* Construct command to fetch rows from remote. */
-		snprintf(fetch_sql, sizeof(fetch_sql), "FETCH %d FROM c%u",
-				 fetch_size, cursor_number);
-
-		/* Retrieve and process rows a batch at a time. */
-		for (;;)
-		{
-			int			numrows;
-			int			i;
-
-			/* Allow users to cancel long query */
-			CHECK_FOR_INTERRUPTS();
-
-			/*
-			 * XXX possible future improvement: if rowstoskip is large, we
-			 * could issue a MOVE rather than physically fetching the rows,
-			 * then just adjust rowstoskip and samplerows appropriately.
-			 */
-
-			/* Fetch some rows */
-			res = pgfdw_exec_query(conn, fetch_sql, NULL);
-			/* On error, report the original query, not the FETCH. */
-			if (PQresultStatus(res) != PGRES_TUPLES_OK)
-				pgfdw_report_error(ERROR, res, conn, false, sql.data);
-
-			/* Process whatever we got. */
-			numrows = PQntuples(res);
-			for (i = 0; i < numrows; i++)
-				analyze_row_processor(res, i, &astate);
-
-			PQclear(res);
-			res = NULL;
-
-			/* Must be EOF if we didn't get all the rows requested. */
-			if (numrows < fetch_size)
-				break;
-		}
-
-		/* Close the cursor, just to be tidy. */
-		close_cursor(conn, cursor_number, NULL);
-	}
-	PG_CATCH();
-	{
 		PQclear(res);
-		PG_RE_THROW();
+
+		/* Must be EOF if we didn't get all the rows requested. */
+		if (numrows < fetch_size)
+			break;
 	}
-	PG_END_TRY();
+
+	/* Close the cursor, just to be tidy. */
+	close_cursor(conn, cursor_number, NULL);
 
 	ReleaseConnection(conn);
 
@@ -5475,7 +5382,7 @@ postgresImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 	UserMapping *mapping;
 	PGconn	   *conn;
 	StringInfoData buf;
-	PGresult   *volatile res = NULL;
+	PGresult   *res;
 	int			numrows,
 				i;
 	ListCell   *lc;
@@ -5514,243 +5421,231 @@ postgresImportForeignSchema(ImportForeignSchemaStmt *stmt, Oid serverOid)
 	/* Create workspace for strings */
 	initStringInfo(&buf);
 
-	/* In what follows, do not risk leaking any PGresults. */
-	PG_TRY();
+	/* Check that the schema really exists */
+	appendStringInfoString(&buf, "SELECT 1 FROM pg_catalog.pg_namespace WHERE nspname = ");
+	deparseStringLiteral(&buf, stmt->remote_schema);
+
+	res = pgfdw_exec_query(conn, buf.data, NULL);
+	if (PQresultStatus(res) != PGRES_TUPLES_OK)
+		pgfdw_report_error(res, conn, buf.data);
+
+	if (PQntuples(res) != 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_FDW_SCHEMA_NOT_FOUND),
+				 errmsg("schema \"%s\" is not present on foreign server \"%s\"",
+						stmt->remote_schema, server->servername)));
+
+	PQclear(res);
+	resetStringInfo(&buf);
+
+	/*
+	 * Fetch all table data from this schema, possibly restricted by EXCEPT or
+	 * LIMIT TO.  (We don't actually need to pay any attention to EXCEPT/LIMIT
+	 * TO here, because the core code will filter the statements we return
+	 * according to those lists anyway.  But it should save a few cycles to
+	 * not process excluded tables in the first place.)
+	 *
+	 * Import table data for partitions only when they are explicitly
+	 * specified in LIMIT TO clause. Otherwise ignore them and only include
+	 * the definitions of the root partitioned tables to allow access to the
+	 * complete remote data set locally in the schema imported.
+	 *
+	 * Note: because we run the connection with search_path restricted to
+	 * pg_catalog, the format_type() and pg_get_expr() outputs will always
+	 * include a schema name for types/functions in other schemas, which is
+	 * what we want.
+	 */
+	appendStringInfoString(&buf,
+						   "SELECT relname, "
+						   "  attname, "
+						   "  format_type(atttypid, atttypmod), "
+						   "  attnotnull, "
+						   "  pg_get_expr(adbin, adrelid), ");
+
+	/* Generated columns are supported since Postgres 12 */
+	if (PQserverVersion(conn) >= 120000)
+		appendStringInfoString(&buf,
+							   "  attgenerated, ");
+	else
+		appendStringInfoString(&buf,
+							   "  NULL, ");
+
+	if (import_collate)
+		appendStringInfoString(&buf,
+							   "  collname, "
+							   "  collnsp.nspname ");
+	else
+		appendStringInfoString(&buf,
+							   "  NULL, NULL ");
+
+	appendStringInfoString(&buf,
+						   "FROM pg_class c "
+						   "  JOIN pg_namespace n ON "
+						   "    relnamespace = n.oid "
+						   "  LEFT JOIN pg_attribute a ON "
+						   "    attrelid = c.oid AND attnum > 0 "
+						   "      AND NOT attisdropped "
+						   "  LEFT JOIN pg_attrdef ad ON "
+						   "    adrelid = c.oid AND adnum = attnum ");
+
+	if (import_collate)
+		appendStringInfoString(&buf,
+							   "  LEFT JOIN pg_collation coll ON "
+							   "    coll.oid = attcollation "
+							   "  LEFT JOIN pg_namespace collnsp ON "
+							   "    collnsp.oid = collnamespace ");
+
+	appendStringInfoString(&buf,
+						   "WHERE c.relkind IN ("
+						   CppAsString2(RELKIND_RELATION) ","
+						   CppAsString2(RELKIND_VIEW) ","
+						   CppAsString2(RELKIND_FOREIGN_TABLE) ","
+						   CppAsString2(RELKIND_MATVIEW) ","
+						   CppAsString2(RELKIND_PARTITIONED_TABLE) ") "
+						   "  AND n.nspname = ");
+	deparseStringLiteral(&buf, stmt->remote_schema);
+
+	/* Partitions are supported since Postgres 10 */
+	if (PQserverVersion(conn) >= 100000 &&
+		stmt->list_type != FDW_IMPORT_SCHEMA_LIMIT_TO)
+		appendStringInfoString(&buf, " AND NOT c.relispartition ");
+
+	/* Apply restrictions for LIMIT TO and EXCEPT */
+	if (stmt->list_type == FDW_IMPORT_SCHEMA_LIMIT_TO ||
+		stmt->list_type == FDW_IMPORT_SCHEMA_EXCEPT)
 	{
-		/* Check that the schema really exists */
-		appendStringInfoString(&buf, "SELECT 1 FROM pg_catalog.pg_namespace WHERE nspname = ");
-		deparseStringLiteral(&buf, stmt->remote_schema);
+		bool		first_item = true;
 
-		res = pgfdw_exec_query(conn, buf.data, NULL);
-		if (PQresultStatus(res) != PGRES_TUPLES_OK)
-			pgfdw_report_error(ERROR, res, conn, false, buf.data);
+		appendStringInfoString(&buf, " AND c.relname ");
+		if (stmt->list_type == FDW_IMPORT_SCHEMA_EXCEPT)
+			appendStringInfoString(&buf, "NOT ");
+		appendStringInfoString(&buf, "IN (");
 
-		if (PQntuples(res) != 1)
-			ereport(ERROR,
-					(errcode(ERRCODE_FDW_SCHEMA_NOT_FOUND),
-					 errmsg("schema \"%s\" is not present on foreign server \"%s\"",
-							stmt->remote_schema, server->servername)));
-
-		PQclear(res);
-		res = NULL;
-		resetStringInfo(&buf);
-
-		/*
-		 * Fetch all table data from this schema, possibly restricted by
-		 * EXCEPT or LIMIT TO.  (We don't actually need to pay any attention
-		 * to EXCEPT/LIMIT TO here, because the core code will filter the
-		 * statements we return according to those lists anyway.  But it
-		 * should save a few cycles to not process excluded tables in the
-		 * first place.)
-		 *
-		 * Import table data for partitions only when they are explicitly
-		 * specified in LIMIT TO clause. Otherwise ignore them and only
-		 * include the definitions of the root partitioned tables to allow
-		 * access to the complete remote data set locally in the schema
-		 * imported.
-		 *
-		 * Note: because we run the connection with search_path restricted to
-		 * pg_catalog, the format_type() and pg_get_expr() outputs will always
-		 * include a schema name for types/functions in other schemas, which
-		 * is what we want.
-		 */
-		appendStringInfoString(&buf,
-							   "SELECT relname, "
-							   "  attname, "
-							   "  format_type(atttypid, atttypmod), "
-							   "  attnotnull, "
-							   "  pg_get_expr(adbin, adrelid), ");
-
-		/* Generated columns are supported since Postgres 12 */
-		if (PQserverVersion(conn) >= 120000)
-			appendStringInfoString(&buf,
-								   "  attgenerated, ");
-		else
-			appendStringInfoString(&buf,
-								   "  NULL, ");
-
-		if (import_collate)
-			appendStringInfoString(&buf,
-								   "  collname, "
-								   "  collnsp.nspname ");
-		else
-			appendStringInfoString(&buf,
-								   "  NULL, NULL ");
-
-		appendStringInfoString(&buf,
-							   "FROM pg_class c "
-							   "  JOIN pg_namespace n ON "
-							   "    relnamespace = n.oid "
-							   "  LEFT JOIN pg_attribute a ON "
-							   "    attrelid = c.oid AND attnum > 0 "
-							   "      AND NOT attisdropped "
-							   "  LEFT JOIN pg_attrdef ad ON "
-							   "    adrelid = c.oid AND adnum = attnum ");
-
-		if (import_collate)
-			appendStringInfoString(&buf,
-								   "  LEFT JOIN pg_collation coll ON "
-								   "    coll.oid = attcollation "
-								   "  LEFT JOIN pg_namespace collnsp ON "
-								   "    collnsp.oid = collnamespace ");
-
-		appendStringInfoString(&buf,
-							   "WHERE c.relkind IN ("
-							   CppAsString2(RELKIND_RELATION) ","
-							   CppAsString2(RELKIND_VIEW) ","
-							   CppAsString2(RELKIND_FOREIGN_TABLE) ","
-							   CppAsString2(RELKIND_MATVIEW) ","
-							   CppAsString2(RELKIND_PARTITIONED_TABLE) ") "
-							   "  AND n.nspname = ");
-		deparseStringLiteral(&buf, stmt->remote_schema);
-
-		/* Partitions are supported since Postgres 10 */
-		if (PQserverVersion(conn) >= 100000 &&
-			stmt->list_type != FDW_IMPORT_SCHEMA_LIMIT_TO)
-			appendStringInfoString(&buf, " AND NOT c.relispartition ");
-
-		/* Apply restrictions for LIMIT TO and EXCEPT */
-		if (stmt->list_type == FDW_IMPORT_SCHEMA_LIMIT_TO ||
-			stmt->list_type == FDW_IMPORT_SCHEMA_EXCEPT)
+		/* Append list of table names within IN clause */
+		foreach(lc, stmt->table_list)
 		{
-			bool		first_item = true;
+			RangeVar   *rv = (RangeVar *) lfirst(lc);
 
-			appendStringInfoString(&buf, " AND c.relname ");
-			if (stmt->list_type == FDW_IMPORT_SCHEMA_EXCEPT)
-				appendStringInfoString(&buf, "NOT ");
-			appendStringInfoString(&buf, "IN (");
-
-			/* Append list of table names within IN clause */
-			foreach(lc, stmt->table_list)
-			{
-				RangeVar   *rv = (RangeVar *) lfirst(lc);
-
-				if (first_item)
-					first_item = false;
-				else
-					appendStringInfoString(&buf, ", ");
-				deparseStringLiteral(&buf, rv->relname);
-			}
-			appendStringInfoChar(&buf, ')');
+			if (first_item)
+				first_item = false;
+			else
+				appendStringInfoString(&buf, ", ");
+			deparseStringLiteral(&buf, rv->relname);
 		}
+		appendStringInfoChar(&buf, ')');
+	}
 
-		/* Append ORDER BY at the end of query to ensure output ordering */
-		appendStringInfoString(&buf, " ORDER BY c.relname, a.attnum");
+	/* Append ORDER BY at the end of query to ensure output ordering */
+	appendStringInfoString(&buf, " ORDER BY c.relname, a.attnum");
 
-		/* Fetch the data */
-		res = pgfdw_exec_query(conn, buf.data, NULL);
-		if (PQresultStatus(res) != PGRES_TUPLES_OK)
-			pgfdw_report_error(ERROR, res, conn, false, buf.data);
+	/* Fetch the data */
+	res = pgfdw_exec_query(conn, buf.data, NULL);
+	if (PQresultStatus(res) != PGRES_TUPLES_OK)
+		pgfdw_report_error(res, conn, buf.data);
 
-		/* Process results */
-		numrows = PQntuples(res);
-		/* note: incrementation of i happens in inner loop's while() test */
-		for (i = 0; i < numrows;)
+	/* Process results */
+	numrows = PQntuples(res);
+	/* note: incrementation of i happens in inner loop's while() test */
+	for (i = 0; i < numrows;)
+	{
+		char	   *tablename = PQgetvalue(res, i, 0);
+		bool		first_item = true;
+
+		resetStringInfo(&buf);
+		appendStringInfo(&buf, "CREATE FOREIGN TABLE %s (\n",
+						 quote_identifier(tablename));
+
+		/* Scan all rows for this table */
+		do
 		{
-			char	   *tablename = PQgetvalue(res, i, 0);
-			bool		first_item = true;
+			char	   *attname;
+			char	   *typename;
+			char	   *attnotnull;
+			char	   *attgenerated;
+			char	   *attdefault;
+			char	   *collname;
+			char	   *collnamespace;
 
-			resetStringInfo(&buf);
-			appendStringInfo(&buf, "CREATE FOREIGN TABLE %s (\n",
-							 quote_identifier(tablename));
+			/* If table has no columns, we'll see nulls here */
+			if (PQgetisnull(res, i, 1))
+				continue;
 
-			/* Scan all rows for this table */
-			do
-			{
-				char	   *attname;
-				char	   *typename;
-				char	   *attnotnull;
-				char	   *attgenerated;
-				char	   *attdefault;
-				char	   *collname;
-				char	   *collnamespace;
+			attname = PQgetvalue(res, i, 1);
+			typename = PQgetvalue(res, i, 2);
+			attnotnull = PQgetvalue(res, i, 3);
+			attdefault = PQgetisnull(res, i, 4) ? NULL :
+				PQgetvalue(res, i, 4);
+			attgenerated = PQgetisnull(res, i, 5) ? NULL :
+				PQgetvalue(res, i, 5);
+			collname = PQgetisnull(res, i, 6) ? NULL :
+				PQgetvalue(res, i, 6);
+			collnamespace = PQgetisnull(res, i, 7) ? NULL :
+				PQgetvalue(res, i, 7);
 
-				/* If table has no columns, we'll see nulls here */
-				if (PQgetisnull(res, i, 1))
-					continue;
+			if (first_item)
+				first_item = false;
+			else
+				appendStringInfoString(&buf, ",\n");
 
-				attname = PQgetvalue(res, i, 1);
-				typename = PQgetvalue(res, i, 2);
-				attnotnull = PQgetvalue(res, i, 3);
-				attdefault = PQgetisnull(res, i, 4) ? NULL :
-					PQgetvalue(res, i, 4);
-				attgenerated = PQgetisnull(res, i, 5) ? NULL :
-					PQgetvalue(res, i, 5);
-				collname = PQgetisnull(res, i, 6) ? NULL :
-					PQgetvalue(res, i, 6);
-				collnamespace = PQgetisnull(res, i, 7) ? NULL :
-					PQgetvalue(res, i, 7);
-
-				if (first_item)
-					first_item = false;
-				else
-					appendStringInfoString(&buf, ",\n");
-
-				/* Print column name and type */
-				appendStringInfo(&buf, "  %s %s",
-								 quote_identifier(attname),
-								 typename);
-
-				/*
-				 * Add column_name option so that renaming the foreign table's
-				 * column doesn't break the association to the underlying
-				 * column.
-				 */
-				appendStringInfoString(&buf, " OPTIONS (column_name ");
-				deparseStringLiteral(&buf, attname);
-				appendStringInfoChar(&buf, ')');
-
-				/* Add COLLATE if needed */
-				if (import_collate && collname != NULL && collnamespace != NULL)
-					appendStringInfo(&buf, " COLLATE %s.%s",
-									 quote_identifier(collnamespace),
-									 quote_identifier(collname));
-
-				/* Add DEFAULT if needed */
-				if (import_default && attdefault != NULL &&
-					(!attgenerated || !attgenerated[0]))
-					appendStringInfo(&buf, " DEFAULT %s", attdefault);
-
-				/* Add GENERATED if needed */
-				if (import_generated && attgenerated != NULL &&
-					attgenerated[0] == ATTRIBUTE_GENERATED_STORED)
-				{
-					Assert(attdefault != NULL);
-					appendStringInfo(&buf,
-									 " GENERATED ALWAYS AS (%s) STORED",
-									 attdefault);
-				}
-
-				/* Add NOT NULL if needed */
-				if (import_not_null && attnotnull[0] == 't')
-					appendStringInfoString(&buf, " NOT NULL");
-			}
-			while (++i < numrows &&
-				   strcmp(PQgetvalue(res, i, 0), tablename) == 0);
+			/* Print column name and type */
+			appendStringInfo(&buf, "  %s %s",
+							 quote_identifier(attname),
+							 typename);
 
 			/*
-			 * Add server name and table-level options.  We specify remote
-			 * schema and table name as options (the latter to ensure that
-			 * renaming the foreign table doesn't break the association).
+			 * Add column_name option so that renaming the foreign table's
+			 * column doesn't break the association to the underlying column.
 			 */
-			appendStringInfo(&buf, "\n) SERVER %s\nOPTIONS (",
-							 quote_identifier(server->servername));
+			appendStringInfoString(&buf, " OPTIONS (column_name ");
+			deparseStringLiteral(&buf, attname);
+			appendStringInfoChar(&buf, ')');
 
-			appendStringInfoString(&buf, "schema_name ");
-			deparseStringLiteral(&buf, stmt->remote_schema);
-			appendStringInfoString(&buf, ", table_name ");
-			deparseStringLiteral(&buf, tablename);
+			/* Add COLLATE if needed */
+			if (import_collate && collname != NULL && collnamespace != NULL)
+				appendStringInfo(&buf, " COLLATE %s.%s",
+								 quote_identifier(collnamespace),
+								 quote_identifier(collname));
 
-			appendStringInfoString(&buf, ");");
+			/* Add DEFAULT if needed */
+			if (import_default && attdefault != NULL &&
+				(!attgenerated || !attgenerated[0]))
+				appendStringInfo(&buf, " DEFAULT %s", attdefault);
 
-			commands = lappend(commands, pstrdup(buf.data));
+			/* Add GENERATED if needed */
+			if (import_generated && attgenerated != NULL &&
+				attgenerated[0] == ATTRIBUTE_GENERATED_STORED)
+			{
+				Assert(attdefault != NULL);
+				appendStringInfo(&buf,
+								 " GENERATED ALWAYS AS (%s) STORED",
+								 attdefault);
+			}
+
+			/* Add NOT NULL if needed */
+			if (import_not_null && attnotnull[0] == 't')
+				appendStringInfoString(&buf, " NOT NULL");
 		}
+		while (++i < numrows &&
+			   strcmp(PQgetvalue(res, i, 0), tablename) == 0);
+
+		/*
+		 * Add server name and table-level options.  We specify remote schema
+		 * and table name as options (the latter to ensure that renaming the
+		 * foreign table doesn't break the association).
+		 */
+		appendStringInfo(&buf, "\n) SERVER %s\nOPTIONS (",
+						 quote_identifier(server->servername));
+
+		appendStringInfoString(&buf, "schema_name ");
+		deparseStringLiteral(&buf, stmt->remote_schema);
+		appendStringInfoString(&buf, ", table_name ");
+		deparseStringLiteral(&buf, tablename);
+
+		appendStringInfoString(&buf, ");");
+
+		commands = lappend(commands, pstrdup(buf.data));
 	}
-	PG_FINALLY();
-	{
-		PQclear(res);
-	}
-	PG_END_TRY();
+	PQclear(res);
 
 	ReleaseConnection(conn);
 
@@ -7418,7 +7313,7 @@ postgresForeignAsyncNotify(AsyncRequest *areq)
 
 	/* On error, report the original query, not the FETCH. */
 	if (!PQconsumeInput(fsstate->conn))
-		pgfdw_report_error(ERROR, NULL, fsstate->conn, false, fsstate->query);
+		pgfdw_report_error(NULL, fsstate->conn, fsstate->query);
 
 	fetch_more_data(node);
 
@@ -7517,7 +7412,7 @@ fetch_more_data_begin(AsyncRequest *areq)
 			 fsstate->fetch_size, fsstate->cursor_number);
 
 	if (!PQsendQuery(fsstate->conn, sql))
-		pgfdw_report_error(ERROR, NULL, fsstate->conn, false, fsstate->query);
+		pgfdw_report_error(NULL, fsstate->conn, fsstate->query);
 
 	/* Remember that the request is in process */
 	fsstate->conn_state->pendingAreq = areq;

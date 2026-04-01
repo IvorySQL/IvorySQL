@@ -779,7 +779,10 @@ HINT:  Execute a database-wide VACUUM in that database.
      careful aging management, storage cleanup, and wraparound handling.
      There is a separate storage area which holds the list of members in
      each multixact, which also uses a 32-bit counter and which must also
-     be managed.
+     be managed.  The system function
+     <function>pg_get_multixact_members()</function> described in
+     <xref linkend="functions-pg-snapshot"/> can be used to examine the
+     transaction IDs associated with a multixact ID.
     </para>
 
     <para>
@@ -889,7 +892,8 @@ HINT:  Execute a database-wide VACUUM in that database.
     the next database will be processed as soon as the first worker finishes.
     Each worker process will check each table within its database and
     execute <command>VACUUM</command> and/or <command>ANALYZE</command> as needed.
-    <xref linkend="guc-log-autovacuum-min-duration"/> can be set to monitor
+    <xref linkend="guc-log-autovacuum-min-duration"/> and
+    <xref linkend="guc-log-autoanalyze-min-duration"/> can be set to monitor
     autovacuum workers' activity.
    </para>
 

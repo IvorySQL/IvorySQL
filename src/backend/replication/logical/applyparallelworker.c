@@ -441,7 +441,8 @@ pa_launch_parallel_worker(void)
 										MySubscription->name,
 										MyLogicalRepWorker->userid,
 										InvalidOid,
-										dsm_segment_handle(winfo->dsm_seg));
+										dsm_segment_handle(winfo->dsm_seg),
+										false);
 
 	if (launched)
 	{
@@ -777,10 +778,10 @@ LogicalParallelApplyLoop(shm_mq_handle *mqh)
 
 			/*
 			 * The first byte of messages sent from leader apply worker to
-			 * parallel apply workers can only be 'w'.
+			 * parallel apply workers can only be PqReplMsg_WALData.
 			 */
 			c = pq_getmsgbyte(&s);
-			if (c != 'w')
+			if (c != PqReplMsg_WALData)
 				elog(ERROR, "unexpected message \"%c\"", c);
 
 			/*
@@ -869,10 +870,17 @@ ParallelApplyWorkerMain(Datum main_arg)
 
 	InitializingApplyWorker = true;
 
-	/* Setup signal handling. */
+	/*
+	 * Setup signal handling.
+	 *
+	 * Note: We intentionally used SIGUSR2 to trigger a graceful shutdown
+	 * initiated by the leader apply worker. This helps to differentiate it
+	 * from the case where we abort the current transaction and exit on
+	 * receiving SIGTERM.
+	 */
 	pqsignal(SIGHUP, SignalHandlerForConfigReload);
-	pqsignal(SIGINT, SignalHandlerForShutdownRequest);
 	pqsignal(SIGTERM, die);
+	pqsignal(SIGUSR2, SignalHandlerForShutdownRequest);
 	BackgroundWorkerUnblockSignals();
 
 	/*
@@ -962,7 +970,7 @@ ParallelApplyWorkerMain(Datum main_arg)
 	 * the subscription relation state.
 	 */
 	CacheRegisterSyscacheCallback(SUBSCRIPTIONRELMAP,
-								  invalidate_syncing_table_states,
+								  InvalidateSyncingRelStates,
 								  (Datum) 0);
 
 	set_apply_error_context_origin(originname);
@@ -971,9 +979,9 @@ ParallelApplyWorkerMain(Datum main_arg)
 
 	/*
 	 * The parallel apply worker must not get here because the parallel apply
-	 * worker will only stop when it receives a SIGTERM or SIGINT from the
-	 * leader, or when there is an error. None of these cases will allow the
-	 * code to reach here.
+	 * worker will only stop when it receives a SIGTERM or SIGUSR2 from the
+	 * leader, or SIGINT from itself, or when there is an error. None of these
+	 * cases will allow the code to reach here.
 	 */
 	Assert(false);
 }
@@ -1006,7 +1014,7 @@ ProcessParallelApplyMessage(StringInfo msg)
 
 	switch (msgtype)
 	{
-		case 'E':				/* ErrorResponse */
+		case PqMsg_ErrorResponse:
 			{
 				ErrorData	edata;
 
@@ -1043,11 +1051,11 @@ ProcessParallelApplyMessage(StringInfo msg)
 
 			/*
 			 * Don't need to do anything about NoticeResponse and
-			 * NotifyResponse as the logical replication worker doesn't need
-			 * to send messages to the client.
+			 * NotificationResponse as the logical replication worker doesn't
+			 * need to send messages to the client.
 			 */
-		case 'N':
-		case 'A':
+		case PqMsg_NoticeResponse:
+		case PqMsg_NotificationResponse:
 			break;
 
 		default:

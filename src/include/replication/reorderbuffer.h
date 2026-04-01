@@ -359,7 +359,7 @@ typedef struct ReorderBufferTXN
 		TimestampTz commit_time;
 		TimestampTz prepare_time;
 		TimestampTz abort_time;
-	}			xact_time;
+	};
 
 	/*
 	 * The base snapshot is used to decode all changes until either this
@@ -689,6 +689,9 @@ struct ReorderBuffer
 	int64		streamTxns;		/* number of transactions streamed */
 	int64		streamCount;	/* streaming invocation counter */
 	int64		streamBytes;	/* amount of data decoded */
+
+	/* Number of times the logical_decoding_work_mem limit has been reached */
+	int64		memExceededCount;
 
 	/*
 	 * Statistics about all the transactions sent to the decoding output

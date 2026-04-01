@@ -117,57 +117,14 @@
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
-#include "utils/memutils.h"
 #include "utils/rls.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "utils/usercontext.h"
 
-typedef enum
-{
-	SYNC_TABLE_STATE_NEEDS_REBUILD,
-	SYNC_TABLE_STATE_REBUILD_STARTED,
-	SYNC_TABLE_STATE_VALID,
-} SyncingTablesState;
-
-static SyncingTablesState table_states_validity = SYNC_TABLE_STATE_NEEDS_REBUILD;
-static List *table_states_not_ready = NIL;
-static bool FetchTableStates(bool *started_tx);
+List	   *table_states_not_ready = NIL;
 
 static StringInfo copybuf = NULL;
-
-/*
- * Exit routine for synchronization worker.
- */
-pg_noreturn static void
-finish_sync_worker(void)
-{
-	/*
-	 * Commit any outstanding transaction. This is the usual case, unless
-	 * there was nothing to do for the table.
-	 */
-	if (IsTransactionState())
-	{
-		CommitTransactionCommand();
-		pgstat_report_stat(true);
-	}
-
-	/* And flush all writes. */
-	XLogFlush(GetXLogWriteRecPtr());
-
-	StartTransactionCommand();
-	ereport(LOG,
-			(errmsg("logical replication table synchronization worker for subscription \"%s\", table \"%s\" has finished",
-					MySubscription->name,
-					get_rel_name(MyLogicalRepWorker->relid))));
-	CommitTransactionCommand();
-
-	/* Find the leader apply worker and signal it. */
-	logicalrep_worker_wakeup(MyLogicalRepWorker->subid, InvalidOid);
-
-	/* Stop gracefully */
-	proc_exit(0);
-}
 
 /*
  * Wait until the relation sync state is set in the catalog to the expected
@@ -180,7 +137,7 @@ finish_sync_worker(void)
  * CATCHUP state to SYNCDONE.
  */
 static bool
-wait_for_relation_state_change(Oid relid, char expected_state)
+wait_for_table_state_change(Oid relid, char expected_state)
 {
 	char		state;
 
@@ -203,7 +160,8 @@ wait_for_relation_state_change(Oid relid, char expected_state)
 
 		/* Check if the sync worker is still running and bail if not. */
 		LWLockAcquire(LogicalRepWorkerLock, LW_SHARED);
-		worker = logicalrep_worker_find(MyLogicalRepWorker->subid, relid,
+		worker = logicalrep_worker_find(WORKERTYPE_TABLESYNC,
+										MyLogicalRepWorker->subid, relid,
 										false);
 		LWLockRelease(LogicalRepWorkerLock);
 		if (!worker)
@@ -250,8 +208,9 @@ wait_for_worker_state_change(char expected_state)
 		 * waiting.
 		 */
 		LWLockAcquire(LogicalRepWorkerLock, LW_SHARED);
-		worker = logicalrep_worker_find(MyLogicalRepWorker->subid,
-										InvalidOid, false);
+		worker = logicalrep_worker_find(WORKERTYPE_APPLY,
+										MyLogicalRepWorker->subid, InvalidOid,
+										false);
 		if (worker && worker->proc)
 			logicalrep_worker_wakeup_ptr(worker);
 		LWLockRelease(LogicalRepWorkerLock);
@@ -274,15 +233,6 @@ wait_for_worker_state_change(char expected_state)
 }
 
 /*
- * Callback from syscache invalidation.
- */
-void
-invalidate_syncing_table_states(Datum arg, int cacheid, uint32 hashvalue)
-{
-	table_states_validity = SYNC_TABLE_STATE_NEEDS_REBUILD;
-}
-
-/*
  * Handle table synchronization cooperation from the synchronization
  * worker.
  *
@@ -290,8 +240,8 @@ invalidate_syncing_table_states(Datum arg, int cacheid, uint32 hashvalue)
  * predetermined synchronization point in the WAL stream, mark the table as
  * SYNCDONE and finish.
  */
-static void
-process_syncing_tables_for_sync(XLogRecPtr current_lsn)
+void
+ProcessSyncingTablesForSync(XLogRecPtr current_lsn)
 {
 	SpinLockAcquire(&MyLogicalRepWorker->relmutex);
 
@@ -316,7 +266,8 @@ process_syncing_tables_for_sync(XLogRecPtr current_lsn)
 		UpdateSubscriptionRelState(MyLogicalRepWorker->subid,
 								   MyLogicalRepWorker->relid,
 								   MyLogicalRepWorker->relstate,
-								   MyLogicalRepWorker->relstate_lsn);
+								   MyLogicalRepWorker->relstate_lsn,
+								   false);
 
 		/*
 		 * End streaming so that LogRepWorkerWalRcvConn can be used to drop
@@ -348,9 +299,9 @@ process_syncing_tables_for_sync(XLogRecPtr current_lsn)
 
 		/*
 		 * Start a new transaction to clean up the tablesync origin tracking.
-		 * This transaction will be ended within the finish_sync_worker().
-		 * Now, even, if we fail to remove this here, the apply worker will
-		 * ensure to clean it up afterward.
+		 * This transaction will be ended within the FinishSyncWorker(). Now,
+		 * even, if we fail to remove this here, the apply worker will ensure
+		 * to clean it up afterward.
 		 *
 		 * We need to do this after the table state is set to SYNCDONE.
 		 * Otherwise, if an error occurs while performing the database
@@ -386,7 +337,7 @@ process_syncing_tables_for_sync(XLogRecPtr current_lsn)
 		 */
 		replorigin_drop_by_name(originname, true, false);
 
-		finish_sync_worker();
+		FinishSyncWorker();
 	}
 	else
 		SpinLockRelease(&MyLogicalRepWorker->relmutex);
@@ -413,8 +364,8 @@ process_syncing_tables_for_sync(XLogRecPtr current_lsn)
  * If the synchronization position is reached (SYNCDONE), then the table can
  * be marked as READY and is no longer tracked.
  */
-static void
-process_syncing_tables_for_apply(XLogRecPtr current_lsn)
+void
+ProcessSyncingTablesForApply(XLogRecPtr current_lsn)
 {
 	struct tablesync_start_time_mapping
 	{
@@ -425,11 +376,12 @@ process_syncing_tables_for_apply(XLogRecPtr current_lsn)
 	ListCell   *lc;
 	bool		started_tx = false;
 	bool		should_exit = false;
+	Relation	rel = NULL;
 
 	Assert(!IsTransactionState());
 
 	/* We need up-to-date sync state info for subscription tables here. */
-	FetchTableStates(&started_tx);
+	FetchRelationStates(&started_tx);
 
 	/*
 	 * Prepare a hash table for tracking last start times of workers, to avoid
@@ -492,7 +444,17 @@ process_syncing_tables_for_apply(XLogRecPtr current_lsn)
 				 * worker to remove the origin tracking as if there is any
 				 * error while dropping we won't restart it to drop the
 				 * origin. So passing missing_ok = true.
+				 *
+				 * Lock the subscription and origin in the same order as we
+				 * are doing during DDL commands to avoid deadlocks. See
+				 * AlterSubscription_refresh.
 				 */
+				LockSharedObject(SubscriptionRelationId, MyLogicalRepWorker->subid,
+								 0, AccessShareLock);
+
+				if (!rel)
+					rel = table_open(SubscriptionRelRelationId, RowExclusiveLock);
+
 				ReplicationOriginNameForLogicalRep(MyLogicalRepWorker->subid,
 												   rstate->relid,
 												   originname,
@@ -504,7 +466,7 @@ process_syncing_tables_for_apply(XLogRecPtr current_lsn)
 				 */
 				UpdateSubscriptionRelState(MyLogicalRepWorker->subid,
 										   rstate->relid, rstate->state,
-										   rstate->lsn);
+										   rstate->lsn, true);
 			}
 		}
 		else
@@ -516,7 +478,8 @@ process_syncing_tables_for_apply(XLogRecPtr current_lsn)
 			 */
 			LWLockAcquire(LogicalRepWorkerLock, LW_SHARED);
 
-			syncworker = logicalrep_worker_find(MyLogicalRepWorker->subid,
+			syncworker = logicalrep_worker_find(WORKERTYPE_TABLESYNC,
+												MyLogicalRepWorker->subid,
 												rstate->relid, false);
 
 			if (syncworker)
@@ -555,7 +518,14 @@ process_syncing_tables_for_apply(XLogRecPtr current_lsn)
 						 * This is required to avoid any undetected deadlocks
 						 * due to any existing lock as deadlock detector won't
 						 * be able to detect the waits on the latch.
+						 *
+						 * Also close any tables prior to the commit.
 						 */
+						if (rel)
+						{
+							table_close(rel, NoLock);
+							rel = NULL;
+						}
 						CommitTransactionCommand();
 						pgstat_report_stat(false);
 					}
@@ -567,8 +537,8 @@ process_syncing_tables_for_apply(XLogRecPtr current_lsn)
 					StartTransactionCommand();
 					started_tx = true;
 
-					wait_for_relation_state_change(rstate->relid,
-												   SUBREL_STATE_SYNCDONE);
+					wait_for_table_state_change(rstate->relid,
+												SUBREL_STATE_SYNCDONE);
 				}
 				else
 					LWLockRelease(LogicalRepWorkerLock);
@@ -615,12 +585,18 @@ process_syncing_tables_for_apply(XLogRecPtr current_lsn)
 														MySubscription->name,
 														MyLogicalRepWorker->userid,
 														rstate->relid,
-														DSM_HANDLE_INVALID);
+														DSM_HANDLE_INVALID,
+														false);
 					}
 				}
 			}
 		}
 	}
+
+	/* Close table if opened */
+	if (rel)
+		table_close(rel, NoLock);
+
 
 	if (started_tx)
 	{
@@ -661,37 +637,6 @@ process_syncing_tables_for_apply(XLogRecPtr current_lsn)
 		ApplyLauncherForgetWorkerStartTime(MySubscription->oid);
 
 		proc_exit(0);
-	}
-}
-
-/*
- * Process possible state change(s) of tables that are being synchronized.
- */
-void
-process_syncing_tables(XLogRecPtr current_lsn)
-{
-	switch (MyLogicalRepWorker->type)
-	{
-		case WORKERTYPE_PARALLEL_APPLY:
-
-			/*
-			 * Skip for parallel apply workers because they only operate on
-			 * tables that are in a READY state. See pa_can_start() and
-			 * should_apply_changes_for_rel().
-			 */
-			break;
-
-		case WORKERTYPE_TABLESYNC:
-			process_syncing_tables_for_sync(current_lsn);
-			break;
-
-		case WORKERTYPE_APPLY:
-			process_syncing_tables_for_apply(current_lsn);
-			break;
-
-		case WORKERTYPE_UNKNOWN:
-			/* Should never happen. */
-			elog(ERROR, "Unknown worker type");
 	}
 }
 
@@ -898,7 +843,7 @@ fetch_remote_table_info(char *nspname, char *relname, LogicalRepRelation *lrel,
 		/*
 		 * We don't support the case where the column list is different for
 		 * the same table when combining publications. See comments atop
-		 * fetch_table_list. So there should be only one row returned.
+		 * fetch_relation_list. So there should be only one row returned.
 		 * Although we already checked this when creating the subscription, we
 		 * still need to check here in case the column list was changed after
 		 * creating the subscription and before the sync worker is started.
@@ -1331,7 +1276,7 @@ LogicalRepSyncTableStart(XLogRecPtr *origin_startpos)
 		case SUBREL_STATE_SYNCDONE:
 		case SUBREL_STATE_READY:
 		case SUBREL_STATE_UNKNOWN:
-			finish_sync_worker();	/* doesn't return */
+			FinishSyncWorker(); /* doesn't return */
 	}
 
 	/* Calculate the name of the tablesync slot. */
@@ -1413,7 +1358,8 @@ LogicalRepSyncTableStart(XLogRecPtr *origin_startpos)
 	UpdateSubscriptionRelState(MyLogicalRepWorker->subid,
 							   MyLogicalRepWorker->relid,
 							   MyLogicalRepWorker->relstate,
-							   MyLogicalRepWorker->relstate_lsn);
+							   MyLogicalRepWorker->relstate_lsn,
+							   false);
 	CommitTransactionCommand();
 	pgstat_report_stat(true);
 
@@ -1546,14 +1492,15 @@ LogicalRepSyncTableStart(XLogRecPtr *origin_startpos)
 	UpdateSubscriptionRelState(MyLogicalRepWorker->subid,
 							   MyLogicalRepWorker->relid,
 							   SUBREL_STATE_FINISHEDCOPY,
-							   MyLogicalRepWorker->relstate_lsn);
+							   MyLogicalRepWorker->relstate_lsn,
+							   false);
 
 	CommitTransactionCommand();
 
 copy_table_done:
 
 	elog(DEBUG1,
-		 "LogicalRepSyncTableStart: '%s' origin_startpos lsn %X/%X",
+		 "LogicalRepSyncTableStart: '%s' origin_startpos lsn %X/%08X",
 		 originname, LSN_FORMAT_ARGS(*origin_startpos));
 
 	/*
@@ -1570,77 +1517,6 @@ copy_table_done:
 	 */
 	wait_for_worker_state_change(SUBREL_STATE_CATCHUP);
 	return slotname;
-}
-
-/*
- * Common code to fetch the up-to-date sync state info into the static lists.
- *
- * Returns true if subscription has 1 or more tables, else false.
- *
- * Note: If this function started the transaction (indicated by the parameter)
- * then it is the caller's responsibility to commit it.
- */
-static bool
-FetchTableStates(bool *started_tx)
-{
-	static bool has_subrels = false;
-
-	*started_tx = false;
-
-	if (table_states_validity != SYNC_TABLE_STATE_VALID)
-	{
-		MemoryContext oldctx;
-		List	   *rstates;
-		ListCell   *lc;
-		SubscriptionRelState *rstate;
-
-		table_states_validity = SYNC_TABLE_STATE_REBUILD_STARTED;
-
-		/* Clean the old lists. */
-		list_free_deep(table_states_not_ready);
-		table_states_not_ready = NIL;
-
-		if (!IsTransactionState())
-		{
-			StartTransactionCommand();
-			*started_tx = true;
-		}
-
-		/* Fetch all non-ready tables. */
-		rstates = GetSubscriptionRelations(MySubscription->oid, true);
-
-		/* Allocate the tracking info in a permanent memory context. */
-		oldctx = MemoryContextSwitchTo(CacheMemoryContext);
-		foreach(lc, rstates)
-		{
-			rstate = palloc(sizeof(SubscriptionRelState));
-			memcpy(rstate, lfirst(lc), sizeof(SubscriptionRelState));
-			table_states_not_ready = lappend(table_states_not_ready, rstate);
-		}
-		MemoryContextSwitchTo(oldctx);
-
-		/*
-		 * Does the subscription have tables?
-		 *
-		 * If there were not-READY relations found then we know it does. But
-		 * if table_states_not_ready was empty we still need to check again to
-		 * see if there are 0 tables.
-		 */
-		has_subrels = (table_states_not_ready != NIL) ||
-			HasSubscriptionRelations(MySubscription->oid);
-
-		/*
-		 * If the subscription relation cache has been invalidated since we
-		 * entered this routine, we still use and return the relations we just
-		 * finished constructing, to avoid infinite loops, but we leave the
-		 * table states marked as stale so that we'll rebuild it again on next
-		 * access. Otherwise, we mark the table states as valid.
-		 */
-		if (table_states_validity == SYNC_TABLE_STATE_REBUILD_STARTED)
-			table_states_validity = SYNC_TABLE_STATE_VALID;
-	}
-
-	return has_subrels;
 }
 
 /*
@@ -1728,7 +1604,7 @@ TablesyncWorkerMain(Datum main_arg)
 
 	run_tablesync_worker();
 
-	finish_sync_worker();
+	FinishSyncWorker();
 }
 
 /*
@@ -1746,7 +1622,7 @@ AllTablesyncsReady(void)
 	bool		has_subrels = false;
 
 	/* We need up-to-date sync state info for subscription tables here. */
-	has_subrels = FetchTableStates(&started_tx);
+	has_subrels = FetchRelationStates(&started_tx);
 
 	if (started_tx)
 	{
@@ -1759,6 +1635,32 @@ AllTablesyncsReady(void)
 	 * are in ready state; true otherwise.
 	 */
 	return has_subrels && (table_states_not_ready == NIL);
+}
+
+/*
+ * Return whether the subscription currently has any tables.
+ *
+ * Note: Unlike HasSubscriptionTables(), this function relies on cached
+ * information for subscription tables. Additionally, it should not be
+ * invoked outside of apply or tablesync workers, as MySubscription must be
+ * initialized first.
+ */
+bool
+HasSubscriptionTablesCached(void)
+{
+	bool		started_tx;
+	bool		has_subrels;
+
+	/* We need up-to-date subscription tables info here */
+	has_subrels = FetchRelationStates(&started_tx);
+
+	if (started_tx)
+	{
+		CommitTransactionCommand();
+		pgstat_report_stat(true);
+	}
+
+	return has_subrels;
 }
 
 /*

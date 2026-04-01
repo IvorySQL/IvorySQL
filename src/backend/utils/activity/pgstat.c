@@ -212,6 +212,11 @@ int			pgstat_fetch_consistency = PGSTAT_FETCH_CONSISTENCY_CACHE;
 
 PgStat_LocalState pgStatLocal;
 
+/*
+ * Track pending reports for fixed-numbered stats, used by
+ * pgstat_report_stat().
+ */
+bool		pgstat_report_fixed = false;
 
 /* ----------
  * Local data
@@ -308,6 +313,7 @@ static const PgStat_KindInfo pgstat_kind_builtin_infos[PGSTAT_KIND_BUILTIN_SIZE]
 
 		.flush_pending_cb = pgstat_relation_flush_cb,
 		.delete_pending_cb = pgstat_relation_delete_pending_cb,
+		.reset_timestamp_cb = pgstat_relation_reset_timestamp_cb,
 	},
 
 	[PGSTAT_KIND_FUNCTION] = {
@@ -322,6 +328,7 @@ static const PgStat_KindInfo pgstat_kind_builtin_infos[PGSTAT_KIND_BUILTIN_SIZE]
 		.pending_size = sizeof(PgStat_FunctionCounts),
 
 		.flush_pending_cb = pgstat_function_flush_cb,
+		.reset_timestamp_cb = pgstat_function_reset_timestamp_cb,
 	},
 
 	[PGSTAT_KIND_REPLSLOT] = {
@@ -370,7 +377,6 @@ static const PgStat_KindInfo pgstat_kind_builtin_infos[PGSTAT_KIND_BUILTIN_SIZE]
 		.shared_data_off = offsetof(PgStatShared_Backend, stats),
 		.shared_data_len = sizeof(((PgStatShared_Backend *) 0)->stats),
 
-		.have_static_pending_cb = pgstat_backend_have_pending_cb,
 		.flush_static_cb = pgstat_backend_flush_cb,
 		.reset_timestamp_cb = pgstat_backend_reset_timestamp_cb,
 	},
@@ -437,7 +443,6 @@ static const PgStat_KindInfo pgstat_kind_builtin_infos[PGSTAT_KIND_BUILTIN_SIZE]
 		.shared_data_len = sizeof(((PgStatShared_IO *) 0)->stats),
 
 		.flush_static_cb = pgstat_io_flush_cb,
-		.have_static_pending_cb = pgstat_io_have_pending_cb,
 		.init_shmem_cb = pgstat_io_init_shmem_cb,
 		.reset_all_cb = pgstat_io_reset_all_cb,
 		.snapshot_cb = pgstat_io_snapshot_cb,
@@ -455,7 +460,6 @@ static const PgStat_KindInfo pgstat_kind_builtin_infos[PGSTAT_KIND_BUILTIN_SIZE]
 		.shared_data_len = sizeof(((PgStatShared_SLRU *) 0)->stats),
 
 		.flush_static_cb = pgstat_slru_flush_cb,
-		.have_static_pending_cb = pgstat_slru_have_pending_cb,
 		.init_shmem_cb = pgstat_slru_init_shmem_cb,
 		.reset_all_cb = pgstat_slru_reset_all_cb,
 		.snapshot_cb = pgstat_slru_snapshot_cb,
@@ -474,7 +478,6 @@ static const PgStat_KindInfo pgstat_kind_builtin_infos[PGSTAT_KIND_BUILTIN_SIZE]
 
 		.init_backend_cb = pgstat_wal_init_backend_cb,
 		.flush_static_cb = pgstat_wal_flush_cb,
-		.have_static_pending_cb = pgstat_wal_have_pending_cb,
 		.init_shmem_cb = pgstat_wal_init_shmem_cb,
 		.reset_all_cb = pgstat_wal_reset_all_cb,
 		.snapshot_cb = pgstat_wal_snapshot_cb,
@@ -708,29 +711,10 @@ pgstat_report_stat(bool force)
 	}
 
 	/* Don't expend a clock check if nothing to do */
-	if (dlist_is_empty(&pgStatPending))
+	if (dlist_is_empty(&pgStatPending) &&
+		!pgstat_report_fixed)
 	{
-		bool		do_flush = false;
-
-		/* Check for pending stats */
-		for (PgStat_Kind kind = PGSTAT_KIND_MIN; kind <= PGSTAT_KIND_MAX; kind++)
-		{
-			const PgStat_KindInfo *kind_info = pgstat_get_kind_info(kind);
-
-			if (!kind_info)
-				continue;
-			if (!kind_info->have_static_pending_cb)
-				continue;
-
-			if (kind_info->have_static_pending_cb())
-			{
-				do_flush = true;
-				break;
-			}
-		}
-
-		if (!do_flush)
-			return 0;
+		return 0;
 	}
 
 	/*
@@ -784,16 +768,19 @@ pgstat_report_stat(bool force)
 	partial_flush |= pgstat_flush_pending_entries(nowait);
 
 	/* flush of other stats kinds */
-	for (PgStat_Kind kind = PGSTAT_KIND_MIN; kind <= PGSTAT_KIND_MAX; kind++)
+	if (pgstat_report_fixed)
 	{
-		const PgStat_KindInfo *kind_info = pgstat_get_kind_info(kind);
+		for (PgStat_Kind kind = PGSTAT_KIND_MIN; kind <= PGSTAT_KIND_MAX; kind++)
+		{
+			const PgStat_KindInfo *kind_info = pgstat_get_kind_info(kind);
 
-		if (!kind_info)
-			continue;
-		if (!kind_info->flush_static_cb)
-			continue;
+			if (!kind_info)
+				continue;
+			if (!kind_info->flush_static_cb)
+				continue;
 
-		partial_flush |= kind_info->flush_static_cb(nowait);
+			partial_flush |= kind_info->flush_static_cb(nowait);
+		}
 	}
 
 	last_flush = now;
@@ -815,6 +802,7 @@ pgstat_report_stat(bool force)
 	}
 
 	pending_since = 0;
+	pgstat_report_fixed = false;
 
 	return 0;
 }
@@ -835,7 +823,7 @@ pgstat_force_next_flush(void)
 static bool
 match_db_entries(PgStatShared_HashEntry *entry, Datum match_data)
 {
-	return entry->key.dboid == DatumGetObjectId(MyDatabaseId);
+	return entry->key.dboid == MyDatabaseId;
 }
 
 /*
@@ -946,7 +934,7 @@ pgstat_clear_snapshot(void)
 void *
 pgstat_fetch_entry(PgStat_Kind kind, Oid dboid, uint64 objid)
 {
-	PgStat_HashKey key;
+	PgStat_HashKey key = {0};
 	PgStat_EntryRef *entry_ref;
 	void	   *stats_data;
 	const PgStat_KindInfo *kind_info = pgstat_get_kind_info(kind);
@@ -956,9 +944,6 @@ pgstat_fetch_entry(PgStat_Kind kind, Oid dboid, uint64 objid)
 	Assert(!kind_info->fixed_amount);
 
 	pgstat_prep_snapshot();
-
-	/* clear padding */
-	memset(&key, 0, sizeof(struct PgStat_HashKey));
 
 	key.kind = kind;
 	key.dboid = dboid;
@@ -1504,6 +1489,10 @@ pgstat_register_kind(PgStat_Kind kind, const PgStat_KindInfo *kind_info)
 			ereport(ERROR,
 					(errmsg("custom cumulative statistics property is invalid"),
 					 errhint("Custom cumulative statistics require a shared memory size for fixed-numbered objects.")));
+		if (kind_info->track_entry_count)
+			ereport(ERROR,
+					(errmsg("custom cumulative statistics property is invalid"),
+					 errhint("Custom cumulative statistics cannot use entry count tracking for fixed-numbered objects.")));
 	}
 
 	/*
@@ -1989,6 +1978,17 @@ pgstat_read_statsfile(void)
 
 					header = pgstat_init_entry(key.kind, p);
 					dshash_release_lock(pgStatLocal.shared_hash, p);
+					if (header == NULL)
+					{
+						/*
+						 * It would be tempting to switch this ERROR to a
+						 * WARNING, but it would mean that all the statistics
+						 * are discarded when the environment fails on OOM.
+						 */
+						elog(ERROR, "could not allocate entry %u/%u/%" PRIu64 " of type %c",
+							 key.kind, key.dboid,
+							 key.objid, t);
+					}
 
 					if (!read_chunk(fpin,
 									pgstat_get_entry_data(key.kind, header),

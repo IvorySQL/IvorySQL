@@ -3059,7 +3059,14 @@ commandFailed(CState *st, const char *cmd, const char *message)
 static void
 commandError(CState *st, const char *message)
 {
-	Assert(sql_script[st->use_file].commands[st->command]->type == SQL_COMMAND);
+	/*
+	 * Errors should only be detected during an SQL command or the
+	 * \endpipeline meta command. Any other case triggers an assertion
+	 * failure.
+	 */
+	Assert(sql_script[st->use_file].commands[st->command]->type == SQL_COMMAND ||
+		   sql_script[st->use_file].commands[st->command]->meta == META_ENDPIPELINE);
+
 	pg_log_info("client %d got an error in command %d (SQL) of script %d; %s",
 				st->id, st->command, st->use_file, message);
 }
@@ -3349,8 +3356,22 @@ readCommandResponse(CState *st, MetaCommand meta, char *varprefix)
 				st->num_syncs--;
 				if (st->num_syncs == 0 && PQexitPipelineMode(st->con) != 1)
 					pg_log_error("client %d failed to exit pipeline mode: %s", st->id,
-								 PQerrorMessage(st->con));
+								 PQresultErrorMessage(res));
 				break;
+
+			case PGRES_COPY_IN:
+			case PGRES_COPY_OUT:
+			case PGRES_COPY_BOTH:
+				pg_log_error("COPY is not supported in pgbench, aborting");
+
+				/*
+				 * We need to exit the copy state.  Otherwise, PQgetResult()
+				 * will always return an empty PGresult as an effect of
+				 * getCopyResult(), leading to an infinite loop in the error
+				 * cleanup done below.
+				 */
+				PQendcopy(st->con);
+				goto error;
 
 			case PGRES_NONFATAL_ERROR:
 			case PGRES_FATAL_ERROR:
@@ -3359,7 +3380,7 @@ readCommandResponse(CState *st, MetaCommand meta, char *varprefix)
 				if (canRetryError(st->estatus))
 				{
 					if (verbose_errors)
-						commandError(st, PQerrorMessage(st->con));
+						commandError(st, PQresultErrorMessage(res));
 					goto error;
 				}
 				/* fall through */
@@ -3368,7 +3389,7 @@ readCommandResponse(CState *st, MetaCommand meta, char *varprefix)
 				/* anything else is unexpected */
 				pg_log_error("client %d script %d aborted in command %d query %d: %s",
 							 st->id, st->use_file, st->command, qrynum,
-							 PQerrorMessage(st->con));
+							 PQresultErrorMessage(res));
 				goto error;
 		}
 
@@ -3495,6 +3516,8 @@ doRetry(CState *st, pg_time_usec_t *now)
 static int
 discardUntilSync(CState *st)
 {
+	bool		received_sync = false;
+
 	/* send a sync */
 	if (!PQpipelineSync(st->con))
 	{
@@ -3509,10 +3532,21 @@ discardUntilSync(CState *st)
 		PGresult   *res = PQgetResult(st->con);
 
 		if (PQresultStatus(res) == PGRES_PIPELINE_SYNC)
+			received_sync = true;
+		else if (received_sync)
 		{
-			PQclear(res);
-			res = PQgetResult(st->con);
+			/*
+			 * PGRES_PIPELINE_SYNC must be followed by another
+			 * PGRES_PIPELINE_SYNC or NULL; otherwise, assert failure.
+			 */
 			Assert(res == NULL);
+
+			/*
+			 * Reset ongoing sync count to 0 since all PGRES_PIPELINE_SYNC
+			 * results have been discarded.
+			 */
+			st->num_syncs = 0;
+			PQclear(res);
 			break;
 		}
 		PQclear(res);
@@ -5586,7 +5620,7 @@ skip_sql_comments(char *sql_command)
  * struct.
  */
 static Command *
-create_sql_command(PQExpBuffer buf, const char *source)
+create_sql_command(PQExpBuffer buf)
 {
 	Command    *my_command;
 	char	   *p = skip_sql_comments(buf->data);
@@ -5979,7 +6013,7 @@ ParseScript(const char *script, const char *desc, int weight)
 		sr = psql_scan(sstate, &line_buf, &prompt);
 
 		/* If we collected a new SQL command, process that */
-		command = create_sql_command(&line_buf, desc);
+		command = create_sql_command(&line_buf);
 
 		/* store new command */
 		if (command)

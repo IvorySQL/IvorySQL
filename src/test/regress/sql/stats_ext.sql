@@ -40,6 +40,18 @@ CREATE STATISTICS tst ON x, x, y, x, x, (x || 'x'), (y + 1), (x || 'x'), (x || '
 CREATE STATISTICS tst ON (x || 'x'), (x || 'x'), (y + 1), (x || 'x'), (x || 'x'), (y + 1), (x || 'x'), (x || 'x'), (y + 1) FROM ext_stats_test;
 CREATE STATISTICS tst ON (x || 'x'), (x || 'x'), y FROM ext_stats_test;
 CREATE STATISTICS tst (unrecognized) ON x, y FROM ext_stats_test;
+-- unsupported targets
+CREATE STATISTICS tst ON a FROM (VALUES (x)) AS foo;
+CREATE STATISTICS tst ON a FROM foo NATURAL JOIN bar;
+CREATE STATISTICS tst ON a FROM (SELECT * FROM ext_stats_test) AS foo;
+CREATE STATISTICS tst ON a FROM ext_stats_test s TABLESAMPLE system (x);
+CREATE STATISTICS tst ON a FROM XMLTABLE('foo' PASSING 'bar' COLUMNS a text);
+CREATE STATISTICS tst ON a FROM JSON_TABLE(jsonb '123', '$' COLUMNS (item int));
+CREATE FUNCTION tftest(int) returns table(a int, b int) as $$
+SELECT $1, $1+i FROM generate_series(1,5) g(i);
+$$ LANGUAGE sql IMMUTABLE STRICT;
+CREATE STATISTICS alt_stat2 ON a FROM tftest(1);
+DROP FUNCTION tftest;
 -- incorrect expressions
 CREATE STATISTICS tst ON (y) FROM ext_stats_test; -- single column reference
 CREATE STATISTICS tst ON y + z FROM ext_stats_test; -- missing parentheses
@@ -71,6 +83,14 @@ DROP STATISTICS ab1_a_b_stats;
 ALTER STATISTICS ab1_a_b_stats RENAME TO ab1_a_b_stats_new;
 RESET SESSION AUTHORIZATION;
 DROP ROLE regress_stats_ext;
+CREATE STATISTICS pg_temp.stats_ext_temp ON a, b FROM ab1;
+SELECT regexp_replace(pg_describe_object(tableoid, oid, 0),
+                      'pg_temp_[0-9]*', 'pg_temp_REDACTED') AS descr,
+       pg_statistics_obj_is_visible(oid) AS visible
+  FROM pg_statistic_ext
+ WHERE stxname = 'stats_ext_temp';
+DROP STATISTICS stats_ext_temp;  -- shall fail
+DROP STATISTICS pg_temp.stats_ext_temp;
 
 CREATE STATISTICS IF NOT EXISTS ab1_a_b_stats ON a, b FROM ab1;
 DROP STATISTICS ab1_a_b_stats;
@@ -1647,8 +1667,15 @@ CREATE FUNCTION op_leak(int, int) RETURNS bool
     LANGUAGE plpgsql;
 CREATE OPERATOR <<< (procedure = op_leak, leftarg = int, rightarg = int,
                      restrict = scalarltsel);
+CREATE FUNCTION op_leak(record, record) RETURNS bool
+    AS 'BEGIN RAISE NOTICE ''op_leak => %, %'', $1, $2; RETURN $1 < $2; END'
+    LANGUAGE plpgsql;
+CREATE OPERATOR <<< (procedure = op_leak, leftarg = record, rightarg = record,
+                     restrict = scalarltsel);
 SELECT * FROM tststats.priv_test_tbl WHERE a <<< 0 AND b <<< 0; -- Permission denied
-SELECT * FROM tststats.priv_test_tbl WHERE a <<< 0 OR b <<< 0;
+SELECT * FROM tststats.priv_test_tbl WHERE a <<< 0 OR b <<< 0; -- Permission denied
+SELECT * FROM tststats.priv_test_tbl t
+ WHERE a <<< 0 AND (b <<< 0 OR t.* <<< (1, 1) IS NOT NULL); -- Permission denied
 DELETE FROM tststats.priv_test_tbl WHERE a <<< 0 AND b <<< 0; -- Permission denied
 
 -- Grant access via a security barrier view, but hide all data
@@ -1661,18 +1688,50 @@ GRANT SELECT, DELETE ON tststats.priv_test_view TO regress_stats_user1;
 SET SESSION AUTHORIZATION regress_stats_user1;
 SELECT * FROM tststats.priv_test_view WHERE a <<< 0 AND b <<< 0; -- Should not leak
 SELECT * FROM tststats.priv_test_view WHERE a <<< 0 OR b <<< 0; -- Should not leak
+SELECT * FROM tststats.priv_test_view t
+ WHERE a <<< 0 AND (b <<< 0 OR t.* <<< (1, 1) IS NOT NULL); -- Should not leak
 DELETE FROM tststats.priv_test_view WHERE a <<< 0 AND b <<< 0; -- Should not leak
 
 -- Grant table access, but hide all data with RLS
 RESET SESSION AUTHORIZATION;
 ALTER TABLE tststats.priv_test_tbl ENABLE ROW LEVEL SECURITY;
+CREATE POLICY priv_test_tbl_pol ON tststats.priv_test_tbl USING (2 * a < 0);
 GRANT SELECT, DELETE ON tststats.priv_test_tbl TO regress_stats_user1;
 
 -- Should now have direct table access, but see nothing and leak nothing
 SET SESSION AUTHORIZATION regress_stats_user1;
 SELECT * FROM tststats.priv_test_tbl WHERE a <<< 0 AND b <<< 0; -- Should not leak
-SELECT * FROM tststats.priv_test_tbl WHERE a <<< 0 OR b <<< 0;
+SELECT * FROM tststats.priv_test_tbl WHERE a <<< 0 OR b <<< 0; -- Should not leak
+SELECT * FROM tststats.priv_test_tbl t
+ WHERE a <<< 0 AND (b <<< 0 OR t.* <<< (1, 1) IS NOT NULL); -- Should not leak
 DELETE FROM tststats.priv_test_tbl WHERE a <<< 0 AND b <<< 0; -- Should not leak
+
+-- Create plain inheritance parent table with no access permissions
+RESET SESSION AUTHORIZATION;
+CREATE TABLE tststats.priv_test_parent_tbl (a int, b int);
+ALTER TABLE tststats.priv_test_tbl INHERIT tststats.priv_test_parent_tbl;
+
+-- Should not have access to parent, and should leak nothing
+SET SESSION AUTHORIZATION regress_stats_user1;
+SELECT * FROM tststats.priv_test_parent_tbl WHERE a <<< 0 AND b <<< 0; -- Permission denied
+SELECT * FROM tststats.priv_test_parent_tbl WHERE a <<< 0 OR b <<< 0; -- Permission denied
+SELECT * FROM tststats.priv_test_parent_tbl t
+ WHERE a <<< 0 AND (b <<< 0 OR t.* <<< (1, 1) IS NOT NULL); -- Permission denied
+DELETE FROM tststats.priv_test_parent_tbl WHERE a <<< 0 AND b <<< 0; -- Permission denied
+
+-- Grant table access to parent, but hide all data with RLS
+RESET SESSION AUTHORIZATION;
+ALTER TABLE tststats.priv_test_parent_tbl ENABLE ROW LEVEL SECURITY;
+CREATE POLICY priv_test_parent_tbl_pol ON tststats.priv_test_parent_tbl USING (2 * a < 0);
+GRANT SELECT, DELETE ON tststats.priv_test_parent_tbl TO regress_stats_user1;
+
+-- Should now have direct table access to parent, but see nothing and leak nothing
+SET SESSION AUTHORIZATION regress_stats_user1;
+SELECT * FROM tststats.priv_test_parent_tbl WHERE a <<< 0 AND b <<< 0; -- Should not leak
+SELECT * FROM tststats.priv_test_parent_tbl WHERE a <<< 0 OR b <<< 0; -- Should not leak
+SELECT * FROM tststats.priv_test_parent_tbl t
+ WHERE a <<< 0 AND (b <<< 0 OR t.* <<< (1, 1) IS NOT NULL); -- Should not leak
+DELETE FROM tststats.priv_test_parent_tbl WHERE a <<< 0 AND b <<< 0; -- Should not leak
 
 -- privilege checks for pg_stats_ext and pg_stats_ext_exprs
 RESET SESSION AUTHORIZATION;
@@ -1703,6 +1762,8 @@ SELECT statistics_name, most_common_vals FROM pg_stats_ext_exprs x
 -- Tidy up
 DROP OPERATOR <<< (int, int);
 DROP FUNCTION op_leak(int, int);
+DROP OPERATOR <<< (record, record);
+DROP FUNCTION op_leak(record, record);
 RESET SESSION AUTHORIZATION;
 DROP TABLE stats_ext_tbl;
 DROP SCHEMA tststats CASCADE;
@@ -1758,4 +1819,18 @@ SELECT FROM sb_1 LEFT JOIN sb_2
 RESET enable_nestloop;
 RESET enable_mergejoin;
 
+-- Check that we can use statistics on a bool-valued function.
+CREATE FUNCTION extstat_small(x numeric) RETURNS bool
+STRICT IMMUTABLE LANGUAGE plpgsql
+AS $$ BEGIN RETURN x < 1; END $$;
+
+SELECT * FROM check_estimated_rows('SELECT * FROM sb_2 WHERE extstat_small(y)');
+
+CREATE STATISTICS extstat_sb_2_small ON extstat_small(y) FROM sb_2;
+ANALYZE sb_2;
+
+SELECT * FROM check_estimated_rows('SELECT * FROM sb_2 WHERE extstat_small(y)');
+
+-- Tidy up
 DROP TABLE sb_1, sb_2 CASCADE;
+DROP FUNCTION extstat_small(x numeric);

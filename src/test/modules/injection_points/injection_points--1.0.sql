@@ -78,6 +78,18 @@ AS 'MODULE_PATHNAME', 'injection_points_detach'
 LANGUAGE C STRICT PARALLEL UNSAFE;
 
 --
+-- injection_points_list()
+--
+-- List of all the injection points currently attached.
+--
+CREATE FUNCTION injection_points_list(OUT point_name text,
+   OUT library text,
+   OUT function text)
+RETURNS SETOF record
+AS 'MODULE_PATHNAME', 'injection_points_list'
+LANGUAGE C STRICT VOLATILE PARALLEL RESTRICTED;
+
+--
 -- injection_points_stats_numcalls()
 --
 -- Reports statistics, if any, related to the given injection point.
@@ -85,6 +97,16 @@ LANGUAGE C STRICT PARALLEL UNSAFE;
 CREATE FUNCTION injection_points_stats_numcalls(IN point_name TEXT)
 RETURNS bigint
 AS 'MODULE_PATHNAME', 'injection_points_stats_numcalls'
+LANGUAGE C STRICT;
+
+--
+-- injection_points_stats_count()
+--
+-- Return the number of entries stored in the pgstats hash table.
+--
+CREATE FUNCTION injection_points_stats_count()
+RETURNS bigint
+AS 'MODULE_PATHNAME', 'injection_points_stats_count'
 LANGUAGE C STRICT;
 
 --

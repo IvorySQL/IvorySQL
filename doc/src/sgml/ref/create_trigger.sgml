@@ -29,7 +29,7 @@ PostgreSQL documentation
 CREATE [ OR REPLACE ] [ CONSTRAINT ] TRIGGER <replaceable class="parameter">name</replaceable> { BEFORE | AFTER | INSTEAD OF } { <replaceable class="parameter">event</replaceable> [ OR ... ] }
     ON <replaceable class="parameter">table_name</replaceable>
     [ FROM <replaceable class="parameter">referenced_table_name</replaceable> ]
-    [ NOT DEFERRABLE | [ DEFERRABLE ] [ INITIALLY IMMEDIATE | INITIALLY DEFERRED ] ]
+    [ NOT DEFERRABLE | [ DEFERRABLE ] [ INITIALLY IMMEDIATE | INITIALLY DEFERRED ] ] [ ENFORCED ]
     [ REFERENCING { { OLD | NEW } TABLE [ AS ] <replaceable class="parameter">transition_relation_name</replaceable> } [ ... ] ]
     [ FOR [ EACH ] { ROW | STATEMENT } ]
     [ WHEN ( <replaceable class="parameter">condition</replaceable> ) ]
@@ -197,9 +197,11 @@ CREATE [ OR REPLACE ] [ CONSTRAINT ] TRIGGER <replaceable class="parameter">name
    of the rows inserted, deleted, or modified by the current SQL statement.
    This feature lets the trigger see a global view of what the statement did,
    not just one row at a time.  This option is only allowed for
-   an <literal>AFTER</literal> trigger that is not a constraint trigger; also, if
-   the trigger is an <literal>UPDATE</literal> trigger, it must not specify
-   a <replaceable class="parameter">column_name</replaceable> list.
+   an <literal>AFTER</literal> trigger on a plain table (not a foreign table).
+   The trigger should not be a constraint trigger.  Also, if the trigger is
+   an <literal>UPDATE</literal> trigger, it must not specify
+   a <replaceable class="parameter">column_name</replaceable> list when using
+   this option.
    <literal>OLD TABLE</literal> may only be specified once, and only for a trigger
    that can fire on <literal>UPDATE</literal> or <literal>DELETE</literal>; it creates a
    transition relation containing the <firstterm>before-images</firstterm> of all rows
@@ -317,6 +319,15 @@ UPDATE OF <replaceable>column_name1</replaceable> [, <replaceable>column_name2</
       See the <xref linkend="sql-createtable"/> documentation for details of
       these constraint options.  This can only be specified for constraint
       triggers.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>ENFORCED</literal></term>
+    <listitem>
+     <para>
+      This is a noise word.  Constraint triggers are always enforced.
      </para>
     </listitem>
    </varlistentry>

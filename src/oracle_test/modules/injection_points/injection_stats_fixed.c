@@ -16,6 +16,7 @@
 
 #include "fmgr.h"
 
+#include "access/htup_details.h"
 #include "common/hashfn.h"
 #include "funcapi.h"
 #include "injection_stats.h"
@@ -64,7 +65,7 @@ static const PgStat_KindInfo injection_stats_fixed = {
 /*
  * Kind ID reserved for statistics of injection points.
  */
-#define PGSTAT_KIND_INJECTION_FIXED	130
+#define PGSTAT_KIND_INJECTION_FIXED	26
 
 /* Track if fixed-numbered stats are loaded */
 static bool inj_fixed_loaded = false;
@@ -152,6 +153,8 @@ pgstat_report_inj_fixed(uint32 numattach,
 
 	stats_shmem = pgstat_get_custom_shmem_data(PGSTAT_KIND_INJECTION_FIXED);
 
+	LWLockAcquire(&stats_shmem->lock, LW_EXCLUSIVE);
+
 	pgstat_begin_changecount_write(&stats_shmem->changecount);
 	stats_shmem->stats.numattach += numattach;
 	stats_shmem->stats.numdetach += numdetach;
@@ -159,6 +162,8 @@ pgstat_report_inj_fixed(uint32 numattach,
 	stats_shmem->stats.numcached += numcached;
 	stats_shmem->stats.numloaded += numloaded;
 	pgstat_end_changecount_write(&stats_shmem->changecount);
+
+	LWLockRelease(&stats_shmem->lock);
 }
 
 /*

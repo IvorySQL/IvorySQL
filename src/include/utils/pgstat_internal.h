@@ -48,7 +48,13 @@
  * PgStatShared_Common as the first element.
  */
 
-/* struct for shared statistics hash entry key. */
+/*
+ * Struct for shared statistics hash entry key.
+ *
+ * NB: We assume that this struct contains no padding.  Also, 8 bytes
+ * allocated for the object ID are good enough to ensure the uniqueness
+ * of the hash key, hence the addition of new fields is not recommended.
+ */
 typedef struct PgStat_HashKey
 {
 	PgStat_Kind kind;			/* statistics entry kind */
@@ -56,6 +62,15 @@ typedef struct PgStat_HashKey
 	uint64		objid;			/* object ID (table, function, etc.), or
 								 * identifier. */
 } PgStat_HashKey;
+
+/*
+ * PgStat_HashKey should not have any padding.  Checking that the structure
+ * size matches with the sum of each field is a check simple enough to
+ * enforce this policy.
+ */
+StaticAssertDecl((sizeof(PgStat_Kind) + sizeof(uint64) + sizeof(Oid)) ==
+				 sizeof(PgStat_HashKey),
+				 "PgStat_HashKey should have no padding");
 
 /*
  * Shared statistics hash entry. Doesn't itself contain any stats, but points
@@ -217,6 +232,12 @@ typedef struct PgStat_KindInfo
 	bool		write_to_file:1;
 
 	/*
+	 * Should the number of entries be tracked?  For variable-numbered stats,
+	 * to update its PgStat_ShmemControl.entry_counts.
+	 */
+	bool		track_entry_count:1;
+
+	/*
 	 * The size of an entry in the shared stats hash table (pointed to by
 	 * PgStatShared_HashEntry->body).  For fixed-numbered statistics, this is
 	 * the size of an entry in PgStat_ShmemControl->custom_data.
@@ -295,18 +316,11 @@ typedef struct PgStat_KindInfo
 	 *
 	 * Returns true if some of the stats could not be flushed, due to lock
 	 * contention for example. Optional.
+	 *
+	 * "pgstat_report_fixed" needs to be set to trigger the flush of pending
+	 * stats.
 	 */
 	bool		(*flush_static_cb) (bool nowait);
-
-	/*
-	 * For fixed-numbered or variable-numbered statistics: Check for pending
-	 * stats in need of flush with flush_static_cb, when these do not use
-	 * PgStat_EntryRef->pending.
-	 *
-	 * Returns true if there are any stats pending for flush, triggering
-	 * flush_static_cb. Optional.
-	 */
-	bool		(*have_static_pending_cb) (void);
 
 	/*
 	 * For fixed-numbered statistics: Reset All.
@@ -493,6 +507,16 @@ typedef struct PgStat_ShmemControl
 	pg_atomic_uint64 gc_request_count;
 
 	/*
+	 * Counters for the number of entries associated to a single stats kind
+	 * that uses variable-numbered objects stored in the shared hash table.
+	 * These counters can be enabled on a per-kind basis, when
+	 * track_entry_count is set.  This counter is incremented each time a new
+	 * entry is created (not reused) in the shared hash table, and is
+	 * decremented each time an entry is freed from the shared hash table.
+	 */
+	pg_atomic_uint64 entry_counts[PGSTAT_KIND_MAX];
+
+	/*
 	 * Stats data for fixed-numbered objects.
 	 */
 	PgStatShared_Archiver archiver;
@@ -627,7 +651,6 @@ extern void pgstat_archiver_snapshot_cb(void);
 
 extern bool pgstat_flush_backend(bool nowait, bits32 flags);
 extern bool pgstat_backend_flush_cb(bool nowait);
-extern bool pgstat_backend_have_pending_cb(void);
 extern void pgstat_backend_reset_timestamp_cb(PgStatShared_Common *header,
 											  TimestampTz ts);
 
@@ -668,6 +691,7 @@ extern void pgstat_database_reset_timestamp_cb(PgStatShared_Common *header, Time
  */
 
 extern bool pgstat_function_flush_cb(PgStat_EntryRef *entry_ref, bool nowait);
+extern void pgstat_function_reset_timestamp_cb(PgStatShared_Common *header, TimestampTz ts);
 
 
 /*
@@ -676,7 +700,6 @@ extern bool pgstat_function_flush_cb(PgStat_EntryRef *entry_ref, bool nowait);
 
 extern void pgstat_flush_io(bool nowait);
 
-extern bool pgstat_io_have_pending_cb(void);
 extern bool pgstat_io_flush_cb(bool nowait);
 extern void pgstat_io_init_shmem_cb(void *stats);
 extern void pgstat_io_reset_all_cb(TimestampTz ts);
@@ -694,6 +717,7 @@ extern void PostPrepare_PgStat_Relations(PgStat_SubXactStatus *xact_state);
 
 extern bool pgstat_relation_flush_cb(PgStat_EntryRef *entry_ref, bool nowait);
 extern void pgstat_relation_delete_pending_cb(PgStat_EntryRef *entry_ref);
+extern void pgstat_relation_reset_timestamp_cb(PgStatShared_Common *header, TimestampTz ts);
 
 
 /*
@@ -738,7 +762,6 @@ extern PgStatShared_Common *pgstat_init_entry(PgStat_Kind kind,
  * Functions in pgstat_slru.c
  */
 
-extern bool pgstat_slru_have_pending_cb(void);
 extern bool pgstat_slru_flush_cb(bool nowait);
 extern void pgstat_slru_init_shmem_cb(void *stats);
 extern void pgstat_slru_reset_all_cb(TimestampTz ts);
@@ -750,7 +773,6 @@ extern void pgstat_slru_snapshot_cb(void);
  */
 
 extern void pgstat_wal_init_backend_cb(void);
-extern bool pgstat_wal_have_pending_cb(void);
 extern bool pgstat_wal_flush_cb(bool nowait);
 extern void pgstat_wal_init_shmem_cb(void *stats);
 extern void pgstat_wal_reset_all_cb(TimestampTz ts);
@@ -778,8 +800,23 @@ extern void pgstat_create_transactional(PgStat_Kind kind, Oid dboid, uint64 obji
  * Variables in pgstat.c
  */
 
-extern PGDLLIMPORT PgStat_LocalState pgStatLocal;
+/*
+ * Track if *any* pending fixed-numbered statistics should be flushed to
+ * shared memory.
+ *
+ * This flag can be switched to true by fixed-numbered statistics to let
+ * pgstat_report_stat() know if it needs to go through one round of
+ * reports, calling flush_static_cb for each fixed-numbered statistics
+ * kind.  When this flag is not set, pgstat_report_stat() is able to do
+ * a fast exit, knowing that there are no pending fixed-numbered statistics.
+ *
+ * Statistics callbacks should never reset this flag; pgstat_report_stat()
+ * is in charge of doing that.
+ */
+extern PGDLLIMPORT bool pgstat_report_fixed;
 
+/* Backend-local stats state */
+extern PGDLLIMPORT PgStat_LocalState pgStatLocal;
 
 /*
  * Implementation of inline functions declared above.
@@ -904,6 +941,17 @@ pgstat_get_entry_data(PgStat_Kind kind, PgStatShared_Common *entry)
 	Assert(off != 0 && off < PG_UINT32_MAX);
 
 	return ((char *) (entry)) + off;
+}
+
+/*
+ * Returns the number of entries counted for a stats kind.
+ */
+static inline uint64
+pgstat_get_entry_count(PgStat_Kind kind)
+{
+	Assert(pgstat_get_kind_info(kind)->track_entry_count);
+
+	return pg_atomic_read_u64(&pgStatLocal.shmem->entry_counts[kind - 1]);
 }
 
 /*

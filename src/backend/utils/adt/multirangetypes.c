@@ -394,12 +394,13 @@ multirange_send(PG_FUNCTION_ARGS)
 	for (int i = 0; i < range_count; i++)
 	{
 		Datum		range;
+		bytea	   *outputbytes;
 
 		range = RangeTypePGetDatum(ranges[i]);
-		range = PointerGetDatum(SendFunctionCall(&cache->typioproc, range));
+		outputbytes = SendFunctionCall(&cache->typioproc, range);
 
-		pq_sendint32(buf, VARSIZE(range) - VARHDRSZ);
-		pq_sendbytes(buf, VARDATA(range), VARSIZE(range) - VARHDRSZ);
+		pq_sendint32(buf, VARSIZE(outputbytes) - VARHDRSZ);
+		pq_sendbytes(buf, VARDATA(outputbytes), VARSIZE(outputbytes) - VARHDRSZ);
 	}
 
 	PG_RETURN_BYTEA_P(pq_endtypsend(buf));
@@ -2081,15 +2082,14 @@ range_overleft_multirange_internal(TypeCacheEntry *rangetyp,
 	bool		empty;
 
 	if (RangeIsEmpty(r) || MultirangeIsEmpty(mr))
-		PG_RETURN_BOOL(false);
-
+		return false;
 
 	range_deserialize(rangetyp, r, &lower1, &upper1, &empty);
 	Assert(!empty);
 	multirange_get_bounds(rangetyp, mr, mr->rangeCount - 1,
 						  &lower2, &upper2);
 
-	PG_RETURN_BOOL(range_cmp_bounds(rangetyp, &upper1, &upper2) <= 0);
+	return (range_cmp_bounds(rangetyp, &upper1, &upper2) <= 0);
 }
 
 Datum
@@ -2166,7 +2166,7 @@ range_overright_multirange_internal(TypeCacheEntry *rangetyp,
 	bool		empty;
 
 	if (RangeIsEmpty(r) || MultirangeIsEmpty(mr))
-		PG_RETURN_BOOL(false);
+		return false;
 
 	range_deserialize(rangetyp, r, &lower1, &upper1, &empty);
 	Assert(!empty);
@@ -2523,7 +2523,7 @@ multirange_adjacent_range(PG_FUNCTION_ARGS)
 	TypeCacheEntry *typcache;
 
 	if (RangeIsEmpty(r) || MultirangeIsEmpty(mr))
-		return false;
+		PG_RETURN_BOOL(false);
 
 	typcache = multirange_get_typcache(fcinfo, MultirangeTypeGetOid(mr));
 
@@ -2544,7 +2544,7 @@ multirange_adjacent_multirange(PG_FUNCTION_ARGS)
 				upper2;
 
 	if (MultirangeIsEmpty(mr1) || MultirangeIsEmpty(mr2))
-		return false;
+		PG_RETURN_BOOL(false);
 
 	typcache = multirange_get_typcache(fcinfo, MultirangeTypeGetOid(mr1));
 
@@ -2639,7 +2639,7 @@ multirange_cmp(PG_FUNCTION_ARGS)
 Datum
 multirange_lt(PG_FUNCTION_ARGS)
 {
-	int			cmp = multirange_cmp(fcinfo);
+	int			cmp = DatumGetInt32(multirange_cmp(fcinfo));
 
 	PG_RETURN_BOOL(cmp < 0);
 }
@@ -2647,7 +2647,7 @@ multirange_lt(PG_FUNCTION_ARGS)
 Datum
 multirange_le(PG_FUNCTION_ARGS)
 {
-	int			cmp = multirange_cmp(fcinfo);
+	int			cmp = DatumGetInt32(multirange_cmp(fcinfo));
 
 	PG_RETURN_BOOL(cmp <= 0);
 }
@@ -2655,7 +2655,7 @@ multirange_le(PG_FUNCTION_ARGS)
 Datum
 multirange_ge(PG_FUNCTION_ARGS)
 {
-	int			cmp = multirange_cmp(fcinfo);
+	int			cmp = DatumGetInt32(multirange_cmp(fcinfo));
 
 	PG_RETURN_BOOL(cmp >= 0);
 }
@@ -2663,7 +2663,7 @@ multirange_ge(PG_FUNCTION_ARGS)
 Datum
 multirange_gt(PG_FUNCTION_ARGS)
 {
-	int			cmp = multirange_cmp(fcinfo);
+	int			cmp = DatumGetInt32(multirange_cmp(fcinfo));
 
 	PG_RETURN_BOOL(cmp > 0);
 }
@@ -2833,7 +2833,7 @@ hash_multirange(PG_FUNCTION_ARGS)
 			upper_hash = 0;
 
 		/* Merge hashes of flags and bounds */
-		range_hash = hash_uint32((uint32) flags);
+		range_hash = hash_bytes_uint32((uint32) flags);
 		range_hash ^= lower_hash;
 		range_hash = pg_rotate_left32(range_hash, 1);
 		range_hash ^= upper_hash;

@@ -41,6 +41,19 @@ CREATE STATISTICS tst ON x, x, y, x, x, (x || 'x'), (y + 1), (x || 'x'), (x || '
 CREATE STATISTICS tst ON (x || 'x'), (x || 'x'), (y + 1), (x || 'x'), (x || 'x'), (y + 1), (x || 'x'), (x || 'x'), (y + 1) FROM ext_stats_test;
 CREATE STATISTICS tst ON (x || 'x'), (x || 'x'), y FROM ext_stats_test;
 CREATE STATISTICS tst (unrecognized) ON x, y FROM ext_stats_test;
+-- unsupported targets
+CREATE STATISTICS tst ON a FROM (VALUES (x)) AS foo;
+CREATE STATISTICS tst ON a FROM foo NATURAL JOIN bar;
+CREATE STATISTICS tst ON a FROM (SELECT * FROM ext_stats_test) AS foo;
+CREATE STATISTICS tst ON a FROM ext_stats_test s TABLESAMPLE system (x);
+CREATE STATISTICS tst ON a FROM XMLTABLE('foo' PASSING 'bar' COLUMNS a text);
+CREATE STATISTICS tst ON a FROM JSON_TABLE(jsonb '123', '$' COLUMNS (item int));
+CREATE FUNCTION tftest(int) returns table(a int, b int) as $$
+SELECT $1, $1+i FROM generate_series(1,5) g(i);
+$$ LANGUAGE sql IMMUTABLE STRICT;
+/
+CREATE STATISTICS alt_stat2 ON a FROM tftest(1);
+DROP FUNCTION tftest;
 -- incorrect expressions
 CREATE STATISTICS tst ON (y) FROM ext_stats_test; -- single column reference
 CREATE STATISTICS tst ON y + z FROM ext_stats_test; -- missing parentheses
@@ -72,6 +85,14 @@ DROP STATISTICS ab1_a_b_stats;
 ALTER STATISTICS ab1_a_b_stats RENAME TO ab1_a_b_stats_new;
 RESET SESSION AUTHORIZATION;
 DROP ROLE regress_stats_ext;
+CREATE STATISTICS pg_temp.stats_ext_temp ON a, b FROM ab1;
+SELECT regexp_replace(pg_describe_object(tableoid, oid, 0),
+                      'pg_temp_[0-9]*', 'pg_temp_REDACTED') AS descr,
+       pg_statistics_obj_is_visible(oid) AS visible
+  FROM pg_statistic_ext
+ WHERE stxname = 'stats_ext_temp';
+DROP STATISTICS stats_ext_temp;  -- shall fail
+DROP STATISTICS pg_temp.stats_ext_temp;
 
 CREATE STATISTICS IF NOT EXISTS ab1_a_b_stats ON a, b FROM ab1;
 DROP STATISTICS ab1_a_b_stats;

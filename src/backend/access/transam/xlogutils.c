@@ -523,7 +523,7 @@ recent_buffer_fast_path:
 	if (mode == RBM_NORMAL)
 	{
 		/* check that page has been initialized */
-		Page		page = (Page) BufferGetPage(buffer);
+		Page		page = BufferGetPage(buffer);
 
 		/*
 		 * We assume that PageIsNew is safe without a lock. During recovery,
@@ -795,7 +795,7 @@ XLogReadDetermineTimeline(XLogReaderState *state, XLogRecPtr wantPage,
 
 		list_free_deep(timelineHistory);
 
-		elog(DEBUG3, "switched to timeline %u valid until %X/%X",
+		elog(DEBUG3, "switched to timeline %u valid until %X/%08X",
 			 state->currTLI,
 			 LSN_FORMAT_ARGS(state->currTLIValidUntil));
 	}

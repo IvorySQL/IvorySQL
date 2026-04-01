@@ -544,7 +544,10 @@ SELECT tableoid::regclass, * FROM gtest_parent ORDER BY 1, 2, 3;
 
 -- generated columns in partition key (not allowed)
 CREATE TABLE gtest_part_key (f1 date NOT NULL, f2 bigint, f3 bigint GENERATED ALWAYS AS (f2 * 2) VIRTUAL) PARTITION BY RANGE (f3);
+CREATE TABLE gtest_part_key (f1 date NOT NULL, f2 bigint, f3 bigint GENERATED ALWAYS AS (f2 * 2) VIRTUAL) PARTITION BY RANGE ((f3));
 CREATE TABLE gtest_part_key (f1 date NOT NULL, f2 bigint, f3 bigint GENERATED ALWAYS AS (f2 * 2) VIRTUAL) PARTITION BY RANGE ((f3 * 3));
+CREATE TABLE gtest_part_key (f1 date NOT NULL, f2 bigint, f3 bigint GENERATED ALWAYS AS (f2 * 2) VIRTUAL) PARTITION BY RANGE ((gtest_part_key));
+CREATE TABLE gtest_part_key (f1 date NOT NULL, f2 bigint, f3 bigint GENERATED ALWAYS AS (f2 * 2) VIRTUAL) PARTITION BY RANGE ((gtest_part_key is not null));
 
 -- ALTER TABLE ... ADD COLUMN
 CREATE TABLE gtest25 (a int PRIMARY KEY);
@@ -850,4 +853,28 @@ select * from gtest32 t group by grouping sets (a, b, c, d, e) having c = 20;
 -- Ensure that the virtual generated columns in ALTER COLUMN TYPE USING expression are expanded
 alter table gtest32 alter column e type bigint using b;
 
+-- Ensure that virtual generated column references within SubLinks that should
+-- be transformed into joins can get expanded
+explain (costs off)
+select 1 from gtest32 t1 where exists
+  (select 1 from gtest32 t2 where t1.a > t2.a and t2.b = 2);
+
+select 1 from gtest32 t1 where exists
+  (select 1 from gtest32 t2 where t1.a > t2.a and t2.b = 2);
+
 drop table gtest32;
+
+-- Ensure that virtual generated columns in constraint expressions are expanded
+create table gtest33 (a int, b int generated always as (a * 2) virtual not null, check (b > 10));
+set constraint_exclusion to on;
+
+-- should get a dummy Result, not a seq scan
+explain (costs off)
+select * from gtest33 where b < 10;
+
+-- should get a dummy Result, not a seq scan
+explain (costs off)
+select * from gtest33 where b is null;
+
+reset constraint_exclusion;
+drop table gtest33;

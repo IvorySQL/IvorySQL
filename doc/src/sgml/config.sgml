@@ -3399,8 +3399,9 @@ include_dir 'conf.d'
         This parameter enables compression of WAL using the specified
         compression method.
         When enabled, the <productname>PostgreSQL</productname>
-        server compresses full page images written to WAL when
-        <xref linkend="guc-full-page-writes"/> is on or during a base backup.
+        server compresses full page images written to WAL (e.g. when
+        <xref linkend="guc-full-page-writes"/> is on, during a base backup,
+        etc.).
         A compressed page image will be decompressed during WAL replay.
         The supported methods are <literal>pglz</literal>,
         <literal>lz4</literal> (if <productname>PostgreSQL</productname>
@@ -4618,10 +4619,12 @@ restore_command = 'copy "C:\\server\\archivedir\\%f" "%p"'  # Windows
       </term>
       <listitem>
        <para>
-        Invalidate replication slots that have remained idle longer than this
-        duration. If this value is specified without units, it is taken as
-        minutes. A value of zero (the default) disables the idle timeout
-        invalidation mechanism. This parameter can only be set in the
+        Invalidate replication slots that have remained inactive (not used by
+        a <link linkend="protocol-replication">replication connection</link>)
+        for longer than this duration.
+        If this value is specified without units, it is taken as seconds.
+        A value of zero (the default) disables the idle timeout
+        invalidation mechanism.  This parameter can only be set in the
         <filename>postgresql.conf</filename> file or on the server command
         line.
        </para>
@@ -4963,6 +4966,8 @@ ANY <replaceable class="parameter">num_sync</replaceable> ( <replaceable class="
           new setting.
           This setting has no effect if <varname>primary_conninfo</varname> is not
           set or the server is not in standby mode.
+          The name cannot be <literal>pg_conflict_detection</literal> as it is
+          reserved for the conflict detection slot.
          </para>
         </listitem>
        </varlistentry>
@@ -5470,6 +5475,21 @@ ANY <replaceable class="parameter">num_sync</replaceable> ( <replaceable class="
       </listitem>
      </varlistentry>
 
+     <varlistentry id="guc-enable-eager-aggregate" xreflabel="enable_eager_aggregate">
+      <term><varname>enable_eager_aggregate</varname> (<type>boolean</type>)
+      <indexterm>
+       <primary><varname>enable_eager_aggregate</varname> configuration parameter</primary>
+      </indexterm>
+      </term>
+      <listitem>
+       <para>
+        Enables or disables the query planner's ability to partially push
+        aggregation past a join, and finalize it once all the relations are
+        joined. The default is <literal>on</literal>.
+       </para>
+      </listitem>
+     </varlistentry>
+
      <varlistentry id="guc-enable-gathermerge" xreflabel="enable_gathermerge">
       <term><varname>enable_gathermerge</varname> (<type>boolean</type>)
       <indexterm>
@@ -5904,24 +5924,24 @@ ANY <replaceable class="parameter">num_sync</replaceable> ( <replaceable class="
        </para>
 
        <para>
-        Random access to mechanical disk storage is normally much more expensive
-        than four times sequential access.  However, a lower default is used
-        (4.0) because the majority of random accesses to disk, such as indexed
-        reads, are assumed to be in cache.  The default value can be thought of
-        as modeling random access as 40 times slower than sequential, while
-        expecting 90% of random reads to be cached.
+        Random access to durable storage is normally much more expensive
+        than four times sequential access.  However, a lower default is
+        used (4.0) because the majority of random accesses to storage,
+        such as indexed reads, are assumed to be in cache.  Also, the
+        latency of network-attached storage tends to reduce the relative
+        overhead of random access.
        </para>
 
        <para>
-        If you believe a 90% cache rate is an incorrect assumption
-        for your workload, you can increase random_page_cost to better
-        reflect the true cost of random storage reads. Correspondingly,
-        if your data is likely to be completely in cache, such as when
-        the database is smaller than the total server memory, decreasing
-        random_page_cost can be appropriate.  Storage that has a low random
-        read cost relative to sequential, e.g., solid-state drives, might
-        also be better modeled with a lower value for random_page_cost,
-        e.g., <literal>1.1</literal>.
+        If you believe caching is less frequent than the default
+        value reflects, and network latency is minimal, you can increase
+        random_page_cost to better reflect the true cost of random storage
+        reads.  Storage that has a higher random read cost relative to
+        sequential, like magnetic disks, might also be better modeled with
+        a higher value for random_page_cost.  Correspondingly, if your data
+        is likely to be completely in cache, such as when the database
+        is smaller than the total server memory, or network latency is
+        high, decreasing random_page_cost might be appropriate.
        </para>
 
        <tip>
@@ -6086,6 +6106,22 @@ ANY <replaceable class="parameter">num_sync</replaceable> ( <replaceable class="
         The default is 4 gigabytes (<literal>4GB</literal>).
         (If <symbol>BLCKSZ</symbol> is not 8kB, the default value scales
         proportionally to it.)
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="guc-min-eager-agg-group-size" xreflabel="min_eager_agg_group_size">
+      <term><varname>min_eager_agg_group_size</varname> (<type>floating point</type>)
+      <indexterm>
+       <primary><varname>min_eager_agg_group_size</varname> configuration parameter</primary>
+      </indexterm>
+      </term>
+      <listitem>
+       <para>
+        Sets the minimum average group size required to consider applying
+        eager aggregation. This helps avoid the overhead of eager
+        aggregation when it does not offer significant row count reduction.
+        The default is <literal>8</literal>.
        </para>
       </listitem>
      </varlistentry>
@@ -7378,6 +7414,11 @@ local0.*    /var/log/postgresql
      </varlistentry>
 
      <varlistentry id="guc-debug-print-parse">
+      <term><varname>debug_print_raw_parse</varname> (<type>boolean</type>)
+      <indexterm>
+       <primary><varname>debug_print_raw_parse</varname> configuration parameter</primary>
+      </indexterm>
+      </term>
       <term><varname>debug_print_parse</varname> (<type>boolean</type>)
       <indexterm>
        <primary><varname>debug_print_parse</varname> configuration parameter</primary>
@@ -7396,8 +7437,8 @@ local0.*    /var/log/postgresql
       <listitem>
        <para>
         These parameters enable various debugging output to be emitted.
-        When set, they print the resulting parse tree, the query rewriter
-        output, or the execution plan for each executed query.
+        When set, they print the resulting raw parse tree, the parse tree, the query
+        rewriter output, or the execution plan for each executed query.
         These messages are emitted at <literal>LOG</literal> message level, so by
         default they will appear in the server log but will not be sent to the
         client.  You can change that by adjusting
@@ -7417,7 +7458,8 @@ local0.*    /var/log/postgresql
       <listitem>
        <para>
         When set, <varname>debug_pretty_print</varname> indents the messages
-        produced by <varname>debug_print_parse</varname>,
+        produced by <varname>debug_print_raw_parse</varname>,
+        <varname>debug_print_parse</varname>,
         <varname>debug_print_rewritten</varname>, or
         <varname>debug_print_plan</varname>.  This results in more readable
         but much longer output than the <quote>compact</quote> format used when
@@ -7435,17 +7477,44 @@ local0.*    /var/log/postgresql
       </term>
       <listitem>
        <para>
-        Causes each action executed by autovacuum to be logged if it ran for at
+        Causes vacuum action executed by autovacuum to be logged if it ran for at
         least the specified amount of time.  Setting this to zero logs
-        all autovacuum actions. <literal>-1</literal> disables logging autovacuum
-        actions. If this value is specified without units, it is taken as milliseconds.
-        For example, if you set this to
-        <literal>250ms</literal> then all automatic vacuums and analyzes that run
+        all vacuum actions by autovacuum. <literal>-1</literal> disables logging
+        vacuum actions by autovacuum. If this value is specified without units,
+        it is taken as milliseconds. For example, if you set this to
+        <literal>250ms</literal> then all automatic vacuums that run
         250ms or longer will be logged.  In addition, when this parameter is
         set to any value other than <literal>-1</literal>, a message will be
-        logged if an autovacuum action is skipped due to a conflicting lock or a
+        logged if a vacuum action by autovacuum is skipped due to a conflicting lock or a
         concurrently dropped relation. The default is <literal>10min</literal>.
-        Enabling this parameter can be helpful in tracking autovacuum activity.
+        Enabling this parameter can be helpful in tracking vacuum activity by autovacuum.
+        This parameter can only be set in the <filename>postgresql.conf</filename>
+        file or on the server command line; but the setting can be overridden for
+        individual tables by changing table storage parameters.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="guc-log-autoanalyze-min-duration" xreflabel="log_autoanalyze_min_duration">
+      <term><varname>log_autoanalyze_min_duration</varname> (<type>integer</type>)
+      <indexterm>
+       <primary><varname>log_autoanalyze_min_duration</varname></primary>
+       <secondary>configuration parameter</secondary>
+      </indexterm>
+      </term>
+      <listitem>
+       <para>
+        Causes analyze action executed by autovacuum to be logged if it ran for at
+        least the specified amount of time.  Setting this to zero logs
+        all analyze actions by autovacuum. <literal>-1</literal> disables logging
+        analyze actions by autovacuum. If this value is specified without units,
+        it is taken as milliseconds. For example, if you set this to
+        <literal>250ms</literal> then all automatic analyzes that run
+        250ms or longer will be logged.  In addition, when this parameter is
+        set to any value other than <literal>-1</literal>, a message will be
+        logged if an analyze action by autovacuum is skipped due to a conflicting lock or a
+        concurrently dropped relation. The default is <literal>10min</literal>.
+        Enabling this parameter can be helpful in tracking analyze activity by autovacuum.
         This parameter can only be set in the <filename>postgresql.conf</filename>
         file or on the server command line; but the setting can be overridden for
         individual tables by changing table storage parameters.
@@ -7918,7 +7987,7 @@ log_line_prefix = '%m [%p] %q%u@%d/%a '
         Controls whether a log message is produced when a session waits
         longer than <xref linkend="guc-deadlock-timeout"/> to acquire a
         lock.  This is useful in determining if lock waits are causing
-        poor performance.  The default is <literal>off</literal>.
+        poor performance.  The default is <literal>on</literal>.
         Only superusers and users with the appropriate <literal>SET</literal>
         privilege can change this setting.
        </para>
@@ -11052,6 +11121,12 @@ extension_control_path = 'C:\tools\postgresql;H:\my_project\share;$system'
         The default value for this parameter is
         <literal>'$system'</literal>. If the value is set to an empty
         string, the default <literal>'$system'</literal> is also assumed.
+       </para>
+
+       <para>
+        If extensions with equal names are present in multiple directories in
+        the configured path, only the instance found first in the path will be
+        used.
        </para>
 
        <para>

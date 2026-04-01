@@ -70,14 +70,14 @@ static int	CheckMD5Auth(Port *port, char *shadow_pass,
 /* Standard TCP port number for Ident service.  Assigned by IANA */
 #define IDENT_PORT 113
 
-static int	ident_inet(hbaPort *port);
+static int	ident_inet(Port *port);
 
 
 /*----------------------------------------------------------------
  * Peer authentication
  *----------------------------------------------------------------
  */
-static int	auth_peer(hbaPort *port);
+static int	auth_peer(Port *port);
 
 
 /*----------------------------------------------------------------
@@ -94,8 +94,16 @@ static int	auth_peer(hbaPort *port);
 
 #define PGSQL_PAM_SERVICE "postgresql"	/* Service name passed to PAM */
 
+/* Work around original Solaris' lack of "const" in the conv_proc signature */
+#ifdef _PAM_LEGACY_NONCONST
+#define PG_PAM_CONST
+#else
+#define PG_PAM_CONST const
+#endif
+
 static int	CheckPAMAuth(Port *port, const char *user, const char *password);
-static int	pam_passwd_conv_proc(int num_msg, const struct pam_message **msg,
+static int	pam_passwd_conv_proc(int num_msg,
+								 PG_PAM_CONST struct pam_message **msg,
 								 struct pam_response **resp, void *appdata_ptr);
 
 static struct pam_conv pam_passw_conv = {
@@ -1660,7 +1668,7 @@ interpret_ident_response(const char *ident_response,
  *	latch was set would improve the responsiveness to timeouts/cancellations.
  */
 static int
-ident_inet(hbaPort *port)
+ident_inet(Port *port)
 {
 	const SockAddr remote_addr = port->raddr;
 	const SockAddr local_addr = port->laddr;
@@ -1845,7 +1853,7 @@ ident_inet_done:
  *	Iff authorized, return STATUS_OK, otherwise return STATUS_ERROR.
  */
 static int
-auth_peer(hbaPort *port)
+auth_peer(Port *port)
 {
 	uid_t		uid;
 	gid_t		gid;
@@ -1917,7 +1925,7 @@ auth_peer(hbaPort *port)
  */
 
 static int
-pam_passwd_conv_proc(int num_msg, const struct pam_message **msg,
+pam_passwd_conv_proc(int num_msg, PG_PAM_CONST struct pam_message **msg,
 					 struct pam_response **resp, void *appdata_ptr)
 {
 	const char *passwd;

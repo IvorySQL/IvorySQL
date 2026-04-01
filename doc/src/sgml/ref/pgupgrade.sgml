@@ -70,6 +70,14 @@ PostgreSQL documentation
    <application>pg_upgrade</application> supports upgrades from 9.2.X and later to the current
    major release of <productname>PostgreSQL</productname>, including snapshot and beta releases.
   </para>
+
+  <warning>
+   <para>
+    Upgrading a cluster causes the destination to execute arbitrary code of the
+    source superusers' choice.  Ensure that the source superusers are trusted
+    before upgrading.
+   </para>
+  </warning>
  </refsect1>
 
  <refsect1>
@@ -1110,7 +1118,8 @@ psql --username=postgres --file=script.sql postgres
     <member><type>regproc</type></member>
     <member><type>regprocedure</type></member>
    </simplelist>
-   (<type>regclass</type>, <type>regrole</type>, and <type>regtype</type> can be upgraded.)
+   (<type>regclass</type>, <type>regdatabase</type>, <type>regrole</type>, and
+   <type>regtype</type> can be upgraded.)
   </para>
 
   <para>

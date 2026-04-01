@@ -141,7 +141,7 @@ my ($ret, $out, $err) = $node->psql('postgres',
 
 is($ret, 2, 'server crash: psql exit code');
 like($out, qr/before/, 'server crash: output before crash');
-ok($out !~ qr/AFTER/, 'server crash: no output after crash');
+unlike($out, qr/AFTER/, 'server crash: no output after crash');
 is( $err,
 	'psql:<stdin>:2: FATAL:  terminating connection due to administrator command
 psql:<stdin>:2: server closed the connection unexpectedly
@@ -530,5 +530,12 @@ psql_fails_like(
 \\endpipeline},
 	qr/COPY in a pipeline is not supported, aborting connection/,
 	'\copy to in pipeline: fails');
+
+psql_fails_like(
+	$node,
+	qq{\\restrict test
+\\! should_fail},
+	qr/backslash commands are restricted; only \\unrestrict is allowed/,
+	'meta-command in restrict mode fails');
 
 done_testing();

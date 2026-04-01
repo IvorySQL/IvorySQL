@@ -80,8 +80,8 @@ StaticAssertDecl(BUF_REFCOUNT_BITS + BUF_USAGECOUNT_BITS + BUF_FLAG_BITS == 32,
  * The maximum allowed value of usage_count represents a tradeoff between
  * accuracy and speed of the clock-sweep buffer management algorithm.  A
  * large value (comparable to NBuffers) would approximate LRU semantics.
- * But it can take as many as BM_MAX_USAGE_COUNT+1 complete cycles of
- * clock sweeps to find a free buffer, so in practice we don't want the
+ * But it can take as many as BM_MAX_USAGE_COUNT+1 complete cycles of the
+ * clock-sweep hand to find a free buffer, so in practice we don't want the
  * value to be very large.
  */
 #define BM_MAX_USAGE_COUNT	5
@@ -217,8 +217,7 @@ BufMappingPartitionLockByIndex(uint32 index)
  * single atomic variable.  This layout allow us to do some operations in a
  * single atomic operation, without actually acquiring and releasing spinlock;
  * for instance, increase or decrease refcount.  buf_id field never changes
- * after initialization, so does not need locking.  freeNext is protected by
- * the buffer_strategy_lock not buffer header lock.  The LWLock can take care
+ * after initialization, so does not need locking.  The LWLock can take care
  * of itself.  The buffer header lock is *not* used to control access to the
  * data in the buffer!
  *
@@ -264,7 +263,6 @@ typedef struct BufferDesc
 	pg_atomic_uint32 state;
 
 	int			wait_backend_pgprocno;	/* backend of pin-count waiter */
-	int			freeNext;		/* link in freelist chain */
 
 	PgAioWaitRef io_wref;		/* set iff AIO is in progress */
 	LWLock		content_lock;	/* to lock access to buffer contents */
@@ -361,13 +359,6 @@ BufferDescriptorGetContentLock(const BufferDesc *bdesc)
 }
 
 /*
- * The freeNext field is either the index of the next freelist entry,
- * or one of these special values:
- */
-#define FREENEXT_END_OF_LIST	(-1)
-#define FREENEXT_NOT_IN_LIST	(-2)
-
-/*
  * Functions for acquiring/releasing a shared buffer header's spinlock.  Do
  * not apply these to local buffers!
  */
@@ -379,6 +370,8 @@ UnlockBufHdr(BufferDesc *desc, uint32 buf_state)
 	pg_write_barrier();
 	pg_atomic_write_u32(&desc->state, buf_state & (~BM_LOCKED));
 }
+
+extern uint32 WaitBufHdrUnlocked(BufferDesc *buf);
 
 /* in bufmgr.c */
 
@@ -434,6 +427,8 @@ extern void IssuePendingWritebacks(WritebackContext *wb_context, IOContext io_co
 extern void ScheduleBufferTagForWriteback(WritebackContext *wb_context,
 										  IOContext io_context, BufferTag *tag);
 
+extern void TrackNewBufferPin(Buffer buf);
+
 /* solely to make it easier to write tests */
 extern bool StartBufferIO(BufferDesc *buf, bool forInput, bool nowait);
 extern void TerminateBufferIO(BufferDesc *buf, bool clear_dirty, uint32 set_flag_bits,
@@ -444,7 +439,6 @@ extern void TerminateBufferIO(BufferDesc *buf, bool clear_dirty, uint32 set_flag
 extern IOContext IOContextForStrategy(BufferAccessStrategy strategy);
 extern BufferDesc *StrategyGetBuffer(BufferAccessStrategy strategy,
 									 uint32 *buf_state, bool *from_ring);
-extern void StrategyFreeBuffer(BufferDesc *buf);
 extern bool StrategyRejectBuffer(BufferAccessStrategy strategy,
 								 BufferDesc *buf, bool from_ring);
 
@@ -453,7 +447,6 @@ extern void StrategyNotifyBgWriter(int bgwprocno);
 
 extern Size StrategyShmemSize(void);
 extern void StrategyInitialize(bool init);
-extern bool have_free_buffer(void);
 
 /* buf_table.c */
 extern Size BufTableShmemSize(int size);
@@ -486,8 +479,8 @@ extern bool StartLocalBufferIO(BufferDesc *bufHdr, bool forInput, bool nowait);
 extern void FlushLocalBuffer(BufferDesc *bufHdr, SMgrRelation reln);
 extern void InvalidateLocalBuffer(BufferDesc *bufHdr, bool check_unreferenced);
 extern void DropRelationLocalBuffers(RelFileLocator rlocator,
-									 ForkNumber forkNum,
-									 BlockNumber firstDelBlock);
+									 ForkNumber *forkNum, int nforks,
+									 BlockNumber *firstDelBlock);
 extern void DropRelationAllLocalBuffers(RelFileLocator rlocator);
 extern void AtEOXact_LocalBuffers(bool isCommit);
 

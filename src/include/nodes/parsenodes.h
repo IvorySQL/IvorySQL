@@ -216,7 +216,8 @@ typedef struct Query
 	List	   *returningList;	/* return-values list (of TargetEntry) */
 
 	List	   *groupClause;	/* a list of SortGroupClause's */
-	bool		groupDistinct;	/* is the group by clause distinct? */
+	bool		groupDistinct;	/* was GROUP BY DISTINCT used? */
+	bool		groupByAll;		/* was GROUP BY ALL used? */
 
 	List	   *groupingSets;	/* a list of GroupingSet's if present */
 
@@ -468,6 +469,7 @@ typedef struct FuncCall
 	List	   *agg_order;		/* ORDER BY (list of SortBy) */
 	Node	   *agg_filter;		/* FILTER clause, if any */
 	struct WindowDef *over;		/* OVER clause, if any */
+	int			ignore_nulls;	/* ignore nulls for window function */
 	bool		agg_within_group;	/* ORDER BY appeared in WITHIN GROUP */
 	bool		agg_star;		/* argument was really '*' */
 	bool		agg_distinct;	/* arguments were labeled DISTINCT */
@@ -1208,7 +1210,7 @@ typedef struct RangeTblEntry
 
 	/*
 	 * join_using_alias is an alias clause attached directly to JOIN/USING. It
-	 * is different from the alias field (below) in that it does not hide the
+	 * is different from the alias field (above) in that it does not hide the
 	 * range variables of the tables being joined.
 	 */
 	Alias	   *join_using_alias pg_node_attr(query_jumble_ignore);
@@ -2212,6 +2214,7 @@ typedef struct SelectStmt
 	Node	   *whereClause;	/* WHERE qualification */
 	List	   *groupClause;	/* GROUP BY clauses */
 	bool		groupDistinct;	/* Is this GROUP BY DISTINCT? */
+	bool		groupByAll;		/* Is this GROUP BY ALL? */
 	Node	   *havingClause;	/* HAVING conditional-expression */
 	List	   *windowClause;	/* WINDOW window_name AS (...), ... */
 
@@ -2567,17 +2570,20 @@ typedef struct AlterCollationStmt
  * this command.
  * ----------------------
  */
+typedef enum AlterDomainType
+{
+	AD_AlterDefault = 'T',		/* SET|DROP DEFAULT */
+	AD_DropNotNull = 'N',		/* DROP NOT NULL */
+	AD_SetNotNull = 'O',		/* SET NOT NULL */
+	AD_AddConstraint = 'C',		/* ADD CONSTRAINT */
+	AD_DropConstraint = 'X',	/* DROP CONSTRAINT */
+	AD_ValidateConstraint = 'V',	/* VALIDATE CONSTRAINT */
+} AlterDomainType;
+
 typedef struct AlterDomainStmt
 {
 	NodeTag		type;
-	char		subtype;		/*------------
-								 *	T = alter column default
-								 *	N = alter column drop not null
-								 *	O = alter column set not null
-								 *	C = add constraint
-								 *	X = drop constraint
-								 *------------
-								 */
+	AlterDomainType subtype;	/* subtype of command */
 	List	   *typeName;		/* domain to work on */
 	char	   *name;			/* column or constraint name to act on */
 	Node	   *def;			/* definition of default or constraint */
@@ -3456,15 +3462,44 @@ typedef enum FetchDirection
 	FETCH_RELATIVE,
 } FetchDirection;
 
+typedef enum FetchDirectionKeywords
+{
+	FETCH_KEYWORD_NONE = 0,
+	FETCH_KEYWORD_NEXT,
+	FETCH_KEYWORD_PRIOR,
+	FETCH_KEYWORD_FIRST,
+	FETCH_KEYWORD_LAST,
+	FETCH_KEYWORD_ABSOLUTE,
+	FETCH_KEYWORD_RELATIVE,
+	FETCH_KEYWORD_ALL,
+	FETCH_KEYWORD_FORWARD,
+	FETCH_KEYWORD_FORWARD_ALL,
+	FETCH_KEYWORD_BACKWARD,
+	FETCH_KEYWORD_BACKWARD_ALL,
+} FetchDirectionKeywords;
+
 #define FETCH_ALL	LONG_MAX
 
 typedef struct FetchStmt
 {
 	NodeTag		type;
 	FetchDirection direction;	/* see above */
-	long		howMany;		/* number of rows, or position argument */
-	char	   *portalname;		/* name of portal (cursor) */
-	bool		ismove;			/* true if MOVE */
+	/* number of rows, or position argument */
+	long		howMany pg_node_attr(query_jumble_ignore);
+	/* name of portal (cursor) */
+	char	   *portalname;
+	/* true if MOVE */
+	bool		ismove;
+
+	/*
+	 * Set when a direction_keyword (e.g., FETCH FORWARD) is used, to
+	 * distinguish it from a numeric variant (e.g., FETCH 1) for the purpose
+	 * of query jumbling.
+	 */
+	FetchDirectionKeywords direction_keyword;
+
+	/* token location, or -1 if unknown */
+	ParseLoc	location pg_node_attr(query_jumble_location);
 } FetchStmt;
 
 /* ----------------------
@@ -4058,6 +4093,7 @@ typedef struct RefreshMatViewStmt
 typedef struct CheckPointStmt
 {
 	NodeTag		type;
+	List	   *options;		/* list of DefElem nodes */
 } CheckPointStmt;
 
 /* ----------------------
@@ -4125,6 +4161,25 @@ typedef struct ReindexStmt
 	const char *name;			/* name of database to reindex */
 	List	   *params;			/* list of DefElem nodes */
 } ReindexStmt;
+
+/* ----------------------
+ *		Oracle-compatible ALTER INDEX ... REBUILD Statement
+ *
+ * Represents Oracle-compatible ALTER INDEX ... REBUILD syntax.
+ * options is a List of DefElem nodes:
+ *   "online"     -> Boolean true      -- REBUILD ONLINE
+ *   "tablespace" -> String name       -- REBUILD TABLESPACE tbs
+ *   "partition"  -> String name       -- REBUILD PARTITION p
+ *   "parallel"   -> Integer degree    -- REBUILD PARALLEL [N] (0 = auto)
+ *   "noparallel" -> Boolean true      -- REBUILD NOPARALLEL
+ * ----------------------
+ */
+typedef struct OraAlterIndexRebuildStmt
+{
+	NodeTag		type;
+	RangeVar   *relation;		/* index to rebuild */
+	List	   *options;		/* List of DefElem */
+} OraAlterIndexRebuildStmt;
 
 /* ----------------------
  *		CREATE CONVERSION Statement
@@ -4302,6 +4357,22 @@ typedef struct PublicationObjSpec
 	ParseLoc	location;		/* token location, or -1 if unknown */
 } PublicationObjSpec;
 
+/*
+ * Types of objects supported by FOR ALL publications
+ */
+typedef enum PublicationAllObjType
+{
+	PUBLICATION_ALL_TABLES,
+	PUBLICATION_ALL_SEQUENCES,
+} PublicationAllObjType;
+
+typedef struct PublicationAllObjSpec
+{
+	NodeTag		type;
+	PublicationAllObjType pubobjtype;	/* type of this publication object */
+	ParseLoc	location;		/* token location, or -1 if unknown */
+} PublicationAllObjSpec;
+
 typedef struct CreatePublicationStmt
 {
 	NodeTag		type;
@@ -4309,6 +4380,8 @@ typedef struct CreatePublicationStmt
 	List	   *options;		/* List of DefElem nodes */
 	List	   *pubobjects;		/* Optional list of publication objects */
 	bool		for_all_tables; /* Special publication for all tables in db */
+	bool		for_all_sequences;	/* Special publication for all sequences
+									 * in db */
 } CreatePublicationStmt;
 
 typedef enum AlterPublicationAction
@@ -4331,7 +4404,6 @@ typedef struct AlterPublicationStmt
 	 * objects.
 	 */
 	List	   *pubobjects;		/* Optional list of publication objects */
-	bool		for_all_tables; /* Special publication for all tables in db */
 	AlterPublicationAction action;	/* What action to perform with the given
 									 * objects */
 } AlterPublicationStmt;
@@ -4352,7 +4424,8 @@ typedef enum AlterSubscriptionType
 	ALTER_SUBSCRIPTION_SET_PUBLICATION,
 	ALTER_SUBSCRIPTION_ADD_PUBLICATION,
 	ALTER_SUBSCRIPTION_DROP_PUBLICATION,
-	ALTER_SUBSCRIPTION_REFRESH,
+	ALTER_SUBSCRIPTION_REFRESH_PUBLICATION,
+	ALTER_SUBSCRIPTION_REFRESH_SEQUENCES,
 	ALTER_SUBSCRIPTION_ENABLED,
 	ALTER_SUBSCRIPTION_SKIP,
 } AlterSubscriptionType;

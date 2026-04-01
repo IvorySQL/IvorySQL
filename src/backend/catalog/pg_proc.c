@@ -158,7 +158,7 @@ ProcedureCreate(const char *procedureName,
 	/*
 	 * sanity checks
 	 */
-	Assert(PointerIsValid(prosrc));
+	Assert(prosrc);
 
 	parameterCount = parameterTypes->dim1;
 	if (parameterCount < 0 || parameterCount > FUNC_MAX_ARGS)
@@ -1388,6 +1388,6 @@ oid_array_to_list(Datum datum)
 
 	deconstruct_array_builtin(array, OIDOID, &values, NULL, &nelems);
 	for (i = 0; i < nelems; i++)
-		result = lappend_oid(result, values[i]);
+		result = lappend_oid(result, DatumGetObjectId(values[i]));
 	return result;
 }

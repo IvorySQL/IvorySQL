@@ -342,7 +342,7 @@
 				# (change requires restart)
 #wal_keep_size = 0		# in megabytes; 0 disables
 #max_slot_wal_keep_size = -1	# in megabytes; -1 disables
-#idle_replication_slot_timeout = 0	# in minutes; 0 disables
+#idle_replication_slot_timeout = 0	# in seconds; 0 disables
 #wal_sender_timeout = 60s	# in milliseconds; 0 disables
 #track_commit_timestamp = off	# collect timestamp of transaction commit
 				# (change requires restart)
@@ -428,6 +428,7 @@
 #enable_group_by_reordering = on
 #enable_distinct_reordering = on
 #enable_self_join_elimination = on
+#enable_eager_aggregate = on
 
 # - Planner Cost Constants -
 
@@ -441,6 +442,7 @@
 #min_parallel_table_scan_size = 8MB
 #min_parallel_index_scan_size = 512kB
 #effective_cache_size = 4GB
+#min_eager_agg_group_size = 8.0
 
 #jit_above_cost = 100000		# perform JIT compilation if available
 					# and query more expensive than this;
@@ -581,11 +583,17 @@
 
 # - What to Log -
 
+#debug_print_raw_parse = off
 #debug_print_parse = off
 #debug_print_rewritten = off
 #debug_print_plan = off
 #debug_pretty_print = on
-#log_autovacuum_min_duration = 10min	# log autovacuum activity;
+#log_autovacuum_min_duration = 10min	# log vacuum activity by autovacuum;
+					# -1 disables, 0 logs all actions and
+					# their durations, > 0 logs only
+					# actions running at least this number
+					# of milliseconds.
+#log_autoanalyze_min_duration = 10min	# log analyze activity by autovacuum;
 					# -1 disables, 0 logs all actions and
 					# their durations, > 0 logs only
 					# actions running at least this number
@@ -623,7 +631,7 @@
 					#        processes
 					#   %% = '%'
 					# e.g. '<%u%%%d> '
-#log_lock_waits = off			# log lock waits >= deadlock_timeout
+#log_lock_waits = on			# log lock waits >= deadlock_timeout
 #log_lock_failures = off		# log lock failures
 #log_recovery_conflict_waits = off	# log standby recovery conflict waits
 					# >= deadlock_timeout

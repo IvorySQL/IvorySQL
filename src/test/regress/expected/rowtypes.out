@@ -965,7 +965,8 @@ select text(fullname) from fullname;  -- error
 ERROR:  function text(fullname) does not exist
 LINE 1: select text(fullname) from fullname;
                ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No function of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 select fullname.text from fullname;  -- error
 ERROR:  column fullname.text does not exist
 LINE 1: select fullname.text from fullname;
@@ -987,7 +988,8 @@ select text(row('Jim', 'Beam'));  -- error
 ERROR:  function text(record) does not exist
 LINE 1: select text(row('Jim', 'Beam'));
                ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No function of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 select (row('Jim', 'Beam')).text;  -- error
 ERROR:  could not identify column "text" in record data type
 LINE 1: select (row('Jim', 'Beam')).text;
@@ -1249,19 +1251,19 @@ with cte(c) as materialized (select row(1, 2)),
 select * from cte2 as t
 where (select * from (select c as c1) s
        where (select (c1).f1 > 0)) is not null;
-                  QUERY PLAN                  
-----------------------------------------------
+                    QUERY PLAN                     
+---------------------------------------------------
  CTE Scan on cte
    Output: cte.c
-   Filter: ((SubPlan 3) IS NOT NULL)
+   Filter: ((SubPlan expr_1) IS NOT NULL)
    CTE cte
      ->  Result
            Output: '(1,2)'::record
-   SubPlan 3
+   SubPlan expr_1
      ->  Result
            Output: cte.c
-           One-Time Filter: (InitPlan 2).col1
-           InitPlan 2
+           One-Time Filter: (InitPlan expr_2).col1
+           InitPlan expr_2
              ->  Result
                    Output: ((cte.c).f1 > 0)
 (13 rows)
@@ -1323,8 +1325,9 @@ where false;
 --------------------------
  Result
    Output: (a).f1, (a).f2
+   Replaces: Scan on ss
    One-Time Filter: false
-(3 rows)
+(4 rows)
 
 explain (verbose, costs off)
 with cte(c) as materialized (select row(1, 2)),
@@ -1348,11 +1351,12 @@ where false;
 -----------------------------------
  Result
    Output: (cte.c).f1
+   Replaces: Scan on cte
    One-Time Filter: false
    CTE cte
      ->  Result
            Output: '(1,2)'::record
-(6 rows)
+(7 rows)
 
 --
 -- Tests for component access / FieldSelect

@@ -40,6 +40,7 @@
 
 #include <limits.h>
 
+#include "access/htup_details.h"
 #include "common/hashfn.h"
 #include "common/int.h"
 #include "nodes/bitmapset.h"
@@ -363,7 +364,7 @@ tbm_free_shared_area(dsa_area *dsa, dsa_pointer dp)
  * TBMIterateResult when any of these tuples are reported out.
  */
 void
-tbm_add_tuples(TIDBitmap *tbm, const ItemPointer tids, int ntids,
+tbm_add_tuples(TIDBitmap *tbm, const ItemPointerData *tids, int ntids,
 			   bool recheck)
 {
 	BlockNumber currblk = InvalidBlockNumber;
