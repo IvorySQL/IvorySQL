@@ -44,6 +44,7 @@
 #include "catalog/pg_package.h"
 #include "miscadmin.h"
 #include "utils/guc.h"
+#include "utils/hsearch.h"
 
 
 typedef struct _subprocFuncCandidateList

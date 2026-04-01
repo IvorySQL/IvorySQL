@@ -533,6 +533,8 @@ static void get_rte_alias(RangeTblEntry *rte, int varno, bool use_as,
 						  deparse_context *context);
 static void get_column_alias_list(deparse_columns *colinfo,
 								  deparse_context *context);
+static void get_for_portion_of(ForPortionOfExpr *forPortionOf,
+							   deparse_context *context);
 static void get_from_clause_coldeflist(RangeTblFunction *rtfunc,
 									   deparse_columns *colinfo,
 									   deparse_context *context);
@@ -8020,6 +8022,9 @@ get_update_query_def(Query *query, deparse_context *context)
 					 only_marker(rte),
 					 generate_relation_name(rte->relid, NIL));
 
+	/* Print the FOR PORTION OF, if needed */
+	get_for_portion_of(query->forPortionOf, context);
+
 	/* Print the relation alias, if needed */
 	get_rte_alias(rte, query->resultRelation, false, context);
 
@@ -8223,6 +8228,9 @@ get_delete_query_def(Query *query, deparse_context *context)
 	appendStringInfo(buf, "DELETE FROM %s%s",
 					 only_marker(rte),
 					 generate_relation_name(rte->relid, NIL));
+
+	/* Print the FOR PORTION OF, if needed */
+	get_for_portion_of(query->forPortionOf, context);
 
 	/* Print the relation alias, if needed */
 	get_rte_alias(rte, query->resultRelation, false, context);
@@ -13830,6 +13838,39 @@ get_rte_alias(RangeTblEntry *rte, int varno, bool use_as,
 		appendStringInfo(context->buf, "%s%s",
 						 use_as ? " AS " : " ",
 						 quote_identifier(refname));
+}
+
+/*
+ * get_for_portion_of - print FOR PORTION OF if needed
+ * XXX: Newlines would help here, at least when pretty-printing. But then the
+ * alias and SET will be on their own line with a leading space.
+ */
+static void
+get_for_portion_of(ForPortionOfExpr *forPortionOf, deparse_context *context)
+{
+	if (forPortionOf)
+	{
+		appendStringInfo(context->buf, " FOR PORTION OF %s",
+						 quote_identifier(forPortionOf->range_name));
+
+		/*
+		 * Try to write it as FROM ... TO ... if we received it that way,
+		 * otherwise (targetExpr).
+		 */
+		if (forPortionOf->targetFrom && forPortionOf->targetTo)
+		{
+			appendStringInfoString(context->buf, " FROM ");
+			get_rule_expr(forPortionOf->targetFrom, context, false);
+			appendStringInfoString(context->buf, " TO ");
+			get_rule_expr(forPortionOf->targetTo, context, false);
+		}
+		else
+		{
+			appendStringInfoString(context->buf, " (");
+			get_rule_expr(forPortionOf->targetRange, context, false);
+			appendStringInfoString(context->buf, ")");
+		}
+	}
 }
 
 /*

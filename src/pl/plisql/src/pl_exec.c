@@ -53,6 +53,7 @@
 #include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/fmgroids.h"
+#include "utils/hsearch.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/ora_compatible.h"

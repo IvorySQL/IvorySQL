@@ -21,6 +21,7 @@
 #include "pl_subproc_function.h"
 #include "pl_package.h"
 #include "pl_exception_type.h"
+#include "utils/hsearch.h"
 #include "utils/memutils.h"
 
 /* ----------
