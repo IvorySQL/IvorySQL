@@ -64,6 +64,7 @@
 #include "utils/syscache.h"
 #include "utils/arrayaccess.h"
 #include "utils/xml.h"
+#include "utils/varlena.h"
 
 #include "../include/ivorysql_ora.h"
 
@@ -1277,6 +1278,8 @@ ivy_deletexml(PG_FUNCTION_ARGS)
 	xmltype    *ret = NULL;
 	xpath_ws	ws;
 	xmlXPathObjectPtr res;
+	int	cmp;
+	Oid collid = PG_GET_COLLATION();
 
 	if (fcinfo->args[0].isnull)
 		PG_RETURN_NULL();
@@ -1287,6 +1290,16 @@ ivy_deletexml(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 	else
 		xpath_expr_text = PG_GETARG_TEXT_PP(1);
+
+	/* Oracle refuses to remove all XML data if xpath = '/' */ 
+	cmp = varstr_cmp(VARDATA_ANY(xpath_expr_text), VARSIZE_ANY_EXHDR(xpath_expr_text),
+                     "/", strlen("/"),
+                     collid);
+	if (cmp == 0) {
+		 ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION),
+                                 errmsg("Cannot remove document node with xpath ='/'")));
+	}
+
 
 	res = ivy_xml_xpath(&ws, xpath_expr_text, data, NULL);
 	if (res->nodesetval && res->nodesetval->nodeTab != NULL)
