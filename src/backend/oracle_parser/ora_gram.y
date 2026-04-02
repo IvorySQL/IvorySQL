@@ -307,7 +307,7 @@ static void determineLanguage(List *options);
 		SecLabelStmt SelectStmt TransactionStmt TransactionStmtLegacy TruncateStmt
 		UnlistenStmt UpdateStmt VacuumStmt
 		VariableResetStmt VariableSetStmt VariableShowStmt
-		ViewStmt CheckPointStmt CreateConversionStmt
+		ViewStmt WaitStmt CheckPointStmt CreateConversionStmt
 		DeallocateStmt PrepareStmt ExecuteStmt
 		DropOwnedStmt ReassignOwnedStmt
 		AlterTSConfigurationStmt AlterTSDictionaryStmt
@@ -324,6 +324,7 @@ static void determineLanguage(List *options);
 %type <boolean>		opt_concurrently
 %type <dbehavior>	opt_drop_behavior
 %type <list>		opt_utility_option_list
+%type <list>		opt_wait_with_clause
 %type <list>		utility_option_list
 %type <defelt>		utility_option_elem
 %type <str>			utility_option_name
@@ -811,7 +812,7 @@ static void determineLanguage(List *options);
 	VACUUM VALID VALIDATE VALIDATOR VALUE_P VALUES VARCHAR VARCHAR2 VARIADIC VARYING
 	VERBOSE VERSION_P VIEW VIEWS VIRTUAL VISIBLE VOLATILE
 
-	WHEN WHERE WHITESPACE_P WINDOW WITH WITHIN WITHOUT WORK WRAPPER WRITE
+	WAIT WHEN WHERE WHITESPACE_P WINDOW WITH WITHIN WITHOUT WORK WRAPPER WRITE
 
 	XML_P XMLATTRIBUTES XMLCONCAT XMLELEMENT XMLEXISTS XMLFOREST XMLNAMESPACES
 	XMLPARSE XMLPI XMLROOT XMLSERIALIZE XMLTABLE
@@ -847,6 +848,7 @@ static void determineLanguage(List *options);
 %token <keyword> LONG_P RAW_P
 %token LONG_RAW
 %token <keyword> LOOP_P
+%token <keyword> LSN_P
 %token <keyword> BINARY_FLOAT_NAN BINARY_FLOAT_INFINITY
 	BINARY_DOUBLE_NAN BINARY_DOUBLE_INFINITY
 %token <keyword> NAN_P INFINITE_P
@@ -1217,6 +1219,7 @@ stmt:
 			| VariableSetStmt
 			| VariableShowStmt
 			| ViewStmt
+			| WaitStmt
 			| CreatePackageStmt
 			| CreatePackageBodyStmt
 			| AlterPackageStmt
@@ -18722,6 +18725,28 @@ xml_passing_mech:
 		;
 
 
+/*****************************************************************************
+ *
+ * WAIT FOR LSN
+ *
+ *****************************************************************************/
+
+WaitStmt:
+			WAIT FOR LSN_P Sconst opt_wait_with_clause
+				{
+					WaitStmt *n = makeNode(WaitStmt);
+					n->lsn_literal = $4;
+					n->options = $5;
+					$$ = (Node *) n;
+				}
+			;
+
+opt_wait_with_clause:
+			WITH '(' utility_option_list ')'		{ $$ = $3; }
+			| /*EMPTY*/								{ $$ = NIL; }
+			;
+
+
 /*
  * Aggregate decoration clauses
  */
@@ -20457,6 +20482,7 @@ unreserved_keyword:
 			| LOGGED
 			| LONG_P
 			| LOOP_P
+			| LSN_P
 			| MAPPING
 			| MATCH
 			| MATCHED
@@ -20662,6 +20688,7 @@ unreserved_keyword:
 			| VIRTUAL
 			| VISIBLE
 			| VOLATILE
+			| WAIT
 			| WHITESPACE_P
 			| WITHIN
 			| WITHOUT
@@ -21156,6 +21183,7 @@ bare_label_keyword:
 			| LOGGED
 			| LONG_P
 			| LOOP_P
+			| LSN_P
 			| MAPPING
 			| MATCH
 			| MATCHED
@@ -21413,6 +21441,7 @@ bare_label_keyword:
 			| VIRTUAL
 			| VISIBLE
 			| VOLATILE
+			| WAIT
 			| WHEN
 			| WHITESPACE_P
 			| WORK

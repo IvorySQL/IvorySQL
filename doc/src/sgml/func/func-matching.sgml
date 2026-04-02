@@ -369,11 +369,11 @@
     regular expression pattern.  The function can be written according
     to standard SQL syntax:
 <synopsis>
-substring(<replaceable>string</replaceable> similar <replaceable>pattern</replaceable> escape <replaceable>escape-character</replaceable>)
+substring(<replaceable>string</replaceable> SIMILAR <replaceable>pattern</replaceable> ESCAPE <replaceable>escape-character</replaceable>)
 </synopsis>
     or using the now obsolete SQL:1999 syntax:
 <synopsis>
-substring(<replaceable>string</replaceable> from <replaceable>pattern</replaceable> for <replaceable>escape-character</replaceable>)
+substring(<replaceable>string</replaceable> FROM <replaceable>pattern</replaceable> FOR <replaceable>escape-character</replaceable>)
 </synopsis>
     or as a plain three-argument function:
 <synopsis>
@@ -412,8 +412,8 @@ substring(<replaceable>string</replaceable>, <replaceable>pattern</replaceable>,
    <para>
     Some examples, with <literal>#&quot;</literal> delimiting the return string:
 <programlisting>
-substring('foobar' similar '%#"o_b#"%' escape '#')   <lineannotation>oob</lineannotation>
-substring('foobar' similar '#"o_b#"%' escape '#')    <lineannotation>NULL</lineannotation>
+substring('foobar' SIMILAR '%#"o_b#"%' ESCAPE '#')   <lineannotation>oob</lineannotation>
+substring('foobar' SIMILAR '#"o_b#"%' ESCAPE '#')    <lineannotation>NULL</lineannotation>
 </programlisting>
    </para>
   </sect2>
@@ -600,8 +600,8 @@ substring('foobar' similar '#"o_b#"%' escape '#')    <lineannotation>NULL</linea
    <para>
     Some examples:
 <programlisting>
-substring('foobar' from 'o.b')     <lineannotation>oob</lineannotation>
-substring('foobar' from 'o(.)b')   <lineannotation>o</lineannotation>
+substring('foobar' FROM 'o.b')     <lineannotation>oob</lineannotation>
+substring('foobar' FROM 'o(.)b')   <lineannotation>o</lineannotation>
 </programlisting>
    </para>
 

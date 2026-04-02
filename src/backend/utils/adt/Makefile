@@ -80,11 +80,13 @@ OBJS = \
 	oracle_compat.o \
 	orderedsetaggs.o \
 	partitionfuncs.o \
+	pg_dependencies.o \
 	pg_locale.o \
 	pg_locale_builtin.o \
 	pg_locale_icu.o \
 	pg_locale_libc.o \
 	pg_lsn.o \
+	pg_ndistinct.o \
 	pg_upgrade_support.o \
 	pgstatfuncs.o \
 	pseudorandomfuncs.o \

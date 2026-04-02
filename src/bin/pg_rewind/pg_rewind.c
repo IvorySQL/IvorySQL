@@ -300,10 +300,12 @@ main(int argc, char **argv)
 
 	atexit(disconnect_atexit);
 
-	/*
-	 * Ok, we have all the options and we're ready to start. First, connect to
-	 * remote server.
-	 */
+	/* Ok, we have all the options and we're ready to start. */
+	if (dry_run)
+		pg_log_info("Executing in dry-run mode.\n"
+					"The target directory will not be modified.");
+
+	/* First, connect to remote server. */
 	if (connstr_source)
 	{
 		conn = PQconnectdb(connstr_source);
@@ -850,9 +852,9 @@ progress_report(bool finished)
 static XLogRecPtr
 MinXLogRecPtr(XLogRecPtr a, XLogRecPtr b)
 {
-	if (XLogRecPtrIsInvalid(a))
+	if (!XLogRecPtrIsValid(a))
 		return b;
-	else if (XLogRecPtrIsInvalid(b))
+	else if (!XLogRecPtrIsValid(b))
 		return a;
 	else
 		return Min(a, b);

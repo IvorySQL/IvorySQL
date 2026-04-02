@@ -1137,7 +1137,7 @@ postgres   27093  0.0  0.0  30096  2752 ?        Ss   11:34   0:00 postgres: ser
      Here are examples of how wait events can be viewed:
 
 <programlisting>
-SELECT pid, wait_event_type, wait_event FROM pg_stat_activity WHERE wait_event is NOT NULL;
+SELECT pid, wait_event_type, wait_event FROM pg_stat_activity WHERE wait_event IS NOT NULL;
  pid  | wait_event_type | wait_event
 ------+-----------------+------------
  2540 | Lock            | relation
@@ -1150,7 +1150,7 @@ SELECT a.pid, a.wait_event, w.description
   FROM pg_stat_activity a JOIN
        pg_wait_events w ON (a.wait_event_type = w.type AND
                             a.wait_event = w.name)
-  WHERE a.wait_event is NOT NULL and a.state = 'active';
+  WHERE a.wait_event IS NOT NULL AND a.state = 'active';
 -[ RECORD 1 ]------------------------------------------------------&zwsp;------------
 pid         | 686674
 wait_event  | WALInitSync
@@ -2045,8 +2045,9 @@ description | Waiting for a newly initialized WAL file to reach durable storage
       </para>
       <para>
        Type of the subscription worker process.  Possible types are
-       <literal>apply</literal>, <literal>parallel apply</literal>, and
-       <literal>table synchronization</literal>.
+       <literal>apply</literal>, <literal>parallel apply</literal>,
+       <literal>table synchronization</literal>, and
+       <literal>sequence synchronization</literal>.
       </para></entry>
      </row>
 
@@ -2194,7 +2195,18 @@ description | Waiting for a newly initialized WAL file to reach durable storage
 
      <row>
       <entry role="catalog_table_entry"><para role="column_definition">
-       <structfield>sync_error_count</structfield> <type>bigint</type>
+       <structfield>sync_seq_error_count</structfield> <type>bigint</type>
+      </para>
+      <para>
+       Number of times an error occurred in the sequence synchronization
+       worker. A single worker synchronizes all sequences, so one error
+       increment may represent failures across multiple sequences.
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>sync_table_error_count</structfield> <type>bigint</type>
       </para>
       <para>
        Number of times an error occurred during the initial table

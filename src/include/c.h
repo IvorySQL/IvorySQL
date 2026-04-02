@@ -61,6 +61,7 @@
 
 /* System header files that should be available everywhere in Postgres */
 #include <inttypes.h>
+#include <stdalign.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1015,29 +1016,29 @@ pg_noreturn extern void ExceptionalCondition(const char *conditionName,
  */
 #define Abs(x)			((x) >= 0 ? (x) : -(x))
 
-/* Get a bit mask of the bits set in non-long aligned addresses */
-#define LONG_ALIGN_MASK (sizeof(long) - 1)
+/* Get a bit mask of the bits set in non-size_t aligned addresses */
+#define SIZE_T_ALIGN_MASK (sizeof(size_t) - 1)
 
 /*
  * MemSet
  *	Exactly the same as standard library function memset(), but considerably
- *	faster for zeroing small word-aligned structures (such as parsetree nodes).
- *	This has to be a macro because the main point is to avoid function-call
- *	overhead.   However, we have also found that the loop is faster than
- *	native libc memset() on some platforms, even those with assembler
- *	memset() functions.  More research needs to be done, perhaps with
- *	MEMSET_LOOP_LIMIT tests in configure.
+ *	faster for zeroing small size_t-aligned structures (such as parsetree
+ *	nodes).  This has to be a macro because the main point is to avoid
+ *	function-call overhead.  However, we have also found that the loop is
+ *	faster than native libc memset() on some platforms, even those with
+ *	assembler memset() functions.  More research needs to be done, perhaps
+ *	with MEMSET_LOOP_LIMIT tests in configure.
  */
 #define MemSet(start, val, len) \
 	do \
 	{ \
-		/* must be void* because we don't know if it is integer aligned yet */ \
+		/* must be void* because we don't know if it is size_t aligned yet */ \
 		void   *_vstart = (void *) (start); \
 		int		_val = (val); \
 		Size	_len = (len); \
 \
-		if ((((uintptr_t) _vstart) & LONG_ALIGN_MASK) == 0 && \
-			(_len & LONG_ALIGN_MASK) == 0 && \
+		if ((((uintptr_t) _vstart) & SIZE_T_ALIGN_MASK) == 0 && \
+			(_len & SIZE_T_ALIGN_MASK) == 0 && \
 			_val == 0 && \
 			_len <= MEMSET_LOOP_LIMIT && \
 			/* \
@@ -1046,8 +1047,8 @@ pg_noreturn extern void ExceptionalCondition(const char *conditionName,
 			 */ \
 			MEMSET_LOOP_LIMIT != 0) \
 		{ \
-			long *_start = (long *) _vstart; \
-			long *_stop = (long *) ((char *) _start + _len); \
+			size_t *_start = (size_t *) _vstart; \
+			size_t *_stop = (size_t *) ((char *) _start + _len); \
 			while (_start < _stop) \
 				*_start++ = 0; \
 		} \
@@ -1057,23 +1058,23 @@ pg_noreturn extern void ExceptionalCondition(const char *conditionName,
 
 /*
  * MemSetAligned is the same as MemSet except it omits the test to see if
- * "start" is word-aligned.  This is okay to use if the caller knows a-priori
- * that the pointer is suitably aligned (typically, because he just got it
- * from palloc(), which always delivers a max-aligned pointer).
+ * "start" is size_t-aligned.  This is okay to use if the caller knows
+ * a-priori that the pointer is suitably aligned (typically, because he just
+ * got it from palloc(), which always delivers a max-aligned pointer).
  */
 #define MemSetAligned(start, val, len) \
 	do \
 	{ \
-		long   *_start = (long *) (start); \
+		size_t *_start = (size_t *) (start); \
 		int		_val = (val); \
 		Size	_len = (len); \
 \
-		if ((_len & LONG_ALIGN_MASK) == 0 && \
+		if ((_len & SIZE_T_ALIGN_MASK) == 0 && \
 			_val == 0 && \
 			_len <= MEMSET_LOOP_LIMIT && \
 			MEMSET_LOOP_LIMIT != 0) \
 		{ \
-			long *_stop = (long *) ((char *) _start + _len); \
+			size_t *_stop = (size_t *) ((char *) _start + _len); \
 			while (_start < _stop) \
 				*_start++ = 0; \
 		} \
@@ -1124,15 +1125,11 @@ pg_noreturn extern void ExceptionalCondition(const char *conditionName,
  * Use this, not "char buf[BLCKSZ]", to declare a field or local variable
  * holding a page buffer, if that page might be accessed as a page.  Otherwise
  * the variable might be under-aligned, causing problems on alignment-picky
- * hardware.  We include both "double" and "int64" in the union to ensure that
- * the compiler knows the value must be MAXALIGN'ed (cf. configure's
- * computation of MAXIMUM_ALIGNOF).
+ * hardware.
  */
-typedef union PGAlignedBlock
+typedef struct PGAlignedBlock
 {
-	char		data[BLCKSZ];
-	double		force_align_d;
-	int64		force_align_i64;
+	alignas(MAXIMUM_ALIGNOF) char data[BLCKSZ];
 } PGAlignedBlock;
 
 /*

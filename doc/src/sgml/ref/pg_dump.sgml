@@ -297,8 +297,8 @@ PostgreSQL documentation
         file based output formats, in which case the standard output is used.
         It must be given for the directory output format however, where it
         specifies the target directory instead of a file. In this case the
-        directory is created by <command>pg_dump</command> and must not exist
-        before.
+        directory is created by <command>pg_dump</command> unless the directory
+        exist and is empty.
        </para>
       </listitem>
      </varlistentry>
@@ -1393,7 +1393,7 @@ PostgreSQL documentation
       <term><option>--statistics</option></term>
       <listitem>
        <para>
-        Dump statistics.
+        Dump optimizer statistics.
        </para>
       </listitem>
      </varlistentry>
@@ -1403,7 +1403,7 @@ PostgreSQL documentation
       <listitem>
        <para>
         Dump only the statistics, not the schema (data definitions) or data.
-        Statistics for tables, materialized views, foreign tables,
+        Optimizer statistics for tables, materialized views, foreign tables,
         and indexes are dumped.
        </para>
       </listitem>
@@ -1699,11 +1699,12 @@ CREATE DATABASE foo WITH TEMPLATE template0;
   </para>
 
   <para>
-   If <option>--statistics</option> is specified,
+   When <option>--statistics</option> is specified,
    <command>pg_dump</command> will include most optimizer statistics in the
-   resulting dump file.  However, some statistics may not be included, such as
-   those created explicitly with <xref linkend="sql-createstatistics"/> or
-   custom statistics added by an extension.  Therefore, it may be useful to
+   resulting dump file.  This does not include all statistics, such as
+   those created explicitly with <xref linkend="sql-createstatistics"/>,
+   custom statistics added by an extension, or statistics collected by the
+   cumulative statistics system. Therefore, it may still be useful to
    run <command>ANALYZE</command> after restoring from a dump file to ensure
    optimal performance; see <xref linkend="vacuum-for-statistics"/> and <xref
    linkend="autovacuum"/> for more information.
@@ -1878,7 +1879,7 @@ CREATE DATABASE foo WITH TEMPLATE template0;
 
   <para>
    To dump all tables whose names start with <literal>mytable</literal>, except
-   for table <literal>mytable2</literal>, specify a filter file
+   for table <structname>mytable2</structname>, specify a filter file
    <filename>filter.txt</filename> like:
 <programlisting>
 include table mytable*
