@@ -567,7 +567,7 @@ pgss_shmem_startup(void)
 	info.keysize = sizeof(pgssHashKey);
 	info.entrysize = sizeof(pgssEntry);
 	pgss_hash = ShmemInitHash("pg_stat_statements hash",
-							  pgss_max, pgss_max,
+							  pgss_max,
 							  &info,
 							  HASH_ELEM | HASH_BLOBS);
 
