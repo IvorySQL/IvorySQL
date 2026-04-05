@@ -939,6 +939,11 @@ PostmasterMain(int argc, char *argv[])
 	ApplyLauncherRegister();
 
 	/*
+	 * Register the shared memory needs of all core subsystems.
+	 */
+	RegisterBuiltinShmemCallbacks();
+
+	/*
 	 * process any libraries that should be preloaded at postmaster start
 	 */
 	process_shared_preload_libraries();
