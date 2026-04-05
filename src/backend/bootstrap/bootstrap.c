@@ -40,6 +40,7 @@
 #include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/proc.h"
+#include "storage/shmem_internal.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
@@ -392,6 +393,7 @@ BootstrapModeMain(int argc, char *argv[], bool check_only)
 
 	InitializeFastPathLocks();
 
+	ShmemCallRequestCallbacks();
 	CreateSharedMemoryAndSemaphores();
 
 	/*
