@@ -1300,7 +1300,7 @@ InitResultRelInfo(ResultRelInfo *resultRelInfo,
 		resultRelInfo->ri_TrigWhenExprs = (ExprState **)
 			palloc0_array(ExprState *, n);
 		if (instrument_options)
-			resultRelInfo->ri_TrigInstrument = InstrAlloc(n, instrument_options, false);
+			resultRelInfo->ri_TrigInstrument = InstrAllocTrigger(n, instrument_options);
 	}
 	else
 	{
