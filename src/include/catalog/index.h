@@ -76,6 +76,7 @@ extern void index_check_primary_key(Relation heapRel,
 #define	INDEX_CREATE_IF_NOT_EXISTS			(1 << 4)
 #define	INDEX_CREATE_PARTITIONED			(1 << 5)
 #define INDEX_CREATE_INVALID				(1 << 6)
+#define INDEX_CREATE_SUPPRESS_PROGRESS		(1 << 7)
 
 extern Oid	index_create(Relation heapRelation,
 						 const char *indexRelationName,
@@ -106,7 +107,7 @@ extern Oid	index_create(Relation heapRelation,
 #define	INDEX_CONSTR_CREATE_REMOVE_OLD_DEPS	(1 << 4)
 #define	INDEX_CONSTR_CREATE_WITHOUT_OVERLAPS (1 << 5)
 
-extern Oid	index_create_copy(Relation heapRelation, bool concurrently,
+extern Oid	index_create_copy(Relation heapRelation, uint16 flags,
 							  Oid oldIndexId, Oid tablespaceOid,
 							  const char *newName);
 
@@ -153,7 +154,8 @@ extern void index_build(Relation heapRelation,
 						Relation indexRelation,
 						IndexInfo *indexInfo,
 						bool isreindex,
-						bool parallel);
+						bool parallel,
+						bool progress);
 
 extern void validate_index(Oid heapId, Oid indexId, Snapshot snapshot);
 
