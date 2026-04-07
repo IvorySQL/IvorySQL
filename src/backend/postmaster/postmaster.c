@@ -2066,6 +2066,9 @@ InitProcessGlobals(void)
 	MyStartTimestamp = GetCurrentTimestamp();
 	MyStartTime = timestamptz_to_time_t(MyStartTimestamp);
 
+	/* initialize timing infrastructure (required for INSTR_* calls) */
+	pg_initialize_timing();
+
 	/*
 	 * Set a different global seed in every process.  We want something
 	 * unpredictable, so if possible, use high-quality random bits for the
