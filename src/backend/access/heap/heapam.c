@@ -44,6 +44,7 @@
 #include "catalog/pg_database.h"
 #include "catalog/pg_database_d.h"
 #include "commands/vacuum.h"
+#include "executor/instrument_node.h"
 #include "pgstat.h"
 #include "port/pg_bitutils.h"
 #include "storage/lmgr.h"
@@ -1126,6 +1127,7 @@ heap_beginscan(Relation relation, Snapshot snapshot,
 	scan->rs_base.rs_nkeys = nkeys;
 	scan->rs_base.rs_flags = flags;
 	scan->rs_base.rs_parallel = parallel_scan;
+	scan->rs_base.rs_instrument = NULL;
 	scan->rs_strategy = NULL;	/* set in initscan */
 	scan->rs_cbuf = InvalidBuffer;
 
@@ -1238,6 +1240,14 @@ heap_beginscan(Relation relation, Snapshot snapshot,
 														  sizeof(TBMIterateResult));
 	}
 
+	/* enable read stream instrumentation */
+	if ((flags & SO_SCAN_INSTRUMENT) && (scan->rs_read_stream != NULL))
+	{
+		scan->rs_base.rs_instrument = palloc0_object(TableScanInstrumentation);
+		read_stream_enable_stats(scan->rs_read_stream,
+								 &scan->rs_base.rs_instrument->io);
+	}
+
 	scan->rs_vmbuffer = InvalidBuffer;
 
 	return (TableScanDesc) scan;
@@ -1340,6 +1350,9 @@ heap_endscan(TableScanDesc sscan)
 
 	if (scan->rs_base.rs_flags & SO_TEMP_SNAPSHOT)
 		UnregisterSnapshot(scan->rs_base.rs_snapshot);
+
+	if (scan->rs_base.rs_instrument)
+		pfree(scan->rs_base.rs_instrument);
 
 	pfree(scan);
 }
