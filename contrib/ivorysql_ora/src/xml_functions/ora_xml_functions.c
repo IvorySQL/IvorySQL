@@ -905,7 +905,7 @@ ivy_xmlCharStrndup(const char *str, size_t len)
 #endif		/* USE_LIBXML */
 
 /*
- * ivy_checkXPpath
+ * ivy_checkXPath
  * 
  * check xpath argument is not '/' for some XML functions
  */
