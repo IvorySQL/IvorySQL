@@ -1169,10 +1169,10 @@ find_option(const char *name, bool create_placeholders, bool skip_errors,
 static int
 guc_var_compare(const void *a, const void *b)
 {
-	const char *namea = **(const char **const *) a;
-	const char *nameb = **(const char **const *) b;
+	const struct config_generic *ca = *(const struct config_generic *const *) a;
+	const struct config_generic *cb = *(const struct config_generic *const *) b;
 
-	return guc_name_compare(namea, nameb);
+	return guc_name_compare(ca->name, cb->name);
 }
 
 /*
@@ -3140,14 +3140,25 @@ parse_and_validate_value(const struct config_generic *record,
 					char	   *hintmsg;
 
 					hintmsg = config_enum_get_options(conf,
-													  "Available values: ",
-													  ".", ", ");
+													  _("Available values: "),
+
+					/*
+					 * translator: This is the terminator of a list of entity
+					 * names.
+					 */
+													  _("."),
+
+					/*
+					 * translator: This is a separator in a list of entity
+					 * names.
+					 */
+													  _(", "));
 
 					ereport(elevel,
 							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 							 errmsg("invalid value for parameter \"%s\": \"%s\"",
 									record->name, value),
-							 hintmsg ? errhint("%s", _(hintmsg)) : 0));
+							 hintmsg ? errhint("%s", hintmsg) : 0));
 
 					if (hintmsg)
 						pfree(hintmsg);

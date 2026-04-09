@@ -707,7 +707,7 @@ modify_subscriber_sysid(const struct CreateSubscriberOptions *opt)
 		int			rc = system(cmd_str);
 
 		if (rc == 0)
-			pg_log_info("subscriber successfully reset WAL on the subscriber");
+			pg_log_info("successfully reset WAL on the subscriber");
 		else
 			pg_fatal("could not reset WAL on subscriber: %s", wait_result_to_str(rc));
 	}
@@ -2313,6 +2313,11 @@ main(int argc, char **argv)
 		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 		exit(1);
 	}
+
+	if (dry_run)
+		pg_log_info("Executing in dry-run mode.\n"
+					"The target directory will not be modified.");
+
 	pg_log_info("validating publisher connection string");
 	pub_base_conninfo = get_base_conninfo(opt.pub_conninfo_str,
 										  &dbname_conninfo);

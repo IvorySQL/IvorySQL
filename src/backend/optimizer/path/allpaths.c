@@ -1849,9 +1849,11 @@ add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
  * We generate a path for each ordering (pathkey list) appearing in
  * all_child_pathkeys.
  *
- * We consider both cheapest-startup and cheapest-total cases, ie, for each
- * interesting ordering, collect all the cheapest startup subpaths and all the
- * cheapest total paths, and build a suitable path for each case.
+ * We consider the cheapest-startup and cheapest-total cases, and also the
+ * cheapest-fractional case when not all tuples need to be retrieved.  For each
+ * interesting ordering, we collect all the cheapest startup subpaths, all the
+ * cheapest total paths, and, if applicable, all the cheapest fractional paths,
+ * and build a suitable path for each case.
  *
  * We don't currently generate any parameterized ordered paths here.  While
  * it would not take much more code here to do so, it's very unclear that it
@@ -1914,6 +1916,7 @@ generate_orderedappend_paths(PlannerInfo *root, RelOptInfo *rel,
 		List	   *total_subpaths = NIL;
 		List	   *fractional_subpaths = NIL;
 		bool		startup_neq_total = false;
+		bool		fraction_neq_total = false;
 		bool		match_partition_order;
 		bool		match_partition_order_desc;
 		int			end_index;
@@ -2016,14 +2019,18 @@ generate_orderedappend_paths(PlannerInfo *root, RelOptInfo *rel,
 				double		path_fraction = root->tuple_fraction;
 
 				/*
-				 * Merge Append considers only live children relations.  Dummy
-				 * relations must be filtered out before.
+				 * We should not have a dummy child relation here.  However,
+				 * we cannot use childrel->rows to compute the tuple fraction,
+				 * as childrel can be an upper relation with an unset row
+				 * estimate.  Instead, we use the row estimate from the
+				 * cheapest_total path, which should already have been forced
+				 * to a sane value.
 				 */
-				Assert(childrel->rows > 0);
+				Assert(cheapest_total->rows > 0);
 
 				/* Convert absolute limit to a path fraction */
 				if (path_fraction >= 1.0)
-					path_fraction /= childrel->rows;
+					path_fraction /= cheapest_total->rows;
 
 				cheapest_fractional =
 					get_cheapest_fractional_path_for_pathkeys(childrel->pathlist,
@@ -2038,15 +2045,21 @@ generate_orderedappend_paths(PlannerInfo *root, RelOptInfo *rel,
 				 * XXX We might consider partially sorted paths too (with an
 				 * incremental sort on top). But we'd have to build all the
 				 * incremental paths, do the costing etc.
+				 *
+				 * Also, notice whether we actually have different paths for
+				 * the "fractional" and "total" cases.  This helps avoid
+				 * generating two identical ordered append paths.
 				 */
-				if (!cheapest_fractional)
+				if (cheapest_fractional == NULL)
 					cheapest_fractional = cheapest_total;
+				else if (cheapest_fractional != cheapest_total)
+					fraction_neq_total = true;
 			}
 
 			/*
 			 * Notice whether we actually have different paths for the
-			 * "cheapest" and "total" cases; frequently there will be no point
-			 * in two create_merge_append_path() calls.
+			 * "cheapest" and "total" cases.  This helps avoid generating two
+			 * identical ordered append paths.
 			 */
 			if (cheapest_startup != cheapest_total)
 				startup_neq_total = true;
@@ -2117,7 +2130,7 @@ generate_orderedappend_paths(PlannerInfo *root, RelOptInfo *rel,
 														  false,
 														  -1));
 
-			if (fractional_subpaths)
+			if (fractional_subpaths && fraction_neq_total)
 				add_path(rel, (Path *) create_append_path(root,
 														  rel,
 														  fractional_subpaths,
@@ -2143,7 +2156,7 @@ generate_orderedappend_paths(PlannerInfo *root, RelOptInfo *rel,
 																pathkeys,
 																NULL));
 
-			if (fractional_subpaths)
+			if (fractional_subpaths && fraction_neq_total)
 				add_path(rel, (Path *) create_merge_append_path(root,
 																rel,
 																fractional_subpaths,
