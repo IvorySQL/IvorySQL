@@ -48,7 +48,7 @@ List *
 test_rls_hooks_permissive(CmdType cmdtype, Relation relation)
 {
 	List	   *policies = NIL;
-	RowSecurityPolicy *policy = palloc0(sizeof(RowSecurityPolicy));
+	RowSecurityPolicy *policy = palloc0_object(RowSecurityPolicy);
 	Datum		role;
 	FuncCall   *n;
 	Node	   *e;
@@ -116,7 +116,7 @@ List *
 test_rls_hooks_restrictive(CmdType cmdtype, Relation relation)
 {
 	List	   *policies = NIL;
-	RowSecurityPolicy *policy = palloc0(sizeof(RowSecurityPolicy));
+	RowSecurityPolicy *policy = palloc0_object(RowSecurityPolicy);
 	Datum		role;
 	FuncCall   *n;
 	Node	   *e;

@@ -616,7 +616,7 @@ test_random_operations(PG_FUNCTION_ARGS)
 	min_value = PG_GETARG_INT32(3);
 
 	pg_prng_seed(&state, seed);
-	members = palloc(sizeof(int) * num_ops);
+	members = palloc_array(int, num_ops);
 
 	/* Phase 1: Random insertions */
 	for (int i = 0; i < num_ops / 2; i++)

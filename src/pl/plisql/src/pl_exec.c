@@ -1501,8 +1501,7 @@ copy_plisql_datums(PLiSQL_execstate * estate,
 	int			i;
 
 	/* Allocate local datum-pointer array */
-	estate->datums = (PLiSQL_datum * *)
-		palloc(sizeof(PLiSQL_datum *) * ndatums);
+	estate->datums = palloc_array(PLiSQL_datum *, ndatums);
 
 	/*
 	 * To reduce palloc overhead, we make a single palloc request for all the
@@ -1697,7 +1696,7 @@ plisql_fulfill_promise(PLiSQL_execstate * estate,
 				int			lbs[1];
 				int			i;
 
-				elems = palloc(sizeof(Datum) * nelems);
+				elems = palloc_array(Datum, nelems);
 				for (i = 0; i < nelems; i++)
 					elems[i] = CStringGetTextDatum(estate->trigdata->tg_trigger->tgargs[i]);
 				dims[0] = nelems;
@@ -2579,11 +2578,11 @@ make_callstmt_target(PLiSQL_execstate * estate, PLiSQL_expr * expr)
 	 */
 	MemoryContextSwitchTo(estate->func->fn_cxt);
 
-	row = (PLiSQL_row *) palloc0(sizeof(PLiSQL_row));
+	row = palloc0_object(PLiSQL_row);
 	row->dtype = PLISQL_DTYPE_ROW;
 	row->refname = "(unnamed row)";
 	row->lineno = -1;
-	row->varnos = (int *) palloc(numargs * sizeof(int));
+	row->varnos = palloc_array(int, numargs);
 
 	MemoryContextSwitchTo(get_eval_mcontext(estate));
 
