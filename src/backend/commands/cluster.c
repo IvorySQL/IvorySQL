@@ -30,6 +30,7 @@
 #include "catalog/dependency.h"
 #include "catalog/heap.h"
 #include "catalog/index.h"
+#include "catalog/pg_inherits.h"
 #include "catalog/namespace.h"
 #include "catalog/objectaccess.h"
 #include "catalog/pg_am.h"
@@ -1142,7 +1143,8 @@ swap_relation_files(Oid r1, Oid r2, bool target_is_pg_class,
 	 */
 
 	/* set rel1's frozen Xid and minimum MultiXid */
-	if (relform1->relkind != RELKIND_INDEX)
+	if (relform1->relkind != RELKIND_INDEX &&
+		relform1->relkind != RELKIND_GLOBAL_INDEX)
 	{
 		Assert(!TransactionIdIsValid(frozenXid) ||
 			   TransactionIdIsNormal(frozenXid));
@@ -1604,4 +1606,53 @@ get_tables_to_cluster(MemoryContext cluster_context)
 	relation_close(indRelation, AccessShareLock);
 
 	return rvs;
+}
+
+/*
+ * Given an index on a partitioned table, return a list of RelToCluster for
+ * all the children leaves tables/indexes.
+ *
+ * Like expand_vacuum_rel, but here caller must hold AccessExclusiveLock
+ * on the table containing the index.
+ */
+static List *
+get_tables_to_cluster_partitioned(MemoryContext cluster_context, Oid indexOid)
+{
+	List	   *inhoids;
+	ListCell   *lc;
+	List	   *rtcs = NIL;
+	MemoryContext old_context;
+
+	/* Do not lock the children until they're processed */
+	inhoids = find_all_inheritors(indexOid, NoLock, NULL);
+
+	foreach(lc, inhoids)
+	{
+		Oid			indexrelid = lfirst_oid(lc);
+		Oid			relid = IndexGetRelation(indexrelid, false);
+		RelToCluster *rtc;
+
+		/* consider only leaf indexes */
+		if (get_rel_relkind(indexrelid) != RELKIND_INDEX &&
+			get_rel_relkind(indexrelid) != RELKIND_GLOBAL_INDEX)
+			continue;
+
+		/* Silently skip partitions which the user has no access to. */
+		if (!pg_class_ownercheck(relid, GetUserId()) &&
+			(!pg_database_ownercheck(MyDatabaseId, GetUserId()) ||
+			 IsSharedRelation(relid)))
+			continue;
+
+		/* Use a permanent memory context for the result list */
+		old_context = MemoryContextSwitchTo(cluster_context);
+
+		rtc = (RelToCluster *) palloc(sizeof(RelToCluster));
+		rtc->tableOid = relid;
+		rtc->indexOid = indexrelid;
+		rtcs = lappend(rtcs, rtc);
+
+		MemoryContextSwitchTo(old_context);
+	}
+
+	return rtcs;
 }

@@ -1014,6 +1014,7 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
 										 allvisfrac);
 			break;
 
+		case RELKIND_GLOBAL_INDEX:
 		case RELKIND_INDEX:
 
 			/*
