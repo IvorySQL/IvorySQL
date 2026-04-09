@@ -332,7 +332,7 @@ static bool ri_LockPKTuple(Relation pk_rel, TupleTableSlot *slot, Snapshot snap,
 static bool ri_fastpath_is_applicable(const RI_ConstraintInfo *riinfo);
 static void ri_CheckPermissions(Relation query_rel);
 static bool recheck_matched_pk_tuple(Relation idxrel, ScanKeyData *skeys,
-									 TupleTableSlot *new_slot);
+									 int nkeys, TupleTableSlot *new_slot);
 static void build_index_scankeys(const RI_ConstraintInfo *riinfo,
 								 Relation idx_rel, Datum *pk_vals,
 								 char *pk_nulls, ScanKey skeys);
@@ -3157,7 +3157,7 @@ ri_FastPathFlushArray(RI_FastPathEntry *fpentry, TupleTableSlot *fk_slot,
 								   idx_rel->rd_indcollation[0],
 								   fpmeta->regops[0],
 								   found_val);
-			if (!recheck_matched_pk_tuple(idx_rel, recheck_skey, pk_slot))
+			if (!recheck_matched_pk_tuple(idx_rel, recheck_skey, 1, pk_slot))
 				continue;
 		}
 
@@ -3212,7 +3212,7 @@ ri_FastPathProbeOne(Relation pk_rel, Relation idx_rel,
 						   &concurrently_updated))
 		{
 			if (concurrently_updated)
-				found = recheck_matched_pk_tuple(idx_rel, skey, slot);
+				found = recheck_matched_pk_tuple(idx_rel, skey, nkeys, slot);
 			else
 				found = true;
 		}
@@ -3359,7 +3359,7 @@ ri_CheckPermissions(Relation query_rel)
  * not found.
  */
 static bool
-recheck_matched_pk_tuple(Relation idxrel, ScanKeyData *skeys,
+recheck_matched_pk_tuple(Relation idxrel, ScanKeyData *skeys, int nkeys,
 						 TupleTableSlot *new_slot)
 {
 	/*
@@ -3378,8 +3378,9 @@ recheck_matched_pk_tuple(Relation idxrel, ScanKeyData *skeys,
 		   indexInfo->ii_ExclusionOps == NULL);
 
 	/* Form the index values and isnull flags given the table tuple. */
+	Assert(nkeys == indexInfo->ii_NumIndexKeyAttrs);
 	FormIndexDatum(indexInfo, new_slot, NULL, values, isnull);
-	for (int i = 0; i < indexInfo->ii_NumIndexKeyAttrs; i++)
+	for (int i = 0; i < nkeys; i++)
 	{
 		ScanKeyData *skey = &skeys[i];
 
