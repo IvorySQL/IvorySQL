@@ -181,3 +181,13 @@ ORDER BY NAME;
  listen_addresses | 2    |                        | localhost     | FALSE     | FALSE            | FALSE            | Sets the host name or IP address(es) to listen to.
 (5 rows)
 
+-- USER_CONS_COLUMNS
+CREATE TABLE
+  OWNER   |     TABLE_NAME      |  CONSTRAINT_NAME  | COLUMN_NAME
+----------+---------------------+-------------------+-------------
+ WZL | TEST_USER_CONS_COLUMNS | TEST_USER_CONS_COLUMNS_PKEY | ID
+ WZL | TEST_USER_CONS_COLUMNS | TEST_USER_CONS_COLUMNS_NOT_NULL | NAME
+ WZL | TEST_USER_CONS_COLUMNS | TEST_USER_CONS_COLUMNS_NOT_NULL | ID
+(3 rows)
+
+DROP TABLE
