@@ -1006,8 +1006,8 @@ SELCT 1/0;<!-- this typo is intentional -->
    <para>
     If successfully created, a named portal object lasts till the end of the
     current transaction, unless explicitly destroyed.  An unnamed portal is
-    destroyed at the end of the transaction, or as soon as the statement
-    specifying the unnamed portal as destination is processed to completion.  (Note
+    destroyed at the end of the transaction, or as soon as the next Bind
+    statement specifying the unnamed portal as destination is issued.  (Note
     that a simple Query message also destroys the unnamed portal.)  Named
     portals must be explicitly closed before they can be redefined by another
     Bind message, but this is not required for the unnamed portal.
@@ -1636,7 +1636,7 @@ SELCT 1/0;<!-- this typo is intentional -->
    <para>
      Likewise the server expects the client to not begin
      the <acronym>SSL</acronym> negotiation until it receives the server's
-     single byte response to the <acronym>SSL</acronym> request.  If the
+     single-byte response to the <acronym>SSL</acronym> request.  If the
      client begins the <acronym>SSL</acronym> negotiation immediately without
      waiting for the server response to be received it can reduce connection
      latency by one round-trip.  However this comes at the cost of not being

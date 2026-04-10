@@ -307,7 +307,7 @@ static void determineLanguage(List *options);
 		SecLabelStmt SelectStmt TransactionStmt TransactionStmtLegacy TruncateStmt
 		UnlistenStmt UpdateStmt VacuumStmt
 		VariableResetStmt VariableSetStmt VariableShowStmt
-		ViewStmt CheckPointStmt CreateConversionStmt
+		ViewStmt WaitStmt CheckPointStmt CreateConversionStmt
 		DeallocateStmt PrepareStmt ExecuteStmt
 		DropOwnedStmt ReassignOwnedStmt
 		AlterTSConfigurationStmt AlterTSDictionaryStmt
@@ -324,6 +324,7 @@ static void determineLanguage(List *options);
 %type <boolean>		opt_concurrently
 %type <dbehavior>	opt_drop_behavior
 %type <list>		opt_utility_option_list
+%type <list>		opt_wait_with_clause
 %type <list>		utility_option_list
 %type <defelt>		utility_option_elem
 %type <str>			utility_option_name
@@ -811,7 +812,7 @@ static void determineLanguage(List *options);
 	VACUUM VALID VALIDATE VALIDATOR VALUE_P VALUES VARCHAR VARCHAR2 VARIADIC VARYING
 	VERBOSE VERSION_P VIEW VIEWS VIRTUAL VISIBLE VOLATILE
 
-	WHEN WHERE WHITESPACE_P WINDOW WITH WITHIN WITHOUT WORK WRAPPER WRITE
+	WAIT WHEN WHERE WHITESPACE_P WINDOW WITH WITHIN WITHOUT WORK WRAPPER WRITE
 
 	XML_P XMLATTRIBUTES XMLCONCAT XMLELEMENT XMLEXISTS XMLFOREST XMLNAMESPACES
 	XMLPARSE XMLPI XMLROOT XMLSERIALIZE XMLTABLE
@@ -847,11 +848,14 @@ static void determineLanguage(List *options);
 %token <keyword> LONG_P RAW_P
 %token LONG_RAW
 %token <keyword> LOOP_P
+%token <keyword> LSN_P
 %token <keyword> BINARY_FLOAT_NAN BINARY_FLOAT_INFINITY
 	BINARY_DOUBLE_NAN BINARY_DOUBLE_INFINITY
 %token <keyword> NAN_P INFINITE_P
 
 %token <keyword> PARAMSLENGTH
+
+%token <keyword> LISTAGG
 
 %type <node> CreatePackageStmt CreatePackageBodyStmt AlterPackageStmt
 %type <node> package_proper_item
@@ -1215,6 +1219,7 @@ stmt:
 			| VariableSetStmt
 			| VariableShowStmt
 			| ViewStmt
+			| WaitStmt
 			| CreatePackageStmt
 			| CreatePackageBodyStmt
 			| AlterPackageStmt
@@ -18002,6 +18007,40 @@ func_expr: func_application within_group_clause filter_clause null_treatment ove
 				}
 			| func_expr_common_subexpr
 				{ $$ = $1; }
+
+
+                        | LISTAGG '(' func_arg_list ')' within_group_clause filter_clause over_clause 
+                	{
+	                    FuncCall *string_agg_n;
+	                    FuncCall *check_n;
+
+                            if ($5 == NIL)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("LISTAGG requires WITHIN GROUP (ORDER BY ...)"),
+								 parser_errposition(@1)));
+						/*
+						* If no delimiter provided (single arg), append empty string
+						* so string_agg always receives exactly 2 arguments.
+						*/
+						if (list_length($3) == 1)
+							$3 = lappend($3, makeStringConst("", @3));
+
+						string_agg_n = makeFuncCall(SystemFuncName("string_agg"),
+													$3,
+													COERCE_EXPLICIT_CALL, @1);
+	                    string_agg_n->agg_order = $5;
+                            string_agg_n->agg_filter = $6;
+                            string_agg_n->over = $7;
+
+			    /* Wrap with sys.listagg_check to enforce the 4000-byte limit */
+			    check_n = makeFuncCall(OracleSystemFuncName("ora_listagg_check"),
+			    			   list_make1((Node *) string_agg_n),
+						 COERCE_EXPLICIT_CALL, @1);
+			    $$ = (Node *) check_n;
+
+			  }
+
 		;
 
 /*
@@ -18684,6 +18723,28 @@ xml_passing_mech:
 			BY REF_P
 			| BY VALUE_P
 		;
+
+
+/*****************************************************************************
+ *
+ * WAIT FOR LSN
+ *
+ *****************************************************************************/
+
+WaitStmt:
+			WAIT FOR LSN_P Sconst opt_wait_with_clause
+				{
+					WaitStmt *n = makeNode(WaitStmt);
+					n->lsn_literal = $4;
+					n->options = $5;
+					$$ = (Node *) n;
+				}
+			;
+
+opt_wait_with_clause:
+			WITH '(' utility_option_list ')'		{ $$ = $3; }
+			| /*EMPTY*/								{ $$ = NIL; }
+			;
 
 
 /*
@@ -20421,6 +20482,7 @@ unreserved_keyword:
 			| LOGGED
 			| LONG_P
 			| LOOP_P
+			| LSN_P
 			| MAPPING
 			| MATCH
 			| MATCHED
@@ -20626,6 +20688,7 @@ unreserved_keyword:
 			| VIRTUAL
 			| VISIBLE
 			| VOLATILE
+			| WAIT
 			| WHITESPACE_P
 			| WITHIN
 			| WITHOUT
@@ -20821,6 +20884,7 @@ reserved_keyword:
 			| LATERAL_P
 			| LEADING
 			| LIMIT
+			| LISTAGG
 			| LOCALTIME
 			| LOCALTIMESTAMP
 			| NAN_P
@@ -21107,6 +21171,7 @@ bare_label_keyword:
 			| LEFT
 			| LEVEL
 			| LIKE
+			| LISTAGG
 			| LISTEN
 			| LOAD
 			| LOCAL
@@ -21118,6 +21183,7 @@ bare_label_keyword:
 			| LOGGED
 			| LONG_P
 			| LOOP_P
+			| LSN_P
 			| MAPPING
 			| MATCH
 			| MATCHED
@@ -21375,6 +21441,7 @@ bare_label_keyword:
 			| VIRTUAL
 			| VISIBLE
 			| VOLATILE
+			| WAIT
 			| WHEN
 			| WHITESPACE_P
 			| WORK

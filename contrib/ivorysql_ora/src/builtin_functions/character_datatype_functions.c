@@ -75,6 +75,7 @@ PG_FUNCTION_INFO_V1(ora_asciistr);
 PG_FUNCTION_INFO_V1(ora_to_multi_byte);
 PG_FUNCTION_INFO_V1(ora_to_single_byte);
 PG_FUNCTION_INFO_V1(ora_ascii);
+PG_FUNCTION_INFO_V1(ora_listagg_check);
 
 #define PG_STR_GET_TEXT(str_) \
 	DatumGetTextP(DirectFunctionCall1(textin, CStringGetDatum(str_)))
@@ -854,13 +855,14 @@ ora_regexp_count(PG_FUNCTION_ARGS)
 	PG_RETURN_INT32(occurrence_cnt);
 }
 
-/********************************************************************
+/***********************************************************************
  * ora_substrb
  *
  * Purpose:
  *	 Return a substring starting at the specified position in bytes.
  *
- ********************************************************************/
+ **********************************************************************
+ */
 Datum
 ora_substrb(PG_FUNCTION_ARGS)
 {
@@ -2441,3 +2443,39 @@ ora_ascii(PG_FUNCTION_ARGS)
 
     PG_RETURN_INT32((unsigned char) str[0]);
 }
+
+
+/*******************************************************************
+ * ora_listagg_check
+ *
+ * Purpose:
+ *   Check that LISTAGG does not return string greater than 4000 bytes 
+ *
+ *   if yes, returns input parameter 
+ *   otherwise raise error
+ *
+ *******************************************************************/
+Datum
+ora_listagg_check (PG_FUNCTION_ARGS)
+{
+        if (PG_ARGISNULL(0))
+        {
+                PG_RETURN_NULL();
+        }
+        else
+        {
+                text      *value = PG_GETARG_TEXT_PP(0);
+                 int       len = VARSIZE_ANY_EXHDR(value);  // payload length only
+
+				if (len <= 4000)
+                 {
+                     PG_RETURN_TEXT_P(value);
+                 }
+                 else
+                 {
+                     elog(ERROR, "result of aggregation exceeds 4000 bytes");
+                 }
+         }
+
+}
+

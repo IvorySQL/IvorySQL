@@ -125,7 +125,8 @@ ALTER TABLE ab1 ALTER a SET STATISTICS -1;
 ALTER STATISTICS ab1_a_b_stats SET STATISTICS 0;
 \d ab1
 ANALYZE ab1;
-SELECT stxname, stxdndistinct, stxddependencies, stxdmcv, stxdinherit
+SELECT stxname, jsonb_pretty(d.stxdndistinct::text::jsonb) AS stxdndistinct,
+       jsonb_pretty(d.stxddependencies::text::jsonb) AS stxddependencies, stxdmcv, stxdinherit
   FROM pg_statistic_ext s LEFT JOIN pg_statistic_ext_data d ON (d.stxoid = s.oid)
  WHERE s.stxname = 'ab1_a_b_stats';
 ALTER STATISTICS ab1_a_b_stats SET STATISTICS -1;
@@ -297,7 +298,7 @@ CREATE STATISTICS s10 ON a, b, c FROM ndistinct;
 
 ANALYZE ndistinct;
 
-SELECT s.stxkind, d.stxdndistinct
+SELECT s.stxkind, jsonb_pretty(d.stxdndistinct::text::jsonb) AS stxdndistinct
   FROM pg_statistic_ext s, pg_statistic_ext_data d
  WHERE s.stxrelid = 'ndistinct'::regclass
    AND d.stxoid = s.oid;
@@ -338,7 +339,7 @@ INSERT INTO ndistinct (a, b, c, filler1)
 
 ANALYZE ndistinct;
 
-SELECT s.stxkind, d.stxdndistinct
+SELECT s.stxkind, jsonb_pretty(d.stxdndistinct::text::jsonb) AS stxdndistinct
   FROM pg_statistic_ext s, pg_statistic_ext_data d
  WHERE s.stxrelid = 'ndistinct'::regclass
    AND d.stxoid = s.oid;
@@ -364,7 +365,7 @@ SELECT * FROM check_estimated_rows('SELECT COUNT(*) FROM ndistinct GROUP BY a, (
 
 DROP STATISTICS s10;
 
-SELECT s.stxkind, d.stxdndistinct
+SELECT s.stxkind, jsonb_pretty(d.stxdndistinct::text::jsonb) AS stxdndistinct
   FROM pg_statistic_ext s, pg_statistic_ext_data d
  WHERE s.stxrelid = 'ndistinct'::regclass
    AND d.stxoid = s.oid;
@@ -399,7 +400,7 @@ CREATE STATISTICS s10 (ndistinct) ON (a+1), (b+100), (2*c) FROM ndistinct;
 
 ANALYZE ndistinct;
 
-SELECT s.stxkind, d.stxdndistinct
+SELECT s.stxkind, jsonb_pretty(d.stxdndistinct::text::jsonb) AS stxdndistinct
   FROM pg_statistic_ext s, pg_statistic_ext_data d
  WHERE s.stxrelid = 'ndistinct'::regclass
    AND d.stxoid = s.oid;
@@ -423,7 +424,7 @@ CREATE STATISTICS s10 (ndistinct) ON a, b, (2*c) FROM ndistinct;
 
 ANALYZE ndistinct;
 
-SELECT s.stxkind, d.stxdndistinct
+SELECT s.stxkind, jsonb_pretty(d.stxdndistinct::text::jsonb) AS stxdndistinct
   FROM pg_statistic_ext s, pg_statistic_ext_data d
  WHERE s.stxrelid = 'ndistinct'::regclass
    AND d.stxoid = s.oid;
@@ -708,7 +709,7 @@ CREATE STATISTICS func_deps_stat (dependencies) ON a, b, c FROM functional_depen
 ANALYZE functional_dependencies;
 
 -- print the detected dependencies
-SELECT dependencies FROM pg_stats_ext WHERE statistics_name = 'func_deps_stat';
+SELECT jsonb_pretty(dependencies::text::jsonb) AS dependencies FROM pg_stats_ext WHERE statistics_name = 'func_deps_stat';
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a = 1 AND b = ''1''');
 
@@ -844,7 +845,7 @@ CREATE STATISTICS func_deps_stat (dependencies) ON (a * 2), upper(b), (c + 1) FR
 ANALYZE functional_dependencies;
 
 -- print the detected dependencies
-SELECT dependencies FROM pg_stats_ext WHERE statistics_name = 'func_deps_stat';
+SELECT jsonb_pretty(dependencies::text::jsonb) AS dependencies FROM pg_stats_ext WHERE statistics_name = 'func_deps_stat';
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE (a * 2) = 2 AND upper(b) = ''1''');
 
@@ -1759,6 +1760,39 @@ SELECT statistics_name, most_common_vals FROM pg_stats_ext x
 SELECT statistics_name, most_common_vals FROM pg_stats_ext_exprs x
     WHERE tablename = 'stats_ext_tbl' ORDER BY ROW(x.*);
 
+-- CREATE STATISTICS checks for CREATE on the schema
+RESET SESSION AUTHORIZATION;
+CREATE SCHEMA sts_sch1 CREATE TABLE sts_sch1.tbl (a INT, b INT, c INT GENERATED ALWAYS AS (b * 2) STORED);
+CREATE SCHEMA sts_sch2;
+GRANT USAGE ON SCHEMA sts_sch1, sts_sch2 TO regress_stats_user1;
+ALTER TABLE sts_sch1.tbl OWNER TO regress_stats_user1;
+SET SESSION AUTHORIZATION regress_stats_user1;
+CREATE STATISTICS ON a, b, c FROM sts_sch1.tbl;
+CREATE STATISTICS sts_sch2.fail ON a, b, c FROM sts_sch1.tbl;
+RESET SESSION AUTHORIZATION;
+GRANT CREATE ON SCHEMA sts_sch1 TO regress_stats_user1;
+SET SESSION AUTHORIZATION regress_stats_user1;
+CREATE STATISTICS ON a, b, c FROM sts_sch1.tbl;
+CREATE STATISTICS sts_sch2.fail ON a, b, c FROM sts_sch1.tbl;
+RESET SESSION AUTHORIZATION;
+REVOKE CREATE ON SCHEMA sts_sch1 FROM regress_stats_user1;
+GRANT CREATE ON SCHEMA sts_sch2 TO regress_stats_user1;
+SET SESSION AUTHORIZATION regress_stats_user1;
+CREATE STATISTICS ON a, b, c FROM sts_sch1.tbl;
+CREATE STATISTICS sts_sch2.pass1 ON a, b, c FROM sts_sch1.tbl;
+RESET SESSION AUTHORIZATION;
+GRANT CREATE ON SCHEMA sts_sch1, sts_sch2 TO regress_stats_user1;
+SET SESSION AUTHORIZATION regress_stats_user1;
+CREATE STATISTICS ON a, b, c FROM sts_sch1.tbl;
+CREATE STATISTICS sts_sch2.pass2 ON a, b, c FROM sts_sch1.tbl;
+
+-- re-creating statistics via ALTER TABLE bypasses checks for CREATE on schema
+RESET SESSION AUTHORIZATION;
+REVOKE CREATE ON SCHEMA sts_sch1, sts_sch2 FROM regress_stats_user1;
+SET SESSION AUTHORIZATION regress_stats_user1;
+ALTER TABLE sts_sch1.tbl ALTER COLUMN a TYPE SMALLINT;
+ALTER TABLE sts_sch1.tbl ALTER COLUMN c SET EXPRESSION AS (a * 3);
+
 -- Tidy up
 DROP OPERATOR <<< (int, int);
 DROP FUNCTION op_leak(int, int);
@@ -1767,6 +1801,7 @@ DROP FUNCTION op_leak(record, record);
 RESET SESSION AUTHORIZATION;
 DROP TABLE stats_ext_tbl;
 DROP SCHEMA tststats CASCADE;
+DROP SCHEMA sts_sch1, sts_sch2 CASCADE;
 DROP USER regress_stats_user1;
 
 CREATE TABLE grouping_unique (x integer);
