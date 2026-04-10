@@ -794,8 +794,21 @@ ivy_xml_addchildnode(xmlXPathObjectPtr xpathobj, xmlNodePtr cnode)
 			num = xpathobj->nodesetval->nodeNr;
 			for (i = 0; i < num; i++)
 			{
+				xmlNodePtr target = xpathobj->nodesetval->nodeTab[i];
+
+				/*   
+                                 * XPath '/' returns the document node itself.  Oracle treats
+                                 * '/' as the root element, so redirect to the document's root
+                                 * element child; otherwise we would add at the document level
+                                 * (two root elements), producing invalid XML.
+                                 */
+                                if (target->type == XML_DOCUMENT_NODE)
+                                        target = target->children;
+                                if (target == NULL)
+                                        continue;
+
 				cnode_copy = xmlCopyNode(cnode, 1);
-				xmlAddChild(xpathobj->nodesetval->nodeTab[i], cnode_copy->children);
+				xmlAddChild(target, cnode_copy->children);
 				cnode_copy->children = NULL;
 				xmlFreeNode(cnode_copy);
 			}
@@ -1851,8 +1864,6 @@ ivy_insertchildxml(PG_FUNCTION_ARGS)
 	ivy_xml_addchildnode(res, (xmlNodePtr)new_node);
 	ret = (xmltype *)ivy_xml_xmlnode2xmltype((xmlNodePtr)ws.doc);
 	ret = (xmltype *)rv_newline((text *)ret);
-	xmlUnlinkNode((xmlNodePtr)ws.xpathctx->node->children);
-	xmlFreeNode((xmlNodePtr)ws.xpathctx->node->children);
 
 	if (new_node)
 		xmlFreeDoc(new_node);
@@ -1958,8 +1969,6 @@ ivy_insertchildxml2(PG_FUNCTION_ARGS)
 	ivy_xml_addchildnode(res, (xmlNodePtr)new_node);
 	ret = (xmltype *)ivy_xml_xmlnode2xmltype((xmlNodePtr)ws.doc);
 	ret = (xmltype *)rv_newline((text *)ret);
-	xmlUnlinkNode((xmlNodePtr)ws.xpathctx->node->children);
-	xmlFreeNode((xmlNodePtr)ws.xpathctx->node->children);
 
 	if (new_node)
 		xmlFreeDoc(new_node);
