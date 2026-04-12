@@ -774,7 +774,7 @@ SnapBuildDistributeSnapshotAndInval(SnapBuild *builder, XLogRecPtr lsn, Transact
 		if (rbtxn_is_prepared(txn))
 			continue;
 
-		elog(DEBUG2, "adding a new snapshot and invalidations to %u at %X/%X",
+		elog(DEBUG2, "adding a new snapshot and invalidations to %u at %X/%08X",
 			 txn->xid, LSN_FORMAT_ARGS(lsn));
 
 		/*
@@ -1210,7 +1210,7 @@ SnapBuildProcessRunningXacts(SnapBuild *builder, XLogRecPtr lsn, xl_running_xact
 	 * oldest ongoing txn might have started when we didn't yet serialize
 	 * anything because we hadn't reached a consistent state yet.
 	 */
-	if (txn != NULL && txn->restart_decoding_lsn != InvalidXLogRecPtr)
+	if (txn != NULL && XLogRecPtrIsValid(txn->restart_decoding_lsn))
 		LogicalIncreaseRestartDecodingForSlot(lsn, txn->restart_decoding_lsn);
 
 	/*
@@ -1218,8 +1218,8 @@ SnapBuildProcessRunningXacts(SnapBuild *builder, XLogRecPtr lsn, xl_running_xact
 	 * we have one.
 	 */
 	else if (txn == NULL &&
-			 builder->reorder->current_restart_decoding_lsn != InvalidXLogRecPtr &&
-			 builder->last_serialized_snapshot != InvalidXLogRecPtr)
+			 XLogRecPtrIsValid(builder->reorder->current_restart_decoding_lsn) &&
+			 XLogRecPtrIsValid(builder->last_serialized_snapshot))
 		LogicalIncreaseRestartDecodingForSlot(lsn,
 											  builder->last_serialized_snapshot);
 }
@@ -1271,10 +1271,10 @@ SnapBuildFindSnapshot(SnapBuild *builder, XLogRecPtr lsn, xl_running_xacts *runn
 									builder->initial_xmin_horizon))
 	{
 		ereport(DEBUG1,
-				(errmsg_internal("skipping snapshot at %X/%X while building logical decoding snapshot, xmin horizon too low",
-								 LSN_FORMAT_ARGS(lsn)),
-				 errdetail_internal("initial xmin horizon of %u vs the snapshot's %u",
-									builder->initial_xmin_horizon, running->oldestRunningXid)));
+				errmsg_internal("skipping snapshot at %X/%08X while building logical decoding snapshot, xmin horizon too low",
+								LSN_FORMAT_ARGS(lsn)),
+				errdetail_internal("initial xmin horizon of %u vs the snapshot's %u",
+								   builder->initial_xmin_horizon, running->oldestRunningXid));
 
 
 		SnapBuildWaitSnapshot(running, builder->initial_xmin_horizon);
@@ -1293,7 +1293,7 @@ SnapBuildFindSnapshot(SnapBuild *builder, XLogRecPtr lsn, xl_running_xacts *runn
 	 */
 	if (running->oldestRunningXid == running->nextXid)
 	{
-		if (builder->start_decoding_at == InvalidXLogRecPtr ||
+		if (!XLogRecPtrIsValid(builder->start_decoding_at) ||
 			builder->start_decoding_at <= lsn)
 			/* can decode everything after this */
 			builder->start_decoding_at = lsn + 1;
@@ -1310,9 +1310,9 @@ SnapBuildFindSnapshot(SnapBuild *builder, XLogRecPtr lsn, xl_running_xacts *runn
 		builder->next_phase_at = InvalidTransactionId;
 
 		ereport(LOG,
-				(errmsg("logical decoding found consistent point at %X/%X",
-						LSN_FORMAT_ARGS(lsn)),
-				 errdetail("There are no running transactions.")));
+				errmsg("logical decoding found consistent point at %X/%08X",
+					   LSN_FORMAT_ARGS(lsn)),
+				errdetail("There are no running transactions."));
 
 		return false;
 	}
@@ -1359,10 +1359,10 @@ SnapBuildFindSnapshot(SnapBuild *builder, XLogRecPtr lsn, xl_running_xacts *runn
 		Assert(TransactionIdIsNormal(builder->xmax));
 
 		ereport(LOG,
-				(errmsg("logical decoding found initial starting point at %X/%X",
-						LSN_FORMAT_ARGS(lsn)),
-				 errdetail("Waiting for transactions (approximately %d) older than %u to end.",
-						   running->xcnt, running->nextXid)));
+				errmsg("logical decoding found initial starting point at %X/%08X",
+					   LSN_FORMAT_ARGS(lsn)),
+				errdetail("Waiting for transactions (approximately %d) older than %u to end.",
+						  running->xcnt, running->nextXid));
 
 		SnapBuildWaitSnapshot(running, running->nextXid);
 	}
@@ -1383,10 +1383,10 @@ SnapBuildFindSnapshot(SnapBuild *builder, XLogRecPtr lsn, xl_running_xacts *runn
 		builder->next_phase_at = running->nextXid;
 
 		ereport(LOG,
-				(errmsg("logical decoding found initial consistent point at %X/%X",
-						LSN_FORMAT_ARGS(lsn)),
-				 errdetail("Waiting for transactions (approximately %d) older than %u to end.",
-						   running->xcnt, running->nextXid)));
+				errmsg("logical decoding found initial consistent point at %X/%08X",
+					   LSN_FORMAT_ARGS(lsn)),
+				errdetail("Waiting for transactions (approximately %d) older than %u to end.",
+						  running->xcnt, running->nextXid));
 
 		SnapBuildWaitSnapshot(running, running->nextXid);
 	}
@@ -1407,9 +1407,9 @@ SnapBuildFindSnapshot(SnapBuild *builder, XLogRecPtr lsn, xl_running_xacts *runn
 		builder->next_phase_at = InvalidTransactionId;
 
 		ereport(LOG,
-				(errmsg("logical decoding found consistent point at %X/%X",
-						LSN_FORMAT_ARGS(lsn)),
-				 errdetail("There are no old transactions anymore.")));
+				errmsg("logical decoding found consistent point at %X/%08X",
+					   LSN_FORMAT_ARGS(lsn)),
+				errdetail("There are no old transactions anymore."));
 	}
 
 	/*
@@ -1509,8 +1509,8 @@ SnapBuildSerialize(SnapBuild *builder, XLogRecPtr lsn)
 	struct stat stat_buf;
 	Size		sz;
 
-	Assert(lsn != InvalidXLogRecPtr);
-	Assert(builder->last_serialized_snapshot == InvalidXLogRecPtr ||
+	Assert(XLogRecPtrIsValid(lsn));
+	Assert(!XLogRecPtrIsValid(builder->last_serialized_snapshot) ||
 		   builder->last_serialized_snapshot <= lsn);
 
 	/*
@@ -1913,9 +1913,9 @@ SnapBuildRestore(SnapBuild *builder, XLogRecPtr lsn)
 	Assert(builder->state == SNAPBUILD_CONSISTENT);
 
 	ereport(LOG,
-			(errmsg("logical decoding found consistent point at %X/%X",
-					LSN_FORMAT_ARGS(lsn)),
-			 errdetail("Logical decoding will begin using saved snapshot.")));
+			errmsg("logical decoding found consistent point at %X/%08X",
+				   LSN_FORMAT_ARGS(lsn)),
+			errdetail("Logical decoding will begin using saved snapshot."));
 	return true;
 
 snapshot_not_interesting:
@@ -2029,7 +2029,7 @@ CheckPointSnapBuild(void)
 		lsn = ((uint64) hi) << 32 | lo;
 
 		/* check whether we still need it */
-		if (lsn < cutoff || cutoff == InvalidXLogRecPtr)
+		if (lsn < cutoff || !XLogRecPtrIsValid(cutoff))
 		{
 			elog(DEBUG1, "removing snapbuild snapshot %s", path);
 

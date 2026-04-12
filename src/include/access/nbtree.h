@@ -17,12 +17,12 @@
 #include "access/amapi.h"
 #include "access/itup.h"
 #include "access/sdir.h"
-#include "access/tableam.h"
-#include "access/xlogreader.h"
 #include "catalog/pg_am_d.h"
+#include "catalog/pg_class.h"
 #include "catalog/pg_index.h"
 #include "lib/stringinfo.h"
 #include "storage/bufmgr.h"
+#include "storage/dsm.h"
 #include "storage/shm_toc.h"
 #include "utils/skipsupport.h"
 
@@ -1234,7 +1234,7 @@ extern void _bt_dedup_start_pending(BTDedupState state, IndexTuple base,
 									OffsetNumber baseoff);
 extern bool _bt_dedup_save_htid(BTDedupState state, IndexTuple itup);
 extern Size _bt_dedup_finish_pending(Page newpage, BTDedupState state);
-extern IndexTuple _bt_form_posting(IndexTuple base, ItemPointer htids,
+extern IndexTuple _bt_form_posting(IndexTuple base, const ItemPointerData *htids,
 								   int nhtids);
 extern void _bt_update_posting(BTVacuumPosting vacposting);
 extern IndexTuple _bt_swap_posting(IndexTuple newitem, IndexTuple oposting,
@@ -1285,9 +1285,10 @@ extern void _bt_pageinit(Page page, Size size);
 extern void _bt_delitems_vacuum(Relation rel, Buffer buf,
 								OffsetNumber *deletable, int ndeletable,
 								BTVacuumPosting *updatable, int nupdatable);
+struct TM_IndexDeleteOp;		/* avoid including tableam.h here */
 extern void _bt_delitems_delete_check(Relation rel, Buffer buf,
 									  Relation heapRel,
-									  TM_IndexDeleteOp *delstate);
+									  struct TM_IndexDeleteOp *delstate);
 extern void _bt_pagedel(Relation rel, Buffer leafbuf, BTVacState *vstate);
 extern void _bt_pendingfsm_init(Relation rel, BTVacState *vstate,
 								bool cleanuponly);

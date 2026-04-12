@@ -18,6 +18,7 @@
 #include "postgres.h"
 
 #include "fmgr.h"
+#include "funcapi.h"
 #include "injection_stats.h"
 #include "miscadmin.h"
 #include "nodes/pg_list.h"
@@ -391,6 +392,47 @@ injection_points_attach(PG_FUNCTION_ARGS)
 }
 
 /*
+ * SQL function for creating an injection point with library name, function
+ * name and private data.
+ */
+PG_FUNCTION_INFO_V1(injection_points_attach_func);
+Datum
+injection_points_attach_func(PG_FUNCTION_ARGS)
+{
+	char	   *name;
+	char	   *lib_name;
+	char	   *function;
+	bytea	   *private_data = NULL;
+	int			private_data_size = 0;
+
+	if (PG_ARGISNULL(0))
+		elog(ERROR, "injection point name cannot be NULL");
+	if (PG_ARGISNULL(1))
+		elog(ERROR, "injection point library cannot be NULL");
+	if (PG_ARGISNULL(2))
+		elog(ERROR, "injection point function cannot be NULL");
+
+	name = text_to_cstring(PG_GETARG_TEXT_PP(0));
+	lib_name = text_to_cstring(PG_GETARG_TEXT_PP(1));
+	function = text_to_cstring(PG_GETARG_TEXT_PP(2));
+
+	if (!PG_ARGISNULL(3))
+	{
+		private_data = PG_GETARG_BYTEA_PP(3);
+		private_data_size = VARSIZE_ANY_EXHDR(private_data);
+	}
+
+	pgstat_report_inj_fixed(1, 0, 0, 0, 0);
+	if (private_data != NULL)
+		InjectionPointAttach(name, lib_name, function, VARDATA_ANY(private_data),
+							 private_data_size);
+	else
+		InjectionPointAttach(name, lib_name, function, NULL,
+							 0);
+	PG_RETURN_VOID();
+}
+
+/*
  * SQL function for loading an injection point.
  */
 PG_FUNCTION_INFO_V1(injection_points_load);
@@ -543,6 +585,44 @@ injection_points_detach(PG_FUNCTION_ARGS)
 	pgstat_drop_inj(name);
 
 	PG_RETURN_VOID();
+}
+
+/*
+ * SQL function for listing all the injection points attached.
+ */
+PG_FUNCTION_INFO_V1(injection_points_list);
+Datum
+injection_points_list(PG_FUNCTION_ARGS)
+{
+#define NUM_INJECTION_POINTS_LIST 3
+	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	List	   *inj_points;
+	ListCell   *lc;
+
+	/* Build a tuplestore to return our results in */
+	InitMaterializedSRF(fcinfo, 0);
+
+	inj_points = InjectionPointList();
+
+	foreach(lc, inj_points)
+	{
+		Datum		values[NUM_INJECTION_POINTS_LIST];
+		bool		nulls[NUM_INJECTION_POINTS_LIST];
+		InjectionPointData *inj_point = lfirst(lc);
+
+		memset(values, 0, sizeof(values));
+		memset(nulls, 0, sizeof(nulls));
+
+		values[0] = PointerGetDatum(cstring_to_text(inj_point->name));
+		values[1] = PointerGetDatum(cstring_to_text(inj_point->library));
+		values[2] = PointerGetDatum(cstring_to_text(inj_point->function));
+
+		/* shove row into tuplestore */
+		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
+	}
+
+	return (Datum) 0;
+#undef NUM_INJECTION_POINTS_LIST
 }
 
 

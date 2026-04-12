@@ -2275,33 +2275,12 @@ timestamp_cmp(PG_FUNCTION_ARGS)
 	PG_RETURN_INT32(timestamp_cmp_internal(dt1, dt2));
 }
 
-#if SIZEOF_DATUM < 8
-/* note: this is used for timestamptz also */
-static int
-timestamp_fastcmp(Datum x, Datum y, SortSupport ssup)
-{
-	Timestamp	a = DatumGetTimestamp(x);
-	Timestamp	b = DatumGetTimestamp(y);
-
-	return timestamp_cmp_internal(a, b);
-}
-#endif
-
 Datum
 timestamp_sortsupport(PG_FUNCTION_ARGS)
 {
 	SortSupport ssup = (SortSupport) PG_GETARG_POINTER(0);
 
-#if SIZEOF_DATUM >= 8
-
-	/*
-	 * If this build has pass-by-value timestamps, then we can use a standard
-	 * comparator function.
-	 */
 	ssup->comparator = ssup_datum_signed_cmp;
-#else
-	ssup->comparator = timestamp_fastcmp;
-#endif
 	PG_RETURN_VOID();
 }
 
@@ -4954,7 +4933,7 @@ timestamptz_trunc_internal(text *units, TimestampTz timestamp, pg_tz *tzp)
 				case DTK_SECOND:
 				case DTK_MILLISEC:
 				case DTK_MICROSEC:
-					PG_RETURN_TIMESTAMPTZ(timestamp);
+					return timestamp;
 					break;
 
 				default:
@@ -5312,10 +5291,10 @@ isoweekdate2date(int isoweek, int wday, int *year, int *mon, int *mday)
 int
 date2isoweek(int year, int mon, int mday)
 {
-	float8		result;
 	int			day0,
 				day4,
-				dayn;
+				dayn,
+				week;
 
 	/* current day */
 	dayn = date2j(year, mon, mday);
@@ -5338,13 +5317,13 @@ date2isoweek(int year, int mon, int mday)
 		day0 = j2day(day4 - 1);
 	}
 
-	result = (dayn - (day4 - day0)) / 7 + 1;
+	week = (dayn - (day4 - day0)) / 7 + 1;
 
 	/*
 	 * Sometimes the last few days in a year will fall into the first week of
 	 * the next year, so check for this.
 	 */
-	if (result >= 52)
+	if (week >= 52)
 	{
 		day4 = date2j(year + 1, 1, 4);
 
@@ -5352,10 +5331,10 @@ date2isoweek(int year, int mon, int mday)
 		day0 = j2day(day4 - 1);
 
 		if (dayn >= day4 - day0)
-			result = (dayn - (day4 - day0)) / 7 + 1;
+			week = (dayn - (day4 - day0)) / 7 + 1;
 	}
 
-	return (int) result;
+	return week;
 }
 
 
@@ -5367,10 +5346,10 @@ date2isoweek(int year, int mon, int mday)
 int
 date2isoyear(int year, int mon, int mday)
 {
-	float8		result;
 	int			day0,
 				day4,
-				dayn;
+				dayn,
+				week;
 
 	/* current day */
 	dayn = date2j(year, mon, mday);
@@ -5395,13 +5374,13 @@ date2isoyear(int year, int mon, int mday)
 		year--;
 	}
 
-	result = (dayn - (day4 - day0)) / 7 + 1;
+	week = (dayn - (day4 - day0)) / 7 + 1;
 
 	/*
 	 * Sometimes the last few days in a year will fall into the first week of
 	 * the next year, so check for this.
 	 */
-	if (result >= 52)
+	if (week >= 52)
 	{
 		day4 = date2j(year + 1, 1, 4);
 
@@ -5650,11 +5629,11 @@ timestamp_part_common(PG_FUNCTION_ARGS, bool retnumeric)
 
 			case DTK_JULIAN:
 				if (retnumeric)
-					PG_RETURN_NUMERIC(numeric_add_opt_error(int64_to_numeric(date2j(tm->tm_year, tm->tm_mon, tm->tm_mday)),
-															numeric_div_opt_error(int64_to_numeric(((((tm->tm_hour * MINS_PER_HOUR) + tm->tm_min) * SECS_PER_MINUTE) + tm->tm_sec) * INT64CONST(1000000) + fsec),
-																				  int64_to_numeric(SECS_PER_DAY * INT64CONST(1000000)),
-																				  NULL),
-															NULL));
+					PG_RETURN_NUMERIC(numeric_add_safe(int64_to_numeric(date2j(tm->tm_year, tm->tm_mon, tm->tm_mday)),
+													   numeric_div_safe(int64_to_numeric(((((tm->tm_hour * MINS_PER_HOUR) + tm->tm_min) * SECS_PER_MINUTE) + tm->tm_sec) * INT64CONST(1000000) + fsec),
+																		int64_to_numeric(SECS_PER_DAY * INT64CONST(1000000)),
+																		NULL),
+													   NULL));
 				else
 					PG_RETURN_FLOAT8(date2j(tm->tm_year, tm->tm_mon, tm->tm_mday) +
 									 ((((tm->tm_hour * MINS_PER_HOUR) + tm->tm_min) * SECS_PER_MINUTE) +
@@ -5706,11 +5685,11 @@ timestamp_part_common(PG_FUNCTION_ARGS, bool retnumeric)
 						result = int64_div_fast_to_numeric(timestamp - epoch, 6);
 					else
 					{
-						result = numeric_div_opt_error(numeric_sub_opt_error(int64_to_numeric(timestamp),
-																			 int64_to_numeric(epoch),
-																			 NULL),
-													   int64_to_numeric(1000000),
-													   NULL);
+						result = numeric_div_safe(numeric_sub_safe(int64_to_numeric(timestamp),
+																   int64_to_numeric(epoch),
+																   NULL),
+												  int64_to_numeric(1000000),
+												  NULL);
 						result = DatumGetNumeric(DirectFunctionCall2(numeric_round,
 																	 NumericGetDatum(result),
 																	 Int32GetDatum(6)));
@@ -5924,11 +5903,11 @@ timestamptz_part_common(PG_FUNCTION_ARGS, bool retnumeric)
 
 			case DTK_JULIAN:
 				if (retnumeric)
-					PG_RETURN_NUMERIC(numeric_add_opt_error(int64_to_numeric(date2j(tm->tm_year, tm->tm_mon, tm->tm_mday)),
-															numeric_div_opt_error(int64_to_numeric(((((tm->tm_hour * MINS_PER_HOUR) + tm->tm_min) * SECS_PER_MINUTE) + tm->tm_sec) * INT64CONST(1000000) + fsec),
-																				  int64_to_numeric(SECS_PER_DAY * INT64CONST(1000000)),
-																				  NULL),
-															NULL));
+					PG_RETURN_NUMERIC(numeric_add_safe(int64_to_numeric(date2j(tm->tm_year, tm->tm_mon, tm->tm_mday)),
+													   numeric_div_safe(int64_to_numeric(((((tm->tm_hour * MINS_PER_HOUR) + tm->tm_min) * SECS_PER_MINUTE) + tm->tm_sec) * INT64CONST(1000000) + fsec),
+																		int64_to_numeric(SECS_PER_DAY * INT64CONST(1000000)),
+																		NULL),
+													   NULL));
 				else
 					PG_RETURN_FLOAT8(date2j(tm->tm_year, tm->tm_mon, tm->tm_mday) +
 									 ((((tm->tm_hour * MINS_PER_HOUR) + tm->tm_min) * SECS_PER_MINUTE) +
@@ -5977,11 +5956,11 @@ timestamptz_part_common(PG_FUNCTION_ARGS, bool retnumeric)
 						result = int64_div_fast_to_numeric(timestamp - epoch, 6);
 					else
 					{
-						result = numeric_div_opt_error(numeric_sub_opt_error(int64_to_numeric(timestamp),
-																			 int64_to_numeric(epoch),
-																			 NULL),
-													   int64_to_numeric(1000000),
-													   NULL);
+						result = numeric_div_safe(numeric_sub_safe(int64_to_numeric(timestamp),
+																   int64_to_numeric(epoch),
+																   NULL),
+												  int64_to_numeric(1000000),
+												  NULL);
 						result = DatumGetNumeric(DirectFunctionCall2(numeric_round,
 																	 NumericGetDatum(result),
 																	 Int32GetDatum(6)));
@@ -6268,9 +6247,9 @@ interval_part_common(PG_FUNCTION_ARGS, bool retnumeric)
 				result = int64_div_fast_to_numeric(val, 6);
 			else
 				result =
-					numeric_add_opt_error(int64_div_fast_to_numeric(interval->time, 6),
-										  int64_to_numeric(secs_from_day_month),
-										  NULL);
+					numeric_add_safe(int64_div_fast_to_numeric(interval->time, 6),
+									 int64_to_numeric(secs_from_day_month),
+									 NULL);
 
 			PG_RETURN_NUMERIC(result);
 		}
@@ -6477,7 +6456,7 @@ timestamp2timestamptz_opt_overflow(Timestamp timestamp, int *overflow)
 	if (TIMESTAMP_NOT_FINITE(timestamp))
 		return timestamp;
 
-	/* We don't expect this to fail, but check it pro forma */
+	/* timestamp2tm should not fail on valid timestamps, but cope */
 	if (timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL) == 0)
 	{
 		tz = DetermineTimeZoneOffset(tm, session_timezone);
@@ -6485,23 +6464,22 @@ timestamp2timestamptz_opt_overflow(Timestamp timestamp, int *overflow)
 		result = dt2local(timestamp, -tz);
 
 		if (IS_VALID_TIMESTAMP(result))
-		{
 			return result;
-		}
-		else if (overflow)
+	}
+
+	if (overflow)
+	{
+		if (timestamp < 0)
 		{
-			if (result < MIN_TIMESTAMP)
-			{
-				*overflow = -1;
-				TIMESTAMP_NOBEGIN(result);
-			}
-			else
-			{
-				*overflow = 1;
-				TIMESTAMP_NOEND(result);
-			}
-			return result;
+			*overflow = -1;
+			TIMESTAMP_NOBEGIN(result);
 		}
+		else
+		{
+			*overflow = 1;
+			TIMESTAMP_NOEND(result);
+		}
+		return result;
 	}
 
 	ereport(ERROR,
@@ -6531,8 +6509,27 @@ timestamptz_timestamp(PG_FUNCTION_ARGS)
 	PG_RETURN_TIMESTAMP(timestamptz2timestamp(timestamp));
 }
 
+/*
+ * Convert timestamptz to timestamp, throwing error for overflow.
+ */
 static Timestamp
 timestamptz2timestamp(TimestampTz timestamp)
+{
+	return timestamptz2timestamp_opt_overflow(timestamp, NULL);
+}
+
+/*
+ * Convert timestamp with time zone to timestamp.
+ *
+ * On successful conversion, *overflow is set to zero if it's not NULL.
+ *
+ * If the timestamptz is finite but out of the valid range for timestamp, then:
+ * if overflow is NULL, we throw an out-of-range error.
+ * if overflow is not NULL, we store +1 or -1 there to indicate the sign
+ * of the overflow, and return the appropriate timestamp infinity.
+ */
+Timestamp
+timestamptz2timestamp_opt_overflow(TimestampTz timestamp, int *overflow)
 {
 	Timestamp	result;
 	struct pg_tm tt,
@@ -6540,18 +6537,53 @@ timestamptz2timestamp(TimestampTz timestamp)
 	fsec_t		fsec;
 	int			tz;
 
+	if (overflow)
+		*overflow = 0;
+
 	if (TIMESTAMP_NOT_FINITE(timestamp))
 		result = timestamp;
 	else
 	{
 		if (timestamp2tm(timestamp, &tz, tm, &fsec, NULL, NULL) != 0)
+		{
+			if (overflow)
+			{
+				if (timestamp < 0)
+				{
+					*overflow = -1;
+					TIMESTAMP_NOBEGIN(result);
+				}
+				else
+				{
+					*overflow = 1;
+					TIMESTAMP_NOEND(result);
+				}
+				return result;
+			}
 			ereport(ERROR,
 					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 					 errmsg("timestamp out of range")));
+		}
 		if (tm2timestamp(tm, fsec, NULL, &result) != 0)
+		{
+			if (overflow)
+			{
+				if (timestamp < 0)
+				{
+					*overflow = -1;
+					TIMESTAMP_NOBEGIN(result);
+				}
+				else
+				{
+					*overflow = 1;
+					TIMESTAMP_NOEND(result);
+				}
+				return result;
+			}
 			ereport(ERROR,
 					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 					 errmsg("timestamp out of range")));
+		}
 	}
 	return result;
 }

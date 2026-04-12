@@ -1613,6 +1613,19 @@ drop table parted;
 drop function parted_trigfunc();
 
 --
+-- Constraint triggers
+--
+create constraint trigger crtr
+  after insert on foo not valid
+  for each row execute procedure foo ();
+create constraint trigger crtr
+  after insert on foo no inherit
+  for each row execute procedure foo ();
+create constraint trigger crtr
+  after insert on foo not enforced
+  for each row execute procedure foo ();
+
+--
 -- Constraint triggers and partitioned tables
 create table parted_constr_ancestor (a int, b text)
   partition by range (b);
@@ -1963,6 +1976,11 @@ BBB	42
 CCC	42
 \.
 
+-- check detach/reattach behavior; statement triggers with transition tables
+-- should not prevent a table from becoming a partition again
+alter table parent detach partition child1;
+alter table parent attach partition child1 for values in ('AAA');
+
 -- DML affecting parent sees tuples collected from children even if
 -- there is no transition table trigger on the children
 drop trigger child1_insert_trig on child1;
@@ -2186,6 +2204,11 @@ create index on parent(b);
 copy parent (a, b) from stdin;
 DDD	42
 \.
+
+-- check disinherit/reinherit behavior; statement triggers with transition
+-- tables should not prevent a table from becoming an inheritance child again
+alter table child1 no inherit parent;
+alter table child1 inherit parent;
 
 -- DML affecting parent sees tuples collected from children even if
 -- there is no transition table trigger on the children

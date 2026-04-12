@@ -11,10 +11,12 @@
 #ifndef PGSTAT_H
 #define PGSTAT_H
 
+#include "access/transam.h"		/* for FullTransactionId */
 #include "datatype/timestamp.h"
 #include "portability/instr_time.h"
 #include "postmaster/pgarch.h"	/* for MAX_XFN_CHARS */
 #include "replication/conflict.h"
+#include "replication/worker_internal.h"
 #include "utils/backend_progress.h" /* for backward compatibility */	/* IWYU pragma: export */
 #include "utils/backend_status.h"	/* for backward compatibility */	/* IWYU pragma: export */
 #include "utils/pgstat_kind.h"
@@ -107,7 +109,8 @@ typedef struct PgStat_FunctionCallUsage
 typedef struct PgStat_BackendSubEntry
 {
 	PgStat_Counter apply_error_count;
-	PgStat_Counter sync_error_count;
+	PgStat_Counter sync_seq_error_count;
+	PgStat_Counter sync_table_error_count;
 	PgStat_Counter conflict_count[CONFLICT_NUM_TYPES];
 } PgStat_BackendSubEntry;
 
@@ -211,7 +214,7 @@ typedef struct PgStat_TableXactStatus
  * ------------------------------------------------------------
  */
 
-#define PGSTAT_FILE_FORMAT_ID	0x01A5BCB7
+#define PGSTAT_FILE_FORMAT_ID	0x01A5BCBA
 
 typedef struct PgStat_ArchiverStats
 {
@@ -383,6 +386,7 @@ typedef struct PgStat_StatFuncEntry
 
 	PgStat_Counter total_time;	/* times in microseconds */
 	PgStat_Counter self_time;
+	TimestampTz stat_reset_timestamp;
 } PgStat_StatFuncEntry;
 
 typedef struct PgStat_StatReplSlotEntry
@@ -393,6 +397,7 @@ typedef struct PgStat_StatReplSlotEntry
 	PgStat_Counter stream_txns;
 	PgStat_Counter stream_count;
 	PgStat_Counter stream_bytes;
+	PgStat_Counter mem_exceeded_count;
 	PgStat_Counter total_txns;
 	PgStat_Counter total_bytes;
 	TimestampTz stat_reset_timestamp;
@@ -413,7 +418,8 @@ typedef struct PgStat_SLRUStats
 typedef struct PgStat_StatSubEntry
 {
 	PgStat_Counter apply_error_count;
-	PgStat_Counter sync_error_count;
+	PgStat_Counter sync_seq_error_count;
+	PgStat_Counter sync_table_error_count;
 	PgStat_Counter conflict_count[CONFLICT_NUM_TYPES];
 	TimestampTz stat_reset_timestamp;
 } PgStat_StatSubEntry;
@@ -453,6 +459,8 @@ typedef struct PgStat_StatTabEntry
 	PgStat_Counter total_autovacuum_time;
 	PgStat_Counter total_analyze_time;
 	PgStat_Counter total_autoanalyze_time;
+
+	TimestampTz stat_reset_time;
 } PgStat_StatTabEntry;
 
 /* ------
@@ -468,6 +476,7 @@ typedef struct PgStat_WalCounters
 	PgStat_Counter wal_records;
 	PgStat_Counter wal_fpi;
 	uint64		wal_bytes;
+	uint64		wal_fpi_bytes;
 	PgStat_Counter wal_buffers_full;
 } PgStat_WalCounters;
 
@@ -718,9 +727,9 @@ extern void pgstat_count_heap_delete(Relation rel);
 extern void pgstat_count_truncate(Relation rel);
 extern void pgstat_update_heap_dead_tuples(Relation rel, int delta);
 
-extern void pgstat_twophase_postcommit(TransactionId xid, uint16 info,
+extern void pgstat_twophase_postcommit(FullTransactionId fxid, uint16 info,
 									   void *recdata, uint32 len);
-extern void pgstat_twophase_postabort(TransactionId xid, uint16 info,
+extern void pgstat_twophase_postabort(FullTransactionId fxid, uint16 info,
 									  void *recdata, uint32 len);
 
 extern PgStat_StatTabEntry *pgstat_fetch_stat_tabentry(Oid relid);
@@ -747,11 +756,11 @@ extern PgStat_StatReplSlotEntry *pgstat_fetch_replslot(NameData slotname);
  */
 
 extern void pgstat_reset_slru(const char *);
-extern void pgstat_count_slru_page_zeroed(int slru_idx);
-extern void pgstat_count_slru_page_hit(int slru_idx);
-extern void pgstat_count_slru_page_read(int slru_idx);
-extern void pgstat_count_slru_page_written(int slru_idx);
-extern void pgstat_count_slru_page_exists(int slru_idx);
+extern void pgstat_count_slru_blocks_zeroed(int slru_idx);
+extern void pgstat_count_slru_blocks_hit(int slru_idx);
+extern void pgstat_count_slru_blocks_read(int slru_idx);
+extern void pgstat_count_slru_blocks_written(int slru_idx);
+extern void pgstat_count_slru_blocks_exists(int slru_idx);
 extern void pgstat_count_slru_flush(int slru_idx);
 extern void pgstat_count_slru_truncate(int slru_idx);
 extern const char *pgstat_get_slru_name(int slru_idx);
@@ -763,7 +772,8 @@ extern PgStat_SLRUStats *pgstat_fetch_slru(void);
  * Functions in pgstat_subscription.c
  */
 
-extern void pgstat_report_subscription_error(Oid subid, bool is_apply_error);
+extern void pgstat_report_subscription_error(Oid subid,
+											 LogicalRepWorkerType wtype);
 extern void pgstat_report_subscription_conflict(Oid subid, ConflictType type);
 extern void pgstat_create_subscription(Oid subid);
 extern void pgstat_drop_subscription(Oid subid);

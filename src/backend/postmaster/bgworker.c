@@ -131,7 +131,10 @@ static const struct
 		"ParallelApplyWorkerMain", ParallelApplyWorkerMain
 	},
 	{
-		"TablesyncWorkerMain", TablesyncWorkerMain
+		"TableSyncWorkerMain", TableSyncWorkerMain
+	},
+	{
+		"SequenceSyncWorkerMain", SequenceSyncWorkerMain
 	}
 };
 
@@ -613,6 +616,7 @@ ResetBackgroundWorkerCrashTimes(void)
 			 * resetting.
 			 */
 			rw->rw_crashed_at = 0;
+			rw->rw_pid = 0;
 
 			/*
 			 * If there was anyone waiting for it, they're history.

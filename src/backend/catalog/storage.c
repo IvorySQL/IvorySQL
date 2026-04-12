@@ -546,7 +546,7 @@ RelationCopyStorage(SMgrRelation src, SMgrRelation dst,
 
 			ereport(ERROR,
 					(errcode(ERRCODE_DATA_CORRUPTED),
-					 errmsg("invalid page in block %u of relation %s",
+					 errmsg("invalid page in block %u of relation \"%s\"",
 							blkno, relpath.str)));
 		}
 
@@ -586,7 +586,7 @@ RelFileLocatorSkippingWAL(RelFileLocator rlocator)
 Size
 EstimatePendingSyncsSpace(void)
 {
-	long		entries;
+	int64		entries;
 
 	entries = pendingSyncHash ? hash_get_num_entries(pendingSyncHash) : 0;
 	return mul_size(1 + entries, sizeof(RelFileLocator));

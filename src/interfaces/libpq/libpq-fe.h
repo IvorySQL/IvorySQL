@@ -242,9 +242,6 @@ typedef struct pgNotify
 	struct pgNotify *next;		/* list link */
 } PGnotify;
 
-/* deprecated name for int64_t */
-typedef int64_t pg_int64;
-
 /* pg_usec_time_t is like time_t, but with microsecond resolution */
 typedef int64_t pg_usec_time_t;
 
@@ -413,7 +410,6 @@ extern int	PQrequestCancel(PGconn *conn);
 
 /* Accessor functions for PGconn objects */
 extern char *PQdb(const PGconn *conn);
-extern char *PQservice(const PGconn *conn);
 extern char *PQuser(const PGconn *conn);
 extern char *PQpass(const PGconn *conn);
 extern char *PQhost(const PGconn *conn);

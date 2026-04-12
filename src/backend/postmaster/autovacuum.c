@@ -77,7 +77,6 @@
 #include "catalog/namespace.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_namespace.h"
-#include "commands/dbcommands.h"
 #include "commands/vacuum.h"
 #include "common/int.h"
 #include "lib/ilist.h"
@@ -134,6 +133,7 @@ double		autovacuum_vac_cost_delay;
 int			autovacuum_vac_cost_limit;
 
 int			Log_autovacuum_min_duration = 600000;
+int			Log_autoanalyze_min_duration = 600000;
 
 /* the minimum allowed time between two awakenings of the launcher */
 #define MIN_AUTOVAC_SLEEPTIME 100.0 /* milliseconds */
@@ -309,6 +309,16 @@ static AutoVacuumShmemStruct *AutoVacuumShmem;
  */
 static dlist_head DatabaseList = DLIST_STATIC_INIT(DatabaseList);
 static MemoryContext DatabaseListCxt = NULL;
+
+/*
+ * Dummy pointer to persuade Valgrind that we've not leaked the array of
+ * avl_dbase structs.  Make it global to ensure the compiler doesn't
+ * optimize it away.
+ */
+#ifdef USE_VALGRIND
+extern avl_dbase *avl_dbase_array;
+avl_dbase  *avl_dbase_array;
+#endif
 
 /* Pointer to my own WorkerInfo, valid on each worker */
 static WorkerInfo MyWorkerInfo = NULL;
@@ -562,10 +572,10 @@ AutoVacLauncherMain(const void *startup_data, size_t startup_data_len)
 
 	/*
 	 * Create the initial database list.  The invariant we want this list to
-	 * keep is that it's ordered by decreasing next_time.  As soon as an entry
-	 * is updated to a higher time, it will be moved to the front (which is
-	 * correct because the only operation is to add autovacuum_naptime to the
-	 * entry, and time always increases).
+	 * keep is that it's ordered by decreasing next_worker.  As soon as an
+	 * entry is updated to a higher time, it will be moved to the front (which
+	 * is correct because the only operation is to add autovacuum_naptime to
+	 * the entry, and time always increases).
 	 */
 	rebuild_database_list(InvalidOid);
 
@@ -1020,6 +1030,10 @@ rebuild_database_list(Oid newdb)
 
 		/* put all the hash elements into an array */
 		dbary = palloc(nelems * sizeof(avl_dbase));
+		/* keep Valgrind quiet */
+#ifdef USE_VALGRIND
+		avl_dbase_array = dbary;
+#endif
 
 		i = 0;
 		hash_seq_init(&seq, dbhash);
@@ -2542,7 +2556,10 @@ deleted:
 		workitem->avw_active = true;
 		LWLockRelease(AutovacuumLock);
 
+		PushActiveSnapshot(GetTransactionSnapshot());
 		perform_work_item(workitem);
+		if (ActiveSnapshotSet())	/* transaction could have aborted */
+			PopActiveSnapshot();
 
 		/*
 		 * Check for config changes before acquiring lock for further jobs.
@@ -2565,8 +2582,18 @@ deleted:
 
 	/*
 	 * We leak table_toast_map here (among other things), but since we're
-	 * going away soon, it's not a problem.
+	 * going away soon, it's not a problem normally.  But when using Valgrind,
+	 * release some stuff to reduce complaints about leaked storage.
 	 */
+#ifdef USE_VALGRIND
+	hash_destroy(table_toast_map);
+	FreeTupleDesc(pg_class_desc);
+	if (bstrategy)
+		pfree(bstrategy);
+#endif
+
+	/* Run the rest in xact context, mainly to avoid Valgrind leak warnings */
+	MemoryContextSwitchTo(TopTransactionContext);
 
 	/*
 	 * Update pg_database.datfrozenxid, and truncate pg_xact if possible. We
@@ -2791,7 +2818,8 @@ table_recheck_autovac(Oid relid, HTAB *table_toast_map,
 		int			freeze_table_age;
 		int			multixact_freeze_min_age;
 		int			multixact_freeze_table_age;
-		int			log_min_duration;
+		int			log_vacuum_min_duration;
+		int			log_analyze_min_duration;
 
 		/*
 		 * Calculate the vacuum cost parameters and the freeze ages.  If there
@@ -2801,9 +2829,14 @@ table_recheck_autovac(Oid relid, HTAB *table_toast_map,
 		 */
 
 		/* -1 in autovac setting means use log_autovacuum_min_duration */
-		log_min_duration = (avopts && avopts->log_min_duration >= 0)
-			? avopts->log_min_duration
+		log_vacuum_min_duration = (avopts && avopts->log_vacuum_min_duration >= 0)
+			? avopts->log_vacuum_min_duration
 			: Log_autovacuum_min_duration;
+
+		/* -1 in autovac setting means use log_autoanalyze_min_duration */
+		log_analyze_min_duration = (avopts && avopts->log_analyze_min_duration >= 0)
+			? avopts->log_analyze_min_duration
+			: Log_autoanalyze_min_duration;
 
 		/* these do not have autovacuum-specific settings */
 		freeze_min_age = (avopts && avopts->freeze_min_age >= 0)
@@ -2854,7 +2887,8 @@ table_recheck_autovac(Oid relid, HTAB *table_toast_map,
 		tab->at_params.multixact_freeze_min_age = multixact_freeze_min_age;
 		tab->at_params.multixact_freeze_table_age = multixact_freeze_table_age;
 		tab->at_params.is_wraparound = wraparound;
-		tab->at_params.log_min_duration = log_min_duration;
+		tab->at_params.log_vacuum_min_duration = log_vacuum_min_duration;
+		tab->at_params.log_analyze_min_duration = log_analyze_min_duration;
 		tab->at_params.toast_parent = InvalidOid;
 
 		/*
@@ -3084,7 +3118,7 @@ relation_needs_vacanalyze(Oid relid,
 	 * vacuuming only, so don't vacuum (or analyze) anything that's not being
 	 * forced.
 	 */
-	if (PointerIsValid(tabentry) && AutoVacuumingActive())
+	if (tabentry && AutoVacuumingActive())
 	{
 		float4		pcnt_unfrozen = 1;
 		float4		reltuples = classForm->reltuples;
@@ -3124,11 +3158,6 @@ relation_needs_vacanalyze(Oid relid,
 			vac_ins_scale_factor * reltuples * pcnt_unfrozen;
 		anlthresh = (float4) anl_base_thresh + anl_scale_factor * reltuples;
 
-		/*
-		 * Note that we don't need to take special consideration for stat
-		 * reset, because if that happens, the last vacuum and analyze counts
-		 * will be reset too.
-		 */
 		if (vac_ins_base_thresh >= 0)
 			elog(DEBUG3, "%s: vac: %.0f (threshold %.0f), ins: %.0f (threshold %.0f), anl: %.0f (threshold %.0f)",
 				 NameStr(classForm->relname),
@@ -3190,7 +3219,7 @@ autovacuum_do_vac_analyze(autovac_table *tab, BufferAccessStrategy bstrategy)
 	rel_list = list_make1(rel);
 	MemoryContextSwitchTo(old_context);
 
-	vacuum(rel_list, &tab->at_params, bstrategy, vac_context, true);
+	vacuum(rel_list, tab->at_params, bstrategy, vac_context, true);
 
 	MemoryContextDelete(vac_context);
 }

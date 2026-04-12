@@ -46,7 +46,6 @@ $node->safe_psql('postgres',
 # Run checkpoint to flush current state to disk and set a baseline.
 $node->safe_psql('postgres', q{checkpoint});
 
-# Insert 2M rows; that's about 260MB (~20 segments) worth of WAL.
 $node->advance_wal(20);
 
 # Advance slot to the current position, just to have everything "valid".
@@ -57,7 +56,6 @@ $node->safe_psql('postgres',
 # Run another checkpoint to set a new restore LSN.
 $node->safe_psql('postgres', q{checkpoint});
 
-# Another 2M rows; that's about 260MB (~20 segments) worth of WAL.
 $node->advance_wal(20);
 
 my $restart_lsn_init = $node->safe_psql('postgres',
@@ -67,7 +65,7 @@ chomp($restart_lsn_init);
 note("restart lsn before checkpoint: $restart_lsn_init");
 
 # Run another checkpoint, this time in the background, and make it wait
-# on the injection point) so that the checkpoint stops right before
+# on the injection point so that the checkpoint stops right before
 # removing old WAL segments.
 note('starting checkpoint');
 
@@ -94,9 +92,11 @@ $node->safe_psql('postgres',
 	q{select pg_replication_slot_advance('slot_physical', pg_current_wal_lsn())}
 );
 
-# Continue the checkpoint.
+# Continue the checkpoint and wait for its completion.
+my $log_offset = -s $node->logfile;
 $node->safe_psql('postgres',
 	q{select injection_points_wakeup('checkpoint-before-old-wal-removal')});
+$node->wait_for_log(qr/checkpoint complete/, $log_offset);
 
 my $restart_lsn_old = $node->safe_psql('postgres',
 	q{select restart_lsn from pg_replication_slots where slot_name = 'slot_physical'}
@@ -104,8 +104,7 @@ my $restart_lsn_old = $node->safe_psql('postgres',
 chomp($restart_lsn_old);
 note("restart lsn before stop: $restart_lsn_old");
 
-# Abruptly stop the server (1 second should be enough for the checkpoint
-# to finish; it would be better).
+# Abruptly stop the server.
 $node->stop('immediate');
 
 $node->start;

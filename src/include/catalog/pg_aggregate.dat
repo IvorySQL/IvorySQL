@@ -557,19 +557,20 @@
 { aggfnoid => 'array_agg(anynonarray)', aggtransfn => 'array_agg_transfn',
   aggcombinefn => 'array_agg_combine', aggserialfn => 'array_agg_serialize',
   aggdeserialfn => 'array_agg_deserialize', aggfinalfn => 'array_agg_finalfn',
-  aggfinalextra => 't', aggtranstype => 'internal' },
+  aggfinalextra => 't', aggtranstype => 'internal', aggtransspace => '-1' },
 { aggfnoid => 'array_agg(anyarray)', aggtransfn => 'array_agg_array_transfn',
   aggcombinefn => 'array_agg_array_combine',
   aggserialfn => 'array_agg_array_serialize',
   aggdeserialfn => 'array_agg_array_deserialize',
   aggfinalfn => 'array_agg_array_finalfn', aggfinalextra => 't',
-  aggtranstype => 'internal' },
+  aggtranstype => 'internal', aggtransspace => '-1' },
 
 # text
 { aggfnoid => 'string_agg(text,text)', aggtransfn => 'string_agg_transfn',
   aggcombinefn => 'string_agg_combine', aggserialfn => 'string_agg_serialize',
   aggdeserialfn => 'string_agg_deserialize',
-  aggfinalfn => 'string_agg_finalfn', aggtranstype => 'internal' },
+  aggfinalfn => 'string_agg_finalfn',
+  aggtranstype => 'internal', aggtransspace => '-1' },
 
 # bytea
 { aggfnoid => 'string_agg(bytea,bytea)',
@@ -577,7 +578,8 @@
   aggcombinefn => 'string_agg_combine',
   aggserialfn => 'string_agg_serialize',
   aggdeserialfn => 'string_agg_deserialize',
-  aggfinalfn => 'bytea_string_agg_finalfn', aggtranstype => 'internal' },
+  aggfinalfn => 'bytea_string_agg_finalfn',
+  aggtranstype => 'internal', aggtransspace => '-1' },
 
 # range
 { aggfnoid => 'range_intersect_agg(anyrange)',

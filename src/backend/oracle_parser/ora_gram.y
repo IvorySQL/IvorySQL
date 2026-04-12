@@ -307,7 +307,7 @@ static void determineLanguage(List *options);
 		SecLabelStmt SelectStmt TransactionStmt TransactionStmtLegacy TruncateStmt
 		UnlistenStmt UpdateStmt VacuumStmt
 		VariableResetStmt VariableSetStmt VariableShowStmt
-		ViewStmt CheckPointStmt CreateConversionStmt
+		ViewStmt WaitStmt CheckPointStmt CreateConversionStmt
 		DeallocateStmt PrepareStmt ExecuteStmt
 		DropOwnedStmt ReassignOwnedStmt
 		AlterTSConfigurationStmt AlterTSDictionaryStmt
@@ -323,12 +323,20 @@ static void determineLanguage(List *options);
 %type <list>		opt_qualified_name
 %type <boolean>		opt_concurrently
 %type <dbehavior>	opt_drop_behavior
+%type <list>		opt_utility_option_list
+%type <list>		opt_wait_with_clause
+%type <list>		utility_option_list
+%type <defelt>		utility_option_elem
+%type <str>			utility_option_name
+%type <node>		utility_option_arg
 
 %type <node>	alter_column_default opclass_item opclass_drop alter_using
 %type <ival>	add_drop opt_asc_desc opt_nulls_order
 
 %type <node>	alter_table_cmd alter_type_cmd opt_collate_clause
 	   replica_identity partition_cmd index_partition_cmd
+%type <list>	rebuild_index_opt_list
+%type <defelt>	rebuild_index_opt
 %type <list>	alter_table_cmds alter_type_cmds
 %type <list>    alter_identity_column_option_list
 %type <defelt>  alter_identity_column_option
@@ -343,10 +351,6 @@ static void determineLanguage(List *options);
 				create_extension_opt_item alter_extension_opt_item
 
 %type <ival>	opt_lock lock_type cast_context
-%type <str>		utility_option_name
-%type <defelt>	utility_option_elem
-%type <list>	utility_option_list
-%type <node>	utility_option_arg
 %type <defelt>	drop_option
 %type <boolean>	opt_or_replace opt_no
 				opt_grant_grant_option
@@ -561,7 +565,6 @@ static void determineLanguage(List *options);
 %type <list>	generic_option_list alter_generic_option_list
 
 %type <ival>	reindex_target_relation reindex_target_all
-%type <list>	opt_reindex_option_list
 
 %type <node>	copy_generic_opt_arg copy_generic_opt_arg_list_item
 %type <defelt>	copy_generic_opt_elem
@@ -640,7 +643,7 @@ static void determineLanguage(List *options);
 %type <list>	window_clause window_definition_list opt_partition_clause
 %type <windef>	window_definition over_clause window_specification
 				opt_frame_clause frame_extent frame_bound
-%type <ival>	opt_window_exclusion_clause
+%type <ival>	null_treatment opt_window_exclusion_clause
 %type <str>		opt_existing_window_name
 %type <boolean> opt_if_not_exists
 %type <boolean> opt_unique_null_treatment
@@ -724,7 +727,7 @@ static void determineLanguage(List *options);
 	ASENSITIVE ASSERTION ASSIGNMENT ASYMMETRIC ATOMIC AT ATTACH ATTRIBUTE AUTHORIZATION
 
 	BACKWARD BEFORE BEGIN_P BETWEEN BIGINT BINARY BINARY_DOUBLE
-	BINARY_FLOAT BIT BODY 
+	BINARY_FLOAT BIT BODY
 	BOOLEAN_P BOTH BREADTH BY BYTE_P
 
 	CACHE CALL CALLED CASCADE CASCADED CASE CAST CATALOG_P CHAIN CHAR_P
@@ -752,7 +755,7 @@ static void determineLanguage(List *options);
 
 	HANDLER HAVING HEADER_P HOLD HOUR_P
 
-	IDENTITY_P IF_P ILIKE IMMEDIATE IMMUTABLE IMPLICIT_P IMPORT_P IN_P INCLUDE
+	IDENTITY_P IF_P IGNORE_P ILIKE IMMEDIATE IMMUTABLE IMPLICIT_P IMPORT_P IN_P INCLUDE
 	INCLUDING INCREMENT INDENT INDEX INDEXES INHERIT INHERITS INITIALLY INLINE_P
 	INNER_P INOUT INPUT_P INSENSITIVE INSERT INSTEAD INT_P INTEGER
 	INTERSECT INTERVAL INTO INVISIBLE INVOKER IS ISNULL ISOLATION
@@ -770,14 +773,14 @@ static void determineLanguage(List *options);
 	MINUTE_P MINVALUE MODE MODIFY MONTH_P MOVE
 
 	NAME_P NAMES NATIONAL NATURAL NCHAR NESTED NEW NEXT NFC NFD NFKC NFKD NO NOCACHE NOCYCLE
-	NOMAXVALUE NOMINVALUE NONE NOORDER
-	NOEXTEND NOKEEP NORMALIZE NORMALIZED NOSCALE NOSHARD	
+	NOMAXVALUE NOMINVALUE NONE NOORDER NOPARALLEL
+	NOEXTEND NOKEEP NORMALIZE NORMALIZED NOSCALE NOSHARD
 	NOT NOTHING NOTIFY NOTNULL NOWAIT NULL_P NULLIF
 	NULLS_P NUMBER_P NUMERIC NVL NVL2
 
-	OBJECT_P OBJECTS_P OF OFF OFFSET OIDS OLD OMIT ON ONLY OPERATOR OPTION OPTIONS OR
+	OBJECT_P OBJECTS_P OF OFF OFFSET OIDS OLD OMIT ON ONLINE ONLY OPERATOR OPTION OPTIONS OR
 	ORDER ORDINALITY OTHERS OUT_P OUTER_P
-	OVER OVERLAPS OVERLAY OVERRIDING OWNED OWNER PACKAGES 
+	OVER OVERLAPS OVERLAY OVERRIDING OWNED OWNER PACKAGES
 
 	PARALLEL PARAMETER PARSER PARTIAL PARTITION PASSING PASSWORD PATH
 	EXTRACT PGEXTRACT PLACING PLAN PLANS POLICY
@@ -786,9 +789,9 @@ static void determineLanguage(List *options);
 
 	QUOTE QUOTES
 
-	RANGE READ REAL REASSIGN RECHECK RECURSIVE REF_P REFERENCES REFERENCING
+	RANGE READ REAL REASSIGN REBUILD RECHECK RECURSIVE REF_P REFERENCES REFERENCING
 	REFRESH REINDEX RELATIVE_P RELEASE RENAME REPEATABLE REPLACE REPLICA
-	RESET RESTART RESTRICT RETURN RETURNING RETURNS REVOKE RIGHT ROLE ROLLBACK ROLLUP
+	RESET RESPECT_P RESTART RESTRICT RETURN RETURNING RETURNS REVOKE RIGHT ROLE ROLLBACK ROLLUP
 	ROUTINE ROUTINES ROW ROWID ROWNUM ROWS  ROWTYPE RULE
 
 	SAVEPOINT SCALAR SCALE SCHEMA SCHEMAS SCROLL SEARCH SECOND_P SECURITY SELECT
@@ -809,7 +812,7 @@ static void determineLanguage(List *options);
 	VACUUM VALID VALIDATE VALIDATOR VALUE_P VALUES VARCHAR VARCHAR2 VARIADIC VARYING
 	VERBOSE VERSION_P VIEW VIEWS VIRTUAL VISIBLE VOLATILE
 
-	WHEN WHERE WHITESPACE_P WINDOW WITH WITHIN WITHOUT WORK WRAPPER WRITE
+	WAIT WHEN WHERE WHITESPACE_P WINDOW WITH WITHIN WITHOUT WORK WRAPPER WRITE
 
 	XML_P XMLATTRIBUTES XMLCONCAT XMLELEMENT XMLEXISTS XMLFOREST XMLNAMESPACES
 	XMLPARSE XMLPI XMLROOT XMLSERIALIZE XMLTABLE
@@ -845,11 +848,14 @@ static void determineLanguage(List *options);
 %token <keyword> LONG_P RAW_P
 %token LONG_RAW
 %token <keyword> LOOP_P
+%token <keyword> LSN_P
 %token <keyword> BINARY_FLOAT_NAN BINARY_FLOAT_INFINITY
 	BINARY_DOUBLE_NAN BINARY_DOUBLE_INFINITY
 %token <keyword> NAN_P INFINITE_P
 
 %token <keyword> PARAMSLENGTH
+
+%token <keyword> LISTAGG
 
 %type <node> CreatePackageStmt CreatePackageBodyStmt AlterPackageStmt
 %type <node> package_proper_item
@@ -874,7 +880,7 @@ static void determineLanguage(List *options);
  * FORMAT_LA, NULLS_LA, WITH_LA, and WITHOUT_LA are needed to make the grammar
  * LALR(1).
  */
-%token		FORMAT_LA NOT_LA NULLS_LA WITH_LA WITHOUT_LA PACKAGE_BODY 
+%token		FORMAT_LA NOT_LA NULLS_LA WITH_LA WITHOUT_LA PACKAGE_BODY
 
 /*
  * The grammar likewise thinks these tokens are keywords, but they are never
@@ -1213,6 +1219,7 @@ stmt:
 			| VariableSetStmt
 			| VariableShowStmt
 			| ViewStmt
+			| WaitStmt
 			| CreatePackageStmt
 			| CreatePackageBodyStmt
 			| AlterPackageStmt
@@ -1244,6 +1251,40 @@ opt_drop_behavior:
 			| /* EMPTY */					{ $$ = DROP_RESTRICT; /* default */ }
 		;
 
+opt_utility_option_list:
+			'(' utility_option_list ')'		{ $$ = $2; }
+			| /* EMPTY */					{ $$ = NULL; }
+		;
+
+utility_option_list:
+			utility_option_elem
+				{
+					$$ = list_make1($1);
+				}
+			| utility_option_list ',' utility_option_elem
+				{
+					$$ = lappend($1, $3);
+				}
+		;
+
+utility_option_elem:
+			utility_option_name utility_option_arg
+				{
+					$$ = makeDefElem($1, $2, @1);
+				}
+		;
+
+utility_option_name:
+			NonReservedWord					{ $$ = $1; }
+			| analyze_keyword				{ $$ = "analyze"; }
+			| FORMAT_LA						{ $$ = "format"; }
+		;
+
+utility_option_arg:
+			opt_boolean_or_string			{ $$ = (Node *) makeString($1); }
+			| NumericOnly					{ $$ = (Node *) $1; }
+			| /* EMPTY */					{ $$ = NULL; }
+		;
 /*****************************************************************************
  *
  * CALL statement
@@ -1303,7 +1344,7 @@ exec_func_application :
 					n->agg_order = $4;
 					$$ = (Node *) n;
 				}
-		; 
+		;
 /*****************************************************************************
  *
  * Create a new Postgres DBMS role
@@ -2184,11 +2225,12 @@ constraints_set_mode:
  * Checkpoint statement
  */
 CheckPointStmt:
-			CHECKPOINT
+			CHECKPOINT opt_utility_option_list
 				{
 					CheckPointStmt *n = makeNode(CheckPointStmt);
 
 					$$ = (Node *) n;
+					n->options = $2;
 				}
 		;
 
@@ -2346,6 +2388,14 @@ AlterTableStmt:
 					n->cmds = list_make1($4);
 					n->objtype = OBJECT_INDEX;
 					n->missing_ok = false;
+					$$ = (Node *) n;
+				}
+		|	ALTER INDEX qualified_name REBUILD rebuild_index_opt_list
+				{
+					OraAlterIndexRebuildStmt *n = makeNode(OraAlterIndexRebuildStmt);
+
+					n->relation = $3;
+					n->options = $5;
 					$$ = (Node *) n;
 				}
 		|	ALTER INDEX ALL IN_P TABLESPACE name SET TABLESPACE name opt_nowait
@@ -2567,6 +2617,63 @@ index_partition_cmd:
 					$$ = (Node *) n;
 				}
 		;
+
+/*
+ * rebuild_index_opt_list / rebuild_index_opt
+ *
+ * Options following REBUILD.  Options may appear in any order.
+ * Duplicate options are rejected at execution time.
+ */
+rebuild_index_opt_list:
+		rebuild_index_opt_list rebuild_index_opt
+				{ $$ = lappend($1, $2); }
+		| /* EMPTY */
+				{ $$ = NIL; }
+	;
+
+rebuild_index_opt:
+		ONLINE
+				{
+					$$ = makeDefElem("online", (Node *) makeBoolean(true), @1);
+				}
+		| TABLESPACE name
+				{
+					$$ = makeDefElem("tablespace", (Node *) makeString($2), @1);
+				}
+		| PARTITION name
+				{
+					$$ = makeDefElem("partition", (Node *) makeString($2), @1);
+				}
+		| PARALLEL Iconst
+				{
+					/*
+					 * PARALLEL N: explicit degree of parallelism.
+					 * Oracle DOP N means N total participants (coordinator idle).
+					 * PostgreSQL leader also participates, so we store N here and
+					 * let ExecOraAlterIndexRebuild() convert to N-1 bg workers.
+					 */
+					if ($2 <= 0)
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+								 errmsg("PARALLEL degree must be at least 1"),
+								 parser_errposition(@2)));
+					$$ = makeDefElem("parallel", (Node *) makeInteger($2), @1);
+				}
+		| PARALLEL
+				{
+					/*
+					 * PARALLEL (no degree): use table's parallel_workers reloption
+					 * or auto-calculate via plan_create_index_workers().
+					 * Represented as parallel degree 0 (auto).
+					 */
+					$$ = makeDefElem("parallel", (Node *) makeInteger(0), @1);
+				}
+		| NOPARALLEL
+				{
+					/* NOPARALLEL: force serial rebuild */
+					$$ = makeDefElem("noparallel", (Node *) makeBoolean(true), @1);
+				}
+	;
 
 alter_table_cmd:
 			/* ALTER TABLE <name> ADD <coldef> */
@@ -2906,7 +3013,7 @@ alter_table_cmd:
 			| ADD_P '(' TableConstraint ')'
 				{
 					AlterTableCmd *n = makeNode(AlterTableCmd);
-										
+
 					n->subtype = AT_AddConstraint;
 					n->def = $3;
 					$$ = (Node *) n;
@@ -2927,6 +3034,12 @@ alter_table_cmd:
 						c->alterDeferrability = true;
 					if ($4 & CAS_NO_INHERIT)
 						c->alterInheritability = true;
+					/* handle unsupported case with specific error message */
+					if ($4 & CAS_NOT_VALID)
+						ereport(ERROR,
+								errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								errmsg("constraints cannot be altered to be NOT VALID"),
+								parser_errposition(@4));
 					processCASbits($4, @4, "FOREIGN KEY",
 									&c->deferrable,
 									&c->initdeferred,
@@ -3683,7 +3796,7 @@ ClosePortalStmt:
  *				COPY ( query ) TO file	[WITH] [(options)]
  *
  *				where 'query' can be one of:
- *				{ SELECT | UPDATE | INSERT | DELETE }
+ *				{ SELECT | UPDATE | INSERT | DELETE | MERGE }
  *
  *				and 'file' can be one of:
  *				{ PROGRAM 'command' | STDIN | STDOUT | 'filename' }
@@ -3724,6 +3837,7 @@ CopyStmt:	COPY opt_binary qualified_name opt_column_list
 						ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
 								 errmsg("WHERE clause not allowed with COPY TO"),
+								 errhint("Try the COPY (SELECT ... WHERE ...) TO variant."),
 								 parser_errposition(@11)));
 
 					n->options = NIL;
@@ -6387,6 +6501,26 @@ CreateTrigStmt:
 			EXECUTE FUNCTION_or_PROCEDURE func_name '(' TriggerFuncArgs ')'
 				{
 					CreateTrigStmt *n = makeNode(CreateTrigStmt);
+                    bool		dummy;
+
+					if (($11 & CAS_NOT_VALID) != 0)
+						ereport(ERROR,
+								errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								errmsg("constraint triggers cannot be marked %s",
+									   "NOT VALID"),
+								parser_errposition(@11));
+					if (($11 & CAS_NO_INHERIT) != 0)
+						ereport(ERROR,
+								errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								errmsg("constraint triggers cannot be marked %s",
+									   "NO INHERIT"),
+								parser_errposition(@11));
+					if (($11 & CAS_NOT_ENFORCED) != 0)
+						ereport(ERROR,
+								errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								errmsg("constraint triggers cannot be marked %s",
+									   "NOT ENFORCED"),
+								parser_errposition(@11));
 
 					n->replace = $2;
 					if (n->replace) /* not supported, see CreateTrigger */
@@ -6405,7 +6539,7 @@ CreateTrigStmt:
 					n->whenClause = $15;
 					n->transitionRels = NIL;
 					processCASbits($11, @11, "TRIGGER",
-								   &n->deferrable, &n->initdeferred, NULL,
+								   &n->deferrable, &n->initdeferred, &dummy,
 								   NULL, NULL, yyscanner);
 					n->constrrel = $10;
 					$$ = (Node *) n;
@@ -7873,6 +8007,8 @@ fetch_args:	cursor_name
 					n->portalname = $1;
 					n->direction = FETCH_FORWARD;
 					n->howMany = 1;
+					n->location = -1;
+					n->direction_keyword = FETCH_KEYWORD_NONE;
 					$$ = (Node *) n;
 				}
 			| from_in cursor_name
@@ -7882,60 +8018,8 @@ fetch_args:	cursor_name
 					n->portalname = $2;
 					n->direction = FETCH_FORWARD;
 					n->howMany = 1;
-					$$ = (Node *) n;
-				}
-			| NEXT opt_from_in cursor_name
-				{
-					FetchStmt *n = makeNode(FetchStmt);
-
-					n->portalname = $3;
-					n->direction = FETCH_FORWARD;
-					n->howMany = 1;
-					$$ = (Node *) n;
-				}
-			| PRIOR opt_from_in cursor_name
-				{
-					FetchStmt *n = makeNode(FetchStmt);
-
-					n->portalname = $3;
-					n->direction = FETCH_BACKWARD;
-					n->howMany = 1;
-					$$ = (Node *) n;
-				}
-			| FIRST_P opt_from_in cursor_name
-				{
-					FetchStmt *n = makeNode(FetchStmt);
-
-					n->portalname = $3;
-					n->direction = FETCH_ABSOLUTE;
-					n->howMany = 1;
-					$$ = (Node *) n;
-				}
-			| LAST_P opt_from_in cursor_name
-				{
-					FetchStmt *n = makeNode(FetchStmt);
-
-					n->portalname = $3;
-					n->direction = FETCH_ABSOLUTE;
-					n->howMany = -1;
-					$$ = (Node *) n;
-				}
-			| ABSOLUTE_P SignedIconst opt_from_in cursor_name
-				{
-					FetchStmt *n = makeNode(FetchStmt);
-
-					n->portalname = $4;
-					n->direction = FETCH_ABSOLUTE;
-					n->howMany = $2;
-					$$ = (Node *) n;
-				}
-			| RELATIVE_P SignedIconst opt_from_in cursor_name
-				{
-					FetchStmt *n = makeNode(FetchStmt);
-
-					n->portalname = $4;
-					n->direction = FETCH_RELATIVE;
-					n->howMany = $2;
+					n->location = -1;
+					n->direction_keyword = FETCH_KEYWORD_NONE;
 					$$ = (Node *) n;
 				}
 			| SignedIconst opt_from_in cursor_name
@@ -7945,6 +8029,74 @@ fetch_args:	cursor_name
 					n->portalname = $3;
 					n->direction = FETCH_FORWARD;
 					n->howMany = $1;
+					n->location = @1;
+					n->direction_keyword = FETCH_KEYWORD_NONE;
+					$$ = (Node *) n;
+				}
+			| NEXT opt_from_in cursor_name
+				{
+					FetchStmt *n = makeNode(FetchStmt);
+
+					n->portalname = $3;
+					n->direction = FETCH_FORWARD;
+					n->howMany = 1;
+					n->location = -1;
+					n->direction_keyword = FETCH_KEYWORD_NEXT;
+					$$ = (Node *) n;
+				}
+			| PRIOR opt_from_in cursor_name
+				{
+					FetchStmt *n = makeNode(FetchStmt);
+
+					n->portalname = $3;
+					n->direction = FETCH_BACKWARD;
+					n->howMany = 1;
+					n->location = -1;
+					n->direction_keyword = FETCH_KEYWORD_PRIOR;
+					$$ = (Node *) n;
+				}
+			| FIRST_P opt_from_in cursor_name
+				{
+					FetchStmt *n = makeNode(FetchStmt);
+
+					n->portalname = $3;
+					n->direction = FETCH_ABSOLUTE;
+					n->howMany = 1;
+					n->location = -1;
+					n->direction_keyword = FETCH_KEYWORD_FIRST;
+					$$ = (Node *) n;
+				}
+			| LAST_P opt_from_in cursor_name
+				{
+					FetchStmt *n = makeNode(FetchStmt);
+
+					n->portalname = $3;
+					n->direction = FETCH_ABSOLUTE;
+					n->howMany = -1;
+					n->location = -1;
+					n->direction_keyword = FETCH_KEYWORD_LAST;
+					$$ = (Node *) n;
+				}
+			| ABSOLUTE_P SignedIconst opt_from_in cursor_name
+				{
+					FetchStmt *n = makeNode(FetchStmt);
+
+					n->portalname = $4;
+					n->direction = FETCH_ABSOLUTE;
+					n->howMany = $2;
+					n->location = @2;
+					n->direction_keyword = FETCH_KEYWORD_ABSOLUTE;
+					$$ = (Node *) n;
+				}
+			| RELATIVE_P SignedIconst opt_from_in cursor_name
+				{
+					FetchStmt *n = makeNode(FetchStmt);
+
+					n->portalname = $4;
+					n->direction = FETCH_RELATIVE;
+					n->howMany = $2;
+					n->location = @2;
+					n->direction_keyword = FETCH_KEYWORD_RELATIVE;
 					$$ = (Node *) n;
 				}
 			| ALL opt_from_in cursor_name
@@ -7954,6 +8106,8 @@ fetch_args:	cursor_name
 					n->portalname = $3;
 					n->direction = FETCH_FORWARD;
 					n->howMany = FETCH_ALL;
+					n->location = -1;
+					n->direction_keyword = FETCH_KEYWORD_ALL;
 					$$ = (Node *) n;
 				}
 			| FORWARD opt_from_in cursor_name
@@ -7963,6 +8117,8 @@ fetch_args:	cursor_name
 					n->portalname = $3;
 					n->direction = FETCH_FORWARD;
 					n->howMany = 1;
+					n->location = -1;
+					n->direction_keyword = FETCH_KEYWORD_FORWARD;
 					$$ = (Node *) n;
 				}
 			| FORWARD SignedIconst opt_from_in cursor_name
@@ -7972,6 +8128,8 @@ fetch_args:	cursor_name
 					n->portalname = $4;
 					n->direction = FETCH_FORWARD;
 					n->howMany = $2;
+					n->location = @2;
+					n->direction_keyword = FETCH_KEYWORD_FORWARD;
 					$$ = (Node *) n;
 				}
 			| FORWARD ALL opt_from_in cursor_name
@@ -7981,6 +8139,8 @@ fetch_args:	cursor_name
 					n->portalname = $4;
 					n->direction = FETCH_FORWARD;
 					n->howMany = FETCH_ALL;
+					n->location = -1;
+					n->direction_keyword = FETCH_KEYWORD_FORWARD_ALL;
 					$$ = (Node *) n;
 				}
 			| BACKWARD opt_from_in cursor_name
@@ -7990,6 +8150,8 @@ fetch_args:	cursor_name
 					n->portalname = $3;
 					n->direction = FETCH_BACKWARD;
 					n->howMany = 1;
+					n->location = -1;
+					n->direction_keyword = FETCH_KEYWORD_BACKWARD;
 					$$ = (Node *) n;
 				}
 			| BACKWARD SignedIconst opt_from_in cursor_name
@@ -7999,6 +8161,8 @@ fetch_args:	cursor_name
 					n->portalname = $4;
 					n->direction = FETCH_BACKWARD;
 					n->howMany = $2;
+					n->location = @2;
+					n->direction_keyword = FETCH_KEYWORD_BACKWARD;
 					$$ = (Node *) n;
 				}
 			| BACKWARD ALL opt_from_in cursor_name
@@ -8008,6 +8172,8 @@ fetch_args:	cursor_name
 					n->portalname = $4;
 					n->direction = FETCH_BACKWARD;
 					n->howMany = FETCH_ALL;
+					n->location = -1;
+					n->direction_keyword = FETCH_KEYWORD_BACKWARD_ALL;
 					$$ = (Node *) n;
 				}
 		;
@@ -10478,7 +10644,7 @@ DropTransformStmt: DROP TRANSFORM opt_if_exists FOR Typename LANGUAGE name opt_d
  *****************************************************************************/
 
 ReindexStmt:
-			REINDEX opt_reindex_option_list reindex_target_relation opt_concurrently qualified_name
+			REINDEX opt_utility_option_list reindex_target_relation opt_concurrently qualified_name
 				{
 					ReindexStmt *n = makeNode(ReindexStmt);
 
@@ -10491,7 +10657,7 @@ ReindexStmt:
 											makeDefElem("concurrently", NULL, @4));
 					$$ = (Node *) n;
 				}
-			| REINDEX opt_reindex_option_list SCHEMA opt_concurrently name
+			| REINDEX opt_utility_option_list SCHEMA opt_concurrently name
 				{
 					ReindexStmt *n = makeNode(ReindexStmt);
 
@@ -10504,7 +10670,7 @@ ReindexStmt:
 											makeDefElem("concurrently", NULL, @4));
 					$$ = (Node *) n;
 				}
-			| REINDEX opt_reindex_option_list reindex_target_all opt_concurrently opt_single_name
+			| REINDEX opt_utility_option_list reindex_target_all opt_concurrently opt_single_name
 				{
 					ReindexStmt *n = makeNode(ReindexStmt);
 
@@ -10525,10 +10691,6 @@ reindex_target_relation:
 reindex_target_all:
 			SYSTEM_P				{ $$ = REINDEX_OBJECT_SYSTEM; }
 			| DATABASE				{ $$ = REINDEX_OBJECT_DATABASE; }
-		;
-opt_reindex_option_list:
-			'(' utility_option_list ')'				{ $$ = $2; }
-			| /* EMPTY */							{ $$ = NULL; }
 		;
 
 /*****************************************************************************
@@ -12074,9 +12236,18 @@ AlterSubscriptionStmt:
 					AlterSubscriptionStmt *n =
 						makeNode(AlterSubscriptionStmt);
 
-					n->kind = ALTER_SUBSCRIPTION_REFRESH;
+					n->kind = ALTER_SUBSCRIPTION_REFRESH_PUBLICATION;
 					n->subname = $3;
 					n->options = $6;
+					$$ = (Node *) n;
+				}
+			| ALTER SUBSCRIPTION name REFRESH SEQUENCES
+				{
+					AlterSubscriptionStmt *n =
+						makeNode(AlterSubscriptionStmt);
+
+					n->kind = ALTER_SUBSCRIPTION_REFRESH_SEQUENCES;
+					n->subname = $3;
 					$$ = (Node *) n;
 				}
 			| ALTER SUBSCRIPTION name ADD_P PUBLICATION name_list opt_definition
@@ -12497,7 +12668,7 @@ ViewStmt: CREATE OptTemp OptViewForce VIEW qualified_name opt_column_list opt_re
 				{
 					ViewStmt   *n = makeNode(ViewStmt);
 
-					char	*stmt_iteral = NULL; 
+					char	*stmt_iteral = NULL;
 					n->view = $5;
 					n->view->relpersistence = $2;
 					n->aliases = $6;
@@ -12872,7 +13043,7 @@ AlterDomainStmt:
 				{
 					AlterDomainStmt *n = makeNode(AlterDomainStmt);
 
-					n->subtype = 'T';
+					n->subtype = AD_AlterDefault;
 					n->typeName = $3;
 					n->def = $4;
 					$$ = (Node *) n;
@@ -12882,7 +13053,7 @@ AlterDomainStmt:
 				{
 					AlterDomainStmt *n = makeNode(AlterDomainStmt);
 
-					n->subtype = 'N';
+					n->subtype = AD_DropNotNull;
 					n->typeName = $3;
 					$$ = (Node *) n;
 				}
@@ -12891,7 +13062,7 @@ AlterDomainStmt:
 				{
 					AlterDomainStmt *n = makeNode(AlterDomainStmt);
 
-					n->subtype = 'O';
+					n->subtype = AD_SetNotNull;
 					n->typeName = $3;
 					$$ = (Node *) n;
 				}
@@ -12900,7 +13071,7 @@ AlterDomainStmt:
 				{
 					AlterDomainStmt *n = makeNode(AlterDomainStmt);
 
-					n->subtype = 'C';
+					n->subtype = AD_AddConstraint;
 					n->typeName = $3;
 					n->def = $5;
 					$$ = (Node *) n;
@@ -12910,7 +13081,7 @@ AlterDomainStmt:
 				{
 					AlterDomainStmt *n = makeNode(AlterDomainStmt);
 
-					n->subtype = 'X';
+					n->subtype = AD_DropConstraint;
 					n->typeName = $3;
 					n->name = $6;
 					n->behavior = $7;
@@ -12922,7 +13093,7 @@ AlterDomainStmt:
 				{
 					AlterDomainStmt *n = makeNode(AlterDomainStmt);
 
-					n->subtype = 'X';
+					n->subtype = AD_DropConstraint;
 					n->typeName = $3;
 					n->name = $8;
 					n->behavior = $9;
@@ -12934,7 +13105,7 @@ AlterDomainStmt:
 				{
 					AlterDomainStmt *n = makeNode(AlterDomainStmt);
 
-					n->subtype = 'V';
+					n->subtype = AD_ValidateConstraint;
 					n->typeName = $3;
 					n->name = $6;
 					$$ = (Node *) n;
@@ -13081,9 +13252,8 @@ ClusterStmt:
 
 					n->relation = $3;
 					n->indexname = $4;
-					n->params = NIL;
 					if ($2)
-						n->params = lappend(n->params, makeDefElem("verbose", NULL, @2));
+						n->params = list_make1(makeDefElem("verbose", NULL, @2));
 					$$ = (Node *) n;
 				}
 
@@ -13096,15 +13266,22 @@ ClusterStmt:
 					n->params = $3;
 					$$ = (Node *) n;
 				}
-			| CLUSTER opt_verbose
+            | CLUSTER opt_utility_option_list
 				{
 					ClusterStmt *n = makeNode(ClusterStmt);
 
 					n->relation = NULL;
 					n->indexname = NULL;
-					n->params = NIL;
-					if ($2)
-						n->params = lappend(n->params, makeDefElem("verbose", NULL, @2));
+					n->params = $2;
+					$$ = (Node *) n;
+				}
+			| CLUSTER VERBOSE
+				{
+					ClusterStmt *n = makeNode(ClusterStmt);
+
+					n->relation = NULL;
+					n->indexname = NULL;
+					n->params = list_make1(makeDefElem("verbose", NULL, @2));
 					$$ = (Node *) n;
 				}
 			/* kept for pre-8.3 compatibility */
@@ -13114,9 +13291,8 @@ ClusterStmt:
 
 					n->relation = $5;
 					n->indexname = $3;
-					n->params = NIL;
 					if ($2)
-						n->params = lappend(n->params, makeDefElem("verbose", NULL, @2));
+						n->params = list_make1(makeDefElem("verbose", NULL, @2));
 					$$ = (Node *) n;
 				}
 		;
@@ -13167,62 +13343,29 @@ VacuumStmt: VACUUM opt_full opt_freeze opt_verbose opt_analyze opt_vacuum_relati
 				}
 		;
 
-AnalyzeStmt: analyze_keyword opt_verbose opt_vacuum_relation_list
+AnalyzeStmt: analyze_keyword opt_utility_option_list opt_vacuum_relation_list
 				{
 					VacuumStmt *n = makeNode(VacuumStmt);
 
-					n->options = NIL;
-					if ($2)
-						n->options = lappend(n->options,
-											 makeDefElem("verbose", NULL, @2));
+					n->options = $2;
 					n->rels = $3;
 					n->is_vacuumcmd = false;
 					$$ = (Node *) n;
 				}
-			| analyze_keyword '(' utility_option_list ')' opt_vacuum_relation_list
+			| analyze_keyword VERBOSE opt_vacuum_relation_list
 				{
 					VacuumStmt *n = makeNode(VacuumStmt);
 
-					n->options = $3;
-					n->rels = $5;
+					n->options = list_make1(makeDefElem("verbose", NULL, @2));
+					n->rels = $3;
 					n->is_vacuumcmd = false;
 					$$ = (Node *) n;
-				}
-		;
-
-utility_option_list:
-			utility_option_elem
-				{
-					$$ = list_make1($1);
-				}
-			| utility_option_list ',' utility_option_elem
-				{
-					$$ = lappend($1, $3);
 				}
 		;
 
 analyze_keyword:
 			ANALYZE
 			| ANALYSE /* British */
-		;
-
-utility_option_elem:
-			utility_option_name utility_option_arg
-				{
-					$$ = makeDefElem($1, $2, @1);
-				}
-		;
-
-utility_option_name:
-			NonReservedWord							{ $$ = $1; }
-			| analyze_keyword						{ $$ = "analyze"; }
-			| FORMAT_LA								{ $$ = "format"; }
-		;
-
-utility_option_arg:
-			opt_boolean_or_string					{ $$ = (Node *) makeString($1); }
-			| NumericOnly							{ $$ = (Node *) $1; }
-			| /* EMPTY */							{ $$ = NULL; }
 		;
 
 opt_analyze:
@@ -15688,8 +15831,8 @@ SimpleTypename:
 			| Numeric								{ $$ = $1; }
 			| Bit									{ $$ = $1; }
 			| Character								{ $$ = $1; }
-			| OracleCharacter						{ $$ = $1; }	
-			| Datetime								{ $$ = $1; }	
+			| OracleCharacter						{ $$ = $1; }
+			| Datetime								{ $$ = $1; }
 			| LongTypename 							{ $$ = $1; }
 //			| ConstDatetime							{ $$ = $1; }
 			| ConstInterval opt_interval_type
@@ -17596,7 +17739,7 @@ c_expr:		columnref								{ $$ = $1; }
 				{
 					OraParamRef *p = makeNode(OraParamRef);
 					p->number = 0;
-					p->location = @1;					
+					p->location = @1;
 					p->name = $1;
 					if ($2)
 					{
@@ -17815,7 +17958,7 @@ func_application: func_name '(' ')'
  * (Note that many of the special SQL functions wouldn't actually make any
  * sense as functional index entries, but we ignore that consideration here.)
  */
-func_expr: func_application within_group_clause filter_clause over_clause
+func_expr: func_application within_group_clause filter_clause null_treatment over_clause
 				{
 					FuncCall   *n = (FuncCall *) $1;
 
@@ -17848,7 +17991,8 @@ func_expr: func_application within_group_clause filter_clause over_clause
 						n->agg_within_group = true;
 					}
 					n->agg_filter = $3;
-					n->over = $4;
+					n->ignore_nulls = $4;
+					n->over = $5;
 					$$ = (Node *) n;
 				}
 			| json_aggregate_func filter_clause over_clause
@@ -17863,6 +18007,40 @@ func_expr: func_application within_group_clause filter_clause over_clause
 				}
 			| func_expr_common_subexpr
 				{ $$ = $1; }
+
+
+                        | LISTAGG '(' func_arg_list ')' within_group_clause filter_clause over_clause 
+                	{
+	                    FuncCall *string_agg_n;
+	                    FuncCall *check_n;
+
+                            if ($5 == NIL)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("LISTAGG requires WITHIN GROUP (ORDER BY ...)"),
+								 parser_errposition(@1)));
+						/*
+						* If no delimiter provided (single arg), append empty string
+						* so string_agg always receives exactly 2 arguments.
+						*/
+						if (list_length($3) == 1)
+							$3 = lappend($3, makeStringConst("", @3));
+
+						string_agg_n = makeFuncCall(SystemFuncName("string_agg"),
+													$3,
+													COERCE_EXPLICIT_CALL, @1);
+	                    string_agg_n->agg_order = $5;
+                            string_agg_n->agg_filter = $6;
+                            string_agg_n->over = $7;
+
+			    /* Wrap with sys.listagg_check to enforce the 4000-byte limit */
+			    check_n = makeFuncCall(OracleSystemFuncName("ora_listagg_check"),
+			    			   list_make1((Node *) string_agg_n),
+						 COERCE_EXPLICIT_CALL, @1);
+			    $$ = (Node *) check_n;
+
+			  }
+
 		;
 
 /*
@@ -18547,6 +18725,28 @@ xml_passing_mech:
 		;
 
 
+/*****************************************************************************
+ *
+ * WAIT FOR LSN
+ *
+ *****************************************************************************/
+
+WaitStmt:
+			WAIT FOR LSN_P Sconst opt_wait_with_clause
+				{
+					WaitStmt *n = makeNode(WaitStmt);
+					n->lsn_literal = $4;
+					n->options = $5;
+					$$ = (Node *) n;
+				}
+			;
+
+opt_wait_with_clause:
+			WITH '(' utility_option_list ')'		{ $$ = $3; }
+			| /*EMPTY*/								{ $$ = NIL; }
+			;
+
+
 /*
  * Aggregate decoration clauses
  */
@@ -18583,6 +18783,15 @@ window_definition:
 					n->name = $1;
 					$$ = n;
 				}
+		;
+
+/*
+ * Window Definitions
+ */
+null_treatment:
+			IGNORE_P NULLS_P						{ $$ = PARSER_IGNORE_NULLS; }
+			| RESPECT_P NULLS_P						{ $$ = PARSER_RESPECT_NULLS; }
+			| /*EMPTY*/								{ $$ = NO_NULLTREATMENT; }
 		;
 
 over_clause: OVER window_specification
@@ -20131,7 +20340,7 @@ unreserved_keyword:
 			| BACKWARD
 			| BEFORE
 			| BEGIN_P
-			| BODY		
+			| BODY
 			| BREADTH
 			| BY
 			| CACHE
@@ -20233,6 +20442,7 @@ unreserved_keyword:
 			| HOUR_P
 			| IDENTITY_P
 			| IF_P
+			| IGNORE_P
 			| IMMEDIATE
 			| IMMUTABLE
 			| IMPLICIT_P
@@ -20272,6 +20482,7 @@ unreserved_keyword:
 			| LOGGED
 			| LONG_P
 			| LOOP_P
+			| LSN_P
 			| MAPPING
 			| MATCH
 			| MATCHED
@@ -20303,6 +20514,7 @@ unreserved_keyword:
 			| NOMINVALUE
 			| NONEDITIONABLE
 			| NOORDER
+			| NOPARALLEL
 			| NORMALIZED
 			| NOSCALE
 			| NOSHARD
@@ -20317,6 +20529,7 @@ unreserved_keyword:
 			| OIDS
 			| OLD
 			| OMIT
+			| ONLINE
 			| OPERATOR
 			| OPTION
 			| OPTIONS
@@ -20327,7 +20540,7 @@ unreserved_keyword:
 			| OWNED
 			| OWNER
 			| PACKAGE
-			| PACKAGES	
+			| PACKAGES
 			| PARALLEL
 			| PARALLEL_ENABLE
 			| PARAMETER
@@ -20360,6 +20573,7 @@ unreserved_keyword:
 			| RAW_P
 			| READ
 			| REASSIGN
+			| REBUILD
 			| RECHECK
 			| RECURSIVE
 			| REF_P
@@ -20374,6 +20588,7 @@ unreserved_keyword:
 			| REPLACE
 			| REPLICA
 			| RESET
+			| RESPECT_P
 			| RESTART
 			| RESTRICT
 			| RESULT_CACHE
@@ -20473,6 +20688,7 @@ unreserved_keyword:
 			| VIRTUAL
 			| VISIBLE
 			| VOLATILE
+			| WAIT
 			| WHITESPACE_P
 			| WITHIN
 			| WITHOUT
@@ -20668,6 +20884,7 @@ reserved_keyword:
 			| LATERAL_P
 			| LEADING
 			| LIMIT
+			| LISTAGG
 			| LOCALTIME
 			| LOCALTIMESTAMP
 			| NAN_P
@@ -20758,7 +20975,7 @@ bare_label_keyword:
 			| BINARY_FLOAT_INFINITY
 			| BINARY_FLOAT_NAN
 			| BIT
-			| BODY			
+			| BODY
 			| BOOLEAN_P
 			| BOTH
 			| BREADTH
@@ -20954,6 +21171,7 @@ bare_label_keyword:
 			| LEFT
 			| LEVEL
 			| LIKE
+			| LISTAGG
 			| LISTEN
 			| LOAD
 			| LOCAL
@@ -20965,6 +21183,7 @@ bare_label_keyword:
 			| LOGGED
 			| LONG_P
 			| LOOP_P
+			| LSN_P
 			| MAPPING
 			| MATCH
 			| MATCHED
@@ -21001,6 +21220,7 @@ bare_label_keyword:
 			| NOMINVALUE
 			| NONE
 			| NONEDITIONABLE
+			| NOPARALLEL
 			| NORMALIZE
 			| NORMALIZED
 			| NOSCALE
@@ -21023,6 +21243,7 @@ bare_label_keyword:
 			| OIDS
 			| OLD
 			| OMIT
+			| ONLINE
 			| ONLY
 			| OPERATOR
 			| OPTION
@@ -21037,7 +21258,7 @@ bare_label_keyword:
 			| OWNED
 			| OWNER
 			| PACKAGE
-			| PACKAGES	
+			| PACKAGES
 			| PARALLEL
 			| PARALLEL_ENABLE
 			| PARAMETER
@@ -21075,6 +21296,7 @@ bare_label_keyword:
 			| READ
 			| REAL
 			| REASSIGN
+			| REBUILD
 			| RECHECK
 			| RECURSIVE
 			| REF_P
@@ -21111,7 +21333,7 @@ bare_label_keyword:
 			| RULE
 			| SAVEPOINT
 			| SCALAR
-			| SCALE	
+			| SCALE
 			| SCHEMA
 			| SCHEMAS
 			| SCROLL
@@ -21219,6 +21441,7 @@ bare_label_keyword:
 			| VIRTUAL
 			| VISIBLE
 			| VOLATILE
+			| WAIT
 			| WHEN
 			| WHITESPACE_P
 			| WORK

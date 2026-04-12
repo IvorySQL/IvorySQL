@@ -12,8 +12,10 @@ backend_sources += files(
   'proto.c',
   'relation.c',
   'reorderbuffer.c',
+  'sequencesync.c',
   'slotsync.c',
   'snapbuild.c',
+  'syncutils.c',
   'tablesync.c',
   'worker.c',
 )

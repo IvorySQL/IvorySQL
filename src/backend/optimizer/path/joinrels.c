@@ -16,9 +16,11 @@
 
 #include "miscadmin.h"
 #include "optimizer/appendinfo.h"
+#include "optimizer/cost.h"
 #include "optimizer/joininfo.h"
 #include "optimizer/pathnode.h"
 #include "optimizer/paths.h"
+#include "optimizer/planner.h"
 #include "partitioning/partbounds.h"
 #include "utils/memutils.h"
 
@@ -35,6 +37,9 @@ static bool has_legal_joinclause(PlannerInfo *root, RelOptInfo *rel);
 static bool restriction_is_constant_false(List *restrictlist,
 										  RelOptInfo *joinrel,
 										  bool only_pushed_down);
+static void make_grouped_join_rel(PlannerInfo *root, RelOptInfo *rel1,
+								  RelOptInfo *rel2, RelOptInfo *joinrel,
+								  SpecialJoinInfo *sjinfo, List *restrictlist);
 static void populate_joinrel_with_paths(PlannerInfo *root, RelOptInfo *rel1,
 										RelOptInfo *rel2, RelOptInfo *joinrel,
 										SpecialJoinInfo *sjinfo, List *restrictlist);
@@ -444,8 +449,7 @@ join_is_legal(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2,
 		}
 		else if (sjinfo->jointype == JOIN_SEMI &&
 				 bms_equal(sjinfo->syn_righthand, rel2->relids) &&
-				 create_unique_path(root, rel2, rel2->cheapest_total_path,
-									sjinfo) != NULL)
+				 create_unique_paths(root, rel2, sjinfo) != NULL)
 		{
 			/*----------
 			 * For a semijoin, we can join the RHS to anything else by
@@ -477,8 +481,7 @@ join_is_legal(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2,
 		}
 		else if (sjinfo->jointype == JOIN_SEMI &&
 				 bms_equal(sjinfo->syn_righthand, rel1->relids) &&
-				 create_unique_path(root, rel1, rel1->cheapest_total_path,
-									sjinfo) != NULL)
+				 create_unique_paths(root, rel1, sjinfo) != NULL)
 		{
 			/* Reversed semijoin case */
 			if (match_sjinfo)
@@ -763,6 +766,10 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 		return joinrel;
 	}
 
+	/* Build a grouped join relation for 'joinrel' if possible. */
+	make_grouped_join_rel(root, rel1, rel2, joinrel, sjinfo,
+						  restrictlist);
+
 	/* Add paths to the join relation. */
 	populate_joinrel_with_paths(root, rel1, rel2, joinrel, sjinfo,
 								restrictlist);
@@ -875,6 +882,186 @@ add_outer_joins_to_relids(PlannerInfo *root, Relids input_relids,
 }
 
 /*
+ * make_grouped_join_rel
+ *	  Build a grouped join relation for the given "joinrel" if eager
+ *	  aggregation is applicable and the resulting grouped paths are considered
+ *	  useful.
+ *
+ * There are two strategies for generating grouped paths for a join relation:
+ *
+ * 1. Join a grouped (partially aggregated) input relation with a non-grouped
+ * input (e.g., AGG(B) JOIN A).
+ *
+ * 2. Apply partial aggregation (sorted or hashed) on top of existing
+ * non-grouped join paths (e.g., AGG(A JOIN B)).
+ *
+ * To limit planning effort and avoid an explosion of alternatives, we adopt a
+ * strategy where partial aggregation is only pushed to the lowest possible
+ * level in the join tree that is deemed useful.  That is, if grouped paths can
+ * be built using the first strategy, we skip consideration of the second
+ * strategy for the same join level.
+ *
+ * Additionally, if there are multiple lowest useful levels where partial
+ * aggregation could be applied, such as in a join tree with relations A, B,
+ * and C where both "AGG(A JOIN B) JOIN C" and "A JOIN AGG(B JOIN C)" are valid
+ * placements, we choose only the first one encountered during join search.
+ * This avoids generating multiple versions of the same grouped relation based
+ * on different aggregation placements.
+ *
+ * These heuristics also ensure that all grouped paths for the same grouped
+ * relation produce the same set of rows, which is a basic assumption in the
+ * planner.
+ */
+static void
+make_grouped_join_rel(PlannerInfo *root, RelOptInfo *rel1,
+					  RelOptInfo *rel2, RelOptInfo *joinrel,
+					  SpecialJoinInfo *sjinfo, List *restrictlist)
+{
+	RelOptInfo *grouped_rel;
+	RelOptInfo *grouped_rel1;
+	RelOptInfo *grouped_rel2;
+	bool		rel1_empty;
+	bool		rel2_empty;
+	Relids		apply_agg_at;
+
+	/*
+	 * If there are no aggregate expressions or grouping expressions, eager
+	 * aggregation is not possible.
+	 */
+	if (root->agg_clause_list == NIL ||
+		root->group_expr_list == NIL)
+		return;
+
+	/* Retrieve the grouped relations for the two input rels */
+	grouped_rel1 = rel1->grouped_rel;
+	grouped_rel2 = rel2->grouped_rel;
+
+	rel1_empty = (grouped_rel1 == NULL || IS_DUMMY_REL(grouped_rel1));
+	rel2_empty = (grouped_rel2 == NULL || IS_DUMMY_REL(grouped_rel2));
+
+	/* Find or construct a grouped joinrel for this joinrel */
+	grouped_rel = joinrel->grouped_rel;
+	if (grouped_rel == NULL)
+	{
+		RelAggInfo *agg_info = NULL;
+
+		/*
+		 * Prepare the information needed to create grouped paths for this
+		 * join relation.
+		 */
+		agg_info = create_rel_agg_info(root, joinrel, rel1_empty == rel2_empty);
+		if (agg_info == NULL)
+			return;
+
+		/*
+		 * If grouped paths for the given join relation are not considered
+		 * useful, and no grouped paths can be built by joining grouped input
+		 * relations, skip building the grouped join relation.
+		 */
+		if (!agg_info->agg_useful &&
+			(rel1_empty == rel2_empty))
+			return;
+
+		/* build the grouped relation */
+		grouped_rel = build_grouped_rel(root, joinrel);
+		grouped_rel->reltarget = agg_info->target;
+
+		if (rel1_empty != rel2_empty)
+		{
+			/*
+			 * If there is exactly one grouped input relation, then we can
+			 * build grouped paths by joining the input relations.  Set size
+			 * estimates for the grouped join relation based on the input
+			 * relations, and update the set of relids where partial
+			 * aggregation is applied to that of the grouped input relation.
+			 */
+			set_joinrel_size_estimates(root, grouped_rel,
+									   rel1_empty ? rel1 : grouped_rel1,
+									   rel2_empty ? rel2 : grouped_rel2,
+									   sjinfo, restrictlist);
+			agg_info->apply_agg_at = rel1_empty ?
+				grouped_rel2->agg_info->apply_agg_at :
+				grouped_rel1->agg_info->apply_agg_at;
+		}
+		else
+		{
+			/*
+			 * Otherwise, grouped paths can be built by applying partial
+			 * aggregation on top of existing non-grouped join paths.  Set
+			 * size estimates for the grouped join relation based on the
+			 * estimated number of groups, and track the set of relids where
+			 * partial aggregation is applied.  Note that these values may be
+			 * updated later if it is determined that grouped paths can be
+			 * constructed by joining other input relations.
+			 */
+			grouped_rel->rows = agg_info->grouped_rows;
+			agg_info->apply_agg_at = bms_copy(joinrel->relids);
+		}
+
+		grouped_rel->agg_info = agg_info;
+		joinrel->grouped_rel = grouped_rel;
+	}
+
+	Assert(IS_GROUPED_REL(grouped_rel));
+
+	/* We may have already proven this grouped join relation to be dummy. */
+	if (IS_DUMMY_REL(grouped_rel))
+		return;
+
+	/*
+	 * Nothing to do if there's no grouped input relation.  Also, joining two
+	 * grouped relations is not currently supported.
+	 */
+	if (rel1_empty == rel2_empty)
+		return;
+
+	/*
+	 * Get the set of relids where partial aggregation is applied among the
+	 * given input relations.
+	 */
+	apply_agg_at = rel1_empty ?
+		grouped_rel2->agg_info->apply_agg_at :
+		grouped_rel1->agg_info->apply_agg_at;
+
+	/*
+	 * If it's not the designated level, skip building grouped paths.
+	 *
+	 * One exception is when it is a subset of the previously recorded level.
+	 * In that case, we need to update the designated level to this one, and
+	 * adjust the size estimates for the grouped join relation accordingly.
+	 * For example, suppose partial aggregation can be applied on top of (B
+	 * JOIN C).  If we first construct the join as ((A JOIN B) JOIN C), we'd
+	 * record the designated level as including all three relations (A B C).
+	 * Later, when we consider (A JOIN (B JOIN C)), we encounter the smaller
+	 * (B C) join level directly.  Since this is a subset of the previous
+	 * level and still valid for partial aggregation, we update the designated
+	 * level to (B C), and adjust the size estimates accordingly.
+	 */
+	if (!bms_equal(apply_agg_at, grouped_rel->agg_info->apply_agg_at))
+	{
+		if (bms_is_subset(apply_agg_at, grouped_rel->agg_info->apply_agg_at))
+		{
+			/* Adjust the size estimates for the grouped join relation. */
+			set_joinrel_size_estimates(root, grouped_rel,
+									   rel1_empty ? rel1 : grouped_rel1,
+									   rel2_empty ? rel2 : grouped_rel2,
+									   sjinfo, restrictlist);
+			grouped_rel->agg_info->apply_agg_at = apply_agg_at;
+		}
+		else
+			return;
+	}
+
+	/* Make paths for the grouped join relation. */
+	populate_joinrel_with_paths(root,
+								rel1_empty ? rel1 : grouped_rel1,
+								rel2_empty ? rel2 : grouped_rel2,
+								grouped_rel,
+								sjinfo,
+								restrictlist);
+}
+
+/*
  * populate_joinrel_with_paths
  *	  Add paths to the given joinrel for given pair of joining relations. The
  *	  SpecialJoinInfo provides details about the join and the restrictlist
@@ -886,6 +1073,8 @@ populate_joinrel_with_paths(PlannerInfo *root, RelOptInfo *rel1,
 							RelOptInfo *rel2, RelOptInfo *joinrel,
 							SpecialJoinInfo *sjinfo, List *restrictlist)
 {
+	RelOptInfo *unique_rel2;
+
 	/*
 	 * Consider paths using each rel as both outer and inner.  Depending on
 	 * the join type, a provably empty outer or inner rel might mean the join
@@ -991,14 +1180,13 @@ populate_joinrel_with_paths(PlannerInfo *root, RelOptInfo *rel1,
 			/*
 			 * If we know how to unique-ify the RHS and one input rel is
 			 * exactly the RHS (not a superset) we can consider unique-ifying
-			 * it and then doing a regular join.  (The create_unique_path
+			 * it and then doing a regular join.  (The create_unique_paths
 			 * check here is probably redundant with what join_is_legal did,
 			 * but if so the check is cheap because it's cached.  So test
 			 * anyway to be sure.)
 			 */
 			if (bms_equal(sjinfo->syn_righthand, rel2->relids) &&
-				create_unique_path(root, rel2, rel2->cheapest_total_path,
-								   sjinfo) != NULL)
+				(unique_rel2 = create_unique_paths(root, rel2, sjinfo)) != NULL)
 			{
 				if (is_dummy_rel(rel1) || is_dummy_rel(rel2) ||
 					restriction_is_constant_false(restrictlist, joinrel, false))
@@ -1006,10 +1194,10 @@ populate_joinrel_with_paths(PlannerInfo *root, RelOptInfo *rel1,
 					mark_dummy_rel(joinrel);
 					break;
 				}
-				add_paths_to_joinrel(root, joinrel, rel1, rel2,
+				add_paths_to_joinrel(root, joinrel, rel1, unique_rel2,
 									 JOIN_UNIQUE_INNER, sjinfo,
 									 restrictlist);
-				add_paths_to_joinrel(root, joinrel, rel2, rel1,
+				add_paths_to_joinrel(root, joinrel, unique_rel2, rel1,
 									 JOIN_UNIQUE_OUTER, sjinfo,
 									 restrictlist);
 			}
@@ -1614,6 +1802,11 @@ try_partitionwise_join(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2,
 		Assert(bms_equal(child_joinrel->relids,
 						 adjust_child_relids(joinrel->relids,
 											 nappinfos, appinfos)));
+
+		/* Build a grouped join relation for 'child_joinrel' if possible */
+		make_grouped_join_rel(root, child_rel1, child_rel2,
+							  child_joinrel, child_sjinfo,
+							  child_restrictlist);
 
 		/* And make paths for the child join */
 		populate_joinrel_with_paths(root, child_rel1, child_rel2,

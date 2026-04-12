@@ -120,6 +120,7 @@ typedef struct SelectLimit
 typedef struct GroupClause
 {
 	bool		distinct;
+	bool		all;
 	List	   *list;
 } GroupClause;
 
@@ -201,6 +202,10 @@ static void processCASbits(int cas_bits, int location, const char *constrType,
 			   bool *not_valid, bool *no_inherit, core_yyscan_t yyscanner);
 static PartitionStrategy parsePartitionStrategy(char *strategy, int location,
 												core_yyscan_t yyscanner);
+static void preprocess_pub_all_objtype_list(List *all_objects_list,
+											bool *all_tables,
+											bool *all_sequences,
+											core_yyscan_t yyscanner);
 static void preprocess_pubobj_list(List *pubobjspec_list,
 								   core_yyscan_t yyscanner);
 static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
@@ -259,6 +264,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	PartitionBoundSpec *partboundspec;
 	RoleSpec   *rolespec;
 	PublicationObjSpec *publicationobjectspec;
+	PublicationAllObjSpec *publicationallobjectspec;
 	struct SelectLimit *selectlimit;
 	SetQuantifier setquantifier;
 	struct GroupClause *groupclause;
@@ -302,7 +308,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 		SecLabelStmt SelectStmt TransactionStmt TransactionStmtLegacy TruncateStmt
 		UnlistenStmt UpdateStmt VacuumStmt
 		VariableResetStmt VariableSetStmt VariableShowStmt
-		ViewStmt CheckPointStmt CreateConversionStmt
+		ViewStmt WaitStmt CheckPointStmt CreateConversionStmt
 		DeallocateStmt PrepareStmt ExecuteStmt
 		DropOwnedStmt ReassignOwnedStmt
 		AlterTSConfigurationStmt AlterTSDictionaryStmt
@@ -318,6 +324,12 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <list>		opt_qualified_name
 %type <boolean>		opt_concurrently
 %type <dbehavior>	opt_drop_behavior
+%type <list>		opt_utility_option_list
+%type <list>		opt_wait_with_clause
+%type <list>		utility_option_list
+%type <defelt>		utility_option_elem
+%type <str>			utility_option_name
+%type <node>		utility_option_arg
 
 %type <node>	alter_column_default opclass_item opclass_drop alter_using
 %type <ival>	add_drop opt_asc_desc opt_nulls_order
@@ -338,10 +350,6 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 				create_extension_opt_item alter_extension_opt_item
 
 %type <ival>	opt_lock lock_type cast_context
-%type <str>		utility_option_name
-%type <defelt>	utility_option_elem
-%type <list>	utility_option_list
-%type <node>	utility_option_arg
 %type <defelt>	drop_option
 %type <boolean>	opt_or_replace opt_no
 				opt_grant_grant_option
@@ -445,7 +453,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 				transform_element_list transform_type_list
 				TriggerTransitions TriggerReferencing
 				vacuum_relation_list opt_vacuum_relation_list
-				drop_option_list pub_obj_list
+				drop_option_list pub_obj_list pub_all_obj_type_list
 
 %type <retclause> returning_clause
 %type <node>	returning_option
@@ -556,7 +564,6 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <list>	generic_option_list alter_generic_option_list
 
 %type <ival>	reindex_target_relation reindex_target_all
-%type <list>	opt_reindex_option_list
 
 %type <node>	copy_generic_opt_arg copy_generic_opt_arg_list_item
 %type <defelt>	copy_generic_opt_elem
@@ -584,6 +591,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <node>	var_value zone_value
 %type <rolespec> auth_ident RoleSpec opt_granted_by
 %type <publicationobjectspec> PublicationObjSpec
+%type <publicationallobjectspec> PublicationAllObjSpec
 
 %type <keyword> unreserved_keyword type_func_name_keyword
 %type <keyword> col_name_keyword reserved_keyword
@@ -631,7 +639,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <list>	window_clause window_definition_list opt_partition_clause
 %type <windef>	window_definition over_clause window_specification
 				opt_frame_clause frame_extent frame_bound
-%type <ival>	opt_window_exclusion_clause
+%type <ival>	null_treatment opt_window_exclusion_clause
 %type <str>		opt_existing_window_name
 %type <boolean> opt_if_not_exists
 %type <boolean> opt_unique_null_treatment
@@ -670,7 +678,6 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <boolean>	json_key_uniqueness_constraint_opt
 				json_object_constructor_null_clause_opt
 				json_array_constructor_null_clause_opt
-
 
 /*
  * Non-keyword token types.  These are hard-wired into the "flex" lexer.
@@ -729,7 +736,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 
 	HANDLER HAVING HEADER_P HOLD HOUR_P
 
-	IDENTITY_P IF_P ILIKE IMMEDIATE IMMUTABLE IMPLICIT_P IMPORT_P IN_P INCLUDE
+	IDENTITY_P IF_P IGNORE_P ILIKE IMMEDIATE IMMUTABLE IMPLICIT_P IMPORT_P IN_P INCLUDE
 	INCLUDING INCREMENT INDENT INDEX INDEXES INHERIT INHERITS INITIALLY INLINE_P
 	INNER_P INOUT INPUT_P INSENSITIVE INSERT INSTEAD INT_P INTEGER
 	INTERSECT INTERVAL INTO INVOKER IS ISNULL ISOLATION
@@ -741,7 +748,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 
 	LABEL LANGUAGE LARGE_P LAST_P LATERAL_P
 	LEADING LEAKPROOF LEAST LEFT LEVEL LIKE LIMIT LISTEN LOAD LOCAL
-	LOCALTIME LOCALTIMESTAMP LOCATION LOCK_P LOCKED LOGGED
+	LOCALTIME LOCALTIMESTAMP LOCATION LOCK_P LOCKED LOGGED LSN_P
 
 	MAPPING MATCH MATCHED MATERIALIZED MAXVALUE MERGE MERGE_ACTION METHOD
 	MINUTE_P MINVALUE MODE MONTH_P MOVE
@@ -764,7 +771,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 
 	RANGE READ REAL REASSIGN RECURSIVE REF_P REFERENCES REFERENCING
 	REFRESH REINDEX RELATIVE_P RELEASE RENAME REPEATABLE REPLACE REPLICA
-	RESET RESTART RESTRICT RETURN RETURNING RETURNS REVOKE RIGHT ROLE ROLLBACK ROLLUP
+	RESET RESPECT_P RESTART RESTRICT RETURN RETURNING RETURNS REVOKE RIGHT ROLE ROLLBACK ROLLUP
 	ROUTINE ROUTINES ROW ROWS RULE
 
 	SAVEPOINT SCALAR SCHEMA SCHEMAS SCROLL SEARCH SECOND_P SECURITY SELECT
@@ -785,7 +792,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	VACUUM VALID VALIDATE VALIDATOR VALUE_P VALUES VARCHAR VARIADIC VARYING
 	VERBOSE VERSION_P VIEW VIEWS VIRTUAL VOLATILE
 
-	WHEN WHERE WHITESPACE_P WINDOW WITH WITHIN WITHOUT WORK WRAPPER WRITE
+	WAIT WHEN WHERE WHITESPACE_P WINDOW WITH WITHIN WITHOUT WORK WRAPPER WRITE
 
 	XML_P XMLATTRIBUTES XMLCONCAT XMLELEMENT XMLEXISTS XMLFOREST XMLNAMESPACES
 	XMLPARSE XMLPI XMLROOT XMLSERIALIZE XMLTABLE
@@ -1117,6 +1124,7 @@ stmt:
 			| VariableSetStmt
 			| VariableShowStmt
 			| ViewStmt
+			| WaitStmt
 			| /*EMPTY*/
 				{ $$ = NULL; }
 		;
@@ -1143,6 +1151,41 @@ opt_drop_behavior:
 			CASCADE							{ $$ = DROP_CASCADE; }
 			| RESTRICT						{ $$ = DROP_RESTRICT; }
 			| /* EMPTY */					{ $$ = DROP_RESTRICT; /* default */ }
+		;
+
+opt_utility_option_list:
+			'(' utility_option_list ')'		{ $$ = $2; }
+			| /* EMPTY */					{ $$ = NULL; }
+		;
+
+utility_option_list:
+			utility_option_elem
+				{
+					$$ = list_make1($1);
+				}
+			| utility_option_list ',' utility_option_elem
+				{
+					$$ = lappend($1, $3);
+				}
+		;
+
+utility_option_elem:
+			utility_option_name utility_option_arg
+				{
+					$$ = makeDefElem($1, $2, @1);
+				}
+		;
+
+utility_option_name:
+			NonReservedWord					{ $$ = $1; }
+			| analyze_keyword				{ $$ = "analyze"; }
+			| FORMAT_LA						{ $$ = "format"; }
+		;
+
+utility_option_arg:
+			opt_boolean_or_string			{ $$ = (Node *) makeString($1); }
+			| NumericOnly					{ $$ = (Node *) $1; }
+			| /* EMPTY */					{ $$ = NULL; }
 		;
 
 /*****************************************************************************
@@ -1678,6 +1721,26 @@ generic_set:
 					n->location = @3;
 					$$ = n;
 				}
+			| var_name TO NULL_P
+				{
+					VariableSetStmt *n = makeNode(VariableSetStmt);
+
+					n->kind = VAR_SET_VALUE;
+					n->name = $1;
+					n->args = list_make1(makeNullAConst(@3));
+					n->location = @3;
+					$$ = n;
+				}
+			| var_name '=' NULL_P
+				{
+					VariableSetStmt *n = makeNode(VariableSetStmt);
+
+					n->kind = VAR_SET_VALUE;
+					n->name = $1;
+					n->args = list_make1(makeNullAConst(@3));
+					n->location = @3;
+					$$ = n;
+				}
 			| var_name TO DEFAULT
 				{
 					VariableSetStmt *n = makeNode(VariableSetStmt);
@@ -2032,11 +2095,12 @@ constraints_set_mode:
  * Checkpoint statement
  */
 CheckPointStmt:
-			CHECKPOINT
+			CHECKPOINT opt_utility_option_list
 				{
 					CheckPointStmt *n = makeNode(CheckPointStmt);
 
 					$$ = (Node *) n;
+					n->options = $2;
 				}
 		;
 
@@ -2672,6 +2736,12 @@ alter_table_cmd:
 						c->alterDeferrability = true;
 					if ($4 & CAS_NO_INHERIT)
 						c->alterInheritability = true;
+					/* handle unsupported case with specific error message */
+					if ($4 & CAS_NOT_VALID)
+						ereport(ERROR,
+								errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								errmsg("constraints cannot be altered to be NOT VALID"),
+								parser_errposition(@4));
 					processCASbits($4, @4, "FOREIGN KEY",
 									&c->deferrable,
 									&c->initdeferred,
@@ -3363,7 +3433,7 @@ ClosePortalStmt:
  *				COPY ( query ) TO file	[WITH] [(options)]
  *
  *				where 'query' can be one of:
- *				{ SELECT | UPDATE | INSERT | DELETE }
+ *				{ SELECT | UPDATE | INSERT | DELETE | MERGE }
  *
  *				and 'file' can be one of:
  *				{ PROGRAM 'command' | STDIN | STDOUT | 'filename' }
@@ -3404,6 +3474,7 @@ CopyStmt:	COPY opt_binary qualified_name opt_column_list
 						ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
 								 errmsg("WHERE clause not allowed with COPY TO"),
+								 errhint("Try the COPY (SELECT ... WHERE ...) TO variant."),
 								 parser_errposition(@11)));
 
 					n->options = NIL;
@@ -6039,6 +6110,26 @@ CreateTrigStmt:
 			EXECUTE FUNCTION_or_PROCEDURE func_name '(' TriggerFuncArgs ')'
 				{
 					CreateTrigStmt *n = makeNode(CreateTrigStmt);
+					bool		dummy;
+
+					if (($11 & CAS_NOT_VALID) != 0)
+						ereport(ERROR,
+								errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								errmsg("constraint triggers cannot be marked %s",
+									   "NOT VALID"),
+								parser_errposition(@11));
+					if (($11 & CAS_NO_INHERIT) != 0)
+						ereport(ERROR,
+								errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								errmsg("constraint triggers cannot be marked %s",
+									   "NO INHERIT"),
+								parser_errposition(@11));
+					if (($11 & CAS_NOT_ENFORCED) != 0)
+						ereport(ERROR,
+								errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								errmsg("constraint triggers cannot be marked %s",
+									   "NOT ENFORCED"),
+								parser_errposition(@11));
 
 					n->replace = $2;
 					if (n->replace) /* not supported, see CreateTrigger */
@@ -6058,7 +6149,7 @@ CreateTrigStmt:
 					n->whenClause = $15;
 					n->transitionRels = NIL;
 					processCASbits($11, @11, "TRIGGER",
-								   &n->deferrable, &n->initdeferred, NULL,
+								   &n->deferrable, &n->initdeferred, &dummy,
 								   NULL, NULL, yyscanner);
 					n->constrrel = $10;
 					$$ = (Node *) n;
@@ -7481,6 +7572,8 @@ fetch_args:	cursor_name
 					n->portalname = $1;
 					n->direction = FETCH_FORWARD;
 					n->howMany = 1;
+					n->location = -1;
+					n->direction_keyword = FETCH_KEYWORD_NONE;
 					$$ = (Node *) n;
 				}
 			| from_in cursor_name
@@ -7490,60 +7583,8 @@ fetch_args:	cursor_name
 					n->portalname = $2;
 					n->direction = FETCH_FORWARD;
 					n->howMany = 1;
-					$$ = (Node *) n;
-				}
-			| NEXT opt_from_in cursor_name
-				{
-					FetchStmt *n = makeNode(FetchStmt);
-
-					n->portalname = $3;
-					n->direction = FETCH_FORWARD;
-					n->howMany = 1;
-					$$ = (Node *) n;
-				}
-			| PRIOR opt_from_in cursor_name
-				{
-					FetchStmt *n = makeNode(FetchStmt);
-
-					n->portalname = $3;
-					n->direction = FETCH_BACKWARD;
-					n->howMany = 1;
-					$$ = (Node *) n;
-				}
-			| FIRST_P opt_from_in cursor_name
-				{
-					FetchStmt *n = makeNode(FetchStmt);
-
-					n->portalname = $3;
-					n->direction = FETCH_ABSOLUTE;
-					n->howMany = 1;
-					$$ = (Node *) n;
-				}
-			| LAST_P opt_from_in cursor_name
-				{
-					FetchStmt *n = makeNode(FetchStmt);
-
-					n->portalname = $3;
-					n->direction = FETCH_ABSOLUTE;
-					n->howMany = -1;
-					$$ = (Node *) n;
-				}
-			| ABSOLUTE_P SignedIconst opt_from_in cursor_name
-				{
-					FetchStmt *n = makeNode(FetchStmt);
-
-					n->portalname = $4;
-					n->direction = FETCH_ABSOLUTE;
-					n->howMany = $2;
-					$$ = (Node *) n;
-				}
-			| RELATIVE_P SignedIconst opt_from_in cursor_name
-				{
-					FetchStmt *n = makeNode(FetchStmt);
-
-					n->portalname = $4;
-					n->direction = FETCH_RELATIVE;
-					n->howMany = $2;
+					n->location = -1;
+					n->direction_keyword = FETCH_KEYWORD_NONE;
 					$$ = (Node *) n;
 				}
 			| SignedIconst opt_from_in cursor_name
@@ -7553,6 +7594,74 @@ fetch_args:	cursor_name
 					n->portalname = $3;
 					n->direction = FETCH_FORWARD;
 					n->howMany = $1;
+					n->location = @1;
+					n->direction_keyword = FETCH_KEYWORD_NONE;
+					$$ = (Node *) n;
+				}
+			| NEXT opt_from_in cursor_name
+				{
+					FetchStmt *n = makeNode(FetchStmt);
+
+					n->portalname = $3;
+					n->direction = FETCH_FORWARD;
+					n->howMany = 1;
+					n->location = -1;
+					n->direction_keyword = FETCH_KEYWORD_NEXT;
+					$$ = (Node *) n;
+				}
+			| PRIOR opt_from_in cursor_name
+				{
+					FetchStmt *n = makeNode(FetchStmt);
+
+					n->portalname = $3;
+					n->direction = FETCH_BACKWARD;
+					n->howMany = 1;
+					n->location = -1;
+					n->direction_keyword = FETCH_KEYWORD_PRIOR;
+					$$ = (Node *) n;
+				}
+			| FIRST_P opt_from_in cursor_name
+				{
+					FetchStmt *n = makeNode(FetchStmt);
+
+					n->portalname = $3;
+					n->direction = FETCH_ABSOLUTE;
+					n->howMany = 1;
+					n->location = -1;
+					n->direction_keyword = FETCH_KEYWORD_FIRST;
+					$$ = (Node *) n;
+				}
+			| LAST_P opt_from_in cursor_name
+				{
+					FetchStmt *n = makeNode(FetchStmt);
+
+					n->portalname = $3;
+					n->direction = FETCH_ABSOLUTE;
+					n->howMany = -1;
+					n->location = -1;
+					n->direction_keyword = FETCH_KEYWORD_LAST;
+					$$ = (Node *) n;
+				}
+			| ABSOLUTE_P SignedIconst opt_from_in cursor_name
+				{
+					FetchStmt *n = makeNode(FetchStmt);
+
+					n->portalname = $4;
+					n->direction = FETCH_ABSOLUTE;
+					n->howMany = $2;
+					n->location = @2;
+					n->direction_keyword = FETCH_KEYWORD_ABSOLUTE;
+					$$ = (Node *) n;
+				}
+			| RELATIVE_P SignedIconst opt_from_in cursor_name
+				{
+					FetchStmt *n = makeNode(FetchStmt);
+
+					n->portalname = $4;
+					n->direction = FETCH_RELATIVE;
+					n->howMany = $2;
+					n->location = @2;
+					n->direction_keyword = FETCH_KEYWORD_RELATIVE;
 					$$ = (Node *) n;
 				}
 			| ALL opt_from_in cursor_name
@@ -7562,6 +7671,8 @@ fetch_args:	cursor_name
 					n->portalname = $3;
 					n->direction = FETCH_FORWARD;
 					n->howMany = FETCH_ALL;
+					n->location = -1;
+					n->direction_keyword = FETCH_KEYWORD_ALL;
 					$$ = (Node *) n;
 				}
 			| FORWARD opt_from_in cursor_name
@@ -7571,6 +7682,8 @@ fetch_args:	cursor_name
 					n->portalname = $3;
 					n->direction = FETCH_FORWARD;
 					n->howMany = 1;
+					n->location = -1;
+					n->direction_keyword = FETCH_KEYWORD_FORWARD;
 					$$ = (Node *) n;
 				}
 			| FORWARD SignedIconst opt_from_in cursor_name
@@ -7580,6 +7693,8 @@ fetch_args:	cursor_name
 					n->portalname = $4;
 					n->direction = FETCH_FORWARD;
 					n->howMany = $2;
+					n->location = @2;
+					n->direction_keyword = FETCH_KEYWORD_FORWARD;
 					$$ = (Node *) n;
 				}
 			| FORWARD ALL opt_from_in cursor_name
@@ -7589,6 +7704,8 @@ fetch_args:	cursor_name
 					n->portalname = $4;
 					n->direction = FETCH_FORWARD;
 					n->howMany = FETCH_ALL;
+					n->location = -1;
+					n->direction_keyword = FETCH_KEYWORD_FORWARD_ALL;
 					$$ = (Node *) n;
 				}
 			| BACKWARD opt_from_in cursor_name
@@ -7598,6 +7715,8 @@ fetch_args:	cursor_name
 					n->portalname = $3;
 					n->direction = FETCH_BACKWARD;
 					n->howMany = 1;
+					n->location = -1;
+					n->direction_keyword = FETCH_KEYWORD_BACKWARD;
 					$$ = (Node *) n;
 				}
 			| BACKWARD SignedIconst opt_from_in cursor_name
@@ -7607,6 +7726,8 @@ fetch_args:	cursor_name
 					n->portalname = $4;
 					n->direction = FETCH_BACKWARD;
 					n->howMany = $2;
+					n->location = @2;
+					n->direction_keyword = FETCH_KEYWORD_BACKWARD;
 					$$ = (Node *) n;
 				}
 			| BACKWARD ALL opt_from_in cursor_name
@@ -7616,6 +7737,8 @@ fetch_args:	cursor_name
 					n->portalname = $4;
 					n->direction = FETCH_BACKWARD;
 					n->howMany = FETCH_ALL;
+					n->location = -1;
+					n->direction_keyword = FETCH_KEYWORD_BACKWARD_ALL;
 					$$ = (Node *) n;
 				}
 		;
@@ -9293,7 +9416,7 @@ DropTransformStmt: DROP TRANSFORM opt_if_exists FOR Typename LANGUAGE name opt_d
  *****************************************************************************/
 
 ReindexStmt:
-			REINDEX opt_reindex_option_list reindex_target_relation opt_concurrently qualified_name
+			REINDEX opt_utility_option_list reindex_target_relation opt_concurrently qualified_name
 				{
 					ReindexStmt *n = makeNode(ReindexStmt);
 
@@ -9306,7 +9429,7 @@ ReindexStmt:
 											makeDefElem("concurrently", NULL, @4));
 					$$ = (Node *) n;
 				}
-			| REINDEX opt_reindex_option_list SCHEMA opt_concurrently name
+			| REINDEX opt_utility_option_list SCHEMA opt_concurrently name
 				{
 					ReindexStmt *n = makeNode(ReindexStmt);
 
@@ -9319,7 +9442,7 @@ ReindexStmt:
 											makeDefElem("concurrently", NULL, @4));
 					$$ = (Node *) n;
 				}
-			| REINDEX opt_reindex_option_list reindex_target_all opt_concurrently opt_single_name
+			| REINDEX opt_utility_option_list reindex_target_all opt_concurrently opt_single_name
 				{
 					ReindexStmt *n = makeNode(ReindexStmt);
 
@@ -9340,10 +9463,6 @@ reindex_target_relation:
 reindex_target_all:
 			SYSTEM_P				{ $$ = REINDEX_OBJECT_SYSTEM; }
 			| DATABASE				{ $$ = REINDEX_OBJECT_DATABASE; }
-		;
-opt_reindex_option_list:
-			'(' utility_option_list ')'				{ $$ = $2; }
-			| /* EMPTY */							{ $$ = NULL; }
 		;
 
 /*****************************************************************************
@@ -10616,7 +10735,12 @@ AlterOwnerStmt: ALTER AGGREGATE aggregate_with_argtypes OWNER TO RoleSpec
  *
  * CREATE PUBLICATION name [WITH options]
  *
- * CREATE PUBLICATION FOR ALL TABLES [WITH options]
+ * CREATE PUBLICATION FOR ALL pub_all_obj_type [, ...] [WITH options]
+ *
+ * pub_all_obj_type is one of:
+ *
+ *		TABLES
+ *		SEQUENCES
  *
  * CREATE PUBLICATION FOR pub_obj [, ...] [WITH options]
  *
@@ -10636,13 +10760,15 @@ CreatePublicationStmt:
 					n->options = $4;
 					$$ = (Node *) n;
 				}
-			| CREATE PUBLICATION name FOR ALL TABLES opt_definition
+			| CREATE PUBLICATION name FOR pub_all_obj_type_list opt_definition
 				{
 					CreatePublicationStmt *n = makeNode(CreatePublicationStmt);
 
 					n->pubname = $3;
-					n->options = $7;
-					n->for_all_tables = true;
+					preprocess_pub_all_objtype_list($5, &n->for_all_tables,
+													&n->for_all_sequences,
+													yyscanner);
+					n->options = $6;
 					$$ = (Node *) n;
 				}
 			| CREATE PUBLICATION name FOR pub_obj_list opt_definition
@@ -10754,6 +10880,28 @@ pub_obj_list:	PublicationObjSpec
 					{ $$ = lappend($1, $3); }
 	;
 
+PublicationAllObjSpec:
+				ALL TABLES
+					{
+						$$ = makeNode(PublicationAllObjSpec);
+						$$->pubobjtype = PUBLICATION_ALL_TABLES;
+						$$->location = @1;
+					}
+				| ALL SEQUENCES
+					{
+						$$ = makeNode(PublicationAllObjSpec);
+						$$->pubobjtype = PUBLICATION_ALL_SEQUENCES;
+						$$->location = @1;
+					}
+					;
+
+pub_all_obj_type_list:	PublicationAllObjSpec
+					{ $$ = list_make1($1); }
+				| pub_all_obj_type_list ',' PublicationAllObjSpec
+					{ $$ = lappend($1, $3); }
+	;
+
+
 /*****************************************************************************
  *
  * ALTER PUBLICATION name SET ( options )
@@ -10863,9 +11011,18 @@ AlterSubscriptionStmt:
 					AlterSubscriptionStmt *n =
 						makeNode(AlterSubscriptionStmt);
 
-					n->kind = ALTER_SUBSCRIPTION_REFRESH;
+					n->kind = ALTER_SUBSCRIPTION_REFRESH_PUBLICATION;
 					n->subname = $3;
 					n->options = $6;
+					$$ = (Node *) n;
+				}
+			| ALTER SUBSCRIPTION name REFRESH SEQUENCES
+				{
+					AlterSubscriptionStmt *n =
+						makeNode(AlterSubscriptionStmt);
+
+					n->kind = ALTER_SUBSCRIPTION_REFRESH_SEQUENCES;
+					n->subname = $3;
 					$$ = (Node *) n;
 				}
 			| ALTER SUBSCRIPTION name ADD_P PUBLICATION name_list opt_definition
@@ -11631,7 +11788,7 @@ AlterDomainStmt:
 				{
 					AlterDomainStmt *n = makeNode(AlterDomainStmt);
 
-					n->subtype = 'T';
+					n->subtype = AD_AlterDefault;
 					n->typeName = $3;
 					n->def = $4;
 					$$ = (Node *) n;
@@ -11641,7 +11798,7 @@ AlterDomainStmt:
 				{
 					AlterDomainStmt *n = makeNode(AlterDomainStmt);
 
-					n->subtype = 'N';
+					n->subtype = AD_DropNotNull;
 					n->typeName = $3;
 					$$ = (Node *) n;
 				}
@@ -11650,7 +11807,7 @@ AlterDomainStmt:
 				{
 					AlterDomainStmt *n = makeNode(AlterDomainStmt);
 
-					n->subtype = 'O';
+					n->subtype = AD_SetNotNull;
 					n->typeName = $3;
 					$$ = (Node *) n;
 				}
@@ -11659,7 +11816,7 @@ AlterDomainStmt:
 				{
 					AlterDomainStmt *n = makeNode(AlterDomainStmt);
 
-					n->subtype = 'C';
+					n->subtype = AD_AddConstraint;
 					n->typeName = $3;
 					n->def = $5;
 					$$ = (Node *) n;
@@ -11669,7 +11826,7 @@ AlterDomainStmt:
 				{
 					AlterDomainStmt *n = makeNode(AlterDomainStmt);
 
-					n->subtype = 'X';
+					n->subtype = AD_DropConstraint;
 					n->typeName = $3;
 					n->name = $6;
 					n->behavior = $7;
@@ -11681,7 +11838,7 @@ AlterDomainStmt:
 				{
 					AlterDomainStmt *n = makeNode(AlterDomainStmt);
 
-					n->subtype = 'X';
+					n->subtype = AD_DropConstraint;
 					n->typeName = $3;
 					n->name = $8;
 					n->behavior = $9;
@@ -11693,7 +11850,7 @@ AlterDomainStmt:
 				{
 					AlterDomainStmt *n = makeNode(AlterDomainStmt);
 
-					n->subtype = 'V';
+					n->subtype = AD_ValidateConstraint;
 					n->typeName = $3;
 					n->name = $6;
 					$$ = (Node *) n;
@@ -11842,13 +11999,13 @@ ClusterStmt:
 					n->params = $3;
 					$$ = (Node *) n;
 				}
-			| CLUSTER '(' utility_option_list ')'
+			| CLUSTER opt_utility_option_list
 				{
 					ClusterStmt *n = makeNode(ClusterStmt);
 
 					n->relation = NULL;
 					n->indexname = NULL;
-					n->params = $3;
+					n->params = $2;
 					$$ = (Node *) n;
 				}
 			/* unparenthesized VERBOSE kept for pre-14 compatibility */
@@ -11858,21 +12015,18 @@ ClusterStmt:
 
 					n->relation = $3;
 					n->indexname = $4;
-					n->params = NIL;
 					if ($2)
-						n->params = lappend(n->params, makeDefElem("verbose", NULL, @2));
+						n->params = list_make1(makeDefElem("verbose", NULL, @2));
 					$$ = (Node *) n;
 				}
 			/* unparenthesized VERBOSE kept for pre-17 compatibility */
-			| CLUSTER opt_verbose
+			| CLUSTER VERBOSE
 				{
 					ClusterStmt *n = makeNode(ClusterStmt);
 
 					n->relation = NULL;
 					n->indexname = NULL;
-					n->params = NIL;
-					if ($2)
-						n->params = lappend(n->params, makeDefElem("verbose", NULL, @2));
+					n->params = list_make1(makeDefElem("verbose", NULL, @2));
 					$$ = (Node *) n;
 				}
 			/* kept for pre-8.3 compatibility */
@@ -11882,9 +12036,8 @@ ClusterStmt:
 
 					n->relation = $5;
 					n->indexname = $3;
-					n->params = NIL;
 					if ($2)
-						n->params = lappend(n->params, makeDefElem("verbose", NULL, @2));
+						n->params = list_make1(makeDefElem("verbose", NULL, @2));
 					$$ = (Node *) n;
 				}
 		;
@@ -11935,62 +12088,29 @@ VacuumStmt: VACUUM opt_full opt_freeze opt_verbose opt_analyze opt_vacuum_relati
 				}
 		;
 
-AnalyzeStmt: analyze_keyword opt_verbose opt_vacuum_relation_list
+AnalyzeStmt: analyze_keyword opt_utility_option_list opt_vacuum_relation_list
 				{
 					VacuumStmt *n = makeNode(VacuumStmt);
 
-					n->options = NIL;
-					if ($2)
-						n->options = lappend(n->options,
-											 makeDefElem("verbose", NULL, @2));
+					n->options = $2;
 					n->rels = $3;
 					n->is_vacuumcmd = false;
 					$$ = (Node *) n;
 				}
-			| analyze_keyword '(' utility_option_list ')' opt_vacuum_relation_list
+			| analyze_keyword VERBOSE opt_vacuum_relation_list
 				{
 					VacuumStmt *n = makeNode(VacuumStmt);
 
-					n->options = $3;
-					n->rels = $5;
+					n->options = list_make1(makeDefElem("verbose", NULL, @2));
+					n->rels = $3;
 					n->is_vacuumcmd = false;
 					$$ = (Node *) n;
-				}
-		;
-
-utility_option_list:
-			utility_option_elem
-				{
-					$$ = list_make1($1);
-				}
-			| utility_option_list ',' utility_option_elem
-				{
-					$$ = lappend($1, $3);
 				}
 		;
 
 analyze_keyword:
 			ANALYZE
 			| ANALYSE /* British */
-		;
-
-utility_option_elem:
-			utility_option_name utility_option_arg
-				{
-					$$ = makeDefElem($1, $2, @1);
-				}
-		;
-
-utility_option_name:
-			NonReservedWord							{ $$ = $1; }
-			| analyze_keyword						{ $$ = "analyze"; }
-			| FORMAT_LA								{ $$ = "format"; }
-		;
-
-utility_option_arg:
-			opt_boolean_or_string					{ $$ = (Node *) makeString($1); }
-			| NumericOnly							{ $$ = (Node *) $1; }
-			| /* EMPTY */							{ $$ = NULL; }
 		;
 
 opt_analyze:
@@ -12943,6 +13063,7 @@ simple_select:
 					n->whereClause = $6;
 					n->groupClause = ($7)->list;
 					n->groupDistinct = ($7)->distinct;
+					n->groupByAll = ($7)->all;
 					n->havingClause = $8;
 					n->windowClause = $9;
 					$$ = (Node *) n;
@@ -12960,6 +13081,7 @@ simple_select:
 					n->whereClause = $6;
 					n->groupClause = ($7)->list;
 					n->groupDistinct = ($7)->distinct;
+					n->groupByAll = ($7)->all;
 					n->havingClause = $8;
 					n->windowClause = $9;
 					$$ = (Node *) n;
@@ -13457,7 +13579,16 @@ group_clause:
 					GroupClause *n = (GroupClause *) palloc(sizeof(GroupClause));
 
 					n->distinct = $3 == SET_QUANTIFIER_DISTINCT;
+					n->all = false;
 					n->list = $4;
+					$$ = n;
+				}
+			| GROUP_P BY ALL
+				{
+					GroupClause *n = (GroupClause *) palloc(sizeof(GroupClause));
+					n->distinct = false;
+					n->all = true;
+					n->list = NIL;
 					$$ = n;
 				}
 			| /*EMPTY*/
@@ -13465,6 +13596,7 @@ group_clause:
 					GroupClause *n = (GroupClause *) palloc(sizeof(GroupClause));
 
 					n->distinct = false;
+					n->all = false;
 					n->list = NIL;
 					$$ = n;
 				}
@@ -15742,7 +15874,7 @@ func_application: func_name '(' ')'
  * (Note that many of the special SQL functions wouldn't actually make any
  * sense as functional index entries, but we ignore that consideration here.)
  */
-func_expr: func_application within_group_clause filter_clause over_clause
+func_expr: func_application within_group_clause filter_clause null_treatment over_clause
 				{
 					FuncCall   *n = (FuncCall *) $1;
 
@@ -15775,7 +15907,8 @@ func_expr: func_application within_group_clause filter_clause over_clause
 						n->agg_within_group = true;
 					}
 					n->agg_filter = $3;
-					n->over = $4;
+					n->ignore_nulls = $4;
+					n->over = $5;
 					$$ = (Node *) n;
 				}
 			| json_aggregate_func filter_clause over_clause
@@ -16353,6 +16486,26 @@ xml_passing_mech:
 			| BY VALUE_P
 		;
 
+/*****************************************************************************
+ *
+ * WAIT FOR LSN
+ *
+ *****************************************************************************/
+
+WaitStmt:
+			WAIT FOR LSN_P Sconst opt_wait_with_clause
+				{
+					WaitStmt *n = makeNode(WaitStmt);
+					n->lsn_literal = $4;
+					n->options = $5;
+					$$ = (Node *) n;
+				}
+			;
+
+opt_wait_with_clause:
+			WITH '(' utility_option_list ')'		{ $$ = $3; }
+			| /*EMPTY*/								{ $$ = NIL; }
+			;
 
 /*
  * Aggregate decoration clauses
@@ -16371,6 +16524,12 @@ filter_clause:
 /*
  * Window Definitions
  */
+null_treatment:
+			IGNORE_P NULLS_P						{ $$ = PARSER_IGNORE_NULLS; }
+			| RESPECT_P NULLS_P						{ $$ = PARSER_RESPECT_NULLS; }
+			| /*EMPTY*/								{ $$ = NO_NULLTREATMENT; }
+		;
+
 window_clause:
 			WINDOW window_definition_list			{ $$ = $2; }
 			| /*EMPTY*/								{ $$ = NIL; }
@@ -17568,6 +17727,7 @@ PLpgSQL_Expr: opt_distinct_clause opt_target_list
 					n->whereClause = $4;
 					n->groupClause = ($5)->list;
 					n->groupDistinct = ($5)->distinct;
+					n->groupByAll = ($5)->all;
 					n->havingClause = $6;
 					n->windowClause = $7;
 					n->sortClause = $8;
@@ -17797,6 +17957,7 @@ unreserved_keyword:
 			| HOUR_P
 			| IDENTITY_P
 			| IF_P
+			| IGNORE_P
 			| IMMEDIATE
 			| IMMUTABLE
 			| IMPLICIT_P
@@ -17832,6 +17993,7 @@ unreserved_keyword:
 			| LOCK_P
 			| LOCKED
 			| LOGGED
+			| LSN_P
 			| MAPPING
 			| MATCH
 			| MATCHED
@@ -17915,6 +18077,7 @@ unreserved_keyword:
 			| REPLACE
 			| REPLICA
 			| RESET
+			| RESPECT_P
 			| RESTART
 			| RESTRICT
 			| RETURN
@@ -18001,6 +18164,7 @@ unreserved_keyword:
 			| VIEWS
 			| VIRTUAL
 			| VOLATILE
+			| WAIT
 			| WHITESPACE_P
 			| WITHIN
 			| WITHOUT
@@ -18447,6 +18611,7 @@ bare_label_keyword:
 			| LOCK_P
 			| LOCKED
 			| LOGGED
+			| LSN_P
 			| MAPPING
 			| MATCH
 			| MATCHED
@@ -18658,6 +18823,7 @@ bare_label_keyword:
 			| VIEWS
 			| VIRTUAL
 			| VOLATILE
+			| WAIT
 			| WHEN
 			| WHITESPACE_P
 			| WORK
@@ -19564,6 +19730,47 @@ parsePartitionStrategy(char *strategy, int location, core_yyscan_t yyscanner)
 			 parser_errposition(location)));
 	return PARTITION_STRATEGY_LIST; /* keep compiler quiet */
 
+}
+
+/*
+ * Process all_objects_list to set all_tables and/or all_sequences.
+ * Also, checks if the pub_object_type has been specified more than once.
+ */
+static void
+preprocess_pub_all_objtype_list(List *all_objects_list, bool *all_tables,
+								bool *all_sequences, core_yyscan_t yyscanner)
+{
+	if (!all_objects_list)
+		return;
+
+	*all_tables = false;
+	*all_sequences = false;
+
+	foreach_ptr(PublicationAllObjSpec, obj, all_objects_list)
+	{
+		if (obj->pubobjtype == PUBLICATION_ALL_TABLES)
+		{
+			if (*all_tables)
+				ereport(ERROR,
+						errcode(ERRCODE_SYNTAX_ERROR),
+						errmsg("invalid publication object list"),
+						errdetail("ALL TABLES can be specified only once."),
+						parser_errposition(obj->location));
+
+			*all_tables = true;
+		}
+		else if (obj->pubobjtype == PUBLICATION_ALL_SEQUENCES)
+		{
+			if (*all_sequences)
+				ereport(ERROR,
+					errcode(ERRCODE_SYNTAX_ERROR),
+						errmsg("invalid publication object list"),
+						errdetail("ALL SEQUENCES can be specified only once."),
+						parser_errposition(obj->location));
+
+			*all_sequences = true;
+		}
+	}
 }
 
 /*

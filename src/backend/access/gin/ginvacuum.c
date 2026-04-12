@@ -547,7 +547,7 @@ ginVacuumEntryPage(GinVacuumState *gvs, Buffer buffer, BlockNumber *roots, uint3
 					pfree(plist);
 				PageIndexTupleDelete(tmppage, i);
 
-				if (PageAddItem(tmppage, (Item) itup, IndexTupleSize(itup), i, false, false) != i)
+				if (PageAddItem(tmppage, itup, IndexTupleSize(itup), i, false, false) != i)
 					elog(ERROR, "failed to add item to index page in \"%s\"",
 						 RelationGetRelationName(gvs->index));
 
@@ -753,7 +753,7 @@ ginvacuumcleanup(IndexVacuumInfo *info, IndexBulkDeleteResult *stats)
 		buffer = ReadBufferExtended(index, MAIN_FORKNUM, blkno,
 									RBM_NORMAL, info->strategy);
 		LockBuffer(buffer, GIN_SHARE);
-		page = (Page) BufferGetPage(buffer);
+		page = BufferGetPage(buffer);
 
 		if (GinPageIsRecyclable(page))
 		{

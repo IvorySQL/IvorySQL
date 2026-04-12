@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1994-5, Regents of the University of California
  *
  * IDENTIFICATION
- *	  src/backend/commands/explain.c
+ *	  src/backend/commands/explain_dr.c
  *
  *-------------------------------------------------------------------------
  */
@@ -19,6 +19,7 @@
 #include "libpq/pqformat.h"
 #include "libpq/protocol.h"
 #include "utils/lsyscache.h"
+#include "varatt.h"
 
 /*
  * DestReceiver functions for SERIALIZE option

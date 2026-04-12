@@ -388,7 +388,7 @@ CreateInitDecodingContext(const char *plugin,
 	slot->data.plugin = plugin_name;
 	SpinLockRelease(&slot->mutex);
 
-	if (XLogRecPtrIsInvalid(restart_lsn))
+	if (!XLogRecPtrIsValid(restart_lsn))
 		ReplicationSlotReserveWal();
 	else
 	{
@@ -546,9 +546,9 @@ CreateDecodingContext(XLogRecPtr start_lsn,
 
 	/* slot must be valid to allow decoding */
 	Assert(slot->data.invalidated == RS_INVAL_NONE);
-	Assert(slot->data.restart_lsn != InvalidXLogRecPtr);
+	Assert(XLogRecPtrIsValid(slot->data.restart_lsn));
 
-	if (start_lsn == InvalidXLogRecPtr)
+	if (!XLogRecPtrIsValid(start_lsn))
 	{
 		/* continue from last position */
 		start_lsn = slot->data.confirmed_flush;
@@ -567,7 +567,7 @@ CreateDecodingContext(XLogRecPtr start_lsn,
 		 * kinds of client errors; so the client may wish to check that
 		 * confirmed_flush_lsn matches its expectations.
 		 */
-		elog(LOG, "%X/%X has been already streamed, forwarding to %X/%X",
+		elog(LOG, "%X/%08X has been already streamed, forwarding to %X/%08X",
 			 LSN_FORMAT_ARGS(start_lsn),
 			 LSN_FORMAT_ARGS(slot->data.confirmed_flush));
 
@@ -610,7 +610,7 @@ CreateDecodingContext(XLogRecPtr start_lsn,
 	ereport(LOG,
 			(errmsg("starting logical decoding for slot \"%s\"",
 					NameStr(slot->data.name)),
-			 errdetail("Streaming transactions committing after %X/%X, reading WAL from %X/%X.",
+			 errdetail("Streaming transactions committing after %X/%08X, reading WAL from %X/%08X.",
 					   LSN_FORMAT_ARGS(slot->data.confirmed_flush),
 					   LSN_FORMAT_ARGS(slot->data.restart_lsn))));
 
@@ -637,7 +637,7 @@ DecodingContextFindStartpoint(LogicalDecodingContext *ctx)
 	/* Initialize from where to start reading WAL. */
 	XLogBeginRead(ctx->reader, slot->data.restart_lsn);
 
-	elog(DEBUG1, "searching for logical decoding starting point, starting at %X/%X",
+	elog(DEBUG1, "searching for logical decoding starting point, starting at %X/%08X",
 		 LSN_FORMAT_ARGS(slot->data.restart_lsn));
 
 	/* Wait for a consistent starting point */
@@ -757,8 +757,8 @@ output_plugin_error_callback(void *arg)
 	LogicalErrorCallbackState *state = (LogicalErrorCallbackState *) arg;
 
 	/* not all callbacks have an associated LSN  */
-	if (state->report_location != InvalidXLogRecPtr)
-		errcontext("slot \"%s\", output plugin \"%s\", in the %s callback, associated LSN %X/%X",
+	if (XLogRecPtrIsValid(state->report_location))
+		errcontext("slot \"%s\", output plugin \"%s\", in the %s callback, associated LSN %X/%08X",
 				   NameStr(state->ctx->slot->data.name),
 				   NameStr(state->ctx->slot->data.plugin),
 				   state->callback_name,
@@ -1711,7 +1711,7 @@ LogicalIncreaseXminForSlot(XLogRecPtr current_lsn, TransactionId xmin)
 	 * Only increase if the previous values have been applied, otherwise we
 	 * might never end up updating if the receiver acks too slowly.
 	 */
-	else if (slot->candidate_xmin_lsn == InvalidXLogRecPtr)
+	else if (!XLogRecPtrIsValid(slot->candidate_xmin_lsn))
 	{
 		slot->candidate_catalog_xmin = xmin;
 		slot->candidate_xmin_lsn = current_lsn;
@@ -1725,7 +1725,7 @@ LogicalIncreaseXminForSlot(XLogRecPtr current_lsn, TransactionId xmin)
 	SpinLockRelease(&slot->mutex);
 
 	if (got_new_xmin)
-		elog(DEBUG1, "got new catalog xmin %u at %X/%X", xmin,
+		elog(DEBUG1, "got new catalog xmin %u at %X/%08X", xmin,
 			 LSN_FORMAT_ARGS(current_lsn));
 
 	/* candidate already valid with the current flush position, apply */
@@ -1749,8 +1749,8 @@ LogicalIncreaseRestartDecodingForSlot(XLogRecPtr current_lsn, XLogRecPtr restart
 	slot = MyReplicationSlot;
 
 	Assert(slot != NULL);
-	Assert(restart_lsn != InvalidXLogRecPtr);
-	Assert(current_lsn != InvalidXLogRecPtr);
+	Assert(XLogRecPtrIsValid(restart_lsn));
+	Assert(XLogRecPtrIsValid(current_lsn));
 
 	SpinLockAcquire(&slot->mutex);
 
@@ -1779,13 +1779,13 @@ LogicalIncreaseRestartDecodingForSlot(XLogRecPtr current_lsn, XLogRecPtr restart
 	 * might never end up updating if the receiver acks too slowly. A missed
 	 * value here will just cause some extra effort after reconnecting.
 	 */
-	else if (slot->candidate_restart_valid == InvalidXLogRecPtr)
+	else if (!XLogRecPtrIsValid(slot->candidate_restart_valid))
 	{
 		slot->candidate_restart_valid = current_lsn;
 		slot->candidate_restart_lsn = restart_lsn;
 		SpinLockRelease(&slot->mutex);
 
-		elog(DEBUG1, "got new restart lsn %X/%X at %X/%X",
+		elog(DEBUG1, "got new restart lsn %X/%08X at %X/%08X",
 			 LSN_FORMAT_ARGS(restart_lsn),
 			 LSN_FORMAT_ARGS(current_lsn));
 	}
@@ -1800,7 +1800,7 @@ LogicalIncreaseRestartDecodingForSlot(XLogRecPtr current_lsn, XLogRecPtr restart
 		confirmed_flush = slot->data.confirmed_flush;
 		SpinLockRelease(&slot->mutex);
 
-		elog(DEBUG1, "failed to increase restart lsn: proposed %X/%X, after %X/%X, current candidate %X/%X, current after %X/%X, flushed up to %X/%X",
+		elog(DEBUG1, "failed to increase restart lsn: proposed %X/%08X, after %X/%08X, current candidate %X/%08X, current after %X/%08X, flushed up to %X/%08X",
 			 LSN_FORMAT_ARGS(restart_lsn),
 			 LSN_FORMAT_ARGS(current_lsn),
 			 LSN_FORMAT_ARGS(candidate_restart_lsn),
@@ -1819,11 +1819,11 @@ LogicalIncreaseRestartDecodingForSlot(XLogRecPtr current_lsn, XLogRecPtr restart
 void
 LogicalConfirmReceivedLocation(XLogRecPtr lsn)
 {
-	Assert(lsn != InvalidXLogRecPtr);
+	Assert(XLogRecPtrIsValid(lsn));
 
 	/* Do an unlocked check for candidate_lsn first. */
-	if (MyReplicationSlot->candidate_xmin_lsn != InvalidXLogRecPtr ||
-		MyReplicationSlot->candidate_restart_valid != InvalidXLogRecPtr)
+	if (XLogRecPtrIsValid(MyReplicationSlot->candidate_xmin_lsn) ||
+		XLogRecPtrIsValid(MyReplicationSlot->candidate_restart_valid))
 	{
 		bool		updated_xmin = false;
 		bool		updated_restart = false;
@@ -1849,7 +1849,7 @@ LogicalConfirmReceivedLocation(XLogRecPtr lsn)
 			MyReplicationSlot->data.confirmed_flush = lsn;
 
 		/* if we're past the location required for bumping xmin, do so */
-		if (MyReplicationSlot->candidate_xmin_lsn != InvalidXLogRecPtr &&
+		if (XLogRecPtrIsValid(MyReplicationSlot->candidate_xmin_lsn) &&
 			MyReplicationSlot->candidate_xmin_lsn <= lsn)
 		{
 			/*
@@ -1871,10 +1871,10 @@ LogicalConfirmReceivedLocation(XLogRecPtr lsn)
 			}
 		}
 
-		if (MyReplicationSlot->candidate_restart_valid != InvalidXLogRecPtr &&
+		if (XLogRecPtrIsValid(MyReplicationSlot->candidate_restart_valid) &&
 			MyReplicationSlot->candidate_restart_valid <= lsn)
 		{
-			Assert(MyReplicationSlot->candidate_restart_lsn != InvalidXLogRecPtr);
+			Assert(XLogRecPtrIsValid(MyReplicationSlot->candidate_restart_lsn));
 
 			MyReplicationSlot->data.restart_lsn = MyReplicationSlot->candidate_restart_lsn;
 			MyReplicationSlot->candidate_restart_lsn = InvalidXLogRecPtr;
@@ -1955,10 +1955,11 @@ UpdateDecodingStats(LogicalDecodingContext *ctx)
 	PgStat_StatReplSlotEntry repSlotStat;
 
 	/* Nothing to do if we don't have any replication stats to be sent. */
-	if (rb->spillBytes <= 0 && rb->streamBytes <= 0 && rb->totalBytes <= 0)
+	if (rb->spillBytes <= 0 && rb->streamBytes <= 0 && rb->totalBytes <= 0 &&
+		rb->memExceededCount <= 0)
 		return;
 
-	elog(DEBUG2, "UpdateDecodingStats: updating stats %p %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64,
+	elog(DEBUG2, "UpdateDecodingStats: updating stats %p %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64,
 		 rb,
 		 rb->spillTxns,
 		 rb->spillCount,
@@ -1966,6 +1967,7 @@ UpdateDecodingStats(LogicalDecodingContext *ctx)
 		 rb->streamTxns,
 		 rb->streamCount,
 		 rb->streamBytes,
+		 rb->memExceededCount,
 		 rb->totalTxns,
 		 rb->totalBytes);
 
@@ -1975,6 +1977,7 @@ UpdateDecodingStats(LogicalDecodingContext *ctx)
 	repSlotStat.stream_txns = rb->streamTxns;
 	repSlotStat.stream_count = rb->streamCount;
 	repSlotStat.stream_bytes = rb->streamBytes;
+	repSlotStat.mem_exceeded_count = rb->memExceededCount;
 	repSlotStat.total_txns = rb->totalTxns;
 	repSlotStat.total_bytes = rb->totalBytes;
 
@@ -1986,6 +1989,7 @@ UpdateDecodingStats(LogicalDecodingContext *ctx)
 	rb->streamTxns = 0;
 	rb->streamCount = 0;
 	rb->streamBytes = 0;
+	rb->memExceededCount = 0;
 	rb->totalTxns = 0;
 	rb->totalBytes = 0;
 }
@@ -2082,10 +2086,10 @@ LogicalSlotAdvanceAndCheckSnapState(XLogRecPtr moveto,
 									bool *found_consistent_snapshot)
 {
 	LogicalDecodingContext *ctx;
-	ResourceOwner old_resowner = CurrentResourceOwner;
+	ResourceOwner old_resowner PG_USED_FOR_ASSERTS_ONLY = CurrentResourceOwner;
 	XLogRecPtr	retlsn;
 
-	Assert(moveto != InvalidXLogRecPtr);
+	Assert(XLogRecPtrIsValid(moveto));
 
 	if (found_consistent_snapshot)
 		*found_consistent_snapshot = false;
@@ -2141,7 +2145,17 @@ LogicalSlotAdvanceAndCheckSnapState(XLogRecPtr moveto,
 			 * might still have critical updates to do.
 			 */
 			if (record)
+			{
 				LogicalDecodingProcessRecord(ctx, ctx->reader);
+
+				/*
+				 * We used to have bugs where logical decoding would fail to
+				 * preserve the resource owner.  That's important here, so
+				 * verify that that doesn't happen anymore.  XXX this could be
+				 * removed once it's been battle-tested.
+				 */
+				Assert(CurrentResourceOwner == old_resowner);
+			}
 
 			CHECK_FOR_INTERRUPTS();
 		}
@@ -2149,14 +2163,7 @@ LogicalSlotAdvanceAndCheckSnapState(XLogRecPtr moveto,
 		if (found_consistent_snapshot && DecodingContextReady(ctx))
 			*found_consistent_snapshot = true;
 
-		/*
-		 * Logical decoding could have clobbered CurrentResourceOwner during
-		 * transaction management, so restore the executor's value.  (This is
-		 * a kluge, but it's not worth cleaning up right now.)
-		 */
-		CurrentResourceOwner = old_resowner;
-
-		if (ctx->reader->EndRecPtr != InvalidXLogRecPtr)
+		if (XLogRecPtrIsValid(ctx->reader->EndRecPtr))
 		{
 			LogicalConfirmReceivedLocation(moveto);
 

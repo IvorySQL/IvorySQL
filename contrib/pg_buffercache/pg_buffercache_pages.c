@@ -194,6 +194,8 @@ pg_buffercache_pages(PG_FUNCTION_ARGS)
 			BufferDesc *bufHdr;
 			uint32		buf_state;
 
+			CHECK_FOR_INTERRUPTS();
+
 			bufHdr = GetBufferDescriptor(i);
 			/* Lock each buffer header before inspecting. */
 			buf_state = LockBufHdr(bufHdr);
@@ -218,7 +220,7 @@ pg_buffercache_pages(PG_FUNCTION_ARGS)
 			else
 				fctx->record[i].isvalid = false;
 
-			UnlockBufHdr(bufHdr, buf_state);
+			UnlockBufHdr(bufHdr);
 		}
 	}
 
@@ -261,7 +263,7 @@ pg_buffercache_pages(PG_FUNCTION_ARGS)
 			nulls[2] = false;
 			values[3] = ObjectIdGetDatum(fctx->record[i].reldatabase);
 			nulls[3] = false;
-			values[4] = ObjectIdGetDatum(fctx->record[i].forknum);
+			values[4] = Int16GetDatum(fctx->record[i].forknum);
 			nulls[4] = false;
 			values[5] = Int64GetDatum((int64) fctx->record[i].blocknum);
 			nulls[5] = false;
@@ -320,7 +322,6 @@ pg_buffercache_numa_pages(PG_FUNCTION_ARGS)
 		uint64		os_page_count;
 		int			pages_per_buffer;
 		int			max_entries;
-		volatile uint64 touch pg_attribute_unused();
 		char	   *startptr,
 				   *endptr;
 
@@ -375,7 +376,7 @@ pg_buffercache_numa_pages(PG_FUNCTION_ARGS)
 
 			/* Only need to touch memory once per backend process lifetime */
 			if (firstNumaTouch)
-				pg_numa_touch_mem_if_required(touch, ptr);
+				pg_numa_touch_mem_if_required(ptr);
 		}
 
 		Assert(idx == os_page_count);
@@ -459,7 +460,6 @@ pg_buffercache_numa_pages(PG_FUNCTION_ARGS)
 		{
 			char	   *buffptr = (char *) BufferGetBlock(i + 1);
 			BufferDesc *bufHdr;
-			uint32		buf_state;
 			uint32		bufferid;
 			int32		page_num;
 			char	   *startptr_buff,
@@ -470,9 +470,9 @@ pg_buffercache_numa_pages(PG_FUNCTION_ARGS)
 			bufHdr = GetBufferDescriptor(i);
 
 			/* Lock each buffer header before inspecting. */
-			buf_state = LockBufHdr(bufHdr);
+			LockBufHdr(bufHdr);
 			bufferid = BufferDescriptorGetBuffer(bufHdr);
-			UnlockBufHdr(bufHdr, buf_state);
+			UnlockBufHdr(bufHdr);
 
 			/* start of the first page of this buffer */
 			startptr_buff = (char *) TYPEALIGN_DOWN(os_page_size, buffptr);
@@ -561,6 +561,8 @@ pg_buffercache_summary(PG_FUNCTION_ARGS)
 		BufferDesc *bufHdr;
 		uint32		buf_state;
 
+		CHECK_FOR_INTERRUPTS();
+
 		/*
 		 * This function summarizes the state of all headers. Locking the
 		 * buffer headers wouldn't provide an improved result as the state of
@@ -620,6 +622,8 @@ pg_buffercache_usage_counts(PG_FUNCTION_ARGS)
 		BufferDesc *bufHdr = GetBufferDescriptor(i);
 		uint32		buf_state = pg_atomic_read_u32(&bufHdr->state);
 		int			usage_count;
+
+		CHECK_FOR_INTERRUPTS();
 
 		usage_count = BUF_STATE_GET_USAGECOUNT(buf_state);
 		usage_counts[usage_count]++;

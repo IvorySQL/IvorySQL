@@ -18,6 +18,7 @@
 
 #include <ctype.h>
 
+#include "catalog/pg_am_d.h"
 #include "catalog/pg_class_d.h"
 #include "catalog/pg_collation_d.h"
 #include "catalog/pg_extension_d.h"
@@ -252,8 +253,8 @@ getSchemaData(Archive *fout, int *numTablesPtr)
 	pg_log_info("reading subscriptions");
 	getSubscriptions(fout);
 
-	pg_log_info("reading subscription membership of tables");
-	getSubscriptionTables(fout);
+	pg_log_info("reading subscription membership of relations");
+	getSubscriptionRelations(fout);
 
 	free(inhinfo);				/* not needed any longer */
 
@@ -951,6 +952,24 @@ findOprByOid(Oid oid)
 	dobj = findObjectByCatalogId(catId);
 	Assert(dobj == NULL || dobj->objType == DO_OPERATOR);
 	return (OprInfo *) dobj;
+}
+
+/*
+ * findAccessMethodByOid
+ *	  finds the DumpableObject for the access method with the given oid
+ *	  returns NULL if not found
+ */
+AccessMethodInfo *
+findAccessMethodByOid(Oid oid)
+{
+	CatalogId	catId;
+	DumpableObject *dobj;
+
+	catId.tableoid = AccessMethodRelationId;
+	catId.oid = oid;
+	dobj = findObjectByCatalogId(catId);
+	Assert(dobj == NULL || dobj->objType == DO_ACCESS_METHOD);
+	return (AccessMethodInfo *) dobj;
 }
 
 /*

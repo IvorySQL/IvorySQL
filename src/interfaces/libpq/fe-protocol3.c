@@ -16,6 +16,7 @@
 
 #include <ctype.h>
 #include <fcntl.h>
+#include <limits.h>
 
 #ifdef WIN32
 #include "win32.h"
@@ -43,6 +44,7 @@
 	 (id) == PqMsg_RowDescription)
 
 
+static void handleFatalError(PGconn *conn);
 static void handleSyncLoss(PGconn *conn, char id, int msgLength);
 static int	getRowDescriptions(PGconn *conn, int msgLength);
 static int	getParamDescriptions(PGconn *conn, int msgLength);
@@ -54,8 +56,8 @@ static int	getCopyStart(PGconn *conn, ExecStatusType copytype);
 static int	getReadyForQuery(PGconn *conn);
 static void reportErrorPosition(PQExpBuffer msg, const char *query,
 								int loc, int encoding);
-static int	build_startup_packet(const PGconn *conn, char *packet,
-								 const PQEnvironmentOption *options);
+static size_t build_startup_packet(const PGconn *conn, char *packet,
+								   const PQEnvironmentOption *options);
 
 
 /*
@@ -120,12 +122,12 @@ pqParseInput3(PGconn *conn)
 									 conn))
 			{
 				/*
-				 * XXX add some better recovery code... plan is to skip over
-				 * the message using its length, then report an error. For the
-				 * moment, just treat this like loss of sync (which indeed it
-				 * might be!)
+				 * Abandon the connection.  There's not much else we can
+				 * safely do; we can't just ignore the message or we could
+				 * miss important changes to the connection state.
+				 * pqCheckInBufferSpace() already reported the error.
 				 */
-				handleSyncLoss(conn, id, msgLength);
+				handleFatalError(conn);
 			}
 			return;
 		}
@@ -456,6 +458,11 @@ pqParseInput3(PGconn *conn)
 			/* Normal case: parsing agrees with specified length */
 			pqParseDone(conn, conn->inCursor);
 		}
+		else if (conn->error_result && conn->status == CONNECTION_BAD)
+		{
+			/* The connection was abandoned and we already reported it */
+			return;
+		}
 		else
 		{
 			/* Trouble --- report it */
@@ -470,6 +477,23 @@ pqParseInput3(PGconn *conn)
 }
 
 /*
+ * handleFatalError: clean up after a nonrecoverable error
+ *
+ * This is for errors where we need to abandon the connection.  The caller has
+ * already saved the error message in conn->errorMessage.
+ */
+static void
+handleFatalError(PGconn *conn)
+{
+	/* build an error result holding the error message */
+	pqSaveErrorResult(conn);
+	conn->asyncStatus = PGASYNC_READY;	/* drop out of PQgetResult wait loop */
+	/* flush input data since we're giving up on processing it */
+	pqDropConnection(conn, true);
+	conn->status = CONNECTION_BAD;	/* No more connection to backend */
+}
+
+/*
  * handleSyncLoss: clean up after loss of message-boundary sync
  *
  * There isn't really a lot we can do here except abandon the connection.
@@ -478,13 +502,8 @@ static void
 handleSyncLoss(PGconn *conn, char id, int msgLength)
 {
 	libpq_append_conn_error(conn, "lost synchronization with server: got message type \"%c\", length %d",
-					  id, msgLength);
-	/* build an error result holding the error message */
-	pqSaveErrorResult(conn);
-	conn->asyncStatus = PGASYNC_READY;	/* drop out of PQgetResult wait loop */
-	/* flush input data since we're giving up on processing it */
-	pqDropConnection(conn, true);
-	conn->status = CONNECTION_BAD;	/* No more connection to backend */
+							id, msgLength);
+	handleFatalError(conn);
 }
 
 /*
@@ -1216,8 +1235,21 @@ reportErrorPosition(PQExpBuffer msg, const char *query, int loc, int encoding)
 	 * scridx[] respectively.
 	 */
 
-	/* we need a safe allocation size... */
+	/*
+	 * We need a safe allocation size.
+	 *
+	 * The only caller of reportErrorPosition() is pqBuildErrorMessage3(); it
+	 * gets its query from either a PQresultErrorField() or a PGcmdQueueEntry,
+	 * both of which must have fit into conn->inBuffer/outBuffer. So slen fits
+	 * inside an int, but we can't assume that (slen * sizeof(int)) fits
+	 * inside a size_t.
+	 */
 	slen = strlen(wquery) + 1;
+	if (slen > SIZE_MAX / sizeof(int))
+	{
+		free(wquery);
+		return;
+	}
 
 	qidx = (int *) malloc(slen * sizeof(int));
 	if (qidx == NULL)
@@ -1519,7 +1551,11 @@ getParameterStatus(PGconn *conn)
 		return EOF;
 	}
 	/* And save it */
-	pqSaveParameterStatus(conn, conn->workBuffer.data, valueBuf.data);
+	if (!pqSaveParameterStatus(conn, conn->workBuffer.data, valueBuf.data))
+	{
+		libpq_append_conn_error(conn, "out of memory");
+		handleFatalError(conn);
+	}
 	termPQExpBuffer(&valueBuf);
 	return 0;
 }
@@ -1547,12 +1583,33 @@ getBackendKeyData(PGconn *conn, int msgLength)
 
 	cancel_key_len = 5 + msgLength - (conn->inCursor - conn->inStart);
 
+	if (cancel_key_len != 4 && conn->pversion == PG_PROTOCOL(3, 0))
+	{
+		libpq_append_conn_error(conn, "received invalid BackendKeyData message: cancel key with length %d not allowed in protocol version 3.0 (must be 4 bytes)", cancel_key_len);
+		handleFatalError(conn);
+		return 0;
+	}
+
+	if (cancel_key_len < 4)
+	{
+		libpq_append_conn_error(conn, "received invalid BackendKeyData message: cancel key with length %d is too short (minimum 4 bytes)", cancel_key_len);
+		handleFatalError(conn);
+		return 0;
+	}
+
+	if (cancel_key_len > 256)
+	{
+		libpq_append_conn_error(conn, "received invalid BackendKeyData message: cancel key with length %d is too long (maximum 256 bytes)", cancel_key_len);
+		handleFatalError(conn);
+		return 0;
+	}
+
 	conn->be_cancel_key = malloc(cancel_key_len);
 	if (conn->be_cancel_key == NULL)
 	{
 		libpq_append_conn_error(conn, "out of memory");
-		/* discard the message */
-		return EOF;
+		handleFatalError(conn);
+		return 0;
 	}
 	if (pqGetnchar(conn->be_cancel_key, cancel_key_len, conn))
 	{
@@ -1589,7 +1646,17 @@ getNotify(PGconn *conn)
 	/* must save name while getting extra string */
 	svname = strdup(conn->workBuffer.data);
 	if (!svname)
-		return EOF;
+	{
+		/*
+		 * Notify messages can arrive at any state, so we cannot associate the
+		 * error with any particular query.  There's no way to return back an
+		 * "async error", so the best we can do is drop the connection.  That
+		 * seems better than silently ignoring the notification.
+		 */
+		libpq_append_conn_error(conn, "out of memory");
+		handleFatalError(conn);
+		return 0;
+	}
 	if (pqGets(&conn->workBuffer, conn))
 	{
 		free(svname);
@@ -1604,20 +1671,25 @@ getNotify(PGconn *conn)
 	nmlen = strlen(svname);
 	extralen = strlen(conn->workBuffer.data);
 	newNotify = (PGnotify *) malloc(sizeof(PGnotify) + nmlen + extralen + 2);
-	if (newNotify)
+	if (!newNotify)
 	{
-		newNotify->relname = (char *) newNotify + sizeof(PGnotify);
-		strcpy(newNotify->relname, svname);
-		newNotify->extra = newNotify->relname + nmlen + 1;
-		strcpy(newNotify->extra, conn->workBuffer.data);
-		newNotify->be_pid = be_pid;
-		newNotify->next = NULL;
-		if (conn->notifyTail)
-			conn->notifyTail->next = newNotify;
-		else
-			conn->notifyHead = newNotify;
-		conn->notifyTail = newNotify;
+		free(svname);
+		libpq_append_conn_error(conn, "out of memory");
+		handleFatalError(conn);
+		return 0;
 	}
+
+	newNotify->relname = (char *) newNotify + sizeof(PGnotify);
+	strcpy(newNotify->relname, svname);
+	newNotify->extra = newNotify->relname + nmlen + 1;
+	strcpy(newNotify->extra, conn->workBuffer.data);
+	newNotify->be_pid = be_pid;
+	newNotify->next = NULL;
+	if (conn->notifyTail)
+		conn->notifyTail->next = newNotify;
+	else
+		conn->notifyHead = newNotify;
+	conn->notifyTail = newNotify;
 
 	free(svname);
 	return 0;
@@ -1752,12 +1824,12 @@ getCopyDataMessage(PGconn *conn)
 									 conn))
 			{
 				/*
-				 * XXX add some better recovery code... plan is to skip over
-				 * the message using its length, then report an error. For the
-				 * moment, just treat this like loss of sync (which indeed it
-				 * might be!)
+				 * Abandon the connection.  There's not much else we can
+				 * safely do; we can't just ignore the message or we could
+				 * miss important changes to the connection state.
+				 * pqCheckInBufferSpace() already reported the error.
 				 */
-				handleSyncLoss(conn, id, msgLength);
+				handleFatalError(conn);
 				return -2;
 			}
 			return 0;
@@ -2186,12 +2258,12 @@ pqFunctionCall3(PGconn *conn, Oid fnid,
 									 conn))
 			{
 				/*
-				 * XXX add some better recovery code... plan is to skip over
-				 * the message using its length, then report an error. For the
-				 * moment, just treat this like loss of sync (which indeed it
-				 * might be!)
+				 * Abandon the connection.  There's not much else we can
+				 * safely do; we can't just ignore the message or we could
+				 * miss important changes to the connection state.
+				 * pqCheckInBufferSpace() already reported the error.
 				 */
-				handleSyncLoss(conn, id, msgLength);
+				handleFatalError(conn);
 				break;
 			}
 			continue;
@@ -2204,7 +2276,7 @@ pqFunctionCall3(PGconn *conn, Oid fnid,
 		 */
 		switch (id)
 		{
-			case 'V':			/* function result */
+			case PqMsg_FunctionCallResponse:
 				if (pqGetInt(actual_result_len, 4, conn))
 					continue;
 				if (*actual_result_len != -1)
@@ -2225,22 +2297,22 @@ pqFunctionCall3(PGconn *conn, Oid fnid,
 				/* correctly finished function result message */
 				status = PGRES_COMMAND_OK;
 				break;
-			case 'E':			/* error return */
+			case PqMsg_ErrorResponse:
 				if (pqGetErrorNotice3(conn, true))
 					continue;
 				status = PGRES_FATAL_ERROR;
 				break;
-			case 'A':			/* notify message */
+			case PqMsg_NotificationResponse:
 				/* handle notify and go back to processing return values */
 				if (getNotify(conn))
 					continue;
 				break;
-			case 'N':			/* notice */
+			case PqMsg_NoticeResponse:
 				/* handle notice and go back to processing return values */
 				if (pqGetErrorNotice3(conn, false))
 					continue;
 				break;
-			case 'Z':			/* backend is ready for new query */
+			case PqMsg_ReadyForQuery:
 				if (getReadyForQuery(conn))
 					continue;
 
@@ -2272,7 +2344,7 @@ pqFunctionCall3(PGconn *conn, Oid fnid,
 				}
 				/* and we're out */
 				return pqPrepareAsyncResult(conn);
-			case 'S':			/* parameter status */
+			case PqMsg_ParameterStatus:
 				if (getParameterStatus(conn))
 					continue;
 				break;
@@ -2315,13 +2387,41 @@ pqBuildStartupPacket3(PGconn *conn, int *packetlen,
 					  const PQEnvironmentOption *options)
 {
 	char	   *startpacket;
+	size_t		len;
 
-	*packetlen = build_startup_packet(conn, NULL, options);
+	len = build_startup_packet(conn, NULL, options);
+	if (len == 0 || len > INT_MAX)
+		return NULL;
+
+	*packetlen = len;
 	startpacket = (char *) malloc(*packetlen);
 	if (!startpacket)
 		return NULL;
-	*packetlen = build_startup_packet(conn, startpacket, options);
+
+	len = build_startup_packet(conn, startpacket, options);
+	Assert(*packetlen == len);
+
 	return startpacket;
+}
+
+/*
+ * Frontend version of the backend's add_size(), intended to be API-compatible
+ * with the pg_add_*_overflow() helpers. Stores the result into *dst on success.
+ * Returns true instead if the addition overflows.
+ *
+ * TODO: move to common/int.h
+ */
+static bool
+add_size_overflow(size_t s1, size_t s2, size_t *dst)
+{
+	size_t		result;
+
+	result = s1 + s2;
+	if (result < s1 || result < s2)
+		return true;
+
+	*dst = result;
+	return false;
 }
 
 /*
@@ -2331,13 +2431,13 @@ pqBuildStartupPacket3(PGconn *conn, int *packetlen,
  * To avoid duplicate logic, this routine is called twice: the first time
  * (with packet == NULL) just counts the space needed, the second time
  * (with packet == allocated space) fills it in.  Return value is the number
- * of bytes used.
+ * of bytes used, or zero in the unlikely event of size_t overflow.
  */
-static int
+static size_t
 build_startup_packet(const PGconn *conn, char *packet,
 					 const PQEnvironmentOption *options)
 {
-	int			packet_len = 0;
+	size_t		packet_len = 0;
 	const PQEnvironmentOption *next_eo;
 	const char *val;
 
@@ -2356,10 +2456,12 @@ build_startup_packet(const PGconn *conn, char *packet,
 	do { \
 		if (packet) \
 			strcpy(packet + packet_len, optname); \
-		packet_len += strlen(optname) + 1; \
+		if (add_size_overflow(packet_len, strlen(optname) + 1, &packet_len)) \
+			return 0; \
 		if (packet) \
 			strcpy(packet + packet_len, optval); \
-		packet_len += strlen(optval) + 1; \
+		if (add_size_overflow(packet_len, strlen(optval) + 1, &packet_len)) \
+			return 0; \
 	} while(0)
 
 	if (conn->pguser && conn->pguser[0])
@@ -2394,7 +2496,8 @@ build_startup_packet(const PGconn *conn, char *packet,
 	/* Add trailing terminator */
 	if (packet)
 		packet[packet_len] = '\0';
-	packet_len++;
+	if (add_size_overflow(packet_len, 1, &packet_len))
+		return 0;
 
 	return packet_len;
 }

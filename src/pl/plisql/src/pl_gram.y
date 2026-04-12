@@ -4908,6 +4908,7 @@ parse_datatype(const char *string, int location, yyscan_t yyscanner)
 	sql_error_callback_arg cbarg;
 	ErrorContextCallback  syntax_errcontext;
 	PLiSQL_type *result = NULL;
+    MemoryContext oldCxt;
 
 	cbarg.location = location;
 	cbarg.yyscanner = yyscanner;
@@ -4918,6 +4919,7 @@ parse_datatype(const char *string, int location, yyscan_t yyscanner)
 	error_context_stack = &syntax_errcontext;
 
 	/* Let the main parser try to parse it under standard SQL rules */
+	oldCxt = MemoryContextSwitchTo(plisql_compile_tmp_cxt);
 	typeName = typeStringToTypeName(string, NULL);
 
 	if (list_length(typeName->names) < 2 &&
@@ -4938,11 +4940,13 @@ parse_datatype(const char *string, int location, yyscan_t yyscanner)
 		result = plisql_parse_package_type(typeName, parse_by_pkg_type, false);
 	if (result != NULL)
 	{
+        MemoryContextSwitchTo(oldCxt);
 		error_context_stack = syntax_errcontext.previous;
 		return result;
 	}
 
 	typenameTypeIdAndMod(NULL, typeName, &type_id, &typmod);
+    MemoryContextSwitchTo(oldCxt);
 
 	/* Restore former ereport callback */
 	error_context_stack = syntax_errcontext.previous;

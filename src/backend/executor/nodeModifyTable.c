@@ -1418,7 +1418,8 @@ ExecDeletePrologue(IvyModifyTableContext *context, ResultRelInfo *resultRelInfo,
 
 		return ExecBRDeleteTriggers(context->estate, context->epqstate,
 									resultRelInfo, tupleid, oldtuple,
-									epqreturnslot, result, &context->tmfd);
+									epqreturnslot, result, &context->tmfd,
+									context->mtstate->operation == CMD_MERGE);
 	}
 
 	return true;
@@ -2061,7 +2062,8 @@ ExecUpdatePrologue(IvyModifyTableContext *context, ResultRelInfo *resultRelInfo,
 
 		return ExecBRUpdateTriggers(context->estate, context->epqstate,
 									resultRelInfo, tupleid, oldtuple, slot,
-									result, &context->tmfd);
+									result, &context->tmfd,
+									context->mtstate->operation == CMD_MERGE);
 	}
 
 	return true;
@@ -3344,7 +3346,7 @@ lmerge_matched:
 							 * the tuple moved, and setting our current
 							 * resultRelInfo to that.
 							 */
-							if (ItemPointerIndicatesMovedPartitions(&context->tmfd.ctid))
+							if (ItemPointerIndicatesMovedPartitions(tupleid))
 								ereport(ERROR,
 										(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
 										 errmsg("tuple to be merged was already moved to another partition due to concurrent update")));
@@ -3392,12 +3394,13 @@ lmerge_matched:
 									if (ItemPointerIsValid(&lockedtid))
 										UnlockTuple(resultRelInfo->ri_RelationDesc, &lockedtid,
 													InplaceUpdateTupleLock);
-									LockTuple(resultRelInfo->ri_RelationDesc, &context->tmfd.ctid,
+									LockTuple(resultRelInfo->ri_RelationDesc, tupleid,
 											  InplaceUpdateTupleLock);
-									lockedtid = context->tmfd.ctid;
+									lockedtid = *tupleid;
 								}
+
 								if (!table_tuple_fetch_row_version(resultRelationDesc,
-																   &context->tmfd.ctid,
+																   tupleid,
 																   SnapshotAny,
 																   resultRelInfo->ri_oldTupleSlot))
 									elog(ERROR, "failed to fetch the target tuple");
@@ -3408,7 +3411,28 @@ lmerge_matched:
 
 								/* Switch lists, if necessary */
 								if (!*matched)
+								{
 									actionStates = mergeActions[MERGE_WHEN_NOT_MATCHED_BY_SOURCE];
+
+									/*
+									 * If we have both NOT MATCHED BY SOURCE
+									 * and NOT MATCHED BY TARGET actions (a
+									 * full join between the source and target
+									 * relations), the single previously
+									 * matched tuple from the outer plan node
+									 * is treated as two not matched tuples,
+									 * in the same way as if they had not
+									 * matched to start with.  Therefore, we
+									 * must adjust the outer plan node's tuple
+									 * count, if we're instrumenting the
+									 * query, to get the correct "skipped" row
+									 * count --- see show_modifytable_info().
+									 */
+									if (outerPlanState(mtstate)->instrument &&
+										mergeActions[MERGE_WHEN_NOT_MATCHED_BY_SOURCE] &&
+										mergeActions[MERGE_WHEN_NOT_MATCHED_BY_TARGET])
+										InstrUpdateTupleCount(outerPlanState(mtstate)->instrument, 1.0);
+								}
 							}
 
 							/*
@@ -4768,7 +4792,8 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 		/*
 		 * Verify result relation is a valid target for the current operation
 		 */
-		CheckValidResultRel(resultRelInfo, operation, mergeActions);
+		CheckValidResultRel(resultRelInfo, operation, node->onConflictAction,
+							mergeActions);
 
 		resultRelInfo++;
 		i++;

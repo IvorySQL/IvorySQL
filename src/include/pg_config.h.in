@@ -238,6 +238,9 @@
 /* Define to 1 if you have the global variable 'int timezone'. */
 #undef HAVE_INT_TIMEZONE
 
+/* Define to 1 if you have the `io_uring_queue_init_mem' function. */
+#undef HAVE_IO_URING_QUEUE_INIT_MEM
+
 /* Define to 1 if __builtin_constant_p(x) implies "i"(x) acceptance. */
 #undef HAVE_I_CONSTRAINT__BUILTIN_CONSTANT_P
 
@@ -477,6 +480,9 @@
 
 /* Define to 1 if your compiler understands `typeof' or something similar. */
 #undef HAVE_TYPEOF
+
+/* Define to 1 if you have the <uchar.h> header file. */
+#undef HAVE_UCHAR_H
 
 /* Define to 1 if you have the <ucred.h> header file. */
 #undef HAVE_UCRED_H
@@ -807,10 +813,6 @@
 #ifndef __cplusplus
 #undef inline
 #endif
-
-/* Define to keyword to use for C99 restrict support, or to nothing if not
-   supported */
-#undef pg_restrict
 
 /* Define to the equivalent of the C99 'restrict' keyword, or to
    nothing if this is not supported.  Do not define if restrict is

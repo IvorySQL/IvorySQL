@@ -848,10 +848,10 @@ other			.
 					varname = ora_psqlscan_extract_substring(cur_state,
 														 yytext + 1,
 														 yyleng - 1);
-					if (cur_state->oracallbacks->get_variable)
-						value = cur_state->oracallbacks->get_variable(varname,
-																   PQUOTE_PLAIN,
-																   cur_state->cb_passthrough);
+	if (cur_state->oracallbacks->get_variable)
+		value = cur_state->oracallbacks->get_variable(varname,
+									   ORAPQUOTE_PLAIN,
+									   cur_state->cb_passthrough);
 					else
 						value = NULL;
 
@@ -888,12 +888,12 @@ other			.
 
 :'{variable_char}+'	{
 					ora_psqlscan_escape_variable(cur_state, yytext, yyleng,
-											 PQUOTE_SQL_LITERAL);
+							 ORAPQUOTE_SQL_LITERAL);
 				}
 
 :\"{variable_char}+\"	{
 					ora_psqlscan_escape_variable(cur_state, yytext, yyleng,
-											 PQUOTE_SQL_IDENT);
+							 ORAPQUOTE_SQL_IDENT);
 				}
 
 :\{\?{variable_char}+\}	{
@@ -1801,7 +1801,7 @@ ora_psqlscan_extract_substring(PsqlScanState state, const char *txt, int len)
  */
 void
 ora_psqlscan_escape_variable(PsqlScanState state, const char *txt, int len,
-						 PsqlScanQuoteType quote)
+						 Ora_psqlScanQuoteType quote)
 {
 	char	   *varname;
 	char	   *value;
@@ -1836,8 +1836,8 @@ ora_psqlscan_test_variable(PsqlScanState state, const char *txt, int len)
 
 	varname = ora_psqlscan_extract_substring(state, txt + 3, len - 4);
 	if (state->oracallbacks->get_variable)
-		value = state->oracallbacks->get_variable(varname, PQUOTE_PLAIN,
-											   state->cb_passthrough);
+		value = state->oracallbacks->get_variable(varname, ORAPQUOTE_PLAIN,
+									   state->cb_passthrough);
 	else
 		value = NULL;
 	free(varname);

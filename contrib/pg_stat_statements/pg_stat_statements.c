@@ -48,6 +48,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "access/htup_details.h"
 #include "access/parallel.h"
 #include "catalog/pg_authid.h"
 #include "common/int.h"
@@ -90,7 +91,7 @@ PG_MODULE_MAGIC_EXT(
 #define PGSS_TEXT_FILE	PG_STAT_TMP_DIR "/pgss_query_texts.stat"
 
 /* Magic number identifying the stats file format */
-static const uint32 PGSS_FILE_HEADER = 0x20220408;
+static const uint32 PGSS_FILE_HEADER = 0x20250731;
 
 /* PostgreSQL major version number, changes in which invalidate all entries */
 static const uint32 PGSS_PG_MAJOR_VERSION = PG_VERSION_NUM / 100;
@@ -119,6 +120,7 @@ typedef enum pgssVersion
 	PGSS_V1_10,
 	PGSS_V1_11,
 	PGSS_V1_12,
+	PGSS_V1_13,
 } pgssVersion;
 
 typedef enum pgssStoreKind
@@ -143,7 +145,6 @@ typedef enum pgssStoreKind
  * If you add a new key to this struct, make sure to teach pgss_store() to
  * zero the padding bytes.  Otherwise, things will break, because pgss_hash is
  * created using HASH_BLOBS, and thus tag_hash is used to hash this.
-
  */
 typedef struct pgssHashKey
 {
@@ -215,6 +216,8 @@ typedef struct Counters
 											 * to be launched */
 	int64		parallel_workers_launched;	/* # of parallel workers actually
 											 * launched */
+	int64		generic_plan_calls; /* number of calls using a generic plan */
+	int64		custom_plan_calls;	/* number of calls using a custom plan */
 } Counters;
 
 /*
@@ -328,6 +331,7 @@ PG_FUNCTION_INFO_V1(pg_stat_statements_1_9);
 PG_FUNCTION_INFO_V1(pg_stat_statements_1_10);
 PG_FUNCTION_INFO_V1(pg_stat_statements_1_11);
 PG_FUNCTION_INFO_V1(pg_stat_statements_1_12);
+PG_FUNCTION_INFO_V1(pg_stat_statements_1_13);
 PG_FUNCTION_INFO_V1(pg_stat_statements);
 PG_FUNCTION_INFO_V1(pg_stat_statements_info);
 
@@ -339,7 +343,8 @@ static void pgss_post_parse_analyze(ParseState *pstate, Query *query,
 static PlannedStmt *pgss_planner(Query *parse,
 								 const char *query_string,
 								 int cursorOptions,
-								 ParamListInfo boundParams);
+								 ParamListInfo boundParams,
+								 ExplainState *es);
 static void pgss_ExecutorStart(QueryDesc *queryDesc, int eflags);
 static void pgss_ExecutorRun(QueryDesc *queryDesc,
 							 ScanDirection direction,
@@ -360,7 +365,8 @@ static void pgss_store(const char *query, int64 queryId,
 					   const struct JitInstrumentation *jitusage,
 					   JumbleState *jstate,
 					   int parallel_workers_to_launch,
-					   int parallel_workers_launched);
+					   int parallel_workers_launched,
+					   PlannedStmtOrigin planOrigin);
 static void pg_stat_statements_internal(FunctionCallInfo fcinfo,
 										pgssVersion api_version,
 										bool showtext);
@@ -884,7 +890,8 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query, JumbleState *jstate)
 				   NULL,
 				   jstate,
 				   0,
-				   0);
+				   0,
+				   PLAN_STMT_UNKNOWN);
 }
 
 /*
@@ -895,7 +902,8 @@ static PlannedStmt *
 pgss_planner(Query *parse,
 			 const char *query_string,
 			 int cursorOptions,
-			 ParamListInfo boundParams)
+			 ParamListInfo boundParams,
+			 ExplainState *es)
 {
 	PlannedStmt *result;
 
@@ -930,10 +938,10 @@ pgss_planner(Query *parse,
 		{
 			if (prev_planner_hook)
 				result = prev_planner_hook(parse, query_string, cursorOptions,
-										   boundParams);
+										   boundParams, es);
 			else
 				result = standard_planner(parse, query_string, cursorOptions,
-										  boundParams);
+										  boundParams, es);
 		}
 		PG_FINALLY();
 		{
@@ -964,7 +972,8 @@ pgss_planner(Query *parse,
 				   NULL,
 				   NULL,
 				   0,
-				   0);
+				   0,
+				   result->planOrigin);
 	}
 	else
 	{
@@ -978,10 +987,10 @@ pgss_planner(Query *parse,
 		{
 			if (prev_planner_hook)
 				result = prev_planner_hook(parse, query_string, cursorOptions,
-										   boundParams);
+										   boundParams, es);
 			else
 				result = standard_planner(parse, query_string, cursorOptions,
-										  boundParams);
+										  boundParams, es);
 		}
 		PG_FINALLY();
 		{
@@ -1098,7 +1107,8 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 				   queryDesc->estate->es_jit ? &queryDesc->estate->es_jit->instr : NULL,
 				   NULL,
 				   queryDesc->estate->es_parallel_workers_to_launch,
-				   queryDesc->estate->es_parallel_workers_launched);
+				   queryDesc->estate->es_parallel_workers_launched,
+				   queryDesc->plannedstmt->planOrigin);
 	}
 
 	if (prev_ExecutorEnd)
@@ -1231,7 +1241,8 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 				   NULL,
 				   NULL,
 				   0,
-				   0);
+				   0,
+				   pstmt->planOrigin);
 	}
 	else
 	{
@@ -1294,7 +1305,8 @@ pgss_store(const char *query, int64 queryId,
 		   const struct JitInstrumentation *jitusage,
 		   JumbleState *jstate,
 		   int parallel_workers_to_launch,
-		   int parallel_workers_launched)
+		   int parallel_workers_launched,
+		   PlannedStmtOrigin planOrigin)
 {
 	pgssHashKey key;
 	pgssEntry  *entry;
@@ -1502,6 +1514,12 @@ pgss_store(const char *query, int64 queryId,
 		entry->counters.parallel_workers_to_launch += parallel_workers_to_launch;
 		entry->counters.parallel_workers_launched += parallel_workers_launched;
 
+		/* plan cache counters */
+		if (planOrigin == PLAN_STMT_CACHE_GENERIC)
+			entry->counters.generic_plan_calls++;
+		else if (planOrigin == PLAN_STMT_CACHE_CUSTOM)
+			entry->counters.custom_plan_calls++;
+
 		SpinLockRelease(&entry->mutex);
 	}
 
@@ -1569,7 +1587,8 @@ pg_stat_statements_reset(PG_FUNCTION_ARGS)
 #define PG_STAT_STATEMENTS_COLS_V1_10	43
 #define PG_STAT_STATEMENTS_COLS_V1_11	49
 #define PG_STAT_STATEMENTS_COLS_V1_12	52
-#define PG_STAT_STATEMENTS_COLS			52	/* maximum of above */
+#define PG_STAT_STATEMENTS_COLS_V1_13	54
+#define PG_STAT_STATEMENTS_COLS			54	/* maximum of above */
 
 /*
  * Retrieve statement statistics.
@@ -1581,6 +1600,16 @@ pg_stat_statements_reset(PG_FUNCTION_ARGS)
  * expected API version is identified by embedding it in the C name of the
  * function.  Unfortunately we weren't bright enough to do that for 1.1.
  */
+Datum
+pg_stat_statements_1_13(PG_FUNCTION_ARGS)
+{
+	bool		showtext = PG_GETARG_BOOL(0);
+
+	pg_stat_statements_internal(fcinfo, PGSS_V1_13, showtext);
+
+	return (Datum) 0;
+}
+
 Datum
 pg_stat_statements_1_12(PG_FUNCTION_ARGS)
 {
@@ -1737,6 +1766,10 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 			break;
 		case PG_STAT_STATEMENTS_COLS_V1_12:
 			if (api_version != PGSS_V1_12)
+				elog(ERROR, "incorrect number of output arguments");
+			break;
+		case PG_STAT_STATEMENTS_COLS_V1_13:
+			if (api_version != PGSS_V1_13)
 				elog(ERROR, "incorrect number of output arguments");
 			break;
 		default:
@@ -1991,6 +2024,11 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 			values[i++] = Int64GetDatumFast(tmp.parallel_workers_to_launch);
 			values[i++] = Int64GetDatumFast(tmp.parallel_workers_launched);
 		}
+		if (api_version >= PGSS_V1_13)
+		{
+			values[i++] = Int64GetDatumFast(tmp.generic_plan_calls);
+			values[i++] = Int64GetDatumFast(tmp.custom_plan_calls);
+		}
 		if (api_version >= PGSS_V1_11)
 		{
 			values[i++] = TimestampTzGetDatum(stats_since);
@@ -2006,6 +2044,7 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 					 api_version == PGSS_V1_10 ? PG_STAT_STATEMENTS_COLS_V1_10 :
 					 api_version == PGSS_V1_11 ? PG_STAT_STATEMENTS_COLS_V1_11 :
 					 api_version == PGSS_V1_12 ? PG_STAT_STATEMENTS_COLS_V1_12 :
+					 api_version == PGSS_V1_13 ? PG_STAT_STATEMENTS_COLS_V1_13 :
 					 -1 /* fail if you forget to update this assert */ ));
 
 		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
@@ -2683,8 +2722,8 @@ entry_reset(Oid userid, Oid dbid, int64 queryid, bool minmax_only)
 	HASH_SEQ_STATUS hash_seq;
 	pgssEntry  *entry;
 	FILE	   *qfile;
-	long		num_entries;
-	long		num_remove = 0;
+	int64		num_entries;
+	int64		num_remove = 0;
 	pgssHashKey key;
 	TimestampTz stats_reset;
 
@@ -2922,9 +2961,8 @@ generate_normalized_query(JumbleState *jstate, const char *query,
  * have originated from within the authoritative parser, this should not be
  * a problem.
  *
- * Duplicate constant pointers are possible, and will have their lengths
- * marked as '-1', so that they are later ignored.  (Actually, we assume the
- * lengths were initialized as -1 to start with, and don't change them here.)
+ * Multiple constants can have the same location.  We reset lengths of those
+ * past the first to -1 so that they can later be ignored.
  *
  * If query_loc > 0, then "query" has been advanced by that much compared to
  * the original string start, so we need to translate the provided locations
@@ -2955,8 +2993,6 @@ standard_fill_in_constant_lengths(JumbleState *jstate, const char *query,
 	core_yy_extra_type yyextra;
 	core_YYSTYPE yylval;
 	YYLTYPE		yylloc;
-	int			last_loc = -1;
-	int			i;
 
 	/*
 	 * Sort the records by location so that we can process them in order while
@@ -2977,23 +3013,29 @@ standard_fill_in_constant_lengths(JumbleState *jstate, const char *query,
 	yyextra.escape_string_warning = false;
 
 	/* Search for each constant, in sequence */
-	for (i = 0; i < jstate->clocations_count; i++)
+	for (int i = 0; i < jstate->clocations_count; i++)
 	{
-		int			loc = locs[i].location;
+		int			loc;
 		int			tok;
 
-		/* Adjust recorded location if we're dealing with partial string */
-		loc -= query_loc;
-
-		Assert(loc >= 0);
+		/* Ignore constants after the first one in the same location */
+		if (i > 0 && locs[i].location == locs[i - 1].location)
+		{
+			locs[i].length = -1;
+			continue;
+		}
 
 		if (locs[i].squashed)
 			continue;			/* squashable list, ignore */
 
-		if (loc <= last_loc)
-			continue;			/* Duplicate constant, ignore */
+		/* Adjust recorded location if we're dealing with partial string */
+		loc = locs[i].location - query_loc;
+		Assert(loc >= 0);
 
-		/* Lex tokens until we find the desired constant */
+		/*
+		 * We have a valid location for a constant that's not a dupe. Lex
+		 * tokens until we find the desired constant.
+		 */
 		for (;;)
 		{
 			tok = core_yylex(&yylval, &yylloc, yyscanner);
@@ -3039,8 +3081,6 @@ standard_fill_in_constant_lengths(JumbleState *jstate, const char *query,
 		/* If we hit end-of-string, give up, leaving remaining lengths -1 */
 		if (tok == 0)
 			break;
-
-		last_loc = loc;
 	}
 
 	scanner_finish(yyscanner);

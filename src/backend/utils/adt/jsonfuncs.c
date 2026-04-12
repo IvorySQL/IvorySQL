@@ -477,16 +477,16 @@ static Datum populate_domain(DomainIOData *io, Oid typid, const char *colname,
 /* functions supporting jsonb_delete, jsonb_set and jsonb_concat */
 static JsonbValue *IteratorConcat(JsonbIterator **it1, JsonbIterator **it2,
 								  JsonbParseState **state);
-static JsonbValue *setPath(JsonbIterator **it, Datum *path_elems,
-						   bool *path_nulls, int path_len,
+static JsonbValue *setPath(JsonbIterator **it, const Datum *path_elems,
+						   const bool *path_nulls, int path_len,
 						   JsonbParseState **st, int level, JsonbValue *newval,
 						   int op_type);
-static void setPathObject(JsonbIterator **it, Datum *path_elems,
-						  bool *path_nulls, int path_len, JsonbParseState **st,
+static void setPathObject(JsonbIterator **it, const Datum *path_elems,
+						  const bool *path_nulls, int path_len, JsonbParseState **st,
 						  int level,
 						  JsonbValue *newval, uint32 npairs, int op_type);
-static void setPathArray(JsonbIterator **it, Datum *path_elems,
-						 bool *path_nulls, int path_len, JsonbParseState **st,
+static void setPathArray(JsonbIterator **it, const Datum *path_elems,
+						 const bool *path_nulls, int path_len, JsonbParseState **st,
 						 int level,
 						 JsonbValue *newval, uint32 nelems, int op_type);
 
@@ -1528,7 +1528,7 @@ get_jsonb_path_all(FunctionCallInfo fcinfo, bool as_text)
 }
 
 Datum
-jsonb_get_element(Jsonb *jb, Datum *path, int npath, bool *isnull, bool as_text)
+jsonb_get_element(Jsonb *jb, const Datum *path, int npath, bool *isnull, bool as_text)
 {
 	JsonbContainer *container = &jb->root;
 	JsonbValue *jbvp = NULL;
@@ -1676,7 +1676,7 @@ jsonb_get_element(Jsonb *jb, Datum *path, int npath, bool *isnull, bool as_text)
 }
 
 Datum
-jsonb_set_element(Jsonb *jb, Datum *path, int path_len,
+jsonb_set_element(Jsonb *jb, const Datum *path, int path_len,
 				  JsonbValue *newval)
 {
 	JsonbValue *res;
@@ -1718,8 +1718,8 @@ push_null_elements(JsonbParseState **ps, int num)
  * Caller is responsible to make sure such path does not exist yet.
  */
 static void
-push_path(JsonbParseState **st, int level, Datum *path_elems,
-		  bool *path_nulls, int path_len, JsonbValue *newval)
+push_path(JsonbParseState **st, int level, const Datum *path_elems,
+		  const bool *path_nulls, int path_len, JsonbValue *newval)
 {
 	/*
 	 * tpath contains expected type of an empty jsonb created at each level
@@ -2027,7 +2027,7 @@ each_worker_jsonb(FunctionCallInfo fcinfo, const char *funcname, bool as_text)
 				{
 					/* a json null is an sql null in text mode */
 					nulls[1] = true;
-					values[1] = (Datum) NULL;
+					values[1] = (Datum) 0;
 				}
 				else
 					values[1] = PointerGetDatum(JsonbValueAsText(&v));
@@ -2266,7 +2266,7 @@ elements_worker_jsonb(FunctionCallInfo fcinfo, const char *funcname,
 				{
 					/* a json null is an sql null in text mode */
 					nulls[0] = true;
-					values[0] = (Datum) NULL;
+					values[0] = (Datum) 0;
 				}
 				else
 					values[0] = PointerGetDatum(JsonbValueAsText(&v));
@@ -2389,7 +2389,7 @@ elements_array_element_end(void *state, bool isnull)
 	if (isnull && _state->normalize_results)
 	{
 		nulls[0] = true;
-		values[0] = (Datum) NULL;
+		values[0] = (Datum) 0;
 	}
 	else if (_state->next_scalar)
 	{
@@ -4507,14 +4507,16 @@ json_strip_nulls(PG_FUNCTION_ARGS)
 	text	   *json = PG_GETARG_TEXT_PP(0);
 	bool		strip_in_arrays = PG_NARGS() == 2 ? PG_GETARG_BOOL(1) : false;
 	StripnullState *state;
+	StringInfoData strbuf;
 	JsonLexContext lex;
 	JsonSemAction *sem;
 
 	state = palloc0(sizeof(StripnullState));
 	sem = palloc0(sizeof(JsonSemAction));
+	initStringInfo(&strbuf);
 
 	state->lex = makeJsonLexContext(&lex, json, true);
-	state->strval = makeStringInfo();
+	state->strval = &strbuf;
 	state->skip_next_null = false;
 	state->strip_in_arrays = strip_in_arrays;
 
@@ -4607,11 +4609,12 @@ Datum
 jsonb_pretty(PG_FUNCTION_ARGS)
 {
 	Jsonb	   *jb = PG_GETARG_JSONB_P(0);
-	StringInfo	str = makeStringInfo();
+	StringInfoData str;
 
-	JsonbToCStringIndent(str, &jb->root, VARSIZE(jb));
+	initStringInfo(&str);
+	JsonbToCStringIndent(&str, &jb->root, VARSIZE(jb));
 
-	PG_RETURN_TEXT_P(cstring_to_text_with_len(str->data, str->len));
+	PG_RETURN_TEXT_P(cstring_to_text_with_len(str.data, str.len));
 }
 
 /*
@@ -4766,8 +4769,8 @@ jsonb_delete_array(PG_FUNCTION_ARGS)
 					continue;
 
 				/* We rely on the array elements not being toasted */
-				keyptr = VARDATA_ANY(keys_elems[i]);
-				keylen = VARSIZE_ANY_EXHDR(keys_elems[i]);
+				keyptr = VARDATA_ANY(DatumGetPointer(keys_elems[i]));
+				keylen = VARSIZE_ANY_EXHDR(DatumGetPointer(keys_elems[i]));
 				if (keylen == v.val.string.len &&
 					memcmp(keyptr, v.val.string.val, keylen) == 0)
 				{
@@ -5201,8 +5204,8 @@ IteratorConcat(JsonbIterator **it1, JsonbIterator **it2,
  * whatever bits in op_type are set, or nothing is done.
  */
 static JsonbValue *
-setPath(JsonbIterator **it, Datum *path_elems,
-		bool *path_nulls, int path_len,
+setPath(JsonbIterator **it, const Datum *path_elems,
+		const bool *path_nulls, int path_len,
 		JsonbParseState **st, int level, JsonbValue *newval, int op_type)
 {
 	JsonbValue	v;
@@ -5283,7 +5286,7 @@ setPath(JsonbIterator **it, Datum *path_elems,
  * Object walker for setPath
  */
 static void
-setPathObject(JsonbIterator **it, Datum *path_elems, bool *path_nulls,
+setPathObject(JsonbIterator **it, const Datum *path_elems, const bool *path_nulls,
 			  int path_len, JsonbParseState **st, int level,
 			  JsonbValue *newval, uint32 npairs, int op_type)
 {
@@ -5422,7 +5425,7 @@ setPathObject(JsonbIterator **it, Datum *path_elems, bool *path_nulls,
  * Array walker for setPath
  */
 static void
-setPathArray(JsonbIterator **it, Datum *path_elems, bool *path_nulls,
+setPathArray(JsonbIterator **it, const Datum *path_elems, const bool *path_nulls,
 			 int path_len, JsonbParseState **st, int level,
 			 JsonbValue *newval, uint32 nelems, int op_type)
 {
@@ -5846,7 +5849,7 @@ transform_jsonb_string_values(Jsonb *jsonb, void *action_state,
  * Iterate over a json, and apply a specified JsonTransformStringValuesAction
  * to every string value or element. Any necessary context for a
  * JsonTransformStringValuesAction can be passed in the action_state variable.
- * Function returns a StringInfo, which is a copy of an original json with
+ * Function returns a Text Datum, which is a copy of an original json with
  * transformed values.
  */
 text *
@@ -5856,9 +5859,12 @@ transform_json_string_values(text *json, void *action_state,
 	JsonLexContext lex;
 	JsonSemAction *sem = palloc0(sizeof(JsonSemAction));
 	TransformJsonStringValuesState *state = palloc0(sizeof(TransformJsonStringValuesState));
+	StringInfoData strbuf;
+
+	initStringInfo(&strbuf);
 
 	state->lex = makeJsonLexContext(&lex, json, true);
-	state->strval = makeStringInfo();
+	state->strval = &strbuf;
 	state->action = transform_action;
 	state->action_state = action_state;
 

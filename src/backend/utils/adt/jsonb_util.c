@@ -277,22 +277,16 @@ compareJsonbContainers(JsonbContainer *a, JsonbContainer *b)
 		else
 		{
 			/*
-			 * It's safe to assume that the types differed, and that the va
-			 * and vb values passed were set.
-			 *
-			 * If the two values were of the same container type, then there'd
-			 * have been a chance to observe the variation in the number of
-			 * elements/pairs (when processing WJB_BEGIN_OBJECT, say). They're
-			 * either two heterogeneously-typed containers, or a container and
-			 * some scalar type.
-			 *
-			 * We don't have to consider the WJB_END_ARRAY and WJB_END_OBJECT
-			 * cases here, because we would have seen the corresponding
-			 * WJB_BEGIN_ARRAY and WJB_BEGIN_OBJECT tokens first, and
-			 * concluded that they don't match.
+			 * It's not possible for one iterator to report end of array or
+			 * object while the other one reports something else, because we
+			 * would have detected a length mismatch when we processed the
+			 * container-start tokens above.  Likewise we can't see WJB_DONE
+			 * from one but not the other.  So we have two different-type
+			 * containers, or a container and some scalar type, or two
+			 * different scalar types.  Sort on the basis of the type code.
 			 */
-			Assert(ra != WJB_END_ARRAY && ra != WJB_END_OBJECT);
-			Assert(rb != WJB_END_ARRAY && rb != WJB_END_OBJECT);
+			Assert(ra != WJB_DONE && ra != WJB_END_ARRAY && ra != WJB_END_OBJECT);
+			Assert(rb != WJB_DONE && rb != WJB_END_ARRAY && rb != WJB_END_OBJECT);
 
 			Assert(va.type != vb.type);
 			Assert(va.type != jbvBinary);
@@ -852,15 +846,20 @@ JsonbIteratorInit(JsonbContainer *container)
  * It is our job to expand the jbvBinary representation without bothering them
  * with it.  However, clients should not take it upon themselves to touch array
  * or Object element/pair buffers, since their element/pair pointers are
- * garbage.  Also, *val will not be set when returning WJB_END_ARRAY or
- * WJB_END_OBJECT, on the assumption that it's only useful to access values
- * when recursing in.
+ * garbage.
+ *
+ * *val is not meaningful when the result is WJB_DONE, WJB_END_ARRAY or
+ * WJB_END_OBJECT.  However, we set val->type = jbvNull in those cases,
+ * so that callers may assume that val->type is always well-defined.
  */
 JsonbIteratorToken
 JsonbIteratorNext(JsonbIterator **it, JsonbValue *val, bool skipNested)
 {
 	if (*it == NULL)
+	{
+		val->type = jbvNull;
 		return WJB_DONE;
+	}
 
 	/*
 	 * When stepping into a nested container, we jump back here to start
@@ -898,6 +897,7 @@ recurse:
 				 * nesting).
 				 */
 				*it = freeAndGetParent(*it);
+				val->type = jbvNull;
 				return WJB_END_ARRAY;
 			}
 
@@ -951,6 +951,7 @@ recurse:
 				 * of nesting).
 				 */
 				*it = freeAndGetParent(*it);
+				val->type = jbvNull;
 				return WJB_END_OBJECT;
 			}
 			else
@@ -995,8 +996,10 @@ recurse:
 				return WJB_VALUE;
 	}
 
-	elog(ERROR, "invalid iterator state");
-	return -1;
+	elog(ERROR, "invalid jsonb iterator state");
+	/* satisfy compilers that don't know that elog(ERROR) doesn't return */
+	val->type = jbvNull;
+	return WJB_DONE;
 }
 
 /*

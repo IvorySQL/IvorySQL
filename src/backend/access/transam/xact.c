@@ -31,6 +31,7 @@
 #include "access/xloginsert.h"
 #include "access/xlogrecovery.h"
 #include "access/xlogutils.h"
+#include "access/xlogwait.h"
 #include "catalog/index.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_enum.h"
@@ -1431,10 +1432,22 @@ RecordTransactionCommit(void)
 		 * without holding the ProcArrayLock, since we're the only one
 		 * modifying it.  This makes checkpoint's determination of which xacts
 		 * are delaying the checkpoint a bit fuzzy, but it doesn't matter.
+		 *
+		 * Note, it is important to get the commit timestamp after marking the
+		 * transaction in the commit critical section. See
+		 * RecordTransactionCommitPrepared.
 		 */
-		Assert((MyProc->delayChkptFlags & DELAY_CHKPT_START) == 0);
+		Assert((MyProc->delayChkptFlags & DELAY_CHKPT_IN_COMMIT) == 0);
 		START_CRIT_SECTION();
-		MyProc->delayChkptFlags |= DELAY_CHKPT_START;
+		MyProc->delayChkptFlags |= DELAY_CHKPT_IN_COMMIT;
+
+		Assert(xactStopTimestamp == 0);
+
+		/*
+		 * Ensures the DELAY_CHKPT_IN_COMMIT flag write is globally visible
+		 * before commit time is written.
+		 */
+		pg_write_barrier();
 
 		/*
 		 * Insert the commit XLOG record.
@@ -1537,7 +1550,7 @@ RecordTransactionCommit(void)
 	 */
 	if (markXidCommitted)
 	{
-		MyProc->delayChkptFlags &= ~DELAY_CHKPT_START;
+		MyProc->delayChkptFlags &= ~DELAY_CHKPT_IN_COMMIT;
 		END_CRIT_SECTION();
 	}
 
@@ -2515,7 +2528,7 @@ static void
 PrepareTransaction(void)
 {
 	TransactionState s = CurrentTransactionState;
-	TransactionId xid = GetCurrentTransactionId();
+	FullTransactionId fxid = GetCurrentFullTransactionId();
 	GlobalTransaction gxact;
 	TimestampTz prepared_at;
 
@@ -2644,7 +2657,7 @@ PrepareTransaction(void)
 	 * Reserve the GID for this transaction. This could fail if the requested
 	 * GID is invalid or already in use.
 	 */
-	gxact = MarkAsPreparing(xid, prepareGID, prepared_at,
+	gxact = MarkAsPreparing(fxid, prepareGID, prepared_at,
 							GetUserId(), MyDatabaseId);
 	prepareGID = NULL;
 
@@ -2694,7 +2707,7 @@ PrepareTransaction(void)
 	 * ProcArrayClearTransaction().  Otherwise, a GetLockConflicts() would
 	 * conclude "xact already committed or aborted" for our locks.
 	 */
-	PostPrepare_Locks(xid);
+	PostPrepare_Locks(fxid);
 
 	/*
 	 * Let others know about no transaction in progress by me.  This has to be
@@ -2738,9 +2751,9 @@ PrepareTransaction(void)
 
 	PostPrepare_smgr();
 
-	PostPrepare_MultiXact(xid);
+	PostPrepare_MultiXact(fxid);
 
-	PostPrepare_PredicateLocks(xid);
+	PostPrepare_PredicateLocks(fxid);
 
 	ResourceOwnerRelease(TopTransactionResourceOwner,
 						 RESOURCE_RELEASE_LOCKS,
@@ -2830,6 +2843,11 @@ AbortTransaction(void)
 	 * while cleaning up!
 	 */
 	LWLockReleaseAll();
+
+	/*
+	 * Cleanup waiting for LSN if any.
+	 */
+	WaitLSNCleanup();
 
 	/* Clear wait information and command progress indicator */
 	pgstat_report_wait_end();
@@ -4524,13 +4542,13 @@ ReleaseSavepoint(const char *name)
 			break;
 	}
 
-	for (target = s; PointerIsValid(target); target = target->parent)
+	for (target = s; target; target = target->parent)
 	{
-		if (PointerIsValid(target->name) && strcmp(target->name, name) == 0)
+		if (target->name && strcmp(target->name, name) == 0)
 			break;
 	}
 
-	if (!PointerIsValid(target))
+	if (!target)
 		ereport(ERROR,
 				(errcode(ERRCODE_S_E_INVALID_SPECIFICATION),
 				 errmsg("savepoint \"%s\" does not exist", name)));
@@ -4554,7 +4572,7 @@ ReleaseSavepoint(const char *name)
 		if (xact == target)
 			break;
 		xact = xact->parent;
-		Assert(PointerIsValid(xact));
+		Assert(xact);
 	}
 }
 
@@ -4633,13 +4651,13 @@ RollbackToSavepoint(const char *name)
 			break;
 	}
 
-	for (target = s; PointerIsValid(target); target = target->parent)
+	for (target = s; target; target = target->parent)
 	{
-		if (PointerIsValid(target->name) && strcmp(target->name, name) == 0)
+		if (target->name && strcmp(target->name, name) == 0)
 			break;
 	}
 
-	if (!PointerIsValid(target))
+	if (!target)
 		ereport(ERROR,
 				(errcode(ERRCODE_S_E_INVALID_SPECIFICATION),
 				 errmsg("savepoint \"%s\" does not exist", name)));
@@ -4668,7 +4686,7 @@ RollbackToSavepoint(const char *name)
 			elog(FATAL, "RollbackToSavepoint: unexpected state %s",
 				 BlockStateAsString(xact->blockState));
 		xact = xact->parent;
-		Assert(PointerIsValid(xact));
+		Assert(xact);
 	}
 
 	/* And mark the target as "restart pending" */
@@ -5689,7 +5707,7 @@ ShowTransactionStateRec(const char *str, TransactionState s)
 	ereport(DEBUG5,
 			(errmsg_internal("%s(%d) name: %s; blockState: %s; state: %s, xid/subid/cid: %u/%u/%u%s%s",
 							 str, s->nestingLevel,
-							 PointerIsValid(s->name) ? s->name : "unnamed",
+							 s->name ? s->name : "unnamed",
 							 BlockStateAsString(s->blockState),
 							 TransStateAsString(s->state),
 							 (unsigned int) XidFromFullTransactionId(s->fullTransactionId),
@@ -6421,7 +6439,8 @@ xact_redo(XLogReaderState *record)
 		 * gxact entry.
 		 */
 		LWLockAcquire(TwoPhaseStateLock, LW_EXCLUSIVE);
-		PrepareRedoAdd(XLogRecGetData(record),
+		PrepareRedoAdd(InvalidFullTransactionId,
+					   XLogRecGetData(record),
 					   record->ReadRecPtr,
 					   record->EndRecPtr,
 					   XLogRecGetOrigin(record));
