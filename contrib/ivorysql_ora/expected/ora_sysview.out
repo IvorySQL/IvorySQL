@@ -137,47 +137,201 @@ WHERE OBJECT_NAME = 'FUNC_WITH_DEFAULT';
 
 -- clean data
 DROP FUNCTION IF EXISTS FUNC_WITH_DEFAULT;
--- Oracle dynamic views
-\d SYS.V$SESSION
-                            View "sys.v$session"
-      Column       |          Type          | Collation | Nullable | Default 
--------------------+------------------------+-----------+----------+---------
- sid               | number                 |           |          | 
- username          | varchar2(128)          | C         |          | 
- status            | varchar2(40)           |           |          | 
- machine           | varchar2(128)          |           |          | 
- program           | varchar2(256)          |           |          | 
- type              | varchar2(30)           |           |          | 
- logon_time        | pg_catalog.timestamptz |           |          | 
- sql_exec_start    | pg_catalog.timestamptz |           |          | 
- sql_id            | varchar2(19)           |           |          | 
- sql_text          | varchar2(4000)         |           |          | 
- blocking_session  | number                 |           |          | 
- event             | varchar2(64)           |           |          | 
- wait_class        | varchar2(64)           |           |          | 
- transaction_start | pg_catalog.timestamptz |           |          | 
- port              | number                 |           |          | 
+--
+-- IVORYSQL ORACLE COMPATIBILITY TEST: PROCEDURES / SOURCE / ARGUMENTS / VIEWS
+--
+-- compatible_mode
+SET IVORYSQL.COMPATIBLE_MODE TO ORACLE;
+SHOW IVORYSQL.COMPATIBLE_MODE;
+ ivorysql.compatible_mode 
+--------------------------
+ oracle
+(1 row)
 
-\d SYS.V$PROCESS
-                    View "sys.v$process"
-   Column   |     Type      | Collation | Nullable | Default 
-------------+---------------+-----------+----------+---------
- spid       | number        |           |          | 
- username   | varchar2(128) | C         |          | 
- program    | varchar2(256) |           |          | 
- pname      | varchar2(30)  |           |          | 
- background | varchar2(1)   |           |          | 
+SET IVORYSQL.IDENTIFIER_CASE_SWITCH = INTERCHANGE;
+SHOW IVORYSQL.IDENTIFIER_CASE_SWITCH;
+ ivorysql.identifier_case_switch 
+---------------------------------
+ interchange
+(1 row)
 
-SELECT * 
-FROM SYS.V$PARAMETER 
-WHERE NAME IN ('listen_addresses','application_name','archive_command','archive_mode','block_size')
-ORDER BY NAME;
-       name       | type |         value          | default_value | isdefault | isses_modifiable | issys_modifiable |                            description                            
-------------------+------+------------------------+---------------+-----------+------------------+------------------+-------------------------------------------------------------------
- application_name | 2    | pg_regress/ora_sysview |               | FALSE     | TRUE             | IMMEDIATE        | Sets the application name to be reported in statistics and logs.
- archive_command  | 2    | (disabled)             |               | FALSE     | FALSE            | IMMEDIATE        | Sets the shell command that will be called to archive a WAL file.
- archive_mode     | 2    | off                    | off           | TRUE      | FALSE            | FALSE            | Allows archiving of WAL files using "archive_command".
- block_size       | 3    | 8192                   | 8192          | TRUE      | FALSE            | FALSE            | Shows the size of a disk block.
- listen_addresses | 2    |                        | localhost     | FALSE     | FALSE            | FALSE            | Sets the host name or IP address(es) to listen to.
-(5 rows)
+-------------------------------------------------------------------------------
+-- Test procedures and functions in ALL_PROCEDURES
+-------------------------------------------------------------------------------
+CREATE TABLE TB_TODEL(ID INT);
+CREATE OR REPLACE PROCEDURE PROC_DEL_TB(I INT) IS
+BEGIN
+	DROP TABLE TB_TODEL;
+END;
+/
+CREATE OR REPLACE FUNCTION FUNC_AUTHID(P VARCHAR2)
+RETURN INT DETERMINISTIC IS
+BEGIN
+	RETURN 123;
+END;
+/
+SELECT OBJECT_NAME, OBJECT_TYPE, DETERMINISTIC, PARALLEL, AUTHID
+FROM ALL_PROCEDURES
+WHERE OBJECT_NAME = 'PROC_DEL_TB' OR OBJECT_NAME = 'FUNC_AUTHID';
+ object_name | object_type | deterministic | parallel | authid  
+-------------+-------------+---------------+----------+---------
+ PROC_DEL_TB | PROCEDURE   | NO            | NO       | DEFINER
+ FUNC_AUTHID | FUNCTION    | YES           | NO       | DEFINER
+(2 rows)
 
+-------------------------------------------------------------------------------
+-- Test quoted lowercase function in ALL_SOURCE
+-------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION "func_quotes_lower"(ID INT)
+RETURN VARCHAR2 IS
+BEGIN
+	RETURN 'func_quotes_lower'::VARCHAR2;
+END;
+/
+SELECT NAME, LINE, TEXT FROM ALL_SOURCE WHERE NAME = 'func_quotes_lower';
+       name        | line |                          text                           
+-------------------+------+---------------------------------------------------------
+ func_quotes_lower | 1    | FUNCTION public."FUNC_QUOTES_LOWER"(id pg_catalog.int4)
+ func_quotes_lower | 2    |  RETURN varchar2
+ func_quotes_lower | 3    |  AUTHID DEFINER
+ func_quotes_lower |      | IS 
+ func_quotes_lower |      | BEGIN
+ func_quotes_lower |      |         RETURN 'func_quotes_lower'::VARCHAR2;
+ func_quotes_lower |      | END;
+(7 rows)
+
+-------------------------------------------------------------------------------
+-- Test data_type & pls_type in ALL_ARGUMENTS
+-------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION FUNC_22_ARG_TYPES
+(
+	T1 CHAR,
+	T2 NCHAR,
+	T3 VARCHAR2,
+	T4 INTEGER,
+	T5 NUMBER,
+	T6 NUMERIC,
+	T7 BINARY_FLOAT,
+	T8 BINARY_DOUBLE,
+	T9 REAL,
+	T10 FLOAT,
+	T11 DOUBLE PRECISION,
+	T12 DATE,
+	T13 TIMESTAMP,
+	T14 TIMESTAMP WITH TIME ZONE,
+	T15 TIMESTAMP WITH LOCAL TIME ZONE,
+	T16 CLOB,
+	T17 BLOB,
+	T18 NCLOB,
+	T19 LONG,
+	T20 LONG RAW,
+	T21 BOOLEAN
+)
+RETURN RAW IS
+BEGIN
+	RETURN CAST('FUNC_22_ARG_TYPES' AS RAW);
+END;
+/
+SELECT
+	ARGUMENT_NAME || ',' || POSITION || ',' || SEQUENCE || ',' ||
+	IN_OUT || ',' || DATA_TYPE || ',' || PLS_TYPE
+FROM ALL_ARGUMENTS
+WHERE OBJECT_NAME = 'FUNC_22_ARG_TYPES'
+ORDER BY OBJECT_ID, POSITION;
+                                  ?column?                                  
+----------------------------------------------------------------------------
+ ,0,1,OUT,RAW,RAW
+ T1,1,2,IN,CHAR,CHAR
+ T2,2,3,IN,CHAR,CHAR
+ T3,3,4,IN,VARCHAR2,VARCHAR2
+ T4,4,5,IN,NUMBER,PG_CATALOG.INT4
+ T5,5,6,IN,NUMBER,NUMBER
+ T6,6,7,IN,NUMBER,PG_CATALOG.NUMERIC
+ T7,7,8,IN,BINARY_FLOAT,BINARY_FLOAT
+ T8,8,9,IN,BINARY_DOUBLE,BINARY_DOUBLE
+ T9,9,10,IN,FLOAT,PG_CATALOG.FLOAT4
+ T10,10,11,IN,FLOAT,PG_CATALOG.FLOAT8
+ T11,11,12,IN,FLOAT,PG_CATALOG.FLOAT8
+ T12,12,13,IN,DATE,DATE
+ T13,13,14,IN,TIMESTAMP,TIMESTAMP
+ T14,14,15,IN,TIMESTAMP WITH TIME ZONE,TIMESTAMP WITH TIME ZONE
+ T15,15,16,IN,TIMESTAMP WITH LOCAL TIME ZONE,TIMESTAMP WITH LOCAL TIME ZONE
+ T16,16,17,IN,CLOB,CLOB
+ T17,17,18,IN,BLOB,BLOB
+ T18,18,19,IN,NCLOB,CLOB
+ T19,19,20,IN,LONG,LONG
+ T20,20,21,IN,LONG_RAW,LONG_RAW
+ T21,21,22,IN,PG_CATALOG.BOOL,PG_CATALOG.BOOL
+(22 rows)
+
+-------------------------------------------------------------------------------
+-- Cleanup
+-------------------------------------------------------------------------------
+DROP TABLE IF EXISTS TB_TODEL;
+DROP PROCEDURE IF EXISTS PROC_DEL_TB;
+DROP FUNCTION IF EXISTS FUNC_AUTHID;
+DROP FUNCTION IF EXISTS "func_quotes_lower";
+DROP FUNCTION IF EXISTS FUNC_22_ARG_TYPES;
+-------------------------------------------------------------------------------
+-- Test arguments with DEFAULT values
+-------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION FUNC_WITH_DEFAULT
+(
+	ARG1 IN INT DEFAULT 10,
+	ARG2 OUT INT,
+	ARG3 IN OUT INT,
+	ARG4 IN VARCHAR2(10) DEFAULT NULL
+)
+RETURN void IS
+BEGIN
+	ARG2 := ARG1 + 10;
+	ARG3 := ARG1 / 2;
+END;`
+/
+ERROR:  syntax error at or near "`"
+LINE 12: END;`
+             ^
+SELECT ARGUMENT_NAME, IN_OUT, POSITION, DEFAULTED
+FROM ALL_ARGUMENTS
+WHERE OBJECT_NAME = 'FUNC_WITH_DEFAULT';
+ argument_name | in_out | position | defaulted 
+---------------+--------+----------+-----------
+(0 rows)
+
+DROP FUNCTION IF EXISTS FUNC_WITH_DEFAULT;
+NOTICE:  function func_with_default() does not exist, skipping
+-- USER_CONS_COLUMNS Test
+CREATE EXTENSION sysview;
+ERROR:  extension "sysview" is not available
+HINT:  The extension must first be installed on the system where PostgreSQL is running.
+-- Test table with constraints
+CREATE TABLE test_user_cons (
+    id NUMBER PRIMARY KEY,
+    name VARCHAR2(50) NOT NULL
+);
+-- Query USER_CONS_COLUMNS
+SELECT OWNER, TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME
+FROM USER_CONS_COLUMNS
+WHERE TABLE_NAME = 'TEST_USER_CONS';
+ERROR:  relation "user_cons_columns" does not exist
+LINE 2: FROM USER_CONS_COLUMNS
+             ^
+-- Test ALL_TAB_COLUMNS
+DROP TABLE IF EXISTS test_user_cons;
+CREATE TABLE test_user_cons (
+    id int primary key,
+    name varchar(50) not null
+);
+SELECT OWNER, TABLE_NAME, COLUMN_NAME, COLUMN_ID,
+       DATA_TYPE, DATA_LENGTH, DATA_PRECISION, DATA_SCALE,
+       NULLABLE
+FROM ALL_TAB_COLUMNS
+WHERE TABLE_NAME = 'test_user_cons';
+ owner  |   table_name   | column_name | column_id |   data_type    | data_length | data_precision | data_scale | nullable 
+--------+----------------+-------------+-----------+----------------+-------------+----------------+------------+----------
+ public | test_user_cons | id          |         1 | int4           |           4 |                |            | N
+ public | test_user_cons | name        |         2 | oravarcharbyte |          -1 |                |            | N
+(2 rows)
+
+-- clean
+DROP TABLE IF EXISTS test_user_cons;

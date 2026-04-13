@@ -83,10 +83,150 @@ WHERE OBJECT_NAME = 'FUNC_WITH_DEFAULT';
 -- clean data
 DROP FUNCTION IF EXISTS FUNC_WITH_DEFAULT;
 
--- Oracle dynamic views
-\d SYS.V$SESSION
-\d SYS.V$PROCESS
-SELECT * 
-FROM SYS.V$PARAMETER 
-WHERE NAME IN ('listen_addresses','application_name','archive_command','archive_mode','block_size')
-ORDER BY NAME;
+--
+-- IVORYSQL ORACLE COMPATIBILITY TEST: PROCEDURES / SOURCE / ARGUMENTS / VIEWS
+--
+
+-- compatible_mode
+SET IVORYSQL.COMPATIBLE_MODE TO ORACLE;
+SHOW IVORYSQL.COMPATIBLE_MODE;
+
+SET IVORYSQL.IDENTIFIER_CASE_SWITCH = INTERCHANGE;
+SHOW IVORYSQL.IDENTIFIER_CASE_SWITCH;
+
+-------------------------------------------------------------------------------
+-- Test procedures and functions in ALL_PROCEDURES
+-------------------------------------------------------------------------------
+CREATE TABLE TB_TODEL(ID INT);
+
+CREATE OR REPLACE PROCEDURE PROC_DEL_TB(I INT) IS
+BEGIN
+	DROP TABLE TB_TODEL;
+END;
+/
+
+CREATE OR REPLACE FUNCTION FUNC_AUTHID(P VARCHAR2)
+RETURN INT DETERMINISTIC IS
+BEGIN
+	RETURN 123;
+END;
+/
+
+SELECT OBJECT_NAME, OBJECT_TYPE, DETERMINISTIC, PARALLEL, AUTHID
+FROM ALL_PROCEDURES
+WHERE OBJECT_NAME = 'PROC_DEL_TB' OR OBJECT_NAME = 'FUNC_AUTHID';
+
+-------------------------------------------------------------------------------
+-- Test quoted lowercase function in ALL_SOURCE
+-------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION "func_quotes_lower"(ID INT)
+RETURN VARCHAR2 IS
+BEGIN
+	RETURN 'func_quotes_lower'::VARCHAR2;
+END;
+/
+
+SELECT NAME, LINE, TEXT FROM ALL_SOURCE WHERE NAME = 'func_quotes_lower';
+
+-------------------------------------------------------------------------------
+-- Test data_type & pls_type in ALL_ARGUMENTS
+-------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION FUNC_22_ARG_TYPES
+(
+	T1 CHAR,
+	T2 NCHAR,
+	T3 VARCHAR2,
+	T4 INTEGER,
+	T5 NUMBER,
+	T6 NUMERIC,
+	T7 BINARY_FLOAT,
+	T8 BINARY_DOUBLE,
+	T9 REAL,
+	T10 FLOAT,
+	T11 DOUBLE PRECISION,
+	T12 DATE,
+	T13 TIMESTAMP,
+	T14 TIMESTAMP WITH TIME ZONE,
+	T15 TIMESTAMP WITH LOCAL TIME ZONE,
+	T16 CLOB,
+	T17 BLOB,
+	T18 NCLOB,
+	T19 LONG,
+	T20 LONG RAW,
+	T21 BOOLEAN
+)
+RETURN RAW IS
+BEGIN
+	RETURN CAST('FUNC_22_ARG_TYPES' AS RAW);
+END;
+/
+
+SELECT
+	ARGUMENT_NAME || ',' || POSITION || ',' || SEQUENCE || ',' ||
+	IN_OUT || ',' || DATA_TYPE || ',' || PLS_TYPE
+FROM ALL_ARGUMENTS
+WHERE OBJECT_NAME = 'FUNC_22_ARG_TYPES'
+ORDER BY OBJECT_ID, POSITION;
+
+-------------------------------------------------------------------------------
+-- Cleanup
+-------------------------------------------------------------------------------
+DROP TABLE IF EXISTS TB_TODEL;
+DROP PROCEDURE IF EXISTS PROC_DEL_TB;
+DROP FUNCTION IF EXISTS FUNC_AUTHID;
+DROP FUNCTION IF EXISTS "func_quotes_lower";
+DROP FUNCTION IF EXISTS FUNC_22_ARG_TYPES;
+
+-------------------------------------------------------------------------------
+-- Test arguments with DEFAULT values
+-------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION FUNC_WITH_DEFAULT
+(
+	ARG1 IN INT DEFAULT 10,
+	ARG2 OUT INT,
+	ARG3 IN OUT INT,
+	ARG4 IN VARCHAR2(10) DEFAULT NULL
+)
+RETURN void IS
+BEGIN
+	ARG2 := ARG1 + 10;
+	ARG3 := ARG1 / 2;
+END;`
+/
+
+SELECT ARGUMENT_NAME, IN_OUT, POSITION, DEFAULTED
+FROM ALL_ARGUMENTS
+WHERE OBJECT_NAME = 'FUNC_WITH_DEFAULT';
+
+DROP FUNCTION IF EXISTS FUNC_WITH_DEFAULT;
+
+-- USER_CONS_COLUMNS Test
+CREATE EXTENSION sysview;
+
+-- Test table with constraints
+CREATE TABLE test_user_cons (
+    id NUMBER PRIMARY KEY,
+    name VARCHAR2(50) NOT NULL
+);
+
+-- Query USER_CONS_COLUMNS
+SELECT OWNER, TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME
+FROM USER_CONS_COLUMNS
+WHERE TABLE_NAME = 'TEST_USER_CONS';
+
+-- Test ALL_TAB_COLUMNS
+DROP TABLE IF EXISTS test_user_cons;
+
+CREATE TABLE test_user_cons (
+    id int primary key,
+    name varchar(50) not null
+);
+
+SELECT OWNER, TABLE_NAME, COLUMN_NAME, COLUMN_ID,
+       DATA_TYPE, DATA_LENGTH, DATA_PRECISION, DATA_SCALE,
+       NULLABLE
+FROM ALL_TAB_COLUMNS
+WHERE TABLE_NAME = 'test_user_cons';
+
+-- clean
+DROP TABLE IF EXISTS test_user_cons;
