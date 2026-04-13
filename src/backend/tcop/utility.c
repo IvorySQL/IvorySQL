@@ -1070,7 +1070,8 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 
 		case T_WaitStmt:
 			{
-				ExecWaitStmt(pstate, (WaitStmt *) parsetree, dest);
+				ExecWaitStmt(pstate, (WaitStmt *) parsetree, isTopLevel,
+							 dest);
 			}
 			break;
 
