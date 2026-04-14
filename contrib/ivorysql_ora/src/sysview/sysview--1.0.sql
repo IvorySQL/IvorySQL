@@ -1273,3 +1273,39 @@ SELECT
     SHORT_DESC::VARCHAR2(255) AS DESCRIPTION
 FROM PG_SETTINGS;
 
+/*
+ * ALL_TAB_COLUMNS - Oracle-compatible columns view
+ */
+CREATE OR REPLACE VIEW ALL_TAB_COLUMNS AS
+SELECT
+    n.nspname AS owner,
+    c.relname AS table_name,
+    a.attname AS column_name,
+    a.attnum AS column_id,
+    t.typname AS data_type,
+    CASE
+        WHEN t.typname IN ('varchar', 'char', 'bpchar') THEN (a.atttypmod - 4)
+        WHEN t.typname = 'numeric' THEN ((a.atttypmod - 4) >> 16)
+        ELSE a.attlen
+    END AS data_length,
+    CASE
+        WHEN t.typname = 'numeric' THEN ((a.atttypmod - 4) >> 16)
+        ELSE NULL
+    END AS data_precision,
+    CASE
+        WHEN t.typname = 'numeric' THEN ((a.atttypmod - 4) & 65535)
+        ELSE NULL
+    END AS data_scale,
+    CASE WHEN a.attnotnull THEN 'N' ELSE 'Y' END AS nullable
+FROM pg_class c
+JOIN pg_attribute a ON a.attrelid = c.oid
+JOIN pg_type t ON a.atttypid = t.oid
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE a.attnum > 0
+  AND NOT a.attisdropped
+  AND c.relkind IN ('r', 'v')
+  AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+ORDER BY n.nspname, c.relname, a.attnum;
+
+GRANT SELECT ON ALL_TAB_COLUMNS TO PUBLIC;
+COMMENT ON VIEW ALL_TAB_COLUMNS IS 'Oracle-style ALL_TAB_COLUMNS view';

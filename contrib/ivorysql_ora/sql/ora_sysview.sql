@@ -90,3 +90,19 @@ SELECT *
 FROM SYS.V$PARAMETER 
 WHERE NAME IN ('listen_addresses','application_name','archive_command','archive_mode','block_size')
 ORDER BY NAME;
+
+-- Test ALL_TAB_COLUMNS
+DROP TABLE IF EXISTS test_user_cons;
+
+CREATE TABLE test_user_cons (
+    id int primary key,
+    name varchar(50) not null
+);
+
+SELECT OWNER, TABLE_NAME, COLUMN_NAME, COLUMN_ID,
+       DATA_TYPE, DATA_LENGTH, DATA_PRECISION, DATA_SCALE,
+       NULLABLE
+FROM ALL_TAB_COLUMNS
+WHERE TABLE_NAME = 'test_user_cons';
+
+DROP TABLE IF EXISTS test_user_cons;

@@ -181,3 +181,22 @@ ORDER BY NAME;
  listen_addresses | 2    |                        | localhost     | FALSE     | FALSE            | FALSE            | Sets the host name or IP address(es) to listen to.
 (5 rows)
 
+-- Test ALL_TAB_COLUMNS
+DROP TABLE IF EXISTS test_user_cons;
+NOTICE:  table "test_user_cons" does not exist, skipping
+CREATE TABLE test_user_cons (
+    id int primary key,
+    name varchar(50) not null
+);
+SELECT OWNER, TABLE_NAME, COLUMN_NAME, COLUMN_ID,
+       DATA_TYPE, DATA_LENGTH, DATA_PRECISION, DATA_SCALE,
+       NULLABLE
+FROM ALL_TAB_COLUMNS
+WHERE TABLE_NAME = 'test_user_cons';
+ owner  |   table_name   | column_name | column_id |   data_type    | data_length | data_precision | data_scale | nullable 
+--------+----------------+-------------+-----------+----------------+-------------+----------------+------------+----------
+ public | test_user_cons | id          |         1 | int4           |           4 |                |            | N
+ public | test_user_cons | name        |         2 | oravarcharbyte |          -1 |                |            | N
+(2 rows)
+
+DROP TABLE IF EXISTS test_user_cons;
