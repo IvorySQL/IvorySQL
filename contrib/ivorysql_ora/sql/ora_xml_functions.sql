@@ -408,3 +408,14 @@ select INSERTCHILDXML(warehouse_spec, 'Envelope/Body/AAA/BBB/DDD/DDDs', 'TTT', x
  from warehouse_2 where warehouse_id = 1;
 
 drop table warehouse_2;
+
+-- bug #1276
+select appendchildxml(XMLtype('<a>A</a>'), '/', XMLtype('<b>B</b>'));
+
+select insertxmlbefore(XMLtype('<a>A<b>B</b></a>'), '/', XMLType('<c>C</c>'));
+
+select insertxmlafter(XMLtype('<a>A<b>B</b></a>'), '/', XMLType('<c>C</c>'));
+
+select insertchildxml(XMLtype('<a>A<b>B</b></a>'), '/', 'c', XMLType('<c>C</c>'));
+
+
