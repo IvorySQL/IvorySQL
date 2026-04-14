@@ -217,23 +217,23 @@ CREATE TABLE t_data_types (
     c_text TEXT,
     CONSTRAINT pk_data_types PRIMARY KEY (c_varchar, c_char)
 );
-SELECT owner, table_name, constraint_name, column_name, position
+SELECT table_name, constraint_name, column_name, position
 FROM all_cons_columns
 WHERE owner = CURRENT_USER
 ORDER BY table_name, constraint_name, position;
-  owner  |     table_name     |     constraint_name     | column_name | position 
----------+--------------------+-------------------------+-------------+----------
- gsx2004 | t_check            | chk_age                 | age         | 1
- gsx2004 | t_check            | chk_salary_range        | salary      | 1
- gsx2004 | t_child            | fk_child_parent         | pid         | 1
- gsx2004 | t_data_types       | pk_data_types           | c_varchar   | 1
- gsx2004 | t_data_types       | pk_data_types           | c_char      | 2
- gsx2004 | t_parent           | t_parent_pkey           | pid         | 1
- gsx2004 | t_pk_composite     | pk_composite            | id1         | 1
- gsx2004 | t_pk_composite     | pk_composite            | id2         | 2
- gsx2004 | t_pk_single        | t_pk_single_pkey        | id          | 1
- gsx2004 | t_unique           | uk_col1                 | col1        | 1
- gsx2004 | utl_file_directory | utl_file_directory_pkey | dirname     | 1
+     table_name     |     constraint_name     | column_name | position 
+--------------------+-------------------------+-------------+----------
+ t_check            | chk_age                 | age         | 1
+ t_check            | chk_salary_range        | salary      | 1
+ t_child            | fk_child_parent         | pid         | 1
+ t_data_types       | pk_data_types           | c_varchar   | 1
+ t_data_types       | pk_data_types           | c_char      | 2
+ t_parent           | t_parent_pkey           | pid         | 1
+ t_pk_composite     | pk_composite            | id1         | 1
+ t_pk_composite     | pk_composite            | id2         | 2
+ t_pk_single        | t_pk_single_pkey        | id          | 1
+ t_unique           | uk_col1                 | col1        | 1
+ utl_file_directory | utl_file_directory_pkey | dirname     | 1
 (11 rows)
 
 SELECT constraint_name, COUNT(*) AS column_count

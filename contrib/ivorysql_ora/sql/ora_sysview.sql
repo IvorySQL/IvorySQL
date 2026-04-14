@@ -131,7 +131,7 @@ CREATE TABLE t_data_types (
     CONSTRAINT pk_data_types PRIMARY KEY (c_varchar, c_char)
 );
 
-SELECT owner, table_name, constraint_name, column_name, position
+SELECT table_name, constraint_name, column_name, position
 FROM all_cons_columns
 WHERE owner = CURRENT_USER
 ORDER BY table_name, constraint_name, position;

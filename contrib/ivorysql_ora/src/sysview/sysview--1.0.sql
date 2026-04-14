@@ -1275,35 +1275,19 @@ FROM PG_SETTINGS;
 
 CREATE OR REPLACE VIEW SYS.all_cons_columns AS
 SELECT
-    pg_authid.rolname::VARCHAR2(128)            AS owner,           -- 改为表属主
+    pg_authid.rolname::VARCHAR2(128)            AS owner,           -- table owner
     con.conname::VARCHAR2(128)                  AS constraint_name,
     cls.relname::VARCHAR2(128)                  AS table_name,
     attr.attname::VARCHAR2(4000)                AS column_name,
-    pos.pos::NUMBER                             AS position,
-    CASE
-        WHEN t.typname = 'varchar'  THEN 'VARCHAR2'
-        WHEN t.typname = 'bpchar'   THEN 'CHAR'
-        WHEN t.typname = 'numeric'  THEN 'NUMBER'
-        WHEN t.typname = 'int2'     THEN 'NUMBER'
-        WHEN t.typname = 'int4'     THEN 'NUMBER'
-        WHEN t.typname = 'int8'     THEN 'NUMBER'
-        WHEN t.typname = 'float4'   THEN 'FLOAT'
-        WHEN t.typname = 'float8'   THEN 'FLOAT'
-        WHEN t.typname = 'text'     THEN 'CLOB'
-        WHEN t.typname = 'date'     THEN 'DATE'
-        WHEN t.typname = 'timestamp' THEN 'TIMESTAMP'
-        WHEN t.typname = 'timestamptz' THEN 'TIMESTAMP WITH TIME ZONE'
-        ELSE UPPER(t.typname)
-    END                                         AS data_type
+    pos.pos::NUMBER                             AS position
 FROM
     pg_catalog.pg_constraint con
     JOIN pg_catalog.pg_class cls       ON con.conrelid = cls.oid
-    JOIN pg_catalog.pg_authid          ON cls.relowner = pg_authid.oid   -- 关联属主
+    JOIN pg_catalog.pg_authid          ON cls.relowner = pg_authid.oid   -- link to table owner
     JOIN pg_catalog.pg_namespace nsp   ON cls.relnamespace = nsp.oid
     CROSS JOIN LATERAL unnest(con.conkey) WITH ORDINALITY AS pos(attnum, pos)
     JOIN pg_catalog.pg_attribute attr  ON attr.attrelid = cls.oid
                                       AND attr.attnum = pos.attnum
-    JOIN pg_catalog.pg_type t          ON attr.atttypid = t.oid
 WHERE
     con.contype IN ('p', 'u', 'f', 'c')
     AND nsp.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
@@ -1314,4 +1298,5 @@ WHERE
     AND has_table_privilege(cls.oid, 'SELECT')
 ORDER BY
     owner, table_name, constraint_name, position;
+
 GRANT SELECT ON SYS.all_cons_columns TO PUBLIC;
