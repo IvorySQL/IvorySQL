@@ -127,7 +127,12 @@ test: alter_table_view_rebuild
 # ----------
 # Another group of parallel tests
 # ----------
-test: partition_join partition_prune reloptions hash_part indexing partition_aggregate partition_info tuplesort explain compression memoize
+test: partition_join partition_prune reloptions hash_part indexing partition_aggregate partition_info tuplesort explain memoize
+
+# ----------
+# Another group of parallel tests (compression)
+# ----------
+test: compression compression_pglz
 
 # event triggers cannot run concurrently with any test that runs DDL
 # oidjoins is read-only, though, and should run late for best coverage
