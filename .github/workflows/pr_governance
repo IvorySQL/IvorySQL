@@ -1,0 +1,363 @@
+name: pr-governance
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - edited
+      - synchronize
+      - reopened
+      - ready_for_review
+      - labeled
+      - unlabeled
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+jobs:
+  policy:
+    name: policy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate PR governance policy
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const body = pr.body || "";
+            const title = (pr.title || "").trim();
+
+            const errors = [];
+            const warnings = [];
+
+            // Exact GitHub-supported closing keywords:
+            // close, closes, closed, fix, fixes, fixed, resolve, resolves, resolved
+            // Supports optional colon and cross-repo references like owner/repo#123.
+            const closingKeywordRegex =
+              /\b(?:close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)\b\s*:?\s+(?:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)?#\d+\b/i;
+
+            const sameRepoIssueRefRegex = /(^|[\s(])#(\d+)\b/g;
+
+            function uniqueNumbers(values) {
+              return [...new Set(values)];
+            }
+
+            function extractSameRepoIssueNumbersFromBody(text) {
+              const numbers = [];
+              for (const match of text.matchAll(sameRepoIssueRefRegex)) {
+                numbers.push(Number(match[2]));
+              }
+              return uniqueNumbers(numbers);
+            }
+
+            async function getProjectCountForContent(nodeId) {
+              const query = `
+                query($id: ID!) {
+                  node(id: $id) {
+                    ... on PullRequest {
+                      projectItems(first: 20) { totalCount }
+                    }
+                    ... on Issue {
+                      projectItems(first: 20) { totalCount }
+                    }
+                  }
+                }
+              `;
+              const res = await github.graphql(query, { id: nodeId });
+              const node = res.node;
+              if (!node) return 0;
+              return node.projectItems?.totalCount || 0;
+            }
+
+            async function getKeywordLinkedIssuesFromPR(prNodeId) {
+              // closingIssuesReferences reflects issues actually linked by closing keywords.
+              // This is stricter and more accurate than regex alone.
+              const linked = [];
+              let hasNextPage = true;
+              let cursor = null;
+
+              while (hasNextPage) {
+                const query = `
+                  query($id: ID!, $cursor: String) {
+                    node(id: $id) {
+                      ... on PullRequest {
+                        closingIssuesReferences(first: 50, after: $cursor) {
+                          nodes {
+                            id
+                            number
+                            repository {
+                              nameWithOwner
+                            }
+                          }
+                          pageInfo {
+                            hasNextPage
+                            endCursor
+                          }
+                        }
+                      }
+                    }
+                  }
+                `;
+
+                const res = await github.graphql(query, {
+                  id: prNodeId,
+                  cursor,
+                });
+
+                const conn = res.node?.closingIssuesReferences;
+                if (!conn) break;
+
+                for (const issue of conn.nodes || []) {
+                  linked.push(issue);
+                }
+
+                hasNextPage = conn.pageInfo?.hasNextPage || false;
+                cursor = conn.pageInfo?.endCursor || null;
+              }
+
+              return linked;
+            }
+
+            async function getSameRepoManuallyLinkedIssues(prNodeId) {
+              // Best-effort same-repository manual-link detection.
+              // GitHub supports manual linking from the PR sidebar for issues in the same repo.
+              // We scan issue timeline ConnectedEvent items in this repository and look for this PR as the source.
+              const found = new Map();
+
+              let issuesCursor = null;
+              let issuesHasNextPage = true;
+              let scannedPages = 0;
+              const maxIssuePages = 10; // safety cap: up to 1000 issues
+
+              while (issuesHasNextPage && scannedPages < maxIssuePages) {
+                const query = `
+                  query($owner: String!, $repo: String!, $cursor: String) {
+                    repository(owner: $owner, name: $repo) {
+                      issues(
+                        first: 100,
+                        after: $cursor,
+                        states: [OPEN, CLOSED],
+                        orderBy: {field: UPDATED_AT, direction: DESC}
+                      ) {
+                        nodes {
+                          id
+                          number
+                          timelineItems(first: 20, itemTypes: [CONNECTED_EVENT]) {
+                            nodes {
+                              __typename
+                              ... on ConnectedEvent {
+                                source {
+                                  __typename
+                                  ... on PullRequest {
+                                    id
+                                    number
+                                  }
+                                }
+                                subject {
+                                  __typename
+                                  ... on Issue {
+                                    id
+                                    number
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                        pageInfo {
+                          hasNextPage
+                          endCursor
+                        }
+                      }
+                    }
+                  }
+                `;
+
+                const res = await github.graphql(query, {
+                  owner,
+                  repo,
+                  cursor: issuesCursor,
+                });
+
+                const issuesConn = res.repository?.issues;
+                if (!issuesConn) break;
+
+                for (const issue of issuesConn.nodes || []) {
+                  for (const item of issue.timelineItems?.nodes || []) {
+                    if (
+                      item?.__typename === "ConnectedEvent" &&
+                      item?.source?.__typename === "PullRequest" &&
+                      item?.source?.id === prNodeId &&
+                      item?.subject?.__typename === "Issue"
+                    ) {
+                      found.set(item.subject.id, {
+                        id: item.subject.id,
+                        number: item.subject.number,
+                        repository: { nameWithOwner: `${owner}/${repo}` },
+                      });
+                    }
+                  }
+                }
+
+                issuesHasNextPage = issuesConn.pageInfo?.hasNextPage || false;
+                issuesCursor = issuesConn.pageInfo?.endCursor || null;
+                scannedPages += 1;
+              }
+
+              if (issuesHasNextPage) {
+                warnings.push(
+                  "Same-repository manual-link scan hit the page cap before exhausting all issues. If your repository has many issues, consider increasing maxIssuePages."
+                );
+              }
+
+              return [...found.values()];
+            }
+
+            async function getSameRepoIssueNodeId(issueNumber) {
+              const { data: issue } = await github.rest.issues.get({
+                owner,
+                repo,
+                issue_number: issueNumber,
+              });
+
+              if (issue.pull_request) {
+                return null;
+              }
+
+              return issue.node_id;
+            }
+
+            // ----------------------------
+            // 1) Detect linked issues
+            // Policy passes if either:
+            // - GitHub recognizes at least one closing-keyword-linked issue, or
+            // - a same-repository manual sidebar link is detected.
+            // ----------------------------
+            const hasClosingKeywordText = closingKeywordRegex.test(body);
+            const keywordLinkedIssues = await getKeywordLinkedIssuesFromPR(pr.node_id);
+            const manualLinkedIssues = await getSameRepoManuallyLinkedIssues(pr.node_id);
+
+            const linkedIssuesMap = new Map();
+            for (const issue of keywordLinkedIssues) linkedIssuesMap.set(issue.id, issue);
+            for (const issue of manualLinkedIssues) linkedIssuesMap.set(issue.id, issue);
+
+            const linkedIssues = [...linkedIssuesMap.values()];
+
+            if (linkedIssues.length === 0) {
+              errors.push(
+                "PR must be linked to at least one issue, either by a supported closing keyword in the PR description or by a manual sidebar link."
+              );
+            }
+
+            if (hasClosingKeywordText && keywordLinkedIssues.length === 0) {
+              warnings.push(
+                "A closing-keyword pattern was found in the PR description, but GitHub does not currently report any keyword-linked issues. This can happen when the PR does not target the repository's default branch."
+              );
+            }
+
+            // ----------------------------
+            // 2) Project checks
+            // - PR must be linked to at least one Project
+            // - Every detected linked issue must be linked to at least one Project
+            // ----------------------------
+            const prProjectCount = await getProjectCountForContent(pr.node_id);
+            if (prProjectCount < 1) {
+              errors.push("PR is not linked to any Project.");
+            }
+
+            for (const linkedIssue of linkedIssues) {
+              try {
+                let issueNodeId = linkedIssue.id;
+
+                // If the issue is in the same repo and we only have the number, refresh via REST if needed.
+                if (!issueNodeId && linkedIssue.repository?.nameWithOwner === `${owner}/${repo}`) {
+                  issueNodeId = await getSameRepoIssueNodeId(linkedIssue.number);
+                }
+
+                if (!issueNodeId) {
+                  warnings.push(
+                    `Could not resolve node ID for linked issue #${linkedIssue.number}; skipping Project check for that issue.`
+                  );
+                  continue;
+                }
+
+                const issueProjectCount = await getProjectCountForContent(issueNodeId);
+                if (issueProjectCount < 1) {
+                  errors.push(`Linked issue #${linkedIssue.number} is not linked to any Project.`);
+                }
+              } catch (e) {
+                warnings.push(
+                  `Could not validate Project linkage for linked issue #${linkedIssue.number}.`
+                );
+              }
+            }
+
+            // ----------------------------
+            // 3) Review status
+            // Keep this as a warning. Use branch protection / rulesets for hard enforcement.
+            // ----------------------------
+            const reviews = await github.paginate(github.rest.pulls.listReviews, {
+              owner,
+              repo,
+              pull_number: pr.number,
+              per_page: 100,
+            });
+
+            const approvedReviews = reviews.filter(r => r.state === "APPROVED");
+            if (approvedReviews.length < 1) {
+              warnings.push(
+                "No APPROVED review was detected. For hard enforcement, enable required reviews in branch protection or rulesets."
+              );
+            }
+
+            // ----------------------------
+            // 4) Helpful diagnostics
+            // ----------------------------
+            const sameRepoRefsInBody = extractSameRepoIssueNumbersFromBody(body);
+            if (!hasClosingKeywordText && sameRepoRefsInBody.length > 0 && linkedIssues.length > 0) {
+              warnings.push(
+                "The PR appears to rely on manual linking rather than closing keywords. This is valid, but it will not auto-close issues on merge."
+              );
+            }
+
+            if (manualLinkedIssues.length > 0) {
+              warnings.push(
+                "Manual sidebar links were detected only within the current repository. Cross-repository manual links are not fully validated by this workflow."
+              );
+            }
+
+            const summary = [];
+            summary.push("## PR Governance Report");
+            summary.push(`- PR #${pr.number}`);
+            summary.push(`- Title: ${title}`);
+            summary.push(`- PR project count: ${prProjectCount}`);
+            summary.push(`- Keyword-linked issues detected by GitHub: ${keywordLinkedIssues.length}`);
+            summary.push(`- Same-repository manual-linked issues detected: ${manualLinkedIssues.length}`);
+            summary.push(`- Total linked issues accepted by policy: ${linkedIssues.length}`);
+            summary.push(`- Files changed: ${pr.changed_files}`);
+            summary.push(`- Additions: ${pr.additions}`);
+            summary.push(`- Deletions: ${pr.deletions}`);
+            summary.push("");
+
+            if (warnings.length) {
+              summary.push("### Warnings");
+              for (const w of warnings) summary.push(`- ${w}`);
+              summary.push("");
+            }
+
+            if (errors.length) {
+              summary.push("### Errors");
+              for (const e of errors) summary.push(`- ${e}`);
+              await core.summary.addRaw(summary.join("\n")).write();
+              core.setFailed(errors.join(" | "));
+              return;
+            }
+
+            summary.push("### Result");
+            summary.push("- All required governance checks passed.");
+            await core.summary.addRaw(summary.join("\n")).write();
