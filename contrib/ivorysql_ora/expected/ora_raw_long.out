@@ -175,52 +175,52 @@ SELECT * FROM LONG_TEXT ORDER BY II DESC;
 (3 rows)
 
 DROP TABLE LONG_TEXT;
-
 -- rawtohex
 SELECT sys.rawtohex('\xDEADBEEF'::bytea);
- rawtohex
+ rawtohex 
 ----------
  DEADBEEF
 (1 row)
 
 SELECT sys.rawtohex('\xFF'::raw);
- rawtohex
+ rawtohex 
 ----------
  FF
 (1 row)
 
 SELECT sys.rawtohex('hello'::text);
-  rawtohex
+  rawtohex  
 ------------
  68656C6C6F
 (1 row)
 
 SELECT sys.rawtohex('hello'::varchar2);
-  rawtohex
+  rawtohex  
 ------------
  68656C6C6F
 (1 row)
 
 SELECT sys.rawtohex(sys.hextoraw('DEADBEEF'));
- rawtohex
+ rawtohex 
 ----------
  DEADBEEF
 (1 row)
 
 SELECT sys.rawtohex(NULL) IS NULL;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT sys.rawtohex('') IS NULL;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
 
 SELECT sys.rawtohex('\x'::bytea) IS NULL;
- ?column?
+ ?column? 
 ----------
  t
 (1 row)
+
