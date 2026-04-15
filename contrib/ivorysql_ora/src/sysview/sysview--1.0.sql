@@ -1275,15 +1275,15 @@ FROM PG_SETTINGS;
 
 CREATE OR REPLACE VIEW SYS.all_cons_columns AS
 SELECT
-    pg_authid.rolname::VARCHAR2(128)            AS owner,           -- table owner
-    con.conname::VARCHAR2(128)                  AS constraint_name,
-    cls.relname::VARCHAR2(128)                  AS table_name,
-    attr.attname::VARCHAR2(4000)                AS column_name,
-    pos.pos::NUMBER                             AS position
+    pg_authid.rolname::VARCHAR2(128)                        AS owner,
+    SYS.ORA_CASE_TRANS(con.conname::VARCHAR2(128))          AS constraint_name,
+    SYS.ORA_CASE_TRANS(cls.relname::VARCHAR2(128))          AS table_name,
+    SYS.ORA_CASE_TRANS(attr.attname::VARCHAR2(4000))        AS column_name,
+    pos.pos::NUMBER                                         AS position
 FROM
     pg_catalog.pg_constraint con
     JOIN pg_catalog.pg_class cls       ON con.conrelid = cls.oid
-    JOIN pg_catalog.pg_authid          ON cls.relowner = pg_authid.oid   -- link to table owner
+    JOIN pg_catalog.pg_authid          ON cls.relowner = pg_authid.oid
     JOIN pg_catalog.pg_namespace nsp   ON cls.relnamespace = nsp.oid
     CROSS JOIN LATERAL unnest(con.conkey) WITH ORDINALITY AS pos(attnum, pos)
     JOIN pg_catalog.pg_attribute attr  ON attr.attrelid = cls.oid

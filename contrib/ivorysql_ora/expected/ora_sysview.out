@@ -223,17 +223,17 @@ WHERE owner = CURRENT_USER
 ORDER BY table_name, constraint_name, position;
      table_name     |     constraint_name     | column_name | position 
 --------------------+-------------------------+-------------+----------
- t_check            | chk_age                 | age         | 1
- t_check            | chk_salary_range        | salary      | 1
- t_child            | fk_child_parent         | pid         | 1
- t_data_types       | pk_data_types           | c_varchar   | 1
- t_data_types       | pk_data_types           | c_char      | 2
- t_parent           | t_parent_pkey           | pid         | 1
- t_pk_composite     | pk_composite            | id1         | 1
- t_pk_composite     | pk_composite            | id2         | 2
- t_pk_single        | t_pk_single_pkey        | id          | 1
- t_unique           | uk_col1                 | col1        | 1
- utl_file_directory | utl_file_directory_pkey | dirname     | 1
+ T_CHECK            | CHK_AGE                 | AGE         | 1
+ T_CHECK            | CHK_SALARY_RANGE        | SALARY      | 1
+ T_CHILD            | FK_CHILD_PARENT         | PID         | 1
+ T_DATA_TYPES       | PK_DATA_TYPES           | C_VARCHAR   | 1
+ T_DATA_TYPES       | PK_DATA_TYPES           | C_CHAR      | 2
+ T_PARENT           | T_PARENT_PKEY           | PID         | 1
+ T_PK_COMPOSITE     | PK_COMPOSITE            | ID1         | 1
+ T_PK_COMPOSITE     | PK_COMPOSITE            | ID2         | 2
+ T_PK_SINGLE        | T_PK_SINGLE_PKEY        | ID          | 1
+ T_UNIQUE           | UK_COL1                 | COL1        | 1
+ UTL_FILE_DIRECTORY | UTL_FILE_DIRECTORY_PKEY | DIRNAME     | 1
 (11 rows)
 
 SELECT constraint_name, COUNT(*) AS column_count
@@ -243,15 +243,15 @@ GROUP BY constraint_name
 ORDER BY constraint_name;
      constraint_name     | column_count 
 -------------------------+--------------
- chk_age                 |            1
- chk_salary_range        |            1
- fk_child_parent         |            1
- pk_composite            |            2
- pk_data_types           |            2
- t_parent_pkey           |            1
- t_pk_single_pkey        |            1
- uk_col1                 |            1
- utl_file_directory_pkey |            1
+ CHK_AGE                 |            1
+ CHK_SALARY_RANGE        |            1
+ FK_CHILD_PARENT         |            1
+ PK_COMPOSITE            |            2
+ PK_DATA_TYPES           |            2
+ T_PARENT_PKEY           |            1
+ T_PK_SINGLE_PKEY        |            1
+ UK_COL1                 |            1
+ UTL_FILE_DIRECTORY_PKEY |            1
 (9 rows)
 
 DROP VIEW IF EXISTS v_dummy;
