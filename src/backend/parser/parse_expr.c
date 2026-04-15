@@ -2008,7 +2008,7 @@ transformdecodeexpr(ParseState *pstate, CaseExpr *c)
 	arg = transformExprRecurse(pstate, (Node *) c->arg);
 
 	whenexprs = NIL;
-	if (database_mode == DB_ORACLE)
+	if (compatible_db == ORA_PARSER)
 	{
 		foreach(l, c->args)
 		{
@@ -2320,14 +2320,14 @@ transformdecodeexpr(ParseState *pstate, CaseExpr *c)
 	 * determining preferred type. This is how the code worked before, but it
 	 * seems a little bogus to me --- tgl
 	 */
-	if (database_mode == DB_PG)
+	if (compatible_db == PG_PARSER)
 		resultexprs = lcons(newc->defresult, resultexprs);
-	else if (database_mode == DB_ORACLE)
+	else if (compatible_db == ORA_PARSER)
 		resultexprs = lappend(resultexprs, newc->defresult);
 
-	if (database_mode == DB_PG)
+	if (compatible_db == PG_PARSER)
 		ptype = select_common_type(pstate, resultexprs, "DECODE", NULL);
-	else if (database_mode == DB_ORACLE)
+	else if (compatible_db == ORA_PARSER)
 		ptype = select_common_type_for_nvl(pstate, resultexprs, "DECODE", NULL);
 	Assert(OidIsValid(ptype));
 	newc->casetype = ptype;

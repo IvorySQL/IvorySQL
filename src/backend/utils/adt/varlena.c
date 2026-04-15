@@ -1976,7 +1976,7 @@ varstr_sortsupport(SortSupport ssup, Oid typid, Oid collid)
 	if (locale->collate_is_c)
 	{
 		if (typid == BPCHAROID ||
-			(database_mode == DB_ORACLE && (typid == ORACHARCHAROID || typid == ORACHARBYTEOID)))
+			(compatible_db == ORA_PARSER && (typid == ORACHARCHAROID || typid == ORACHARBYTEOID)))
 			ssup->comparator = bpcharfastcmp_c;
 		else if (typid == NAMEOID)
 		{
@@ -2240,7 +2240,7 @@ varstrfastcmp_locale(char *a1p, int len1, char *a2p, int len2, SortSupport ssup)
 	}
 
 	if (sss->typid == BPCHAROID ||
-		(database_mode == DB_ORACLE && (sss->typid == ORACHARCHAROID || sss->typid == ORACHARBYTEOID)))
+		(compatible_db == ORA_PARSER && (sss->typid == ORACHARCHAROID || sss->typid == ORACHARBYTEOID)))
 	{
 		/* Get true number of bytes, ignoring trailing spaces */
 		len1 = bpchartruelen(a1p, len1);
@@ -2335,7 +2335,7 @@ varstr_abbrev_convert(Datum original, SortSupport ssup)
 
 	/* Get number of bytes, ignoring trailing spaces */
 	if (sss->typid == BPCHAROID ||
-		(database_mode == DB_ORACLE && (sss->typid == ORACHARCHAROID || sss->typid == ORACHARBYTEOID)))	
+		(compatible_db == ORA_PARSER && (sss->typid == ORACHARCHAROID || sss->typid == ORACHARBYTEOID)))	
 		len = bpchartruelen(authoritative_data, len);
 
 	/*
