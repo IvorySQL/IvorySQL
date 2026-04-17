@@ -429,6 +429,7 @@ typedef struct ViewOptions
 	bool		security_barrier;
 	bool		security_invoker;
 	ViewOptCheckOption check_option;
+	bool		read_only;		/* WITH READ ONLY (Oracle compat) */
 } ViewOptions;
 
 /*
@@ -483,6 +484,16 @@ typedef struct ViewOptions
 	 (relation)->rd_options &&												\
 	 ((ViewOptions *) (relation)->rd_options)->check_option ==				\
 	  VIEW_OPTION_CHECK_OPTION_CASCADED)
+
+/*
+ * RelationIsReadOnlyView
+ *		Returns true if the view was defined WITH READ ONLY (Oracle compat).
+ *		Note multiple eval of argument!
+ */
+#define RelationIsReadOnlyView(relation)									\
+	(AssertMacro(relation->rd_rel->relkind == RELKIND_VIEW),				\
+	 (relation)->rd_options &&												\
+	 ((ViewOptions *) (relation)->rd_options)->read_only)
 
 /*
  * RelationIsValid

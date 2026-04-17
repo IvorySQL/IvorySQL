@@ -587,6 +587,21 @@ DefineView(ViewStmt *stmt, const char *queryString,
 											(Node *) makeString("cascaded"), -1));
 
 	/*
+	 * If the user specified WITH READ ONLY, validate and record it.
+	 * WITH READ ONLY is mutually exclusive with WITH CHECK OPTION.
+	 */
+	if (stmt->readOnly)
+	{
+		if (stmt->withCheckOption != NO_CHECK_OPTION)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("WITH READ ONLY and WITH CHECK OPTION are mutually exclusive")));
+		stmt->options = lappend(stmt->options,
+								makeDefElem("read_only",
+											(Node *) makeBoolean(true), -1));
+	}
+
+	/*
 	 * Check that the view is auto-updatable if WITH CHECK OPTION was
 	 * specified.
 	 */
@@ -902,6 +917,14 @@ compile_force_view_internal(ViewStmt *stmt, const char *queryString, Oid viewoid
 		stmt->options = lappend(stmt->options,
 								makeDefElem("check_option",
 											(Node *) makeString("cascaded"), -1));
+
+	/*
+	 * Add WITH READ ONLY if requested (Oracle compat).
+	 */
+	if (stmt->readOnly)
+		stmt->options = lappend(stmt->options,
+								makeDefElem("read_only",
+											(Node *) makeBoolean(true), -1));
 
 	/*
 	 * Validate auto-updatability if WITH CHECK OPTION is present.

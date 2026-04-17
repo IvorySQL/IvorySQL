@@ -12676,7 +12676,8 @@ ViewStmt: CREATE OptTemp OptViewForce VIEW qualified_name opt_column_list opt_re
 					n->replace = false;
 					n->force = $3;
 					n->options = $7;
-					n->withCheckOption = $10;
+					n->readOnly = ($10 == READ_ONLY_OPTION);
+					n->withCheckOption = n->readOnly ? NO_CHECK_OPTION : $10;
 					/*
 					 * Save the source text of the force view definition in ViewStmt to avoid
 					 * incorrectly obtaining the view definition when using a multi-statement
@@ -12700,7 +12701,8 @@ ViewStmt: CREATE OptTemp OptViewForce VIEW qualified_name opt_column_list opt_re
 					n->replace = true;
 					n->force = $5;
 					n->options = $9;
-					n->withCheckOption = $12;
+					n->readOnly = ($12 == READ_ONLY_OPTION);
+					n->withCheckOption = n->readOnly ? NO_CHECK_OPTION : $12;
 					/*
 					 * Save the source text of the force view definition in ViewStmt to avoid
 					 * incorrectly obtaining the view definition when using a multi-statement
@@ -12724,7 +12726,8 @@ ViewStmt: CREATE OptTemp OptViewForce VIEW qualified_name opt_column_list opt_re
 					n->force = false;
 					n->stmt_literal = NULL;
 					n->options = $9;
-					n->withCheckOption = $12;
+					n->readOnly = ($12 == READ_ONLY_OPTION);
+					n->withCheckOption = n->readOnly ? NO_CHECK_OPTION : $12;
 					if (n->withCheckOption != NO_CHECK_OPTION)
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -12745,7 +12748,8 @@ ViewStmt: CREATE OptTemp OptViewForce VIEW qualified_name opt_column_list opt_re
 					n->force = false;
 					n->stmt_literal= NULL;
 					n->options = $11;
-					n->withCheckOption = $14;
+					n->readOnly = ($14 == READ_ONLY_OPTION);
+					n->withCheckOption = n->readOnly ? NO_CHECK_OPTION : $14;
 					if (n->withCheckOption != NO_CHECK_OPTION)
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -12759,6 +12763,7 @@ opt_check_option:
 		WITH CHECK OPTION				{ $$ = CASCADED_CHECK_OPTION; }
 		| WITH CASCADED CHECK OPTION	{ $$ = CASCADED_CHECK_OPTION; }
 		| WITH LOCAL CHECK OPTION		{ $$ = LOCAL_CHECK_OPTION; }
+		| WITH READ ONLY				{ $$ = READ_ONLY_OPTION; }
 		| /* EMPTY */					{ $$ = NO_CHECK_OPTION; }
 		;
 
