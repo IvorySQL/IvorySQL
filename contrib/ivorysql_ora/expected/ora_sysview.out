@@ -256,3 +256,47 @@ DROP TABLE IF EXISTS t_pk_composite;
 DROP TABLE IF EXISTS t_unique;
 DROP TABLE IF EXISTS t_check;
 DROP TABLE IF EXISTS t_data_types;
+-- USER_CONS_COLUMNS
+CREATE TABLE TEST_USER_CONS_COLUMNS (
+    ID INT NOT NULL,
+    NAME VARCHAR2(30) NOT NULL,
+    AGE INT NOT NULL,
+    EMAIL VARCHAR2(50),
+    CONSTRAINT PK_TEST PRIMARY KEY (ID, NAME),
+    CONSTRAINT UQ_EMAIL UNIQUE (EMAIL)
+);
+SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME, POSITION
+FROM SYS.USER_CONS_COLUMNS
+WHERE TABLE_NAME = 'TEST_USER_CONS_COLUMNS'
+AND CONSTRAINT_NAME LIKE '%NOT_NULL%'
+ORDER BY CONSTRAINT_NAME, COLUMN_NAME;
+       table_name       |           constraint_name            | column_name | position 
+------------------------+--------------------------------------+-------------+----------
+ TEST_USER_CONS_COLUMNS | TEST_USER_CONS_COLUMNS_AGE_NOT_NULL  | AGE         | 1
+ TEST_USER_CONS_COLUMNS | TEST_USER_CONS_COLUMNS_ID_NOT_NULL   | ID          | 1
+ TEST_USER_CONS_COLUMNS | TEST_USER_CONS_COLUMNS_NAME_NOT_NULL | NAME        | 1
+(3 rows)
+
+SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME, POSITION
+FROM SYS.USER_CONS_COLUMNS
+WHERE TABLE_NAME = 'TEST_USER_CONS_COLUMNS'
+AND CONSTRAINT_NAME = 'PK_TEST'
+ORDER BY CONSTRAINT_NAME, POSITION;
+       table_name       | constraint_name | column_name | position 
+------------------------+-----------------+-------------+----------
+ TEST_USER_CONS_COLUMNS | PK_TEST         | ID          | 1
+ TEST_USER_CONS_COLUMNS | PK_TEST         | NAME        | 2
+(2 rows)
+
+SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME, POSITION
+FROM SYS.USER_CONS_COLUMNS
+WHERE TABLE_NAME = 'TEST_USER_CONS_COLUMNS'
+AND CONSTRAINT_NAME = 'UQ_EMAIL'
+ORDER BY CONSTRAINT_NAME, COLUMN_NAME;
+       table_name       | constraint_name | column_name | position 
+------------------------+-----------------+-------------+----------
+ TEST_USER_CONS_COLUMNS | UQ_EMAIL        | EMAIL       | 1
+(1 row)
+
+-- Clean
+DROP TABLE IF EXISTS TEST_USER_CONS_COLUMNS;
