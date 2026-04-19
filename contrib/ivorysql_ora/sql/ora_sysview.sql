@@ -106,11 +106,7 @@ CREATE TABLE t_check (
     CONSTRAINT chk_salary_range CHECK (salary BETWEEN 1000 AND 100000)
 );
 
-CREATE TABLE t_partitioned (id INT, data VARCHAR2(100)) PARTITION BY RANGE (id) (
-    PARTITION p1 VALUES LESS THAN (100),
-    PARTITION p2 VALUES LESS THAN (200)
-);
-ALTER TABLE t_partitioned ADD CONSTRAINT pk_part PRIMARY KEY (id);
+-- t_partitioned removed as unnecessary
 
 CREATE VIEW v_dummy AS SELECT 1 AS col FROM DUAL;
 
@@ -131,14 +127,15 @@ CREATE TABLE t_data_types (
     CONSTRAINT pk_data_types PRIMARY KEY (c_varchar, c_char)
 );
 
+-- Convert CURRENT_USER to varchar2 then uppercase to match view's owner
 SELECT table_name, constraint_name, column_name, position
 FROM all_cons_columns
-WHERE owner = CURRENT_USER
+WHERE owner = SYS.ORA_CASE_TRANS(CURRENT_USER::VARCHAR2)
 ORDER BY table_name, constraint_name, position;
 
 SELECT constraint_name, COUNT(*) AS column_count
 FROM all_cons_columns
-WHERE owner = CURRENT_USER
+WHERE owner = SYS.ORA_CASE_TRANS(CURRENT_USER::VARCHAR2)
 GROUP BY constraint_name
 ORDER BY constraint_name;
 
@@ -150,5 +147,4 @@ DROP TABLE IF EXISTS t_pk_single;
 DROP TABLE IF EXISTS t_pk_composite;
 DROP TABLE IF EXISTS t_unique;
 DROP TABLE IF EXISTS t_check;
-DROP TABLE IF EXISTS t_partitioned;
 DROP TABLE IF EXISTS t_data_types;

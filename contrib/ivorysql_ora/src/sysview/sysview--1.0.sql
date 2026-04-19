@@ -1275,7 +1275,7 @@ FROM PG_SETTINGS;
 
 CREATE OR REPLACE VIEW SYS.all_cons_columns AS
 SELECT
-    pg_authid.rolname::VARCHAR2(128)                        AS owner,
+    SYS.ORA_CASE_TRANS(pg_authid.rolname::VARCHAR2(128))    AS owner,
     SYS.ORA_CASE_TRANS(con.conname::VARCHAR2(128))          AS constraint_name,
     SYS.ORA_CASE_TRANS(cls.relname::VARCHAR2(128))          AS table_name,
     SYS.ORA_CASE_TRANS(attr.attname::VARCHAR2(4000))        AS column_name,
