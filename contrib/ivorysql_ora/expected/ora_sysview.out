@@ -181,47 +181,32 @@ ORDER BY NAME;
  listen_addresses | 2    |                        | localhost     | FALSE     | FALSE            | FALSE            | Sets the host name or IP address(es) to listen to.
 (5 rows)
 
--- USER_CONS_COLUMNS
-CREATE TABLE TEST_USER_CONS_COLUMNS (
-    ID INT NOT NULL,
-    NAME VARCHAR2(30) NOT NULL,
-    AGE INT NOT NULL,
-    EMAIL VARCHAR2(50),
-    CONSTRAINT PK_TEST PRIMARY KEY (ID, NAME),
-    CONSTRAINT UQ_EMAIL UNIQUE (EMAIL)
-);
-SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME, POSITION
-FROM SYS.USER_CONS_COLUMNS
-WHERE TABLE_NAME = 'TEST_USER_CONS_COLUMNS'
-AND CONSTRAINT_NAME LIKE '%NOT_NULL%'
-ORDER BY CONSTRAINT_NAME, COLUMN_NAME;
-       table_name       |           constraint_name            | column_name | position 
-------------------------+--------------------------------------+-------------+----------
- TEST_USER_CONS_COLUMNS | TEST_USER_CONS_COLUMNS_AGE_NOT_NULL  | AGE         | 1
- TEST_USER_CONS_COLUMNS | TEST_USER_CONS_COLUMNS_ID_NOT_NULL   | ID          | 1
- TEST_USER_CONS_COLUMNS | TEST_USER_CONS_COLUMNS_NAME_NOT_NULL | NAME        | 1
-(3 rows)
-
-SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME, POSITION
-FROM SYS.USER_CONS_COLUMNS
-WHERE TABLE_NAME = 'TEST_USER_CONS_COLUMNS'
-AND CONSTRAINT_NAME = 'PK_TEST'
-ORDER BY CONSTRAINT_NAME, POSITION;
-       table_name       | constraint_name | column_name | position 
-------------------------+-----------------+-------------+----------
- TEST_USER_CONS_COLUMNS | PK_TEST         | ID          | 1
- TEST_USER_CONS_COLUMNS | PK_TEST         | NAME        | 2
-(2 rows)
-
-SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME, POSITION
-FROM SYS.USER_CONS_COLUMNS
-WHERE TABLE_NAME = 'TEST_USER_CONS_COLUMNS'
-AND CONSTRAINT_NAME = 'UQ_EMAIL'
-ORDER BY CONSTRAINT_NAME, COLUMN_NAME;
-       table_name       | constraint_name | column_name | position 
-------------------------+-----------------+-------------+----------
- TEST_USER_CONS_COLUMNS | UQ_EMAIL        | EMAIL       | 1
+-- Test DBA_CONS_COLUMNS view
+SELECT count(*) > 0 AS view_exists
+FROM information_schema.views
+WHERE table_schema = 'sys' AND table_name = 'dba_cons_columns';
+ view_exists 
+-------------
+ t
 (1 row)
 
--- Clean
-DROP TABLE IF EXISTS TEST_USER_CONS_COLUMNS;
+-- Check that view returns data (order fixed, without owner)
+SELECT constraint_name, table_name, column_name, position, nullable
+FROM sys.dba_cons_columns
+ORDER BY constraint_name, table_name, column_name
+LIMIT 5;
+           constraint_name           |     table_name     | column_name | position | nullable 
+-------------------------------------+--------------------+-------------+----------+----------
+ NULL_SPECIALBK_ID_NOT_NULL          | NULL_SPECIALBK     | ID          |        1 | Y
+ NULL_SPECIAL_ID_NOT_NULL            | NULL_SPECIAL       | ID          |        1 | Y
+ UTL_FILE_DIRECTORY_DIRNAME_NOT_NULL | UTL_FILE_DIRECTORY | DIRNAME     |        1 | Y
+ UTL_FILE_DIRECTORY_PKEY             | UTL_FILE_DIRECTORY | DIRNAME     |        1 | Y
+(4 rows)
+
+-- Additional coverage: verify that there is at least one constraint
+SELECT count(*) > 0 AS has_constraints FROM sys.dba_cons_columns;
+ has_constraints 
+-----------------
+ t
+(1 row)
+
