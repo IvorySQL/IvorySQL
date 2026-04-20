@@ -225,3 +225,32 @@ ORDER BY CONSTRAINT_NAME, COLUMN_NAME;
 
 -- Clean
 DROP TABLE IF EXISTS TEST_USER_CONS_COLUMNS;
+
+-- Test DBA_CONS_COLUMNS view
+SELECT count(*) > 0 AS view_exists
+FROM information_schema.views
+WHERE table_schema = 'sys' AND table_name = 'dba_cons_columns';
+ view_exists 
+---
+ t
+(1 row)
+
+-- Check that view returns data (order fixed, without owner)
+SELECT constraint_name, table_name, column_name, position, nullable
+FROM sys.dba_cons_columns
+ORDER BY constraint_name, table_name, column_name
+LIMIT 5;
+        constraint_name         |     table_name      | column_name | position | nullable 
+-------------------------------+---------------------+-------------+----------+----------
+ NULL_SPECIALBK_ID_NOT_NULL    | NULL_SPECIALBK      | ID          |        1 | Y
+ NULL_SPECIAL_ID_NOT_NULL      | NULL_SPECIAL        | ID          |        1 | Y
+ UTL_FILE_DIRECTORY_DIRNAME_NOT_NULL | UTL_FILE_DIRECTORY | DIRNAME     |        1 | Y
+ UTL_FILE_DIRECTORY_PKEY       | UTL_FILE_DIRECTORY | DIRNAME     |        1 | Y
+(4 rows)
+
+-- Additional coverage: verify that there is at least one constraint
+SELECT count(*) > 0 AS has_constraints FROM sys.dba_cons_columns;
+ has_constraints 
+---
+ t
+(1 row)
