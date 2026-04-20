@@ -214,38 +214,42 @@ SELECT table_name, constraint_name, column_name, position
 FROM all_cons_columns
 WHERE owner = SYS.ORA_CASE_TRANS(CURRENT_USER::VARCHAR2)
 ORDER BY table_name, constraint_name, position;
-     table_name     |     constraint_name     | column_name | position 
---------------------+-------------------------+-------------+----------
- T_CHECK            | CHK_AGE                 | AGE         | 1
- T_CHECK            | CHK_SALARY_RANGE        | SALARY      | 1
- T_CHILD            | FK_CHILD_PARENT         | PID         | 1
- T_DATA_TYPES       | PK_DATA_TYPES           | C_VARCHAR   | 1
- T_DATA_TYPES       | PK_DATA_TYPES           | C_CHAR      | 2
- T_PARENT           | T_PARENT_PKEY           | PID         | 1
- T_PK_COMPOSITE     | PK_COMPOSITE            | ID1         | 1
- T_PK_COMPOSITE     | PK_COMPOSITE            | ID2         | 2
- T_PK_SINGLE        | T_PK_SINGLE_PKEY        | ID          | 1
- T_UNIQUE           | UK_COL1                 | COL1        | 1
- UTL_FILE_DIRECTORY | UTL_FILE_DIRECTORY_PKEY | DIRNAME     | 1
-(11 rows)
+     table_name     |      constraint_name       | column_name | position 
+--------------------+----------------------------+-------------+----------
+ NULL_SPECIAL       | null_special_id_NOT_NULL   | ID          | 1
+ NULL_SPECIALBK     | null_specialbk_id_NOT_NULL | ID          | 1
+ T_CHECK            | CHK_AGE                    | AGE         | 1
+ T_CHECK            | CHK_SALARY_RANGE           | SALARY      | 1
+ T_CHILD            | FK_CHILD_PARENT            | PID         | 1
+ T_DATA_TYPES       | PK_DATA_TYPES              | C_VARCHAR   | 1
+ T_DATA_TYPES       | PK_DATA_TYPES              | C_CHAR      | 2
+ T_PARENT           | T_PARENT_PKEY              | PID         | 1
+ T_PK_COMPOSITE     | PK_COMPOSITE               | ID1         | 1
+ T_PK_COMPOSITE     | PK_COMPOSITE               | ID2         | 2
+ T_PK_SINGLE        | T_PK_SINGLE_PKEY           | ID          | 1
+ T_UNIQUE           | UK_COL1                    | COL1        | 1
+ UTL_FILE_DIRECTORY | UTL_FILE_DIRECTORY_PKEY    | DIRNAME     | 1
+(13 rows)
 
 SELECT constraint_name, COUNT(*) AS column_count
 FROM all_cons_columns
 WHERE owner = SYS.ORA_CASE_TRANS(CURRENT_USER::VARCHAR2)
 GROUP BY constraint_name
 ORDER BY constraint_name;
-     constraint_name     | column_count 
--------------------------+--------------
- CHK_AGE                 |            1
- CHK_SALARY_RANGE        |            1
- FK_CHILD_PARENT         |            1
- PK_COMPOSITE            |            2
- PK_DATA_TYPES           |            2
- T_PARENT_PKEY           |            1
- T_PK_SINGLE_PKEY        |            1
- UK_COL1                 |            1
- UTL_FILE_DIRECTORY_PKEY |            1
-(9 rows)
+      constraint_name       | column_count 
+----------------------------+--------------
+ CHK_AGE                    |            1
+ CHK_SALARY_RANGE           |            1
+ FK_CHILD_PARENT            |            1
+ PK_COMPOSITE               |            2
+ PK_DATA_TYPES              |            2
+ T_PARENT_PKEY              |            1
+ T_PK_SINGLE_PKEY           |            1
+ UK_COL1                    |            1
+ UTL_FILE_DIRECTORY_PKEY    |            1
+ null_special_id_NOT_NULL   |            1
+ null_specialbk_id_NOT_NULL |            1
+(11 rows)
 
 DROP VIEW IF EXISTS v_dummy;
 DROP MATERIALIZED VIEW IF EXISTS mv_dummy;
@@ -300,3 +304,19 @@ ORDER BY CONSTRAINT_NAME, COLUMN_NAME;
 
 -- Clean
 DROP TABLE IF EXISTS TEST_USER_CONS_COLUMNS;
+-- Test NOT NULL constraint in all_cons_columns
+CREATE TABLE t_notnull_test (
+    id INT,
+    name VARCHAR2(50) NOT NULL,
+    age INT
+);
+SELECT table_name, constraint_name, column_name, position
+FROM all_cons_columns
+WHERE table_name = 'T_NOTNULL_TEST'
+ORDER BY constraint_name, column_name;
+   table_name   |       constraint_name        | column_name | position 
+----------------+------------------------------+-------------+----------
+ T_NOTNULL_TEST | t_notnull_test_name_NOT_NULL | NAME        | 1
+(1 row)
+
+DROP TABLE IF EXISTS t_notnull_test;

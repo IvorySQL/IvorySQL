@@ -179,3 +179,17 @@ ORDER BY CONSTRAINT_NAME, COLUMN_NAME;
 
 -- Clean
 DROP TABLE IF EXISTS TEST_USER_CONS_COLUMNS;
+
+-- Test NOT NULL constraint in all_cons_columns
+CREATE TABLE t_notnull_test (
+    id INT,
+    name VARCHAR2(50) NOT NULL,
+    age INT
+);
+
+SELECT table_name, constraint_name, column_name, position
+FROM all_cons_columns
+WHERE table_name = 'T_NOTNULL_TEST'
+ORDER BY constraint_name, column_name;
+
+DROP TABLE IF EXISTS t_notnull_test;
