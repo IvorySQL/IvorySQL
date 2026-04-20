@@ -12682,10 +12682,29 @@ ViewStmt: CREATE OptTemp OptViewForce VIEW qualified_name opt_column_list opt_re
 					 * Save the source text of the force view definition in ViewStmt to avoid
 					 * incorrectly obtaining the view definition when using a multi-statement
 					 * parser tree.
+					 *
+					 * When opt_check_option is non-empty (e.g. WITH READ ONLY), bison may
+					 * perform a default reduce for ViewStmt without advancing yylloc past the
+					 * last token of opt_check_option.  In that case yylloc points to the
+					 * start of ONLY, not to ';', and the naïve capture truncates the text.
+					 * For WITH READ ONLY we reconstruct the clause from @10 (start of WITH)
+					 * rather than relying on yylloc.
 					 */
-					stmt_iteral = pnstrdup(pg_yyget_extra(yyscanner)->core_yy_extra.scanbuf + @1, yylloc - @1);
-					n->stmt_literal = psprintf("%s;", stmt_iteral);
-					pfree(stmt_iteral);
+					{
+						const char *scanbuf = pg_yyget_extra(yyscanner)->core_yy_extra.scanbuf;
+
+						if (n->readOnly)
+						{
+							stmt_iteral = pnstrdup(scanbuf + @1, @10 - @1);
+							n->stmt_literal = psprintf("%sWITH READ ONLY;", stmt_iteral);
+						}
+						else
+						{
+							stmt_iteral = pnstrdup(scanbuf + @1, yylloc - @1);
+							n->stmt_literal = psprintf("%s;", stmt_iteral);
+						}
+						pfree(stmt_iteral);
+					}
 					$$ = (Node *) n;
 				}
 		| CREATE OR REPLACE OptTemp OptViewForce VIEW qualified_name opt_column_list opt_reloptions
@@ -12706,11 +12725,24 @@ ViewStmt: CREATE OptTemp OptViewForce VIEW qualified_name opt_column_list opt_re
 					/*
 					 * Save the source text of the force view definition in ViewStmt to avoid
 					 * incorrectly obtaining the view definition when using a multi-statement
-					 * parser tree.
+					 * parser tree.  Same yylloc truncation issue as for the non-OR-REPLACE
+					 * variant above; fix by reconstructing WITH READ ONLY from @12.
 					 */
-					stmt_iteral = pnstrdup(pg_yyget_extra(yyscanner)->core_yy_extra.scanbuf + @1, yylloc - @1);
-					n->stmt_literal = psprintf("%s;", stmt_iteral);
-					pfree(stmt_iteral);
+					{
+						const char *scanbuf = pg_yyget_extra(yyscanner)->core_yy_extra.scanbuf;
+
+						if (n->readOnly)
+						{
+							stmt_iteral = pnstrdup(scanbuf + @1, @12 - @1);
+							n->stmt_literal = psprintf("%sWITH READ ONLY;", stmt_iteral);
+						}
+						else
+						{
+							stmt_iteral = pnstrdup(scanbuf + @1, yylloc - @1);
+							n->stmt_literal = psprintf("%s;", stmt_iteral);
+						}
+						pfree(stmt_iteral);
+					}
 					$$ = (Node *) n;
 				}
 		| CREATE OptTemp RECURSIVE VIEW qualified_name '(' columnList ')' opt_reloptions

@@ -7440,10 +7440,14 @@ getTables(Archive *fout, int *numTables)
 
 	if (fout->remoteVersion >= 90300)
 		appendPQExpBufferStr(query,
-							 "array_remove(array_remove(array_remove(c.reloptions,'check_option=local'),'check_option=cascaded'),'read_only=true') AS reloptions, "
+							 "array_remove(array_remove("
+							 "  ARRAY(SELECT opt FROM unnest(c.reloptions) opt WHERE opt !~ '^read_only='),"
+							 "  'check_option=local'), 'check_option=cascaded') AS reloptions, "
 							 "CASE WHEN 'check_option=local' = ANY (c.reloptions) THEN 'LOCAL'::text "
 							 "WHEN 'check_option=cascaded' = ANY (c.reloptions) THEN 'CASCADED'::text ELSE NULL END AS checkoption, "
-							 "'read_only=true' = ANY (c.reloptions) AS read_only_view, ");
+							 "coalesce((SELECT option_value::boolean"
+							 "  FROM pg_catalog.pg_options_to_table(c.reloptions)"
+							 "  WHERE option_name = 'read_only'), false) AS read_only_view, ");
 	else
 		appendPQExpBufferStr(query,
 							 "c.reloptions, NULL AS checkoption, false AS read_only_view, ");
@@ -17440,7 +17444,7 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 
 		if (tbinfo->checkoption != NULL && !tbinfo->dummy_view)
 			appendPQExpBuffer(q, "\n  WITH %s CHECK OPTION", tbinfo->checkoption);
-		if (tbinfo->readOnly)
+		if (tbinfo->readOnly && !tbinfo->dummy_view)
 			appendPQExpBufferStr(q, "\n  WITH READ ONLY");
 		appendPQExpBufferStr(q, ";\n");
 	}
