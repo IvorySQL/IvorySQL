@@ -122,3 +122,17 @@ ORDER BY CONSTRAINT_NAME, COLUMN_NAME;
 
 -- Clean
 DROP TABLE IF EXISTS TEST_USER_CONS_COLUMNS;
+
+-- Test DBA_CONS_COLUMNS view
+SELECT count(*) > 0 AS view_exists
+FROM information_schema.views
+WHERE table_schema = 'sys' AND table_name = 'dba_cons_columns';
+
+-- Check that view returns data (order fixed, without owner)
+SELECT constraint_name, table_name, column_name, position, nullable
+FROM sys.dba_cons_columns
+ORDER BY constraint_name, table_name, column_name
+LIMIT 5;
+
+-- Additional coverage: verify that there is at least one constraint
+SELECT count(*) > 0 AS has_constraints FROM sys.dba_cons_columns;
