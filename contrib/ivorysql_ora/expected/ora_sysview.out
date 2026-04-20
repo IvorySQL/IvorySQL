@@ -1,14 +1,14 @@
 -- compatible_mode
 SET IVORYSQL.COMPATIBLE_MODE TO ORACLE;
 SHOW IVORYSQL.COMPATIBLE_MODE;
- ivorysql.compatible_mode 
+ ivorysql.compatible_mode
 --------------------------
  oracle
 (1 row)
 
 SET IVORYSQL.IDENTIFIER_CASE_SWITCH = INTERCHANGE;
 SHOW IVORYSQL.IDENTIFIER_CASE_SWITCH;
- ivorysql.identifier_case_switch 
+ ivorysql.identifier_case_switch
 ---------------------------------
  interchange
 (1 row)
@@ -17,21 +17,21 @@ SHOW IVORYSQL.IDENTIFIER_CASE_SWITCH;
 CREATE TABLE TB_TODEL(ID INT);
 CREATE OR REPLACE PROCEDURE PROC_DEL_TB(I INT) IS
 BEGIN
-	DROP TABLE TB_TODEL;
+        DROP TABLE TB_TODEL;
 END;
 /
 -- create a function with security definer
 CREATE OR REPLACE FUNCTION FUNC_AUTHID(P VARCHAR2)
 RETURN INT DETERMINISTIC IS
 BEGIN
-	RETURN 123;
+        RETURN 123;
 END;
 /
 -- select ... from all_procedures
 SELECT OBJECT_NAME, OBJECT_TYPE, DETERMINISTIC, PARALLEL, AUTHID
 FROM ALL_PROCEDURES
 WHERE OBJECT_NAME = 'PROC_DEL_TB' OR OBJECT_NAME = 'FUNC_AUTHID';
- object_name | object_type | deterministic | parallel | authid  
+ object_name | object_type | deterministic | parallel | authid
 -------------+-------------+---------------+----------+---------
  PROC_DEL_TB | PROCEDURE   | NO            | NO       | DEFINER
  FUNC_AUTHID | FUNCTION    | YES           | NO       | DEFINER
@@ -41,17 +41,17 @@ WHERE OBJECT_NAME = 'PROC_DEL_TB' OR OBJECT_NAME = 'FUNC_AUTHID';
 CREATE OR REPLACE FUNCTION "func_quotes_lower"(ID INT)
 RETURN VARCHAR2 IS
 BEGIN
-	RETURN 'func_quotes_lower'::VARCHAR2;
+        RETURN 'func_quotes_lower'::VARCHAR2;
 END;
 /
 -- select ... from all_source
 SELECT NAME, LINE, TEXT FROM ALL_SOURCE WHERE NAME = 'func_quotes_lower';
-       name        | line |                          text                           
+       name        | line |                          text
 -------------------+------+---------------------------------------------------------
  func_quotes_lower | 1    | FUNCTION public."FUNC_QUOTES_LOWER"(id pg_catalog.int4)
  func_quotes_lower | 2    |  RETURN varchar2
  func_quotes_lower | 3    |  AUTHID DEFINER
- func_quotes_lower |      | IS 
+ func_quotes_lower |      | IS
  func_quotes_lower |      | BEGIN
  func_quotes_lower |      |         RETURN 'func_quotes_lower'::VARCHAR2;
  func_quotes_lower |      | END;
@@ -60,24 +60,24 @@ SELECT NAME, LINE, TEXT FROM ALL_SOURCE WHERE NAME = 'func_quotes_lower';
 -- data_type and pls_type in all_arguments
 CREATE OR REPLACE FUNCTION FUNC_22_ARG_TYPES
 (
-	T1 CHAR, T2 NCHAR, T3 VARCHAR2, T4 INTEGER, T5 NUMBER, T6 NUMERIC,
-	T7 BINARY_FLOAT, T8 BINARY_DOUBLE, T9 REAL, T10 FLOAT, T11 DOUBLE PRECISION,
-	T12 DATE, T13 TIMESTAMP, T14 TIMESTAMP WITH TIME ZONE,
-	T15 TIMESTAMP WITH LOCAL TIME ZONE,
-	T16 CLOB, T17 BLOB, T18 NCLOB, T19 LONG, T20 LONG RAW, T21 BOOLEAN
+        T1 CHAR, T2 NCHAR, T3 VARCHAR2, T4 INTEGER, T5 NUMBER, T6 NUMERIC,
+        T7 BINARY_FLOAT, T8 BINARY_DOUBLE, T9 REAL, T10 FLOAT, T11 DOUBLE PRECISION,
+        T12 DATE, T13 TIMESTAMP, T14 TIMESTAMP WITH TIME ZONE,
+        T15 TIMESTAMP WITH LOCAL TIME ZONE,
+        T16 CLOB, T17 BLOB, T18 NCLOB, T19 LONG, T20 LONG RAW, T21 BOOLEAN
 )
 RETURN RAW IS
 BEGIN
-	RETURN CAST('FUNC_22_ARG_TYPES' AS RAW);
+        RETURN CAST('FUNC_22_ARG_TYPES' AS RAW);
 END;
 /
 -- select ... from all_arguments
 SELECT
-	ARGUMENT_NAME || ',' || POSITION || ',' || SEQUENCE || ',' || 
-	IN_OUT || ',' || DATA_TYPE || ',' || PLS_TYPE
+        ARGUMENT_NAME || ',' || POSITION || ',' || SEQUENCE || ',' ||
+        IN_OUT || ',' || DATA_TYPE || ',' || PLS_TYPE
 FROM ALL_ARGUMENTS WHERE OBJECT_NAME = 'FUNC_22_ARG_TYPES'
 ORDER BY OBJECT_ID, POSITION;
-                                  ?column?                                  
+                                  ?column?
 ----------------------------------------------------------------------------
  ,0,1,OUT,RAW,RAW
  T1,1,2,IN,CHAR,CHAR
@@ -112,21 +112,21 @@ DROP FUNCTION IF EXISTS FUNC_22_ARG_TYPES;
 -- create a function with arguments defaulted
 CREATE OR REPLACE FUNCTION FUNC_WITH_DEFAULT
 (
-	ARG1 IN INT DEFAULT 10,
-	ARG2 OUT INT,
-	ARG3 IN OUT INT,
-	ARG4 IN VARCHAR2(10) DEFAULT NULL
+        ARG1 IN INT DEFAULT 10,
+        ARG2 OUT INT,
+        ARG3 IN OUT INT,
+        ARG4 IN VARCHAR2(10) DEFAULT NULL
 )
 RETURN void IS
 BEGIN
-	ARG2 := ARG1 + 10;
-	ARG3 := ARG1 / 2;
+        ARG2 := ARG1 + 10;
+        ARG3 := ARG1 / 2;
 END;
 /
 -- check arguments with default value
 SELECT ARGUMENT_NAME, IN_OUT, POSITION, DEFAULTED FROM ALL_ARGUMENTS
 WHERE OBJECT_NAME = 'FUNC_WITH_DEFAULT';
- argument_name | in_out | position | defaulted 
+ argument_name | in_out | position | defaulted
 ---------------+--------+----------+-----------
                | OUT    | 0        | N
  ARG1          | IN     | 1        | Y
@@ -140,39 +140,39 @@ DROP FUNCTION IF EXISTS FUNC_WITH_DEFAULT;
 -- Oracle dynamic views
 \d SYS.V$SESSION
                             View "sys.v$session"
-      Column       |          Type          | Collation | Nullable | Default 
+      Column       |          Type          | Collation | Nullable | Default
 -------------------+------------------------+-----------+----------+---------
- sid               | number                 |           |          | 
- username          | varchar2(128)          | C         |          | 
- status            | varchar2(40)           |           |          | 
- machine           | varchar2(128)          |           |          | 
- program           | varchar2(256)          |           |          | 
- type              | varchar2(30)           |           |          | 
- logon_time        | pg_catalog.timestamptz |           |          | 
- sql_exec_start    | pg_catalog.timestamptz |           |          | 
- sql_id            | varchar2(19)           |           |          | 
- sql_text          | varchar2(4000)         |           |          | 
- blocking_session  | number                 |           |          | 
- event             | varchar2(64)           |           |          | 
- wait_class        | varchar2(64)           |           |          | 
- transaction_start | pg_catalog.timestamptz |           |          | 
- port              | number                 |           |          | 
+ sid               | number                 |           |          |
+ username          | varchar2(128)          | C         |          |
+ status            | varchar2(40)           |           |          |
+ machine           | varchar2(128)          |           |          |
+ program           | varchar2(256)          |           |          |
+ type              | varchar2(30)           |           |          |
+ logon_time        | pg_catalog.timestamptz |           |          |
+ sql_exec_start    | pg_catalog.timestamptz |           |          |
+ sql_id            | varchar2(19)           |           |          |
+ sql_text          | varchar2(4000)         |           |          |
+ blocking_session  | number                 |           |          |
+ event             | varchar2(64)           |           |          |
+ wait_class        | varchar2(64)           |           |          |
+ transaction_start | pg_catalog.timestamptz |           |          |
+ port              | number                 |           |          |
 
 \d SYS.V$PROCESS
                     View "sys.v$process"
-   Column   |     Type      | Collation | Nullable | Default 
+   Column   |     Type      | Collation | Nullable | Default
 ------------+---------------+-----------+----------+---------
- spid       | number        |           |          | 
- username   | varchar2(128) | C         |          | 
- program    | varchar2(256) |           |          | 
- pname      | varchar2(30)  |           |          | 
- background | varchar2(1)   |           |          | 
+ spid       | number        |           |          |
+ username   | varchar2(128) | C         |          |
+ program    | varchar2(256) |           |          |
+ pname      | varchar2(30)  |           |          |
+ background | varchar2(1)   |           |          |
 
-SELECT * 
-FROM SYS.V$PARAMETER 
+SELECT *
+FROM SYS.V$PARAMETER
 WHERE NAME IN ('listen_addresses','application_name','archive_command','archive_mode','block_size')
 ORDER BY NAME;
-       name       | type |         value          | default_value | isdefault | isses_modifiable | issys_modifiable |                            description                            
+       name       | type |         value          | default_value | isdefault | isses_modifiable | issys_modifiable |                            description
 ------------------+------+------------------------+---------------+-----------+------------------+------------------+-------------------------------------------------------------------
  application_name | 2    | pg_regress/ora_sysview |               | FALSE     | TRUE             | IMMEDIATE        | Sets the application name to be reported in statistics and logs.
  archive_command  | 2    | (disabled)             |               | FALSE     | FALSE            | IMMEDIATE        | Sets the shell command that will be called to archive a WAL file.
@@ -181,32 +181,47 @@ ORDER BY NAME;
  listen_addresses | 2    |                        | localhost     | FALSE     | FALSE            | FALSE            | Sets the host name or IP address(es) to listen to.
 (5 rows)
 
--- Test DBA_CONS_COLUMNS view
-SELECT count(*) > 0 AS view_exists
-FROM information_schema.views
-WHERE table_schema = 'sys' AND table_name = 'dba_cons_columns';
- view_exists 
--------------
- t
+-- USER_CONS_COLUMNS
+CREATE TABLE TEST_USER_CONS_COLUMNS (
+    ID INT NOT NULL,
+    NAME VARCHAR2(30) NOT NULL,
+    AGE INT NOT NULL,
+    EMAIL VARCHAR2(50),
+    CONSTRAINT PK_TEST PRIMARY KEY (ID, NAME),
+    CONSTRAINT UQ_EMAIL UNIQUE (EMAIL)
+);
+SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME, POSITION
+FROM SYS.USER_CONS_COLUMNS
+WHERE TABLE_NAME = 'TEST_USER_CONS_COLUMNS'
+AND CONSTRAINT_NAME LIKE '%NOT_NULL%'
+ORDER BY CONSTRAINT_NAME, COLUMN_NAME;
+       table_name       |           constraint_name            | column_name | position
+------------------------+--------------------------------------+-------------+----------
+ TEST_USER_CONS_COLUMNS | TEST_USER_CONS_COLUMNS_AGE_NOT_NULL  | AGE         | 1
+ TEST_USER_CONS_COLUMNS | TEST_USER_CONS_COLUMNS_ID_NOT_NULL   | ID          | 1
+ TEST_USER_CONS_COLUMNS | TEST_USER_CONS_COLUMNS_NAME_NOT_NULL | NAME        | 1
+(3 rows)
+
+SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME, POSITION
+FROM SYS.USER_CONS_COLUMNS
+WHERE TABLE_NAME = 'TEST_USER_CONS_COLUMNS'
+AND CONSTRAINT_NAME = 'PK_TEST'
+ORDER BY CONSTRAINT_NAME, POSITION;
+       table_name       | constraint_name | column_name | position
+------------------------+-----------------+-------------+----------
+ TEST_USER_CONS_COLUMNS | PK_TEST         | ID          | 1
+ TEST_USER_CONS_COLUMNS | PK_TEST         | NAME        | 2
+(2 rows)
+
+SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME, POSITION
+FROM SYS.USER_CONS_COLUMNS
+WHERE TABLE_NAME = 'TEST_USER_CONS_COLUMNS'
+AND CONSTRAINT_NAME = 'UQ_EMAIL'
+ORDER BY CONSTRAINT_NAME, COLUMN_NAME;
+       table_name       | constraint_name | column_name | position
+------------------------+-----------------+-------------+----------
+ TEST_USER_CONS_COLUMNS | UQ_EMAIL        | EMAIL       | 1
 (1 row)
 
--- Check that view returns data (order fixed, without owner)
-SELECT constraint_name, table_name, column_name, position, nullable
-FROM sys.dba_cons_columns
-ORDER BY constraint_name, table_name, column_name
-LIMIT 5;
-           constraint_name           |     table_name     | column_name | position | nullable 
--------------------------------------+--------------------+-------------+----------+----------
- NULL_SPECIALBK_ID_NOT_NULL          | NULL_SPECIALBK     | ID          |        1 | Y
- NULL_SPECIAL_ID_NOT_NULL            | NULL_SPECIAL       | ID          |        1 | Y
- UTL_FILE_DIRECTORY_DIRNAME_NOT_NULL | UTL_FILE_DIRECTORY | DIRNAME     |        1 | Y
- UTL_FILE_DIRECTORY_PKEY             | UTL_FILE_DIRECTORY | DIRNAME     |        1 | Y
-(4 rows)
-
--- Additional coverage: verify that there is at least one constraint
-SELECT count(*) > 0 AS has_constraints FROM sys.dba_cons_columns;
- has_constraints 
------------------
- t
-(1 row)
-
+-- Clean
+DROP TABLE IF EXISTS TEST_USER_CONS_COLUMNS;
