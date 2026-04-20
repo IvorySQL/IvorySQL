@@ -949,7 +949,7 @@ other			.
 					 * case to the upper case, if the identifier is quoted by the double
 					 * quotes.
 					 */
-					if (compatible_db == DB_ORACLE && enable_case_switch
+					if (compatible_db == ORA_PARSER && enable_case_switch
 						&& identifier_case_switch != NORMAL
 						&& !identifier_case_from_pg_dump)
 					{
