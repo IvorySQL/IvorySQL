@@ -44,6 +44,22 @@ FROM pg_class
 WHERE relname IN ('ro_view', 'writable_view', 'ro_recursive_view')
 ORDER BY relname;
 
+-- 8. MERGE with INSERT action against WITH READ ONLY view must fail
+MERGE INTO ro_view USING (SELECT 4 AS a, 'merge_ins' AS b) AS src
+ON (ro_view.a = src.a)
+WHEN NOT MATCHED THEN INSERT VALUES (src.a, src.b);
+
+-- 9. MERGE with UPDATE action against WITH READ ONLY view must fail
+MERGE INTO ro_view USING (SELECT 1 AS a, 'merge_upd' AS b) AS src
+ON (ro_view.a = src.a)
+WHEN MATCHED THEN UPDATE SET b = src.b;
+
+-- 10. MERGE with both UPDATE and INSERT against WITH READ ONLY view must fail
+MERGE INTO ro_view USING (SELECT 1 AS a, 'test' AS b) AS src
+ON (ro_view.a = src.a)
+WHEN MATCHED THEN UPDATE SET b = src.b
+WHEN NOT MATCHED THEN INSERT VALUES (src.a, src.b);
+
 -- Cleanup
 DROP VIEW IF EXISTS ro_view;
 DROP VIEW IF EXISTS writable_view;
