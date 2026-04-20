@@ -6,14 +6,12 @@ SHOW IVORYSQL.COMPATIBLE_MODE;
  oracle
 (1 row)
 
-
 SET IVORYSQL.IDENTIFIER_CASE_SWITCH = INTERCHANGE;
 SHOW IVORYSQL.IDENTIFIER_CASE_SWITCH;
  ivorysql.identifier_case_switch 
 ---------------------------------
  interchange
 (1 row)
-
 
 -- create a procedure
 CREATE TABLE TB_TODEL(ID INT);
@@ -22,7 +20,6 @@ BEGIN
 	DROP TABLE TB_TODEL;
 END;
 /
-
 -- create a function with security definer
 CREATE OR REPLACE FUNCTION FUNC_AUTHID(P VARCHAR2)
 RETURN INT DETERMINISTIC IS
@@ -40,7 +37,6 @@ WHERE OBJECT_NAME = 'PROC_DEL_TB' OR OBJECT_NAME = 'FUNC_AUTHID';
  FUNC_AUTHID | FUNCTION    | YES           | NO       | DEFINER
 (2 rows)
 
-
 -- create a function with all-lowercase name
 CREATE OR REPLACE FUNCTION "func_quotes_lower"(ID INT)
 RETURN VARCHAR2 IS
@@ -56,11 +52,10 @@ SELECT NAME, LINE, TEXT FROM ALL_SOURCE WHERE NAME = 'func_quotes_lower';
  func_quotes_lower | 2    |  RETURN varchar2
  func_quotes_lower | 3    |  AUTHID DEFINER
  func_quotes_lower |      | IS 
- func_quotes_lower |      | BEGIN\r
- func_quotes_lower |      |         RETURN 'func_quotes_lower'::VARCHAR2;\r
+ func_quotes_lower |      | BEGIN
+ func_quotes_lower |      |         RETURN 'func_quotes_lower'::VARCHAR2;
  func_quotes_lower |      | END;
 (7 rows)
-
 
 -- data_type and pls_type in all_arguments
 CREATE OR REPLACE FUNCTION FUNC_22_ARG_TYPES
@@ -76,7 +71,6 @@ BEGIN
 	RETURN CAST('FUNC_22_ARG_TYPES' AS RAW);
 END;
 /
-
 -- select ... from all_arguments
 SELECT
 	ARGUMENT_NAME || ',' || POSITION || ',' || SEQUENCE || ',' || 
@@ -108,7 +102,6 @@ ORDER BY OBJECT_ID, POSITION;
  T20,20,21,IN,LONG_RAW,LONG_RAW
  T21,21,22,IN,PG_CATALOG.BOOL,PG_CATALOG.BOOL
 (22 rows)
-
 
 -- clean data
 DROP TABLE IF EXISTS TB_TODEL;
@@ -144,7 +137,6 @@ WHERE OBJECT_NAME = 'FUNC_WITH_DEFAULT';
 
 -- clean data
 DROP FUNCTION IF EXISTS FUNC_WITH_DEFAULT;
-
 -- Oracle dynamic views
 \d SYS.V$SESSION
                             View "sys.v$session"
@@ -189,7 +181,6 @@ ORDER BY NAME;
  listen_addresses | 2    |                        | localhost     | FALSE     | FALSE            | FALSE            | Sets the host name or IP address(es) to listen to.
 (5 rows)
 
-
 -- USER_CONS_COLUMNS
 CREATE TABLE TEST_USER_CONS_COLUMNS (
     ID INT NOT NULL,
@@ -199,7 +190,6 @@ CREATE TABLE TEST_USER_CONS_COLUMNS (
     CONSTRAINT PK_TEST PRIMARY KEY (ID, NAME),
     CONSTRAINT UQ_EMAIL UNIQUE (EMAIL)
 );
-
 SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME, POSITION
 FROM SYS.USER_CONS_COLUMNS
 WHERE TABLE_NAME = 'TEST_USER_CONS_COLUMNS'
@@ -212,7 +202,6 @@ ORDER BY CONSTRAINT_NAME, COLUMN_NAME;
  TEST_USER_CONS_COLUMNS | TEST_USER_CONS_COLUMNS_NAME_NOT_NULL | NAME        | 1
 (3 rows)
 
-
 SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME, POSITION
 FROM SYS.USER_CONS_COLUMNS
 WHERE TABLE_NAME = 'TEST_USER_CONS_COLUMNS'
@@ -224,8 +213,6 @@ ORDER BY CONSTRAINT_NAME, POSITION;
  TEST_USER_CONS_COLUMNS | PK_TEST         | NAME        | 2
 (2 rows)
 
-
-
 SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME, POSITION
 FROM SYS.USER_CONS_COLUMNS
 WHERE TABLE_NAME = 'TEST_USER_CONS_COLUMNS'
@@ -236,6 +223,26 @@ ORDER BY CONSTRAINT_NAME, COLUMN_NAME;
  TEST_USER_CONS_COLUMNS | UQ_EMAIL        | EMAIL       | 1
 (1 row)
 
-
 -- Clean
 DROP TABLE IF EXISTS TEST_USER_CONS_COLUMNS;
+-- Test DBA_CONS_COLUMNS view
+SELECT count(*) > 0 AS view_exists
+FROM information_schema.views
+WHERE table_schema = 'sys' AND table_name = 'dba_cons_columns';
+ view_exists 
+-------------
+ t
+(1 row)
+
+SELECT constraint_name, table_name, column_name, position
+FROM sys.dba_cons_columns
+ORDER BY constraint_name, table_name, column_name
+LIMIT 5;
+           constraint_name           |     table_name     | column_name | position 
+-------------------------------------+--------------------+-------------+----------
+ NULL_SPECIALBK_ID_NOT_NULL          | NULL_SPECIALBK     | ID          | 1
+ NULL_SPECIAL_ID_NOT_NULL            | NULL_SPECIAL       | ID          | 1
+ UTL_FILE_DIRECTORY_DIRNAME_NOT_NULL | UTL_FILE_DIRECTORY | DIRNAME     | 1
+ UTL_FILE_DIRECTORY_PKEY             | UTL_FILE_DIRECTORY | DIRNAME     | 1
+(4 rows)
+
