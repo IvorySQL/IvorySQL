@@ -66,6 +66,7 @@
 #include "miscadmin.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/optimizer.h"
+#include "pgstat.h"
 #include "rewrite/rewriteHandler.h"
 #include "rewrite/rewriteManip.h"
 #include "storage/lmgr.h"
@@ -1363,6 +1364,7 @@ ExecForPortionOfLeftovers(IvyModifyTableContext *context,
 	CmdType		oldOperation;
 	TransitionCaptureState *oldTcs;
 	FmgrInfo	flinfo;
+	PgStat_FunctionCallUsage fcusage;
 	ReturnSetInfo rsi;
 	bool		didInit = false;
 	bool		shouldFree = false;
@@ -1458,6 +1460,7 @@ ExecForPortionOfLeftovers(IvyModifyTableContext *context,
 	rsi.expectedDesc = NULL;
 	rsi.allowedModes = (int) (SFRM_ValuePerCall);
 	rsi.returnMode = SFRM_ValuePerCall;
+	/* isDone is filled below */
 	rsi.setResult = NULL;
 	rsi.setDesc = NULL;
 
@@ -1481,14 +1484,27 @@ ExecForPortionOfLeftovers(IvyModifyTableContext *context,
 	 */
 	while (true)
 	{
-		Datum		leftover = FunctionCallInvoke(fcinfo);
+		Datum		leftover;
+
+		/* Call the function one time */
+		pgstat_init_function_usage(fcinfo, &fcusage);
+
+		fcinfo->isnull = false;
+		rsi.isDone = ExprSingleResult;
+		leftover = FunctionCallInvoke(fcinfo);
+
+		pgstat_end_function_usage(&fcusage,
+								  rsi.isDone != ExprMultipleResult);
+
+		if (rsi.returnMode != SFRM_ValuePerCall)
+			elog(ERROR, "without_portion function violated function call protocol");
 
 		/* Are we done? */
 		if (rsi.isDone == ExprEndResult)
 			break;
 
 		if (fcinfo->isnull)
-			elog(ERROR, "Got a null from without_portion function");
+			elog(ERROR, "got a null from without_portion function");
 
 		/*
 		 * Does the new Datum violate domain checks? Row-level CHECK
