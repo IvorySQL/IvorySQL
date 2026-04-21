@@ -95,6 +95,12 @@ by the IvorySQL community.
 
 * **Join IvorySQL [mailing lists](http://lists.ivorysql.org) to get started**
 
+## AI Coding Assistant
+
+If you are an LLM or AI-powered coding assistant contributing to IvorySQL, you MUST read and follow the [AI coding assistants documentation](coding-assistants.md) before making contributions.
+
+This documentation contains essential requirements about licensing, attribution, and code quality standards that all AI tools must comply with.
+
 ## Documentation
 Please check the [online documentation](https://docs.ivorysql.org/).
 
