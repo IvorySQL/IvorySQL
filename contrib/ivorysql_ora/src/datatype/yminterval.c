@@ -1,12 +1,12 @@
 /*-------------------------------------------------------------------------
  * Copyright 2025 IvorySQL Global Development Team
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -118,7 +118,7 @@ ParseFractionalSecond(char *cp, fsec_t *fsec)
 
 static int
 DecodeTime(char *str, int fmask, int range,
-		   int *tmask, struct tm * tm, fsec_t *fsec)
+		   int *tmask, struct tm *tm, fsec_t *fsec)
 {
 	char	   *cp;
 	int			dterr;
@@ -207,7 +207,7 @@ DecodeTime(char *str, int fmask, int range,
  * we can not know  the '0' is initial value or the value of the input.
  */
 static inline void
-ClearPgTm(struct tm * tm, fsec_t *fsec)
+ClearPgTm(struct tm *tm, fsec_t *fsec)
 {
 	tm->tm_year = INT_MAX;
 	tm->tm_mon = INT_MAX;
@@ -219,7 +219,7 @@ ClearPgTm(struct tm * tm, fsec_t *fsec)
 }
 
 static void
-AdjustFractSeconds(double frac, struct tm * tm, fsec_t *fsec, int scale)
+AdjustFractSeconds(double frac, struct tm *tm, fsec_t *fsec, int scale)
 {
 	int			sec;
 
@@ -227,10 +227,10 @@ AdjustFractSeconds(double frac, struct tm * tm, fsec_t *fsec, int scale)
 		return;
 	frac *= scale;
 	sec = (int) frac;
-	
+
 	if (tm->tm_sec == INT_MAX)
 		tm->tm_sec = 0;
-	
+
 	tm->tm_sec += sec;
 	frac -= sec;
 #ifdef HAVE_INT64_TIMESTAMP
@@ -242,7 +242,7 @@ AdjustFractSeconds(double frac, struct tm * tm, fsec_t *fsec, int scale)
 
 /* As above, but initial scale produces days */
 static void
-AdjustFractDays(double frac, struct tm * tm, fsec_t *fsec, int scale)
+AdjustFractDays(double frac, struct tm *tm, fsec_t *fsec, int scale)
 {
 	int			extra_days;
 
@@ -250,7 +250,7 @@ AdjustFractDays(double frac, struct tm * tm, fsec_t *fsec, int scale)
 		return;
 	frac *= scale;
 	extra_days = (int) frac;
-	
+
 	if (tm->tm_mday == INT_MAX)
 		tm->tm_mday = 0;
 	tm->tm_mday += extra_days;
@@ -316,7 +316,7 @@ AppendSeconds(char *cp, int sec, fsec_t fsec, int precision, bool fillzeros)
  * Interpret time structure as a delta time and convert to string.
  */
 static void
-EncodeYminterval(struct pg_tm * tm, fsec_t fsec, int style, char *str, int precision)
+EncodeYminterval(struct pg_tm *tm, fsec_t fsec, int style, char *str, int precision)
 {
 	char	   *cp = str;
 	int			year = tm->tm_year;
@@ -338,17 +338,17 @@ EncodeYminterval(struct pg_tm * tm, fsec_t fsec, int style, char *str, int preci
 		case INTSTYLE_SQL_STANDARD:
 			{
 				bool		has_negative = year < 0 || mon < 0 ||
-				mday < 0 || hour < 0 ||
-				min < 0 || sec < 0 || fsec < 0;
+					mday < 0 || hour < 0 ||
+					min < 0 || sec < 0 || fsec < 0;
 				bool		has_positive = year > 0 || mon > 0 ||
-				mday > 0 || hour > 0 ||
-				min > 0 || sec > 0 || fsec > 0;
+					mday > 0 || hour > 0 ||
+					min > 0 || sec > 0 || fsec > 0;
 				bool		has_year_month = year != 0 || mon != 0;
 				bool		has_day_time = mday != 0 || hour != 0 ||
-				min != 0 || sec != 0 || fsec != 0;
+					min != 0 || sec != 0 || fsec != 0;
 				bool		has_day = mday != 0;
 				bool		sql_standard_value = !(has_negative && has_positive) &&
-				!(has_year_month && has_day_time);
+					!(has_year_month && has_day_time);
 
 				/*
 				 * SQL Standard wants only 1 "<sign>" preceding the whole
@@ -369,8 +369,11 @@ EncodeYminterval(struct pg_tm * tm, fsec_t fsec, int style, char *str, int preci
 				/* Compatible oracle, show sign '+' or '-' */
 				if (!has_negative)
 					*cp++ = '+';
-				
-				/* Compatible oracle, the value of interval is zero should show "+00-00" */
+
+				/*
+				 * Compatible oracle, the value of interval is zero should
+				 * show "+00-00"
+				 */
 				if (!has_negative && !has_positive)
 				{
 					sprintf(cp, "%0*d-%02d", precision, year, mon);
@@ -437,7 +440,7 @@ EncodeYminterval(struct pg_tm * tm, fsec_t fsec, int style, char *str, int preci
  */
 static int
 DecodeYminterval(char **field, int *ftype, int nf, int range,
-			   int *dtype, struct tm * tm, fsec_t *fsec)
+				 int *dtype, struct tm *tm, fsec_t *fsec)
 {
 	bool		is_before = false;
 	char	   *cp;
@@ -568,7 +571,7 @@ DecodeYminterval(char **field, int *ftype, int nf, int range,
 					if (((double) val * MONTHS_PER_YEAR + val2) > INT_MAX ||
 						((double) val * MONTHS_PER_YEAR + val2) < INT_MIN)
 						return DTERR_FIELD_OVERFLOW;
-//					val = val * MONTHS_PER_YEAR + val2;
+/* 					val = val * MONTHS_PER_YEAR + val2; */
 					fval = 0;
 				}
 				else if (*cp == '.')
@@ -685,21 +688,21 @@ DecodeYminterval(char **field, int *ftype, int nf, int range,
 							tm->tm_mon += fval * MONTHS_PER_YEAR;
 						tmask = DTK_M(YEAR);
 						break;
-						
+
 					case DTK_DATE:
 						if (tm->tm_year == INT_MAX)
 							tm->tm_year = 0;
 						if (tm->tm_mon == INT_MAX)
 							tm->tm_mon = 0;
-						
+
 						tm->tm_year += val;
 						tm->tm_mon += val2;
-						
+
 						if (fval != 0)
 							tm->tm_mon += fval * MONTHS_PER_YEAR;
 						tmask = DTK_M(MONTH);
 						break;
-						
+
 					case DTK_DECADE:
 						if (tm->tm_year == INT_MAX)
 							tm->tm_year = 0;
@@ -708,7 +711,7 @@ DecodeYminterval(char **field, int *ftype, int nf, int range,
 						{
 							if (tm->tm_mon == INT_MAX)
 								tm->tm_mon = 0;
-							
+
 							tm->tm_mon += fval * MONTHS_PER_YEAR * 10;
 						}
 						tmask = DTK_M(DECADE);
@@ -722,7 +725,7 @@ DecodeYminterval(char **field, int *ftype, int nf, int range,
 						{
 							if (tm->tm_mon == INT_MAX)
 								tm->tm_mon = 0;
-							
+
 							tm->tm_mon += fval * MONTHS_PER_YEAR * 100;
 						}
 						tmask = DTK_M(CENTURY);
@@ -736,7 +739,7 @@ DecodeYminterval(char **field, int *ftype, int nf, int range,
 						{
 							if (tm->tm_mon == INT_MAX)
 								tm->tm_mon = 0;
-							
+
 							tm->tm_mon += fval * MONTHS_PER_YEAR * 1000;
 						}
 						tmask = DTK_M(MILLENNIUM);
@@ -851,7 +854,7 @@ DecodeYminterval(char **field, int *ftype, int nf, int range,
 		tm->tm_mday = (tm->tm_mday == INT_MAX) ? 0 : tm->tm_mday;
 		tm->tm_mon = (tm->tm_mon == INT_MAX) ? 0 : tm->tm_mon;
 		tm->tm_year = (tm->tm_year == INT_MAX) ? 0 : tm->tm_year;
-		
+
 		*fsec = -(*fsec);
 		tm->tm_sec = -tm->tm_sec;
 		tm->tm_min = -tm->tm_min;
@@ -872,16 +875,16 @@ AdjustYmintervalForTypmod(Interval *interval, int32 typmod)
 {
 	if (typmod > 0)
 	{
-		int		range = INTERVAL_RANGE(typmod);
-		int		precision = INTERVAL_PRECISION(typmod);
-		int64	interval_year;
-		
+		int			range = INTERVAL_RANGE(typmod);
+		int			precision = INTERVAL_PRECISION(typmod);
+		int64		interval_year;
+
 		if (range == INTERVAL_MASK(YEAR) ||
 			range == INTERVAL_MASK(MONTH) ||
 			range == (INTERVAL_MASK(YEAR) | INTERVAL_MASK(MONTH)))
 		{
 			interval_year = abs(interval->month / MONTHS_PER_YEAR);
-			switch(precision)
+			switch (precision)
 			{
 				case 0:
 					if (interval_year != 0)
@@ -995,7 +998,7 @@ ora_ParseISO8601Number(const char *str, char **endptr, int *ipart, double *fpart
  */
 static int
 ora_DecodeISO8601Interval(char *str,
-					  int *dtype, struct /* pg_ */ tm *tm, fsec_t *fsec)
+						  int *dtype, struct /* pg_ */ tm *tm, fsec_t *fsec)
 {
 	bool		datepart = true;
 	bool		havefield = false;
@@ -1249,15 +1252,15 @@ yminterval_cmp_value(const Interval *interval)
 {
 	TimeOffset	span;
 
-//	span = interval->time;
+/* 	span = interval->time; */
 	span = 0;
 
 #ifdef HAVE_INT64_TIMESTAMP
 	span += interval->month * INT64CONST(30) * USECS_PER_DAY;
-//	span += interval->day * INT64CONST(24) * USECS_PER_HOUR;
+/* 	span += interval->day * INT64CONST(24) * USECS_PER_HOUR; */
 #else
 	span += interval->month * ((double) DAYS_PER_MONTH * SECS_PER_DAY);
-//	span += interval->day * ((double) HOURS_PER_DAY * SECS_PER_HOUR);
+/* 	span += interval->day * ((double) HOURS_PER_DAY * SECS_PER_HOUR); */
 #endif
 
 	return span;
@@ -1289,7 +1292,7 @@ yminterval_in(PG_FUNCTION_ARGS)
 	int32		typmod = PG_GETARG_INT32(2);
 	Interval   *result;
 	fsec_t		fsec;
-	struct	tm  tt,
+	struct tm	tt,
 			   *tm = &tt;
 	int			dtype = -1;
 	int			nf;
@@ -1299,8 +1302,8 @@ yminterval_in(PG_FUNCTION_ARGS)
 	int			ftype[MAXDATEFIELDS];
 	char		workbuf[256];
 	bool		isiso = false;
-	char 		*strold;
-	char 		*strsrc;
+	char	   *strold;
+	char	   *strsrc;
 	DateTimeErrorExtra extra;
 
 	tm->tm_year = INT_MAX;
@@ -1352,13 +1355,13 @@ yminterval_in(PG_FUNCTION_ARGS)
 						  ftype, MAXDATEFIELDS, &nf);
 	if (dterr == 0)
 		dterr = DecodeYminterval(field, ftype, nf, range,
-							     &dtype, tm, &fsec);
+								 &dtype, tm, &fsec);
 
 	/* if those functions think it's a bad format, try ISO8601 style */
 	if (dterr == DTERR_BAD_FORMAT)
 	{
 		dterr = ora_DecodeISO8601Interval(str,
-									  &dtype, tm, &fsec);
+										  &dtype, tm, &fsec);
 		isiso = true;
 	}
 
@@ -1369,24 +1372,25 @@ yminterval_in(PG_FUNCTION_ARGS)
 		DateTimeParseError(dterr, &extra, str, "interval year to month", NULL);
 	}
 
-	/* 
+	/*
 	 * compatible oracle, the valid range of values for the trailing field
 	 * MONTH: 0 to 11
 	 *
-	 * In oracle, the string and interval fields is exact matched,
-	 * for example:interval'1:1' hour to second and interval'1 1:1:1' hour to second is error.
-	 * change the initial value of 'pg_tm *tm' to INT_MAX, because if the value of 'pg_tm *tm' is 0,
-	 * we can not know  the '0' is initial value or the value of the input.
+	 * In oracle, the string and interval fields is exact matched, for
+	 * example:interval'1:1' hour to second and interval'1 1:1:1' hour to
+	 * second is error. change the initial value of 'pg_tm *tm' to INT_MAX,
+	 * because if the value of 'pg_tm *tm' is 0, we can not know  the '0' is
+	 * initial value or the value of the input.
 	 */
-	if(!isiso)
+	if (!isiso)
 	{
-		switch(range)
+		switch (range)
 		{
 			case INTERVAL_MASK(YEAR):
 				if (abs(tm->tm_year) == INT_MAX ||
-					abs(tm->tm_mon)  != INT_MAX ||
-					abs(tm->tm_min)  != INT_MAX ||
-					abs(tm->tm_sec)  != INT_MAX ||
+					abs(tm->tm_mon) != INT_MAX ||
+					abs(tm->tm_min) != INT_MAX ||
+					abs(tm->tm_sec) != INT_MAX ||
 					abs(tm->tm_hour) != INT_MAX ||
 					abs(tm->tm_mday) != INT_MAX)
 					ereport(ERROR,
@@ -1396,9 +1400,9 @@ yminterval_in(PG_FUNCTION_ARGS)
 
 			case INTERVAL_MASK(MONTH):
 				if (abs(tm->tm_year) != INT_MAX ||
-					abs(tm->tm_mon)  == INT_MAX ||
-					abs(tm->tm_min)  != INT_MAX ||
-					abs(tm->tm_sec)  != INT_MAX ||
+					abs(tm->tm_mon) == INT_MAX ||
+					abs(tm->tm_min) != INT_MAX ||
+					abs(tm->tm_sec) != INT_MAX ||
 					abs(tm->tm_hour) != INT_MAX ||
 					abs(tm->tm_mday) != INT_MAX)
 					ereport(ERROR,
@@ -1409,9 +1413,9 @@ yminterval_in(PG_FUNCTION_ARGS)
 			case INTERVAL_MASK(YEAR) | INTERVAL_MASK(MONTH):
 			case INTERVAL_FULL_RANGE:
 				if (abs(tm->tm_year) == INT_MAX ||
-					abs(tm->tm_mon)  == INT_MAX ||
-					abs(tm->tm_min)  != INT_MAX ||
-					abs(tm->tm_sec)  != INT_MAX ||
+					abs(tm->tm_mon) == INT_MAX ||
+					abs(tm->tm_min) != INT_MAX ||
+					abs(tm->tm_sec) != INT_MAX ||
 					abs(tm->tm_hour) != INT_MAX ||
 					abs(tm->tm_mday) != INT_MAX)
 					ereport(ERROR,
@@ -1434,7 +1438,8 @@ yminterval_in(PG_FUNCTION_ARGS)
 		tm->tm_mon = (abs(tm->tm_mon) == INT_MAX) ? 0 : tm->tm_mon;
 		tm->tm_year = (abs(tm->tm_year) == INT_MAX) ? 0 : tm->tm_year;
 
-		/* Compatible oracle: if interval type is INTERVAL YEAR TO MONTH that
+		/*
+		 * Compatible oracle: if interval type is INTERVAL YEAR TO MONTH that
 		 * days, hours, minutes, seconds, and frac_secs are invalid.
 		 */
 		tm->tm_sec = 0;
@@ -1445,7 +1450,8 @@ yminterval_in(PG_FUNCTION_ARGS)
 	}
 	else
 	{
-		/* Interval is ISO8601 format 
+		/*
+		 * Interval is ISO8601 format
 		 *
 		 * Compatible oracle: if interval type is INTERVAL YEAR TO MONTH that
 		 * days, hours, minutes, seconds, and frac_secs are ignored.
@@ -1474,7 +1480,7 @@ yminterval_in(PG_FUNCTION_ARGS)
 	}
 
 	AdjustYmintervalForTypmod(result, typmod);
-	
+
 	PG_RETURN_INTERVAL_P(result);
 }
 
@@ -1487,7 +1493,7 @@ yminterval_out(PG_FUNCTION_ARGS)
 {
 	Interval   *span = PG_GETARG_INTERVAL_P(0);
 	int32		typmod;
-	int		precision;
+	int			precision;
 	char	   *result;
 	struct pg_tm tt,
 			   *tm = &tt;
@@ -1513,7 +1519,7 @@ yminterval_out(PG_FUNCTION_ARGS)
 			ereport(WARNING,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("The typmod in yminterval_out is invalid, reduced to maximum allowed, %d",
-					 ORACLE_MAX_INTERVAL_PRECISION)));
+							ORACLE_MAX_INTERVAL_PRECISION)));
 			precision = ORACLE_MAX_INTERVAL_PRECISION;
 		}
 	}
@@ -1669,7 +1675,7 @@ yminterval_recv(PG_FUNCTION_ARGS)
 	interval->month = pq_getmsgint(buf, sizeof(interval->month));
 
 	AdjustYmintervalForTypmod(interval, typmod);
-	
+
 	PG_RETURN_INTERVAL_P(interval);
 }
 
@@ -1788,15 +1794,15 @@ yminterval_mul(PG_FUNCTION_ARGS)
 	result = (Interval *) palloc(sizeof(Interval));
 
 	result_double = span->month * factor;
-	if (result_double > INT_MAX || result_double < INT_MIN)
+	if (isnan(result_double) || !FLOAT8_FITS_IN_INT32(result_double))
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 				 errmsg("interval out of range")));
 	result->month = (int32) result_double;
 
-	/* 
-	 * compatible oracle
-	 * For Interval year to month, the field of datetime 'DAY' 'HOUR' 'MINUTE' 'SECOND' will be truncated.
+	/*
+	 * compatible oracle For Interval year to month, the field of datetime
+	 * 'DAY' 'HOUR' 'MINUTE' 'SECOND' will be truncated.
 	 */
 	result->day = 0;
 	result->time = 0;
@@ -1807,7 +1813,7 @@ yminterval_mul(PG_FUNCTION_ARGS)
 /*
  * '*' operator function
  * left operand = number
- * right operand = interval year to month 
+ * right operand = interval year to month
  */
 Datum
 mul_d_yminterval(PG_FUNCTION_ARGS)
@@ -1822,15 +1828,15 @@ mul_d_yminterval(PG_FUNCTION_ARGS)
 	result = (Interval *) palloc(sizeof(Interval));
 
 	result_double = span->month * factor;
-	if (result_double > INT_MAX || result_double < INT_MIN)
+	if (isnan(result_double) || !FLOAT8_FITS_IN_INT32(result_double))
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 				 errmsg("interval out of range")));
 	result->month = (int32) result_double;
 
 	/*
-	 * compatible oracle
-	 * For Interval year to month, the field of datetime 'DAY' 'HOUR' 'MINUTE' 'SECOND' will be truncated.
+	 * compatible oracle For Interval year to month, the field of datetime
+	 * 'DAY' 'HOUR' 'MINUTE' 'SECOND' will be truncated.
 	 */
 	result->day = 0;
 	result->time = 0;
@@ -1860,9 +1866,9 @@ yminterval_mi(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 				 errmsg("interval out of range")));
 
-	/* 
-	 * compatible oracle
-	 * For Interval year to month, the field of datetime 'DAY' 'HOUR' 'MINUTE' 'SECOND' will be zero.
+	/*
+	 * compatible oracle For Interval year to month, the field of datetime
+	 * 'DAY' 'HOUR' 'MINUTE' 'SECOND' will be zero.
 	 */
 	result->day = 0;
 	result->time = 0;
@@ -1892,9 +1898,9 @@ yminterval_pl(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 				 errmsg("interval out of range")));
 
-	/* 
-	 * compatible oracle
-	 * For Interval year to month, the field of datetime 'DAY' 'HOUR' 'MINUTE' 'SECOND' will be zero.
+	/*
+	 * compatible oracle For Interval year to month, the field of datetime
+	 * 'DAY' 'HOUR' 'MINUTE' 'SECOND' will be zero.
 	 */
 	result->day = 0;
 	result->time = 0;
@@ -1913,6 +1919,7 @@ yminterval_div(PG_FUNCTION_ARGS)
 	Interval   *span = PG_GETARG_INTERVAL_P(0);
 	Numeric		num = PG_GETARG_NUMERIC(1);
 	float8		factor;
+	double		result_double;
 	Interval   *result;
 
 	factor = DatumGetFloat8(DirectFunctionCall1(numeric_float8, NumericGetDatum(num)));
@@ -1923,11 +1930,16 @@ yminterval_div(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_DIVISION_BY_ZERO),
 				 errmsg("division by zero")));
 
-	result->month = (int32) (span->month / factor);
+	result_double = span->month / factor;
+	if (isnan(result_double) || !FLOAT8_FITS_IN_INT32(result_double))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("interval out of range")));
+	result->month = (int32) result_double;
 
 	/*
-	 * compatible oracle
-	 * For Interval year to month, the field of datetime 'DAY' 'HOUR' 'MINUTE' 'SECOND' will be zero.
+	 * compatible oracle For Interval year to month, the field of datetime
+	 * 'DAY' 'HOUR' 'MINUTE' 'SECOND' will be zero.
 	 */
 	result->day = 0;
 	result->time = 0;
@@ -1979,7 +1991,7 @@ in_range_yminterval_yminterval(PG_FUNCTION_ARGS)
 }
 
 /*****************************************************************************
- *	 Hash index support procedure 
+ *	 Hash index support procedure
  *****************************************************************************/
 
 /*
@@ -2013,7 +2025,7 @@ yminterval_hash_extended(PG_FUNCTION_ARGS)
 }
 
 /*****************************************************************************
- *	 AGGREGATE FUNCTION 
+ *	 AGGREGATE FUNCTION
  *****************************************************************************/
 Datum
 yminterval_smaller(PG_FUNCTION_ARGS)
