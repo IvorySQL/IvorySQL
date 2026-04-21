@@ -1351,3 +1351,39 @@ ORDER BY
 ; 
 GRANT SELECT ON SYS.USER_CONS_COLUMNS TO PUBLIC;
 
+
+-- DBA_CONS_COLUMNS (including NOT NULL constraints)
+CREATE OR REPLACE VIEW sys.dba_cons_columns AS
+-- Regular constraints (PRIMARY KEY, UNIQUE, FOREIGN KEY, CHECK, etc.)
+SELECT
+    SYS.ORA_CASE_TRANS(pg_get_userbyid(cl.relowner)::varchar2(128)) AS owner,
+    SYS.ORA_CASE_TRANS(c.conname::varchar2(128)) AS constraint_name,
+    SYS.ORA_CASE_TRANS(cl.relname::varchar2(128)) AS table_name,
+    SYS.ORA_CASE_TRANS(a.attname::varchar2(128)) AS column_name,
+    array_position(c.conkey, a.attnum)::number AS position
+FROM pg_constraint c
+JOIN pg_class cl ON c.conrelid = cl.oid
+JOIN pg_namespace n ON cl.relnamespace = n.oid
+JOIN pg_attribute a ON a.attrelid = cl.oid AND a.attnum = ANY(c.conkey)
+WHERE cl.relkind = 'r'
+  AND a.attisdropped = false
+  AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+
+UNION ALL
+
+-- NOT NULL constraints from pg_attribute
+SELECT
+    SYS.ORA_CASE_TRANS(pg_get_userbyid(cl.relowner)::varchar2(128)) AS owner,
+    SYS.ORA_CASE_TRANS(cl.relname::varchar2(128) || '_' || a.attname || '_NOT_NULL') AS constraint_name,
+    SYS.ORA_CASE_TRANS(cl.relname::varchar2(128)) AS table_name,
+    SYS.ORA_CASE_TRANS(a.attname::varchar2(128)) AS column_name,
+    1::number AS position
+FROM pg_class cl
+JOIN pg_namespace n ON cl.relnamespace = n.oid
+JOIN pg_attribute a ON a.attrelid = cl.oid
+WHERE cl.relkind = 'r'
+  AND a.attnotnull = true
+  AND a.attisdropped = false
+  AND n.nspname NOT IN ('pg_catalog', 'information_schema');
+
+GRANT SELECT ON sys.dba_cons_columns TO PUBLIC;

@@ -193,3 +193,12 @@ WHERE table_name = 'T_NOTNULL_TEST'
 ORDER BY constraint_name, column_name;
 
 DROP TABLE IF EXISTS t_notnull_test;
+-- Test DBA_CONS_COLUMNS view
+SELECT count(*) > 0 AS view_exists
+FROM information_schema.views
+WHERE table_schema = 'sys' AND table_name = 'dba_cons_columns';
+
+SELECT constraint_name, table_name, column_name, position
+FROM sys.dba_cons_columns
+ORDER BY constraint_name, table_name, column_name
+LIMIT 5;
