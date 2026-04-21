@@ -238,11 +238,12 @@ SELECT constraint_name, table_name, column_name, position
 FROM sys.dba_cons_columns
 ORDER BY constraint_name, table_name, column_name
 LIMIT 5;
-           constraint_name           |     table_name     | column_name | position 
--------------------------------------+--------------------+-------------+----------
- NULL_SPECIALBK_ID_NOT_NULL          | NULL_SPECIALBK     | ID          | 1
- NULL_SPECIAL_ID_NOT_NULL            | NULL_SPECIAL       | ID          | 1
- UTL_FILE_DIRECTORY_DIRNAME_NOT_NULL | UTL_FILE_DIRECTORY | DIRNAME     | 1
- UTL_FILE_DIRECTORY_PKEY             | UTL_FILE_DIRECTORY | DIRNAME     | 1
-(4 rows)
+            constraint_name            |       table_name        | column_name | position 
+---------------------------------------+-------------------------+-------------+----------
+ NULL_SPECIALBK_ID_NOT_NULL            | NULL_SPECIALBK          | ID          | 1
+ NULL_SPECIAL_ID_NOT_NULL              | NULL_SPECIAL            | ID          | 1
+ UTL_FILE_DIRECTORY_DIRNAME_NOT_NULL   | UTL_FILE_DIRECTORY      | DIRNAME     | 1
+ UTL_FILE_DIRECTORY_PKEY               | UTL_FILE_DIRECTORY      | DIRNAME     | 1
+ binaryf_tbtidb002145521_cmax_NOT_NULL | BINARYF_TBTIDB002145521 | CMAX        | 1
+(5 rows)
 
