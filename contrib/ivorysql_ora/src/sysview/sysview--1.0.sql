@@ -1273,6 +1273,59 @@ SELECT
     SHORT_DESC::VARCHAR2(255) AS DESCRIPTION
 FROM PG_SETTINGS;
 
+CREATE OR REPLACE VIEW SYS.all_cons_columns AS
+SELECT
+    SYS.ORA_CASE_TRANS(pg_authid.rolname::VARCHAR2(128))    AS owner,
+    SYS.ORA_CASE_TRANS(con.conname::VARCHAR2(128))          AS constraint_name,
+    SYS.ORA_CASE_TRANS(cls.relname::VARCHAR2(128))          AS table_name,
+    SYS.ORA_CASE_TRANS(attr.attname::VARCHAR2(4000))        AS column_name,
+    pos.pos::NUMBER                                         AS position
+FROM
+    pg_catalog.pg_constraint con
+    JOIN pg_catalog.pg_class cls       ON con.conrelid = cls.oid
+    JOIN pg_catalog.pg_authid          ON cls.relowner = pg_authid.oid
+    JOIN pg_catalog.pg_namespace nsp   ON cls.relnamespace = nsp.oid
+    CROSS JOIN LATERAL unnest(con.conkey) WITH ORDINALITY AS pos(attnum, pos)
+    JOIN pg_catalog.pg_attribute attr  ON attr.attrelid = cls.oid
+                                      AND attr.attnum = pos.attnum
+WHERE
+    con.contype IN ('p', 'u', 'f', 'c')
+    AND nsp.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+    AND cls.relkind IN ('r', 'v', 'm', 'p')
+    AND attr.attnum > 0
+    AND NOT attr.attisdropped
+    AND has_schema_privilege(nsp.oid, 'USAGE')
+    AND has_table_privilege(cls.oid, 'SELECT')
+
+UNION ALL
+SELECT
+    SYS.ORA_CASE_TRANS(pg_authid.rolname::VARCHAR2(128))    AS owner,
+    SYS.ORA_CASE_TRANS((cls.relname || '_' || attr.attname || '_NOT_NULL')::VARCHAR2(128)) AS constraint_name,
+    SYS.ORA_CASE_TRANS(cls.relname::VARCHAR2(128))          AS table_name,
+    SYS.ORA_CASE_TRANS(attr.attname::VARCHAR2(4000))        AS column_name,
+    1::NUMBER                                              AS position
+FROM
+    pg_catalog.pg_class cls
+    JOIN pg_catalog.pg_authid          ON cls.relowner = pg_authid.oid
+    JOIN pg_catalog.pg_namespace nsp   ON cls.relnamespace = nsp.oid
+    JOIN pg_catalog.pg_attribute attr  ON attr.attrelid = cls.oid
+WHERE
+    attr.attnotnull                    
+    AND attr.attnum > 0
+    AND NOT attr.attisdropped
+    AND nsp.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+    AND cls.relkind IN ('r', 'v', 'm', 'p')
+    AND has_schema_privilege(nsp.oid, 'USAGE')
+    AND has_table_privilege(cls.oid, 'SELECT')
+    AND NOT EXISTS (
+        SELECT 1 FROM pg_catalog.pg_constraint con
+        WHERE con.conrelid = cls.oid
+          AND con.contype = 'p'
+          AND con.conkey && ARRAY[attr.attnum]
+    )
+ORDER BY
+    owner, table_name, constraint_name, position;
+GRANT SELECT ON SYS.all_cons_columns TO PUBLIC;
 /* USER_CONS_COLUMNS */
 CREATE OR REPLACE VIEW SYS.USER_CONS_COLUMNS AS
 	SELECT

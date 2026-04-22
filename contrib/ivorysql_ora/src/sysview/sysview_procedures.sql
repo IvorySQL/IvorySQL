@@ -275,6 +275,47 @@ ORDER BY
 	OBJECT_ID
 ;
 
+CREATE OR REPLACE VIEW all_cons_columns AS
+SELECT
+    nsp.nspname                      AS owner,
+    con.conname                      AS constraint_name,
+    cls.relname                      AS table_name,
+    attr.attname                     AS column_name,
+    pos.pos                          AS position,
+    CASE
+        WHEN t.typname = 'varchar'  THEN 'VARCHAR2'
+        WHEN t.typname = 'bpchar'   THEN 'CHAR'
+        WHEN t.typname = 'numeric'  THEN 'NUMBER'
+        WHEN t.typname = 'int2'     THEN 'NUMBER'
+        WHEN t.typname = 'int4'     THEN 'NUMBER'
+        WHEN t.typname = 'int8'     THEN 'NUMBER'
+        WHEN t.typname = 'float4'   THEN 'FLOAT'
+        WHEN t.typname = 'float8'   THEN 'FLOAT'
+        WHEN t.typname = 'text'     THEN 'CLOB'
+        WHEN t.typname = 'date'     THEN 'DATE'
+        WHEN t.typname = 'timestamp' THEN 'TIMESTAMP'
+        WHEN t.typname = 'timestamptz' THEN 'TIMESTAMP WITH TIME ZONE'
+        ELSE UPPER(t.typname)
+    END                            AS data_type
+FROM
+    pg_catalog.pg_constraint con
+    JOIN pg_catalog.pg_class cls      ON con.conrelid = cls.oid
+    JOIN pg_catalog.pg_namespace nsp  ON cls.relnamespace = nsp.oid
+    CROSS JOIN LATERAL unnest(con.conkey) WITH ORDINALITY AS pos(attnum, pos)
+    JOIN pg_catalog.pg_attribute attr ON attr.attrelid = cls.oid
+                                      AND attr.attnum = pos.attnum
+    JOIN pg_catalog.pg_type t         ON attr.atttypid = t.oid
+WHERE
+    con.contype IN ('p', 'u', 'f', 'c')
+    AND nsp.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+    AND cls.relkind IN ('r', 'v', 'm')
+    AND attr.attnum > 0
+    AND NOT attr.attisdropped
+    AND has_schema_privilege(nsp.oid, 'USAGE')
+    AND has_table_privilege(cls.oid, 'SELECT')
+ORDER BY
+    owner, table_name, constraint_name, position;
+
 /* GRANT SELECT PRIVILEGE TO PUBLIC */
 GRANT SELECT ON SYS.USER_PROCEDURES TO PUBLIC;
 /* End - ReqID:SRS-SQL-SYSVIEW */
