@@ -24,12 +24,13 @@ If the contribution you're submitting is NOT original work:
 - Proper attribution must be provided to the original source
 - Never remove licensing headers from existing code
 
-## Human Responsibility
+## Signed-off-by and Developer Certificate of Origin
 
-AI agents cannot take legal responsibility for contributions. The human submitter is responsible for:
+AI agents MUST NOT add Signed-off-by tags. Only humans can legally certify the Developer Certificate of Origin (DCO). The human submitter is responsible for:
 
 - Reviewing all AI-generated code
 - Ensuring compliance with licensing requirements
+- Adding their own Signed-off-by tag to certify the DCO
 - Taking full responsibility for the contribution
 
 ## Attribution
