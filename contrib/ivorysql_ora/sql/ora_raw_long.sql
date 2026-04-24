@@ -44,3 +44,13 @@ SELECT * FROM LONG_TEXT ORDER BY II DESC;
 
 DROP TABLE LONG_TEXT;
 
+-- rawtohex
+SELECT sys.rawtohex('\xDEADBEEF'::bytea);
+SELECT sys.rawtohex('\xFF'::raw);
+SELECT sys.rawtohex('hello'::text);
+SELECT sys.rawtohex('hello'::varchar2);
+SELECT sys.rawtohex(sys.hextoraw('DEADBEEF'));
+SELECT sys.rawtohex(NULL) IS NULL;
+SELECT sys.rawtohex('') IS NULL;
+SELECT sys.rawtohex('\x'::bytea) IS NULL;
+
