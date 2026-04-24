@@ -2579,7 +2579,7 @@ transformUpdateStmt(ParseState *pstate, UpdateStmt *stmt)
 		}
 	}
 
-	if (DB_ORACLE == compatible_db)
+	if (ORA_PARSER == compatible_db)
 	{
 		qry->targetList = transformIvyUpdateTargetList(pstate, stmt->targetList);
 	}
