@@ -189,18 +189,61 @@ CREATE TABLE TEST_ALL_TAB_COLUMNS (
     CREATE_TIME DATE
 );
 SELECT 
-    TABLE_NAME, COLUMN_NAME, COLUMN_ID, NULLABLE,
-    DATA_TYPE, DATA_LENGTH, DATA_PRECISION, DATA_SCALE,
-    DATA_DEFAULT, CHAR_LENGTH
+    OWNER,
+    TABLE_NAME,
+    COLUMN_NAME,
+    COLUMN_ID,
+    DATA_TYPE,
+    DATA_TYPE_MOD,
+    DATA_TYPE_OWNER,
+    DATA_LENGTH,
+    DATA_PRECISION,
+    DATA_SCALE,
+    NULLABLE,
+    COLUMN_DEFAULT,
+    DATA_DEFAULT,
+    NUM_DISTINCT,
+    LOW_VALUE,
+    HIGH_VALUE,
+    DENSITY,
+    NUM_NULLS,
+    NUM_BUCKETS,
+    LAST_ANALYZED,
+    SAMPLE_SIZE,
+    CHARACTER_SET_NAME,
+    CHAR_COL_DECL_LENGTH,
+    GLOBAL_STATS,
+    USER_STATS,
+    AVG_COL_LEN,
+    CHAR_LENGTH,
+    CHAR_USED,
+    V80_FMT_IMAGE,
+    DATA_UPGRADED,
+    HISTOGRAM,
+    DEFAULT_LENGTH,
+    NULLABLE_COLUMN_ID,
+    COLLATION_NAME,
+    COLLATION_SCHEMA,
+    COLLATION_OWNER,
+    IDENTITY_COLUMN,
+    SEGMENT_CREATED,
+    LOB_FORMAT,
+    LOB_PRECISION,
+    LOB_LENGTH,
+    NESTED,
+    HIDDEN_COLUMN,
+    VIRTUAL_COLUMN,
+    SEGMENT_ID,
+    SENSITIVE_COLUMN
 FROM SYS.ALL_TAB_COLUMNS
 WHERE TABLE_NAME = 'TEST_ALL_TAB_COLUMNS'
 ORDER BY COLUMN_ID;
-      table_name      | column_name | column_id | nullable |        data_type        | data_length | data_precision | data_scale | data_default | char_length 
-----------------------+-------------+-----------+----------+-------------------------+-------------+----------------+------------+--------------+-------------
- TEST_ALL_TAB_COLUMNS | ID          |         1 | N        | pg_catalog.int4         |           4 |                |            |              | 
- TEST_ALL_TAB_COLUMNS | NAME        |         2 | N        | varchar2(50)            |          -1 |                |            |              | 
- TEST_ALL_TAB_COLUMNS | AGE         |         3 | Y        | pg_catalog.numeric(5,2) |          -1 |                |            |              | 
- TEST_ALL_TAB_COLUMNS | CREATE_TIME |         4 | Y        | date                    |           8 |                |            |              | 
+ owner |      table_name      | column_name | column_id |        data_type        | data_type_mod | data_type_owner | data_length | data_precision | data_scale | nullable | column_default | data_default | num_distinct | low_value | high_value | density | num_nulls | num_buckets | last_analyzed | sample_size | character_set_name | char_col_decl_length | global_stats | user_stats | avg_col_len | char_length | char_used | v80_fmt_image | data_upgraded | histogram | default_length | nullable_column_id | collation_name | collation_schema | collation_owner | identity_column | segment_created | lob_format | lob_precision | lob_length | nested | hidden_column | virtual_column | segment_id | sensitive_column 
+-------+----------------------+-------------+-----------+-------------------------+---------------+-----------------+-------------+----------------+------------+----------+----------------+--------------+--------------+-----------+------------+---------+-----------+-------------+---------------+-------------+--------------------+----------------------+--------------+------------+-------------+-------------+-----------+---------------+---------------+-----------+----------------+--------------------+----------------+------------------+-----------------+-----------------+-----------------+------------+---------------+------------+--------+---------------+----------------+------------+------------------
+ XLY   | TEST_ALL_TAB_COLUMNS | ID          |         1 | pg_catalog.int4         |               |                 |           4 |              4 |            | N        |                |              |              |           |            |         |           |             |               |             |                    |                      |              |            |             |             |           |               |               |           |                |                    |                |                  |                 |                 |                 |            |               |            |        |               |                |            | 
+ XLY   | TEST_ALL_TAB_COLUMNS | NAME        |         2 | varchar2(50)            |               |                 |          -1 |                |         50 | N        |                |              |              |           |            |         |           |             |               |             |                    |                      |              |            |             |             |           |               |               |           |                |                    |                |                  |                 |                 |                 |            |               |            |        |               |                |            | 
+ XLY   | TEST_ALL_TAB_COLUMNS | AGE         |         3 | pg_catalog.numeric(5,2) |               |                 |          -1 |                |     327682 | Y        |                |              |              |           |            |         |           |             |               |             |                    |                      |              |            |             |             |           |               |               |           |                |                    |                |                  |                 |                 |                 |            |               |            |        |               |                |            | 
+ XLY   | TEST_ALL_TAB_COLUMNS | CREATE_TIME |         4 | date                    |               |                 |           8 |                |            | Y        |                |              |              |           |            |         |           |             |               |             |                    |                      |              |            |             |             |           |               |               |           |                |                    |                |                  |                 |                 |                 |            |               |            |        |               |                |            | 
 (4 rows)
 
 -- Clean
