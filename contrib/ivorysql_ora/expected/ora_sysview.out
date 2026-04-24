@@ -181,22 +181,27 @@ ORDER BY NAME;
  listen_addresses | 2    |                        | localhost     | FALSE     | FALSE            | FALSE            | Sets the host name or IP address(es) to listen to.
 (5 rows)
 
--- Test ALL_TAB_COLUMNS
-DROP TABLE IF EXISTS test_user_cons;
-NOTICE:  table "test_user_cons" does not exist, skipping
-CREATE TABLE test_user_cons (
-    id int primary key,
-    name varchar(50) not null
+-- ALL_TAB_COLUMNS
+CREATE TABLE TEST_ALL_TAB_COLUMNS (
+    ID INT PRIMARY KEY,
+    NAME VARCHAR2(50) NOT NULL,
+    AGE NUMERIC(5,2),
+    CREATE_TIME DATE
 );
-SELECT OWNER, TABLE_NAME, COLUMN_NAME, COLUMN_ID,
-       DATA_TYPE, DATA_LENGTH, DATA_PRECISION, DATA_SCALE,
-       NULLABLE
-FROM ALL_TAB_COLUMNS
-WHERE TABLE_NAME = 'test_user_cons';
- owner  |   table_name   | column_name | column_id |   data_type    | data_length | data_precision | data_scale | nullable 
---------+----------------+-------------+-----------+----------------+-------------+----------------+------------+----------
- public | test_user_cons | id          |         1 | int4           |           4 |                |            | N
- public | test_user_cons | name        |         2 | oravarcharbyte |          -1 |                |            | N
-(2 rows)
+SELECT 
+    TABLE_NAME, COLUMN_NAME, COLUMN_ID, NULLABLE,
+    DATA_TYPE, DATA_LENGTH, DATA_PRECISION, DATA_SCALE,
+    DATA_DEFAULT, CHAR_LENGTH
+FROM SYS.ALL_TAB_COLUMNS
+WHERE TABLE_NAME = 'TEST_ALL_TAB_COLUMNS'
+ORDER BY COLUMN_ID;
+      table_name      | column_name | column_id | nullable |        data_type        | data_length | data_precision | data_scale | data_default | char_length 
+----------------------+-------------+-----------+----------+-------------------------+-------------+----------------+------------+--------------+-------------
+ TEST_ALL_TAB_COLUMNS | ID          |         1 | N        | pg_catalog.int4         |           4 |                |            |              | 
+ TEST_ALL_TAB_COLUMNS | NAME        |         2 | N        | varchar2(50)            |          -1 |                |            |              | 
+ TEST_ALL_TAB_COLUMNS | AGE         |         3 | Y        | pg_catalog.numeric(5,2) |          -1 |                |            |              | 
+ TEST_ALL_TAB_COLUMNS | CREATE_TIME |         4 | Y        | date                    |           8 |                |            |              | 
+(4 rows)
 
-DROP TABLE IF EXISTS test_user_cons;
+-- Clean
+DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
