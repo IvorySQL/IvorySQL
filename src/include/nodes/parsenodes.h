@@ -3912,6 +3912,9 @@ typedef enum ViewCheckOption
 	NO_CHECK_OPTION,
 	LOCAL_CHECK_OPTION,
 	CASCADED_CHECK_OPTION,
+	READ_ONLY_OPTION,			/* WITH READ ONLY (Oracle compat); only set
+								 * transiently in grammar actions, never stored
+								 * in ViewStmt.withCheckOption */
 } ViewCheckOption;
 
 typedef struct ViewStmt
@@ -3925,6 +3928,7 @@ typedef struct ViewStmt
 	char	   *stmt_literal;	/* the original text that defines the force view */
 	List	   *options;		/* options from WITH clause */
 	ViewCheckOption withCheckOption;	/* WITH CHECK OPTION */
+	bool		readOnly;		/* WITH READ ONLY (Oracle compat) */
 } ViewStmt;
 
 /* ----------------------

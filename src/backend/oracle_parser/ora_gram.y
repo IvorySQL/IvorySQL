@@ -12676,15 +12676,35 @@ ViewStmt: CREATE OptTemp OptViewForce VIEW qualified_name opt_column_list opt_re
 					n->replace = false;
 					n->force = $3;
 					n->options = $7;
-					n->withCheckOption = $10;
+					n->readOnly = ($10 == READ_ONLY_OPTION);
+					n->withCheckOption = n->readOnly ? NO_CHECK_OPTION : $10;
 					/*
 					 * Save the source text of the force view definition in ViewStmt to avoid
 					 * incorrectly obtaining the view definition when using a multi-statement
 					 * parser tree.
+					 *
+					 * When opt_check_option is non-empty (e.g. WITH READ ONLY), bison may
+					 * perform a default reduce for ViewStmt without advancing yylloc past the
+					 * last token of opt_check_option.  In that case yylloc points to the
+					 * start of ONLY, not to ';', and the naïve capture truncates the text.
+					 * For WITH READ ONLY we reconstruct the clause from @10 (start of WITH)
+					 * rather than relying on yylloc.
 					 */
-					stmt_iteral = pnstrdup(pg_yyget_extra(yyscanner)->core_yy_extra.scanbuf + @1, yylloc - @1);
-					n->stmt_literal = psprintf("%s;", stmt_iteral);
-					pfree(stmt_iteral);
+					{
+						const char *scanbuf = pg_yyget_extra(yyscanner)->core_yy_extra.scanbuf;
+
+						if (n->readOnly)
+						{
+							stmt_iteral = pnstrdup(scanbuf + @1, @10 - @1);
+							n->stmt_literal = psprintf("%sWITH READ ONLY;", stmt_iteral);
+						}
+						else
+						{
+							stmt_iteral = pnstrdup(scanbuf + @1, yylloc - @1);
+							n->stmt_literal = psprintf("%s;", stmt_iteral);
+						}
+						pfree(stmt_iteral);
+					}
 					$$ = (Node *) n;
 				}
 		| CREATE OR REPLACE OptTemp OptViewForce VIEW qualified_name opt_column_list opt_reloptions
@@ -12700,15 +12720,29 @@ ViewStmt: CREATE OptTemp OptViewForce VIEW qualified_name opt_column_list opt_re
 					n->replace = true;
 					n->force = $5;
 					n->options = $9;
-					n->withCheckOption = $12;
+					n->readOnly = ($12 == READ_ONLY_OPTION);
+					n->withCheckOption = n->readOnly ? NO_CHECK_OPTION : $12;
 					/*
 					 * Save the source text of the force view definition in ViewStmt to avoid
 					 * incorrectly obtaining the view definition when using a multi-statement
-					 * parser tree.
+					 * parser tree.  Same yylloc truncation issue as for the non-OR-REPLACE
+					 * variant above; fix by reconstructing WITH READ ONLY from @12.
 					 */
-					stmt_iteral = pnstrdup(pg_yyget_extra(yyscanner)->core_yy_extra.scanbuf + @1, yylloc - @1);
-					n->stmt_literal = psprintf("%s;", stmt_iteral);
-					pfree(stmt_iteral);
+					{
+						const char *scanbuf = pg_yyget_extra(yyscanner)->core_yy_extra.scanbuf;
+
+						if (n->readOnly)
+						{
+							stmt_iteral = pnstrdup(scanbuf + @1, @12 - @1);
+							n->stmt_literal = psprintf("%sWITH READ ONLY;", stmt_iteral);
+						}
+						else
+						{
+							stmt_iteral = pnstrdup(scanbuf + @1, yylloc - @1);
+							n->stmt_literal = psprintf("%s;", stmt_iteral);
+						}
+						pfree(stmt_iteral);
+					}
 					$$ = (Node *) n;
 				}
 		| CREATE OptTemp RECURSIVE VIEW qualified_name '(' columnList ')' opt_reloptions
@@ -12724,7 +12758,8 @@ ViewStmt: CREATE OptTemp OptViewForce VIEW qualified_name opt_column_list opt_re
 					n->force = false;
 					n->stmt_literal = NULL;
 					n->options = $9;
-					n->withCheckOption = $12;
+					n->readOnly = ($12 == READ_ONLY_OPTION);
+					n->withCheckOption = n->readOnly ? NO_CHECK_OPTION : $12;
 					if (n->withCheckOption != NO_CHECK_OPTION)
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -12745,7 +12780,8 @@ ViewStmt: CREATE OptTemp OptViewForce VIEW qualified_name opt_column_list opt_re
 					n->force = false;
 					n->stmt_literal= NULL;
 					n->options = $11;
-					n->withCheckOption = $14;
+					n->readOnly = ($14 == READ_ONLY_OPTION);
+					n->withCheckOption = n->readOnly ? NO_CHECK_OPTION : $14;
 					if (n->withCheckOption != NO_CHECK_OPTION)
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -12759,6 +12795,7 @@ opt_check_option:
 		WITH CHECK OPTION				{ $$ = CASCADED_CHECK_OPTION; }
 		| WITH CASCADED CHECK OPTION	{ $$ = CASCADED_CHECK_OPTION; }
 		| WITH LOCAL CHECK OPTION		{ $$ = LOCAL_CHECK_OPTION; }
+		| WITH READ ONLY				{ $$ = READ_ONLY_OPTION; }
 		| /* EMPTY */					{ $$ = NO_CHECK_OPTION; }
 		;
 
