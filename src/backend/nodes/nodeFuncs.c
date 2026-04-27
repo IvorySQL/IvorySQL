@@ -2637,6 +2637,8 @@ expression_tree_walker_impl(Node *node,
 			{
 				ForPortionOfExpr *forPortionOf = (ForPortionOfExpr *) node;
 
+				if (WALK(forPortionOf->rangeVar))
+					return true;
 				if (WALK(forPortionOf->targetFrom))
 					return true;
 				if (WALK(forPortionOf->targetTo))
@@ -2644,6 +2646,8 @@ expression_tree_walker_impl(Node *node,
 				if (WALK(forPortionOf->targetRange))
 					return true;
 				if (WALK(forPortionOf->overlapsExpr))
+					return true;
+				if (WALK(forPortionOf->rangeTargetList))
 					return true;
 			}
 			break;
