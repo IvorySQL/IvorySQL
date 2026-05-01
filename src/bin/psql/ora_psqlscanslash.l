@@ -250,8 +250,8 @@ other			.
 															 yytext + 1,
 															 yyleng - 1);
 						value = cur_state->oracallbacks->get_variable(varname,
-																   PQUOTE_PLAIN,
-																   cur_state->cb_passthrough);
+										   ORAPQUOTE_PLAIN,
+										   cur_state->cb_passthrough);
 						free(varname);
 
 						/*
@@ -276,7 +276,7 @@ other			.
 
 :'{variable_char}+'	{
 					ora_psqlscan_escape_variable(cur_state, yytext, yyleng,
-											 PQUOTE_SQL_LITERAL);
+										 ORAPQUOTE_SQL_LITERAL);
 					*option_quote = ':';
 					unquoted_option_chars = 0;
 				}
@@ -284,7 +284,7 @@ other			.
 
 :\"{variable_char}+\"	{
 					ora_psqlscan_escape_variable(cur_state, yytext, yyleng,
-											 PQUOTE_SQL_IDENT);
+										 ORAPQUOTE_SQL_IDENT);
 					*option_quote = ':';
 					unquoted_option_chars = 0;
 				}
@@ -389,8 +389,8 @@ other			.
 															 yytext + 1,
 															 yyleng - 1);
 						value = cur_state->oracallbacks->get_variable(varname,
-																   PQUOTE_PLAIN,
-																   cur_state->cb_passthrough);
+										   ORAPQUOTE_PLAIN,
+										   cur_state->cb_passthrough);
 						free(varname);
 
 						if (value)
@@ -405,7 +405,7 @@ other			.
 
 :'{variable_char}+'	{
 					ora_psqlscan_escape_variable(cur_state, yytext, yyleng,
-											 PQUOTE_SHELL_ARG);
+										 ORAPQUOTE_SHELL_ARG);
 				}
 
 :'{variable_char}*	{
