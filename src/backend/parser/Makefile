@@ -35,7 +35,8 @@ OBJS = \
 	parser.o \
 	scan.o \
 	scansup.o \
-	parse_package.o
+	parse_package.o \
+	parse_with_plsql.o
 
 include $(top_srcdir)/src/backend/common.mk
 

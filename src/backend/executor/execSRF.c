@@ -154,6 +154,7 @@ ExecMakeTableFunctionResult(SetExprState *setexpr,
 			funcexpr->funccollid = chcollationoid;
 		}
 		else if (!FUNC_EXPR_FROM_PG_PROC(funcexpr->function_from) &&
+				funcexpr->function_from != FUNC_FROM_WITH_CLAUSE &&
 				subproc_should_change_return_type(funcexpr,
 									&resulttype,
 									&chtypmod,

@@ -796,12 +796,55 @@ other			.
 				}
 
 ";"				{
+					bool	skip_this_semi = false;
+
 					/* update Symbol State */
 					if (cur_state->ora_plsql_expect_end_symbol == END_SYMBOL_SEMICOLON)
-						cur_state->ora_plsql_expect_end_symbol = END_SYMBOL_SLASH;
-					
+					{
+						if (cur_state->identifiers[0] == 'w' ||
+							cur_state->identifiers[0] == 'e')
+						{
+							/*
+							 * WITH FUNCTION/PROCEDURE (or EXPLAIN WITH FUNCTION/PROCEDURE):
+							 * this END; closes one function/procedure body.  The statement
+							 * continues — either with another FUNCTION/PROCEDURE definition
+							 * or with the actual SELECT/INSERT/etc.
+							 *
+							 * Reset cancel so that keywords in the query portion
+							 * (SELECT, FROM, ...) do not suppress termination.
+							 * Keep identifiers[0] so the identifier rule can
+							 * re-arm cancel when it sees the next FUNCTION/PROCEDURE.
+							 * For the plain WITH case (identifiers[0]='w') reset
+							 * identifier_count to 1; for EXPLAIN WITH (identifiers[0]='e')
+							 * keep identifiers[1]='w' and reset from position 2 onward so
+							 * the next FUNCTION/PROCEDURE re-triggers the EXPLAIN WITH check.
+							 */
+							cur_state->cancel_semicolon_terminator = false;
+							cur_state->ora_plsql_expect_end_symbol = END_SYMBOL_INVALID;
+							if (cur_state->identifiers[0] == 'e')
+							{
+								/* EXPLAIN WITH: preserve [0]='e' and [1]='w' */
+								cur_state->identifiers[2] = 0;
+								cur_state->identifiers[3] = 0;
+								cur_state->identifier_count = 2;
+							}
+							else
+							{
+								/* plain WITH: preserve [0]='w' */
+								cur_state->identifiers[1] = 0;
+								cur_state->identifiers[2] = 0;
+								cur_state->identifiers[3] = 0;
+								cur_state->identifier_count = 1;
+							}
+							skip_this_semi = true;
+						}
+						else
+							cur_state->ora_plsql_expect_end_symbol = END_SYMBOL_SLASH;
+					}
+
 					ECHO;
-					if (cur_state->paren_depth == 0 &&
+					if (!skip_this_semi &&
+							cur_state->paren_depth == 0 &&
 							cur_state->begin_depth == 0 &&
 							!cur_state->cancel_semicolon_terminator)
 					{
@@ -1080,9 +1123,11 @@ other			.
 						memset(cur_state->identifiers, 0, sizeof(cur_state->identifiers));
 
 					if (pg_strcasecmp(yytext, "create") == 0 ||
+						pg_strcasecmp(yytext, "explain") == 0 ||
+						pg_strcasecmp(yytext, "with") == 0 ||
 						pg_strcasecmp(yytext, "function") == 0 ||
 						pg_strcasecmp(yytext, "procedure") == 0 ||
-						pg_strcasecmp(yytext, "package") == 0 || 
+						pg_strcasecmp(yytext, "package") == 0 ||
 						pg_strcasecmp(yytext, "or") == 0 ||
 						pg_strcasecmp(yytext, "replace") == 0)
 					{
@@ -1096,15 +1141,25 @@ other			.
 					/*
 					 * Simply discard EDITIONABLE and NONEDITIONABLE that occur in
 					 * the first 4 identifiers at the beginning of the command.
+					 * Also discard identifiers inside parentheses — this lets
+					 * EXPLAIN (COSTS OFF) WITH FUNCTION be recognized by the
+					 * scanner even though options appear between EXPLAIN and WITH.
 					 */
 					if (pg_strcasecmp(yytext, "editionable") != 0 &&
-						pg_strcasecmp(yytext, "noneditionable") != 0)
+						pg_strcasecmp(yytext, "noneditionable") != 0 &&
+						cur_state->paren_depth == 0)
 						cur_state->identifier_count++;
 
-					if (cur_state->identifiers[0] == 'c' &&
-						(cur_state->identifiers[1] == 'f' || cur_state->identifiers[1] == 'p' ||
-						 (cur_state->identifiers[1] == 'o' && cur_state->identifiers[2] == 'r' &&
-						  (cur_state->identifiers[3] == 'f' || cur_state->identifiers[3] == 'p'))) &&
+					if (((cur_state->identifiers[0] == 'c' &&
+						  (cur_state->identifiers[1] == 'f' || cur_state->identifiers[1] == 'p' ||
+						   (cur_state->identifiers[1] == 'o' && cur_state->identifiers[2] == 'r' &&
+							(cur_state->identifiers[3] == 'f' || cur_state->identifiers[3] == 'p')))) ||
+						 (cur_state->identifiers[0] == 'w' &&
+						  (cur_state->identifiers[1] == 'f' || cur_state->identifiers[1] == 'p')) ||
+						 /* EXPLAIN WITH FUNCTION/PROCEDURE */
+						 (cur_state->identifiers[0] == 'e' &&
+						  cur_state->identifiers[1] == 'w' &&
+						  (cur_state->identifiers[2] == 'f' || cur_state->identifiers[2] == 'p'))) &&
 						cur_state->paren_depth == 0)
 					{
 						/*

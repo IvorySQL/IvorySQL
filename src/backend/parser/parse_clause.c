@@ -4063,7 +4063,12 @@ check_funcexpr_outparams(List *funcexprs)
 			if (argmodes == NULL)
 				continue;
 		}
-		else 
+		else if (func->function_from == FUNC_FROM_WITH_CLAUSE)
+		{
+			/* WITH-clause functions have no OUT params */
+			continue;
+		}
+		else
 		{
 			get_subproc_arg_info(func, &argtypes,
 										&argnames, &argmodes);

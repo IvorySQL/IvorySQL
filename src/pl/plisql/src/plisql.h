@@ -1311,6 +1311,9 @@ extern List
 		   *plisql_referenced_objects;	/* the elements in list are
 										 * ObjectAddress */
 
+/* Active WITH-clause function entries during WITH function execution (T10 recursive calls) */
+extern List *plisql_active_with_func_entries;
+
 /**********************************************************************
  * Function declarations
  **********************************************************************/
@@ -1321,7 +1324,8 @@ extern List
 extern PGDLLEXPORT PLiSQL_function * plisql_compile(FunctionCallInfo fcinfo,
 													bool forValidator);
 
-extern PLiSQL_function *plisql_compile_inline(char *proc_source, ParamListInfo inparams, bool fromcall);
+extern PLiSQL_function *plisql_compile_inline(char *proc_source, ParamListInfo inparams, bool fromcall,
+											  Oid initial_rettype, bool initial_is_proc);
 extern PGDLLEXPORT void plisql_parser_setup(struct ParseState *pstate,
 											PLiSQL_expr * expr);
 extern bool plisql_parse_word(char *paramname, char *word1, const char *yytxt,
