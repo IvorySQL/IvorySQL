@@ -1,0 +1,38 @@
+-- directory paths and dlsuffix are passed to us in environment variables
+\getenv libdir PG_LIBDIR
+\getenv dlsuffix PG_DLSUFFIX
+\set regresslib :libdir '/oraregress' :dlsuffix
+CREATE FUNCTION test_translation()
+    RETURNS void
+    AS :'regresslib'
+    LANGUAGE C;
+/
+-- We don't want to assume that the platform has any particular language
+-- installed, so we use a "translation" for the C locale.  However, gettext
+-- will short-circuit translation if lc_messages is just 'C'.  Fake it out
+-- by appending a codeset name.  Fortunately it seems that that need not
+-- match the actual database encoding.
+SET lc_messages = 'C.UTF-8';
+SELECT test_translation();
+NOTICE:  translated PRId64 = 424242424242
+NOTICE:  translated PRId32 = -1234
+NOTICE:  translated PRIdMAX = -123456789012
+NOTICE:  translated PRIdPTR = -9999
+NOTICE:  translated PRIu64 = 424242424242
+NOTICE:  translated PRIu32 = 4294966062
+NOTICE:  translated PRIuMAX = 123456789012
+NOTICE:  translated PRIuPTR = 9999
+NOTICE:  translated PRIx64 = 62c6d1a9b2
+NOTICE:  translated PRIx32 = fffffb2e
+NOTICE:  translated PRIxMAX = 1cbe991a14
+NOTICE:  translated PRIxPTR = 270f
+NOTICE:  translated PRIX64 = 62C6D1A9B2
+NOTICE:  translated PRIX32 = FFFFFB2E
+NOTICE:  translated PRIXMAX = 1CBE991A14
+NOTICE:  translated PRIXPTR = 270F
+ test_translation
+------------------
+ 
+(1 row)
+
+RESET lc_messages;

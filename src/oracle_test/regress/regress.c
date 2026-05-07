@@ -49,6 +49,10 @@
 #include "utils/rel.h"
 #include "utils/typcache.h"
 
+/* define our text domain for translations */
+#undef TEXTDOMAIN
+#define TEXTDOMAIN PG_TEXTDOMAIN("regress")
+
 #define EXPECT_TRUE(expr)	\
 	do { \
 		if (!(expr)) \
@@ -1147,6 +1151,84 @@ test_relpath(PG_FUNCTION_ARGS)
 	if (strlen(rpath.str) != REL_PATH_STR_MAXLEN)
 		elog(WARNING, "maximum length relpath is if length %zu instead of %zu",
 			 strlen(rpath.str), REL_PATH_STR_MAXLEN);
+
+	PG_RETURN_VOID();
+}
+
+/*
+ * Simple test to verify NLS support, particularly that the PRI* macros work.
+ */
+PG_FUNCTION_INFO_V1(test_translation);
+Datum
+test_translation(PG_FUNCTION_ARGS)
+{
+#ifdef ENABLE_NLS
+	static bool inited = false;
+
+	/*
+	 * Ideally we'd do this bit in a _PG_init() hook.  However, it seems best
+	 * that the Solaris hack only get applied in the nls.sql test, so it
+	 * doesn't risk affecting other tests that load this module.
+	 */
+	if (!inited)
+	{
+		/*
+		 * Solaris' built-in gettext is not bright about associating locales
+		 * with message catalogs that are named after just the language.
+		 * Apparently the customary workaround is for users to set the
+		 * LANGUAGE environment variable to provide a mapping.  Do so here to
+		 * ensure that the nls.sql regression test will work.
+		 */
+#if defined(__sun__)
+		setenv("LANGUAGE", "C.UTF-8:C", 1);
+#endif
+		pg_bindtextdomain(TEXTDOMAIN);
+		inited = true;
+	}
+#else
+	elog(NOTICE, "NLS is not enabled");
+
+	/*
+	 * In non-NLS builds, we still run the ereport calls, to verify that the
+	 * platform's PRI* macros are compatible with snprintf.c.
+	 */
+#endif
+
+	ereport(NOTICE,
+			errmsg("untranslated PRId64 = %" PRId64, (int64) 424242424242));
+	ereport(NOTICE,
+			errmsg("untranslated PRId32 = %" PRId32, (int32) -1234));
+	ereport(NOTICE,
+			errmsg("untranslated PRIdMAX = %" PRIdMAX, (intmax_t) -123456789012));
+	ereport(NOTICE,
+			errmsg("untranslated PRIdPTR = %" PRIdPTR, (intptr_t) -9999));
+
+	ereport(NOTICE,
+			errmsg("untranslated PRIu64 = %" PRIu64, (uint64) 424242424242));
+	ereport(NOTICE,
+			errmsg("untranslated PRIu32 = %" PRIu32, (uint32) -1234));
+	ereport(NOTICE,
+			errmsg("untranslated PRIuMAX = %" PRIuMAX, (uintmax_t) 123456789012));
+	ereport(NOTICE,
+			errmsg("untranslated PRIuPTR = %" PRIuPTR, (uintptr_t) 9999));
+
+	ereport(NOTICE,
+			errmsg("untranslated PRIx64 = %" PRIx64, (uint64) 424242424242));
+	ereport(NOTICE,
+			errmsg("untranslated PRIx32 = %" PRIx32, (uint32) -1234));
+	ereport(NOTICE,
+			errmsg("untranslated PRIxMAX = %" PRIxMAX, (uintmax_t) 123456789012));
+	ereport(NOTICE,
+			errmsg("untranslated PRIxPTR = %" PRIxPTR, (uintptr_t) 9999));
+
+	ereport(NOTICE,
+			errmsg("untranslated PRIX64 = %" PRIX64, (uint64) 424242424242));
+	ereport(NOTICE,
+			errmsg("untranslated PRIX32 = %" PRIX32, (uint32) -1234));
+	ereport(NOTICE,
+			errmsg("untranslated PRIXMAX = %" PRIXMAX, (uintmax_t) 123456789012));
+	ereport(NOTICE,
+			errmsg("untranslated PRIXPTR = %" PRIXPTR, (uintptr_t) 9999));
 
 	PG_RETURN_VOID();
 }
