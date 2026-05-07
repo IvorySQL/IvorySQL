@@ -1,0 +1,320 @@
+/*-------------------------------------------------------------------------
+ *
+ * parse_with_plsql.c
+ *    Oracle-compatible WITH FUNCTION / WITH PROCEDURE support — parse phase.
+ *
+ * This file implements the two parse-time phases of WITH-clause inline
+ * subprograms:
+ *
+ *   1. Parse-analysis (transformWithFuncDefs):
+ *        Resolves argument and return types, registers each function
+ *        signature in ParseState.p_with_func_list, and installs the
+ *        withFuncLookupHook so that subsequent expression analysis can
+ *        resolve calls to the inline functions before falling through to
+ *        the catalog.
+ *
+ *   2. Function call resolution (withFuncLookupHook):
+ *        Called from ParseFuncOrColumn() as the p_subprocfunc_hook.
+ *        Returns FUNCDETAIL_NORMAL / FUNCDETAIL_PROCEDURE when a WITH-
+ *        clause function matches, with funcid set to the function index
+ *        (not a catalog OID) and function_from = FUNC_FROM_WITH_CLAUSE.
+ *
+ * The execution-time compilation phase (Phase 3) lives in
+ * src/pl/plisql/src/pl_handler.c so that it can call plisql_compile_inline()
+ * without creating a dependency from the main backend on plisql.so.
+ *
+ * Copyright 2025 IvorySQL Global Development Team
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * src/backend/parser/parse_with_plsql.c
+ *
+ *-------------------------------------------------------------------------
+ */
+
+#include "postgres.h"
+
+#include "nodes/makefuncs.h"
+#include "nodes/nodeFuncs.h"
+#include "oracle_parser/ora_with_function.h"
+#include "parser/parse_coerce.h"
+#include "parser/parse_expr.h"
+#include "parser/parse_func.h"
+#include "parser/parse_type.h"
+#include "utils/guc.h"
+#include "utils/ora_compatible.h"
+
+/*
+ * EState fallback for recursive WITH function calls.  Set by plisql.so when
+ * executing a WITH function so that ExecInitFunc can use it when the
+ * expression is evaluated via PL/iSQL's simple-expression path (which creates
+ * ExprStates without a parent PlanState).
+ */
+struct EState *plisql_active_with_func_estate = NULL;
+
+/* -----------------------------------------------------------------------
+ * Internal helpers
+ * ----------------------------------------------------------------------- */
+
+/*
+ * resolveWithFuncArgTypes — resolve FunctionParameter list to an Oid list.
+ *
+ * Only IN and INOUT parameters are included; OUT-only parameters are skipped
+ * because they do not participate in call-site overload resolution.
+ */
+static List *
+resolveWithFuncArgTypes(ParseState *pstate, List *args)
+{
+	List	   *result = NIL;
+	ListCell   *lc;
+
+	foreach(lc, args)
+	{
+		FunctionParameter *fp = (FunctionParameter *) lfirst(lc);
+
+		if (fp->mode == FUNC_PARAM_OUT)
+			continue;
+
+		result = lappend_oid(result,
+							 typenameTypeId(pstate, fp->argType));
+	}
+
+	return result;
+}
+
+/*
+ * checkDuplicateWithFunc — error if funcname already registered with the
+ * same argument types (same overload).
+ */
+static void
+checkDuplicateWithFunc(List *func_list, WithFuncEntry * newentry)
+{
+	ListCell   *lc;
+
+	foreach(lc, func_list)
+	{
+		WithFuncEntry *existing = (WithFuncEntry *) lfirst(lc);
+
+		if (strcmp(existing->funcname, newentry->funcname) != 0)
+			continue;
+
+		if (list_length(existing->argtypes) != list_length(newentry->argtypes))
+			continue;
+
+		if (equal(existing->argtypes, newentry->argtypes))
+			ereport(ERROR,
+					(errcode(ERRCODE_DUPLICATE_FUNCTION),
+					 errmsg("WITH clause function \"%s\" is defined more than once with the same argument types",
+							newentry->funcname),
+					 parser_errposition(NULL, newentry->def->location)));
+	}
+}
+
+/* -----------------------------------------------------------------------
+ * Phase 1: parse-analysis
+ * ----------------------------------------------------------------------- */
+
+/*
+ * transformWithFuncDefs — process InlineFunctionDef nodes from the WITH
+ * clause during query semantic analysis.
+ *
+ * Called from transformWithClause() when WithClause.plsql_defs is non-NIL.
+ * Populates pstate->p_with_func_list and installs withFuncLookupHook.
+ */
+void
+transformWithFuncDefs(ParseState *pstate, List *plsql_defs)
+{
+	int			funcindex = 0;
+	ListCell   *lc;
+
+	Assert(ORA_PARSER == compatible_db);
+
+	foreach(lc, plsql_defs)
+	{
+		InlineFunctionDef *ifd = (InlineFunctionDef *) lfirst(lc);
+		WithFuncEntry *entry;
+
+		Assert(IsA(ifd, InlineFunctionDef));
+
+		entry = palloc(sizeof(WithFuncEntry));
+		entry->funcname = ifd->funcname;
+		entry->is_proc = ifd->is_proc;
+		entry->funcindex = funcindex++;
+		entry->def = ifd;
+
+		entry->argtypes = resolveWithFuncArgTypes(pstate, ifd->args);
+
+		/*
+		 * Count IN/INOUT parameters with DEFAULT and pre-analyze each default
+		 * expression in the current ParseState context.  Storing analyzed
+		 * expressions here avoids calling transformExpr inside the hook
+		 * (which runs in a narrower context and can trigger a crash).
+		 */
+		{
+			int			ndefaults = 0;
+			List	   *analyzed = NIL;
+			ListCell   *alc;
+
+			foreach(alc, ifd->args)
+			{
+				FunctionParameter *fp = (FunctionParameter *) lfirst(alc);
+
+				if (fp->mode == FUNC_PARAM_OUT)
+					continue;
+
+				if (fp->defexpr != NULL)
+				{
+					Node	   *expr = transformExpr(pstate,
+													 copyObject(fp->defexpr),
+													 EXPR_KIND_FUNCTION_DEFAULT);
+
+					analyzed = lappend(analyzed, expr);
+					ndefaults++;
+				}
+				else
+					analyzed = lappend(analyzed, NULL);
+			}
+			entry->ndefaults = ndefaults;
+			entry->analyzeddefaults = analyzed;
+		}
+
+		if (ifd->rettype != NULL)
+			entry->rettype = typenameTypeId(pstate, ifd->rettype);
+		else
+			entry->rettype = InvalidOid;
+
+		checkDuplicateWithFunc(pstate->p_with_func_list, entry);
+
+		pstate->p_with_func_list = lappend(pstate->p_with_func_list, entry);
+	}
+
+	if (pstate->p_subprocfunc_hook == NULL)
+		pstate->p_subprocfunc_hook = withFuncLookupHook;
+}
+
+/* -----------------------------------------------------------------------
+ * Phase 2: call-site resolution hook
+ * ----------------------------------------------------------------------- */
+
+/*
+ * withFuncLookupHook — ParseSubprocFuncHook implementation.
+ *
+ * Called from ParseFuncOrColumn() before any catalog lookup.  Returns
+ * FUNCDETAIL_NORMAL (or FUNCDETAIL_PROCEDURE) when a matching WITH-clause
+ * function is found; FUNCDETAIL_NOTFOUND otherwise.
+ */
+int
+withFuncLookupHook(ParseState *pstate,
+				   List *funcname,
+				   List **fargs,
+				   List *fargnames,
+				   int nargs,
+				   Oid *argtypes,
+				   bool expand_variadic,
+				   bool expand_defaults,
+				   bool proc_call,
+				   Oid *funcid,
+				   Oid *rettype,
+				   bool *retset,
+				   int *nvargs,
+				   Oid *vatype,
+				   Oid **true_typeids,
+				   List **argdefaults,
+				   void **pfunc)
+{
+	char	   *fname;
+	ListCell   *lc;
+
+	/* WITH-clause functions are always simple (unqualified) names */
+	if (list_length(funcname) != 1)
+		return FUNCDETAIL_NOTFOUND;
+
+	fname = strVal(linitial(funcname));
+
+	foreach(lc, pstate->p_with_func_list)
+	{
+		WithFuncEntry *entry = (WithFuncEntry *) lfirst(lc);
+		int			nentryargs;
+		int			i;
+		ListCell   *alc;
+
+		if (strcmp(entry->funcname, fname) != 0)
+			continue;
+
+		nentryargs = list_length(entry->argtypes);
+
+		/* Accept exact match or short call if trailing params have defaults */
+		if (nargs > nentryargs)
+			continue;
+		if (nargs < nentryargs && (nentryargs - nargs) > entry->ndefaults)
+			continue;
+
+		/* All provided argument types must be implicitly coercible */
+		i = 0;
+		foreach(alc, entry->argtypes)
+		{
+			Oid			expected = lfirst_oid(alc);
+
+			if (i >= nargs)
+				break;			/* remaining params covered by defaults */
+			if (!can_coerce_type(1, &argtypes[i], &expected, COERCION_IMPLICIT))
+				goto next_entry;
+			i++;
+		}
+
+		/* Match found — populate output parameters */
+		*funcid = (Oid) entry->funcindex;
+		*rettype = entry->rettype;
+		*retset = false;
+		*nvargs = 0;
+		*vatype = InvalidOid;
+		*pfunc = NULL;
+
+		/* Build true_typeids covering all nentryargs (provided + defaults) */
+		if (nentryargs > 0)
+		{
+			*true_typeids = (Oid *) palloc(nentryargs * sizeof(Oid));
+			i = 0;
+			foreach(alc, entry->argtypes)
+				(*true_typeids)[i++] = lfirst_oid(alc);
+		}
+		else
+			*true_typeids = NULL;
+
+		/*
+		 * If the call omits trailing defaulted parameters, append their
+		 * pre-analyzed default expressions to *fargs so the FuncExpr carries
+		 * all arguments.  parse_func.c will sync actual_arg_types from
+		 * declared_arg_types for these extra positions before coercion.
+		 */
+		if (nargs < nentryargs)
+		{
+			int			skip = 0;	/* IN/INOUT params seen so far */
+			ListCell   *dlc;
+
+			foreach(dlc, entry->analyzeddefaults)
+			{
+				Node	   *defexpr = (Node *) lfirst(dlc);
+
+				skip++;
+				if (skip <= nargs)
+					continue;	/* provided by caller */
+
+				Assert(defexpr != NULL);	/* ensured by earlier default
+											 * check */
+				*fargs = lappend(*fargs, copyObject(defexpr));
+			}
+		}
+
+		*argdefaults = NIL;
+
+		return entry->is_proc ? FUNCDETAIL_PROCEDURE : FUNCDETAIL_NORMAL;
+
+next_entry:;
+	}
+
+	return FUNCDETAIL_NOTFOUND;
+}

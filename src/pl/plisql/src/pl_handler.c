@@ -33,6 +33,11 @@
 #include "commands/packagecmds.h"
 #include "parser/parse_param.h"
 #include "utils/datum.h"
+#include "oracle_parser/ora_with_function.h"
+#include "executor/executor.h"
+#include "nodes/params.h"
+#include "parser/parse_type.h"
+#include "utils/typcache.h"
 
 
 static bool plisql_extra_checks_check_hook(char **newvalue, void **extra, GucSource source);
@@ -69,6 +74,9 @@ int			plisql_extra_errors;
 
 /* Hook for plugins */
 PLiSQL_plugin **plisql_plugin_ptr = NULL;
+
+/* Active WITH-clause entries during WITH function execution (enables recursive calls) */
+List *plisql_active_with_func_entries = NIL;
 
 
 static bool
@@ -262,6 +270,301 @@ _PG_fini(void)
 	plisql_unregister_internal_func();
 }
 
+/* -----------------------------------------------------------------------
+ * WITH clause inline function support (Phase 3: execution-time)
+ *
+ * buildWithFuncContainer and plisql_get_with_func live here (inside
+ * plisql.so) so they can call plisql_compile_inline() without creating a
+ * dependency from the main postgres binary on plisql internals.
+ * ----------------------------------------------------------------------- */
+
+/*
+ * buildParamListForFunc — build a ParamListInfo for plisql_compile_inline.
+ *
+ * Supplies parameter names and types to the PL/iSQL compiler so that each
+ * IN/INOUT parameter becomes a named variable accessible in the function body.
+ */
+static ParamListInfo
+buildParamListForFunc(List *args)
+{
+	int			nparams = 0;
+	int			i;
+	ListCell   *lc;
+	ParamListInfo paramLI;
+
+	foreach(lc, args)
+	{
+		FunctionParameter *fp = (FunctionParameter *) lfirst(lc);
+
+		if (fp->mode != FUNC_PARAM_OUT)
+			nparams++;
+	}
+
+	if (nparams == 0)
+		return NULL;
+
+	paramLI = makeParamList(nparams);
+	paramLI->paramnames = (char **) palloc0(nparams * sizeof(char *));
+
+	i = 0;
+	foreach(lc, args)
+	{
+		FunctionParameter *fp = (FunctionParameter *) lfirst(lc);
+		Oid			ptype;
+		int32		ptypmod;
+
+		if (fp->mode == FUNC_PARAM_OUT)
+			continue;
+
+		/*
+		 * Resolve both the type OID and the typmod so that declarations like
+		 * VARCHAR2(10) or NUMBER(5,2) are preserved on the parameter; using
+		 * typenameTypeId() alone would drop the user-supplied modifier and
+		 * leave ptypmod at its initial -1 ("no typmod") sentinel.
+		 */
+		typenameTypeIdAndMod(NULL, fp->argType, &ptype, &ptypmod);
+
+		paramLI->paramnames[i]       = fp->name;
+		paramLI->params[i].value     = (Datum) 0;
+		paramLI->params[i].isnull    = true;
+		paramLI->params[i].pflags    = 0;
+		paramLI->params[i].ptype     = ptype;
+		paramLI->params[i].ptypmod   = ptypmod;
+		paramLI->params[i].pmode     = (char) fp->mode;
+		i++;
+	}
+
+	return paramLI;
+}
+
+/*
+ * buildWithFuncEntries — build a WithFuncEntry list from withFuncDefs.
+ *
+ * Creates the same descriptor structs that transformWithFuncDefs() builds at
+ * parse time, but at execution time from the already-serialised InlineFunctionDef
+ * list.  Stored in WithFuncContainer.func_entries so that
+ * plisql_active_with_func_entries can be set while each WITH function executes,
+ * allowing recursive and mutually-recursive calls (T10).
+ */
+static List *
+buildWithFuncEntries(List *withFuncDefs)
+{
+	List	   *result = NIL;
+	int			funcindex = 0;
+	ListCell   *lc;
+
+	foreach(lc, withFuncDefs)
+	{
+		InlineFunctionDef *ifd = (InlineFunctionDef *) lfirst(lc);
+		WithFuncEntry *entry;
+		List	   *argtypes = NIL;
+		ListCell   *alc;
+
+		foreach(alc, ifd->args)
+		{
+			FunctionParameter *fp = (FunctionParameter *) lfirst(alc);
+
+			if (fp->mode != FUNC_PARAM_OUT)
+				argtypes = lappend_oid(argtypes,
+									   typenameTypeId(NULL, fp->argType));
+		}
+
+		entry = palloc(sizeof(WithFuncEntry));
+		entry->funcname  = pstrdup(ifd->funcname);
+		entry->argtypes  = argtypes;
+		entry->rettype   = (ifd->rettype != NULL)
+						   ? typenameTypeId(NULL, ifd->rettype)
+						   : InvalidOid;
+		entry->is_proc   = ifd->is_proc;
+		entry->funcindex = funcindex++;
+		entry->def       = ifd;
+
+		result = lappend(result, entry);
+	}
+
+	return result;
+}
+
+/*
+ * fixupCompiledReturnType — patch fn_rettype after plisql_compile_inline.
+ *
+ * plisql_compile_inline always sets fn_rettype = VOIDOID.  We fix that up
+ * so plisql_exec_function returns the correct type.
+ */
+static void
+fixupCompiledReturnType(PLiSQL_function *func, Oid rettype, bool is_proc)
+{
+	int16	typlen;
+	bool	typbyval;
+
+	if (is_proc || rettype == InvalidOid)
+	{
+		func->fn_rettype    = VOIDOID;
+		func->fn_retbyval   = true;
+		func->fn_rettyplen  = sizeof(int32);
+		func->fn_retistuple = false;
+		func->fn_retisdomain = false;
+		func->fn_prokind    = PROKIND_PROCEDURE;
+		return;
+	}
+
+	func->fn_rettype    = rettype;
+	func->fn_prokind    = PROKIND_FUNCTION;
+	func->fn_retset     = false;
+
+	get_typlenbyval(rettype, &typlen, &typbyval);
+	func->fn_rettyplen  = typlen;
+	func->fn_retbyval   = typbyval;
+	func->fn_retistuple = (typlen == -2 || type_is_rowtype(rettype));
+	func->fn_retisdomain = (get_typtype(rettype) == TYPTYPE_DOMAIN);
+}
+
+/* Error context callback for WITH FUNCTION compilation errors */
+typedef struct
+{
+	const char *funcname;
+	bool		is_proc;
+} WithFuncCompileErrCtx;
+
+static void
+with_func_compile_error_callback(void *arg)
+{
+	WithFuncCompileErrCtx *ctx = (WithFuncCompileErrCtx *) arg;
+
+	errcontext("while compiling WITH %s \"%s\"",
+			   ctx->is_proc ? "PROCEDURE" : "FUNCTION",
+			   ctx->funcname);
+}
+
+/*
+ * buildWithFuncContainer — compile all WITH-clause functions and return a
+ * container stored in EState.es_with_func_container.
+ *
+ * Called lazily on the first invocation of any WITH-clause function within
+ * a query execution.  Subsequent calls within the same query reuse the
+ * cached container.
+ */
+WithFuncContainer *
+buildWithFuncContainer(EState *estate)
+{
+	PlannedStmt    *pstmt = estate->es_plannedstmt;
+	MemoryContext   oldcxt;
+	MemoryContext   mcxt;
+	WithFuncContainer *container;
+	int				nfuncs;
+	int				i;
+	ListCell	   *lc;
+
+	Assert(pstmt->withFuncDefs != NIL);
+
+	nfuncs = list_length(pstmt->withFuncDefs);
+
+	mcxt = AllocSetContextCreate(estate->es_query_cxt,
+								 "WITH function container",
+								 ALLOCSET_DEFAULT_SIZES);
+	oldcxt = MemoryContextSwitchTo(mcxt);
+
+	container = palloc0(sizeof(WithFuncContainer));
+	container->nfuncs = nfuncs;
+	container->funcs  = palloc0(nfuncs * sizeof(PLiSQL_subproc_function *));
+	container->mcxt   = mcxt;
+	container->func_entries = buildWithFuncEntries(pstmt->withFuncDefs);
+
+	i = 0;
+	foreach(lc, pstmt->withFuncDefs)
+	{
+		InlineFunctionDef		*ifd = (InlineFunctionDef *) lfirst(lc);
+		ParamListInfo			 paramLI;
+		PLiSQL_function			*compiled;
+		PLiSQL_subproc_function *subprocfunc;
+		Oid						 rettype;
+		ErrorContextCallback	 errcallback;
+		WithFuncCompileErrCtx	 errctx;
+
+		/*
+		 * Set up error context so compilation errors name the function.
+		 *
+		 * Note: this push/pop pattern matches PG's plisql_compile in
+		 * pl_comp.c (lines 345-1239) which similarly does NOT wrap in
+		 * PG_TRY/PG_FINALLY.  If any of the calls below throws, the pop is
+		 * skipped and error_context_stack carries a dangling pointer until
+		 * postgres.c:4626 resets it at top-level command abort.  An earlier
+		 * attempt to wrap in PG_TRY/PG_FINALLY caused a segfault in T11
+		 * (interaction with PL/iSQL's internal EXCEPTION handler), so we
+		 * follow PG's established convention here.
+		 */
+		errctx.funcname = ifd->funcname;
+		errctx.is_proc  = ifd->is_proc;
+		errcallback.callback = with_func_compile_error_callback;
+		errcallback.arg		 = &errctx;
+		errcallback.previous = error_context_stack;
+		error_context_stack  = &errcallback;
+
+		paramLI  = buildParamListForFunc(ifd->args);
+		rettype = (ifd->rettype != NULL)
+				  ? typenameTypeId(NULL, ifd->rettype)
+				  : InvalidOid;
+		compiled = plisql_compile_inline(ifd->src, paramLI, false,
+										 rettype, ifd->is_proc);
+		fixupCompiledReturnType(compiled, rettype, ifd->is_proc);
+
+		/*
+		 * Tag the compiled function so plisql_parser_setup knows this body
+		 * is a WITH-clause inline subprogram and may see WITH-clause names.
+		 * Without this tag, lexical scope leaks into catalog functions
+		 * called from within a WITH-clause execution frame.
+		 */
+		compiled->is_with_clause_func = true;
+
+		error_context_stack = errcallback.previous;
+
+		subprocfunc = palloc0(sizeof(PLiSQL_subproc_function));
+		subprocfunc->fno       = i;
+		subprocfunc->func_name = pstrdup(ifd->funcname);
+		subprocfunc->is_proc   = ifd->is_proc;
+		subprocfunc->function  = compiled;
+		subprocfunc->src       = pstrdup(ifd->src);
+
+		container->funcs[i] = subprocfunc;
+		i++;
+	}
+
+	MemoryContextSwitchTo(oldcxt);
+
+	return container;
+}
+
+/*
+ * plisql_get_with_func — look up the compiled PLiSQL_function for a WITH-
+ * clause function call.
+ *
+ * Called from plisql_call_handler() when function_from == FUNC_FROM_WITH_CLAUSE.
+ * Builds the WithFuncContainer lazily on first call within a query.
+ */
+PLiSQL_function *
+plisql_get_with_func(FunctionCallInfo fcinfo)
+{
+	EState			  *estate;
+	WithFuncContainer *container;
+	int				   fno;
+
+	estate = (EState *) fcinfo->flinfo->fn_extra;
+	if (estate == NULL)
+		elog(ERROR, "WITH clause function has no executor state");
+
+	fno = (int) fcinfo->flinfo->fn_oid;
+
+	if (estate->es_with_func_container == NULL)
+		estate->es_with_func_container = buildWithFuncContainer(estate);
+
+	container = (WithFuncContainer *) estate->es_with_func_container;
+
+	if (fno < 0 || fno >= container->nfuncs)
+		elog(ERROR, "invalid WITH function index %d", fno);
+
+	return container->funcs[fno]->function;
+}
+
 /* ----------
  * plisql_call_handler
  *
@@ -284,6 +587,8 @@ plisql_call_handler(PG_FUNCTION_ARGS)
 	char		function_from = plisql_function_from(fcinfo);
 	int			oraparam_top_level = -1;
 	int			oraparam_cur_level = -1;
+	volatile List *save_with_func_entries = NIL;
+	volatile EState *save_with_func_estate = NULL;
 
 	nonatomic = fcinfo->context &&
 		IsA(fcinfo->context, CallContext) &&
@@ -300,6 +605,28 @@ plisql_call_handler(PG_FUNCTION_ARGS)
 	else if (function_from == FUNC_FROM_PACKAGE)
 	{
 		func = plisql_get_package_func(fcinfo, false);
+	}
+	else if (function_from == FUNC_FROM_WITH_CLAUSE)
+	{
+		func = plisql_get_with_func(fcinfo);
+
+		/*
+		 * Make WITH-clause entries and the owning EState visible during this
+		 * function's execution so that recursive and mutually-recursive calls
+		 * can be resolved.  We save/restore to handle nested WITH-clause
+		 * calls correctly.
+		 */
+		{
+			EState		   *wf_estate = (EState *) fcinfo->flinfo->fn_extra;
+			WithFuncContainer *wc =
+				(WithFuncContainer *) wf_estate->es_with_func_container;
+
+			save_with_func_entries = plisql_active_with_func_entries;
+			plisql_active_with_func_entries = wc->func_entries;
+
+			save_with_func_estate = plisql_active_with_func_estate;
+			plisql_active_with_func_estate = wf_estate;
+		}
 	}
 	else
 		func = plisql_compile(fcinfo, false);
@@ -352,6 +679,13 @@ plisql_call_handler(PG_FUNCTION_ARGS)
 	PG_FINALLY();
 	{
 		pop_oraparam_stack(oraparam_top_level - 1, oraparam_cur_level);
+
+		/* Restore WITH-clause globals saved before WITH function execution */
+		if (function_from == FUNC_FROM_WITH_CLAUSE)
+		{
+			plisql_active_with_func_entries = (List *) save_with_func_entries;
+			plisql_active_with_func_estate  = (EState *) save_with_func_estate;
+		}
 
 		/* Decrement use-count, restore cur_estate */
 		func->use_count--;
@@ -435,7 +769,8 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 	}
 
 	/* Compile the anonymous code block */
-	func = plisql_compile_inline(codeblock->source_text, codeblock->params, codeblock->do_from_call);
+	func = plisql_compile_inline(codeblock->source_text, codeblock->params, codeblock->do_from_call,
+								VOIDOID, false);
 
 	/* Record the active function for this SPI level. */
 	SPI_remember_func(func);

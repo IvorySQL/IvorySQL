@@ -1260,7 +1260,8 @@ do_compile(FunctionCallInfo fcinfo,
  * ----------
  */
 PLiSQL_function *
-plisql_compile_inline(char *proc_source, ParamListInfo inparams, bool fromcall)
+plisql_compile_inline(char *proc_source, ParamListInfo inparams, bool fromcall,
+					  Oid initial_rettype, bool initial_is_proc)
 {
 	yyscan_t	scanner;
 	struct compile_error_callback_arg cbarg;
@@ -1342,15 +1343,33 @@ plisql_compile_inline(char *proc_source, ParamListInfo inparams, bool fromcall)
 	Assert(plisql_curr_global_proper_level == 0);
 	plisql_saved_compile[cur_compile_func_level] = function;
 
-	/* Set up as though in a function returning VOID */
-	function->fn_rettype = VOIDOID;
-	function->fn_retset = false;
-	function->fn_retistuple = false;
-	function->fn_retisdomain = false;
-	function->fn_prokind = PROKIND_FUNCTION;
-	/* a bit of hardwired knowledge about type VOID here */
-	function->fn_retbyval = true;
-	function->fn_rettyplen = sizeof(int32);
+	/* Set return type; WITH-clause functions supply the real type up front */
+	if (initial_is_proc || initial_rettype == InvalidOid ||
+		initial_rettype == VOIDOID)
+	{
+		function->fn_rettype = VOIDOID;
+		function->fn_retset = false;
+		function->fn_retistuple = false;
+		function->fn_retisdomain = false;
+		function->fn_prokind = initial_is_proc ? PROKIND_PROCEDURE : PROKIND_FUNCTION;
+		/* a bit of hardwired knowledge about type VOID here */
+		function->fn_retbyval = true;
+		function->fn_rettyplen = sizeof(int32);
+	}
+	else
+	{
+		int16	typlen;
+		bool	typbyval;
+
+		function->fn_rettype = initial_rettype;
+		function->fn_retset = false;
+		function->fn_prokind = PROKIND_FUNCTION;
+		get_typlenbyval(initial_rettype, &typlen, &typbyval);
+		function->fn_rettyplen = typlen;
+		function->fn_retbyval = typbyval;
+		function->fn_retistuple = (typlen == -2 || type_is_rowtype(initial_rettype));
+		function->fn_retisdomain = (get_typtype(initial_rettype) == TYPTYPE_DOMAIN);
+	}
 
 	/*
 	 * Remember if function is STABLE/IMMUTABLE.  XXX would it be better to
@@ -1421,7 +1440,8 @@ plisql_compile_inline(char *proc_source, ParamListInfo inparams, bool fromcall)
 			function->fn_argvarnos[i] = argvariable->dno;
 		}
 
-		if (inparams->numParams > 0)
+		if (inparams->numParams > 0 &&
+			initial_rettype == VOIDOID && !initial_is_proc)
 			function->fn_prokind = PROKIND_ANONYMOUS_BLOCK;
 	}
 
@@ -1603,6 +1623,24 @@ plisql_parser_setup(struct ParseState *pstate, PLiSQL_expr * expr)
 	pstate->p_subprocfunc_hook = plisql_subprocfunc_ref;
 	/* no need to use p_coerce_param_hook */
 	pstate->p_ref_hook_state = expr;
+
+	/*
+	 * If we are currently executing a WITH-clause function, expose the WITH
+	 * function entries on this ParseState so that parse_func.c can resolve
+	 * recursive calls (and calls to sibling WITH functions) even though the
+	 * hook slot is occupied by plisql_subprocfunc_ref.
+	 *
+	 * Gate this on the *currently-being-compiled* function actually being a
+	 * WITH-clause inline subprogram.  Without this gate, lexical scope leaks:
+	 * a regular catalog PL/iSQL function called from inside a WITH-clause
+	 * frame would see the WITH-clause names because the globals are still
+	 * set across the nested call.  WITH names must remain local to the SQL
+	 * statement that defines them and to the inline subprograms themselves.
+	 */
+	if (plisql_active_with_func_entries != NIL &&
+		expr != NULL && expr->func != NULL &&
+		expr->func->is_with_clause_func)
+		pstate->p_with_func_list = plisql_active_with_func_entries;
 }
 
 /*

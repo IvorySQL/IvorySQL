@@ -2206,6 +2206,7 @@ ExecTypeFromTLInternal(List *targetList, bool hasrowid, bool skipjunk)
 				func->funccollid = chcollationoid;
 			}
 			else if (!FUNC_EXPR_FROM_PG_PROC(func->function_from) &&
+				func->function_from != FUNC_FROM_WITH_CLAUSE &&
 				subproc_should_change_return_type(func, &resulttype, &chtypmod, &chcollationoid))
 			{
 				typoid = resulttype;

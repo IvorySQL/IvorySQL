@@ -30,7 +30,9 @@
 #include "nodes/extensible.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
+#include "oracle_parser/ora_with_function.h"
 #include "parser/analyze.h"
+#include "parser/parse_type.h"
 #include "parser/parsetree.h"
 #include "rewrite/rewriteHandler.h"
 #include "storage/bufmgr.h"
@@ -67,6 +69,7 @@ explain_per_node_hook_type explain_per_node_hook = NULL;
 static void ExplainOneQuery(Query *query, int cursorOptions,
 							IntoClause *into, ExplainState *es,
 							ParseState *pstate, ParamListInfo params);
+static void ExplainPrintWithFunctions(ExplainState *es, PlannedStmt *pstmt);
 static void ExplainPrintJIT(ExplainState *es, int jit_flags,
 							JitInstrumentation *ji);
 static void ExplainPrintSerialize(ExplainState *es,
@@ -748,6 +751,148 @@ ExplainPrintSettings(ExplainState *es)
 }
 
 /*
+ * ExplainPrintWithFunctions -
+ *	  Append WITH FUNCTION / WITH PROCEDURE definitions to the EXPLAIN output.
+ *
+ * Only called (and meaningful) when the planned statement originated from an
+ * Oracle-mode query with inline subprogram definitions.  Each function is
+ * shown as "FUNCTION name(mode argname type, ...) RETURN rettype" (or
+ * "PROCEDURE name(...)" for procedures).
+ */
+static void
+ExplainPrintWithFunctions(ExplainState *es, PlannedStmt *pstmt)
+{
+	ListCell   *lc;
+
+	if (pstmt->withFuncDefs == NIL)
+		return;
+
+	if (es->format != EXPLAIN_FORMAT_TEXT)
+	{
+		ExplainOpenGroup("WITH Functions", "WITH Functions", false, es);
+
+		foreach(lc, pstmt->withFuncDefs)
+		{
+			InlineFunctionDef *ifd = (InlineFunctionDef *) lfirst(lc);
+			StringInfoData	sig;
+			ListCell	   *alc;
+			bool			first_arg = true;
+
+			initStringInfo(&sig);
+
+			ExplainOpenGroup("WITH Function", NULL, true, es);
+
+			ExplainPropertyText("Name", ifd->funcname, es);
+			ExplainPropertyText("Kind", ifd->is_proc ? "procedure" : "function", es);
+
+			/* Build signature string */
+			appendStringInfo(&sig, "%s(", ifd->funcname);
+			foreach(alc, ifd->args)
+			{
+				FunctionParameter *fp = (FunctionParameter *) lfirst(alc);
+
+				if (!first_arg)
+					appendStringInfoString(&sig, ", ");
+				first_arg = false;
+
+				switch (fp->mode)
+				{
+					case FUNC_PARAM_OUT:
+						appendStringInfoString(&sig, "OUT ");
+						break;
+					case FUNC_PARAM_INOUT:
+						appendStringInfoString(&sig, "IN OUT ");
+						break;
+					default:
+						break;
+				}
+
+				if (fp->name)
+					appendStringInfo(&sig, "%s ", fp->name);
+				appendStringInfoString(&sig, TypeNameToString(fp->argType));
+			}
+			appendStringInfoChar(&sig, ')');
+			if (!ifd->is_proc && ifd->rettype != NULL)
+				appendStringInfo(&sig, " RETURN %s",
+								 TypeNameToString(ifd->rettype));
+
+			ExplainPropertyText("Signature", sig.data, es);
+
+			if (es->verbose && ifd->src)
+				ExplainPropertyText("Body", ifd->src, es);
+
+			pfree(sig.data);
+
+			ExplainCloseGroup("WITH Function", NULL, true, es);
+		}
+
+		ExplainCloseGroup("WITH Functions", "WITH Functions", false, es);
+	}
+	else
+	{
+		foreach(lc, pstmt->withFuncDefs)
+		{
+			InlineFunctionDef *ifd = (InlineFunctionDef *) lfirst(lc);
+			StringInfoData	sig;
+			ListCell	   *alc;
+			bool			first_arg = true;
+
+			initStringInfo(&sig);
+
+			appendStringInfo(&sig, "WITH %s: %s(",
+							 ifd->is_proc ? "Procedure" : "Function",
+							 ifd->funcname);
+
+			foreach(alc, ifd->args)
+			{
+				FunctionParameter *fp = (FunctionParameter *) lfirst(alc);
+
+				if (!first_arg)
+					appendStringInfoString(&sig, ", ");
+				first_arg = false;
+
+				switch (fp->mode)
+				{
+					case FUNC_PARAM_OUT:
+						appendStringInfoString(&sig, "OUT ");
+						break;
+					case FUNC_PARAM_INOUT:
+						appendStringInfoString(&sig, "IN OUT ");
+						break;
+					default:
+						break;
+				}
+
+				if (fp->name)
+					appendStringInfo(&sig, "%s ", fp->name);
+				appendStringInfoString(&sig, TypeNameToString(fp->argType));
+			}
+			appendStringInfoChar(&sig, ')');
+			if (!ifd->is_proc && ifd->rettype != NULL)
+				appendStringInfo(&sig, " RETURN %s",
+								 TypeNameToString(ifd->rettype));
+
+			ExplainIndentText(es);
+			appendStringInfo(es->str, "%s\n", sig.data);
+
+			/*
+			 * In VERBOSE mode also show the function body, mirroring the
+			 * "Body" property emitted by the non-TEXT branch above.
+			 */
+			if (es->verbose && ifd->src)
+			{
+				es->indent++;
+				ExplainIndentText(es);
+				appendStringInfo(es->str, "Body: %s\n", ifd->src);
+				es->indent--;
+			}
+
+			pfree(sig.data);
+		}
+	}
+}
+
+/*
  * ExplainPrintPlan -
  *	  convert a QueryDesc's plan tree to text and append it to es->str
  *
@@ -802,6 +947,9 @@ ExplainPrintPlan(ExplainState *es, QueryDesc *queryDesc)
 		es->hide_workers = true;
 	}
 	ExplainNode(ps, NIL, NULL, NULL, es);
+
+	/* Show WITH FUNCTION / WITH PROCEDURE definitions if any */
+	ExplainPrintWithFunctions(es, queryDesc->plannedstmt);
 
 	/*
 	 * If requested, include information about GUC parameters with values that
