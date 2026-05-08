@@ -1659,8 +1659,11 @@ typedef struct InlineFunctionDef
  * WithClause -
  *	   representation of WITH clause
  *
- * Note: WithClause does not propagate into the Query representation;
- * but CommonTableExpr does.
+ * Note: the WithClause node itself does not propagate into the Query
+ * representation, but data derived from it does: CommonTableExpr entries
+ * are carried in Query.cteList as before, and (for ORA_PARSER) inline
+ * function/procedure definitions from plsql_defs are carried in
+ * Query.withFuncDefs.
  */
 typedef struct WithClause
 {
