@@ -129,7 +129,7 @@ transformWithClause(ParseState *pstate, WithClause *withClause)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("WITH FUNCTION/PROCEDURE is only supported in Oracle compatibility mode"),
-					 errhint("Set ivorysql.compatible_mode = ORA_PARSER to enable this feature.")));
+					 errhint("Set ivorysql.compatible_mode = oracle to enable this feature.")));
 		transformWithFuncDefs(pstate, withClause->plsql_defs);
 	}
 

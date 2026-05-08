@@ -246,11 +246,32 @@ withFuncLookupHook(ParseState *pstate,
 
 		nentryargs = list_length(entry->argtypes);
 
-		/* Accept exact match or short call if trailing params have defaults */
+		/* Accept exact match or short call if every omitted param is a
+		 * trailing defaulted parameter.  ndefaults alone is not sufficient:
+		 * defaults may be interspersed, and we must reject calls that omit
+		 * a parameter without a default. */
 		if (nargs > nentryargs)
 			continue;
-		if (nargs < nentryargs && (nentryargs - nargs) > entry->ndefaults)
-			continue;
+		if (nargs < nentryargs)
+		{
+			int			omitted = nentryargs - nargs;
+			int			trailing_defaults = 0;
+			int			j;
+
+			/*
+			 * Defaults are recorded positionally in entry->analyzeddefaults
+			 * (NULL where the IN/INOUT parameter has no default).  Scan from
+			 * the end and count contiguous trailing non-NULL entries.
+			 */
+			for (j = nentryargs - 1; j >= 0; j--)
+			{
+				if (list_nth(entry->analyzeddefaults, j) == NULL)
+					break;
+				trailing_defaults++;
+			}
+			if (omitted > trailing_defaults)
+				continue;
+		}
 
 		/* All provided argument types must be implicitly coercible */
 		i = 0;
@@ -285,12 +306,16 @@ withFuncLookupHook(ParseState *pstate,
 			*true_typeids = NULL;
 
 		/*
-		 * If the call omits trailing defaulted parameters, append their
-		 * pre-analyzed default expressions to *fargs so the FuncExpr carries
-		 * all arguments.  parse_func.c will sync actual_arg_types from
-		 * declared_arg_types for these extra positions before coercion.
+		 * If the caller asked us to expand defaults and the call omits
+		 * trailing defaulted parameters, append their pre-analyzed default
+		 * expressions to *fargs so the FuncExpr carries all arguments.
+		 * parse_func.c will sync actual_arg_types from declared_arg_types for
+		 * these extra positions before coercion.
+		 *
+		 * The trailing-defaults check above guarantees every omitted position
+		 * has a non-NULL default, so this loop never copies a NULL.
 		 */
-		if (nargs < nentryargs)
+		if (expand_defaults && nargs < nentryargs)
 		{
 			int			skip = 0;	/* IN/INOUT params seen so far */
 			ListCell   *dlc;
@@ -303,8 +328,6 @@ withFuncLookupHook(ParseState *pstate,
 				if (skip <= nargs)
 					continue;	/* provided by caller */
 
-				Assert(defexpr != NULL);	/* ensured by earlier default
-											 * check */
 				*fargs = lappend(*fargs, copyObject(defexpr));
 			}
 		}

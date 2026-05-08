@@ -287,18 +287,10 @@ _PG_fini(void)
 static ParamListInfo
 buildParamListForFunc(List *args)
 {
-	int			nparams = 0;
+	int			nparams = list_length(args);
 	int			i;
 	ListCell   *lc;
 	ParamListInfo paramLI;
-
-	foreach(lc, args)
-	{
-		FunctionParameter *fp = (FunctionParameter *) lfirst(lc);
-
-		if (fp->mode != FUNC_PARAM_OUT)
-			nparams++;
-	}
 
 	if (nparams == 0)
 		return NULL;
@@ -312,9 +304,6 @@ buildParamListForFunc(List *args)
 		FunctionParameter *fp = (FunctionParameter *) lfirst(lc);
 		Oid			ptype;
 		int32		ptypmod;
-
-		if (fp->mode == FUNC_PARAM_OUT)
-			continue;
 
 		/*
 		 * Resolve both the type OID and the typmod so that declarations like
@@ -358,15 +347,28 @@ buildWithFuncEntries(List *withFuncDefs)
 		InlineFunctionDef *ifd = (InlineFunctionDef *) lfirst(lc);
 		WithFuncEntry *entry;
 		List	   *argtypes = NIL;
+		List	   *analyzeddefaults = NIL;
 		ListCell   *alc;
 
 		foreach(alc, ifd->args)
 		{
 			FunctionParameter *fp = (FunctionParameter *) lfirst(alc);
 
-			if (fp->mode != FUNC_PARAM_OUT)
-				argtypes = lappend_oid(argtypes,
-									   typenameTypeId(NULL, fp->argType));
+			if (fp->mode == FUNC_PARAM_OUT)
+				continue;
+
+			argtypes = lappend_oid(argtypes,
+								   typenameTypeId(NULL, fp->argType));
+
+			/*
+			 * Default expressions are analyzed only at parse time
+			 * (transformWithFuncDefs) where a real ParseState exists.  Here
+			 * we have none, so record a NULL placeholder positionally aligned
+			 * with argtypes.  withFuncLookupHook indexes analyzeddefaults by
+			 * parameter position when nargs < nentryargs; without this the
+			 * field would be uninitialized and list_nth() would read garbage.
+			 */
+			analyzeddefaults = lappend(analyzeddefaults, NULL);
 		}
 
 		entry = palloc(sizeof(WithFuncEntry));
@@ -378,6 +380,8 @@ buildWithFuncEntries(List *withFuncDefs)
 		entry->is_proc   = ifd->is_proc;
 		entry->funcindex = funcindex++;
 		entry->def       = ifd;
+		entry->ndefaults = 0;
+		entry->analyzeddefaults = analyzeddefaults;
 
 		result = lappend(result, entry);
 	}
