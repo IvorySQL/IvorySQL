@@ -1280,29 +1280,22 @@ SELECT
     SYS.ORA_CASE_TRANS(PG_CLASS.RELNAME::VARCHAR2)::VARCHAR2(128) AS TABLE_NAME,
     SYS.ORA_CASE_TRANS(PG_ATTRIBUTE.ATTNAME::VARCHAR2)::VARCHAR2(128) AS COLUMN_NAME,
     PG_ATTRIBUTE.ATTNUM::NUMBER AS COLUMN_ID,
-    CASE
-        WHEN FORMAT_TYPE(PG_ATTRIBUTE.ATTTYPID, PG_ATTRIBUTE.ATTTYPMOD) LIKE 'character varying%' OR FORMAT_TYPE(PG_ATTRIBUTE.ATTTYPID, PG_ATTRIBUTE.ATTTYPMOD) LIKE 'varchar%' THEN 'VARCHAR2'
-        WHEN FORMAT_TYPE(PG_ATTRIBUTE.ATTTYPID, PG_ATTRIBUTE.ATTTYPMOD) LIKE 'character%' OR FORMAT_TYPE(PG_ATTRIBUTE.ATTTYPID, PG_ATTRIBUTE.ATTTYPMOD) LIKE 'char%' THEN 'CHAR'
-        WHEN FORMAT_TYPE(PG_ATTRIBUTE.ATTTYPID, PG_ATTRIBUTE.ATTTYPMOD) LIKE 'numeric%' OR FORMAT_TYPE(PG_ATTRIBUTE.ATTTYPID, PG_ATTRIBUTE.ATTTYPMOD) LIKE 'int%' THEN 'NUMBER'
-        WHEN FORMAT_TYPE(PG_ATTRIBUTE.ATTTYPID, PG_ATTRIBUTE.ATTTYPMOD) = 'text' THEN 'CLOB'
-        WHEN FORMAT_TYPE(PG_ATTRIBUTE.ATTTYPID, PG_ATTRIBUTE.ATTTYPMOD) = 'date' THEN 'DATE'
-        WHEN FORMAT_TYPE(PG_ATTRIBUTE.ATTTYPID, PG_ATTRIBUTE.ATTTYPMOD) LIKE 'timestamp%' THEN 'TIMESTAMP'
-        WHEN FORMAT_TYPE(PG_ATTRIBUTE.ATTTYPID, PG_ATTRIBUTE.ATTTYPMOD) = 'boolean' THEN 'NUMBER'
-        ELSE FORMAT_TYPE(PG_ATTRIBUTE.ATTTYPID, PG_ATTRIBUTE.ATTTYPMOD)
-    END::VARCHAR2(128) AS DATA_TYPE,
+
+    SYS.ORA_CASE_TRANS(pg_type.typname::VARCHAR2)::VARCHAR2(128) AS DATA_TYPE,
+
     NULL::VARCHAR2(3) AS DATA_TYPE_MOD,
     CASE
-        WHEN nsp_type.nspname IN ('pg_catalog', 'sys', 'information_schema') THEN NULL
-        ELSE SYS.ORA_CASE_TRANS(nsp_type.nspname::VARCHAR2)::VARCHAR2(128)
+        WHEN pg_namespace.nspname IN ('pg_catalog', 'sys', 'information_schema') THEN NULL
+        ELSE SYS.ORA_CASE_TRANS(pg_namespace.nspname::VARCHAR2)::VARCHAR2(128)
     END AS DATA_TYPE_OWNER,
 
     CASE
       WHEN PG_ATTRIBUTE.ATTtyPID = 'pg_catalog.date'::regtype THEN 7
       WHEN PG_ATTRIBUTE.ATTtyPID = 'pg_catalog.numeric'::regtype THEN 22
-      WHEN PG_TYPE.TYPNAME IN ('varchar','varchar2','nvarchar2','char','bpchar')
+      WHEN pg_type.typname IN ('varchar','varchar2','nvarchar2','char','bpchar')
            AND PG_ATTRIBUTE.ATTTYPMOD > 4 THEN PG_ATTRIBUTE.ATTTYPMOD - 4
       WHEN PG_ATTRIBUTE.ATTLEN = -1 THEN
-           CASE PG_TYPE.TYPNAME
+           CASE pg_type.typname
                 WHEN 'text' THEN 4000
                 WHEN 'blob' THEN 4000
                 WHEN 'clob' THEN 4000
@@ -1334,14 +1327,17 @@ SELECT
     CASE WHEN PG_ATTRIBUTE.ATTNOTNULL THEN 'N' ELSE 'Y' END::VARCHAR2(1) AS NULLABLE,
 
     def.adbin_text AS DATA_DEFAULT,
-    0::NUMERIC AS NUM_DISTINCT,
+
+    NULL::NUMERIC AS NUM_DISTINCT,
     NULL::RAW AS LOW_VALUE,
     NULL::RAW AS HIGH_VALUE,
-    0::NUMBER AS DENSITY,
-    (pg_stats.null_frac * pg_class.reltuples)::NUMERIC AS NUM_NULLS,
-    0::NUMBER AS NUM_BUCKETS,
-    TO_TIMESTAMP('1970-01-01', 'YYYY-MM-DD') AS LAST_ANALYZED,
-    0::NUMERIC AS SAMPLE_SIZE,
+    NULL::NUMERIC AS DENSITY,
+    NULL::NUMERIC AS NUM_NULLS,
+    NULL::NUMERIC AS NUM_BUCKETS,
+
+    pg_stat_get_last_analyze_time(pg_class.oid) AS LAST_ANALYZED,
+
+    NULL::NUMERIC AS SAMPLE_SIZE,
 
     CASE pg_client_encoding()
         WHEN 'UTF8'     THEN 'AL32UTF8'
@@ -1352,28 +1348,33 @@ SELECT
     END::VARCHAR2(128) AS CHARACTER_SET_NAME,
 
     CASE
-        WHEN PG_TYPE.TYPNAME = ANY(ARRAY['bpchar','varchar','varchar2','nvarchar2','nchar'])
+        WHEN pg_type.typname IN ('bpchar','varchar','varchar2','nvarchar2','nchar')
              AND PG_ATTRIBUTE.ATTTYPMOD > 4
              THEN PG_ATTRIBUTE.ATTTYPMOD - 4
         ELSE NULL
     END::NUMBER AS CHAR_COL_DECL_LENGTH,
     'YES'::VARCHAR2(3) AS GLOBAL_STATS,
     'NO'::VARCHAR2(3) AS USER_STATS,
-    COALESCE(pg_stats.avg_width, 0)::NUMERIC AS AVG_COL_LEN,
+
+    (SELECT stawidth::NUMERIC
+     FROM pg_statistic
+     WHERE starelid = pg_class.oid
+       AND staattnum = pg_attribute.attnum
+       AND stainherit = false) AS AVG_COL_LEN,
+
     CASE
-        WHEN PG_TYPE.TYPNAME = ANY(ARRAY['bpchar','varchar','varchar2','nchar'])
+        WHEN pg_type.typname IN ('bpchar','varchar','varchar2','nchar')
              AND PG_ATTRIBUTE.ATTTYPMOD > 4
              THEN PG_ATTRIBUTE.ATTTYPMOD - 4
         ELSE NULL
     END::NUMBER AS CHAR_LENGTH,
 
-    CASE WHEN PG_TYPE.TYPNAME = ANY(ARRAY['bpchar','char','varchar','varchar2','nvarchar2','nchar']) THEN 'B' ELSE NULL END::VARCHAR2(1) AS CHAR_USED,
-
+    CASE WHEN pg_type.typname IN ('bpchar','char','varchar','varchar2','nvarchar2','nchar') THEN 'B' ELSE NULL END::VARCHAR2(1) AS CHAR_USED,
     'NO'::VARCHAR2(10) AS V80_FMT_IMAGE,
     'NO'::VARCHAR2(10) AS DATA_UPGRADED,
     'NONE'::VARCHAR2(10) AS HISTOGRAM,
-    def.adbin_clen AS DEFAULT_LENGTH,
 
+    def.adbin_clen AS DEFAULT_LENGTH,
     NULL::VARCHAR2(128) AS COLLATION_NAME,
     'NO'::VARCHAR2(10) AS IDENTITY_COLUMN,
     'YES'::VARCHAR2(10) AS SEGMENT_CREATED,
@@ -1389,12 +1390,7 @@ SELECT
 FROM PG_CLASS
 JOIN PG_NAMESPACE ON PG_CLASS.RELNAMESPACE = PG_NAMESPACE.OID
 JOIN PG_ATTRIBUTE ON PG_CLASS.OID = PG_ATTRIBUTE.ATTRELID
-JOIN PG_TYPE ON PG_TYPE.OID = PG_ATTRIBUTE.ATTTYPID
-LEFT JOIN pg_namespace nsp_type ON PG_TYPE.typnamespace = nsp_type.oid
-LEFT JOIN pg_stats
-    ON pg_stats.schemaname = PG_NAMESPACE.NSPNAME
-    AND pg_stats.tablename = PG_CLASS.RELNAME
-    AND pg_stats.attname = PG_ATTRIBUTE.ATTNAME
+JOIN pg_type ON pg_type.oid = PG_ATTRIBUTE.ATTTYPID  
 
 LEFT JOIN LATERAL (
     SELECT
