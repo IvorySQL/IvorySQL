@@ -182,6 +182,8 @@ ORDER BY NAME;
 (5 rows)
 
 -- ALL_TAB_COLUMNS
+DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+NOTICE:  table "test_all_tab_columns" does not exist, skipping
 CREATE TABLE TEST_ALL_TAB_COLUMNS (
     ID INT PRIMARY KEY,
     NAME VARCHAR2(50) NOT NULL,
@@ -233,13 +235,8 @@ SELECT
 FROM SYS.ALL_TAB_COLUMNS
 WHERE TABLE_NAME = 'TEST_ALL_TAB_COLUMNS'
 ORDER BY COLUMN_ID;
-      table_name      | column_name | column_id |   data_type    | data_type_mod | data_type_owner | data_length | data_precision | data_scale | nullable | data_default | num_distinct | low_value | high_value | density | num_nulls | num_buckets | last_analyzed | sample_size | character_set_name | char_col_decl_length | global_stats | user_stats | avg_col_len | char_length | char_used | v80_fmt_image | data_upgraded | histogram | default_length | collation_name | identity_column | segment_created | lob_format | lob_precision | lob_length | nested | hidden_column | virtual_column | segment_id | sensitive_column 
-----------------------+-------------+-----------+----------------+---------------+-----------------+-------------+----------------+------------+----------+--------------+--------------+-----------+------------+---------+-----------+-------------+---------------+-------------+--------------------+----------------------+--------------+------------+-------------+-------------+-----------+---------------+---------------+-----------+----------------+----------------+-----------------+-----------------+------------+---------------+------------+--------+---------------+----------------+------------+------------------
- TEST_ALL_TAB_COLUMNS | ID          | 1         | INT4           |               | PUBLIC          | 4           | 10             | 0          | N        |              |              |           |            |         |           |             |               |             | AL32UTF8           |                      | YES          | NO         |             |             |           | NO            | NO            | NONE      |                |                | NO              | YES             |            |               |            | NO     | NO            | NO             | 0          | NO
- TEST_ALL_TAB_COLUMNS | NAME        | 2         | ORAVARCHARBYTE |               | PUBLIC          | 0           |                |            | N        |              |              |           |            |         |           |             |               |             | AL32UTF8           |                      | YES          | NO         |             |             |           | NO            | NO            | NONE      |                |                | NO              | YES             |            |               |            | NO     | NO            | NO             | 0          | NO
- TEST_ALL_TAB_COLUMNS | AGE         | 3         | NUMERIC        |               | PUBLIC          | 22          | 5              | 2          | Y        |              |              |           |            |         |           |             |               |             | AL32UTF8           |                      | YES          | NO         |             |             |           | NO            | NO            | NONE      |                |                | NO              | YES             |            |               |            | NO     | NO            | NO             | 0          | NO
- TEST_ALL_TAB_COLUMNS | CREATE_TIME | 4         | ORADATE        |               | PUBLIC          | 8           |                |            | Y        |              |              |           |            |         |           |             |               |             | AL32UTF8           |                      | YES          | NO         |             |             |           | NO            | NO            | NONE      |                |                | NO              | YES             |            |               |            | NO     | NO            | NO             | 0          | NO
-(4 rows)
-
+ERROR:  "collation_name": invalid identifier
+LINE 32:     COLLATION_NAME,
+             ^
 -- Clean
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;

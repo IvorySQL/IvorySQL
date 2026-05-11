@@ -1284,24 +1284,56 @@ SELECT
     SYS.ORA_CASE_TRANS(pg_type.typname::VARCHAR2)::VARCHAR2(128) AS DATA_TYPE,
 
     NULL::VARCHAR2(3) AS DATA_TYPE_MOD,
-    CASE
-        WHEN pg_namespace.nspname IN ('pg_catalog', 'sys', 'information_schema') THEN NULL
-        ELSE SYS.ORA_CASE_TRANS(pg_namespace.nspname::VARCHAR2)::VARCHAR2(128)
-    END AS DATA_TYPE_OWNER,
+   	SYS.ORA_CASE_TRANS(PG_GET_USERBYID(pg_type.typowner)::VARCHAR2)::VARCHAR2(128) AS DATA_TYPE_OWNER,
 
     CASE
-      WHEN PG_ATTRIBUTE.ATTtyPID = 'pg_catalog.date'::regtype THEN 7
-      WHEN PG_ATTRIBUTE.ATTtyPID = 'pg_catalog.numeric'::regtype THEN 22
-      WHEN pg_type.typname IN ('varchar','varchar2','nvarchar2','char','bpchar')
-           AND PG_ATTRIBUTE.ATTTYPMOD > 4 THEN PG_ATTRIBUTE.ATTTYPMOD - 4
-      WHEN PG_ATTRIBUTE.ATTLEN = -1 THEN
-           CASE pg_type.typname
-                WHEN 'text' THEN 4000
-                WHEN 'blob' THEN 4000
-                WHEN 'clob' THEN 4000
-                ELSE 0
-           END
-      ELSE PG_ATTRIBUTE.ATTLEN
+      WHEN pg_type.typnamespace = 'sys'::regnamespace
+           AND pg_type.typname = 'number'                                    THEN 22
+
+      WHEN pg_type.typnamespace = 'sys'::regnamespace
+           AND pg_type.typname = 'oradate'                                   THEN 7
+
+      WHEN pg_type.typnamespace = 'sys'::regnamespace
+           AND pg_type.typname = 'oratimestamp'
+          THEN CASE WHEN PG_ATTRIBUTE.ATTTYPMOD = 0 THEN 7 ELSE 11 END
+      WHEN pg_type.typnamespace = 'sys'::regnamespace
+           AND pg_type.typname = 'oratimestamptz'                            THEN 13
+      WHEN pg_type.typnamespace = 'sys'::regnamespace
+           AND pg_type.typname = 'oratimestampltz'                           THEN 11
+
+      WHEN pg_type.typname = 'binary_float'                                  THEN 4
+      WHEN pg_type.typname = 'binary_double'                                 THEN 8
+
+      WHEN pg_type.typname IN ('oravarcharbyte','oracharbyte','raw')
+           AND PG_ATTRIBUTE.ATTTYPMOD > 4                                          THEN PG_ATTRIBUTE.ATTTYPMOD - 4
+
+      WHEN pg_type.typname IN ('oravarcharchar','oracharchar')
+           AND PG_ATTRIBUTE.ATTTYPMOD > 4
+          THEN (PG_ATTRIBUTE.ATTTYPMOD - 4) *
+               pg_catalog.pg_encoding_max_length(
+                   (SELECT d.encoding
+                      FROM pg_catalog.pg_database d
+                     WHERE d.datname = current_database()))
+
+      WHEN pg_type.typname IN ('clob','blob')                                THEN 4000
+
+      WHEN pg_type.typname = 'rowid'                                         THEN 10
+
+      WHEN PG_ATTRIBUTE.ATTTYPID = 'pg_catalog.int2'::regtype                      THEN 2
+      WHEN PG_ATTRIBUTE.ATTTYPID = 'pg_catalog.int4'::regtype                      THEN 4
+      WHEN PG_ATTRIBUTE.ATTTYPID = 'pg_catalog.int8'::regtype                      THEN 8
+      WHEN PG_ATTRIBUTE.ATTTYPID = 'pg_catalog.float4'::regtype                    THEN 4
+      WHEN PG_ATTRIBUTE.ATTTYPID = 'pg_catalog.float8'::regtype                    THEN 8
+
+      WHEN PG_ATTRIBUTE.ATTTYPID = 'pg_catalog.numeric'::regtype                   THEN 22
+
+      WHEN pg_type.typname IN ('varchar','bpchar')
+           AND PG_ATTRIBUTE.ATTTYPMOD > 4                                          THEN PG_ATTRIBUTE.ATTTYPMOD - 4
+
+      WHEN pg_type.typname IN ('text','xml','json','jsonb')                  THEN 4000
+
+      WHEN PG_ATTRIBUTE.ATTLEN > 0                                                 THEN PG_ATTRIBUTE.ATTLEN
+      ELSE 0
     END::NUMBER AS DATA_LENGTH,
 
     CASE
@@ -1332,20 +1364,19 @@ SELECT
     NULL::RAW AS LOW_VALUE,
     NULL::RAW AS HIGH_VALUE,
     NULL::NUMERIC AS DENSITY,
-    NULL::NUMERIC AS NUM_NULLS,
+
+    CASE WHEN pg_class.reltuples >= 0 
+         THEN (pg_stats.null_frac * pg_class.reltuples)::NUMERIC 
+         ELSE NULL 
+    END AS NUM_NULLS,
+
     NULL::NUMERIC AS NUM_BUCKETS,
 
     pg_stat_get_last_analyze_time(pg_class.oid) AS LAST_ANALYZED,
 
     NULL::NUMERIC AS SAMPLE_SIZE,
 
-    CASE pg_client_encoding()
-        WHEN 'UTF8'     THEN 'AL32UTF8'
-        WHEN 'LATIN1'   THEN 'WE8ISO8859P1'
-        WHEN 'GBK'      THEN 'ZHS16GBK'
-        WHEN 'GB18030'  THEN 'ZHS32GB18030'
-        ELSE pg_client_encoding()
-    END::VARCHAR2(128) AS CHARACTER_SET_NAME,
+    pg_catalog.current_setting('server_encoding')::varchar2(44) AS CHARACTER_SET_NAME,
 
     CASE
         WHEN pg_type.typname IN ('bpchar','varchar','varchar2','nvarchar2','nchar')
@@ -1372,11 +1403,11 @@ SELECT
     CASE WHEN pg_type.typname IN ('bpchar','char','varchar','varchar2','nvarchar2','nchar') THEN 'B' ELSE NULL END::VARCHAR2(1) AS CHAR_USED,
     'NO'::VARCHAR2(10) AS V80_FMT_IMAGE,
     'NO'::VARCHAR2(10) AS DATA_UPGRADED,
-    'NONE'::VARCHAR2(10) AS HISTOGRAM,
+    NULL::VARCHAR2(10) AS HISTOGRAM,
 
     def.adbin_clen AS DEFAULT_LENGTH,
-    NULL::VARCHAR2(128) AS COLLATION_NAME,
-    'NO'::VARCHAR2(10) AS IDENTITY_COLUMN,
+    NULL::VARCHAR2(128) AS COLLATION,
+    CASE WHEN pg_attribute.attidentity <> '' THEN 'YES' ELSE 'NO' END::VARCHAR2(10) AS IDENTITY_COLUMN,
     'YES'::VARCHAR2(10) AS SEGMENT_CREATED,
     NULL::VARCHAR2(10) AS LOB_FORMAT,
     NULL::NUMBER AS LOB_PRECISION,
@@ -1390,7 +1421,12 @@ SELECT
 FROM PG_CLASS
 JOIN PG_NAMESPACE ON PG_CLASS.RELNAMESPACE = PG_NAMESPACE.OID
 JOIN PG_ATTRIBUTE ON PG_CLASS.OID = PG_ATTRIBUTE.ATTRELID
-JOIN pg_type ON pg_type.oid = PG_ATTRIBUTE.ATTTYPID  
+JOIN pg_type ON pg_type.oid = PG_ATTRIBUTE.ATTTYPID
+
+LEFT JOIN pg_stats ON
+    pg_stats.schemaname = pg_namespace.nspname
+    AND pg_stats.tablename = pg_class.relname
+    AND pg_stats.attname = PG_ATTRIBUTE.attname
 
 LEFT JOIN LATERAL (
     SELECT
@@ -1401,9 +1437,9 @@ LEFT JOIN LATERAL (
 ) def ON true
 
 WHERE
-    PG_CLASS.RELKIND IN ('r','v','m')
+    PG_CLASS.RELKIND IN ('r','v','m','p','f')
     AND PG_ATTRIBUTE.ATTNUM > 0
     AND NOT PG_ATTRIBUTE.ATTISDROPPED
-    AND PG_NAMESPACE.NSPNAME NOT IN ('pg_catalog','pg_toast','information_schema')
-    AND has_table_privilege(current_user, pg_class.oid,
-         'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER');
+    AND PG_NAMESPACE.NSPNAME NOT IN ('pg_catalog','pg_toast','information_schema');
+
+GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
