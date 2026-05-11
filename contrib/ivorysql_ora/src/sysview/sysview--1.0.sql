@@ -1279,167 +1279,142 @@ SELECT
     SYS.ORA_CASE_TRANS(PG_GET_USERBYID(PG_CLASS.RELOWNER)::VARCHAR2)::VARCHAR2(128) AS OWNER,
     SYS.ORA_CASE_TRANS(PG_CLASS.RELNAME::VARCHAR2)::VARCHAR2(128) AS TABLE_NAME,
     SYS.ORA_CASE_TRANS(PG_ATTRIBUTE.ATTNAME::VARCHAR2)::VARCHAR2(128) AS COLUMN_NAME,
-    PG_ATTRIBUTE.ATTNUM::NUMBER AS COLUMN_ID,
+    PG_ATTRIBUTE.ATTNUM::NUMERIC AS COLUMN_ID,
 
-    SYS.ORA_CASE_TRANS(pg_type.typname::VARCHAR2)::VARCHAR2(128) AS DATA_TYPE,
-
+    SYS.ORA_CASE_TRANS(PG_TYPE.TYPNAME::VARCHAR2)::VARCHAR2(128) AS DATA_TYPE,
     NULL::VARCHAR2(3) AS DATA_TYPE_MOD,
-   	SYS.ORA_CASE_TRANS(PG_GET_USERBYID(pg_type.typowner)::VARCHAR2)::VARCHAR2(128) AS DATA_TYPE_OWNER,
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(PG_TYPE.TYPOWNER)::VARCHAR2)::VARCHAR2(128) AS DATA_TYPE_OWNER,
 
     CASE
-      WHEN pg_type.typnamespace = 'sys'::regnamespace
-           AND pg_type.typname = 'number'                                    THEN 22
-
-      WHEN pg_type.typnamespace = 'sys'::regnamespace
-           AND pg_type.typname = 'oradate'                                   THEN 7
-
-      WHEN pg_type.typnamespace = 'sys'::regnamespace
-           AND pg_type.typname = 'oratimestamp'
+      WHEN PG_TYPE.TYPNAMESPACE = 'SYS'::REGNAMESPACE AND PG_TYPE.TYPNAME = 'NUMBER'              THEN 22
+      WHEN PG_TYPE.TYPNAMESPACE = 'SYS'::REGNAMESPACE AND PG_TYPE.TYPNAME = 'ORADATE'             THEN 7
+      WHEN PG_TYPE.TYPNAMESPACE = 'SYS'::REGNAMESPACE AND PG_TYPE.TYPNAME = 'ORATIMESTAMP'
           THEN CASE WHEN PG_ATTRIBUTE.ATTTYPMOD = 0 THEN 7 ELSE 11 END
-      WHEN pg_type.typnamespace = 'sys'::regnamespace
-           AND pg_type.typname = 'oratimestamptz'                            THEN 13
-      WHEN pg_type.typnamespace = 'sys'::regnamespace
-           AND pg_type.typname = 'oratimestampltz'                           THEN 11
-
-      WHEN pg_type.typname = 'binary_float'                                  THEN 4
-      WHEN pg_type.typname = 'binary_double'                                 THEN 8
-
-      WHEN pg_type.typname IN ('oravarcharbyte','oracharbyte','raw')
-           AND PG_ATTRIBUTE.ATTTYPMOD > 4                                          THEN PG_ATTRIBUTE.ATTTYPMOD - 4
-
-      WHEN pg_type.typname IN ('oravarcharchar','oracharchar')
+      WHEN PG_TYPE.TYPNAMESPACE = 'SYS'::REGNAMESPACE AND PG_TYPE.TYPNAME = 'ORATIMESTAMPTZ'      THEN 13
+      WHEN PG_TYPE.TYPNAMESPACE = 'SYS'::REGNAMESPACE AND PG_TYPE.TYPNAME = 'ORATIMESTAMPLTZ'     THEN 11
+      WHEN PG_TYPE.TYPNAME = 'BINARY_FLOAT'                                                     THEN 4
+      WHEN PG_TYPE.TYPNAME = 'BINARY_DOUBLE'                                                    THEN 8
+      WHEN PG_TYPE.TYPNAME IN ('ORAVARCHARBYTE','ORACHARBYTE','RAW')
+           AND PG_ATTRIBUTE.ATTTYPMOD > 4                                                       THEN PG_ATTRIBUTE.ATTTYPMOD - 4
+      WHEN PG_TYPE.TYPNAME IN ('ORAVARCHARCHAR','ORACHARCHAR')
            AND PG_ATTRIBUTE.ATTTYPMOD > 4
-          THEN (PG_ATTRIBUTE.ATTTYPMOD - 4) *
-               pg_catalog.pg_encoding_max_length(
-                   (SELECT d.encoding
-                      FROM pg_catalog.pg_database d
-                     WHERE d.datname = current_database()))
-
-      WHEN pg_type.typname IN ('clob','blob')                                THEN 4000
-
-      WHEN pg_type.typname = 'rowid'                                         THEN 10
-
-      WHEN PG_ATTRIBUTE.ATTTYPID = 'pg_catalog.int2'::regtype                      THEN 2
-      WHEN PG_ATTRIBUTE.ATTTYPID = 'pg_catalog.int4'::regtype                      THEN 4
-      WHEN PG_ATTRIBUTE.ATTTYPID = 'pg_catalog.int8'::regtype                      THEN 8
-      WHEN PG_ATTRIBUTE.ATTTYPID = 'pg_catalog.float4'::regtype                    THEN 4
-      WHEN PG_ATTRIBUTE.ATTTYPID = 'pg_catalog.float8'::regtype                    THEN 8
-
-      WHEN PG_ATTRIBUTE.ATTTYPID = 'pg_catalog.numeric'::regtype                   THEN 22
-
-      WHEN pg_type.typname IN ('varchar','bpchar')
-           AND PG_ATTRIBUTE.ATTTYPMOD > 4                                          THEN PG_ATTRIBUTE.ATTTYPMOD - 4
-
-      WHEN pg_type.typname IN ('text','xml','json','jsonb')                  THEN 4000
-
-      WHEN PG_ATTRIBUTE.ATTLEN > 0                                                 THEN PG_ATTRIBUTE.ATTLEN
-      ELSE 0
-    END::NUMBER AS DATA_LENGTH,
+          THEN (PG_ATTRIBUTE.ATTTYPMOD - 4) * PG_CATALOG.PG_ENCODING_MAX_LENGTH(
+               (SELECT D.ENCODING FROM PG_CATALOG.PG_DATABASE D WHERE D.DATNAME = CURRENT_DATABASE()))
+      WHEN PG_TYPE.TYPNAME IN ('CLOB','BLOB')                                                  THEN 4000
+      WHEN PG_TYPE.TYPNAME = 'ROWID'                                                           THEN 10
+      WHEN PG_ATTRIBUTE.ATTTYPID = 'PG_CATALOG.INT2'::REGTYPE                                  THEN 2
+      WHEN PG_ATTRIBUTE.ATTTYPID = 'PG_CATALOG.INT4'::REGTYPE                                  THEN 4
+      WHEN PG_ATTRIBUTE.ATTTYPID = 'PG_CATALOG.INT8'::REGTYPE                                  THEN 8
+      WHEN PG_ATTRIBUTE.ATTTYPID = 'PG_CATALOG.FLOAT4'::REGTYPE                                THEN 4
+      WHEN PG_ATTRIBUTE.ATTTYPID = 'PG_CATALOG.FLOAT8'::REGTYPE                                THEN 8
+      WHEN PG_ATTRIBUTE.ATTTYPID = 'PG_CATALOG.NUMERIC'::REGTYPE                               THEN 22
+      WHEN PG_TYPE.TYPNAME IN ('VARCHAR','BPCHAR') AND PG_ATTRIBUTE.ATTTYPMOD > 4              THEN PG_ATTRIBUTE.ATTTYPMOD - 4
+      WHEN PG_TYPE.TYPNAME IN ('TEXT','XML','JSON','JSONB')                                   THEN 4000
+      WHEN PG_ATTRIBUTE.ATTLEN > 0                                                             THEN PG_ATTRIBUTE.ATTLEN
+    ELSE 0
+    END::NUMERIC AS DATA_LENGTH,
 
     CASE
-        WHEN PG_ATTRIBUTE.ATTTYPID = 'pg_catalog.int2'::regtype THEN 5
-        WHEN PG_ATTRIBUTE.ATTTYPID = 'pg_catalog.int4'::regtype THEN 10
-        WHEN PG_ATTRIBUTE.ATTTYPID = 'pg_catalog.int8'::regtype THEN 19
-        WHEN PG_ATTRIBUTE.ATTTYPID = 'pg_catalog.float4'::regtype THEN 63
-        WHEN PG_ATTRIBUTE.ATTTYPID = 'pg_catalog.float8'::regtype THEN 126
-        WHEN PG_ATTRIBUTE.ATTTYPID = 'pg_catalog.numeric'::regtype
-             AND PG_ATTRIBUTE.ATTTYPMOD > 4
+        WHEN PG_ATTRIBUTE.ATTTYPID = 'PG_CATALOG.INT2'::REGTYPE    THEN 5
+        WHEN PG_ATTRIBUTE.ATTTYPID = 'PG_CATALOG.INT4'::REGTYPE    THEN 10
+        WHEN PG_ATTRIBUTE.ATTTYPID = 'PG_CATALOG.INT8'::REGTYPE    THEN 19
+        WHEN PG_ATTRIBUTE.ATTTYPID = 'PG_CATALOG.FLOAT4'::REGTYPE  THEN 63
+        WHEN PG_ATTRIBUTE.ATTTYPID = 'PG_CATALOG.FLOAT8'::REGTYPE  THEN 126
+        WHEN PG_ATTRIBUTE.ATTTYPID = 'PG_CATALOG.NUMERIC'::REGTYPE AND PG_ATTRIBUTE.ATTTYPMOD > 4
              THEN (((PG_ATTRIBUTE.ATTTYPMOD - 4) >> 16) & 65535)::INT2
         ELSE NULL
-    END::NUMBER AS DATA_PRECISION,
+    END::NUMERIC AS DATA_PRECISION,
+
     CASE
-        WHEN PG_ATTRIBUTE.ATTTYPID = 'pg_catalog.numeric'::regtype
-             AND PG_ATTRIBUTE.ATTTYPMOD > 4
+        WHEN PG_ATTRIBUTE.ATTTYPID = 'PG_CATALOG.NUMERIC'::REGTYPE AND PG_ATTRIBUTE.ATTTYPMOD > 4
              THEN (PG_ATTRIBUTE.ATTTYPMOD - 4) & 65535
-        WHEN PG_ATTRIBUTE.ATTTYPID IN ('pg_catalog.int2'::regtype,
-                                      'pg_catalog.int4'::regtype,
-                                      'pg_catalog.int8'::regtype) THEN 0
+        WHEN PG_ATTRIBUTE.ATTTYPID IN ('PG_CATALOG.INT2'::REGTYPE, 'PG_CATALOG.INT4'::REGTYPE, 'PG_CATALOG.INT8'::REGTYPE) THEN 0
         ELSE NULL
-    END::NUMBER AS DATA_SCALE,
+    END::NUMERIC AS DATA_SCALE,
+
     CASE WHEN PG_ATTRIBUTE.ATTNOTNULL THEN 'N' ELSE 'Y' END::VARCHAR2(1) AS NULLABLE,
-
-    def.adbin_text AS DATA_DEFAULT,
-
+    DEF.ADBIN_TEXT AS DATA_DEFAULT,
     NULL::NUMERIC AS NUM_DISTINCT,
     NULL::RAW AS LOW_VALUE,
     NULL::RAW AS HIGH_VALUE,
     NULL::NUMERIC AS DENSITY,
 
-    CASE WHEN pg_class.reltuples >= 0 
-         THEN (pg_stats.null_frac * pg_class.reltuples)::NUMERIC 
-         ELSE NULL 
+    CASE WHEN PG_CLASS.RELTUPLES >= 0
+         THEN (PG_STATS.NULL_FRAC * PG_CLASS.RELTUPLES)::NUMERIC
+         ELSE NULL
     END AS NUM_NULLS,
 
     NULL::NUMERIC AS NUM_BUCKETS,
-
-    pg_stat_get_last_analyze_time(pg_class.oid) AS LAST_ANALYZED,
-
+    PG_STAT_GET_LAST_ANALYZE_TIME(PG_CLASS.OID) AS LAST_ANALYZED,
     NULL::NUMERIC AS SAMPLE_SIZE,
-
-    pg_catalog.current_setting('server_encoding')::varchar2(44) AS CHARACTER_SET_NAME,
+    PG_CATALOG.CURRENT_SETTING('SERVER_ENCODING')::VARCHAR2(44) AS CHARACTER_SET_NAME,
 
     CASE
-        WHEN pg_type.typname IN ('bpchar','varchar','varchar2','nvarchar2','nchar')
-             AND PG_ATTRIBUTE.ATTTYPMOD > 4
+        WHEN PG_TYPE.TYPNAME IN ('BPCHAR','VARCHAR','VARCHAR2','NVARCHAR2','NCHAR') AND PG_ATTRIBUTE.ATTTYPMOD > 4
              THEN PG_ATTRIBUTE.ATTTYPMOD - 4
         ELSE NULL
-    END::NUMBER AS CHAR_COL_DECL_LENGTH,
+    END::NUMERIC AS CHAR_COL_DECL_LENGTH,
+
     'YES'::VARCHAR2(3) AS GLOBAL_STATS,
     'NO'::VARCHAR2(3) AS USER_STATS,
 
-    (SELECT stawidth::NUMERIC
-     FROM pg_statistic
-     WHERE starelid = pg_class.oid
-       AND staattnum = pg_attribute.attnum
-       AND stainherit = false) AS AVG_COL_LEN,
+    (SELECT STAWIDTH::NUMERIC
+     FROM PG_STATISTIC
+     WHERE STARELID = PG_CLASS.OID
+       AND STAATTNUM = PG_ATTRIBUTE.ATTNUM
+       AND STAINHERIT = FALSE) AS AVG_COL_LEN,
 
     CASE
-        WHEN pg_type.typname IN ('bpchar','varchar','varchar2','nchar')
-             AND PG_ATTRIBUTE.ATTTYPMOD > 4
+        WHEN PG_TYPE.TYPNAME IN ('BPCHAR','VARCHAR','VARCHAR2','NCHAR') AND PG_ATTRIBUTE.ATTTYPMOD > 4
              THEN PG_ATTRIBUTE.ATTTYPMOD - 4
         ELSE NULL
-    END::NUMBER AS CHAR_LENGTH,
+    END::NUMERIC AS CHAR_LENGTH,
 
-    CASE WHEN pg_type.typname IN ('bpchar','char','varchar','varchar2','nvarchar2','nchar') THEN 'B' ELSE NULL END::VARCHAR2(1) AS CHAR_USED,
+    CASE WHEN PG_TYPE.TYPNAME IN ('BPCHAR','CHAR','VARCHAR','VARCHAR2','NVARCHAR2','NCHAR')
+         THEN 'B' ELSE NULL END::VARCHAR2(1) AS CHAR_USED,
+
     'NO'::VARCHAR2(10) AS V80_FMT_IMAGE,
     'NO'::VARCHAR2(10) AS DATA_UPGRADED,
     NULL::VARCHAR2(10) AS HISTOGRAM,
-
-    def.adbin_clen AS DEFAULT_LENGTH,
+    DEF.ADBIN_CLEN AS DEFAULT_LENGTH,
     NULL::VARCHAR2(128) AS COLLATION,
-    CASE WHEN pg_attribute.attidentity <> '' THEN 'YES' ELSE 'NO' END::VARCHAR2(10) AS IDENTITY_COLUMN,
+
+    CASE WHEN PG_ATTRIBUTE.ATTIDENTITY <> '' THEN 'YES' ELSE 'NO' END::VARCHAR2(10) AS IDENTITY_COLUMN,
     'YES'::VARCHAR2(10) AS SEGMENT_CREATED,
     NULL::VARCHAR2(10) AS LOB_FORMAT,
-    NULL::NUMBER AS LOB_PRECISION,
-    NULL::NUMBER AS LOB_LENGTH,
+    NULL::NUMERIC AS LOB_PRECISION,
+    NULL::NUMERIC AS LOB_LENGTH,
     'NO'::VARCHAR2(10) AS NESTED,
     'NO'::VARCHAR2(10) AS HIDDEN_COLUMN,
     CASE WHEN PG_ATTRIBUTE.ATTGENERATED <> '' THEN 'YES' ELSE 'NO' END::VARCHAR2(10) AS VIRTUAL_COLUMN,
-    0::NUMBER AS SEGMENT_ID,
+    0::NUMERIC AS SEGMENT_ID,
     'NO'::VARCHAR2(10) AS SENSITIVE_COLUMN
 
 FROM PG_CLASS
 JOIN PG_NAMESPACE ON PG_CLASS.RELNAMESPACE = PG_NAMESPACE.OID
 JOIN PG_ATTRIBUTE ON PG_CLASS.OID = PG_ATTRIBUTE.ATTRELID
-JOIN pg_type ON pg_type.oid = PG_ATTRIBUTE.ATTTYPID
+JOIN PG_TYPE ON PG_TYPE.OID = PG_ATTRIBUTE.ATTTYPID
 
-LEFT JOIN pg_stats ON
-    pg_stats.schemaname = pg_namespace.nspname
-    AND pg_stats.tablename = pg_class.relname
-    AND pg_stats.attname = PG_ATTRIBUTE.attname
+LEFT JOIN PG_STATS ON
+    PG_STATS.SCHEMANAME = PG_NAMESPACE.NSPNAME
+    AND PG_STATS.TABLENAME = PG_CLASS.RELNAME
+    AND PG_STATS.ATTNAME = PG_ATTRIBUTE.ATTNAME
 
 LEFT JOIN LATERAL (
     SELECT
-        pg_get_expr(adbin, adrelid) AS adbin_text,
-        CHAR_LENGTH(pg_get_expr(adbin, adrelid)) AS adbin_clen
-    FROM pg_attrdef
-    WHERE adrelid = pg_attribute.attrelid AND adnum = pg_attribute.attnum
-) def ON true
+        PG_GET_EXPR(ADBIN, ADRELID) AS ADBIN_TEXT,
+        CHAR_LENGTH(PG_GET_EXPR(ADBIN, ADRELID)) AS ADBIN_CLEN
+    FROM PG_ATTRDEF
+    WHERE ADRELID = PG_ATTRIBUTE.ATTRELID
+      AND ADNUM = PG_ATTRIBUTE.ATTNUM
+) DEF ON TRUE
 
 WHERE
     PG_CLASS.RELKIND IN ('r','v','m','p','f')
     AND PG_ATTRIBUTE.ATTNUM > 0
     AND NOT PG_ATTRIBUTE.ATTISDROPPED
-    AND PG_NAMESPACE.NSPNAME NOT IN ('pg_catalog','pg_toast','information_schema');
+    AND PG_NAMESPACE.NSPNAME NOT IN ('PG_CATALOG','PG_TOAST','INFORMATION_SCHEMA')
+    AND HAS_TABLE_PRIVILEGE(CURRENT_USER, PG_CLASS.OID,
+         'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER');
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
