@@ -48,9 +48,9 @@ NOTICE:  translated PRIX64 = 62C6D1A9B2
 NOTICE:  translated PRIX32 = FFFFFB2E
 NOTICE:  translated PRIXMAX = 1CBE991A14
 NOTICE:  translated PRIXPTR = 270F
- test_translation
+ test_translation 
 ------------------
-
+ 
 (1 row)
 
 RESET lc_messages;
