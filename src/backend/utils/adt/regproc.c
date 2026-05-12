@@ -26,12 +26,12 @@
 #include "catalog/namespace.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_collation.h"
+#include "catalog/pg_database.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_ts_config.h"
 #include "catalog/pg_ts_dict.h"
 #include "catalog/pg_type.h"
-#include "commands/dbcommands.h"
 #include "lib/stringinfo.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
@@ -75,6 +75,7 @@ regprocin(PG_FUNCTION_ARGS)
 	RegProcedure result;
 	List	   *names;
 	FuncCandidateList clist;
+	int			fgc_flags;
 
 	/* Handle "-" or numeric OID */
 	if (parseDashOrOid(pro_name_or_oid, &result, escontext))
@@ -97,7 +98,8 @@ regprocin(PG_FUNCTION_ARGS)
 	if (names == NIL)
 		PG_RETURN_NULL();
 
-	clist = FuncnameGetCandidates(names, -1, NIL, false, false, false, true);
+	clist = FuncnameGetCandidates(names, -1, NIL, false, false, false, true,
+								  &fgc_flags);
 
 	if (clist == NULL)
 		ereturn(escontext, (Datum) 0,
@@ -168,13 +170,15 @@ regprocout(PG_FUNCTION_ARGS)
 		{
 			char	   *nspname;
 			FuncCandidateList clist;
+			int			fgc_flags;
 
 			/*
 			 * Would this proc be found (uniquely!) by regprocin? If not,
 			 * qualify it.
 			 */
 			clist = FuncnameGetCandidates(list_make1(makeString(proname)),
-										  -1, NIL, false, false, false, false);
+										  -1, NIL, false, false, false, false,
+										  &fgc_flags);
 			if (clist != NULL && clist->next == NULL &&
 				clist->oid == proid)
 				nspname = NULL;
@@ -235,6 +239,7 @@ regprocedurein(PG_FUNCTION_ARGS)
 	int			nargs;
 	Oid			argtypes[FUNC_MAX_ARGS];
 	FuncCandidateList clist;
+	int			fgc_flags;
 
 	/* Handle "-" or numeric OID */
 	if (parseDashOrOid(pro_name_or_oid, &result, escontext))
@@ -255,8 +260,8 @@ regprocedurein(PG_FUNCTION_ARGS)
 							  escontext))
 		PG_RETURN_NULL();
 
-	clist = FuncnameGetCandidates(names, nargs, NIL, false, false,
-								  false, true);
+	clist = FuncnameGetCandidates(names, nargs, NIL, false, false, false, true,
+								  &fgc_flags);
 
 	for (; clist; clist = clist->next)
 	{
@@ -517,6 +522,7 @@ regoperin(PG_FUNCTION_ARGS)
 	Oid			result;
 	List	   *names;
 	FuncCandidateList clist;
+	int			fgc_flags;
 
 	/* Handle "0" or numeric OID */
 	if (parseNumericOid(opr_name_or_oid, &result, escontext))
@@ -536,7 +542,7 @@ regoperin(PG_FUNCTION_ARGS)
 	if (names == NIL)
 		PG_RETURN_NULL();
 
-	clist = OpernameGetCandidates(names, '\0', true);
+	clist = OpernameGetCandidates(names, '\0', true, &fgc_flags);
 
 	if (clist == NULL)
 		ereturn(escontext, (Datum) 0,
@@ -606,13 +612,14 @@ regoperout(PG_FUNCTION_ARGS)
 		else
 		{
 			FuncCandidateList clist;
+			int			fgc_flags;
 
 			/*
 			 * Would this oper be found (uniquely!) by regoperin? If not,
 			 * qualify it.
 			 */
 			clist = OpernameGetCandidates(list_make1(makeString(oprname)),
-										  '\0', false);
+										  '\0', false, &fgc_flags);
 			if (clist != NULL && clist->next == NULL &&
 				clist->oid == oprid)
 				result = pstrdup(oprname);

@@ -70,26 +70,22 @@
 
 #include "access/multixact.h"
 #include "access/slru.h"
-#include "access/transam.h"
 #include "access/twophase.h"
 #include "access/twophase_rmgr.h"
-#include "access/xact.h"
 #include "access/xlog.h"
 #include "access/xloginsert.h"
 #include "access/xlogutils.h"
-#include "commands/dbcommands.h"
-#include "funcapi.h"
-#include "lib/ilist.h"
 #include "miscadmin.h"
 #include "pg_trace.h"
 #include "pgstat.h"
 #include "postmaster/autovacuum.h"
+#include "storage/condition_variable.h"
 #include "storage/pmsignal.h"
 #include "storage/proc.h"
 #include "storage/procarray.h"
-#include "utils/fmgrprotos.h"
 #include "utils/guc_hooks.h"
 #include "utils/injection_point.h"
+#include "utils/lsyscache.h"
 #include "utils/memutils.h"
 
 
@@ -397,8 +393,6 @@ static MultiXactId mXactCacheGetBySet(int nmembers, MultiXactMember *members);
 static int	mXactCacheGetById(MultiXactId multi, MultiXactMember **members);
 static void mXactCachePut(MultiXactId multi, int nmembers,
 						  MultiXactMember *members);
-
-static char *mxstatus_to_string(MultiXactStatus status);
 
 /* management of SLRU infrastructure */
 static bool MultiXactOffsetPagePrecedes(int64 page1, int64 page2);
@@ -1747,7 +1741,7 @@ mXactCachePut(MultiXactId multi, int nmembers, MultiXactMember *members)
 	}
 }
 
-static char *
+char *
 mxstatus_to_string(MultiXactStatus status)
 {
 	switch (status)
@@ -2859,31 +2853,43 @@ find_multixact_start(MultiXactId multi, MultiXactOffset *result)
 }
 
 /*
- * Determine how many multixacts, and how many multixact members, currently
- * exist.  Return false if unable to determine.
+ * GetMultiXactInfo
+ *
+ * Returns information about the current MultiXact state, as of:
+ * multixacts: Number of MultiXacts (nextMultiXactId - oldestMultiXactId)
+ * members: Number of member entries (nextOffset - oldestOffset)
+ * oldestMultiXactId: Oldest MultiXact ID still in use
+ * oldestOffset: Oldest offset still in use
+ *
+ * Returns false if unable to determine, the oldest offset being unknown.
  */
-static bool
-ReadMultiXactCounts(uint32 *multixacts, MultiXactOffset *members)
+bool
+GetMultiXactInfo(uint32 *multixacts, MultiXactOffset *members,
+				 MultiXactId *oldestMultiXactId, MultiXactOffset *oldestOffset)
 {
 	MultiXactOffset nextOffset;
-	MultiXactOffset oldestOffset;
-	MultiXactId oldestMultiXactId;
 	MultiXactId nextMultiXactId;
 	bool		oldestOffsetKnown;
 
 	LWLockAcquire(MultiXactGenLock, LW_SHARED);
 	nextOffset = MultiXactState->nextOffset;
-	oldestMultiXactId = MultiXactState->oldestMultiXactId;
+	*oldestMultiXactId = MultiXactState->oldestMultiXactId;
 	nextMultiXactId = MultiXactState->nextMXact;
-	oldestOffset = MultiXactState->oldestOffset;
+	*oldestOffset = MultiXactState->oldestOffset;
 	oldestOffsetKnown = MultiXactState->oldestOffsetKnown;
 	LWLockRelease(MultiXactGenLock);
 
 	if (!oldestOffsetKnown)
+	{
+		*members = 0;
+		*multixacts = 0;
+		*oldestMultiXactId = InvalidMultiXactId;
+		*oldestOffset = 0;
 		return false;
+	}
 
-	*members = nextOffset - oldestOffset;
-	*multixacts = nextMultiXactId - oldestMultiXactId;
+	*members = nextOffset - *oldestOffset;
+	*multixacts = nextMultiXactId - *oldestMultiXactId;
 	return true;
 }
 
@@ -2922,9 +2928,11 @@ MultiXactMemberFreezeThreshold(void)
 	uint32		victim_multixacts;
 	double		fraction;
 	int			result;
+	MultiXactId oldestMultiXactId;
+	MultiXactOffset oldestOffset;
 
 	/* If we can't determine member space utilization, assume the worst. */
-	if (!ReadMultiXactCounts(&multixacts, &members))
+	if (!GetMultiXactInfo(&multixacts, &members, &oldestMultiXactId, &oldestOffset))
 		return 0;
 
 	/* If member space utilization is low, no special action is required. */
@@ -3412,68 +3420,6 @@ multixact_redo(XLogReaderState *record)
 	}
 	else
 		elog(PANIC, "multixact_redo: unknown op code %u", info);
-}
-
-Datum
-pg_get_multixact_members(PG_FUNCTION_ARGS)
-{
-	typedef struct
-	{
-		MultiXactMember *members;
-		int			nmembers;
-		int			iter;
-	} mxact;
-	MultiXactId mxid = PG_GETARG_TRANSACTIONID(0);
-	mxact	   *multi;
-	FuncCallContext *funccxt;
-
-	if (mxid < FirstMultiXactId)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("invalid MultiXactId: %u", mxid)));
-
-	if (SRF_IS_FIRSTCALL())
-	{
-		MemoryContext oldcxt;
-		TupleDesc	tupdesc;
-
-		funccxt = SRF_FIRSTCALL_INIT();
-		oldcxt = MemoryContextSwitchTo(funccxt->multi_call_memory_ctx);
-
-		multi = palloc(sizeof(mxact));
-		/* no need to allow for old values here */
-		multi->nmembers = GetMultiXactIdMembers(mxid, &multi->members, false,
-												false);
-		multi->iter = 0;
-
-		if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
-			elog(ERROR, "return type must be a row type");
-		funccxt->tuple_desc = tupdesc;
-		funccxt->attinmeta = TupleDescGetAttInMetadata(tupdesc);
-		funccxt->user_fctx = multi;
-
-		MemoryContextSwitchTo(oldcxt);
-	}
-
-	funccxt = SRF_PERCALL_SETUP();
-	multi = (mxact *) funccxt->user_fctx;
-
-	while (multi->iter < multi->nmembers)
-	{
-		HeapTuple	tuple;
-		char	   *values[2];
-
-		values[0] = psprintf("%u", multi->members[multi->iter].xid);
-		values[1] = mxstatus_to_string(multi->members[multi->iter].status);
-
-		tuple = BuildTupleFromCStrings(funccxt->attinmeta, values);
-
-		multi->iter++;
-		pfree(values[0]);
-		SRF_RETURN_NEXT(funccxt, HeapTupleGetDatum(tuple));
-	}
-
-	SRF_RETURN_DONE(funccxt);
 }
 
 /*

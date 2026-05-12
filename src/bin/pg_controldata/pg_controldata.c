@@ -168,7 +168,14 @@ main(int argc, char *argv[])
 
 	/* get a copy of the control file */
 	ControlFile = get_controlfile(DataDir, &crc_ok);
-	if (!crc_ok)
+	if (ControlFile->pg_control_version != PG_CONTROL_VERSION)
+	{
+		pg_log_warning("control file version (%u) does not match the version understood by this program (%u)",
+					   ControlFile->pg_control_version, PG_CONTROL_VERSION);
+		pg_log_warning_detail("Either the control file has been created with a different version of PostgreSQL, "
+							  "or it is corrupt.  The results below are untrustworthy.");
+	}
+	else if (!crc_ok)
 	{
 		pg_log_warning("calculated CRC checksum does not match value stored in control file");
 		pg_log_warning_detail("Either the control file is corrupt, or it has a different layout than this program "
@@ -318,6 +325,8 @@ main(int argc, char *argv[])
 		   ControlFile->blcksz);
 	printf(_("Blocks per segment of large relation: %u\n"),
 		   ControlFile->relseg_size);
+	printf(_("Pages per SLRU segment:               %u\n"),
+		   ControlFile->slru_pages_per_segment);
 	printf(_("WAL block size:                       %u\n"),
 		   ControlFile->xlog_blcksz);
 	printf(_("Bytes per WAL segment:                %u\n"),

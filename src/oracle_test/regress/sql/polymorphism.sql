@@ -827,6 +827,27 @@ select dfunc(1, 2, 3, 4);  -- ok
 drop function dfunc(int, int);
 drop function dfunc(int, int, int, int);
 
+create function xleast(x numeric, variadic arr numeric[])
+  returns numeric as $$
+  select least(x, min(arr[i])) from generate_subscripts(arr, 1) g(i);
+$$ language sql;
+/
+
+select xleast(x => 1, variadic arr => array[2,3]);
+select xleast(1, variadic arr => array[2,3]);
+
+set search_path = pg_catalog;
+select xleast(1, variadic arr => array[2,3]);  -- wrong schema
+reset search_path;
+select xleast(foo => 1, variadic arr => array[2,3]);  -- wrong argument name
+select xleast(x => 1, variadic array[2,3]);  -- misuse of mixed notation
+select xleast(1, variadic x => array[2,3]);  -- misuse of mixed notation
+select xleast(arr => array[1], variadic x => 3);  -- wrong arg is VARIADIC
+select xleast(arr => array[1], x => 3);  -- failed to use VARIADIC
+select xleast(arr => 1, variadic x => array[2,3]);  -- mixed-up args
+
+drop function xleast(x numeric, variadic arr numeric[]);
+
 -- default values are not allowed for output parameters
 create function dfunc(out int = 20) returns int as $$
   select 1;

@@ -1713,7 +1713,7 @@ check_for_not_null_inheritance(ClusterInfo *cluster)
 				 "If the parent column(s) are NOT NULL, then the child column must\n"
 				 "also be marked NOT NULL, or the upgrade will fail.\n"
 				 "You can fix this by running\n"
-				 "  ALTER TABLE tablename ALTER column SET NOT NULL;\n"
+				 "    ALTER TABLE tablename ALTER column SET NOT NULL;\n"
 				 "on each column listed in the file:\n"
 				 "    %s", report.path);
 	}
@@ -1971,14 +1971,19 @@ check_for_unicode_update(ClusterInfo *cluster)
 		"  SELECT oper.oid, oper.oprcode, collid FROM pg_operator oper, collations "
 		"  WHERE oprname IN ('~', '~*', '!~', '!~*', '~~*', '!~~*') AND "
 		"        oprnamespace='pg_catalog'::regnamespace AND "
-		"        oprright='text'::regtype "
+		"        oprright='pg_catalog.text'::pg_catalog.regtype "
 		"), "
 	/* functions that use the input collation for character semantics */
 		"coll_functions(procid, collid) AS ( "
 		"  SELECT proc.oid, collid FROM pg_proc proc, collations "
-		"  WHERE proname IN ('lower','initcap','upper') AND "
-		"        pronamespace='pg_catalog'::regnamespace AND "
-		"        proargtypes[0] = 'text'::regtype "
+		"  WHERE pronamespace='pg_catalog'::regnamespace AND "
+		"        ((proname IN ('lower','initcap','upper','casefold') AND "
+		"          pronargs = 1 AND "
+		"          proargtypes[0] = 'pg_catalog.text'::pg_catalog.regtype) OR "
+		"         (proname = 'substring' AND pronargs = 2 AND "
+		"          proargtypes[0] = 'pg_catalog.text'::pg_catalog.regtype AND "
+		"          proargtypes[1] = 'pg_catalog.text'::pg_catalog.regtype) OR "
+		"         proname LIKE 'regexp_%') "
 	/* include functions behind the operators listed above */
 		"  UNION "
 		"  SELECT procid, collid FROM coll_operators "

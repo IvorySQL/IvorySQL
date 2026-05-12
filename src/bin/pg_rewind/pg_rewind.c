@@ -147,6 +147,7 @@ main(int argc, char **argv)
 	TimeLineID	source_tli;
 	TimeLineID	target_tli;
 	XLogRecPtr	target_wal_endrec;
+	XLogSegNo	last_common_segno;
 	size_t		size;
 	char	   *buffer;
 	bool		no_ensure_shutdown = false;
@@ -299,10 +300,12 @@ main(int argc, char **argv)
 
 	atexit(disconnect_atexit);
 
-	/*
-	 * Ok, we have all the options and we're ready to start. First, connect to
-	 * remote server.
-	 */
+	/* Ok, we have all the options and we're ready to start. */
+	if (dry_run)
+		pg_log_info("Executing in dry-run mode.\n"
+					"The target directory will not be modified.");
+
+	/* First, connect to remote server. */
 	if (connstr_source)
 	{
 		conn = PQconnectdb(connstr_source);
@@ -396,6 +399,12 @@ main(int argc, char **argv)
 		pg_log_info("servers diverged at WAL location %X/%08X on timeline %u",
 					LSN_FORMAT_ARGS(divergerec),
 					targetHistory[lastcommontliIndex].tli);
+
+		/*
+		 * Convert the divergence LSN to a segment number, that will be used
+		 * to decide how WAL segments should be processed.
+		 */
+		XLByteToSeg(divergerec, last_common_segno, ControlFile_target.xlog_seg_size);
 
 		/*
 		 * Don't need the source history anymore. The target history is still
@@ -492,7 +501,7 @@ main(int argc, char **argv)
 	 * We have collected all information we need from both systems. Decide
 	 * what to do with each file.
 	 */
-	filemap = decide_file_actions();
+	filemap = decide_file_actions(last_common_segno);
 	if (showprogress)
 		calculate_totals(filemap);
 
@@ -843,9 +852,9 @@ progress_report(bool finished)
 static XLogRecPtr
 MinXLogRecPtr(XLogRecPtr a, XLogRecPtr b)
 {
-	if (XLogRecPtrIsInvalid(a))
+	if (!XLogRecPtrIsValid(a))
 		return b;
-	else if (XLogRecPtrIsInvalid(b))
+	else if (!XLogRecPtrIsValid(b))
 		return a;
 	else
 		return Min(a, b);

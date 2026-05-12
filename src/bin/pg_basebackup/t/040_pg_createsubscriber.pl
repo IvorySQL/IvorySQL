@@ -341,8 +341,8 @@ $node_p->safe_psql(
 
 $node_p->wait_for_replay_catchup($node_s);
 
-ok($node_s->safe_psql($db1, "SELECT COUNT(*) = 2 FROM pg_publication"),
-	'two pre-existing publications on subscriber');
+is($node_s->safe_psql($db1, "SELECT COUNT(*) FROM pg_publication"),
+	'2', 'two pre-existing publications on subscriber');
 
 $node_s->stop;
 
@@ -437,11 +437,11 @@ my ($stdout, $stderr) = run_command(
 # Verify that the required logical replication objects are output.
 # The expected count 3 refers to postgres, $db1 and $db2 databases.
 # ivorysql expected count 4 refers to ivorysql, postgres, $db1 and $db2 databases.
-is(scalar(() = $stderr =~ /creating publication/g),
+is(scalar(() = $stderr =~ /would create publication/g),
 	4, "verify publications are created for all databases");
-is(scalar(() = $stderr =~ /creating the replication slot/g),
+is(scalar(() = $stderr =~ /would create the replication slot/g),
 	4, "verify replication slots are created for all databases");
-is(scalar(() = $stderr =~ /creating subscription/g),
+is(scalar(() = $stderr =~ /would create subscription/g),
 	4, "verify subscriptions are created for all databases");
 
 # Run pg_createsubscriber on node S.  --verbose is used twice
@@ -536,7 +536,7 @@ my $sysid_p = $node_p->safe_psql('postgres',
 	'SELECT system_identifier FROM pg_control_system()');
 my $sysid_s = $node_s->safe_psql('postgres',
 	'SELECT system_identifier FROM pg_control_system()');
-ok($sysid_p != $sysid_s, 'system identifier was changed');
+isnt($sysid_p, $sysid_s, 'system identifier was changed');
 
 # clean up
 $node_p->teardown_node;

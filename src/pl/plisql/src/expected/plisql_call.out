@@ -327,7 +327,7 @@ $$;
 ERROR:  procedure test_proc8c(pg_catalog.int4, pg_catalog.int4) does not exist
 LINE 1: CALL test_proc8c(_a, _b)
              ^
-HINT:  No procedure matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No procedure of that name accepts the given number of arguments.
 QUERY:  CALL test_proc8c(_a, _b)
 CONTEXT:  PL/iSQL function inline_code_block line 5 at CALL
 DO $$
@@ -341,7 +341,7 @@ $$;
 ERROR:  procedure test_proc8c(pg_catalog.int4, b => pg_catalog.int4) does not exist
 LINE 1: CALL test_proc8c(_a, b => _b)
              ^
-HINT:  No procedure matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No procedure of that name accepts the given number of arguments.
 QUERY:  CALL test_proc8c(_a, b => _b)
 CONTEXT:  PL/iSQL function inline_code_block line 5 at CALL
 -- OUT parameters
@@ -471,7 +471,8 @@ $$;
 ERROR:  procedure test_proc12(pg_catalog.int4, pg_catalog.int4, text[]) does not exist
 LINE 1: CALL test_proc12(_a, _b, _c)
              ^
-HINT:  No procedure matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No procedure of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 QUERY:  CALL test_proc12(_a, _b, _c)
 CONTEXT:  PL/iSQL function inline_code_block line 5 at CALL
 -- transition variable assignment
@@ -522,7 +523,7 @@ $$;
 ERROR:  procedure p1(v_cnt => pg_catalog.int4) does not exist
 LINE 1: CALL p1(v_cnt := v_cnt)
              ^
-HINT:  No procedure matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No procedure of that name accepts the given number of arguments.
 QUERY:  CALL p1(v_cnt := v_cnt)
 CONTEXT:  PL/iSQL function inline_code_block line 6 at CALL
 DO $$

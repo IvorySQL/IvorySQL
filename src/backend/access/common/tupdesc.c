@@ -481,8 +481,8 @@ TupleDescCopyEntry(TupleDesc dst, AttrNumber dstAttno,
 	/*
 	 * sanity checks
 	 */
-	Assert(PointerIsValid(src));
-	Assert(PointerIsValid(dst));
+	Assert(src);
+	Assert(dst);
 	Assert(srcAttno >= 1);
 	Assert(srcAttno <= src->natts);
 	Assert(dstAttno >= 1);
@@ -824,10 +824,10 @@ hashRowType(TupleDesc desc)
 	uint32		s;
 	int			i;
 
-	s = hash_combine(0, hash_uint32(desc->natts));
-	s = hash_combine(s, hash_uint32(desc->tdtypeid));
+	s = hash_combine(0, hash_bytes_uint32(desc->natts));
+	s = hash_combine(s, hash_bytes_uint32(desc->tdtypeid));
 	for (i = 0; i < desc->natts; ++i)
-		s = hash_combine(s, hash_uint32(TupleDescAttr(desc, i)->atttypid));
+		s = hash_combine(s, hash_bytes_uint32(TupleDescAttr(desc, i)->atttypid));
 
 	return s;
 }
@@ -862,7 +862,7 @@ TupleDescInitEntry(TupleDesc desc,
 	/*
 	 * sanity checks
 	 */
-	Assert(PointerIsValid(desc));
+	Assert(desc);
 	Assert(attributeNumber >= 1);
 	Assert(attributeNumber <= desc->natts);
 	Assert(attdim >= 0);
@@ -935,7 +935,7 @@ TupleDescInitBuiltinEntry(TupleDesc desc,
 	Form_pg_attribute att;
 
 	/* sanity checks */
-	Assert(PointerIsValid(desc));
+	Assert(desc);
 	Assert(attributeNumber >= 1);
 	Assert(attributeNumber <= desc->natts);
 	Assert(attdim >= 0);
@@ -1004,7 +1004,7 @@ TupleDescInitBuiltinEntry(TupleDesc desc,
 
 		case INT8OID:
 			att->attlen = 8;
-			att->attbyval = FLOAT8PASSBYVAL;
+			att->attbyval = true;
 			att->attalign = TYPALIGN_DOUBLE;
 			att->attstorage = TYPSTORAGE_PLAIN;
 			att->attcompression = InvalidCompressionMethod;
@@ -1041,7 +1041,7 @@ TupleDescInitEntryCollation(TupleDesc desc,
 	/*
 	 * sanity checks
 	 */
-	Assert(PointerIsValid(desc));
+	Assert(desc);
 	Assert(attributeNumber >= 1);
 	Assert(attributeNumber <= desc->natts);
 

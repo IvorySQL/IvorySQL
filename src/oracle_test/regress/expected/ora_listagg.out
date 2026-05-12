@@ -1,0 +1,137 @@
+--
+-- ORA_LISTAGG
+-- Test Oracle-compatible LISTAGG aggregate function
+-- Syntax: LISTAGG(measure_expr [, 'delimiter']) WITHIN GROUP (ORDER BY sort_expr)
+--
+-- Setup
+CREATE TABLE listagg_test (
+    deptno  INTEGER,
+    ename   varchar2(20),
+    sal     NUMERIC
+);
+INSERT INTO listagg_test VALUES
+    (10, 'CLARK',  2450),
+    (10, 'KING',   5000),
+    (10, 'MILLER', 1300),
+    (20, 'ADAMS',  1100),
+    (20, 'FORD',   3000),
+    (20, 'JONES',  2975),
+    (30, 'ALLEN',  1600),
+    (30, 'BLAKE',  2850),
+    (30, 'MARTIN', 1250);
+-- Test 1: basic ordered concatenation (measure == sort key)
+SELECT LISTAGG(ename, ',') WITHIN GROUP (ORDER BY ename)
+FROM listagg_test WHERE deptno = 10;
+ ora_listagg_check 
+-------------------
+ CLARK,KING,MILLER
+(1 row)
+
+-- Test 2: sort column differs from measure column (sort by salary DESC)
+SELECT LISTAGG(ename, ', ') WITHIN GROUP (ORDER BY sal DESC)
+FROM listagg_test WHERE deptno = 10;
+  ora_listagg_check  
+---------------------
+ KING, CLARK, MILLER
+(1 row)
+
+-- Test 3: grouped aggregation
+SELECT deptno, LISTAGG(ename, '|') WITHIN GROUP (ORDER BY ename)
+FROM listagg_test GROUP BY deptno ORDER BY deptno;
+ deptno | ora_listagg_check  
+--------+--------------------
+     10 | CLARK|KING|MILLER
+     20 | ADAMS|FORD|JONES
+     30 | ALLEN|BLAKE|MARTIN
+(3 rows)
+
+-- Test 4: no delimiter (single-argument form, defaults to empty string)
+SELECT LISTAGG(ename) WITHIN GROUP (ORDER BY ename)
+FROM listagg_test WHERE deptno = 10;
+ ora_listagg_check 
+-------------------
+ CLARKKINGMILLER
+(1 row)
+
+-- Test 5: NULL measure values are ignored (string_agg skips NULLs)
+INSERT INTO listagg_test VALUES (10, NULL, 999);
+SELECT LISTAGG(ename, ',') WITHIN GROUP (ORDER BY ename)
+FROM listagg_test WHERE deptno = 10;
+ ora_listagg_check 
+-------------------
+ CLARK,KING,MILLER
+(1 row)
+
+-- Test 6: multi-column ORDER BY
+SELECT LISTAGG(ename, ',') WITHIN GROUP (ORDER BY deptno, ename)
+FROM listagg_test;
+                   ora_listagg_check                   
+-------------------------------------------------------
+ CLARK,KING,MILLER,ADAMS,FORD,JONES,ALLEN,BLAKE,MARTIN
+(1 row)
+
+-- Test 7: empty result set returns NULL
+SELECT LISTAGG(ename, ',') WITHIN GROUP (ORDER BY ename)
+FROM listagg_test WHERE deptno = 99;
+ ora_listagg_check 
+-------------------
+ 
+(1 row)
+
+-- Test 8: schema-qualified call
+SELECT sys.ora_listagg_check(string_agg(ename, ',' ORDER BY ename))
+FROM listagg_test WHERE deptno = 10;
+ ora_listagg_check 
+-------------------
+ CLARK,KING,MILLER
+(1 row)
+
+-- Test 9: aggregate with FILTER clause
+SELECT LISTAGG(ename, ',') WITHIN GROUP (ORDER BY ename)
+    FILTER (WHERE sal > 1500)
+FROM listagg_test WHERE deptno IS NOT NULL;
+         ora_listagg_check         
+-----------------------------------
+ ALLEN,BLAKE,CLARK,FORD,JONES,KING
+(1 row)
+
+-- Test 10: 4000-byte overflow raises an error
+DO $$
+BEGIN
+    PERFORM sys.ora_listagg_check(repeat('x', 4001));
+    RAISE EXCEPTION 'Expected error was not raised';
+EXCEPTION
+    WHEN string_data_right_truncation THEN
+        RAISE NOTICE 'ORA-01489: result of string concatenation is too long (expected)';
+END;
+$$;
+ERROR:  result of aggregation exceeds 4000 bytes
+CONTEXT:  SQL statement "SELECT sys.ora_listagg_check(repeat('x', 4001))"
+PL/iSQL function inline_code_block line 3 at PERFORM
+-- Test 11: exactly 4000 bytes is allowed
+SELECT length(sys.ora_listagg_check(repeat('x', 4000)));
+ length 
+--------
+   4000
+(1 row)
+
+-- Test 12: LISTAGG with GROUP BY and multi-column ORDER BY
+SELECT deptno,
+       LISTAGG(ename ORDER by ename ) WITHIN GROUP(ORDER BY ename) AS employees
+FROM listagg_test
+GROUP BY deptno
+ORDER BY deptno;
+ERROR:  syntax error at or near "ORDER"
+LINE 2:        LISTAGG(ename ORDER by ename ) WITHIN GROUP(ORDER BY ...
+                             ^
+-- Test 13: LISTAGG with GROUP BY and multi-column ORDER BY, with delimiter
+SELECT deptno,
+       LISTAGG(ename, ',' ORDER BY ename) WITHIN GROUP(ORDER BY ename) AS employees
+FROM listagg_test
+GROUP BY deptno
+ORDER BY deptno;
+ERROR:  syntax error at or near "ORDER"
+LINE 2:        LISTAGG(ename, ',' ORDER BY ename) WITHIN GROUP(ORDER...
+                                  ^
+-- Cleanup
+DROP TABLE listagg_test;

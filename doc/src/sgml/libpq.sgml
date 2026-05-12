@@ -2220,7 +2220,7 @@ postgresql://%2Fvar%2Flib%2Fpostgresql/dbname
         server does not support the protocol version requested by the client,
         the connection is automatically downgraded to a lower minor protocol
         version that the server supports. After the connection attempt has
-        completed you can use <xref linkend="libpq-PQprotocolVersion"/> to
+        completed you can use <xref linkend="libpq-PQfullProtocolVersion"/> to
         find out which exact protocol version was negotiated.
        </para>
 
@@ -4508,7 +4508,7 @@ Oid PQftable(const PGresult *res,
       <para>
        <literal>InvalidOid</literal> is returned if the column number is out of range,
        or if the specified column is not a simple reference to a table column.
-       You can query the system table <literal>pg_class</literal> to determine
+       You can query the system table <structname>pg_class</structname> to determine
        exactly which table is referenced.
       </para>
 
@@ -4578,7 +4578,7 @@ Oid PQftype(const PGresult *res,
       </para>
 
       <para>
-       You can query the system table <literal>pg_type</literal> to
+       You can query the system table <structname>pg_type</structname> to
        obtain the names and properties of the various data types. The
        <acronym>OID</acronym>s of the built-in data types are defined
        in the file <filename>catalog/pg_type_d.h</filename>
@@ -10861,7 +10861,7 @@ main(int argc, char **argv)
     /*
      * Our test case here involves using a cursor, for which we must be inside
      * a transaction block.  We could do the whole thing with a single
-     * PQexec() of "select * from pg_database", but that's too trivial to make
+     * PQexec() of "SELECT * FROM pg_database", but that's too trivial to make
      * a good example.
      */
 
@@ -10878,7 +10878,7 @@ main(int argc, char **argv)
     /*
      * Fetch rows from pg_database, the system catalog of databases
      */
-    res = PQexec(conn, "DECLARE myportal CURSOR FOR select * from pg_database");
+    res = PQexec(conn, "DECLARE myportal CURSOR FOR SELECT * FROM pg_database");
     if (PQresultStatus(res) != PGRES_COMMAND_OK)
     {
         fprintf(stderr, "DECLARE CURSOR failed: %s", PQerrorMessage(conn));

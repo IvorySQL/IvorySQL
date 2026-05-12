@@ -32,7 +32,6 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
-#include "commands/dbcommands.h"
 #include "commands/proclang.h"
 #include "commands/tablespace.h"
 #include "common/hashfn.h"
@@ -5200,7 +5199,7 @@ roles_is_member_of(Oid roleid, enum RoleRecurseType type,
 	MemoryContext oldctx;
 	bloom_filter *bf = NULL;
 
-	Assert(OidIsValid(admin_of) == PointerIsValid(admin_role));
+	Assert(OidIsValid(admin_of) == (admin_role != NULL));
 	if (admin_role != NULL)
 		*admin_role = InvalidOid;
 

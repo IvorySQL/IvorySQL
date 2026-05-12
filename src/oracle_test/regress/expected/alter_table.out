@@ -2045,7 +2045,8 @@ alter table anothertab alter column atcol1 drop default;
 alter table anothertab alter column atcol1 type boolean
         using case when atcol1 % 2 = 0 then true else false end; -- fails
 ERROR:  operator does not exist: pg_catalog.bool <= pg_catalog.int4
-HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No operator of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 alter table anothertab drop constraint anothertab_chk;
 alter table anothertab drop constraint anothertab_chk; -- fails
 ERROR:  constraint "anothertab_chk" of relation "anothertab" does not exist
@@ -3577,12 +3578,15 @@ SELECT conname as constraint, obj_description(oid, 'pg_constraint') as comment F
 -- filenode function call can return NULL for a relation dropped concurrently
 -- with the call's surrounding query, so ignore a NULL mapped_oid for
 -- relations that no longer exist after all calls finish.
+-- Temporary relations are ignored, as not supported by pg_filenode_relation().
 CREATE TEMP TABLE filenode_mapping AS
 SELECT
     oid, mapped_oid, reltablespace, relfilenode, relname
 FROM pg_class,
     pg_filenode_relation(reltablespace, pg_relation_filenode(oid)) AS mapped_oid
-WHERE relkind IN ('r', 'i', 'S', 't', 'm') AND mapped_oid IS DISTINCT FROM oid;
+WHERE relkind IN ('r', 'i', 'S', 't', 'm')
+  AND relpersistence != 't'
+  AND mapped_oid IS DISTINCT FROM oid;
 SELECT m.* FROM filenode_mapping m LEFT JOIN pg_class c ON c.oid = m.oid
 WHERE c.oid IS NOT NULL OR m.mapped_oid IS NOT NULL;
  oid | mapped_oid | reltablespace | relfilenode | relname 
@@ -4475,26 +4479,6 @@ ALTER TABLE range_parted2 DETACH PARTITION part_rp CONCURRENTLY;
  a      | pg_catalog.int4 |           |          |         |           | plain   |              | 
 Partition key: RANGE (a)
 Number of partitions: 0
-
--- constraint should be created
-\d part_rp
-                  Table "public.part_rp"
- Column |      Type       | Collation | Nullable | Default 
---------+-----------------+-----------+----------+---------
- a      | pg_catalog.int4 |           |          | 
-Check constraints:
-    "part_rp_a_check" CHECK (a IS NOT NULL AND a >= 0 AND a < 100)
-
-CREATE TABLE part_rp100 PARTITION OF range_parted2 (CHECK (a>=123 AND a<133 AND a IS NOT NULL)) FOR VALUES FROM (100) to (200);
-ALTER TABLE range_parted2 DETACH PARTITION part_rp100 CONCURRENTLY;
--- redundant constraint should not be created
-\d part_rp100
-                 Table "public.part_rp100"
- Column |      Type       | Collation | Nullable | Default 
---------+-----------------+-----------+----------+---------
- a      | pg_catalog.int4 |           |          | 
-Check constraints:
-    "part_rp100_a_check" CHECK (a >= 123 AND a < 133 AND a IS NOT NULL)
 
 DROP TABLE range_parted2;
 -- Check ALTER TABLE commands for partitioned tables and partitions

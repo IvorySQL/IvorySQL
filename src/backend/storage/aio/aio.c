@@ -89,6 +89,9 @@ static const IoMethodOps *const pgaio_method_ops_table[] = {
 #endif
 };
 
+StaticAssertDecl(lengthof(io_method_options) == lengthof(pgaio_method_ops_table) + 1,
+				 "io_method_options out of sync with pgaio_method_ops_table");
+
 /* callbacks for the configured io_method, set by assign_io_method */
 const IoMethodOps *pgaio_method_ops;
 
@@ -275,7 +278,7 @@ pgaio_io_release_resowner(dlist_node *ioh_node, bool on_error)
 	ResourceOwnerForgetAioHandle(ioh->resowner, &ioh->resowner_node);
 	ioh->resowner = NULL;
 
-	switch (ioh->state)
+	switch ((PgAioHandleState) ioh->state)
 	{
 		case PGAIO_HS_IDLE:
 			elog(ERROR, "unexpected");
@@ -600,7 +603,7 @@ pgaio_io_wait(PgAioHandle *ioh, uint64 ref_generation)
 		if (pgaio_io_was_recycled(ioh, ref_generation, &state))
 			return;
 
-		switch (state)
+		switch ((PgAioHandleState) state)
 		{
 			case PGAIO_HS_IDLE:
 			case PGAIO_HS_HANDED_OUT:
@@ -825,7 +828,7 @@ pgaio_io_wait_for_free(void)
 											   &pgaio_my_backend->in_flight_ios);
 		uint64		generation = ioh->generation;
 
-		switch (ioh->state)
+		switch ((PgAioHandleState) ioh->state)
 		{
 				/* should not be in in-flight list */
 			case PGAIO_HS_IDLE:
@@ -905,7 +908,7 @@ static const char *
 pgaio_io_state_get_name(PgAioHandleState s)
 {
 #define PGAIO_HS_TOSTR_CASE(sym) case PGAIO_HS_##sym: return #sym
-	switch (s)
+	switch ((PgAioHandleState) s)
 	{
 			PGAIO_HS_TOSTR_CASE(IDLE);
 			PGAIO_HS_TOSTR_CASE(HANDED_OUT);
@@ -930,7 +933,7 @@ pgaio_io_get_state_name(PgAioHandle *ioh)
 const char *
 pgaio_result_status_string(PgAioResultStatus rs)
 {
-	switch (rs)
+	switch ((PgAioResultStatus) rs)
 	{
 		case PGAIO_RS_UNKNOWN:
 			return "UNKNOWN";
@@ -1318,8 +1321,8 @@ pgaio_shutdown(int code, Datum arg)
 void
 assign_io_method(int newval, void *extra)
 {
+	Assert(newval < lengthof(pgaio_method_ops_table));
 	Assert(pgaio_method_ops_table[newval] != NULL);
-	Assert(newval < lengthof(io_method_options));
 
 	pgaio_method_ops = pgaio_method_ops_table[newval];
 }

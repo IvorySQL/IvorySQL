@@ -73,42 +73,50 @@ SELECT '123'::raw(3) + '123'::raw(3);
 ERROR:  operator does not exist: raw + raw
 LINE 1: SELECT '123'::raw(3) + '123'::raw(3);
                              ^
-HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No operator of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 SELECT '123'::bytea + '123'::bytea;
 ERROR:  operator does not exist: bytea + bytea
 LINE 1: SELECT '123'::bytea + '123'::bytea;
                             ^
-HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No operator of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 SELECT '123'::raw(3) - '123'::raw(3);
 ERROR:  operator does not exist: raw - raw
 LINE 1: SELECT '123'::raw(3) - '123'::raw(3);
                              ^
-HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No operator of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 SELECT '123'::bytea - '123'::bytea;
 ERROR:  operator does not exist: bytea - bytea
 LINE 1: SELECT '123'::bytea - '123'::bytea;
                             ^
-HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No operator of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 SELECT '123'::raw(3) * '123'::raw(3);
 ERROR:  operator does not exist: raw * raw
 LINE 1: SELECT '123'::raw(3) * '123'::raw(3);
                              ^
-HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No operator of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 SELECT '123'::bytea * '123'::bytea;
 ERROR:  operator does not exist: bytea * bytea
 LINE 1: SELECT '123'::bytea * '123'::bytea;
                             ^
-HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No operator of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 SELECT '123'::raw(3) / '123'::raw(3);
 ERROR:  operator does not exist: raw / raw
 LINE 1: SELECT '123'::raw(3) / '123'::raw(3);
                              ^
-HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No operator of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 SELECT '123'::bytea / '123'::bytea;
 ERROR:  operator does not exist: bytea / bytea
 LINE 1: SELECT '123'::bytea / '123'::bytea;
                             ^
-HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No operator of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 select '123'::raw = '123'::bytea;
  ?column? 
 ----------

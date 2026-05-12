@@ -175,7 +175,8 @@ SELECT n, pg_typeof(n) FROM t;
 ERROR:  operator does not exist: text + integer
 LINE 4:     SELECT n+1 FROM t WHERE n < 10
                     ^
-HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No operator of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
 -- Deeply nested WITH caused a list-munging problem in v13
 -- Detection of cross-references and self-references
 WITH RECURSIVE w1(c1) AS
@@ -2297,6 +2298,48 @@ from int4_tbl;
 (5 rows)
 
 --
+-- test for bug #19055: interaction of WITH with aggregates
+--
+-- For now, we just throw an error if there's a use of a CTE below the
+-- semantic level that the SQL standard assigns to the aggregate.
+-- It's not entirely clear what we could do instead that doesn't risk
+-- breaking more things than it fixes.
+select f1, (with cte1(x,y) as (select 1,2)
+            select count((select i4.f1 from cte1))) as ss
+from int4_tbl i4;
+ERROR:  outer-level aggregate cannot use a nested CTE
+LINE 2:             select count((select i4.f1 from cte1))) as ss
+                           ^
+DETAIL:  CTE "cte1" is below the aggregate's semantic level.
+--
+-- test for bug #19106: interaction of WITH with aggregates
+--
+-- the initial fix for #19055 was too aggressive and broke this case
+explain (verbose, costs off)
+with a as ( select id from (values (1), (2)) as v(id) ),
+     b as ( select max((select sum(id) from a)) as agg )
+select agg from b;
+                 QUERY PLAN                 
+--------------------------------------------
+ Aggregate
+   Output: max((InitPlan expr_1).col1)
+   InitPlan expr_1
+     ->  Aggregate
+           Output: sum("*VALUES*".column1)
+           ->  Values Scan on "*VALUES*"
+                 Output: "*VALUES*".column1
+   ->  Result
+(8 rows)
+
+with a as ( select id from (values (1), (2)) as v(id) ),
+     b as ( select max((select sum(id) from a)) as agg )
+select agg from b;
+ agg 
+-----
+   3
+(1 row)
+
+--
 -- test for nested-recursive-WITH bug
 --
 WITH RECURSIVE t(j) AS (
@@ -3168,7 +3211,7 @@ WHEN NOT MATCHED THEN INSERT VALUES(o.k, o.v);
                      Output: o.k, o.v, o.*
                      ->  Result
                            Output: 0, 'merge source SubPlan'::text
-   SubPlan 2
+   SubPlan expr_1
      ->  Limit
            Output: ((cte_basic.b || ' merge update'::text))
            ->  CTE Scan on cte_basic
@@ -3200,7 +3243,7 @@ WHEN NOT MATCHED THEN INSERT VALUES(o.k, o.v);
    CTE cte_init
      ->  Result
            Output: 1, 'cte_init val'::text
-   InitPlan 2
+   InitPlan expr_1
      ->  Limit
            Output: ((cte_init.b || ' merge update'::text))
            ->  CTE Scan on cte_init
@@ -3243,11 +3286,11 @@ WHEN NOT MATCHED THEN INSERT VALUES(o.a, o.b || (SELECT merge_source_cte.*::text
    CTE merge_source_cte
      ->  Result
            Output: 15, 'merge_source_cte val'::text
-   InitPlan 2
+   InitPlan expr_1
      ->  CTE Scan on merge_source_cte merge_source_cte_1
            Output: ((merge_source_cte_1.b || (merge_source_cte_1.*)::text) || ' merge update'::text)
            Filter: (merge_source_cte_1.a = 15)
-   InitPlan 3
+   InitPlan expr_2
      ->  CTE Scan on merge_source_cte merge_source_cte_2
            Output: ((merge_source_cte_2.*)::text || ' merge insert'::text)
    ->  Hash Right Join

@@ -110,7 +110,7 @@ SELECT extractvalue(XMLType('<a><b>b1</b><b>b2</b></a>'),'/a/b[2]') from dual;
 SELECT extractvalue(XMLType('<a><b>b1</b><b>b2</b></a>'),'/a/b') from dual;
 ERROR:  EXTRACTVALUE returns value of only one node
 SELECT extractvalue(XMLType('<a><b><c><d><e>111></e><f>222</f></d></c></b></a>'),'/a/b/c/d') from dual;
-ERROR:  EXTRACTVALUE returns value of only one node
+ERROR:  EXTRACTVALUE can only retrieve value of leaf node
 SELECT extractvalue(data, 'soapenv:Envelope/soapenv:Body/web:BBB/typ:EEE', 'xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com"') from xmlnstest where id = 1;
  extractvalue 
 --------------
@@ -867,7 +867,7 @@ select DELETEXML(warehouse_spec, 'Envelope/Body/AAA/BBB/DDD/DDDs/DDD')
 -- BUG#Z203
 select EXTRACTVALUE(warehouse_spec, 'Envelope/Body/AAA/BBB/DDD/DDDs/DDD')
   from warehouse_1 where warehouse_id = 1;
-ERROR:  EXTRACTVALUE returns value of only one node
+ERROR:  EXTRACTVALUE can only retrieve value of leaf node
 -- BUG#Z204
 select INSERTCHILDXML(warehouse_spec, 'Envelope/Body/AAA/BBB/DDD/DDDs', '"TTT"', xmltype ('<TTT>test</TTT>'))
  from warehouse_1 where warehouse_id = 1;

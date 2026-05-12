@@ -66,7 +66,6 @@
 #include "catalog/pg_package.h"
 #include "catalog/pg_package_body.h"
 #include "commands/packagecmds.h"
-#include "commands/dbcommands.h"
 #include "commands/defrem.h"
 #include "commands/event_trigger.h"
 #include "commands/extension.h"
@@ -4377,8 +4376,8 @@ pg_identify_object(PG_FUNCTION_ARGS)
 			nspAttnum = get_object_attnum_namespace(address.classId);
 			if (nspAttnum != InvalidAttrNumber)
 			{
-				schema_oid = heap_getattr(objtup, nspAttnum,
-										  RelationGetDescr(catalog), &isnull);
+				schema_oid = DatumGetObjectId(heap_getattr(objtup, nspAttnum,
+														   RelationGetDescr(catalog), &isnull));
 				if (isnull)
 					elog(ERROR, "invalid null namespace in object %u/%u/%d",
 						 address.classId, address.objectId, address.objectSubId);
@@ -4952,7 +4951,7 @@ getObjectIdentityParts(const ObjectAddress *object,
 	 * will be initialized in all cases inside the switch; but we do it anyway
 	 * so that we can test below that no branch leaves it unset.
 	 */
-	Assert(PointerIsValid(objname) == PointerIsValid(objargs));
+	Assert((objname != NULL) == (objargs != NULL));
 	if (objname)
 	{
 		*objname = NIL;

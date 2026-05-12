@@ -241,18 +241,18 @@ plisql_yylex(YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 
 				if (i != plisql_curr_compile->fn_nargs)
 				{
-					sprintf(buf, "%s", plisql_curr_compile->paramnames[i]);
+                    snprintf(buf, sizeof(buf), "%s", plisql_curr_compile->paramnames[i]);
 				}
 				else
 				{
 					num = calculate_oraparamnumber(aux1.lval.str);
-					sprintf(buf, "$%d", num);
+                    snprintf(buf, sizeof(buf), "$%d", num);
 				}
 			}
 			else
 			{
 				num = calculate_oraparamnumber(aux1.lval.str);
-				sprintf(buf, "$%d", num);
+                snprintf(buf, sizeof(buf), "$%d", num);
 			}
 
 			paramname = buf;

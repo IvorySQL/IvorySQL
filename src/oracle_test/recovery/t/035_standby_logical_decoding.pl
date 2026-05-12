@@ -8,6 +8,7 @@ use warnings FATAL => 'all';
 
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
+use Time::HiRes qw(usleep);
 use Test::More;
 
 if ($ENV{enable_injection_points} ne 'yes')
@@ -375,8 +376,9 @@ foreach my $i (0 .. 10 * $PostgreSQL::Test::Utils::timeout_default)
 
 # Confirm that the server startup fails with an expected error
 my $logfile = slurp_file($node_standby->logfile());
-ok( $logfile =~
-	  qr/FATAL: .* logical replication slot ".*" exists on the standby, but "hot_standby" = "off"/,
+like(
+	$logfile,
+	qr/FATAL: .* logical replication slot ".*" exists on the standby, but "hot_standby" = "off"/,
 	"the standby ends with an error during startup because hot_standby was disabled"
 );
 $node_standby->adjust_conf('postgresql.conf', 'hot_standby', 'on');
@@ -465,8 +467,9 @@ $node_primary->wait_for_replay_catchup($node_standby);
         'otherdb',
         "SELECT lsn FROM pg_logical_slot_peek_changes('behaves_ok_activeslot', NULL, NULL) ORDER BY lsn DESC LIMIT 1;"
     );
-ok( $stderr =~
-	  m/replication slot "behaves_ok_activeslot" was not created in this database/,
+like(
+	$stderr,
+	qr/replication slot "behaves_ok_activeslot" was not created in this database/,
 	"replaying logical slot from another database fails");
 
 ##################################################
@@ -598,12 +601,13 @@ check_pg_recvlogical_stderr($handle,
 	'postgres',
 	qq[select pg_copy_logical_replication_slot('vacuum_full_inactiveslot', 'vacuum_full_inactiveslot_copy');],
 	replication => 'database');
-ok( $stderr =~
-	  /ERROR:  cannot copy invalidated replication slot "vacuum_full_inactiveslot"/,
+like(
+	$stderr,
+	qr/ERROR:  cannot copy invalidated replication slot "vacuum_full_inactiveslot"/,
 	"invalidated slot cannot be copied");
 
-# Turn hot_standby_feedback back on
-change_hot_standby_feedback_and_wait_for_xmins(1,1);
+# Set hot_standby_feedback to on
+change_hot_standby_feedback_and_wait_for_xmins(1, 1);
 
 ##################################################
 # Verify that invalidated logical slots stay invalidated across a restart.
@@ -729,12 +733,14 @@ wait_until_vacuum_can_remove(
 
 # message should not be issued
 ok( !$node_standby->log_contains(
-  "invalidating obsolete slot \"no_conflict_inactiveslot\"", $logstart),
-  'inactiveslot slot invalidation is not logged with vacuum on conflict_test');
+		"invalidating obsolete replication slot \"no_conflict_inactiveslot\"", $logstart),
+	'inactiveslot slot invalidation is not logged with vacuum on conflict_test'
+);
 
 ok( !$node_standby->log_contains(
-  "invalidating obsolete slot \"no_conflict_activeslot\"", $logstart),
-  'activeslot slot invalidation is not logged with vacuum on conflict_test');
+		"invalidating obsolete replication slot \"no_conflict_activeslot\"", $logstart),
+	'activeslot slot invalidation is not logged with vacuum on conflict_test'
+);
 
 # Verify that pg_stat_database_conflicts.confl_active_logicalslot has not been updated
 ok( $node_standby->poll_query_until(

@@ -66,6 +66,16 @@ PostgreSQL documentation
   linkend="libpq-pgpass"/> for more information.
   </para>
 
+  <warning>
+   <para>
+    Restoring a dump causes the destination to execute arbitrary code of the
+    source superusers' choice.  Partial dumps and partial restores do not limit
+    that.  If the source superusers are not trusted, the dumped SQL statements
+    must be inspected before restoring.  Note that the client running the dump
+    and restore need not trust the source or destination superusers.
+   </para>
+  </warning>
+
  </refsect1>
 
  <refsect1>
@@ -592,6 +602,26 @@ exclude database <replaceable class="parameter">PATTERN</replaceable>
      </varlistentry>
 
      <varlistentry>
+      <term><option>--restrict-key=<replaceable class="parameter">restrict_key</replaceable></option></term>
+      <listitem>
+       <para>
+        Use the provided string as the <application>psql</application>
+        <command>\restrict</command> key in the dump output.  If no restrict
+        key is specified, <application>pg_dumpall</application> will generate a
+        random one as needed.  Keys may contain only alphanumeric characters.
+       </para>
+       <para>
+        This option is primarily intended for testing purposes and other
+        scenarios that require repeatable output (e.g., comparing dump files).
+        It is not recommended for general use, as a malicious server with
+        advance knowledge of the key may be able to inject arbitrary code that
+        will be executed on the machine that runs
+        <application>psql</application> with the dump output.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
       <term><option>--rows-per-insert=<replaceable class="parameter">nrows</replaceable></option></term>
       <listitem>
        <para>
@@ -609,7 +639,7 @@ exclude database <replaceable class="parameter">PATTERN</replaceable>
       <term><option>--statistics</option></term>
       <listitem>
        <para>
-        Dump statistics.
+        Dump optimizer statistics.
        </para>
       </listitem>
      </varlistentry>
@@ -619,7 +649,7 @@ exclude database <replaceable class="parameter">PATTERN</replaceable>
       <listitem>
        <para>
         Dump only the statistics, not the schema (data definitions) or data.
-        Statistics for tables, materialized views, foreign tables,
+        Optimizer statistics for tables, materialized views, foreign tables,
         and indexes are dumped.
        </para>
       </listitem>
@@ -860,11 +890,12 @@ exclude database <replaceable class="parameter">PATTERN</replaceable>
   </para>
 
   <para>
-   If <option>--statistics</option> is specified,
+   When <option>--statistics</option> is specified,
    <command>pg_dumpall</command> will include most optimizer statistics in the
-   resulting dump file.  However, some statistics may not be included, such as
-   those created explicitly with <xref linkend="sql-createstatistics"/> or
-   custom statistics added by an extension.  Therefore, it may be useful to
+   resulting dump file. This does not include all statistics, such as
+   those created explicitly with <xref linkend="sql-createstatistics"/>,
+   custom statistics added by an extension, or statistics collected by the
+   cumulative statistics system.  Therefore, it may still be useful to
    run <command>ANALYZE</command> on each database after restoring from a dump
    file to ensure optimal performance.  You can also run <command>vacuumdb -a
    -z</command> to analyze all databases.

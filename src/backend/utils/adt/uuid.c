@@ -398,11 +398,7 @@ uuid_abbrev_convert(Datum original, SortSupport ssup)
 	{
 		uint32		tmp;
 
-#if SIZEOF_DATUM == 8
-		tmp = (uint32) res ^ (uint32) ((uint64) res >> 32);
-#else							/* SIZEOF_DATUM != 8 */
-		tmp = (uint32) res;
-#endif
+		tmp = DatumGetUInt32(res) ^ (uint32) (DatumGetUInt64(res) >> 32);
 
 		addHyperLogLog(&uss->abbr_card, DatumGetUInt32(hash_uint32(tmp)));
 	}
@@ -752,7 +748,7 @@ uuid_extract_timestamp(PG_FUNCTION_ARGS)
 			+ (((uint64) uuid->data[0]) << 40);
 
 		/* convert ms to us, then adjust */
-		ts = (TimestampTz) (tms * NS_PER_US) -
+		ts = (TimestampTz) (tms * US_PER_MS) -
 			(POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) * SECS_PER_DAY * USECS_PER_SEC;
 
 		PG_RETURN_TIMESTAMPTZ(ts);

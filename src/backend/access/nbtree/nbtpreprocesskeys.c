@@ -16,11 +16,13 @@
 #include "postgres.h"
 
 #include "access/nbtree.h"
+#include "access/relscan.h"
 #include "common/int.h"
 #include "lib/qunique.h"
 #include "utils/array.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/rel.h"
 
 typedef struct BTScanKeyPreproc
 {
@@ -65,7 +67,7 @@ static int	_bt_num_array_keys(IndexScanDesc scan, Oid *skip_eq_ops_out,
 							   int *numSkipArrayKeys_out);
 static Datum _bt_find_extreme_element(IndexScanDesc scan, ScanKey skey,
 									  Oid elemtype, StrategyNumber strat,
-									  Datum *elems, int nelems);
+									  const Datum *elems, int nelems);
 static void _bt_setup_array_cmp(IndexScanDesc scan, ScanKey skey, Oid elemtype,
 								FmgrInfo *orderproc, FmgrInfo **sortprocp);
 static int	_bt_sort_array_elements(ScanKey skey, FmgrInfo *sortproc,
@@ -1410,6 +1412,7 @@ _bt_skiparray_strat_decrement(IndexScanDesc scan, ScanKey arraysk,
 	Datum		orig_sk_argument = high_compare->sk_argument,
 				new_sk_argument;
 	bool		uflow;
+	int16		lookupstrat;
 
 	Assert(high_compare->sk_strategy == BTLessStrategyNumber);
 
@@ -1431,9 +1434,14 @@ _bt_skiparray_strat_decrement(IndexScanDesc scan, ScanKey arraysk,
 		return;
 	}
 
-	/* Look up <= operator (might fail) */
-	leop = get_opfamily_member(opfamily, opcintype, opcintype,
-							   BTLessEqualStrategyNumber);
+	/*
+	 * Look up <= operator (might fail), accounting for the fact that a
+	 * high_compare on a DESC column already had its strategy commuted
+	 */
+	lookupstrat = BTLessEqualStrategyNumber;
+	if (high_compare->sk_flags & SK_BT_DESC)
+		lookupstrat = BTGreaterEqualStrategyNumber; /* commute this too */
+	leop = get_opfamily_member(opfamily, opcintype, opcintype, lookupstrat);
 	if (!OidIsValid(leop))
 		return;
 	cmp_proc = get_opcode(leop);
@@ -1462,6 +1470,7 @@ _bt_skiparray_strat_increment(IndexScanDesc scan, ScanKey arraysk,
 	Datum		orig_sk_argument = low_compare->sk_argument,
 				new_sk_argument;
 	bool		oflow;
+	int16		lookupstrat;
 
 	Assert(low_compare->sk_strategy == BTGreaterStrategyNumber);
 
@@ -1483,9 +1492,14 @@ _bt_skiparray_strat_increment(IndexScanDesc scan, ScanKey arraysk,
 		return;
 	}
 
-	/* Look up >= operator (might fail) */
-	geop = get_opfamily_member(opfamily, opcintype, opcintype,
-							   BTGreaterEqualStrategyNumber);
+	/*
+	 * Look up >= operator (might fail), accounting for the fact that a
+	 * low_compare on a DESC column already had its strategy commuted
+	 */
+	lookupstrat = BTGreaterEqualStrategyNumber;
+	if (low_compare->sk_flags & SK_BT_DESC)
+		lookupstrat = BTLessEqualStrategyNumber;	/* commute this too */
+	geop = get_opfamily_member(opfamily, opcintype, opcintype, lookupstrat);
 	if (!OidIsValid(geop))
 		return;
 	cmp_proc = get_opcode(geop);
@@ -1840,6 +1854,7 @@ _bt_preprocess_array_keys(IndexScanDesc scan, int *new_numberOfKeys)
 	 * (also checks if we should add extra skip arrays based on input keys)
 	 */
 	numArrayKeys = _bt_num_array_keys(scan, skip_eq_ops, &numSkipArrayKeys);
+	so->skipScan = (numSkipArrayKeys > 0);
 
 	/* Quit if nothing to do. */
 	if (numArrayKeys == 0)
@@ -1869,7 +1884,6 @@ _bt_preprocess_array_keys(IndexScanDesc scan, int *new_numberOfKeys)
 	arrayKeyData = (ScanKey) palloc(numArrayKeyData * sizeof(ScanKeyData));
 
 	/* Allocate space for per-array data in the workspace context */
-	so->skipScan = (numSkipArrayKeys > 0);
 	so->arrayKeys = (BTArrayKeyInfo *) palloc(numArrayKeys * sizeof(BTArrayKeyInfo));
 
 	/* Allocate space for ORDER procs used to help _bt_checkkeys */
@@ -2555,7 +2569,7 @@ _bt_num_array_keys(IndexScanDesc scan, Oid *skip_eq_ops_out,
 static Datum
 _bt_find_extreme_element(IndexScanDesc scan, ScanKey skey, Oid elemtype,
 						 StrategyNumber strat,
-						 Datum *elems, int nelems)
+						 const Datum *elems, int nelems)
 {
 	Relation	rel = scan->indexRelation;
 	Oid			cmp_op;

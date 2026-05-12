@@ -27,6 +27,7 @@
 
 #include "postgres.h"
 
+#include "access/htup_details.h"
 #include "access/nbtree.h"
 #include "access/relation.h"
 #include "catalog/namespace.h"
@@ -506,7 +507,7 @@ bt_page_print_tuples(ua_page_items *uargs)
 
 	j = 0;
 	memset(nulls, 0, sizeof(nulls));
-	values[j++] = DatumGetInt16(offset);
+	values[j++] = Int16GetDatum(offset);
 	values[j++] = ItemPointerGetDatum(&itup->t_tid);
 	values[j++] = Int32GetDatum((int) IndexTupleSize(itup));
 	values[j++] = BoolGetDatum(IndexTupleHasNulls(itup));

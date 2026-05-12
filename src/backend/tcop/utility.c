@@ -58,6 +58,7 @@
 #include "commands/vacuum.h"
 #include "commands/view.h"
 #include "commands/packagecmds.h"
+#include "commands/wait.h"
 #include "miscadmin.h"
 #include "parser/parse_utilcmd.h"
 #include "postmaster/bgwriter.h"
@@ -272,6 +273,7 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 		case T_PrepareStmt:
 		case T_UnlistenStmt:
 		case T_VariableSetStmt:
+		case T_WaitStmt:
 			{
 				/*
 				 * These modify only backend-local state, so they're OK to run
@@ -285,6 +287,7 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 
 		case T_ClusterStmt:
 		case T_ReindexStmt:
+		case T_OraAlterIndexRebuildStmt:	/* Oracle-compat ALTER INDEX ... REBUILD */
 		case T_VacuumStmt:
 			{
 				/*
@@ -1061,6 +1064,12 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 				break;
 			}
 
+		case T_WaitStmt:
+			{
+				ExecWaitStmt(pstate, (WaitStmt *) parsetree, dest);
+			}
+			break;
+
 		default:
 			/* All other statement types have event trigger support */
 			ProcessUtilitySlow(pstate, pstmt, queryString,
@@ -1570,6 +1579,24 @@ ProcessUtilitySlow(ParseState *pstate,
 				commandCollected = true;
 				break;
 
+			case T_OraAlterIndexRebuildStmt:
+				/*
+				 * Oracle-compatible ALTER INDEX ... REBUILD statement.
+				 *
+				 * Delegate to ExecOraAlterIndexRebuild(), which translates
+				 * the OraAlterIndexRebuildStmt options (ONLINE, TABLESPACE,
+				 * PARTITION) into the appropriate ReindexParams and calls
+				 * into the existing REINDEX infrastructure.
+				 *
+				 * Event trigger collection is handled internally by the
+				 * REINDEX infrastructure invoked from ExecOraAlterIndexRebuild().
+				 */
+				ExecOraAlterIndexRebuild(pstate,
+										 (OraAlterIndexRebuildStmt *) parsetree,
+										 isTopLevel);
+				commandCollected = true;
+				break;
+
 			case T_CreateExtensionStmt:
 				address = CreateExtension(pstate, (CreateExtensionStmt *) parsetree);
 				break;
@@ -1884,7 +1911,7 @@ ProcessUtilitySlow(ParseState *pstate,
 					if (!IsA(rel, RangeVar))
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								 errmsg("only a single relation is allowed in CREATE STATISTICS")));
+								 errmsg("CREATE STATISTICS only supports relation names in the FROM clause")));
 
 					/*
 					 * CREATE STATISTICS will influence future execution plans
@@ -1902,7 +1929,7 @@ ProcessUtilitySlow(ParseState *pstate,
 					/* Run parse analysis ... */
 					stmt = transformStatsStmt(relid, stmt, queryString);
 
-					address = CreateStatistics(stmt);
+					address = CreateStatistics(stmt, true);
 				}
 				break;
 
@@ -2079,6 +2106,9 @@ UtilityReturnsTuples(Node *parsetree)
 		case T_VariableShowStmt:
 			return true;
 
+		case T_WaitStmt:
+			return true;
+
 		default:
 			return false;
 	}
@@ -2133,6 +2163,9 @@ UtilityTupleDescriptor(Node *parsetree)
 
 				return GetPGVariableResultDesc(n->name);
 			}
+
+		case T_WaitStmt:
+			return WaitStmtResultDesc((WaitStmt *) parsetree);
 
 		default:
 			return NULL;
@@ -2748,6 +2781,8 @@ CreateCommandTag(Node *parsetree)
 				tag = CMDTAG_ALTER_PROCEDURE;
 			else if (((CompileFunctionStmt *) parsetree)->objtype == OBJECT_FUNCTION)
 				tag = CMDTAG_ALTER_FUNCTION;
+			else
+				tag = CMDTAG_UNKNOWN;
 			break;
 
 		case T_GrantStmt:
@@ -3031,6 +3066,16 @@ CreateCommandTag(Node *parsetree)
 			tag = CMDTAG_REINDEX;
 			break;
 
+		case T_OraAlterIndexRebuildStmt:
+			/*
+			 * Oracle-compatible ALTER INDEX ... REBUILD.
+			 * Reuse the existing CMDTAG_ALTER_INDEX so clients see
+			 * "ALTER INDEX" in pg_stat_activity and command completion tags,
+			 * consistent with other ALTER INDEX subcommands.
+			 */
+			tag = CMDTAG_ALTER_INDEX;
+			break;
+
 		case T_CreateConversionStmt:
 			tag = CMDTAG_CREATE_CONVERSION;
 			break;
@@ -3128,6 +3173,10 @@ CreateCommandTag(Node *parsetree)
 				else
 					tag = CMDTAG_DEALLOCATE;
 			}
+			break;
+
+		case T_WaitStmt:
+			tag = CMDTAG_WAIT;
 			break;
 
 			/* already-planned queries */
@@ -3662,6 +3711,15 @@ GetCommandLogLevel(Node *parsetree)
 			lev = LOGSTMT_ALL;	/* should this be DDL? */
 			break;
 
+		case T_OraAlterIndexRebuildStmt:
+			/*
+			 * REBUILD rewrites index files on disk.  Use LOGSTMT_ALL
+			 * (same as REINDEX) so the statement appears in the server
+			 * log whenever log_statement = 'all' is set.
+			 */
+			lev = LOGSTMT_ALL;
+			break;
+
 		case T_CreateConversionStmt:
 			lev = LOGSTMT_DDL;
 			break;
@@ -3736,6 +3794,10 @@ GetCommandLogLevel(Node *parsetree)
 
 		case T_AlterCollationStmt:
 			lev = LOGSTMT_DDL;
+			break;
+
+		case T_WaitStmt:
+			lev = LOGSTMT_ALL;
 			break;
 
 			/* already-planned queries */

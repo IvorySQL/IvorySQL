@@ -2460,6 +2460,21 @@ get_tuple_of_interest(Relation rel, int *pkattnums, int pknumatts, char **src_pk
 	return NULL;
 }
 
+static void
+RangeVarCallbackForDblink(const RangeVar *relation,
+						  Oid relId, Oid oldRelId, void *arg)
+{
+	AclResult	aclresult;
+
+	if (!OidIsValid(relId))
+		return;
+
+	aclresult = pg_class_aclcheck(relId, GetUserId(), *((AclMode *) arg));
+	if (aclresult != ACLCHECK_OK)
+		aclcheck_error(aclresult, get_relkind_objtype(get_rel_relkind(relId)),
+					   relation->relname);
+}
+
 /*
  * Open the relation named by relname_text, acquire specified type of lock,
  * verify we have specified permissions.
@@ -2469,19 +2484,13 @@ static Relation
 get_rel_from_relname(text *relname_text, LOCKMODE lockmode, AclMode aclmode)
 {
 	RangeVar   *relvar;
-	Relation	rel;
-	AclResult	aclresult;
+	Oid			relid;
 
 	relvar = makeRangeVarFromNameList(textToQualifiedNameList(relname_text));
-	rel = table_openrv(relvar, lockmode);
+	relid = RangeVarGetRelidExtended(relvar, lockmode, 0,
+									 RangeVarCallbackForDblink, &aclmode);
 
-	aclresult = pg_class_aclcheck(RelationGetRelid(rel), GetUserId(),
-								  aclmode);
-	if (aclresult != ACLCHECK_OK)
-		aclcheck_error(aclresult, get_relkind_objtype(rel->rd_rel->relkind),
-					   RelationGetRelationName(rel));
-
-	return rel;
+	return table_open(relid, NoLock);
 }
 
 /*
@@ -2643,7 +2652,7 @@ dblink_connstr_has_required_scram_options(const char *connstr)
 		PQconninfoFree(options);
 	}
 
-	has_scram_keys = has_scram_client_key && has_scram_server_key && MyProcPort->has_scram_keys;
+	has_scram_keys = has_scram_client_key && has_scram_server_key && MyProcPort != NULL && MyProcPort->has_scram_keys;
 
 	return (has_scram_keys && has_require_auth);
 }
@@ -2676,7 +2685,7 @@ dblink_security_check(PGconn *conn, const char *connname, const char *connstr)
 	 * only added if UseScramPassthrough is set, and the user is not allowed
 	 * to add the SCRAM keys on fdw and user mapping options.
 	 */
-	if (MyProcPort->has_scram_keys && dblink_connstr_has_required_scram_options(connstr))
+	if (MyProcPort != NULL && MyProcPort->has_scram_keys && dblink_connstr_has_required_scram_options(connstr))
 		return;
 
 #ifdef ENABLE_GSS
@@ -2749,7 +2758,7 @@ dblink_connstr_check(const char *connstr)
 	if (dblink_connstr_has_pw(connstr))
 		return;
 
-	if (MyProcPort->has_scram_keys && dblink_connstr_has_required_scram_options(connstr))
+	if (MyProcPort != NULL && MyProcPort->has_scram_keys && dblink_connstr_has_required_scram_options(connstr))
 		return;
 
 #ifdef ENABLE_GSS
@@ -2896,7 +2905,7 @@ get_connect_string(const char *servername)
 		 * the user overwrites these options we can ereport on
 		 * dblink_connstr_check and dblink_security_check.
 		 */
-		if (MyProcPort->has_scram_keys && UseScramPassthrough(foreign_server, user_mapping))
+		if (MyProcPort != NULL && MyProcPort->has_scram_keys && UseScramPassthrough(foreign_server, user_mapping))
 			appendSCRAMKeysInfo(&buf);
 
 		foreach(cell, fdw->options)
@@ -3011,7 +3020,7 @@ validate_pkattnums(Relation rel,
 		for (j = 0; j < natts; j++)
 		{
 			/* dropped columns don't count */
-			if (TupleDescAttr(tupdesc, j)->attisdropped)
+			if (TupleDescCompactAttr(tupdesc, j)->attisdropped)
 				continue;
 
 			if (++lnum == pkattnum)

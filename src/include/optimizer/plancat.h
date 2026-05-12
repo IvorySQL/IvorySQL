@@ -30,7 +30,7 @@ extern void get_relation_info(PlannerInfo *root, Oid relationObjectId,
 
 extern void get_relation_notnullatts(PlannerInfo *root, Relation relation);
 
-extern Relids find_relation_notnullatts(PlannerInfo *root, Oid relid);
+extern Bitmapset *find_relation_notnullatts(PlannerInfo *root, Oid relid);
 
 extern List *infer_arbiter_indexes(PlannerInfo *root);
 
@@ -75,6 +75,8 @@ extern void add_function_cost(PlannerInfo *root, Oid funcid, Node *node,
 extern double get_function_rows(PlannerInfo *root, Oid funcid, Node *node);
 
 extern bool has_row_triggers(PlannerInfo *root, Index rti, CmdType event);
+
+extern bool has_transition_tables(PlannerInfo *root, Index rti, CmdType event);
 
 extern bool has_stored_generated_columns(PlannerInfo *root, Index rti);
 

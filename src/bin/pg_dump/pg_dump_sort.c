@@ -388,7 +388,8 @@ DOTypeNameCompare(const void *p1, const void *p2)
 		if (cmpval != 0)
 			return cmpval;
 	}
-	else if (obj1->objType == DO_CONSTRAINT)
+	else if (obj1->objType == DO_CONSTRAINT ||
+			 obj1->objType == DO_FK_CONSTRAINT)
 	{
 		ConstraintInfo *robj1 = *(ConstraintInfo *const *) p1;
 		ConstraintInfo *robj2 = *(ConstraintInfo *const *) p2;
@@ -420,6 +421,19 @@ DOTypeNameCompare(const void *p1, const void *p2)
 			if (cmpval != 0)
 				return cmpval;
 		}
+	}
+	else if (obj1->objType == DO_DEFAULT_ACL)
+	{
+		DefaultACLInfo *daclobj1 = *(DefaultACLInfo *const *) p1;
+		DefaultACLInfo *daclobj2 = *(DefaultACLInfo *const *) p2;
+
+		/*
+		 * Sort by defaclrole, per pg_default_acl_role_nsp_obj_index.  The
+		 * (namespace, name) match (defaclnamespace, defaclobjtype).
+		 */
+		cmpval = strcmp(daclobj1->defaclrole, daclobj2->defaclrole);
+		if (cmpval != 0)
+			return cmpval;
 	}
 	else if (obj1->objType == DO_PUBLICATION_REL)
 	{

@@ -3,7 +3,8 @@
 
 TAP_TESTS = 1
 
-EXTRA_INSTALL=src/oracle_test/modules/injection_points
+EXTRA_INSTALL=src/oracle_test/modules/injection_points \
+	contrib/test_decoding
 
 export enable_injection_points
 

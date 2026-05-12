@@ -1800,7 +1800,7 @@ describeOneTableDetails(const char *schemaname,
 	{
 		PGresult   *result = NULL;
 		printQueryOpt myopt = pset.popt;
-		char	   *footers[2] = {NULL, NULL};
+		char	   *footers[3] = {NULL, NULL, NULL};
 
 		if (pset.sversion >= 100000)
 		{
@@ -1896,6 +1896,39 @@ describeOneTableDetails(const char *schemaname,
 		}
 		PQclear(result);
 
+		/* Print any publications */
+		if (pset.sversion >= 190000)
+		{
+			printfPQExpBuffer(&buf, "SELECT pubname FROM pg_catalog.pg_publication p"
+							  "\nWHERE p.puballsequences"
+							  "\n AND pg_catalog.pg_relation_is_publishable('%s')"
+							  "\nORDER BY 1",
+							  oid);
+
+			result = PSQLexec(buf.data);
+			if (result)
+			{
+				int			nrows = PQntuples(result);
+
+				if (nrows > 0)
+				{
+					printfPQExpBuffer(&tmpbuf, _("Publications:"));
+					for (i = 0; i < nrows; i++)
+						appendPQExpBuffer(&tmpbuf, "\n    \"%s\"", PQgetvalue(result, i, 0));
+
+					/* Store in the first available footer slot */
+					if (footers[0] == NULL)
+						footers[0] = pg_strdup(tmpbuf.data);
+					else
+						footers[1] = pg_strdup(tmpbuf.data);
+
+					resetPQExpBuffer(&tmpbuf);
+				}
+
+				PQclear(result);
+			}
+		}
+
 		if (tableinfo.relpersistence == RELPERSISTENCE_UNLOGGED)
 			printfPQExpBuffer(&title, _("Unlogged sequence \"%s.%s\""),
 							  schemaname, relationname);
@@ -1911,6 +1944,7 @@ describeOneTableDetails(const char *schemaname,
 		printQuery(res, &myopt, pset.queryFout, false, pset.logfile);
 
 		free(footers[0]);
+		free(footers[1]);
 
 		retval = true;
 		goto error_return;		/* not an error, just return early */
@@ -6579,7 +6613,7 @@ listPublications(const char *pattern)
 	PQExpBufferData buf;
 	PGresult   *res;
 	printQueryOpt myopt = pset.popt;
-	static const bool translate_columns[] = {false, false, false, false, false, false, false, false, false};
+	static const bool translate_columns[] = {false, false, false, false, false, false, false, false, false, false};
 
 	if (pset.sversion < 100000)
 	{
@@ -6596,13 +6630,20 @@ listPublications(const char *pattern)
 	printfPQExpBuffer(&buf,
 					  "SELECT pubname AS \"%s\",\n"
 					  "  pg_catalog.pg_get_userbyid(pubowner) AS \"%s\",\n"
-					  "  puballtables AS \"%s\",\n"
-					  "  pubinsert AS \"%s\",\n"
-					  "  pubupdate AS \"%s\",\n"
-					  "  pubdelete AS \"%s\"",
+					  "  puballtables AS \"%s\"",
 					  gettext_noop("Name"),
 					  gettext_noop("Owner"),
-					  gettext_noop("All tables"),
+					  gettext_noop("All tables"));
+
+	if (pset.sversion >= 190000)
+		appendPQExpBuffer(&buf,
+						  ",\n  puballsequences AS \"%s\"",
+						  gettext_noop("All sequences"));
+
+	appendPQExpBuffer(&buf,
+					  ",\n  pubinsert AS \"%s\",\n"
+					  "  pubupdate AS \"%s\",\n"
+					  "  pubdelete AS \"%s\"",
 					  gettext_noop("Inserts"),
 					  gettext_noop("Updates"),
 					  gettext_noop("Deletes"));
@@ -6713,6 +6754,7 @@ describePublications(const char *pattern)
 	bool		has_pubtruncate;
 	bool		has_pubgencols;
 	bool		has_pubviaroot;
+	bool		has_pubsequence;
 
 	PQExpBufferData title;
 	printTableContent cont;
@@ -6727,6 +6769,7 @@ describePublications(const char *pattern)
 		return true;
 	}
 
+	has_pubsequence = (pset.sversion >= 190000);
 	has_pubtruncate = (pset.sversion >= 110000);
 	has_pubgencols = (pset.sversion >= 180000);
 	has_pubviaroot = (pset.sversion >= 130000);
@@ -6736,7 +6779,18 @@ describePublications(const char *pattern)
 	printfPQExpBuffer(&buf,
 					  "SELECT oid, pubname,\n"
 					  "  pg_catalog.pg_get_userbyid(pubowner) AS owner,\n"
-					  "  puballtables, pubinsert, pubupdate, pubdelete");
+					  "  puballtables");
+
+	if (has_pubsequence)
+		appendPQExpBufferStr(&buf,
+							 ", puballsequences");
+	else
+		appendPQExpBufferStr(&buf,
+							 ", false AS puballsequences");
+
+	appendPQExpBufferStr(&buf,
+						 ", pubinsert, pubupdate, pubdelete");
+
 	if (has_pubtruncate)
 		appendPQExpBufferStr(&buf,
 							 ", pubtruncate");
@@ -6811,6 +6865,8 @@ describePublications(const char *pattern)
 		bool		puballtables = strcmp(PQgetvalue(res, i, 3), "t") == 0;
 		printTableOpt myopt = pset.popt.topt;
 
+		if (has_pubsequence)
+			ncols++;
 		if (has_pubtruncate)
 			ncols++;
 		if (has_pubgencols)
@@ -6824,6 +6880,8 @@ describePublications(const char *pattern)
 
 		printTableAddHeader(&cont, gettext_noop("Owner"), true, align);
 		printTableAddHeader(&cont, gettext_noop("All tables"), true, align);
+		if (has_pubsequence)
+			printTableAddHeader(&cont, gettext_noop("All sequences"), true, align);
 		printTableAddHeader(&cont, gettext_noop("Inserts"), true, align);
 		printTableAddHeader(&cont, gettext_noop("Updates"), true, align);
 		printTableAddHeader(&cont, gettext_noop("Deletes"), true, align);
@@ -6836,15 +6894,17 @@ describePublications(const char *pattern)
 
 		printTableAddCell(&cont, PQgetvalue(res, i, 2), false, false);
 		printTableAddCell(&cont, PQgetvalue(res, i, 3), false, false);
-		printTableAddCell(&cont, PQgetvalue(res, i, 4), false, false);
+		if (has_pubsequence)
+			printTableAddCell(&cont, PQgetvalue(res, i, 4), false, false);
 		printTableAddCell(&cont, PQgetvalue(res, i, 5), false, false);
 		printTableAddCell(&cont, PQgetvalue(res, i, 6), false, false);
+		printTableAddCell(&cont, PQgetvalue(res, i, 7), false, false);
 		if (has_pubtruncate)
-			printTableAddCell(&cont, PQgetvalue(res, i, 7), false, false);
-		if (has_pubgencols)
 			printTableAddCell(&cont, PQgetvalue(res, i, 8), false, false);
-		if (has_pubviaroot)
+		if (has_pubgencols)
 			printTableAddCell(&cont, PQgetvalue(res, i, 9), false, false);
+		if (has_pubviaroot)
+			printTableAddCell(&cont, PQgetvalue(res, i, 10), false, false);
 
 		if (!puballtables)
 		{
@@ -6927,7 +6987,7 @@ describeSubscriptions(const char *pattern, bool verbose)
 	printQueryOpt myopt = pset.popt;
 	static const bool translate_columns[] = {false, false, false, false,
 		false, false, false, false, false, false, false, false, false, false,
-	false, false};
+	false, false, false, false};
 
 	if (pset.sversion < 100000)
 	{
@@ -6996,9 +7056,19 @@ describeSubscriptions(const char *pattern, bool verbose)
 							  ", subfailover AS \"%s\"\n",
 							  gettext_noop("Failover"));
 		if (pset.sversion >= 190000)
+		{
 			appendPQExpBuffer(&buf,
 							  ", subretaindeadtuples AS \"%s\"\n",
 							  gettext_noop("Retain dead tuples"));
+
+			appendPQExpBuffer(&buf,
+							  ", submaxretention AS \"%s\"\n",
+							  gettext_noop("Max retention duration"));
+
+			appendPQExpBuffer(&buf,
+							  ", subretentionactive AS \"%s\"\n",
+							  gettext_noop("Retention active"));
+		}
 
 		appendPQExpBuffer(&buf,
 						  ",  subsynccommit AS \"%s\"\n"

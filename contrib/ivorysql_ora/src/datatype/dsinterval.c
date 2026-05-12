@@ -724,9 +724,9 @@ AppendSeconds(char *cp, int sec, fsec_t fsec, int precision, bool fillzeros)
 			sprintf(cp, "%d.%0*d", abs(sec), ORACLE_MAX_INTERVAL_PRECISION, (int) Abs(fsec));
 #else
 		if (fillzeros)
-			sprintf(cp, "%0*.*f", ORACLE_MAX_INTERVAL_PRECISION + 3, ORACLE_MAX_INTERVAL_PRECISIONcision, fabs(sec + fsec));
+			sprintf(cp, "%0*.*f", ORACLE_MAX_INTERVAL_PRECISION + 3, ORACLE_MAX_INTERVAL_PRECISION, fabs(sec + fsec));
 		else
-			sprintf(cp, "%.*f", ORACLE_MAX_INTERVAL_PRECISIONion, fabs(sec + fsec));
+			sprintf(cp, "%.*f", ORACLE_MAX_INTERVAL_PRECISION, fabs(sec + fsec));
 #endif
 		TrimTrailingZeros(cp, ORACLE_MAX_INTERVAL_PRECISION - precision);
 	}

@@ -19,6 +19,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <ctype.h>
+#include <limits.h>
 #include <netdb.h>
 #include <time.h>
 #include <unistd.h>
@@ -502,8 +503,9 @@ static int	parseServiceFile(const char *serviceFile,
 							 PQExpBuffer errorMessage,
 							 bool *group_found);
 static char *pwdfMatchesString(char *buf, const char *token);
-static char *passwordFromFile(const char *hostname, const char *port, const char *dbname,
-							  const char *username, const char *pgpassfile);
+static char *passwordFromFile(const char *hostname, const char *port,
+							  const char *dbname, const char *username,
+							  const char *pgpassfile, const char **errmsg);
 static void pgpassfileWarning(PGconn *conn);
 static void default_threadlock(int acquire);
 static bool sslVerifyProtocolVersion(const char *version);
@@ -1140,7 +1142,7 @@ parse_comma_separated_list(char **startptr, bool *more)
 	char	   *p;
 	char	   *s = *startptr;
 	char	   *e;
-	int			len;
+	size_t		len;
 
 	/*
 	 * Search for the end of the current element; a comma or end-of-string
@@ -1455,6 +1457,7 @@ pqConnectOptions2(PGconn *conn)
 				 * least one of them is guaranteed nonempty by now).
 				 */
 				const char *pwhost = conn->connhost[i].host;
+				const char *password_errmsg = NULL;
 
 				if (pwhost == NULL || pwhost[0] == '\0')
 					pwhost = conn->connhost[i].hostaddr;
@@ -1464,7 +1467,15 @@ pqConnectOptions2(PGconn *conn)
 									 conn->connhost[i].port,
 									 conn->dbName,
 									 conn->pguser,
-									 conn->pgpassfile);
+									 conn->pgpassfile,
+									 &password_errmsg);
+
+				if (password_errmsg != NULL)
+				{
+					conn->status = CONNECTION_BAD;
+					libpq_append_conn_error(conn, "%s", password_errmsg);
+					return false;
+				}
 			}
 		}
 	}
@@ -5495,6 +5506,7 @@ ldapServiceLookup(const char *purl, PQconninfoOption *options,
 			   *entry;
 	struct berval **values;
 	LDAP_TIMEVAL time = {PGLDAP_TIMEOUT, 0};
+	int			ldapversion = LDAP_VERSION3;
 
 	if ((url = strdup(purl)) == NULL)
 	{
@@ -5626,6 +5638,15 @@ ldapServiceLookup(const char *purl, PQconninfoOption *options,
 		return 3;
 	}
 
+	if ((rc = ldap_set_option(ld, LDAP_OPT_PROTOCOL_VERSION, &ldapversion)) != LDAP_SUCCESS)
+	{
+		libpq_append_error(errorMessage, "could not set LDAP protocol version: %s",
+						   ldap_err2string(rc));
+		free(url);
+		ldap_unbind(ld);
+		return 3;
+	}
+
 	/*
 	 * Perform an explicit anonymous bind.
 	 *
@@ -5750,7 +5771,21 @@ ldapServiceLookup(const char *purl, PQconninfoOption *options,
 	/* concatenate values into a single string with newline terminators */
 	size = 1;					/* for the trailing null */
 	for (i = 0; values[i] != NULL; i++)
+	{
+		if (values[i]->bv_len >= INT_MAX ||
+			size > (INT_MAX - (values[i]->bv_len + 1)))
+		{
+			libpq_append_error(errorMessage,
+							   "connection info string size exceeds the maximum allowed (%d)",
+							   INT_MAX);
+			ldap_value_free_len(values);
+			ldap_unbind(ld);
+			return 3;
+		}
+
 		size += values[i]->bv_len + 1;
+	}
+
 	if ((result = malloc(size)) == NULL)
 	{
 		libpq_append_error(errorMessage, "out of memory");
@@ -7933,16 +7968,24 @@ pwdfMatchesString(char *buf, const char *token)
 	return NULL;
 }
 
-/* Get a password from the password file. Return value is malloc'd. */
+/*
+ * Get a password from the password file. Return value is malloc'd.
+ *
+ * On failure, *errmsg is set to an error to be returned.  It is
+ * left NULL on success, or if no password could be found.
+ */
 static char *
-passwordFromFile(const char *hostname, const char *port, const char *dbname,
-				 const char *username, const char *pgpassfile)
+passwordFromFile(const char *hostname, const char *port,
+				 const char *dbname, const char *username,
+				 const char *pgpassfile, const char **errmsg)
 {
 	FILE	   *fp;
 #ifndef WIN32
 	struct stat stat_buf;
 #endif
 	PQExpBufferData buf;
+
+	*errmsg = NULL;
 
 	if (dbname == NULL || dbname[0] == '\0')
 		return NULL;
@@ -8010,7 +8053,10 @@ passwordFromFile(const char *hostname, const char *port, const char *dbname,
 	{
 		/* Make sure there's a reasonable amount of room in the buffer */
 		if (!enlargePQExpBuffer(&buf, 128))
+		{
+			*errmsg = libpq_gettext("out of memory");
 			break;
+		}
 
 		/* Read some data, appending it to what we already have */
 		if (fgets(buf.data + buf.len, buf.maxlen - buf.len, fp) == NULL)
@@ -8049,7 +8095,7 @@ passwordFromFile(const char *hostname, const char *port, const char *dbname,
 
 				if (!ret)
 				{
-					/* Out of memory. XXX: an error message would be nice. */
+					*errmsg = libpq_gettext("out of memory");
 					return NULL;
 				}
 

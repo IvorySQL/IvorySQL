@@ -48,7 +48,13 @@
  * PgStatShared_Common as the first element.
  */
 
-/* struct for shared statistics hash entry key. */
+/*
+ * Struct for shared statistics hash entry key.
+ *
+ * NB: We assume that this struct contains no padding.  Also, 8 bytes
+ * allocated for the object ID are good enough to ensure the uniqueness
+ * of the hash key, hence the addition of new fields is not recommended.
+ */
 typedef struct PgStat_HashKey
 {
 	PgStat_Kind kind;			/* statistics entry kind */
@@ -56,6 +62,15 @@ typedef struct PgStat_HashKey
 	uint64		objid;			/* object ID (table, function, etc.), or
 								 * identifier. */
 } PgStat_HashKey;
+
+/*
+ * PgStat_HashKey should not have any padding.  Checking that the structure
+ * size matches with the sum of each field is a check simple enough to
+ * enforce this policy.
+ */
+StaticAssertDecl((sizeof(PgStat_Kind) + sizeof(uint64) + sizeof(Oid)) ==
+				 sizeof(PgStat_HashKey),
+				 "PgStat_HashKey should have no padding");
 
 /*
  * Shared statistics hash entry. Doesn't itself contain any stats, but points
@@ -215,6 +230,12 @@ typedef struct PgStat_KindInfo
 
 	/* Should stats be written to the on-disk stats file? */
 	bool		write_to_file:1;
+
+	/*
+	 * Should the number of entries be tracked?  For variable-numbered stats,
+	 * to update its PgStat_ShmemControl.entry_counts.
+	 */
+	bool		track_entry_count:1;
 
 	/*
 	 * The size of an entry in the shared stats hash table (pointed to by
@@ -486,6 +507,16 @@ typedef struct PgStat_ShmemControl
 	pg_atomic_uint64 gc_request_count;
 
 	/*
+	 * Counters for the number of entries associated to a single stats kind
+	 * that uses variable-numbered objects stored in the shared hash table.
+	 * These counters can be enabled on a per-kind basis, when
+	 * track_entry_count is set.  This counter is incremented each time a new
+	 * entry is created (not reused) in the shared hash table, and is
+	 * decremented each time an entry is freed from the shared hash table.
+	 */
+	pg_atomic_uint64 entry_counts[PGSTAT_KIND_MAX];
+
+	/*
 	 * Stats data for fixed-numbered objects.
 	 */
 	PgStatShared_Archiver archiver;
@@ -660,6 +691,7 @@ extern void pgstat_database_reset_timestamp_cb(PgStatShared_Common *header, Time
  */
 
 extern bool pgstat_function_flush_cb(PgStat_EntryRef *entry_ref, bool nowait);
+extern void pgstat_function_reset_timestamp_cb(PgStatShared_Common *header, TimestampTz ts);
 
 
 /*
@@ -685,6 +717,7 @@ extern void PostPrepare_PgStat_Relations(PgStat_SubXactStatus *xact_state);
 
 extern bool pgstat_relation_flush_cb(PgStat_EntryRef *entry_ref, bool nowait);
 extern void pgstat_relation_delete_pending_cb(PgStat_EntryRef *entry_ref);
+extern void pgstat_relation_reset_timestamp_cb(PgStatShared_Common *header, TimestampTz ts);
 
 
 /*
@@ -908,6 +941,17 @@ pgstat_get_entry_data(PgStat_Kind kind, PgStatShared_Common *entry)
 	Assert(off != 0 && off < PG_UINT32_MAX);
 
 	return ((char *) (entry)) + off;
+}
+
+/*
+ * Returns the number of entries counted for a stats kind.
+ */
+static inline uint64
+pgstat_get_entry_count(PgStat_Kind kind)
+{
+	Assert(pgstat_get_kind_info(kind)->track_entry_count);
+
+	return pg_atomic_read_u64(&pgStatLocal.shmem->entry_counts[kind - 1]);
 }
 
 /*

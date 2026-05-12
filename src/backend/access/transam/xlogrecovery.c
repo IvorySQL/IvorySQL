@@ -40,11 +40,13 @@
 #include "access/xlogreader.h"
 #include "access/xlogrecovery.h"
 #include "access/xlogutils.h"
+#include "access/xlogwait.h"
 #include "backup/basebackup.h"
 #include "catalog/pg_control.h"
 #include "commands/tablespace.h"
 #include "common/file_utils.h"
 #include "miscadmin.h"
+#include "nodes/miscnodes.h"
 #include "pgstat.h"
 #include "postmaster/bgwriter.h"
 #include "postmaster/startup.h"
@@ -756,9 +758,9 @@ InitWalRecovery(ControlFileData *ControlFile, bool *wasShutdown_ptr,
 		 * end-of-backup record), and we can enter archive recovery directly.
 		 */
 		if (ArchiveRecoveryRequested &&
-			(ControlFile->minRecoveryPoint != InvalidXLogRecPtr ||
+			(XLogRecPtrIsValid(ControlFile->minRecoveryPoint) ||
 			 ControlFile->backupEndRequired ||
-			 ControlFile->backupEndPoint != InvalidXLogRecPtr ||
+			 XLogRecPtrIsValid(ControlFile->backupEndPoint) ||
 			 ControlFile->state == DB_SHUTDOWNED))
 		{
 			InArchiveRecovery = true;
@@ -771,7 +773,7 @@ InitWalRecovery(ControlFileData *ControlFile, bool *wasShutdown_ptr,
 		 * emit a log message when we continue initializing from a base
 		 * backup.
 		 */
-		if (!XLogRecPtrIsInvalid(ControlFile->backupStartPoint))
+		if (XLogRecPtrIsValid(ControlFile->backupStartPoint))
 			ereport(LOG,
 					errmsg("restarting backup recovery with redo LSN %X/%08X",
 						   LSN_FORMAT_ARGS(ControlFile->backupStartPoint)));
@@ -866,7 +868,7 @@ InitWalRecovery(ControlFileData *ControlFile, bool *wasShutdown_ptr,
 	 * The min recovery point should be part of the requested timeline's
 	 * history, too.
 	 */
-	if (!XLogRecPtrIsInvalid(ControlFile->minRecoveryPoint) &&
+	if (XLogRecPtrIsValid(ControlFile->minRecoveryPoint) &&
 		tliOfPointInHistory(ControlFile->minRecoveryPoint - 1, expectedTLEs) !=
 		ControlFile->minRecoveryPointTLI)
 		ereport(FATAL,
@@ -1837,6 +1839,16 @@ PerformWalRecovery(void)
 				break;
 			}
 
+			/*
+			 * If we replayed an LSN that someone was waiting for then walk
+			 * over the shared memory array and set latches to notify the
+			 * waiters.
+			 */
+			if (waitLSNState &&
+				(XLogRecoveryCtl->lastReplayedEndRecPtr >=
+				 pg_atomic_read_u64(&waitLSNState->minWaitedLSN[WAIT_LSN_TYPE_REPLAY])))
+				WaitLSNWakeup(WAIT_LSN_TYPE_REPLAY, XLogRecoveryCtl->lastReplayedEndRecPtr);
+
 			/* Else, try to fetch the next WAL record */
 			record = ReadRecord(xlogprefetcher, LOG, false, replayTLI);
 		} while (record != NULL);
@@ -2192,7 +2204,7 @@ CheckRecoveryConsistency(void)
 	 * During crash recovery, we don't reach a consistent state until we've
 	 * replayed all the WAL.
 	 */
-	if (XLogRecPtrIsInvalid(minRecoveryPoint))
+	if (!XLogRecPtrIsValid(minRecoveryPoint))
 		return;
 
 	Assert(InArchiveRecovery);
@@ -2207,7 +2219,7 @@ CheckRecoveryConsistency(void)
 	/*
 	 * Have we reached the point where our base backup was completed?
 	 */
-	if (!XLogRecPtrIsInvalid(backupEndPoint) &&
+	if (XLogRecPtrIsValid(backupEndPoint) &&
 		backupEndPoint <= lastReplayedEndRecPtr)
 	{
 		XLogRecPtr	saveBackupStartPoint = backupStartPoint;
@@ -2413,7 +2425,7 @@ checkTimeLineSwitch(XLogRecPtr lsn, TimeLineID newTLI, TimeLineID prevTLI,
 	 * branched before the timeline the min recovery point is on, and you
 	 * attempt to do PITR to the new timeline.
 	 */
-	if (!XLogRecPtrIsInvalid(minRecoveryPoint) &&
+	if (XLogRecPtrIsValid(minRecoveryPoint) &&
 		lsn < minRecoveryPoint &&
 		newTLI > minRecoveryPointTLI)
 		ereport(PANIC,
@@ -3147,10 +3159,12 @@ ReadRecord(XLogPrefetcher *xlogprefetcher, int emode,
 	XLogReaderState *xlogreader = XLogPrefetcherGetReader(xlogprefetcher);
 	XLogPageReadPrivate *private = (XLogPageReadPrivate *) xlogreader->private_data;
 
+	Assert(AmStartupProcess() || !IsUnderPostmaster);
+
 	/* Pass through parameters to XLogPageRead */
 	private->fetching_ckpt = fetching_ckpt;
 	private->emode = emode;
-	private->randAccess = (xlogreader->ReadRecPtr == InvalidXLogRecPtr);
+	private->randAccess = !XLogRecPtrIsValid(xlogreader->ReadRecPtr);
 	private->replayTLI = replayTLI;
 
 	/* This is the first attempt to read this page. */
@@ -3176,7 +3190,7 @@ ReadRecord(XLogPrefetcher *xlogprefetcher, int emode,
 			 * overwrite contrecord in the wrong place, breaking everything.
 			 */
 			if (!ArchiveRecoveryRequested &&
-				!XLogRecPtrIsInvalid(xlogreader->abortedRecPtr))
+				XLogRecPtrIsValid(xlogreader->abortedRecPtr))
 			{
 				abortedRecPtr = xlogreader->abortedRecPtr;
 				missingContrecPtr = xlogreader->missingContrecPtr;
@@ -3318,6 +3332,8 @@ XLogPageRead(XLogReaderState *xlogreader, XLogRecPtr targetPagePtr, int reqLen,
 	int			r;
 	instr_time	io_start;
 
+	Assert(AmStartupProcess() || !IsUnderPostmaster);
+
 	XLByteToSeg(targetPagePtr, targetSegNo, wal_segment_size);
 	targetPageOff = XLogSegmentOffset(targetPagePtr, wal_segment_size);
 
@@ -3413,7 +3429,7 @@ retry:
 	io_start = pgstat_prepare_io_time(track_wal_io_timing);
 
 	pgstat_report_wait_start(WAIT_EVENT_WAL_READ);
-	r = pg_pread(readFile, readBuf, XLOG_BLCKSZ, (off_t) readOff);
+	r = pg_pread(readFile, readBuf, XLOG_BLCKSZ, (pgoff_t) readOff);
 	if (r != XLOG_BLCKSZ)
 	{
 		char		fname[MAXFNAMELEN];
@@ -3686,8 +3702,27 @@ WaitForWALToBecomeAvailable(XLogRecPtr RecPtr, bool randAccess,
 					 * Before we leave XLOG_FROM_STREAM state, make sure that
 					 * walreceiver is not active, so that it won't overwrite
 					 * WAL that we restore from archive.
+					 *
+					 * If walreceiver is actively streaming (or attempting to
+					 * connect), we must shut it down. However, if it's
+					 * already in WAITING state (e.g., due to timeline
+					 * divergence), we only need to reset the install flag to
+					 * allow archive restoration.
 					 */
-					XLogShutdownWalRcv();
+					if (WalRcvStreaming())
+						XLogShutdownWalRcv();
+					else
+					{
+						/*
+						 * WALRCV_STOPPING state is a transient state while
+						 * the startup process is in ShutdownWalRcv().  It
+						 * should never appear here since we would be waiting
+						 * for the walreceiver to reach WALRCV_STOPPED in that
+						 * case.
+						 */
+						Assert(WalRcvGetState() != WALRCV_STOPPING);
+						ResetInstallXLogFileSegmentActive();
+					}
 
 					/*
 					 * Before we sleep, re-scan for possible new timelines if
@@ -4335,7 +4370,7 @@ XLogFileReadAnyTLI(XLogSegNo segno, XLogSource source)
 		 * Skip scanning the timeline ID that the logfile segment to read
 		 * doesn't belong to
 		 */
-		if (hent->begin != InvalidXLogRecPtr)
+		if (XLogRecPtrIsValid(hent->begin))
 		{
 			XLogSegNo	beginseg = 0;
 
@@ -4760,9 +4795,20 @@ RecoveryRequiresIntParameter(const char *param_name, int currValue, int minValue
 bool
 check_primary_slot_name(char **newval, void **extra, GucSource source)
 {
+	int			err_code;
+	char	   *err_msg = NULL;
+	char	   *err_hint = NULL;
+
 	if (*newval && strcmp(*newval, "") != 0 &&
-		!ReplicationSlotValidateName(*newval, false, WARNING))
+		!ReplicationSlotValidateNameInternal(*newval, false, &err_code,
+											 &err_msg, &err_hint))
+	{
+		GUC_check_errcode(err_code);
+		GUC_check_errdetail("%s", err_msg);
+		if (err_hint != NULL)
+			GUC_check_errhint("%s", err_hint);
 		return false;
+	}
 
 	return true;
 }
@@ -4834,10 +4880,10 @@ check_recovery_target_lsn(char **newval, void **extra, GucSource source)
 	{
 		XLogRecPtr	lsn;
 		XLogRecPtr *myextra;
-		bool		have_error = false;
+		ErrorSaveContext escontext = {T_ErrorSaveContext};
 
-		lsn = pg_lsn_in_internal(*newval, &have_error);
-		if (have_error)
+		lsn = pg_lsn_in_safe(*newval, (Node *) &escontext);
+		if (escontext.error_occurred)
 			return false;
 
 		myextra = (XLogRecPtr *) guc_malloc(LOG, sizeof(XLogRecPtr));

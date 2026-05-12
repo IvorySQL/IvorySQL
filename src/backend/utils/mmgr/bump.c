@@ -100,7 +100,7 @@ struct BumpBlock
  *		True iff set is valid bump context.
  */
 #define BumpIsValid(set) \
-	(PointerIsValid(set) && IsA(set, BumpContext))
+	((set) && IsA(set, BumpContext))
 
 /*
  * We always store external chunks on a dedicated block.  This makes fetching
@@ -407,7 +407,7 @@ BumpAllocChunkFromBlock(MemoryContext context, BumpBlock *block, Size size,
 #ifdef MEMORY_CONTEXT_CHECKING
 	chunk = (MemoryChunk *) block->freeptr;
 #else
-	ptr = (void *) block->freeptr;
+	ptr = block->freeptr;
 #endif
 
 	/* point the freeptr beyond this chunk */

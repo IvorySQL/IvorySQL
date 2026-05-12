@@ -30,6 +30,7 @@ typedef enum LogicalRepWorkerType
 {
 	WORKERTYPE_UNKNOWN = 0,
 	WORKERTYPE_TABLESYNC,
+	WORKERTYPE_SEQUENCESYNC,
 	WORKERTYPE_APPLY,
 	WORKERTYPE_PARALLEL_APPLY,
 } LogicalRepWorkerType;
@@ -87,12 +88,16 @@ typedef struct LogicalRepWorker
 	bool		parallel_apply;
 
 	/*
-	 * The changes made by this and later transactions must be retained to
-	 * ensure reliable conflict detection during the apply phase.
+	 * Changes made by this transaction and subsequent ones must be preserved.
+	 * This ensures that update_deleted conflicts can be accurately detected
+	 * during the apply phase of logical replication by this worker.
 	 *
 	 * The logical replication launcher manages an internal replication slot
 	 * named "pg_conflict_detection". It asynchronously collects this ID to
 	 * decide when to advance the xmin value of the slot.
+	 *
+	 * This ID is set to InvalidTransactionId when the apply worker stops
+	 * retaining information needed for conflict detection.
 	 */
 	TransactionId oldest_nonremovable_xid;
 
@@ -102,6 +107,8 @@ typedef struct LogicalRepWorker
 	TimestampTz last_recv_time;
 	XLogRecPtr	reply_lsn;
 	TimestampTz reply_time;
+
+	TimestampTz last_seqsync_start_time;
 } LogicalRepWorker;
 
 /*
@@ -247,8 +254,11 @@ extern PGDLLIMPORT bool in_remote_transaction;
 
 extern PGDLLIMPORT bool InitializingApplyWorker;
 
+extern PGDLLIMPORT List *table_states_not_ready;
+
 extern void logicalrep_worker_attach(int slot);
-extern LogicalRepWorker *logicalrep_worker_find(Oid subid, Oid relid,
+extern LogicalRepWorker *logicalrep_worker_find(LogicalRepWorkerType wtype,
+												Oid subid, Oid relid,
 												bool only_running);
 extern List *logicalrep_workers_find(Oid subid, bool only_running,
 									 bool acquire_lock);
@@ -257,22 +267,34 @@ extern bool logicalrep_worker_launch(LogicalRepWorkerType wtype,
 									 Oid userid, Oid relid,
 									 dsm_handle subworker_dsm,
 									 bool retain_dead_tuples);
-extern void logicalrep_worker_stop(Oid subid, Oid relid);
+extern void logicalrep_worker_stop(LogicalRepWorkerType wtype, Oid subid,
+								   Oid relid);
 extern void logicalrep_pa_worker_stop(ParallelApplyWorkerInfo *winfo);
-extern void logicalrep_worker_wakeup(Oid subid, Oid relid);
+extern void logicalrep_worker_wakeup(LogicalRepWorkerType wtype, Oid subid,
+									 Oid relid);
 extern void logicalrep_worker_wakeup_ptr(LogicalRepWorker *worker);
 
+extern void logicalrep_reset_seqsync_start_time(void);
 extern int	logicalrep_sync_worker_count(Oid subid);
 
 extern void ReplicationOriginNameForLogicalRep(Oid suboid, Oid relid,
 											   char *originname, Size szoriginname);
 
 extern bool AllTablesyncsReady(void);
+extern bool HasSubscriptionTablesCached(void);
 extern void UpdateTwoPhaseState(Oid suboid, char new_state);
 
-extern void process_syncing_tables(XLogRecPtr current_lsn);
-extern void invalidate_syncing_table_states(Datum arg, int cacheid,
-											uint32 hashvalue);
+extern void ProcessSyncingTablesForSync(XLogRecPtr current_lsn);
+extern void ProcessSyncingTablesForApply(XLogRecPtr current_lsn);
+extern void ProcessSequencesForSync(void);
+
+pg_noreturn extern void FinishSyncWorker(void);
+extern void InvalidateSyncingRelStates(Datum arg, int cacheid, uint32 hashvalue);
+extern void launch_sync_worker(LogicalRepWorkerType wtype, int nsyncworkers,
+							   Oid relid, TimestampTz *last_start_time);
+extern void ProcessSyncingRelations(XLogRecPtr current_lsn);
+extern void FetchRelationStates(bool *has_pending_subtables,
+								bool *has_pending_sequences, bool *started_tx);
 
 extern void stream_start_internal(TransactionId xid, bool first_segment);
 extern void stream_stop_internal(TransactionId xid);
@@ -339,13 +361,21 @@ extern void pa_xact_finish(ParallelApplyWorkerInfo *winfo,
 
 #define isParallelApplyWorker(worker) ((worker)->in_use && \
 									   (worker)->type == WORKERTYPE_PARALLEL_APPLY)
-#define isTablesyncWorker(worker) ((worker)->in_use && \
+#define isTableSyncWorker(worker) ((worker)->in_use && \
 								   (worker)->type == WORKERTYPE_TABLESYNC)
+#define isSequenceSyncWorker(worker) ((worker)->in_use && \
+									  (worker)->type == WORKERTYPE_SEQUENCESYNC)
 
 static inline bool
 am_tablesync_worker(void)
 {
-	return isTablesyncWorker(MyLogicalRepWorker);
+	return isTableSyncWorker(MyLogicalRepWorker);
+}
+
+static inline bool
+am_sequencesync_worker(void)
+{
+	return isSequenceSyncWorker(MyLogicalRepWorker);
 }
 
 static inline bool

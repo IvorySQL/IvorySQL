@@ -35,6 +35,7 @@
  * %p - backend pid
  * %> - database server port number
  * %n - database user name
+ * %S - search_path
  * %/ - current database
  * %~ - like %/ but "~" when database name equals user name
  * %w - whitespace of the same width as the most recent output of PROMPT1
@@ -167,6 +168,16 @@ ora_get_prompt(Ora_promptStatus_t status, ConditionalStack cstack)
 				case 'n':
 					if (pset.db)
 						strlcpy(buf, session_username(), sizeof(buf));
+					break;
+					/* search_path */
+				case 'S':
+					if (pset.db)
+					{
+						const char *sp = PQparameterStatus(pset.db, "search_path");
+
+						/* Use ? for versions that don't report search_path. */
+						strlcpy(buf, sp ? sp : "?", sizeof(buf));
+					}
 					break;
 					/* service name */
 				case 's':

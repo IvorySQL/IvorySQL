@@ -444,6 +444,26 @@ do { \
 	matches = rl_completion_matches(text, complete_from_schema_query); \
 } while (0)
 
+#define COMPLETE_WITH_FILES_LIST(escape, force_quote, list) \
+do { \
+	completion_charp = escape; \
+	completion_charpp = list; \
+	completion_force_quote = force_quote; \
+	matches = rl_completion_matches(text, complete_from_files); \
+} while (0)
+
+#define COMPLETE_WITH_FILES(escape, force_quote) \
+	COMPLETE_WITH_FILES_LIST(escape, force_quote, NULL)
+
+#define COMPLETE_WITH_FILES_PLUS(escape, force_quote, ...) \
+do { \
+	static const char *const list[] = { __VA_ARGS__, NULL }; \
+	COMPLETE_WITH_FILES_LIST(escape, force_quote, list); \
+} while (0)
+
+#define COMPLETE_WITH_GENERATOR(generator) \
+	matches = rl_completion_matches(text, generator)
+
 /*
  * Assembly instructions for schema queries
  *
@@ -1265,7 +1285,8 @@ static const char *const sql_commands[] = {
 	"REASSIGN", "REFRESH MATERIALIZED VIEW", "REINDEX", "RELEASE",
 	"RESET", "REVOKE", "ROLLBACK",
 	"SAVEPOINT", "SECURITY LABEL", "SELECT", "SET", "SHOW", "START",
-	"TABLE", "TRUNCATE", "UNLISTEN", "UPDATE", "VACUUM", "VALUES", "WITH",
+	"TABLE", "TRUNCATE", "UNLISTEN", "UPDATE", "VACUUM", "VALUES",
+	"WAIT FOR", "WITH",
 	NULL
 };
 
@@ -1429,6 +1450,7 @@ static const char *const table_storage_parameters[] = {
 	"autovacuum_vacuum_threshold",
 	"fillfactor",
 	"log_autovacuum_min_duration",
+	"log_autoanalyze_min_duration",
 	"parallel_workers",
 	"toast.autovacuum_enabled",
 	"toast.autovacuum_freeze_max_age",
@@ -1492,6 +1514,7 @@ static void append_variable_names(char ***varnames, int *nvars,
 static char **complete_from_variables(const char *text,
 									  const char *prefix, const char *suffix, bool need_value);
 static char *complete_from_files(const char *text, int state);
+static char *_complete_from_files(const char *text, int state);
 
 static char *pg_strdup_keyword_case(const char *s, const char *ref);
 static char *escape_string(const char *text);
@@ -1936,11 +1959,11 @@ psql_completion(const char *text, int start, int end)
 		"\\out",
 		"\\parse", "\\password", "\\print", "\\prompt", "\\pset",
 		"\\qecho", "\\quit",
-		"\\reset",
+		"\\reset", "\\restrict",
 		"\\s", "\\sendpipeline", "\\set", "\\setenv", "\\sf",
 		"\\startpipeline", "\\sv", "\\syncpipeline",
 		"\\t", "\\T", "\\timing",
-		"\\unset",
+		"\\unrestrict", "\\unset",
 		"\\x",
 		"\\warn", "\\watch", "\\write",
 		"\\z",
@@ -2200,7 +2223,7 @@ match_previous_words(int pattern_id,
 			/* for INDEX and TABLE/SEQUENCE, respectively */
 						  "UNIQUE", "UNLOGGED");
 		else
-			matches = rl_completion_matches(text, create_command_generator);
+			COMPLETE_WITH_GENERATOR(create_command_generator);
 	}
 	/* complete with something you can create or replace */
 	else if (TailMatches("CREATE", "OR", "REPLACE"))
@@ -2210,7 +2233,7 @@ match_previous_words(int pattern_id,
 /* DROP, but not DROP embedded in other commands */
 	/* complete with something you can drop */
 	else if (Matches("DROP"))
-		matches = rl_completion_matches(text, drop_command_generator);
+		COMPLETE_WITH_GENERATOR(drop_command_generator);
 
 /* ALTER */
 
@@ -2221,7 +2244,7 @@ match_previous_words(int pattern_id,
 
 	/* ALTER something */
 	else if (Matches("ALTER"))
-		matches = rl_completion_matches(text, alter_command_generator);
+		COMPLETE_WITH_GENERATOR(alter_command_generator);
 	/* ALTER TABLE,INDEX,MATERIALIZED VIEW ALL IN TABLESPACE xxx */
 	else if (TailMatches("ALL", "IN", "TABLESPACE", MatchAny))
 		COMPLETE_WITH("SET TABLESPACE", "OWNED BY");
@@ -2326,11 +2349,11 @@ match_previous_words(int pattern_id,
 	/* ALTER SUBSCRIPTION <name> */
 	else if (Matches("ALTER", "SUBSCRIPTION", MatchAny))
 		COMPLETE_WITH("CONNECTION", "ENABLE", "DISABLE", "OWNER TO",
-					  "RENAME TO", "REFRESH PUBLICATION", "SET", "SKIP (",
-					  "ADD PUBLICATION", "DROP PUBLICATION");
-	/* ALTER SUBSCRIPTION <name> REFRESH PUBLICATION */
-	else if (Matches("ALTER", "SUBSCRIPTION", MatchAny, MatchAnyN, "REFRESH", "PUBLICATION"))
-		COMPLETE_WITH("WITH (");
+					  "RENAME TO", "REFRESH PUBLICATION", "REFRESH SEQUENCES",
+					  "SET", "SKIP (", "ADD PUBLICATION", "DROP PUBLICATION");
+	/* ALTER SUBSCRIPTION <name> REFRESH */
+	else if (Matches("ALTER", "SUBSCRIPTION", MatchAny, MatchAnyN, "REFRESH"))
+		COMPLETE_WITH("PUBLICATION", "SEQUENCES");
 	/* ALTER SUBSCRIPTION <name> REFRESH PUBLICATION WITH ( */
 	else if (Matches("ALTER", "SUBSCRIPTION", MatchAny, MatchAnyN, "REFRESH", "PUBLICATION", "WITH", "("))
 		COMPLETE_WITH("copy_data");
@@ -2339,7 +2362,8 @@ match_previous_words(int pattern_id,
 		COMPLETE_WITH("(", "PUBLICATION");
 	/* ALTER SUBSCRIPTION <name> SET ( */
 	else if (Matches("ALTER", "SUBSCRIPTION", MatchAny, MatchAnyN, "SET", "("))
-		COMPLETE_WITH("binary", "disable_on_error", "failover", "origin",
+		COMPLETE_WITH("binary", "disable_on_error", "failover",
+					  "max_retention_duration", "origin",
 					  "password_required", "retain_dead_tuples",
 					  "run_as_owner", "slot_name", "streaming",
 					  "synchronous_commit", "two_phase");
@@ -3341,50 +3365,61 @@ match_previous_words(int pattern_id,
 	/* Complete COPY <sth> */
 	else if (Matches("COPY|\\copy", MatchAny))
 		COMPLETE_WITH("FROM", "TO");
-	/* Complete COPY <sth> FROM|TO with filename */
-	else if (Matches("COPY", MatchAny, "FROM|TO"))
+	/* Complete COPY|\copy <sth> FROM|TO with filename or STDIN/STDOUT/PROGRAM */
+	else if (Matches("COPY|\\copy", MatchAny, "FROM|TO"))
 	{
-		completion_charp = "";
-		completion_force_quote = true;	/* COPY requires quoted filename */
-		matches = rl_completion_matches(text, complete_from_files);
-	}
-	else if (Matches("\\copy", MatchAny, "FROM|TO"))
-	{
-		completion_charp = "";
-		completion_force_quote = false;
-		matches = rl_completion_matches(text, complete_from_files);
+		/* COPY requires quoted filename */
+		bool		force_quote = HeadMatches("COPY");
+
+		if (TailMatches("FROM"))
+			COMPLETE_WITH_FILES_PLUS("", force_quote, "STDIN", "PROGRAM");
+		else
+			COMPLETE_WITH_FILES_PLUS("", force_quote, "STDOUT", "PROGRAM");
 	}
 
-	/* Complete COPY <sth> TO <sth> */
-	else if (Matches("COPY|\\copy", MatchAny, "TO", MatchAny))
+	/* Complete COPY|\copy <sth> FROM|TO PROGRAM */
+	else if (Matches("COPY|\\copy", MatchAny, "FROM|TO", "PROGRAM"))
+		COMPLETE_WITH_FILES("", HeadMatches("COPY"));	/* COPY requires quoted
+														 * filename */
+
+	/* Complete COPY <sth> TO [PROGRAM] <sth> */
+	else if (Matches("COPY|\\copy", MatchAny, "TO", MatchAnyExcept("PROGRAM")) ||
+			 Matches("COPY|\\copy", MatchAny, "TO", "PROGRAM", MatchAny))
 		COMPLETE_WITH("WITH (");
 
-	/* Complete COPY <sth> FROM <sth> */
-	else if (Matches("COPY|\\copy", MatchAny, "FROM", MatchAny))
+	/* Complete COPY <sth> FROM [PROGRAM] <sth> */
+	else if (Matches("COPY|\\copy", MatchAny, "FROM", MatchAnyExcept("PROGRAM")) ||
+			 Matches("COPY|\\copy", MatchAny, "FROM", "PROGRAM", MatchAny))
 		COMPLETE_WITH("WITH (", "WHERE");
 
-	/* Complete COPY <sth> FROM filename WITH ( */
-	else if (Matches("COPY|\\copy", MatchAny, "FROM", MatchAny, "WITH", "("))
+	/* Complete COPY <sth> FROM [PROGRAM] filename WITH ( */
+	else if (Matches("COPY|\\copy", MatchAny, "FROM", MatchAnyExcept("PROGRAM"), "WITH", "(") ||
+			 Matches("COPY|\\copy", MatchAny, "FROM", "PROGRAM", MatchAny, "WITH", "("))
 		COMPLETE_WITH(Copy_from_options);
 
-	/* Complete COPY <sth> TO filename WITH ( */
-	else if (Matches("COPY|\\copy", MatchAny, "TO", MatchAny, "WITH", "("))
+	/* Complete COPY <sth> TO [PROGRAM] filename WITH ( */
+	else if (Matches("COPY|\\copy", MatchAny, "TO", MatchAnyExcept("PROGRAM"), "WITH", "(") ||
+			 Matches("COPY|\\copy", MatchAny, "TO", "PROGRAM", MatchAny, "WITH", "("))
 		COMPLETE_WITH(Copy_to_options);
 
-	/* Complete COPY <sth> FROM|TO filename WITH (FORMAT */
-	else if (Matches("COPY|\\copy", MatchAny, "FROM|TO", MatchAny, "WITH", "(", "FORMAT"))
+	/* Complete COPY <sth> FROM|TO [PROGRAM] <sth> WITH (FORMAT */
+	else if (Matches("COPY|\\copy", MatchAny, "FROM|TO", MatchAnyExcept("PROGRAM"), "WITH", "(", "FORMAT") ||
+			 Matches("COPY|\\copy", MatchAny, "FROM|TO", "PROGRAM", MatchAny, "WITH", "(", "FORMAT"))
 		COMPLETE_WITH("binary", "csv", "text");
 
-	/* Complete COPY <sth> FROM filename WITH (ON_ERROR */
-	else if (Matches("COPY|\\copy", MatchAny, "FROM", MatchAny, "WITH", "(", "ON_ERROR"))
+	/* Complete COPY <sth> FROM [PROGRAM] filename WITH (ON_ERROR */
+	else if (Matches("COPY|\\copy", MatchAny, "FROM", MatchAnyExcept("PROGRAM"), "WITH", "(", "ON_ERROR") ||
+			 Matches("COPY|\\copy", MatchAny, "FROM", "PROGRAM", MatchAny, "WITH", "(", "ON_ERROR"))
 		COMPLETE_WITH("stop", "ignore");
 
-	/* Complete COPY <sth> FROM filename WITH (LOG_VERBOSITY */
-	else if (Matches("COPY|\\copy", MatchAny, "FROM", MatchAny, "WITH", "(", "LOG_VERBOSITY"))
+	/* Complete COPY <sth> FROM [PROGRAM] filename WITH (LOG_VERBOSITY */
+	else if (Matches("COPY|\\copy", MatchAny, "FROM", MatchAnyExcept("PROGRAM"), "WITH", "(", "LOG_VERBOSITY") ||
+			 Matches("COPY|\\copy", MatchAny, "FROM", "PROGRAM", MatchAny, "WITH", "(", "LOG_VERBOSITY"))
 		COMPLETE_WITH("silent", "default", "verbose");
 
-	/* Complete COPY <sth> FROM <sth> WITH (<options>) */
-	else if (Matches("COPY|\\copy", MatchAny, "FROM", MatchAny, "WITH", MatchAny))
+	/* Complete COPY <sth> FROM [PROGRAM] <sth> WITH (<options>) */
+	else if (Matches("COPY|\\copy", MatchAny, "FROM", MatchAnyExcept("PROGRAM"), "WITH", MatchAny) ||
+			 Matches("COPY|\\copy", MatchAny, "FROM", "PROGRAM", MatchAny, "WITH", MatchAny))
 		COMPLETE_WITH("WHERE");
 
 	/* CREATE ACCESS METHOD */
@@ -3610,11 +3645,11 @@ match_previous_words(int pattern_id,
 
 /* CREATE PUBLICATION */
 	else if (Matches("CREATE", "PUBLICATION", MatchAny))
-		COMPLETE_WITH("FOR TABLE", "FOR ALL TABLES", "FOR TABLES IN SCHEMA", "WITH (");
+		COMPLETE_WITH("FOR TABLE", "FOR TABLES IN SCHEMA", "FOR ALL TABLES", "FOR ALL SEQUENCES", "WITH (");
 	else if (Matches("CREATE", "PUBLICATION", MatchAny, "FOR"))
-		COMPLETE_WITH("TABLE", "ALL TABLES", "TABLES IN SCHEMA");
+		COMPLETE_WITH("TABLE", "TABLES IN SCHEMA", "ALL TABLES", "ALL SEQUENCES");
 	else if (Matches("CREATE", "PUBLICATION", MatchAny, "FOR", "ALL"))
-		COMPLETE_WITH("TABLES");
+		COMPLETE_WITH("TABLES", "SEQUENCES");
 	else if (Matches("CREATE", "PUBLICATION", MatchAny, "FOR", "ALL", "TABLES"))
 		COMPLETE_WITH("WITH (");
 	else if (Matches("CREATE", "PUBLICATION", MatchAny, "FOR", "TABLES"))
@@ -3808,7 +3843,8 @@ match_previous_words(int pattern_id,
 	/* Complete "CREATE SUBSCRIPTION <name> ...  WITH ( <opt>" */
 	else if (Matches("CREATE", "SUBSCRIPTION", MatchAnyN, "WITH", "("))
 		COMPLETE_WITH("binary", "connect", "copy_data", "create_slot",
-					  "disable_on_error", "enabled", "failover", "origin",
+					  "disable_on_error", "enabled", "failover",
+					  "max_retention_duration", "origin",
 					  "password_required", "retain_dead_tuples",
 					  "run_as_owner", "slot_name", "streaming",
 					  "synchronous_commit", "two_phase");
@@ -4578,13 +4614,10 @@ match_previous_words(int pattern_id,
 					  "ROUTINES IN SCHEMA",
 					  "SEQUENCES IN SCHEMA",
 					  "TABLES IN SCHEMA");
-	else if (TailMatches("GRANT|REVOKE", MatchAny, "ON", "FOREIGN") ||
-			 TailMatches("REVOKE", "GRANT", "OPTION", "FOR", MatchAny, "ON", "FOREIGN"))
-		COMPLETE_WITH("DATA WRAPPER", "SERVER");
 
 	/*
 	 * Complete "GRANT/REVOKE * ON DATABASE/DOMAIN/..." with a list of
-	 * appropriate objects.
+	 * appropriate objects or keywords.
 	 *
 	 * Complete "GRANT/REVOKE * ON *" with "TO/FROM".
 	 */
@@ -4597,10 +4630,19 @@ match_previous_words(int pattern_id,
 			COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_domains);
 		else if (TailMatches("FUNCTION"))
 			COMPLETE_WITH_VERSIONED_SCHEMA_QUERY(Query_for_list_of_functions);
+		else if (TailMatches("FOREIGN"))
+			COMPLETE_WITH("DATA WRAPPER", "SERVER");
 		else if (TailMatches("LANGUAGE"))
 			COMPLETE_WITH_QUERY(Query_for_list_of_languages);
 		else if (TailMatches("PACKAGE"))
 			COMPLETE_WITH_VERSIONED_SCHEMA_QUERY(Query_for_list_of_packages);
+		else if (TailMatches("LARGE"))
+		{
+			if (HeadMatches("ALTER", "DEFAULT", "PRIVILEGES"))
+				COMPLETE_WITH("OBJECTS");
+			else
+				COMPLETE_WITH("OBJECT");
+		}
 		else if (TailMatches("PROCEDURE"))
 			COMPLETE_WITH_VERSIONED_SCHEMA_QUERY(Query_for_list_of_procedures);
 		else if (TailMatches("ROUTINE"))
@@ -5301,6 +5343,40 @@ match_previous_words(int pattern_id,
 	else if (HeadMatches("VACUUM"))
 		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_vacuumables);
 
+/*
+ * WAIT FOR LSN '<lsn>' [ WITH ( option [, ...] ) ]
+ * where option can be:
+ *   TIMEOUT '<timeout>'
+ *   NO_THROW
+ */
+	else if (Matches("WAIT"))
+		COMPLETE_WITH("FOR");
+	else if (Matches("WAIT", "FOR"))
+		COMPLETE_WITH("LSN");
+	else if (Matches("WAIT", "FOR", "LSN"))
+		/* No completion for LSN value - user must provide manually */
+		;
+	else if (Matches("WAIT", "FOR", "LSN", MatchAny))
+		COMPLETE_WITH("WITH");
+	else if (Matches("WAIT", "FOR", "LSN", MatchAny, "WITH"))
+		COMPLETE_WITH("(");
+	else if (HeadMatches("WAIT", "FOR", "LSN", MatchAny, "WITH", "(*") &&
+			 !HeadMatches("WAIT", "FOR", "LSN", MatchAny, "WITH", "(*)"))
+	{
+		/*
+		 * This fires if we're in an unfinished parenthesized option list.
+		 * get_previous_words treats a completed parenthesized option list as
+		 * one word, so the above test is correct.
+		 */
+		if (ends_with(prev_wd, '(') || ends_with(prev_wd, ','))
+			COMPLETE_WITH("timeout", "no_throw");
+
+		/*
+		 * timeout takes a string value, no_throw takes no value. We don't
+		 * offer completions for these values.
+		 */
+	}
+
 /* WITH [RECURSIVE] */
 
 	/*
@@ -5457,9 +5533,9 @@ match_previous_words(int pattern_id,
 	else if (TailMatchesCS("\\h|\\help", MatchAny))
 	{
 		if (TailMatches("DROP"))
-			matches = rl_completion_matches(text, drop_command_generator);
+			COMPLETE_WITH_GENERATOR(drop_command_generator);
 		else if (TailMatches("ALTER"))
-			matches = rl_completion_matches(text, alter_command_generator);
+			COMPLETE_WITH_GENERATOR(alter_command_generator);
 
 		/*
 		 * CREATE is recognized by tail match elsewhere, so doesn't need to be
@@ -5499,7 +5575,8 @@ match_previous_words(int pattern_id,
 	else if (TailMatchesCS("\\password"))
 		COMPLETE_WITH_QUERY(Query_for_list_of_roles);
 	else if (TailMatchesCS("\\pset"))
-		COMPLETE_WITH_CS("border", "columns", "csv_fieldsep", "expanded",
+		COMPLETE_WITH_CS("border", "columns", "csv_fieldsep",
+						 "display_false", "display_true", "expanded",
 						 "fieldsep", "fieldsep_zero", "footer", "format",
 						 "linestyle", "null", "numericlocale",
 						 "pager", "pager_min_lines",
@@ -5558,12 +5635,9 @@ match_previous_words(int pattern_id,
 		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_views);
 	else if (TailMatchesCS("\\cd|\\e|\\edit|\\g|\\gx|\\i|\\include|"
 						   "\\ir|\\include_relative|\\o|\\out|"
-						   "\\s|\\w|\\write|\\lo_import"))
-	{
-		completion_charp = "\\";
-		completion_force_quote = false;
-		matches = rl_completion_matches(text, complete_from_files);
-	}
+						   "\\s|\\w|\\write|\\lo_import") ||
+			 TailMatchesCS("\\lo_export", MatchAny))
+		COMPLETE_WITH_FILES("\\", false);
 
 	/* gen_tabcomplete.pl ends special processing here */
 	/* END GEN_TABCOMPLETE */
@@ -6274,6 +6348,59 @@ complete_from_variables(const char *text, const char *prefix, const char *suffix
 
 
 /*
+ * This function returns in order one of a fixed, NULL pointer terminated list
+ * of string that matches file names or optionally specified list of keywords.
+ *
+ * If completion_charpp is set to a null-terminated array of literal keywords,
+ * those keywords are added to the completion results alongside filenames if
+ * they case-insensitively match the current input.
+ */
+static char *
+complete_from_files(const char *text, int state)
+{
+	static int	list_index;
+	static bool files_done;
+	const char *item;
+
+	/* Initialization */
+	if (state == 0)
+	{
+		list_index = 0;
+		files_done = false;
+	}
+
+	if (!files_done)
+	{
+		char	   *result = _complete_from_files(text, state);
+
+		/* Return a filename that matches */
+		if (result)
+			return result;
+
+		/* There are no more matching files */
+		files_done = true;
+	}
+
+	if (!completion_charpp)
+		return NULL;
+
+	/*
+	 * Check for hard-wired keywords. These will only be returned if they
+	 * match the input-so-far, ignoring case.
+	 */
+	while ((item = completion_charpp[list_index++]))
+	{
+		if (pg_strncasecmp(text, item, strlen(text)) == 0)
+		{
+			completion_force_quote = false;
+			return pg_strdup_keyword_case(item, text);
+		}
+	}
+
+	return NULL;
+}
+
+/*
  * This function wraps rl_filename_completion_function() to strip quotes from
  * the input before searching for matches and to quote any matches for which
  * the consuming command will require it.
@@ -6287,7 +6414,7 @@ complete_from_variables(const char *text, const char *prefix, const char *suffix
  * quotes around the result.  (The SQL COPY command requires that.)
  */
 static char *
-complete_from_files(const char *text, int state)
+_complete_from_files(const char *text, int state)
 {
 #ifdef USE_FILENAME_QUOTING_FUNCTIONS
 

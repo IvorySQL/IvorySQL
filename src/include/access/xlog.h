@@ -203,6 +203,7 @@ extern XLogRecPtr XLogInsertRecord(struct XLogRecData *rdata,
 								   XLogRecPtr fpw_lsn,
 								   uint8 flags,
 								   int num_fpi,
+								   uint64 fpi_bytes,
 								   bool topxid_included);
 extern void XLogFlush(XLogRecPtr record);
 extern bool XLogBackgroundFlush(void);
@@ -269,6 +270,7 @@ extern void SwitchIntoArchiveRecovery(XLogRecPtr EndRecPtr, TimeLineID replayTLI
 extern void ReachedEndOfBackup(XLogRecPtr EndRecPtr, TimeLineID tli);
 extern void SetInstallXLogFileSegmentActive(void);
 extern bool IsInstallXLogFileSegmentActive(void);
+extern void ResetInstallXLogFileSegmentActive(void);
 extern void XLogShutdownWalRcv(void);
 extern void SetCaseGucOption(char* path);
 extern int GetDatabaseStyleFromControl(char* path);

@@ -4,24 +4,17 @@
 
 CREATE EXTENSION postgres_fdw;
 
-CREATE SERVER testserver1 FOREIGN DATA WRAPPER postgres_fdw;
-DO $d$
-    BEGIN
-        EXECUTE $$CREATE SERVER loopback FOREIGN DATA WRAPPER postgres_fdw
-            OPTIONS (dbname '$$||current_database()||$$',
-                     port '$$||current_setting('port')||$$'
-            )$$;
-        EXECUTE $$CREATE SERVER loopback2 FOREIGN DATA WRAPPER postgres_fdw
-            OPTIONS (dbname '$$||current_database()||$$',
-                     port '$$||current_setting('port')||$$'
-            )$$;
-        EXECUTE $$CREATE SERVER loopback3 FOREIGN DATA WRAPPER postgres_fdw
-            OPTIONS (dbname '$$||current_database()||$$',
-                     port '$$||current_setting('port')||$$'
-            )$$;
-    END;
-$d$;
+SELECT current_database() AS current_database,
+  current_setting('port') AS current_port
+\gset
 
+CREATE SERVER testserver1 FOREIGN DATA WRAPPER postgres_fdw;
+CREATE SERVER loopback FOREIGN DATA WRAPPER postgres_fdw
+	OPTIONS (dbname :'current_database', port :'current_port');
+CREATE SERVER loopback2 FOREIGN DATA WRAPPER postgres_fdw
+	OPTIONS (dbname :'current_database', port :'current_port');
+CREATE SERVER loopback3 FOREIGN DATA WRAPPER postgres_fdw
+	OPTIONS (dbname :'current_database', port :'current_port');
 CREATE USER MAPPING FOR public SERVER testserver1
 	OPTIONS (user 'value', password 'value');
 CREATE USER MAPPING FOR CURRENT_USER SERVER loopback;
@@ -233,12 +226,7 @@ ALTER FOREIGN TABLE ft2 ALTER COLUMN c1 OPTIONS (column_name 'C 1');
 SELECT c3, c4 FROM ft1 ORDER BY c3, c1 LIMIT 1;  -- should work
 ALTER SERVER loopback OPTIONS (SET dbname 'no such database');
 SELECT c3, c4 FROM ft1 ORDER BY c3, c1 LIMIT 1;  -- should fail
-DO $d$
-    BEGIN
-        EXECUTE $$ALTER SERVER loopback
-            OPTIONS (SET dbname '$$||current_database()||$$')$$;
-    END;
-$d$;
+ALTER SERVER loopback OPTIONS (SET dbname :'current_database');
 SELECT c3, c4 FROM ft1 ORDER BY c3, c1 LIMIT 1;  -- should work again
 
 -- Test that alteration of user mapping options causes reconnection
@@ -2281,6 +2269,84 @@ EXPLAIN (verbose, costs off)
 DELETE FROM rem1;                 -- can't be pushed down
 DROP TRIGGER trig_row_after_delete ON rem1;
 
+
+-- We are allowed to create transition-table triggers on both kinds of
+-- inheritance even if they contain foreign tables as children, but currently
+-- collecting transition tuples from such foreign tables is not supported.
+
+CREATE TABLE local_tbl (a text, b int);
+CREATE FOREIGN TABLE foreign_tbl (a text, b int)
+  SERVER loopback OPTIONS (table_name 'local_tbl');
+
+INSERT INTO foreign_tbl VALUES ('AAA', 42);
+
+-- Test case for partition hierarchy
+CREATE TABLE parent_tbl (a text, b int) PARTITION BY LIST (a);
+ALTER TABLE parent_tbl ATTACH PARTITION foreign_tbl FOR VALUES IN ('AAA');
+
+CREATE TRIGGER parent_tbl_insert_trig
+  AFTER INSERT ON parent_tbl REFERENCING NEW TABLE AS new_table
+  FOR EACH STATEMENT EXECUTE PROCEDURE trigger_func();
+CREATE TRIGGER parent_tbl_update_trig
+  AFTER UPDATE ON parent_tbl REFERENCING OLD TABLE AS old_table NEW TABLE AS new_table
+  FOR EACH STATEMENT EXECUTE PROCEDURE trigger_func();
+CREATE TRIGGER parent_tbl_delete_trig
+  AFTER DELETE ON parent_tbl REFERENCING OLD TABLE AS old_table
+  FOR EACH STATEMENT EXECUTE PROCEDURE trigger_func();
+
+INSERT INTO parent_tbl VALUES ('AAA', 42);
+
+COPY parent_tbl (a, b) FROM stdin;
+AAA	42
+\.
+
+ALTER SERVER loopback OPTIONS (ADD batch_size '10');
+
+INSERT INTO parent_tbl VALUES ('AAA', 42);
+
+COPY parent_tbl (a, b) FROM stdin;
+AAA	42
+\.
+
+ALTER SERVER loopback OPTIONS (DROP batch_size);
+
+EXPLAIN (VERBOSE, COSTS OFF)
+UPDATE parent_tbl SET b = b + 1;
+UPDATE parent_tbl SET b = b + 1;
+
+EXPLAIN (VERBOSE, COSTS OFF)
+DELETE FROM parent_tbl;
+DELETE FROM parent_tbl;
+
+ALTER TABLE parent_tbl DETACH PARTITION foreign_tbl;
+DROP TABLE parent_tbl;
+
+-- Test case for non-partition hierarchy
+CREATE TABLE parent_tbl (a text, b int);
+ALTER FOREIGN TABLE foreign_tbl INHERIT parent_tbl;
+
+CREATE TRIGGER parent_tbl_update_trig
+  AFTER UPDATE ON parent_tbl REFERENCING OLD TABLE AS old_table NEW TABLE AS new_table
+  FOR EACH STATEMENT EXECUTE PROCEDURE trigger_func();
+CREATE TRIGGER parent_tbl_delete_trig
+  AFTER DELETE ON parent_tbl REFERENCING OLD TABLE AS old_table
+  FOR EACH STATEMENT EXECUTE PROCEDURE trigger_func();
+
+EXPLAIN (VERBOSE, COSTS OFF)
+UPDATE parent_tbl SET b = b + 1;
+UPDATE parent_tbl SET b = b + 1;
+
+EXPLAIN (VERBOSE, COSTS OFF)
+DELETE FROM parent_tbl;
+DELETE FROM parent_tbl;
+
+ALTER FOREIGN TABLE foreign_tbl NO INHERIT parent_tbl;
+DROP TABLE parent_tbl;
+
+-- Cleanup
+DROP FOREIGN TABLE foreign_tbl;
+DROP TABLE local_tbl;
+
 -- ===================================================================
 -- test inheritance features
 -- ===================================================================
@@ -3297,14 +3363,8 @@ SET ROLE regress_nosuper;
 SHOW is_superuser;
 
 -- This will be OK, we can create the FDW
-DO $d$
-    BEGIN
-        EXECUTE $$CREATE SERVER loopback_nopw FOREIGN DATA WRAPPER postgres_fdw
-            OPTIONS (dbname '$$||current_database()||$$',
-                     port '$$||current_setting('port')||$$'
-            )$$;
-    END;
-$d$;
+CREATE SERVER loopback_nopw FOREIGN DATA WRAPPER postgres_fdw
+	OPTIONS (dbname :'current_database', port :'current_port');
 
 -- But creation of user mappings for non-superusers should fail
 CREATE USER MAPPING FOR public SERVER loopback_nopw;
@@ -3881,6 +3941,9 @@ INSERT INTO result_tbl SELECT * FROM async_pt WHERE b === 505;
 SELECT * FROM result_tbl ORDER BY a;
 DELETE FROM result_tbl;
 
+-- Test COPY TO when foreign table is partition
+COPY async_pt TO stdout; --error
+
 DROP FOREIGN TABLE async_p3;
 DROP TABLE base_tbl3;
 
@@ -4287,7 +4350,7 @@ ALTER SERVER loopback2 OPTIONS (DROP parallel_abort);
 CREATE TABLE analyze_table (id int, a text, b bigint);
 
 CREATE FOREIGN TABLE analyze_ftable (id int, a text, b bigint)
-       SERVER loopback OPTIONS (table_name 'analyze_rtable1');
+       SERVER loopback OPTIONS (table_name 'analyze_table');
 
 INSERT INTO analyze_table (SELECT x FROM generate_series(1,1000) x);
 ANALYZE analyze_table;
@@ -4298,19 +4361,19 @@ ANALYZE analyze_table;
 ALTER SERVER loopback OPTIONS (analyze_sampling 'invalid');
 
 ALTER SERVER loopback OPTIONS (analyze_sampling 'auto');
-ANALYZE analyze_table;
+ANALYZE analyze_ftable;
 
 ALTER SERVER loopback OPTIONS (SET analyze_sampling 'system');
-ANALYZE analyze_table;
+ANALYZE analyze_ftable;
 
 ALTER SERVER loopback OPTIONS (SET analyze_sampling 'bernoulli');
-ANALYZE analyze_table;
+ANALYZE analyze_ftable;
 
 ALTER SERVER loopback OPTIONS (SET analyze_sampling 'random');
-ANALYZE analyze_table;
+ANALYZE analyze_ftable;
 
 ALTER SERVER loopback OPTIONS (SET analyze_sampling 'off');
-ANALYZE analyze_table;
+ANALYZE analyze_ftable;
 
 -- cleanup
 DROP FOREIGN TABLE analyze_ftable;

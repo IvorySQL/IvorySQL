@@ -481,6 +481,12 @@ COPY gtest1 FROM stdin;
 COPY gtest1 (a, b) FROM stdin;
 ERROR:  column "b" is a generated column
 DETAIL:  Generated columns cannot be used in COPY.
+COPY gtest1 FROM stdin WHERE b <> 10;
+ERROR:  generated columns are not supported in COPY FROM WHERE conditions
+DETAIL:  Column "b" is a generated column.
+COPY gtest1 FROM stdin WHERE gtest1 IS NULL;
+ERROR:  generated columns are not supported in COPY FROM WHERE conditions
+DETAIL:  Column "b" is a generated column.
 SELECT * FROM gtest1 ORDER BY a;
  a | b 
 ---+---
@@ -1054,9 +1060,24 @@ ERROR:  cannot use generated column in partition key
 LINE 1: ...ENERATED ALWAYS AS (f2 * 2) STORED) PARTITION BY RANGE (f3);
                                                                    ^
 DETAIL:  Column "f3" is a generated column.
+CREATE TABLE gtest_part_key (f1 date NOT NULL, f2 bigint, f3 bigint GENERATED ALWAYS AS (f2 * 2) STORED) PARTITION BY RANGE ((f3));
+ERROR:  cannot use generated column in partition key
+LINE 1: ...ERATED ALWAYS AS (f2 * 2) STORED) PARTITION BY RANGE ((f3));
+                                                                 ^
+DETAIL:  Column "f3" is a generated column.
 CREATE TABLE gtest_part_key (f1 date NOT NULL, f2 bigint, f3 bigint GENERATED ALWAYS AS (f2 * 2) STORED) PARTITION BY RANGE ((f3 * 3));
 ERROR:  cannot use generated column in partition key
 LINE 1: ...ED ALWAYS AS (f2 * 2) STORED) PARTITION BY RANGE ((f3 * 3));
+                                                             ^
+DETAIL:  Column "f3" is a generated column.
+CREATE TABLE gtest_part_key (f1 date NOT NULL, f2 bigint, f3 bigint GENERATED ALWAYS AS (f2 * 2) STORED) PARTITION BY RANGE ((gtest_part_key));
+ERROR:  cannot use generated column in partition key
+LINE 1: ...ED ALWAYS AS (f2 * 2) STORED) PARTITION BY RANGE ((gtest_par...
+                                                             ^
+DETAIL:  Column "f3" is a generated column.
+CREATE TABLE gtest_part_key (f1 date NOT NULL, f2 bigint, f3 bigint GENERATED ALWAYS AS (f2 * 2) STORED) PARTITION BY RANGE ((gtest_part_key is not null));
+ERROR:  cannot use generated column in partition key
+LINE 1: ...ED ALWAYS AS (f2 * 2) STORED) PARTITION BY RANGE ((gtest_par...
                                                              ^
 DETAIL:  Column "f3" is a generated column.
 -- ALTER TABLE ... ADD COLUMN

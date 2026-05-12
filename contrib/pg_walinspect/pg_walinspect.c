@@ -12,6 +12,7 @@
  */
 #include "postgres.h"
 
+#include "access/htup_details.h"
 #include "access/xlog.h"
 #include "access/xlog_internal.h"
 #include "access/xlogreader.h"
@@ -82,7 +83,7 @@ GetCurrentLSN(void)
 	else
 		curr_lsn = GetXLogReplayRecPtr(NULL);
 
-	Assert(!XLogRecPtrIsInvalid(curr_lsn));
+	Assert(XLogRecPtrIsValid(curr_lsn));
 
 	return curr_lsn;
 }
@@ -126,7 +127,7 @@ InitXLogReaderState(XLogRecPtr lsn)
 	/* first find a valid recptr to start from */
 	first_valid_record = XLogFindNextRecord(xlogreader, lsn);
 
-	if (XLogRecPtrIsInvalid(first_valid_record))
+	if (!XLogRecPtrIsValid(first_valid_record))
 		ereport(ERROR,
 				errmsg("could not find a valid record after %X/%08X",
 					   LSN_FORMAT_ARGS(lsn)));

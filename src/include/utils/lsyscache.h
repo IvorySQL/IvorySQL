@@ -22,7 +22,7 @@
 
 
 /* avoid including subscripting.h here */
-struct SubscriptRoutines;
+typedef struct SubscriptRoutines SubscriptRoutines;
 
 /* Result list element for get_op_index_interpretation */
 typedef struct OpIndexInterpretation
@@ -107,7 +107,7 @@ extern bool get_collation_isdeterministic(Oid colloid);
 extern char *get_constraint_name(Oid conoid);
 extern Oid	get_constraint_index(Oid conoid);
 extern char get_constraint_type(Oid conoid);
-
+extern char *get_database_name(Oid dbid);
 extern char *get_language_name(Oid langoid, bool missing_ok);
 extern Oid	get_opclass_family(Oid opclass);
 extern Oid	get_opclass_input_type(Oid opclass);
@@ -194,8 +194,8 @@ extern Oid	get_typmodin(Oid typid);
 extern Oid	get_typcollation(Oid typid);
 extern bool type_is_collatable(Oid typid);
 extern RegProcedure get_typsubscript(Oid typid, Oid *typelemp);
-extern const struct SubscriptRoutines *getSubscriptingRoutines(Oid typid,
-															   Oid *typelemp);
+extern const SubscriptRoutines *getSubscriptingRoutines(Oid typid,
+														Oid *typelemp);
 extern Oid	getBaseType(Oid typid);
 extern Oid	getBaseTypeAndTypmod(Oid typid, int32 *typmod);
 extern int32 get_typavgwidth(Oid typid, int32 typmod);

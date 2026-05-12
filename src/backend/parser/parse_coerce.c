@@ -15,6 +15,7 @@
  */
 #include "postgres.h"
 
+#include "access/htup_details.h"
 #include "catalog/pg_cast.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_collation.h"

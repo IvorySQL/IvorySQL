@@ -81,6 +81,9 @@ select count(*) from test_trgm where t like '%99%' and t like '%qwerty%';
 explain (costs off)
 select count(*) from test_trgm where t like '%99%' and t like '%qw%';
 select count(*) from test_trgm where t like '%99%' and t like '%qw%';
+explain (costs off)
+select count(*) from test_trgm where t %> '' and t %> '%qwerty%';
+select count(*) from test_trgm where t %> '' and t %> '%qwerty%';
 -- ensure that pending-list items are handled correctly, too
 create temp table t_test_trgm(t varchar2(1024) COLLATE "C");
 create index t_trgm_idx on t_test_trgm using gin (t gin_trgm_ops);
@@ -91,14 +94,19 @@ select count(*) from t_test_trgm where t like '%99%' and t like '%qwerty%';
 explain (costs off)
 select count(*) from t_test_trgm where t like '%99%' and t like '%qw%';
 select count(*) from t_test_trgm where t like '%99%' and t like '%qw%';
+explain (costs off)
+select count(*) from t_test_trgm where t %> '' and t %> '%qwerty%';
+select count(*) from t_test_trgm where t %> '' and t %> '%qwerty%';
 
 -- run the same queries with sequential scan to check the results
 set enable_bitmapscan=off;
 set enable_seqscan=on;
 select count(*) from test_trgm where t like '%99%' and t like '%qwerty%';
 select count(*) from test_trgm where t like '%99%' and t like '%qw%';
+select count(*) from test_trgm where t %> '' and t %> '%qwerty%';
 select count(*) from t_test_trgm where t like '%99%' and t like '%qwerty%';
 select count(*) from t_test_trgm where t like '%99%' and t like '%qw%';
+select count(*) from t_test_trgm where t %> '' and t %> '%qwerty%';
 reset enable_bitmapscan;
 
 create table test2(t varchar2(1024) COLLATE "C");

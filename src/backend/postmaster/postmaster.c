@@ -870,6 +870,9 @@ PostmasterMain(int argc, char *argv[])
 	if (summarize_wal && wal_level == WAL_LEVEL_MINIMAL)
 		ereport(ERROR,
 				(errmsg("WAL cannot be summarized when \"wal_level\" is \"minimal\"")));
+	if (sync_replication_slots && wal_level < WAL_LEVEL_LOGICAL)
+		ereport(ERROR,
+				(errmsg("replication slot synchronization (\"sync_replication_slots\" = on) requires \"wal_level\" >= \"logical\"")));
 
 	/*
 	 * Other one-time internal sanity checks can go here, if they are fast.
@@ -893,7 +896,7 @@ PostmasterMain(int argc, char *argv[])
 	/* For debugging: display postmaster environment */
 	if (message_level_is_interesting(DEBUG3))
 	{
-#if !defined(WIN32) || defined(_MSC_VER)
+#if !defined(WIN32)
 		extern char **environ;
 #endif
 		char	  **p;
@@ -1666,13 +1669,21 @@ DetermineSleepTime(void)
 	{
 		if (AbortStartTime != 0)
 		{
+			time_t		curtime = time(NULL);
 			int			seconds;
 
-			/* time left to abort; clamp to 0 in case it already expired */
-			seconds = SIGKILL_CHILDREN_AFTER_SECS -
-				(time(NULL) - AbortStartTime);
+			/*
+			 * time left to abort; clamp to 0 if it already expired, or if
+			 * time goes backwards
+			 */
+			if (curtime < AbortStartTime ||
+				curtime - AbortStartTime >= SIGKILL_CHILDREN_AFTER_SECS)
+				seconds = 0;
+			else
+				seconds = SIGKILL_CHILDREN_AFTER_SECS -
+					(curtime - AbortStartTime);
 
-			return Max(seconds * 1000, 0);
+			return seconds * 1000;
 		}
 		else
 			return 60 * 1000;

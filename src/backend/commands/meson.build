@@ -55,4 +55,5 @@ backend_sources += files(
   'variable.c',
   'view.c',
   'packagecmds.c',
+  'wait.c',
 )

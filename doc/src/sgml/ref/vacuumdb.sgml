@@ -292,6 +292,14 @@ PostgreSQL documentation
         This option can only be used in conjunction with
         <option>--analyze-only</option> or <option>--analyze-in-stages</option>.
        </para>
+       <para>
+        Note that <option>--missing-stats-only</option> requires
+        <literal>SELECT</literal> privileges on
+        <link linkend="catalog-pg-statistic"><structname>pg_statistic</structname></link>
+        and
+        <link linkend="catalog-pg-statistic-ext-data"><structname>pg_statistic_ext_data</structname></link>,
+        which are restricted to superusers by default.
+       </para>
       </listitem>
      </varlistentry>
 
@@ -396,6 +404,15 @@ PostgreSQL documentation
         the <option>--analyze</option> or <option>--analyze-only</option> options.
         Multiple tables can be vacuumed by writing multiple
         <option>-t</option> switches.
+       </para>
+       <para>
+        If no tables are specified with the <option>--table</option> option,
+        <application>vacuumdb</application> will clean all regular tables
+        and materialized views in the connected database.
+        If <option>--analyze-only</option> or
+        <option>--analyze-in-stages</option> is also specified,
+        it will analyze all regular tables, partitioned tables,
+        and materialized views (but not foreign tables).
        </para>
        <tip>
         <para>

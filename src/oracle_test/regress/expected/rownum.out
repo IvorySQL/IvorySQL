@@ -396,36 +396,40 @@ EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM rownum_test WHERE ROWNUM >= 1;
 
 -- ROWNUM > 5 (should show One-Time Filter: false)
 EXPLAIN (COSTS OFF) SELECT id, name FROM rownum_test WHERE ROWNUM > 5;
-        QUERY PLAN        
---------------------------
+           QUERY PLAN            
+---------------------------------
  Result
+   Replaces: Scan on rownum_test
    One-Time Filter: false
-(2 rows)
+(3 rows)
 
 -- ROWNUM > 1 with aggregation (should show One-Time Filter: false)
 EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM rownum_test WHERE ROWNUM > 1;
-           QUERY PLAN           
---------------------------------
+              QUERY PLAN               
+---------------------------------------
  Aggregate
    ->  Result
+         Replaces: Scan on rownum_test
          One-Time Filter: false
-(3 rows)
+(4 rows)
 
 -- ROWNUM >= 2 (should show One-Time Filter: false)
 EXPLAIN (COSTS OFF) SELECT id, name FROM rownum_test WHERE ROWNUM >= 2;
-        QUERY PLAN        
---------------------------
+           QUERY PLAN            
+---------------------------------
  Result
+   Replaces: Scan on rownum_test
    One-Time Filter: false
-(2 rows)
+(3 rows)
 
 -- ROWNUM = 2 should NOT be optimized to LIMIT (should show One-Time Filter: false)
 EXPLAIN (COSTS OFF) SELECT id, name FROM rownum_test WHERE ROWNUM = 2;
-        QUERY PLAN        
---------------------------
+           QUERY PLAN            
+---------------------------------
  Result
+   Replaces: Scan on rownum_test
    One-Time Filter: false
-(2 rows)
+(3 rows)
 
 -- Issue #12: These should NOT show Limit because of same-level operations
 -- Direct COUNT with ROWNUM (has aggregation, should not use LIMIT)

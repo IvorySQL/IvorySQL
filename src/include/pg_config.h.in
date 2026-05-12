@@ -481,6 +481,9 @@
 /* Define to 1 if your compiler understands `typeof' or something similar. */
 #undef HAVE_TYPEOF
 
+/* Define to 1 if you have the <uchar.h> header file. */
+#undef HAVE_UCHAR_H
+
 /* Define to 1 if you have the <ucred.h> header file. */
 #undef HAVE_UCRED_H
 
@@ -810,10 +813,6 @@
 #ifndef __cplusplus
 #undef inline
 #endif
-
-/* Define to keyword to use for C99 restrict support, or to nothing if not
-   supported */
-#undef pg_restrict
 
 /* Define to the equivalent of the C99 'restrict' keyword, or to
    nothing if this is not supported.  Do not define if restrict is

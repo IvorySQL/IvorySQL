@@ -432,7 +432,7 @@ PG_FUNCTION_INFO_V1(get_environ);
 Datum
 get_environ(PG_FUNCTION_ARGS)
 {
-#if !defined(WIN32) || defined(_MSC_VER)
+#if !defined(WIN32)
 	extern char **environ;
 #endif
 	int			nvals = 0;
@@ -727,7 +727,7 @@ PG_FUNCTION_INFO_V1(is_catalog_text_unique_index_oid);
 Datum
 is_catalog_text_unique_index_oid(PG_FUNCTION_ARGS)
 {
-	return IsCatalogTextUniqueIndexOid(PG_GETARG_OID(0));
+	return BoolGetDatum(IsCatalogTextUniqueIndexOid(PG_GETARG_OID(0)));
 }
 
 PG_FUNCTION_INFO_V1(test_support_func);

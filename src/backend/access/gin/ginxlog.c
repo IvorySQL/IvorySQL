@@ -30,7 +30,7 @@ ginRedoClearIncompleteSplit(XLogReaderState *record, uint8 block_id)
 
 	if (XLogReadBufferForRedo(record, block_id, &buffer) == BLK_NEEDS_REDO)
 	{
-		page = (Page) BufferGetPage(buffer);
+		page = BufferGetPage(buffer);
 		GinPageGetOpaque(page)->flags &= ~GIN_INCOMPLETE_SPLIT;
 
 		PageSetLSN(page, lsn);
@@ -50,7 +50,7 @@ ginRedoCreatePTree(XLogReaderState *record)
 	Page		page;
 
 	buffer = XLogInitBufferForRedo(record, 0);
-	page = (Page) BufferGetPage(buffer);
+	page = BufferGetPage(buffer);
 
 	GinInitBuffer(buffer, GIN_DATA | GIN_LEAF | GIN_COMPRESSED);
 
@@ -93,7 +93,7 @@ ginRedoInsertEntry(Buffer buffer, bool isLeaf, BlockNumber rightblkno, void *rda
 
 	itup = &data->tuple;
 
-	if (PageAddItem(page, (Item) itup, IndexTupleSize(itup), offset, false, false) == InvalidOffsetNumber)
+	if (PageAddItem(page, itup, IndexTupleSize(itup), offset, false, false) == InvalidOffsetNumber)
 	{
 		RelFileLocator locator;
 		ForkNumber	forknum;
@@ -368,7 +368,6 @@ ginRedoInsert(XLogReaderState *record)
 #endif
 		payload += sizeof(BlockIdData);
 		rightChildBlkno = BlockIdGetBlockNumber((BlockId) payload);
-		payload += sizeof(BlockIdData);
 
 		ginRedoClearIncompleteSplit(record, 1);
 	}
@@ -574,8 +573,7 @@ ginRedoUpdateMetapage(XLogReaderState *record)
 			{
 				tupsize = IndexTupleSize(tuples);
 
-				if (PageAddItem(page, (Item) tuples, tupsize, off,
-								false, false) == InvalidOffsetNumber)
+				if (PageAddItem(page, tuples, tupsize, off, false, false) == InvalidOffsetNumber)
 					elog(ERROR, "failed to add item to index page");
 
 				tuples = (IndexTuple) (((char *) tuples) + tupsize);
@@ -655,7 +653,7 @@ ginRedoInsertListPage(XLogReaderState *record)
 	{
 		tupsize = IndexTupleSize(tuples);
 
-		l = PageAddItem(page, (Item) tuples, tupsize, off, false, false);
+		l = PageAddItem(page, tuples, tupsize, off, false, false);
 
 		if (l == InvalidOffsetNumber)
 			elog(ERROR, "failed to add item to index page");

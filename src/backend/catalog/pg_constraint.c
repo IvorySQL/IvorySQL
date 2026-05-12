@@ -179,7 +179,7 @@ CreateConstraintEntry(const char *constraintName,
 	for (i = 0; i < Natts_pg_constraint; i++)
 	{
 		nulls[i] = false;
-		values[i] = (Datum) NULL;
+		values[i] = (Datum) 0;
 	}
 
 	conOid = GetNewOidWithIndex(conDesc, ConstraintOidIndexId,
@@ -937,10 +937,12 @@ RemoveConstraintById(Oid conId)
 					 con->conrelid);
 			classForm = (Form_pg_class) GETSTRUCT(relTup);
 
-			if (classForm->relchecks == 0)	/* should not happen */
-				elog(ERROR, "relation \"%s\" has relchecks = 0",
-					 RelationGetRelationName(rel));
-			classForm->relchecks--;
+			if (classForm->relchecks > 0)
+				classForm->relchecks--;
+			else
+				/* should not happen */
+				elog(WARNING, "relation \"%s\" has relchecks = %d",
+					 RelationGetRelationName(rel), classForm->relchecks);
 
 			CatalogTupleUpdate(pgrel, &relTup->t_self, relTup);
 
