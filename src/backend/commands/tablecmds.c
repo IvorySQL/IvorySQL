@@ -14450,7 +14450,7 @@ transformFkeyCheckAttrs(Relation pkrel,
  *
  *	Wrapper around find_coercion_pathway() for ATAddForeignKeyConstraint().
  *	Caller has equal regard for binary coercibility and for an exact match.
-*/
+ */
 static CoercionPathType
 findFkeyCast(Oid targetTypeId, Oid sourceTypeId, Oid *funcid)
 {
