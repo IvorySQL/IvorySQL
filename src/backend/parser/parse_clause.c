@@ -318,7 +318,8 @@ extractRemainingColumns(ParseState *pstate,
 	return colcount;
 }
 
-/* transformJoinUsingClause()
+/*
+ * transformJoinUsingClause()
  *	  Build a complete ON clause from a partially-transformed USING list.
  *	  We are given lists of nodes representing left and right match columns.
  *	  Result is a transformed qualification expression.
@@ -378,7 +379,8 @@ transformJoinUsingClause(ParseState *pstate,
 	return result;
 }
 
-/* transformJoinOnClause()
+/*
+ * transformJoinOnClause()
  *	  Transform the qual conditions for JOIN/ON.
  *	  Result is a transformed qualification expression.
  */

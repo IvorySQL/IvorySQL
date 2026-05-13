@@ -3778,7 +3778,8 @@ attnameAttNum(Relation rd, const char *attname, bool sysColOK)
 	return InvalidAttrNumber;
 }
 
-/* specialAttNum()
+/*
+ * specialAttNum()
  *
  * Check attribute name to see if it is "special", e.g. "xmin".
  * - thomas 2000-02-07
