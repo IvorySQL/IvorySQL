@@ -2,7 +2,7 @@
 -- Tests for WITH READ ONLY views (Oracle compatibility)
 --
 
-CREATE TABLE t_ro (a int, b text);
+CREATE TABLE t_ro (a int, b varchar2(100));
 INSERT INTO t_ro VALUES (1, 'hello'), (2, 'world');
 
 -- 1. Basic WITH READ ONLY view: SELECT succeeds, DML fails
@@ -49,7 +49,7 @@ INSERT INTO ro_recursive_view VALUES (99);
 -- Create while base table does not yet exist
 CREATE FORCE VIEW force_ro_view AS SELECT * FROM nonexistent_for_ro WITH READ ONLY;
 -- Create the base table and compile the force view
-CREATE TABLE nonexistent_for_ro (a int, b text);
+CREATE TABLE nonexistent_for_ro (a int, b varchar2(100));
 ALTER VIEW force_ro_view COMPILE;
 -- DML must be blocked after compilation
 INSERT INTO force_ro_view VALUES (1, 'fail');
@@ -61,17 +61,17 @@ WHERE relname IN ('ro_view', 'writable_view', 'ro_recursive_view', 'force_ro_vie
 ORDER BY relname;
 
 -- 8. MERGE with INSERT action against WITH READ ONLY view must fail
-MERGE INTO ro_view USING (SELECT 4 AS a, 'merge_ins' AS b) AS src
+MERGE INTO ro_view USING (SELECT 4 AS a, 'merge_ins' AS b) src
 ON (ro_view.a = src.a)
 WHEN NOT MATCHED THEN INSERT VALUES (src.a, src.b);
 
 -- 9. MERGE with UPDATE action against WITH READ ONLY view must fail
-MERGE INTO ro_view USING (SELECT 1 AS a, 'merge_upd' AS b) AS src
+MERGE INTO ro_view USING (SELECT 1 AS a, 'merge_upd' AS b) src
 ON (ro_view.a = src.a)
 WHEN MATCHED THEN UPDATE SET b = src.b;
 
 -- 10. MERGE with both UPDATE and INSERT against WITH READ ONLY view must fail
-MERGE INTO ro_view USING (SELECT 1 AS a, 'test' AS b) AS src
+MERGE INTO ro_view USING (SELECT 1 AS a, 'test' AS b) src
 ON (ro_view.a = src.a)
 WHEN MATCHED THEN UPDATE SET b = src.b
 WHEN NOT MATCHED THEN INSERT VALUES (src.a, src.b);
