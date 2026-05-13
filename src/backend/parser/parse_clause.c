@@ -4066,16 +4066,10 @@ check_funcexpr_outparams(List *funcexprs)
 		else if (func->function_from == FUNC_FROM_WITH_CLAUSE)
 		{
 			/*
-			 * WITH-clause inline functions are scalar-only — they are
-			 * rejected from table-function/SRF contexts upstream by
-			 * get_internal_function_result_type.  Since this validator is
-			 * only invoked from transformRangeFunction (FROM-clause table
-			 * function path), WITH-clause references that reach here will
-			 * be reported by the FROM-clause rejection a few lines later;
-			 * skipping the OUT-mode check here is therefore harmless.
-			 * (Note: WITH FUNCTIONs *can* declare IN OUT parameters; the
-			 * OUT-must-be-variable rule does not apply because scalar
-			 * SELECT contexts have no write-back semantics.)
+			 * WITH-clause inline functions never have OUT/IN OUT parameters:
+			 * transformWithFuncDefs() rejects any such declaration up front,
+			 * matching Oracle's ORA-06572 restriction on SQL-callable
+			 * functions.  There is nothing for this OUT-mode validator to do.
 			 */
 			continue;
 		}

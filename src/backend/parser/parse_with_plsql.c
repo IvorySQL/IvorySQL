@@ -62,8 +62,9 @@ struct EState *plisql_active_with_func_estate = NULL;
 /*
  * resolveWithFuncArgTypes — resolve FunctionParameter list to an Oid list.
  *
- * Only IN and INOUT parameters are included; OUT-only parameters are skipped
- * because they do not participate in call-site overload resolution.
+ * WITH-clause subprograms only accept IN parameters (see
+ * rejectNonInParamsInWithFunc); every entry in this list contributes to the
+ * argument type vector.
  */
 static List *
 resolveWithFuncArgTypes(ParseState *pstate, List *args)
@@ -75,14 +76,45 @@ resolveWithFuncArgTypes(ParseState *pstate, List *args)
 	{
 		FunctionParameter *fp = (FunctionParameter *) lfirst(lc);
 
-		if (fp->mode == FUNC_PARAM_OUT)
-			continue;
-
 		result = lappend_oid(result,
 							 typenameTypeId(pstate, fp->argType));
 	}
 
 	return result;
+}
+
+/*
+ * rejectNonInParamsInWithFunc — enforce Oracle's SQL-callable rule that
+ * functions invoked from a SQL statement may not declare OUT or IN OUT
+ * parameters.  A WITH FUNCTION / WITH PROCEDURE definition only ever runs
+ * from inside the enclosing SQL statement, so the same restriction applies.
+ *
+ * Oracle raises ORA-06572 ("PL/SQL function string has OUT parameter in
+ * argument list") for the equivalent case on schema-level functions.
+ */
+static void
+rejectNonInParamsInWithFunc(ParseState *pstate, InlineFunctionDef *ifd)
+{
+	ListCell   *lc;
+
+	foreach(lc, ifd->args)
+	{
+		FunctionParameter *fp = (FunctionParameter *) lfirst(lc);
+
+		if (fp->mode == FUNC_PARAM_IN ||
+			fp->mode == FUNC_PARAM_DEFAULT)
+			continue;
+
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("WITH %s \"%s\" cannot declare OUT or IN OUT parameters",
+						ifd->is_proc ? "PROCEDURE" : "FUNCTION",
+						ifd->funcname),
+				 errdetail("Subprograms declared in a WITH clause are invoked from SQL, which only accepts IN parameters."),
+				 errhint("Remove the OUT/IN OUT/NOCOPY mode from parameter \"%s\", or move the subprogram into a schema-level PL/SQL block.",
+						 fp->name ? fp->name : "?"),
+				 parser_errposition(pstate, ifd->location)));
+	}
 }
 
 /*
@@ -139,6 +171,13 @@ transformWithFuncDefs(ParseState *pstate, List *plsql_defs)
 
 		Assert(IsA(ifd, InlineFunctionDef));
 
+		/*
+		 * Oracle disallows OUT / IN OUT parameters on any SQL-callable
+		 * function (ORA-06572).  Enforce the same rule for WITH-clause
+		 * subprograms before we resolve types or pre-analyze defaults.
+		 */
+		rejectNonInParamsInWithFunc(pstate, ifd);
+
 		entry = palloc(sizeof(WithFuncEntry));
 		entry->funcname = ifd->funcname;
 		entry->is_proc = ifd->is_proc;
@@ -148,10 +187,10 @@ transformWithFuncDefs(ParseState *pstate, List *plsql_defs)
 		entry->argtypes = resolveWithFuncArgTypes(pstate, ifd->args);
 
 		/*
-		 * Count IN/INOUT parameters with DEFAULT and pre-analyze each default
-		 * expression in the current ParseState context.  Storing analyzed
-		 * expressions here avoids calling transformExpr inside the hook
-		 * (which runs in a narrower context and can trigger a crash).
+		 * Pre-analyze each parameter's DEFAULT expression in the current
+		 * ParseState context.  Storing analyzed expressions here avoids
+		 * calling transformExpr inside the hook (which runs in a narrower
+		 * context and can trigger a crash).
 		 */
 		{
 			int			ndefaults = 0;
@@ -161,9 +200,6 @@ transformWithFuncDefs(ParseState *pstate, List *plsql_defs)
 			foreach(alc, ifd->args)
 			{
 				FunctionParameter *fp = (FunctionParameter *) lfirst(alc);
-
-				if (fp->mode == FUNC_PARAM_OUT)
-					continue;
 
 				if (fp->defexpr != NULL)
 				{

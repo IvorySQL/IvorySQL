@@ -27,13 +27,29 @@ WITH
   BEGIN RETURN n * 2; END;
 SELECT mul2(add1(3)) FROM dual;
 
--- T05: IN OUT parameter (value is modified inside the body)
-WITH FUNCTION bump(x IN OUT NUMBER) RETURN NUMBER IS
+-- T05: WITH FUNCTION/PROCEDURE reject OUT and IN OUT parameters.
+-- Oracle raises ORA-06572 for any SQL-callable function declared with an
+-- OUT/IN OUT argument; WITH-clause subprograms run from inside SQL, so the
+-- same rule applies.  Each of the three forms below is expected to error.
+WITH FUNCTION bump_inout(x IN OUT NUMBER) RETURN NUMBER IS
 BEGIN
   x := x * 3;
   RETURN x;
 END;
-SELECT bump(5) FROM dual;
+SELECT bump_inout(5) FROM dual;
+
+WITH FUNCTION bump_out(x OUT NUMBER) RETURN NUMBER IS
+BEGIN
+  x := 7;
+  RETURN x;
+END;
+SELECT bump_out(NULL) FROM dual;
+
+WITH PROCEDURE set_val(x OUT NUMBER) IS
+BEGIN
+  x := 1;
+END;
+SELECT 'unused' FROM dual;
 
 -- T06: Default parameter value — call with one arg (uses default) and two args
 WITH FUNCTION greet(name VARCHAR2, greeting VARCHAR2 DEFAULT 'Hello') RETURN VARCHAR2 IS
