@@ -952,6 +952,23 @@ PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
+/* support rawtohex function for oracle compatibility */
+CREATE OR REPLACE FUNCTION sys.rawtohex(bytea)
+RETURNS varchar2
+AS $$ SELECT CASE WHEN pg_catalog.octet_length($1) > 0 THEN upper(pg_catalog.encode($1, 'hex'))::varchar2 END; $$ 
+LANGUAGE SQL
+PARALLEL SAFE
+STRICT
+IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION sys.rawtohex(text)
+RETURNS varchar2
+AS $$ SELECT CASE WHEN pg_catalog.octet_length($1) > 0 THEN upper(pg_catalog.encode($1::bytea, 'hex'))::varchar2 END; $$ 
+LANGUAGE SQL
+PARALLEL SAFE
+STRICT
+IMMUTABLE;
+
 
 /***************************************************************
  *

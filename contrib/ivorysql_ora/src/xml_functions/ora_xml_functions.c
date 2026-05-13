@@ -64,6 +64,7 @@
 #include "utils/syscache.h"
 #include "utils/arrayaccess.h"
 #include "utils/xml.h"
+#include "utils/varlena.h"
 
 #include "../include/ivorysql_ora.h"
 
@@ -808,8 +809,21 @@ ivy_xml_addchildnode(xmlXPathObjectPtr xpathobj, xmlNodePtr cnode)
 			num = xpathobj->nodesetval->nodeNr;
 			for (i = 0; i < num; i++)
 			{
+				xmlNodePtr target = xpathobj->nodesetval->nodeTab[i];
+
+				/*   
+                                 * XPath '/' returns the document node itself.  Oracle treats
+                                 * '/' as the root element, so redirect to the document's root
+                                 * element child; otherwise we would add at the document level
+                                 * (two root elements), producing invalid XML.
+                                 */
+                                if (target->type == XML_DOCUMENT_NODE)
+                                        target = target->children;
+                                if (target == NULL)
+                                        continue;
+
 				cnode_copy = xmlCopyNode(cnode, 1);
-				xmlAddChild(xpathobj->nodesetval->nodeTab[i], cnode_copy->children);
+				xmlAddChild(target, cnode_copy->children);
 				cnode_copy->children = NULL;
 				xmlFreeNode(cnode_copy);
 			}
@@ -918,6 +932,25 @@ ivy_xmlCharStrndup(const char *str, size_t len)
 }
 #endif		/* USE_LIBXML */
 
+/*
+ * ivy_checkXPath
+ * 
+ * check xpath argument is not '/' for some XML functions
+ */
+static void ivy_checkXPath(text *xpath, Oid collid, char *message)
+{
+	int	cmp;
+
+	/* Oracle refuses to remove all XML data if xpath = '/' */ 
+	cmp = varstr_cmp(VARDATA_ANY(xpath), VARSIZE_ANY_EXHDR(xpath),
+                     "/", strlen("/"),
+                     collid);
+	if (cmp == 0) {
+		 ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION),
+                                 errmsg("%s", message)));
+	}
+
+}
 
 /*
  * xmltype IN function
@@ -1274,6 +1307,7 @@ ivy_deletexml(PG_FUNCTION_ARGS)
 	xmltype    *ret = NULL;
 	xpath_ws	ws;
 	xmlXPathObjectPtr res;
+	Oid collid = PG_GET_COLLATION();
 
 	if (fcinfo->args[0].isnull)
 		PG_RETURN_NULL();
@@ -1284,6 +1318,8 @@ ivy_deletexml(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 	else
 		xpath_expr_text = PG_GETARG_TEXT_PP(1);
+
+	ivy_checkXPath(xpath_expr_text, collid, "Cannot remove document node with xpath ='/'");
 
 	res = ivy_xml_xpath(&ws, xpath_expr_text, data, NULL);
 	if (res->nodesetval && res->nodesetval->nodeTab != NULL)
@@ -1319,6 +1355,7 @@ ivy_deletexml2(PG_FUNCTION_ARGS)
 	char	   *cns= NULL;
 	xpath_ws	ws;
 	xmlXPathObjectPtr res;
+	Oid collid = PG_GET_COLLATION();
 
 	if (fcinfo->args[0].isnull)
 		PG_RETURN_NULL();
@@ -1329,6 +1366,8 @@ ivy_deletexml2(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 	else
 		xpath_expr_text = PG_GETARG_TEXT_PP(1);
+
+	ivy_checkXPath(xpath_expr_text, collid, "Cannot remove document node with xpath ='/'");
 
 	if (!fcinfo->args[2].isnull)
 	{
@@ -1376,6 +1415,7 @@ ivy_appendchildxml(PG_FUNCTION_ARGS)
 	xmlDocPtr 	new_node = NULL;
 	xmlChar	   *nodestring = NULL;
 	xmlXPathObjectPtr res;
+	Oid collid = PG_GET_COLLATION();
 
 	if (fcinfo->args[0].isnull)
 		PG_RETURN_NULL();
@@ -1386,6 +1426,8 @@ ivy_appendchildxml(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 	else
 		xpath_expr_text = PG_GETARG_TEXT_PP(1);
+
+	ivy_checkXPath(xpath_expr_text, collid, "Cannot append node with xpath ='/'");
 
 	if (!fcinfo->args[2].isnull)
 	{
@@ -1442,6 +1484,7 @@ ivy_appendchildxml2(PG_FUNCTION_ARGS)
 	xmlDocPtr 	new_node = NULL;
 	xmlChar	   *nodestring = NULL;
 	xmlXPathObjectPtr res;
+	Oid collid = PG_GET_COLLATION();
 
 	if (fcinfo->args[0].isnull)
 		PG_RETURN_NULL();
@@ -1452,6 +1495,8 @@ ivy_appendchildxml2(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 	else
 		xpath_expr_text = PG_GETARG_TEXT_PP(1);
+
+	ivy_checkXPath(xpath_expr_text, collid, "Cannot append node with xpath ='/'");
 
 	if (!fcinfo->args[2].isnull)
 	{
@@ -1514,6 +1559,7 @@ ivy_insertxmlbefore(PG_FUNCTION_ARGS)
 	xpath_ws	ws;
 	xmlChar	   *nodestring = NULL;
 	xmlXPathObjectPtr res;
+	Oid collid = PG_GET_COLLATION();
 
 	if (fcinfo->args[0].isnull)
 		PG_RETURN_NULL();
@@ -1524,6 +1570,8 @@ ivy_insertxmlbefore(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 	else
 		xpath_expr_text = PG_GETARG_TEXT_PP(1);
+
+	ivy_checkXPath(xpath_expr_text, collid, "Cannot insert node with xpath ='/'");
 
 	if (!fcinfo->args[2].isnull)
 	{
@@ -1573,6 +1621,7 @@ ivy_insertxmlbefore2(PG_FUNCTION_ARGS)
 	xpath_ws	ws;
 	xmlChar	   *nodestring = NULL;
 	xmlXPathObjectPtr res;
+	Oid collid = PG_GET_COLLATION();
 
 	if (fcinfo->args[0].isnull)
 		PG_RETURN_NULL();
@@ -1583,6 +1632,8 @@ ivy_insertxmlbefore2(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 	else
 		xpath_expr_text = PG_GETARG_TEXT_PP(1);
+
+	ivy_checkXPath(xpath_expr_text, collid, "Cannot insert node with xpath ='/'");
 
 	if (!fcinfo->args[2].isnull)
 	{
@@ -1639,6 +1690,7 @@ ivy_insertxmlafter(PG_FUNCTION_ARGS)
 	xpath_ws	ws;
 	xmlChar	   *nodestring = NULL;
 	xmlXPathObjectPtr res;
+	Oid collid = PG_GET_COLLATION();
 
 	if (fcinfo->args[0].isnull)
 		PG_RETURN_NULL();
@@ -1649,6 +1701,8 @@ ivy_insertxmlafter(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 	else
 		xpath_expr_text = PG_GETARG_TEXT_PP(1);
+
+	ivy_checkXPath(xpath_expr_text, collid, "Cannot insert node with xpath ='/'");
 
 	if (!fcinfo->args[2].isnull)
 	{
@@ -1690,6 +1744,7 @@ ivy_insertxmlafter2(PG_FUNCTION_ARGS)
 	xpath_ws	ws;
 	xmlChar	   *nodestring = NULL;
 	xmlXPathObjectPtr res;
+	Oid collid = PG_GET_COLLATION();
 
 	if (fcinfo->args[0].isnull)
 		PG_RETURN_NULL();
@@ -1700,6 +1755,8 @@ ivy_insertxmlafter2(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 	else
 		xpath_expr_text = PG_GETARG_TEXT_PP(1);
+
+	ivy_checkXPath(xpath_expr_text, collid, "Cannot insert node with xpath ='/'");
 
 	if (!fcinfo->args[2].isnull)
 	{
@@ -1804,8 +1861,6 @@ ivy_insertchildxml(PG_FUNCTION_ARGS)
 	ivy_xml_addchildnode(res, (xmlNodePtr)new_node);
 	ret = (xmltype *)ivy_xml_xmlnode2xmltype((xmlNodePtr)ws.doc);
 	ret = (xmltype *)rv_newline((text *)ret);
-	xmlUnlinkNode((xmlNodePtr)ws.xpathctx->node->children);
-	xmlFreeNode((xmlNodePtr)ws.xpathctx->node->children);
 
 	if (new_node)
 		xmlFreeDoc(new_node);
@@ -1911,8 +1966,6 @@ ivy_insertchildxml2(PG_FUNCTION_ARGS)
 	ivy_xml_addchildnode(res, (xmlNodePtr)new_node);
 	ret = (xmltype *)ivy_xml_xmlnode2xmltype((xmlNodePtr)ws.doc);
 	ret = (xmltype *)rv_newline((text *)ret);
-	xmlUnlinkNode((xmlNodePtr)ws.xpathctx->node->children);
-	xmlFreeNode((xmlNodePtr)ws.xpathctx->node->children);
 
 	if (new_node)
 		xmlFreeDoc(new_node);

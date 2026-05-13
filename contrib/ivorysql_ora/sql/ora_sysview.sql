@@ -91,63 +91,114 @@ FROM SYS.V$PARAMETER
 WHERE NAME IN ('listen_addresses','application_name','archive_command','archive_mode','block_size')
 ORDER BY NAME;
 
+CREATE TABLE t_pk_single (id NUMBER PRIMARY KEY, name VARCHAR2(50));
+CREATE TABLE t_pk_composite (id1 NUMBER, id2 NUMBER, CONSTRAINT pk_composite PRIMARY KEY (id1, id2));
 
--- ALL_TAB_COLUMNS
+CREATE TABLE t_unique (col1 INT, col2 VARCHAR2(20), CONSTRAINT uk_col1 UNIQUE (col1));
 
-DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+CREATE TABLE t_parent (pid INT PRIMARY KEY, pname VARCHAR2(50));
+CREATE TABLE t_child (cid INT, pid INT, CONSTRAINT fk_child_parent FOREIGN KEY (pid) REFERENCES t_parent(pid));
 
-CREATE TABLE TEST_ALL_TAB_COLUMNS (
-    ID INT PRIMARY KEY,
-    NAME VARCHAR2(50) NOT NULL,
-    AGE NUMERIC(5,2),
-    CREATE_TIME DATE
+CREATE TABLE t_check (
+    age INT,
+    salary NUMERIC(10,2),
+    CONSTRAINT chk_age CHECK (age >= 0),
+    CONSTRAINT chk_salary_range CHECK (salary BETWEEN 1000 AND 100000)
 );
 
-SELECT 
-    TABLE_NAME,
-    COLUMN_NAME,
-    COLUMN_ID,
-    DATA_TYPE,
-    DATA_TYPE_MOD,
-    DATA_TYPE_OWNER,
-    DATA_LENGTH,
-    DATA_PRECISION,
-    DATA_SCALE,
-    NULLABLE,
-    DATA_DEFAULT,
-    NUM_DISTINCT,
-    LOW_VALUE,
-    HIGH_VALUE,
-    DENSITY,
-    NUM_NULLS,
-    NUM_BUCKETS,
-    LAST_ANALYZED,
-    SAMPLE_SIZE,
-    CHARACTER_SET_NAME,
-    CHAR_COL_DECL_LENGTH,
-    GLOBAL_STATS,
-    USER_STATS,
-    AVG_COL_LEN,
-    CHAR_LENGTH,
-    CHAR_USED,
-    V80_FMT_IMAGE,
-    DATA_UPGRADED,
-    HISTOGRAM,
-    DEFAULT_LENGTH,
-    COLLATION_NAME,
-    IDENTITY_COLUMN,
-    SEGMENT_CREATED,
-    LOB_FORMAT,
-    LOB_PRECISION,
-    LOB_LENGTH,
-    NESTED,
-    HIDDEN_COLUMN,
-    VIRTUAL_COLUMN,
-    SEGMENT_ID,
-    SENSITIVE_COLUMN
-FROM SYS.ALL_TAB_COLUMNS
-WHERE TABLE_NAME = 'TEST_ALL_TAB_COLUMNS'
-ORDER BY COLUMN_ID;
+-- t_partitioned removed as unnecessary
+
+CREATE VIEW v_dummy AS SELECT 1 AS col FROM DUAL;
+
+CREATE MATERIALIZED VIEW mv_dummy AS SELECT 2 AS col FROM DUAL;
+
+CREATE TABLE t_data_types (
+    c_varchar VARCHAR2(100),
+    c_char CHAR(10),
+    c_number NUMBER,
+    c_int INT,
+    c_numeric NUMERIC,
+    c_float FLOAT,
+    c_double DOUBLE PRECISION,
+    c_date DATE,
+    c_ts TIMESTAMP,
+    c_tstz TIMESTAMP WITH TIME ZONE,
+    c_text TEXT,
+    CONSTRAINT pk_data_types PRIMARY KEY (c_varchar, c_char)
+);
+
+-- Convert CURRENT_USER to varchar2 then uppercase to match view's owner
+SELECT table_name, constraint_name, column_name, position
+FROM all_cons_columns
+WHERE owner = SYS.ORA_CASE_TRANS(CURRENT_USER::VARCHAR2)
+ORDER BY table_name, constraint_name, position;
+
+SELECT constraint_name, COUNT(*) AS column_count
+FROM all_cons_columns
+WHERE owner = SYS.ORA_CASE_TRANS(CURRENT_USER::VARCHAR2)
+GROUP BY constraint_name
+ORDER BY constraint_name;
+
+DROP VIEW IF EXISTS v_dummy;
+DROP MATERIALIZED VIEW IF EXISTS mv_dummy;
+DROP TABLE IF EXISTS t_child;
+DROP TABLE IF EXISTS t_parent;
+DROP TABLE IF EXISTS t_pk_single;
+DROP TABLE IF EXISTS t_pk_composite;
+DROP TABLE IF EXISTS t_unique;
+DROP TABLE IF EXISTS t_check;
+DROP TABLE IF EXISTS t_data_types;
+-- USER_CONS_COLUMNS
+CREATE TABLE TEST_USER_CONS_COLUMNS (
+    ID INT NOT NULL,
+    NAME VARCHAR2(30) NOT NULL,
+    AGE INT NOT NULL,
+    EMAIL VARCHAR2(50),
+    CONSTRAINT PK_TEST PRIMARY KEY (ID, NAME),
+    CONSTRAINT UQ_EMAIL UNIQUE (EMAIL)
+);
+
+SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME, POSITION
+FROM SYS.USER_CONS_COLUMNS
+WHERE TABLE_NAME = 'TEST_USER_CONS_COLUMNS'
+AND CONSTRAINT_NAME LIKE '%NOT_NULL%'
+ORDER BY CONSTRAINT_NAME, COLUMN_NAME;
+
+SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME, POSITION
+FROM SYS.USER_CONS_COLUMNS
+WHERE TABLE_NAME = 'TEST_USER_CONS_COLUMNS'
+AND CONSTRAINT_NAME = 'PK_TEST'
+ORDER BY CONSTRAINT_NAME, POSITION;
+
+
+SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME, POSITION
+FROM SYS.USER_CONS_COLUMNS
+WHERE TABLE_NAME = 'TEST_USER_CONS_COLUMNS'
+AND CONSTRAINT_NAME = 'UQ_EMAIL'
+ORDER BY CONSTRAINT_NAME, COLUMN_NAME;
 
 -- Clean
-DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+DROP TABLE IF EXISTS TEST_USER_CONS_COLUMNS;
+
+-- Test NOT NULL constraint in all_cons_columns
+CREATE TABLE t_notnull_test (
+    id INT,
+    name VARCHAR2(50) NOT NULL,
+    age INT
+);
+
+SELECT table_name, constraint_name, column_name, position
+FROM all_cons_columns
+WHERE table_name = 'T_NOTNULL_TEST'
+ORDER BY constraint_name, column_name;
+
+DROP TABLE IF EXISTS t_notnull_test;
+-- Test DBA_CONS_COLUMNS view
+SELECT count(*) > 0 AS view_exists
+FROM information_schema.views
+WHERE table_schema = 'sys' AND table_name = 'dba_cons_columns';
+
+SELECT constraint_name, table_name, column_name, position
+FROM sys.dba_cons_columns
+ORDER BY constraint_name, table_name, column_name
+LIMIT 5;

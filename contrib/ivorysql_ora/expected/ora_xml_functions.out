@@ -1040,3 +1040,16 @@ select INSERTCHILDXML(warehouse_spec, 'Envelope/Body/AAA/BBB/DDD/DDDs', 'TTT', x
  from warehouse_2 where warehouse_id = 1;
 ERROR:  The document being inserted does not conform to specified child name
 drop table warehouse_2;
+-- bug #1276
+select appendchildxml(XMLtype('<a>A</a>'), '/', XMLtype('<b>B</b>'));
+ERROR:  Cannot append node with xpath ='/'
+select insertxmlbefore(XMLtype('<a>A<b>B</b></a>'), '/', XMLType('<c>C</c>'));
+ERROR:  Cannot insert node with xpath ='/'
+select insertxmlafter(XMLtype('<a>A<b>B</b></a>'), '/', XMLType('<c>C</c>'));
+ERROR:  Cannot insert node with xpath ='/'
+select insertchildxml(XMLtype('<a>A<b>B</b></a>'), '/', 'c', XMLType('<c>C</c>'));
+      insertchildxml      
+--------------------------
+ <a>A<b>B</b><c>C</c></a>
+(1 row)
+
