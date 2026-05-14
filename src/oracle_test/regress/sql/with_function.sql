@@ -27,10 +27,10 @@ WITH
   BEGIN RETURN n * 2; END;
 SELECT mul2(add1(3)) FROM dual;
 
--- T05: WITH FUNCTION/PROCEDURE reject OUT and IN OUT parameters.
+-- T05: WITH FUNCTION rejects OUT and IN OUT parameters; WITH PROCEDURE allows them.
 -- Oracle raises ORA-06572 for any SQL-callable function declared with an
--- OUT/IN OUT argument; WITH-clause subprograms run from inside SQL, so the
--- same rule applies.  Each of the three forms below is expected to error.
+-- OUT/IN OUT argument; WITH FUNCTION follows the same rule.  WITH PROCEDURE
+-- is exempt because procedures are not called directly from SQL expressions.
 WITH FUNCTION bump_inout(x IN OUT NUMBER) RETURN NUMBER IS
 BEGIN
   x := x * 3;
@@ -45,6 +45,7 @@ BEGIN
 END;
 SELECT bump_out(NULL) FROM dual;
 
+-- WITH PROCEDURE with an OUT parameter is valid (matches Oracle behaviour).
 WITH PROCEDURE set_val(x OUT NUMBER) IS
 BEGIN
   x := 1;

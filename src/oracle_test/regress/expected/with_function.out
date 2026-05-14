@@ -42,10 +42,10 @@ SELECT mul2(add1(3)) FROM dual;
  8
 (1 row)
 
--- T05: WITH FUNCTION/PROCEDURE reject OUT and IN OUT parameters.
+-- T05: WITH FUNCTION rejects OUT and IN OUT parameters; WITH PROCEDURE allows them.
 -- Oracle raises ORA-06572 for any SQL-callable function declared with an
--- OUT/IN OUT argument; WITH-clause subprograms run from inside SQL, so the
--- same rule applies.  Each of the three forms below is expected to error.
+-- OUT/IN OUT argument; WITH FUNCTION follows the same rule.  WITH PROCEDURE
+-- is exempt because procedures are not called directly from SQL expressions.
 WITH FUNCTION bump_inout(x IN OUT NUMBER) RETURN NUMBER IS
 BEGIN
   x := x * 3;
@@ -55,7 +55,7 @@ SELECT bump_inout(5) FROM dual;
 ERROR:  WITH FUNCTION "bump_inout" cannot declare OUT or IN OUT parameters
 LINE 1: WITH FUNCTION bump_inout(x IN OUT NUMBER) RETURN NUMBER IS
                       ^
-DETAIL:  Subprograms declared in a WITH clause are invoked from SQL, which only accepts IN parameters.
+DETAIL:  WITH FUNCTION subprograms are invoked directly from SQL expressions, which only accept IN parameters.
 HINT:  Remove the OUT/IN OUT/NOCOPY mode from parameter "x", or move the subprogram into a schema-level PL/SQL block.
 WITH FUNCTION bump_out(x OUT NUMBER) RETURN NUMBER IS
 BEGIN
@@ -66,18 +66,19 @@ SELECT bump_out(NULL) FROM dual;
 ERROR:  WITH FUNCTION "bump_out" cannot declare OUT or IN OUT parameters
 LINE 1: WITH FUNCTION bump_out(x OUT NUMBER) RETURN NUMBER IS
                       ^
-DETAIL:  Subprograms declared in a WITH clause are invoked from SQL, which only accepts IN parameters.
+DETAIL:  WITH FUNCTION subprograms are invoked directly from SQL expressions, which only accept IN parameters.
 HINT:  Remove the OUT/IN OUT/NOCOPY mode from parameter "x", or move the subprogram into a schema-level PL/SQL block.
+-- WITH PROCEDURE with an OUT parameter is valid (matches Oracle behaviour).
 WITH PROCEDURE set_val(x OUT NUMBER) IS
 BEGIN
   x := 1;
 END;
 SELECT 'unused' FROM dual;
-ERROR:  WITH PROCEDURE "set_val" cannot declare OUT or IN OUT parameters
-LINE 1: WITH PROCEDURE set_val(x OUT NUMBER) IS
-                       ^
-DETAIL:  Subprograms declared in a WITH clause are invoked from SQL, which only accepts IN parameters.
-HINT:  Remove the OUT/IN OUT/NOCOPY mode from parameter "x", or move the subprogram into a schema-level PL/SQL block.
+ ?column? 
+----------
+ unused
+(1 row)
+
 -- T06: Default parameter value — call with one arg (uses default) and two args
 WITH FUNCTION greet(name VARCHAR2, greeting VARCHAR2 DEFAULT 'Hello') RETURN VARCHAR2 IS
 BEGIN RETURN greeting || ', ' || name || '!'; END;

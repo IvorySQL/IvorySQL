@@ -62,9 +62,9 @@ struct EState *plisql_active_with_func_estate = NULL;
 /*
  * resolveWithFuncArgTypes — resolve FunctionParameter list to an Oid list.
  *
- * WITH-clause subprograms only accept IN parameters (see
- * rejectNonInParamsInWithFunc); every entry in this list contributes to the
- * argument type vector.
+ * Every parameter (IN, OUT, IN OUT) contributes to the argument type vector.
+ * WITH FUNCTION only accepts IN parameters (enforced by
+ * rejectNonInParamsInWithFunc); WITH PROCEDURE may also have OUT/IN OUT.
  */
 static List *
 resolveWithFuncArgTypes(ParseState *pstate, List *args)
@@ -86,16 +86,23 @@ resolveWithFuncArgTypes(ParseState *pstate, List *args)
 /*
  * rejectNonInParamsInWithFunc — enforce Oracle's SQL-callable rule that
  * functions invoked from a SQL statement may not declare OUT or IN OUT
- * parameters.  A WITH FUNCTION / WITH PROCEDURE definition only ever runs
- * from inside the enclosing SQL statement, so the same restriction applies.
+ * parameters.  WITH PROCEDURE definitions are exempt: Oracle allows OUT/IN OUT
+ * parameters on WITH procedures because procedures are not called directly from
+ * SQL expressions — they are invoked from other PL/SQL subprograms within the
+ * same WITH block.
  *
  * Oracle raises ORA-06572 ("PL/SQL function string has OUT parameter in
- * argument list") for the equivalent case on schema-level functions.
+ * argument list") for schema-level functions called from SQL, and the same
+ * rule applies to WITH FUNCTION.  WITH PROCEDURE does not trigger ORA-06572.
  */
 static void
 rejectNonInParamsInWithFunc(ParseState *pstate, InlineFunctionDef *ifd)
 {
 	ListCell   *lc;
+
+	/* Procedures may freely declare OUT / IN OUT parameters. */
+	if (ifd->is_proc)
+		return;
 
 	foreach(lc, ifd->args)
 	{
@@ -107,10 +114,9 @@ rejectNonInParamsInWithFunc(ParseState *pstate, InlineFunctionDef *ifd)
 
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("WITH %s \"%s\" cannot declare OUT or IN OUT parameters",
-						ifd->is_proc ? "PROCEDURE" : "FUNCTION",
+				 errmsg("WITH FUNCTION \"%s\" cannot declare OUT or IN OUT parameters",
 						ifd->funcname),
-				 errdetail("Subprograms declared in a WITH clause are invoked from SQL, which only accepts IN parameters."),
+				 errdetail("WITH FUNCTION subprograms are invoked directly from SQL expressions, which only accept IN parameters."),
 				 errhint("Remove the OUT/IN OUT/NOCOPY mode from parameter \"%s\", or move the subprogram into a schema-level PL/SQL block.",
 						 fp->name ? fp->name : "?"),
 				 parser_errposition(pstate, ifd->location)));
@@ -172,9 +178,9 @@ transformWithFuncDefs(ParseState *pstate, List *plsql_defs)
 		Assert(IsA(ifd, InlineFunctionDef));
 
 		/*
-		 * Oracle disallows OUT / IN OUT parameters on any SQL-callable
-		 * function (ORA-06572).  Enforce the same rule for WITH-clause
-		 * subprograms before we resolve types or pre-analyze defaults.
+		 * Oracle disallows OUT / IN OUT parameters on SQL-callable functions
+		 * (ORA-06572).  WITH PROCEDURE is exempt because procedures are not
+		 * called directly from SQL expressions.
 		 */
 		rejectNonInParamsInWithFunc(pstate, ifd);
 
