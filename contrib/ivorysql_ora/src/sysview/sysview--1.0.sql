@@ -1503,16 +1503,7 @@ SELECT
   NULL::varchar2(128) AS collation,
 
   CASE WHEN pg_attribute.attidentity <> '' THEN 'YES' ELSE 'NO' END::varchar2(10) AS identity_column,
-  'YES'::varchar2(10) AS segment_created,
-  NULL::varchar2(10) AS lob_format,
-  NULL::numeric AS lob_precision,
-  NULL::numeric AS lob_length,
-  'NO'::varchar2(10) AS nested,
-
-  CASE WHEN pg_attribute.attisinvisible THEN 'YES' ELSE 'NO' END::varchar2(10) AS hidden_column,
-  CASE WHEN pg_attribute.attgenerated <> '' THEN 'YES' ELSE 'NO' END::varchar2(10) AS virtual_column,
-  'NO'::varchar2(3) AS default_on_null,
-  'NO'::varchar2(10) AS sensitive_column
+  'NO'::varchar2(3) AS default_on_null
 
 FROM pg_class
 JOIN pg_namespace ON pg_class.relnamespace = pg_namespace.oid
