@@ -1482,14 +1482,21 @@ SELECT
   NULL::numeric AS num_buckets,
   pg_stat_get_last_analyze_time(pg_class.oid) AS last_analyzed,
   NULL::numeric AS sample_size,
-  pg_catalog.current_setting('server_encoding')::varchar2(44) AS character_set_name,
+
+  CASE
+    WHEN pg_type.typname IN (
+      'bpchar', 'varchar', 'text', 'clob',
+      'oracharbyte', 'oravarcharbyte',
+      'oracharchar', 'oravarcharchar'
+    ) THEN 'CHAR_CS'
+    ELSE NULL
+  END::varchar2(44) AS character_set_name,
 
   CASE
     WHEN pg_type.typname IN ('oracharbyte','oravarcharbyte','raw') AND pg_attribute.atttypmod > 4
       THEN pg_attribute.atttypmod - 4
     WHEN pg_type.typname IN ('oracharchar','oravarcharchar','bpchar','varchar') AND pg_attribute.atttypmod > 4
-      THEN (pg_attribute.atttypmod - 4) * pg_catalog.pg_encoding_max_length(
-            (SELECT d.encoding FROM pg_catalog.pg_database d WHERE d.datname = current_database()))
+      THEN pg_attribute.atttypmod - 4 
     ELSE NULL
   END::numeric AS char_col_decl_length,
 
