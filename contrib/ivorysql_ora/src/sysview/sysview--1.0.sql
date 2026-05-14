@@ -1391,14 +1391,37 @@ GRANT SELECT ON sys.dba_cons_columns TO PUBLIC;
 -- ALL_TAB_COLUMNS
 CREATE OR REPLACE VIEW SYS.ALL_TAB_COLUMNS AS
 SELECT
-  sys.ora_case_trans(pg_get_userbyid(pg_class.relowner)::varchar2)::varchar2(128) AS owner,
+  sys.ora_case_trans(pg_namespace.nspname::varchar2)::varchar2(128) AS owner,
   sys.ora_case_trans(pg_class.relname::varchar2)::varchar2(128) AS table_name,
   sys.ora_case_trans(pg_attribute.attname::varchar2)::varchar2(128) AS column_name,
-  pg_attribute.attnum::numeric AS column_id,
 
-  sys.ora_case_trans(pg_type.typname::varchar2)::varchar2(128) AS data_type,
+  ROW_NUMBER() OVER (
+    PARTITION BY pg_class.oid
+    ORDER BY pg_attribute.attnum
+  )::numeric AS column_id,
+
+  CASE
+    WHEN pg_type.typname IN ('int2', 'int4', 'int8') THEN 'NUMBER'
+    WHEN pg_type.typname IN ('float4', 'float8') THEN 'FLOAT'
+    WHEN pg_type.typname = 'numeric' THEN 'NUMBER'
+    WHEN pg_type.typname IN ('varchar', 'oravarcharbyte') THEN 'VARCHAR2'
+    WHEN pg_type.typname IN ('bpchar', 'oracharbyte') THEN 'CHAR'
+    WHEN pg_type.typname IN ('text', 'clob') THEN 'CLOB'
+    WHEN pg_type.typname IN ('bytea', 'blob') THEN 'BLOB'
+    WHEN pg_type.typname IN ('date', 'oradate') THEN 'DATE'
+    WHEN pg_type.typname IN ('timestamp', 'timestamptz', 'oratimestamp', 'oratimestamptz') THEN 'TIMESTAMP'
+    WHEN pg_type.typname = 'raw' THEN 'RAW'
+    WHEN pg_type.typname = 'rowid' THEN 'ROWID'
+    ELSE sys.ora_case_trans(pg_type.typname::varchar2)::varchar2(128)
+  END::varchar2(128) AS data_type,
+
   NULL::varchar2(3) AS data_type_mod,
-  sys.ora_case_trans(pg_get_userbyid(pg_type.typowner)::varchar2)::varchar2(128) AS data_type_owner,
+
+  CASE
+    WHEN pg_type.typnamespace NOT IN ('pg_catalog'::regnamespace, 'sys'::regnamespace)
+    THEN sys.ora_case_trans(pg_get_userbyid(pg_type.typowner)::varchar2)::varchar2(128)
+    ELSE NULL
+  END AS data_type_owner,
 
   CASE
     WHEN pg_type.typnamespace = 'SYS'::regnamespace AND pg_type.typname = 'number' THEN 22
@@ -1411,7 +1434,7 @@ SELECT
     WHEN pg_type.typname = 'binary_double' THEN 8
     WHEN pg_type.typname IN ('oravarcharbyte','oracharbyte','raw') AND pg_attribute.atttypmod > 4
       THEN pg_attribute.atttypmod - 4
-    WHEN pg_type.typname IN ('oravarcharchar','oracharchar') AND pg_attribute.atttypmod > 4
+    WHEN pg_type.typname IN ('oravarcharchar','oracharchar','varchar','bpchar') AND pg_attribute.atttypmod > 4
       THEN (pg_attribute.atttypmod - 4) * pg_catalog.pg_encoding_max_length(
             (SELECT d.encoding FROM pg_catalog.pg_database d WHERE d.datname = current_database()))
     WHEN pg_type.typname IN ('clob','blob') THEN 4000
@@ -1422,8 +1445,6 @@ SELECT
     WHEN pg_attribute.atttypid = 'PG_CATALOG.FLOAT4'::regtype THEN 4
     WHEN pg_attribute.atttypid = 'PG_CATALOG.FLOAT8'::regtype THEN 8
     WHEN pg_attribute.atttypid = 'PG_CATALOG.NUMERIC'::regtype THEN 22
-    WHEN pg_type.typname IN ('varchar','bpchar') AND pg_attribute.atttypmod > 4
-      THEN pg_attribute.atttypmod - 4
     WHEN pg_type.typname IN ('text','xml','json','jsonb') THEN 4000
     WHEN pg_attribute.attlen > 0 THEN pg_attribute.attlen
     ELSE 0
@@ -1476,11 +1497,7 @@ SELECT
   'YES'::varchar2(3) AS global_stats,
   'NO'::varchar2(3) AS user_stats,
 
-  (SELECT stawidth::numeric
-   FROM pg_statistic
-   WHERE starelid = pg_class.oid
-     AND staattnum = pg_attribute.attnum
-     AND stainherit = FALSE) AS avg_col_len,
+  pg_stats.avg_width::numeric AS avg_col_len,
 
   CASE
     WHEN pg_type.typname IN ('bpchar','varchar','oracharchar','oracharbyte','oravarcharchar','oravarcharbyte')
@@ -1530,6 +1547,7 @@ WHERE
   AND NOT pg_attribute.attisdropped
   AND pg_namespace.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
   AND has_table_privilege(current_user, pg_class.oid,
-       'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER');
+       'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+  AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
