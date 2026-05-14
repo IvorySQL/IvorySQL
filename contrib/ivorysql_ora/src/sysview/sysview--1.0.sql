@@ -1505,7 +1505,6 @@ SELECT
     ELSE NULL
   END::numeric AS char_length,
 
-  -- ✅ 修复后的 CHAR_USED 列
   CASE
     WHEN pg_type.typname IN ('oravarcharbyte','oracharbyte') THEN 'B'
     WHEN pg_type.typname IN ('oravarcharchar','oracharchar') THEN 'C'
