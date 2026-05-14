@@ -108,51 +108,51 @@ END;
 SELECT bad_div(1, 0) FROM dual;
 
 -- T13: WITH FUNCTION inside INSERT...SELECT
-CREATE TABLE _wf_dml_test (val NUMBER);
+CREATE TABLE wf_dml_test (val NUMBER);
 WITH FUNCTION triple(n NUMBER) RETURN NUMBER IS
 BEGIN
   RETURN n * 3;
 END;
-INSERT INTO _wf_dml_test SELECT triple(x) FROM generate_series(1,4) AS x;
-SELECT * FROM _wf_dml_test ORDER BY val;
-DROP TABLE _wf_dml_test;
+INSERT INTO wf_dml_test SELECT triple(x) FROM generate_series(1,4) AS x;
+SELECT * FROM wf_dml_test ORDER BY val;
+DROP TABLE wf_dml_test;
 
 -- T14: WITH FUNCTION inside UPDATE...SET
-CREATE TABLE _wf_upd_test (id INT, val NUMBER);
-INSERT INTO _wf_upd_test VALUES (1, 10), (2, 20), (3, 30);
+CREATE TABLE wf_upd_test (id INT, val NUMBER);
+INSERT INTO wf_upd_test VALUES (1, 10), (2, 20), (3, 30);
 WITH FUNCTION halve(n NUMBER) RETURN NUMBER IS
 BEGIN RETURN n / 2; END;
-UPDATE _wf_upd_test SET val = halve(val);
-SELECT id, val FROM _wf_upd_test ORDER BY id;
-DROP TABLE _wf_upd_test;
+UPDATE wf_upd_test SET val = halve(val);
+SELECT id, val FROM wf_upd_test ORDER BY id;
+DROP TABLE wf_upd_test;
 
 -- T15: WITH FUNCTION inside DELETE...WHERE
-CREATE TABLE _wf_del_test (id INT, val NUMBER);
-INSERT INTO _wf_del_test VALUES (1, 5), (2, 15), (3, 25);
+CREATE TABLE wf_del_test (id INT, val NUMBER);
+INSERT INTO wf_del_test VALUES (1, 5), (2, 15), (3, 25);
 WITH FUNCTION is_big(n NUMBER) RETURN NUMBER IS
 BEGIN IF n > 10 THEN RETURN 1; ELSE RETURN 0; END IF; END;
-DELETE FROM _wf_del_test WHERE is_big(val) = 1;
-SELECT id, val FROM _wf_del_test ORDER BY id;
-DROP TABLE _wf_del_test;
+DELETE FROM wf_del_test WHERE is_big(val) = 1;
+SELECT id, val FROM wf_del_test ORDER BY id;
+DROP TABLE wf_del_test;
 
 -- T16: WITH FUNCTION inside MERGE WHEN MATCHED THEN UPDATE
-CREATE TABLE _wf_merge_test (id INT, val NUMBER);
-INSERT INTO _wf_merge_test VALUES (1, 10), (2, 20), (3, 30);
+CREATE TABLE wf_merge_test (id INT, val NUMBER);
+INSERT INTO wf_merge_test VALUES (1, 10), (2, 20), (3, 30);
 WITH FUNCTION triple(n NUMBER) RETURN NUMBER IS
 BEGIN RETURN n * 3; END;
-MERGE INTO _wf_merge_test t USING dual ON (1=1)
+MERGE INTO wf_merge_test t USING dual ON (1=1)
 WHEN MATCHED THEN UPDATE SET val = triple(t.val);
-SELECT id, val FROM _wf_merge_test ORDER BY id;
-DROP TABLE _wf_merge_test;
+SELECT id, val FROM wf_merge_test ORDER BY id;
+DROP TABLE wf_merge_test;
 
 -- T17: WITH FUNCTION scope — function works inside its statement,
 -- and is no longer visible in a separate statement afterward.
-WITH FUNCTION _wf_scope_test(n NUMBER) RETURN NUMBER IS
+WITH FUNCTION wf_scope_test(n NUMBER) RETURN NUMBER IS
 BEGIN RETURN n + 42; END;
-SELECT _wf_scope_test(1) FROM dual;
+SELECT wf_scope_test(1) FROM dual;
 -- Separate statement: same name should now fail because the WITH-clause
 -- definition went out of scope when the previous statement completed.
-SELECT _wf_scope_test(1) FROM dual;
+SELECT wf_scope_test(1) FROM dual;
 
 -- T18: WITH FUNCTION does not shadow a catalog function of the same name
 WITH FUNCTION abs(n NUMBER) RETURN NUMBER IS
@@ -219,18 +219,18 @@ SELECT 'unused' FROM dual;
 
 -- E09: WITH-clause names must NOT leak into catalog functions called from
 -- within the WITH execution frame.  catalog_caller is a regular PL/iSQL
--- function whose body references _wf_leak_target.  When invoked from inside
+-- function whose body references wf_leak_target.  When invoked from inside
 -- a WITH FUNCTION body, the WITH-clause name must remain invisible to the
 -- catalog function's lexical scope.
 CREATE OR REPLACE FUNCTION catalog_caller(n NUMBER) RETURN NUMBER IS
   result NUMBER;
 BEGIN
-  result := _wf_leak_target(n);
+  result := wf_leak_target(n);
   RETURN result;
 END;
 /
 WITH
-  FUNCTION _wf_leak_target(x NUMBER) RETURN NUMBER IS
+  FUNCTION wf_leak_target(x NUMBER) RETURN NUMBER IS
   BEGIN RETURN x + 1000; END;
   FUNCTION calls_catalog(n NUMBER) RETURN NUMBER IS
   BEGIN RETURN catalog_caller(n); END;
