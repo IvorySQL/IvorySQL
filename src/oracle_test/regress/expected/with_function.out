@@ -236,13 +236,13 @@ ERROR:  function _wf_scope_test(pg_catalog.int4) does not exist
 LINE 1: SELECT _wf_scope_test(1) FROM dual;
                ^
 DETAIL:  There is no function of that name.
--- T18: WITH FUNCTION shadows a catalog function of the same name
+-- T18: WITH FUNCTION does not shadow a catalog function of the same name
 WITH FUNCTION abs(n NUMBER) RETURN NUMBER IS
 BEGIN RETURN 999; END;
 SELECT abs(-5) FROM dual;
  abs 
 -----
- 999
+   5
 (1 row)
 
 -- T19: WITH FUNCTION visible inside a subquery

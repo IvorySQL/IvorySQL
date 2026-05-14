@@ -154,7 +154,7 @@ SELECT _wf_scope_test(1) FROM dual;
 -- definition went out of scope when the previous statement completed.
 SELECT _wf_scope_test(1) FROM dual;
 
--- T18: WITH FUNCTION shadows a catalog function of the same name
+-- T18: WITH FUNCTION does not shadow a catalog function of the same name
 WITH FUNCTION abs(n NUMBER) RETURN NUMBER IS
 BEGIN RETURN 999; END;
 SELECT abs(-5) FROM dual;

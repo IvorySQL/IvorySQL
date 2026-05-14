@@ -39,6 +39,7 @@
 
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
+#include "catalog/namespace.h"
 #include "oracle_parser/ora_with_function.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_expr.h"
@@ -58,6 +59,53 @@ struct EState *plisql_active_with_func_estate = NULL;
 /* -----------------------------------------------------------------------
  * Internal helpers
  * ----------------------------------------------------------------------- */
+
+/*
+ * Oracle SQL single-row built-in function names that WITH FUNCTION must not
+ * shadow.  These correspond to Oracle's documented SQL Functions (SQL Language
+ * Reference, "Functions" chapter) that are part of the SQL language itself.
+ *
+ * When one of these names appears with a matching pg_catalog entry, the
+ * catalog function wins — exactly as Oracle resolves its own built-ins before
+ * any user-supplied query-level definition.
+ *
+ * PostgreSQL-specific catalog entries (e.g. factorial, array_append) are
+ * intentionally absent so that WITH FUNCTION can still override them.
+ *
+ * Temporary: superseded once IvorySQL ships its STANDARD package.
+ */
+static const char *const oracle_builtin_func_names[] = {
+	/* Numeric single-row functions */
+	"abs", "acos", "asin", "atan", "atan2",
+	"bitand", "ceil", "cos", "cosh",
+	"exp", "floor", "greatest", "least",
+	"ln", "log", "mod", "power",
+	"round", "sign", "sin", "sinh", "sqrt",
+	"tan", "tanh", "trunc", "width_bucket",
+	/* Character single-row functions */
+	"ascii", "chr", "concat", "initcap",
+	"instr", "length", "lower", "lpad", "ltrim",
+	"replace", "rpad", "rtrim", "soundex",
+	"substr", "translate", "trim", "upper",
+	/* Regular-expression functions */
+	"regexp_count", "regexp_instr", "regexp_replace", "regexp_substr",
+	/* NULL-handling */
+	"coalesce", "nullif",
+	/* Aggregate functions */
+	"avg", "count", "max", "min", "stddev", "sum", "variance",
+	NULL						/* sentinel */
+};
+
+static bool
+is_oracle_builtin_name(const char *fname)
+{
+	for (int i = 0; oracle_builtin_func_names[i] != NULL; i++)
+	{
+		if (strcmp(oracle_builtin_func_names[i], fname) == 0)
+			return true;
+	}
+	return false;
+}
 
 /*
  * resolveWithFuncArgTypes — resolve FunctionParameter list to an Oid list.
@@ -275,6 +323,36 @@ withFuncLookupHook(ParseState *pstate,
 		return FUNCDETAIL_NOTFOUND;
 
 	fname = strVal(linitial(funcname));
+
+	/*
+	 * Oracle compatibility: Oracle SQL built-in functions take priority over
+	 * WITH FUNCTION definitions with the same name.  In Oracle, documented
+	 * single-row SQL functions (ABS, ROUND, SUBSTR, etc.) are always resolved
+	 * before any query-local definitions; a WITH FUNCTION of the same name is
+	 * silently bypassed.
+	 *
+	 * We gate on a whitelist of Oracle SQL function names so that PostgreSQL-
+	 * specific pg_catalog entries (e.g. factorial) are still overridable.
+	 *
+	 * NOTE: this is a temporary bridge.  Once IvorySQL implements the STANDARD
+	 * package, LookupPkgFunc("standard.name") will naturally win in
+	 * ParseFuncOrColumn before this hook is reached, making this check
+	 * redundant.
+	 */
+	if (is_oracle_builtin_name(fname))
+	{
+		List	   *pg_cat_name = list_make2(makeString("pg_catalog"),
+											 makeString(fname));
+		int			dummy_flags = 0;
+		FuncCandidateList cands;
+
+		cands = FuncnameGetCandidates(pg_cat_name, nargs, fargnames,
+									  expand_variadic, expand_defaults,
+									  false, true, &dummy_flags);
+		list_free_deep(pg_cat_name);
+		if (cands != NULL)
+			return FUNCDETAIL_NOTFOUND;
+	}
 
 	foreach(lc, pstate->p_with_func_list)
 	{
