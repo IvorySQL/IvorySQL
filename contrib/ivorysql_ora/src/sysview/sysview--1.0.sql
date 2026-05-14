@@ -1394,7 +1394,6 @@ SELECT
   sys.ora_case_trans(pg_namespace.nspname::varchar2)::varchar2(128) AS owner,
   sys.ora_case_trans(pg_class.relname::varchar2)::varchar2(128) AS table_name,
   sys.ora_case_trans(pg_attribute.attname::varchar2)::varchar2(128) AS column_name,
-
   ROW_NUMBER() OVER (
     PARTITION BY pg_class.oid
     ORDER BY pg_attribute.attnum
@@ -1506,9 +1505,10 @@ SELECT
     ELSE NULL
   END::numeric AS char_length,
 
+  -- ✅ 修复后的 CHAR_USED 列
   CASE
-    WHEN pg_type.typname IN ('varchar','char','oracharbyte','oravarcharbyte','text') THEN 'B'
-    WHEN pg_type.typname IN ('bpchar','oracharchar','oravarcharchar') THEN 'C'
+    WHEN pg_type.typname IN ('oravarcharbyte','oracharbyte') THEN 'B'
+    WHEN pg_type.typname IN ('oravarcharchar','oracharchar') THEN 'C'
     ELSE NULL
   END::varchar2(1) AS char_used,
 
