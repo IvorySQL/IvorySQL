@@ -225,7 +225,7 @@ WITH FUNCTION wf_scope_test(n NUMBER) RETURN NUMBER IS
 BEGIN RETURN n + 42; END;
 SELECT wf_scope_test(1) FROM dual;
  wf_scope_test 
-----------------
+---------------
  43
 (1 row)
 
@@ -283,12 +283,12 @@ LINE 1: WITH FUNCTION pg_mode_test(n INT) RETURN INT IS
 SET ivorysql.compatible_mode = oracle;
 -- E05: Syntax error in function body — expect error
 WITH FUNCTION broken_body(n NUMBER) RETURN NUMBER IS
-BEGIN RETRUN n; END;
+BEGIN RETURN n + ; END;
 SELECT broken_body(1) FROM dual;
-ERROR:  syntax error at or near "RETRUN"
-LINE 1: BEGIN RETRUN n; END
-              ^
-QUERY:  BEGIN RETRUN n; END
+ERROR:  syntax error at end of input
+LINE 1: BEGIN RETURN n + ; END
+                        ^
+QUERY:  BEGIN RETURN n + ; END
 -- E06: WITH function used as a table function — expect clear error
 WITH FUNCTION as_table(n NUMBER) RETURN NUMBER IS
 BEGIN RETURN n; END;

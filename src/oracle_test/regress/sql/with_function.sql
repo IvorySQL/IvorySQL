@@ -189,7 +189,7 @@ SET ivorysql.compatible_mode = oracle;
 
 -- E05: Syntax error in function body — expect error
 WITH FUNCTION broken_body(n NUMBER) RETURN NUMBER IS
-BEGIN RETRUN n; END;
+BEGIN RETURN n + ; END;
 SELECT broken_body(1) FROM dual;
 
 -- E06: WITH function used as a table function — expect clear error
