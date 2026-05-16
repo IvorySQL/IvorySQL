@@ -2205,7 +2205,7 @@ SELECT pg_restore_extended_stats(
     'statistics_schemaname', 'stats_schema',
     'statistics_name',       'stats_name',
     'inherited',             false,
-    'n_distinct',            '[{"attributes" : [2,3], "ndistinct" : 4}]'::pg_ndistinct);
+    'n_distinct',            '[{"attributes" : [2,3], "ndistinct" : 4}]'::pg_ndistinct,
     'dependencies',          '{"2 => 1": 1.000000, "2 => -1": 1.000000, "2 => -2": 1.000000}'::pg_dependencies,
     'exprs',                 '[
                                {
