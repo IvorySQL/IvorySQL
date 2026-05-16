@@ -949,8 +949,8 @@ XLogWalRcvWrite(char *buf, Size nbytes, XLogRecPtr recptr, TimeLineID tli)
 			ereport(PANIC,
 					(errcode_for_file_access(),
 					 errmsg("could not write to WAL segment %s "
-							"at offset %d, length %lu: %m",
-							xlogfname, startoff, (unsigned long) segbytes)));
+							"at offset %d, length %d: %m",
+							xlogfname, startoff, segbytes)));
 		}
 
 		/* Update state for write */
@@ -1450,8 +1450,8 @@ pg_stat_get_wal_receiver(PG_FUNCTION_ARGS)
 	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
 		elog(ERROR, "return type must be a row type");
 
-	values = palloc0(sizeof(Datum) * tupdesc->natts);
-	nulls = palloc0(sizeof(bool) * tupdesc->natts);
+	values = palloc0_array(Datum, tupdesc->natts);
+	nulls = palloc0_array(bool, tupdesc->natts);
 
 	/* Fetch values */
 	values[0] = Int32GetDatum(pid);

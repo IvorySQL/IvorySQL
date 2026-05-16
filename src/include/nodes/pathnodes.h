@@ -639,7 +639,7 @@ typedef struct PartitionSchemeData
 
 	/* Cached information about partition comparison functions. */
 	struct FmgrInfo *partsupfunc;
-}			PartitionSchemeData;
+} PartitionSchemeData;
 
 typedef struct PartitionSchemeData *PartitionScheme;
 
@@ -1216,9 +1216,10 @@ typedef struct RelAggInfo
  * IndexOptInfo
  *		Per-index information for planning/optimization
  *
- *		indexkeys[], indexcollations[] each have ncolumns entries.
- *		opfamily[], and opcintype[]	each have nkeycolumns entries. They do
- *		not contain any information about included attributes.
+ *		indexkeys[] and canreturn[] each have ncolumns entries.
+ *
+ *		indexcollations[], opfamily[], and opcintype[] each have nkeycolumns
+ *		entries.  These don't contain any information about INCLUDE columns.
  *
  *		sortopfamily[], reverse_sort[], and nulls_first[] have
  *		nkeycolumns entries, if the index is ordered; but if it is unordered,

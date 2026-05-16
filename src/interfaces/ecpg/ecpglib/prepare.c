@@ -138,14 +138,14 @@ replace_variables(char **text, int lineno)
 			char	   *buffer,
 					   *newcopy;
 
-			if (!(buffer = (char *) ecpg_alloc(buffersize, lineno)))
+			if (!(buffer = ecpg_alloc(buffersize, lineno)))
 				return false;
 
 			snprintf(buffer, buffersize, "$%d", counter++);
 
 			for (len = 1; (*text)[ptr + len] && isvarchar((*text)[ptr + len]); len++)
 				 /* skip */ ;
-			if (!(newcopy = (char *) ecpg_alloc(strlen(*text) - len + strlen(buffer) + 1, lineno)))
+			if (!(newcopy = ecpg_alloc(strlen(*text) - len + strlen(buffer) + 1, lineno)))
 			{
 				ecpg_free(buffer);
 				return false;
@@ -302,7 +302,7 @@ deallocate_one(int lineno, enum COMPAT_MODE c, struct connection *con,
 		char	   *text;
 		PGresult   *query;
 
-		text = (char *) ecpg_alloc(strlen("deallocate \"\" ") + strlen(this->name), this->stmt->lineno);
+		text = ecpg_alloc(strlen("deallocate \"\" ") + strlen(this->name), this->stmt->lineno);
 
 		if (text)
 		{
@@ -509,7 +509,7 @@ ecpg_freeStmtCacheEntry(int lineno, int compat,
 	if (entry->ecpgQuery)
 	{
 		ecpg_free(entry->ecpgQuery);
-		entry->ecpgQuery = 0;
+		entry->ecpgQuery = NULL;
 	}
 
 	return entNo;

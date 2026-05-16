@@ -183,7 +183,7 @@ test_basic(rt_node_class_test_elem *test_info, int shift, bool asc)
 	elog(NOTICE, "testing node %s with shift %d and %s keys",
 		 test_info->class_name, shift, asc ? "ascending" : "descending");
 
-	keys = palloc(sizeof(uint64) * children);
+	keys = palloc_array(uint64, children);
 	for (int i = 0; i < children; i++)
 	{
 		if (asc)
@@ -219,7 +219,7 @@ test_basic(rt_node_class_test_elem *test_info, int shift, bool asc)
 		TestValueType update = keys[i] + 1;
 
 		/* rt_set should report the key found */
-		EXPECT_TRUE(rt_set(radixtree, keys[i], (TestValueType *) &update));
+		EXPECT_TRUE(rt_set(radixtree, keys[i], &update));
 	}
 
 	/* delete and re-insert keys */

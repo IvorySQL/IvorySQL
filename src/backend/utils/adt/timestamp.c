@@ -937,7 +937,7 @@ interval_in(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 	}
 
-	result = (Interval *) palloc(sizeof(Interval));
+	result = palloc_object(Interval);
 
 	switch (dtype)
 	{
@@ -1004,7 +1004,7 @@ interval_recv(PG_FUNCTION_ARGS)
 	int32		typmod = PG_GETARG_INT32(2);
 	Interval   *interval;
 
-	interval = (Interval *) palloc(sizeof(Interval));
+	interval = palloc_object(Interval);
 
 	interval->time = pq_getmsgint64(buf);
 	interval->day = pq_getmsgint(buf, sizeof(interval->day));
@@ -1331,7 +1331,7 @@ interval_scale(PG_FUNCTION_ARGS)
 	int32		typmod = PG_GETARG_INT32(1);
 	Interval   *result;
 
-	result = palloc(sizeof(Interval));
+	result = palloc_object(Interval);
 	*result = *interval;
 
 	AdjustIntervalForTypmod(result, typmod, NULL);
@@ -1545,7 +1545,7 @@ make_interval(PG_FUNCTION_ARGS)
 	if (isinf(secs) || isnan(secs))
 		goto out_of_range;
 
-	result = (Interval *) palloc(sizeof(Interval));
+	result = palloc_object(Interval);
 
 	/* years and months -> months */
 	if (pg_mul_s32_overflow(years, MONTHS_PER_YEAR, &result->month) ||
@@ -2363,18 +2363,21 @@ int32
 timestamp_cmp_timestamptz_internal(Timestamp timestampVal, TimestampTz dt2)
 {
 	TimestampTz dt1;
-	int			overflow;
+	ErrorSaveContext escontext = {T_ErrorSaveContext};
 
-	dt1 = timestamp2timestamptz_opt_overflow(timestampVal, &overflow);
-	if (overflow > 0)
+	dt1 = timestamp2timestamptz_safe(timestampVal, (Node *) &escontext);
+	if (escontext.error_occurred)
 	{
-		/* dt1 is larger than any finite timestamp, but less than infinity */
-		return TIMESTAMP_IS_NOEND(dt2) ? -1 : +1;
-	}
-	if (overflow < 0)
-	{
-		/* dt1 is less than any finite timestamp, but more than -infinity */
-		return TIMESTAMP_IS_NOBEGIN(dt2) ? +1 : -1;
+		if (TIMESTAMP_IS_NOEND(dt1))
+		{
+			/* dt1 is larger than any finite timestamp, but less than infinity */
+			return TIMESTAMP_IS_NOEND(dt2) ? -1 : +1;
+		}
+		if (TIMESTAMP_IS_NOBEGIN(dt1))
+		{
+			/* dt1 is less than any finite timestamp, but more than -infinity */
+			return TIMESTAMP_IS_NOBEGIN(dt2) ? +1 : -1;
+		}
 	}
 
 	return timestamptz_cmp_internal(dt1, dt2);
@@ -2827,7 +2830,7 @@ timestamp_mi(PG_FUNCTION_ARGS)
 	Timestamp	dt2 = PG_GETARG_TIMESTAMP(1);
 	Interval   *result;
 
-	result = (Interval *) palloc(sizeof(Interval));
+	result = palloc_object(Interval);
 
 	/*
 	 * Handle infinities.
@@ -2922,7 +2925,7 @@ interval_justify_interval(PG_FUNCTION_ARGS)
 	TimeOffset	wholeday;
 	int32		wholemonth;
 
-	result = (Interval *) palloc(sizeof(Interval));
+	result = palloc_object(Interval);
 	result->month = span->month;
 	result->day = span->day;
 	result->time = span->time;
@@ -3001,7 +3004,7 @@ interval_justify_hours(PG_FUNCTION_ARGS)
 	Interval   *result;
 	TimeOffset	wholeday;
 
-	result = (Interval *) palloc(sizeof(Interval));
+	result = palloc_object(Interval);
 	result->month = span->month;
 	result->day = span->day;
 	result->time = span->time;
@@ -3043,7 +3046,7 @@ interval_justify_days(PG_FUNCTION_ARGS)
 	Interval   *result;
 	int32		wholemonth;
 
-	result = (Interval *) palloc(sizeof(Interval));
+	result = palloc_object(Interval);
 	result->month = span->month;
 	result->day = span->day;
 	result->time = span->time;
@@ -3445,7 +3448,7 @@ interval_um(PG_FUNCTION_ARGS)
 	Interval   *interval = PG_GETARG_INTERVAL_P(0);
 	Interval   *result;
 
-	result = (Interval *) palloc(sizeof(Interval));
+	result = palloc_object(Interval);
 	interval_um_internal(interval, result);
 
 	PG_RETURN_INTERVAL_P(result);
@@ -3503,7 +3506,7 @@ interval_pl(PG_FUNCTION_ARGS)
 	Interval   *span2 = PG_GETARG_INTERVAL_P(1);
 	Interval   *result;
 
-	result = (Interval *) palloc(sizeof(Interval));
+	result = palloc_object(Interval);
 
 	/*
 	 * Handle infinities.
@@ -3559,7 +3562,7 @@ interval_mi(PG_FUNCTION_ARGS)
 	Interval   *span2 = PG_GETARG_INTERVAL_P(1);
 	Interval   *result;
 
-	result = (Interval *) palloc(sizeof(Interval));
+	result = palloc_object(Interval);
 
 	/*
 	 * Handle infinities.
@@ -3613,7 +3616,7 @@ interval_mul(PG_FUNCTION_ARGS)
 				orig_day = span->day;
 	Interval   *result;
 
-	result = (Interval *) palloc(sizeof(Interval));
+	result = palloc_object(Interval);
 
 	/*
 	 * Handle NaN and infinities.
@@ -3743,7 +3746,7 @@ interval_div(PG_FUNCTION_ARGS)
 				orig_day = span->day;
 	Interval   *result;
 
-	result = (Interval *) palloc(sizeof(Interval));
+	result = palloc_object(Interval);
 
 	if (factor == 0.0)
 		ereport(ERROR,
@@ -3972,7 +3975,7 @@ makeIntervalAggState(FunctionCallInfo fcinfo)
 
 	old_context = MemoryContextSwitchTo(agg_context);
 
-	state = (IntervalAggState *) palloc0(sizeof(IntervalAggState));
+	state = palloc0_object(IntervalAggState);
 
 	MemoryContextSwitchTo(old_context);
 
@@ -4159,7 +4162,7 @@ interval_avg_deserialize(PG_FUNCTION_ARGS)
 	initReadOnlyStringInfo(&buf, VARDATA_ANY(sstate),
 						   VARSIZE_ANY_EXHDR(sstate));
 
-	result = (IntervalAggState *) palloc0(sizeof(IntervalAggState));
+	result = palloc0_object(IntervalAggState);
 
 	/* N */
 	result->N = pq_getmsgint64(&buf);
@@ -4226,7 +4229,7 @@ interval_avg(PG_FUNCTION_ARGS)
 					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 					 errmsg("interval out of range")));
 
-		result = (Interval *) palloc(sizeof(Interval));
+		result = palloc_object(Interval);
 		if (state->pInfcount > 0)
 			INTERVAL_NOEND(result);
 		else
@@ -4263,7 +4266,7 @@ interval_sum(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 				 errmsg("interval out of range")));
 
-	result = (Interval *) palloc(sizeof(Interval));
+	result = palloc_object(Interval);
 
 	if (state->pInfcount > 0)
 		INTERVAL_NOEND(result);
@@ -4296,7 +4299,7 @@ timestamp_age(PG_FUNCTION_ARGS)
 	struct pg_tm tt2,
 			   *tm2 = &tt2;
 
-	result = (Interval *) palloc(sizeof(Interval));
+	result = palloc_object(Interval);
 
 	/*
 	 * Handle infinities.
@@ -4444,7 +4447,7 @@ timestamptz_age(PG_FUNCTION_ARGS)
 	int			tz1;
 	int			tz2;
 
-	result = (Interval *) palloc(sizeof(Interval));
+	result = palloc_object(Interval);
 
 	/*
 	 * Handle infinities.
@@ -5117,7 +5120,7 @@ interval_trunc(PG_FUNCTION_ARGS)
 	struct pg_itm tt,
 			   *tm = &tt;
 
-	result = (Interval *) palloc(sizeof(Interval));
+	result = palloc_object(Interval);
 
 	lowunits = downcase_truncate_identifier(VARDATA_ANY(units),
 											VARSIZE_ANY_EXHDR(units),
@@ -5158,7 +5161,7 @@ interval_trunc(PG_FUNCTION_ARGS)
 							 errmsg("unit \"%s\" not supported for type %s",
 									lowunits, format_type_be(INTERVALOID)),
 							 (val == DTK_WEEK) ? errdetail("Months usually have fractional weeks.") : 0));
-					result = 0;
+					result = NULL;
 			}
 		}
 
@@ -6434,24 +6437,21 @@ timestamp_timestamptz(PG_FUNCTION_ARGS)
 /*
  * Convert timestamp to timestamp with time zone.
  *
- * On successful conversion, *overflow is set to zero if it's not NULL.
+ * If the timestamp is finite but out of the valid range for timestamptz,
+ * error handling proceeds based on escontext.
  *
- * If the timestamp is finite but out of the valid range for timestamptz, then:
- * if overflow is NULL, we throw an out-of-range error.
- * if overflow is not NULL, we store +1 or -1 there to indicate the sign
- * of the overflow, and return the appropriate timestamptz infinity.
+ * If escontext is NULL, we throw an out-of-range error (hard error).
+ * If escontext is not NULL, we return NOBEGIN or NOEND for lower bound or
+ * upper bound overflow, respectively, and record a soft error.
  */
 TimestampTz
-timestamp2timestamptz_opt_overflow(Timestamp timestamp, int *overflow)
+timestamp2timestamptz_safe(Timestamp timestamp, Node *escontext)
 {
 	TimestampTz result;
 	struct pg_tm tt,
 			   *tm = &tt;
 	fsec_t		fsec;
 	int			tz;
-
-	if (overflow)
-		*overflow = 0;
 
 	if (TIMESTAMP_NOT_FINITE(timestamp))
 		return timestamp;
@@ -6467,26 +6467,14 @@ timestamp2timestamptz_opt_overflow(Timestamp timestamp, int *overflow)
 			return result;
 	}
 
-	if (overflow)
-	{
-		if (timestamp < 0)
-		{
-			*overflow = -1;
-			TIMESTAMP_NOBEGIN(result);
-		}
-		else
-		{
-			*overflow = 1;
-			TIMESTAMP_NOEND(result);
-		}
-		return result;
-	}
+	if (timestamp < 0)
+		TIMESTAMP_NOBEGIN(result);
+	else
+		TIMESTAMP_NOEND(result);
 
-	ereport(ERROR,
+	ereturn(escontext, result,
 			(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 			 errmsg("timestamp out of range")));
-
-	return 0;
 }
 
 /*
@@ -6495,7 +6483,7 @@ timestamp2timestamptz_opt_overflow(Timestamp timestamp, int *overflow)
 static TimestampTz
 timestamp2timestamptz(Timestamp timestamp)
 {
-	return timestamp2timestamptz_opt_overflow(timestamp, NULL);
+	return timestamp2timestamptz_safe(timestamp, NULL);
 }
 
 /* timestamptz_timestamp()
@@ -6515,21 +6503,21 @@ timestamptz_timestamp(PG_FUNCTION_ARGS)
 static Timestamp
 timestamptz2timestamp(TimestampTz timestamp)
 {
-	return timestamptz2timestamp_opt_overflow(timestamp, NULL);
+	return timestamptz2timestamp_safe(timestamp, NULL);
 }
 
 /*
  * Convert timestamp with time zone to timestamp.
  *
- * On successful conversion, *overflow is set to zero if it's not NULL.
+ * If the timestamptz is finite but out of the valid range for timestamp,
+ * error handling proceeds based on escontext.
  *
- * If the timestamptz is finite but out of the valid range for timestamp, then:
- * if overflow is NULL, we throw an out-of-range error.
- * if overflow is not NULL, we store +1 or -1 there to indicate the sign
- * of the overflow, and return the appropriate timestamp infinity.
+ * If escontext is NULL, we throw an out-of-range error (hard error).
+ * If escontext is not NULL, we return NOBEGIN or NOEND for lower bound or
+ * upper bound overflow, respectively, and record a soft error.
  */
 Timestamp
-timestamptz2timestamp_opt_overflow(TimestampTz timestamp, int *overflow)
+timestamptz2timestamp_safe(TimestampTz timestamp, Node *escontext)
 {
 	Timestamp	result;
 	struct pg_tm tt,
@@ -6537,50 +6525,29 @@ timestamptz2timestamp_opt_overflow(TimestampTz timestamp, int *overflow)
 	fsec_t		fsec;
 	int			tz;
 
-	if (overflow)
-		*overflow = 0;
-
 	if (TIMESTAMP_NOT_FINITE(timestamp))
 		result = timestamp;
 	else
 	{
 		if (timestamp2tm(timestamp, &tz, tm, &fsec, NULL, NULL) != 0)
 		{
-			if (overflow)
-			{
-				if (timestamp < 0)
-				{
-					*overflow = -1;
-					TIMESTAMP_NOBEGIN(result);
-				}
-				else
-				{
-					*overflow = 1;
-					TIMESTAMP_NOEND(result);
-				}
-				return result;
-			}
-			ereport(ERROR,
+			if (timestamp < 0)
+				TIMESTAMP_NOBEGIN(result);
+			else
+				TIMESTAMP_NOEND(result);
+
+			ereturn(escontext, result,
 					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 					 errmsg("timestamp out of range")));
 		}
 		if (tm2timestamp(tm, fsec, NULL, &result) != 0)
 		{
-			if (overflow)
-			{
-				if (timestamp < 0)
-				{
-					*overflow = -1;
-					TIMESTAMP_NOBEGIN(result);
-				}
-				else
-				{
-					*overflow = 1;
-					TIMESTAMP_NOEND(result);
-				}
-				return result;
-			}
-			ereport(ERROR,
+			if (timestamp < 0)
+				TIMESTAMP_NOBEGIN(result);
+			else
+				TIMESTAMP_NOEND(result);
+
+			ereturn(escontext, result,
 					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 					 errmsg("timestamp out of range")));
 		}
@@ -6720,8 +6687,7 @@ generate_series_timestamp(PG_FUNCTION_ARGS)
 		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 
 		/* allocate memory for user context */
-		fctx = (generate_series_timestamp_fctx *)
-			palloc(sizeof(generate_series_timestamp_fctx));
+		fctx = palloc_object(generate_series_timestamp_fctx);
 
 		/*
 		 * Use fctx to keep state from call to call. Seed current with the
@@ -6805,8 +6771,7 @@ generate_series_timestamptz_internal(FunctionCallInfo fcinfo)
 		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 
 		/* allocate memory for user context */
-		fctx = (generate_series_timestamptz_fctx *)
-			palloc(sizeof(generate_series_timestamptz_fctx));
+		fctx = palloc_object(generate_series_timestamptz_fctx);
 
 		/*
 		 * Use fctx to keep state from call to call. Seed current with the

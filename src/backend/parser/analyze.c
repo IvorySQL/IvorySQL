@@ -26,6 +26,7 @@
 #include "postgres.h"
 
 #include "access/sysattr.h"
+#include "catalog/dependency.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
@@ -434,7 +435,7 @@ transformStmt(ParseState *pstate, Node *parseTree)
 			 */
 			result = makeNode(Query);
 			result->commandType = CMD_UTILITY;
-			result->utilityStmt = (Node *) parseTree;
+			result->utilityStmt = parseTree;
 			break;
 	}
 
@@ -2768,8 +2769,7 @@ addNSItemForReturning(ParseState *pstate, const char *aliasname,
 	colnames = pstate->p_target_nsitem->p_rte->eref->colnames;
 	numattrs = list_length(colnames);
 
-	nscolumns = (ParseNamespaceColumn *)
-		palloc(numattrs * sizeof(ParseNamespaceColumn));
+	nscolumns = palloc_array(ParseNamespaceColumn, numattrs);
 
 	memcpy(nscolumns, pstate->p_target_nsitem->p_nscolumns,
 		   numattrs * sizeof(ParseNamespaceColumn));
@@ -2779,7 +2779,7 @@ addNSItemForReturning(ParseState *pstate, const char *aliasname,
 		nscolumns[i].p_varreturningtype = returning_type;
 
 	/* build the nsitem, copying most fields from the target relation */
-	nsitem = (ParseNamespaceItem *) palloc(sizeof(ParseNamespaceItem));
+	nsitem = palloc_object(ParseNamespaceItem);
 	nsitem->p_names = makeAlias(aliasname, colnames);
 	nsitem->p_rte = pstate->p_target_nsitem->p_rte;
 	nsitem->p_rtindex = pstate->p_target_nsitem->p_rtindex;
@@ -3270,6 +3270,8 @@ transformCreateTableAsStmt(ParseState *pstate, CreateTableAsStmt *stmt)
 	/* additional work needed for CREATE MATERIALIZED VIEW */
 	if (stmt->objtype == OBJECT_MATVIEW)
 	{
+		ObjectAddress temp_object;
+
 		/*
 		 * Prohibit a data-modifying CTE in the query used to create a
 		 * materialized view. It's not sufficiently clear what the user would
@@ -3285,10 +3287,12 @@ transformCreateTableAsStmt(ParseState *pstate, CreateTableAsStmt *stmt)
 		 * creation query. It would be hard to refresh data or incrementally
 		 * maintain it if a source disappeared.
 		 */
-		if (isQueryUsingTempRelation(query))
+		if (query_uses_temp_object(query, &temp_object))
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("materialized views must not use temporary tables or views")));
+					 errmsg("materialized views must not use temporary objects"),
+					 errdetail("This view depends on temporary %s.",
+							   getObjectDescription(&temp_object, false))));
 
 		/*
 		 * A materialized view would either need to save parameters for use in

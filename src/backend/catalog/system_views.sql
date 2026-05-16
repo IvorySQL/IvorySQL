@@ -1060,7 +1060,8 @@ CREATE VIEW pg_replication_slots AS
             L.conflicting,
             L.invalidation_reason,
             L.failover,
-            L.synced
+            L.synced,
+            L.slotsync_skip_reason
     FROM pg_get_replication_slots() AS L
             LEFT JOIN pg_database D ON (L.datoid = D.oid);
 
@@ -1076,6 +1077,8 @@ CREATE VIEW pg_stat_replication_slots AS
             s.mem_exceeded_count,
             s.total_txns,
             s.total_bytes,
+            s.slotsync_skip_count,
+            s.slotsync_last_skip,
             s.stats_reset
     FROM pg_replication_slots as r,
         LATERAL pg_stat_get_replication_slot(slot_name) as s
@@ -1244,7 +1247,10 @@ CREATE VIEW pg_stat_progress_analyze AS
         S.param6 AS child_tables_total,
         S.param7 AS child_tables_done,
         CAST(S.param8 AS oid) AS current_child_table_relid,
-        S.param9 / 1000000::double precision AS delay_time
+        S.param9 / 1000000::double precision AS delay_time,
+        CASE S.param10 WHEN 1 THEN 'manual'
+                       WHEN 2 THEN 'autovacuum'
+                       ELSE NULL END AS started_by
     FROM pg_stat_get_progress_info('ANALYZE') AS S
         LEFT JOIN pg_database D ON S.datid = D.oid;
 
@@ -1265,7 +1271,15 @@ CREATE VIEW pg_stat_progress_vacuum AS
         S.param6 AS max_dead_tuple_bytes, S.param7 AS dead_tuple_bytes,
         S.param8 AS num_dead_item_ids, S.param9 AS indexes_total,
         S.param10 AS indexes_processed,
-        S.param11 / 1000000::double precision AS delay_time
+        S.param11 / 1000000::double precision AS delay_time,
+        CASE S.param12 WHEN 1 THEN 'normal'
+                       WHEN 2 THEN 'aggressive'
+                       WHEN 3 THEN 'failsafe'
+                       ELSE NULL END AS mode,
+        CASE S.param13 WHEN 1 THEN 'manual'
+                       WHEN 2 THEN 'autovacuum'
+                       WHEN 3 THEN 'autovacuum_wraparound'
+                       ELSE NULL END AS started_by
     FROM pg_stat_get_progress_info('VACUUM') AS S
         LEFT JOIN pg_database D ON S.datid = D.oid;
 

@@ -461,13 +461,13 @@ do_compile(FunctionCallInfo fcinfo,
 								 forValidator,
 								 plisql_error_funcname);
 
-			in_arg_varnos = (int *) palloc(numargs * sizeof(int));
+			in_arg_varnos = palloc_array(int, numargs);
 			if (is_plisql_function)
 				out_arg_variables = (PLiSQL_variable * *) palloc((numargs + 1) * sizeof(PLiSQL_variable *));
 			else
-				out_arg_variables = (PLiSQL_variable * *) palloc(numargs * sizeof(PLiSQL_variable *));
+				out_arg_variables = palloc_array(PLiSQL_variable *, numargs);
 
-			all_arg_varnos = (int *) palloc(numargs * sizeof(int));
+			all_arg_varnos = palloc_array(int, numargs);
 
 			MemoryContextSwitchTo(func_cxt);
 
@@ -1292,7 +1292,7 @@ plisql_compile_inline(char *proc_source, ParamListInfo inparams, bool fromcall)
 	plisql_check_syntax = check_function_bodies;
 
 	/* Function struct does not live past current statement */
-	function = (PLiSQL_function *) palloc0(sizeof(PLiSQL_function));
+	function = palloc0_object(PLiSQL_function);
 
 	plisql_curr_compile = function;
 
@@ -1561,7 +1561,7 @@ add_dummy_return(PLiSQL_function * function)
 	{
 		PLiSQL_stmt_block *new;
 
-		new = palloc0(sizeof(PLiSQL_stmt_block));
+		new = palloc0_object(PLiSQL_stmt_block);
 		new->cmd_type = PLISQL_STMT_BLOCK;
 		new->stmtid = ++function->nstatements;
 		new->body = list_make1(function->action);
@@ -1575,7 +1575,7 @@ add_dummy_return(PLiSQL_function * function)
 	{
 		PLiSQL_stmt_return *new;
 
-		new = palloc0(sizeof(PLiSQL_stmt_return));
+		new = palloc0_object(PLiSQL_stmt_return);
 		new->cmd_type = PLISQL_STMT_RETURN;
 		new->stmtid = ++function->nstatements;
 		new->expr = NULL;
@@ -2767,7 +2767,7 @@ plisql_build_variable(const char *refname, int lineno, PLiSQL_type * dtype,
 				/* Ordinary scalar datatype */
 				PLiSQL_var *var;
 
-				var = palloc0(sizeof(PLiSQL_var));
+				var = palloc0_object(PLiSQL_var);
 				var->dtype = PLISQL_DTYPE_VAR;
 				var->refname = pstrdup(refname);
 				var->lineno = lineno;
@@ -2825,7 +2825,7 @@ plisql_build_record(const char *refname, int lineno,
 {
 	PLiSQL_rec *rec;
 
-	rec = palloc0(sizeof(PLiSQL_rec));
+	rec = palloc0_object(PLiSQL_rec);
 	rec->dtype = PLISQL_DTYPE_REC;
 	rec->refname = pstrdup(refname);
 	rec->lineno = lineno;
@@ -2864,14 +2864,14 @@ build_row_from_vars(PLiSQL_variable * *vars, int numvars)
 	PLiSQL_row *row;
 	int	i;
 
-	row = palloc0(sizeof(PLiSQL_row));
+	row = palloc0_object(PLiSQL_row);
 	row->dtype = PLISQL_DTYPE_ROW;
 	row->refname = "(unnamed row)";
 	row->lineno = -1;
 	row->rowtupdesc = CreateTemplateTupleDesc(numvars);
 	row->nfields = numvars;
-	row->fieldnames = palloc(numvars * sizeof(char *));
-	row->varnos = palloc(numvars * sizeof(int));
+	row->fieldnames = palloc_array(char *, numvars);
+	row->varnos = palloc_array(int, numvars);
 
 	for (i = 0; i < numvars; i++)
 	{
@@ -2952,7 +2952,7 @@ plisql_build_recfield(PLiSQL_rec * rec, const char *fldname)
 	}
 
 	/* nope, so make a new one */
-	recfield = palloc0(sizeof(PLiSQL_recfield));
+	recfield = palloc0_object(PLiSQL_recfield);
 	recfield->dtype = PLISQL_DTYPE_RECFIELD;
 	recfield->fieldname = pstrdup(fldname);
 	recfield->recparentno = rec->dno;
@@ -3015,7 +3015,7 @@ build_datatype(HeapTuple typeTup, int32 typmod,
 				 errmsg("type \"%s\" is only a shell",
 						NameStr(typeStruct->typname))));
 
-	typ = (PLiSQL_type *) palloc(sizeof(PLiSQL_type));
+	typ = palloc_object(PLiSQL_type);
 
 	typ->typname = pstrdup(NameStr(typeStruct->typname));
 	typ->typoid = typeStruct->oid;
@@ -3203,7 +3203,7 @@ plisql_parse_err_condition(char *condname)
 	PLiSQL_exception_var *exc = plisql_lookup_exception(condname);
 	if (exc != NULL)
 	{
-		new = palloc(sizeof(PLiSQL_condition));
+		new = palloc_object(PLiSQL_condition);
 		new->sqlerrstate = exc->sqlcode;
 		new->condname = condname;
 		new->next = NULL;
@@ -3213,7 +3213,7 @@ plisql_parse_err_condition(char *condname)
 	/* Check for OTHERS */
 	if (strcmp(condname, "others") == 0)
 	{
-		new = palloc(sizeof(PLiSQL_condition));
+		new = palloc_object(PLiSQL_condition);
 		new->sqlerrstate = PLISQL_OTHERS;
 		new->condname = condname;
 		new->next = NULL;
@@ -3225,7 +3225,7 @@ plisql_parse_err_condition(char *condname)
 	{
 		if (strcmp(condname, exception_label_map[i].label) == 0)
 		{
-			new = palloc(sizeof(PLiSQL_condition));
+			new = palloc_object(PLiSQL_condition);
 			new->sqlerrstate = exception_label_map[i].sqlerrstate;
 			new->condname = condname;
 			new->next = prev;
@@ -3299,13 +3299,13 @@ plisql_finish_datums(PLiSQL_function * function)
 			function->datums = repalloc(function->datums,
 								sizeof(PLiSQL_datum *) * plisql_nDatums);
 		else
-			function->datums = palloc(sizeof(PLiSQL_datum *) * plisql_nDatums);
+			function->datums = palloc_array(PLiSQL_datum *, plisql_nDatums);
 		function->ndatums = plisql_nDatums;
 	}
 	else
 	{
 		function->ndatums = plisql_nDatums;
-		function->datums = palloc(sizeof(PLiSQL_datum *) * plisql_nDatums);
+		function->datums = palloc_array(PLiSQL_datum *, plisql_nDatums);
 	}
 	for (i = 0; i < plisql_nDatums; i++)
 	{
@@ -3421,7 +3421,7 @@ plisql_add_initdatums(int **varnos)
 	{
 		if (n > 0)
 		{
-			*varnos = (int *) palloc(sizeof(int) * n);
+			*varnos = palloc_array(int, n);
 
 			n = 0;
 			for (i = datums_last; i < plisql_nDatums; i++)
@@ -3785,7 +3785,7 @@ plisql_compile_inline_internal(char *proc_source)
 	plisql_check_syntax = check_function_bodies;
 
 	/* Function struct does not live passed current statement */
-	function = (PLiSQL_function *) palloc0(sizeof(PLiSQL_function));
+	function = palloc0_object(PLiSQL_function);
 
 	plisql_curr_compile = function;
 

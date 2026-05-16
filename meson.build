@@ -355,6 +355,7 @@ missing = find_program('config/missing', native: true)
 cp = find_program('cp', required: false, native: true)
 xmllint_bin = find_program(get_option('XMLLINT'), native: true, required: false)
 xsltproc_bin = find_program(get_option('XSLTPROC'), native: true, required: false)
+nm = find_program('nm', required: false, native: true)
 ln = find_program('ln', required: false, native: true)
 
 bison_flags = []
@@ -1783,6 +1784,8 @@ cdata.set('SIZEOF_LONG', cc.sizeof('long', args: test_c_args))
 cdata.set('SIZEOF_LONG_LONG', cc.sizeof('long long', args: test_c_args))
 cdata.set('SIZEOF_VOID_P', cc.sizeof('void *', args: test_c_args))
 cdata.set('SIZEOF_SIZE_T', cc.sizeof('size_t', args: test_c_args))
+cdata.set('SIZEOF_INTMAX_T', cc.sizeof('intmax_t', args: test_c_args,
+                                       prefix: '#include <stdint.h>'))
 
 
 # Check if __int128 is a working 128 bit integer type, and if so
@@ -1885,23 +1888,21 @@ if cc.compiles('''
 endif
 
 
-# Check if the C compiler understands _Static_assert(),
-# and define HAVE__STATIC_ASSERT if so.
-#
-# We actually check the syntax ({ _Static_assert(...) }), because we need
-# gcc-style compound expressions to be able to wrap the thing into macros.
+# Check if the C compiler supports GCC-style statement expressions.
 if cc.compiles('''
     int main(int arg, char **argv)
     {
         ({ _Static_assert(1, "foo"); });
     }
     ''',
-    name: '_Static_assert',
+    name: 'statement expressions',
     args: test_c_args)
-  cdata.set('HAVE__STATIC_ASSERT', 1)
+  cdata.set('HAVE_STATEMENT_EXPRESSIONS', 1)
 endif
 
 
+# Select the format archetype to be used to check printf-type functions.
+#
 # Need to check a call with %m because netbsd supports gnu_printf but emits a
 # warning for each use of %m.
 printf_attributes = ['gnu_printf', '__syslog__', 'printf']
@@ -1916,10 +1917,23 @@ attrib_error_args = cc.get_supported_arguments('-Werror=format', '-Werror=ignore
 foreach a : printf_attributes
   if cc.compiles(testsrc.format(a),
       args: test_c_args + attrib_error_args, name: 'format ' + a)
-    cdata.set('PG_PRINTF_ATTRIBUTE', a)
+    cdata.set('PG_C_PRINTF_ATTRIBUTE', a)
     break
   endif
 endforeach
+
+# We need to repeat the test for C++ because gcc and clang prefer different
+# format archetypes.
+if llvm.found()
+  attrib_error_args = cpp.get_supported_arguments('-Werror=format', '-Werror=ignored-attributes')
+  foreach a : printf_attributes
+    if cpp.compiles(testsrc.format(a),
+        args: attrib_error_args, name: 'cppformat ' + a)
+      cdata.set('PG_CXX_PRINTF_ATTRIBUTE', a)
+      break
+    endif
+  endforeach
+endif
 
 
 if cc.has_function_attribute('visibility:default') and \

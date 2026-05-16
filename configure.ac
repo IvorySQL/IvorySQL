@@ -1302,6 +1302,8 @@ case $MKDIR_P in
   *install-sh*) MKDIR_P='\${SHELL} \${top_srcdir}/config/install-sh -c -d';;
 esac
 
+AC_PATH_PROG(NM, nm)
+AC_SUBST(NM)
 PGAC_PATH_BISON
 PGAC_PATH_FLEX
 
@@ -1762,7 +1764,8 @@ m4_defun([AC_PROG_CC_STDC], []) dnl We don't want that.
 AC_C_BIGENDIAN
 AC_C_INLINE
 PGAC_PRINTF_ARCHETYPE
-PGAC_C_STATIC_ASSERT
+PGAC_CXX_PRINTF_ARCHETYPE
+PGAC_C_STATEMENT_EXPRESSIONS
 PGAC_C_TYPEOF
 PGAC_C_TYPES_COMPATIBLE
 PGAC_C_BUILTIN_CONSTANT_P
@@ -2069,6 +2072,7 @@ AC_CHECK_SIZEOF([void *])
 AC_CHECK_SIZEOF([size_t])
 AC_CHECK_SIZEOF([long])
 AC_CHECK_SIZEOF([long long])
+AC_CHECK_SIZEOF([intmax_t])
 
 # Determine memory alignment requirements for the basic C data types.
 

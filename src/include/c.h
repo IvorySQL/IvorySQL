@@ -60,6 +60,7 @@
 #include "pg_config_os.h"		/* config from include/port/PORTNAME.h */
 
 /* System header files that should be available everywhere in Postgres */
+#include <assert.h>
 #include <inttypes.h>
 #include <stdalign.h>
 #include <stdio.h>
@@ -227,6 +228,16 @@
 #define PG_USED_FOR_ASSERTS_ONLY
 #else
 #define PG_USED_FOR_ASSERTS_ONLY pg_attribute_unused()
+#endif
+
+/*
+ * Our C and C++ compilers may have different ideas about which printf
+ * archetype best represents what src/port/snprintf.c can do.
+ */
+#ifndef __cplusplus
+#define PG_PRINTF_ATTRIBUTE PG_C_PRINTF_ATTRIBUTE
+#else
+#define PG_PRINTF_ATTRIBUTE PG_CXX_PRINTF_ATTRIBUTE
 #endif
 
 /* GCC supports format attributes */
@@ -528,11 +539,9 @@ typedef void (*pg_funcptr_t) (void);
 /*
  * Pointer
  *		Variable holding address of any memory resident object.
- *
- *		XXX Pointer arithmetic is done with this, so it can't be void *
- *		under "true" ANSI compilers.
+ *		(obsolescent; use void * or char *)
  */
-typedef char *Pointer;
+typedef void *Pointer;
 
 /* Historical names for types in <stdint.h>. */
 typedef int8_t int8;
@@ -674,7 +683,7 @@ typedef uint32 SubTransactionId;
 /* MultiXactId must be equivalent to TransactionId, to fit in t_xmax */
 typedef TransactionId MultiXactId;
 
-typedef uint32 MultiXactOffset;
+typedef uint64 MultiXactOffset;
 
 typedef uint32 CommandId;
 
@@ -867,7 +876,6 @@ typedef NameData *Name;
 
 #elif defined(FRONTEND)
 
-#include <assert.h>
 #define Assert(p) assert(p)
 #define AssertMacro(p)	((void) assert(p))
 
@@ -918,52 +926,31 @@ pg_noreturn extern void ExceptionalCondition(const char *conditionName,
  * If the "condition" (a compile-time-constant expression) evaluates to false,
  * throw a compile error using the "errmessage" (a string literal).
  *
- * C11 has _Static_assert(), and most C99 compilers already support that.  For
- * portability, we wrap it into StaticAssertDecl().  _Static_assert() is a
- * "declaration", and so it must be placed where for example a variable
+ * We require C11 and C++11, so static_assert() is expected to be there.
+ * StaticAssertDecl() was previously used for portability, but it's now just a
+ * plain wrapper and doesn't need to be used in new code.  static_assert() is
+ * a "declaration", and so it must be placed where for example a variable
  * declaration would be valid.  As long as we compile with
  * -Wno-declaration-after-statement, that also means it cannot be placed after
  * statements in a function.  Macros StaticAssertStmt() and StaticAssertExpr()
  * make it safe to use as a statement or in an expression, respectively.
  *
- * For compilers without _Static_assert(), we fall back on a kluge that
- * assumes the compiler will complain about a negative width for a struct
+ * For compilers without GCC statement expressions, we fall back on a kluge
+ * that assumes the compiler will complain about a negative width for a struct
  * bit-field.  This will not include a helpful error message, but it beats not
  * getting an error at all.
  */
-#ifndef __cplusplus
-#ifdef HAVE__STATIC_ASSERT
 #define StaticAssertDecl(condition, errmessage) \
-	_Static_assert(condition, errmessage)
+	static_assert(condition, errmessage)
 #define StaticAssertStmt(condition, errmessage) \
-	do { _Static_assert(condition, errmessage); } while(0)
+	do { static_assert(condition, errmessage); } while(0)
+#ifdef HAVE_STATEMENT_EXPRESSIONS
 #define StaticAssertExpr(condition, errmessage) \
-	((void) ({ StaticAssertStmt(condition, errmessage); true; }))
-#else							/* !HAVE__STATIC_ASSERT */
-#define StaticAssertDecl(condition, errmessage) \
-	extern void static_assert_func(int static_assert_failure[(condition) ? 1 : -1])
-#define StaticAssertStmt(condition, errmessage) \
+	((void) ({ static_assert(condition, errmessage); true; }))
+#else
+#define StaticAssertExpr(condition, errmessage) \
 	((void) sizeof(struct { int static_assert_failure : (condition) ? 1 : -1; }))
-#define StaticAssertExpr(condition, errmessage) \
-	StaticAssertStmt(condition, errmessage)
-#endif							/* HAVE__STATIC_ASSERT */
-#else							/* C++ */
-#if defined(__cpp_static_assert) && __cpp_static_assert >= 200410
-#define StaticAssertDecl(condition, errmessage) \
-	static_assert(condition, errmessage)
-#define StaticAssertStmt(condition, errmessage) \
-	static_assert(condition, errmessage)
-#define StaticAssertExpr(condition, errmessage) \
-	({ static_assert(condition, errmessage); })
-#else							/* !__cpp_static_assert */
-#define StaticAssertDecl(condition, errmessage) \
-	extern void static_assert_func(int static_assert_failure[(condition) ? 1 : -1])
-#define StaticAssertStmt(condition, errmessage) \
-	do { struct static_assert_struct { int static_assert_failure : (condition) ? 1 : -1; }; } while(0)
-#define StaticAssertExpr(condition, errmessage) \
-	((void) ({ StaticAssertStmt(condition, errmessage); }))
-#endif							/* __cpp_static_assert */
-#endif							/* C++ */
+#endif							/* HAVE_STATEMENT_EXPRESSIONS */
 
 
 /*
@@ -1140,25 +1127,15 @@ typedef struct PGAlignedBlock
  * for I/O in general, but may be strictly required on some platforms when
  * using direct I/O.
  */
-typedef union PGIOAlignedBlock
+typedef struct PGIOAlignedBlock
 {
-#ifdef pg_attribute_aligned
-	pg_attribute_aligned(PG_IO_ALIGN_SIZE)
-#endif
-	char		data[BLCKSZ];
-	double		force_align_d;
-	int64		force_align_i64;
+	alignas(PG_IO_ALIGN_SIZE) char data[BLCKSZ];
 } PGIOAlignedBlock;
 
 /* Same, but for an XLOG_BLCKSZ-sized buffer */
-typedef union PGAlignedXLogBlock
+typedef struct PGAlignedXLogBlock
 {
-#ifdef pg_attribute_aligned
-	pg_attribute_aligned(PG_IO_ALIGN_SIZE)
-#endif
-	char		data[XLOG_BLCKSZ];
-	double		force_align_d;
-	int64		force_align_i64;
+	alignas(PG_IO_ALIGN_SIZE) char data[XLOG_BLCKSZ];
 } PGAlignedXLogBlock;
 
 /* msb for char */

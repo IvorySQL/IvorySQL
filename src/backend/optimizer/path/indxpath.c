@@ -1291,7 +1291,7 @@ group_similar_or_args(PlannerInfo *root, RelOptInfo *rel, RestrictInfo *rinfo)
 	 * which will be used to sort these arguments at the next step.
 	 */
 	i = -1;
-	matches = (OrArgIndexMatch *) palloc(sizeof(OrArgIndexMatch) * n);
+	matches = palloc_array(OrArgIndexMatch, n);
 	foreach(lc, orargs)
 	{
 		Node	   *arg = lfirst(lc);
@@ -1853,8 +1853,7 @@ choose_bitmap_and(PlannerInfo *root, RelOptInfo *rel, List *paths)
 	 * same set of clauses; keep only the cheapest-to-scan of any such groups.
 	 * The surviving paths are put into an array for qsort'ing.
 	 */
-	pathinfoarray = (PathClauseUsage **)
-		palloc(npaths * sizeof(PathClauseUsage *));
+	pathinfoarray = palloc_array(PathClauseUsage *, npaths);
 	clauselist = NIL;
 	npaths = 0;
 	foreach(l, paths)
@@ -2090,7 +2089,7 @@ classify_index_clause_usage(Path *path, List **clauselist)
 	Bitmapset  *clauseids;
 	ListCell   *lc;
 
-	result = (PathClauseUsage *) palloc(sizeof(PathClauseUsage));
+	result = palloc_object(PathClauseUsage);
 	result->path = path;
 
 	/* Recursively find the quals and preds used by the path */
@@ -4057,6 +4056,16 @@ check_index_predicates(PlannerInfo *root, RelOptInfo *rel)
 
 		/* If rel is an update target, leave indrestrictinfo as set above */
 		if (is_target_rel)
+			continue;
+
+		/*
+		 * If index is !amoptionalkey, also leave indrestrictinfo as set
+		 * above.  Otherwise we risk removing all quals for the first index
+		 * key and then not being able to generate an indexscan at all.  It
+		 * would be better to be more selective, but we've not yet identified
+		 * which if any of the quals match the first index key.
+		 */
+		if (!index->amoptionalkey)
 			continue;
 
 		/* Else compute indrestrictinfo as the non-implied quals */

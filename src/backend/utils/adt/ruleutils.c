@@ -4179,7 +4179,7 @@ deparse_context_for(const char *aliasname, Oid relid)
 	deparse_namespace *dpns;
 	RangeTblEntry *rte;
 
-	dpns = (deparse_namespace *) palloc0(sizeof(deparse_namespace));
+	dpns = palloc0_object(deparse_namespace);
 
 	/* Build a minimal RTE for the rel */
 	rte = makeNode(RangeTblEntry);
@@ -4223,7 +4223,7 @@ deparse_context_for_plan_tree(PlannedStmt *pstmt, List *rtable_names)
 {
 	deparse_namespace *dpns;
 
-	dpns = (deparse_namespace *) palloc0(sizeof(deparse_namespace));
+	dpns = palloc0_object(deparse_namespace);
 
 	/* Initialize fields that stay the same across the whole plan tree */
 	dpns->rtable = pstmt->rtable;
@@ -10623,7 +10623,7 @@ get_rule_expr(Node *node, deparse_context *context,
 
 						if (needcomma)
 							appendStringInfoString(buf, ", ");
-						get_rule_expr((Node *) e, context, true);
+						get_rule_expr(e, context, true);
 						appendStringInfo(buf, " AS %s",
 										 quote_identifier(map_xml_name_to_sql_identifier(argname)));
 						needcomma = true;

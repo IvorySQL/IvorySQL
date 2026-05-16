@@ -201,6 +201,8 @@ compute_return_type(TypeName *returnType, Oid languageOid,
 		address = TypeShellMake(typname, namespaceId, GetUserId());
 		rettype = address.objectId;
 		Assert(OidIsValid(rettype));
+		/* Ensure the new shell type is visible to ProcedureCreate */
+		CommandCounterIncrement();
 	}
 
 	aclresult = object_aclcheck(TypeRelationId, rettype, GetUserId(), ACL_USAGE);
@@ -1191,7 +1193,7 @@ interpret_AS_clause(Oid languageOid, const char *languageName,
 	{
 		SQLFunctionParseInfoPtr pinfo;
 
-		pinfo = (SQLFunctionParseInfoPtr) palloc0(sizeof(SQLFunctionParseInfo));
+		pinfo = palloc0_object(SQLFunctionParseInfo);
 
 		pinfo->fname = funcname;
 		pinfo->nargs = list_length(parameterTypes);

@@ -664,6 +664,14 @@ heap_vacuum_rel(Relation rel, const VacuumParams params,
 
 	pgstat_progress_start_command(PROGRESS_COMMAND_VACUUM,
 								  RelationGetRelid(rel));
+	if (AmAutoVacuumWorkerProcess())
+		pgstat_progress_update_param(PROGRESS_VACUUM_STARTED_BY,
+									 params.is_wraparound
+									 ? PROGRESS_VACUUM_STARTED_BY_AUTOVACUUM_WRAPAROUND
+									 : PROGRESS_VACUUM_STARTED_BY_AUTOVACUUM);
+	else
+		pgstat_progress_update_param(PROGRESS_VACUUM_STARTED_BY,
+									 PROGRESS_VACUUM_STARTED_BY_MANUAL);
 
 	/*
 	 * Setup error traceback support for ereport() first.  The idea is to set
@@ -677,7 +685,7 @@ heap_vacuum_rel(Relation rel, const VacuumParams params,
 	 * of each rel.  It's convenient for code in lazy_scan_heap to always use
 	 * these temp copies.
 	 */
-	vacrel = (LVRelState *) palloc0(sizeof(LVRelState));
+	vacrel = palloc0_object(LVRelState);
 	vacrel->dbname = get_database_name(MyDatabaseId);
 	vacrel->relnamespace = get_namespace_name(RelationGetNamespace(rel));
 	vacrel->relname = pstrdup(RelationGetRelationName(rel));
@@ -697,7 +705,7 @@ heap_vacuum_rel(Relation rel, const VacuumParams params,
 	if (instrument && vacrel->nindexes > 0)
 	{
 		/* Copy index names used by instrumentation (not error reporting) */
-		indnames = palloc(sizeof(char *) * vacrel->nindexes);
+		indnames = palloc_array(char *, vacrel->nindexes);
 		for (int i = 0; i < vacrel->nindexes; i++)
 			indnames[i] = pstrdup(RelationGetRelationName(vacrel->indrels[i]));
 	}
@@ -819,6 +827,12 @@ heap_vacuum_rel(Relation rel, const VacuumParams params,
 	 * vacuums use the eager scan algorithm.
 	 */
 	heap_vacuum_eager_scan_setup(vacrel, params);
+
+	/* Report the vacuum mode: 'normal' or 'aggressive' */
+	pgstat_progress_update_param(PROGRESS_VACUUM_MODE,
+								 vacrel->aggressive
+								 ? PROGRESS_VACUUM_MODE_AGGRESSIVE
+								 : PROGRESS_VACUUM_MODE_NORMAL);
 
 	if (verbose)
 	{
@@ -947,8 +961,7 @@ heap_vacuum_rel(Relation rel, const VacuumParams params,
 	 * soon in cases where the failsafe prevented significant amounts of heap
 	 * vacuuming.
 	 */
-	pgstat_report_vacuum(RelationGetRelid(rel),
-						 rel->rd_rel->relisshared,
+	pgstat_report_vacuum(rel,
 						 Max(vacrel->new_live_tuples, 0),
 						 vacrel->recently_dead_tuples +
 						 vacrel->missed_dead_tuples,
@@ -2028,10 +2041,9 @@ lazy_scan_prune(LVRelState *vacrel,
 
 		Assert(presult.lpdead_items == 0);
 
-		if (!heap_page_is_all_visible(vacrel->rel, buf,
-									  vacrel->cutoffs.OldestXmin, &debug_all_frozen,
-									  &debug_cutoff, &vacrel->offnum))
-			Assert(false);
+		Assert(heap_page_is_all_visible(vacrel->rel, buf,
+										vacrel->cutoffs.OldestXmin, &debug_all_frozen,
+										&debug_cutoff, &vacrel->offnum));
 
 		Assert(presult.all_frozen == debug_all_frozen);
 
@@ -3001,9 +3013,10 @@ lazy_check_wraparound_failsafe(LVRelState *vacrel)
 	{
 		const int	progress_index[] = {
 			PROGRESS_VACUUM_INDEXES_TOTAL,
-			PROGRESS_VACUUM_INDEXES_PROCESSED
+			PROGRESS_VACUUM_INDEXES_PROCESSED,
+			PROGRESS_VACUUM_MODE
 		};
-		int64		progress_val[2] = {0, 0};
+		int64		progress_val[3] = {0, 0, PROGRESS_VACUUM_MODE_FAILSAFE};
 
 		VacuumFailsafeActive = true;
 
@@ -3019,8 +3032,8 @@ lazy_check_wraparound_failsafe(LVRelState *vacrel)
 		vacrel->do_index_cleanup = false;
 		vacrel->do_rel_truncate = false;
 
-		/* Reset the progress counters */
-		pgstat_progress_update_multi_param(2, progress_index, progress_val);
+		/* Reset the progress counters and set the failsafe mode */
+		pgstat_progress_update_multi_param(3, progress_index, progress_val);
 
 		ereport(WARNING,
 				(errmsg("bypassing nonessential maintenance of table \"%s.%s.%s\" as a failsafe after %d index scans",
@@ -3374,6 +3387,9 @@ lazy_truncate_heap(LVRelState *vacrel)
 static BlockNumber
 count_nondeletable_pages(LVRelState *vacrel, bool *lock_waiter_detected)
 {
+	StaticAssertDecl((PREFETCH_SIZE & (PREFETCH_SIZE - 1)) == 0,
+					 "prefetch size must be power of 2");
+
 	BlockNumber blkno;
 	BlockNumber prefetchedUntil;
 	instr_time	starttime;
@@ -3388,8 +3404,6 @@ count_nondeletable_pages(LVRelState *vacrel, bool *lock_waiter_detected)
 	 * in forward direction, so that OS-level readahead can kick in.
 	 */
 	blkno = vacrel->rel_pages;
-	StaticAssertStmt((PREFETCH_SIZE & (PREFETCH_SIZE - 1)) == 0,
-					 "prefetch size must be power of 2");
 	prefetchedUntil = InvalidBlockNumber;
 	while (blkno > vacrel->nonempty_pages)
 	{
@@ -3567,7 +3581,7 @@ dead_items_alloc(LVRelState *vacrel, int nworkers)
 	 * locally.
 	 */
 
-	dead_items_info = (VacDeadItemsInfo *) palloc(sizeof(VacDeadItemsInfo));
+	dead_items_info = palloc_object(VacDeadItemsInfo);
 	dead_items_info->max_bytes = vac_work_mem * (Size) 1024;
 	dead_items_info->num_items = 0;
 	vacrel->dead_items_info = dead_items_info;

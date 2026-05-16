@@ -953,7 +953,7 @@ get_iso_localename(const char *winlocname)
 	wchar_t		wc_locale_name[LOCALE_NAME_MAX_LENGTH];
 	wchar_t		buffer[LOCALE_NAME_MAX_LENGTH];
 	static char iso_lc_messages[LOCALE_NAME_MAX_LENGTH];
-	char	   *period;
+	const char *period;
 	int			len;
 	int			ret_val;
 
@@ -1222,10 +1222,10 @@ pg_newlocale_from_collation(Oid collid)
 		 * Make sure cache entry is marked invalid, in case we fail before
 		 * setting things.
 		 */
-		cache_entry->locale = 0;
+		cache_entry->locale = NULL;
 	}
 
-	if (cache_entry->locale == 0)
+	if (cache_entry->locale == NULL)
 	{
 		cache_entry->locale = create_pg_locale(collid, CollationCacheContext);
 	}
@@ -1257,35 +1257,119 @@ get_collation_actual_version(char collprovider, const char *collcollate)
 	return collversion;
 }
 
+/* lowercasing/casefolding in C locale */
+static size_t
+strlower_c(char *dst, size_t dstsize, const char *src, ssize_t srclen)
+{
+	int			i;
+
+	srclen = (srclen >= 0) ? srclen : strlen(src);
+	for (i = 0; i < srclen && i < dstsize; i++)
+		dst[i] = pg_ascii_tolower(src[i]);
+	if (i < dstsize)
+		dst[i] = '\0';
+	return srclen;
+}
+
+/* titlecasing in C locale */
+static size_t
+strtitle_c(char *dst, size_t dstsize, const char *src, ssize_t srclen)
+{
+	bool		wasalnum = false;
+	int			i;
+
+	srclen = (srclen >= 0) ? srclen : strlen(src);
+	for (i = 0; i < srclen && i < dstsize; i++)
+	{
+		char		c = src[i];
+
+		if (wasalnum)
+			dst[i] = pg_ascii_tolower(c);
+		else
+			dst[i] = pg_ascii_toupper(c);
+
+		wasalnum = ((c >= '0' && c <= '9') ||
+					(c >= 'A' && c <= 'Z') ||
+					(c >= 'a' && c <= 'z'));
+	}
+	if (i < dstsize)
+		dst[i] = '\0';
+	return srclen;
+}
+
+/* uppercasing in C locale */
+static size_t
+strupper_c(char *dst, size_t dstsize, const char *src, ssize_t srclen)
+{
+	int			i;
+
+	srclen = (srclen >= 0) ? srclen : strlen(src);
+	for (i = 0; i < srclen && i < dstsize; i++)
+		dst[i] = pg_ascii_toupper(src[i]);
+	if (i < dstsize)
+		dst[i] = '\0';
+	return srclen;
+}
+
 size_t
 pg_strlower(char *dst, size_t dstsize, const char *src, ssize_t srclen,
 			pg_locale_t locale)
 {
-	return locale->ctype->strlower(dst, dstsize, src, srclen, locale);
+	if (locale->ctype == NULL)
+		return strlower_c(dst, dstsize, src, srclen);
+	else
+		return locale->ctype->strlower(dst, dstsize, src, srclen, locale);
 }
 
 size_t
 pg_strtitle(char *dst, size_t dstsize, const char *src, ssize_t srclen,
 			pg_locale_t locale)
 {
-	return locale->ctype->strtitle(dst, dstsize, src, srclen, locale);
+	if (locale->ctype == NULL)
+		return strtitle_c(dst, dstsize, src, srclen);
+	else
+		return locale->ctype->strtitle(dst, dstsize, src, srclen, locale);
 }
 
 size_t
 pg_strupper(char *dst, size_t dstsize, const char *src, ssize_t srclen,
 			pg_locale_t locale)
 {
-	return locale->ctype->strupper(dst, dstsize, src, srclen, locale);
+	if (locale->ctype == NULL)
+		return strupper_c(dst, dstsize, src, srclen);
+	else
+		return locale->ctype->strupper(dst, dstsize, src, srclen, locale);
 }
 
 size_t
 pg_strfold(char *dst, size_t dstsize, const char *src, ssize_t srclen,
 		   pg_locale_t locale)
 {
-	if (locale->ctype->strfold)
-		return locale->ctype->strfold(dst, dstsize, src, srclen, locale);
+	/* in the C locale, casefolding is the same as lowercasing */
+	if (locale->ctype == NULL)
+		return strlower_c(dst, dstsize, src, srclen);
 	else
-		return locale->ctype->strlower(dst, dstsize, src, srclen, locale);
+		return locale->ctype->strfold(dst, dstsize, src, srclen, locale);
+}
+
+/*
+ * Lowercase an identifier using the database default locale.
+ *
+ * For historical reasons, does not use ordinary locale behavior. Should only
+ * be used for identifiers. XXX: can we make this equivalent to
+ * pg_strfold(..., default_locale)?
+ */
+size_t
+pg_downcase_ident(char *dst, size_t dstsize, const char *src, ssize_t srclen)
+{
+	pg_locale_t locale = default_locale;
+
+	if (locale == NULL || locale->ctype == NULL ||
+		locale->ctype->downcase_ident == NULL)
+		return strlower_c(dst, dstsize, src, srclen);
+	else
+		return locale->ctype->downcase_ident(dst, dstsize, src, srclen,
+											 locale);
 }
 
 /*
@@ -1524,6 +1608,17 @@ pg_iswxdigit(pg_wchar wc, pg_locale_t locale)
 		return locale->ctype->wc_isxdigit(wc, locale);
 }
 
+bool
+pg_iswcased(pg_wchar wc, pg_locale_t locale)
+{
+	/* for the C locale, Cased and Alpha are equivalent */
+	if (locale->ctype == NULL)
+		return (wc <= (pg_wchar) 127 &&
+				(pg_char_properties[wc] & PG_ISALPHA));
+	else
+		return locale->ctype->wc_iscased(wc, locale);
+}
+
 pg_wchar
 pg_towupper(pg_wchar wc, pg_locale_t locale)
 {
@@ -1548,41 +1643,6 @@ pg_towlower(pg_wchar wc, pg_locale_t locale)
 	}
 	else
 		return locale->ctype->wc_tolower(wc, locale);
-}
-
-/*
- * char_is_cased()
- *
- * Fuzzy test of whether the given char is case-varying or not. The argument
- * is a single byte, so in a multibyte encoding, just assume any non-ASCII
- * char is case-varying.
- */
-bool
-char_is_cased(char ch, pg_locale_t locale)
-{
-	return locale->ctype->char_is_cased(ch, locale);
-}
-
-/*
- * char_tolower_enabled()
- *
- * Does the provider support char_tolower()?
- */
-bool
-char_tolower_enabled(pg_locale_t locale)
-{
-	return (locale->ctype->char_tolower != NULL);
-}
-
-/*
- * char_tolower()
- *
- * Convert char (single-byte encoding) to lowercase.
- */
-char
-char_tolower(unsigned char ch, pg_locale_t locale)
-{
-	return locale->ctype->char_tolower(ch, locale);
 }
 
 /*

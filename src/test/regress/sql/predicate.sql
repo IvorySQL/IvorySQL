@@ -221,3 +221,90 @@ SELECT * FROM pred_tab2, pred_tab1 WHERE pred_tab1.a IS NULL OR pred_tab1.b < 2;
 RESET constraint_exclusion;
 DROP TABLE pred_tab1;
 DROP TABLE pred_tab2;
+
+-- Validate that NullTest quals in index expressions and predicate are reduced correctly
+CREATE TABLE pred_tab (a int, b int NOT NULL, c int NOT NULL);
+INSERT INTO pred_tab SELECT i, i, i FROM generate_series(1, 1000) i;
+CREATE INDEX pred_tab_exprs_idx ON pred_tab ((a < 5 AND b IS NOT NULL AND c IS NOT NULL));
+CREATE INDEX pred_tab_pred_idx ON pred_tab (a) WHERE b IS NOT NULL AND c IS NOT NULL;
+ANALYZE pred_tab;
+
+-- Ensure that index pred_tab_exprs_idx is used
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE (a < 5 AND b IS NOT NULL AND c IS NOT NULL) IS TRUE;
+SELECT * FROM pred_tab WHERE (a < 5 AND b IS NOT NULL AND c IS NOT NULL) IS TRUE;
+
+-- Ensure that index pred_tab_pred_idx is used
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE a < 3 AND b IS NOT NULL AND c IS NOT NULL;
+SELECT * FROM pred_tab WHERE a < 3 AND b IS NOT NULL AND c IS NOT NULL;
+
+DROP TABLE pred_tab;
+
+--
+-- Test that COALESCE expressions in predicates are simplified using
+-- non-nullable arguments.
+--
+CREATE TABLE pred_tab (a int NOT NULL, b int, c int);
+
+-- Ensure that constant NULL arguments are dropped
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE COALESCE(NULL, b, NULL, a) > 1;
+
+-- Ensure that argument "b*a" is dropped
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE COALESCE(b, a, b*a) > 1;
+
+-- Ensure that the entire COALESCE expression is replaced by "a"
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE COALESCE(a, b) > 1;
+
+--
+-- Test detection of non-nullable expressions in predicates
+--
+
+-- CoalesceExpr
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE COALESCE(b, a) IS NULL;
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE COALESCE(b, c) IS NULL;
+
+-- MinMaxExpr
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE GREATEST(b, a) IS NULL;
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE GREATEST(b, c) IS NULL;
+
+-- CaseExpr
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE (CASE WHEN c > 0 THEN a ELSE a END) IS NULL;
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE (CASE WHEN c > 0 THEN b ELSE a END) IS NULL;
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE (CASE WHEN c > 0 THEN a END) IS NULL;
+
+-- ArrayExpr
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE ARRAY[b] IS NULL;
+
+-- NullTest
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE (b IS NULL) IS NULL;
+
+-- BooleanTest
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE ((a > 1) IS TRUE) IS NULL;
+
+-- DistinctExpr
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE (a IS DISTINCT FROM b) IS NULL;
+
+-- RelabelType
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE (a::oid) IS NULL;
+
+DROP TABLE pred_tab;

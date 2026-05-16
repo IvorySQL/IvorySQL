@@ -65,6 +65,7 @@
 
 #include "postgres.h"
 
+#include "common/int.h"
 #include "fmgr.h"
 #include "funcapi.h"
 #include "miscadmin.h"
@@ -495,9 +496,7 @@ add_size(Size s1, Size s2)
 {
 	Size		result;
 
-	result = s1 + s2;
-	/* We are assuming Size is an unsigned type here... */
-	if (result < s1 || result < s2)
+	if (pg_add_size_overflow(s1, s2, &result))
 		ereport(ERROR,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("requested shared memory size overflows size_t")));
@@ -512,11 +511,7 @@ mul_size(Size s1, Size s2)
 {
 	Size		result;
 
-	if (s1 == 0 || s2 == 0)
-		return 0;
-	result = s1 * s2;
-	/* We are assuming Size is an unsigned type here... */
-	if (result / s2 != s1)
+	if (pg_mul_size_overflow(s1, s2, &result))
 		ereport(ERROR,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("requested shared memory size overflows size_t")));
@@ -604,7 +599,7 @@ pg_get_shmem_allocations_numa(PG_FUNCTION_ARGS)
 	InitMaterializedSRF(fcinfo, 0);
 
 	max_nodes = pg_numa_get_max_node();
-	nodes = palloc(sizeof(Size) * (max_nodes + 1));
+	nodes = palloc_array(Size, max_nodes + 1);
 
 	/*
 	 * Shared memory allocations can vary in size and may not align with OS
@@ -629,8 +624,8 @@ pg_get_shmem_allocations_numa(PG_FUNCTION_ARGS)
 	 * them using only fraction of the total pages.
 	 */
 	shm_total_page_count = (ShmemSegHdr->totalsize / os_page_size) + 1;
-	page_ptrs = palloc0(sizeof(void *) * shm_total_page_count);
-	pages_status = palloc(sizeof(int) * shm_total_page_count);
+	page_ptrs = palloc0_array(void *, shm_total_page_count);
+	pages_status = palloc_array(int, shm_total_page_count);
 
 	if (firstNumaTouch)
 		elog(DEBUG1, "NUMA: page-faulting shared memory segments for proper NUMA readouts");

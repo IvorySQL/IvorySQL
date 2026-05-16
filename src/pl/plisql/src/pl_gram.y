@@ -508,7 +508,7 @@ ora_outermost_pl_block		: ora_decl_sect K_BEGIN proc_sect exception_sect K_END o
 											$4 == NULL ? -1 : $4->sqlerrm_varno);
 			}
 
-			new = palloc0(sizeof(PLiSQL_stmt_block));
+			new = palloc0_object(PLiSQL_stmt_block);
 
 			new->cmd_type = PLISQL_STMT_BLOCK;
 			new->lineno 	= plisql_location_to_lineno(@2, yyscanner);
@@ -540,7 +540,7 @@ ora_pl_package: ora_decl_sect K_END opt_label
 				if (plisql_compile_packageitem == NULL)
 					yyerror(&yylloc, NULL, yyscanner,  "syntax error");
 
-				new = palloc0(sizeof(PLiSQL_stmt_block));
+				new = palloc0_object(PLiSQL_stmt_block);
 
 				new->cmd_type	= PLISQL_STMT_BLOCK;
 				new->lineno		= plisql_location_to_lineno(@2, yyscanner);
@@ -663,7 +663,7 @@ pl_block		: decl_sect K_BEGIN proc_sect exception_sect K_END opt_label
 					{
 						PLiSQL_stmt_block *new;
 
-						new = palloc0(sizeof(PLiSQL_stmt_block));
+						new = palloc0_object(PLiSQL_stmt_block);
 
 						new->cmd_type	= PLISQL_STMT_BLOCK;
 						new->lineno		= plisql_location_to_lineno(@2, yyscanner);
@@ -966,14 +966,14 @@ decl_cursor_args :
 						int			i;
 						ListCell   *l;
 
-						new = palloc0(sizeof(PLiSQL_row));
+						new = palloc0_object(PLiSQL_row);
 						new->dtype = PLISQL_DTYPE_ROW;
 						new->refname = "(unnamed row)";
 						new->lineno = plisql_location_to_lineno(@1, yyscanner);
 						new->rowtupdesc = NULL;
 						new->nfields = list_length($2);
-						new->fieldnames = palloc(new->nfields * sizeof(char *));
-						new->varnos = palloc(new->nfields * sizeof(int));
+						new->fieldnames = palloc_array(char *, new->nfields);
+						new->varnos = palloc_array(int, new->nfields);
 
 						i = 0;
 						foreach (l, $2)
@@ -1207,7 +1207,7 @@ function_properite_list: function_properite_item
 
 function_properite_item : K_DETERMINISTIC
 						{
-							PLiSQL_subprocfunc_proper *proper = palloc0(sizeof(PLiSQL_subprocfunc_proper));
+							PLiSQL_subprocfunc_proper *proper = palloc0_object(PLiSQL_subprocfunc_proper);
 
 							proper->proper_type = FUNC_PROPER_DETERMINISTIC;
 
@@ -1215,7 +1215,7 @@ function_properite_item : K_DETERMINISTIC
 						}
 					| K_RESULT_CACHE function_result_cache_relies
 						{
-							PLiSQL_subprocfunc_proper *proper = palloc0(sizeof(PLiSQL_subprocfunc_proper));
+							PLiSQL_subprocfunc_proper *proper = palloc0_object(PLiSQL_subprocfunc_proper);
 
 							/* anonymous blocks doesn't support result cache */
 							if ((cur_compile_func_level != 0 &&
@@ -1230,7 +1230,7 @@ function_properite_item : K_DETERMINISTIC
 						}
 					| K_PARALLEL_ENABLE
 						{
-							PLiSQL_subprocfunc_proper *proper = palloc0(sizeof(PLiSQL_subprocfunc_proper));
+							PLiSQL_subprocfunc_proper *proper = palloc0_object(PLiSQL_subprocfunc_proper);
 
 							proper->proper_type = FUNC_PROPER_PARALLEL_ENABLE;
 
@@ -1238,7 +1238,7 @@ function_properite_item : K_DETERMINISTIC
 						}
 					| K_PIPELINED
 						{
-							PLiSQL_subprocfunc_proper *proper = palloc0(sizeof(PLiSQL_subprocfunc_proper));
+							PLiSQL_subprocfunc_proper *proper = palloc0_object(PLiSQL_subprocfunc_proper);
 
 							proper->proper_type = FUNC_PROPER_PIPELINED;
 
@@ -1291,7 +1291,7 @@ procedure_properite_item: accessible_by_clause	{ $$ = $1;}
 
 accessible_by_clause: K_ACCESSIBLE K_BY '(' accessor_list ')'
 						{
-							PLiSQL_subprocfunc_proper *proper = palloc0(sizeof(PLiSQL_subprocfunc_proper));
+							PLiSQL_subprocfunc_proper *proper = palloc0_object(PLiSQL_subprocfunc_proper);
 
 							yyerror(&yylloc, NULL, yyscanner,  "Only schema-level programs allow ACCESSIBLE BY");
 							proper->proper_type = PROC_PROPER_ACCESSIBLE_BY;
@@ -1307,7 +1307,7 @@ accessor_list: accessor { $$ = list_make1($1); }
 
 accessor: unit_kind unit_name unit_name
 				{
-					AccessProperItem *acproper = (AccessProperItem *) palloc0(sizeof(AccessProperItem));
+					AccessProperItem *acproper = palloc0_object(AccessProperItem);
 
 					acproper->proper_type = $1;
 					acproper->schema_name = $2;
@@ -1317,7 +1317,7 @@ accessor: unit_kind unit_name unit_name
 				}
 			|unit_name unit_name
 				{
-					AccessProperItem *acproper = (AccessProperItem *) palloc0(sizeof(AccessProperItem));
+					AccessProperItem *acproper = palloc0_object(AccessProperItem);
 
 					acproper->proper_type = access_proper_unknow;
 					acproper->schema_name = $1;
@@ -1327,7 +1327,7 @@ accessor: unit_kind unit_name unit_name
 				}
 			|unit_kind unit_name
 				{
-					AccessProperItem *acproper = (AccessProperItem *) palloc0(sizeof(AccessProperItem));
+					AccessProperItem *acproper = palloc0_object(AccessProperItem);
 
 					acproper->proper_type = $1;
 					acproper->schema_name = NULL;
@@ -1337,7 +1337,7 @@ accessor: unit_kind unit_name unit_name
 				}
 			| unit_name
 				{
-					AccessProperItem *acproper = (AccessProperItem *) palloc0(sizeof(AccessProperItem));
+					AccessProperItem *acproper = palloc0_object(AccessProperItem);
 
 					acproper->proper_type = access_proper_unknow;
 					acproper->schema_name = NULL;
@@ -1347,7 +1347,7 @@ accessor: unit_kind unit_name unit_name
 				}
 			|unit_kind extral_unit_name extral_unit_name
 				{
-					AccessProperItem *acproper = (AccessProperItem *) palloc0(sizeof(AccessProperItem));
+					AccessProperItem *acproper = palloc0_object(AccessProperItem);
 
 					acproper->proper_type = $1;
 					acproper->schema_name = $2;
@@ -1357,7 +1357,7 @@ accessor: unit_kind unit_name unit_name
 				}
 			|unit_kind extral_unit_name
 				{
-					AccessProperItem *acproper = (AccessProperItem *) palloc0(sizeof(AccessProperItem));
+					AccessProperItem *acproper = palloc0_object(AccessProperItem);
 
 					acproper->proper_type = $1;
 					acproper->schema_name = NULL;
@@ -1367,7 +1367,7 @@ accessor: unit_kind unit_name unit_name
 				}
 			|extral_unit_name
 				{
-					AccessProperItem *acproper = (AccessProperItem *) palloc0(sizeof(AccessProperItem));
+					AccessProperItem *acproper = palloc0_object(AccessProperItem);
 
 					acproper->proper_type = access_proper_unknow;
 					acproper->schema_name = NULL;
@@ -1403,7 +1403,7 @@ extral_unit_name:
 
 default_collation_clause: K_DEFAULT K_COLLATION K_USING_NLS_COMP
 					{
-						PLiSQL_subprocfunc_proper *proper = palloc0(sizeof(PLiSQL_subprocfunc_proper));
+						PLiSQL_subprocfunc_proper *proper = palloc0_object(PLiSQL_subprocfunc_proper);
 
 						proper->proper_type = PROC_PROPER_DEFAULT_COLLATION;
 						proper->value = (void *) pstrdup($3);
@@ -1414,7 +1414,7 @@ default_collation_clause: K_DEFAULT K_COLLATION K_USING_NLS_COMP
 
 invoker_rights_clause: K_AUTHID authid_user
 					{
-						PLiSQL_subprocfunc_proper *proper = palloc0(sizeof(PLiSQL_subprocfunc_proper));
+						PLiSQL_subprocfunc_proper *proper = palloc0_object(PLiSQL_subprocfunc_proper);
 
 						yyerror(&yylloc, NULL, yyscanner,  "Only schema-level programs allow AUTHID");
 
@@ -1478,7 +1478,7 @@ func_arg_item:
 							if ($3 && $2 == ARGMODE_IN)
 								yyerror(&yylloc, NULL, yyscanner,  "only out mode argument allow to have nocopy proper");
 
-							new = (PLiSQL_function_argitem *) palloc0(sizeof(PLiSQL_function_argitem));
+							new = palloc0_object(PLiSQL_function_argitem);
 							new->argname = $1;
 							new->type = $4;
 							new->argmode = $2;
@@ -1583,7 +1583,7 @@ stmt_perform	: K_PERFORM
 						PLiSQL_stmt_perform *new;
 						int			startloc;
 
-						new = palloc0(sizeof(PLiSQL_stmt_perform));
+						new = palloc0_object(PLiSQL_stmt_perform);
 						new->cmd_type = PLISQL_STMT_PERFORM;
 						new->lineno   = plisql_location_to_lineno(@1, yyscanner);
 						new->stmtid = ++plisql_curr_compile->nstatements;
@@ -1620,7 +1620,7 @@ stmt_call		: K_DO
 						/* use the same structures as for CALL, for simplicity */
 						PLiSQL_stmt_call *new;
 
-						new = palloc0(sizeof(PLiSQL_stmt_call));
+						new = palloc0_object(PLiSQL_stmt_call);
 						new->cmd_type = PLISQL_STMT_CALL;
 						new->lineno = plisql_location_to_lineno(@1, yyscanner);
 						new->stmtid = ++plisql_curr_compile->nstatements;
@@ -1638,7 +1638,7 @@ stmt_call		: K_DO
 					{
 						PLiSQL_stmt_call *new;
 
-                                                new = palloc0(sizeof(PLiSQL_stmt_call));
+                                                new = palloc0_object(PLiSQL_stmt_call);
                                                 new->cmd_type = PLISQL_STMT_CALL;
                                                 new->lineno = plisql_location_to_lineno(@1, yyscanner);
                                                 new->stmtid = ++plisql_curr_compile->nstatements;
@@ -1676,7 +1676,7 @@ stmt_assign		: T_DATUM
 						}
 
 						check_assignable($1.datum, @1, yyscanner);
-						new = palloc0(sizeof(PLiSQL_stmt_assign));
+						new = palloc0_object(PLiSQL_stmt_assign);
 						new->cmd_type = PLISQL_STMT_ASSIGN;
 						new->lineno   = plisql_location_to_lineno(@1, yyscanner);
 						new->stmtid = ++plisql_curr_compile->nstatements;
@@ -1699,7 +1699,7 @@ stmt_getdiag	: K_GET getdiag_area_opt K_DIAGNOSTICS getdiag_list ';'
 						PLiSQL_stmt_getdiag	 *new;
 						ListCell		*lc;
 
-						new = palloc0(sizeof(PLiSQL_stmt_getdiag));
+						new = palloc0_object(PLiSQL_stmt_getdiag);
 						new->cmd_type = PLISQL_STMT_GETDIAG;
 						new->lineno   = plisql_location_to_lineno(@1, yyscanner);
 						new->stmtid	  = ++plisql_curr_compile->nstatements;
@@ -1785,7 +1785,7 @@ getdiag_list_item : getdiag_target assign_operator getdiag_item
 					{
 						PLiSQL_diag_item *new;
 
-						new = palloc(sizeof(PLiSQL_diag_item));
+						new = palloc_object(PLiSQL_diag_item);
 						new->target = $1->dno;
 						new->kind = $3;
 
@@ -1874,7 +1874,7 @@ stmt_if			: K_IF expr_until_then proc_sect stmt_elsifs stmt_else K_END K_IF ';'
 					{
 						PLiSQL_stmt_if *new;
 
-						new = palloc0(sizeof(PLiSQL_stmt_if));
+						new = palloc0_object(PLiSQL_stmt_if);
 						new->cmd_type	= PLISQL_STMT_IF;
 						new->lineno		= plisql_location_to_lineno(@1, yyscanner);
 						new->stmtid		= ++plisql_curr_compile->nstatements;
@@ -1895,7 +1895,7 @@ stmt_elsifs		:
 					{
 						PLiSQL_if_elsif *new;
 
-						new = palloc0(sizeof(PLiSQL_if_elsif));
+						new = palloc0_object(PLiSQL_if_elsif);
 						new->lineno = plisql_location_to_lineno(@2, yyscanner);
 						new->cond   = $3;
 						new->stmts  = $4;
@@ -1947,7 +1947,7 @@ case_when_list	: case_when_list case_when
 
 case_when		: K_WHEN expr_until_then proc_sect
 					{
-						PLiSQL_case_when *new = palloc(sizeof(PLiSQL_case_when));
+						PLiSQL_case_when *new = palloc_object(PLiSQL_case_when);
 
 						new->lineno	= plisql_location_to_lineno(@1, yyscanner);
 						new->expr	= $2;
@@ -1979,7 +1979,7 @@ stmt_loop		: opt_loop_label K_LOOP loop_body
 					{
 						PLiSQL_stmt_loop *new;
 
-						new = palloc0(sizeof(PLiSQL_stmt_loop));
+						new = palloc0_object(PLiSQL_stmt_loop);
 						new->cmd_type = PLISQL_STMT_LOOP;
 						new->lineno   = plisql_location_to_lineno(@2, yyscanner);
 						new->stmtid   = ++plisql_curr_compile->nstatements;
@@ -1997,7 +1997,7 @@ stmt_while		: opt_loop_label K_WHILE expr_until_loop loop_body
 					{
 						PLiSQL_stmt_while *new;
 
-						new = palloc0(sizeof(PLiSQL_stmt_while));
+						new = palloc0_object(PLiSQL_stmt_while);
 						new->cmd_type = PLISQL_STMT_WHILE;
 						new->lineno   = plisql_location_to_lineno(@2, yyscanner);
 						new->stmtid	  = ++plisql_curr_compile->nstatements;
@@ -2062,7 +2062,7 @@ for_control		: for_variable K_IN
 														"LOOP or USING",
 														&term, &yylval, &yylloc, yyscanner);
 
-							new = palloc0(sizeof(PLiSQL_stmt_dynfors));
+							new = palloc0_object(PLiSQL_stmt_dynfors);
 							new->cmd_type = PLISQL_STMT_DYNFORS;
 							new->stmtid	  = ++plisql_curr_compile->nstatements;
 							if ($1.row)
@@ -2108,7 +2108,7 @@ for_control		: for_variable K_IN
 							PLiSQL_stmt_forc	*new;
 							PLiSQL_var			*cursor = (PLiSQL_var *) yylval.wdatum.datum;
 
-							new = (PLiSQL_stmt_forc *) palloc0(sizeof(PLiSQL_stmt_forc));
+							new = palloc0_object(PLiSQL_stmt_forc);
 							new->cmd_type = PLISQL_STMT_FORC;
 							new->stmtid = ++plisql_curr_compile->nstatements;
 							new->curvar = cursor->dno;
@@ -2228,7 +2228,7 @@ for_control		: for_variable K_IN
 																				  NULL),
 														   true);
 
-								new = palloc0(sizeof(PLiSQL_stmt_fori));
+								new = palloc0_object(PLiSQL_stmt_fori);
 								new->cmd_type = PLISQL_STMT_FORI;
 								new->stmtid	  = ++plisql_curr_compile->nstatements;
 								new->var	  = fvar;
@@ -2256,7 +2256,7 @@ for_control		: for_variable K_IN
 								check_sql_expr(expr1->query, expr1->parseMode,
 											   expr1loc, yyscanner);
 
-								new = palloc0(sizeof(PLiSQL_stmt_fors));
+								new = palloc0_object(PLiSQL_stmt_fors);
 								new->cmd_type = PLISQL_STMT_FORS;
 								new->stmtid = ++plisql_curr_compile->nstatements;
 								if ($1.row)
@@ -2367,7 +2367,7 @@ stmt_foreach_a	: opt_loop_label K_FOREACH for_variable foreach_slice K_IN K_ARRA
 					{
 						PLiSQL_stmt_foreach_a *new;
 
-						new = palloc0(sizeof(PLiSQL_stmt_foreach_a));
+						new = palloc0_object(PLiSQL_stmt_foreach_a);
 						new->cmd_type = PLISQL_STMT_FOREACH_A;
 						new->lineno = plisql_location_to_lineno(@2, yyscanner);
 						new->stmtid = ++plisql_curr_compile->nstatements;
@@ -2415,7 +2415,7 @@ stmt_exit		: exit_type opt_label opt_exitcond
 					{
 						PLiSQL_stmt_exit *new;
 
-						new = palloc0(sizeof(PLiSQL_stmt_exit));
+						new = palloc0_object(PLiSQL_stmt_exit);
 						new->cmd_type = PLISQL_STMT_EXIT;
 						new->stmtid	  = ++plisql_curr_compile->nstatements;
 						new->is_exit  = $1;
@@ -2506,7 +2506,7 @@ stmt_raise		: K_RAISE
 						PLiSQL_stmt_raise		*new;
 						int	tok;
 
-						new = palloc(sizeof(PLiSQL_stmt_raise));
+						new = palloc_object(PLiSQL_stmt_raise);
 
 						new->cmd_type	= PLISQL_STMT_RAISE;
 						new->lineno		= plisql_location_to_lineno(@1, yyscanner);
@@ -2662,7 +2662,7 @@ stmt_assert		: K_ASSERT
 						PLiSQL_stmt_assert		*new;
 						int	tok;
 
-						new = palloc(sizeof(PLiSQL_stmt_assert));
+						new = palloc_object(PLiSQL_stmt_assert);
 
 						new->cmd_type	= PLISQL_STMT_ASSERT;
 						new->lineno		= plisql_location_to_lineno(@1, yyscanner);
@@ -2730,7 +2730,7 @@ stmt_execsql	: K_IMPORT
 						{
 							PLiSQL_stmt_call *new;
 
-							new = palloc0(sizeof(PLiSQL_stmt_call));
+							new = palloc0_object(PLiSQL_stmt_call);
 							new->cmd_type = PLISQL_STMT_CALL;
 							new->lineno = plisql_location_to_lineno(@1, yyscanner);
 							new->stmtid = ++plisql_curr_compile->nstatements;
@@ -2760,7 +2760,7 @@ stmt_execsql	: K_IMPORT
 						{
 							PLiSQL_stmt_call *new;
 
-							new = palloc0(sizeof(PLiSQL_stmt_call));
+							new = palloc0_object(PLiSQL_stmt_call);
 							new->cmd_type = PLISQL_STMT_CALL;
 							new->lineno = plisql_location_to_lineno(@1, yyscanner);
 							new->stmtid = ++plisql_curr_compile->nstatements;
@@ -2791,7 +2791,7 @@ stmt_dynexecute : K_EXECUTE
 												  true, true,
 												  NULL, &endtoken, &yylval, &yylloc, yyscanner);
 
-						new = palloc(sizeof(PLiSQL_stmt_dynexecute));
+						new = palloc_object(PLiSQL_stmt_dynexecute);
 						new->cmd_type = PLISQL_STMT_DYNEXECUTE;
 						new->lineno = plisql_location_to_lineno(@1, yyscanner);
 						new->stmtid = ++plisql_curr_compile->nstatements;
@@ -2851,7 +2851,7 @@ stmt_open		: K_OPEN cursor_variable
 						int				  tok;
 						PLiSQL_var *cursorvar;
 
-						new = palloc0(sizeof(PLiSQL_stmt_open));
+						new = palloc0_object(PLiSQL_stmt_open);
 						new->cmd_type = PLISQL_STMT_OPEN;
 						new->lineno = plisql_location_to_lineno(@1, yyscanner);
 						new->stmtid = ++plisql_curr_compile->nstatements;
@@ -2980,7 +2980,7 @@ stmt_close		: K_CLOSE cursor_variable ';'
 					{
 						PLiSQL_stmt_close *new;
 
-						new = palloc(sizeof(PLiSQL_stmt_close));
+						new = palloc_object(PLiSQL_stmt_close);
 						new->cmd_type = PLISQL_STMT_CLOSE;
 						new->lineno = plisql_location_to_lineno(@1, yyscanner);
 						new->stmtid = ++plisql_curr_compile->nstatements;
@@ -3001,7 +3001,7 @@ stmt_commit		: K_COMMIT opt_transaction_chain ';'
 					{
 						PLiSQL_stmt_commit *new;
 
-						new = palloc(sizeof(PLiSQL_stmt_commit));
+						new = palloc_object(PLiSQL_stmt_commit);
 						new->cmd_type = PLISQL_STMT_COMMIT;
 						new->lineno = plisql_location_to_lineno(@1, yyscanner);
 						new->stmtid = ++plisql_curr_compile->nstatements;
@@ -3015,7 +3015,7 @@ stmt_rollback	: K_ROLLBACK opt_transaction_chain ';'
 					{
 						PLiSQL_stmt_rollback *new;
 
-						new = palloc(sizeof(PLiSQL_stmt_rollback));
+						new = palloc_object(PLiSQL_stmt_rollback);
 						new->cmd_type = PLISQL_STMT_ROLLBACK;
 						new->lineno = plisql_location_to_lineno(@1, yyscanner);
 						new->stmtid = ++plisql_curr_compile->nstatements;
@@ -3098,7 +3098,7 @@ exception_sect	:
 						 * current block.
 						 */
 						int			lineno = plisql_location_to_lineno(@1, yyscanner);
-						PLiSQL_exception_block *new = palloc(sizeof(PLiSQL_exception_block));
+						PLiSQL_exception_block *new = palloc_object(PLiSQL_exception_block);
 						PLiSQL_variable *var;
 
 						var = plisql_build_variable("sqlstate", lineno,
@@ -3146,7 +3146,7 @@ proc_exception	: K_WHEN proc_conditions K_THEN proc_sect
 					{
 						PLiSQL_exception *new;
 
-						new = palloc0(sizeof(PLiSQL_exception));
+						new = palloc0_object(PLiSQL_exception);
 						new->lineno = plisql_location_to_lineno(@1, yyscanner);
 						new->conditions = $2;
 						new->action = $4;
@@ -3191,7 +3191,7 @@ proc_condition	: any_identifier
 								if (strspn(sqlstatestr, "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ") != 5)
 									yyerror(&yylloc, NULL, yyscanner,  "invalid SQLSTATE code");
 
-								new = palloc(sizeof(PLiSQL_condition));
+								new = palloc_object(PLiSQL_condition);
 								new->sqlerrstate =
 									MAKE_SQLSTATE(sqlstatestr[0],
 												  sqlstatestr[1],
@@ -3562,7 +3562,7 @@ static PLiSQL_expr *
 make_plisql_expr(const char *query,
 				  RawParseMode parsemode)
 {
-	PLiSQL_expr *expr = palloc0(sizeof(PLiSQL_expr));
+	PLiSQL_expr *expr = palloc0_object(PLiSQL_expr);
 
 	expr->query = pstrdup(query);
 	expr->parseMode = parsemode;
@@ -4070,7 +4070,7 @@ make_execsql_stmt(int firsttoken, int location, PLword *word, YYSTYPE *yylvalp, 
 
 	check_sql_expr(expr->query, expr->parseMode, location, yyscanner);
 
-	execsql = palloc0(sizeof(PLiSQL_stmt_execsql));
+	execsql = palloc0_object(PLiSQL_stmt_execsql);
 	execsql->cmd_type = PLISQL_STMT_EXECSQL;
 	execsql->lineno  = plisql_location_to_lineno(location, yyscanner);
 	execsql->stmtid  = ++plisql_curr_compile->nstatements;
@@ -4117,7 +4117,7 @@ build_call_expr(int firsttoken, int location, YYSTYPE *yylvalp, YYLTYPE *yyllocp
 	if ((firsttoken == T_WORD || firsttoken ==T_CWORD) && tok == ';')
 		ds.data = psprintf("CALL %s", ds.data);
 
-	expr = palloc0(sizeof(PLiSQL_expr));
+	expr = palloc0_object(PLiSQL_expr);
 	expr->query			= pstrdup(ds.data);
 	expr->parseMode		= RAW_PARSE_DEFAULT;
 	expr->plan			= NULL;
@@ -4144,7 +4144,7 @@ read_fetch_direction(YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 	 * We create the PLiSQL_stmt_fetch struct here, but only fill in
 	 * the fields arising from the optional direction clause
 	 */
-	fetch = (PLiSQL_stmt_fetch *) palloc0(sizeof(PLiSQL_stmt_fetch));
+	fetch = palloc0_object(PLiSQL_stmt_fetch);
 	fetch->cmd_type = PLISQL_STMT_FETCH;
 	fetch->stmtid	= ++plisql_curr_compile->nstatements;
 	/* set direction defaults: */
@@ -4296,7 +4296,7 @@ make_return_stmt(int location, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yysc
 {
 	PLiSQL_stmt_return *new;
 
-	new = palloc0(sizeof(PLiSQL_stmt_return));
+	new = palloc0_object(PLiSQL_stmt_return);
 	new->cmd_type = PLISQL_STMT_RETURN;
 	new->lineno   = plisql_location_to_lineno(location, yyscanner);
 	new->stmtid	  = ++plisql_curr_compile->nstatements;
@@ -4407,7 +4407,7 @@ make_return_next_stmt(int location, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t
 				 errmsg("cannot use RETURN NEXT in a non-SETOF function"),
 				 parser_errposition(location)));
 
-	new = palloc0(sizeof(PLiSQL_stmt_return_next));
+	new = palloc0_object(PLiSQL_stmt_return_next);
 	new->cmd_type	= PLISQL_STMT_RETURN_NEXT;
 	new->lineno		= plisql_location_to_lineno(location, yyscanner);
 	new->stmtid		= ++plisql_curr_compile->nstatements;
@@ -4472,7 +4472,7 @@ make_return_query_stmt(int location, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_
 				 errmsg("cannot use RETURN QUERY in a non-SETOF function"),
 				 parser_errposition(location)));
 
-	new = palloc0(sizeof(PLiSQL_stmt_return_query));
+	new = palloc0_object(PLiSQL_stmt_return_query);
 	new->cmd_type = PLISQL_STMT_RETURN_QUERY;
 	new->lineno = plisql_location_to_lineno(location, yyscanner);
 	new->stmtid = ++plisql_curr_compile->nstatements;
@@ -4760,14 +4760,14 @@ read_into_scalar_list(char *initial_name,
 	 */
 	plisql_push_back_token(tok, yylvalp, yyllocp, yyscanner);
 
-	row = palloc0(sizeof(PLiSQL_row));
+	row = palloc0_object(PLiSQL_row);
 	row->dtype = PLISQL_DTYPE_ROW;
 	row->refname = "(unnamed row)";
 	row->lineno = plisql_location_to_lineno(initial_location, yyscanner);
 	row->rowtupdesc = NULL;
 	row->nfields = nfields;
-	row->fieldnames = palloc(sizeof(char *) * nfields);
-	row->varnos = palloc(sizeof(int) * nfields);
+	row->fieldnames = palloc_array(char *, nfields);
+	row->varnos = palloc_array(int, nfields);
 	while (--nfields >= 0)
 	{
 		row->fieldnames[nfields] = fieldnames[nfields];
@@ -4795,14 +4795,14 @@ make_scalar_list1(char *initial_name,
 
 	check_assignable(initial_datum, location, yyscanner);
 
-	row = palloc0(sizeof(PLiSQL_row));
+	row = palloc0_object(PLiSQL_row);
 	row->dtype = PLISQL_DTYPE_ROW;
 	row->refname = "(unnamed row)";
 	row->lineno = lineno;
 	row->rowtupdesc = NULL;
 	row->nfields = 1;
-	row->fieldnames = palloc(sizeof(char *));
-	row->varnos = palloc(sizeof(int));
+	row->fieldnames = palloc_object(char *);
+	row->varnos = palloc_object(int);
 	row->fieldnames[0] = initial_name;
 	row->varnos[0] = initial_datum->dno;
 
@@ -5049,7 +5049,7 @@ read_cursor_args(PLiSQL_var *cursor, int until, YYSTYPE *yylvalp, YYLTYPE *yyllo
 	else
 		row = (PLiSQL_row *) plisql_Datums[cursor->cursor_explicit_argrow];
 
-	argv = (char **) palloc0(row->nfields * sizeof(char *));
+	argv = palloc0_array(char *, row->nfields);
 
 	for (argc = 0; argc < row->nfields; argc++)
 	{
@@ -5184,7 +5184,7 @@ read_raise_options(YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 		if ((tok = yylex(yylvalp, yyllocp, yyscanner)) == 0)
 			yyerror(yyllocp, NULL,  yyscanner, "unexpected end of function definition");
 
-		opt = (PLiSQL_raise_option *) palloc(sizeof(PLiSQL_raise_option));
+		opt = palloc_object(PLiSQL_raise_option);
 
 		if (tok_is_keyword(tok, yylvalp,
 						   K_ERRCODE, "errcode"))
@@ -5275,7 +5275,7 @@ make_case(int location, PLiSQL_expr *t_expr,
 {
 	PLiSQL_stmt_case	*new;
 
-	new = palloc(sizeof(PLiSQL_stmt_case));
+	new = palloc_object(PLiSQL_stmt_case);
 	new->cmd_type = PLISQL_STMT_CASE;
 	new->lineno = plisql_location_to_lineno(location, yyscanner);
 	new->stmtid = ++plisql_curr_compile->nstatements;

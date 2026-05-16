@@ -350,8 +350,7 @@ outBitmapset(StringInfo str, const Bitmapset *bms)
 void
 outDatum(StringInfo str, Datum value, int typlen, bool typbyval)
 {
-	Size		length,
-				i;
+	Size		length;
 	char	   *s;
 
 	length = datumGetSize(value, typbyval, typlen);
@@ -359,8 +358,8 @@ outDatum(StringInfo str, Datum value, int typlen, bool typbyval)
 	if (typbyval)
 	{
 		s = (char *) (&value);
-		appendStringInfo(str, "%u [ ", (unsigned int) length);
-		for (i = 0; i < (Size) sizeof(Datum); i++)
+		appendStringInfo(str, "%zu [ ", length);
+		for (Size i = 0; i < (Size) sizeof(Datum); i++)
 			appendStringInfo(str, "%d ", (int) (s[i]));
 		appendStringInfoChar(str, ']');
 	}
@@ -371,8 +370,8 @@ outDatum(StringInfo str, Datum value, int typlen, bool typbyval)
 			appendStringInfoString(str, "0 [ ]");
 		else
 		{
-			appendStringInfo(str, "%u [ ", (unsigned int) length);
-			for (i = 0; i < length; i++)
+			appendStringInfo(str, "%zu [ ", length);
+			for (Size i = 0; i < length; i++)
 				appendStringInfo(str, "%d ", (int) (s[i]));
 			appendStringInfoChar(str, ']');
 		}
@@ -438,8 +437,6 @@ _outBoolExpr(StringInfo str, const BoolExpr *node)
 static void
 _outForeignKeyOptInfo(StringInfo str, const ForeignKeyOptInfo *node)
 {
-	int			i;
-
 	WRITE_NODE_TYPE("FOREIGNKEYOPTINFO");
 
 	WRITE_UINT_FIELD(con_relid);
@@ -454,10 +451,10 @@ _outForeignKeyOptInfo(StringInfo str, const ForeignKeyOptInfo *node)
 	WRITE_INT_FIELD(nmatched_ri);
 	/* for compactness, just print the number of matches per column: */
 	appendStringInfoString(str, " :eclass");
-	for (i = 0; i < node->nkeys; i++)
+	for (int i = 0; i < node->nkeys; i++)
 		appendStringInfo(str, " %d", (node->eclass[i] != NULL));
 	appendStringInfoString(str, " :rinfos");
-	for (i = 0; i < node->nkeys; i++)
+	for (int i = 0; i < node->nkeys; i++)
 		appendStringInfo(str, " %d", list_length(node->rinfos[i]));
 }
 

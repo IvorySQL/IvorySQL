@@ -379,7 +379,7 @@ bt_multi_page_stats(PG_FUNCTION_ARGS)
 		/* Save arguments for reuse */
 		mctx = MemoryContextSwitchTo(fctx->multi_call_memory_ctx);
 
-		uargs = palloc(sizeof(ua_page_stats));
+		uargs = palloc_object(ua_page_stats);
 
 		uargs->relid = RelationGetRelid(rel);
 		uargs->blkno = blkno;
@@ -660,7 +660,7 @@ bt_page_items_internal(PG_FUNCTION_ARGS, enum pageinspect_version ext_version)
 		 */
 		mctx = MemoryContextSwitchTo(fctx->multi_call_memory_ctx);
 
-		uargs = palloc(sizeof(ua_page_items));
+		uargs = palloc_object(ua_page_items);
 
 		uargs->page = palloc(BLCKSZ);
 		memcpy(uargs->page, BufferGetPage(buffer), BLCKSZ);
@@ -752,7 +752,7 @@ bt_page_items_bytea(PG_FUNCTION_ARGS)
 		fctx = SRF_FIRSTCALL_INIT();
 		mctx = MemoryContextSwitchTo(fctx->multi_call_memory_ctx);
 
-		uargs = palloc(sizeof(ua_page_items));
+		uargs = palloc_object(ua_page_items);
 
 		uargs->page = get_page_from_raw(raw_page);
 
@@ -901,10 +901,10 @@ bt_metap(PG_FUNCTION_ARGS)
 	j = 0;
 	values[j++] = psprintf("%d", metad->btm_magic);
 	values[j++] = psprintf("%d", metad->btm_version);
-	values[j++] = psprintf(INT64_FORMAT, (int64) metad->btm_root);
-	values[j++] = psprintf(INT64_FORMAT, (int64) metad->btm_level);
-	values[j++] = psprintf(INT64_FORMAT, (int64) metad->btm_fastroot);
-	values[j++] = psprintf(INT64_FORMAT, (int64) metad->btm_fastlevel);
+	values[j++] = psprintf("%u", metad->btm_root);
+	values[j++] = psprintf("%u", metad->btm_level);
+	values[j++] = psprintf("%u", metad->btm_fastroot);
+	values[j++] = psprintf("%u", metad->btm_fastlevel);
 
 	/*
 	 * Get values of extended metadata if available, use default values
@@ -914,8 +914,7 @@ bt_metap(PG_FUNCTION_ARGS)
 	 */
 	if (metad->btm_version >= BTREE_NOVAC_VERSION)
 	{
-		values[j++] = psprintf(INT64_FORMAT,
-							   (int64) metad->btm_last_cleanup_num_delpages);
+		values[j++] = psprintf("%u", metad->btm_last_cleanup_num_delpages);
 		values[j++] = psprintf("%f", metad->btm_last_cleanup_num_heap_tuples);
 		values[j++] = metad->btm_allequalimage ? "t" : "f";
 	}

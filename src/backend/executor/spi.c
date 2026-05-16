@@ -1140,8 +1140,8 @@ SPI_modifytuple(Relation rel, HeapTuple tuple, int natts, int *attnum,
 	SPI_result = 0;
 
 	numberOfAttributes = rel->rd_att->natts;
-	v = (Datum *) palloc(numberOfAttributes * sizeof(Datum));
-	n = (bool *) palloc(numberOfAttributes * sizeof(bool));
+	v = palloc_array(Datum, numberOfAttributes);
+	n = palloc_array(bool, numberOfAttributes);
 
 	/* fetch old values and nulls */
 	heap_deform_tuple(tuple, rel->rd_att, v, n);
@@ -2168,8 +2168,7 @@ spi_dest_startup(DestReceiver *self, int operation, TupleDesc typeinfo)
 									  ALLOCSET_DEFAULT_SIZES);
 	MemoryContextSwitchTo(tuptabcxt);
 
-	_SPI_current->tuptable = tuptable = (SPITupleTable *)
-		palloc0(sizeof(SPITupleTable));
+	_SPI_current->tuptable = tuptable = palloc0_object(SPITupleTable);
 	tuptable->tuptabcxt = tuptabcxt;
 	tuptable->subid = GetCurrentSubTransactionId();
 
@@ -2182,7 +2181,7 @@ spi_dest_startup(DestReceiver *self, int operation, TupleDesc typeinfo)
 
 	/* set up initial allocations */
 	tuptable->alloced = 128;
-	tuptable->vals = (HeapTuple *) palloc(tuptable->alloced * sizeof(HeapTuple));
+	tuptable->vals = palloc_array(HeapTuple, tuptable->alloced);
 	tuptable->numvals = 0;
 	tuptable->tupdesc = CreateTupleDescCopy(typeinfo);
 
@@ -3197,7 +3196,7 @@ _SPI_make_plan_non_temp(SPIPlanPtr plan)
 	oldcxt = MemoryContextSwitchTo(plancxt);
 
 	/* Copy the _SPI_plan struct and subsidiary data into the new context */
-	newplan = (SPIPlanPtr) palloc0(sizeof(_SPI_plan));
+	newplan = palloc0_object(_SPI_plan);
 	newplan->magic = _SPI_PLAN_MAGIC;
 	newplan->plancxt = plancxt;
 	newplan->parse_mode = plan->parse_mode;
@@ -3205,7 +3204,7 @@ _SPI_make_plan_non_temp(SPIPlanPtr plan)
 	newplan->nargs = plan->nargs;
 	if (plan->nargs > 0)
 	{
-		newplan->argtypes = (Oid *) palloc(plan->nargs * sizeof(Oid));
+		newplan->argtypes = palloc_array(Oid, plan->nargs);
 		memcpy(newplan->argtypes, plan->argtypes, plan->nargs * sizeof(Oid));
 	}
 	else
@@ -3262,7 +3261,7 @@ _SPI_save_plan(SPIPlanPtr plan)
 	oldcxt = MemoryContextSwitchTo(plancxt);
 
 	/* Copy the SPI plan into its own context */
-	newplan = (SPIPlanPtr) palloc0(sizeof(_SPI_plan));
+	newplan = palloc0_object(_SPI_plan);
 	newplan->magic = _SPI_PLAN_MAGIC;
 	newplan->plancxt = plancxt;
 	newplan->parse_mode = plan->parse_mode;
@@ -3270,7 +3269,7 @@ _SPI_save_plan(SPIPlanPtr plan)
 	newplan->nargs = plan->nargs;
 	if (plan->nargs > 0)
 	{
-		newplan->argtypes = (Oid *) palloc(plan->nargs * sizeof(Oid));
+		newplan->argtypes = palloc_array(Oid, plan->nargs);
 		memcpy(newplan->argtypes, plan->argtypes, plan->nargs * sizeof(Oid));
 	}
 	else
@@ -3404,7 +3403,7 @@ SPI_register_trigger_data(TriggerData *tdata)
 	if (tdata->tg_newtable)
 	{
 		EphemeralNamedRelation enr =
-			palloc(sizeof(EphemeralNamedRelationData));
+			palloc_object(EphemeralNamedRelationData);
 		int			rc;
 
 		enr->md.name = tdata->tg_trigger->tgnewtable;
@@ -3421,7 +3420,7 @@ SPI_register_trigger_data(TriggerData *tdata)
 	if (tdata->tg_oldtable)
 	{
 		EphemeralNamedRelation enr =
-			palloc(sizeof(EphemeralNamedRelationData));
+			palloc_object(EphemeralNamedRelationData);
 		int			rc;
 
 		enr->md.name = tdata->tg_trigger->tgoldtable;

@@ -566,7 +566,7 @@ publicationListToArray(List *publist)
 								   ALLOCSET_DEFAULT_SIZES);
 	oldcxt = MemoryContextSwitchTo(memcxt);
 
-	datums = (Datum *) palloc(sizeof(Datum) * list_length(publist));
+	datums = palloc_array(Datum, list_length(publist));
 
 	check_duplicates_in_publist(publist, datums);
 
@@ -1055,7 +1055,7 @@ AlterSubscription_refresh(Subscription *sub, bool copy_data,
 			{
 				char		state;
 				XLogRecPtr	statelsn;
-				SubRemoveRels *remove_rel = palloc(sizeof(SubRemoveRels));
+				SubRemoveRels *remove_rel = palloc_object(SubRemoveRels);
 
 				/*
 				 * Lock pg_subscription_rel with AccessExclusiveLock to
@@ -1099,10 +1099,10 @@ AlterSubscription_refresh(Subscription *sub, bool copy_data,
 					 *
 					 * It is possible that the origin is not yet created for
 					 * tablesync worker, this can happen for the states before
-					 * SUBREL_STATE_FINISHEDCOPY. The tablesync worker or
-					 * apply worker can also concurrently try to drop the
-					 * origin and by this time the origin might be already
-					 * removed. For these reasons, passing missing_ok = true.
+					 * SUBREL_STATE_DATASYNC. The tablesync worker or apply
+					 * worker can also concurrently try to drop the origin and
+					 * by this time the origin might be already removed. For
+					 * these reasons, passing missing_ok = true.
 					 */
 					ReplicationOriginNameForLogicalRep(sub->oid, relid, originname,
 													   sizeof(originname));
@@ -1122,10 +1122,10 @@ AlterSubscription_refresh(Subscription *sub, bool copy_data,
 		 * to be at the end because otherwise if there is an error while doing
 		 * the database operations we won't be able to rollback dropped slots.
 		 */
-		foreach_ptr(SubRemoveRels, rel, sub_remove_rels)
+		foreach_ptr(SubRemoveRels, sub_remove_rel, sub_remove_rels)
 		{
-			if (rel->state != SUBREL_STATE_READY &&
-				rel->state != SUBREL_STATE_SYNCDONE)
+			if (sub_remove_rel->state != SUBREL_STATE_READY &&
+				sub_remove_rel->state != SUBREL_STATE_SYNCDONE)
 			{
 				char		syncslotname[NAMEDATALEN] = {0};
 
@@ -1139,7 +1139,7 @@ AlterSubscription_refresh(Subscription *sub, bool copy_data,
 				 * dropped slots and fail. For these reasons, we allow
 				 * missing_ok = true for the drop.
 				 */
-				ReplicationSlotNameForTablesync(sub->oid, rel->relid,
+				ReplicationSlotNameForTablesync(sub->oid, sub_remove_rel->relid,
 												syncslotname, sizeof(syncslotname));
 				ReplicationSlotDropAtPubNode(wrconn, syncslotname, true);
 			}
@@ -2174,7 +2174,7 @@ DropSubscription(DropSubscriptionStmt *stmt, bool isTopLevel)
 		 *
 		 * It is possible that the origin is not yet created for tablesync
 		 * worker so passing missing_ok = true. This can happen for the states
-		 * before SUBREL_STATE_FINISHEDCOPY.
+		 * before SUBREL_STATE_DATASYNC.
 		 */
 		ReplicationOriginNameForLogicalRep(subid, relid, originname,
 										   sizeof(originname));
@@ -2753,7 +2753,7 @@ check_pub_dead_tuple_retention(WalReceiverConn *wrconn)
 	bool		isnull;
 	bool		remote_in_recovery;
 
-	if (walrcv_server_version(wrconn) < 19000)
+	if (walrcv_server_version(wrconn) < 190000)
 		ereport(ERROR,
 				errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				errmsg("cannot enable retain_dead_tuples if the publisher is running a version earlier than PostgreSQL 19"));

@@ -530,7 +530,7 @@ typedef struct SubXactInfo
 {
 	TransactionId xid;			/* XID of the subxact */
 	int			fileno;			/* file number in the buffile */
-	off_t		offset;			/* offset in the file */
+	pgoff_t		offset;			/* offset in the file */
 } SubXactInfo;
 
 /* Sub-transaction data for the current streaming transaction */
@@ -875,7 +875,7 @@ create_edata_for_relation(LogicalRepRelMapEntry *rel)
 	List	   *perminfos = NIL;
 	ResultRelInfo *resultRelInfo;
 
-	edata = (ApplyExecutionData *) palloc0(sizeof(ApplyExecutionData));
+	edata = palloc0_object(ApplyExecutionData);
 	edata->targetRel = rel;
 
 	edata->estate = estate = CreateExecutorState();
@@ -1702,7 +1702,7 @@ stream_start_internal(TransactionId xid, bool first_segment)
 
 		oldctx = MemoryContextSwitchTo(ApplyContext);
 
-		MyLogicalRepWorker->stream_fileset = palloc(sizeof(FileSet));
+		MyLogicalRepWorker->stream_fileset = palloc_object(FileSet);
 		FileSetInit(MyLogicalRepWorker->stream_fileset);
 
 		MemoryContextSwitchTo(oldctx);
@@ -2226,12 +2226,12 @@ apply_handle_stream_abort(StringInfo s)
  */
 static void
 ensure_last_message(FileSet *stream_fileset, TransactionId xid, int fileno,
-					off_t offset)
+					pgoff_t offset)
 {
 	char		path[MAXPGPATH];
 	BufFile    *fd;
 	int			last_fileno;
-	off_t		last_offset;
+	pgoff_t		last_offset;
 
 	Assert(!IsTransactionState());
 
@@ -2266,7 +2266,7 @@ apply_spooled_messages(FileSet *stream_fileset, TransactionId xid,
 	MemoryContext oldcxt;
 	ResourceOwner oldowner;
 	int			fileno;
-	off_t		offset;
+	pgoff_t		offset;
 
 	if (!am_parallel_apply_worker())
 		maybe_start_skipping_changes(lsn);
@@ -3951,7 +3951,7 @@ store_flush_position(XLogRecPtr remote_lsn, XLogRecPtr local_lsn)
 	MemoryContextSwitchTo(ApplyContext);
 
 	/* Track commit lsn  */
-	flushpos = (FlushPosition *) palloc(sizeof(FlushPosition));
+	flushpos = palloc_object(FlushPosition);
 	flushpos->local_end = local_lsn;
 	flushpos->remote_end = remote_lsn;
 
@@ -5561,7 +5561,7 @@ set_stream_options(WalRcvStreamOptions *options,
  * Cleanup the memory for subxacts and reset the related variables.
  */
 static inline void
-cleanup_subxact_info()
+cleanup_subxact_info(void)
 {
 	if (subxact_data.subxacts)
 		pfree(subxact_data.subxacts);
@@ -5621,7 +5621,7 @@ start_apply(XLogRecPtr origin_startpos)
  * It sets up replication origin, streaming options and then starts streaming.
  */
 static void
-run_apply_worker()
+run_apply_worker(void)
 {
 	char		originname[NAMEDATALEN];
 	XLogRecPtr	origin_startpos = InvalidXLogRecPtr;
@@ -5849,6 +5849,23 @@ InitializeLogRepWorker(void)
 					   MySubscription->name));
 
 	CommitTransactionCommand();
+
+	/*
+	 * Register a callback to reset the origin state before aborting any
+	 * pending transaction during shutdown (see ShutdownPostgres()). This will
+	 * avoid origin advancement for an incomplete transaction which could
+	 * otherwise lead to its loss as such a transaction won't be sent by the
+	 * server again.
+	 *
+	 * Note that even a LOG or DEBUG statement placed after setting the origin
+	 * state may process a shutdown signal before committing the current apply
+	 * operation. So, it is important to register such a callback here.
+	 *
+	 * Register this callback here to ensure that all types of logical
+	 * replication workers that set up origins and apply remote transactions
+	 * are protected.
+	 */
+	before_shmem_exit(replorigin_reset, (Datum) 0);
 }
 
 /*
@@ -5891,19 +5908,6 @@ SetupApplyOrSyncWorker(int worker_slot)
 	load_file("libpqwalreceiver", false);
 
 	InitializeLogRepWorker();
-
-	/*
-	 * Register a callback to reset the origin state before aborting any
-	 * pending transaction during shutdown (see ShutdownPostgres()). This will
-	 * avoid origin advancement for an in-complete transaction which could
-	 * otherwise lead to its loss as such a transaction won't be sent by the
-	 * server again.
-	 *
-	 * Note that even a LOG or DEBUG statement placed after setting the origin
-	 * state may process a shutdown signal before committing the current apply
-	 * operation. So, it is important to register such a callback here.
-	 */
-	before_shmem_exit(replorigin_reset, (Datum) 0);
 
 	/* Connect to the origin and start the replication. */
 	elog(DEBUG1, "connecting to publisher using connection string \"%s\"",

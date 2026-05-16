@@ -617,6 +617,13 @@
   max => 'MAX_DEBUG_DISCARD_CACHES',
 },
 
+{ name => 'debug_exec_backend', type => 'bool', context => 'PGC_INTERNAL', group => 'PRESET_OPTIONS',
+  short_desc => 'Shows whether the running server is built with EXEC_BACKEND enabled.',
+  flags => 'GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE',
+  variable => 'exec_backend_enabled',
+  boot_val => 'EXEC_BACKEND_ENABLED',
+},
+
 { name => 'debug_io_direct', type => 'string', context => 'PGC_POSTMASTER', group => 'DEVELOPER_OPTIONS',
   short_desc => 'Use direct I/O for file access.',
   long_desc => 'An empty string disables direct I/O.',
@@ -796,6 +803,15 @@
   boot_val => 'DEFAULT_EFFECTIVE_IO_CONCURRENCY',
   min => '0',
   max => 'MAX_IO_CONCURRENCY',
+},
+
+{ name => 'effective_wal_level', type => 'enum', context => 'PGC_INTERNAL', group => 'PRESET_OPTIONS',
+  short_desc => 'Show effective WAL level.',
+  flags => 'GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE',
+  variable => 'effective_wal_level',
+  boot_val => 'WAL_LEVEL_REPLICA',
+  options => 'wal_level_options',
+  show_hook => 'show_effective_wal_level',
 },
 
 { name => 'enable_async_append', type => 'bool', context => 'PGC_USERSET', group => 'QUERY_TUNING_METHOD',

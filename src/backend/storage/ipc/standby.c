@@ -500,7 +500,7 @@ ResolveRecoveryConflictWithSnapshot(TransactionId snapshotConflictHorizon,
 	 * seems OK, given that this kind of conflict should not normally be
 	 * reached, e.g. due to using a physical replication slot.
 	 */
-	if (wal_level >= WAL_LEVEL_LOGICAL && isCatalogRel)
+	if (IsLogicalDecodingEnabled() && isCatalogRel)
 		InvalidateObsoleteReplicationSlots(RS_INVAL_HORIZON, 0, locator.dbOid,
 										   snapshotConflictHorizon);
 }
@@ -841,7 +841,7 @@ ResolveRecoveryConflictWithBufferPin(void)
 	 * SIGHUP signal handler, etc cannot do that because it uses the different
 	 * latch from that ProcWaitForSignal() waits on.
 	 */
-	ProcWaitForSignal(WAIT_EVENT_BUFFER_PIN);
+	ProcWaitForSignal(WAIT_EVENT_BUFFER_CLEANUP);
 
 	if (got_standby_delay_timeout)
 		SendRecoveryConflictWithBufferPin(PROCSIG_RECOVERY_CONFLICT_BUFFERPIN);
@@ -1286,6 +1286,7 @@ LogStandbySnapshot(void)
 	RunningTransactions running;
 	xl_standby_lock *locks;
 	int			nlocks;
+	bool		logical_decoding_enabled = IsLogicalDecodingEnabled();
 
 	Assert(XLogStandbyInfoActive());
 
@@ -1326,13 +1327,13 @@ LogStandbySnapshot(void)
 	 * record. Fortunately this routine isn't executed frequently, and it's
 	 * only a shared lock.
 	 */
-	if (wal_level < WAL_LEVEL_LOGICAL)
+	if (!logical_decoding_enabled)
 		LWLockRelease(ProcArrayLock);
 
 	recptr = LogCurrentRunningXacts(running);
 
 	/* Release lock if we kept it longer ... */
-	if (wal_level >= WAL_LEVEL_LOGICAL)
+	if (logical_decoding_enabled)
 		LWLockRelease(ProcArrayLock);
 
 	/* GetRunningTransactionData() acquired XidGenLock, we must release it */

@@ -89,7 +89,7 @@ gbt_num_compress(GISTENTRY *entry, const gbtree_ninfo *tinfo)
 
 		memcpy(&r[0], leaf, tinfo->size);
 		memcpy(&r[tinfo->size], leaf, tinfo->size);
-		retval = palloc(sizeof(GISTENTRY));
+		retval = palloc_object(GISTENTRY);
 		gistentryinit(*retval, PointerGetDatum(r), entry->rel, entry->page,
 					  entry->offset, false);
 	}
@@ -156,7 +156,7 @@ gbt_num_fetch(GISTENTRY *entry, const gbtree_ninfo *tinfo)
 			datum = entry->key;
 	}
 
-	retval = palloc(sizeof(GISTENTRY));
+	retval = palloc_object(GISTENTRY);
 	gistentryinit(*retval, datum, entry->rel, entry->page, entry->offset,
 				  false);
 	return retval;
@@ -181,8 +181,8 @@ gbt_num_union(GBT_NUMKEY *out, const GistEntryVector *entryvec, const gbtree_nin
 	cur = (GBT_NUMKEY *) DatumGetPointer((entryvec->vector[0].key));
 
 
-	o.lower = &((GBT_NUMKEY *) out)[0];
-	o.upper = &((GBT_NUMKEY *) out)[tinfo->size];
+	o.lower = &out[0];
+	o.upper = &out[tinfo->size];
 
 	memcpy(out, cur, 2 * tinfo->size);
 

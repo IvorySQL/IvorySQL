@@ -331,11 +331,8 @@ InjectionPointAttach(const char *name,
 
 	/* Save the entry */
 	strlcpy(entry->name, name, sizeof(entry->name));
-	entry->name[INJ_NAME_MAXLEN - 1] = '\0';
 	strlcpy(entry->library, library, sizeof(entry->library));
-	entry->library[INJ_LIB_MAXLEN - 1] = '\0';
 	strlcpy(entry->function, function, sizeof(entry->function));
-	entry->function[INJ_FUNC_MAXLEN - 1] = '\0';
 	if (private_data != NULL)
 		memcpy(entry->private_data, private_data, private_data_size);
 
@@ -614,7 +611,7 @@ InjectionPointList(void)
 		if (generation % 2 == 0)
 			continue;
 
-		inj_point = (InjectionPointData *) palloc0(sizeof(InjectionPointData));
+		inj_point = palloc0_object(InjectionPointData);
 		inj_point->name = pstrdup(entry->name);
 		inj_point->library = pstrdup(entry->library);
 		inj_point->function = pstrdup(entry->function);

@@ -263,7 +263,7 @@ extern struct varlena *pg_detoast_datum_packed(struct varlena *datum);
  */
 #define PG_FREE_IF_COPY(ptr,n) \
 	do { \
-		if ((Pointer) (ptr) != PG_GETARG_POINTER(n)) \
+		if ((ptr) != PG_GETARG_POINTER(n)) \
 			pfree(ptr); \
 	} while (0)
 

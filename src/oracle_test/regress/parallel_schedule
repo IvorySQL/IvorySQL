@@ -31,7 +31,7 @@ test: strings md5 numerology point lseg line box path polygon circle date time t
 # geometry depends on point, lseg, line, box, path, polygon, circle
 # horology depends on date, time, timetz, timestamp, timestamptz, interval
 # ----------
-test: geometry horology tstypes regex type_sanity opr_sanity misc_sanity comments expressions unicode xid mvcc database stats_import
+test: geometry horology tstypes regex type_sanity opr_sanity misc_sanity comments expressions unicode xid mvcc database stats_import pg_ndistinct pg_dependencies
 
 # ----------
 # Load huge amounts of data
@@ -79,7 +79,7 @@ test: brin_bloom brin_multi
 # ----------
 # Another group of parallel tests
 # ----------
-test: create_table_like alter_generic alter_operator misc async dbsize misc_functions sysviews tsrf tid tidscan tidrangescan collate.utf8 collate.icu.utf8 incremental_sort create_role generated_virtual
+test: create_table_like alter_generic alter_operator misc async dbsize misc_functions nls sysviews tsrf tid tidscan tidrangescan collate.utf8 collate.icu.utf8 incremental_sort create_role generated_virtual
 
 # rules cannot run concurrently with any test that creates
 # a view or rule in the public schema

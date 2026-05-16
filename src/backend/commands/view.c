@@ -30,7 +30,6 @@
 #include "nodes/nodeFuncs.h"
 #include "parser/analyze.h"
 #include "parser/parser.h"
-#include "parser/parse_relation.h"
 #include "rewrite/rewriteDefine.h"
 #include "rewrite/rewriteHandler.h"
 #include "rewrite/rewriteSupport.h"
@@ -475,6 +474,7 @@ DefineView(ViewStmt *stmt, const char *queryString,
 	bool		check_option;
 	bool		compile_failed = false;
 	ObjectAddress address;
+	ObjectAddress temp_object;
 
 	/*
 	 * Run parse analysis to convert the raw parse tree to a Query.  Note this
@@ -697,12 +697,14 @@ DefineView(ViewStmt *stmt, const char *queryString,
 	 */
 	view = copyObject(stmt->view);	/* don't corrupt original command */
 	if (view->relpersistence == RELPERSISTENCE_PERMANENT
-		&& isQueryUsingTempRelation(viewParse))
+		&& query_uses_temp_object(viewParse, &temp_object))
 	{
 		view->relpersistence = RELPERSISTENCE_TEMP;
 		ereport(NOTICE,
 				(errmsg("view \"%s\" will be a temporary view",
-						view->relname)));
+						view->relname),
+				 errdetail("It depends on temporary %s.",
+						   getObjectDescription(&temp_object, false))));
 	}
 
 	/*
@@ -888,6 +890,7 @@ compile_force_view_internal(ViewStmt *stmt, const char *queryString, Oid viewoid
 	RangeVar   *view;
 	ListCell   *cell;
 	bool		check_option;
+	ObjectAddress temp_object;
 
 	/*
 	 * Parse the SQL statement and analyze it.
@@ -1020,12 +1023,14 @@ compile_force_view_internal(ViewStmt *stmt, const char *queryString, Oid viewoid
 	 */
 	view = copyObject(stmt->view);	/* don't corrupt original command */
 	if (view->relpersistence == RELPERSISTENCE_PERMANENT
-		&& isQueryUsingTempRelation(viewParse))
+		&& query_uses_temp_object(viewParse, &temp_object))
 	{
 		view->relpersistence = RELPERSISTENCE_TEMP;
 		ereport(NOTICE,
 				(errmsg("view \"%s\" will be a temporary view",
-						view->relname)));
+						view->relname),
+				 errdetail("It depends on temporary %s.",
+						   getObjectDescription(&temp_object, false))));
 	}
 
 	make_view_valid(viewParse->targetList, viewoid, stmt->options, viewParse);

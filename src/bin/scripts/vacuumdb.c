@@ -61,6 +61,7 @@ main(int argc, char *argv[])
 		{"no-process-main", no_argument, NULL, 12},
 		{"buffer-usage-limit", required_argument, NULL, 13},
 		{"missing-stats-only", no_argument, NULL, 14},
+		{"dry-run", no_argument, NULL, 15},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -70,8 +71,6 @@ main(int argc, char *argv[])
 	const char *dbname = NULL;
 	const char *maintenance_db = NULL;
 	ConnParams	cparams;
-	bool		echo = false;
-	bool		quiet = false;
 	vacuumingOptions vacopts;
 	SimpleStringList objects = {NULL, NULL};
 	int			concurrentCons = 1;
@@ -80,11 +79,7 @@ main(int argc, char *argv[])
 
 	/* initialize options */
 	memset(&vacopts, 0, sizeof(vacopts));
-	vacopts.objfilter = 0;		/* no filter */
 	vacopts.parallel_workers = -1;
-	vacopts.buffer_usage_limit = NULL;
-	vacopts.no_index_cleanup = false;
-	vacopts.force_index_cleanup = false;
 	vacopts.do_truncate = true;
 	vacopts.process_main = true;
 	vacopts.process_toast = true;
@@ -112,7 +107,7 @@ main(int argc, char *argv[])
 				dbname = pg_strdup(optarg);
 				break;
 			case 'e':
-				echo = true;
+				vacopts.echo = true;
 				break;
 			case 'f':
 				vacopts.full = true;
@@ -145,7 +140,7 @@ main(int argc, char *argv[])
 					exit(1);
 				break;
 			case 'q':
-				quiet = true;
+				vacopts.quiet = true;
 				break;
 			case 't':
 				vacopts.objfilter |= OBJFILTER_TABLE;
@@ -214,6 +209,9 @@ main(int argc, char *argv[])
 				break;
 			case 14:
 				vacopts.missing_stats_only = true;
+				break;
+			case 15:
+				vacopts.dry_run = true;
 				break;
 			default:
 				/* getopt_long already emitted a complaint */
@@ -311,10 +309,14 @@ main(int argc, char *argv[])
 		pg_fatal("cannot use the \"%s\" option without \"%s\" or \"%s\"",
 				 "missing-stats-only", "analyze-only", "analyze-in-stages");
 
+	if (vacopts.dry_run && !vacopts.quiet)
+		pg_log_info("Executing in dry-run mode.\n"
+					"No commands will be sent to the server.");
+
 	ret = vacuuming_main(&cparams, dbname, maintenance_db, &vacopts,
 						 &objects, tbl_count,
 						 concurrentCons,
-						 progname, echo, quiet);
+						 progname);
 	exit(ret);
 }
 
@@ -353,6 +355,7 @@ help(const char *progname)
 	printf(_("      --buffer-usage-limit=SIZE   size of ring buffer used for vacuum\n"));
 	printf(_("  -d, --dbname=DBNAME             database to vacuum\n"));
 	printf(_("      --disable-page-skipping     disable all page-skipping behavior\n"));
+	printf(_("      --dry-run                   show the commands that would be sent to the server\n"));
 	printf(_("  -e, --echo                      show the commands being sent to the server\n"));
 	printf(_("  -f, --full                      do full vacuuming\n"));
 	printf(_("  -F, --freeze                    freeze row transaction information\n"));

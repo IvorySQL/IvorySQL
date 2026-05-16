@@ -2491,7 +2491,7 @@ makepoint(PG_FUNCTION_ARGS)
     /* Here, the pass-by-reference nature of Point is not hidden. */
     Point     *pointx = PG_GETARG_POINT_P(0);
     Point     *pointy = PG_GETARG_POINT_P(1);
-    Point     *new_point = (Point *) palloc(sizeof(Point));
+    Point     *new_point = palloc_object(Point);
 
     new_point->x = pointx->x;
     new_point->y = pointy->y;
@@ -3696,15 +3696,18 @@ LWLockRelease(AddinShmemInitLock);
       use the shared memory should obtain a pointer to it by calling:
 <programlisting>
 void *GetNamedDSMSegment(const char *name, size_t size,
-                         void (*init_callback) (void *ptr),
-                         bool *found)
+                         void (*init_callback) (void *ptr, void *arg),
+                         bool *found, void *arg)
 </programlisting>
       If a dynamic shared memory segment with the given name does not yet
       exist, this function will allocate it and initialize it with the provided
       <function>init_callback</function> callback function.  If the segment has
       already been allocated and initialized by another backend, this function
       simply attaches the existing dynamic shared memory segment to the current
-      backend.
+      backend.  In the former case, <function>GetNamedDSMSegment</function>
+      passes the <literal>void *arg</literal> argument to the
+      <function>init_callback</function>.  This is particularly useful for
+      reusing an initialization callback function for multiple DSM segments.
      </para>
 
      <para>
@@ -4005,7 +4008,7 @@ extern PgStat_Kind pgstat_register_kind(PgStat_Kind kind,
 
     <para>
      An example describing how to register and use custom statistics can be
-     found in <filename>src/test/modules/injection_points</filename>.
+     found in <filename>src/test/modules/test_custom_stats</filename>.
     </para>
    </sect2>
 
@@ -4157,6 +4160,31 @@ supportfn(internal) returns internal
     never call the target function in cases that the support function could
     simplify.  Ensure rigorous equivalence between the simplified
     expression and an actual execution of the target function.
+   </para>
+
+   <para>
+    <literal>SupportRequestSimplify</literal> is not used
+    for <link linkend="queries-tablefunctions">set-returning
+    functions</link>.  Instead, support functions can implement
+    the <literal>SupportRequestInlineInFrom</literal> request to expand
+    function calls appearing in the <literal>FROM</literal> clause of a
+    query.  (It's also allowed to support this request for
+    non-set-returning functions, although
+    typically <literal>SupportRequestSimplify</literal> would serve as
+    well.)  For this request type, a successful result must be
+    a <literal>SELECT</literal> Query tree, which will replace
+    the <literal>FROM</literal> item as though a sub-select had been
+    written instead.  The Query tree must appear as it would after parse
+    analysis and rewrite processing.  One way to ensure that that's true
+    is to build a SQL string then feed it
+    through <function>pg_parse_query</function>
+    and <function>pg_analyze_and_rewrite</function>, or related
+    functions.  <literal>PARAM_EXTERN</literal> <structname>Param</structname>
+    nodes can appear within the Query to represent the function's
+    arguments; they will be replaced by the actual argument expressions.
+    As with <literal>SupportRequestSimplify</literal>, it is the support
+    function's responsibility that the replacement Query be equivalent to
+    normal execution of the target function.
    </para>
 
    <para>

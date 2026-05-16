@@ -138,14 +138,11 @@ static int	regexec_auth_token(const char *match, AuthToken *token,
 static void tokenize_error_callback(void *arg);
 
 
-/*
- * isblank() exists in the ISO C99 spec, but it's not very portable yet,
- * so provide our own version.
- */
-bool
+static bool
 pg_isblank(const char c)
 {
-	return c == ' ' || c == '\t' || c == '\r';
+	/* don't accept non-ASCII data */
+	return (!IS_HIGHBIT_SET(c) && isblank(c));
 }
 
 
@@ -312,7 +309,7 @@ regcomp_auth_token(AuthToken *token, char *filename, int line_num,
 	if (token->string[0] != '/')
 		return 0;				/* nothing to compile */
 
-	token->regex = (regex_t *) palloc0(sizeof(regex_t));
+	token->regex = palloc0_object(regex_t);
 	wstr = palloc((strlen(token->string + 1) + 1) * sizeof(pg_wchar));
 	wlen = pg_mb2wchar_with_len(token->string + 1,
 								wstr, strlen(token->string + 1));
@@ -894,7 +891,7 @@ process_line:
 		 * to this list.
 		 */
 		oldcxt = MemoryContextSwitchTo(tokenize_context);
-		tok_line = (TokenizedAuthLine *) palloc0(sizeof(TokenizedAuthLine));
+		tok_line = palloc0_object(TokenizedAuthLine);
 		tok_line->fields = current_line;
 		tok_line->file_name = pstrdup(filename);
 		tok_line->line_num = line_number;
@@ -1342,7 +1339,7 @@ parse_hba_line(TokenizedAuthLine *tok_line, int elevel)
 	AuthToken  *token;
 	HbaLine    *parsedline;
 
-	parsedline = palloc0(sizeof(HbaLine));
+	parsedline = palloc0_object(HbaLine);
 	parsedline->sourcefile = pstrdup(file_name);
 	parsedline->linenumber = line_num;
 	parsedline->rawline = pstrdup(tok_line->raw_line);
@@ -2625,7 +2622,7 @@ check_hba(Port *port)
 	}
 
 	/* If no matching entry was found, then implicitly reject. */
-	hba = palloc0(sizeof(HbaLine));
+	hba = palloc0_object(HbaLine);
 	hba->auth_method = uaImplicitReject;
 	port->hba = hba;
 }
@@ -2761,7 +2758,7 @@ parse_ident_line(TokenizedAuthLine *tok_line, int elevel)
 	Assert(tok_line->fields != NIL);
 	field = list_head(tok_line->fields);
 
-	parsedline = palloc0(sizeof(IdentLine));
+	parsedline = palloc0_object(IdentLine);
 	parsedline->linenumber = line_num;
 
 	/* Get the map token (must exist) */

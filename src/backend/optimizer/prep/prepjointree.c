@@ -741,7 +741,7 @@ pull_up_sublinks_jointree_recurse(PlannerInfo *root, Node *jtnode,
 		 * Make a modifiable copy of join node, but don't bother copying its
 		 * subnodes (yet).
 		 */
-		j = (JoinExpr *) palloc(sizeof(JoinExpr));
+		j = palloc_object(JoinExpr);
 		memcpy(j, jtnode, sizeof(JoinExpr));
 		jtlink = (Node *) j;
 
@@ -1066,13 +1066,15 @@ pull_up_sublinks_qual_recurse(PlannerInfo *root, Node *node,
 /*
  * preprocess_function_rtes
  *		Constant-simplify any FUNCTION RTEs in the FROM clause, and then
- *		attempt to "inline" any that are set-returning functions.
+ *		attempt to "inline" any that can be converted to simple subqueries.
  *
- * If an RTE_FUNCTION rtable entry invokes a set-returning function that
+ * If an RTE_FUNCTION rtable entry invokes a set-returning SQL function that
  * contains just a simple SELECT, we can convert the rtable entry to an
- * RTE_SUBQUERY entry exposing the SELECT directly.  This is especially
- * useful if the subquery can then be "pulled up" for further optimization,
- * but we do it even if not, to reduce executor overhead.
+ * RTE_SUBQUERY entry exposing the SELECT directly.  Other sorts of functions
+ * are also inline-able if they have a support function that can generate
+ * the replacement sub-Query.  This is especially useful if the subquery can
+ * then be "pulled up" for further optimization, but we do it even if not,
+ * to reduce executor overhead.
  *
  * This has to be done before we have started to do any optimization of
  * subqueries, else any such steps wouldn't get applied to subqueries
@@ -1107,7 +1109,7 @@ preprocess_function_rtes(PlannerInfo *root)
 				eval_const_expressions(root, (Node *) rte->functions);
 
 			/* Check safety of expansion, and expand if possible */
-			funcquery = inline_set_returning_function(root, rte);
+			funcquery = inline_function_in_from(root, rte);
 			if (funcquery)
 			{
 				/* Successful expansion, convert the RTE to a subquery */
@@ -3238,8 +3240,7 @@ reduce_outer_joins_pass1(Node *jtnode)
 {
 	reduce_outer_joins_pass1_state *result;
 
-	result = (reduce_outer_joins_pass1_state *)
-		palloc(sizeof(reduce_outer_joins_pass1_state));
+	result = palloc_object(reduce_outer_joins_pass1_state);
 	result->relids = NULL;
 	result->contains_outer = false;
 	result->sub_states = NIL;
@@ -3591,7 +3592,7 @@ report_reduced_full_join(reduce_outer_joins_pass2_state *state2,
 {
 	reduce_outer_joins_partial_state *statep;
 
-	statep = palloc(sizeof(reduce_outer_joins_partial_state));
+	statep = palloc_object(reduce_outer_joins_partial_state);
 	statep->full_join_rti = rtindex;
 	statep->unreduced_side = relids;
 	state2->partial_reduced = lappend(state2->partial_reduced, statep);

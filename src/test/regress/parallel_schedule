@@ -28,7 +28,7 @@ test: strings md5 numerology point lseg line box path polygon circle date time t
 # geometry depends on point, lseg, line, box, path, polygon, circle
 # horology depends on date, time, timetz, timestamp, timestamptz, interval
 # ----------
-test: geometry horology tstypes regex type_sanity opr_sanity misc_sanity comments expressions unicode xid mvcc database stats_import
+test: geometry horology tstypes regex type_sanity opr_sanity misc_sanity comments expressions unicode xid mvcc database stats_import pg_ndistinct pg_dependencies
 
 # ----------
 # Load huge amounts of data
@@ -76,7 +76,7 @@ test: brin_bloom brin_multi
 # ----------
 # Another group of parallel tests
 # ----------
-test: create_table_like alter_generic alter_operator misc async dbsize merge misc_functions sysviews tsrf tid tidscan tidrangescan collate.utf8 collate.icu.utf8 incremental_sort create_role without_overlaps generated_virtual
+test: create_table_like alter_generic alter_operator misc async dbsize merge misc_functions nls sysviews tsrf tid tidscan tidrangescan collate.utf8 collate.icu.utf8 incremental_sort create_role without_overlaps generated_virtual
 
 # collate.linux.utf8 and collate.icu.utf8 tests cannot be run in parallel with each other
 # psql depends on create_am
@@ -123,7 +123,7 @@ test: plancache limit plpgsql copy2 temp domain rangefuncs prepare conversion tr
 # The stats test resets stats, so nothing else needing stats access can be in
 # this group.
 # ----------
-test: partition_join partition_prune reloptions hash_part indexing partition_aggregate partition_info tuplesort explain compression compression_lz4 memoize stats predicate numa eager_aggregate
+test: partition_merge partition_split partition_join partition_prune reloptions hash_part indexing partition_aggregate partition_info tuplesort explain compression compression_lz4 memoize stats predicate numa eager_aggregate
 
 # event_trigger depends on create_am and cannot run concurrently with
 # any test that runs DDL
