@@ -159,7 +159,7 @@ test: emptystring_to_null
 
 test: ora_package
 
-test: ora_force_view
+test: ora_force_view ora_read_only_view
 
 # ----------
 # Oracle ROWNUM pseudocolumn

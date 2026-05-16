@@ -7319,6 +7319,7 @@ getTables(Archive *fout, int *numTables)
 	int			i_toastminmxid;
 	int			i_reloptions;
 	int			i_checkoption;
+	int			i_read_only_view;
 	int			i_toastreloptions;
 	int			i_reloftype;
 	int			i_foreignserver;
@@ -7439,12 +7440,17 @@ getTables(Archive *fout, int *numTables)
 
 	if (fout->remoteVersion >= 90300)
 		appendPQExpBufferStr(query,
-							 "array_remove(array_remove(c.reloptions,'check_option=local'),'check_option=cascaded') AS reloptions, "
+							 "array_remove(array_remove("
+							 "  ARRAY(SELECT opt FROM unnest(c.reloptions) opt WHERE opt !~ '^read_only='),"
+							 "  'check_option=local'), 'check_option=cascaded') AS reloptions, "
 							 "CASE WHEN 'check_option=local' = ANY (c.reloptions) THEN 'LOCAL'::text "
-							 "WHEN 'check_option=cascaded' = ANY (c.reloptions) THEN 'CASCADED'::text ELSE NULL END AS checkoption, ");
+							 "WHEN 'check_option=cascaded' = ANY (c.reloptions) THEN 'CASCADED'::text ELSE NULL END AS checkoption, "
+							 "coalesce((SELECT option_value::boolean"
+							 "  FROM pg_catalog.pg_options_to_table(c.reloptions)"
+							 "  WHERE option_name = 'read_only'), false) AS read_only_view, ");
 	else
 		appendPQExpBufferStr(query,
-							 "c.reloptions, NULL AS checkoption, ");
+							 "c.reloptions, NULL AS checkoption, false AS read_only_view, ");
 
 	if (fout->remoteVersion >= 90600)
 		appendPQExpBufferStr(query,
@@ -7570,6 +7576,7 @@ getTables(Archive *fout, int *numTables)
 	i_toastminmxid = PQfnumber(res, "tminmxid");
 	i_reloptions = PQfnumber(res, "reloptions");
 	i_checkoption = PQfnumber(res, "checkoption");
+	i_read_only_view = PQfnumber(res, "read_only_view");
 	i_toastreloptions = PQfnumber(res, "toast_reloptions");
 	i_reloftype = PQfnumber(res, "reloftype");
 	i_foreignserver = PQfnumber(res, "foreignserver");
@@ -7652,6 +7659,8 @@ getTables(Archive *fout, int *numTables)
 			tblinfo[i].checkoption = NULL;
 		else
 			tblinfo[i].checkoption = pg_strdup(PQgetvalue(res, i, i_checkoption));
+		tblinfo[i].readOnly = (i_read_only_view >= 0 &&
+							   strcmp(PQgetvalue(res, i, i_read_only_view), "t") == 0);
 		tblinfo[i].toast_reloptions = pg_strdup(PQgetvalue(res, i, i_toastreloptions));
 		tblinfo[i].reloftype = atooid(PQgetvalue(res, i, i_reloftype));
 		tblinfo[i].foreign_server = atooid(PQgetvalue(res, i, i_foreignserver));
@@ -17435,6 +17444,8 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 
 		if (tbinfo->checkoption != NULL && !tbinfo->dummy_view)
 			appendPQExpBuffer(q, "\n  WITH %s CHECK OPTION", tbinfo->checkoption);
+		if (tbinfo->readOnly && !tbinfo->dummy_view)
+			appendPQExpBufferStr(q, "\n  WITH READ ONLY");
 		appendPQExpBufferStr(q, ";\n");
 	}
 	else
@@ -19923,6 +19934,8 @@ dumpRule(Archive *fout, const RuleInfo *rinfo)
 		if (tbinfo->checkoption != NULL)
 			appendPQExpBuffer(cmd, "\n  WITH %s CHECK OPTION",
 							  tbinfo->checkoption);
+		if (tbinfo->readOnly)
+			appendPQExpBufferStr(cmd, "\n  WITH READ ONLY");
 		appendPQExpBufferStr(cmd, ";\n");
 	}
 	else

@@ -1097,6 +1097,18 @@ CheckValidResultRel(ResultRelInfo *resultRelInfo, CmdType operation,
 		case RELKIND_VIEW:
 
 			/*
+			 * If the view is defined WITH READ ONLY, reject DML even if an
+			 * INSTEAD OF trigger is defined.  This covers views that bypass
+			 * the rewriter auto-update path.
+			 */
+			if (RelationIsReadOnlyView(resultRel))
+				ereport(ERROR,
+						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+						 errmsg("cannot modify view \"%s\"",
+								RelationGetRelationName(resultRel)),
+						 errhint("The view is defined as read-only.")));
+
+			/*
 			 * Okay only if there's a suitable INSTEAD OF trigger.  Otherwise,
 			 * complain, but omit errdetail because we haven't got the
 			 * information handy (and given that it really shouldn't happen,

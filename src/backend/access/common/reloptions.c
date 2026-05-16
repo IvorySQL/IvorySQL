@@ -149,6 +149,15 @@ static relopt_bool boolRelOpts[] =
 	},
 	{
 		{
+			"read_only",
+			"Prevents INSERT, UPDATE, and DELETE on this view (Oracle compatibility)",
+			RELOPT_KIND_VIEW,
+			AccessExclusiveLock
+		},
+		false
+	},
+	{
+		{
 			"vacuum_truncate",
 			"Enables vacuum to truncate empty pages at the end of this table",
 			RELOPT_KIND_HEAP | RELOPT_KIND_TOAST,
@@ -2053,7 +2062,9 @@ view_reloptions(Datum reloptions, bool validate)
 		{"security_invoker", RELOPT_TYPE_BOOL,
 		offsetof(ViewOptions, security_invoker)},
 		{"check_option", RELOPT_TYPE_ENUM,
-		offsetof(ViewOptions, check_option)}
+		offsetof(ViewOptions, check_option)},
+		{"read_only", RELOPT_TYPE_BOOL,
+		offsetof(ViewOptions, read_only)},
 	};
 
 	return (bytea *) build_reloptions(reloptions, validate,

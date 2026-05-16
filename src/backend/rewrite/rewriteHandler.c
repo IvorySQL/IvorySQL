@@ -3369,6 +3369,17 @@ rewriteTargetView(Query *parsetree, Relation view)
 						RelationGetRelationName(view))));
 
 	/*
+	 * If the view is defined WITH READ ONLY, reject all DML unconditionally.
+	 * This check covers views that are auto-updatable (no INSTEAD OF triggers).
+	 */
+	if (RelationIsReadOnlyView(view))
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("cannot modify view \"%s\"",
+						RelationGetRelationName(view)),
+				 errhint("The view is defined as read-only.")));
+
+	/*
 	 * The view must be updatable, else fail.
 	 *
 	 * If we are doing INSERT/UPDATE (or MERGE containing INSERT/UPDATE), we
