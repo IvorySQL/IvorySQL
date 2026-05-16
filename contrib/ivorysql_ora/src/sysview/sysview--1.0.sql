@@ -1387,3 +1387,173 @@ WHERE cl.relkind = 'r'
   AND n.nspname NOT IN ('pg_catalog', 'information_schema');
 
 GRANT SELECT ON sys.dba_cons_columns TO PUBLIC;
+
+-- ALL_TAB_COLUMNS
+CREATE OR REPLACE VIEW SYS.ALL_TAB_COLUMNS AS
+SELECT
+  sys.ora_case_trans(pg_namespace.nspname::varchar2)::varchar2(128) AS owner,
+  sys.ora_case_trans(pg_class.relname::varchar2)::varchar2(128) AS table_name,
+  sys.ora_case_trans(pg_attribute.attname::varchar2)::varchar2(128) AS column_name,
+  ROW_NUMBER() OVER (
+    PARTITION BY pg_class.oid
+    ORDER BY pg_attribute.attnum
+  )::numeric AS column_id,
+
+  CASE
+    WHEN pg_type.typname IN ('int2', 'int4', 'int8') THEN 'NUMBER'
+    WHEN pg_type.typname IN ('float4', 'float8') THEN 'FLOAT'
+    WHEN pg_type.typname = 'numeric' THEN 'NUMBER'
+    WHEN pg_type.typname IN ('varchar', 'oravarcharbyte') THEN 'VARCHAR2'
+    WHEN pg_type.typname IN ('bpchar', 'oracharbyte') THEN 'CHAR'
+    WHEN pg_type.typname IN ('text', 'clob') THEN 'CLOB'
+    WHEN pg_type.typname IN ('bytea', 'blob') THEN 'BLOB'
+    WHEN pg_type.typname IN ('date', 'oradate') THEN 'DATE'
+    WHEN pg_type.typname IN ('timestamp', 'timestamptz', 'oratimestamp', 'oratimestamptz') THEN 'TIMESTAMP'
+    WHEN pg_type.typname = 'raw' THEN 'RAW'
+    WHEN pg_type.typname = 'rowid' THEN 'ROWID'
+    ELSE sys.ora_case_trans(pg_type.typname::varchar2)::varchar2(128)
+  END::varchar2(128) AS data_type,
+
+  NULL::varchar2(3) AS data_type_mod,
+
+  CASE
+    WHEN pg_type.typnamespace NOT IN ('pg_catalog'::regnamespace, 'sys'::regnamespace)
+    THEN sys.ora_case_trans(pg_get_userbyid(pg_type.typowner)::varchar2)::varchar2(128)
+    ELSE NULL
+  END AS data_type_owner,
+
+  CASE
+    WHEN pg_type.typnamespace = 'SYS'::regnamespace AND pg_type.typname = 'number' THEN 22
+    WHEN pg_type.typnamespace = 'SYS'::regnamespace AND pg_type.typname = 'oradate' THEN 7
+    WHEN pg_type.typnamespace = 'SYS'::regnamespace AND pg_type.typname = 'oratimestamp' THEN
+      CASE WHEN pg_attribute.atttypmod = 0 THEN 7 ELSE 11 END
+    WHEN pg_type.typnamespace = 'SYS'::regnamespace AND pg_type.typname = 'oratimestamptz' THEN 13
+    WHEN pg_type.typnamespace = 'SYS'::regnamespace AND pg_type.typname = 'oratimestampltz' THEN 11
+    WHEN pg_type.typname = 'binary_float' THEN 4
+    WHEN pg_type.typname = 'binary_double' THEN 8
+    WHEN pg_type.typname IN ('oravarcharbyte','oracharbyte','raw') AND pg_attribute.atttypmod > 4
+      THEN pg_attribute.atttypmod - 4
+    WHEN pg_type.typname IN ('oravarcharchar','oracharchar','varchar','bpchar') AND pg_attribute.atttypmod > 4
+      THEN (pg_attribute.atttypmod - 4) * pg_catalog.pg_encoding_max_length(
+            (SELECT d.encoding FROM pg_catalog.pg_database d WHERE d.datname = current_database()))
+    WHEN pg_type.typname IN ('clob','blob') THEN 4000
+    WHEN pg_type.typname = 'rowid' THEN 10
+    WHEN pg_attribute.atttypid = 'PG_CATALOG.INT2'::regtype THEN 2
+    WHEN pg_attribute.atttypid = 'PG_CATALOG.INT4'::regtype THEN 4
+    WHEN pg_attribute.atttypid = 'PG_CATALOG.INT8'::regtype THEN 8
+    WHEN pg_attribute.atttypid = 'PG_CATALOG.FLOAT4'::regtype THEN 4
+    WHEN pg_attribute.atttypid = 'PG_CATALOG.FLOAT8'::regtype THEN 8
+    WHEN pg_attribute.atttypid = 'PG_CATALOG.NUMERIC'::regtype THEN 22
+    WHEN pg_type.typname IN ('text','xml','json','jsonb') THEN 4000
+    WHEN pg_attribute.attlen > 0 THEN pg_attribute.attlen
+    ELSE 0
+  END::numeric AS data_length,
+
+  CASE
+    WHEN pg_type.typname IN ('number','numeric') AND pg_attribute.atttypmod > 4
+      THEN nullif(((pg_attribute.atttypmod - 4) >> 16) & 65535, 0)
+    WHEN pg_type.typname = 'int2' THEN 5
+    WHEN pg_type.typname = 'int4' THEN 10
+    WHEN pg_type.typname = 'int8' THEN 19
+    WHEN pg_type.typname IN ('float4','binary_float') THEN 63
+    WHEN pg_type.typname IN ('float8','binary_double') THEN 126
+    ELSE NULL
+  END::numeric AS data_precision,
+
+  CASE
+    WHEN pg_type.typname IN ('number','numeric') AND pg_attribute.atttypmod > 4
+      THEN (((pg_attribute.atttypmod - 4) & 2047) # 1024) - 1024
+    WHEN pg_type.typname IN ('int2','int4','int8') THEN 0
+    ELSE NULL
+  END::numeric AS data_scale,
+
+  CASE WHEN pg_attribute.attnotnull THEN 'N' ELSE 'Y' END::varchar2(1) AS nullable,
+  def.adbin_text::varchar2(4000) AS data_default,
+  NULL::numeric AS num_distinct,
+  NULL::raw AS low_value,
+  NULL::raw AS high_value,
+  NULL::numeric AS density,
+
+  CASE WHEN pg_class.reltuples >= 0
+    THEN (pg_stats.null_frac * pg_class.reltuples)::numeric
+    ELSE NULL
+  END AS num_nulls,
+
+  NULL::numeric AS num_buckets,
+  pg_stat_get_last_analyze_time(pg_class.oid) AS last_analyzed,
+  NULL::numeric AS sample_size,
+
+  CASE
+    WHEN pg_type.typname IN (
+      'bpchar', 'varchar', 'text', 'clob',
+      'oracharbyte', 'oravarcharbyte',
+      'oracharchar', 'oravarcharchar'
+    ) THEN 'CHAR_CS'
+    ELSE NULL
+  END::varchar2(44) AS character_set_name,
+
+  CASE
+    WHEN pg_type.typname IN ('oracharbyte','oravarcharbyte','raw') AND pg_attribute.atttypmod > 4
+      THEN pg_attribute.atttypmod - 4
+    WHEN pg_type.typname IN ('oracharchar','oravarcharchar','bpchar','varchar') AND pg_attribute.atttypmod > 4
+      THEN pg_attribute.atttypmod - 4 
+    ELSE NULL
+  END::numeric AS char_col_decl_length,
+
+  'YES'::varchar2(3) AS global_stats,
+  'NO'::varchar2(3) AS user_stats,
+
+  pg_stats.avg_width::numeric AS avg_col_len,
+
+  CASE
+    WHEN pg_type.typname IN ('bpchar','varchar','oracharchar','oracharbyte','oravarcharchar','oravarcharbyte')
+         AND pg_attribute.atttypmod > 4
+      THEN pg_attribute.atttypmod - 4
+    ELSE NULL
+  END::numeric AS char_length,
+
+  CASE
+    WHEN pg_type.typname IN ('oravarcharbyte','oracharbyte') THEN 'B'
+    WHEN pg_type.typname IN ('oravarcharchar','oracharchar') THEN 'C'
+    ELSE NULL
+  END::varchar2(1) AS char_used,
+
+  'NO'::varchar2(10) AS v80_fmt_image,
+  'NO'::varchar2(10) AS data_upgraded,
+  NULL::varchar2(10) AS histogram,
+
+  def.adbin_blen::numeric AS default_length,
+  NULL::varchar2(128) AS collation,
+
+  CASE WHEN pg_attribute.attidentity <> '' THEN 'YES' ELSE 'NO' END::varchar2(10) AS identity_column,
+  'NO'::varchar2(3) AS default_on_null
+
+FROM pg_class
+JOIN pg_namespace ON pg_class.relnamespace = pg_namespace.oid
+JOIN pg_attribute ON pg_class.oid = pg_attribute.attrelid
+JOIN pg_type ON pg_type.oid = pg_attribute.atttypid
+
+LEFT JOIN pg_stats ON
+  pg_stats.schemaname = pg_namespace.nspname
+  AND pg_stats.tablename = pg_class.relname
+  AND pg_stats.attname = pg_attribute.attname
+
+LEFT JOIN LATERAL (
+  SELECT
+    pg_get_expr(adbin, adrelid) AS adbin_text,
+    octet_length(pg_get_expr(adbin, adrelid)) AS adbin_blen
+  FROM pg_attrdef
+  WHERE adrelid = pg_attribute.attrelid
+    AND adnum = pg_attribute.attnum
+) def ON true
+
+WHERE
+  pg_class.relkind IN ('r','v','m','p','f')
+  AND pg_attribute.attnum > 0
+  AND NOT pg_attribute.attisdropped
+  AND pg_namespace.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+  AND has_table_privilege(current_user, pg_class.oid,
+       'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+  AND NOT pg_class.relispartition;
+
+GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
