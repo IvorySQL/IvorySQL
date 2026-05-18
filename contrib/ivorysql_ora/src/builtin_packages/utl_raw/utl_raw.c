@@ -30,24 +30,17 @@ PG_FUNCTION_INFO_V1(ora_utl_raw_cast_to_raw);
 Datum
 ora_utl_raw_cast_to_raw(PG_FUNCTION_ARGS)
 {
-	text	   *input;
-	char	   *data;
-	int			datalen;
+	text	   *input = PG_GETARG_TEXT_PP(0);
+	char	   *data = VARDATA_ANY(input);
+	Size		datalen = VARSIZE_ANY_EXHDR(input);
 	text	   *result;
 	char	   *out;
 	static const char hex[] = "0123456789ABCDEF";
 
-	if (PG_ARGISNULL(0))
-		PG_RETURN_NULL();
-
-	input = PG_GETARG_TEXT_PP(0);
-	data = VARDATA_ANY(input);
-	datalen = VARSIZE_ANY_EXHDR(input);
-
 	result = palloc(VARHDRSZ + datalen * 2);
 	out = VARDATA(result);
 
-	for (int i = 0; i < datalen; i++)
+	for (Size i = 0; i < datalen; i++)
 	{
 		unsigned char b = (unsigned char) data[i];
 		*out++ = hex[b >> 4];
