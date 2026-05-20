@@ -8882,16 +8882,19 @@ index_elem: ColId index_elem_options
 				{
 					$$ = $2;
 					$$->name = $1;
+					$$->location = @1;
 				}
 			| func_expr_windowless index_elem_options
 				{
 					$$ = $2;
 					$$->expr = $1;
+					$$->location = @1;
 				}
 			| '(' a_expr ')' index_elem_options
 				{
 					$$ = $4;
 					$$->expr = $2;
+					$$->location = @1;
 				}
 		;
 
