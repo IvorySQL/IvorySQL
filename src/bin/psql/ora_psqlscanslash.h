@@ -4,7 +4,7 @@
  * Authored by lanke@highgo.com, 20220705.
  *
  * Copyright:
- * Copyright (c) 2000-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
  * src/bin/psql/ora_psqlscanslash.h
