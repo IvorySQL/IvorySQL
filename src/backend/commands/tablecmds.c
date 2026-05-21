@@ -1408,7 +1408,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 
 		rowid_index->indexParams = lappend(rowid_index->indexParams, iparam);
 
-		DefineIndex(relationId,
+		DefineIndex(NULL, relationId,
 					rowid_index,
 					InvalidOid,
 					InvalidOid,

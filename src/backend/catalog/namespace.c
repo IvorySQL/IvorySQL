@@ -1344,8 +1344,9 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 		int		   *argnumbers = NULL;
 		FuncCandidateList newResult;
 
-		*fgc_flags |= FGC_NAME_EXISTS;	/* the name is present in pg_proc */
 		char		**argtypenames = NULL;
+
+		*fgc_flags |= FGC_NAME_EXISTS;	/* the name is present in pg_proc */
 
 		if (OidIsValid(namespaceId))
 		{
