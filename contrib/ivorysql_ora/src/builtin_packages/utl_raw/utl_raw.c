@@ -20,33 +20,8 @@
  *
  *-------------------------------------------------------------------------
  */
-#include "postgres.h"
-#include "fmgr.h"
-#include "varatt.h"
-#include "utils/builtins.h"
 
-PG_FUNCTION_INFO_V1(ora_utl_raw_cast_to_raw);
-
-Datum
-ora_utl_raw_cast_to_raw(PG_FUNCTION_ARGS)
-{
-	text	   *input = PG_GETARG_TEXT_PP(0);
-	char	   *data = VARDATA_ANY(input);
-	Size		datalen = VARSIZE_ANY_EXHDR(input);
-	text	   *result;
-	char	   *out;
-	static const char hex[] = "0123456789ABCDEF";
-
-	result = palloc(VARHDRSZ + datalen * 2);
-	out = VARDATA(result);
-
-	for (Size i = 0; i < datalen; i++)
-	{
-		unsigned char b = (unsigned char) data[i];
-		*out++ = hex[b >> 4];
-		*out++ = hex[b & 0x0F];
-	}
-
-	SET_VARSIZE(result, VARHDRSZ + datalen * 2);
-	PG_RETURN_TEXT_P(result);
-}
+/*
+ * No C functions needed. All UTL_RAW functions are implemented in PL/iSQL
+ * using built-in type casts. See utl_raw--1.0.sql.
+ */

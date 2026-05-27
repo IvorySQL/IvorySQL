@@ -1,15 +1,15 @@
 -- Test UTL_RAW package
 -- Basic CAST_TO_RAW: verify bytes are preserved
 SELECT UTL_RAW.CAST_TO_RAW('hello');
- cast_to_raw 
--------------
- 68656C6C6F
+ cast_to_raw  
+--------------
+ \x68656c6c6f
 (1 row)
 
 SELECT UTL_RAW.CAST_TO_RAW('ABC');
  cast_to_raw 
 -------------
- 414243
+ \x414243
 (1 row)
 
 -- NULL input returns NULL
@@ -28,16 +28,16 @@ SELECT UTL_RAW.CAST_TO_RAW('');
 
 -- Multi-byte characters (Chinese)
 SELECT UTL_RAW.CAST_TO_RAW('你好');
- cast_to_raw  
---------------
- E4BDA0E5A5BD
+  cast_to_raw   
+----------------
+ \xe4bda0e5a5bd
 (1 row)
 
 -- Mixed Chinese and ASCII characters
 SELECT UTL_RAW.CAST_TO_RAW('你好ABC世界');
-          cast_to_raw           
---------------------------------
- E4BDA0E5A5BD414243E4B896E7958C
+           cast_to_raw            
+----------------------------------
+ \xe4bda0e5a5bd414243e4b896e7958c
 (1 row)
 
 -- Package constants
@@ -47,14 +47,14 @@ LINE 1: SELECT UTL_RAW.big_endian;
                ^
 -- Special characters
 SELECT UTL_RAW.CAST_TO_RAW('a b c');
- cast_to_raw 
--------------
- 6120622063
+ cast_to_raw  
+--------------
+ \x6120622063
 (1 row)
 
 SELECT UTL_RAW.CAST_TO_RAW('\n');
  cast_to_raw 
 -------------
- 5C6E
+ \x5c6e
 (1 row)
 

@@ -31,8 +31,7 @@ OBJS = \
 	src/sysview/sysview_functions.o \
 	src/xml_functions/ora_xml_functions.o \
 	src/builtin_packages/dbms_utility/dbms_utility.o \
-	src/builtin_packages/dbms_lock/dbms_lock.o \
-	src/builtin_packages/utl_raw/utl_raw.o	
+	src/builtin_packages/dbms_lock/dbms_lock.o
 
 EXTENSION = ivorysql_ora
 
