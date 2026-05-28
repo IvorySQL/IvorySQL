@@ -18,6 +18,8 @@ tests += {
       't/007_catcache_inval.pl',
       't/008_replslot_single_user.pl',
       't/009_log_temp_files.pl',
+      't/010_index_concurrently_upsert.pl',
     ],
+    'runningcheck': false,
   },
 }
