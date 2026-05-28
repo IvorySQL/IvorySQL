@@ -2597,7 +2597,7 @@ apply_concurrent_changes(BufFile *file, ChangeContext *chgcxt)
 			/* Find the tuple to be deleted */
 			found = find_target_tuple(rel, chgcxt, spilled_tuple, ondisk_tuple);
 			if (!found)
-				elog(ERROR, "failed to find target tuple");
+				elog(ERROR, "could not find target tuple");
 			apply_concurrent_delete(rel, ondisk_tuple);
 		}
 		else if (kind == CHANGE_UPDATE_NEW)
@@ -2613,7 +2613,7 @@ apply_concurrent_changes(BufFile *file, ChangeContext *chgcxt)
 			/* Find the tuple to be updated or deleted. */
 			found = find_target_tuple(rel, chgcxt, key, ondisk_tuple);
 			if (!found)
-				elog(ERROR, "failed to find target tuple");
+				elog(ERROR, "could not find target tuple");
 
 			/*
 			 * If 'tup' contains TOAST pointers, they point to the old
@@ -2690,7 +2690,9 @@ apply_concurrent_update(Relation rel, TupleTableSlot *spilled_tuple,
 							 &tmfd, &lockmode, &update_indexes);
 	if (res != TM_Ok)
 		ereport(ERROR,
-				errmsg("failed to apply concurrent UPDATE"));
+				errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
+				errmsg("could not apply concurrent %s on relation \"%s\"",
+					   "UPDATE", RelationGetRelationName(rel)));
 
 	if (update_indexes != TU_None)
 	{
@@ -2726,7 +2728,9 @@ apply_concurrent_delete(Relation rel, TupleTableSlot *slot)
 
 	if (res != TM_Ok)
 		ereport(ERROR,
-				errmsg("failed to apply concurrent DELETE"));
+				errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
+				errmsg("could not apply concurrent %s on relation \"%s\"",
+					   "DELETE", RelationGetRelationName(rel)));
 
 	pgstat_progress_incr_param(PROGRESS_REPACK_HEAP_TUPLES_DELETED, 1);
 }
@@ -3021,7 +3025,7 @@ initialize_change_context(ChangeContext *chgcxt,
 		}
 	}
 	if (chgcxt->cc_ident_index == NULL)
-		elog(ERROR, "failed to find identity index");
+		elog(ERROR, "could not find identity index");
 
 	/* Set up for scanning said identity index */
 	{
