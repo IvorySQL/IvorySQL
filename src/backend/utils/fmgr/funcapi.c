@@ -1839,6 +1839,21 @@ get_internal_function_result_type(FuncExpr *fexpr,
 								  Oid *resultTypeId,
 								  TupleDesc *resultTupleDesc)
 {
+	/*
+	 * WITH-clause inline functions are scalar-only by design (the lookup hook
+	 * forces retset = false).  This function is reached when a FuncExpr is
+	 * used in a context that needs to inspect a composite/SRF result type —
+	 * typical examples are FROM-clause table function references or SELECT
+	 * list SRF calls.  Reject with a clear message rather than letting the
+	 * call fall through to the PL/iSQL subproc machinery, which would surface
+	 * the confusing internal error "parent_func has not set".
+	 */
+	if (fexpr->function_from == FUNC_FROM_WITH_CLAUSE)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("WITH clause function cannot be used as a table or set-returning function"),
+				 errhint("WITH FUNCTION/PROCEDURE definitions can only be invoked from scalar expression contexts.")));
+
 	plisql_internel_funcs_init();
 
 	if (FUNC_EXPR_FROM_PACKAGE(fexpr->function_from))

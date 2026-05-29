@@ -635,6 +635,8 @@ static void determineLanguage(List *options);
 %type <node>	func_application func_expr_common_subexpr exec_func_application
 %type <node>	func_expr func_expr_windowless
 %type <node>	common_table_expr
+%type <node>	plsql_declaration
+%type <list>	plsql_declarations
 %type <with>	with_clause opt_with_clause
 %type <list>	cte_list
 
@@ -981,6 +983,19 @@ static void determineLanguage(List *options);
  * left-associativity among the JOIN rules themselves.
  */
 %left		JOIN CROSS LEFT FULL RIGHT INNER_P NATURAL
+/*
+ * Precedences used to resolve the shift/reduce conflicts that arise from
+ * "WITH plsql_declarations" when followed by an unreserved DML keyword
+ * (DELETE_P, INSERT, UPDATE, MERGE) that could be either a CTE name or
+ * the start of the main DML statement.
+ *
+ * We declare the DML keywords at a lower precedence level and PLSQL_DEFS_END
+ * at a higher level.  The rule "WITH plsql_declarations %prec PLSQL_DEFS_END"
+ * then wins the conflict via reduce (rule prec > token prec), so the DML
+ * keyword is treated as the main statement, not a CTE name.
+ */
+%nonassoc	DELETE_P INSERT UPDATE MERGE
+%nonassoc	PLSQL_DEFS_END
 
 %%
 
@@ -14377,6 +14392,9 @@ simple_select:
  *		AS (query) [ SEARCH or CYCLE clause ]
  *
  * Recognizing WITH_LA here allows a CTE to be named TIME or ORDINALITY.
+ *
+ * Oracle extension: WITH clause may begin with PL/SQL function/procedure
+ * declarations before the CTE list (ORA_PARSER mode only).
  */
 with_clause:
 		WITH cte_list
@@ -14399,6 +14417,85 @@ with_clause:
 				$$->ctes = $3;
 				$$->recursive = true;
 				$$->location = @1;
+			}
+		/* Oracle-compatible: WITH plsql_declarations cte_list */
+		| WITH plsql_declarations cte_list
+			{
+				$$ = makeNode(WithClause);
+				$$->plsql_defs = $2;
+				$$->ctes = $3;
+				$$->recursive = false;
+				$$->location = @1;
+			}
+		/* Oracle-compatible: WITH plsql_declarations only (no CTEs).
+		 * %prec PLSQL_DEFS_END forces reduce over shift when the lookahead
+		 * is an unreserved DML keyword (DELETE/INSERT/UPDATE/MERGE) so that
+		 * the keyword is treated as the main DML statement, not a CTE name. */
+		| WITH plsql_declarations %prec PLSQL_DEFS_END
+			{
+				$$ = makeNode(WithClause);
+				$$->plsql_defs = $2;
+				$$->ctes = NIL;
+				$$->recursive = false;
+				$$->location = @1;
+			}
+		;
+
+/*
+ * plsql_declarations: one or more inline FUNCTION/PROCEDURE definitions.
+ * Each definition ends with a ';' after the captured function body.
+ *
+ * The function/procedure body text (from IS/AS to matching END) is captured
+ * as a single Sconst by the Oracle lexer via the OraBody_FUNC mechanism,
+ * triggered by ora_func_is_or_as.
+ */
+plsql_declarations:
+		plsql_declaration
+			{ $$ = list_make1($1); }
+		| plsql_declarations plsql_declaration
+			{ $$ = lappend($1, $2); }
+		;
+
+plsql_declaration:
+		FUNCTION ora_func_name opt_ora_func_args_with_defaults
+		RETURN func_return
+		ora_func_is_or_as Sconst ';'
+			{
+				InlineFunctionDef *n = makeNode(InlineFunctionDef);
+				/*
+				 * WITH FUNCTION names are local to the statement and have no
+				 * schema, so a qualified name (e.g. schema.func) is invalid.
+				 * Reject explicitly rather than silently dropping qualifiers.
+				 */
+				if (list_length($2) != 1)
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("qualified name is not allowed in WITH FUNCTION declaration"),
+							 parser_errposition(@2)));
+				n->funcname = strVal(linitial($2));
+				n->args = $3;
+				n->rettype = $5;
+				n->is_proc = false;
+				n->src = $7;
+				n->location = @2;
+				$$ = (Node *) n;
+			}
+		| PROCEDURE ora_func_name opt_procedure_args_with_defaults
+		ora_func_is_or_as Sconst ';'
+			{
+				InlineFunctionDef *n = makeNode(InlineFunctionDef);
+				if (list_length($2) != 1)
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("qualified name is not allowed in WITH PROCEDURE declaration"),
+							 parser_errposition(@2)));
+				n->funcname = strVal(linitial($2));
+				n->args = $3;
+				n->rettype = NULL;
+				n->is_proc = true;
+				n->src = $5;
+				n->location = @2;
+				$$ = (Node *) n;
 			}
 		;
 

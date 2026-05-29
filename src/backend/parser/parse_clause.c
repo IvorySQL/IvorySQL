@@ -4071,7 +4071,17 @@ check_funcexpr_outparams(List *funcexprs)
 			if (argmodes == NULL)
 				continue;
 		}
-		else 
+		else if (func->function_from == FUNC_FROM_WITH_CLAUSE)
+		{
+			/*
+			 * WITH-clause inline functions never have OUT/IN OUT parameters:
+			 * transformWithFuncDefs() rejects any such declaration up front,
+			 * matching Oracle's ORA-06572 restriction on SQL-callable
+			 * functions.  There is nothing for this OUT-mode validator to do.
+			 */
+			continue;
+		}
+		else
 		{
 			get_subproc_arg_info(func, &argtypes,
 										&argnames, &argmodes);

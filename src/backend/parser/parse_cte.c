@@ -17,13 +17,16 @@
 #include "catalog/pg_collation.h"
 #include "catalog/pg_type.h"
 #include "nodes/nodeFuncs.h"
+#include "oracle_parser/ora_with_function.h"
 #include "parser/analyze.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_collate.h"
 #include "parser/parse_cte.h"
 #include "parser/parse_expr.h"
 #include "utils/builtins.h"
+#include "utils/guc.h"
 #include "utils/lsyscache.h"
+#include "utils/ora_compatible.h"
 #include "utils/typcache.h"
 
 
@@ -114,6 +117,21 @@ transformWithClause(ParseState *pstate, WithClause *withClause)
 	/* Only one WITH clause per query level */
 	Assert(pstate->p_ctenamespace == NIL);
 	Assert(pstate->p_future_ctes == NIL);
+
+	/*
+	 * Oracle extension: process inline FUNCTION/PROCEDURE declarations that
+	 * precede the CTE list.  This registers their signatures in ParseState
+	 * so that subsequent expression analysis can resolve calls to them.
+	 */
+	if (withClause->plsql_defs != NIL)
+	{
+		if (compatible_db != ORA_PARSER)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("WITH FUNCTION/PROCEDURE is only supported in Oracle compatibility mode"),
+					 errhint("Set ivorysql.compatible_mode = oracle to enable this feature.")));
+		transformWithFuncDefs(pstate, withClause->plsql_defs);
+	}
 
 	/*
 	 * For either type of WITH, there must not be duplicate CTE names in the
