@@ -461,13 +461,13 @@ do_compile(FunctionCallInfo fcinfo,
 								 forValidator,
 								 plisql_error_funcname);
 
-			in_arg_varnos = (int *) palloc(numargs * sizeof(int));
+			in_arg_varnos = palloc_array(int, numargs);
 			if (is_plisql_function)
 				out_arg_variables = (PLiSQL_variable * *) palloc((numargs + 1) * sizeof(PLiSQL_variable *));
 			else
-				out_arg_variables = (PLiSQL_variable * *) palloc(numargs * sizeof(PLiSQL_variable *));
+				out_arg_variables = palloc_array(PLiSQL_variable *, numargs);
 
-			all_arg_varnos = (int *) palloc(numargs * sizeof(int));
+			all_arg_varnos = palloc_array(int, numargs);
 
 			MemoryContextSwitchTo(func_cxt);
 
@@ -1260,7 +1260,8 @@ do_compile(FunctionCallInfo fcinfo,
  * ----------
  */
 PLiSQL_function *
-plisql_compile_inline(char *proc_source, ParamListInfo inparams, bool fromcall)
+plisql_compile_inline(char *proc_source, ParamListInfo inparams, bool fromcall,
+					  Oid initial_rettype, bool initial_is_proc)
 {
 	yyscan_t	scanner;
 	struct compile_error_callback_arg cbarg;
@@ -1292,7 +1293,7 @@ plisql_compile_inline(char *proc_source, ParamListInfo inparams, bool fromcall)
 	plisql_check_syntax = check_function_bodies;
 
 	/* Function struct does not live past current statement */
-	function = (PLiSQL_function *) palloc0(sizeof(PLiSQL_function));
+	function = palloc0_object(PLiSQL_function);
 
 	plisql_curr_compile = function;
 
@@ -1342,15 +1343,33 @@ plisql_compile_inline(char *proc_source, ParamListInfo inparams, bool fromcall)
 	Assert(plisql_curr_global_proper_level == 0);
 	plisql_saved_compile[cur_compile_func_level] = function;
 
-	/* Set up as though in a function returning VOID */
-	function->fn_rettype = VOIDOID;
-	function->fn_retset = false;
-	function->fn_retistuple = false;
-	function->fn_retisdomain = false;
-	function->fn_prokind = PROKIND_FUNCTION;
-	/* a bit of hardwired knowledge about type VOID here */
-	function->fn_retbyval = true;
-	function->fn_rettyplen = sizeof(int32);
+	/* Set return type; WITH-clause functions supply the real type up front */
+	if (initial_is_proc || initial_rettype == InvalidOid ||
+		initial_rettype == VOIDOID)
+	{
+		function->fn_rettype = VOIDOID;
+		function->fn_retset = false;
+		function->fn_retistuple = false;
+		function->fn_retisdomain = false;
+		function->fn_prokind = initial_is_proc ? PROKIND_PROCEDURE : PROKIND_FUNCTION;
+		/* a bit of hardwired knowledge about type VOID here */
+		function->fn_retbyval = true;
+		function->fn_rettyplen = sizeof(int32);
+	}
+	else
+	{
+		int16	typlen;
+		bool	typbyval;
+
+		function->fn_rettype = initial_rettype;
+		function->fn_retset = false;
+		function->fn_prokind = PROKIND_FUNCTION;
+		get_typlenbyval(initial_rettype, &typlen, &typbyval);
+		function->fn_rettyplen = typlen;
+		function->fn_retbyval = typbyval;
+		function->fn_retistuple = (typlen == -2 || type_is_rowtype(initial_rettype));
+		function->fn_retisdomain = (get_typtype(initial_rettype) == TYPTYPE_DOMAIN);
+	}
 
 	/*
 	 * Remember if function is STABLE/IMMUTABLE.  XXX would it be better to
@@ -1421,7 +1440,8 @@ plisql_compile_inline(char *proc_source, ParamListInfo inparams, bool fromcall)
 			function->fn_argvarnos[i] = argvariable->dno;
 		}
 
-		if (inparams->numParams > 0)
+		if (inparams->numParams > 0 &&
+			initial_rettype == VOIDOID && !initial_is_proc)
 			function->fn_prokind = PROKIND_ANONYMOUS_BLOCK;
 	}
 
@@ -1561,7 +1581,7 @@ add_dummy_return(PLiSQL_function * function)
 	{
 		PLiSQL_stmt_block *new;
 
-		new = palloc0(sizeof(PLiSQL_stmt_block));
+		new = palloc0_object(PLiSQL_stmt_block);
 		new->cmd_type = PLISQL_STMT_BLOCK;
 		new->stmtid = ++function->nstatements;
 		new->body = list_make1(function->action);
@@ -1575,7 +1595,7 @@ add_dummy_return(PLiSQL_function * function)
 	{
 		PLiSQL_stmt_return *new;
 
-		new = palloc0(sizeof(PLiSQL_stmt_return));
+		new = palloc0_object(PLiSQL_stmt_return);
 		new->cmd_type = PLISQL_STMT_RETURN;
 		new->stmtid = ++function->nstatements;
 		new->expr = NULL;
@@ -1603,6 +1623,24 @@ plisql_parser_setup(struct ParseState *pstate, PLiSQL_expr * expr)
 	pstate->p_subprocfunc_hook = plisql_subprocfunc_ref;
 	/* no need to use p_coerce_param_hook */
 	pstate->p_ref_hook_state = expr;
+
+	/*
+	 * If we are currently executing a WITH-clause function, expose the WITH
+	 * function entries on this ParseState so that parse_func.c can resolve
+	 * recursive calls (and calls to sibling WITH functions) even though the
+	 * hook slot is occupied by plisql_subprocfunc_ref.
+	 *
+	 * Gate this on the *currently-being-compiled* function actually being a
+	 * WITH-clause inline subprogram.  Without this gate, lexical scope leaks:
+	 * a regular catalog PL/iSQL function called from inside a WITH-clause
+	 * frame would see the WITH-clause names because the globals are still
+	 * set across the nested call.  WITH names must remain local to the SQL
+	 * statement that defines them and to the inline subprograms themselves.
+	 */
+	if (plisql_active_with_func_entries != NIL &&
+		expr != NULL && expr->func != NULL &&
+		expr->func->is_with_clause_func)
+		pstate->p_with_func_list = plisql_active_with_func_entries;
 }
 
 /*
@@ -2767,7 +2805,7 @@ plisql_build_variable(const char *refname, int lineno, PLiSQL_type * dtype,
 				/* Ordinary scalar datatype */
 				PLiSQL_var *var;
 
-				var = palloc0(sizeof(PLiSQL_var));
+				var = palloc0_object(PLiSQL_var);
 				var->dtype = PLISQL_DTYPE_VAR;
 				var->refname = pstrdup(refname);
 				var->lineno = lineno;
@@ -2825,7 +2863,7 @@ plisql_build_record(const char *refname, int lineno,
 {
 	PLiSQL_rec *rec;
 
-	rec = palloc0(sizeof(PLiSQL_rec));
+	rec = palloc0_object(PLiSQL_rec);
 	rec->dtype = PLISQL_DTYPE_REC;
 	rec->refname = pstrdup(refname);
 	rec->lineno = lineno;
@@ -2864,14 +2902,14 @@ build_row_from_vars(PLiSQL_variable * *vars, int numvars)
 	PLiSQL_row *row;
 	int	i;
 
-	row = palloc0(sizeof(PLiSQL_row));
+	row = palloc0_object(PLiSQL_row);
 	row->dtype = PLISQL_DTYPE_ROW;
 	row->refname = "(unnamed row)";
 	row->lineno = -1;
 	row->rowtupdesc = CreateTemplateTupleDesc(numvars);
 	row->nfields = numvars;
-	row->fieldnames = palloc(numvars * sizeof(char *));
-	row->varnos = palloc(numvars * sizeof(int));
+	row->fieldnames = palloc_array(char *, numvars);
+	row->varnos = palloc_array(int, numvars);
 
 	for (i = 0; i < numvars; i++)
 	{
@@ -2952,7 +2990,7 @@ plisql_build_recfield(PLiSQL_rec * rec, const char *fldname)
 	}
 
 	/* nope, so make a new one */
-	recfield = palloc0(sizeof(PLiSQL_recfield));
+	recfield = palloc0_object(PLiSQL_recfield);
 	recfield->dtype = PLISQL_DTYPE_RECFIELD;
 	recfield->fieldname = pstrdup(fldname);
 	recfield->recparentno = rec->dno;
@@ -3015,7 +3053,7 @@ build_datatype(HeapTuple typeTup, int32 typmod,
 				 errmsg("type \"%s\" is only a shell",
 						NameStr(typeStruct->typname))));
 
-	typ = (PLiSQL_type *) palloc(sizeof(PLiSQL_type));
+	typ = palloc_object(PLiSQL_type);
 
 	typ->typname = pstrdup(NameStr(typeStruct->typname));
 	typ->typoid = typeStruct->oid;
@@ -3203,7 +3241,7 @@ plisql_parse_err_condition(char *condname)
 	PLiSQL_exception_var *exc = plisql_lookup_exception(condname);
 	if (exc != NULL)
 	{
-		new = palloc(sizeof(PLiSQL_condition));
+		new = palloc_object(PLiSQL_condition);
 		new->sqlerrstate = exc->sqlcode;
 		new->condname = condname;
 		new->next = NULL;
@@ -3213,7 +3251,7 @@ plisql_parse_err_condition(char *condname)
 	/* Check for OTHERS */
 	if (strcmp(condname, "others") == 0)
 	{
-		new = palloc(sizeof(PLiSQL_condition));
+		new = palloc_object(PLiSQL_condition);
 		new->sqlerrstate = PLISQL_OTHERS;
 		new->condname = condname;
 		new->next = NULL;
@@ -3225,7 +3263,7 @@ plisql_parse_err_condition(char *condname)
 	{
 		if (strcmp(condname, exception_label_map[i].label) == 0)
 		{
-			new = palloc(sizeof(PLiSQL_condition));
+			new = palloc_object(PLiSQL_condition);
 			new->sqlerrstate = exception_label_map[i].sqlerrstate;
 			new->condname = condname;
 			new->next = prev;
@@ -3299,13 +3337,13 @@ plisql_finish_datums(PLiSQL_function * function)
 			function->datums = repalloc(function->datums,
 								sizeof(PLiSQL_datum *) * plisql_nDatums);
 		else
-			function->datums = palloc(sizeof(PLiSQL_datum *) * plisql_nDatums);
+			function->datums = palloc_array(PLiSQL_datum *, plisql_nDatums);
 		function->ndatums = plisql_nDatums;
 	}
 	else
 	{
 		function->ndatums = plisql_nDatums;
-		function->datums = palloc(sizeof(PLiSQL_datum *) * plisql_nDatums);
+		function->datums = palloc_array(PLiSQL_datum *, plisql_nDatums);
 	}
 	for (i = 0; i < plisql_nDatums; i++)
 	{
@@ -3421,7 +3459,7 @@ plisql_add_initdatums(int **varnos)
 	{
 		if (n > 0)
 		{
-			*varnos = (int *) palloc(sizeof(int) * n);
+			*varnos = palloc_array(int, n);
 
 			n = 0;
 			for (i = datums_last; i < plisql_nDatums; i++)
@@ -3785,7 +3823,7 @@ plisql_compile_inline_internal(char *proc_source)
 	plisql_check_syntax = check_function_bodies;
 
 	/* Function struct does not live passed current statement */
-	function = (PLiSQL_function *) palloc0(sizeof(PLiSQL_function));
+	function = palloc0_object(PLiSQL_function);
 
 	plisql_curr_compile = function;
 

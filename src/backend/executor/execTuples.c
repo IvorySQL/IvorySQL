@@ -2206,6 +2206,7 @@ ExecTypeFromTLInternal(List *targetList, bool hasrowid, bool skipjunk)
 				func->funccollid = chcollationoid;
 			}
 			else if (!FUNC_EXPR_FROM_PG_PROC(func->function_from) &&
+				func->function_from != FUNC_FROM_WITH_CLAUSE &&
 				subproc_should_change_return_type(func, &resulttype, &chtypmod, &chcollationoid))
 			{
 				typoid = resulttype;
@@ -2338,7 +2339,7 @@ TupleDescGetAttInMetadata(TupleDesc tupdesc)
 	int32	   *atttypmods;
 	AttInMetadata *attinmeta;
 
-	attinmeta = (AttInMetadata *) palloc(sizeof(AttInMetadata));
+	attinmeta = palloc_object(AttInMetadata);
 
 	/* "Bless" the tupledesc so that we can make rowtype datums with it */
 	attinmeta->tupdesc = BlessTupleDesc(tupdesc);
@@ -2502,7 +2503,7 @@ begin_tup_output_tupdesc(DestReceiver *dest,
 {
 	TupOutputState *tstate;
 
-	tstate = (TupOutputState *) palloc(sizeof(TupOutputState));
+	tstate = palloc_object(TupOutputState);
 
 	tstate->slot = MakeSingleTupleTableSlot(tupdesc, tts_ops);
 	tstate->dest = dest;

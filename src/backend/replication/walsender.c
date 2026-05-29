@@ -1152,8 +1152,8 @@ parseCreateReplSlotOptions(CreateReplicationSlotCmd *cmd,
 			else
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("unrecognized value for CREATE_REPLICATION_SLOT option \"%s\": \"%s\"",
-								defel->defname, action)));
+						 errmsg("unrecognized value for %s option \"%s\": \"%s\"",
+								"CREATE_REPLICATION_SLOT", defel->defname, action)));
 		}
 		else if (strcmp(defel->defname, "reserve_wal") == 0)
 		{
@@ -1296,6 +1296,13 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 
 			need_full_snapshot = true;
 		}
+
+		/*
+		 * Ensure the logical decoding is enabled before initializing the
+		 * logical decoding context.
+		 */
+		EnsureLogicalDecodingEnabled();
+		Assert(IsLogicalDecodingEnabled());
 
 		ctx = CreateInitDecodingContext(cmd->plugin, NIL, need_full_snapshot,
 										InvalidXLogRecPtr,
@@ -3074,7 +3081,7 @@ InitWalSenderSlot(void)
 
 			SpinLockRelease(&walsnd->mutex);
 			/* don't need the lock anymore */
-			MyWalSnd = (WalSnd *) walsnd;
+			MyWalSnd = walsnd;
 
 			break;
 		}
@@ -3973,7 +3980,7 @@ WalSndGetStateString(WalSndState state)
 static Interval *
 offset_to_interval(TimeOffset offset)
 {
-	Interval   *result = palloc(sizeof(Interval));
+	Interval   *result = palloc_object(Interval);
 
 	result->month = 0;
 	result->day = 0;

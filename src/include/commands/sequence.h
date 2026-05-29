@@ -14,14 +14,10 @@
 #ifndef SEQUENCE_H
 #define SEQUENCE_H
 
-#include "access/xlogreader.h"
 #include "catalog/objectaddress.h"
 #include "fmgr.h"
-#include "lib/stringinfo.h"
 #include "nodes/parsenodes.h"
 #include "parser/parse_node.h"
-#include "storage/relfilelocator.h"
-
 
 typedef struct FormData_pg_sequence_data
 {
@@ -43,20 +39,10 @@ typedef FormData_pg_sequence_data *Form_pg_sequence_data;
 #define SEQ_COL_FIRSTCOL		SEQ_COL_LASTVAL
 #define SEQ_COL_LASTCOL			SEQ_COL_CALLED
 
-/* XLOG stuff */
-#define XLOG_SEQ_LOG			0x00
-
 /* scale and session stuff */
 #define SCALE_FLAG			16
 #define EXTEND_FLAG			2048
 #define SESSION_FLAG			64
-
-
-typedef struct xl_seq_rec
-{
-	RelFileLocator locator;
-	/* SEQUENCE TUPLE DATA FOLLOWS AT THE END */
-} xl_seq_rec;
 
 extern int64 nextval_internal(Oid relid, bool check_permissions);
 extern Datum nextval(PG_FUNCTION_ARGS);
@@ -69,11 +55,6 @@ extern void DeleteSequenceTuple(Oid relid);
 extern void ResetSequence(Oid seq_relid);
 extern void SetSequence(Oid relid, int64 next, bool is_called);
 extern void ResetSequenceCaches(void);
-
-extern void seq_redo(XLogReaderState *record);
-extern void seq_desc(StringInfo buf, XLogReaderState *record);
-extern const char *seq_identify(uint8 info);
-extern void seq_mask(char *page, BlockNumber blkno);
 extern int64 get_sessionid(void);
 
 #endif							/* SEQUENCE_H */

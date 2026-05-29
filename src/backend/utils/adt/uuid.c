@@ -71,7 +71,7 @@ static int	uuid_fast_cmp(Datum x, Datum y, SortSupport ssup);
 static bool uuid_abbrev_abort(int memtupcount, SortSupport ssup);
 static Datum uuid_abbrev_convert(Datum original, SortSupport ssup);
 static inline void uuid_set_version(pg_uuid_t *uuid, unsigned char version);
-static inline int64 get_real_time_ns_ascending();
+static inline int64 get_real_time_ns_ascending(void);
 static pg_uuid_t *generate_uuidv7(uint64 unix_ts_ms, uint32 sub_ms);
 
 Datum
@@ -80,7 +80,7 @@ uuid_in(PG_FUNCTION_ARGS)
 	char	   *uuid_str = PG_GETARG_CSTRING(0);
 	pg_uuid_t  *uuid;
 
-	uuid = (pg_uuid_t *) palloc(sizeof(*uuid));
+	uuid = palloc_object(pg_uuid_t);
 	string_to_uuid(uuid_str, uuid, fcinfo->context);
 	PG_RETURN_UUID_P(uuid);
 }
@@ -288,7 +288,7 @@ uuid_sortsupport(PG_FUNCTION_ARGS)
 
 		oldcontext = MemoryContextSwitchTo(ssup->ssup_cxt);
 
-		uss = palloc(sizeof(uuid_sortsupport_state));
+		uss = palloc_object(uuid_sortsupport_state);
 		uss->input_count = 0;
 		uss->estimating = true;
 		initHyperLogLog(&uss->abbr_card, 10);
@@ -545,7 +545,7 @@ gen_random_uuid(PG_FUNCTION_ARGS)
  * than the previous returned timestamp (on this backend).
  */
 static inline int64
-get_real_time_ns_ascending()
+get_real_time_ns_ascending(void)
 {
 	static int64 previous_ns = 0;
 	int64		ns;

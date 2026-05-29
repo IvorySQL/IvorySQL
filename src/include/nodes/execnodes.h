@@ -647,6 +647,9 @@ typedef struct AsyncRequest
 								 * tuples) */
 } AsyncRequest;
 
+/* Forward declaration for WITH clause function container (defined in ora_with_function.h) */
+struct WithFuncContainer;
+
 /* ----------------
  *	  EState information
  *
@@ -707,6 +710,9 @@ typedef struct EState
 	ParamExecData *es_param_exec_vals;	/* values of internal params */
 
 	QueryEnvironment *es_queryEnv;	/* query environment */
+
+	/* WITH clause inline function container (ORA_PARSER mode only) */
+	struct WithFuncContainer *es_with_func_container;
 
 	/* Other working state: */
 	MemoryContext es_query_cxt; /* per-query context in which EState lives */
@@ -891,7 +897,7 @@ typedef struct TupleHashTableData
 	ExprState  *in_hash_expr;	/* ExprState for hashing input datatype(s) */
 	ExprState  *cur_eq_func;	/* comparator for input vs. table */
 	ExprContext *exprcontext;	/* expression context */
-}			TupleHashTableData;
+} TupleHashTableData;
 
 typedef tuplehash_iterator TupleHashIterator;
 
@@ -1941,6 +1947,7 @@ typedef struct TidScanState
  *		trss_mintid			the lowest TID in the scan range
  *		trss_maxtid			the highest TID in the scan range
  *		trss_inScan			is a scan currently in progress?
+ *		trss_pscanlen		size of parallel heap scan descriptor
  * ----------------
  */
 typedef struct TidRangeScanState
@@ -1950,6 +1957,7 @@ typedef struct TidRangeScanState
 	ItemPointerData trss_mintid;
 	ItemPointerData trss_maxtid;
 	bool		trss_inScan;
+	Size		trss_pscanlen;
 } TidRangeScanState;
 
 /* ----------------

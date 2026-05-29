@@ -223,6 +223,7 @@ struct ParseState
 	List	   *p_ctenamespace; /* current namespace for common table exprs */
 	List	   *p_future_ctes;	/* common table exprs not yet in namespace */
 	CommonTableExpr *p_parent_cte;	/* this query's containing CTE */
+	List	   *p_with_func_list;	/* WITH clause inline funcs (ORA_PARSER only) */
 	Relation	p_target_relation;	/* INSERT/UPDATE/DELETE/MERGE target rel */
 	ParseNamespaceItem *p_target_nsitem;	/* target rel's NSItem, or NULL */
 	ParseNamespaceItem *p_grouping_nsitem;	/* NSItem for grouping, or NULL */

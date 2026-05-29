@@ -1942,7 +1942,7 @@ pg_stat_reset_shared(PG_FUNCTION_ARGS)
 }
 
 /*
- * Reset a statistics for a single object, which may be of current
+ * Reset statistics for a single object, which may be of current
  * database or shared across all databases in the cluster.
  */
 Datum
@@ -2129,7 +2129,7 @@ pg_stat_get_archiver(PG_FUNCTION_ARGS)
 Datum
 pg_stat_get_replication_slot(PG_FUNCTION_ARGS)
 {
-#define PG_STAT_GET_REPLICATION_SLOT_COLS 11
+#define PG_STAT_GET_REPLICATION_SLOT_COLS 13
 	text	   *slotname_text = PG_GETARG_TEXT_P(0);
 	NameData	slotname;
 	TupleDesc	tupdesc;
@@ -2160,7 +2160,11 @@ pg_stat_get_replication_slot(PG_FUNCTION_ARGS)
 					   INT8OID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 10, "total_bytes",
 					   INT8OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 11, "stats_reset",
+	TupleDescInitEntry(tupdesc, (AttrNumber) 11, "slotsync_skip_count",
+					   INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 12, "slotsync_last_skip",
+					   TIMESTAMPTZOID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 13, "stats_reset",
 					   TIMESTAMPTZOID, -1, 0);
 	BlessTupleDesc(tupdesc);
 
@@ -2186,11 +2190,17 @@ pg_stat_get_replication_slot(PG_FUNCTION_ARGS)
 	values[7] = Int64GetDatum(slotent->mem_exceeded_count);
 	values[8] = Int64GetDatum(slotent->total_txns);
 	values[9] = Int64GetDatum(slotent->total_bytes);
+	values[10] = Int64GetDatum(slotent->slotsync_skip_count);
+
+	if (slotent->slotsync_last_skip == 0)
+		nulls[11] = true;
+	else
+		values[11] = TimestampTzGetDatum(slotent->slotsync_last_skip);
 
 	if (slotent->stat_reset_timestamp == 0)
-		nulls[10] = true;
+		nulls[12] = true;
 	else
-		values[10] = TimestampTzGetDatum(slotent->stat_reset_timestamp);
+		values[12] = TimestampTzGetDatum(slotent->stat_reset_timestamp);
 
 	/* Returns the record as Datum */
 	PG_RETURN_DATUM(HeapTupleGetDatum(heap_form_tuple(tupdesc, values, nulls)));

@@ -443,3 +443,192 @@ SELECT * FROM pred_tab2, pred_tab1 WHERE pred_tab1.a IS NULL OR pred_tab1.b < 2;
 RESET constraint_exclusion;
 DROP TABLE pred_tab1;
 DROP TABLE pred_tab2;
+-- Validate that NullTest quals in index expressions and predicate are reduced correctly
+CREATE TABLE pred_tab (a int, b int NOT NULL, c int NOT NULL);
+INSERT INTO pred_tab SELECT i, i, i FROM generate_series(1, 1000) i;
+CREATE INDEX pred_tab_exprs_idx ON pred_tab ((a < 5 AND b IS NOT NULL AND c IS NOT NULL));
+CREATE INDEX pred_tab_pred_idx ON pred_tab (a) WHERE b IS NOT NULL AND c IS NOT NULL;
+ANALYZE pred_tab;
+-- Ensure that index pred_tab_exprs_idx is used
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE (a < 5 AND b IS NOT NULL AND c IS NOT NULL) IS TRUE;
+                   QUERY PLAN                    
+-------------------------------------------------
+ Index Scan using pred_tab_exprs_idx on pred_tab
+   Index Cond: ((a < 5) = true)
+(2 rows)
+
+SELECT * FROM pred_tab WHERE (a < 5 AND b IS NOT NULL AND c IS NOT NULL) IS TRUE;
+ a | b | c 
+---+---+---
+ 1 | 1 | 1
+ 2 | 2 | 2
+ 3 | 3 | 3
+ 4 | 4 | 4
+(4 rows)
+
+-- Ensure that index pred_tab_pred_idx is used
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE a < 3 AND b IS NOT NULL AND c IS NOT NULL;
+                   QUERY PLAN                   
+------------------------------------------------
+ Index Scan using pred_tab_pred_idx on pred_tab
+   Index Cond: (a < 3)
+(2 rows)
+
+SELECT * FROM pred_tab WHERE a < 3 AND b IS NOT NULL AND c IS NOT NULL;
+ a | b | c 
+---+---+---
+ 1 | 1 | 1
+ 2 | 2 | 2
+(2 rows)
+
+DROP TABLE pred_tab;
+--
+-- Test that COALESCE expressions in predicates are simplified using
+-- non-nullable arguments.
+--
+CREATE TABLE pred_tab (a int NOT NULL, b int, c int);
+-- Ensure that constant NULL arguments are dropped
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE COALESCE(NULL, b, NULL, a) > 1;
+           QUERY PLAN           
+--------------------------------
+ Seq Scan on pred_tab
+   Filter: (COALESCE(b, a) > 1)
+(2 rows)
+
+-- Ensure that argument "b*a" is dropped
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE COALESCE(b, a, b*a) > 1;
+           QUERY PLAN           
+--------------------------------
+ Seq Scan on pred_tab
+   Filter: (COALESCE(b, a) > 1)
+(2 rows)
+
+-- Ensure that the entire COALESCE expression is replaced by "a"
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE COALESCE(a, b) > 1;
+      QUERY PLAN      
+----------------------
+ Seq Scan on pred_tab
+   Filter: (a > 1)
+(2 rows)
+
+--
+-- Test detection of non-nullable expressions in predicates
+--
+-- CoalesceExpr
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE COALESCE(b, a) IS NULL;
+          QUERY PLAN          
+------------------------------
+ Result
+   Replaces: Scan on pred_tab
+   One-Time Filter: false
+(3 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE COALESCE(b, c) IS NULL;
+             QUERY PLAN             
+------------------------------------
+ Seq Scan on pred_tab
+   Filter: (COALESCE(b, c) IS NULL)
+(2 rows)
+
+-- MinMaxExpr
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE GREATEST(b, a) IS NULL;
+          QUERY PLAN          
+------------------------------
+ Result
+   Replaces: Scan on pred_tab
+   One-Time Filter: false
+(3 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE GREATEST(b, c) IS NULL;
+             QUERY PLAN             
+------------------------------------
+ Seq Scan on pred_tab
+   Filter: (GREATEST(b, c) IS NULL)
+(2 rows)
+
+-- CaseExpr
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE (CASE WHEN c > 0 THEN a ELSE a END) IS NULL;
+          QUERY PLAN          
+------------------------------
+ Result
+   Replaces: Scan on pred_tab
+   One-Time Filter: false
+(3 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE (CASE WHEN c > 0 THEN b ELSE a END) IS NULL;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Seq Scan on pred_tab
+   Filter: (CASE WHEN (c > 0) THEN b ELSE a END IS NULL)
+(2 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE (CASE WHEN c > 0 THEN a END) IS NULL;
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Seq Scan on pred_tab
+   Filter: (CASE WHEN (c > 0) THEN a ELSE NULL::integer END IS NULL)
+(2 rows)
+
+-- ArrayExpr
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE ARRAY[b] IS NULL;
+          QUERY PLAN          
+------------------------------
+ Result
+   Replaces: Scan on pred_tab
+   One-Time Filter: false
+(3 rows)
+
+-- NullTest
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE (b IS NULL) IS NULL;
+          QUERY PLAN          
+------------------------------
+ Result
+   Replaces: Scan on pred_tab
+   One-Time Filter: false
+(3 rows)
+
+-- BooleanTest
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE ((a > 1) IS TRUE) IS NULL;
+          QUERY PLAN          
+------------------------------
+ Result
+   Replaces: Scan on pred_tab
+   One-Time Filter: false
+(3 rows)
+
+-- DistinctExpr
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE (a IS DISTINCT FROM b) IS NULL;
+          QUERY PLAN          
+------------------------------
+ Result
+   Replaces: Scan on pred_tab
+   One-Time Filter: false
+(3 rows)
+
+-- RelabelType
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE (a::oid) IS NULL;
+          QUERY PLAN          
+------------------------------
+ Result
+   Replaces: Scan on pred_tab
+   One-Time Filter: false
+(3 rows)
+
+DROP TABLE pred_tab;

@@ -3660,9 +3660,9 @@ select sum(t1.c1), count(t2.c1) from ft1 t1 inner join ft2 t2 on (t1.c1 = t2.c1)
                                                            QUERY PLAN                                                            
 ---------------------------------------------------------------------------------------------------------------------------------
  Aggregate
-   Output: sum(t1.c1), count(t2.c1)
+   Output: sum(t1.c1), count(*)
    ->  Hash Join
-         Output: t1.c1, t2.c1
+         Output: t1.c1
          Hash Cond: (t2.c1 = t1.c1)
          Join Filter: (((((t1.c1 * t2.c1) / (t1.c1 * t2.c1)))::binary_double * (random())::binary_double) <= '1'::binary_double)
          ->  Foreign Scan on public.ft2 t2
@@ -3782,15 +3782,15 @@ select c2 * (random() <= 1)::int as c2 from ft2 group by c2 * (random() <= 1)::i
 -- GROUP BY clause in various forms, cardinal, alias and constant expression
 explain (verbose, costs off)
 select count(c2) w, c2 x, 5 y, 7.0 z from ft1 group by 2, y, 9.0::int order by 2;
-                                      QUERY PLAN                                       
----------------------------------------------------------------------------------------
+                                      QUERY PLAN                                      
+--------------------------------------------------------------------------------------
  Sort
-   Output: (count(c2)), c2, 5, 7.0, 9
+   Output: (count(*)), c2, 5, 7.0, 9
    Sort Key: ft1.c2
    ->  Foreign Scan
-         Output: (count(c2)), c2, 5, 7.0, 9
+         Output: (count(*)), c2, 5, 7.0, 9
          Relations: Aggregate on (public.ft1)
-         Remote SQL: SELECT count(c2), c2, 5, 7.0, 9 FROM "S 1"."T 1" GROUP BY 2, 3, 5
+         Remote SQL: SELECT count(*), c2, 5, 7.0, 9 FROM "S 1"."T 1" GROUP BY 2, 3, 5
 (7 rows)
 
 select count(c2) w, c2 x, 5 y, 7.0 z from ft1 group by 2, y, 9.0::int order by 2;
@@ -4181,8 +4181,8 @@ select distinct (select count(*) filter (where t2.c2 = 6 and t2.c1 < 10) from ft
 -- Inner query is aggregation query
 explain (verbose, costs off)
 select distinct (select count(t1.c1) filter (where t2.c2 = 6 and t2.c1 < 10) from ft1 t1 where t1.c1 = 6) from ft2 t2 where t2.c2 % 6 = 0 order by 1;
-                                                  QUERY PLAN                                                  
---------------------------------------------------------------------------------------------------------------
+                                                QUERY PLAN                                                
+----------------------------------------------------------------------------------------------------------
  Unique
    Output: ((SubPlan expr_1))
    ->  Sort
@@ -4194,12 +4194,11 @@ select distinct (select count(t1.c1) filter (where t2.c2 = 6 and t2.c1 < 10) fro
                Remote SQL: SELECT "C 1", c2 FROM "S 1"."T 1"
                SubPlan expr_1
                  ->  Aggregate
-                       Output: count(t1.c1) FILTER (WHERE ((t2.c2 = '6'::number) AND (t2.c1 < '10'::number)))
+                       Output: count(*) FILTER (WHERE ((t2.c2 = '6'::number) AND (t2.c1 < '10'::number)))
                        ->  Foreign Scan on public.ft1 t1
-                             Output: t1.c1
                              Filter: (t1.c1 = '6'::number)
                              Remote SQL: SELECT "C 1" FROM "S 1"."T 1"
-(16 rows)
+(15 rows)
 
 select distinct (select count(t1.c1) filter (where t2.c2 = 6 and t2.c1 < 10) from ft1 t1 where t1.c1 = 6) from ft2 t2 where t2.c2 % 6 = 0 order by 1;
  count 
@@ -11556,36 +11555,26 @@ EXPLAIN (COSTS OFF)
 SELECT t1.a,t2.b,t3.c FROM fprt1 t1 INNER JOIN fprt2 t2 ON (t1.a = t2.b) INNER JOIN fprt1 t3 ON (t2.b = t3.a) WHERE t1.a % 25 =0 ORDER BY 1,2,3;
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
- Incremental Sort
+ Sort
    Sort Key: t1.a, t3.c
-   Presorted Key: t1.a
-   ->  Merge Append
-         Sort Key: t1.a
-         ->  Nested Loop
-               Join Filter: (t1_1.a = t3_1.a)
-               ->  Merge Join
-                     Merge Cond: (t1_1.a = t2_1.b)
-                     ->  Sort
-                           Sort Key: t1_1.a
+   ->  Nested Loop
+         Join Filter: (t1.a = t2.b)
+         ->  Append
+               ->  Foreign Scan on ftprt2_p1 t2_1
+               ->  Foreign Scan on ftprt2_p2 t2_2
+         ->  Materialize
+               ->  Append
+                     ->  Nested Loop
+                           Join Filter: (t1_1.a = t3_1.a)
                            ->  Foreign Scan on ftprt1_p1 t1_1
                                  Filter: ((a % '25'::number) = '0'::number)
-                     ->  Sort
-                           Sort Key: t2_1.b
-                           ->  Foreign Scan on ftprt2_p1 t2_1
-               ->  Foreign Scan on ftprt1_p1 t3_1
-         ->  Nested Loop
-               Join Filter: (t1_2.a = t3_2.a)
-               ->  Merge Join
-                     Merge Cond: (t1_2.a = t2_2.b)
-                     ->  Sort
-                           Sort Key: t1_2.a
+                           ->  Foreign Scan on ftprt1_p1 t3_1
+                     ->  Nested Loop
+                           Join Filter: (t1_2.a = t3_2.a)
                            ->  Foreign Scan on ftprt1_p2 t1_2
                                  Filter: ((a % '25'::number) = '0'::number)
-                     ->  Sort
-                           Sort Key: t2_2.b
-                           ->  Foreign Scan on ftprt2_p2 t2_2
-               ->  Foreign Scan on ftprt1_p2 t3_2
-(29 rows)
+                           ->  Foreign Scan on ftprt1_p2 t3_2
+(19 rows)
 
 SELECT t1.a,t2.b,t3.c FROM fprt1 t1 INNER JOIN fprt2 t2 ON (t1.a = t2.b) INNER JOIN fprt1 t3 ON (t2.b = t3.a) WHERE t1.a % 25 =0 ORDER BY 1,2,3;
   a  |  b  |  c   
@@ -11682,17 +11671,17 @@ SELECT t1.a,t1.b FROM fprt1 t1, LATERAL (SELECT t2.a, t2.b FROM fprt2 t2 WHERE t
 ----------------------------------------------------------------------
  Sort
    Sort Key: t1.a, t1.b
-   ->  Append
-         ->  Nested Loop
-               Join Filter: ((t1_1.a = t2_1.b) AND (t1_1.b = t2_1.a))
-               ->  Foreign Scan on ftprt1_p1 t1_1
-                     Filter: ((a % '25'::number) = '0'::number)
+   ->  Nested Loop
+         Join Filter: ((t1.a = t2.b) AND (t1.b = t2.a))
+         ->  Append
                ->  Foreign Scan on ftprt2_p1 t2_1
-         ->  Nested Loop
-               Join Filter: ((t1_2.a = t2_2.b) AND (t1_2.b = t2_2.a))
-               ->  Foreign Scan on ftprt1_p2 t1_2
-                     Filter: ((a % '25'::number) = '0'::number)
                ->  Foreign Scan on ftprt2_p2 t2_2
+         ->  Materialize
+               ->  Append
+                     ->  Foreign Scan on ftprt1_p1 t1_1
+                           Filter: ((a % '25'::number) = '0'::number)
+                     ->  Foreign Scan on ftprt1_p2 t1_2
+                           Filter: ((a % '25'::number) = '0'::number)
 (13 rows)
 
 SELECT t1.a,t1.b FROM fprt1 t1, LATERAL (SELECT t2.a, t2.b FROM fprt2 t2 WHERE t1.a = t2.b AND t1.b = t2.a) q WHERE t1.a%25 = 0 ORDER BY 1,2;

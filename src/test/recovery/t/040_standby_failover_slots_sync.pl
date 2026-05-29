@@ -987,4 +987,119 @@ $result = $standby1->safe_psql('postgres',
 
 is($result, '1', "data can be consumed using snap_test_slot");
 
+##################################################
+# Remove any unnecessary replication slots and clear pending transactions on the
+# primary server to ensure a clean environment.
+##################################################
+
+$primary->psql(
+	'postgres', qq(
+	SELECT pg_drop_replication_slot('sb1_slot');
+	SELECT pg_drop_replication_slot('lsub1_slot');
+	SELECT pg_drop_replication_slot('snap_test_slot');
+));
+
+$subscriber2->safe_psql('postgres', 'DROP SUBSCRIPTION regress_mysub2;');
+$subscriber1->safe_psql('postgres', 'DROP SUBSCRIPTION regress_mysub1;');
+$subscriber1->safe_psql('postgres', 'TRUNCATE tab_int;');
+
+# Remove the dropped sb1_slot from the synchronized_standby_slots list and reload the
+# configuration.
+$primary->adjust_conf('postgresql.conf', 'synchronized_standby_slots', "''");
+$primary->reload;
+
+# Verify that all slots have been removed except the one necessary for standby2,
+# which is needed for further testing.
+is( $primary->safe_psql(
+		'postgres',
+		q{SELECT count(*) = 0 FROM pg_replication_slots WHERE slot_name != 'sb2_slot';}
+	),
+	"t",
+	'all replication slots have been dropped except the physical slot used by standby2'
+);
+
+# Commit the pending prepared transaction
+$primary->safe_psql('postgres', "COMMIT PREPARED 'test_twophase_slotsync';");
+$primary->wait_for_replay_catchup($standby2);
+
+##################################################
+# Test that pg_sync_replication_slots() on the standby skips and retries
+# until the slot becomes sync-ready (when the remote slot catches up with
+# the locally reserved position).
+# Also verify that slotsync skip statistics are correctly updated when the
+# slotsync operation is skipped.
+##################################################
+
+# Recreate the slot by creating a subscription on the subscriber, keep it disabled.
+$subscriber1->safe_psql('postgres', qq[
+	CREATE TABLE push_wal (a int);
+	CREATE SUBSCRIPTION regress_mysub1 CONNECTION '$publisher_connstr' PUBLICATION regress_mypub WITH (slot_name = lsub1_slot, failover = true, enabled = false);]);
+
+# Create some DDL on the primary so that the slot lags behind the standby
+$primary->safe_psql('postgres', "CREATE TABLE push_wal (a int);");
+
+# Make sure the DDL changes are synced to the standby
+$primary->wait_for_replay_catchup($standby2);
+
+$log_offset = -s $standby2->logfile;
+
+# Enable standby for slot synchronization
+$standby2->append_conf(
+	'postgresql.conf', qq(
+hot_standby_feedback = on
+primary_conninfo = '$connstr_1 dbname=postgres'
+log_min_messages = 'debug2'
+));
+
+$standby2->reload;
+
+# Attempt to synchronize slots using API. The API will continue retrying
+# synchronization until the remote slot catches up.
+# The API will not return until this happens, to be able to make
+# further calls, call the API in a background process.
+my $h = $standby2->background_psql('postgres', on_error_stop => 0);
+
+$h->query_until(qr/start/, q(
+	\echo start
+	SELECT pg_sync_replication_slots();
+	));
+
+# Confirm that the slot sync is skipped due to the remote slot lagging behind
+$standby2->wait_for_log(
+	qr/could not synchronize replication slot \"lsub1_slot\"/, $log_offset);
+
+# Confirm that the slotsync skip reason is updated
+$result = $standby2->safe_psql('postgres',
+	"SELECT slotsync_skip_reason FROM pg_replication_slots WHERE slot_name = 'lsub1_slot'"
+);
+is($result, 'wal_or_rows_removed', "check slot sync skip reason");
+
+# Confirm that the slotsync skip statistics is updated
+$result = $standby2->safe_psql('postgres',
+	"SELECT slotsync_skip_count > 0 FROM pg_stat_replication_slots WHERE slot_name = 'lsub1_slot'"
+);
+is($result, 't', "check slot sync skip count increments");
+
+# Configure primary to disallow any logical slots that have enabled failover
+# from getting ahead of the specified physical replication slot (sb2_slot).
+$primary->append_conf(
+	'postgresql.conf', qq(
+synchronized_standby_slots = 'sb2_slot'
+));
+$primary->reload;
+
+# Enable the Subscription, so that the remote slot catches up
+$subscriber1->safe_psql('postgres', "ALTER SUBSCRIPTION regress_mysub1 ENABLE");
+$subscriber1->wait_for_subscription_sync;
+
+# Create xl_running_xacts on the primary to speed up restart_lsn advancement.
+$primary->safe_psql('postgres', "SELECT pg_log_standby_snapshot();");
+
+# Confirm from the log that the slot is sync-ready now.
+$standby2->wait_for_log(
+    qr/newly created replication slot \"lsub1_slot\" is sync-ready now/,
+    $log_offset);
+
+$h->quit;
+
 done_testing();

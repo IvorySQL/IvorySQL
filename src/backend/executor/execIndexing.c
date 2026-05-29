@@ -114,6 +114,7 @@
 #include "executor/executor.h"
 #include "nodes/nodeFuncs.h"
 #include "storage/lmgr.h"
+#include "utils/injection_point.h"
 #include "utils/multirangetypes.h"
 #include "utils/rangetypes.h"
 #include "utils/snapmgr.h"
@@ -187,8 +188,8 @@ ExecOpenIndices(ResultRelInfo *resultRelInfo, bool speculative)
 	/*
 	 * allocate space for result arrays
 	 */
-	relationDescs = (RelationPtr) palloc(len * sizeof(Relation));
-	indexInfoArray = (IndexInfo **) palloc(len * sizeof(IndexInfo *));
+	relationDescs = palloc_array(Relation, len);
+	indexInfoArray = palloc_array(IndexInfo *, len);
 
 	resultRelInfo->ri_NumIndices = len;
 	resultRelInfo->ri_IndexRelationDescs = relationDescs;
@@ -942,6 +943,11 @@ retry:
 	econtext->ecxt_scantuple = save_scantuple;
 
 	ExecDropSingleTupleTableSlot(existing_slot);
+
+#ifdef USE_INJECTION_POINTS
+	if (!conflict)
+		INJECTION_POINT("check-exclusion-or-unique-constraint-no-conflict", NULL);
+#endif
 
 	return !conflict;
 }

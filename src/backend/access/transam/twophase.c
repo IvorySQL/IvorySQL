@@ -168,7 +168,7 @@ typedef struct GlobalTransactionData
 	bool		ondisk;			/* true if prepare state file is on disk */
 	bool		inredo;			/* true if entry was added via xlog_redo */
 	char		gid[GIDSIZE];	/* The GID assigned to the prepared xact */
-}			GlobalTransactionData;
+} GlobalTransactionData;
 
 /*
  * Two Phase Commit shared state.  Access to this struct is protected
@@ -684,7 +684,7 @@ GetPreparedTransactionList(GlobalTransaction *gxacts)
 	}
 
 	num = TwoPhaseState->numPrepXacts;
-	array = (GlobalTransaction) palloc(sizeof(GlobalTransactionData) * num);
+	array = palloc_array(GlobalTransactionData, num);
 	*gxacts = array;
 	for (i = 0; i < num; i++)
 		memcpy(array + i, TwoPhaseState->prepXacts[i],
@@ -750,7 +750,7 @@ pg_prepared_xact(PG_FUNCTION_ARGS)
 		 * Collect all the 2PC status information that we will format and send
 		 * out as a result set.
 		 */
-		status = (Working_State *) palloc(sizeof(Working_State));
+		status = palloc_object(Working_State);
 		funcctx->user_fctx = status;
 
 		status->ngxacts = GetPreparedTransactionList(&status->array);
@@ -1027,7 +1027,7 @@ save_state_data(const void *data, uint32 len)
 
 	if (padlen > records.bytes_free)
 	{
-		records.tail->next = palloc0(sizeof(StateFileChunk));
+		records.tail->next = palloc0_object(StateFileChunk);
 		records.tail = records.tail->next;
 		records.tail->len = 0;
 		records.tail->next = NULL;
@@ -1037,7 +1037,7 @@ save_state_data(const void *data, uint32 len)
 		records.tail->data = palloc(records.bytes_free);
 	}
 
-	memcpy(((char *) records.tail->data) + records.tail->len, data, len);
+	memcpy(records.tail->data + records.tail->len, data, len);
 	records.tail->len += padlen;
 	records.bytes_free -= padlen;
 	records.total_len += padlen;
@@ -1062,7 +1062,7 @@ StartPrepare(GlobalTransaction gxact)
 	SharedInvalidationMessage *invalmsgs;
 
 	/* Initialize linked list */
-	records.head = palloc0(sizeof(StateFileChunk));
+	records.head = palloc0_object(StateFileChunk);
 	records.head->len = 0;
 	records.head->next = NULL;
 
@@ -1453,7 +1453,7 @@ XlogReadTwoPhaseData(XLogRecPtr lsn, char **buf, int *len)
 	if (len != NULL)
 		*len = XLogRecGetDataLen(xlogreader);
 
-	*buf = palloc(sizeof(char) * XLogRecGetDataLen(xlogreader));
+	*buf = palloc_array(char, XLogRecGetDataLen(xlogreader));
 	memcpy(*buf, XLogRecGetData(xlogreader), sizeof(char) * XLogRecGetDataLen(xlogreader));
 
 	XLogReaderFree(xlogreader);

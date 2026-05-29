@@ -1163,7 +1163,7 @@ ProcArrayApplyRecoveryInfo(RunningTransactions running)
 	 * Allocate a temporary array to avoid modifying the array passed as
 	 * argument.
 	 */
-	xids = palloc(sizeof(TransactionId) * (running->xcnt + running->subxcnt));
+	xids = palloc_array(TransactionId, running->xcnt + running->subxcnt);
 
 	/*
 	 * Add to the temp array any xids which have not already completed.
@@ -3013,8 +3013,7 @@ GetVirtualXIDsDelayingChkpt(int *nvxids, int type)
 	Assert(type != 0);
 
 	/* allocate what's certainly enough result space */
-	vxids = (VirtualTransactionId *)
-		palloc(sizeof(VirtualTransactionId) * arrayP->maxProcs);
+	vxids = palloc_array(VirtualTransactionId, arrayP->maxProcs);
 
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
 
@@ -3294,8 +3293,7 @@ GetCurrentVirtualXIDs(TransactionId limitXmin, bool excludeXmin0,
 	int			index;
 
 	/* allocate what's certainly enough result space */
-	vxids = (VirtualTransactionId *)
-		palloc(sizeof(VirtualTransactionId) * arrayP->maxProcs);
+	vxids = palloc_array(VirtualTransactionId, arrayP->maxProcs);
 
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
 

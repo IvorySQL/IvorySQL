@@ -28,7 +28,7 @@ typedef struct TestDSMRegistryStruct
 static TestDSMRegistryStruct *tdr_state;
 
 static void
-tdr_init_shmem(void *ptr)
+tdr_init_shmem(void *ptr, void *arg)
 {
 	TestDSMRegistryStruct *state = (TestDSMRegistryStruct *) ptr;
 
@@ -44,7 +44,7 @@ tdr_attach_shmem(void)
 	tdr_state = GetNamedDSMSegment("test_dsm_registry",
 								   sizeof(TestDSMRegistryStruct),
 								   tdr_init_shmem,
-								   &found);
+								   &found, NULL);
 }
 
 PG_FUNCTION_INFO_V1(set_val_in_shmem);

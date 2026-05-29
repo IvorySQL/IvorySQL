@@ -1050,8 +1050,9 @@ typedef struct NUMProc
 	char	   *number,			/* string with number	*/
 			   *number_p,		/* pointer to current number position */
 			   *inout,			/* in / out buffer	*/
-			   *inout_p,		/* pointer to current inout position */
-			   *last_relevant,	/* last relevant number after decimal point */
+			   *inout_p;		/* pointer to current inout position */
+
+	const char *last_relevant,	/* last relevant number after decimal point */
 
 			   *L_negative_sign,	/* Locale */
 			   *L_positive_sign,
@@ -1123,7 +1124,7 @@ static FormatNode *NUM_cache(int len, NUMDesc *Num, const text *pars_str, bool *
 static char *int_to_roman(int number);
 static int	roman_to_int(NUMProc *Np, size_t input_len);
 static void NUM_prepare_locale(NUMProc *Np);
-static char *get_last_relevant_decnum(const char *num);
+static const char *get_last_relevant_decnum(const char *num);
 static void NUM_numpart_from_char(NUMProc *Np, int id, size_t input_len);
 static void NUM_numpart_to_char(NUMProc *Np, int id);
 static char *NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
@@ -1654,16 +1655,6 @@ str_numth(char *dest, const char *num, enum TH_Case type)
 /*****************************************************************************
  *			upper/lower/initcap functions
  *****************************************************************************/
-
-/*
- * If the system provides the needed functions for wide-character manipulation
- * (which are all standardized by C99), then we implement upper/lower/initcap
- * using wide-character functions, if necessary.  Otherwise we use the
- * traditional <ctype.h> functions, which of course will not work as desired
- * in multibyte character sets.  Note that in either case we are effectively
- * assuming that the database character encoding matches the encoding implied
- * by LC_CTYPE.
- */
 
 /*
  * collation-aware, wide-character-aware lower function
@@ -4924,7 +4915,7 @@ parse_datetime(text *date_txt, text *fmt, Oid collid, bool strict,
 	{
 		if (flags & DCH_ZONED)
 		{
-			TimeTzADT  *result = palloc(sizeof(TimeTzADT));
+			TimeTzADT  *result = palloc_object(TimeTzADT);
 
 			if (ftz.has_tz)
 			{
@@ -6383,10 +6374,10 @@ NUM_prepare_locale(NUMProc *Np)
  * If there is no decimal point, return NULL (which will result in same
  * behavior as if FM hadn't been specified).
  */
-static char *
+static const char *
 get_last_relevant_decnum(const char *num)
 {
-	char	   *result,
+	const char *result,
 			   *p = strchr(num, '.');
 
 #ifdef DEBUG_TO_FROM_CHAR

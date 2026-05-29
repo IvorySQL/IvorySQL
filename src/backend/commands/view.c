@@ -30,11 +30,11 @@
 #include "nodes/nodeFuncs.h"
 #include "parser/analyze.h"
 #include "parser/parser.h"
-#include "parser/parse_relation.h"
 #include "rewrite/rewriteDefine.h"
 #include "rewrite/rewriteHandler.h"
 #include "rewrite/rewriteSupport.h"
 #include "utils/builtins.h"
+#include "utils/memutils.h"
 #include "utils/syscache.h"
 #include "utils/lsyscache.h"
 #include "utils/guc.h"
@@ -474,6 +474,7 @@ DefineView(ViewStmt *stmt, const char *queryString,
 	bool		check_option;
 	bool		compile_failed = false;
 	ObjectAddress address;
+	ObjectAddress temp_object;
 
 	/*
 	 * Run parse analysis to convert the raw parse tree to a Query.  Note this
@@ -518,6 +519,28 @@ DefineView(ViewStmt *stmt, const char *queryString,
 
 		/* NOTE: The grammar does not prevent SELECT INTO in this case */
 		view = copyObject(stmt->view);		/* avoid modifying the original command */
+
+		/*
+		 * Apply WITH READ ONLY to the placeholder's reloptions now, before
+		 * CreateForceVirtualPlaceholder, so the option is stored even while
+		 * the view is still invalid (the regular code path below does this
+		 * after parse analysis succeeds, which never runs for force views).
+		 *
+		 * After FlushErrorState(), CurrentMemoryContext is ErrorContext, which
+		 * will be reset by the subsequent elog(WARNING,...).  Allocate in
+		 * TopTransactionContext so the new ListCell and its nodes survive that
+		 * reset and remain valid when EventTriggerCollectSimpleCommand later
+		 * calls copyObject(parsetree).
+		 */
+		if (stmt->readOnly)
+		{
+			MemoryContext savedcxt = MemoryContextSwitchTo(TopTransactionContext);
+
+			stmt->options = lappend(stmt->options,
+									makeDefElem("read_only",
+												(Node *) makeBoolean(true), -1));
+			MemoryContextSwitchTo(savedcxt);
+		}
 
 		address = CreateForceVirtualPlaceholder(view, stmt->replace, stmt->options, &need_store);
 
@@ -585,6 +608,21 @@ DefineView(ViewStmt *stmt, const char *queryString,
 		stmt->options = lappend(stmt->options,
 								makeDefElem("check_option",
 											(Node *) makeString("cascaded"), -1));
+
+	/*
+	 * If the user specified WITH READ ONLY, validate and record it.
+	 * WITH READ ONLY is mutually exclusive with WITH CHECK OPTION.
+	 */
+	if (stmt->readOnly)
+	{
+		if (stmt->withCheckOption != NO_CHECK_OPTION)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("WITH READ ONLY and WITH CHECK OPTION are mutually exclusive")));
+		stmt->options = lappend(stmt->options,
+								makeDefElem("read_only",
+											(Node *) makeBoolean(true), -1));
+	}
 
 	/*
 	 * Check that the view is auto-updatable if WITH CHECK OPTION was
@@ -659,12 +697,14 @@ DefineView(ViewStmt *stmt, const char *queryString,
 	 */
 	view = copyObject(stmt->view);	/* don't corrupt original command */
 	if (view->relpersistence == RELPERSISTENCE_PERMANENT
-		&& isQueryUsingTempRelation(viewParse))
+		&& query_uses_temp_object(viewParse, &temp_object))
 	{
 		view->relpersistence = RELPERSISTENCE_TEMP;
 		ereport(NOTICE,
 				(errmsg("view \"%s\" will be a temporary view",
-						view->relname)));
+						view->relname),
+				 errdetail("It depends on temporary %s.",
+						   getObjectDescription(&temp_object, false))));
 	}
 
 	/*
@@ -850,6 +890,7 @@ compile_force_view_internal(ViewStmt *stmt, const char *queryString, Oid viewoid
 	RangeVar   *view;
 	ListCell   *cell;
 	bool		check_option;
+	ObjectAddress temp_object;
 
 	/*
 	 * Parse the SQL statement and analyze it.
@@ -902,6 +943,21 @@ compile_force_view_internal(ViewStmt *stmt, const char *queryString, Oid viewoid
 		stmt->options = lappend(stmt->options,
 								makeDefElem("check_option",
 											(Node *) makeString("cascaded"), -1));
+
+	/*
+	 * Add WITH READ ONLY if requested (Oracle compat).
+	 * WITH READ ONLY is mutually exclusive with WITH CHECK OPTION.
+	 */
+	if (stmt->readOnly)
+	{
+		if (stmt->withCheckOption != NO_CHECK_OPTION)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("WITH READ ONLY and WITH CHECK OPTION are mutually exclusive")));
+		stmt->options = lappend(stmt->options,
+								makeDefElem("read_only",
+											(Node *) makeBoolean(true), -1));
+	}
 
 	/*
 	 * Validate auto-updatability if WITH CHECK OPTION is present.
@@ -967,12 +1023,14 @@ compile_force_view_internal(ViewStmt *stmt, const char *queryString, Oid viewoid
 	 */
 	view = copyObject(stmt->view);	/* don't corrupt original command */
 	if (view->relpersistence == RELPERSISTENCE_PERMANENT
-		&& isQueryUsingTempRelation(viewParse))
+		&& query_uses_temp_object(viewParse, &temp_object))
 	{
 		view->relpersistence = RELPERSISTENCE_TEMP;
 		ereport(NOTICE,
 				(errmsg("view \"%s\" will be a temporary view",
-						view->relname)));
+						view->relname),
+				 errdetail("It depends on temporary %s.",
+						   getObjectDescription(&temp_object, false))));
 	}
 
 	make_view_valid(viewParse->targetList, viewoid, stmt->options, viewParse);

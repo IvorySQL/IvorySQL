@@ -171,7 +171,7 @@ ginReadTuple(GinState *ginstate, OffsetNumber attnum, IndexTuple itup,
 	{
 		if (nipd > 0)
 		{
-			ipd = ginPostingListDecode((GinPostingList *) ptr, &ndecoded);
+			ipd = ginPostingListDecode(ptr, &ndecoded);
 			if (nipd != ndecoded)
 				elog(ERROR, "number of items mismatch in GIN entry tuple, %d in tuple header, %d decoded",
 					 nipd, ndecoded);
@@ -183,7 +183,7 @@ ginReadTuple(GinState *ginstate, OffsetNumber attnum, IndexTuple itup,
 	}
 	else
 	{
-		ipd = (ItemPointer) palloc(sizeof(ItemPointerData) * nipd);
+		ipd = palloc_array(ItemPointerData, nipd);
 		memcpy(ipd, ptr, sizeof(ItemPointerData) * nipd);
 	}
 	*nitems = nipd;
@@ -708,7 +708,7 @@ entryPrepareDownlink(GinBtree btree, Buffer lbuf)
 
 	itup = getRightMostTuple(lpage);
 
-	insertData = palloc(sizeof(GinBtreeEntryInsertData));
+	insertData = palloc_object(GinBtreeEntryInsertData);
 	insertData->entry = GinFormInteriorTuple(itup, lpage, lblkno);
 	insertData->isDelete = false;
 

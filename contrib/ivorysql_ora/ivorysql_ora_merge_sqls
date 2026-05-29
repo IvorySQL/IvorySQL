@@ -7,3 +7,4 @@ src/xml_functions/xml_functions
 src/builtin_packages/dbms_utility/dbms_utility
 src/builtin_packages/dbms_lock/dbms_lock
 src/builtin_packages/utl_raw/utl_raw
+src/builtin_packages/utl_encode/utl_encode

@@ -2223,6 +2223,8 @@ create or replace function get_first_user() returns users as
 $$ SELECT * FROM users ORDER BY userid LIMIT 1; $$
 language sql stable;
 /
+NOTICE:  function "get_first_user" will be effectively temporary
+DETAIL:  It depends on temporary type users.
 SELECT get_first_user();
   get_first_user   
 -------------------
@@ -2239,6 +2241,8 @@ create or replace function get_users() returns setof users as
 $$ SELECT * FROM users ORDER BY userid; $$
 language sql stable;
 /
+NOTICE:  function "get_users" will be effectively temporary
+DETAIL:  It depends on temporary type users.
 SELECT get_users();
       get_users      
 ---------------------
@@ -2333,6 +2337,8 @@ returning pg_describe_object(classid, objid, objsubid) as obj,
 
 alter table users alter column seq type numeric;
 select * from usersview;  -- expect clean failure
+NOTICE:  view "usersview" will be a temporary view
+DETAIL:  It depends on temporary column userid of table users.
  userid | seq | email  | moredrop | enabled | generate_series | ordinality 
 --------+-----+--------+----------+---------+-----------------+------------
  id     |   1 | email  | t        |         |              10 |          1

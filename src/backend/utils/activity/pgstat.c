@@ -523,6 +523,7 @@ pgstat_discard_stats(void)
 
 	/* NB: this needs to be done even in single user mode */
 
+	/* First, cleanup the main pgstats file */
 	ret = unlink(PGSTAT_STAT_PERMANENT_FILENAME);
 	if (ret != 0)
 	{
@@ -542,6 +543,15 @@ pgstat_discard_stats(void)
 				(errcode_for_file_access(),
 				 errmsg_internal("unlinked permanent statistics file \"%s\"",
 								 PGSTAT_STAT_PERMANENT_FILENAME)));
+	}
+
+	/* Finish callbacks, if required */
+	for (PgStat_Kind kind = PGSTAT_KIND_MIN; kind <= PGSTAT_KIND_MAX; kind++)
+	{
+		const PgStat_KindInfo *kind_info = pgstat_get_kind_info(kind);
+
+		if (kind_info && kind_info->finish)
+			kind_info->finish(STATS_DISCARD);
 	}
 
 	/*
@@ -1551,19 +1561,17 @@ pgstat_assert_is_up(void)
  * ------------------------------------------------------------
  */
 
-/* helpers for pgstat_write_statsfile() */
-static void
-write_chunk(FILE *fpout, void *ptr, size_t len)
+/* helper for pgstat_write_statsfile() */
+void
+pgstat_write_chunk(FILE *fpout, void *ptr, size_t len)
 {
 	int			rc;
 
 	rc = fwrite(ptr, len, 1, fpout);
 
-	/* we'll check for errors with ferror once at the end */
+	/* We check for errors with ferror() when done writing the stats. */
 	(void) rc;
 }
-
-#define write_chunk_s(fpout, ptr) write_chunk(fpout, ptr, sizeof(*ptr))
 
 /*
  * This function is called in the last process that is accessing the shared
@@ -1606,7 +1614,7 @@ pgstat_write_statsfile(void)
 	 * Write the file header --- currently just a format ID.
 	 */
 	format_id = PGSTAT_FILE_FORMAT_ID;
-	write_chunk_s(fpout, &format_id);
+	pgstat_write_chunk_s(fpout, &format_id);
 
 	/* Write various stats structs for fixed number of objects */
 	for (PgStat_Kind kind = PGSTAT_KIND_MIN; kind <= PGSTAT_KIND_MAX; kind++)
@@ -1631,8 +1639,8 @@ pgstat_write_statsfile(void)
 			ptr = pgStatLocal.snapshot.custom_data[kind - PGSTAT_KIND_CUSTOM_MIN];
 
 		fputc(PGSTAT_FILE_ENTRY_FIXED, fpout);
-		write_chunk_s(fpout, &kind);
-		write_chunk(fpout, ptr, info->shared_data_len);
+		pgstat_write_chunk_s(fpout, &kind);
+		pgstat_write_chunk(fpout, ptr, info->shared_data_len);
 	}
 
 	/*
@@ -1686,7 +1694,7 @@ pgstat_write_statsfile(void)
 		{
 			/* normal stats entry, identified by PgStat_HashKey */
 			fputc(PGSTAT_FILE_ENTRY_HASH, fpout);
-			write_chunk_s(fpout, &ps->key);
+			pgstat_write_chunk_s(fpout, &ps->key);
 		}
 		else
 		{
@@ -1696,21 +1704,25 @@ pgstat_write_statsfile(void)
 			kind_info->to_serialized_name(&ps->key, shstats, &name);
 
 			fputc(PGSTAT_FILE_ENTRY_NAME, fpout);
-			write_chunk_s(fpout, &ps->key.kind);
-			write_chunk_s(fpout, &name);
+			pgstat_write_chunk_s(fpout, &ps->key.kind);
+			pgstat_write_chunk_s(fpout, &name);
 		}
 
 		/* Write except the header part of the entry */
-		write_chunk(fpout,
-					pgstat_get_entry_data(ps->key.kind, shstats),
-					pgstat_get_entry_len(ps->key.kind));
+		pgstat_write_chunk(fpout,
+						   pgstat_get_entry_data(ps->key.kind, shstats),
+						   pgstat_get_entry_len(ps->key.kind));
+
+		/* Write more data for the entry, if required */
+		if (kind_info->to_serialized_data)
+			kind_info->to_serialized_data(&ps->key, shstats, fpout);
 	}
 	dshash_seq_term(&hstat);
 
 	/*
 	 * No more output to be done. Close the temp file and replace the old
 	 * pgstat.stat with it.  The ferror() check replaces testing for error
-	 * after each individual fputc or fwrite (in write_chunk()) above.
+	 * after each individual fputc or fwrite (in pgstat_write_chunk()) above.
 	 */
 	fputc(PGSTAT_FILE_ENTRY_END, fpout);
 
@@ -1736,16 +1748,23 @@ pgstat_write_statsfile(void)
 		/* durable_rename already emitted log message */
 		unlink(tmpfile);
 	}
+
+	/* Finish callbacks, if required */
+	for (PgStat_Kind kind = PGSTAT_KIND_MIN; kind <= PGSTAT_KIND_MAX; kind++)
+	{
+		const PgStat_KindInfo *kind_info = pgstat_get_kind_info(kind);
+
+		if (kind_info && kind_info->finish)
+			kind_info->finish(STATS_WRITE);
+	}
 }
 
-/* helpers for pgstat_read_statsfile() */
-static bool
-read_chunk(FILE *fpin, void *ptr, size_t len)
+/* helper for pgstat_read_statsfile() */
+bool
+pgstat_read_chunk(FILE *fpin, void *ptr, size_t len)
 {
 	return fread(ptr, 1, len, fpin) == len;
 }
-
-#define read_chunk_s(fpin, ptr) read_chunk(fpin, ptr, sizeof(*ptr))
 
 /*
  * Reads in existing statistics file into memory.
@@ -1790,7 +1809,7 @@ pgstat_read_statsfile(void)
 	/*
 	 * Verify it's of the expected format.
 	 */
-	if (!read_chunk_s(fpin, &format_id))
+	if (!pgstat_read_chunk_s(fpin, &format_id))
 	{
 		elog(WARNING, "could not read format ID");
 		goto error;
@@ -1820,7 +1839,7 @@ pgstat_read_statsfile(void)
 					char	   *ptr;
 
 					/* entry for fixed-numbered stats */
-					if (!read_chunk_s(fpin, &kind))
+					if (!pgstat_read_chunk_s(fpin, &kind))
 					{
 						elog(WARNING, "could not read stats kind for entry of type %c", t);
 						goto error;
@@ -1860,7 +1879,7 @@ pgstat_read_statsfile(void)
 							info->shared_data_off;
 					}
 
-					if (!read_chunk(fpin, ptr, info->shared_data_len))
+					if (!pgstat_read_chunk(fpin, ptr, info->shared_data_len))
 					{
 						elog(WARNING, "could not read data of stats kind %u for entry of type %c with size %u",
 							 kind, t, info->shared_data_len);
@@ -1875,13 +1894,14 @@ pgstat_read_statsfile(void)
 					PgStat_HashKey key;
 					PgStatShared_HashEntry *p;
 					PgStatShared_Common *header;
+					const PgStat_KindInfo *kind_info = NULL;
 
 					CHECK_FOR_INTERRUPTS();
 
 					if (t == PGSTAT_FILE_ENTRY_HASH)
 					{
 						/* normal stats entry, identified by PgStat_HashKey */
-						if (!read_chunk_s(fpin, &key))
+						if (!pgstat_read_chunk_s(fpin, &key))
 						{
 							elog(WARNING, "could not read key for entry of type %c", t);
 							goto error;
@@ -1895,7 +1915,8 @@ pgstat_read_statsfile(void)
 							goto error;
 						}
 
-						if (!pgstat_get_kind_info(key.kind))
+						kind_info = pgstat_get_kind_info(key.kind);
+						if (!kind_info)
 						{
 							elog(WARNING, "could not find information of kind for entry %u/%u/%" PRIu64 " of type %c",
 								 key.kind, key.dboid,
@@ -1906,16 +1927,15 @@ pgstat_read_statsfile(void)
 					else
 					{
 						/* stats entry identified by name on disk (e.g. slots) */
-						const PgStat_KindInfo *kind_info = NULL;
 						PgStat_Kind kind;
 						NameData	name;
 
-						if (!read_chunk_s(fpin, &kind))
+						if (!pgstat_read_chunk_s(fpin, &kind))
 						{
 							elog(WARNING, "could not read stats kind for entry of type %c", t);
 							goto error;
 						}
-						if (!read_chunk_s(fpin, &name))
+						if (!pgstat_read_chunk_s(fpin, &name))
 						{
 							elog(WARNING, "could not read name of stats kind %u for entry of type %c",
 								 kind, t);
@@ -1990,14 +2010,26 @@ pgstat_read_statsfile(void)
 							 key.objid, t);
 					}
 
-					if (!read_chunk(fpin,
-									pgstat_get_entry_data(key.kind, header),
-									pgstat_get_entry_len(key.kind)))
+					if (!pgstat_read_chunk(fpin,
+										   pgstat_get_entry_data(key.kind, header),
+										   pgstat_get_entry_len(key.kind)))
 					{
 						elog(WARNING, "could not read data for entry %u/%u/%" PRIu64 " of type %c",
 							 key.kind, key.dboid,
 							 key.objid, t);
 						goto error;
+					}
+
+					/* read more data for the entry, if required */
+					if (kind_info->from_serialized_data)
+					{
+						if (!kind_info->from_serialized_data(&key, header, fpin))
+						{
+							elog(WARNING, "could not read auxiliary data for entry %u/%u/%" PRIu64 " of type %c",
+								 key.kind, key.dboid,
+								 key.objid, t);
+							goto error;
+						}
 					}
 
 					break;
@@ -2023,10 +2055,20 @@ pgstat_read_statsfile(void)
 	}
 
 done:
+	/* First, cleanup the main stats file */
 	FreeFile(fpin);
 
 	elog(DEBUG2, "removing permanent stats file \"%s\"", statfile);
 	unlink(statfile);
+
+	/* Finish callbacks, if required */
+	for (PgStat_Kind kind = PGSTAT_KIND_MIN; kind <= PGSTAT_KIND_MAX; kind++)
+	{
+		const PgStat_KindInfo *kind_info = pgstat_get_kind_info(kind);
+
+		if (kind_info && kind_info->finish)
+			kind_info->finish(STATS_READ);
+	}
 
 	return;
 

@@ -5198,7 +5198,7 @@ pg_timezone_abbrevs_zone(PG_FUNCTION_ARGS)
 		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 
 		/* allocate memory for user context */
-		pindex = (int *) palloc(sizeof(int));
+		pindex = palloc_object(int);
 		*pindex = 0;
 		funcctx->user_fctx = pindex;
 
@@ -5233,7 +5233,7 @@ pg_timezone_abbrevs_zone(PG_FUNCTION_ARGS)
 		/* Convert offset (in seconds) to an interval; can't overflow */
 		MemSet(&itm_in, 0, sizeof(struct pg_itm_in));
 		itm_in.tm_usec = (int64) gmtoff * USECS_PER_SEC;
-		resInterval = (Interval *) palloc(sizeof(Interval));
+		resInterval = palloc_object(Interval);
 		(void) itmin2interval(&itm_in, resInterval);
 		values[1] = IntervalPGetDatum(resInterval);
 
@@ -5285,7 +5285,7 @@ pg_timezone_abbrevs_abbrevs(PG_FUNCTION_ARGS)
 		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 
 		/* allocate memory for user context */
-		pindex = (int *) palloc(sizeof(int));
+		pindex = palloc_object(int);
 		*pindex = 0;
 		funcctx->user_fctx = pindex;
 
@@ -5356,7 +5356,7 @@ pg_timezone_abbrevs_abbrevs(PG_FUNCTION_ARGS)
 	/* Convert offset (in seconds) to an interval; can't overflow */
 	MemSet(&itm_in, 0, sizeof(struct pg_itm_in));
 	itm_in.tm_usec = (int64) gmtoffset * USECS_PER_SEC;
-	resInterval = (Interval *) palloc(sizeof(Interval));
+	resInterval = palloc_object(Interval);
 	(void) itmin2interval(&itm_in, resInterval);
 	values[1] = IntervalPGetDatum(resInterval);
 
@@ -5424,7 +5424,7 @@ pg_timezone_names(PG_FUNCTION_ARGS)
 		/* Convert tzoff to an interval; can't overflow */
 		MemSet(&itm_in, 0, sizeof(struct pg_itm_in));
 		itm_in.tm_usec = (int64) -tzoff * USECS_PER_SEC;
-		resInterval = (Interval *) palloc(sizeof(Interval));
+		resInterval = palloc_object(Interval);
 		(void) itmin2interval(&itm_in, resInterval);
 		values[2] = IntervalPGetDatum(resInterval);
 

@@ -438,8 +438,7 @@ remove_useless_groupby_columns(PlannerInfo *root)
 	 * Fill groupbyattnos[k] with a bitmapset of the column attnos of RTE k
 	 * that are GROUP BY items.
 	 */
-	groupbyattnos = (Bitmapset **) palloc0(sizeof(Bitmapset *) *
-										   (list_length(parse->rtable) + 1));
+	groupbyattnos = palloc0_array(Bitmapset *, list_length(parse->rtable) + 1);
 	foreach(lc, root->processed_groupClause)
 	{
 		SortGroupClause *sgc = lfirst_node(SortGroupClause, lc);
@@ -597,8 +596,7 @@ remove_useless_groupby_columns(PlannerInfo *root)
 			 * allocate the surplusvars[] array until we find something.
 			 */
 			if (surplusvars == NULL)
-				surplusvars = (Bitmapset **) palloc0(sizeof(Bitmapset *) *
-													 (list_length(parse->rtable) + 1));
+				surplusvars = palloc0_array(Bitmapset *, list_length(parse->rtable) + 1);
 
 			/* Remember the attnos of the removable columns */
 			surplusvars[relid] = bms_difference(relattnos, best_keycolumns);
@@ -3414,22 +3412,6 @@ add_base_clause_to_rel(PlannerInfo *root, Index relid,
 }
 
 /*
- * expr_is_nonnullable
- *	  Check to see if the Expr cannot be NULL
- *
- * Currently we only support simple Vars.
- */
-static bool
-expr_is_nonnullable(PlannerInfo *root, Expr *expr)
-{
-	/* For now only check simple Vars */
-	if (!IsA(expr, Var))
-		return false;
-
-	return var_is_nonnullable(root, (Var *) expr, true);
-}
-
-/*
  * restriction_is_always_true
  *	  Check to see if the RestrictInfo is always true.
  *
@@ -3465,7 +3447,7 @@ restriction_is_always_true(PlannerInfo *root,
 		if (nulltest->argisrow)
 			return false;
 
-		return expr_is_nonnullable(root, nulltest->arg);
+		return expr_is_nonnullable(root, nulltest->arg, true);
 	}
 
 	/* If it's an OR, check its sub-clauses */
@@ -3530,7 +3512,7 @@ restriction_is_always_false(PlannerInfo *root,
 		if (nulltest->argisrow)
 			return false;
 
-		return expr_is_nonnullable(root, nulltest->arg);
+		return expr_is_nonnullable(root, nulltest->arg, true);
 	}
 
 	/* If it's an OR, check its sub-clauses */

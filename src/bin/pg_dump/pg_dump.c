@@ -840,23 +840,30 @@ main(int argc, char **argv)
 
 	/* reject conflicting "-only" options */
 	if (data_only && schema_only)
-		pg_fatal("options -s/--schema-only and -a/--data-only cannot be used together");
+		pg_fatal("options %s and %s cannot be used together",
+				 "-s/--schema-only", "-a/--data-only");
 	if (schema_only && statistics_only)
-		pg_fatal("options -s/--schema-only and --statistics-only cannot be used together");
+		pg_fatal("options %s and %s cannot be used together",
+				 "-s/--schema-only", "--statistics-only");
 	if (data_only && statistics_only)
-		pg_fatal("options -a/--data-only and --statistics-only cannot be used together");
+		pg_fatal("options %s and %s cannot be used together",
+				 "-a/--data-only", "--statistics-only");
 
 	/* reject conflicting "-only" and "no-" options */
 	if (data_only && no_data)
-		pg_fatal("options -a/--data-only and --no-data cannot be used together");
+		pg_fatal("options %s and %s cannot be used together",
+				 "-a/--data-only", "--no-data");
 	if (schema_only && no_schema)
-		pg_fatal("options -s/--schema-only and --no-schema cannot be used together");
+		pg_fatal("options %s and %s cannot be used together",
+				 "-s/--schema-only", "--no-schema");
 	if (statistics_only && no_statistics)
-		pg_fatal("options --statistics-only and --no-statistics cannot be used together");
+		pg_fatal("options %s and %s cannot be used together",
+				 "--statistics-only", "--no-statistics");
 
 	/* reject conflicting "no-" options */
 	if (with_statistics && no_statistics)
-		pg_fatal("options --statistics and --no-statistics cannot be used together");
+		pg_fatal("options %s and %s cannot be used together",
+				 "--statistics", "--no-statistics");
 
 	/* reject conflicting "-only" options */
 	if (data_only && with_statistics)
@@ -867,16 +874,20 @@ main(int argc, char **argv)
 				 "-s/--schema-only", "--statistics");
 
 	if (schema_only && foreign_servers_include_patterns.head != NULL)
-		pg_fatal("options -s/--schema-only and --include-foreign-data cannot be used together");
+		pg_fatal("options %s and %s cannot be used together",
+				 "-s/--schema-only", "--include-foreign-data");
 
 	if (numWorkers > 1 && foreign_servers_include_patterns.head != NULL)
-		pg_fatal("option --include-foreign-data is not supported with parallel backup");
+		pg_fatal("option %s is not supported with parallel backup",
+				 "--include-foreign-data");
 
 	if (data_only && dopt.outputClean)
-		pg_fatal("options -c/--clean and -a/--data-only cannot be used together");
+		pg_fatal("options %s and %s cannot be used together",
+				 "-c/--clean", "-a/--data-only");
 
 	if (dopt.if_exists && !dopt.outputClean)
-		pg_fatal("option --if-exists requires option -c/--clean");
+		pg_fatal("option %s requires option %s",
+				 "--if-exists", "-c/--clean");
 
 	/*
 	 * Set derivative flags. Ambiguous or nonsensical combinations, e.g.
@@ -896,7 +907,9 @@ main(int argc, char **argv)
 	 * --rows-per-insert were specified.
 	 */
 	if (dopt.do_nothing && dopt.dump_inserts == 0)
-		pg_fatal("option --on-conflict-do-nothing requires option --inserts, --rows-per-insert, or --column-inserts");
+		pg_fatal("option %s requires option %s, %s, or %s",
+				 "--on-conflict-do-nothing",
+				 "--inserts", "--rows-per-insert", "--column-inserts");
 
 	/* Identify archive format to emit */
 	archiveFormat = parseArchiveFormat(format, &archiveMode);
@@ -917,7 +930,8 @@ main(int argc, char **argv)
 			pg_fatal("invalid restrict key");
 	}
 	else if (dopt.restrict_key)
-		pg_fatal("option --restrict-key can only be used with --format=plain");
+		pg_fatal("option %s can only be used with %s",
+				 "--restrict-key", "--format=plain");
 
 	/*
 	 * Custom and directory formats are compressed by default with gzip when
@@ -2194,7 +2208,7 @@ selectDumpableCast(CastInfo *cast, Archive *fout)
 	 * This would be DUMP_COMPONENT_ACL for from-initdb casts, but they do not
 	 * support ACLs currently.
 	 */
-	if (cast->dobj.catId.oid <= (Oid) g_last_builtin_oid)
+	if (cast->dobj.catId.oid <= g_last_builtin_oid)
 		cast->dobj.dump = DUMP_COMPONENT_NONE;
 	else
 		cast->dobj.dump = fout->dopt->include_everything ?
@@ -2226,7 +2240,7 @@ selectDumpableProcLang(ProcLangInfo *plang, Archive *fout)
 		plang->dobj.dump = DUMP_COMPONENT_NONE;
 	else
 	{
-		if (plang->dobj.catId.oid <= (Oid) g_last_builtin_oid)
+		if (plang->dobj.catId.oid <= g_last_builtin_oid)
 			plang->dobj.dump = fout->remoteVersion < 90600 ?
 				DUMP_COMPONENT_NONE : DUMP_COMPONENT_ACL;
 		else
@@ -2259,7 +2273,7 @@ selectDumpableAccessMethod(AccessMethodInfo *method, Archive *fout)
 	 * This would be DUMP_COMPONENT_ACL for from-initdb access methods, but
 	 * they do not support ACLs currently.
 	 */
-	if (method->dobj.catId.oid <= (Oid) g_last_builtin_oid)
+	if (method->dobj.catId.oid <= g_last_builtin_oid)
 		method->dobj.dump = DUMP_COMPONENT_NONE;
 	else
 		method->dobj.dump = fout->dopt->include_everything ?
@@ -2285,7 +2299,7 @@ selectDumpableExtension(ExtensionInfo *extinfo, DumpOptions *dopt)
 	 * change permissions on their member objects, if they wish to, and have
 	 * those changes preserved.
 	 */
-	if (extinfo->dobj.catId.oid <= (Oid) g_last_builtin_oid)
+	if (extinfo->dobj.catId.oid <= g_last_builtin_oid)
 		extinfo->dobj.dump = extinfo->dobj.dump_contains = DUMP_COMPONENT_ACL;
 	else
 	{
@@ -5384,15 +5398,15 @@ getSubscriptionRelations(Archive *fout)
 		subrinfo[i].dobj.catId.tableoid = relid;
 		subrinfo[i].dobj.catId.oid = cur_srsubid;
 		AssignDumpId(&subrinfo[i].dobj);
-		subrinfo[i].dobj.name = pg_strdup(subinfo->dobj.name);
+		subrinfo[i].dobj.namespace = tblinfo->dobj.namespace;
+		subrinfo[i].dobj.name = tblinfo->dobj.name;
+		subrinfo[i].subinfo = subinfo;
 		subrinfo[i].tblinfo = tblinfo;
 		subrinfo[i].srsubstate = PQgetvalue(res, i, i_srsubstate)[0];
 		if (PQgetisnull(res, i, i_srsublsn))
 			subrinfo[i].srsublsn = NULL;
 		else
 			subrinfo[i].srsublsn = pg_strdup(PQgetvalue(res, i, i_srsublsn));
-
-		subrinfo[i].subinfo = subinfo;
 
 		/* Decide whether we want to dump it */
 		selectDumpableObject(&(subrinfo[i].dobj), fout);
@@ -5421,7 +5435,7 @@ dumpSubscriptionTable(Archive *fout, const SubRelInfo *subrinfo)
 
 	Assert(fout->dopt->binary_upgrade && fout->remoteVersion >= 170000);
 
-	tag = psprintf("%s %s", subinfo->dobj.name, subrinfo->dobj.name);
+	tag = psprintf("%s %s", subinfo->dobj.name, subrinfo->tblinfo->dobj.name);
 
 	query = createPQExpBuffer();
 
@@ -5436,7 +5450,7 @@ dumpSubscriptionTable(Archive *fout, const SubRelInfo *subrinfo)
 							 "\n-- For binary upgrade, must preserve the subscriber table.\n");
 		appendPQExpBufferStr(query,
 							 "SELECT pg_catalog.binary_upgrade_add_sub_rel_state(");
-		appendStringLiteralAH(query, subrinfo->dobj.name, fout);
+		appendStringLiteralAH(query, subinfo->dobj.name, fout);
 		appendPQExpBuffer(query,
 						  ", %u, '%c'",
 						  subrinfo->tblinfo->dobj.catId.oid,
@@ -7319,6 +7333,7 @@ getTables(Archive *fout, int *numTables)
 	int			i_toastminmxid;
 	int			i_reloptions;
 	int			i_checkoption;
+	int			i_read_only_view;
 	int			i_toastreloptions;
 	int			i_reloftype;
 	int			i_foreignserver;
@@ -7439,12 +7454,17 @@ getTables(Archive *fout, int *numTables)
 
 	if (fout->remoteVersion >= 90300)
 		appendPQExpBufferStr(query,
-							 "array_remove(array_remove(c.reloptions,'check_option=local'),'check_option=cascaded') AS reloptions, "
+							 "array_remove(array_remove("
+							 "  ARRAY(SELECT opt FROM unnest(c.reloptions) opt WHERE opt !~ '^read_only='),"
+							 "  'check_option=local'), 'check_option=cascaded') AS reloptions, "
 							 "CASE WHEN 'check_option=local' = ANY (c.reloptions) THEN 'LOCAL'::text "
-							 "WHEN 'check_option=cascaded' = ANY (c.reloptions) THEN 'CASCADED'::text ELSE NULL END AS checkoption, ");
+							 "WHEN 'check_option=cascaded' = ANY (c.reloptions) THEN 'CASCADED'::text ELSE NULL END AS checkoption, "
+							 "coalesce((SELECT option_value::boolean"
+							 "  FROM pg_catalog.pg_options_to_table(c.reloptions)"
+							 "  WHERE option_name = 'read_only'), false) AS read_only_view, ");
 	else
 		appendPQExpBufferStr(query,
-							 "c.reloptions, NULL AS checkoption, ");
+							 "c.reloptions, NULL AS checkoption, false AS read_only_view, ");
 
 	if (fout->remoteVersion >= 90600)
 		appendPQExpBufferStr(query,
@@ -7570,6 +7590,7 @@ getTables(Archive *fout, int *numTables)
 	i_toastminmxid = PQfnumber(res, "tminmxid");
 	i_reloptions = PQfnumber(res, "reloptions");
 	i_checkoption = PQfnumber(res, "checkoption");
+	i_read_only_view = PQfnumber(res, "read_only_view");
 	i_toastreloptions = PQfnumber(res, "toast_reloptions");
 	i_reloftype = PQfnumber(res, "reloftype");
 	i_foreignserver = PQfnumber(res, "foreignserver");
@@ -7652,6 +7673,8 @@ getTables(Archive *fout, int *numTables)
 			tblinfo[i].checkoption = NULL;
 		else
 			tblinfo[i].checkoption = pg_strdup(PQgetvalue(res, i, i_checkoption));
+		tblinfo[i].readOnly = (i_read_only_view >= 0 &&
+							   strcmp(PQgetvalue(res, i, i_read_only_view), "t") == 0);
 		tblinfo[i].toast_reloptions = pg_strdup(PQgetvalue(res, i, i_toastreloptions));
 		tblinfo[i].reloftype = atooid(PQgetvalue(res, i, i_reloftype));
 		tblinfo[i].foreign_server = atooid(PQgetvalue(res, i, i_foreignserver));
@@ -17435,6 +17458,8 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 
 		if (tbinfo->checkoption != NULL && !tbinfo->dummy_view)
 			appendPQExpBuffer(q, "\n  WITH %s CHECK OPTION", tbinfo->checkoption);
+		if (tbinfo->readOnly && !tbinfo->dummy_view)
+			appendPQExpBufferStr(q, "\n  WITH READ ONLY");
 		appendPQExpBufferStr(q, ";\n");
 	}
 	else
@@ -19923,6 +19948,8 @@ dumpRule(Archive *fout, const RuleInfo *rinfo)
 		if (tbinfo->checkoption != NULL)
 			appendPQExpBuffer(cmd, "\n  WITH %s CHECK OPTION",
 							  tbinfo->checkoption);
+		if (tbinfo->readOnly)
+			appendPQExpBufferStr(cmd, "\n  WITH READ ONLY");
 		appendPQExpBufferStr(cmd, ";\n");
 	}
 	else

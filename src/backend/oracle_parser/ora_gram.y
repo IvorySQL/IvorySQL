@@ -635,6 +635,8 @@ static void determineLanguage(List *options);
 %type <node>	func_application func_expr_common_subexpr exec_func_application
 %type <node>	func_expr func_expr_windowless
 %type <node>	common_table_expr
+%type <node>	plsql_declaration
+%type <list>	plsql_declarations
 %type <with>	with_clause opt_with_clause
 %type <list>	cte_list
 
@@ -981,6 +983,19 @@ static void determineLanguage(List *options);
  * left-associativity among the JOIN rules themselves.
  */
 %left		JOIN CROSS LEFT FULL RIGHT INNER_P NATURAL
+/*
+ * Precedences used to resolve the shift/reduce conflicts that arise from
+ * "WITH plsql_declarations" when followed by an unreserved DML keyword
+ * (DELETE_P, INSERT, UPDATE, MERGE) that could be either a CTE name or
+ * the start of the main DML statement.
+ *
+ * We declare the DML keywords at a lower precedence level and PLSQL_DEFS_END
+ * at a higher level.  The rule "WITH plsql_declarations %prec PLSQL_DEFS_END"
+ * then wins the conflict via reduce (rule prec > token prec), so the DML
+ * keyword is treated as the main statement, not a CTE name.
+ */
+%nonassoc	DELETE_P INSERT UPDATE MERGE
+%nonassoc	PLSQL_DEFS_END
 
 %%
 
@@ -4910,19 +4925,19 @@ OptWhereClause:
 key_actions:
 			key_update
 				{
-					KeyActions *n = palloc(sizeof(KeyActions));
+					KeyActions *n = palloc_object(KeyActions);
 
 					n->updateAction = $1;
-					n->deleteAction = palloc(sizeof(KeyAction));
+					n->deleteAction = palloc_object(KeyAction);
 					n->deleteAction->action = FKCONSTR_ACTION_NOACTION;
 					n->deleteAction->cols = NIL;
 					$$ = n;
 				}
 			| key_delete
 				{
-					KeyActions *n = palloc(sizeof(KeyActions));
+					KeyActions *n = palloc_object(KeyActions);
 
-					n->updateAction = palloc(sizeof(KeyAction));
+					n->updateAction = palloc_object(KeyAction);
 					n->updateAction->action = FKCONSTR_ACTION_NOACTION;
 					n->updateAction->cols = NIL;
 					n->deleteAction = $1;
@@ -4930,7 +4945,7 @@ key_actions:
 				}
 			| key_update key_delete
 				{
-					KeyActions *n = palloc(sizeof(KeyActions));
+					KeyActions *n = palloc_object(KeyActions);
 
 					n->updateAction = $1;
 					n->deleteAction = $2;
@@ -4938,7 +4953,7 @@ key_actions:
 				}
 			| key_delete key_update
 				{
-					KeyActions *n = palloc(sizeof(KeyActions));
+					KeyActions *n = palloc_object(KeyActions);
 
 					n->updateAction = $2;
 					n->deleteAction = $1;
@@ -4946,12 +4961,12 @@ key_actions:
 				}
 			| /*EMPTY*/
 				{
-					KeyActions *n = palloc(sizeof(KeyActions));
+					KeyActions *n = palloc_object(KeyActions);
 
-					n->updateAction = palloc(sizeof(KeyAction));
+					n->updateAction = palloc_object(KeyAction);
 					n->updateAction->action = FKCONSTR_ACTION_NOACTION;
 					n->updateAction->cols = NIL;
-					n->deleteAction = palloc(sizeof(KeyAction));
+					n->deleteAction = palloc_object(KeyAction);
 					n->deleteAction->action = FKCONSTR_ACTION_NOACTION;
 					n->deleteAction->cols = NIL;
 					$$ = n;
@@ -4979,7 +4994,7 @@ key_delete: ON DELETE_P key_action
 key_action:
 			NO ACTION
 				{
-					KeyAction *n = palloc(sizeof(KeyAction));
+					KeyAction *n = palloc_object(KeyAction);
 
 					n->action = FKCONSTR_ACTION_NOACTION;
 					n->cols = NIL;
@@ -4987,7 +5002,7 @@ key_action:
 				}
 			| RESTRICT
 				{
-					KeyAction *n = palloc(sizeof(KeyAction));
+					KeyAction *n = palloc_object(KeyAction);
 
 					n->action = FKCONSTR_ACTION_RESTRICT;
 					n->cols = NIL;
@@ -4995,7 +5010,7 @@ key_action:
 				}
 			| CASCADE
 				{
-					KeyAction *n = palloc(sizeof(KeyAction));
+					KeyAction *n = palloc_object(KeyAction);
 
 					n->action = FKCONSTR_ACTION_CASCADE;
 					n->cols = NIL;
@@ -5003,7 +5018,7 @@ key_action:
 				}
 			| SET NULL_P opt_column_list
 				{
-					KeyAction *n = palloc(sizeof(KeyAction));
+					KeyAction *n = palloc_object(KeyAction);
 
 					n->action = FKCONSTR_ACTION_SETNULL;
 					n->cols = $3;
@@ -5011,7 +5026,7 @@ key_action:
 				}
 			| SET DEFAULT opt_column_list
 				{
-					KeyAction *n = palloc(sizeof(KeyAction));
+					KeyAction *n = palloc_object(KeyAction);
 
 					n->action = FKCONSTR_ACTION_SETDEFAULT;
 					n->cols = $3;
@@ -6248,7 +6263,7 @@ import_qualification_type:
 import_qualification:
 		import_qualification_type '(' relation_expr_list ')'
 			{
-				ImportQual *n = (ImportQual *) palloc(sizeof(ImportQual));
+				ImportQual *n = palloc_object(ImportQual);
 
 				n->type = $1;
 				n->table_names = $3;
@@ -6256,7 +6271,7 @@ import_qualification:
 			}
 		| /*EMPTY*/
 			{
-				ImportQual *n = (ImportQual *) palloc(sizeof(ImportQual));
+				ImportQual *n = palloc_object(ImportQual);
 				n->type = FDW_IMPORT_SCHEMA_ALL;
 				n->table_names = NIL;
 				$$ = n;
@@ -8353,7 +8368,7 @@ parameter_name:
 privilege_target:
 			qualified_name_list
 				{
-					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
+					PrivTarget *n = palloc_object(PrivTarget);
 
 					n->targtype = ACL_TARGET_OBJECT;
 					n->objtype = OBJECT_TABLE;
@@ -8362,7 +8377,7 @@ privilege_target:
 				}
 			| TABLE qualified_name_list
 				{
-					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
+					PrivTarget *n = palloc_object(PrivTarget);
 
 					n->targtype = ACL_TARGET_OBJECT;
 					n->objtype = OBJECT_TABLE;
@@ -8371,7 +8386,7 @@ privilege_target:
 				}
 			| SEQUENCE qualified_name_list
 				{
-					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
+					PrivTarget *n = palloc_object(PrivTarget);
 
 					n->targtype = ACL_TARGET_OBJECT;
 					n->objtype = OBJECT_SEQUENCE;
@@ -8380,7 +8395,7 @@ privilege_target:
 				}
 			| FOREIGN DATA_P WRAPPER name_list
 				{
-					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
+					PrivTarget *n = palloc_object(PrivTarget);
 
 					n->targtype = ACL_TARGET_OBJECT;
 					n->objtype = OBJECT_FDW;
@@ -8389,7 +8404,7 @@ privilege_target:
 				}
 			| FOREIGN SERVER name_list
 				{
-					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
+					PrivTarget *n = palloc_object(PrivTarget);
 
 					n->targtype = ACL_TARGET_OBJECT;
 					n->objtype = OBJECT_FOREIGN_SERVER;
@@ -8398,7 +8413,7 @@ privilege_target:
 				}
 			| FUNCTION function_with_argtypes_list
 				{
-					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
+					PrivTarget *n = palloc_object(PrivTarget);
 
 					n->targtype = ACL_TARGET_OBJECT;
 					n->objtype = OBJECT_FUNCTION;
@@ -8407,7 +8422,7 @@ privilege_target:
 				}
 			| PACKAGE package_names_list
 				{
-					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
+					PrivTarget *n = palloc_object(PrivTarget);
 					n->targtype = ACL_TARGET_OBJECT;
 					n->objtype = OBJECT_PACKAGE;
 					n->objs = $2;
@@ -8415,7 +8430,7 @@ privilege_target:
 				}
 			| PROCEDURE function_with_argtypes_list
 				{
-					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
+					PrivTarget *n = palloc_object(PrivTarget);
 
 					n->targtype = ACL_TARGET_OBJECT;
 					n->objtype = OBJECT_PROCEDURE;
@@ -8424,7 +8439,7 @@ privilege_target:
 				}
 			| ROUTINE function_with_argtypes_list
 				{
-					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
+					PrivTarget *n = palloc_object(PrivTarget);
 
 					n->targtype = ACL_TARGET_OBJECT;
 					n->objtype = OBJECT_ROUTINE;
@@ -8433,7 +8448,7 @@ privilege_target:
 				}
 			| DATABASE name_list
 				{
-					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
+					PrivTarget *n = palloc_object(PrivTarget);
 
 					n->targtype = ACL_TARGET_OBJECT;
 					n->objtype = OBJECT_DATABASE;
@@ -8442,7 +8457,7 @@ privilege_target:
 				}
 			| DOMAIN_P any_name_list
 				{
-					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
+					PrivTarget *n = palloc_object(PrivTarget);
 
 					n->targtype = ACL_TARGET_OBJECT;
 					n->objtype = OBJECT_DOMAIN;
@@ -8451,7 +8466,7 @@ privilege_target:
 				}
 			| LANGUAGE name_list
 				{
-					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
+					PrivTarget *n = palloc_object(PrivTarget);
 
 					n->targtype = ACL_TARGET_OBJECT;
 					n->objtype = OBJECT_LANGUAGE;
@@ -8460,7 +8475,7 @@ privilege_target:
 				}
 			| LARGE_P OBJECT_P NumericOnly_list
 				{
-					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
+					PrivTarget *n = palloc_object(PrivTarget);
 
 					n->targtype = ACL_TARGET_OBJECT;
 					n->objtype = OBJECT_LARGEOBJECT;
@@ -8469,7 +8484,7 @@ privilege_target:
 				}
 			| PARAMETER parameter_name_list
 				{
-					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
+					PrivTarget *n = palloc_object(PrivTarget);
 					n->targtype = ACL_TARGET_OBJECT;
 					n->objtype = OBJECT_PARAMETER_ACL;
 					n->objs = $2;
@@ -8477,7 +8492,7 @@ privilege_target:
 				}
 			| SCHEMA name_list
 				{
-					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
+					PrivTarget *n = palloc_object(PrivTarget);
 
 					n->targtype = ACL_TARGET_OBJECT;
 					n->objtype = OBJECT_SCHEMA;
@@ -8486,7 +8501,7 @@ privilege_target:
 				}
 			| TABLESPACE name_list
 				{
-					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
+					PrivTarget *n = palloc_object(PrivTarget);
 
 					n->targtype = ACL_TARGET_OBJECT;
 					n->objtype = OBJECT_TABLESPACE;
@@ -8495,7 +8510,7 @@ privilege_target:
 				}
 			| TYPE_P any_name_list
 				{
-					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
+					PrivTarget *n = palloc_object(PrivTarget);
 
 					n->targtype = ACL_TARGET_OBJECT;
 					n->objtype = OBJECT_TYPE;
@@ -8504,7 +8519,7 @@ privilege_target:
 				}
 			| ALL TABLES IN_P SCHEMA name_list
 				{
-					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
+					PrivTarget *n = palloc_object(PrivTarget);
 
 					n->targtype = ACL_TARGET_ALL_IN_SCHEMA;
 					n->objtype = OBJECT_TABLE;
@@ -8513,7 +8528,7 @@ privilege_target:
 				}
 			| ALL SEQUENCES IN_P SCHEMA name_list
 				{
-					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
+					PrivTarget *n = palloc_object(PrivTarget);
 
 					n->targtype = ACL_TARGET_ALL_IN_SCHEMA;
 					n->objtype = OBJECT_SEQUENCE;
@@ -8522,7 +8537,7 @@ privilege_target:
 				}
 			| ALL FUNCTIONS IN_P SCHEMA name_list
 				{
-					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
+					PrivTarget *n = palloc_object(PrivTarget);
 
 					n->targtype = ACL_TARGET_ALL_IN_SCHEMA;
 					n->objtype = OBJECT_FUNCTION;
@@ -8531,7 +8546,7 @@ privilege_target:
 				}
 			| ALL PACKAGES IN_P SCHEMA name_list
 				{
-					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
+					PrivTarget *n = palloc_object(PrivTarget);
 					n->targtype = ACL_TARGET_ALL_IN_SCHEMA;
 					n->objtype = OBJECT_PACKAGE;
 					n->objs = $5;
@@ -8539,7 +8554,7 @@ privilege_target:
 				}
 			| ALL PROCEDURES IN_P SCHEMA name_list
 				{
-					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
+					PrivTarget *n = palloc_object(PrivTarget);
 
 					n->targtype = ACL_TARGET_ALL_IN_SCHEMA;
 					n->objtype = OBJECT_PROCEDURE;
@@ -8548,7 +8563,7 @@ privilege_target:
 				}
 			| ALL ROUTINES IN_P SCHEMA name_list
 				{
-					PrivTarget *n = (PrivTarget *) palloc(sizeof(PrivTarget));
+					PrivTarget *n = palloc_object(PrivTarget);
 
 					n->targtype = ACL_TARGET_ALL_IN_SCHEMA;
 					n->objtype = OBJECT_ROUTINE;
@@ -12676,15 +12691,35 @@ ViewStmt: CREATE OptTemp OptViewForce VIEW qualified_name opt_column_list opt_re
 					n->replace = false;
 					n->force = $3;
 					n->options = $7;
-					n->withCheckOption = $10;
+					n->readOnly = ($10 == READ_ONLY_OPTION);
+					n->withCheckOption = n->readOnly ? NO_CHECK_OPTION : $10;
 					/*
 					 * Save the source text of the force view definition in ViewStmt to avoid
 					 * incorrectly obtaining the view definition when using a multi-statement
 					 * parser tree.
+					 *
+					 * When opt_check_option is non-empty (e.g. WITH READ ONLY), bison may
+					 * perform a default reduce for ViewStmt without advancing yylloc past the
+					 * last token of opt_check_option.  In that case yylloc points to the
+					 * start of ONLY, not to ';', and the naïve capture truncates the text.
+					 * For WITH READ ONLY we reconstruct the clause from @10 (start of WITH)
+					 * rather than relying on yylloc.
 					 */
-					stmt_iteral = pnstrdup(pg_yyget_extra(yyscanner)->core_yy_extra.scanbuf + @1, yylloc - @1);
-					n->stmt_literal = psprintf("%s;", stmt_iteral);
-					pfree(stmt_iteral);
+					{
+						const char *scanbuf = pg_yyget_extra(yyscanner)->core_yy_extra.scanbuf;
+
+						if (n->readOnly)
+						{
+							stmt_iteral = pnstrdup(scanbuf + @1, @10 - @1);
+							n->stmt_literal = psprintf("%sWITH READ ONLY;", stmt_iteral);
+						}
+						else
+						{
+							stmt_iteral = pnstrdup(scanbuf + @1, yylloc - @1);
+							n->stmt_literal = psprintf("%s;", stmt_iteral);
+						}
+						pfree(stmt_iteral);
+					}
 					$$ = (Node *) n;
 				}
 		| CREATE OR REPLACE OptTemp OptViewForce VIEW qualified_name opt_column_list opt_reloptions
@@ -12700,15 +12735,29 @@ ViewStmt: CREATE OptTemp OptViewForce VIEW qualified_name opt_column_list opt_re
 					n->replace = true;
 					n->force = $5;
 					n->options = $9;
-					n->withCheckOption = $12;
+					n->readOnly = ($12 == READ_ONLY_OPTION);
+					n->withCheckOption = n->readOnly ? NO_CHECK_OPTION : $12;
 					/*
 					 * Save the source text of the force view definition in ViewStmt to avoid
 					 * incorrectly obtaining the view definition when using a multi-statement
-					 * parser tree.
+					 * parser tree.  Same yylloc truncation issue as for the non-OR-REPLACE
+					 * variant above; fix by reconstructing WITH READ ONLY from @12.
 					 */
-					stmt_iteral = pnstrdup(pg_yyget_extra(yyscanner)->core_yy_extra.scanbuf + @1, yylloc - @1);
-					n->stmt_literal = psprintf("%s;", stmt_iteral);
-					pfree(stmt_iteral);
+					{
+						const char *scanbuf = pg_yyget_extra(yyscanner)->core_yy_extra.scanbuf;
+
+						if (n->readOnly)
+						{
+							stmt_iteral = pnstrdup(scanbuf + @1, @12 - @1);
+							n->stmt_literal = psprintf("%sWITH READ ONLY;", stmt_iteral);
+						}
+						else
+						{
+							stmt_iteral = pnstrdup(scanbuf + @1, yylloc - @1);
+							n->stmt_literal = psprintf("%s;", stmt_iteral);
+						}
+						pfree(stmt_iteral);
+					}
 					$$ = (Node *) n;
 				}
 		| CREATE OptTemp RECURSIVE VIEW qualified_name '(' columnList ')' opt_reloptions
@@ -12724,7 +12773,8 @@ ViewStmt: CREATE OptTemp OptViewForce VIEW qualified_name opt_column_list opt_re
 					n->force = false;
 					n->stmt_literal = NULL;
 					n->options = $9;
-					n->withCheckOption = $12;
+					n->readOnly = ($12 == READ_ONLY_OPTION);
+					n->withCheckOption = n->readOnly ? NO_CHECK_OPTION : $12;
 					if (n->withCheckOption != NO_CHECK_OPTION)
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -12745,7 +12795,8 @@ ViewStmt: CREATE OptTemp OptViewForce VIEW qualified_name opt_column_list opt_re
 					n->force = false;
 					n->stmt_literal= NULL;
 					n->options = $11;
-					n->withCheckOption = $14;
+					n->readOnly = ($14 == READ_ONLY_OPTION);
+					n->withCheckOption = n->readOnly ? NO_CHECK_OPTION : $14;
 					if (n->withCheckOption != NO_CHECK_OPTION)
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -12759,6 +12810,7 @@ opt_check_option:
 		WITH CHECK OPTION				{ $$ = CASCADED_CHECK_OPTION; }
 		| WITH CASCADED CHECK OPTION	{ $$ = CASCADED_CHECK_OPTION; }
 		| WITH LOCAL CHECK OPTION		{ $$ = LOCAL_CHECK_OPTION; }
+		| WITH READ ONLY				{ $$ = READ_ONLY_OPTION; }
 		| /* EMPTY */					{ $$ = NO_CHECK_OPTION; }
 		;
 
@@ -14340,6 +14392,9 @@ simple_select:
  *		AS (query) [ SEARCH or CYCLE clause ]
  *
  * Recognizing WITH_LA here allows a CTE to be named TIME or ORDINALITY.
+ *
+ * Oracle extension: WITH clause may begin with PL/SQL function/procedure
+ * declarations before the CTE list (ORA_PARSER mode only).
  */
 with_clause:
 		WITH cte_list
@@ -14362,6 +14417,85 @@ with_clause:
 				$$->ctes = $3;
 				$$->recursive = true;
 				$$->location = @1;
+			}
+		/* Oracle-compatible: WITH plsql_declarations cte_list */
+		| WITH plsql_declarations cte_list
+			{
+				$$ = makeNode(WithClause);
+				$$->plsql_defs = $2;
+				$$->ctes = $3;
+				$$->recursive = false;
+				$$->location = @1;
+			}
+		/* Oracle-compatible: WITH plsql_declarations only (no CTEs).
+		 * %prec PLSQL_DEFS_END forces reduce over shift when the lookahead
+		 * is an unreserved DML keyword (DELETE/INSERT/UPDATE/MERGE) so that
+		 * the keyword is treated as the main DML statement, not a CTE name. */
+		| WITH plsql_declarations %prec PLSQL_DEFS_END
+			{
+				$$ = makeNode(WithClause);
+				$$->plsql_defs = $2;
+				$$->ctes = NIL;
+				$$->recursive = false;
+				$$->location = @1;
+			}
+		;
+
+/*
+ * plsql_declarations: one or more inline FUNCTION/PROCEDURE definitions.
+ * Each definition ends with a ';' after the captured function body.
+ *
+ * The function/procedure body text (from IS/AS to matching END) is captured
+ * as a single Sconst by the Oracle lexer via the OraBody_FUNC mechanism,
+ * triggered by ora_func_is_or_as.
+ */
+plsql_declarations:
+		plsql_declaration
+			{ $$ = list_make1($1); }
+		| plsql_declarations plsql_declaration
+			{ $$ = lappend($1, $2); }
+		;
+
+plsql_declaration:
+		FUNCTION ora_func_name opt_ora_func_args_with_defaults
+		RETURN func_return
+		ora_func_is_or_as Sconst ';'
+			{
+				InlineFunctionDef *n = makeNode(InlineFunctionDef);
+				/*
+				 * WITH FUNCTION names are local to the statement and have no
+				 * schema, so a qualified name (e.g. schema.func) is invalid.
+				 * Reject explicitly rather than silently dropping qualifiers.
+				 */
+				if (list_length($2) != 1)
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("qualified name is not allowed in WITH FUNCTION declaration"),
+							 parser_errposition(@2)));
+				n->funcname = strVal(linitial($2));
+				n->args = $3;
+				n->rettype = $5;
+				n->is_proc = false;
+				n->src = $7;
+				n->location = @2;
+				$$ = (Node *) n;
+			}
+		| PROCEDURE ora_func_name opt_procedure_args_with_defaults
+		ora_func_is_or_as Sconst ';'
+			{
+				InlineFunctionDef *n = makeNode(InlineFunctionDef);
+				if (list_length($2) != 1)
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("qualified name is not allowed in WITH PROCEDURE declaration"),
+							 parser_errposition(@2)));
+				n->funcname = strVal(linitial($2));
+				n->args = $3;
+				n->rettype = NULL;
+				n->is_proc = true;
+				n->src = $5;
+				n->location = @2;
+				$$ = (Node *) n;
 			}
 		;
 
@@ -14608,7 +14742,7 @@ select_limit:
 				}
 			| offset_clause
 				{
-					SelectLimit *n = (SelectLimit *) palloc(sizeof(SelectLimit));
+					SelectLimit *n = palloc_object(SelectLimit);
 
 					n->limitOffset = $1;
 					n->limitCount = NULL;
@@ -14625,7 +14759,7 @@ opt_select_limit:
 limit_clause:
 			LIMIT select_limit_value
 				{
-					SelectLimit *n = (SelectLimit *) palloc(sizeof(SelectLimit));
+					SelectLimit *n = palloc_object(SelectLimit);
 
 					n->limitOffset = NULL;
 					n->limitCount = $2;
@@ -14650,7 +14784,7 @@ limit_clause:
 			 */
 			| FETCH first_or_next select_fetch_first_value row_or_rows ONLY
 				{
-					SelectLimit *n = (SelectLimit *) palloc(sizeof(SelectLimit));
+					SelectLimit *n = palloc_object(SelectLimit);
 
 					n->limitOffset = NULL;
 					n->limitCount = $3;
@@ -14659,7 +14793,7 @@ limit_clause:
 				}
 			| FETCH first_or_next select_fetch_first_value row_or_rows WITH TIES
 				{
-					SelectLimit *n = (SelectLimit *) palloc(sizeof(SelectLimit));
+					SelectLimit *n = palloc_object(SelectLimit);
 
 					n->limitOffset = NULL;
 					n->limitCount = $3;
@@ -14668,7 +14802,7 @@ limit_clause:
 				}
 			| FETCH first_or_next row_or_rows ONLY
 				{
-					SelectLimit *n = (SelectLimit *) palloc(sizeof(SelectLimit));
+					SelectLimit *n = palloc_object(SelectLimit);
 
 					n->limitOffset = NULL;
 					n->limitCount = makeIntConst(1, -1);
@@ -14677,7 +14811,7 @@ limit_clause:
 				}
 			| FETCH first_or_next row_or_rows WITH TIES
 				{
-					SelectLimit *n = (SelectLimit *) palloc(sizeof(SelectLimit));
+					SelectLimit *n = palloc_object(SelectLimit);
 
 					n->limitOffset = NULL;
 					n->limitCount = makeIntConst(1, -1);
@@ -14769,7 +14903,7 @@ first_or_next: FIRST_P								{ $$ = 0; }
 group_clause:
 			GROUP_P BY set_quantifier group_by_list
 				{
-					GroupClause *n = (GroupClause *) palloc(sizeof(GroupClause));
+					GroupClause *n = palloc_object(GroupClause);
 
 					n->distinct = $3 == SET_QUANTIFIER_DISTINCT;
 					n->list = $4;
@@ -14777,7 +14911,7 @@ group_clause:
 				}
 			| /*EMPTY*/
 				{
-					GroupClause *n = (GroupClause *) palloc(sizeof(GroupClause));
+					GroupClause *n = palloc_object(GroupClause);
 
 					n->distinct = false;
 					n->list = NIL;

@@ -125,7 +125,7 @@ missing_match(const void *key1, const void *key2, Size keysize)
 }
 
 static void
-init_missing_cache()
+init_missing_cache(void)
 {
 	HASHCTL		hash_ctl;
 
@@ -1269,8 +1269,8 @@ heap_modify_tuple(HeapTuple tuple,
 	 * O(N^2) if there are many non-replaced columns, so it seems better to
 	 * err on the side of linear cost.
 	 */
-	values = (Datum *) palloc(numberOfAttributes * sizeof(Datum));
-	isnull = (bool *) palloc(numberOfAttributes * sizeof(bool));
+	values = palloc_array(Datum, numberOfAttributes);
+	isnull = palloc_array(bool, numberOfAttributes);
 
 	heap_deform_tuple(tuple, tupleDesc, values, isnull);
 
@@ -1331,8 +1331,8 @@ heap_modify_tuple_by_cols(HeapTuple tuple,
 	 * allocate and fill values and isnull arrays from the tuple, then replace
 	 * selected columns from the input arrays.
 	 */
-	values = (Datum *) palloc(numberOfAttributes * sizeof(Datum));
-	isnull = (bool *) palloc(numberOfAttributes * sizeof(bool));
+	values = palloc_array(Datum, numberOfAttributes);
+	isnull = palloc_array(bool, numberOfAttributes);
 
 	heap_deform_tuple(tuple, tupleDesc, values, isnull);
 

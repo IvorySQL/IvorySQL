@@ -559,7 +559,7 @@ InitWalRecovery(ControlFileData *ControlFile, bool *wasShutdown_ptr,
 	 * Set the WAL reading processor now, as it will be needed when reading
 	 * the checkpoint record required (backup_label or not).
 	 */
-	private = palloc0(sizeof(XLogPageReadPrivate));
+	private = palloc0_object(XLogPageReadPrivate);
 	xlogreader =
 		XLogReaderAllocate(wal_segment_size, NULL,
 						   XL_ROUTINE(.page_read = &XLogPageRead,
@@ -805,6 +805,16 @@ InitWalRecovery(ControlFileData *ControlFile, bool *wasShutdown_ptr,
 		}
 		memcpy(&checkPoint, XLogRecGetData(xlogreader), sizeof(CheckPoint));
 		wasShutdown = ((record->xl_info & ~XLR_INFO_MASK) == XLOG_CHECKPOINT_SHUTDOWN);
+
+		/* Make sure that REDO location exists. */
+		if (checkPoint.redo < CheckPointLoc)
+		{
+			XLogPrefetcherBeginRead(xlogprefetcher, checkPoint.redo);
+			if (!ReadRecord(xlogprefetcher, LOG, false, checkPoint.ThisTimeLineID))
+				ereport(FATAL,
+						errmsg("could not find redo location %X/%08X referenced by checkpoint record at %X/%08X",
+							   LSN_FORMAT_ARGS(checkPoint.redo), LSN_FORMAT_ARGS(CheckPointLoc)));
+		}
 	}
 
 	if (ArchiveRecoveryRequested)
@@ -886,7 +896,7 @@ InitWalRecovery(ControlFileData *ControlFile, bool *wasShutdown_ptr,
 							 U64FromFullTransactionId(checkPoint.nextXid),
 							 checkPoint.nextOid)));
 	ereport(DEBUG1,
-			(errmsg_internal("next MultiXactId: %u; next MultiXactOffset: %u",
+			(errmsg_internal("next MultiXactId: %u; next MultiXactOffset: %" PRIu64,
 							 checkPoint.nextMulti, checkPoint.nextMultiOffset)));
 	ereport(DEBUG1,
 			(errmsg_internal("oldest unfrozen transaction ID: %u, in database %u",
@@ -1416,7 +1426,7 @@ read_tablespace_map(List **tablespaces)
 						 errmsg("invalid data in file \"%s\"", TABLESPACE_MAP)));
 			str[n++] = '\0';
 
-			ti = palloc0(sizeof(tablespaceinfo));
+			ti = palloc0_object(tablespaceinfo);
 			errno = 0;
 			ti->oid = strtoul(str, &endp, 10);
 			if (*endp != '\0' || errno == EINVAL || errno == ERANGE)
@@ -1467,7 +1477,7 @@ read_tablespace_map(List **tablespaces)
 EndOfWalRecoveryInfo *
 FinishWalRecovery(void)
 {
-	EndOfWalRecoveryInfo *result = palloc(sizeof(EndOfWalRecoveryInfo));
+	EndOfWalRecoveryInfo *result = palloc_object(EndOfWalRecoveryInfo);
 	XLogRecPtr	lastRec;
 	TimeLineID	lastRecTLI;
 	XLogRecPtr	endOfLog;

@@ -425,7 +425,7 @@ pa_launch_parallel_worker(void)
 	 */
 	oldcontext = MemoryContextSwitchTo(ApplyContext);
 
-	winfo = (ParallelApplyWorkerInfo *) palloc0(sizeof(ParallelApplyWorkerInfo));
+	winfo = palloc0_object(ParallelApplyWorkerInfo);
 
 	/* Setup shared memory. */
 	if (!pa_setup_dsm(winfo))
@@ -640,7 +640,7 @@ pa_detach_all_error_mq(void)
  * Check if there are any pending spooled messages.
  */
 static bool
-pa_has_spooled_message_pending()
+pa_has_spooled_message_pending(void)
 {
 	PartialFileSetState fileset_state;
 

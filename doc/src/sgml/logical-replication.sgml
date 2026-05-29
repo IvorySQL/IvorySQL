@@ -6,7 +6,7 @@
  <para>
   Logical replication is a method of replicating data objects and their
   changes, based upon their replication identity (usually a primary key).  We
-  use the term logical in contrast to physical replication, which uses exact
+  use the term logical replication in contrast to physical replication, which uses exact
   block addresses and byte-by-byte replication.  PostgreSQL supports both
   mechanisms concurrently, see <xref linkend="high-availability"/>.  Logical
   replication allows fine-grained control over both data replication and
@@ -2496,8 +2496,8 @@ CONTEXT:  processing remote data for replication origin "pg_16395" during "INSER
   <title>Monitoring</title>
 
   <para>
-   Because logical replication is based on a similar architecture as
-   <link linkend="streaming-replication">physical streaming replication</link>,
+   Because streaming logical replication is based on a similar architecture as
+   <link linkend="streaming-replication">streaming physical replication</link>,
    the monitoring on a publication node is similar to monitoring of a
    physical replication primary
    (see <xref linkend="streaming-replication-monitoring"/>).
@@ -2550,10 +2550,14 @@ CONTEXT:  processing remote data for replication origin "pg_16395" during "INSER
   </para>
 
   <para>
-   To add tables to a publication, the user must have ownership rights on the
-   table. To add all tables in schema to a publication, the user must be a
-   superuser. To create a publication that publishes all tables, all tables in
-   schema, or all sequences automatically, the user must be a superuser.
+   To create a publication using <literal>FOR TABLE</literal>, the user must
+   have ownership rights on all the listed tables. To create a publication
+   using any of <literal>FOR ALL TABLES</literal>,
+   <literal>FOR ALL SEQUENCES</literal>,
+   or <literal>FOR TABLES IN SCHEMA</literal>, the user must be a superuser. To
+   alter a publication using <literal>ADD TABLE</literal>, the user must have
+   ownership rights on all the listed tables. To alter a publication using
+   <literal>ADD TABLES IN SCHEMA</literal>, the user must be a superuser.
   </para>
 
   <para>
@@ -2629,7 +2633,7 @@ CONTEXT:  processing remote data for replication origin "pg_16395" during "INSER
 
    <para>
     <link linkend="guc-wal-level"><varname>wal_level</varname></link> must be
-    set to <literal>logical</literal>.
+    set to <literal>replica</literal> or <literal>logical</literal>.
    </para>
 
    <para>
@@ -2751,7 +2755,7 @@ CONTEXT:  processing remote data for replication origin "pg_16395" during "INSER
      <para>
       The new cluster must have
       <link linkend="guc-wal-level"><varname>wal_level</varname></link> as
-      <literal>logical</literal>.
+      <literal>replica</literal> or <literal>logical</literal>.
      </para>
     </listitem>
     <listitem>

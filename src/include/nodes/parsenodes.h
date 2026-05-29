@@ -173,6 +173,8 @@ typedef struct Query
 	bool		isReturn pg_node_attr(query_jumble_ignore);
 
 	List	   *cteList;		/* WITH list (of CommonTableExpr's) */
+	/* WITH clause inline functions/procedures (ORA_PARSER only) */
+	List	   *withFuncDefs pg_node_attr(query_jumble_ignore);
 
 	List	   *rtable;			/* list of range table entries */
 
@@ -985,13 +987,39 @@ typedef struct PartitionRangeDatum
 } PartitionRangeDatum;
 
 /*
- * PartitionCmd - info for ALTER TABLE/INDEX ATTACH/DETACH PARTITION commands
+ * PartitionDesc - info about a single partition for the ALTER TABLE SPLIT
+ *	  PARTITION command
+ */
+typedef struct SinglePartitionSpec
+{
+	NodeTag		type;
+
+	RangeVar   *name;			/* name of partition */
+	PartitionBoundSpec *bound;	/* FOR VALUES, if attaching */
+} SinglePartitionSpec;
+
+/*
+ * PartitionCmd - info for ALTER TABLE/INDEX ATTACH/DETACH PARTITION and for
+ *	  ALTER TABLE SPLIT/MERGE PARTITION(S) commands
  */
 typedef struct PartitionCmd
 {
 	NodeTag		type;
-	RangeVar   *name;			/* name of partition to attach/detach */
-	PartitionBoundSpec *bound;	/* FOR VALUES, if attaching */
+
+	/* name of partition to attach/detach/merge/split */
+	RangeVar   *name;
+
+	/* FOR VALUES, if attaching */
+	PartitionBoundSpec *bound;
+
+	/*
+	 * list of partitions to be split/merged, used in ALTER TABLE MERGE
+	 * PARTITIONS and ALTER TABLE SPLIT PARTITIONS. For merge partitions,
+	 * partlist is a list of RangeVar; For split partition, it is a list of
+	 * SinglePartitionSpec.
+	 */
+	List	   *partlist;
+
 	bool		concurrent;
 } PartitionCmd;
 
@@ -1633,15 +1661,40 @@ typedef struct RowMarkClause
 } RowMarkClause;
 
 /*
+ * InlineFunctionDef -
+ *	   representation of a FUNCTION or PROCEDURE definition in a WITH clause
+ *	   (Oracle compatibility, ORA_PARSER mode only)
+ *
+ * The function body source text is captured by the Oracle lexer via the
+ * OraBody_FUNC mechanism and stored verbatim in 'src'.  It is compiled at
+ * query execution time and never written to the system catalog.
+ */
+typedef struct InlineFunctionDef
+{
+	pg_node_attr(nodetag_number(498))
+	NodeTag		type;
+	char	   *funcname;		/* function/procedure name (unqualified) */
+	List	   *args;			/* list of FunctionParameter nodes */
+	TypeName   *rettype;		/* return type, or NULL for procedures */
+	bool		is_proc;		/* true = procedure, false = function */
+	char	   *src;			/* body source text (IS/AS ... END) */
+	ParseLoc	location pg_node_attr(query_jumble_ignore);
+} InlineFunctionDef;
+
+/*
  * WithClause -
  *	   representation of WITH clause
  *
- * Note: WithClause does not propagate into the Query representation;
- * but CommonTableExpr does.
+ * Note: the WithClause node itself does not propagate into the Query
+ * representation, but data derived from it does: CommonTableExpr entries
+ * are carried in Query.cteList as before, and (for ORA_PARSER) inline
+ * function/procedure definitions from plsql_defs are carried in
+ * Query.withFuncDefs.
  */
 typedef struct WithClause
 {
 	NodeTag		type;
+	List	   *plsql_defs;		/* list of InlineFunctionDef (ORA_PARSER only) */
 	List	   *ctes;			/* list of CommonTableExprs */
 	bool		recursive;		/* true = WITH RECURSIVE */
 	ParseLoc	location;		/* token location, or -1 if unknown */
@@ -2503,6 +2556,8 @@ typedef enum AlterTableType
 	AT_AttachPartition,			/* ATTACH PARTITION */
 	AT_DetachPartition,			/* DETACH PARTITION */
 	AT_DetachPartitionFinalize, /* DETACH PARTITION FINALIZE */
+	AT_SplitPartition,			/* SPLIT PARTITION */
+	AT_MergePartitions,			/* MERGE PARTITIONS */
 	AT_AddIdentity,				/* ADD IDENTITY */
 	AT_SetIdentity,				/* SET identity column options */
 	AT_DropIdentity,			/* DROP IDENTITY */
@@ -3912,6 +3967,9 @@ typedef enum ViewCheckOption
 	NO_CHECK_OPTION,
 	LOCAL_CHECK_OPTION,
 	CASCADED_CHECK_OPTION,
+	READ_ONLY_OPTION,			/* WITH READ ONLY (Oracle compat); only set
+								 * transiently in grammar actions, never stored
+								 * in ViewStmt.withCheckOption */
 } ViewCheckOption;
 
 typedef struct ViewStmt
@@ -3925,6 +3983,7 @@ typedef struct ViewStmt
 	char	   *stmt_literal;	/* the original text that defines the force view */
 	List	   *options;		/* options from WITH clause */
 	ViewCheckOption withCheckOption;	/* WITH CHECK OPTION */
+	bool		readOnly;		/* WITH READ ONLY (Oracle compat) */
 } ViewStmt;
 
 /* ----------------------

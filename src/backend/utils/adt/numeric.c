@@ -1808,8 +1808,7 @@ generate_series_step_numeric(PG_FUNCTION_ARGS)
 		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 
 		/* allocate memory for user context */
-		fctx = (generate_series_numeric_fctx *)
-			palloc(sizeof(generate_series_numeric_fctx));
+		fctx = palloc_object(generate_series_numeric_fctx);
 
 		/*
 		 * Use fctx to keep state from call to call. Seed current with the
@@ -2166,7 +2165,7 @@ numeric_sortsupport(PG_FUNCTION_ARGS)
 		NumericSortSupport *nss;
 		MemoryContext oldcontext = MemoryContextSwitchTo(ssup->ssup_cxt);
 
-		nss = palloc(sizeof(NumericSortSupport));
+		nss = palloc_object(NumericSortSupport);
 
 		/*
 		 * palloc a buffer for handling unaligned packed values in addition to
@@ -2243,7 +2242,7 @@ numeric_abbrev_convert(Datum original_datum, SortSupport ssup)
 	}
 
 	/* should happen only for external/compressed toasts */
-	if ((Pointer) original_varatt != DatumGetPointer(original_datum))
+	if (original_varatt != DatumGetPointer(original_datum))
 		pfree(original_varatt);
 
 	return result;
@@ -2333,9 +2332,9 @@ numeric_fast_cmp(Datum x, Datum y, SortSupport ssup)
 
 	result = cmp_numerics(nx, ny);
 
-	if ((Pointer) nx != DatumGetPointer(x))
+	if (nx != DatumGetPointer(x))
 		pfree(nx);
-	if ((Pointer) ny != DatumGetPointer(y))
+	if (ny != DatumGetPointer(y))
 		pfree(ny);
 
 	return result;
@@ -4803,7 +4802,7 @@ makeNumericAggState(FunctionCallInfo fcinfo, bool calcSumX2)
 
 	old_context = MemoryContextSwitchTo(agg_context);
 
-	state = (NumericAggState *) palloc0(sizeof(NumericAggState));
+	state = palloc0_object(NumericAggState);
 	state->calcSumX2 = calcSumX2;
 	state->agg_context = agg_context;
 
@@ -4821,7 +4820,7 @@ makeNumericAggStateCurrentContext(bool calcSumX2)
 {
 	NumericAggState *state;
 
-	state = (NumericAggState *) palloc0(sizeof(NumericAggState));
+	state = palloc0_object(NumericAggState);
 	state->calcSumX2 = calcSumX2;
 	state->agg_context = CurrentMemoryContext;
 
@@ -5467,7 +5466,7 @@ makeInt128AggState(FunctionCallInfo fcinfo, bool calcSumX2)
 
 	old_context = MemoryContextSwitchTo(agg_context);
 
-	state = (Int128AggState *) palloc0(sizeof(Int128AggState));
+	state = palloc0_object(Int128AggState);
 	state->calcSumX2 = calcSumX2;
 
 	MemoryContextSwitchTo(old_context);
@@ -5484,7 +5483,7 @@ makeInt128AggStateCurrentContext(bool calcSumX2)
 {
 	Int128AggState *state;
 
-	state = (Int128AggState *) palloc0(sizeof(Int128AggState));
+	state = palloc0_object(Int128AggState);
 	state->calcSumX2 = calcSumX2;
 
 	return state;

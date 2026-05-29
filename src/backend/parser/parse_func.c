@@ -30,6 +30,7 @@
 #include "parser/parse_func.h"
 #include "parser/parse_relation.h"
 #include "parser/parse_target.h"
+#include "oracle_parser/ora_with_function.h"
 #include "parser/parse_type.h"
 #include "parser/parse_package.h"
 #include "utils/builtins.h"
@@ -324,7 +325,18 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 											  &nvargs, &vatype,
 											  &declared_arg_types, &argdefaults, &pfunc);
 		if (fdresult != FUNCDETAIL_NOTFOUND)
-			function_from = FUNC_FROM_SUBPROCFUNC;
+		{
+			/*
+			 * Distinguish WITH-clause inline functions from PL/iSQL nested
+			 * subprograms.  The WITH-clause hook (withFuncLookupHook) always
+			 * leaves pfunc == NULL; the PL/iSQL subproc hook always sets it
+			 * to a non-NULL PLiSQL_function pointer.
+			 */
+			if (pstate->p_subprocfunc_hook == withFuncLookupHook)
+				function_from = FUNC_FROM_WITH_CLAUSE;
+			else
+				function_from = FUNC_FROM_SUBPROCFUNC;
+		}
 		else if (list_length(funcname) == 1)
 		{
 			/* lookup standard package func */
@@ -343,6 +355,56 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 				function_from = FUNC_FROM_PACKAGE;
 		}
 	}
+	/*
+	 * If the current pstate doesn't have a WITH-clause hook (e.g. the SELECT
+	 * inside INSERT...SELECT lives in a child pstate), walk up the parent
+	 * chain and retry the WITH-clause lookup.  Standard subproc hooks are
+	 * intentionally NOT propagated this way — only the WITH-clause hook.
+	 */
+	if (fdresult == FUNCDETAIL_NOTFOUND)
+	{
+		ParseState *ancestor = pstate->parentParseState;
+
+		while (ancestor != NULL && fdresult == FUNCDETAIL_NOTFOUND)
+		{
+			if (ancestor->p_subprocfunc_hook == withFuncLookupHook &&
+				ancestor->p_with_func_list != NIL)
+			{
+				fdresult = withFuncLookupHook(ancestor, funcname, &fargs,
+											  argnames, nargs, actual_arg_types,
+											  !func_variadic, true, proc_call,
+											  &funcid, &rettype, &retset,
+											  &nvargs, &vatype,
+											  &declared_arg_types, &argdefaults,
+											  &pfunc);
+				if (fdresult != FUNCDETAIL_NOTFOUND)
+					function_from = FUNC_FROM_WITH_CLAUSE;
+			}
+			ancestor = ancestor->parentParseState;
+		}
+	}
+
+	/*
+	 * If p_with_func_list is set but the hook is NOT withFuncLookupHook (e.g.
+	 * inside a PL/iSQL body that is part of a WITH-clause function executing
+	 * recursively), try the WITH-clause lookup directly.  This covers T10
+	 * recursive and mutually-recursive WITH function calls.
+	 */
+	if (fdresult == FUNCDETAIL_NOTFOUND &&
+		pstate->p_with_func_list != NIL &&
+		pstate->p_subprocfunc_hook != withFuncLookupHook)
+	{
+		fdresult = withFuncLookupHook(pstate, funcname, &fargs,
+									  argnames, nargs, actual_arg_types,
+									  !func_variadic, true, proc_call,
+									  &funcid, &rettype, &retset,
+									  &nvargs, &vatype,
+									  &declared_arg_types, &argdefaults,
+									  &pfunc);
+		if (fdresult != FUNCDETAIL_NOTFOUND)
+			function_from = FUNC_FROM_WITH_CLAUSE;
+	}
+
 	if (fdresult == FUNCDETAIL_NOTFOUND)
 	{
 		fdresult = LookupPkgFunc(pstate, funcname, &fargs, argnames, nargs,
@@ -833,6 +895,46 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 					 parser_errposition(pstate, location)));
 
 		actual_arg_types[nargsplusdefs++] = exprType(expr);
+	}
+
+	/*
+	 * A WITH-clause lookup hook may have appended default-expression nodes
+	 * directly to fargs (for parameters omitted at the call site).  Sync
+	 * actual_arg_types for those extra positions so make_fn_arguments sees
+	 * consistent arrays and can coerce if needed.
+	 */
+	{
+		int			new_nargs = list_length(fargs);
+
+		if (new_nargs > nargs)
+		{
+			ListCell   *lc;
+			int			j = 0;
+
+			/*
+			 * Defensive guard: actual_arg_types is FUNC_MAX_ARGS-sized.  The
+			 * grammar already caps WITH FUNCTION parameter counts, but mirror
+			 * the bound check used by the argdefaults loop above to prevent
+			 * a stack-array overrun if that invariant is ever violated.
+			 */
+			if (new_nargs > FUNC_MAX_ARGS)
+				ereport(ERROR,
+						(errcode(ERRCODE_TOO_MANY_ARGUMENTS),
+						 errmsg_plural("cannot pass more than %d argument to a function",
+									   "cannot pass more than %d arguments to a function",
+									   FUNC_MAX_ARGS,
+									   FUNC_MAX_ARGS),
+						 parser_errposition(pstate, location)));
+
+			foreach(lc, fargs)
+			{
+				if (j >= nargs)
+					actual_arg_types[j] = exprType((Node *) lfirst(lc));
+				j++;
+			}
+			nargs = new_nargs;
+			nargsplusdefs = nargs;
+		}
 	}
 
 	/*

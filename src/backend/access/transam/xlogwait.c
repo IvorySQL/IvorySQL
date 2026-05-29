@@ -126,7 +126,7 @@ updateMinWaitedLSN(WaitLSNType lsnType)
 	XLogRecPtr	minWaitedLSN = PG_UINT64_MAX;
 	int			i = (int) lsnType;
 
-	Assert(i >= 0 && i < (int) WAIT_LSN_TYPE_COUNT);
+	Assert(i >= 0 && i < WAIT_LSN_TYPE_COUNT);
 
 	if (!pairingheap_is_empty(&waitLSNState->waitersHeap[i]))
 	{
@@ -147,7 +147,7 @@ addLSNWaiter(XLogRecPtr lsn, WaitLSNType lsnType)
 	WaitLSNProcInfo *procInfo = &waitLSNState->procInfos[MyProcNumber];
 	int			i = (int) lsnType;
 
-	Assert(i >= 0 && i < (int) WAIT_LSN_TYPE_COUNT);
+	Assert(i >= 0 && i < WAIT_LSN_TYPE_COUNT);
 
 	LWLockAcquire(WaitLSNLock, LW_EXCLUSIVE);
 
@@ -172,7 +172,7 @@ deleteLSNWaiter(WaitLSNType lsnType)
 	WaitLSNProcInfo *procInfo = &waitLSNState->procInfos[MyProcNumber];
 	int			i = (int) lsnType;
 
-	Assert(i >= 0 && i < (int) WAIT_LSN_TYPE_COUNT);
+	Assert(i >= 0 && i < WAIT_LSN_TYPE_COUNT);
 
 	LWLockAcquire(WaitLSNLock, LW_EXCLUSIVE);
 
@@ -213,7 +213,7 @@ wakeupWaiters(WaitLSNType lsnType, XLogRecPtr currentLSN)
 	int			numWakeUpProcs;
 	int			i = (int) lsnType;
 
-	Assert(i >= 0 && i < (int) WAIT_LSN_TYPE_COUNT);
+	Assert(i >= 0 && i < WAIT_LSN_TYPE_COUNT);
 
 	do
 	{
@@ -270,7 +270,7 @@ WaitLSNWakeup(WaitLSNType lsnType, XLogRecPtr currentLSN)
 {
 	int			i = (int) lsnType;
 
-	Assert(i >= 0 && i < (int) WAIT_LSN_TYPE_COUNT);
+	Assert(i >= 0 && i < WAIT_LSN_TYPE_COUNT);
 
 	/*
 	 * Fast path check.  Skip if currentLSN is InvalidXLogRecPtr, which means
@@ -321,7 +321,7 @@ WaitForLSN(WaitLSNType lsnType, XLogRecPtr targetLSN, int64 timeout)
 	Assert(waitLSNState);
 
 	/* Should have a valid proc number */
-	Assert(MyProcNumber >= 0 && MyProcNumber < MaxBackends);
+	Assert(MyProcNumber >= 0 && MyProcNumber < MaxBackends + NUM_AUXILIARY_PROCS);
 
 	if (timeout > 0)
 	{

@@ -707,7 +707,7 @@ ginbuild(Relation heap, Relation index, IndexInfo *indexInfo)
 	{
 		SortCoordinate coordinate;
 
-		coordinate = (SortCoordinate) palloc0(sizeof(SortCoordinateData));
+		coordinate = palloc0_object(SortCoordinateData);
 		coordinate->isWorker = false;
 		coordinate->nParticipants =
 			state->bs_leader->nparticipanttuplesorts;
@@ -791,7 +791,7 @@ ginbuild(Relation heap, Relation index, IndexInfo *indexInfo)
 	/*
 	 * Return statistics
 	 */
-	result = (IndexBuildResult *) palloc(sizeof(IndexBuildResult));
+	result = palloc_object(IndexBuildResult);
 
 	result->heap_tuples = reltuples;
 	result->index_tuples = buildstate.indtuples;
@@ -867,7 +867,7 @@ gininsert(Relation index, Datum *values, bool *isnull,
 	if (ginstate == NULL)
 	{
 		oldCtx = MemoryContextSwitchTo(indexInfo->ii_Context);
-		ginstate = (GinState *) palloc(sizeof(GinState));
+		ginstate = palloc_object(GinState);
 		initGinState(ginstate, index);
 		indexInfo->ii_AmCache = ginstate;
 		MemoryContextSwitchTo(oldCtx);
@@ -934,7 +934,7 @@ _gin_begin_parallel(GinBuildState *buildstate, Relation heap, Relation index,
 	Size		estsort;
 	GinBuildShared *ginshared;
 	Sharedsort *sharedsort;
-	GinLeader  *ginleader = (GinLeader *) palloc0(sizeof(GinLeader));
+	GinLeader  *ginleader = palloc0_object(GinLeader);
 	WalUsage   *walusage;
 	BufferUsage *bufferusage;
 	bool		leaderparticipates = true;
@@ -1259,7 +1259,7 @@ AssertCheckGinBuffer(GinBuffer *buffer)
 static GinBuffer *
 GinBufferInit(Relation index)
 {
-	GinBuffer  *buffer = palloc0(sizeof(GinBuffer));
+	GinBuffer  *buffer = palloc0_object(GinBuffer);
 	int			i,
 				nKeys;
 	TupleDesc	desc = RelationGetDescr(index);
@@ -1273,7 +1273,7 @@ GinBufferInit(Relation index)
 
 	nKeys = IndexRelationGetNumberOfKeyAttributes(index);
 
-	buffer->ssup = palloc0(sizeof(SortSupportData) * nKeys);
+	buffer->ssup = palloc0_array(SortSupportData, nKeys);
 
 	/*
 	 * Lookup ordering operator for the index key data type, and initialize
@@ -1784,7 +1784,7 @@ _gin_parallel_merge(GinBuildState *state)
 									 ++numtuples);
 	}
 
-	/* relase all the memory */
+	/* release all the memory */
 	GinBufferFree(buffer);
 
 	tuplesort_end(state->bs_sortstate);
@@ -1972,7 +1972,7 @@ _gin_process_worker_data(GinBuildState *state, Tuplesortstate *worker_sort,
 		GinBufferReset(buffer);
 	}
 
-	/* relase all the memory */
+	/* release all the memory */
 	GinBufferFree(buffer);
 
 	tuplesort_end(worker_sort);
@@ -2030,7 +2030,7 @@ _gin_parallel_scan_and_build(GinBuildState *state,
 	IndexInfo  *indexInfo;
 
 	/* Initialize local tuplesort coordination state */
-	coordinate = palloc0(sizeof(SortCoordinateData));
+	coordinate = palloc0_object(SortCoordinateData);
 	coordinate->isWorker = true;
 	coordinate->nParticipants = -1;
 	coordinate->sharedsort = sharedsort;
@@ -2215,7 +2215,7 @@ typedef struct
  *
  * For by-reference data types, we store the actual data. For by-val types
  * we simply copy the whole Datum, so that we don't have to care about stuff
- * like endianess etc. We could make it a little bit smaller, but it's not
+ * like endianness etc. We could make it a little bit smaller, but it's not
  * worth it - it's a tiny fraction of the data, and we need to MAXALIGN the
  * start of the TID list anyway. So we wouldn't save anything. (This would
  * not be a good idea for the permanent in-index data, since we'd prefer
@@ -2279,7 +2279,7 @@ _gin_build_tuple(OffsetNumber attrnum, unsigned char category,
 	while (ncompressed < nitems)
 	{
 		int			cnt;
-		GinSegmentInfo *seginfo = palloc(sizeof(GinSegmentInfo));
+		GinSegmentInfo *seginfo = palloc_object(GinSegmentInfo);
 
 		seginfo->seg = ginCompressPostingList(&items[ncompressed],
 											  (nitems - ncompressed),
@@ -2412,7 +2412,7 @@ _gin_parse_tuple_items(GinTuple *a)
 
 	Assert(ndecoded == a->nitems);
 
-	return (ItemPointer) items;
+	return items;
 }
 
 /*

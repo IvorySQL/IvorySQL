@@ -31,7 +31,8 @@ OBJS = \
 	src/sysview/sysview_functions.o \
 	src/xml_functions/ora_xml_functions.o \
 	src/builtin_packages/dbms_utility/dbms_utility.o \
-	src/builtin_packages/dbms_lock/dbms_lock.o
+	src/builtin_packages/dbms_lock/dbms_lock.o \
+	src/builtin_packages/utl_encode/utl_encode.o
 
 EXTENSION = ivorysql_ora
 
@@ -79,7 +80,8 @@ ORA_REGRESS = \
 	ora_ascii \
 	dbms_lock \
 	utl_file \
-	utl_raw
+	utl_raw \
+	utl_encode
 
 SHLIB_LINK += -lxml2
 

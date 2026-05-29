@@ -2791,17 +2791,19 @@ match_previous_words(int pattern_id,
 					  "OWNER TO", "SET", "VALIDATE CONSTRAINT",
 					  "REPLICA IDENTITY", "ATTACH PARTITION",
 					  "DETACH PARTITION", "FORCE ROW LEVEL SECURITY",
+					  "SPLIT PARTITION", "MERGE PARTITIONS (",
 					  "OF", "NOT OF", "MODIFY");
-	
-	/* 
-	 * Oracle Command 
-	 * ALTER TABLE xxx MODIFY 
-	 */ 
+
+	/*
+	 * Oracle Command
+	 * ALTER TABLE xxx MODIFY
+	 */
 	else if (Matches("ALTER", "TABLE", MatchAny, "MODIFY", MatchAny))
 	{
 		/* make sure to keep this list and the !Matches() below in sync */
 		COMPLETE_WITH("INVISIBLE", "VISIBLE");
 	}
+
 
 	/* ALTER TABLE xxx ADD */
 	else if (Matches("ALTER", "TABLE", MatchAny, "ADD"))
@@ -3063,16 +3065,29 @@ match_previous_words(int pattern_id,
 		COMPLETE_WITH("FROM (", "IN (", "WITH (");
 
 	/*
-	 * If we have ALTER TABLE <foo> DETACH PARTITION, provide a list of
+	 * If we have ALTER TABLE <foo> DETACH|SPLIT PARTITION, provide a list of
 	 * partitions of <foo>.
 	 */
-	else if (Matches("ALTER", "TABLE", MatchAny, "DETACH", "PARTITION"))
+	else if (Matches("ALTER", "TABLE", MatchAny, "DETACH|SPLIT", "PARTITION"))
 	{
 		set_completion_reference(prev3_wd);
 		COMPLETE_WITH_SCHEMA_QUERY(Query_for_partition_of_table);
 	}
 	else if (Matches("ALTER", "TABLE", MatchAny, "DETACH", "PARTITION", MatchAny))
 		COMPLETE_WITH("CONCURRENTLY", "FINALIZE");
+
+	/* ALTER TABLE <name> SPLIT PARTITION <name> */
+	else if (Matches("ALTER", "TABLE", MatchAny, "SPLIT", "PARTITION", MatchAny))
+		COMPLETE_WITH("INTO ( PARTITION");
+
+	/* ALTER TABLE <name> MERGE PARTITIONS ( */
+	else if (Matches("ALTER", "TABLE", MatchAny, "MERGE", "PARTITIONS", "("))
+	{
+		set_completion_reference(prev4_wd);
+		COMPLETE_WITH_SCHEMA_QUERY(Query_for_partition_of_table);
+	}
+	else if (Matches("ALTER", "TABLE", MatchAny, "MERGE", "PARTITIONS", "(*)"))
+		COMPLETE_WITH("INTO");
 
 	/* ALTER TABLE <name> OF */
 	else if (Matches("ALTER", "TABLE", MatchAny, "OF"))
@@ -3392,30 +3407,50 @@ match_previous_words(int pattern_id,
 			 Matches("COPY|\\copy", MatchAny, "FROM", "PROGRAM", MatchAny))
 		COMPLETE_WITH("WITH (", "WHERE");
 
-	/* Complete COPY <sth> FROM [PROGRAM] filename WITH ( */
-	else if (Matches("COPY|\\copy", MatchAny, "FROM", MatchAnyExcept("PROGRAM"), "WITH", "(") ||
-			 Matches("COPY|\\copy", MatchAny, "FROM", "PROGRAM", MatchAny, "WITH", "("))
-		COMPLETE_WITH(Copy_from_options);
+	/* Complete COPY <sth> FROM|TO [PROGRAM] filename WITH ( */
+	else if (HeadMatches("COPY|\\copy", MatchAny, "FROM|TO", MatchAnyExcept("PROGRAM"), "WITH", "(*") ||
+			 HeadMatches("COPY|\\copy", MatchAny, "FROM|TO", "PROGRAM", MatchAny, "WITH", "(*"))
+	{
+		if (!HeadMatches("COPY|\\copy", MatchAny, "FROM|TO", MatchAnyExcept("PROGRAM"), "WITH", "(*)") &&
+			!HeadMatches("COPY|\\copy", MatchAny, "FROM|TO", "PROGRAM", MatchAny, "WITH", "(*)"))
+		{
+			/*
+			 * This fires if we're in an unfinished parenthesized option list.
+			 * get_previous_words treats a completed parenthesized option list
+			 * as one word, so the above tests are correct.
+			 */
 
-	/* Complete COPY <sth> TO [PROGRAM] filename WITH ( */
-	else if (Matches("COPY|\\copy", MatchAny, "TO", MatchAnyExcept("PROGRAM"), "WITH", "(") ||
-			 Matches("COPY|\\copy", MatchAny, "TO", "PROGRAM", MatchAny, "WITH", "("))
-		COMPLETE_WITH(Copy_to_options);
+			if (ends_with(prev_wd, '(') || ends_with(prev_wd, ','))
+			{
+				if (HeadMatches("COPY|\\copy", MatchAny, "FROM"))
+					COMPLETE_WITH(Copy_from_options);
+				else
+					COMPLETE_WITH(Copy_to_options);
+			}
 
-	/* Complete COPY <sth> FROM|TO [PROGRAM] <sth> WITH (FORMAT */
-	else if (Matches("COPY|\\copy", MatchAny, "FROM|TO", MatchAnyExcept("PROGRAM"), "WITH", "(", "FORMAT") ||
-			 Matches("COPY|\\copy", MatchAny, "FROM|TO", "PROGRAM", MatchAny, "WITH", "(", "FORMAT"))
-		COMPLETE_WITH("binary", "csv", "text");
+			/* Complete COPY <sth> FROM|TO filename WITH (FORMAT */
+			else if (TailMatches("FORMAT"))
+				COMPLETE_WITH("binary", "csv", "text");
 
-	/* Complete COPY <sth> FROM [PROGRAM] filename WITH (ON_ERROR */
-	else if (Matches("COPY|\\copy", MatchAny, "FROM", MatchAnyExcept("PROGRAM"), "WITH", "(", "ON_ERROR") ||
-			 Matches("COPY|\\copy", MatchAny, "FROM", "PROGRAM", MatchAny, "WITH", "(", "ON_ERROR"))
-		COMPLETE_WITH("stop", "ignore");
+			/* Complete COPY <sth> FROM|TO filename WITH (FREEZE */
+			else if (TailMatches("FREEZE"))
+				COMPLETE_WITH("true", "false");
 
-	/* Complete COPY <sth> FROM [PROGRAM] filename WITH (LOG_VERBOSITY */
-	else if (Matches("COPY|\\copy", MatchAny, "FROM", MatchAnyExcept("PROGRAM"), "WITH", "(", "LOG_VERBOSITY") ||
-			 Matches("COPY|\\copy", MatchAny, "FROM", "PROGRAM", MatchAny, "WITH", "(", "LOG_VERBOSITY"))
-		COMPLETE_WITH("silent", "default", "verbose");
+			/* Complete COPY <sth> FROM|TO filename WITH (HEADER */
+			else if (TailMatches("HEADER"))
+				COMPLETE_WITH("true", "false", "MATCH");
+
+			/* Complete COPY <sth> FROM filename WITH (ON_ERROR */
+			else if (TailMatches("ON_ERROR"))
+				COMPLETE_WITH("stop", "ignore");
+
+			/* Complete COPY <sth> FROM filename WITH (LOG_VERBOSITY */
+			else if (TailMatches("LOG_VERBOSITY"))
+				COMPLETE_WITH("silent", "default", "verbose");
+		}
+
+		/* A completed parenthesized option list should be caught below */
+	}
 
 	/* Complete COPY <sth> FROM [PROGRAM] <sth> WITH (<options>) */
 	else if (Matches("COPY|\\copy", MatchAny, "FROM", MatchAnyExcept("PROGRAM"), "WITH", MatchAny) ||
@@ -4983,7 +5018,8 @@ match_previous_words(int pattern_id,
 
 /* PREPARE xx AS */
 	else if (Matches("PREPARE", MatchAny, "AS"))
-		COMPLETE_WITH("SELECT", "UPDATE", "INSERT INTO", "DELETE FROM");
+		COMPLETE_WITH("SELECT", "UPDATE", "INSERT INTO", "DELETE FROM",
+					  "MERGE INTO", "VALUES", "WITH", "TABLE");
 
 /*
  * PREPARE TRANSACTION is missing on purpose. It's intended for transaction
