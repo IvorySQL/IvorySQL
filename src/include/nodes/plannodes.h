@@ -146,6 +146,9 @@ typedef struct PlannedStmt
 	/* type OIDs for PARAM_EXEC Params */
 	List	   *paramExecTypes;
 
+	/* WITH clause inline functions/procedures (ORA_PARSER only) */
+	List	   *withFuncDefs;
+
 	/* non-null if this is utility stmt */
 	Node	   *utilityStmt;
 

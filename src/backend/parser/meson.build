@@ -22,6 +22,7 @@ backend_sources += files(
   'parse_utilcmd.c',
   'scansup.c',
   'parse_package.c',
+  'parse_with_plsql.c',
 )
 
 # Build a small utility static lib for the parser. The generation of the

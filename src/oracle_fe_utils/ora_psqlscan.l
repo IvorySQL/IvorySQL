@@ -796,12 +796,66 @@ other			.
 				}
 
 ";"				{
+					bool	skip_this_semi = false;
+
 					/* update Symbol State */
 					if (cur_state->ora_plsql_expect_end_symbol == END_SYMBOL_SEMICOLON)
-						cur_state->ora_plsql_expect_end_symbol = END_SYMBOL_SLASH;
-					
+					{
+						if (cur_state->identifiers[0] == 'w' ||
+							cur_state->identifiers[0] == 'e')
+						{
+							/*
+							 * WITH FUNCTION/PROCEDURE (or EXPLAIN WITH ...): the
+							 * preceding END just decremented begin_depth, so we
+							 * can use it to distinguish an inner nested END from
+							 * the END that closes the body itself.
+							 *
+							 *   begin_depth == 0 → outer body fully closed;
+							 *     reset cancel and the identifier tracking so
+							 *     the upcoming SELECT/INSERT/etc. can terminate
+							 *     normally and so a subsequent FUNCTION/PROCEDURE
+							 *     definition in the same WITH clause is detected.
+							 *
+							 *   begin_depth > 0  → an inner BEGIN…END; — the body
+							 *     is still open.  Preserve cancel_semicolon_
+							 *     terminator and the identifier tracking so the
+							 *     outer END is still recognized; just clear
+							 *     expect_end_symbol and suppress this ';'.
+							 */
+							if (cur_state->begin_depth == 0)
+							{
+								cur_state->cancel_semicolon_terminator = false;
+								cur_state->ora_plsql_expect_end_symbol = END_SYMBOL_INVALID;
+								if (cur_state->identifiers[0] == 'e')
+								{
+									/* EXPLAIN WITH: preserve [0]='e' and [1]='w' */
+									cur_state->identifiers[2] = 0;
+									cur_state->identifiers[3] = 0;
+									cur_state->identifier_count = 2;
+								}
+								else
+								{
+									/* plain WITH: preserve [0]='w' */
+									cur_state->identifiers[1] = 0;
+									cur_state->identifiers[2] = 0;
+									cur_state->identifiers[3] = 0;
+									cur_state->identifier_count = 1;
+								}
+							}
+							else
+							{
+								/* nested END;: leave identifiers/cancel intact */
+								cur_state->ora_plsql_expect_end_symbol = END_SYMBOL_INVALID;
+							}
+							skip_this_semi = true;
+						}
+						else
+							cur_state->ora_plsql_expect_end_symbol = END_SYMBOL_SLASH;
+					}
+
 					ECHO;
-					if (cur_state->paren_depth == 0 &&
+					if (!skip_this_semi &&
+							cur_state->paren_depth == 0 &&
 							cur_state->begin_depth == 0 &&
 							!cur_state->cancel_semicolon_terminator)
 					{
@@ -1080,9 +1134,11 @@ other			.
 						memset(cur_state->identifiers, 0, sizeof(cur_state->identifiers));
 
 					if (pg_strcasecmp(yytext, "create") == 0 ||
+						pg_strcasecmp(yytext, "explain") == 0 ||
+						pg_strcasecmp(yytext, "with") == 0 ||
 						pg_strcasecmp(yytext, "function") == 0 ||
 						pg_strcasecmp(yytext, "procedure") == 0 ||
-						pg_strcasecmp(yytext, "package") == 0 || 
+						pg_strcasecmp(yytext, "package") == 0 ||
 						pg_strcasecmp(yytext, "or") == 0 ||
 						pg_strcasecmp(yytext, "replace") == 0)
 					{
@@ -1090,21 +1146,52 @@ other			.
 							cur_state->identifiers[cur_state->identifier_count] = pg_tolower((unsigned char) yytext[0]);
 					}
 					
-					/* Not final End state .This state needs to be cleared */
-					if (cur_state->ora_plsql_expect_end_symbol)
+					/*
+					 * If the previous token was END (expect_end_symbol ==
+					 * SEMICOLON) and this identifier is a control-flow
+					 * closer (IF / LOOP / CASE), this is END-of-inner-
+					 * structure — clear the state so the upcoming ';' is
+					 * treated as a regular non-terminating semicolon.
+					 *
+					 * Otherwise, when expect_end_symbol == SEMICOLON, leave
+					 * it intact so the labeled-END pattern (e.g. "END
+					 * my_func;") still triggers the WITH-clause termination
+					 * logic in the ';' rule.  For other non-zero states
+					 * (e.g. END_SYMBOL_SLASH set after a body semicolon in
+					 * CREATE FUNCTION), clear unconditionally as before.
+					 */
+					if (cur_state->ora_plsql_expect_end_symbol == END_SYMBOL_SEMICOLON)
+					{
+						if (pg_strcasecmp(yytext, "if") == 0 ||
+							pg_strcasecmp(yytext, "loop") == 0 ||
+							pg_strcasecmp(yytext, "case") == 0)
+							cur_state->ora_plsql_expect_end_symbol = END_SYMBOL_INVALID;
+						/* else: keep SEMICOLON for "END label;" pattern */
+					}
+					else if (cur_state->ora_plsql_expect_end_symbol)
 						cur_state->ora_plsql_expect_end_symbol = END_SYMBOL_INVALID;
 					/*
 					 * Simply discard EDITIONABLE and NONEDITIONABLE that occur in
 					 * the first 4 identifiers at the beginning of the command.
+					 * Also discard identifiers inside parentheses — this lets
+					 * EXPLAIN (COSTS OFF) WITH FUNCTION be recognized by the
+					 * scanner even though options appear between EXPLAIN and WITH.
 					 */
 					if (pg_strcasecmp(yytext, "editionable") != 0 &&
-						pg_strcasecmp(yytext, "noneditionable") != 0)
+						pg_strcasecmp(yytext, "noneditionable") != 0 &&
+						cur_state->paren_depth == 0)
 						cur_state->identifier_count++;
 
-					if (cur_state->identifiers[0] == 'c' &&
-						(cur_state->identifiers[1] == 'f' || cur_state->identifiers[1] == 'p' ||
-						 (cur_state->identifiers[1] == 'o' && cur_state->identifiers[2] == 'r' &&
-						  (cur_state->identifiers[3] == 'f' || cur_state->identifiers[3] == 'p'))) &&
+					if (((cur_state->identifiers[0] == 'c' &&
+						  (cur_state->identifiers[1] == 'f' || cur_state->identifiers[1] == 'p' ||
+						   (cur_state->identifiers[1] == 'o' && cur_state->identifiers[2] == 'r' &&
+							(cur_state->identifiers[3] == 'f' || cur_state->identifiers[3] == 'p')))) ||
+						 (cur_state->identifiers[0] == 'w' &&
+						  (cur_state->identifiers[1] == 'f' || cur_state->identifiers[1] == 'p')) ||
+						 /* EXPLAIN WITH FUNCTION/PROCEDURE */
+						 (cur_state->identifiers[0] == 'e' &&
+						  cur_state->identifiers[1] == 'w' &&
+						  (cur_state->identifiers[2] == 'f' || cur_state->identifiers[2] == 'p'))) &&
 						cur_state->paren_depth == 0)
 					{
 						/*

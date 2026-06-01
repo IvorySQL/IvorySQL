@@ -58,6 +58,7 @@
 #include "utils/syscache.h"
 #include "catalog/pg_proc.h"
 #include "parser/parse_param.h"
+#include "oracle_parser/ora_with_function.h"
 
 
 
@@ -2767,16 +2768,19 @@ ExecInitFunc(ExprEvalStep *scratch, Expr *node, List *args, Oid funcid,
 	int			argno;
 	ListCell   *lc;
 	bool		is_subproc_func = false;
+	bool		is_with_func = false;
 
 	if (nodeTag(node) == T_FuncExpr)
 	{
 		FuncExpr   *funcexpr = (FuncExpr *) node;
 
-		if (!FUNC_EXPR_FROM_PG_PROC(funcexpr->function_from))
+		if (funcexpr->function_from == FUNC_FROM_WITH_CLAUSE)
+			is_with_func = true;
+		else if (!FUNC_EXPR_FROM_PG_PROC(funcexpr->function_from))
 			is_subproc_func = true;
 	}
 
-	if (!is_subproc_func)
+	if (!is_subproc_func && !is_with_func)
 	{
 		/* Verify EXECUTE privilege before invoking the function. */
 		aclresult = object_aclcheck(ProcedureRelationId, funcid, GetUserId(), ACL_EXECUTE);
@@ -2806,7 +2810,36 @@ ExecInitFunc(ExprEvalStep *scratch, Expr *node, List *args, Oid funcid,
 	fcinfo = scratch->d.func.fcinfo_data;
 
 	/* Set up the primary fmgr lookup information */
-	if (is_subproc_func)
+	if (is_with_func)
+	{
+		/*
+		 * WITH-clause inline functions dispatch through the plisql call
+		 * handler.  fn_oid stores the function's index within the WITH clause
+		 * (not a real pg_proc OID), and fn_extra stores the query EState so
+		 * the handler can find/build the WithFuncContainer.
+		 *
+		 * We must store the EState of the outermost query that owns the WITH
+		 * clause, NOT the EState of any intermediate SPI execution.
+		 * plisql_active_with_func_estate (set by plisql_call_handler before
+		 * invoking each WITH function) always points to the correct EState, so
+		 * use it whenever it is available.  The fallback via state->parent->state
+		 * handles the initial call from the outer query before any WITH function
+		 * has started executing.
+		 */
+		EState	   *qstate;
+
+		if (plisql_active_with_func_estate != NULL)
+			qstate = plisql_active_with_func_estate;
+		else if (state->parent && state->parent->state)
+			qstate = state->parent->state;
+		else
+			ereport(ERROR,
+					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+					 errmsg("cannot execute WITH clause function outside a query")));
+		fmgr_subproc_info_cxt(funcid, flinfo, CurrentMemoryContext);
+		flinfo->fn_extra = qstate;	/* override: EState, not NULL */
+	}
+	else if (is_subproc_func)
 		fmgr_subproc_info_cxt(funcid, flinfo, CurrentMemoryContext);
 	else
 		fmgr_info(funcid, flinfo);
@@ -5181,12 +5214,17 @@ ExecInitFuncWithOutParams(Expr *node, ExprState *state,
 			}
 
 			/*
-			 * Get the argument names and modes 
+			 * Get the argument names and modes
 			 */
 			num_all_args = get_func_arg_info(func_tuple, &argtypes,
 								&argnames, &argmodes);
 			rettype = get_func_real_rettype(func_tuple);
 			funcname = NameStr(((Form_pg_proc) GETSTRUCT(func_tuple))->proname);
+		}
+		else if (funcexpr->function_from == FUNC_FROM_WITH_CLAUSE)
+		{
+			/* WITH-clause inline functions have no OUT params */
+			return;
 		}
 		else
 		{

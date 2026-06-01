@@ -178,3 +178,9 @@ test: ora_identifiers
 # ----------
 
 test: alter_index
+
+# ----------
+# Oracle WITH FUNCTION/PROCEDURE support
+# ----------
+
+test: with_function

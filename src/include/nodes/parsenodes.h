@@ -173,6 +173,8 @@ typedef struct Query
 	bool		isReturn pg_node_attr(query_jumble_ignore);
 
 	List	   *cteList;		/* WITH list (of CommonTableExpr's) */
+	/* WITH clause inline functions/procedures (ORA_PARSER only) */
+	List	   *withFuncDefs pg_node_attr(query_jumble_ignore);
 
 	List	   *rtable;			/* list of range table entries */
 
@@ -1660,15 +1662,40 @@ typedef struct RowMarkClause
 } RowMarkClause;
 
 /*
+ * InlineFunctionDef -
+ *	   representation of a FUNCTION or PROCEDURE definition in a WITH clause
+ *	   (Oracle compatibility, ORA_PARSER mode only)
+ *
+ * The function body source text is captured by the Oracle lexer via the
+ * OraBody_FUNC mechanism and stored verbatim in 'src'.  It is compiled at
+ * query execution time and never written to the system catalog.
+ */
+typedef struct InlineFunctionDef
+{
+	pg_node_attr(nodetag_number(498))
+	NodeTag		type;
+	char	   *funcname;		/* function/procedure name (unqualified) */
+	List	   *args;			/* list of FunctionParameter nodes */
+	TypeName   *rettype;		/* return type, or NULL for procedures */
+	bool		is_proc;		/* true = procedure, false = function */
+	char	   *src;			/* body source text (IS/AS ... END) */
+	ParseLoc	location pg_node_attr(query_jumble_ignore);
+} InlineFunctionDef;
+
+/*
  * WithClause -
  *	   representation of WITH clause
  *
- * Note: WithClause does not propagate into the Query representation;
- * but CommonTableExpr does.
+ * Note: the WithClause node itself does not propagate into the Query
+ * representation, but data derived from it does: CommonTableExpr entries
+ * are carried in Query.cteList as before, and (for ORA_PARSER) inline
+ * function/procedure definitions from plsql_defs are carried in
+ * Query.withFuncDefs.
  */
 typedef struct WithClause
 {
 	NodeTag		type;
+	List	   *plsql_defs;		/* list of InlineFunctionDef (ORA_PARSER only) */
 	List	   *ctes;			/* list of CommonTableExprs */
 	bool		recursive;		/* true = WITH RECURSIVE */
 	ParseLoc	location;		/* token location, or -1 if unknown */

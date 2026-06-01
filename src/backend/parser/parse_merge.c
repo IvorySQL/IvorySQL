@@ -130,6 +130,7 @@ transformMergeStmt(ParseState *pstate, MergeStmt *stmt)
 
 		qry->cteList = transformWithClause(pstate, stmt->withClause);
 		qry->hasModifyingCTE = pstate->p_hasModifyingCTE;
+		qry->withFuncDefs = stmt->withClause->plsql_defs;
 	}
 
 	/*

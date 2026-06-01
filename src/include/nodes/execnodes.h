@@ -649,6 +649,9 @@ typedef struct AsyncRequest
 								 * tuples) */
 } AsyncRequest;
 
+/* Forward declaration for WITH clause function container (defined in ora_with_function.h) */
+struct WithFuncContainer;
+
 /* ----------------
  *	  EState information
  *
@@ -709,6 +712,9 @@ typedef struct EState
 	ParamExecData *es_param_exec_vals;	/* values of internal params */
 
 	QueryEnvironment *es_queryEnv;	/* query environment */
+
+	/* WITH clause inline function container (ORA_PARSER mode only) */
+	struct WithFuncContainer *es_with_func_container;
 
 	/* Other working state: */
 	MemoryContext es_query_cxt; /* per-query context in which EState lives */

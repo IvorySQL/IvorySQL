@@ -154,6 +154,7 @@ ExecMakeTableFunctionResult(SetExprState *setexpr,
 			funcexpr->funccollid = chcollationoid;
 		}
 		else if (!FUNC_EXPR_FROM_PG_PROC(funcexpr->function_from) &&
+				funcexpr->function_from != FUNC_FROM_WITH_CLAUSE &&
 				subproc_should_change_return_type(funcexpr,
 									&resulttype,
 									&chtypmod,
@@ -740,6 +741,20 @@ init_sexpr(Oid foid, Oid input_collation, Expr *node,
 	if (node != NULL && nodeTag(node) == T_FuncExpr)
 	{
 		FuncExpr   *funcexpr = (FuncExpr *) node;
+
+		/*
+		 * WITH-clause inline functions are scalar-only by design (the lookup
+		 * hook forces retset = false), so they must not appear here — this
+		 * function only handles table-function and set-returning paths.
+		 * Reject with a clear message rather than letting the call fall
+		 * through to the PL/iSQL subproc machinery, which would surface a
+		 * confusing internal error.
+		 */
+		if (funcexpr->function_from == FUNC_FROM_WITH_CLAUSE)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("WITH clause function cannot be used as a table or set-returning function"),
+					 errhint("WITH FUNCTION/PROCEDURE definitions can only be invoked from scalar expression contexts.")));
 
 		if (!FUNC_EXPR_FROM_PG_PROC(funcexpr->function_from))
 			is_subproc_func = true;
