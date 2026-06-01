@@ -292,9 +292,9 @@ $$);
          <Security-Barrier>false</Security-Barrier>                 +
          <Lateral>false</Lateral>                                   +
        </Range-Table-Entry>                                         +
-       <Unprunable-RTIs>1 3 4</Unprunable-RTIs>                     +
-       <Result-RTIs>none</Result-RTIs>                              +
      </Range-Table>                                                 +
+     <Unprunable-RTIs>1 3 4</Unprunable-RTIs>                       +
+     <Result-RTIs>none</Result-RTIs>                                +
    </Query>                                                         +
  </explain>
 (1 row)
