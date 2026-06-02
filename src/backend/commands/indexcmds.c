@@ -726,12 +726,17 @@ DefineIndex(Oid tableId,
 	if (partitioned)
 	{
 		/*
-		 * Note: we check 'stmt->concurrent' rather than 'concurrent', so that
-		 * the error is thrown also for temporary tables.  Seems better to be
-		 * consistent, even though we could do it on temporary table because
-		 * we're not actually doing it concurrently.
+		 * For ONLINE keyword (Oracle-compatible mode), silently degrade to a
+		 * non-concurrent build on partitioned tables.  Oracle succeeds with
+		 * CREATE INDEX ... ONLINE on partitioned tables (creates a global
+		 * non-partitioned index, PAR=NO).  Preserve the error for
+		 * CONCURRENTLY so existing PostgreSQL behavior is unchanged.
+		 *
+		 * Note: we check stmt->online_keyword to distinguish the two paths.
 		 */
-		if (stmt->concurrent)
+		if (stmt->concurrent && stmt->online_keyword)
+			concurrent = false;
+		else if (stmt->concurrent)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("cannot create index on partitioned table \"%s\" concurrently",

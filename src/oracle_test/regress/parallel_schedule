@@ -177,7 +177,7 @@ test: ora_identifiers
 # Oracle ALTER INDEX ... REBUILD syntax (#1064)
 # ----------
 
-test: alter_index
+test: alter_index create_index_online
 
 # ----------
 # Oracle WITH FUNCTION/PROCEDURE support
