@@ -8843,7 +8843,7 @@ IndexStmt:	CREATE opt_unique INDEX opt_concurrently opt_single_name
 						}
 					}
 
-					/* FR-005: CONCURRENTLY and ONLINE are mutually exclusive */
+					/* CONCURRENTLY and ONLINE are mutually exclusive */
 					if ($4 && online)
 						ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
@@ -8913,7 +8913,7 @@ IndexStmt:	CREATE opt_unique INDEX opt_concurrently opt_single_name
 						}
 					}
 
-					/* FR-005: CONCURRENTLY and ONLINE are mutually exclusive */
+					/* CONCURRENTLY and ONLINE are mutually exclusive */
 					if ($4 && online)
 						ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),

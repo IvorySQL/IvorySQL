@@ -1,7 +1,6 @@
 --
 -- CREATE_INDEX_ONLINE
 -- Test Oracle-compatible CREATE INDEX ... ONLINE syntax
--- Feature: IvorySQL-FEAT-XXXX
 --
 
 SET ivorysql.compatible_mode = oracle;
@@ -98,7 +97,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_online_email ON tbl_ci_unique (email) ONLI
 -- ============================================================
 
 -- T15: Partitioned table parent index ONLINE
--- ONLINE on partitioned table silently degrades to non-concurrent build (FR-009)
+-- ONLINE on partitioned table silently degrades to non-concurrent build 
 CREATE INDEX idx_part_online ON tbl_ci_part (id) ONLINE;
 
 -- T16: Verify parent index and its partition child indexes are all valid
