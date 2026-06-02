@@ -7,6 +7,7 @@ tests += {
   'tap': {
     'tests': [
       't/001_connection_limits.pl',
+      't/004_negotiate.pl',
     ],
   },
 }

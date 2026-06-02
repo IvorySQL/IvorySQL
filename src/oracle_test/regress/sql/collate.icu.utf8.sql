@@ -800,6 +800,21 @@ EXPLAIN (COSTS OFF)
 SELECT x, count(*) FROM test3ci GROUP BY x HAVING ROW(x, 1) < ROW('ABC' COLLATE case_sensitive, 1) ORDER BY 1;
 SELECT x, count(*) FROM test3ci GROUP BY x HAVING ROW(x, 1) < ROW('ABC' COLLATE case_sensitive, 1) ORDER BY 1;
 
+-- Negative: simple-CASE form with conflicting WHEN comparison collation
+EXPLAIN (COSTS OFF)
+SELECT x, count(*) FROM test3ci GROUP BY x HAVING (CASE x WHEN 'abc' COLLATE case_sensitive THEN true ELSE false END);
+SELECT x, count(*) FROM test3ci GROUP BY x HAVING (CASE x WHEN 'abc' COLLATE case_sensitive THEN true ELSE false END);
+
+-- Positive: simple-CASE form with matching collation, safe to push
+EXPLAIN (COSTS OFF)
+SELECT x, count(*) FROM test3ci GROUP BY x HAVING (CASE x WHEN 'abc' COLLATE case_insensitive THEN true ELSE false END);
+SELECT x, count(*) FROM test3ci GROUP BY x HAVING (CASE x WHEN 'abc' COLLATE case_insensitive THEN true ELSE false END);
+
+-- Negative: nested CASE with collation conflict
+EXPLAIN (COSTS OFF)
+SELECT x, count(*) FROM test3ci GROUP BY x HAVING (CASE WHEN (CASE x WHEN 'abc' COLLATE case_sensitive THEN 1 ELSE 0 END) = 1 THEN true ELSE false END);
+SELECT x, count(*) FROM test3ci GROUP BY x HAVING (CASE WHEN (CASE x WHEN 'abc' COLLATE case_sensitive THEN 1 ELSE 0 END) = 1 THEN true ELSE false END);
+
 -- Positive: conflicting collation but no grouping expression reference
 EXPLAIN (COSTS OFF)
 SELECT x, count(*) FROM test3ci GROUP BY x HAVING current_setting('server_version') = 'abc' COLLATE case_sensitive;
@@ -1161,6 +1176,26 @@ DROP TABLE pagg_tab6;
 RESET enable_partitionwise_aggregate;
 RESET max_parallel_workers_per_gather;
 RESET enable_incremental_sort;
+
+--
+-- A unique index can prove functional dependency for GROUP BY column
+-- removal only if its per-column collation agrees on equality with
+-- the GROUP BY column's collation.  An index built under a different
+-- (deterministic) collation would otherwise let remove_useless_groupby_columns
+-- drop other columns whose values still differ within a nondeterministic
+-- group.
+--
+CREATE TABLE groupby_collation_t (a text COLLATE case_insensitive NOT NULL, b text);
+INSERT INTO groupby_collation_t VALUES ('foo', 'X'), ('FOO', 'Y');
+CREATE UNIQUE INDEX ON groupby_collation_t (a COLLATE "C");
+
+-- Column b must NOT be dropped: under case_insensitive on a, 'foo' and
+-- 'FOO' would merge, but they have distinct b values.
+EXPLAIN (COSTS OFF)
+SELECT a, b FROM groupby_collation_t GROUP BY a, b ORDER BY a, b;
+SELECT a, b FROM groupby_collation_t GROUP BY a, b ORDER BY a, b;
+
+DROP TABLE groupby_collation_t;
 
 -- virtual generated columns
 CREATE TABLE t5 (
