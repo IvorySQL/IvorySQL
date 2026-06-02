@@ -735,7 +735,13 @@ DefineIndex(Oid tableId,
 		 * Note: we check stmt->online_keyword to distinguish the two paths.
 		 */
 		if (stmt->concurrent && stmt->online_keyword)
+		{
 			concurrent = false;
+			/* Correct the progress command reported before this downgrade. */
+			if (!OidIsValid(parentIndexId))
+				pgstat_progress_update_param(PROGRESS_CREATEIDX_COMMAND,
+											 PROGRESS_CREATEIDX_COMMAND_CREATE);
+		}
 		else if (stmt->concurrent)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
