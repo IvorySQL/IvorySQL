@@ -1,5 +1,4 @@
 CREATE EXTENSION xml2;
-set ivorysql.enable_emptystring_to_null to off;
 select query_to_xml('select 1 as x',true,false,'');
                          query_to_xml                          
 ---------------------------------------------------------------
@@ -61,7 +60,7 @@ as t(id int4, doc int4);
   1 |   1
 (1 row)
 
-create table articles (article_id integer, article_xml xml, date_entered pg_catalog.date);
+create table articles (article_id integer, article_xml xml, date_entered date);
 insert into articles (article_id, article_xml, date_entered)
 values (2, '<article><author>test</author><pages>37</pages></article>', now());
 SELECT * FROM
@@ -206,4 +205,3 @@ $$<xsl:stylesheet version="1.0"
   </xsl:template>
 </xsl:stylesheet>$$);
 ERROR:  xslt_process() is not available without libxslt
-reset ivorysql.enable_emptystring_to_null;

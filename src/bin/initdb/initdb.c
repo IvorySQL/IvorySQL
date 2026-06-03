@@ -1670,6 +1670,9 @@ bootstrap_template1(void)
 	bki_lines = replace_token(bki_lines, "ALIGNOF_POINTER",
 							  (sizeof(Pointer) == 4) ? "i" : "d");
 
+	bki_lines = replace_token(bki_lines, "FLOAT8PASSBYVAL",
+							  FLOAT8PASSBYVAL ? "true" : "false");
+
 	bki_lines = replace_token(bki_lines, "POSTGRES",
 							  escape_quotes_bki(username));
 
@@ -2088,10 +2091,7 @@ load_plpgsql(FILE *cmdfd)
 static void
 load_plisql(FILE *cmdfd)
 {
-	/* Switch to oracle mode to allow CREATE PACKAGE in extension SQL */
-	PG_CMD_PUTS("set ivorysql.compatible_mode to oracle;\n\n");
 	PG_CMD_PUTS("CREATE EXTENSION plisql;\n\n");
-	PG_CMD_PUTS("set ivorysql.compatible_mode to pg;\n\n");
 }
 
 static void
@@ -2681,10 +2681,12 @@ usage(const char *progname)
 	printf(_("  -W, --pwprompt            prompt for a password for the new superuser\n"));
 	printf(_("  -X, --waldir=WALDIR       location for the write-ahead log directory\n"));
 	printf(_("      --wal-segsize=SIZE    size of WAL segments, in megabytes\n"));
-	printf(_("  -m, --dbmode=MODE 	    set database mode, default is oracle\n"));
+	printf(_("  -m, --dbmode=MODE 	    set database mode, oracle/pg , default is oracle\n"));
 	printf(_("  -C, --case-conversion-mode=MODE\n"
-			 "                            set case conversion mode, options can be\n"
-			 "                            normal/interchange/lowercase, default is interchange\n"));
+                 "                            set case conversion mode,\n"
+                 "                            normal/interchange/lowercase,\n"
+                 "                            default is interchange\n"));
+
 	printf(_("\nLess commonly used options:\n"));
 	printf(_("  -c, --set NAME=VALUE      override default setting for server parameter\n"));
 	printf(_("  -d, --debug               generate lots of debugging output\n"));
@@ -3477,7 +3479,7 @@ main(int argc, char *argv[])
 				else
 				{
 					pg_log_error("Unknown case conversion mode: %s", switchmode);
-					pg_log_error_hint("Valid case conversion mode values are normal, interchange, or lowercase.");
+					pg_log_error_hint("Valid case conversion mode values are normal, interchange, lowercase.");
 					exit(1);
 				}
 				break;
@@ -3506,7 +3508,8 @@ main(int argc, char *argv[])
 					database_mode = DB_ORACLE;
 				else
 				{
-					fprintf(stderr, _("unrecognized database mode.\n"));
+					pg_log_error("unrecognized database mode: %s", dbmode);
+                                        pg_log_error_hint("Valid database mode values are pg or oracle.");
 					exit(1);
 				}
 			break;
