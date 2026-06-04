@@ -75,6 +75,7 @@ bool		showprogress = false;
 bool		dry_run = false;
 bool		do_sync = true;
 static bool restore_wal = false;
+static bool deep_dig = false;
 DataDirSyncMethod sync_method = DATA_DIR_SYNC_METHOD_FSYNC;
 
 /* Target history */
@@ -103,6 +104,7 @@ usage(const char *progname)
 	printf(_("  -N, --no-sync                  do not wait for changes to be written\n"
 			 "                                 safely to disk\n"));
 	printf(_("  -P, --progress                 write progress messages\n"));
+	printf(_("  -d, --deep-dig                 perform a deep dig for more wal\n"));
 	printf(_("  -R, --write-recovery-conf      write configuration for replication\n"
 			 "                                 (requires --source-server)\n"));
 	printf(_("      --config-file=FILENAME     use specified main server configuration\n"
@@ -135,6 +137,7 @@ main(int argc, char **argv)
 		{"progress", no_argument, NULL, 'P'},
 		{"debug", no_argument, NULL, 3},
 		{"sync-method", required_argument, NULL, 6},
+		{"deep-dig", no_argument, NULL, 'd'},
 		{NULL, 0, NULL, 0}
 	};
 	int			option_index;
@@ -153,6 +156,7 @@ main(int argc, char **argv)
 	bool		no_ensure_shutdown = false;
 	bool		rewind_needed;
 	bool		writerecoveryconf = false;
+	bool		page_consistence = false;
 	filemap_t  *filemap;
 
 	pg_logging_init(argv[0]);
@@ -174,7 +178,7 @@ main(int argc, char **argv)
 		}
 	}
 
-	while ((c = getopt_long(argc, argv, "cD:nNPR", long_options, &option_index)) != -1)
+	while ((c = getopt_long(argc, argv, "cD:nNPRd", long_options, &option_index)) != -1)
 	{
 		switch (c)
 		{
@@ -226,6 +230,9 @@ main(int argc, char **argv)
 			case 6:
 				if (!parse_sync_method(optarg, &sync_method))
 					exit(1);
+				break;
+			case 'd':
+				deep_dig = true;
 				break;
 
 			default:
@@ -351,6 +358,8 @@ main(int argc, char **argv)
 	pg_free(buffer);
 
 	sanityChecks();
+	page_consistence = ControlFile_target.data_checksum_version == PG_DATA_CHECKSUM_VERSION ||
+		ControlFile_target.wal_log_hints;
 
 	/*
 	 * Usually, the TLI can be found in the latest checkpoint record. But if
@@ -494,8 +503,19 @@ main(int argc, char **argv)
 	 */
 	if (showprogress)
 		pg_log_info("reading WAL in target");
-	extractPageMap(datadir_target, chkptrec, lastcommontliIndex,
+	extractPageMapForward(datadir_target, chkptrec, lastcommontliIndex,
 				   target_wal_endrec, restore_command);
+	if(!page_consistence && !check_rewind_safety())
+	{
+		/*
+		 * Next time we will search more wal which will spend more time, and
+		 * if user prefer a deep dig we will do it. Otherwise, we just stop here.
+		 */
+		if(!deep_dig)
+			pg_fatal("Can not safety rewind the target cluster, use --deep-dig to have a try.");
+		extractPageMapBackward(datadir_target, chkptrec, lastcommontliIndex,
+							   restore_command);
+	}
 
 	/*
 	 * We have collected all information we need from both systems. Decide
@@ -756,16 +776,6 @@ sanityChecks(void)
 		ControlFile_source.catalog_version_no != CATALOG_VERSION_NO)
 	{
 		pg_fatal("clusters are not compatible with this version of pg_rewind");
-	}
-
-	/*
-	 * Target cluster need to use checksums or hint bit wal-logging, this to
-	 * prevent from data corruption that could occur because of hint bits.
-	 */
-	if (ControlFile_target.data_checksum_version != PG_DATA_CHECKSUM_VERSION &&
-		!ControlFile_target.wal_log_hints)
-	{
-		pg_fatal("target server needs to use either data checksums or \"wal_log_hints = on\"");
 	}
 
 	/*

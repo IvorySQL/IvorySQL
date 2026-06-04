@@ -32,9 +32,11 @@ extern uint64 fetch_size;
 extern uint64 fetch_done;
 
 /* in parsexlog.c */
-extern void extractPageMap(const char *datadir, XLogRecPtr startpoint,
+extern void extractPageMapForward(const char *datadir, XLogRecPtr startpoint,
 						   int tliIndex, XLogRecPtr endpoint,
 						   const char *restoreCommand);
+extern void extractPageMapBackward(const char *datadir, XLogRecPtr startpoint,
+							int tliIndex, const char *restoreCommand);
 extern void findLastCheckpoint(const char *datadir, XLogRecPtr forkptr,
 							   int tliIndex,
 							   XLogRecPtr *lastchkptrec, TimeLineID *lastchkpttli,
@@ -42,6 +44,8 @@ extern void findLastCheckpoint(const char *datadir, XLogRecPtr forkptr,
 							   const char *restoreCommand);
 extern XLogRecPtr readOneRecord(const char *datadir, XLogRecPtr ptr,
 								int tliIndex, const char *restoreCommand);
+extern bool check_rewind_safety(void);
+extern bool check_transaction_need_rewind(TransactionId xid);
 
 /* in pg_rewind.c */
 extern void progress_report(bool finished);

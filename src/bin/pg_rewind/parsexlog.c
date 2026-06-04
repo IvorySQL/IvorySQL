@@ -23,6 +23,8 @@
 #include "fe_utils/archive.h"
 #include "filemap.h"
 #include "pg_rewind.h"
+#include "storage/standbydefs.h"
+#include "access/transam.h"
 
 /*
  * RmgrNames is an array of the built-in resource manager names, to make error
@@ -38,11 +40,15 @@ static const char *const RmgrNames[RM_MAX_ID + 1] = {
 #define RmgrName(rmid) (((rmid) <= RM_MAX_BUILTIN_ID) ? \
 						RmgrNames[rmid] : "custom")
 
-static void extractPageInfo(XLogReaderState *record);
+static void extractPageInfo(XLogReaderState *record, bool backward);
+static bool RewindTransactionIdPrecedes(TransactionId id1, TransactionId id2);
 
 static int	xlogreadfd = -1;
 static XLogSegNo xlogreadsegno = 0;
 static char xlogfpath[MAXPGPATH];
+static TransactionId min_commited_xid = InvalidTransactionId;
+static TransactionId max_commited_xid = InvalidTransactionId;
+static TransactionId base_xid = InvalidTransactionId;
 
 typedef struct XLogPageReadPrivate
 {
@@ -63,7 +69,7 @@ static int	SimpleXLogPageRead(XLogReaderState *xlogreader,
  * 'endpoint' is the first one that is not read.
  */
 void
-extractPageMap(const char *datadir, XLogRecPtr startpoint, int tliIndex,
+extractPageMapForward(const char *datadir, XLogRecPtr startpoint, int tliIndex,
 			   XLogRecPtr endpoint, const char *restoreCommand)
 {
 	XLogRecord *record;
@@ -97,7 +103,7 @@ extractPageMap(const char *datadir, XLogRecPtr startpoint, int tliIndex,
 						 LSN_FORMAT_ARGS(errptr));
 		}
 
-		extractPageInfo(xlogreader);
+		extractPageInfo(xlogreader, false);
 	} while (xlogreader->EndRecPtr < endpoint);
 
 	/*
@@ -107,6 +113,72 @@ extractPageMap(const char *datadir, XLogRecPtr startpoint, int tliIndex,
 	if (xlogreader->EndRecPtr != endpoint)
 		pg_fatal("end pointer %X/%08X is not a valid end point; expected %X/%08X",
 				 LSN_FORMAT_ARGS(endpoint), LSN_FORMAT_ARGS(xlogreader->EndRecPtr));
+
+	XLogReaderFree(xlogreader);
+	if (xlogreadfd != -1)
+	{
+		close(xlogreadfd);
+		xlogreadfd = -1;
+	}
+}
+
+void
+extractPageMapBackward(const char *datadir, XLogRecPtr startpoint, int tliIndex,
+				   const char *restoreCommand)
+{
+	/* Walk backwards, starting from the given record */
+	XLogRecord *record;
+	XLogRecPtr	searchptr;
+	XLogReaderState *xlogreader;
+	char	   *errormsg;
+	XLogPageReadPrivate private;
+
+	/*
+	 * The given fork pointer points to the end of the last common record,
+	 * which is not necessarily the beginning of the next record, if the
+	 * previous record happens to end at a page boundary. Skip over the page
+	 * header in that case to find the next record.
+	 */
+	if (startpoint % XLOG_BLCKSZ == 0)
+	{
+		if (XLogSegmentOffset(startpoint, WalSegSz) == 0)
+			startpoint += SizeOfXLogLongPHD;
+		else
+			startpoint += SizeOfXLogShortPHD;
+	}
+
+	private.tliIndex = tliIndex;
+	private.restoreCommand = restoreCommand;
+	xlogreader = XLogReaderAllocate(WalSegSz, datadir,
+									XL_ROUTINE(.page_read = &SimpleXLogPageRead),
+									&private);
+	if (xlogreader == NULL)
+		pg_fatal("out of memory while allocating a WAL reading processor");
+
+	searchptr = startpoint;
+	for (;;)
+	{
+		XLogBeginRead(xlogreader, searchptr);
+		record = XLogReadRecord(xlogreader, &errormsg);
+
+		if (record == NULL)
+		{
+			if (errormsg)
+				pg_fatal("could not find previous WAL record at %X/%X: %s",
+						 LSN_FORMAT_ARGS(searchptr),
+						 errormsg);
+			else
+				pg_fatal("could not find previous WAL record at %X/%X",
+						 LSN_FORMAT_ARGS(searchptr));
+		}
+
+		extractPageInfo(xlogreader, true);
+		/* We can break if met a safety snapshot */
+		if (base_xid <= min_commited_xid)
+			break;
+		/* Walk backwards to previous record. */
+		searchptr = record->xl_prev;
+	}
 
 	XLogReaderFree(xlogreader);
 	if (xlogreadfd != -1)
@@ -270,6 +342,47 @@ findLastCheckpoint(const char *datadir, XLogRecPtr forkptr, int tliIndex,
 	}
 }
 
+bool check_rewind_safety(void)
+{
+	/* If no committed transactions, it's safe to rewind */
+	if (min_commited_xid == InvalidTransactionId)
+		return true;
+	/* If base_xid is less than or equal to min_commited_xid, it's safe */
+	if (base_xid <= min_commited_xid)
+		return true;
+	return false;
+}
+
+bool check_transaction_need_rewind(TransactionId xid)
+{
+	/*
+	 * If no committed transactions, no need to rewind.
+	 *
+	 * We use this function only on backward reading phase which only
+	 * pay attention to records with transaction.
+	 */
+	if (min_commited_xid == InvalidTransactionId ||
+			max_commited_xid == InvalidTransactionId ||
+			xid == InvalidTransactionId)
+	{
+		return false;
+	}
+
+	/*
+	 * It's better if we generate the commited transaction ID list for a
+	 * accurate copy. But we can not get a bitmapset or list support here
+	 * and it seems no need to do that.
+	 *
+	 * So I think a filter by min and max committed transaction ID is
+	 * good enough.
+	 */
+	if (RewindTransactionIdPrecedes(xid, min_commited_xid) ||
+				RewindTransactionIdPrecedes(max_commited_xid, xid))
+		return false;
+
+	return true;
+}
+
 /* XLogReader callback function, to read a WAL page */
 static int
 SimpleXLogPageRead(XLogReaderState *xlogreader, XLogRecPtr targetPagePtr,
@@ -382,11 +495,75 @@ SimpleXLogPageRead(XLogReaderState *xlogreader, XLogRecPtr targetPagePtr,
 	return XLOG_BLCKSZ;
 }
 
+static void
+track_rewind_snapshot(XLogReaderState *record, bool backward)
+{
+	uint8		info = 0;
+	RmgrId		rmid = XLogRecGetRmid(record);
+
+	if (rmid != RM_XACT_ID && rmid != RM_STANDBY_ID)
+		return;
+
+	if (rmid == RM_XACT_ID)
+	{
+		xl_xact_commit *xlrec = (xl_xact_commit *) XLogRecGetData(record);
+		xl_xact_parsed_commit parsed;
+		TransactionId current_xid = InvalidTransactionId;
+
+		/* We finished tracking during forward read phase */
+		if (backward)
+			return;
+
+		info = XLogRecGetInfo(record) & XLOG_XACT_OPMASK;
+		ParseCommitRecord(XLogRecGetInfo(record), xlrec, &parsed);
+		if (info == XLOG_XACT_COMMIT)
+		{
+			current_xid = XLogRecGetXid(record);
+		}
+		else if (info == XLOG_XACT_COMMIT_PREPARED)
+		{
+			current_xid = parsed.twophase_xid;
+		}
+
+		if (min_commited_xid == InvalidTransactionId ||
+		   RewindTransactionIdPrecedes(current_xid, min_commited_xid))
+		{
+			min_commited_xid = current_xid;
+			if (showprogress)
+				pg_log_info("Get min committed xid: %u", min_commited_xid);
+		}
+
+		if (max_commited_xid == InvalidTransactionId ||
+		   RewindTransactionIdPrecedes(max_commited_xid, current_xid))
+		{
+			max_commited_xid = current_xid;
+			if (showprogress)
+				pg_log_info("Get max committed xid: %u", max_commited_xid);
+		}
+	}
+	else if (rmid == RM_STANDBY_ID)
+	{
+		info = XLogRecGetInfo(record) & ~XLR_INFO_MASK;
+
+		if (info == XLOG_RUNNING_XACTS)
+		{
+			xl_running_xacts *xlrec = (xl_running_xacts *) XLogRecGetData(record);
+
+			if (base_xid == InvalidTransactionId || RewindTransactionIdPrecedes(xlrec->nextXid, base_xid))
+			{
+				base_xid = xlrec->nextXid;
+				if (showprogress)
+					pg_log_info("Get base xid: %u at %X/%X", base_xid, LSN_FORMAT_ARGS(record->ReadRecPtr));
+			}
+		}
+	}
+}
+
 /*
  * Extract information on which blocks the current record modifies.
  */
 static void
-extractPageInfo(XLogReaderState *record)
+extractPageInfo(XLogReaderState *record, bool backward)
 {
 	int			block_id;
 	RmgrId		rmid = XLogRecGetRmid(record);
@@ -464,6 +641,22 @@ extractPageInfo(XLogReaderState *record)
 				 rmid, RmgrName(rmid), info);
 	}
 
+	track_rewind_snapshot(record, backward);
+
+	/*
+	 * We will copy all changed blocks met in forward step, and just copy
+	 * meaningful changed blocks met in backward step.
+	 */
+	if (backward)
+	{
+		bool need_rewind = false;
+		TransactionId xid = XLogRecGetXid(record);
+
+		need_rewind = check_transaction_need_rewind(xid);
+		if (!need_rewind)
+			return;
+	}
+
 	for (block_id = 0; block_id <= XLogRecMaxBlockId(record); block_id++)
 	{
 		RelFileLocator rlocator;
@@ -480,4 +673,23 @@ extractPageInfo(XLogReaderState *record)
 
 		process_target_wal_block_change(forknum, rlocator, blkno);
 	}
+}
+
+/*
+ * RewindTransactionIdPrecedes --- is id1 logically < id2?
+ */
+static bool
+RewindTransactionIdPrecedes(TransactionId id1, TransactionId id2)
+{
+	/*
+	 * If either ID is a permanent XID then we can just do unsigned
+	 * comparison.  If both are normal, do a modulo-2^32 comparison.
+	 */
+	int32		diff;
+
+	if (!TransactionIdIsNormal(id1) || !TransactionIdIsNormal(id2))
+		return (id1 < id2);
+
+	diff = (int32) (id1 - id2);
+	return (diff < 0);
 }
