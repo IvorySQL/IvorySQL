@@ -8507,11 +8507,11 @@ ATExecSetNotNull(List **wqueue, Relation rel, char *conName, char *colName,
 	ccon = linitial(cooked);
 	ObjectAddressSet(address, ConstraintRelationId, ccon->conoid);
 
-	InvokeObjectPostAlterHook(RelationRelationId,
-							  RelationGetRelid(rel), attnum);
-
 	/* Mark pg_attribute.attnotnull for the column and queue validation */
 	set_attnotnull(wqueue, rel, attnum, true, true);
+
+	InvokeObjectPostAlterHook(RelationRelationId,
+							  RelationGetRelid(rel), attnum);
 
 	/*
 	 * Recurse to propagate the constraint to children that don't have one.
@@ -13006,6 +13006,8 @@ ATExecAlterConstrEnforceability(List **wqueue, ATAlterConstraint *cmdcon,
 		fkconstraint->fk_matchtype = currcon->confmatchtype;
 		fkconstraint->fk_upd_action = currcon->confupdtype;
 		fkconstraint->fk_del_action = currcon->confdeltype;
+		fkconstraint->deferrable = currcon->condeferrable;
+		fkconstraint->initdeferred = currcon->condeferred;
 
 		/* Create referenced triggers */
 		if (currcon->conrelid == fkrelid)
@@ -22447,7 +22449,10 @@ ATExecAttachPartitionIdx(List **wqueue, Relation parentIdx, RangeVar *name)
 
 	ObjectAddressSet(address, RelationRelationId, RelationGetRelid(partIdx));
 
-	/* Silently do nothing if already in the right state */
+	/*
+	 * Check if the index is already attached to the correct parent,
+	 * ultimately attempting one round of validation if already the case.
+	 */
 	currParent = partIdx->rd_rel->relispartition ?
 		get_partition_parent(partIdxId, false) : InvalidOid;
 	if (currParent != RelationGetRelid(parentIdx))
@@ -22554,6 +22559,14 @@ ATExecAttachPartitionIdx(List **wqueue, Relation parentIdx, RangeVar *name)
 
 		free_attrmap(attmap);
 
+		validatePartitionedIndex(parentIdx, parentTbl);
+	}
+	else if (!parentIdx->rd_index->indisvalid)
+	{
+		/*
+		 * The index is attached, but the parent is still invalid; see if it
+		 * can be validated now.
+		 */
 		validatePartitionedIndex(parentIdx, parentTbl);
 	}
 

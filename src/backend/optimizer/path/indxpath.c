@@ -31,6 +31,7 @@
 #include "optimizer/optimizer.h"
 #include "optimizer/pathnode.h"
 #include "optimizer/paths.h"
+#include "optimizer/placeholder.h"
 #include "optimizer/prep.h"
 #include "optimizer/restrictinfo.h"
 #include "utils/lsyscache.h"
@@ -196,8 +197,6 @@ static Expr *match_clause_to_ordering_op(IndexOptInfo *index,
 static bool ec_member_matches_indexcol(PlannerInfo *root, RelOptInfo *rel,
 									   EquivalenceClass *ec, EquivalenceMember *em,
 									   void *arg);
-static bool contain_strippable_phv_walker(Node *node, void *context);
-static Node *strip_phvs_in_index_operand_mutator(Node *node, void *context);
 
 
 /*
@@ -4260,16 +4259,19 @@ relation_has_unique_index_ext(PlannerInfo *root, RelOptInfo *rel,
 				 * The condition's equality operator must be a member of the
 				 * index opfamily, else it is not asserting the right kind of
 				 * equality behavior for this index.  We check this first
-				 * since it's probably cheaper than match_index_to_operand().
+				 * since it's probably the cheapest test.
 				 */
 				if (!list_member_oid(rinfo->mergeopfamilies, ind->opfamily[c]))
 					continue;
 
 				/*
-				 * XXX at some point we may need to check collations here too.
-				 * For the moment we assume all collations reduce to the same
-				 * notion of equality.
+				 * The index's collation must agree with the clause's input
+				 * collation on equality, else the index's uniqueness does not
+				 * imply uniqueness under the clause's equality semantics.
 				 */
+				if (!collations_agree_on_equality(ind->indexcollations[c],
+												  exprInputCollation((Node *) rinfo->clause)))
+					continue;
 
 				/* OK, see if the condition operand matches the index key */
 				if (rinfo->outer_is_left)
@@ -4325,10 +4327,13 @@ relation_has_unique_index_ext(PlannerInfo *root, RelOptInfo *rel,
 					continue;
 
 				/*
-				 * XXX at some point we may need to check collations here too.
-				 * For the moment we assume all collations reduce to the same
-				 * notion of equality.
+				 * The index's collation must agree with the operand's
+				 * collation on equality, else the index's uniqueness does not
+				 * imply uniqueness under the operator's equality semantics.
 				 */
+				if (!collations_agree_on_equality(ind->indexcollations[c],
+												  exprCollation(expr)))
+					continue;
 
 				matched = true; /* column is unique */
 				break;
@@ -4430,7 +4435,7 @@ match_index_to_operand(Node *operand,
 	 * a subtree) has been wrapped in PlaceHolderVars to enforce separate
 	 * identity or as a result of outer joins.
 	 */
-	operand = strip_phvs_in_index_operand(operand);
+	operand = strip_noop_phvs(operand);
 
 	/*
 	 * Ignore any RelabelType node above the operand.  This is needed to be
@@ -4496,88 +4501,15 @@ match_index_to_operand(Node *operand,
 
 /*
  * strip_phvs_in_index_operand
- *	  Strip PlaceHolderVar nodes from the given operand expression to
- *	  facilitate matching against an index's key.
  *
- * A PlaceHolderVar appearing in a relation-scan-level expression is
- * effectively a no-op.  Nevertheless, to play it safe, we strip only
- * PlaceHolderVars that are not marked nullable.
- *
- * The removal is performed recursively because PlaceHolderVars can be nested
- * or interleaved with other node types.  We must peel back all layers to
- * expose the base operand.
- *
- * As a performance optimization, we first use a lightweight walker to check
- * for the presence of strippable PlaceHolderVars.  The expensive mutator is
- * invoked only if a candidate is found, avoiding unnecessary memory allocation
- * and tree copying in the common case where no PlaceHolderVars are present.
+ * Retained as a backward-compatibility wrapper around strip_noop_phvs() to
+ * avoid breaking third-party extensions that may reference this function.  New
+ * code should call strip_noop_phvs() directly.
  */
 Node *
 strip_phvs_in_index_operand(Node *operand)
 {
-	/* Don't mutate/copy if no target PHVs exist */
-	if (!contain_strippable_phv_walker(operand, NULL))
-		return operand;
-
-	return strip_phvs_in_index_operand_mutator(operand, NULL);
-}
-
-/*
- * contain_strippable_phv_walker
- *	  Detect if there are any PlaceHolderVars in the tree that are candidates
- *	  for stripping.
- *
- * We identify a PlaceHolderVar as strippable only if its phnullingrels is
- * empty.
- */
-static bool
-contain_strippable_phv_walker(Node *node, void *context)
-{
-	if (node == NULL)
-		return false;
-
-	if (IsA(node, PlaceHolderVar))
-	{
-		PlaceHolderVar *phv = (PlaceHolderVar *) node;
-
-		if (bms_is_empty(phv->phnullingrels))
-			return true;
-	}
-
-	return expression_tree_walker(node, contain_strippable_phv_walker,
-								  context);
-}
-
-/*
- * strip_phvs_in_index_operand_mutator
- *	  Recursively remove PlaceHolderVars in the tree that match the criteria.
- *
- * We strip a PlaceHolderVar only if its phnullingrels is empty, replacing it
- * with its contained expression.
- */
-static Node *
-strip_phvs_in_index_operand_mutator(Node *node, void *context)
-{
-	if (node == NULL)
-		return NULL;
-
-	if (IsA(node, PlaceHolderVar))
-	{
-		PlaceHolderVar *phv = (PlaceHolderVar *) node;
-
-		/* If matches the criteria, strip it */
-		if (bms_is_empty(phv->phnullingrels))
-		{
-			/* Recurse on its contained expression */
-			return strip_phvs_in_index_operand_mutator((Node *) phv->phexpr,
-													   context);
-		}
-
-		/* Otherwise, keep this PHV but check its contained expression */
-	}
-
-	return expression_tree_mutator(node, strip_phvs_in_index_operand_mutator,
-								   context);
+	return strip_noop_phvs(operand);
 }
 
 /*

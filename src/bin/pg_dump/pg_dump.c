@@ -10087,7 +10087,7 @@ determineNotNullFlags(Archive *fout, PGresult *res, int r,
 			 */
 			if ((dopt->binary_upgrade &&
 				 !tbinfo->ispartition &&
-				 !tbinfo->notnull_islocal) ||
+				 !tbinfo->notnull_islocal[j]) ||
 				!PQgetisnull(res, r, i_notnull_comment))
 			{
 				tbinfo->notnull_constrs[j] =
@@ -17539,6 +17539,9 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 						appendPQExpBuffer(q, "CONSTRAINT %s NOT NULL %s",
 										  tbinfo->notnull_constrs[j],
 										  fmtId(tbinfo->attnames[j]));
+
+					if (tbinfo->notnull_noinh[j])
+						appendPQExpBufferStr(q, " NO INHERIT");
 				}
 			}
 

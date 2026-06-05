@@ -671,7 +671,7 @@ ChangeVarNodes_walker(Node *node, ChangeVarNodes_context *context)
  * value indicating if the given node should be skipped from further processing
  * by ChangeVarNodes_walker.  The callback is called only for expressions and
  * other children nodes of a Query processed by a walker.  Initial processing
- * of the root Query doesn't involve the callback.
+ * of the root Query node doesn't invoke the callback.
  */
 void
 ChangeVarNodesExtended(Node *node, int rt_index, int new_index,
@@ -736,16 +736,27 @@ ChangeVarNodes(Node *node, int rt_index, int new_index, int sublevels_up)
 }
 
 /*
- * ChangeVarNodesWalkExpression - process expression within the custom
- *								  callback provided to the
- *								  ChangeVarNodesExtended.
+ * ChangeVarNodesWalkExpression - process subexpression within a callback
+ *								  function passed to ChangeVarNodesExtended.
+ *
+ * This is intended to be used by a callback that needs to recursively
+ * process subexpressions of some node being visited by an outer
+ * ChangeVarNodesExtended call, instead of relying on ChangeVarNodes_walker's
+ * default recursion.  We invoke ChangeVarNodes_walker directly rather than
+ * via expression_tree_walker, because expression_tree_walker only visits
+ * child nodes and would fail to process the passed node itself --
+ * for example, a bare Var node would not get its varno adjusted.
+ *
+ * Because this calls ChangeVarNodes_walker directly, if the passed node is
+ * a Query, it will be treated as a sub-Query: sublevels_up is incremented
+ * before recursing into it, and Query-level fields (resultRelation,
+ * mergeTargetRelation, rowMarks, etc.) will not be adjusted.  Do not apply
+ * this to a top-level Query node; use ChangeVarNodesExtended for that.
  */
 bool
 ChangeVarNodesWalkExpression(Node *node, ChangeVarNodes_context *context)
 {
-	return expression_tree_walker(node,
-								  ChangeVarNodes_walker,
-								  (void *) context);
+	return ChangeVarNodes_walker(node, context);
 }
 
 /*
@@ -1501,25 +1512,6 @@ replace_rte_variables_mutator(Node *node,
 			return newnode;
 		}
 		/* otherwise fall through to copy the var normally */
-	}
-	else if (IsA(node, CurrentOfExpr))
-	{
-		CurrentOfExpr *cexpr = (CurrentOfExpr *) node;
-
-		if (cexpr->cvarno == context->target_varno &&
-			context->sublevels_up == 0)
-		{
-			/*
-			 * We get here if a WHERE CURRENT OF expression turns out to apply
-			 * to a view.  Someday we might be able to translate the
-			 * expression to apply to an underlying table of the view, but
-			 * right now it's not implemented.
-			 */
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("WHERE CURRENT OF on a view is not implemented")));
-		}
-		/* otherwise fall through to copy the expr normally */
 	}
 	else if (IsA(node, Query))
 	{
