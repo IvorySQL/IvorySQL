@@ -62,8 +62,10 @@
 #include "utils/builtins.h"
 #include "utils/conffiles.h"
 #include "utils/fmgroids.h"
+#include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/ora_compatible.h"
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
@@ -76,6 +78,14 @@ char	   *Extension_control_path;
 /* Globally visible state variables */
 bool		creating_extension = false;
 Oid			CurrentExtensionObject = InvalidOid;
+
+/*
+ * IvorySQL: SQL dialect being forced for the extension script currently
+ * executing ("pg" or "oracle"), or NULL when no script is running or no
+ * dialect is being forced.  Used by CreateFunction to pin functions created
+ * by an extension script to the extension's authoring dialect.
+ */
+char	   *extension_script_dialect = NULL;
 
 /*
  * Internal data structure to hold the results of parsing a control file
@@ -99,6 +109,10 @@ typedef struct ExtensionControlFile
 	List	   *requires;		/* names of prerequisite extensions */
 	List	   *no_relocate;	/* names of prerequisite extensions that
 								 * should not be relocated */
+	char	   *sql_dialect;	/* IvorySQL: SQL dialect the extension is
+								 * written in: "pg", "oracle" or "database"
+								 * (follow current session); NULL when not
+								 * declared, same as "database" */
 } ExtensionControlFile;
 
 /*
@@ -724,6 +738,18 @@ parse_extension_control_file(ExtensionControlFile *control,
 								item->name)));
 			}
 		}
+		else if (strcmp(item->name, "sql_dialect") == 0)
+		{
+			/* IvorySQL: SQL dialect of the extension's script files */
+			if (strcmp(item->value, "pg") != 0 &&
+				strcmp(item->value, "oracle") != 0 &&
+				strcmp(item->value, "database") != 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("parameter \"%s\" must be \"pg\", \"oracle\" or \"database\"",
+								item->name)));
+			control->sql_dialect = pstrdup(item->value);
+		}
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
@@ -1207,6 +1233,25 @@ execute_extension_script(Oid extensionOid, ExtensionControlFile *control,
 								 GUC_ACTION_SAVE, true, 0, false);
 
 	/*
+	 * IvorySQL: in an oracle-mode cluster, force the SQL dialect explicitly
+	 * declared by the extension's control file for the duration of the
+	 * script, so that extensions written for PostgreSQL install correctly
+	 * regardless of the calling session's compatible mode.  This must be
+	 * done before setting up search_path below, because switching
+	 * ivorysql.compatible_mode recomputes the search path as a side effect.
+	 * GUC_ACTION_SAVE makes this revert automatically at AtEOXact_GUC.
+	 * Extensions declaring nothing (or "database") follow the current
+	 * session's dialect, i.e. legacy behavior.
+	 */
+	if (DB_ORACLE == database_mode &&
+		control->sql_dialect != NULL &&
+		strcmp(control->sql_dialect, "database") != 0)
+		(void) set_config_option("ivorysql.compatible_mode",
+								 control->sql_dialect,
+								 PGC_USERSET, PGC_S_SESSION,
+								 GUC_ACTION_SAVE, true, 0, false);
+
+	/*
 	 * Set up the search path to have the target schema first, making it be
 	 * the default creation target namespace.  Then add the schemas of any
 	 * prerequisite extensions, unless they are in pg_catalog which would be
@@ -1237,6 +1282,15 @@ execute_extension_script(Oid extensionOid, ExtensionControlFile *control,
 	 */
 	creating_extension = true;
 	CurrentExtensionObject = extensionOid;
+	/*
+	 * IvorySQL: export the dialect being forced for this script so that
+	 * CreateFunction can pin functions created by the script to the same
+	 * dialect (see functioncmds.c).  NULL means no dialect is being forced.
+	 */
+	if (DB_ORACLE == database_mode &&
+		control->sql_dialect != NULL &&
+		strcmp(control->sql_dialect, "database") != 0)
+		extension_script_dialect = control->sql_dialect;
 	PG_TRY();
 	{
 		char	   *c_sql = read_extension_script_file(control, filename);
@@ -1361,6 +1415,7 @@ execute_extension_script(Oid extensionOid, ExtensionControlFile *control,
 	{
 		creating_extension = false;
 		CurrentExtensionObject = InvalidOid;
+		extension_script_dialect = NULL;	/* IvorySQL */
 	}
 	PG_END_TRY();
 
@@ -3942,6 +3997,13 @@ new_ExtensionControlFile(const char *extname)
 	control->superuser = true;
 	control->trusted = false;
 	control->encoding = -1;
+	/*
+	 * IvorySQL: NULL means the extension script follows the SQL dialect of
+	 * the current session (legacy behavior).  Extensions written in the
+	 * PostgreSQL dialect can declare sql_dialect = 'pg' in their control
+	 * file to install and run correctly in an oracle-mode cluster.
+	 */
+	control->sql_dialect = NULL;
 
 	return control;
 }

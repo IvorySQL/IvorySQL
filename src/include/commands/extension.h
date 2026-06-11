@@ -32,6 +32,12 @@ extern PGDLLIMPORT char *Extension_control_path;
 extern PGDLLIMPORT bool creating_extension;
 extern PGDLLIMPORT Oid CurrentExtensionObject;
 
+/*
+ * IvorySQL: SQL dialect ("pg" or "oracle") being forced for the extension
+ * script currently executing, or NULL.  See execute_extension_script().
+ */
+extern PGDLLIMPORT char *extension_script_dialect;
+
 
 extern ObjectAddress CreateExtension(ParseState *pstate, CreateExtensionStmt *stmt);
 
