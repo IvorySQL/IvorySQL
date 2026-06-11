@@ -1670,9 +1670,6 @@ bootstrap_template1(void)
 	bki_lines = replace_token(bki_lines, "ALIGNOF_POINTER",
 							  (sizeof(Pointer) == 4) ? "i" : "d");
 
-	bki_lines = replace_token(bki_lines, "FLOAT8PASSBYVAL",
-							  FLOAT8PASSBYVAL ? "true" : "false");
-
 	bki_lines = replace_token(bki_lines, "POSTGRES",
 							  escape_quotes_bki(username));
 
@@ -2091,7 +2088,10 @@ load_plpgsql(FILE *cmdfd)
 static void
 load_plisql(FILE *cmdfd)
 {
+/* Switch to oracle mode to allow CREATE PACKAGE in extension SQL */
+        PG_CMD_PUTS("set ivorysql.compatible_mode to oracle;\n\n");
 	PG_CMD_PUTS("CREATE EXTENSION plisql;\n\n");
+	PG_CMD_PUTS("set ivorysql.compatible_mode to pg;\n\n");
 }
 
 static void
@@ -3508,8 +3508,8 @@ main(int argc, char *argv[])
 					database_mode = DB_ORACLE;
 				else
 				{
-					pg_log_error("unrecognized database mode: %s", dbmode);
-                                        pg_log_error_hint("Valid database mode values are pg or oracle.");
+					pg_log_error("Unknown case conversion mode: %s", dbmode);
+					pg_log_error_hint("Valid case conversion mode values are pg or oracle.");
 					exit(1);
 				}
 			break;
