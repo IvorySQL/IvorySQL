@@ -6,7 +6,7 @@
  * Generic code supporting statistics objects created via CREATE STATISTICS.
  *
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -862,8 +862,8 @@ int
 multi_sort_compare(const void *a, const void *b, void *arg)
 {
 	MultiSortSupport mss = (MultiSortSupport) arg;
-	SortItem   *ia = (SortItem *) a;
-	SortItem   *ib = (SortItem *) b;
+	const SortItem *ia = a;
+	const SortItem *ib = b;
 	int			i;
 
 	for (i = 0; i < mss->ndims; i++)

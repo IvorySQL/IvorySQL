@@ -13,7 +13,7 @@
  * - typemod registry for ephemeral row-types, i.e. BlessTupleDesc etc.
  *
  * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
- * Portions Copyright (c) 2017-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2017-2026, PostgreSQL Global Development Group
  *
  * src/backend/access/common/session.c
  *

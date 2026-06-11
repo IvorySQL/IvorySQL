@@ -3,7 +3,7 @@
  * tableam.c
  *		Table access method routines too big to be inline functions.
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -11,7 +11,7 @@
  *	  src/backend/access/table/tableam.c
  *
  * NOTES
- *	  Note that most function in here are documented in tableam.h, rather than
+ *	  Note that most functions in here are documented in tableam.h, rather than
  *	  here. That's because there's a lot of inline functions in tableam.h and
  *	  it'd be harder to understand if one constantly had to switch between files.
  *

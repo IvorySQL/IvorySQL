@@ -3,7 +3,7 @@
  * bufmgr.c
  *	  buffer manager interface routines
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
@@ -4281,7 +4281,7 @@ DebugPrintBufferRefcount(Buffer buffer)
 		backend = INVALID_PROC_NUMBER;
 	}
 
-	/* theoretically we should lock the bufhdr here */
+	/* theoretically we should lock the bufHdr here */
 	buf_state = pg_atomic_read_u32(&buf->state);
 
 	result = psprintf("[%03d] (rel=%s, blockNum=%u, flags=0x%x, refcount=%u %d)",

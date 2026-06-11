@@ -3,7 +3,7 @@
 # pg_cast.dat
 #    Initial contents of the pg_cast system catalog.
 #
-# Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/include/catalog/pg_cast.dat
@@ -295,6 +295,20 @@
   castcontext => 'a', castmethod => 'f' },
 { castsource => 'regdatabase', casttarget => 'int4', castfunc => '0',
   castcontext => 'a', castmethod => 'b' },
+
+# OID8 category: allow implicit conversion from any integral type (including
+# int8), as well as assignment coercion to int8.
+{ castsource => 'int8', casttarget => 'oid8', castfunc => '0',
+  castcontext => 'i', castmethod => 'b' },
+{ castsource => 'int2', casttarget => 'oid8', castfunc => 'int8(int2)',
+  castcontext => 'i', castmethod => 'f' },
+{ castsource => 'int4', casttarget => 'oid8', castfunc => 'int8(int4)',
+  castcontext => 'i', castmethod => 'f' },
+{ castsource => 'oid8', casttarget => 'int8', castfunc => '0',
+  castcontext => 'a', castmethod => 'b' },
+# Assignment coercion from oid to oid8.
+{ castsource => 'oid', casttarget => 'oid8', castfunc => 'oid8(oid)',
+  castcontext => 'a', castmethod => 'f' },
 
 # String category
 { castsource => 'text', casttarget => 'bpchar', castfunc => '0',

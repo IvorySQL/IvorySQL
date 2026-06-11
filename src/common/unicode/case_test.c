@@ -2,7 +2,7 @@
  * case_test.c
  *		Program to test Unicode case mapping functions.
  *
- * Portions Copyright (c) 2017-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2017-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/common/unicode/case_test.c
@@ -30,7 +30,7 @@
 #define BUFSZ 256
 
 #ifdef USE_ICU
-static UCaseMap * casemap = NULL;
+static UCaseMap *casemap = NULL;
 #endif
 
 typedef size_t (*TestFunc) (char *dst, size_t dstsize, const char *src,

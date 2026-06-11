@@ -1,5 +1,5 @@
 #Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
-# Copyright (c) 2022-2025, PostgreSQL Global Development Group
+# Copyright (c) 2022-2026, PostgreSQL Global Development Group
 
 # Entry point for building PostgreSQL with meson
 #
@@ -44,6 +44,10 @@ build_system = build_machine.system()
 host_cpu = host_machine.cpu_family()
 
 cc = meson.get_compiler('c')
+have_cxx = add_languages('cpp', required: false, native: false)
+if have_cxx
+  cxx = meson.get_compiler('cpp')
+endif
 
 not_found_dep = dependency('', required: false)
 thread_dep = dependency('threads')
@@ -844,14 +848,12 @@ endif
 
 llvmopt = get_option('llvm')
 llvm = not_found_dep
-if add_languages('cpp', required: llvmopt, native: false)
+if have_cxx
   llvm = dependency('llvm', version: '>=14', method: 'config-tool', required: llvmopt)
 
   if llvm.found()
 
     cdata.set('USE_LLVM', 1)
-
-    cpp = meson.get_compiler('cpp')
 
     llvm_binpath = llvm.get_variable(configtool: 'bindir')
 
@@ -861,8 +863,13 @@ if add_languages('cpp', required: llvmopt, native: false)
     # find via PATH, too.
     clang = find_program(llvm_binpath / 'clang', 'clang', required: true)
   endif
-elif llvmopt.auto()
-  message('llvm requires a C++ compiler')
+else
+  msg = 'llvm requires a C++ compiler'
+  if llvmopt.auto()
+    message(msg)
+  elif llvmopt.enabled()
+    error(msg)
+  endif
 endif
 
 
@@ -1038,7 +1045,7 @@ if liburing.found()
 
   if cc.has_function('io_uring_queue_init_mem',
       dependencies: liburing, args: test_c_args)
-    cdata.set('HAVE_LIBURING_QUEUE_INIT_MEM', 1)
+    cdata.set('HAVE_IO_URING_QUEUE_INIT_MEM', 1)
   endif
 
 endif
@@ -1337,7 +1344,21 @@ if not pyopt.disabled()
   pm = import('python')
   python3_inst = pm.find_installation(python.full_path(), required: pyopt)
   if python3_inst.found()
-    python3_dep = python3_inst.dependency(embed: true, required: pyopt)
+    # On MSVC, link against python3.lib instead of python3XX.lib for
+    # Python Limited API.  Right now, this is the only platform that
+    # needs this workaround.  In the long run, Meson should handle
+    # this internally:
+    # <https://github.com/mesonbuild/meson/issues/13824>.
+    if host_system == 'windows' and cc.get_id() == 'msvc'
+      python3_libdir = python3_inst.get_variable('prefix') / 'libs'
+      python3_lib = cc.find_library('python3', dirs: python3_libdir, required: pyopt)
+      python3_dep = declare_dependency(
+        include_directories: include_directories(python3_inst.get_variable('prefix') / 'include'),
+        dependencies: python3_lib,
+      )
+    else
+      python3_dep = python3_inst.dependency(embed: true, required: pyopt)
+    endif
     # Remove this check after we depend on Meson >= 1.1.0
     if not cc.check_header('Python.h', dependencies: python3_dep, required: pyopt, include_directories: postgres_inc)
       python3_dep = not_found_dep
@@ -1924,11 +1945,11 @@ endforeach
 
 # We need to repeat the test for C++ because gcc and clang prefer different
 # format archetypes.
-if llvm.found()
-  attrib_error_args = cpp.get_supported_arguments('-Werror=format', '-Werror=ignored-attributes')
+if have_cxx
+  attrib_error_args = cxx.get_supported_arguments('-Werror=format', '-Werror=ignored-attributes')
   foreach a : printf_attributes
-    if cpp.compiles(testsrc.format(a),
-        args: attrib_error_args, name: 'cppformat ' + a)
+    if cxx.compiles(testsrc.format(a),
+        args: attrib_error_args, name: 'cxxformat ' + a)
       cdata.set('PG_CXX_PRINTF_ATTRIBUTE', a)
       break
     endif
@@ -2091,8 +2112,8 @@ common_functional_flags = [
 ]
 
 cflags += cc.get_supported_arguments(common_functional_flags)
-if llvm.found()
-  cxxflags += cpp.get_supported_arguments(common_functional_flags)
+if have_cxx
+  cxxflags += cxx.get_supported_arguments(common_functional_flags)
 endif
 
 vectorize_cflags = cc.get_supported_arguments(['-ftree-vectorize'])
@@ -2115,8 +2136,8 @@ common_warning_flags = [
 ]
 
 cflags_warn += cc.get_supported_arguments(common_warning_flags)
-if llvm.found()
-  cxxflags_warn += cpp.get_supported_arguments(common_warning_flags)
+if have_cxx
+  cxxflags_warn += cxx.get_supported_arguments(common_warning_flags)
 endif
 
 # A few places with imported code get a pass on -Wdeclaration-after-statement, remember
@@ -2169,7 +2190,7 @@ foreach w : negative_warning_flags
   if cc.has_argument('-W' + w)
     cflags_warn += '-Wno-' + w
   endif
-  if llvm.found() and cpp.has_argument('-W' + w)
+  if have_cxx and cxx.has_argument('-W' + w)
     cxxflags_warn += '-Wno-' + w
   endif
 endforeach
@@ -2237,8 +2258,8 @@ elif optimization == 's'
 endif
 
 cflags_builtin = cc.get_supported_arguments(common_builtin_flags)
-if llvm.found()
-  cxxflags_builtin = cpp.get_supported_arguments(common_builtin_flags)
+if have_cxx
+  cxxflags_builtin = cxx.get_supported_arguments(common_builtin_flags)
 endif
 
 
@@ -2531,7 +2552,11 @@ int main(void)
 }
 '''
 
-  if cc.links(prog, name: '__crc32cb, __crc32ch, __crc32cw, and __crc32cd without -march=armv8-a+crc',
+  # Vendor-supported versions of Windows for AArch64 require at least ARMv8.1,
+  # which is where CRC extension support became mandatory.  Thus, use it
+  # unconditionally on MSVC/AArch64.
+  if (host_cpu == 'aarch64' and cc.get_id() == 'msvc') or \
+        cc.links(prog, name: '__crc32cb, __crc32ch, __crc32cw, and __crc32cd without -march=armv8-a+crc',
       args: test_c_args)
     # Use ARM CRC Extension unconditionally
     cdata.set('USE_ARMV8_CRC32C', 1)
@@ -2634,13 +2659,11 @@ endif
 # XXX: Might be worth conditioning some checks on the OS, to avoid doing
 # unnecessary checks over and over, particularly on windows.
 header_checks = [
-  'atomic.h',
   'copyfile.h',
   'crtdefs.h',
   'execinfo.h',
   'getopt.h',
   'ifaddrs.h',
-  'mbarrier.h',
   'strings.h',
   'sys/epoll.h',
   'sys/event.h',
@@ -2672,7 +2695,6 @@ decl_checks = [
   ['posix_fadvise', 'fcntl.h'],
   ['strlcat', 'string.h'],
   ['strlcpy', 'string.h'],
-  ['strnlen', 'string.h'],
   ['strsep',  'string.h'],
   ['timingsafe_bcmp',  'string.h'],
 ]
@@ -2686,14 +2708,6 @@ decl_checks += [
   ['strchrnul', 'string.h'],
   ['memset_s', 'string.h', '#define __STDC_WANT_LIB_EXT1__ 1'],
 ]
-
-# Check presence of some optional LLVM functions.
-if llvm.found()
-  decl_checks += [
-    ['LLVMCreateGDBRegistrationListener', 'llvm-c/ExecutionEngine.h'],
-    ['LLVMCreatePerfJITEventListener', 'llvm-c/ExecutionEngine.h'],
-  ]
-endif
 
 foreach c : decl_checks
   func = c.get(0)
@@ -2841,12 +2855,13 @@ int main(void)
 endforeach
 
 
-# Even though restrict is in C99 and should be supported by all
-# supported compilers, this indirection is useful because __restrict
-# also works in C++ in all supported compilers.  (If not, then we
-# might have to write a real test.)  (restrict is not part of the C++
-# standard.)
-cdata.set('restrict', '__restrict')
+# MSVC doesn't cope well with defining restrict to __restrict, the
+# spelling it understands, because it conflicts with
+# __declspec(restrict) in C++ mode.  Therefore we define pg_restrict
+# to the appropriate definition, which presumably won't conflict.
+#
+# We assume C99 support, so we don't need to make this conditional.
+cdata.set('pg_restrict', '__restrict')
 
 
 # Most libraries are included only if they demonstrably provide a function we
@@ -2928,7 +2943,6 @@ func_checks = [
   ['strerror_r', {'dependencies': [thread_dep]}],
   ['strlcat'],
   ['strlcpy'],
-  ['strnlen'],
   ['strsep'],
   ['strsignal'],
   ['sync_file_range'],
@@ -3968,10 +3982,10 @@ summary(
   section: 'Compiler Flags',
 )
 
-if llvm.found()
+if have_cxx
   summary(
     {
-      'C++ compiler': '@0@ @1@'.format(cpp.get_id(), cpp.version()),
+      'C++ compiler': '@0@ @1@'.format(cxx.get_id(), cxx.version()),
     },
     section: 'Compiler',
   )

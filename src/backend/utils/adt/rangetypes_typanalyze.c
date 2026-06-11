@@ -13,7 +13,7 @@
  * come from different tuples. In theory, the standard scalar selectivity
  * functions could be used with the combined histogram.
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -111,9 +111,9 @@ float8_qsort_cmp(const void *a1, const void *a2, void *arg)
 static int
 range_bound_qsort_cmp(const void *a1, const void *a2, void *arg)
 {
-	RangeBound *b1 = (RangeBound *) a1;
-	RangeBound *b2 = (RangeBound *) a2;
-	TypeCacheEntry *typcache = (TypeCacheEntry *) arg;
+	const RangeBound *b1 = a1;
+	const RangeBound *b2 = a2;
+	TypeCacheEntry *typcache = arg;
 
 	return range_cmp_bounds(typcache, b1, b2);
 }

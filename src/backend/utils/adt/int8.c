@@ -3,7 +3,7 @@
  * int8.c
  *	  Internal 64-bit integer operations
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -1368,6 +1368,14 @@ oidtoi8(PG_FUNCTION_ARGS)
 	Oid			arg = PG_GETARG_OID(0);
 
 	PG_RETURN_INT64((int64) arg);
+}
+
+Datum
+oidtooid8(PG_FUNCTION_ARGS)
+{
+	Oid			arg = PG_GETARG_OID(0);
+
+	PG_RETURN_OID8((Oid8) arg);
 }
 
 /*

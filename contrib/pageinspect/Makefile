@@ -23,7 +23,16 @@ DATA =  pageinspect--1.12--1.13.sql \
 	pageinspect--1.0--1.1.sql
 PGFILEDESC = "pageinspect - functions to inspect contents of database pages"
 
-REGRESS = page btree brin gin gist hash checksum oldextversions
+# "page" is first because it creates the extension.
+REGRESS = \
+	page \
+	brin \
+	btree \
+	checksum \
+	gin \
+	gist \
+	hash \
+	oldextversions
 ORA_REGRESS = ivy_page btree ivy_brin ivy_gin ivy_gist ivy_hash checksum ivy_oldextversions
 
 ifdef USE_PGXS

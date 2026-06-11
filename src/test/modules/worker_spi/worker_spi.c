@@ -13,7 +13,7 @@
  * "delta" type.  Delta rows will be deleted by this worker and their values
  * aggregated into the total.
  *
- * Copyright (c) 2013-2025, PostgreSQL Global Development Group
+ * Copyright (c) 2013-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		src/test/modules/worker_spi/worker_spi.c
@@ -404,10 +404,15 @@ worker_spi_launch(PG_FUNCTION_ARGS)
 	Size		ndim;
 	int			nelems;
 	Datum	   *datum_flags;
+	bool		interruptible = PG_GETARG_BOOL(4);
 
 	memset(&worker, 0, sizeof(worker));
 	worker.bgw_flags = BGWORKER_SHMEM_ACCESS |
 		BGWORKER_BACKEND_DATABASE_CONNECTION;
+
+	if (interruptible)
+		worker.bgw_flags |= BGWORKER_INTERRUPTIBLE;
+
 	worker.bgw_start_time = BgWorkerStart_RecoveryFinished;
 	worker.bgw_restart_time = BGW_NEVER_RESTART;
 	sprintf(worker.bgw_library_name, "worker_spi");

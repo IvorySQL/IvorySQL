@@ -5,7 +5,7 @@
  * Basically this is stuff that is useful in both pg_dump and pg_dumpall.
  *
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
@@ -733,6 +733,7 @@ bool
 variable_is_guc_list_quote(const char *name)
 {
 	if (pg_strcasecmp(name, "local_preload_libraries") == 0 ||
+		pg_strcasecmp(name, "oauth_validator_libraries") == 0 ||
 		pg_strcasecmp(name, "search_path") == 0 ||
 		pg_strcasecmp(name, "session_preload_libraries") == 0 ||
 		pg_strcasecmp(name, "shared_preload_libraries") == 0 ||

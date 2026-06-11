@@ -12,7 +12,7 @@
 # gives unlimited permission to copy, distribute and modify it.
 #
 # Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
-# Copyright (c) 1996-2025, PostgreSQL Global Development Group
+# Copyright (c) 1996-2026, PostgreSQL Global Development Group
 ## -------------------- ##
 ## M4sh Initialization. ##
 ## -------------------- ##
@@ -1739,7 +1739,7 @@ Copyright (C) 2012 Free Software Foundation, Inc.
 This configure script is free software; the Free Software Foundation
 gives unlimited permission to copy, distribute and modify it.
 
-Copyright (c) 1996-2025, PostgreSQL Global Development Group
+Copyright (c) 1996-2026, PostgreSQL Global Development Group
 _ACEOF
   exit
 fi
@@ -13817,7 +13817,7 @@ fi
 ## Header files
 ##
 
-for ac_header in atomic.h copyfile.h execinfo.h getopt.h ifaddrs.h mbarrier.h sys/epoll.h sys/event.h sys/personality.h sys/prctl.h sys/procctl.h sys/signalfd.h sys/ucred.h termios.h uchar.h ucred.h xlocale.h
+for ac_header in copyfile.h execinfo.h getopt.h ifaddrs.h sys/epoll.h sys/event.h sys/personality.h sys/prctl.h sys/procctl.h sys/signalfd.h sys/ucred.h termios.h uchar.h ucred.h xlocale.h
 do :
   as_ac_Header=`$as_echo "ac_cv_header_$ac_header" | $as_tr_sh`
 ac_fn_c_check_header_mongrel "$LINENO" "$ac_header" "$as_ac_Header" "$ac_includes_default"
@@ -15279,10 +15279,10 @@ _ACEOF
 fi
 
 
-# Even though restrict is in C99 and should be supported by all
-# supported compilers, this test is useful because it will prefer a
-# spelling that also works in C++ (often __restrict).  (restrict is
-# not part of the C++ standard.)
+# MSVC doesn't cope well with defining restrict to __restrict, the
+# spelling it understands, because it conflicts with
+# __declspec(restrict) in C++ mode. Therefore we define pg_restrict to
+# the appropriate definition, which presumably won't conflict.
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for C/C++ restrict keyword" >&5
 $as_echo_n "checking for C/C++ restrict keyword... " >&6; }
 if ${ac_cv_c_restrict+:} false; then :
@@ -15328,6 +15328,16 @@ $as_echo "$ac_cv_c_restrict" >&6; }
 _ACEOF
  ;;
  esac
+
+if test "$ac_cv_c_restrict" = "no"; then
+  pg_restrict=""
+else
+  pg_restrict="$ac_cv_c_restrict"
+fi
+
+cat >>confdefs.h <<_ACEOF
+#define pg_restrict $pg_restrict
+_ACEOF
 
 
 ac_fn_c_check_type "$LINENO" "struct option" "ac_cv_type_struct_option" "#ifdef HAVE_GETOPT_H
@@ -16227,16 +16237,6 @@ fi
 cat >>confdefs.h <<_ACEOF
 #define HAVE_DECL_STRLCPY $ac_have_decl
 _ACEOF
-ac_fn_c_check_decl "$LINENO" "strnlen" "ac_cv_have_decl_strnlen" "$ac_includes_default"
-if test "x$ac_cv_have_decl_strnlen" = xyes; then :
-  ac_have_decl=1
-else
-  ac_have_decl=0
-fi
-
-cat >>confdefs.h <<_ACEOF
-#define HAVE_DECL_STRNLEN $ac_have_decl
-_ACEOF
 ac_fn_c_check_decl "$LINENO" "strsep" "ac_cv_have_decl_strsep" "$ac_includes_default"
 if test "x$ac_cv_have_decl_strsep" = xyes; then :
   ac_have_decl=1
@@ -16411,19 +16411,6 @@ else
   case " $LIBOBJS " in
   *" strlcpy.$ac_objext "* ) ;;
   *) LIBOBJS="$LIBOBJS strlcpy.$ac_objext"
- ;;
-esac
-
-fi
-
-ac_fn_c_check_func "$LINENO" "strnlen" "ac_cv_func_strnlen"
-if test "x$ac_cv_func_strnlen" = xyes; then :
-  $as_echo "#define HAVE_STRNLEN 1" >>confdefs.h
-
-else
-  case " $LIBOBJS " in
-  *" strnlen.$ac_objext "* ) ;;
-  *) LIBOBJS="$LIBOBJS strnlen.$ac_objext"
  ;;
 esac
 
@@ -16753,38 +16740,6 @@ fi
 
 
   CPPFLAGS=$ac_save_CPPFLAGS
-fi
-
-if test "$with_llvm" = yes; then
-
-  # Check which functionality is present
-  SAVE_CPPFLAGS="$CPPFLAGS"
-  CPPFLAGS="$CPPFLAGS $LLVM_CPPFLAGS"
-  ac_fn_c_check_decl "$LINENO" "LLVMCreateGDBRegistrationListener" "ac_cv_have_decl_LLVMCreateGDBRegistrationListener" "#include <llvm-c/ExecutionEngine.h>
-"
-if test "x$ac_cv_have_decl_LLVMCreateGDBRegistrationListener" = xyes; then :
-  ac_have_decl=1
-else
-  ac_have_decl=0
-fi
-
-cat >>confdefs.h <<_ACEOF
-#define HAVE_DECL_LLVMCREATEGDBREGISTRATIONLISTENER $ac_have_decl
-_ACEOF
-ac_fn_c_check_decl "$LINENO" "LLVMCreatePerfJITEventListener" "ac_cv_have_decl_LLVMCreatePerfJITEventListener" "#include <llvm-c/ExecutionEngine.h>
-"
-if test "x$ac_cv_have_decl_LLVMCreatePerfJITEventListener" = xyes; then :
-  ac_have_decl=1
-else
-  ac_have_decl=0
-fi
-
-cat >>confdefs.h <<_ACEOF
-#define HAVE_DECL_LLVMCREATEPERFJITEVENTLISTENER $ac_have_decl
-_ACEOF
-
-  CPPFLAGS="$SAVE_CPPFLAGS"
-
 fi
 
 # Lastly, restore full LIBS list and check for readline/libedit symbols

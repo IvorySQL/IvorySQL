@@ -3,7 +3,7 @@
  * pg_verifybackup.h
  *	  Verify a backup against a backup manifest.
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/bin/pg_verifybackup/pg_verifybackup.h
@@ -96,9 +96,9 @@ typedef struct verifier_context
 } verifier_context;
 
 extern void report_backup_error(verifier_context *context,
-								const char *restrict fmt,...)
+								const char *pg_restrict fmt,...)
 			pg_attribute_printf(2, 3);
-pg_noreturn extern void report_fatal_error(const char *restrict fmt,...)
+pg_noreturn extern void report_fatal_error(const char *pg_restrict fmt,...)
 			pg_attribute_printf(1, 2);
 extern bool should_ignore_relpath(verifier_context *context,
 								  const char *relpath);

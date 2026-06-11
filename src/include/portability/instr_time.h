@@ -47,7 +47,7 @@
  * Beware of multiple evaluations of the macro arguments.
  *
  *
- * Copyright (c) 2001-2025, PostgreSQL Global Development Group
+ * Copyright (c) 2001-2026, PostgreSQL Global Development Group
  *
  * src/include/portability/instr_time.h
  *
@@ -184,6 +184,8 @@ GetTimerFrequency(void)
 #define INSTR_TIME_ACCUM_DIFF(x,y,z) \
 	((x).ticks += (y).ticks - (z).ticks)
 
+#define INSTR_TIME_LT(x,y) \
+	((x).ticks > (y).ticks)
 
 #define INSTR_TIME_GET_DOUBLE(t) \
 	((double) INSTR_TIME_GET_NANOSEC(t) / NS_PER_S)

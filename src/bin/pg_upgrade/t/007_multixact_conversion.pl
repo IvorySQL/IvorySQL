@@ -1,4 +1,4 @@
-# Copyright (c) 2025, PostgreSQL Global Development Group
+# Copyright (c) 2025-2026, PostgreSQL Global Development Group
 
 # Version 19 expanded MultiXactOffset from 32 to 64 bits.  Upgrading
 # across that requires rewriting the SLRU files to the new format.
@@ -228,7 +228,7 @@ sub read_multixid_fields
 
 # Reset a cluster's next multixid and mxoffset to given values.
 #
-# Note: This is used on the old insallation, so the command arguments
+# Note: This is used on the old installation, so the command arguments
 # and the output parsing used here must work with all pre-v19
 # PostgreSQL versions supported by the test.
 sub reset_mxid_mxoffset_pre_v19

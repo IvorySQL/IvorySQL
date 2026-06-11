@@ -37,7 +37,7 @@
  * The Windows implementation uses Windows events that are inherited by all
  * postmaster child processes. There's no need for the self-pipe trick there.
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -1531,15 +1531,15 @@ WaitEventSetWaitBlock(WaitEventSet *set, int cur_timeout,
 				 (cur_pollfd->revents & (POLLIN | POLLHUP | POLLERR | POLLNVAL)))
 		{
 			/*
-			 * We expect an POLLHUP when the remote end is closed, but because
+			 * We expect a POLLHUP when the remote end is closed, but because
 			 * we don't expect the pipe to become readable or to have any
 			 * errors either, treat those cases as postmaster death, too.
 			 *
 			 * Be paranoid about a spurious event signaling the postmaster as
 			 * being dead.  There have been reports about that happening with
 			 * older primitives (select(2) to be specific), and a spurious
-			 * WL_POSTMASTER_DEATH event would be painful. Re-checking doesn't
-			 * cost much.
+			 * WL_POSTMASTER_DEATH event would be painful.  Re-checking
+			 * doesn't cost much.
 			 */
 			if (!PostmasterIsAliveInternal())
 			{

@@ -4,7 +4,7 @@
  *	  Search code for postgres btrees.
  *
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -18,6 +18,7 @@
 #include "access/nbtree.h"
 #include "access/relscan.h"
 #include "access/xact.h"
+#include "executor/instrument_node.h"
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "storage/predicate.h"

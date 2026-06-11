@@ -3,7 +3,7 @@
  * copy.c
  *		Implements the COPY utility command
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -488,7 +488,7 @@ defGetCopyRejectLimitOption(DefElem *def)
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("%s requires a numeric value",
 						def->defname)));
-	else if (nodeTag(def->arg) == T_String)
+	else if (IsA(def->arg, String))
 		reject_limit = pg_strtoint64(strVal(def->arg));
 	else
 		reject_limit = defGetInt64(def);

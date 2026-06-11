@@ -31,7 +31,7 @@
  * constraint changes are also tracked properly.
  *
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -235,8 +235,8 @@ shared_record_table_compare(const void *a, const void *b, size_t size,
 							void *arg)
 {
 	dsa_area   *area = (dsa_area *) arg;
-	SharedRecordTableKey *k1 = (SharedRecordTableKey *) a;
-	SharedRecordTableKey *k2 = (SharedRecordTableKey *) b;
+	const SharedRecordTableKey *k1 = a;
+	const SharedRecordTableKey *k2 = b;
 	TupleDesc	t1;
 	TupleDesc	t2;
 
@@ -259,8 +259,8 @@ shared_record_table_compare(const void *a, const void *b, size_t size,
 static uint32
 shared_record_table_hash(const void *a, size_t size, void *arg)
 {
-	dsa_area   *area = (dsa_area *) arg;
-	SharedRecordTableKey *k = (SharedRecordTableKey *) a;
+	dsa_area   *area = arg;
+	const SharedRecordTableKey *k = a;
 	TupleDesc	t;
 
 	if (k->shared)
@@ -2013,7 +2013,7 @@ lookup_rowtype_tupdesc_domain(Oid type_id, int32 typmod, bool noError)
 static uint32
 record_type_typmod_hash(const void *data, size_t size)
 {
-	RecordCacheEntry *entry = (RecordCacheEntry *) data;
+	const RecordCacheEntry *entry = data;
 
 	return hashRowType(entry->tupdesc);
 }
@@ -2024,8 +2024,8 @@ record_type_typmod_hash(const void *data, size_t size)
 static int
 record_type_typmod_compare(const void *a, const void *b, size_t size)
 {
-	RecordCacheEntry *left = (RecordCacheEntry *) a;
-	RecordCacheEntry *right = (RecordCacheEntry *) b;
+	const RecordCacheEntry *left = a;
+	const RecordCacheEntry *right = b;
 
 	return equalRowTypes(left->tupdesc, right->tupdesc) ? 0 : 1;
 }
@@ -2429,7 +2429,7 @@ TypeCacheRelCallback(Datum arg, Oid relid)
 		RelIdToTypeIdCacheEntry *relentry;
 
 		/*
-		 * Find an RelIdToTypeIdCacheHash entry, which should exist as soon as
+		 * Find a RelIdToTypeIdCacheHash entry, which should exist as soon as
 		 * corresponding typcache entry has something to clean.
 		 */
 		relentry = (RelIdToTypeIdCacheEntry *) hash_search(RelIdToTypeIdCacheHash,

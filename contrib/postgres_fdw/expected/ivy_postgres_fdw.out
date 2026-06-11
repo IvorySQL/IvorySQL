@@ -1898,32 +1898,32 @@ SELECT 1 FROM (SELECT c1 FROM ft4 WHERE c1 between 50 and 60) t1 FULL JOIN (SELE
 -- relation
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1.c1, ss.a, ss.b FROM (SELECT c1 FROM ft4 WHERE c1 between 50 and 60) t1 FULL JOIN (SELECT t2.c1, t3.c1 FROM ft4 t2 LEFT JOIN ft5 t3 ON (t2.c1 = t3.c1) WHERE (t2.c1 between 50 and 60)) ss(a, b) ON (t1.c1 = ss.a) ORDER BY t1.c1, ss.a, ss.b;
-                                          QUERY PLAN                                           
------------------------------------------------------------------------------------------------
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
  Sort
    Output: ft4.c1, t2.c1, t3.c1
    Sort Key: ft4.c1, t2.c1, t3.c1
    ->  Hash Full Join
          Output: ft4.c1, t2.c1, t3.c1
-         Hash Cond: (ft4.c1 = t2.c1)
-         ->  Foreign Scan on public.ft4
-               Output: ft4.c1, ft4.c2, ft4.c3
-               Filter: ((ft4.c1 >= '50'::number) AND (ft4.c1 <= '60'::number))
-               Remote SQL: SELECT c1 FROM "S 1"."T 3"
-         ->  Hash
+         Hash Cond: (t2.c1 = ft4.c1)
+         ->  Nested Loop Left Join
                Output: t2.c1, t3.c1
-               ->  Hash Right Join
-                     Output: t2.c1, t3.c1
-                     Hash Cond: (t3.c1 = t2.c1)
+               Join Filter: (t2.c1 = t3.c1)
+               ->  Foreign Scan on public.ft4 t2
+                     Output: t2.c1, t2.c2, t2.c3
+                     Filter: ((t2.c1 >= '50'::number) AND (t2.c1 <= '60'::number))
+                     Remote SQL: SELECT c1 FROM "S 1"."T 3"
+               ->  Materialize
+                     Output: t3.c1
                      ->  Foreign Scan on public.ft5 t3
-                           Output: t3.c1, t3.c2, t3.c3
+                           Output: t3.c1
                            Remote SQL: SELECT c1 FROM "S 1"."T 4"
-                     ->  Hash
-                           Output: t2.c1
-                           ->  Foreign Scan on public.ft4 t2
-                                 Output: t2.c1
-                                 Filter: ((t2.c1 >= '50'::number) AND (t2.c1 <= '60'::number))
-                                 Remote SQL: SELECT c1 FROM "S 1"."T 3"
+         ->  Hash
+               Output: ft4.c1
+               ->  Foreign Scan on public.ft4
+                     Output: ft4.c1
+                     Filter: ((ft4.c1 >= '50'::number) AND (ft4.c1 <= '60'::number))
+                     Remote SQL: SELECT c1 FROM "S 1"."T 3"
 (24 rows)
 
 SELECT t1.c1, ss.a, ss.b FROM (SELECT c1 FROM ft4 WHERE c1 between 50 and 60) t1 FULL JOIN (SELECT t2.c1, t3.c1 FROM ft4 t2 LEFT JOIN ft5 t3 ON (t2.c1 = t3.c1) WHERE (t2.c1 between 50 and 60)) ss(a, b) ON (t1.c1 = ss.a) ORDER BY t1.c1, ss.a, ss.b;
@@ -5081,9 +5081,12 @@ EXECUTE st1(101, 101);
  00101 | 00101
 (1 row)
 
-SET enable_hashjoin TO off;
+-- These next tests require choosing between remote and local sort, which is
+-- a coin flip so long as cost_sort() gives the same results on both sides.
+-- To stabilize the expected plans, disable sorting locally.
 SET enable_sort TO off;
 -- subquery using stable function (can't be sent to remote)
+SET enable_hashjoin TO off;  -- this one needs even more help to be stable
 PREPARE st2(number(38,0)) AS SELECT * FROM ft1 t1 WHERE t1.c1 < $2 AND t1.c3 IN (SELECT c3 FROM ft2 t2 WHERE c1 > $1 AND c4::date = '1970-01-17'::date) ORDER BY c1;
 EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st2(10, 20);
                                           QUERY PLAN                                           
@@ -5120,13 +5123,13 @@ EXECUTE st2(101, 121);
 (1 row)
 
 RESET enable_hashjoin;
-RESET enable_sort;
 -- subquery using immutable function (can be sent to remote)
 PREPARE st3(number(38,0)) AS SELECT * FROM ft1 t1 WHERE t1.c1 < $2 AND t1.c3 IN (SELECT c3 FROM ft2 t2 WHERE c1 > $1 AND c5::date = '1970-01-17'::date) ORDER BY c1;
 EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st3(10, 20);
                                           QUERY PLAN                                           
 -----------------------------------------------------------------------------------------------
  Sort
+   Disabled: true
    Output: t1.c1, t1.c2, t1.c3, t1.c4, t1.c5, t1.c6, t1.c7, t1.c8
    Sort Key: t1.c1
    ->  Nested Loop Semi Join
@@ -5142,7 +5145,7 @@ EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st3(10, 20);
                      Output: t2.c3
                      Filter: ((t2.c1 > '10'::number) AND ((t2.c5)::date = '1970-01-17'::date))
                      Remote SQL: SELECT "C 1", c3, c5 FROM "S 1"."T 1"
-(16 rows)
+(17 rows)
 
 EXECUTE st3(10, 20);
  c1 | c2 |  c3   |                c4                 |             c5             | c6 |     c7     | c8  
@@ -5155,6 +5158,7 @@ EXECUTE st3(20, 30);
 ----+----+----+----+----+----+----+----
 (0 rows)
 
+RESET enable_sort;
 -- custom plan should be chosen initially
 PREPARE st4(number(38,0)) AS SELECT * FROM ft1 t1 WHERE t1.c1 = $1;
 EXPLAIN (VERBOSE, COSTS OFF) EXECUTE st4(1);

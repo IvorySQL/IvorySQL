@@ -1,4 +1,4 @@
-# Copyright (c) 2021-2025, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 
 # Tests of authentication via login trigger. Mostly for rejection via
 # exception, because this scenario cannot be covered with *.sql/*.out regress
@@ -144,7 +144,7 @@ psql_command(
 	err_like => [qr/You are welcome/]);
 
 # Try to login as allowed Alice.  We don't check the Mallory login, because
-# FATAL error could cause a timing-dependant panic of IPC::Run.
+# FATAL error could cause a timing-dependent panic of IPC::Run.
 psql_command(
 	$node, 'SELECT 1;', 0, 'try regress_alice',
 	connstr => 'user=regress_alice',

@@ -4,7 +4,7 @@
 #    Makefile for src/oracle_test/regress (the regression tests)
 #
 # Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
-# Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/oracle_test/regress/GNUmakefile

@@ -24,7 +24,7 @@
  * for aborts (whether sync or async), since the post-crash assumption would
  * be that such transactions failed anyway.
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/access/transam/clog.c
@@ -575,7 +575,7 @@ TransactionGroupUpdateXidStatus(TransactionId xid, XidStatus status,
 	/* Walk the list and update the status of all XIDs. */
 	while (nextidx != INVALID_PROC_NUMBER)
 	{
-		PGPROC	   *nextproc = &ProcGlobal->allProcs[nextidx];
+		PGPROC	   *nextproc = GetPGProcByNumber(nextidx);
 		int64		thispageno = nextproc->clogGroupMemberPage;
 
 		/*
@@ -634,7 +634,7 @@ TransactionGroupUpdateXidStatus(TransactionId xid, XidStatus status,
 	 */
 	while (wakeidx != INVALID_PROC_NUMBER)
 	{
-		PGPROC	   *wakeproc = &ProcGlobal->allProcs[wakeidx];
+		PGPROC	   *wakeproc = GetPGProcByNumber(wakeidx);
 
 		wakeidx = pg_atomic_read_u32(&wakeproc->clogGroupNext);
 		pg_atomic_write_u32(&wakeproc->clogGroupNext, INVALID_PROC_NUMBER);

@@ -10,7 +10,7 @@
  * test behaviors where some specified action happens in another backend
  * between parsing and execution of any desired query.
  *
- * Copyright (c) 2020-2025, PostgreSQL Global Development Group
+ * Copyright (c) 2020-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
  * IDENTIFICATION

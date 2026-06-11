@@ -3,7 +3,7 @@
  * gindesc.c
  *	  rmgr descriptor routines for access/transam/gin/ginxlog.c
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -161,7 +161,7 @@ gin_desc(StringInfo buf, XLogReaderState *record)
 					appendStringInfo(buf, " prevTail: %u",
 									 xlrec->prevTail);
 				if (xlrec->newRightlink != InvalidBlockNumber)
-					appendStringInfo(buf, " newRightLink: %u",
+					appendStringInfo(buf, " newRightlink: %u",
 									 xlrec->newRightlink);
 			}
 			break;

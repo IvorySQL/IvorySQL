@@ -4,7 +4,7 @@
  *	  implementation of k-d tree over points for SP-GiST
  *
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -84,8 +84,8 @@ typedef struct SortedPoint
 static int
 x_cmp(const void *a, const void *b)
 {
-	SortedPoint *pa = (SortedPoint *) a;
-	SortedPoint *pb = (SortedPoint *) b;
+	const SortedPoint *pa = a;
+	const SortedPoint *pb = b;
 
 	if (pa->p->x == pb->p->x)
 		return 0;
@@ -95,8 +95,8 @@ x_cmp(const void *a, const void *b)
 static int
 y_cmp(const void *a, const void *b)
 {
-	SortedPoint *pa = (SortedPoint *) a;
-	SortedPoint *pb = (SortedPoint *) b;
+	const SortedPoint *pa = a;
+	const SortedPoint *pb = b;
 
 	if (pa->p->y == pb->p->y)
 		return 0;

@@ -283,14 +283,10 @@ LINE 1: ...ON regress_pub_for_allsequences_alltables FOR ALL SEQUENCES,...
                                                              ^
 -- Specifying WITH clause in an ALL SEQUENCES publication will emit a NOTICE.
 SET client_min_messages = 'NOTICE';
-CREATE PUBLICATION regress_pub_for_allsequences_alltables_withclause FOR ALL SEQUENCES, ALL TABLES WITH (publish = 'insert');
-ERROR:  syntax error at or near "SEQUENCES"
-LINE 1: ...pub_for_allsequences_alltables_withclause FOR ALL SEQUENCES,...
-                                                             ^
-CREATE PUBLICATION regress_pub_for_allsequences_withclause FOR ALL SEQUENCES WITH (publish_generated_columns = 'stored');
-ERROR:  syntax error at or near "SEQUENCES"
-LINE 1: ...N regress_pub_for_allsequences_withclause FOR ALL SEQUENCES ...
-                                                             ^
+ALTER PUBLICATION regress_pub_for_allsequences_alltables SET (publish = 'insert');
+ERROR:  publication "regress_pub_for_allsequences_alltables" does not exist
+ALTER PUBLICATION regress_pub_for_allsequences_alltables SET (publish_generated_columns = 'stored');
+ERROR:  publication "regress_pub_for_allsequences_alltables" does not exist
 RESET client_min_messages;
 SELECT pubname, puballtables, puballsequences FROM pg_publication WHERE pubname = 'regress_pub_for_allsequences_alltables';
  pubname | puballtables | puballsequences 
@@ -305,10 +301,6 @@ DROP PUBLICATION regress_pub_forallsequences2;
 ERROR:  publication "regress_pub_forallsequences2" does not exist
 DROP PUBLICATION regress_pub_for_allsequences_alltables;
 ERROR:  publication "regress_pub_for_allsequences_alltables" does not exist
-DROP PUBLICATION regress_pub_for_allsequences_alltables_withclause;
-ERROR:  publication "regress_pub_for_allsequences_alltables_withclause" does not exist
-DROP PUBLICATION regress_pub_for_allsequences_withclause;
-ERROR:  publication "regress_pub_for_allsequences_withclause" does not exist
 -- fail - Specifying ALL TABLES more than once
 CREATE PUBLICATION regress_pub_for_allsequences_alltables FOR ALL SEQUENCES, ALL TABLES, ALL TABLES;
 ERROR:  syntax error at or near "SEQUENCES"

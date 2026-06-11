@@ -4,7 +4,7 @@
  *	  Standard POSTGRES buffer page definitions.
  *
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/storage/bufpage.h
@@ -351,12 +351,12 @@ PageValidateSpecialPointer(const PageData *page)
  *		The semantics may change in the future.
  */
 static inline void *
-PageGetItem(const PageData *page, const ItemIdData *itemId)
+PageGetItem(PageData *page, const ItemIdData *itemId)
 {
 	Assert(page);
 	Assert(ItemIdHasStorage(itemId));
 
-	return (void *) (((const char *) page) + ItemIdGetOffset(itemId));
+	return (char *) page + ItemIdGetOffset(itemId);
 }
 
 /*

@@ -28,7 +28,7 @@
  * the current system state, and for starting/stopping backups.
  *
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
@@ -2921,6 +2921,14 @@ XLogFlush(XLogRecPtr record)
 	WalSndWakeupProcessRequests(true, !RecoveryInProgress());
 
 	/*
+	 * If we flushed an LSN that someone was waiting for, notify the waiters.
+	 */
+	if (waitLSNState &&
+		(LogwrtResult.Flush >=
+		 pg_atomic_read_u64(&waitLSNState->minWaitedLSN[WAIT_LSN_TYPE_PRIMARY_FLUSH])))
+		WaitLSNWakeup(WAIT_LSN_TYPE_PRIMARY_FLUSH, LogwrtResult.Flush);
+
+	/*
 	 * If we still haven't flushed to the request point then we have a
 	 * problem; most likely, the requested flush point is past end of XLOG.
 	 * This has been seen to occur when a disk page has a corrupted LSN.
@@ -3101,6 +3109,14 @@ XLogBackgroundFlush(void)
 
 	/* wake up walsenders now that we've released heavily contended locks */
 	WalSndWakeupProcessRequests(true, !RecoveryInProgress());
+
+	/*
+	 * If we flushed an LSN that someone was waiting for, notify the waiters.
+	 */
+	if (waitLSNState &&
+		(LogwrtResult.Flush >=
+		 pg_atomic_read_u64(&waitLSNState->minWaitedLSN[WAIT_LSN_TYPE_PRIMARY_FLUSH])))
+		WaitLSNWakeup(WAIT_LSN_TYPE_PRIMARY_FLUSH, LogwrtResult.Flush);
 
 	/*
 	 * Great, done. To take some work off the critical path, try to initialize
@@ -6410,10 +6426,12 @@ StartupXLOG(void)
 	WakeupCheckpointer();
 
 	/*
-	 * Wake up all waiters for replay LSN.  They need to report an error that
-	 * recovery was ended before reaching the target LSN.
+	 * Wake up all waiters.  They need to report an error that recovery was
+	 * ended before reaching the target LSN.
 	 */
-	WaitLSNWakeup(WAIT_LSN_TYPE_REPLAY, InvalidXLogRecPtr);
+	WaitLSNWakeup(WAIT_LSN_TYPE_STANDBY_REPLAY, InvalidXLogRecPtr);
+	WaitLSNWakeup(WAIT_LSN_TYPE_STANDBY_WRITE, InvalidXLogRecPtr);
+	WaitLSNWakeup(WAIT_LSN_TYPE_STANDBY_FLUSH, InvalidXLogRecPtr);
 
 	/*
 	 * Shutdown the recovery environment.  This must occur after

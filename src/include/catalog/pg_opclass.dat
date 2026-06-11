@@ -3,7 +3,7 @@
 # pg_opclass.dat
 #    Initial contents of the pg_opclass system catalog.
 #
-# Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/include/catalog/pg_opclass.dat
@@ -57,7 +57,7 @@
 { opcmethod => 'hash', opcname => 'inet_ops', opcfamily => 'hash/network_ops',
   opcintype => 'inet' },
 { opcmethod => 'gist', opcname => 'inet_ops', opcfamily => 'gist/network_ops',
-  opcintype => 'inet', opcdefault => 'f' },
+  opcintype => 'inet' },
 { opcmethod => 'spgist', opcname => 'inet_ops',
   opcfamily => 'spgist/network_ops', opcintype => 'inet' },
 { oid => '1979', oid_symbol => 'INT2_BTREE_OPS_OID',
@@ -177,6 +177,10 @@
   opcintype => 'xid8' },
 { opcmethod => 'btree', opcname => 'xid8_ops', opcfamily => 'btree/xid8_ops',
   opcintype => 'xid8' },
+{ opcmethod => 'hash', opcname => 'oid8_ops', opcfamily => 'hash/oid8_ops',
+  opcintype => 'oid8' },
+{ opcmethod => 'btree', opcname => 'oid8_ops', opcfamily => 'btree/oid8_ops',
+  opcintype => 'oid8' },
 { opcmethod => 'hash', opcname => 'cid_ops', opcfamily => 'hash/cid_ops',
   opcintype => 'cid' },
 { opcmethod => 'hash', opcname => 'tid_ops', opcfamily => 'hash/tid_ops',

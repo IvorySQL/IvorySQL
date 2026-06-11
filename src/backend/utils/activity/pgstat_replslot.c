@@ -16,7 +16,7 @@
  * dropped while shut down, which is addressed by not restoring stats for
  * slots that cannot be found by name when starting up.
  *
- * Copyright (c) 2001-2025, PostgreSQL Global Development Group
+ * Copyright (c) 2001-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/utils/activity/pgstat_replslot.c
@@ -47,9 +47,8 @@ pgstat_reset_replslot(const char *name)
 
 	LWLockAcquire(ReplicationSlotControlLock, LW_SHARED);
 
-	/* Check if the slot exits with the given name. */
+	/* Check if the slot exists with the given name. */
 	slot = SearchNamedReplicationSlot(name, false);
-
 	if (!slot)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),

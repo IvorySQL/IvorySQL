@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 
-# Copyright (c) 2024-2025, PostgreSQL Global Development Group
+# Copyright (c) 2024-2026, PostgreSQL Global Development Group
 
 use strict;
 use warnings FATAL => 'all';
@@ -19,6 +19,7 @@ our @languages = qw(
   danish
   dutch
   english
+  esperanto
   estonian
   finnish
   french
@@ -32,6 +33,7 @@ our @languages = qw(
   lithuanian
   nepali
   norwegian
+  polish
   portuguese
   romanian
   russian

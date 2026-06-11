@@ -3,7 +3,7 @@
  * pruneheap.c
  *	  heap page pruning and HOT-chain management code
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -2021,8 +2021,8 @@ heap_log_freeze_eq(xlhp_freeze_plan *plan, HeapTupleFreeze *frz)
 static int
 heap_log_freeze_cmp(const void *arg1, const void *arg2)
 {
-	HeapTupleFreeze *frz1 = (HeapTupleFreeze *) arg1;
-	HeapTupleFreeze *frz2 = (HeapTupleFreeze *) arg2;
+	const HeapTupleFreeze *frz1 = arg1;
+	const HeapTupleFreeze *frz2 = arg2;
 
 	if (frz1->xmax < frz2->xmax)
 		return -1;

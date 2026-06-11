@@ -4,7 +4,7 @@
  *	   routines for accessing the system catalogs
  *
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -231,7 +231,7 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 			Oid			indexoid = lfirst_oid(l);
 			Relation	indexRelation;
 			Form_pg_index index;
-			IndexAmRoutine *amroutine = NULL;
+			const IndexAmRoutine *amroutine = NULL;
 			IndexOptInfo *info;
 			int			ncolumns,
 						nkeycolumns;
@@ -937,7 +937,7 @@ infer_arbiter_indexes(PlannerInfo *root)
 				Assert(idxForm->indisready);
 
 				/*
-				 * Set up inferElems and inferPredExprs to match the
+				 * Set up inferElems and inferIndexExprs to match the
 				 * constraint index, so that we can match them in the loop
 				 * below.
 				 */

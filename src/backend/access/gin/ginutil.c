@@ -4,7 +4,7 @@
  *	  Utility routines for the Postgres inverted index access method.
  *
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -37,60 +37,61 @@
 Datum
 ginhandler(PG_FUNCTION_ARGS)
 {
-	IndexAmRoutine *amroutine = makeNode(IndexAmRoutine);
+	static const IndexAmRoutine amroutine = {
+		.type = T_IndexAmRoutine,
+		.amstrategies = 0,
+		.amsupport = GINNProcs,
+		.amoptsprocnum = GIN_OPTIONS_PROC,
+		.amcanorder = false,
+		.amcanorderbyop = false,
+		.amcanhash = false,
+		.amconsistentequality = false,
+		.amconsistentordering = false,
+		.amcanbackward = false,
+		.amcanunique = false,
+		.amcanmulticol = true,
+		.amoptionalkey = true,
+		.amsearcharray = false,
+		.amsearchnulls = false,
+		.amstorage = true,
+		.amclusterable = false,
+		.ampredlocks = true,
+		.amcanparallel = false,
+		.amcanbuildparallel = true,
+		.amcaninclude = false,
+		.amusemaintenanceworkmem = true,
+		.amsummarizing = false,
+		.amparallelvacuumoptions =
+		VACUUM_OPTION_PARALLEL_BULKDEL | VACUUM_OPTION_PARALLEL_CLEANUP,
+		.amkeytype = InvalidOid,
 
-	amroutine->amstrategies = 0;
-	amroutine->amsupport = GINNProcs;
-	amroutine->amoptsprocnum = GIN_OPTIONS_PROC;
-	amroutine->amcanorder = false;
-	amroutine->amcanorderbyop = false;
-	amroutine->amcanhash = false;
-	amroutine->amconsistentequality = false;
-	amroutine->amconsistentordering = false;
-	amroutine->amcanbackward = false;
-	amroutine->amcanunique = false;
-	amroutine->amcanmulticol = true;
-	amroutine->amoptionalkey = true;
-	amroutine->amsearcharray = false;
-	amroutine->amsearchnulls = false;
-	amroutine->amstorage = true;
-	amroutine->amclusterable = false;
-	amroutine->ampredlocks = true;
-	amroutine->amcanparallel = false;
-	amroutine->amcanbuildparallel = true;
-	amroutine->amcaninclude = false;
-	amroutine->amusemaintenanceworkmem = true;
-	amroutine->amsummarizing = false;
-	amroutine->amparallelvacuumoptions =
-		VACUUM_OPTION_PARALLEL_BULKDEL | VACUUM_OPTION_PARALLEL_CLEANUP;
-	amroutine->amkeytype = InvalidOid;
+		.ambuild = ginbuild,
+		.ambuildempty = ginbuildempty,
+		.aminsert = gininsert,
+		.aminsertcleanup = NULL,
+		.ambulkdelete = ginbulkdelete,
+		.amvacuumcleanup = ginvacuumcleanup,
+		.amcanreturn = NULL,
+		.amcostestimate = gincostestimate,
+		.amgettreeheight = NULL,
+		.amoptions = ginoptions,
+		.amproperty = NULL,
+		.ambuildphasename = ginbuildphasename,
+		.amvalidate = ginvalidate,
+		.amadjustmembers = ginadjustmembers,
+		.ambeginscan = ginbeginscan,
+		.amrescan = ginrescan,
+		.amgettuple = NULL,
+		.amgetbitmap = gingetbitmap,
+		.amendscan = ginendscan,
+		.ammarkpos = NULL,
+		.amrestrpos = NULL,
+		.amestimateparallelscan = NULL,
+		.aminitparallelscan = NULL,
+		.amparallelrescan = NULL,
+	};
 
-	amroutine->ambuild = ginbuild;
-	amroutine->ambuildempty = ginbuildempty;
-	amroutine->aminsert = gininsert;
-	amroutine->aminsertcleanup = NULL;
-	amroutine->ambulkdelete = ginbulkdelete;
-	amroutine->amvacuumcleanup = ginvacuumcleanup;
-	amroutine->amcanreturn = NULL;
-	amroutine->amcostestimate = gincostestimate;
-	amroutine->amgettreeheight = NULL;
-	amroutine->amoptions = ginoptions;
-	amroutine->amproperty = NULL;
-	amroutine->ambuildphasename = ginbuildphasename;
-	amroutine->amvalidate = ginvalidate;
-	amroutine->amadjustmembers = ginadjustmembers;
-	amroutine->ambeginscan = ginbeginscan;
-	amroutine->amrescan = ginrescan;
-	amroutine->amgettuple = NULL;
-	amroutine->amgetbitmap = gingetbitmap;
-	amroutine->amendscan = ginendscan;
-	amroutine->ammarkpos = NULL;
-	amroutine->amrestrpos = NULL;
-	amroutine->amestimateparallelscan = NULL;
-	amroutine->aminitparallelscan = NULL;
-	amroutine->amparallelrescan = NULL;
-
-	PG_RETURN_POINTER(amroutine);
+	PG_RETURN_POINTER(&amroutine);
 }
 
 /*
@@ -385,44 +386,6 @@ GinInitMetabuffer(Buffer b)
 	((PageHeader) page)->pd_lower =
 		((char *) metadata + sizeof(GinMetaPageData)) - (char *) page;
 }
-
-/*
- * Compare two keys of the same index column
- */
-int
-ginCompareEntries(GinState *ginstate, OffsetNumber attnum,
-				  Datum a, GinNullCategory categorya,
-				  Datum b, GinNullCategory categoryb)
-{
-	/* if not of same null category, sort by that first */
-	if (categorya != categoryb)
-		return (categorya < categoryb) ? -1 : 1;
-
-	/* all null items in same category are equal */
-	if (categorya != GIN_CAT_NORM_KEY)
-		return 0;
-
-	/* both not null, so safe to call the compareFn */
-	return DatumGetInt32(FunctionCall2Coll(&ginstate->compareFn[attnum - 1],
-										   ginstate->supportCollation[attnum - 1],
-										   a, b));
-}
-
-/*
- * Compare two keys of possibly different index columns
- */
-int
-ginCompareAttEntries(GinState *ginstate,
-					 OffsetNumber attnuma, Datum a, GinNullCategory categorya,
-					 OffsetNumber attnumb, Datum b, GinNullCategory categoryb)
-{
-	/* attribute number is the first sort key */
-	if (attnuma != attnumb)
-		return (attnuma < attnumb) ? -1 : 1;
-
-	return ginCompareEntries(ginstate, attnuma, a, categorya, b, categoryb);
-}
-
 
 /*
  * Support for sorting key datums in ginExtractEntries

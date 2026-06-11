@@ -6,7 +6,7 @@
  * NOTE: for historical reasons, this does not correspond to pqcomm.c.
  * pqcomm.c's routines are declared in libpq.h.
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/libpq/pqcomm.h
@@ -114,7 +114,6 @@ is_unixsock_path(const char *path)
 
 
 typedef uint32 ProtocolVersion; /* FE/BE protocol version number */
-typedef ProtocolVersion MsgType;
 
 
 /*
@@ -146,7 +145,7 @@ typedef uint32 AuthRequest;		/* an AUTH_REQ_* code */
 typedef struct CancelRequestPacket
 {
 	/* Note that each field is stored in network byte order! */
-	MsgType		cancelRequestCode;	/* code to identify a cancel request */
+	ProtocolVersion cancelRequestCode;	/* code to identify a cancel request */
 	uint32		backendPID;		/* PID of client's backend */
 	uint8		cancelAuthCode[FLEXIBLE_ARRAY_MEMBER];	/* secret key to
 														 * authorize cancel */

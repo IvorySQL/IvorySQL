@@ -3,7 +3,7 @@
  * test_rls_hooks.h
  *		Definitions for RLS hooks
  *
- * Copyright (c) 2015-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2015-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
  * IDENTIFICATION

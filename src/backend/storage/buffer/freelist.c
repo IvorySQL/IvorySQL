@@ -4,7 +4,7 @@
  *	  routines for managing the buffer pool's replacement strategy.
  *
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -216,7 +216,7 @@ StrategyGetBuffer(BufferAccessStrategy strategy, uint32 *buf_state, bool *from_r
 		 * actually fine because procLatch isn't ever freed, so we just can
 		 * potentially set the wrong process' (or no process') latch.
 		 */
-		SetLatch(&ProcGlobal->allProcs[bgwprocno].procLatch);
+		SetLatch(&GetPGProcByNumber(bgwprocno)->procLatch);
 	}
 
 	/*

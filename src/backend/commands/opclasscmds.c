@@ -4,7 +4,7 @@
  *
  *	  Routines for opclass (and opfamily) manipulation commands
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
@@ -344,13 +344,14 @@ DefineOpClass(CreateOpClassStmt *stmt)
 				optsProcNumber, /* amoptsprocnum value */
 				maxProcNumber;	/* amsupport value */
 	bool		amstorage;		/* amstorage flag */
+	bool		isDefault = stmt->isDefault;
 	List	   *operators;		/* OpFamilyMember list for operators */
 	List	   *procedures;		/* OpFamilyMember list for support procs */
 	ListCell   *l;
 	Relation	rel;
 	HeapTuple	tup;
 	Form_pg_am	amform;
-	IndexAmRoutine *amroutine;
+	const IndexAmRoutine *amroutine;
 	Datum		values[Natts_pg_opclass];
 	bool		nulls[Natts_pg_opclass];
 	AclResult	aclresult;
@@ -612,11 +613,30 @@ DefineOpClass(CreateOpClassStmt *stmt)
 						opcname, stmt->amname)));
 
 	/*
+	 * HACK: if we're trying to create btree_gist's gist_inet_ops or
+	 * gist_cidr_ops during a binary upgrade, avoid failure in the next stanza
+	 * by silently making the new opclass non-default.  Without this kluge, we
+	 * would fail to upgrade databases containing pre-1.9 versions of
+	 * contrib/btree_gist.  We can remove it sometime in the far future when
+	 * we don't expect any such databases to exist.  (The result of this hack
+	 * is that the installed version of btree_gist will approximate btree_gist
+	 * 1.9, how closely depending on whether it's 1.8 or something older.
+	 * ALTER EXTENSION UPDATE can be used to bring it up to real 1.9.)
+	 */
+	if (isDefault && IsBinaryUpgrade)
+	{
+		if (amoid == GIST_AM_OID &&
+			((typeoid == INETOID && strcmp(opcname, "gist_inet_ops") == 0) ||
+			 (typeoid == CIDROID && strcmp(opcname, "gist_cidr_ops") == 0)))
+			isDefault = false;
+	}
+
+	/*
 	 * If we are creating a default opclass, check there isn't one already.
 	 * (Note we do not restrict this test to visible opclasses; this ensures
 	 * that typcache.c can find unique solutions to its questions.)
 	 */
-	if (stmt->isDefault)
+	if (isDefault)
 	{
 		ScanKeyData skey[1];
 		SysScanDesc scan;
@@ -662,7 +682,7 @@ DefineOpClass(CreateOpClassStmt *stmt)
 	values[Anum_pg_opclass_opcowner - 1] = ObjectIdGetDatum(GetUserId());
 	values[Anum_pg_opclass_opcfamily - 1] = ObjectIdGetDatum(opfamilyoid);
 	values[Anum_pg_opclass_opcintype - 1] = ObjectIdGetDatum(typeoid);
-	values[Anum_pg_opclass_opcdefault - 1] = BoolGetDatum(stmt->isDefault);
+	values[Anum_pg_opclass_opcdefault - 1] = BoolGetDatum(isDefault);
 	values[Anum_pg_opclass_opckeytype - 1] = ObjectIdGetDatum(storageoid);
 
 	tup = heap_form_tuple(rel->rd_att, values, nulls);
@@ -824,7 +844,7 @@ AlterOpFamily(AlterOpFamilyStmt *stmt)
 				maxProcNumber;	/* amsupport value */
 	HeapTuple	tup;
 	Form_pg_am	amform;
-	IndexAmRoutine *amroutine;
+	const IndexAmRoutine *amroutine;
 
 	/* Get necessary info about access method */
 	tup = SearchSysCache1(AMNAME, CStringGetDatum(stmt->amname));
@@ -883,7 +903,7 @@ AlterOpFamilyAdd(AlterOpFamilyStmt *stmt, Oid amoid, Oid opfamilyoid,
 				 int maxOpNumber, int maxProcNumber, int optsProcNumber,
 				 List *items)
 {
-	IndexAmRoutine *amroutine = GetIndexAmRoutineByAmId(amoid, false);
+	const IndexAmRoutine *amroutine = GetIndexAmRoutineByAmId(amoid, false);
 	List	   *operators;		/* OpFamilyMember list for operators */
 	List	   *procedures;		/* OpFamilyMember list for support procs */
 	ListCell   *l;
@@ -1166,9 +1186,7 @@ assignOperTypes(OpFamilyMember *member, Oid amoid, Oid typeoid)
 		 * the family has been created but not yet populated with the required
 		 * operators.)
 		 */
-		IndexAmRoutine *amroutine = GetIndexAmRoutineByAmId(amoid, false);
-
-		if (!amroutine->amcanorderbyop)
+		if (!GetIndexAmRoutineByAmId(amoid, false)->amcanorderbyop)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 					 errmsg("access method \"%s\" does not support ordering operators",

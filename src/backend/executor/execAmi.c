@@ -3,7 +3,7 @@
  * execAmi.c
  *	  miscellaneous executor access method routines
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *	src/backend/executor/execAmi.c
@@ -605,7 +605,7 @@ IndexSupportsBackwardScan(Oid indexid)
 	bool		result;
 	HeapTuple	ht_idxrel;
 	Form_pg_class idxrelrec;
-	IndexAmRoutine *amroutine;
+	const IndexAmRoutine *amroutine;
 
 	/* Fetch the pg_class tuple of the index relation */
 	ht_idxrel = SearchSysCache1(RELOID, ObjectIdGetDatum(indexid));
@@ -618,7 +618,6 @@ IndexSupportsBackwardScan(Oid indexid)
 
 	result = amroutine->amcanbackward;
 
-	pfree(amroutine);
 	ReleaseSysCache(ht_idxrel);
 
 	return result;

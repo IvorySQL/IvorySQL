@@ -35,7 +35,7 @@
  *
  *
  * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
- * Copyright (c) 2008-2025, PostgreSQL Global Development Group
+ * Copyright (c) 2008-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/pg_stat_statements/pg_stat_statements.c
@@ -1100,7 +1100,7 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 				   queryDesc->plannedstmt->stmt_location,
 				   queryDesc->plannedstmt->stmt_len,
 				   PGSS_EXEC,
-				   queryDesc->totaltime->total * 1000.0,	/* convert to msec */
+				   INSTR_TIME_GET_MILLISEC(queryDesc->totaltime->total),
 				   queryDesc->estate->es_total_processed,
 				   &queryDesc->totaltime->bufusage,
 				   &queryDesc->totaltime->walusage,

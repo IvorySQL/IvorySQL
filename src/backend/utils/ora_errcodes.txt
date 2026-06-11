@@ -2,7 +2,7 @@
 # ora_errcodes.txt
 #      IvorySQL error codes (only for plisql in oracle compatibility mode now)
 #
-# Copyright (c) 2003-2024, PostgreSQL Global Development Group
+# Copyright (c) 2003-2026, PostgreSQL Global Development Group
 # Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
 #
 # This list serves as the basis for generating source files containing error

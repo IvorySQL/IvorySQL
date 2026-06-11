@@ -255,6 +255,7 @@ Barrier
 BaseBackupCmd
 BaseBackupTargetHandle
 BaseBackupTargetType
+BatchMVCCState
 BeginDirectModify_function
 BeginForeignInsert_function
 BeginForeignModify_function
@@ -800,6 +801,7 @@ ExtensibleNodeEntry
 ExtensibleNodeMethods
 ExtensionControlFile
 ExtensionInfo
+ExtensionLocation
 ExtensionVersionInfo
 FDWCollateState
 FD_SET
@@ -1583,7 +1585,6 @@ LoadStmt
 LocalBufferLookupEnt
 LocalPgBackendStatus
 LocalTransactionId
-Location
 LocationIndex
 LocationLen
 LockAcquireResult
@@ -1733,7 +1734,6 @@ ModifyTablePath
 ModifyTableState
 MonotonicFunction
 MorphOpaque
-MsgType
 MultiAssignRef
 MultiSortSupport
 MultiSortSupportData
@@ -3191,6 +3191,7 @@ TypeName
 TzAbbrevCache
 U32
 U8
+UCaseMap
 UChar
 UCharIterator
 UColAttributeValue

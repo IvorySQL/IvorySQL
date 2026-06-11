@@ -3,7 +3,7 @@
  * nbtsplitloc.c
  *	  Choose split point code for Postgres btree implementation.
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -594,8 +594,8 @@ _bt_deltasortsplits(FindSplitData *state, double fillfactormult,
 static int
 _bt_splitcmp(const void *arg1, const void *arg2)
 {
-	SplitPoint *split1 = (SplitPoint *) arg1;
-	SplitPoint *split2 = (SplitPoint *) arg2;
+	const SplitPoint *split1 = arg1;
+	const SplitPoint *split2 = arg2;
 
 	return pg_cmp_s16(split1->curdelta, split2->curdelta);
 }

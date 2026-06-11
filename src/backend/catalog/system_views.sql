@@ -1,7 +1,7 @@
 /*
  * PostgreSQL System Views
  *
- * Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Copyright (c) 1996-2026, PostgreSQL Global Development Group
  *
  * src/backend/catalog/system_views.sql
  *
@@ -412,14 +412,14 @@ CREATE VIEW pg_cursors AS
 
 CREATE VIEW pg_available_extensions AS
     SELECT E.name, E.default_version, X.extversion AS installed_version,
-           E.comment
+           E.location, E.comment
       FROM pg_available_extensions() AS E
            LEFT JOIN pg_extension AS X ON E.name = X.extname;
 
 CREATE VIEW pg_available_extension_versions AS
     SELECT E.name, E.version, (X.extname IS NOT NULL) AS installed,
            E.superuser, E.trusted, E.relocatable,
-           E.schema, E.requires, E.comment
+           E.schema, E.requires, E.location, E.comment
       FROM pg_available_extension_versions() AS E
            LEFT JOIN pg_extension AS X
              ON E.name = X.extname AND E.version = X.extversion;

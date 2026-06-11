@@ -3,7 +3,7 @@
  * index.c
  *	  code to create and destroy POSTGRES index relations
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -289,7 +289,7 @@ ConstructTupleDescriptor(Relation heapRelation,
 	int			numkeyatts = indexInfo->ii_NumIndexKeyAttrs;
 	ListCell   *colnames_item = list_head(indexColNames);
 	ListCell   *indexpr_item = list_head(indexInfo->ii_Expressions);
-	IndexAmRoutine *amroutine;
+	const IndexAmRoutine *amroutine;
 	TupleDesc	heapTupDesc;
 	TupleDesc	indexTupDesc;
 	int			natts;			/* #atts in heap rel --- for error checks */
@@ -488,8 +488,6 @@ ConstructTupleDescriptor(Relation heapRelation,
 
 		populate_compact_attribute(indexTupDesc, i);
 	}
-
-	pfree(amroutine);
 
 	return indexTupDesc;
 }

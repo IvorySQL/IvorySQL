@@ -6,7 +6,7 @@
  * Original coding 1998, Jan Wieck.  Heavily revised 2003, Tom Lane.
  *
  * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
- * Copyright (c) 1998-2025, PostgreSQL Global Development Group
+ * Copyright (c) 1998-2026, PostgreSQL Global Development Group
  *
  * src/include/utils/numeric.h
  *

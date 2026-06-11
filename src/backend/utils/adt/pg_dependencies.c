@@ -3,7 +3,7 @@
  * pg_dependencies.c
  *		pg_dependencies data type support.
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -298,7 +298,7 @@ dependencies_array_end(void *state)
 			errsave(parse->escontext,
 					errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 					errmsg("malformed pg_dependencies: \"%s\"", parse->str),
-					errdetail("The \"%s\" key must be an non-empty array.",
+					errdetail("The \"%s\" key must be a non-empty array.",
 							  PG_DEPENDENCIES_KEY_ATTRIBUTES));
 			break;
 

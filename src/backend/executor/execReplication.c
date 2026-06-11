@@ -3,7 +3,7 @@
  * execReplication.c
  *	  miscellaneous executor routines for logical replication
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -14,6 +14,7 @@
 
 #include "postgres.h"
 
+#include "access/amapi.h"
 #include "access/commit_ts.h"
 #include "access/genam.h"
 #include "access/gist.h"
@@ -46,8 +47,8 @@ static bool tuples_equal(TupleTableSlot *slot1, TupleTableSlot *slot2,
  *
  * Returns how many columns to use for the index scan.
  *
- * This is not generic routine, idxrel must be PK, RI, or an index that can be
- * used for REPLICA IDENTITY FULL table. See FindUsableIndexForReplicaIdentityFull()
+ * This is not a generic routine, idxrel must be PK, RI, or an index that can be
+ * used for a REPLICA IDENTITY FULL table. See FindUsableIndexForReplicaIdentityFull()
  * for details.
  *
  * By definition, replication identity of a rel meets all limitations associated

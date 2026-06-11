@@ -3,7 +3,7 @@
  * blscan.c
  *		Bloom index scan functions.
  *
- * Copyright (c) 2016-2025, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/bloom/blscan.c
@@ -14,6 +14,7 @@
 
 #include "access/relscan.h"
 #include "bloom.h"
+#include "executor/instrument_node.h"
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "storage/bufmgr.h"

@@ -3,7 +3,7 @@
  *
  * PostgreSQL multi-transaction-log manager
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/multixact.h
@@ -109,7 +109,7 @@ extern bool MultiXactIdIsRunning(MultiXactId multi, bool isLockOnly);
 extern void MultiXactIdSetOldestMember(void);
 extern int	GetMultiXactIdMembers(MultiXactId multi, MultiXactMember **members,
 								  bool from_pgupgrade, bool isLockOnly);
-extern void GetMultiXactInfo(uint32 *multixacts, MultiXactOffset *members,
+extern void GetMultiXactInfo(uint32 *multixacts, MultiXactOffset *nextOffset,
 							 MultiXactId *oldestMultiXactId,
 							 MultiXactOffset *oldestOffset);
 extern bool MultiXactIdPrecedes(MultiXactId multi1, MultiXactId multi2);

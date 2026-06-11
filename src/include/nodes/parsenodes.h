@@ -12,7 +12,7 @@
  * identifying statement boundaries in multi-statement source strings.
  *
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
@@ -837,6 +837,7 @@ typedef struct IndexElem
 	List	   *opclassopts;	/* opclass-specific options, or NIL */
 	SortByDir	ordering;		/* ASC/DESC/default */
 	SortByNulls nulls_ordering; /* FIRST/LAST/default */
+	ParseLoc	location;		/* token location, or -1 if unknown */
 } IndexElem;
 
 /*
@@ -1314,7 +1315,7 @@ typedef struct RangeTblEntry
 	 * Fields valid for a GROUP RTE (else NIL):
 	 */
 	/* list of grouping expressions */
-	List	   *groupexprs pg_node_attr(query_jumble_ignore);
+	List	   *groupexprs;
 
 	/*
 	 * Fields valid in all RTEs:

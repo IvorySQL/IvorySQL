@@ -3,7 +3,7 @@
  * pgstatfuncs.c
  *	  Functions for accessing various forms of statistics data
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -806,7 +806,7 @@ pg_stat_get_backend_activity(PG_FUNCTION_ARGS)
 		activity = beentry->st_activity_raw;
 
 	clipped_activity = pgstat_clip_activity(activity);
-	ret = cstring_to_text(activity);
+	ret = cstring_to_text(clipped_activity);
 	pfree(clipped_activity);
 
 	PG_RETURN_TEXT_P(ret);

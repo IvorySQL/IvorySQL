@@ -3,7 +3,7 @@
  * parse_expr.c
  *	  handle expressions in parser
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
@@ -42,10 +42,8 @@
 #include "utils/lsyscache.h"
 #include "utils/timestamp.h"
 #include "utils/ora_compatible.h"
-
+#include "utils/typcache.h"
 #include "utils/xml.h"
-#include "utils/fmgroids.h"
-#include "access/htup_details.h"
 
 
 /* GUC parameters */

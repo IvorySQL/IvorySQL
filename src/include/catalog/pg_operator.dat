@@ -3,7 +3,7 @@
 # pg_operator.dat
 #    Initial contents of the pg_operator system catalog.
 #
-# Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/include/catalog/pg_operator.dat
@@ -3459,5 +3459,31 @@
   oprresult => 'bool', oprcom => '<<(anymultirange,anymultirange)',
   oprcode => 'multirange_after_multirange', oprrest => 'multirangesel',
   oprjoin => 'scalargtjoinsel' },
+
+{ oid => '8262', descr => 'equal',
+  oprname => '=', oprcanmerge => 't', oprcanhash => 't', oprleft => 'oid8',
+  oprright => 'oid8', oprresult => 'bool', oprcom => '=(oid8,oid8)',
+  oprnegate => '<>(oid8,oid8)', oprcode => 'oid8eq', oprrest => 'eqsel',
+  oprjoin => 'eqjoinsel' },
+{ oid => '8263', descr => 'not equal',
+  oprname => '<>', oprleft => 'oid8', oprright => 'oid8', oprresult => 'bool',
+  oprcom => '<>(oid8,oid8)', oprnegate => '=(oid8,oid8)', oprcode => 'oid8ne',
+  oprrest => 'neqsel', oprjoin => 'neqjoinsel' },
+{ oid => '8264', descr => 'less than',
+  oprname => '<', oprleft => 'oid8', oprright => 'oid8', oprresult => 'bool',
+  oprcom => '>(oid8,oid8)', oprnegate => '>=(oid8,oid8)', oprcode => 'oid8lt',
+  oprrest => 'scalarltsel', oprjoin => 'scalarltjoinsel' },
+{ oid => '8265', descr => 'greater than',
+  oprname => '>', oprleft => 'oid8', oprright => 'oid8', oprresult => 'bool',
+  oprcom => '<(oid8,oid8)', oprnegate => '<=(oid8,oid8)', oprcode => 'oid8gt',
+  oprrest => 'scalargtsel', oprjoin => 'scalargtjoinsel' },
+{ oid => '8266', descr => 'less than or equal',
+  oprname => '<=', oprleft => 'oid8', oprright => 'oid8', oprresult => 'bool',
+  oprcom => '>=(oid8,oid8)', oprnegate => '>(oid8,oid8)', oprcode => 'oid8le',
+  oprrest => 'scalarlesel', oprjoin => 'scalarlejoinsel' },
+{ oid => '8267', descr => 'greater than or equal',
+  oprname => '>=', oprleft => 'oid8', oprright => 'oid8', oprresult => 'bool',
+  oprcom => '<=(oid8,oid8)', oprnegate => '<(oid8,oid8)', oprcode => 'oid8ge',
+  oprrest => 'scalargesel', oprjoin => 'scalargejoinsel' },
 
 ]

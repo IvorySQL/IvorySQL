@@ -25,7 +25,7 @@
  * This implementation only uses the comparison function of the range element
  * datatype, therefore it works for any range type.
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -185,9 +185,9 @@ spg_range_quad_choose(PG_FUNCTION_ARGS)
 static int
 bound_cmp(const void *a, const void *b, void *arg)
 {
-	RangeBound *ba = (RangeBound *) a;
-	RangeBound *bb = (RangeBound *) b;
-	TypeCacheEntry *typcache = (TypeCacheEntry *) arg;
+	const RangeBound *ba = a;
+	const RangeBound *bb = b;
+	TypeCacheEntry *typcache = arg;
 
 	return range_cmp_bounds(typcache, ba, bb);
 }

@@ -3,7 +3,7 @@
  *
  * External declarations pertaining to Grand Unified Configuration.
  *
- * Copyright (c) 2000-2025, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2026, PostgreSQL Global Development Group
  * Written by Peter Eisentraut <peter_e@gmx.net>.
  * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
@@ -267,10 +267,10 @@ extern PGDLLIMPORT bool Debug_raw_expression_coverage_test;
 #define DEFAULT_DEBUG_COPY_PARSE_PLAN_TREES false
 #endif
 
-#ifdef READ_WRITE_PARSE_PLAN_TREES
-#define DEFAULT_DEBUG_READ_WRITE_PARSE_PLAN_TREES true
+#ifdef WRITE_READ_PARSE_PLAN_TREES
+#define DEFAULT_DEBUG_WRITE_READ_PARSE_PLAN_TREES true
 #else
-#define DEFAULT_DEBUG_READ_WRITE_PARSE_PLAN_TREES false
+#define DEFAULT_DEBUG_WRITE_READ_PARSE_PLAN_TREES false
 #endif
 
 #ifdef RAW_EXPRESSION_COVERAGE_TEST

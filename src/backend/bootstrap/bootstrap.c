@@ -4,7 +4,7 @@
  *	  routines to support running postgres in 'bootstrap' mode
  *	bootstrap mode is used to create the initial template database
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
@@ -118,6 +118,8 @@ static const struct typinfo TypInfo[] = {
 	F_TEXTIN, F_TEXTOUT},
 	{"oid", OIDOID, 0, 4, true, TYPALIGN_INT, TYPSTORAGE_PLAIN, InvalidOid,
 	F_OIDIN, F_OIDOUT},
+	{"oid8", OID8OID, 0, 8, true, TYPALIGN_DOUBLE, TYPSTORAGE_PLAIN, InvalidOid,
+	F_OID8IN, F_OID8OUT},
 	{"tid", TIDOID, 0, 6, false, TYPALIGN_SHORT, TYPSTORAGE_PLAIN, InvalidOid,
 	F_TIDIN, F_TIDOUT},
 	{"xid", XIDOID, 0, 4, true, TYPALIGN_INT, TYPSTORAGE_PLAIN, InvalidOid,

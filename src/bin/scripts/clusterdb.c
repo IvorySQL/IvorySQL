@@ -3,7 +3,7 @@
  * clusterdb
  *
  * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
- * Portions Copyright (c) 2002-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2002-2026, PostgreSQL Global Development Group
  *
  * src/bin/scripts/clusterdb.c
  *

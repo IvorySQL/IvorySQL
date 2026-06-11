@@ -12,7 +12,7 @@
  * respective utility commands.
  *
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
@@ -2117,6 +2117,8 @@ generateClonedIndexStmt(RangeVar *heapRel, Relation source_idx,
 			}
 		}
 
+		iparam->location = -1;
+
 		index->indexParams = lappend(index->indexParams, iparam);
 	}
 
@@ -2147,6 +2149,8 @@ generateClonedIndexStmt(RangeVar *heapRel, Relation source_idx,
 
 		/* Copy the original index column name */
 		iparam->indexcolname = pstrdup(NameStr(attr->attname));
+
+		iparam->location = -1;
 
 		index->indexIncludingParams = lappend(index->indexIncludingParams, iparam);
 	}
@@ -2968,6 +2972,7 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 			iparam->opclassopts = NIL;
 			iparam->ordering = SORTBY_DEFAULT;
 			iparam->nulls_ordering = SORTBY_NULLS_DEFAULT;
+			iparam->location = -1;
 			index->indexParams = lappend(index->indexParams, iparam);
 		}
 
@@ -3084,6 +3089,7 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 		iparam->collation = NIL;
 		iparam->opclass = NIL;
 		iparam->opclassopts = NIL;
+		iparam->location = -1;
 		index->indexIncludingParams = lappend(index->indexIncludingParams, iparam);
 	}
 
@@ -3699,7 +3705,7 @@ checkPartition(Relation rel, Oid partRelOid, bool isMerge)
 
 	if (get_partition_parent(partRelOid, false) != RelationGetRelid(rel))
 		ereport(ERROR,
-				errcode(ERRCODE_UNDEFINED_TABLE),
+				errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				errmsg("relation \"%s\" is not a partition of relation \"%s\"",
 					   RelationGetRelationName(partRel), RelationGetRelationName(rel)),
 				isMerge
@@ -4980,11 +4986,13 @@ transformPartitionRangeBounds(ParseState *pstate, List *blist,
 	int			i,
 				j;
 
-	i = j = 0;
+	j = 0;
 	foreach(lc, blist)
 	{
 		Node	   *expr = lfirst(lc);
 		PartitionRangeDatum *prd = NULL;
+
+		i = foreach_current_index(lc);
 
 		/*
 		 * Infinite range bounds -- "minvalue" and "maxvalue" -- get passed in
@@ -5069,7 +5077,6 @@ transformPartitionRangeBounds(ParseState *pstate, List *blist,
 			prd = makeNode(PartitionRangeDatum);
 			prd->kind = PARTITION_RANGE_DATUM_VALUE;
 			prd->value = (Node *) value;
-			++i;
 		}
 
 		prd->location = exprLocation(expr);
