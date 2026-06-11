@@ -2107,7 +2107,7 @@ load_gb18030_2022(FILE *cmdfd)
 static void
 load_ivorysql_ora(FILE *cmdfd)
 {
-	/* switch to oracle parser and load extenison */
+        /* switch to oracle parser and load extenison */
 	PG_CMD_PUTS("set ivorysql.compatible_mode to oracle;\n\n");
 	PG_CMD_PUTS("CREATE EXTENSION ivorysql_ora;\n\n");
 	PG_CMD_PUTS("set ivorysql.compatible_mode to pg;\n\n");
@@ -3508,8 +3508,9 @@ main(int argc, char *argv[])
 					database_mode = DB_ORACLE;
 				else
 				{
-					pg_log_error("Unknown case conversion mode: %s", dbmode);
-					pg_log_error_hint("Valid case conversion mode values are pg or oracle.");
+					pg_log_error("Unknown database mode: %s", dbmode);
+                                        pg_log_error_hint("Valid database mode values are pg, oracle.");
+
 					exit(1);
 				}
 			break;
