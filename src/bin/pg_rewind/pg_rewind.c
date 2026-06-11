@@ -779,6 +779,16 @@ sanityChecks(void)
 	}
 
 	/*
+	 * Target cluster need to use checksums or hint bit wal-logging, this to
+	 * prevent from data corruption that could occur because of hint bits.
+	 */
+	if (ControlFile_target.data_checksum_version != PG_DATA_CHECKSUM_VERSION &&
+		!ControlFile_target.wal_log_hints && !deep_dig)
+	{
+		pg_fatal("target server needs to use either data checksums or \"wal_log_hints = on\"");
+	}
+
+	/*
 	 * Target cluster better not be running. This doesn't guard against
 	 * someone starting the cluster concurrently. Also, this is probably more
 	 * strict than necessary; it's OK if the target node was not shut down

@@ -42,6 +42,7 @@ static const char *const RmgrNames[RM_MAX_ID + 1] = {
 
 static void extractPageInfo(XLogReaderState *record, bool backward);
 static bool RewindTransactionIdPrecedes(TransactionId id1, TransactionId id2);
+static bool RewindTransactionIdPrecedesOrEquals(TransactionId id1, TransactionId id2);
 
 static int	xlogreadfd = -1;
 static XLogSegNo xlogreadsegno = 0;
@@ -76,6 +77,10 @@ extractPageMapForward(const char *datadir, XLogRecPtr startpoint, int tliIndex,
 	XLogReaderState *xlogreader;
 	char	   *errormsg;
 	XLogPageReadPrivate private;
+
+	min_commited_xid = InvalidTransactionId;
+	max_commited_xid = InvalidTransactionId;
+	base_xid = InvalidTransactionId;
 
 	private.tliIndex = tliIndex;
 	private.restoreCommand = restoreCommand;
@@ -174,7 +179,7 @@ extractPageMapBackward(const char *datadir, XLogRecPtr startpoint, int tliIndex,
 
 		extractPageInfo(xlogreader, true);
 		/* We can break if met a safety snapshot */
-		if (base_xid <= min_commited_xid)
+		if (RewindTransactionIdPrecedesOrEquals(base_xid, min_commited_xid) && TransactionIdIsValid(base_xid))
 			break;
 		/* Walk backwards to previous record. */
 		searchptr = record->xl_prev;
@@ -345,10 +350,10 @@ findLastCheckpoint(const char *datadir, XLogRecPtr forkptr, int tliIndex,
 bool check_rewind_safety(void)
 {
 	/* If no committed transactions, it's safe to rewind */
-	if (min_commited_xid == InvalidTransactionId)
+	if (!TransactionIdIsValid(min_commited_xid))
 		return true;
 	/* If base_xid is less than or equal to min_commited_xid, it's safe */
-	if (base_xid <= min_commited_xid)
+	if (TransactionIdIsValid(base_xid) && RewindTransactionIdPrecedes(base_xid, min_commited_xid))
 		return true;
 	return false;
 }
@@ -361,9 +366,9 @@ bool check_transaction_need_rewind(TransactionId xid)
 	 * We use this function only on backward reading phase which only
 	 * pay attention to records with transaction.
 	 */
-	if (min_commited_xid == InvalidTransactionId ||
-			max_commited_xid == InvalidTransactionId ||
-			xid == InvalidTransactionId)
+	if (!TransactionIdIsValid(min_commited_xid) ||
+			!TransactionIdIsValid(max_commited_xid) ||
+			!TransactionIdIsValid(xid))
 	{
 		return false;
 	}
@@ -524,6 +529,10 @@ track_rewind_snapshot(XLogReaderState *record, bool backward)
 		{
 			current_xid = parsed.twophase_xid;
 		}
+		else
+		{
+			return;
+		}
 
 		if (min_commited_xid == InvalidTransactionId ||
 		   RewindTransactionIdPrecedes(current_xid, min_commited_xid))
@@ -549,11 +558,30 @@ track_rewind_snapshot(XLogReaderState *record, bool backward)
 		{
 			xl_running_xacts *xlrec = (xl_running_xacts *) XLogRecGetData(record);
 
-			if (base_xid == InvalidTransactionId || RewindTransactionIdPrecedes(xlrec->nextXid, base_xid))
+			if (!TransactionIdIsValid(base_xid) || RewindTransactionIdPrecedes(xlrec->nextXid, base_xid))
 			{
 				base_xid = xlrec->nextXid;
 				if (showprogress)
 					pg_log_info("Get base xid: %u at %X/%X", base_xid, LSN_FORMAT_ARGS(record->ReadRecPtr));
+			}
+		}
+	}
+	else if (rmid == RM_XLOG_ID)
+	{
+		info = XLogRecGetInfo(record) & ~XLR_INFO_MASK;
+
+		if (info == XLOG_CHECKPOINT_SHUTDOWN || info == XLOG_CHECKPOINT_ONLINE)
+		{
+			TransactionId next_xid = InvalidTransactionId;
+			char *rec = XLogRecGetData(record);
+			CheckPoint *checkpoint = (CheckPoint *) rec;
+
+			next_xid = XidFromFullTransactionId(checkpoint->nextXid);
+			if (!TransactionIdIsValid(base_xid) || RewindTransactionIdPrecedes(next_xid, base_xid))
+			{
+				base_xid = next_xid;
+				if (showprogress)
+					pg_log_info("Get next xid: %u at %X/%X", base_xid, LSN_FORMAT_ARGS(record->ReadRecPtr));
 			}
 		}
 	}
@@ -692,4 +720,16 @@ RewindTransactionIdPrecedes(TransactionId id1, TransactionId id2)
 
 	diff = (int32) (id1 - id2);
 	return (diff < 0);
+}
+
+static bool
+RewindTransactionIdPrecedesOrEquals(TransactionId id1, TransactionId id2)
+{
+	int32		diff;
+
+	if (!TransactionIdIsNormal(id1) || !TransactionIdIsNormal(id2))
+		return (id1 <= id2);
+
+	diff = (int32) (id1 - id2);
+	return (diff <= 0);
 }
