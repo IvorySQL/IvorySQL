@@ -3,7 +3,7 @@
  * postinit.c
  *	  postgres initialization utilities
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -418,7 +418,7 @@ CheckMyDatabase(const char *name, bool am_superuser, bool override_allow_connect
 	ctype = TextDatumGetCString(datum);
 
 	/*
-	 * Historcally, we set LC_COLLATE from datcollate, as well. That's no
+	 * Historically, we set LC_COLLATE from datcollate, as well. That's no
 	 * longer necessary because all collation behavior is handled through
 	 * pg_locale_t.
 	 */
@@ -816,9 +816,9 @@ InitPostgres(const char *in_dbname, Oid dboid,
 	RelationCacheInitializePhase2();
 
 	/*
-	 * Set up process-exit callback to do pre-shutdown cleanup.  This is the
-	 * one of the first before_shmem_exit callbacks we register; thus, this
-	 * will be one the last things we do before low-level modules like the
+	 * Set up process-exit callback to do pre-shutdown cleanup.  This is one
+	 * of the first before_shmem_exit callbacks we register; thus, this will
+	 * be one of the last things we do before low-level modules like the
 	 * buffer manager begin to close down.  We need to have this in place
 	 * before we begin our first transaction --- if we fail during the
 	 * initialization transaction, as is entirely possible, we need the

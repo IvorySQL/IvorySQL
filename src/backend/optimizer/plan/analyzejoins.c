@@ -11,7 +11,7 @@
  * is that we have to work harder to clean up after ourselves when we modify
  * the query, since the derived data structures have to be updated too.
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -2285,7 +2285,7 @@ remove_self_joins_one_group(PlannerInfo *root, Relids relids)
 				continue;
 
 			/*
-			 * Remove rrel ReloptInfo from the planner structures and the
+			 * Remove rrel RelOptInfo from the planner structures and the
 			 * corresponding row mark.
 			 */
 			remove_self_join_rel(root, kmark, rmark, krel, rrel, restrictlist);

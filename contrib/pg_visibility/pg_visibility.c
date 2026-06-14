@@ -3,7 +3,7 @@
  * pg_visibility.c
  *	  display visibility map information and page-level visibility bits
  *
- * Copyright (c) 2016-2025, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2026, PostgreSQL Global Development Group
  *
  *	  contrib/pg_visibility/pg_visibility.c
  *-------------------------------------------------------------------------
@@ -818,7 +818,7 @@ collect_corrupt_items(Oid relid, bool all_visible, bool all_frozen)
 				 *
 				 * From a concurrency point of view, it sort of sucks to
 				 * retake ProcArrayLock here while we're holding the buffer
-				 * exclusively locked, but it should be safe against
+				 * locked in shared mode, but it should be safe against
 				 * deadlocks, because surely
 				 * GetStrictOldestNonRemovableTransactionId() should never
 				 * take a buffer lock. And this shouldn't happen often, so

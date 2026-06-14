@@ -4,7 +4,7 @@
  *	  prototypes for various files in optimizer/path
  *
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/optimizer/paths.h
@@ -81,6 +81,7 @@ extern bool indexcol_is_bool_constant_for_query(PlannerInfo *root,
 												int indexcol);
 extern bool match_index_to_operand(Node *operand, int indexcol,
 								   IndexOptInfo *index);
+extern Node *strip_phvs_in_index_operand(Node *operand);
 extern void check_index_predicates(PlannerInfo *root, RelOptInfo *rel);
 
 /*

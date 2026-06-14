@@ -4,7 +4,7 @@
  *
  * src/include/utils/pg_locale.h
  *
- * Copyright (c) 2002-2025, PostgreSQL Global Development Group
+ * Copyright (c) 2002-2026, PostgreSQL Global Development Group
  *
  *-----------------------------------------------------------------------
  */
@@ -13,15 +13,6 @@
 #define _PG_LOCALE_
 
 #include "mb/pg_wchar.h"
-
-#ifdef USE_ICU
-/* only include the C APIs, to avoid errors in cpluspluscheck */
-#undef U_SHOW_CPLUSPLUS_API
-#define U_SHOW_CPLUSPLUS_API 0
-#undef U_SHOW_CPLUSPLUS_HEADER_API
-#define U_SHOW_CPLUSPLUS_HEADER_API 0
-#include <unicode/ucol.h>
-#endif
 
 /* use for libc locale names */
 #define LOCALE_NAME_BUFLEN 128
@@ -166,7 +157,8 @@ struct pg_locale_struct
 		struct
 		{
 			const char *locale;
-			UCollator  *ucol;
+			struct UCollator *ucol;
+			struct UCaseMap *ucasemap;
 			locale_t	lt;
 		}			icu;
 #endif
@@ -220,6 +212,8 @@ extern bool pg_iswxdigit(pg_wchar wc, pg_locale_t locale);
 extern bool pg_iswcased(pg_wchar wc, pg_locale_t locale);
 extern pg_wchar pg_towupper(pg_wchar wc, pg_locale_t locale);
 extern pg_wchar pg_towlower(pg_wchar wc, pg_locale_t locale);
+
+extern const char *pg_icu_unicode_version(void);
 
 extern int	builtin_locale_encoding(const char *locale);
 extern const char *builtin_validate_locale(int encoding, const char *locale);

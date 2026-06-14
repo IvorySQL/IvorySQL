@@ -4,7 +4,7 @@
  *	  POSTGRES multivariate MCV lists
  *
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -402,8 +402,8 @@ count_distinct_groups(int numrows, SortItem *items, MultiSortSupport mss)
 static int
 compare_sort_item_count(const void *a, const void *b, void *arg)
 {
-	SortItem   *ia = (SortItem *) a;
-	SortItem   *ib = (SortItem *) b;
+	const SortItem *ia = a;
+	const SortItem *ib = b;
 
 	if (ia->count == ib->count)
 		return 0;
@@ -465,8 +465,8 @@ static int
 sort_item_compare(const void *a, const void *b, void *arg)
 {
 	SortSupport ssup = (SortSupport) arg;
-	SortItem   *ia = (SortItem *) a;
-	SortItem   *ib = (SortItem *) b;
+	const SortItem *ia = a;
+	const SortItem *ib = b;
 
 	return ApplySortComparator(ia->values[0], ia->isnull[0],
 							   ib->values[0], ib->isnull[0],

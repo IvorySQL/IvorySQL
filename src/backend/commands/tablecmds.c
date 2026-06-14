@@ -3,7 +3,7 @@
  * tablecmds.c
  *	  Commands for creating and altering table structures and settings
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
@@ -1353,7 +1353,8 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 			idxstmt =
 				generateClonedIndexStmt(NULL, idxRel,
 										attmap, &constraintOid);
-			DefineIndex(RelationGetRelid(rel),
+			DefineIndex(NULL,
+						RelationGetRelid(rel),
 						idxstmt,
 						InvalidOid,
 						RelationGetRelid(idxRel),
@@ -1407,7 +1408,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 
 		rowid_index->indexParams = lappend(rowid_index->indexParams, iparam);
 
-		DefineIndex(relationId,
+		DefineIndex(NULL, relationId,
 					rowid_index,
 					InvalidOid,
 					InvalidOid,
@@ -10198,7 +10199,8 @@ ATExecAddIndex(AlteredTableInfo *tab, Relation rel,
 	/* suppress notices when rebuilding existing index */
 	quiet = is_rebuild;
 
-	address = DefineIndex(RelationGetRelid(rel),
+	address = DefineIndex(NULL,
+						  RelationGetRelid(rel),
 						  stmt,
 						  InvalidOid,	/* no predefined OID */
 						  InvalidOid,	/* no parent index */
@@ -21548,7 +21550,8 @@ AttachPartitionEnsureIndexes(List **wqueue, Relation rel, Relation attachrel)
 			stmt = generateClonedIndexStmt(NULL,
 										   idxRel, attmap,
 										   &conOid);
-			DefineIndex(RelationGetRelid(attachrel), stmt, InvalidOid,
+			DefineIndex(NULL,
+						RelationGetRelid(attachrel), stmt, InvalidOid,
 						RelationGetRelid(idxRel),
 						conOid,
 						-1,

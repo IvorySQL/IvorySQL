@@ -3,7 +3,7 @@
  * nbtpreprocesskeys.c
  *	  Preprocessing for Postgres btree scan keys.
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -1406,7 +1406,7 @@ _bt_skiparray_strat_adjust(IndexScanDesc scan, ScanKey arraysk,
 }
 
 /*
- * Convert skip array's > low_compare key into a >= key
+ * Convert skip array's < high_compare key into a <= key
  */
 static void
 _bt_skiparray_strat_decrement(IndexScanDesc scan, ScanKey arraysk,
@@ -1464,7 +1464,7 @@ _bt_skiparray_strat_decrement(IndexScanDesc scan, ScanKey arraysk,
 }
 
 /*
- * Convert skip array's < low_compare key into a <= key
+ * Convert skip array's > low_compare key into a >= key
  */
 static void
 _bt_skiparray_strat_increment(IndexScanDesc scan, ScanKey arraysk,
@@ -1792,8 +1792,8 @@ _bt_unmark_keys(IndexScanDesc scan, int *keyDataMap)
 static int
 _bt_reorder_array_cmp(const void *a, const void *b)
 {
-	BTArrayKeyInfo *arraya = (BTArrayKeyInfo *) a;
-	BTArrayKeyInfo *arrayb = (BTArrayKeyInfo *) b;
+	const BTArrayKeyInfo *arraya = a;
+	const BTArrayKeyInfo *arrayb = b;
 
 	return pg_cmp_s32(arraya->scan_key, arrayb->scan_key);
 }

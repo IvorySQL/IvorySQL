@@ -3,7 +3,7 @@
  * spell.c
  *		Normalizing word with ISpell
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  *
  * Ispell dictionary
  * -----------------
@@ -210,8 +210,8 @@ cmpspellaffix(const void *s1, const void *s2)
 static int
 cmpcmdflag(const void *f1, const void *f2)
 {
-	CompoundAffixFlag *fv1 = (CompoundAffixFlag *) f1,
-			   *fv2 = (CompoundAffixFlag *) f2;
+	const CompoundAffixFlag *fv1 = f1;
+	const CompoundAffixFlag *fv2 = f2;
 
 	Assert(fv1->flagMode == fv2->flagMode);
 

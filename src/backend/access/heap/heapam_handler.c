@@ -3,7 +3,7 @@
  * heapam_handler.c
  *	  heap table access method code
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -837,7 +837,21 @@ heapam_relation_copy_for_cluster(Relation OldHeap, Relation NewHeap,
 		tuple = ExecFetchSlotHeapTuple(slot, false, NULL);
 		buf = hslot->buffer;
 
-		LockBuffer(buf, BUFFER_LOCK_SHARE);
+		/*
+		 * To be able to guarantee that we can set the hint bit, acquire an
+		 * exclusive lock on the old buffer. We need the hint bits, set in
+		 * heapam_relation_copy_for_cluster() -> HeapTupleSatisfiesVacuum(),
+		 * to be set, as otherwise reform_and_rewrite_tuple() ->
+		 * rewrite_heap_tuple() will get confused. Specifically,
+		 * rewrite_heap_tuple() checks for HEAP_XMAX_INVALID in the old tuple
+		 * to determine whether to check the old-to-new mapping hash table.
+		 *
+		 * It'd be better if we somehow could avoid setting hint bits on the
+		 * old page. One reason to use VACUUM FULL are very bloated tables -
+		 * rewriting most of the old table during VACUUM FULL doesn't exactly
+		 * help...
+		 */
+		LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
 
 		switch (HeapTupleSatisfiesVacuum(tuple, OldestXmin, buf))
 		{

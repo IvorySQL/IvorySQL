@@ -8,7 +8,7 @@
  * pager open/close functions, all that stuff came with it.
  *
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/fe_utils/print.c
@@ -3820,6 +3820,7 @@ column_type_alignment(Oid ftype)
 		case FLOAT8OID:
 		case NUMERICOID:
 		case OIDOID:
+		case OID8OID:
 		case XIDOID:
 		case XID8OID:
 		case CIDOID:

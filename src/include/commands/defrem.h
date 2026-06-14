@@ -4,7 +4,7 @@
  *	  POSTGRES define and remove utility definitions.
  *
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
@@ -26,7 +26,8 @@
 extern void RemoveObjects(DropStmt *stmt);
 
 /* commands/indexcmds.c */
-extern ObjectAddress DefineIndex(Oid tableId,
+extern ObjectAddress DefineIndex(ParseState *pstate,
+								 Oid tableId,
 								 IndexStmt *stmt,
 								 Oid indexRelationId,
 								 Oid parentIndexId,

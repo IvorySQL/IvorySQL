@@ -3,7 +3,7 @@
  * varlena.c
  *	  Functions for the variable-length built-in types.
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
@@ -5760,11 +5760,12 @@ unicode_version(PG_FUNCTION_ARGS)
 Datum
 icu_unicode_version(PG_FUNCTION_ARGS)
 {
-#ifdef USE_ICU
-	PG_RETURN_TEXT_P(cstring_to_text(U_UNICODE_VERSION));
-#else
-	PG_RETURN_NULL();
-#endif
+	const char *version = pg_icu_unicode_version();
+
+	if (version)
+		PG_RETURN_TEXT_P(cstring_to_text(version));
+	else
+		PG_RETURN_NULL();
 }
 
 /*

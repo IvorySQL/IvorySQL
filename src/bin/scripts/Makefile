@@ -2,7 +2,7 @@
 #
 # Makefile for src/bin/scripts
 #
-# Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 # Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
 #
@@ -17,7 +17,15 @@ subdir = src/bin/scripts
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
-PROGRAMS = createdb createuser dropdb dropuser clusterdb vacuumdb reindexdb pg_isready
+PROGRAMS = \
+	clusterdb \
+	createdb \
+	createuser \
+	dropdb \
+	dropuser \
+	pg_isready \
+	reindexdb \
+	vacuumdb
 
 override CPPFLAGS := -I$(libpq_srcdir) $(CPPFLAGS)
 LDFLAGS_INTERNAL += -L$(top_builddir)/src/fe_utils -lpgfeutils $(libpq_pgport)

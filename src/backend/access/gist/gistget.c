@@ -4,7 +4,7 @@
  *	  fetch tuples from a GiST scan.
  *
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -17,6 +17,7 @@
 #include "access/genam.h"
 #include "access/gist_private.h"
 #include "access/relscan.h"
+#include "executor/instrument_node.h"
 #include "lib/pairingheap.h"
 #include "miscadmin.h"
 #include "pgstat.h"
@@ -222,7 +223,7 @@ gistindex_keytest(IndexScanDesc scan,
 									 key->sk_collation,
 									 PointerGetDatum(&de),
 									 key->sk_argument,
-									 Int16GetDatum(key->sk_strategy),
+									 UInt16GetDatum(key->sk_strategy),
 									 ObjectIdGetDatum(key->sk_subtype),
 									 PointerGetDatum(&recheck));
 
@@ -286,7 +287,7 @@ gistindex_keytest(IndexScanDesc scan,
 									 key->sk_collation,
 									 PointerGetDatum(&de),
 									 key->sk_argument,
-									 Int16GetDatum(key->sk_strategy),
+									 UInt16GetDatum(key->sk_strategy),
 									 ObjectIdGetDatum(key->sk_subtype),
 									 PointerGetDatum(&recheck));
 			*recheck_distances_p |= recheck;

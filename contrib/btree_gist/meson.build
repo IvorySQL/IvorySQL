@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2025, PostgreSQL Global Development Group
+# Copyright (c) 2022-2026, PostgreSQL Global Development Group
 
 btree_gist_sources = files(
   'btree_bit.c',
@@ -44,13 +44,14 @@ install_data(
   'btree_gist.control',
   'btree_gist--1.0--1.1.sql',
   'btree_gist--1.1--1.2.sql',
-  'btree_gist--1.2.sql',
   'btree_gist--1.2--1.3.sql',
   'btree_gist--1.3--1.4.sql',
   'btree_gist--1.4--1.5.sql',
   'btree_gist--1.5--1.6.sql',
   'btree_gist--1.6--1.7.sql',
   'btree_gist--1.7--1.8.sql',
+  'btree_gist--1.8--1.9.sql',
+  'btree_gist--1.9.sql',
   kwargs: contrib_data_args,
 )
 

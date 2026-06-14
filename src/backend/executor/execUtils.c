@@ -3,7 +3,7 @@
  * execUtils.c
  *	  miscellaneous executor utility routines
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -324,7 +324,7 @@ CreateExprContext(EState *estate)
 ExprContext *
 CreateWorkExprContext(EState *estate)
 {
-	Size		maxBlockSize = ALLOCSET_DEFAULT_MAXSIZE;
+	Size		maxBlockSize;
 
 	maxBlockSize = pg_prevpower2_size_t(work_mem * (Size) 1024 / 16);
 

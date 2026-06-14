@@ -2,13 +2,14 @@
  * gistfuncs.c
  *		Functions to investigate the content of GiST indexes
  *
- * Copyright (c) 2014-2025, PostgreSQL Global Development Group
+ * Copyright (c) 2014-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		contrib/pageinspect/gistfuncs.c
  */
 #include "postgres.h"
 
+#include "access/genam.h"
 #include "access/gist.h"
 #include "access/htup.h"
 #include "access/htup_details.h"
@@ -175,7 +176,7 @@ gist_page_items_bytea(PG_FUNCTION_ARGS)
 
 		memset(nulls, 0, sizeof(nulls));
 
-		values[0] = Int16GetDatum(offset);
+		values[0] = UInt16GetDatum(offset);
 		values[1] = ItemPointerGetDatum(&itup->t_tid);
 		values[2] = Int32GetDatum((int) IndexTupleSize(itup));
 
@@ -282,7 +283,7 @@ gist_page_items(PG_FUNCTION_ARGS)
 
 		memset(nulls, 0, sizeof(nulls));
 
-		values[0] = Int16GetDatum(offset);
+		values[0] = UInt16GetDatum(offset);
 		values[1] = ItemPointerGetDatum(&itup->t_tid);
 		values[2] = Int32GetDatum((int) IndexTupleSize(itup));
 		values[3] = BoolGetDatum(ItemIdIsDead(id));

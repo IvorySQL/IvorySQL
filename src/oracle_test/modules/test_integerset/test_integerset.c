@@ -3,7 +3,7 @@
  * test_integerset.c
  *		Test integer set data structure.
  *
- * Copyright (c) 2019-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2019-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
  * IDENTIFICATION

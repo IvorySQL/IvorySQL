@@ -92,7 +92,7 @@
  * heap's TOAST table will go through the normal bufmgr.
  *
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994-5, Regents of the University of California
  *
  * IDENTIFICATION
@@ -382,6 +382,9 @@ rewrite_heap_tuple(RewriteState state,
 
 	/*
 	 * If the tuple has been updated, check the old-to-new mapping hash table.
+	 *
+	 * Note that this check relies on the HeapTupleSatisfiesVacuum() in
+	 * heapam_relation_copy_for_cluster() to have set hint bits.
 	 */
 	if (!((old_tuple->t_data->t_infomask & HEAP_XMAX_INVALID) ||
 		  HeapTupleHeaderIsOnlyLocked(old_tuple->t_data)) &&

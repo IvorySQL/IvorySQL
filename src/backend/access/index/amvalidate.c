@@ -5,7 +5,7 @@
  *	  amadjustmembers functions.
  *
  * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
- * Copyright (c) 2016-2025, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2026, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION

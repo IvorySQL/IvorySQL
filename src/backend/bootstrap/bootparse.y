@@ -4,7 +4,7 @@
  * bootparse.y
  *	  yacc grammar for the "bootstrap" mode (BKI file format)
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -308,7 +308,8 @@ Boot_DeclareIndexStmt:
 					relationId = RangeVarGetRelid(stmt->relation, NoLock,
 												  false);
 
-					DefineIndex(relationId,
+					DefineIndex(NULL,
+								relationId,
 								stmt,
 								$4,
 								InvalidOid,
@@ -361,7 +362,8 @@ Boot_DeclareUniqueIndexStmt:
 					relationId = RangeVarGetRelid(stmt->relation, NoLock,
 												  false);
 
-					DefineIndex(relationId,
+					DefineIndex(NULL,
+								relationId,
 								stmt,
 								$5,
 								InvalidOid,
@@ -415,6 +417,7 @@ boot_index_param:
 					n->opclass = list_make1(makeString($2));
 					n->ordering = SORTBY_DEFAULT;
 					n->nulls_ordering = SORTBY_NULLS_DEFAULT;
+					n->location = -1;
 					$$ = n;
 				}
 		;

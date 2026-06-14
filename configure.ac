@@ -23,8 +23,8 @@ m4_if(m4_defn([m4_PACKAGE_VERSION]), [2.69], [], [m4_fatal([Autoconf version 2.6
 Untested combinations of 'autoconf' and PostgreSQL versions are not
 recommended.  You can remove the check from 'configure.ac' but it is then
 your responsibility whether the result works or not.])])
-AC_COPYRIGHT([Copyright (c) 1996-2025, PostgreSQL Global Development Group])
-AC_COPYRIGHT([Portions Copyright (c), 2023-2025, IvorySQL Global Development Team])
+AC_COPYRIGHT([Copyright (c) 1996-2026, PostgreSQL Global Development Group])
+AC_COPYRIGHT([Portions Copyright (c), 2023-2026, IvorySQL Global Development Team])
 AC_CONFIG_SRCDIR([src/backend/access/common/heaptuple.c])
 AC_CONFIG_AUX_DIR(config)
 AC_PREFIX_DEFAULT(/usr/local/pgsql)
@@ -1589,12 +1589,10 @@ AC_SUBST(UUID_LIBS)
 ##
 
 AC_CHECK_HEADERS(m4_normalize([
-	atomic.h
 	copyfile.h
 	execinfo.h
 	getopt.h
 	ifaddrs.h
-	mbarrier.h
 	sys/epoll.h
 	sys/event.h
 	sys/personality.h
@@ -1777,11 +1775,19 @@ PGAC_UNION_SEMUN
 AC_CHECK_TYPES(socklen_t, [], [], [#include <sys/socket.h>])
 PGAC_STRUCT_SOCKADDR_SA_LEN
 
-# Even though restrict is in C99 and should be supported by all
-# supported compilers, this test is useful because it will prefer a
-# spelling that also works in C++ (often __restrict).  (restrict is
-# not part of the C++ standard.)
+# MSVC doesn't cope well with defining restrict to __restrict, the
+# spelling it understands, because it conflicts with
+# __declspec(restrict) in C++ mode. Therefore we define pg_restrict to
+# the appropriate definition, which presumably won't conflict.
 AC_C_RESTRICT
+if test "$ac_cv_c_restrict" = "no"; then
+  pg_restrict=""
+else
+  pg_restrict="$ac_cv_c_restrict"
+fi
+AC_DEFINE_UNQUOTED([pg_restrict], [$pg_restrict],
+[Define to keyword to use for C99 restrict support, or to nothing if not
+supported])
 
 AC_CHECK_TYPES([struct option], [], [],
 [#ifdef HAVE_GETOPT_H
@@ -1913,7 +1919,7 @@ AC_CHECK_DECLS(posix_fadvise, [], [], [#include <fcntl.h>])
 ]) # fi
 
 AC_CHECK_DECLS(fdatasync, [], [], [#include <unistd.h>])
-AC_CHECK_DECLS([strlcat, strlcpy, strnlen, strsep, timingsafe_bcmp])
+AC_CHECK_DECLS([strlcat, strlcpy, strsep, timingsafe_bcmp])
 
 # We can't use AC_CHECK_FUNCS to detect these functions, because it
 # won't handle deployment target restrictions on macOS
@@ -1934,7 +1940,6 @@ AC_REPLACE_FUNCS(m4_normalize([
 	mkdtemp
 	strlcat
 	strlcpy
-	strnlen
 	strsep
 	timingsafe_bcmp
 ]))
@@ -2027,10 +2032,6 @@ if test "$with_icu" = yes; then
         [AC_MSG_ERROR([header file <unicode/ucol.h> is required for ICU])])
 
   CPPFLAGS=$ac_save_CPPFLAGS
-fi
-
-if test "$with_llvm" = yes; then
-  PGAC_CHECK_LLVM_FUNCTIONS()
 fi
 
 # Lastly, restore full LIBS list and check for readline/libedit symbols

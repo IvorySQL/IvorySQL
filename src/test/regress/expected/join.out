@@ -3303,10 +3303,13 @@ where not exists (
 );
                        QUERY PLAN                        
 ---------------------------------------------------------
- Hash Anti Join
-   Hash Cond: (t1.c1 = t2.c2)
-   ->  Seq Scan on tt4x t1
-   ->  Hash
+ Merge Anti Join
+   Merge Cond: (t1.c1 = t2.c2)
+   ->  Sort
+         Sort Key: t1.c1
+         ->  Seq Scan on tt4x t1
+   ->  Sort
+         Sort Key: t2.c2
          ->  Merge Right Join
                Merge Cond: (t5.c1 = t3.c2)
                ->  Merge Join
@@ -3327,7 +3330,7 @@ where not exists (
                            ->  Sort
                                  Sort Key: t3.c1
                                  ->  Seq Scan on tt4x t3
-(24 rows)
+(27 rows)
 
 --
 -- regression test for problems of the sort depicted in bug #3494
@@ -6877,10 +6880,10 @@ where ss.a = ss.phv and f1 = 0;
              QUERY PLAN             
 ------------------------------------
  Nested Loop
-   ->  Seq Scan on int4_tbl
-         Filter: (f1 = 0)
    ->  Seq Scan on parttbl1 parttbl
          Filter: (a = 12)
+   ->  Seq Scan on int4_tbl
+         Filter: (f1 = 0)
 (5 rows)
 
 select * from
@@ -9313,19 +9316,19 @@ select * from fkest f1
   join fkest f2 on (f1.x = f2.x and f1.x10 = f2.x10b and f1.x100 = f2.x100)
   join fkest f3 on f1.x = f3.x
   where f1.x100 = 2;
-                     QUERY PLAN                      
------------------------------------------------------
+                        QUERY PLAN                         
+-----------------------------------------------------------
  Hash Join
-   Hash Cond: ((f2.x = f1.x) AND (f2.x10b = f1.x10))
+   Hash Cond: (f1.x = f3.x)
    ->  Hash Join
-         Hash Cond: (f3.x = f2.x)
-         ->  Seq Scan on fkest f3
+         Hash Cond: ((f2.x = f1.x) AND (f2.x10b = f1.x10))
+         ->  Seq Scan on fkest f2
+               Filter: (x100 = 2)
          ->  Hash
-               ->  Seq Scan on fkest f2
+               ->  Seq Scan on fkest f1
                      Filter: (x100 = 2)
    ->  Hash
-         ->  Seq Scan on fkest f1
-               Filter: (x100 = 2)
+         ->  Seq Scan on fkest f3
 (11 rows)
 
 rollback;
@@ -9879,6 +9882,29 @@ GROUP BY s.c1, s.c2;
 (7 rows)
 
 DROP TABLE group_tbl;
+-- Test that we ignore PlaceHolderVars when looking up statistics
+EXPLAIN (COSTS OFF)
+SELECT t1.unique1 FROM tenk1 t1 LEFT JOIN
+  (SELECT *, 42 AS phv FROM tenk1 t2) ss ON t1.unique2 = ss.unique2
+WHERE ss.unique1 = ss.phv AND t1.unique1 < 100;
+                    QUERY PLAN                    
+--------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on tenk1 t2
+         Filter: (unique1 = 42)
+   ->  Index Scan using tenk1_unique2 on tenk1 t1
+         Index Cond: (unique2 = t2.unique2)
+         Filter: (unique1 < 100)
+(6 rows)
+
+SELECT t1.unique1 FROM tenk1 t1 LEFT JOIN
+  (SELECT *, 42 AS phv FROM tenk1 t2) ss ON t1.unique2 = ss.unique2
+WHERE ss.unique1 = ss.phv AND t1.unique1 < 100;
+ unique1 
+---------
+      42
+(1 row)
+
 --
 -- Test for a nested loop join involving index scan, transforming OR-clauses
 -- to SAOP.

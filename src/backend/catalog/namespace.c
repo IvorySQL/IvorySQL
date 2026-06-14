@@ -9,7 +9,7 @@
  * and implementing search-path-controlled searches.
  *
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
@@ -1344,8 +1344,9 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 		int		   *argnumbers = NULL;
 		FuncCandidateList newResult;
 
-		*fgc_flags |= FGC_NAME_EXISTS;	/* the name is present in pg_proc */
 		char		**argtypenames = NULL;
+
+		*fgc_flags |= FGC_NAME_EXISTS;	/* the name is present in pg_proc */
 
 		if (OidIsValid(namespaceId))
 		{

@@ -2,7 +2,7 @@
  * ginfuncs.c
  *		Functions to investigate the content of GIN indexes
  *
- * Copyright (c) 2014-2025, PostgreSQL Global Development Group
+ * Copyright (c) 2014-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		contrib/pageinspect/ginfuncs.c
@@ -73,7 +73,7 @@ gin_metapage_info(PG_FUNCTION_ARGS)
 
 	values[0] = Int64GetDatum(metadata->head);
 	values[1] = Int64GetDatum(metadata->tail);
-	values[2] = Int32GetDatum(metadata->tailFreeSize);
+	values[2] = UInt32GetDatum(metadata->tailFreeSize);
 	values[3] = Int64GetDatum(metadata->nPendingPages);
 	values[4] = Int64GetDatum(metadata->nPendingHeapTuples);
 

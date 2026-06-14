@@ -3,7 +3,7 @@
  * auto_explain.c
  *
  *
- * Copyright (c) 2008-2025, PostgreSQL Global Development Group
+ * Copyright (c) 2008-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/auto_explain/auto_explain.c
@@ -388,7 +388,7 @@ explain_ExecutorEnd(QueryDesc *queryDesc)
 		InstrEndLoop(queryDesc->totaltime);
 
 		/* Log plan if duration is exceeded. */
-		msec = queryDesc->totaltime->total * 1000.0;
+		msec = INSTR_TIME_GET_MILLISEC(queryDesc->totaltime->total);
 		if (msec >= auto_explain_log_min_duration)
 		{
 			ExplainState *es = NewExplainState();

@@ -133,39 +133,12 @@ PyInit_plpy(void)
 
 	PLy_add_exceptions(m);
 
-	return m;
-}
-
-void
-PLy_init_plpy(void)
-{
-	PyObject   *main_mod,
-			   *main_dict,
-			   *plpy_mod;
-
-	/*
-	 * initialize plpy module
-	 */
 	PLy_plan_init_type();
 	PLy_result_init_type();
 	PLy_subtransaction_init_type();
 	PLy_cursor_init_type();
 
-	PyModule_Create(&PLy_module);
-
-	/* PyDict_SetItemString(plpy, "PlanType", (PyObject *) &PLy_PlanType); */
-
-	/*
-	 * initialize main module, and add plpy
-	 */
-	main_mod = PyImport_AddModule("__main__");
-	main_dict = PyModule_GetDict(main_mod);
-	plpy_mod = PyImport_AddModule("plpy");
-	if (plpy_mod == NULL)
-		PLy_elog(ERROR, "could not import \"plpy\" module");
-	PyDict_SetItemString(main_dict, "plpy", plpy_mod);
-	if (PyErr_Occurred())
-		PLy_elog(ERROR, "could not import \"plpy\" module");
+	return m;
 }
 
 static void
@@ -174,18 +147,6 @@ PLy_add_exceptions(PyObject *plpy)
 	PyObject   *excmod;
 	HASHCTL		hash_ctl;
 
-	excmod = PyModule_Create(&PLy_exc_module);
-	if (excmod == NULL)
-		PLy_elog(ERROR, "could not create the spiexceptions module");
-
-	/*
-	 * PyModule_AddObject does not add a refcount to the object, for some odd
-	 * reason; we must do that.
-	 */
-	Py_INCREF(excmod);
-	if (PyModule_AddObject(plpy, "spiexceptions", excmod) < 0)
-		PLy_elog(ERROR, "could not add the spiexceptions module");
-
 	PLy_exc_error = PLy_create_exception("plpy.Error", NULL, NULL,
 										 "Error", plpy);
 	PLy_exc_fatal = PLy_create_exception("plpy.Fatal", NULL, NULL,
@@ -193,16 +154,28 @@ PLy_add_exceptions(PyObject *plpy)
 	PLy_exc_spi_error = PLy_create_exception("plpy.SPIError", NULL, NULL,
 											 "SPIError", plpy);
 
+	excmod = PyModule_Create(&PLy_exc_module);
+	if (excmod == NULL)
+		PLy_elog(ERROR, "could not create the spiexceptions module");
+
 	hash_ctl.keysize = sizeof(int);
 	hash_ctl.entrysize = sizeof(PLyExceptionEntry);
 	PLy_spi_exceptions = hash_create("PL/Python SPI exceptions", 256,
 									 &hash_ctl, HASH_ELEM | HASH_BLOBS);
 
 	PLy_generate_spi_exceptions(excmod, PLy_exc_spi_error);
+
+	if (PyModule_AddObject(plpy, "spiexceptions", excmod) < 0)
+	{
+		Py_XDECREF(excmod);
+		PLy_elog(ERROR, "could not add the spiexceptions module");
+	}
 }
 
 /*
  * Create an exception object and add it to the module
+ *
+ * The created exception object is also returned.
  */
 static PyObject *
 PLy_create_exception(char *name, PyObject *base, PyObject *dict,
@@ -215,18 +188,19 @@ PLy_create_exception(char *name, PyObject *base, PyObject *dict,
 		PLy_elog(ERROR, NULL);
 
 	/*
-	 * PyModule_AddObject does not add a refcount to the object, for some odd
-	 * reason; we must do that.
+	 * PyModule_AddObject() (below) steals the reference to exc, but we also
+	 * want to return the value from this function, so add another ref to
+	 * account for that.  (The caller will store a pointer to the exception
+	 * object in some permanent variable.)
 	 */
 	Py_INCREF(exc);
-	PyModule_AddObject(mod, modname, exc);
 
-	/*
-	 * The caller will also store a pointer to the exception object in some
-	 * permanent variable, so add another ref to account for that.  This is
-	 * probably excessively paranoid, but let's be sure.
-	 */
-	Py_INCREF(exc);
+	if (PyModule_AddObject(mod, modname, exc) < 0)
+	{
+		Py_XDECREF(exc);
+		PLy_elog(ERROR, "could not add exception %s", name);
+	}
+
 	return exc;
 }
 

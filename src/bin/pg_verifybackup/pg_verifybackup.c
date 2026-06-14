@@ -3,7 +3,7 @@
  * pg_verifybackup.c
  *	  Verify a backup against a backup manifest.
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/bin/pg_verifybackup/pg_verifybackup.c
@@ -1228,7 +1228,7 @@ parse_required_wal(verifier_context *context, char *pg_waldump_path,
  * context says we should.
  */
 void
-report_backup_error(verifier_context *context, const char *restrict fmt,...)
+report_backup_error(verifier_context *context, const char *pg_restrict fmt,...)
 {
 	va_list		ap;
 
@@ -1245,7 +1245,7 @@ report_backup_error(verifier_context *context, const char *restrict fmt,...)
  * Report a fatal error and exit
  */
 void
-report_fatal_error(const char *restrict fmt,...)
+report_fatal_error(const char *pg_restrict fmt,...)
 {
 	va_list		ap;
 

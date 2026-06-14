@@ -3,7 +3,7 @@
  * llvmjit.c
  *	  Core part of the LLVM JIT provider.
  *
- * Copyright (c) 2016-2025, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2026, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/jit/llvm/llvmjit.c
@@ -1058,7 +1058,7 @@ llvm_split_symbol_name(const char *name, char **modname, char **funcname)
 		 * Symbol names cannot contain a ., therefore we can split based on
 		 * first and last occurrence of one.
 		 */
-		*funcname = rindex(name, '.');
+		*funcname = strrchr(name, '.');
 		(*funcname)++;			/* jump over . */
 
 		*modname = pnstrdup(name + strlen("pgextern."),
@@ -1180,24 +1180,20 @@ llvm_create_object_layer(void *Ctx, LLVMOrcExecutionSessionRef ES, const char *T
 		LLVMOrcCreateRTDyldObjectLinkingLayerWithSectionMemoryManager(ES);
 #endif
 
-
-#if defined(HAVE_DECL_LLVMCREATEGDBREGISTRATIONLISTENER) && HAVE_DECL_LLVMCREATEGDBREGISTRATIONLISTENER
 	if (jit_debugging_support)
 	{
 		LLVMJITEventListenerRef l = LLVMCreateGDBRegistrationListener();
 
 		LLVMOrcRTDyldObjectLinkingLayerRegisterJITEventListener(objlayer, l);
 	}
-#endif
 
-#if defined(HAVE_DECL_LLVMCREATEPERFJITEVENTLISTENER) && HAVE_DECL_LLVMCREATEPERFJITEVENTLISTENER
 	if (jit_profiling_support)
 	{
 		LLVMJITEventListenerRef l = LLVMCreatePerfJITEventListener();
 
-		LLVMOrcRTDyldObjectLinkingLayerRegisterJITEventListener(objlayer, l);
+		if (l)
+			LLVMOrcRTDyldObjectLinkingLayerRegisterJITEventListener(objlayer, l);
 	}
-#endif
 
 	return objlayer;
 }

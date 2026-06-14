@@ -9,7 +9,7 @@
  *	  polluting the namespace with lots of stuff...
  *
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
@@ -108,12 +108,6 @@
 #undef inline
 #define inline
 #endif
-
-/*
- * Previously used PostgreSQL-specific spelling, for backward compatibility
- * for extensions.
- */
-#define pg_restrict restrict
 
 /*
  * Attribute macros
@@ -570,6 +564,7 @@ typedef uint32 bits32;			/* >= 32 bits */
 /* snprintf format strings to use for 64-bit integers */
 #define INT64_FORMAT "%" PRId64
 #define UINT64_FORMAT "%" PRIu64
+#define OID8_FORMAT "%" PRIu64
 
 /*
  * 128-bit signed and unsigned integers
@@ -658,7 +653,7 @@ typedef double float8;
 #define FLOAT8PASSBYVAL true
 
 /*
- * Oid, RegProcedure, TransactionId, SubTransactionId, MultiXactId,
+ * Oid, Oid8, RegProcedure, TransactionId, SubTransactionId, MultiXactId,
  * CommandId
  */
 
@@ -690,6 +685,11 @@ typedef uint32 CommandId;
 #define FirstCommandId	((CommandId) 0)
 #define InvalidCommandId	(~(CommandId)0)
 
+/* 8-byte Object ID */
+typedef uint64 Oid8;
+
+#define InvalidOid8		((Oid8) 0)
+#define OID8_MAX	UINT64_MAX
 
 /* ----------------
  *		Variable-length datatypes all share the 'struct varlena' header.
@@ -789,6 +789,8 @@ typedef NameData *Name;
 		((void *)((char *) base + offset))
 
 #define OidIsValid(objectId)  ((bool) ((objectId) != InvalidOid))
+
+#define Oid8IsValid(objectId)  ((bool) ((objectId) != InvalidOid8))
 
 #define RegProcedureIsValid(p)	OidIsValid(p)
 
@@ -1270,7 +1272,7 @@ typedef struct PGAlignedXLogBlock
  */
 
 #if !HAVE_DECL_FDATASYNC
-extern int	fdatasync(int fildes);
+extern int	fdatasync(int fd);
 #endif
 
 /*

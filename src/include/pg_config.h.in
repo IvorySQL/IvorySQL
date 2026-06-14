@@ -63,9 +63,6 @@
 /* Define to 1 if you have the `append_history' function. */
 #undef HAVE_APPEND_HISTORY
 
-/* Define to 1 if you have the <atomic.h> header file. */
-#undef HAVE_ATOMIC_H
-
 /* Define to 1 if you have the `backtrace_symbols' function. */
 #undef HAVE_BACKTRACE_SYMBOLS
 
@@ -91,14 +88,6 @@
 /* Define to 1 if you have the declaration of `F_FULLFSYNC', and to 0 if you
    don't. */
 #undef HAVE_DECL_F_FULLFSYNC
-
-/* Define to 1 if you have the declaration of
-   `LLVMCreateGDBRegistrationListener', and to 0 if you don't. */
-#undef HAVE_DECL_LLVMCREATEGDBREGISTRATIONLISTENER
-
-/* Define to 1 if you have the declaration of
-   `LLVMCreatePerfJITEventListener', and to 0 if you don't. */
-#undef HAVE_DECL_LLVMCREATEPERFJITEVENTLISTENER
 
 /* Define to 1 if you have the declaration of `memset_s', and to 0 if you
    don't. */
@@ -127,10 +116,6 @@
 /* Define to 1 if you have the declaration of `strlcpy', and to 0 if you
    don't. */
 #undef HAVE_DECL_STRLCPY
-
-/* Define to 1 if you have the declaration of `strnlen', and to 0 if you
-   don't. */
-#undef HAVE_DECL_STRNLEN
 
 /* Define to 1 if you have the declaration of `strsep', and to 0 if you don't.
    */
@@ -298,9 +283,6 @@
 /* Define to 1 if you have the `localeconv_l' function. */
 #undef HAVE_LOCALECONV_L
 
-/* Define to 1 if you have the <mbarrier.h> header file. */
-#undef HAVE_MBARRIER_H
-
 /* Define to 1 if you have the `mbstowcs_l' function. */
 #undef HAVE_MBSTOWCS_L
 
@@ -417,9 +399,6 @@
 
 /* Define to 1 if you have the `strlcpy' function. */
 #undef HAVE_STRLCPY
-
-/* Define to 1 if you have the `strnlen' function. */
-#undef HAVE_STRNLEN
 
 /* Define to 1 if you have the `strsep' function. */
 #undef HAVE_STRSEP
@@ -821,6 +800,10 @@
 #ifndef __cplusplus
 #undef inline
 #endif
+
+/* Define to keyword to use for C99 restrict support, or to nothing if not
+   supported */
+#undef pg_restrict
 
 /* Define to the equivalent of the C99 'restrict' keyword, or to
    nothing if this is not supported.  Do not define if restrict is

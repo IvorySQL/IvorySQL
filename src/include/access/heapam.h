@@ -4,7 +4,7 @@
  *	  POSTGRES heap access method definitions.
  *
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
@@ -353,7 +353,7 @@ typedef struct PruneFreezeResult
 	 * is only valid if we froze some tuples (nfrozen > 0), and all_frozen is
 	 * true.
 	 *
-	 * These are only set if the HEAP_PRUNE_FREEZE option is set.
+	 * These are only set if the HEAP_PAGE_PRUNE_FREEZE option is set.
 	 */
 	bool		all_visible;
 	bool		all_frozen;
@@ -599,6 +599,23 @@ extern void compute_new_xmax_infomask(TransactionId xmax, uint16 old_infomask,
 							  uint16 *result_infomask2);
 extern XLogRecPtr log_heap_new_cid(Relation relation, HeapTuple tup);
 extern uint8 compute_infobits(uint16 infomask, uint16 infomask2);
+/*
+ * Some of the input/output to/from HeapTupleSatisfiesMVCCBatch() is passed
+ * via this struct, as otherwise the increased number of arguments to
+ * HeapTupleSatisfiesMVCCBatch() leads to on-stack argument passing on x86-64,
+ * which causes a small regression.
+ */
+typedef struct BatchMVCCState
+{
+	HeapTupleData tuples[MaxHeapTuplesPerPage];
+	bool		visible[MaxHeapTuplesPerPage];
+} BatchMVCCState;
+
+extern int	HeapTupleSatisfiesMVCCBatch(Snapshot snapshot, Buffer buffer,
+										int ntups,
+										BatchMVCCState *batchmvcc,
+										OffsetNumber *vistuples_dense);
+
 /*
  * To avoid leaking too much knowledge about reorderbuffer implementation
  * details this is implemented in reorderbuffer.c not heapam_visibility.c

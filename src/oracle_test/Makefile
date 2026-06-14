@@ -18,7 +18,15 @@ subdir = src/oracle_test
 top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 
-SUBDIRS = perl postmaster regress isolation modules authentication recovery subscription
+SUBDIRS = \
+	authentication \
+	isolation \
+	modules \
+	perl \
+	postmaster \
+	recovery \
+	regress \
+	subscription
 
 ifeq ($(with_icu),yes)
 SUBDIRS += icu

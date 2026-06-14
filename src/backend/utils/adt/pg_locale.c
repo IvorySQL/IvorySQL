@@ -2,7 +2,7 @@
  *
  * PostgreSQL locale utilities
  *
- * Portions Copyright (c) 2002-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2002-2026, PostgreSQL Global Development Group
  *
  * src/backend/utils/adt/pg_locale.c
  *
@@ -32,6 +32,9 @@
 #include "postgres.h"
 
 #include <time.h>
+#ifdef USE_ICU
+#include <unicode/ucol.h>
+#endif
 
 #include "access/htup_details.h"
 #include "catalog/pg_collation.h"
@@ -1643,6 +1646,17 @@ pg_towlower(pg_wchar wc, pg_locale_t locale)
 	}
 	else
 		return locale->ctype->wc_tolower(wc, locale);
+}
+
+/* version of Unicode used by ICU */
+const char *
+pg_icu_unicode_version()
+{
+#ifdef USE_ICU
+	return U_UNICODE_VERSION;
+#else
+	return NULL;
+#endif
 }
 
 /*

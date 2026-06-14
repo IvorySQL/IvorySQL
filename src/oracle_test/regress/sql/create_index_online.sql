@@ -1,0 +1,162 @@
+--
+-- CREATE_INDEX_ONLINE
+-- Test Oracle-compatible CREATE INDEX ... ONLINE syntax
+--
+
+SET ivorysql.compatible_mode = oracle;
+SET client_min_messages TO 'warning';
+DROP TABLE IF EXISTS tbl_ci_online    CASCADE;
+DROP TABLE IF EXISTS tbl_ci_part      CASCADE;
+DROP TABLE IF EXISTS tbl_ci_unique    CASCADE;
+RESET client_min_messages;
+
+-- Base test table
+CREATE TABLE tbl_ci_online (
+    id      NUMBER(10)    PRIMARY KEY,
+    name    VARCHAR2(100),
+    dept_id NUMBER(10),
+    salary  NUMBER(10,2),
+    status  VARCHAR2(20)
+);
+INSERT INTO tbl_ci_online
+    SELECT g, 'name'||g, MOD(g,20), g*100.0, CASE WHEN MOD(g,2)=0 THEN 'ACTIVE' ELSE 'INACTIVE' END
+    FROM generate_series(1, 1000) g;
+
+-- Unique index test table
+CREATE TABLE tbl_ci_unique (
+    id    NUMBER(10)    PRIMARY KEY,
+    email VARCHAR2(200) NOT NULL
+);
+INSERT INTO tbl_ci_unique SELECT g, 'user'||g||'@example.com' FROM generate_series(1, 200) g;
+
+-- Partitioned table
+CREATE TABLE tbl_ci_part (
+    id     NUMBER(10),
+    region VARCHAR2(20)
+) PARTITION BY RANGE (id);
+CREATE TABLE tbl_ci_part_p1 PARTITION OF tbl_ci_part FOR VALUES FROM (1)   TO (501);
+CREATE TABLE tbl_ci_part_p2 PARTITION OF tbl_ci_part FOR VALUES FROM (501) TO (1001);
+INSERT INTO tbl_ci_part SELECT g, CASE WHEN g<=500 THEN 'east' ELSE 'west' END
+    FROM generate_series(1, 1000) g;
+
+-- ============================================================
+-- GROUP 1: Basic CREATE INDEX ... ONLINE
+-- ============================================================
+
+-- T01: Simplest form
+CREATE INDEX idx_online_name ON tbl_ci_online (name) ONLINE;
+
+-- T02: Verify index is valid
+SELECT indisvalid FROM pg_index
+  WHERE indexrelid = 'idx_online_name'::regclass;
+
+-- T03: Multi-column index
+CREATE INDEX idx_online_multi ON tbl_ci_online (dept_id, salary) ONLINE;
+
+-- T04: Expression index
+CREATE INDEX idx_online_expr ON tbl_ci_online (lower(name)) ONLINE;
+
+-- ============================================================
+-- GROUP 2: CREATE UNIQUE INDEX ... ONLINE
+-- ============================================================
+
+-- T07: Unique index
+CREATE UNIQUE INDEX idx_online_email ON tbl_ci_unique (email) ONLINE;
+
+-- T08: Verify uniqueness (duplicate email should fail)
+INSERT INTO tbl_ci_unique VALUES (999, 'user1@example.com');
+
+-- ============================================================
+-- GROUP 3: ONLINE and TABLESPACE in any order
+-- ============================================================
+
+-- T09: ONLINE before TABLESPACE
+CREATE INDEX idx_online_tbs_a ON tbl_ci_online (dept_id) ONLINE TABLESPACE pg_default;
+
+-- T10: ONLINE after TABLESPACE (Oracle-compatible: any order)
+CREATE INDEX idx_online_tbs_b ON tbl_ci_online (dept_id) TABLESPACE pg_default ONLINE;
+
+-- T11: TABLESPACE only (control: ensure existing behavior unchanged)
+CREATE INDEX idx_tbs_only ON tbl_ci_online (salary) TABLESPACE pg_default;
+
+-- ============================================================
+-- GROUP 4: IF NOT EXISTS with ONLINE
+-- ============================================================
+
+-- T12: Normal case (index does not exist)
+CREATE INDEX IF NOT EXISTS idx_online_ifne ON tbl_ci_online (status) ONLINE;
+
+-- T13: Index already exists, NOTICE instead of error
+CREATE INDEX IF NOT EXISTS idx_online_ifne ON tbl_ci_online (status) ONLINE;
+
+-- T14: IF NOT EXISTS + UNIQUE + ONLINE, index name already exists
+CREATE UNIQUE INDEX IF NOT EXISTS idx_online_email ON tbl_ci_unique (email) ONLINE;
+
+-- ============================================================
+-- GROUP 5: Partitioned table with ONLINE
+-- ============================================================
+
+-- T15: Partitioned table parent index ONLINE
+-- ONLINE on partitioned table silently degrades to non-concurrent build 
+CREATE INDEX idx_part_online ON tbl_ci_part (id) ONLINE;
+
+-- T16: Verify parent index and its partition child indexes are all valid
+SELECT c.relname, i.indisvalid
+FROM pg_index i
+JOIN pg_class c ON c.oid = i.indexrelid
+WHERE i.indexrelid = 'idx_part_online'::regclass
+   OR i.indexrelid IN (
+       SELECT inhrelid FROM pg_inherits
+       WHERE inhparent = 'idx_part_online'::regclass
+   )
+ORDER BY c.relname;
+
+-- T17: Partitioned table ONLINE (no explicit tablespace — pg_default cannot be
+--      specified explicitly for partitioned relations in PostgreSQL)
+CREATE INDEX idx_part_online_tbs ON tbl_ci_part (region) ONLINE;
+
+-- ============================================================
+-- GROUP 6: CONCURRENTLY and ONLINE are mutually exclusive
+-- ============================================================
+
+-- T18: CONCURRENTLY before ONLINE (should error)
+CREATE INDEX CONCURRENTLY idx_both ON tbl_ci_online (name) ONLINE;
+
+-- T19: Verify existing CONCURRENTLY syntax is unaffected
+CREATE INDEX CONCURRENTLY idx_still_conc ON tbl_ci_online (dept_id);
+
+-- ============================================================
+-- GROUP 7: Different access methods with ONLINE
+-- ============================================================
+
+-- T20: HASH index ONLINE
+CREATE INDEX idx_hash_online ON tbl_ci_online USING hash (name) ONLINE;
+
+-- T21: Default method (btree) ONLINE
+CREATE INDEX idx_btree_online ON tbl_ci_online USING btree (dept_id) ONLINE;
+
+-- T22: Expression index using Oracle built-in UPPER
+CREATE INDEX idx_upper_online ON tbl_ci_online (UPPER(name)) ONLINE;
+
+-- ============================================================
+-- GROUP 8: PG parser mode unaffected (compatibility check)
+-- ============================================================
+
+-- T23: Switch to PG parser mode, ONLINE should be a syntax error
+SET ivorysql.compatible_mode = pg;
+CREATE INDEX idx_pg_mode ON tbl_ci_online (name) ONLINE;
+
+-- Restore Oracle mode
+SET ivorysql.compatible_mode = oracle;
+
+-- T24: PG mode CONCURRENTLY still works
+SET ivorysql.compatible_mode = pg;
+CREATE INDEX CONCURRENTLY idx_pg_conc ON tbl_ci_online (salary);
+SET ivorysql.compatible_mode = oracle;
+
+-- ============================================================
+-- Cleanup
+-- ============================================================
+DROP TABLE IF EXISTS tbl_ci_online  CASCADE;
+DROP TABLE IF EXISTS tbl_ci_part    CASCADE;
+DROP TABLE IF EXISTS tbl_ci_unique  CASCADE;

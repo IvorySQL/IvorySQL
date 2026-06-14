@@ -7,7 +7,7 @@
  * pages.  They are internal to multixact.c, but they are exported here to
  * allow pg_upgrade to write pg_multixact files directly.
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/multixact_internal.h
@@ -119,6 +119,16 @@ MXOffsetToMemberOffset(MultiXactOffset offset)
 	return MXOffsetToFlagsOffset(offset) +
 		MULTIXACT_FLAGBYTES_PER_GROUP +
 		member_in_group * sizeof(TransactionId);
+}
+
+/* Storage space consumed by a range of offsets, in bytes */
+static inline uint64
+MultiXactOffsetStorageSize(MultiXactOffset new_offset,
+						   MultiXactOffset old_offset)
+{
+	Assert(new_offset >= old_offset);
+	return (uint64) ((new_offset - old_offset) / MULTIXACT_MEMBERS_PER_MEMBERGROUP) *
+		MULTIXACT_MEMBERGROUP_SIZE;
 }
 
 #endif							/* MULTIXACT_INTERNAL_H */

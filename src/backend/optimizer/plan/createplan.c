@@ -5,7 +5,7 @@
  *	  Planning is complete, we just need to convert the selected
  *	  Path into a Plan.
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -5308,7 +5308,8 @@ fix_indexqual_clause(PlannerInfo *root, IndexOptInfo *index, int indexcol,
  * equal to the index's attribute number (index column position).
  *
  * Most of the code here is just for sanity cross-checking that the given
- * expression actually matches the index column it's claimed to.
+ * expression actually matches the index column it's claimed to.  It should
+ * match the logic in match_index_to_operand().
  */
 static Node *
 fix_indexqual_operand(Node *node, IndexOptInfo *index, int indexcol)
@@ -5317,13 +5318,18 @@ fix_indexqual_operand(Node *node, IndexOptInfo *index, int indexcol)
 	int			pos;
 	ListCell   *indexpr_item;
 
+	Assert(indexcol >= 0 && indexcol < index->ncolumns);
+
+	/*
+	 * Remove any PlaceHolderVar wrapping of the indexkey
+	 */
+	node = strip_phvs_in_index_operand(node);
+
 	/*
 	 * Remove any binary-compatible relabeling of the indexkey
 	 */
-	if (IsA(node, RelabelType))
+	while (IsA(node, RelabelType))
 		node = (Node *) ((RelabelType *) node)->arg;
-
-	Assert(indexcol >= 0 && indexcol < index->ncolumns);
 
 	if (index->indexkeys[indexcol] != 0)
 	{

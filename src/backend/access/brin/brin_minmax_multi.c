@@ -2,7 +2,7 @@
  * brin_minmax_multi.c
  *		Implementation of Multi Min/Max opclass for BRIN
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -857,8 +857,8 @@ brin_range_deserialize(int maxvalues, SerializedRanges *serialized)
 static int
 compare_expanded_ranges(const void *a, const void *b, void *arg)
 {
-	ExpandedRange *ra = (ExpandedRange *) a;
-	ExpandedRange *rb = (ExpandedRange *) b;
+	const ExpandedRange *ra = a;
+	const ExpandedRange *rb = b;
 	Datum		r;
 
 	compare_context *cxt = (compare_context *) arg;
@@ -895,8 +895,8 @@ compare_expanded_ranges(const void *a, const void *b, void *arg)
 static int
 compare_values(const void *a, const void *b, void *arg)
 {
-	Datum	   *da = (Datum *) a;
-	Datum	   *db = (Datum *) b;
+	const Datum *da = a;
+	const Datum *db = b;
 	Datum		r;
 
 	compare_context *cxt = (compare_context *) arg;
@@ -1304,8 +1304,8 @@ merge_overlapping_ranges(FmgrInfo *cmp, Oid colloid,
 static int
 compare_distances(const void *a, const void *b)
 {
-	DistanceValue *da = (DistanceValue *) a;
-	DistanceValue *db = (DistanceValue *) b;
+	const DistanceValue *da = a;
+	const DistanceValue *db = b;
 
 	if (da->value < db->value)
 		return 1;
@@ -2932,7 +2932,7 @@ minmax_multi_get_strategy_procinfo(BrinDesc *bdesc, uint16 attno, Oid subtype,
 		tuple = SearchSysCache4(AMOPSTRATEGY, ObjectIdGetDatum(opfamily),
 								ObjectIdGetDatum(attr->atttypid),
 								ObjectIdGetDatum(subtype),
-								Int16GetDatum(strategynum));
+								UInt16GetDatum(strategynum));
 		if (!HeapTupleIsValid(tuple))
 			elog(ERROR, "missing operator %d(%u,%u) in opfamily %u",
 				 strategynum, attr->atttypid, subtype, opfamily);

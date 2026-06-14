@@ -3,7 +3,7 @@
  * port.h
  *	  Header for src/port/ compatibility functions.
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
@@ -483,16 +483,12 @@ extern size_t strlcat(char *dst, const char *src, size_t siz);
 extern size_t strlcpy(char *dst, const char *src, size_t siz);
 #endif
 
-#if !HAVE_DECL_STRNLEN
-extern size_t strnlen(const char *str, size_t maxlen);
-#endif
-
 #if !HAVE_DECL_STRSEP
 extern char *strsep(char **stringp, const char *delim);
 #endif
 
 #if !HAVE_DECL_TIMINGSAFE_BCMP
-extern int	timingsafe_bcmp(const void *b1, const void *b2, size_t len);
+extern int	timingsafe_bcmp(const void *b1, const void *b2, size_t n);
 #endif
 
 /*

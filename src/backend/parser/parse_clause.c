@@ -3,7 +3,7 @@
  * parse_clause.c
  *	  handle clauses in parser
  *
- * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -3375,21 +3375,18 @@ resolve_unique_index_expr(ParseState *pstate, InferClause *infer,
 					(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
 					 errmsg("%s is not allowed in ON CONFLICT clause",
 							"ASC/DESC"),
-					 parser_errposition(pstate,
-										exprLocation((Node *) infer))));
+					 parser_errposition(pstate, ielem->location)));
 		if (ielem->nulls_ordering != SORTBY_NULLS_DEFAULT)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
 					 errmsg("%s is not allowed in ON CONFLICT clause",
 							"NULLS FIRST/LAST"),
-					 parser_errposition(pstate,
-										exprLocation((Node *) infer))));
+					 parser_errposition(pstate, ielem->location)));
 		if (ielem->opclassopts)
 			ereport(ERROR,
 					errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
 					errmsg("operator class options are not allowed in ON CONFLICT clause"),
-					parser_errposition(pstate,
-									   exprLocation((Node *) infer)));
+					parser_errposition(pstate, ielem->location));
 
 		if (!ielem->expr)
 		{
@@ -3429,7 +3426,7 @@ resolve_unique_index_expr(ParseState *pstate, InferClause *infer,
 			pInfer->infercollid = InvalidOid;
 		else
 			pInfer->infercollid = LookupCollation(pstate, ielem->collation,
-												  exprLocation(pInfer->expr));
+												  ielem->location);
 
 		if (!ielem->opclass)
 			pInfer->inferopclass = InvalidOid;
