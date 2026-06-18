@@ -9240,7 +9240,7 @@ $as_echo "#define USE_LIBXML 1" >>confdefs.h
 
       ;;
     no)
-      :
+      as_fn_error $? "--without-libxml is not supported. The ivorysql_ora plugin depends on the libxml library." "$LINENO" 5
       ;;
     *)
       as_fn_error $? "no argument expected for --with-libxml option" "$LINENO" 5
@@ -9248,7 +9248,9 @@ $as_echo "#define USE_LIBXML 1" >>confdefs.h
   esac
 
 else
-  with_libxml=no
+  with_libxml=yes
+
+$as_echo "#define USE_LIBXML 1" >>confdefs.h
 
 fi
 
