@@ -5370,7 +5370,7 @@ recheck_cast_function_args(List *args, Oid result_type,
 						   HeapTuple func_tuple)
 {
 	int			nargs;
-	Oid			actual_arg_types[FUNC_MAX_ARGS];
+	Oid			actual_arg_types[FUNC_MAX_ARGS] = {0};
 	Oid			declared_arg_types[FUNC_MAX_ARGS];
 	Oid			rettype;
 	Oid			declared_rettype;
