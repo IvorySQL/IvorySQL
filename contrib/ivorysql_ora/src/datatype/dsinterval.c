@@ -2349,11 +2349,15 @@ dsinterval_mul(PG_FUNCTION_ARGS)
 #endif
 
 	/*
-	 * compatible oracle For Interval day to second, the field of datetime
-	 * 'year' 'month' will be truncated.
+	 * compatible oracle
+	 * For Interval day to second, the field of datetime 'year' 'month' will be truncated.
 	 */
 	result->month = 0;
 	result->day += result->time / USECS_PER_DAY;
+	if (result->day > INT_MAX || result->day < INT_MIN)
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("interval out of range")));
 	result->time = result->time % USECS_PER_DAY;
 
 	PG_RETURN_INTERVAL_P(result);
@@ -2386,8 +2390,8 @@ dsinterval_div(PG_FUNCTION_ARGS)
 	Numeric		num = PG_GETARG_NUMERIC(1);
 	float8		factor;
 	double		month_remainder_days,
-				sec_remainder;
-	double		result_double;
+				sec_remainder,
+				result_double;
 	int32		orig_month = span->month,
 				orig_day = span->day;
 	Interval   *result;
@@ -2400,8 +2404,19 @@ dsinterval_div(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_DIVISION_BY_ZERO),
 				 errmsg("division by zero")));
 
-	result->month = (int32) (span->month / factor);
-	result->day = (int32) (span->day / factor);
+	result_double = span->month / factor;
+	if (isnan(result_double) || !FLOAT8_FITS_IN_INT32(result_double))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("interval out of range")));
+	result->month = (int32) result_double;
+
+	result_double = span->day / factor;
+	if (isnan(result_double) || !FLOAT8_FITS_IN_INT32(result_double))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("interval out of range")));
+	result->day = (int32) result_double;
 
 	/*
 	 * Fractional months full days into days.  See comment in interval_mul().
@@ -2432,11 +2447,15 @@ dsinterval_div(PG_FUNCTION_ARGS)
 #endif
 
 	/*
-	 * compatible oracle For Interval day to second, the field of datetime
-	 * 'year' 'month' will be truncated.
+	 * compatible oracle
+	 * For Interval day to second, the field of datetime 'year' 'month' will be truncated.
 	 */
 	result->month = 0;
 	result->day += result->time / USECS_PER_DAY;
+	if (result->day > INT_MAX || result->day < INT_MIN)
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("interval out of range")));
 	result->time = result->time % USECS_PER_DAY;
 
 	PG_RETURN_INTERVAL_P(result);
