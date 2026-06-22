@@ -487,7 +487,7 @@ InitProcess(void)
 	MyProc->databaseId = InvalidOid;
 	MyProc->roleId = InvalidOid;
 	MyProc->tempNamespaceId = InvalidOid;
-	MyProc->isRegularBackend = AmRegularBackendProcess();
+	MyProc->backendType = MyBackendType;
 	MyProc->delayChkptFlags = 0;
 	MyProc->statusFlags = 0;
 	/* NB -- autovac launcher intentionally does not set IS_AUTOVACUUM */
@@ -507,10 +507,9 @@ InitProcess(void)
 			Assert(dlist_is_empty(&(MyProc->myProcLocks[i])));
 	}
 #endif
-	MyProc->recoveryConflictPending = false;
 
 	/* Initialize fields for sync rep */
-	MyProc->waitLSN = 0;
+	MyProc->waitLSN = InvalidXLogRecPtr;
 	MyProc->syncRepState = SYNC_REP_NOT_WAITING;
 	dlist_node_init(&MyProc->syncRepLinks);
 
@@ -686,7 +685,7 @@ InitAuxiliaryProcess(void)
 	MyProc->databaseId = InvalidOid;
 	MyProc->roleId = InvalidOid;
 	MyProc->tempNamespaceId = InvalidOid;
-	MyProc->isRegularBackend = false;
+	MyProc->backendType = MyBackendType;
 	MyProc->delayChkptFlags = 0;
 	MyProc->statusFlags = 0;
 	MyProc->lwWaiting = LW_WS_NOT_WAITING;
@@ -1036,10 +1035,6 @@ ProcKill(int code, Datum arg)
 	ProcGlobal->spins_per_delay = update_spins_per_delay(ProcGlobal->spins_per_delay);
 
 	SpinLockRelease(ProcStructLock);
-
-	/* wake autovac launcher if needed -- see comments in FreeWorkerInfo */
-	if (AutovacuumLauncherPid != 0)
-		kill(AutovacuumLauncherPid, SIGUSR2);
 }
 
 /*

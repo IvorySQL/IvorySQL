@@ -155,7 +155,7 @@
  * common style is to put them before the return type.  (The MSVC fallback has
  * the same requirement.  The GCC fallback is more flexible.)
  */
-#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+#if (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L) && !defined(__cplusplus)
 #define pg_noreturn _Noreturn
 #elif defined(__GNUC__)
 #define pg_noreturn __attribute__((noreturn))
@@ -958,26 +958,26 @@ pg_noreturn extern void ExceptionalCondition(const char *conditionName,
 /*
  * Compile-time checks that a variable (or expression) has the specified type.
  *
- * AssertVariableIsOfType() can be used as a statement.
- * AssertVariableIsOfTypeMacro() is intended for use in macros, eg
- *		#define foo(x) (AssertVariableIsOfTypeMacro(x, int), bar(x))
+ * StaticAssertVariableIsOfType() can be used as a declaration.
+ * StaticAssertVariableIsOfTypeMacro() is intended for use in macros, eg
+ *		#define foo(x) (StaticAssertVariableIsOfTypeMacro(x, int), bar(x))
  *
  * If we don't have __builtin_types_compatible_p, we can still assert that
  * the types have the same size.  This is far from ideal (especially on 32-bit
  * platforms) but it provides at least some coverage.
  */
 #ifdef HAVE__BUILTIN_TYPES_COMPATIBLE_P
-#define AssertVariableIsOfType(varname, typename) \
-	StaticAssertStmt(__builtin_types_compatible_p(__typeof__(varname), typename), \
+#define StaticAssertVariableIsOfType(varname, typename) \
+	StaticAssertDecl(__builtin_types_compatible_p(__typeof__(varname), typename), \
 	CppAsString(varname) " does not have type " CppAsString(typename))
-#define AssertVariableIsOfTypeMacro(varname, typename) \
+#define StaticAssertVariableIsOfTypeMacro(varname, typename) \
 	(StaticAssertExpr(__builtin_types_compatible_p(__typeof__(varname), typename), \
 	 CppAsString(varname) " does not have type " CppAsString(typename)))
 #else							/* !HAVE__BUILTIN_TYPES_COMPATIBLE_P */
-#define AssertVariableIsOfType(varname, typename) \
-	StaticAssertStmt(sizeof(varname) == sizeof(typename), \
+#define StaticAssertVariableIsOfType(varname, typename) \
+	StaticAssertDecl(sizeof(varname) == sizeof(typename), \
 	CppAsString(varname) " does not have type " CppAsString(typename))
-#define AssertVariableIsOfTypeMacro(varname, typename) \
+#define StaticAssertVariableIsOfTypeMacro(varname, typename) \
 	(StaticAssertExpr(sizeof(varname) == sizeof(typename), \
 	 CppAsString(varname) " does not have type " CppAsString(typename)))
 #endif							/* HAVE__BUILTIN_TYPES_COMPATIBLE_P */
@@ -1122,6 +1122,14 @@ typedef struct PGAlignedBlock
 } PGAlignedBlock;
 
 /*
+ * alignas with extended alignments is buggy in g++ < 9.  As a simple
+ * workaround, we disable these definitions in that case.
+ *
+ * <https://gcc.gnu.org/bugzilla/show_bug.cgi?id=89357>
+ */
+#if !(defined(__cplusplus) && defined(__GNUC__) && !defined(__clang__) && __GNUC__ < 9)
+
+/*
  * Use this to declare a field or local variable holding a page buffer, if that
  * page might be accessed as a page or passed to an SMgr I/O function.  If
  * allocating using the MemoryContext API, the aligned allocation functions
@@ -1139,6 +1147,14 @@ typedef struct PGAlignedXLogBlock
 {
 	alignas(PG_IO_ALIGN_SIZE) char data[XLOG_BLCKSZ];
 } PGAlignedXLogBlock;
+
+#else							/* (g++ < 9) */
+
+/* Allow these types to be used as abstract types when using old g++ */
+typedef struct PGIOAlignedBlock PGIOAlignedBlock;
+typedef struct PGAlignedXLogBlock PGAlignedXLogBlock;
+
+#endif							/* !(g++ < 9) */
 
 /* msb for char */
 #define HIGHBIT					(0x80)
@@ -1236,6 +1252,25 @@ typedef struct PGAlignedXLogBlock
 	((underlying_type) (expr))
 #define unvolatize(underlying_type, expr) \
 	((underlying_type) (expr))
+#endif
+
+/*
+ * SSE2 instructions are part of the spec for the 64-bit x86 ISA. We assume
+ * that compilers targeting this architecture understand SSE2 intrinsics.
+ */
+#if (defined(__x86_64__) || defined(_M_AMD64))
+#define USE_SSE2
+
+/*
+ * We use the Neon instructions if the compiler provides access to them (as
+ * indicated by __ARM_NEON) and we are on aarch64.  While Neon support is
+ * technically optional for aarch64, it appears that all available 64-bit
+ * hardware does have it.  Neon exists in some 32-bit hardware too, but we
+ * could not realistically use it there without a run-time check, which seems
+ * not worth the trouble for now.
+ */
+#elif defined(__aarch64__) && defined(__ARM_NEON)
+#define USE_NEON
 #endif
 
 /* ----------------------------------------------------------------

@@ -25,7 +25,6 @@
 #include "postgres.h"
 
 #include <ctype.h>
-#include <math.h>
 #include <time.h>
 #include <sys/stat.h>
 #include <sys/time.h>
@@ -262,7 +261,7 @@ static TimestampTz XLogReceiptTime = 0;
 static XLogSource XLogReceiptSource = XLOG_FROM_ANY;
 
 /* Local copy of WalRcv->flushedUpto */
-static XLogRecPtr flushedUpto = 0;
+static XLogRecPtr flushedUpto = InvalidXLogRecPtr;
 static TimeLineID receiveTLI = 0;
 
 /*
@@ -1842,13 +1841,6 @@ PerformWalRecovery(void)
 			 */
 			ApplyWalRecord(xlogreader, record, &replayTLI);
 
-			/* Exit loop if we reached inclusive recovery target */
-			if (recoveryStopsAfter(xlogreader))
-			{
-				reachedRecoveryTarget = true;
-				break;
-			}
-
 			/*
 			 * If we replayed an LSN that someone was waiting for then walk
 			 * over the shared memory array and set latches to notify the
@@ -1858,6 +1850,13 @@ PerformWalRecovery(void)
 				(XLogRecoveryCtl->lastReplayedEndRecPtr >=
 				 pg_atomic_read_u64(&waitLSNState->minWaitedLSN[WAIT_LSN_TYPE_STANDBY_REPLAY])))
 				WaitLSNWakeup(WAIT_LSN_TYPE_STANDBY_REPLAY, XLogRecoveryCtl->lastReplayedEndRecPtr);
+
+			/* Exit loop if we reached inclusive recovery target */
+			if (recoveryStopsAfter(xlogreader))
+			{
+				reachedRecoveryTarget = true;
+				break;
+			}
 
 			/* Else, try to fetch the next WAL record */
 			record = ReadRecord(xlogprefetcher, LOG, false, replayTLI);
@@ -3919,7 +3918,7 @@ WaitForWALToBecomeAvailable(XLogRecPtr RecPtr, bool randAccess,
 						RequestXLogStreaming(tli, ptr, PrimaryConnInfo,
 											 PrimarySlotName,
 											 wal_receiver_create_temp_slot);
-						flushedUpto = 0;
+						flushedUpto = InvalidXLogRecPtr;
 					}
 
 					/*
@@ -4097,7 +4096,7 @@ WaitForWALToBecomeAvailable(XLogRecPtr RecPtr, bool randAccess,
 static int
 emode_for_corrupt_record(int emode, XLogRecPtr RecPtr)
 {
-	static XLogRecPtr lastComplaint = 0;
+	static XLogRecPtr lastComplaint = InvalidXLogRecPtr;
 
 	if (readSource == XLOG_FROM_PG_WAL && emode == LOG)
 	{

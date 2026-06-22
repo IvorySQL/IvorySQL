@@ -1307,6 +1307,7 @@ transformAExprIn(ParseState *pstate, A_Expr *a)
 	List	   *rnonvars;
 	bool		useOr;
 	ListCell   *l;
+	bool		has_rvars = false;
 
 	/*
 	 * If the operator is <>, combine with AND not OR.
@@ -1335,7 +1336,10 @@ transformAExprIn(ParseState *pstate, A_Expr *a)
 
 		rexprs = lappend(rexprs, rexpr);
 		if (contain_vars_of_level(rexpr, 0))
+		{
 			rvars = lappend(rvars, rexpr);
+			has_rvars = true;
+		}
 		else
 			rnonvars = lappend(rnonvars, rexpr);
 	}
@@ -1400,9 +1404,14 @@ transformAExprIn(ParseState *pstate, A_Expr *a)
 			newa->element_typeid = scalar_type;
 			newa->elements = aexprs;
 			newa->multidims = false;
-			newa->list_start = a->rexpr_list_start;
-			newa->list_end = a->rexpr_list_end;
 			newa->location = -1;
+
+			/*
+			 * If the IN expression contains Vars, disable query jumbling
+			 * squashing.  Vars cannot be safely jumbled.
+			 */
+			newa->list_start = has_rvars ? -1 : a->rexpr_list_start;
+			newa->list_end = has_rvars ? -1 : a->rexpr_list_end;
 
 			result = (Node *) make_scalar_array_op(pstate,
 												   a->name,

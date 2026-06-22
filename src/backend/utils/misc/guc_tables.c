@@ -83,6 +83,7 @@
 #include "storage/bufmgr.h"
 #include "storage/bufpage.h"
 #include "storage/copydir.h"
+#include "storage/fd.h"
 #include "storage/io_worker.h"
 #include "storage/large_object.h"
 #include "storage/pg_shmem.h"
@@ -507,6 +508,14 @@ static const struct config_enum_entry file_copy_method_options[] = {
 	{NULL, 0, false}
 };
 
+static const struct config_enum_entry file_extend_method_options[] = {
+#ifdef HAVE_POSIX_FALLOCATE
+	{"posix_fallocate", FILE_EXTEND_METHOD_POSIX_FALLOCATE, false},
+#endif
+	{"write_zeros", FILE_EXTEND_METHOD_WRITE_ZEROS, false},
+	{NULL, 0, false}
+};
+
 /*
  * Options for enum values stored in other modules
  */
@@ -545,10 +554,10 @@ bool		row_security;
 bool		check_function_bodies = true;
 
 /*
- * This GUC exists solely for backward compatibility, check its definition for
- * details.
+ * These GUCs exist solely for backward compatibility.
  */
 static bool default_with_oids = false;
+static bool standard_conforming_strings = true;
 
 bool		current_role_is_superuser;
 

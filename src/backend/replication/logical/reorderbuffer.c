@@ -2824,7 +2824,7 @@ ReorderBufferReplay(ReorderBufferTXN *txn,
 					ReorderBuffer *rb, TransactionId xid,
 					XLogRecPtr commit_lsn, XLogRecPtr end_lsn,
 					TimestampTz commit_time,
-					RepOriginId origin_id, XLogRecPtr origin_lsn)
+					ReplOriginId origin_id, XLogRecPtr origin_lsn)
 {
 	Snapshot	snapshot_now;
 	CommandId	command_id = FirstCommandId;
@@ -2884,7 +2884,7 @@ void
 ReorderBufferCommit(ReorderBuffer *rb, TransactionId xid,
 					XLogRecPtr commit_lsn, XLogRecPtr end_lsn,
 					TimestampTz commit_time,
-					RepOriginId origin_id, XLogRecPtr origin_lsn)
+					ReplOriginId origin_id, XLogRecPtr origin_lsn)
 {
 	ReorderBufferTXN *txn;
 
@@ -2907,7 +2907,7 @@ bool
 ReorderBufferRememberPrepareInfo(ReorderBuffer *rb, TransactionId xid,
 								 XLogRecPtr prepare_lsn, XLogRecPtr end_lsn,
 								 TimestampTz prepare_time,
-								 RepOriginId origin_id, XLogRecPtr origin_lsn)
+								 ReplOriginId origin_id, XLogRecPtr origin_lsn)
 {
 	ReorderBufferTXN *txn;
 
@@ -3001,7 +3001,7 @@ void
 ReorderBufferFinishPrepared(ReorderBuffer *rb, TransactionId xid,
 							XLogRecPtr commit_lsn, XLogRecPtr end_lsn,
 							XLogRecPtr two_phase_at,
-							TimestampTz commit_time, RepOriginId origin_id,
+							TimestampTz commit_time, ReplOriginId origin_id,
 							XLogRecPtr origin_lsn, char *gid, bool is_commit)
 {
 	ReorderBufferTXN *txn;
@@ -5361,7 +5361,7 @@ DisplayMapping(HTAB *tuplecid_data)
  * transaction c) applied in LSN order.
  */
 static void
-ApplyLogicalMappingFile(HTAB *tuplecid_data, Oid relid, const char *fname)
+ApplyLogicalMappingFile(HTAB *tuplecid_data, const char *fname)
 {
 	char		path[MAXPGPATH];
 	int			fd;
@@ -5544,7 +5544,7 @@ UpdateLogicalMappings(HTAB *tuplecid_data, Oid relid, Snapshot snapshot)
 
 		elog(DEBUG1, "applying mapping: \"%s\" in %u", f->fname,
 			 snapshot->subxip[0]);
-		ApplyLogicalMappingFile(tuplecid_data, relid, f->fname);
+		ApplyLogicalMappingFile(tuplecid_data, f->fname);
 		pfree(f);
 	}
 }

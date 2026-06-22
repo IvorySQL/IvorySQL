@@ -15,8 +15,6 @@
  */
 #include "postgres.h"
 
-#include <math.h>
-
 #include "access/stratnum.h"
 #include "access/sysattr.h"
 #include "access/transam.h"
@@ -2234,8 +2232,8 @@ check_index_only(RelOptInfo *rel, IndexOptInfo *index)
 	ListCell   *lc;
 	int			i;
 
-	/* Index-only scans must be enabled */
-	if (!enable_indexonlyscan)
+	/* If we're not allowed to consider index-only scans, give up now */
+	if ((rel->pgs_mask & PGS_CONSIDER_INDEXONLY) == 0)
 		return false;
 
 	/*

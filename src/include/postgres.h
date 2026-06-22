@@ -533,15 +533,29 @@ Float8GetDatum(float8 X)
  */
 
 #define Int64GetDatumFast(X) \
-	(AssertVariableIsOfTypeMacro(X, int64), Int64GetDatum(X))
+	(StaticAssertVariableIsOfTypeMacro(X, int64), Int64GetDatum(X))
 #define Float8GetDatumFast(X) \
-	(AssertVariableIsOfTypeMacro(X, double), Float8GetDatum(X))
+	(StaticAssertVariableIsOfTypeMacro(X, double), Float8GetDatum(X))
 
 
 /* ----------------------------------------------------------------
  *				Section 2:	miscellaneous
  * ----------------------------------------------------------------
  */
+
+/*
+ * pg_ternary
+ *		Boolean value with an extra "unset" value
+ *
+ * This enum can be used for values that want to distinguish between true,
+ * false, and unset.
+*/
+typedef enum pg_ternary
+{
+	PG_TERNARY_FALSE = 0,
+	PG_TERNARY_TRUE = 1,
+	PG_TERNARY_UNSET = -1
+} pg_ternary;
 
 /*
  * NON_EXEC_STATIC: It's sometimes useful to define a variable or function

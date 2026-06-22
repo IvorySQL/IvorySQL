@@ -422,6 +422,7 @@ CatalogIdMapEntry
 CatalogIndexState
 ChangeVarNodes_callback
 ChangeVarNodes_context
+ChannelName
 CheckPoint
 CheckPointStmt
 CheckpointStatsData
@@ -1111,6 +1112,8 @@ GistSplitUnion
 GistSplitVector
 GistTsVectorOptions
 GistVacState
+GlobalChannelEntry
+GlobalChannelKey
 GlobalTransaction
 GlobalTransactionData
 GlobalVisHorizonKind
@@ -1580,6 +1583,7 @@ ListParsedLex
 ListenAction
 ListenActionKind
 ListenStmt
+ListenerEntry
 LoInfo
 LoadStmt
 LocalBufferLookupEnt
@@ -2176,6 +2180,8 @@ PatternInfoArray
 Pattern_Prefix_Status
 Pattern_Type
 PendingFsyncEntry
+PendingListenAction
+PendingListenEntry
 PendingRelDelete
 PendingRelSync
 PendingUnlinkEntry
@@ -2569,8 +2575,9 @@ ReorderBufferTupleCidEnt
 ReorderBufferTupleCidKey
 ReorderBufferUpdateProgressTxnCB
 ReorderTuple
-RepOriginId
 ReparameterizeForeignPathByChild_function
+ReplOriginId
+ReplOriginXactState
 ReplaceVarsFromTargetList_context
 ReplaceVarsNoMatchOption
 ReplaceWrapOption
@@ -2797,6 +2804,7 @@ SharedTypmodTableEntry
 Sharedsort
 ShellTypeInfo
 ShippableCacheEntry
+ShmemAllocatorData
 ShippableCacheKey
 ShmemIndexEnt
 ShutdownForeignScan_function
@@ -2891,6 +2899,7 @@ SplitPoint
 SplitTextOutputData
 SplitVar
 StackElem
+StakindFlags
 StartDataPtrType
 StartLOPtrType
 StartLOsPtrType
@@ -3946,6 +3955,7 @@ pg_sha512_ctx
 pg_snapshot
 pg_special_case
 pg_stack_base_t
+pg_ternary
 pg_time_t
 pg_time_usec_t
 pg_tz
@@ -4073,6 +4083,7 @@ relopt_kind
 relopt_parse_elt
 relopt_real
 relopt_string
+relopt_ternary
 relopt_type
 relopt_value
 relopts_validator

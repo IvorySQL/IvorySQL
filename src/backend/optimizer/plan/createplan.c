@@ -16,8 +16,6 @@
  */
 #include "postgres.h"
 
-#include <math.h>
-
 #include "access/sysattr.h"
 #include "catalog/pg_class.h"
 #include "foreign/fdwapi.h"
@@ -6715,7 +6713,7 @@ Plan *
 materialize_finished_plan(Plan *subplan)
 {
 	Plan	   *matplan;
-	Path		matpath;		/* dummy for result of cost_material */
+	Path		matpath;		/* dummy for cost_material */
 	Cost		initplan_cost;
 	bool		unsafe_initplans;
 
@@ -6736,8 +6734,13 @@ materialize_finished_plan(Plan *subplan)
 	subplan->startup_cost -= initplan_cost;
 	subplan->total_cost -= initplan_cost;
 
+	/* Clear fields that cost_material() will consult */
+	matpath.parallel_workers = 0;
+	matpath.parent = NULL;
+
 	/* Set cost data */
 	cost_material(&matpath,
+				  enable_material,
 				  subplan->disabled_nodes,
 				  subplan->startup_cost,
 				  subplan->total_cost,
