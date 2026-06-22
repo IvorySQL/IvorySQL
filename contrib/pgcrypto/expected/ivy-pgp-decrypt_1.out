@@ -404,7 +404,7 @@ exception when others then
 end
 $$;
 ERROR:  invalid byte sequence for encoding [REDACTED]: 0x00
-CONTEXT:  PL/pgSQL function inline_code_block line 12 at RAISE
+CONTEXT:  PL/iSQL function inline_code_block line 12 at RAISE
 -- Decryption with a certain incorrect key yields an apparent BZip2-compressed
 -- plaintext.  Ciphertext source: iterative pgp_sym_encrypt('secret', 'key')
 -- until the random prefix gave rise to that property.

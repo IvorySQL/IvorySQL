@@ -1,6 +1,7 @@
 --
 -- pgp decrypt tests
 --
+
 --  Checking ciphers
 select pgp_sym_decrypt(dearmor('
 -----BEGIN PGP MESSAGE-----
@@ -11,7 +12,7 @@ yA6Ce1QTMK3KdL2MPfamsTUSAML8huCJMwYQFfE=
 =JcP+
 -----END PGP MESSAGE-----
 '), 'foobar');
-ERROR:  Wrong key or corrupt data
+
 select pgp_sym_decrypt(dearmor('
 -----BEGIN PGP MESSAGE-----
 Comment: dat1.aes.sha1.mdc.s2k3.z0
@@ -21,10 +22,6 @@ UTAsG35A1vYs02VARKzGz6xI2UHwFUirP+brPBg3Ee7muOx8pA==
 =XtrP
 -----END PGP MESSAGE-----
 '), 'foobar');
- pgp_sym_decrypt 
------------------
- Secret message.
-(1 row)
 
 select pgp_sym_decrypt(dearmor('
 -----BEGIN PGP MESSAGE-----
@@ -35,10 +32,6 @@ jA0ECAMCI7YQpWqp3D1g0kQBCjB7GlX7+SQeXNleXeXQ78ZAPNliquGDq9u378zI
 =rCZt
 -----END PGP MESSAGE-----
 '), 'foobar');
- pgp_sym_decrypt 
------------------
- Secret message.
-(1 row)
 
 select pgp_sym_decrypt(dearmor('
 -----BEGIN PGP MESSAGE-----
@@ -49,10 +42,6 @@ lceMfQdbAg6oTFyJpk/wH18GzRDphCofg0X8uLgkAKMrpcmgog==
 =fB6S
 -----END PGP MESSAGE-----
 '), 'foobar');
- pgp_sym_decrypt 
------------------
- Secret message.
-(1 row)
 
 -- Checking MDC modes
 select pgp_sym_decrypt(dearmor('
@@ -64,10 +53,6 @@ u9YkgfJfsuRJmgQ9tmo=
 =60ui
 -----END PGP MESSAGE-----
 '), 'foobar');
- pgp_sym_decrypt 
------------------
- Secret message.
-(1 row)
 
 select pgp_sym_decrypt(dearmor('
 -----BEGIN PGP MESSAGE-----
@@ -78,10 +63,6 @@ jA0EBwMCEeP3idNjQ1Bg0kQBf4G0wX+2QNzLh2YNwYkQgQkfYhn/hLXjV4nK9nsE
 =moGf
 -----END PGP MESSAGE-----
 '), 'foobar');
- pgp_sym_decrypt 
------------------
- Secret message.
-(1 row)
 
 -- Checking hashes
 select pgp_sym_decrypt(dearmor('
@@ -93,10 +74,6 @@ KyRrHf7zEBuZiZ2AG34jNVMOLToj1jJUg5zTSdecUzQVCykWTA==
 =NyLk
 -----END PGP MESSAGE-----
 '), 'foobar');
- pgp_sym_decrypt 
------------------
- Secret message.
-(1 row)
 
 select pgp_sym_decrypt(dearmor('
 -----BEGIN PGP MESSAGE-----
@@ -107,10 +84,6 @@ jA0EBwMCApbdlrURoWJg0kQBzHM/E0o7djY82bNuspjxjAcPFrrtp0uvDdMQ4z2m
 =FxbQ
 -----END PGP MESSAGE-----
 '), 'foobar');
- pgp_sym_decrypt 
------------------
- Secret message.
-(1 row)
 
 -- Checking S2K modes
 select pgp_sym_decrypt(dearmor('
@@ -122,10 +95,6 @@ Ah9GXjGS1TVALzTImJbz1uHUZRfhJlFbc5yGQw==
 =YvkV
 -----END PGP MESSAGE-----
 '), 'foobar');
- pgp_sym_decrypt 
------------------
- Secret message.
-(1 row)
 
 select pgp_sym_decrypt(dearmor('
 -----BEGIN PGP MESSAGE-----
@@ -136,10 +105,6 @@ jAwEBwEC/QTByBLI3b/SRAHPxKzI6SZBo5lAEOD+EsvKQWO4adL9tDY+++Iqy1xK
 =dbXm
 -----END PGP MESSAGE-----
 '), 'foobar');
- pgp_sym_decrypt 
------------------
- Secret message.
-(1 row)
 
 select pgp_sym_decrypt(dearmor('
 -----BEGIN PGP MESSAGE-----
@@ -150,10 +115,6 @@ z+9ZaA/XdSx5ZiFnMym8P6r8uY9rLjjNptvvRHlxIReF+p9MNg==
 =VJKg
 -----END PGP MESSAGE-----
 '), 'foobar');
- pgp_sym_decrypt 
------------------
- Secret message.
-(1 row)
 
 select pgp_sym_decrypt(dearmor('
 -----BEGIN PGP MESSAGE-----
@@ -164,10 +125,6 @@ Cr3i2M7TgVZ0M4jp4QL0adG1lpN5iK7aQeOwMw==
 =cg+i
 -----END PGP MESSAGE-----
 '), 'foobar');
- pgp_sym_decrypt 
------------------
- Secret message.
-(1 row)
 
 select pgp_sym_decrypt(dearmor('
 -----BEGIN PGP MESSAGE-----
@@ -178,10 +135,6 @@ jAwECAECruOfyNDFiTnSRAEVoGXm4A9UZKkWljdzjEO/iaE7mIraltIpQMkiqCh9
 =aHmC
 -----END PGP MESSAGE-----
 '), 'foobar');
- pgp_sym_decrypt 
------------------
- Secret message.
-(1 row)
 
 select pgp_sym_decrypt(dearmor('
 -----BEGIN PGP MESSAGE-----
@@ -192,10 +145,6 @@ q6eF6859ZVnli3BFSDSk3a4e/pXhglxmDYCfjAXkozKNYLo6yw==
 =K0LS
 -----END PGP MESSAGE-----
 '), 'foobar');
- pgp_sym_decrypt 
------------------
- Secret message.
-(1 row)
 
 select pgp_sym_decrypt(dearmor('
 -----BEGIN PGP MESSAGE-----
@@ -206,10 +155,6 @@ rQr3WbdKdY9ufjOE5+mXI+EFkSPrF9rL9NCq6w==
 =RGts
 -----END PGP MESSAGE-----
 '), 'foobar');
- pgp_sym_decrypt 
------------------
- Secret message.
-(1 row)
 
 select pgp_sym_decrypt(dearmor('
 -----BEGIN PGP MESSAGE-----
@@ -220,10 +165,6 @@ jAwECQECKHhrou7ZOIXSRAHWIVP+xjVQcjAVBTt+qh9SNzYe248xFTwozkwev3mO
 =SUrU
 -----END PGP MESSAGE-----
 '), 'foobar');
- pgp_sym_decrypt 
------------------
- Secret message.
-(1 row)
 
 select pgp_sym_decrypt(dearmor('
 -----BEGIN PGP MESSAGE-----
@@ -234,10 +175,6 @@ jA0ECQMCjc8lwZu8Fz1g0kQBkEzjImi21liep5jj+3dAJ2aZFfUkohi8b3n9z+7+
 =XZrG
 -----END PGP MESSAGE-----
 '), 'foobar');
- pgp_sym_decrypt 
------------------
- Secret message.
-(1 row)
 
 -- Checking longer passwords
 select pgp_sym_decrypt(dearmor('
@@ -249,10 +186,6 @@ tTGup1mMz6Cfh1uDRErUuXpx9A0gdMu7zX0o5XjrL7WGDAZdSw==
 =XKKG
 -----END PGP MESSAGE-----
 '), '0123456789abcdefghij');
- pgp_sym_decrypt 
------------------
- Secret message.
-(1 row)
 
 select pgp_sym_decrypt(dearmor('
 -----BEGIN PGP MESSAGE-----
@@ -263,10 +196,6 @@ CMxFKadf144H/vpoV9GA0f22keQgCl0EsTE4V4lweVOPTKCMJg==
 =gWDh
 -----END PGP MESSAGE-----
 '), '0123456789abcdefghij2jk4h5g2j54khg23h54g2kh54g2khj54g23hj54');
- pgp_sym_decrypt 
------------------
- Secret message.
-(1 row)
 
 select pgp_sym_decrypt(dearmor('
 -----BEGIN PGP MESSAGE-----
@@ -277,10 +206,6 @@ FwsDabdQUz5O7bgNSnxfmyw1OifGF+W2bIn/8W+0rDf8u3+O+Q==
 =OxOF
 -----END PGP MESSAGE-----
 '), 'x');
- pgp_sym_decrypt 
------------------
- Secret message.
-(1 row)
 
 -- Checking various data
 select digest(pgp_sym_decrypt(dearmor('
@@ -292,10 +217,6 @@ Xtx3kDqnhUq9Z1fS3qPbi5iNP2A9NxOBxPWz2JzxhydANlgbxg==
 =W/ik
 -----END PGP MESSAGE-----
 '), '0123456789abcdefghij'), 'sha1');
-                   digest                   
---------------------------------------------
- \x0225e3ede6f2587b076d021a189ff60aad67e066
-(1 row)
 
 select digest(pgp_sym_decrypt(dearmor('
 -----BEGIN PGP MESSAGE-----
@@ -306,10 +227,6 @@ SaV9L04ky1qECNDx3XjnoKLC+H7IOQ==
 =Fxen
 -----END PGP MESSAGE-----
 '), '0123456789abcdefghij'), 'sha1');
-                   digest                   
---------------------------------------------
- \xda39a3ee5e6b4b0d3255bfef95601890afd80709
-(1 row)
 
 select digest(pgp_sym_decrypt_bytea(dearmor('
 -----BEGIN PGP MESSAGE-----
@@ -321,10 +238,6 @@ gFnkUKIE0PSaYFp+Yi1VlRfUtRQ/X/LYNGa7tWZS+4VQajz2Xtz4vUeAEiYFYPXk
 =ivrD
 -----END PGP MESSAGE-----
 '), '0123456789abcdefghij'), 'sha1');
-                   digest                   
---------------------------------------------
- \x5e5c135efc0dd00633efc6dfd6e731ea408a5b4c
-(1 row)
 
 -- Checking CRLF
 select digest(pgp_sym_decrypt(dearmor('
@@ -336,10 +249,6 @@ a3nsOzKTXUfS9VyaXo8IrncM6n7fdaXpwba/3tNsAhJG4lDv1k4g9v8Ix2dfv6Rs
 =mBP9
 -----END PGP MESSAGE-----
 '), 'key', 'convert-crlf=0'), 'sha1');
-                   digest                   
---------------------------------------------
- \x9353062be7720f1446d30b9e75573a4833886784
-(1 row)
 
 select digest(pgp_sym_decrypt(dearmor('
 -----BEGIN PGP MESSAGE-----
@@ -350,19 +259,13 @@ a3nsOzKTXUfS9VyaXo8IrncM6n7fdaXpwba/3tNsAhJG4lDv1k4g9v8Ix2dfv6Rs
 =mBP9
 -----END PGP MESSAGE-----
 '), 'key', 'convert-crlf=1'), 'sha1');
-                   digest                   
---------------------------------------------
- \x7efefcab38467f7484d6fa43dc86cf5281bd78e2
-(1 row)
 
 -- check BUG #11905, problem with messages 6 less than a power of 2.
 select pgp_sym_decrypt(pgp_sym_encrypt(repeat('x',65530),'1'),'1') = repeat('x',65530);
- ?column? 
-----------
- t
-(1 row)
+
 
 -- Negative tests
+
 -- Decryption with a certain incorrect key yields an apparent Literal Data
 -- packet reporting its content to be binary data.  Ciphertext source:
 -- iterative pgp_sym_encrypt('secret', 'key') until the random prefix gave
@@ -375,14 +278,10 @@ VsxxqLSPzNLAeIspJk5G
 =mSd/
 -----END PGP MESSAGE-----
 '), 'wrong-key', 'debug=1');
-NOTICE:  dbg: prefix_init: corrupt prefix
-NOTICE:  dbg: parse_literal_data: data type=b
-NOTICE:  dbg: mdcbuf_finish: bad MDC pkt hdr
-ERROR:  Wrong key or corrupt data
+
 -- Routine text/binary mismatch.
 select pgp_sym_decrypt(pgp_sym_encrypt_bytea('P', 'key'), 'key', 'debug=1');
-NOTICE:  dbg: parse_literal_data: data type=b
-ERROR:  Not text data
+
 -- NUL byte in text decrypt.  Ciphertext source:
 -- printf 'a\x00\xc' | gpg --homedir /nonexistent \
 --      --personal-compress-preferences uncompressed --textmode \
@@ -403,8 +302,7 @@ exception when others then
     regexp_replace(sqlerrm, 'encoding "[^"]*"', 'encoding [REDACTED]');
 end
 $$;
-ERROR:  invalid byte sequence for encoding [REDACTED]: 0x00
-CONTEXT:  PL/pgSQL function inline_code_block line 12 at RAISE
+
 -- Decryption with a certain incorrect key yields an apparent BZip2-compressed
 -- plaintext.  Ciphertext source: iterative pgp_sym_encrypt('secret', 'key')
 -- until the random prefix gave rise to that property.
@@ -416,10 +314,7 @@ GXsd65oYJZp3Khz0qfyn
 =Nmpq
 -----END PGP MESSAGE-----
 '), 'wrong-key', 'debug=1');
-NOTICE:  dbg: prefix_init: corrupt prefix
-NOTICE:  dbg: parse_compressed_data: bzip2 unsupported
-NOTICE:  dbg: mdcbuf_finish: bad MDC pkt hdr
-ERROR:  Wrong key or corrupt data
+
 -- Routine use of BZip2 compression.  Ciphertext source:
 -- echo x | gpg --homedir /nonexistent --personal-compress-preferences bzip2 \
 --      --personal-cipher-preferences aes --no-emit-version --batch \
@@ -433,5 +328,3 @@ UCAAw2JRIISttRHMfDpDuZJpvYo=
 =AZ9M
 -----END PGP MESSAGE-----
 '), 'key', 'debug=1');
-NOTICE:  dbg: parse_compressed_data: bzip2 unsupported
-ERROR:  Unsupported compression algorithm
