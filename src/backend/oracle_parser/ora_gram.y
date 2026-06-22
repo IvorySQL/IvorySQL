@@ -484,7 +484,7 @@ static void determineLanguage(List *options);
 %type <ival>	 OptNoLog
 %type <oncommit> OnCommitOption
 
-%type <ival>	for_locking_strength
+%type <ival>	for_locking_strength opt_for_locking_strength
 %type <node>	for_locking_item
 %type <list>	for_locking_clause opt_for_locking_clause for_locking_items
 %type <list>	locked_rels_list
@@ -13856,12 +13856,24 @@ insert_column_item:
 		;
 
 opt_on_conflict:
+			ON CONFLICT opt_conf_expr DO SELECT opt_for_locking_strength where_clause
+				{
+					$$ = makeNode(OnConflictClause);
+					$$->action = ONCONFLICT_SELECT;
+					$$->infer = $3;
+					$$->targetList = NIL;
+					$$->lockStrength = $6;
+					$$->whereClause = $7;
+					$$->location = @1;
+				}
+			|
 			ON CONFLICT opt_conf_expr DO UPDATE SET set_clause_list	where_clause
 				{
 					$$ = makeNode(OnConflictClause);
 					$$->action = ONCONFLICT_UPDATE;
 					$$->infer = $3;
 					$$->targetList = $7;
+					$$->lockStrength = LCS_NONE;
 					$$->whereClause = $8;
 					$$->location = @1;
 				}
@@ -13872,6 +13884,7 @@ opt_on_conflict:
 					$$->action = ONCONFLICT_NOTHING;
 					$$->infer = $3;
 					$$->targetList = NIL;
+					$$->lockStrength = LCS_NONE;
 					$$->whereClause = NULL;
 					$$->location = @1;
 				}
@@ -15109,6 +15122,11 @@ for_locking_strength:
 			| FOR NO KEY UPDATE					{ $$ = LCS_FORNOKEYUPDATE; }
 			| FOR SHARE							{ $$ = LCS_FORSHARE; }
 			| FOR KEY SHARE						{ $$ = LCS_FORKEYSHARE; }
+		;
+
+opt_for_locking_strength:
+			for_locking_strength				{ $$ = $1; }
+			| /* EMPTY */						{ $$ = LCS_NONE; }
 		;
 
 locked_rels_list:
