@@ -110,9 +110,9 @@ typedef struct ExtensionControlFile
 	List	   *no_relocate;	/* names of prerequisite extensions that
 								 * should not be relocated */
 	char	   *sql_dialect;	/* IvorySQL: SQL dialect the extension is
-								 * written in: "pg", "oracle" or "database"
-								 * (follow current session); NULL when not
-								 * declared, same as "database" */
+								 * written in: "pg" or "oracle".  NULL when not
+								 * declared, meaning the script follows the
+								 * current session's dialect (legacy behavior) */
 } ExtensionControlFile;
 
 /*
@@ -742,11 +742,10 @@ parse_extension_control_file(ExtensionControlFile *control,
 		{
 			/* IvorySQL: SQL dialect of the extension's script files */
 			if (strcmp(item->value, "pg") != 0 &&
-				strcmp(item->value, "oracle") != 0 &&
-				strcmp(item->value, "database") != 0)
+				strcmp(item->value, "oracle") != 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("parameter \"%s\" must be \"pg\", \"oracle\" or \"database\"",
+						 errmsg("parameter \"%s\" must be \"pg\" or \"oracle\"",
 								item->name)));
 			control->sql_dialect = pstrdup(item->value);
 		}
@@ -1240,12 +1239,11 @@ execute_extension_script(Oid extensionOid, ExtensionControlFile *control,
 	 * done before setting up search_path below, because switching
 	 * ivorysql.compatible_mode recomputes the search path as a side effect.
 	 * GUC_ACTION_SAVE makes this revert automatically at AtEOXact_GUC.
-	 * Extensions declaring nothing (or "database") follow the current
-	 * session's dialect, i.e. legacy behavior.
+	 * Extensions declaring nothing follow the current session's dialect,
+	 * i.e. legacy behavior.
 	 */
 	if (DB_ORACLE == database_mode &&
-		control->sql_dialect != NULL &&
-		strcmp(control->sql_dialect, "database") != 0)
+		control->sql_dialect != NULL)
 		(void) set_config_option("ivorysql.compatible_mode",
 								 control->sql_dialect,
 								 PGC_USERSET, PGC_S_SESSION,
@@ -1288,8 +1286,7 @@ execute_extension_script(Oid extensionOid, ExtensionControlFile *control,
 	 * dialect (see functioncmds.c).  NULL means no dialect is being forced.
 	 */
 	if (DB_ORACLE == database_mode &&
-		control->sql_dialect != NULL &&
-		strcmp(control->sql_dialect, "database") != 0)
+		control->sql_dialect != NULL)
 		extension_script_dialect = control->sql_dialect;
 	PG_TRY();
 	{
