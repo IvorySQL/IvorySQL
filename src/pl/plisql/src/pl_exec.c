@@ -9651,7 +9651,7 @@ assign_simple_var(PLiSQL_execstate * estate, PLiSQL_var * var,
 																	  get_eval_mcontext(estate)));
 		else
 			oldcxt = MemoryContextSwitchTo(get_eval_mcontext(estate));
-		detoasted = PointerGetDatum(detoast_external_attr((struct varlena *) DatumGetPointer(newvalue)));
+		detoasted = PointerGetDatum(detoast_external_attr((varlena *) DatumGetPointer(newvalue)));
 		MemoryContextSwitchTo(oldcxt);
 		/* Now's a good time to not leak the input value if it's freeable */
 		if (freeable)
