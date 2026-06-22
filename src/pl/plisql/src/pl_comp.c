@@ -3473,6 +3473,7 @@ plisql_add_initdatums(int **varnos)
 					case PLISQL_DTYPE_VAR:
 					case PLISQL_DTYPE_REC:
 						(*varnos)[n++] = plisql_Datums[i]->dno;
+						break;
 
 					default:
 						break;
