@@ -3541,7 +3541,7 @@ exec_stmt_return(PLiSQL_execstate * estate, PLiSQL_stmt_return * stmt)
 				/* fulfill promise if needed, then handle like regular var */
 				plisql_fulfill_promise(estate, (PLiSQL_var *) retvar);
 
-				/* FALL THRU */
+				pg_fallthrough;
 
 			case PLISQL_DTYPE_VAR:
 				{
@@ -3699,7 +3699,7 @@ exec_stmt_return_next(PLiSQL_execstate * estate,
 				/* fulfill promise if needed, then handle like regular var */
 				plisql_fulfill_promise(estate, (PLiSQL_var *) retvar);
 
-				/* FALL THRU */
+				pg_fallthrough;
 
 			case PLISQL_DTYPE_VAR:
 				{
@@ -5734,7 +5734,7 @@ exec_eval_datum(PLiSQL_execstate * estate,
 			/* fulfill promise if needed, then handle like regular var */
 			plisql_fulfill_promise(estate, (PLiSQL_var *) datum);
 
-			/* FALL THRU */
+			pg_fallthrough;
 
 		case PLISQL_DTYPE_VAR:
 			{

@@ -18,6 +18,7 @@
 #include "pgstat.h"
 #include "utils/builtins.h"
 #include "utils/pgstat_internal.h"
+#include "utils/timestamp.h"
 
 PG_MODULE_MAGIC_EXT(
 					.name = "test_custom_fixed_stats",
