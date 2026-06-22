@@ -192,6 +192,10 @@
    don't. */
 #undef HAVE_DECL_STRTOULL
 
+/* Define to 1 if you have the declaration of `timingsafe_bcmp', and to 0 if
+   you don't. */
+#undef HAVE_DECL_TIMINGSAFE_BCMP
+
 /* Define to 1 if you have the `dlopen' function. */
 #undef HAVE_DLOPEN
 
@@ -678,6 +682,9 @@
 /* Define to 1 if you have the <termios.h> header file. */
 #undef HAVE_TERMIOS_H
 
+/* Define to 1 if you have the `timingsafe_bcmp' function. */
+#undef HAVE_TIMINGSAFE_BCMP
+
 /* Define to 1 if your compiler understands `typeof' or something similar. */
 #undef HAVE_TYPEOF
 
@@ -826,6 +833,14 @@
 /* Define to the version of this package. */
 #undef PACKAGE_VERSION
 
+/* Define to best C++ printf format archetype, usually gnu_printf if
+   available. */
+#undef PG_CXX_PRINTF_ATTRIBUTE
+
+/* Define to best C printf format archetype, usually gnu_printf if available.
+   */
+#undef PG_C_PRINTF_ATTRIBUTE
+
 /* Define to the name of a signed 128-bit integer type. */
 #undef PG_INT128_TYPE
 
@@ -844,9 +859,6 @@
 
 /* PostgreSQL minor version number */
 #undef PG_MINORVERSION_NUM
-
-/* Define to best printf format archetype, usually gnu_printf if available. */
-#undef PG_PRINTF_ATTRIBUTE
 
 /* Define to 1 to use <stdbool.h> to define type bool. */
 #undef PG_USE_STDBOOL
