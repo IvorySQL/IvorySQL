@@ -1368,7 +1368,7 @@
 
 { name => 'ivorysql.compatible_mode', type => 'enum', context => 'PGC_USERSET', group => 'CLIENT_CONN_STATEMENT',
   short_desc => 'Set default sql parser compatibility mode',
-  flags => 'GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE',
+  flags => 'GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE | GUC_DISALLOW_IN_DB_ROLE_SETTING',
   variable => 'compatible_db',
   boot_val => 'PG_PARSER',
   options => 'db_parser_options',
