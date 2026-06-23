@@ -2109,7 +2109,7 @@ load_gb18030_2022(FILE *cmdfd)
 static void
 load_ivorysql_ora(FILE *cmdfd)
 {
-	/* switch to oracle parser and load extenison */
+	/* switch to oracle parser and load extension */
 	PG_CMD_PUTS("set ivorysql.compatible_mode to oracle;\n\n");
 	PG_CMD_PUTS("CREATE EXTENSION ivorysql_ora;\n\n");
 	PG_CMD_PUTS("set ivorysql.compatible_mode to pg;\n\n");
@@ -2683,10 +2683,12 @@ usage(const char *progname)
 	printf(_("  -W, --pwprompt            prompt for a password for the new superuser\n"));
 	printf(_("  -X, --waldir=WALDIR       location for the write-ahead log directory\n"));
 	printf(_("      --wal-segsize=SIZE    size of WAL segments, in megabytes\n"));
-	printf(_("  -m, --dbmode=MODE 	    set database mode, default is oracle\n"));
+	printf(_("  -m, --dbmode=MODE 	    set database mode, oracle/pg , default is oracle\n"));
 	printf(_("  -C, --case-conversion-mode=MODE\n"
-			 "                            set case conversion mode, options can be\n"
-			 "                            normal/interchange/lowercase, default is interchange\n"));
+                 "                            set case conversion mode,\n"
+                 "                            normal/interchange/lowercase,\n"
+                 "                            default is interchange\n"));
+
 	printf(_("\nLess commonly used options:\n"));
 	printf(_("  -c, --set NAME=VALUE      override default setting for server parameter\n"));
 	printf(_("  -d, --debug               generate lots of debugging output\n"));
@@ -3479,7 +3481,7 @@ main(int argc, char *argv[])
 				else
 				{
 					pg_log_error("Unknown case conversion mode: %s", switchmode);
-					pg_log_error_hint("Valid case conversion mode values are normal, interchange, or lowercase.");
+					pg_log_error_hint("Valid case conversion mode values are normal, interchange, lowercase.");
 					exit(1);
 				}
 				break;
@@ -3508,7 +3510,9 @@ main(int argc, char *argv[])
 					database_mode = DB_ORACLE;
 				else
 				{
-					fprintf(stderr, _("unrecognized database mode.\n"));
+					pg_log_error("Unknown database mode: %s", dbmode);
+                                        pg_log_error_hint("Valid database mode values are pg, oracle.");
+
 					exit(1);
 				}
 			break;
