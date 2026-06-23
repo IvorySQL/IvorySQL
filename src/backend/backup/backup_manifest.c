@@ -253,7 +253,7 @@ AddWALInfoToBackupManifest(backup_manifest_info *manifest, XLogRecPtr startptr,
 		if (first_wal_range && endtli != entry->tli)
 			ereport(ERROR,
 					errmsg("expected end timeline %u but found timeline %u",
-						   starttli, entry->tli));
+						   endtli, entry->tli));
 
 		/*
 		 * If this timeline entry matches with the timeline on which the
@@ -388,7 +388,7 @@ AppendStringToManifest(backup_manifest_info *manifest, const char *s)
 	Assert(manifest != NULL);
 	if (manifest->still_checksumming)
 	{
-		if (pg_cryptohash_update(manifest->manifest_ctx, (uint8 *) s, len) < 0)
+		if (pg_cryptohash_update(manifest->manifest_ctx, (const uint8 *) s, len) < 0)
 			elog(ERROR, "failed to update checksum of backup manifest: %s",
 				 pg_cryptohash_error(manifest->manifest_ctx));
 	}

@@ -1451,7 +1451,19 @@ pqGetNegotiateProtocolVersion3(PGconn *conn)
 	if (pqGetInt(&num, 4, conn) != 0)
 		goto eof;
 
-	/* Check the protocol version */
+	/*
+	 * Check the protocol version.
+	 *
+	 * PG_PROTOCOL_GREASE is intentionally unsupported and reserved. It's
+	 * higher than any real version, so check for that first, to get the most
+	 * specific error message. Then check the upper and lower bounds.
+	 */
+	if (their_version == PG_PROTOCOL_GREASE)
+	{
+		libpq_append_conn_error(conn, "received invalid protocol negotiation message: server requested \"grease\" protocol version 3.9999");
+		goto failure;
+	}
+
 	if (their_version > conn->pversion)
 	{
 		libpq_append_conn_error(conn, "received invalid protocol negotiation message: server requested downgrade to a higher-numbered version");
@@ -1465,7 +1477,7 @@ pqGetNegotiateProtocolVersion3(PGconn *conn)
 	}
 
 	/* 3.1 never existed, we went straight from 3.0 to 3.2 */
-	if (their_version == PG_PROTOCOL(3, 1))
+	if (their_version == PG_PROTOCOL_RESERVED_31)
 	{
 		libpq_append_conn_error(conn, "received invalid protocol negotiation message: server requested downgrade to non-existent 3.1 protocol version");
 		goto failure;

@@ -12,13 +12,6 @@
  */
 #include "c.h"
 
-#ifdef HAVE__GET_CPUID
-#include <cpuid.h>
-#endif
-#ifdef HAVE__CPUID
-#include <intrin.h>
-#endif
-
 #include "port/pg_bitutils.h"
 
 
@@ -104,257 +97,11 @@ const uint8 pg_number_of_ones[256] = {
 };
 
 /*
- * If we are building the Neon versions, we don't need the "slow" fallbacks.
- */
-#ifndef POPCNT_AARCH64
-static inline int pg_popcount32_slow(uint32 word);
-static inline int pg_popcount64_slow(uint64 word);
-static uint64 pg_popcount_slow(const char *buf, int bytes);
-static uint64 pg_popcount_masked_slow(const char *buf, int bytes, bits8 mask);
-#endif
-
-#ifdef TRY_POPCNT_X86_64
-static bool pg_popcount_available(void);
-static int	pg_popcount32_choose(uint32 word);
-static int	pg_popcount64_choose(uint64 word);
-static uint64 pg_popcount_choose(const char *buf, int bytes);
-static uint64 pg_popcount_masked_choose(const char *buf, int bytes, bits8 mask);
-static inline int pg_popcount32_fast(uint32 word);
-static inline int pg_popcount64_fast(uint64 word);
-static uint64 pg_popcount_fast(const char *buf, int bytes);
-static uint64 pg_popcount_masked_fast(const char *buf, int bytes, bits8 mask);
-
-int			(*pg_popcount32) (uint32 word) = pg_popcount32_choose;
-int			(*pg_popcount64) (uint64 word) = pg_popcount64_choose;
-uint64		(*pg_popcount_optimized) (const char *buf, int bytes) = pg_popcount_choose;
-uint64		(*pg_popcount_masked_optimized) (const char *buf, int bytes, bits8 mask) = pg_popcount_masked_choose;
-#endif							/* TRY_POPCNT_X86_64 */
-
-#ifdef TRY_POPCNT_X86_64
-
-/*
- * Return true if CPUID indicates that the POPCNT instruction is available.
- */
-static bool
-pg_popcount_available(void)
-{
-	unsigned int exx[4] = {0, 0, 0, 0};
-
-#if defined(HAVE__GET_CPUID)
-	__get_cpuid(1, &exx[0], &exx[1], &exx[2], &exx[3]);
-#elif defined(HAVE__CPUID)
-	__cpuid(exx, 1);
-#else
-#error cpuid instruction not available
-#endif
-
-	return (exx[2] & (1 << 23)) != 0;	/* POPCNT */
-}
-
-/*
- * These functions get called on the first call to pg_popcount32 etc.
- * They detect whether we can use the asm implementations, and replace
- * the function pointers so that subsequent calls are routed directly to
- * the chosen implementation.
- */
-static inline void
-choose_popcount_functions(void)
-{
-	if (pg_popcount_available())
-	{
-		pg_popcount32 = pg_popcount32_fast;
-		pg_popcount64 = pg_popcount64_fast;
-		pg_popcount_optimized = pg_popcount_fast;
-		pg_popcount_masked_optimized = pg_popcount_masked_fast;
-	}
-	else
-	{
-		pg_popcount32 = pg_popcount32_slow;
-		pg_popcount64 = pg_popcount64_slow;
-		pg_popcount_optimized = pg_popcount_slow;
-		pg_popcount_masked_optimized = pg_popcount_masked_slow;
-	}
-
-#ifdef USE_AVX512_POPCNT_WITH_RUNTIME_CHECK
-	if (pg_popcount_avx512_available())
-	{
-		pg_popcount_optimized = pg_popcount_avx512;
-		pg_popcount_masked_optimized = pg_popcount_masked_avx512;
-	}
-#endif
-}
-
-static int
-pg_popcount32_choose(uint32 word)
-{
-	choose_popcount_functions();
-	return pg_popcount32(word);
-}
-
-static int
-pg_popcount64_choose(uint64 word)
-{
-	choose_popcount_functions();
-	return pg_popcount64(word);
-}
-
-static uint64
-pg_popcount_choose(const char *buf, int bytes)
-{
-	choose_popcount_functions();
-	return pg_popcount_optimized(buf, bytes);
-}
-
-static uint64
-pg_popcount_masked_choose(const char *buf, int bytes, bits8 mask)
-{
-	choose_popcount_functions();
-	return pg_popcount_masked(buf, bytes, mask);
-}
-
-/*
- * pg_popcount32_fast
+ * pg_popcount32_portable
  *		Return the number of 1 bits set in word
  */
-static inline int
-pg_popcount32_fast(uint32 word)
-{
-#ifdef _MSC_VER
-	return __popcnt(word);
-#else
-	uint32		res;
-
-__asm__ __volatile__(" popcntl %1,%0\n":"=q"(res):"rm"(word):"cc");
-	return (int) res;
-#endif
-}
-
-/*
- * pg_popcount64_fast
- *		Return the number of 1 bits set in word
- */
-static inline int
-pg_popcount64_fast(uint64 word)
-{
-#ifdef _MSC_VER
-	return __popcnt64(word);
-#else
-	uint64		res;
-
-__asm__ __volatile__(" popcntq %1,%0\n":"=q"(res):"rm"(word):"cc");
-	return (int) res;
-#endif
-}
-
-/*
- * pg_popcount_fast
- *		Returns the number of 1-bits in buf
- */
-static uint64
-pg_popcount_fast(const char *buf, int bytes)
-{
-	uint64		popcnt = 0;
-
-#if SIZEOF_VOID_P >= 8
-	/* Process in 64-bit chunks if the buffer is aligned. */
-	if (buf == (const char *) TYPEALIGN(8, buf))
-	{
-		const uint64 *words = (const uint64 *) buf;
-
-		while (bytes >= 8)
-		{
-			popcnt += pg_popcount64_fast(*words++);
-			bytes -= 8;
-		}
-
-		buf = (const char *) words;
-	}
-#else
-	/* Process in 32-bit chunks if the buffer is aligned. */
-	if (buf == (const char *) TYPEALIGN(4, buf))
-	{
-		const uint32 *words = (const uint32 *) buf;
-
-		while (bytes >= 4)
-		{
-			popcnt += pg_popcount32_fast(*words++);
-			bytes -= 4;
-		}
-
-		buf = (const char *) words;
-	}
-#endif
-
-	/* Process any remaining bytes */
-	while (bytes--)
-		popcnt += pg_number_of_ones[(unsigned char) *buf++];
-
-	return popcnt;
-}
-
-/*
- * pg_popcount_masked_fast
- *		Returns the number of 1-bits in buf after applying the mask to each byte
- */
-static uint64
-pg_popcount_masked_fast(const char *buf, int bytes, bits8 mask)
-{
-	uint64		popcnt = 0;
-
-#if SIZEOF_VOID_P >= 8
-	/* Process in 64-bit chunks if the buffer is aligned */
-	uint64		maskv = ~UINT64CONST(0) / 0xFF * mask;
-
-	if (buf == (const char *) TYPEALIGN(8, buf))
-	{
-		const uint64 *words = (const uint64 *) buf;
-
-		while (bytes >= 8)
-		{
-			popcnt += pg_popcount64_fast(*words++ & maskv);
-			bytes -= 8;
-		}
-
-		buf = (const char *) words;
-	}
-#else
-	/* Process in 32-bit chunks if the buffer is aligned. */
-	uint32		maskv = ~((uint32) 0) / 0xFF * mask;
-
-	if (buf == (const char *) TYPEALIGN(4, buf))
-	{
-		const uint32 *words = (const uint32 *) buf;
-
-		while (bytes >= 4)
-		{
-			popcnt += pg_popcount32_fast(*words++ & maskv);
-			bytes -= 4;
-		}
-
-		buf = (const char *) words;
-	}
-#endif
-
-	/* Process any remaining bytes */
-	while (bytes--)
-		popcnt += pg_number_of_ones[(unsigned char) *buf++ & mask];
-
-	return popcnt;
-}
-
-#endif							/* TRY_POPCNT_X86_64 */
-
-/*
- * If we are building the Neon versions, we don't need the "slow" fallbacks.
- */
-#ifndef POPCNT_AARCH64
-
-/*
- * pg_popcount32_slow
- *		Return the number of 1 bits set in word
- */
-static inline int
-pg_popcount32_slow(uint32 word)
+int
+pg_popcount32_portable(uint32 word)
 {
 #ifdef HAVE__BUILTIN_POPCOUNT
 	return __builtin_popcount(word);
@@ -372,11 +119,11 @@ pg_popcount32_slow(uint32 word)
 }
 
 /*
- * pg_popcount64_slow
+ * pg_popcount64_portable
  *		Return the number of 1 bits set in word
  */
-static inline int
-pg_popcount64_slow(uint64 word)
+int
+pg_popcount64_portable(uint64 word)
 {
 #ifdef HAVE__BUILTIN_POPCOUNT
 #if SIZEOF_LONG == 8
@@ -400,11 +147,11 @@ pg_popcount64_slow(uint64 word)
 }
 
 /*
- * pg_popcount_slow
+ * pg_popcount_portable
  *		Returns the number of 1-bits in buf
  */
-static uint64
-pg_popcount_slow(const char *buf, int bytes)
+uint64
+pg_popcount_portable(const char *buf, int bytes)
 {
 	uint64		popcnt = 0;
 
@@ -416,7 +163,7 @@ pg_popcount_slow(const char *buf, int bytes)
 
 		while (bytes >= 8)
 		{
-			popcnt += pg_popcount64_slow(*words++);
+			popcnt += pg_popcount64_portable(*words++);
 			bytes -= 8;
 		}
 
@@ -430,7 +177,7 @@ pg_popcount_slow(const char *buf, int bytes)
 
 		while (bytes >= 4)
 		{
-			popcnt += pg_popcount32_slow(*words++);
+			popcnt += pg_popcount32_portable(*words++);
 			bytes -= 4;
 		}
 
@@ -446,11 +193,11 @@ pg_popcount_slow(const char *buf, int bytes)
 }
 
 /*
- * pg_popcount_masked_slow
+ * pg_popcount_masked_portable
  *		Returns the number of 1-bits in buf after applying the mask to each byte
  */
-static uint64
-pg_popcount_masked_slow(const char *buf, int bytes, bits8 mask)
+uint64
+pg_popcount_masked_portable(const char *buf, int bytes, bits8 mask)
 {
 	uint64		popcnt = 0;
 
@@ -464,7 +211,7 @@ pg_popcount_masked_slow(const char *buf, int bytes, bits8 mask)
 
 		while (bytes >= 8)
 		{
-			popcnt += pg_popcount64_slow(*words++ & maskv);
+			popcnt += pg_popcount64_portable(*words++ & maskv);
 			bytes -= 8;
 		}
 
@@ -480,7 +227,7 @@ pg_popcount_masked_slow(const char *buf, int bytes, bits8 mask)
 
 		while (bytes >= 4)
 		{
-			popcnt += pg_popcount32_slow(*words++ & maskv);
+			popcnt += pg_popcount32_portable(*words++ & maskv);
 			bytes -= 4;
 		}
 
@@ -495,26 +242,24 @@ pg_popcount_masked_slow(const char *buf, int bytes, bits8 mask)
 	return popcnt;
 }
 
-#endif							/* ! POPCNT_AARCH64 */
-
-#if !defined(TRY_POPCNT_X86_64) && !defined(POPCNT_AARCH64)
+#if !defined(HAVE_X86_64_POPCNTQ) && !defined(USE_NEON)
 
 /*
  * When special CPU instructions are not available, there's no point in using
- * function pointers to vary the implementation between the fast and slow
- * method.  We instead just make these actual external functions.  The compiler
- * should be able to inline the slow versions here.
+ * function pointers to vary the implementation.  We instead just make these
+ * actual external functions.  The compiler should be able to inline the
+ * portable versions here.
  */
 int
 pg_popcount32(uint32 word)
 {
-	return pg_popcount32_slow(word);
+	return pg_popcount32_portable(word);
 }
 
 int
 pg_popcount64(uint64 word)
 {
-	return pg_popcount64_slow(word);
+	return pg_popcount64_portable(word);
 }
 
 /*
@@ -524,7 +269,7 @@ pg_popcount64(uint64 word)
 uint64
 pg_popcount_optimized(const char *buf, int bytes)
 {
-	return pg_popcount_slow(buf, bytes);
+	return pg_popcount_portable(buf, bytes);
 }
 
 /*
@@ -534,7 +279,7 @@ pg_popcount_optimized(const char *buf, int bytes)
 uint64
 pg_popcount_masked_optimized(const char *buf, int bytes, bits8 mask)
 {
-	return pg_popcount_masked_slow(buf, bytes, mask);
+	return pg_popcount_masked_portable(buf, bytes, mask);
 }
 
-#endif							/* ! TRY_POPCNT_X86_64 && ! POPCNT_AARCH64 */
+#endif							/* ! HAVE_X86_64_POPCNTQ && ! USE_NEON */

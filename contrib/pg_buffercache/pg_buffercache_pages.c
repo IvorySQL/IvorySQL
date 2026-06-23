@@ -199,7 +199,7 @@ pg_buffercache_pages(PG_FUNCTION_ARGS)
 		for (i = 0; i < NBuffers; i++)
 		{
 			BufferDesc *bufHdr;
-			uint32		buf_state;
+			uint64		buf_state;
 
 			CHECK_FOR_INTERRUPTS();
 
@@ -551,8 +551,18 @@ pg_buffercache_os_pages_internal(FunctionCallInfo fcinfo, bool include_numa)
 
 		if (fctx->include_numa)
 		{
-			values[2] = Int32GetDatum(fctx->record[i].numa_node);
-			nulls[2] = false;
+			/* status is valid node number */
+			if (fctx->record[i].numa_node >= 0)
+			{
+				values[2] = Int32GetDatum(fctx->record[i].numa_node);
+				nulls[2] = false;
+			}
+			else
+			{
+				/* some kind of error (e.g. pages moved to swap) */
+				values[2] = (Datum) 0;
+				nulls[2] = true;
+			}
 		}
 		else
 		{
@@ -615,7 +625,7 @@ pg_buffercache_summary(PG_FUNCTION_ARGS)
 	for (int i = 0; i < NBuffers; i++)
 	{
 		BufferDesc *bufHdr;
-		uint32		buf_state;
+		uint64		buf_state;
 
 		CHECK_FOR_INTERRUPTS();
 
@@ -626,7 +636,7 @@ pg_buffercache_summary(PG_FUNCTION_ARGS)
 		 * noticeably increase the cost of the function.
 		 */
 		bufHdr = GetBufferDescriptor(i);
-		buf_state = pg_atomic_read_u32(&bufHdr->state);
+		buf_state = pg_atomic_read_u64(&bufHdr->state);
 
 		if (buf_state & BM_VALID)
 		{
@@ -676,7 +686,7 @@ pg_buffercache_usage_counts(PG_FUNCTION_ARGS)
 	for (int i = 0; i < NBuffers; i++)
 	{
 		BufferDesc *bufHdr = GetBufferDescriptor(i);
-		uint32		buf_state = pg_atomic_read_u32(&bufHdr->state);
+		uint64		buf_state = pg_atomic_read_u64(&bufHdr->state);
 		int			usage_count;
 
 		CHECK_FOR_INTERRUPTS();

@@ -18,6 +18,7 @@
 #include "access/clog.h"
 #include "access/xlogdefs.h"
 #include "lib/ilist.h"
+#include "miscadmin.h"
 #include "storage/latch.h"
 #include "storage/lock.h"
 #include "storage/pg_sema.h"
@@ -167,7 +168,7 @@ typedef enum
  * but its myProcLocks[] lists are valid.
  *
  * We allow many fields of this struct to be accessed without locks, such as
- * delayChkptFlags and isRegularBackend. However, keep in mind that writing
+ * delayChkptFlags and backendType. However, keep in mind that writing
  * mirrored ones (see below) requires holding ProcArrayLock or XidGenLock in
  * at least shared mode, so that pgxactoff does not change concurrently.
  *
@@ -234,16 +235,15 @@ struct PGPROC
 	Oid			tempNamespaceId;	/* OID of temp schema this backend is
 									 * using */
 
-	bool		isRegularBackend;	/* true if it's a regular backend. */
+	BackendType backendType;	/* what kind of process is this? */
 
 	/*
-	 * While in hot standby mode, shows that a conflict signal has been sent
-	 * for the current transaction. Set/cleared while holding ProcArrayLock,
-	 * though not required. Accessed without lock, if needed.
+	 * Info about LWLock the process is currently waiting for, if any.
+	 *
+	 * This is currently used both for lwlocks and buffer content locks, which
+	 * is acceptable, although not pretty, because a backend can't wait for
+	 * both types of locks at the same time.
 	 */
-	bool		recoveryConflictPending;
-
-	/* Info about LWLock the process is currently waiting for, if any. */
 	uint8		lwWaiting;		/* see LWLockWaitState */
 	uint8		lwWaitMode;		/* lwlock mode being waited for */
 	proclist_node lwWaitLink;	/* position in LW lock wait list */

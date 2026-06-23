@@ -594,6 +594,33 @@ if not cc.compiles(c11_test, name: 'C11')
 endif
 
 
+# Do we need an option to enable C++11?
+cxx11_test = '''
+#if !defined __cplusplus || __cplusplus < 201103L
+# error "Compiler does not advertise C++11 conformance"
+#endif
+'''
+
+if have_cxx and not cxx.compiles(cxx11_test, name: 'C++11')
+  cxx11_ok = false
+  if cxx.get_id() == 'msvc'
+    cxx11_test_args = ['/std:c++14']  # oldest version supported
+  else
+    cxx11_test_args = ['-std=gnu++11', '-std=c++11']
+  endif
+  foreach arg : cxx11_test_args
+    if cxx.compiles(cxx11_test, name: 'C++11 with @0@'.format(arg), args: [arg])
+      cxx11_ok = true
+      cxxflags += arg
+      break
+    endif
+  endforeach
+  if not cxx11_ok
+    error('C++ compiler does not support C++11')
+  endif
+endif
+
+
 postgres_inc = [include_directories(postgres_inc_d)]
 test_lib_d = postgres_lib_d
 test_c_args = cppflags + cflags
@@ -1350,17 +1377,22 @@ if not pyopt.disabled()
     # this internally:
     # <https://github.com/mesonbuild/meson/issues/13824>.
     if host_system == 'windows' and cc.get_id() == 'msvc'
-      python3_libdir = python3_inst.get_variable('prefix') / 'libs'
+      python3_prefix = python3_inst.get_variable('prefix')
+      python3_libdir = python3_prefix / 'libs'
+      python3_incdir = python3_prefix / 'include'
       python3_lib = cc.find_library('python3', dirs: python3_libdir, required: pyopt)
       python3_dep = declare_dependency(
-        include_directories: include_directories(python3_inst.get_variable('prefix') / 'include'),
+        include_directories: include_directories(python3_incdir),
         dependencies: python3_lib,
       )
+      # Explicit args needed for older Meson compatibility
+      python3_header_check_args = ['/I' + python3_incdir]
     else
       python3_dep = python3_inst.dependency(embed: true, required: pyopt)
+      python3_header_check_args = []
     endif
     # Remove this check after we depend on Meson >= 1.1.0
-    if not cc.check_header('Python.h', dependencies: python3_dep, required: pyopt, include_directories: postgres_inc)
+    if not cc.check_header('Python.h', args: python3_header_check_args, dependencies: python3_dep, required: pyopt, include_directories: postgres_inc)
       python3_dep = not_found_dep
     endif
   endif
@@ -2617,7 +2649,9 @@ endif
 
 if host_cpu == 'x86_64'
 
-  if cc.compiles('''
+  if cc.get_id() == 'msvc'
+    cdata.set('HAVE_X86_64_POPCNTQ', 1)
+  elif cc.compiles('''
       void main(void)
       {
           long long x = 1; long long r;
@@ -2885,7 +2919,7 @@ gnugetopt_dep = cc.find_library('gnugetopt', required: false)
 #   (i.e., allow '-' as a flag character), so use our version on those platforms
 # - We want to use system's getopt_long() only if the system provides struct
 #   option
-always_replace_getopt = host_system in ['windows', 'cygwin', 'openbsd', 'solaris']
+always_replace_getopt = host_system in ['windows', 'cygwin', 'openbsd', 'sunos']
 always_replace_getopt_long = host_system in ['windows', 'cygwin'] or not cdata.has('HAVE_STRUCT_OPTION')
 
 # Required on BSDs

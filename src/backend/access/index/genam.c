@@ -437,6 +437,14 @@ systable_beginscan(Relation heapRelation,
 		sysscan->snapshot = NULL;
 	}
 
+	/*
+	 * If CheckXidAlive is set then set a flag to indicate that system table
+	 * scan is in-progress.  See detailed comments in xact.c where these
+	 * variables are declared.
+	 */
+	if (TransactionIdIsValid(CheckXidAlive))
+		bsysscan = true;
+
 	if (irel)
 	{
 		int			i;
@@ -484,14 +492,6 @@ systable_beginscan(Relation heapRelation,
 											  true, false);
 		sysscan->iscan = NULL;
 	}
-
-	/*
-	 * If CheckXidAlive is set then set a flag to indicate that system table
-	 * scan is in-progress.  See detailed comments in xact.c where these
-	 * variables are declared.
-	 */
-	if (TransactionIdIsValid(CheckXidAlive))
-		bsysscan = true;
 
 	return sysscan;
 }
@@ -724,13 +724,6 @@ systable_beginscan_ordered(Relation heapRelation,
 			elog(ERROR, "column is not in index");
 	}
 
-	sysscan->iscan = index_beginscan(heapRelation, indexRelation,
-									 snapshot, NULL, nkeys, 0);
-	index_rescan(sysscan->iscan, idxkey, nkeys, NULL, 0);
-	sysscan->scan = NULL;
-
-	pfree(idxkey);
-
 	/*
 	 * If CheckXidAlive is set then set a flag to indicate that system table
 	 * scan is in-progress.  See detailed comments in xact.c where these
@@ -738,6 +731,13 @@ systable_beginscan_ordered(Relation heapRelation,
 	 */
 	if (TransactionIdIsValid(CheckXidAlive))
 		bsysscan = true;
+
+	sysscan->iscan = index_beginscan(heapRelation, indexRelation,
+									 snapshot, NULL, nkeys, 0);
+	index_rescan(sysscan->iscan, idxkey, nkeys, NULL, 0);
+	sysscan->scan = NULL;
+
+	pfree(idxkey);
 
 	return sysscan;
 }

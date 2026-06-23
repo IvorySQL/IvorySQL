@@ -671,7 +671,6 @@ static XLogRecPtr CreateOverwriteContrecordRecord(XLogRecPtr aborted_lsn,
 												  TimeLineID newTLI);
 static void CheckPointGuts(XLogRecPtr checkPointRedo, int flags);
 static void KeepLogSeg(XLogRecPtr recptr, XLogSegNo *logSegNo);
-static XLogRecPtr XLogGetReplicationSlotMinimumLSN(void);
 
 static void AdvanceXLInsertBuffer(XLogRecPtr upto, TimeLineID tli,
 								  bool opportunistic);
@@ -2063,7 +2062,7 @@ AdvanceXLInsertBuffer(XLogRecPtr upto, TimeLineID tli, bool opportunistic)
 					/* Have to write it ourselves */
 					TRACE_POSTGRESQL_WAL_BUFFER_WRITE_DIRTY_START();
 					WriteRqst.Write = OldPageRqstPtr;
-					WriteRqst.Flush = 0;
+					WriteRqst.Flush = InvalidXLogRecPtr;
 					XLogWrite(WriteRqst, tli, false);
 					LWLockRelease(WALWriteLock);
 					pgWalUsage.wal_buffers_full++;
@@ -2681,7 +2680,7 @@ XLogSetReplicationSlotMinimumLSN(XLogRecPtr lsn)
  * Return the oldest LSN we must retain to satisfy the needs of some
  * replication slot.
  */
-static XLogRecPtr
+XLogRecPtr
 XLogGetReplicationSlotMinimumLSN(void)
 {
 	XLogRecPtr	retval;
@@ -3080,7 +3079,7 @@ XLogBackgroundFlush(void)
 	else
 	{
 		/* no flushing, this time round */
-		WriteRqst.Flush = 0;
+		WriteRqst.Flush = InvalidXLogRecPtr;
 	}
 
 #ifdef WAL_DEBUG
@@ -5215,7 +5214,7 @@ BootStrapXLOG(uint32 data_checksum_version)
 	/* Insert the initial checkpoint record */
 	recptr = ((char *) page + SizeOfXLogLongPHD);
 	record = (XLogRecord *) recptr;
-	record->xl_prev = 0;
+	record->xl_prev = InvalidXLogRecPtr;
 	record->xl_xid = InvalidTransactionId;
 	record->xl_tot_len = SizeOfXLogRecord + SizeOfXLogRecordDataHeaderShort + sizeof(checkPoint);
 	record->xl_info = XLOG_CHECKPOINT_SHUTDOWN;
@@ -8035,6 +8034,9 @@ CreateRestartPoint(int flags)
 	replayPtr = GetXLogReplayRecPtr(&replayTLI);
 	endptr = (receivePtr < replayPtr) ? replayPtr : receivePtr;
 	KeepLogSeg(endptr, &_logSegNo);
+
+	INJECTION_POINT("restartpoint-before-slot-invalidation", NULL);
+
 	if (InvalidateObsoleteReplicationSlots(RS_INVAL_WAL_REMOVED | RS_INVAL_IDLE_TIMEOUT,
 										   _logSegNo, InvalidOid,
 										   InvalidTransactionId))

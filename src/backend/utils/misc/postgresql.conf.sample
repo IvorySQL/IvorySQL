@@ -179,6 +179,10 @@
                                         # in kilobytes, or -1 for no limit
 
 #file_copy_method = copy                # copy, clone (if supported by OS)
+#file_extend_method = posix_fallocate   # the default is the first option supported
+                                        # by the operating system:
+                                        #   posix_fallocate (most Unix-like systems)
+                                        #   write_zeros
 
 #max_notify_queue_pages = 1048576       # limits the number of SLRU pages allocated
                                         # for NOTIFY / LISTEN queue
@@ -847,10 +851,8 @@
 
 #array_nulls = on
 #backslash_quote = safe_encoding        # on, off, or safe_encoding
-#escape_string_warning = on
 #lo_compat_privileges = off
 #quote_all_identifiers = off
-#standard_conforming_strings = on
 #synchronize_seqscans = on
 
 # - Other Platforms and Clients -

@@ -14,13 +14,13 @@
 #
 # The files generated from this one are:
 #
-#   src/backend/utils/activity/wait_event_types.h
+#   wait_event_types.h
 #      typedef enum definitions for wait events.
 #
-#   src/backend/utils/activity/pgstat_wait_event.c
+#   pgstat_wait_event.c
 #      C functions to get the wait event name based on the enum.
 #
-#   src/backend/utils/activity/wait_event_types.sgml
+#   wait_event_types.sgml
 #      SGML tables of wait events for inclusion in the documentation.
 #
 # When adding a new wait event, make sure it is placed in the appropriate
@@ -213,6 +213,8 @@ CONTROL_FILE_WRITE_UPDATE	"Waiting for a write to update the <filename>pg_contro
 COPY_FILE_COPY	"Waiting for a file copy operation."
 COPY_FILE_READ	"Waiting for a read during a file copy operation."
 COPY_FILE_WRITE	"Waiting for a write during a file copy operation."
+COPY_FROM_READ	"Waiting to read data from a pipe, a file or a program during COPY FROM."
+COPY_TO_WRITE	"Waiting to write data to a pipe, a file or a program during COPY TO."
 DATA_FILE_EXTEND	"Waiting for a relation data file to be extended."
 DATA_FILE_FLUSH	"Waiting for a relation data file to reach durable storage."
 DATA_FILE_IMMEDIATE_SYNC	"Waiting for an immediate synchronization of a relation data file to durable storage."
@@ -287,6 +289,9 @@ ABI_compatibility:
 Section: ClassName - WaitEventBuffer
 
 BUFFER_CLEANUP	"Waiting to acquire an exclusive pin on a buffer. Buffer pin waits can be protracted if another process holds an open cursor that last read data from the buffer in question."
+BUFFER_SHARED	"Waiting to acquire a shared lock on a buffer."
+BUFFER_SHARE_EXCLUSIVE	"Waiting to acquire a share exclusive lock on a buffer."
+BUFFER_EXCLUSIVE	"Waiting to acquire a exclusive lock on a buffer."
 
 ABI_compatibility:
 
@@ -372,9 +377,9 @@ SubtransBuffer	"Waiting for I/O on a sub-transaction SLRU buffer."
 MultiXactOffsetBuffer	"Waiting for I/O on a multixact offset SLRU buffer."
 MultiXactMemberBuffer	"Waiting for I/O on a multixact member SLRU buffer."
 NotifyBuffer	"Waiting for I/O on a <command>NOTIFY</command> message SLRU buffer."
+NotifyChannelHash	"Waiting to access the <command>NOTIFY</command> channel hash table."
 SerialBuffer	"Waiting for I/O on a serializable transaction conflict SLRU buffer."
 WALInsert	"Waiting to insert WAL data into a memory buffer."
-BufferContent	"Waiting to access a data page in memory."
 ReplicationOriginState	"Waiting to read or update the progress of one replication origin."
 ReplicationSlotIO	"Waiting for I/O on a replication slot."
 LockFastPath	"Waiting to read or update a process' fast-path lock information."

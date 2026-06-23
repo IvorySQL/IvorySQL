@@ -323,9 +323,7 @@ ProcessSyncingTablesForSync(XLogRecPtr current_lsn)
 		 * This is needed to allow the origin to be dropped.
 		 */
 		replorigin_session_reset();
-		replorigin_session_origin = InvalidRepOriginId;
-		replorigin_session_origin_lsn = InvalidXLogRecPtr;
-		replorigin_session_origin_timestamp = 0;
+		replorigin_xact_clear(true);
 
 		/*
 		 * Drop the tablesync's origin tracking if exists.
@@ -1226,7 +1224,7 @@ LogicalRepSyncTableStart(XLogRecPtr *origin_startpos)
 	AclResult	aclresult;
 	WalRcvExecResult *res;
 	char		originname[NAMEDATALEN];
-	RepOriginId originid;
+	ReplOriginId originid;
 	UserContext ucxt;
 	bool		must_use_password;
 	bool		run_as_owner;
@@ -1320,7 +1318,7 @@ LogicalRepSyncTableStart(XLogRecPtr *origin_startpos)
 		 */
 		originid = replorigin_by_name(originname, false);
 		replorigin_session_setup(originid, 0);
-		replorigin_session_origin = originid;
+		replorigin_xact_state.origin = originid;
 		*origin_startpos = replorigin_session_get_progress(false);
 
 		CommitTransactionCommand();
@@ -1407,7 +1405,7 @@ LogicalRepSyncTableStart(XLogRecPtr *origin_startpos)
 	UnlockRelationOid(ReplicationOriginRelationId, RowExclusiveLock);
 
 	replorigin_session_setup(originid, 0);
-	replorigin_session_origin = originid;
+	replorigin_xact_state.origin = originid;
 
 	/*
 	 * If the user did not opt to run as the owner of the subscription

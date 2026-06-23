@@ -608,7 +608,7 @@ static bool FindDeletedTupleInLocalRel(Relation localrel,
 									   Oid localidxoid,
 									   TupleTableSlot *remoteslot,
 									   TransactionId *delete_xid,
-									   RepOriginId *delete_origin,
+									   ReplOriginId *delete_origin,
 									   TimestampTz *delete_time);
 static void apply_handle_tuple_routing(ApplyExecutionData *edata,
 									   TupleTableSlot *remoteslot,
@@ -627,7 +627,7 @@ static inline void reset_apply_error_context_info(void);
 static TransApplyAction get_transaction_apply_action(TransactionId xid,
 													 ParallelApplyWorkerInfo **winfo);
 
-static void replorigin_reset(int code, Datum arg);
+static void on_exit_clear_xact_state(int code, Datum arg);
 
 /*
  * Form the origin name for the subscription.
@@ -1318,8 +1318,8 @@ apply_handle_prepare_internal(LogicalRepPreparedTxnData *prepare_data)
 	 * Update origin state so we can restart streaming from correct position
 	 * in case of crash.
 	 */
-	replorigin_session_origin_lsn = prepare_data->end_lsn;
-	replorigin_session_origin_timestamp = prepare_data->prepare_time;
+	replorigin_xact_state.origin_lsn = prepare_data->end_lsn;
+	replorigin_xact_state.origin_timestamp = prepare_data->prepare_time;
 
 	PrepareTransactionBlock(gid);
 }
@@ -1421,8 +1421,8 @@ apply_handle_commit_prepared(StringInfo s)
 	 * Update origin state so we can restart streaming from correct position
 	 * in case of crash.
 	 */
-	replorigin_session_origin_lsn = prepare_data.end_lsn;
-	replorigin_session_origin_timestamp = prepare_data.commit_time;
+	replorigin_xact_state.origin_lsn = prepare_data.end_lsn;
+	replorigin_xact_state.origin_timestamp = prepare_data.commit_time;
 
 	FinishPreparedTransaction(gid, true);
 	end_replication_step();
@@ -1479,8 +1479,8 @@ apply_handle_rollback_prepared(StringInfo s)
 		 * Update origin state so we can restart streaming from correct
 		 * position in case of crash.
 		 */
-		replorigin_session_origin_lsn = rollback_data.rollback_end_lsn;
-		replorigin_session_origin_timestamp = rollback_data.rollback_time;
+		replorigin_xact_state.origin_lsn = rollback_data.rollback_end_lsn;
+		replorigin_xact_state.origin_timestamp = rollback_data.rollback_time;
 
 		/* There is no transaction when ABORT/ROLLBACK PREPARED is called */
 		begin_replication_step();
@@ -2526,8 +2526,8 @@ apply_handle_commit_internal(LogicalRepCommitData *commit_data)
 		 * Update origin state so we can restart streaming from correct
 		 * position in case of crash.
 		 */
-		replorigin_session_origin_lsn = commit_data->end_lsn;
-		replorigin_session_origin_timestamp = commit_data->committime;
+		replorigin_xact_state.origin_lsn = commit_data->end_lsn;
+		replorigin_xact_state.origin_timestamp = commit_data->committime;
 
 		CommitTransactionCommand();
 
@@ -2940,7 +2940,7 @@ apply_handle_update_internal(ApplyExecutionData *edata,
 		 */
 		if (GetTupleTransactionInfo(localslot, &conflicttuple.xmin,
 									&conflicttuple.origin, &conflicttuple.ts) &&
-			conflicttuple.origin != replorigin_session_origin)
+			conflicttuple.origin != replorigin_xact_state.origin)
 		{
 			TupleTableSlot *newslot;
 
@@ -2982,7 +2982,7 @@ apply_handle_update_internal(ApplyExecutionData *edata,
 									   &conflicttuple.xmin,
 									   &conflicttuple.origin,
 									   &conflicttuple.ts) &&
-			conflicttuple.origin != replorigin_session_origin)
+			conflicttuple.origin != replorigin_xact_state.origin)
 			type = CT_UPDATE_DELETED;
 		else
 			type = CT_UPDATE_MISSING;
@@ -3135,7 +3135,7 @@ apply_handle_delete_internal(ApplyExecutionData *edata,
 		 */
 		if (GetTupleTransactionInfo(localslot, &conflicttuple.xmin,
 									&conflicttuple.origin, &conflicttuple.ts) &&
-			conflicttuple.origin != replorigin_session_origin)
+			conflicttuple.origin != replorigin_xact_state.origin)
 		{
 			conflicttuple.slot = localslot;
 			ReportApplyConflict(estate, relinfo, LOG, CT_DELETE_ORIGIN_DIFFERS,
@@ -3268,7 +3268,7 @@ IsIndexUsableForFindingDeletedTuple(Oid localindexoid,
 static bool
 FindDeletedTupleInLocalRel(Relation localrel, Oid localidxoid,
 						   TupleTableSlot *remoteslot,
-						   TransactionId *delete_xid, RepOriginId *delete_origin,
+						   TransactionId *delete_xid, ReplOriginId *delete_origin,
 						   TimestampTz *delete_time)
 {
 	TransactionId oldestxmin;
@@ -3477,7 +3477,7 @@ apply_handle_tuple_routing(ApplyExecutionData *edata,
 												   &conflicttuple.xmin,
 												   &conflicttuple.origin,
 												   &conflicttuple.ts) &&
-						conflicttuple.origin != replorigin_session_origin)
+						conflicttuple.origin != replorigin_xact_state.origin)
 						type = CT_UPDATE_DELETED;
 					else
 						type = CT_UPDATE_MISSING;
@@ -3503,7 +3503,7 @@ apply_handle_tuple_routing(ApplyExecutionData *edata,
 				if (GetTupleTransactionInfo(localslot, &conflicttuple.xmin,
 											&conflicttuple.origin,
 											&conflicttuple.ts) &&
-					conflicttuple.origin != replorigin_session_origin)
+					conflicttuple.origin != replorigin_xact_state.origin)
 				{
 					TupleTableSlot *newslot;
 
@@ -5594,7 +5594,7 @@ start_apply(XLogRecPtr origin_startpos)
 		 * transaction loss as that transaction won't be sent again by the
 		 * server.
 		 */
-		replorigin_reset(0, (Datum) 0);
+		replorigin_xact_clear(true);
 
 		if (MySubscription->disableonerr)
 			DisableSubscriptionAndExit();
@@ -5627,7 +5627,7 @@ run_apply_worker(void)
 	XLogRecPtr	origin_startpos = InvalidXLogRecPtr;
 	char	   *slotname = NULL;
 	WalRcvStreamOptions options;
-	RepOriginId originid;
+	ReplOriginId originid;
 	TimeLineID	startpointTLI;
 	char	   *err;
 	bool		must_use_password;
@@ -5652,7 +5652,7 @@ run_apply_worker(void)
 	if (!OidIsValid(originid))
 		originid = replorigin_create(originname);
 	replorigin_session_setup(originid, 0);
-	replorigin_session_origin = originid;
+	replorigin_xact_state.origin = originid;
 	origin_startpos = replorigin_session_get_progress(false);
 	CommitTransactionCommand();
 
@@ -5865,18 +5865,16 @@ InitializeLogRepWorker(void)
 	 * replication workers that set up origins and apply remote transactions
 	 * are protected.
 	 */
-	before_shmem_exit(replorigin_reset, (Datum) 0);
+	before_shmem_exit(on_exit_clear_xact_state, (Datum) 0);
 }
 
 /*
- * Reset the origin state.
+ * Callback on exit to clear transaction-level replication origin state.
  */
 static void
-replorigin_reset(int code, Datum arg)
+on_exit_clear_xact_state(int code, Datum arg)
 {
-	replorigin_session_origin = InvalidRepOriginId;
-	replorigin_session_origin_lsn = InvalidXLogRecPtr;
-	replorigin_session_origin_timestamp = 0;
+	replorigin_xact_clear(true);
 }
 
 /*

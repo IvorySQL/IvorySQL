@@ -82,7 +82,7 @@ override LDFLAGS := $(LDFLAGS) $(LDFLAGS_EX) $(LDFLAGS_EX_BE)
 
 ##########################################################################
 
-all: submake-libpgport submake-catalog-headers submake-utils-headers postgres $(POSTGRES_IMP)
+all: submake-libpgport submake-catalog-headers submake-utils-headers postgres
 
 ifneq ($(PORTNAME), cygwin)
 ifneq ($(PORTNAME), win32)
@@ -137,9 +137,6 @@ parser/gram.h: parser/gram.y
 storage/lmgr/lwlocknames.h: storage/lmgr/generate-lwlocknames.pl ../include/storage/lwlocklist.h utils/activity/wait_event_names.txt
 	$(MAKE) -C storage/lmgr lwlocknames.h
 
-utils/activity/wait_event_types.h: utils/activity/generate-wait_event_types.pl utils/activity/wait_event_names.txt
-	$(MAKE) -C utils/activity wait_event_types.h pgstat_wait_event.c wait_event_funcs_data.c
-
 # run this unconditionally to avoid needing to know its dependencies here:
 submake-catalog-headers:
 	$(MAKE) -C ../include/catalog generated-headers
@@ -164,14 +161,9 @@ submake-utils-headers:
 
 .PHONY: generated-headers
 
-generated-headers: $(top_builddir)/src/include/storage/lwlocknames.h $(top_builddir)/src/include/utils/wait_event_types.h submake-catalog-headers submake-nodes-headers submake-utils-headers parser/gram.h
+generated-headers: $(top_builddir)/src/include/storage/lwlocknames.h submake-catalog-headers submake-nodes-headers submake-utils-headers parser/gram.h
 
 $(top_builddir)/src/include/storage/lwlocknames.h: storage/lmgr/lwlocknames.h
-	prereqdir=`cd '$(dir $<)' >/dev/null && pwd` && \
-	  cd '$(dir $@)' && rm -f $(notdir $@) && \
-	  $(LN_S) "$$prereqdir/$(notdir $<)" .
-
-$(top_builddir)/src/include/utils/wait_event_types.h: utils/activity/wait_event_types.h
 	prereqdir=`cd '$(dir $<)' >/dev/null && pwd` && \
 	  cd '$(dir $@)' && rm -f $(notdir $@) && \
 	  $(LN_S) "$$prereqdir/$(notdir $<)" .
@@ -220,12 +212,8 @@ install-postgres-bitcode: $(OBJS) all
 	$(call install_llvm_module,postgres,$(call expand_subsys, $(filter-out $(top_builddir)/src/timezone/objfiles.txt, $(SUBDIROBJS))))
 endif
 
-install-bin: postgres $(POSTGRES_IMP) installdirs
+install-bin: postgres installdirs
 	$(INSTALL_PROGRAM) postgres$(X) '$(DESTDIR)$(bindir)/postgres$(X)'
-ifeq ($(MAKE_EXPORTS), true)
-	$(INSTALL_DATA) $(POSTGRES_IMP) '$(DESTDIR)$(pkglibdir)/$(POSTGRES_IMP)'
-	$(INSTALL_PROGRAM) $(MKLDEXPORT) '$(DESTDIR)$(pgxsdir)/$(MKLDEXPORT_DIR)/mkldexport.sh'
-endif
 
 .PHONY: install-bin
 
@@ -241,20 +229,12 @@ ifeq ($(MAKE_DLL), true)
 	$(MKDIR_P) '$(DESTDIR)$(libdir)'
 endif
 endif
-ifeq ($(MAKE_EXPORTS), true)
-	$(MKDIR_P) '$(DESTDIR)$(pkglibdir)'
-	$(MKDIR_P) '$(DESTDIR)$(pgxsdir)/$(MKLDEXPORT_DIR)'
-endif
 
 
 ##########################################################################
 
 uninstall:
 	rm -f '$(DESTDIR)$(bindir)/postgres$(X)'
-ifeq ($(MAKE_EXPORTS), true)
-	rm -f '$(DESTDIR)$(pkglibdir)/$(POSTGRES_IMP)'
-	rm -f '$(DESTDIR)$(pgxsdir)/$(MKLDEXPORT_DIR)/mkldexport.sh'
-endif
 ifeq ($(PORTNAME), cygwin)
 ifeq ($(MAKE_DLL), true)
 	rm -f '$(DESTDIR)$(libdir)/libpostgres.a'
@@ -279,7 +259,7 @@ endif
 ##########################################################################
 
 clean:
-	rm -f $(LOCALOBJS) postgres$(X) $(POSTGRES_IMP)
+	rm -f $(LOCALOBJS) postgres$(X)
 ifeq ($(PORTNAME), cygwin)
 	rm -f postgres.dll libpostgres.a
 endif

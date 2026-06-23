@@ -3,8 +3,6 @@
 --
 
 set ivorysql.enable_emptystring_to_null to false;
--- Don't want to have to double backslashes in regexes
-set standard_conforming_strings = on;
 
 -- Test simple quantified backrefs
 select 'bbbbb' ~ '^([bc])\1*$' as t;
