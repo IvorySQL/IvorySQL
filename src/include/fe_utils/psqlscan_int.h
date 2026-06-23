@@ -223,8 +223,6 @@ typedef struct PsqlScanStateData
 	 * State to track boundaries of BEGIN ... END blocks in function
 	 * definitions, so that semicolons do not send query too early.
 	 */
-	int			identifier_count;	/* identifiers since start of statement */
-	char		identifiers[4]; /* records the first few identifiers */
 	int			begin_depth;	/* depth of begin/end pairs */
 	bool		cancel_semicolon_terminator; /* not send command when semicolon found */
 
@@ -250,6 +248,11 @@ typedef struct PsqlScanStateData
 	 * BEGIN can also be a PostgreSQL transaction statement.
 	 */
 	bool		maybe_anonymous_begin_start;	/* T if the first token is BEGIN */
+	int			init_idents_count;	/* # identifiers since start of statement */
+	char		init_idents[4]; /* records the first few identifiers */
+	int			sub_idents_count;	/* # identifiers since start of a CREATE
+									 * SCHEMA element */
+	char		sub_idents[4];	/* records the first few of those identifiers */
 
 	/*
 	 * Callback functions provided by the program making use of the lexer,

@@ -787,7 +787,7 @@ other			.
 						cur_state->start_state = YY_START;
 						cur_state->token_count = 0;
 						cur_state->token_cursor_idx = 0;
-						cur_state->identifier_count = 0;
+						cur_state->init_idents_count = 0;
 						cur_state->begin_depth = 0;
 						cur_state->ora_plsql_expect_end_symbol = END_SYMBOL_INVALID;
 						return LEXRES_SEMI;
@@ -801,8 +801,8 @@ other			.
 					/* update Symbol State */
 					if (cur_state->ora_plsql_expect_end_symbol == END_SYMBOL_SEMICOLON)
 					{
-						if (cur_state->identifiers[0] == 'w' ||
-							cur_state->identifiers[0] == 'e')
+						if (cur_state->init_idents[0] == 'w' ||
+							cur_state->init_idents[0] == 'e')
 						{
 							/*
 							 * WITH FUNCTION/PROCEDURE (or EXPLAIN WITH ...): the
@@ -826,20 +826,20 @@ other			.
 							{
 								cur_state->cancel_semicolon_terminator = false;
 								cur_state->ora_plsql_expect_end_symbol = END_SYMBOL_INVALID;
-								if (cur_state->identifiers[0] == 'e')
+								if (cur_state->init_idents[0] == 'e')
 								{
 									/* EXPLAIN WITH: preserve [0]='e' and [1]='w' */
-									cur_state->identifiers[2] = 0;
-									cur_state->identifiers[3] = 0;
-									cur_state->identifier_count = 2;
+									cur_state->init_idents[2] = 0;
+									cur_state->init_idents[3] = 0;
+									cur_state->init_idents_count = 2;
 								}
 								else
 								{
 									/* plain WITH: preserve [0]='w' */
-									cur_state->identifiers[1] = 0;
-									cur_state->identifiers[2] = 0;
-									cur_state->identifiers[3] = 0;
-									cur_state->identifier_count = 1;
+									cur_state->init_idents[1] = 0;
+									cur_state->init_idents[2] = 0;
+									cur_state->init_idents[3] = 0;
+									cur_state->init_idents_count = 1;
 								}
 							}
 							else
@@ -870,7 +870,7 @@ other			.
 						cur_state->token_cursor_idx = 0;
 						cur_state->token_count = 0;
 						cur_state->start_state = YY_START;
-						cur_state->identifier_count = 0;
+						cur_state->init_idents_count = 0;
 						cur_state->ora_plsql_expect_end_symbol = END_SYMBOL_INVALID;
 						return LEXRES_SEMI;
 					}
@@ -885,7 +885,7 @@ other			.
 					/* Force a semi-colon or colon into the query buffer */
 					ora_psqlscan_emit(cur_state, yytext + 1, 1);
 					if (yytext[1] == ';')
-						cur_state->identifier_count = 0;
+						cur_state->init_idents_count = 0;
 				}
 
 "\\"			{
@@ -1130,8 +1130,8 @@ other			.
 					 * {FUNCTION|PROCEDURE}
 					 */
 
-					if (cur_state->identifier_count == 0)
-						memset(cur_state->identifiers, 0, sizeof(cur_state->identifiers));
+					if (cur_state->init_idents_count == 0)
+						memset(cur_state->init_idents, 0, sizeof(cur_state->init_idents));
 
 					if (pg_strcasecmp(yytext, "create") == 0 ||
 						pg_strcasecmp(yytext, "explain") == 0 ||
@@ -1142,8 +1142,8 @@ other			.
 						pg_strcasecmp(yytext, "or") == 0 ||
 						pg_strcasecmp(yytext, "replace") == 0)
 					{
-						if (cur_state->identifier_count < sizeof(cur_state->identifiers))
-							cur_state->identifiers[cur_state->identifier_count] = pg_tolower((unsigned char) yytext[0]);
+						if (cur_state->init_idents_count < sizeof(cur_state->init_idents))
+							cur_state->init_idents[cur_state->init_idents_count] = pg_tolower((unsigned char) yytext[0]);
 					}
 					
 					/*
@@ -1180,18 +1180,18 @@ other			.
 					if (pg_strcasecmp(yytext, "editionable") != 0 &&
 						pg_strcasecmp(yytext, "noneditionable") != 0 &&
 						cur_state->paren_depth == 0)
-						cur_state->identifier_count++;
+						cur_state->init_idents_count++;
 
-					if (((cur_state->identifiers[0] == 'c' &&
-						  (cur_state->identifiers[1] == 'f' || cur_state->identifiers[1] == 'p' ||
-						   (cur_state->identifiers[1] == 'o' && cur_state->identifiers[2] == 'r' &&
-							(cur_state->identifiers[3] == 'f' || cur_state->identifiers[3] == 'p')))) ||
-						 (cur_state->identifiers[0] == 'w' &&
-						  (cur_state->identifiers[1] == 'f' || cur_state->identifiers[1] == 'p')) ||
+					if (((cur_state->init_idents[0] == 'c' &&
+						  (cur_state->init_idents[1] == 'f' || cur_state->init_idents[1] == 'p' ||
+						   (cur_state->init_idents[1] == 'o' && cur_state->init_idents[2] == 'r' &&
+							(cur_state->init_idents[3] == 'f' || cur_state->init_idents[3] == 'p')))) ||
+						 (cur_state->init_idents[0] == 'w' &&
+						  (cur_state->init_idents[1] == 'f' || cur_state->init_idents[1] == 'p')) ||
 						 /* EXPLAIN WITH FUNCTION/PROCEDURE */
-						 (cur_state->identifiers[0] == 'e' &&
-						  cur_state->identifiers[1] == 'w' &&
-						  (cur_state->identifiers[2] == 'f' || cur_state->identifiers[2] == 'p'))) &&
+						 (cur_state->init_idents[0] == 'e' &&
+						  cur_state->init_idents[1] == 'w' &&
+						  (cur_state->init_idents[2] == 'f' || cur_state->init_idents[2] == 'p'))) &&
 						cur_state->paren_depth == 0)
 					{
 						/*
@@ -1537,7 +1537,7 @@ ora_psql_scan_reset(PsqlScanState state)
 	if (state->dolqstart)
 		free(state->dolqstart);
 	state->dolqstart = NULL;
-	state->identifier_count = 0;
+	state->init_idents_count = 0;
 	state->begin_depth = 0;
 	state->maybe_anonymous_declare_start = false;
 	state->maybe_anonymous_begin_start = false;
@@ -1783,7 +1783,7 @@ ora_psqlscan_emit(PsqlScanState state, const char *txt, int len)
 			 */
 			if (strcmp(txt, "<<") == 0 && state->token_count == 0)
 				state->anonymous_label_start = true;
-			else if (state->identifier_count == 1 && state->token_count == 1)
+			else if (state->init_idents_count == 1 && state->token_count == 1)
 				state->anonymous_label_ident = true;
 			else if (strcmp(txt, ">>") == 0 && state->token_count == 2)
 				state->anonymous_label_end = true;
