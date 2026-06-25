@@ -19,6 +19,7 @@
 #include "catalog/pg_db_role_setting.h"
 #include "utils/fmgroids.h"
 #include "utils/rel.h"
+#include "utils/guc_tables.h"   /* for find_option */
 
 void
 AlterSetting(Oid databaseid, Oid roleid, VariableSetStmt *setstmt)
@@ -30,6 +31,19 @@ AlterSetting(Oid databaseid, Oid roleid, VariableSetStmt *setstmt)
 	SysScanDesc scan;
 
 	valuestr = ExtractSetVariableArgs(setstmt);
+
+	if (valuestr != NULL)
+	{
+		struct config_generic *record;
+
+		record = find_option(setstmt->name, false, true, WARNING);
+		if (record && (record->flags & GUC_DISALLOW_IN_DB_ROLE_SETTING))
+		ereport(ERROR,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("cannot set parameter \"%s\" via ALTER USER/ROLE/DATABASE SET",
+				setstmt->name),
+			 errhint("Use SET command in session instead.")));
+	}
 
 	/* Get the old tuple, if any. */
 
