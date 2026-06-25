@@ -1384,7 +1384,12 @@ BEGIN
 				RAISE EXCEPTION 'invalid SYS_SESSION_ROLES parameter: %', b;
 		END CASE;
 	ELSE
-	  SELECT current_setting(a||'.'||b, true) INTO res;
+	  /* Custom namespace: read DBMS_SESSION application context first,
+	   * then fall back to a GUC named <namespace>.<attribute>. */
+	  SELECT sys.ora_dbms_session_get_context(a, b) INTO res;
+	  IF res IS NULL THEN
+	    SELECT current_setting(a||'.'||b, true) INTO res;
+	  END IF;
 	END IF;
 	RETURN res;
 END;

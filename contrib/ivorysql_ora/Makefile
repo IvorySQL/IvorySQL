@@ -32,7 +32,8 @@ OBJS = \
 	src/xml_functions/ora_xml_functions.o \
 	src/builtin_packages/dbms_utility/dbms_utility.o \
 	src/builtin_packages/dbms_lock/dbms_lock.o \
-	src/builtin_packages/utl_encode/utl_encode.o
+	src/builtin_packages/utl_encode/utl_encode.o \
+	src/builtin_packages/dbms_session/dbms_session.o
 
 EXTENSION = ivorysql_ora
 
@@ -81,7 +82,8 @@ ORA_REGRESS = \
 	dbms_lock \
 	utl_file \
 	utl_raw \
-	utl_encode
+	utl_encode \
+	dbms_session
 
 SHLIB_LINK += -lxml2
 
