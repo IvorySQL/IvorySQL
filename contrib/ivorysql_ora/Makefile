@@ -84,7 +84,7 @@ ORA_REGRESS = \
 	utl_raw \
 	utl_encode
 
-SHLIB_LINK += -lxml2
+#SHLIB_LINK += -lxml2
 
 # Include path for plisql.h (needed by dbms_utility)
 PG_CPPFLAGS += -I$(top_srcdir)/src/pl/plisql/src
