@@ -260,7 +260,7 @@ extern bool ExecCheckPermissions(List *rangeTable,
 extern bool ExecCheckOneRelPerms(RTEPermissionInfo *perminfo);
 extern void CheckValidResultRel(ResultRelInfo *resultRelInfo, CmdType operation,
 								OnConflictAction onConflictAction,
-								List *mergeActions);
+								List *mergeActions, ModifyTable *mtnode);
 extern void InitResultRelInfo(ResultRelInfo *resultRelInfo,
 							  Relation resultRelationDesc,
 							  Index resultRelationIndex,
