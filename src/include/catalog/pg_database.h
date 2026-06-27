@@ -26,6 +26,8 @@
  *		typedef struct FormData_pg_database
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_database,1262,DatabaseRelationId) BKI_SHARED_RELATION BKI_ROWTYPE_OID(1248,DatabaseRelation_Rowtype_Id) BKI_SCHEMA_MACRO
 {
 	/* oid */
@@ -87,6 +89,8 @@ CATALOG(pg_database,1262,DatabaseRelationId) BKI_SHARED_RELATION BKI_ROWTYPE_OID
 	aclitem		datacl[1];
 #endif
 } FormData_pg_database;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_database corresponds to a pointer to a tuple with

@@ -192,6 +192,7 @@ foreach name, opts : pgcommon_variants
           opts.get('include_directories', []),
         ],
         'dependencies': opts['dependencies'] + [ssl],
+        'install': install_internal_static_lib and name != '_srv',
       }
     )
   pgcommon += {name: lib}

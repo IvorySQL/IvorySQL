@@ -27,6 +27,8 @@
  *		typedef struct FormData_pg_largeobject
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_largeobject,2613,LargeObjectRelationId)
 {
 	Oid			loid BKI_LOOKUP(pg_largeobject_metadata);	/* Identifier of large
@@ -37,6 +39,8 @@ CATALOG(pg_largeobject,2613,LargeObjectRelationId)
 	bytea		data BKI_FORCE_NOT_NULL;	/* Data for page (may be
 											 * zero-length) */
 } FormData_pg_largeobject;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_largeobject corresponds to a pointer to a tuple with

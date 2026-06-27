@@ -565,6 +565,24 @@ INSERT INTO atest5(two) VALUES (6) ON CONFLICT (two) DO UPDATE set three = EXCLU
 INSERT INTO atest5(two) VALUES (6) ON CONFLICT (two) DO UPDATE set three = EXCLUDED.three;
 INSERT INTO atest5(two) VALUES (6) ON CONFLICT (two) DO UPDATE set one = 8; -- fails (due to UPDATE)
 INSERT INTO atest5(three) VALUES (4) ON CONFLICT (two) DO UPDATE set three = 10; -- fails (due to INSERT)
+-- Check that column level privileges are enforced for ON CONFLICT ... WHERE
+-- Ok. we may select one
+INSERT INTO atest5(two) VALUES (2) ON CONFLICT (two) DO SELECT WHERE atest5.one = 1 RETURNING atest5.two;
+-- Error. No select rights on three
+INSERT INTO atest5(two) VALUES (2) ON CONFLICT (two) DO SELECT WHERE atest5.three = 1 RETURNING atest5.two;
+
+-- Check that ON CONFLICT ... SELECT FOR UPDATE/SHARE requires an updatable column
+SET SESSION AUTHORIZATION regress_priv_user1;
+REVOKE UPDATE (three) ON atest5 FROM regress_priv_user4;
+SET SESSION AUTHORIZATION regress_priv_user4;
+
+INSERT INTO atest5(two) VALUES (2) ON CONFLICT (two) DO SELECT FOR UPDATE RETURNING atest5.two; -- fails
+
+SET SESSION AUTHORIZATION regress_priv_user1;
+GRANT UPDATE (three) ON atest5 TO regress_priv_user4;
+SET SESSION AUTHORIZATION regress_priv_user4;
+
+INSERT INTO atest5(two) VALUES (2) ON CONFLICT (two) DO SELECT FOR UPDATE RETURNING atest5.two; -- ok
 
 -- Check that the columns in the inference require select privileges
 INSERT INTO atest5(four) VALUES (4); -- fail
@@ -1366,6 +1384,27 @@ SELECT loread(lo_open(1005, x'40000'::int), 32);
 SELECT lo_truncate(lo_open(1005, x'20000'::int), 10);	-- to be denied
 SELECT lo_truncate(lo_open(2001, x'20000'::int), 10);
 
+\c -
+-- confirm role with privileges of pg_read_all_data can read large objects
+SET SESSION AUTHORIZATION regress_priv_user6;
+
+SELECT loread(lo_open(1002, x'40000'::int), 32);
+SELECT lo_get(1002);
+SELECT lowrite(lo_open(1002, x'20000'::int), 'abcd');	-- to be denied
+SELECT lo_put(1002, 1, 'abcd');							-- to be denied
+SELECT lo_truncate(lo_open(1002, x'20000'::int), 0);	-- to be denied
+SELECT lo_unlink(1002);									-- to be denied
+
+\c -
+-- confirm role with privileges of pg_write_all_data can write large objects
+GRANT SELECT ON LARGE OBJECT 1002 TO regress_priv_user7;
+SET SESSION AUTHORIZATION regress_priv_user7;
+
+SELECT lowrite(lo_open(1002, x'20000'::int), 'abcd');
+SELECT lo_put(1002, 1, 'abcd');
+SELECT lo_truncate(lo_open(1002, x'20000'::int), 0);
+SELECT lo_unlink(1002);									-- to be denied
+
 -- has_largeobject_privilege function
 
 -- superuser
@@ -1601,7 +1640,7 @@ ALTER DEFAULT PRIVILEGES GRANT SELECT ON LARGE OBJECTS TO regress_priv_user2;
 
 SELECT lo_create(1008);
 SELECT has_largeobject_privilege('regress_priv_user2', 1008, 'SELECT'); -- yes
-SELECT has_largeobject_privilege('regress_priv_user6', 1008, 'SELECT'); -- no
+SELECT has_largeobject_privilege('regress_priv_user3', 1008, 'SELECT'); -- no
 SELECT has_largeobject_privilege('regress_priv_user2', 1008, 'UPDATE'); -- no
 
 ALTER DEFAULT PRIVILEGES GRANT ALL ON LARGE OBJECTS TO regress_priv_user2;

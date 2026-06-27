@@ -3064,6 +3064,9 @@ AlterDomainAddConstraint(List *names, Node *newConstraint,
  * AlterDomainValidateConstraint
  *
  * Implements the ALTER DOMAIN .. VALIDATE CONSTRAINT statement.
+ *
+ * Return value is the address of the validated constraint.  If the constraint
+ * was already validated, InvalidObjectAddress is returned.
  */
 ObjectAddress
 AlterDomainValidateConstraint(List *names, const char *constrName)
@@ -3081,7 +3084,7 @@ AlterDomainValidateConstraint(List *names, const char *constrName)
 	HeapTuple	tuple;
 	HeapTuple	copyTuple;
 	ScanKeyData skey[3];
-	ObjectAddress address;
+	ObjectAddress address = InvalidObjectAddress;
 
 	/* Make a TypeName so we can use standard type lookup machinery */
 	typename = makeTypeNameFromNameList(names);
@@ -3132,29 +3135,32 @@ AlterDomainValidateConstraint(List *names, const char *constrName)
 				 errmsg("constraint \"%s\" of domain \"%s\" is not a check constraint",
 						constrName, TypeNameToString(typename))));
 
-	val = SysCacheGetAttrNotNull(CONSTROID, tuple, Anum_pg_constraint_conbin);
-	conbin = TextDatumGetCString(val);
+	if (!con->convalidated)
+	{
+		val = SysCacheGetAttrNotNull(CONSTROID, tuple, Anum_pg_constraint_conbin);
+		conbin = TextDatumGetCString(val);
 
-	/*
-	 * Locking related relations with ShareUpdateExclusiveLock is ok because
-	 * not-yet-valid constraints are still enforced against concurrent inserts
-	 * or updates.
-	 */
-	validateDomainCheckConstraint(domainoid, conbin, ShareUpdateExclusiveLock);
+		/*
+		 * Locking related relations with ShareUpdateExclusiveLock is ok
+		 * because not-yet-valid constraints are still enforced against
+		 * concurrent inserts or updates.
+		 */
+		validateDomainCheckConstraint(domainoid, conbin, ShareUpdateExclusiveLock);
 
-	/*
-	 * Now update the catalog, while we have the door open.
-	 */
-	copyTuple = heap_copytuple(tuple);
-	copy_con = (Form_pg_constraint) GETSTRUCT(copyTuple);
-	copy_con->convalidated = true;
-	CatalogTupleUpdate(conrel, &copyTuple->t_self, copyTuple);
+		/*
+		 * Now update the catalog, while we have the door open.
+		 */
+		copyTuple = heap_copytuple(tuple);
+		copy_con = (Form_pg_constraint) GETSTRUCT(copyTuple);
+		copy_con->convalidated = true;
+		CatalogTupleUpdate(conrel, &copyTuple->t_self, copyTuple);
 
-	InvokeObjectPostAlterHook(ConstraintRelationId, con->oid, 0);
+		InvokeObjectPostAlterHook(ConstraintRelationId, con->oid, 0);
 
-	ObjectAddressSet(address, TypeRelationId, domainoid);
+		ObjectAddressSet(address, TypeRelationId, domainoid);
 
-	heap_freetuple(copyTuple);
+		heap_freetuple(copyTuple);
+	}
 
 	systable_endscan(scan);
 

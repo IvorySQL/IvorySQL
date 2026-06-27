@@ -125,6 +125,7 @@ AnlIndexData
 AnyArrayType
 Append
 AppendPath
+AppendPathInput
 AppendRelInfo
 AppendState
 ApplyErrorCallbackArg
@@ -710,6 +711,7 @@ EachState
 Edge
 EditableObjectType
 ElementsState
+ElidedNode
 EnableTimeoutParams
 EndDataPtrType
 EndDirectModify_function
@@ -803,6 +805,7 @@ ExtensibleNodeMethods
 ExtensionControlFile
 ExtensionInfo
 ExtensionLocation
+ExtensionSiblingCache
 ExtensionVersionInfo
 FDWCollateState
 FD_SET
@@ -1837,9 +1840,9 @@ OldToNewMappingData
 OnCommitAction
 OnCommitItem
 OnConflictAction
+OnConflictActionState
 OnConflictClause
 OnConflictExpr
-OnConflictSetState
 OpClassCacheEnt
 OpExpr
 OpFamilyMember
@@ -2488,6 +2491,7 @@ RecordCacheArrayEntry
 RecordCacheEntry
 RecordCompareData
 RecordIOData
+RecoveryConflictReason
 RecoveryLockEntry
 RecoveryLockXidEntry
 RecoveryPauseState
@@ -2929,6 +2933,7 @@ SubLink
 SubLinkType
 SubOpts
 SubPlan
+SubPlanRTInfo
 SubPlanState
 SubRelInfo
 SubRemoveRels
@@ -3737,6 +3742,7 @@ gistxlogPageReuse
 gistxlogPageSplit
 gistxlogPageUpdate
 grouping_sets_data
+growable_trgm_array
 gseg_picksplit_item
 gss_OID_set
 gss_buffer_desc
@@ -4058,6 +4064,7 @@ qsort_comparator
 query_pathkeys_callback
 radius_attribute
 radius_packet
+RadixSortInfo
 rangeTableEntry_used_context
 rank_context
 rbt_allocfunc
@@ -4265,9 +4272,12 @@ va_list
 vacuumingOptions
 validate_string_relopt
 varatt_expanded
+varatt_external
+varatt_indirect
 varattrib_1b
 varattrib_1b_e
 varattrib_4b
+varlena
 vartag_external
 vbits
 verifier_context

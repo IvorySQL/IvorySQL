@@ -3541,7 +3541,7 @@ exec_stmt_return(PLiSQL_execstate * estate, PLiSQL_stmt_return * stmt)
 				/* fulfill promise if needed, then handle like regular var */
 				plisql_fulfill_promise(estate, (PLiSQL_var *) retvar);
 
-				/* FALL THRU */
+				pg_fallthrough;
 
 			case PLISQL_DTYPE_VAR:
 				{
@@ -3566,28 +3566,14 @@ exec_stmt_return(PLiSQL_execstate * estate, PLiSQL_stmt_return * stmt)
 				}
 				break;
 
+			case PLISQL_DTYPE_ROW:
 			case PLISQL_DTYPE_REC:
 				{
-					PLiSQL_rec *rec = (PLiSQL_rec *) retvar;
-
-					/* If record is empty, we return NULL not a row of nulls */
-					if (rec->erh && !ExpandedRecordIsEmpty(rec->erh))
-					{
-						estate->retval = ExpandedRecordGetDatum(rec->erh);
-						estate->retisnull = false;
-						estate->rettype = rec->rectypeid;
-					}
-				}
-				break;
-
-			case PLISQL_DTYPE_ROW:
-				{
-					PLiSQL_row *row = (PLiSQL_row *) retvar;
+					/* exec_eval_datum can handle these cases */
 					int32		rettypmod;
 
-					/* We get here if there are multiple OUT parameters */
 					exec_eval_datum(estate,
-									(PLiSQL_datum *) row,
+									retvar,
 									&estate->rettype,
 									&rettypmod,
 									&estate->retval,
@@ -3713,7 +3699,7 @@ exec_stmt_return_next(PLiSQL_execstate * estate,
 				/* fulfill promise if needed, then handle like regular var */
 				plisql_fulfill_promise(estate, (PLiSQL_var *) retvar);
 
-				/* FALL THRU */
+				pg_fallthrough;
 
 			case PLISQL_DTYPE_VAR:
 				{
@@ -5748,7 +5734,7 @@ exec_eval_datum(PLiSQL_execstate * estate,
 			/* fulfill promise if needed, then handle like regular var */
 			plisql_fulfill_promise(estate, (PLiSQL_var *) datum);
 
-			/* FALL THRU */
+			pg_fallthrough;
 
 		case PLISQL_DTYPE_VAR:
 			{
@@ -9651,7 +9637,7 @@ assign_simple_var(PLiSQL_execstate * estate, PLiSQL_var * var,
 																	  get_eval_mcontext(estate)));
 		else
 			oldcxt = MemoryContextSwitchTo(get_eval_mcontext(estate));
-		detoasted = PointerGetDatum(detoast_external_attr((struct varlena *) DatumGetPointer(newvalue)));
+		detoasted = PointerGetDatum(detoast_external_attr((varlena *) DatumGetPointer(newvalue)));
 		MemoryContextSwitchTo(oldcxt);
 		/* Now's a good time to not leak the input value if it's freeable */
 		if (freeable)

@@ -702,7 +702,7 @@ findDependentObjects(const ObjectAddress *object,
 					break;
 
 				/* Otherwise, treat this like an internal dependency */
-				/* FALL THRU */
+				pg_fallthrough;
 
 			case DEPENDENCY_INTERNAL:
 
@@ -1575,7 +1575,7 @@ reportDependentObjects(const ObjectAddresses *targetObjects,
 static void
 DropObjectById(const ObjectAddress *object)
 {
-	int			cacheId;
+	SysCacheIdentifier cacheId;
 	Relation	rel;
 	HeapTuple	tup;
 

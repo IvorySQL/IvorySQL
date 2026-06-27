@@ -109,12 +109,12 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
   </para>
  </refsect1>
 
- <refsect1>
+ <refsect1 id="sql-createforeigntable-parameters">
   <title>Parameters</title>
 
   <variablelist>
 
-   <varlistentry>
+   <varlistentry id="sql-createforeigntable-parms-if-not-exists">
     <term><literal>IF NOT EXISTS</literal></term>
     <listitem>
      <para>
@@ -126,7 +126,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="sql-createforeigntable-parms-table-name">
     <term><replaceable class="parameter">table_name</replaceable></term>
     <listitem>
      <para>
@@ -135,7 +135,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="sql-createforeigntable-parms-column-name">
     <term><replaceable class="parameter">column_name</replaceable></term>
     <listitem>
      <para>
@@ -144,7 +144,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="sql-createforeigntable-parms-data-type">
     <term><replaceable class="parameter">data_type</replaceable></term>
     <listitem>
      <para>
@@ -156,7 +156,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="sql-createforeigntable-parms-collate">
     <term><literal>COLLATE <replaceable>collation</replaceable></literal></term>
     <listitem>
      <para>
@@ -167,7 +167,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="sql-createforeigntable-parms-inherit">
     <term><literal>INHERITS ( <replaceable>parent_table</replaceable> [, ... ] )</literal></term>
     <listitem>
      <para>
@@ -180,7 +180,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="sql-createforeigntable-partition">
     <term><literal>PARTITION OF <replaceable>parent_table</replaceable> { FOR VALUES <replaceable class="parameter">partition_bound_spec</replaceable> | DEFAULT }</literal></term>
     <listitem>
      <para>
@@ -196,7 +196,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="sql-createforeigntable-parms-like">
     <term><literal>LIKE <replaceable>source_table</replaceable> [ <replaceable>like_option</replaceable> ... ]</literal></term>
     <listitem>
      <para>
@@ -228,7 +228,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
       available options are:
 
       <variablelist>
-       <varlistentry>
+       <varlistentry id="sql-createforeigntable-parms-like-opt-comments">
         <term><literal>INCLUDING COMMENTS</literal></term>
         <listitem>
          <para>
@@ -240,7 +240,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
         </listitem>
        </varlistentry>
 
-       <varlistentry>
+       <varlistentry id="sql-createforeigntable-parms-like-opt-constraints">
         <term><literal>INCLUDING CONSTRAINTS</literal></term>
         <listitem>
          <para>
@@ -251,7 +251,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
         </listitem>
        </varlistentry>
 
-       <varlistentry>
+       <varlistentry id="sql-createforeigntable-parms-like-opt-default">
         <term><literal>INCLUDING DEFAULTS</literal></term>
         <listitem>
          <para>
@@ -265,7 +265,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
         </listitem>
        </varlistentry>
 
-       <varlistentry>
+       <varlistentry id="sql-createforeigntable-parms-like-opt-generated">
         <term><literal>INCLUDING GENERATED</literal></term>
         <listitem>
          <para>
@@ -275,7 +275,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
         </listitem>
        </varlistentry>
 
-       <varlistentry>
+       <varlistentry id="sql-createforeigntable-parms-like-opt-statistics">
         <term><literal>INCLUDING STATISTICS</literal></term>
         <listitem>
          <para>
@@ -284,7 +284,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
         </listitem>
        </varlistentry>
 
-       <varlistentry>
+       <varlistentry id="sql-createforeigntable-parms-like-opt-all">
         <term><literal>INCLUDING ALL</literal></term>
         <listitem>
          <para>
@@ -301,7 +301,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="sql-createforeigntable-parms-constraint">
     <term><literal>CONSTRAINT <replaceable class="parameter">constraint_name</replaceable></literal></term>
     <listitem>
      <para>
@@ -315,7 +315,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="sql-createforeigntable-parms-not-null">
     <term><literal>NOT NULL</literal> [ NO INHERIT ]</term>
     <listitem>
      <para>
@@ -329,7 +329,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="sql-createforeigntable-parms-null">
     <term><literal>NULL</literal></term>
     <listitem>
      <para>
@@ -344,7 +344,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="sql-createforeigntable-parms-check">
     <term><literal>CHECK ( <replaceable class="parameter">expression</replaceable> ) [ NO INHERIT ] </literal></term>
     <listitem>
      <para>
@@ -371,7 +371,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="sql-createforeigntable-parms-default">
     <term><literal>DEFAULT
     <replaceable>default_expr</replaceable></literal></term>
     <listitem>
@@ -392,7 +392,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="sql-createforeigntable-parms-generated-stored">
     <term><literal>GENERATED ALWAYS AS ( <replaceable>generation_expr</replaceable> ) [ STORED | VIRTUAL ]</literal><indexterm><primary>generated column</primary></indexterm></term>
     <listitem>
      <para>
@@ -419,7 +419,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="sql-createforeigntable-parms-server">
     <term><replaceable class="parameter">server_name</replaceable></term>
     <listitem>
      <para>
@@ -430,7 +430,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="sql-createforeigntable-parms-option">
     <term><literal>OPTIONS ( <replaceable class="parameter">option</replaceable> '<replaceable class="parameter">value</replaceable>' [, ...] )</literal></term>
     <listitem>
      <para>
@@ -448,7 +448,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
 
  </refsect1>
 
- <refsect1>
+ <refsect1 id="sql-createforeigntable-notes">
   <title>Notes</title>
 
    <para>

@@ -16,11 +16,12 @@ GetOptions(
 	'input:s' => \$input,
 	'output:s' => \$output) or die "wrong arguments";
 
-if (not(   $format eq 'darwin'
+if (not(   $format eq 'aix'
+		or $format eq 'darwin'
 		or $format eq 'gnu'
 		or $format eq 'win'))
 {
-	die "$0: $format is not yet handled (only darwin, gnu, win are)\n";
+	die "$0: $format is not yet handled (only aix, darwin, gnu, win are)\n";
 }
 
 open(my $input_handle, '<', $input)
@@ -30,7 +31,11 @@ open(my $output_handle, '>', $output)
   or die "$0: could not open output file '$output': $!\n";
 
 
-if ($format eq 'gnu')
+if ($format eq 'aix')
+{
+	print $output_handle "#!\n";
+}
+elsif ($format eq 'gnu')
 {
 	print $output_handle "{
   global:
@@ -55,7 +60,11 @@ while (<$input_handle>)
 	}
 	elsif (/^(\S+)\s+(\S+)/)
 	{
-		if ($format eq 'darwin')
+		if ($format eq 'aix')
+		{
+			print $output_handle "$1\n";
+		}
+		elsif ($format eq 'darwin')
 		{
 			print $output_handle "_$1\n";
 		}

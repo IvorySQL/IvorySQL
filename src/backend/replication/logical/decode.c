@@ -430,9 +430,8 @@ heap2_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 
 				xlrec = (xl_heap_new_cid *) XLogRecGetData(buf->record);
 				SnapBuildProcessNewCid(builder, xid, buf->origptr, xlrec);
-
-				break;
 			}
+			break;
 		case XLOG_HEAP2_REWRITE:
 
 			/*

@@ -867,6 +867,33 @@ where (hundred, thousand) in (select twothousand, twothousand from onek);
 reset enable_memoize;
 
 --
+-- more antijoin recognition tests using NOT NULL constraints
+--
+
+begin;
+
+create temp table tbl_anti(a int not null, b int, c int);
+
+-- this is an antijoin, as t2.a is non-null for any matching row
+explain (costs off)
+select * from tenk1 t1 left join tbl_anti t2 on t1.unique1 = t2.b
+where t2.a is null;
+
+-- this is an antijoin, as t2.a is non-null for any matching row
+explain (costs off)
+select * from tenk1 t1 left join
+  (tbl_anti t2 left join tbl_anti t3 on t2.c = t3.c) on t1.unique1 = t2.b
+where t2.a is null;
+
+-- this is not an antijoin, as t3.a can be nulled by t2/t3 join
+explain (costs off)
+select * from tenk1 t1 left join
+  (tbl_anti t2 left join tbl_anti t3 on t2.c = t3.c) on t1.unique1 = t2.b
+where t3.a is null;
+
+rollback;
+
+--
 -- regression test for bogus RTE_GROUP entries
 --
 
@@ -1480,6 +1507,30 @@ select * from int4_tbl left join (
   select text 'foo' union all select text 'bar'
 ) ss(x) on true
 where ss.x is null;
+
+-- Test computation of varnullingrels when translating appendrel Var
+begin;
+
+create temp table t_append (a int not null, b int);
+insert into t_append values (1, 1);
+insert into t_append values (2, 3);
+
+explain (verbose, costs off)
+select t1.a, s.a from t_append t1
+  left join t_append t2 on t1.a = t2.b
+  join lateral (
+    select t1.a as a union all select t2.a as a
+  ) s on true
+where s.a is not null;
+
+select t1.a, s.a from t_append t1
+  left join t_append t2 on t1.a = t2.b
+  join lateral (
+    select t1.a as a union all select t2.a as a
+  ) s on true
+where s.a is not null;
+
+rollback;
 
 --
 -- test inlining of immutable functions

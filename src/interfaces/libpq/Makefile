@@ -139,7 +139,9 @@ $(stlib): $(OBJS_STATIC)
 # expect them to honor this coding rule.
 libpq-refs-stamp: $(shlib)
 ifneq ($(enable_coverage), yes)
+ifeq (,$(filter aix,$(PORTNAME)))
 	$(PERL) $(srcdir)/libpq_check.pl --input_file $< --nm='$(NM)'
+endif
 endif
 	touch $@
 

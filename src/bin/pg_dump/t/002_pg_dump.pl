@@ -2048,13 +2048,8 @@ my %tests = (
 		},
 	},
 
-	'newline of role or table name in comment' => {
-		create_sql => qq{CREATE ROLE regress_newline;
-						 ALTER ROLE regress_newline SET enable_seqscan = off;
-						 ALTER ROLE regress_newline
-							RENAME TO "regress_newline\nattack";
-
-						 -- meet getPartitioningInfo() "unsafe" condition
+	'newline of table name in comment' => {
+		create_sql => qq{-- meet getPartitioningInfo() "unsafe" condition
 						 CREATE TYPE pp_colors AS
 							ENUM ('green', 'blue', 'black');
 						 CREATE TABLE pp_enumpart (a pp_colors)

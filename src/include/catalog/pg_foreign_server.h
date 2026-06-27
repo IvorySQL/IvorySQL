@@ -25,6 +25,8 @@
  *		typedef struct FormData_pg_foreign_server
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_foreign_server,1417,ForeignServerRelationId)
 {
 	Oid			oid;			/* oid */
@@ -39,6 +41,8 @@ CATALOG(pg_foreign_server,1417,ForeignServerRelationId)
 	text		srvoptions[1];	/* FDW-specific options */
 #endif
 } FormData_pg_foreign_server;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_foreign_server corresponds to a pointer to a tuple with

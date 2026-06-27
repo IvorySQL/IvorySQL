@@ -24,7 +24,7 @@
 #include "access/sequence.h"
 #include "utils/rel.h"
 
-static inline void validate_relation_kind(Relation r);
+static inline void validate_relation_as_sequence(Relation r);
 
 /* ----------------
  *		sequence_open - open a sequence relation by relation OID
@@ -40,7 +40,7 @@ sequence_open(Oid relationId, LOCKMODE lockmode)
 
 	r = relation_open(relationId, lockmode);
 
-	validate_relation_kind(r);
+	validate_relation_as_sequence(r);
 
 	return r;
 }
@@ -61,18 +61,17 @@ sequence_close(Relation relation, LOCKMODE lockmode)
 }
 
 /* ----------------
- *		validate_relation_kind - check the relation's kind
+ *		validate_relation_as_sequence
  *
- *		Make sure relkind is from a sequence.
+ *		Make sure relkind is a sequence.
  * ----------------
  */
 static inline void
-validate_relation_kind(Relation r)
+validate_relation_as_sequence(Relation r)
 {
 	if (r->rd_rel->relkind != RELKIND_SEQUENCE)
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("cannot open relation \"%s\"",
-						RelationGetRelationName(r)),
-				 errdetail_relkind_not_supported(r->rd_rel->relkind)));
+				 errmsg("\"%s\" is not a sequence",
+						RelationGetRelationName(r))));
 }

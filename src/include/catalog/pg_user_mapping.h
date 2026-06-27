@@ -25,6 +25,8 @@
  *		typedef struct FormData_pg_user_mapping
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_user_mapping,1418,UserMappingRelationId)
 {
 	Oid			oid;			/* oid */
@@ -39,6 +41,8 @@ CATALOG(pg_user_mapping,1418,UserMappingRelationId)
 	text		umoptions[1];	/* user mapping options */
 #endif
 } FormData_pg_user_mapping;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_user_mapping corresponds to a pointer to a tuple with

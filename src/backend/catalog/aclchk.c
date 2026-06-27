@@ -2324,7 +2324,7 @@ static void
 ExecGrant_common(InternalGrant *istmt, Oid classid, AclMode default_privs,
 				 void (*object_check) (InternalGrant *istmt, HeapTuple tuple))
 {
-	int			cacheid;
+	SysCacheIdentifier cacheid;
 	Relation	relation;
 	ListCell   *cell;
 
@@ -3343,7 +3343,7 @@ object_aclmask_ext(Oid classid, Oid objectid, Oid roleid,
 				   AclMode mask, AclMaskHow how,
 				   bool *is_missing)
 {
-	int			cacheid;
+	SysCacheIdentifier cacheid;
 	AclMode		result;
 	HeapTuple	tuple;
 	Datum		aclDatum;
@@ -3883,6 +3883,24 @@ pg_largeobject_aclmask_snapshot(Oid lobj_oid, Oid roleid,
 
 	table_close(pg_lo_meta, AccessShareLock);
 
+	/*
+	 * Check if ACL_SELECT is being checked and, if so, and not set already as
+	 * part of the result, then check if the user has privileges of the
+	 * pg_read_all_data role, which allows read access to all large objects.
+	 */
+	if (mask & ACL_SELECT && !(result & ACL_SELECT) &&
+		has_privs_of_role(roleid, ROLE_PG_READ_ALL_DATA))
+		result |= ACL_SELECT;
+
+	/*
+	 * Check if ACL_UPDATE is being checked and, if so, and not set already as
+	 * part of the result, then check if the user has privileges of the
+	 * pg_write_all_data role, which allows write access to all large objects.
+	 */
+	if (mask & ACL_UPDATE && !(result & ACL_UPDATE) &&
+		has_privs_of_role(roleid, ROLE_PG_WRITE_ALL_DATA))
+		result |= ACL_UPDATE;
+
 	return result;
 }
 
@@ -4387,7 +4405,7 @@ pg_largeobject_aclcheck_snapshot(Oid lobj_oid, Oid roleid, AclMode mode,
 bool
 object_ownercheck(Oid classid, Oid objectid, Oid roleid)
 {
-	int			cacheid;
+	SysCacheIdentifier cacheid;
 	Oid			ownerId;
 
 	/* Superusers bypass all permission checking. */
@@ -4399,7 +4417,7 @@ object_ownercheck(Oid classid, Oid objectid, Oid roleid)
 		classid = LargeObjectMetadataRelationId;
 
 	cacheid = get_object_catcache_oid(classid);
-	if (cacheid != -1)
+	if (cacheid != SYSCACHEID_INVALID)
 	{
 		/* we can get the object's tuple from the syscache */
 		HeapTuple	tuple;
@@ -4808,7 +4826,7 @@ recordExtObjInitPriv(Oid objoid, Oid classoid)
 	/* This will error on unsupported classoid. */
 	else if (get_object_attnum_acl(classoid) != InvalidAttrNumber)
 	{
-		int			cacheid;
+		SysCacheIdentifier cacheid;
 		Datum		aclDatum;
 		bool		isNull;
 		HeapTuple	tuple;
@@ -5192,7 +5210,7 @@ RemoveRoleFromInitPriv(Oid roleid, Oid classid, Oid objid, int32 objsubid)
 	ScanKeyData key[3];
 	SysScanDesc scan;
 	HeapTuple	oldtuple;
-	int			cacheid;
+	SysCacheIdentifier cacheid;
 	HeapTuple	objtuple;
 	Oid			ownerId;
 	Datum		oldAclDatum;

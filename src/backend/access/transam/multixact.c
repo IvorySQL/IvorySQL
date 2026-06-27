@@ -782,7 +782,7 @@ RecordNewMultiXact(MultiXactId multi, MultiXactOffset offset,
 	/*
 	 * Set the starting offset of this multixid's members.
 	 *
-	 * In the common case, it was already be set by the previous
+	 * In the common case, it was already set by the previous
 	 * RecordNewMultiXact call, as this was the next multixid of the previous
 	 * multixid.  But if multiple backends are generating multixids
 	 * concurrently, we might race ahead and get called before the previous

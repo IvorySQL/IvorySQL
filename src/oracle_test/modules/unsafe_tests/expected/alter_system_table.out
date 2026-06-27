@@ -64,6 +64,11 @@ ERROR:  permission denied: "pg_description" is a system catalog
 CREATE TABLESPACE pg_foo LOCATION '/no/such/location';
 ERROR:  unacceptable tablespace name "pg_foo"
 DETAIL:  The prefix "pg_" is reserved for system tablespaces.
+-- contains \n\r tablespace name
+CREATE TABLESPACE "invalid
+name" LOCATION '/no/such/location';
+ERROR:  tablespace name "invalid
+name" contains a newline or carriage return character
 -- triggers
 CREATE FUNCTION tf1() RETURNS trigger
 LANGUAGE plpgsql

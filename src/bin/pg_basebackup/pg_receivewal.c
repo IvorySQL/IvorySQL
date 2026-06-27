@@ -770,7 +770,7 @@ main(int argc, char **argv)
 
 	if (replication_slot == NULL && (do_drop_slot || do_create_slot))
 	{
-		/* translator: second %s is an option name */
+		/* translator: %s is an option name */
 		pg_log_error("%s needs a slot to be specified using --slot",
 					 do_drop_slot ? "--drop-slot" : "--create-slot");
 		pg_log_error_hint("Try \"%s --help\" for more information.", progname);

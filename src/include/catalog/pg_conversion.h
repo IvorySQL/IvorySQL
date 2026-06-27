@@ -26,6 +26,8 @@
  *		typedef struct FormData_pg_conversion
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_conversion,2607,ConversionRelationId)
 {
 	/* oid */
@@ -52,6 +54,8 @@ CATALOG(pg_conversion,2607,ConversionRelationId)
 	/* true if this is a default conversion */
 	bool		condefault BKI_DEFAULT(t);
 } FormData_pg_conversion;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_conversion corresponds to a pointer to a tuple with

@@ -289,7 +289,8 @@ extern void ProcessSyncingTablesForApply(XLogRecPtr current_lsn);
 extern void ProcessSequencesForSync(void);
 
 pg_noreturn extern void FinishSyncWorker(void);
-extern void InvalidateSyncingRelStates(Datum arg, int cacheid, uint32 hashvalue);
+extern void InvalidateSyncingRelStates(Datum arg, SysCacheIdentifier cacheid,
+									   uint32 hashvalue);
 extern void launch_sync_worker(LogicalRepWorkerType wtype, int nsyncworkers,
 							   Oid relid, TimestampTz *last_start_time);
 extern void ProcessSyncingRelations(XLogRecPtr current_lsn);
@@ -390,6 +391,13 @@ am_parallel_apply_worker(void)
 {
 	Assert(MyLogicalRepWorker->in_use);
 	return isParallelApplyWorker(MyLogicalRepWorker);
+}
+
+static inline LogicalRepWorkerType
+get_logical_worker_type(void)
+{
+	Assert(MyLogicalRepWorker->in_use);
+	return MyLogicalRepWorker->type;
 }
 
 #endif							/* WORKER_INTERNAL_H */

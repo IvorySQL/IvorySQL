@@ -60,6 +60,7 @@
 #include "storage/lmgr.h"
 #include "storage/md.h"
 #include "storage/procarray.h"
+#include "storage/procsignal.h"
 #include "storage/smgr.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
@@ -741,6 +742,12 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	int			npreparedxacts;
 	CreateDBStrategy dbstrategy = CREATEDB_WAL_LOG;
 	createdb_failure_params fparms;
+
+	/* Report error if name has \n or \r character. */
+	if (strpbrk(dbname, "\n\r"))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("database name \"%s\" contains a newline or carriage return character", dbname)));
 
 	/* Extract options from the statement node tree */
 	foreach(option, stmt->options)
@@ -1909,6 +1916,12 @@ RenameDatabase(const char *oldname, const char *newname)
 	int			notherbackends;
 	int			npreparedxacts;
 	ObjectAddress address;
+
+	/* Report error if name has \n or \r character. */
+	if (strpbrk(newname, "\n\r"))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("database name \"%s\" contains a newline or carriage return character", newname)));
 
 	/*
 	 * Look up the target database's OID, and get exclusive lock on it. We

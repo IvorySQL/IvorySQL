@@ -10,8 +10,8 @@
 #define CONFLICT_H
 
 #include "access/xlogdefs.h"
+#include "datatype/timestamp.h"
 #include "nodes/pg_list.h"
-#include "utils/timestamp.h"
 
 /* Avoid including execnodes.h here */
 typedef struct EState EState;

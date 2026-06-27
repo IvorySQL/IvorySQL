@@ -29,6 +29,8 @@
  * BKI_BOOTSTRAP catalogs, since only those rows appear in pg_class.dat.
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_class,1259,RelationRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(83,RelationRelation_Rowtype_Id) BKI_SCHEMA_MACRO
 {
 	/* oid */
@@ -146,6 +148,8 @@ CATALOG(pg_class,1259,RelationRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(83,Relat
 	pg_node_tree relpartbound BKI_DEFAULT(_null_);
 #endif
 } FormData_pg_class;
+
+END_CATALOG_STRUCT
 
 /* Size of fixed part of pg_class tuples, not counting var-length fields */
 #define CLASS_TUPLE_SIZE \

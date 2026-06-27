@@ -576,12 +576,6 @@ appendByteaLiteral(PQExpBuffer buf, const unsigned char *str, size_t length,
  * Append the given string to the shell command being built in the buffer,
  * with shell-style quoting as needed to create exactly one argument.
  *
- * Forbid LF or CR characters, which have scant practical use beyond designing
- * security breaches.  The Windows command shell is unusable as a conduit for
- * arguments containing LF or CR characters.  A future major release should
- * reject those characters in CREATE ROLE and CREATE DATABASE, because use
- * there eventually leads to errors here.
- *
  * appendShellString() simply prints an error and dies if LF or CR appears.
  * appendShellStringNoError() omits those characters from the result, and
  * returns false if there were any.

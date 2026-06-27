@@ -21,6 +21,7 @@ if host_system == 'windows'
 endif
 
 # see src/interfaces/libpq/meson.build
+if build_static_lib
 ecpg_pgtypes_st = static_library('libpgtypes',
   ecpg_pgtypes_sources,
   include_directories: ecpg_pgtypes_inc,
@@ -30,7 +31,9 @@ ecpg_pgtypes_st = static_library('libpgtypes',
   kwargs: default_lib_args,
 )
 ecpg_targets += ecpg_pgtypes_st
+endif
 
+if build_shared_lib
 ecpg_pgtypes_so = shared_library('libpgtypes',
   ecpg_pgtypes_sources + ecpg_pgtypes_so_sources,
   include_directories: ecpg_pgtypes_inc,
@@ -38,13 +41,14 @@ ecpg_pgtypes_so = shared_library('libpgtypes',
   c_pch: pch_postgres_fe_h,
   dependencies: frontend_shlib_code,
   version: '3.' + pg_version_major.to_string(),
-  soversion: host_system != 'windows' ? '3' : '',
+  soversion: host_system not in ['aix', 'windows'] ? '3' : '',
   darwin_versions: ['3', '3.' + pg_version_major.to_string()],
   link_args: export_fmt.format(export_file.full_path()),
   link_depends: export_file,
   kwargs: default_lib_args,
 )
 ecpg_targets += ecpg_pgtypes_so
+endif
 
 pkgconfig.generate(
   name: 'libpgtypes',

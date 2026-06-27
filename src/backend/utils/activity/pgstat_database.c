@@ -17,7 +17,7 @@
 
 #include "postgres.h"
 
-#include "storage/procsignal.h"
+#include "storage/standby.h"
 #include "utils/pgstat_internal.h"
 #include "utils/timestamp.h"
 
@@ -88,31 +88,41 @@ pgstat_report_recovery_conflict(int reason)
 
 	dbentry = pgstat_prep_database_pending(MyDatabaseId);
 
-	switch (reason)
+	switch ((RecoveryConflictReason) reason)
 	{
-		case PROCSIG_RECOVERY_CONFLICT_DATABASE:
+		case RECOVERY_CONFLICT_DATABASE:
 
 			/*
 			 * Since we drop the information about the database as soon as it
 			 * replicates, there is no point in counting these conflicts.
 			 */
 			break;
-		case PROCSIG_RECOVERY_CONFLICT_TABLESPACE:
+		case RECOVERY_CONFLICT_TABLESPACE:
 			dbentry->conflict_tablespace++;
 			break;
-		case PROCSIG_RECOVERY_CONFLICT_LOCK:
+		case RECOVERY_CONFLICT_LOCK:
 			dbentry->conflict_lock++;
 			break;
-		case PROCSIG_RECOVERY_CONFLICT_SNAPSHOT:
+		case RECOVERY_CONFLICT_SNAPSHOT:
 			dbentry->conflict_snapshot++;
 			break;
-		case PROCSIG_RECOVERY_CONFLICT_BUFFERPIN:
+		case RECOVERY_CONFLICT_BUFFERPIN:
 			dbentry->conflict_bufferpin++;
 			break;
-		case PROCSIG_RECOVERY_CONFLICT_LOGICALSLOT:
+		case RECOVERY_CONFLICT_LOGICALSLOT:
 			dbentry->conflict_logicalslot++;
 			break;
-		case PROCSIG_RECOVERY_CONFLICT_STARTUP_DEADLOCK:
+		case RECOVERY_CONFLICT_STARTUP_DEADLOCK:
+			dbentry->conflict_startup_deadlock++;
+			break;
+		case RECOVERY_CONFLICT_BUFFERPIN_DEADLOCK:
+
+			/*
+			 * The difference between RECOVERY_CONFLICT_STARTUP_DEADLOCK and
+			 * RECOVERY_CONFLICT_BUFFERPIN_DEADLOCK is merely whether a buffer
+			 * pin was part of the deadlock. We use the same counter for both
+			 * reasons.
+			 */
 			dbentry->conflict_startup_deadlock++;
 			break;
 	}
@@ -190,7 +200,7 @@ pgstat_report_checksum_failures_in_db(Oid dboid, int failurecount)
 	Assert(entry_ref);
 	if (!entry_ref)
 	{
-		elog(WARNING, "could not report %d conflicts for DB %u",
+		elog(WARNING, "could not report %d checksum failures for database %u",
 			 failurecount, dboid);
 		return;
 	}

@@ -40,6 +40,8 @@
  *		typedef struct FormData_pg_amproc
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_amproc,2603,AccessMethodProcedureRelationId)
 {
 	Oid			oid;			/* oid */
@@ -59,6 +61,8 @@ CATALOG(pg_amproc,2603,AccessMethodProcedureRelationId)
 	/* OID of the proc */
 	regproc		amproc BKI_LOOKUP(pg_proc);
 } FormData_pg_amproc;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_amproc corresponds to a pointer to a tuple with

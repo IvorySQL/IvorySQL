@@ -29,6 +29,8 @@
  *		typedef struct FormData_pg_cast
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_cast,2605,CastRelationId)
 {
 	Oid			oid;			/* oid */
@@ -48,6 +50,8 @@ CATALOG(pg_cast,2605,CastRelationId)
 	/* cast method */
 	char		castmethod;
 } FormData_pg_cast;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_cast corresponds to a pointer to a tuple with

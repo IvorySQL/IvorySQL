@@ -23,7 +23,7 @@ PostgreSQL documentation
   <cmdsynopsis>
    <command>pg_walsummary</command>
    <arg rep="repeat" choice="opt"><replaceable>option</replaceable></arg>
-   <arg rep="repeat"><replaceable>file</replaceable></arg>
+   <arg rep="repeat"><replaceable>filename</replaceable></arg>
   </cmdsynopsis>
  </refsynopsisdiv>
 
@@ -56,6 +56,16 @@ PostgreSQL documentation
 
    <para>
     <variablelist>
+     <varlistentry>
+      <term><replaceable class="parameter">filename</replaceable></term>
+      <listitem>
+       <para>
+        Specifies the name of a WAL summary file, found in the
+        <literal>pg_wal/summaries</literal> subdirectory of the data directory.
+       </para>
+      </listitem>
+     </varlistentry>
+
      <varlistentry>
       <term><option>-i</option></term>
       <term><option>--individual</option></term>

@@ -26,6 +26,8 @@
  *		typedef struct FormData_pg_tablespace
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_tablespace,1213,TableSpaceRelationId) BKI_SHARED_RELATION
 {
 	Oid			oid;			/* oid */
@@ -39,6 +41,8 @@ CATALOG(pg_tablespace,1213,TableSpaceRelationId) BKI_SHARED_RELATION
 	text		spcoptions[1];	/* per-tablespace options */
 #endif
 } FormData_pg_tablespace;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_tablespace corresponds to a pointer to a tuple with

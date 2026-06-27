@@ -639,12 +639,30 @@ INSERT INTO gtest20 (a) VALUES (10);  -- ok
 INSERT INTO gtest20 (a) VALUES (30);  -- violates constraint
 ERROR:  new row for relation "gtest20" violates check constraint "gtest20_b_check"
 DETAIL:  Failing row contains (30, virtual).
-ALTER TABLE gtest20 ALTER COLUMN b SET EXPRESSION AS (a * 100);  -- violates constraint (currently not supported)
-ERROR:  ALTER TABLE / SET EXPRESSION is not supported for virtual generated columns in tables with check constraints
-DETAIL:  Column "b" of relation "gtest20" is a virtual generated column.
-ALTER TABLE gtest20 ALTER COLUMN b SET EXPRESSION AS (a * 3);  -- ok (currently not supported)
-ERROR:  ALTER TABLE / SET EXPRESSION is not supported for virtual generated columns in tables with check constraints
-DETAIL:  Column "b" of relation "gtest20" is a virtual generated column.
+ALTER TABLE gtest20 ALTER COLUMN b SET EXPRESSION AS (a * 100);  -- violates constraint
+ERROR:  check constraint "gtest20_b_check" of relation "gtest20" is violated by some row
+ALTER TABLE gtest20 ALTER COLUMN b SET EXPRESSION AS (a * 3);  -- ok
+-- table rewrite should not happen
+SELECT pg_relation_filenode('gtest20') AS gtest20_filenode \gset
+ALTER TABLE gtest20 ALTER COLUMN b SET EXPRESSION AS (a * 4), ADD COLUMN c INT DEFAULT 11;
+SELECT pg_relation_filenode('gtest20') = :gtest20_filenode AS is_same_file;
+ is_same_file 
+--------------
+ t
+(1 row)
+
+\d gtest20
+                Table "generated_virtual_tests.gtest20"
+ Column |  Type   | Collation | Nullable |           Default           
+--------+---------+-----------+----------+-----------------------------
+ a      | integer |           | not null | 
+ b      | integer |           |          | generated always as (a * 4)
+ c      | integer |           |          | 11
+Indexes:
+    "gtest20_pkey" PRIMARY KEY, btree (a)
+Check constraints:
+    "gtest20_b_check" CHECK (b < 50)
+
 CREATE TABLE gtest20a (a int PRIMARY KEY, b int GENERATED ALWAYS AS (a * 2) VIRTUAL);
 INSERT INTO gtest20a (a) VALUES (10);
 INSERT INTO gtest20a (a) VALUES (30);
@@ -988,6 +1006,15 @@ SELECT tableoid::regclass, * FROM gtest_parent ORDER BY 1, 2, 3;
  gtest_child3 | 09-13-2016 |  1 |  4
 (3 rows)
 
+-- check constraint was validated based on each partitions's generation expression
+ALTER TABLE gtest_parent ADD CONSTRAINT cc1 CHECK (f3 < 19); -- error
+ERROR:  check constraint "cc1" of relation "gtest_child" is violated by some row
+ALTER TABLE gtest_parent ADD CONSTRAINT cc1 CHECK (f3 < 66); -- error
+ERROR:  check constraint "cc1" of relation "gtest_child2" is violated by some row
+ALTER TABLE gtest_parent ADD CONSTRAINT cc1 CHECK (f3 <> 33); -- error
+ERROR:  check constraint "cc1" of relation "gtest_child3" is violated by some row
+ALTER TABLE gtest_parent ADD CONSTRAINT cc CHECK (f3 < 67); -- ok
+ALTER TABLE gtest_parent DROP CONSTRAINT cc;
 -- alter generation expression of parent and all its children altogether
 ALTER TABLE gtest_parent ALTER COLUMN f3 SET EXPRESSION AS (f2 * 2);
 \d gtest_parent

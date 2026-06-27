@@ -107,7 +107,7 @@ do { \
 static IndexScanDesc index_beginscan_internal(Relation indexRelation,
 											  int nkeys, int norderbys, Snapshot snapshot,
 											  ParallelIndexScanDesc pscan, bool temp_snap);
-static inline void validate_relation_kind(Relation r);
+static inline void validate_relation_as_index(Relation r);
 
 
 /* ----------------------------------------------------------------
@@ -136,7 +136,7 @@ index_open(Oid relationId, LOCKMODE lockmode)
 
 	r = relation_open(relationId, lockmode);
 
-	validate_relation_kind(r);
+	validate_relation_as_index(r);
 
 	return r;
 }
@@ -159,7 +159,7 @@ try_index_open(Oid relationId, LOCKMODE lockmode)
 	if (!r)
 		return NULL;
 
-	validate_relation_kind(r);
+	validate_relation_as_index(r);
 
 	return r;
 }
@@ -188,13 +188,13 @@ index_close(Relation relation, LOCKMODE lockmode)
 }
 
 /* ----------------
- *		validate_relation_kind - check the relation's kind
+ *		validate_relation_as_index
  *
  *		Make sure relkind is an index or a partitioned index.
  * ----------------
  */
 static inline void
-validate_relation_kind(Relation r)
+validate_relation_as_index(Relation r)
 {
 	if (r->rd_rel->relkind != RELKIND_INDEX &&
 		r->rd_rel->relkind != RELKIND_PARTITIONED_INDEX)
