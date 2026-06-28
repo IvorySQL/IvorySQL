@@ -2730,10 +2730,12 @@ static void
 plisql_remove_function_references(PLiSQL_function *func, PackageCacheItem *item)
 {
 	PLiSQL_package *psource = (PLiSQL_package *) item->source;
-
-	Assert(list_member_ptr(psource->source.funclist, func));
+	int pre_len = list_length(psource->source.funclist);
 
 	psource->source.funclist = list_delete_ptr(psource->source.funclist, (void *) func);
+
+	Assert(pre_len == list_length(psource->source.funclist) + 1);
+
 	psource->source.use_count--;
 
 	/*
@@ -2742,7 +2744,9 @@ plisql_remove_function_references(PLiSQL_function *func, PackageCacheItem *item)
 	 */
 	if (!item->intable && psource->source.use_count == 0)
 	{
-		elog(DEBUG1, "free a package %u doesn't in hashtab start", item->pkey);
+		elog(DEBUG1,
+			 "free package \"%u\" (%d funcs refs), absent from hash table",
+			 item->pkey, pre_len);
 		plisql_free_package_function(item);
 	}
 
