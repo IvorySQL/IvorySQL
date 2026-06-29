@@ -459,7 +459,7 @@ right_trim(char *str)
 
 /*
  * ivy_trim
- * 	trim spaces at the beginning and end of a sring
+ * 	trim spaces at the beginning and end of a string
  */
 static char *
 ivy_trim(char *str)

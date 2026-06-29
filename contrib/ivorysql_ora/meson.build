@@ -37,7 +37,7 @@ ivorysql_ora_sources = files(
 if host_system == 'windows'
   ivorysql_ora_sources += rc_lib_gen.process(win32ver_rc, extra_args: [
     '--NAME', 'ivorysql_ora',
-    '--FILEDESC', 'ivorysql_ora - Oracle Compatible extenison on Postgres Database',])
+    '--FILEDESC', 'ivorysql_ora - Oracle Compatible extension on Postgres Database',])
 endif
 
 custom_target('ivorysql_ora--1.0.sql',
