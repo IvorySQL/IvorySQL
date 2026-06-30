@@ -14,8 +14,6 @@
  */
 #include "postgres.h"
 
-#include <math.h>
-
 #include "access/htup_details.h"
 #include "executor/nodeSetOp.h"
 #include "foreign/fdwapi.h"
@@ -760,9 +758,10 @@ add_path_precheck(RelOptInfo *parent_rel, int disabled_nodes,
  *	  parallel such that each worker will generate a subset of the path's
  *	  overall result.
  *
- *	  As in add_path, the partial_pathlist is kept sorted with the cheapest
- *	  total path in front.  This is depended on by multiple places, which
- *	  just take the front entry as the cheapest path without searching.
+ *	  As in add_path, the partial_pathlist is kept sorted first by smallest
+ *    number of disabled nodes and then by lowest total cost. This is depended
+ *    on by multiple places, which just take the front entry as the cheapest
+ *    path without searching.
  *
  *	  We don't generate parameterized partial paths for several reasons.  Most
  *	  importantly, they're not safe to execute, because there's nothing to
@@ -880,8 +879,13 @@ add_partial_path(RelOptInfo *parent_rel, Path *new_path)
 		}
 		else
 		{
-			/* new belongs after this old path if it has cost >= old's */
-			if (new_path->total_cost >= old_path->total_cost)
+			/*
+			 * new belongs after this old path if it has more disabled nodes
+			 * or if it has the same number of nodes but a greater total cost
+			 */
+			if (new_path->disabled_nodes > old_path->disabled_nodes ||
+				(new_path->disabled_nodes == old_path->disabled_nodes &&
+				 new_path->total_cost >= old_path->total_cost))
 				insert_at = foreach_current_index(p1) + 1;
 		}
 
@@ -1300,7 +1304,7 @@ create_tidrangescan_path(PlannerInfo *root, RelOptInfo *rel,
 AppendPath *
 create_append_path(PlannerInfo *root,
 				   RelOptInfo *rel,
-				   List *subpaths, List *partial_subpaths,
+				   AppendPathInput input,
 				   List *pathkeys, Relids required_outer,
 				   int parallel_workers, bool parallel_aware,
 				   double rows)
@@ -1310,6 +1314,7 @@ create_append_path(PlannerInfo *root,
 
 	Assert(!parallel_aware || parallel_workers > 0);
 
+	pathnode->child_append_relid_sets = input.child_append_relid_sets;
 	pathnode->path.pathtype = T_Append;
 	pathnode->path.parent = rel;
 	pathnode->path.pathtarget = rel->reltarget;
@@ -1325,7 +1330,7 @@ create_append_path(PlannerInfo *root,
 	 * on the simpler get_appendrel_parampathinfo.  There's no point in doing
 	 * the more expensive thing for a dummy path, either.
 	 */
-	if (rel->reloptkind == RELOPT_BASEREL && root && subpaths != NIL)
+	if (rel->reloptkind == RELOPT_BASEREL && root && input.subpaths != NIL)
 		pathnode->path.param_info = get_baserel_parampathinfo(root,
 															  rel,
 															  required_outer);
@@ -1356,11 +1361,11 @@ create_append_path(PlannerInfo *root,
 		 */
 		Assert(pathkeys == NIL);
 
-		list_sort(subpaths, append_total_cost_compare);
-		list_sort(partial_subpaths, append_startup_cost_compare);
+		list_sort(input.subpaths, append_total_cost_compare);
+		list_sort(input.partial_subpaths, append_startup_cost_compare);
 	}
-	pathnode->first_partial_path = list_length(subpaths);
-	pathnode->subpaths = list_concat(subpaths, partial_subpaths);
+	pathnode->first_partial_path = list_length(input.subpaths);
+	pathnode->subpaths = list_concat(input.subpaths, input.partial_subpaths);
 	pathnode->is_union = false;	/* caller must set true for UNION paths */
 
 	/*
@@ -1473,6 +1478,7 @@ MergeAppendPath *
 create_merge_append_path(PlannerInfo *root,
 						 RelOptInfo *rel,
 						 List *subpaths,
+						 List *child_append_relid_sets,
 						 List *pathkeys,
 						 Relids required_outer)
 {
@@ -1488,6 +1494,7 @@ create_merge_append_path(PlannerInfo *root,
 	 */
 	Assert(bms_is_empty(rel->lateral_relids) && bms_is_empty(required_outer));
 
+	pathnode->child_append_relid_sets = child_append_relid_sets;
 	pathnode->path.pathtype = T_MergeAppend;
 	pathnode->path.parent = rel;
 	pathnode->path.pathtarget = rel->reltarget;
@@ -1658,7 +1665,7 @@ create_group_result_path(PlannerInfo *root, RelOptInfo *rel,
  *	  pathnode.
  */
 MaterialPath *
-create_material_path(RelOptInfo *rel, Path *subpath)
+create_material_path(RelOptInfo *rel, Path *subpath, bool enabled)
 {
 	MaterialPath *pathnode = makeNode(MaterialPath);
 
@@ -1677,6 +1684,7 @@ create_material_path(RelOptInfo *rel, Path *subpath)
 	pathnode->subpath = subpath;
 
 	cost_material(&pathnode->path,
+				  enabled,
 				  subpath->disabled_nodes,
 				  subpath->startup_cost,
 				  subpath->total_cost,
@@ -1729,8 +1737,15 @@ create_memoize_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath,
 	pathnode->est_unique_keys = 0.0;
 	pathnode->est_hit_ratio = 0.0;
 
-	/* we should not generate this path type when enable_memoize=false */
-	Assert(enable_memoize);
+	/*
+	 * We should not be asked to generate this path type when memoization is
+	 * disabled, so set our count of disabled nodes equal to the subpath's
+	 * count.
+	 *
+	 * It would be nice to also Assert that memoization is enabled, but the
+	 * value of enable_memoize is not controlling: what we would need to check
+	 * is that the JoinPathExtraData's pgs_mask included PGS_NESTLOOP_MEMOIZE.
+	 */
 	pathnode->path.disabled_nodes = subpath->disabled_nodes;
 
 	/*
@@ -3929,10 +3944,11 @@ reparameterize_path(PlannerInfo *root, Path *path,
 		case T_Append:
 			{
 				AppendPath *apath = (AppendPath *) path;
-				List	   *childpaths = NIL;
-				List	   *partialpaths = NIL;
+				AppendPathInput new_append = {0};
 				int			i;
 				ListCell   *lc;
+
+				new_append.child_append_relid_sets = apath->child_append_relid_sets;
 
 				/* Reparameterize the children */
 				i = 0;
@@ -3947,13 +3963,13 @@ reparameterize_path(PlannerInfo *root, Path *path,
 						return NULL;
 					/* We have to re-split the regular and partial paths */
 					if (i < apath->first_partial_path)
-						childpaths = lappend(childpaths, spath);
+						new_append.subpaths = lappend(new_append.subpaths, spath);
 					else
-						partialpaths = lappend(partialpaths, spath);
+						new_append.partial_subpaths = lappend(new_append.partial_subpaths, spath);
 					i++;
 				}
 				return (Path *)
-					create_append_path(root, rel, childpaths, partialpaths,
+					create_append_path(root, rel, new_append,
 									   apath->path.pathkeys, required_outer,
 									   apath->path.parallel_workers,
 									   apath->path.parallel_aware,
@@ -3963,13 +3979,16 @@ reparameterize_path(PlannerInfo *root, Path *path,
 			{
 				MaterialPath *mpath = (MaterialPath *) path;
 				Path	   *spath = mpath->subpath;
+				bool		enabled;
 
 				spath = reparameterize_path(root, spath,
 											required_outer,
 											loop_count);
 				if (spath == NULL)
 					return NULL;
-				return (Path *) create_material_path(rel, spath);
+				enabled =
+					(mpath->path.disabled_nodes <= spath->disabled_nodes);
+				return (Path *) create_material_path(rel, spath, enabled);
 			}
 		case T_Memoize:
 			{

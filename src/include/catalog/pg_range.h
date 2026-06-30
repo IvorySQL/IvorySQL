@@ -26,6 +26,8 @@
  *		typedef struct FormData_pg_range
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_range,3541,RangeRelationId)
 {
 	/* OID of owning range type */
@@ -43,12 +45,23 @@ CATALOG(pg_range,3541,RangeRelationId)
 	/* subtype's btree opclass */
 	Oid			rngsubopc BKI_LOOKUP(pg_opclass);
 
+	/* range constructor functions */
+	regproc		rngconstruct2 BKI_LOOKUP(pg_proc);
+	regproc		rngconstruct3 BKI_LOOKUP(pg_proc);
+
+	/* multirange constructor functions */
+	regproc		rngmltconstruct0 BKI_LOOKUP(pg_proc);
+	regproc		rngmltconstruct1 BKI_LOOKUP(pg_proc);
+	regproc		rngmltconstruct2 BKI_LOOKUP(pg_proc);
+
 	/* canonicalize range, or 0 */
 	regproc		rngcanonical BKI_LOOKUP_OPT(pg_proc);
 
 	/* subtype difference as a float8, or 0 */
 	regproc		rngsubdiff BKI_LOOKUP_OPT(pg_proc);
 } FormData_pg_range;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_range corresponds to a pointer to a tuple with
@@ -69,7 +82,9 @@ MAKE_SYSCACHE(RANGEMULTIRANGE, pg_range_rngmultitypid_index, 4);
 
 extern void RangeCreate(Oid rangeTypeOid, Oid rangeSubType, Oid rangeCollation,
 						Oid rangeSubOpclass, RegProcedure rangeCanonical,
-						RegProcedure rangeSubDiff, Oid multirangeTypeOid);
+						RegProcedure rangeSubDiff, Oid multirangeTypeOid,
+						RegProcedure rangeConstruct2, RegProcedure rangeConstruct3,
+						RegProcedure mltrngConstruct0, RegProcedure mltrngConstruct1, RegProcedure mltrngConstruct2);
 extern void RangeDelete(Oid rangeTypeOid);
 
 #endif							/* PG_RANGE_H */

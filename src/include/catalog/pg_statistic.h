@@ -26,6 +26,8 @@
  *		typedef struct FormData_pg_statistic
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_statistic,2619,StatisticRelationId)
 {
 	/* These fields form the unique key for the entry: */
@@ -123,6 +125,8 @@ CATALOG(pg_statistic,2619,StatisticRelationId)
 	anyarray	stavalues5;
 #endif
 } FormData_pg_statistic;
+
+END_CATALOG_STRUCT
 
 #define STATISTIC_NUM_SLOTS  5
 

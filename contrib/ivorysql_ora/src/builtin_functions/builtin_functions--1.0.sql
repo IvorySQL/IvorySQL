@@ -1480,3 +1480,28 @@ LANGUAGE C
 CALLED ON NULL INPUT
 PARALLEL SAFE
 IMMUTABLE;
+
+/* STRAGG */
+/*
+ * STRAGG: Oracle-compatible string aggregation.
+ * Concatenates non-null values with ',' separator (no ORDER BY guarantee).
+ * Shares state layout with string_agg so string_agg_finalfn / string_agg_combine
+ * can be reused, giving correct parallel-safe behavior.
+ */
+CREATE FUNCTION sys.stragg_transfn(internal, text)
+RETURNS internal
+AS 'MODULE_PATHNAME', 'stragg_transfn'
+LANGUAGE C
+CALLED ON NULL INPUT
+PARALLEL SAFE;
+
+CREATE AGGREGATE sys.stragg(text) (
+    SFUNC     = sys.stragg_transfn,
+    STYPE     = internal,
+    FINALFUNC = string_agg_finalfn,
+    COMBINEFUNC = string_agg_combine,
+    SERIALFUNC  = string_agg_serialize,
+    DESERIALFUNC = string_agg_deserialize,
+    PARALLEL  = SAFE
+);
+/* End - STRAGG */

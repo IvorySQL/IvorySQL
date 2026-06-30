@@ -1348,16 +1348,6 @@ heap_getnext(TableScanDesc sscan, ScanDirection direction)
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg_internal("only heap AM is supported")));
 
-	/*
-	 * We don't expect direct calls to heap_getnext with valid CheckXidAlive
-	 * for catalog or regular tables.  See detailed comments in xact.c where
-	 * these variables are declared.  Normally we have such a check at tableam
-	 * level API but this is called from many places so we need to ensure it
-	 * here.
-	 */
-	if (unlikely(TransactionIdIsValid(CheckXidAlive) && !bsysscan))
-		elog(ERROR, "unexpected heap_getnext call during logical decoding");
-
 	/* Note: no locking manipulations needed */
 
 	if (scan->rs_base.rs_flags & SO_ALLOW_PAGEMODE)
@@ -4474,7 +4464,7 @@ HeapDetermineColumnsInfo(Relation relation,
 		 * Check if the old tuple's attribute is stored externally and is a
 		 * member of external_cols.
 		 */
-		if (VARATT_IS_EXTERNAL((struct varlena *) DatumGetPointer(value1)) &&
+		if (VARATT_IS_EXTERNAL((varlena *) DatumGetPointer(value1)) &&
 			bms_is_member(attidx, external_cols))
 			*has_external = true;
 	}
@@ -4628,10 +4618,10 @@ l3:
 	if (result == TM_Invisible)
 	{
 		/*
-		 * This is possible, but only when locking a tuple for ON CONFLICT
-		 * UPDATE.  We return this value here rather than throwing an error in
-		 * order to give that case the opportunity to throw a more specific
-		 * error.
+		 * This is possible, but only when locking a tuple for ON CONFLICT DO
+		 * SELECT/UPDATE.  We return this value here rather than throwing an
+		 * error in order to give that case the opportunity to throw a more
+		 * specific error.
 		 */
 		result = TM_Invisible;
 		goto out_locked;

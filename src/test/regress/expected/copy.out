@@ -104,6 +104,24 @@ select count(*) from copytest5;
      0
 (1 row)
 
+-- test header line feature (given as strings)
+truncate copytest5;
+copy copytest5 from stdin (format csv, header '0');
+select * from copytest5 order by c1;
+ c1 
+----
+  1
+  2
+(2 rows)
+
+truncate copytest5;
+copy copytest5 from stdin (format csv, header '1');
+select * from copytest5 order by c1;
+ c1 
+----
+  2
+(1 row)
+
 -- test copy from with a partitioned table
 create table parted_copytest (
 	a int,
@@ -247,7 +265,7 @@ alter table header_copytest add column c text;
 copy header_copytest to stdout with (header match);
 ERROR:  cannot use "match" with HEADER in COPY TO
 copy header_copytest from stdin with (header wrong_choice);
-ERROR:  header requires a Boolean value, a non-negative integer, or the string "match"
+ERROR:  header requires a Boolean value, an integer value greater than or equal to zero, or the string "match"
 -- works
 copy header_copytest from stdin with (header match);
 copy header_copytest (c, a, b) from stdin with (header match);

@@ -29,6 +29,8 @@
  *		cpp turns this into typedef struct FormData_pg_aggregate
  * ----------------------------------------------------------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_aggregate,2600,AggregateRelationId)
 {
 	/* pg_proc OID of the aggregate itself */
@@ -100,6 +102,8 @@ CATALOG(pg_aggregate,2600,AggregateRelationId)
 	text		aggminitval BKI_DEFAULT(_null_);
 #endif
 } FormData_pg_aggregate;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_aggregate corresponds to a pointer to a tuple with

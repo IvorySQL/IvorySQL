@@ -465,9 +465,57 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 		tuple_fraction = 0.0;
 	}
 
+	/*
+	 * Compute the initial path generation strategy mask.
+	 *
+	 * Some strategies, such as PGS_FOREIGNJOIN, have no corresponding enable_*
+	 * GUC, and so the corresponding bits are always set in the default
+	 * strategy mask.
+	 *
+	 * It may seem surprising that enable_indexscan sets both PGS_INDEXSCAN
+	 * and PGS_INDEXONLYSCAN. However, the historical behavior of this GUC
+	 * corresponds to this exactly: enable_indexscan=off disables both
+	 * index-scan and index-only scan paths, whereas enable_indexonlyscan=off
+	 * converts the index-only scan paths that we would have considered into
+	 * index scan paths.
+	 */
+	glob->default_pgs_mask = PGS_APPEND | PGS_MERGE_APPEND | PGS_FOREIGNJOIN |
+		PGS_GATHER | PGS_CONSIDER_NONPARTIAL;
+	if (enable_tidscan)
+		glob->default_pgs_mask |= PGS_TIDSCAN;
+	if (enable_seqscan)
+		glob->default_pgs_mask |= PGS_SEQSCAN;
+	if (enable_indexscan)
+		glob->default_pgs_mask |= PGS_INDEXSCAN | PGS_INDEXONLYSCAN;
+	if (enable_indexonlyscan)
+		glob->default_pgs_mask |= PGS_CONSIDER_INDEXONLY;
+	if (enable_bitmapscan)
+		glob->default_pgs_mask |= PGS_BITMAPSCAN;
+	if (enable_mergejoin)
+	{
+		glob->default_pgs_mask |= PGS_MERGEJOIN_PLAIN;
+		if (enable_material)
+			glob->default_pgs_mask |= PGS_MERGEJOIN_MATERIALIZE;
+	}
+	if (enable_nestloop)
+	{
+		glob->default_pgs_mask |= PGS_NESTLOOP_PLAIN;
+		if (enable_material)
+			glob->default_pgs_mask |= PGS_NESTLOOP_MATERIALIZE;
+		if (enable_memoize)
+			glob->default_pgs_mask |= PGS_NESTLOOP_MEMOIZE;
+	}
+	if (enable_hashjoin)
+		glob->default_pgs_mask |= PGS_HASHJOIN;
+	if (enable_gathermerge)
+		glob->default_pgs_mask |= PGS_GATHER_MERGE;
+	if (enable_partitionwise_join)
+		glob->default_pgs_mask |= PGS_CONSIDER_PARTITIONWISE;
+
 	/* Allow plugins to take control after we've initialized "glob" */
 	if (planner_setup_hook)
-		(*planner_setup_hook) (glob, parse, query_string, &tuple_fraction, es);
+		(*planner_setup_hook) (glob, parse, query_string, cursorOptions,
+							   &tuple_fraction, es);
 
 	/* primary planning entry point (may recurse for subqueries) */
 	root = subquery_planner(glob, parse, NULL, NULL, false, tuple_fraction,
@@ -610,6 +658,7 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 	result->unprunableRelids = bms_difference(glob->allRelids,
 											  glob->prunableRelids);
 	result->permInfos = glob->finalrteperminfos;
+	result->subrtinfos = glob->subrtinfos;
 	result->resultRelations = glob->resultRelations;
 	result->appendRelations = glob->appendRelations;
 	result->subplans = glob->subplans;
@@ -620,6 +669,7 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 	result->paramExecTypes = glob->paramExecTypes;
 	/* utilityStmt should be null, but we might as well copy it */
 	result->utilityStmt = parse->utilityStmt;
+	result->elidedNodes = glob->elidedNodes;
 	result->stmt_location = parse->stmt_location;
 	result->stmt_len = parse->stmt_len;
 	result->withFuncDefs = parse->withFuncDefs;
@@ -3839,11 +3889,11 @@ adjust_group_pathkeys_for_groupagg(PlannerInfo *root)
 					case PATHKEYS_BETTER2:
 						/* 'pathkeys' are stronger, use these ones instead */
 						currpathkeys = pathkeys;
-						/* FALLTHROUGH */
+						pg_fallthrough;
 
 					case PATHKEYS_BETTER1:
 						/* 'pathkeys' are less strict */
-						/* FALLTHROUGH */
+						pg_fallthrough;
 
 					case PATHKEYS_EQUAL:
 						/* mark this aggregate as covered by 'currpathkeys' */
@@ -4378,6 +4428,9 @@ make_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 		is_parallel_safe(root, havingQual))
 		grouped_rel->consider_parallel = true;
 
+	/* Assume that the same path generation strategies are allowed */
+	grouped_rel->pgs_mask = input_rel->pgs_mask;
+
 	/*
 	 * If the input rel belongs to a single FDW, so does the grouped rel.
 	 */
@@ -4435,7 +4488,7 @@ create_degenerate_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
 		 * might get between 0 and N output rows. Offhand I think that's
 		 * desired.)
 		 */
-		List	   *paths = NIL;
+		AppendPathInput append = {0};
 
 		while (--nrows >= 0)
 		{
@@ -4443,13 +4496,12 @@ create_degenerate_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
 				create_group_result_path(root, grouped_rel,
 										 grouped_rel->reltarget,
 										 (List *) parse->havingQual);
-			paths = lappend(paths, path);
+			append.subpaths = lappend(append.subpaths, path);
 		}
 		path = (Path *)
 			create_append_path(root,
 							   grouped_rel,
-							   paths,
-							   NIL,
+							   append,
 							   NIL,
 							   NULL,
 							   0,
@@ -5770,6 +5822,9 @@ create_ordered_paths(PlannerInfo *root,
 	 */
 	if (input_rel->consider_parallel && target_parallel_safe)
 		ordered_rel->consider_parallel = true;
+
+	/* Assume that the same path generation strategies are allowed. */
+	ordered_rel->pgs_mask = input_rel->pgs_mask;
 
 	/*
 	 * If the input rel belongs to a single FDW, so does the ordered_rel.
@@ -7868,6 +7923,7 @@ create_partial_grouping_paths(PlannerInfo *root,
 											grouped_rel->relids);
 	partially_grouped_rel->consider_parallel =
 		grouped_rel->consider_parallel;
+	partially_grouped_rel->pgs_mask = grouped_rel->pgs_mask;
 	partially_grouped_rel->reloptkind = grouped_rel->reloptkind;
 	partially_grouped_rel->serverid = grouped_rel->serverid;
 	partially_grouped_rel->userid = grouped_rel->userid;

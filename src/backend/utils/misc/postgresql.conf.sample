@@ -96,7 +96,8 @@
 #authentication_timeout = 1min          # 1s-600s
 #password_encryption = scram-sha-256    # scram-sha-256 or (deprecated) md5
 #scram_iterations = 4096
-#md5_password_warnings = on             # display md5 deprecation warnings?
+#password_expiration_warning_threshold = 7d  # threshold for expiration warnings
+#md5_password_warnings = on                  # display md5 deprecation warnings?
 #oauth_validator_libraries = '' # comma-separated list of trusted validator modules
 
 # GSSAPI using Kerberos
@@ -179,6 +180,10 @@
                                         # in kilobytes, or -1 for no limit
 
 #file_copy_method = copy                # copy, clone (if supported by OS)
+#file_extend_method = posix_fallocate   # the default is the first option supported
+                                        # by the operating system:
+                                        #   posix_fallocate (most Unix-like systems)
+                                        #   write_zeros
 
 #max_notify_queue_pages = 1048576       # limits the number of SLRU pages allocated
                                         # for NOTIFY / LISTEN queue
@@ -528,7 +533,21 @@
 
 # - When to Log -
 
-#log_min_messages = warning             # values in order of decreasing detail:
+#log_min_messages = 'warning'           # comma-separated list of
+                                        # process_type:level entries, plus
+                                        # one freestanding level as default.
+                                        # Valid process types are:
+                                        # archiver              autovacuum
+                                        # backend               bgworker
+                                        # bgwriter              checkpointer
+                                        # ioworker              postmaster
+                                        # slotsyncworker        startup
+                                        # syslogger             walreceiver
+                                        # walsummarizer         walwriter
+                                        # walsender
+                                        #
+                                        # Level values in order of decreasing
+                                        # detail:
                                         #   debug5
                                         #   debug4
                                         #   debug3
@@ -847,10 +866,8 @@
 
 #array_nulls = on
 #backslash_quote = safe_encoding        # on, off, or safe_encoding
-#escape_string_warning = on
 #lo_compat_privileges = off
 #quote_all_identifiers = off
-#standard_conforming_strings = on
 #synchronize_seqscans = on
 
 # - Other Platforms and Clients -

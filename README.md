@@ -23,13 +23,13 @@ We are committed to abiding by the principles of [open-source ways](https://open
 </br>
 
 ## Installation
-We recommend following our [Quick Start](https://docs.ivorysql.org/en/ivorysql-doc/v5.3/3.1#quick-installation) for how to install and running IvorySQL.
+We recommend following our [Quick Start](https://docs.ivorysql.org/en/ivorysql-doc/v5.4/3.1#quick-installation) for how to install and running IvorySQL.
 
-Furthermore, for more detailed installation instructions, please refer to the [Installation Docs](https://docs.ivorysql.org/en/ivorysql-doc/v5.3/4.1#introduction). We provide four installation methods for IvorySQL, as outlined below:
-- [Yum installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.3/4.1#Yum-installation)
-- [Docker installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.3/4.1#Docker-installation)
-- [Rpm installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.3/4.1#Rpm-installation)
-- [Source code installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.3/4.1#Source-code-installation)
+Furthermore, for more detailed installation instructions, please refer to the [Installation Docs](https://docs.ivorysql.org/en/ivorysql-doc/v5.4/4.1#introduction). We provide four installation methods for IvorySQL, as outlined below:
+- [Yum installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.4/4.1#Yum-installation)
+- [Docker installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.4/4.1#Docker-installation)
+- [Rpm installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.4/4.1#Rpm-installation)
+- [Source code installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.4/4.1#Source-code-installation)
 
 ## Development with Docker
 
@@ -94,6 +94,12 @@ on mailing lists are some ways to contribute to the IvorySQL project and all typ
 by the IvorySQL community.
 
 * **Join IvorySQL [mailing lists](http://lists.ivorysql.org) to get started**
+
+## AI Coding Assistant
+
+If you are an LLM or AI-powered coding assistant contributing to IvorySQL, you MUST read and follow the [AI coding assistants documentation](coding-assistants.md) before making contributions.
+
+This documentation contains essential requirements about licensing, attribution, and code quality standards that all AI tools must comply with.
 
 ## Documentation
 Please check the [online documentation](https://docs.ivorysql.org/).

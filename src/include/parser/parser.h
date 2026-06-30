@@ -57,10 +57,8 @@ typedef enum
 	BACKSLASH_QUOTE_SAFE_ENCODING,
 }			BackslashQuoteType;
 
-/* GUC variables in scan.l (every one of these is a bad idea :-() */
+/* GUC variable in scan.l */
 extern PGDLLIMPORT int backslash_quote;
-extern PGDLLIMPORT bool escape_string_warning;
-extern PGDLLIMPORT bool standard_conforming_strings;
 
 /* Hook for plugins to get control in raw_parser() */
 typedef List *(*raw_parser_hook_type) (const char *str, RawParseMode mode);

@@ -115,7 +115,7 @@ static uint8 curinsert_flags = 0;
 static XLogRecData hdr_rdt;
 static char *hdr_scratch = NULL;
 
-#define SizeOfXlogOrigin	(sizeof(RepOriginId) + sizeof(char))
+#define SizeOfXlogOrigin	(sizeof(ReplOriginId) + sizeof(char))
 #define SizeOfXLogTransactionId	(sizeof(TransactionId) + sizeof(char))
 
 #define HEADER_SCRATCH_SIZE \
@@ -677,8 +677,8 @@ XLogRecordAssemble(RmgrId rmid, uint8 info,
 			if (regbuf->flags & REGBUF_STANDARD)
 			{
 				/* Assume we can omit data between pd_lower and pd_upper */
-				uint16		lower = ((PageHeader) page)->pd_lower;
-				uint16		upper = ((PageHeader) page)->pd_upper;
+				uint16		lower = ((const PageHeaderData *) page)->pd_lower;
+				uint16		upper = ((const PageHeaderData *) page)->pd_upper;
 
 				if (lower >= SizeOfPageHeaderData &&
 					upper > lower &&
@@ -861,11 +861,11 @@ XLogRecordAssemble(RmgrId rmid, uint8 info,
 
 	/* followed by the record's origin, if any */
 	if ((curinsert_flags & XLOG_INCLUDE_ORIGIN) &&
-		replorigin_session_origin != InvalidRepOriginId)
+		replorigin_xact_state.origin != InvalidReplOriginId)
 	{
 		*(scratch++) = (char) XLR_BLOCK_ID_ORIGIN;
-		memcpy(scratch, &replorigin_session_origin, sizeof(replorigin_session_origin));
-		scratch += sizeof(replorigin_session_origin);
+		memcpy(scratch, &replorigin_xact_state.origin, sizeof(replorigin_xact_state.origin));
+		scratch += sizeof(replorigin_xact_state.origin);
 	}
 
 	/* followed by toplevel XID, if not already included in previous record */
@@ -1355,11 +1355,12 @@ log_newpage_range(Relation rel, ForkNumber forknum,
 		recptr = XLogInsert(RM_XLOG_ID, XLOG_FPI);
 
 		for (i = 0; i < nbufs; i++)
-		{
 			PageSetLSN(BufferGetPage(bufpack[i]), recptr);
-			UnlockReleaseBuffer(bufpack[i]);
-		}
+
 		END_CRIT_SECTION();
+
+		for (i = 0; i < nbufs; i++)
+			UnlockReleaseBuffer(bufpack[i]);
 	}
 }
 

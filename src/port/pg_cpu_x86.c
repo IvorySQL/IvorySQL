@@ -1,6 +1,6 @@
 /*-------------------------------------------------------------------------
  *
- * pg_crc32c_sse42_choose.c
+ * pg_cpu_x86.c
  *	  Choose between Intel SSE 4.2 and software CRC-32C implementation.
  *
  * On first call, checks if the CPU we're running on supports Intel SSE
@@ -13,12 +13,14 @@
  *
  *
  * IDENTIFICATION
- *	  src/port/pg_crc32c_sse42_choose.c
+ *	  src/port/pg_cpu_x86.c
  *
  *-------------------------------------------------------------------------
  */
 
 #include "c.h"
+
+#if defined(USE_SSE2) || defined(__i386__)
 
 #if defined(HAVE__GET_CPUID) || defined(HAVE__GET_CPUID_COUNT)
 #include <cpuid.h>
@@ -33,6 +35,8 @@
 #endif
 
 #include "port/pg_crc32c.h"
+
+#ifndef USE_SLICING_BY_8_CRC32C
 
 /*
  * Does XGETBV say the ZMM registers are enabled?
@@ -107,3 +111,7 @@ pg_comp_crc32c_choose(pg_crc32c crc, const void *data, size_t len)
 }
 
 pg_crc32c	(*pg_comp_crc32c) (pg_crc32c crc, const void *data, size_t len) = pg_comp_crc32c_choose;
+
+#endif
+
+#endif							/* defined(USE_SSE2) || defined(__i386__) */

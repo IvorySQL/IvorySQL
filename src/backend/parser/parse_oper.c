@@ -85,7 +85,8 @@ static bool make_oper_cache_key(ParseState *pstate, OprCacheKey *key,
 								int location);
 static Oid	find_oper_cache_entry(OprCacheKey *key);
 static void make_oper_cache_entry(OprCacheKey *key, Oid opr_oid);
-static void InvalidateOprCacheCallBack(Datum arg, int cacheid, uint32 hashvalue);
+static void InvalidateOprCacheCallBack(Datum arg, SysCacheIdentifier cacheid,
+									   uint32 hashvalue);
 
 
 /*
@@ -1106,7 +1107,8 @@ make_oper_cache_entry(OprCacheKey *key, Oid opr_oid)
  * Callback for pg_operator and pg_cast inval events
  */
 static void
-InvalidateOprCacheCallBack(Datum arg, int cacheid, uint32 hashvalue)
+InvalidateOprCacheCallBack(Datum arg, SysCacheIdentifier cacheid,
+						   uint32 hashvalue)
 {
 	HASH_SEQ_STATUS status;
 	OprCacheEntry *hentry;

@@ -66,7 +66,7 @@ typedef struct bbsink_copystream
  * frequently. Ideally, we'd like to send a message when the time since the
  * last message reaches PROGRESS_REPORT_MILLISECOND_THRESHOLD, but checking
  * the system time every time we send a tiny bit of data seems too expensive.
- * So we only check it after the number of bytes sine the last check reaches
+ * So we only check it after the number of bytes since the last check reaches
  * PROGRESS_REPORT_BYTE_INTERVAL.
  */
 #define	PROGRESS_REPORT_BYTE_INTERVAL				65536

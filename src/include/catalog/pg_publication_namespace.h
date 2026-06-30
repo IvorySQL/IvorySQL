@@ -27,12 +27,16 @@
  *		typedef struct FormData_pg_publication_namespace
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_publication_namespace,6237,PublicationNamespaceRelationId)
 {
 	Oid			oid;			/* oid */
 	Oid			pnpubid BKI_LOOKUP(pg_publication); /* Oid of the publication */
 	Oid			pnnspid BKI_LOOKUP(pg_namespace);	/* Oid of the schema */
 } FormData_pg_publication_namespace;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_publication_namespace corresponds to a pointer to a tuple with

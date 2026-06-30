@@ -134,6 +134,18 @@
 #endif
 
 /*
+ * pg_fallthrough indicates that the fall through from the previous case is
+ * intentional.
+ */
+#if (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L) || (defined(__cplusplus) && __cplusplus >= 201703L)
+#define pg_fallthrough [[fallthrough]]
+#elif __has_attribute(fallthrough)
+#define pg_fallthrough __attribute__((fallthrough))
+#else
+#define pg_fallthrough
+#endif
+
+/*
  * pg_nodiscard means the compiler should warn if the result of a function
  * call is ignored.  The name "nodiscard" is chosen in alignment with the C23
  * standard attribute with the same name.  For maximum forward compatibility,
@@ -155,7 +167,7 @@
  * common style is to put them before the return type.  (The MSVC fallback has
  * the same requirement.  The GCC fallback is more flexible.)
  */
-#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+#if (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L) && !defined(__cplusplus)
 #define pg_noreturn _Noreturn
 #elif defined(__GNUC__)
 #define pg_noreturn __attribute__((noreturn))
@@ -692,7 +704,7 @@ typedef uint64 Oid8;
 #define OID8_MAX	UINT64_MAX
 
 /* ----------------
- *		Variable-length datatypes all share the 'struct varlena' header.
+ *		Variable-length datatypes all share the 'varlena' header.
  *
  * NOTE: for TOASTable types, this is an oversimplification, since the value
  * may be compressed or moved out-of-line.  However datatype-specific routines
@@ -705,11 +717,11 @@ typedef uint64 Oid8;
  * See varatt.h for details of the TOASTed form.
  * ----------------
  */
-struct varlena
+typedef struct varlena
 {
 	char		vl_len_[4];		/* Do not touch this field directly! */
 	char		vl_dat[FLEXIBLE_ARRAY_MEMBER];	/* Data content is here */
-};
+} varlena;
 
 #define VARHDRSZ		((int32) sizeof(int32))
 
@@ -718,10 +730,10 @@ struct varlena
  * There is no terminating null or anything like that --- the data length is
  * always VARSIZE_ANY_EXHDR(ptr).
  */
-typedef struct varlena bytea;
-typedef struct varlena text;
-typedef struct varlena BpChar;	/* blank-padded char, ie SQL char(n) */
-typedef struct varlena VarChar; /* var-length char, ie SQL varchar(n) */
+typedef varlena bytea;
+typedef varlena text;
+typedef varlena BpChar;			/* blank-padded char, ie SQL char(n) */
+typedef varlena VarChar;		/* var-length char, ie SQL varchar(n) */
 
 /*
  * Specialized array types.  These are physically laid out just the same
@@ -824,7 +836,7 @@ typedef NameData *Name;
 
 #define SHORTALIGN(LEN)			TYPEALIGN(ALIGNOF_SHORT, (LEN))
 #define INTALIGN(LEN)			TYPEALIGN(ALIGNOF_INT, (LEN))
-#define LONGALIGN(LEN)			TYPEALIGN(ALIGNOF_LONG, (LEN))
+#define INT64ALIGN(LEN)			TYPEALIGN(ALIGNOF_INT64_T, (LEN))
 #define DOUBLEALIGN(LEN)		TYPEALIGN(ALIGNOF_DOUBLE, (LEN))
 #define MAXALIGN(LEN)			TYPEALIGN(MAXIMUM_ALIGNOF, (LEN))
 /* MAXALIGN covers only built-in types, not buffers */
@@ -836,7 +848,7 @@ typedef NameData *Name;
 
 #define SHORTALIGN_DOWN(LEN)	TYPEALIGN_DOWN(ALIGNOF_SHORT, (LEN))
 #define INTALIGN_DOWN(LEN)		TYPEALIGN_DOWN(ALIGNOF_INT, (LEN))
-#define LONGALIGN_DOWN(LEN)		TYPEALIGN_DOWN(ALIGNOF_LONG, (LEN))
+#define INT64ALIGN_DOWN(LEN)	TYPEALIGN_DOWN(ALIGNOF_INT64_T, (LEN))
 #define DOUBLEALIGN_DOWN(LEN)	TYPEALIGN_DOWN(ALIGNOF_DOUBLE, (LEN))
 #define MAXALIGN_DOWN(LEN)		TYPEALIGN_DOWN(MAXIMUM_ALIGNOF, (LEN))
 #define BUFFERALIGN_DOWN(LEN)	TYPEALIGN_DOWN(ALIGNOF_BUFFER, (LEN))
@@ -927,25 +939,35 @@ pg_noreturn extern void ExceptionalCondition(const char *conditionName,
  *
  * If the "condition" (a compile-time-constant expression) evaluates to false,
  * throw a compile error using the "errmessage" (a string literal).
- *
+ */
+
+/*
  * We require C11 and C++11, so static_assert() is expected to be there.
  * StaticAssertDecl() was previously used for portability, but it's now just a
  * plain wrapper and doesn't need to be used in new code.  static_assert() is
  * a "declaration", and so it must be placed where for example a variable
  * declaration would be valid.  As long as we compile with
  * -Wno-declaration-after-statement, that also means it cannot be placed after
- * statements in a function.  Macros StaticAssertStmt() and StaticAssertExpr()
- * make it safe to use as a statement or in an expression, respectively.
+ * statements in a function.
+ */
+#define StaticAssertDecl(condition, errmessage) \
+	static_assert(condition, errmessage)
+
+/*
+ * StaticAssertStmt() was previously used to make static assertions work as a
+ * statement, but its use is now deprecated.
+ */
+#define StaticAssertStmt(condition, errmessage) \
+	do { static_assert(condition, errmessage); } while(0)
+
+/*
+ * StaticAssertExpr() is for use in an expression.
  *
  * For compilers without GCC statement expressions, we fall back on a kluge
  * that assumes the compiler will complain about a negative width for a struct
  * bit-field.  This will not include a helpful error message, but it beats not
  * getting an error at all.
  */
-#define StaticAssertDecl(condition, errmessage) \
-	static_assert(condition, errmessage)
-#define StaticAssertStmt(condition, errmessage) \
-	do { static_assert(condition, errmessage); } while(0)
 #ifdef HAVE_STATEMENT_EXPRESSIONS
 #define StaticAssertExpr(condition, errmessage) \
 	((void) ({ static_assert(condition, errmessage); true; }))
@@ -958,26 +980,26 @@ pg_noreturn extern void ExceptionalCondition(const char *conditionName,
 /*
  * Compile-time checks that a variable (or expression) has the specified type.
  *
- * AssertVariableIsOfType() can be used as a statement.
- * AssertVariableIsOfTypeMacro() is intended for use in macros, eg
- *		#define foo(x) (AssertVariableIsOfTypeMacro(x, int), bar(x))
+ * StaticAssertVariableIsOfType() can be used as a declaration.
+ * StaticAssertVariableIsOfTypeMacro() is intended for use in macros, eg
+ *		#define foo(x) (StaticAssertVariableIsOfTypeMacro(x, int), bar(x))
  *
  * If we don't have __builtin_types_compatible_p, we can still assert that
  * the types have the same size.  This is far from ideal (especially on 32-bit
  * platforms) but it provides at least some coverage.
  */
 #ifdef HAVE__BUILTIN_TYPES_COMPATIBLE_P
-#define AssertVariableIsOfType(varname, typename) \
-	StaticAssertStmt(__builtin_types_compatible_p(__typeof__(varname), typename), \
+#define StaticAssertVariableIsOfType(varname, typename) \
+	StaticAssertDecl(__builtin_types_compatible_p(__typeof__(varname), typename), \
 	CppAsString(varname) " does not have type " CppAsString(typename))
-#define AssertVariableIsOfTypeMacro(varname, typename) \
+#define StaticAssertVariableIsOfTypeMacro(varname, typename) \
 	(StaticAssertExpr(__builtin_types_compatible_p(__typeof__(varname), typename), \
 	 CppAsString(varname) " does not have type " CppAsString(typename)))
 #else							/* !HAVE__BUILTIN_TYPES_COMPATIBLE_P */
-#define AssertVariableIsOfType(varname, typename) \
-	StaticAssertStmt(sizeof(varname) == sizeof(typename), \
+#define StaticAssertVariableIsOfType(varname, typename) \
+	StaticAssertDecl(sizeof(varname) == sizeof(typename), \
 	CppAsString(varname) " does not have type " CppAsString(typename))
-#define AssertVariableIsOfTypeMacro(varname, typename) \
+#define StaticAssertVariableIsOfTypeMacro(varname, typename) \
 	(StaticAssertExpr(sizeof(varname) == sizeof(typename), \
 	 CppAsString(varname) " does not have type " CppAsString(typename)))
 #endif							/* HAVE__BUILTIN_TYPES_COMPATIBLE_P */
@@ -1122,6 +1144,14 @@ typedef struct PGAlignedBlock
 } PGAlignedBlock;
 
 /*
+ * alignas with extended alignments is buggy in g++ < 9.  As a simple
+ * workaround, we disable these definitions in that case.
+ *
+ * <https://gcc.gnu.org/bugzilla/show_bug.cgi?id=89357>
+ */
+#if !(defined(__cplusplus) && defined(__GNUC__) && !defined(__clang__) && __GNUC__ < 9)
+
+/*
  * Use this to declare a field or local variable holding a page buffer, if that
  * page might be accessed as a page or passed to an SMgr I/O function.  If
  * allocating using the MemoryContext API, the aligned allocation functions
@@ -1139,6 +1169,14 @@ typedef struct PGAlignedXLogBlock
 {
 	alignas(PG_IO_ALIGN_SIZE) char data[XLOG_BLCKSZ];
 } PGAlignedXLogBlock;
+
+#else							/* (g++ < 9) */
+
+/* Allow these types to be used as abstract types when using old g++ */
+typedef struct PGIOAlignedBlock PGIOAlignedBlock;
+typedef struct PGAlignedXLogBlock PGAlignedXLogBlock;
+
+#endif							/* !(g++ < 9) */
 
 /* msb for char */
 #define HIGHBIT					(0x80)
@@ -1236,6 +1274,25 @@ typedef struct PGAlignedXLogBlock
 	((underlying_type) (expr))
 #define unvolatize(underlying_type, expr) \
 	((underlying_type) (expr))
+#endif
+
+/*
+ * SSE2 instructions are part of the spec for the 64-bit x86 ISA. We assume
+ * that compilers targeting this architecture understand SSE2 intrinsics.
+ */
+#if (defined(__x86_64__) || defined(_M_AMD64))
+#define USE_SSE2
+
+/*
+ * We use the Neon instructions if the compiler provides access to them (as
+ * indicated by __ARM_NEON) and we are on aarch64.  While Neon support is
+ * technically optional for aarch64, it appears that all available 64-bit
+ * hardware does have it.  Neon exists in some 32-bit hardware too, but we
+ * could not realistically use it there without a run-time check, which seems
+ * not worth the trouble for now.
+ */
+#elif defined(__aarch64__) && defined(__ARM_NEON)
+#define USE_NEON
 #endif
 
 /* ----------------------------------------------------------------

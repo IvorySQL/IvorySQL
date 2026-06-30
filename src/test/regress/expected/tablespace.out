@@ -958,6 +958,11 @@ ALTER TABLE ALL IN TABLESPACE regress_tblspace_renamed SET TABLESPACE pg_default
 NOTICE:  no matching relations in tablespace "regress_tblspace_renamed" found
 ALTER MATERIALIZED VIEW ALL IN TABLESPACE regress_tblspace_renamed SET TABLESPACE pg_default;
 NOTICE:  no matching relations in tablespace "regress_tblspace_renamed" found
+-- Should fail, contains \n in name
+ALTER TABLESPACE regress_tblspace_renamed RENAME TO "invalid
+name";
+ERROR:  tablespace name "invalid
+name" contains a newline or carriage return character
 -- Should succeed
 DROP TABLESPACE regress_tblspace_renamed;
 DROP SCHEMA testschema CASCADE;

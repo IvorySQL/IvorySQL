@@ -671,7 +671,6 @@ static XLogRecPtr CreateOverwriteContrecordRecord(XLogRecPtr aborted_lsn,
 												  TimeLineID newTLI);
 static void CheckPointGuts(XLogRecPtr checkPointRedo, int flags);
 static void KeepLogSeg(XLogRecPtr recptr, XLogSegNo *logSegNo);
-static XLogRecPtr XLogGetReplicationSlotMinimumLSN(void);
 
 static void AdvanceXLInsertBuffer(XLogRecPtr upto, TimeLineID tli,
 								  bool opportunistic);
@@ -2063,7 +2062,7 @@ AdvanceXLInsertBuffer(XLogRecPtr upto, TimeLineID tli, bool opportunistic)
 					/* Have to write it ourselves */
 					TRACE_POSTGRESQL_WAL_BUFFER_WRITE_DIRTY_START();
 					WriteRqst.Write = OldPageRqstPtr;
-					WriteRqst.Flush = 0;
+					WriteRqst.Flush = InvalidXLogRecPtr;
 					XLogWrite(WriteRqst, tli, false);
 					LWLockRelease(WALWriteLock);
 					pgWalUsage.wal_buffers_full++;
@@ -2681,7 +2680,7 @@ XLogSetReplicationSlotMinimumLSN(XLogRecPtr lsn)
  * Return the oldest LSN we must retain to satisfy the needs of some
  * replication slot.
  */
-static XLogRecPtr
+XLogRecPtr
 XLogGetReplicationSlotMinimumLSN(void)
 {
 	XLogRecPtr	retval;
@@ -3080,7 +3079,7 @@ XLogBackgroundFlush(void)
 	else
 	{
 		/* no flushing, this time round */
-		WriteRqst.Flush = 0;
+		WriteRqst.Flush = InvalidXLogRecPtr;
 	}
 
 #ifdef WAL_DEBUG
@@ -5215,7 +5214,7 @@ BootStrapXLOG(uint32 data_checksum_version)
 	/* Insert the initial checkpoint record */
 	recptr = ((char *) page + SizeOfXLogLongPHD);
 	record = (XLogRecord *) recptr;
-	record->xl_prev = 0;
+	record->xl_prev = InvalidXLogRecPtr;
 	record->xl_xid = InvalidTransactionId;
 	record->xl_tot_len = SizeOfXLogRecord + SizeOfXLogRecordDataHeaderShort + sizeof(checkPoint);
 	record->xl_info = XLOG_CHECKPOINT_SHUTDOWN;
@@ -6903,6 +6902,28 @@ ShutdownXLOG(int code, Datum arg)
 }
 
 /*
+ * Format checkpoint request flags as a space-separated string for
+ * log messages.
+ */
+static const char *
+CheckpointFlagsString(int flags)
+{
+	static char buf[128];
+
+	snprintf(buf, sizeof(buf), "%s%s%s%s%s%s%s%s",
+			 (flags & CHECKPOINT_IS_SHUTDOWN) ? " shutdown" : "",
+			 (flags & CHECKPOINT_END_OF_RECOVERY) ? " end-of-recovery" : "",
+			 (flags & CHECKPOINT_FAST) ? " fast" : "",
+			 (flags & CHECKPOINT_FORCE) ? " force" : "",
+			 (flags & CHECKPOINT_WAIT) ? " wait" : "",
+			 (flags & CHECKPOINT_CAUSE_XLOG) ? " wal" : "",
+			 (flags & CHECKPOINT_CAUSE_TIME) ? " time" : "",
+			 (flags & CHECKPOINT_FLUSH_UNLOGGED) ? " flush-unlogged" : "");
+
+	return buf;
+}
+
+/*
  * Log start of a checkpoint.
  */
 static void
@@ -6910,35 +6931,21 @@ LogCheckpointStart(int flags, bool restartpoint)
 {
 	if (restartpoint)
 		ereport(LOG,
-		/* translator: the placeholders show checkpoint options */
-				(errmsg("restartpoint starting:%s%s%s%s%s%s%s%s",
-						(flags & CHECKPOINT_IS_SHUTDOWN) ? " shutdown" : "",
-						(flags & CHECKPOINT_END_OF_RECOVERY) ? " end-of-recovery" : "",
-						(flags & CHECKPOINT_FAST) ? " fast" : "",
-						(flags & CHECKPOINT_FORCE) ? " force" : "",
-						(flags & CHECKPOINT_WAIT) ? " wait" : "",
-						(flags & CHECKPOINT_CAUSE_XLOG) ? " wal" : "",
-						(flags & CHECKPOINT_CAUSE_TIME) ? " time" : "",
-						(flags & CHECKPOINT_FLUSH_UNLOGGED) ? " flush-unlogged" : "")));
+		/* translator: the placeholder shows checkpoint options */
+				(errmsg("restartpoint starting:%s",
+						CheckpointFlagsString(flags))));
 	else
 		ereport(LOG,
-		/* translator: the placeholders show checkpoint options */
-				(errmsg("checkpoint starting:%s%s%s%s%s%s%s%s",
-						(flags & CHECKPOINT_IS_SHUTDOWN) ? " shutdown" : "",
-						(flags & CHECKPOINT_END_OF_RECOVERY) ? " end-of-recovery" : "",
-						(flags & CHECKPOINT_FAST) ? " fast" : "",
-						(flags & CHECKPOINT_FORCE) ? " force" : "",
-						(flags & CHECKPOINT_WAIT) ? " wait" : "",
-						(flags & CHECKPOINT_CAUSE_XLOG) ? " wal" : "",
-						(flags & CHECKPOINT_CAUSE_TIME) ? " time" : "",
-						(flags & CHECKPOINT_FLUSH_UNLOGGED) ? " flush-unlogged" : "")));
+		/* translator: the placeholder shows checkpoint options */
+				(errmsg("checkpoint starting:%s",
+						CheckpointFlagsString(flags))));
 }
 
 /*
  * Log end of a checkpoint.
  */
 static void
-LogCheckpointEnd(bool restartpoint)
+LogCheckpointEnd(bool restartpoint, int flags)
 {
 	long		write_msecs,
 				sync_msecs,
@@ -6988,12 +6995,13 @@ LogCheckpointEnd(bool restartpoint)
 	 */
 	if (restartpoint)
 		ereport(LOG,
-				(errmsg("restartpoint complete: wrote %d buffers (%.1f%%), "
+				(errmsg("restartpoint complete:%s: wrote %d buffers (%.1f%%), "
 						"wrote %d SLRU buffers; %d WAL file(s) added, "
 						"%d removed, %d recycled; write=%ld.%03d s, "
 						"sync=%ld.%03d s, total=%ld.%03d s; sync files=%d, "
 						"longest=%ld.%03d s, average=%ld.%03d s; distance=%d kB, "
 						"estimate=%d kB; lsn=%X/%08X, redo lsn=%X/%08X",
+						CheckpointFlagsString(flags),
 						CheckpointStats.ckpt_bufs_written,
 						(double) CheckpointStats.ckpt_bufs_written * 100 / NBuffers,
 						CheckpointStats.ckpt_slru_written,
@@ -7012,12 +7020,13 @@ LogCheckpointEnd(bool restartpoint)
 						LSN_FORMAT_ARGS(ControlFile->checkPointCopy.redo))));
 	else
 		ereport(LOG,
-				(errmsg("checkpoint complete: wrote %d buffers (%.1f%%), "
+				(errmsg("checkpoint complete:%s: wrote %d buffers (%.1f%%), "
 						"wrote %d SLRU buffers; %d WAL file(s) added, "
 						"%d removed, %d recycled; write=%ld.%03d s, "
 						"sync=%ld.%03d s, total=%ld.%03d s; sync files=%d, "
 						"longest=%ld.%03d s, average=%ld.%03d s; distance=%d kB, "
 						"estimate=%d kB; lsn=%X/%08X, redo lsn=%X/%08X",
+						CheckpointFlagsString(flags),
 						CheckpointStats.ckpt_bufs_written,
 						(double) CheckpointStats.ckpt_bufs_written * 100 / NBuffers,
 						CheckpointStats.ckpt_slru_written,
@@ -7614,7 +7623,7 @@ CreateCheckPoint(int flags)
 		TruncateSUBTRANS(GetOldestTransactionIdConsideredRunning());
 
 	/* Real work is done; log and update stats. */
-	LogCheckpointEnd(false);
+	LogCheckpointEnd(false, flags);
 
 	/* Reset the process title */
 	update_checkpoint_display(flags, false, true);
@@ -8035,6 +8044,9 @@ CreateRestartPoint(int flags)
 	replayPtr = GetXLogReplayRecPtr(&replayTLI);
 	endptr = (receivePtr < replayPtr) ? replayPtr : receivePtr;
 	KeepLogSeg(endptr, &_logSegNo);
+
+	INJECTION_POINT("restartpoint-before-slot-invalidation", NULL);
+
 	if (InvalidateObsoleteReplicationSlots(RS_INVAL_WAL_REMOVED | RS_INVAL_IDLE_TIMEOUT,
 										   _logSegNo, InvalidOid,
 										   InvalidTransactionId))
@@ -8082,7 +8094,7 @@ CreateRestartPoint(int flags)
 		TruncateSUBTRANS(GetOldestTransactionIdConsideredRunning());
 
 	/* Real work is done; log and update stats. */
-	LogCheckpointEnd(true);
+	LogCheckpointEnd(true, flags);
 
 	/* Reset the process title */
 	update_checkpoint_display(flags, true, true);

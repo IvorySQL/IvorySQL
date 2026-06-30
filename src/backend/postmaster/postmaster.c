@@ -635,7 +635,7 @@ PostmasterMain(int argc, char *argv[])
 							(errcode(ERRCODE_SYNTAX_ERROR),
 							 errmsg("--%s must be first argument", optarg)));
 
-				/* FALLTHROUGH */
+				pg_fallthrough;
 			case 'c':
 				{
 					char	   *name,
@@ -2777,6 +2777,14 @@ CleanupBackend(PMChild *bp,
 		BackgroundWorkerStopNotifications(bp_pid);
 
 	/*
+	 * If it was an autovacuum worker, wake up the launcher so that it can
+	 * immediately launch a new worker or rebalance to cost limit setting of
+	 * the remaining workers.
+	 */
+	if (bp_bkend_type == B_AUTOVAC_WORKER && AutoVacLauncherPMChild != NULL)
+		signal_child(AutoVacLauncherPMChild, SIGUSR2);
+
+	/*
 	 * If it was a background worker, also update its RegisteredBgWorker
 	 * entry.
 	 */
@@ -4321,19 +4329,18 @@ bgworker_should_start_now(BgWorkerStartTime start_time)
 		case PM_RUN:
 			if (start_time == BgWorkerStart_RecoveryFinished)
 				return true;
-			/* fall through */
+			pg_fallthrough;
 
 		case PM_HOT_STANDBY:
 			if (start_time == BgWorkerStart_ConsistentState)
 				return true;
-			/* fall through */
+			pg_fallthrough;
 
 		case PM_RECOVERY:
 		case PM_STARTUP:
 		case PM_INIT:
 			if (start_time == BgWorkerStart_PostmasterStart)
 				return true;
-			/* fall through */
 	}
 
 	return false;

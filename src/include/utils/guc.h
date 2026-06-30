@@ -230,6 +230,8 @@ typedef enum
 #define GUC_RUNTIME_COMPUTED   0x004000 /* delay processing in 'postgres -C' */
 #define GUC_ALLOW_IN_PARALLEL  0x008000 /* allow setting in parallel mode */
 
+#define GUC_DISALLOW_IN_DB_ROLE_SETTING  0x800000 /* IvorySQL: can't set via ALTER USER/DATABASE SET */
+
 #define GUC_UNIT_KB			 0x01000000 /* value is in kilobytes */
 #define GUC_UNIT_BLOCKS		 0x02000000 /* value is in blocks */
 #define GUC_UNIT_XBLOCKS	 0x03000000 /* value is in xlog blocks */
@@ -297,7 +299,7 @@ extern PGDLLIMPORT bool log_duration;
 extern PGDLLIMPORT int log_parameter_max_length;
 extern PGDLLIMPORT int log_parameter_max_length_on_error;
 extern PGDLLIMPORT int log_min_error_statement;
-extern PGDLLIMPORT int log_min_messages;
+extern PGDLLIMPORT int log_min_messages[];
 extern PGDLLIMPORT int client_min_messages;
 extern PGDLLIMPORT int log_min_duration_sample;
 extern PGDLLIMPORT int log_min_duration_statement;
@@ -374,6 +376,7 @@ extern PGDLLIMPORT const struct config_enum_entry archive_mode_options[];
 extern PGDLLIMPORT const struct config_enum_entry dynamic_shared_memory_options[];
 extern PGDLLIMPORT const struct config_enum_entry io_method_options[];
 extern PGDLLIMPORT const struct config_enum_entry recovery_target_action_options[];
+extern PGDLLIMPORT const struct config_enum_entry server_message_level_options[];
 extern PGDLLIMPORT const struct config_enum_entry wal_level_options[];
 extern PGDLLIMPORT const struct config_enum_entry wal_sync_method_options[];
 

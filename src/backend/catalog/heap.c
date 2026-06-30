@@ -2677,6 +2677,7 @@ AddRelationNewConstraints(Relation rel,
 			 * requested validity.
 			 */
 			if (AdjustNotNullInheritance(RelationGetRelid(rel), colnum,
+										 cdef->conname,
 										 is_local, cdef->is_no_inherit,
 										 cdef->skip_validation))
 				continue;
@@ -2927,14 +2928,16 @@ MergeWithExistingConstraint(Relation rel, const char *ccname, Node *expr,
  * for each column, giving priority to user-specified ones, and setting
  * inhcount according to how many parents cause each column to get a
  * not-null constraint.  If a user-specified name clashes with another
- * user-specified name, an error is raised.
+ * user-specified name, an error is raised.  'existing_constraints'
+ * is a list of already defined constraint names, which should be avoided
+ * when generating further ones.
  *
  * Returns a list of AttrNumber for columns that need to have the attnotnull
  * flag set.
  */
 List *
 AddRelationNotNullConstraints(Relation rel, List *constraints,
-							  List *old_notnulls)
+							  List *old_notnulls, List *existing_constraints)
 {
 	List	   *givennames;
 	List	   *nnnames;
@@ -2946,7 +2949,7 @@ AddRelationNotNullConstraints(Relation rel, List *constraints,
 	 * because we must raise error for user-generated name conflicts, but for
 	 * system-generated name conflicts we just generate another.
 	 */
-	nnnames = NIL;
+	nnnames = list_copy(existing_constraints);	/* don't scribble on input */
 	givennames = NIL;
 
 	/*

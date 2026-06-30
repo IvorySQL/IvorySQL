@@ -99,6 +99,22 @@ is_unixsock_path(const char *path)
  */
 
 /*
+ * 3.1 would have collided with old pgbouncer deployments, and was skipped. We
+ * neither emit it nor accept it on the wire.
+ */
+#define PG_PROTOCOL_RESERVED_31		PG_PROTOCOL(3,1)
+
+/*
+ * PG_PROTOCOL_GREASE is an intentionally unsupported protocol version used
+ * for "greasing" (the practice of sending valid, but extraneous or otherwise
+ * unusual, messages to keep peer implementations honest). This helps ensure
+ * that servers properly implement protocol version negotiation. Version 3.9999
+ * was chosen since it is safely within the valid range, it is representable
+ * via PQfullProtocolVersion, and it is unlikely to ever be needed in practice.
+ */
+#define PG_PROTOCOL_GREASE		PG_PROTOCOL(3,9999)
+
+/*
  * A client can send a cancel-current-operation request to the postmaster.
  * This is uglier than sending it directly to the client's backend, but it
  * avoids depending on out-of-band communication facilities.

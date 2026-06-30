@@ -26,6 +26,8 @@
  *		typedef struct FormData_pg_publication
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_publication,6104,PublicationRelationId)
 {
 	Oid			oid;			/* oid */
@@ -67,6 +69,8 @@ CATALOG(pg_publication,6104,PublicationRelationId)
 	 */
 	char		pubgencols;
 } FormData_pg_publication;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_publication corresponds to a pointer to a tuple with

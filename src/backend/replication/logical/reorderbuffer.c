@@ -182,8 +182,8 @@ typedef struct ReorderBufferToastEnt
 	Size		num_chunks;		/* number of chunks we've already seen */
 	Size		size;			/* combined size of chunks seen */
 	dlist_head	chunks;			/* linked list of chunks */
-	struct varlena *reconstructed;	/* reconstructed varlena now pointed to in
-									 * main tup */
+	varlena    *reconstructed;	/* reconstructed varlena now pointed to in
+								 * main tup */
 } ReorderBufferToastEnt;
 
 /* Disk serialization support datastructures */
@@ -2322,6 +2322,7 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 					change->action = REORDER_BUFFER_CHANGE_INSERT;
 
 					/* intentionally fall through */
+					pg_fallthrough;
 				case REORDER_BUFFER_CHANGE_INSERT:
 				case REORDER_BUFFER_CHANGE_UPDATE:
 				case REORDER_BUFFER_CHANGE_DELETE:
@@ -2824,7 +2825,7 @@ ReorderBufferReplay(ReorderBufferTXN *txn,
 					ReorderBuffer *rb, TransactionId xid,
 					XLogRecPtr commit_lsn, XLogRecPtr end_lsn,
 					TimestampTz commit_time,
-					RepOriginId origin_id, XLogRecPtr origin_lsn)
+					ReplOriginId origin_id, XLogRecPtr origin_lsn)
 {
 	Snapshot	snapshot_now;
 	CommandId	command_id = FirstCommandId;
@@ -2884,7 +2885,7 @@ void
 ReorderBufferCommit(ReorderBuffer *rb, TransactionId xid,
 					XLogRecPtr commit_lsn, XLogRecPtr end_lsn,
 					TimestampTz commit_time,
-					RepOriginId origin_id, XLogRecPtr origin_lsn)
+					ReplOriginId origin_id, XLogRecPtr origin_lsn)
 {
 	ReorderBufferTXN *txn;
 
@@ -2907,7 +2908,7 @@ bool
 ReorderBufferRememberPrepareInfo(ReorderBuffer *rb, TransactionId xid,
 								 XLogRecPtr prepare_lsn, XLogRecPtr end_lsn,
 								 TimestampTz prepare_time,
-								 RepOriginId origin_id, XLogRecPtr origin_lsn)
+								 ReplOriginId origin_id, XLogRecPtr origin_lsn)
 {
 	ReorderBufferTXN *txn;
 
@@ -3001,7 +3002,7 @@ void
 ReorderBufferFinishPrepared(ReorderBuffer *rb, TransactionId xid,
 							XLogRecPtr commit_lsn, XLogRecPtr end_lsn,
 							XLogRecPtr two_phase_at,
-							TimestampTz commit_time, RepOriginId origin_id,
+							TimestampTz commit_time, ReplOriginId origin_id,
 							XLogRecPtr origin_lsn, char *gid, bool is_commit)
 {
 	ReorderBufferTXN *txn;
@@ -5133,13 +5134,13 @@ ReorderBufferToastReplace(ReorderBuffer *rb, ReorderBufferTXN *txn,
 	{
 		CompactAttribute *attr = TupleDescCompactAttr(desc, natt);
 		ReorderBufferToastEnt *ent;
-		struct varlena *varlena;
+		varlena    *varlena_pointer;
 
 		/* va_rawsize is the size of the original datum -- including header */
-		struct varatt_external toast_pointer;
-		struct varatt_indirect redirect_pointer;
-		struct varlena *new_datum = NULL;
-		struct varlena *reconstructed;
+		varatt_external toast_pointer;
+		varatt_indirect redirect_pointer;
+		varlena    *new_datum = NULL;
+		varlena    *reconstructed;
 		dlist_iter	it;
 		Size		data_done = 0;
 
@@ -5155,13 +5156,13 @@ ReorderBufferToastReplace(ReorderBuffer *rb, ReorderBufferTXN *txn,
 			continue;
 
 		/* ok, we know we have a toast datum */
-		varlena = (struct varlena *) DatumGetPointer(attrs[natt]);
+		varlena_pointer = (varlena *) DatumGetPointer(attrs[natt]);
 
 		/* no need to do anything if the tuple isn't external */
-		if (!VARATT_IS_EXTERNAL(varlena))
+		if (!VARATT_IS_EXTERNAL(varlena_pointer))
 			continue;
 
-		VARATT_EXTERNAL_GET_POINTER(toast_pointer, varlena);
+		VARATT_EXTERNAL_GET_POINTER(toast_pointer, varlena_pointer);
 
 		/*
 		 * Check whether the toast tuple changed, replace if so.
@@ -5175,7 +5176,7 @@ ReorderBufferToastReplace(ReorderBuffer *rb, ReorderBufferTXN *txn,
 			continue;
 
 		new_datum =
-			(struct varlena *) palloc0(INDIRECT_POINTER_SIZE);
+			(varlena *) palloc0(INDIRECT_POINTER_SIZE);
 
 		free[natt] = true;
 
@@ -5361,7 +5362,7 @@ DisplayMapping(HTAB *tuplecid_data)
  * transaction c) applied in LSN order.
  */
 static void
-ApplyLogicalMappingFile(HTAB *tuplecid_data, Oid relid, const char *fname)
+ApplyLogicalMappingFile(HTAB *tuplecid_data, const char *fname)
 {
 	char		path[MAXPGPATH];
 	int			fd;
@@ -5544,7 +5545,7 @@ UpdateLogicalMappings(HTAB *tuplecid_data, Oid relid, Snapshot snapshot)
 
 		elog(DEBUG1, "applying mapping: \"%s\" in %u", f->fname,
 			 snapshot->subxip[0]);
-		ApplyLogicalMappingFile(tuplecid_data, relid, f->fname);
+		ApplyLogicalMappingFile(tuplecid_data, f->fname);
 		pfree(f);
 	}
 }

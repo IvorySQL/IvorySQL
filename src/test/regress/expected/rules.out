@@ -2696,7 +2696,31 @@ pg_stats_ext_exprs| SELECT cn.nspname AS schemaname,
             WHEN ((stat.a).stakind4 = 5) THEN (stat.a).stanumbers4
             WHEN ((stat.a).stakind5 = 5) THEN (stat.a).stanumbers5
             ELSE NULL::real[]
-        END AS elem_count_histogram
+        END AS elem_count_histogram,
+        CASE
+            WHEN ((stat.a).stakind1 = 6) THEN (stat.a).stavalues1
+            WHEN ((stat.a).stakind2 = 6) THEN (stat.a).stavalues2
+            WHEN ((stat.a).stakind3 = 6) THEN (stat.a).stavalues3
+            WHEN ((stat.a).stakind4 = 6) THEN (stat.a).stavalues4
+            WHEN ((stat.a).stakind5 = 6) THEN (stat.a).stavalues5
+            ELSE NULL::anyarray
+        END AS range_length_histogram,
+        CASE
+            WHEN ((stat.a).stakind1 = 6) THEN (stat.a).stanumbers1[1]
+            WHEN ((stat.a).stakind2 = 6) THEN (stat.a).stanumbers2[1]
+            WHEN ((stat.a).stakind3 = 6) THEN (stat.a).stanumbers3[1]
+            WHEN ((stat.a).stakind4 = 6) THEN (stat.a).stanumbers4[1]
+            WHEN ((stat.a).stakind5 = 6) THEN (stat.a).stanumbers5[1]
+            ELSE NULL::real
+        END AS range_empty_frac,
+        CASE
+            WHEN ((stat.a).stakind1 = 7) THEN (stat.a).stavalues1
+            WHEN ((stat.a).stakind2 = 7) THEN (stat.a).stavalues2
+            WHEN ((stat.a).stakind3 = 7) THEN (stat.a).stavalues3
+            WHEN ((stat.a).stakind4 = 7) THEN (stat.a).stavalues4
+            WHEN ((stat.a).stakind5 = 7) THEN (stat.a).stavalues5
+            ELSE NULL::anyarray
+        END AS range_bounds_histogram
    FROM (((((pg_statistic_ext s
      JOIN pg_class c ON ((c.oid = s.stxrelid)))
      LEFT JOIN pg_statistic_ext_data sd ON ((s.oid = sd.stxoid)))
@@ -3584,6 +3608,61 @@ SELECT * FROM hat_data WHERE hat_name IN ('h8', 'h9', 'h7') ORDER BY hat_name;
 (3 rows)
 
 DROP RULE hat_upsert ON hats;
+-- DO SELECT with a WHERE clause
+CREATE RULE hat_confsel AS ON INSERT TO hats
+    DO INSTEAD
+    INSERT INTO hat_data VALUES (
+           NEW.hat_name,
+           NEW.hat_color)
+        ON CONFLICT (hat_name)
+        DO SELECT FOR UPDATE
+           WHERE excluded.hat_color <>  'forbidden' AND hat_data.* != excluded.*
+        RETURNING *;
+SELECT definition FROM pg_rules WHERE tablename = 'hats' ORDER BY rulename;
+                                      definition                                      
+--------------------------------------------------------------------------------------
+ CREATE RULE hat_confsel AS                                                          +
+     ON INSERT TO public.hats DO INSTEAD  INSERT INTO hat_data (hat_name, hat_color) +
+   VALUES (new.hat_name, new.hat_color) ON CONFLICT(hat_name) DO SELECT FOR UPDATE   +
+   WHERE ((excluded.hat_color <> 'forbidden'::bpchar) AND (hat_data.* <> excluded.*))+
+   RETURNING hat_data.hat_name,                                                      +
+     hat_data.hat_color;
+(1 row)
+
+-- fails without RETURNING
+INSERT INTO hats VALUES ('h7', 'blue');
+ERROR:  ON CONFLICT DO SELECT requires a RETURNING clause
+DETAIL:  A rule action is INSERT ... ON CONFLICT DO SELECT, which requires a RETURNING clause.
+-- works (returns conflicts)
+EXPLAIN (costs off)
+INSERT INTO hats VALUES ('h7', 'blue') RETURNING *;
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
+ Insert on hat_data
+   Conflict Resolution: SELECT FOR UPDATE
+   Conflict Arbiter Indexes: hat_data_unique_idx
+   Conflict Filter: ((excluded.hat_color <> 'forbidden'::bpchar) AND (hat_data.* <> excluded.*))
+   ->  Result
+(5 rows)
+
+INSERT INTO hats VALUES ('h7', 'blue') RETURNING *;
+  hat_name  | hat_color  
+------------+------------
+ h7         | black     
+(1 row)
+
+-- conflicts excluded by WHERE clause
+INSERT INTO hats VALUES ('h7', 'forbidden') RETURNING *;
+ hat_name | hat_color 
+----------+-----------
+(0 rows)
+
+INSERT INTO hats VALUES ('h7', 'black') RETURNING *;
+ hat_name | hat_color 
+----------+-----------
+(0 rows)
+
+DROP RULE hat_confsel ON hats;
 drop table hats;
 drop table hat_data;
 -- test for pg_get_functiondef properly regurgitating SET parameters

@@ -17,7 +17,7 @@
 ConditionalStack
 conditional_stack_create(void)
 {
-	ConditionalStack cstack = pg_malloc(sizeof(ConditionalStackData));
+	ConditionalStack cstack = pg_malloc_object(ConditionalStackData);
 
 	cstack->head = NULL;
 	return cstack;
@@ -52,7 +52,7 @@ conditional_stack_destroy(ConditionalStack cstack)
 void
 conditional_stack_push(ConditionalStack cstack, ifState new_state)
 {
-	IfStackElem *p = (IfStackElem *) pg_malloc(sizeof(IfStackElem));
+	IfStackElem *p = pg_malloc_object(IfStackElem);
 
 	p->if_state = new_state;
 	p->query_len = -1;

@@ -28,6 +28,8 @@
  *		typedef struct FormData_pg_constraint
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_constraint,2606,ConstraintRelationId)
 {
 	Oid			oid;			/* oid */
@@ -167,6 +169,8 @@ CATALOG(pg_constraint,2606,ConstraintRelationId)
 #endif
 } FormData_pg_constraint;
 
+END_CATALOG_STRUCT
+
 /* ----------------
  *		Form_pg_constraint corresponds to a pointer to a tuple with
  *		the format of pg_constraint relation.
@@ -263,7 +267,7 @@ extern HeapTuple findNotNullConstraintAttnum(Oid relid, AttrNumber attnum);
 extern HeapTuple findNotNullConstraint(Oid relid, const char *colname);
 extern HeapTuple findDomainNotNullConstraint(Oid typid);
 extern AttrNumber extractNotNullColumn(HeapTuple constrTup);
-extern bool AdjustNotNullInheritance(Oid relid, AttrNumber attnum,
+extern bool AdjustNotNullInheritance(Oid relid, AttrNumber attnum, const char *new_conname,
 									 bool is_local, bool is_no_inherit, bool is_notvalid);
 extern List *RelationGetNotNullConstraints(Oid relid, bool cooked,
 										   bool include_noinh);

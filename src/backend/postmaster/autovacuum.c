@@ -323,9 +323,6 @@ avl_dbase  *avl_dbase_array;
 /* Pointer to my own WorkerInfo, valid on each worker */
 static WorkerInfo MyWorkerInfo = NULL;
 
-/* PID of launcher, valid only in worker while shutting down */
-int			AutovacuumLauncherPid = 0;
-
 static Oid	do_start_worker(void);
 static void ProcessAutoVacLauncherInterrupts(void);
 pg_noreturn static void AutoVacLauncherShutdown(void);
@@ -388,7 +385,6 @@ AutoVacLauncherMain(const void *startup_data, size_t startup_data_len)
 		PostmasterContext = NULL;
 	}
 
-	MyBackendType = B_AUTOVAC_LAUNCHER;
 	init_ps_display(NULL);
 
 	ereport(DEBUG1,
@@ -1401,7 +1397,6 @@ AutoVacWorkerMain(const void *startup_data, size_t startup_data_len)
 		PostmasterContext = NULL;
 	}
 
-	MyBackendType = B_AUTOVAC_WORKER;
 	init_ps_display(NULL);
 
 	Assert(GetProcessingMode() == InitProcessing);
@@ -1604,11 +1599,6 @@ AutoVacWorkerMain(const void *startup_data, size_t startup_data_len)
 		do_autovacuum();
 	}
 
-	/*
-	 * The launcher will be notified of my death in ProcKill, *if* we managed
-	 * to get a worker slot at all
-	 */
-
 	/* All done, go away */
 	proc_exit(0);
 }
@@ -1622,20 +1612,6 @@ FreeWorkerInfo(int code, Datum arg)
 	if (MyWorkerInfo != NULL)
 	{
 		LWLockAcquire(AutovacuumLock, LW_EXCLUSIVE);
-
-		/*
-		 * Wake the launcher up so that he can launch a new worker immediately
-		 * if required.  We only save the launcher's PID in local memory here;
-		 * the actual signal will be sent when the PGPROC is recycled.  Note
-		 * that we always do this, so that the launcher can rebalance the cost
-		 * limit setting of the remaining workers.
-		 *
-		 * We somewhat ignore the risk that the launcher changes its PID
-		 * between us reading it and the actual kill; we expect ProcKill to be
-		 * called shortly after us, and we assume that PIDs are not reused too
-		 * quickly after a process exits.
-		 */
-		AutovacuumLauncherPid = AutoVacuumShmem->av_launcherpid;
 
 		dlist_delete(&MyWorkerInfo->wi_links);
 		MyWorkerInfo->wi_dboid = InvalidOid;

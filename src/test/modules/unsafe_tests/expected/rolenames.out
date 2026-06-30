@@ -102,6 +102,10 @@ DETAIL:  Role names starting with "pg_" are reserved.
 CREATE ROLE "pg_abcdef"; -- error
 ERROR:  role name "pg_abcdef" is reserved
 DETAIL:  Role names starting with "pg_" are reserved.
+CREATE ROLE "invalid
+rolename"; -- error
+ERROR:  role name "invalid
+rolename" contains a newline or carriage return character
 CREATE ROLE regress_testrol0 SUPERUSER LOGIN;
 CREATE ROLE regress_testrolx SUPERUSER LOGIN;
 CREATE ROLE regress_testrol2 SUPERUSER;

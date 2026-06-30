@@ -713,7 +713,7 @@ GRANT pg_signal_backend TO admin_user;
      <listitem>
       <para>
        <literal>pg_read_all_data</literal> allows reading all data (tables,
-       views, sequences), as if having <command>SELECT</command> rights on
+       views, sequences, large objects), as if having <command>SELECT</command> rights on
        those objects and <literal>USAGE</literal> rights on all schemas.  This
        role does not bypass row-level security (RLS) policies.  If RLS is being
        used, an administrator may wish to set <literal>BYPASSRLS</literal> on
@@ -721,7 +721,7 @@ GRANT pg_signal_backend TO admin_user;
       </para>
       <para>
        <literal>pg_write_all_data</literal> allows writing all data (tables,
-       views, sequences), as if having <command>INSERT</command>,
+       views, sequences, large objects), as if having <command>INSERT</command>,
        <command>UPDATE</command>, and <command>DELETE</command> rights on those
        objects and <literal>USAGE</literal> rights on all schemas.  This role
        does not bypass row-level security (RLS) policies.  If RLS is being

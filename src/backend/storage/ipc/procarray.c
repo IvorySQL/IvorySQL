@@ -61,6 +61,7 @@
 #include "port/pg_lfind.h"
 #include "storage/proc.h"
 #include "storage/procarray.h"
+#include "storage/procsignal.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/injection_point.h"
@@ -709,7 +710,7 @@ ProcArrayEndTransaction(PGPROC *proc, TransactionId latestXid)
 		/* be sure this is cleared in abort */
 		proc->delayChkptFlags = 0;
 
-		proc->recoveryConflictPending = false;
+		pg_atomic_write_u32(&proc->pendingRecoveryConflicts, 0);
 
 		/* must be cleared with xid/xmin: */
 		/* avoid unnecessarily dirtying shared cachelines */
@@ -751,7 +752,7 @@ ProcArrayEndTransactionInternal(PGPROC *proc, TransactionId latestXid)
 	/* be sure this is cleared in abort */
 	proc->delayChkptFlags = 0;
 
-	proc->recoveryConflictPending = false;
+	pg_atomic_write_u32(&proc->pendingRecoveryConflicts, 0);
 
 	/* must be cleared with xid/xmin: */
 	/* avoid unnecessarily dirtying shared cachelines */
@@ -934,7 +935,7 @@ ProcArrayClearTransaction(PGPROC *proc)
 
 	proc->vxid.lxid = InvalidLocalTransactionId;
 	proc->xmin = InvalidTransactionId;
-	proc->recoveryConflictPending = false;
+	pg_atomic_write_u32(&proc->pendingRecoveryConflicts, 0);
 
 	Assert(!(proc->statusFlags & PROC_VACUUM_STATE_MASK));
 	Assert(!proc->delayChkptFlags);
@@ -3446,19 +3447,46 @@ GetConflictingVirtualXIDs(TransactionId limitXmin, Oid dbOid)
 }
 
 /*
- * CancelVirtualTransaction - used in recovery conflict processing
+ * SignalRecoveryConflict -- signal that a process is blocking recovery
  *
- * Returns pid of the process signaled, or 0 if not found.
+ * The 'pid' is redundant with 'proc', but it acts as a cross-check to
+ * detect process had exited and the PGPROC entry was reused for a different
+ * process.
+ *
+ * Returns true if the process was signaled, or false if not found.
  */
-pid_t
-CancelVirtualTransaction(VirtualTransactionId vxid, ProcSignalReason sigmode)
+bool
+SignalRecoveryConflict(PGPROC *proc, pid_t pid, RecoveryConflictReason reason)
 {
-	return SignalVirtualTransaction(vxid, sigmode, true);
+	bool		found = false;
+
+	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	/*
+	 * Kill the pid if it's still here. If not, that's what we wanted so
+	 * ignore any errors.
+	 */
+	if (proc->pid == pid)
+	{
+		(void) pg_atomic_fetch_or_u32(&proc->pendingRecoveryConflicts, (1 << reason));
+
+		/* wake up the process */
+		(void) SendProcSignal(pid, PROCSIG_RECOVERY_CONFLICT, GetNumberFromPGProc(proc));
+		found = true;
+	}
+
+	LWLockRelease(ProcArrayLock);
+
+	return found;
 }
 
-pid_t
-SignalVirtualTransaction(VirtualTransactionId vxid, ProcSignalReason sigmode,
-						 bool conflictPending)
+/*
+ * SignalRecoveryConflictWithVirtualXID -- signal that a VXID is blocking recovery
+ *
+ * Like SignalRecoveryConflict, but the target is identified by VXID
+ */
+bool
+SignalRecoveryConflictWithVirtualXID(VirtualTransactionId vxid, RecoveryConflictReason reason)
 {
 	ProcArrayStruct *arrayP = procArray;
 	int			index;
@@ -3477,15 +3505,16 @@ SignalVirtualTransaction(VirtualTransactionId vxid, ProcSignalReason sigmode,
 		if (procvxid.procNumber == vxid.procNumber &&
 			procvxid.localTransactionId == vxid.localTransactionId)
 		{
-			proc->recoveryConflictPending = conflictPending;
 			pid = proc->pid;
 			if (pid != 0)
 			{
+				(void) pg_atomic_fetch_or_u32(&proc->pendingRecoveryConflicts, (1 << reason));
+
 				/*
 				 * Kill the pid if it's still here. If not, that's what we
 				 * wanted so ignore any errors.
 				 */
-				(void) SendProcSignal(pid, sigmode, vxid.procNumber);
+				(void) SendProcSignal(pid, PROCSIG_RECOVERY_CONFLICT, vxid.procNumber);
 			}
 			break;
 		}
@@ -3493,7 +3522,50 @@ SignalVirtualTransaction(VirtualTransactionId vxid, ProcSignalReason sigmode,
 
 	LWLockRelease(ProcArrayLock);
 
-	return pid;
+	return pid != 0;
+}
+
+/*
+ * SignalRecoveryConflictWithDatabase --- signal all backends specified database
+ *
+ * Like SignalRecoveryConflict, but signals all backends using the database.
+ */
+void
+SignalRecoveryConflictWithDatabase(Oid databaseid, RecoveryConflictReason reason)
+{
+	ProcArrayStruct *arrayP = procArray;
+	int			index;
+
+	/* tell all backends to die */
+	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+
+	for (index = 0; index < arrayP->numProcs; index++)
+	{
+		int			pgprocno = arrayP->pgprocnos[index];
+		PGPROC	   *proc = &allProcs[pgprocno];
+
+		if (databaseid == InvalidOid || proc->databaseId == databaseid)
+		{
+			VirtualTransactionId procvxid;
+			pid_t		pid;
+
+			GET_VXID_FROM_PGPROC(procvxid, *proc);
+
+			pid = proc->pid;
+			if (pid != 0)
+			{
+				(void) pg_atomic_fetch_or_u32(&proc->pendingRecoveryConflicts, (1 << reason));
+
+				/*
+				 * Kill the pid if it's still here. If not, that's what we
+				 * wanted so ignore any errors.
+				 */
+				(void) SendProcSignal(pid, PROCSIG_RECOVERY_CONFLICT, procvxid.procNumber);
+			}
+		}
+	}
+
+	LWLockRelease(ProcArrayLock);
 }
 
 /*
@@ -3603,7 +3675,7 @@ CountDBConnections(Oid databaseid)
 
 		if (proc->pid == 0)
 			continue;			/* do not count prepared xacts */
-		if (!proc->isRegularBackend)
+		if (proc->backendType != B_BACKEND)
 			continue;			/* count only regular backend processes */
 		if (!OidIsValid(databaseid) ||
 			proc->databaseId == databaseid)
@@ -3613,46 +3685,6 @@ CountDBConnections(Oid databaseid)
 	LWLockRelease(ProcArrayLock);
 
 	return count;
-}
-
-/*
- * CancelDBBackends --- cancel backends that are using specified database
- */
-void
-CancelDBBackends(Oid databaseid, ProcSignalReason sigmode, bool conflictPending)
-{
-	ProcArrayStruct *arrayP = procArray;
-	int			index;
-
-	/* tell all backends to die */
-	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
-
-	for (index = 0; index < arrayP->numProcs; index++)
-	{
-		int			pgprocno = arrayP->pgprocnos[index];
-		PGPROC	   *proc = &allProcs[pgprocno];
-
-		if (databaseid == InvalidOid || proc->databaseId == databaseid)
-		{
-			VirtualTransactionId procvxid;
-			pid_t		pid;
-
-			GET_VXID_FROM_PGPROC(procvxid, *proc);
-
-			proc->recoveryConflictPending = conflictPending;
-			pid = proc->pid;
-			if (pid != 0)
-			{
-				/*
-				 * Kill the pid if it's still here. If not, that's what we
-				 * wanted so ignore any errors.
-				 */
-				(void) SendProcSignal(pid, sigmode, procvxid.procNumber);
-			}
-		}
-	}
-
-	LWLockRelease(ProcArrayLock);
 }
 
 /*
@@ -3675,7 +3707,7 @@ CountUserBackends(Oid roleid)
 
 		if (proc->pid == 0)
 			continue;			/* do not count prepared xacts */
-		if (!proc->isRegularBackend)
+		if (proc->backendType != B_BACKEND)
 			continue;			/* count only regular backend processes */
 		if (proc->roleId == roleid)
 			count++;

@@ -28,6 +28,7 @@
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
+#include "nodes/miscnodes.h"
 #include "optimizer/optimizer.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_collate.h"
@@ -367,12 +368,15 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt,
 /*
  * Extract the CopyFormatOptions.header_line value from a DefElem.
  *
- * Parses the HEADER option for COPY, which can be a boolean, a non-negative
- * integer (number of lines to skip), or the special value "match".
+ * Parses the HEADER option for COPY, which can be a boolean, an integer greater
+ * than or equal to zero (number of lines to skip), or the special value
+ * "match".
  */
 static int
 defGetCopyHeaderOption(DefElem *def, bool is_from)
 {
+	int			ival = COPY_HEADER_FALSE;
+
 	/*
 	 * If no parameter value given, assume "true" is meant.
 	 */
@@ -380,28 +384,14 @@ defGetCopyHeaderOption(DefElem *def, bool is_from)
 		return COPY_HEADER_TRUE;
 
 	/*
-	 * Allow 0, 1, "true", "false", "on", "off", a non-negative integer, or
-	 * "match".
+	 * Allow an integer value greater than or equal to zero (integers
+	 * specified as strings are also accepted, mainly for file_fdw foreign
+	 * table options), "true", "false", "on", "off", or "match".
 	 */
 	switch (nodeTag(def->arg))
 	{
 		case T_Integer:
-			{
-				int			ival = intVal(def->arg);
-
-				if (ival < 0)
-					ereport(ERROR,
-							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-							 errmsg("a negative integer value cannot be "
-									"specified for %s", def->defname)));
-
-				if (!is_from && ival > 1)
-					ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("cannot use multi-line header in COPY TO")));
-
-				return ival;
-			}
+			ival = intVal(def->arg);
 			break;
 		default:
 			{
@@ -428,15 +418,38 @@ defGetCopyHeaderOption(DefElem *def, bool is_from)
 										sval)));
 					return COPY_HEADER_MATCH;
 				}
+				else
+				{
+					ErrorSaveContext escontext = {T_ErrorSaveContext};
+
+					/* Check if the header is a valid integer */
+					ival = pg_strtoint32_safe(sval, (Node *) &escontext);
+					if (escontext.error_occurred)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+						/*- translator: first %s is the name of a COPY option, e.g. ON_ERROR,
+						second %s is the special value "match" for that option */
+								 errmsg("%s requires a Boolean value, an integer "
+										"value greater than or equal to zero, "
+										"or the string \"%s\"",
+										def->defname, "match")));
+				}
 			}
 			break;
 	}
-	ereport(ERROR,
-			(errcode(ERRCODE_SYNTAX_ERROR),
-			 errmsg("%s requires a Boolean value, a non-negative integer, "
-					"or the string \"match\"",
-					def->defname)));
-	return COPY_HEADER_FALSE;	/* keep compiler quiet */
+
+	if (ival < 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("a negative integer value cannot be "
+						"specified for %s", def->defname)));
+
+	if (!is_from && ival > 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot use multi-line header in COPY TO")));
+
+	return ival;
 }
 
 /*

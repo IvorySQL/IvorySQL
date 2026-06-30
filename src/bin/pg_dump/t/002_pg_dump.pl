@@ -2048,13 +2048,8 @@ my %tests = (
 		},
 	},
 
-	'newline of role or table name in comment' => {
-		create_sql => qq{CREATE ROLE regress_newline;
-						 ALTER ROLE regress_newline SET enable_seqscan = off;
-						 ALTER ROLE regress_newline
-							RENAME TO "regress_newline\nattack";
-
-						 -- meet getPartitioningInfo() "unsafe" condition
+	'newline of table name in comment' => {
+		create_sql => qq{-- meet getPartitioningInfo() "unsafe" condition
 						 CREATE TYPE pp_colors AS
 							ENUM ('green', 'blue', 'black');
 						 CREATE TABLE pp_enumpart (a pp_colors)
@@ -4752,6 +4747,34 @@ my %tests = (
 			'histogram_bounds',\s'\{[0-9,]+\}'::text,\s+
 			'correlation',\s'1'::real\s+
 			\);/xm,
+		like => {
+			%full_runs,
+			%dump_test_schema_runs,
+			no_data_no_schema => 1,
+			no_schema => 1,
+			section_post_data => 1,
+			statistics_only => 1,
+			schema_only_with_statistics => 1,
+		},
+		unlike => {
+			exclude_dump_test_schema => 1,
+			no_statistics => 1,
+			only_dump_measurement => 1,
+			schema_only => 1,
+		},
+	},
+
+	#
+	# EXTENDED stats will end up in SECTION_POST_DATA.
+	#
+	'extended_statistics_import' => {
+		create_sql => '
+			CREATE TABLE dump_test.has_ext_stats
+			AS SELECT g.g AS x, g.g / 2 AS y FROM generate_series(1,100) AS g(g);
+			CREATE STATISTICS dump_test.es1 ON x, (y % 2) FROM dump_test.has_ext_stats;
+			ANALYZE dump_test.has_ext_stats;',
+		regexp => qr/^
+			\QSELECT * FROM pg_catalog.pg_restore_extended_stats(\E\s+/xm,
 		like => {
 			%full_runs,
 			%dump_test_schema_runs,

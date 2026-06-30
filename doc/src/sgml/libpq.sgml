@@ -1,6 +1,6 @@
 <!-- doc/src/sgml/libpq.sgml -->
 
-<chapter id="libpq" xreflabel="libpq">
+<chapter id="libpq">
  <title><application>libpq</application> &mdash; C Library</title>
 
  <indexterm zone="libpq">
@@ -2211,6 +2211,23 @@ postgresql://%2Fvar%2Flib%2Fpostgresql/dbname
      <varlistentry id="libpq-connect-max-protocol-version" xreflabel="max_protocol_version">
       <term><literal>max_protocol_version</literal></term>
       <listitem>
+       <note>
+        <para>
+        During the PostgreSQL 19 beta period, libpq connections that do not
+        specify a <literal>max_protocol_version</literal> will "grease" the
+        handshake by sending unsupported startup parameters, including version
+        <literal>3.9999</literal>, in order to identify software that does not
+        correctly negotiate the connection. This replaces the default behavior
+        described below.
+        </para>
+        <para>
+        If you know that a server doesn't properly implement protocol version
+        negotiation, you can set <literal>max_protocol_version=3.0</literal> to
+        revert to the standard behavior (preferably after notifying the server's
+        maintainers that their software needs to be fixed).
+        </para>
+       </note>
+
        <para>
         Specifies the protocol version to request from the server.
         The default is to use version <literal>3.0</literal> of the
@@ -2889,18 +2906,13 @@ const char *PQparameterStatus(const PGconn *conn, const char *paramName);
        before 16; <varname>search_path</varname> was not reported by releases
        before 18.)
        Note that
-       <varname>server_version</varname>,
-       <varname>server_encoding</varname> and
-       <varname>integer_datetimes</varname>
+       <varname>server_version</varname> and
+       <varname>server_encoding</varname>
        cannot change after startup.
-      </para>
-
-      <para>
-       If no value for <varname>standard_conforming_strings</varname> is reported,
-       applications can assume it is <literal>off</literal>, that is, backslashes
-       are treated as escapes in string literals.  Also, the presence of
-       this parameter can be taken as an indication that the escape string
-       syntax (<literal>E'...'</literal>) is accepted.
+       Also, <varname>integer_datetimes</varname> is
+       always <literal>on</literal> in releases 9.5 and later,
+       and <varname>standard_conforming_strings</varname> is
+       always <literal>on</literal> in releases 19 and later.
       </para>
 
       <para>
@@ -11108,7 +11120,6 @@ main(int argc, char **argv)
  *
  * CREATE SCHEMA testlibpq3;
  * SET search_path = testlibpq3;
- * SET standard_conforming_strings = ON;
  * CREATE TABLE test1 (i int4, t text, b bytea);
  * INSERT INTO test1 values (1, 'joe''s place', '\000\001\002\003\004');
  * INSERT INTO test1 values (2, 'ho there', '\004\003\002\001\000');

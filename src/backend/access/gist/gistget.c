@@ -402,8 +402,8 @@ gistScanPage(IndexScanDesc scan, GISTSearchItem *pageItem,
 
 	/*
 	 * We save the LSN of the page as we read it, so that we know whether it
-	 * safe to apply LP_DEAD hints to the page later. This allows us to drop
-	 * the pin for MVCC scans, which allows vacuum to avoid blocking.
+	 * is safe to apply LP_DEAD hints to the page later. This allows us to
+	 * drop the pin for MVCC scans, which allows vacuum to avoid blocking.
 	 */
 	so->curPageLSN = BufferGetLSNAtomic(buffer);
 

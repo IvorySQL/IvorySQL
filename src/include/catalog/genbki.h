@@ -19,6 +19,25 @@
 #ifndef GENBKI_H
 #define GENBKI_H
 
+/*
+ * These macros should be written before and after each catalog structure
+ * definition.  On most platforms they do nothing, but on some platforms
+ * we need special hacks to coax the compiler into laying out the catalog
+ * struct compatibly with our tuple forming/deforming rules.
+ *
+ * On AIX, where ALIGNOF_DOUBLE < ALIGNOF_INT64_T, we need to coerce int64
+ * catalog fields to be aligned on just 4-byte boundaries.  Ideally we'd
+ * write this like pack(push,ALIGNOF_DOUBLE), but gcc seems unwilling
+ * to take anything but a plain string literal as the argument of _Pragma.
+ */
+#if ALIGNOF_DOUBLE < ALIGNOF_INT64_T
+#define BEGIN_CATALOG_STRUCT	_Pragma("pack(push,4)")
+#define END_CATALOG_STRUCT		_Pragma("pack(pop)")
+#else
+#define BEGIN_CATALOG_STRUCT
+#define END_CATALOG_STRUCT
+#endif
+
 /* Introduces a catalog's structure definition */
 #define CATALOG(name,oid,oidmacro)	typedef struct CppConcat(FormData_,name)
 

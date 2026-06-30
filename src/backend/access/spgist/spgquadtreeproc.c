@@ -26,7 +26,9 @@
 Datum
 spg_quad_config(PG_FUNCTION_ARGS)
 {
-	/* spgConfigIn *cfgin = (spgConfigIn *) PG_GETARG_POINTER(0); */
+#ifdef NOT_USED
+	spgConfigIn *cfgin = (spgConfigIn *) PG_GETARG_POINTER(0);
+#endif
 	spgConfigOut *cfg = (spgConfigOut *) PG_GETARG_POINTER(1);
 
 	cfg->prefixType = POINTOID;
@@ -145,8 +147,8 @@ spg_quad_choose(PG_FUNCTION_ARGS)
 static int
 x_cmp(const void *a, const void *b, void *arg)
 {
-	Point	   *pa = *(Point **) a;
-	Point	   *pb = *(Point **) b;
+	Point	   *pa = *(Point *const *) a;
+	Point	   *pb = *(Point *const *) b;
 
 	if (pa->x == pb->x)
 		return 0;
@@ -156,8 +158,8 @@ x_cmp(const void *a, const void *b, void *arg)
 static int
 y_cmp(const void *a, const void *b, void *arg)
 {
-	Point	   *pa = *(Point **) a;
-	Point	   *pb = *(Point **) b;
+	Point	   *pa = *(Point *const *) a;
+	Point	   *pb = *(Point *const *) b;
 
 	if (pa->y == pb->y)
 		return 0;

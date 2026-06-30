@@ -49,8 +49,8 @@
  * Uncomment the following to enable compilation of dump_numeric()
  * and dump_var() and to get a dump of any result produced by make_result().
  * ----------
-#define NUMERIC_DEBUG
  */
+/* #define NUMERIC_DEBUG */
 
 
 /* ----------
@@ -2427,13 +2427,13 @@ numeric_abbrev_convert_var(const NumericVar *var, NumericSortSupport *nss)
 		{
 			default:
 				result |= ((int64) var->digits[3]);
-				/* FALLTHROUGH */
+				pg_fallthrough;
 			case 3:
 				result |= ((int64) var->digits[2]) << 14;
-				/* FALLTHROUGH */
+				pg_fallthrough;
 			case 2:
 				result |= ((int64) var->digits[1]) << 28;
-				/* FALLTHROUGH */
+				pg_fallthrough;
 			case 1:
 				result |= ((int64) var->digits[0]) << 42;
 				break;
@@ -8867,22 +8867,22 @@ mul_var_short(const NumericVar *var1, const NumericVar *var2,
 			term = PRODSUM5(var1digits, 0, var2digits, 4) + carry;
 			res_digits[5] = (NumericDigit) (term % NBASE);
 			carry = term / NBASE;
-			/* FALLTHROUGH */
+			pg_fallthrough;
 		case 5:
 			term = PRODSUM4(var1digits, 0, var2digits, 3) + carry;
 			res_digits[4] = (NumericDigit) (term % NBASE);
 			carry = term / NBASE;
-			/* FALLTHROUGH */
+			pg_fallthrough;
 		case 4:
 			term = PRODSUM3(var1digits, 0, var2digits, 2) + carry;
 			res_digits[3] = (NumericDigit) (term % NBASE);
 			carry = term / NBASE;
-			/* FALLTHROUGH */
+			pg_fallthrough;
 		case 3:
 			term = PRODSUM2(var1digits, 0, var2digits, 1) + carry;
 			res_digits[2] = (NumericDigit) (term % NBASE);
 			carry = term / NBASE;
-			/* FALLTHROUGH */
+			pg_fallthrough;
 		case 2:
 			term = PRODSUM1(var1digits, 0, var2digits, 0) + carry;
 			res_digits[1] = (NumericDigit) (term % NBASE);

@@ -34,6 +34,7 @@ static void check_new_cluster_replication_slots(void);
 static void check_new_cluster_subscription_configuration(void);
 static void check_old_cluster_for_valid_slots(void);
 static void check_old_cluster_subscription_state(void);
+static void check_old_cluster_global_names(ClusterInfo *cluster);
 
 /*
  * DataTypesUsageChecks - definitions of data type checks for the old cluster
@@ -400,8 +401,6 @@ process_data_type_check(DbInfo *dbinfo, PGresult *res, void *arg)
 	int			i_attname = PQfnumber(res, "attname");
 	FILE	   *script = NULL;
 
-	AssertVariableIsOfType(&process_data_type_check, UpgradeTaskProcessCB);
-
 	if (ntups == 0)
 		return;
 
@@ -603,6 +602,14 @@ check_and_dump_old_cluster(void)
 	check_for_connection_status(&old_cluster);
 
 	/*
+	 * Validate database, user, role and tablespace names from the old
+	 * cluster. No need to check in 19 or newer as newline and carriage return
+	 * are not allowed at the creation time of the object.
+	 */
+	if (GET_MAJOR_VERSION(old_cluster.major_version) < 1900)
+		check_old_cluster_global_names(&old_cluster);
+
+	/*
 	 * Extract a list of databases, tables, and logical replication slots from
 	 * the old cluster.
 	 */
@@ -624,7 +631,7 @@ check_and_dump_old_cluster(void)
 	{
 		/*
 		 * Logical replication slots can be migrated since PG17. See comments
-		 * atop get_old_cluster_logical_slot_infos().
+		 * in get_db_rel_and_slot_infos().
 		 */
 		check_old_cluster_for_valid_slots();
 
@@ -1279,9 +1286,6 @@ process_isn_and_int8_passing_mismatch(DbInfo *dbinfo, PGresult *res, void *arg)
 	int			i_proname = PQfnumber(res, "proname");
 	UpgradeTaskReport *report = (UpgradeTaskReport *) arg;
 
-	AssertVariableIsOfType(&process_isn_and_int8_passing_mismatch,
-						   UpgradeTaskProcessCB);
-
 	if (ntups == 0)
 		return;
 
@@ -1367,9 +1371,6 @@ process_user_defined_postfix_ops(DbInfo *dbinfo, PGresult *res, void *arg)
 	int			i_oprname = PQfnumber(res, "oprname");
 	int			i_typnsp = PQfnumber(res, "typnsp");
 	int			i_typname = PQfnumber(res, "typname");
-
-	AssertVariableIsOfType(&process_user_defined_postfix_ops,
-						   UpgradeTaskProcessCB);
 
 	if (ntups == 0)
 		return;
@@ -1458,9 +1459,6 @@ process_incompat_polymorphics(DbInfo *dbinfo, PGresult *res, void *arg)
 	int			ntups = PQntuples(res);
 	int			i_objkind = PQfnumber(res, "objkind");
 	int			i_objname = PQfnumber(res, "objname");
-
-	AssertVariableIsOfType(&process_incompat_polymorphics,
-						   UpgradeTaskProcessCB);
 
 	if (ntups == 0)
 		return;
@@ -1592,8 +1590,6 @@ process_with_oids_check(DbInfo *dbinfo, PGresult *res, void *arg)
 	int			i_nspname = PQfnumber(res, "nspname");
 	int			i_relname = PQfnumber(res, "relname");
 
-	AssertVariableIsOfType(&process_with_oids_check, UpgradeTaskProcessCB);
-
 	if (ntups == 0)
 		return;
 
@@ -1662,9 +1658,6 @@ process_inconsistent_notnull(DbInfo *dbinfo, PGresult *res, void *arg)
 	int			i_nspname = PQfnumber(res, "nspname");
 	int			i_relname = PQfnumber(res, "relname");
 	int			i_attname = PQfnumber(res, "attname");
-
-	AssertVariableIsOfType(&process_inconsistent_notnull,
-						   UpgradeTaskProcessCB);
 
 	if (ntups == 0)
 		return;
@@ -1750,8 +1743,6 @@ process_gist_inet_ops_check(DbInfo *dbinfo, PGresult *res, void *arg)
 	int			ntups = PQntuples(res);
 	int			i_nspname = PQfnumber(res, "nspname");
 	int			i_relname = PQfnumber(res, "relname");
-
-	AssertVariableIsOfType(&process_gist_inet_ops_check, UpgradeTaskProcessCB);
 
 	if (ntups == 0)
 		return;
@@ -1885,9 +1876,6 @@ process_user_defined_encoding_conversions(DbInfo *dbinfo, PGresult *res, void *a
 	int			i_conoid = PQfnumber(res, "conoid");
 	int			i_conname = PQfnumber(res, "conname");
 	int			i_nspname = PQfnumber(res, "nspname");
-
-	AssertVariableIsOfType(&process_user_defined_encoding_conversions,
-						   UpgradeTaskProcessCB);
 
 	if (ntups == 0)
 		return;
@@ -2398,8 +2386,6 @@ process_old_sub_state_check(DbInfo *dbinfo, PGresult *res, void *arg)
 	int			i_nspname = PQfnumber(res, "nspname");
 	int			i_relname = PQfnumber(res, "relname");
 
-	AssertVariableIsOfType(&process_old_sub_state_check, UpgradeTaskProcessCB);
-
 	if (ntups == 0)
 		return;
 
@@ -2519,6 +2505,76 @@ check_old_cluster_subscription_state(void)
 				 "You can allow the initial sync to finish for all relations and then restart the upgrade.\n"
 				 "A list of the problematic subscriptions is in the file:\n"
 				 "    %s", report.path);
+	}
+	else
+		check_ok();
+}
+
+/*
+ * check_old_cluster_global_names()
+ *
+ * Raise an error if any database, role, or tablespace name contains a newline
+ * or carriage return character.  Such names are not allowed in v19 and later.
+ */
+static void
+check_old_cluster_global_names(ClusterInfo *cluster)
+{
+	int			i;
+	PGconn	   *conn_template1;
+	PGresult   *res;
+	int			ntups;
+	FILE	   *script = NULL;
+	char		output_path[MAXPGPATH];
+	int			count = 0;
+
+	prep_status("Checking names of databases, roles and tablespaces");
+
+	snprintf(output_path, sizeof(output_path), "%s/%s",
+			 log_opts.basedir,
+			 "db_role_tablespace_invalid_names.txt");
+
+	conn_template1 = connectToServer(cluster, "template1");
+
+	/*
+	 * Get database, user/role and tablespacenames from cluster.  Can't use
+	 * pg_authid because only superusers can view it.
+	 */
+	res = executeQueryOrDie(conn_template1,
+							"SELECT datname AS objname, 'database' AS objtype "
+							"FROM pg_catalog.pg_database UNION ALL "
+							"SELECT rolname AS objname, 'role' AS objtype "
+							"FROM pg_catalog.pg_roles UNION ALL "
+							"SELECT spcname AS objname, 'tablespace' AS objtype "
+							"FROM pg_catalog.pg_tablespace ORDER BY 2 ");
+
+	ntups = PQntuples(res);
+	for (i = 0; i < ntups; i++)
+	{
+		char	   *objname = PQgetvalue(res, i, 0);
+		char	   *objtype = PQgetvalue(res, i, 1);
+
+		/* If name has \n or \r, then report it. */
+		if (strpbrk(objname, "\n\r"))
+		{
+			if (script == NULL && (script = fopen_priv(output_path, "w")) == NULL)
+				pg_fatal("could not open file \"%s\": %m", output_path);
+
+			fprintf(script, "%d : %s name = \"%s\"\n", ++count, objtype, objname);
+		}
+	}
+
+	PQclear(res);
+	PQfinish(conn_template1);
+
+	if (script)
+	{
+		fclose(script);
+		pg_log(PG_REPORT, "fatal");
+		pg_fatal("All the database, role and tablespace names should have only valid characters. A newline or \n"
+				 "carriage return character is not allowed in these object names.  To fix this, please \n"
+				 "rename these names with valid names. \n"
+				 "To see all %d invalid object names, refer db_role_tablespace_invalid_names.txt file. \n"
+				 "    %s", count, output_path);
 	}
 	else
 		check_ok();

@@ -26,6 +26,8 @@
  *		typedef struct FormData_pg_index.
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_index,2610,IndexRelationId) BKI_SCHEMA_MACRO
 {
 	Oid			indexrelid BKI_LOOKUP(pg_class);	/* OID of the index */
@@ -61,6 +63,8 @@ CATALOG(pg_index,2610,IndexRelationId) BKI_SCHEMA_MACRO
 								 * index; else NULL */
 #endif
 } FormData_pg_index;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_index corresponds to a pointer to a tuple with

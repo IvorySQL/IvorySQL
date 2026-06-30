@@ -337,6 +337,8 @@ static void determineLanguage(List *options);
 	   replica_identity partition_cmd index_partition_cmd
 %type <list>	rebuild_index_opt_list
 %type <defelt>	rebuild_index_opt
+%type <list>	create_index_opt_list
+%type <defelt>	create_index_opt
 %type <list>	alter_table_cmds alter_type_cmds
 %type <list>    alter_identity_column_option_list
 %type <defelt>  alter_identity_column_option
@@ -482,7 +484,7 @@ static void determineLanguage(List *options);
 %type <ival>	 OptNoLog
 %type <oncommit> OnCommitOption
 
-%type <ival>	for_locking_strength
+%type <ival>	for_locking_strength opt_for_locking_strength
 %type <node>	for_locking_item
 %type <list>	for_locking_clause opt_for_locking_clause for_locking_items
 %type <list>	locked_rels_list
@@ -2632,6 +2634,31 @@ index_partition_cmd:
 					$$ = (Node *) n;
 				}
 		;
+
+/*
+ * create_index_opt_list / create_index_opt
+ *
+ * Options following CREATE INDEX column list.
+ * ONLINE and TABLESPACE may appear in any order (Oracle-compatible).
+ * Duplicate options are rejected immediately.
+ */
+create_index_opt_list:
+		create_index_opt_list create_index_opt
+				{ $$ = lappend($1, $2); }
+		| /* EMPTY */
+				{ $$ = NIL; }
+	;
+
+create_index_opt:
+		ONLINE
+				{
+					$$ = makeDefElem("online", (Node *) makeBoolean(true), @1);
+				}
+		| TABLESPACE name
+				{
+					$$ = makeDefElem("tablespace", (Node *) makeString($2), @1);
+				}
+	;
 
 /*
  * rebuild_index_opt_list / rebuild_index_opt
@@ -8782,12 +8809,50 @@ defacl_privilege_target:
 
 IndexStmt:	CREATE opt_unique INDEX opt_concurrently opt_single_name
 			ON relation_expr access_method_clause '(' index_params ')'
-			opt_include opt_unique_null_treatment opt_reloptions OptTableSpace where_clause
+			opt_include opt_unique_null_treatment opt_reloptions
+			create_index_opt_list where_clause
 				{
-					IndexStmt *n = makeNode(IndexStmt);
+					IndexStmt  *n = makeNode(IndexStmt);
+					bool		online = false;
+					bool		online_seen = false;
+					char	   *tablespace = NULL;
+					ListCell   *lc;
+
+					foreach(lc, $15)
+					{
+						DefElem *opt = (DefElem *) lfirst(lc);
+
+						if (strcmp(opt->defname, "online") == 0)
+						{
+							if (online_seen)
+								ereport(ERROR,
+										(errcode(ERRCODE_SYNTAX_ERROR),
+										 errmsg("ONLINE specified multiple times"),
+										 parser_errposition(opt->location)));
+							online = defGetBoolean(opt);
+							online_seen = true;
+						}
+						else if (strcmp(opt->defname, "tablespace") == 0)
+						{
+							if (tablespace != NULL)
+								ereport(ERROR,
+										(errcode(ERRCODE_SYNTAX_ERROR),
+										 errmsg("TABLESPACE specified multiple times"),
+										 parser_errposition(opt->location)));
+							tablespace = defGetString(opt);
+						}
+					}
+
+					/* CONCURRENTLY and ONLINE are mutually exclusive */
+					if ($4 && online)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("cannot use both CONCURRENTLY and ONLINE"),
+								 parser_errposition(@4)));
 
 					n->unique = $2;
-					n->concurrent = $4;
+					n->concurrent = $4 || online;
+					n->online_keyword = online;
 					n->idxname = $5;
 					n->relation = $7;
 					n->accessMethod = $8;
@@ -8795,7 +8860,7 @@ IndexStmt:	CREATE opt_unique INDEX opt_concurrently opt_single_name
 					n->indexIncludingParams = $12;
 					n->nulls_not_distinct = !$13;
 					n->options = $14;
-					n->tableSpace = $15;
+					n->tableSpace = tablespace;
 					n->whereClause = $16;
 					n->excludeOpNames = NIL;
 					n->idxcomment = NULL;
@@ -8814,12 +8879,50 @@ IndexStmt:	CREATE opt_unique INDEX opt_concurrently opt_single_name
 				}
 			| CREATE opt_unique INDEX opt_concurrently IF_P NOT EXISTS name
 			ON relation_expr access_method_clause '(' index_params ')'
-			opt_include opt_unique_null_treatment opt_reloptions OptTableSpace where_clause
+			opt_include opt_unique_null_treatment opt_reloptions
+			create_index_opt_list where_clause
 				{
-					IndexStmt *n = makeNode(IndexStmt);
+					IndexStmt  *n = makeNode(IndexStmt);
+					bool		online = false;
+					bool		online_seen = false;
+					char	   *tablespace = NULL;
+					ListCell   *lc;
+
+					foreach(lc, $18)
+					{
+						DefElem *opt = (DefElem *) lfirst(lc);
+
+						if (strcmp(opt->defname, "online") == 0)
+						{
+							if (online_seen)
+								ereport(ERROR,
+										(errcode(ERRCODE_SYNTAX_ERROR),
+										 errmsg("ONLINE specified multiple times"),
+										 parser_errposition(opt->location)));
+							online = defGetBoolean(opt);
+							online_seen = true;
+						}
+						else if (strcmp(opt->defname, "tablespace") == 0)
+						{
+							if (tablespace != NULL)
+								ereport(ERROR,
+										(errcode(ERRCODE_SYNTAX_ERROR),
+										 errmsg("TABLESPACE specified multiple times"),
+										 parser_errposition(opt->location)));
+							tablespace = defGetString(opt);
+						}
+					}
+
+					/* CONCURRENTLY and ONLINE are mutually exclusive */
+					if ($4 && online)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("cannot use both CONCURRENTLY and ONLINE"),
+								 parser_errposition(@4)));
 
 					n->unique = $2;
-					n->concurrent = $4;
+					n->concurrent = $4 || online;
+					n->online_keyword = online;
 					n->idxname = $8;
 					n->relation = $10;
 					n->accessMethod = $11;
@@ -8827,7 +8930,7 @@ IndexStmt:	CREATE opt_unique INDEX opt_concurrently opt_single_name
 					n->indexIncludingParams = $15;
 					n->nulls_not_distinct = !$16;
 					n->options = $17;
-					n->tableSpace = $18;
+					n->tableSpace = tablespace;
 					n->whereClause = $19;
 					n->excludeOpNames = NIL;
 					n->idxcomment = NULL;
@@ -13753,12 +13856,24 @@ insert_column_item:
 		;
 
 opt_on_conflict:
+			ON CONFLICT opt_conf_expr DO SELECT opt_for_locking_strength where_clause
+				{
+					$$ = makeNode(OnConflictClause);
+					$$->action = ONCONFLICT_SELECT;
+					$$->infer = $3;
+					$$->targetList = NIL;
+					$$->lockStrength = $6;
+					$$->whereClause = $7;
+					$$->location = @1;
+				}
+			|
 			ON CONFLICT opt_conf_expr DO UPDATE SET set_clause_list	where_clause
 				{
 					$$ = makeNode(OnConflictClause);
 					$$->action = ONCONFLICT_UPDATE;
 					$$->infer = $3;
 					$$->targetList = $7;
+					$$->lockStrength = LCS_NONE;
 					$$->whereClause = $8;
 					$$->location = @1;
 				}
@@ -13769,6 +13884,7 @@ opt_on_conflict:
 					$$->action = ONCONFLICT_NOTHING;
 					$$->infer = $3;
 					$$->targetList = NIL;
+					$$->lockStrength = LCS_NONE;
 					$$->whereClause = NULL;
 					$$->location = @1;
 				}
@@ -15006,6 +15122,11 @@ for_locking_strength:
 			| FOR NO KEY UPDATE					{ $$ = LCS_FORNOKEYUPDATE; }
 			| FOR SHARE							{ $$ = LCS_FORSHARE; }
 			| FOR KEY SHARE						{ $$ = LCS_FORKEYSHARE; }
+		;
+
+opt_for_locking_strength:
+			for_locking_strength				{ $$ = $1; }
+			| /* EMPTY */						{ $$ = LCS_NONE; }
 		;
 
 locked_rels_list:

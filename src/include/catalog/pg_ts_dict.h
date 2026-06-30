@@ -26,6 +26,8 @@
  *		typedef struct FormData_pg_ts_dict
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_ts_dict,3600,TSDictionaryRelationId)
 {
 	/* oid */
@@ -48,6 +50,8 @@ CATALOG(pg_ts_dict,3600,TSDictionaryRelationId)
 	text		dictinitoption;
 #endif
 } FormData_pg_ts_dict;
+
+END_CATALOG_STRUCT
 
 typedef FormData_pg_ts_dict *Form_pg_ts_dict;
 

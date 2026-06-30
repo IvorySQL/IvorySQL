@@ -21,6 +21,7 @@ project('postgresql',
     'warning_level=1', #-Wall equivalent
     'b_pch=false',
     'buildtype=debugoptimized', # -O2 + debug
+    'default_library=both',
     # For compatibility with the autoconf build, set a default prefix. This
     # works even on windows, where it's a drive-relative path (i.e. when on
     # d:/somepath it'll install to d:/usr/local/pgsql)
@@ -52,6 +53,32 @@ endif
 not_found_dep = dependency('', required: false)
 thread_dep = dependency('threads')
 auto_features = get_option('auto_features')
+
+# Declare variables to disable static or shared libraries.  This
+# makes the 'default_library' option work even though we don't use the
+# library() function but instead shared_library() and static_library()
+# separately.
+#
+# build_shared_lib/build_static_lib control building/installing the two
+# versions of libraries that we can build both versions of (e.g., libpq).
+# There are also libraries that we only build a static version of (e.g.,
+# libpgport).  These are always built, since we need them while building,
+# but they are installed only if install_internal_static_lib is true.
+#
+# Note: at present, -Ddefault_library=static doesn't actually work, because
+# psql and other programs insist on linking to the shared version of libpq.
+# This could be fixed if there was interest, but so far there is not.
+default_library_opt = get_option('default_library')
+build_shared_lib = true
+build_static_lib = true
+install_internal_static_lib = true
+if default_library_opt == 'shared'
+  build_static_lib = false
+  install_internal_static_lib = false
+elif default_library_opt == 'static'
+  build_shared_lib = false
+  error('-Ddefault_library=static is not yet supported')
+endif
 
 
 
@@ -207,7 +234,38 @@ endif
 # that purpose.
 portname = host_system
 
-if host_system == 'cygwin'
+if host_system == 'aix'
+  sema_kind = 'unnamed_posix'
+  library_path_var = 'LIBPATH'
+  export_file_format = 'aix'
+  export_fmt = '-Wl,-bE:@0@'
+  mod_link_args_fmt = ['-Wl,-bI:@0@']
+  mod_link_with_dir = 'libdir'
+  mod_link_with_name = '@0@.imp'
+
+  # We force 64-bit builds, because AIX doesn't play very nice with dynamic
+  # library loading in 32-bit mode: there's not enough address space.
+  cppflags += '-maix64'
+  ldflags += '-maix64'
+  # Note: it's also necessary to tell programs like 'ar' to work in 64-bit
+  # mode.  Since meson, in its infinite wisdom, doesn't allow us either
+  # to pass '-X64' to ar or to set the OBJECT_MODE environment variable
+  # from here, we have to tell the user to set OBJECT_MODE.
+
+  # M:SRE sets a flag indicating that an object is a shared library.
+  ldflags_sl += '-Wl,-bM:SRE'
+  # -brtllib indicates binaries should use runtime-loaded shared libraries.
+  ldflags_be += '-Wl,-brtllib'
+
+  # On AIX, shared libraries are wrapped in static libraries and can have
+  # the same extension '.a'.  Therefore we must refrain from trying to build
+  # static libraries alongside shared ones, or meson will complain about
+  # duplicate targets.  Note however that we leave dlsuffix with its default
+  # value of '.so'; this results in using '.so' for loadable modules, which
+  # is fine.
+  build_static_lib = false
+
+elif host_system == 'cygwin'
   sema_kind = 'unnamed_posix'
   cppflags += '-D_GNU_SOURCE'
   dlsuffix = '.dll'
@@ -361,6 +419,8 @@ xmllint_bin = find_program(get_option('XMLLINT'), native: true, required: false)
 xsltproc_bin = find_program(get_option('XSLTPROC'), native: true, required: false)
 nm = find_program('nm', required: false, native: true)
 ln = find_program('ln', required: false, native: true)
+ditaa = find_program('ditaa', native: true, required: false)
+dot = find_program('dot', native: true, required: false)
 
 bison_flags = []
 if bison.found()
@@ -590,6 +650,33 @@ if not cc.compiles(c11_test, name: 'C11')
   endforeach
   if not c11_ok
     error('C compiler does not support C11')
+  endif
+endif
+
+
+# Do we need an option to enable C++11?
+cxx11_test = '''
+#if !defined __cplusplus || __cplusplus < 201103L
+# error "Compiler does not advertise C++11 conformance"
+#endif
+'''
+
+if have_cxx and not cxx.compiles(cxx11_test, name: 'C++11')
+  cxx11_ok = false
+  if cxx.get_id() == 'msvc'
+    cxx11_test_args = ['/std:c++14']  # oldest version supported
+  else
+    cxx11_test_args = ['-std=gnu++11', '-std=c++11']
+  endif
+  foreach arg : cxx11_test_args
+    if cxx.compiles(cxx11_test, name: 'C++11 with @0@'.format(arg), args: [arg])
+      cxx11_ok = true
+      cxxflags += arg
+      break
+    endif
+  endforeach
+  if not cxx11_ok
+    error('C++ compiler does not support C++11')
   endif
 endif
 
@@ -1350,17 +1437,22 @@ if not pyopt.disabled()
     # this internally:
     # <https://github.com/mesonbuild/meson/issues/13824>.
     if host_system == 'windows' and cc.get_id() == 'msvc'
-      python3_libdir = python3_inst.get_variable('prefix') / 'libs'
+      python3_prefix = python3_inst.get_variable('prefix')
+      python3_libdir = python3_prefix / 'libs'
+      python3_incdir = python3_prefix / 'include'
       python3_lib = cc.find_library('python3', dirs: python3_libdir, required: pyopt)
       python3_dep = declare_dependency(
-        include_directories: include_directories(python3_inst.get_variable('prefix') / 'include'),
+        include_directories: include_directories(python3_incdir),
         dependencies: python3_lib,
       )
+      # Explicit args needed for older Meson compatibility
+      python3_header_check_args = ['/I' + python3_incdir]
     else
       python3_dep = python3_inst.dependency(embed: true, required: pyopt)
+      python3_header_check_args = []
     endif
     # Remove this check after we depend on Meson >= 1.1.0
-    if not cc.check_header('Python.h', dependencies: python3_dep, required: pyopt, include_directories: postgres_inc)
+    if not cc.check_header('Python.h', args: python3_header_check_args, dependencies: python3_dep, required: pyopt, include_directories: postgres_inc)
       python3_dep = not_found_dep
     endif
   endif
@@ -1774,32 +1866,29 @@ endif
 
 # Determine memory alignment requirements for the basic C data types.
 
-alignof_types = ['short', 'int', 'long', 'double']
+alignof_types = ['short', 'int', 'int64_t', 'double']
 foreach t : alignof_types
-  align = cc.alignment(t, args: test_c_args)
+  align = cc.alignment(t, args: test_c_args, prefix: '#include <stdint.h>')
   cdata.set('ALIGNOF_@0@'.format(t.to_upper()), align)
 endforeach
 
 # Compute maximum alignment of any basic type.
 #
-# We require 'double' to have the strictest alignment among the basic types,
-# because otherwise the C ABI might impose 8-byte alignment on some of the
-# other C types that correspond to TYPALIGN_DOUBLE SQL types.  That could
-# cause a mismatch between the tuple layout and the C struct layout of a
-# catalog tuple.  We used to carefully order catalog columns such that any
-# fixed-width, attalign=4 columns were at offsets divisible by 8 regardless
-# of MAXIMUM_ALIGNOF to avoid that, but we no longer support any platforms
-# where TYPALIGN_DOUBLE != MAXIMUM_ALIGNOF.
-#
-# We assume without checking that int64_t's alignment is at least as strong
-# as long, char, short, or int.  Note that we intentionally do not consider
-# any types wider than 64 bits, as allowing MAXIMUM_ALIGNOF to exceed 8
-# would be too much of a penalty for disk and memory space.
+# We assume without checking that the maximum alignment requirement is that
+# of int64_t and/or double.  (On most platforms those are the same, but not
+# everywhere.)  For historical reasons, both int8 and float8 datatypes have
+# typalign 'd', and therefore will be aligned per ALIGNOF_DOUBLE in database
+# tuples even if ALIGNOF_INT64_T is more.  Note that we intentionally do not
+# consider any types wider than 64 bits, as allowing MAXIMUM_ALIGNOF to exceed
+# 8 would be too much of a penalty for disk and memory space.
+
+alignof_int64_t = cdata.get('ALIGNOF_INT64_T')
 alignof_double = cdata.get('ALIGNOF_DOUBLE')
-if cc.alignment('int64_t', args: test_c_args, prefix: '#include <stdint.h>') > alignof_double
-  error('alignment of int64_t is greater than the alignment of double')
+if alignof_int64_t > alignof_double
+  cdata.set('MAXIMUM_ALIGNOF', alignof_int64_t)
+else
+  cdata.set('MAXIMUM_ALIGNOF', alignof_double)
 endif
-cdata.set('MAXIMUM_ALIGNOF', alignof_double)
 
 cdata.set('SIZEOF_LONG', cc.sizeof('long', args: test_c_args))
 cdata.set('SIZEOF_LONG_LONG', cc.sizeof('long long', args: test_c_args))
@@ -1980,7 +2069,6 @@ builtins = [
   'ctz',
   'constant_p',
   'frame_address',
-  'popcount',
   'unreachable',
 ]
 
@@ -2128,7 +2216,6 @@ common_warning_flags = [
   '-Werror=unguarded-availability-new',
   '-Wendif-labels',
   '-Wmissing-format-attribute',
-  '-Wimplicit-fallthrough=3',
   '-Wcast-function-type',
   '-Wshadow=compatible-local',
   # This was included in -Wall/-Wformat in older GCC versions
@@ -2139,6 +2226,24 @@ cflags_warn += cc.get_supported_arguments(common_warning_flags)
 if have_cxx
   cxxflags_warn += cxx.get_supported_arguments(common_warning_flags)
 endif
+
+# To require fallthrough attribute annotations, use
+# -Wimplicit-fallthrough=5 with gcc and -Wimplicit-fallthrough with
+# clang.  The latter is also accepted on gcc but does not enforce
+# attribute annotations, so test the former first.
+fallthrough_warning_flags = ['-Wimplicit-fallthrough=5', '-Wimplicit-fallthrough']
+foreach w : fallthrough_warning_flags
+  if cc.has_argument(w)
+    cflags_warn += w
+    break
+  endif
+endforeach
+foreach w : fallthrough_warning_flags
+  if have_cxx and cxx.has_argument(w)
+    cxxflags_warn += w
+    break
+  endif
+endforeach
 
 # A few places with imported code get a pass on -Wdeclaration-after-statement, remember
 # the result for them
@@ -2617,7 +2722,9 @@ endif
 
 if host_cpu == 'x86_64'
 
-  if cc.compiles('''
+  if cc.get_id() == 'msvc'
+    cdata.set('HAVE_X86_64_POPCNTQ', 1)
+  elif cc.compiles('''
       void main(void)
       {
           long long x = 1; long long r;
@@ -2885,7 +2992,7 @@ gnugetopt_dep = cc.find_library('gnugetopt', required: false)
 #   (i.e., allow '-' as a flag character), so use our version on those platforms
 # - We want to use system's getopt_long() only if the system provides struct
 #   option
-always_replace_getopt = host_system in ['windows', 'cygwin', 'openbsd', 'solaris']
+always_replace_getopt = host_system in ['windows', 'cygwin', 'openbsd', 'sunos']
 always_replace_getopt_long = host_system in ['windows', 'cygwin'] or not cdata.has('HAVE_STRUCT_OPTION')
 
 # Required on BSDs
@@ -3076,6 +3183,7 @@ add_project_link_arguments(ldflags, language: ['c', 'cpp'])
 # list of targets for various alias targets
 backend_targets = []
 bin_targets = []
+libpq_targets = []
 pl_targets = []
 contrib_targets = []
 testprep_targets = []
@@ -3503,19 +3611,12 @@ endif
 installed_targets = [
   backend_targets,
   bin_targets,
-  libpq_st,
+  libpq_targets,
   pl_targets,
   contrib_targets,
   nls_mo_targets,
   ecpg_targets,
 ]
-
-if oauth_flow_supported
-  installed_targets += [
-    libpq_oauth_so,
-    libpq_oauth_st,
-  ]
-endif
 
 # all targets that require building code
 all_built = [
@@ -3854,7 +3955,7 @@ add_test_setup('running',
 ###############################################################
 
 alias_target('backend', backend_targets)
-alias_target('bin', bin_targets + [libpq_st])
+alias_target('bin', bin_targets + libpq_targets)
 alias_target('pl', pl_targets)
 alias_target('contrib', contrib_targets)
 alias_target('testprep', testprep_targets)

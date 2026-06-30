@@ -850,8 +850,22 @@ GetFileBackupMethod(IncrementalBackupInfo *ib, const char *path,
 	{
 		unsigned	relative_limit = limit_block - segno * RELSEG_SIZE;
 
+		/*
+		 * We can't set a truncation_block_length in excess of the limit block
+		 * number (relativized to the current segment). To do so would be to
+		 * treat blocks from older backups as valid current contents even if
+		 * they were subsequently truncated away.
+		 */
 		if (*truncation_block_length < relative_limit)
 			*truncation_block_length = relative_limit;
+
+		/*
+		 * We also can't set a truncation_block_length in excess of the
+		 * segment size, since the reconstructed file can't be larger than
+		 * that.
+		 */
+		if (*truncation_block_length > RELSEG_SIZE)
+			*truncation_block_length = RELSEG_SIZE;
 	}
 
 	/* Send it incrementally. */
@@ -916,7 +930,7 @@ GetIncrementalFileSize(unsigned num_blocks_required)
 static uint32
 hash_string_pointer(const char *s)
 {
-	unsigned char *ss = (unsigned char *) s;
+	const unsigned char *ss = (const unsigned char *) s;
 
 	return hash_bytes(ss, strlen(s));
 }
@@ -1035,8 +1049,8 @@ manifest_report_error(JsonManifestParseContext *context, const char *fmt,...)
 static int
 compare_block_numbers(const void *a, const void *b)
 {
-	BlockNumber aa = *(BlockNumber *) a;
-	BlockNumber bb = *(BlockNumber *) b;
+	BlockNumber aa = *(const BlockNumber *) a;
+	BlockNumber bb = *(const BlockNumber *) b;
 
 	return pg_cmp_u32(aa, bb);
 }

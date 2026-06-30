@@ -12,9 +12,7 @@
  */
 #include "c.h"
 
-#include "port/pg_bitutils.h"
-
-#ifdef POPCNT_AARCH64
+#ifdef USE_NEON
 
 #include <arm_neon.h>
 
@@ -29,6 +27,8 @@
 #endif
 #endif
 #endif
+
+#include "port/pg_bitutils.h"
 
 /*
  * The Neon versions are built regardless of whether we are building the SVE
@@ -292,27 +292,12 @@ pg_popcount_masked_optimized(const char *buf, int bytes, bits8 mask)
 #endif							/* ! USE_SVE_POPCNT_WITH_RUNTIME_CHECK */
 
 /*
- * pg_popcount32
+ * pg_popcount64_neon
  *		Return number of 1 bits in word
  */
-int
-pg_popcount32(uint32 word)
+static inline int
+pg_popcount64_neon(uint64 word)
 {
-	return pg_popcount64((uint64) word);
-}
-
-/*
- * pg_popcount64
- *		Return number of 1 bits in word
- */
-int
-pg_popcount64(uint64 word)
-{
-	/*
-	 * For some compilers, __builtin_popcountl() already emits Neon
-	 * instructions.  The line below should compile to the same code on those
-	 * systems.
-	 */
 	return vaddv_u8(vcnt_u8(vld1_u8((const uint8 *) &word)));
 }
 
@@ -383,7 +368,7 @@ pg_popcount_neon(const char *buf, int bytes)
 	 */
 	for (; bytes >= sizeof(uint64); bytes -= sizeof(uint64))
 	{
-		popcnt += pg_popcount64(*((uint64 *) buf));
+		popcnt += pg_popcount64_neon(*((const uint64 *) buf));
 		buf += sizeof(uint64);
 	}
 
@@ -465,7 +450,7 @@ pg_popcount_masked_neon(const char *buf, int bytes, bits8 mask)
 	 */
 	for (; bytes >= sizeof(uint64); bytes -= sizeof(uint64))
 	{
-		popcnt += pg_popcount64(*((uint64 *) buf) & mask64);
+		popcnt += pg_popcount64_neon(*((const uint64 *) buf) & mask64);
 		buf += sizeof(uint64);
 	}
 
@@ -478,4 +463,4 @@ pg_popcount_masked_neon(const char *buf, int bytes, bits8 mask)
 	return popcnt;
 }
 
-#endif							/* POPCNT_AARCH64 */
+#endif							/* USE_NEON */

@@ -125,6 +125,7 @@ AnlIndexData
 AnyArrayType
 Append
 AppendPath
+AppendPathInput
 AppendRelInfo
 AppendState
 ApplyErrorCallbackArg
@@ -422,6 +423,7 @@ CatalogIdMapEntry
 CatalogIndexState
 ChangeVarNodes_callback
 ChangeVarNodes_context
+ChannelName
 CheckPoint
 CheckPointStmt
 CheckpointStatsData
@@ -709,6 +711,7 @@ EachState
 Edge
 EditableObjectType
 ElementsState
+ElidedNode
 EnableTimeoutParams
 EndDataPtrType
 EndDirectModify_function
@@ -802,6 +805,7 @@ ExtensibleNodeMethods
 ExtensionControlFile
 ExtensionInfo
 ExtensionLocation
+ExtensionSiblingCache
 ExtensionVersionInfo
 FDWCollateState
 FD_SET
@@ -1111,6 +1115,8 @@ GistSplitUnion
 GistSplitVector
 GistTsVectorOptions
 GistVacState
+GlobalChannelEntry
+GlobalChannelKey
 GlobalTransaction
 GlobalTransactionData
 GlobalVisHorizonKind
@@ -1580,6 +1586,7 @@ ListParsedLex
 ListenAction
 ListenActionKind
 ListenStmt
+ListenerEntry
 LoInfo
 LoadStmt
 LocalBufferLookupEnt
@@ -1833,9 +1840,9 @@ OldToNewMappingData
 OnCommitAction
 OnCommitItem
 OnConflictAction
+OnConflictActionState
 OnConflictClause
 OnConflictExpr
-OnConflictSetState
 OpClassCacheEnt
 OpExpr
 OpFamilyMember
@@ -2176,6 +2183,8 @@ PatternInfoArray
 Pattern_Prefix_Status
 Pattern_Type
 PendingFsyncEntry
+PendingListenAction
+PendingListenEntry
 PendingRelDelete
 PendingRelSync
 PendingUnlinkEntry
@@ -2482,6 +2491,7 @@ RecordCacheArrayEntry
 RecordCacheEntry
 RecordCompareData
 RecordIOData
+RecoveryConflictReason
 RecoveryLockEntry
 RecoveryLockXidEntry
 RecoveryPauseState
@@ -2569,8 +2579,9 @@ ReorderBufferTupleCidEnt
 ReorderBufferTupleCidKey
 ReorderBufferUpdateProgressTxnCB
 ReorderTuple
-RepOriginId
 ReparameterizeForeignPathByChild_function
+ReplOriginId
+ReplOriginXactState
 ReplaceVarsFromTargetList_context
 ReplaceVarsNoMatchOption
 ReplaceWrapOption
@@ -2797,6 +2808,7 @@ SharedTypmodTableEntry
 Sharedsort
 ShellTypeInfo
 ShippableCacheEntry
+ShmemAllocatorData
 ShippableCacheKey
 ShmemIndexEnt
 ShutdownForeignScan_function
@@ -2891,6 +2903,7 @@ SplitPoint
 SplitTextOutputData
 SplitVar
 StackElem
+StakindFlags
 StartDataPtrType
 StartLOPtrType
 StartLOsPtrType
@@ -2920,6 +2933,7 @@ SubLink
 SubLinkType
 SubOpts
 SubPlan
+SubPlanRTInfo
 SubPlanState
 SubRelInfo
 SubRemoveRels
@@ -3728,6 +3742,7 @@ gistxlogPageReuse
 gistxlogPageSplit
 gistxlogPageUpdate
 grouping_sets_data
+growable_trgm_array
 gseg_picksplit_item
 gss_OID_set
 gss_buffer_desc
@@ -3946,6 +3961,7 @@ pg_sha512_ctx
 pg_snapshot
 pg_special_case
 pg_stack_base_t
+pg_ternary
 pg_time_t
 pg_time_usec_t
 pg_tz
@@ -4048,6 +4064,7 @@ qsort_comparator
 query_pathkeys_callback
 radius_attribute
 radius_packet
+RadixSortInfo
 rangeTableEntry_used_context
 rank_context
 rbt_allocfunc
@@ -4073,6 +4090,7 @@ relopt_kind
 relopt_parse_elt
 relopt_real
 relopt_string
+relopt_ternary
 relopt_type
 relopt_value
 relopts_validator
@@ -4254,9 +4272,12 @@ va_list
 vacuumingOptions
 validate_string_relopt
 varatt_expanded
+varatt_external
+varatt_indirect
 varattrib_1b
 varattrib_1b_e
 varattrib_4b
+varlena
 vartag_external
 vbits
 verifier_context

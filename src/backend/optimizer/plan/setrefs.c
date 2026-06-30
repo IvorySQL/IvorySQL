@@ -216,6 +216,9 @@ static void record_plan_internel_function_dependency(PlannerInfo *root,
 											FuncExpr *funcexpr);
 
 
+static void record_elided_node(PlannerGlobal *glob, int plan_node_id,
+							   NodeTag elided_type, Bitmapset *relids);
+
 
 /*****************************************************************************
  *
@@ -403,6 +406,26 @@ add_rtes_to_flat_rtable(PlannerInfo *root, bool recursing)
 	PlannerGlobal *glob = root->glob;
 	Index		rti;
 	ListCell   *lc;
+
+	/*
+	 * Record enough information to make it possible for code that looks at
+	 * the final range table to understand how it was constructed. (If
+	 * finalrtable is still NIL, then this is the very topmost PlannerInfo,
+	 * which will always have plan_name == NULL and rtoffset == 0; we omit the
+	 * degenerate list entry.)
+	 */
+	if (root->glob->finalrtable != NIL)
+	{
+		SubPlanRTInfo *rtinfo = makeNode(SubPlanRTInfo);
+
+		rtinfo->plan_name = root->plan_name;
+		rtinfo->rtoffset = list_length(root->glob->finalrtable);
+
+		/* When recursing = true, it's an unplanned or dummy subquery. */
+		rtinfo->dummy = recursing;
+
+		root->glob->subrtinfos = lappend(root->glob->subrtinfos, rtinfo);
+	}
 
 	/*
 	 * Add the query's own RTEs to the flattened rangetable.
@@ -1145,7 +1168,8 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 				 * those are already used by RETURNING and it seems better to
 				 * be non-conflicting.
 				 */
-				if (splan->onConflictSet)
+				if (splan->onConflictAction == ONCONFLICT_UPDATE ||
+					splan->onConflictAction == ONCONFLICT_SELECT)
 				{
 					indexed_tlist *itlist;
 
@@ -1445,10 +1469,17 @@ set_subqueryscan_references(PlannerInfo *root,
 
 	if (trivial_subqueryscan(plan))
 	{
+		Index		scanrelid;
+
 		/*
 		 * We can omit the SubqueryScan node and just pull up the subplan.
 		 */
 		result = clean_up_removed_plan_level((Plan *) plan, plan->subplan);
+
+		/* Remember that we removed a SubqueryScan */
+		scanrelid = plan->scan.scanrelid + rtoffset;
+		record_elided_node(root->glob, plan->subplan->plan_node_id,
+						   T_SubqueryScan, bms_make_singleton(scanrelid));
 	}
 	else
 	{
@@ -1876,7 +1907,17 @@ set_append_references(PlannerInfo *root,
 		Plan	   *p = (Plan *) linitial(aplan->appendplans);
 
 		if (p->parallel_aware == aplan->plan.parallel_aware)
-			return clean_up_removed_plan_level((Plan *) aplan, p);
+		{
+			Plan	   *result;
+
+			result = clean_up_removed_plan_level((Plan *) aplan, p);
+
+			/* Remember that we removed an Append */
+			record_elided_node(root->glob, p->plan_node_id, T_Append,
+							   offset_relid_set(aplan->apprelids, rtoffset));
+
+			return result;
+		}
 	}
 
 	/*
@@ -1944,7 +1985,17 @@ set_mergeappend_references(PlannerInfo *root,
 		Plan	   *p = (Plan *) linitial(mplan->mergeplans);
 
 		if (p->parallel_aware == mplan->plan.parallel_aware)
-			return clean_up_removed_plan_level((Plan *) mplan, p);
+		{
+			Plan	   *result;
+
+			result = clean_up_removed_plan_level((Plan *) mplan, p);
+
+			/* Remember that we removed a MergeAppend */
+			record_elided_node(root->glob, p->plan_node_id, T_MergeAppend,
+							   offset_relid_set(mplan->apprelids, rtoffset));
+
+			return result;
+		}
 	}
 
 	/*
@@ -3105,7 +3156,7 @@ search_indexed_tlist_for_sortgroupref(Expr *node,
  *	  other-relation Vars by OUTER_VAR references, while leaving target Vars
  *	  alone. Thus inner_itlist = NULL and acceptable_rel = the ID of the
  *	  target relation should be passed.
- * 3) ON CONFLICT UPDATE SET/WHERE clauses.  Here references to EXCLUDED are
+ * 3) ON CONFLICT SET and WHERE clauses.  Here references to EXCLUDED are
  *	  to be replaced with INNER_VAR references, while leaving target Vars (the
  *	  to-be-updated relation) alone. Correspondingly inner_itlist is to be
  *	  EXCLUDED elements, outer_itlist = NULL and acceptable_rel the target
@@ -3805,4 +3856,22 @@ extract_query_dependencies_walker(Node *node, PlannerInfo *context)
 	fix_expr_common(context, node);
 	return expression_tree_walker(node, extract_query_dependencies_walker,
 								  context);
+}
+
+/*
+ * Record some details about a node removed from the plan during setrefs
+ * processing, for the benefit of code trying to reconstruct planner decisions
+ * from examination of the final plan tree.
+ */
+static void
+record_elided_node(PlannerGlobal *glob, int plan_node_id,
+				   NodeTag elided_type, Bitmapset *relids)
+{
+	ElidedNode *n = makeNode(ElidedNode);
+
+	n->plan_node_id = plan_node_id;
+	n->elided_type = elided_type;
+	n->relids = relids;
+
+	glob->elidedNodes = lappend(glob->elidedNodes, n);
 }

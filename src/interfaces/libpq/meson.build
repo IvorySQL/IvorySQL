@@ -57,8 +57,10 @@ libpq_so_c_args = ['-DUSE_DYNAMIC_OAUTH']
 #    libpq_st, and {pgport,common}_shlib for libpq_sh
 #
 # We could try to avoid building the source files twice, but it probably adds
-# more complexity than its worth (reusing object files requires also linking
-# to the library on windows or breaks precompiled headers).
+# more complexity than its worth (AIX doesn't support link_whole yet, reusing
+# object files requires also linking to the library on windows or breaks
+# precompiled headers).
+if build_static_lib
 libpq_st = static_library('libpq',
   libpq_sources,
   include_directories: [libpq_inc],
@@ -67,20 +69,25 @@ libpq_st = static_library('libpq',
   dependencies: [frontend_stlib_code, libpq_deps],
   kwargs: default_lib_args,
 )
+libpq_targets += libpq_st
+endif
 
+if build_shared_lib
 libpq_so = shared_library('libpq',
   libpq_sources + libpq_so_sources,
   include_directories: [libpq_inc, postgres_inc],
   c_args: libpq_c_args + libpq_so_c_args,
   c_pch: pch_postgres_fe_h,
   version: '5.' + pg_version_major.to_string(),
-  soversion: host_system != 'windows' ? '5' : '',
+  soversion: host_system not in ['aix', 'windows'] ? '5' : '',
   darwin_versions: ['5', '5.' + pg_version_major.to_string()],
   dependencies: [frontend_shlib_code, libpq_deps],
   link_depends: export_file,
   link_args: export_fmt.format(export_file.full_path()),
   kwargs: default_lib_args,
 )
+libpq_targets += libpq_so
+endif
 
 libpq = declare_dependency(
   link_with: [libpq_so],

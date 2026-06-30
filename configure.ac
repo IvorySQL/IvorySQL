@@ -67,6 +67,7 @@ PGAC_ARG_REQ(with, template, [NAME], [override operating system template],
 # --with-template not given
 
 case $host_os in
+     aix*) template=aix ;;
   cygwin*|msys*) template=cygwin ;;
   darwin*) template=darwin ;;
 dragonfly*) template=netbsd ;;
@@ -475,6 +476,46 @@ fi
 
 AC_PROG_CXX([$pgac_cxx_list])
 
+# Check if it actually found a C++ compiler.
+AC_LANG_PUSH([C++])
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([], [])],
+  [have_cxx=yes],
+  [have_cxx=no])
+AC_LANG_POP([C++])
+AC_SUBST(have_cxx)
+
+if test "$have_cxx" = yes; then
+
+# Detect option needed for C++11
+AC_MSG_CHECKING([for $CXX option to accept ISO C++11])
+AC_CACHE_VAL([pgac_cv_prog_cxx_cxx11],
+[pgac_cv_prog_cxx_cxx11=no
+pgac_save_CXX=$CXX
+AC_LANG_PUSH([C++])
+for pgac_arg in '' '-std=gnu++11' '-std=c++11'; do
+  CXX="$pgac_save_CXX $pgac_arg"
+  AC_COMPILE_IFELSE([AC_LANG_SOURCE([[#if !defined __cplusplus || __cplusplus < 201103L
+# error "Compiler does not advertise C++11 conformance"
+#endif]])], [[pgac_cv_prog_cxx_cxx11=$pgac_arg]])
+  test x"$pgac_cv_prog_cxx_cxx11" != x"no" && break
+done
+AC_LANG_POP([C++])
+CXX=$pgac_save_CXX])
+
+if test x"$pgac_cv_prog_cxx_cxx11" = x"no"; then
+  AC_MSG_RESULT([unsupported])
+  AC_MSG_WARN([C++ compiler "$CXX" does not support C++11])
+  have_cxx=no
+elif test x"$pgac_cv_prog_cxx_cxx11" = x""; then
+  AC_MSG_RESULT([none needed])
+else
+  AC_MSG_RESULT([$pgac_cv_prog_cxx_cxx11])
+  CXX="$CXX $pgac_cv_prog_cxx_cxx11"
+fi
+
+fi  # have_cxx
+
+
 # Check if it's Intel's compiler, which (usually) pretends to be gcc,
 # but has idiosyncrasies of its own.  We assume icc will define
 # __INTEL_COMPILER regardless of CFLAGS.
@@ -604,8 +645,22 @@ if test "$GCC" = yes -a "$ICC" = no; then
   PGAC_PROG_CXX_CFLAGS_OPT([-Wendif-labels])
   PGAC_PROG_CC_CFLAGS_OPT([-Wmissing-format-attribute])
   PGAC_PROG_CXX_CFLAGS_OPT([-Wmissing-format-attribute])
-  PGAC_PROG_CC_CFLAGS_OPT([-Wimplicit-fallthrough=3])
-  PGAC_PROG_CXX_CFLAGS_OPT([-Wimplicit-fallthrough=3])
+
+  # To require fallthrough attribute annotations, use
+  # -Wimplicit-fallthrough=5 with gcc and -Wimplicit-fallthrough with
+  # clang.  The latter is also accepted on gcc but does not enforce
+  # attribute annotations, so test the former first.
+  save_CFLAGS=$CFLAGS
+  PGAC_PROG_CC_CFLAGS_OPT([-Wimplicit-fallthrough=5])
+  if test x"$save_CFLAGS" = x"$CFLAGS"; then
+    PGAC_PROG_CC_CFLAGS_OPT([-Wimplicit-fallthrough])
+  fi
+  save_CXXFLAGS=$CXXFLAGS
+  PGAC_PROG_CXX_CFLAGS_OPT([-Wimplicit-fallthrough=5])
+  if test x"$save_CXXFLAGS" = x"$CXXFLAGS"; then
+    PGAC_PROG_CXX_CFLAGS_OPT([-Wimplicit-fallthrough])
+  fi
+
   PGAC_PROG_CC_CFLAGS_OPT([-Wcast-function-type])
   PGAC_PROG_CXX_CFLAGS_OPT([-Wcast-function-type])
   PGAC_PROG_CC_CFLAGS_OPT([-Wshadow=compatible-local])
@@ -1517,7 +1572,8 @@ if test "$with_zstd" = yes ; then
   AC_CHECK_LIB(zstd, ZSTD_compress, [], [AC_MSG_ERROR([library 'zstd' is required for ZSTD support])])
 fi
 
-# Note: We can test for libldap_r only after we know PTHREAD_LIBS
+# Note: We can test for libldap_r only after we know PTHREAD_LIBS;
+# also, on AIX, we may need to have openssl in LIBS for this step.
 if test "$with_ldap" = yes ; then
   _LIBS="$LIBS"
   if test "$PORTNAME" != "win32"; then
@@ -1760,7 +1816,6 @@ fi
 
 m4_defun([AC_PROG_CC_STDC], []) dnl We don't want that.
 AC_C_BIGENDIAN
-AC_C_INLINE
 PGAC_PRINTF_ARCHETYPE
 PGAC_CXX_PRINTF_ARCHETYPE
 PGAC_C_STATEMENT_EXPRESSIONS
@@ -1900,7 +1955,6 @@ PGAC_CHECK_BUILTIN_FUNC([__builtin_bswap64], [long int x])
 # We assume that we needn't test all widths of these explicitly:
 PGAC_CHECK_BUILTIN_FUNC([__builtin_clz], [unsigned int x])
 PGAC_CHECK_BUILTIN_FUNC([__builtin_ctz], [unsigned int x])
-PGAC_CHECK_BUILTIN_FUNC([__builtin_popcount], [unsigned int x])
 # __builtin_frame_address may draw a diagnostic for non-constant argument,
 # so it needs a different test function.
 PGAC_CHECK_BUILTIN_FUNC_PTR([__builtin_frame_address], [0])
@@ -2079,33 +2133,23 @@ AC_CHECK_SIZEOF([intmax_t])
 
 AC_CHECK_ALIGNOF(short)
 AC_CHECK_ALIGNOF(int)
-AC_CHECK_ALIGNOF(long)
 AC_CHECK_ALIGNOF(int64_t)
 AC_CHECK_ALIGNOF(double)
 
 # Compute maximum alignment of any basic type.
 #
-# We require 'double' to have the strictest alignment among the basic types,
-# because otherwise the C ABI might impose 8-byte alignment on some of the
-# other C types that correspond to TYPALIGN_DOUBLE SQL types.  That could
-# cause a mismatch between the tuple layout and the C struct layout of a
-# catalog tuple.  We used to carefully order catalog columns such that any
-# fixed-width, attalign=4 columns were at offsets divisible by 8 regardless
-# of MAXIMUM_ALIGNOF to avoid that, but we no longer support any platforms
-# where TYPALIGN_DOUBLE != MAXIMUM_ALIGNOF.
-#
-# We assume without checking that long's alignment is at least as strong as
-# char, short, or int.  Note that we intentionally do not consider any types
-# wider than 64 bits, as allowing MAXIMUM_ALIGNOF to exceed 8 would be too
-# much of a penalty for disk and memory space.
+# We assume without checking that the maximum alignment requirement is that
+# of int64_t and/or double.  (On most platforms those are the same, but not
+# everywhere.)  For historical reasons, both int8 and float8 datatypes have
+# typalign 'd', and therefore will be aligned per ALIGNOF_DOUBLE in database
+# tuples even if ALIGNOF_INT64_T is more.  Note that we intentionally do not
+# consider any types wider than 64 bits, as allowing MAXIMUM_ALIGNOF to exceed
+# 8 would be too much of a penalty for disk and memory space.
 
-MAX_ALIGNOF=$ac_cv_alignof_double
-
-if test $ac_cv_alignof_long -gt $MAX_ALIGNOF ; then
-  AC_MSG_ERROR([alignment of 'long' is greater than the alignment of 'double'])
-fi
-if test $ac_cv_alignof_int64_t -gt $MAX_ALIGNOF ; then
-  AC_MSG_ERROR([alignment of 'int64_t' is greater than the alignment of 'double'])
+if test $ac_cv_alignof_int64_t -gt $ac_cv_alignof_double ; then
+  MAX_ALIGNOF=$ac_cv_alignof_int64_t
+else
+  MAX_ALIGNOF=$ac_cv_alignof_double
 fi
 AC_DEFINE_UNQUOTED(MAXIMUM_ALIGNOF, $MAX_ALIGNOF, [Define as the maximum alignment requirement of any C data type.])
 
@@ -2293,12 +2337,12 @@ fi
 AC_MSG_CHECKING([which CRC-32C implementation to use])
 if test x"$USE_SSE42_CRC32C" = x"1"; then
   AC_DEFINE(USE_SSE42_CRC32C, 1, [Define to 1 use Intel SSE 4.2 CRC instructions.])
-  PG_CRC32C_OBJS="pg_crc32c_sse42.o pg_crc32c_sse42_choose.o"
+  PG_CRC32C_OBJS="pg_crc32c_sse42.o"
   AC_MSG_RESULT(SSE 4.2)
 else
   if test x"$USE_SSE42_CRC32C_WITH_RUNTIME_CHECK" = x"1"; then
     AC_DEFINE(USE_SSE42_CRC32C_WITH_RUNTIME_CHECK, 1, [Define to 1 to use Intel SSE 4.2 CRC instructions with a runtime check.])
-    PG_CRC32C_OBJS="pg_crc32c_sse42.o pg_crc32c_sb8.o pg_crc32c_sse42_choose.o"
+    PG_CRC32C_OBJS="pg_crc32c_sse42.o pg_crc32c_sb8.o"
     AC_MSG_RESULT(SSE 4.2 with runtime check)
   else
     if test x"$USE_ARMV8_CRC32C" = x"1"; then

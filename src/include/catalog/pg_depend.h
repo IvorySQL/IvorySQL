@@ -39,6 +39,8 @@
  *		typedef struct FormData_pg_depend
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_depend,2608,DependRelationId)
 {
 	/*
@@ -63,6 +65,8 @@ CATALOG(pg_depend,2608,DependRelationId)
 	 */
 	char		deptype;		/* see codes in dependency.h */
 } FormData_pg_depend;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_depend corresponds to a pointer to a row with

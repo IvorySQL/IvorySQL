@@ -27,6 +27,8 @@
  *		typedef struct FormData_pg_ts_config
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_ts_config,3602,TSConfigRelationId)
 {
 	/* oid */
@@ -44,6 +46,8 @@ CATALOG(pg_ts_config,3602,TSConfigRelationId)
 	/* OID of parser */
 	Oid			cfgparser BKI_LOOKUP(pg_ts_parser);
 } FormData_pg_ts_config;
+
+END_CATALOG_STRUCT
 
 typedef FormData_pg_ts_config *Form_pg_ts_config;
 

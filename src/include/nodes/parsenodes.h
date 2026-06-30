@@ -204,7 +204,7 @@ typedef struct Query
 	/* OVERRIDING clause */
 	OverridingKind override pg_node_attr(query_jumble_ignore);
 
-	OnConflictExpr *onConflict; /* ON CONFLICT DO [NOTHING | UPDATE] */
+	OnConflictExpr *onConflict; /* ON CONFLICT DO NOTHING/SELECT/UPDATE */
 
 	/*
 	 * The following three fields describe the contents of the RETURNING list
@@ -1438,7 +1438,8 @@ typedef enum WCOKind
 	WCO_VIEW_CHECK,				/* WCO on an auto-updatable view */
 	WCO_RLS_INSERT_CHECK,		/* RLS INSERT WITH CHECK policy */
 	WCO_RLS_UPDATE_CHECK,		/* RLS UPDATE WITH CHECK policy */
-	WCO_RLS_CONFLICT_CHECK,		/* RLS ON CONFLICT DO UPDATE USING policy */
+	WCO_RLS_CONFLICT_CHECK,		/* RLS ON CONFLICT DO SELECT/UPDATE USING
+								 * policy */
 	WCO_RLS_MERGE_UPDATE_CHECK, /* RLS MERGE UPDATE USING policy */
 	WCO_RLS_MERGE_DELETE_CHECK, /* RLS MERGE DELETE USING policy */
 } WCOKind;
@@ -1725,9 +1726,10 @@ typedef struct InferClause
 typedef struct OnConflictClause
 {
 	NodeTag		type;
-	OnConflictAction action;	/* DO NOTHING or UPDATE? */
+	OnConflictAction action;	/* DO NOTHING, SELECT, or UPDATE */
 	InferClause *infer;			/* Optional index inference clause */
-	List	   *targetList;		/* the target list (of ResTarget) */
+	LockClauseStrength lockStrength;	/* lock strength for DO SELECT */
+	List	   *targetList;		/* target list (of ResTarget) for DO UPDATE */
 	Node	   *whereClause;	/* qualifications */
 	ParseLoc	location;		/* token location, or -1 if unknown */
 } OnConflictClause;
@@ -2721,7 +2723,7 @@ typedef struct AccessPriv
  * Note: because of the parsing ambiguity with the GRANT <privileges>
  * statement, granted_roles is a list of AccessPriv; the execution code
  * should complain if any column lists appear.  grantee_roles is a list
- * of role names, as String values.
+ * of role names, as RoleSpec values.
  * ----------------------
  */
 typedef struct GrantRoleStmt
@@ -3597,6 +3599,7 @@ typedef struct IndexStmt
 	bool		initdeferred;	/* is the constraint INITIALLY DEFERRED? */
 	bool		transformed;	/* true when transformIndexStmt is finished */
 	bool		concurrent;		/* should this be a concurrent index build? */
+	bool		online_keyword; /* was ONLINE keyword used (not CONCURRENTLY)? */
 	bool		if_not_exists;	/* just do nothing if index already exists? */
 	bool		reset_default_tblspc;	/* reset default_tablespace prior to
 										 * executing */

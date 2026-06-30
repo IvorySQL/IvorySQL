@@ -267,13 +267,10 @@ find_window_functions_walker(Node *node, WindowFuncLists *lists)
 		if (wfunc->winref > lists->maxWinRef)
 			elog(ERROR, "WindowFunc contains out-of-range winref %u",
 				 wfunc->winref);
-		/* eliminate duplicates, so that we avoid repeated computation */
-		if (!list_member(lists->windowFuncs[wfunc->winref], wfunc))
-		{
-			lists->windowFuncs[wfunc->winref] =
-				lappend(lists->windowFuncs[wfunc->winref], wfunc);
-			lists->numWindowFuncs++;
-		}
+
+		lists->windowFuncs[wfunc->winref] =
+			lappend(lists->windowFuncs[wfunc->winref], wfunc);
+		lists->numWindowFuncs++;
 
 		/*
 		 * We assume that the parser checked that there are no window
@@ -1586,7 +1583,7 @@ find_nonnullable_rels_walker(Node *node, bool top_level)
 				 * the intersection of the sets of nonnullable rels, just as
 				 * for OR.  Fall through to share code.
 				 */
-				/* FALL THRU */
+				pg_fallthrough;
 			case OR_EXPR:
 
 				/*
@@ -1845,7 +1842,7 @@ find_nonnullable_vars_walker(Node *node, bool top_level)
 				 * the intersection of the sets of nonnullable vars, just as
 				 * for OR.  Fall through to share code.
 				 */
-				/* FALL THRU */
+				pg_fallthrough;
 			case OR_EXPR:
 
 				/*
@@ -2769,6 +2766,7 @@ eval_const_expressions_mutator(Node *node,
 				bool		has_null_input = false;
 				bool		all_null_input = true;
 				bool		has_nonconst_input = false;
+				bool		has_nullable_nonconst = false;
 				Expr	   *simple;
 				DistinctExpr *newexpr;
 
@@ -2785,7 +2783,8 @@ eval_const_expressions_mutator(Node *node,
 				/*
 				 * We must do our own check for NULLs because DistinctExpr has
 				 * different results for NULL input than the underlying
-				 * operator does.
+				 * operator does.  We also check if any non-constant input is
+				 * potentially nullable.
 				 */
 				foreach(arg, args)
 				{
@@ -2795,12 +2794,24 @@ eval_const_expressions_mutator(Node *node,
 						all_null_input &= ((Const *) lfirst(arg))->constisnull;
 					}
 					else
+					{
 						has_nonconst_input = true;
+						all_null_input = false;
+
+						if (!has_nullable_nonconst &&
+							!expr_is_nonnullable(context->root,
+												 (Expr *) lfirst(arg), false))
+							has_nullable_nonconst = true;
+					}
 				}
 
-				/* all constants? then can optimize this out */
 				if (!has_nonconst_input)
 				{
+					/*
+					 * All inputs are constants.  We can optimize this out
+					 * completely.
+					 */
+
 					/* all nulls? then not distinct */
 					if (all_null_input)
 						return makeBoolConst(false, false);
@@ -2844,6 +2855,72 @@ eval_const_expressions_mutator(Node *node,
 							BoolGetDatum(!DatumGetBool(csimple->constvalue));
 						return (Node *) csimple;
 					}
+				}
+				else if (!has_nullable_nonconst)
+				{
+					/*
+					 * There are non-constant inputs, but since all of them
+					 * are proven non-nullable, "IS DISTINCT FROM" semantics
+					 * are much simpler.
+					 */
+
+					OpExpr	   *eqexpr;
+
+					/*
+					 * If one input is an explicit NULL constant, and the
+					 * other is a non-nullable expression, the result is
+					 * always TRUE.
+					 */
+					if (has_null_input)
+						return makeBoolConst(true, false);
+
+					/*
+					 * Otherwise, both inputs are known non-nullable.  In this
+					 * case, "IS DISTINCT FROM" is equivalent to the standard
+					 * inequality operator (usually "<>").  We convert this to
+					 * an OpExpr, which is a more efficient representation for
+					 * the planner.  It can enable the use of partial indexes
+					 * and constraint exclusion.  Furthermore, if the clause
+					 * is negated (ie, "IS NOT DISTINCT FROM"), the resulting
+					 * "=" operator can allow the planner to use index scans,
+					 * merge joins, hash joins, and EC-based qual deductions.
+					 */
+					eqexpr = makeNode(OpExpr);
+					eqexpr->opno = expr->opno;
+					eqexpr->opfuncid = expr->opfuncid;
+					eqexpr->opresulttype = BOOLOID;
+					eqexpr->opretset = expr->opretset;
+					eqexpr->opcollid = expr->opcollid;
+					eqexpr->inputcollid = expr->inputcollid;
+					eqexpr->args = args;
+					eqexpr->location = expr->location;
+
+					return eval_const_expressions_mutator(negate_clause((Node *) eqexpr),
+														  context);
+				}
+				else if (has_null_input)
+				{
+					/*
+					 * One input is a nullable non-constant expression, and
+					 * the other is an explicit NULL constant.  We can
+					 * transform this to a NullTest with !argisrow, which is
+					 * much more amenable to optimization.
+					 */
+
+					NullTest   *nt = makeNode(NullTest);
+
+					nt->arg = (Expr *) (IsA(linitial(args), Const) ?
+										lsecond(args) : linitial(args));
+					nt->nulltesttype = IS_NOT_NULL;
+
+					/*
+					 * argisrow = false is correct whether or not arg is
+					 * composite
+					 */
+					nt->argisrow = false;
+					nt->location = expr->location;
+
+					return eval_const_expressions_mutator((Node *) nt, context);
 				}
 
 				/*
@@ -3844,6 +3921,9 @@ eval_const_expressions_mutator(Node *node,
 													 context);
 				if (arg && IsA(arg, Const))
 				{
+					/*
+					 * If arg is Const, simplify to constant.
+					 */
 					Const	   *carg = (Const *) arg;
 					bool		result;
 
@@ -3879,6 +3959,34 @@ eval_const_expressions_mutator(Node *node,
 					}
 
 					return makeBoolConst(result, false);
+				}
+				if (arg && expr_is_nonnullable(context->root, (Expr *) arg, false))
+				{
+					/*
+					 * If arg is proven non-nullable, simplify to boolean
+					 * expression or constant.
+					 */
+					switch (btest->booltesttype)
+					{
+						case IS_TRUE:
+						case IS_NOT_FALSE:
+							return arg;
+
+						case IS_FALSE:
+						case IS_NOT_TRUE:
+							return (Node *) make_notclause((Expr *) arg);
+
+						case IS_UNKNOWN:
+							return makeBoolConst(false, false);
+
+						case IS_NOT_UNKNOWN:
+							return makeBoolConst(true, false);
+
+						default:
+							elog(ERROR, "unrecognized booltesttype: %d",
+								 (int) btest->booltesttype);
+							break;
+					}
 				}
 
 				newbtest = makeNode(BooleanTest);

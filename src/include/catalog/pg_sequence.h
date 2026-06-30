@@ -21,6 +21,8 @@
 #include "catalog/genbki.h"
 #include "catalog/pg_sequence_d.h"	/* IWYU pragma: export */
 
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_sequence,2224,SequenceRelationId)
 {
 	Oid			seqrelid BKI_LOOKUP(pg_class);
@@ -33,6 +35,8 @@ CATALOG(pg_sequence,2224,SequenceRelationId)
 	bool		seqcycle;
 	int16		flags;
 } FormData_pg_sequence;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_sequence corresponds to a pointer to a tuple with

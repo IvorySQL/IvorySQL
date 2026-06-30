@@ -25,6 +25,8 @@
  *		typedef struct FormData_pg_foreign_table
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_foreign_table,3118,ForeignTableRelationId)
 {
 	Oid			ftrelid BKI_LOOKUP(pg_class);	/* OID of foreign table */
@@ -34,6 +36,8 @@ CATALOG(pg_foreign_table,3118,ForeignTableRelationId)
 	text		ftoptions[1];	/* FDW-specific options */
 #endif
 } FormData_pg_foreign_table;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_foreign_table corresponds to a pointer to a tuple with

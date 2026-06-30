@@ -131,6 +131,9 @@ typedef struct PlannedStmt
 	 */
 	List	   *subplans;
 
+	/* a list of SubPlanRTInfo objects */
+	List	   *subrtinfos;
+
 	/* indices of subplans that require REWIND */
 	Bitmapset  *rewindPlanIDs;
 
@@ -151,6 +154,9 @@ typedef struct PlannedStmt
 
 	/* non-null if this is utility stmt */
 	Node	   *utilityStmt;
+
+	/* info about nodes elided from the plan during setrefs processing */
+	List	   *elidedNodes;
 
 	/*
 	 * DefElem objects added by extensions, e.g. using planner_shutdown_hook
@@ -365,11 +371,13 @@ typedef struct ModifyTable
 	OnConflictAction onConflictAction;
 	/* List of ON CONFLICT arbiter index OIDs  */
 	List	   *arbiterIndexes;
+	/* lock strength for ON CONFLICT DO SELECT */
+	LockClauseStrength onConflictLockStrength;
 	/* INSERT ON CONFLICT DO UPDATE targetlist */
 	List	   *onConflictSet;
 	/* target column numbers for onConflictSet */
 	List	   *onConflictCols;
-	/* WHERE for ON CONFLICT UPDATE */
+	/* WHERE for ON CONFLICT DO SELECT/UPDATE */
 	Node	   *onConflictWhere;
 	/* RTI of the EXCLUDED pseudo relation */
 	Index		exclRelRTI;
@@ -391,9 +399,16 @@ struct PartitionPruneInfo;		/* forward reference to struct below */
 typedef struct Append
 {
 	Plan		plan;
+
 	/* RTIs of appendrel(s) formed by this node */
 	Bitmapset  *apprelids;
+
+	/* sets of RTIs of appendrels consolidated into this node */
+	List	   *child_append_relid_sets;
+
+	/* plans to run */
 	List	   *appendplans;
+
 	/* # of asynchronous plans */
 	int			nasyncplans;
 
@@ -429,6 +444,10 @@ typedef struct MergeAppend
 	/* RTIs of appendrel(s) formed by this node */
 	Bitmapset  *apprelids;
 
+	/* sets of RTIs of appendrels consolidated into this node */
+	List	   *child_append_relid_sets;
+
+	/* plans to run */
 	List	   *mergeplans;
 
 	/* these fields are just like the sort-key info in struct Sort: */
@@ -1835,5 +1854,36 @@ typedef enum MonotonicFunction
 	MONOTONICFUNC_DECREASING = (1 << 1),
 	MONOTONICFUNC_BOTH = MONOTONICFUNC_INCREASING | MONOTONICFUNC_DECREASING,
 } MonotonicFunction;
+
+/*
+ * SubPlanRTInfo
+ *
+ * Information about which range table entries came from which subquery
+ * planning cycles.
+ */
+typedef struct SubPlanRTInfo
+{
+	NodeTag		type;
+	char	   *plan_name;
+	Index		rtoffset;
+	bool		dummy;
+} SubPlanRTInfo;
+
+/*
+ * ElidedNode
+ *
+ * Information about nodes elided from the final plan tree: trivial subquery
+ * scans, and single-child Append and MergeAppend nodes.
+ *
+ * plan_node_id is that of the surviving plan node, the sole child of the
+ * one which was elided.
+ */
+typedef struct ElidedNode
+{
+	NodeTag		type;
+	int			plan_node_id;
+	NodeTag		elided_type;
+	Bitmapset  *relids;
+} ElidedNode;
 
 #endif							/* PLANNODES_H */

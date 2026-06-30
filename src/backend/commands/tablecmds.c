@@ -804,6 +804,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	List	   *rawDefaults;
 	List	   *cookedDefaults;
 	List	   *nncols;
+	List	   *connames = NIL;
 	Datum		reloptions;
 	ListCell   *listptr;
 	AttrNumber	attnum;
@@ -1421,11 +1422,20 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	/*
 	 * Now add any newly specified CHECK constraints to the new relation. Same
 	 * as for defaults above, but these need to come after partitioning is set
-	 * up.
+	 * up.  We save the constraint names that were used, to avoid dupes below.
 	 */
 	if (stmt->constraints)
-		AddRelationNewConstraints(rel, NIL, stmt->constraints,
-								  true, true, false, queryString);
+	{
+		List	   *conlist;
+
+		conlist = AddRelationNewConstraints(rel, NIL, stmt->constraints,
+											true, true, false, queryString);
+		foreach_ptr(CookedConstraint, cons, conlist)
+		{
+			if (cons->name != NULL)
+				connames = lappend(connames, cons->name);
+		}
+	}
 
 	/*
 	 * Finally, merge the not-null constraints that are declared directly with
@@ -1434,7 +1444,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	 * columns that don't yet have it.
 	 */
 	nncols = AddRelationNotNullConstraints(rel, stmt->nnconstraints,
-										   old_notnulls);
+										   old_notnulls, connames);
 	foreach_int(attrnum, nncols)
 		set_attnotnull(NULL, rel, attrnum, true, false);
 
@@ -9126,19 +9136,6 @@ ATExecSetExpression(AlteredTableInfo *tab, Relation rel, const char *colName,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("column \"%s\" of relation \"%s\" is not a generated column",
 						colName, RelationGetRelationName(rel))));
-
-	/*
-	 * TODO: This could be done, just need to recheck any constraints
-	 * afterwards.
-	 */
-	if (attgenerated == ATTRIBUTE_GENERATED_VIRTUAL &&
-		rel->rd_att->constr && rel->rd_att->constr->num_check > 0)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("ALTER TABLE / SET EXPRESSION is not supported for virtual generated columns in tables with check constraints"),
-				 errdetail("Column \"%s\" of relation \"%s\" is a virtual generated column.",
-						   colName, RelationGetRelationName(rel))));
-
 	if (attgenerated == ATTRIBUTE_GENERATED_VIRTUAL && attTup->attnotnull)
 		tab->verify_new_notnull = true;
 
@@ -9171,14 +9168,13 @@ ATExecSetExpression(AlteredTableInfo *tab, Relation rel, const char *colName,
 
 		/* make sure we don't conflict with later attribute modifications */
 		CommandCounterIncrement();
-
-		/*
-		 * Find everything that depends on the column (constraints, indexes,
-		 * etc), and record enough information to let us recreate the objects
-		 * after rewrite.
-		 */
-		RememberAllDependentForRebuilding(tab, AT_SetExpression, rel, attnum, colName, NULL, NULL, NULL);
 	}
+
+	/*
+	 * Find everything that depends on the column (constraints, indexes, etc),
+	 * and record enough information to let us recreate the objects.
+	 */
+	RememberAllDependentForRebuilding(tab, AT_SetExpression, rel, attnum, colName, NULL, NULL, NULL);
 
 	/*
 	 * Drop the dependency records of the GENERATED expression, in particular
@@ -16970,7 +16966,7 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing, LOCKMODE lock
 		case RELKIND_TOASTVALUE:
 			if (recursing)
 				break;
-			/* FALL THRU */
+			pg_fallthrough;
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),

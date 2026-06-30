@@ -28,6 +28,8 @@
  *		typedef struct FormData_pg_proc
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_proc,1255,ProcedureRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(81,ProcedureRelation_Rowtype_Id) BKI_SCHEMA_MACRO
 {
 	Oid			oid;			/* oid */
@@ -138,6 +140,8 @@ CATALOG(pg_proc,1255,ProcedureRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(81,Proce
 	aclitem		proacl[1] BKI_DEFAULT(_null_);
 #endif
 } FormData_pg_proc;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_proc corresponds to a pointer to a tuple with
