@@ -1,0 +1,73 @@
+-- Test: RESET_PACKAGE restores declared defaults, not NULL
+
+CREATE EXTENSION test_package_reset;
+
+CREATE PACKAGE pkg_defaults_test AS
+    g_with_default NUMBER := 42;
+    g_no_default NUMBER;
+    g_text_default VARCHAR2(100) := 'hello';
+    FUNCTION get_with_default RETURN NUMBER;
+    FUNCTION get_no_default RETURN NUMBER;
+    FUNCTION get_text_default RETURN VARCHAR2;
+    PROCEDURE set_with_default(n NUMBER);
+    PROCEDURE set_no_default(n NUMBER);
+    PROCEDURE set_text_default(s VARCHAR2);
+END;
+/
+
+CREATE PACKAGE BODY pkg_defaults_test AS
+    FUNCTION get_with_default RETURN NUMBER AS
+    BEGIN
+        RETURN g_with_default;
+    END;
+    FUNCTION get_no_default RETURN NUMBER AS
+    BEGIN
+        RETURN g_no_default;
+    END;
+    FUNCTION get_text_default RETURN VARCHAR2 AS
+    BEGIN
+        RETURN g_text_default;
+    END;
+    PROCEDURE set_with_default(n NUMBER) AS
+    BEGIN
+        g_with_default := n;
+    END;
+    PROCEDURE set_no_default(n NUMBER) AS
+    BEGIN
+        g_no_default := n;
+    END;
+    PROCEDURE set_text_default(s VARCHAR2) AS
+    BEGIN
+        g_text_default := s;
+    END;
+END;
+/
+
+-- 1. Verify initial defaults
+SELECT pkg_defaults_test.get_with_default;
+SELECT pkg_defaults_test.get_no_default;
+SELECT pkg_defaults_test.get_text_default;
+
+-- 2. Mutate all variables
+CALL pkg_defaults_test.set_with_default(999);
+CALL pkg_defaults_test.set_no_default(888);
+CALL pkg_defaults_test.set_text_default('world');
+
+-- 3. Verify mutation took effect
+SELECT pkg_defaults_test.get_with_default;
+SELECT pkg_defaults_test.get_no_default;
+SELECT pkg_defaults_test.get_text_default;
+
+-- 4. Reset all packages
+SELECT test_package_reset.reset_all_packages();
+
+-- 5. After reset: declared defaults restored, not NULL
+SELECT pkg_defaults_test.get_with_default;
+SELECT pkg_defaults_test.get_no_default;
+SELECT pkg_defaults_test.get_text_default;
+
+-- Cleanup
+DROP PACKAGE BODY pkg_defaults_test;
+DROP PACKAGE pkg_defaults_test;
+
+DROP EXTENSION test_package_reset;

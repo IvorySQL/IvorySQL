@@ -3677,6 +3677,121 @@ is_row_record_datum(PLiSQL_datum * datum)
 }
 
 /*
+ * plisql_package_reset_context — soft-reset a PackageCacheItem.
+ *
+ * Called by ResetPackageContext (in packagecache.c).
+ * Closes refcursors, frees variable memory, and marks the package
+ * uninitialized (NO_INIT) so that the full init sequence — default
+ * expressions re-evaluated and init block re-executed — runs lazily
+ * on next access, per Oracle RESET_PACKAGE semantics.
+ *
+ * Returns true if package was actually reset, false if nothing to do.
+ */
+bool
+plisql_package_reset_context(Oid pkg_oid)
+{
+	int			i;
+	PLiSQL_package *psource;
+	PLiSQL_datum *datum;
+	PLiSQL_var *var;
+	PackageCacheItem *item;
+
+	item = PackageCacheLookup(&pkg_oid);
+	if (item == NULL)
+		elog(ERROR, "could not find package with OID %u", pkg_oid);
+
+	psource = (PLiSQL_package *) item->source;
+
+	/*
+	 * If the package's compiled form is stale (DDL changed), propagate the
+	 * same error that plisql_check_package_status would raise.  Silently
+	 * resetting a REBUILD package would disarm that guard and let stale code
+	 * re-initialise unchallenged.
+	 */
+	if (psource->status == PLISQL_PACKAGE_REBUILD ||
+		psource->status == PLISQL_PACKAGE_REBUILD_INIT)
+		elog(ERROR, "existing state of packages has been discarded");
+
+	/* nothing to reset if package has no status */
+	if (psource->status <= PLISQL_PACKAGE_NO_STATUS_INIT)
+		return false;
+
+	/*
+	 * We iterate and free runtime state datum-by-datum rather than calling
+	 * MemoryContextReset(item->ctxt) because pkg_cxt is shared: it holds
+	 * both the compiled form (PLiSQL_package struct, datums array, parsed
+	 * statements, type info) and the runtime variable values.  Resetting the
+	 * context would destroy the compiled form and require a full recompile on
+	 * next access instead of the cheap lazy re-init we want.
+	 *
+	 * XXX: A separate runtime context would be cleaner, but would require a
+	 * lot of changes to the PL/iSQL code to pass around two contexts.
+	 */
+	for (i = 0; i <= psource->last_globaldno; i++)
+	{
+		datum = psource->source.datums[i];
+
+		switch (datum->dtype)
+		{
+			case PLISQL_DTYPE_VAR:
+				var = (PLiSQL_var *) datum;
+
+				if (var->datatype->typoid == REFCURSOROID && !var->isnull)
+					plisql_close_package_cursorvar(var);
+
+				if (var->isconst)
+					continue;
+
+				if (var->freeval && !var->isnull)
+					pfree(DatumGetPointer(var->value));
+
+				var->value = (Datum) 0;
+				var->isnull = true;
+				var->freeval = false;
+				break;
+
+			case PLISQL_DTYPE_REC:
+				{
+					PLiSQL_rec *rec = (PLiSQL_rec *) datum;
+
+					if (!rec->isconst && rec->erh != NULL)
+					{
+						DeleteExpandedObject(ExpandedRecordGetDatum(rec->erh));
+						rec->erh = NULL;
+					}
+				}
+				break;
+
+			case PLISQL_DTYPE_ROW:
+				/* values live in the referenced VAR/REC datums */
+				break;
+
+			case PLISQL_DTYPE_RECFIELD:
+			case PLISQL_DTYPE_PROMISE:
+			case PLISQL_DTYPE_PACKAGE_DATUM:
+			case PLISQL_DTYPE_EXCEPTION:
+				/* no heap-allocation for these by the package */
+				break;
+
+			default:
+				elog(ERROR, "unrecognized PLiSQL datum type: %d", datum->dtype);
+				break;
+		}
+	}
+
+	/*
+	 * Mark as uninitialized — the full init sequence (default expressions
+	 * + init block) will re-run lazily on next package access, per Oracle
+	 * RESET_PACKAGE semantics.  This ensures SYSDATE, sequences, cross-pkg
+	 * function calls in defaults are all re-evaluated at re-init time,
+	 * not at reset time.
+	 */
+	psource->status = PLISQL_PACKAGE_NO_INIT;
+
+	return true;
+}
+
+/*
  * release package function use_count
  */
 void
