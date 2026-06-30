@@ -53,4 +53,7 @@ extern xmltype* updatexml(List *args);
 /* DBMS_OUTPUT */
 extern void ora_dbms_output_reset(void);
 
+/* DBMS_SESSION */
+extern void ora_dbms_session_reset(void);
+
 #endif	/* IVORYSQL_ORA_H_ */
