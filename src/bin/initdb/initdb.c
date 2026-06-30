@@ -96,7 +96,7 @@ typedef struct _stringlist
 } _stringlist;
 
 static const char *const auth_methods_host[] = {
-	"trust", "reject", "scram-sha-256", "md5", "password", "ident", "radius",
+	"trust", "reject", "scram-sha-256", "md5", "password", "ident",
 #ifdef ENABLE_GSS
 	"gss",
 #endif
@@ -118,7 +118,7 @@ static const char *const auth_methods_host[] = {
 	NULL
 };
 static const char *const auth_methods_local[] = {
-	"trust", "reject", "scram-sha-256", "md5", "password", "peer", "radius",
+	"trust", "reject", "scram-sha-256", "md5", "password", "peer",
 #ifdef USE_PAM
 	"pam",
 #endif
