@@ -10598,7 +10598,7 @@ CREATE CAST (sys.oravarcharchar AS pg_catalog.int4)
 WITH INOUT
 AS IMPLICIT;
 
-/* will move to oracharchar partion */
+/* will move to oracharchar partition */
 create or replace function sys.oid_cc_eq(oid_l pg_catalog.oid, cc_r sys.oracharchar) RETURNS BOOLEAN AS $$ SELECT $1::sys.oracharchar=trim(leading '0' from $2) $$ LANGUAGE SQL;
 create or replace function sys.cc_oid_eq(cc_l sys.oracharchar, oid_r pg_catalog.oid) RETURNS BOOLEAN AS $$ SELECT trim(leading '0' from $1)=$2::sys.oracharchar $$ LANGUAGE SQL;
 create or replace function sys.oid_cc_ne(oid_l pg_catalog.oid, cc_r sys.oracharchar) RETURNS BOOLEAN AS $$ SELECT not sys.oid_cc_eq(oid_l, cc_r) $$ LANGUAGE SQL;

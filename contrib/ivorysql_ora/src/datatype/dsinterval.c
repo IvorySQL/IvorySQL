@@ -667,7 +667,7 @@ DecodeDsinterval(char **field, int *ftype, int nf, int range,
 /*
  * Change Note:
  *
- * Add one parameter 'trimnum' recode the number of zero to trimed .
+ * Add one parameter 'trimnum' recode the number of zero to trimmed .
  *
  */
 static void
@@ -734,7 +734,7 @@ AppendSeconds(char *cp, int sec, fsec_t fsec, int precision, bool fillzeros)
 }
 
 /*
- * Encodedsinterval()
+ * EncodeDsinterval()
  * Interpret time structure as a delta time and convert to string.
  */
 static void
