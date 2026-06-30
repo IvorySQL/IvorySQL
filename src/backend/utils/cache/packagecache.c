@@ -257,6 +257,83 @@ ResetPackageCaches(void)
 
 
 /*
+ * Reset a single PL/iSQL package (Oracle RESET_PACKAGE semantics).
+ *
+ * Returns true if the package was actually reset, false otherwise.
+ */
+bool
+ResetPackageContext(Oid pkg_oid)
+{
+	/*
+	 * If PLiSQL has not been initialized in this session there is no package
+	 * runtime state to reset.  Guard before calling plisql_internel_funcs_init()
+	 * because that function errors out when the plisql language is not
+	 * installed in the current database.
+	 */
+	if (!plisql_internal_funcs.isload)
+		return false;
+
+	return plisql_internal_funcs.package_reset_context(pkg_oid);
+}
+
+/*
+ * List all packages from the PackageCache hash table.
+ *
+ * Returns a palloc'd List of PackageCacheItem pointers, or NIL
+ * if cache is not initialized.
+ */
+static List *
+PackageCacheListItems(void)
+{
+	HASH_SEQ_STATUS status;
+	PackageCacheEntry *entry;
+	List	   *result = NIL;
+
+	if (PackageCache == NULL)
+		return NIL;
+
+	hash_seq_init(&status, PackageCache);
+	while ((entry = (PackageCacheEntry *) hash_seq_search(&status)) != NULL)
+	{
+		result = lappend(result, entry->item);
+	}
+
+	return result;
+}
+
+
+/*
+ * Reset all PL/iSQL packages that have state (two-phase approach).
+ *
+ * Returns the number of packages that were actually reset.
+ */
+int
+ResetAllPackagesContext(void)
+{
+	List *pkglist = NIL;
+	ListCell *lc;
+	int			count = -1;
+
+	/* -1 means PL/iSQL is not loaded at all */
+	if (!plisql_internal_funcs.isload)
+		return count;
+
+	pkglist = PackageCacheListItems();
+	count = 0;
+	foreach (lc, pkglist)
+	{
+		PackageCacheItem *item = lfirst(lc);
+
+		if (ResetPackageContext(item->pkey))
+			count++;
+	}
+	list_free(pkglist);
+
+	return count;
+}
+
+
+/*
 * build a hash tab for package
 */
 static void

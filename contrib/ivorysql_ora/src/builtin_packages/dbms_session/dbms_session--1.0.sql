@@ -58,6 +58,11 @@ RETURNS SETOF sys.dbms_session_context_record
 AS 'MODULE_PATHNAME', 'ora_dbms_session_list_context'
 LANGUAGE C VOLATILE;
 
+CREATE FUNCTION sys.ora_dbms_session_reset_package()
+RETURNS VOID
+AS 'MODULE_PATHNAME', 'ora_dbms_session_reset_package'
+LANGUAGE C VOLATILE;
+
 /*
  * LIST_CONTEXT entry point.
  *
@@ -76,6 +81,7 @@ CREATE OR REPLACE PACKAGE dbms_session IS
     PROCEDURE set_context(namespace VARCHAR2, attribute VARCHAR2, value VARCHAR2);
     PROCEDURE clear_context(namespace VARCHAR2, attribute VARCHAR2 DEFAULT NULL);
     PROCEDURE clear_all_context(namespace VARCHAR2);
+    PROCEDURE reset_package;
 END dbms_session;
 
 CREATE OR REPLACE PACKAGE BODY dbms_session IS
@@ -93,6 +99,11 @@ CREATE OR REPLACE PACKAGE BODY dbms_session IS
     PROCEDURE clear_all_context(namespace VARCHAR2) IS
     BEGIN
         PERFORM sys.ora_dbms_session_clear_all_context(namespace);
+    END;
+
+    PROCEDURE reset_package IS
+    BEGIN
+        PERFORM sys.ora_dbms_session_reset_package();
     END;
 
 END dbms_session;
