@@ -150,7 +150,7 @@ CREATE FOREIGN TABLE ft7 (
 ) SERVER loopback3 OPTIONS (schema_name 'S 1', table_name 'T 4');
 
 -- ===================================================================
--- tests inteval
+-- tests interval
 -- ===================================================================
 CREATE TABLE "S 1".test_interval (
     candidate_id NUMBER,

@@ -662,7 +662,7 @@ ora_regexp_like(PG_FUNCTION_ARGS)
 /*
  * ora_regexp_like_no_flag()
  * if source string matched by a regular expression return true or return false;
- * the flag defalut is PATTERN_FLAG;
+ * the flag default is PATTERN_FLAG;
  */
 Datum
 ora_regexp_like_no_flags(PG_FUNCTION_ARGS)

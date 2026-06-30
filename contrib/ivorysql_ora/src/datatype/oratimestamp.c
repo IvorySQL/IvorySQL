@@ -1223,7 +1223,7 @@ oratimestamp_mi_interval(PG_FUNCTION_ARGS)
  * The arithmetic operation of oratimestamptz plus interval, Result
  * type is oratimestamptz.
  *
- * note that, the operation of oratimestampltz plus interval alse use this.
+ * note that, the operation of oratimestampltz plus interval also use this.
  *
  */
 Datum
@@ -1311,7 +1311,7 @@ oratimestamptz_pl_interval(PG_FUNCTION_ARGS)
  * The arithmetic operation of oratimestamptz minus interval, Result
  * type is oratimestamptz.
  *
- * note that, the operation of oratimestampltz minus interval alse use this.
+ * note that, the operation of oratimestampltz minus interval also use this.
  */
 Datum
 oratimestamptz_mi_interval(PG_FUNCTION_ARGS)
@@ -1366,7 +1366,7 @@ interval_pl_oratimestamp(PG_FUNCTION_ARGS)
  * The arithmetic operation of interval plus oratimestamptz , Result
  * type is oratimestamptz.
  *
- * note that, the operation of interval plus oratimestampltz alse use this.
+ * note that, the operation of interval plus oratimestampltz also use this.
  */
 Datum
 interval_pl_oratimestamptz(PG_FUNCTION_ARGS)
