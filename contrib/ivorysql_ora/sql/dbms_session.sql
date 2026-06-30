@@ -23,7 +23,33 @@ select sys_context('app_ctx', 'missing') is null as missing_is_null;
 select sys_context('no_such_ns', 'x') is null as ns_is_null;
 
 --
--- LIST_CONTEXT (order by for stable output)
+-- Case-insensitivity: Oracle folds namespace/attribute to upper case, so a
+-- value set with one case is readable in any case, an overwrite in a different
+-- case hits the same entry, and CLEAR matches regardless of case.
+--
+call dbms_session.set_context('app_ctx', 'mixedAttr', 'mval');
+select sys_context('APP_CTX', 'MIXEDATTR') as upper_read,
+       sys_context('app_ctx', 'mixedattr') as lower_read,
+       sys_context('App_Ctx', 'MixedAttr') as mixed_read;
+-- overwrite through a different case reaches the same entry
+call dbms_session.set_context('APP_CTX', 'MIXEDATTR', 'mval2');
+select sys_context('app_ctx', 'mixedattr') as overwritten;
+-- clear single attribute using a different case
+call dbms_session.clear_context('app_ctx', 'MIXEDATTR');
+select sys_context('app_ctx', 'mixedattr') is null as attr_cleared;
+-- clear whole namespace using a different case
+call dbms_session.set_context('Ns2', 'a', '1');
+call dbms_session.clear_context('NS2');
+select sys_context('ns2', 'a') is null as ns2_cleared;
+
+-- read path: an over-long name (>= 256 bytes) cannot match any stored key,
+-- so SYS_CONTEXT returns NULL instead of raising an error (usable in predicates)
+select sys_context(repeat('x', 300), 'attr') is null as overlong_ns_is_null;
+select sys_context('app_ctx', repeat('y', 300)) is null as overlong_attr_is_null;
+
+--
+-- LIST_CONTEXT (order by for stable output).
+-- Note: stored names are folded to upper case, matching Oracle.
 --
 call dbms_session.set_context('other_ns', 'k1', 'v1');
 select * from sys.dbms_session_list_context() order by namespace, attribute;

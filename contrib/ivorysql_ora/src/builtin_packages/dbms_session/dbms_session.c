@@ -63,12 +63,12 @@ typedef struct CtxKey
 typedef struct CtxEntry
 {
 	CtxKey		key;			/* must be first field */
-	char	   *value;			/* palloc'd in ctx_mcxt, NULL for NULL value */
+	char	   *value;			/* palloc'd in DbmsSessionContext, NULL for NULL value */
 } CtxEntry;
 
 /* Per-backend session state */
-static HTAB *ctx_hash = NULL;
-static MemoryContext ctx_mcxt = NULL;
+static HTAB *DbmsSessionHash = NULL;
+static MemoryContext DbmsSessionContext = NULL;
 
 /* Internal helpers */
 static void dbms_session_init(void);
@@ -94,16 +94,16 @@ dbms_session_init(void)
 {
 	HASHCTL		ctl;
 
-	ctx_mcxt = AllocSetContextCreate(TopMemoryContext,
+	DbmsSessionContext = AllocSetContextCreate(TopMemoryContext,
 									 "DBMS_SESSION context",
 									 ALLOCSET_DEFAULT_SIZES);
 
 	MemSet(&ctl, 0, sizeof(ctl));
 	ctl.keysize = sizeof(CtxKey);
 	ctl.entrysize = sizeof(CtxEntry);
-	ctl.hcxt = ctx_mcxt;
+	ctl.hcxt = DbmsSessionContext;
 
-	ctx_hash = hash_create("DBMS_SESSION context hash",
+	DbmsSessionHash = hash_create("DBMS_SESSION context hash",
 						   DBMS_SESSION_HASH_INIT_SIZE,
 						   &ctl,
 						   HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
@@ -112,11 +112,16 @@ dbms_session_init(void)
 /*
  * make_key - build a zero-filled hash key from namespace/attribute names.
  *
- * Rejects names that do not fit the fixed-size key buffer.
+ * Oracle treats namespace and attribute names case-insensitively (it folds
+ * them to upper case internally), so we upper-case both while copying.  This
+ * makes SET_CONTEXT('app', 'usr', ...) readable via SYS_CONTEXT('APP', 'USR'),
+ * matching Oracle.  Rejects names that do not fit the fixed-size key buffer.
  */
 static void
 make_key(CtxKey *key, const char *ns, const char *attr)
 {
+	int			i;
+
 	if (strlen(ns) >= DBMS_SESSION_NAME_LEN)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -128,9 +133,12 @@ make_key(CtxKey *key, const char *ns, const char *attr)
 				 errmsg("DBMS_SESSION attribute too long (max %d bytes)",
 						DBMS_SESSION_NAME_LEN - 1)));
 
+	/* MemSet first: HASH_BLOBS compares the whole struct as bytes. */
 	MemSet(key, 0, sizeof(CtxKey));
-	strlcpy(key->namespace, ns, DBMS_SESSION_NAME_LEN);
-	strlcpy(key->attribute, attr, DBMS_SESSION_NAME_LEN);
+	for (i = 0; ns[i] != '\0'; i++)
+		key->namespace[i] = pg_toupper((unsigned char) ns[i]);
+	for (i = 0; attr[i] != '\0'; i++)
+		key->attribute[i] = pg_toupper((unsigned char) attr[i]);
 }
 
 /*
@@ -147,20 +155,33 @@ clear_namespace(const char *ns)
 	CtxKey	   *victims;
 	long		nentries;
 	int			nvictims = 0;
+	char		ns_up[DBMS_SESSION_NAME_LEN];
+	int			i;
 
-	if (ctx_hash == NULL)
+	if (DbmsSessionHash == NULL)
 		return;
 
-	nentries = hash_get_num_entries(ctx_hash);
+	nentries = hash_get_num_entries(DbmsSessionHash);
 	if (nentries == 0)
 		return;
 
+	/*
+	 * Stored keys are upper-cased (see make_key), so upper-case the namespace
+	 * here too before comparing.  An over-long namespace cannot match any
+	 * stored key (those are length-checked at insert time).
+	 */
+	if (strlen(ns) >= DBMS_SESSION_NAME_LEN)
+		return;
+	for (i = 0; ns[i] != '\0'; i++)
+		ns_up[i] = pg_toupper((unsigned char) ns[i]);
+	ns_up[i] = '\0';
+
 	victims = (CtxKey *) palloc(sizeof(CtxKey) * nentries);
 
-	hash_seq_init(&seq, ctx_hash);
+	hash_seq_init(&seq, DbmsSessionHash);
 	while ((entry = (CtxEntry *) hash_seq_search(&seq)) != NULL)
 	{
-		if (strcmp(entry->key.namespace, ns) == 0)
+		if (strcmp(entry->key.namespace, ns_up) == 0)
 		{
 			if (entry->value != NULL)
 				pfree(entry->value);
@@ -168,8 +189,8 @@ clear_namespace(const char *ns)
 		}
 	}
 
-	for (int i = 0; i < nvictims; i++)
-		hash_search(ctx_hash, &victims[i], HASH_REMOVE, NULL);
+	for (i = 0; i < nvictims; i++)
+		hash_search(DbmsSessionHash, &victims[i], HASH_REMOVE, NULL);
 
 	pfree(victims);
 }
@@ -208,12 +229,12 @@ ora_dbms_session_set_context(PG_FUNCTION_ARGS)
 							DBMS_SESSION_MAX_VALUE_LEN)));
 	}
 
-	if (ctx_hash == NULL)
+	if (DbmsSessionHash == NULL)
 		dbms_session_init();
 
 	make_key(&key, ns, attr);
 
-	entry = (CtxEntry *) hash_search(ctx_hash, &key, HASH_ENTER, &found);
+	entry = (CtxEntry *) hash_search(DbmsSessionHash, &key, HASH_ENTER, &found);
 
 	/* Release any previous value before overwriting */
 	if (found && entry->value != NULL)
@@ -223,7 +244,7 @@ ora_dbms_session_set_context(PG_FUNCTION_ARGS)
 		entry->value = NULL;
 	else
 	{
-		MemoryContext oldcontext = MemoryContextSwitchTo(ctx_mcxt);
+		MemoryContext oldcontext = MemoryContextSwitchTo(DbmsSessionContext);
 
 		entry->value = pstrdup(val);
 		MemoryContextSwitchTo(oldcontext);
@@ -248,7 +269,7 @@ ora_dbms_session_clear_context(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
 				 errmsg("DBMS_SESSION.CLEAR_CONTEXT namespace must not be NULL")));
 
-	if (ctx_hash == NULL)
+	if (DbmsSessionHash == NULL)
 		PG_RETURN_VOID();
 
 	ns = text_to_cstring(PG_GETARG_TEXT_PP(0));
@@ -265,12 +286,12 @@ ora_dbms_session_clear_context(PG_FUNCTION_ARGS)
 		bool		found;
 
 		make_key(&key, ns, attr);
-		entry = (CtxEntry *) hash_search(ctx_hash, &key, HASH_FIND, &found);
+		entry = (CtxEntry *) hash_search(DbmsSessionHash, &key, HASH_FIND, &found);
 		if (found)
 		{
 			if (entry->value != NULL)
 				pfree(entry->value);
-			hash_search(ctx_hash, &key, HASH_REMOVE, NULL);
+			hash_search(DbmsSessionHash, &key, HASH_REMOVE, NULL);
 		}
 	}
 
@@ -292,7 +313,7 @@ ora_dbms_session_clear_all_context(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
 				 errmsg("DBMS_SESSION.CLEAR_ALL_CONTEXT namespace must not be NULL")));
 
-	if (ctx_hash == NULL)
+	if (DbmsSessionHash == NULL)
 		PG_RETURN_VOID();
 
 	ns = text_to_cstring(PG_GETARG_TEXT_PP(0));
@@ -319,14 +340,23 @@ ora_dbms_session_get_context(PG_FUNCTION_ARGS)
 	if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
 		PG_RETURN_NULL();
 
-	if (ctx_hash == NULL)
+	if (DbmsSessionHash == NULL)
 		PG_RETURN_NULL();
 
 	ns = text_to_cstring(PG_GETARG_TEXT_PP(0));
 	attr = text_to_cstring(PG_GETARG_TEXT_PP(1));
 
+	/*
+	 * Read path: an over-long name can never match a stored key (set/clear
+	 * reject them at insert time), so return NULL rather than letting make_key
+	 * raise an error.  This keeps SYS_CONTEXT() usable in predicates without
+	 * aborting the query on an oversized argument.
+	 */
+	if (strlen(ns) >= DBMS_SESSION_NAME_LEN || strlen(attr) >= DBMS_SESSION_NAME_LEN)
+		PG_RETURN_NULL();
+
 	make_key(&key, ns, attr);
-	entry = (CtxEntry *) hash_search(ctx_hash, &key, HASH_FIND, &found);
+	entry = (CtxEntry *) hash_search(DbmsSessionHash, &key, HASH_FIND, &found);
 
 	if (!found || entry->value == NULL)
 		PG_RETURN_NULL();
@@ -374,12 +404,12 @@ ora_dbms_session_list_context(PG_FUNCTION_ARGS)
 
 	MemoryContextSwitchTo(oldcontext);
 
-	if (ctx_hash != NULL)
+	if (DbmsSessionHash != NULL)
 	{
 		HASH_SEQ_STATUS seq;
 		CtxEntry   *entry;
 
-		hash_seq_init(&seq, ctx_hash);
+		hash_seq_init(&seq, DbmsSessionHash);
 		while ((entry = (CtxEntry *) hash_seq_search(&seq)) != NULL)
 		{
 			Datum		values[3];
@@ -408,10 +438,10 @@ ora_dbms_session_list_context(PG_FUNCTION_ARGS)
 void
 ora_dbms_session_reset(void)
 {
-	if (ctx_mcxt != NULL)
+	if (DbmsSessionContext != NULL)
 	{
-		MemoryContextDelete(ctx_mcxt);
-		ctx_mcxt = NULL;
-		ctx_hash = NULL;
+		MemoryContextDelete(DbmsSessionContext);
+		DbmsSessionContext = NULL;
+		DbmsSessionHash = NULL;
 	}
 }
