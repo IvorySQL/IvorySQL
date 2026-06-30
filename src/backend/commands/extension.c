@@ -63,9 +63,11 @@
 #include "utils/builtins.h"
 #include "utils/conffiles.h"
 #include "utils/fmgroids.h"
+#include "utils/guc.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/ora_compatible.h"
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
@@ -78,6 +80,40 @@ char	   *Extension_control_path;
 /* Globally visible state variables */
 bool		creating_extension = false;
 Oid			CurrentExtensionObject = InvalidOid;
+
+/*
+ * IvorySQL: true while an extension script for a PG-dialect extension (see the
+ * PgDialectExtensions hardcoded list below) is being executed with the PG
+ * dialect forced.  Used by CreateFunction to pin functions created by such a
+ * script to the PG dialect.
+ */
+bool		extension_script_pg_dialect = false;
+
+/*
+ * IvorySQL: extensions written in the PostgreSQL SQL dialect that we support
+ * installing and running unmodified in an oracle-mode cluster.  Listing an
+ * extension here makes CREATE EXTENSION force the PG dialect for its install
+ * script (see execute_extension_script) and pin its functions to the PG
+ * dialect (see compute_function_attributes).  Kept in core so the extensions
+ * themselves need no IvorySQL-specific control-file changes.
+ */
+static const char *const PgDialectExtensions[] = {
+	"pg_profile",
+	"pg_repack",
+};
+
+static bool
+extension_is_pg_dialect(const char *extname)
+{
+	if (extname == NULL)
+		return false;
+	for (int i = 0; i < lengthof(PgDialectExtensions); i++)
+	{
+		if (strcmp(extname, PgDialectExtensions[i]) == 0)
+			return true;
+	}
+	return false;
+}
 
 /*
  * Internal data structure to hold the results of parsing a control file
@@ -1337,6 +1373,23 @@ execute_extension_script(Oid extensionOid, ExtensionControlFile *control,
 								 GUC_ACTION_SAVE, true, 0, false);
 
 	/*
+	 * IvorySQL: in an oracle-mode cluster, force the PG dialect for the
+	 * duration of an extension listed in the core PgDialectExtensions allow
+	 * list, so that extensions written for PostgreSQL install correctly
+	 * regardless of the calling session's compatible mode.  This must be done
+	 * before setting up search_path below, because switching
+	 * ivorysql.compatible_mode recomputes the search path as a side effect.
+	 * GUC_ACTION_SAVE makes this revert automatically at AtEOXact_GUC.  Other
+	 * extensions follow the current session's dialect, i.e. legacy behavior.
+	 */
+	if (DB_ORACLE == database_mode &&
+		extension_is_pg_dialect(control->name))
+		(void) set_config_option("ivorysql.compatible_mode",
+								 "pg",
+								 PGC_USERSET, PGC_S_SESSION,
+								 GUC_ACTION_SAVE, true, 0, false);
+
+	/*
 	 * Set up the search path to have the target schema first, making it be
 	 * the default creation target namespace.  Then add the schemas of any
 	 * prerequisite extensions, unless they are in pg_catalog which would be
@@ -1367,6 +1420,14 @@ execute_extension_script(Oid extensionOid, ExtensionControlFile *control,
 	 */
 	creating_extension = true;
 	CurrentExtensionObject = extensionOid;
+	/*
+	 * IvorySQL: flag that the PG dialect is being forced for this script so
+	 * that CreateFunction can pin functions created by the script to the PG
+	 * dialect (see functioncmds.c).
+	 */
+	if (DB_ORACLE == database_mode &&
+		extension_is_pg_dialect(control->name))
+		extension_script_pg_dialect = true;
 	PG_TRY();
 	{
 		char	   *c_sql = read_extension_script_file(control, filename);
@@ -1491,6 +1552,7 @@ execute_extension_script(Oid extensionOid, ExtensionControlFile *control,
 	{
 		creating_extension = false;
 		CurrentExtensionObject = InvalidOid;
+		extension_script_pg_dialect = false;	/* IvorySQL */
 	}
 	PG_END_TRY();
 

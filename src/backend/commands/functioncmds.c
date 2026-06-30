@@ -1111,6 +1111,67 @@ compute_function_attributes(ParseState *pstate,
 	}
 	if (leakproof_item)
 		*leakproof_p = boolVal(leakproof_item->arg);
+
+	/*
+	 * IvorySQL: when this function is being created by an extension script
+	 * that forces the PG dialect (see execute_extension_script), pin the
+	 * function to the PG dialect by injecting a "SET ivorysql.compatible_mode"
+	 * proconfig entry.  This makes the function body be parsed and executed
+	 * under the PG dialect no matter which compatible mode the calling session
+	 * uses.  C/internal functions are skipped: they do not parse SQL through
+	 * the dialect-sensitive parser at call time and the proconfig would only
+	 * add per-call overhead.  An explicit SET of the parameter in the CREATE
+	 * FUNCTION statement takes precedence.  The injected entry is placed first
+	 * so that other SET clauses (notably search_path, which switching
+	 * compatible_mode recomputes) are applied after it.
+	 *
+	 * Only extensions in the core PG-dialect allow list (see
+	 * PgDialectExtensions in extension.c) are pinned: the point of the
+	 * mechanism is to let stock PostgreSQL extensions run unmodified in an
+	 * oracle-mode cluster.  Oracle-dialect (in-tree) extensions keep their
+	 * historical behavior -- pinning them would, for example, prevent inlining
+	 * of their SQL-language wrapper functions, changing error contexts and
+	 * hurting hot paths such as sys.regexp_*().
+	 */
+	if (creating_extension && extension_script_pg_dialect &&
+		(*language == NULL ||
+		 (pg_strcasecmp(*language, "c") != 0 &&
+		  pg_strcasecmp(*language, "internal") != 0)))
+	{
+		bool		have_explicit = false;
+		ListCell   *lc;
+
+		foreach(lc, set_items)
+		{
+			VariableSetStmt *sstmt = lfirst_node(VariableSetStmt, lc);
+
+			if (sstmt->name != NULL &&
+				strcmp(sstmt->name, "ivorysql.compatible_mode") == 0)
+			{
+				have_explicit = true;
+				break;
+			}
+		}
+
+		if (!have_explicit)
+		{
+			A_Const    *dialect_const = makeNode(A_Const);
+			VariableSetStmt *dialect_set = makeNode(VariableSetStmt);
+
+			dialect_const->val.sval.type = T_String;
+			dialect_const->val.sval.sval = pstrdup("pg");
+			dialect_const->location = -1;
+
+			dialect_set->kind = VAR_SET_VALUE;
+			dialect_set->name = "ivorysql.compatible_mode";
+			dialect_set->args = list_make1(dialect_const);
+			dialect_set->is_local = false;
+			dialect_set->location = -1;
+
+			set_items = lcons(dialect_set, set_items);
+		}
+	}
+
 	if (set_items)
 		*proconfig = update_proconfig_value(NULL, set_items);
 	if (cost_item)

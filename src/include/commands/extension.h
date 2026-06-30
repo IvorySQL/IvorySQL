@@ -32,6 +32,13 @@ extern PGDLLIMPORT char *Extension_control_path;
 extern PGDLLIMPORT bool creating_extension;
 extern PGDLLIMPORT Oid CurrentExtensionObject;
 
+/*
+ * IvorySQL: true while the install script of a core-allow-listed PG-dialect
+ * extension is being executed with the PG dialect forced.  See
+ * execute_extension_script() and PgDialectExtensions in extension.c.
+ */
+extern PGDLLIMPORT bool extension_script_pg_dialect;
+
 
 extern ObjectAddress CreateExtension(ParseState *pstate, CreateExtensionStmt *stmt);
 
