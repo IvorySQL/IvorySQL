@@ -32,17 +32,17 @@ AlterSetting(Oid databaseid, Oid roleid, VariableSetStmt *setstmt)
 
 	valuestr = ExtractSetVariableArgs(setstmt);
 
-	if (valuestr != NULL)
+	if (setstmt->kind != VAR_RESET_ALL && setstmt->name != NULL)
 	{
 		struct config_generic *record;
 
 		record = find_option(setstmt->name, false, true, WARNING);
 		if (record && (record->flags & GUC_DISALLOW_IN_DB_ROLE_SETTING))
 		ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("cannot set parameter \"%s\" via ALTER USER/ROLE/DATABASE SET",
-				setstmt->name),
-			 errhint("Use SET command in session instead.")));
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("cannot set parameter \"%s\" via ALTER USER/ROLE/DATABASE SET",
+						setstmt->name),
+					errhint("Use SET command in session instead.")));
 	}
 
 	/* Get the old tuple, if any. */

@@ -1360,6 +1360,13 @@ set ivorysql.compatible_mode = 'pg';
 reset ivorysql.compatible_mode;
 show ivorysql.compatible_mode;
 
+-- ensure compatible_mode cannot be persisted via ALTER ROLE SET/RESET
+create role regress_psql_cm_role;
+alter role regress_psql_cm_role set ivorysql.compatible_mode = 'pg';
+alter role regress_psql_cm_role set ivorysql.compatible_mode to default;
+alter role regress_psql_cm_role reset ivorysql.compatible_mode;
+drop role regress_psql_cm_role;
+
 -- check \df+
 -- we have to use functions with a predictable owner name, so make a role
 create role regress_psql_user superuser;
