@@ -1,0 +1,14 @@
+-- Test: extension loads and functions are callable in PG mode
+CREATE EXTENSION test_package_reset;
+-- reset_all_packages() is callable even with no packages
+SELECT test_package_reset.reset_all_packages();
+ reset_all_packages 
+--------------------
+                 -1
+(1 row)
+
+-- reset_package_by_oid(0) → ERROR (no valid package)
+SELECT test_package_reset.reset_package_by_oid(0);
+ERROR:  could not find package with OID 0
+-- cleanup
+DROP EXTENSION test_package_reset;
