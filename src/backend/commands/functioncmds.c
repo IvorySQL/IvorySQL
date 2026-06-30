@@ -1124,7 +1124,8 @@ compute_function_attributes(ParseState *pstate,
 	 * so that other SET clauses (notably search_path, which switching
 	 * compatible_mode recomputes) are applied after it.
 	 *
-	 * Only extensions declaring pg_dialect = true are pinned: the point of the
+	 * Only extensions in the core PG-dialect allow list (see
+	 * PgDialectExtensions in extension.c) are pinned: the point of the
 	 * mechanism is to let stock PostgreSQL extensions run unmodified in an
 	 * oracle-mode cluster.  Oracle-dialect (in-tree) extensions keep their
 	 * historical behavior -- pinning them would, for example, prevent inlining
