@@ -99,6 +99,7 @@ bool		extension_script_pg_dialect = false;
  */
 static const char *const PgDialectExtensions[] = {
 	"pg_profile",
+	"pg_repack",
 };
 
 static bool
