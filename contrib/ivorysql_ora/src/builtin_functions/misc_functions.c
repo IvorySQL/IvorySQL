@@ -33,12 +33,67 @@
 #include "utils/formatting.h"
 #include "utils/numeric.h"
 #include "varatt.h"
+#include "lib/stringinfo.h"
+#include "utils/builtins.h"
 
 PG_FUNCTION_INFO_V1(uid);
+PG_FUNCTION_INFO_V1(stragg_transfn);
 
 
 Datum
 uid(PG_FUNCTION_ARGS)
 {
 	PG_RETURN_UINT32(GetUserId());
+}
+
+/*
+ * stragg_transfn
+ *
+ * Transition function for Oracle-compatible STRAGG aggregate.
+ * Concatenates non-null text values with ',' as separator.
+ * Uses the same StringInfo state layout as string_agg_transfn so that
+ * string_agg_finalfn and string_agg_combine can be reused directly.
+ *
+ * State layout (mirrors string_agg internal state):
+ *   data   = "," + val1 + "," + val2 + ...
+ *   cursor = 1  (length of the leading delimiter to strip in finalfn)
+ */
+Datum
+stragg_transfn(PG_FUNCTION_ARGS)
+{
+	StringInfo	state;
+	MemoryContext aggcontext;
+	MemoryContext oldcontext;
+
+	if (!AggCheckCallContext(fcinfo, &aggcontext))
+		elog(ERROR, "stragg_transfn called in non-aggregate context");
+
+	state = PG_ARGISNULL(0) ? NULL : (StringInfo) PG_GETARG_POINTER(0);
+
+	/* Skip NULL input values */
+	if (!PG_ARGISNULL(1))
+	{
+		text	   *value = PG_GETARG_TEXT_PP(1);
+
+		if (state == NULL)
+		{
+			oldcontext = MemoryContextSwitchTo(aggcontext);
+			state = makeStringInfo();
+			MemoryContextSwitchTo(oldcontext);
+
+			/* Prepend delimiter so finalfn can strip it uniformly */
+			appendStringInfoChar(state, ',');
+			state->cursor = 1;	/* length of "," */
+		}
+		else
+		{
+			appendStringInfoChar(state, ',');
+		}
+
+		appendBinaryStringInfo(state, VARDATA_ANY(value), VARSIZE_ANY_EXHDR(value));
+	}
+
+	if (state)
+		PG_RETURN_POINTER(state);
+	PG_RETURN_NULL();
 }

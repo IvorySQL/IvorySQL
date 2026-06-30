@@ -738,6 +738,7 @@ typedef struct _SubscriptionInfo
 	char	   *subconninfo;
 	char	   *subslotname;
 	char	   *subsynccommit;
+	char	   *subwalrcvtimeout;
 	char	   *subpublications;
 	char	   *suborigin;
 	char	   *suboriginremotelsn;

@@ -22,6 +22,7 @@
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "port/pg_bitutils.h"
+#include "replication/logicalctl.h"
 #include "replication/logicalworker.h"
 #include "replication/walsender.h"
 #include "storage/condition_variable.h"
@@ -697,26 +698,8 @@ procsignal_sigusr1_handler(SIGNAL_ARGS)
 	if (CheckProcSignal(PROCSIG_PARALLEL_APPLY_MESSAGE))
 		HandleParallelApplyMessageInterrupt();
 
-	if (CheckProcSignal(PROCSIG_RECOVERY_CONFLICT_DATABASE))
-		HandleRecoveryConflictInterrupt(PROCSIG_RECOVERY_CONFLICT_DATABASE);
-
-	if (CheckProcSignal(PROCSIG_RECOVERY_CONFLICT_TABLESPACE))
-		HandleRecoveryConflictInterrupt(PROCSIG_RECOVERY_CONFLICT_TABLESPACE);
-
-	if (CheckProcSignal(PROCSIG_RECOVERY_CONFLICT_LOCK))
-		HandleRecoveryConflictInterrupt(PROCSIG_RECOVERY_CONFLICT_LOCK);
-
-	if (CheckProcSignal(PROCSIG_RECOVERY_CONFLICT_SNAPSHOT))
-		HandleRecoveryConflictInterrupt(PROCSIG_RECOVERY_CONFLICT_SNAPSHOT);
-
-	if (CheckProcSignal(PROCSIG_RECOVERY_CONFLICT_LOGICALSLOT))
-		HandleRecoveryConflictInterrupt(PROCSIG_RECOVERY_CONFLICT_LOGICALSLOT);
-
-	if (CheckProcSignal(PROCSIG_RECOVERY_CONFLICT_STARTUP_DEADLOCK))
-		HandleRecoveryConflictInterrupt(PROCSIG_RECOVERY_CONFLICT_STARTUP_DEADLOCK);
-
-	if (CheckProcSignal(PROCSIG_RECOVERY_CONFLICT_BUFFERPIN))
-		HandleRecoveryConflictInterrupt(PROCSIG_RECOVERY_CONFLICT_BUFFERPIN);
+	if (CheckProcSignal(PROCSIG_RECOVERY_CONFLICT))
+		HandleRecoveryConflictInterrupt();
 
 	SetLatch(MyLatch);
 }

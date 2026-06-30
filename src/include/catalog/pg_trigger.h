@@ -31,6 +31,8 @@
  * to be associated with a deferrable constraint.
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_trigger,2620,TriggerRelationId)
 {
 	Oid			oid;			/* oid */
@@ -71,6 +73,8 @@ CATALOG(pg_trigger,2620,TriggerRelationId)
 	NameData	tgnewtable;		/* new transition table, or NULL if none */
 #endif
 } FormData_pg_trigger;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_trigger corresponds to a pointer to a tuple with

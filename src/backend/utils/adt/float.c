@@ -2853,6 +2853,12 @@ dlgamma(PG_FUNCTION_ARGS)
 	float8		arg1 = PG_GETARG_FLOAT8(0);
 	float8		result;
 
+	/* On some versions of AIX, lgamma(NaN) fails with ERANGE */
+#if defined(_AIX)
+	if (isnan(arg1))
+		PG_RETURN_FLOAT8(arg1);
+#endif
+
 	/*
 	 * Note: lgamma may not be thread-safe because it may write to a global
 	 * variable signgam, which may not be thread-local. However, this doesn't

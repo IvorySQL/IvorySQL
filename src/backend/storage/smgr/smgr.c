@@ -898,7 +898,7 @@ smgrtruncate(SMgrRelation reln, ForkNumber *forknum, int nforks,
 	/* Do the truncation */
 	for (i = 0; i < nforks; i++)
 	{
-		/* Make the cached size is invalid if we encounter an error. */
+		/* Make the cached size invalid if we encounter an error. */
 		reln->smgr_cached_nblocks[forknum[i]] = InvalidBlockNumber;
 
 		smgrsw[reln->smgr_which].smgr_truncate(reln, forknum[i],

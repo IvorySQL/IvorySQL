@@ -28,6 +28,8 @@
  *		typedef struct FormData_pg_constraint
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_constraint,2606,ConstraintRelationId)
 {
 	Oid			oid;			/* oid */
@@ -166,6 +168,8 @@ CATALOG(pg_constraint,2606,ConstraintRelationId)
 	pg_node_tree conbin;
 #endif
 } FormData_pg_constraint;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_constraint corresponds to a pointer to a tuple with

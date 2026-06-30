@@ -657,14 +657,13 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 	ListCell   *icols;
 	ListCell   *attnos;
 	ListCell   *lc;
-	bool		isOnConflictUpdate;
+	bool		requiresUpdatePerm;
 	AclMode		targetPerms;
 
 	/* There can't be any outer WITH to worry about */
 	Assert(pstate->p_ctenamespace == NIL);
 
 	qry->commandType = CMD_INSERT;
-	pstate->p_is_insert = true;
 
 	/* process the WITH clause independently of all else */
 	if (stmt->withClause)
@@ -677,8 +676,14 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 
 	qry->override = stmt->override;
 
-	isOnConflictUpdate = (stmt->onConflictClause &&
-						  stmt->onConflictClause->action == ONCONFLICT_UPDATE);
+	/*
+	 * ON CONFLICT DO UPDATE and ON CONFLICT DO SELECT FOR UPDATE/SHARE
+	 * require UPDATE permission on the target relation.
+	 */
+	requiresUpdatePerm = (stmt->onConflictClause &&
+						  (stmt->onConflictClause->action == ONCONFLICT_UPDATE ||
+						   (stmt->onConflictClause->action == ONCONFLICT_SELECT &&
+							stmt->onConflictClause->lockStrength != LCS_NONE)));
 
 	/*
 	 * We have three cases to deal with: DEFAULT VALUES (selectStmt == NULL),
@@ -728,7 +733,7 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 	 * to the joinlist or namespace.
 	 */
 	targetPerms = ACL_INSERT;
-	if (isOnConflictUpdate)
+	if (requiresUpdatePerm)
 		targetPerms |= ACL_UPDATE;
 	qry->resultRelation = setTargetTable(pstate, stmt->relation,
 										 false, false, targetPerms);
@@ -1065,6 +1070,15 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 						 false, true, true);
 	}
 
+	/* ON CONFLICT DO SELECT requires a RETURNING clause */
+	if (stmt->onConflictClause &&
+		stmt->onConflictClause->action == ONCONFLICT_SELECT &&
+		!stmt->returningClause)
+		ereport(ERROR,
+				errcode(ERRCODE_SYNTAX_ERROR),
+				errmsg("ON CONFLICT DO SELECT requires a RETURNING clause"),
+				parser_errposition(pstate, stmt->onConflictClause->location));
+
 	/* Process ON CONFLICT, if any. */
 	if (stmt->onConflictClause)
 		qry->onConflict = transformOnConflictClause(pstate,
@@ -1223,12 +1237,13 @@ transformOnConflictClause(ParseState *pstate,
 	OnConflictExpr *result;
 
 	/*
-	 * If this is ON CONFLICT ... UPDATE, first create the range table entry
-	 * for the EXCLUDED pseudo relation, so that that will be present while
-	 * processing arbiter expressions.  (You can't actually reference it from
-	 * there, but this provides a useful error message if you try.)
+	 * If this is ON CONFLICT DO SELECT/UPDATE, first create the range table
+	 * entry for the EXCLUDED pseudo relation, so that that will be present
+	 * while processing arbiter expressions.  (You can't actually reference it
+	 * from there, but this provides a useful error message if you try.)
 	 */
-	if (onConflictClause->action == ONCONFLICT_UPDATE)
+	if (onConflictClause->action == ONCONFLICT_UPDATE ||
+		onConflictClause->action == ONCONFLICT_SELECT)
 	{
 		Relation	targetrel = pstate->p_target_relation;
 		RangeTblEntry *exclRte;
@@ -1257,28 +1272,22 @@ transformOnConflictClause(ParseState *pstate,
 	transformOnConflictArbiter(pstate, onConflictClause, &arbiterElems,
 							   &arbiterWhere, &arbiterConstraint);
 
-	/* Process DO UPDATE */
-	if (onConflictClause->action == ONCONFLICT_UPDATE)
+	/* Process DO SELECT/UPDATE */
+	if (onConflictClause->action == ONCONFLICT_UPDATE ||
+		onConflictClause->action == ONCONFLICT_SELECT)
 	{
 		/*
-		 * Expressions in the UPDATE targetlist need to be handled like UPDATE
-		 * not INSERT.  We don't need to save/restore this because all INSERT
-		 * expressions have been parsed already.
-		 */
-		pstate->p_is_insert = false;
-
-		/*
 		 * Add the EXCLUDED pseudo relation to the query namespace, making it
-		 * available in the UPDATE subexpressions.
+		 * available in SET and WHERE subexpressions.
 		 */
 		addNSItemToQuery(pstate, exclNSItem, false, true, true);
 
-		/*
-		 * Now transform the UPDATE subexpressions.
-		 */
-		onConflictSet =
-			transformUpdateTargetList(pstate, onConflictClause->targetList);
+		/* Process the UPDATE SET clause */
+		if (onConflictClause->action == ONCONFLICT_UPDATE)
+			onConflictSet =
+				transformUpdateTargetList(pstate, onConflictClause->targetList);
 
+		/* Process the SELECT/UPDATE WHERE clause */
 		onConflictWhere = transformWhereClause(pstate,
 											   onConflictClause->whereClause,
 											   EXPR_KIND_WHERE, "WHERE");
@@ -1292,13 +1301,14 @@ transformOnConflictClause(ParseState *pstate,
 		pstate->p_namespace = list_delete_last(pstate->p_namespace);
 	}
 
-	/* Finally, build ON CONFLICT DO [NOTHING | UPDATE] expression */
+	/* Finally, build ON CONFLICT DO [NOTHING | SELECT | UPDATE] expression */
 	result = makeNode(OnConflictExpr);
 
 	result->action = onConflictClause->action;
 	result->arbiterElems = arbiterElems;
 	result->arbiterWhere = arbiterWhere;
 	result->constraint = arbiterConstraint;
+	result->lockStrength = onConflictClause->lockStrength;
 	result->onConflictSet = onConflictSet;
 	result->onConflictWhere = onConflictWhere;
 	result->exclRelIndex = exclRelIndex;
@@ -2536,7 +2546,6 @@ transformUpdateStmt(ParseState *pstate, UpdateStmt *stmt)
 	Node	   *qual;
 
 	qry->commandType = CMD_UPDATE;
-	pstate->p_is_insert = false;
 
 	/* process the WITH clause independently of all else */
 	if (stmt->withClause)

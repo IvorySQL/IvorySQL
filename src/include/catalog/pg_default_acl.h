@@ -28,6 +28,8 @@
  *		typedef struct FormData_pg_default_acl
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_default_acl,826,DefaultAclRelationId)
 {
 	Oid			oid;			/* oid */
@@ -42,6 +44,8 @@ CATALOG(pg_default_acl,826,DefaultAclRelationId)
 													 * CREATE time */
 #endif
 } FormData_pg_default_acl;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_default_acl corresponds to a pointer to a tuple with

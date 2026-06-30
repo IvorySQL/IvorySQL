@@ -133,6 +133,7 @@ task:
       meson setup \
         --buildtype=debug \
         --auto-features=disabled \
+        -Ddefault_library=shared \
         -Dtap_tests=enabled \
         build
     EOF

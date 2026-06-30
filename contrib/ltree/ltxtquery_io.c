@@ -64,7 +64,7 @@ gettoken_query(QPRS_STATE *state, int32 *val, int32 *lenval, char **strval, uint
 
 	for (;;)
 	{
-		charlen = pg_mblen(state->buf);
+		charlen = pg_mblen_cstr(state->buf);
 
 		switch (state->state)
 		{
@@ -277,7 +277,7 @@ makepol(QPRS_STATE *state)
 			case ERR:
 				if (SOFT_ERROR_OCCURRED(state->escontext))
 					return ERR;
-				/* fall through */
+				pg_fallthrough;
 			default:
 				ereturn(state->escontext, ERR,
 						(errcode(ERRCODE_SYNTAX_ERROR),

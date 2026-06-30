@@ -837,6 +837,7 @@ string2ean(const char *str, struct Node *escontext, ean13 *result,
 		case UPC:
 			buf[2] = '0';
 			valid = (valid && ((rcheck = checkdig(buf + 2, 13)) == check || magic));
+			break;
 		default:
 			break;
 	}

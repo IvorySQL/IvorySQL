@@ -180,6 +180,7 @@ EndCommand(const QueryCompletion *qc, CommandDest dest, bool force_undecorated_o
 			len = BuildQueryCompletionString(completionTag, qc,
 											 force_undecorated_output);
 			pq_putmessage(PqMsg_CommandComplete, completionTag, len + 1);
+			break;
 
 		case DestNone:
 		case DestDebug:

@@ -1068,9 +1068,6 @@ readRecoverySignalFile(void)
 	 * Check for recovery signal files and if found, fsync them since they
 	 * represent server state information.  We don't sweat too much about the
 	 * possibility of fsync failure, however.
-	 *
-	 * If present, standby signal file takes precedence. If neither is present
-	 * then we won't enter archive recovery.
 	 */
 	if (stat(STANDBY_SIGNAL_FILE, &stat_buf) == 0)
 	{
@@ -1085,7 +1082,8 @@ readRecoverySignalFile(void)
 		}
 		standby_signal_file_found = true;
 	}
-	else if (stat(RECOVERY_SIGNAL_FILE, &stat_buf) == 0)
+
+	if (stat(RECOVERY_SIGNAL_FILE, &stat_buf) == 0)
 	{
 		int			fd;
 
@@ -1099,6 +1097,10 @@ readRecoverySignalFile(void)
 		recovery_signal_file_found = true;
 	}
 
+	/*
+	 * If both signal files are present, standby signal file takes precedence.
+	 * If neither is present then we won't enter archive recovery.
+	 */
 	StandbyModeRequested = false;
 	ArchiveRecoveryRequested = false;
 	if (standby_signal_file_found)
@@ -1893,6 +1895,7 @@ PerformWalRecovery(void)
 					recoveryPausesHere(true);
 
 					/* drop into promote */
+					pg_fallthrough;
 
 				case RECOVERY_TARGET_ACTION_PROMOTE:
 					break;
@@ -3574,9 +3577,9 @@ next_record_is_invalid:
  * timelines, we can reject a switch to a timeline that branched off before
  * this point.
  *
- * If the record is not immediately available, the function returns false
- * if we're not in standby mode. In standby mode, waits for it to become
- * available.
+ * If the record is not immediately available, the function returns XLREAD_FAIL
+ * if we're not in standby mode. In standby mode, the function waits for it to
+ * become available.
  *
  * When the requested record becomes available, the function opens the file
  * containing it (if not open already), and returns XLREAD_SUCCESS. When end
@@ -5068,7 +5071,7 @@ check_recovery_target_timeline(char **newval, void **extra, GucSource source)
 		if (timeline < 1 || timeline > PG_UINT32_MAX)
 		{
 			GUC_check_errdetail("\"%s\" must be between %u and %u.",
-								"recovery_target_timeline", 1, UINT_MAX);
+								"recovery_target_timeline", 1, PG_UINT32_MAX);
 			return false;
 		}
 	}

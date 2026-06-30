@@ -26,6 +26,8 @@
  *		typedef struct FormData_pg_collation
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_collation,3456,CollationRelationId)
 {
 	Oid			oid;			/* oid */
@@ -49,6 +51,8 @@ CATALOG(pg_collation,3456,CollationRelationId)
 													 * data */
 #endif
 } FormData_pg_collation;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_collation corresponds to a pointer to a row with

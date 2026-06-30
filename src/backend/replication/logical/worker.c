@@ -627,6 +627,8 @@ static inline void reset_apply_error_context_info(void);
 static TransApplyAction get_transaction_apply_action(TransactionId xid,
 													 ParallelApplyWorkerInfo **winfo);
 
+static void set_wal_receiver_timeout(void);
+
 static void on_exit_clear_xact_state(int code, Datum arg);
 
 /*
@@ -839,7 +841,7 @@ handle_streamed_transaction(LogicalRepMsgType action, StringInfo s)
 			 */
 			pa_switch_to_partial_serialize(winfo, false);
 
-			/* fall through */
+			pg_fallthrough;
 		case TRANS_LEADER_PARTIAL_SERIALIZE:
 			stream_write_change(action, &original_msg);
 
@@ -1586,7 +1588,7 @@ apply_handle_stream_prepare(StringInfo s)
 			 */
 			pa_switch_to_partial_serialize(winfo, true);
 
-			/* fall through */
+			pg_fallthrough;
 		case TRANS_LEADER_PARTIAL_SERIALIZE:
 			Assert(winfo);
 
@@ -1808,7 +1810,7 @@ apply_handle_stream_start(StringInfo s)
 			 */
 			pa_switch_to_partial_serialize(winfo, !first_segment);
 
-			/* fall through */
+			pg_fallthrough;
 		case TRANS_LEADER_PARTIAL_SERIALIZE:
 			Assert(winfo);
 
@@ -1923,7 +1925,7 @@ apply_handle_stream_stop(StringInfo s)
 			 */
 			pa_switch_to_partial_serialize(winfo, true);
 
-			/* fall through */
+			pg_fallthrough;
 		case TRANS_LEADER_PARTIAL_SERIALIZE:
 			stream_write_change(LOGICAL_REP_MSG_STREAM_STOP, s);
 			stream_stop_internal(stream_xid);
@@ -2169,7 +2171,7 @@ apply_handle_stream_abort(StringInfo s)
 			 */
 			pa_switch_to_partial_serialize(winfo, true);
 
-			/* fall through */
+			pg_fallthrough;
 		case TRANS_LEADER_PARTIAL_SERIALIZE:
 			Assert(winfo);
 
@@ -2442,7 +2444,7 @@ apply_handle_stream_commit(StringInfo s)
 			 */
 			pa_switch_to_partial_serialize(winfo, true);
 
-			/* fall through */
+			pg_fallthrough;
 		case TRANS_LEADER_PARTIAL_SERIALIZE:
 			Assert(winfo);
 
@@ -5154,6 +5156,9 @@ maybe_reread_subscription(void)
 	SetConfigOption("synchronous_commit", MySubscription->synccommit,
 					PGC_BACKEND, PGC_S_OVERRIDE);
 
+	/* Change wal_receiver_timeout according to the user's wishes */
+	set_wal_receiver_timeout();
+
 	if (started_tx)
 		CommitTransactionCommand();
 
@@ -5161,10 +5166,43 @@ maybe_reread_subscription(void)
 }
 
 /*
+ * Change wal_receiver_timeout to MySubscription->walrcvtimeout.
+ */
+static void
+set_wal_receiver_timeout(void)
+{
+	bool		parsed;
+	int			val;
+	int			prev_timeout = wal_receiver_timeout;
+
+	/*
+	 * Set the wal_receiver_timeout GUC to MySubscription->walrcvtimeout,
+	 * which comes from the subscription's wal_receiver_timeout option. If the
+	 * value is -1, reset the GUC to its default, meaning it will inherit from
+	 * the server config, command line, or role/database settings.
+	 */
+	parsed = parse_int(MySubscription->walrcvtimeout, &val, 0, NULL);
+	if (parsed && val == -1)
+		SetConfigOption("wal_receiver_timeout", NULL,
+						PGC_BACKEND, PGC_S_SESSION);
+	else
+		SetConfigOption("wal_receiver_timeout", MySubscription->walrcvtimeout,
+						PGC_BACKEND, PGC_S_SESSION);
+
+	/*
+	 * Log the wal_receiver_timeout setting (in milliseconds) as a debug
+	 * message when it changes, to verify it was set correctly.
+	 */
+	if (prev_timeout != wal_receiver_timeout)
+		elog(DEBUG1, "logical replication worker for subscription \"%s\" wal_receiver_timeout: %d ms",
+			 MySubscription->name, wal_receiver_timeout);
+}
+
+/*
  * Callback from subscription syscache invalidation.
  */
 static void
-subscription_change_cb(Datum arg, int cacheid, uint32 hashvalue)
+subscription_change_cb(Datum arg, SysCacheIdentifier cacheid, uint32 hashvalue)
 {
 	MySubscriptionValid = false;
 }
@@ -5606,8 +5644,7 @@ start_apply(XLogRecPtr origin_startpos)
 			 * idle state.
 			 */
 			AbortOutOfAnyTransaction();
-			pgstat_report_subscription_error(MySubscription->oid,
-											 MyLogicalRepWorker->type);
+			pgstat_report_subscription_error(MySubscription->oid);
 
 			PG_RE_THROW();
 		}
@@ -5822,6 +5859,9 @@ InitializeLogRepWorker(void)
 	SetConfigOption("synchronous_commit", MySubscription->synccommit,
 					PGC_BACKEND, PGC_S_OVERRIDE);
 
+	/* Change wal_receiver_timeout according to the user's wishes */
+	set_wal_receiver_timeout();
+
 	/*
 	 * Keep us informed about subscription or role changes. Note that the
 	 * role's superuser privilege can be revoked.
@@ -5890,7 +5930,6 @@ SetupApplyOrSyncWorker(int worker_slot)
 
 	/* Setup signal handling */
 	pqsignal(SIGHUP, SignalHandlerForConfigReload);
-	pqsignal(SIGTERM, die);
 	BackgroundWorkerUnblockSignals();
 
 	/*
@@ -5960,8 +5999,7 @@ DisableSubscriptionAndExit(void)
 	 * Report the worker failed during sequence synchronization, table
 	 * synchronization, or apply.
 	 */
-	pgstat_report_subscription_error(MyLogicalRepWorker->subid,
-									 MyLogicalRepWorker->type);
+	pgstat_report_subscription_error(MyLogicalRepWorker->subid);
 
 	/* Disable the subscription */
 	StartTransactionCommand();

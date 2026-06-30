@@ -2333,6 +2333,7 @@ plpgsql_add_initdatums(int **varnos)
 					case PLPGSQL_DTYPE_VAR:
 					case PLPGSQL_DTYPE_REC:
 						(*varnos)[n++] = plpgsql_Datums[i]->dno;
+						break;
 
 					default:
 						break;

@@ -192,7 +192,7 @@ main(int argc, char *argv[])
 				if (endptr == optarg || *endptr != '\0' || errno != 0)
 				{
 					/*------
-					  translator: the second %s is a command line argument (-e, etc) */
+					  translator: %s is a command line argument (-e, etc) */
 					pg_log_error("invalid argument for option %s", "-e");
 					pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 					exit(1);

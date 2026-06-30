@@ -40,6 +40,8 @@
  * here, be sure to update that (or, if the new column is not to be publicly
  * readable, update associated comments and catalogs.sgml instead).
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_subscription,6100,SubscriptionRelationId) BKI_SHARED_RELATION BKI_ROWTYPE_OID(6101,SubscriptionRelation_Rowtype_Id) BKI_SCHEMA_MACRO
 {
 	Oid			oid;			/* oid */
@@ -100,6 +102,9 @@ CATALOG(pg_subscription,6100,SubscriptionRelationId) BKI_SHARED_RELATION BKI_ROW
 	/* Synchronous commit setting for worker */
 	text		subsynccommit BKI_FORCE_NOT_NULL;
 
+	/* wal_receiver_timeout setting for worker */
+	text		subwalrcvtimeout BKI_FORCE_NOT_NULL;
+
 	/* List of publications subscribed to */
 	text		subpublications[1] BKI_FORCE_NOT_NULL;
 
@@ -107,6 +112,8 @@ CATALOG(pg_subscription,6100,SubscriptionRelationId) BKI_SHARED_RELATION BKI_ROW
 	text		suborigin BKI_DEFAULT(LOGICALREP_ORIGIN_ANY);
 #endif
 } FormData_pg_subscription;
+
+END_CATALOG_STRUCT
 
 typedef FormData_pg_subscription *Form_pg_subscription;
 
@@ -155,6 +162,7 @@ typedef struct Subscription
 	char	   *conninfo;		/* Connection string to the publisher */
 	char	   *slotname;		/* Name of the replication slot */
 	char	   *synccommit;		/* Synchronous commit setting for worker */
+	char	   *walrcvtimeout;	/* wal_receiver_timeout setting for worker */
 	List	   *publications;	/* List of publication names to subscribe to */
 	char	   *origin;			/* Only publish data originating from the
 								 * specified origin */

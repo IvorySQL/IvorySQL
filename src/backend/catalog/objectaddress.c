@@ -103,10 +103,11 @@ typedef struct
 								 * error messages */
 	Oid			class_oid;		/* oid of catalog */
 	Oid			oid_index_oid;	/* oid of index on system oid column */
-	int			oid_catcache_id;	/* id of catcache on system oid column	*/
-	int			name_catcache_id;	/* id of catcache on (name,namespace), or
-									 * (name) if the object does not live in a
-									 * namespace */
+	SysCacheIdentifier oid_catcache_id; /* id of catcache on system oid column	*/
+	SysCacheIdentifier name_catcache_id;	/* id of catcache on
+											 * (name,namespace), or (name) if
+											 * the object does not live in a
+											 * namespace */
 	AttrNumber	attnum_oid;		/* attribute number of oid column */
 	AttrNumber	attnum_name;	/* attnum of name field */
 	AttrNumber	attnum_namespace;	/* attnum of namespace field */
@@ -139,8 +140,8 @@ static const ObjectPropertyType ObjectProperty[] =
 		"access method operator",
 		AccessMethodOperatorRelationId,
 		AccessMethodOperatorOidIndexId,
-		-1,
-		-1,
+		SYSCACHEID_INVALID,
+		SYSCACHEID_INVALID,
 		Anum_pg_amop_oid,
 		InvalidAttrNumber,
 		InvalidAttrNumber,
@@ -153,8 +154,8 @@ static const ObjectPropertyType ObjectProperty[] =
 		"access method procedure",
 		AccessMethodProcedureRelationId,
 		AccessMethodProcedureOidIndexId,
-		-1,
-		-1,
+		SYSCACHEID_INVALID,
+		SYSCACHEID_INVALID,
 		Anum_pg_amproc_oid,
 		InvalidAttrNumber,
 		InvalidAttrNumber,
@@ -167,8 +168,8 @@ static const ObjectPropertyType ObjectProperty[] =
 		"cast",
 		CastRelationId,
 		CastOidIndexId,
-		-1,
-		-1,
+		SYSCACHEID_INVALID,
+		SYSCACHEID_INVALID,
 		Anum_pg_cast_oid,
 		InvalidAttrNumber,
 		InvalidAttrNumber,
@@ -182,7 +183,7 @@ static const ObjectPropertyType ObjectProperty[] =
 		CollationRelationId,
 		CollationOidIndexId,
 		COLLOID,
-		-1,						/* COLLNAMEENCNSP also takes encoding */
+		SYSCACHEID_INVALID,		/* COLLNAMEENCNSP also takes encoding */
 		Anum_pg_collation_oid,
 		Anum_pg_collation_collname,
 		Anum_pg_collation_collnamespace,
@@ -196,7 +197,7 @@ static const ObjectPropertyType ObjectProperty[] =
 		ConstraintRelationId,
 		ConstraintOidIndexId,
 		CONSTROID,
-		-1,
+		SYSCACHEID_INVALID,
 		Anum_pg_constraint_oid,
 		Anum_pg_constraint_conname,
 		Anum_pg_constraint_connamespace,
@@ -224,7 +225,7 @@ static const ObjectPropertyType ObjectProperty[] =
 		DatabaseRelationId,
 		DatabaseOidIndexId,
 		DATABASEOID,
-		-1,
+		SYSCACHEID_INVALID,
 		Anum_pg_database_oid,
 		Anum_pg_database_datname,
 		InvalidAttrNumber,
@@ -237,8 +238,8 @@ static const ObjectPropertyType ObjectProperty[] =
 		"default ACL",
 		DefaultAclRelationId,
 		DefaultAclOidIndexId,
-		-1,
-		-1,
+		SYSCACHEID_INVALID,
+		SYSCACHEID_INVALID,
 		Anum_pg_default_acl_oid,
 		InvalidAttrNumber,
 		InvalidAttrNumber,
@@ -251,8 +252,8 @@ static const ObjectPropertyType ObjectProperty[] =
 		"extension",
 		ExtensionRelationId,
 		ExtensionOidIndexId,
-		-1,
-		-1,
+		SYSCACHEID_INVALID,
+		SYSCACHEID_INVALID,
 		Anum_pg_extension_oid,
 		Anum_pg_extension_extname,
 		InvalidAttrNumber,		/* extension doesn't belong to extnamespace */
@@ -294,7 +295,7 @@ static const ObjectPropertyType ObjectProperty[] =
 		ProcedureRelationId,
 		ProcedureOidIndexId,
 		PROCOID,
-		-1,						/* PROCNAMEARGSNSP also takes argument types */
+		SYSCACHEID_INVALID,		/* PROCNAMEARGSNSP also takes argument types */
 		Anum_pg_proc_oid,
 		Anum_pg_proc_proname,
 		Anum_pg_proc_pronamespace,
@@ -321,8 +322,8 @@ static const ObjectPropertyType ObjectProperty[] =
 		"large object metadata",
 		LargeObjectMetadataRelationId,
 		LargeObjectMetadataOidIndexId,
-		-1,
-		-1,
+		SYSCACHEID_INVALID,
+		SYSCACHEID_INVALID,
 		Anum_pg_largeobject_metadata_oid,
 		InvalidAttrNumber,
 		InvalidAttrNumber,
@@ -336,7 +337,7 @@ static const ObjectPropertyType ObjectProperty[] =
 		OperatorClassRelationId,
 		OpclassOidIndexId,
 		CLAOID,
-		-1,						/* CLAAMNAMENSP also takes opcmethod */
+		SYSCACHEID_INVALID,		/* CLAAMNAMENSP also takes opcmethod */
 		Anum_pg_opclass_oid,
 		Anum_pg_opclass_opcname,
 		Anum_pg_opclass_opcnamespace,
@@ -350,7 +351,7 @@ static const ObjectPropertyType ObjectProperty[] =
 		OperatorRelationId,
 		OperatorOidIndexId,
 		OPEROID,
-		-1,						/* OPERNAMENSP also takes left and right type */
+		SYSCACHEID_INVALID,		/* OPERNAMENSP also takes left and right type */
 		Anum_pg_operator_oid,
 		Anum_pg_operator_oprname,
 		Anum_pg_operator_oprnamespace,
@@ -364,7 +365,7 @@ static const ObjectPropertyType ObjectProperty[] =
 		OperatorFamilyRelationId,
 		OpfamilyOidIndexId,
 		OPFAMILYOID,
-		-1,						/* OPFAMILYAMNAMENSP also takes opfmethod */
+		SYSCACHEID_INVALID,		/* OPFAMILYAMNAMENSP also takes opfmethod */
 		Anum_pg_opfamily_oid,
 		Anum_pg_opfamily_opfname,
 		Anum_pg_opfamily_opfnamespace,
@@ -391,8 +392,8 @@ static const ObjectPropertyType ObjectProperty[] =
 		"role membership",
 		AuthMemRelationId,
 		AuthMemOidIndexId,
-		-1,
-		-1,
+		SYSCACHEID_INVALID,
+		SYSCACHEID_INVALID,
 		Anum_pg_auth_members_oid,
 		InvalidAttrNumber,
 		InvalidAttrNumber,
@@ -405,8 +406,8 @@ static const ObjectPropertyType ObjectProperty[] =
 		"rule",
 		RewriteRelationId,
 		RewriteOidIndexId,
-		-1,
-		-1,
+		SYSCACHEID_INVALID,
+		SYSCACHEID_INVALID,
 		Anum_pg_rewrite_oid,
 		Anum_pg_rewrite_rulename,
 		InvalidAttrNumber,
@@ -448,7 +449,7 @@ static const ObjectPropertyType ObjectProperty[] =
 		TableSpaceRelationId,
 		TablespaceOidIndexId,
 		TABLESPACEOID,
-		-1,
+		SYSCACHEID_INVALID,
 		Anum_pg_tablespace_oid,
 		Anum_pg_tablespace_spcname,
 		InvalidAttrNumber,
@@ -462,7 +463,7 @@ static const ObjectPropertyType ObjectProperty[] =
 		TransformRelationId,
 		TransformOidIndexId,
 		TRFOID,
-		-1,
+		SYSCACHEID_INVALID,
 		Anum_pg_transform_oid,
 		InvalidAttrNumber,
 		InvalidAttrNumber,
@@ -475,8 +476,8 @@ static const ObjectPropertyType ObjectProperty[] =
 		"trigger",
 		TriggerRelationId,
 		TriggerOidIndexId,
-		-1,
-		-1,
+		SYSCACHEID_INVALID,
+		SYSCACHEID_INVALID,
 		Anum_pg_trigger_oid,
 		Anum_pg_trigger_tgname,
 		InvalidAttrNumber,
@@ -489,8 +490,8 @@ static const ObjectPropertyType ObjectProperty[] =
 		"policy",
 		PolicyRelationId,
 		PolicyOidIndexId,
-		-1,
-		-1,
+		SYSCACHEID_INVALID,
+		SYSCACHEID_INVALID,
 		Anum_pg_policy_oid,
 		Anum_pg_policy_polname,
 		InvalidAttrNumber,
@@ -630,7 +631,7 @@ static const ObjectPropertyType ObjectProperty[] =
 		UserMappingRelationId,
 		UserMappingOidIndexId,
 		USERMAPPINGOID,
-		-1,
+		SYSCACHEID_INVALID,
 		Anum_pg_user_mapping_oid,
 		InvalidAttrNumber,
 		InvalidAttrNumber,
@@ -2281,7 +2282,7 @@ pg_get_object_address(PG_FUNCTION_ARGS)
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("name list length must be exactly %d", 1)));
 			/* fall through to check args length */
-			/* FALLTHROUGH */
+			pg_fallthrough;
 		case OBJECT_DOMCONSTRAINT:
 		case OBJECT_CAST:
 		case OBJECT_PUBLICATION_REL:
@@ -2306,7 +2307,7 @@ pg_get_object_address(PG_FUNCTION_ARGS)
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("name list length must be at least %d", 3)));
 			/* fall through to check args length */
-			/* FALLTHROUGH */
+			pg_fallthrough;
 		case OBJECT_OPERATOR:
 			if (list_length(args) != 2)
 				ereport(ERROR,
@@ -2638,7 +2639,7 @@ check_object_ownership(Oid roleid, ObjectType objtype, ObjectAddress address,
 Oid
 get_object_namespace(const ObjectAddress *address)
 {
-	int			cache;
+	SysCacheIdentifier cache;
 	HeapTuple	tuple;
 	Oid			oid;
 	const ObjectPropertyType *property;
@@ -2650,7 +2651,7 @@ get_object_namespace(const ObjectAddress *address)
 
 	/* Currently, we can only handle object types with system caches. */
 	cache = property->oid_catcache_id;
-	Assert(cache != -1);
+	Assert(cache != SYSCACHEID_INVALID);
 
 	/* Fetch tuple from syscache and extract namespace attribute. */
 	tuple = SearchSysCache1(cache, ObjectIdGetDatum(address->objectId));
@@ -2707,7 +2708,7 @@ get_object_oid_index(Oid class_id)
 	return prop->oid_index_oid;
 }
 
-int
+SysCacheIdentifier
 get_object_catcache_oid(Oid class_id)
 {
 	const ObjectPropertyType *prop = get_object_property_data(class_id);
@@ -2715,7 +2716,7 @@ get_object_catcache_oid(Oid class_id)
 	return prop->oid_catcache_id;
 }
 
-int
+SysCacheIdentifier
 get_object_catcache_name(Oid class_id)
 {
 	const ObjectPropertyType *prop = get_object_property_data(class_id);
@@ -2873,9 +2874,9 @@ get_catalog_object_by_oid_extended(Relation catalog,
 {
 	HeapTuple	tuple;
 	Oid			classId = RelationGetRelid(catalog);
-	int			oidCacheId = get_object_catcache_oid(classId);
+	SysCacheIdentifier oidCacheId = get_object_catcache_oid(classId);
 
-	if (oidCacheId > 0)
+	if (oidCacheId >= 0)
 	{
 		if (locktup)
 			tuple = SearchSysCacheLockedCopy1(oidCacheId,

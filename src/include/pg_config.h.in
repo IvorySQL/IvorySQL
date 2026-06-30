@@ -12,9 +12,6 @@
 /* The normal alignment of `int64_t', in bytes. */
 #undef ALIGNOF_INT64_T
 
-/* The normal alignment of `long', in bytes. */
-#undef ALIGNOF_LONG
-
 /* The normal alignment of `PG_INT128_TYPE', in bytes. */
 #undef ALIGNOF_PG_INT128_TYPE
 
@@ -535,9 +532,6 @@
 /* Define to 1 if your compiler understands __builtin_$op_overflow. */
 #undef HAVE__BUILTIN_OP_OVERFLOW
 
-/* Define to 1 if your compiler understands __builtin_popcount. */
-#undef HAVE__BUILTIN_POPCOUNT
-
 /* Define to 1 if your compiler understands __builtin_types_compatible_p. */
 #undef HAVE__BUILTIN_TYPES_COMPATIBLE_P
 
@@ -794,12 +788,6 @@
 
 /* Define for large files, on AIX-style hosts. */
 #undef _LARGE_FILES
-
-/* Define to `__inline__' or `__inline' if that's what the C compiler
-   calls it, or to nothing if 'inline' is not supported under any name.  */
-#ifndef __cplusplus
-#undef inline
-#endif
 
 /* Define to keyword to use for C99 restrict support, or to nothing if not
    supported */

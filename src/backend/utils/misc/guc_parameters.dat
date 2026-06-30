@@ -1369,7 +1369,7 @@
 
 { name => 'ivorysql.compatible_mode', type => 'enum', context => 'PGC_USERSET', group => 'CLIENT_CONN_STATEMENT',
   short_desc => 'Set default sql parser compatibility mode',
-  flags => 'GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE',
+  flags => 'GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE | GUC_DISALLOW_IN_DB_ROLE_SETTING',
   variable => 'compatible_db',
   boot_val => 'PG_PARSER',
   options => 'db_parser_options',
@@ -1808,12 +1808,14 @@
   options => 'server_message_level_options',
 },
 
-{ name => 'log_min_messages', type => 'enum', context => 'PGC_SUSET', group => 'LOGGING_WHEN',
+{ name => 'log_min_messages', type => 'string', context => 'PGC_SUSET', group => 'LOGGING_WHEN',
   short_desc => 'Sets the message levels that are logged.',
   long_desc => 'Each level includes all the levels that follow it. The later the level, the fewer messages are sent.',
-  variable => 'log_min_messages',
-  boot_val => 'WARNING',
-  options => 'server_message_level_options',
+  flags => 'GUC_LIST_INPUT',
+  variable => 'log_min_messages_string',
+  boot_val => '"warning"',
+  check_hook => 'check_log_min_messages',
+  assign_hook => 'assign_log_min_messages',
 },
 
 { name => 'log_parameter_max_length', type => 'int', context => 'PGC_SUSET', group => 'LOGGING_WHAT',
@@ -2418,6 +2420,16 @@
   variable => 'Password_encryption',
   boot_val => 'PASSWORD_TYPE_SCRAM_SHA_256',
   options => 'password_encryption_options',
+},
+
+{ name => 'password_expiration_warning_threshold', type => 'int', context => 'PGC_SIGHUP', group => 'CONN_AUTH_AUTH',
+  short_desc => 'Threshold for password expiration warnings.',
+  long_desc => '0 means not to emit these warnings.',
+  flags => 'GUC_UNIT_S',
+  variable => 'password_expiration_warning_threshold',
+  boot_val => '604800',
+  min => '0',
+  max => 'INT_MAX',
 },
 
 { name => 'plan_cache_mode', type => 'enum', context => 'PGC_USERSET', group => 'QUERY_TUNING_OTHER',
@@ -3572,7 +3584,7 @@
   max => 'INT_MAX / 1000',
 },
 
-{ name => 'wal_receiver_timeout', type => 'int', context => 'PGC_SIGHUP', group => 'REPLICATION_STANDBY',
+{ name => 'wal_receiver_timeout', type => 'int', context => 'PGC_USERSET', group => 'REPLICATION_STANDBY',
   short_desc => 'Sets the maximum wait time to receive data from the sending server.',
   long_desc => '0 disables the timeout.',
   flags => 'GUC_UNIT_MS',

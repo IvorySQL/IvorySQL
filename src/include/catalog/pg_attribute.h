@@ -35,6 +35,8 @@
  *		You may need to change catalog/genbki.pl as well.
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_attribute,1249,AttributeRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(75,AttributeRelation_Rowtype_Id) BKI_SCHEMA_MACRO
 {
 	Oid			attrelid BKI_LOOKUP(pg_class);	/* OID of relation containing
@@ -192,6 +194,8 @@ CATALOG(pg_attribute,1249,AttributeRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(75,
 	anyarray	attmissingval BKI_DEFAULT(_null_);
 #endif
 } FormData_pg_attribute;
+
+END_CATALOG_STRUCT
 
 /*
  * ATTRIBUTE_FIXED_PART_SIZE is the size of the fixed-layout,

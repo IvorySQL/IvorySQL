@@ -26,6 +26,8 @@
  *		typedef struct FormData_pg_range
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_range,3541,RangeRelationId)
 {
 	/* OID of owning range type */
@@ -58,6 +60,8 @@ CATALOG(pg_range,3541,RangeRelationId)
 	/* subtype difference as a float8, or 0 */
 	regproc		rngsubdiff BKI_LOOKUP_OPT(pg_proc);
 } FormData_pg_range;
+
+END_CATALOG_STRUCT
 
 /* ----------------
  *		Form_pg_range corresponds to a pointer to a tuple with

@@ -26,6 +26,8 @@
  *		typedef struct FormData_pg_ts_template
  * ----------------
  */
+BEGIN_CATALOG_STRUCT
+
 CATALOG(pg_ts_template,3764,TSTemplateRelationId)
 {
 	Oid			oid;			/* oid */
@@ -42,6 +44,8 @@ CATALOG(pg_ts_template,3764,TSTemplateRelationId)
 	/* base method of dictionary */
 	regproc		tmpllexize BKI_LOOKUP(pg_proc);
 } FormData_pg_ts_template;
+
+END_CATALOG_STRUCT
 
 typedef FormData_pg_ts_template *Form_pg_ts_template;
 

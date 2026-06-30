@@ -2721,12 +2721,12 @@ RT_VERIFY_NODE(RT_NODE * node)
 		case RT_NODE_KIND_256:
 			{
 				RT_NODE_256 *n256 = (RT_NODE_256 *) node;
-				int			cnt = 0;
+				int			cnt;
 
 				/* RT_DUMP_NODE(node); */
 
-				for (int i = 0; i < RT_BM_IDX(RT_NODE_MAX_SLOTS); i++)
-					cnt += bmw_popcount(n256->isset[i]);
+				cnt = pg_popcount((const char *) n256->isset,
+								  RT_NODE_MAX_SLOTS / BITS_PER_BYTE);
 
 				/*
 				 * Check if the number of used chunk matches, accounting for
