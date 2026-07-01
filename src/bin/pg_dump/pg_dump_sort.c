@@ -581,7 +581,7 @@ sortDumpableObjects(DumpableObject **objs, int numObjs,
 
 	memcpy(objs, ordering, numObjs * sizeof(DumpableObject *));
 
-	free(ordering);
+	pg_free(ordering);
 }
 
 /*
@@ -737,8 +737,8 @@ TopoSort(DumpableObject **objs,
 
 	/* Done */
 	binaryheap_free(pendingHeap);
-	free(beforeConstraints);
-	free(idMap);
+	pg_free(beforeConstraints);
+	pg_free(idMap);
 
 	return (i == 0);
 }
@@ -833,9 +833,9 @@ findDependencyLoops(DumpableObject **objs, int nObjs, int totObjs)
 	if (!fixedloop)
 		pg_fatal("could not identify dependency loop");
 
-	free(workspace);
-	free(searchFailed);
-	free(processed);
+	pg_free(workspace);
+	pg_free(searchFailed);
+	pg_free(processed);
 }
 
 /*

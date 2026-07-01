@@ -245,7 +245,7 @@ MainLoop(FILE *source)
 		if (pset.lineno == 1 && !pset.cur_cmd_interactive &&
 			strncmp(line, "PGDMP", 5) == 0)
 		{
-			free(line);
+			pg_free(line);
 			puts(_("The input is a PostgreSQL custom-format dump.\n"
 				   "Use the pg_restore command-line client to restore this dump to a database.\n"));
 			fflush(stdout);
@@ -258,7 +258,7 @@ MainLoop(FILE *source)
 		{
 			if (line[0] == '\0' && !psql_scan_in_quote(scan_state))
 			{
-				free(line);
+				pg_free(line);
 				continue;
 			}
 		}
@@ -266,7 +266,7 @@ MainLoop(FILE *source)
 		{
 			if (line[0] == '\0' && !ora_psql_scan_in_quote(ora_scan_state))
 			{
-				free(line);
+				pg_free(line);
 				continue;
 			}
 		}
@@ -350,7 +350,7 @@ MainLoop(FILE *source)
 							 "       \\? for help with psql commands\n"
 							 "       \\g or terminate with semicolon to execute query\n"
 							 "       \\q to quit\n"));
-					free(line);
+					pg_free(line);
 					fflush(stdout);
 					continue;
 				}
@@ -380,7 +380,7 @@ MainLoop(FILE *source)
 				else
 				{
 					/* exit app */
-					free(line);
+					pg_free(line);
 					fflush(stdout);
 					successResult = EXIT_SUCCESS;
 					break;
@@ -587,7 +587,7 @@ MainLoop(FILE *source)
 
 							/* rescan */
 							ora_psql_scan_finish(ora_scan_state);
-							free(line);
+							pg_free(line);
 							line = pg_strdup(newline_buf->data);
 							destroyPQExpBuffer(newline_buf);
 							/* reset parsing state since we are rewritten whole line */
@@ -619,7 +619,7 @@ psqlplus_next:
 		        psql_scan_finish(scan_state);
 		        ora_psql_scan_finish(ora_scan_state);
 		        free(psqlplus_line);
-		        free(line);
+		        pg_free(line);
 		        psqlplus_scanner_finish(yyscanner);
 		        ora_psql_scan_destroy(pstate);
 		        continue;
@@ -737,7 +737,7 @@ psqlplus_next:
 		        psql_scan_finish(scan_state);
 		        ora_psql_scan_finish(ora_scan_state);
 		        free(psqlplus_line);
-		        free(line);
+		        pg_free(line);
 		        psqlplus_scanner_finish(yyscanner);
 		        ora_psql_scan_destroy(pstate);
 		        continue;
@@ -913,7 +913,7 @@ non_psqlplus_cmd:
 							appendPQExpBufferChar(query_buf, '\n');
 						/* rescan query_buf as new input */
 						psql_scan_finish(scan_state);
-						free(line);
+						pg_free(line);
 						line = pg_strdup(query_buf->data);
 						resetPQExpBuffer(query_buf);
 						/* reset parsing state since we are rescanning whole line */
@@ -1156,7 +1156,7 @@ non_psqlplus_cmd:
 							appendPQExpBufferChar(query_buf, '\n');
 						/* rescan query_buf as new input */
 						ora_psql_scan_finish(ora_scan_state);
-						free(line);
+						pg_free(line);
 						line = pg_strdup(query_buf->data);
 						resetPQExpBuffer(query_buf);
 						/* reset parsing state since we are rescanning whole line */
@@ -1196,7 +1196,7 @@ non_psqlplus_cmd:
 
 		psql_scan_finish(scan_state);
 		ora_psql_scan_finish(ora_scan_state);
-		free(line);
+		pg_free(line);
 
 		if (slashCmdStatus == PSQL_CMD_TERMINATE)
 		{

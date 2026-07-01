@@ -2799,7 +2799,7 @@ dumpTableData_insert(Archive *fout, const void *dcontext)
 	destroyPQExpBuffer(q);
 	if (insertStmt != NULL)
 		destroyPQExpBuffer(insertStmt);
-	free(attgenerated);
+	pg_free(attgenerated);
 
 	/* Revert back the setting */
 	if (tbinfo->relkind == RELKIND_FOREIGN_TABLE)
@@ -3778,7 +3778,7 @@ dumpDatabase(Archive *fout)
 
 	PQclear(res);
 
-	free(qdatname);
+	pg_free(qdatname);
 	destroyPQExpBuffer(dbQry);
 	destroyPQExpBuffer(delQry);
 	destroyPQExpBuffer(creaQry);
@@ -4513,11 +4513,11 @@ dumpPolicy(Archive *fout, const PolicyInfo *polinfo)
 					tbinfo->dobj.namespace->dobj.name, tbinfo->rolname,
 					polinfo->dobj.catId, 0, polinfo->dobj.dumpId);
 
-	free(tag);
+	pfree(tag);
 	destroyPQExpBuffer(query);
 	destroyPQExpBuffer(delqry);
 	destroyPQExpBuffer(polprefix);
-	free(qtabname);
+	pg_free(qtabname);
 }
 
 /*
@@ -4805,7 +4805,7 @@ dumpPublication(Archive *fout, const PublicationInfo *pubinfo)
 
 	destroyPQExpBuffer(delq);
 	destroyPQExpBuffer(query);
-	free(qpubname);
+	pg_free(qpubname);
 }
 
 /*
@@ -5058,7 +5058,7 @@ dumpPublicationNamespace(Archive *fout, const PublicationSchemaInfo *pubsinfo)
 
 	/* These objects can't currently have comments or seclabels */
 
-	free(tag);
+	pfree(tag);
 	destroyPQExpBuffer(query);
 }
 
@@ -5120,7 +5120,7 @@ dumpPublicationTable(Archive *fout, const PublicationRelInfo *pubrinfo)
 
 	/* These objects can't currently have comments or seclabels */
 
-	free(tag);
+	pfree(tag);
 	destroyPQExpBuffer(query);
 }
 
@@ -5563,7 +5563,7 @@ dumpSubscriptionTable(Archive *fout, const SubRelInfo *subrinfo)
 
 	/* These objects can't currently have comments or seclabels */
 
-	free(tag);
+	pfree(tag);
 	destroyPQExpBuffer(query);
 }
 
@@ -5729,7 +5729,7 @@ dumpSubscription(Archive *fout, const SubscriptionInfo *subinfo)
 
 	destroyPQExpBuffer(delq);
 	destroyPQExpBuffer(query);
-	free(qsubname);
+	pg_free(qsubname);
 }
 
 /*
@@ -10397,7 +10397,7 @@ determineNotNullFlags(Archive *fout, PGresult *res, int r,
 					tbinfo->notnull_constrs[j] =
 						pstrdup(PQgetvalue(res, r, i_notnull_name));
 				}
-				free(default_name);
+				pfree(default_name);
 			}
 		}
 	}
@@ -12260,7 +12260,7 @@ dumpNamespace(Archive *fout, const NamespaceInfo *nspinfo)
 				qnspname, NULL, NULL,
 				NULL, nspinfo->rolname, &nspinfo->dacl);
 
-	free(qnspname);
+	pg_free(qnspname);
 
 	destroyPQExpBuffer(q);
 	destroyPQExpBuffer(delq);
@@ -12383,7 +12383,7 @@ dumpExtension(Archive *fout, const ExtensionInfo *extinfo)
 					NULL, "",
 					extinfo->dobj.catId, 0, extinfo->dobj.dumpId);
 
-	free(qextname);
+	pg_free(qextname);
 
 	destroyPQExpBuffer(q);
 	destroyPQExpBuffer(delq);
@@ -12556,8 +12556,8 @@ dumpEnumType(Archive *fout, const TypeInfo *tyinfo)
 	destroyPQExpBuffer(q);
 	destroyPQExpBuffer(delq);
 	destroyPQExpBuffer(query);
-	free(qtypname);
-	free(qualtypname);
+	pg_free(qtypname);
+	pg_free(qualtypname);
 }
 
 /*
@@ -12709,8 +12709,8 @@ dumpRangeType(Archive *fout, const TypeInfo *tyinfo)
 	destroyPQExpBuffer(q);
 	destroyPQExpBuffer(delq);
 	destroyPQExpBuffer(query);
-	free(qtypname);
-	free(qualtypname);
+	pg_free(qtypname);
+	pg_free(qualtypname);
 }
 
 /*
@@ -12778,8 +12778,8 @@ dumpUndefinedType(Archive *fout, const TypeInfo *tyinfo)
 
 	destroyPQExpBuffer(q);
 	destroyPQExpBuffer(delq);
-	free(qtypname);
-	free(qualtypname);
+	pg_free(qtypname);
+	pg_free(qualtypname);
 }
 
 /*
@@ -13027,8 +13027,8 @@ dumpBaseType(Archive *fout, const TypeInfo *tyinfo)
 	destroyPQExpBuffer(q);
 	destroyPQExpBuffer(delq);
 	destroyPQExpBuffer(query);
-	free(qtypname);
-	free(qualtypname);
+	pg_free(qtypname);
+	pg_free(qualtypname);
 }
 
 /*
@@ -13142,7 +13142,7 @@ dumpDomain(Archive *fout, const TypeInfo *tyinfo)
 				else
 					appendPQExpBuffer(q, " CONSTRAINT %s %s",
 									  fmtId(notnull->dobj.name), notnull->condef);
-				free(default_name);
+				pfree(default_name);
 			}
 		}
 	}
@@ -13251,8 +13251,8 @@ dumpDomain(Archive *fout, const TypeInfo *tyinfo)
 	destroyPQExpBuffer(q);
 	destroyPQExpBuffer(delq);
 	destroyPQExpBuffer(query);
-	free(qtypname);
-	free(qualtypname);
+	pg_free(qtypname);
+	pg_free(qualtypname);
 }
 
 /*
@@ -13453,8 +13453,8 @@ dumpCompositeType(Archive *fout, const TypeInfo *tyinfo)
 	destroyPQExpBuffer(dropped);
 	destroyPQExpBuffer(delq);
 	destroyPQExpBuffer(query);
-	free(qtypname);
-	free(qualtypname);
+	pg_free(qtypname);
+	pg_free(qualtypname);
 }
 
 /*
@@ -13720,7 +13720,7 @@ dumpProcLang(Archive *fout, const ProcLangInfo *plang)
 				qlanname, NULL, NULL,
 				NULL, plang->lanowner, &plang->dacl);
 
-	free(qlanname);
+	pg_free(qlanname);
 
 	destroyPQExpBuffer(defqry);
 	destroyPQExpBuffer(delqry);
@@ -14152,7 +14152,7 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 							  getFormattedTypeName(fout, typeids[i], zeroAsNone));
 		}
 
-		free(typeids);
+		pg_free(typeids);
 	}
 
 	if (prokind[0] == PROKIND_WINDOW)
@@ -14324,7 +14324,7 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 	free(funcsig);
 	free(funcfullsig);
 	free(funcsig_tag);
-	free(qual_funcsig);
+	pfree(qual_funcsig);
 	free(configitems);
 }
 
@@ -14910,7 +14910,7 @@ dumpAccessMethod(Archive *fout, const AccessMethodInfo *aminfo)
 						   aminfo->amtype, qamname);
 			destroyPQExpBuffer(q);
 			destroyPQExpBuffer(delq);
-			free(qamname);
+			pg_free(qamname);
 			return;
 	}
 
@@ -14939,7 +14939,7 @@ dumpAccessMethod(Archive *fout, const AccessMethodInfo *aminfo)
 
 	destroyPQExpBuffer(q);
 	destroyPQExpBuffer(delq);
-	free(qamname);
+	pg_free(qamname);
 }
 
 /*
@@ -15211,9 +15211,9 @@ dumpOpclass(Archive *fout, const OpclassInfo *opcinfo)
 					opcinfo->dobj.namespace->dobj.name, opcinfo->rolname,
 					opcinfo->dobj.catId, 0, opcinfo->dobj.dumpId);
 
-	free(opcintype);
-	free(opcfamily);
-	free(amname);
+	pg_free(opcintype);
+	pg_free(opcfamily);
+	pg_free(amname);
 	destroyPQExpBuffer(query);
 	destroyPQExpBuffer(q);
 	destroyPQExpBuffer(delq);
@@ -15433,7 +15433,7 @@ dumpOpfamily(Archive *fout, const OpfamilyInfo *opfinfo)
 					opfinfo->dobj.namespace->dobj.name, opfinfo->rolname,
 					opfinfo->dobj.catId, 0, opfinfo->dobj.dumpId);
 
-	free(amname);
+	pg_free(amname);
 	PQclear(res_ops);
 	PQclear(res_procs);
 	destroyPQExpBuffer(query);
@@ -15696,7 +15696,7 @@ dumpCollation(Archive *fout, const CollInfo *collinfo)
 	destroyPQExpBuffer(query);
 	destroyPQExpBuffer(q);
 	destroyPQExpBuffer(delq);
-	free(qcollname);
+	pg_free(qcollname);
 }
 
 /*
@@ -15790,7 +15790,7 @@ dumpConversion(Archive *fout, const ConvInfo *convinfo)
 	destroyPQExpBuffer(query);
 	destroyPQExpBuffer(q);
 	destroyPQExpBuffer(delq);
-	free(qconvname);
+	pg_free(qconvname);
 }
 
 /*
@@ -16248,7 +16248,7 @@ dumpTSParser(Archive *fout, const TSParserInfo *prsinfo)
 
 	destroyPQExpBuffer(q);
 	destroyPQExpBuffer(delq);
-	free(qprsname);
+	pg_free(qprsname);
 }
 
 /*
@@ -16328,7 +16328,7 @@ dumpTSDictionary(Archive *fout, const TSDictInfo *dictinfo)
 	destroyPQExpBuffer(q);
 	destroyPQExpBuffer(delq);
 	destroyPQExpBuffer(query);
-	free(qdictname);
+	pg_free(qdictname);
 }
 
 /*
@@ -16386,7 +16386,7 @@ dumpTSTemplate(Archive *fout, const TSTemplateInfo *tmplinfo)
 
 	destroyPQExpBuffer(q);
 	destroyPQExpBuffer(delq);
-	free(qtmplname);
+	pg_free(qtmplname);
 }
 
 /*
@@ -16506,7 +16506,7 @@ dumpTSConfig(Archive *fout, const TSConfigInfo *cfginfo)
 	destroyPQExpBuffer(q);
 	destroyPQExpBuffer(delq);
 	destroyPQExpBuffer(query);
-	free(qcfgname);
+	pg_free(qcfgname);
 }
 
 /*
@@ -16576,7 +16576,7 @@ dumpForeignDataWrapper(Archive *fout, const FdwInfo *fdwinfo)
 				"FOREIGN DATA WRAPPER", qfdwname, NULL, NULL,
 				NULL, fdwinfo->rolname, &fdwinfo->dacl);
 
-	free(qfdwname);
+	pg_free(qfdwname);
 
 	destroyPQExpBuffer(q);
 	destroyPQExpBuffer(delq);
@@ -16672,7 +16672,7 @@ dumpForeignServer(Archive *fout, const ForeignServerInfo *srvinfo)
 
 	PQclear(res);
 
-	free(qsrvname);
+	pg_free(qsrvname);
 
 	destroyPQExpBuffer(q);
 	destroyPQExpBuffer(delq);
@@ -17461,13 +17461,13 @@ dumpTable(Archive *fout, const TableInfo *tbinfo)
 					"TABLE", namecopy, attnamecopy,
 					tbinfo->dobj.namespace->dobj.name,
 					NULL, tbinfo->rolname, &coldacl);
-			free(attnamecopy);
+			pg_free(attnamecopy);
 		}
 		PQclear(res);
 		destroyPQExpBuffer(query);
 	}
 
-	free(namecopy);
+	pg_free(namecopy);
 }
 
 /*
@@ -18475,9 +18475,9 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 								  tbinfo->attfdwoptions[j]);
 		}						/* end loop over columns */
 
-		free(partkeydef);
-		free(ftoptions);
-		free(srvname);
+		pg_free(partkeydef);
+		pg_free(ftoptions);
+		pg_free(srvname);
 	}
 
 	/*
@@ -18621,8 +18621,8 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 	destroyPQExpBuffer(q);
 	destroyPQExpBuffer(delq);
 	destroyPQExpBuffer(extra);
-	free(qrelname);
-	free(qualrelname);
+	pg_free(qrelname);
+	pg_free(qualrelname);
 }
 
 /*
@@ -18756,10 +18756,10 @@ dumpAttrDef(Archive *fout, const AttrDefInfo *adinfo)
 								  .createStmt = q->data,
 								  .dropStmt = delq->data));
 
-	free(tag);
+	pfree(tag);
 	destroyPQExpBuffer(q);
 	destroyPQExpBuffer(delq);
-	free(qualrelname);
+	pg_free(qualrelname);
 }
 
 /*
@@ -18941,8 +18941,8 @@ dumpIndex(Archive *fout, const IndxInfo *indxinfo)
 
 	destroyPQExpBuffer(q);
 	destroyPQExpBuffer(delq);
-	free(qindxname);
-	free(qqindxname);
+	pg_free(qindxname);
+	pg_free(qqindxname);
 }
 
 /*
@@ -19062,7 +19062,7 @@ dumpStatisticsExt(Archive *fout, const StatsExtInfo *statsextinfo)
 	destroyPQExpBuffer(q);
 	destroyPQExpBuffer(delq);
 	destroyPQExpBuffer(query);
-	free(qstatsextname);
+	pg_free(qstatsextname);
 }
 
 /*
@@ -19641,7 +19641,7 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 							tyinfo->rolname,
 							coninfo->dobj.catId, 0, coninfo->dobj.dumpId);
 				destroyPQExpBuffer(conprefix);
-				free(qtypname);
+				pg_free(qtypname);
 			}
 		}
 	}
@@ -19656,7 +19656,7 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 		coninfo->dobj.dump & DUMP_COMPONENT_COMMENT)
 		dumpTableConstraintComment(fout, coninfo);
 
-	free(tag);
+	pfree(tag);
 	destroyPQExpBuffer(q);
 	destroyPQExpBuffer(delq);
 }
@@ -19688,7 +19688,7 @@ dumpTableConstraintComment(Archive *fout, const ConstraintInfo *coninfo)
 					coninfo->separate ? coninfo->dobj.dumpId : tbinfo->dobj.dumpId);
 
 	destroyPQExpBuffer(conprefix);
-	free(qtabname);
+	pg_free(qtabname);
 }
 
 static inline SeqType
@@ -20085,7 +20085,7 @@ dumpSequence(Archive *fout, const TableInfo *tbinfo)
 		pg_free(seq);
 	destroyPQExpBuffer(query);
 	destroyPQExpBuffer(delqry);
-	free(qseqname);
+	pg_free(qseqname);
 }
 
 /*
@@ -20295,12 +20295,12 @@ dumpTrigger(Archive *fout, const TriggerInfo *tginfo)
 					tbinfo->dobj.namespace->dobj.name, tbinfo->rolname,
 					tginfo->dobj.catId, 0, tginfo->dobj.dumpId);
 
-	free(tag);
+	pfree(tag);
 	destroyPQExpBuffer(query);
 	destroyPQExpBuffer(delqry);
 	destroyPQExpBuffer(trigprefix);
 	destroyPQExpBuffer(trigidentity);
-	free(qtabname);
+	pg_free(qtabname);
 }
 
 /*
@@ -20390,7 +20390,7 @@ dumpEventTrigger(Archive *fout, const EventTriggerInfo *evtinfo)
 
 	destroyPQExpBuffer(query);
 	destroyPQExpBuffer(delqry);
-	free(qevtname);
+	pg_free(qevtname);
 }
 
 /*
@@ -20548,12 +20548,12 @@ dumpRule(Archive *fout, const RuleInfo *rinfo)
 					tbinfo->rolname,
 					rinfo->dobj.catId, 0, rinfo->dobj.dumpId);
 
-	free(tag);
+	pfree(tag);
 	destroyPQExpBuffer(query);
 	destroyPQExpBuffer(cmd);
 	destroyPQExpBuffer(delcmd);
 	destroyPQExpBuffer(ruleprefix);
-	free(qtabname);
+	pg_free(qtabname);
 }
 
 /*
@@ -21197,7 +21197,7 @@ BuildArchiveDependencies(Archive *fout)
 			te->nDeps = nDeps;
 		}
 		else
-			free(dependencies);
+			pg_free(dependencies);
 	}
 }
 

@@ -1342,7 +1342,7 @@ dumpRoleGUCPrivs(PGconn *conn)
 
 		fprintf(OPF, "%s", buf->data);
 
-		free(fparname);
+		pg_free(fparname);
 		destroyPQExpBuffer(buf);
 	}
 
@@ -1481,7 +1481,7 @@ dumpTablespaces(PGconn *conn)
 
 		fprintf(OPF, "%s", buf->data);
 
-		free(fspcname);
+		pg_free(fspcname);
 		destroyPQExpBuffer(buf);
 	}
 
