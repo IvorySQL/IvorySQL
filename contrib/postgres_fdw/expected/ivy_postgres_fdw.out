@@ -1899,32 +1899,32 @@ SELECT 1 FROM (SELECT c1 FROM ft4 WHERE c1 between 50 and 60) t1 FULL JOIN (SELE
 -- relation
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1.c1, ss.a, ss.b FROM (SELECT c1 FROM ft4 WHERE c1 between 50 and 60) t1 FULL JOIN (SELECT t2.c1, t3.c1 FROM ft4 t2 LEFT JOIN ft5 t3 ON (t2.c1 = t3.c1) WHERE (t2.c1 between 50 and 60)) ss(a, b) ON (t1.c1 = ss.a) ORDER BY t1.c1, ss.a, ss.b;
-                                     QUERY PLAN                                      
--------------------------------------------------------------------------------------
+                                          QUERY PLAN                                           
+-----------------------------------------------------------------------------------------------
  Sort
    Output: ft4.c1, t2.c1, t3.c1
    Sort Key: ft4.c1, t2.c1, t3.c1
    ->  Hash Full Join
          Output: ft4.c1, t2.c1, t3.c1
-         Hash Cond: (t2.c1 = ft4.c1)
-         ->  Nested Loop Left Join
-               Output: t2.c1, t3.c1
-               Join Filter: (t2.c1 = t3.c1)
-               ->  Foreign Scan on public.ft4 t2
-                     Output: t2.c1, t2.c2, t2.c3
-                     Filter: ((t2.c1 >= '50'::number) AND (t2.c1 <= '60'::number))
-                     Remote SQL: SELECT c1 FROM "S 1"."T 3"
-               ->  Materialize
-                     Output: t3.c1
-                     ->  Foreign Scan on public.ft5 t3
-                           Output: t3.c1
-                           Remote SQL: SELECT c1 FROM "S 1"."T 4"
+         Hash Cond: (ft4.c1 = t2.c1)
+         ->  Foreign Scan on public.ft4
+               Output: ft4.c1, ft4.c2, ft4.c3
+               Filter: ((ft4.c1 >= '50'::number) AND (ft4.c1 <= '60'::number))
+               Remote SQL: SELECT c1 FROM "S 1"."T 3"
          ->  Hash
-               Output: ft4.c1
-               ->  Foreign Scan on public.ft4
-                     Output: ft4.c1
-                     Filter: ((ft4.c1 >= '50'::number) AND (ft4.c1 <= '60'::number))
-                     Remote SQL: SELECT c1 FROM "S 1"."T 3"
+               Output: t2.c1, t3.c1
+               ->  Hash Right Join
+                     Output: t2.c1, t3.c1
+                     Hash Cond: (t3.c1 = t2.c1)
+                     ->  Foreign Scan on public.ft5 t3
+                           Output: t3.c1, t3.c2, t3.c3
+                           Remote SQL: SELECT c1 FROM "S 1"."T 4"
+                     ->  Hash
+                           Output: t2.c1
+                           ->  Foreign Scan on public.ft4 t2
+                                 Output: t2.c1
+                                 Filter: ((t2.c1 >= '50'::number) AND (t2.c1 <= '60'::number))
+                                 Remote SQL: SELECT c1 FROM "S 1"."T 3"
 (24 rows)
 
 SELECT t1.c1, ss.a, ss.b FROM (SELECT c1 FROM ft4 WHERE c1 between 50 and 60) t1 FULL JOIN (SELECT t2.c1, t3.c1 FROM ft4 t2 LEFT JOIN ft5 t3 ON (t2.c1 = t3.c1) WHERE (t2.c1 between 50 and 60)) ss(a, b) ON (t1.c1 = ss.a) ORDER BY t1.c1, ss.a, ss.b;
