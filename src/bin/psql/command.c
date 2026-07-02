@@ -4528,10 +4528,10 @@ connection_warnings(bool in_startup)
 
 		/*
 		 * Warn if server's major version is newer than ours, or if server
-		 * predates our support cutoff (currently 9.2).
+		 * predates our support cutoff (currently 10).
 		 */
 		if (pset.sversion / 100 > client_ver / 100 ||
-			pset.sversion < 90200)
+			pset.sversion < 100000)
 			printf(_("WARNING: %s major version %s, server major version %s.\n"
 					 "         Some psql features might not work.\n"),
 				   pset.progname,
@@ -6335,15 +6335,13 @@ get_create_object_cmd(EditableObjectType obj_type, Oid oid,
 			 * ensure the right view gets replaced.  Also, check relation kind
 			 * to be sure it's a view.
 			 *
-			 * Starting with PG 9.4, views may have WITH [LOCAL|CASCADED]
+			 * Views may have WITH [LOCAL|CASCADED]
 			 * CHECK OPTION.  These are not part of the view definition
 			 * returned by pg_get_viewdef() and so need to be retrieved
-			 * separately.  Materialized views (introduced in 9.3) may have
+			 * separately.  Materialized views may have
 			 * arbitrary storage parameter reloptions.
 			 */
 			printfPQExpBuffer(query, "/* %s */\n", _("Get view's definition and details"));
-			if (pset.sversion >= 90400)
-			{
 				appendPQExpBuffer(query,
 								  "SELECT nspname, relname, relkind, "
 								  "pg_catalog.pg_get_viewdef(c.oid, true), "
@@ -6354,19 +6352,6 @@ get_create_object_cmd(EditableObjectType obj_type, Oid oid,
 								  "LEFT JOIN pg_catalog.pg_namespace n "
 								  "ON c.relnamespace = n.oid WHERE c.oid = %u",
 								  oid);
-			}
-			else
-			{
-				appendPQExpBuffer(query,
-								  "SELECT nspname, relname, relkind, "
-								  "pg_catalog.pg_get_viewdef(c.oid, true), "
-								  "c.reloptions AS reloptions, "
-								  "NULL AS checkoption "
-								  "FROM pg_catalog.pg_class c "
-								  "LEFT JOIN pg_catalog.pg_namespace n "
-								  "ON c.relnamespace = n.oid WHERE c.oid = %u",
-								  oid);
-			}
 			break;
 	}
 
