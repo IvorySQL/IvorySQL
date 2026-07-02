@@ -18,7 +18,7 @@
 #include "pg_upgrade.h"
 
 static void transfer_single_new_db(FileNameMap *maps, int size, char *old_tablespace, char *new_tablespace);
-static void transfer_relfile(FileNameMap *map, const char *type_suffix, bool vm_must_add_frozenbit);
+static void transfer_relfile(FileNameMap *map, const char *type_suffix);
 
 /*
  * The following set of sync_queue_* functions are used for --swap to reduce
@@ -496,25 +496,10 @@ transfer_single_new_db(FileNameMap *maps, int size,
 					   char *old_tablespace, char *new_tablespace)
 {
 	int			mapnum;
-	bool		vm_must_add_frozenbit = false;
-
-	/*
-	 * Do we need to rewrite visibilitymap?
-	 */
-	if (old_cluster.controldata.cat_ver < VISIBILITY_MAP_FROZEN_BIT_CAT_VER &&
-		new_cluster.controldata.cat_ver >= VISIBILITY_MAP_FROZEN_BIT_CAT_VER)
-		vm_must_add_frozenbit = true;
 
 	/* --swap has its own subroutine */
 	if (user_opts.transfer_mode == TRANSFER_MODE_SWAP)
 	{
-		/*
-		 * We don't support --swap to upgrade from versions that require
-		 * rewriting the visibility map.  We should've failed already if
-		 * someone tries to do that.
-		 */
-		Assert(!vm_must_add_frozenbit);
-
 		do_swap(maps, size, old_tablespace, new_tablespace);
 		return;
 	}
@@ -525,13 +510,13 @@ transfer_single_new_db(FileNameMap *maps, int size,
 			strcmp(maps[mapnum].old_tablespace, old_tablespace) == 0)
 		{
 			/* transfer primary file */
-			transfer_relfile(&maps[mapnum], "", vm_must_add_frozenbit);
+			transfer_relfile(&maps[mapnum], "");
 
 			/*
 			 * Copy/link any fsm and vm files, if they exist
 			 */
-			transfer_relfile(&maps[mapnum], "_fsm", vm_must_add_frozenbit);
-			transfer_relfile(&maps[mapnum], "_vm", vm_must_add_frozenbit);
+			transfer_relfile(&maps[mapnum], "_fsm");
+			transfer_relfile(&maps[mapnum], "_vm");
 		}
 	}
 }
@@ -540,12 +525,10 @@ transfer_single_new_db(FileNameMap *maps, int size,
 /*
  * transfer_relfile()
  *
- * Copy or link file from old cluster to new one.  If vm_must_add_frozenbit
- * is true, visibility map forks are converted and rewritten, even in link
- * mode.
+ * Copy or link file from old cluster to new one.
  */
 static void
-transfer_relfile(FileNameMap *map, const char *type_suffix, bool vm_must_add_frozenbit)
+transfer_relfile(FileNameMap *map, const char *type_suffix)
 {
 	char		old_file[MAXPGPATH];
 	char		new_file[MAXPGPATH];
@@ -604,14 +587,6 @@ transfer_relfile(FileNameMap *map, const char *type_suffix, bool vm_must_add_fro
 		/* Copying files might take some time, so give feedback. */
 		pg_log(PG_STATUS, "%s", old_file);
 
-		if (vm_must_add_frozenbit && strcmp(type_suffix, "_vm") == 0)
-		{
-			/* Need to rewrite visibility map format */
-			pg_log(PG_VERBOSE, "rewriting \"%s\" to \"%s\"",
-				   old_file, new_file);
-			rewriteVisibilityMap(old_file, new_file, map->nspname, map->relname);
-		}
-		else
 			switch (user_opts.transfer_mode)
 			{
 				case TRANSFER_MODE_CLONE:

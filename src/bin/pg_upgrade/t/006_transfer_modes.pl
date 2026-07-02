@@ -17,15 +17,6 @@ sub test_mode
 	  PostgreSQL::Test::Cluster->new('old', install_path => $ENV{oldinstall});
 	my $new = PostgreSQL::Test::Cluster->new('new');
 
-	# --swap can't be used to upgrade from versions older than 10, so just skip
-	# the test if the old cluster version is too old.
-	if ($old->pg_version < 10 && $mode eq "--swap")
-	{
-		$old->clean_node();
-		$new->clean_node();
-		return;
-	}
-
 	if (defined($ENV{oldinstall}))
 	{
 		# Checksums are now enabled by default, but weren't before 18, so pass
@@ -38,14 +29,10 @@ sub test_mode
 	}
 	$new->init();
 
-	# allow_in_place_tablespaces is available as far back as v10.
-	if ($old->pg_version >= 10)
-	{
 		$new->append_conf('postgresql.conf',
 			"allow_in_place_tablespaces = true");
 		$old->append_conf('postgresql.conf',
 			"allow_in_place_tablespaces = true");
-	}
 
 	# We can only test security labels if both the old and new installations
 	# have dummy_seclabel.
@@ -89,9 +76,6 @@ sub test_mode
 			"CREATE TABLE test4 AS SELECT generate_series(400, 502)");
 	}
 
-	# If the old cluster is >= v10, we can test in-place tablespaces.
-	if ($old->pg_version >= 10)
-	{
 		$old->safe_psql('postgres',
 			"CREATE TABLESPACE inplc_tblspc LOCATION ''");
 		$old->safe_psql('postgres',
@@ -101,7 +85,6 @@ sub test_mode
 		);
 		$old->safe_psql('testdb3',
 			"CREATE TABLE test6 AS SELECT generate_series(607, 711)");
-	}
 
 	# While we are here, test handling of large objects.
 	$old->safe_psql(
@@ -169,15 +152,12 @@ sub test_mode
 		}
 
 		# Tests for in-place tablespaces.
-		if ($old->pg_version >= 10)
-		{
 			$result =
 			  $new->safe_psql('postgres', "SELECT COUNT(*) FROM test5");
 			is($result, '104', "test5 data after pg_upgrade $mode");
 			$result =
 			  $new->safe_psql('testdb3', "SELECT COUNT(*) FROM test6");
 			is($result, '105', "test6 data after pg_upgrade $mode");
-		}
 
 		# Tests for large objects
 		$result = $new->safe_psql('postgres', "SELECT lo_get(4532)");

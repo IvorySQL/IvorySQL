@@ -43,9 +43,6 @@ get_control_data(ClusterInfo *cluster)
 	char		bufin[MAX_STRING];
 	FILE	   *output;
 	char	   *p;
-	bool		got_tli = false;
-	bool		got_log_id = false;
-	bool		got_log_seg = false;
 	bool		got_xid = false;
 	bool		got_oid = false;
 	bool		got_multi = false;
@@ -77,10 +74,6 @@ get_control_data(ClusterInfo *cluster)
 	char	   *language = NULL;
 	char	   *lc_all = NULL;
 	char	   *lc_messages = NULL;
-	uint32		tli = 0;
-	uint32		logid = 0;
-	uint32		segno = 0;
-	char	   *resetwal_bin;
 	int			rc;
 	bool		live_check = (cluster == &old_cluster && user_opts.live_check);
 
@@ -191,26 +184,14 @@ get_control_data(ClusterInfo *cluster)
 		}
 	}
 
-	/* pg_resetxlog has been renamed to pg_resetwal in version 10 */
-	if (GET_MAJOR_VERSION(cluster->bin_version) <= 906)
-		resetwal_bin = "pg_resetxlog\" -n";
-	else
-		resetwal_bin = "pg_resetwal\" -n";
 	snprintf(cmd, sizeof(cmd), "\"%s/%s \"%s\"",
 			 cluster->bindir,
-			 live_check ? "pg_controldata\"" : resetwal_bin,
+			 live_check ? "pg_controldata\"" : "pg_resetwal\" -n",
 			 cluster->pgdata);
 	fflush(NULL);
 
 	if ((output = popen(cmd, "r")) == NULL)
 		pg_fatal("could not get control data using %s: %m", cmd);
-
-	/* Only in <= 9.2 */
-	if (GET_MAJOR_VERSION(cluster->major_version) <= 902)
-	{
-		cluster->controldata.data_checksum_version = PG_DATA_CHECKSUM_OFF;
-		got_data_checksum_version = true;
-	}
 
 	/* we have the result of cmd in "output". so parse it line by line now */
 	while (fgets(bufin, sizeof(bufin), output))
@@ -239,39 +220,6 @@ get_control_data(ClusterInfo *cluster)
 			p++;				/* remove ':' char */
 			cluster->controldata.cat_ver = str2uint(p);
 		}
-		else if ((p = strstr(bufin, "Latest checkpoint's TimeLineID:")) != NULL)
-		{
-			p = strchr(p, ':');
-
-			if (p == NULL || strlen(p) <= 1)
-				pg_fatal("%d: controldata retrieval problem", __LINE__);
-
-			p++;				/* remove ':' char */
-			tli = str2uint(p);
-			got_tli = true;
-		}
-		else if ((p = strstr(bufin, "First log file ID after reset:")) != NULL)
-		{
-			p = strchr(p, ':');
-
-			if (p == NULL || strlen(p) <= 1)
-				pg_fatal("%d: controldata retrieval problem", __LINE__);
-
-			p++;				/* remove ':' char */
-			logid = str2uint(p);
-			got_log_id = true;
-		}
-		else if ((p = strstr(bufin, "First log file segment after reset:")) != NULL)
-		{
-			p = strchr(p, ':');
-
-			if (p == NULL || strlen(p) <= 1)
-				pg_fatal("%d: controldata retrieval problem", __LINE__);
-
-			p++;				/* remove ':' char */
-			segno = str2uint(p);
-			got_log_seg = true;
-		}
 		else if ((p = strstr(bufin, "Latest checkpoint's NextXID:")) != NULL)
 		{
 			p = strchr(p, ':');
@@ -282,23 +230,12 @@ get_control_data(ClusterInfo *cluster)
 			p++;				/* remove ':' char */
 			cluster->controldata.chkpnt_nxtepoch = str2uint(p);
 
-			/*
-			 * Delimiter changed from '/' to ':' in 9.6.  We don't test for
-			 * the catalog version of the change because the catalog version
-			 * is pulled from pg_controldata too, and it isn't worth adding an
-			 * order dependency for this --- we just check the string.
-			 */
-			if (strchr(p, '/') != NULL)
-				p = strchr(p, '/');
-			else if (GET_MAJOR_VERSION(cluster->major_version) >= 906)
 				p = strchr(p, ':');
-			else
-				p = NULL;
 
 			if (p == NULL || strlen(p) <= 1)
 				pg_fatal("%d: controldata retrieval problem", __LINE__);
 
-			p++;				/* remove '/' or ':' char */
+			p++;				/* remove ':' char */
 			cluster->controldata.chkpnt_nxtxid = str2uint(p);
 			got_xid = true;
 		}
@@ -583,22 +520,6 @@ get_control_data(ClusterInfo *cluster)
 	pg_free(lc_messages);
 
 	/*
-	 * Before 9.3, pg_resetwal reported the xlogid and segno of the first log
-	 * file after reset as separate lines. Starting with 9.3, it reports the
-	 * WAL file name. If the old cluster is older than 9.3, we construct the
-	 * WAL file name from the xlogid and segno.
-	 */
-	if (GET_MAJOR_VERSION(cluster->major_version) <= 902)
-	{
-		if (got_tli && got_log_id && got_log_seg)
-		{
-			snprintf(cluster->controldata.nextxlogfile, 25, "%08X%08X%08X",
-					 tli, logid, segno);
-			got_nextxlogfile = true;
-		}
-	}
-
-	/*
 	 * Pre-v18 database clusters don't have the default char signedness
 	 * information. We use the char signedness of the platform where
 	 * pg_upgrade was built.
@@ -616,14 +537,12 @@ get_control_data(ClusterInfo *cluster)
 	/* verify that we got all the mandatory pg_control data */
 	if (!got_xid || !got_oid ||
 		!got_multi || !got_oldestxid ||
-		(!got_oldestmulti &&
-		 cluster->controldata.cat_ver >= MULTIXACT_FORMATCHANGE_CAT_VER) ||
+		!got_oldestmulti ||
 		!got_mxoff || (!live_check && !got_nextxlogfile) ||
 		!got_float8_pass_by_value || !got_align || !got_blocksz ||
 		!got_largesz || !got_walsz || !got_walseg || !got_ident ||
 		!got_index || !got_toast ||
-		(!got_large_object &&
-		 cluster->controldata.ctrl_ver >= LARGE_OBJECT_SIZE_PG_CONTROL_VER) ||
+		!got_large_object ||
 		!got_date_is_int || !got_data_checksum_version ||
 		//!got_database_mode_is_oracle ||
         (!got_default_char_signedness &&
@@ -645,8 +564,7 @@ get_control_data(ClusterInfo *cluster)
 		if (!got_multi)
 			pg_log(PG_REPORT, "  latest checkpoint next MultiXactId");
 
-		if (!got_oldestmulti &&
-			cluster->controldata.cat_ver >= MULTIXACT_FORMATCHANGE_CAT_VER)
+		if (!got_oldestmulti)
 			pg_log(PG_REPORT, "  latest checkpoint oldest MultiXactId");
 
 		if (!got_oldestxid)
@@ -685,8 +603,7 @@ get_control_data(ClusterInfo *cluster)
 		if (!got_toast)
 			pg_log(PG_REPORT, "  maximum TOAST chunk size");
 
-		if (!got_large_object &&
-			cluster->controldata.ctrl_ver >= LARGE_OBJECT_SIZE_PG_CONTROL_VER)
+		if (!got_large_object)
 			pg_log(PG_REPORT, "  large-object chunk size");
 
 		if (!got_date_is_int)
@@ -742,8 +659,7 @@ check_control_data(ControlData *oldctrl,
 	if (oldctrl->toast == 0 || oldctrl->toast != newctrl->toast)
 		pg_fatal("old and new pg_controldata maximum TOAST chunk sizes are invalid or do not match");
 
-	/* large_object added in 9.5, so it might not exist in the old cluster */
-	if (oldctrl->large_object != 0 &&
+	if (oldctrl->large_object == 0 ||
 		oldctrl->large_object != newctrl->large_object)
 		pg_fatal("old and new pg_controldata large-object chunk sizes are invalid or do not match");
 

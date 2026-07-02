@@ -28,7 +28,6 @@ static void check_for_incompatible_polymorphics(ClusterInfo *cluster);
 static void check_for_tables_with_oids(ClusterInfo *cluster);
 static void check_for_not_null_inheritance(ClusterInfo *cluster);
 static void check_for_gist_inet_ops(ClusterInfo *cluster);
-static void check_for_pg_role_prefix(ClusterInfo *cluster);
 static void check_for_new_tablespace_dir(void);
 static void check_for_user_defined_encoding_conversions(ClusterInfo *cluster);
 static void check_for_unicode_update(ClusterInfo *cluster);
@@ -129,26 +128,6 @@ static DataTypesUsageChecks data_types_usage_checks[] =
 	},
 
 	/*
-	 * 9.3 -> 9.4 Fully implement the 'line' data type in 9.4, which
-	 * previously returned "not enabled" by default and was only functionally
-	 * enabled with a compile-time switch; as of 9.4 "line" has a different
-	 * on-disk representation format.
-	 */
-	{
-		.status = gettext_noop("Checking for incompatible \"line\" data type"),
-		.report_filename = "tables_using_line.txt",
-		.base_query =
-		"SELECT 'pg_catalog.line'::pg_catalog.regtype AS oid",
-		.report_text =
-		gettext_noop("Your installation contains the \"line\" data type in user tables.\n"
-					 "This data type changed its internal and input/output format\n"
-					 "between your old and new versions so this\n"
-					 "cluster cannot currently be upgraded.  You can\n"
-					 "drop the problem columns and restart the upgrade.\n"),
-		.threshold_version = 903
-	},
-
-	/*
 	 * pg_upgrade only preserves these system values: pg_class.oid pg_type.oid
 	 * pg_enum.oid
 	 *
@@ -210,30 +189,6 @@ static DataTypesUsageChecks data_types_usage_checks[] =
 	},
 
 	/*
-	 * It's no longer allowed to create tables or views with "unknown"-type
-	 * columns.  We do not complain about views with such columns, because
-	 * they should get silently converted to "text" columns during the DDL
-	 * dump and reload; it seems unlikely to be worth making users do that by
-	 * hand.  However, if there's a table with such a column, the DDL reload
-	 * will fail, so we should pre-detect that rather than failing
-	 * mid-upgrade.  Worse, if there's a matview with such a column, the DDL
-	 * reload will silently change it to "text" which won't match the on-disk
-	 * storage (which is like "cstring").  So we *must* reject that.
-	 */
-	{
-		.status = gettext_noop("Checking for invalid \"unknown\" user columns"),
-		.report_filename = "tables_using_unknown.txt",
-		.base_query =
-		"SELECT 'pg_catalog.unknown'::pg_catalog.regtype AS oid",
-		.report_text =
-		gettext_noop("Your installation contains the \"unknown\" data type in user tables.\n"
-					 "This data type is no longer allowed in tables, so this cluster\n"
-					 "cannot currently be upgraded.  You can drop the problem columns\n"
-					 "and restart the upgrade.\n"),
-		.threshold_version = 906
-	},
-
-	/*
 	 * PG 12 changed the 'sql_identifier' type storage to be based on name,
 	 * not varchar, which breaks on-disk format for existing data. So we need
 	 * to prevent upgrade when used in user objects (tables, indexes, ...). In
@@ -253,23 +208,6 @@ static DataTypesUsageChecks data_types_usage_checks[] =
 					 "cluster cannot currently be upgraded.  You can drop the problem\n"
 					 "columns and restart the upgrade.\n"),
 		.threshold_version = 1100
-	},
-
-	/*
-	 * JSONB changed its storage format during 9.4 beta, so check for it.
-	 */
-	{
-		.status = gettext_noop("Checking for incompatible \"jsonb\" data type in user tables"),
-		.report_filename = "tables_using_jsonb.txt",
-		.base_query =
-		"SELECT 'pg_catalog.jsonb'::pg_catalog.regtype AS oid",
-		.report_text =
-		gettext_noop("Your installation contains the \"jsonb\" data type in user tables.\n"
-					 "The internal format of \"jsonb\" changed during 9.4 beta so this\n"
-					 "cluster cannot currently be upgraded.  You can drop the problem \n"
-					 "columns and restart the upgrade.\n"),
-		.threshold_version = MANUAL_CHECK,
-		.version_hook = jsonb_9_4_check_applicable
 	},
 
 	/*
@@ -713,20 +651,6 @@ check_and_dump_old_cluster(void)
 		check_for_gist_inet_ops(&old_cluster);
 
 	/*
-	 * Pre-PG 10 allowed tables with 'unknown' type columns and non WAL logged
-	 * hash indexes
-	 */
-	if (GET_MAJOR_VERSION(old_cluster.major_version) <= 906)
-	{
-		if (user_opts.check)
-			old_9_6_invalidate_hash_indexes(&old_cluster, true);
-	}
-
-	/* 9.5 and below should not have roles starting with pg_ */
-	if (GET_MAJOR_VERSION(old_cluster.major_version) <= 905)
-		check_for_pg_role_prefix(&old_cluster);
-
-	/*
 	 * While not a check option, we do this now because this is the only time
 	 * the old server is running.
 	 */
@@ -772,20 +696,6 @@ check_new_cluster(void)
 			 * system boundaries.
 			 */
 			check_hard_link(TRANSFER_MODE_SWAP);
-
-			/*
-			 * There are a few known issues with using --swap to upgrade from
-			 * versions older than 10.  For example, the sequence tuple format
-			 * changed in v10, and the visibility map format changed in 9.6.
-			 * While such problems are not insurmountable (and we may have to
-			 * deal with similar problems in the future, anyway), it doesn't
-			 * seem worth the effort to support swap mode for upgrades from
-			 * long-unsupported versions.
-			 */
-			if (GET_MAJOR_VERSION(old_cluster.major_version) < 1000)
-				pg_fatal("Swap mode can only upgrade clusters from PostgreSQL version %s and later.",
-						 "10");
-
 			break;
 	}
 
@@ -830,10 +740,6 @@ issue_warnings_and_set_wal_level(void)
 	 * WAL record showing wal_level as 'replica'.
 	 */
 	start_postmaster(&new_cluster, true);
-
-	/* Reindex hash indexes for old < 10.0 */
-	if (GET_MAJOR_VERSION(old_cluster.major_version) <= 906)
-		old_9_6_invalidate_hash_indexes(&new_cluster, false);
 
 	report_extension_updates(&new_cluster);
 
@@ -892,9 +798,9 @@ check_cluster_versions(void)
 	 * upgrades
 	 */
 
-	if (GET_MAJOR_VERSION(old_cluster.major_version) < 902)
+	if (GET_MAJOR_VERSION(old_cluster.major_version) < 1000)
 		pg_fatal("This utility can only upgrade from PostgreSQL version %s and later.",
-				 "9.2");
+				 "10");
 
 	/* Only current PG version is supported as a target */
 	if (GET_MAJOR_VERSION(new_cluster.major_version) != GET_MAJOR_VERSION(PG_VERSION_NUM))
@@ -1569,12 +1475,10 @@ check_for_incompatible_polymorphics(ClusterInfo *cluster)
 						 ", 'array_cat(anyarray,anyarray)'"
 						 ", 'array_prepend(anyelement,anyarray)'");
 
-	if (GET_MAJOR_VERSION(cluster->major_version) >= 903)
 		appendPQExpBufferStr(&old_polymorphics,
 							 ", 'array_remove(anyarray,anyelement)'"
 							 ", 'array_replace(anyarray,anyelement,anyelement)'");
 
-	if (GET_MAJOR_VERSION(cluster->major_version) >= 905)
 		appendPQExpBufferStr(&old_polymorphics,
 							 ", 'array_position(anyarray,anyelement)'"
 							 ", 'array_position(anyarray,anyelement,integer)'"
@@ -1865,63 +1769,6 @@ check_for_gist_inet_ops(ClusterInfo *cluster)
 				 "inet_ops operator class.\n"
 				 "A list of indexes with the problem is in the file:\n"
 				 "    %s", report.path);
-	}
-	else
-		check_ok();
-}
-
-/*
- * check_for_pg_role_prefix()
- *
- *	Versions older than 9.6 should not have any pg_* roles
- */
-static void
-check_for_pg_role_prefix(ClusterInfo *cluster)
-{
-	PGresult   *res;
-	PGconn	   *conn = connectToServer(cluster, "template1");
-	int			ntups;
-	int			i_roloid;
-	int			i_rolname;
-	FILE	   *script = NULL;
-	char		output_path[MAXPGPATH];
-
-	prep_status("Checking for roles starting with \"pg_\"");
-
-	snprintf(output_path, sizeof(output_path), "%s/%s",
-			 log_opts.basedir,
-			 "pg_role_prefix.txt");
-
-	res = executeQueryOrDie(conn,
-							"SELECT oid AS roloid, rolname "
-							"FROM pg_catalog.pg_roles "
-							"WHERE rolname ~ '^pg_'");
-
-	ntups = PQntuples(res);
-	i_roloid = PQfnumber(res, "roloid");
-	i_rolname = PQfnumber(res, "rolname");
-	for (int rowno = 0; rowno < ntups; rowno++)
-	{
-		if (script == NULL && (script = fopen_priv(output_path, "w")) == NULL)
-			pg_fatal("could not open file \"%s\": %m", output_path);
-		fprintf(script, "%s (oid=%s)\n",
-				PQgetvalue(res, rowno, i_rolname),
-				PQgetvalue(res, rowno, i_roloid));
-	}
-
-	PQclear(res);
-
-	PQfinish(conn);
-
-	if (script)
-	{
-		fclose(script);
-		pg_log(PG_REPORT, "fatal");
-		pg_fatal("Your installation contains roles starting with \"pg_\".\n"
-				 "\"pg_\" is a reserved prefix for system roles.  The cluster\n"
-				 "cannot be upgraded until these roles are renamed.\n"
-				 "A list of roles starting with \"pg_\" is in the file:\n"
-				 "    %s", output_path);
 	}
 	else
 		check_ok();

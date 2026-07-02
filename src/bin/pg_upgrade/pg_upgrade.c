@@ -65,7 +65,7 @@ static void prepare_new_cluster(void);
 static void prepare_new_globals(void);
 static void create_new_objects(void);
 static void copy_xact_xlog_xid(void);
-static void set_frozenxids(bool minmxid_only);
+static void set_frozenxids(void);
 static void make_outputdirs(char *pgdata);
 static void setup(char *argv0);
 static void create_logical_replication_slots(void);
@@ -587,7 +587,7 @@ prepare_new_globals(void)
 	/*
 	 * Before we restore anything, set frozenxids of initdb-created tables.
 	 */
-	set_frozenxids(false);
+	set_frozenxids();
 
 	/*
 	 * Now restore global objects (roles and tablespaces).
@@ -726,13 +726,6 @@ create_new_objects(void)
 	end_progress_output();
 	check_ok();
 
-	/*
-	 * We don't have minmxids for databases or relations in pre-9.3 clusters,
-	 * so set those after we have restored the schema.
-	 */
-	if (GET_MAJOR_VERSION(old_cluster.major_version) <= 902)
-		set_frozenxids(true);
-
 	/* update new_cluster info now that we have objects in the databases */
 	get_db_rel_and_slot_infos(&new_cluster);
 }
@@ -789,10 +782,7 @@ copy_xact_xlog_xid(void)
 	 * Copy old commit logs to new data dir. pg_clog has been renamed to
 	 * pg_xact in post-10 clusters.
 	 */
-	copy_subdir_files(GET_MAJOR_VERSION(old_cluster.major_version) <= 906 ?
-					  "pg_clog" : "pg_xact",
-					  GET_MAJOR_VERSION(new_cluster.major_version) <= 906 ?
-					  "pg_clog" : "pg_xact");
+	copy_subdir_files("pg_xact", "pg_xact");
 
 	prep_status("Setting oldest XID for new cluster");
 	exec_prog(UTILITY_LOG_FILE, NULL, true, true,
@@ -821,7 +811,6 @@ copy_xact_xlog_xid(void)
 	check_ok();
 
 	/* Copy or convert pg_multixact files */
-	Assert(new_cluster.controldata.cat_ver >= MULTIXACT_FORMATCHANGE_CAT_VER);
 	Assert(new_cluster.controldata.cat_ver >= MULTIXACTOFFSET_FORMATCHANGE_CAT_VER);
 	if (old_cluster.controldata.cat_ver >= MULTIXACTOFFSET_FORMATCHANGE_CAT_VER)
 	{
@@ -856,25 +845,7 @@ copy_xact_xlog_xid(void)
 		 * Determine the range of multixacts to convert.
 		 */
 		nxtmulti = old_cluster.controldata.chkpnt_nxtmulti;
-		if (old_cluster.controldata.cat_ver >= MULTIXACT_FORMATCHANGE_CAT_VER)
-		{
-			/* Versions 9.3 - 18: convert all multixids  */
 			oldstMulti = old_cluster.controldata.chkpnt_oldstMulti;
-		}
-		else
-		{
-			/*
-			 * In PostgreSQL 9.2 and below, multitransactions were only used
-			 * for row locking, and as such don't need to be preserved during
-			 * upgrade.  In that case, we utilize rewrite_multixacts() just to
-			 * initialize new, empty files in the new format.
-			 *
-			 * It's important that the oldest multi is set to the latest value
-			 * used by the old system, so that multixact.c returns the empty
-			 * set for multis that might be present on disk.
-			 */
-			oldstMulti = nxtmulti;
-		}
 		/* handle wraparound */
 		if (nxtmulti < FirstMultiXactId)
 			nxtmulti = FirstMultiXactId;
@@ -918,26 +889,18 @@ copy_xact_xlog_xid(void)
 /*
  *	set_frozenxids()
  *
- * This is called on the new cluster before we restore anything, with
- * minmxid_only = false.  Its purpose is to ensure that all initdb-created
+ * This is called on the new cluster before we restore anything.
+ * Its purpose is to ensure that all initdb-created
  * vacuumable tables have relfrozenxid/relminmxid matching the old cluster's
  * xid/mxid counters.  We also initialize the datfrozenxid/datminmxid of the
  * built-in databases to match.
  *
  * As we create user tables later, their relfrozenxid/relminmxid fields will
  * be restored properly by the binary-upgrade restore script.  Likewise for
- * user-database datfrozenxid/datminmxid.  However, if we're upgrading from a
- * pre-9.3 database, which does not store per-table or per-DB minmxid, then
- * the relminmxid/datminmxid values filled in by the restore script will just
- * be zeroes.
- *
- * Hence, with a pre-9.3 source database, a second call occurs after
- * everything is restored, with minmxid_only = true.  This pass will
- * initialize all tables and databases, both those made by initdb and user
- * objects, with the desired minmxid value.  frozenxid values are left alone.
+ * user-database datfrozenxid/datminmxid.
  */
 static void
-set_frozenxids(bool minmxid_only)
+set_frozenxids(void)
 {
 	int			dbnum;
 	PGconn	   *conn,
@@ -947,17 +910,13 @@ set_frozenxids(bool minmxid_only)
 	int			i_datname;
 	int			i_datallowconn;
 
-	if (!minmxid_only)
 		prep_status("Setting frozenxid and minmxid counters in new cluster");
-	else
-		prep_status("Setting minmxid counter in new cluster");
 
 	conn_template1 = connectToServer(&new_cluster, "template1");
 
 	PQclear(executeQueryOrDie(conn_template1,
 							  "set ivorysql.identifier_case_switch = normal;"));
 
-	if (!minmxid_only)
 		/* set pg_database.datfrozenxid */
 		PQclear(executeQueryOrDie(conn_template1,
 								  "UPDATE pg_catalog.pg_database "
@@ -998,7 +957,6 @@ set_frozenxids(bool minmxid_only)
 
 		conn = connectToServer(&new_cluster, datname);
 
-		if (!minmxid_only)
 			/* set pg_class.relfrozenxid */
 			PQclear(executeQueryOrDie(conn,
 									  "UPDATE	pg_catalog.pg_class "

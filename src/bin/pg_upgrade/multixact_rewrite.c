@@ -25,10 +25,7 @@ static void RecordMultiXactMembers(SlruSegState *members_writer,
  * 32-bit offsets to the current format.
  *
  * Multixids in the range [from_multi, to_multi) are read from the old
- * cluster, and written in the new format.  An important edge case is that if
- * from_multi == to_multi, this initializes the new pg_multixact files in the
- * new format without trying to open any old files.  (We rely on that when
- * upgrading from PostgreSQL version 9.2 or below.)
+ * cluster, and written in the new format.
  *
  * Returns the new nextOffset value; the caller should set it in the new
  * control file.  The new members always start from offset 1, regardless of
@@ -42,6 +39,7 @@ rewrite_multixacts(MultiXactId from_multi, MultiXactId to_multi)
 	SlruSegState *members_writer;
 	char		dir[MAXPGPATH] = {0};
 	bool		prev_multixid_valid = false;
+	OldMultiXactReader *old_reader;
 
 	/*
 	 * The range of valid multi XIDs is unchanged by the conversion (they are
@@ -63,10 +61,6 @@ rewrite_multixacts(MultiXactId from_multi, MultiXactId to_multi)
 	 * Convert old multixids, if needed, by reading them one-by-one from the
 	 * old cluster.
 	 */
-	if (to_multi != from_multi)
-	{
-		OldMultiXactReader *old_reader;
-
 		old_reader = AllocOldMultiXactRead(old_cluster.pgdata,
 										   old_cluster.controldata.chkpnt_nxtmulti,
 										   old_cluster.controldata.chkpnt_nxtmxoff);
@@ -113,7 +107,6 @@ rewrite_multixacts(MultiXactId from_multi, MultiXactId to_multi)
 		}
 
 		FreeOldMultiXactReader(old_reader);
-	}
 
 	/* Write the final 'next' offset to the last SLRU page */
 	RecordMultiXactOffset(offsets_writer, to_multi,

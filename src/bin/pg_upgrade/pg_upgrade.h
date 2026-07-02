@@ -106,35 +106,11 @@ extern bool pg_cluster_within_oracle_mode;
 
 
 /*
- * The format of visibility map was changed with this 9.6 commit.
- */
-#define VISIBILITY_MAP_FROZEN_BIT_CAT_VER 201603011
-
-/*
- * pg_multixact format changed in 9.3 commit 0ac5ad5134f2769ccbaefec73844f85,
- * ("Improve concurrency of foreign key locking") which also updated catalog
- * version to this value.  pg_upgrade behavior depends on whether old and new
- * server versions are both newer than this, or only the new one is.
- */
-#define MULTIXACT_FORMATCHANGE_CAT_VER 201301231
-
-/*
  * MultiXactOffset was changed from 32-bit to 64-bit in version 19, at this
  * catalog version.  pg_multixact files need to be converted when upgrading
  * across this version.
  */
 #define MULTIXACTOFFSET_FORMATCHANGE_CAT_VER 202512091
-
-/*
- * large object chunk size added to pg_controldata,
- * commit 5f93c37805e7485488480916b4585e098d3cc883
- */
-#define LARGE_OBJECT_SIZE_PG_CONTROL_VER 942
-
-/*
- * change in JSONB format during 9.4 beta
- */
-#define JSONB_FORMAT_CHANGE_CAT_VER 201409291
 
 /*
  * The control file was changed to have the default char signedness,
@@ -435,8 +411,6 @@ void		copyFileByRange(const char *src, const char *dst,
 							const char *schemaName, const char *relName);
 void		linkFile(const char *src, const char *dst,
 					 const char *schemaName, const char *relName);
-void		rewriteVisibilityMap(const char *fromfile, const char *tofile,
-								 const char *schemaName, const char *relName);
 void		check_file_clone(void);
 void		check_copy_file_range(void);
 void		check_hard_link(transferMode transfer_mode);
@@ -506,10 +480,7 @@ unsigned int str2uint(const char *str);
 
 /* version.c */
 
-bool		jsonb_9_4_check_applicable(ClusterInfo *cluster);
 bool		protocol_negotiation_supported(const ClusterInfo *cluster);
-void		old_9_6_invalidate_hash_indexes(ClusterInfo *cluster,
-											bool check_mode);
 
 void		report_extension_updates(ClusterInfo *cluster);
 
