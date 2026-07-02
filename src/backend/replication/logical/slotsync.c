@@ -557,9 +557,18 @@ drop_local_obsolete_slots(List *remote_slot_list)
 			 * locking the database, there is a possibility of a parallel
 			 * database drop by the startup process and the creation of a new
 			 * slot by the user. This new user-created slot may end up using
-			 * the same shared memory as that of 'local_slot'. Thus check if
-			 * local_slot is still the synced one before performing the actual
-			 * drop.
+			 * the same shared memory as that of 'local_slot'.
+			 *
+			 * Because local_slot still points to a reusable slot-array entry,
+			 * its fields (name, database OID, invalidation state) may already
+			 * describe such a replacement slot by the time we reach here.
+			 * That means the drop decision made by local_sync_slot_required()
+			 * above could have been based on the replacement slot's data, and
+			 * slot_database could refer to an unrelated database. The recheck
+			 * below keeps us from actually dropping a user-created
+			 * replacement slot; the residual risk is confined to this cycle
+			 * (for example, briefly locking an unrelated database) and is
+			 * acceptable because the race is rare and non-fatal.
 			 */
 			SpinLockAcquire(&local_slot->mutex);
 			synced_slot = local_slot->in_use && local_slot->data.synced;
