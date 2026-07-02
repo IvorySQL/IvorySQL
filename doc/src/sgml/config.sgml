@@ -8512,6 +8512,31 @@ log_line_prefix = '%m [%p] %q%u@%d/%a '
       </listitem>
      </varlistentry>
 
+     <varlistentry id="guc-log-statement-max-length" xreflabel="log_statement_max_length">
+      <term><varname>log_statement_max_length</varname> (<type>integer</type>)
+      <indexterm>
+       <primary><varname>log_statement_max_length</varname> configuration parameter</primary>
+      </indexterm>
+      </term>
+      <listitem>
+       <para>
+        If greater than zero, each statement logged by
+        <xref linkend="guc-log-statement"/>,
+        <xref linkend="guc-log-min-duration-statement"/>,
+        <xref linkend="guc-log-min-duration-sample"/>, or
+        <xref linkend="guc-log-transaction-sample-rate"/>
+        is truncated to at most this many bytes.
+        A value of zero causes statements to be logged with an empty body.
+        <literal>-1</literal> (the default) logs statements in full.
+        If this value is specified without units, it is taken as bytes.
+        This setting does not affect statements logged because of
+        <xref linkend="guc-log-min-error-statement"/>.
+        Only superusers and users with the appropriate <literal>SET</literal>
+        privilege can change this setting.
+       </para>
+      </listitem>
+     </varlistentry>
+
      <varlistentry id="guc-log-replication-commands" xreflabel="log_replication_commands">
       <term><varname>log_replication_commands</varname> (<type>boolean</type>)
       <indexterm>

@@ -304,6 +304,7 @@ extern PGDLLIMPORT int client_min_messages;
 extern PGDLLIMPORT int log_min_duration_sample;
 extern PGDLLIMPORT int log_min_duration_statement;
 extern PGDLLIMPORT int log_temp_files;
+extern PGDLLIMPORT int log_statement_max_length;
 extern PGDLLIMPORT double log_statement_sample_rate;
 extern PGDLLIMPORT double log_xact_sample_rate;
 extern PGDLLIMPORT char *backtrace_functions;

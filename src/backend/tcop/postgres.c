@@ -187,6 +187,7 @@ static int	SocketBackend(StringInfo inBuf);
 static int	ReadCommand(StringInfo inBuf);
 static void forbidden_in_wal_sender(char firstchar);
 static bool check_log_statement(List *stmt_list);
+static char *truncate_query_log(const char *query);
 static int	errdetail_execute(List *raw_parsetree_list);
 static int	errdetail_params(ParamListInfo params);
 static void bind_param_error_callback(void *arg);
@@ -1092,11 +1093,20 @@ exec_simple_query(const char *query_string)
 	/* Log immediately if dictated by log_statement */
 	if (check_log_statement(parsetree_list))
 	{
+		char	   *truncated_stmt = NULL;
+
+		if (log_statement_max_length >= 0)
+			truncated_stmt = truncate_query_log(query_string);
+
 		ereport(LOG,
-				(errmsg("statement: %s", query_string),
+				(errmsg("statement: %s",
+						(truncated_stmt != NULL) ? truncated_stmt : query_string),
 				 errhidestmt(true),
 				 errdetail_execute(parsetree_list)));
 		was_logged = true;
+
+		if (truncated_stmt != NULL)
+			pfree(truncated_stmt);
 	}
 
 	/*
@@ -1445,12 +1455,23 @@ exec_simple_query(const char *query_string)
 					 errhidestmt(true)));
 			break;
 		case 2:
-			ereport(LOG,
-					(errmsg("duration: %s ms  statement: %s",
-							msec_str, query_string),
-					 errhidestmt(true),
-					 errdetail_execute(parsetree_list)));
-			break;
+			{
+				char	   *truncated_stmt = NULL;
+
+				if (log_statement_max_length >= 0)
+					truncated_stmt = truncate_query_log(query_string);
+
+				ereport(LOG,
+						(errmsg("duration: %s ms  statement: %s",
+								msec_str,
+								(truncated_stmt != NULL) ? truncated_stmt : query_string),
+						 errhidestmt(true),
+						 errdetail_execute(parsetree_list)));
+
+				if (truncated_stmt != NULL)
+					pfree(truncated_stmt);
+				break;
+			}
 	}
 
 	if (save_log_statement_stats)
@@ -1713,13 +1734,23 @@ exec_parse_message(const char *query_string,	/* string to execute */
 					 errhidestmt(true)));
 			break;
 		case 2:
-			ereport(LOG,
-					(errmsg("duration: %s ms  parse %s: %s",
-							msec_str,
-							*stmt_name ? stmt_name : "<unnamed>",
-							query_string),
-					 errhidestmt(true)));
-			break;
+			{
+				char	   *truncated_stmt = NULL;
+
+				if (log_statement_max_length >= 0)
+					truncated_stmt = truncate_query_log(query_string);
+
+				ereport(LOG,
+						(errmsg("duration: %s ms  parse %s: %s",
+								msec_str,
+								*stmt_name ? stmt_name : "<unnamed>",
+								(truncated_stmt != NULL) ? truncated_stmt : query_string),
+						 errhidestmt(true)));
+
+				if (truncated_stmt != NULL)
+					pfree(truncated_stmt);
+				break;
+			}
 	}
 
 	if (save_log_statement_stats)
@@ -2294,16 +2325,26 @@ exec_bind_message(StringInfo input_message)
 					 errhidestmt(true)));
 			break;
 		case 2:
-			ereport(LOG,
-					(errmsg("duration: %s ms  bind %s%s%s: %s",
-							msec_str,
-							*stmt_name ? stmt_name : "<unnamed>",
-							*portal_name ? "/" : "",
-							*portal_name ? portal_name : "",
-							psrc->query_string),
-					 errhidestmt(true),
-					 errdetail_params(params)));
-			break;
+			{
+				char	   *truncated_stmt = NULL;
+
+				if (log_statement_max_length >= 0)
+					truncated_stmt = truncate_query_log(psrc->query_string);
+
+				ereport(LOG,
+						(errmsg("duration: %s ms  bind %s%s%s: %s",
+								msec_str,
+								*stmt_name ? stmt_name : "<unnamed>",
+								*portal_name ? "/" : "",
+								*portal_name ? portal_name : "",
+								(truncated_stmt != NULL) ? truncated_stmt : psrc->query_string),
+						 errhidestmt(true),
+						 errdetail_params(params)));
+
+				if (truncated_stmt != NULL)
+					pfree(truncated_stmt);
+				break;
+			}
 	}
 
 	if (save_log_statement_stats)
@@ -2448,6 +2489,11 @@ exec_execute_message(const char *portal_name, long max_rows)
 	/* Log immediately if dictated by log_statement */
 	if (check_log_statement(portal->stmts))
 	{
+		char	   *truncated_source = NULL;
+
+		if (log_statement_max_length >= 0)
+			truncated_source = truncate_query_log(sourceText);
+
 		ereport(LOG,
 				(errmsg("%s %s%s%s: %s",
 						execute_is_fetch ?
@@ -2456,10 +2502,13 @@ exec_execute_message(const char *portal_name, long max_rows)
 						prepStmtName,
 						*portal_name ? "/" : "",
 						*portal_name ? portal_name : "",
-						sourceText),
+						(truncated_source != NULL) ? truncated_source : sourceText),
 				 errhidestmt(true),
 				 errdetail_params(portalParams)));
 		was_logged = true;
+
+		if (truncated_source != NULL)
+			pfree(truncated_source);
 	}
 
 	/*
@@ -2571,19 +2620,29 @@ exec_execute_message(const char *portal_name, long max_rows)
 					 errhidestmt(true)));
 			break;
 		case 2:
-			ereport(LOG,
-					(errmsg("duration: %s ms  %s %s%s%s: %s",
-							msec_str,
-							execute_is_fetch ?
-							_("execute fetch from") :
-							_("execute"),
-							prepStmtName,
-							*portal_name ? "/" : "",
-							*portal_name ? portal_name : "",
-							sourceText),
-					 errhidestmt(true),
-					 errdetail_params(portalParams)));
-			break;
+			{
+				char	   *truncated_source = NULL;
+
+				if (log_statement_max_length >= 0)
+					truncated_source = truncate_query_log(sourceText);
+
+				ereport(LOG,
+						(errmsg("duration: %s ms  %s %s%s%s: %s",
+								msec_str,
+								execute_is_fetch ?
+								_("execute fetch from") :
+								_("execute"),
+								prepStmtName,
+								*portal_name ? "/" : "",
+								*portal_name ? portal_name : "",
+								(truncated_source != NULL) ? truncated_source : sourceText),
+						 errhidestmt(true),
+						 errdetail_params(portalParams)));
+
+				if (truncated_source != NULL)
+					pfree(truncated_source);
+				break;
+			}
 	}
 
 	if (save_log_statement_stats)
@@ -2695,6 +2754,42 @@ check_log_duration(char *msec_str, bool was_logged)
 	}
 
 	return 0;
+}
+
+/*
+ * truncate_query_log
+ *		Truncate query string if needed for logging
+ *
+ * Returns a palloc'd truncated copy if truncation is needed,
+ * or NULL if no truncation is required.
+ */
+static char *
+truncate_query_log(const char *query)
+{
+	size_t		query_len;
+	size_t		truncated_len;
+	char	   *truncated_query;
+
+	/* Truncation is disabled when the limit is negative */
+	if (!query || log_statement_max_length < 0)
+		return NULL;
+
+	query_len = strlen(query);
+
+	/*
+	 * No need to allocate a truncated copy if the query is shorter than
+	 * log_statement_max_length.
+	 */
+	if (query_len <= (size_t) log_statement_max_length)
+		return NULL;
+
+	/* Truncate at a multibyte character boundary */
+	truncated_len = pg_mbcliplen(query, query_len, log_statement_max_length);
+	truncated_query = (char *) palloc(truncated_len + 1);
+	memcpy(truncated_query, query, truncated_len);
+	truncated_query[truncated_len] = '\0';
+
+	return truncated_query;
 }
 
 /*

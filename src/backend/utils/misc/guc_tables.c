@@ -587,6 +587,7 @@ int			log_min_duration_statement = -1;
 int			log_parameter_max_length = -1;
 int			log_parameter_max_length_on_error = 0;
 int			log_temp_files = -1;
+int			log_statement_max_length = -1;
 double		log_statement_sample_rate = 1.0;
 double		log_xact_sample_rate = 0;
 char	   *backtrace_functions;

@@ -1983,6 +1983,16 @@
   options => 'log_statement_options',
 },
 
+{ name => 'log_statement_max_length', type => 'int', context => 'PGC_SUSET', group => 'LOGGING_WHAT',
+  short_desc => 'Sets the maximum length in bytes of logged statements.',
+  long_desc => '-1 means log statement in full; 0 means log an empty statement body.',
+  flags => 'GUC_UNIT_BYTE',
+  variable => 'log_statement_max_length',
+  boot_val => '-1',
+  min => '-1',
+  max => 'INT_MAX / 2',
+},
+
 { name => 'log_statement_sample_rate', type => 'real', context => 'PGC_SUSET', group => 'LOGGING_WHEN',
   short_desc => 'Fraction of statements exceeding "log_min_duration_sample" to be logged.',
   long_desc => 'Use a value between 0.0 (never log) and 1.0 (always log).',
