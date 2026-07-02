@@ -55,7 +55,7 @@ get_bin_version(ClusterInfo *cluster)
 	if (sscanf(cmd_output, "%*s %*s %d.%d", &v1, &v2) < 1)
 		pg_fatal("could not get pg_ctl version output from %s", cmd);
 
-		cluster->bin_version = v1 * 10000;
+	cluster->bin_version = v1 * 10000;
 }
 
 
@@ -344,8 +344,8 @@ check_data_dir(ClusterInfo *cluster)
 	check_single_dir(pg_data, "pg_subtrans");
 	check_single_dir(pg_data, PG_TBLSPC_DIR);
 	check_single_dir(pg_data, "pg_twophase");
-		check_single_dir(pg_data, "pg_wal");
-		check_single_dir(pg_data, "pg_xact");
+	check_single_dir(pg_data, "pg_wal");
+	check_single_dir(pg_data, "pg_xact");
 }
 
 
@@ -385,7 +385,7 @@ check_bin_dir(ClusterInfo *cluster, bool check_versions)
 	 */
 	get_bin_version(cluster);
 
-		check_exec(cluster->bindir, "pg_resetwal", check_versions);
+	check_exec(cluster->bindir, "pg_resetwal", check_versions);
 
 	if (cluster == &new_cluster)
 	{

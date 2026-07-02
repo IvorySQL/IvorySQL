@@ -230,7 +230,7 @@ get_control_data(ClusterInfo *cluster)
 			p++;				/* remove ':' char */
 			cluster->controldata.chkpnt_nxtepoch = str2uint(p);
 
-				p = strchr(p, ':');
+			p = strchr(p, ':');
 
 			if (p == NULL || strlen(p) <= 1)
 				pg_fatal("%d: controldata retrieval problem", __LINE__);

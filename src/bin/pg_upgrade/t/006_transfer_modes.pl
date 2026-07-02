@@ -29,10 +29,8 @@ sub test_mode
 	}
 	$new->init();
 
-		$new->append_conf('postgresql.conf',
-			"allow_in_place_tablespaces = true");
-		$old->append_conf('postgresql.conf',
-			"allow_in_place_tablespaces = true");
+	$new->append_conf('postgresql.conf', "allow_in_place_tablespaces = true");
+	$old->append_conf('postgresql.conf', "allow_in_place_tablespaces = true");
 
 	# We can only test security labels if both the old and new installations
 	# have dummy_seclabel.
@@ -76,15 +74,14 @@ sub test_mode
 			"CREATE TABLE test4 AS SELECT generate_series(400, 502)");
 	}
 
-		$old->safe_psql('postgres',
-			"CREATE TABLESPACE inplc_tblspc LOCATION ''");
-		$old->safe_psql('postgres',
-			"CREATE DATABASE testdb3 TABLESPACE inplc_tblspc");
-		$old->safe_psql('postgres',
-			"CREATE TABLE test5 TABLESPACE inplc_tblspc AS SELECT generate_series(503, 606)"
-		);
-		$old->safe_psql('testdb3',
-			"CREATE TABLE test6 AS SELECT generate_series(607, 711)");
+	$old->safe_psql('postgres', "CREATE TABLESPACE inplc_tblspc LOCATION ''");
+	$old->safe_psql('postgres',
+		"CREATE DATABASE testdb3 TABLESPACE inplc_tblspc");
+	$old->safe_psql('postgres',
+		"CREATE TABLE test5 TABLESPACE inplc_tblspc AS SELECT generate_series(503, 606)"
+	);
+	$old->safe_psql('testdb3',
+		"CREATE TABLE test6 AS SELECT generate_series(607, 711)");
 
 	# While we are here, test handling of large objects.
 	$old->safe_psql(
@@ -152,12 +149,10 @@ sub test_mode
 		}
 
 		# Tests for in-place tablespaces.
-			$result =
-			  $new->safe_psql('postgres', "SELECT COUNT(*) FROM test5");
-			is($result, '104', "test5 data after pg_upgrade $mode");
-			$result =
-			  $new->safe_psql('testdb3', "SELECT COUNT(*) FROM test6");
-			is($result, '105', "test6 data after pg_upgrade $mode");
+		$result = $new->safe_psql('postgres', "SELECT COUNT(*) FROM test5");
+		is($result, '104', "test5 data after pg_upgrade $mode");
+		$result = $new->safe_psql('testdb3', "SELECT COUNT(*) FROM test6");
+		is($result, '105', "test6 data after pg_upgrade $mode");
 
 		# Tests for large objects
 		$result = $new->safe_psql('postgres', "SELECT lo_get(4532)");

@@ -791,11 +791,11 @@ dropRoles(PGconn *conn)
 	int			i_rolname;
 	int			i;
 
-		printfPQExpBuffer(buf,
-						  "SELECT rolname "
-						  "FROM %s "
-						  "WHERE rolname !~ '^pg_' "
-						  "ORDER BY 1", role_catalog);
+	printfPQExpBuffer(buf,
+					  "SELECT rolname "
+					  "FROM %s "
+					  "WHERE rolname !~ '^pg_' "
+					  "ORDER BY 1", role_catalog);
 
 	res = executeQuery(conn, buf->data);
 
@@ -849,16 +849,16 @@ dumpRoles(PGconn *conn)
 	 * Notes: rolconfig is dumped later, and pg_authid must be used for
 	 * extracting rolcomment regardless of role_catalog.
 	 */
-		printfPQExpBuffer(buf,
-						  "SELECT oid, rolname, rolsuper, rolinherit, "
-						  "rolcreaterole, rolcreatedb, "
-						  "rolcanlogin, rolconnlimit, rolpassword, "
-						  "rolvaliduntil, rolreplication, rolbypassrls, "
-						  "pg_catalog.shobj_description(oid, 'pg_authid') as rolcomment, "
-						  "rolname = current_user AS is_current_user "
-						  "FROM %s "
-						  "WHERE rolname !~ '^pg_' "
-						  "ORDER BY 2", role_catalog);
+	printfPQExpBuffer(buf,
+					  "SELECT oid, rolname, rolsuper, rolinherit, "
+					  "rolcreaterole, rolcreatedb, "
+					  "rolcanlogin, rolconnlimit, rolpassword, "
+					  "rolvaliduntil, rolreplication, rolbypassrls, "
+					  "pg_catalog.shobj_description(oid, 'pg_authid') as rolcomment, "
+					  "rolname = current_user AS is_current_user "
+					  "FROM %s "
+					  "WHERE rolname !~ '^pg_' "
+					  "ORDER BY 2", role_catalog);
 
 	res = executeQuery(conn, buf->data);
 

@@ -587,32 +587,32 @@ transfer_relfile(FileNameMap *map, const char *type_suffix)
 		/* Copying files might take some time, so give feedback. */
 		pg_log(PG_STATUS, "%s", old_file);
 
-			switch (user_opts.transfer_mode)
-			{
-				case TRANSFER_MODE_CLONE:
-					pg_log(PG_VERBOSE, "cloning \"%s\" to \"%s\"",
-						   old_file, new_file);
-					cloneFile(old_file, new_file, map->nspname, map->relname);
-					break;
-				case TRANSFER_MODE_COPY:
-					pg_log(PG_VERBOSE, "copying \"%s\" to \"%s\"",
-						   old_file, new_file);
-					copyFile(old_file, new_file, map->nspname, map->relname);
-					break;
-				case TRANSFER_MODE_COPY_FILE_RANGE:
-					pg_log(PG_VERBOSE, "copying \"%s\" to \"%s\" with copy_file_range",
-						   old_file, new_file);
-					copyFileByRange(old_file, new_file, map->nspname, map->relname);
-					break;
-				case TRANSFER_MODE_LINK:
-					pg_log(PG_VERBOSE, "linking \"%s\" to \"%s\"",
-						   old_file, new_file);
-					linkFile(old_file, new_file, map->nspname, map->relname);
-					break;
-				case TRANSFER_MODE_SWAP:
-					/* swap mode is handled in its own code path */
-					pg_fatal("should never happen");
-					break;
-			}
+		switch (user_opts.transfer_mode)
+		{
+			case TRANSFER_MODE_CLONE:
+				pg_log(PG_VERBOSE, "cloning \"%s\" to \"%s\"",
+					   old_file, new_file);
+				cloneFile(old_file, new_file, map->nspname, map->relname);
+				break;
+			case TRANSFER_MODE_COPY:
+				pg_log(PG_VERBOSE, "copying \"%s\" to \"%s\"",
+					   old_file, new_file);
+				copyFile(old_file, new_file, map->nspname, map->relname);
+				break;
+			case TRANSFER_MODE_COPY_FILE_RANGE:
+				pg_log(PG_VERBOSE, "copying \"%s\" to \"%s\" with copy_file_range",
+					   old_file, new_file);
+				copyFileByRange(old_file, new_file, map->nspname, map->relname);
+				break;
+			case TRANSFER_MODE_LINK:
+				pg_log(PG_VERBOSE, "linking \"%s\" to \"%s\"",
+					   old_file, new_file);
+				linkFile(old_file, new_file, map->nspname, map->relname);
+				break;
+			case TRANSFER_MODE_SWAP:
+				/* swap mode is handled in its own code path */
+				pg_fatal("should never happen");
+				break;
+		}
 	}
 }

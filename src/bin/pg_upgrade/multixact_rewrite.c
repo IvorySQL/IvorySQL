@@ -61,52 +61,52 @@ rewrite_multixacts(MultiXactId from_multi, MultiXactId to_multi)
 	 * Convert old multixids, if needed, by reading them one-by-one from the
 	 * old cluster.
 	 */
-		old_reader = AllocOldMultiXactRead(old_cluster.pgdata,
-										   old_cluster.controldata.chkpnt_nxtmulti,
-										   old_cluster.controldata.chkpnt_nxtmxoff);
+	old_reader = AllocOldMultiXactRead(old_cluster.pgdata,
+									   old_cluster.controldata.chkpnt_nxtmulti,
+									   old_cluster.controldata.chkpnt_nxtmxoff);
 
-		for (MultiXactId multi = from_multi; multi != to_multi;)
+	for (MultiXactId multi = from_multi; multi != to_multi;)
+	{
+		MultiXactMember member;
+		bool		multixid_valid;
+
+		/*
+		 * Read this multixid's members.
+		 *
+		 * Locking-only XIDs that may be part of multi-xids don't matter after
+		 * upgrade, as there can be no transactions running across upgrade. So
+		 * as a small optimization, we only read one member from each
+		 * multixid: the one updating one, or if there was no update,
+		 * arbitrarily the first locking xid.
+		 */
+		multixid_valid = GetOldMultiXactIdSingleMember(old_reader, multi, &member);
+
+		/*
+		 * Write the new offset to pg_multixact/offsets.
+		 *
+		 * Even if this multixid is invalid, we still need to write its offset
+		 * if the *previous* multixid was valid.  That's because when reading
+		 * a multixid, the number of members is calculated from the difference
+		 * between the two offsets.
+		 */
+		RecordMultiXactOffset(offsets_writer, multi,
+							  (multixid_valid || prev_multixid_valid) ? next_offset : 0);
+
+		/* Write the members */
+		if (multixid_valid)
 		{
-			MultiXactMember member;
-			bool		multixid_valid;
-
-			/*
-			 * Read this multixid's members.
-			 *
-			 * Locking-only XIDs that may be part of multi-xids don't matter
-			 * after upgrade, as there can be no transactions running across
-			 * upgrade.  So as a small optimization, we only read one member
-			 * from each multixid: the one updating one, or if there was no
-			 * update, arbitrarily the first locking xid.
-			 */
-			multixid_valid = GetOldMultiXactIdSingleMember(old_reader, multi, &member);
-
-			/*
-			 * Write the new offset to pg_multixact/offsets.
-			 *
-			 * Even if this multixid is invalid, we still need to write its
-			 * offset if the *previous* multixid was valid.  That's because
-			 * when reading a multixid, the number of members is calculated
-			 * from the difference between the two offsets.
-			 */
-			RecordMultiXactOffset(offsets_writer, multi,
-								  (multixid_valid || prev_multixid_valid) ? next_offset : 0);
-
-			/* Write the members */
-			if (multixid_valid)
-			{
-				RecordMultiXactMembers(members_writer, next_offset, 1, &member);
-				next_offset += 1;
-			}
-
-			/* Advance to next multixid, handling wraparound */
-			multi++;
-			if (multi < FirstMultiXactId)
-				multi = FirstMultiXactId;
-			prev_multixid_valid = multixid_valid;
+			RecordMultiXactMembers(members_writer, next_offset, 1, &member);
+			next_offset += 1;
 		}
 
-		FreeOldMultiXactReader(old_reader);
+		/* Advance to next multixid, handling wraparound */
+		multi++;
+		if (multi < FirstMultiXactId)
+			multi = FirstMultiXactId;
+		prev_multixid_valid = multixid_valid;
+	}
+
+	FreeOldMultiXactReader(old_reader);
 
 	/* Write the final 'next' offset to the last SLRU page */
 	RecordMultiXactOffset(offsets_writer, to_multi,

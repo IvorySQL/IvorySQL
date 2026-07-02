@@ -845,7 +845,7 @@ copy_xact_xlog_xid(void)
 		 * Determine the range of multixacts to convert.
 		 */
 		nxtmulti = old_cluster.controldata.chkpnt_nxtmulti;
-			oldstMulti = old_cluster.controldata.chkpnt_oldstMulti;
+		oldstMulti = old_cluster.controldata.chkpnt_oldstMulti;
 		/* handle wraparound */
 		if (nxtmulti < FirstMultiXactId)
 			nxtmulti = FirstMultiXactId;
@@ -910,18 +910,18 @@ set_frozenxids(void)
 	int			i_datname;
 	int			i_datallowconn;
 
-		prep_status("Setting frozenxid and minmxid counters in new cluster");
+	prep_status("Setting frozenxid and minmxid counters in new cluster");
 
 	conn_template1 = connectToServer(&new_cluster, "template1");
 
 	PQclear(executeQueryOrDie(conn_template1,
-							  "set ivorysql.identifier_case_switch = normal;"));
+						  "set ivorysql.identifier_case_switch = normal;"));
 
-		/* set pg_database.datfrozenxid */
-		PQclear(executeQueryOrDie(conn_template1,
-								  "UPDATE pg_catalog.pg_database "
-								  "SET	datfrozenxid = '%u'",
-								  old_cluster.controldata.chkpnt_nxtxid));
+	/* set pg_database.datfrozenxid */
+	PQclear(executeQueryOrDie(conn_template1,
+							  "UPDATE pg_catalog.pg_database "
+							  "SET	datfrozenxid = '%u'",
+							  old_cluster.controldata.chkpnt_nxtxid));
 
 	/* set pg_database.datminmxid */
 	PQclear(executeQueryOrDie(conn_template1,
@@ -957,16 +957,16 @@ set_frozenxids(void)
 
 		conn = connectToServer(&new_cluster, datname);
 
-			/* set pg_class.relfrozenxid */
-			PQclear(executeQueryOrDie(conn,
-									  "UPDATE	pg_catalog.pg_class "
-									  "SET	relfrozenxid = '%u' "
-			/* only heap, materialized view, and TOAST are vacuumed */
-									  "WHERE	relkind IN ("
-									  CppAsString2(RELKIND_RELATION) ", "
-									  CppAsString2(RELKIND_MATVIEW) ", "
-									  CppAsString2(RELKIND_TOASTVALUE) ")",
-									  old_cluster.controldata.chkpnt_nxtxid));
+		/* set pg_class.relfrozenxid */
+		PQclear(executeQueryOrDie(conn,
+								  "UPDATE	pg_catalog.pg_class "
+								  "SET	relfrozenxid = '%u' "
+		/* only heap, materialized view, and TOAST are vacuumed */
+								  "WHERE	relkind IN ("
+								  CppAsString2(RELKIND_RELATION) ", "
+								  CppAsString2(RELKIND_MATVIEW) ", "
+								  CppAsString2(RELKIND_TOASTVALUE) ")",
+								  old_cluster.controldata.chkpnt_nxtxid));
 
 		/* set pg_class.relminmxid */
 		PQclear(executeQueryOrDie(conn,

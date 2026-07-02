@@ -1475,15 +1475,15 @@ check_for_incompatible_polymorphics(ClusterInfo *cluster)
 						 ", 'array_cat(anyarray,anyarray)'"
 						 ", 'array_prepend(anyelement,anyarray)'");
 
-		appendPQExpBufferStr(&old_polymorphics,
-							 ", 'array_remove(anyarray,anyelement)'"
-							 ", 'array_replace(anyarray,anyelement,anyelement)'");
+	appendPQExpBufferStr(&old_polymorphics,
+						 ", 'array_remove(anyarray,anyelement)'"
+						 ", 'array_replace(anyarray,anyelement,anyelement)'");
 
-		appendPQExpBufferStr(&old_polymorphics,
-							 ", 'array_position(anyarray,anyelement)'"
-							 ", 'array_position(anyarray,anyelement,integer)'"
-							 ", 'array_positions(anyarray,anyelement)'"
-							 ", 'width_bucket(anyelement,anyarray)'");
+	appendPQExpBufferStr(&old_polymorphics,
+						 ", 'array_position(anyarray,anyelement)'"
+						 ", 'array_position(anyarray,anyelement,integer)'"
+						 ", 'array_positions(anyarray,anyelement)'"
+						 ", 'width_bucket(anyelement,anyarray)'");
 
 	/*
 	 * The query below hardcodes FirstNormalObjectId as 16384 rather than
