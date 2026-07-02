@@ -134,21 +134,12 @@ btint2cmp(PG_FUNCTION_ARGS)
 	PG_RETURN_INT32((int32) a - (int32) b);
 }
 
-static int
-btint2fastcmp(Datum x, Datum y, SortSupport ssup)
-{
-	int16		a = DatumGetInt16(x);
-	int16		b = DatumGetInt16(y);
-
-	return (int) a - (int) b;
-}
-
 Datum
 btint2sortsupport(PG_FUNCTION_ARGS)
 {
 	SortSupport ssup = (SortSupport) PG_GETARG_POINTER(0);
 
-	ssup->comparator = btint2fastcmp;
+	ssup->comparator = ssup_datum_int32_cmp;
 	PG_RETURN_VOID();
 }
 
@@ -431,26 +422,12 @@ btoidcmp(PG_FUNCTION_ARGS)
 		PG_RETURN_INT32(A_LESS_THAN_B);
 }
 
-static int
-btoidfastcmp(Datum x, Datum y, SortSupport ssup)
-{
-	Oid			a = DatumGetObjectId(x);
-	Oid			b = DatumGetObjectId(y);
-
-	if (a > b)
-		return A_GREATER_THAN_B;
-	else if (a == b)
-		return 0;
-	else
-		return A_LESS_THAN_B;
-}
-
 Datum
 btoidsortsupport(PG_FUNCTION_ARGS)
 {
 	SortSupport ssup = (SortSupport) PG_GETARG_POINTER(0);
 
-	ssup->comparator = btoidfastcmp;
+	ssup->comparator = ssup_datum_unsigned_cmp;
 	PG_RETURN_VOID();
 }
 
@@ -513,26 +490,12 @@ btoid8cmp(PG_FUNCTION_ARGS)
 		PG_RETURN_INT32(A_LESS_THAN_B);
 }
 
-static int
-btoid8fastcmp(Datum x, Datum y, SortSupport ssup)
-{
-	Oid8		a = DatumGetObjectId8(x);
-	Oid8		b = DatumGetObjectId8(y);
-
-	if (a > b)
-		return A_GREATER_THAN_B;
-	else if (a == b)
-		return 0;
-	else
-		return A_LESS_THAN_B;
-}
-
 Datum
 btoid8sortsupport(PG_FUNCTION_ARGS)
 {
 	SortSupport ssup = (SortSupport) PG_GETARG_POINTER(0);
 
-	ssup->comparator = btoid8fastcmp;
+	ssup->comparator = ssup_datum_unsigned_cmp;
 	PG_RETURN_VOID();
 }
 
