@@ -1457,7 +1457,7 @@ pgstat_get_io_time_index(IOOp io_op)
 static inline double
 pg_stat_us_to_ms(PgStat_Counter val_ms)
 {
-	return val_ms * (double) 0.001;
+	return (double) val_ms / 1000.0;
 }
 
 /*
