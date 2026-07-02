@@ -212,11 +212,11 @@ ConnectDatabase(const char *dbname, const char *connection_string,
 	my_version = PG_VERSION_NUM;
 
 	/*
-	 * We allow the server to be back to 9.2, and up to any minor release of
+	 * We allow the server to be back to 10, and up to any minor release of
 	 * our own major version.  (See also version check in pg_dump.c.)
 	 */
 	if (my_version != server_version_temp
-		&& (server_version_temp < 90200 ||
+		&& (server_version_temp < 100000 ||
 			(server_version_temp / 100) > (my_version / 100)))
 	{
 		pg_log_error("aborting because of server version mismatch");

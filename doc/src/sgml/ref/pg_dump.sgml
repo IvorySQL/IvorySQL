@@ -407,18 +407,6 @@ PostgreSQL documentation
         and there is no way to continue with the dump, so <application>pg_dump</application> has no choice
         but to abort the dump.
        </para>
-       <para>
-        To perform a parallel dump, the database server needs to support
-        synchronized snapshots, a feature that was introduced in
-        <productname>PostgreSQL</productname> 9.2 for primary servers and 10
-        for standbys. With this feature, database clients can ensure they see
-        the same data set even though they use different connections.
-        <command>pg_dump -j</command> uses multiple database connections; it
-        connects to the database once with the leader process and once again
-        for each worker job. Without the synchronized snapshot feature, the
-        different worker jobs wouldn't be guaranteed to see the same data in
-        each connection, which could lead to an inconsistent backup.
-       </para>
       </listitem>
      </varlistentry>
 
@@ -1717,7 +1705,7 @@ CREATE DATABASE foo WITH TEMPLATE template0;
    <productname>PostgreSQL</productname> server versions newer than
    <application>pg_dump</application>'s version.  <application>pg_dump</application> can also
    dump from <productname>PostgreSQL</productname> servers older than its own version.
-   (Currently, servers back to version 9.2 are supported.)
+   (Currently, servers back to version 10 are supported.)
    However, <application>pg_dump</application> cannot dump from
    <productname>PostgreSQL</productname> servers newer than its own major version;
    it will refuse to even try, rather than risk making an invalid dump.
