@@ -134,6 +134,8 @@ INSERT INTO wishlist_items (wishlist_items_id, wishlist_id, product_no) VALUES
 
 -- single element path pattern
 SELECT * FROM GRAPH_TABLE (myshop MATCH (c IS customers) COLUMNS (c.name));
+-- unknown type resolution
+SELECT *, pg_typeof(unknown_col) AS unknown_col_type, pg_typeof(null_col) AS null_col_type FROM GRAPH_TABLE (myshop MATCH (c IS customers) COLUMNS (c.name, 'unknown-literal' AS unknown_col, NULL AS null_col));
 SELECT * FROM GRAPH_TABLE (myshop MATCH (c IS customers WHERE c.address = 'US')-[IS customer_orders]->(o IS orders) COLUMNS (c.name));
 -- graph element specification without label or variable
 SELECT * FROM GRAPH_TABLE (myshop MATCH (c IS customers WHERE c.address = 'US')-[]->(o IS orders) COLUMNS (c.name AS customer_name));

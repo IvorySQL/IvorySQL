@@ -160,6 +160,15 @@ SELECT * FROM GRAPH_TABLE (myshop MATCH (c IS customers) COLUMNS (c.name));
  customer3
 (3 rows)
 
+-- unknown type resolution
+SELECT *, pg_typeof(unknown_col) AS unknown_col_type, pg_typeof(null_col) AS null_col_type FROM GRAPH_TABLE (myshop MATCH (c IS customers) COLUMNS (c.name, 'unknown-literal' AS unknown_col, NULL AS null_col));
+   name    |   unknown_col   | null_col | unknown_col_type | null_col_type 
+-----------+-----------------+----------+------------------+---------------
+ customer1 | unknown-literal |          | text             | text
+ customer2 | unknown-literal |          | text             | text
+ customer3 | unknown-literal |          | text             | text
+(3 rows)
+
 SELECT * FROM GRAPH_TABLE (myshop MATCH (c IS customers WHERE c.address = 'US')-[IS customer_orders]->(o IS orders) COLUMNS (c.name));
    name    
 -----------
