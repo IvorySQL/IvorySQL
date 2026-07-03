@@ -1583,7 +1583,7 @@ AlterPropGraph(ParseState *pstate, const AlterPropGraphStmt *stmt)
 		Oid			peoid;
 		Oid			pgerelid;
 		Oid			labeloid;
-		Oid			ellabeloid;
+		Oid			ellabeloid = InvalidOid;
 
 		if (stmt->element_kind == PROPGRAPH_ELEMENT_KIND_VERTEX)
 			peoid = get_vertex_oid(pstate, pgrelid, stmt->element_alias, -1);
@@ -1594,17 +1594,11 @@ AlterPropGraph(ParseState *pstate, const AlterPropGraphStmt *stmt)
 								   Anum_pg_propgraph_label_oid,
 								   ObjectIdGetDatum(pgrelid),
 								   CStringGetDatum(stmt->alter_label));
-		if (!labeloid)
-			ereport(ERROR,
-					errcode(ERRCODE_UNDEFINED_OBJECT),
-					errmsg("property graph \"%s\" element \"%s\" has no label \"%s\"",
-						   get_rel_name(pgrelid), stmt->element_alias, stmt->alter_label),
-					parser_errposition(pstate, -1));
-
-		ellabeloid = GetSysCacheOid2(PROPGRAPHELEMENTLABELELEMENTLABEL,
-									 Anum_pg_propgraph_element_label_oid,
-									 ObjectIdGetDatum(peoid),
-									 ObjectIdGetDatum(labeloid));
+		if (labeloid)
+			ellabeloid = GetSysCacheOid2(PROPGRAPHELEMENTLABELELEMENTLABEL,
+										 Anum_pg_propgraph_element_label_oid,
+										 ObjectIdGetDatum(peoid),
+										 ObjectIdGetDatum(labeloid));
 		if (!ellabeloid)
 			ereport(ERROR,
 					errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -1625,7 +1619,7 @@ AlterPropGraph(ParseState *pstate, const AlterPropGraphStmt *stmt)
 	{
 		Oid			peoid;
 		Oid			labeloid;
-		Oid			ellabeloid;
+		Oid			ellabeloid = InvalidOid;
 		ObjectAddress obj;
 
 		if (stmt->element_kind == PROPGRAPH_ELEMENT_KIND_VERTEX)
@@ -1637,17 +1631,11 @@ AlterPropGraph(ParseState *pstate, const AlterPropGraphStmt *stmt)
 								   Anum_pg_propgraph_label_oid,
 								   ObjectIdGetDatum(pgrelid),
 								   CStringGetDatum(stmt->alter_label));
-		if (!labeloid)
-			ereport(ERROR,
-					errcode(ERRCODE_UNDEFINED_OBJECT),
-					errmsg("property graph \"%s\" element \"%s\" has no label \"%s\"",
-						   get_rel_name(pgrelid), stmt->element_alias, stmt->alter_label),
-					parser_errposition(pstate, -1));
-
-		ellabeloid = GetSysCacheOid2(PROPGRAPHELEMENTLABELELEMENTLABEL,
-									 Anum_pg_propgraph_element_label_oid,
-									 ObjectIdGetDatum(peoid),
-									 ObjectIdGetDatum(labeloid));
+		if (labeloid)
+			ellabeloid = GetSysCacheOid2(PROPGRAPHELEMENTLABELELEMENTLABEL,
+										 Anum_pg_propgraph_element_label_oid,
+										 ObjectIdGetDatum(peoid),
+										 ObjectIdGetDatum(labeloid));
 
 		if (!ellabeloid)
 			ereport(ERROR,
@@ -1660,20 +1648,23 @@ AlterPropGraph(ParseState *pstate, const AlterPropGraphStmt *stmt)
 		{
 			char	   *propname = strVal(lfirst(lc));
 			Oid			propoid;
-			Oid			plpoid;
+			Oid			plpoid = InvalidOid;
 
 			propoid = GetSysCacheOid2(PROPGRAPHPROPNAME,
 									  Anum_pg_propgraph_property_oid,
 									  ObjectIdGetDatum(pgrelid),
 									  CStringGetDatum(propname));
-			if (!propoid)
+			if (propoid)
+				plpoid = GetSysCacheOid2(PROPGRAPHLABELPROP,
+										 Anum_pg_propgraph_label_property_oid,
+										 ObjectIdGetDatum(ellabeloid),
+										 ObjectIdGetDatum(propoid));
+			if (!plpoid)
 				ereport(ERROR,
 						errcode(ERRCODE_UNDEFINED_OBJECT),
 						errmsg("property graph \"%s\" element \"%s\" label \"%s\" has no property \"%s\"",
 							   get_rel_name(pgrelid), stmt->element_alias, stmt->alter_label, propname),
 						parser_errposition(pstate, -1));
-
-			plpoid = GetSysCacheOid2(PROPGRAPHLABELPROP, Anum_pg_propgraph_label_property_oid, ObjectIdGetDatum(ellabeloid), ObjectIdGetDatum(propoid));
 
 			ObjectAddressSet(obj, PropgraphLabelPropertyRelationId, plpoid);
 			performDeletion(&obj, stmt->drop_behavior, 0);
