@@ -83,7 +83,6 @@ gbt_numeric_cmp(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 static const gbtree_vinfo tinfo =
 {
 	gbt_t_numeric,
-	0,
 	false,						/* no truncation permitted */
 	gbt_numeric_gt,
 	gbt_numeric_ge,

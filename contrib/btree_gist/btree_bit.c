@@ -136,7 +136,6 @@ gbt_bit_l2n(GBT_VARKEY *leaf, FmgrInfo *flinfo)
 static const gbtree_vinfo tinfo =
 {
 	gbt_t_bit,
-	0,
 	true,						/* internal keys can be truncated */
 	gbt_bitgt,
 	gbt_bitge,
