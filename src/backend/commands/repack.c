@@ -63,6 +63,7 @@
 #include "libpq/pqmq.h"
 #include "miscadmin.h"
 #include "optimizer/optimizer.h"
+#include "parser/parse_relation.h"
 #include "pgstat.h"
 #include "replication/logicalrelation.h"
 #include "storage/bufmgr.h"
@@ -3035,8 +3036,60 @@ initialize_change_context(ChangeContext *chgcxt,
 	/* Only initialize fields needed by ExecInsertIndexTuples(). */
 	chgcxt->cc_estate = CreateExecutorState();
 
-	chgcxt->cc_rri = (ResultRelInfo *) palloc(sizeof(ResultRelInfo));
-	InitResultRelInfo(chgcxt->cc_rri, relation, 0, 0, 0);
+	/*
+	 * Set up a range table for the executor, containing our repacked table as
+	 * its only member.
+	 */
+	{
+		RangeTblEntry *rte;
+		TupleDesc	desc = RelationGetDescr(relation);
+		List	   *perminfos = NIL;
+		Bitmapset  *updatedCols = NULL;
+		RTEPermissionInfo *perminfo;
+
+		/*
+		 * For our use, the RTE only needs to have perminfoindex initialized,
+		 * but there's no reason to not set the fields whose values we have at
+		 * hand.
+		 */
+		rte = makeNode(RangeTblEntry);
+		rte->rtekind = RTE_RELATION;
+		rte->relid = RelationGetRelid(relation);
+		rte->relkind = RelationGetForm(relation)->relkind;
+		/* Create the RTEPermissionInfo instance (and set ->perminfoindex). */
+		addRTEPermissionInfo(&perminfos, rte);
+
+		/*
+		 * Initialize updatedCols to show that all columns are updated.  This
+		 * is of course not necessarily true, and we cannot know this early;
+		 * but this is only used by ExecInsertIndexTuples to flag index
+		 * updates with no logical value changes, so if it's wrong, nothing
+		 * terribly bad happens. We may want to improve this someday though.
+		 *
+		 * Don't claim that dropped columns are changed though.
+		 */
+		for (int i = 0; i < desc->natts; i++)
+		{
+			CompactAttribute *attr = TupleDescCompactAttr(desc, i);
+
+			if (attr->attisdropped)
+				continue;
+			updatedCols = bms_add_member(updatedCols,
+										 i + 1 - FirstLowInvalidHeapAttributeNumber);
+		}
+
+		/* install updatedCols in the right place */
+		perminfo = getRTEPermissionInfo(perminfos, rte);
+		perminfo->updatedCols = updatedCols;
+
+		/* finally we can initialize the range table proper */
+		ExecInitRangeTable(chgcxt->cc_estate, list_make1(rte), perminfos,
+						   bms_make_singleton(1));
+	}
+
+	/* Set up our ResultRelInfo to use for index updates */
+	chgcxt->cc_rri = makeNode(ResultRelInfo);
+	InitResultRelInfo(chgcxt->cc_rri, relation, 1, NULL, 0);
 	ExecOpenIndices(chgcxt->cc_rri, false);
 
 	/*
