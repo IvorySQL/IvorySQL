@@ -419,13 +419,15 @@ extern PGDLLIMPORT BufferDesc *LocalBufferDescriptors;
 
 
 static inline BufferDesc *
-GetBufferDescriptor(uint32 id)
+GetBufferDescriptor(int id)
 {
+	Assert(id >= 0 && id < NBuffers);
+
 	return &(BufferDescriptors[id]).bufferdesc;
 }
 
 static inline BufferDesc *
-GetLocalBufferDescriptor(uint32 id)
+GetLocalBufferDescriptor(int id)
 {
 	return &LocalBufferDescriptors[id];
 }
