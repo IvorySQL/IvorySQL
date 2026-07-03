@@ -584,7 +584,7 @@ gbt_var_picksplit(const GistEntryVector *entryvec, GIST_SPLITVEC *v,
  * The GiST consistent method
  */
 bool
-gbt_var_consistent(GBT_VARKEY_R *key,
+gbt_var_consistent(const GBT_VARKEY_R *key,
 				   const void *query,
 				   StrategyNumber strategy,
 				   Oid collation,

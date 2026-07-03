@@ -262,14 +262,14 @@ gbt_num_bin_union(Datum *u, GBT_NUMKEY *e, const gbtree_ninfo *tinfo, FmgrInfo *
 bool
 gbt_num_consistent(const GBT_NUMKEY_R *key,
 				   const void *query,
-				   const StrategyNumber *strategy,
+				   StrategyNumber strategy,
 				   bool is_leaf,
 				   const gbtree_ninfo *tinfo,
 				   FmgrInfo *flinfo)
 {
 	bool		retval;
 
-	switch (*strategy)
+	switch (strategy)
 	{
 		case BTLessEqualStrategyNumber:
 			retval = tinfo->f_ge(query, key->lower, flinfo);

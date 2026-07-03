@@ -102,7 +102,7 @@ extern bool gbt_var_same(Datum d1, Datum d2, Oid collation,
 extern float *gbt_var_penalty(float *res, const GISTENTRY *o, const GISTENTRY *n,
 							  Oid collation, const gbtree_vinfo *tinfo, FmgrInfo *flinfo);
 
-extern bool gbt_var_consistent(GBT_VARKEY_R *key, const void *query,
+extern bool gbt_var_consistent(const GBT_VARKEY_R *key, const void *query,
 							   StrategyNumber strategy, Oid collation, bool is_leaf,
 							   const gbtree_vinfo *tinfo, FmgrInfo *flinfo);
 

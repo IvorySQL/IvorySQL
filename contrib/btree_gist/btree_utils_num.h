@@ -197,7 +197,7 @@ float_penalty_num_impl(double olower, double oupper,
 extern Interval *abs_interval(Interval *a);
 
 extern bool gbt_num_consistent(const GBT_NUMKEY_R *key, const void *query,
-							   const StrategyNumber *strategy, bool is_leaf,
+							   StrategyNumber strategy, bool is_leaf,
 							   const gbtree_ninfo *tinfo, FmgrInfo *flinfo);
 
 extern float8 gbt_num_distance(const GBT_NUMKEY_R *key, const void *query,

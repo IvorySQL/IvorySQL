@@ -207,7 +207,7 @@ gbt_time_consistent(PG_FUNCTION_ARGS)
 	key.lower = (GBT_NUMKEY *) &kkk->lower;
 	key.upper = (GBT_NUMKEY *) &kkk->upper;
 
-	PG_RETURN_BOOL(gbt_num_consistent(&key, &query, &strategy,
+	PG_RETURN_BOOL(gbt_num_consistent(&key, &query, strategy,
 									  GIST_LEAF(entry), &tinfo, fcinfo->flinfo));
 }
 
@@ -251,7 +251,7 @@ gbt_timetz_consistent(PG_FUNCTION_ARGS)
 	key.lower = (GBT_NUMKEY *) &kkk->lower;
 	key.upper = (GBT_NUMKEY *) &kkk->upper;
 
-	PG_RETURN_BOOL(gbt_num_consistent(&key, &qqq, &strategy,
+	PG_RETURN_BOOL(gbt_num_consistent(&key, &qqq, strategy,
 									  GIST_LEAF(entry), &tinfo, fcinfo->flinfo));
 }
 
