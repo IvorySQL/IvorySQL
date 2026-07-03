@@ -1,5 +1,7 @@
 /*
  * contrib/btree_gist/btree_utils_var.h
+ *
+ * Declarations for btree_gist code working with varlena indexed data types.
  */
 #ifndef __BTREE_UTILS_VAR_H__
 #define __BTREE_UTILS_VAR_H__
@@ -7,10 +9,21 @@
 #include "access/gist.h"
 #include "btree_gist.h"
 
-/* Variable length key */
+/*
+ * An internal index key (also called a node in some places) includes a
+ * lower and an upper bound, both of which are varlena datums, packed into
+ * a wrapper varlena datum.  We also work with leaf keys, which contain a
+ * single varlena datum wrapped in another varlena; this case can be
+ * distinguished by noting that the wrapper isn't long enough to hold a
+ * second datum.  For simplicity we consider the wrapper to be a bytea.
+ */
 typedef bytea GBT_VARKEY;
 
-/* Better readable key */
+/*
+ * To actually work on a key, we use this more readable struct containing
+ * pointers directly to the lower and upper values.  gbt_var_key_readable()
+ * and gbt_var_key_copy() convert between these two representations.
+ */
 typedef struct
 {
 	bytea	   *lower,
@@ -19,6 +32,27 @@ typedef struct
 
 /*
  * type description
+ *
+ * For types that set the "trnc" flag, the representation of keys on internal
+ * pages may be different from that of keys on leaf pages (which match the
+ * data type's normal representation).  The methods f_gt, f_ge, f_eq, f_le,
+ * f_lt expect to work on the normal representation, and therefore can be used
+ * only with leaf-page index entries.  The f_cmp method expects to work on the
+ * representation used on internal pages, so it must not be used with leaf
+ * entries.  The f_l2n method converts the leaf-page representation to the
+ * internal-page representation; if that pointer is NULL, they're the same.
+ *
+ * Currently, btree_utils_var.c effectively assumes that internal-page keys
+ * of "trnc" types are equivalent to bytea in representation and semantics.
+ * The truncation process shortens the lower+upper bounds of a downlink node
+ * to be of length equal to their common prefix's length plus one byte.
+ * This would not work for types with comparison semantics more complex than
+ * bytewise comparison.  Even then, we need a hack to deal with the fact that
+ * shortening the upper bound would normally lead to its being considered less
+ * than the original maximum leaf-page entry.  We handle that by considering
+ * any search key that matches the bound for the bound's full length to be a
+ * potential match, even if it's longer (see gbt_var_node_pf_match and its
+ * callers).
  */
 typedef struct
 {

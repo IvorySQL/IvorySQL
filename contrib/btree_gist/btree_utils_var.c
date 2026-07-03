@@ -1,5 +1,7 @@
 /*
  * contrib/btree_gist/btree_utils_var.c
+ *
+ * Common routines for btree_gist code working with varlena indexed data types.
  */
 #include "postgres.h"
 
@@ -37,6 +39,7 @@ gbt_var_decompress(PG_FUNCTION_ARGS)
 	GISTENTRY  *entry = (GISTENTRY *) PG_GETARG_POINTER(0);
 	GBT_VARKEY *key = (GBT_VARKEY *) PG_DETOAST_DATUM(entry->key);
 
+	/* We only need a new GISTENTRY if detoasting did something */
 	if (key != (GBT_VARKEY *) DatumGetPointer(entry->key))
 	{
 		GISTENTRY  *retval = palloc_object(GISTENTRY);
@@ -51,7 +54,10 @@ gbt_var_decompress(PG_FUNCTION_ARGS)
 	PG_RETURN_POINTER(entry);
 }
 
-/* Returns a better readable representation of variable key ( sets pointer ) */
+/*
+ * Extract a "readable" representation of a GBT_VARKEY, containing direct
+ * pointers to the contained lower and upper datums.
+ */
 GBT_VARKEY_R
 gbt_var_key_readable(const GBT_VARKEY *k)
 {
@@ -83,7 +89,10 @@ gbt_var_key_from_datum(const varlena *u)
 }
 
 /*
- * Create an entry to store in the index, from lower and upper bound.
+ * Create a key entry to store in the index, from lower and upper bound.
+ *
+ * This code assumes that none of the types we work with require more
+ * than INTALIGN alignment.
  */
 GBT_VARKEY *
 gbt_var_key_copy(const GBT_VARKEY_R *u)
@@ -100,16 +109,17 @@ gbt_var_key_copy(const GBT_VARKEY_R *u)
 	return r;
 }
 
-
+/*
+ * Convert a GBT_VARKEY in leaf form to a GBT_VARKEY in internal form.
+ * No-op if the data type doesn't require a transformation.
+ */
 static GBT_VARKEY *
 gbt_var_leaf2node(GBT_VARKEY *leaf, const gbtree_vinfo *tinfo, FmgrInfo *flinfo)
 {
-	GBT_VARKEY *out = leaf;
-
 	if (tinfo->f_l2n)
-		out = tinfo->f_l2n(leaf, flinfo);
-
-	return out;
+		return tinfo->f_l2n(leaf, flinfo);
+	else
+		return leaf;
 }
 
 
@@ -173,7 +183,10 @@ gbt_var_node_cp_len(const GBT_VARKEY *node, const gbtree_vinfo *tinfo)
 
 
 /*
- * returns true, if query matches prefix ( common prefix )
+ * returns true if query matches prefix up to the length of the prefix
+ *
+ * We need this to avoid edge-case problems when the "prefix" is a truncated
+ * datum; see discussion in btree_utils_var.h.
  */
 static bool
 gbt_bytea_pf_match(const bytea *pf, const bytea *query, const gbtree_vinfo *tinfo)
@@ -195,7 +208,14 @@ gbt_bytea_pf_match(const bytea *pf, const bytea *query, const gbtree_vinfo *tinf
 
 
 /*
- * returns true, if query matches node using common prefix
+ * returns true if query matches node according to common-prefix rule
+ *
+ * If the data type is truncatable, then a shortened upper bound must be
+ * considered to include all values that match it up to its own length,
+ * even though longer values would normally be considered larger.
+ *
+ * XXX isn't the check against node->lower useless?
+ * A truncated lower bound would already be less than all included values.
  */
 static bool
 gbt_var_node_pf_match(const GBT_VARKEY_R *node, const bytea *query, const gbtree_vinfo *tinfo)
@@ -207,13 +227,16 @@ gbt_var_node_pf_match(const GBT_VARKEY_R *node, const bytea *query, const gbtree
 
 
 /*
- *  truncates / compresses the node key
- *  cpf_length .. common prefix length
+ * truncates / compresses the node key
+ *
+ * cpf_length is the common prefix length of the lower and upper values.
+ * We truncate to that plus one byte, so that the node represents a range
+ * of leaf values but doesn't have undue specificity.
  */
 static GBT_VARKEY *
 gbt_var_node_truncate(const GBT_VARKEY *node, int32 cpf_length, const gbtree_vinfo *tinfo)
 {
-	GBT_VARKEY *out = NULL;
+	GBT_VARKEY *out;
 	GBT_VARKEY_R r = gbt_var_key_readable(node);
 	int32		len1 = VARSIZE(r.lower) - VARHDRSZ;
 	int32		len2 = VARSIZE(r.upper) - VARHDRSZ;
@@ -246,7 +269,7 @@ gbt_var_bin_union(Datum *u, GBT_VARKEY *e, Oid collation,
 	GBT_VARKEY_R eo = gbt_var_key_readable(e);
 	GBT_VARKEY_R nr;
 
-	if (eo.lower == eo.upper)	/* leaf */
+	if (eo.lower == eo.upper)	/* if leaf, convert to internal form */
 	{
 		GBT_VARKEY *tmp;
 
@@ -355,7 +378,7 @@ gbt_var_union(const GistEntryVector *entryvec, int32 *size, Oid collation,
 	if (tinfo->trnc)
 	{
 		int32		plen;
-		GBT_VARKEY *trc = NULL;
+		GBT_VARKEY *trc;
 
 		plen = gbt_var_node_cp_len((GBT_VARKEY *) DatumGetPointer(out), tinfo);
 		trc = gbt_var_node_truncate((GBT_VARKEY *) DatumGetPointer(out), plen + 1, tinfo);
@@ -396,7 +419,7 @@ gbt_var_penalty(float *res, const GISTENTRY *o, const GISTENTRY *n,
 	*res = 0.0;
 
 	nk = gbt_var_key_readable(newe);
-	if (nk.lower == nk.upper)	/* leaf */
+	if (nk.lower == nk.upper)	/* if leaf, convert to internal form */
 	{
 		GBT_VARKEY *tmp;
 

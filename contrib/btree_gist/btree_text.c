@@ -1,5 +1,7 @@
 /*
  * contrib/btree_gist/btree_text.c
+ *
+ * Support for text and bpchar types.
  */
 #include "postgres.h"
 
@@ -78,11 +80,17 @@ gbt_textcmp(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 												 PointerGetDatum(b)));
 }
 
+/*
+ * Originally this module permitted truncation of internal keys, but that
+ * tends to result in wrong comparison answers if the collation is any
+ * more complicated than C.  The prefix-match hack used for simpler types
+ * can't fix it, either.
+ */
 static gbtree_vinfo tinfo =
 {
 	gbt_t_text,
 	0,
-	false,
+	false,						/* no truncation permitted */
 	gbt_textgt,
 	gbt_textge,
 	gbt_texteq,
@@ -152,7 +160,7 @@ static gbtree_vinfo bptinfo =
 {
 	gbt_t_bpchar,
 	0,
-	false,
+	false,						/* as above, no truncation permitted */
 	gbt_bpchargt,
 	gbt_bpcharge,
 	gbt_bpchareq,
