@@ -48,6 +48,7 @@
 #include "catalog/namespace.h"
 #include "catalog/objectaccess.h"
 #include "catalog/pg_am.h"
+#include "catalog/pg_attrdef.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_inherits.h"
 #include "catalog/toasting.h"
@@ -204,6 +205,7 @@ static void rebuild_relation_finish_concurrent(Relation NewHeap, Relation OldHea
 static List *build_new_indexes(Relation NewHeap, Relation OldHeap, List *OldIndexes);
 static void copy_index_constraints(Relation old_index, Oid new_index_id,
 								   Oid new_heap_id);
+static void copy_attribute_defaults(Oid old_heap_oid, Oid new_heap_oid);
 static Relation process_single_relation(RepackStmt *stmt,
 										LOCKMODE lockmode,
 										bool isTopLevel,
@@ -1098,6 +1100,13 @@ rebuild_relation(Relation OldHeap, Relation index, bool verbose,
 							   NoLock);
 	Assert(CheckRelationOidLockedByMe(OIDNewHeap, AccessExclusiveLock, false));
 	NewHeap = table_open(OIDNewHeap, NoLock);
+
+	/*
+	 * In concurrent mode, create a copy of the attribute defaults on the temp
+	 * table, which the executor needs when replaying concurrent data changes.
+	 */
+	if (concurrent)
+		copy_attribute_defaults(tableOid, OIDNewHeap);
 
 	/* Copy the heap data into the new table in the desired order */
 	copy_table_data(NewHeap, OldHeap, index, snapshot, verbose,
@@ -3386,7 +3395,7 @@ build_new_indexes(Relation NewHeap, Relation OldHeap, List *OldIndexes)
  *
  * We don't need the constraints for anything else (the original constraints
  * will be there once repack completes), so we add pg_depend entries so that
- * the are dropped when the transient table is dropped.
+ * they are dropped when the transient table is dropped.
  */
 static void
 copy_index_constraints(Relation old_index, Oid new_index_id, Oid new_heap_id)
@@ -3446,6 +3455,98 @@ copy_index_constraints(Relation old_index, Oid new_index_id, Oid new_heap_id)
 	systable_endscan(scan);
 
 	table_close(rel, RowExclusiveLock);
+
+	CommandCounterIncrement();
+}
+
+/*
+ * Create a transient copy of attribute defaults.
+ *
+ * When repacking a table that has stored generated columns, the executor
+ * relies on these entries to generate the values for them during apply of
+ * concurrent operations.  These copies are there to support that.
+ *
+ * We don't need the defaults for anything else, so we add pg_depend entries
+ * so that they are dropped when the transient table is dropped.
+ */
+static void
+copy_attribute_defaults(Oid old_heap_oid, Oid new_heap_oid)
+{
+	ScanKeyData skey;
+	Relation	rel;
+	Relation	att_rel;
+	SysScanDesc scan;
+	HeapTuple	def_tup;
+	ObjectAddress objrel;
+
+	rel = table_open(AttrDefaultRelationId, RowExclusiveLock);
+	att_rel = table_open(AttributeRelationId, RowExclusiveLock);
+
+	ObjectAddressSet(objrel, RelationRelationId, new_heap_oid);
+
+	ScanKeyInit(&skey,
+				Anum_pg_attrdef_adrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(old_heap_oid));
+	scan = systable_beginscan(rel, AttrDefaultIndexId, true,
+							  NULL, 1, &skey);
+	while (HeapTupleIsValid(def_tup = systable_getnext(scan)))
+	{
+		Form_pg_attrdef adform;
+		Oid			oid;
+		Datum		def_values[Natts_pg_attrdef];
+		bool		def_nulls[Natts_pg_attrdef];
+		bool		def_replaces[Natts_pg_attrdef] = {0};
+		Datum		att_values[Natts_pg_attribute];
+		bool		att_nulls[Natts_pg_attribute];
+		bool		att_replaces[Natts_pg_attribute] = {0};
+		HeapTuple	new_def_tup,
+					att_tup,
+					new_att_tup;
+		ObjectAddress objad;
+
+		adform = (Form_pg_attrdef) GETSTRUCT(def_tup);
+		Assert(adform->adrelid == old_heap_oid);
+
+		/*
+		 * Insert a new tuple that's identical to the existing one, other than
+		 * its OID and the relation it refers to.
+		 */
+		oid = GetNewOidWithIndex(rel, AttrDefaultOidIndexId,
+								 Anum_pg_attrdef_oid);
+		def_values[Anum_pg_attrdef_oid - 1] = ObjectIdGetDatum(oid);
+		def_nulls[Anum_pg_attrdef_oid - 1] = false;
+		def_replaces[Anum_pg_attrdef_oid - 1] = true;
+		def_values[Anum_pg_attrdef_adrelid - 1] = ObjectIdGetDatum(new_heap_oid);
+		def_nulls[Anum_pg_attrdef_adrelid - 1] = false;
+		def_replaces[Anum_pg_attrdef_adrelid - 1] = true;
+		new_def_tup = heap_modify_tuple(def_tup, RelationGetDescr(rel),
+										def_values, def_nulls, def_replaces);
+		CatalogTupleInsert(rel, new_def_tup);
+
+		/* Set atthasdef for this attribute in the transient table */
+		att_tup = SearchSysCache2(ATTNUM,
+								  ObjectIdGetDatum(new_heap_oid),
+								  ObjectIdGetDatum(adform->adnum));
+		if (!HeapTupleIsValid(att_tup))
+			elog(ERROR, "cache lookup failed for attribute %d of relation %u",
+				 adform->adnum, new_heap_oid);
+		att_values[Anum_pg_attribute_atthasdef - 1] = BoolGetDatum(true);
+		att_nulls[Anum_pg_attribute_atthasdef - 1] = false;
+		att_replaces[Anum_pg_attribute_atthasdef - 1] = true;
+		new_att_tup = heap_modify_tuple(att_tup, RelationGetDescr(att_rel),
+										att_values, att_nulls, att_replaces);
+		CatalogTupleUpdate(att_rel, &new_att_tup->t_self, new_att_tup);
+		ReleaseSysCache(att_tup);
+
+		/* Add a pg_depend record so it's removed with the transient table */
+		ObjectAddressSet(objad, AttrDefaultRelationId, oid);
+		recordDependencyOn(&objad, &objrel, DEPENDENCY_AUTO);
+	}
+	systable_endscan(scan);
+
+	table_close(rel, RowExclusiveLock);
+	table_close(att_rel, RowExclusiveLock);
 
 	CommandCounterIncrement();
 }
