@@ -1294,6 +1294,11 @@ AlterPropGraph(ParseState *pstate, const AlterPropGraphStmt *stmt)
 	ListCell   *lc;
 	ObjectAddress pgaddress;
 
+	/*
+	 * ShareRowExclusiveLock is required because this command runs some
+	 * graph-wide consistency checks that wouldn't work if more than one ALTER
+	 * PROPERTY GRAPH could operate on the same graph at once.
+	 */
 	pgrelid = RangeVarGetRelidExtended(stmt->pgname,
 									   ShareRowExclusiveLock,
 									   stmt->missing_ok ? RVR_MISSING_OK : 0,
@@ -1491,8 +1496,13 @@ AlterPropGraph(ParseState *pstate, const AlterPropGraphStmt *stmt)
 	{
 		Oid			peoid;
 		Oid			labeloid;
-		Oid			ellabeloid;
+		Oid			ellabeloid = InvalidOid;
 		ObjectAddress obj;
+		Relation	ellabelrel;
+		SysScanDesc ellabelscan;
+		ScanKeyData ellabelkey[1];
+		int			nlabels;
+		HeapTuple	tuple;
 
 		if (stmt->element_kind == PROPGRAPH_ELEMENT_KIND_VERTEX)
 			peoid = get_vertex_oid(pstate, pgrelid, stmt->element_alias, -1);
@@ -1510,10 +1520,34 @@ AlterPropGraph(ParseState *pstate, const AlterPropGraphStmt *stmt)
 						   get_rel_name(pgrelid), stmt->element_alias, stmt->drop_label),
 					parser_errposition(pstate, -1));
 
-		ellabeloid = GetSysCacheOid2(PROPGRAPHELEMENTLABELELEMENTLABEL,
-									 Anum_pg_propgraph_element_label_oid,
-									 ObjectIdGetDatum(peoid),
-									 ObjectIdGetDatum(labeloid));
+		/*
+		 * Is the given label associated with the element?  Is this the only
+		 * label associated with the element?  Scan the
+		 * pg_propgraph_element_label table to find answers to these
+		 * questions.  Stop scanning when we know both answers.
+		 */
+		ellabelrel = table_open(PropgraphElementLabelRelationId, AccessShareLock);
+		ScanKeyInit(&ellabelkey[0],
+					Anum_pg_propgraph_element_label_pgelelid,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(peoid));
+		ellabelscan = systable_beginscan(ellabelrel, PropgraphElementLabelElementLabelIndexId,
+										 true, NULL, 1, ellabelkey);
+		nlabels = 0;
+		while (HeapTupleIsValid(tuple = systable_getnext(ellabelscan)))
+		{
+			Form_pg_propgraph_element_label ellabelform = (Form_pg_propgraph_element_label) GETSTRUCT(tuple);
+
+			nlabels++;
+
+			if (ellabelform->pgellabelid == labeloid)
+				ellabeloid = ellabelform->oid;
+
+			if (nlabels > 1 && ellabeloid)
+				break;
+		}
+		systable_endscan(ellabelscan);
+		table_close(ellabelrel, AccessShareLock);
 
 		if (!ellabeloid)
 			ereport(ERROR,
@@ -1521,6 +1555,17 @@ AlterPropGraph(ParseState *pstate, const AlterPropGraphStmt *stmt)
 					errmsg("property graph \"%s\" element \"%s\" has no label \"%s\"",
 						   get_rel_name(pgrelid), stmt->element_alias, stmt->drop_label),
 					parser_errposition(pstate, -1));
+
+		/*
+		 * Prevent dropping the last label from an element. Every element must
+		 * have at least one label associated with it.
+		 */
+		if (nlabels == 1)
+			ereport(ERROR,
+					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+					 errmsg("cannot drop the last label from element \"%s\"",
+							stmt->element_alias),
+					 errhint("Every element must have at least one label.")));
 
 		ObjectAddressSet(obj, PropgraphElementLabelRelationId, ellabeloid);
 		performDeletion(&obj, stmt->drop_behavior, 0);
