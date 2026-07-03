@@ -669,10 +669,10 @@ RelationCloseSmgr(Relation relation)
  * the owning session keeps the data in its private local buffer pool,
  * which we cannot access.  Existing buffer-manager entry points
  * (ReadBuffer_common(), StartReadBuffersImpl(), read_stream_begin_impl(),
- * and PrefetchBuffer()) already enforce this; any new buffer-access entry
- * points must do the same.  Command-level code (TRUNCATE, ALTER TABLE,
- * VACUUM, CLUSTER, REINDEX, ...) additionally uses this macro for
- * command-specific error messages.
+ * PrefetchBuffer() and ExtendBufferedRelCommon()) already enforce this; any
+ * new buffer-access entry points must do the same.  Command-level code
+ * (TRUNCATE, ALTER TABLE, VACUUM, CLUSTER, REINDEX, ...) additionally uses
+ * this macro for command-specific error messages.
  *
  * Beware of multiple eval of argument
  */
