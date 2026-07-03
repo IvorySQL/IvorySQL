@@ -2768,9 +2768,23 @@ ExtendBufferedRelCommon(BufferManagerRelation bmr,
 										 extend_by);
 
 	if (bmr.relpersistence == RELPERSISTENCE_TEMP)
+	{
+		/*
+		 * Reject attempts to extend non-local temporary relations; we have no
+		 * ability to transfer about-to-be-created local buffers into the
+		 * owning session's local buffers.  This is the canonical place for
+		 * the check, covering any attempt to extend a non-local temporary
+		 * relation.
+		 */
+		if (bmr.rel && RELATION_IS_OTHER_TEMP(bmr.rel))
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("cannot access temporary tables of other sessions")));
+
 		first_block = ExtendBufferedRelLocal(bmr, fork, flags,
 											 extend_by, extend_upto,
 											 buffers, &extend_by);
+	}
 	else
 		first_block = ExtendBufferedRelShared(bmr, fork, strategy, flags,
 											  extend_by, extend_upto,
