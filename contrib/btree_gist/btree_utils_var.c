@@ -213,16 +213,14 @@ gbt_bytea_pf_match(const bytea *pf, const bytea *query, const gbtree_vinfo *tinf
  * If the data type is truncatable, then a shortened upper bound must be
  * considered to include all values that match it up to its own length,
  * even though longer values would normally be considered larger.
- *
- * XXX isn't the check against node->lower useless?
- * A truncated lower bound would already be less than all included values.
+ * We don't need to check the lower bound though: shortening it just
+ * makes it even smaller.
  */
 static bool
 gbt_var_node_pf_match(const GBT_VARKEY_R *node, const bytea *query, const gbtree_vinfo *tinfo)
 {
 	return (tinfo->trnc &&
-			(gbt_bytea_pf_match(node->lower, query, tinfo) ||
-			 gbt_bytea_pf_match(node->upper, query, tinfo)));
+			gbt_bytea_pf_match(node->upper, query, tinfo));
 }
 
 
@@ -592,57 +590,60 @@ gbt_var_consistent(const GBT_VARKEY_R *key,
 				   const gbtree_vinfo *tinfo,
 				   FmgrInfo *flinfo)
 {
-	bool		retval = false;
+	bool		retval;
 
 	/*
-	 * Remember that f_cmp is for internal pages, f_eq etc for leaf pages, and
-	 * on internal pages we need to check gbt_var_node_pf_match too.
+	 * On leaf pages we directly apply the check "key->lower OP query"; we
+	 * need not consider key->upper since it will be equal to key->lower.
 	 *
-	 * The leaf-page tests use swapped operands (e.g., f_gt(query, lower)
-	 * means "lower < query"), which is why they look reversed.
+	 * On internal pages we mostly need to check "is lower bound below query?"
+	 * and/or "is upper bound above query?", where we must allow equality in
+	 * both cases.  When checking against the upper bound we have to allow a
+	 * gbt_var_node_pf_match too.
+	 *
+	 * Remember that f_cmp is for internal pages, f_eq etc for leaf pages.
 	 */
+#define lower_is_below_query() \
+	(tinfo->f_cmp(key->lower, query, collation, flinfo) <= 0)
+#define upper_is_above_query() \
+	(tinfo->f_cmp(key->upper, query, collation, flinfo) >= 0 || \
+	 gbt_var_node_pf_match(key, query, tinfo))
+
 	switch (strategy)
 	{
 		case BTLessEqualStrategyNumber:
 			if (is_leaf)
-				retval = tinfo->f_ge(query, key->lower, collation, flinfo);
+				retval = tinfo->f_le(key->lower, query, collation, flinfo);
 			else
-				retval = tinfo->f_cmp(query, key->lower, collation, flinfo) >= 0
-					|| gbt_var_node_pf_match(key, query, tinfo);
+				retval = lower_is_below_query();
 			break;
 		case BTLessStrategyNumber:
 			if (is_leaf)
-				retval = tinfo->f_gt(query, key->lower, collation, flinfo);
+				retval = tinfo->f_lt(key->lower, query, collation, flinfo);
 			else
-				retval = tinfo->f_cmp(query, key->lower, collation, flinfo) >= 0
-					|| gbt_var_node_pf_match(key, query, tinfo);
+				retval = lower_is_below_query();
 			break;
 		case BTEqualStrategyNumber:
 			if (is_leaf)
-				retval = tinfo->f_eq(query, key->lower, collation, flinfo);
+				retval = tinfo->f_eq(key->lower, query, collation, flinfo);
 			else
-				retval =
-					(tinfo->f_cmp(key->lower, query, collation, flinfo) <= 0 &&
-					 tinfo->f_cmp(query, key->upper, collation, flinfo) <= 0) ||
-					gbt_var_node_pf_match(key, query, tinfo);
+				retval = lower_is_below_query() && upper_is_above_query();
 			break;
 		case BTGreaterStrategyNumber:
 			if (is_leaf)
-				retval = tinfo->f_lt(query, key->upper, collation, flinfo);
+				retval = tinfo->f_gt(key->lower, query, collation, flinfo);
 			else
-				retval = tinfo->f_cmp(query, key->upper, collation, flinfo) <= 0
-					|| gbt_var_node_pf_match(key, query, tinfo);
+				retval = upper_is_above_query();
 			break;
 		case BTGreaterEqualStrategyNumber:
 			if (is_leaf)
-				retval = tinfo->f_le(query, key->upper, collation, flinfo);
+				retval = tinfo->f_ge(key->lower, query, collation, flinfo);
 			else
-				retval = tinfo->f_cmp(query, key->upper, collation, flinfo) <= 0
-					|| gbt_var_node_pf_match(key, query, tinfo);
+				retval = upper_is_above_query();
 			break;
 		case BtreeGistNotEqualStrategyNumber:
 			if (is_leaf)
-				retval = !(tinfo->f_eq(query, key->lower, collation, flinfo));
+				retval = !(tinfo->f_eq(key->lower, query, collation, flinfo));
 			else
 			{
 				/*
@@ -652,13 +653,16 @@ gbt_var_consistent(const GBT_VARKEY_R *key,
 				 * In all other cases, we must descend.
 				 */
 				retval = tinfo->trnc ||
-					!(tinfo->f_cmp(query, key->lower, collation, flinfo) == 0 &&
-					  tinfo->f_cmp(query, key->upper, collation, flinfo) == 0);
+					!(tinfo->f_cmp(key->lower, query, collation, flinfo) == 0 &&
+					  tinfo->f_cmp(key->upper, query, collation, flinfo) == 0);
 			}
 			break;
 		default:
 			retval = false;
 	}
+
+#undef lower_is_below_query
+#undef upper_is_above_query
 
 	return retval;
 }
