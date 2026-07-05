@@ -3112,7 +3112,7 @@ plisql_build_type_def(const char *typname, int lineno, List *fields)
 	dtype->atttypmod = -1;
 	dtype->notnull = false;
 	dtype->pctrowtypname = NULL;
-	dtype->origtypname = makeTypeName(typname);
+	dtype->origtypname = makeTypeName(typedef_->typname);
 	dtype->tcache = NULL;
 	dtype->tupdesc_id = 0;
 	dtype->rectupdesc = tupdesc;
