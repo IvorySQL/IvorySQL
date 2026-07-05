@@ -81,6 +81,11 @@ CREATE PROPERTY GRAPH g4
 ALTER PROPERTY GRAPH g4 ALTER VERTEX TABLE t2 ALTER LABEL t2 ADD PROPERTIES (k * 2 AS kk);
 ALTER PROPERTY GRAPH g4 ALTER VERTEX TABLE t2 ALTER LABEL t2 DROP PROPERTIES (k);
 ALTER PROPERTY GRAPH g4 ALTER VERTEX TABLE t2 ALTER LABEL t2 DROP PROPERTIES (yy);  -- error
+-- Dropping a label should drop only orphaned properties.  zz is orphaned because
+-- it is only associated with the dropped label t3l2, while x is not orphaned
+-- because it remains associated with t3l1.  We will verify this in the
+-- information schema queries outputs below.
+ALTER PROPERTY GRAPH g4 ALTER VERTEX TABLE t3 DROP LABEL t3l2;
 
 CREATE TABLE t11 (a int PRIMARY KEY);
 CREATE TABLE t12 (b int PRIMARY KEY);

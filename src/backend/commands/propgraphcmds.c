@@ -1674,7 +1674,7 @@ AlterPropGraph(ParseState *pstate, const AlterPropGraphStmt *stmt)
 	}
 
 	/* Remove any orphaned pg_propgraph_property entries */
-	if (stmt->drop_properties || stmt->drop_vertex_tables || stmt->drop_edge_tables)
+	if (stmt->drop_properties || stmt->drop_vertex_tables || stmt->drop_edge_tables || stmt->drop_label)
 	{
 		foreach_oid(propoid, get_graph_property_ids(pgrelid))
 		{
