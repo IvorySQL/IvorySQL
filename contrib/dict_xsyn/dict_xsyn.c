@@ -212,13 +212,8 @@ dxsyn_lexize(PG_FUNCTION_ARGS)
 		PG_RETURN_POINTER(NULL);
 
 	/* Create search pattern */
-	{
-		char	   *temp = pnstrdup(in, length);
-
-		word.key = str_tolower(temp, length, DEFAULT_COLLATION_OID);
-		pfree(temp);
-		word.value = NULL;
-	}
+	word.key = str_tolower(in, length, DEFAULT_COLLATION_OID);
+	word.value = NULL;
 
 	/* Look for matching syn */
 	found = (Syn *) bsearch(&word, d->syn, d->len, sizeof(Syn), compare_syn);
