@@ -3053,7 +3053,7 @@ plisql_build_type_def(const char *typname, int lineno, List *fields)
 			{
 				List *prev = (List *) lfirst(lc2);
 				if (strcmp(strVal(linitial(prev)), fldname) == 0)
-					elog(ERROR, "duplicate field name "%s" in RECORD type "%s"",
+						elog(ERROR, "duplicate field name \"%s\" in RECORD type \"%s\"",
 						 fldname, typname);
 			}
 		}

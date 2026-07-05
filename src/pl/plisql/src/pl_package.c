@@ -303,7 +303,7 @@ plisql_package_parse(ParseState *parsestate, PackageCacheItem *item, List *names
 					*entry_type = PKG_TYPE;
 				}
 				else
-					elog(ERROR, ""%s" is a type definition", parse_first_name);
+					elog(ERROR, "\"%s\" is a type definition", parse_first_name);
 			}
 			break;
 		default:
