@@ -282,6 +282,30 @@ plisql_package_parse(ParseState *parsestate, PackageCacheItem *item, List *names
 				}
 			}
 			break;
+		case PLISQL_NSTYPE_TYPE:
+			{
+				PLiSQL_type_def *typedef_;
+
+				typedef_ = (PLiSQL_type_def *) psource->source.datums[nse->itemno];
+				Assert(typedef_->dtype == PLISQL_DTYPE_TYPE_DEF);
+
+				if (flags == PACKAGE_PARSE_TYPE)
+				{
+					if (basetypeid != NULL)
+						*basetypeid = typedef_->datatype->typoid;
+					if (basetypmod != NULL)
+						*basetypmod = typedef_->datatype->atttypmod;
+					value = (void *) typedef_->datatype;
+				}
+				else if (flags == PACKAGE_PARSE_ENTRY)
+				{
+					value = (void *) typedef_;
+					*entry_type = PKG_TYPE;
+				}
+				else
+					elog(ERROR, ""%s" is a type definition", parse_first_name);
+			}
+			break;
 		default:
 			elog(ERROR, "package doesn't support this nstype :%u", nse->itemtype);
 			break;
@@ -1793,7 +1817,15 @@ get_plisql_rec_tupdesc(PLiSQL_rec *rec)
 
 	/* doesn't consider recordoid and invalidoid */
 	if (rec->rectypeid == RECORDOID || !OidIsValid(rec->rectypeid))
+	{
+		/*
+		 * If this is a locally-defined RECORD type (TYPE name IS RECORD),
+		 * it has a synthetic TupleDesc stored in the datatype.
+		 */
+		if (rec->datatype != NULL && rec->datatype->rectupdesc != NULL)
+			return rec->datatype->rectupdesc;
 		return NULL;
+	}
 
 	/*
 	 * Consult the typcache to see if it's a domain over composite, and in
@@ -2583,9 +2615,10 @@ plisql_set_package_compile_status(void)
 
 	for (nse = plisql_ns_top(); nse != NULL; nse = nse->prev)
 	{
-		/* label */
-		if (nse->itemtype == PLISQL_NSTYPE_LABEL)
-			continue;
+			/* label and TYPE definitions don't affect package status */
+			if (nse->itemtype == PLISQL_NSTYPE_LABEL ||
+				nse->itemtype == PLISQL_NSTYPE_TYPE)
+				continue;
 
 		if (nse->itemtype != PLISQL_NSTYPE_VAR &&
 			nse->itemtype != PLISQL_NSTYPE_REC)
@@ -3047,15 +3080,19 @@ is_const_datum(PLiSQL_execstate *estate, PLiSQL_datum *datum)
 		case PLISQL_DTYPE_RECFIELD:
 			{
 				PLiSQL_recfield *recfield = (PLiSQL_recfield *) datum;
-				PLiSQL_rec *rec;
+				PLiSQL_datum *parent;
 
 				if (OidIsValid(recfield->pkgoid))
-					rec = (PLiSQL_rec *) get_package_datum_bydno(estate,
+					parent = get_package_datum_bydno(estate,
 												recfield->pkgoid,
 												recfield->recparentno);
 				else
-					rec = (PLiSQL_rec *) (estate->datums[recfield->recparentno]);
-				isconst = rec->isconst;
+					parent = (estate->datums[recfield->recparentno]);
+
+					if (parent->dtype == PLISQL_DTYPE_TYPE_DEF)
+						isconst = true;
+					else
+						isconst = ((PLiSQL_rec *) parent)->isconst;
 			}
 			break;
 		case PLISQL_DTYPE_PACKAGE_DATUM:
@@ -3073,6 +3110,13 @@ is_const_datum(PLiSQL_execstate *estate, PLiSQL_datum *datum)
 			 */
 			isconst = true;
 			break;
+		case PLISQL_DTYPE_TYPE_DEF:
+			/*
+			 * TYPE definitions are constant - they cannot be assigned to.
+			 */
+			isconst = true;
+			break;
+
 
 
 		default:

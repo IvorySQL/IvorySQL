@@ -2433,6 +2433,8 @@ plisql_parse_wordtype(char *ident)
 				return dtype;
 			case PLISQL_NSTYPE_REC:
 				return ((PLiSQL_rec *) (plisql_Datums[nse->itemno]))->datatype;
+				case PLISQL_NSTYPE_TYPE:
+					return ((PLiSQL_type_def *) (plisql_Datums[nse->itemno]))->datatype;
 			default:
 				break;
 		}
@@ -3004,6 +3006,108 @@ plisql_build_recfield(PLiSQL_rec * rec, const char *fldname)
 	rec->firstfield = recfield->dno;
 
 	return recfield;
+}
+
+
+/*
+ * Build a TYPE definition for locally-defined TYPEs.
+ * Currently supports TYPE name IS RECORD (field_list).
+ *
+ * fields: List of Lists, each inner list is [name_string, PLiSQL_type*]
+ */
+PLiSQL_type_def *
+plisql_build_type_def(const char *typname, int lineno, List *fields)
+{
+	PLiSQL_type_def *typedef_;
+	PLiSQL_type *dtype;
+	TupleDesc	tupdesc;
+	ListCell   *lc;
+	int			i;
+
+	typedef_ = palloc0_object(PLiSQL_type_def);
+	typedef_->dtype = PLISQL_DTYPE_TYPE_DEF;
+	typedef_->typname = pstrdup(typname);
+	typedef_->lineno = lineno;
+	typedef_->firstfield = -1;
+	typedef_->pkgoid = (plisql_compile_packageitem == NULL ?
+						InvalidOid :
+						plisql_compile_packageitem->source.fn_oid);
+
+	plisql_adddatum((PLiSQL_datum *) typedef_);
+
+	/* Build a synthetic TupleDesc for the RECORD type */
+	tupdesc = CreateTemplateTupleDesc(list_length(fields));
+
+	i = 0;
+	foreach(lc, fields)
+	{
+		List	   *field = (List *) lfirst(lc);
+		char	   *fldname = strVal(linitial(field));
+		PLiSQL_type *fldtype = (PLiSQL_type *) lsecond(field);
+		Oid			typid;
+		int32		typmod;
+
+		if (fldtype->ttype == PLISQL_TTYPE_REC)
+		{
+			typid = RECORDOID;
+			typmod = -1;
+		}
+		else
+		{
+			typid = fldtype->typoid;
+			typmod = fldtype->atttypmod;
+		}
+
+		TupleDescInitEntry(tupdesc, i + 1,
+						   fldname,
+						   typid, typmod,
+						   0);
+		if (OidIsValid(fldtype->collation))
+			TupleDescInitEntryCollation(tupdesc, i + 1, fldtype->collation);
+
+		/* Create RECFIELD datum for this field */
+		{
+			PLiSQL_recfield *recfield;
+
+			recfield = palloc0_object(PLiSQL_recfield);
+			recfield->dtype = PLISQL_DTYPE_RECFIELD;
+			recfield->fieldname = pstrdup(fldname);
+			recfield->recparentno = typedef_->dno;
+			recfield->rectupledescid = INVALID_TUPLEDESC_IDENTIFIER;
+			recfield->pkgoid = typedef_->pkgoid;
+
+			plisql_adddatum((PLiSQL_datum *) recfield);
+
+			/* Link into the type definition's chain */
+			recfield->nextfield = typedef_->firstfield;
+			typedef_->firstfield = recfield->dno;
+		}
+
+		i++;
+	}
+
+	typedef_->rectupdesc = tupdesc;
+
+	/* Build the PLiSQL_type representing this RECORD type */
+	dtype = palloc0_object(PLiSQL_type);
+	dtype->typname = pstrdup(typname);
+	dtype->typoid = RECORDOID;
+	dtype->ttype = PLISQL_TTYPE_REC;
+	dtype->typlen = -1;
+	dtype->typbyval = false;
+	dtype->typtype = TYPTYPE_PSEUDO;
+	dtype->collation = InvalidOid;
+	dtype->typisarray = false;
+	dtype->atttypmod = -1;
+	dtype->notnull = false;
+	dtype->pctrowtypname = NULL;
+	dtype->origtypname = makeTypeName(typname);
+	dtype->tcache = NULL;
+	dtype->tupdesc_id = 0;
+	dtype->rectupdesc = tupdesc;
+	typedef_->datatype = dtype;
+
+	return typedef_;
 }
 
 /*

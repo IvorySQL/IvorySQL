@@ -268,6 +268,7 @@ static	PLiSQL_expr		*build_call_expr(int firsttoken, int location, YYSTYPE *yylv
 %type <expr> arg_decl_defval
 %type <boolean> function_arg_nocopy
 
+%type <list> decl_type_fields decl_type_field
 %type <stmt> ora_outermost_pl_block
 %type <declhdr> ora_decl_sect
 %type <boolean> opt_ora_decl_stmts
@@ -656,6 +657,7 @@ ora_decl_stmts: ora_decl_stmts ora_decl_stmt
 			;
 
 ora_decl_stmt: decl_statement
+			| decl_type_def
 			;
 
 
@@ -724,6 +726,7 @@ decl_stmts		: decl_stmts decl_stmt
 
 decl_stmt		: decl_statement
 				| K_DECLARE
+				| decl_type_def
 					{
 						/* We allow useless extra DECLAREs */
 					}
@@ -739,6 +742,40 @@ decl_stmt		: decl_statement
 								 parser_errposition(@1)));
 					}
 				;
+
+
+/*
+* TYPE definition: TYPE name IS RECORD (field_list);
+*/
+decl_type_def: K_TYPE any_identifier K_IS T_WORD '(' decl_type_fields ')' ';'
+	{
+		PLiSQL_type_def *typedef_;
+		if (pg_strcasecmp($4.ident, "record") != 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("only RECORD type is supported in TYPE definitions"),
+					 parser_errposition(@4)));
+		typedef_ = plisql_build_type_def($2, plisql_location_to_lineno(@2, yyscanner), $6);
+		plisql_ns_additem(PLISQL_NSTYPE_TYPE, typedef_->dno, $2);
+	}
+	;
+
+decl_type_fields: decl_type_field
+	{
+		$$ = list_make1($1);
+	}
+	| decl_type_fields ',' decl_type_field
+	{
+		$$ = lappend($1, $3);
+	}
+	;
+
+decl_type_field: any_identifier decl_datatype
+	{
+		/* Return a list of two elements: name (String) and dtype (PLiSQL_type*) */
+		$$ = list_make2(makeString($1), $2);
+	}
+	;
 
 decl_statement	: decl_varname decl_const decl_datatype decl_collate decl_notnull decl_defval
 					{
@@ -4921,6 +4958,31 @@ parse_datatype(const char *string, int location, yyscan_t yyscanner)
 	/* Let the main parser try to parse it under standard SQL rules */
 	oldCxt = MemoryContextSwitchTo(plisql_compile_tmp_cxt);
 	typeName = typeStringToTypeName(string, NULL);
+
+	/*
+	 * Check for locally-defined TYPE in the PLISQL namespace.
+	 * This handles TYPE name IS RECORD (...) definitions that are
+	 * scoped to the current package or PL block.
+	 */
+	if (list_length(typeName->names) == 1)
+	{
+		PLiSQL_nsitem *nse;
+		char	   *typname = strVal(linitial(typeName->names));
+
+		nse = plisql_ns_lookup(plisql_ns_top(), false,
+							   typname, NULL, NULL, NULL);
+		if (nse != NULL && nse->itemtype == PLISQL_NSTYPE_TYPE)
+		{
+			PLiSQL_type_def *typedef_;
+
+			typedef_ = (PLiSQL_type_def *) plisql_Datums[nse->itemno];
+			Assert(typedef_->dtype == PLISQL_DTYPE_TYPE_DEF);
+
+			MemoryContextSwitchTo(oldCxt);
+			error_context_stack = syntax_errcontext.previous;
+			return typedef_->datatype;
+		}
+	}
 
 	if (list_length(typeName->names) < 2 &&
 		!is_compile_standard_package())

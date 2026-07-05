@@ -963,6 +963,10 @@ plisql_exec_function(PLiSQL_function * func, FunctionCallInfo fcinfo,
 				case PLISQL_DTYPE_ROW:
 					fcinfo->args[i].isnull = false;
 					break;
+			case PLISQL_DTYPE_TYPE_DEF:
+				/* TYPE definitions cannot be used here */
+				elog(ERROR, "type definitions cannot be used in this context");
+
 				case PLISQL_DTYPE_EXCEPTION:
 
 					/* Exception variables cannot be used here */
@@ -1553,6 +1557,10 @@ copy_plisql_datums(PLiSQL_execstate * estate,
 				outdatum = indatum;
 				break;
 
+			case PLISQL_DTYPE_TYPE_DEF:
+				/* TYPE definitions - nothing to do */
+				break;
+
 			case PLISQL_DTYPE_EXCEPTION:
 				/*
 				 * Exception variables - nothing to do
@@ -1956,6 +1964,10 @@ exec_stmt_block(PLiSQL_execstate * estate, PLiSQL_stmt_block * block)
 
 			case PLISQL_DTYPE_PACKAGE_DATUM:
 				/* package'var doesn't need init */
+				break;
+
+			case PLISQL_DTYPE_TYPE_DEF:
+				/* TYPE definitions - nothing to do */
 				break;
 
 			case PLISQL_DTYPE_EXCEPTION:
@@ -3597,6 +3609,10 @@ exec_stmt_return(PLiSQL_execstate * estate, PLiSQL_stmt_return * stmt)
 				}
 				break;
 
+			case PLISQL_DTYPE_TYPE_DEF:
+				/* TYPE definitions - nothing to do */
+				break;
+
 			case PLISQL_DTYPE_EXCEPTION:
 				/*
 				 * Exception variables - nothing to do
@@ -3778,6 +3794,10 @@ exec_stmt_return_next(PLiSQL_execstate * estate,
 
 			case PLISQL_DTYPE_PACKAGE_DATUM:
 				elog(ERROR, "doesn't support");
+				break;
+
+			case PLISQL_DTYPE_TYPE_DEF:
+				/* TYPE definitions - nothing to do */
 				break;
 
 			case PLISQL_DTYPE_EXCEPTION:
@@ -5688,6 +5708,10 @@ exec_assign_value(PLiSQL_execstate * estate,
 				break;
 			}
 
+			case PLISQL_DTYPE_TYPE_DEF:
+				/* TYPE definitions - nothing to do */
+				break;
+
 		case PLISQL_DTYPE_EXCEPTION:
 			/*
 			 * Exception variables - nothing to do
@@ -5875,6 +5899,10 @@ exec_eval_datum(PLiSQL_execstate * estate,
 				break;
 			}
 
+			case PLISQL_DTYPE_TYPE_DEF:
+				/* TYPE definitions - nothing to do */
+				break;
+
 		case PLISQL_DTYPE_EXCEPTION:
 			/*
 			 * Exception variables - nothing to do
@@ -5974,6 +6002,10 @@ plisql_exec_get_datum_type(PLiSQL_execstate * estate,
 				plisql_exec_get_datum_type(estate, datum);
 				break;
 			}
+
+			case PLISQL_DTYPE_TYPE_DEF:
+				/* TYPE definitions - nothing to do */
+				break;
 
 		case PLISQL_DTYPE_EXCEPTION:
 			/*
@@ -6089,6 +6121,10 @@ plisql_exec_get_datum_type_info(PLiSQL_execstate * estate,
 												typeId, typMod, collation);
 				break;
 			}
+
+			case PLISQL_DTYPE_TYPE_DEF:
+				/* TYPE definitions - nothing to do */
+				break;
 
 		case PLISQL_DTYPE_EXCEPTION:
 			/*
@@ -9321,6 +9357,10 @@ exec_check_packagedatum_assignable(PLiSQL_pkg_datum * pkg_datum, PLiSQL_execstat
 			/* assignable if parent record is */
 			exec_check_assignable(estate, ((PLiSQL_recfield *) datum)->recparentno);
 			break;
+			case PLISQL_DTYPE_TYPE_DEF:
+				/* TYPE definitions cannot be used here */
+				elog(ERROR, "type definitions cannot be used in this context");
+
 		case PLISQL_DTYPE_EXCEPTION:
 
 			/* Exception variables cannot be used here */
@@ -9399,6 +9439,10 @@ exec_check_assignable(PLiSQL_execstate * estate, int dno)
 		case PLISQL_DTYPE_PACKAGE_DATUM:
 			exec_check_packagedatum_assignable((PLiSQL_pkg_datum *) datum, estate);
 			break;
+			case PLISQL_DTYPE_TYPE_DEF:
+				/* TYPE definitions cannot be used here */
+				elog(ERROR, "type definitions cannot be used in this context");
+
 		case PLISQL_DTYPE_EXCEPTION:
 
 			/* Exception variables cannot be used here */

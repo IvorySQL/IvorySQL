@@ -46,7 +46,8 @@ typedef enum PLiSQL_nsitem_type
 	PLISQL_NSTYPE_VAR,			/* scalar variable */
 	PLISQL_NSTYPE_REC,			/* composite variable */
 	PLISQL_NSTYPE_SUBPROC_FUNC, /* subproc function */
-	PLISQL_NSTYPE_SUBPROC_PROC	/* subproc proc */
+	PLISQL_NSTYPE_SUBPROC_PROC,	/* subproc proc */
+	PLISQL_NSTYPE_TYPE			/* locally-defined TYPE (RECORD, etc.) */
 }			PLiSQL_nsitem_type;
 
 /*
@@ -71,6 +72,7 @@ typedef enum PLiSQL_datum_type
 	PLISQL_DTYPE_PROMISE,
 	PLISQL_DTYPE_PACKAGE_DATUM,
 	PLISQL_DTYPE_EXCEPTION,
+	PLISQL_DTYPE_TYPE_DEF,		/* locally-defined TYPE definition (RECORD, etc.) */
 }			PLiSQL_datum_type;
 
 /*
@@ -223,7 +225,32 @@ typedef struct PLiSQL_type
 	TypeName   *origtypname;	/* type name as written by user */
 	TypeCacheEntry *tcache;		/* typcache entry for composite type */
 	uint64		tupdesc_id;		/* last-seen tupdesc identifier */
+	TupleDesc	rectupdesc;		/* synthetic TupleDesc for locally-defined RECORD types */
 }			PLiSQL_type;
+
+/*
+ * Locally-defined TYPE definition (TYPE name IS RECORD (...))
+ */
+typedef struct PLiSQL_type_def
+{
+	PLiSQL_datum_type dtype;	/* PLISQL_DTYPE_TYPE_DEF */
+	int			dno;
+	Oid			pkgoid;			/* package OID if package-level */
+	char	   *typname;		/* the TYPE name (e.g., "emp_rec") */
+	int			lineno;
+	int			firstfield;		/* dno of first RECFIELD, or -1 if none */
+	PLiSQL_type *datatype;		/* the PLiSQL_type representing this TYPE */
+	TupleDesc	rectupdesc;		/* synthetic TupleDesc for RECORD fields */
+}			PLiSQL_type_def;
+
+/*
+ * Helper struct for parsing TYPE RECORD field list
+ */
+typedef struct PLiSQL_type_field
+{
+	char	   *name;			/* field name */
+	PLiSQL_type *dtype;			/* field data type */
+}			PLiSQL_type_field;
 
 /*
  * SQL Query to plan and execute
@@ -1350,6 +1377,8 @@ extern PLiSQL_variable * plisql_build_variable(const char *refname, int lineno,
 extern PLiSQL_rec * plisql_build_record(const char *refname, int lineno,
 										PLiSQL_type * dtype, Oid rectypeid,
 										bool add2namespace);
+extern PLiSQL_type_def * plisql_build_type_def(const char *typname, int lineno,
+											   List *fields);
 extern PLiSQL_recfield * plisql_build_recfield(PLiSQL_rec * rec,
 											   const char *fldname);
 extern PGDLLEXPORT int plisql_recognize_err_condition(const char *condname,
