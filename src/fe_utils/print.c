@@ -1353,17 +1353,6 @@ print_aligned_vertical(const printTableContent *cont,
 		return;
 	}
 
-	/*
-	 * Deal with the pager here instead of in printTable(), because we could
-	 * get here via print_aligned_text() in expanded auto mode, and so we have
-	 * to recalculate the pager requirement based on vertical output.
-	 */
-	if (!is_pager)
-	{
-		IsPagerNeeded(cont, NULL, true, &fout, &is_pager);
-		is_local_pager = is_pager;
-	}
-
 	/* Find the maximum dimensions for the headers */
 	for (i = 0; i < cont->ncolumns; i++)
 	{
@@ -1413,13 +1402,6 @@ print_aligned_vertical(const printTableContent *cont,
 
 	dlineptr->ptr = pg_malloc(dformatsize);
 	hlineptr->ptr = pg_malloc(hformatsize);
-
-	if (cont->opt->start_table)
-	{
-		/* print title */
-		if (!opt_tuples_only && cont->title)
-			fprintf(fout, "%s\n", cont->title);
-	}
 
 	/*
 	 * Choose target output width: \pset columns, or $COLUMNS, or ioctl
@@ -1566,6 +1548,41 @@ print_aligned_vertical(const printTableContent *cont,
 		}
 
 		dwidth = newdwidth;
+	}
+
+	/*
+	 * Deal with the pager here instead of in printTable(), because we could
+	 * get here via print_aligned_text() in expanded auto mode, and so we have
+	 * to recalculate the pager requirement based on vertical output.
+	 */
+	if (!is_pager)
+	{
+		unsigned int *width_wrap = NULL;
+
+		/*
+		 * Wrapping can add extra output lines, which count_table_lines() can
+		 * only account for if it has wrap widths.  But vertical output uses
+		 * the same data width for every field, so that's easy: use dwidth for
+		 * every column.
+		 */
+		if (cont->opt->format == PRINT_WRAPPED && cont->ncolumns > 0)
+		{
+			width_wrap = pg_malloc_array(unsigned int, cont->ncolumns);
+			for (i = 0; i < cont->ncolumns; i++)
+				width_wrap[i] = dwidth;
+		}
+
+		IsPagerNeeded(cont, width_wrap, true, &fout, &is_pager);
+		is_local_pager = is_pager;
+
+		free(width_wrap);
+	}
+
+	if (cont->opt->start_table)
+	{
+		/* print title */
+		if (!opt_tuples_only && cont->title)
+			fprintf(fout, "%s\n", cont->title);
 	}
 
 	/* print records */
