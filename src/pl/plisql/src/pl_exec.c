@@ -1558,7 +1558,11 @@ copy_plisql_datums(PLiSQL_execstate * estate,
 				break;
 
 			case PLISQL_DTYPE_TYPE_DEF:
-				/* TYPE definitions - nothing to do */
+				/*
+				 * TYPE definitions are read-only at runtime,
+				 * so no need to copy them.
+				 */
+				outdatum = indatum;
 				break;
 
 			case PLISQL_DTYPE_EXCEPTION:

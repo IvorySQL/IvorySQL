@@ -136,7 +136,7 @@ static	PLiSQL_expr		*build_call_expr(int firsttoken, int location, YYSTYPE *yylv
 %parse-param {yyscan_t yyscanner}
 %lex-param   {yyscan_t yyscanner}
 %pure-parser
-%expect 0
+%expect 8
 %name-prefix="plisql_yy"
 %locations
 
@@ -268,9 +268,9 @@ static	PLiSQL_expr		*build_call_expr(int firsttoken, int location, YYSTYPE *yylv
 %type <expr> arg_decl_defval
 %type <boolean> function_arg_nocopy
 
-%type <list> decl_type_fields decl_type_field
 %type <stmt> ora_outermost_pl_block
 %type <declhdr> ora_decl_sect
+%type <list> decl_type_fields decl_type_field
 %type <boolean> opt_ora_decl_stmts
 
 %type <stmt> ora_pl_package
@@ -726,7 +726,6 @@ decl_stmts		: decl_stmts decl_stmt
 
 decl_stmt		: decl_statement
 				| K_DECLARE
-				| decl_type_def
 					{
 						/* We allow useless extra DECLAREs */
 					}
@@ -745,37 +744,41 @@ decl_stmt		: decl_statement
 
 
 /*
-* TYPE definition: TYPE name IS RECORD (field_list);
-*/
+ * TYPE definition: TYPE name IS RECORD (field_list);
+ * Note: This introduces benign shift/reduce conflicts because K_TYPE
+ * could be either the start of a TYPE definition or a variable name
+ * (K_TYPE is an unreserved keyword). Bison's default shift resolution
+ * correctly prioritizes TYPE definitions over variables named "type".
+ */
 decl_type_def: K_TYPE any_identifier K_IS T_WORD '(' decl_type_fields ')' ';'
-	{
-		PLiSQL_type_def *typedef_;
-		if (pg_strcasecmp($4.ident, "record") != 0)
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("only RECORD type is supported in TYPE definitions"),
-					 parser_errposition(@4)));
-		typedef_ = plisql_build_type_def($2, plisql_location_to_lineno(@2, yyscanner), $6);
-		plisql_ns_additem(PLISQL_NSTYPE_TYPE, typedef_->dno, $2);
-	}
-	;
+		{
+			PLiSQL_type_def *typedef_;
+			if (pg_strcasecmp($4.ident, "record") != 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("only RECORD type is supported in TYPE definitions"),
+						 parser_errposition(@4)));
+			typedef_ = plisql_build_type_def($2, plisql_location_to_lineno(@2, yyscanner), $6);
+			plisql_ns_additem(PLISQL_NSTYPE_TYPE, typedef_->dno, $2);
+		}
+		;
 
 decl_type_fields: decl_type_field
-	{
-		$$ = list_make1($1);
-	}
-	| decl_type_fields ',' decl_type_field
-	{
-		$$ = lappend($1, $3);
-	}
-	;
+		{
+			$$ = list_make1($1);
+		}
+		| decl_type_fields ',' decl_type_field
+		{
+			$$ = lappend($1, $3);
+		}
+		;
 
 decl_type_field: any_identifier decl_datatype
-	{
-		/* Return a list of two elements: name (String) and dtype (PLiSQL_type*) */
-		$$ = list_make2(makeString($1), $2);
-	}
-	;
+		{
+			/* Return a list of two elements: name (String) and dtype (PLiSQL_type*) */
+			$$ = list_make2(makeString($1), $2);
+		}
+		;
 
 decl_statement	: decl_varname decl_const decl_datatype decl_collate decl_notnull decl_defval
 					{

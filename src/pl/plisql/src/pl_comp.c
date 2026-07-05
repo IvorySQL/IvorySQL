@@ -3046,6 +3046,17 @@ plisql_build_type_def(const char *typname, int lineno, List *fields)
 		PLiSQL_type *fldtype = (PLiSQL_type *) lsecond(field);
 		Oid			typid;
 		int32		typmod;
+		/* Check for duplicate field names (Oracle rejects duplicates) */
+		{
+			ListCell   *lc2;
+			for (lc2 = fields; lc2 != lc && lc2 != NULL; lc2 = lnext(fields, lc2))
+			{
+				List *prev = (List *) lfirst(lc2);
+				if (strcmp(strVal(linitial(prev)), fldname) == 0)
+					elog(ERROR, "duplicate field name "%s" in RECORD type "%s"",
+						 fldname, typname);
+			}
+		}
 
 		if (fldtype->ttype == PLISQL_TTYPE_REC)
 		{
