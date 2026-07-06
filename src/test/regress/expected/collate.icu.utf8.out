@@ -3006,6 +3006,37 @@ SELECT U&'\0061\0308bc' LIKE U&'_\00e4bc' COLLATE ignore_accents;
 -- escape character at end of pattern
 SELECT 'foox' LIKE 'foo\' COLLATE ignore_accents;
 ERROR:  LIKE pattern must not end with escape character
+-- literal backslash with nondeterministic collation (bug #19474)
+SELECT 'back\slash' COLLATE ignore_accents LIKE 'back\slash%' ESCAPE '#';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT 'aäb' COLLATE ignore_accents LIKE 'a#äb' ESCAPE '#' AS multibyte_escape;
+ multibyte_escape 
+------------------
+ t
+(1 row)
+
+SELECT 'a\äb' COLLATE ignore_accents LIKE 'a\äb%' ESCAPE '#' AS backslash_multibyte;
+ backslash_multibyte 
+---------------------
+ t
+(1 row)
+
+SELECT 'a\b%c' COLLATE ignore_accents LIKE 'a#\b#%%c' ESCAPE '#' AS mixed_escapes;
+ mixed_escapes 
+---------------
+ t
+(1 row)
+
+SELECT 'backslash' COLLATE ignore_accents LIKE 'back\\slash%';
+ ?column? 
+----------
+ f
+(1 row)
+
 -- foreign keys (mixing different nondeterministic collations not allowed)
 CREATE TABLE test10pk (x text COLLATE case_sensitive PRIMARY KEY);
 CREATE TABLE test10fk (x text COLLATE case_insensitive REFERENCES test10pk (x) ON UPDATE CASCADE ON DELETE CASCADE);  -- error
