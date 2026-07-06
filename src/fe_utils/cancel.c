@@ -2,9 +2,39 @@
  *
  * Query cancellation support for frontend code
  *
- * Assorted utility functions to control query cancellation with signal
- * handler for SIGINT.
+ * This module provides SIGINT/Ctrl-C handling for frontend tools that need to
+ * cancel queries or interrupt other operations.  It provides three
+ * independent mechanisms, any combination of which can be used by an
+ * application:
  *
+ * 1. Server cancel query request -- When a query is running and the main
+ *    thread is waiting for the result of that query in a blocking manner, we
+ *    want SIGINT/Ctrl-C to cancel that query.  This can be achieved by
+ *    calling SetCancelConn() to register the connection that is (or will be)
+ *    running the query, prior to waiting for the result.  When SIGINT/Ctrl-C
+ *    is received, a cancel request for this connection will then be sent from
+ *    the signal handler (on Windows, from a separate thread).  That in turn
+ *    will then (assuming a co-operating server) cause the server to cancel
+ *    the query and send an error to the waiting client on the main thread.
+ *    The cancel connection is a process-wide global, so only one connection
+ *    can be the cancel target at a time.  ResetCancelConn() should be called
+ *    to disarm the mechanism again after the blocking wait has completed.
+ *
+ * 2. CancelRequested flag -- The CancelRequested flag is set to true whenever
+ *    SIGINT is received, and can be checked by the application at appropriate
+ *    times.  The primary use case for this is when the application code is
+ *    not blocked (indefinitely), but needs to take an action when Ctrl-C is
+ *    pressed, such as break out of a long running loop.
+ *
+ * 3. Signal handler callback -- A callback function can be registered with
+ *    setup_cancel_handler(), which will then be called directly from the
+ *    signal handler whenever SIGINT is received.  Because it is called from a
+ *    signal handler, the callback function must be async-signal-safe.  On
+ *    Windows, it is called from a separate signal-handling thread.  NOTE: The
+ *    callback is called AFTER setting CancelRequested but BEFORE sending the
+ *    cancel request to the server (if armed by SetCancelConn).  This means
+ *    that if the callback exits or longjmps, no cancel request will be sent
+ *    to the server.
  *
  * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
