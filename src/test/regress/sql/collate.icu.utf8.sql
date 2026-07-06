@@ -745,6 +745,16 @@ CREATE UNIQUE INDEX ON test3ci (x);  -- error
 SELECT string_to_array('ABC,DEF,GHI' COLLATE case_insensitive, ',', 'abc');
 SELECT string_to_array('ABCDEFGHI' COLLATE case_insensitive, NULL, 'b');
 
+-- These queries should be able to use the index on test1ci.x:
+SET enable_seqscan = off;
+SET enable_indexonlyscan = off;
+EXPLAIN (COSTS OFF)
+SELECT * FROM test1ci WHERE x ~ '^abc$' COLLATE "C";
+EXPLAIN (COSTS OFF)
+SELECT * FROM test1ci WHERE x LIKE 'abc' COLLATE case_insensitive;
+RESET enable_seqscan;
+RESET enable_indexonlyscan;
+
 -- Test HAVING-to-WHERE pushdown with nondeterministic collations.
 -- When a HAVING clause uses a different collation than the GROUP BY's
 -- nondeterministic collation, it must not be pushed to WHERE, otherwise
