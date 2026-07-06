@@ -413,14 +413,21 @@ plisql_yylex(YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 	}
 
 	/*
-	 * TYPE lookahead: "type" can either start a TYPE definition
-	 * (TYPE <name> IS RECORD(...)) or be used as a variable name
-	 * (DECLARE type INTEGER;).  Since K_TYPE is unreserved, the
-	 * scanner normally returns K_TYPE, but we must peek ahead to
-	 * confirm: only return K_TYPE if the pattern is <identifier> IS.
-	 * Otherwise return T_WORD so it's treated as a regular identifier.
+	 * TYPE lookahead (DECLARE-only): "type" can either start a TYPE
+	 * definition (TYPE <name> IS RECORD(...)) or be used as a variable
+	 * name (DECLARE type INTEGER;).  Since K_TYPE is unreserved, the
+	 * scanner normally returns K_TYPE, but in DECLARE sections we must
+	 * peek ahead to distinguish: only return K_TYPE if the pattern is
+	 * <identifier-like> IS, otherwise return T_WORD.
+	 *
+	 * This is ONLY needed during DECLARE sections.  In NORMAL/EXPR modes:
+	 * - "type" as a variable name is already resolved by plisql_parse_word
+	 *   returning T_DATUM before reaching here.
+	 * - K_TYPE is used as a grammar keyword (e.g., unit_kind in ACCESSIBLE
+	 *   BY clause) and must never be downgraded.
 	 */
-	if (tok1 == K_TYPE)
+	if (tok1 == K_TYPE &&
+		plisql_IdentifierLookup == IDENTIFIER_LOOKUP_DECLARE)
 	{
 		int			peek1;
 		TokenAuxData aux_peek1;
