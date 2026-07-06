@@ -3553,6 +3553,18 @@ tok_is_keyword(int token, union YYSTYPE *lval,
 			strcmp(lval->wdatum.ident, kw_str) == 0)
 			return true;
 	}
+	else if (token == T_WORD)
+	{
+		/*
+		 * It's an unreserved keyword that was downgraded to T_WORD
+		 * by the scanner (e.g., K_TYPE → T_WORD when not followed
+		 * by <identifier> IS). Check the string name.
+		 */
+		if (lval->word.ident != NULL &&
+			!lval->word.quoted &&
+			strcmp(lval->word.ident, kw_str) == 0)
+			return true;
+	}
 	return false;				/* not the keyword */
 }
 
