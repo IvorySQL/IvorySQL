@@ -832,15 +832,22 @@ get_op_index_interpretation(Oid opno)
 
 /*
  * equality_ops_are_compatible
- *		Return true if the two given equality operators have compatible
+ *		Return true if the two given operators have compatible equality
  *		semantics.
  *
  * This is trivially true if they are the same operator.  Otherwise,
- * Otherwise, we look to see if they both belong to an opfamily that
- * guarantees compatible semantics for equality.  Either finding allows us to
- * assume that they have compatible notions of equality.  (The reason we need
- * to do these pushups is that one might be a cross-type operator; for
- * instance int24eq vs int4eq.)
+ * we look to see if they both belong to an opfamily that guarantees
+ * compatible semantics for equality.  Either finding allows us to assume
+ * that they have compatible notions of equality.
+ *
+ * The typical use is to compare two equality operators (for instance the
+ * cross-type operators int24eq vs int4eq), but the test is meaningful for
+ * any pair of operators in a btree/hash opfamily.  Btree marks its
+ * opfamilies as amconsistentequality, which guarantees that every member
+ * of the family (=, <, <=, >, >=) agrees on the equivalence relation
+ * defined by the family's "=".  So a non-equality operator and an
+ * equality operator from the same opfamily are also "compatible" in this
+ * sense.
  */
 bool
 equality_ops_are_compatible(Oid opno1, Oid opno2)
@@ -977,6 +984,48 @@ collations_agree_on_equality(Oid coll1, Oid coll2)
 		return false;
 
 	return true;
+}
+
+/*
+ * op_is_safe_index_member
+ *		Check if the operator is a member of a B-tree or Hash operator family.
+ *
+ * Membership in such an opfamily has several useful implications: the operator
+ * returns non-null for non-null inputs (i.e. "null-safety", required so that
+ * the operator doesn't break index integrity), and it agrees with other
+ * members of the same opfamily on equality semantics.  Callers use this check
+ * as a proxy for any of those properties.
+ */
+bool
+op_is_safe_index_member(Oid opno)
+{
+	bool		result = false;
+	CatCList   *catlist;
+	int			i;
+
+	/*
+	 * Search pg_amop to see if the target operator is registered for any
+	 * btree or hash opfamily.
+	 */
+	catlist = SearchSysCacheList1(AMOPOPID, ObjectIdGetDatum(opno));
+
+	for (i = 0; i < catlist->n_members; i++)
+	{
+		HeapTuple	tuple = &catlist->members[i]->tuple;
+		Form_pg_amop aform = (Form_pg_amop) GETSTRUCT(tuple);
+
+		/* Check if the AM is B-tree or Hash */
+		if (aform->amopmethod == BTREE_AM_OID ||
+			aform->amopmethod == HASH_AM_OID)
+		{
+			result = true;
+			break;
+		}
+	}
+
+	ReleaseSysCacheList(catlist);
+
+	return result;
 }
 
 
