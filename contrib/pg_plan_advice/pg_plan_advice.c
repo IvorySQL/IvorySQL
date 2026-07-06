@@ -28,7 +28,10 @@
 #include "storage/dsm_registry.h"
 #include "utils/guc.h"
 
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(
+					.name = "pg_plan_advice",
+					.version = PG_VERSION
+);
 
 /* GUC variables */
 char	   *pg_plan_advice_advice = NULL;

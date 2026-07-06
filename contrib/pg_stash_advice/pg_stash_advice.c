@@ -22,7 +22,10 @@
 #include "utils/guc.h"
 #include "utils/memutils.h"
 
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(
+					.name = "pg_stash_advice",
+					.version = PG_VERSION
+);
 
 /* Shared memory hash table parameters */
 static dshash_parameters pgsa_stash_dshash_parameters = {
