@@ -568,6 +568,12 @@ CREATE COLLATION case_insensitive (provider = icu, locale = '@colStrength=second
 SELECT 'abc' <= 'ABC' COLLATE case_sensitive, 'abc' >= 'ABC' COLLATE case_sensitive;
 SELECT 'abc' <= 'ABC' COLLATE case_insensitive, 'abc' >= 'ABC' COLLATE case_insensitive;
 
+SELECT 'AB' LIKE 'ab' COLLATE case_insensitive AS t;
+SELECT 'AB' LIKE 'a\b' COLLATE case_insensitive AS t;
+SELECT 'AB' LIKE '\ab' COLLATE case_insensitive AS t;
+SELECT 'AB' LIKE '\a%' COLLATE case_insensitive AS t;
+SELECT 'AB' LIKE '\a\%' COLLATE case_insensitive AS f;
+
 -- tests with array_sort
 SELECT array_sort('{a,B}'::text[] COLLATE case_insensitive);
 SELECT array_sort('{a,B}'::text[] COLLATE "C");
