@@ -412,6 +412,50 @@ plisql_yylex(YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 		 */
 	}
 
+	/*
+	 * TYPE lookahead: "type" can either start a TYPE definition
+	 * (TYPE <name> IS RECORD(...)) or be used as a variable name
+	 * (DECLARE type INTEGER;).  Since K_TYPE is unreserved, the
+	 * scanner normally returns K_TYPE, but we must peek ahead to
+	 * confirm: only return K_TYPE if the pattern is <identifier> IS.
+	 * Otherwise return T_WORD so it's treated as a regular identifier.
+	 */
+	if (tok1 == K_TYPE)
+	{
+		int			peek1;
+		TokenAuxData aux_peek1;
+		int			peek2;
+		TokenAuxData aux_peek2;
+		const char *peek2_text;
+		bool		is_type_def = false;
+
+		peek1 = internal_yylex(&aux_peek1, yyscanner);
+		peek2 = internal_yylex(&aux_peek2, yyscanner);
+		peek2_text = yyextra->core_yy_extra.scanbuf + aux_peek2.lloc;
+
+		/*
+		 * TYPE <identifier> IS ... → peek1 is an identifier
+		 * and peek2 is the keyword "is" (case insensitive).
+		 * Compare the raw text to handle both core-IDENT and
+		 * core-reserved-keyword return codes.
+		 */
+		if (peek1 == IDENT && pg_strcasecmp(peek2_text, "is") == 0)
+		{
+			is_type_def = true;
+		}
+
+		/* Push back peeked tokens in reverse order */
+		push_back_token(peek2, &aux_peek2, yyscanner);
+		push_back_token(peek1, &aux_peek1, yyscanner);
+
+		if (!is_type_def)
+		{
+			/* Not a TYPE definition → treat as T_WORD (variable named "type") */
+			tok1 = T_WORD;
+			aux1.lval.str = pstrdup("type");
+		}
+	}
+
 	*yylvalp = aux1.lval;
 	*yyllocp = aux1.lloc;
 	yyextra->plisql_yyleng = aux1.leng;
