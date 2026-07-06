@@ -242,3 +242,15 @@ basebackup_progress_transfer_wal(void)
 	pgstat_progress_update_param(PROGRESS_BASEBACKUP_PHASE,
 								 PROGRESS_BASEBACKUP_PHASE_TRANSFER_WAL);
 }
+
+/*
+ * Advertise that we are no longer performing a backup.
+ *
+ * No longer used in core, but kept to preserve ABI compatibility in this
+ * branch.
+ */
+void
+basebackup_progress_done(void)
+{
+	pgstat_progress_end_command();
+}
