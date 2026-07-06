@@ -434,12 +434,18 @@ plisql_yylex(YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 		peek2_text = yyextra->core_yy_extra.scanbuf + aux_peek2.lloc;
 
 		/*
-		 * TYPE <identifier> IS ... → peek1 is an identifier
-		 * and peek2 is the keyword "is" (case insensitive).
-		 * Compare the raw text to handle both core-IDENT and
+		 * TYPE <identifier> IS ... → peek1 must be identifier-like
+		 * and peek2 must be "is" (case insensitive).
+		 *
+		 * Accept IDENT (regular identifiers) or any token > 255
+		 * (keywords including unreserved ones like ARRAY, VARCHAR2)
+		 * as a valid TYPE name.  Only reject tokens that clearly
+		 * cannot be identifiers (operators, punctuation, etc.).
+		 * Compare peek2 as raw text to handle both core-IDENT and
 		 * core-reserved-keyword return codes.
 		 */
-		if (peek1 == IDENT && pg_strcasecmp(peek2_text, "is") == 0)
+		if ((peek1 == IDENT || peek1 > 255) &&
+			pg_strcasecmp(peek2_text, "is") == 0)
 		{
 			is_type_def = true;
 		}
@@ -452,7 +458,8 @@ plisql_yylex(YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 		{
 			/* Not a TYPE definition → treat as T_WORD (variable named "type") */
 			tok1 = T_WORD;
-			aux1.lval.str = pstrdup("type");
+			aux1.lval.word.ident = pstrdup("type");
+			aux1.lval.word.quoted = false;
 		}
 	}
 
