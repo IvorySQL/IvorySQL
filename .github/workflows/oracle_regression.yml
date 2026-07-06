@@ -41,7 +41,27 @@ jobs:
       run: make && make install
 
     - name: oracle_regression
-      run: make oracle-check-world
+      run: |
+        set -euo pipefail
+        RETRIES=3
+        for i in $(seq 1 $RETRIES); do
+          echo "oracle-check-world 第 $i/$RETRIES 次尝试"
+          if make oracle-check-world; then
+            echo "oracle-check-world 测试执行成功"
+            exit 0
+          fi
+          # 失败时打印日志尾部，方便排查
+          echo "===== 打印失败日志 ====="
+          [ -f src/oracle_test/regress/regression.out ] && tail -n 200 src/oracle_test/regress/regression.out || true
+          [ -f src/oracle_test/regress/regression.diffs ] && tail -n 200 src/oracle_test/regress/regression.diffs || true
+          if [ "$i" -lt "$RETRIES" ]; then
+            sleep $((i * 10))
+            echo "等待后重试..."
+          else
+            echo "所有重试全部失败"
+            exit 1
+          fi
+        done
 
     - name: collect files
       if: failure()

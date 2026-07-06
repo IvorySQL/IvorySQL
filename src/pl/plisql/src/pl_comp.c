@@ -3049,7 +3049,7 @@ plisql_build_type_def(const char *typname, int lineno, List *fields)
 		/* Check for duplicate field names (Oracle rejects duplicates) */
 		{
 			ListCell   *lc2;
-			for (lc2 = fields; lc2 != lc && lc2 != NULL; lc2 = lnext(fields, lc2))
+			for (lc2 = list_head(fields); lc2 != NULL && lc2 != lc; lc2 = lnext(fields, lc2))
 			{
 				List *prev = (List *) lfirst(lc2);
 				if (strcmp(strVal(linitial(prev)), fldname) == 0)
