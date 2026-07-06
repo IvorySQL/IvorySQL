@@ -190,8 +190,30 @@ like(
 	qr/FATAL: .* recovery ended before configured recovery target was reached/,
 	'recovery end before target reached is a fatal error');
 
-# Invalid recovery_target_xid tests
+# Invalid recovery_target_timeline tests
 my ($result, $stdout, $stderr) = $node_primary->psql('postgres',
+	"ALTER SYSTEM SET recovery_target_timeline TO 'bogus'");
+like(
+	$stderr,
+	qr/is not a valid number/,
+	"invalid recovery_target_timeline (bogus value)");
+
+($result, $stdout, $stderr) = $node_primary->psql('postgres',
+	"ALTER SYSTEM SET recovery_target_timeline TO '0'");
+like(
+	$stderr,
+	qr/must be between 1 and 4294967295/,
+	"invalid recovery_target_timeline (lower bound check)");
+
+($result, $stdout, $stderr) = $node_primary->psql('postgres',
+	"ALTER SYSTEM SET recovery_target_timeline TO '4294967296'");
+like(
+	$stderr,
+	qr/must be between 1 and 4294967295/,
+	"invalid recovery_target_timeline (upper bound check)");
+
+# Invalid recovery_target_xid tests
+($result, $stdout, $stderr) = $node_primary->psql('postgres',
 	"ALTER SYSTEM SET recovery_target_xid TO 'bogus'");
 like(
 	$stderr,
