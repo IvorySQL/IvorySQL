@@ -257,9 +257,8 @@ MatchText(const char *t, int tlen, const char *p, int plen, pg_locale_t locale)
 				for (const char *c = p; c < p1; c++)
 				{
 					if (*c == '\\')
-						;
-					else
-						*(b++) = *c;
+						c++;	/* we already checked this isn't the end */
+					*(b++) = *c;
 				}
 
 				subpat = buf;
