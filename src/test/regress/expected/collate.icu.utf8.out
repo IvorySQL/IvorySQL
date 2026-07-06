@@ -2084,6 +2084,29 @@ SELECT string_to_array('ABCDEFGHI' COLLATE case_insensitive, NULL, 'b');
  {A,NULL,C,D,E,F,G,H,I}
 (1 row)
 
+-- These queries should be able to use the index on test1ci.x:
+SET enable_seqscan = off;
+SET enable_indexonlyscan = off;
+EXPLAIN (COSTS OFF)
+SELECT * FROM test1ci WHERE x ~ '^abc$' COLLATE "C";
+                QUERY PLAN                 
+-------------------------------------------
+ Index Scan using test1ci_x_idx on test1ci
+   Index Cond: (x = 'abc'::text)
+   Filter: (x ~ '^abc$'::text COLLATE "C")
+(3 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM test1ci WHERE x LIKE 'abc' COLLATE case_insensitive;
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Index Scan using test1ci_x_idx on test1ci
+   Index Cond: (x = 'abc'::text)
+   Filter: (x ~~ 'abc'::text COLLATE case_insensitive)
+(3 rows)
+
+RESET enable_seqscan;
+RESET enable_indexonlyscan;
 -- Test HAVING-to-WHERE pushdown with nondeterministic collations.
 -- When a HAVING clause uses a different collation than the GROUP BY's
 -- nondeterministic collation, it must not be pushed to WHERE, otherwise
