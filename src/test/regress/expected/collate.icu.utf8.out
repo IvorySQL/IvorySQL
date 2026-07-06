@@ -2122,7 +2122,7 @@ SELECT x, count(*) FROM test3ci GROUP BY x HAVING x = 'abc' COLLATE case_insensi
  abc |     2
 (1 row)
 
--- Negative: function applied to grouped column with conflicting collation
+-- Negative: function over the grouping column, conflicting collation
 EXPLAIN (COSTS OFF)
 SELECT x, count(*) FROM test3ci GROUP BY x HAVING upper(x) = 'ABC' COLLATE case_sensitive;
                         QUERY PLAN                         
@@ -2139,18 +2139,36 @@ SELECT x, count(*) FROM test3ci GROUP BY x HAVING upper(x) = 'ABC' COLLATE case_
  abc |     2
 (1 row)
 
--- Positive: function with same collation as GROUP BY
+-- Negative: function over the grouping column whose result is compared as an
+-- integer, under no collation
+EXPLAIN (COSTS OFF)
+SELECT x, count(*) FROM test3ci GROUP BY x HAVING ascii(x) = 97;
+        QUERY PLAN         
+---------------------------
+ HashAggregate
+   Group Key: x
+   Filter: (ascii(x) = 97)
+   ->  Seq Scan on test3ci
+(4 rows)
+
+SELECT x, count(*) FROM test3ci GROUP BY x HAVING ascii(x) = 97;
+  x  | count 
+-----+-------
+ abc |     2
+(1 row)
+
+-- Negative: a function wrapping the grouping column is not provably safe even
+-- when compared under the matching collation, since the function need not
+-- preserve the collation's equality
 EXPLAIN (COSTS OFF)
 SELECT x, count(*) FROM test3ci GROUP BY x HAVING upper(x) = 'ABC' COLLATE case_insensitive;
-                               QUERY PLAN                                
--------------------------------------------------------------------------
- GroupAggregate
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ HashAggregate
    Group Key: x
-   ->  Sort
-         Sort Key: x COLLATE case_insensitive
-         ->  Seq Scan on test3ci
-               Filter: (upper(x) = 'ABC'::text COLLATE case_insensitive)
-(6 rows)
+   Filter: (upper(x) = 'ABC'::text COLLATE case_insensitive)
+   ->  Seq Scan on test3ci
+(4 rows)
 
 SELECT x, count(*) FROM test3ci GROUP BY x HAVING upper(x) = 'ABC' COLLATE case_insensitive;
   x  | count 
@@ -2158,8 +2176,8 @@ SELECT x, count(*) FROM test3ci GROUP BY x HAVING upper(x) = 'ABC' COLLATE case_
  abc |     2
 (1 row)
 
--- Negative: inner function has conflicting collation, even though outer
--- operator's collation matches GROUP BY due to a COLLATE override
+-- Negative: same, with the grouping column wrapped in a function whose input
+-- collation is overridden; still not a direct operand, so it stays in HAVING
 EXPLAIN (COSTS OFF)
 SELECT x, count(*) FROM test3ci GROUP BY x HAVING upper(x COLLATE case_sensitive) COLLATE case_insensitive = 'ABC';
                      QUERY PLAN                     
@@ -2178,17 +2196,17 @@ SELECT x, count(*) FROM test3ci GROUP BY x HAVING upper(x COLLATE case_sensitive
 
 -- Mixed AND: conflicting clause stays in HAVING, safe clause pushed to WHERE
 EXPLAIN (COSTS OFF)
-SELECT x, count(*) FROM test3ci GROUP BY x HAVING x = 'abc' COLLATE case_sensitive AND length(x) > 1;
-                     QUERY PLAN                     
-----------------------------------------------------
+SELECT x, count(*) FROM test3ci GROUP BY x HAVING x = 'abc' COLLATE case_sensitive AND x >= 'a' COLLATE case_insensitive;
+                        QUERY PLAN                         
+-----------------------------------------------------------
  HashAggregate
    Group Key: x
    Filter: (x = 'abc'::text COLLATE case_sensitive)
    ->  Seq Scan on test3ci
-         Filter: (length(x) > 1)
+         Filter: (x >= 'a'::text COLLATE case_insensitive)
 (5 rows)
 
-SELECT x, count(*) FROM test3ci GROUP BY x HAVING x = 'abc' COLLATE case_sensitive AND length(x) > 1;
+SELECT x, count(*) FROM test3ci GROUP BY x HAVING x = 'abc' COLLATE case_sensitive AND x >= 'a' COLLATE case_insensitive;
   x  | count 
 -----+-------
  abc |     2
@@ -2196,15 +2214,15 @@ SELECT x, count(*) FROM test3ci GROUP BY x HAVING x = 'abc' COLLATE case_sensiti
 
 -- Positive: AND of two safe clauses, both can be pushed
 EXPLAIN (COSTS OFF)
-SELECT x, count(*) FROM test3ci GROUP BY x HAVING x = 'abc' COLLATE case_insensitive AND length(x) > 1;
-                                    QUERY PLAN                                    
-----------------------------------------------------------------------------------
+SELECT x, count(*) FROM test3ci GROUP BY x HAVING x = 'abc' COLLATE case_insensitive AND x >= 'a' COLLATE case_insensitive;
+                                                 QUERY PLAN                                                 
+------------------------------------------------------------------------------------------------------------
  GroupAggregate
    ->  Seq Scan on test3ci
-         Filter: ((x = 'abc'::text COLLATE case_insensitive) AND (length(x) > 1))
+         Filter: ((x >= 'a'::text COLLATE case_insensitive) AND (x = 'abc'::text COLLATE case_insensitive))
 (3 rows)
 
-SELECT x, count(*) FROM test3ci GROUP BY x HAVING x = 'abc' COLLATE case_insensitive AND length(x) > 1;
+SELECT x, count(*) FROM test3ci GROUP BY x HAVING x = 'abc' COLLATE case_insensitive AND x >= 'a' COLLATE case_insensitive;
   x  | count 
 -----+-------
  abc |     2
@@ -2348,6 +2366,230 @@ SELECT x, count(*) FROM test3cs GROUP BY x HAVING x = 'abc' COLLATE case_insensi
  ABC |     1
 (2 rows)
 
+-- Test WHERE-pushdown past a grouping layer (DISTINCT, DISTINCT ON, window
+-- PARTITION BY) when the qual applies a different collation than the
+-- grouping column's nondeterministic collation.  The qual would distinguish
+-- rows the grouping considers equal, so it must NOT be pushed inside the
+-- subquery.
+CREATE TABLE pushdown_ci (id int, x text COLLATE case_insensitive);
+INSERT INTO pushdown_ci VALUES (1, 'ABC'), (2, 'abc'), (3, 'def');
+-- DISTINCT ON: conflict, qual stays in outer query
+EXPLAIN (COSTS OFF)
+SELECT * FROM (SELECT DISTINCT ON (x) id, x FROM pushdown_ci ORDER BY x, id) s
+WHERE x = 'abc' COLLATE case_sensitive;
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Subquery Scan on s
+   Filter: (s.x = 'abc'::text COLLATE case_sensitive)
+   ->  Unique
+         ->  Sort
+               Sort Key: pushdown_ci.x COLLATE case_insensitive, pushdown_ci.id
+               ->  Seq Scan on pushdown_ci
+(6 rows)
+
+SELECT * FROM (SELECT DISTINCT ON (x) id, x FROM pushdown_ci ORDER BY x, id) s
+WHERE x = 'abc' COLLATE case_sensitive;
+ id | x 
+----+---
+(0 rows)
+
+-- Window function PARTITION BY: conflict, qual stays outside the WindowAgg
+EXPLAIN (COSTS OFF)
+SELECT * FROM (
+  SELECT id, x, count(*) OVER (PARTITION BY x) AS cnt FROM pushdown_ci
+) s
+WHERE x = 'abc' COLLATE case_sensitive;
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Subquery Scan on s
+   Filter: (s.x = 'abc'::text COLLATE case_sensitive)
+   ->  WindowAgg
+         Window: w1 AS (PARTITION BY pushdown_ci.x)
+         ->  Sort
+               Sort Key: pushdown_ci.x COLLATE case_insensitive
+               ->  Seq Scan on pushdown_ci
+(7 rows)
+
+SELECT * FROM (
+  SELECT id, x, count(*) OVER (PARTITION BY x) AS cnt FROM pushdown_ci
+) s
+WHERE x = 'abc' COLLATE case_sensitive;
+ id |  x  | cnt 
+----+-----+-----
+  2 | abc |   2
+(1 row)
+
+-- Plain DISTINCT: conflict, qual stays in outer query
+EXPLAIN (COSTS OFF)
+SELECT * FROM (SELECT DISTINCT x FROM pushdown_ci) s
+WHERE x = 'abc' COLLATE case_sensitive;
+                      QUERY PLAN                      
+------------------------------------------------------
+ Subquery Scan on s
+   Filter: (s.x = 'abc'::text COLLATE case_sensitive)
+   ->  HashAggregate
+         Group Key: pushdown_ci.x
+         ->  Seq Scan on pushdown_ci
+(5 rows)
+
+SELECT * FROM (SELECT DISTINCT x FROM pushdown_ci) s
+WHERE x = 'abc' COLLATE case_sensitive;
+ x 
+---
+(0 rows)
+
+-- Positive: matching collation, safe to push past the grouping
+EXPLAIN (COSTS OFF)
+SELECT * FROM (SELECT DISTINCT ON (x) id, x FROM pushdown_ci ORDER BY x, id) s
+WHERE x = 'abc' COLLATE case_insensitive;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Limit
+   ->  Sort
+         Sort Key: pushdown_ci.id
+         ->  Seq Scan on pushdown_ci
+               Filter: (x = 'abc'::text COLLATE case_insensitive)
+(5 rows)
+
+SELECT * FROM (SELECT DISTINCT ON (x) id, x FROM pushdown_ci ORDER BY x, id) s
+WHERE x = 'abc' COLLATE case_insensitive;
+ id |  x  
+----+-----
+  1 | ABC
+(1 row)
+
+-- Set operations: any operation other than UNION ALL groups rows by equality,
+-- so the same collation-mismatch rules apply.
+CREATE TABLE pushdown_ci2 (x text COLLATE case_insensitive);
+INSERT INTO pushdown_ci2 VALUES ('abc');
+-- UNION: conflict, qual stays in outer query
+EXPLAIN (COSTS OFF)
+SELECT * FROM (SELECT x FROM pushdown_ci UNION SELECT x FROM pushdown_ci2) s
+WHERE x = 'abc' COLLATE case_sensitive;
+                      QUERY PLAN                      
+------------------------------------------------------
+ Subquery Scan on s
+   Filter: (s.x = 'abc'::text COLLATE case_sensitive)
+   ->  HashAggregate
+         Group Key: pushdown_ci.x
+         ->  Append
+               ->  Seq Scan on pushdown_ci
+               ->  Seq Scan on pushdown_ci2
+(7 rows)
+
+SELECT * FROM (SELECT x FROM pushdown_ci UNION SELECT x FROM pushdown_ci2) s
+WHERE x = 'abc' COLLATE case_sensitive;
+ x 
+---
+(0 rows)
+
+-- INTERSECT: same
+EXPLAIN (COSTS OFF)
+SELECT * FROM (SELECT x FROM pushdown_ci INTERSECT SELECT x FROM pushdown_ci2) s
+WHERE x = 'abc' COLLATE case_sensitive;
+                      QUERY PLAN                      
+------------------------------------------------------
+ Subquery Scan on s
+   Filter: (s.x = 'abc'::text COLLATE case_sensitive)
+   ->  HashSetOp Intersect
+         ->  Seq Scan on pushdown_ci
+         ->  Seq Scan on pushdown_ci2
+(5 rows)
+
+SELECT * FROM (SELECT x FROM pushdown_ci INTERSECT SELECT x FROM pushdown_ci2) s
+WHERE x = 'abc' COLLATE case_sensitive;
+ x 
+---
+(0 rows)
+
+-- INTERSECT ALL: still groups
+EXPLAIN (COSTS OFF)
+SELECT * FROM (SELECT x FROM pushdown_ci INTERSECT ALL SELECT x FROM pushdown_ci2) s
+WHERE x = 'abc' COLLATE case_sensitive;
+                      QUERY PLAN                      
+------------------------------------------------------
+ Subquery Scan on s
+   Filter: (s.x = 'abc'::text COLLATE case_sensitive)
+   ->  HashSetOp Intersect All
+         ->  Seq Scan on pushdown_ci
+         ->  Seq Scan on pushdown_ci2
+(5 rows)
+
+SELECT * FROM (SELECT x FROM pushdown_ci INTERSECT ALL SELECT x FROM pushdown_ci2) s
+WHERE x = 'abc' COLLATE case_sensitive;
+ x 
+---
+(0 rows)
+
+-- Negative: a function over a grouping column with a nondeterministic
+-- collation, whose result is compared under no collation (an integer
+-- comparison), can distinguish values the grouping considers equal.
+-- PARTITION BY
+EXPLAIN (COSTS OFF)
+SELECT * FROM (
+  SELECT id, x, count(*) OVER (PARTITION BY x) AS cnt FROM pushdown_ci
+) s
+WHERE ascii(x) = 97;
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Subquery Scan on s
+   Filter: (ascii(s.x) = 97)
+   ->  WindowAgg
+         Window: w1 AS (PARTITION BY pushdown_ci.x)
+         ->  Sort
+               Sort Key: pushdown_ci.x COLLATE case_insensitive
+               ->  Seq Scan on pushdown_ci
+(7 rows)
+
+SELECT * FROM (
+  SELECT id, x, count(*) OVER (PARTITION BY x) AS cnt FROM pushdown_ci
+) s
+WHERE ascii(x) = 97;
+ id |  x  | cnt 
+----+-----+-----
+  2 | abc |   2
+(1 row)
+
+-- Same with DISTINCT
+EXPLAIN (COSTS OFF)
+SELECT * FROM (SELECT DISTINCT x FROM pushdown_ci) s WHERE ascii(x) = 97;
+             QUERY PLAN              
+-------------------------------------
+ Subquery Scan on s
+   Filter: (ascii(s.x) = 97)
+   ->  HashAggregate
+         Group Key: pushdown_ci.x
+         ->  Seq Scan on pushdown_ci
+(5 rows)
+
+SELECT * FROM (SELECT DISTINCT x FROM pushdown_ci) s WHERE ascii(x) = 97;
+ x 
+---
+(0 rows)
+
+-- Same with Set operations
+EXPLAIN (COSTS OFF)
+SELECT * FROM (SELECT x FROM pushdown_ci UNION SELECT x FROM pushdown_ci2) s
+WHERE ascii(x) = 97;
+                 QUERY PLAN                 
+--------------------------------------------
+ Subquery Scan on s
+   Filter: (ascii(s.x) = 97)
+   ->  HashAggregate
+         Group Key: pushdown_ci.x
+         ->  Append
+               ->  Seq Scan on pushdown_ci
+               ->  Seq Scan on pushdown_ci2
+(7 rows)
+
+SELECT * FROM (SELECT x FROM pushdown_ci UNION SELECT x FROM pushdown_ci2) s
+WHERE ascii(x) = 97;
+ x 
+---
+(0 rows)
+
+DROP TABLE pushdown_ci2;
+DROP TABLE pushdown_ci;
 -- bpchar
 CREATE TABLE test1bpci (x char(3) COLLATE case_insensitive);
 CREATE TABLE test2bpci (x char(3) COLLATE case_insensitive);
