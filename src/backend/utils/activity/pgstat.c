@@ -1511,18 +1511,19 @@ pgstat_register_kind(PgStat_Kind kind, const PgStat_KindInfo *kind_info)
 
 	if (kind_info->name == NULL || strlen(kind_info->name) == 0)
 		ereport(ERROR,
-				(errmsg("custom cumulative statistics name is invalid"),
+				(errmsg("failed to register custom cumulative statistics with ID %u", kind),
 				 errhint("Provide a non-empty name for the custom cumulative statistics.")));
 
 	if (!pgstat_is_kind_custom(kind))
-		ereport(ERROR, (errmsg("custom cumulative statistics ID %u is out of range", kind),
+		ereport(ERROR, (errmsg("failed to register custom cumulative statistics \"%s\" with ID %u", kind_info->name, kind),
 						errhint("Provide a custom cumulative statistics ID between %u and %u.",
 								PGSTAT_KIND_CUSTOM_MIN, PGSTAT_KIND_CUSTOM_MAX)));
 
 	if (!process_shared_preload_libraries_in_progress)
 		ereport(ERROR,
 				(errmsg("failed to register custom cumulative statistics \"%s\" with ID %u", kind_info->name, kind),
-				 errdetail("Custom cumulative statistics must be registered while initializing modules in \"shared_preload_libraries\".")));
+				 errdetail("Custom cumulative statistics must be registered while initializing modules in \"%s\".",
+						   "shared_preload_libraries")));
 
 	/*
 	 * Check some data for fixed-numbered stats.
@@ -1531,12 +1532,35 @@ pgstat_register_kind(PgStat_Kind kind, const PgStat_KindInfo *kind_info)
 	{
 		if (kind_info->shared_size == 0)
 			ereport(ERROR,
-					(errmsg("custom cumulative statistics property is invalid"),
+					(errmsg("failed to register custom cumulative statistics \"%s\" with ID %u", kind_info->name, kind),
 					 errhint("Custom cumulative statistics require a shared memory size for fixed-numbered objects.")));
+		if (kind_info->init_shmem_cb == NULL)
+			ereport(ERROR,
+					(errmsg("failed to register custom cumulative statistics \"%s\" with ID %u", kind_info->name, kind),
+					 errhint("Custom cumulative statistics require a \"%s\" callback for fixed-numbered objects.",
+							 "init_shmem_cb")));
+		if (kind_info->reset_all_cb == NULL)
+			ereport(ERROR,
+					(errmsg("failed to register custom cumulative statistics \"%s\" with ID %u", kind_info->name, kind),
+					 errhint("Custom cumulative statistics require a \"%s\" callback for fixed-numbered objects.",
+							 "reset_all_cb")));
+		if (kind_info->snapshot_cb == NULL)
+			ereport(ERROR,
+					(errmsg("failed to register custom cumulative statistics \"%s\" with ID %u", kind_info->name, kind),
+					 errhint("Custom cumulative statistics require a \"%s\" callback for fixed-numbered objects.",
+							 "snapshot_cb")));
 		if (kind_info->track_entry_count)
 			ereport(ERROR,
-					(errmsg("custom cumulative statistics property is invalid"),
+					(errmsg("failed to register custom cumulative statistics \"%s\" with ID %u", kind_info->name, kind),
 					 errhint("Custom cumulative statistics cannot use entry count tracking for fixed-numbered objects.")));
+	}
+	else
+	{
+		if (kind_info->pending_size > 0 && kind_info->flush_pending_cb == NULL)
+			ereport(ERROR,
+					(errmsg("failed to register custom cumulative statistics \"%s\" with ID %u", kind_info->name, kind),
+					 errhint("Custom cumulative statistics require a \"%s\" callback when pending size is set.",
+							 "flush_pending_cb")));
 	}
 
 	/*
