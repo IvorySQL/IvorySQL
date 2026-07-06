@@ -769,6 +769,8 @@ plisql_free_function_memory(PLiSQL_function * func,
 				break;
 			case PLISQL_DTYPE_EXCEPTION:
 				break;
+			case PLISQL_DTYPE_TYPE_DEF:
+				break;
 			default:
 				elog(ERROR, "unrecognized data type: %d", d->dtype);
 		}

@@ -3170,6 +3170,7 @@ build_datatype(HeapTuple typeTup, int32 typmod,
 
 	typ = palloc_object(PLiSQL_type);
 
+	typ->rectupdesc = NULL;		/* initialize to avoid garbage value */
 	typ->typname = pstrdup(NameStr(typeStruct->typname));
 	typ->typoid = typeStruct->oid;
 	switch (typeStruct->typtype)

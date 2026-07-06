@@ -3083,16 +3083,22 @@ is_const_datum(PLiSQL_execstate *estate, PLiSQL_datum *datum)
 				PLiSQL_datum *parent;
 
 				if (OidIsValid(recfield->pkgoid))
+				{
 					parent = get_package_datum_bydno(estate,
 												recfield->pkgoid,
 												recfield->recparentno);
+				}
 				else
+				{
 					parent = (estate->datums[recfield->recparentno]);
+				}
 
-					if (parent->dtype == PLISQL_DTYPE_TYPE_DEF)
-						isconst = true;
-					else
-						isconst = ((PLiSQL_rec *) parent)->isconst;
+				if (parent == NULL)
+					isconst = true;
+				else if (parent->dtype == PLISQL_DTYPE_TYPE_DEF)
+					isconst = true;
+				else
+					isconst = ((PLiSQL_rec *) parent)->isconst;
 			}
 			break;
 		case PLISQL_DTYPE_PACKAGE_DATUM:
