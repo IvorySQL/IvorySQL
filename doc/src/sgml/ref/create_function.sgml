@@ -933,6 +933,7 @@ COMMIT;
 
   <simplelist type="inline">
    <member><xref linkend="sql-alterfunction"/></member>
+   <member><xref linkend="sql-createprocedure"/></member>
    <member><xref linkend="sql-dropfunction"/></member>
    <member><xref linkend="sql-grant"/></member>
    <member><xref linkend="sql-load"/></member>
