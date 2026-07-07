@@ -7098,7 +7098,18 @@ plisql_param_compile(ParamListInfo params, Param *param,
 	{
 		bool		isvarlena = (((PLiSQL_var *) datum)->datatype->typlen == -1);
 
-		if (isvarlena && dno == expr->target_param && expr->expr_simple_expr)
+		/*
+		 * dno has just been rebound to the resolved datum's own dno, which
+		 * for a package-qualified reference lives in the package's datum
+		 * namespace, not the calling function's.  plisql_param_eval_var_check
+		 * (below) indexes estate->datums[dno] directly without regard to
+		 * pkgoid, so comparing this dno against expr->target_param (a dno in
+		 * the calling function's namespace) is only meaningful when the
+		 * datum isn't package-qualified; otherwise a coincidental numeric
+		 * match causes it to read an unrelated local variable at runtime.
+		 */
+		if (isvarlena && dno == expr->target_param && expr->expr_simple_expr &&
+			!OidIsValid(((PLiSQL_var *) datum)->pkgoid))
 			scratch.d.cparam.paramfunc = plisql_param_eval_var_check;
 		else if (isvarlena)
 			scratch.d.cparam.paramfunc = plisql_param_eval_var_ro;
