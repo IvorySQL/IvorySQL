@@ -7343,8 +7343,17 @@ getTables(Archive *fout, int *numTables)
 						 "c.relhastriggers, c.relpersistence, "
 						 "c.reloftype, "
 						 "c.relacl, "
-						 "acldefault(CASE WHEN c.relkind = " CppAsString2(RELKIND_SEQUENCE)
-						 " THEN 's'::\"char\" ELSE 'r'::\"char\" END, c.relowner) AS acldefault, "
+						 "acldefault(CASE"
+						 " WHEN c.relkind = " CppAsString2(RELKIND_PROPGRAPH));
+	/* 19beta1 didn't support acldefault('g'), so we'll fix that below */
+	appendPQExpBufferStr(query,
+						 fout->remoteVersion >= 200000 ?
+						 " THEN 'g'::\"char\"" :
+						 " THEN NULL");
+	appendPQExpBufferStr(query,
+						 " WHEN c.relkind = " CppAsString2(RELKIND_SEQUENCE)
+						 " THEN 's'::\"char\""
+						 " ELSE 'r'::\"char\" END, c.relowner) AS acldefault, "
 						 "CASE WHEN c.relkind = " CppAsString2(RELKIND_FOREIGN_TABLE) " THEN "
 						 "(SELECT ftserver FROM pg_catalog.pg_foreign_table WHERE ftrelid = c.oid) "
 						 "ELSE 0 END AS foreignserver, "
@@ -7563,7 +7572,7 @@ getTables(Archive *fout, int *numTables)
 		tblinfo[i].dobj.namespace =
 			findNamespace(atooid(PQgetvalue(res, i, i_relnamespace)));
 		tblinfo[i].dacl.acl = pg_strdup(PQgetvalue(res, i, i_relacl));
-		tblinfo[i].dacl.acldefault = pg_strdup(PQgetvalue(res, i, i_acldefault));
+		/* acldefault computed below */
 		tblinfo[i].dacl.privtype = 0;
 		tblinfo[i].dacl.initprivs = NULL;
 		tblinfo[i].relkind = *(PQgetvalue(res, i, i_relkind));
@@ -7617,6 +7626,28 @@ getTables(Archive *fout, int *numTables)
 			tblinfo[i].amname = pg_strdup(PQgetvalue(res, i, i_amname));
 		tblinfo[i].is_identity_sequence = (strcmp(PQgetvalue(res, i, i_is_identity_sequence), "t") == 0);
 		tblinfo[i].ispartition = (strcmp(PQgetvalue(res, i, i_ispartition), "t") == 0);
+
+		if (tblinfo[i].relkind == RELKIND_PROPGRAPH &&
+			!(fout->remoteVersion >= 200000))
+		{
+			PQExpBuffer aclarray = createPQExpBuffer();
+			PQExpBuffer aclitem = createPQExpBuffer();
+
+			/* Standard ACL as of v19 is {owner=r/owner} */
+			appendPQExpBufferChar(aclarray, '{');
+			quoteAclUserName(aclitem, tblinfo[i].rolname);
+			appendPQExpBufferStr(aclitem, "=r/");
+			quoteAclUserName(aclitem, tblinfo[i].rolname);
+			appendPGArray(aclarray, aclitem->data);
+			appendPQExpBufferChar(aclarray, '}');
+
+			tblinfo[i].dacl.acldefault = pstrdup(aclarray->data);
+
+			destroyPQExpBuffer(aclarray);
+			destroyPQExpBuffer(aclitem);
+		}
+		else
+			tblinfo[i].dacl.acldefault = pg_strdup(PQgetvalue(res, i, i_acldefault));
 
 		/* other fields were zeroed above */
 

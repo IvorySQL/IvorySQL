@@ -961,6 +961,9 @@ acldefault_sql(PG_FUNCTION_ARGS)
 		case 'c':
 			objtype = OBJECT_COLUMN;
 			break;
+		case 'g':
+			objtype = OBJECT_PROPGRAPH;
+			break;
 		case 'r':
 			objtype = OBJECT_TABLE;
 			break;
