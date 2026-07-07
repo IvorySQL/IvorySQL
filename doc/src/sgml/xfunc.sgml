@@ -3739,8 +3739,8 @@ my_shmem_init(void *arg)
       startup, it will immediately call the appropriate callbacks, depending
       on whether the requested memory areas were already initialized by
       another backend. The callbacks will be called while holding an internal
-      lock, which prevents concurrent two backends from initializing the
-      memory area concurrently.
+      lock (ShmemIndexLock), which prevents the race condition of two backends
+      trying to initializing the memory area at the same time.
      </para>
     </sect3>
 
