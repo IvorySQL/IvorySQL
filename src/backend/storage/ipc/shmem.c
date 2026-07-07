@@ -918,7 +918,10 @@ CallShmemCallbacksAfterStartup(const ShmemCallbacks *callbacks)
 		return;
 	}
 
-	/* Hold ShmemIndexLock while we allocate all the shmem entries */
+	/*
+	 * Hold ShmemIndexLock while we allocate all the shmem entries and run all
+	 * the initializers.
+	 */
 	LWLockAcquire(ShmemIndexLock, LW_EXCLUSIVE);
 
 	/*
@@ -937,7 +940,7 @@ CallShmemCallbacksAfterStartup(const ShmemCallbacks *callbacks)
 			notfound_any = true;
 	}
 	if (found_any && notfound_any)
-		elog(ERROR, "found some but not all");
+		elog(ERROR, "some of the requested shmem areas have already been initialized");
 
 	/*
 	 * Allocate or attach all the shmem areas requested by the request_fn
