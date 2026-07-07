@@ -2904,9 +2904,7 @@ transformGroupClause(ParseState *pstate, List *grouplist, bool groupByAll,
 
 			/*
 			 * Likewise, TLEs containing window functions are not okay to add
-			 * to GROUP BY.  At this writing, the SQL standard is silent on
-			 * what to do with them, but by analogy to aggregates we'll just
-			 * skip them.
+			 * to GROUP BY, and the SQL standard directs us to skip them.
 			 */
 			if (pstate->p_hasWindowFuncs &&
 				contain_windowfuncs((Node *) tle->expr))

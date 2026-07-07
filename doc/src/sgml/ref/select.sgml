@@ -862,7 +862,8 @@ GROUP BY { ALL | [ ALL | DISTINCT ] <replaceable class="parameter">grouping_elem
     <replaceable class="parameter">grouping_elements</replaceable>
     provided is equivalent to writing <literal>GROUP BY</literal> with the
     numbers of all <command>SELECT</command> output columns that do not
-    contain either an aggregate function or a window function.
+    contain either an aggregate function referring to the same query level or
+    a window function.
    </para>
 
    <para>
