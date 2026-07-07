@@ -1415,6 +1415,32 @@ accessor: unit_kind unit_name unit_name
 
 					$$ = acproper;
 				}
+			| T_WORD extral_unit_name
+				{
+					/*
+					 * Handle the case where the scanner downgrades K_TYPE
+					 * to T_WORD in DECLARE mode.  T_WORD "type" followed
+					 * by a keyword that can only be extral_unit_name
+					 * (PACKAGE/TRIGGER/TYPE) is TYPE as unit_kind.
+					 */
+					AccessProperItem *acproper = palloc0_object(AccessProperItem);
+
+					acproper->proper_type = access_proper_type;
+					acproper->schema_name = NULL;
+					acproper->unit_name = $2;
+
+					$$ = acproper;
+				}
+			| T_WORD extral_unit_name extral_unit_name
+				{
+					AccessProperItem *acproper = palloc0_object(AccessProperItem);
+
+					acproper->proper_type = access_proper_type;
+					acproper->schema_name = $2;
+					acproper->unit_name = $3;
+
+					$$ = acproper;
+				}
 			;
 
 unit_name:	T_WORD
