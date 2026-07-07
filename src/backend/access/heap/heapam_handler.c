@@ -12,7 +12,7 @@
  *
  *
  * NOTES
- *	  This files wires up the lower level heapam.c et al routines with the
+ *	  This file wires up the lower level heapam.c et al routines with the
  *	  tableam abstraction.
  *
  *-------------------------------------------------------------------------
@@ -192,17 +192,11 @@ static void
 heapam_tuple_complete_speculative(Relation relation, TupleTableSlot *slot,
 								  uint32 specToken, bool succeeded)
 {
-	bool		shouldFree = true;
-	HeapTuple	tuple = ExecFetchSlotHeapTuple(slot, true, &shouldFree);
-
 	/* adjust the tuple's state accordingly */
 	if (succeeded)
 		heap_finish_speculative(relation, &slot->tts_tid);
 	else
 		heap_abort_speculative(relation, &slot->tts_tid);
-
-	if (shouldFree)
-		pfree(tuple);
 }
 
 static TM_Result
