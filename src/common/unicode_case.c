@@ -193,6 +193,22 @@ unicode_strfold(char *dst, size_t dstsize, const char *src, ssize_t srclen,
 						NULL);
 }
 
+/* local version of pg_utf_mblen() to be inlinable */
+static int
+utf8_mblen(const unsigned char *s)
+{
+	if ((*s & 0x80) == 0)
+		return 1;
+	else if ((*s & 0xe0) == 0xc0)
+		return 2;
+	else if ((*s & 0xf0) == 0xe0)
+		return 3;
+	else if ((*s & 0xf8) == 0xf0)
+		return 4;
+	else
+		return -1;
+}
+
 /*
  * Implement Unicode Default Case Conversion algorithm.
  *
@@ -229,13 +245,20 @@ convert_case(char *dst, size_t dstsize, const char *src, ssize_t srclen,
 		Assert(boundary == 0);	/* start of text is always a boundary */
 	}
 
-	while ((srclen < 0 || srcoff < srclen) && src[srcoff] != '\0')
+	srclen = (srclen < 0) ? strlen(src) : srclen;
+	while (srcoff < srclen && src[srcoff] != '\0')
 	{
-		pg_wchar	u1 = utf8_to_unicode((unsigned char *) src + srcoff);
-		int			u1len = unicode_utf8len(u1);
+		int			u1len = utf8_mblen((const unsigned char *) src + srcoff);
+		pg_wchar	u1;
 		pg_wchar	simple = 0;
 		const pg_wchar *special = NULL;
 		enum CaseMapResult casemap_result;
+
+		/* invalid UTF8 */
+		if (u1len < 0 || srcoff + u1len > srclen)
+			break;
+
+		u1 = utf8_to_unicode((const unsigned char *) src + srcoff);
 
 		if (str_casekind == CaseTitle)
 		{
@@ -320,7 +343,14 @@ check_final_sigma(const unsigned char *str, size_t len, size_t offset)
 	{
 		if ((str[i] & 0x80) == 0 || (str[i] & 0xC0) == 0xC0)
 		{
-			pg_wchar	curr = utf8_to_unicode(str + i);
+			int			u1len = utf8_mblen((const unsigned char *) str + i);
+			pg_wchar	curr;
+
+			/* invalid UTF8 */
+			if (u1len < 0 || i + u1len > len)
+				return false;
+
+			curr = utf8_to_unicode(str + i);
 
 			if (pg_u_prop_case_ignorable(curr))
 				continue;
@@ -331,8 +361,8 @@ check_final_sigma(const unsigned char *str, size_t len, size_t offset)
 		}
 		else if ((str[i] & 0xC0) == 0x80)
 			continue;
-
-		Assert(false);			/* invalid UTF-8 */
+		else
+			return false;			/* invalid UTF8 */
 	}
 
 	/* end of string is not followed by a Cased character */
@@ -344,7 +374,14 @@ check_final_sigma(const unsigned char *str, size_t len, size_t offset)
 	{
 		if ((str[i] & 0x80) == 0 || (str[i] & 0xC0) == 0xC0)
 		{
-			pg_wchar	curr = utf8_to_unicode(str + i);
+			int			u1len = utf8_mblen((const unsigned char *) str + i);
+			pg_wchar	curr;
+
+			/* invalid UTF8 */
+			if (u1len < 0 || i + u1len > len)
+				return false;
+
+			curr = utf8_to_unicode(str + i);
 
 			if (pg_u_prop_case_ignorable(curr))
 				continue;
@@ -355,8 +392,8 @@ check_final_sigma(const unsigned char *str, size_t len, size_t offset)
 		}
 		else if ((str[i] & 0xC0) == 0x80)
 			continue;
-
-		Assert(false);			/* invalid UTF-8 */
+		else
+			return false;			/* invalid UTF8 */
 	}
 
 	return true;
