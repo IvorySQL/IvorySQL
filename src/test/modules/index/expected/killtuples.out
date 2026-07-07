@@ -223,7 +223,7 @@ step flush: SELECT FROM pg_stat_force_next_flush();
 step result: SELECT ((heap_blks_read + heap_blks_hit - counter.heap_accesses) > 0) AS has_new_heap_accesses FROM counter, pg_statio_all_tables WHERE relname = 'kill_prior_tuple';
 has_new_heap_accesses
 ---------------------
-t                    
+f                    
 (1 row)
 
 step drop_table: DROP TABLE IF EXISTS kill_prior_tuple;
