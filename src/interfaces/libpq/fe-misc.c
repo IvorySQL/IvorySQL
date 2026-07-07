@@ -1099,14 +1099,12 @@ pqSocketCheck(PGconn *conn, int forRead, int forWrite, pg_usec_time_t end_time)
 			return -1;
 		}
 
-#ifdef USE_SSL
-		/* Check for SSL library buffering read bytes */
-		if (forRead && conn->ssl_in_use && pgtls_read_pending(conn))
+		/* Check for SSL/GSS library buffering read bytes */
+		if (forRead && pqsecure_bytes_pending(conn) != 0)
 		{
 			/* short-circuit the select */
 			return 1;
 		}
-#endif
 	}
 
 	/* We will retry as long as we get EINTR */
