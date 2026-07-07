@@ -1162,7 +1162,7 @@ SELECT product_id, p.name, (sum(s.units) * p.price) AS sales
    <para>
     PostgreSQL also supports the syntax <literal>GROUP BY ALL</literal>,
     which is equivalent to explicitly writing all select-list entries that
-    do not contain either an aggregate function or a window function.
+    do not contain either an aggregate function referring to the same query level or a window function.
     This can greatly simplify ad-hoc exploration of data.
     As an example, these queries are equivalent:
 <screen>
