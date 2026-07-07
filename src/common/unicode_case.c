@@ -323,75 +323,67 @@ convert_case(char *dst, size_t dstsize, const char *src, size_t srclen,
  * 3-17. The character at the given offset must be directly preceded by a
  * Cased character, and must not be directly followed by a Cased character.
  *
- * Case_Ignorable characters are ignored. NB: some characters may be both
+ * Case_Ignorable characters are ignored. Neither beginning of string nor end
+ * of string are considered Cased characters. NB: some characters may be both
  * Cased and Case_Ignorable, in which case they are ignored.
  */
 static bool
 check_final_sigma(const unsigned char *str, size_t len, size_t offset)
 {
-	/* the start of the string is not preceded by a Cased character */
-	if (offset == 0)
-		return false;
+	bool		preceded_by_cased = false;
+	bool		followed_by_cased = false;
+	char32_t	curr;
+	int			ulen;
 
-	/* iterate backwards, looking for Cased character */
-	for (int i = offset - 1; i >= 0; i--)
+	/* iterate backwards looking for preceding character */
+	for (int i = offset; i > 0;)
 	{
-		if ((str[i] & 0x80) == 0 || (str[i] & 0xC0) == 0xC0)
-		{
-			int			u1len = utf8_mblen((const unsigned char *) str + i);
-			char32_t	curr;
-
-			/* invalid UTF8 */
-			if (u1len < 0 || i + u1len > len)
-				return false;
-
-			curr = utf8_to_unicode(str + i);
-
-			if (pg_u_prop_case_ignorable(curr))
-				continue;
-			else if (pg_u_prop_cased(curr))
-				break;
-			else
-				return false;
-		}
-		else if ((str[i] & 0xC0) == 0x80)
+		/* skip backwards through continuation bytes */
+		i--;
+		if ((str[i] & 0xC0) == 0x80)
 			continue;
-		else
-			return false;			/* invalid UTF8 */
+
+		/* now at leading byte of previous sequence */
+		Assert((str[i] & 0x80) == 0 || (str[i] & 0xC0) == 0xC0);
+
+		ulen = utf8_mblen((const unsigned char *) str + i);
+
+		/* invalid UTF8 */
+		if (ulen < 0 || i + ulen > len)
+			return false;
+
+		curr = utf8_to_unicode((const unsigned char *) str + i);
+
+		if (!pg_u_prop_case_ignorable(curr))
+		{
+			preceded_by_cased = pg_u_prop_cased(curr);
+			break;
+		}
 	}
 
-	/* end of string is not followed by a Cased character */
-	if (offset == len)
-		return true;
+	ulen = utf8_mblen((const unsigned char *) str + offset);
 
-	/* iterate forwards, looking for Cased character */
-	for (int i = offset + 1; i < len && str[i] != '\0'; i++)
+	/* iterate forward looking for following character */
+	for (int i = offset + ulen; i < len;)
 	{
-		if ((str[i] & 0x80) == 0 || (str[i] & 0xC0) == 0xC0)
+		ulen = utf8_mblen((const unsigned char *) str + i);
+
+		/* invalid UTF8 */
+		if (ulen < 0 || i + ulen > len)
+			return false;
+
+		curr = utf8_to_unicode((const unsigned char *) str + i);
+
+		if (!pg_u_prop_case_ignorable(curr))
 		{
-			int			u1len = utf8_mblen((const unsigned char *) str + i);
-			char32_t	curr;
-
-			/* invalid UTF8 */
-			if (u1len < 0 || i + u1len > len)
-				return false;
-
-			curr = utf8_to_unicode(str + i);
-
-			if (pg_u_prop_case_ignorable(curr))
-				continue;
-			else if (pg_u_prop_cased(curr))
-				return false;
-			else
-				break;
+			followed_by_cased = pg_u_prop_cased(curr);
+			break;
 		}
-		else if ((str[i] & 0xC0) == 0x80)
-			continue;
-		else
-			return false;			/* invalid UTF8 */
+
+		i += ulen;
 	}
 
-	return true;
+	return (preceded_by_cased && !followed_by_cased);
 }
 
 /*
