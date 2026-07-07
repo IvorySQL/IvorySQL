@@ -247,7 +247,8 @@ pqsecure_raw_read(PGconn *conn, void *ptr, size_t len)
  *	Return the number of bytes available in the transport buffer.
  *
  * If pqsecure_read() is called for this number of bytes, it's guaranteed to
- * return successfully without reading from the underlying socket.
+ * return successfully without reading from the underlying socket.  See
+ * pqDrainPending() for a more complete discussion of the concepts involved.
  */
 ssize_t
 pqsecure_bytes_pending(PGconn *conn)

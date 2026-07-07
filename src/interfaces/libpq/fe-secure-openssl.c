@@ -236,7 +236,9 @@ pgtls_bytes_pending(PGconn *conn)
 	int			pending;
 
 	/*
-	 * OpenSSL readahead is documented to break SSL_pending().
+	 * OpenSSL readahead is documented to break SSL_pending().  Plus, we can't
+	 * afford to have OpenSSL take bytes off the socket without processing
+	 * them; that breaks the postconditions for pqsecure_drain_pending().
 	 */
 	Assert(!SSL_get_read_ahead(conn->ssl));
 
