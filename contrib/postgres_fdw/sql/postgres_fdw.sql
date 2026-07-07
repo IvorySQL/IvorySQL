@@ -4587,7 +4587,12 @@ ANALYZE simport_ftable;                   -- should fail
 
 ANALYZE simport_table;
 
+SELECT pg_stat_reset_single_table_counters('public.simport_ftable'::regclass);
 ANALYZE VERBOSE simport_ftable;           -- should work
+SELECT pg_stat_force_next_flush();
+SELECT pg_stat_get_live_tuples('public.simport_ftable'::regclass),
+       pg_stat_get_dead_tuples('public.simport_ftable'::regclass),
+       pg_stat_get_analyze_count('public.simport_ftable'::regclass);
 
 ALTER TABLE simport_table ALTER COLUMN c1 SET STATISTICS 0;
 ALTER TABLE simport_table ALTER COLUMN c2 SET STATISTICS 0;
@@ -4604,7 +4609,12 @@ ANALYZE simport_ftable;                   -- should fail
 ALTER TABLE simport_table ALTER COLUMN c2 SET STATISTICS DEFAULT;
 ANALYZE simport_table;
 
+SELECT pg_stat_reset_single_table_counters('public.simport_ftable'::regclass);
 ANALYZE VERBOSE simport_ftable;           -- should work
+SELECT pg_stat_force_next_flush();
+SELECT pg_stat_get_live_tuples('public.simport_ftable'::regclass),
+       pg_stat_get_dead_tuples('public.simport_ftable'::regclass),
+       pg_stat_get_analyze_count('public.simport_ftable'::regclass);
 
 ANALYZE VERBOSE simport_ftable (c1);      -- should work
 
