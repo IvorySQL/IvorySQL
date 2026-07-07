@@ -458,7 +458,7 @@ process_queued_fetch_requests(libpq_source *src)
 		}
 
 		appendArrayEscapedString(&src->paths, rq->path);
-		appendStringInfo(&src->offsets, INT64_FORMAT, (int64) rq->offset);
+		appendStringInfo(&src->offsets, "%lld", (long long int) rq->offset);
 		appendStringInfo(&src->lengths, "%zu", rq->length);
 	}
 	appendStringInfoChar(&src->paths, '}');

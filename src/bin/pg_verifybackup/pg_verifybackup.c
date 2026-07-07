@@ -735,9 +735,9 @@ verify_plain_backup_file(verifier_context *context, char *relpath,
 	if (m->size != sb.st_size)
 	{
 		report_backup_error(context,
-							"\"%s\" has size %llu on disk but size %llu in the manifest",
-							relpath, (unsigned long long) sb.st_size,
-							(unsigned long long) m->size);
+							"\"%s\" has size %lld on disk but size %" PRIu64 " in the manifest",
+							relpath, (long long) sb.st_size,
+							m->size);
 		m->bad = true;
 	}
 

@@ -208,9 +208,9 @@ member_verify_header(astreamer *streamer, astreamer_member *member)
 	if (m->size != member->size)
 	{
 		report_backup_error(mystreamer->context,
-							"file \"%s\" has size %llu in archive \"%s\" but size %" PRIu64 " in the manifest",
+							"file \"%s\" has size %lld in archive \"%s\" but size %" PRIu64 " in the manifest",
 							member->pathname,
-							(unsigned long long) member->size,
+							(long long) member->size,
 							mystreamer->archive_name,
 							m->size);
 		m->bad = true;

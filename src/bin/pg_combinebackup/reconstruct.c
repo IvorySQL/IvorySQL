@@ -421,10 +421,10 @@ debug_reconstruction(int n_source, rfile **sources, bool dry_run)
 			if (fstat(s->fd, &sb) < 0)
 				pg_fatal("could not stat file \"%s\": %m", s->filename);
 			if (sb.st_size < s->highest_offset_read)
-				pg_fatal("file \"%s\" is too short: expected %llu, found %llu",
+				pg_fatal("file \"%s\" is too short: expected %lld, found %lld",
 						 s->filename,
-						 (unsigned long long) s->highest_offset_read,
-						 (unsigned long long) sb.st_size);
+						 (long long) s->highest_offset_read,
+						 (long long) sb.st_size);
 		}
 	}
 }
@@ -788,7 +788,7 @@ read_block(rfile *s, off_t off, uint8 *buffer)
 		if (rb < 0)
 			pg_fatal("could not read from file \"%s\": %m", s->filename);
 		else
-			pg_fatal("could not read from file \"%s\", offset %llu: read %d of %d",
-					 s->filename, (unsigned long long) off, rb, BLCKSZ);
+			pg_fatal("could not read from file \"%s\", offset %lld: read %d of %d",
+					 s->filename, (long long) off, rb, BLCKSZ);
 	}
 }
