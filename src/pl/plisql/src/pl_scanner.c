@@ -433,11 +433,14 @@ plisql_yylex(YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 		TokenAuxData aux_peek1;
 		int			peek2;
 		TokenAuxData aux_peek2;
+		const char *peek1_text;
 		const char *peek2_text;
 		bool		is_type_def = false;
+		bool		is_unit_kind = false;
 
 		peek1 = internal_yylex(&aux_peek1, yyscanner);
 		peek2 = internal_yylex(&aux_peek2, yyscanner);
+		peek1_text = yyextra->core_yy_extra.scanbuf + aux_peek1.lloc;
 		peek2_text = yyextra->core_yy_extra.scanbuf + aux_peek2.lloc;
 
 		/*
@@ -457,11 +460,34 @@ plisql_yylex(YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 			is_type_def = true;
 		}
 
+		/*
+		 * Check if TYPE is being used as a unit_kind inside an
+		 * ACCESSIBLE BY clause (e.g., TYPE PACKAGE, TYPE TRIGGER).
+		 * In this context TYPE must remain K_TYPE so the grammar
+		 * can match it as unit_kind; downgrading to T_WORD would
+		 * cause a syntax error because T_WORD followed by another
+		 * unit_kind keyword cannot match any accessor rule.
+		 *
+		 * Reserved unit_kind keywords (FUNCTION, PROCEDURE) are
+		 * recognized directly by internal_yylex; unreserved ones
+		 * (PACKAGE, TRIGGER, TYPE) are returned as IDENT and must
+		 * be matched by comparing the scanbuf text.
+		 */
+		if (peek1 == K_FUNCTION || peek1 == K_PROCEDURE)
+			is_unit_kind = true;
+		else if (peek1 == IDENT)
+		{
+			if (pg_strcasecmp(peek1_text, "package") == 0 ||
+				pg_strcasecmp(peek1_text, "trigger") == 0 ||
+				pg_strcasecmp(peek1_text, "type") == 0)
+				is_unit_kind = true;
+		}
+
 		/* Push back peeked tokens in reverse order */
 		push_back_token(peek2, &aux_peek2, yyscanner);
 		push_back_token(peek1, &aux_peek1, yyscanner);
 
-		if (!is_type_def)
+		if (!is_type_def && !is_unit_kind)
 		{
 			/* Not a TYPE definition → treat as T_WORD (variable named "type") */
 			tok1 = T_WORD;
