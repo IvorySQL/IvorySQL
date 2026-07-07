@@ -1104,8 +1104,8 @@ heap_xlog_logical_rewrite(XLogReaderState *r)
 	if (ftruncate(fd, xlrec->offset) != 0)
 		ereport(ERROR,
 				(errcode_for_file_access(),
-				 errmsg("could not truncate file \"%s\" to %u: %m",
-						path, (uint32) xlrec->offset)));
+				 errmsg("could not truncate file \"%s\" to %lld: %m",
+						path, (long long int) xlrec->offset)));
 	pgstat_report_wait_end();
 
 	data = XLogRecGetData(r) + sizeof(*xlrec);

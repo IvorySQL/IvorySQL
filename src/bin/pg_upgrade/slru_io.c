@@ -133,8 +133,8 @@ SlruReadSwitchPageSlow(SlruSegState *state, uint64 pageno)
 		if (rc == 0)
 		{
 			/* unexpected EOF */
-			pg_log(PG_WARNING, "unexpected EOF reading file \"%s\" at offset %u, reading as zeros",
-				   state->fn, (unsigned int) offset);
+			pg_log(PG_WARNING, "unexpected EOF reading file \"%s\" at offset %lld, reading as zeros",
+				   state->fn, (long long int) offset);
 			memset(&state->buf.data[bytes_read], 0, BLCKSZ - bytes_read);
 			break;
 		}

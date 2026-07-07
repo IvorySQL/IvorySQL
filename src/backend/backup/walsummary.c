@@ -306,9 +306,9 @@ WriteWalSummary(void *wal_summary_io, void *data, int length)
 	if (nbytes != length)
 		ereport(ERROR,
 				(errcode_for_file_access(),
-				 errmsg("could not write file \"%s\": wrote only %d of %d bytes at offset %u",
+				 errmsg("could not write file \"%s\": wrote only %d of %d bytes at offset %lld",
 						FilePathName(io->file), nbytes,
-						length, (unsigned) io->filepos),
+						length, (long long) io->filepos),
 				 errhint("Check free disk space.")));
 
 	io->filepos += nbytes;

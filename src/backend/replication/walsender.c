@@ -661,6 +661,12 @@ SendTimeLineHistory(TimeLineHistoryCmd *cmd)
 				(errcode_for_file_access(),
 				 errmsg("could not seek to beginning of file \"%s\": %m", path)));
 
+	/*
+	 * unlikely in practice, but to document the implicit integer conversion
+	 */
+	if (histfilelen > UINT32_MAX)
+		elog(ERROR, "timeline history file is too large");
+
 	pq_sendint32(&buf, histfilelen);	/* col2 len */
 
 	bytesleft = histfilelen;
