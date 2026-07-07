@@ -450,7 +450,6 @@ static bool
 TransactionGroupUpdateXidStatus(TransactionId xid, XidStatus status,
 								XLogRecPtr lsn, int64 pageno)
 {
-	volatile PROC_HDR *procglobal = ProcGlobal;
 	PGPROC	   *proc = MyProc;
 	uint32		nextidx;
 	uint32		wakeidx;
@@ -493,7 +492,7 @@ TransactionGroupUpdateXidStatus(TransactionId xid, XidStatus status,
 	 * different from ours.  If another group starts to update a page in the
 	 * same bank as ours, they wait until we release the lock.
 	 */
-	nextidx = pg_atomic_read_u32(&procglobal->clogGroupFirst);
+	nextidx = pg_atomic_read_u32(&ProcGlobal->clogGroupFirst);
 
 	while (true)
 	{
@@ -524,7 +523,7 @@ TransactionGroupUpdateXidStatus(TransactionId xid, XidStatus status,
 
 		pg_atomic_write_u32(&proc->clogGroupNext, nextidx);
 
-		if (pg_atomic_compare_exchange_u32(&procglobal->clogGroupFirst,
+		if (pg_atomic_compare_exchange_u32(&ProcGlobal->clogGroupFirst,
 										   &nextidx,
 										   (uint32) MyProcNumber))
 			break;
@@ -576,7 +575,7 @@ TransactionGroupUpdateXidStatus(TransactionId xid, XidStatus status,
 	 * At this point, any processes trying to do this would create a separate
 	 * group.
 	 */
-	nextidx = pg_atomic_exchange_u32(&procglobal->clogGroupFirst,
+	nextidx = pg_atomic_exchange_u32(&ProcGlobal->clogGroupFirst,
 									 INVALID_PROC_NUMBER);
 
 	/* Remember head of list so we can perform wakeups after dropping lock. */

@@ -87,7 +87,6 @@ shm_toc_attach(uint64 magic, void *address)
 void *
 shm_toc_allocate(shm_toc *toc, Size nbytes)
 {
-	volatile shm_toc *vtoc = toc;
 	Size		total_bytes;
 	Size		allocated_bytes;
 	Size		nentry;
@@ -103,9 +102,9 @@ shm_toc_allocate(shm_toc *toc, Size nbytes)
 
 	SpinLockAcquire(&toc->toc_mutex);
 
-	total_bytes = vtoc->toc_total_bytes;
-	allocated_bytes = vtoc->toc_allocated_bytes;
-	nentry = vtoc->toc_nentry;
+	total_bytes = toc->toc_total_bytes;
+	allocated_bytes = toc->toc_allocated_bytes;
+	nentry = toc->toc_nentry;
 	toc_bytes = offsetof(shm_toc, toc_entry) + nentry * sizeof(shm_toc_entry)
 		+ allocated_bytes;
 
@@ -117,7 +116,7 @@ shm_toc_allocate(shm_toc *toc, Size nbytes)
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of shared memory")));
 	}
-	vtoc->toc_allocated_bytes += nbytes;
+	toc->toc_allocated_bytes += nbytes;
 
 	SpinLockRelease(&toc->toc_mutex);
 
@@ -130,16 +129,15 @@ shm_toc_allocate(shm_toc *toc, Size nbytes)
 Size
 shm_toc_freespace(shm_toc *toc)
 {
-	volatile shm_toc *vtoc = toc;
 	Size		total_bytes;
 	Size		allocated_bytes;
 	Size		nentry;
 	Size		toc_bytes;
 
 	SpinLockAcquire(&toc->toc_mutex);
-	total_bytes = vtoc->toc_total_bytes;
-	allocated_bytes = vtoc->toc_allocated_bytes;
-	nentry = vtoc->toc_nentry;
+	total_bytes = toc->toc_total_bytes;
+	allocated_bytes = toc->toc_allocated_bytes;
+	nentry = toc->toc_nentry;
 	SpinLockRelease(&toc->toc_mutex);
 
 	toc_bytes = offsetof(shm_toc, toc_entry) + nentry * sizeof(shm_toc_entry);
@@ -170,7 +168,6 @@ shm_toc_freespace(shm_toc *toc)
 void
 shm_toc_insert(shm_toc *toc, uint64 key, void *address)
 {
-	volatile shm_toc *vtoc = toc;
 	Size		total_bytes;
 	Size		allocated_bytes;
 	Size		nentry;
@@ -183,14 +180,14 @@ shm_toc_insert(shm_toc *toc, uint64 key, void *address)
 
 	SpinLockAcquire(&toc->toc_mutex);
 
-	total_bytes = vtoc->toc_total_bytes;
-	allocated_bytes = vtoc->toc_allocated_bytes;
-	nentry = vtoc->toc_nentry;
+	total_bytes = toc->toc_total_bytes;
+	allocated_bytes = toc->toc_allocated_bytes;
+	nentry = toc->toc_nentry;
 
 #ifdef USE_ASSERT_CHECKING
 	/* Verify no duplicate keys */
 	for (Size i = 0; i < nentry; i++)
-		Assert(vtoc->toc_entry[i].key != key);
+		Assert(toc->toc_entry[i].key != key);
 #endif
 
 	toc_bytes = offsetof(shm_toc, toc_entry) + nentry * sizeof(shm_toc_entry)
@@ -208,8 +205,8 @@ shm_toc_insert(shm_toc *toc, uint64 key, void *address)
 	}
 
 	Assert(offset < total_bytes);
-	vtoc->toc_entry[nentry].key = key;
-	vtoc->toc_entry[nentry].offset = offset;
+	toc->toc_entry[nentry].key = key;
+	toc->toc_entry[nentry].offset = offset;
 
 	/*
 	 * By placing a write barrier after filling in the entry and before
@@ -218,7 +215,7 @@ shm_toc_insert(shm_toc *toc, uint64 key, void *address)
 	 */
 	pg_write_barrier();
 
-	vtoc->toc_nentry++;
+	toc->toc_nentry++;
 
 	SpinLockRelease(&toc->toc_mutex);
 }

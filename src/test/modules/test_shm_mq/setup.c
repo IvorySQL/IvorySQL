@@ -38,7 +38,7 @@ static worker_state *setup_background_workers(int nworkers,
 											  dsm_segment *seg);
 static void cleanup_background_workers(dsm_segment *seg, Datum arg);
 static void wait_for_workers_to_become_ready(worker_state *wstate,
-											 volatile test_shm_mq_header *hdr);
+											 test_shm_mq_header *hdr);
 static bool check_worker_status(worker_state *wstate);
 
 /* value cached, fetched from shared memory */
@@ -258,7 +258,7 @@ cleanup_background_workers(dsm_segment *seg, Datum arg)
 
 static void
 wait_for_workers_to_become_ready(worker_state *wstate,
-								 volatile test_shm_mq_header *hdr)
+								 test_shm_mq_header *hdr)
 {
 	bool		result = false;
 

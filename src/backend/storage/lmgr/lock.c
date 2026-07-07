@@ -313,7 +313,7 @@ typedef struct
 	uint32		count[FAST_PATH_STRONG_LOCK_HASH_PARTITIONS];
 } FastPathStrongRelationLockData;
 
-static volatile FastPathStrongRelationLockData *FastPathStrongRelationLocks;
+static FastPathStrongRelationLockData *FastPathStrongRelationLocks;
 
 static void LockManagerShmemRequest(void *arg);
 static void LockManagerShmemInit(void *arg);

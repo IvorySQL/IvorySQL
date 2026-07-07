@@ -661,8 +661,7 @@ InitAuxiliaryProcess(void)
 	}
 
 	/* Mark auxiliary proc as in use by me */
-	/* use volatile pointer to prevent code rearrangement */
-	((volatile PGPROC *) auxproc)->pid = MyProcPid;
+	auxproc->pid = MyProcPid;
 
 	SpinLockRelease(&ProcGlobal->freeProcsLock);
 

@@ -3760,7 +3760,7 @@ reindex_index(const ReindexStmt *stmt, Oid indexId,
 	int			save_sec_context;
 	int			save_nestlevel;
 	IndexInfo  *indexInfo;
-	volatile bool skipped_constraint = false;
+	bool		skipped_constraint = false;
 	PGRUsage	ru0;
 	bool		progress = ((params->options & REINDEXOPT_REPORT_PROGRESS) != 0);
 	bool		set_tablespace = false;
