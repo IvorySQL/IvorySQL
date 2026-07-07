@@ -230,10 +230,38 @@ rloop:
 	return n;
 }
 
-bool
-pgtls_read_pending(PGconn *conn)
+ssize_t
+pgtls_bytes_pending(PGconn *conn)
 {
-	return SSL_pending(conn->ssl) > 0;
+	int			pending;
+
+	/*
+	 * OpenSSL readahead is documented to break SSL_pending().
+	 */
+	Assert(!SSL_get_read_ahead(conn->ssl));
+
+	pending = SSL_pending(conn->ssl);
+	if (pending < 0)
+	{
+		/* shouldn't be possible */
+		Assert(false);
+		libpq_append_conn_error(conn, "OpenSSL reports negative bytes pending");
+		return -1;
+	}
+	else if (pending == INT_MAX)
+	{
+		/*
+		 * If we ever found a legitimate way to hit this, we'd need to loop
+		 * around in the caller to call pgtls_bytes_pending() again.  Throw an
+		 * error rather than complicate the code in that way, because
+		 * SSL_read() should be bounded to the size of a single TLS record,
+		 * and conn->inBuffer can't currently go past INT_MAX in size anyway.
+		 */
+		libpq_append_conn_error(conn, "OpenSSL reports INT_MAX bytes pending");
+		return -1;
+	}
+
+	return (ssize_t) pending;
 }
 
 ssize_t
