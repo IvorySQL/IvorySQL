@@ -41,6 +41,7 @@
 #include "optimizer/restrictinfo.h"
 #include "optimizer/tlist.h"
 #include "parser/parsetree.h"
+#include "pgstat.h"
 #include "postgres_fdw.h"
 #include "statistics/statistics.h"
 #include "storage/latch.h"
@@ -52,6 +53,7 @@
 #include "utils/rel.h"
 #include "utils/sampling.h"
 #include "utils/selfuncs.h"
+#include "utils/timestamp.h"
 
 PG_MODULE_MAGIC_EXT(
 					.name = "postgres_fdw",
@@ -336,6 +338,8 @@ typedef struct
 	PGresult   *rel;
 	PGresult   *att;
 	int			server_version_num;
+	double		livetuples;
+	double		deadtuples;
 } RemoteStatsResults;
 
 /* Column order in relation stats query */
@@ -5598,6 +5602,7 @@ postgresImportForeignStatistics(Relation relation, List *va_cols, int elevel)
 	RemoteStatsResults remstats = {.rel = NULL, .att = NULL};
 	RemoteAttributeMapping *remattrmap = NULL;
 	int			attrcnt = 0;
+	TimestampTz starttime = 0;
 	bool		restore_stats = false;
 	bool		ok = false;
 	ListCell   *lc;
@@ -5657,6 +5662,8 @@ postgresImportForeignStatistics(Relation relation, List *va_cols, int elevel)
 			(errmsg("importing statistics for foreign table \"%s.%s\"",
 					schemaname, relname)));
 
+	starttime = GetCurrentTimestamp();
+
 	ok = fetch_remote_statistics(relation, va_cols,
 								 table, schemaname, relname,
 								 &attrcnt, &remattrmap, &remstats);
@@ -5666,9 +5673,15 @@ postgresImportForeignStatistics(Relation relation, List *va_cols, int elevel)
 									   attrcnt, remattrmap, &remstats);
 
 	if (ok)
+	{
+		pgstat_report_analyze(relation,
+							  remstats.livetuples, remstats.deadtuples,
+							  (va_cols == NIL), starttime);
+
 		ereport(elevel,
 				(errmsg("finished importing statistics for foreign table \"%s.%s\"",
 						schemaname, relname)));
+	}
 
 	PQclear(remstats.rel);
 	PQclear(remstats.att);
@@ -5781,7 +5794,6 @@ fetch_remote_statistics(Relation relation,
 		goto fetch_cleanup;
 	}
 
-
 	if (reltuples > 0)
 	{
 		StringInfoData column_list;
@@ -5807,6 +5819,10 @@ fetch_remote_statistics(Relation relation,
 				goto fetch_cleanup;
 		}
 	}
+
+	/* We assume that we have no dead tuple. */
+	remstats->deadtuples = 0.0;
+	remstats->livetuples = reltuples;
 
 	ok = true;
 

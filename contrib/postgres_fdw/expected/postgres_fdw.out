@@ -12973,9 +12973,29 @@ ALTER FOREIGN TABLE simport_ftable OPTIONS (ADD restore_stats 'true');
 ANALYZE simport_ftable;                   -- should fail
 WARNING:  could not import statistics for foreign table "public.simport_ftable" --- remote table "public.simport_table" has no relation statistics to import
 ANALYZE simport_table;
+SELECT pg_stat_reset_single_table_counters('public.simport_ftable'::regclass);
+ pg_stat_reset_single_table_counters 
+-------------------------------------
+ 
+(1 row)
+
 ANALYZE VERBOSE simport_ftable;           -- should work
 INFO:  importing statistics for foreign table "public.simport_ftable"
 INFO:  finished importing statistics for foreign table "public.simport_ftable"
+SELECT pg_stat_force_next_flush();
+ pg_stat_force_next_flush 
+--------------------------
+ 
+(1 row)
+
+SELECT pg_stat_get_live_tuples('public.simport_ftable'::regclass),
+       pg_stat_get_dead_tuples('public.simport_ftable'::regclass),
+       pg_stat_get_analyze_count('public.simport_ftable'::regclass);
+ pg_stat_get_live_tuples | pg_stat_get_dead_tuples | pg_stat_get_analyze_count 
+-------------------------+-------------------------+---------------------------
+                       0 |                       0 |                         1
+(1 row)
+
 ALTER TABLE simport_table ALTER COLUMN c1 SET STATISTICS 0;
 ALTER TABLE simport_table ALTER COLUMN c2 SET STATISTICS 0;
 INSERT INTO simport_table VALUES (1, 'foo'), (1, 'foo'), (2, 'bar'), (2, 'bar');
@@ -12988,9 +13008,29 @@ ANALYZE simport_ftable;                   -- should fail
 WARNING:  could not import statistics for foreign table "public.simport_ftable" --- no attribute statistics found for column "c2" of remote table "public.simport_table"
 ALTER TABLE simport_table ALTER COLUMN c2 SET STATISTICS DEFAULT;
 ANALYZE simport_table;
+SELECT pg_stat_reset_single_table_counters('public.simport_ftable'::regclass);
+ pg_stat_reset_single_table_counters 
+-------------------------------------
+ 
+(1 row)
+
 ANALYZE VERBOSE simport_ftable;           -- should work
 INFO:  importing statistics for foreign table "public.simport_ftable"
 INFO:  finished importing statistics for foreign table "public.simport_ftable"
+SELECT pg_stat_force_next_flush();
+ pg_stat_force_next_flush 
+--------------------------
+ 
+(1 row)
+
+SELECT pg_stat_get_live_tuples('public.simport_ftable'::regclass),
+       pg_stat_get_dead_tuples('public.simport_ftable'::regclass),
+       pg_stat_get_analyze_count('public.simport_ftable'::regclass);
+ pg_stat_get_live_tuples | pg_stat_get_dead_tuples | pg_stat_get_analyze_count 
+-------------------------+-------------------------+---------------------------
+                       4 |                       0 |                         1
+(1 row)
+
 ANALYZE VERBOSE simport_ftable (c1);      -- should work
 INFO:  importing statistics for foreign table "public.simport_ftable"
 INFO:  finished importing statistics for foreign table "public.simport_ftable"
