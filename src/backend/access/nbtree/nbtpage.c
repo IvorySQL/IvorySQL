@@ -585,8 +585,6 @@ Buffer
 _bt_gettrueroot(Relation rel)
 {
 	Buffer		metabuf;
-	Page		metapg;
-	BTPageOpaque metaopaque;
 	Buffer		rootbuf;
 	Page		rootpage;
 	BTPageOpaque rootopaque;
@@ -605,25 +603,7 @@ _bt_gettrueroot(Relation rel)
 	rel->rd_amcache = NULL;
 
 	metabuf = _bt_getbuf(rel, BTREE_METAPAGE, BT_READ);
-	metapg = BufferGetPage(metabuf);
-	metaopaque = BTPageGetOpaque(metapg);
-	metad = BTPageGetMeta(metapg);
-
-	if (!P_ISMETA(metaopaque) ||
-		metad->btm_magic != BTREE_MAGIC)
-		ereport(ERROR,
-				(errcode(ERRCODE_INDEX_CORRUPTED),
-				 errmsg("index \"%s\" is not a btree",
-						RelationGetRelationName(rel))));
-
-	if (metad->btm_version < BTREE_MIN_VERSION ||
-		metad->btm_version > BTREE_VERSION)
-		ereport(ERROR,
-				(errcode(ERRCODE_INDEX_CORRUPTED),
-				 errmsg("version mismatch in index \"%s\": file version %d, "
-						"current version %d, minimal supported version %d",
-						RelationGetRelationName(rel),
-						metad->btm_version, BTREE_VERSION, BTREE_MIN_VERSION)));
+	metad = _bt_getmeta(rel, metabuf);
 
 	/* if no root page initialized yet, fail */
 	if (metad->btm_root == P_NONE)
