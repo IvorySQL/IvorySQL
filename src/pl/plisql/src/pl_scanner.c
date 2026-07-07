@@ -468,20 +468,18 @@ plisql_yylex(YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 		 * cause a syntax error because T_WORD followed by another
 		 * unit_kind keyword cannot match any accessor rule.
 		 *
-		 * Reserved unit_kind keywords (FUNCTION, PROCEDURE) are
-		 * recognized directly by internal_yylex; unreserved ones
-		 * (PACKAGE, TRIGGER, TYPE) are returned as IDENT and must
-		 * be matched by comparing the scanbuf text.
+		 * Compare the raw scanbuf text of peek1 rather than its
+		 * token code, because the Oracle core scanner may return
+		 * these keywords as specific Oracle tokens (PACKAGE,
+		 * TRIGGER, TYPE_P) rather than IDENT, and PL/iSQL token
+		 * codes (K_FUNCTION etc.) differ from Oracle token codes.
 		 */
-		if (peek1 == K_FUNCTION || peek1 == K_PROCEDURE)
+		if (pg_strcasecmp(peek1_text, "function") == 0 ||
+			pg_strcasecmp(peek1_text, "procedure") == 0 ||
+			pg_strcasecmp(peek1_text, "package") == 0 ||
+			pg_strcasecmp(peek1_text, "trigger") == 0 ||
+			pg_strcasecmp(peek1_text, "type") == 0)
 			is_unit_kind = true;
-		else if (peek1 == IDENT)
-		{
-			if (pg_strcasecmp(peek1_text, "package") == 0 ||
-				pg_strcasecmp(peek1_text, "trigger") == 0 ||
-				pg_strcasecmp(peek1_text, "type") == 0)
-				is_unit_kind = true;
-		}
 
 		/* Push back peeked tokens in reverse order */
 		push_back_token(peek2, &aux_peek2, yyscanner);
