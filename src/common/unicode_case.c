@@ -40,8 +40,8 @@ static const char32_t *const casekind_map[NCaseKind] =
 
 static char32_t find_case_map(char32_t ucs, const char32_t *map);
 static size_t convert_case(char *dst, size_t dstsize, const char *src, size_t srclen,
-						   CaseKind str_casekind, bool full, WordBoundaryNext wbnext,
-						   void *wbstate);
+						   size_t *pconsumed, CaseKind str_casekind, bool full,
+						   WordBoundaryNext wbnext, void *wbstate);
 static enum CaseMapResult casemap(char32_t u1, CaseKind casekind, bool full,
 								  const char *src, size_t srclen, size_t srcoff,
 								  char32_t *simple, const char32_t **special);
@@ -82,7 +82,8 @@ unicode_casefold_simple(char32_t code)
  * unicode_strlower()
  *
  * Convert src to lowercase, and return the result length (not including
- * terminating NUL).
+ * terminating NUL). Sets *pconsumed to the amount of src successfully
+ * consumed; if less than srclen, indicates a decoding error.
  *
  * String src must be encoded in UTF-8.
  *
@@ -98,17 +99,18 @@ unicode_casefold_simple(char32_t code)
  */
 size_t
 unicode_strlower(char *dst, size_t dstsize, const char *src, size_t srclen,
-				 bool full)
+				 size_t *pconsumed, bool full)
 {
-	return convert_case(dst, dstsize, src, srclen, CaseLower, full, NULL,
-						NULL);
+	return convert_case(dst, dstsize, src, srclen, pconsumed, CaseLower, full,
+						NULL, NULL);
 }
 
 /*
  * unicode_strtitle()
  *
  * Convert src to titlecase, and return the result length (not including
- * terminating NUL).
+ * terminating NUL). Sets *pconsumed to the amount of src successfully
+ * consumed; if less than srclen, indicates a decoding error.
  *
  * String src must be encoded in UTF-8.
  *
@@ -134,17 +136,19 @@ unicode_strlower(char *dst, size_t dstsize, const char *src, size_t srclen,
  */
 size_t
 unicode_strtitle(char *dst, size_t dstsize, const char *src, size_t srclen,
-				 bool full, WordBoundaryNext wbnext, void *wbstate)
+				 size_t *pconsumed, bool full, WordBoundaryNext wbnext,
+				 void *wbstate)
 {
-	return convert_case(dst, dstsize, src, srclen, CaseTitle, full, wbnext,
-						wbstate);
+	return convert_case(dst, dstsize, src, srclen, pconsumed, CaseTitle, full,
+						wbnext, wbstate);
 }
 
 /*
  * unicode_strupper()
  *
  * Convert src to uppercase, and return the result length (not including
- * terminating NUL).
+ * terminating NUL). Sets *pconsumed to the amount of src successfully
+ * consumed; if less than srclen, indicates a decoding error.
  *
  * String src must be encoded in UTF-8.
  *
@@ -160,17 +164,18 @@ unicode_strtitle(char *dst, size_t dstsize, const char *src, size_t srclen,
  */
 size_t
 unicode_strupper(char *dst, size_t dstsize, const char *src, size_t srclen,
-				 bool full)
+				 size_t *pconsumed, bool full)
 {
-	return convert_case(dst, dstsize, src, srclen, CaseUpper, full, NULL,
-						NULL);
+	return convert_case(dst, dstsize, src, srclen, pconsumed, CaseUpper, full,
+						NULL, NULL);
 }
 
 /*
  * unicode_strfold()
  *
  * Case fold src, and return the result length (not including terminating
- * NUL).
+ * NUL). Sets *pconsumed to the amount of src successfully consumed; if less
+ * than srclen, indicates a decoding error.
  *
  * String src must be encoded in UTF-8.
  *
@@ -183,10 +188,10 @@ unicode_strupper(char *dst, size_t dstsize, const char *src, size_t srclen,
  */
 size_t
 unicode_strfold(char *dst, size_t dstsize, const char *src, size_t srclen,
-				bool full)
+				size_t *pconsumed, bool full)
 {
-	return convert_case(dst, dstsize, src, srclen, CaseFold, full, NULL,
-						NULL);
+	return convert_case(dst, dstsize, src, srclen, pconsumed, CaseFold, full,
+						NULL, NULL);
 }
 
 /* local version of pg_utf_mblen() to be inlinable */
@@ -223,8 +228,8 @@ utf8_mblen(const unsigned char *s)
  */
 static size_t
 convert_case(char *dst, size_t dstsize, const char *src, size_t srclen,
-			 CaseKind str_casekind, bool full, WordBoundaryNext wbnext,
-			 void *wbstate)
+			 size_t *pconsumed, CaseKind str_casekind, bool full,
+			 WordBoundaryNext wbnext, void *wbstate)
 {
 	/* character CaseKind varies while titlecasing */
 	CaseKind	chr_casekind = str_casekind;
@@ -315,6 +320,7 @@ convert_case(char *dst, size_t dstsize, const char *src, size_t srclen,
 	if (result_len < dstsize)
 		dst[result_len] = '\0';
 
+	*pconsumed = srcoff;
 	return result_len;
 }
 

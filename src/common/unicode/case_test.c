@@ -115,6 +115,7 @@ icu_test_full(char *str)
 	char		icu_fold[BUFSZ];
 	UErrorCode	status;
 	size_t		len = strlen(str);
+	size_t		consumed;
 
 	/* full case mapping doesn't use posix semantics */
 	struct WordBoundaryState wbstate = {
@@ -126,10 +127,10 @@ icu_test_full(char *str)
 		.prev_alnum = false,
 	};
 
-	unicode_strlower(lower, BUFSZ, str, len, true);
-	unicode_strtitle(title, BUFSZ, str, len, true, initcap_wbnext, &wbstate);
-	unicode_strupper(upper, BUFSZ, str, len, true);
-	unicode_strfold(fold, BUFSZ, str, len, true);
+	unicode_strlower(lower, BUFSZ, str, len, &consumed, true);
+	unicode_strtitle(title, BUFSZ, str, len, &consumed, true, initcap_wbnext, &wbstate);
+	unicode_strupper(upper, BUFSZ, str, len, &consumed, true);
+	unicode_strfold(fold, BUFSZ, str, len, &consumed, true);
 	status = U_ZERO_ERROR;
 	ucasemap_utf8ToLower(casemap, icu_lower, BUFSZ, str, len, &status);
 	status = U_ZERO_ERROR;
@@ -260,13 +261,16 @@ static size_t
 tfunc_lower(char *dst, size_t dstsize, const char *src,
 			size_t srclen)
 {
-	return unicode_strlower(dst, dstsize, src, srclen, true);
+	size_t		consumed;
+
+	return unicode_strlower(dst, dstsize, src, srclen, &consumed, true);
 }
 
 static size_t
 tfunc_title(char *dst, size_t dstsize, const char *src,
 			size_t srclen)
 {
+	size_t		consumed;
 	struct WordBoundaryState wbstate = {
 		.str = src,
 		.len = srclen,
@@ -275,28 +279,33 @@ tfunc_title(char *dst, size_t dstsize, const char *src,
 		.prev_alnum = false,
 	};
 
-	return unicode_strtitle(dst, dstsize, src, srclen, true, initcap_wbnext,
-							&wbstate);
+	return unicode_strtitle(dst, dstsize, src, srclen, &consumed, true,
+							initcap_wbnext, &wbstate);
 }
 
 static size_t
 tfunc_upper(char *dst, size_t dstsize, const char *src,
 			size_t srclen)
 {
-	return unicode_strupper(dst, dstsize, src, srclen, true);
+	size_t		consumed;
+
+	return unicode_strupper(dst, dstsize, src, srclen, &consumed, true);
 }
 
 static size_t
 tfunc_fold(char *dst, size_t dstsize, const char *src,
 		   size_t srclen)
 {
-	return unicode_strfold(dst, dstsize, src, srclen, true);
+	size_t		consumed;
+
+	return unicode_strfold(dst, dstsize, src, srclen, &consumed, true);
 }
 
 static void
 test_convert_case(void)
 {
 	size_t		needed;
+	size_t		consumed;
 
 	/* test string with no case changes */
 	test_convert(tfunc_lower, "√∞", "√∞");
@@ -323,11 +332,11 @@ test_convert_case(void)
 	test_convert(tfunc_title, "\uFF11a", "\uFF11a");
 
 	/* invalid UTF8: truncated multibyte sequence */
-	needed = unicode_strfold(NULL, 0, "abc\xCE", 4, false);
-	Assert(needed == 3);
-	/* invalid UTF8: invalid byte */
-	needed = unicode_strfold(NULL, 0, "abc\xF8xyz", 7, false);
-	Assert(needed == 3);
+	needed = unicode_strfold(NULL, 0, "abc\xCE", 4, &consumed, false);
+	Assert(needed == 3 && consumed == 3);
+	/* invalid UTF8: leading byte invalid length */
+	needed = unicode_strfold(NULL, 0, "abc\xF8xyz", 7, &consumed, false);
+	Assert(needed == 3 && consumed == 3);
 
 #ifdef USE_ICU
 	icu_test_full("");
