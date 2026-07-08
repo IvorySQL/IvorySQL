@@ -21,6 +21,44 @@
 /* Globals exported by this file */
 const char *progname = NULL;
 
+#ifdef WIN32
+
+/*
+ * Flag telling worker threads to stay quiet about query failures because
+ * we're cancelling their queries as part of tearing down the process.  See
+ * the comment in pg_backup_utils.h.
+ *
+ * The cancel thread writes it while worker threads read it, so it's marked
+ * volatile to keep the compiler from caching the value.  A plain volatile
+ * bool isn't a memory barrier, but it's good enough here.  A lot of things
+ * happen between set_cancel_in_progress() in the cancel thread and the other
+ * threads calling is_cancel_in_progress(), including network operations,
+ * which implicitly act as memory barriers.  Furthermore, the flag is only
+ * ever flipped one way (false to true) and a worker briefly observing the
+ * stale false just means it would print one error before the process dies.
+ * The only goal of this flag is to make sure workers don't log "query
+ * cancelled" errors during the shutdown process.
+ *
+ * XXX: This should be swapped out for a proper atomic when we have those in
+ * the frontend code, so that we wouldn't need to rationalizee all of the
+ * above.
+ */
+static volatile bool cancelInProgress = false;
+
+void
+set_cancel_in_progress(void)
+{
+	cancelInProgress = true;
+}
+
+bool
+is_cancel_in_progress(void)
+{
+	return cancelInProgress;
+}
+
+#endif							/* WIN32 */
+
 #define MAX_ON_EXIT_NICELY				20
 
 static struct

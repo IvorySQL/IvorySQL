@@ -531,11 +531,12 @@ WaitForTerminatingWorkers(ParallelState *pstate)
  * might be that only the leader gets signaled.
  *
  * On Windows, the cancel handler runs in a separate thread, because that's
- * how SetConsoleCtrlHandler works.  We make it stop worker threads, send
- * cancels on all active connections, and then return FALSE, which will allow
- * the process to die.  For safety's sake, we use a critical section to
- * protect the PGcancel structures against being changed while the signal
- * thread runs.
+ * how SetConsoleCtrlHandler works.  Because the workers are threads in this
+ * same process, we set a flag (is_cancel_in_progress()) so they stay quiet
+ * about the query cancellations instead of cluttering the screen, then send
+ * cancels on all active connections and return FALSE, which will allow the
+ * process to die.  For safety's sake, we use a critical section to protect
+ * the PGcancel structures against being changed while the signal thread runs.
  */
 
 #ifndef WIN32
@@ -641,34 +642,30 @@ consoleHandler(DWORD dwCtrlType)
 	if (dwCtrlType == CTRL_C_EVENT ||
 		dwCtrlType == CTRL_BREAK_EVENT)
 	{
+		/*
+		 * Tell worker threads to stay quiet about the query cancellations
+		 * we're about to send them; otherwise they'd report them as errors
+		 * and clutter the user's screen.  This must be set before we send any
+		 * cancel, so that a worker is guaranteed to see it by the time its
+		 * query fails as a result.
+		 */
+		set_cancel_in_progress();
+
 		/* Critical section prevents changing data we look at here */
 		EnterCriticalSection(&signal_info_lock);
 
 		/*
-		 * If in parallel mode, stop worker threads and send QueryCancel to
-		 * their connected backends.  The main point of stopping the worker
-		 * threads is to keep them from reporting the query cancels as errors,
-		 * which would clutter the user's screen.  We needn't stop the leader
-		 * thread since it won't be doing much anyway.  Do this before
-		 * canceling the main transaction, else we might get invalid-snapshot
-		 * errors reported before we can stop the workers.  Ignore errors,
-		 * there's not much we can do about them anyway.
+		 * If in parallel mode, send QueryCancel to each worker's connected
+		 * backend.  Do this before canceling the main transaction, else we
+		 * might get invalid-snapshot errors reported before we can stop the
+		 * workers.  Ignore errors, there's not much we can do about them
+		 * anyway.
 		 */
 		if (signal_info.pstate != NULL)
 		{
 			for (i = 0; i < signal_info.pstate->numWorkers; i++)
 			{
-				ParallelSlot *slot = &(signal_info.pstate->parallelSlot[i]);
-				ArchiveHandle *AH = slot->AH;
-				HANDLE		hThread = (HANDLE) slot->hThread;
-
-				/*
-				 * Using TerminateThread here may leave some resources leaked,
-				 * but it doesn't matter since we're about to end the whole
-				 * process.
-				 */
-				if (hThread != INVALID_HANDLE_VALUE)
-					TerminateThread(hThread, 0);
+				ArchiveHandle *AH = signal_info.pstate->parallelSlot[i].AH;
 
 				if (AH != NULL && AH->connCancel != NULL)
 					(void) PQcancel(AH->connCancel, errbuf, sizeof(errbuf));
@@ -687,9 +684,8 @@ consoleHandler(DWORD dwCtrlType)
 
 		/*
 		 * Report we're quitting, using nothing more complicated than
-		 * write(2).  (We might be able to get away with using pg_log_*()
-		 * here, but since we terminated other threads uncleanly above, it
-		 * seems better to assume as little as possible.)
+		 * write(2).  We should be able to use pg_log_*() here, but for now we
+		 * stay aligned with the sigTermHandler behavior.
 		 */
 		if (progname)
 		{

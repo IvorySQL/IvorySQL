@@ -1896,46 +1896,51 @@ ahwrite(const void *ptr, size_t size, size_t nmemb, ArchiveHandle *AH)
 void
 warn_or_exit_horribly(ArchiveHandle *AH, const char *fmt, ...)
 {
-	va_list		ap;
-
-	switch (AH->stage)
+	/* Stay quiet if this is a result of our own cancellation. */
+	if (!is_cancel_in_progress())
 	{
+		va_list		ap;
 
-		case STAGE_NONE:
-			/* Do nothing special */
-			break;
+		switch (AH->stage)
+		{
 
-		case STAGE_INITIALIZING:
-			if (AH->stage != AH->lastErrorStage)
-				pg_log_info("while INITIALIZING:");
-			break;
+			case STAGE_NONE:
+				/* Do nothing special */
+				break;
 
-		case STAGE_PROCESSING:
-			if (AH->stage != AH->lastErrorStage)
-				pg_log_info("while PROCESSING TOC:");
-			break;
+			case STAGE_INITIALIZING:
+				if (AH->stage != AH->lastErrorStage)
+					pg_log_info("while INITIALIZING:");
+				break;
 
-		case STAGE_FINALIZING:
-			if (AH->stage != AH->lastErrorStage)
-				pg_log_info("while FINALIZING:");
-			break;
+			case STAGE_PROCESSING:
+				if (AH->stage != AH->lastErrorStage)
+					pg_log_info("while PROCESSING TOC:");
+				break;
+
+			case STAGE_FINALIZING:
+				if (AH->stage != AH->lastErrorStage)
+					pg_log_info("while FINALIZING:");
+				break;
+		}
+		if (AH->currentTE != NULL && AH->currentTE != AH->lastErrorTE)
+		{
+			pg_log_info("from TOC entry %d; %u %u %s %s %s",
+						AH->currentTE->dumpId,
+						AH->currentTE->catalogId.tableoid,
+						AH->currentTE->catalogId.oid,
+						AH->currentTE->desc ? AH->currentTE->desc : "(no desc)",
+						AH->currentTE->tag ? AH->currentTE->tag : "(no tag)",
+						AH->currentTE->owner ? AH->currentTE->owner : "(no owner)");
+		}
+
+		va_start(ap, fmt);
+		pg_log_generic_v(PG_LOG_ERROR, PG_LOG_PRIMARY, fmt, ap);
+		va_end(ap);
 	}
-	if (AH->currentTE != NULL && AH->currentTE != AH->lastErrorTE)
-	{
-		pg_log_info("from TOC entry %d; %u %u %s %s %s",
-					AH->currentTE->dumpId,
-					AH->currentTE->catalogId.tableoid,
-					AH->currentTE->catalogId.oid,
-					AH->currentTE->desc ? AH->currentTE->desc : "(no desc)",
-					AH->currentTE->tag ? AH->currentTE->tag : "(no tag)",
-					AH->currentTE->owner ? AH->currentTE->owner : "(no owner)");
-	}
+
 	AH->lastErrorStage = AH->stage;
 	AH->lastErrorTE = AH->currentTE;
-
-	va_start(ap, fmt);
-	pg_log_generic_v(PG_LOG_ERROR, PG_LOG_PRIMARY, fmt, ap);
-	va_end(ap);
 
 	if (AH->public.exit_on_error)
 		exit_nicely(1);
