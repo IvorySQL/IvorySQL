@@ -64,11 +64,6 @@
  * where this matters is treatment of I/i in Turkish, and the behavior is
  * meant to match the upper()/lower() SQL functions.
  *
- * We store the active collation setting in static variables.  In principle
- * it could be passed down to here via the regex library's "struct vars" data
- * structure; but that would require somewhat invasive changes in the regex
- * library, and right now there's no real benefit to be gained from that.
- *
  * NB: the coding here assumes pg_wchar is an unsigned type.
  */
 
