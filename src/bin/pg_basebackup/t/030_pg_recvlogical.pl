@@ -282,6 +282,80 @@ SKIP:
 		'pg_recvlogical output file respects group permissions (0640)');
 }
 
+SKIP:
+{
+	skip "signals not supported on Windows", 4
+	  if ($Config{osname} eq 'MSWin32' || $Config{osname} eq 'cygwin');
+
+	my $signal_outfile = $node->basedir . '/signal_shutdown.out';
+
+	$node->command_ok(
+		[
+			'pg_recvlogical',
+			'--slot' => 'signal_shutdown_test',
+			'--dbname' => $node->connstr('postgres'),
+			'--create-slot',
+		],
+		'slot created for signal shutdown test');
+
+	@pg_recvlogical_cmd = (
+		'pg_recvlogical',
+		'--slot' => 'signal_shutdown_test',
+		'--dbname' => $node->connstr('postgres'),
+		'--start',
+		'--file' => $signal_outfile,
+		'--fsync-interval' => '100',
+		'--status-interval' => '100');
+
+	$recv = IPC::Run::start(
+		[@pg_recvlogical_cmd],
+		'>' => \$stdout,
+		'2>' => \$stderr);
+
+	$node->safe_psql('postgres', 'INSERT INTO test_table VALUES (42)');
+
+	# Wait for not only INSERT but also COMMIT because the inserted
+	# change might not yet be safely confirmable by final feedback until
+	# the transaction has committed.
+	wait_for_file($signal_outfile,
+		qr/test_table: INSERT: x\[integer\]:42\b.*?\bCOMMIT\b/s);
+
+	$recv->signal('TERM');
+	$recv->finish();
+
+	$nextlsn =
+	  $node->safe_psql('postgres', 'SELECT pg_current_wal_insert_lsn()');
+	chomp($nextlsn);
+
+	$node->command_ok(
+		[
+			'pg_recvlogical',
+			'--slot' => 'signal_shutdown_test',
+			'--dbname' => $node->connstr('postgres'),
+			'--start',
+			'--endpos' => $nextlsn,
+			'--no-loop',
+			'--file' => $signal_outfile,
+		],
+		'pg_recvlogical exits after signal without replaying flushed data');
+
+	my $signal_data = slurp_file($signal_outfile);
+	my $signal_count =
+	  (() = $signal_data =~ /test_table: INSERT: x\[integer\]:42\b/g);
+	is($signal_count, 1,
+		'pg_recvlogical does not duplicate decoded changes after signal shutdown'
+	);
+
+	$node->command_ok(
+		[
+			'pg_recvlogical',
+			'--slot' => 'signal_shutdown_test',
+			'--dbname' => $node->connstr('postgres'),
+			'--drop-slot'
+		],
+		'signal_shutdown_test slot dropped');
+}
+
 $node->command_ok(
 	[
 		'pg_recvlogical',
