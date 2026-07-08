@@ -1,5 +1,17 @@
 CREATE SCHEMA stats_import;
 --
+-- Convenience view for columns of pg_stats that are stable across test runs.
+--
+CREATE VIEW stats_import.pg_stats_stable AS
+  SELECT schemaname, tablename, attname, inherited, null_frac, avg_width,
+      n_distinct, most_common_vals::text as most_common_vals,
+      most_common_freqs, histogram_bounds::text AS histogram_bounds,
+      correlation, most_common_elems::text AS most_common_elems,
+      most_common_elem_freqs, elem_count_histogram,
+      range_length_histogram::text AS range_length_histogram, range_empty_frac,
+      range_bounds_histogram::text AS range_bounds_histogram
+  FROM pg_stats;
+--
 -- Setup functions for set-difference convenience functions
 --
 -- Test to detect any new columns added to pg_statistic.  If any columns
@@ -649,7 +661,7 @@ SELECT pg_catalog.pg_restore_attribute_stats(
 (1 row)
 
 SELECT *
-FROM pg_stats
+FROM stats_import.pg_stats_stable
 WHERE schemaname = 'stats_import'
 AND tablename = 'test'
 AND inherited = false
@@ -676,7 +688,7 @@ SELECT pg_catalog.pg_restore_attribute_stats(
 (1 row)
 
 SELECT *
-FROM pg_stats
+FROM stats_import.pg_stats_stable
 WHERE schemaname = 'stats_import'
 AND tablename = 'test'
 AND inherited = false
@@ -701,7 +713,7 @@ WARNING:  unrecognized argument name: "nope"
 (1 row)
 
 SELECT *
-FROM pg_stats
+FROM stats_import.pg_stats_stable
 WHERE schemaname = 'stats_import'
 AND tablename = 'test'
 AND inherited = false
@@ -727,7 +739,7 @@ WARNING:  argument "most_common_vals" must be specified when argument "most_comm
 (1 row)
 
 SELECT *
-FROM pg_stats
+FROM stats_import.pg_stats_stable
 WHERE schemaname = 'stats_import'
 AND tablename = 'test'
 AND inherited = false
@@ -753,7 +765,7 @@ WARNING:  argument "most_common_freqs" must be specified when argument "most_com
 (1 row)
 
 SELECT *
-FROM pg_stats
+FROM stats_import.pg_stats_stable
 WHERE schemaname = 'stats_import'
 AND tablename = 'test'
 AND inherited = false
@@ -781,7 +793,7 @@ WARNING:  argument "most_common_freqs" must be specified when argument "most_com
 (1 row)
 
 SELECT *
-FROM pg_stats
+FROM stats_import.pg_stats_stable
 WHERE schemaname = 'stats_import'
 AND tablename = 'test'
 AND inherited = false
@@ -808,7 +820,7 @@ WARNING:  invalid input syntax for type integer: "four"
 (1 row)
 
 SELECT *
-FROM pg_stats
+FROM stats_import.pg_stats_stable
 WHERE schemaname = 'stats_import'
 AND tablename = 'test'
 AND inherited = false
@@ -833,7 +845,7 @@ SELECT pg_catalog.pg_restore_attribute_stats(
 (1 row)
 
 SELECT *
-FROM pg_stats
+FROM stats_import.pg_stats_stable
 WHERE schemaname = 'stats_import'
 AND tablename = 'test'
 AND inherited = false
@@ -859,7 +871,7 @@ WARNING:  "histogram_bounds" array must not contain null values
 (1 row)
 
 SELECT *
-FROM pg_stats
+FROM stats_import.pg_stats_stable
 WHERE schemaname = 'stats_import'
 AND tablename = 'test'
 AND inherited = false
@@ -883,7 +895,7 @@ SELECT pg_catalog.pg_restore_attribute_stats(
 (1 row)
 
 SELECT *
-FROM pg_stats
+FROM stats_import.pg_stats_stable
 WHERE schemaname = 'stats_import'
 AND tablename = 'test'
 AND inherited = false
@@ -909,7 +921,7 @@ WARNING:  argument "elem_count_histogram" array must not contain null values
 (1 row)
 
 SELECT *
-FROM pg_stats
+FROM stats_import.pg_stats_stable
 WHERE schemaname = 'stats_import'
 AND tablename = 'test'
 AND inherited = false
@@ -934,7 +946,7 @@ SELECT pg_catalog.pg_restore_attribute_stats(
 (1 row)
 
 SELECT *
-FROM pg_stats
+FROM stats_import.pg_stats_stable
 WHERE schemaname = 'stats_import'
 AND tablename = 'test'
 AND inherited = false
@@ -962,7 +974,7 @@ DETAIL:  Cannot set STATISTIC_KIND_RANGE_LENGTH_HISTOGRAM or STATISTIC_KIND_BOUN
 (1 row)
 
 SELECT *
-FROM pg_stats
+FROM stats_import.pg_stats_stable
 WHERE schemaname = 'stats_import'
 AND tablename = 'test'
 AND inherited = false
@@ -988,7 +1000,7 @@ WARNING:  argument "range_empty_frac" must be specified when argument "range_len
 (1 row)
 
 SELECT *
-FROM pg_stats
+FROM stats_import.pg_stats_stable
 WHERE schemaname = 'stats_import'
 AND tablename = 'test'
 AND inherited = false
@@ -1014,7 +1026,7 @@ WARNING:  argument "range_length_histogram" must be specified when argument "ran
 (1 row)
 
 SELECT *
-FROM pg_stats
+FROM stats_import.pg_stats_stable
 WHERE schemaname = 'stats_import'
 AND tablename = 'test'
 AND inherited = false
@@ -1039,7 +1051,7 @@ SELECT pg_catalog.pg_restore_attribute_stats(
 (1 row)
 
 SELECT *
-FROM pg_stats
+FROM stats_import.pg_stats_stable
 WHERE schemaname = 'stats_import'
 AND tablename = 'test'
 AND inherited = false
@@ -1066,7 +1078,7 @@ DETAIL:  Cannot set STATISTIC_KIND_RANGE_LENGTH_HISTOGRAM or STATISTIC_KIND_BOUN
 (1 row)
 
 SELECT *
-FROM pg_stats
+FROM stats_import.pg_stats_stable
 WHERE schemaname = 'stats_import'
 AND tablename = 'test'
 AND inherited = false
@@ -1090,7 +1102,7 @@ SELECT pg_catalog.pg_restore_attribute_stats(
 (1 row)
 
 SELECT *
-FROM pg_stats
+FROM stats_import.pg_stats_stable
 WHERE schemaname = 'stats_import'
 AND tablename = 'test'
 AND inherited = false
@@ -1118,7 +1130,7 @@ DETAIL:  Cannot set STATISTIC_KIND_MCELEM or STATISTIC_KIND_DECHIST.
 (1 row)
 
 SELECT *
-FROM pg_stats
+FROM stats_import.pg_stats_stable
 WHERE schemaname = 'stats_import'
 AND tablename = 'test'
 AND inherited = false
@@ -1146,7 +1158,7 @@ DETAIL:  Cannot set STATISTIC_KIND_MCELEM or STATISTIC_KIND_DECHIST.
 (1 row)
 
 SELECT *
-FROM pg_stats
+FROM stats_import.pg_stats_stable
 WHERE schemaname = 'stats_import'
 AND tablename = 'test'
 AND inherited = false
@@ -1172,7 +1184,7 @@ WARNING:  argument "most_common_elem_freqs" must be specified when argument "mos
 (1 row)
 
 SELECT *
-FROM pg_stats
+FROM stats_import.pg_stats_stable
 WHERE schemaname = 'stats_import'
 AND tablename = 'test'
 AND inherited = false
@@ -1198,7 +1210,7 @@ WARNING:  argument "most_common_elems" must be specified when argument "most_com
 (1 row)
 
 SELECT *
-FROM pg_stats
+FROM stats_import.pg_stats_stable
 WHERE schemaname = 'stats_import'
 AND tablename = 'test'
 AND inherited = false
@@ -1223,7 +1235,7 @@ SELECT pg_catalog.pg_restore_attribute_stats(
 (1 row)
 
 SELECT *
-FROM pg_stats
+FROM stats_import.pg_stats_stable
 WHERE schemaname = 'stats_import'
 AND tablename = 'test'
 AND inherited = false
@@ -1250,7 +1262,7 @@ DETAIL:  Cannot set STATISTIC_KIND_MCELEM or STATISTIC_KIND_DECHIST.
 (1 row)
 
 SELECT *
-FROM pg_stats
+FROM stats_import.pg_stats_stable
 WHERE schemaname = 'stats_import'
 AND tablename = 'test'
 AND inherited = false
@@ -3368,8 +3380,9 @@ SELECT COUNT(*) FROM stats_import.test_range_expr_null
 (1 row)
 
 DROP SCHEMA stats_import CASCADE;
-NOTICE:  drop cascades to 18 other objects
-DETAIL:  drop cascades to view stats_import.pg_statistic_flat_t
+NOTICE:  drop cascades to 19 other objects
+DETAIL:  drop cascades to view stats_import.pg_stats_stable
+drop cascades to view stats_import.pg_statistic_flat_t
 drop cascades to function stats_import.pg_statistic_flat(text)
 drop cascades to function stats_import.pg_statistic_get_difference(text,text)
 drop cascades to view stats_import.pg_stats_ext_flat_t
