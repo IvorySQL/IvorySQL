@@ -797,7 +797,7 @@ Datum
 test_random_offset_operations(PG_FUNCTION_ARGS)
 {
 	pg_prng_state state;
-	uint64		seed;
+	int64		seed;
 	int			num_ops;
 	int			max_range;
 	int			min_value;
@@ -819,7 +819,7 @@ test_random_offset_operations(PG_FUNCTION_ARGS)
 	if (PG_ARGISNULL(3) || min_value < 0)
 		elog(ERROR, "invalid minimum value");
 
-	pg_prng_seed(&state, seed);
+	pg_prng_seed(&state, (uint64) seed);
 
 	for (int op = 0; op < num_ops; op++)
 	{

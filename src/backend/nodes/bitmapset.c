@@ -522,7 +522,7 @@ bms_offset_members(const Bitmapset *a, int offset)
 
 			/*
 			 * We loop backward over the array so we correctly carry bits from
-			 * higher words before they're overwritten.
+			 * higher words.
 			 */
 			do
 			{
