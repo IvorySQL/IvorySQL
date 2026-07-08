@@ -124,60 +124,80 @@ static size_t strupper_libc_mb(char *dest, size_t destsize,
 static bool
 wc_isdigit_libc_sb(pg_wchar wc, pg_locale_t locale)
 {
+	if (wc > UCHAR_MAX)
+		return false;
 	return isdigit_l((unsigned char) wc, locale->lt);
 }
 
 static bool
 wc_isalpha_libc_sb(pg_wchar wc, pg_locale_t locale)
 {
+	if (wc > UCHAR_MAX)
+		return false;
 	return isalpha_l((unsigned char) wc, locale->lt);
 }
 
 static bool
 wc_isalnum_libc_sb(pg_wchar wc, pg_locale_t locale)
 {
+	if (wc > UCHAR_MAX)
+		return false;
 	return isalnum_l((unsigned char) wc, locale->lt);
 }
 
 static bool
 wc_isupper_libc_sb(pg_wchar wc, pg_locale_t locale)
 {
+	if (wc > UCHAR_MAX)
+		return false;
 	return isupper_l((unsigned char) wc, locale->lt);
 }
 
 static bool
 wc_islower_libc_sb(pg_wchar wc, pg_locale_t locale)
 {
+	if (wc > UCHAR_MAX)
+		return false;
 	return islower_l((unsigned char) wc, locale->lt);
 }
 
 static bool
 wc_isgraph_libc_sb(pg_wchar wc, pg_locale_t locale)
 {
+	if (wc > UCHAR_MAX)
+		return false;
 	return isgraph_l((unsigned char) wc, locale->lt);
 }
 
 static bool
 wc_isprint_libc_sb(pg_wchar wc, pg_locale_t locale)
 {
+	if (wc > UCHAR_MAX)
+		return false;
 	return isprint_l((unsigned char) wc, locale->lt);
 }
 
 static bool
 wc_ispunct_libc_sb(pg_wchar wc, pg_locale_t locale)
 {
+	if (wc > UCHAR_MAX)
+		return false;
 	return ispunct_l((unsigned char) wc, locale->lt);
 }
 
 static bool
 wc_isspace_libc_sb(pg_wchar wc, pg_locale_t locale)
 {
+	if (wc > UCHAR_MAX)
+		return false;
 	return isspace_l((unsigned char) wc, locale->lt);
 }
 
 static bool
 wc_isxdigit_libc_sb(pg_wchar wc, pg_locale_t locale)
 {
+	if (wc > UCHAR_MAX)
+		return false;
 #ifndef WIN32
 	return isxdigit_l((unsigned char) wc, locale->lt);
 #else
@@ -188,6 +208,8 @@ wc_isxdigit_libc_sb(pg_wchar wc, pg_locale_t locale)
 static bool
 wc_iscased_libc_sb(pg_wchar wc, pg_locale_t locale)
 {
+	if (wc > UCHAR_MAX)
+		return false;
 	return isupper_l((unsigned char) wc, locale->lt) ||
 		islower_l((unsigned char) wc, locale->lt);
 }
@@ -195,60 +217,80 @@ wc_iscased_libc_sb(pg_wchar wc, pg_locale_t locale)
 static bool
 wc_isdigit_libc_mb(pg_wchar wc, pg_locale_t locale)
 {
+	if (sizeof(wchar_t) < 4 && wc > (pg_wchar) 0xFFFF)
+		return false;
 	return iswdigit_l((wint_t) wc, locale->lt);
 }
 
 static bool
 wc_isalpha_libc_mb(pg_wchar wc, pg_locale_t locale)
 {
+	if (sizeof(wchar_t) < 4 && wc > (pg_wchar) 0xFFFF)
+		return false;
 	return iswalpha_l((wint_t) wc, locale->lt);
 }
 
 static bool
 wc_isalnum_libc_mb(pg_wchar wc, pg_locale_t locale)
 {
+	if (sizeof(wchar_t) < 4 && wc > (pg_wchar) 0xFFFF)
+		return false;
 	return iswalnum_l((wint_t) wc, locale->lt);
 }
 
 static bool
 wc_isupper_libc_mb(pg_wchar wc, pg_locale_t locale)
 {
+	if (sizeof(wchar_t) < 4 && wc > (pg_wchar) 0xFFFF)
+		return false;
 	return iswupper_l((wint_t) wc, locale->lt);
 }
 
 static bool
 wc_islower_libc_mb(pg_wchar wc, pg_locale_t locale)
 {
+	if (sizeof(wchar_t) < 4 && wc > (pg_wchar) 0xFFFF)
+		return false;
 	return iswlower_l((wint_t) wc, locale->lt);
 }
 
 static bool
 wc_isgraph_libc_mb(pg_wchar wc, pg_locale_t locale)
 {
+	if (sizeof(wchar_t) < 4 && wc > (pg_wchar) 0xFFFF)
+		return false;
 	return iswgraph_l((wint_t) wc, locale->lt);
 }
 
 static bool
 wc_isprint_libc_mb(pg_wchar wc, pg_locale_t locale)
 {
+	if (sizeof(wchar_t) < 4 && wc > (pg_wchar) 0xFFFF)
+		return false;
 	return iswprint_l((wint_t) wc, locale->lt);
 }
 
 static bool
 wc_ispunct_libc_mb(pg_wchar wc, pg_locale_t locale)
 {
+	if (sizeof(wchar_t) < 4 && wc > (pg_wchar) 0xFFFF)
+		return false;
 	return iswpunct_l((wint_t) wc, locale->lt);
 }
 
 static bool
 wc_isspace_libc_mb(pg_wchar wc, pg_locale_t locale)
 {
+	if (sizeof(wchar_t) < 4 && wc > (pg_wchar) 0xFFFF)
+		return false;
 	return iswspace_l((wint_t) wc, locale->lt);
 }
 
 static bool
 wc_isxdigit_libc_mb(pg_wchar wc, pg_locale_t locale)
 {
+	if (sizeof(wchar_t) < 4 && wc > (pg_wchar) 0xFFFF)
+		return false;
 #ifndef WIN32
 	return iswxdigit_l((wint_t) wc, locale->lt);
 #else
@@ -259,6 +301,8 @@ wc_isxdigit_libc_mb(pg_wchar wc, pg_locale_t locale)
 static bool
 wc_iscased_libc_mb(pg_wchar wc, pg_locale_t locale)
 {
+	if (sizeof(wchar_t) < 4 && wc > (pg_wchar) 0xFFFF)
+		return false;
 	return iswupper_l((wint_t) wc, locale->lt) ||
 		iswlower_l((wint_t) wc, locale->lt);
 }
@@ -271,7 +315,7 @@ toupper_libc_sb(pg_wchar wc, pg_locale_t locale)
 	/* force C behavior for ASCII characters, per comments above */
 	if (locale->is_default && wc <= (pg_wchar) 127)
 		return pg_ascii_toupper((unsigned char) wc);
-	if (wc <= (pg_wchar) UCHAR_MAX)
+	else if (wc <= (pg_wchar) UCHAR_MAX)
 		return toupper_l((unsigned char) wc, locale->lt);
 	else
 		return wc;
@@ -285,7 +329,7 @@ toupper_libc_mb(pg_wchar wc, pg_locale_t locale)
 	/* force C behavior for ASCII characters, per comments above */
 	if (locale->is_default && wc <= (pg_wchar) 127)
 		return pg_ascii_toupper((unsigned char) wc);
-	if (sizeof(wchar_t) >= 4 || wc <= (pg_wchar) 0xFFFF)
+	else if (sizeof(wchar_t) >= 4 || wc <= (pg_wchar) 0xFFFF)
 		return towupper_l((wint_t) wc, locale->lt);
 	else
 		return wc;
@@ -299,7 +343,7 @@ tolower_libc_sb(pg_wchar wc, pg_locale_t locale)
 	/* force C behavior for ASCII characters, per comments above */
 	if (locale->is_default && wc <= (pg_wchar) 127)
 		return pg_ascii_tolower((unsigned char) wc);
-	if (wc <= (pg_wchar) UCHAR_MAX)
+	else if (wc <= (pg_wchar) UCHAR_MAX)
 		return tolower_l((unsigned char) wc, locale->lt);
 	else
 		return wc;
@@ -313,7 +357,7 @@ tolower_libc_mb(pg_wchar wc, pg_locale_t locale)
 	/* force C behavior for ASCII characters, per comments above */
 	if (locale->is_default && wc <= (pg_wchar) 127)
 		return pg_ascii_tolower((unsigned char) wc);
-	if (sizeof(wchar_t) >= 4 || wc <= (pg_wchar) 0xFFFF)
+	else if (sizeof(wchar_t) >= 4 || wc <= (pg_wchar) 0xFFFF)
 		return towlower_l((wint_t) wc, locale->lt);
 	else
 		return wc;
