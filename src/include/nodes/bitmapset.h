@@ -100,6 +100,7 @@ extern void bms_free(Bitmapset *a);
 extern Bitmapset *bms_union(const Bitmapset *a, const Bitmapset *b);
 extern Bitmapset *bms_intersect(const Bitmapset *a, const Bitmapset *b);
 extern Bitmapset *bms_difference(const Bitmapset *a, const Bitmapset *b);
+extern Bitmapset *bms_offset_members(const Bitmapset *a, int offset);
 extern bool bms_is_subset(const Bitmapset *a, const Bitmapset *b);
 extern BMS_Comparison bms_subset_compare(const Bitmapset *a, const Bitmapset *b);
 extern bool bms_is_member(int x, const Bitmapset *a);

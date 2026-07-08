@@ -64,7 +64,6 @@ static bool contain_windowfuncs_walker(Node *node, void *context);
 static bool locate_windowfunc_walker(Node *node,
 									 locate_windowfunc_context *context);
 static bool checkExprHasSubLink_walker(Node *node, void *context);
-static Relids offset_relid_set(Relids relids, int offset);
 static Node *add_nulling_relids_mutator(Node *node,
 										add_nulling_relids_context *context);
 static Node *remove_nulling_relids_mutator(Node *node,
@@ -397,8 +396,8 @@ OffsetVarNodes_walker(Node *node, OffsetVarNodes_context *context)
 		if (var->varlevelsup == context->sublevels_up)
 		{
 			var->varno += context->offset;
-			var->varnullingrels = offset_relid_set(var->varnullingrels,
-												   context->offset);
+			var->varnullingrels = bms_offset_members(var->varnullingrels,
+													 context->offset);
 			if (var->varnosyn > 0)
 				var->varnosyn += context->offset;
 		}
@@ -435,10 +434,10 @@ OffsetVarNodes_walker(Node *node, OffsetVarNodes_context *context)
 
 		if (phv->phlevelsup == context->sublevels_up)
 		{
-			phv->phrels = offset_relid_set(phv->phrels,
-										   context->offset);
-			phv->phnullingrels = offset_relid_set(phv->phnullingrels,
-												  context->offset);
+			phv->phrels = bms_offset_members(phv->phrels,
+											 context->offset);
+			phv->phnullingrels = bms_offset_members(phv->phnullingrels,
+													context->offset);
 		}
 		/* fall through to examine children */
 	}
@@ -522,18 +521,6 @@ OffsetVarNodes(Node *node, int offset, int sublevels_up)
 	}
 	else
 		OffsetVarNodes_walker(node, &context);
-}
-
-static Relids
-offset_relid_set(Relids relids, int offset)
-{
-	Relids		result = NULL;
-	int			rtindex;
-
-	rtindex = -1;
-	while ((rtindex = bms_next_member(relids, rtindex)) >= 0)
-		result = bms_add_member(result, rtindex + offset);
-	return result;
 }
 
 /*

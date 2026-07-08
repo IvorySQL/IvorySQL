@@ -145,6 +145,26 @@ SELECT test_bms_difference('(b 5)', NULL) AS result;
 SELECT test_bms_difference(NULL, '(b 5)') AS result;
 SELECT test_bms_difference(NULL, NULL) AS result;
 
+-- bms_offset_members()
+-- Ensure overflow detection works
+SELECT test_bms_offset_members('(b 1)', 2147483647);
+SELECT test_bms_offset_members('(b 2)', 2147483646);
+
+-- Ensure members are all offset as expected
+SELECT test_bms_offset_members('(b 1 3 5)', 1);
+SELECT test_bms_offset_members('(b 1 3 5)', 0);
+SELECT test_bms_offset_members('(b 1 3 5)', -1);
+SELECT test_bms_offset_members('(b 31 32 63 64)', 1);
+SELECT test_bms_offset_members('(b 31 32 63 64)', 0);
+SELECT test_bms_offset_members('(b 31 32 63 64)', -1);
+SELECT test_bms_offset_members('(b 1 2 3)', 64);
+SELECT test_bms_offset_members('(b 65 66 67)', -64);
+
+-- Ensure members going below zero silently fall off the set
+SELECT test_bms_offset_members('(b 0 1 2 10)', -2);
+SELECT test_bms_offset_members('(b 1 2 3)', -10);
+SELECT test_bms_offset_members('(b 0)', -2147483648);
+
 -- bms_is_member()
 SELECT test_bms_is_member('(b)', -5); -- error
 SELECT test_bms_is_member('(b 1 3 5)', 1) AS result;
@@ -402,5 +422,8 @@ SELECT test_bms_nonempty_difference('(b 1 2)', '(b 50 100)') AS result;
 
 -- random operations
 SELECT test_random_operations(NULL, 10000, 81920, 0) > 0 AS result;
+
+-- perform some random tests on bms_offset_members()
+SELECT test_random_offset_operations(NULL, 1000, 1024, 0) AS result;
 
 DROP EXTENSION test_bitmapset;

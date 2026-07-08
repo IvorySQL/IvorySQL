@@ -39,6 +39,7 @@
 #include "postgres.h"
 
 #include "common/hashfn.h"
+#include "common/int.h"
 #include "nodes/bitmapset.h"
 #include "nodes/pg_list.h"
 #include "port/pg_bitutils.h"
@@ -402,6 +403,140 @@ bms_difference(const Bitmapset *a, const Bitmapset *b)
 	Assert(result->nwords != 0);
 
 	/* Need not check for empty result, since we handled that case above */
+	return result;
+}
+
+/*
+ * bms_offset_members
+ *		Creates a new Bitmapset with all members of 'a' adjusted to add the
+ *		value of 'offset' to each member.
+ *
+ * Members that would become negative as a result of a negative offset will
+ * be removed from the set, whereas too large an offset, which would result in
+ * a member going > INT_MAX, will result in an ERROR.
+ */
+Bitmapset *
+bms_offset_members(const Bitmapset *a, int offset)
+{
+	Bitmapset  *result;
+	int			offset_words;
+	int			offset_bits;
+	int			new_nwords;
+	int			old_nwords;
+	int32		high_bit;
+	int			old_highest;
+	int			new_highest;
+
+	Assert(bms_is_valid_set(a));
+
+	/* nothing to do for empty sets */
+	if (a == NULL)
+		return NULL;
+
+	old_nwords = a->nwords;
+	offset_words = WORDNUM(offset);
+	offset_bits = BITNUM(offset);
+	high_bit = bmw_leftmost_one_pos(a->words[a->nwords - 1]);
+	old_highest = (old_nwords - 1) * BITS_PER_BITMAPWORD + high_bit;
+
+	/* don't create a set with a member that doesn't fit into an int32 */
+	if (pg_add_s32_overflow(old_highest, offset, &new_highest))
+		elog(ERROR, "bitmapset overflow");
+	/* return NULL if the new set would be empty */
+	else if (new_highest < 0)
+		return NULL;
+
+	new_nwords = WORDNUM(new_highest) + 1;
+	result = (Bitmapset *) palloc0(BITMAPSET_SIZE(new_nwords));
+	result->type = T_Bitmapset;
+	result->nwords = new_nwords;
+
+	/* handle zero and positive offsets (bitshift left) */
+	if (offset >= 0)
+	{
+		/*
+		 * We special-case offsetting only by whole words, so we don't have to
+		 * special-case bitshifting by BITS_PER_BITMAPWORD places, which has
+		 * an undefined behavior.
+		 */
+		if (offset_bits == 0)
+		{
+			int			i = 0;
+
+			/*
+			 * The old set is guaranteed to have at least 1 word, so use
+			 * do/while to save the redundant initial loop bounds check.
+			 */
+			do
+			{
+				Assert(i + offset_words < new_nwords);
+				result->words[i + offset_words] = a->words[i];
+			} while (++i < old_nwords);
+		}
+		else
+		{
+			int			carry_bits = BITS_PER_BITMAPWORD - offset_bits;
+			bitmapword	prev_carry = 0;
+			int			i = 0;
+
+			do
+			{
+				bitmapword	carry = (a->words[i] >> carry_bits);
+
+				Assert(i + offset_words < new_nwords);
+				/* shift bits up and carry bits from the previous word */
+				result->words[i + offset_words] = (a->words[i] << offset_bits) | prev_carry;
+				prev_carry = carry;
+			} while (++i < old_nwords);
+			result->words[new_nwords - 1] |= prev_carry;
+		}
+	}
+
+	/* handle negative offset (bitshift right) */
+	else
+	{
+		/* make the negative offset_words and offset_bits positive */
+		offset_words = 0 - offset_words;
+		offset_bits = 0 - offset_bits;
+
+		/* as above, special case shifting only by whole words */
+		if (offset_bits == 0)
+		{
+			int			i = 0;
+
+			do
+			{
+				Assert(i + offset_words < old_nwords);
+				result->words[i] = a->words[i + offset_words];
+			} while (++i < new_nwords);
+		}
+		else
+		{
+			int			carry_bits = BITS_PER_BITMAPWORD - offset_bits;
+			bitmapword	prev_carry = 0;
+			int			i = new_nwords - 1;
+
+			/* carry bits from any word just above where the loop starts */
+			if (old_nwords > new_nwords + offset_words)
+				prev_carry = (a->words[new_nwords + offset_words] << carry_bits);
+
+			/*
+			 * We loop backward over the array so we correctly carry bits from
+			 * higher words before they're overwritten.
+			 */
+			do
+			{
+				bitmapword	carry = (a->words[i + offset_words] << carry_bits);
+
+				Assert(i + offset_words < old_nwords);
+
+				/* shift bits down and carry bits from the previous word */
+				result->words[i] = (a->words[i + offset_words] >> offset_bits) | prev_carry;
+				prev_carry = carry;
+			} while (--i >= 0);
+		}
+	}
+
 	return result;
 }
 

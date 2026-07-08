@@ -3750,7 +3750,7 @@ has_notnull_forced_var(PlannerInfo *root, List *forced_null_vars,
 		RangeTblEntry *rte;
 		Bitmapset  *notnullattnums;
 		Bitmapset  *forcednullattnums = NULL;
-		int			attno;
+		int			lowest_attno;
 
 		varno++;
 
@@ -3770,22 +3770,22 @@ has_notnull_forced_var(PlannerInfo *root, List *forced_null_vars,
 		if (bms_is_member(varno, right_state->nullable_rels))
 			continue;
 
+		/* find the lowest member to check if system columns are present */
+		lowest_attno = bms_next_member(attrs, -1);
+
+		/* we checked for an empty set above */
+		Assert(lowest_attno >= 0);
+
+		/* system columns cannot be NULL */
+		if (lowest_attno + FirstLowInvalidHeapAttributeNumber < 0)
+			return true;
+
 		/*
-		 * Iterate over attributes and adjust the bitmap indexes by
-		 * FirstLowInvalidHeapAttributeNumber to get the actual attribute
-		 * numbers.
+		 * Offset the bitmap members by FirstLowInvalidHeapAttributeNumber to
+		 * get the actual attribute numbers.
 		 */
-		attno = -1;
-		while ((attno = bms_next_member(attrs, attno)) >= 0)
-		{
-			AttrNumber	real_attno = attno + FirstLowInvalidHeapAttributeNumber;
-
-			/* system columns cannot be NULL */
-			if (real_attno < 0)
-				return true;
-
-			forcednullattnums = bms_add_member(forcednullattnums, real_attno);
-		}
+		forcednullattnums = bms_offset_members(attrs,
+											   FirstLowInvalidHeapAttributeNumber);
 
 		rte = rt_fetch(varno, root->parse->rtable);
 

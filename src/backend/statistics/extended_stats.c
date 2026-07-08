@@ -1673,8 +1673,7 @@ statext_is_compatible_clause(PlannerInfo *root, Node *clause, Index relid,
 	 */
 	if (!leakproof)
 	{
-		Bitmapset  *clause_attnums = NULL;
-		int			attnum = -1;
+		Bitmapset  *clause_attnums;
 
 		/*
 		 * We have to check per-column privileges.  *attnums has the attnums
@@ -1685,13 +1684,8 @@ statext_is_compatible_clause(PlannerInfo *root, Node *clause, Index relid,
 		 * while attnums within *attnums aren't.  Convert *attnums to the
 		 * offset style so we can combine the results.
 		 */
-		while ((attnum = bms_next_member(*attnums, attnum)) >= 0)
-		{
-			clause_attnums =
-				bms_add_member(clause_attnums,
-							   attnum - FirstLowInvalidHeapAttributeNumber);
-		}
-
+		clause_attnums = bms_offset_members(*attnums,
+											0 - FirstLowInvalidHeapAttributeNumber);
 		/* Now merge attnums from *exprs into clause_attnums */
 		if (*exprs != NIL)
 			pull_varattnos((Node *) *exprs, relid, &clause_attnums);

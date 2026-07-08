@@ -2048,16 +2048,10 @@ set_hash_references(PlannerInfo *root, Plan *plan, int rtoffset)
 static Relids
 offset_relid_set(Relids relids, int rtoffset)
 {
-	Relids		result = NULL;
-	int			rtindex;
-
-	/* If there's no offset to apply, we needn't recompute the value */
+	/* If there's no offset to apply, we needn't make another set */
 	if (rtoffset == 0)
 		return relids;
-	rtindex = -1;
-	while ((rtindex = bms_next_member(relids, rtindex)) >= 0)
-		result = bms_add_member(result, rtindex + rtoffset);
-	return result;
+	return bms_offset_members(relids, rtoffset);
 }
 
 /*

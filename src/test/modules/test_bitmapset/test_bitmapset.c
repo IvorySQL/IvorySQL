@@ -44,6 +44,7 @@ PG_FUNCTION_INFO_V1(test_bms_subset_compare);
 PG_FUNCTION_INFO_V1(test_bms_union);
 PG_FUNCTION_INFO_V1(test_bms_intersect);
 PG_FUNCTION_INFO_V1(test_bms_difference);
+PG_FUNCTION_INFO_V1(test_bms_offset_members);
 PG_FUNCTION_INFO_V1(test_bms_is_empty);
 PG_FUNCTION_INFO_V1(test_bms_membership);
 PG_FUNCTION_INFO_V1(test_bms_singleton_member);
@@ -66,6 +67,7 @@ PG_FUNCTION_INFO_V1(test_bitmap_match);
 
 /* Test utility functions */
 PG_FUNCTION_INFO_V1(test_random_operations);
+PG_FUNCTION_INFO_V1(test_random_offset_operations);
 
 /* Convenient macros to test results */
 #define EXPECT_TRUE(expr)	\
@@ -294,6 +296,17 @@ test_bms_difference(PG_FUNCTION_ARGS)
 	result_bms = bms_difference(bms1, bms2);
 
 	PG_RETURN_BITMAPSET_AS_TEXT(result_bms);
+}
+
+Datum
+test_bms_offset_members(PG_FUNCTION_ARGS)
+{
+	Bitmapset  *bms = PG_ARG_GETBITMAPSET(0);
+	int			offset = PG_GETARG_INT32(1);
+
+	bms = bms_offset_members(bms, offset);
+
+	PG_RETURN_BITMAPSET_AS_TEXT(bms);
 }
 
 Datum
@@ -581,7 +594,7 @@ test_bitmap_match(PG_FUNCTION_ARGS)
 }
 
 /*
- * Contrary to all the other functions which are one-one mappings with the
+ * Contrary to most of the other functions which are one-one mappings with the
  * equivalent C functions, this stresses Bitmapsets in a random fashion for
  * various operations.
  *
@@ -765,4 +778,90 @@ test_random_operations(PG_FUNCTION_ARGS)
 	pfree(members);
 
 	PG_RETURN_INT32(total_ops);
+}
+
+/*
+ * Random testing for bms_offset_members().  Generates a random set and then
+ * picks a number to offset the members by.  We then create another set, which
+ * is built by looping over the members of the random set and performing
+ * bms_add_member and adding on the offset to create a known good set to
+ * compare the result of bms_offset_members() to.
+ *
+ * Arguments:
+ *  arg1: optional random seed.  NULL means use a random seed.
+ *  arg2: the number of operations to perform.
+ *  arg3: the maximum bitmapset member number to use in the random set.
+ *  arg4: the minimum bitmapset member number to use in the random set.
+ */
+Datum
+test_random_offset_operations(PG_FUNCTION_ARGS)
+{
+	pg_prng_state state;
+	uint64		seed;
+	int			num_ops;
+	int			max_range;
+	int			min_value;
+	int			member;
+
+	if (PG_ARGISNULL(0))
+		seed = GetCurrentTimestamp();
+	else
+		seed = PG_GETARG_INT64(0);
+
+	num_ops = PG_GETARG_INT32(1);
+	max_range = PG_GETARG_INT32(2);
+	min_value = PG_GETARG_INT32(3);
+
+	if (PG_ARGISNULL(1) || num_ops <= 0)
+		elog(ERROR, "invalid number of operations");
+	if (PG_ARGISNULL(2) || max_range <= 0)
+		elog(ERROR, "invalid maximum range");
+	if (PG_ARGISNULL(3) || min_value < 0)
+		elog(ERROR, "invalid minimum value");
+
+	pg_prng_seed(&state, seed);
+
+	for (int op = 0; op < num_ops; op++)
+	{
+		Bitmapset  *random_bms = NULL;
+		Bitmapset  *offset_bms1;
+		Bitmapset  *offset_bms2 = NULL;
+		int			offset;
+		int			nmembers;
+
+		CHECK_FOR_INTERRUPTS();
+
+		/* Figure out a random offset and how many members to add */
+		offset = (pg_prng_uint32(&state) % max_range) - (pg_prng_uint32(&state) % max_range);
+		nmembers = pg_prng_uint32(&state) % max_range + min_value;
+
+		for (int i = 0; i < nmembers; i++)
+		{
+			member = pg_prng_uint32(&state) % max_range + min_value;
+			random_bms = bms_add_member(random_bms, member);
+		}
+
+		/* create a known-good set the old fashioned way */
+		offset_bms2 = NULL;
+		member = -1;
+		while ((member = bms_next_member(random_bms, member)) >= 0)
+		{
+			if (member + offset >= 0)
+				offset_bms2 = bms_add_member(offset_bms2, member + offset);
+		}
+
+		/* do the offsetting */
+		offset_bms1 = bms_offset_members(random_bms, offset);
+
+		/* check against the known-good set */
+		if (!bms_equal(offset_bms1, offset_bms2))
+			elog(ERROR, "bms_offset_members failed with offset %d seed " INT64_FORMAT, offset, seed);
+
+		/* Cleanup before the next loop */
+		bms_free(random_bms);
+		bms_free(offset_bms1);
+		bms_free(offset_bms2);
+	}
+
+	PG_RETURN_INT32(num_ops);
 }
