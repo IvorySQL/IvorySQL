@@ -31,6 +31,7 @@
 #include "utils/guc.h"
 
 #include "../include/guc.h"
+#include "../builtin_packages/dbms_scheduler/dbms_scheduler.h"
 
 
 /*
@@ -39,5 +40,44 @@
 void
 IvorysqlOraDefineGucs(void)
 {
+	/* DBMS_SCHEDULER background scheduling */
+	DefineCustomBoolVariable("ivorysql_ora.scheduler",
+							 "Enables the DBMS_SCHEDULER background launcher.",
+							 NULL,
+							 &scheduler_enabled,
+							 true,
+							 PGC_POSTMASTER,
+							 0,
+							 NULL, NULL, NULL);
 
+	DefineCustomStringVariable("ivorysql_ora.scheduler_databases",
+							   "Databases in which DBMS_SCHEDULER jobs are executed.",
+							   "Comma-separated list of database names.",
+							   &scheduler_databases,
+							   "ivorysql",
+							   PGC_SIGHUP,
+							   GUC_LIST_INPUT,
+							   NULL, NULL, NULL);
+
+	DefineCustomIntVariable("ivorysql_ora.scheduler_poll_interval",
+							"Interval between DBMS_SCHEDULER job polls, in seconds.",
+							NULL,
+							&scheduler_poll_interval,
+							5,
+							1,
+							600,
+							PGC_SIGHUP,
+							GUC_UNIT_S,
+							NULL, NULL, NULL);
+
+	DefineCustomIntVariable("ivorysql_ora.scheduler_max_job_workers",
+							"Maximum concurrent DBMS_SCHEDULER job workers per database.",
+							NULL,
+							&scheduler_max_job_workers,
+							4,
+							1,
+							64,
+							PGC_POSTMASTER,
+							0,
+							NULL, NULL, NULL);
 }

@@ -1,0 +1,831 @@
+--
+-- dbms_scheduler.sql
+--
+-- tests for the DBMS_SCHEDULER package (EDB-parity subset):
+--   CREATE_JOB (2 overloads), CREATE_PROGRAM, CREATE_SCHEDULE,
+--   DEFINE_PROGRAM_ARGUMENT (2), DISABLE, DROP_JOB, DROP_PROGRAM,
+--   DROP_PROGRAM_ARGUMENT (2), DROP_SCHEDULE, ENABLE,
+--   EVALUATE_CALENDAR_STRING, RUN_JOB, SET_JOB_ARGUMENT_VALUE (2)
+-- plus the USER_/DBA_SCHEDULER_* dictionary views.
+--
+-- Background execution is exercised by the TAP test (t/001_dbms_scheduler.pl);
+-- everything here is synchronous and deterministic.  Jobs that get enabled
+-- use start dates far in the future so the background scheduler (if one is
+-- attached to this database) never picks them up.
+--
+SET timezone TO 'UTC';
+--
+-- calendar syntax: EVALUATE_CALENDAR_STRING
+-- (fixed anchor and probe dates make the results deterministic)
+--
+-- 2026-01-01 is a Thursday; 2026-07-01 is a Wednesday.
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=DAILY;BYHOUR=9;BYMINUTE=30',
+  '2026-01-01 00:00:00+00', '2026-07-01 12:00:00+00') AS daily_930;
+             daily_930             
+-----------------------------------
+ 2026-07-02 09:30:00.000000 +00:00
+(1 row)
+
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=DAILY;INTERVAL=3',
+  '2026-01-01 08:30:45+00', '2026-07-01 00:00:00+00') AS every3days_inherits_time;
+     every3days_inherits_time      
+-----------------------------------
+ 2026-07-03 08:30:45.000000 +00:00
+(1 row)
+
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=WEEKLY;BYDAY=MON,WED,FRI;BYHOUR=6;BYMINUTE=0;BYSECOND=0',
+  '2026-01-05 00:00:00+00', '2026-07-01 12:00:00+00') AS weekly_mwf;
+            weekly_mwf             
+-----------------------------------
+ 2026-07-03 06:00:00.000000 +00:00
+(1 row)
+
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=MONTHLY;BYMONTHDAY=31;BYHOUR=12;BYMINUTE=0;BYSECOND=0',
+  '2026-01-01 00:00:00+00', '2026-01-31 13:00:00+00') AS monthly_31st_skips_feb;
+      monthly_31st_skips_feb       
+-----------------------------------
+ 2026-03-31 12:00:00.000000 +00:00
+(1 row)
+
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=MONTHLY;BYMONTHDAY=-1;BYHOUR=23;BYMINUTE=0;BYSECOND=0',
+  '2026-01-01 00:00:00+00', '2026-02-01 00:00:00+00') AS monthly_last_day;
+         monthly_last_day          
+-----------------------------------
+ 2026-02-28 23:00:00.000000 +00:00
+(1 row)
+
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=MONTHLY;BYDAY=2FRI;BYHOUR=10;BYMINUTE=0;BYSECOND=0',
+  '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00') AS second_friday;
+           second_friday           
+-----------------------------------
+ 2026-07-10 10:00:00.000000 +00:00
+(1 row)
+
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=MONTHLY;BYDAY=-1SUN;BYHOUR=10;BYMINUTE=0;BYSECOND=0',
+  '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00') AS last_sunday;
+            last_sunday            
+-----------------------------------
+ 2026-07-26 10:00:00.000000 +00:00
+(1 row)
+
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=YEARLY;BYMONTH=FEB;BYMONTHDAY=29;BYHOUR=0;BYMINUTE=0;BYSECOND=0',
+  '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00') AS next_feb29_leap;
+          next_feb29_leap          
+-----------------------------------
+ 2028-02-29 00:00:00.000000 +00:00
+(1 row)
+
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=HOURLY;INTERVAL=6',
+  '2026-01-01 01:15:00+00', '2026-07-01 03:00:00+00') AS hourly6;
+              hourly6              
+-----------------------------------
+ 2026-07-01 07:15:00.000000 +00:00
+(1 row)
+
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=MINUTELY;INTERVAL=30',
+  '2026-01-01 00:05:00+00', '2026-07-01 00:20:00+00') AS minutely30;
+            minutely30             
+-----------------------------------
+ 2026-07-01 00:35:00.000000 +00:00
+(1 row)
+
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=SECONDLY;INTERVAL=15',
+  '2026-01-01 00:00:00+00', '2026-07-01 00:00:05+00') AS secondly15;
+            secondly15             
+-----------------------------------
+ 2026-07-01 00:00:15.000000 +00:00
+(1 row)
+
+-- lower case and embedded blanks are accepted
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  ' freq = daily ; byhour = 7 ; byminute = 0 ; bysecond = 0 ',
+  '2026-01-01 00:00:00+00', '2026-07-01 12:00:00+00') AS case_blank_insensitive;
+      case_blank_insensitive       
+-----------------------------------
+ 2026-07-02 07:00:00.000000 +00:00
+(1 row)
+
+-- calendar errors
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'BYHOUR=9', '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00');
+ERROR:  invalid calendar string "BYHOUR=9"
+DETAIL:  FREQ clause is required.
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=FORTNIGHTLY', '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00');
+ERROR:  invalid calendar string "FREQ=FORTNIGHTLY"
+DETAIL:  FREQ must be one of YEARLY, MONTHLY, WEEKLY, DAILY, HOURLY, MINUTELY or SECONDLY.
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=DAILY;INTERVAL=0', '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00');
+ERROR:  invalid calendar string "FREQ=DAILY;INTERVAL=0"
+DETAIL:  INTERVAL must be 1 through 99.
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=DAILY;INTERVAL=100', '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00');
+ERROR:  invalid calendar string "FREQ=DAILY;INTERVAL=100"
+DETAIL:  INTERVAL must be 1 through 99.
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=DAILY;BYHOUR=24', '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00');
+ERROR:  invalid calendar string "FREQ=DAILY;BYHOUR=24"
+DETAIL:  BYHOUR values must be 0 through 23.
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=WEEKLY;BYDAY=XYZ', '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00');
+ERROR:  invalid calendar string "FREQ=WEEKLY;BYDAY=XYZ"
+DETAIL:  BYDAY values must be day names (MON through SUN) with an optional ordinal.
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=DAILY;BYHOUR=1;BYHOUR=2', '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00');
+ERROR:  invalid calendar string "FREQ=DAILY;BYHOUR=1;BYHOUR=2"
+DETAIL:  duplicate BYHOUR clause.
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=DAILY;BYSETPOS=1', '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00');
+ERROR:  invalid calendar string "FREQ=DAILY;BYSETPOS=1"
+DETAIL:  Clause "BYSETPOS" is not supported.
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=WEEKLY;BYDAY=2FRI', '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00');
+ERROR:  invalid calendar string "FREQ=WEEKLY;BYDAY=2FRI"
+DETAIL:  BYDAY ordinals are only supported with FREQ=YEARLY or FREQ=MONTHLY.
+-- pattern that never yields a date
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=YEARLY;BYMONTH=FEB;BYMONTHDAY=30',
+  '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00');
+ERROR:  calendar string "FREQ=YEARLY;BYMONTH=FEB;BYMONTHDAY=30" does not yield a date after the given time
+-- package-level OUT parameter form
+DECLARE
+  next_d TIMESTAMP WITH TIME ZONE;
+BEGIN
+  dbms_scheduler.evaluate_calendar_string('FREQ=DAILY;BYHOUR=9;BYMINUTE=30;BYSECOND=0',
+     TIMESTAMP '2026-01-01 00:00:00 +00:00', TIMESTAMP '2026-07-01 12:00:00 +00:00', next_d);
+  RAISE NOTICE 'next: %', next_d;
+END;
+/
+NOTICE:  next: 2026-07-02 09:30:00.000000 +00:00
+--
+-- test fixtures
+--
+CREATE TABLE sched_reg_t (id int, note varchar2(200));
+CREATE OR REPLACE PROCEDURE sched_reg_proc(x NUMBER, y VARCHAR2) IS
+BEGIN
+  INSERT INTO sched_reg_t VALUES (x, y);
+END;
+/
+--
+-- CREATE_PROGRAM / DEFINE_PROGRAM_ARGUMENT / DROP_PROGRAM_ARGUMENT
+--
+BEGIN
+  dbms_scheduler.create_program('reg_prog', 'STORED_PROCEDURE', 'sched_reg_proc',
+                                2, FALSE, 'regression test program');
+END;
+/
+-- duplicate name
+BEGIN
+  dbms_scheduler.create_program('reg_prog', 'PLSQL_BLOCK', 'BEGIN NULL; END;');
+END;
+/
+ERROR:  scheduler object "ivorysql"."REG_PROG" already exists
+DETAIL:  Jobs, programs and schedules share one namespace.
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_create_program(program_name,
+			program_type, program_action, number_of_arguments, enabled,
+			comments)"
+PL/iSQL function create_program line 34 at PERFORM
+SQL statement "CALL dbms_scheduler.create_program('reg_prog', 'PLSQL_BLOCK', 'BEGIN NULL; END;')"
+PL/iSQL function inline_code_block line 2 at CALL
+-- unsupported program type
+BEGIN
+  dbms_scheduler.create_program('reg_prog2', 'EXECUTABLE', '/bin/true');
+END;
+/
+ERROR:  program_type "EXECUTABLE" is not supported
+HINT:  Supported types are PLSQL_BLOCK and STORED_PROCEDURE.
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_create_program(program_name,
+			program_type, program_action, number_of_arguments, enabled,
+			comments)"
+PL/iSQL function create_program line 34 at PERFORM
+SQL statement "CALL dbms_scheduler.create_program('reg_prog2', 'EXECUTABLE', '/bin/true')"
+PL/iSQL function inline_code_block line 2 at CALL
+-- PLSQL_BLOCK program cannot take arguments
+BEGIN
+  dbms_scheduler.create_program('reg_prog2', 'PLSQL_BLOCK', 'BEGIN NULL; END;',
+                                number_of_arguments => 1);
+END;
+/
+ERROR:  a PLSQL_BLOCK program cannot have arguments
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_create_program(program_name,
+			program_type, program_action, number_of_arguments, enabled,
+			comments)"
+PL/iSQL function create_program line 34 at PERFORM
+SQL statement "CALL dbms_scheduler.create_program('reg_prog2', 'PLSQL_BLOCK', 'BEGIN NULL; END;',
+                                number_of_arguments => 1)"
+PL/iSQL function inline_code_block line 2 at CALL
+-- cannot enable while arguments are undefined
+BEGIN
+  dbms_scheduler.enable('reg_prog');
+END;
+/
+ERROR:  cannot enable program "ivorysql"."REG_PROG": argument 1 is not defined
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_enable(name, commit_semantics)"
+PL/iSQL function enable line 117 at PERFORM
+SQL statement "CALL dbms_scheduler.enable('reg_prog')"
+PL/iSQL function inline_code_block line 2 at CALL
+-- argument definitions (overload without and with default_value)
+BEGIN
+  dbms_scheduler.define_program_argument(program_name => 'reg_prog',
+      argument_position => 1, argument_name => 'x', argument_type => 'NUMBER');
+  dbms_scheduler.define_program_argument(program_name => 'reg_prog',
+      argument_position => 2, argument_name => 'y', argument_type => 'VARCHAR2',
+      default_value => 'y-default');
+END;
+/
+-- argument position out of range
+BEGIN
+  dbms_scheduler.define_program_argument(program_name => 'reg_prog',
+      argument_position => 3, argument_type => 'NUMBER');
+END;
+/
+ERROR:  argument_position 3 is out of range for program "ivorysql"."REG_PROG" (1 .. 2)
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_define_program_argument(program_name,
+			argument_position, argument_name, argument_type, NULL, false,
+			out_argument)"
+PL/iSQL function define_program_argument line 55 at PERFORM
+SQL statement "CALL dbms_scheduler.define_program_argument(program_name => 'reg_prog',
+      argument_position => 3, argument_type => 'NUMBER')"
+PL/iSQL function inline_code_block line 2 at CALL
+-- OUT arguments are not supported
+BEGIN
+  dbms_scheduler.define_program_argument(program_name => 'reg_prog',
+      argument_position => 1, argument_type => 'NUMBER', out_argument => TRUE);
+END;
+/
+ERROR:  OUT arguments are not supported
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_define_program_argument(program_name,
+			argument_position, argument_name, argument_type, NULL, false,
+			out_argument)"
+PL/iSQL function define_program_argument line 55 at PERFORM
+SQL statement "CALL dbms_scheduler.define_program_argument(program_name => 'reg_prog',
+      argument_position => 1, argument_type => 'NUMBER', out_argument => TRUE)"
+PL/iSQL function inline_code_block line 2 at CALL
+BEGIN
+  dbms_scheduler.enable('reg_prog');
+END;
+/
+SELECT program_name, program_type, program_action, number_of_arguments, enabled
+  FROM user_scheduler_programs ORDER BY program_name;
+ program_name |   program_type   | program_action | number_of_arguments | enabled 
+--------------+------------------+----------------+---------------------+---------
+ REG_PROG     | STORED_PROCEDURE | sched_reg_proc |                   2 | t
+(1 row)
+
+SELECT program_name, argument_position, argument_name, argument_type, default_value
+  FROM user_scheduler_program_args ORDER BY argument_position;
+ program_name | argument_position | argument_name | argument_type | default_value 
+--------------+-------------------+---------------+---------------+---------------
+ REG_PROG     |                 1 | X             | NUMBER        | 
+ REG_PROG     |                 2 | Y             | VARCHAR2      | y-default
+(2 rows)
+
+-- drop argument by position and by name; errors on unknown ones
+BEGIN
+  dbms_scheduler.drop_program_argument('reg_prog', 1);
+END;
+/
+BEGIN
+  dbms_scheduler.drop_program_argument('reg_prog', 1);
+END;
+/
+ERROR:  argument 1 of program "ivorysql"."REG_PROG" is not defined
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_drop_program_argument_pos(program_name,
+			argument_position)"
+PL/iSQL function drop_program_argument line 97 at PERFORM
+SQL statement "CALL dbms_scheduler.drop_program_argument('reg_prog', 1)"
+PL/iSQL function inline_code_block line 2 at CALL
+BEGIN
+  dbms_scheduler.drop_program_argument('reg_prog', 'y');
+END;
+/
+BEGIN
+  dbms_scheduler.drop_program_argument('reg_prog', 'nosucharg');
+END;
+/
+ERROR:  argument "NOSUCHARG" of program "ivorysql"."REG_PROG" is not defined
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_drop_program_argument_name(program_name,
+			argument_name)"
+PL/iSQL function drop_program_argument line 104 at PERFORM
+SQL statement "CALL dbms_scheduler.drop_program_argument('reg_prog', 'nosucharg')"
+PL/iSQL function inline_code_block line 2 at CALL
+SELECT count(*) AS remaining_args FROM user_scheduler_program_args;
+ remaining_args 
+----------------
+              0
+(1 row)
+
+-- put them back for later job tests
+BEGIN
+  dbms_scheduler.define_program_argument(program_name => 'reg_prog',
+      argument_position => 1, argument_name => 'x', argument_type => 'NUMBER');
+  dbms_scheduler.define_program_argument(program_name => 'reg_prog',
+      argument_position => 2, argument_name => 'y', argument_type => 'VARCHAR2',
+      default_value => 'y-default');
+END;
+/
+--
+-- CREATE_SCHEDULE / DROP_SCHEDULE
+--
+BEGIN
+  dbms_scheduler.create_schedule('reg_sched',
+      start_date => TIMESTAMP '2199-01-01 00:00:00 +00:00',
+      repeat_interval => 'FREQ=DAILY;BYHOUR=3;BYMINUTE=0;BYSECOND=0');
+END;
+/
+-- at least one of start_date / repeat_interval is required
+BEGIN
+  dbms_scheduler.create_schedule('reg_sched2');
+END;
+/
+ERROR:  either start_date or repeat_interval must be specified
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_create_schedule(schedule_name,
+			start_date, repeat_interval, end_date, comments)"
+PL/iSQL function create_schedule line 45 at PERFORM
+SQL statement "CALL dbms_scheduler.create_schedule('reg_sched2')"
+PL/iSQL function inline_code_block line 2 at CALL
+-- calendar syntax is validated at creation
+BEGIN
+  dbms_scheduler.create_schedule('reg_sched2', repeat_interval => 'FREQ=BROKEN');
+END;
+/
+ERROR:  invalid calendar string "FREQ=BROKEN"
+DETAIL:  FREQ must be one of YEARLY, MONTHLY, WEEKLY, DAILY, HOURLY, MINUTELY or SECONDLY.
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_create_schedule(schedule_name,
+			start_date, repeat_interval, end_date, comments)"
+PL/iSQL function create_schedule line 45 at PERFORM
+SQL statement "CALL dbms_scheduler.create_schedule('reg_sched2', repeat_interval => 'FREQ=BROKEN')"
+PL/iSQL function inline_code_block line 2 at CALL
+-- end_date must be after start_date
+BEGIN
+  dbms_scheduler.create_schedule('reg_sched2',
+      start_date => TIMESTAMP '2199-01-02 00:00:00 +00:00',
+      end_date   => TIMESTAMP '2199-01-01 00:00:00 +00:00');
+END;
+/
+ERROR:  end_date must be later than start_date
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_create_schedule(schedule_name,
+			start_date, repeat_interval, end_date, comments)"
+PL/iSQL function create_schedule line 45 at PERFORM
+SQL statement "CALL dbms_scheduler.create_schedule('reg_sched2',
+      start_date => TIMESTAMP '2199-01-02 00:00:00 +00:00',
+      end_date   => TIMESTAMP '2199-01-01 00:00:00 +00:00')"
+PL/iSQL function inline_code_block line 2 at CALL
+SELECT schedule_name, repeat_interval FROM user_scheduler_schedules ORDER BY schedule_name;
+ schedule_name |              repeat_interval              
+---------------+-------------------------------------------
+ REG_SCHED     | FREQ=DAILY;BYHOUR=3;BYMINUTE=0;BYSECOND=0
+(1 row)
+
+--
+-- CREATE_JOB (both overloads)
+--
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_job_inline', job_type => 'PLSQL_BLOCK',
+      job_action => 'BEGIN INSERT INTO sched_reg_t VALUES (1, ''inline''); END;');
+END;
+/
+-- jobs, programs and schedules share a namespace
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_prog', job_type => 'PLSQL_BLOCK',
+      job_action => 'BEGIN NULL; END;');
+END;
+/
+ERROR:  scheduler object "ivorysql"."REG_PROG" already exists
+DETAIL:  Jobs, programs and schedules share one namespace.
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_create_job_inline(job_name, job_type,
+			job_action, number_of_arguments, start_date, repeat_interval,
+			end_date, job_class, enabled, auto_drop, comments)"
+PL/iSQL function create_job line 12 at PERFORM
+SQL statement "CALL dbms_scheduler.create_job(job_name => 'reg_prog', job_type => 'PLSQL_BLOCK',
+      job_action => 'BEGIN NULL; END;')"
+PL/iSQL function inline_code_block line 2 at CALL
+-- PLSQL_BLOCK job cannot take arguments
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_job_bad', job_type => 'PLSQL_BLOCK',
+      job_action => 'BEGIN NULL; END;', number_of_arguments => 2);
+END;
+/
+ERROR:  a PLSQL_BLOCK job cannot have arguments
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_create_job_inline(job_name, job_type,
+			job_action, number_of_arguments, start_date, repeat_interval,
+			end_date, job_class, enabled, auto_drop, comments)"
+PL/iSQL function create_job line 12 at PERFORM
+SQL statement "CALL dbms_scheduler.create_job(job_name => 'reg_job_bad', job_type => 'PLSQL_BLOCK',
+      job_action => 'BEGIN NULL; END;', number_of_arguments => 2)"
+PL/iSQL function inline_code_block line 2 at CALL
+-- unsupported job type
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_job_bad', job_type => 'CHAIN',
+      job_action => 'c1');
+END;
+/
+ERROR:  job_type "CHAIN" is not supported
+HINT:  Supported types are PLSQL_BLOCK and STORED_PROCEDURE.
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_create_job_inline(job_name, job_type,
+			job_action, number_of_arguments, start_date, repeat_interval,
+			end_date, job_class, enabled, auto_drop, comments)"
+PL/iSQL function create_job line 12 at PERFORM
+SQL statement "CALL dbms_scheduler.create_job(job_name => 'reg_job_bad', job_type => 'CHAIN',
+      job_action => 'c1')"
+PL/iSQL function inline_code_block line 2 at CALL
+-- named-program job; job_class/auto_drop/comments are accepted
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_job_named', program_name => 'reg_prog',
+      schedule_name => 'reg_sched', job_class => 'SOME_CLASS',
+      auto_drop => FALSE, comments => 'named job');
+END;
+/
+-- referencing a missing program
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_job_bad', program_name => 'no_prog',
+      schedule_name => 'reg_sched');
+END;
+/
+ERROR:  program "ivorysql"."NO_PROG" does not exist
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_create_job_named(job_name, program_name,
+			schedule_name, job_class, enabled, auto_drop, comments)"
+PL/iSQL function create_job line 24 at PERFORM
+SQL statement "CALL dbms_scheduler.create_job(job_name => 'reg_job_bad', program_name => 'no_prog',
+      schedule_name => 'reg_sched')"
+PL/iSQL function inline_code_block line 2 at CALL
+SELECT job_name, job_type, program_name, schedule_name, enabled, state
+  FROM user_scheduler_jobs ORDER BY job_name;
+    job_name    |  job_type   | program_name | schedule_name | enabled |  state   
+----------------+-------------+--------------+---------------+---------+----------
+ REG_JOB_INLINE | PLSQL_BLOCK |              |               | f       | DISABLED
+ REG_JOB_NAMED  |             | REG_PROG     | REG_SCHED     | f       | DISABLED
+(2 rows)
+
+--
+-- SET_JOB_ARGUMENT_VALUE (by position and by name)
+--
+BEGIN
+  dbms_scheduler.set_job_argument_value('reg_job_named', 1, '11');
+END;
+/
+BEGIN
+  dbms_scheduler.set_job_argument_value('reg_job_named', 'y', 'y-set');
+END;
+/
+-- out of range / unknown name / job without named arguments
+BEGIN
+  dbms_scheduler.set_job_argument_value('reg_job_named', 3, 'x');
+END;
+/
+ERROR:  argument_position 3 is out of range for job "ivorysql"."REG_JOB_NAMED" (1 .. 2)
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_set_job_argument_value_pos(job_name,
+			argument_position, argument_value)"
+PL/iSQL function set_job_argument_value line 139 at PERFORM
+SQL statement "CALL dbms_scheduler.set_job_argument_value('reg_job_named', 3, 'x')"
+PL/iSQL function inline_code_block line 2 at CALL
+BEGIN
+  dbms_scheduler.set_job_argument_value('reg_job_named', 'nosucharg', 'x');
+END;
+/
+ERROR:  program "ivorysql"."REG_PROG" has no argument named "NOSUCHARG"
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_set_job_argument_value_name(job_name,
+			argument_name, argument_value)"
+PL/iSQL function set_job_argument_value line 147 at PERFORM
+SQL statement "CALL dbms_scheduler.set_job_argument_value('reg_job_named', 'nosucharg', 'x')"
+PL/iSQL function inline_code_block line 2 at CALL
+BEGIN
+  dbms_scheduler.set_job_argument_value('reg_job_inline', 'y', 'x');
+END;
+/
+ERROR:  job "ivorysql"."REG_JOB_INLINE" has no named arguments
+HINT:  Only jobs that reference a program have named arguments.
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_set_job_argument_value_name(job_name,
+			argument_name, argument_value)"
+PL/iSQL function set_job_argument_value line 147 at PERFORM
+SQL statement "CALL dbms_scheduler.set_job_argument_value('reg_job_inline', 'y', 'x')"
+PL/iSQL function inline_code_block line 2 at CALL
+SELECT job_name, argument_position, value FROM user_scheduler_job_args
+  ORDER BY argument_position;
+   job_name    | argument_position | value 
+---------------+-------------------+-------
+ REG_JOB_NAMED |                 1 | 11
+ REG_JOB_NAMED |                 2 | y-set
+(2 rows)
+
+--
+-- ENABLE / DISABLE
+--
+-- schedules cannot be enabled or disabled
+BEGIN
+  dbms_scheduler.enable('reg_sched');
+END;
+/
+ERROR:  schedule "ivorysql"."REG_SCHED" cannot be enabled
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_enable(name, commit_semantics)"
+PL/iSQL function enable line 117 at PERFORM
+SQL statement "CALL dbms_scheduler.enable('reg_sched')"
+PL/iSQL function inline_code_block line 2 at CALL
+BEGIN
+  dbms_scheduler.disable('reg_sched');
+END;
+/
+ERROR:  schedule "ivorysql"."REG_SCHED" cannot be disabled
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_disable(name, force, commit_semantics)"
+PL/iSQL function disable line 76 at PERFORM
+SQL statement "CALL dbms_scheduler.disable('reg_sched')"
+PL/iSQL function inline_code_block line 2 at CALL
+-- unknown object
+BEGIN
+  dbms_scheduler.enable('no_such_object');
+END;
+/
+ERROR:  scheduler object "ivorysql"."NO_SUCH_OBJECT" does not exist
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_enable(name, commit_semantics)"
+PL/iSQL function enable line 117 at PERFORM
+SQL statement "CALL dbms_scheduler.enable('no_such_object')"
+PL/iSQL function inline_code_block line 2 at CALL
+-- commit_semantics values are validated (and otherwise ignored)
+BEGIN
+  dbms_scheduler.enable('reg_job_named', commit_semantics => 'WHENEVER');
+END;
+/
+ERROR:  invalid commit_semantics value "WHENEVER"
+HINT:  Valid values are STOP_ON_FIRST_ERROR, TRANSACTIONAL and ABSORB_ERRORS.
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_enable(name, commit_semantics)"
+PL/iSQL function enable line 117 at PERFORM
+SQL statement "CALL dbms_scheduler.enable('reg_job_named', commit_semantics => 'WHENEVER')"
+PL/iSQL function inline_code_block line 2 at CALL
+BEGIN
+  dbms_scheduler.enable('reg_job_named', commit_semantics => 'TRANSACTIONAL');
+END;
+/
+SELECT job_name, enabled, state FROM user_scheduler_jobs
+  WHERE job_name = 'REG_JOB_NAMED';
+   job_name    | enabled |   state   
+---------------+---------+-----------
+ REG_JOB_NAMED | t       | SCHEDULED
+(1 row)
+
+BEGIN
+  dbms_scheduler.disable('reg_job_named', force => TRUE,
+                         commit_semantics => 'ABSORB_ERRORS');
+END;
+/
+SELECT job_name, enabled, state FROM user_scheduler_jobs
+  WHERE job_name = 'REG_JOB_NAMED';
+   job_name    | enabled |  state   
+---------------+---------+----------
+ REG_JOB_NAMED | f       | DISABLED
+(1 row)
+
+-- enabling an inline job whose argument has neither value nor default
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_job_args', job_type => 'STORED_PROCEDURE',
+      job_action => 'sched_reg_proc', number_of_arguments => 2,
+      start_date => TIMESTAMP '2199-01-01 00:00:00 +00:00');
+END;
+/
+BEGIN
+  dbms_scheduler.enable('reg_job_args');
+END;
+/
+ERROR:  cannot enable job "ivorysql"."REG_JOB_ARGS": argument 1 has no value and no default
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_enable(name, commit_semantics)"
+PL/iSQL function enable line 117 at PERFORM
+SQL statement "CALL dbms_scheduler.enable('reg_job_args')"
+PL/iSQL function inline_code_block line 2 at CALL
+--
+-- RUN_JOB (current session)
+--
+BEGIN
+  dbms_scheduler.run_job('reg_job_inline');
+END;
+/
+-- program defaults vs job argument overrides
+BEGIN
+  dbms_scheduler.set_job_argument_value('reg_job_named', 1, '21');
+  dbms_scheduler.run_job('reg_job_named');
+END;
+/
+SELECT id, note FROM sched_reg_t ORDER BY id;
+ id |  note  
+----+--------
+  1 | inline
+ 21 | y-set
+(2 rows)
+
+-- FG_JOB_ID and SCHEDULER_JOB are visible inside the running job
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_job_ctx', job_type => 'PLSQL_BLOCK',
+      job_action => 'BEGIN INSERT INTO sched_reg_t VALUES (90, ''fg=''||CASE WHEN SYS_CONTEXT(''USERENV'',''FG_JOB_ID'') IS NULL THEN ''unset'' ELSE ''set'' END||'' job=''||SYS_CONTEXT(''USERENV'',''SCHEDULER_JOB'')); END;');
+  dbms_scheduler.run_job('reg_job_ctx');
+END;
+/
+SELECT note FROM sched_reg_t WHERE id = 90;
+          note          
+------------------------
+ fg=set job=REG_JOB_CTX
+(1 row)
+
+-- outside of a job both are NULL
+SELECT SYS_CONTEXT('USERENV','FG_JOB_ID') IS NULL AS fg_null,
+       SYS_CONTEXT('USERENV','BG_JOB_ID') IS NULL AS bg_null,
+       SYS_CONTEXT('USERENV','SCHEDULER_JOB') IS NULL AS job_null;
+ fg_null | bg_null | job_null 
+---------+---------+----------
+ t       | t       | t
+(1 row)
+
+-- a failing job surfaces its error to the caller
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_job_fail', job_type => 'PLSQL_BLOCK',
+      job_action => 'DECLARE v NUMBER; BEGIN v := 1/0; END;');
+END;
+/
+BEGIN
+  dbms_scheduler.run_job('reg_job_fail');
+END;
+/
+ERROR:  division by zero
+CONTEXT:  PL/iSQL assignment "v := 1/0"
+PL/iSQL function inline_code_block line 1 at assignment
+SQL statement "DECLARE v NUMBER; BEGIN v := 1/0; END;"
+SQL statement "SELECT sys.ora_dbms_scheduler_run_job(job_name, use_current_session)"
+PL/iSQL function run_job line 132 at PERFORM
+SQL statement "CALL dbms_scheduler.run_job('reg_job_fail')"
+PL/iSQL function inline_code_block line 2 at CALL
+-- only the current session mode is supported
+BEGIN
+  dbms_scheduler.run_job('reg_job_inline', use_current_session => FALSE);
+END;
+/
+ERROR:  use_current_session => false is not supported
+HINT:  Enable the job to have the scheduler run it in the background.
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_run_job(job_name, use_current_session)"
+PL/iSQL function run_job line 132 at PERFORM
+SQL statement "CALL dbms_scheduler.run_job('reg_job_inline', use_current_session => FALSE)"
+PL/iSQL function inline_code_block line 2 at CALL
+SELECT job_name, state, run_count FROM user_scheduler_jobs
+  WHERE job_name IN ('REG_JOB_INLINE', 'REG_JOB_NAMED') ORDER BY job_name;
+    job_name    |   state   | run_count 
+----------------+-----------+-----------
+ REG_JOB_INLINE | SUCCEEDED |         1
+ REG_JOB_NAMED  | SUCCEEDED |         1
+(2 rows)
+
+SELECT job_name, status FROM user_scheduler_job_run_details
+  WHERE job_name IN ('REG_JOB_INLINE', 'REG_JOB_NAMED', 'REG_JOB_CTX')
+  ORDER BY log_id;
+    job_name    | status 
+----------------+--------
+ REG_JOB_INLINE | s
+ REG_JOB_NAMED  | s
+ REG_JOB_CTX    | s
+(3 rows)
+
+--
+-- quoted identifiers keep their case; unquoted ones are upper-cased
+--
+BEGIN
+  dbms_scheduler.create_job(job_name => '"lower_job"', job_type => 'PLSQL_BLOCK',
+      job_action => 'BEGIN NULL; END;');
+END;
+/
+SELECT job_name FROM user_scheduler_jobs WHERE job_name = 'lower_job';
+ job_name  
+-----------
+ lower_job
+(1 row)
+
+BEGIN
+  dbms_scheduler.drop_job('"lower_job"');
+END;
+/
+--
+-- ownership and dictionary views
+--
+CREATE USER sched_regress_u1;
+CREATE USER sched_regress_u2;
+SET SESSION AUTHORIZATION sched_regress_u1;
+BEGIN
+  dbms_scheduler.create_job(job_name => 'u1_job', job_type => 'PLSQL_BLOCK',
+      job_action => 'BEGIN NULL; END;');
+END;
+/
+SELECT job_name, state FROM user_scheduler_jobs;
+ job_name |  state   
+----------+----------
+ U1_JOB   | DISABLED
+(1 row)
+
+SET SESSION AUTHORIZATION sched_regress_u2;
+-- u2 sees nothing and cannot touch u1's job or the base tables
+SELECT count(*) AS visible FROM user_scheduler_jobs;
+ visible 
+---------
+       0
+(1 row)
+
+BEGIN
+  dbms_scheduler.drop_job('sched_regress_u1.u1_job');
+END;
+/
+ERROR:  insufficient privileges to operate on scheduler objects owned by "sched_regress_u1"
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_drop_job(job_name, force, defer,
+			commit_semantics)"
+PL/iSQL function drop_job line 84 at PERFORM
+SQL statement "CALL dbms_scheduler.drop_job('sched_regress_u1.u1_job')"
+PL/iSQL function inline_code_block line 2 at CALL
+SELECT count(*) FROM sys.scheduler_jobs;
+ERROR:  permission denied for table scheduler_jobs
+SELECT count(*) FROM sys.dba_scheduler_jobs;
+ERROR:  permission denied for view dba_scheduler_jobs
+RESET SESSION AUTHORIZATION;
+-- the superuser sees and can drop everything
+SELECT owner, job_name FROM dba_scheduler_jobs WHERE job_name = 'U1_JOB';
+      owner       | job_name 
+------------------+----------
+ sched_regress_u1 | U1_JOB
+(1 row)
+
+BEGIN
+  dbms_scheduler.drop_job('sched_regress_u1.u1_job');
+END;
+/
+--
+-- DROP_PROGRAM / DROP_SCHEDULE (force semantics) and DROP_JOB
+--
+BEGIN
+  dbms_scheduler.drop_program('reg_prog');
+END;
+/
+ERROR:  program "ivorysql"."REG_PROG" is referenced by jobs
+HINT:  Use force => true to disable the referencing jobs.
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_drop_program(program_name, force)"
+PL/iSQL function drop_program line 91 at PERFORM
+SQL statement "CALL dbms_scheduler.drop_program('reg_prog')"
+PL/iSQL function inline_code_block line 2 at CALL
+BEGIN
+  dbms_scheduler.drop_program('reg_prog', force => TRUE);
+END;
+/
+-- force-dropping disabled the referencing job
+SELECT job_name, enabled, state FROM user_scheduler_jobs
+  WHERE job_name = 'REG_JOB_NAMED';
+   job_name    | enabled |  state   
+---------------+---------+----------
+ REG_JOB_NAMED | f       | DISABLED
+(1 row)
+
+BEGIN
+  dbms_scheduler.drop_schedule('reg_sched', force => TRUE);
+END;
+/
+BEGIN
+  dbms_scheduler.drop_job('no_such_job');
+END;
+/
+ERROR:  job "ivorysql"."NO_SUCH_JOB" does not exist
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_drop_job(job_name, force, defer,
+			commit_semantics)"
+PL/iSQL function drop_job line 84 at PERFORM
+SQL statement "CALL dbms_scheduler.drop_job('no_such_job')"
+PL/iSQL function inline_code_block line 2 at CALL
+BEGIN
+  dbms_scheduler.drop_job('reg_job_named', force => TRUE, defer => TRUE);
+END;
+/
+BEGIN
+  dbms_scheduler.drop_job('reg_job_inline');
+  dbms_scheduler.drop_job('reg_job_args');
+  dbms_scheduler.drop_job('reg_job_ctx');
+  dbms_scheduler.drop_job('reg_job_fail');
+END;
+/
+-- job argument rows went with their jobs; run log rows are retained
+SELECT count(*) AS jobs, (SELECT count(*) FROM user_scheduler_job_args) AS args
+  FROM user_scheduler_jobs;
+ jobs | args 
+------+------
+    0 |    0
+(1 row)
+
+SELECT count(*) > 0 AS log_retained FROM user_scheduler_job_run_details;
+ log_retained 
+--------------
+ t
+(1 row)
+
+-- cleanup
+DROP USER sched_regress_u1;
+DROP USER sched_regress_u2;
+DROP TABLE sched_reg_t;
+DROP PROCEDURE sched_reg_proc;
+DELETE FROM sys.scheduler_job_run_details;
