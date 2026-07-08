@@ -80,7 +80,6 @@ typedef struct
 	indexed_tlist *subplan_itlist;
 	int			newvarno;
 	int			rtoffset;
-	NullingRelsMatch nrm_match;
 	double		num_exec;
 } fix_upper_expr_context;
 
@@ -199,7 +198,6 @@ static Node *fix_upper_expr(PlannerInfo *root,
 							indexed_tlist *subplan_itlist,
 							int newvarno,
 							int rtoffset,
-							NullingRelsMatch nrm_match,
 							double num_exec);
 static Node *fix_upper_expr_mutator(Node *node,
 									fix_upper_expr_context *context);
@@ -1412,7 +1410,6 @@ set_indexonlyscan_references(PlannerInfo *root,
 					   index_itlist,
 					   INDEX_VAR,
 					   rtoffset,
-					   NRM_EQUAL,
 					   NUM_EXEC_TLIST((Plan *) plan));
 	plan->scan.plan.qual = (List *)
 		fix_upper_expr(root,
@@ -1420,7 +1417,6 @@ set_indexonlyscan_references(PlannerInfo *root,
 					   index_itlist,
 					   INDEX_VAR,
 					   rtoffset,
-					   NRM_EQUAL,
 					   NUM_EXEC_QUAL((Plan *) plan));
 	plan->recheckqual = (List *)
 		fix_upper_expr(root,
@@ -1428,7 +1424,6 @@ set_indexonlyscan_references(PlannerInfo *root,
 					   index_itlist,
 					   INDEX_VAR,
 					   rtoffset,
-					   NRM_EQUAL,
 					   NUM_EXEC_QUAL((Plan *) plan));
 	/* indexqual is already transformed to reference index columns */
 	plan->indexqual = fix_scan_list(root, plan->indexqual,
@@ -1665,7 +1660,6 @@ set_foreignscan_references(PlannerInfo *root,
 						   itlist,
 						   INDEX_VAR,
 						   rtoffset,
-						   NRM_EQUAL,
 						   NUM_EXEC_TLIST((Plan *) fscan));
 		fscan->scan.plan.qual = (List *)
 			fix_upper_expr(root,
@@ -1673,7 +1667,6 @@ set_foreignscan_references(PlannerInfo *root,
 						   itlist,
 						   INDEX_VAR,
 						   rtoffset,
-						   NRM_EQUAL,
 						   NUM_EXEC_QUAL((Plan *) fscan));
 		fscan->fdw_exprs = (List *)
 			fix_upper_expr(root,
@@ -1681,7 +1674,6 @@ set_foreignscan_references(PlannerInfo *root,
 						   itlist,
 						   INDEX_VAR,
 						   rtoffset,
-						   NRM_EQUAL,
 						   NUM_EXEC_QUAL((Plan *) fscan));
 		fscan->fdw_recheck_quals = (List *)
 			fix_upper_expr(root,
@@ -1689,7 +1681,6 @@ set_foreignscan_references(PlannerInfo *root,
 						   itlist,
 						   INDEX_VAR,
 						   rtoffset,
-						   NRM_EQUAL,
 						   NUM_EXEC_QUAL((Plan *) fscan));
 		pfree(itlist);
 		/* fdw_scan_tlist itself just needs fix_scan_list() adjustments */
@@ -1751,7 +1742,6 @@ set_customscan_references(PlannerInfo *root,
 						   itlist,
 						   INDEX_VAR,
 						   rtoffset,
-						   NRM_EQUAL,
 						   NUM_EXEC_TLIST((Plan *) cscan));
 		cscan->scan.plan.qual = (List *)
 			fix_upper_expr(root,
@@ -1759,7 +1749,6 @@ set_customscan_references(PlannerInfo *root,
 						   itlist,
 						   INDEX_VAR,
 						   rtoffset,
-						   NRM_EQUAL,
 						   NUM_EXEC_QUAL((Plan *) cscan));
 		cscan->custom_exprs = (List *)
 			fix_upper_expr(root,
@@ -1767,7 +1756,6 @@ set_customscan_references(PlannerInfo *root,
 						   itlist,
 						   INDEX_VAR,
 						   rtoffset,
-						   NRM_EQUAL,
 						   NUM_EXEC_QUAL((Plan *) cscan));
 		pfree(itlist);
 		/* custom_scan_tlist itself just needs fix_scan_list() adjustments */
@@ -2044,7 +2032,6 @@ set_hash_references(PlannerInfo *root, Plan *plan, int rtoffset)
 					   outer_itlist,
 					   OUTER_VAR,
 					   rtoffset,
-					   NRM_EQUAL,
 					   NUM_EXEC_QUAL(plan));
 
 	/* Hash doesn't project */
@@ -2456,15 +2443,14 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 			 * Vars or PHVs seen in the NestLoopParam expression have
 			 * nullingrels that include exactly the outer-join relids that
 			 * appear in the outer side's output and can null the respective
-			 * Var or PHV.  So we can use exact nullingrels matches for the
-			 * NestLoopParam expression.
+			 * Var or PHV.  Therefore, fix_upper_expr will not complain when
+			 * performing the nullingrels matches here.
 			 */
 			nlp->paramval = (Var *) fix_upper_expr(root,
 												   (Node *) nlp->paramval,
 												   outer_itlist,
 												   OUTER_VAR,
 												   rtoffset,
-												   NRM_EQUAL,
 												   NUM_EXEC_TLIST(outer_plan));
 			/* Check we replaced any PlaceHolderVar with simple Var */
 			if (!(IsA(nlp->paramval, Var) &&
@@ -2507,7 +2493,6 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 											   outer_itlist,
 											   OUTER_VAR,
 											   rtoffset,
-											   NRM_EQUAL,
 											   NUM_EXEC_QUAL((Plan *) join));
 	}
 
@@ -2612,7 +2597,6 @@ set_upper_references(PlannerInfo *root, Plan *plan, int rtoffset)
 										 subplan_itlist,
 										 OUTER_VAR,
 										 rtoffset,
-										 NRM_EQUAL,
 										 NUM_EXEC_TLIST(plan));
 		}
 		else
@@ -2621,7 +2605,6 @@ set_upper_references(PlannerInfo *root, Plan *plan, int rtoffset)
 									 subplan_itlist,
 									 OUTER_VAR,
 									 rtoffset,
-									 NRM_EQUAL,
 									 NUM_EXEC_TLIST(plan));
 		tle = flatCopyTargetEntry(tle);
 		tle->expr = (Expr *) newexpr;
@@ -2635,7 +2618,6 @@ set_upper_references(PlannerInfo *root, Plan *plan, int rtoffset)
 					   subplan_itlist,
 					   OUTER_VAR,
 					   rtoffset,
-					   NRM_EQUAL,
 					   NUM_EXEC_QUAL(plan));
 
 	pfree(subplan_itlist);
@@ -3341,11 +3323,13 @@ fix_join_expr_mutator(Node *node, fix_join_expr_context *context)
  * expensive, so we don't want to try it in the common case where the
  * subplan tlist is just a flattened list of Vars.)
  *
+ * When cross-checking the nullingrels of the subplan output Vars/PHVs, we
+ * always expect exact matches.
+ *
  * 'node': the tree to be fixed (a target item or qual)
  * 'subplan_itlist': indexed target list for subplan (or index)
  * 'newvarno': varno to use for Vars referencing tlist elements
  * 'rtoffset': how much to increment varnos by
- * 'nrm_match': as for search_indexed_tlist_for_var()
  * 'num_exec': estimated number of executions of expression
  *
  * The resulting tree is a copy of the original in which all Var nodes have
@@ -3358,7 +3342,6 @@ fix_upper_expr(PlannerInfo *root,
 			   indexed_tlist *subplan_itlist,
 			   int newvarno,
 			   int rtoffset,
-			   NullingRelsMatch nrm_match,
 			   double num_exec)
 {
 	fix_upper_expr_context context;
@@ -3367,7 +3350,6 @@ fix_upper_expr(PlannerInfo *root,
 	context.subplan_itlist = subplan_itlist;
 	context.newvarno = newvarno;
 	context.rtoffset = rtoffset;
-	context.nrm_match = nrm_match;
 	context.num_exec = num_exec;
 	return fix_upper_expr_mutator(node, &context);
 }
@@ -3387,7 +3369,7 @@ fix_upper_expr_mutator(Node *node, fix_upper_expr_context *context)
 											  context->subplan_itlist,
 											  context->newvarno,
 											  context->rtoffset,
-											  context->nrm_match);
+											  NRM_EQUAL);
 		if (!newvar)
 			elog(ERROR, "variable not found in subplan target list");
 		return (Node *) newvar;
@@ -3402,7 +3384,7 @@ fix_upper_expr_mutator(Node *node, fix_upper_expr_context *context)
 			newvar = search_indexed_tlist_for_phv(phv,
 												  context->subplan_itlist,
 												  context->newvarno,
-												  context->nrm_match);
+												  NRM_EQUAL);
 			if (newvar)
 				return (Node *) newvar;
 		}
