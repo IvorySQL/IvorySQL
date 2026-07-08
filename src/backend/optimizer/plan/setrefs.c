@@ -36,7 +36,6 @@
 typedef enum
 {
 	NRM_EQUAL,					/* expect exact match of nullingrels */
-	NRM_SUBSET,					/* actual Var may have a subset of input */
 	NRM_SUPERSET,				/* actual Var may have a superset of input */
 } NullingRelsMatch;
 
@@ -2453,22 +2452,19 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 			NestLoopParam *nlp = (NestLoopParam *) lfirst(lc);
 
 			/*
-			 * Because we don't reparameterize parameterized paths to match
-			 * the outer-join level at which they are used, Vars seen in the
-			 * NestLoopParam expression may have nullingrels that are just a
-			 * subset of those in the Vars actually available from the outer
-			 * side.  (Lateral references can also cause this, as explained in
-			 * the comments for identify_current_nestloop_params.)  Not
-			 * checking this exactly is a bit grotty, but the work needed to
-			 * make things match up perfectly seems well out of proportion to
-			 * the value.
+			 * identify_current_nestloop_params has already ensured that any
+			 * Vars or PHVs seen in the NestLoopParam expression have
+			 * nullingrels that include exactly the outer-join relids that
+			 * appear in the outer side's output and can null the respective
+			 * Var or PHV.  So we can use exact nullingrels matches for the
+			 * NestLoopParam expression.
 			 */
 			nlp->paramval = (Var *) fix_upper_expr(root,
 												   (Node *) nlp->paramval,
 												   outer_itlist,
 												   OUTER_VAR,
 												   rtoffset,
-												   NRM_SUBSET,
+												   NRM_EQUAL,
 												   NUM_EXEC_TLIST(outer_plan));
 			/* Check we replaced any PlaceHolderVar with simple Var */
 			if (!(IsA(nlp->paramval, Var) &&
@@ -2948,8 +2944,7 @@ build_tlist_index_other_vars(List *tlist, int ignore_rel)
  * We cross-check the varnullingrels of the subplan output Var based on
  * nrm_match.  Most call sites should pass NRM_EQUAL indicating we expect
  * an exact match.  However, there are places where we haven't cleaned
- * things up completely, and we have to settle for allowing subset or
- * superset matches.
+ * things up completely, and we have to settle for allowing superset matches.
  */
 static Var *
 search_indexed_tlist_for_var(Var *var, indexed_tlist *itlist,
@@ -2985,9 +2980,7 @@ search_indexed_tlist_for_var(Var *var, indexed_tlist *itlist,
 			 * would affect only system columns.)
 			 */
 			if (!(varattno <= 0 ||
-				  (nrm_match == NRM_SUBSET ?
-				   bms_is_subset(var->varnullingrels, vinfo->varnullingrels) :
-				   nrm_match == NRM_SUPERSET ?
+				  (nrm_match == NRM_SUPERSET ?
 				   bms_is_subset(vinfo->varnullingrels, var->varnullingrels) :
 				   bms_equal(vinfo->varnullingrels, var->varnullingrels))))
 				elog(ERROR, "wrong varnullingrels %s (expected %s) for Var %d/%d",
@@ -3041,9 +3034,7 @@ search_indexed_tlist_for_phv(PlaceHolderVar *phv,
 				continue;
 
 			/* Verify that we kept all the nullingrels machinations straight */
-			if (!(nrm_match == NRM_SUBSET ?
-				  bms_is_subset(phv->phnullingrels, subphv->phnullingrels) :
-				  nrm_match == NRM_SUPERSET ?
+			if (!(nrm_match == NRM_SUPERSET ?
 				  bms_is_subset(subphv->phnullingrels, phv->phnullingrels) :
 				  bms_equal(subphv->phnullingrels, phv->phnullingrels)))
 				elog(ERROR, "wrong phnullingrels %s (expected %s) for PlaceHolderVar %d",
