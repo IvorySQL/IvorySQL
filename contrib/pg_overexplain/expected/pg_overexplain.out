@@ -497,14 +497,15 @@ $$);
 (15 rows)
 
 -- Create an index, and then attempt to force a nested loop with inner index
--- scan so that we can see parameter-related information. Also, let's try
--- actually running the query, but try to suppress potentially variable output.
+-- scan so that we can see parameter-related information.
 CREATE INDEX ON vegetables (id);
 ANALYZE vegetables;
 SET enable_hashjoin = false;
 SET enable_material = false;
 SET enable_mergejoin = false;
 SET enable_seqscan = false;
+-- Let's try actually running the query, but try to suppress potentially
+-- variable output.
 SELECT explain_filter($$
 EXPLAIN (BUFFERS OFF, COSTS OFF, SUMMARY OFF, TIMING OFF, ANALYZE, DEBUG)
 SELECT * FROM vegetables v1, vegetables v2 WHERE v1.id = v2.id;
@@ -560,6 +561,41 @@ $$);
    Parse Location: 0 to end
 (47 rows)
 
+-- Test the RANGE_TABLE option with a case that involves an outer join.
+SELECT explain_filter($$
+EXPLAIN (RANGE_TABLE, COSTS OFF)
+SELECT * FROM daucus d LEFT JOIN brassica b ON d.id = b.id;
+$$);
+                     explain_filter                      
+---------------------------------------------------------
+ Nested Loop Left Join
+   Outer Join RTIs: 3
+   ->  Index Scan using daucus_id_idx on daucus d
+         Scan RTI: 1
+   ->  Index Scan using brassica_id_idx on brassica b
+         Index Cond: (id = d.id)
+         Scan RTI: 2
+ RTI 1 (relation, in-from-clause):
+   Alias: d ()
+   Eref: d (id, name, genus)
+   Relation: daucus
+   Relation Kind: relation
+   Relation Lock Mode: AccessShareLock
+   Permission Info Index: 1
+ RTI 2 (relation, in-from-clause):
+   Alias: b ()
+   Eref: b (id, name, genus)
+   Relation: brassica
+   Relation Kind: relation
+   Relation Lock Mode: AccessShareLock
+   Permission Info Index: 2
+ RTI 3 (join, in-from-clause):
+   Eref: unnamed_join (id, name, genus, id, name, genus)
+   Join Type: Left
+ Unprunable RTIs: 1 2
+(25 rows)
+
+-- Restore default settings.
 RESET enable_hashjoin;
 RESET enable_material;
 RESET enable_mergejoin;

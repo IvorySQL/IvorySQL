@@ -261,6 +261,20 @@ overexplain_per_node_hook(PlanState *planstate, List *ancestors,
 										  ((Result *) plan)->relids,
 										  es);
 				break;
+			case T_MergeJoin:
+			case T_NestLoop:
+			case T_HashJoin:
+
+				/*
+				 * 'ojrelids' is only meaningful for non-inner joins, but if
+				 * it somehow ends up set for an inner join, print it anyway.
+				 */
+				if (((Join *) plan)->jointype != JOIN_INNER ||
+					((Join *) plan)->ojrelids != NULL)
+					overexplain_bitmapset("Outer Join RTIs",
+										  ((Join *) plan)->ojrelids,
+										  es);
+				break;
 			default:
 				break;
 		}

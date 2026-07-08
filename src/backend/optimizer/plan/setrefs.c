@@ -2498,13 +2498,13 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 
 	/*
 	 * Now we need to fix up the targetlist and qpqual, which are logically
-	 * above the join.  This means that, if it's not an inner join, any Vars
-	 * and PHVs appearing here should have nullingrels that include the
-	 * effects of the outer join, ie they will have nullingrels equal to the
-	 * input Vars' nullingrels plus the bit added by the outer join.  We don't
-	 * currently have enough info available here to identify what that should
-	 * be, so we just tell fix_join_expr to accept superset nullingrels
-	 * matches instead of exact ones.
+	 * above the join.  This means that, if it's an outer join with non-empty
+	 * ojrelids, any Vars and PHVs appearing here should have nullingrels that
+	 * include the effects of the outer join, ie they will have nullingrels
+	 * equal to the input Vars' nullingrels plus the bit added by the outer
+	 * join.  We don't currently have enough info available here to identify
+	 * what that should be, so we just tell fix_join_expr to accept superset
+	 * nullingrels matches instead of exact ones.
 	 */
 	join->plan.targetlist = fix_join_expr(root,
 										  join->plan.targetlist,
@@ -2512,7 +2512,7 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 										  inner_itlist,
 										  (Index) 0,
 										  rtoffset,
-										  (join->jointype == JOIN_INNER ? NRM_EQUAL : NRM_SUPERSET),
+										  (bms_is_empty(join->ojrelids) ? NRM_EQUAL : NRM_SUPERSET),
 										  NUM_EXEC_TLIST((Plan *) join));
 	join->plan.qual = fix_join_expr(root,
 									join->plan.qual,
@@ -2520,7 +2520,7 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 									inner_itlist,
 									(Index) 0,
 									rtoffset,
-									(join->jointype == JOIN_INNER ? NRM_EQUAL : NRM_SUPERSET),
+									(bms_is_empty(join->ojrelids) ? NRM_EQUAL : NRM_SUPERSET),
 									NUM_EXEC_QUAL((Plan *) join));
 
 	pfree(outer_itlist);
