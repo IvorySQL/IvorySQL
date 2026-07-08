@@ -2557,9 +2557,10 @@ CONTEXT:  processing remote data for replication origin "pg_16395" during "INSER
   </para>
 
   <para>
-   In order to be able to copy the initial table or sequence data, the role
-   used for the replication connection must have the <literal>SELECT</literal>
-   privilege on a published table or sequence (or be a superuser).
+   In order to be able to copy the initial table data or synchronize
+   sequences, the role used for the replication connection must have the
+   <literal>SELECT</literal> privilege on a published table or sequence (or be
+   a superuser).
   </para>
 
   <para>
@@ -2624,6 +2625,13 @@ CONTEXT:  processing remote data for replication origin "pg_16395" during "INSER
    Because it is usually undesirable to allow one role to freely assume
    the privileges of another, this option should be avoided unless user
    security within the database is of no concern.
+  </para>
+
+  <para>
+   When synchronizing sequences with
+   <literal>run_as_owner = true</literal>, the subscription owner similarly
+   needs <literal>UPDATE</literal> privilege on the target sequence and does
+   not need privileges to <literal>SET ROLE</literal> to the sequence owner.
   </para>
 
   <para>

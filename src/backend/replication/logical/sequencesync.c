@@ -201,12 +201,26 @@ report_sequence_errors(List *mismatched_seqs_idx,
 	if (sub_insuffperm_seqs_idx)
 	{
 		get_sequences_string(sub_insuffperm_seqs_idx, &seqstr);
+
+		/*
+		 * With run_as_owner enabled, sequence synchronization runs as the
+		 * subscription owner, so a missing UPDATE privilege should be granted
+		 * to that role. Otherwise, the worker switches to the sequence owner
+		 * before checking privileges, so no useful GRANT hint can be
+		 * provided.
+		 */
 		ereport(WARNING,
 				errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				errmsg_plural("insufficient privileges on subscriber sequence (%s)",
 							  "insufficient privileges on subscriber sequences (%s)",
 							  list_length(sub_insuffperm_seqs_idx),
-							  seqstr.data));
+							  seqstr.data),
+				MySubscription->runasowner ?
+				errhint_plural("Grant UPDATE on the sequence to the subscription "
+							   "owner on the subscriber.",
+							   "Grant UPDATE on the sequences to the subscription "
+							   "owner on the subscriber.",
+							   list_length(sub_insuffperm_seqs_idx)) : 0);
 	}
 
 	if (pub_insuffperm_seqs_idx)
@@ -217,7 +231,12 @@ report_sequence_errors(List *mismatched_seqs_idx,
 				errmsg_plural("insufficient privileges on publisher sequence (%s)",
 							  "insufficient privileges on publisher sequences (%s)",
 							  list_length(pub_insuffperm_seqs_idx),
-							  seqstr.data));
+							  seqstr.data),
+				errhint_plural("Grant SELECT on the sequence to the role used for "
+							   "the replication connection on the publisher.",
+							   "Grant SELECT on the sequences to the role used for "
+							   "the replication connection on the publisher.",
+							   list_length(pub_insuffperm_seqs_idx)));
 	}
 
 	if (missing_seqs_idx)
