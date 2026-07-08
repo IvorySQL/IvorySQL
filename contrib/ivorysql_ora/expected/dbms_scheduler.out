@@ -14,6 +14,12 @@
 -- attached to this database) never picks them up.
 --
 SET timezone TO 'UTC';
+-- Run under a fixed role so that object owners embedded in error messages
+-- are stable regardless of the OS/bootstrap user running the test.  A
+-- superuser role is needed because the test later creates sub-users and
+-- switches session authorization between them.
+CREATE ROLE regress_dbms_scheduler SUPERUSER;
+SET SESSION AUTHORIZATION regress_dbms_scheduler;
 --
 -- calendar syntax: EVALUATE_CALENDAR_STRING
 -- (fixed anchor and probe dates make the results deterministic)
@@ -190,7 +196,7 @@ BEGIN
   dbms_scheduler.create_program('reg_prog', 'PLSQL_BLOCK', 'BEGIN NULL; END;');
 END;
 /
-ERROR:  scheduler object "ivorysql"."REG_PROG" already exists
+ERROR:  scheduler object "regress_dbms_scheduler"."REG_PROG" already exists
 DETAIL:  Jobs, programs and schedules share one namespace.
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_create_program(program_name,
 			program_type, program_action, number_of_arguments, enabled,
@@ -230,7 +236,7 @@ BEGIN
   dbms_scheduler.enable('reg_prog');
 END;
 /
-ERROR:  cannot enable program "ivorysql"."REG_PROG": argument 1 is not defined
+ERROR:  cannot enable program "regress_dbms_scheduler"."REG_PROG": argument 1 is not defined
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_enable(name, commit_semantics)"
 PL/iSQL function enable line 117 at PERFORM
 SQL statement "CALL dbms_scheduler.enable('reg_prog')"
@@ -250,7 +256,7 @@ BEGIN
       argument_position => 3, argument_type => 'NUMBER');
 END;
 /
-ERROR:  argument_position 3 is out of range for program "ivorysql"."REG_PROG" (1 .. 2)
+ERROR:  argument_position 3 is out of range for program "regress_dbms_scheduler"."REG_PROG" (1 .. 2)
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_define_program_argument(program_name,
 			argument_position, argument_name, argument_type, NULL, false,
 			out_argument)"
@@ -300,7 +306,7 @@ BEGIN
   dbms_scheduler.drop_program_argument('reg_prog', 1);
 END;
 /
-ERROR:  argument 1 of program "ivorysql"."REG_PROG" is not defined
+ERROR:  argument 1 of program "regress_dbms_scheduler"."REG_PROG" is not defined
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_drop_program_argument_pos(program_name,
 			argument_position)"
 PL/iSQL function drop_program_argument line 97 at PERFORM
@@ -314,7 +320,7 @@ BEGIN
   dbms_scheduler.drop_program_argument('reg_prog', 'nosucharg');
 END;
 /
-ERROR:  argument "NOSUCHARG" of program "ivorysql"."REG_PROG" is not defined
+ERROR:  argument "NOSUCHARG" of program "regress_dbms_scheduler"."REG_PROG" is not defined
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_drop_program_argument_name(program_name,
 			argument_name)"
 PL/iSQL function drop_program_argument line 104 at PERFORM
@@ -402,7 +408,7 @@ BEGIN
       job_action => 'BEGIN NULL; END;');
 END;
 /
-ERROR:  scheduler object "ivorysql"."REG_PROG" already exists
+ERROR:  scheduler object "regress_dbms_scheduler"."REG_PROG" already exists
 DETAIL:  Jobs, programs and schedules share one namespace.
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_create_job_inline(job_name, job_type,
 			job_action, number_of_arguments, start_date, repeat_interval,
@@ -453,7 +459,7 @@ BEGIN
       schedule_name => 'reg_sched');
 END;
 /
-ERROR:  program "ivorysql"."NO_PROG" does not exist
+ERROR:  program "regress_dbms_scheduler"."NO_PROG" does not exist
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_create_job_named(job_name, program_name,
 			schedule_name, job_class, enabled, auto_drop, comments)"
 PL/iSQL function create_job line 24 at PERFORM
@@ -484,7 +490,7 @@ BEGIN
   dbms_scheduler.set_job_argument_value('reg_job_named', 3, 'x');
 END;
 /
-ERROR:  argument_position 3 is out of range for job "ivorysql"."REG_JOB_NAMED" (1 .. 2)
+ERROR:  argument_position 3 is out of range for job "regress_dbms_scheduler"."REG_JOB_NAMED" (1 .. 2)
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_set_job_argument_value_pos(job_name,
 			argument_position, argument_value)"
 PL/iSQL function set_job_argument_value line 139 at PERFORM
@@ -494,7 +500,7 @@ BEGIN
   dbms_scheduler.set_job_argument_value('reg_job_named', 'nosucharg', 'x');
 END;
 /
-ERROR:  program "ivorysql"."REG_PROG" has no argument named "NOSUCHARG"
+ERROR:  program "regress_dbms_scheduler"."REG_PROG" has no argument named "NOSUCHARG"
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_set_job_argument_value_name(job_name,
 			argument_name, argument_value)"
 PL/iSQL function set_job_argument_value line 147 at PERFORM
@@ -504,7 +510,7 @@ BEGIN
   dbms_scheduler.set_job_argument_value('reg_job_inline', 'y', 'x');
 END;
 /
-ERROR:  job "ivorysql"."REG_JOB_INLINE" has no named arguments
+ERROR:  job "regress_dbms_scheduler"."REG_JOB_INLINE" has no named arguments
 HINT:  Only jobs that reference a program have named arguments.
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_set_job_argument_value_name(job_name,
 			argument_name, argument_value)"
@@ -527,7 +533,7 @@ BEGIN
   dbms_scheduler.enable('reg_sched');
 END;
 /
-ERROR:  schedule "ivorysql"."REG_SCHED" cannot be enabled
+ERROR:  schedule "regress_dbms_scheduler"."REG_SCHED" cannot be enabled
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_enable(name, commit_semantics)"
 PL/iSQL function enable line 117 at PERFORM
 SQL statement "CALL dbms_scheduler.enable('reg_sched')"
@@ -536,7 +542,7 @@ BEGIN
   dbms_scheduler.disable('reg_sched');
 END;
 /
-ERROR:  schedule "ivorysql"."REG_SCHED" cannot be disabled
+ERROR:  schedule "regress_dbms_scheduler"."REG_SCHED" cannot be disabled
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_disable(name, force, commit_semantics)"
 PL/iSQL function disable line 76 at PERFORM
 SQL statement "CALL dbms_scheduler.disable('reg_sched')"
@@ -546,7 +552,7 @@ BEGIN
   dbms_scheduler.enable('no_such_object');
 END;
 /
-ERROR:  scheduler object "ivorysql"."NO_SUCH_OBJECT" does not exist
+ERROR:  scheduler object "regress_dbms_scheduler"."NO_SUCH_OBJECT" does not exist
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_enable(name, commit_semantics)"
 PL/iSQL function enable line 117 at PERFORM
 SQL statement "CALL dbms_scheduler.enable('no_such_object')"
@@ -596,7 +602,7 @@ BEGIN
   dbms_scheduler.enable('reg_job_args');
 END;
 /
-ERROR:  cannot enable job "ivorysql"."REG_JOB_ARGS": argument 1 has no value and no default
+ERROR:  cannot enable job "regress_dbms_scheduler"."REG_JOB_ARGS": argument 1 has no value and no default
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_enable(name, commit_semantics)"
 PL/iSQL function enable line 117 at PERFORM
 SQL statement "CALL dbms_scheduler.enable('reg_job_args')"
@@ -747,7 +753,9 @@ SELECT count(*) FROM sys.scheduler_jobs;
 ERROR:  permission denied for table scheduler_jobs
 SELECT count(*) FROM sys.dba_scheduler_jobs;
 ERROR:  permission denied for view dba_scheduler_jobs
-RESET SESSION AUTHORIZATION;
+-- back to the fixed test owner (not RESET, which would revert to the
+-- environment-dependent authenticated user)
+SET SESSION AUTHORIZATION regress_dbms_scheduler;
 -- the superuser sees and can drop everything
 SELECT owner, job_name FROM dba_scheduler_jobs WHERE job_name = 'U1_JOB';
       owner       | job_name 
@@ -766,7 +774,7 @@ BEGIN
   dbms_scheduler.drop_program('reg_prog');
 END;
 /
-ERROR:  program "ivorysql"."REG_PROG" is referenced by jobs
+ERROR:  program "regress_dbms_scheduler"."REG_PROG" is referenced by jobs
 HINT:  Use force => true to disable the referencing jobs.
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_drop_program(program_name, force)"
 PL/iSQL function drop_program line 91 at PERFORM
@@ -792,7 +800,7 @@ BEGIN
   dbms_scheduler.drop_job('no_such_job');
 END;
 /
-ERROR:  job "ivorysql"."NO_SUCH_JOB" does not exist
+ERROR:  job "regress_dbms_scheduler"."NO_SUCH_JOB" does not exist
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_drop_job(job_name, force, defer,
 			commit_semantics)"
 PL/iSQL function drop_job line 84 at PERFORM
@@ -824,8 +832,10 @@ SELECT count(*) > 0 AS log_retained FROM user_scheduler_job_run_details;
 (1 row)
 
 -- cleanup
+RESET SESSION AUTHORIZATION;
 DROP USER sched_regress_u1;
 DROP USER sched_regress_u2;
 DROP TABLE sched_reg_t;
 DROP PROCEDURE sched_reg_proc;
 DELETE FROM sys.scheduler_job_run_details;
+DROP ROLE regress_dbms_scheduler;

@@ -16,6 +16,13 @@
 
 SET timezone TO 'UTC';
 
+-- Run under a fixed role so that object owners embedded in error messages
+-- are stable regardless of the OS/bootstrap user running the test.  A
+-- superuser role is needed because the test later creates sub-users and
+-- switches session authorization between them.
+CREATE ROLE regress_dbms_scheduler SUPERUSER;
+SET SESSION AUTHORIZATION regress_dbms_scheduler;
+
 --
 -- calendar syntax: EVALUATE_CALENDAR_STRING
 -- (fixed anchor and probe dates make the results deterministic)
@@ -416,7 +423,9 @@ END;
 /
 SELECT count(*) FROM sys.scheduler_jobs;
 SELECT count(*) FROM sys.dba_scheduler_jobs;
-RESET SESSION AUTHORIZATION;
+-- back to the fixed test owner (not RESET, which would revert to the
+-- environment-dependent authenticated user)
+SET SESSION AUTHORIZATION regress_dbms_scheduler;
 -- the superuser sees and can drop everything
 SELECT owner, job_name FROM dba_scheduler_jobs WHERE job_name = 'U1_JOB';
 BEGIN
@@ -463,8 +472,10 @@ SELECT count(*) AS jobs, (SELECT count(*) FROM user_scheduler_job_args) AS args
 SELECT count(*) > 0 AS log_retained FROM user_scheduler_job_run_details;
 
 -- cleanup
+RESET SESSION AUTHORIZATION;
 DROP USER sched_regress_u1;
 DROP USER sched_regress_u2;
 DROP TABLE sched_reg_t;
 DROP PROCEDURE sched_reg_proc;
 DELETE FROM sys.scheduler_job_run_details;
+DROP ROLE regress_dbms_scheduler;
