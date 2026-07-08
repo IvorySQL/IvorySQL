@@ -527,7 +527,7 @@ strlower_libc_sb(char *dest, size_t destsize, const char *src, size_t srclen,
 			{
 				if (*p >= 'A' && *p <= 'Z')
 					*p += 'a' - 'A';
-				else if (IS_HIGHBIT_SET(*p) && isupper_l(*p, loc))
+				else if (IS_HIGHBIT_SET(*p) && isupper_l((unsigned char) *p, loc))
 					*p = tolower_l((unsigned char) *p, loc);
 			}
 			else
@@ -611,14 +611,14 @@ strtitle_libc_sb(char *dest, size_t destsize, const char *src, size_t srclen,
 				{
 					if (*p >= 'A' && *p <= 'Z')
 						*p += 'a' - 'A';
-					else if (IS_HIGHBIT_SET(*p) && isupper_l(*p, loc))
+					else if (IS_HIGHBIT_SET(*p) && isupper_l((unsigned char) *p, loc))
 						*p = tolower_l((unsigned char) *p, loc);
 				}
 				else
 				{
 					if (*p >= 'a' && *p <= 'z')
 						*p -= 'a' - 'A';
-					else if (IS_HIGHBIT_SET(*p) && islower_l(*p, loc))
+					else if (IS_HIGHBIT_SET(*p) && islower_l((unsigned char) *p, loc))
 						*p = toupper_l((unsigned char) *p, loc);
 				}
 			}
@@ -713,7 +713,7 @@ strupper_libc_sb(char *dest, size_t destsize, const char *src, size_t srclen,
 			{
 				if (*p >= 'a' && *p <= 'z')
 					*p -= 'a' - 'A';
-				else if (IS_HIGHBIT_SET(*p) && islower_l(*p, loc))
+				else if (IS_HIGHBIT_SET(*p) && islower_l((unsigned char) *p, loc))
 					*p = toupper_l((unsigned char) *p, loc);
 			}
 			else
