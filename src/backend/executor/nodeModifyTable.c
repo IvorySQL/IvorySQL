@@ -2421,8 +2421,27 @@ ExecUpdate(IvyModifyTableContext *context, ResultRelInfo *resultRelInfo,
 	 * Prepare for the update.  This includes BEFORE ROW triggers, so we're
 	 * done if it says we are.
 	 */
+	context->tmfd.traversed = false;
 	if (!ExecUpdatePrologue(context, resultRelInfo, tupleid, oldtuple, slot, NULL))
 		return NULL;
+
+	/*
+	 * If the target tuple was concurrently updated, the trigger code will
+	 * have done EPQ and updated tupleid, following the update chain.  In this
+	 * case, we must fetch the most recent version of old tuple for the
+	 * benefit of RETURNING.  Technically, we could get away with not doing
+	 * this, if there is no RETURNING clause, or it doesn't refer to OLD, but
+	 * it seems preferable to always ensure that the contents of oldSlot are
+	 * correct.
+	 */
+	if (context->tmfd.traversed)
+	{
+		if (!table_tuple_fetch_row_version(resultRelInfo->ri_RelationDesc,
+										   tupleid,
+										   SnapshotAny,
+										   oldSlot))
+			elog(ERROR, "failed to re-fetch tuple updated during trigger execution");
+	}
 
 	/* INSTEAD OF ROW UPDATE Triggers */
 	if (resultRelInfo->ri_TrigDesc &&
