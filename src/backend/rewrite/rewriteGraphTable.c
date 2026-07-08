@@ -1159,7 +1159,7 @@ replace_property_refs(Oid propgraphid, Node *node, const List *mappings)
 	context.mappings = mappings;
 	context.propgraphid = propgraphid;
 
-	return expression_tree_mutator(node, replace_property_refs_mutator, &context);
+	return replace_property_refs_mutator(node, &context);
 }
 
 /*
