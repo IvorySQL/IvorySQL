@@ -209,3 +209,4 @@
 <!ENTITY obsolete-pgresetxlog SYSTEM "appendix-obsolete-pgresetxlog.sgml">
 <!ENTITY obsolete-pgreceivexlog SYSTEM "appendix-obsolete-pgreceivexlog.sgml">
 <!ENTITY obsolete-auth-radius SYSTEM "appendix-obsolete-auth-radius.sgml">
+<!ENTITY obsolete-refint SYSTEM "appendix-obsolete-refint.sgml">

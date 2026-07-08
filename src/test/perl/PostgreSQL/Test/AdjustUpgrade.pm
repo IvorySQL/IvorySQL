@@ -112,6 +112,21 @@ sub adjust_database_contents
 			'drop extension if exists test_ext7');
 	}
 
+	# refint was removed in v20
+	if ($old_version < 20)
+	{
+		if ($dbnames{"contrib_regression_autoinc"})
+		{
+			_add_st($result, 'contrib_regression_autoinc',
+				'drop extension if exists refint cascade');
+		}
+		if ($dbnames{"regression_spi"})
+		{
+			_add_st($result, 'regression_spi',
+				'drop extension if exists refint cascade');
+		}
+	}
+
 	# btree_gist inet/cidr indexes cannot be upgraded to v19
 	if ($old_version < 19)
 	{

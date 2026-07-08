@@ -1,0 +1,24 @@
+<!-- doc/src/sgml/appendix-obsolete-refint.sgml -->
+<!--
+  See doc/src/sgml/appendix-obsolete.sgml for why this file exists. Do not change the id attribute.
+-->
+
+<sect1 id="contrib-spi-refint">
+  <title>refint Extension Removed</title>
+
+   <indexterm zone="contrib-spi-refint">
+    <primary>refint</primary>
+   </indexterm>
+
+   <para>
+    <productname>PostgreSQL</productname> 19 and below shipped an extension
+    named <literal>refint</literal> (part of the <literal>spi</literal> contrib
+    module) that provided the trigger functions
+    <function>check_primary_key</function> and
+    <function>check_foreign_key</function> as an early way to enforce
+    referential integrity.  This functionality was long superseded by the
+    built-in foreign key mechanism (see <xref linkend="ddl-constraints-fk"/>),
+    and the extension was removed in <productname>PostgreSQL</productname> 20.
+   </para>
+
+</sect1>
