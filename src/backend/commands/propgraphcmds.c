@@ -897,6 +897,8 @@ insert_property_records(Oid graphid, Oid ellabeloid, Oid pgerelid, const PropGra
 	table_close(rel, NoLock);
 
 	tp = transformTargetList(pstate, proplist, EXPR_KIND_PROPGRAPH_PROPERTY);
+	if (pstate->p_resolve_unknowns)
+		resolveTargetListUnknowns(pstate, tp);
 	assign_expr_collations(pstate, (Node *) tp);
 
 	foreach(lc, tp)

@@ -337,6 +337,10 @@ CREATE PROPERTY GRAPH gt
             SOURCE KEY (k1) REFERENCES v1(a)
             DESTINATION KEY (k2) REFERENCES v2(m)
     );
+-- data types of constant property values
+CREATE PROPERTY GRAPH glc VERTEX TABLES (
+    v1 KEY (a) LABEL l1 PROPERTIES ('foo' AS p1, 123 AS p2, 3.14 AS p3, true AS p4)
+);
 -- information schema
 SELECT * FROM information_schema.property_graphs ORDER BY property_graph_name;
  property_graph_catalog |    property_graph_schema    | property_graph_name 
@@ -347,8 +351,9 @@ SELECT * FROM information_schema.property_graphs ORDER BY property_graph_name;
  regression             | create_property_graph_tests | g4
  regression             | create_property_graph_tests | g5
  regression             | create_property_graph_tests | gc1
+ regression             | create_property_graph_tests | glc
  regression             | create_property_graph_tests | gt
-(7 rows)
+(8 rows)
 
 SELECT * FROM information_schema.pg_element_tables ORDER BY property_graph_name, element_table_alias;
  property_graph_catalog |    property_graph_schema    | property_graph_name | element_table_alias | element_table_kind | table_catalog |        table_schema         | table_name | element_table_definition 
@@ -373,10 +378,11 @@ SELECT * FROM information_schema.pg_element_tables ORDER BY property_graph_name,
  regression             | create_property_graph_tests | gc1                 | tc1                 | VERTEX             | regression    | create_property_graph_tests | tc1        | 
  regression             | create_property_graph_tests | gc1                 | tc2                 | VERTEX             | regression    | create_property_graph_tests | tc2        | 
  regression             | create_property_graph_tests | gc1                 | tc3                 | VERTEX             | regression    | create_property_graph_tests | tc3        | 
+ regression             | create_property_graph_tests | glc                 | v1                  | VERTEX             | regression    | create_property_graph_tests | v1         | 
  regression             | create_property_graph_tests | gt                  | e                   | EDGE               | regression    | create_property_graph_tests | e          | 
  regression             | create_property_graph_tests | gt                  | v1                  | VERTEX             | regression    | create_property_graph_tests | v1         | 
  regression             | create_property_graph_tests | gt                  | v2                  | VERTEX             | regression    | create_property_graph_tests | v2         | 
-(23 rows)
+(24 rows)
 
 SELECT * FROM information_schema.pg_element_table_key_columns ORDER BY property_graph_name, element_table_alias, ordinal_position;
  property_graph_catalog |    property_graph_schema    | property_graph_name | element_table_alias | column_name | ordinal_position 
@@ -407,11 +413,12 @@ SELECT * FROM information_schema.pg_element_table_key_columns ORDER BY property_
  regression             | create_property_graph_tests | gc1                 | tc1                 | a           |                1
  regression             | create_property_graph_tests | gc1                 | tc2                 | a           |                1
  regression             | create_property_graph_tests | gc1                 | tc3                 | a           |                1
+ regression             | create_property_graph_tests | glc                 | v1                  | a           |                1
  regression             | create_property_graph_tests | gt                  | e                   | k1          |                1
  regression             | create_property_graph_tests | gt                  | e                   | k2          |                2
  regression             | create_property_graph_tests | gt                  | v1                  | a           |                1
  regression             | create_property_graph_tests | gt                  | v2                  | m           |                1
-(30 rows)
+(31 rows)
 
 SELECT * FROM information_schema.pg_edge_table_components ORDER BY property_graph_name, edge_table_alias, edge_end DESC, ordinal_position;
  property_graph_catalog |    property_graph_schema    | property_graph_name | edge_table_alias | vertex_table_alias |  edge_end   | edge_table_column_name | vertex_table_column_name | ordinal_position 
@@ -461,10 +468,11 @@ SELECT * FROM information_schema.pg_element_table_labels ORDER BY property_graph
  regression             | create_property_graph_tests | gc1                 | tc1                 | tc1
  regression             | create_property_graph_tests | gc1                 | tc2                 | tc2
  regression             | create_property_graph_tests | gc1                 | tc3                 | tc3
+ regression             | create_property_graph_tests | glc                 | v1                  | l1
  regression             | create_property_graph_tests | gt                  | e                   | e
  regression             | create_property_graph_tests | gt                  | v1                  | v1
  regression             | create_property_graph_tests | gt                  | v2                  | v2
-(25 rows)
+(26 rows)
 
 SELECT * FROM information_schema.pg_element_table_properties ORDER BY property_graph_name, element_table_alias, property_name;
  property_graph_catalog |    property_graph_schema    | property_graph_name | element_table_alias | property_name |         property_expression          
@@ -515,6 +523,10 @@ SELECT * FROM information_schema.pg_element_table_properties ORDER BY property_g
  regression             | create_property_graph_tests | gc1                 | tc2                 | b             | ((b)::character varying COLLATE "C")
  regression             | create_property_graph_tests | gc1                 | tc3                 | a             | a
  regression             | create_property_graph_tests | gc1                 | tc3                 | b             | (b)::character varying
+ regression             | create_property_graph_tests | glc                 | v1                  | p1            | 'foo'::text
+ regression             | create_property_graph_tests | glc                 | v1                  | p2            | 123
+ regression             | create_property_graph_tests | glc                 | v1                  | p3            | 3.14
+ regression             | create_property_graph_tests | glc                 | v1                  | p4            | true
  regression             | create_property_graph_tests | gt                  | e                   | c             | c
  regression             | create_property_graph_tests | gt                  | e                   | k1            | k1
  regression             | create_property_graph_tests | gt                  | e                   | k2            | k2
@@ -522,7 +534,7 @@ SELECT * FROM information_schema.pg_element_table_properties ORDER BY property_g
  regression             | create_property_graph_tests | gt                  | v1                  | b             | b
  regression             | create_property_graph_tests | gt                  | v2                  | m             | m
  regression             | create_property_graph_tests | gt                  | v2                  | n             | n
-(53 rows)
+(57 rows)
 
 SELECT * FROM information_schema.pg_label_properties ORDER BY property_graph_name, label_name, property_name;
  property_graph_catalog |    property_graph_schema    | property_graph_name | label_name | property_name 
@@ -579,6 +591,10 @@ SELECT * FROM information_schema.pg_label_properties ORDER BY property_graph_nam
  regression             | create_property_graph_tests | gc1                 | tc2        | b
  regression             | create_property_graph_tests | gc1                 | tc3        | a
  regression             | create_property_graph_tests | gc1                 | tc3        | b
+ regression             | create_property_graph_tests | glc                 | l1         | p1
+ regression             | create_property_graph_tests | glc                 | l1         | p2
+ regression             | create_property_graph_tests | glc                 | l1         | p3
+ regression             | create_property_graph_tests | glc                 | l1         | p4
  regression             | create_property_graph_tests | gt                  | e          | c
  regression             | create_property_graph_tests | gt                  | e          | k1
  regression             | create_property_graph_tests | gt                  | e          | k2
@@ -586,7 +602,7 @@ SELECT * FROM information_schema.pg_label_properties ORDER BY property_graph_nam
  regression             | create_property_graph_tests | gt                  | v1         | b
  regression             | create_property_graph_tests | gt                  | v2         | m
  regression             | create_property_graph_tests | gt                  | v2         | n
-(59 rows)
+(63 rows)
 
 SELECT * FROM information_schema.pg_labels ORDER BY property_graph_name, label_name;
  property_graph_catalog |    property_graph_schema    | property_graph_name | label_name 
@@ -613,10 +629,11 @@ SELECT * FROM information_schema.pg_labels ORDER BY property_graph_name, label_n
  regression             | create_property_graph_tests | gc1                 | tc1
  regression             | create_property_graph_tests | gc1                 | tc2
  regression             | create_property_graph_tests | gc1                 | tc3
+ regression             | create_property_graph_tests | glc                 | l1
  regression             | create_property_graph_tests | gt                  | e
  regression             | create_property_graph_tests | gt                  | v1
  regression             | create_property_graph_tests | gt                  | v2
-(25 rows)
+(26 rows)
 
 SELECT * FROM information_schema.pg_property_data_types ORDER BY property_graph_name, property_name;
  property_graph_catalog |    property_graph_schema    | property_graph_name | property_name |     data_type     | character_maximum_length | character_octet_length | character_set_catalog | character_set_schema | character_set_name | collation_catalog | collation_schema | collation_name | numeric_precision | numeric_precision_radix | numeric_scale | datetime_precision | interval_type | interval_precision | user_defined_type_catalog | user_defined_type_schema | user_defined_type_name | scope_catalog | scope_schema | scope_name | maximum_cardinality | dtd_identifier 
@@ -652,6 +669,10 @@ SELECT * FROM information_schema.pg_property_data_types ORDER BY property_graph_
  regression             | create_property_graph_tests | gc1                 | eb            | text              |                          |                        |                       |                      |                    | regression        |                  |                |                   |                         |               |                    |               |                    | regression                | pg_catalog               | text                   |               |              |            |                     | eb
  regression             | create_property_graph_tests | gc1                 | ek1           | integer           |                          |                        |                       |                      |                    | regression        |                  |                |                   |                         |               |                    |               |                    | regression                | pg_catalog               | int4                   |               |              |            |                     | ek1
  regression             | create_property_graph_tests | gc1                 | ek2           | integer           |                          |                        |                       |                      |                    | regression        |                  |                |                   |                         |               |                    |               |                    | regression                | pg_catalog               | int4                   |               |              |            |                     | ek2
+ regression             | create_property_graph_tests | glc                 | p1            | text              |                          |                        |                       |                      |                    | regression        |                  |                |                   |                         |               |                    |               |                    | regression                | pg_catalog               | text                   |               |              |            |                     | p1
+ regression             | create_property_graph_tests | glc                 | p2            | integer           |                          |                        |                       |                      |                    | regression        |                  |                |                   |                         |               |                    |               |                    | regression                | pg_catalog               | int4                   |               |              |            |                     | p2
+ regression             | create_property_graph_tests | glc                 | p3            | numeric           |                          |                        |                       |                      |                    | regression        |                  |                |                   |                         |               |                    |               |                    | regression                | pg_catalog               | numeric                |               |              |            |                     | p3
+ regression             | create_property_graph_tests | glc                 | p4            | boolean           |                          |                        |                       |                      |                    | regression        |                  |                |                   |                         |               |                    |               |                    | regression                | pg_catalog               | bool                   |               |              |            |                     | p4
  regression             | create_property_graph_tests | gt                  | a             | integer           |                          |                        |                       |                      |                    | regression        |                  |                |                   |                         |               |                    |               |                    | regression                | pg_catalog               | int4                   |               |              |            |                     | a
  regression             | create_property_graph_tests | gt                  | b             | text              |                          |                        |                       |                      |                    | regression        |                  |                |                   |                         |               |                    |               |                    | regression                | pg_catalog               | text                   |               |              |            |                     | b
  regression             | create_property_graph_tests | gt                  | c             | text              |                          |                        |                       |                      |                    | regression        |                  |                |                   |                         |               |                    |               |                    | regression                | pg_catalog               | text                   |               |              |            |                     | c
@@ -659,7 +680,7 @@ SELECT * FROM information_schema.pg_property_data_types ORDER BY property_graph_
  regression             | create_property_graph_tests | gt                  | k2            | text              |                          |                        |                       |                      |                    | regression        |                  |                |                   |                         |               |                    |               |                    | regression                | pg_catalog               | text                   |               |              |            |                     | k2
  regression             | create_property_graph_tests | gt                  | m             | text              |                          |                        |                       |                      |                    | regression        |                  |                |                   |                         |               |                    |               |                    | regression                | pg_catalog               | text                   |               |              |            |                     | m
  regression             | create_property_graph_tests | gt                  | n             | text              |                          |                        |                       |                      |                    | regression        |                  |                |                   |                         |               |                    |               |                    | regression                | pg_catalog               | text                   |               |              |            |                     | n
-(38 rows)
+(42 rows)
 
 SELECT * FROM information_schema.pg_property_graph_privileges WHERE grantee LIKE 'regress%' ORDER BY property_graph_name, grantor, grantee, privilege_type;
        grantor       |       grantee       | property_graph_catalog |    property_graph_schema    | property_graph_name | privilege_type | is_grantable 
