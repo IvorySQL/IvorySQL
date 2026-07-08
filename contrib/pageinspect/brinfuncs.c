@@ -246,7 +246,7 @@ brin_page_items(PG_FUNCTION_ARGS)
 
 		if (unusedItem)
 		{
-			values[0] = UInt16GetDatum(offset);
+			values[0] = Int32GetDatum(offset);
 			nulls[1] = true;
 			nulls[2] = true;
 			nulls[3] = true;
@@ -259,7 +259,7 @@ brin_page_items(PG_FUNCTION_ARGS)
 		{
 			int			att = attno - 1;
 
-			values[0] = UInt16GetDatum(offset);
+			values[0] = Int32GetDatum(offset);
 			switch (TupleDescAttr(rsinfo->setDesc, 1)->atttypid)
 			{
 				case INT8OID:
@@ -267,12 +267,12 @@ brin_page_items(PG_FUNCTION_ARGS)
 					break;
 				case INT4OID:
 					/* support for old extension version */
-					values[1] = UInt32GetDatum(dtup->bt_blkno);
+					values[1] = Int32GetDatum(dtup->bt_blkno);
 					break;
 				default:
 					elog(ERROR, "incorrect output types");
 			}
-			values[2] = UInt16GetDatum(attno);
+			values[2] = Int32GetDatum(attno);
 			values[3] = BoolGetDatum(dtup->bt_columns[att].bv_allnulls);
 			values[4] = BoolGetDatum(dtup->bt_columns[att].bv_hasnulls);
 			values[5] = BoolGetDatum(dtup->bt_placeholder);

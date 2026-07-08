@@ -117,9 +117,9 @@ pg_get_logical_snapshot_meta(PG_FUNCTION_ARGS)
 	/* Validate and restore the snapshot to 'ondisk' */
 	SnapBuildRestoreSnapshot(&ondisk, lsn, CurrentMemoryContext, false);
 
-	values[i++] = UInt32GetDatum(ondisk.magic);
+	values[i++] = Int32GetDatum(ondisk.magic);
 	values[i++] = Int64GetDatum((int64) ondisk.checksum);
-	values[i++] = UInt32GetDatum(ondisk.version);
+	values[i++] = Int32GetDatum(ondisk.version);
 
 	Assert(i == PG_GET_LOGICAL_SNAPSHOT_META_COLS);
 
@@ -163,7 +163,7 @@ pg_get_logical_snapshot_info(PG_FUNCTION_ARGS)
 	values[i++] = LSNGetDatum(ondisk.builder.last_serialized_snapshot);
 	values[i++] = TransactionIdGetDatum(ondisk.builder.next_phase_at);
 
-	values[i++] = UInt32GetDatum(ondisk.builder.committed.xcnt);
+	values[i++] = Int32GetDatum(ondisk.builder.committed.xcnt);
 	if (ondisk.builder.committed.xcnt > 0)
 	{
 		Datum	   *arrayelems;
@@ -180,7 +180,7 @@ pg_get_logical_snapshot_info(PG_FUNCTION_ARGS)
 	else
 		nulls[i++] = true;
 
-	values[i++] = UInt32GetDatum(ondisk.builder.catchange.xcnt);
+	values[i++] = Int32GetDatum(ondisk.builder.catchange.xcnt);
 	if (ondisk.builder.catchange.xcnt > 0)
 	{
 		Datum	   *arrayelems;

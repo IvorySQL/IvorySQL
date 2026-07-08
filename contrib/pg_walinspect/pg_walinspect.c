@@ -222,9 +222,9 @@ GetWALRecordInfo(XLogReaderState *record, Datum *values,
 	values[i++] = TransactionIdGetDatum(XLogRecGetXid(record));
 	values[i++] = CStringGetTextDatum(desc.rm_name);
 	values[i++] = CStringGetTextDatum(record_type);
-	values[i++] = UInt32GetDatum(XLogRecGetTotalLen(record));
-	values[i++] = UInt32GetDatum(XLogRecGetDataLen(record));
-	values[i++] = UInt32GetDatum(fpi_len);
+	values[i++] = Int32GetDatum(XLogRecGetTotalLen(record));
+	values[i++] = Int32GetDatum(XLogRecGetDataLen(record));
+	values[i++] = Int32GetDatum(fpi_len);
 
 	if (rec_desc.len > 0)
 		values[i++] = CStringGetTextDatum(rec_desc.data);
@@ -349,10 +349,10 @@ GetWALBlockInfo(FunctionCallInfo fcinfo, XLogReaderState *record,
 		 * record_length, main_data_length, block_data_len, and
 		 * block_fpi_length outputs
 		 */
-		values[i++] = UInt32GetDatum(XLogRecGetTotalLen(record));
-		values[i++] = UInt32GetDatum(XLogRecGetDataLen(record));
-		values[i++] = UInt32GetDatum(block_data_len);
-		values[i++] = UInt32GetDatum(block_fpi_len);
+		values[i++] = Int32GetDatum(XLogRecGetTotalLen(record));
+		values[i++] = Int32GetDatum(XLogRecGetDataLen(record));
+		values[i++] = Int32GetDatum(block_data_len);
+		values[i++] = Int32GetDatum(block_fpi_len);
 
 		/* block_fpi_info (text array) output */
 		if (block_fpi_info)

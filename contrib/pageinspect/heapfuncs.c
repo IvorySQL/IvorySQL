@@ -175,10 +175,10 @@ heap_page_items(PG_FUNCTION_ARGS)
 		lp_flags = ItemIdGetFlags(id);
 		lp_len = ItemIdGetLength(id);
 
-		values[0] = UInt16GetDatum(inter_call_data->offset);
-		values[1] = UInt16GetDatum(lp_offset);
-		values[2] = UInt16GetDatum(lp_flags);
-		values[3] = UInt16GetDatum(lp_len);
+		values[0] = Int16GetDatum(inter_call_data->offset);
+		values[1] = Int16GetDatum(lp_offset);
+		values[2] = Int16GetDatum(lp_flags);
+		values[3] = Int16GetDatum(lp_len);
 
 		/*
 		 * We do just enough validity checking to make sure we don't reference
@@ -195,13 +195,13 @@ heap_page_items(PG_FUNCTION_ARGS)
 			/* Extract information from the tuple header */
 			tuphdr = (HeapTupleHeader) PageGetItem(page, id);
 
-			values[4] = UInt32GetDatum(HeapTupleHeaderGetRawXmin(tuphdr));
-			values[5] = UInt32GetDatum(HeapTupleHeaderGetRawXmax(tuphdr));
+			values[4] = TransactionIdGetDatum(HeapTupleHeaderGetRawXmin(tuphdr));
+			values[5] = TransactionIdGetDatum(HeapTupleHeaderGetRawXmax(tuphdr));
 			/* shared with xvac */
-			values[6] = UInt32GetDatum(HeapTupleHeaderGetRawCommandId(tuphdr));
+			values[6] = Int32GetDatum(HeapTupleHeaderGetRawCommandId(tuphdr));
 			values[7] = PointerGetDatum(&tuphdr->t_ctid);
-			values[8] = UInt32GetDatum(tuphdr->t_infomask2);
-			values[9] = UInt32GetDatum(tuphdr->t_infomask);
+			values[8] = Int32GetDatum(tuphdr->t_infomask2);
+			values[9] = Int32GetDatum(tuphdr->t_infomask);
 			values[10] = UInt8GetDatum(tuphdr->t_hoff);
 
 			/*

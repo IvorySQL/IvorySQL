@@ -586,7 +586,7 @@ pgstatginindex_internal(Oid relid, FunctionCallInfo fcinfo)
 		elog(ERROR, "return type must be a row type");
 
 	values[0] = Int32GetDatum(stats.version);
-	values[1] = UInt32GetDatum(stats.pending_pages);
+	values[1] = Int32GetDatum(stats.pending_pages);
 	values[2] = Int64GetDatum(stats.pending_tuples);
 
 	/*

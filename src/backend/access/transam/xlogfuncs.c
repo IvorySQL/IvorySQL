@@ -448,7 +448,7 @@ pg_walfile_name_offset(PG_FUNCTION_ARGS)
 	 */
 	xrecoff = XLogSegmentOffset(locationpoint, wal_segment_size);
 
-	values[1] = UInt32GetDatum(xrecoff);
+	values[1] = Int32GetDatum(xrecoff);
 	isnull[1] = false;
 
 	/*

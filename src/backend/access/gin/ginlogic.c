@@ -75,7 +75,7 @@ directBoolConsistentFn(GinScanKey key)
 										  PointerGetDatum(key->entryRes),
 										  UInt16GetDatum(key->strategy),
 										  key->query,
-										  UInt32GetDatum(key->nuserentries),
+										  Int32GetDatum(key->nuserentries),
 										  PointerGetDatum(key->extra_data),
 										  PointerGetDatum(&key->recheckCurItem),
 										  PointerGetDatum(key->queryValues),
@@ -93,7 +93,7 @@ directTriConsistentFn(GinScanKey key)
 													 PointerGetDatum(key->entryRes),
 													 UInt16GetDatum(key->strategy),
 													 key->query,
-													 UInt32GetDatum(key->nuserentries),
+													 Int32GetDatum(key->nuserentries),
 													 PointerGetDatum(key->extra_data),
 													 PointerGetDatum(key->queryValues),
 													 PointerGetDatum(key->queryCategories)));
@@ -114,7 +114,7 @@ shimBoolConsistentFn(GinScanKey key)
 													   PointerGetDatum(key->entryRes),
 													   UInt16GetDatum(key->strategy),
 													   key->query,
-													   UInt32GetDatum(key->nuserentries),
+													   Int32GetDatum(key->nuserentries),
 													   PointerGetDatum(key->extra_data),
 													   PointerGetDatum(key->queryValues),
 													   PointerGetDatum(key->queryCategories)));

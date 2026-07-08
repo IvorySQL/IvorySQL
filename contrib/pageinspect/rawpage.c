@@ -284,8 +284,8 @@ page_header(PG_FUNCTION_ARGS)
 	}
 	else
 		values[0] = LSNGetDatum(lsn);
-	values[1] = UInt16GetDatum(pageheader->pd_checksum);
-	values[2] = UInt16GetDatum(pageheader->pd_flags);
+	values[1] = Int16GetDatum(pageheader->pd_checksum);
+	values[2] = Int16GetDatum(pageheader->pd_flags);
 
 	/* pageinspect >= 1.10 uses int4 instead of int2 for those fields */
 	switch (TupleDescAttr(tupdesc, 3)->atttypid)
@@ -294,10 +294,10 @@ page_header(PG_FUNCTION_ARGS)
 			Assert(TupleDescAttr(tupdesc, 4)->atttypid == INT2OID &&
 				   TupleDescAttr(tupdesc, 5)->atttypid == INT2OID &&
 				   TupleDescAttr(tupdesc, 6)->atttypid == INT2OID);
-			values[3] = UInt16GetDatum(pageheader->pd_lower);
-			values[4] = UInt16GetDatum(pageheader->pd_upper);
-			values[5] = UInt16GetDatum(pageheader->pd_special);
-			values[6] = UInt16GetDatum(PageGetPageSize(page));
+			values[3] = Int16GetDatum(pageheader->pd_lower);
+			values[4] = Int16GetDatum(pageheader->pd_upper);
+			values[5] = Int16GetDatum(pageheader->pd_special);
+			values[6] = Int16GetDatum(PageGetPageSize(page));
 			break;
 		case INT4OID:
 			Assert(TupleDescAttr(tupdesc, 4)->atttypid == INT4OID &&
@@ -313,7 +313,7 @@ page_header(PG_FUNCTION_ARGS)
 			break;
 	}
 
-	values[7] = UInt16GetDatum(PageGetPageLayoutVersion(page));
+	values[7] = Int16GetDatum(PageGetPageLayoutVersion(page));
 	values[8] = TransactionIdGetDatum(pageheader->pd_prune_xid);
 
 	/* Build and return the tuple. */

@@ -271,7 +271,7 @@ pg_lock_status(PG_FUNCTION_ARGS)
 			case LOCKTAG_PAGE:
 				values[1] = ObjectIdGetDatum(instance->locktag.locktag_field1);
 				values[2] = ObjectIdGetDatum(instance->locktag.locktag_field2);
-				values[3] = UInt32GetDatum(instance->locktag.locktag_field3);
+				values[3] = Int32GetDatum(instance->locktag.locktag_field3);
 				nulls[4] = true;
 				nulls[5] = true;
 				nulls[6] = true;
@@ -282,8 +282,8 @@ pg_lock_status(PG_FUNCTION_ARGS)
 			case LOCKTAG_TUPLE:
 				values[1] = ObjectIdGetDatum(instance->locktag.locktag_field1);
 				values[2] = ObjectIdGetDatum(instance->locktag.locktag_field2);
-				values[3] = UInt32GetDatum(instance->locktag.locktag_field3);
-				values[4] = UInt16GetDatum(instance->locktag.locktag_field4);
+				values[3] = Int32GetDatum(instance->locktag.locktag_field3);
+				values[4] = Int16GetDatum(instance->locktag.locktag_field4);
 				nulls[5] = true;
 				nulls[6] = true;
 				nulls[7] = true;
@@ -402,12 +402,12 @@ pg_lock_status(PG_FUNCTION_ARGS)
 		values[1] = ObjectIdGetDatum(GET_PREDICATELOCKTARGETTAG_DB(*predTag));
 		values[2] = ObjectIdGetDatum(GET_PREDICATELOCKTARGETTAG_RELATION(*predTag));
 		if (lockType == PREDLOCKTAG_TUPLE)
-			values[4] = UInt16GetDatum(GET_PREDICATELOCKTARGETTAG_OFFSET(*predTag));
+			values[4] = Int16GetDatum(GET_PREDICATELOCKTARGETTAG_OFFSET(*predTag));
 		else
 			nulls[4] = true;
 		if ((lockType == PREDLOCKTAG_TUPLE) ||
 			(lockType == PREDLOCKTAG_PAGE))
-			values[3] = UInt32GetDatum(GET_PREDICATELOCKTARGETTAG_PAGE(*predTag));
+			values[3] = Int32GetDatum(GET_PREDICATELOCKTARGETTAG_PAGE(*predTag));
 		else
 			nulls[3] = true;
 
