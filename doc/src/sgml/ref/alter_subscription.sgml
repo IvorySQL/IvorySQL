@@ -237,11 +237,13 @@ ALTER SUBSCRIPTION <replaceable class="parameter">name</replaceable> RENAME TO <
      <para>
       Re-synchronize sequence data with the publisher. Unlike
       <link linkend="sql-altersubscription-params-refresh-publication">
-      <command>ALTER SUBSCRIPTION ... REFRESH PUBLICATION</command></link> which
-      only has the ability to synchronize newly added sequences,
+      <command>ALTER SUBSCRIPTION ... REFRESH PUBLICATION</command></link>,
+      which synchronizes the subscription's set of sequences with the
+      publication (adding new and removing dropped sequences),
       <literal>REFRESH SEQUENCES</literal> will re-synchronize the sequence
-      data for all currently subscribed sequences. It does not add or remove
-      sequences from the subscription to match the publication.
+      data for all currently subscribed sequences without changing which
+      sequences are subscribed. Run <literal>REFRESH PUBLICATION</literal>
+      first if the publication's set of sequences has changed.
      </para>
      <para>
       See <xref linkend="sequence-definition-mismatches"/> for
