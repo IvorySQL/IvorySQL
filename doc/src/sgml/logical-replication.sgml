@@ -1784,7 +1784,9 @@ Included in publications:
     <listitem>
      <para>
       use <link linkend="sql-createsubscription"><command>CREATE SUBSCRIPTION</command></link>
-      to initially synchronize the published sequences.
+      with <link linkend="sql-createsubscription-params-with-copy-data">
+      <literal>copy_data = true</literal></link> (the default) to copy the
+      initial sequence values from the publisher.
      </para>
     </listitem>
     <listitem>
