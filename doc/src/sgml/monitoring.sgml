@@ -435,6 +435,16 @@ postgres   27093  0.0  0.0  30096  2752 ?        Ss   11:34   0:00 postgres: ser
        See <xref linkend="copy-progress-reporting"/>.
       </entry>
      </row>
+
+     <row>
+      <entry><structname>pg_stat_progress_data_checksums</structname><indexterm><primary>pg_stat_progress_data_checksums</primary></indexterm></entry>
+      <entry>One row for the data checksum launcher process while data
+       checksums are being enabled or disabled.  When enabling data
+       checksums, the view also has one row for each worker process,
+       showing current progress.
+       See <xref linkend="data-checksum-progress-reporting"/>.
+      </entry>
+     </row>
     </tbody>
    </tgroup>
   </table>
@@ -6271,9 +6281,9 @@ FROM pg_stat_get_backend_idset() AS backendid;
    <command>COPY</command>, <command>CREATE INDEX</command>,
    <command>REPACK</command> (and its obsolete spelling <command>CLUSTER</command>),
    <command>VACUUM</command>,
-   and <xref linkend="protocol-replication-base-backup"/> (i.e., replication
+   <xref linkend="protocol-replication-base-backup"/> (i.e., replication
    command that <xref linkend="app-pgbasebackup"/> issues to take
-   a base backup).
+   a base backup), and online data checksum operations.
    This may be expanded in the future.
   </para>
 
@@ -8005,13 +8015,14 @@ FROM pg_stat_get_backend_idset() AS backendid;
   </indexterm>
 
   <para>
-   When data checksums are being enabled on a running cluster, the
+   When data checksums are being enabled or disabled on a running cluster, the
    <structname>pg_stat_progress_data_checksums</structname> view will contain
-   a row for the launcher process, and one row for each worker process which
-   is currently calculating and writing checksums for the data pages in a database.
-   The launcher provides overview of the overall progress (how many databases
-   have been processed, how many remain), while the workers track progress for
-   currently processed databases.
+   a row for the launcher process.  When enabling data checksums, the view
+   will also contain one row for each worker process which is currently
+   calculating and writing checksums for the data pages in a database.  The
+   launcher provides an overview of the overall progress, such as how many
+   databases have been processed and how many remain, while the workers track
+   progress for currently processed databases.
   </para>
 
   <table id="pg-stat-progress-data-checksums-view" xreflabel="pg_stat_progress_data_checksums">
@@ -8080,7 +8091,7 @@ FROM pg_stat_get_backend_idset() AS backendid;
      <row>
       <entry role="catalog_table_entry">
        <para role="column_definition">
-        <structfield>databases_total</structfield> <type>integer</type>
+        <structfield>databases_total</structfield> <type>bigint</type>
        </para>
        <para>
         The total number of databases which will be processed. Only the
@@ -8093,7 +8104,7 @@ FROM pg_stat_get_backend_idset() AS backendid;
      <row>
       <entry role="catalog_table_entry">
        <para role="column_definition">
-        <structfield>databases_done</structfield> <type>integer</type>
+        <structfield>databases_done</structfield> <type>bigint</type>
        </para>
        <para>
         The number of databases which have been processed. Only the launcher
@@ -8106,7 +8117,7 @@ FROM pg_stat_get_backend_idset() AS backendid;
      <row>
       <entry role="catalog_table_entry">
        <para role="column_definition">
-        <structfield>relations_total</structfield> <type>integer</type>
+        <structfield>relations_total</structfield> <type>bigint</type>
        </para>
        <para>
         The total number of relations which will be processed, or
@@ -8121,7 +8132,7 @@ FROM pg_stat_get_backend_idset() AS backendid;
      <row>
       <entry role="catalog_table_entry">
        <para role="column_definition">
-        <structfield>relations_done</structfield> <type>integer</type>
+        <structfield>relations_done</structfield> <type>bigint</type>
        </para>
        <para>
         The number of relations which have been processed. The launcher
@@ -8133,7 +8144,7 @@ FROM pg_stat_get_backend_idset() AS backendid;
      <row>
       <entry role="catalog_table_entry">
        <para role="column_definition">
-        <structfield>blocks_total</structfield> <type>integer</type>
+        <structfield>blocks_total</structfield> <type>bigint</type>
        </para>
        <para>
         The number of blocks in the current relation which will be processed,
@@ -8147,7 +8158,7 @@ FROM pg_stat_get_backend_idset() AS backendid;
      <row>
       <entry role="catalog_table_entry">
        <para role="column_definition">
-        <structfield>blocks_done</structfield> <type>integer</type>
+        <structfield>blocks_done</structfield> <type>bigint</type>
        </para>
        <para>
         The number of blocks in the current relation which have been processed.
