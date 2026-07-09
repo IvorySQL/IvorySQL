@@ -26,7 +26,6 @@
 #include "storage/lwlock.h"
 #include "storage/shmem.h"
 #include "storage/subsystems.h"
-#include "storage/spin.h"
 #include "utils/wait_event.h"
 
 
@@ -81,14 +80,7 @@ typedef struct WaitEventCustomEntryByName
 
 
 /* dynamic allocation counter for custom wait events */
-typedef struct WaitEventCustomCounterData
-{
-	int			nextId;			/* next ID to assign */
-	slock_t		mutex;			/* protects the counter */
-} WaitEventCustomCounterData;
-
-/* pointer to the shared memory */
-static WaitEventCustomCounterData *WaitEventCustomCounter;
+static int *WaitEventCustomCounter;
 
 /* first event ID of custom wait events */
 #define WAIT_EVENT_CUSTOM_INITIAL_ID	1
@@ -110,8 +102,8 @@ const ShmemCallbacks WaitEventCustomShmemCallbacks = {
 static void
 WaitEventCustomShmemRequest(void *arg)
 {
-	ShmemRequestStruct(.name = "WaitEventCustomCounterData",
-					   .size = sizeof(WaitEventCustomCounterData),
+	ShmemRequestStruct(.name = "WaitEventCustomCounter",
+					   .size = sizeof(int),
 					   .ptr = (void **) &WaitEventCustomCounter,
 		);
 	ShmemRequestHash(.name = "WaitEventCustom hash by wait event information",
@@ -134,9 +126,8 @@ WaitEventCustomShmemRequest(void *arg)
 static void
 WaitEventCustomShmemInit(void *arg)
 {
-	/* initialize the allocation counter and its spinlock. */
-	WaitEventCustomCounter->nextId = WAIT_EVENT_CUSTOM_INITIAL_ID;
-	SpinLockInit(&WaitEventCustomCounter->mutex);
+	/* initialize the allocation counter */
+	*WaitEventCustomCounter = WAIT_EVENT_CUSTOM_INITIAL_ID;
 }
 
 /*
@@ -221,19 +212,12 @@ WaitEventCustomNew(uint32 classId, const char *wait_event_name)
 	}
 
 	/* Allocate a new event Id */
-	SpinLockAcquire(&WaitEventCustomCounter->mutex);
-
-	if (WaitEventCustomCounter->nextId >= WAIT_EVENT_CUSTOM_HASH_SIZE)
-	{
-		SpinLockRelease(&WaitEventCustomCounter->mutex);
+	if (*WaitEventCustomCounter >= WAIT_EVENT_CUSTOM_HASH_SIZE)
 		ereport(ERROR,
 				errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				errmsg("too many custom wait events"));
-	}
 
-	eventId = WaitEventCustomCounter->nextId++;
-
-	SpinLockRelease(&WaitEventCustomCounter->mutex);
+	eventId = (*WaitEventCustomCounter)++;
 
 	/* Register the new wait event */
 	wait_event_info = classId | eventId;

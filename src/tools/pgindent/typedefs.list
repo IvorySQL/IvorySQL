@@ -3421,7 +3421,6 @@ WaitEvent
 WaitEventActivity
 WaitEventBuffer
 WaitEventClient
-WaitEventCustomCounterData
 WaitEventCustomEntryByInfo
 WaitEventCustomEntryByName
 WaitEventIO
