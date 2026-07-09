@@ -619,4 +619,8 @@ SELECT src.vname, count(*) FROM v1 AS src
   HAVING count(*) >= (SELECT count(*) FROM GRAPH_TABLE (g1 MATCH (a IS vl1 | vl2) COLUMNS (a.vname AS n)) WHERE n = src.vname)
   ORDER BY vname;
 
+-- Locking clause on GRAPH_TABLE
+SELECT * FROM GRAPH_TABLE (g1 MATCH (src IS vl1) COLUMNS (src.vname)) gt FOR UPDATE OF gt;  -- not supported
+SELECT * FROM GRAPH_TABLE (g1 MATCH (src IS vl1) COLUMNS (src.vname)) gt FOR UPDATE;  -- ignored
+
 -- leave the objects behind for pg_upgrade/pg_dump tests

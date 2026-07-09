@@ -4164,6 +4164,15 @@ transformLockingClause(ParseState *pstate, Query *qry, LockingClause *lc,
 											LCS_asString(lc->strength)),
 									 parser_errposition(pstate, thisrel->location)));
 							break;
+						case RTE_GRAPH_TABLE:
+							ereport(ERROR,
+									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							/*------
+							  translator: %s is a SQL row locking clause such as FOR UPDATE */
+									 errmsg("%s cannot be applied to GRAPH_TABLE",
+											LCS_asString(lc->strength)),
+									 parser_errposition(pstate, thisrel->location)));
+							break;
 
 							/* Shouldn't be possible to see RTE_RESULT here */
 
