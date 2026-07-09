@@ -488,7 +488,8 @@ attribute_statistics_update(FunctionCallInfo fcinfo)
 											atttypid, atttypmod,
 											&converted);
 
-		if (converted)
+		if (converted &&
+			statatt_check_bounds_histogram(stavalues))
 		{
 			statatt_set_slot(values, nulls, replaces,
 							 STATISTIC_KIND_BOUNDS_HISTOGRAM,

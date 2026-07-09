@@ -1491,7 +1491,7 @@ import_pg_statistic(Relation pgsd, JsonbContainer *cont,
 								  extexprargname[RANGE_BOUNDS_HISTOGRAM_ELEM],
 								  &val_ok);
 
-		if (val_ok)
+		if (val_ok && statatt_check_bounds_histogram(stavalues))
 			statatt_set_slot(values, nulls, replaces,
 							 STATISTIC_KIND_BOUNDS_HISTOGRAM,
 							 InvalidOid, InvalidOid,
