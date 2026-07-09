@@ -3663,6 +3663,11 @@ JSON_TABLE (
     <replaceable>context_item</replaceable>, <replaceable>path_expression</replaceable> <optional> AS <replaceable>json_path_name</replaceable> </optional> <optional> PASSING { <replaceable>value</replaceable> AS <replaceable>varname</replaceable> } <optional>, ...</optional> </optional>
     COLUMNS ( <replaceable class="parameter">json_table_column</replaceable> <optional>, ...</optional> )
     <optional> { <literal>ERROR</literal> | <literal>EMPTY</literal> <optional>ARRAY</optional>} <literal>ON ERROR</literal> </optional>
+    <optional>
+        PLAN ( <replaceable class="parameter">json_table_plan</replaceable> ) |
+        PLAN DEFAULT ( { INNER | OUTER } <optional> , { CROSS | UNION } </optional>
+                     | { CROSS | UNION } <optional> , { INNER | OUTER } </optional> )
+    </optional>
 )
 
 <phrase>
@@ -3679,6 +3684,16 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
   | <replaceable>name</replaceable> <replaceable>type</replaceable> EXISTS <optional> PATH <replaceable>path_expression</replaceable> </optional>
         <optional> { ERROR | TRUE | FALSE | UNKNOWN } ON ERROR </optional>
   | NESTED <optional> PATH </optional> <replaceable>path_expression</replaceable> <optional> AS <replaceable>json_path_name</replaceable> </optional> COLUMNS ( <replaceable>json_table_column</replaceable> <optional>, ...</optional> )
+<phrase>
+<replaceable>json_table_plan</replaceable> is:
+</phrase>
+    <replaceable>json_path_name</replaceable> <optional> { OUTER | INNER } <replaceable>json_table_plan_primary</replaceable> </optional>
+  | <replaceable>json_table_plan_primary</replaceable> { UNION <replaceable>json_table_plan_primary</replaceable> } <optional>...</optional>
+  | <replaceable>json_table_plan_primary</replaceable> { CROSS <replaceable>json_table_plan_primary</replaceable> } <optional>...</optional>
+<phrase>
+<replaceable>json_table_plan_primary</replaceable> is:
+</phrase>
+    <replaceable>json_path_name</replaceable> | ( <replaceable>json_table_plan</replaceable> )
 </synopsis>
 
   <para>
@@ -3842,6 +3857,11 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
      in a single function invocation rather than chaining several
      <function>JSON_TABLE</function> expressions in an SQL statement.
     </para>
+
+    <para>
+     You can use the <literal>PLAN</literal> clause to define how
+     to join the columns returned by <literal>NESTED PATH</literal> clauses.
+    </para>
     </listitem>
    </varlistentry>
   </variablelist>
@@ -3866,9 +3886,127 @@ where <replaceable class="parameter">json_table_column</replaceable> is:
 
     <para>
      The optional <replaceable>json_path_name</replaceable> serves as an
-     identifier of the provided <replaceable>path_expression</replaceable>.
-     The name must be unique and distinct from the column names.
+     identifier of the provided <replaceable>json_path_specification</replaceable>.
+     The path name must be unique and distinct from the column names.  Each
+     path name can appear in the <literal>PLAN</literal> clause only once.
     </para>
+    <para>
+     The SQL/JSON standard requires an explicit path name for every
+     <literal>NESTED PATH</literal> when a <literal>PLAN</literal> or
+     <literal>PLAN DEFAULT</literal> clause is present, while the row pattern
+     path name always remains optional.  As an extension,
+     <productname>PostgreSQL</productname> does not require any path name: a
+     name is generated for any path left unnamed.  Note, however, that a
+     specific <literal>PLAN</literal> (<replaceable>json_table_plan</replaceable>)
+     can only refer to paths by name, so every path that such a plan must
+     mention has to be given a name explicitly.
+    </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <literal>PLAN</literal> ( <replaceable>json_table_plan</replaceable> )
+    </term>
+    <listitem>
+
+    <para>
+     Defines how to join the data returned by <literal>NESTED PATH</literal>
+     clauses to the constructed view.
+    </para>
+    <para>
+     To join columns with parent/child relationship, you can use:
+    </para>
+  <variablelist>
+   <varlistentry>
+    <term>
+     <literal>INNER</literal>
+    </term>
+    <listitem>
+
+    <para>
+     Use <literal>INNER JOIN</literal>, so that the parent row
+     is omitted from the output if it does not have any child rows
+     after joining the data returned by <literal>NESTED PATH</literal>.
+    </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <literal>OUTER</literal>
+    </term>
+    <listitem>
+
+    <para>
+     Use <literal>LEFT OUTER JOIN</literal>, so that the parent row
+     is always included into the output even if it does not have any child rows
+     after joining the data returned by <literal>NESTED PATH</literal>, with NULL values
+     inserted into the child columns if the corresponding
+     values are missing.
+    </para>
+    <para>
+     This is the default option for joining columns with parent/child relationship.
+    </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+     <para>
+     To join sibling columns, you can use:
+    </para>
+
+  <variablelist>
+   <varlistentry>
+    <term>
+     <literal>UNION</literal>
+    </term>
+    <listitem>
+
+    <para>
+     Generate one row for each value produced by each of the sibling
+     columns. The columns from the other siblings are set to null.
+    </para>
+    <para>
+     This is the default option for joining sibling columns.
+    </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <literal>CROSS</literal>
+    </term>
+    <listitem>
+
+    <para>
+     Generate one row for each combination of values from the sibling columns.
+    </para>
+    </listitem>
+   </varlistentry>
+
+  </variablelist>
+
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term>
+     <literal>PLAN DEFAULT</literal> ( <literal><replaceable>OUTER | INNER</replaceable> <optional>, <replaceable>UNION | CROSS</replaceable> </optional></literal> )
+    </term>
+    <listitem>
+     <para>
+      The terms can also be specified in reverse order. The
+      <literal>INNER</literal> or <literal>OUTER</literal> option defines the
+      joining plan for parent/child columns, while <literal>UNION</literal> or
+      <literal>CROSS</literal> affects joins of sibling columns. This form
+      of <literal>PLAN</literal> overrides the default plan for
+      all columns at once.
+     </para>
+     <para>
+      <literal>PLAN DEFAULT</literal> is simpler than specifying a complete
+      <literal>PLAN</literal>, and is often all that is required to get the desired
+      output.
+     </para>
     </listitem>
    </varlistentry>
 
@@ -4082,5 +4220,39 @@ COLUMNS (
 </screen>
 
      </para>
+
+     <para>
+      Find a director that has done films in two different genres:
+<screen>
+SELECT
+  director1 AS director, title1, kind1, title2, kind2
+FROM
+  my_films,
+  JSON_TABLE ( js, '$.favorites' AS favs COLUMNS (
+    NESTED PATH '$[*]' AS films1 COLUMNS (
+      kind1 text PATH '$.kind',
+      NESTED PATH '$.films[*]' AS film1 COLUMNS (
+        title1 text PATH '$.title',
+        director1 text PATH '$.director')
+    ),
+    NESTED PATH '$[*]' AS films2 COLUMNS (
+      kind2 text PATH '$.kind',
+      NESTED PATH '$.films[*]' AS film2 COLUMNS (
+        title2 text PATH '$.title',
+        director2 text PATH '$.director'
+      )
+    )
+   )
+   PLAN (favs OUTER ((films1 INNER film1) CROSS (films2 INNER film2)))
+  ) AS jt
+ WHERE kind1 > kind2 AND director1 = director2;
+
+     director     | title1  |  kind1   | title2 | kind2
+------------------+---------+----------+--------+--------
+ Alfred Hitchcock | Vertigo | thriller | Psycho | horror
+(1 row)
+</screen>
+     </para>
+
   </sect2>
  </sect1>

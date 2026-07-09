@@ -13210,6 +13210,89 @@ get_json_table_nested_columns(TableFunc *tf, JsonTablePlan *plan,
 }
 
 /*
+ * json_table_plan_is_default - does this plan match the implicit default?
+ *
+ * When no PLAN clause is given, JSON_TABLE builds a default plan that joins
+ * every nested path to its parent with OUTER and every set of sibling paths
+ * with UNION (see transformJsonTableColumns()).  Such a plan is fully implied
+ * by the NESTED COLUMNS structure, so we need not (and, to match the input,
+ * should not) print a PLAN clause for it; we only deparse a PLAN clause when
+ * the plan deviates from the default, i.e. uses an INNER or CROSS join
+ * somewhere.  This follows the usual ruleutils convention of omitting a clause
+ * that merely restates the default (cf. get_json_expr_options() for ON
+ * EMPTY/ON ERROR, or the NULLS FIRST/LAST handling in get_rule_orderby()).
+ */
+static bool
+json_table_plan_is_default(JsonTablePlan *plan)
+{
+	if (IsA(plan, JsonTablePathScan))
+	{
+		JsonTablePathScan *scan = castNode(JsonTablePathScan, plan);
+
+		if (scan->child)
+		{
+			if (!scan->outerJoin)
+				return false;	/* INNER is not the default */
+			return json_table_plan_is_default(scan->child);
+		}
+
+		return true;
+	}
+	else
+	{
+		JsonTableSiblingJoin *join = castNode(JsonTableSiblingJoin, plan);
+
+		if (join->cross)
+			return false;		/* CROSS is not the default */
+		return json_table_plan_is_default(join->lplan) &&
+			json_table_plan_is_default(join->rplan);
+	}
+}
+
+/*
+ * get_json_table_plan - Parse back a JSON_TABLE plan
+ */
+static void
+get_json_table_plan(TableFunc *tf, JsonTablePlan *plan, deparse_context *context,
+					bool parenthesize)
+{
+	if (parenthesize)
+		appendStringInfoChar(context->buf, '(');
+
+	if (IsA(plan, JsonTablePathScan))
+	{
+		JsonTablePathScan *s = castNode(JsonTablePathScan, plan);
+
+		appendStringInfoString(context->buf, quote_identifier(s->path->name));
+
+		if (s->child)
+		{
+			appendStringInfoString(context->buf,
+								   s->outerJoin ? " OUTER " : " INNER ");
+			get_json_table_plan(tf, s->child, context,
+								IsA(s->child, JsonTableSiblingJoin));
+		}
+	}
+	else if (IsA(plan, JsonTableSiblingJoin))
+	{
+		JsonTableSiblingJoin *j = (JsonTableSiblingJoin *) plan;
+
+		get_json_table_plan(tf, j->lplan, context,
+							IsA(j->lplan, JsonTableSiblingJoin) ||
+							castNode(JsonTablePathScan, j->lplan)->child);
+
+		appendStringInfoString(context->buf, j->cross ? " CROSS " : " UNION ");
+
+		get_json_table_plan(tf, j->rplan, context,
+							IsA(j->rplan, JsonTableSiblingJoin) ||
+							castNode(JsonTablePathScan, j->rplan)->child);
+	}
+
+	if (parenthesize)
+		appendStringInfoChar(context->buf, ')');
+}
+
+/*
  * get_json_table_columns - Parse back JSON_TABLE columns
  */
 static void
@@ -13218,6 +13301,7 @@ get_json_table_columns(TableFunc *tf, JsonTablePathScan *scan,
 					   bool showimplicit)
 {
 	StringInfo	buf = context->buf;
+	JsonExpr   *jexpr = castNode(JsonExpr, tf->docexpr);
 	ListCell   *lc_colname;
 	ListCell   *lc_coltype;
 	ListCell   *lc_coltypmod;
@@ -13297,6 +13381,9 @@ get_json_table_columns(TableFunc *tf, JsonTablePathScan *scan,
 			default_behavior = JSON_BEHAVIOR_NULL;
 		}
 
+		if (jexpr->on_error->btype == JSON_BEHAVIOR_ERROR)
+			default_behavior = JSON_BEHAVIOR_ERROR;
+
 		appendStringInfoString(buf, " PATH ");
 
 		get_json_path_spec(colexpr->path_spec, context, showimplicit);
@@ -13373,6 +13460,18 @@ get_json_table(TableFunc *tf, deparse_context *context, bool showimplicit)
 
 	get_json_table_columns(tf, castNode(JsonTablePathScan, tf->plan), context,
 						   showimplicit);
+
+	/*
+	 * Deparse a PLAN clause only for a non-default plan; the default plan is
+	 * implied by the NESTED COLUMNS structure (see
+	 * json_table_plan_is_default).
+	 */
+	if (root->child && !json_table_plan_is_default((JsonTablePlan *) root))
+	{
+		appendStringInfoChar(buf, ' ');
+		appendContextKeyword(context, "PLAN ", 0, 0, 0);
+		get_json_table_plan(tf, (JsonTablePlan *) root, context, true);
+	}
 
 	if (jexpr->on_error->btype != JSON_BEHAVIOR_EMPTY_ARRAY)
 		get_json_behavior(jexpr->on_error, context, "ERROR");

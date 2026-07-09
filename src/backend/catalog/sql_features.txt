@@ -650,7 +650,7 @@ T814	Colon in JSON_OBJECT or JSON_OBJECTAGG			YES
 T821	Basic SQL/JSON query operators			YES	
 T822	SQL/JSON: IS JSON WITH UNIQUE KEYS predicate			YES	
 T823	SQL/JSON: PASSING clause			YES	
-T824	JSON_TABLE: specific PLAN clause			NO	
+T824	JSON_TABLE: specific PLAN clause			YES	
 T825	SQL/JSON: ON EMPTY and ON ERROR clauses			YES	
 T826	General value expression in ON ERROR or ON EMPTY clauses			YES	
 T827	JSON_TABLE: sibling NESTED COLUMNS clauses			YES	
@@ -664,7 +664,7 @@ T834	SQL/JSON path language: wildcard member accessor			YES
 T835	SQL/JSON path language: filter expressions			YES	
 T836	SQL/JSON path language: starts with predicate			YES	
 T837	SQL/JSON path language: regex_like predicate			YES	
-T838	JSON_TABLE: PLAN DEFAULT clause			NO	
+T838	JSON_TABLE: PLAN DEFAULT clause			YES	
 T839	Formatted cast of datetimes to/from character strings			NO	
 T840	Hex integer literals in SQL/JSON path language			YES	
 T851	SQL/JSON: optional keywords for default syntax			YES	

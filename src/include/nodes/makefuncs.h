@@ -124,5 +124,10 @@ extern JsonTablePath *makeJsonTablePath(Const *pathvalue, char *pathname);
 extern JsonTablePathSpec *makeJsonTablePathSpec(char *string, char *name,
 												int string_location,
 												int name_location);
+extern Node *makeJsonTableDefaultPlan(JsonTablePlanJoinType join_type,
+									  int location);
+extern Node *makeJsonTableSimplePlan(char *pathname, int location);
+extern Node *makeJsonTableJoinedPlan(JsonTablePlanJoinType type,
+									 Node *plan1, Node *plan2, int location);
 
 #endif							/* MAKEFUNC_H */

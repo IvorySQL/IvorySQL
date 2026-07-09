@@ -978,6 +978,60 @@ makeJsonBehavior(JsonBehaviorType btype, Node *expr, int location)
 }
 
 /*
+ * makeJsonTableDefaultPlan -
+ *	   creates a JsonTablePlanSpec node to represent a "default" JSON_TABLE plan
+ *	   with given join strategy
+ */
+Node *
+makeJsonTableDefaultPlan(JsonTablePlanJoinType join_type, int location)
+{
+	JsonTablePlanSpec *n = makeNode(JsonTablePlanSpec);
+
+	n->plan_type = JSTP_DEFAULT;
+	n->join_type = join_type;
+	n->location = location;
+
+	return (Node *) n;
+}
+
+/*
+ * makeJsonTableSimplePlan -
+ *	   creates a JsonTablePlanSpec node to represent a "simple" JSON_TABLE plan
+ *	   for given PATH
+ */
+Node *
+makeJsonTableSimplePlan(char *pathname, int location)
+{
+	JsonTablePlanSpec *n = makeNode(JsonTablePlanSpec);
+
+	n->plan_type = JSTP_SIMPLE;
+	n->pathname = pathname;
+	n->location = location;
+
+	return (Node *) n;
+}
+
+/*
+ * makeJsonTableJoinedPlan -
+ *	   creates a JsonTablePlanSpec node to represent join between the given
+ *	   pair of plans
+ */
+Node *
+makeJsonTableJoinedPlan(JsonTablePlanJoinType type, Node *plan1, Node *plan2,
+						int location)
+{
+	JsonTablePlanSpec *n = makeNode(JsonTablePlanSpec);
+
+	n->plan_type = JSTP_JOINED;
+	n->join_type = type;
+	n->plan1 = castNode(JsonTablePlanSpec, plan1);
+	n->plan2 = castNode(JsonTablePlanSpec, plan2);
+	n->location = location;
+
+	return (Node *) n;
+}
+
+/*
  * makeJsonKeyValue -
  *	  creates a JsonKeyValue node
  */
