@@ -151,6 +151,7 @@ bool		enable_tidscan = true;
 bool		enable_sort = true;
 bool		enable_incremental_sort = true;
 bool		enable_hashagg = true;
+bool		enable_groupagg = true;
 bool		enable_nestloop = true;
 bool		enable_material = true;
 bool		enable_memoize = true;
@@ -2837,14 +2838,14 @@ cost_agg(Path *path, PlannerInfo *root,
 		/* we aren't grouping */
 		total_cost = startup_cost + cpu_tuple_cost;
 		output_tuples = 1;
+
+		/* AGG_PLAIN neither hashes nor sorts, so neither switch disables it */
 	}
 	else if (aggstrategy == AGG_SORTED || aggstrategy == AGG_MIXED)
 	{
 		/* Here we are able to deliver output on-the-fly */
 		startup_cost = input_startup_cost;
 		total_cost = input_total_cost;
-		if (aggstrategy == AGG_MIXED && !enable_hashagg)
-			++disabled_nodes;
 		/* calcs phrased this way to match HASHED case, see note above */
 		total_cost += aggcosts->transCost.startup;
 		total_cost += aggcosts->transCost.per_tuple * input_tuples;
@@ -2853,13 +2854,31 @@ cost_agg(Path *path, PlannerInfo *root,
 		total_cost += aggcosts->finalCost.per_tuple * numGroups;
 		total_cost += cpu_tuple_cost * numGroups;
 		output_tuples = numGroups;
+
+		/*
+		 * AGG_MIXED hashes at least one grouping set, so it is disabled when
+		 * enable_hashagg is off.  Any sorted grouping it also performs is
+		 * costed separately, since create_groupingsets_path() calls
+		 * cost_agg() once per rollup and the non-hashed rollups come through
+		 * as AGG_SORTED.
+		 *
+		 * AGG_SORTED is disabled when enable_groupagg is off, but only when
+		 * there are grouping columns.  The empty grouping set arrives with
+		 * numGroupCols == 0 and is computed like AGG_PLAIN, with no hashing
+		 * or sorting, so it isn't disabled.
+		 */
+		if (aggstrategy == AGG_MIXED)
+		{
+			if (!enable_hashagg)
+				++disabled_nodes;
+		}
+		else if (numGroupCols > 0 && !enable_groupagg)	/* AGG_SORTED */
+			++disabled_nodes;
 	}
 	else
 	{
 		/* must be AGG_HASHED */
 		startup_cost = input_total_cost;
-		if (!enable_hashagg)
-			++disabled_nodes;
 		startup_cost += aggcosts->transCost.startup;
 		startup_cost += aggcosts->transCost.per_tuple * input_tuples;
 		/* cost of computing hash value */
@@ -2871,6 +2890,10 @@ cost_agg(Path *path, PlannerInfo *root,
 		/* cost of retrieving from hash table */
 		total_cost += cpu_tuple_cost * numGroups;
 		output_tuples = numGroups;
+
+		/* AGG_HASHED is disabled when enable_hashagg is off */
+		if (!enable_hashagg)
+			++disabled_nodes;
 	}
 
 	/*
@@ -3340,7 +3363,7 @@ cost_group(Path *path, PlannerInfo *root,
 	}
 
 	path->rows = output_tuples;
-	path->disabled_nodes = input_disabled_nodes;
+	path->disabled_nodes = input_disabled_nodes + (enable_groupagg ? 0 : 1);
 	path->startup_cost = startup_cost;
 	path->total_cost = total_cost;
 }

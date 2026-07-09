@@ -3473,7 +3473,7 @@ SELECT count(*) FROM (SELECT j FROM (SELECT * FROM testjsonb UNION ALL SELECT * 
 (1 row)
 
 SET enable_hashagg = on;
-SET enable_sort = off;
+SET enable_groupagg = off;
 SELECT count(*) FROM (SELECT j FROM (SELECT * FROM testjsonb UNION ALL SELECT * FROM testjsonb) js GROUP BY j) js2;
  count 
 -------
@@ -3486,9 +3486,9 @@ SELECT distinct * FROM (values (jsonb '{}' || ''::text),('{}')) v(j);
  {}
 (1 row)
 
-SET enable_sort = on;
+SET enable_groupagg = on;
 RESET enable_hashagg;
-RESET enable_sort;
+RESET enable_groupagg;
 DROP INDEX jidx;
 DROP INDEX jidx_array;
 -- btree

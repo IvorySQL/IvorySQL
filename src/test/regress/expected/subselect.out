@@ -1454,7 +1454,7 @@ where o.ten = 0;
 -- Test rescan of a hashed SetOp node
 --
 begin;
-set local enable_sort = off;
+set local enable_groupagg = off;
 explain (costs off)
 select count(*) from
   onek o cross join lateral (

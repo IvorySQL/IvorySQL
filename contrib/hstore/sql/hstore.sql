@@ -345,10 +345,10 @@ select count(distinct h) from testhstore;
 set enable_hashagg = false;
 select count(*) from (select h from (select * from testhstore union all select * from testhstore) hs group by h) hs2;
 set enable_hashagg = true;
-set enable_sort = false;
+set enable_groupagg = false;
 select count(*) from (select h from (select * from testhstore union all select * from testhstore) hs group by h) hs2;
 select distinct * from (values (hstore '' || ''),('')) v(h);
-set enable_sort = true;
+set enable_groupagg = true;
 
 -- btree
 drop index hidx;

@@ -372,7 +372,7 @@ reset enable_bitmapscan;
 -- test hash aggregate
 
 set enable_hashagg=on;
-set enable_sort=off;
+set enable_groupagg=off;
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM (
@@ -384,7 +384,7 @@ SELECT t FROM (SELECT * FROM ltreetest UNION ALL SELECT * FROM ltreetest) t1 GRO
 ) t2;
 
 reset enable_hashagg;
-reset enable_sort;
+reset enable_groupagg;
 
 drop index tstidx;
 

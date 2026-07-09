@@ -3039,6 +3039,16 @@ create_unique_path(PlannerInfo *root,
 		cpu_operator_cost * subpath->rows * numCols;
 	pathnode->path.rows = numGroups;
 
+	/*
+	 * Mark the path as disabled if enable_groupagg is off.  While this isn't
+	 * a grouping Agg node, it is the sort-based way of removing duplicates
+	 * and so is the natural counterpart to the AGG_HASHED path that
+	 * enable_hashagg controls; it seems close enough to justify letting that
+	 * switch control it.
+	 */
+	if (!enable_groupagg)
+		pathnode->path.disabled_nodes++;
+
 	return pathnode;
 }
 
@@ -3525,6 +3535,16 @@ create_setop_path(PlannerInfo *root,
 		 * qual-checking or projection.
 		 */
 		pathnode->path.total_cost += cpu_operator_cost * outputRows;
+
+		/*
+		 * Mark the path as disabled if enable_groupagg is off.  While this
+		 * isn't a grouping Agg node, it is the sort-based implementation and
+		 * so is the natural counterpart to the SETOP_HASHED path that
+		 * enable_hashagg controls; it seems close enough to justify letting
+		 * that switch control it.
+		 */
+		if (!enable_groupagg)
+			pathnode->path.disabled_nodes++;
 	}
 	else
 	{

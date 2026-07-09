@@ -493,7 +493,7 @@ drop table minmaxtest cascade;
 
 -- DISTINCT can also trigger wrong answers with hash aggregation (bug #18465)
 begin;
-set local enable_sort = off;
+set local enable_groupagg = off;
 explain (costs off)
   select f1, (select distinct min(t1.f1) from int4_tbl t1 where t1.f1 = t0.f1)
   from int4_tbl t0;
@@ -1702,7 +1702,7 @@ select v||'a', case when v||'a' = 'aa' then 1 else 0 end, count(*)
 -- Hash Aggregation Spill tests
 --
 
-set enable_sort=false;
+set enable_groupagg=false;
 set work_mem='64kB';
 
 select unique1, count(*), sum(twothousand) from tenk1
@@ -1711,7 +1711,7 @@ having sum(fivethous) > 4975
 order by sum(twothousand);
 
 set work_mem to default;
-set enable_sort to default;
+set enable_groupagg to default;
 
 --
 -- Compare results between plans using sorting and plans using hash
@@ -1766,7 +1766,7 @@ select (g/2)::numeric as c1, array_agg(g::numeric) as c2, count(*) as c3
 -- Produce results with hash aggregation
 
 set enable_hashagg = true;
-set enable_sort = false;
+set enable_groupagg = false;
 
 set jit_above_cost = 0;
 
@@ -1799,7 +1799,7 @@ create table agg_hash_4 as
 select (g/2)::numeric as c1, array_agg(g::numeric) as c2, count(*) as c3
   from agg_data_2k group by g/2;
 
-set enable_sort = true;
+set enable_groupagg = true;
 set work_mem to default;
 
 -- Compare group aggregation results to hash aggregation results

@@ -905,6 +905,13 @@
   boot_val => 'true',
 },
 
+{ name => 'enable_groupagg', type => 'bool', context => 'PGC_USERSET', group => 'QUERY_TUNING_METHOD',
+  short_desc => 'Enables the planner\'s use of sort-based grouping and aggregation plans.',
+  flags => 'GUC_EXPLAIN',
+  variable => 'enable_groupagg',
+  boot_val => 'true',
+},
+
 { name => 'enable_hashagg', type => 'bool', context => 'PGC_USERSET', group => 'QUERY_TUNING_METHOD',
   short_desc => 'Enables the planner\'s use of hashed aggregation plans.',
   flags => 'GUC_EXPLAIN',

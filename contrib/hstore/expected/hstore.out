@@ -1509,7 +1509,7 @@ select count(*) from (select h from (select * from testhstore union all select *
 (1 row)
 
 set enable_hashagg = true;
-set enable_sort = false;
+set enable_groupagg = false;
 select count(*) from (select h from (select * from testhstore union all select * from testhstore) hs group by h) hs2;
  count 
 -------
@@ -1522,7 +1522,7 @@ select distinct * from (values (hstore '' || ''),('')) v(h);
  
 (1 row)
 
-set enable_sort = true;
+set enable_groupagg = true;
 -- btree
 drop index hidx;
 create index hidx on testhstore using btree (h);

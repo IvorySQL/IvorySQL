@@ -7891,7 +7891,7 @@ reset enable_seqscan;
 reset enable_bitmapscan;
 -- test hash aggregate
 set enable_hashagg=on;
-set enable_sort=off;
+set enable_groupagg=off;
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM (
 SELECT t FROM (SELECT * FROM ltreetest UNION ALL SELECT * FROM ltreetest) t1 GROUP BY t
@@ -7915,7 +7915,7 @@ SELECT t FROM (SELECT * FROM ltreetest UNION ALL SELECT * FROM ltreetest) t1 GRO
 (1 row)
 
 reset enable_hashagg;
-reset enable_sort;
+reset enable_groupagg;
 drop index tstidx;
 -- test gist index
 create index tstidx on ltreetest using gist (t gist_ltree_ops(siglen=0));

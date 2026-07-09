@@ -17,7 +17,7 @@ INSERT INTO hashagg_ij SELECT g FROM generate_series(1,5100) g;
 
 SET max_parallel_workers=0;
 SET max_parallel_workers_per_gather=0;
-SET enable_sort=FALSE;
+SET enable_groupagg=FALSE;
 SET work_mem='4MB';
 
 SELECT COUNT(*) FROM (SELECT DISTINCT x FROM hashagg_ij) s;
