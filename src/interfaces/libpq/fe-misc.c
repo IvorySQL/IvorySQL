@@ -928,13 +928,18 @@ pqDrainPending(PGconn *conn)
 
 	nread = pqsecure_read(conn, conn->inBuffer + conn->inEnd,
 						  bytes_pending);
-	conn->inEnd += nread;
 
-	/* When there are bytes pending, the read function is not supposed to fail */
+	/*
+	 * When there are bytes pending, pqsecure_read() is not supposed to fail
+	 * or do a short read, but let's check anyway to be safe.
+	 */
+	if (nread < 0)
+		return -1;
+	conn->inEnd += nread;
 	if (nread != bytes_pending)
 	{
 		libpq_append_conn_error(conn,
-								"drained only %zu of %zd pending bytes in transport buffer",
+								"drained only %zd of %zd pending bytes in transport buffer",
 								nread, bytes_pending);
 		return -1;
 	}
