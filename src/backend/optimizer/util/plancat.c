@@ -257,6 +257,23 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 			}
 
 			/*
+			 * Ignore indexes manually disabled via the Oracle-compatible
+			 * ALTER INDEX ... UNUSABLE.  This check is unconditional (not
+			 * gated on the current session's compatible_db): indisunusable
+			 * is a catalog fact about the index, not a per-session parser
+			 * choice, and every session must honor it consistently to avoid
+			 * planning against a stale/unmaintained index.  It can only ever
+			 * be set by the Oracle-only ALTER INDEX ... UNUSABLE command, so
+			 * behavior for installations that never use that command is
+			 * unaffected (indisunusable is always false).
+			 */
+			if (index->indisunusable)
+			{
+				index_close(indexRelation, NoLock);
+				continue;
+			}
+
+			/*
 			 * If the index is valid, but cannot yet be used, ignore it; but
 			 * mark the plan we are generating as transient. See
 			 * src/backend/access/heap/README.HOT for discussion.

@@ -288,6 +288,7 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 		case T_ClusterStmt:
 		case T_ReindexStmt:
 		case T_OraAlterIndexRebuildStmt:	/* Oracle-compat ALTER INDEX ... REBUILD */
+		case T_OraAlterIndexUnusableStmt:	/* Oracle-compat ALTER INDEX ... UNUSABLE */
 		case T_VacuumStmt:
 			{
 				/*
@@ -1595,6 +1596,18 @@ ProcessUtilitySlow(ParseState *pstate,
 				ExecOraAlterIndexRebuild(pstate,
 										 (OraAlterIndexRebuildStmt *) parsetree,
 										 isTopLevel);
+				commandCollected = true;
+				break;
+
+			case T_OraAlterIndexUnusableStmt:
+				/*
+				 * Oracle-compatible ALTER INDEX ... UNUSABLE statement.
+				 *
+				 * Marks the index unusable; no event trigger collection is
+				 * performed for this lightweight catalog-state change.
+				 */
+				ExecOraAlterIndexUnusable(pstate,
+										  (OraAlterIndexUnusableStmt *) parsetree);
 				commandCollected = true;
 				break;
 
@@ -3077,6 +3090,14 @@ CreateCommandTag(Node *parsetree)
 			tag = CMDTAG_ALTER_INDEX;
 			break;
 
+		case T_OraAlterIndexUnusableStmt:
+			/*
+			 * Oracle-compatible ALTER INDEX ... UNUSABLE.
+			 * Reuse CMDTAG_ALTER_INDEX for the same reason as REBUILD above.
+			 */
+			tag = CMDTAG_ALTER_INDEX;
+			break;
+
 		case T_CreateConversionStmt:
 			tag = CMDTAG_CREATE_CONVERSION;
 			break;
@@ -3719,6 +3740,10 @@ GetCommandLogLevel(Node *parsetree)
 			 * log whenever log_statement = 'all' is set.
 			 */
 			lev = LOGSTMT_ALL;
+			break;
+
+		case T_OraAlterIndexUnusableStmt:
+			lev = LOGSTMT_ALL;	/* same treatment as REBUILD/REINDEX */
 			break;
 
 		case T_CreateConversionStmt:

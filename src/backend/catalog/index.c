@@ -655,6 +655,7 @@ UpdateIndexRelation(Oid indexoid,
 	values[Anum_pg_index_indisready - 1] = BoolGetDatum(isready);
 	values[Anum_pg_index_indislive - 1] = BoolGetDatum(true);
 	values[Anum_pg_index_indisreplident - 1] = BoolGetDatum(false);
+	values[Anum_pg_index_indisunusable - 1] = BoolGetDatum(false);
 	values[Anum_pg_index_indkey - 1] = PointerGetDatum(indkey);
 	values[Anum_pg_index_indcollation - 1] = PointerGetDatum(indcollation);
 	values[Anum_pg_index_indclass - 1] = PointerGetDatum(indclass);
@@ -2455,7 +2456,15 @@ BuildIndexInfo(Relation index)
 					   RelationGetIndexPredicate(index),
 					   indexStruct->indisunique,
 					   indexStruct->indnullsnotdistinct,
-					   indexStruct->indisready,
+					   /*
+						* A manually UNUSABLE index (Oracle compat) is treated
+						* as not ready for inserts, so DML stops maintaining
+						* it, same as an in-progress CREATE INDEX
+						* CONCURRENTLY.  Unconditional on indisunusable, not
+						* gated on compatible_db -- see the matching comment
+						* in plancat.c for why.
+						*/
+					   indexStruct->indisready && !indexStruct->indisunusable,
 					   false,
 					   index->rd_indam->amsummarizing,
 					   indexStruct->indisexclusion && indexStruct->indisunique);
@@ -3582,6 +3591,43 @@ index_set_state_flags(Oid indexId, IndexStateFlagsAction action)
 	table_close(pg_index, RowExclusiveLock);
 }
 
+/*
+ * index_set_unusable - set or clear pg_index.indisunusable
+ *
+ * Oracle-compatible companion to index_set_state_flags(): flips the
+ * "manually disabled via ALTER INDEX ... UNUSABLE" bit.  Unlike the
+ * indisvalid/indisready/indislive trio, this flag is not part of the
+ * CREATE/DROP INDEX CONCURRENTLY state machine, so no transition
+ * invariants need to be asserted here.
+ *
+ * Called both from ExecOraAlterIndexUnusable() (to set the flag) and from
+ * ExecOraAlterIndexRebuild()/reindex_index() (to clear it once a rebuild
+ * succeeds).
+ */
+void
+index_set_unusable(Oid indexId, bool unusable)
+{
+	Relation	pg_index;
+	HeapTuple	indexTuple;
+	Form_pg_index indexForm;
+
+	pg_index = table_open(IndexRelationId, RowExclusiveLock);
+
+	indexTuple = SearchSysCacheCopy1(INDEXRELID,
+									 ObjectIdGetDatum(indexId));
+	if (!HeapTupleIsValid(indexTuple))
+		elog(ERROR, "cache lookup failed for index %u", indexId);
+	indexForm = (Form_pg_index) GETSTRUCT(indexTuple);
+
+	if (indexForm->indisunusable != unusable)
+	{
+		indexForm->indisunusable = unusable;
+		CatalogTupleUpdate(pg_index, &indexTuple->t_self, indexTuple);
+	}
+
+	table_close(pg_index, RowExclusiveLock);
+}
+
 
 /*
  * IndexGetRelation: given an index's relation OID, get the OID of the
@@ -3902,7 +3948,8 @@ reindex_index(const ReindexStmt *stmt, Oid indexId,
 
 		index_bad = (!indexForm->indisvalid ||
 					 !indexForm->indisready ||
-					 !indexForm->indislive);
+					 !indexForm->indislive ||
+					 indexForm->indisunusable);
 		if (index_bad ||
 			(indexForm->indcheckxmin && !indexInfo->ii_BrokenHotChain))
 		{
@@ -3913,6 +3960,8 @@ reindex_index(const ReindexStmt *stmt, Oid indexId,
 			indexForm->indisvalid = true;
 			indexForm->indisready = true;
 			indexForm->indislive = true;
+			/* a completed non-concurrent rebuild always clears UNUSABLE */
+			indexForm->indisunusable = false;
 			CatalogTupleUpdate(pg_index, &indexTuple->t_self, indexTuple);
 
 			/*

@@ -1,7 +1,8 @@
 --
 -- ALTER_INDEX
--- Test Oracle-compatible ALTER INDEX ... REBUILD syntax (IvorySQL feature #1064)
--- Covers: REBUILD, REBUILD ONLINE, REBUILD TABLESPACE, REBUILD PARTITION
+-- Test Oracle-compatible ALTER INDEX ... REBUILD / UNUSABLE syntax
+-- Covers: REBUILD, REBUILD ONLINE, REBUILD TABLESPACE, REBUILD PARTITION,
+--         UNUSABLE
 --
 
 -- Clean up in case a prior regression run failed
@@ -314,3 +315,84 @@ ALTER INDEX rp_idx REBUILD NOPARALLEL TABLESPACE pg_default;
 
 -- Cleanup GROUP 8
 DROP TABLE rp_t CASCADE;
+
+-- ============================================================
+-- GROUP 9: ALTER INDEX ... UNUSABLE
+--
+-- Real Oracle has no USABLE clause -- REBUILD is the only documented path
+-- back to a usable index, so that is the only recovery path tested here.
+-- ============================================================
+
+SET client_min_messages TO 'warning';
+DROP TABLE IF EXISTS unusable_t CASCADE;
+RESET client_min_messages;
+
+CREATE TABLE unusable_t (id int PRIMARY KEY, val text);
+INSERT INTO unusable_t SELECT g, 'val'||g FROM generate_series(1,200) g;
+CREATE UNIQUE INDEX idx_unusable_val ON unusable_t(val);
+
+-- U01: index is used by the planner before being marked unusable
+SET enable_seqscan = off;
+EXPLAIN (COSTS OFF) SELECT val FROM unusable_t WHERE val = 'val100';
+RESET enable_seqscan;
+
+-- U02: mark it unusable
+ALTER INDEX idx_unusable_val UNUSABLE;
+
+-- U03: planner no longer chooses it, even with seqscan discouraged --
+-- it falls back to the only plan left, a Seq Scan
+SET enable_seqscan = off;
+EXPLAIN (COSTS OFF) SELECT val FROM unusable_t WHERE val = 'val100';
+RESET enable_seqscan;
+
+-- U04: DML no longer maintains the unusable index -- a value that would
+-- violate uniqueness now succeeds silently (matches Oracle UNUSABLE semantics)
+INSERT INTO unusable_t VALUES (201, 'val100');
+
+-- U05: REBUILD fails while the table holds a value that violates uniqueness
+-- (the duplicate inserted in U04) -- demonstrates that maintenance really
+-- stopped while unusable, since REBUILD's physical build re-checks uniqueness
+ALTER INDEX idx_unusable_val REBUILD;
+
+-- U06: clean up the duplicate, then REBUILD succeeds
+DELETE FROM unusable_t WHERE id = 201;
+ALTER INDEX idx_unusable_val REBUILD;
+
+-- U07: planner uses the index again
+SET enable_seqscan = off;
+EXPLAIN (COSTS OFF) SELECT val FROM unusable_t WHERE val = 'val100';
+RESET enable_seqscan;
+
+-- U08: uniqueness is enforced again post-REBUILD
+INSERT INTO unusable_t VALUES (202, 'val100');
+
+-- U09: plain REINDEX also clears UNUSABLE (safety net beyond Oracle syntax)
+ALTER INDEX idx_unusable_val UNUSABLE;
+REINDEX INDEX idx_unusable_val;
+SET enable_seqscan = off;
+EXPLAIN (COSTS OFF) SELECT val FROM unusable_t WHERE val = 'val100';
+RESET enable_seqscan;
+
+-- U10: UNUSABLE on a partitioned (parent) index -- must error (v1 only
+-- supports plain/leaf indexes; PARTITION-level granularity is future work)
+CREATE TABLE unusable_part (id int, region text) PARTITION BY RANGE (id);
+CREATE TABLE unusable_part_p1 PARTITION OF unusable_part FOR VALUES FROM (1) TO (1001);
+CREATE INDEX idx_unusable_part_id ON unusable_part(id);
+ALTER INDEX idx_unusable_part_id UNUSABLE;
+DROP TABLE unusable_part CASCADE;
+
+-- U11: non-existent index (must error)
+ALTER INDEX no_such_index UNUSABLE;
+
+-- U12: not an index (table name given) (must error)
+ALTER INDEX unusable_t UNUSABLE;
+
+-- U13: data integrity preserved -- row count unaffected by UNUSABLE/REBUILD
+SELECT count(*) FROM unusable_t;
+ALTER INDEX idx_unusable_val UNUSABLE;
+SELECT count(*) FROM unusable_t;
+ALTER INDEX idx_unusable_val REBUILD;
+SELECT count(*) FROM unusable_t;
+
+-- Cleanup GROUP 9
+DROP TABLE unusable_t CASCADE;

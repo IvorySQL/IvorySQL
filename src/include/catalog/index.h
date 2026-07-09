@@ -153,6 +153,7 @@ extern void index_build(Relation heapRelation,
 extern void validate_index(Oid heapId, Oid indexId, Snapshot snapshot);
 
 extern void index_set_state_flags(Oid indexId, IndexStateFlagsAction action);
+extern void index_set_unusable(Oid indexId, bool unusable);
 
 extern Oid	IndexGetRelation(Oid indexId, bool missing_ok);
 

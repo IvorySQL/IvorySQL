@@ -4245,6 +4245,20 @@ typedef struct OraAlterIndexRebuildStmt
 } OraAlterIndexRebuildStmt;
 
 /* ----------------------
+ *		Oracle-compatible ALTER INDEX ... UNUSABLE Statement
+ *
+ * Represents Oracle-compatible ALTER INDEX ... UNUSABLE syntax.  Marks the
+ * index unusable: skipped by the planner and unmaintained by DML until it
+ * is rebuilt via ALTER INDEX ... REBUILD (or plain REINDEX).
+ * ----------------------
+ */
+typedef struct OraAlterIndexUnusableStmt
+{
+	NodeTag		type;
+	RangeVar   *relation;		/* index to mark unusable */
+} OraAlterIndexUnusableStmt;
+
+/* ----------------------
  *		CREATE CONVERSION Statement
  * ----------------------
  */

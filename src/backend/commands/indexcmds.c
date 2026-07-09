@@ -65,6 +65,7 @@
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/ora_compatible.h"
 #include "utils/partcache.h"
 #include "utils/pg_rusage.h"
 #include "utils/regproc.h"
@@ -2884,6 +2885,12 @@ ChooseIndexColumnNames(const List *indexElems)
  * For the non-PARTITION path the existing ReindexIndex() infrastructure is
  * reused directly so that locking, event-trigger collection, and pgstat
  * progress reporting follow the same code path as REINDEX INDEX.
+ *
+ * A successful non-CONCURRENTLY rebuild also clears indisunusable (see
+ * index_set_unusable() in index.c, invoked from within reindex_index()),
+ * undoing a prior ALTER INDEX ... UNUSABLE.  REBUILD ONLINE currently does
+ * NOT clear indisunusable -- use a non-concurrent REBUILD (or plain
+ * REINDEX) to recover a manually disabled index.
  */
 void
 ExecOraAlterIndexRebuild(ParseState *pstate,
@@ -3131,7 +3138,14 @@ ExecOraAlterIndexRebuild(ParseState *pstate,
 		newparams.options |= REINDEXOPT_REPORT_PROGRESS;
 
 		if (online && persistence != RELPERSISTENCE_TEMP)
+		{
+			/*
+			 * NOTE: the CONCURRENTLY path does not clear indisunusable --
+			 * see the comment below on the non-PARTITION CONCURRENTLY case
+			 * for why.
+			 */
 			ReindexRelationConcurrently(&reindex_stub, partIndexOid, &newparams);
+		}
 		else
 			reindex_index(&reindex_stub, partIndexOid, false, persistence,
 						  &newparams);
@@ -3142,9 +3156,81 @@ ExecOraAlterIndexRebuild(ParseState *pstate,
 		 * No PARTITION clause: delegate to ReindexIndex(), which handles
 		 * regular indexes, partitioned indexes (rebuilds all leaf partitions),
 		 * CONCURRENTLY, TABLESPACE, and progress reporting.
+		 *
+		 * For the non-CONCURRENTLY case, reindex_index() (see index.c)
+		 * already clears indisunusable as part of its own catalog update
+		 * when it heals a not-valid/not-ready/not-live/unusable index, so
+		 * no further action is needed here.  Calling index_set_unusable()
+		 * again from here would attempt a second update of the same
+		 * pg_index tuple within the same command and error with "tuple
+		 * already updated by self" (or worse, hit a missing-snapshot
+		 * assertion for the CONCURRENTLY/partitioned case, since
+		 * ReindexRelationConcurrently() manages its own multi-transaction
+		 * snapshot lifecycle that has already been torn down by the time
+		 * control returns here).
+		 *
+		 * For the CONCURRENTLY case, indisunusable is therefore NOT cleared
+		 * by REBUILD ONLINE in this version -- a known limitation.  Use a
+		 * non-concurrent REBUILD (or plain REINDEX) to clear UNUSABLE.
 		 */
 		ReindexIndex(&reindex_stub, &params, isTopLevel);
 	}
+}
+
+/*
+ * ExecOraAlterIndexUnusable
+ *
+ * Primary entry point for Oracle-compatible ALTER INDEX ... UNUSABLE.
+ *
+ * Marks the named index unusable: the planner will no longer consider it
+ * (plancat.c) and DML will no longer maintain it (index.c/execIndexing.c),
+ * which as a side effect stops uniqueness enforcement for a unique/PK
+ * index -- matching Oracle's UNUSABLE semantics.  The only documented way
+ * back to a usable state, in both Oracle and here, is
+ * ALTER INDEX ... REBUILD (or a plain REINDEX), which clears the flag once
+ * the physical rebuild succeeds.
+ *
+ * This is reachable only from the Oracle grammar (ora_gram.y), which has no
+ * UNUSABLE production under compatible_db = pg; the explicit check below is
+ * defense in depth, matching this project's convention of gating
+ * Oracle-only logic on compatible_db.
+ */
+void
+ExecOraAlterIndexUnusable(ParseState *pstate, const OraAlterIndexUnusableStmt *stmt)
+{
+	ReindexParams params = {0};
+	struct ReindexIndexCallbackState cbstate;
+	Oid			indexOid;
+	char		relkind;
+
+	if (ORA_PARSER != compatible_db)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("ALTER INDEX ... UNUSABLE is only available when compatible_db is oracle")));
+
+	/*
+	 * Resolve and lock the index the same way ExecOraAlterIndexRebuild()
+	 * does for its non-CONCURRENTLY path: AccessExclusiveLock on the index,
+	 * with the heap table locked (ShareLock, since REINDEXOPT_CONCURRENTLY
+	 * is not set) and permission-checked by the shared callback.
+	 */
+	cbstate.params = params;
+	cbstate.locked_table_oid = InvalidOid;
+
+	indexOid = RangeVarGetRelidExtended(stmt->relation,
+										AccessExclusiveLock,
+										0,
+										RangeVarCallbackForReindexIndex,
+										&cbstate);
+
+	relkind = get_rel_relkind(indexOid);
+	if (relkind == RELKIND_PARTITIONED_INDEX)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("ALTER INDEX ... UNUSABLE is not supported for partitioned indexes"),
+				 errhint("Mark each partition's leaf index unusable individually.")));
+
+	index_set_unusable(indexOid, true);
 }
 
 /*
