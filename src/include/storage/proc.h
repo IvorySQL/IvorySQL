@@ -492,9 +492,10 @@ typedef struct PROC_HDR
 	 * Current proc numbers of some auxiliary processes. There can be only one
 	 * of each of these running at a time.
 	 */
-	pg_atomic_uint32 avLauncherProc;
 	pg_atomic_uint32 walwriterProc;
 	pg_atomic_uint32 checkpointerProc;
+	/* avlauncher is not an aux process, but it is advertised the same way */
+	pg_atomic_uint32 avLauncherProc;
 
 	/* Current shared estimate of appropriate spins_per_delay value */
 	int			spins_per_delay;

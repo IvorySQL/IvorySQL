@@ -1114,8 +1114,7 @@ RequestCheckpoint(int flags)
 #define MAX_SIGNAL_TRIES 600	/* max wait 60.0 sec */
 	for (ntries = 0;; ntries++)
 	{
-		volatile PROC_HDR *procglobal = ProcGlobal;
-		ProcNumber	checkpointerProc = pg_atomic_read_u32(&procglobal->checkpointerProc);
+		ProcNumber	checkpointerProc = pg_atomic_read_u32(&ProcGlobal->checkpointerProc);
 
 		if (checkpointerProc == INVALID_PROC_NUMBER)
 		{
@@ -1536,8 +1535,7 @@ FirstCallSinceLastCheckpoint(void)
 void
 WakeupCheckpointer(void)
 {
-	volatile PROC_HDR *procglobal = ProcGlobal;
-	ProcNumber	checkpointerProc = pg_atomic_read_u32(&procglobal->checkpointerProc);
+	ProcNumber	checkpointerProc = pg_atomic_read_u32(&ProcGlobal->checkpointerProc);
 
 	if (checkpointerProc != INVALID_PROC_NUMBER)
 		SetLatch(&GetPGProcByNumber(checkpointerProc)->procLatch);
