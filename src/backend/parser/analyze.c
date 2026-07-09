@@ -4029,7 +4029,7 @@ transformLockingClause(ParseState *pstate, Query *qry, LockingClause *lc,
 										   allrels, true);
 					break;
 				default:
-					/* ignore JOIN, SPECIAL, FUNCTION, VALUES, CTE RTEs */
+					/* ignore all other RTE kinds */
 					break;
 			}
 		}
