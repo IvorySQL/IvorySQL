@@ -476,6 +476,21 @@ SELECT (current_schemas(true))[1] = ('pg_temp_' || beid::text) AS match
 FROM pg_stat_get_backend_idset() beid
 WHERE pg_stat_get_backend_pid(beid) = pg_backend_pid();
 
+-- Test that reset works for pg_statio_all_sequences
+
+-- Use the sequence to accumulate its stats, and reset them once first
+-- so that we have a baseline for comparison, similar to the previous test.
+-- stats_reset to compare to.
+CREATE SEQUENCE test_seq1;
+SELECT nextval('test_seq1');
+SELECT pg_stat_reset_single_table_counters('test_seq1'::regclass);
+SELECT stats_reset AS seq_reset_ts
+  FROM pg_statio_all_sequences WHERE relname ='test_seq1' \gset
+SELECT pg_stat_reset_single_table_counters('test_seq1'::regclass);
+SELECT stats_reset > :'seq_reset_ts', blks_read + blks_hit
+  FROM pg_statio_all_sequences WHERE relname ='test_seq1';
+DROP SEQUENCE test_seq1;
+
 ----
 -- pg_stat_get_snapshot_timestamp behavior
 ----
