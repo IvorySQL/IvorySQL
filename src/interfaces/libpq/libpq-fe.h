@@ -74,8 +74,12 @@ extern "C"
 /*
  * Assume bool has been defined if true and false are defined.  
  * This avoids duplicate-typedef errors if this file is included after c.h.
+ *
+ * Starting with C23, bool, true and false are keywords, so we must not
+ * provide our own typedef.  C++ has bool as a keyword as well.
  */
-#if !(defined(true) && defined(false))
+#if !defined(__cplusplus) && !(defined(true) && defined(false)) && \
+	!(defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L)
 typedef unsigned char bool;
 #endif
 
