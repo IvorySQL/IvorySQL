@@ -15,14 +15,16 @@ $node->init();
 $node->start;
 
 # Verify ASCII truncation. With log_statement_max_length = 20,
-# a 24-byte query should end at the 20th byte ('C').
+# a 24-byte query should be clipped at the 20th byte ('C') and
+# followed by an ellipsis.
 note "ASCII truncation via log_statement";
 my $log_offset = -s $node->logfile;
 $node->psql(
 	'postgres', "
 	SET log_statement_max_length TO 20;
 	SELECT '123456789ABCDEF';");
-ok($node->log_contains(qr/statement: SELECT '123456789ABC$/m, $log_offset),
+ok( $node->log_contains(
+		qr/statement: SELECT '123456789ABC\.\.\.$/m, $log_offset),
 	"ASCII query truncated at 20 bytes");
 
 # Verify -1 logs statement in full (closing quote must be present).
@@ -51,23 +53,23 @@ SKIP:
 		SET client_encoding TO 'UTF8';
 		SET log_statement_max_length TO 11;
 		$mbquery");
-	ok($node->log_contains(qr/statement: SELECT 'AA$/m, $log_offset),
+	ok($node->log_contains(qr/statement: SELECT 'AA\.\.\.$/m, $log_offset),
 		"multibyte truncation at character boundary");
 }
 
-# Verify 0 logs an empty statement body.
+# Verify 0 logs only an ellipsis.
 note "Zero length truncation";
 $log_offset = -s $node->logfile;
 $node->psql(
 	'postgres', "
 	SET log_statement_max_length TO 0;
 	SELECT '123456789ABCDEF';");
-ok($node->log_contains(qr/statement:\s*$/m, $log_offset),
-	"0 logs an empty statement body");
+ok($node->log_contains(qr/statement: \.\.\.\s*$/m, $log_offset),
+	"0 logs statement body with only an ellipsis");
 
 # Verify truncation via the extended query protocol (execute message).
-# With log_statement_max_length = 20, a 24-byte query should end
-# at the 20th byte ('C').
+# With log_statement_max_length = 20, a 24-byte query should be clipped
+# at the 20th byte ('C') and followed by an ellipsis.
 note "Extended query protocol (execute) truncation";
 $log_offset = -s $node->logfile;
 $node->psql(
@@ -75,7 +77,7 @@ $node->psql(
 	SET log_statement_max_length TO 20;
 	SELECT '123456789ABCDEF' \\bind \\g");
 ok( $node->log_contains(
-		qr/execute <unnamed>: SELECT '123456789ABC$/m, $log_offset),
+		qr/execute <unnamed>: SELECT '123456789ABC\.\.\.$/m, $log_offset),
 	"extended protocol execute truncated at 20 bytes");
 
 # Verify extended protocol also respects -1 (no truncation; closing quote
@@ -102,14 +104,33 @@ $node->psql(
 	SET log_statement_max_length TO 20;
 	SELECT '123456789ABCDEF' \\bind \\g");
 ok( $node->log_contains(
-		qr/parse <unnamed>: SELECT '123456789ABC$/m, $log_offset),
+		qr/parse <unnamed>: SELECT '123456789ABC\.\.\.$/m, $log_offset),
 	"parse duration entry truncated");
 ok( $node->log_contains(
-		qr/bind <unnamed>: SELECT '123456789ABC$/m, $log_offset),
+		qr/bind <unnamed>: SELECT '123456789ABC\.\.\.$/m, $log_offset),
 	"bind duration entry truncated");
 ok( $node->log_contains(
-		qr/execute <unnamed>: SELECT '123456789ABC$/m, $log_offset),
+		qr/execute <unnamed>: SELECT '123456789ABC\.\.\.$/m, $log_offset),
 	"execute duration entry truncated");
 
+note "Truncate prepared statement query in DETAIL";
+$log_offset = -s $node->logfile;
+$node->psql(
+	'postgres', "
+	SET log_statement_max_length TO 12;
+	PREPARE stmt AS SELECT * FROM pg_hba_file_rules WHERE address = \$1;
+	EXECUTE stmt('127.0.0.1');");
+ok($node->log_contains(qr/prepare: PREPARE stmt\.\.\.$/m, $log_offset),
+	"Truncate prepared statement query in DETAIL");
+
+note "Truncate prepared statement query in DETAIL (0 length)";
+$log_offset = -s $node->logfile;
+$node->psql(
+	'postgres', "
+	SET log_statement_max_length TO 0;
+	PREPARE stmt AS SELECT * FROM pg_hba_file_rules WHERE address = \$1;
+	EXECUTE stmt('127.0.0.1');");
+ok( $node->log_contains(qr/prepare: \.\.\.$/m, $log_offset),
+	"0 logs the prepared statement body with only an ellipsis");
 $node->stop;
 done_testing();

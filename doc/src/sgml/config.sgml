@@ -8539,8 +8539,10 @@ log_line_prefix = '%m [%p] %q%u@%d/%a '
         <xref linkend="guc-log-min-duration-statement"/>,
         <xref linkend="guc-log-min-duration-sample"/>, or
         <xref linkend="guc-log-transaction-sample-rate"/>
-        is truncated to at most this many bytes.
-        A value of zero causes statements to be logged with an empty body.
+        has its statement text truncated to at most this many bytes.
+        When a statement is truncated, an ellipsis (<literal>...</literal>)
+        is appended to indicate that truncation has occurred.
+        A value of zero causes statements to be logged as only an ellipsis.
         <literal>-1</literal> (the default) logs statements in full.
         If this value is specified without units, it is taken as bytes.
         This setting does not affect statements logged because of

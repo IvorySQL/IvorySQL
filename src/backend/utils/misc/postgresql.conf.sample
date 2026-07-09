@@ -676,9 +676,9 @@
                                         # bind-parameter values to N bytes;
                                         # -1 means print in full, 0 disables
 #log_statement = 'none'                 # none, ddl, mod, all
-#log_statement_max_length = -1          # max bytes of logged statements;
+#log_statement_max_length = -1          # max bytes of logged statement text;
                                         # -1 means log statement in full,
-                                        # 0 means log an empty body
+                                        # 0 means log only an ellipsis
 #log_replication_commands = off
 #log_temp_files = -1                    # log temporary files equal or larger
                                         # than the specified size in kilobytes;

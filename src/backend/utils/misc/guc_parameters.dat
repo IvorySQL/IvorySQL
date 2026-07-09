@@ -1991,8 +1991,8 @@
 },
 
 { name => 'log_statement_max_length', type => 'int', context => 'PGC_SUSET', group => 'LOGGING_WHAT',
-  short_desc => 'Sets the maximum length in bytes of logged statements.',
-  long_desc => '-1 means log statement in full; 0 means log an empty statement body.',
+  short_desc => 'Sets the maximum length in bytes of logged statement text.',
+  long_desc => '-1 means log statement in full; 0 means log only an ellipsis.',
   flags => 'GUC_UNIT_BYTE',
   variable => 'log_statement_max_length',
   boot_val => '-1',
