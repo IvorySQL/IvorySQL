@@ -875,7 +875,7 @@ insert_property_records(Oid graphid, Oid ellabeloid, Oid pgerelid, const PropGra
 		{
 			ResTarget  *rt = lfirst_node(ResTarget, lc);
 
-			if (!rt->name && !IsA(rt->val, ColumnRef))
+			if (!rt->name && !IsA(rt->val, ColumnRef) && !IsA(rt->val, ColumnRefOrFuncCall))
 				ereport(ERROR,
 						errcode(ERRCODE_SYNTAX_ERROR),
 						errmsg("property name required"),
