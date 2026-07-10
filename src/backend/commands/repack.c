@@ -375,7 +375,8 @@ ExecRepack(ParseState *pstate, RepackStmt *stmt, bool isTopLevel)
 	/*
 	 * If we don't have a relation yet, determine a relation list.  If we do,
 	 * then it must be a partitioned table, and we want to process its
-	 * partitions.
+	 * partitions.  Note that we don't acquire any locks on these tables, so
+	 * the returned list must be treated with suspicion.
 	 */
 	if (rel == NULL)
 	{
@@ -452,12 +453,19 @@ ExecRepack(ParseState *pstate, RepackStmt *stmt, bool isTopLevel)
 		StartTransactionCommand();
 
 		/*
-		 * Open the target table, coping with the case where it has been
-		 * dropped.
+		 * Open the target table.  It may have been dropped or replaced with
+		 * something different, in which case silently skip it.
 		 */
-		rel = try_table_open(rtc->tableOid, lockmode);
+		rel = try_relation_open(rtc->tableOid, lockmode);
 		if (rel == NULL)
 		{
+			CommitTransactionCommand();
+			continue;
+		}
+		if (rel->rd_rel->relkind != RELKIND_RELATION &&
+			rel->rd_rel->relkind != RELKIND_MATVIEW)
+		{
+			relation_close(rel, lockmode);
 			CommitTransactionCommand();
 			continue;
 		}
@@ -712,6 +720,8 @@ cluster_rel_recheck(RepackCommand cmd, Relation OldHeap, Oid indexOid,
 					Oid userid, LOCKMODE lmode, int options)
 {
 	Oid			tableOid = RelationGetRelid(OldHeap);
+
+	Assert(CheckRelationLockedByMe(OldHeap, lmode, false));
 
 	/* Check that the user still has privileges for the relation */
 	if (!repack_is_permitted_for_relation(cmd, tableOid, userid))
@@ -2168,6 +2178,10 @@ get_tables_to_repack(RepackCommand cmd, bool usingindex, MemoryContext permcxt)
 
 		/*
 		 * For USING INDEX, scan pg_index to find those with indisclustered.
+		 *
+		 * Note we don't obtain lock of any kind on the index, which means the
+		 * index or its owning table could be gone or change at any point.  We
+		 * have to be extra careful when examining catalog state for them.
 		 */
 		catalog = table_open(IndexRelationId, AccessShareLock);
 		ScanKeyInit(&entry,
@@ -2180,47 +2194,28 @@ get_tables_to_repack(RepackCommand cmd, bool usingindex, MemoryContext permcxt)
 			RelToCluster *rtc;
 			Form_pg_index index;
 			HeapTuple	classtup;
-			Form_pg_class classForm;
+			Oid			relnamespace;
+			char		relpersistence;
 			MemoryContext oldcxt;
 
 			index = (Form_pg_index) GETSTRUCT(tuple);
 
-			/*
-			 * Try to obtain a light lock on the index's table, to ensure it
-			 * doesn't go away while we collect the list.  If we cannot, just
-			 * disregard it.  Be sure to release this if we ultimately decide
-			 * not to process the table!
-			 */
-			if (!ConditionalLockRelationOid(index->indrelid, AccessShareLock))
-				continue;
-
-			/* Verify that the table still exists; skip if not */
 			classtup = SearchSysCache1(RELOID, ObjectIdGetDatum(index->indrelid));
 			if (!HeapTupleIsValid(classtup))
-			{
-				UnlockRelationOid(index->indrelid, AccessShareLock);
 				continue;
-			}
-			classForm = (Form_pg_class) GETSTRUCT(classtup);
+			relnamespace = ((Form_pg_class) GETSTRUCT(classtup))->relnamespace;
+			relpersistence = ((Form_pg_class) GETSTRUCT(classtup))->relpersistence;
+			ReleaseSysCache(classtup);
 
 			/* Skip temp relations belonging to other sessions */
-			if (classForm->relpersistence == RELPERSISTENCE_TEMP &&
-				!isTempOrTempToastNamespace(classForm->relnamespace))
-			{
-				ReleaseSysCache(classtup);
-				UnlockRelationOid(index->indrelid, AccessShareLock);
+			if (relpersistence == RELPERSISTENCE_TEMP &&
+				!isTempOrTempToastNamespace(relnamespace))
 				continue;
-			}
-
-			ReleaseSysCache(classtup);
 
 			/* noisily skip rels which the user can't process */
 			if (!repack_is_permitted_for_relation(cmd, index->indrelid,
 												  GetUserId()))
-			{
-				UnlockRelationOid(index->indrelid, AccessShareLock);
 				continue;
-			}
 
 			/* Use a permanent memory context for the result list */
 			oldcxt = MemoryContextSwitchTo(permcxt);
@@ -2244,45 +2239,20 @@ get_tables_to_repack(RepackCommand cmd, bool usingindex, MemoryContext permcxt)
 
 			class = (Form_pg_class) GETSTRUCT(tuple);
 
-			/*
-			 * Try to obtain a light lock on the table, to ensure it doesn't
-			 * go away while we collect the list.  If we cannot, just
-			 * disregard the table.  Be sure to release this if we ultimately
-			 * decide not to process the table!
-			 */
-			if (!ConditionalLockRelationOid(class->oid, AccessShareLock))
-				continue;
-
-			/* Verify that the table still exists */
-			if (!SearchSysCacheExists1(RELOID, ObjectIdGetDatum(class->oid)))
-			{
-				UnlockRelationOid(class->oid, AccessShareLock);
-				continue;
-			}
-
 			/* Can only process plain tables and matviews */
 			if (class->relkind != RELKIND_RELATION &&
 				class->relkind != RELKIND_MATVIEW)
-			{
-				UnlockRelationOid(class->oid, AccessShareLock);
 				continue;
-			}
 
 			/* Skip temp relations belonging to other sessions */
 			if (class->relpersistence == RELPERSISTENCE_TEMP &&
 				!isTempOrTempToastNamespace(class->relnamespace))
-			{
-				UnlockRelationOid(class->oid, AccessShareLock);
 				continue;
-			}
 
 			/* noisily skip rels which the user can't process */
 			if (!repack_is_permitted_for_relation(cmd, class->oid,
 												  GetUserId()))
-			{
-				UnlockRelationOid(class->oid, AccessShareLock);
 				continue;
-			}
 
 			/* Use a permanent memory context for the result list */
 			oldcxt = MemoryContextSwitchTo(permcxt);
@@ -2295,7 +2265,7 @@ get_tables_to_repack(RepackCommand cmd, bool usingindex, MemoryContext permcxt)
 	}
 
 	table_endscan(scan);
-	relation_close(catalog, AccessShareLock);
+	table_close(catalog, AccessShareLock);
 
 	return rtcs;
 }
@@ -2367,21 +2337,42 @@ get_tables_to_repack_partitioned(RepackCommand cmd, Oid relid,
 
 
 /*
- * Return whether userid has privileges to REPACK relid.  If not, this
- * function emits a WARNING.
+ * Return whether userid has privileges to execute REPACK on relid.
+ *
+ * Caller may not have a lock on the relation, so it could have been
+ * dropped concurrently.  In that case, silently return false.
+ *
+ * If the relation does exist but the user doesn't have the required
+ * privs, emit a WARNING and return false.  Otherwise, return true.
  */
 static bool
 repack_is_permitted_for_relation(RepackCommand cmd, Oid relid, Oid userid)
 {
+	bool		is_missing = false;
+	AclResult	result;
+	char	   *relname;
+
 	Assert(cmd == REPACK_COMMAND_CLUSTER || cmd == REPACK_COMMAND_REPACK);
 
-	if (pg_class_aclcheck(relid, userid, ACL_MAINTAIN) == ACLCHECK_OK)
+	result = pg_class_aclcheck_ext(relid, userid, ACL_MAINTAIN, &is_missing);
+	if (is_missing)
+		return false;
+
+	if (result == ACLCHECK_OK)
 		return true;
 
-	ereport(WARNING,
-			errmsg("permission denied to execute %s on \"%s\", skipping it",
-				   RepackCommandAsString(cmd),
-				   get_rel_name(relid)));
+	/*
+	 * The relation can also be dropped after we tested its ACL and before we
+	 * read its relname, so be careful here.
+	 */
+	relname = get_rel_name(relid);
+	if (relname != NULL)
+	{
+		ereport(WARNING,
+				errmsg("permission denied to execute %s on \"%s\", skipping it",
+					   RepackCommandAsString(cmd), relname));
+		pfree(relname);
+	}
 
 	return false;
 }
