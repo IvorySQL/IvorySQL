@@ -708,7 +708,7 @@ pg_restore_attribute_stats(PG_FUNCTION_ARGS)
 }
 
 /*
- * Import attribute statistics from NullableDatum inputs for all statitical
+ * Import attribute statistics from NullableDatum inputs for all statistical
  * values.
  *
  * For now, the 'version' argument is ignored. In the future it can be used
