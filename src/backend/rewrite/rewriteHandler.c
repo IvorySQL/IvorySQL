@@ -4278,6 +4278,14 @@ RewriteQuery(Query *parsetree, List *rewrite_events, int orig_rt_length,
 		 */
 		rt_entry_relation = relation_open(rt_entry->relid, NoLock);
 
+		/* We don't support FOR PORTION OF on views with INSTEAD OF triggers. */
+		if (parsetree->forPortionOf &&
+			rt_entry_relation->rd_rel->relkind == RELKIND_VIEW &&
+			view_has_instead_trigger(rt_entry_relation, event, NIL))
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("views with INSTEAD OF triggers do not support FOR PORTION OF")));
+
 		/*
 		 * Rewrite the targetlist as needed for the command type.
 		 */
