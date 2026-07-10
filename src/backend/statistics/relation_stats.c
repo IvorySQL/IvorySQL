@@ -256,7 +256,7 @@ pg_restore_relation_stats(PG_FUNCTION_ARGS)
 }
 
 /*
- * Import relation statistics from NullableDatum inputs for all statitical
+ * Import relation statistics from NullableDatum inputs for all statistical
  * values.
  *
  * For now, the 'version' argument is ignored. In the future it can be used
