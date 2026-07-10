@@ -4652,6 +4652,34 @@ ANALYZE dtest_table;
 
 ANALYZE VERBOSE dtest_ftable;             -- should work
 
+-- dtest_ftable's stats should now exactly match dtest_table's
+-- compare values, should match
+SELECT relpages, reltuples FROM pg_class
+WHERE oid = 'public.dtest_table'::regclass
+EXCEPT
+SELECT relpages, reltuples FROM pg_class
+WHERE oid = 'public.dtest_ftable'::regclass;
+
+-- compare the rowcounts, should get 0 rows back
+SELECT COUNT(*) FROM pg_stats
+WHERE schemaname = 'public' AND tablename = 'dtest_table'
+EXCEPT
+SELECT COUNT(*) FROM pg_stats
+WHERE schemaname = 'public' AND tablename = 'dtest_ftable';
+
+-- test only a few stats columns common to integer types
+SELECT attname, inherited, null_frac, avg_width, n_distinct,
+  most_common_vals::text as mcv, most_common_freqs,
+  histogram_bounds::text as hb, correlation
+FROM pg_stats
+WHERE schemaname = 'public' AND tablename = 'dtest_table'
+EXCEPT
+SELECT attname, inherited, null_frac, avg_width, n_distinct,
+  most_common_vals::text as mcv, most_common_freqs,
+  histogram_bounds::text as hb, correlation
+FROM pg_stats
+WHERE schemaname = 'public' AND tablename = 'dtest_ftable';
+
 -- cleanup
 DROP FOREIGN TABLE simport_ftable;
 DROP FOREIGN TABLE simport_fview;
