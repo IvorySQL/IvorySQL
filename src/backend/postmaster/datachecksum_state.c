@@ -1352,6 +1352,14 @@ ProcessAllDatabases(void)
 			/* Abort flag set, so exit the whole process */
 			return false;
 		}
+		else if (result == DATACHECKSUMSWORKER_DROPDB)
+		{
+			/*
+			 * Ignore databases that were dropped before their worker could
+			 * process them, and continue with the remaining databases.
+			 */
+			continue;
+		}
 
 		/*
 		 * When one database has completed, it will have done shared catalogs
@@ -1497,11 +1505,11 @@ FreeDatabaseList(List *dblist)
  *		Compile a list of relations in the database
  *
  * Returns a list of OIDs for the requested relation types. If temp_relations
- * is True then only temporary relations are returned. If temp_relations is
- * False then non-temporary relations which have data checksums are returned.
- * If include_shared is True then shared relations are included as well in a
- * non-temporary list. include_shared has no relevance when building a list of
- * temporary relations.
+ * is True then only temporary relations with storage are returned.  If
+ * temp_relations is False then non-temporary relations with storage are
+ * returned.  If include_shared is True then shared relations are included as
+ * well in a non-temporary list. include_shared has no relevance when building
+ * a list of temporary relations.
  */
 static List *
 BuildRelationList(bool temp_relations, bool include_shared)
@@ -1522,6 +1530,9 @@ BuildRelationList(bool temp_relations, bool include_shared)
 	{
 		Form_pg_class pgc = (Form_pg_class) GETSTRUCT(tup);
 
+		if (!RELKIND_HAS_STORAGE(pgc->relkind))
+			continue;
+
 		/* Only include temporary relations when explicitly asked to */
 		if (pgc->relpersistence == RELPERSISTENCE_TEMP)
 		{
@@ -1535,9 +1546,6 @@ BuildRelationList(bool temp_relations, bool include_shared)
 			 * immediately as the current relation isn't a temp relation.
 			 */
 			if (temp_relations)
-				continue;
-
-			if (!RELKIND_HAS_STORAGE(pgc->relkind))
 				continue;
 
 			if (pgc->relisshared && !include_shared)
