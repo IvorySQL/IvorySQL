@@ -8095,8 +8095,8 @@ FROM pg_stat_get_backend_idset() AS backendid;
        </para>
        <para>
         The total number of databases which will be processed. Only the
-        launcher process has this value set, the worker processes have this
-        set to <literal>NULL</literal>.
+        launcher process has this value set when enabling data checksums;
+        otherwise this is set to <literal>NULL</literal>.
        </para>
       </entry>
      </row>
@@ -8108,8 +8108,8 @@ FROM pg_stat_get_backend_idset() AS backendid;
        </para>
        <para>
         The number of databases which have been processed. Only the launcher
-        process has this value set, the worker processes have this set to
-        <literal>NULL</literal>.
+        process has this value set when enabling data checksums; otherwise
+        this is set to <literal>NULL</literal>.
        </para>
       </entry>
      </row>

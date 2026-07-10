@@ -2123,7 +2123,10 @@ pg_stat_progress_data_checksums| SELECT s.pid,
             WHEN '-1'::integer THEN NULL::bigint
             ELSE s.param2
         END AS databases_total,
-    s.param3 AS databases_done,
+        CASE s.param3
+            WHEN '-1'::integer THEN NULL::bigint
+            ELSE s.param3
+        END AS databases_done,
         CASE s.param4
             WHEN '-1'::integer THEN NULL::bigint
             ELSE s.param4

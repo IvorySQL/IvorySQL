@@ -391,6 +391,7 @@ static void FreeDatabaseList(List *dblist);
 static DataChecksumsWorkerResult ProcessDatabase(DataChecksumsWorkerDatabase *db);
 static bool ProcessAllDatabases(void);
 static bool ProcessSingleRelationFork(Relation reln, ForkNumber forkNum, BufferAccessStrategy strategy);
+static void ResetDataChecksumsProgressCounters(void);
 static void launcher_cancel_handler(SIGNAL_ARGS);
 static void WaitForAllTransactionsToFinish(void);
 
@@ -698,7 +699,19 @@ ProcessSingleRelationFork(Relation reln, ForkNumber forkNum, BufferAccessStrateg
 	snprintf(activity, sizeof(activity) - 1, "processing: %s.%s (%s, %u blocks)",
 			 (relns ? relns : ""), RelationGetRelationName(reln), forkNames[forkNum], numblocks);
 	pgstat_report_activity(STATE_RUNNING, activity);
-	pgstat_progress_update_param(PROGRESS_DATACHECKSUMS_BLOCKS_TOTAL, numblocks);
+	{
+		const int	index[] = {
+			PROGRESS_DATACHECKSUMS_BLOCKS_TOTAL,
+			PROGRESS_DATACHECKSUMS_BLOCKS_DONE
+		};
+
+		int64		vals[2];
+
+		vals[0] = numblocks;
+		vals[1] = 0;
+
+		pgstat_progress_update_multi_param(2, index, vals);
+	}
 	if (relns)
 		pfree(relns);
 
@@ -762,6 +775,29 @@ ProcessSingleRelationFork(Relation reln, ForkNumber forkNum, BufferAccessStrateg
 	}
 
 	return true;
+}
+
+/*
+ * Initialize all data checksum progress counters to be displayed as NULL.
+ */
+static void
+ResetDataChecksumsProgressCounters(void)
+{
+	const int	index[] = {
+		PROGRESS_DATACHECKSUMS_DBS_TOTAL,
+		PROGRESS_DATACHECKSUMS_DBS_DONE,
+		PROGRESS_DATACHECKSUMS_RELS_TOTAL,
+		PROGRESS_DATACHECKSUMS_RELS_DONE,
+		PROGRESS_DATACHECKSUMS_BLOCKS_TOTAL,
+		PROGRESS_DATACHECKSUMS_BLOCKS_DONE,
+	};
+
+	int64		vals[lengthof(index)];
+
+	for (int i = 0; i < lengthof(index); i++)
+		vals[i] = -1;
+
+	pgstat_progress_update_multi_param(lengthof(index), index, vals);
 }
 
 /*
@@ -1142,6 +1178,7 @@ again:
 
 	pgstat_progress_start_command(PROGRESS_COMMAND_DATACHECKSUMS,
 								  InvalidOid);
+	ResetDataChecksumsProgressCounters();
 
 	if (operation == ENABLE_DATACHECKSUMS)
 	{
@@ -1269,23 +1306,14 @@ ProcessAllDatabases(void)
 		const int	index[] = {
 			PROGRESS_DATACHECKSUMS_DBS_TOTAL,
 			PROGRESS_DATACHECKSUMS_DBS_DONE,
-			PROGRESS_DATACHECKSUMS_RELS_TOTAL,
-			PROGRESS_DATACHECKSUMS_RELS_DONE,
-			PROGRESS_DATACHECKSUMS_BLOCKS_TOTAL,
-			PROGRESS_DATACHECKSUMS_BLOCKS_DONE,
 		};
 
-		int64		vals[6];
+		int64		vals[2];
 
 		vals[0] = list_length(DatabaseList);
 		vals[1] = 0;
-		/* translated to NULL */
-		vals[2] = -1;
-		vals[3] = -1;
-		vals[4] = -1;
-		vals[5] = -1;
 
-		pgstat_progress_update_multi_param(6, index, vals);
+		pgstat_progress_update_multi_param(2, index, vals);
 	}
 
 	foreach_ptr(DataChecksumsWorkerDatabase, db, DatabaseList)
@@ -1581,6 +1609,7 @@ DataChecksumsWorkerMain(Datum arg)
 	/* worker will have a separate entry in pg_stat_progress_data_checksums */
 	pgstat_progress_start_command(PROGRESS_COMMAND_DATACHECKSUMS,
 								  InvalidOid);
+	ResetDataChecksumsProgressCounters();
 
 	/*
 	 * Get a list of all temp tables present as we start in this database. We
