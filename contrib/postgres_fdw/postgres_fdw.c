@@ -24,7 +24,6 @@
 #include "commands/vacuum.h"
 #include "executor/execAsync.h"
 #include "executor/instrument.h"
-#include "executor/spi.h"
 #include "foreign/fdwapi.h"
 #include "funcapi.h"
 #include "miscadmin.h"
@@ -47,6 +46,7 @@
 #include "storage/latch.h"
 #include "utils/builtins.h"
 #include "utils/float.h"
+#include "utils/fmgroids.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
@@ -337,9 +337,9 @@ typedef struct
 {
 	PGresult   *rel;
 	PGresult   *att;
-	int			server_version_num;
 	double		livetuples;
 	double		deadtuples;
+	int			version;
 } RemoteStatsResults;
 
 /* Column order in relation stats query */
@@ -369,136 +369,6 @@ enum AttStatsColumns
 	ATTSTATS_RANGE_EMPTY_FRAC,
 	ATTSTATS_RANGE_BOUNDS_HISTOGRAM,
 	ATTSTATS_NUM_FIELDS,
-};
-
-/* Relation stats import query */
-static const char *relimport_sql =
-"SELECT pg_catalog.pg_restore_relation_stats(\n"
-"\t'version', $1,\n"
-"\t'schemaname', $2,\n"
-"\t'relname', $3,\n"
-"\t'relpages', $4::integer,\n"
-"\t'reltuples', $5::real)";
-
-/* Argument order in relation stats import query */
-enum RelImportSqlArgs
-{
-	RELIMPORT_SQL_VERSION = 0,
-	RELIMPORT_SQL_SCHEMANAME,
-	RELIMPORT_SQL_RELNAME,
-	RELIMPORT_SQL_RELPAGES,
-	RELIMPORT_SQL_RELTUPLES,
-	RELIMPORT_SQL_NUM_FIELDS
-};
-
-/* Argument types in relation stats import query */
-static const Oid relimport_argtypes[RELIMPORT_SQL_NUM_FIELDS] =
-{
-	INT4OID, TEXTOID, TEXTOID, TEXTOID,
-	TEXTOID,
-};
-
-/* Attribute stats import query */
-static const char *attimport_sql =
-"SELECT pg_catalog.pg_restore_attribute_stats(\n"
-"\t'version', $1,\n"
-"\t'schemaname', $2,\n"
-"\t'relname', $3,\n"
-"\t'attnum', $4,\n"
-"\t'inherited', false::boolean,\n"
-"\t'null_frac', $5::real,\n"
-"\t'avg_width', $6::integer,\n"
-"\t'n_distinct', $7::real,\n"
-"\t'most_common_vals', $8,\n"
-"\t'most_common_freqs', $9::real[],\n"
-"\t'histogram_bounds', $10,\n"
-"\t'correlation', $11::real,\n"
-"\t'most_common_elems', $12,\n"
-"\t'most_common_elem_freqs', $13::real[],\n"
-"\t'elem_count_histogram', $14::real[],\n"
-"\t'range_length_histogram', $15,\n"
-"\t'range_empty_frac', $16::real,\n"
-"\t'range_bounds_histogram', $17)";
-
-/* Argument order in attribute stats import query */
-enum AttImportSqlArgs
-{
-	ATTIMPORT_SQL_VERSION = 0,
-	ATTIMPORT_SQL_SCHEMANAME,
-	ATTIMPORT_SQL_RELNAME,
-	ATTIMPORT_SQL_ATTNUM,
-	ATTIMPORT_SQL_NULL_FRAC,
-	ATTIMPORT_SQL_AVG_WIDTH,
-	ATTIMPORT_SQL_N_DISTINCT,
-	ATTIMPORT_SQL_MOST_COMMON_VALS,
-	ATTIMPORT_SQL_MOST_COMMON_FREQS,
-	ATTIMPORT_SQL_HISTOGRAM_BOUNDS,
-	ATTIMPORT_SQL_CORRELATION,
-	ATTIMPORT_SQL_MOST_COMMON_ELEMS,
-	ATTIMPORT_SQL_MOST_COMMON_ELEM_FREQS,
-	ATTIMPORT_SQL_ELEM_COUNT_HISTOGRAM,
-	ATTIMPORT_SQL_RANGE_LENGTH_HISTOGRAM,
-	ATTIMPORT_SQL_RANGE_EMPTY_FRAC,
-	ATTIMPORT_SQL_RANGE_BOUNDS_HISTOGRAM,
-	ATTIMPORT_SQL_NUM_FIELDS
-};
-
-/* Argument types in attribute stats import query */
-static const Oid attimport_argtypes[ATTIMPORT_SQL_NUM_FIELDS] =
-{
-	INT4OID, TEXTOID, TEXTOID, INT2OID,
-	TEXTOID, TEXTOID, TEXTOID, TEXTOID,
-	TEXTOID, TEXTOID, TEXTOID, TEXTOID,
-	TEXTOID, TEXTOID, TEXTOID, TEXTOID,
-	TEXTOID,
-};
-
-/*
- * The mapping of attribute stats query columns to the positional arguments in
- * the prepared pg_restore_attribute_stats() statement.
- */
-typedef struct
-{
-	enum AttStatsColumns res_field;
-	enum AttImportSqlArgs arg_num;
-} AttrResultArgMap;
-
-#define NUM_MAPPED_ATTIMPORT_ARGS 13
-
-static const AttrResultArgMap attr_result_arg_map[NUM_MAPPED_ATTIMPORT_ARGS] =
-{
-	{ATTSTATS_NULL_FRAC, ATTIMPORT_SQL_NULL_FRAC},
-	{ATTSTATS_AVG_WIDTH, ATTIMPORT_SQL_AVG_WIDTH},
-	{ATTSTATS_N_DISTINCT, ATTIMPORT_SQL_N_DISTINCT},
-	{ATTSTATS_MOST_COMMON_VALS, ATTIMPORT_SQL_MOST_COMMON_VALS},
-	{ATTSTATS_MOST_COMMON_FREQS, ATTIMPORT_SQL_MOST_COMMON_FREQS},
-	{ATTSTATS_HISTOGRAM_BOUNDS, ATTIMPORT_SQL_HISTOGRAM_BOUNDS},
-	{ATTSTATS_CORRELATION, ATTIMPORT_SQL_CORRELATION},
-	{ATTSTATS_MOST_COMMON_ELEMS, ATTIMPORT_SQL_MOST_COMMON_ELEMS},
-	{ATTSTATS_MOST_COMMON_ELEM_FREQS, ATTIMPORT_SQL_MOST_COMMON_ELEM_FREQS},
-	{ATTSTATS_ELEM_COUNT_HISTOGRAM, ATTIMPORT_SQL_ELEM_COUNT_HISTOGRAM},
-	{ATTSTATS_RANGE_LENGTH_HISTOGRAM, ATTIMPORT_SQL_RANGE_LENGTH_HISTOGRAM},
-	{ATTSTATS_RANGE_EMPTY_FRAC, ATTIMPORT_SQL_RANGE_EMPTY_FRAC},
-	{ATTSTATS_RANGE_BOUNDS_HISTOGRAM, ATTIMPORT_SQL_RANGE_BOUNDS_HISTOGRAM},
-};
-
-/* Attribute stats clear query */
-static const char *attclear_sql =
-"SELECT pg_catalog.pg_clear_attribute_stats($1, $2, $3, false)";
-
-/* Argument order in attribute stats clear query */
-enum AttClearSqlArgs
-{
-	ATTCLEAR_SQL_SCHEMANAME = 0,
-	ATTCLEAR_SQL_RELNAME,
-	ATTCLEAR_SQL_ATTNAME,
-	ATTCLEAR_SQL_NUM_FIELDS
-};
-
-/* Argument types in attribute stats clear query */
-static const Oid attclear_argtypes[ATTCLEAR_SQL_NUM_FIELDS] =
-{
-	TEXTOID, TEXTOID, TEXTOID,
 };
 
 /*
@@ -718,14 +588,18 @@ static bool match_attrmap(PGresult *res,
 						  const char *remote_relname,
 						  int attrcnt,
 						  RemoteAttributeMapping *remattrmap);
-static bool import_fetched_statistics(const char *schemaname,
+static bool import_fetched_statistics(Relation relation,
+									  const char *schemaname,
 									  const char *relname,
 									  int attrcnt,
 									  const RemoteAttributeMapping *remattrmap,
 									  RemoteStatsResults *remstats);
-static void map_field_to_arg(PGresult *res, int row, int field,
-							 int arg, Datum *values, char *nulls);
-static bool import_spi_query_ok(void);
+static char *get_opt_value(PGresult *res, int row, int col);
+static void set_text_arg(NullableDatum *arg, const char *s);
+static void set_int32_arg(NullableDatum *arg, const char *s);
+static void set_uint32_arg(NullableDatum *arg, const char *s);
+static void set_float_arg(NullableDatum *arg, const char *s);
+static void set_floatarr_arg(NullableDatum *arg, const char *s);
 static void produce_tuple_asynchronously(AsyncRequest *areq, bool fetch);
 static void fetch_more_data_begin(AsyncRequest *areq);
 static void complete_pending_request(AsyncRequest *areq);
@@ -5669,7 +5543,7 @@ postgresImportForeignStatistics(Relation relation, List *va_cols, int elevel)
 								 &attrcnt, &remattrmap, &remstats);
 
 	if (ok)
-		ok = import_fetched_statistics(schemaname, relname,
+		ok = import_fetched_statistics(relation, schemaname, relname,
 									   attrcnt, remattrmap, &remstats);
 
 	if (ok)
@@ -5739,7 +5613,7 @@ fetch_remote_statistics(Relation relation,
 	 */
 	user = GetUserMapping(GetUserId(), table->serverid);
 	conn = GetConnection(user, false, NULL);
-	remstats->server_version_num = server_version_num = PQserverVersion(conn);
+	remstats->version = server_version_num = PQserverVersion(conn);
 
 	/* Fetch relation stats. */
 	remstats->rel = relstats = fetch_relstats(conn, relation);
@@ -6145,191 +6019,232 @@ match_attrmap(PGresult *res,
  * Import fetched statistics into the local statistics tables.
  */
 static bool
-import_fetched_statistics(const char *schemaname,
+import_fetched_statistics(Relation relation,
+						  const char *schemaname,
 						  const char *relname,
 						  int attrcnt,
 						  const RemoteAttributeMapping *remattrmap,
 						  RemoteStatsResults *remstats)
 {
-	SPIPlanPtr	attimport_plan = NULL;
-	SPIPlanPtr	attclear_plan = NULL;
-	Datum		values[ATTIMPORT_SQL_NUM_FIELDS];
-	char		nulls[ATTIMPORT_SQL_NUM_FIELDS];
-	int			spirc;
-	bool		ok = false;
+	PGresult   *res;
+	NullableDatum args[ATTSTATS_NUM_FIELDS];
 
-	/* Assign all the invariant parameters common to relation/attribute stats */
-	values[ATTIMPORT_SQL_VERSION] = Int32GetDatum(remstats->server_version_num);
-	nulls[ATTIMPORT_SQL_VERSION] = ' ';
-
-	values[ATTIMPORT_SQL_SCHEMANAME] = CStringGetTextDatum(schemaname);
-	nulls[ATTIMPORT_SQL_SCHEMANAME] = ' ';
-
-	values[ATTIMPORT_SQL_RELNAME] = CStringGetTextDatum(relname);
-	nulls[ATTIMPORT_SQL_RELNAME] = ' ';
-
-	SPI_connect();
+	/* Set the 'version' parameter, which is common to both statistics. */
+	args[0].value = UInt32GetDatum(remstats->version);
+	args[0].isnull = false;
 
 	/*
 	 * We import attribute statistics first, if any, because those are more
 	 * prone to errors.  This avoids making a modification of pg_class that
 	 * will just get rolled back by a failed attribute import.
 	 */
-	if (remstats->att != NULL)
+	res = remstats->att;
+	if (res != NULL)
 	{
-		Assert(PQnfields(remstats->att) == ATTSTATS_NUM_FIELDS);
-		Assert(PQntuples(remstats->att) >= 1);
-
-		attimport_plan = SPI_prepare(attimport_sql, ATTIMPORT_SQL_NUM_FIELDS,
-									 attimport_argtypes);
-		if (attimport_plan == NULL)
-			elog(ERROR, "failed to prepare attimport_sql query");
-
-		attclear_plan = SPI_prepare(attclear_sql, ATTCLEAR_SQL_NUM_FIELDS,
-									attclear_argtypes);
-		if (attclear_plan == NULL)
-			elog(ERROR, "failed to prepare attclear_sql query");
-
-		nulls[ATTIMPORT_SQL_ATTNUM] = ' ';
+		Assert(PQnfields(res) == ATTSTATS_NUM_FIELDS);
+		Assert(PQntuples(res) >= 1);
 
 		for (int mapidx = 0; mapidx < attrcnt; mapidx++)
 		{
 			int			row = remattrmap[mapidx].res_index;
-			Datum	   *values2 = values + 1;
-			char	   *nulls2 = nulls + 1;
+			AttrNumber	attnum = remattrmap[mapidx].local_attnum;
 
 			/* All mappings should have been assigned a result set row. */
 			Assert(row >= 0);
 
-			/*
-			 * Check for user-requested abort.
-			 */
+			/* Check for user-requested abort. */
 			CHECK_FOR_INTERRUPTS();
 
-			/*
-			 * First, clear existing attribute stats.
-			 *
-			 * We can re-use the values/nulls because the number of parameters
-			 * is less and the first two params are the same as the second and
-			 * third ones in attimport_sql.
-			 */
-			values2[ATTCLEAR_SQL_ATTNAME] =
-				CStringGetTextDatum(remattrmap[mapidx].local_attname);
+			/* Clear existing attribute statistics. */
+			delete_attribute_statistics(relation, attnum, false);
 
-			spirc = SPI_execute_plan(attclear_plan, values2, nulls2, false, 1);
-			if (spirc != SPI_OK_SELECT)
-				elog(ERROR, "failed to execute attclear_sql query for column \"%s\" of foreign table \"%s.%s\"",
-					 remattrmap[mapidx].local_attname, schemaname, relname);
+			/* Set the remaining parameters. */
+			set_float_arg(&args[1],
+						  get_opt_value(res, row, ATTSTATS_NULL_FRAC));
+			set_int32_arg(&args[2],
+						  get_opt_value(res, row, ATTSTATS_AVG_WIDTH));
+			set_float_arg(&args[3],
+						  get_opt_value(res, row, ATTSTATS_N_DISTINCT));
+			set_text_arg(&args[4],
+						 get_opt_value(res, row, ATTSTATS_MOST_COMMON_VALS));
+			set_floatarr_arg(&args[5],
+							 get_opt_value(res, row, ATTSTATS_MOST_COMMON_FREQS));
+			set_text_arg(&args[6],
+						 get_opt_value(res, row, ATTSTATS_HISTOGRAM_BOUNDS));
+			set_float_arg(&args[7],
+						  get_opt_value(res, row, ATTSTATS_CORRELATION));
+			set_text_arg(&args[8],
+						 get_opt_value(res, row, ATTSTATS_MOST_COMMON_ELEMS));
+			set_floatarr_arg(&args[9],
+							 get_opt_value(res, row, ATTSTATS_MOST_COMMON_ELEM_FREQS));
+			set_floatarr_arg(&args[10],
+							 get_opt_value(res, row, ATTSTATS_ELEM_COUNT_HISTOGRAM));
+			set_text_arg(&args[11],
+						 get_opt_value(res, row, ATTSTATS_RANGE_LENGTH_HISTOGRAM));
+			set_float_arg(&args[12],
+						  get_opt_value(res, row, ATTSTATS_RANGE_EMPTY_FRAC));
+			set_text_arg(&args[13],
+						 get_opt_value(res, row, ATTSTATS_RANGE_BOUNDS_HISTOGRAM));
 
-			values[ATTIMPORT_SQL_ATTNUM] =
-				Int16GetDatum(remattrmap[mapidx].local_attnum);
-
-			/* Loop through all mappable columns to set remaining arguments */
-			for (int i = 0; i < NUM_MAPPED_ATTIMPORT_ARGS; i++)
-				map_field_to_arg(remstats->att, row,
-								 attr_result_arg_map[i].res_field,
-								 attr_result_arg_map[i].arg_num,
-								 values, nulls);
-
-			spirc = SPI_execute_plan(attimport_plan, values, nulls, false, 1);
-			if (spirc != SPI_OK_SELECT)
-				elog(ERROR, "failed to execute attimport_sql query for column \"%s\" of foreign table \"%s.%s\"",
-					 remattrmap[mapidx].local_attname, schemaname, relname);
-
-			if (!import_spi_query_ok())
+			/* Try to import the statistics. */
+			if (!import_attribute_statistics(relation, attnum, false,
+											 &args[0], &args[1], &args[2],
+											 &args[3], &args[4], &args[5],
+											 &args[6], &args[7], &args[8],
+											 &args[9], &args[10], &args[11],
+											 &args[12], &args[13]))
 			{
 				ereport(WARNING,
 						errmsg("could not import statistics for foreign table \"%s.%s\" --- attribute statistics import failed for column \"%s\" of this foreign table",
 							   schemaname, relname,
 							   remattrmap[mapidx].local_attname));
-				goto import_cleanup;
+				return false;
 			}
 		}
 	}
 
 	/*
-	 * Import relation stats.  We only perform this once, so there is no point
-	 * in preparing the statement.
-	 *
-	 * We can re-use the values/nulls because the number of parameters is less
-	 * and the first three params are the same as attimport_sql.
+	 * Import relation statistics.
 	 */
-	Assert(remstats->rel != NULL);
-	Assert(PQnfields(remstats->rel) == RELSTATS_NUM_FIELDS);
-	Assert(PQntuples(remstats->rel) == 1);
-	map_field_to_arg(remstats->rel, 0, RELSTATS_RELPAGES,
-					 RELIMPORT_SQL_RELPAGES, values, nulls);
-	map_field_to_arg(remstats->rel, 0, RELSTATS_RELTUPLES,
-					 RELIMPORT_SQL_RELTUPLES, values, nulls);
+	res = remstats->rel;
+	Assert(res != NULL);
+	Assert(PQnfields(res) == RELSTATS_NUM_FIELDS);
+	Assert(PQntuples(res) == 1);
 
-	spirc = SPI_execute_with_args(relimport_sql,
-								  RELIMPORT_SQL_NUM_FIELDS,
-								  relimport_argtypes,
-								  values, nulls, false, 1);
-	if (spirc != SPI_OK_SELECT)
-		elog(ERROR, "failed to execute relimport_sql query for foreign table \"%s.%s\"",
-			 schemaname, relname);
+	/* Set the remaining parameters. */
+	set_uint32_arg(&args[1], get_opt_value(res, 0, RELSTATS_RELPAGES));
+	Assert(!args[1].isnull);
+	set_float_arg(&args[2], get_opt_value(res, 0, RELSTATS_RELTUPLES));
+	Assert(!args[2].isnull);
+	args[3].value = (Datum) 0;
+	args[3].isnull = true;
+	args[4].value = (Datum) 0;
+	args[4].isnull = true;
 
-	if (!import_spi_query_ok())
+	/* Try to import the statistics. */
+	if (!import_relation_statistics(relation, &args[0], &args[1],
+									&args[2], &args[3], &args[4]))
 	{
 		ereport(WARNING,
 				errmsg("could not import statistics for foreign table \"%s.%s\" --- relation statistics import failed for this foreign table",
 					   schemaname, relname));
-		goto import_cleanup;
+		return false;
 	}
 
-	ok = true;
-
-import_cleanup:
-	if (attimport_plan)
-		SPI_freeplan(attimport_plan);
-	if (attclear_plan)
-		SPI_freeplan(attclear_plan);
-	SPI_finish();
-	return ok;
+	return true;
 }
 
 /*
- * Move a string value from a result set to a Text value of a Datum array.
+ * Conenience routine to fetch the value for the row/column of the PGresult
  */
-static void
-map_field_to_arg(PGresult *res, int row, int field,
-				 int arg, Datum *values, char *nulls)
+static char *
+get_opt_value(PGresult *res, int row, int col)
 {
-	if (PQgetisnull(res, row, field))
+	if (PQgetisnull(res, row, col))
+		return NULL;
+	return PQgetvalue(res, row, col);
+}
+
+/*
+ * Convenience routine for setting optional text arguments
+ */
+void
+set_text_arg(NullableDatum *arg, const char *s)
+{
+	if (s)
 	{
-		values[arg] = (Datum) 0;
-		nulls[arg] = 'n';
+		arg->value = CStringGetTextDatum(s);
+		arg->isnull = false;
 	}
 	else
 	{
-		const char *s = PQgetvalue(res, row, field);
-
-		values[arg] = CStringGetTextDatum(s);
-		nulls[arg] = ' ';
+		arg->value = (Datum) 0;
+		arg->isnull = true;
 	}
 }
 
 /*
- * Check the 1x1 result set of a pg_restore_*_stats() command for success.
+ * Convenience routine for setting optional int32 arguments
  */
-static bool
-import_spi_query_ok(void)
+void
+set_int32_arg(NullableDatum *arg, const char *s)
 {
-	TupleDesc	tupdesc;
-	Datum		dat;
-	bool		isnull;
+	if (s)
+	{
+		int32		val = pg_strtoint32(s);
 
-	Assert(SPI_tuptable != NULL);
-	Assert(SPI_processed == 1);
+		arg->value = Int32GetDatum(val);
+		arg->isnull = false;
+	}
+	else
+	{
+		arg->value = (Datum) 0;
+		arg->isnull = true;
+	}
+}
 
-	tupdesc = SPI_tuptable->tupdesc;
-	Assert(tupdesc->natts == 1);
-	Assert(TupleDescAttr(tupdesc, 0)->atttypid == BOOLOID);
-	dat = SPI_getbinval(SPI_tuptable->vals[0], tupdesc, 1, &isnull);
-	Assert(!isnull);
+/*
+ * Convenience routine for setting optional uint32 arguments
+ */
+void
+set_uint32_arg(NullableDatum *arg, const char *s)
+{
+	if (s)
+	{
+		uint32		val = uint32in_subr(s, NULL, "uint32", NULL);
 
-	return DatumGetBool(dat);
+		arg->value = UInt32GetDatum(val);
+		arg->isnull = false;
+	}
+	else
+	{
+		arg->value = (Datum) 0;
+		arg->isnull = true;
+	}
+}
+
+/*
+ * Convenience routine for setting optional float arguments
+ */
+void
+set_float_arg(NullableDatum *arg, const char *s)
+{
+	if (s)
+	{
+		float4		val = float4in_internal((char *) s, NULL, "float", s, NULL);
+
+		arg->value = Float4GetDatum(val);
+		arg->isnull = false;
+	}
+	else
+	{
+		arg->value = (Datum) 0;
+		arg->isnull = true;
+	}
+}
+
+/*
+ * Convenience routine for setting optional float[] arguments
+ */
+void
+set_floatarr_arg(NullableDatum *arg, const char *s)
+{
+	if (s)
+	{
+		FmgrInfo	flinfo;
+		Datum		val;
+
+		fmgr_info(F_ARRAY_IN, &flinfo);
+		val = InputFunctionCall(&flinfo, (char *) s, FLOAT4OID, -1);
+
+		arg->value = val;
+		arg->isnull = false;
+	}
+	else
+	{
+		arg->value = (Datum) 0;
+		arg->isnull = true;
+	}
 }
 
 /*
