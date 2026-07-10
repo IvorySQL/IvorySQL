@@ -27,6 +27,7 @@
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "storage/bufmgr.h"
+#include "storage/freespace.h"
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
 
@@ -321,6 +322,9 @@ heap_page_prune_opt(Relation relation, Buffer buffer, Buffer *vmbuffer,
 
 	if (PageIsFull(page) || PageGetHeapFreeSpace(page) < minfree)
 	{
+		bool		record_free_space = false;
+		Size		freespace = 0;
+
 		/* OK, try to get exclusive buffer lock */
 		if (!ConditionalLockBufferForCleanup(buffer))
 			return;
@@ -376,16 +380,32 @@ heap_page_prune_opt(Relation relation, Buffer buffer, Buffer *vmbuffer,
 			if (presult.ndeleted > presult.nnewlpdead)
 				pgstat_update_heap_dead_tuples(relation,
 											   presult.ndeleted - presult.nnewlpdead);
+
+			/*
+			 * If this prune newly set the page all-visible, VACUUM may later
+			 * skip the page and not update the free space map (FSM) for it.
+			 * Keep the FSM from going stale by recording it now. We do not
+			 * want to update the freespace map otherwise, to reserve
+			 * freespace on this page for HOT updates.
+			 */
+			if (presult.newly_all_visible)
+			{
+				record_free_space = true;
+				freespace = PageGetHeapFreeSpace(page);
+			}
 		}
 
 		/* And release buffer lock */
 		LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
 
 		/*
-		 * We avoid reuse of any free space created on the page by unrelated
-		 * UPDATEs/INSERTs by opting to not update the FSM at this point.  The
-		 * free space should be reused by UPDATEs to *this* page.
+		 * RecordPageWithFreeSpace() only dirties the FSM when the recorded
+		 * free-space category actually changes. Note that vacuum will still
+		 * do FreeSpaceMapVacuum() for ranges of pages that are skipped, so we
+		 * don't have to worry about that here.
 		 */
+		if (record_free_space)
+			RecordPageWithFreeSpace(relation, BufferGetBlockNumber(buffer), freespace);
 	}
 }
 
