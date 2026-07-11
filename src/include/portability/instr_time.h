@@ -376,7 +376,7 @@ pg_rdtscp(void)
  * only inlining the function partially.
  * See https://gcc.gnu.org/bugzilla/show_bug.cgi?id=124795
  */
-static pg_attribute_always_inline instr_time
+static pg_always_inline instr_time
 pg_get_ticks(void)
 {
 	if (likely(timing_tsc_enabled))
@@ -390,7 +390,7 @@ pg_get_ticks(void)
 	return pg_get_ticks_system();
 }
 
-static pg_attribute_always_inline instr_time
+static pg_always_inline instr_time
 pg_get_ticks_fast(void)
 {
 	if (likely(timing_tsc_enabled))
@@ -406,13 +406,13 @@ pg_get_ticks_fast(void)
 
 #else
 
-static pg_attribute_always_inline instr_time
+static pg_always_inline instr_time
 pg_get_ticks(void)
 {
 	return pg_get_ticks_system();
 }
 
-static pg_attribute_always_inline instr_time
+static pg_always_inline instr_time
 pg_get_ticks_fast(void)
 {
 	return pg_get_ticks_system();

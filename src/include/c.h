@@ -349,20 +349,20 @@ extern "C++"
 #endif
 
 /*
- * Use "pg_attribute_always_inline" in place of "inline" for functions that
+ * Use "pg_always_inline" in place of "inline" for functions that
  * we wish to force inlining of, even when the compiler's heuristics would
  * choose not to.  But, if possible, don't force inlining in unoptimized
  * debug builds.
  */
 #if defined(__GNUC__) && defined(__OPTIMIZE__)
 /* GCC supports always_inline via __attribute__ */
-#define pg_attribute_always_inline __attribute__((always_inline)) inline
+#define pg_always_inline __attribute__((always_inline)) inline
 #elif defined(_MSC_VER)
 /* MSVC has a special keyword for this */
-#define pg_attribute_always_inline __forceinline
+#define pg_always_inline __forceinline
 #else
 /* Otherwise, the best we can do is to say "inline" */
-#define pg_attribute_always_inline inline
+#define pg_always_inline inline
 #endif
 
 /*
