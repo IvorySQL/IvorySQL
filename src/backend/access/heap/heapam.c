@@ -427,7 +427,7 @@ heap_setscanlimits(TableScanDesc sscan, BlockNumber startBlk, BlockNumber numBlk
  * multiple times, with constant arguments for all_visible,
  * check_serializable.
  */
-pg_attribute_always_inline
+pg_always_inline
 static int
 page_collect_tuples(HeapScanDesc scan, Snapshot snapshot,
 					Page page, Buffer buffer,
