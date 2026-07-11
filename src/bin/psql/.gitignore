@@ -1,4 +1,8 @@
+/ora_psqlscanslash.c
 /psqlscanslash.c
+/psqlplusparse.c
+/psqlplusparse.h
+/psqlplusscan.c
 /tab-complete.c
 /sql_help.h
 /sql_help.c

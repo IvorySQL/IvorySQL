@@ -1,4 +1,5 @@
 # Local binaries
+/ora_pg_regress
 /pg_regress
 
 # Generated subdirectories

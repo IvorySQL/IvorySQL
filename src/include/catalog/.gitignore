@@ -1,4 +1,5 @@
 /postgres.bki
+/postgres_oracle.bki
 /schemapg.h
 /syscache_ids.h
 /syscache_info.h
