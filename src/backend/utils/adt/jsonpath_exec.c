@@ -2527,7 +2527,6 @@ executeDateTimeMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
 
 		/* cache for format texts */
 		static text *fmt_txt[lengthof(fmt_str)] = {0};
-		int			i;
 
 		/*
 		 * Check for optional precision for methods other than .datetime() and
@@ -2554,7 +2553,7 @@ executeDateTimeMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
 		}
 
 		/* loop until datetime format fits */
-		for (i = 0; i < lengthof(fmt_str); i++)
+		for (size_t i = 0; i < lengthof(fmt_str); i++)
 		{
 			ErrorSaveContext escontext = {T_ErrorSaveContext};
 

@@ -1021,9 +1021,7 @@ exec_command_crosstabview(PsqlScanState scan_state, bool active_branch)
 
 	if (active_branch)
 	{
-		int			i;
-
-		for (i = 0; i < lengthof(pset.ctv_args); i++)
+		for (size_t i = 0; i < lengthof(pset.ctv_args); i++)
 			pset.ctv_args[i] = psql_scan_slash_option(scan_state,
 													  OT_NORMAL, NULL, true);
 		pset.crosstab_flag = true;
@@ -5167,7 +5165,7 @@ do_pset(const char *param, const char *value, printQueryOpt *popt, bool quiet)
 		{
 			int			match_pos = -1;
 
-			for (int i = 0; i < lengthof(formats); i++)
+			for (size_t i = 0; i < lengthof(formats); i++)
 			{
 				if (pg_strncasecmp(formats[i].name, value, vallen) == 0)
 				{

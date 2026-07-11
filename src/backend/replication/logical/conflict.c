@@ -79,7 +79,7 @@ static const ConflictLogColumnDef ConflictLogSchema[] = {
 	{.attname = "local_conflicts", .atttypid = JSONARRAYOID}
 };
 
-#define NUM_CONFLICT_ATTRS lengthof(ConflictLogSchema)
+#define NUM_CONFLICT_ATTRS ((AttrNumber) lengthof(ConflictLogSchema))
 
 static const char *const ConflictTypeNames[] = {
 	[CT_INSERT_EXISTS] = "insert_exists",

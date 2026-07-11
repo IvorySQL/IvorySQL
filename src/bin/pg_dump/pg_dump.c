@@ -19475,7 +19475,7 @@ dumpTableConstraintComment(Archive *fout, const ConstraintInfo *coninfo)
 static inline SeqType
 parse_sequence_type(const char *name)
 {
-	for (int i = 0; i < lengthof(SeqTypeNames); i++)
+	for (size_t i = 0; i < lengthof(SeqTypeNames); i++)
 	{
 		if (strcmp(SeqTypeNames[i], name) == 0)
 			return (SeqType) i;

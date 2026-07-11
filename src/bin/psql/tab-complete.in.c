@@ -2036,7 +2036,7 @@ psql_completion(const char *text, int start, int end)
 		 * as desirable interactions hidden in the order of the pattern
 		 * checks.  TODO: think about a better way to manage that.
 		 */
-		for (int tindx = 0; tindx < lengthof(tcpatterns); tindx++)
+		for (size_t tindx = 0; tindx < lengthof(tcpatterns); tindx++)
 		{
 			const TCPattern *tcpat = tcpatterns + tindx;
 			bool		match = false;

@@ -8387,7 +8387,7 @@ index_delete_sort(TM_IndexDeleteOp *delstate)
 	StaticAssertDecl(sizeof(TM_IndexDelete) <= 8,
 					 "element size exceeds 8 bytes");
 
-	for (int g = 0; g < lengthof(gaps); g++)
+	for (size_t g = 0; g < lengthof(gaps); g++)
 	{
 		for (int hi = gaps[g], i = hi; i < ndeltids; i++)
 		{

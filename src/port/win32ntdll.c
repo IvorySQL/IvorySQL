@@ -49,7 +49,7 @@ initialize_ntdll(void)
 		return -1;
 	}
 
-	for (int i = 0; i < lengthof(routines); ++i)
+	for (size_t i = 0; i < lengthof(routines); ++i)
 	{
 		pg_funcptr_t address;
 

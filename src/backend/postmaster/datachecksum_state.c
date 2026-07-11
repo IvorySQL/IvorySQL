@@ -516,7 +516,7 @@ AbsorbDataChecksumsBarrier(ProcSignalBarrierType barrier)
 	 * a condition would be a grave programmer error as the states are a
 	 * discrete set.
 	 */
-	for (int i = 0; i < lengthof(checksum_barriers) && !found; i++)
+	for (size_t i = 0; i < lengthof(checksum_barriers) && !found; i++)
 	{
 		if (checksum_barriers[i].from == current && checksum_barriers[i].to == target_state)
 			found = true;
@@ -794,7 +794,7 @@ ResetDataChecksumsProgressCounters(void)
 
 	int64		vals[lengthof(index)];
 
-	for (int i = 0; i < lengthof(index); i++)
+	for (size_t i = 0; i < lengthof(index); i++)
 		vals[i] = -1;
 
 	pgstat_progress_update_multi_param(lengthof(index), index, vals);

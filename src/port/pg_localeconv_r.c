@@ -103,7 +103,7 @@ lconv_char_member(struct lconv *lconv, int i)
 void
 pg_localeconv_free(struct lconv *lconv)
 {
-	for (int i = 0; i < lengthof(table); ++i)
+	for (size_t i = 0; i < lengthof(table); ++i)
 		if (table[i].is_string)
 			free(*lconv_string_member(lconv, i));
 }
@@ -117,7 +117,7 @@ pg_localeconv_from_langinfo(struct lconv *dst,
 							locale_t monetary_locale,
 							locale_t numeric_locale)
 {
-	for (int i = 0; i < lengthof(table); ++i)
+	for (size_t i = 0; i < lengthof(table); ++i)
 	{
 		locale_t	locale;
 
@@ -156,7 +156,7 @@ pg_localeconv_copy_members(struct lconv *dst,
 						   struct lconv *src,
 						   int category)
 {
-	for (int i = 0; i < lengthof(table); ++i)
+	for (size_t i = 0; i < lengthof(table); ++i)
 	{
 		if (table[i].category != category)
 			continue;

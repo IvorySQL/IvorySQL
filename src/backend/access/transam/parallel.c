@@ -1655,9 +1655,7 @@ LookupParallelWorkerFunction(const char *libraryname, const char *funcname)
 	 */
 	if (strcmp(libraryname, "postgres") == 0)
 	{
-		int			i;
-
-		for (i = 0; i < lengthof(InternalParallelWorkers); i++)
+		for (size_t i = 0; i < lengthof(InternalParallelWorkers); i++)
 		{
 			if (strcmp(InternalParallelWorkers[i].fn_name, funcname) == 0)
 				return InternalParallelWorkers[i].fn_addr;

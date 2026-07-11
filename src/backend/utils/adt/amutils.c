@@ -89,9 +89,7 @@ static const struct am_propname am_propnames[] =
 static IndexAMProperty
 lookup_prop_name(const char *name)
 {
-	int			i;
-
-	for (i = 0; i < lengthof(am_propnames); i++)
+	for (size_t i = 0; i < lengthof(am_propnames); i++)
 	{
 		if (pg_strcasecmp(am_propnames[i].name, name) == 0)
 			return am_propnames[i].prop;

@@ -1112,7 +1112,7 @@ boot_get_type_io_data(Oid typid,
 Oid
 boot_get_role_oid(const char *rolname)
 {
-	for (int i = 0; i < lengthof(RolInfo); i++)
+	for (size_t i = 0; i < lengthof(RolInfo); i++)
 	{
 		if (strcmp(RolInfo[i].rolname, rolname) == 0)
 			return RolInfo[i].oid;

@@ -2778,9 +2778,7 @@ get_object_namespace(const ObjectAddress *address)
 int
 read_objtype_from_string(const char *objtype)
 {
-	int			i;
-
-	for (i = 0; i < lengthof(ObjectTypeMap); i++)
+	for (size_t i = 0; i < lengthof(ObjectTypeMap); i++)
 	{
 		if (strcmp(ObjectTypeMap[i].tm_name, objtype) == 0)
 			return ObjectTypeMap[i].tm_type;
@@ -2907,9 +2905,7 @@ get_object_namensp_unique(Oid class_id)
 bool
 is_objectclass_supported(Oid class_id)
 {
-	int			index;
-
-	for (index = 0; index < lengthof(ObjectProperty); index++)
+	for (size_t index = 0; index < lengthof(ObjectProperty); index++)
 	{
 		if (ObjectProperty[index].class_oid == class_id)
 			return true;
@@ -2925,7 +2921,6 @@ static const ObjectPropertyType *
 get_object_property_data(Oid class_id)
 {
 	static const ObjectPropertyType *prop_last = NULL;
-	int			index;
 
 	/*
 	 * A shortcut to speed up multiple consecutive lookups of a particular
@@ -2934,7 +2929,7 @@ get_object_property_data(Oid class_id)
 	if (prop_last && prop_last->class_oid == class_id)
 		return prop_last;
 
-	for (index = 0; index < lengthof(ObjectProperty); index++)
+	for (size_t index = 0; index < lengthof(ObjectProperty); index++)
 	{
 		if (ObjectProperty[index].class_oid == class_id)
 		{

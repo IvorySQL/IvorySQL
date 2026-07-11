@@ -88,11 +88,10 @@ win_to_utf8(PG_FUNCTION_ARGS)
 	unsigned char *dest = (unsigned char *) PG_GETARG_CSTRING(3);
 	int			len = PG_GETARG_INT32(4);
 	bool		noError = PG_GETARG_BOOL(5);
-	int			i;
 
 	CHECK_ENCODING_CONVERSION_ARGS(-1, PG_UTF8);
 
-	for (i = 0; i < lengthof(maps); i++)
+	for (size_t i = 0; i < lengthof(maps); i++)
 	{
 		if (encoding == maps[i].encoding)
 		{
@@ -124,11 +123,10 @@ utf8_to_win(PG_FUNCTION_ARGS)
 	unsigned char *dest = (unsigned char *) PG_GETARG_CSTRING(3);
 	int			len = PG_GETARG_INT32(4);
 	bool		noError = PG_GETARG_BOOL(5);
-	int			i;
 
 	CHECK_ENCODING_CONVERSION_ARGS(PG_UTF8, -1);
 
-	for (i = 0; i < lengthof(maps); i++)
+	for (size_t i = 0; i < lengthof(maps); i++)
 	{
 		if (encoding == maps[i].encoding)
 		{

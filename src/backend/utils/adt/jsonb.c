@@ -1803,9 +1803,8 @@ cannotCastJsonbValue(enum jbvType type, const char *sqltype, Node *escontext)
 		{jbvObject, gettext_noop("cannot cast jsonb object to type %s")},
 		{jbvBinary, gettext_noop("cannot cast jsonb array or object to type %s")}
 	};
-	int			i;
 
-	for (i = 0; i < lengthof(messages); i++)
+	for (size_t i = 0; i < lengthof(messages); i++)
 		if (messages[i].type == type)
 			ereturn(escontext, (Datum) 0,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),

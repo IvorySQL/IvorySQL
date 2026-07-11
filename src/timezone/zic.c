@@ -1105,7 +1105,7 @@ catch_signals(void)
 #endif
 		SIGTERM
 	};
-	int			i;
+	size_t		i;
 
 	for (i = 0; i < sizeof signals / sizeof signals[0]; i++)
 	{

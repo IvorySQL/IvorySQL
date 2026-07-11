@@ -435,7 +435,7 @@ test_radixtree(PG_FUNCTION_ARGS)
 
 	test_empty();
 
-	for (int i = 0; i < lengthof(rt_node_class_tests); i++)
+	for (size_t i = 0; i < lengthof(rt_node_class_tests); i++)
 	{
 		rt_node_class_test_elem *test_info = &(rt_node_class_tests[i]);
 

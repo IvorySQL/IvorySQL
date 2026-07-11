@@ -3232,7 +3232,6 @@ initialize_data_directory(void)
 {
 	PG_CMD_DECL;
 	PQExpBufferData cmd;
-	int			i;
 
 	setup_signals();
 
@@ -3252,7 +3251,7 @@ initialize_data_directory(void)
 	printf(_("creating subdirectories ... "));
 	fflush(stdout);
 
-	for (i = 0; i < lengthof(subdirs); i++)
+	for (size_t i = 0; i < lengthof(subdirs); i++)
 	{
 		char	   *path;
 

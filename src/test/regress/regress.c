@@ -1409,7 +1409,7 @@ test_instr_time(PG_FUNCTION_ARGS)
 	 */
 	max_err = (ticks_per_ns_scaled >> TICKS_TO_NS_SHIFT) + 1;
 
-	for (int i = 0; i < lengthof(test_ns); i++)
+	for (size_t i = 0; i < lengthof(test_ns); i++)
 	{
 		int64		result;
 

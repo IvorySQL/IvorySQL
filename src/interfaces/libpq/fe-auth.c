@@ -557,7 +557,7 @@ pg_SASL_init(PGconn *conn, int payloadlen, bool *async)
 	{
 		bool		allowed = false;
 
-		for (int i = 0; i < lengthof(conn->allowed_sasl_mechs); i++)
+		for (size_t i = 0; i < lengthof(conn->allowed_sasl_mechs); i++)
 		{
 			if (conn->sasl == conn->allowed_sasl_mechs[i])
 			{
