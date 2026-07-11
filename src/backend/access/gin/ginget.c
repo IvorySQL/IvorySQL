@@ -507,8 +507,6 @@ static void
 startScanKey(GinState *ginstate, GinScanOpaque so, GinScanKey key)
 {
 	MemoryContext oldCtx = CurrentMemoryContext;
-	int			i;
-	int			j;
 	int		   *entryIndexes;
 
 	ItemPointerSetMin(&key->curItem);
@@ -545,11 +543,14 @@ startScanKey(GinState *ginstate, GinScanOpaque so, GinScanKey key)
 		key->nrequired = 0;
 		key->nadditional = key->nentries;
 		key->additionalEntries = palloc(key->nadditional * sizeof(GinScanEntry));
-		for (i = 0; i < key->nadditional; i++)
+		for (int i = 0; i < key->nadditional; i++)
 			key->additionalEntries[i] = key->scanEntry[i];
 	}
 	else if (key->nentries > 1)
 	{
+		uint32		i;
+		int			j;
+
 		MemoryContextSwitchTo(so->tempCtx);
 
 		entryIndexes = palloc_array(int, key->nentries);
@@ -581,10 +582,10 @@ startScanKey(GinState *ginstate, GinScanOpaque so, GinScanKey key)
 		key->additionalEntries = palloc(key->nadditional * sizeof(GinScanEntry));
 
 		j = 0;
-		for (i = 0; i < key->nrequired; i++)
-			key->requiredEntries[i] = key->scanEntry[entryIndexes[j++]];
-		for (i = 0; i < key->nadditional; i++)
-			key->additionalEntries[i] = key->scanEntry[entryIndexes[j++]];
+		for (int k = 0; k < key->nrequired; k++)
+			key->requiredEntries[k] = key->scanEntry[entryIndexes[j++]];
+		for (int k = 0; k < key->nadditional; k++)
+			key->additionalEntries[k] = key->scanEntry[entryIndexes[j++]];
 
 		/* clean up after consistentFn calls (also frees entryIndexes) */
 		MemoryContextReset(so->tempCtx);
@@ -1007,7 +1008,6 @@ keyGetItem(GinState *ginstate, MemoryContext tempCtx, GinScanKey key,
 {
 	ItemPointerData minItem;
 	ItemPointerData curPageLossy;
-	uint32		i;
 	bool		haveLossyEntry;
 	GinScanEntry entry;
 	GinTernaryValue res;
@@ -1034,7 +1034,7 @@ keyGetItem(GinState *ginstate, MemoryContext tempCtx, GinScanKey key,
 	 */
 	ItemPointerSetMax(&minItem);
 	allFinished = true;
-	for (i = 0; i < key->nrequired; i++)
+	for (int i = 0; i < key->nrequired; i++)
 	{
 		entry = key->requiredEntries[i];
 
@@ -1116,7 +1116,7 @@ keyGetItem(GinState *ginstate, MemoryContext tempCtx, GinScanKey key,
 	 * decide with partial information, that could be a big loss. So, load all
 	 * the additional entries, before calling the consistent function.
 	 */
-	for (i = 0; i < key->nadditional; i++)
+	for (int i = 0; i < key->nadditional; i++)
 	{
 		entry = key->additionalEntries[i];
 
@@ -1176,7 +1176,7 @@ keyGetItem(GinState *ginstate, MemoryContext tempCtx, GinScanKey key,
 	ItemPointerSetLossyPage(&curPageLossy,
 							GinItemPointerGetBlockNumber(&key->curItem));
 	haveLossyEntry = false;
-	for (i = 0; i < key->nentries; i++)
+	for (uint32 i = 0; i < key->nentries; i++)
 	{
 		entry = key->scanEntry[i];
 		if (entry->isFinished == false &&
@@ -1224,7 +1224,7 @@ keyGetItem(GinState *ginstate, MemoryContext tempCtx, GinScanKey key,
 	 *
 	 * Prepare entryRes array to be passed to consistentFn.
 	 */
-	for (i = 0; i < key->nentries; i++)
+	for (uint32 i = 0; i < key->nentries; i++)
 	{
 		entry = key->scanEntry[i];
 		if (entry->isFinished)
@@ -1625,13 +1625,11 @@ collectMatchesForHeapRow(IndexScanDesc scan, pendingPosition *pos)
 	OffsetNumber attrnum;
 	Page		page;
 	IndexTuple	itup;
-	int			i,
-				j;
 
 	/*
 	 * Reset all entryRes and hasMatchKey flags
 	 */
-	for (i = 0; i < so->nkeys; i++)
+	for (uint32 i = 0; i < so->nkeys; i++)
 	{
 		GinScanKey	key = so->keys + i;
 
@@ -1655,11 +1653,11 @@ collectMatchesForHeapRow(IndexScanDesc scan, pendingPosition *pos)
 
 		page = BufferGetPage(pos->pendingBuffer);
 
-		for (i = 0; i < so->nkeys; i++)
+		for (uint32 i = 0; i < so->nkeys; i++)
 		{
 			GinScanKey	key = so->keys + i;
 
-			for (j = 0; j < key->nentries; j++)
+			for (uint32 j = 0; j < key->nentries; j++)
 			{
 				GinScanEntry entry = key->scanEntry[j];
 				OffsetNumber StopLow = pos->firstOffset,
@@ -1821,7 +1819,7 @@ collectMatchesForHeapRow(IndexScanDesc scan, pendingPosition *pos)
 	 * GIN_CAT_EMPTY_QUERY scanEntry always matches.  So return "true" if all
 	 * non-excludeOnly scan keys have at least one match.
 	 */
-	for (i = 0; i < so->nkeys; i++)
+	for (uint32 i = 0; i < so->nkeys; i++)
 	{
 		if (pos->hasMatchKey[i] == false && !so->keys[i].excludeOnly)
 			return false;
@@ -1840,7 +1838,6 @@ scanPendingInsert(IndexScanDesc scan, TIDBitmap *tbm, int64 *ntids)
 	MemoryContext oldCtx;
 	bool		recheck,
 				match;
-	int			i;
 	pendingPosition pos;
 	Buffer		metabuffer = ReadBuffer(scan->indexRelation, GIN_METAPAGE_BLKNO);
 	Page		page;
@@ -1899,7 +1896,7 @@ scanPendingInsert(IndexScanDesc scan, TIDBitmap *tbm, int64 *ntids)
 		recheck = false;
 		match = true;
 
-		for (i = 0; i < so->nkeys; i++)
+		for (uint32 i = 0; i < so->nkeys; i++)
 		{
 			GinScanKey	key = so->keys + i;
 

@@ -3123,7 +3123,6 @@ GetLockConflicts(const LOCKTAG *locktag, LOCKMODE lockmode, int *countp)
 	 */
 	if (ConflictsWithRelationFastPath(locktag, lockmode))
 	{
-		int			i;
 		Oid			relid = locktag->locktag_field2;
 		VirtualTransactionId vxid;
 
@@ -3140,7 +3139,7 @@ GetLockConflicts(const LOCKTAG *locktag, LOCKMODE lockmode, int *countp)
 		 * time we return the value and the time the caller does something
 		 * with it.
 		 */
-		for (i = 0; i < ProcGlobal->allProcCount; i++)
+		for (uint32 i = 0; i < ProcGlobal->allProcCount; i++)
 		{
 			PGPROC	   *proc = GetPGProcByNumber(i);
 			uint32		j;
@@ -3781,7 +3780,6 @@ GetLockStatusData(void)
 	HASH_SEQ_STATUS seqstat;
 	int			els;
 	int			el;
-	int			i;
 
 	data = palloc_object(LockData);
 
@@ -3802,7 +3800,7 @@ GetLockStatusData(void)
 	 * lockGroupLeader field without holding all lock partition locks, and
 	 * it's not worth that.)
 	 */
-	for (i = 0; i < ProcGlobal->allProcCount; ++i)
+	for (uint32 i = 0; i < ProcGlobal->allProcCount; ++i)
 	{
 		PGPROC	   *proc = GetPGProcByNumber(i);
 
@@ -3901,7 +3899,7 @@ GetLockStatusData(void)
 	 *
 	 * Must grab LWLocks in partition-number order to avoid LWLock deadlock.
 	 */
-	for (i = 0; i < NUM_LOCK_PARTITIONS; i++)
+	for (int i = 0; i < NUM_LOCK_PARTITIONS; i++)
 		LWLockAcquire(LockHashPartitionLockByIndex(i), LW_SHARED);
 
 	/* Now we can safely count the number of proclocks */
@@ -3945,7 +3943,7 @@ GetLockStatusData(void)
 	 * until it can get all the locks it needs. (2) This avoids O(N^2)
 	 * behavior inside LWLockRelease.
 	 */
-	for (i = NUM_LOCK_PARTITIONS; --i >= 0;)
+	for (int i = NUM_LOCK_PARTITIONS; --i >= 0;)
 		LWLockRelease(LockHashPartitionLockByIndex(i));
 
 	Assert(el == data->nelements);

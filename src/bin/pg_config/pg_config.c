@@ -116,9 +116,7 @@ show_item(const char *configname,
 		  ConfigData *configdata,
 		  size_t configdata_len)
 {
-	int			i;
-
-	for (i = 0; i < configdata_len; i++)
+	for (size_t i = 0; i < configdata_len; i++)
 	{
 		if (strcmp(configname, configdata[i].name) == 0)
 			printf("%s\n", configdata[i].setting);
@@ -131,15 +129,13 @@ main(int argc, char **argv)
 	ConfigData *configdata;
 	size_t		configdata_len;
 	char		my_exec_path[MAXPGPATH];
-	int			i;
-	int			j;
 
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_config"));
 
 	progname = get_progname(argv[0]);
 
 	/* check for --help */
-	for (i = 1; i < argc; i++)
+	for (int i = 1; i < argc; i++)
 	{
 		if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-?") == 0)
 		{
@@ -158,14 +154,16 @@ main(int argc, char **argv)
 	/* no arguments -> print everything */
 	if (argc < 2)
 	{
-		for (i = 0; i < configdata_len; i++)
+		for (size_t i = 0; i < configdata_len; i++)
 			printf("%s = %s\n", configdata[i].name, configdata[i].setting);
 		exit(0);
 	}
 
 	/* otherwise print requested items */
-	for (i = 1; i < argc; i++)
+	for (int i = 1; i < argc; i++)
 	{
+		int			j;
+
 		for (j = 0; info_items[j].switchname != NULL; j++)
 		{
 			if (strcmp(argv[i], info_items[j].switchname) == 0)

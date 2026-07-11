@@ -292,7 +292,7 @@ InjectionPointAttach(const char *name,
 	max_inuse = pg_atomic_read_u32(&ActiveInjectionPoints->max_inuse);
 	free_idx = -1;
 
-	for (int idx = 0; idx < max_inuse; idx++)
+	for (uint32 idx = 0; idx < max_inuse; idx++)
 	{
 		entry = &ActiveInjectionPoints->entries[idx];
 		generation = pg_atomic_read_u64(&entry->generation);
@@ -458,7 +458,7 @@ InjectionPointCacheRefresh(const char *name)
 	 * cases.
 	 */
 	namelen = strlen(name);
-	for (int idx = 0; idx < max_inuse; idx++)
+	for (uint32 idx = 0; idx < max_inuse; idx++)
 	{
 		InjectionPointEntry *entry = &ActiveInjectionPoints->entries[idx];
 		uint64		generation;

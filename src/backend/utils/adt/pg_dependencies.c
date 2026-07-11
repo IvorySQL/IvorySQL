@@ -819,7 +819,7 @@ pg_dependencies_out(PG_FUNCTION_ARGS)
 	initStringInfo(&str);
 	appendStringInfoChar(&str, '[');
 
-	for (int i = 0; i < dependencies->ndeps; i++)
+	for (uint32 i = 0; i < dependencies->ndeps; i++)
 	{
 		MVDependency *dependency = dependencies->deps[i];
 

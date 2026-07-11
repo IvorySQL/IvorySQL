@@ -502,7 +502,7 @@ pgpa_process_unrolled_join(pgpa_plan_walker_context *walker,
 	/* If this fails, we didn't unroll properly. */
 	Assert(ujoin->outer.unrolled_join == NULL);
 
-	for (int k = 0; k < ujoin->ninner; ++k)
+	for (unsigned k = 0; k < ujoin->ninner; ++k)
 	{
 		pgpa_join_member *member = &ujoin->inner[k];
 		Bitmapset  *relids;

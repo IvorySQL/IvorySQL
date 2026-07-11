@@ -1641,7 +1641,7 @@ expandRecordVariable(ParseState *pstate, Var *var, int levelsup)
 					ParseState	mypstate = {0};
 
 					/* this loop must work, since GetRTEByRangeTablePosn did */
-					for (Index level = 0; level < netlevelsup; level++)
+					for (int level = 0; level < netlevelsup; level++)
 						pstate = pstate->parentParseState;
 					mypstate.parentParseState = pstate;
 					mypstate.p_rtable = rte->subquery->rtable;

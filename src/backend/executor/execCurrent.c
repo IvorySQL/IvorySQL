@@ -95,14 +95,13 @@ execCurrentOf(CurrentOfExpr *cexpr,
 	if (queryDesc->estate->es_rowmarks)
 	{
 		ExecRowMark *erm;
-		Index		i;
 
 		/*
 		 * Here, the query must have exactly one FOR UPDATE/SHARE reference to
 		 * the target table, and we dig the ctid info out of that.
 		 */
 		erm = NULL;
-		for (i = 0; i < queryDesc->estate->es_range_table_size; i++)
+		for (int i = 0; i < queryDesc->estate->es_range_table_size; i++)
 		{
 			ExecRowMark *thiserm = queryDesc->estate->es_rowmarks[i];
 

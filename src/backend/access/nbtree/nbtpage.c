@@ -3049,7 +3049,7 @@ _bt_pendingfsm_finalize(Relation rel, BTVacState *vstate)
 	 */
 	GetOldestNonRemovableTransactionId(heaprel);
 
-	for (int i = 0; i < vstate->npendingpages; i++)
+	for (unsigned int i = 0; i < vstate->npendingpages; i++)
 	{
 		BlockNumber target = vstate->pendingpages[i].target;
 		FullTransactionId safexid = vstate->pendingpages[i].safexid;

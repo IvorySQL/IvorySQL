@@ -793,13 +793,12 @@ pg_ndistinct_out(PG_FUNCTION_ARGS)
 {
 	bytea	   *data = PG_GETARG_BYTEA_PP(0);
 	MVNDistinct *ndist = statext_ndistinct_deserialize(data);
-	int			i;
 	StringInfoData str;
 
 	initStringInfo(&str);
 	appendStringInfoChar(&str, '[');
 
-	for (i = 0; i < ndist->nitems; i++)
+	for (uint32 i = 0; i < ndist->nitems; i++)
 	{
 		MVNDistinctItem item = ndist->items[i];
 

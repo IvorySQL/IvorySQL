@@ -1704,7 +1704,7 @@ debug_callback(CURL *handle, curl_infotype type, char *data, size_t size,
 	 * are included in a single call. We also don't allow unprintable ASCII
 	 * through without a basic <XX> escape.
 	 */
-	for (int i = 0; i < size; i++)
+	for (size_t i = 0; i < size; i++)
 	{
 		char		c = data[i];
 

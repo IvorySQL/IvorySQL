@@ -291,8 +291,7 @@ printCrosstab(const PGresult *result,
 {
 	printQueryOpt popt = pset.popt;
 	printTableContent cont;
-	int			i,
-				rn;
+	int			rn;
 	char		col_align;
 	int		   *horiz_map;
 	Oid			col_ftype = PQftype(result, field_for_columns);
@@ -316,7 +315,7 @@ printCrosstab(const PGresult *result,
 	 * This avoids an O(N^2) loop later.
 	 */
 	horiz_map = pg_malloc_array(int, num_columns);
-	for (i = 0; i < num_columns; i++)
+	for (int i = 0; i < num_columns; i++)
 		horiz_map[piv_columns[i].rank] = i;
 
 	/*
@@ -324,7 +323,7 @@ printCrosstab(const PGresult *result,
 	 */
 	col_align = column_type_alignment(data_ftype);
 
-	for (i = 0; i < num_columns; i++)
+	for (int i = 0; i < num_columns; i++)
 	{
 		char	   *colname;
 
@@ -335,7 +334,7 @@ printCrosstab(const PGresult *result,
 	pg_free(horiz_map);
 
 	/* Step 2: set row names in the first output column (vertical header) */
-	for (i = 0; i < num_rows; i++)
+	for (int i = 0; i < num_rows; i++)
 	{
 		int			k = piv_rows[i].rank;
 		int			idx = k * (num_columns + 1);
@@ -414,7 +413,7 @@ printCrosstab(const PGresult *result,
 	 * The non-initialized cells must be set to an empty string for the print
 	 * functions
 	 */
-	for (i = 0; i < cont.cellsadded; i++)
+	for (uint64 i = 0; i < cont.cellsadded; i++)
 	{
 		if (cont.cells[i] == NULL)
 			cont.cells[i] = "";

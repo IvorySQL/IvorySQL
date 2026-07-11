@@ -231,7 +231,6 @@ pgpa_build_unrolled_join(pgpa_plan_walker_context *walker,
 						 pgpa_join_unroller *join_unroller)
 {
 	pgpa_unrolled_join *ujoin;
-	int			i;
 
 	/*
 	 * We shouldn't have gone even so far as to create a join unroller unless
@@ -260,7 +259,7 @@ pgpa_build_unrolled_join(pgpa_plan_walker_context *walker,
 	 * the reverse of that order, so we need to flip the order of the arrays
 	 * when constructing the final result.
 	 */
-	for (i = 0; i < join_unroller->nused; ++i)
+	for (unsigned i = 0; i < join_unroller->nused; ++i)
 	{
 		int			k = join_unroller->nused - i - 1;
 

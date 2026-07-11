@@ -190,7 +190,7 @@ AioShmemInit(void *arg)
 	pgaio_ctl->iovecs = AioHandleIOVShmemPtr;
 	pgaio_ctl->handle_data = AioHandleDataShmemPtr;
 
-	for (int procno = 0; procno < AioProcs(); procno++)
+	for (uint32 procno = 0; procno < AioProcs(); procno++)
 	{
 		PgAioBackend *bs = &pgaio_ctl->backend_state[procno];
 

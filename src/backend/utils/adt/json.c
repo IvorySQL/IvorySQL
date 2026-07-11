@@ -1676,7 +1676,7 @@ escape_json_with_len(StringInfo buf, const char *str, int len)
 		 * Per-byte loop for Vector8s containing special chars and for
 		 * processing the tail of the string.
 		 */
-		for (int b = 0; b < sizeof(Vector8); b++)
+		for (size_t b = 0; b < sizeof(Vector8); b++)
 		{
 			/* check if we've finished */
 			if (i == len)

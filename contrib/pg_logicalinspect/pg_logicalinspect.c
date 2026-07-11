@@ -170,7 +170,7 @@ pg_get_logical_snapshot_info(PG_FUNCTION_ARGS)
 
 		arrayelems = (Datum *) palloc(ondisk.builder.committed.xcnt * sizeof(Datum));
 
-		for (int j = 0; j < ondisk.builder.committed.xcnt; j++)
+		for (size_t j = 0; j < ondisk.builder.committed.xcnt; j++)
 			arrayelems[j] = TransactionIdGetDatum(ondisk.builder.committed.xip[j]);
 
 		values[i++] = PointerGetDatum(construct_array_builtin(arrayelems,
@@ -187,7 +187,7 @@ pg_get_logical_snapshot_info(PG_FUNCTION_ARGS)
 
 		arrayelems = (Datum *) palloc(ondisk.builder.catchange.xcnt * sizeof(Datum));
 
-		for (int j = 0; j < ondisk.builder.catchange.xcnt; j++)
+		for (size_t j = 0; j < ondisk.builder.catchange.xcnt; j++)
 			arrayelems[j] = TransactionIdGetDatum(ondisk.builder.catchange.xip[j]);
 
 		values[i++] = PointerGetDatum(construct_array_builtin(arrayelems,

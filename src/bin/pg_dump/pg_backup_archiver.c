@@ -2058,13 +2058,11 @@ TocIDRequired(ArchiveHandle *AH, DumpId id)
 size_t
 WriteOffset(ArchiveHandle *AH, pgoff_t o, int wasSet)
 {
-	int			off;
-
 	/* Save the flag */
 	AH->WriteBytePtr(AH, wasSet);
 
 	/* Write out pgoff_t smallest byte first, prevents endian mismatch */
-	for (off = 0; off < sizeof(pgoff_t); off++)
+	for (size_t off = 0; off < sizeof(pgoff_t); off++)
 	{
 		AH->WriteBytePtr(AH, o & 0xFF);
 		o >>= 8;
@@ -2076,7 +2074,6 @@ int
 ReadOffset(ArchiveHandle *AH, pgoff_t *o)
 {
 	int			i;
-	int			off;
 	int			offsetFlg;
 
 	/* Initialize to zero */
@@ -2122,7 +2119,7 @@ ReadOffset(ArchiveHandle *AH, pgoff_t *o)
 	/*
 	 * Read the bytes
 	 */
-	for (off = 0; off < AH->offSize; off++)
+	for (size_t off = 0; off < AH->offSize; off++)
 	{
 		if (off < sizeof(pgoff_t))
 			*o |= ((pgoff_t) (AH->ReadBytePtr(AH))) << (off * 8);
@@ -2139,8 +2136,6 @@ ReadOffset(ArchiveHandle *AH, pgoff_t *o)
 size_t
 WriteInt(ArchiveHandle *AH, int i)
 {
-	int			b;
-
 	/*
 	 * This is a bit yucky, but I don't want to make the binary format very
 	 * dependent on representation, and not knowing much about it, I write out
@@ -2158,7 +2153,7 @@ WriteInt(ArchiveHandle *AH, int i)
 	else
 		AH->WriteBytePtr(AH, 0);
 
-	for (b = 0; b < AH->intSize; b++)
+	for (size_t b = 0; b < AH->intSize; b++)
 	{
 		AH->WriteBytePtr(AH, i & 0xFF);
 		i >>= 8;
@@ -2171,8 +2166,7 @@ int
 ReadInt(ArchiveHandle *AH)
 {
 	int			res = 0;
-	int			bv,
-				b;
+	int			bv;
 	int			sign = 0;		/* Default positive */
 	int			bitShift = 0;
 
@@ -2180,7 +2174,7 @@ ReadInt(ArchiveHandle *AH)
 		/* Read a sign byte */
 		sign = AH->ReadBytePtr(AH);
 
-	for (b = 0; b < AH->intSize; b++)
+	for (size_t b = 0; b < AH->intSize; b++)
 	{
 		bv = AH->ReadBytePtr(AH) & 0xFF;
 		if (bv != 0)

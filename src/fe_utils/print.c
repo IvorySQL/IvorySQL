@@ -1568,8 +1568,8 @@ print_aligned_vertical(const printTableContent *cont,
 		if (cont->opt->format == PRINT_WRAPPED && cont->ncolumns > 0)
 		{
 			width_wrap = pg_malloc_array(unsigned int, cont->ncolumns);
-			for (i = 0; i < cont->ncolumns; i++)
-				width_wrap[i] = dwidth;
+			for (int j = 0; j < cont->ncolumns; j++)
+				width_wrap[j] = dwidth;
 		}
 
 		IsPagerNeeded(cont, width_wrap, true, &fout, &is_pager);

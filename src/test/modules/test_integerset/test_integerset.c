@@ -182,7 +182,7 @@ test_pattern(const test_spec *spec)
 	{
 		uint64		x = 0;
 
-		for (int i = 0; i < pattern_num_values && n < spec->num_values; i++)
+		for (uint64 i = 0; i < pattern_num_values && n < spec->num_values; i++)
 		{
 			x = last_int + pattern_values[i];
 
@@ -283,7 +283,7 @@ test_pattern(const test_spec *spec)
 	last_int = 0;
 	while (n < spec->num_values)
 	{
-		for (int i = 0; i < pattern_num_values && n < spec->num_values; i++)
+		for (uint64 i = 0; i < pattern_num_values && n < spec->num_values; i++)
 		{
 			uint64		expected = last_int + pattern_values[i];
 			uint64		x;

@@ -26,13 +26,12 @@ pg_config(PG_FUNCTION_ARGS)
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	ConfigData *configdata;
 	size_t		configdata_len;
-	int			i = 0;
 
 	/* initialize our tuplestore */
 	InitMaterializedSRF(fcinfo, 0);
 
 	configdata = get_configdata(my_exec_path, &configdata_len);
-	for (i = 0; i < configdata_len; i++)
+	for (size_t i = 0; i < configdata_len; i++)
 	{
 		Datum		values[2];
 		bool		nulls[2];

@@ -618,7 +618,6 @@ statext_mcv_load(Oid mvoid, bool inh)
 bytea *
 statext_mcv_serialize(MCVList *mcvlist, VacAttrStats **stats)
 {
-	int			i;
 	int			dim;
 	int			ndims = mcvlist->ndimensions;
 
@@ -668,7 +667,7 @@ statext_mcv_serialize(MCVList *mcvlist, VacAttrStats **stats)
 		/* allocate space for values in the attribute and collect them */
 		values[dim] = palloc0_array(Datum, mcvlist->nitems);
 
-		for (i = 0; i < mcvlist->nitems; i++)
+		for (uint32 i = 0; i < mcvlist->nitems; i++)
 		{
 			/* skip NULL values - we don't need to deduplicate those */
 			if (mcvlist->items[i].isnull[dim])
@@ -700,7 +699,7 @@ statext_mcv_serialize(MCVList *mcvlist, VacAttrStats **stats)
 		 * element.
 		 */
 		ndistinct = 1;			/* number of distinct values */
-		for (i = 1; i < counts[dim]; i++)
+		for (int i = 1; i < counts[dim]; i++)
 		{
 			/* expect sorted array */
 			Assert(compare_datums_simple(values[dim][i - 1], values[dim][i], &ssup[dim]) <= 0);
@@ -752,7 +751,7 @@ statext_mcv_serialize(MCVList *mcvlist, VacAttrStats **stats)
 		{
 			info[dim].nbytes = 0;
 			info[dim].nbytes_aligned = 0;
-			for (i = 0; i < info[dim].nvalues; i++)
+			for (int i = 0; i < info[dim].nvalues; i++)
 			{
 				Size		len;
 
@@ -780,7 +779,7 @@ statext_mcv_serialize(MCVList *mcvlist, VacAttrStats **stats)
 		{
 			info[dim].nbytes = 0;
 			info[dim].nbytes_aligned = 0;
-			for (i = 0; i < info[dim].nvalues; i++)
+			for (int i = 0; i < info[dim].nvalues; i++)
 			{
 				Size		len;
 
@@ -818,7 +817,7 @@ statext_mcv_serialize(MCVList *mcvlist, VacAttrStats **stats)
 	total_length += ndims * sizeof(DimensionInfo);
 
 	/* add space for the arrays of deduplicated values */
-	for (i = 0; i < ndims; i++)
+	for (int i = 0; i < ndims; i++)
 		total_length += info[i].nbytes;
 
 	/*
@@ -863,7 +862,7 @@ statext_mcv_serialize(MCVList *mcvlist, VacAttrStats **stats)
 		/* remember the starting point for Asserts later */
 		char	   *start PG_USED_FOR_ASSERTS_ONLY = ptr;
 
-		for (i = 0; i < info[dim].nvalues; i++)
+		for (int i = 0; i < info[dim].nvalues; i++)
 		{
 			Datum		value = values[dim][i];
 
@@ -925,7 +924,7 @@ statext_mcv_serialize(MCVList *mcvlist, VacAttrStats **stats)
 	}
 
 	/* Serialize the items, with uint16 indexes instead of the values. */
-	for (i = 0; i < mcvlist->nitems; i++)
+	for (uint32 i = 0; i < mcvlist->nitems; i++)
 	{
 		MCVItem    *mcvitem = &mcvlist->items[i];
 
@@ -1652,7 +1651,7 @@ mcv_get_match_bitmap(PlannerInfo *root, List *clauses,
 			 * can skip items that were already ruled out, and terminate if
 			 * there are no remaining MCV items that might possibly match.
 			 */
-			for (int i = 0; i < mcvlist->nitems; i++)
+			for (uint32 i = 0; i < mcvlist->nitems; i++)
 			{
 				bool		match = true;
 				MCVItem    *item = &mcvlist->items[i];
@@ -1759,7 +1758,7 @@ mcv_get_match_bitmap(PlannerInfo *root, List *clauses,
 			 * can skip items that were already ruled out, and terminate if
 			 * there are no remaining MCV items that might possibly match.
 			 */
-			for (int i = 0; i < mcvlist->nitems; i++)
+			for (uint32 i = 0; i < mcvlist->nitems; i++)
 			{
 				int			j;
 				bool		match = !expr->useOr;
@@ -1830,7 +1829,7 @@ mcv_get_match_bitmap(PlannerInfo *root, List *clauses,
 			 * can skip items that were already ruled out, and terminate if
 			 * there are no remaining MCV items that might possibly match.
 			 */
-			for (int i = 0; i < mcvlist->nitems; i++)
+			for (uint32 i = 0; i < mcvlist->nitems; i++)
 			{
 				bool		match = false;	/* assume mismatch */
 				MCVItem    *item = &mcvlist->items[i];
@@ -1855,7 +1854,6 @@ mcv_get_match_bitmap(PlannerInfo *root, List *clauses,
 		{
 			/* AND/OR clause, with all subclauses being compatible */
 
-			int			i;
 			BoolExpr   *bool_clause = ((BoolExpr *) clause);
 			List	   *bool_clauses = bool_clause->args;
 
@@ -1874,7 +1872,7 @@ mcv_get_match_bitmap(PlannerInfo *root, List *clauses,
 			 * current one. We need to consider if we're evaluating AND or OR
 			 * condition when merging the results.
 			 */
-			for (i = 0; i < mcvlist->nitems; i++)
+			for (uint32 i = 0; i < mcvlist->nitems; i++)
 				matches[i] = RESULT_MERGE(matches[i], is_or, bool_matches[i]);
 
 			pfree(bool_matches);
@@ -1883,7 +1881,6 @@ mcv_get_match_bitmap(PlannerInfo *root, List *clauses,
 		{
 			/* NOT clause, with all subclauses compatible */
 
-			int			i;
 			BoolExpr   *not_clause = ((BoolExpr *) clause);
 			List	   *not_args = not_clause->args;
 
@@ -1902,7 +1899,7 @@ mcv_get_match_bitmap(PlannerInfo *root, List *clauses,
 			 * current one. We're handling a NOT clause, so invert the result
 			 * before merging it into the global bitmap.
 			 */
-			for (i = 0; i < mcvlist->nitems; i++)
+			for (uint32 i = 0; i < mcvlist->nitems; i++)
 				matches[i] = RESULT_MERGE(matches[i], is_or, !not_matches[i]);
 
 			pfree(not_matches);
@@ -1923,7 +1920,7 @@ mcv_get_match_bitmap(PlannerInfo *root, List *clauses,
 			 * can skip items that were already ruled out, and terminate if
 			 * there are no remaining MCV items that might possibly match.
 			 */
-			for (int i = 0; i < mcvlist->nitems; i++)
+			for (uint32 i = 0; i < mcvlist->nitems; i++)
 			{
 				MCVItem    *item = &mcvlist->items[i];
 				bool		match = false;
@@ -1949,7 +1946,7 @@ mcv_get_match_bitmap(PlannerInfo *root, List *clauses,
 			 * can skip items that were already ruled out, and terminate if
 			 * there are no remaining MCV items that might possibly match.
 			 */
-			for (int i = 0; i < mcvlist->nitems; i++)
+			for (uint32 i = 0; i < mcvlist->nitems; i++)
 			{
 				bool		match;
 				MCVItem    *item = &mcvlist->items[i];
@@ -2049,7 +2046,6 @@ mcv_clauselist_selectivity(PlannerInfo *root, StatisticExtInfo *stat,
 						   RelOptInfo *rel,
 						   Selectivity *basesel, Selectivity *totalsel)
 {
-	int			i;
 	MCVList    *mcv;
 	Selectivity s = 0.0;
 	RangeTblEntry *rte = root->simple_rte_array[rel->relid];
@@ -2067,7 +2063,7 @@ mcv_clauselist_selectivity(PlannerInfo *root, StatisticExtInfo *stat,
 	/* sum frequencies for all the matching MCV items */
 	*basesel = 0.0;
 	*totalsel = 0.0;
-	for (i = 0; i < mcv->nitems; i++)
+	for (uint32 i = 0; i < mcv->nitems; i++)
 	{
 		*totalsel += mcv->items[i].frequency;
 
@@ -2128,7 +2124,6 @@ mcv_clause_selectivity_or(PlannerInfo *root, StatisticExtInfo *stat,
 {
 	Selectivity s = 0.0;
 	bool	   *new_matches;
-	int			i;
 
 	/* build the OR-matches bitmap, if not built already */
 	if (*or_matches == NULL)
@@ -2147,7 +2142,7 @@ mcv_clause_selectivity_or(PlannerInfo *root, StatisticExtInfo *stat,
 	*overlap_mcvsel = 0.0;
 	*overlap_basesel = 0.0;
 	*totalsel = 0.0;
-	for (i = 0; i < mcv->nitems; i++)
+	for (uint32 i = 0; i < mcv->nitems; i++)
 	{
 		*totalsel += mcv->items[i].frequency;
 
@@ -2178,7 +2173,7 @@ mcv_clause_selectivity_or(PlannerInfo *root, StatisticExtInfo *stat,
 void
 statext_mcv_free(MCVList *mcvlist)
 {
-	for (int i = 0; i < mcvlist->nitems; i++)
+	for (uint32 i = 0; i < mcvlist->nitems; i++)
 	{
 		MCVItem    *item = &mcvlist->items[i];
 

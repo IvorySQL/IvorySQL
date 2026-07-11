@@ -1907,8 +1907,6 @@ CreateRestrictedProcess(char *cmd, PROCESS_INFORMATION *processInfo, bool as_ser
 static PTOKEN_PRIVILEGES
 GetPrivilegesToDelete(HANDLE hToken)
 {
-	int			i,
-				j;
 	DWORD		length;
 	PTOKEN_PRIVILEGES tokenPrivs;
 	LUID		luidLockPages;
@@ -1946,12 +1944,12 @@ GetPrivilegesToDelete(HANDLE hToken)
 		return NULL;
 	}
 
-	for (i = 0; i < tokenPrivs->PrivilegeCount; i++)
+	for (DWORD i = 0; i < tokenPrivs->PrivilegeCount; i++)
 	{
 		if (memcmp(&tokenPrivs->Privileges[i].Luid, &luidLockPages, sizeof(LUID)) == 0 ||
 			memcmp(&tokenPrivs->Privileges[i].Luid, &luidChangeNotify, sizeof(LUID)) == 0)
 		{
-			for (j = i; j < tokenPrivs->PrivilegeCount - 1; j++)
+			for (DWORD j = i; j < tokenPrivs->PrivilegeCount - 1; j++)
 				tokenPrivs->Privileges[j] = tokenPrivs->Privileges[j + 1];
 			tokenPrivs->PrivilegeCount--;
 		}

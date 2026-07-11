@@ -105,7 +105,6 @@ reconstruct_from_incremental_file(char *input_filename,
 	rfile	  **sourcemap;
 	off_t	   *offsetmap;
 	unsigned	block_length;
-	unsigned	i;
 	unsigned	sidx = n_prior_backups;
 	bool		full_copy_possible = true;
 	int			copy_source_index = -1;
@@ -147,7 +146,7 @@ reconstruct_from_incremental_file(char *input_filename,
 	 * output but would not have needed to be found in an older backup if it
 	 * had not been present.
 	 */
-	for (i = 0; i < latest_source->num_blocks; ++i)
+	for (unsigned i = 0; i < latest_source->num_blocks; ++i)
 	{
 		BlockNumber b = latest_source->relative_block_numbers[i];
 
@@ -261,7 +260,7 @@ reconstruct_from_incremental_file(char *input_filename,
 		 * Since we found another incremental file, source all blocks from it
 		 * that we need but don't yet have.
 		 */
-		for (i = 0; i < s->num_blocks; ++i)
+		for (unsigned i = 0; i < s->num_blocks; ++i)
 		{
 			BlockNumber b = s->relative_block_numbers[i];
 
@@ -359,7 +358,7 @@ reconstruct_from_incremental_file(char *input_filename,
 	/*
 	 * Close files and release memory.
 	 */
-	for (i = 0; i <= n_prior_backups; ++i)
+	for (int i = 0; i <= n_prior_backups; ++i)
 	{
 		rfile	   *s = source[i];
 
@@ -383,9 +382,7 @@ reconstruct_from_incremental_file(char *input_filename,
 static void
 debug_reconstruction(int n_source, rfile **sources, bool dry_run)
 {
-	unsigned	i;
-
-	for (i = 0; i < n_source; ++i)
+	for (int i = 0; i < n_source; ++i)
 	{
 		rfile	   *s = sources[i];
 

@@ -4687,7 +4687,6 @@ estimate_multivariate_ndistinct(PlannerInfo *root, RelOptInfo *rel,
 	 */
 	if (stats)
 	{
-		int			i;
 		List	   *newlist = NIL;
 		MVNDistinctItem *item = NULL;
 		ListCell   *lc2;
@@ -4777,9 +4776,8 @@ estimate_multivariate_ndistinct(PlannerInfo *root, RelOptInfo *rel,
 		}
 
 		/* Find the specific item that exactly matches the combination */
-		for (i = 0; i < stats->nitems; i++)
+		for (uint32 i = 0; i < stats->nitems; i++)
 		{
-			int			j;
 			MVNDistinctItem *tmpitem = &stats->items[i];
 
 			if (tmpitem->nattributes != bms_num_members(matched))
@@ -4789,7 +4787,7 @@ estimate_multivariate_ndistinct(PlannerInfo *root, RelOptInfo *rel,
 			item = tmpitem;
 
 			/* check that all item attributes/expressions fit the match */
-			for (j = 0; j < tmpitem->nattributes; j++)
+			for (int j = 0; j < tmpitem->nattributes; j++)
 			{
 				AttrNumber	attnum = tmpitem->attributes[j];
 

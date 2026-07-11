@@ -1288,7 +1288,7 @@ ReorderBufferIterTXNInit(ReorderBuffer *rb, ReorderBufferTXN *txn,
 	Size		nr_txns = 0;
 	ReorderBufferIterTXNState *state;
 	dlist_iter	cur_txn_i;
-	int32		off;
+	Size		off;
 
 	*iter_state = NULL;
 
@@ -1505,7 +1505,7 @@ static void
 ReorderBufferIterTXNFinish(ReorderBuffer *rb,
 						   ReorderBufferIterTXNState *state)
 {
-	int32		off;
+	Size		off;
 
 	for (off = 0; off < state->nr_txns; off++)
 	{
@@ -3252,7 +3252,6 @@ ReorderBufferImmediateInvalidation(ReorderBuffer *rb, uint32 ninvalidations,
 	bool		use_subtxn = IsTransactionOrTransactionBlock();
 	MemoryContext ccxt = CurrentMemoryContext;
 	ResourceOwner cowner = CurrentResourceOwner;
-	int			i;
 
 	if (use_subtxn)
 		BeginInternalSubTransaction("replay");
@@ -3266,7 +3265,7 @@ ReorderBufferImmediateInvalidation(ReorderBuffer *rb, uint32 ninvalidations,
 	if (use_subtxn)
 		AbortCurrentTransaction();
 
-	for (i = 0; i < ninvalidations; i++)
+	for (uint32 i = 0; i < ninvalidations; i++)
 		LocalExecuteInvalidationMessage(&invalidations[i]);
 
 	if (use_subtxn)
@@ -3636,9 +3635,7 @@ ReorderBufferAddDistributedInvalidations(ReorderBuffer *rb, TransactionId xid,
 static void
 ReorderBufferExecuteInvalidations(uint32 nmsgs, SharedInvalidationMessage *msgs)
 {
-	int			i;
-
-	for (i = 0; i < nmsgs; i++)
+	for (uint32 i = 0; i < nmsgs; i++)
 		LocalExecuteInvalidationMessage(&msgs[i]);
 }
 

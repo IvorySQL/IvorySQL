@@ -1162,7 +1162,6 @@ pg_get_shmem_allocations_numa(PG_FUNCTION_ARGS)
 	/* output all allocated entries */
 	while ((ent = (ShmemIndexEnt *) hash_seq_search(&hstat)) != NULL)
 	{
-		int			i;
 		char	   *startptr,
 				   *endptr;
 		Size		total_len;
@@ -1194,7 +1193,7 @@ pg_get_shmem_allocations_numa(PG_FUNCTION_ARGS)
 		 * pages, so that inquiry about NUMA memory node doesn't return -2
 		 * (ENOENT, which indicates unmapped/unallocated pages).
 		 */
-		for (i = 0; i < shm_ent_page_count; i++)
+		for (uint64 i = 0; i < shm_ent_page_count; i++)
 		{
 			page_ptrs[i] = startptr + (i * os_page_size);
 
@@ -1210,7 +1209,7 @@ pg_get_shmem_allocations_numa(PG_FUNCTION_ARGS)
 		/* Count number of NUMA nodes used for this shared memory entry */
 		memset(nodes, 0, sizeof(Size) * (max_nodes + 2));
 
-		for (i = 0; i < shm_ent_page_count; i++)
+		for (uint64 i = 0; i < shm_ent_page_count; i++)
 		{
 			int			s = pages_status[i];
 
@@ -1239,7 +1238,7 @@ pg_get_shmem_allocations_numa(PG_FUNCTION_ARGS)
 		 * Add one entry for each NUMA node, including those without allocated
 		 * memory for this segment.
 		 */
-		for (i = 0; i <= max_nodes; i++)
+		for (uint64 i = 0; i <= max_nodes; i++)
 		{
 			values[0] = CStringGetTextDatum(ent->key);
 			values[1] = Int32GetDatum(i);

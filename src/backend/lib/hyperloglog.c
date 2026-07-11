@@ -187,9 +187,8 @@ estimateHyperLogLog(hyperLogLogState *cState)
 {
 	double		result;
 	double		sum = 0.0;
-	int			i;
 
-	for (i = 0; i < cState->nRegisters; i++)
+	for (Size i = 0; i < cState->nRegisters; i++)
 	{
 		sum += 1.0 / pow(2.0, cState->hashesArr[i]);
 	}
@@ -202,7 +201,7 @@ estimateHyperLogLog(hyperLogLogState *cState)
 		/* Small range correction */
 		int			zero_count = 0;
 
-		for (i = 0; i < cState->nRegisters; i++)
+		for (Size i = 0; i < cState->nRegisters; i++)
 		{
 			if (cState->hashesArr[i] == 0)
 				zero_count++;

@@ -585,13 +585,13 @@ typedef struct RT_NODE_256
  */
 
 #if SIZEOF_DSA_POINTER < 8
-#define RT_FANOUT_16_LO	((96 - offsetof(RT_NODE_16, children)) / sizeof(RT_PTR_ALLOC))
-#define RT_FANOUT_16_HI	Min(RT_FANOUT_16_MAX, (160 - offsetof(RT_NODE_16, children)) / sizeof(RT_PTR_ALLOC))
-#define RT_FANOUT_48	Min(RT_FANOUT_48_MAX, (512 - offsetof(RT_NODE_48, children)) / sizeof(RT_PTR_ALLOC))
+#define RT_FANOUT_16_LO	((int) ((96 - offsetof(RT_NODE_16, children)) / sizeof(RT_PTR_ALLOC)))
+#define RT_FANOUT_16_HI	((int) Min(RT_FANOUT_16_MAX, (160 - offsetof(RT_NODE_16, children)) / sizeof(RT_PTR_ALLOC)))
+#define RT_FANOUT_48	((int) Min(RT_FANOUT_48_MAX, (512 - offsetof(RT_NODE_48, children)) / sizeof(RT_PTR_ALLOC)))
 #else
-#define RT_FANOUT_16_LO	((160 - offsetof(RT_NODE_16, children)) / sizeof(RT_PTR_ALLOC))
-#define RT_FANOUT_16_HI	Min(RT_FANOUT_16_MAX, (320 - offsetof(RT_NODE_16, children)) / sizeof(RT_PTR_ALLOC))
-#define RT_FANOUT_48	Min(RT_FANOUT_48_MAX, (768 - offsetof(RT_NODE_48, children)) / sizeof(RT_PTR_ALLOC))
+#define RT_FANOUT_16_LO	((int) ((160 - offsetof(RT_NODE_16, children)) / sizeof(RT_PTR_ALLOC)))
+#define RT_FANOUT_16_HI	((int) Min(RT_FANOUT_16_MAX, (320 - offsetof(RT_NODE_16, children)) / sizeof(RT_PTR_ALLOC)))
+#define RT_FANOUT_48	((int) Min(RT_FANOUT_48_MAX, (768 - offsetof(RT_NODE_48, children)) / sizeof(RT_PTR_ALLOC)))
 #endif							/* SIZEOF_DSA_POINTER < 8 */
 
 #else							/* ! RT_SHMEM */
@@ -675,7 +675,7 @@ static const RT_SIZE_CLASS_ELEM RT_SIZE_CLASS_INFO[] = {
 	},
 };
 
-#define RT_NUM_SIZE_CLASSES lengthof(RT_SIZE_CLASS_INFO)
+#define RT_NUM_SIZE_CLASSES ((int) lengthof(RT_SIZE_CLASS_INFO))
 
 #ifdef RT_SHMEM
 /* A magic value used to identify our radix tree */

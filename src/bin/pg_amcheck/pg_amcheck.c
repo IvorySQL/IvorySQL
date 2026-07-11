@@ -232,7 +232,6 @@ main(int argc, char *argv[])
 	uint64		pageschecked = 0;
 	uint64		pagestotal = 0;
 	uint64		relprogress = 0;
-	int			pattern_id;
 
 	static struct option long_options[] = {
 		/* Connection options */
@@ -640,7 +639,7 @@ main(int argc, char *argv[])
 	 * Check that all inclusion patterns matched at least one schema or
 	 * relation that we can check.
 	 */
-	for (pattern_id = 0; pattern_id < opts.include.len; pattern_id++)
+	for (size_t pattern_id = 0; pattern_id < opts.include.len; pattern_id++)
 	{
 		PatternInfo *pat = &opts.include.data[pattern_id];
 
@@ -1539,13 +1538,12 @@ static bool
 append_db_pattern_cte(PQExpBuffer buf, const PatternInfoArray *pia,
 					  PGconn *conn, bool inclusive)
 {
-	int			pattern_id;
 	const char *comma;
 	bool		have_values;
 
 	comma = "";
 	have_values = false;
-	for (pattern_id = 0; pattern_id < pia->len; pattern_id++)
+	for (size_t pattern_id = 0; pattern_id < pia->len; pattern_id++)
 	{
 		PatternInfo *info = &pia->data[pattern_id];
 
@@ -1555,7 +1553,7 @@ append_db_pattern_cte(PQExpBuffer buf, const PatternInfoArray *pia,
 			if (!have_values)
 				appendPQExpBufferStr(buf, "\nVALUES");
 			have_values = true;
-			appendPQExpBuffer(buf, "%s\n(%d, ", comma, pattern_id);
+			appendPQExpBuffer(buf, "%s\n(%zu, ", comma, pattern_id);
 			appendStringLiteralConn(buf, info->db_regex, conn);
 			appendPQExpBufferChar(buf, ')');
 			comma = ",";
@@ -1777,20 +1775,19 @@ static void
 append_rel_pattern_raw_cte(PQExpBuffer buf, const PatternInfoArray *pia,
 						   PGconn *conn)
 {
-	int			pattern_id;
 	const char *comma;
 	bool		have_values;
 
 	comma = "";
 	have_values = false;
-	for (pattern_id = 0; pattern_id < pia->len; pattern_id++)
+	for (size_t pattern_id = 0; pattern_id < pia->len; pattern_id++)
 	{
 		PatternInfo *info = &pia->data[pattern_id];
 
 		if (!have_values)
 			appendPQExpBufferStr(buf, "\nVALUES");
 		have_values = true;
-		appendPQExpBuffer(buf, "%s\n(%d::INTEGER, ", comma, pattern_id);
+		appendPQExpBuffer(buf, "%s\n(%zu::INTEGER, ", comma, pattern_id);
 		if (info->db_regex == NULL)
 			appendPQExpBufferStr(buf, "NULL");
 		else

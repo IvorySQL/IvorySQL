@@ -86,7 +86,7 @@ statext_ndistinct_build(double totalrows, StatsBuildData *data)
 {
 	MVNDistinct *result;
 	int			k;
-	int			itemcnt;
+	uint32		itemcnt;
 	int			numattrs = data->nattnums;
 	int			numcombs = num_combinations(numattrs);
 
@@ -175,7 +175,6 @@ statext_ndistinct_load(Oid mvoid, bool inh)
 bytea *
 statext_ndistinct_serialize(MVNDistinct *ndistinct)
 {
-	int			i;
 	bytea	   *output;
 	char	   *tmp;
 	Size		len;
@@ -190,7 +189,7 @@ statext_ndistinct_serialize(MVNDistinct *ndistinct)
 	len = VARHDRSZ + SizeOfHeader;
 
 	/* and also include space for the actual attribute numbers */
-	for (i = 0; i < ndistinct->nitems; i++)
+	for (uint32 i = 0; i < ndistinct->nitems; i++)
 	{
 		int			nmembers;
 
@@ -216,7 +215,7 @@ statext_ndistinct_serialize(MVNDistinct *ndistinct)
 	/*
 	 * store number of attributes and attribute numbers for each entry
 	 */
-	for (i = 0; i < ndistinct->nitems; i++)
+	for (uint32 i = 0; i < ndistinct->nitems; i++)
 	{
 		MVNDistinctItem item = ndistinct->items[i];
 		int			nmembers = item.nattributes;
@@ -246,7 +245,6 @@ statext_ndistinct_serialize(MVNDistinct *ndistinct)
 MVNDistinct *
 statext_ndistinct_deserialize(bytea *data)
 {
-	int			i;
 	Size		minimum_size;
 	MVNDistinct ndist;
 	MVNDistinct *ndistinct;
@@ -296,7 +294,7 @@ statext_ndistinct_deserialize(bytea *data)
 	ndistinct->type = ndist.type;
 	ndistinct->nitems = ndist.nitems;
 
-	for (i = 0; i < ndistinct->nitems; i++)
+	for (uint32 i = 0; i < ndistinct->nitems; i++)
 	{
 		MVNDistinctItem *item = &ndistinct->items[i];
 
@@ -331,7 +329,7 @@ statext_ndistinct_deserialize(bytea *data)
 void
 statext_ndistinct_free(MVNDistinct *ndistinct)
 {
-	for (int i = 0; i < ndistinct->nitems; i++)
+	for (uint32 i = 0; i < ndistinct->nitems; i++)
 		pfree(ndistinct->items[i].attributes);
 	pfree(ndistinct);
 }
@@ -356,7 +354,7 @@ statext_ndistinct_validate(const MVNDistinct *ndistinct,
 	int			attnum_expr_lowbound = 0 - numexprs;
 
 	/* Scan through each MVNDistinct entry */
-	for (int i = 0; i < ndistinct->nitems; i++)
+	for (uint32 i = 0; i < ndistinct->nitems; i++)
 	{
 		MVNDistinctItem item = ndistinct->items[i];
 

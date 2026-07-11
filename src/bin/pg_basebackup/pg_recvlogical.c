@@ -223,7 +223,6 @@ StreamLogicalLog(void)
 	PGresult   *res;
 	char	   *copybuf = NULL;
 	TimestampTz last_status = -1;
-	int			i;
 	PQExpBuffer query;
 	XLogRecPtr	cur_record_lsn;
 
@@ -256,7 +255,7 @@ StreamLogicalLog(void)
 	if (noptions)
 		appendPQExpBufferStr(query, " (");
 
-	for (i = 0; i < noptions; i++)
+	for (size_t i = 0; i < noptions; i++)
 	{
 		/* separator */
 		if (i > 0)

@@ -1227,8 +1227,7 @@ tsqueryrecv(PG_FUNCTION_ARGS)
 {
 	StringInfo	buf = (StringInfo) PG_GETARG_POINTER(0);
 	TSQuery		query;
-	int			i,
-				len;
+	int			len;
 	QueryItem  *item;
 	int			datalen;
 	char	   *ptr;
@@ -1250,7 +1249,7 @@ tsqueryrecv(PG_FUNCTION_ARGS)
 	item = GETQUERY(query);
 
 	datalen = 0;
-	for (i = 0; i < size; i++)
+	for (uint32 i = 0; i < size; i++)
 	{
 		item->type = (int8) pq_getmsgint(buf, sizeof(int8));
 
@@ -1335,7 +1334,7 @@ tsqueryrecv(PG_FUNCTION_ARGS)
 	Assert(!needcleanup);
 
 	/* Copy operands to output struct */
-	for (i = 0; i < size; i++)
+	for (uint32 i = 0; i < size; i++)
 	{
 		if (item->type == QI_VAL)
 		{

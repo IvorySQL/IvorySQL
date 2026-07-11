@@ -521,7 +521,6 @@ pgwin32_select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, c
 										 * 2*FD_SETSIZE sockets */
 	SOCKET		sockets[FD_SETSIZE * 2];
 	int			numevents = 0;
-	int			i;
 	int			r;
 	DWORD		timeoutval = WSA_INFINITE;
 	FD_SET		outreadfds;
@@ -548,7 +547,7 @@ pgwin32_select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, c
 	 */
 	if (writefds != NULL)
 	{
-		for (i = 0; i < writefds->fd_count; i++)
+		for (u_int i = 0; i < writefds->fd_count; i++)
 		{
 			char		c;
 			WSABUF		buf;
@@ -583,7 +582,7 @@ pgwin32_select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, c
 
 	if (readfds != NULL)
 	{
-		for (i = 0; i < readfds->fd_count; i++)
+		for (u_int i = 0; i < readfds->fd_count; i++)
 		{
 			events[numevents] = WSACreateEvent();
 			sockets[numevents] = readfds->fd_array[i];
@@ -592,7 +591,7 @@ pgwin32_select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, c
 	}
 	if (writefds != NULL)
 	{
-		for (i = 0; i < writefds->fd_count; i++)
+		for (u_int i = 0; i < writefds->fd_count; i++)
 		{
 			if (!readfds ||
 				!FD_ISSET(writefds->fd_array[i], readfds))
@@ -605,7 +604,7 @@ pgwin32_select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, c
 		}
 	}
 
-	for (i = 0; i < numevents; i++)
+	for (int i = 0; i < numevents; i++)
 	{
 		int			flags = 0;
 
@@ -637,7 +636,7 @@ pgwin32_select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, c
 		 */
 		WSANETWORKEVENTS resEvents;
 
-		for (i = 0; i < numevents; i++)
+		for (int i = 0; i < numevents; i++)
 		{
 			ZeroMemory(&resEvents, sizeof(resEvents));
 			if (WSAEnumNetworkEvents(sockets[i], events[i], &resEvents) != 0)
@@ -670,7 +669,7 @@ pgwin32_select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, c
 	}
 
 	/* Clean up all the event objects */
-	for (i = 0; i < numevents; i++)
+	for (int i = 0; i < numevents; i++)
 	{
 		WSAEventSelect(sockets[i], NULL, 0);
 		WSACloseEvent(events[i]);

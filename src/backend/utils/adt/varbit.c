@@ -1247,8 +1247,7 @@ bit_and(PG_FUNCTION_ARGS)
 	VarBit	   *result;
 	int			len,
 				bitlen1,
-				bitlen2,
-				i;
+				bitlen2;
 	uint8	   *p1,
 			   *p2,
 			   *r;
@@ -1268,7 +1267,7 @@ bit_and(PG_FUNCTION_ARGS)
 	p1 = VARBITS(arg1);
 	p2 = VARBITS(arg2);
 	r = VARBITS(result);
-	for (i = 0; i < VARBITBYTES(arg1); i++)
+	for (size_t i = 0; i < VARBITBYTES(arg1); i++)
 		*r++ = *p1++ & *p2++;
 
 	/* Padding is not needed as & of 0 pads is 0 */
@@ -1288,8 +1287,7 @@ bit_or(PG_FUNCTION_ARGS)
 	VarBit	   *result;
 	int			len,
 				bitlen1,
-				bitlen2,
-				i;
+				bitlen2;
 	uint8	   *p1,
 			   *p2,
 			   *r;
@@ -1308,7 +1306,7 @@ bit_or(PG_FUNCTION_ARGS)
 	p1 = VARBITS(arg1);
 	p2 = VARBITS(arg2);
 	r = VARBITS(result);
-	for (i = 0; i < VARBITBYTES(arg1); i++)
+	for (size_t i = 0; i < VARBITBYTES(arg1); i++)
 		*r++ = *p1++ | *p2++;
 
 	/* Padding is not needed as | of 0 pads is 0 */
@@ -1328,8 +1326,7 @@ bitxor(PG_FUNCTION_ARGS)
 	VarBit	   *result;
 	int			len,
 				bitlen1,
-				bitlen2,
-				i;
+				bitlen2;
 	uint8	   *p1,
 			   *p2,
 			   *r;
@@ -1349,7 +1346,7 @@ bitxor(PG_FUNCTION_ARGS)
 	p1 = VARBITS(arg1);
 	p2 = VARBITS(arg2);
 	r = VARBITS(result);
-	for (i = 0; i < VARBITBYTES(arg1); i++)
+	for (size_t i = 0; i < VARBITBYTES(arg1); i++)
 		*r++ = *p1++ ^ *p2++;
 
 	/* Padding is not needed as ^ of 0 pads is 0 */
@@ -1701,7 +1698,6 @@ bitposition(PG_FUNCTION_ARGS)
 	VarBit	   *substr = PG_GETARG_VARBIT_P(1);
 	int			substr_length,
 				str_length,
-				i,
 				is;
 	uint8	   *s,				/* pointer into substring */
 			   *p;				/* pointer into str */
@@ -1727,7 +1723,7 @@ bitposition(PG_FUNCTION_ARGS)
 	/* Initialise the padding masks */
 	end_mask = BITMASK << VARBITPAD(substr);
 	str_mask = BITMASK << VARBITPAD(str);
-	for (i = 0; i < VARBITBYTES(str) - VARBITBYTES(substr) + 1; i++)
+	for (size_t i = 0; i < VARBITBYTES(str) - VARBITBYTES(substr) + 1; i++)
 	{
 		for (is = 0; is < BITS_PER_BYTE; is++)
 		{

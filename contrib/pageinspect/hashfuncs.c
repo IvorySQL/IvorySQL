@@ -404,8 +404,7 @@ hash_bitmap_info(PG_FUNCTION_ARGS)
 	int32		bitmappage,
 				bitmapbit;
 	HeapTuple	tuple;
-	int			i,
-				j;
+	int			j;
 	Datum		values[3];
 	bool		nulls[3] = {0};
 	uint32	   *freep;
@@ -456,7 +455,7 @@ hash_bitmap_info(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("invalid overflow block number %u",
 						(BlockNumber) ovflblkno)));
-	for (i = 0; i < metap->hashm_nmaps; i++)
+	for (uint32 i = 0; i < metap->hashm_nmaps; i++)
 		if (metap->hashm_mapp[i] == ovflblkno)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),

@@ -544,7 +544,7 @@ pgaio_uring_drain_locked(PgAioUringContext *context)
 
 		ready -= ncqes;
 
-		for (int i = 0; i < ncqes; i++)
+		for (uint32 i = 0; i < ncqes; i++)
 		{
 			struct io_uring_cqe *cqe = cqes[i];
 			PgAioHandle *ioh = io_uring_cqe_get_data(cqe);

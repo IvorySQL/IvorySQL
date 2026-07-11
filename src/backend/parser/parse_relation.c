@@ -1084,7 +1084,7 @@ markNullableIfNeeded(ParseState *pstate, Var *var)
 	Bitmapset  *relids;
 
 	/* Find the appropriate pstate */
-	for (int lv = 0; lv < var->varlevelsup; lv++)
+	for (Index lv = 0; lv < var->varlevelsup; lv++)
 		pstate = pstate->parentParseState;
 
 	/* Find currently-relevant join relids for the Var's rel */

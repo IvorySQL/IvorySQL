@@ -304,7 +304,7 @@ ResourceOwnerSort(ResourceOwner owner)
 		 */
 		uint32		dst = 0;
 
-		for (int idx = 0; idx < owner->capacity; idx++)
+		for (uint32 idx = 0; idx < owner->capacity; idx++)
 		{
 			if (owner->hash[idx].kind != NULL)
 			{
@@ -852,7 +852,7 @@ ResourceOwnerReleaseAllOfKind(ResourceOwner owner, const ResourceOwnerDesc *kind
 	}
 
 	/* Then hash */
-	for (int i = 0; i < owner->capacity; i++)
+	for (uint32 i = 0; i < owner->capacity; i++)
 	{
 		if (owner->hash[i].kind == kind)
 		{

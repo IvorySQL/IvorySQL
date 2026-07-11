@@ -866,7 +866,6 @@ SnapBuildAddCommittedTxn(SnapBuild *builder, TransactionId xid)
 static void
 SnapBuildPurgeOlderTxn(SnapBuild *builder)
 {
-	int			off;
 	TransactionId *workspace;
 	int			surviving_xids = 0;
 
@@ -880,7 +879,7 @@ SnapBuildPurgeOlderTxn(SnapBuild *builder)
 						   builder->committed.xcnt * sizeof(TransactionId));
 
 	/* copy xids that still are interesting to workspace */
-	for (off = 0; off < builder->committed.xcnt; off++)
+	for (size_t off = 0; off < builder->committed.xcnt; off++)
 	{
 		if (NormalTransactionIdPrecedes(builder->committed.xip[off],
 										builder->xmin))
@@ -906,6 +905,8 @@ SnapBuildPurgeOlderTxn(SnapBuild *builder)
 	 */
 	if (builder->catchange.xcnt > 0)
 	{
+		size_t		off;
+
 		/*
 		 * Since catchange.xip is sorted, we find the lower bound of xids that
 		 * are still interesting.

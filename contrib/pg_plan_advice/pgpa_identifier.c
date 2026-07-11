@@ -355,7 +355,7 @@ pgpa_compute_rti_from_identifier(int rtable_length,
 {
 	Index		result = 0;
 
-	for (Index rti = 1; rti <= rtable_length; ++rti)
+	for (int rti = 1; rti <= rtable_length; ++rti)
 	{
 		pgpa_identifier *rti_rid = &rt_identifiers[rti - 1];
 

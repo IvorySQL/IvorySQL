@@ -620,7 +620,6 @@ void
 dsa_release_in_place(void *place)
 {
 	dsa_area_control *control = (dsa_area_control *) place;
-	int			i;
 
 	LWLockAcquire(&control->lock, LW_EXCLUSIVE);
 	Assert(control->segment_header.magic ==
@@ -628,7 +627,7 @@ dsa_release_in_place(void *place)
 	Assert(control->refcnt > 0);
 	if (--control->refcnt == 0)
 	{
-		for (i = 0; i <= control->high_segment_index; ++i)
+		for (dsa_segment_index i = 0; i <= control->high_segment_index; ++i)
 		{
 			dsm_handle	handle;
 
@@ -649,13 +648,11 @@ dsa_release_in_place(void *place)
 void
 dsa_pin_mapping(dsa_area *area)
 {
-	int			i;
-
 	if (area->resowner != NULL)
 	{
 		area->resowner = NULL;
 
-		for (i = 0; i <= area->high_segment_index; ++i)
+		for (dsa_segment_index i = 0; i <= area->high_segment_index; ++i)
 			if (area->segment_maps[i].segment != NULL)
 				dsm_pin_mapping(area->segment_maps[i].segment);
 	}
@@ -1246,7 +1243,7 @@ size_t
 dsa_minimum_size(void)
 {
 	size_t		size;
-	int			pages = 0;
+	size_t		pages = 0;
 
 	size = MAXALIGN(sizeof(dsa_area_control)) +
 		MAXALIGN(sizeof(FreePageManager));
@@ -1277,7 +1274,6 @@ create_internal(void *place, size_t size,
 	size_t		usable_pages;
 	size_t		total_pages;
 	size_t		metadata_bytes;
-	int			i;
 
 	/* Check the initial and maximum block sizes */
 	Assert(init_segment_size >= DSA_MIN_SEGMENT_SIZE);
@@ -1320,7 +1316,7 @@ create_internal(void *place, size_t size,
 	control->max_total_segment_size = (size_t) -1;
 	control->total_segment_size = size;
 	control->segment_handles[0] = control_handle;
-	for (i = 0; i < DSA_NUM_SEGMENT_BINS; ++i)
+	for (int i = 0; i < DSA_NUM_SEGMENT_BINS; ++i)
 		control->segment_bins[i] = DSA_SEGMENT_INDEX_NONE;
 	control->refcnt = 1;
 	control->lwlock_tranche_id = tranche_id;
@@ -1337,7 +1333,7 @@ create_internal(void *place, size_t size,
 	area->high_segment_index = 0;
 	area->freed_segment_counter = 0;
 	LWLockInitialize(&control->lock, control->lwlock_tranche_id);
-	for (i = 0; i < DSA_NUM_SIZE_CLASSES; ++i)
+	for (size_t i = 0; i < DSA_NUM_SIZE_CLASSES; ++i)
 		LWLockInitialize(DSA_SCLASS_LOCK(area, i),
 						 control->lwlock_tranche_id);
 
@@ -2001,10 +1997,8 @@ add_span_to_fullness_class(dsa_area *area, dsa_area_span *span,
 void
 dsa_detach(dsa_area *area)
 {
-	int			i;
-
 	/* Detach from all segments. */
-	for (i = 0; i <= area->high_segment_index; ++i)
+	for (dsa_segment_index i = 0; i <= area->high_segment_index; ++i)
 		if (area->segment_maps[i].segment != NULL)
 			dsm_detach(area->segment_maps[i].segment);
 
@@ -2367,13 +2361,12 @@ static void
 check_for_freed_segments_locked(dsa_area *area)
 {
 	size_t		freed_segment_counter;
-	int			i;
 
 	Assert(LWLockHeldByMe(DSA_AREA_LOCK(area)));
 	freed_segment_counter = area->control->freed_segment_counter;
 	if (unlikely(area->freed_segment_counter != freed_segment_counter))
 	{
-		for (i = 0; i <= area->high_segment_index; ++i)
+		for (dsa_segment_index i = 0; i <= area->high_segment_index; ++i)
 		{
 			if (area->segment_maps[i].header != NULL &&
 				area->segment_maps[i].header->freed)
