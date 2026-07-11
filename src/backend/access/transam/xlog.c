@@ -1146,9 +1146,9 @@ XLogInsertRecord(XLogRecData *rdata,
  *
  * NB: Testing shows that XLogInsertRecord runs faster if this code is inlined;
  * however, because there are two call sites, the compiler is reluctant to
- * inline. We use pg_attribute_always_inline here to try to convince it.
+ * inline. We use pg_always_inline here to try to convince it.
  */
-static pg_attribute_always_inline void
+static pg_always_inline void
 ReserveXLogInsertLocation(int size, XLogRecPtr *StartPos, XLogRecPtr *EndPos,
 						  XLogRecPtr *PrevPtr)
 {
