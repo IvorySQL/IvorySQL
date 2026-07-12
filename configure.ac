@@ -1214,8 +1214,9 @@ fi
 # XML
 #
 AC_MSG_CHECKING([whether to build with XML support])
-PGAC_ARG_BOOL(with, libxml, no, [build with XML support],
-              [AC_DEFINE([USE_LIBXML], 1, [Define to 1 to build with XML support. (--with-libxml)])])
+PGAC_ARG_BOOL(with, libxml, yes, [build with XML support],
+              [AC_DEFINE([USE_LIBXML], 1, [Define to 1 to build with XML support. (--with-libxml)])],
+              [AC_MSG_ERROR([--without-libxml is not supported. The ivorysql_ora plugin depends on the libxml library.])])
 AC_MSG_RESULT([$with_libxml])
 AC_SUBST(with_libxml)
 

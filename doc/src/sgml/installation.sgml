@@ -1201,6 +1201,14 @@ build-postgresql:
         </para>
 
         <para>
+         In <productname>IvorySQL</productname>, libxml2 is enabled by default
+         and is required, because the <filename>ivorysql_ora</filename> plugin
+         depends on it.  The <option>--without-libxml</option> option is not
+         supported; <command>configure</command> will fail if it is given, or if
+         a usable libxml2 installation cannot be found.
+        </para>
+
+        <para>
          To detect the required compiler and linker options, PostgreSQL will
          query <command>pkg-config</command>, if that is installed and knows
          about libxml2.  Otherwise the program <command>xml2-config</command>,

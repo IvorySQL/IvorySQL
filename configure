@@ -1607,7 +1607,7 @@ Optional Packages:
   --with-ossp-uuid        obsolete spelling of --with-uuid=ossp
   --with-libcurl          build with libcurl support
   --with-libnuma          build with libnuma support
-  --with-libxml           build with XML support
+  --without-libxml        build with XML support
   --with-libxslt          use XSLT support when building contrib/xml2
   --with-system-tzdata=DIR
                           use system time zone data in DIR
@@ -9436,7 +9436,7 @@ $as_echo "#define USE_LIBXML 1" >>confdefs.h
 
       ;;
     no)
-      :
+      as_fn_error $? "--without-libxml is not supported. The ivorysql_ora plugin depends on the libxml library." "$LINENO" 5
       ;;
     *)
       as_fn_error $? "no argument expected for --with-libxml option" "$LINENO" 5
@@ -9444,7 +9444,9 @@ $as_echo "#define USE_LIBXML 1" >>confdefs.h
   esac
 
 else
-  with_libxml=no
+  with_libxml=yes
+
+$as_echo "#define USE_LIBXML 1" >>confdefs.h
 
 fi
 
