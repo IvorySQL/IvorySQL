@@ -10,7 +10,8 @@ EXTENSION = gb18030_2022
 PGFILEDESC = "gb18030_2022,support gb18030 2022 with extension"
 DATA = gb18030_2022--1.0.sql
 REGRESS = gb18030_2022_and_utf8 \
-		copy
+		copy \
+		json_gb18030
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
