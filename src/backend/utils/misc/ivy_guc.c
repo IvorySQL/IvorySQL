@@ -401,7 +401,7 @@ static struct config_enum Ivy_ConfigureNamesEnum[] =
 		{"ivorysql.compatible_mode", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Set default sql parser compatibility mode"),
 			NULL,
-			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE | GUC_DISALLOW_IN_DB_ROLE_SETTING
+			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
 		},
 		&compatible_db,
 		PG_PARSER, db_parser_options,

@@ -76,6 +76,7 @@
 #include "tcop/utility.h"
 #include "utils/guc.h"
 #include "utils/guc_hooks.h"
+#include "utils/guc_tables.h"
 #include "utils/injection_point.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
@@ -5487,22 +5488,43 @@ disable_statement_timeout(void)
 
 /*
  * Initialize backend ivorysql parser
+ *
+ * The listener port a client connected to implies a default value for
+ * ivorysql.compatible_mode (PG port -> pg, Oracle port -> oracle).  However,
+ * an explicit per-database/per-role setting configured through ALTER
+ * DATABASE/ROLE SET must take precedence over this port-based default, so the
+ * default is only applied when no such setting has been loaded for the
+ * current session.
  */
 static void
 InitIvorysql(void)
 {
 	if (MyProcPort)
 	{
-		if (MyProcPort->connmode == 'p')
+		struct config_generic *record;
+
+		record = find_option("ivorysql.compatible_mode", false, true, WARNING);
+
+		/*
+		 * Only enforce the listener-port-based default when compatible_mode
+		 * was not explicitly configured via pg_db_role_setting, whose sources
+		 * (PGC_S_GLOBAL ... PGC_S_DATABASE_USER) must take precedence.
+		 */
+		if (record == NULL ||
+			record->source < PGC_S_GLOBAL ||
+			record->source > PGC_S_DATABASE_USER)
 		{
-			SetConfigOption("ivorysql.compatible_mode", "pg", PGC_USERSET, PGC_S_OVERRIDE);
-		}
-		else if (MyProcPort->connmode == 'o')
-		{
-			SetConfigOption("ivorysql.compatible_mode", "oracle", PGC_USERSET, PGC_S_OVERRIDE);
-			if (NULL == ora_raw_parser)
-				ereport(ERROR,
-						(errmsg("Invalid Oracle compatibility mode syntax library.")));
+			if (MyProcPort->connmode == 'p')
+			{
+				SetConfigOption("ivorysql.compatible_mode", "pg", PGC_USERSET, PGC_S_OVERRIDE);
+			}
+			else if (MyProcPort->connmode == 'o')
+			{
+				SetConfigOption("ivorysql.compatible_mode", "oracle", PGC_USERSET, PGC_S_OVERRIDE);
+				if (NULL == ora_raw_parser)
+					ereport(ERROR,
+							(errmsg("Invalid Oracle compatibility mode syntax library.")));
+			}
 		}
 	}
 

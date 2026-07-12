@@ -1360,11 +1360,17 @@ set ivorysql.compatible_mode = 'pg';
 reset ivorysql.compatible_mode;
 show ivorysql.compatible_mode;
 
--- ensure compatible_mode cannot be persisted via ALTER ROLE SET/RESET
+-- compatible_mode can be persisted via ALTER ROLE SET/RESET (issue #1357)
 create role regress_psql_cm_role;
 alter role regress_psql_cm_role set ivorysql.compatible_mode = 'pg';
-alter role regress_psql_cm_role set ivorysql.compatible_mode to default;
+select r.rolname, s.setconfig
+  from pg_db_role_setting s
+  join pg_roles r on r.oid = s.setrole
+  where r.rolname = 'regress_psql_cm_role';
 alter role regress_psql_cm_role reset ivorysql.compatible_mode;
+select count(*) from pg_db_role_setting s
+  join pg_roles r on r.oid = s.setrole
+  where r.rolname = 'regress_psql_cm_role';
 drop role regress_psql_cm_role;
 
 -- check \df+
