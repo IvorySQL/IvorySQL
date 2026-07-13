@@ -1,1 +1,3 @@
 /psqlscan.c
+/ora_keywords.c
+/ora_kwlist_d.h
