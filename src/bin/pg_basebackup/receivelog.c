@@ -272,7 +272,7 @@ existsTimeLineHistoryFile(StreamCtl *stream)
 }
 
 static bool
-writeTimeLineHistoryFile(StreamCtl *stream, char *filename, char *content)
+writeTimeLineHistoryFile(StreamCtl *stream, const char *filename, const char *content)
 {
 	int			size = strlen(content);
 	char		histfname[MAXFNAMELEN];

@@ -303,7 +303,7 @@ findNewestTimeLine(TimeLineID startTLI)
  */
 void
 writeTimeLineHistory(TimeLineID newTLI, TimeLineID parentTLI,
-					 XLogRecPtr switchpoint, char *reason)
+					 XLogRecPtr switchpoint, const char *reason)
 {
 	char		path[MAXPGPATH];
 	char		tmppath[MAXPGPATH];
@@ -461,7 +461,7 @@ writeTimeLineHistory(TimeLineID newTLI, TimeLineID parentTLI,
  * to avoid emplacing a bogus file.
  */
 void
-writeTimeLineHistoryFile(TimeLineID tli, char *content, int size)
+writeTimeLineHistoryFile(TimeLineID tli, const char *content, int size)
 {
 	char		path[MAXPGPATH];
 	char		tmppath[MAXPGPATH];

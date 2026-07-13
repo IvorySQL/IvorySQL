@@ -49,23 +49,23 @@ typedef struct rfile
 static void debug_reconstruction(int n_source,
 								 rfile **sources,
 								 bool dry_run);
-static unsigned find_reconstructed_block_length(rfile *s);
-static rfile *make_incremental_rfile(char *filename);
-static rfile *make_rfile(char *filename, bool missing_ok);
-static void write_reconstructed_file(char *input_filename,
-									 char *output_filename,
+static unsigned find_reconstructed_block_length(const rfile *s);
+static rfile *make_incremental_rfile(const char *filename);
+static rfile *make_rfile(const char *filename, bool missing_ok);
+static void write_reconstructed_file(const char *input_filename,
+									 const char *output_filename,
 									 unsigned block_length,
 									 rfile **sourcemap,
-									 off_t *offsetmap,
+									 const off_t *offsetmap,
 									 pg_checksum_context *checksum_ctx,
 									 CopyMethod copy_method,
 									 bool debug,
 									 bool dry_run);
-static void read_bytes(rfile *rf, void *buffer, unsigned length);
-static void write_block(int fd, char *output_filename,
-						uint8 *buffer,
+static void read_bytes(const rfile *rf, void *buffer, unsigned length);
+static void write_block(int fd, const char *output_filename,
+						const uint8 *buffer,
 						pg_checksum_context *checksum_ctx);
-static void read_block(rfile *s, off_t off, uint8 *buffer);
+static void read_block(const rfile *s, off_t off, uint8 *buffer);
 
 /*
  * Reconstruct a full file from an incremental file and a chain of prior
@@ -433,7 +433,7 @@ debug_reconstruction(int n_source, rfile **sources, bool dry_run)
  * necessary to include those blocks.
  */
 static unsigned
-find_reconstructed_block_length(rfile *s)
+find_reconstructed_block_length(const rfile *s)
 {
 	unsigned	block_length = s->truncation_block_length;
 	unsigned	i;
@@ -450,7 +450,7 @@ find_reconstructed_block_length(rfile *s)
  * blocks it contains.
  */
 static rfile *
-make_incremental_rfile(char *filename)
+make_incremental_rfile(const char *filename)
 {
 	rfile	   *rf;
 	unsigned	magic;
@@ -505,7 +505,7 @@ make_incremental_rfile(char *filename)
  * Allocate and perform basic initialization of an rfile.
  */
 static rfile *
-make_rfile(char *filename, bool missing_ok)
+make_rfile(const char *filename, bool missing_ok)
 {
 	rfile	   *rf;
 
@@ -529,7 +529,7 @@ make_rfile(char *filename, bool missing_ok)
  * Read the indicated number of bytes from an rfile into the buffer.
  */
 static void
-read_bytes(rfile *rf, void *buffer, unsigned length)
+read_bytes(const rfile *rf, void *buffer, unsigned length)
 {
 	int			rb = read(rf->fd, buffer, length);
 
@@ -547,11 +547,11 @@ read_bytes(rfile *rf, void *buffer, unsigned length)
  * Write out a reconstructed file.
  */
 static void
-write_reconstructed_file(char *input_filename,
-						 char *output_filename,
+write_reconstructed_file(const char *input_filename,
+						 const char *output_filename,
 						 unsigned block_length,
 						 rfile **sourcemap,
-						 off_t *offsetmap,
+						 const off_t *offsetmap,
 						 pg_checksum_context *checksum_ctx,
 						 CopyMethod copy_method,
 						 bool debug,
@@ -750,8 +750,8 @@ write_reconstructed_file(char *input_filename,
  * provided only for the error message.
  */
 static void
-write_block(int fd, char *output_filename,
-			uint8 *buffer, pg_checksum_context *checksum_ctx)
+write_block(int fd, const char *output_filename,
+			const uint8 *buffer, pg_checksum_context *checksum_ctx)
 {
 	int			wb;
 
@@ -774,7 +774,7 @@ write_block(int fd, char *output_filename,
  * Read a block of data (BLCKSZ bytes) into the buffer.
  */
 static void
-read_block(rfile *s, off_t off, uint8 *buffer)
+read_block(const rfile *s, off_t off, uint8 *buffer)
 {
 	int			rb;
 
