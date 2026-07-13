@@ -4,3 +4,7 @@
 /sql_help.c
 /psql
 /tmp_check/
+/ora_psqlscanslash.c
+/psqlplusparse.c
+/psqlplusparse.h
+/psqlplusscan.c
