@@ -146,10 +146,21 @@ RESET client_min_messages;
           Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
 --------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
  regress_publication_user | f          | f             | t       | t       | t       | t         | none              | f        | 
-Tables:
-    "pub_test.testpub_nopk"
 Tables from schemas:
     "pub_test"
+
+-- table also covered by a published schema should appear only once in \d output
+\d pub_test.testpub_nopk
+           Table "pub_test.testpub_nopk"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ foo    | integer |           |          | 
+ bar    | integer |           |          | 
+Included in publications:
+    "testpub_for_tbl_schema"
+    "testpub_foralltables"
+    "testpub_forschema"
+    "testpub_fortable"
 
 -- weird parser corner case
 CREATE PUBLICATION testpub_parsertst FOR TABLE pub_test.testpub_nopk, CURRENT_SCHEMA;
@@ -167,8 +178,6 @@ ALTER PUBLICATION testpub_forschema ADD TABLE pub_test.testpub_nopk;
           Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
 --------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
  regress_publication_user | f          | f             | t       | t       | t       | t         | none              | f        | 
-Tables:
-    "pub_test.testpub_nopk"
 Tables from schemas:
     "pub_test"
 
@@ -832,10 +841,18 @@ RESET client_min_messages;
           Owner           | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root | Description 
 --------------------------+------------+---------------+---------+---------+---------+-----------+-------------------+----------+-------------
  regress_publication_user | f          | f             | t       | t       | t       | t         | none              | f        | 
-Tables:
-    "testpub_rf_schema2.testpub_rf_tbl6" WHERE (i < 99)
 Tables from schemas:
     "testpub_rf_schema2"
+
+-- table with a row-filter, also covered by a published schema, should appear
+-- only once in \d output and without the row filter
+\d testpub_rf_schema2.testpub_rf_tbl6
+    Table "testpub_rf_schema2.testpub_rf_tbl6"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ i      | integer |           |          | 
+Included in publications:
+    "testpub6"
 
 -- fail - virtual generated column uses user-defined function
 -- (Actually, this already fails at CREATE TABLE rather than at CREATE
