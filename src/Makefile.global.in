@@ -948,7 +948,7 @@ endif
 	@# which -Wimplicit-fallthrough=5 (see configure.ac) does not honor.
 	@# Rewrite it to a real annotation for scanners that call input()
 	@# themselves and thus cannot use "%option noinput" to suppress it.
-	$(if $(FLEX_FIX_WARNING),sed -i.bak -e 's|/\*FALLTHROUGH\*/|pg_fallthrough;|' $@ && rm -f $@.bak)
+	$(if $(FLEX_FIX_WARNING),sed -e 's|/\*FALLTHROUGH\*/|pg_fallthrough;|' $@ >$@.tmp && mv $@.tmp $@ || rm -f $@.tmp)
 
 %.c: %.y
 	$(if $(BISON_CHECK_CMD),$(BISON_CHECK_CMD))
