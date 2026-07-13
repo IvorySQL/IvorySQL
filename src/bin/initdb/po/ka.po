@@ -1156,18 +1156,3 @@ msgstr ""
 "    %s\n"
 "\n"
 
-#, c-format
-#~ msgid "  ICU locale:  %s\n"
-#~ msgstr "  ICU ენა:  %s\n"
-
-#, c-format
-#~ msgid "ICU locale must be specified"
-#~ msgstr "საჭროა ICU ენის მითითება"
-
-#, c-format
-#~ msgid "argument of --wal-segsize must be a number"
-#~ msgstr "--wal-segisze -ის არგუმენტი რიცხვი უნდა იყოს"
-
-#, c-format
-#~ msgid "selecting default \"autovacuum_worker_slots\" ... %d\n"
-#~ msgstr "მიმდინარეობს ნაგულისხმევი \"autovacuum_worker_slots\"-ის არჩევა ... %d\n"

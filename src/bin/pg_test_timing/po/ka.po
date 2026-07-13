@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pg_test_timing (PostgreSQL) 19\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
-"POT-Creation-Date: 2026-05-19 01:54+0000\n"
-"PO-Revision-Date: 2026-05-19 04:45+0200\n"
+"POT-Creation-Date: 2026-06-30 04:24+0000\n"
+"PO-Revision-Date: 2026-07-02 06:16+0200\n"
 "Last-Translator: Temuri Doghonadze "
 "<temuri.doghonadze@gmail.com>\n"
 "Language-Team: Georgian <nothing>\n"
@@ -45,21 +45,21 @@ msgstr ""
 
 #: pg_test_timing.c:79
 #, c-format
-msgid "Usage: %s [-d DURATION] [-c CUTOFF]\n"
-msgstr "გამოყენება: %s [-d ხანგრძლივობა] [-c ამოჭრა]\n"
+msgid "Usage: %s [-c CUTOFF] [-d DURATION]\n"
+msgstr "გამოყენება: %s [-c ამოჭრა] [-d ხანგრძლივობა]\n"
 
-#: pg_test_timing.c:101 pg_test_timing.c:122
+#: pg_test_timing.c:100 pg_test_timing.c:121
 #, c-format
 msgid "%s: invalid argument for option %s\n"
 msgstr "%s: არასწორი არგუმენტი პარამეტრისთვის%s\n"
 
-#: pg_test_timing.c:103 pg_test_timing.c:124 pg_test_timing.c:137
+#: pg_test_timing.c:102 pg_test_timing.c:123 pg_test_timing.c:137
 #: pg_test_timing.c:149
 #, c-format
 msgid "Try \"%s --help\" for more information.\n"
 msgstr "მეტი ინფორმაციისთვის სცადეთ '%s --help'.\n"
 
-#: pg_test_timing.c:110 pg_test_timing.c:130
+#: pg_test_timing.c:108 pg_test_timing.c:130
 #, c-format
 msgid "%s: %s must be in range %u..%u\n"
 msgstr "%s: %s-ის დიაპაზონია %u..%u\n"
@@ -230,6 +230,3 @@ msgid ""
 msgstr ""
 "\n"
 "დაკვირვებულია ათვლის ხანგრძლივობები მნიშვნელობამდე %.4f%%:\n"
-
-#~ msgid "< us"
-#~ msgstr "< მკწმ"

@@ -866,22 +866,3 @@ msgstr "%s: ოპერაცია მითითებული არაა
 msgid "%s: no database directory specified and environment variable PGDATA unset\n"
 msgstr "%s: ბაზის საქაღალდე და გარემოს ცვლადი PGDATA მითითებული არაა\n"
 
-#, c-format
-#~ msgid "%s: WARNING: cannot create restricted tokens on this platform\n"
-#~ msgstr "%s: გაფრთხილება: ამ პლატფორმაზე შეზღუდული კოდების შექმნა შეუძლებელია\n"
-
-#, c-format
-#~ msgid "%s: WARNING: could not locate all job object functions in system API\n"
-#~ msgstr "%s: გაფრთხილება: სისტემურ API-ში დავალების ობიექტის ყველა ფუნქცია  არ არსებობს\n"
-
-#, c-format
-#~ msgid "could not change directory to \"%s\": %m"
-#~ msgstr "საქაღალდის %s-ზე შეცვლის შეცდომა: %m"
-
-#, c-format
-#~ msgid "could not identify current directory: %m"
-#~ msgstr "მიმდინარე საქაღალდის იდენტიფიკაციის პრობლემა: %m"
-
-#, c-format
-#~ msgid "could not read symbolic link \"%s\": %m"
-#~ msgstr "სიმბოლური ბმის \"%s\" წაკითხვის შეცდომა: %m"

@@ -872,6 +872,3 @@ msgstr "%s შეყვანის ბოლოს"
 msgid "%s at or near \"%s\""
 msgstr "%s \"%s\"-სთან ან ახლოს"
 
-#, c-format
-#~ msgid "could not determine actual argument type for polymorphic function \"%s\""
-#~ msgstr "პოლიმორფული ფუნქციისთვის (%s) მიმდინარე არგუმენტის ტიპის დადგენა შეუძლებელია"

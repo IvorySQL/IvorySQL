@@ -6,8 +6,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pg_upgrade (PostgreSQL) 19\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
-"POT-Creation-Date: 2026-05-28 13:23+0000\n"
-"PO-Revision-Date: 2026-05-28 19:06+0200\n"
+"POT-Creation-Date: 2026-07-04 06:24+0000\n"
+"PO-Revision-Date: 2026-07-04 13:01+0200\n"
 "Last-Translator: Peter Eisentraut <peter@eisentraut.org>\n"
 "Language-Team: German <pgsql-translators@postgresql.org>\n"
 "Language: de\n"
@@ -60,12 +60,12 @@ msgstr "Fehler beim Nachschlagen des Benutzernamens: Fehlercode %lu"
 msgid "options %s and %s cannot be used together"
 msgstr "Optionen %s und %s können nicht zusammen verwendet werden"
 
-#: ../../fe_utils/string_utils.c:581
+#: ../../fe_utils/string_utils.c:585
 #, c-format
 msgid "shell command argument contains a newline or carriage return: \"%s\"\n"
 msgstr "Argument des Shell-Befehls enthält Newline oder Carriage Return: »%s«\n"
 
-#: ../../fe_utils/string_utils.c:754
+#: ../../fe_utils/string_utils.c:758
 #, c-format
 msgid "database name contains a newline or carriage return: \"%s\"\n"
 msgstr "Datenbankname enthält Newline oder Carriage Return: »%s«\n"
@@ -784,12 +784,12 @@ msgstr "»wal_level« muss »replica« oder »logical« sein, aber es ist auf »
 
 #: check.c:2289
 #, c-format
-msgid "\"max_replication_slots\" (%d) must be greater than or equal to the number of logical replication slots on the old cluster plus one additional slot required for retaining conflict detection information (%d)"
+msgid "\"max_replication_slots\" (%d) must be greater than or equal to the number of logical replication slots in the old cluster plus one additional slot required for retaining conflict detection information (%d)"
 msgstr "»max_replication_slots« (%d) muss größer als oder gleich der Anzahl der logischen Replikations-Slots im alten Cluster plus einen für Konflikterkennungsinformationen (%d) sein"
 
 #: check.c:2295
 #, c-format
-msgid "\"max_replication_slots\" (%d) must be greater than or equal to the number of logical replication slots (%d) on the old cluster"
+msgid "\"max_replication_slots\" (%d) must be greater than or equal to the number of logical replication slots (%d) in the old cluster"
 msgstr "»max_replication_slots« (%d) muss größer als oder gleich der Anzahl der logischen Replikations-Slots (%d) im alten Cluster sein"
 
 #: check.c:2327
@@ -799,7 +799,7 @@ msgstr "Prüfe Konfiguration für Subskriptionen im neuen Cluster"
 
 #: check.c:2339
 #, c-format
-msgid "\"max_active_replication_origins\" (%d) must be greater than or equal to the number of subscriptions (%d) on the old cluster"
+msgid "\"max_active_replication_origins\" (%d) must be greater than or equal to the number of subscriptions (%d) in the old cluster"
 msgstr "»max_active_replication_origins« (%d) muss größer als oder gleich der Anzahl der Subskriptionen (%d) im alten Cluster sein"
 
 #: check.c:2361
@@ -851,7 +851,7 @@ msgstr "Prüfe Namen der Datenbanken, Rollen und Tablespaces"
 #: check.c:2638
 #, c-format
 msgid ""
-"Your installation contains databases, roles, or tablespace with names\n"
+"Your installation contains databases, roles, or tablespaces with names\n"
 "with invalid characters (newline or carriage return).  To fix this,\n"
 "rename these objects.\n"
 "A list of all objects with invalid names is in the file:\n"

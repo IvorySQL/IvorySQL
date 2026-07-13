@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: psql (PostgreSQL) 19\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
-"POT-Creation-Date: 2026-05-13 06:22+0000\n"
-"PO-Revision-Date: 2026-05-13 09:22+0200\n"
+"POT-Creation-Date: 2026-06-30 04:21+0000\n"
+"PO-Revision-Date: 2026-07-02 06:14+0200\n"
 "Last-Translator: Temuri Doghonadze <temuri.doghonadze@gmail.com>\n"
 "Language-Team: Georgian <nothing>\n"
 "Language: ka\n"
@@ -165,42 +165,42 @@ msgid_plural "(%lu rows)"
 msgstr[0] "(%lu მწკრივი)"
 msgstr[1] "(%lu მწკრივი)"
 
-#: ../../fe_utils/print.c:3173
+#: ../../fe_utils/print.c:3174
 #, c-format
 msgid "Interrupted\n"
 msgstr "შეწყვეტილია\n"
 
-#: ../../fe_utils/print.c:3207
+#: ../../fe_utils/print.c:3208
 #, c-format
 msgid "Cannot print table contents: number of cells %<PRIu64> is equal to or exceeds maximum %zu.\n"
 msgstr "ვერ გამოვიტანე ცხრილის შემცველობა: უჯრედების რაოდენობა %<PRIu64> მაქსიმუმის %zu ტოლი ან მასზე მეტია.\n"
 
-#: ../../fe_utils/print.c:3248
+#: ../../fe_utils/print.c:3249
 #, c-format
 msgid "Cannot add header to table content: column count of %d exceeded.\n"
 msgstr "ცხრილის შემცველობაზე თავსართის დამატება შეუძლებელია: სვეტების რაოდენობა %d გადაჭარბებულია.\n"
 
-#: ../../fe_utils/print.c:3291
+#: ../../fe_utils/print.c:3292
 #, c-format
 msgid "Cannot add cell to table content: total cell count of %<PRIu64> exceeded.\n"
 msgstr "ცხრილის შემცველობაზე უჯრედის დამატება შეუძლებელია: უჯრედების ჯამური რაოდენობა %<PRIu64>-ზე მეტია.\n"
 
-#: ../../fe_utils/print.c:3719
+#: ../../fe_utils/print.c:3720
 #, c-format
 msgid "invalid output format (internal error): %d"
 msgstr "გამოტანის არასწორი ფორმატი (შიდა შეცდომა): %d"
 
-#: ../../fe_utils/psqlscan.l:729
+#: ../../fe_utils/psqlscan.l:736
 #, c-format
 msgid "skipping recursive expansion of variable \"%s\""
 msgstr "რეკურსიული გაფართოების გამოტოვება ცვლადისთვის \"%s\""
 
-#: ../../fe_utils/string_utils.c:581
+#: ../../fe_utils/string_utils.c:585
 #, c-format
 msgid "shell command argument contains a newline or carriage return: \"%s\"\n"
 msgstr "გარსის ბრძანების არგუმენტი ხაზის გადატანას ან კარეტის დაბრუნებას შეიცავს: \"%s\"\n"
 
-#: ../../fe_utils/string_utils.c:754
+#: ../../fe_utils/string_utils.c:758
 #, c-format
 msgid "database name contains a newline or carriage return: \"%s\"\n"
 msgstr "მონაცემთა ბაზის სახელი ხაზის გადატანას ან კარეტის დაბრუნებას შეიცავს: \"%s\"\n"
@@ -373,8 +373,8 @@ msgid "%s: invalid encoding name or conversion procedure not found"
 msgstr "%s: კოდირების არასწორი სახელი ან გადაყვანის პროცედურა არ არსებობს"
 
 #: command.c:1657 command.c:2597 command.c:4076 command.c:4274 command.c:6568
-#: common.c:233 common.c:282 common.c:455 common.c:1178 common.c:1196
-#: common.c:1264 common.c:1376 common.c:1414 common.c:1705 common.c:1785
+#: common.c:233 common.c:282 common.c:457 common.c:1180 common.c:1198
+#: common.c:1266 common.c:1378 common.c:1416 common.c:1720 common.c:1800
 #: copy.c:486 copy.c:731 large_obj.c:157 large_obj.c:192 large_obj.c:254
 #: startup.c:310
 #, c-format
@@ -932,7 +932,7 @@ msgstr "%s (ყოველ %g-ში)\n"
 msgid "could not wait for signals: %m"
 msgstr "სიგნალებისთვის დალოდება შეუძლებელია: %m"
 
-#: command.c:6167 command.c:6174 common.c:667 common.c:674
+#: command.c:6167 command.c:6174 common.c:669 common.c:676
 #, c-format
 msgid ""
 "/**** INTERNAL QUERY ****/\n"
@@ -981,87 +981,87 @@ msgstr "გაქცევა აქტიური შეერთებს გ
 msgid "shell command argument contains a newline or carriage return: \"%s\""
 msgstr "გარსის ბრძანება ხაზის გადატანას ან კარეტის დაბრუნებას შეიცავს: \"%s\""
 
-#: common.c:363
+#: common.c:365
 #, c-format
 msgid "connection to server was lost"
 msgstr "სერვერთან კავშირი დაკარგულია"
 
-#: common.c:367
+#: common.c:369
 #, c-format
 msgid "The connection to the server was lost. Attempting reset: "
 msgstr "სერვერთან კავშირი დაკარგულია. ვეცდები თავიდან დავიწყო: "
 
-#: common.c:373
+#: common.c:375
 #, c-format
 msgid "Failed.\n"
 msgstr "ჩავარდა.\n"
 
-#: common.c:390
+#: common.c:392
 #, c-format
 msgid "Succeeded.\n"
 msgstr "წარმატებულია.\n"
 
-#: common.c:445 common.c:1097
+#: common.c:447 common.c:1099
 #, c-format
 msgid "unexpected PQresultStatus: %d"
 msgstr "მოულოდნელი PQresultStatus: %d"
 
-#: common.c:606
+#: common.c:608
 #, c-format
 msgid "Time: %.3f ms\n"
 msgstr "დრო: %.3f მწმ\n"
 
-#: common.c:621
+#: common.c:623
 #, c-format
 msgid "Time: %.3f ms (%02d:%06.3f)\n"
 msgstr "დრო: %.3f მწმ (%02d:%06.3f)\n"
 
-#: common.c:630
+#: common.c:632
 #, c-format
 msgid "Time: %.3f ms (%02d:%02d:%06.3f)\n"
 msgstr "დრო: %.3f მწმ (%02d:%02d:%06.3f)\n"
 
-#: common.c:637
+#: common.c:639
 #, c-format
 msgid "Time: %.3f ms (%.0f d %02d:%02d:%06.3f)\n"
 msgstr "დრო: %.3f მწმ (%.0f დღე %02d:%02d:%06.3f)\n"
 
-#: common.c:661 common.c:718 common.c:1130 describe.c:6659
+#: common.c:663 common.c:720 common.c:1132 describe.c:6659
 #, c-format
 msgid "You are currently not connected to a database."
 msgstr "ამჟამად მონაცემთა ბაზასთან მიერთებული არ ბრძანდებით."
 
-#: common.c:749
+#: common.c:751
 #, c-format
 msgid "Asynchronous notification \"%s\" with payload \"%s\" received from server process with PID %d.\n"
 msgstr "მიღებულია ასინქრონული გაფრთხილება \"%s\" შემცველობით \"%s\" სერვერის პროცესისგან PID-ით %d.\n"
 
-#: common.c:752
+#: common.c:754
 #, c-format
 msgid "Asynchronous notification \"%s\" received from server process with PID %d.\n"
 msgstr "მიღებულია ასინქრონული გაფრთხილება \"%s\" სერვერის პროცესისგან PID-ით %d.\n"
 
-#: common.c:783
+#: common.c:785
 #, c-format
 msgid "could not print result table: %m"
 msgstr "შედეგების ცხრილის გამოტანის შეცდომა: %m"
 
-#: common.c:803
+#: common.c:805
 #, c-format
 msgid "no rows returned for \\gset"
 msgstr "\\gset -სთვის მწკრივები არ დაბრუნებულა"
 
-#: common.c:808
+#: common.c:810
 #, c-format
 msgid "more than one row returned for \\gset"
 msgstr "\\gset -სთვის ერთზე მეტი მწკრივი დაბრუნდა"
 
-#: common.c:826
+#: common.c:828
 #, c-format
 msgid "attempt to \\gset into specially treated variable \"%s\" ignored"
 msgstr "მცდელობა, \\gset-ი სპეციალურ ცვლადზე (\"%s\") ყოფილიყო გამოყენებული, იგნორირებულია"
 
-#: common.c:1139
+#: common.c:1141
 #, c-format
 msgid ""
 "/**(Single step mode: verify command)******************************************/\n"
@@ -1072,7 +1072,7 @@ msgstr ""
 "%s\n"
 "***(დააწექით Enter-ს გასაგრძელებლად. გასაუქმებლად კი x-ს და შემდეგ Enter-ს )********************\n"
 
-#: common.c:1159
+#: common.c:1161
 #, c-format
 msgid ""
 "/******** QUERY *********/\n"
@@ -1085,48 +1085,48 @@ msgstr ""
 "**************************\n"
 "\n"
 
-#: common.c:1216
+#: common.c:1218
 #, c-format
 msgid "STATEMENT:  %s"
 msgstr "ოპერატორი:   %s"
 
-#: common.c:1252
+#: common.c:1254
 #, c-format
 msgid "unexpected transaction status (%d)"
 msgstr "ტრანზაქციის მოულოდნელი სტატუსი (%d)"
 
-#: common.c:1398 describe.c:2198
+#: common.c:1400 describe.c:2198
 msgid "Column"
 msgstr "სვეტი"
 
-#: common.c:1399 describe.c:179 describe.c:368 describe.c:386 describe.c:1094
+#: common.c:1401 describe.c:179 describe.c:368 describe.c:386 describe.c:1094
 #: describe.c:1258 describe.c:1794 describe.c:1818 describe.c:2199
 #: describe.c:4292 describe.c:4566 describe.c:4815 describe.c:4979
 #: describe.c:6283
 msgid "Type"
 msgstr "ტიპი"
 
-#: common.c:1448
+#: common.c:1450
 #, c-format
 msgid "The command has no result, or the result has no columns.\n"
 msgstr "ბრძანებას შედეგები არ აქვს, ან შედეგებში სვეტები არაა.\n"
 
-#: common.c:1670
+#: common.c:1685
 #, c-format
 msgid "No pending results to get"
 msgstr "მისაღები შედეგები დარჩენილი არაა"
 
-#: common.c:1748
+#: common.c:1763
 #, c-format
 msgid "fetching results in chunked mode failed"
 msgstr "ნაგლეჯების რეჟიმში შედეგების გამოთხოვა ჩავარდა"
 
-#: common.c:1797
+#: common.c:1812
 #, c-format
 msgid "Pipeline aborted, command did not run"
 msgstr "კომუნიკაციის არხი გაუქმდა. ბრძანება არ გაშვებულა"
 
-#: common.c:1893
+#: common.c:1908
 #, c-format
 msgid "COPY in a pipeline is not supported, aborting connection"
 msgstr "COPY კომუნიკაციის არხში მხარდაჭერილი არაა. კავშირი გაუქმდება"
@@ -1191,47 +1191,47 @@ msgstr "დასრულდა კითხვის შეცდომის 
 msgid "trying to exit copy mode"
 msgstr "კოპირების რეჟიმიდან გამოსვლის მცდელობა"
 
-#: crosstabview.c:124
+#: crosstabview.c:127
 #, c-format
 msgid "\\crosstabview: statement did not return a result set"
 msgstr "\\crosstabview: ოპერატორმა შედეგების სეტი არ დააბრუნა"
 
-#: crosstabview.c:130
+#: crosstabview.c:133
 #, c-format
 msgid "\\crosstabview: query must return at least three columns"
 msgstr "\\crosstabview: მოთხოვნამ სულ ცოტა, სამი სვეტი უნდა დააბრუნოს"
 
-#: crosstabview.c:157
+#: crosstabview.c:160
 #, c-format
 msgid "\\crosstabview: vertical and horizontal headers must be different columns"
 msgstr "\\crosstabview: ვერტიკალური და ჰორიზონტალური თავსართები სხვადასხვა სვეტებში უნდა იყოს"
 
-#: crosstabview.c:173
+#: crosstabview.c:176
 #, c-format
 msgid "\\crosstabview: data column must be specified when query returns more than three columns"
 msgstr "\\crosstabview: როცა მოთხოვნა სამზე მეტ სვეტს აბრუნებს, ასევე საჭიროა მონაცემების სვეტის მითითება"
 
-#: crosstabview.c:229
+#: crosstabview.c:232
 #, c-format
 msgid "\\crosstabview: maximum number of columns (%d) exceeded"
 msgstr "\\crosstabview: გადაჭარბებულია სვეტების მაქსიმალური რაოდენობა (%d)"
 
-#: crosstabview.c:396
+#: crosstabview.c:399
 #, c-format
 msgid "\\crosstabview: query result contains multiple data values for row \"%s\", column \"%s\""
 msgstr "\\crosstabview: მოთხოვნის შედეგი მონაცემების მრავალ მნიშვნელობას შეიცავს მწკრივისთვის \"%s\", სვეტი \"%s\""
 
-#: crosstabview.c:643
+#: crosstabview.c:670
 #, c-format
 msgid "\\crosstabview: column number %d is out of range 1..%d"
 msgstr "\\crosstabview: სვეტის რიცხვი %d დიაპაზონს 1..%d გარეთაა"
 
-#: crosstabview.c:668
+#: crosstabview.c:695
 #, c-format
 msgid "\\crosstabview: ambiguous column name: \"%s\""
 msgstr "\\crosstabview: სვეტის არასწორი სახელი: \"%s\""
 
-#: crosstabview.c:676
+#: crosstabview.c:703
 #, c-format
 msgid "\\crosstabview: column name not found: \"%s\""
 msgstr "\\crosstabview: სვეტის სახელი არ არსებობს: \"%s\""
@@ -1882,22 +1882,19 @@ msgstr "ინდექსის დეტალების მიღება"
 msgid "primary key, "
 msgstr "ძირითადი გასაღები. "
 
-#: describe.c:2507
-msgid "unique"
-msgstr "უნიკალური"
-
-#: describe.c:2509
-msgid " nulls not distinct"
-msgstr " ნულები განსხვავებული არაა"
+#: describe.c:2508
+msgid "unique nulls not distinct, "
+msgstr "უნიკალური ნულები განსხვავებული არაა, "
 
 #: describe.c:2510
-msgid ", "
-msgstr ", "
+msgid "unique, "
+msgstr "უნიკალური, "
 
+#. translator: the first %s is an index AM name (eg. btree)
 #: describe.c:2517
 #, c-format
-msgid "for table \"%s.%s\""
-msgstr "ცხრილისთვის \"%s.%s\""
+msgid "%s, for table \"%s.%s\""
+msgstr "%s, ცხრილისთვის \"%s.%s\""
 
 #: describe.c:2521
 #, c-format
@@ -7569,7 +7566,7 @@ msgstr "ბრძანების სტრიქონის დამატ�
 msgid "could not find own program executable"
 msgstr "საკუთარი პროგრამის გამშვები ფაილის პოვნა შეუძლებელია"
 
-#: tab-complete.in.c:7055
+#: tab-complete.in.c:7060
 #, c-format
 msgid ""
 "tab completion query failed: %s\n"
@@ -7605,22 +7602,22 @@ msgstr "არასწორი მნიშვნელობა \"%s\" ცვ
 msgid "invalid value \"%s\" for variable \"%s\": must be less than %.2f"
 msgstr "არასწორი მნიშვნელობა \"%s\" ცვლადისთვის \"%s\"-სთვის: უნდა იყოს %.2f-ზე ნაკლები"
 
-#: variables.c:241
+#: variables.c:242
 #, c-format
 msgid "value \"%s\" is out of range for variable \"%s\""
 msgstr "მნიშვნელობა \"%s\" დიაპაზონს გარეთაა ცვლადისთვის \"%s\""
 
-#: variables.c:247
+#: variables.c:248
 #, c-format
 msgid "invalid value \"%s\" for variable \"%s\""
 msgstr "არასწორი მნიშვნელობა \"%s\" ცვლადისთვის \"%s\""
 
-#: variables.c:294
+#: variables.c:295
 #, c-format
 msgid "invalid variable name: \"%s\""
 msgstr "ცვლადის არასწორი სახელი: \"%s\""
 
-#: variables.c:488
+#: variables.c:489
 #, c-format
 msgid ""
 "unrecognized value \"%s\" for \"%s\"\n"
@@ -7629,145 +7626,5 @@ msgstr ""
 "\"%s\" არასწორი მნიშვნელობაა \"%s\"-სთვის\n"
 "შესაძლო მნიშვნელობებია: %s."
 
-#, c-format
-#~ msgid "  -U, --username=USERNAME  database user name (default: \"%s\")\n"
-#~ msgstr "  -U, --username=მომხმარებელი  ბაზის მომხმარებლის სახელი (ნაგულისხმები: \"%s\")\n"
-
-#, c-format
-#~ msgid "  -d, --dbname=DBNAME      database name to connect to (default: \"%s\")\n"
-#~ msgstr "  -d, --dbname=ბაზისსახელი      მისაერთებელი ბაზის სახელი (ნაგულისხმები: \"%s\")\n"
-
-#, c-format
-#~ msgid "  -h, --host=HOSTNAME      database server host or socket directory (default: \"%s\")\n"
-#~ msgstr "  -h, --host=HOSTNAME      მონაცემთა ბაზის სერვერის ჰოსტის ან სოკეტის საქაღალდე (ნაგულისხმები: \"%s\")\n"
-
-#, c-format
-#~ msgid "  -p, --port=PORT          database server port (default: \"%s\")\n"
-#~ msgstr "  -p, --port=PORT          მონაცემთა ბაზის სერვერის პორტი (ნაგულისხმები: \"%s\")\n"
-
-#~ msgid ""
-#~ "  WATCH_INTERVAL\n"
-#~ "    if set to a number, overrides the default two second \\watch interval\n"
-#~ msgstr ""
-#~ "  WATCH_INTERVAL\n"
-#~ "    თუ დაყენებულია რიცხვზე, გადაფარავს ნაგულისხმევ ორწამიან ინტერვალს \\watch-სთვის\n"
-
-#~ msgid ""
-#~ "  \\pset [NAME [VALUE]]   set table output option\n"
-#~ "                         (border|columns|csv_fieldsep|expanded|fieldsep|\n"
-#~ "                         fieldsep_zero|footer|format|linestyle|null|\n"
-#~ "                         numericlocale|pager|pager_min_lines|recordsep|\n"
-#~ "                         recordsep_zero|tableattr|title|tuples_only|\n"
-#~ "                         unicode_border_linestyle|unicode_column_linestyle|\n"
-#~ "                         unicode_header_linestyle|xheader_width)\n"
-#~ msgstr ""
-#~ "  \\pset [სახელი [მნიშვნელობა]]   ცხრილის გამოტანის პარამეტრის დაყენება\n"
-#~ "                         (border|columns|csv_fieldsep|expanded|fieldsep|\n"
-#~ "                         fieldsep_zero|footer|format|linestyle|null|\n"
-#~ "                         numericlocale|pager|pager_min_lines|recordsep|\n"
-#~ "                         recordsep_zero|tableattr|title|tuples_only|\n"
-#~ "                         unicode_border_linestyle|unicode_column_linestyle|\n"
-#~ "                         unicode_header_linestyle|xheader_width)\n"
-
-#~ msgid "  \\watch [[i=]SEC] [c=N] execute query every SEC seconds, up to N times\n"
-#~ msgstr "  \\watch [[i=]SEC] [c=N] მოთხოვნის ყოველ SEC წამში ერთხელ გაშვება, N-ჯერ\n"
-
-#, c-format
-#~ msgid "Expanded header width is 'column'.\n"
-#~ msgstr "გაფართოებული თავსართის სიგანეა 'column'.\n"
-
-#, c-format
-#~ msgid "Expanded header width is 'full'.\n"
-#~ msgstr "გაფართოებული თავსართის სიგანეა 'full'.\n"
-
-#, c-format
-#~ msgid "Expanded header width is 'page'.\n"
-#~ msgstr "გაფართოებული თავსართის სიგანეა 'page'.\n"
-
-#~ msgid "ICU Locale"
-#~ msgstr "ICU ენა"
-
-#~ msgid "Publications:"
-#~ msgstr "გამოცემები:"
-
-#~ msgid "Source code"
-#~ msgstr "საწყისი კოდი"
-
-#, c-format
-#~ msgid "Unlogged materialized view \"%s.%s\""
-#~ msgstr "ჟურნალში არ-ჩაწერილი მატერიალიზებული ხედი \"%s.%s\""
-
-#~ msgid "User set"
-#~ msgstr "მომხმარებელი დაყენებულია"
-
-#, c-format
-#~ msgid "You are connected to database \"%s\" as user \"%s\" on address \"%s\" at port \"%s\".\n"
-#~ msgstr "ახლა მიერთებული ბრძანდებით ბაზასთან \"%s\" როგორც მომხმარებელი \"%s\" მისამართზე \"%s\" და პორტზე \"%s\".\n"
-
-#, c-format
-#~ msgid "You are connected to database \"%s\" as user \"%s\" on host \"%s\" (address \"%s\") at port \"%s\".\n"
-#~ msgstr "ახლა მიერთებული ბრძანდებით ბაზასთან \"%s\" როგორც მომხმარებელი \"%s\" ჰოსტზე \"%s\" (მისამართით \"%s\") და პორტზე \"%s\".\n"
-
-#, c-format
-#~ msgid "You are connected to database \"%s\" as user \"%s\" on host \"%s\" at port \"%s\".\n"
-#~ msgstr "ახლა მიერთებული ბრძანდებით ბაზასთან \"%s\" როგორც მომხმარებელი \"%s\" ჰოსტზე \"%s\" და პორტზე \"%s\".\n"
-
-#, c-format
-#~ msgid "You are connected to database \"%s\" as user \"%s\" via socket in \"%s\" at port \"%s\".\n"
-#~ msgstr "ახლა მიერთებული ბრძანდებით ბაზასთან \"%s\" როგორც მომხმარებელი \"%s\" სოკეტით \"%s\" და პორტზე \"%s\".\n"
-
-#, c-format
-#~ msgid "\\gexec not allowed in pipeline mode"
-#~ msgstr "\\gexec კომუნიკაციის რეჟიმში დაშვებული არაა"
-
-#, c-format
-#~ msgid "\\gset not allowed in pipeline mode"
-#~ msgstr "\\gset კომუნიკაციის რეჟიმში დაშვებული არაა"
-
-#, c-format
-#~| msgid "%s not allowed in pipeline mode"
-#~ msgid "\\gx not allowed in pipeline mode"
-#~ msgstr "\\gx კომუნიკაციის რეჟიმში დაშვებული არაა"
-
-#, c-format
-#~ msgid "\\watch cannot be used with COPY"
-#~ msgstr "\\watch -ს COPY-სთან ერთად ვერ გამოყენებთ"
-
-#, c-format
-#~ msgid "\\watch not allowed in pipeline mode"
-#~ msgstr "\\watch კომუნიკაციის არხის რეჟიმში დაშვებული არაა"
-
-#~ msgid "constraint"
-#~ msgstr "შეზღუდვა"
-
-#, c-format
-#~ msgid "could not change directory to \"%s\": %m"
-#~ msgstr "საქაღალდის %s-ზე შეცვლის შეცდომა: %m"
-
-#, c-format
-#~ msgid "could not identify current directory: %m"
-#~ msgstr "მიმდინარე საქაღალდის იდენტიფიკაციის პრობლემა: %m"
-
-#, c-format
-#~ msgid "could not look up local user ID %d: %s"
-#~ msgstr "ლოკალური მომხმარებლის ID-ის (%d) ამოხსნა შეუძლებელია: %s"
-
-#, c-format
-#~ msgid "could not read symbolic link \"%s\": %m"
-#~ msgstr "სიმბოლური ბმის \"%s\" წაკითხვის შეცდომა: %m"
-
-#~ msgid "local socket"
-#~ msgstr "ლოკალური სოკეტი"
-
-#, c-format
-#~ msgid "local user with ID %d does not exist"
-#~ msgstr "ლოკალური მომხმარებელი ID-ით %d არ არსებობს"
-
-#~ msgid "text"
-#~ msgstr "ტექსტი"
-
-#~ msgid "where constraint is:"
-#~ msgstr "სადაც constraint არის:"
-
-#~ msgid "where direction can be empty or one of:"
-#~ msgstr "სადაც direction შეიძლება იყოს ცარიელი, ან ერთ-ერთი სიიდან::"
+#~ msgid ", "
+#~ msgstr ", "

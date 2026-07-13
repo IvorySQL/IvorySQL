@@ -837,25 +837,3 @@ msgstr ""
 msgid "%s home page: <%s>\n"
 msgstr "%s-ის საწყისი გვერდია: <%s>\n"
 
-#, c-format
-#~ msgid "\"%s\" is not a plain file"
-#~ msgstr "\"%s\" უბრალო ფაილი არაა"
-
-#~ msgid "parsing failed"
-#~ msgstr "დამუშავების შეცდომა"
-
-#, c-format
-#~ msgid "pg_waldump cannot read tar files"
-#~ msgstr "pg_waldump-ს tar ფაილების წაკითხვა არ შეუძლია"
-
-#, c-format
-#~ msgid "tar file trailer exceeds 2 blocks"
-#~ msgstr "tar ფაილის ბოლოსართი 2 ბლოკს სცდება"
-
-#, c-format
-#~ msgid "unexpected json parse error type: %d"
-#~ msgstr "მოულოდნელი json-ის დამუშავების შეცდომის ტიპი: %d"
-
-#, c-format
-#~ msgid "unexpected state while parsing tar file"
-#~ msgstr "მოულოდნელი მდგომარეობა tar არქივის დამუშავებისას"

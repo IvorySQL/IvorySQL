@@ -8,8 +8,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pg_test_timing (PostgreSQL) 19\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
-"POT-Creation-Date: 2026-05-28 13:24+0000\n"
-"PO-Revision-Date: 2026-05-28 19:11+0200\n"
+"POT-Creation-Date: 2026-07-04 06:24+0000\n"
+"PO-Revision-Date: 2026-07-04 13:00+0200\n"
 "Last-Translator: Peter Eisentraut <peter@eisentraut.org>\n"
 "Language-Team: German <pgsql-translators@postgresql.org>\n"
 "Language: de\n"
@@ -41,21 +41,21 @@ msgstr "ungültige Speicheranforderungsgröße %zu * %zu\n"
 
 #: pg_test_timing.c:79
 #, c-format
-msgid "Usage: %s [-d DURATION] [-c CUTOFF]\n"
-msgstr "Aufruf: %s [-d DAUER] [-c OBERGRENZE]\n"
+msgid "Usage: %s [-c CUTOFF] [-d DURATION]\n"
+msgstr "Aufruf: %s [-c OBERGRENZE] [-d DAUER]\n"
 
-#: pg_test_timing.c:101 pg_test_timing.c:122
+#: pg_test_timing.c:100 pg_test_timing.c:121
 #, c-format
 msgid "%s: invalid argument for option %s\n"
 msgstr "%s: ungültiges Argument für Option %s\n"
 
-#: pg_test_timing.c:103 pg_test_timing.c:124 pg_test_timing.c:137
+#: pg_test_timing.c:102 pg_test_timing.c:123 pg_test_timing.c:137
 #: pg_test_timing.c:149
 #, c-format
 msgid "Try \"%s --help\" for more information.\n"
 msgstr "Versuchen Sie »%s --help« für weitere Informationen.\n"
 
-#: pg_test_timing.c:110 pg_test_timing.c:130
+#: pg_test_timing.c:108 pg_test_timing.c:130
 #, c-format
 msgid "%s: %s must be in range %u..%u\n"
 msgstr "%s: %s muss im Bereich %u..%u sein\n"
@@ -115,21 +115,27 @@ msgstr "TSC-Kalibrierung konvergierte nicht.\n"
 msgid ""
 "\n"
 "TSC clock source will be used by default, unless timing_clock_source is set to 'system'.\n"
-msgstr "\nTSC-Taktquelle wird standardmäßig verwendet, außer wenn timing_clock_source auf »system« gesetzt ist.\n"
+msgstr ""
+"\n"
+"TSC-Taktquelle wird standardmäßig verwendet, außer wenn timing_clock_source auf »system« gesetzt ist.\n"
 
 #: pg_test_timing.c:242
 #, c-format
 msgid ""
 "\n"
 "TSC clock source will not be used by default, unless timing_clock_source is set to 'tsc'.\n"
-msgstr "\nTSC-Taktquelle wird standardmäßig nicht verwendet, außer wenn timing_clock_source auf »tsc« gesetzt ist.\n"
+msgstr ""
+"\n"
+"TSC-Taktquelle wird standardmäßig nicht verwendet, außer wenn timing_clock_source auf »tsc« gesetzt ist.\n"
 
 #: pg_test_timing.c:245
 #, c-format
 msgid ""
 "\n"
 "TSC clock source is not usable. Likely unable to determine TSC frequency. Are you running in an unsupported virtualized environment?\n"
-msgstr "\nTSC-Taktquelle ist nicht benutzbar. Kann TSC-Frequenz wahrscheinlich nicht bestimmen. Wird eine nicht unterstützte virtualisierte Umgebung verwendet?\n"
+msgstr ""
+"\n"
+"TSC-Taktquelle ist nicht benutzbar. Kann TSC-Frequenz wahrscheinlich nicht bestimmen. Wird eine nicht unterstützte virtualisierte Umgebung verwendet?\n"
 
 #: pg_test_timing.c:270
 #, c-format
