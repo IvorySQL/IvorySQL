@@ -210,6 +210,23 @@ extern pgoff_t _pgftello64(FILE *stream);
 #endif
 #endif
 
+/* Things that exist in MinGW headers, but need to be added to MSVC */
+#ifdef _MSC_VER
+
+#ifndef _WIN64
+typedef long ssize_t;
+#else
+typedef __int64 ssize_t;
+#endif
+
+typedef unsigned short mode_t;
+
+#define F_OK 0
+#define W_OK 2
+#define R_OK 4
+
+#endif							/* _MSC_VER */
+
 /*
  *	Win32 also doesn't have symlinks, but we can emulate them with
  *	junction points on newer Win32 versions.
@@ -548,23 +565,6 @@ extern int	pgwin32_is_admin(void);
 
 /* Windows security token manipulation (in src/common/exec.c) */
 extern BOOL AddUserToTokenDacl(HANDLE hToken);
-
-/* Things that exist in MinGW headers, but need to be added to MSVC */
-#ifdef _MSC_VER
-
-#ifndef _WIN64
-typedef long ssize_t;
-#else
-typedef __int64 ssize_t;
-#endif
-
-typedef unsigned short mode_t;
-
-#define F_OK 0
-#define W_OK 2
-#define R_OK 4
-
-#endif							/* _MSC_VER */
 
 #if defined(__MINGW32__) || defined(__MINGW64__)
 /*
