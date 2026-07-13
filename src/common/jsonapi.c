@@ -2165,26 +2165,85 @@ json_lex_string(JsonLexContext *lex)
 			/*
 			 * Skip to the first byte that requires special handling, so we
 			 * can batch calls to jsonapi_appendBinaryStringInfo.
+			 *
+			 * Some multibyte encodings allow trailing bytes of a character to
+			 * fall in the 7-bit ASCII range.  The only such backend encoding
+			 * is GB18030, where a two-byte character's second byte can be
+			 * 0x5C ('\'); the client-only CJK encodings behave likewise.
+			 * There, a byte that merely continues a multibyte character must
+			 * never be mistaken for a backslash, quote, or control character,
+			 * so advance by whole characters instead of using the
+			 * byte-oriented fast path.
 			 */
-			while (p < end - sizeof(Vector8) &&
-				   !pg_lfind8('\\', (uint8 *) p, sizeof(Vector8)) &&
-				   !pg_lfind8('"', (uint8 *) p, sizeof(Vector8)) &&
-				   !pg_lfind8_le(31, (uint8 *) p, sizeof(Vector8)))
-				p += sizeof(Vector8);
-
-			for (; p < end; p++)
+			if (lex->input_encoding == PG_GB18030 ||
+				PG_ENCODING_IS_CLIENT_ONLY(lex->input_encoding))
 			{
-				if (*p == '\\' || *p == '"')
-					break;
-				else if ((unsigned char) *p <= 31)
+				while (p < end)
 				{
-					/* Per RFC4627, these characters MUST be escaped. */
-					/*
-					 * Since *p isn't printable, exclude it from the context
-					 * string
-					 */
-					lex->token_terminator = p;
-					return JSON_ESCAPING_REQUIRED;
+					if (*p == '\\' || *p == '"')
+						break;
+					else if ((unsigned char) *p <= 31)
+					{
+						/* Per RFC4627, these characters MUST be escaped. */
+						/*
+						 * Since *p isn't printable, exclude it from the
+						 * context string
+						 */
+						lex->token_terminator = p;
+						return JSON_ESCAPING_REQUIRED;
+					}
+					else if (IS_HIGHBIT_SET((unsigned char) *p))
+					{
+						ptrdiff_t	remaining = end - p;
+						int			mblen;
+
+						/*
+						 * Consume the rest of this multibyte character.
+						 * pg_gb18030_mblen() inspects a second byte, so use
+						 * the bounds-aware variant and bail out on truncated
+						 * input.
+						 */
+						mblen = pg_encoding_mblen_or_incomplete(lex->input_encoding,
+																p, remaining);
+						if (mblen > remaining)
+						{
+							/*
+							 * incomplete multibyte character at end of input.
+							 * FAIL_OR_INCOMPLETE_AT_CHAR_START() records the
+							 * current cursor as lex->token_terminator, so
+							 * point it at the truncated character rather than
+							 * at the stale append-batch start.
+							 */
+							s = p;
+							FAIL_OR_INCOMPLETE_AT_CHAR_START(JSON_INVALID_TOKEN);
+						}
+						p += mblen - 1;
+					}
+					p++;
+				}
+			}
+			else
+			{
+				while (p < end - sizeof(Vector8) &&
+					   !pg_lfind8('\\', (uint8 *) p, sizeof(Vector8)) &&
+					   !pg_lfind8('"', (uint8 *) p, sizeof(Vector8)) &&
+					   !pg_lfind8_le(31, (uint8 *) p, sizeof(Vector8)))
+					p += sizeof(Vector8);
+
+				for (; p < end; p++)
+				{
+					if (*p == '\\' || *p == '"')
+						break;
+					else if ((unsigned char) *p <= 31)
+					{
+						/* Per RFC4627, these characters MUST be escaped. */
+						/*
+						 * Since *p isn't printable, exclude it from the
+						 * context string
+						 */
+						lex->token_terminator = p;
+						return JSON_ESCAPING_REQUIRED;
+					}
 				}
 			}
 
