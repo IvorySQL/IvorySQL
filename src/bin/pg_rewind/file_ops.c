@@ -457,7 +457,7 @@ recurse_dir(const char *datadir, const char *parentpath,
 		else if (S_ISLNK(fst.st_mode))
 		{
 			char		link_target[MAXPGPATH];
-			int			len;
+			ssize_t		len;
 
 			len = readlink(fullpath, link_target, sizeof(link_target));
 			if (len < 0)

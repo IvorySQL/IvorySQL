@@ -9801,7 +9801,7 @@ do_pg_backup_start(const char *backupidstr, bool fast, List **tablespaces,
 			if (de_type == PGFILETYPE_LNK)
 			{
 				StringInfoData escapedpath;
-				int			rllen;
+				ssize_t		rllen;
 
 				rllen = readlink(fullpath, linkpath, sizeof(linkpath));
 				if (rllen < 0)

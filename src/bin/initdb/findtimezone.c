@@ -533,7 +533,7 @@ check_system_link_file(const char *linkname, struct tztry *tt,
 {
 #ifdef HAVE_READLINK
 	char		link_target[MAXPGPATH];
-	int			len;
+	ssize_t		len;
 	const char *cur_name;
 
 	/*

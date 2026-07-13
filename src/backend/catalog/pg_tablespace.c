@@ -31,7 +31,7 @@ get_tablespace_location(Oid tablespaceOid)
 {
 	char		sourcepath[MAXPGPATH];
 	char		targetpath[MAXPGPATH];
-	int			rllen;
+	ssize_t		rllen;
 	struct stat st;
 
 	/*
