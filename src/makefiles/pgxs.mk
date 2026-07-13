@@ -529,13 +529,9 @@ endif
 oracle-check: oracle-submake $(REGRESS_PREP)
 ifdef ORA_REGRESS
 	$(oracle_regress_check) $(ORACLE_REGRESS_OPTS) $(ORA_REGRESS)
-else ifdef REGRESS
-	$(oracle_regress_check) $(ORACLE_REGRESS_OPTS) $(REGRESS_OPTS) $(REGRESS)
 endif
 ifdef ORA_ISOLATION
 	$(oracle_isolation_regress_check) $(ORA_ISOLATION_OPTS) $(ORA_ISOLATION)
-else ifdef ISOLATION
-	$(oracle_isolation_regress_check) $(ORA_ISOLATION_OPTS) $(ISOLATION_OPTS) $(ISOLATION)
 endif
 ifdef TAP_TESTS
 	$(oracle_prove_check)
