@@ -943,6 +943,12 @@ endif
 %.c: %.l
 	$(FLEX) $(if $(FLEX_NO_BACKUP),-b) $(FLEXFLAGS) -o'$@' $<
 	@$(if $(FLEX_NO_BACKUP),if [ `wc -l <lex.backup` -eq 1 ]; then rm lex.backup; else echo "Scanner requires backup; see lex.backup." 1>&2; exit 1; fi)
+	@# Flex marks the intentional fallthrough in its generated input()/
+	@# yy_get_next_buffer() with an old-style "/*FALLTHROUGH*/" comment,
+	@# which -Wimplicit-fallthrough=5 (see configure.ac) does not honor.
+	@# Rewrite it to a real annotation for scanners that call input()
+	@# themselves and thus cannot use "%option noinput" to suppress it.
+	$(if $(FLEX_FIX_WARNING),sed -i.bak -e 's|/\*FALLTHROUGH\*/|pg_fallthrough;|' $@ && rm -f $@.bak)
 
 %.c: %.y
 	$(if $(BISON_CHECK_CMD),$(BISON_CHECK_CMD))

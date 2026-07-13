@@ -2637,6 +2637,7 @@ plisql_parse_wordrowtype(char *ident)
 	TypeName	*typname;
 	bool		missing_ok = false;
 	TypeName   *typeName;
+	ObjectAddress *refobj;
     MemoryContext oldCxt;
 
     /* Avoid memory leaks in long-term function context */
@@ -2694,8 +2695,6 @@ plisql_parse_wordrowtype(char *ident)
 	if (check_referenced_objects)
 	{
         MemoryContextSwitchTo(oldCxt);
-
-		ObjectAddress *refobj;
 
 		refobj = (ObjectAddress *) palloc(sizeof(ObjectAddress));
 		refobj->classId = RelationRelationId;
