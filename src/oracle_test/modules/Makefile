@@ -38,6 +38,7 @@ SUBDIRS = \
 		  test_oat_hooks \
 		  test_parser \
 		  test_pg_dump \
+		  test_plan_advice \
 		  test_predtest \
 		  test_radixtree \
 		  test_rbtree \
