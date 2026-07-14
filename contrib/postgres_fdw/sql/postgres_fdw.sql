@@ -485,6 +485,41 @@ EXECUTE s(ARRAY['1','2']);
 DEALLOCATE s;
 RESET plan_cache_mode;
 
+-- An ArrayCoerceExpr is pushed down only when its per-element coercion is
+-- a plain relabeling.  An element cast function, an I/O conversion, or a
+-- domain coercion is instead evaluated locally.
+CREATE TABLE loct_acx (id int, ta text[], f8 float8[], txt text[], t text, ia int[], vc varchar[]);
+INSERT INTO loct_acx VALUES (1, '{12345}', '{0.30000000000000004}', '{0.3}', '5', '{5}', '{5}');
+CREATE FOREIGN TABLE ft_acx (id int, ta text[], f8 float8[], txt text[], t text, ia int[], vc varchar[])
+  SERVER loopback OPTIONS (table_name 'loct_acx');
+-- element coercion via a cast function: not shippable, stays local
+CREATE FUNCTION acx_text2int(text) RETURNS int
+  LANGUAGE plpgsql IMMUTABLE STRICT AS 'BEGIN RETURN length($1); END';
+CREATE CAST (text AS integer) WITH FUNCTION acx_text2int(text);
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT id FROM ft_acx WHERE ta::int[] = ARRAY[5];
+DROP CAST (text AS integer);
+DROP FUNCTION acx_text2int(text);
+-- implicit-format element coercion (a cast function): stays local, and the
+-- coercion is not silently dropped from an otherwise pushed-down qual
+CREATE CAST (integer AS text) WITH FUNCTION pg_catalog.to_hex(integer) AS IMPLICIT;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT id FROM ft_acx WHERE t = ANY (ia);
+DROP CAST (integer AS text);
+-- element coercion via a GUC-sensitive I/O conversion: stays local, so the
+-- result matches local evaluation despite the forced remote extra_float_digits
+SET extra_float_digits = 0;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT id FROM ft_acx WHERE f8::text[] = txt;
+SELECT id FROM ft_acx WHERE f8::text[] = txt;
+RESET extra_float_digits;
+-- a plain relabeling element coercion (varchar[] to text[]) is still pushed down
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT id FROM ft_acx WHERE t = ANY (vc);
+SELECT id FROM ft_acx WHERE t = ANY (vc);
+DROP FOREIGN TABLE ft_acx;
+DROP TABLE loct_acx;
+
 -- a regconfig constant referring to this text search configuration
 -- is initially unshippable
 CREATE TEXT SEARCH CONFIGURATION public.custom_search

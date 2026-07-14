@@ -712,6 +712,26 @@ foreign_expr_walker(Node *node,
 				ArrayCoerceExpr *e = (ArrayCoerceExpr *) node;
 
 				/*
+				 * Push down only when the per-element coercion is a plain
+				 * relabeling, that is, elemexpr is a RelabelType or a bare
+				 * CaseTestExpr.  Any other element coercion -- a cast
+				 * function, an I/O conversion (CoerceViaIO), or a domain
+				 * coercion -- is kept local.  We ship only a bare
+				 * "arg::resulttype" cast (nothing at all for an
+				 * implicit-format coercion), so a non-relabeling conversion
+				 * would be re-resolved against the remote server's catalogs
+				 * and session state and could silently change the result.
+				 * This matches the handling of the scalar coercions for the
+				 * I/O and domain cases (never shipped); an element cast
+				 * function is kept local too, which is more conservative than
+				 * the scalar case (a scalar cast function is shipped when it
+				 * is shippable).
+				 */
+				if (!IsA(e->elemexpr, RelabelType) &&
+					!IsA(e->elemexpr, CaseTestExpr))
+					return false;
+
+				/*
 				 * Recurse to input subexpression.
 				 */
 				if (!foreign_expr_walker((Node *) e->arg,
