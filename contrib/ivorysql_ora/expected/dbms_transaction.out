@@ -1,0 +1,52 @@
+-- 
+-- dbms_transaction.sql
+--
+-- Tests for the DBMS_TRANSACTION package's 22 subprograms,
+-- these subprograms are listed at: 
+-- https://docs.oracle.com/en/database/oracle/oracle-database/26/arpls/DBMS_TRANSACTION.html
+--
+-- 1   ADVISE_COMMIT
+-- 2   ADVISE_NOTHING
+-- 3   ADVISE_ROLLBACK
+-- 4   COMMIT
+-- 5   COMMIT_COMMENT
+-- 6   COMMIT_FORCE
+-- 7   GET_TRANSACTION_ID
+-- 8   GET_TRANSACTION_TIMEOUT
+-- 9   GET_TRANSACTION_TYPE
+-- 10  LOCAL_TRANSACTION_ID
+-- 11  PURGE_LOST_DB_ENTRY
+-- 12  PURGE_MIXED
+-- 13  READ_ONLY
+-- 14  READ_WRITE
+-- 15  ROLLBACK
+-- 16  ROLLBACK_FORCE
+-- 17  ROLLBACK_SAVEPOINT
+-- 18  SAVEPOINT
+-- 19  START_TRANSACTION
+-- 20  STEP_ID
+-- 21  SUSPEND_TRANSACTION
+-- 22  USE_ROLLBACK_SEGMENT
+--
+-- PREPARE for testing
+--
+CREATE TABLE txn_t (id int, note varchar2(40));
+-- Test COMMIT(4) and ROLLBACK(15)
+DECLARE
+BEGIN
+    INSERT INTO txn_t VALUES (1, 'committed');
+    dbms_transaction.commit();
+    INSERT INTO txn_t VALUES (2, 'rolled back');
+    dbms_transaction.rollback();
+END;
+/
+SELECT * FROM txn_t ORDER BY id;
+ id |   note    
+----+-----------
+  1 | committed
+(1 row)
+
+--
+-- CLEANUP for testing
+--
+DROP TABLE txn_t;
