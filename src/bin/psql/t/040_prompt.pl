@@ -1,5 +1,5 @@
 
-# Copyright (c) 2026, PostgreSQL Global Development Group
+# Copyright (c) 2021-2026, PostgreSQL Global Development Group
 
 # Test psql's %o prompt escape.  The escape prints "[ORA]" when the connected
 # IvorySQL server reports the session's compatibility mode
