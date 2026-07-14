@@ -100,7 +100,7 @@ my $h = $node->interactive_psql('postgres');
 $h->query_until(
 	qr/^ok2\r?$/m,
 	"SET ivorysql.compatible_mode = oracle;\n"
-	  . "\\set PROMPT1 'BEFORE[%o]AFTER'\n"
+	  . "\\set PROMPT1 'BEFORE%oAFTER'\n"
 	  . "select 'p4' as p;\nselect 'ok2' as r;\n");
 my $out = $h->query_until(
 	qr/^res3\r?$/m,
