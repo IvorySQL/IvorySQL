@@ -520,6 +520,14 @@ DROP TABLE test7;
 
 CREATE COLLATION testcoll_rulesx (provider = icu, locale = '', rules = '!!wrong!!');
 
+-- strength specified in the rules
+CREATE COLLATION strength_in_rule (provider = icu, locale = 'und', deterministic = false, rules = '[strength 1]');
+-- In Oracle-compatibility mode, untyped string literals resolve to varchar
+-- rather than text. The varchar equality path does not apply the
+-- non-deterministic ICU comparison here, so the primary-strength rule is
+-- not honored and the result differs from upstream PostgreSQL ('t').
+SELECT 'a' = 'à' COLLATE strength_in_rule;
+
 
 -- nondeterministic collations
 
