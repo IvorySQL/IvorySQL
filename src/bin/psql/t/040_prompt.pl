@@ -5,11 +5,11 @@
 # IvorySQL server reports the session's compatibility mode
 # (ivorysql.compatible_mode) as "oracle", and expands to nothing otherwise.
 #
-# The default regression cluster is initialized in "pg" database mode, so
-# compatible_mode is "pg" here and %o must expand to nothing.  The full
-# "[ORA]" path is exercised against Oracle-mode clusters by the oracle
-# regression suite; this test guards the client-side escape handling in the
-# standard (pg-mode) test environment.
+# Both paths are exercised here against real IvorySQL clusters started by the
+# TAP harness:
+#   * a default pg-mode cluster, where %o must expand to nothing;
+#   * an Oracle-mode cluster where compatible_mode is switched to oracle
+#     in-session, where %o must expand to "[ORA]".
 
 use strict;
 use warnings FATAL => 'all';
@@ -25,8 +25,11 @@ if ($@)
 	plan skip_all => 'IO::Pty is needed to run this test';
 }
 
-# start a new server
-my $node = PostgreSQL::Test::Cluster->new('main');
+# ---------------------------------------------------------------------------
+# pg-mode cluster: %o expands to nothing.
+# ---------------------------------------------------------------------------
+{
+my $node = PostgreSQL::Test::Cluster->new('pgmode');
 $node->init;
 $node->start;
 
@@ -73,6 +76,48 @@ like($mode, qr/^pg\r?$/m, "compatible_mode is pg in a pg-mode cluster");
 # send psql an explicit \q to shut it down, else pty won't close properly
 $h->quit or die "psql returned $?";
 
-# done
 $node->stop;
+}
+
+# ---------------------------------------------------------------------------
+# Oracle-mode cluster: %o expands to "[ORA]".
+# ---------------------------------------------------------------------------
+{
+# Cluster.pm initializes clusters with `initdb -m pg`; appending `-m oracle`
+# creates an Oracle-mode (database_mode = DB_ORACLE) cluster, the only mode in
+# which compatible_mode may be switched to oracle.
+local $ENV{PG_TEST_INITDB_EXTRA_OPTS} = '-m oracle';
+
+my $node = PostgreSQL::Test::Cluster->new('oraclemode');
+$node->init;
+$node->start;
+
+my $h = $node->interactive_psql('postgres');
+
+# Switch the session to oracle compatibility, then isolate %o with markers.
+# After the SET, the server reports compatible_mode = oracle, so the rendered
+# prompt must become "BEFORE[ORA]AFTER".
+$h->query_until(
+	qr/^ok2\r?$/m,
+	"SET ivorysql.compatible_mode = oracle;\n"
+	  . "\\set PROMPT1 'BEFORE[%o]AFTER'\n"
+	  . "select 'p4' as p;\nselect 'ok2' as r;\n");
+my $out = $h->query_until(
+	qr/^res3\r?$/m,
+	"select 'p5' as p;\nselect 'res3' as r;\n");
+like(
+	$out,
+	qr/BEFORE\[ORA\]AFTER/,
+	"%o expands to [ORA] when compatible_mode is oracle");
+
+# Confirm the value %o keys off of.
+my $mode = $h->query_until(qr/^oracle\r?$/m, "show ivorysql.compatible_mode;\n");
+like($mode, qr/^oracle\r?$/m,
+	"compatible_mode is oracle in an oracle-mode session");
+
+$h->quit or die "psql returned $?";
+
+$node->stop;
+}
+
 done_testing();
