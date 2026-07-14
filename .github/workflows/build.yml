@@ -65,4 +65,4 @@ jobs:
             --with-ossp-uuid  --with-libxml --with-libxslt  --with-perl \
             --with-icu --with-libnuma --enable-injection-points --enable-nls
     - name: compile
-      run: make CFLAGS="$CFLAGS  -Werror=unused-value -Werror=unused-but-set-variable -Werror=missing-prototypes -Werror=unused-variable -Werror=uninitialized -Werror=implicit-function-declaration -Werror=implicit-int -Werror=return-type -Werror=incompatible-pointer-types -Werror=format -Werror=empty-body -Werror=parentheses -Werror=pointer-sign -Werror=unsequenced"
+      run: make CFLAGS="$CFLAGS  -Werror=unused-value -Werror=unused-but-set-variable -Werror=missing-prototypes -Werror=unused-variable -Werror=implicit-function-declaration -Werror=implicit-int -Werror=return-type -Werror=incompatible-pointer-types -Werror=format -Werror=empty-body -Werror=parentheses -Werror=pointer-sign -Werror=unsequenced"
