@@ -1623,6 +1623,7 @@ pgstat_write_statsfile(void)
 	const char *statfile = PGSTAT_STAT_PERMANENT_FILENAME;
 	dshash_seq_status hstat;
 	PgStatShared_HashEntry *ps;
+	PgStat_StatsFileOp status = STATS_WRITE;
 
 	pgstat_assert_is_up();
 
@@ -1751,8 +1752,12 @@ pgstat_write_statsfile(void)
 					pgstat_get_entry_len(ps->key.kind));
 
 		/* Write more data for the entry, if required */
-		if (kind_info->to_serialized_data)
-			kind_info->to_serialized_data(&ps->key, shstats, fpout);
+		if (kind_info->to_serialized_data &&
+			!kind_info->to_serialized_data(&ps->key, shstats, fpout))
+		{
+			status = STATS_DISCARD;
+			break;
+		}
 	}
 	dshash_seq_term(&hstat);
 
@@ -1763,7 +1768,17 @@ pgstat_write_statsfile(void)
 	 */
 	fputc(PGSTAT_FILE_ENTRY_END, fpout);
 
-	if (ferror(fpout))
+	if (status == STATS_DISCARD)
+	{
+		/*
+		 * A to_serialized_data callback failed.  DEBUG2 because the callback
+		 * already logged the reason.
+		 */
+		elog(DEBUG2, "discarding temporary statistics file \"%s\"", tmpfile);
+		FreeFile(fpout);
+		unlink(tmpfile);
+	}
+	else if (ferror(fpout))
 	{
 		ereport(LOG,
 				(errcode_for_file_access(),
@@ -1771,6 +1786,7 @@ pgstat_write_statsfile(void)
 						tmpfile)));
 		FreeFile(fpout);
 		unlink(tmpfile);
+		status = STATS_DISCARD;
 	}
 	else if (FreeFile(fpout) < 0)
 	{
@@ -1779,11 +1795,13 @@ pgstat_write_statsfile(void)
 				 errmsg("could not close temporary statistics file \"%s\": %m",
 						tmpfile)));
 		unlink(tmpfile);
+		status = STATS_DISCARD;
 	}
 	else if (durable_rename(tmpfile, statfile, LOG) < 0)
 	{
 		/* durable_rename already emitted log message */
 		unlink(tmpfile);
+		status = STATS_DISCARD;
 	}
 
 	/* Finish callbacks, if required */
@@ -1792,7 +1810,7 @@ pgstat_write_statsfile(void)
 		const PgStat_KindInfo *kind_info = pgstat_get_kind_info(kind);
 
 		if (kind_info && kind_info->finish)
-			kind_info->finish(STATS_WRITE);
+			kind_info->finish(status);
 	}
 }
 
@@ -1815,6 +1833,7 @@ pgstat_read_statsfile(void)
 	FILE	   *fpin;
 	int32		format_id;
 	bool		found;
+	PgStat_StatsFileOp status = STATS_READ;
 	const char *statfile = PGSTAT_STAT_PERMANENT_FILENAME;
 	PgStat_ShmemControl *shmem = pgStatLocal.shmem;
 
@@ -1840,7 +1859,8 @@ pgstat_read_statsfile(void)
 					 errmsg("could not open statistics file \"%s\": %m",
 							statfile)));
 		pgstat_reset_after_failure();
-		return;
+		status = STATS_DISCARD;
+		goto finish;
 	}
 
 	/*
@@ -2098,13 +2118,14 @@ done:
 	elog(DEBUG2, "removing permanent stats file \"%s\"", statfile);
 	unlink(statfile);
 
+finish:
 	/* Finish callbacks, if required */
 	for (PgStat_Kind kind = PGSTAT_KIND_MIN; kind <= PGSTAT_KIND_MAX; kind++)
 	{
 		const PgStat_KindInfo *kind_info = pgstat_get_kind_info(kind);
 
 		if (kind_info && kind_info->finish)
-			kind_info->finish(STATS_READ);
+			kind_info->finish(status);
 	}
 
 	return;
@@ -2114,6 +2135,7 @@ error:
 			(errmsg("corrupted statistics file \"%s\"", statfile)));
 
 	pgstat_reset_after_failure();
+	status = STATS_DISCARD;
 
 	goto done;
 }

@@ -322,7 +322,8 @@ typedef struct PgStat_KindInfo
 	 * an entry, in the stats file or optionally in a different file.
 	 * Optional.
 	 *
-	 * to_serialized_data: write auxiliary data for an entry.
+	 * to_serialized_data: write auxiliary data for an entry.  Returns true on
+	 * success, false on write error.
 	 *
 	 * from_serialized_data: read auxiliary data for an entry.  Returns true
 	 * on success, false on read error.
@@ -332,7 +333,7 @@ typedef struct PgStat_KindInfo
 	 * just written or read.  "header" is a pointer to the stats data; it may
 	 * be modified only in from_serialized_data to reconstruct an entry.
 	 */
-	void		(*to_serialized_data) (const PgStat_HashKey *key,
+	bool		(*to_serialized_data) (const PgStat_HashKey *key,
 									   const PgStatShared_Common *header,
 									   FILE *statfile);
 	bool		(*from_serialized_data) (const PgStat_HashKey *key,
