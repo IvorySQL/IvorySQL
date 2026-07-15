@@ -75,6 +75,8 @@ static void remove_rel_from_restrictinfo(RestrictInfo *rinfo,
 static void remove_rel_from_eclass(PlannerInfo *root, EquivalenceClass *ec,
 								   SpecialJoinInfo *sjinfo,
 								   int relid, int subst);
+static void remove_rel_from_restrictinfo_phvs(RestrictInfo *rinfo,
+											  int relid, int ojrelid);
 static Node *remove_rel_from_phvs(Node *node, int relid, int ojrelid);
 static Node *remove_rel_from_phvs_mutator(Node *node, Relids removable);
 static List *remove_rel_from_joinlist(List *joinlist, int relid, int *nremoved);
@@ -347,6 +349,7 @@ remove_rel_from_query(PlannerInfo *root, RelOptInfo *rel,
 	int			relid = rel->relid;
 	Index		rti;
 	ListCell   *l;
+	Bitmapset  *seen_serials = NULL;
 
 	/*
 	 * Update all_baserels and related relid sets.
@@ -522,9 +525,9 @@ remove_rel_from_query(PlannerInfo *root, RelOptInfo *rel,
 	 * lateral_vars lists.  (We already did this above for ph_needed.)
 	 *
 	 * Also, for left-join removal, we strip the removed rel and join from any
-	 * PlaceHolderVar embedded in the surviving rels' restriction clauses (see
-	 * remove_rel_from_phvs); we needn't bother with the rel being removed,
-	 * nor when the query has no PlaceHolderVars.
+	 * PlaceHolderVar embedded in the surviving rels' restriction clauses and
+	 * join clauses; we needn't bother with the rel being removed, nor when
+	 * the query has no PlaceHolderVars.
 	 */
 	for (rti = 1; rti < root->simple_rel_array_size; rti++)
 	{
@@ -554,10 +557,27 @@ remove_rel_from_query(PlannerInfo *root, RelOptInfo *rel,
 		if (sjinfo != NULL && rti != relid && root->glob->lastPHId != 0)
 		{
 			foreach_node(RestrictInfo, rinfo, otherrel->baserestrictinfo)
+				remove_rel_from_restrictinfo_phvs(rinfo, relid, sjinfo->ojrelid);
+
+			/*
+			 * Join clauses need the same treatment, but there's no value in
+			 * processing any join clause more than once.  So it's slightly
+			 * annoying that we have to find them via the per-base-relation
+			 * joininfo lists.  Avoid duplicate processing by tracking the
+			 * rinfo_serial numbers of join clauses we've already seen.  (This
+			 * doesn't work for is_clone clauses, so we must waste effort on
+			 * them.)
+			 */
+			foreach_node(RestrictInfo, rinfo, otherrel->joininfo)
 			{
-				rinfo->clause = (Expr *)
-					remove_rel_from_phvs((Node *) rinfo->clause, relid,
-										 sjinfo->ojrelid);
+				if (!rinfo->is_clone)	/* else serial number is not unique */
+				{
+					if (bms_is_member(rinfo->rinfo_serial, seen_serials))
+						continue;	/* saw it already */
+					seen_serials = bms_add_member(seen_serials,
+												  rinfo->rinfo_serial);
+				}
+				remove_rel_from_restrictinfo_phvs(rinfo, relid, sjinfo->ojrelid);
 			}
 		}
 	}
@@ -845,6 +865,53 @@ remove_rel_from_eclass(PlannerInfo *root, EquivalenceClass *ec,
 	 * clauses, which we'd not need anymore anyway.)
 	 */
 	ec_clear_derived_clauses(ec);
+}
+
+/*
+ * Remove any references to relid or ojrelid from the PlaceHolderVars embedded
+ * in a RestrictInfo's clause.
+ *
+ * If it's an OR clause, we must also fix up the orclause, which is a parallel
+ * representation built from its own sub-RestrictInfos.  We recurse into the
+ * sub-clauses for that, mirroring remove_rel_from_restrictinfo.
+ */
+static void
+remove_rel_from_restrictinfo_phvs(RestrictInfo *rinfo, int relid, int ojrelid)
+{
+	rinfo->clause = (Expr *)
+		remove_rel_from_phvs((Node *) rinfo->clause, relid, ojrelid);
+
+	/* If it's an OR, recurse to clean up sub-clauses */
+	if (restriction_is_or_clause(rinfo))
+	{
+		ListCell   *lc;
+
+		Assert(is_orclause(rinfo->orclause));
+		foreach(lc, ((BoolExpr *) rinfo->orclause)->args)
+		{
+			Node	   *orarg = (Node *) lfirst(lc);
+
+			/* OR arguments should be ANDs or sub-RestrictInfos */
+			if (is_andclause(orarg))
+			{
+				List	   *andargs = ((BoolExpr *) orarg)->args;
+				ListCell   *lc2;
+
+				foreach(lc2, andargs)
+				{
+					RestrictInfo *rinfo2 = lfirst_node(RestrictInfo, lc2);
+
+					remove_rel_from_restrictinfo_phvs(rinfo2, relid, ojrelid);
+				}
+			}
+			else
+			{
+				RestrictInfo *rinfo2 = castNode(RestrictInfo, orarg);
+
+				remove_rel_from_restrictinfo_phvs(rinfo2, relid, ojrelid);
+			}
+		}
+	}
 }
 
 /*
