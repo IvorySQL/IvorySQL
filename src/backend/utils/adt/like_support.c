@@ -1150,12 +1150,12 @@ like_fixed_prefix_ci(Const *patt_const, Oid collation, Const **prefix_const,
 
 	if (rest_selec != NULL)
 	{
-		int			wrestlen = wpattlen - wmatch_pos;
+		int			wrestlen = wpattlen - wpos;
 		char	   *rest;
 		int			rest_mblen;
 
 		rest = palloc(pg_database_encoding_max_length() * wrestlen + 1);
-		rest_mblen = pg_wchar2mb_with_len(&wpatt[wmatch_pos], rest, wrestlen);
+		rest_mblen = pg_wchar2mb_with_len(&wpatt[wpos], rest, wrestlen);
 
 		*rest_selec = like_selectivity(rest, rest_mblen, true);
 		pfree(rest);
