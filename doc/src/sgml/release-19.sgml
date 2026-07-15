@@ -2360,7 +2360,7 @@ Author: Jacob Champion <jchampion@postgresql.org>
 
 <listitem>
 <para>
-Allow custom <acronym>OAUTH</acronym> validators to register custom <link linkend="auth-pg-hba-conf"><filename>pg_hba.conf</filename></link> authentication options (Jacob Champion)
+Allow <acronym>OAUTH</acronym> validators to register custom <link linkend="auth-pg-hba-conf"><filename>pg_hba.conf</filename></link> authentication options (Jacob Champion)
 <ulink url="&commit_baseurl;b977bd308">&sect;</ulink>
 </para>
 </listitem>
