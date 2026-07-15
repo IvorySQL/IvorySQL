@@ -44,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
-    - name: dependancy - linux
+    - name: dependency - linux
       run: |
         sudo apt-get update
         sudo apt-get install -y clang-18
@@ -65,4 +65,4 @@ jobs:
             --with-ossp-uuid  --with-libxml --with-libxslt  --with-perl \
             --with-icu --with-libnuma --enable-injection-points --enable-nls
     - name: compile
-      run: make CFLAGS="$CFLAGS  -Werror=unused-value -Werror=missing-prototypes -Werror=unused-variable -Werror=implicit-function-declaration -Werror=implicit-int -Werror=return-type -Werror=incompatible-pointer-types -Werror=format -Werror=empty-body -Werror=parentheses -Werror=pointer-sign -Werror=unsequenced"
+      run: make CFLAGS="$CFLAGS  -Werror=unknown-warning-option -Werror=unused-value -Werror=missing-prototypes -Werror=unused-variable -Werror=implicit-function-declaration -Werror=implicit-int -Werror=return-type -Werror=incompatible-pointer-types -Werror=format -Werror=empty-body -Werror=parentheses -Werror=pointer-sign -Werror=unsequenced"
