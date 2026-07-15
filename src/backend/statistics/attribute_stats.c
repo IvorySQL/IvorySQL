@@ -93,8 +93,8 @@ enum clear_attribute_stats_argnum
 
 static struct StatsArgInfo cleararginfo[] =
 {
-	[C_ATTRELSCHEMA_ARG] = {"relation", TEXTOID},
-	[C_ATTRELNAME_ARG] = {"relation", TEXTOID},
+	[C_ATTRELSCHEMA_ARG] = {"schemaname", TEXTOID},
+	[C_ATTRELNAME_ARG] = {"relname", TEXTOID},
 	[C_ATTNAME_ARG] = {"attname", TEXTOID},
 	[C_INHERITED_ARG] = {"inherited", BOOLOID},
 	[C_NUM_ATTRIBUTE_STATS_ARGS] = {0}
