@@ -350,7 +350,8 @@ heap_xlog_delete(XLogReaderState *record)
 	RelFileLocator target_locator;
 	ItemPointerData target_tid;
 
-	XLogRecGetBlockTag(record, 0, &target_locator, NULL, &blkno);
+	XLogRecGetBlockTag(record, HEAP_DELETE_BLKREF_HEAP, &target_locator, NULL,
+					   &blkno);
 	ItemPointerSetBlockNumber(&target_tid, blkno);
 	ItemPointerSetOffsetNumber(&target_tid, xlrec->offnum);
 
@@ -369,7 +370,8 @@ heap_xlog_delete(XLogReaderState *record)
 		FreeFakeRelcacheEntry(reln);
 	}
 
-	if (XLogReadBufferForRedo(record, 0, &buffer) == BLK_NEEDS_REDO)
+	if (XLogReadBufferForRedo(record, HEAP_DELETE_BLKREF_HEAP,
+							  &buffer) == BLK_NEEDS_REDO)
 	{
 		page = BufferGetPage(buffer);
 
@@ -434,7 +436,8 @@ heap_xlog_insert(XLogReaderState *record)
 	ItemPointerData target_tid;
 	XLogRedoAction action;
 
-	XLogRecGetBlockTag(record, 0, &target_locator, NULL, &blkno);
+	XLogRecGetBlockTag(record, HEAP_INSERT_BLKREF_HEAP, &target_locator, NULL,
+					   &blkno);
 	ItemPointerSetBlockNumber(&target_tid, blkno);
 	ItemPointerSetOffsetNumber(&target_tid, xlrec->offnum);
 
@@ -462,13 +465,14 @@ heap_xlog_insert(XLogReaderState *record)
 	 */
 	if (XLogRecGetInfo(record) & XLOG_HEAP_INIT_PAGE)
 	{
-		buffer = XLogInitBufferForRedo(record, 0);
+		buffer = XLogInitBufferForRedo(record, HEAP_INSERT_BLKREF_HEAP);
 		page = BufferGetPage(buffer);
 		PageInit(page, BufferGetPageSize(buffer), 0);
 		action = BLK_NEEDS_REDO;
 	}
 	else
-		action = XLogReadBufferForRedo(record, 0, &buffer);
+		action = XLogReadBufferForRedo(record, HEAP_INSERT_BLKREF_HEAP,
+									   &buffer);
 	if (action == BLK_NEEDS_REDO)
 	{
 		Size		datalen;
@@ -479,7 +483,7 @@ heap_xlog_insert(XLogReaderState *record)
 		if (PageGetMaxOffsetNumber(page) + 1 < xlrec->offnum)
 			elog(PANIC, "invalid max offset number");
 
-		data = XLogRecGetBlockData(record, 0, &datalen);
+		data = XLogRecGetBlockData(record, HEAP_INSERT_BLKREF_HEAP, &datalen);
 
 		newlen = datalen - SizeOfHeapHeader;
 		Assert(datalen > SizeOfHeapHeader && newlen <= MaxHeapTupleSize);
@@ -559,7 +563,8 @@ heap_xlog_multi_insert(XLogReaderState *record)
 	 */
 	xlrec = (xl_heap_multi_insert *) XLogRecGetData(record);
 
-	XLogRecGetBlockTag(record, 0, &rlocator, NULL, &blkno);
+	XLogRecGetBlockTag(record, HEAP_MULTI_INSERT_BLKREF_HEAP, &rlocator, NULL,
+					   &blkno);
 
 	/* check that the mutually exclusive flags are not both set */
 	Assert(!((xlrec->flags & XLH_INSERT_ALL_VISIBLE_CLEARED) &&
@@ -582,13 +587,14 @@ heap_xlog_multi_insert(XLogReaderState *record)
 
 	if (isinit)
 	{
-		buffer = XLogInitBufferForRedo(record, 0);
+		buffer = XLogInitBufferForRedo(record, HEAP_MULTI_INSERT_BLKREF_HEAP);
 		page = BufferGetPage(buffer);
 		PageInit(page, BufferGetPageSize(buffer), 0);
 		action = BLK_NEEDS_REDO;
 	}
 	else
-		action = XLogReadBufferForRedo(record, 0, &buffer);
+		action = XLogReadBufferForRedo(record, HEAP_MULTI_INSERT_BLKREF_HEAP,
+									   &buffer);
 	if (action == BLK_NEEDS_REDO)
 	{
 		char	   *tupdata;
@@ -596,7 +602,8 @@ heap_xlog_multi_insert(XLogReaderState *record)
 		Size		len;
 
 		/* Tuples are stored as block data */
-		tupdata = XLogRecGetBlockData(record, 0, &len);
+		tupdata = XLogRecGetBlockData(record, HEAP_MULTI_INSERT_BLKREF_HEAP,
+									  &len);
 		endptr = tupdata + len;
 
 		page = (Page) BufferGetPage(buffer);
@@ -713,8 +720,10 @@ heap_xlog_update(XLogReaderState *record, bool hot_update)
 	oldtup.t_data = NULL;
 	oldtup.t_len = 0;
 
-	XLogRecGetBlockTag(record, 0, &rlocator, NULL, &newblk);
-	if (XLogRecGetBlockTagExtended(record, 1, NULL, NULL, &oldblk, NULL))
+	XLogRecGetBlockTag(record, HEAP_UPDATE_BLKREF_HEAP_NEW, &rlocator, NULL,
+					   &newblk);
+	if (XLogRecGetBlockTagExtended(record, HEAP_UPDATE_BLKREF_HEAP_OLD, NULL, NULL,
+								   &oldblk, NULL))
 	{
 		/* HOT updates are never done across pages */
 		Assert(!hot_update);
@@ -750,7 +759,8 @@ heap_xlog_update(XLogReaderState *record, bool hot_update)
 	 */
 
 	/* Deal with old tuple version */
-	oldaction = XLogReadBufferForRedo(record, (oldblk == newblk) ? 0 : 1,
+	oldaction = XLogReadBufferForRedo(record, (oldblk == newblk) ?
+									  HEAP_UPDATE_BLKREF_HEAP_NEW : HEAP_UPDATE_BLKREF_HEAP_OLD,
 									  &obuffer);
 	if (oldaction == BLK_NEEDS_REDO)
 	{
@@ -800,13 +810,14 @@ heap_xlog_update(XLogReaderState *record, bool hot_update)
 	}
 	else if (XLogRecGetInfo(record) & XLOG_HEAP_INIT_PAGE)
 	{
-		nbuffer = XLogInitBufferForRedo(record, 0);
+		nbuffer = XLogInitBufferForRedo(record, HEAP_UPDATE_BLKREF_HEAP_NEW);
 		page = (Page) BufferGetPage(nbuffer);
 		PageInit(page, BufferGetPageSize(nbuffer), 0);
 		newaction = BLK_NEEDS_REDO;
 	}
 	else
-		newaction = XLogReadBufferForRedo(record, 0, &nbuffer);
+		newaction = XLogReadBufferForRedo(record, HEAP_UPDATE_BLKREF_HEAP_NEW,
+										  &nbuffer);
 
 	/*
 	 * The visibility map may need to be fixed even if the heap page is
@@ -831,7 +842,8 @@ heap_xlog_update(XLogReaderState *record, bool hot_update)
 		Size		datalen;
 		Size		tuplen;
 
-		recdata = XLogRecGetBlockData(record, 0, &datalen);
+		recdata = XLogRecGetBlockData(record, HEAP_UPDATE_BLKREF_HEAP_NEW,
+									  &datalen);
 		recdata_end = recdata + datalen;
 
 		page = BufferGetPage(nbuffer);
@@ -1015,7 +1027,8 @@ heap_xlog_lock(XLogReaderState *record)
 		BlockNumber block;
 		Relation	reln;
 
-		XLogRecGetBlockTag(record, 0, &rlocator, NULL, &block);
+		XLogRecGetBlockTag(record, HEAP_LOCK_BLKREF_HEAP, &rlocator, NULL,
+						   &block);
 		reln = CreateFakeRelcacheEntry(rlocator);
 
 		visibilitymap_pin(reln, block, &vmbuffer);
@@ -1025,7 +1038,8 @@ heap_xlog_lock(XLogReaderState *record)
 		FreeFakeRelcacheEntry(reln);
 	}
 
-	if (XLogReadBufferForRedo(record, 0, &buffer) == BLK_NEEDS_REDO)
+	if (XLogReadBufferForRedo(record, HEAP_LOCK_BLKREF_HEAP,
+							  &buffer) == BLK_NEEDS_REDO)
 	{
 		page = (Page) BufferGetPage(buffer);
 
@@ -1091,7 +1105,8 @@ heap_xlog_lock_updated(XLogReaderState *record)
 		BlockNumber block;
 		Relation	reln;
 
-		XLogRecGetBlockTag(record, 0, &rlocator, NULL, &block);
+		XLogRecGetBlockTag(record, HEAP_LOCK_BLKREF_HEAP, &rlocator, NULL,
+						   &block);
 		reln = CreateFakeRelcacheEntry(rlocator);
 
 		visibilitymap_pin(reln, block, &vmbuffer);
@@ -1101,7 +1116,8 @@ heap_xlog_lock_updated(XLogReaderState *record)
 		FreeFakeRelcacheEntry(reln);
 	}
 
-	if (XLogReadBufferForRedo(record, 0, &buffer) == BLK_NEEDS_REDO)
+	if (XLogReadBufferForRedo(record, HEAP_LOCK_BLKREF_HEAP,
+							  &buffer) == BLK_NEEDS_REDO)
 	{
 		page = BufferGetPage(buffer);
 
