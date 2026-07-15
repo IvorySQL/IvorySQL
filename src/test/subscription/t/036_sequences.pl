@@ -232,6 +232,10 @@ $node_publisher->safe_psql(
 	CREATE SEQUENCE regress_s4 START 10 INCREMENT 2;
 ));
 
+# Wait for the missing sequence added to be synced
+$node_subscriber->poll_query_until('postgres', $synced_query)
+  or die "Timed out while waiting for subscriber to synchronize data";
+
 ##########
 # Ensure that insufficient privileges on the publisher for a sequence
 # are reported correctly as a permission issue, not as a missing sequence.
