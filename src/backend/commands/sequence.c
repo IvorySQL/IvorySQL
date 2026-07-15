@@ -1770,7 +1770,7 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 			|| strcmp(defel->defname, "noshard") == 0)
 		{
 			shardcnt++;
-			if(shardcnt > 1)
+			if(keepcnt > 1)
 			{
 				ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
