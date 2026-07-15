@@ -111,6 +111,7 @@
 
 /* This is what we need to know about delete */
 #define HEAP_DELETE_BLKREF_HEAP		0
+#define HEAP_DELETE_BLKREF_VM		1
 
 typedef struct xl_heap_delete
 {
@@ -160,6 +161,7 @@ typedef struct xl_heap_header
 
 /* This is what we need to know about insert */
 #define HEAP_INSERT_BLKREF_HEAP		0
+#define HEAP_INSERT_BLKREF_VM		1
 
 typedef struct xl_heap_insert
 {
@@ -179,6 +181,7 @@ typedef struct xl_heap_insert
  * (XLOG_HEAP_INIT_PAGE).
  */
 #define HEAP_MULTI_INSERT_BLKREF_HEAP	0
+#define HEAP_MULTI_INSERT_BLKREF_VM		1
 
 /*
  * In HEAP_MULTI_INSERT_BLKREF_HEAP's data portion, there is an
@@ -222,10 +225,22 @@ typedef struct xl_multi_insert_tuple
  *
  * HEAP_UPDATE_BLKREF_HEAP_OLD: old page, if different. (no data, just a reference
  * to the block)
+ *
+ * HEAP_UPDATE_BLKREF_VM_NEW: VM page covering the new heap page. Registered
+ * when XLH_UPDATE_NEW_ALL_VISIBLE_CLEARED is set and the new heap page's VM bit
+ * was actually cleared. Also covers the old heap page's VM bits when both heap
+ * pages map to the same VM page and both blocks' VM bits were actually cleared.
+ *
+ * HEAP_UPDATE_BLKREF_VM_OLD: VM page covering the old heap page. Only
+ * registered when XLH_UPDATE_OLD_ALL_VISIBLE_CLEARED is set and the old heap
+ * page's VM bits were actually cleared. Also only registered when the old heap
+ * page's VM bits are on a different VM page than the new heap page's or they
+ * are on the same VM page and only the old block's VM bits are cleared.
  */
-
 #define HEAP_UPDATE_BLKREF_HEAP_NEW	0
 #define HEAP_UPDATE_BLKREF_HEAP_OLD	1
+#define HEAP_UPDATE_BLKREF_VM_NEW	2
+#define HEAP_UPDATE_BLKREF_VM_OLD	3
 
 typedef struct xl_heap_update
 {
@@ -406,6 +421,7 @@ typedef struct xlhp_prune_items
 
 /* This is what we need to know about lock */
 #define HEAP_LOCK_BLKREF_HEAP		0
+#define HEAP_LOCK_BLKREF_VM			1
 
 typedef struct xl_heap_lock
 {
