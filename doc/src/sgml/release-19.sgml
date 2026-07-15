@@ -2367,22 +2367,6 @@ Allow <acronym>OAUTH</acronym> validators to register custom <link linkend="auth
 
 <!--
 Author: Jacob Champion <jchampion@postgresql.org>
-2026-04-03 [d438a3659] oauth: Let validators provide failure DETAILs
--->
-
-<listitem>
-<para>
-Allow <acronym>OAUTH</acronym> validators to supply failure details (Jacob Champion)
-<ulink url="&commit_baseurl;d438a3659">&sect;</ulink>
-</para>
-
-<para>
-This is done by setting the <link linkend="oauth-validator-callback-validate"><structname>ValidatorModuleResult</structname></link> structure member error_detail.
-</para>
-</listitem>
-
-<!--
-Author: Jacob Champion <jchampion@postgresql.org>
 2026-04-07 [6d00fb904] libpq: Split PGOAUTHDEBUG=UNSAFE into multiple options
 -->
 
@@ -2972,6 +2956,22 @@ Author: Tom Lane <tgl@sss.pgh.pa.us>
 <para>
 Allow extensions to replace <link linkend="xfunc-sql-functions-returning-set">set-returning functions</link> in the <literal>FROM</literal> clause with <acronym>SQL</acronym> queries (Paul A. Jungwirth)
 <ulink url="&commit_baseurl;b140c8d7a">&sect;</ulink>
+</para>
+</listitem>
+
+<!--
+Author: Jacob Champion <jchampion@postgresql.org>
+2026-04-03 [d438a3659] oauth: Let validators provide failure DETAILs
+-->
+
+<listitem>
+<para>
+Allow <acronym>OAUTH</acronym> validators to supply failure details (Jacob Champion)
+<ulink url="&commit_baseurl;d438a3659">&sect;</ulink>
+</para>
+
+<para>
+This is done by setting the <link linkend="oauth-validator-callback-validate"><structname>ValidatorModuleResult</structname></link> structure member error_detail.
 </para>
 </listitem>
 
