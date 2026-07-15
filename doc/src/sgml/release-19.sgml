@@ -1341,20 +1341,17 @@ New configuration file <link linkend="guc-hosts-file"><filename>PGDATA/pg_hosts.
 
 <!--
 Author: Jacob Champion <jchampion@postgresql.org>
-2026-03-06 [e982331b5] libpq: Introduce PQAUTHDATA_OAUTH_BEARER_TOKEN_V2
-Author: Jacob Champion <jchampion@postgresql.org>
-2026-03-31 [0af4d402c] libpq: Poison the v2 part of a v1 Bearer request
+2026-04-03 [d438a3659] oauth: Let validators provide failure DETAILs
 -->
 
 <listitem>
 <para>
-Add a new <acronym>OAUTH</acronym> flow hook <link linkend="libpq-oauth-authdata-oauth-bearer-token-v2"><literal>PQAUTHDATA_OAUTH_BEARER_TOKEN_V2</literal></link> (Jacob Champion)
-<ulink url="&commit_baseurl;e982331b5">&sect;</ulink>
-<ulink url="&commit_baseurl;0af4d402c">&sect;</ulink>
+Allow <acronym>OAUTH</acronym> validators to supply failure details (Jacob Champion)
+<ulink url="&commit_baseurl;d438a3659">&sect;</ulink>
 </para>
 
 <para>
-This is an improved version of <link linkend="libpq-oauth-authdata-oauth-bearer-token"><literal>PQAUTHDATA_OAUTH_BEARER_TOKEN</literal></link> by adding the issuer identifier and error message specification.
+This is done by setting the <link linkend="oauth-validator-callback-validate"><structname>ValidatorModuleResult</structname></link> structure member error_detail.
 </para>
 </listitem>
 
@@ -2961,17 +2958,20 @@ Allow extensions to replace <link linkend="xfunc-sql-functions-returning-set">se
 
 <!--
 Author: Jacob Champion <jchampion@postgresql.org>
-2026-04-03 [d438a3659] oauth: Let validators provide failure DETAILs
+2026-03-06 [e982331b5] libpq: Introduce PQAUTHDATA_OAUTH_BEARER_TOKEN_V2
+Author: Jacob Champion <jchampion@postgresql.org>
+2026-03-31 [0af4d402c] libpq: Poison the v2 part of a v1 Bearer request
 -->
 
 <listitem>
 <para>
-Allow <acronym>OAUTH</acronym> validators to supply failure details (Jacob Champion)
-<ulink url="&commit_baseurl;d438a3659">&sect;</ulink>
+Add a new <acronym>OAUTH</acronym> flow hook <link linkend="libpq-oauth-authdata-oauth-bearer-token-v2"><literal>PQAUTHDATA_OAUTH_BEARER_TOKEN_V2</literal></link> (Jacob Champion)
+<ulink url="&commit_baseurl;e982331b5">&sect;</ulink>
+<ulink url="&commit_baseurl;0af4d402c">&sect;</ulink>
 </para>
 
 <para>
-This is done by setting the <link linkend="oauth-validator-callback-validate"><structname>ValidatorModuleResult</structname></link> structure member error_detail.
+This is an improved version of <link linkend="libpq-oauth-authdata-oauth-bearer-token"><literal>PQAUTHDATA_OAUTH_BEARER_TOKEN</literal></link> by adding the issuer identifier and error message specification.
 </para>
 </listitem>
 
