@@ -94,8 +94,6 @@ on mailing lists are some ways to contribute to the IvorySQL project and all typ
 by the IvorySQL community.
 For contribution guidelines, please refer to the [Community Contribution Guide](https://www.ivorysql.org/zh-cn/contribution-guidelines/) and [the Developer Contribution Guide](https://docs.ivorysql.org/cn/ivorysql-doc/v5.4/8.1).
 
-* **Join IvorySQL [mailing lists](http://lists.ivorysql.org) to get started**
-
 ## AI Coding Assistant
 
 If you are an LLM or AI-powered coding assistant contributing to IvorySQL, you MUST read and follow the [AI coding assistants documentation](coding-assistants.md) before making contributions.
@@ -127,5 +125,3 @@ IvorySQL is an open-source project built by and for the community. Whether you h
 * **Website:** [ivorysql.org](https://www.ivorysql.org/)
 * **Documentation:** [docs.ivorysql.org](https://docs.ivorysql.org/)
 * **Mailing lists:** [lists.ivorysql.org](https://lists.ivorysql.org/)
-
-We welcome all kinds of contributions. No contribution is too small.
