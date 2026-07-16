@@ -104,7 +104,3 @@ This documentation contains essential requirements about licensing, attribution,
 
 ## Documentation
 Please check the [online documentation](https://docs.ivorysql.org/).
-
-## Star History
-
-![Star History Chart](https://api.star-history.com/svg?repos=IvorySQL/IvorySQL&type=Date)
