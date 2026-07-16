@@ -5092,6 +5092,27 @@ testdb=&gt; <userinput>INSERT INTO my_table VALUES (:'content');</userinput>
         </listitem>
       </varlistentry>
 
+      <varlistentry id="app-psql-prompting-o">
+        <term><literal>%o</literal></term>
+        <listitem>
+        <para>
+        <literal>[ORA]</literal> when the connected
+        <productname>IvorySQL</productname> server reports the current
+        session compatibility mode
+        (<varname>ivorysql.compatible_mode</varname>) as
+        <literal>oracle</literal>, and empty otherwise. The indicator
+        follows in-session mode changes, so it appears, for example,
+        after connecting to an IvorySQL listener port that selects
+        Oracle mode or after running <command>SET ivorysql.compatible_mode
+        = 'oracle'</command>, and disappears when the mode is switched
+        back to <literal>pg</literal>. Connections to a plain
+        <productname>PostgreSQL</productname> server, or to an
+        <productname>IvorySQL</productname> server whose compatibility
+        mode is <literal>pg</literal>, produce nothing.
+        </para>
+        </listitem>
+      </varlistentry>
+
       <varlistentry id="app-psql-prompting-x">
         <term><literal>%x</literal></term>
         <listitem>
@@ -5183,7 +5204,7 @@ testdb=&gt; \set PROMPT1 '%[%033[1;33;40m%]%n@%/%R%[%033[0m%]%# '
 
     To insert a percent sign into your prompt, write
     <literal>%%</literal>. The default prompts are
-    <literal>'%/%R%x%# '</literal> for prompts 1 and 2, and
+    <literal>'%o%/%R%x%# '</literal> for prompts 1 and 2, and
     <literal>'&gt;&gt; '</literal> for prompt 3.
     </para>
 
