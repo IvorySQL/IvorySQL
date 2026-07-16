@@ -8041,9 +8041,10 @@ log_line_prefix = '%m [%p] %q%u@%d/%a '
        <para>
         This setting only affects log messages printed as a result of
         <xref linkend="guc-log-statement"/>,
-        <xref linkend="guc-log-duration"/>, and related settings.  Non-zero
-        values of this setting add some overhead, particularly if parameters
-        are sent in binary form, since then conversion to text is required.
+        <xref linkend="guc-log-min-duration-statement"/>, and related settings.
+        Non-zero values of this setting add some overhead, particularly
+        if parameters are sent in binary form, since then conversion to
+        text is required.
        </para>
       </listitem>
      </varlistentry>
