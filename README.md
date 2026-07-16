@@ -104,3 +104,28 @@ This documentation contains essential requirements about licensing, attribution,
 
 ## Documentation
 Please check the [online documentation](https://docs.ivorysql.org/).
+
+## Community and Contact
+
+IvorySQL is an open-source project built by and for the community. Whether you have questions, ideas, bug reports, or would like to contribute, you are welcome to connect with us through the following channels.
+
+### Community
+
+* **General Mailing List:** [general@ivorysql.org](https://lists.ivorysql.org/postorius/lists/general.ivorysql.org/) — General discussions, usage questions, and community communication.
+* **Hackers Mailing List:** [hackers@ivorysql.org](https://lists.ivorysql.org/postorius/lists/hackers.ivorysql.org/) — Development discussions, technical proposals, patches, and contributions.
+* **Discord:** [Join the IvorySQL Discord community](https://discord.gg/w79Ta45Gkc)
+* **X / Twitter:** [@IvorySQL](https://twitter.com/IvorySQL)
+
+### Support and Feedback
+
+* **Bug reports and feature requests:** [GitHub Issues](https://github.com/IvorySQL/IvorySQL/issues/new/choose)
+* **Source code and contributions:** [GitHub](https://github.com/IvorySQL/IvorySQL)
+* **GitCode / AtomGit:** [IvorySQL on GitCode](https://atomgit.com/IvorySQL/IvorySQL)
+
+### Official Resources
+
+* **Website:** [ivorysql.org](https://www.ivorysql.org/)
+* **Documentation:** [docs.ivorysql.org](https://docs.ivorysql.org/)
+* **Mailing lists:** [lists.ivorysql.org](https://lists.ivorysql.org/)
+
+We welcome all kinds of contributions. No contribution is too small.
