@@ -1024,6 +1024,14 @@ libpqrcv_create_slot(WalReceiverConn *conn, const char *slotname,
 						slotname, pchomp(PQerrorMessage(conn->streamConn)))));
 	}
 
+	/* CREATE_REPLICATION_SLOT returns a single row with four columns */
+	if (PQnfields(res) != 4 || PQntuples(res) != 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_PROTOCOL_VIOLATION),
+				 errmsg("invalid response from primary server"),
+				 errdetail("Could not create replication slot \"%s\": got %d rows and %d fields, expected %d rows and %d fields.",
+						   slotname, PQntuples(res), PQnfields(res), 1, 4)));
+
 	if (lsn)
 		*lsn = DatumGetLSN(DirectFunctionCall1Coll(pg_lsn_in, InvalidOid,
 												   CStringGetDatum(PQgetvalue(res, 0, 1))));
