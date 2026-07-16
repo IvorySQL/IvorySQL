@@ -290,13 +290,22 @@ get_and_validate_seq_info(TupleTableSlot *slot, Relation *sequence_rel,
 		(LogicalRepSequenceInfo *) list_nth(seqinfos, *seqidx);
 
 	/*
+	 * has_sequence_privilege() itself returns NULL, rather than false, when
+	 * the sequence has been dropped concurrently after it was identified in
+	 * the catalog snapshot (see has_sequence_privilege_id()). Treat that as a
+	 * missing sequence on the publisher.
+	 */
+	datum = slot_getattr(slot, ++col, &isnull);
+	if (isnull)
+		return COPYSEQ_SKIPPED;
+
+	remote_has_select_priv = DatumGetBool(datum);
+
+	/*
 	 * The remote sequence state can be NULL if the publisher lacks the
 	 * required privileges or if the sequence was dropped concurrently after
 	 * it was identified in the catalog snapshot (see pg_get_sequence_data()).
 	 */
-	remote_has_select_priv = DatumGetBool(slot_getattr(slot, ++col, &isnull));
-	Assert(!isnull);
-
 	datum = slot_getattr(slot, ++col, &isnull);
 	if (isnull)
 		return remote_has_select_priv ? COPYSEQ_SKIPPED :

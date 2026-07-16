@@ -189,6 +189,60 @@ is($result, '1|f',
 );
 
 ##########
+# A sequence dropped concurrently on the publisher, while the sequencesync
+# worker's batch query is executing, must be treated the same as any other
+# concurrently-dropped sequence (reported as "missing sequence on publisher").
+##########
+
+my $log_offset = -s $node_subscriber->logfile;
+
+# Block the sequencesync worker's batch query on the publisher: an
+# uncommitted DROP SEQUENCE holds AccessExclusiveLock, on which the
+# pg_get_sequence_data() call in the batch query will wait.
+my $pub_session = $node_publisher->background_psql('postgres');
+$pub_session->query_safe(
+	qq(
+	BEGIN;
+	DROP SEQUENCE regress_s3;
+));
+
+$node_subscriber->safe_psql('postgres',
+	"ALTER SUBSCRIPTION regress_seq_sub REFRESH SEQUENCES");
+
+# Wait until the worker's batch query is blocked on the still uncommitted
+# DROP.
+$node_publisher->poll_query_until(
+	'postgres', qq(
+	SELECT EXISTS (
+		SELECT 1 FROM pg_locks
+		WHERE relation = 'regress_s3'::regclass
+		  AND mode = 'AccessShareLock'
+		  AND NOT granted);
+)) or die "timed out waiting for sequencesync worker to block on publisher";
+
+# Commit the DROP while the batch query is blocked inside it, so the query
+# resumes against a sequence that no longer exists.
+# After pg_get_sequence_data() is unblocked, the batch query evaluates
+# has_sequence_privilege(c.oid, 'SELECT') in the target list. Since the DROP
+# has been committed by then, has_sequence_privilege() observes the missing
+# sequence and returns NULL.
+$pub_session->query_safe("COMMIT");
+$pub_session->quit;
+
+$node_subscriber->wait_for_log(
+	qr/WARNING: ( [A-Z0-9]+:)? missing sequence on publisher \("public.regress_s3"\)/,
+	$log_offset);
+
+$node_publisher->safe_psql(
+	'postgres', qq(
+	CREATE SEQUENCE regress_s3;
+));
+
+# Wait for the recreated sequence to be synced.
+$node_subscriber->poll_query_until('postgres', $synced_query)
+  or die "Timed out while waiting for subscriber to synchronize data";
+
+##########
 # ALTER SUBSCRIPTION ... REFRESH PUBLICATION should report an error when:
 # a) sequence definitions differ between the publisher and subscriber, or
 # b) a sequence is missing on the publisher.
@@ -206,7 +260,7 @@ $node_subscriber->safe_psql(
 	CREATE SEQUENCE regress_s4 START 10 INCREMENT 2;
 ));
 
-my $log_offset = -s $node_subscriber->logfile;
+$log_offset = -s $node_subscriber->logfile;
 
 # Do ALTER SUBSCRIPTION ... REFRESH PUBLICATION
 $node_subscriber->safe_psql('postgres',
