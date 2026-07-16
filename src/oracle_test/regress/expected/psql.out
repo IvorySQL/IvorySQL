@@ -5485,6 +5485,7 @@ show ivorysql.compatible_mode;
  oracle
 (1 row)
 
+set ivorysql.compatible_mode = 'pg';
 -- ensure compatible_mode cannot be persisted via ALTER ROLE SET/RESET
 create role regress_psql_cm_role;
 alter role regress_psql_cm_role set ivorysql.compatible_mode = 'pg';
@@ -5517,19 +5518,19 @@ create function psql_df_plpgsql ()
 comment on function psql_df_plpgsql () is 'some comment';
 \df+ psql_df_*
                                                                                               List of functions
- Schema |       Name       | Result data type  | Argument data types | Type | Volatility | Parallel |       Owner       | Security | Leakproof? | Access privileges | Language | Internal name | Description  
---------+------------------+-------------------+---------------------+------+------------+----------+-------------------+----------+------------+-------------------+----------+---------------+--------------
- public | psql_df_internal | pg_catalog.float8 | pg_catalog.float8   | func | immutable  | safe     | regress_psql_user | invoker  | no         |                   | internal | dsin          | 
- public | psql_df_plpgsql  | void              |                     | func | volatile   | unsafe   | regress_psql_user | invoker  | no         |                   | plpgsql  |               | some comment
- public | psql_df_sql      | pg_catalog.int4   | x pg_catalog.int4   | func | volatile   | unsafe   | regress_psql_user | definer  | no         |                   | sql      |               | 
+ Schema |       Name       | Result data type | Argument data types | Type | Volatility | Parallel |       Owner       | Security | Leakproof? | Access privileges | Language | Internal name | Description  
+--------+------------------+------------------+---------------------+------+------------+----------+-------------------+----------+------------+-------------------+----------+---------------+--------------
+ public | psql_df_internal | double precision | double precision    | func | immutable  | safe     | regress_psql_user | invoker  | no         |                   | internal | dsin          | 
+ public | psql_df_plpgsql  | void             |                     | func | volatile   | unsafe   | regress_psql_user | invoker  | no         |                   | plpgsql  |               | some comment
+ public | psql_df_sql      | integer          | x integer           | func | volatile   | unsafe   | regress_psql_user | definer  | no         |                   | sql      |               | 
 (3 rows)
 
 rollback;
 drop role regress_psql_user;
 -- check \sf
 \sf information_schema._pg_index_position
-CREATE OR REPLACE FUNCTION information_schema._pg_index_position(oid, pg_catalog.int2)
- RETURNS pg_catalog.int4
+CREATE OR REPLACE FUNCTION information_schema._pg_index_position(oid, smallint)
+ RETURNS integer
  LANGUAGE sql
  STABLE STRICT
 BEGIN ATOMIC
@@ -5540,8 +5541,8 @@ BEGIN ATOMIC
    WHERE ((ss.a).x = $2);
 END
 \sf+ information_schema._pg_index_position
-        CREATE OR REPLACE FUNCTION information_schema._pg_index_position(oid, pg_catalog.int2)
-         RETURNS pg_catalog.int4
+        CREATE OR REPLACE FUNCTION information_schema._pg_index_position(oid, smallint)
+         RETURNS integer
          LANGUAGE sql
          STABLE STRICT
 1       BEGIN ATOMIC
@@ -5552,8 +5553,8 @@ END
 6          WHERE ((ss.a).x = $2);
 7       END
 \sf+ interval_pl_time
-        CREATE OR REPLACE FUNCTION pg_catalog.interval_pl_time(interval, pg_catalog.time)
-         RETURNS pg_catalog.time
+        CREATE OR REPLACE FUNCTION pg_catalog.interval_pl_time(interval, time without time zone)
+         RETURNS time without time zone
          LANGUAGE sql
          IMMUTABLE PARALLEL SAFE STRICT COST 1
 1       RETURN ($2 + $1)
@@ -5691,7 +5692,6 @@ CREATE FUNCTION warn(msg TEXT) RETURNS BOOLEAN LANGUAGE plpgsql
 AS $$
   BEGIN RAISE NOTICE 'warn %', msg ; RETURN TRUE ; END
 $$;
-/
 -- show both
 SELECT 1 AS one \; SELECT warn('1.5') \; SELECT 2 AS two ;
 NOTICE:  warn 1.5
@@ -5961,7 +5961,6 @@ CREATE FUNCTION psql_error(msg TEXT) RETURNS BOOLEAN AS $$
     RAISE EXCEPTION 'error %', msg;
   END;
 $$ LANGUAGE plpgsql;
-/
 \set ON_ERROR_ROLLBACK on
 \echo '# ON_ERROR_ROLLBACK:' :ON_ERROR_ROLLBACK
 # ON_ERROR_ROLLBACK: on
@@ -6912,14 +6911,13 @@ SET LOCAL ROLE regress_zeropriv_owner;
 CREATE DOMAIN regress_zeropriv_domain AS int;
 REVOKE ALL ON DOMAIN regress_zeropriv_domain FROM CURRENT_USER, PUBLIC;
 \dD+ regress_zeropriv_domain
-                                                        List of domains
- Schema |          Name           |      Type       | Collation | Nullable | Default | Check | Access privileges | Description 
---------+-------------------------+-----------------+-----------+----------+---------+-------+-------------------+-------------
- public | regress_zeropriv_domain | pg_catalog.int4 |           |          |         |       | (none)            | 
+                                                    List of domains
+ Schema |          Name           |  Type   | Collation | Nullable | Default | Check | Access privileges | Description 
+--------+-------------------------+---------+-----------+----------+---------+-------+-------------------+-------------
+ public | regress_zeropriv_domain | integer |           |          |         |       | (none)            | 
 (1 row)
 
 CREATE PROCEDURE regress_zeropriv_proc() LANGUAGE sql AS $$ $$;
-/
 REVOKE ALL ON PROCEDURE regress_zeropriv_proc() FROM CURRENT_USER, PUBLIC;
 \df+ regress_zeropriv_proc
                                                                                                   List of functions
