@@ -5485,6 +5485,9 @@ show ivorysql.compatible_mode;
  oracle
 (1 row)
 
+set ivorysql.compatible_mode = 'pg';
+SET
+
 -- ensure compatible_mode cannot be persisted via ALTER ROLE SET/RESET
 create role regress_psql_cm_role;
 alter role regress_psql_cm_role set ivorysql.compatible_mode = 'pg';
