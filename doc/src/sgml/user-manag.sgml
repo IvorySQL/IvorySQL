@@ -660,6 +660,7 @@ GRANT pg_signal_backend TO admin_user;
        <link linkend="sql-vacuum"><command>VACUUM</command></link>,
        <link linkend="sql-analyze"><command>ANALYZE</command></link>,
        <link linkend="sql-cluster"><command>CLUSTER</command></link>,
+       <link linkend="sql-repack"><command>REPACK</command></link>,
        <link linkend="sql-refreshmaterializedview"><command>REFRESH MATERIALIZED VIEW</command></link>,
        <link linkend="sql-reindex"><command>REINDEX</command></link>,
        and <link linkend="sql-lock"><command>LOCK TABLE</command></link> on all

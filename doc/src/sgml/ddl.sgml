@@ -2538,7 +2538,8 @@ REVOKE ALL ON accounts FROM PUBLIC;
     <listitem>
      <para>
       Allows <command>VACUUM</command>, <command>ANALYZE</command>,
-      <command>CLUSTER</command>, <command>REFRESH MATERIALIZED VIEW</command>,
+      <command>CLUSTER</command>, <command>REPACK</command>,
+      <command>REFRESH MATERIALIZED VIEW</command>,
       <command>REINDEX</command>, <command>LOCK TABLE</command>,
       and database object statistics manipulation functions
       (see <xref linkend="functions-admin-statsmod"/>) on a relation.

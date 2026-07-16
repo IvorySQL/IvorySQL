@@ -3704,8 +3704,8 @@ pg_class_aclmask_ext(Oid table_oid, Oid roleid, AclMode mask,
 	/*
 	 * Check if ACL_MAINTAIN is being checked and, if so, and not already set
 	 * as part of the result, then check if the user is a member of the
-	 * pg_maintain role, which allows VACUUM, ANALYZE, CLUSTER, REFRESH
-	 * MATERIALIZED VIEW, REINDEX, and LOCK TABLE on all relations.
+	 * pg_maintain role, which allows VACUUM, ANALYZE, CLUSTER, REPACK,
+	 * REFRESH MATERIALIZED VIEW, REINDEX, and LOCK TABLE on all relations.
 	 */
 	if (mask & ACL_MAINTAIN &&
 		!(result & ACL_MAINTAIN) &&
