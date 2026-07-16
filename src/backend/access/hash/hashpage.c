@@ -1477,18 +1477,20 @@ _hash_finish_split(Relation rel, Buffer metabuf, Buffer obuf, Bucket obucket,
 static void
 log_split_page(Relation rel, Buffer buf)
 {
+	XLogRecPtr	recptr;
+
 	if (RelationNeedsWAL(rel))
 	{
-		XLogRecPtr	recptr;
-
 		XLogBeginInsert();
 
 		XLogRegisterBuffer(0, buf, REGBUF_FORCE_IMAGE | REGBUF_STANDARD);
 
 		recptr = XLogInsert(RM_HASH_ID, XLOG_HASH_SPLIT_PAGE);
-
-		PageSetLSN(BufferGetPage(buf), recptr);
 	}
+	else
+		recptr = XLogGetFakeLSN(rel);
+
+	PageSetLSN(BufferGetPage(buf), recptr);
 }
 
 /*
