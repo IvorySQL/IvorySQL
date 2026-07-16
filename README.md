@@ -92,6 +92,7 @@ translations for the documentation. If you have design skills you can contribute
 Testing the IvorySQL and reporting issues or by issuing pull requests for bug fixes or new features or answering the questions
 on mailing lists are some ways to contribute to the IvorySQL project and all types of contributions are welcomed and appreciated
 by the IvorySQL community.
+For contribution guidelines, please refer to the [Community Contribution Guide](https://www.ivorysql.org/zh-cn/contribution-guidelines/) and [the Developer Contribution Guide](https://docs.ivorysql.org/cn/ivorysql-doc/v5.4/8.1).
 
 * **Join IvorySQL [mailing lists](http://lists.ivorysql.org) to get started**
 
