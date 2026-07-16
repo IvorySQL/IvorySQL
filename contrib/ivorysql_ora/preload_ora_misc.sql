@@ -18,5 +18,5 @@ CREATE CAST (sys.urowid AS sys.rowid) WITH INOUT AS IMPLICIT;
 
 --
 -- Plugin uuid-ossp
---
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+-- Note: uuid-ossp may not be available on all platforms (e.g., macOS)
+-- CREATE EXTENSION IF NOT EXISTS "uuid-ossp";

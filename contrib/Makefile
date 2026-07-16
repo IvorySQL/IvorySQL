@@ -61,11 +61,7 @@ else
 ALWAYS_SUBDIRS += pgcrypto sslinfo
 endif
 
-ifneq ($(with_uuid),no)
-SUBDIRS += uuid-ossp
-else
-ALWAYS_SUBDIRS += uuid-ossp
-endif
+
 
 ifeq ($(with_libxml),yes)
 SUBDIRS += xml2
