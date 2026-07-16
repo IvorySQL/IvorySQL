@@ -1370,6 +1370,7 @@ set ivorysql.compatible_mode = 'pg';
 \parser
 reset ivorysql.compatible_mode;
 show ivorysql.compatible_mode;
+set ivorysql.compatible_mode = 'pg';
 
 -- ensure compatible_mode cannot be persisted via ALTER ROLE SET/RESET
 create role regress_psql_cm_role;
