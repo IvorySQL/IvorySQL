@@ -561,19 +561,17 @@ UpdateLogicalDecodingStatusEndOfRecovery(void)
 
 	Assert(RecoveryInProgress());
 
-	/*
-	 * With 'minimal' WAL level, there are no logical replication slots during
-	 * recovery. Logical decoding is always disabled, so there is no need to
-	 * synchronize XLogLogicalInfo.
-	 */
-	if (wal_level == WAL_LEVEL_MINIMAL)
-	{
-		Assert(!IsXLogLogicalInfoEnabled() && !IsLogicalDecodingEnabled());
-		return;
-	}
-
 	LWLockAcquire(LogicalDecodingControlLock, LW_EXCLUSIVE);
 
+	/*
+	 * With 'minimal' WAL level, no logical replication slot can exist (see
+	 * RestoreSlotFromDisk()), so the new status is always false. However,
+	 * logical decoding could have been enabled during recovery by replaying
+	 * an XLOG_LOGICAL_DECODING_STATUS_CHANGE record from WAL generated with a
+	 * higher wal_level, e.g. if the server crashed right after the last
+	 * logical slot was dropped and then restarted with wal_level='minimal'.
+	 * The code below disables logical decoding in that case.
+	 */
 	if (wal_level == WAL_LEVEL_LOGICAL || CheckLogicalSlotExists())
 		new_status = true;
 
