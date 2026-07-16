@@ -4748,18 +4748,48 @@ SELECT server_name,
   WHERE application_name = 'fdw_conn_check') AS remote_backend_pid
   FROM postgres_fdw_get_connections(true);
 
--- After terminating the remote backend, since the connection is closed,
--- "closed" should be TRUE, or NULL if the connection status check
--- is not available. Despite the termination, remote_backend_pid should
--- still show the non-zero PID of the terminated remote backend.
+-- After terminating the remote backend, if the connection entry is still in
+-- the cache, "closed" should be TRUE, or NULL if the connection status check
+-- is not available, and remote_backend_pid should still show the non-zero PID
+-- of the terminated remote backend. Concurrent invalidation can remove the
+-- idle cached connection before the next statement, in which case
+-- postgres_fdw_get_connections(true) can legitimately return no rows.
 DO $$ BEGIN
 PERFORM pg_terminate_backend(pid, 180000) FROM pg_stat_activity
   WHERE application_name = 'fdw_conn_check';
 END $$;
-SELECT server_name,
+WITH terminated_conn AS (
+  SELECT server_name,
+    CASE WHEN closed IS NOT false THEN true ELSE false END AS closed,
+    remote_backend_pid <> 0 AS remote_backend_pid
+    FROM postgres_fdw_get_connections(true)
+)
+SELECT CASE
+  WHEN count(*) = 0 THEN true
+  WHEN count(*) = 1 THEN bool_and(server_name = 'loopback'
+                                  AND closed
+                                  AND remote_backend_pid)
+  ELSE false
+END AS ok
+FROM terminated_conn;
+
+-- In an explicit transaction, concurrent invalidation may mark the
+-- connection invalid but cannot discard it before transaction end, so the
+-- terminated connection should remain visible in the cache.
+SELECT 1 FROM postgres_fdw_disconnect_all();
+SET client_min_messages = 'ERROR';
+BEGIN;
+SELECT 1 FROM ft1 LIMIT 1;
+DO $$ BEGIN
+PERFORM pg_terminate_backend(pid, 180000) FROM pg_stat_activity
+  WHERE application_name = 'fdw_conn_check';
+END $$;
+SELECT server_name, used_in_xact,
   CASE WHEN closed IS NOT false THEN true ELSE false END AS closed,
   remote_backend_pid <> 0 AS remote_backend_pid
   FROM postgres_fdw_get_connections(true);
+ABORT;
+RESET client_min_messages;
 
 -- Clean up
 \set VERBOSITY default
