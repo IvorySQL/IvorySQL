@@ -3802,7 +3802,7 @@ transformPartitionCmdForSplit(CreateStmtContext *cxt, PartitionCmd *partcmd)
 				errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 				errmsg("can not split DEFAULT partition \"%s\"",
 					   get_rel_name(splitPartOid)),
-				errhint("To split DEFAULT partition one of the new partition msut be DEFAULT"),
+				errhint("To split DEFAULT partition one of the new partition must be DEFAULT"),
 				parser_errposition(cxt->pstate, ((SinglePartitionSpec *) linitial(splitlist))->name->location));
 
 	/*
