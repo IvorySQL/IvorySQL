@@ -101,6 +101,17 @@ MainLoop(FILE *source)
 		bool	exec_dostmt = false;
 
 		/*
+		 * Sync our cached compatible mode with the value the server last
+		 * reported before choosing which parser to use for the next line, so
+		 * that SET ivorysql.compatible_mode (or connecting through the Oracle
+		 * listener port) switches the parser immediately instead of requiring
+		 * a manual \parser.  This only reads libpq's cached ParameterStatus,
+		 * adds no round-trip, and is a no-op against servers that do not
+		 * report the GUC.
+		 */
+		updateDbCompatibleModeIfReported(pset.db);
+
+		/*
 		 * Clean up after a previous Control-C
 		 */
 		if (cancel_pressed)
