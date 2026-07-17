@@ -56,6 +56,7 @@ $$;
 -- estimated size.
 create table simple as
   select generate_series(1, 20000) AS id, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+insert into simple values (null, null);
 alter table simple set (parallel_workers = 2);
 analyze simple;
 -- Make a relation whose size we will under-estimate.  We want stats
@@ -311,7 +312,7 @@ $$);
 select count(*) from simple r full outer join simple s using (id);
  count 
 -------
- 20000
+ 20002
 (1 row)
 
 rollback to settings;
@@ -790,7 +791,7 @@ explain (costs off)
 select  count(*) from simple r full outer join simple s using (id);
  count 
 -------
- 20000
+ 20002
 (1 row)
 
 rollback to settings;
@@ -813,7 +814,7 @@ explain (costs off)
 select  count(*) from simple r full outer join simple s using (id);
  count 
 -------
- 20000
+ 20002
 (1 row)
 
 rollback to settings;
@@ -838,7 +839,7 @@ explain (costs off)
 select  count(*) from simple r full outer join simple s using (id);
  count 
 -------
- 20000
+ 20002
 (1 row)
 
 rollback to settings;
@@ -861,7 +862,7 @@ explain (costs off)
 select  count(*) from simple r full outer join simple s on (r.id = 0 - s.id);
  count 
 -------
- 40000
+ 40002
 (1 row)
 
 rollback to settings;
@@ -884,7 +885,7 @@ explain (costs off)
 select  count(*) from simple r full outer join simple s on (r.id = 0 - s.id);
  count 
 -------
- 40000
+ 40002
 (1 row)
 
 rollback to settings;
@@ -909,7 +910,7 @@ explain (costs off)
 select  count(*) from simple r full outer join simple s on (r.id = 0 - s.id);
  count 
 -------
- 40000
+ 40002
 (1 row)
 
 rollback to settings;
