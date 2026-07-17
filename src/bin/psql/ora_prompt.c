@@ -191,6 +191,7 @@ ora_get_prompt(Ora_promptStatus_t status, ConditionalStack cstack)
 						if (service_name)
 							strlcpy(buf, service_name, sizeof(buf));
 					}
+					pg_fallthrough;
 					/* backend pid */
 				case 'p':
 					if (pset.db)
