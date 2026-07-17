@@ -94,6 +94,8 @@ on mailing lists are some ways to contribute to the IvorySQL project and all typ
 by the IvorySQL community.
 For contribution guidelines, please refer to the [Community Contribution Guide](https://www.ivorysql.org/zh-cn/contribution-guidelines/) and [the Developer Contribution Guide](https://docs.ivorysql.org/cn/ivorysql-doc/v5.4/8.1).
 
+**Important:** Before submitting any code contribution, all contributors are required to sign the Contributor License Agreement (CLA). The CLA protects both contributors and the project, and helps the community build a more standardized and sustainable open-source governance system.
+
 ## AI Coding Assistant
 
 If you are an LLM or AI-powered coding assistant contributing to IvorySQL, you MUST read and follow the [AI coding assistants documentation](coding-assistants.md) before making contributions.
