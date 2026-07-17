@@ -990,6 +990,11 @@ jobs:
         shell: cmd
         run: mkdir ${{env.PG_REGRESS_SOCK_DIR}}
 
+      - &windows_setup_debugger_step
+        name: Setup Windows debugger
+        shell: pwsh
+        run: src/tools/ci/gha_setup_windows_debugger.ps1
+
       - name: Configure
         run: |
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
@@ -1019,9 +1024,6 @@ jobs:
             call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
         run: *meson_test_world_cmd
 
-      # TODO: We need to collect crashlogs but for them to be generated, we'd
-      # have to configure the JIT Debugger to do so. cdb.exe is installed on
-      # the runner so that is possible.
       - *upload_logs_step
 
 
@@ -1116,6 +1118,8 @@ jobs:
         shell: cmd
         run: mkdir ${{env.PG_REGRESS_SOCK_DIR}}
 
+      - *windows_setup_debugger_step
+
       - *ccache_restore_default_step
       - *ccache_restore_branch_step
 
@@ -1138,9 +1142,6 @@ jobs:
       - name: Test world
         run: *meson_test_world_cmd
 
-      # TODO: We want to include crashlogs, but they are not yet
-      # collected. cdb.exe is installed on the runner, so we can configure it
-      # appropriately.
       - *upload_logs_step
 
 
