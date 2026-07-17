@@ -36,6 +36,7 @@ SUBDIRS = \
 		  test_misc \
 		  test_oat_hooks \
 		  test_parser \
+		  test_package_reset \
 		  test_pg_dump \
 		  test_predtest \
 		  test_radixtree \
