@@ -1,12 +1,12 @@
 /*-------------------------------------------------------------------------
  * Copyright 2025 IvorySQL Global Development Team
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -77,8 +77,8 @@ static void ivorysql_ora_ProcessUtility(PlannedStmt *pstmt,
 										DestReceiver *dest,
 										QueryCompletion *qc);
 
-void _PG_init(void);
-void _PG_fini(void);
+void		_PG_init(void);
+void		_PG_fini(void);
 
 /*
  * Module initialization function.
@@ -90,7 +90,7 @@ _PG_init(void)
 	/* Must be loaded with shared_preload_libaries */
 	if (!process_shared_preload_libraries_in_progress)
 		ereport(ERROR, (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				errmsg("ivorysql_ora must be loaded via shared_preload_libraries")));
+						errmsg("ivorysql_ora must be loaded via shared_preload_libraries")));
 #endif
 
 	/* Define custom GUC variables */
@@ -118,14 +118,14 @@ _PG_init(void)
 	ProcessUtility_hook = ivorysql_ora_ProcessUtility;
 
 	DefineCustomStringVariable("utl_file.umask",
-								"Specify umask used by utl_file.fopen.",
-								NULL,
-								&utl_file_umask_str,
-								"0077",
-								PGC_USERSET,
-								0,
-								utl_file_umask_check_hook,
-								utl_file_umask_assign_hook, NULL);
+							   "Specify umask used by utl_file.fopen.",
+							   NULL,
+							   &utl_file_umask_str,
+							   "0077",
+							   PGC_USERSET,
+							   0,
+							   utl_file_umask_check_hook,
+							   utl_file_umask_assign_hook, NULL);
 
 	MarkGUCPrefixReserved("ivorysql");
 }
@@ -180,15 +180,38 @@ ivorysql_ora_ProcessUtility(PlannedStmt *pstmt,
 			is_discard_reset = true;
 	}
 
-	/* Call the previous hook or standard function */
-	if (prev_ProcessUtility_hook)
-		(*prev_ProcessUtility_hook)(pstmt, queryString, readOnlyTree,
+	/*
+	 * IvorySQL: call the previous hook or standard function.  Wrap it in
+	 * PG_TRY()/PG_CATCH() so that DBMS_OUTPUT and DBMS_SESSION state is reset
+	 * even when DISCARD ALL/PACKAGES itself fails (e.g. "DISCARD ALL cannot
+	 * run inside a transaction block").  Without this, a failed DISCARD in a
+	 * pooled connection would leak the previous client's application context
+	 * and DBMS_OUTPUT buffer.
+	 */
+	PG_TRY();
+	{
+		if (prev_ProcessUtility_hook)
+			(*prev_ProcessUtility_hook) (pstmt, queryString, readOnlyTree,
+										 context, params, queryEnv, dest, qc);
+		else
+			standard_ProcessUtility(pstmt, queryString, readOnlyTree,
 									context, params, queryEnv, dest, qc);
-	else
-		standard_ProcessUtility(pstmt, queryString, readOnlyTree,
-								context, params, queryEnv, dest, qc);
+	}
+	PG_CATCH();
+	{
+		if (is_discard_reset)
+		{
+			ora_dbms_output_reset();
+			ora_dbms_session_reset();
+		}
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
 
-	/* Reset DBMS_OUTPUT buffer and DBMS_SESSION context after DISCARD ALL/PACKAGES */
+	/*
+	 * Reset DBMS_OUTPUT buffer and DBMS_SESSION context after DISCARD
+	 * ALL/PACKAGES
+	 */
 	if (is_discard_reset)
 	{
 		ora_dbms_output_reset();
