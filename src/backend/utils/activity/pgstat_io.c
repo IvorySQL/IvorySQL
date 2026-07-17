@@ -464,6 +464,37 @@ pgstat_tracks_io_object(BackendType bktype, IOObject io_object,
 		io_context == IOCONTEXT_BULKWRITE)
 		return false;
 
+	/*
+	 * The data checksums launcher scans catalogs and emits WAL records for
+	 * checksum state changes. Catalog scans can use a bulkread strategy.
+	 */
+	if (bktype == B_DATACHECKSUMSWORKER_LAUNCHER)
+	{
+		if (io_object == IOOBJECT_WAL ||
+			(io_object == IOOBJECT_RELATION &&
+			 (io_context == IOCONTEXT_BULKREAD ||
+			  io_context == IOCONTEXT_NORMAL)))
+			return true;
+
+		return false;
+	}
+
+	/*
+	 * The worker also scans catalogs, then processes relations using a vacuum
+	 * access strategy. Catalog scans can use a bulkread strategy.
+	 */
+	if (bktype == B_DATACHECKSUMSWORKER_WORKER)
+	{
+		if (io_object == IOOBJECT_WAL ||
+			(io_object == IOOBJECT_RELATION &&
+			 (io_context == IOCONTEXT_BULKREAD ||
+			  io_context == IOCONTEXT_NORMAL ||
+			  io_context == IOCONTEXT_VACUUM)))
+			return true;
+
+		return false;
+	}
+
 	return true;
 }
 
@@ -507,6 +538,8 @@ pgstat_tracks_io_op(BackendType bktype, IOObject io_object,
 	if (io_object == IOOBJECT_WAL && io_op == IOOP_READ &&
 		(bktype == B_WAL_RECEIVER || bktype == B_BG_WRITER ||
 		 bktype == B_AUTOVAC_LAUNCHER || bktype == B_AUTOVAC_WORKER ||
+		 bktype == B_DATACHECKSUMSWORKER_LAUNCHER ||
+		 bktype == B_DATACHECKSUMSWORKER_WORKER ||
 		 bktype == B_WAL_WRITER))
 		return false;
 

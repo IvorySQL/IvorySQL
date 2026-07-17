@@ -52,19 +52,12 @@ client backend|temp relation|normal
 client backend|wal|init
 client backend|wal|normal
 datachecksums launcher|relation|bulkread
-datachecksums launcher|relation|bulkwrite
-datachecksums launcher|relation|init
 datachecksums launcher|relation|normal
-datachecksums launcher|relation|vacuum
-datachecksums launcher|temp relation|normal
 datachecksums launcher|wal|init
 datachecksums launcher|wal|normal
 datachecksums worker|relation|bulkread
-datachecksums worker|relation|bulkwrite
-datachecksums worker|relation|init
 datachecksums worker|relation|normal
 datachecksums worker|relation|vacuum
-datachecksums worker|temp relation|normal
 datachecksums worker|wal|init
 datachecksums worker|wal|normal
 io worker|relation|bulkread
@@ -111,7 +104,7 @@ walsummarizer|wal|init
 walsummarizer|wal|normal
 walwriter|wal|init
 walwriter|wal|normal
-(95 rows)
+(88 rows)
 \a
 -- ensure that both seqscan and indexscan plans are allowed
 SET enable_seqscan TO on;
