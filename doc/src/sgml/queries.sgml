@@ -1159,31 +1159,6 @@ SELECT product_id, p.name, (sum(s.units) * p.price) AS sales
     expressions cannot contain aggregate functions or window functions).
    </para>
 
-   <para>
-    PostgreSQL also supports the syntax <literal>GROUP BY ALL</literal>,
-    which is equivalent to explicitly writing all select-list entries that
-    do not contain either an aggregate function referring to the same query level or a window function.
-    This can greatly simplify ad-hoc exploration of data.
-    As an example, these queries are equivalent:
-<screen>
-<prompt>=&gt;</prompt> <userinput>SELECT a, b, a + b, sum(c) FROM test1 GROUP BY ALL;</userinput>
- a | b | ?column? | sum
----+---+----------+----
- 1 | 4 |        5 |  9
- 2 | 5 |        7 | 12
- 3 | 6 |        9 | 15
-(3 rows)
-
-<prompt>=&gt;</prompt> <userinput>SELECT a, b, a + b, sum(c) FROM test1 GROUP BY a, b, a + b;</userinput>
- a | b | ?column? | sum
----+---+----------+----
- 1 | 4 |        5 |  9
- 2 | 5 |        7 | 12
- 3 | 6 |        9 | 15
-(3 rows)
-</screen>
-   </para>
-
    <indexterm>
     <primary>HAVING</primary>
    </indexterm>
