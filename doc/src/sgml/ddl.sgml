@@ -5902,7 +5902,7 @@ CREATE PROPERTY GRAPH myshop
     VERTEX TABLES (
         products LABEL product,
         customers LABEL customer LABEL person PROPERTIES (name),
-        orders LABEL order,
+        orders LABEL "order",
         employees LABEL employee LABEL person PROPERTIES (employee_name AS name)
     )
     EDGE TABLES (
