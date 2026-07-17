@@ -1123,7 +1123,7 @@ jobs:
         run: |
           meson setup \
             ${{env.MESON_COMMON_PG_CONFIG_ARGS}} \
-            -Ddebug=true -Doptimization=g -Db_pch=true \
+            -Db_pch=true \
             ${{env.MESON_COMMON_FEATURES}} \
             ${{env.MESON_FEATURES}} \
             -DTAR=${{env.TAR}} \
