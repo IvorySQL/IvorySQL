@@ -39,3 +39,30 @@ jobs:
             --with-icu --with-libnuma --enable-injection-points --enable-nls
     - name: compile
       run: make CFLAGS="$CFLAGS  -Wshadow=compatible-local -Werror=missing-variable-declarations -Werror=maybe-uninitialized -Werror=unused-value -Werror=unused-but-set-variable -Werror=missing-prototypes -Werror=unused-variable"
+
+  build-clang:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: dependency - linux
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang-18
+        sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-18 100
+        sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-18 100
+        sudo apt-get install -y build-essential git lcov bison flex \
+              libkrb5-dev libssl-dev libldap-dev libpam-dev python3-dev \
+              tcl-dev libperl-dev gettext libxml2-dev libxslt-dev \
+              libreadline-dev libedit-dev uuid-dev libossp-uuid-dev \
+              libipc-run-perl libtime-hires-perl libtest-simple-perl \
+              libgssapi-krb5-2 libicu-dev libnuma-dev
+    - name: configure - linux
+      run: |
+        CC=clang CXX=clang++ ./configure \
+            --enable-cassert --enable-debug --enable-rpath --with-tcl \
+            --with-python --with-gssapi --with-pam --with-ldap \
+            --with-openssl --with-libedit-preferred --with-uuid=e2fs \
+            --with-ossp-uuid  --with-libxml --with-libxslt  --with-perl \
+            --with-icu --with-libnuma --enable-injection-points --enable-nls
+    - name: compile
+      run: make CFLAGS="$CFLAGS  -Werror=unknown-warning-option -Werror=unused-value -Werror=missing-prototypes -Werror=unused-variable -Werror=implicit-function-declaration -Werror=implicit-int -Werror=return-type -Werror=incompatible-pointer-types -Werror=format -Werror=empty-body -Werror=parentheses -Werror=pointer-sign -Werror=unsequenced"
