@@ -331,7 +331,7 @@ ALTER TABLE sales_range SPLIT PARTITION sales_others INTO
    PARTITION sales_others DEFAULT);
 
 -- ERROR:  can not split DEFAULT partition "sales_others"
--- HINT:  To split DEFAULT partition one of the new partition msut be DEFAULT
+-- HINT:  To split DEFAULT partition one of the new partition must be DEFAULT
 ALTER TABLE sales_range SPLIT PARTITION sales_others INTO
   (PARTITION sales_dec2021 FOR VALUES FROM ('2021-12-01') TO ('2022-01-01'),
    PARTITION sales_jan2022 FOR VALUES FROM ('2022-01-01') TO ('2022-02-01'),

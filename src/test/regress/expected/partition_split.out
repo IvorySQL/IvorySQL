@@ -507,7 +507,7 @@ LINE 3:    PARTITION sales_error FOR VALUES FROM ('2021-12-01') TO (...
 DETAIL:  lower bound of partition "sales_error" is not equal to the upper bound of partition "sales_dec2021"
 HINT:  ALTER TABLE ... SPLIT PARTITION requires the partition bounds to be adjacent.
 -- ERROR:  can not split DEFAULT partition "sales_others"
--- HINT:  To split DEFAULT partition one of the new partition msut be DEFAULT
+-- HINT:  To split DEFAULT partition one of the new partition must be DEFAULT
 ALTER TABLE sales_range SPLIT PARTITION sales_others INTO
   (PARTITION sales_dec2021 FOR VALUES FROM ('2021-12-01') TO ('2022-01-01'),
    PARTITION sales_jan2022 FOR VALUES FROM ('2022-01-01') TO ('2022-02-01'),
@@ -515,7 +515,7 @@ ALTER TABLE sales_range SPLIT PARTITION sales_others INTO
 ERROR:  can not split DEFAULT partition "sales_others"
 LINE 2:   (PARTITION sales_dec2021 FOR VALUES FROM ('2021-12-01') TO...
                      ^
-HINT:  To split DEFAULT partition one of the new partition msut be DEFAULT
+HINT:  To split DEFAULT partition one of the new partition must be DEFAULT
 -- no error: bounds of sales_noerror are between sales_dec2021 and sales_feb2022
 ALTER TABLE sales_range SPLIT PARTITION sales_others INTO
   (PARTITION sales_dec2021 FOR VALUES FROM ('2021-12-01') TO ('2022-01-01'),
