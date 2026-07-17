@@ -1341,17 +1341,13 @@ New configuration file <link linkend="guc-hosts-file"><filename>PGDATA/pg_hosts.
 
 <!--
 Author: Jacob Champion <jchampion@postgresql.org>
-2026-04-03 [d438a3659] oauth: Let validators provide failure DETAILs
+2026-04-07 [b977bd308] oauth: Allow validators to register custom HBA options
 -->
 
 <listitem>
 <para>
-Allow <acronym>OAUTH</acronym> validators to supply failure details (Jacob Champion)
-<ulink url="&commit_baseurl;d438a3659">&sect;</ulink>
-</para>
-
-<para>
-This is done by setting the <link linkend="oauth-validator-callback-validate"><structname>ValidatorModuleResult</structname></link> structure member error_detail.
+Allow OAuth validators to register custom <link linkend="auth-pg-hba-conf"><filename>pg_hba.conf</filename></link> authentication options (Jacob Champion, Zsolt Parragi)
+<ulink url="&commit_baseurl;b977bd308">&sect;</ulink>
 </para>
 </listitem>
 
@@ -2317,20 +2313,12 @@ Author: Jacob Champion <jchampion@postgresql.org>
 
 <listitem>
 <para>
-Add special libpq protocol version 3.9999 for version testing (Jelte Fennema-Nio)
+Add special libpq protocol parameters for compatibility testing (Jelte Fennema-Nio, Jacob Champion)
 <ulink url="&commit_baseurl;d8d7c5dc8">&sect;</ulink>
 </para>
-</listitem>
 
-<!--
-Author: Jacob Champion <jchampion@postgresql.org>
-2026-03-05 [b8d768583] libpq: Add PQgetThreadLock() to mirror PQregisterThreadL
--->
-
-<listitem>
 <para>
-Add libpq function <link linkend="libpq-threading"><function>PQgetThreadLock()</function></link> to retrieve the current locking callback (Jacob Champion)
-<ulink url="&commit_baseurl;b8d768583">&sect;</ulink>
+Otherwise known as <ulink url="https://wiki.postgresql.org/wiki/Grease">protocol grease</ulink>, which was active during the 19 beta period. These will no longer be sent as of the <productname>PostgreSQL</productname> 19 official release, but the parameter reservations will remain for potential use in the future.
 </para>
 </listitem>
 
@@ -2341,24 +2329,12 @@ Author: Jacob Champion <jchampion@postgresql.org>
 
 <listitem>
 <para>
-Add libpq connection parameter <link linkend="libpq-connect-oauth-ca-file"><varname>oauth_ca_file</varname></link> to specify the <acronym>OAUTH</acronym> certificate authority file (Jonathan Gonzalez V., Jacob Champion)
+Add libpq connection parameter <link linkend="libpq-connect-oauth-ca-file"><varname>oauth_ca_file</varname></link> to specify an alternate certificate authority when communicating with OAuth providers (Jonathan Gonzalez V., Jacob Champion)
 <ulink url="&commit_baseurl;993368113">&sect;</ulink>
 </para>
 
 <para>
 This can also be set via the <link linkend="libpq-envars"><envar>PGOAUTHCAFILE</envar></link> environment variable.  The default is to use <application>curl</application>'s built-in certificates.
-</para>
-</listitem>
-
-<!--
-Author: Jacob Champion <jchampion@postgresql.org>
-2026-04-07 [b977bd308] oauth: Allow validators to register custom HBA options
--->
-
-<listitem>
-<para>
-Allow <acronym>OAUTH</acronym> validators to register custom <link linkend="auth-pg-hba-conf"><filename>pg_hba.conf</filename></link> authentication options (Jacob Champion)
-<ulink url="&commit_baseurl;b977bd308">&sect;</ulink>
 </para>
 </listitem>
 
@@ -2375,6 +2351,37 @@ Allow libpq environment variable <link linkend="libpq-envars"><envar>PGOAUTHDEBU
 
 <para>
 The <literal>UNSAFE</literal> option still generates all debugging output.
+</para>
+</listitem>
+
+<!--
+Author: Jacob Champion <jchampion@postgresql.org>
+2026-03-06 [e982331b5] libpq: Introduce PQAUTHDATA_OAUTH_BEARER_TOKEN_V2
+Author: Jacob Champion <jchampion@postgresql.org>
+2026-03-31 [0af4d402c] libpq: Poison the v2 part of a v1 Bearer request
+-->
+
+<listitem>
+<para>
+Improve custom OAuth client flows (Jacob Champion)
+<ulink url="&commit_baseurl;e982331b5">&sect;</ulink>
+<ulink url="&commit_baseurl;0af4d402c">&sect;</ulink>
+</para>
+
+<para>
+Previously, libpq reported only a generic error message during custom flow failures, and each flow implementation was required to calculate the issuer identifier independently. Add a new authdata hook type <link linkend="libpq-oauth-authdata-oauth-bearer-token-v2"><literal>PQAUTHDATA_OAUTH_BEARER_TOKEN_V2</literal></link> that precomputes the issuer ID and lets hooks provide error details.
+</para>
+</listitem>
+
+<!--
+Author: Jacob Champion <jchampion@postgresql.org>
+2026-03-05 [b8d768583] libpq: Add PQgetThreadLock() to mirror PQregisterThreadL
+-->
+
+<listitem>
+<para>
+Add libpq function <link linkend="libpq-threading"><function>PQgetThreadLock()</function></link> to retrieve the current locking callback (Jacob Champion)
+<ulink url="&commit_baseurl;b8d768583">&sect;</ulink>
 </para>
 </listitem>
 
@@ -2957,25 +2964,6 @@ Allow extensions to replace <link linkend="xfunc-sql-functions-returning-set">se
 </listitem>
 
 <!--
-Author: Jacob Champion <jchampion@postgresql.org>
-2026-03-06 [e982331b5] libpq: Introduce PQAUTHDATA_OAUTH_BEARER_TOKEN_V2
-Author: Jacob Champion <jchampion@postgresql.org>
-2026-03-31 [0af4d402c] libpq: Poison the v2 part of a v1 Bearer request
--->
-
-<listitem>
-<para>
-Add a new <acronym>OAUTH</acronym> flow hook <link linkend="libpq-oauth-authdata-oauth-bearer-token-v2"><literal>PQAUTHDATA_OAUTH_BEARER_TOKEN_V2</literal></link> (Jacob Champion)
-<ulink url="&commit_baseurl;e982331b5">&sect;</ulink>
-<ulink url="&commit_baseurl;0af4d402c">&sect;</ulink>
-</para>
-
-<para>
-This is an improved version of <link linkend="libpq-oauth-authdata-oauth-bearer-token"><literal>PQAUTHDATA_OAUTH_BEARER_TOKEN</literal></link> by adding the issuer identifier and error message specification.
-</para>
-</listitem>
-
-<!--
 Author: Heikki Linnakangas <heikki.linnakangas@iki.fi>
 2025-12-09 [bd8d9c9bd] Widen MultiXactOffset to 64 bits
 -->
@@ -3008,6 +2996,22 @@ Author: Álvaro Herrera <alvherre@kurilemu.de>
 <para>
 Allow <link linkend="logicaldecoding-pgoutput">logical decoding plugins</link> to specify if they do not access shared catalogs (Antonin Houska)
 <ulink url="&commit_baseurl;0d3dba38c">&sect;</ulink>
+</para>
+</listitem>
+
+<!--
+Author: Jacob Champion <jchampion@postgresql.org>
+2026-04-03 [d438a3659] oauth: Let validators provide failure DETAILs
+-->
+
+<listitem>
+<para>
+Allow OAuth validators to supply failure details (Jacob Champion)
+<ulink url="&commit_baseurl;d438a3659">&sect;</ulink>
+</para>
+
+<para>
+This is done by setting the <link linkend="oauth-validator-callback-validate"><structname>ValidatorModuleResult</structname></link> structure member error_detail.
 </para>
 </listitem>
 
