@@ -267,10 +267,15 @@ CheckIndexCompatible(Oid oldId,
 	/*
 	 * We don't assess expressions or predicates; assume incompatibility.
 	 * Also, if the index is invalid for any reason, treat it as incompatible.
+	 * Likewise for an index manually disabled via the Oracle-compatible
+	 * ALTER INDEX ... UNUSABLE: reusing its storage as-is (without a
+	 * rebuild) would let the new index inherit stale/incomplete contents
+	 * while appearing fully valid.
 	 */
 	if (!(heap_attisnull(tuple, Anum_pg_index_indpred, NULL) &&
 		  heap_attisnull(tuple, Anum_pg_index_indexprs, NULL) &&
-		  indexForm->indisvalid))
+		  indexForm->indisvalid &&
+		  !indexForm->indisunusable))
 	{
 		ReleaseSysCache(tuple);
 		return false;
@@ -3229,6 +3234,22 @@ ExecOraAlterIndexUnusable(ParseState *pstate, const OraAlterIndexUnusableStmt *s
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("ALTER INDEX ... UNUSABLE is not supported for partitioned indexes"),
 				 errhint("Mark each partition's leaf index unusable individually.")));
+
+	/*
+	 * Reject indexes belonging to a TOAST relation.  toast_open_indexes()
+	 * (see toast_internals.c) trusts "the valid index" of a toast relation
+	 * to locate out-of-line values; an unusable toast index would still be
+	 * picked up there (indisvalid is untouched by UNUSABLE) while DML
+	 * silently stops maintaining it, causing lookups for newly-toasted
+	 * values inserted afterward to fail.  There is no documented Oracle
+	 * use case for disabling a toast index, so simply disallow it here
+	 * rather than relying solely on the defense added to
+	 * toast_open_indexes() itself.
+	 */
+	if (get_rel_relkind(IndexGetRelation(indexOid, false)) == RELKIND_TOASTVALUE)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("ALTER INDEX ... UNUSABLE is not supported for TOAST table indexes")));
 
 	index_set_unusable(indexOid, true);
 }

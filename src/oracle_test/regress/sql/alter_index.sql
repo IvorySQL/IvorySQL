@@ -394,5 +394,114 @@ SELECT count(*) FROM unusable_t;
 ALTER INDEX idx_unusable_val REBUILD;
 SELECT count(*) FROM unusable_t;
 
+-- U14: CLUSTER refuses to use an unusable index as the clustered index
+-- (an unmaintained index may be missing rows changed since it was disabled;
+-- clustering on it could silently drop or misorder those rows)
+ALTER TABLE unusable_t CLUSTER ON idx_unusable_val;
+ALTER INDEX idx_unusable_val UNUSABLE;
+CLUSTER unusable_t;
+ALTER INDEX idx_unusable_val REBUILD;
+CLUSTER unusable_t;  -- succeeds again once rebuilt
+
+-- U15: ON CONFLICT falls back to a clean planning-time error, not an
+-- internal crash, when its only matching unique index is unusable
+CREATE TABLE unusable_conflict (id int UNIQUE, val text);
+INSERT INTO unusable_conflict VALUES (1, 'a');
+INSERT INTO unusable_conflict VALUES (1, 'b')
+  ON CONFLICT (id) DO UPDATE SET val = excluded.val;  -- baseline: works
+ALTER INDEX unusable_conflict_id_key UNUSABLE;
+INSERT INTO unusable_conflict VALUES (1, 'c')
+  ON CONFLICT (id) DO UPDATE SET val = excluded.val;  -- must error cleanly
+ALTER INDEX unusable_conflict_id_key REBUILD;
+INSERT INTO unusable_conflict VALUES (1, 'd')
+  ON CONFLICT (id) DO UPDATE SET val = excluded.val;  -- works again
+SELECT * FROM unusable_conflict;
+DROP TABLE unusable_conflict;
+
+-- U16: UNUSABLE is rejected on a TOAST table's own index -- disabling it
+-- would silently break lookups for newly-toasted values while leaving the
+-- toast layer unaware anything changed
+CREATE TABLE unusable_toast (id int, big text);
+INSERT INTO unusable_toast VALUES (1, repeat('x', 100000));
+SELECT indexrelid::regclass AS toast_index_name
+  FROM pg_index
+  WHERE indrelid = (SELECT reltoastrelid FROM pg_class WHERE relname = 'unusable_toast')
+  \gset
+ALTER INDEX :toast_index_name UNUSABLE;
+DROP TABLE unusable_toast;
+
+-- U17: an unusable leaf partition index must not let the parent partitioned
+-- index be counted as fully valid (validatePartitionedIndex() must exclude
+-- unusable children from its count, since the parent's indisvalid feeds
+-- planner uniqueness proofs used for join removal -- see design doc 4.7/4.8)
+CREATE TABLE unusable_part2 (id int, region text) PARTITION BY RANGE (id);
+CREATE TABLE unusable_part2_p1 PARTITION OF unusable_part2 FOR VALUES FROM (1) TO (1001);
+CREATE TABLE unusable_part2_p2 PARTITION OF unusable_part2 FOR VALUES FROM (1001) TO (2001);
+CREATE INDEX idx_unusable_part2_id ON ONLY unusable_part2 (id);
+SELECT indisvalid FROM pg_index WHERE indexrelid = 'idx_unusable_part2_id'::regclass;  -- f: no children attached
+CREATE INDEX idx_unusable_part2_p1_id ON unusable_part2_p1 (id);
+ALTER INDEX idx_unusable_part2_id ATTACH PARTITION idx_unusable_part2_p1_id;
+SELECT indisvalid FROM pg_index WHERE indexrelid = 'idx_unusable_part2_id'::regclass;  -- f: 1 of 2 attached
+ALTER INDEX idx_unusable_part2_p1_id UNUSABLE;
+CREATE INDEX idx_unusable_part2_p2_id ON unusable_part2_p2 (id);
+ALTER INDEX idx_unusable_part2_id ATTACH PARTITION idx_unusable_part2_p2_id;
+-- must still be f: p1's leaf is unusable, so it must not count toward completeness
+SELECT indisvalid FROM pg_index WHERE indexrelid = 'idx_unusable_part2_id'::regclass;
+DROP TABLE unusable_part2;
+
+-- U18: a new foreign key cannot be backed by an unusable primary key
+-- (transformFkeyGetPrimaryKey) -- uniqueness is no longer enforced
+CREATE TABLE unusable_fk_parent (id int PRIMARY KEY, val text);
+ALTER INDEX unusable_fk_parent_pkey UNUSABLE;
+CREATE TABLE unusable_fk_child (id int REFERENCES unusable_fk_parent);
+ALTER INDEX unusable_fk_parent_pkey REBUILD;
+CREATE TABLE unusable_fk_child (id int REFERENCES unusable_fk_parent);  -- works now
+DROP TABLE unusable_fk_child, unusable_fk_parent;
+
+-- U19: a new foreign key cannot be backed by a named unusable unique column
+-- list (transformFkeyCheckAttrs)
+CREATE TABLE unusable_fk_parent2 (id int, email text UNIQUE);
+ALTER INDEX unusable_fk_parent2_email_key UNUSABLE;
+CREATE TABLE unusable_fk_child2 (email text REFERENCES unusable_fk_parent2(email));
+ALTER INDEX unusable_fk_parent2_email_key REBUILD;
+CREATE TABLE unusable_fk_child2 (email text REFERENCES unusable_fk_parent2(email));  -- works now
+DROP TABLE unusable_fk_child2, unusable_fk_parent2;
+
+-- U20: ADD CONSTRAINT ... UNIQUE USING INDEX rejects an unusable index
+CREATE TABLE unusable_using_idx (id int, val text);
+CREATE UNIQUE INDEX idx_unusable_using_val ON unusable_using_idx(val);
+ALTER INDEX idx_unusable_using_val UNUSABLE;
+ALTER TABLE unusable_using_idx ADD CONSTRAINT uq_unusable_val UNIQUE USING INDEX idx_unusable_using_val;
+ALTER INDEX idx_unusable_using_val REBUILD;
+ALTER TABLE unusable_using_idx ADD CONSTRAINT uq_unusable_val UNIQUE USING INDEX idx_unusable_using_val;
+DROP TABLE unusable_using_idx;
+
+-- U21: amcheck refuses to check an unusable index -- it is expected to have
+-- drifted from the heap by design, which would otherwise read as a false
+-- positive corruption report
+CREATE EXTENSION IF NOT EXISTS amcheck;
+CREATE TABLE unusable_amcheck (id int PRIMARY KEY, val text);
+INSERT INTO unusable_amcheck SELECT g, 'v'||g FROM generate_series(1,50) g;
+SELECT bt_index_check('unusable_amcheck_pkey');  -- baseline: passes silently
+ALTER INDEX unusable_amcheck_pkey UNUSABLE;
+SELECT bt_index_check('unusable_amcheck_pkey');  -- must error, not report corruption
+ALTER INDEX unusable_amcheck_pkey REBUILD;
+SELECT bt_index_check('unusable_amcheck_pkey');  -- works again
+DROP TABLE unusable_amcheck;
+
+-- U22: ALTER TABLE ... ALTER COLUMN TYPE must not silently reuse an unusable
+-- index's (possibly stale) physical storage -- CheckIndexCompatible() must
+-- treat it as incompatible, forcing a fresh rebuild instead
+CREATE TABLE unusable_altertype (id int, val int);
+CREATE INDEX idx_unusable_altertype_val ON unusable_altertype(val);
+SELECT indexrelid AS old_index_oid FROM pg_index
+  WHERE indexrelid = 'idx_unusable_altertype_val'::regclass \gset
+ALTER INDEX idx_unusable_altertype_val UNUSABLE;
+ALTER TABLE unusable_altertype ALTER COLUMN val TYPE int;
+-- must be a freshly built index (different OID, and not unusable)
+SELECT indexrelid <> :old_index_oid AS storage_was_rebuilt, indisunusable
+  FROM pg_index WHERE indrelid = 'unusable_altertype'::regclass;
+DROP TABLE unusable_altertype;
+
 -- Cleanup GROUP 9
 DROP TABLE unusable_t CASCADE;

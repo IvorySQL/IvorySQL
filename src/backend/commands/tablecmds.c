@@ -13970,6 +13970,18 @@ transformFkeyGetPrimaryKey(Relation pkrel, Oid *indexOid,
 		if (indexStruct->indisprimary && indexStruct->indisvalid)
 		{
 			/*
+			 * Refuse to use a primary key manually disabled via the
+			 * Oracle-compatible ALTER INDEX ... UNUSABLE: it is no longer
+			 * maintained by DML, so its uniqueness can't be trusted to
+			 * back a new foreign key.
+			 */
+			if (indexStruct->indisunusable)
+				ereport(ERROR,
+						(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+						 errmsg("cannot use an unusable primary key for referenced table \"%s\"",
+								RelationGetRelationName(pkrel))));
+
+			/*
 			 * Refuse to use a deferrable primary key.  This is per SQL spec,
 			 * and there would be a lot of interesting semantic problems if we
 			 * tried to allow it.
@@ -14092,11 +14104,15 @@ transformFkeyCheckAttrs(Relation pkrel,
 		/*
 		 * Must have the right number of columns; must be unique (or if
 		 * temporal then exclusion instead) and not a partial index; forget it
-		 * if there are any expressions, too. Invalid indexes are out as well.
+		 * if there are any expressions, too. Invalid indexes are out as well,
+		 * as is one manually disabled via the Oracle-compatible ALTER INDEX
+		 * ... UNUSABLE (it's no longer maintained by DML, so its uniqueness
+		 * can't be trusted to back a new foreign key).
 		 */
 		if (indexStruct->indnkeyatts == numattrs &&
 			(with_period ? indexStruct->indisexclusion : indexStruct->indisunique) &&
 			indexStruct->indisvalid &&
+			!indexStruct->indisunusable &&
 			heap_attisnull(indexTuple, Anum_pg_index_indpred, NULL) &&
 			heap_attisnull(indexTuple, Anum_pg_index_indexprs, NULL))
 		{
@@ -22615,7 +22631,22 @@ validatePartitionedIndex(Relation partedIdx, Relation partedTbl)
 		if (!HeapTupleIsValid(indTup))
 			elog(ERROR, "cache lookup failed for index %u", inhForm->inhrelid);
 		indexForm = (Form_pg_index) GETSTRUCT(indTup);
-		if (indexForm->indisvalid)
+
+		/*
+		 * Don't count a child index that's been manually disabled via the
+		 * Oracle-compatible ALTER INDEX ... UNUSABLE.  Such an index is
+		 * unmaintained (see BuildIndexInfo()) and may be missing entries
+		 * for rows changed since it was disabled, so counting it here could
+		 * let the parent index end up marked indisvalid=true while one
+		 * partition's leaf is actually stale.  That flag is not just
+		 * cosmetic: get_relation_info() builds a real IndexOptInfo for the
+		 * parent partitioned index, which relation_has_unique_index_for()
+		 * (indxpath.c) and rel_supports_distinctness() (analyzejoins.c)
+		 * consult for join-removal and uniqueness-proof optimizations --
+		 * a false positive there can make the planner silently return
+		 * wrong rows.
+		 */
+		if (indexForm->indisvalid && !indexForm->indisunusable)
 			tuples += 1;
 		ReleaseSysCache(indTup);
 	}

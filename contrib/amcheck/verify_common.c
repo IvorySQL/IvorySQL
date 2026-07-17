@@ -187,5 +187,18 @@ index_checkable(Relation rel, Oid am_id)
 						RelationGetRelationName(rel)),
 				 errdetail("Index is not valid.")));
 
+	/*
+	 * An index manually disabled via the Oracle-compatible ALTER INDEX ...
+	 * UNUSABLE is expected to have drifted from the heap by design (DML no
+	 * longer maintains it); checking it would produce false-positive
+	 * corruption reports rather than a meaningful result.
+	 */
+	if (rel->rd_index->indisunusable)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("cannot check index \"%s\"",
+						RelationGetRelationName(rel)),
+				 errdetail("Index is unusable.")));
+
 	return amcheck_index_mainfork_expected(rel);
 }

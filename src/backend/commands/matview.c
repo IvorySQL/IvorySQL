@@ -906,11 +906,16 @@ is_usable_unique_index(Relation indexRel)
 
 	/*
 	 * Must be unique, valid, immediate, non-partial, and be defined over
-	 * plain user columns (not expressions).
+	 * plain user columns (not expressions).  Also exclude an index
+	 * manually disabled via the Oracle-compatible ALTER INDEX ...
+	 * UNUSABLE: it isn't maintained by DML, so its contents may already
+	 * have drifted from the heap, making it unsafe to use as the diff key
+	 * for REFRESH MATERIALIZED VIEW CONCURRENTLY.
 	 */
 	if (indexStruct->indisunique &&
 		indexStruct->indimmediate &&
 		indexStruct->indisvalid &&
+		!indexStruct->indisunusable &&
 		RelationGetIndexPredicate(indexRel) == NIL &&
 		indexStruct->indnatts > 0)
 	{

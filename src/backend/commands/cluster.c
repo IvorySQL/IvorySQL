@@ -541,6 +541,22 @@ check_index_is_clusterable(Relation OldHeap, Oid indexOid, LOCKMODE lockmode)
 				 errmsg("cannot cluster on invalid index \"%s\"",
 						RelationGetRelationName(OldIndex))));
 
+	/*
+	 * Disallow if index was manually disabled via the Oracle-compatible
+	 * ALTER INDEX ... UNUSABLE.  Such an index is not maintained by DML
+	 * (see BuildIndexInfo()), so it may be missing entries for rows
+	 * inserted/updated since it was disabled; clustering on it could
+	 * silently drop or misorder those rows.  Unlike indisvalid, this bit
+	 * is deliberately left untouched by UNUSABLE (see index_set_unusable())
+	 * so that REBUILD fully restores clusterability with no extra state to
+	 * reconcile -- the check simply lives here instead.
+	 */
+	if (OldIndex->rd_index->indisunusable)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot cluster on unusable index \"%s\"",
+						RelationGetRelationName(OldIndex))));
+
 	/* Drop relcache refcnt on OldIndex, but keep lock */
 	index_close(OldIndex, NoLock);
 }

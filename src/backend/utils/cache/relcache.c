@@ -4960,8 +4960,14 @@ RelationGetIndexList(Relation relation)
 
 		/*
 		 * Remember primary key index, if any.  For regular tables we do this
-		 * only if the index is valid; but for partitioned tables, then we do
-		 * it even if it's invalid.
+		 * only if the index is valid and not manually disabled via the
+		 * Oracle-compatible ALTER INDEX ... UNUSABLE (an unusable index may
+		 * be missing entries for rows changed since it was disabled, so it
+		 * can't be trusted to enforce uniqueness -- the same reasoning that
+		 * already excludes invalid indexes here); but for partitioned
+		 * tables, then we do it even if it's invalid (UNUSABLE cannot be
+		 * set on a partitioned index in the first place, so no exception is
+		 * needed for that case).
 		 *
 		 * The reason for returning invalid primary keys for partitioned
 		 * tables is that we need it to prevent drop of not-null constraints
@@ -4969,7 +4975,7 @@ RelationGetIndexList(Relation relation)
 		 * partitioned tables.
 		 */
 		if (index->indisprimary &&
-			(index->indisvalid ||
+			((index->indisvalid && !index->indisunusable) ||
 			 relation->rd_rel->relkind == RELKIND_PARTITIONED_TABLE))
 		{
 			pkeyIndex = index->indexrelid;
@@ -4980,6 +4986,15 @@ RelationGetIndexList(Relation relation)
 			continue;
 
 		if (!index->indisvalid)
+			continue;
+
+		/*
+		 * Likewise, a manually disabled index cannot be trusted as the
+		 * explicitly-chosen replica identity index: logical decoding would
+		 * build old-row images from an index that may not reflect recent
+		 * changes.
+		 */
+		if (index->indisunusable)
 			continue;
 
 		/* remember explicitly chosen replica index */

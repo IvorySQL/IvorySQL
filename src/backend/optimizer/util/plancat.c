@@ -1020,6 +1020,18 @@ infer_arbiter_indexes(PlannerInfo *root)
 			continue;
 
 		/*
+		 * Also ignore an index manually disabled via the Oracle-compatible
+		 * ALTER INDEX ... UNUSABLE.  Such an index is skipped by
+		 * execIndexing.c the same way a !indisready index is (both make
+		 * ii_ReadyForInserts false, see BuildIndexInfo()), so picking it as
+		 * the sole arbiter here would make ExecOnConflictUpdate() fail to
+		 * find it at execution time and crash with "unexpected failure to
+		 * find arbiter index" instead of a clean planning-time error.
+		 */
+		if (idxForm->indisunusable)
+			continue;
+
+		/*
 		 * Ignore invalid indexes for partitioned tables.  It's possible that
 		 * some partitions don't have the index (yet), and then we would not
 		 * find a match during ExecInitPartitionInfo.
