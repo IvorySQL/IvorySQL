@@ -2665,6 +2665,9 @@ AlterSubscriptionOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 
 	form = (Form_pg_subscription) GETSTRUCT(tup);
 
+	/* Must only alter subscriptions belonging to the current database. */
+	Assert(form->subdbid == MyDatabaseId);
+
 	if (form->subowner == newOwnerId)
 		return;
 
@@ -2779,6 +2782,7 @@ AlterSubscriptionOwner_oid(Oid subid, Oid newOwnerId)
 {
 	HeapTuple	tup;
 	Relation	rel;
+	Form_pg_subscription form;
 
 	rel = table_open(SubscriptionRelationId, RowExclusiveLock);
 
@@ -2789,7 +2793,15 @@ AlterSubscriptionOwner_oid(Oid subid, Oid newOwnerId)
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("subscription with OID %u does not exist", subid)));
 
-	AlterSubscriptionOwner_internal(rel, tup, newOwnerId);
+	form = (Form_pg_subscription) GETSTRUCT(tup);
+
+	/*
+	 * Don't process subscriptions belonging to other databases. While
+	 * pg_subscription is a shared catalog, subscriptions refer to db-local
+	 * objects which exist only in the database identified by subdbid.
+	 */
+	if (form->subdbid == MyDatabaseId)
+		AlterSubscriptionOwner_internal(rel, tup, newOwnerId);
 
 	heap_freetuple(tup);
 

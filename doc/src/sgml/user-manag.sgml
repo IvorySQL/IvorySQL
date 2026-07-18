@@ -530,7 +530,9 @@ ALTER TABLE bobs_table OWNER TO alice;
    that contains objects owned by the role.  (Note that the first
    such <command>REASSIGN OWNED</command> will change the ownership of any
    shared-across-databases objects, that is databases or tablespaces, that
-   are owned by the role-to-be-dropped.)
+   are owned by the role-to-be-dropped. Subscriptions, while stored in a
+   shared catalog, belong to a specific database and are reassigned only when
+   <command>REASSIGN OWNED</command> is executed in that database.)
   </para>
 
   <para>

@@ -99,4 +99,49 @@ $result =
 is($result, qq(1073),
 	'check subscription after ALTER SUBSCRIPTION ... SERVER');
 
+# Check that REASSIGN OWNED processes a subscription only when run in the
+# database to which the subscription belongs.
+$node_subscriber->safe_psql(
+	'postgres', q{
+	CREATE ROLE regress_sub_old;
+	CREATE ROLE regress_sub_new;
+	GRANT pg_create_subscription TO regress_sub_old;
+	CREATE DATABASE regress_sub_db;
+});
+
+$node_subscriber->safe_psql(
+	'regress_sub_db', qq{
+	CREATE EXTENSION postgres_fdw;
+	CREATE SERVER regress_sub_server FOREIGN DATA WRAPPER postgres_fdw
+		OPTIONS (host '$publisher_host', port '$publisher_port', dbname 'postgres');
+	CREATE USER MAPPING FOR regress_sub_old SERVER regress_sub_server
+		OPTIONS (user 'unused', password 'secret');
+	CREATE USER MAPPING FOR regress_sub_new SERVER regress_sub_server
+		OPTIONS (user 'unused', password 'secret');
+	GRANT USAGE ON FOREIGN SERVER regress_sub_server
+		TO regress_sub_old, regress_sub_new;
+	GRANT CREATE ON DATABASE regress_sub_db TO regress_sub_old;
+	SET SESSION AUTHORIZATION regress_sub_old;
+	CREATE SUBSCRIPTION regress_sub SERVER regress_sub_server
+		PUBLICATION tap_pub WITH (connect = false, slot_name = NONE);
+});
+
+$node_subscriber->safe_psql('postgres',
+	'REASSIGN OWNED BY regress_sub_old TO regress_sub_new');
+$result = $node_subscriber->safe_psql(
+	'postgres',
+	q{SELECT subowner::regrole FROM pg_subscription
+	  WHERE subname = 'regress_sub'});
+is($result, 'regress_sub_old',
+	'REASSIGN OWNED in another database skips subscription');
+
+$node_subscriber->safe_psql('regress_sub_db',
+	'REASSIGN OWNED BY regress_sub_old TO regress_sub_new');
+$result = $node_subscriber->safe_psql(
+	'regress_sub_db',
+	q{SELECT subowner::regrole FROM pg_subscription
+	  WHERE subname = 'regress_sub'});
+is($result, 'regress_sub_new',
+	'REASSIGN OWNED in subscription database changes owner');
+
 done_testing();
