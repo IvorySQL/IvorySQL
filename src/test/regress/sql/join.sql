@@ -1376,6 +1376,16 @@ select * from
   (select 1 as x) ss1 left join (select 2 as y) ss2 on (true),
   lateral (select ss2.y as z limit 1) ss3;
 
+-- Also, we mustn't remove an RTE_RESULT that is the only baserel where a PHV
+-- can be evaluated, even when the PHV's phrels also mention an outer join.
+explain (verbose, costs off)
+select * from (values (1),(2)) v(x)
+  left join (select q from (select 7 as q from (select where false) ss1) ss2
+             left join (select 8 as z) ss3 on true) ss4 on true;
+select * from (values (1),(2)) v(x)
+  left join (select q from (select 7 as q from (select where false) ss1) ss2
+             left join (select 8 as z) ss3 on true) ss4 on true;
+
 -- This example demonstrates the folly of our old "have_dangerous_phv" logic
 begin;
 set local from_collapse_limit to 2;
