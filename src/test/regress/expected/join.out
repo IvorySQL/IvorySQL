@@ -4228,6 +4228,33 @@ select * from
  1 | 2 | 2
 (1 row)
 
+-- Also, we mustn't remove an RTE_RESULT that is the only baserel where a PHV
+-- can be evaluated, even when the PHV's phrels also mention an outer join.
+explain (verbose, costs off)
+select * from (values (1),(2)) v(x)
+  left join (select q from (select 7 as q from (select where false) ss1) ss2
+             left join (select 8 as z) ss3 on true) ss4 on true;
+             QUERY PLAN             
+------------------------------------
+ Nested Loop Left Join
+   Output: "*VALUES*".column1, (7)
+   Join Filter: false
+   ->  Values Scan on "*VALUES*"
+         Output: "*VALUES*".column1
+   ->  Result
+         Output: 7
+         One-Time Filter: false
+(8 rows)
+
+select * from (values (1),(2)) v(x)
+  left join (select q from (select 7 as q from (select where false) ss1) ss2
+             left join (select 8 as z) ss3 on true) ss4 on true;
+ x | q 
+---+---
+ 1 |  
+ 2 |  
+(2 rows)
+
 -- This example demonstrates the folly of our old "have_dangerous_phv" logic
 begin;
 set local from_collapse_limit to 2;
