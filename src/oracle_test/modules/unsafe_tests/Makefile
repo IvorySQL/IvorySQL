@@ -11,6 +11,9 @@ REGRESS_OPTS = \
 # the whole point of these tests is to not run installcheck
 NO_INSTALLCHECK = 1
 
+# List only tests that are compatible with Oracle mode.
+ORA_REGRESS = rolenames alter_system_table guc_privs
+
 ifdef USE_PGXS
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)

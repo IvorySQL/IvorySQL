@@ -22,6 +22,10 @@ NO_INSTALLCHECK = 1
 
 export enable_injection_points
 
+# List only tests that are compatible with Oracle mode.
+ORA_REGRESS = hashagg reindex_conc vacuum
+ORA_ISOLATION = $(ISOLATION)
+
 ifdef USE_PGXS
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
