@@ -1304,33 +1304,6 @@ AlterSubscription_refresh_seq(Subscription *sub)
 	WalReceiverConn *wrconn;
 	bool		must_use_password;
 
-	/*
-	 * Disallow a concurrent REFRESH SEQUENCES while a sequence sync worker
-	 * for this subscription is still running. This avoids a race where the
-	 * publisher's sequence advances after the current worker has fetched its
-	 * value but before it marks the sequence READY. A user may then issue
-	 * another REFRESH SEQUENCES to synchronize the updated value. Since the
-	 * affected sequences are already in the INIT state, the running worker
-	 * has no indication that a new synchronization has been requested. It
-	 * would then apply the stale value it already fetched and mark the
-	 * sequence READY, causing the new synchronization request to be lost and
-	 * preventing the updated publisher values from being synchronized.
-	 */
-	LWLockAcquire(LogicalRepWorkerLock, LW_SHARED);
-	if (logicalrep_worker_find(WORKERTYPE_SEQUENCESYNC, sub->oid, InvalidOid,
-							   true))
-	{
-		LWLockRelease(LogicalRepWorkerLock);
-		ereport(ERROR,
-				errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-		/* translator: %s is an SQL ALTER command */
-				errmsg("cannot execute %s while a sequence synchronization worker is running",
-					   "ALTER SUBSCRIPTION ... REFRESH SEQUENCES"),
-				errhint("Try again after the current synchronization completes."));
-	}
-
-	LWLockRelease(LogicalRepWorkerLock);
-
 	/* Load the library providing us libpq calls. */
 	load_file("libpqwalreceiver", false);
 
