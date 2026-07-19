@@ -16,12 +16,122 @@ PostgreSQL documentation
 
  <refnamediv>
   <refname>DROP PACKAGE</refname>
-  <refpurpose>drop a package</refpurpose>
+  <refpurpose>remove a package or package body</refpurpose>
  </refnamediv>
 
  <refsynopsisdiv>
 <synopsis>
-DROP PACKAGE [BODY] [schema.] <replaceable class="parameter">package_name</replaceable> ;
+DROP PACKAGE [ BODY ] [ IF EXISTS ] <replaceable class="parameter">name</replaceable> [, ...] [ CASCADE | RESTRICT ]
 </synopsis>
-</refsynopsisdiv>
+ </refsynopsisdiv>
+
+ <refsect1 id="sql-droppackage-description">
+  <title>Description</title>
+
+  <para>
+   <command>DROP PACKAGE</command> removes one or more package
+   specifications.  A package body depends on its specification, so dropping
+   the specification also removes its body.  Specifying <literal>BODY</literal>
+   removes only the package body and leaves the specification in place.
+  </para>
+
+  <para>
+   To execute this command, the user must own each package being dropped.
+  </para>
+ </refsect1>
+
+ <refsect1 id="sql-droppackage-parameters">
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>BODY</literal></term>
+    <listitem>
+     <para>
+      Drop the package body instead of the package specification.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>IF EXISTS</literal></term>
+    <listitem>
+     <para>
+      Do not throw an error if a named package or package body does not exist.
+      A notice is issued instead.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">name</replaceable></term>
+    <listitem>
+     <para>
+      The name (optionally schema-qualified) of a package.  Multiple package
+      names can be specified, separated by commas.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>CASCADE</literal></term>
+    <listitem>
+     <para>
+      Automatically drop objects that depend on the package, and in turn all
+      objects that depend on those objects (see <xref linkend="ddl-depend"/>).
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>RESTRICT</literal></term>
+    <listitem>
+     <para>
+      Refuse to drop the package if objects other than its package body depend
+      on it.  This is the default.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1 id="sql-droppackage-examples">
+  <title>Examples</title>
+
+  <para>
+   Remove the body of <literal>inventory_api</literal> while keeping its
+   specification:
+<programlisting>
+DROP PACKAGE BODY inventory_api;
+</programlisting>
+  </para>
+
+  <para>
+   Remove the package specification and its body:
+<programlisting>
+DROP PACKAGE inventory_api;
+</programlisting>
+  </para>
+ </refsect1>
+
+ <refsect1 id="sql-droppackage-compatibility">
+  <title>Compatibility</title>
+
+  <para>
+   <command>DROP PACKAGE</command> is an <productname>IvorySQL</productname>
+   extension for Oracle compatibility.  It is not defined by the SQL
+   standard.  Allowing multiple package names in one command is an
+   <productname>IvorySQL</productname> extension to Oracle syntax.
+  </para>
+ </refsect1>
+
+ <refsect1 id="sql-droppackage-see-also">
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createpackage"/></member>
+   <member><xref linkend="sql-createpackagebody"/></member>
+   <member><xref linkend="sql-alterpackage"/></member>
+  </simplelist>
+ </refsect1>
 </refentry>
