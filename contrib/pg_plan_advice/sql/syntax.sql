@@ -19,6 +19,8 @@ SET pg_plan_advice.advice = 'seq_scan(x@y)';
 EXPLAIN (COSTS OFF) SELECT 1;
 SET pg_plan_advice.advice = 'SEQ_scan(x#2)';
 EXPLAIN (COSTS OFF) SELECT 1;
+SET pg_plan_advice.advice = 'SEQ_SCAN(x#1_0)';
+EXPLAIN (COSTS OFF) SELECT 1;
 SET pg_plan_advice.advice = 'SEQ_SCAN (x/y)';
 EXPLAIN (COSTS OFF) SELECT 1;
 SET pg_plan_advice.advice = '  SEQ_SCAN ( x / y . z )  ';
@@ -34,8 +36,12 @@ SET pg_plan_advice.advice = 'SEQ_SCAN("';
 SET pg_plan_advice.advice = 'SEQ_SCAN("")';
 SET pg_plan_advice.advice = 'SEQ_SCAN("a"';
 SET pg_plan_advice.advice = 'SEQ_SCAN(#';
+SET pg_plan_advice.advice = 'SEQ_SCAN(x#1_0_)';
 SET pg_plan_advice.advice = '()';
 SET pg_plan_advice.advice = '123';
+
+-- Out of range values.
+SET pg_plan_advice.advice = 'SEQ_SCAN(x#99999999999_99)';
 
 -- Tags like SEQ_SCAN and NO_GATHER don't allow sublists at all; other tags,
 -- except for JOIN_ORDER, allow at most one level of sublist. Hence, these
