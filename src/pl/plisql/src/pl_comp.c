@@ -1943,6 +1943,7 @@ resolve_column_ref(ParseState *pstate, PLiSQL_expr * expr,
 			break;
 		case PLISQL_NSTYPE_SUBPROC_FUNC:
 		case PLISQL_NSTYPE_SUBPROC_PROC:
+		case PLISQL_NSTYPE_REFCURSOR:
 			break;
 		default:
 			elog(ERROR, "unrecognized plisql itemtype: %d", nse->itemtype);
@@ -2044,6 +2045,7 @@ plisql_parse_word(char *paramname, char *word1, const char *yytxt, bool lookup,
 
 				case PLISQL_NSTYPE_SUBPROC_FUNC:
 				case PLISQL_NSTYPE_SUBPROC_PROC:
+				case PLISQL_NSTYPE_REFCURSOR:
 					break;
 
 				default:

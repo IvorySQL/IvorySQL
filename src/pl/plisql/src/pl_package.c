@@ -249,6 +249,27 @@ plisql_package_parse(ParseState *parsestate, PackageCacheItem *item, List *names
 					elog(ERROR, "\"%s\" is a record", parse_first_name);
 			}
 			break;
+		case PLISQL_NSTYPE_REFCURSOR:
+			{
+				if (flags == PACKAGE_PARSE_TYPE ||
+					flags == PACKAGE_PARSE_ENTRY)
+				{
+					if (basetypeid != NULL)
+						*basetypeid = REFCURSOROID;
+					if (basetypmod != NULL)
+						*basetypmod = -1;
+					value = (void *) plisql_build_datatype(REFCURSOROID,
+															 -1,
+															 InvalidOid,
+															 NULL);
+					if (flags == PACKAGE_PARSE_ENTRY)
+						*entry_type = PKG_TYPE;
+				}
+				else
+					elog(ERROR, "\"%s\" is a REF CURSOR type",
+						 parse_first_name);
+			}
+			break;
 		case PLISQL_NSTYPE_SUBPROC_FUNC:
 		case PLISQL_NSTYPE_SUBPROC_PROC:
 			{
@@ -2583,8 +2604,9 @@ plisql_set_package_compile_status(void)
 
 	for (nse = plisql_ns_top(); nse != NULL; nse = nse->prev)
 	{
-		/* label */
-		if (nse->itemtype == PLISQL_NSTYPE_LABEL)
+		/* Labels and type-only declarations require no initialization. */
+		if (nse->itemtype == PLISQL_NSTYPE_LABEL ||
+			nse->itemtype == PLISQL_NSTYPE_REFCURSOR)
 			continue;
 
 		if (nse->itemtype != PLISQL_NSTYPE_VAR &&
@@ -3823,4 +3845,3 @@ release_package_func_usecount(FunctionCallInfo fcinfo)
 
 	return;
 }
-

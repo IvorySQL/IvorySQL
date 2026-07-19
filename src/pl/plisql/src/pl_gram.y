@@ -400,6 +400,7 @@ static	PLiSQL_expr		*build_call_expr(int firsttoken, int location, YYSTYPE *yylv
 %token <keyword>	K_PROCEDURE
 %token <keyword>	K_QUERY
 %token <keyword>	K_RAISE
+%token <keyword>	K_REF
 %token <keyword>	K_RELATIVE
 %token <keyword>	K_RELIES_ON
 %token <keyword>	K_RESULT_CACHE
@@ -422,6 +423,7 @@ static	PLiSQL_expr		*build_call_expr(int firsttoken, int location, YYSTYPE *yylv
 %token <keyword>	K_TO
 %token <keyword>	K_TRIGGER
 %token <keyword>	K_TYPE
+%token <keyword>	K_TYPE_REFCURSOR
 %token <keyword>	K_USE_COLUMN
 %token <keyword>	K_USE_VARIABLE
 %token <keyword>	K_USING
@@ -933,6 +935,11 @@ decl_statement	: decl_varname decl_const decl_datatype decl_collate decl_notnull
 						$1->src = ds.data;
 						$1->lastoutvardno = plisql_nDatums;
 						plisql_IdentifierLookup = IDENTIFIER_LOOKUP_DECLARE;
+					}
+				| K_TYPE_REFCURSOR decl_varname K_IS K_REF K_CURSOR ';'
+					{
+						plisql_ns_additem(PLISQL_NSTYPE_REFCURSOR,
+											REFCURSOROID, $2.name);
 					}
 				;
 
@@ -3355,6 +3362,7 @@ unreserved_keyword	:
 				| K_PRIOR
 				| K_QUERY
 				| K_RAISE
+				| K_REF
 				| K_RELATIVE
 				| K_RELIES_ON
 				| K_RESULT_CACHE
@@ -3460,6 +3468,7 @@ unit_name_keyword:
 				| K_PRIOR
 				| K_QUERY
 				| K_RAISE
+				| K_REF
 				| K_RELATIVE
 				| K_RELIES_ON
 				| K_RESULT_CACHE
@@ -3758,6 +3767,20 @@ read_sql_construct(int until,
  * Returns a PLiSQL_type struct.
  */
 static PLiSQL_type *
+parse_refcursor_alias(const char *name)
+{
+	PLiSQL_nsitem *ns;
+
+	ns = plisql_ns_lookup(plisql_ns_top(), false,
+						  name, NULL, NULL, NULL);
+	if (ns == NULL || ns->itemtype != PLISQL_NSTYPE_REFCURSOR)
+		return NULL;
+
+	Assert(ns->itemno == REFCURSOROID);
+	return plisql_build_datatype(REFCURSOROID, -1, InvalidOid, NULL);
+}
+
+static PLiSQL_type *
 read_datatype(int tok, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 {
 	StringInfoData ds;
@@ -3795,6 +3818,15 @@ read_datatype(int tok, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 									K_ROWTYPE, "rowtype"))
 				result = plisql_parse_wordrowtype(dtname);
 		}
+		else
+		{
+			result = parse_refcursor_alias(dtname);
+			if (result != NULL)
+			{
+				plisql_push_back_token(tok, yylvalp, yyllocp, yyscanner);
+				return result;
+			}
+		}
 	}
 	else if (plisql_token_is_unreserved_keyword(tok))
 	{
@@ -3810,6 +3842,15 @@ read_datatype(int tok, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 			else if (tok_is_keyword(tok, yylvalp,
 									K_ROWTYPE, "rowtype"))
 				result = plisql_parse_wordrowtype(dtname);
+		}
+		else
+		{
+			result = parse_refcursor_alias(dtname);
+			if (result != NULL)
+			{
+				plisql_push_back_token(tok, yylvalp, yyllocp, yyscanner);
+				return result;
+			}
 		}
 	}
 	else if (tok == T_CWORD)

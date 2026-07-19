@@ -1,0 +1,80 @@
+-- TYPE name IS REF CURSOR in local, nested, and package declarations.
+
+-- TYPE remains available as an ordinary variable name.
+DO $$
+DECLARE
+  type NUMBER := 5;
+  type_copy type%TYPE := type;
+BEGIN
+  RAISE NOTICE 'type variables: %, %', type, type_copy;
+END;
+$$ LANGUAGE plisql;
+
+DO $$
+DECLARE
+  result_value NUMBER;
+  TYPE result_cursor IS REF CURSOR;
+  values_cursor result_cursor;
+BEGIN
+  OPEN values_cursor FOR SELECT 42 FROM dual;
+  FETCH values_cursor INTO result_value;
+  RAISE NOTICE 'local ref cursor: %', result_value;
+  CLOSE values_cursor;
+END;
+$$ LANGUAGE plisql;
+
+-- A nested declaration can shadow an outer type alias.
+DO $$
+DECLARE
+  TYPE cursor_type IS REF CURSOR;
+  outer_cursor cursor_type;
+  outer_value NUMBER;
+
+  PROCEDURE run_inner IS
+    TYPE cursor_type IS REF CURSOR;
+    inner_cursor cursor_type;
+    inner_value NUMBER;
+  BEGIN
+    OPEN inner_cursor FOR SELECT 7 FROM dual;
+    FETCH inner_cursor INTO inner_value;
+    RAISE NOTICE 'inner ref cursor: %', inner_value;
+    CLOSE inner_cursor;
+  END;
+BEGIN
+  run_inner();
+  OPEN outer_cursor FOR SELECT 8 FROM dual;
+  FETCH outer_cursor INTO outer_value;
+  RAISE NOTICE 'outer ref cursor: %', outer_value;
+  CLOSE outer_cursor;
+END;
+$$ LANGUAGE plisql;
+
+CREATE PACKAGE ref_cursor_type_pkg AS
+  TYPE result_cursor IS REF CURSOR;
+  FUNCTION open_value RETURN result_cursor;
+END ref_cursor_type_pkg;
+/
+
+CREATE PACKAGE BODY ref_cursor_type_pkg AS
+  FUNCTION open_value RETURN result_cursor AS
+    values_cursor result_cursor;
+  BEGIN
+    OPEN values_cursor FOR SELECT 99 FROM dual;
+    RETURN values_cursor;
+  END;
+END ref_cursor_type_pkg;
+/
+
+DO $$
+DECLARE
+  values_cursor ref_cursor_type_pkg.result_cursor;
+  result_value NUMBER;
+BEGIN
+  values_cursor := ref_cursor_type_pkg.open_value();
+  FETCH values_cursor INTO result_value;
+  RAISE NOTICE 'package ref cursor: %', result_value;
+  CLOSE values_cursor;
+END;
+$$ LANGUAGE plisql;
+
+DROP PACKAGE ref_cursor_type_pkg;
