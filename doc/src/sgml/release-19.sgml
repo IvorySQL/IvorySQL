@@ -314,7 +314,7 @@ Author: Álvaro Herrera <alvherre@kurilemu.de>
 
 <listitem>
 <para>
-Change <link linkend="app-psql"><application>psql</application></link>'s <literal>\crosstab</literal> command to honor the <literal>\pset null</literal> setting (Chao Li)
+Change <link linkend="app-psql"><application>psql</application></link>'s <literal>\crosstabview</literal> command to honor the <literal>\pset null</literal> setting (Chao Li)
 <ulink url="&commit_baseurl;4df5fe383">&sect;</ulink>
 </para>
 </listitem>
