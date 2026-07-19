@@ -45,6 +45,7 @@
 #include "catalog/pg_depend.h"
 #include "access/genam.h"
 #include "utils/fmgroids.h"
+#include "utils/hsearch.h"
 #include "utils/lsyscache.h"
 
 
@@ -66,6 +67,10 @@ static void plisql_addfunction_references(PLiSQL_function *func,
 														PackageCacheItem *item);
 static void plisql_get_package_depends(PLiSQL_function *func,
 								List **funclist, List **itemlist);
+static List *plisql_get_packagelist_depends(List *pkglist);
+static bool plisql_function_is_compiling(PLiSQL_function *func);
+static void plisql_invalidate_dependent_function(PLiSQL_function *func);
+static PLiSQL_function *plisql_refresh_package_funcexpr(FuncExpr *funcexpr);
 
 static List *plisql_package_sort(List *pkglist);
 
@@ -452,7 +457,7 @@ plisql_free_package_function(PackageCacheItem *items)
 
 		/* remove function */
 		elog(DEBUG1, "realy free function %u", dfunc->fn_oid);
-		delete_function(dfunc);
+		plisql_invalidate_dependent_function(dfunc);
 	}
 
 	/* free packages */
@@ -506,39 +511,12 @@ plisql_free_packagelist(List *pkglist)
 	ListCell *lc;
 	PLiSQL_package *psource;
 	PackageCacheItem *item;
-	List *funclist = NIL;
-	List *dfunclist = NIL;
+	List *dfunclist;
 	PLiSQL_function *dfunc = NULL;
 
 
 	pkglist = plisql_package_sort(pkglist);
-
-
-	/* find function rely on package */
-	foreach (lc, pkglist)
-	{
-		ListCell *llc;
-		List *itemlist = NIL;
-
-		item = (PackageCacheItem *) lfirst(lc);
-
-		psource = (PLiSQL_package *) item->source;
-
-
-		itemlist = list_make1(item);
-		plisql_get_package_depends(&psource->source, &funclist, &itemlist);
-		list_free(itemlist);
-
-		foreach (llc, funclist)
-		{
-			dfunc = (PLiSQL_function *) lfirst(llc);
-
-			Assert(dfunc->item == NULL);
-			dfunclist = list_append_unique(dfunclist, dfunc);
-		}
-		list_free(funclist);
-		funclist = NIL;
-	}
+	dfunclist = plisql_get_packagelist_depends(pkglist);
 
 	foreach (lc, pkglist)
 	{
@@ -555,7 +533,7 @@ plisql_free_packagelist(List *pkglist)
 		dfunc = (PLiSQL_function *) lfirst(lc);
 
 		elog(DEBUG1, "realy free function %u", dfunc->fn_oid);
-		delete_function(dfunc);
+		plisql_invalidate_dependent_function(dfunc);
 	}
 
 	/* second delete packages */
@@ -593,72 +571,226 @@ plisql_free_packagelist(List *pkglist)
 
 
 
+typedef struct PackageSortItem
+{
+	PackageCacheItem *item;
+	List	   *dependents;
+	int			remaining_dependencies;
+	int			pass;
+	bool		has_external_dependency;
+	bool		processed;
+} PackageSortItem;
+
+typedef struct PackageSortIndexEntry
+{
+	PackageCacheItem *item;
+	int			index;
+} PackageSortIndexEntry;
+
+typedef struct PackageSortEdgeKey
+{
+	int			dependency;
+	int			dependent;
+} PackageSortEdgeKey;
+
+typedef struct PackageSortEdgeEntry
+{
+	PackageSortEdgeKey key;
+} PackageSortEdgeEntry;
+
+
 /*
- * package has references, we should sort it
+ * Sort packages so dependents are freed before their dependencies.
+ *
+ * The old implementation repeatedly scanned the remaining packages and used
+ * linear List membership and difference operations.  Besides the repeated
+ * scans, every membership check was itself linear, making a long dependency
+ * chain take cubic time.
+ *
+ * Build the dependency graph once and use Kahn's algorithm instead.  To keep
+ * the old stable ordering exactly, assign each package the scan pass in which
+ * the old algorithm would have accepted it.  A dependency that appears later
+ * in the input forces its dependent into the next pass; an earlier dependency
+ * can be accepted during the same pass.  Counting by pass and then scanning
+ * input positions preserves the old pass-and-input ordering in O(V + E).
+ * Cycles and dependencies outside pkglist are appended in input order, just
+ * as the old no-progress fallback did.  Finally, reverse the result so package
+ * dependents precede the packages they reference.
  */
 static List *
 plisql_package_sort(List *pkglist)
 {
-	int origin_len;
-	List *result = NIL;
-	List *retlist = NIL;
-	ListCell *lc;
-	PackageCacheItem *item;
-	PLiSQL_package *psource;
-	PLiSQL_function *func;
-	int i;
+	int			origin_len = list_length(pkglist);
+	PackageSortItem *sort_items;
+	PackageCacheItem **ordered_items;
+	int		   *work_queue;
+	int		   *pass_counts;
+	HTAB	   *item_indexes;
+	HTAB	   *edges;
+	HASHCTL		ctl;
+	List	   *retlist = NIL;
+	ListCell   *lc;
+	int			queue_head = 0;
+	int			queue_tail = 0;
+	int			processed_count = 0;
+	int			max_pass = 0;
+	int			i;
 
-	origin_len = list_length(pkglist);
+	if (origin_len == 0)
+		return NIL;
 
-	/* loop utils pkglist is null */
-	while (list_length(pkglist) != 0)
+	sort_items = palloc0_array(PackageSortItem, origin_len);
+	ordered_items = palloc_array(PackageCacheItem *, origin_len);
+	work_queue = palloc_array(int, origin_len);
+	pass_counts = palloc0_array(int, origin_len);
+
+	ctl.keysize = sizeof(PackageCacheItem *);
+	ctl.entrysize = sizeof(PackageSortIndexEntry);
+	item_indexes = hash_create("PL/iSQL package sort indexes",
+								   origin_len,
+								   &ctl,
+								   HASH_ELEM | HASH_BLOBS);
+
+	i = 0;
+	foreach (lc, pkglist)
 	{
-		bool add = false;
-		List *delete_list = NIL;
+		PackageCacheItem *item = (PackageCacheItem *) lfirst(lc);
+		PackageSortIndexEntry *index_entry;
+		bool		found;
 
-		for (lc = list_head(pkglist); lc != NULL;)
+		index_entry = hash_search(item_indexes, &item, HASH_ENTER, &found);
+		Assert(!found);
+		index_entry->index = i;
+		sort_items[i].item = item;
+		i++;
+	}
+	Assert(i == origin_len);
+
+	ctl.keysize = sizeof(PackageSortEdgeKey);
+	ctl.entrysize = sizeof(PackageSortEdgeEntry);
+	edges = hash_create("PL/iSQL package sort edges",
+						origin_len,
+						&ctl,
+						HASH_ELEM | HASH_BLOBS);
+
+	for (i = 0; i < origin_len; i++)
+	{
+		PackageCacheItem *item = sort_items[i].item;
+		PLiSQL_package *psource = (PLiSQL_package *) item->source;
+		PLiSQL_function *func = &psource->source;
+		ListCell   *llc;
+
+		foreach (llc, func->pkgcachelist)
 		{
-			ListCell *llc;
+			PackageCacheItem *dependency = (PackageCacheItem *) lfirst(llc);
+			PackageSortIndexEntry *dependency_entry;
+			PackageSortEdgeKey edge_key;
+			bool		found;
 
-			item = (PackageCacheItem *) lfirst(lc);
-			psource = (PLiSQL_package *) item->source;
-			func = &psource->source;
-
-			/* add all rely on result */
-			foreach (llc, func->pkgcachelist)
+			dependency_entry = hash_search(item_indexes, &dependency,
+										   HASH_FIND, NULL);
+			if (dependency_entry == NULL)
 			{
-				PackageCacheItem *litem = (PackageCacheItem *) lfirst(llc);
-
-				if (!list_member_ptr(result, litem))
-					break;
+				sort_items[i].has_external_dependency = true;
+				continue;
 			}
 
-			if (llc == NULL)
+			MemSet(&edge_key, 0, sizeof(edge_key));
+			edge_key.dependency = dependency_entry->index;
+			edge_key.dependent = i;
+			(void) hash_search(edges, &edge_key, HASH_ENTER, &found);
+			if (!found)
 			{
-				add = true;
-				result = list_append_unique(result, item);
-				delete_list = list_append_unique(delete_list, item);
+				PackageSortItem *dependency_item =
+					&sort_items[dependency_entry->index];
+
+				dependency_item->dependents =
+					lappend_int(dependency_item->dependents, i);
+				sort_items[i].remaining_dependencies++;
 			}
-			lc = lnext(pkglist, lc);
-		}
-		if (delete_list != NIL)
-		{
-			pkglist = list_difference(pkglist, delete_list);
-			list_free(delete_list);
-		}
-		if (!add)
-		{
-			result = list_union(result, pkglist);
-			break;
 		}
 	}
-	Assert(list_length(result) == origin_len);
 
-	/* finially, we reorder it */
-	for(i = origin_len - 1; i >= 0; i--)
-		retlist = lappend(retlist, list_nth(result, i));
+	for (i = 0; i < origin_len; i++)
+	{
+		if (sort_items[i].remaining_dependencies == 0 &&
+			!sort_items[i].has_external_dependency)
+			work_queue[queue_tail++] = i;
+	}
 
-	list_free(result);
+	while (queue_head < queue_tail)
+	{
+		int			item_index = work_queue[queue_head++];
+		PackageSortItem *item = &sort_items[item_index];
+		ListCell   *dependent_cell;
+
+		Assert(!item->processed);
+		Assert(item->pass >= 0 && item->pass < origin_len);
+		item->processed = true;
+		processed_count++;
+		pass_counts[item->pass]++;
+		max_pass = Max(max_pass, item->pass);
+
+		foreach (dependent_cell, item->dependents)
+		{
+			int			dependent_index = lfirst_int(dependent_cell);
+			PackageSortItem *dependent = &sort_items[dependent_index];
+			int			required_pass = item->pass;
+
+			Assert(!dependent->processed);
+			Assert(dependent->remaining_dependencies > 0);
+			if (item_index > dependent_index)
+				required_pass++;
+			dependent->pass = Max(dependent->pass, required_pass);
+
+			dependent->remaining_dependencies--;
+			if (dependent->remaining_dependencies == 0 &&
+				!dependent->has_external_dependency)
+				work_queue[queue_tail++] = dependent_index;
+		}
+	}
+	Assert(queue_tail == processed_count);
+
+	/* Counting-sort processed packages by old scan pass, then input index. */
+	{
+		int			position = 0;
+
+		for (i = 0; i <= max_pass; i++)
+		{
+			int			count = pass_counts[i];
+
+			pass_counts[i] = position;
+			position += count;
+		}
+		Assert(position == processed_count);
+
+		for (i = 0; i < origin_len; i++)
+		{
+			if (sort_items[i].processed)
+				ordered_items[pass_counts[sort_items[i].pass]++] =
+					sort_items[i].item;
+		}
+
+		position = processed_count;
+		for (i = 0; i < origin_len; i++)
+		{
+			if (!sort_items[i].processed)
+				ordered_items[position++] = sort_items[i].item;
+		}
+		Assert(position == origin_len);
+	}
+
+	for (i = origin_len - 1; i >= 0; i--)
+		retlist = lappend(retlist, ordered_items[i]);
+
+	for (i = 0; i < origin_len; i++)
+		list_free(sort_items[i].dependents);
+	hash_destroy(edges);
+	hash_destroy(item_indexes);
+	pfree(pass_counts);
+	pfree(work_queue);
+	pfree(ordered_items);
+	pfree(sort_items);
 
 	return retlist;
 }
@@ -717,14 +849,10 @@ plisql_get_package_depends(PLiSQL_function *func, List **funclist,
 					List **itemlist)
 {
 	ListCell *lc;
-	bool	iscompiling = false;
-	int i;
 
 	foreach (lc, func->funclist)
 	{
 		PLiSQL_function *funcs = (PLiSQL_function *) lfirst(lc);
-
-		iscompiling = false;
 
 		/*
 		 * if funcs is compiling, we doesn't free its memory, this
@@ -735,15 +863,7 @@ plisql_get_package_depends(PLiSQL_function *func, List **funclist,
 		 * and free package memory, then we must not free this anonymous
 		 * memory context, because it may be used later.
 		 */
-		for (i = 0; i < plisql_curr_global_proper_level; i++)
-		{
-			if (plisql_saved_compile_proper[i].plisql_saved_compile[0] == funcs)
-			{
-				iscompiling = true;
-				break;
-			}
-		}
-		if (iscompiling)
+		if (plisql_function_is_compiling(funcs))
 			continue;
 
 		if (funcs->item != NULL)
@@ -758,6 +878,130 @@ plisql_get_package_depends(PLiSQL_function *func, List **funclist,
 		*funclist = list_append_unique(*funclist, funcs);
 	}
 	return;
+}
+
+
+typedef struct PackageDependHashEntry
+{
+	void	   *pointer;
+} PackageDependHashEntry;
+
+
+/*
+ * Find every non-package function that depends on any package in pkglist.
+ *
+ * plisql_free_packagelist() used to call plisql_get_package_depends() once
+ * per package.  Each call recursively walked the same package dependency
+ * graph and used linear List membership checks, so a long chain was visited
+ * quadratically and searched cubically.  Traverse all roots together and use
+ * pointer hash tables to visit each package and collect each function once.
+ */
+static List *
+plisql_get_packagelist_depends(List *pkglist)
+{
+	HASHCTL		ctl;
+	HTAB	   *seen_packages;
+	HTAB	   *seen_functions;
+	List	   *package_queue = NIL;
+	List	   *funclist = NIL;
+	ListCell   *lc;
+	int			queue_index;
+
+	if (pkglist == NIL)
+		return NIL;
+
+	ctl.keysize = sizeof(void *);
+	ctl.entrysize = sizeof(PackageDependHashEntry);
+	seen_packages = hash_create("PL/iSQL package dependency traversal",
+									list_length(pkglist),
+									&ctl,
+									HASH_ELEM | HASH_BLOBS);
+	seen_functions = hash_create("PL/iSQL dependent function collection",
+									32,
+									&ctl,
+									HASH_ELEM | HASH_BLOBS);
+
+	foreach (lc, pkglist)
+	{
+		PackageCacheItem *item = (PackageCacheItem *) lfirst(lc);
+		PLiSQL_package *psource = (PLiSQL_package *) item->source;
+		bool		found;
+
+		(void) hash_search(seen_packages, &item, HASH_ENTER, &found);
+		if (!found)
+			package_queue = lappend(package_queue, &psource->source);
+	}
+
+	for (queue_index = 0;
+		 queue_index < list_length(package_queue);
+		 queue_index++)
+	{
+		PLiSQL_function *func =
+			(PLiSQL_function *) list_nth(package_queue, queue_index);
+		ListCell   *function_cell;
+
+		foreach (function_cell, func->funclist)
+		{
+			PLiSQL_function *dependent =
+				(PLiSQL_function *) lfirst(function_cell);
+			bool		found;
+
+			if (plisql_function_is_compiling(dependent))
+				continue;
+
+			if (dependent->item != NULL)
+			{
+				PackageCacheItem *dependent_item = dependent->item;
+
+				(void) hash_search(seen_packages, &dependent_item,
+									  HASH_ENTER, &found);
+				if (!found)
+					package_queue = lappend(package_queue, dependent);
+			}
+			else
+			{
+				(void) hash_search(seen_functions, &dependent,
+									  HASH_ENTER, &found);
+				if (!found)
+					funclist = lappend(funclist, dependent);
+			}
+		}
+	}
+
+	list_free(package_queue);
+	hash_destroy(seen_functions);
+	hash_destroy(seen_packages);
+
+	return funclist;
+}
+
+
+static bool
+plisql_function_is_compiling(PLiSQL_function *func)
+{
+	int			i;
+
+	for (i = 0; i < plisql_curr_global_proper_level; i++)
+	{
+		if (plisql_saved_compile_proper[i].plisql_saved_compile[0] == func)
+			return true;
+	}
+
+	return false;
+}
+
+
+/*
+ * A package dependency can invalidate a function without changing its
+ * pg_proc tuple.  Mark the cached tuple identity invalid before freeing the
+ * compiled tree, so an existing FmgrInfo fn_extra pointer cannot mistake the
+ * emptied function structure for a still-valid compiled function.
+ */
+static void
+plisql_invalidate_dependent_function(PLiSQL_function *func)
+{
+	func->fn_xmin = InvalidTransactionId;
+	delete_function(func);
 }
 
 
@@ -2337,6 +2581,7 @@ plisql_get_package_func(FunctionCallInfo fcinfo, bool forValidator)
 	funcexpr = (FuncExpr *) fcinfo->flinfo->fn_expr;
 
 	Assert(funcexpr->function_from == FUNC_FROM_PACKAGE);
+	pfunc = plisql_refresh_package_funcexpr(funcexpr);
 
 	if (!OidIsValid(funcexpr->pkgoid))
 		elog(ERROR, "funcexpr include invalid pkgoid");
@@ -2352,9 +2597,6 @@ plisql_get_package_func(FunctionCallInfo fcinfo, bool forValidator)
 		psource->status = PLISQL_PACKAGE_NO_INIT;
 		elog(ERROR, "existing state of packages has been discarded");
 	}
-	pfunc = &psource->source;
-
-	pfunc = (PLiSQL_function *) funcexpr->parent_func;
 	fno = (int) funcexpr->funcid;
 
 	if (pfunc == NULL)
@@ -2482,6 +2724,7 @@ plisql_remove_function_relations(PLiSQL_function *func)
 
 		plisql_remove_function_references(func, refcache);
 	}
+	func->pkgcachelist = NIL;
 
 	return;
 }
@@ -3498,6 +3741,43 @@ plisql_get_subprocs_from_package(Oid pkgoid,
 /*
  * get subproc arginfo
  */
+static PLiSQL_function *
+plisql_refresh_package_funcexpr(FuncExpr *funcexpr)
+{
+	PackageCacheItem *item;
+	PLiSQL_package *psource;
+
+	if (!FUNC_EXPR_FROM_PACKAGE(funcexpr->function_from))
+	{
+		if (funcexpr->parent_func == NULL)
+			elog(ERROR, "parent_func has not been set");
+		return (PLiSQL_function *) funcexpr->parent_func;
+	}
+	if (!OidIsValid(funcexpr->pkgoid))
+		elog(ERROR, "package FuncExpr has an invalid package OID");
+
+	item = PackageCacheLookup(&funcexpr->pkgoid);
+	if (item != NULL)
+	{
+		psource = (PLiSQL_package *) item->source;
+		if (funcexpr->parent_func == &psource->source)
+			return &psource->source;
+	}
+
+	/*
+	 * Cached plans can outlive the package memory context referenced by the
+	 * raw parent_func pointer.  Clear it so the saved qualified function name
+	 * is resolved against the current package cache entry.
+	 */
+	funcexpr->parent_func = NULL;
+	set_pkginfo_from_funcexpr(funcexpr);
+	if (funcexpr->parent_func == NULL)
+		elog(ERROR, "package FuncExpr could not be refreshed");
+
+	return (PLiSQL_function *) funcexpr->parent_func;
+}
+
+
 int
 plisql_get_subproc_arg_info (FuncExpr *fexpr,
 				Oid **p_argtypes,
@@ -3513,10 +3793,7 @@ plisql_get_subproc_arg_info (FuncExpr *fexpr,
 	if (FUNC_EXPR_FROM_PG_PROC(fexpr->function_from))
 		elog(ERROR, "FuncExpr is not an internal function");
 
-	if (fexpr->parent_func == NULL)
-		elog(ERROR, "parent_func has not been set");
-
-	function = (PLiSQL_function *) fexpr->parent_func;
+	function = plisql_refresh_package_funcexpr(fexpr);
 
 	if (fexpr->funcid < 0 || fexpr->funcid >= function->nsubprocfuncs)
 		elog(ERROR, "invalid fno %d", fexpr->funcid);
@@ -3574,10 +3851,7 @@ plisql_get_subproc_prokind (FuncExpr *fexpr)
 	if (FUNC_EXPR_FROM_PG_PROC(fexpr->function_from))
 		elog(ERROR, "FuncExpr is not an internal function");
 
-	if (fexpr->parent_func == NULL)
-		elog(ERROR, "parent_func has not been set");
-
-	function = (PLiSQL_function *) fexpr->parent_func;
+	function = plisql_refresh_package_funcexpr(fexpr);
 
 	if (fexpr->funcid < 0 || fexpr->funcid >= function->nsubprocfuncs)
 		elog(ERROR, "invalid fno %d", fexpr->funcid);
@@ -3604,10 +3878,7 @@ plisql_subproc_should_change_return_type(FuncExpr *fexpr,
 	if (FUNC_EXPR_FROM_PG_PROC(fexpr->function_from))
 		elog(ERROR, "FuncExpr is not an internal function");
 
-	if (fexpr->parent_func == NULL)
-		elog(ERROR, "parent_func has not been set");
-
-	function = (PLiSQL_function *) fexpr->parent_func;
+	function = plisql_refresh_package_funcexpr(fexpr);
 
 	if (fexpr->funcid < 0 || fexpr->funcid >= function->nsubprocfuncs)
 		elog(ERROR, "invalid fno %d", fexpr->funcid);
@@ -3823,4 +4094,3 @@ release_package_func_usecount(FunctionCallInfo fcinfo)
 
 	return;
 }
-
