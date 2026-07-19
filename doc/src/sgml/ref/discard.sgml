@@ -21,7 +21,7 @@ PostgreSQL documentation
 
  <refsynopsisdiv>
 <synopsis>
-DISCARD { ALL | PLANS | SEQUENCES | TEMPORARY | TEMP }
+DISCARD { ALL | PACKAGE | PLANS | SEQUENCES | TEMPORARY | TEMP }
 </synopsis>
  </refsynopsisdiv>
 
@@ -41,6 +41,24 @@ DISCARD { ALL | PLANS | SEQUENCES | TEMPORARY | TEMP }
   <title>Parameters</title>
 
   <variablelist>
+
+   <varlistentry>
+    <term><literal>PACKAGE</literal></term>
+    <listitem>
+     <para>
+      Discards all cached PL/iSQL package definitions and their run-time state
+      in the current session.  The next access to a package recompiles it and
+      runs its initialization code again.  This does not drop any package or
+      affect package state in other sessions.
+     </para>
+     <para>
+      This form is available in Oracle compatibility mode.  When the
+      <filename>ivorysql_ora</filename> module is loaded, it also resets
+      <literal>DBMS_OUTPUT</literal> buffer state and
+      <literal>DBMS_SESSION</literal> application contexts.
+     </para>
+    </listitem>
+   </varlistentry>
 
    <varlistentry>
     <term><literal>PLANS</literal></term>
@@ -93,7 +111,10 @@ SELECT pg_advisory_unlock_all();
 DISCARD PLANS;
 DISCARD TEMP;
 DISCARD SEQUENCES;
-</programlisting></para>
+</programlisting>
+      In Oracle compatibility mode, it also discards package state as
+      described for <literal>PACKAGE</literal> above.
+     </para>
     </listitem>
    </varlistentry>
 
@@ -113,6 +134,8 @@ DISCARD SEQUENCES;
 
   <para>
    <command>DISCARD</command> is a <productname>PostgreSQL</productname> extension.
+   The <literal>PACKAGE</literal> variant is an
+   <productname>IvorySQL</productname> extension for Oracle compatibility.
   </para>
  </refsect1>
 </refentry>
