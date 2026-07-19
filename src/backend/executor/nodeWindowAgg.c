@@ -110,7 +110,6 @@ typedef struct WindowStatePerFuncData
 
 	bool		plain_agg;		/* is it just a plain aggregate function? */
 	int			aggno;			/* if so, index of its WindowStatePerAggData */
-	uint8		ignore_nulls;	/* ignore nulls */
 
 	WindowObject winobj;		/* object used in window function API */
 } WindowStatePerFuncData;
@@ -2737,17 +2736,14 @@ ExecInitWindowAgg(WindowAgg *node, EState *estate, int eflags)
 			elog(ERROR, "WindowFunc with winref %u assigned to WindowAgg with winref %u",
 				 wfunc->winref, node->winref);
 
-		/*
-		 * Look for a previous duplicate window function, which needs the same
-		 * ignore_nulls value
-		 */
+		/* Look for a previous duplicate window function */
 		for (i = 0; i <= wfuncno; i++)
 		{
 			if (equal(wfunc, perfunc[i].wfunc) &&
 				!contain_volatile_functions((Node *) wfunc))
 				break;
 		}
-		if (i <= wfuncno && wfunc->ignore_nulls == perfunc[i].ignore_nulls)
+		if (i <= wfuncno)
 		{
 			/* Found a match to an existing entry, so just mark it */
 			wfuncstate->wfuncno = i;
