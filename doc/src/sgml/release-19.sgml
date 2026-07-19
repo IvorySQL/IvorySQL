@@ -6,7 +6,7 @@
 
  <formalpara>
   <title>Release date:</title>
-  <para>2026-??-??, AS OF 2026-06-17</para>
+  <para>2026-??-??, AS OF 2026-07-18</para>
  </formalpara>
 
   <sect2 id="release-19-highlights">
@@ -304,6 +304,18 @@ Author: Robert Haas <rhaas@postgresql.org>
 <para>
 Remove optimizer hook get_relation_info_hook and add better-placed hook build_simple_rel_hook (Robert Haas)
 <ulink url="&commit_baseurl;91f33a2ae">&sect;</ulink>
+</para>
+</listitem>
+
+<!--
+Author: Álvaro Herrera <alvherre@kurilemu.de>
+2026-06-26 [4df5fe383] 2026-06-26 Make crosstabview honor boolean/null display
+-->
+
+<listitem>
+<para>
+Change <link linkend="app-psql"><application>psql</application></link>'s <literal>\crosstab</literal> command to honor the <literal>\pset null</literal> setting (Chao Li)
+<ulink url="&commit_baseurl;4df5fe383">&sect;</ulink>
 </para>
 </listitem>
 
@@ -1692,18 +1704,6 @@ This allows operations on temporal ranges.
 
 <!--
 Author: Tom Lane <tgl@sss.pgh.pa.us>
-2025-09-29 [ef38a4d97] Add GROUP BY ALL.
--->
-
-<listitem>
-<para>
-Add <literal>GROUP BY ALL</literal> syntax to <link linkend="sql-select"><command>SELECT</command></link> to automatically group all non-aggregate and non-window-function target list parameters (David Christensen)
-<ulink url="&commit_baseurl;ef38a4d97">&sect;</ulink>
-</para>
-</listitem>
-
-<!--
-Author: Tom Lane <tgl@sss.pgh.pa.us>
 2026-03-06 [415100aa6] Support grouping-expression references and GROUPING() in
 -->
 
@@ -2537,6 +2537,18 @@ Add or improve <link linkend="app-psql"><application>psql</application></link> t
 
     <itemizedlist>
 <!--
+Author: Michael Paquier <michael@paquier.xyz>
+2026-01-27 [c32fb29e9] Include extended statistics data in pg_dump
+-->
+
+<listitem>
+<para>
+Allow <link linkend="app-pgdump"><application>pg_dump</application></link> to include restorable extended statistics (Corey Huinker)
+<ulink url="&commit_baseurl;c32fb29e9">&sect;</ulink>
+</para>
+</listitem>
+
+<!--
 Author: Fujii Masao <fujii@postgresql.org>
 2025-08-20 [6429e5b77] vacuumdb: Make vacuumdb - -analyze-only process partition
 Author: Fujii Masao <fujii@postgresql.org>
@@ -2667,30 +2679,7 @@ Report nanoseconds instead of microseconds.  In addition to histogram output, ou
 </para>
 </listitem>
 
-    </itemizedlist>
-
-    <sect4 id="release-19-pgdump">
-     <title><link
-     linkend="app-pgdump"><application>pg_dump</application></link>/<link
-     linkend="app-pg-dumpall"><application>pg_dumpall</application></link>/<link
-     linkend="app-pgrestore"><application>pg_restore</application></link></title>
-
-     <itemizedlist>
-<!--
-Author: Michael Paquier <michael@paquier.xyz>
-2026-01-27 [c32fb29e9] Include extended statistics data in pg_dump
--->
-
-<listitem>
-<para>
-Allow <link linkend="app-pgdump"><application>pg_dump</application></link> to include restorable extended statistics (Corey Huinker)
-<ulink url="&commit_baseurl;c32fb29e9">&sect;</ulink>
-</para>
-</listitem>
-
      </itemizedlist>
-
-    </sect4>
 
     <sect4 id="release-19-pg-createsubscriber">
      <title><link linkend="app-pgcreatesubscriber"><application>pg_createsubscriber</application></link></title>
