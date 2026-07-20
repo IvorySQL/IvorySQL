@@ -21,10 +21,10 @@ PostgreSQL documentation
 
  <refsynopsisdiv>
 <synopsis>
-CREATE [ OR REPLACE ] [ TEMP | TEMPORARY ] [ RECURSIVE ] VIEW <replaceable class="parameter">name</replaceable> [ ( <replaceable class="parameter">column_name</replaceable> [, ...] ) ]
+CREATE [ OR REPLACE ] [ TEMP | TEMPORARY ] [ RECURSIVE | { FORCE | NO FORCE } ] VIEW <replaceable class="parameter">name</replaceable> [ ( <replaceable class="parameter">column_name</replaceable> [, ...] ) ]
     [ WITH ( <replaceable class="parameter">view_option_name</replaceable> [= <replaceable class="parameter">view_option_value</replaceable>] [, ... ] ) ]
     AS <replaceable class="parameter">query</replaceable>
-    [ WITH [ CASCADED | LOCAL ] CHECK OPTION ]
+    [ { WITH [ CASCADED | LOCAL ] CHECK OPTION | WITH READ ONLY } ]
 </synopsis>
  </refsynopsisdiv>
 
@@ -47,6 +47,17 @@ CREATE [ OR REPLACE ] [ TEMP | TEMPORARY ] [ RECURSIVE ] VIEW <replaceable class
   </para>
 
   <para>
+   In Oracle compatibility mode, <literal>CREATE FORCE VIEW</literal> can
+   create an invalid view even when the defining query cannot yet be resolved.
+   IvorySQL stores the statement and issues a warning instead of discarding
+   the view.  Referencing the invalid view attempts compilation again; if the
+   definition still cannot be compiled, the reference fails with a
+   <quote>view has errors</quote> message.  Compilation can also be requested
+   explicitly with <link linkend="sql-alterview"><command>ALTER VIEW
+   COMPILE</command></link>.
+  </para>
+
+  <para>
    If a schema name is given (for example, <literal>CREATE VIEW
    myschema.myview ...</literal>) then the view is created in the specified
    schema.  Otherwise it is created in the current schema.  Temporary
@@ -61,6 +72,35 @@ CREATE [ OR REPLACE ] [ TEMP | TEMPORARY ] [ RECURSIVE ] VIEW <replaceable class
   <title>Parameters</title>
 
   <variablelist>
+   <varlistentry>
+    <term><literal>FORCE</literal>
+      <indexterm zone="sql-createview">
+       <primary>FORCE VIEW</primary>
+      </indexterm>
+    </term>
+    <term><literal>NO FORCE</literal></term>
+    <listitem>
+     <para>
+      These Oracle-compatible clauses control whether a view is retained when
+      its defining query cannot be compiled.  <literal>FORCE</literal> creates
+      a placeholder view, records the source statement in
+      <structname>pg_force_view</structname>, and reports a warning.
+      <literal>NO FORCE</literal>, which is the default, reports the original
+      error and does not create a view.
+     </para>
+
+     <para>
+      When the query compiles successfully, <literal>FORCE</literal> creates a
+      normal valid view.  If an invalid definition names an existing view,
+      omitting <literal>OR REPLACE</literal> leaves the existing definition
+      unchanged; including it replaces the existing definition and can make a
+      previously valid view invalid.  These clauses are available only with
+      the Oracle-compatible parser and cannot be combined with
+      <literal>RECURSIVE</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+
    <varlistentry>
     <term><literal>TEMPORARY</literal> or <literal>TEMP</literal></term>
     <listitem>
@@ -161,6 +201,19 @@ CREATE VIEW [ <replaceable>schema</replaceable> . ] <replaceable>view_name</repl
          </para>
         </listitem>
        </varlistentry>
+
+       <varlistentry>
+        <term><literal>read_only</literal> (<type>boolean</type>)</term>
+        <listitem>
+         <para>
+          When true, rejects <command>INSERT</command>,
+          <command>UPDATE</command>, <command>DELETE</command>, and
+          <command>MERGE</command> commands that target the view.  This is the
+          stored form of the Oracle-compatible <literal>WITH READ ONLY</literal>
+          clause described below.
+         </para>
+        </listitem>
+       </varlistentry>
       </variablelist>
 
       All of the above options can be changed on existing views using <link
@@ -251,6 +304,31 @@ CREATE VIEW [ <replaceable>schema</replaceable> . ] <replaceable>view_name</repl
       checks from automatically updatable views defined on top of the relation
       with the <literal>INSTEAD</literal> rule.  <command>MERGE</command> is not
       supported if the view or any of its base relations have rules.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>WITH READ ONLY</literal>
+      <indexterm zone="sql-createview">
+       <primary>WITH READ ONLY</primary>
+       <secondary>in views</secondary>
+      </indexterm>
+    </term>
+    <listitem>
+     <para>
+      Marks the view as read-only, even if it would otherwise be automatically
+      updatable.  <command>INSERT</command>, <command>UPDATE</command>,
+      <command>DELETE</command>, and <command>MERGE</command> commands targeting
+      the view are rejected.  The clause is available with the
+      Oracle-compatible parser, is allowed on recursive and force views, and
+      cannot be combined with <literal>WITH CHECK OPTION</literal>.
+     </para>
+
+     <para>
+      Replacing a view with <command>CREATE OR REPLACE VIEW</command> without
+      <literal>WITH READ ONLY</literal> clears this property.  The property can
+      also be changed through the <literal>read_only</literal> view option.
      </para>
     </listitem>
    </varlistentry>
@@ -352,6 +430,15 @@ CREATE VIEW vista AS SELECT text 'Hello World' AS hello;
     Other view properties, including ownership, permissions, and non-SELECT
     rules, remain unchanged.  You must own the view
     to replace it (this includes being a member of the owning role).
+   </para>
+
+   <para>
+    In Oracle compatibility mode, dropping an object whose only restricting
+    dependents are views marks those views invalid instead of requiring
+    <literal>CASCADE</literal>.  IvorySQL retains their definitions and tries
+    to compile them when they are next referenced.  If the required objects
+    have been recreated compatibly, the views become valid again; otherwise
+    the reference reports that the view has errors.
    </para>
 
   <refsect2 id="sql-createview-updatable-views">
@@ -561,6 +648,20 @@ UNION ALL
    This is because the implicitly-created CTE's name cannot be
    schema-qualified.
   </para>
+
+  <para>
+   In Oracle compatibility mode, create a read-only force view before its base
+   table exists, then compile it after creating the table:
+<programlisting>
+CREATE FORCE VIEW pending_orders AS
+    SELECT order_id, status FROM orders
+    WITH READ ONLY;
+-- WARNING: View created with compilation errors
+
+CREATE TABLE orders (order_id integer, status text);
+ALTER VIEW pending_orders COMPILE;
+</programlisting>
+  </para>
  </refsect1>
 
  <refsect1>
@@ -571,7 +672,9 @@ UNION ALL
    <productname>PostgreSQL</productname> language extension.
    So is the concept of a temporary view.
    The <literal>WITH ( ... )</literal> clause is an extension as well, as are
-   security barrier views and security invoker views.
+   security barrier views and security invoker views.  The
+   <literal>FORCE</literal>, <literal>NO FORCE</literal>, and
+   <literal>WITH READ ONLY</literal> clauses are Oracle-compatible extensions.
   </para>
  </refsect1>
 
