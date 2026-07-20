@@ -937,24 +937,16 @@ to_oratimestamp3(PG_FUNCTION_ARGS)
 {
 	text	   *date_txt = PG_GETARG_TEXT_P(0);
 	text	   *fmt = PG_GETARG_TEXT_P(1);
-	text	   *nlsparam = PG_GETARG_TEXT_P(2);
 	Oid			collid = PG_GET_COLLATION();
 	Timestamp	result;
 	struct pg_tm tm;
 	fsec_t		fsec;
-	char	   *p;
-
-	p = text_to_cstring(nlsparam);
 
 	/*
-	 * if (strlen(p) != 0) ereport(WARNING,
-	 * (errcode(ERRCODE_UNTERMINATED_C_STRING), errmsg("function \"to_date\"
-	 * not support the parameter of \"nlsparam\".")));
+	 * The nlsparam argument is accepted for compatibility but is not
+	 * interpreted.
 	 */
-	if (p && strlen(p) != 0)
-		/* make compiler quiet */
-
-		ora_do_to_timestamp(date_txt, fmt, collid, false, &tm, &fsec, NULL, NULL, NULL, true);
+	ora_do_to_timestamp(date_txt, fmt, collid, false, &tm, &fsec, NULL, NULL, NULL, true);
 
 	/* no time zone */
 	if (tm2timestamp(&tm, fsec, NULL, &result) != 0)
@@ -1048,27 +1040,18 @@ to_oratimestamptz3(PG_FUNCTION_ARGS)
 {
 	text	   *date_txt = PG_GETARG_TEXT_P(0);
 	text	   *fmt = PG_GETARG_TEXT_P(1);
-	text	   *nlsparam = PG_GETARG_TEXT_P(2);
 	Oid			collid = PG_GET_COLLATION();
 	Timestamp	result;
 	int			tz;
 	struct pg_tm tm;
 	fsec_t		fsec;
 	DateTimeErrorExtra extra;
-	char	   *p;
 
-	p = text_to_cstring(nlsparam);
-
-	if (p && strlen(p) != 0)
-		/* make compile quiet */
-
-		/*
-		 * if (strlen(p) != 0) ereport(WARNING,
-		 * (errcode(ERRCODE_UNTERMINATED_C_STRING), errmsg("function
-		 * \"to_date\" not support the parameter of \"nlsparam\".")));
-		 */
-
-		ora_do_to_timestamp(date_txt, fmt, collid, false, &tm, &fsec, NULL, NULL, NULL, true);
+	/*
+	 * The nlsparam argument is accepted for compatibility but is not
+	 * interpreted.
+	 */
+	ora_do_to_timestamp(date_txt, fmt, collid, false, &tm, &fsec, NULL, NULL, NULL, true);
 
 	if (tm.tm_zone)
 	{
