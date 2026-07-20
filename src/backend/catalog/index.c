@@ -2653,9 +2653,21 @@ CompareIndexInfo(const IndexInfo *info1, const IndexInfo *info2,
 			return false;
 	}
 
-	/* No support currently for comparing exclusion indexes. */
-	if (info1->ii_ExclusionOps != NULL || info2->ii_ExclusionOps != NULL)
+	/* If they're exclusion indexes, their properties must be identical */
+	if ((info1->ii_ExclusionOps == NULL) != (info2->ii_ExclusionOps == NULL))
 		return false;
+	if (info1->ii_ExclusionOps != NULL)
+	{
+		for (i = 0; i < info1->ii_NumIndexKeyAttrs; i++)
+		{
+			if (info1->ii_ExclusionOps[i] != info2->ii_ExclusionOps[i])
+				return false;
+			if (info1->ii_ExclusionProcs[i] != info2->ii_ExclusionProcs[i])
+				return false;
+			if (info1->ii_ExclusionStrats[i] != info2->ii_ExclusionStrats[i])
+				return false;
+		}
+	}
 
 	return true;
 }
