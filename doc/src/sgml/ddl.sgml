@@ -1451,8 +1451,10 @@ CREATE TABLE circles (
 
   <para>
    Every table has several <firstterm>system columns</firstterm> that are
-   implicitly defined by the system.  Therefore, these names cannot be
-   used as names of user-defined columns.  (Note that these
+   implicitly defined by the system.  Oracle-compatible tables can also
+   have the optional <structfield>ROWID</structfield> system column described
+   below.  Therefore, these names cannot be used as names of user-defined
+   columns.  (Note that these
    restrictions are separate from whether the name is a key word or
    not; quoting a name will not allow you to escape these
    restrictions.)  You do not really need to be concerned about these
@@ -1560,6 +1562,88 @@ CREATE TABLE circles (
       updated or moved by <command>VACUUM FULL</command>.  Therefore
       <structfield>ctid</structfield> should not be used as a row
       identifier.  A primary key should be used to identify logical rows.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry id="ddl-system-columns-rowid">
+    <term><structfield>rowid</structfield></term>
+    <listitem>
+     <indexterm>
+      <primary>ROWID</primary>
+     </indexterm>
+
+     <para>
+      In an Oracle-compatible database, a table created
+      <literal>WITH ROWID</literal> has a <type>sys.rowid</type> system
+      column.  Its value contains two fields: <structfield>rowoid</structfield>,
+      the OID of the physical table containing the row, and
+      <structfield>rowno</structfield>, a sequence-generated
+      <type>bigint</type> that identifies the row within that table.  Use
+      parentheses to select a field:
+<programlisting>
+SELECT (rowid).rowoid, (rowid).rowno, customer_name
+FROM customers
+WHERE (rowid).rowno = 42;
+</programlisting>
+      When a query contains more than one table, qualify the system column,
+      for example <literal>(customers.rowid).rowno</literal>.
+     </para>
+
+     <para>
+      <structfield>rowno</structfield> values are assigned automatically on
+      insert and are preserved by ordinary updates.  They can contain gaps
+      because they are allocated from an internal sequence.  A B-tree index
+      on <structfield>rowid</structfield> is created automatically.  The
+      system column cannot be supplied by <command>INSERT</command>, changed
+      by <command>UPDATE</command>, dropped as an ordinary column, or used as
+      the name of a user-defined column.  Equality conditions on the complete
+      <structfield>ROWID</structfield> value can use the automatic index;
+      conditions on an extracted field such as
+      <literal>(rowid).rowno</literal> do not necessarily use it.
+     </para>
+
+     <para>
+      For a partitioned table, each leaf partition has its own sequence, so
+      <structfield>rowno</structfield> values can repeat between partitions.
+      The <structfield>rowoid</structfield> field distinguishes those physical
+      tables.  Do not use <structfield>ROWID</structfield> as a durable
+      application key: its value can change when a row is moved to another
+      physical table, when <literal>ROWID</literal> support is removed and
+      added again, or when data is dumped and restored.  Define a primary key
+      when a stable logical identity is required.
+     </para>
+
+     <para>
+      Specify <literal>WITH ROWID</literal> or <literal>WITHOUT ROWID</literal>
+      in <command>CREATE TABLE</command> to override the session default.
+      <command>ALTER TABLE ... SET WITH ROWID</command> adds and populates the
+      system column for an existing table, while
+      <command>ALTER TABLE ... SET WITHOUT ROWID</command> removes it.  Both
+      forms rewrite existing table data.  The
+      <varname>ivorysql.default_with_rowids</varname> setting controls the
+      default for newly created Oracle-compatible tables and is
+      <literal>off</literal> by default.  The
+      <varname>ivorysql.rowid_seq_cache</varname> setting controls the cache
+      size of newly created internal <literal>ROWID</literal> sequences; its
+      default is 20 and its valid range is 1 through 60000.
+     </para>
+
+     <para>
+      A table created with <literal>LIKE</literal> from a table that has
+      <structfield>ROWID</structfield> also has it.  Inheritance and partition
+      hierarchies propagate <structfield>ROWID</structfield> from the parent;
+      in those cases <literal>WITHOUT ROWID</literal> cannot override the
+      parent's requirement.
+     </para>
+
+     <para>
+      In PostgreSQL-compatible databases, <literal>ROWID</literal> has no
+      system-column meaning and can be used as an ordinary identifier.  In
+      Oracle-compatible SQL, <literal>ROWID</literal> and
+      <literal>ROWNUM</literal> cannot be used as explicit column aliases or
+      table aliases, although PL/iSQL local variables and parameters may use
+      those names.
      </para>
     </listitem>
    </varlistentry>

@@ -83,6 +83,8 @@ ALTER TABLE [ IF EXISTS ] <replaceable class="parameter">name</replaceable>
     CLUSTER ON <replaceable class="parameter">index_name</replaceable>
     SET WITHOUT CLUSTER
     SET WITHOUT OIDS
+    SET WITH ROWID
+    SET WITHOUT ROWID
     SET ACCESS METHOD { <replaceable class="parameter">new_access_method</replaceable> | DEFAULT }
     SET TABLESPACE <replaceable class="parameter">new_tablespace</replaceable>
     SET { LOGGED | UNLOGGED }
@@ -772,6 +774,21 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
       Backward-compatible syntax for removing the <literal>oid</literal>
       system column.  As <literal>oid</literal> system columns cannot be
       added anymore, this never has an effect.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry id="sql-altertable-desc-set-rowid">
+    <term><literal>SET WITH ROWID</literal></term>
+    <term><literal>SET WITHOUT ROWID</literal></term>
+    <listitem>
+     <para>
+      In an Oracle-compatible database, these forms add or remove the
+      <structfield>ROWID</structfield> system column.  Adding it assigns a
+      value to every existing row and creates the supporting sequence and
+      index; removing it also removes those supporting objects.  Either form
+      rewrites the table and takes an <literal>ACCESS EXCLUSIVE</literal>
+      lock.  See <xref linkend="ddl-system-columns-rowid"/>.
      </para>
     </listitem>
    </varlistentry>
