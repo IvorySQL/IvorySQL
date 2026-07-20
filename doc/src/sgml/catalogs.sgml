@@ -171,6 +171,11 @@
      </row>
 
      <row>
+      <entry><link linkend="catalog-pg-force-view"><structname>pg_force_view</structname></link></entry>
+      <entry>definitions of invalid force views</entry>
+     </row>
+
+     <row>
       <entry><link linkend="catalog-pg-index"><structname>pg_index</structname></link></entry>
       <entry>additional index information</entry>
      </row>
@@ -218,6 +223,16 @@
      <row>
       <entry><link linkend="catalog-pg-opfamily"><structname>pg_opfamily</structname></link></entry>
       <entry>access method operator families</entry>
+     </row>
+
+     <row>
+      <entry><link linkend="catalog-pg-package"><structname>pg_package</structname></link></entry>
+      <entry>PL/iSQL package specifications</entry>
+     </row>
+
+     <row>
+      <entry><link linkend="catalog-pg-package-body"><structname>pg_package_body</structname></link></entry>
+      <entry>PL/iSQL package bodies</entry>
      </row>
 
      <row>
@@ -4352,6 +4367,73 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
  </sect1>
 
 
+ <sect1 id="catalog-pg-force-view">
+  <title><structname>pg_force_view</structname></title>
+
+  <indexterm zone="catalog-pg-force-view">
+   <primary>pg_force_view</primary>
+  </indexterm>
+
+  <para>
+   The catalog <structname>pg_force_view</structname> stores the source text
+   and identifier case mode needed to recompile an invalid force view.  A row
+   is present while a view has no valid <literal>_RETURN</literal> rewrite
+   rule.  The row is removed after the view is compiled successfully or
+   dropped.
+  </para>
+
+  <table>
+   <title><structname>pg_force_view</structname> Columns</title>
+   <tgroup cols="1">
+    <thead>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       Column Type
+      </para>
+      <para>
+       Description
+      </para></entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>fvoid</structfield> <type>oid</type>
+       (references <link linkend="catalog-pg-class"><structname>pg_class</structname></link>.<structfield>oid</structfield>)
+      </para>
+      <para>
+       The OID of the invalid force view
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>ident_case</structfield> <type>char</type>
+      </para>
+      <para>
+       Identifier case mode in effect when the definition was stored:
+       <literal>n</literal> = normal, <literal>i</literal> = interchange,
+       <literal>l</literal> = lowercase, or <literal>u</literal> = the
+       definition was reconstructed internally and does not require a stored
+       mode
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>source</structfield> <type>text</type>
+      </para>
+      <para>
+       SQL text used to retry compilation of the view
+      </para></entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+ </sect1>
+
+
  <sect1 id="catalog-pg-index">
   <title><structname>pg_index</structname></title>
 
@@ -5583,6 +5665,198 @@ SCRAM-SHA-256$<replaceable>&lt;iteration count&gt;</replaceable>:<replaceable>&l
    <link linkend="catalog-pg-opclass"><structname>pg_opclass</structname></link>.
   </para>
 
+ </sect1>
+
+
+ <sect1 id="catalog-pg-package">
+  <title><structname>pg_package</structname></title>
+
+  <indexterm zone="catalog-pg-package">
+   <primary>pg_package</primary>
+  </indexterm>
+
+  <para>
+   The catalog <structname>pg_package</structname> stores the specification
+   and properties of each PL/iSQL package.  See
+   <xref linkend="sql-createpackage"/> for information about creating
+   packages.
+  </para>
+
+  <table>
+   <title><structname>pg_package</structname> Columns</title>
+   <tgroup cols="1">
+    <thead>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       Column Type
+      </para>
+      <para>
+       Description
+      </para></entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>oid</structfield> <type>oid</type>
+      </para>
+      <para>
+       Row identifier
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>pkgname</structfield> <type>name</type>
+      </para>
+      <para>
+       Package name
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>pkgnamespace</structfield> <type>oid</type>
+       (references <link linkend="catalog-pg-namespace"><structname>pg_namespace</structname></link>.<structfield>oid</structfield>)
+      </para>
+      <para>
+       The OID of the namespace that contains this package
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>pkgowner</structfield> <type>oid</type>
+       (references <link linkend="catalog-pg-authid"><structname>pg_authid</structname></link>.<structfield>oid</structfield>)
+      </para>
+      <para>
+       Owner of the package
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>define_invok</structfield> <type>bool</type>
+      </para>
+      <para>
+       True for an <literal>AUTHID DEFINER</literal> package; false for an
+       <literal>AUTHID CURRENT_USER</literal> package
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>editable</structfield> <type>bool</type>
+      </para>
+      <para>
+       True if the package is editionable
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>use_collation</structfield> <type>bool</type>
+      </para>
+      <para>
+       True if the package specifies
+       <literal>DEFAULT COLLATION USING_NLS_COMP</literal>
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>pkgacl</structfield> <type>aclitem[]</type>
+      </para>
+      <para>
+       Access privileges; see <xref linkend="ddl-priv"/> for details
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>accesssource</structfield> <type>pg_node_tree</type>
+      </para>
+      <para>
+       Parsed representation of the <literal>ACCESSIBLE BY</literal> clause,
+       or null if no such clause was specified
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>pkgsrc</structfield> <type>text</type>
+      </para>
+      <para>
+       Source text of the package specification
+      </para></entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+ </sect1>
+
+
+ <sect1 id="catalog-pg-package-body">
+  <title><structname>pg_package_body</structname></title>
+
+  <indexterm zone="catalog-pg-package-body">
+   <primary>pg_package_body</primary>
+  </indexterm>
+
+  <para>
+   The catalog <structname>pg_package_body</structname> stores the private
+   implementation of a PL/iSQL package.  Each package has at most one package
+   body, and a package specification can exist without a body.  See
+   <xref linkend="sql-createpackagebody"/> for information about creating
+   package bodies.
+  </para>
+
+  <table>
+   <title><structname>pg_package_body</structname> Columns</title>
+   <tgroup cols="1">
+    <thead>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       Column Type
+      </para>
+      <para>
+       Description
+      </para></entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>oid</structfield> <type>oid</type>
+      </para>
+      <para>
+       Row identifier
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>pkgoid</structfield> <type>oid</type>
+       (references <link linkend="catalog-pg-package"><structname>pg_package</structname></link>.<structfield>oid</structfield>)
+      </para>
+      <para>
+       The package specification implemented by this body
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>bodysrc</structfield> <type>text</type>
+      </para>
+      <para>
+       Source text of the package body
+      </para></entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
  </sect1>
 
 
