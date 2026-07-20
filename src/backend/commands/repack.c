@@ -169,8 +169,8 @@ static void copy_table_data(Relation NewHeap, Relation OldHeap, Relation OldInde
 							MultiXactId *pCutoffMulti);
 static List *get_tables_to_repack(RepackCommand cmd, bool usingindex,
 								  MemoryContext permcxt);
-static List *get_tables_to_repack_partitioned(RepackCommand cmd,
-											  Oid relid, bool rel_is_index,
+static List *get_tables_to_repack_partitioned(RepackStmt *stmt,
+											  Relation rel,
 											  MemoryContext permcxt);
 static bool repack_is_permitted_for_relation(RepackCommand cmd,
 											 Oid relid, Oid userid);
@@ -387,58 +387,8 @@ ExecRepack(ParseState *pstate, RepackStmt *stmt, bool isTopLevel)
 	}
 	else
 	{
-		Oid			relid;
-		bool		rel_is_index;
-
-		Assert(rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE);
-
-		/*
-		 * If USING INDEX was specified, resolve the index name now and pass
-		 * it down.
-		 */
-		if (stmt->usingindex)
-		{
-			/*
-			 * If no index name was specified when repacking a partitioned
-			 * table, punt for now.  Maybe we can improve this later.
-			 */
-			if (!stmt->indexname)
-			{
-				if (stmt->command == REPACK_COMMAND_CLUSTER)
-					ereport(ERROR,
-							errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-							errmsg("there is no previously clustered index for table \"%s\"",
-								   RelationGetRelationName(rel)));
-				else
-					ereport(ERROR,
-							errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-					/*- translator: first %s is name of a SQL command, eg. REPACK */
-							errmsg("cannot execute %s on partitioned table \"%s\" USING INDEX with no index name",
-								   RepackCommandAsString(stmt->command),
-								   RelationGetRelationName(rel)));
-			}
-
-			relid = determine_clustered_index(rel, stmt->usingindex,
-											  stmt->indexname);
-			if (!OidIsValid(relid))
-				elog(ERROR, "unable to determine index to cluster on");
-			check_index_is_clusterable(rel, relid, AccessExclusiveLock);
-
-			rel_is_index = true;
-		}
-		else
-		{
-			relid = RelationGetRelid(rel);
-			rel_is_index = false;
-		}
-
-		rtcs = get_tables_to_repack_partitioned(stmt->command,
-												relid, rel_is_index,
-												repack_context);
-
-		/* close parent relation, releasing lock on it */
-		table_close(rel, AccessExclusiveLock);
-		rel = NULL;
+		rtcs = get_tables_to_repack_partitioned(stmt, rel, repack_context);
+		rel = NULL;				/* clobber no longer valid pointer */
 	}
 
 	/* Commit to get out of starting transaction */
@@ -2271,18 +2221,70 @@ get_tables_to_repack(RepackCommand cmd, bool usingindex, MemoryContext permcxt)
 }
 
 /*
- * Given a partitioned table or its index, return a list of RelToCluster for
- * all the leaf child tables/indexes.
+ * Determine relations to process, when REPACK/CLUSTER is called with a
+ * partitioning table; that is, a list of its leaf partitions.  That table has
+ * already been opened by caller and is passed as 'rel'.  It is closed and
+ * unlocked here before return, so caller should clobber its pointer to avoid
+ * confusion.
  *
- * 'rel_is_index' tells whether 'relid' is that of an index (true) or of the
- * owning relation.
+ * Return it as a list of RelToCluster.
+ *
+ * XXX we don't support CONCURRENTLY for partitioned tables yet.
  */
 static List *
-get_tables_to_repack_partitioned(RepackCommand cmd, Oid relid,
-								 bool rel_is_index, MemoryContext permcxt)
+get_tables_to_repack_partitioned(RepackStmt *stmt, Relation rel,
+								 MemoryContext permcxt)
 {
+	Oid			relid;
+	bool		rel_is_index;
 	List	   *inhoids;
 	List	   *rtcs = NIL;
+
+	Assert(rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE);
+	Assert(CheckRelationLockedByMe(rel, AccessExclusiveLock, false));
+
+	/*
+	 * We find the list of tables by looking for inheritors.  If USING INDEX
+	 * was given, look for inheritors of that index, whose name we resolve
+	 * now.
+	 *
+	 * Otherwise we look for inheritors of the table itself.
+	 */
+	if (stmt->usingindex)
+	{
+		/*
+		 * If no index name was specified when repacking a partitioned table,
+		 * punt for now.  Maybe we can improve this later.
+		 */
+		if (!stmt->indexname)
+		{
+			if (stmt->command == REPACK_COMMAND_CLUSTER)
+				ereport(ERROR,
+						errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+						errmsg("there is no previously clustered index for table \"%s\"",
+							   RelationGetRelationName(rel)));
+			else
+				ereport(ERROR,
+						errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				/*- translator: first %s is name of a SQL command, eg. REPACK */
+						errmsg("cannot execute %s on partitioned table \"%s\" USING INDEX with no index name",
+							   RepackCommandAsString(stmt->command),
+							   RelationGetRelationName(rel)));
+		}
+
+		relid = determine_clustered_index(rel, stmt->usingindex,
+										  stmt->indexname);
+		if (!OidIsValid(relid))
+			elog(ERROR, "unable to determine index to cluster on");
+		check_index_is_clusterable(rel, relid, AccessExclusiveLock);
+
+		rel_is_index = true;
+	}
+	else
+	{
+		relid = RelationGetRelid(rel);
+		rel_is_index = false;
+	}
 
 	/*
 	 * Do not lock the children until they're processed.  Note that we do hold
@@ -2302,7 +2304,14 @@ get_tables_to_repack_partitioned(RepackCommand cmd, Oid relid,
 			if (get_rel_relkind(child_oid) != RELKIND_INDEX)
 				continue;
 
-			table_oid = IndexGetRelation(child_oid, false);
+			/*
+			 * Although we do have a lock on some ancestor partitioned index,
+			 * we may not have one on the immediate parent, so this lookup may
+			 * still return invalid.
+			 */
+			table_oid = IndexGetRelation(child_oid, true);
+			if (!OidIsValid(table_oid))
+				continue;
 			index_oid = child_oid;
 		}
 		else
@@ -2320,7 +2329,8 @@ get_tables_to_repack_partitioned(RepackCommand cmd, Oid relid,
 		 * leaf partition despite having them on the partitioned table.  Skip
 		 * if so.
 		 */
-		if (!repack_is_permitted_for_relation(cmd, table_oid, GetUserId()))
+		if (!repack_is_permitted_for_relation(stmt->command, table_oid,
+											  GetUserId()))
 			continue;
 
 		/* Use a permanent memory context for the result list */
@@ -2331,6 +2341,9 @@ get_tables_to_repack_partitioned(RepackCommand cmd, Oid relid,
 		rtcs = lappend(rtcs, rtc);
 		MemoryContextSwitchTo(oldcxt);
 	}
+
+	/* close parent relation, releasing lock on it */
+	table_close(rel, AccessExclusiveLock);
 
 	return rtcs;
 }
