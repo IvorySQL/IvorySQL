@@ -320,7 +320,7 @@ parse_package_func(ParseState *pstate, PackageCacheKey *pkey,
 	else
 		flags = PACKAGE_PARSE_FUNC;
 	plisql_internel_funcs_init();
-	result = (FuncDetailCode ) plisql_internal_funcs.package_parse(pstate,
+	result = (FuncDetailCode) (uintptr_t) plisql_internal_funcs.package_parse(pstate,
 										item, names,
 										varname_startloc,
 										flags,
