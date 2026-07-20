@@ -397,8 +397,8 @@ decode_concurrent_changes(LogicalDecodingContext *ctx,
 			{
 				LogicalIncreaseRestartDecodingForSlot(end_lsn, end_lsn);
 				LogicalConfirmReceivedLocation(end_lsn);
-				elog(DEBUG1, "REPACK: confirmed receive location %X/%X",
-					 (uint32) (end_lsn >> 32), (uint32) end_lsn);
+				elog(DEBUG1, "REPACK: confirmed receive location %X/%08X",
+					 LSN_FORMAT_ARGS(end_lsn));
 				repack_current_segment = segno_new;
 			}
 		}
