@@ -11443,6 +11443,342 @@ dynamic_library_path = '/usr/local/lib/postgresql:$libdir'
      </variablelist>
    </sect1>
 
+   <sect1 id="runtime-config-ivorysql">
+    <title>IvorySQL Compatibility</title>
+
+    <para>
+     The parameters in this section control IvorySQL's Oracle-compatible
+     listener, parser, identifier handling, and locale behavior.  They are
+     available in a cluster initialized in Oracle mode with
+     <xref linkend="app-initdb-option-dbmode"/>.  A cluster initialized in
+     native PostgreSQL mode cannot enable the Oracle parser at run time.
+    </para>
+
+    <sect2 id="runtime-config-ivorysql-connection">
+     <title>Oracle-Compatible Connections</title>
+
+     <para>
+      An Oracle-mode cluster can listen on the normal PostgreSQL port and on
+      a separate Oracle-compatible port.  Connections to the normal port
+      begin in PostgreSQL compatibility mode, while connections to the
+      Oracle-compatible port begin in Oracle compatibility mode.
+     </para>
+
+     <variablelist>
+
+      <varlistentry id="guc-ivorysql-listen-addresses" xreflabel="ivorysql.listen_addresses">
+       <term><varname>ivorysql.listen_addresses</varname> (<type>string</type>)
+       <indexterm>
+        <primary><varname>ivorysql.listen_addresses</varname> configuration parameter</primary>
+       </indexterm>
+       </term>
+       <listitem>
+        <para>
+         Specifies the TCP/IP addresses on which the Oracle-compatible
+         listener accepts connections.  The syntax is the same as
+         <xref linkend="guc-listen-addresses"/>: the value is a
+         comma-separated list of host names or numeric addresses, and
+         <literal>*</literal> means all available interfaces.  The default is
+         <literal>localhost</literal>.  This parameter can only be set at
+         server start and is ignored by a cluster initialized in native
+         PostgreSQL mode.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="guc-ivorysql-port" xreflabel="ivorysql.port">
+       <term><varname>ivorysql.port</varname> (<type>integer</type>)
+       <indexterm>
+        <primary><varname>ivorysql.port</varname> configuration parameter</primary>
+       </indexterm>
+       </term>
+       <listitem>
+        <para>
+         Sets the TCP port for the Oracle-compatible listener.  The default is
+         <literal>1521</literal>, and the allowed range is 1 through 65535.
+         This parameter can only be set at server start and is ignored by a
+         cluster initialized in native PostgreSQL mode.  It must not conflict
+         with <xref linkend="guc-port"/> or another service on the selected
+         addresses.
+        </para>
+       </listitem>
+      </varlistentry>
+
+     </variablelist>
+    </sect2>
+
+    <sect2 id="runtime-config-ivorysql-parser">
+     <title>Parser and Identifier Behavior</title>
+
+     <variablelist>
+
+      <varlistentry id="guc-ivorysql-compatible-mode" xreflabel="ivorysql.compatible_mode">
+       <term><varname>ivorysql.compatible_mode</varname> (<type>enum</type>)
+       <indexterm>
+        <primary><varname>ivorysql.compatible_mode</varname> configuration parameter</primary>
+       </indexterm>
+       </term>
+       <listitem>
+        <para>
+         Selects the SQL parser used by the current session.  The allowed
+         values are <literal>pg</literal> and <literal>oracle</literal>.
+         Connections to <xref linkend="guc-port"/> start with
+         <literal>pg</literal>, while connections to
+         <xref linkend="guc-ivorysql-port"/> start with
+         <literal>oracle</literal>.  In an Oracle-mode cluster, a session can
+         switch parsers with <command>SET</command>.
+        </para>
+        <para>
+         This parameter cannot be set in a configuration file or stored with
+         <command>ALTER DATABASE</command> or <command>ALTER ROLE</command>.
+         Selecting <literal>oracle</literal> requires the Oracle parser and
+         <filename>ivorysql_ora</filename> libraries to be loaded.  A cluster
+         initialized in native PostgreSQL mode rejects attempts to select the
+         Oracle parser.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="guc-ivorysql-identifier-case-switch" xreflabel="ivorysql.identifier_case_switch">
+       <term><varname>ivorysql.identifier_case_switch</varname> (<type>enum</type>)
+       <indexterm>
+        <primary><varname>ivorysql.identifier_case_switch</varname> configuration parameter</primary>
+       </indexterm>
+       </term>
+       <listitem>
+        <para>
+         Controls identifier case conversion in Oracle compatibility mode.
+         The allowed values are:
+        </para>
+        <itemizedlist>
+         <listitem>
+          <para>
+           <literal>normal</literal> uses PostgreSQL's identifier conversion
+           rules.
+          </para>
+         </listitem>
+         <listitem>
+          <para>
+           <literal>interchange</literal> converts an all-uppercase quoted
+           identifier to lowercase and an all-lowercase quoted identifier to
+           uppercase; mixed-case quoted identifiers are unchanged.
+          </para>
+         </listitem>
+         <listitem>
+          <para>
+           <literal>lowercase</literal> converts identifiers to lowercase.
+          </para>
+         </listitem>
+        </itemizedlist>
+        <para>
+         The default for a newly initialized cluster is
+         <literal>interchange</literal>, unless another value was selected by
+         <xref linkend="app-initdb-option-case-conversion-mode"/>.  Applications
+         should use one mode consistently, because changing it can alter how
+         existing quoted object names are resolved.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="guc-ivorysql-enable-case-switch" xreflabel="ivorysql.enable_case_switch">
+       <term><varname>ivorysql.enable_case_switch</varname> (<type>boolean</type>)
+       <indexterm>
+        <primary><varname>ivorysql.enable_case_switch</varname> configuration parameter</primary>
+       </indexterm>
+       </term>
+       <listitem>
+        <para>
+         Enables the case conversion selected by
+         <xref linkend="guc-ivorysql-identifier-case-switch"/> in Oracle
+         compatibility mode.  The default is <literal>on</literal>.  This is a
+         session-only diagnostic and migration control: it is not accepted in
+         a configuration file and is omitted from <command>SHOW ALL</command>.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="guc-ivorysql-enable-emptystring-to-null" xreflabel="ivorysql.enable_emptystring_to_NULL">
+       <term><varname>ivorysql.enable_emptystring_to_NULL</varname> (<type>boolean</type>)
+       <indexterm>
+        <primary><varname>ivorysql.enable_emptystring_to_NULL</varname> configuration parameter</primary>
+       </indexterm>
+       </term>
+       <listitem>
+        <para>
+         When enabled in Oracle compatibility mode, an empty character string
+         used as a data value is treated as null.  This applies during input
+         and coercion to compatible character, numeric, date, timestamp, and
+         related types.  It does not change the meaning of an empty string in
+         settings where an empty value is itself significant.
+        </para>
+        <para>
+         The built-in default is <literal>off</literal>, but
+         <application>initdb</application> writes <literal>on</literal> to
+         <filename>ivorysql.conf</filename> for a newly initialized Oracle-mode
+         cluster.
+        </para>
+       </listitem>
+      </varlistentry>
+
+     </variablelist>
+    </sect2>
+
+    <sect2 id="runtime-config-ivorysql-nls">
+     <title>Oracle-Compatible NLS Settings</title>
+
+     <para>
+      These settings provide the NLS values used or exposed by the
+      Oracle-compatible data types and functions supplied by
+      <filename>ivorysql_ora</filename>.  They can be changed for the current
+      session with <command>SET</command> or Oracle-compatible
+      <command>ALTER SESSION SET</command> syntax.
+     </para>
+
+     <variablelist>
+
+      <varlistentry id="guc-nls-length-semantics" xreflabel="nls_length_semantics">
+       <term><varname>nls_length_semantics</varname> (<type>enum</type>)
+       <indexterm>
+        <primary><varname>nls_length_semantics</varname> configuration parameter</primary>
+       </indexterm>
+       </term>
+       <listitem>
+        <para>
+         Selects whether an omitted length qualifier for compatible
+         character types is interpreted in bytes or characters.  The allowed
+         values are <literal>byte</literal> and <literal>char</literal>; the
+         default is <literal>byte</literal>.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="guc-nls-date-format" xreflabel="nls_date_format">
+       <term><varname>nls_date_format</varname> (<type>string</type>)
+       <indexterm>
+        <primary><varname>nls_date_format</varname> configuration parameter</primary>
+       </indexterm>
+       </term>
+       <listitem>
+        <para>
+         Sets the default format model used to parse and display the
+         Oracle-compatible <type>date</type> type and by compatible date
+         conversion functions.  The default is
+         <literal>YYYY-MM-DD</literal>.  The special value
+         <literal>pg</literal> delegates date input and output to the native
+         PostgreSQL rules.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="guc-nls-timestamp-format" xreflabel="nls_timestamp_format">
+       <term><varname>nls_timestamp_format</varname> (<type>string</type>)
+       <indexterm>
+        <primary><varname>nls_timestamp_format</varname> configuration parameter</primary>
+       </indexterm>
+       </term>
+       <listitem>
+        <para>
+         Sets the default format model used to parse and display compatible
+         timestamp and local-time-zone timestamp values.  The default is
+         <literal>YYYY-MM-DD HH24:MI:SS.FF6</literal>.  The special value
+         <literal>pg</literal> delegates timestamp input and output to the
+         native PostgreSQL rules.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="guc-nls-timestamp-tz-format" xreflabel="nls_timestamp_tz_format">
+       <term><varname>nls_timestamp_tz_format</varname> (<type>string</type>)
+       <indexterm>
+        <primary><varname>nls_timestamp_tz_format</varname> configuration parameter</primary>
+       </indexterm>
+       </term>
+       <listitem>
+        <para>
+         Sets the default format model used to parse and display compatible
+         timestamp-with-time-zone values.  The default is
+         <literal>YYYY-MM-DD HH24:MI:SS.FF6 TZH:TZM</literal>.  The special
+         value <literal>pg</literal> delegates input and output to the native
+         PostgreSQL rules.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="guc-nls-territory" xreflabel="nls_territory">
+       <term><varname>nls_territory</varname> (<type>string</type>)
+       <indexterm>
+        <primary><varname>nls_territory</varname> configuration parameter</primary>
+       </indexterm>
+       </term>
+       <listitem>
+        <para>
+         Stores the Oracle-compatible session territory.  The currently
+         supported values are <literal>AMERICA</literal> and
+         <literal>CHINA</literal>; the default is <literal>AMERICA</literal>.
+         The current implementation validates and reports this value but does
+         not load external Oracle NLS data files from it.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="guc-nls-currency" xreflabel="nls_currency">
+       <term><varname>nls_currency</varname> (<type>string</type>)
+       <indexterm>
+        <primary><varname>nls_currency</varname> configuration parameter</primary>
+       </indexterm>
+       </term>
+       <listitem>
+        <para>
+         Stores the Oracle-compatible local currency symbol.  The default is
+         <literal>$</literal>.  The value can contain at most 255 characters
+         and cannot begin with a digit.  The current implementation validates
+         and reports this value but does not automatically apply it to native
+         PostgreSQL numeric formatting.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="guc-nls-iso-currency" xreflabel="nls_iso_currency">
+       <term><varname>nls_iso_currency</varname> (<type>string</type>)
+       <indexterm>
+        <primary><varname>nls_iso_currency</varname> configuration parameter</primary>
+       </indexterm>
+       </term>
+       <listitem>
+        <para>
+         Stores the territory for the Oracle-compatible ISO currency setting.
+         The currently supported values are <literal>AMERICA</literal> and
+         <literal>CHINA</literal>; the default is <literal>AMERICA</literal>.
+         The current implementation validates and reports this value but does
+         not load external Oracle NLS data files from it.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="guc-ivorysql-datetime-ignore-nls-mask" xreflabel="ivorysql.datetime_ignore_nls_mask">
+       <term><varname>ivorysql.datetime_ignore_nls_mask</varname> (<type>integer</type>)
+       <indexterm>
+        <primary><varname>ivorysql.datetime_ignore_nls_mask</varname> configuration parameter</primary>
+       </indexterm>
+       </term>
+       <listitem>
+        <para>
+         Selects compatible datetime types that should ignore their NLS format
+         setting and use native PostgreSQL input rules.  This is a bit mask:
+         <literal>1</literal> selects <type>date</type>,
+         <literal>2</literal> selects timestamp,
+         <literal>4</literal> selects timestamp with time zone, and
+         <literal>8</literal> selects timestamp with local time zone.  Add the
+         values to select more than one type.  The allowed range is 0 through
+         15, and the default is 0.
+        </para>
+       </listitem>
+      </varlistentry>
+
+     </variablelist>
+    </sect2>
+   </sect1>
+
    <sect1 id="runtime-config-compatible">
     <title>Version and Platform Compatibility</title>
 

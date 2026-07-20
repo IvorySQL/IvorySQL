@@ -283,6 +283,38 @@ PostgreSQL documentation
       </listitem>
      </varlistentry>
 
+     <varlistentry id="app-initdb-option-dbmode">
+      <term><option>-m <replaceable class="parameter">mode</replaceable></option></term>
+      <term><option>--dbmode=<replaceable class="parameter">mode</replaceable></option></term>
+      <listitem>
+       <para>
+        Selects the compatibility mode of the new IvorySQL cluster.  The
+        allowed values are <literal>oracle</literal> and <literal>pg</literal>;
+        the default is <literal>oracle</literal>.  Oracle mode installs the
+        Oracle-compatible catalog objects and PL/iSQL language, creates
+        <filename>ivorysql.conf</filename>, and enables the separate
+        Oracle-compatible listener.  PostgreSQL mode creates a native cluster
+        and cannot be changed to Oracle mode after initialization.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="app-initdb-option-case-conversion-mode">
+      <term><option>-C <replaceable class="parameter">mode</replaceable></option></term>
+      <term><option>--case-conversion-mode=<replaceable class="parameter">mode</replaceable></option></term>
+      <listitem>
+       <para>
+        Selects the initial quoted-identifier case conversion mode for an
+        Oracle-mode IvorySQL cluster.  The allowed values are
+        <literal>normal</literal>, <literal>interchange</literal>, and
+        <literal>lowercase</literal>; the default is
+        <literal>interchange</literal>.  See
+        <xref linkend="guc-ivorysql-identifier-case-switch"/> for the behavior
+        of each value.
+       </para>
+      </listitem>
+     </varlistentry>
+
      <varlistentry id="app-initdb-option-locale">
       <term><option>--locale=<replaceable>locale</replaceable></option></term>
       <listitem>
