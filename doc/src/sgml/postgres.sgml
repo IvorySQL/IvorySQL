@@ -219,6 +219,7 @@ break is not needed in a wider output rendering.
   &rules;
 
   &xplang;
+  &plisql;
   &plsql;
   &pltcl;
   &plperl;

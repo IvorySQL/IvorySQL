@@ -1,0 +1,317 @@
+<!-- doc/src/sgml/plisql.sgml -->
+
+<chapter id="plisql">
+ <title><application>PL/iSQL</application> &mdash; Oracle-Compatible Procedural Language</title>
+
+ <indexterm zone="plisql">
+  <primary>PL/iSQL</primary>
+ </indexterm>
+
+ <para>
+  <application>PL/iSQL</application> is the procedural language used by
+  <productname>IvorySQL</productname> for Oracle-compatible functions,
+  procedures, anonymous blocks, and packages.  It combines the execution
+  environment of <application>PL/pgSQL</application> with Oracle-style syntax
+  and features intended to make stored application code easier to migrate.
+  It is not a claim of complete Oracle PL/SQL compatibility; applications
+  should test each language and built-in package feature that they use.
+ </para>
+
+ <sect1 id="plisql-availability">
+  <title>Availability and Compatibility Mode</title>
+
+  <para>
+   A cluster initialized with <command>initdb --dbmode=oracle</command>
+   installs the <literal>plisql</literal> and <literal>ivorysql_ora</literal>
+   extensions automatically.  This is the recommended way to prepare a new
+   Oracle-compatible cluster.  The procedural language can be checked with:
+  </para>
+
+<screen>
+SHOW ivorysql.compatible_mode;
+
+SELECT lanname
+FROM pg_language
+WHERE lanname = 'plisql';
+</screen>
+
+  <para>
+   In an existing cluster, a superuser can install the language while Oracle
+   compatibility mode is active:
+  </para>
+
+<programlisting>
+SET ivorysql.compatible_mode = oracle;
+CREATE EXTENSION plisql;
+</programlisting>
+
+  <para>
+   Oracle-style <command>CREATE FUNCTION</command> and
+   <command>CREATE PROCEDURE</command> statements that omit a
+   <literal>LANGUAGE</literal> clause select <literal>plisql</literal>
+   automatically.  The PostgreSQL-style dollar-quoted form remains available
+   by specifying <literal>LANGUAGE plisql</literal> explicitly.
+  </para>
+ </sect1>
+
+ <sect1 id="plisql-program-units">
+  <title>Program Units and Blocks</title>
+
+  <para>
+   A PL/iSQL program unit has an optional declaration section followed by a
+   <literal>BEGIN</literal>/<literal>END</literal> executable section and an
+   optional <literal>EXCEPTION</literal> section.  The following function uses
+   Oracle-style syntax:
+  </para>
+
+<programlisting>
+CREATE OR REPLACE FUNCTION annual_salary(p_monthly IN NUMBER)
+RETURN NUMBER
+AUTHID CURRENT_USER
+IS
+BEGIN
+  RETURN p_monthly * 12;
+END;
+/
+
+SELECT annual_salary(1000) FROM dual;
+</programlisting>
+
+  <para>
+   When this text is entered through the IvorySQL version of
+   <application>psql</application>, a slash on a line by itself submits the
+   completed Oracle-style program unit.  The slash is a client terminator; it
+   is not stored as part of the PL/iSQL source.  Other clients should submit
+   the complete <command>CREATE</command> statement according to their own
+   statement-delimiting rules.
+  </para>
+
+  <para>
+   Procedures are invoked with <xref linkend="sql-call"/>.  Anonymous blocks
+   can be executed with <xref linkend="sql-do"/> by explicitly naming the
+   language:
+  </para>
+
+<programlisting>
+DO LANGUAGE plisql $$
+DECLARE
+  v_message text := 'hello from PL/iSQL';
+BEGIN
+  RAISE NOTICE '%', v_message;
+END
+$$;
+</programlisting>
+
+  <table id="plisql-core-features">
+   <title>Core PL/iSQL Features</title>
+   <tgroup cols="2">
+    <thead>
+     <row>
+      <entry>Area</entry>
+      <entry>Supported facilities</entry>
+     </row>
+    </thead>
+    <tbody>
+     <row>
+      <entry>Declarations</entry>
+      <entry>
+       Variables, constants, parameter modes, default values, records,
+       arrays, <literal>%TYPE</literal>, and <literal>%ROWTYPE</literal>
+      </entry>
+     </row>
+     <row>
+      <entry>Control flow</entry>
+      <entry>
+       <literal>IF</literal>, <literal>CASE</literal>, basic and conditional
+       loops, and numeric and query <literal>FOR</literal> loops
+      </entry>
+     </row>
+     <row>
+      <entry>SQL execution</entry>
+      <entry>
+       Static SQL, <literal>SELECT INTO</literal>, DML
+       <literal>RETURNING INTO</literal>, and dynamic SQL with
+       <literal>EXECUTE IMMEDIATE</literal>
+      </entry>
+     </row>
+     <row>
+      <entry>Cursors</entry>
+      <entry>
+       Explicit cursors, cursor <literal>FOR</literal> loops, and
+       <type>refcursor</type> variables
+      </entry>
+     </row>
+     <row>
+      <entry>Error handling</entry>
+      <entry>
+       <literal>EXCEPTION</literal> handlers, user-declared exceptions,
+       <literal>RAISE</literal>, and <literal>PRAGMA EXCEPTION_INIT</literal>
+      </entry>
+     </row>
+     <row>
+      <entry>Modularity</entry>
+      <entry>
+       Nested subprograms and package specifications and bodies
+      </entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+
+  <para>
+   PostgreSQL data types and SQL expressions can be used in PL/iSQL code.
+   Migration code should nevertheless account for Oracle compatibility
+   behavior elsewhere in the server, including identifier folding, empty
+   strings, implicit conversions, and built-in function differences.
+  </para>
+ </sect1>
+
+ <sect1 id="plisql-packages">
+  <title>Packages and Session State</title>
+
+  <indexterm zone="plisql-packages">
+   <primary>package</primary>
+   <secondary>PL/iSQL</secondary>
+  </indexterm>
+
+  <para>
+   A package groups public types, variables, cursors, functions, and
+   procedures under one name.  <xref linkend="sql-createpackage"/> declares
+   the public interface.  <xref linkend="sql-createpackagebody"/> provides
+   implementations, private declarations, and an optional initialization
+   section.  Package bodies can therefore hide implementation details while
+   presenting a stable specification to callers.
+  </para>
+
+<programlisting>
+CREATE OR REPLACE PACKAGE counter_api AS
+  PROCEDURE increment;
+  FUNCTION current_value RETURN NUMBER;
+END counter_api;
+/
+
+CREATE OR REPLACE PACKAGE BODY counter_api AS
+  g_value NUMBER := 0;
+
+  PROCEDURE increment IS
+  BEGIN
+    g_value := g_value + 1;
+  END;
+
+  FUNCTION current_value RETURN NUMBER IS
+  BEGIN
+    RETURN g_value;
+  END;
+BEGIN
+  g_value := 0;
+END counter_api;
+/
+
+BEGIN
+  counter_api.increment();
+END;
+/
+
+SELECT counter_api.current_value() FROM dual;
+</programlisting>
+
+  <para>
+   Package variables are session state.  The initialization section runs when
+   a session first instantiates the package, and changes to package variables
+   remain visible to later calls in that session.  They are not shared with
+   other sessions.  <literal>DISCARD PACKAGE</literal> releases instantiated
+   package state in the current session; see <xref linkend="sql-discard"/>.
+   Code that uses connection pools should reset package state before a session
+   is returned to a different logical user when that state could expose or
+   influence another request.
+  </para>
+
+  <para>
+   Replacing a package specification or body can invalidate compiled
+   dependents or existing package instances.  Migration and deployment tools
+   should install specifications before bodies, compile invalid objects, and
+   test long-lived sessions after replacing package definitions.  See also
+   <xref linkend="sql-alterpackage"/> and
+   <xref linkend="sql-droppackage"/>.
+  </para>
+ </sect1>
+
+ <sect1 id="plisql-security-transactions">
+  <title>Security and Transactions</title>
+
+  <para>
+   Oracle-style PL/iSQL routines default to
+   <literal>AUTHID DEFINER</literal>, so their SQL privileges are normally
+   those of the routine owner.  Use <literal>AUTHID CURRENT_USER</literal>
+   when the routine must run with the caller's privileges.  Definer-rights
+   code should schema-qualify trusted objects, use a safe
+   <varname>search_path</varname>, and avoid constructing dynamic SQL from
+   unchecked input.
+  </para>
+
+  <warning>
+   <para>
+    A procedure cannot end a transaction when it is invoked in an atomic
+    context.  In particular, the default <literal>AUTHID DEFINER</literal>
+    behavior of Oracle-style procedures forces atomic execution and prevents
+    <command>COMMIT</command> and <command>ROLLBACK</command>.  A procedure
+    that needs transaction control should normally be declared
+    <literal>AUTHID CURRENT_USER</literal> and invoked at top level with
+    <command>CALL</command>, outside an explicit transaction block.  All
+    procedures in a nested call chain must preserve a context in which
+    transaction control is permitted.
+   </para>
+  </warning>
+
+  <para>
+   PL/iSQL also supports autonomous units declared with
+   <literal>PRAGMA AUTONOMOUS_TRANSACTION</literal>.  An autonomous unit has
+   its own transaction lifecycle and must finish its transaction before
+   returning.  Use this feature selectively for requirements such as durable
+   audit recording, because its commits are independent of a rollback in the
+   calling transaction.
+  </para>
+ </sect1>
+
+ <sect1 id="plisql-migration-guidance">
+  <title>Migration Guidance</title>
+
+  <itemizedlist>
+   <listitem>
+    <para>
+     Establish a regression test for each migrated function, procedure, and
+     package before changing its syntax or dependencies.
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+     Verify both successful results and exception behavior.  Error numbers,
+     exception names, and implicit conversions can differ between database
+     systems.
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+     Review dynamic SQL, invoker/definer rights, and object-name resolution as
+     security boundaries rather than treating them as mechanical syntax
+     conversions.
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+     Exercise package code through reused sessions.  This exposes hidden
+     assumptions about package initialization, session pooling, and state
+     reset that short-lived migration tests can miss.
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+     Confirm the exact IvorySQL release used by the target environment.
+     Oracle-compatible syntax and built-in package coverage continue to
+     evolve, so a construct accepted by one release might require a rewrite
+     on another.
+    </para>
+   </listitem>
+  </itemizedlist>
+ </sect1>
+</chapter>
