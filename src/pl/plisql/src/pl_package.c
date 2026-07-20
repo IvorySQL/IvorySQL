@@ -2051,7 +2051,7 @@ plisql_push_compile_global_proper(void)
  * pop global compile informations
  */
 static void
-plisql_pop_compile_global_proper()
+plisql_pop_compile_global_proper(void)
 {
 	int i;
 	int neste_level;

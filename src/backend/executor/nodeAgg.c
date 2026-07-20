@@ -1676,7 +1676,7 @@ find_hash_columns(AggState *aggstate)
 				Max(varNumber + 1, perhash->largestGrpColIdx);
 		}
 
-		hashDesc = ExecTypeFromTL(hashTlist, false);
+		hashDesc = ExecTypeFromTLWithRowId(hashTlist, false);
 
 		execTuplesHashPrepare(perhash->numCols,
 							  perhash->aggnode->grpOperators,
@@ -4285,7 +4285,7 @@ build_pertrans_for_aggref(AggStatePerTrans pertrans,
 	 */
 	if (numSortCols > 0 || aggref->aggfilter)
 	{
-		pertrans->sortdesc = ExecTypeFromTL(aggref->args, false);
+		pertrans->sortdesc = ExecTypeFromTLWithRowId(aggref->args, false);
 		pertrans->sortslot =
 			ExecInitExtraTupleSlot(estate, pertrans->sortdesc,
 								   &TTSOpsMinimalTuple);

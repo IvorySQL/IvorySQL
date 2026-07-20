@@ -48,16 +48,15 @@
  */
 
 /*
- * ExecInitJunkFilter
+ * ExecInitJunkFilterWithRowId -- IvorySQL rowid-aware Junk filter init.
  *
- * Initialize the Junk filter.
- *
- * The source targetlist is passed in.  The output tuple descriptor is
- * built from the non-junk tlist entries.
- * An optional resultSlot can be passed as well; otherwise, we create one.
+ * Like ExecInitJunkFilter below, but the caller decides whether the produced
+ * clean tuple descriptor carries an Oracle-style rowid attribute.  This is
+ * the real implementation; ExecInitJunkFilter() forwards here with
+ * hasrowid=false to preserve the upstream PostgreSQL signature.
  */
 JunkFilter *
-ExecInitJunkFilter(List *targetList, bool hasrowid, TupleTableSlot *slot)
+ExecInitJunkFilterWithRowId(List *targetList, bool hasrowid, TupleTableSlot *slot)
 {
 	JunkFilter *junkfilter;
 	TupleDesc	cleanTupType;
@@ -67,7 +66,7 @@ ExecInitJunkFilter(List *targetList, bool hasrowid, TupleTableSlot *slot)
 	/*
 	 * Compute the tuple descriptor for the cleaned tuple.
 	 */
-	cleanTupType = ExecCleanTypeFromTL(targetList, hasrowid);
+	cleanTupType = ExecCleanTypeFromTLWithRowId(targetList, hasrowid);
 
 	/*
 	 * Use the given slot, or make a new slot if we weren't given one.
@@ -121,6 +120,20 @@ ExecInitJunkFilter(List *targetList, bool hasrowid, TupleTableSlot *slot)
 	junkfilter->jf_resultSlot = slot;
 
 	return junkfilter;
+}
+
+/*
+ * ExecInitJunkFilter
+ *
+ * Initialize the Junk filter.  Upstream PostgreSQL signature: the clean
+ * tuple descriptor is built with hasrowid=false.  Callers that need to
+ * control the rowid attribute (Oracle compatibility) should use
+ * ExecInitJunkFilterWithRowId() above.
+ */
+JunkFilter *
+ExecInitJunkFilter(List *targetList, TupleTableSlot *slot)
+{
+	return ExecInitJunkFilterWithRowId(targetList, false, slot);
 }
 
 /*
