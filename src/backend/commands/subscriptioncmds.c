@@ -48,6 +48,7 @@
 #include "replication/walsender.h"
 #include "replication/worker_internal.h"
 #include "storage/lmgr.h"
+#include "storage/lock.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
@@ -1303,6 +1304,7 @@ AlterSubscription_refresh_seq(Subscription *sub)
 	char	   *err = NULL;
 	WalReceiverConn *wrconn;
 	bool		must_use_password;
+	List	   *subrel_states;
 
 	/* Load the library providing us libpq calls. */
 	load_file("libpqwalreceiver", false);
@@ -1317,33 +1319,64 @@ AlterSubscription_refresh_seq(Subscription *sub)
 				errmsg("subscription \"%s\" could not connect to the publisher: %s",
 					   sub->name, err));
 
+	/* The publisher connection is only needed for the origin check. */
 	PG_TRY();
 	{
-		List	   *subrel_states;
-
 		check_publications_origin_sequences(wrconn, sub->publications, true,
 											sub->origin, NULL, 0, sub->name);
-
-		/* Get local sequence list. */
-		subrel_states = GetSubscriptionRelations(sub->oid, false, true, false);
-		foreach_ptr(SubscriptionRelState, subrel, subrel_states)
-		{
-			Oid			relid = subrel->relid;
-
-			UpdateSubscriptionRelState(sub->oid, relid, SUBREL_STATE_INIT,
-									   InvalidXLogRecPtr, false);
-			ereport(DEBUG1,
-					errmsg_internal("sequence \"%s.%s\" of subscription \"%s\" set to INIT state",
-									get_namespace_name(get_rel_namespace(relid)),
-									get_rel_name(relid),
-									sub->name));
-		}
 	}
 	PG_FINALLY();
 	{
 		walrcv_disconnect(wrconn);
 	}
 	PG_END_TRY();
+
+	/*
+	 * Reset the sequences to INIT so they get re-synchronized with the latest
+	 * publisher values.
+	 *
+	 * A sequence sync worker may already be running. If it has fetched a
+	 * sequence's value from the publisher but not yet marked it READY, it
+	 * must not be allowed to complete that update, as it would overwrite the
+	 * reset below with a stale value and silently lose this refresh request.
+	 * So we stop any running sequence sync worker before resetting the
+	 * states.
+	 *
+	 * This is race-free because AlterSubscription() already holds
+	 * AccessExclusiveLock on the subscription object. That lock blocks a
+	 * running worker's update of sequence state to READY, see
+	 * UpdateSubscriptionRelState() which takes AccessShareLock on the object.
+	 * It also blocks any worker the apply worker re-launches, because a new
+	 * worker takes AccessShareLock on the object before it reads
+	 * pg_subscription_rel, see InitializeLogRepWorker(). Such a worker cannot
+	 * act on the states until we commit, by which time they are reset to INIT
+	 * and it will sync the latest values.
+	 */
+#ifdef USE_ASSERT_CHECKING
+	{
+		LOCKTAG		tag;
+
+		SET_LOCKTAG_OBJECT(tag, InvalidOid, SubscriptionRelationId, sub->oid, 0);
+		Assert(LockHeldByMe(&tag, AccessExclusiveLock, true));
+	}
+#endif
+
+	logicalrep_worker_stop(WORKERTYPE_SEQUENCESYNC, sub->oid, InvalidOid);
+
+	/* Reset every local sequence of this subscription to INIT. */
+	subrel_states = GetSubscriptionRelations(sub->oid, false, true, false);
+	foreach_ptr(SubscriptionRelState, subrel, subrel_states)
+	{
+		Oid			relid = subrel->relid;
+
+		UpdateSubscriptionRelState(sub->oid, relid, SUBREL_STATE_INIT,
+								   InvalidXLogRecPtr, false);
+		ereport(DEBUG1,
+				errmsg_internal("sequence \"%s.%s\" of subscription \"%s\" set to INIT state",
+								get_namespace_name(get_rel_namespace(relid)),
+								get_rel_name(relid),
+								sub->name));
+	}
 }
 
 /*
