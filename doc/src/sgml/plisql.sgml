@@ -10,9 +10,9 @@
  <para>
   <application>PL/iSQL</application> is the procedural language used by
   <productname>IvorySQL</productname> for Oracle-compatible functions,
-  procedures, anonymous blocks, and packages.  It combines the execution
-  environment of <application>PL/pgSQL</application> with Oracle-style syntax
-  and features intended to make stored application code easier to migrate.
+  procedures, anonymous blocks, and packages.  Its implementation is derived
+  from <application>PL/pgSQL</application> and adds Oracle-style syntax and
+  package support for migrating stored application code.
   It is not a claim of complete Oracle PL/SQL compatibility; applications
   should test each language and built-in package feature that they use.
  </para>
@@ -29,6 +29,7 @@
 
 <screen>
 SHOW ivorysql.compatible_mode;
+SHOW ivorysql.database_mode;
 
 SELECT lanname
 FROM pg_language
@@ -36,14 +37,26 @@ WHERE lanname = 'plisql';
 </screen>
 
   <para>
-   In an existing cluster, a superuser can install the language while Oracle
-   compatibility mode is active:
+   The cluster-wide <varname>ivorysql.database_mode</varname> value is chosen
+   by <command>initdb</command> and cannot later be changed.  In an
+   Oracle-mode cluster where the extensions are absent from a particular
+   database, a superuser can install them as follows:
   </para>
 
 <programlisting>
 SET ivorysql.compatible_mode = oracle;
 CREATE EXTENSION plisql;
+CREATE EXTENSION ivorysql_ora;
 </programlisting>
+
+  <para>
+   The <literal>ivorysql_ora</literal> library must already be listed in
+   <varname>shared_preload_libraries</varname>; changing that setting requires
+   a server restart.  It supplies Oracle-compatible objects used by examples
+   below, including <type>NUMBER</type> and <literal>dual</literal>.  Installing
+   only <literal>plisql</literal> installs the procedural language, not those
+   additional objects.
+  </para>
 
   <para>
    Oracle-style <command>CREATE FUNCTION</command> and
@@ -116,7 +129,8 @@ $$;
       <entry>Declarations</entry>
       <entry>
        Variables, constants, parameter modes, default values, records,
-       arrays, <literal>%TYPE</literal>, and <literal>%ROWTYPE</literal>
+       PostgreSQL arrays, <literal>%TYPE</literal>, and
+       <literal>%ROWTYPE</literal>
       </entry>
      </row>
      <row>
@@ -227,10 +241,10 @@ SELECT counter_api.current_value() FROM dual;
   </para>
 
   <para>
-   Replacing a package specification or body can invalidate compiled
-   dependents or existing package instances.  Migration and deployment tools
-   should install specifications before bodies, compile invalid objects, and
-   test long-lived sessions after replacing package definitions.  See also
+   Replacing a package specification or body can invalidate cached dependents
+   and package instances in sessions that have used it.  Deployment tools
+   should install specifications before bodies and test calls from long-lived
+   sessions after replacing either definition.  See also
    <xref linkend="sql-alterpackage"/> and
    <xref linkend="sql-droppackage"/>.
   </para>
@@ -264,12 +278,15 @@ SELECT counter_api.current_value() FROM dual;
   </warning>
 
   <para>
-   PL/iSQL also supports autonomous units declared with
-   <literal>PRAGMA AUTONOMOUS_TRANSACTION</literal>.  An autonomous unit has
-   its own transaction lifecycle and must finish its transaction before
-   returning.  Use this feature selectively for requirements such as durable
-   audit recording, because its commits are independent of a rollback in the
-   calling transaction.
+   PL/iSQL also supports autonomous routines declared with
+   <literal>PRAGMA AUTONOMOUS_TRANSACTION</literal>.  The current
+   implementation requires the <literal>dblink</literal> extension and runs
+   the routine through a separate connection to the current database.  A
+   successful call commits independently of a rollback in the caller.
+   Explicit <command>COMMIT</command> and <command>ROLLBACK</command> inside an
+   autonomous routine are not supported.  Use this feature selectively, for
+   example for durable audit recording, and test its connection and error
+   behavior in the target deployment.
   </para>
  </sect1>
 
