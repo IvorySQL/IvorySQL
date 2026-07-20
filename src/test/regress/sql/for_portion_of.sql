@@ -1676,4 +1676,62 @@ ROLLBACK;
 SELECT * FROM fpo_cursed;
 DROP TABLE fpo_cursed;
 
+-- UPDATE/DELETE FOR PORTION OF leftover rows must satisfy RLS INSERT checks.
+CREATE ROLE regress_fpo_rls;
+CREATE TABLE fpo_rls (
+  id int,
+  valid_at int4range
+);
+ALTER TABLE fpo_rls ENABLE ROW LEVEL SECURITY;
+CREATE POLICY fpo_rls_select ON fpo_rls
+  FOR SELECT TO regress_fpo_rls
+  USING (true);
+CREATE POLICY fpo_rls_update ON fpo_rls
+  FOR UPDATE TO regress_fpo_rls
+  USING (lower(valid_at) < 50)
+  WITH CHECK (lower(valid_at) < 50);
+CREATE POLICY fpo_rls_delete ON fpo_rls
+  FOR DELETE TO regress_fpo_rls
+  USING (lower(valid_at) < 50);
+CREATE POLICY fpo_rls_insert ON fpo_rls
+  FOR INSERT TO regress_fpo_rls
+  WITH CHECK (lower(valid_at) < 50);
+GRANT SELECT, UPDATE, DELETE ON fpo_rls TO regress_fpo_rls;
+
+INSERT INTO fpo_rls VALUES (1, '[10,100)');
+SET ROLE regress_fpo_rls;
+UPDATE fpo_rls
+  FOR PORTION OF valid_at FROM 30 TO 100
+  SET id = 2;
+RESET ROLE;
+SELECT * FROM fpo_rls ORDER BY valid_at;
+
+TRUNCATE fpo_rls;
+INSERT INTO fpo_rls VALUES (1, '[10,100)');
+SET ROLE regress_fpo_rls;
+DELETE FROM fpo_rls
+  FOR PORTION OF valid_at FROM 30 TO 100;
+RESET ROLE;
+SELECT * FROM fpo_rls ORDER BY valid_at;
+
+TRUNCATE fpo_rls;
+INSERT INTO fpo_rls VALUES (1, '[10,100)');
+SET ROLE regress_fpo_rls;
+UPDATE fpo_rls
+  FOR PORTION OF valid_at FROM 30 TO 70
+  SET id = 2;
+RESET ROLE;
+SELECT * FROM fpo_rls ORDER BY valid_at;
+
+TRUNCATE fpo_rls;
+INSERT INTO fpo_rls VALUES (1, '[10,100)');
+SET ROLE regress_fpo_rls;
+DELETE FROM fpo_rls
+  FOR PORTION OF valid_at FROM 30 TO 70;
+RESET ROLE;
+SELECT * FROM fpo_rls ORDER BY valid_at;
+
+DROP TABLE fpo_rls;
+DROP ROLE regress_fpo_rls;
+
 RESET datestyle;

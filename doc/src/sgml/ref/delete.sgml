@@ -97,7 +97,8 @@ DELETE FROM [ ONLY ] <replaceable class="parameter">table_name</replaceable> [ *
    When <literal>FOR PORTION OF</literal> is used, the secondary inserts do
    not require <literal>INSERT</literal> privilege on the table.  (This is
    because conceptually no new information is being added; the inserted rows
-   only preserve existing data about the untargeted time period.)
+   only preserve existing data about the untargeted time period.)  Row-level
+   security INSERT policies are still checked for these leftover inserts.
   </para>
  </refsect1>
 
