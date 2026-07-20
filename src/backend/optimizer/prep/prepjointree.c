@@ -3888,16 +3888,18 @@ has_notnull_forced_var(PlannerInfo *root, List *forced_null_vars,
 void
 remove_useless_result_rtes(PlannerInfo *root)
 {
-	Relids		baserels;
+	Relids		baserels = NULL;
 	Relids		dropped_outer_joins = NULL;
 	ListCell   *cell;
 
 	/*
 	 * We'll need the set of baserels in the jointree to perform
-	 * find_dependent_phvs() checks.
+	 * find_dependent_phvs() checks.  But if there are no PHVs anywhere in the
+	 * query, those checks are no-ops, so we can skip the work.
 	 */
-	baserels = get_relids_in_jointree((Node *) root->parse->jointree,
-									  false, false);
+	if (root->glob->lastPHId != 0)
+		baserels = get_relids_in_jointree((Node *) root->parse->jointree,
+										  false, false);
 
 	/* Top level of jointree must always be a FromExpr */
 	Assert(IsA(root->parse->jointree, FromExpr));
@@ -3967,7 +3969,8 @@ remove_useless_result_rtes(PlannerInfo *root)
  * (Note that in some cases, parent_quals points to the quals of a parent
  * more than one level up in the tree.)
  *
- * baserels is the set of base (non-join) RT indexes in the whole jointree.
+ * baserels is the set of base (non-join) RT indexes in the whole jointree;
+ * it can be NULL if the query contains no PHVs.
  */
 static Node *
 remove_useless_results_recurse(PlannerInfo *root, Node *jtnode,
@@ -4308,7 +4311,9 @@ remove_result_refs(PlannerInfo *root, int varno, Node *newjtloc)
  * already decided to remove those joins in remove_useless_result_rtes
  * and not yet have cleaned their relid bits out of upper PHVs.
  * But in general, it's the set of baserels that identify possible places
- * to evaluate a PHV, and we mustn't let that go to empty.
+ * to evaluate a PHV, and we mustn't let that go to empty.  (The caller is
+ * allowed to pass baserels as NULL if the query contains no PHVs at all,
+ * since then there is no work to do anyway.)
  *
  * find_dependent_phvs should be used when we want to see if there are
  * any such PHVs anywhere in the Query.  Another use-case is to see if
@@ -4320,7 +4325,7 @@ remove_result_refs(PlannerInfo *root, int varno, Node *newjtloc)
 typedef struct
 {
 	Relids		relids;			/* target relid, represented as a relid set */
-	Relids		baserels;		/* set of base (non-OJ) RT indexes in query */
+	Relids		baserels;		/* base RT indexes in query, NULL if no PHVs */
 	int			sublevels_up;	/* current nesting level */
 } find_dependent_phvs_context;
 
