@@ -49,6 +49,16 @@ BEGIN
 END;
 $$ LANGUAGE plisql;
 
+-- A type alias cannot be declared twice in the same block.
+DO $$
+DECLARE
+  TYPE duplicate_cursor IS REF CURSOR;
+  TYPE duplicate_cursor IS REF CURSOR;
+BEGIN
+  NULL;
+END;
+$$ LANGUAGE plisql;
+
 CREATE PACKAGE ref_cursor_type_pkg AS
   TYPE result_cursor IS REF CURSOR;
   FUNCTION open_value RETURN result_cursor;

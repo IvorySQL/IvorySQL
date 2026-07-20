@@ -49,6 +49,18 @@ END;
 $$ LANGUAGE plisql;
 NOTICE:  inner ref cursor: 7
 NOTICE:  outer ref cursor: 8
+-- A type alias cannot be declared twice in the same block.
+DO $$
+DECLARE
+  TYPE duplicate_cursor IS REF CURSOR;
+  TYPE duplicate_cursor IS REF CURSOR;
+BEGIN
+  NULL;
+END;
+$$ LANGUAGE plisql;
+ERROR:  duplicate declaration at or near "duplicate_cursor"
+LINE 4:   TYPE duplicate_cursor IS REF CURSOR;
+               ^
 CREATE PACKAGE ref_cursor_type_pkg AS
   TYPE result_cursor IS REF CURSOR;
   FUNCTION open_value RETURN result_cursor;

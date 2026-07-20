@@ -3762,10 +3762,6 @@ read_sql_construct(int until,
 	return expr;
 }
 
-/*
- * Read a datatype declaration, consuming the current lookahead token if any.
- * Returns a PLiSQL_type struct.
- */
 static PLiSQL_type *
 parse_refcursor_alias(const char *name)
 {
@@ -3780,6 +3776,10 @@ parse_refcursor_alias(const char *name)
 	return plisql_build_datatype(REFCURSOROID, -1, InvalidOid, NULL);
 }
 
+/*
+ * Read a datatype declaration, consuming the current lookahead token if any.
+ * Returns a PLiSQL_type struct.
+ */
 static PLiSQL_type *
 read_datatype(int tok, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 {
