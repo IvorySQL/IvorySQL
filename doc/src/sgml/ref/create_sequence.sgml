@@ -22,12 +22,18 @@ PostgreSQL documentation
  <refsynopsisdiv>
 <synopsis>
 CREATE [ { TEMPORARY | TEMP } | UNLOGGED ] SEQUENCE [ IF NOT EXISTS ] <replaceable class="parameter">name</replaceable>
+    [ SHARING = { METADATA | DATA | NONE } ]
     [ AS <replaceable class="parameter">data_type</replaceable> ]
     [ INCREMENT [ BY ] <replaceable class="parameter">increment</replaceable> ]
     [ MINVALUE <replaceable class="parameter">minvalue</replaceable> | NO MINVALUE ] [ MAXVALUE <replaceable class="parameter">maxvalue</replaceable> | NO MAXVALUE ]
     [ [ NO ] CYCLE ]
     [ START [ WITH ] <replaceable class="parameter">start</replaceable> ]
-    [ CACHE <replaceable class="parameter">cache</replaceable> ]
+    [ CACHE <replaceable class="parameter">cache</replaceable> | NOCACHE ]
+    [ { SCALE [ EXTEND | NOEXTEND ] | NOSCALE } ]
+    [ { SESSION | GLOBAL } ]
+    [ { ORDER | NOORDER } ]
+    [ { KEEP | NOKEEP } ]
+    [ { SHARD [ EXTEND | NOEXTEND ] | NOSHARD } ]
     [ OWNED BY { <replaceable class="parameter">table_name</replaceable>.<replaceable class="parameter">column_name</replaceable> | NONE } ]
 </synopsis>
  </refsynopsisdiv>
@@ -63,6 +69,13 @@ CREATE [ { TEMPORARY | TEMP } | UNLOGGED ] SEQUENCE [ IF NOT EXISTS ] <replaceab
   </para>
 
   <para>
+   Oracle-compatible databases also accept
+   <literal><replaceable>sequence_name</replaceable>.NEXTVAL</literal> and
+   <literal><replaceable>sequence_name</replaceable>.CURRVAL</literal>.  The
+   Oracle-compatible creation options are described below.
+  </para>
+
+  <para>
    Although you cannot update a sequence directly, you can use a query like:
 
 <programlisting>
@@ -81,7 +94,7 @@ SELECT * FROM <replaceable>name</replaceable>;
   <title>Parameters</title>
 
   <variablelist>
-   <varlistentry>
+   <varlistentry id="sql-createsequence-temporary">
     <term><literal>TEMPORARY</literal> or <literal>TEMP</literal></term>
     <listitem>
      <para>
@@ -94,7 +107,7 @@ SELECT * FROM <replaceable>name</replaceable>;
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="sql-createsequence-unlogged">
     <term><literal>UNLOGGED</literal></term>
     <listitem>
      <para>
@@ -115,7 +128,7 @@ SELECT * FROM <replaceable>name</replaceable>;
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="sql-createsequence-if-not-exists">
     <term><literal>IF NOT EXISTS</literal></term>
     <listitem>
      <para>
@@ -127,7 +140,7 @@ SELECT * FROM <replaceable>name</replaceable>;
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="sql-createsequence-name">
     <term><replaceable class="parameter">name</replaceable></term>
     <listitem>
      <para>
@@ -136,7 +149,7 @@ SELECT * FROM <replaceable>name</replaceable>;
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="sql-createsequence-data-type">
     <term><replaceable class="parameter">data_type</replaceable></term>
     <listitem>
      <para>
@@ -151,7 +164,7 @@ SELECT * FROM <replaceable>name</replaceable>;
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="sql-createsequence-increment">
     <term><replaceable class="parameter">increment</replaceable></term>
     <listitem>
      <para>
@@ -160,11 +173,13 @@ SELECT * FROM <replaceable>name</replaceable>;
       which value is added to the current sequence value to create a
       new value.  A positive value will make an ascending sequence, a
       negative one a descending sequence.  The default value is 1.
+      The <literal>BY</literal> keyword is required in an Oracle-compatible
+      database.
      </para>
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="sql-createsequence-minvalue">
     <term><replaceable class="parameter">minvalue</replaceable></term>
     <term><literal>NO MINVALUE</literal></term>
     <listitem>
@@ -179,7 +194,7 @@ SELECT * FROM <replaceable>name</replaceable>;
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="sql-createsequence-maxvalue">
     <term><replaceable class="parameter">maxvalue</replaceable></term>
     <term><literal>NO MAXVALUE</literal></term>
     <listitem>
@@ -195,7 +210,7 @@ SELECT * FROM <replaceable>name</replaceable>;
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="sql-createsequence-cycle">
     <term><literal>CYCLE</literal></term>
     <term><literal>NO CYCLE</literal></term>
     <listitem>
@@ -220,7 +235,7 @@ SELECT * FROM <replaceable>name</replaceable>;
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="sql-createsequence-start">
     <term><replaceable class="parameter">start</replaceable></term>
     <listitem>
      <para>
@@ -230,25 +245,96 @@ SELECT * FROM <replaceable>name</replaceable>;
       <replaceable class="parameter">minvalue</replaceable> for
       ascending sequences and <replaceable
       class="parameter">maxvalue</replaceable> for descending ones.
+      The <literal>WITH</literal> keyword is required in an
+      Oracle-compatible database.
      </para>
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="sql-createsequence-cache">
     <term><replaceable class="parameter">cache</replaceable></term>
+    <term><literal>NOCACHE</literal></term>
     <listitem>
      <para>
       The optional clause <literal>CACHE <replaceable
       class="parameter">cache</replaceable></literal> specifies how
       many sequence numbers are to be preallocated and stored in
       memory for faster access. The minimum value is 1 (only one value
-      can be generated at a time, i.e., no cache), and this is also the
-      default.
+      can be generated at a time, i.e., no cache).  In a
+      PostgreSQL-compatible database, 1 is also the default.
+     </para>
+
+     <para>
+      In an Oracle-compatible database, the default is 20 and an explicit
+      <literal>CACHE</literal> value must be greater than 1.  Specify
+      <literal>NOCACHE</literal> to use a cache size of 1.
      </para>
     </listitem>
    </varlistentry>
 
-   <varlistentry>
+   <varlistentry id="sql-createsequence-session">
+    <term><literal>SESSION</literal></term>
+    <term><literal>GLOBAL</literal></term>
+    <listitem>
+     <para>
+      These options are available in Oracle-compatible databases.
+      <literal>SESSION</literal> keeps the generated value in backend-local
+      state.  Every session starts independently at the sequence's initial
+      value, so the same values can be returned in different sessions.
+      <literal>DISCARD SEQUENCES</literal> clears that local state and causes
+      the next call to start again at the initial value.
+     </para>
+
+     <para>
+      <literal>GLOBAL</literal>, the default, uses the persistent sequence
+      state shared by all sessions.  Use a global sequence, not a session
+      sequence, when values must be unique across database sessions.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry id="sql-createsequence-scale">
+    <term><literal>SCALE [ EXTEND | NOEXTEND ]</literal></term>
+    <term><literal>NOSCALE</literal></term>
+    <listitem>
+     <para>
+      These options are available in Oracle-compatible databases.
+      <literal>SCALE</literal> prefixes the base sequence value with a
+      six-digit instance-and-session offset to reduce contention between
+      independently generated ranges.  <literal>SCALE</literal> without a
+      qualifier means <literal>SCALE NOEXTEND</literal>.
+     </para>
+
+     <para>
+      With <literal>NOEXTEND</literal>, the returned value must fit within the
+      digit width implied by the sequence bounds.  A call to
+      <literal>NEXTVAL</literal> fails if there is not enough room for the
+      six-digit prefix.  <literal>EXTEND</literal> allows the prefix to add six
+      digits to that width.  To keep the result within the
+      <type>bigint</type> range, an ascending scalable sequence has a maximum
+      base value of 9999999999999, and a descending one has a minimum base
+      value of -9999999999999.  <literal>NOSCALE</literal>, the default,
+      returns the unprefixed base value.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry id="sql-createsequence-compat-options">
+    <term><literal>SHARING = { METADATA | DATA | NONE }</literal></term>
+    <term><literal>ORDER</literal> or <literal>NOORDER</literal></term>
+    <term><literal>KEEP</literal> or <literal>NOKEEP</literal></term>
+    <term><literal>SHARD [ EXTEND | NOEXTEND ]</literal> or <literal>NOSHARD</literal></term>
+    <listitem>
+     <para>
+      These Oracle clauses are accepted for migration compatibility, but
+      currently do not change sequence generation or persist corresponding
+      sequence attributes.  Conflicting alternatives in the same statement
+      are rejected.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry id="sql-createsequence-owned-by">
     <term><literal>OWNED BY</literal> <replaceable class="parameter">table_name</replaceable>.<replaceable class="parameter">column_name</replaceable></term>
     <term><literal>OWNED BY NONE</literal></term>
     <listitem>
@@ -342,6 +428,20 @@ CREATE SEQUENCE serial START 101;
   </para>
 
   <para>
+   In an Oracle-compatible database, create a globally shared scalable
+   sequence and use Oracle's dot notation:
+<programlisting>
+CREATE SEQUENCE order_number_seq
+    START WITH 1
+    CACHE 100
+    SCALE EXTEND
+    GLOBAL;
+
+SELECT order_number_seq.NEXTVAL FROM dual;
+</programlisting>
+  </para>
+
+  <para>
    Select the next number from this sequence:
 <programlisting>
 SELECT nextval('serial');
@@ -398,6 +498,15 @@ END;
      <para>
       The <literal>OWNED BY</literal> clause is a <productname>PostgreSQL</productname>
       extension.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      <literal>NOCACHE</literal>, <literal>SCALE</literal>,
+      <literal>SESSION</literal>, <literal>GLOBAL</literal>, and the
+      compatibility-only Oracle clauses shown above are
+      <productname>IvorySQL</productname> extensions available in
+      Oracle-compatible databases.
      </para>
     </listitem>
    </itemizedlist></para>

@@ -17,6 +17,27 @@
    objects.
   </para>
 
+  <para>
+   In an Oracle-compatible database, the next and current values can also be
+   written using Oracle dot notation:
+<programlisting>
+SELECT order_number_seq.NEXTVAL FROM dual;
+SELECT order_number_seq.CURRVAL FROM dual;
+</programlisting>
+   These forms have the same sequence-specific current-value rules as
+   <function>nextval</function> and <function>currval</function>.
+  </para>
+
+  <note>
+   <para>
+    The multiuser uniqueness guarantee in this section applies to normal
+    global sequences.  An Oracle-compatible sequence created with the
+    <literal>SESSION</literal> option deliberately maintains independent
+    state in each database session, so different sessions can receive the
+    same value.  See <xref linkend="sql-createsequence-session"/>.
+   </para>
+  </note>
+
    <table id="functions-sequence-table">
     <title>Sequence Functions</title>
     <tgroup cols="1">

@@ -30,7 +30,12 @@ ALTER SEQUENCE [ IF EXISTS ] <replaceable class="parameter">name</replaceable>
     [ [ NO ] CYCLE ]
     [ START [ WITH ] <replaceable class="parameter">start</replaceable> ]
     [ RESTART [ [ WITH ] <replaceable class="parameter">restart</replaceable> ] ]
-    [ CACHE <replaceable class="parameter">cache</replaceable> ]
+    [ CACHE <replaceable class="parameter">cache</replaceable> | NOCACHE ]
+    [ { SCALE [ EXTEND | NOEXTEND ] | NOSCALE } ]
+    [ { SESSION | GLOBAL } ]
+    [ { ORDER | NOORDER } ]
+    [ { KEEP | NOKEEP } ]
+    [ { SHARD [ EXTEND | NOEXTEND ] | NOSHARD } ]
     [ OWNED BY { <replaceable class="parameter">table_name</replaceable>.<replaceable class="parameter">column_name</replaceable> | NONE } ]
 ALTER SEQUENCE [ IF EXISTS ] <replaceable class="parameter">name</replaceable> SET { LOGGED | UNLOGGED }
 ALTER SEQUENCE [ IF EXISTS ] <replaceable class="parameter">name</replaceable> OWNER TO { <replaceable class="parameter">new_owner</replaceable> | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
@@ -119,6 +124,8 @@ ALTER SEQUENCE [ IF EXISTS ] <replaceable class="parameter">name</replaceable> S
         optional. A positive value will make an ascending sequence, a
         negative one a descending sequence.  If unspecified, the old
         increment value will be maintained.
+        The <literal>BY</literal> keyword is required in an
+        Oracle-compatible database.
        </para>
       </listitem>
      </varlistentry>
@@ -217,6 +224,16 @@ ALTER SEQUENCE [ IF EXISTS ] <replaceable class="parameter">name</replaceable> S
        </para>
 
        <para>
+        In an Oracle-compatible database, <literal>RESTART</literal> without
+        a value restarts an ascending sequence at its minimum value and a
+        descending sequence at its maximum value.  Use
+        <literal>RESTART START WITH <replaceable
+        class="parameter">restart</replaceable></literal> to choose another
+        value.  <literal>ALTER SEQUENCE START WITH</literal> without
+        <literal>RESTART</literal> is not allowed in this mode.
+       </para>
+
+       <para>
         In contrast to a <function>setval</function> call,
         a <literal>RESTART</literal> operation on a sequence is transactional
         and blocks concurrent transactions from obtaining numbers from the
@@ -228,6 +245,7 @@ ALTER SEQUENCE [ IF EXISTS ] <replaceable class="parameter">name</replaceable> S
 
      <varlistentry>
       <term><replaceable class="parameter">cache</replaceable></term>
+      <term><literal>NOCACHE</literal></term>
       <listitem>
        <para>
         The clause <literal>CACHE <replaceable
@@ -236,6 +254,43 @@ ALTER SEQUENCE [ IF EXISTS ] <replaceable class="parameter">name</replaceable> S
         faster access. The minimum value is 1 (only one value can be
         generated at a time, i.e., no cache).  If unspecified, the old
         cache value will be maintained.
+       </para>
+
+       <para>
+        In an Oracle-compatible database, an explicit
+        <literal>CACHE</literal> value must be greater than 1.  Although
+        <literal>NOCACHE</literal> is accepted by
+        <command>ALTER SEQUENCE</command>, it currently leaves the existing
+        cache size unchanged; select <literal>NOCACHE</literal> when creating
+        a sequence if a cache size of 1 is required.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><literal>SCALE [ EXTEND | NOEXTEND ]</literal> or <literal>NOSCALE</literal></term>
+      <term><literal>SESSION</literal> or <literal>GLOBAL</literal></term>
+      <listitem>
+       <para>
+        These Oracle-compatible forms change the scalable and session-local
+        properties described in <xref linkend="sql-createsequence-scale"/>
+        and <xref linkend="sql-createsequence-session"/>.  Existing cached
+        or current values can interact with the new representation; restart
+        the sequence explicitly when changing these properties if a precise
+        next value is required.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><literal>ORDER</literal> or <literal>NOORDER</literal></term>
+      <term><literal>KEEP</literal> or <literal>NOKEEP</literal></term>
+      <term><literal>SHARD [ EXTEND | NOEXTEND ]</literal> or <literal>NOSHARD</literal></term>
+      <listitem>
+       <para>
+        These clauses are accepted for Oracle migration compatibility but
+        currently do not change or persist sequence attributes.  See
+        <xref linkend="sql-createsequence-compat-options"/>.
        </para>
       </listitem>
      </varlistentry>
@@ -350,6 +405,8 @@ ALTER SEQUENCE serial RESTART WITH 105;
    <literal>OWNED BY</literal>, <literal>OWNER TO</literal>, <literal>RENAME TO</literal>, and
    <literal>SET SCHEMA</literal> clauses, which are
    <productname>PostgreSQL</productname> extensions.
+   The Oracle-compatible clauses described above are
+   <productname>IvorySQL</productname> extensions.
   </para>
  </refsect1>
 
