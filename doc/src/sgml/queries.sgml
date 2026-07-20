@@ -1920,6 +1920,165 @@ SELECT a + b AS sum, c FROM table1 ORDER BY sum + c;          -- wrong
  </sect1>
 
 
+ <sect1 id="queries-rownum">
+  <title>Oracle-Compatible <literal>ROWNUM</literal></title>
+
+  <indexterm zone="queries-rownum">
+   <primary>ROWNUM</primary>
+  </indexterm>
+
+  <para>
+   In Oracle-compatible databases, <productname>IvorySQL</productname>
+   provides the <literal>ROWNUM</literal> pseudocolumn.  It has type
+   <type>bigint</type> and numbers rows in the order in which the current
+   query block produces them, starting with 1.  The name is recognized
+   case-insensitively and must be unqualified.
+  </para>
+
+  <para>
+   A <literal>ROWNUM</literal> value is assigned after the row has satisfied
+   the other conditions in the same <literal>WHERE</literal> clause, but
+   before same-level grouping, aggregation, duplicate removal, or sorting.
+   Consequently, a condition such as <literal>ROWNUM &lt;= 5</literal>
+   selects the first five rows produced by the query block; it does not
+   select the first five rows in a later <literal>ORDER BY</literal> order.
+  </para>
+
+  <table id="queries-rownum-conditions">
+   <title>Common <literal>ROWNUM</literal> Conditions</title>
+   <tgroup cols="2">
+    <thead>
+     <row>
+      <entry>Condition</entry>
+      <entry>Effect</entry>
+     </row>
+    </thead>
+    <tbody>
+     <row>
+      <entry><literal>ROWNUM &lt;= <replaceable>n</replaceable></literal></entry>
+      <entry>Returns at most the first <replaceable>n</replaceable> rows.</entry>
+     </row>
+     <row>
+      <entry><literal>ROWNUM &lt; <replaceable>n</replaceable></literal></entry>
+      <entry>Returns at most <replaceable>n</replaceable> - 1 rows.</entry>
+     </row>
+     <row>
+      <entry><literal>ROWNUM = 1</literal></entry>
+      <entry>Returns at most the first row.</entry>
+     </row>
+     <row>
+      <entry><literal>ROWNUM = <replaceable>n</replaceable></literal>, where
+       <replaceable>n</replaceable> is greater than 1</entry>
+      <entry>Returns no rows.</entry>
+     </row>
+     <row>
+      <entry><literal>ROWNUM &gt; <replaceable>n</replaceable></literal>, where
+       <replaceable>n</replaceable> is at least 1</entry>
+      <entry>Returns no rows.</entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+
+  <para>
+   Conditions that require the first candidate row to have a number greater
+   than 1 cannot become true.  The first candidate is assigned number 1; if
+   it fails the condition, the next candidate is again considered for number
+   1.  Conversely, <literal>ROWNUM &gt; 0</literal> and
+   <literal>ROWNUM &gt;= 1</literal> are true for every produced row.
+  </para>
+
+  <sect2 id="queries-rownum-top-n">
+   <title>Top-N and Pagination Queries</title>
+
+   <para>
+    To select rows after sorting them, perform the sort in an inner query
+    block and apply the <literal>ROWNUM</literal> condition in the outer
+    block.  For example, the following query returns the three employees
+    with the highest salaries:
+<programlisting>
+SELECT *
+FROM (
+    SELECT employee_id, salary
+    FROM employees
+    ORDER BY salary DESC
+)
+WHERE ROWNUM &lt;= 3;
+</programlisting>
+    Writing the <literal>ROWNUM</literal> condition and
+    <literal>ORDER BY</literal> in the same query block would instead select
+    some three rows and then sort only those rows.
+   </para>
+
+   <para>
+    Pagination can use two nested query blocks.  The inner
+    <literal>ROWNUM</literal> condition limits work to the requested upper
+    bound, while its select list preserves the assigned number for the outer
+    lower-bound condition:
+<programlisting>
+SELECT employee_id, salary
+FROM (
+    SELECT page_source.*, ROWNUM AS row_number
+    FROM (
+        SELECT employee_id, salary
+        FROM employees
+        ORDER BY employee_id
+    ) page_source
+    WHERE ROWNUM &lt;= 20
+)
+WHERE row_number &gt; 10;
+</programlisting>
+   </para>
+  </sect2>
+
+  <sect2 id="queries-rownum-scope">
+   <title>Scope and Usage</title>
+
+   <para>
+    Each query block normally has its own counter.  A subquery therefore
+    starts numbering at 1 independently of its parent query, and a correlated
+    subquery starts a new sequence each time it is invoked.  Operands of
+    <literal>UNION</literal> and <literal>UNION ALL</literal> also have
+    independent counters.
+   </para>
+
+   <para>
+    <literal>ROWNUM</literal> can appear in a select list and in expressions,
+    and it can restrict <command>SELECT</command>, <command>UPDATE</command>,
+    and <command>DELETE</command> statements.  For example:
+<programlisting>
+UPDATE work_queue
+SET claimed = true
+WHERE claimed = false
+  AND ROWNUM &lt;= 10;
+</programlisting>
+    Without an ordering subquery, which ten qualifying rows are updated is
+    not defined.
+   </para>
+
+   <para>
+    In Oracle-compatible SQL, <literal>ROWNUM</literal> and
+    <literal>ROWID</literal> cannot be used as explicit column aliases or
+    table aliases.  PL/iSQL declarations can use those names for local
+    variables and parameters.  In PostgreSQL-compatible databases,
+    <literal>ROWNUM</literal> has no pseudocolumn meaning and can be used as
+    an ordinary identifier.
+   </para>
+
+   <note>
+    <para>
+     Currently, operands of <literal>INTERSECT</literal> and
+     <literal>EXCEPT</literal> share a <literal>ROWNUM</literal> counter.
+     A subquery used through <literal>LATERAL</literal> or
+     <literal>CROSS APPLY</literal> also does not restart its counter for
+     every outer row.  Applications should not rely on independent numbering
+     in these cases.
+    </para>
+   </note>
+  </sect2>
+ </sect1>
+
+
  <sect1 id="queries-limit">
   <title><literal>LIMIT</literal> and <literal>OFFSET</literal></title>
 

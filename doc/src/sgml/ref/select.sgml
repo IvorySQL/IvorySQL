@@ -2169,8 +2169,10 @@ SELECT 2+2;
     syntax is also used by <productname>IBM DB2</productname>.
     (Applications written for <productname>Oracle</productname>
     frequently use a workaround involving the automatically
-    generated <literal>rownum</literal> column, which is not available in
-    PostgreSQL, to implement the effects of these clauses.)
+    generated <literal>ROWNUM</literal> pseudocolumn to implement the effects
+    of these clauses.  <productname>IvorySQL</productname> provides this
+    pseudocolumn in Oracle-compatible databases; see
+    <xref linkend="queries-rownum"/>.)
    </para>
   </refsect2>
 
