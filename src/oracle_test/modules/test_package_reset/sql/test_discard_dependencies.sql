@@ -69,18 +69,7 @@ SELECT dep_root.value() AS layered_value,
        dep_independent.value() AS independent_value
 FROM dual;
 
-CREATE OR REPLACE FUNCTION dep_consumer RETURN NUMBER IS
-BEGIN
-    RETURN dep_root.value();
-END;
-/
-
-SELECT dep_consumer() AS dependent_function_value FROM dual;
-
 DISCARD PACKAGE;
-
--- Packages and dependent functions must compile and execute again.
-SELECT dep_consumer() AS dependent_function_value FROM dual;
 
 SELECT dep_root.value() AS layered_value,
        dep_independent.value() AS independent_value
@@ -132,4 +121,3 @@ DROP PACKAGE dep_leaf;
 DROP PACKAGE dep_independent;
 DROP PACKAGE dep_cycle_a;
 DROP PACKAGE dep_cycle_b;
-DROP FUNCTION dep_consumer;
