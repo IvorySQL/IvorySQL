@@ -903,7 +903,7 @@ AddNewAttributeTuples(Oid new_rel_oid,
 	{
 		TupleDesc	td;
 
-		td = CreateTupleDesc(lengthof(SysAtt), (FormData_pg_attribute **) &SysAtt, tupdesc->tdhasrowid, true);
+		td = CreateTupleDescWithRowId(lengthof(SysAtt), (FormData_pg_attribute **) &SysAtt, tupdesc->tdhasrowid, true);
 
 		InsertPgAttributeTuples(rel, td, new_rel_oid, NULL, indstate);
 		FreeTupleDesc(td);

@@ -177,7 +177,7 @@ Boot_CreateStmt:
 
 					do_start();
 
-					tupdesc = CreateTupleDesc(numattr, attrtypes, false, false);
+					tupdesc = CreateTupleDescWithRowId(numattr, attrtypes, false, false);
 
 					shared_relation = $5;
 

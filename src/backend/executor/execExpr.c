@@ -3334,7 +3334,7 @@ ExecInitWholeRowVar(ExprEvalStep *scratch, Var *variable, ExprState *state)
 			if (junk_filter_needed)
 			{
 				scratch->d.wholerow.junkFilter =
-					ExecInitJunkFilter(subplan->plan->targetlist,
+					ExecInitJunkFilterWithRowId(subplan->plan->targetlist,
 									   ExecGetResultType(subplan)->tdhasrowid,
 									   ExecInitExtraTupleSlot(parent->state, NULL,
 															  &TTSOpsVirtual));

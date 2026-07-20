@@ -202,15 +202,23 @@ CreateTemplateTupleDesc(int natts)
 }
 
 /*
- * CreateTupleDesc
+ * CreateTupleDescWithRowId
  *		This function allocates a new TupleDesc by copying a given
  *		Form_pg_attribute array.
  *
  * Tuple type ID information is initially set for an anonymous record type;
  * caller can overwrite this if needed.
+ *
+ * IvorySQL rowid-aware variant: tdhasrowid records whether the resulting
+ * tuple descriptor carries an Oracle-style rowid attribute; is_sysattr
+ * indicates that the trailing attribute is a system attribute (and thus
+ * should be stripped from the count when no rowid is requested).  This is
+ * the real implementation; CreateTupleDesc() below forwards here with
+ * tdhasrowid=false and is_sysattr=false to preserve the upstream
+ * PostgreSQL signature.
  */
 TupleDesc
-CreateTupleDesc(int natts, Form_pg_attribute *attrs, bool tdhasrowid, bool is_sysattr)
+CreateTupleDescWithRowId(int natts, Form_pg_attribute *attrs, bool tdhasrowid, bool is_sysattr)
 {
 	TupleDesc	desc;
 	int			i;
@@ -226,6 +234,19 @@ CreateTupleDesc(int natts, Form_pg_attribute *attrs, bool tdhasrowid, bool is_sy
 		populate_compact_attribute(desc, i);
 	}
 	return desc;
+}
+
+/*
+ * CreateTupleDesc
+ *		Upstream PostgreSQL signature: (int, Form_pg_attribute *).
+ *		Forwards to CreateTupleDescWithRowId with tdhasrowid=false and
+ *		is_sysattr=false, matching upstream semantics (no rowid attribute,
+ *		no trailing system attribute to strip).
+ */
+TupleDesc
+CreateTupleDesc(int natts, Form_pg_attribute *attrs)
+{
+	return CreateTupleDescWithRowId(natts, attrs, false, false);
 }
 
 /*
