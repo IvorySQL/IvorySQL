@@ -600,6 +600,27 @@
       <row>
        <entry role="func_table_entry"><para role="func_signature">
         <indexterm>
+         <primary>LISTAGG</primary>
+        </indexterm>
+        <function>LISTAGG</function> ( <parameter>value</parameter>
+         <type>text</type> <optional>, <parameter>delimiter</parameter>
+         <type>text</type> </optional> )
+         <literal>WITHIN GROUP</literal> ( <literal>ORDER BY</literal>
+         <replaceable>sort_expression</replaceable> <optional>, ...</optional> )
+        <returnvalue>text</returnvalue>
+       </para>
+       <para>
+        In an Oracle-compatible database, concatenates non-null input values
+        in the specified order.  The delimiter defaults to an empty string.
+        The result is limited to 4000 bytes.  See
+        <xref linkend="functions-aggregate-listagg"/>.
+       </para></entry>
+       <entry>Yes</entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
          <primary>sum</primary>
         </indexterm>
         <function>sum</function> ( <type>smallint</type> )
@@ -657,6 +678,69 @@
     </tgroup>
    </table>
 
+  <formalpara id="functions-aggregate-listagg">
+   <title>Oracle-Compatible <function>LISTAGG</function></title>
+   <para>
+    <function>LISTAGG</function> is available in Oracle-compatible databases
+    and requires an ordering clause using this syntax:
+<synopsis>
+LISTAGG ( <replaceable>measure_expression</replaceable> <optional>, <replaceable>delimiter</replaceable></optional> )
+  WITHIN GROUP ( ORDER BY <replaceable>sort_expression</replaceable> <optional>ASC | DESC</optional> <optional>NULLS { FIRST | LAST }</optional> <optional>, ...</optional> )
+  <optional>FILTER ( WHERE <replaceable>filter_condition</replaceable> )</optional>
+  <optional>OVER ( <replaceable>window_definition</replaceable> )</optional>
+</synopsis>
+   </para>
+  </formalpara>
+
+  <para>
+   The aggregate accepts one or two arguments.  If
+   <replaceable>delimiter</replaceable> is omitted, an empty string is used.
+   Null <replaceable>measure_expression</replaceable> values are ignored, and
+   a null delimiter inserts no separator.  The result is null if there are no
+   non-null measure values.  Multiple sort expressions are allowed.  To make
+   the result deterministic, the <literal>ORDER BY</literal> expressions must
+   establish a unique ordering within each group.
+  </para>
+
+  <para>
+   The result has type <type>text</type> and cannot exceed 4000 bytes.  A
+   longer result raises an error rather than being truncated.  The limit is
+   measured in bytes, not characters, so a multibyte string can reach it with
+   fewer than 4000 characters.
+  </para>
+
+  <para>
+   For example, the following query returns one comma-separated employee list
+   per department:
+<programlisting>
+SELECT department_id,
+       LISTAGG(last_name, ', ')
+         WITHIN GROUP (ORDER BY last_name, employee_id) AS employees
+FROM employees
+GROUP BY department_id
+ORDER BY department_id;
+</programlisting>
+   The analytic form uses the same ordering syntax and adds an
+   <literal>OVER</literal> clause:
+<programlisting>
+SELECT department_id, employee_id,
+       LISTAGG(last_name, ', ')
+         WITHIN GROUP (ORDER BY last_name, employee_id)
+         OVER (PARTITION BY department_id) AS department_employees
+FROM employees;
+</programlisting>
+  </para>
+
+  <note>
+   <para>
+    The current implementation does not accept <literal>DISTINCT</literal>,
+    an <literal>ORDER BY</literal> inside the
+    <function>LISTAGG</function> argument list, or Oracle's
+    <literal>ON OVERFLOW</literal> clause.  The
+    <literal>WITHIN GROUP (ORDER BY ...)</literal> clause is mandatory.
+   </para>
+  </note>
+
   <para>
    It should be noted that except for <function>count</function>,
    these functions return a null value when no rows are selected.  In
@@ -677,6 +761,7 @@
    <function>json_object_agg_unique_strict</function>,
    <function>jsonb_object_agg_unique_strict</function>,
    <function>string_agg</function>,
+   <function>LISTAGG</function>,
    and <function>xmlagg</function>, as well as similar user-defined
    aggregate functions, produce meaningfully different result values
    depending on the order of the input values.  This ordering is
