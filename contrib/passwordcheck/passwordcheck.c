@@ -101,7 +101,7 @@ check_password(const char *username,
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("password is too short"),
-					 errdetail("password must be at least \"passwordcheck.min_password_length\" (%d) bytes long",
+					 errdetail("Password must be at least \"passwordcheck.min_password_length\" (%d) bytes long.",
 							   min_password_length)));
 
 		/* check if the password contains the username */

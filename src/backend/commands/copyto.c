@@ -856,7 +856,7 @@ BeginCopyTo(ParseState *pstate,
 					ereport(ERROR,
 							errcode(ERRCODE_WRONG_OBJECT_TYPE),
 							errmsg("cannot copy from foreign table \"%s\"", relation_name),
-							errdetail("Partition \"%s\" is a foreign table in partitioned table \"%s\"",
+							errdetail("Partition \"%s\" is a foreign table in partitioned table \"%s\".",
 									  relation_name, RelationGetRelationName(rel)),
 							errhint("Try the COPY (SELECT ...) TO variant."));
 				}

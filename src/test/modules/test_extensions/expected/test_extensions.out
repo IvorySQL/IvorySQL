@@ -566,7 +566,7 @@ SELECT pg_describe_object(classid, objid, objsubid) as obj,
 -- fails, as function dep_req1 is not in the same schema as the extension.
 ALTER EXTENSION test_ext_req_schema1 SET SCHEMA test_func_dep3;
 ERROR:  extension "test_ext_req_schema1" does not support SET SCHEMA
-DETAIL:  function test_func_dep2.dep_req1() is not in the extension's schema "test_func_dep1"
+DETAIL:  function test_func_dep2.dep_req1() is not in the extension's schema "test_func_dep1".
 -- Move back the function, and the extension can be moved.
 ALTER FUNCTION test_func_dep2.dep_req1() SET SCHEMA test_func_dep1;
 ALTER EXTENSION test_ext_req_schema1 SET SCHEMA test_func_dep3;

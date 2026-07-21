@@ -16266,7 +16266,7 @@ RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
 						ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							 errmsg("cannot alter type of a column used by a function or procedure"),
-							 errdetail("%s depends on column \"%s\"",
+							 errdetail("%s depends on column \"%s\".",
 									   getObjectDescription(&foundObject, false),
 									   colName)));
 				}
@@ -16340,7 +16340,7 @@ RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								 errmsg("cannot alter type of a column used by a view or rule"),
-								 errdetail("%s depends on column \"%s\"",
+								 errdetail("%s depends on column \"%s\".",
 										   getObjectDescription(&foundObject, false),
 										   colName)));
 						break;
@@ -16349,14 +16349,14 @@ RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
 				else
 				{
 					/*
-					* View/rule bodies have pretty much the same issues as
-					* function bodies.  FIXME someday.
-					*/
+					 * View/rule bodies have pretty much the same issues as
+					 * function bodies.  FIXME someday.
+					 */
 					if (subtype == AT_AlterColumnType)
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								errmsg("cannot alter type of a column used by a view or rule"),
-								errdetail("%s depends on column \"%s\"",
+								 errmsg("cannot alter type of a column used by a view or rule"),
+								 errdetail("%s depends on column \"%s\".",
 										getObjectDescription(&foundObject, false),
 										colName)));
 				}
@@ -16377,7 +16377,7 @@ RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							 errmsg("cannot alter type of a column used in a trigger definition"),
-							 errdetail("%s depends on column \"%s\"",
+							 errdetail("%s depends on column \"%s\".",
 									   getObjectDescription(&foundObject, false),
 									   colName)));
 				break;
@@ -16396,7 +16396,7 @@ RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							 errmsg("cannot alter type of a column used in a policy definition"),
-							 errdetail("%s depends on column \"%s\"",
+							 errdetail("%s depends on column \"%s\".",
 									   getObjectDescription(&foundObject, false),
 									   colName)));
 				break;
@@ -16455,7 +16455,7 @@ RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							 errmsg("cannot alter type of a column used by a publication WHERE clause"),
-							 errdetail("%s depends on column \"%s\"",
+							 errdetail("%s depends on column \"%s\".",
 									   getObjectDescription(&foundObject, false),
 									   colName)));
 				break;

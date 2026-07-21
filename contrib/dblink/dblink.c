@@ -2714,7 +2714,7 @@ dblink_security_check(PGconn *conn, const char *connname, const char *connstr)
 	ereport(ERROR,
 			(errcode(ERRCODE_S_R_E_PROHIBITED_SQL_STATEMENT_ATTEMPTED),
 			 errmsg("password or GSSAPI delegated credentials required"),
-			 errdetail("Non-superusers may only connect using credentials they provide, eg: password in connection string or delegated GSSAPI credentials"),
+			 errdetail("Non-superusers may only connect using credentials they provide, eg: password in connection string or delegated GSSAPI credentials."),
 			 errhint("Ensure provided credentials match target server's authentication method.")));
 }
 

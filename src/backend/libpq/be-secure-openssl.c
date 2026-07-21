@@ -471,7 +471,7 @@ be_tls_init(bool isServerStart)
 			ereport(isServerStart ? FATAL : LOG,
 					(errcode(ERRCODE_CONFIG_FILE_ERROR),
 					 errmsg("could not set SSL protocol version range"),
-					 errdetail("\"%s\" cannot be higher than \"%s\"",
+					 errdetail("\"%s\" cannot be higher than \"%s\".",
 							   "ssl_min_protocol_version",
 							   "ssl_max_protocol_version")));
 			goto error;
