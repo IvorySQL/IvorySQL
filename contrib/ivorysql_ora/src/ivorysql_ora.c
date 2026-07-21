@@ -182,11 +182,13 @@ ivorysql_ora_ProcessUtility(PlannedStmt *pstmt,
 
 	/*
 	 * IvorySQL: call the previous hook or standard function.  Wrap it in
-	 * PG_TRY()/PG_CATCH() so that DBMS_OUTPUT and DBMS_SESSION state is reset
-	 * even when DISCARD ALL/PACKAGES itself fails (e.g. "DISCARD ALL cannot
-	 * run inside a transaction block").  Without this, a failed DISCARD in a
-	 * pooled connection would leak the previous client's application context
-	 * and DBMS_OUTPUT buffer.
+	 * PG_TRY()/PG_FINALLY() so that DBMS_OUTPUT and DBMS_SESSION state is
+	 * reset even when DISCARD ALL/PACKAGES itself fails (e.g. "DISCARD ALL
+	 * cannot run inside a transaction block").  Without this, a failed
+	 * DISCARD in a pooled connection would leak the previous client's
+	 * application context and DBMS_OUTPUT buffer.  PG_FINALLY() runs the
+	 * reset on both the success and error paths and re-throws any error
+	 * automatically, so the cleanup is not duplicated.
 	 */
 	PG_TRY();
 	{
@@ -197,24 +199,13 @@ ivorysql_ora_ProcessUtility(PlannedStmt *pstmt,
 			standard_ProcessUtility(pstmt, queryString, readOnlyTree,
 									context, params, queryEnv, dest, qc);
 	}
-	PG_CATCH();
+	PG_FINALLY();
 	{
 		if (is_discard_reset)
 		{
 			ora_dbms_output_reset();
 			ora_dbms_session_reset();
 		}
-		PG_RE_THROW();
 	}
 	PG_END_TRY();
-
-	/*
-	 * Reset DBMS_OUTPUT buffer and DBMS_SESSION context after DISCARD
-	 * ALL/PACKAGES
-	 */
-	if (is_discard_reset)
-	{
-		ora_dbms_output_reset();
-		ora_dbms_session_reset();
-	}
 }
