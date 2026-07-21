@@ -2103,7 +2103,6 @@ LogicalSlotAdvanceAndCheckSnapState(XLogRecPtr moveto,
 									bool *found_consistent_snapshot)
 {
 	LogicalDecodingContext *ctx;
-	ResourceOwner old_resowner PG_USED_FOR_ASSERTS_ONLY = CurrentResourceOwner;
 	XLogRecPtr	retlsn;
 
 	Assert(XLogRecPtrIsValid(moveto));
@@ -2162,17 +2161,7 @@ LogicalSlotAdvanceAndCheckSnapState(XLogRecPtr moveto,
 			 * might still have critical updates to do.
 			 */
 			if (record)
-			{
 				LogicalDecodingProcessRecord(ctx, ctx->reader);
-
-				/*
-				 * We used to have bugs where logical decoding would fail to
-				 * preserve the resource owner.  That's important here, so
-				 * verify that that doesn't happen anymore.  XXX this could be
-				 * removed once it's been battle-tested.
-				 */
-				Assert(CurrentResourceOwner == old_resowner);
-			}
 
 			CHECK_FOR_INTERRUPTS();
 		}
