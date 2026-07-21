@@ -2416,6 +2416,6 @@ Datum ivy_xmlisvalid(PG_FUNCTION_ARGS)
 	}
 #else
 	NO_XML_SUPPORT();
-	return NULL;
+	return 0;
 #endif
 }
