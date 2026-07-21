@@ -188,7 +188,21 @@ TupleDescCompactAttr(TupleDesc tupdesc, int i)
 
 extern TupleDesc CreateTemplateTupleDesc(int natts);
 
-extern TupleDesc CreateTupleDesc(int natts, Form_pg_attribute *attrs, bool tdhasrowid, bool is_sysattr);
+/*
+ * CreateTupleDesc preserves the upstream PostgreSQL signature
+ * (int, Form_pg_attribute *) for source and ABI compatibility with
+ * extensions written against standard PostgreSQL; the resulting tuple
+ * descriptor carries no rowid attribute (tdhasrowid=false).
+ *
+ * IvorySQL exposes the rowid-aware variant under a separate name,
+ * CreateTupleDescWithRowId, so the caller can control the rowid attribute
+ * (Oracle compatibility) and indicate whether the trailing attribute is a
+ * system attribute.  Internal code that needs rowid control should use
+ * the WithRowId variant.
+ */
+extern TupleDesc CreateTupleDesc(int natts, Form_pg_attribute *attrs);
+extern TupleDesc CreateTupleDescWithRowId(int natts, Form_pg_attribute *attrs,
+										  bool tdhasrowid, bool is_sysattr);
 
 extern TupleDesc CreateTupleDescCopy(TupleDesc tupdesc);
 

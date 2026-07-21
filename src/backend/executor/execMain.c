@@ -1024,7 +1024,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 			TupleTableSlot *slot;
 
 			slot = ExecInitExtraTupleSlot(estate, NULL, &TTSOpsVirtual);
-			j = ExecInitJunkFilter(planstate->plan->targetlist, tupType->tdhasrowid,
+			j = ExecInitJunkFilterWithRowId(planstate->plan->targetlist, tupType->tdhasrowid,
 								   slot);
 			estate->es_junkFilter = j;
 
