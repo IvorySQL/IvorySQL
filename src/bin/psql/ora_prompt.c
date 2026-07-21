@@ -33,6 +33,7 @@
  *		sockets, "[local:/dir/name]" if not default
  * %m - like %M, but hostname only (before first dot), or always "[local]"
  * %p - backend pid
+ * %P - pipeline status: on, off or abort
  * %> - database server port number
  * %n - database user name
  * %S - search_path
@@ -200,6 +201,20 @@ ora_get_prompt(Ora_promptStatus_t status, ConditionalStack cstack)
 
 						if (pid)
 							snprintf(buf, sizeof(buf), "%d", pid);
+					}
+					break;
+					/* pipeline status */
+				case 'P':
+					if (pset.db)
+					{
+						PGpipelineStatus status = PQpipelineStatus(pset.db);
+
+						if (status == PQ_PIPELINE_ON)
+							strlcpy(buf, "on", sizeof(buf));
+						else if (status == PQ_PIPELINE_ABORTED)
+							strlcpy(buf, "abort", sizeof(buf));
+						else
+							strlcpy(buf, "off", sizeof(buf));
 					}
 					break;
 
