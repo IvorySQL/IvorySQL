@@ -16,41 +16,187 @@ PostgreSQL documentation
 
  <refnamediv>
   <refname>CREATE PACKAGE</refname>
-  <refpurpose>create a new package</refpurpose>
+  <refpurpose>define a new package specification</refpurpose>
  </refnamediv>
 
  <refsynopsisdiv>
 <synopsis>
-CREATE [ OR REPLACE ] [ EDITIONABLE | NONEDITIONABLE ] PACKAGE [schema.] package_name [ sharing_clause ] [ { default_collation_clause | invoker_rights_clause | accessible_by_clause }... ]  { IS | AS } package_item_list END [ package_name ] ;
+CREATE [ OR REPLACE ] [ EDITIONABLE | NONEDITIONABLE ] PACKAGE <replaceable class="parameter">name</replaceable>
+    [ SHARING = { METADATA | NONE } ]
+    [ <replaceable class="parameter">package_property</replaceable> ... ]
+    { IS | AS }
+    [ <replaceable class="parameter">package_declaration</replaceable> ... ]
+END [ <replaceable class="parameter">name</replaceable> ]
 
-sharing_clause:
-    SHARING = { METADATA | NONE }
-	
-default_collation_clause:
-    DEFAULT COLLATION "collation_option"
+<phrase>where <replaceable class="parameter">package_property</replaceable> is one of:</phrase>
 
-collation_option: 
-	USING_NLS_COMP
+    AUTHID { DEFINER | CURRENT_USER }
+    ACCESSIBLE BY ( <replaceable class="parameter">accessor</replaceable> [, ...] )
+    DEFAULT COLLATION USING_NLS_COMP
 
-invoker_rights_clause:
-    AUTHID [CURRENT_USER | DEFINER]
-	
-accessible_by_clause:
-    ACCESSIBLE BY ( accessor [, accessor ]... )
-	
-accessor:
-    [ unit_kind ] [schema.]unit_name 
-	
-unit_kind:
-    [ FUNCTION | PROCEDURE | PACKAGE | TRIGGER | TYPE ]
-	
-package_item_list:
-    { type_definition 
-    | cursor_declaration 
-    | item_declaration 
-    | package_function_declaration 
-    | package_procedure_declaration } 
-...
+<phrase>and <replaceable class="parameter">accessor</replaceable> is:</phrase>
+
+    [ FUNCTION | PROCEDURE | PACKAGE | TRIGGER | TYPE ] [ <replaceable class="parameter">schema</replaceable>. ]<replaceable class="parameter">unit_name</replaceable>
 </synopsis>
-</refsynopsisdiv>
+ </refsynopsisdiv>
+
+ <refsect1 id="sql-createpackage-description">
+  <title>Description</title>
+
+  <para>
+   <command>CREATE PACKAGE</command> defines a package specification.  The
+   specification is the public interface of a package and can declare public
+   variables, constants, types, cursors, procedures, and functions.  Use
+   <xref linkend="sql-createpackagebody"/> to provide implementations and
+   private declarations.
+  </para>
+
+  <para>
+   If a schema name is included, the package is created in the specified
+   schema.  Otherwise it is created in the current schema.  The user that
+   creates the package becomes its owner and must have
+   <literal>CREATE</literal> privilege on the target schema.  The PL/iSQL
+   language must also be available to the user.
+  </para>
+
+  <para>
+   <command>CREATE OR REPLACE PACKAGE</command> creates a package or replaces
+   the specification of an existing package.  Replacing a package preserves
+   its ownership and access privileges, and requires ownership of the existing
+   package.  It cannot change the existing package's
+   <literal>EDITIONABLE</literal> property.
+  </para>
+ </refsect1>
+
+ <refsect1 id="sql-createpackage-parameters">
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>OR REPLACE</literal></term>
+    <listitem>
+     <para>
+      Replace the specification if a package of the same name already exists.
+      Without this clause, an existing package causes an error.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>EDITIONABLE</literal></term>
+    <term><literal>NONEDITIONABLE</literal></term>
+    <listitem>
+     <para>
+      Set the package's editionability property.  The default is
+      <literal>EDITIONABLE</literal>.  A package body must use the same value.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">name</replaceable></term>
+    <listitem>
+     <para>
+      The name (optionally schema-qualified) of the package to create.  Only
+      one package of a given name can exist in a schema.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SHARING = { METADATA | NONE }</literal></term>
+    <listitem>
+     <para>
+      This clause is accepted for Oracle syntax compatibility.  It currently
+      has no effect on package behavior.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>AUTHID DEFINER</literal></term>
+    <term><literal>AUTHID CURRENT_USER</literal></term>
+    <listitem>
+     <para>
+      Select whether package code executes with the privileges of the package
+      owner or the calling user.  <literal>AUTHID DEFINER</literal> is the
+      default.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>ACCESSIBLE BY ( <replaceable class="parameter">accessor</replaceable> [, ...] )</literal></term>
+    <listitem>
+     <para>
+      Record a list of program units that are intended to call the package.
+      Each accessor can include a unit kind and a schema qualification.  The
+      clause is retained in the package definition for compatibility, but is
+      not currently enforced as a run-time call restriction.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>DEFAULT COLLATION USING_NLS_COMP</literal></term>
+    <listitem>
+     <para>
+      Record the Oracle-compatible default collation clause on the package.
+      The clause is retained in the package definition but does not currently
+      change run-time collation behavior.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">package_declaration</replaceable></term>
+    <listitem>
+     <para>
+      A public PL/iSQL declaration, such as a variable, constant, type, cursor,
+      procedure, or function declaration.  Declarations are separated by
+      semicolons.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+
+  <para>
+   Each package property can appear at most once.  Specifying the same
+   property more than once causes an error.
+  </para>
+ </refsect1>
+
+ <refsect1 id="sql-createpackage-examples">
+  <title>Examples</title>
+
+  <para>
+   Define a package specification with one public procedure:
+<programlisting>
+CREATE OR REPLACE PACKAGE inventory_api AUTHID DEFINER AS
+  PROCEDURE add_item(p_id INT, p_label TEXT);
+END inventory_api;
+</programlisting>
+  </para>
+ </refsect1>
+
+ <refsect1 id="sql-createpackage-compatibility">
+  <title>Compatibility</title>
+
+  <para>
+   <command>CREATE PACKAGE</command> is an
+   <productname>IvorySQL</productname> extension for Oracle compatibility.  It
+   is not defined by the SQL standard.  The supported syntax is a subset of
+   Oracle package syntax; compatibility-only clauses are described above.
+  </para>
+ </refsect1>
+
+ <refsect1 id="sql-createpackage-see-also">
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createpackagebody"/></member>
+   <member><xref linkend="sql-alterpackage"/></member>
+   <member><xref linkend="sql-droppackage"/></member>
+  </simplelist>
+ </refsect1>
 </refentry>

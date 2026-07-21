@@ -79,7 +79,7 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY createOperatorClass SYSTEM "create_opclass.sgml">
 <!ENTITY createOperatorFamily SYSTEM "create_opfamily.sgml">
 <!ENTITY createPackage      SYSTEM "create_package.sgml">
-<!ENTITY createPackageBody  SYSTEM "create_packagebody.sgml">
+<!ENTITY createPackageBody  SYSTEM "create_package_body.sgml">
 <!ENTITY createPolicy       SYSTEM "create_policy.sgml">
 <!ENTITY createProcedure    SYSTEM "create_procedure.sgml">
 <!ENTITY createPublication  SYSTEM "create_publication.sgml">
