@@ -761,7 +761,7 @@ check_control_data(ControlData *oldctrl,
 	 * data checksums, before retrying.
 	 */
 	if (oldctrl->data_checksum_version > PG_DATA_CHECKSUM_VERSION)
-		pg_fatal("checksums are being enabled in the old cluster");
+		pg_fatal("data checksums are being enabled in the old cluster");
 
 	/*
 	 * We might eventually allow upgrades from checksum to no-checksum
