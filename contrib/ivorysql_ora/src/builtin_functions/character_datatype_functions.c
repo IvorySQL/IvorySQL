@@ -768,19 +768,16 @@ ora_regexp_count(PG_FUNCTION_ARGS)
 	
 	if (PG_NARGS() == 4)
 	{
-		char	*str = text_to_cstring(s);
-		int 	 len = strlen(str);
-		int 	 i = 0;
-		if (len > 0) 
+		char   *str = VARDATA_ANY(s);
+		int     i;
+
+		for (i = 0; i < src_text_len; i++)
 		{
-			for (i = 0;i < len; i++)
-			{
-				if (str[i] == '\n')
-					num++;
-			}
-			if (str[len - 1] == '\n')
-				flag = true;
+			if (str[i] == '\n')
+				num++;
 		}
+		if (src_text_len > 0 && str[src_text_len - 1] == '\n')
+			flag = true;
 	}
 	/* Compile RE */
 	re = RE_compile_and_cache(p, flags.cflags, PG_GET_COLLATION());
