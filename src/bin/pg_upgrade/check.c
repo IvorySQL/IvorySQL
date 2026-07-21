@@ -1859,7 +1859,7 @@ check_for_gist_inet_ops(ClusterInfo *cluster)
 	{
 		fclose(report.file);
 		pg_log(PG_REPORT, "fatal");
-		pg_fatal("Your installation contains indexes that use btree_gist extension's\n"
+		pg_fatal("Your installation contains indexes that use the btree_gist extension's\n"
 				 "gist_inet_ops or gist_cidr_ops operator classes, which cannot be\n"
 				 "binary-upgraded.  Replace them with indexes that use the built-in GiST\n"
 				 "inet_ops operator class.\n"
