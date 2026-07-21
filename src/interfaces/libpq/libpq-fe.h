@@ -20,6 +20,7 @@ extern "C"
 {
 #endif
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 
@@ -70,14 +71,6 @@ extern "C"
 #define PG_COPYRES_TUPLES		  0x02	/* Implies PG_COPYRES_ATTRS */
 #define PG_COPYRES_EVENTS		  0x04
 #define PG_COPYRES_NOTICEHOOKS	  0x08
-
-/*
- * Assume bool has been defined if true and false are defined.  
- * This avoids duplicate-typedef errors if this file is included after c.h.
- */
-#if !(defined(true) && defined(false))
-typedef unsigned char bool;
-#endif
 
 /* Application-visible enum types */
 
