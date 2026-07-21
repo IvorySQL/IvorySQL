@@ -1637,18 +1637,91 @@ json_lex(JsonLexContext *lex)
 			 */
 			int			escapes = 0;
 
-			for (int i = ptok->len - 1; i > 0; i--)
+			/*
+			 * Count the trailing backslashes on the partial token.
+			 *
+			 * In multi-byte encodings other than UTF-8, an ASCII byte
+			 * like 0x5C (backslash) can appear as a non-leading byte
+			 * of a multi-byte character.  We must scan forward through
+			 * the partial token to properly identify real backslash
+			 * characters and avoid miscounting bytes that are part of
+			 * multi-byte characters.
+			 */
+			if (lex->input_encoding == PG_UTF8 ||
+				pg_encoding_max_length(lex->input_encoding) <= 1)
 			{
-				/* count the trailing backslashes on the partial token */
-				if (ptok->data[i] == '\\')
-					escapes++;
-				else
-					break;
+				/* UTF-8 and single-byte: simple backward scan is safe */
+				for (int i = ptok->len - 1; i > 0; i--)
+				{
+					if (ptok->data[i] == '\\')
+						escapes++;
+					else
+						break;
+				}
+			}
+			else
+			{
+				/*
+				 * Multi-byte encoding: forward scan to properly track
+				 * trailing backslashes, skipping multi-byte characters.
+				 */
+				for (int i = 1; i < ptok->len; )
+				{
+					if (IS_HIGHBIT_SET(ptok->data[i]))
+					{
+						int			charlen;
+
+						charlen = pg_encoding_mblen_or_incomplete(
+							lex->input_encoding,
+							&ptok->data[i],
+							ptok->len - i);
+						if (charlen > 1)
+							i += charlen;
+						else
+							i++;
+						escapes = 0;
+					}
+					else if (ptok->data[i] == '\\')
+					{
+						escapes++;
+						i++;
+					}
+					else
+					{
+						escapes = 0;
+						i++;
+					}
+				}
 			}
 
-			for (size_t i = 0; i < lex->input_length; i++)
+			for (size_t i = 0; i < lex->input_length; )
 			{
 				char		c = lex->input[i];
+
+				/*
+				 * In multi-byte encodings other than UTF-8, skip over
+				 * multi-byte characters to avoid misinterpreting their
+				 * internal bytes as backslash or double-quote.
+				 */
+				if (IS_HIGHBIT_SET(c))
+				{
+					int			charlen;
+
+					charlen = pg_encoding_mblen_or_incomplete(
+						lex->input_encoding,
+						&lex->input[i],
+						lex->input_length - i);
+					if (charlen > 1)
+					{
+						jsonapi_appendBinaryStringInfo(ptok,
+											   &lex->input[i],
+										   charlen);
+						added += charlen;
+						i += charlen;
+						escapes = 0;
+						continue;
+					}
+				}
 
 				jsonapi_appendStringInfoCharMacro(ptok, c);
 				added++;
@@ -1661,6 +1734,7 @@ json_lex(JsonLexContext *lex)
 					escapes++;
 				else
 					escapes = 0;
+				i++;
 			}
 		}
 		else
@@ -2008,7 +2082,38 @@ json_lex_string(JsonLexContext *lex)
 		/* Premature end of the string. */
 		if (s >= end)
 			FAIL_OR_INCOMPLETE_AT_CHAR_START(JSON_INVALID_TOKEN);
-		else if (*s == '"')
+
+		/*
+		 * In multi-byte encodings other than UTF-8, an ASCII byte
+		 * (e.g. 0x5C backslash, 0x22 double quote) can appear as a
+		 * non-leading byte of a multi-byte character.  We must skip
+		 * over such characters as a whole to avoid misinterpreting
+		 * their internal bytes.
+		 */
+		if (IS_HIGHBIT_SET(*s))
+		{
+			int			charlen;
+
+			charlen = pg_encoding_mblen_or_incomplete(lex->input_encoding,
+													  s, end - s);
+			if (charlen > 1)
+			{
+				/*
+				 * We need to check that there are enough bytes left
+				 * for this multi-byte character.
+				 */
+				if (s + charlen > end)
+					FAIL_OR_INCOMPLETE_AT_CHAR_START(JSON_INVALID_TOKEN);
+
+				if (lex->need_escapes)
+					jsonapi_appendBinaryStringInfo(lex->strval, s, charlen);
+
+				s += charlen - 1;	/* loop increment will add 1 more */
+				continue;
+			}
+		}
+
+		if (*s == '"')
 			break;
 		else if (*s == '\\')
 		{
@@ -2165,26 +2270,73 @@ json_lex_string(JsonLexContext *lex)
 			/*
 			 * Skip to the first byte that requires special handling, so we
 			 * can batch calls to jsonapi_appendBinaryStringInfo.
+			 *
+			 * In UTF-8 and single-byte encodings, ASCII bytes (like
+			 * backslash and double-quote) cannot appear as non-leading
+			 * bytes of multi-byte characters, so a simple byte-by-byte
+			 * scan is safe.  In other multi-byte encodings (e.g.
+			 * GB18030), ASCII bytes can appear inside multi-byte
+			 * characters, so we must scan character-by-character to
+			 * avoid false matches.
 			 */
-			while (p < end - sizeof(Vector8) &&
-				   !pg_lfind8('\\', (uint8 *) p, sizeof(Vector8)) &&
-				   !pg_lfind8('"', (uint8 *) p, sizeof(Vector8)) &&
-				   !pg_lfind8_le(31, (uint8 *) p, sizeof(Vector8)))
-				p += sizeof(Vector8);
-
-			for (; p < end; p++)
+			if (lex->input_encoding == PG_UTF8 ||
+				pg_encoding_max_length(lex->input_encoding) <= 1)
 			{
-				if (*p == '\\' || *p == '"')
-					break;
-				else if ((unsigned char) *p <= 31)
+				while (p < end - sizeof(Vector8) &&
+					   !pg_lfind8('\\', (uint8 *) p, sizeof(Vector8)) &&
+					   !pg_lfind8('"', (uint8 *) p, sizeof(Vector8)) &&
+					   !pg_lfind8_le(31, (uint8 *) p, sizeof(Vector8)))
+					p += sizeof(Vector8);
+
+				for (; p < end; p++)
 				{
-					/* Per RFC4627, these characters MUST be escaped. */
-					/*
-					 * Since *p isn't printable, exclude it from the context
-					 * string
-					 */
-					lex->token_terminator = p;
-					return JSON_ESCAPING_REQUIRED;
+					if (*p == '\\' || *p == '"')
+						break;
+					else if ((unsigned char) *p <= 31)
+					{
+						/* Per RFC4627, these characters MUST be escaped. */
+						/*
+						 * Since *p isn't printable, exclude it from the context
+						 * string
+						 */
+						lex->token_terminator = p;
+						return JSON_ESCAPING_REQUIRED;
+					}
+				}
+			}
+			else
+			{
+				/*
+				 * Multi-byte encoding where ASCII bytes can appear inside
+				 * multi-byte characters: scan character-by-character.
+				 */
+				while (p < end)
+				{
+					if (*p == '"' || *p == '\\')
+						break;
+					else if ((unsigned char) *p <= 31)
+					{
+						lex->token_terminator = p;
+						return JSON_ESCAPING_REQUIRED;
+					}
+					else if (IS_HIGHBIT_SET(*p))
+					{
+						int			charlen;
+
+						charlen = pg_encoding_mblen_or_incomplete(
+							lex->input_encoding, p, end - p);
+						if (charlen > 1)
+						{
+							if (p + charlen > end)
+							{
+								p = end;
+								break;
+							}
+							p += charlen;
+							continue;
+						}
+					}
+					p++;
 				}
 			}
 

@@ -1,0 +1,153 @@
+-- Test JSON/JSONB parsing with GB18030 encoding
+--
+-- This test verifies that the JSON parser correctly handles multi-byte
+-- characters in GB18030 encoding, specifically characters where the second
+-- byte is 0x5C (backslash) which could be misinterpreted as a JSON escape
+-- character if the parser scans byte-by-byte instead of character-by-character.
+--
+-- In GB18030 two-byte encoding, the second byte ranges from 0x40-0x7E and
+-- 0x80-0xFE. The byte 0x5C (backslash) falls in the 0x40-0x7E range, so it
+-- can appear as the second byte of a two-byte character (e.g., 0x81 0x5C
+-- encodes 倄 U+5014). Without the fix, the JSON parser would incorrectly
+-- interpret this 0x5C as a JSON backslash escape character.
+
+-- Setup: create GB18030 database and configure encoding
+create database json_gb18030_test encoding='gb18030' LC_COLLATE='C' LC_CTYPE='C' TEMPLATE=template0;
+\c json_gb18030_test
+
+load 'gb18030_2022';
+
+show server_encoding;
+set client_encoding = 'UTF8';
+show client_encoding;
+
+-- ===================================================================
+-- Test 1: Basic JSON parsing with GB18030 characters containing 0x5C
+--         as second byte
+-- ===================================================================
+
+-- 0x81 0x5C = 倄 (U+5014), second byte is 0x5C (backslash)
+-- Without fix: ERROR: invalid input syntax for type json
+-- Detail: Escape sequence "\" is invalid
+SELECT ('{"name": "' || convert_from('\x815C', 'GB18030') || '"}')::json;
+
+-- Same test with jsonb
+SELECT ('{"name": "' || convert_from('\x815C', 'GB18030') || '"}')::jsonb;
+
+-- ===================================================================
+-- Test 2: Multiple characters with 0x5C as second byte in a single
+--         JSON string value
+-- ===================================================================
+
+-- 0x82 0x5C also has 0x5C as second byte
+SELECT ('{"city": "' || convert_from('\x815C', 'GB18030') || ' and ' || convert_from('\x825C', 'GB18030') || '"}')::json;
+
+SELECT ('{"city": "' || convert_from('\x815C', 'GB18030') || ' and ' || convert_from('\x825C', 'GB18030') || '"}')::jsonb;
+
+-- ===================================================================
+-- Test 3: JSON with GB18030 characters in keys
+-- ===================================================================
+
+SELECT ('{"' || convert_from('\x815C', 'GB18030') || '": "value"}')::json;
+
+SELECT ('{"' || convert_from('\x815C', 'GB18030') || '": "value"}')::jsonb;
+
+-- ===================================================================
+-- Test 4: Nested JSON objects and arrays with GB18030 characters
+-- ===================================================================
+
+SELECT ('{"outer": {"inner": "' || convert_from('\x815C', 'GB18030') || '"}}')::json;
+
+SELECT ('{"array": ["' || convert_from('\x815C', 'GB18030') || '", "normal"]}')::jsonb;
+
+-- ===================================================================
+-- Test 5: GB18030 characters at string boundaries (start and end)
+-- ===================================================================
+
+-- Character at the start of a JSON string value
+SELECT ('{"k": "' || convert_from('\x815C', 'GB18030') || 'end"}')::json;
+
+-- Character at the end of a JSON string value
+SELECT ('{"k": "start' || convert_from('\x815C', 'GB18030') || '"}')::json;
+
+-- Character as the entire JSON string value
+SELECT ('{"k": "' || convert_from('\x815C', 'GB18030') || '"}')::jsonb;
+
+-- ===================================================================
+-- Test 6: Table operations with JSONB and GB18030 characters
+-- ===================================================================
+
+CREATE TABLE json_gb18030_test(id int, data jsonb);
+
+-- Insert JSONB data containing characters with 0x5C as second byte
+INSERT INTO json_gb18030_test VALUES (1, ('{"name": "' || convert_from('\x815C', 'GB18030') || '"}')::jsonb);
+INSERT INTO json_gb18030_test VALUES (2, ('{"desc": "hello ' || convert_from('\x815C', 'GB18030') || ' world"}')::jsonb);
+INSERT INTO json_gb18030_test VALUES (3, ('{"items": ["' || convert_from('\x815C', 'GB18030') || '", "test"]}')::jsonb);
+
+-- Query the data
+SELECT id, data FROM json_gb18030_test ORDER BY id;
+
+-- JSONB operators
+SELECT id, data->>'name' FROM json_gb18030_test WHERE data ? 'name';
+SELECT id, data->>'desc' FROM json_gb18030_test WHERE data ? 'desc';
+SELECT id, data->'items' FROM json_gb18030_test WHERE data ? 'items';
+
+-- ===================================================================
+-- Test 7: JSON type (not JSONB) with table operations
+-- ===================================================================
+
+CREATE TABLE json_gb18030_json_test(id int, data json);
+
+INSERT INTO json_gb18030_json_test VALUES (1, ('{"key": "' || convert_from('\x815C', 'GB18030') || '"}')::json);
+INSERT INTO json_gb18030_json_test VALUES (2, ('{"a": "' || convert_from('\x815C', 'GB18030') || '", "b": "' || convert_from('\x825C', 'GB18030') || '"}')::json);
+
+SELECT id, data FROM json_gb18030_json_test ORDER BY id;
+
+-- ===================================================================
+-- Test 8: JSON with legitimate escape sequences alongside GB18030
+--         characters (ensure real escapes still work)
+-- ===================================================================
+
+-- Real backslash escape followed by GB18030 character with 0x5C
+SELECT ('{"k": "line1\n' || convert_from('\x815C', 'GB18030') || '"}')::json;
+
+-- GB18030 character followed by real backslash escape
+SELECT ('{"k": "' || convert_from('\x815C', 'GB18030') || '\nline2"}')::json;
+
+-- Tab escape with GB18030 character
+SELECT ('{"k": "' || convert_from('\x815C', 'GB18030') || '\tvalue"}')::jsonb;
+
+-- ===================================================================
+-- Test 9: Four-byte GB18030 characters in JSON
+-- ===================================================================
+
+-- Four-byte GB18030 characters (0x8135F437 etc.)
+-- These don't contain 0x5C/0x22 internally but test the multi-byte
+-- skip path for 4-byte characters
+SELECT ('{"char": "' || convert_from('\x8135F437', 'GB18030') || '"}')::json;
+
+SELECT ('{"char": "' || convert_from('\x8135F437', 'GB18030') || '"}')::jsonb;
+
+-- ===================================================================
+-- Test 10: Various JSON functions with GB18030 characters
+-- ===================================================================
+
+-- json_typeof
+SELECT json_typeof(('{"k": "' || convert_from('\x815C', 'GB18030') || '"}')::json);
+
+-- json_array_length
+SELECT json_array_length(('["' || convert_from('\x815C', 'GB18030') || '", "a", "b"]')::json);
+
+-- jsonb_pretty
+SELECT jsonb_pretty(('{"key": "' || convert_from('\x815C', 'GB18030') || '"}')::jsonb);
+
+-- jsonb_build_object
+SELECT jsonb_build_object('name', convert_from('\x815C', 'GB18030'));
+
+-- Cleanup
+DROP TABLE json_gb18030_test;
+DROP TABLE json_gb18030_json_test;
+
+-- Disconnect and drop test database
+\c postgres
+drop database json_gb18030_test;
