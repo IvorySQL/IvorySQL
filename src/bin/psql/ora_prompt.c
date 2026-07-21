@@ -33,6 +33,7 @@
  *		sockets, "[local:/dir/name]" if not default
  * %m - like %M, but hostname only (before first dot), or always "[local]"
  * %p - backend pid
+ * %P - pipeline status: on, off or abort
  * %> - database server port number
  * %n - database user name
  * %S - search_path
