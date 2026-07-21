@@ -189,6 +189,57 @@ is($result, '1|f',
 );
 
 ##########
+# Ensure that ALTER SUBSCRIPTION ... REFRESH SEQUENCES can still update
+# sequence values and mark the sequence as ready even when
+# default_transaction_read_only is enabled on the subscriber.
+##########
+
+$node_subscriber->safe_psql(
+	'postgres', qq(
+	ALTER SYSTEM SET default_transaction_read_only = on;
+	SELECT pg_reload_conf();
+));
+
+# Update the existing sequence 'regress_s3' on the publisher
+$node_publisher->safe_psql(
+	'postgres', qq(
+	INSERT INTO regress_seq_test SELECT nextval('regress_s3') FROM generate_series(1,100);
+));
+
+$node_subscriber->safe_psql(
+	'postgres', qq(
+	set default_transaction_read_only = off;
+	ALTER SUBSCRIPTION regress_seq_sub REFRESH SEQUENCES;
+));
+$node_subscriber->poll_query_until('postgres', $synced_query)
+  or die "Timed out while waiting for subscriber to synchronize data";
+
+# Check - sequence value is updated despite default_transaction_read_only
+# being enabled on the subscriber
+$result = $node_subscriber->safe_psql(
+	'postgres', qq(
+	SELECT last_value, is_called FROM regress_s3;
+));
+is($result, '200|t',
+	'REFRESH SEQUENCES updates sequence value with default_transaction_read_only enabled'
+);
+
+# Check - sequence is marked as ready ('r')
+$result = $node_subscriber->safe_psql(
+	'postgres', qq(
+	SELECT srsubstate FROM pg_subscription_rel WHERE srrelid = 'regress_s3'::regclass;
+));
+is($result, 'r',
+	'sequence is marked as ready after REFRESH SEQUENCES with default_transaction_read_only enabled'
+);
+
+$node_subscriber->safe_psql(
+	'postgres', qq(
+	ALTER SYSTEM SET default_transaction_read_only = off;
+	SELECT pg_reload_conf();
+));
+
+##########
 # A sequence dropped concurrently on the publisher, while the sequencesync
 # worker's batch query is executing, must be treated the same as any other
 # concurrently-dropped sequence (reported as "missing sequence on publisher").

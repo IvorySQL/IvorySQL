@@ -835,6 +835,14 @@ SequenceSyncWorkerMain(Datum main_arg)
 {
 	int			worker_slot = DatumGetInt32(main_arg);
 
+	/*
+	 * Ignore default_transaction_read_only for sequence synchronization
+	 * workers, as they need to be able to modify sequences regardless of that
+	 * setting.
+	 */
+	SetConfigOption("default_transaction_read_only", "off", PGC_SUSET,
+					PGC_S_OVERRIDE);
+
 	SetupApplyOrSyncWorker(worker_slot);
 
 	start_sequence_sync();
