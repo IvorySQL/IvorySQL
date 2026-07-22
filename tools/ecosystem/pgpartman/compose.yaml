@@ -1,0 +1,67 @@
+name: ivorysql-pgpartman
+
+x-partman-environment: &partman-environment
+  IVORYSQL_HOST: database
+  IVORYSQL_PORT: "5333"
+  IVORYSQL_DATABASE: ${IVORYSQL_DATABASE:-partitiondb}
+  IVORYSQL_SUPERUSER: ${IVORYSQL_SUPERUSER:-ivorysql}
+  IVORYSQL_SUPERUSER_PASSWORD: ${IVORYSQL_SUPERUSER_PASSWORD:?set IVORYSQL_SUPERUSER_PASSWORD}
+  PARTMAN_OWNER: ${PARTMAN_OWNER:-partition_owner}
+  PARTMAN_OWNER_PASSWORD: ${PARTMAN_OWNER_PASSWORD:?set PARTMAN_OWNER_PASSWORD}
+  PARTMAN_EXTENSION_SCHEMA: ${PARTMAN_EXTENSION_SCHEMA:-partman}
+  PARTMAN_SCHEMA: ${PARTMAN_SCHEMA:-app}
+  PARTMAN_TABLE: ${PARTMAN_TABLE:-events}
+  PARTMAN_CONTROL_COLUMN: ${PARTMAN_CONTROL_COLUMN:-created_at}
+  PARTMAN_INTERVAL: ${PARTMAN_INTERVAL:-1 day}
+  PARTMAN_PREMAKE: ${PARTMAN_PREMAKE:-7}
+  PARTMAN_RETENTION_DAYS: ${PARTMAN_RETENTION_DAYS:-90}
+  PARTMAN_RETENTION_KEEP_TABLE: ${PARTMAN_RETENTION_KEEP_TABLE:-false}
+  PARTMAN_RETENTION_KEEP_INDEX: ${PARTMAN_RETENTION_KEEP_INDEX:-true}
+  PARTMAN_INFINITE_TIME_PARTITIONS: ${PARTMAN_INFINITE_TIME_PARTITIONS:-true}
+  PARTMAN_AUTOMATIC_MAINTENANCE: ${PARTMAN_AUTOMATIC_MAINTENANCE:-true}
+  PARTMAN_DEFAULT_PARTITION: ${PARTMAN_DEFAULT_PARTITION:-true}
+  PARTMAN_DEFAULT_ROW_LIMIT: ${PARTMAN_DEFAULT_ROW_LIMIT:-0}
+  PARTMAN_BGW_INTERVAL: ${PARTMAN_BGW_INTERVAL:-60}
+  PARTMAN_MAINTENANCE_ANALYZE: ${PARTMAN_MAINTENANCE_ANALYZE:-false}
+  PARTMAN_HISTORY_INTERVALS: ${PARTMAN_HISTORY_INTERVALS:-2}
+
+services:
+  database:
+    build:
+      context: ../../..
+      dockerfile: tools/ecosystem/pgpartman/Dockerfile
+      args:
+        PARTMAN_VERSION: ${PARTMAN_VERSION:-v5.4.3}
+    image: ivorysql/pgpartman:${IVORYSQL_IMAGE_TAG:-local}
+    restart: unless-stopped
+    environment:
+      <<: *partman-environment
+    ports:
+      - "${IVORYSQL_HOST_PORT:-5333}:5333"
+    volumes:
+      - database-data:/var/lib/ivorysql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          PGPASSWORD=$${IVORYSQL_SUPERUSER_PASSWORD}
+          pg_isready -h 127.0.0.1 -p 5333 -U $${IVORYSQL_SUPERUSER}
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 30s
+    stop_grace_period: 60s
+
+  verifier:
+    image: ivorysql/pgpartman:${IVORYSQL_IMAGE_TAG:-local}
+    profiles: ["verify"]
+    depends_on:
+      database:
+        condition: service_healthy
+    entrypoint: ["/usr/local/bin/verify-lifecycle"]
+    environment:
+      <<: *partman-environment
+      PARTMAN_WORKLOAD_ROWS: ${PARTMAN_WORKLOAD_ROWS:-100000}
+
+volumes:
+  database-data:
