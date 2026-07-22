@@ -618,12 +618,15 @@ class RecoveryPlan:
             raise ConfigurationError("restore process count must be between 1 and 64")
 
     def arguments(self) -> list[str]:
-        result = [
-            "--type=" + self.target_type.value,
-            "--target-timeline=" + self.timeline,
-            "--target-action=" + self.action,
-            "--process-max=" + str(self.process_max),
-        ]
+        result = ["--process-max=" + str(self.process_max)]
+        if self.target_type is not RecoveryTargetType.DEFAULT:
+            result.extend(
+                (
+                    "--type=" + self.target_type.value,
+                    "--target-timeline=" + self.timeline,
+                    "--target-action=" + self.action,
+                )
+            )
         if self.target:
             result.append("--target=" + self.target)
         if self.backup_set:

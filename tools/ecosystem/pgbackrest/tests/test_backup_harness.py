@@ -407,7 +407,7 @@ class RecoveryPlanTests(unittest.TestCase):
         )
         self.assertEqual(
             plan.arguments(),
-            ["--type=default", "--target-timeline=latest", "--target-action=promote", "--process-max=4"],
+            ["--process-max=4"],
         )
 
     def test_time_target_must_have_timezone(self) -> None:
