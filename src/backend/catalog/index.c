@@ -3603,6 +3603,20 @@ index_set_state_flags(Oid indexId, IndexStateFlagsAction action)
  * Called both from ExecOraAlterIndexUnusable() (to set the flag) and from
  * ExecOraAlterIndexRebuild()/reindex_index() (to clear it once a rebuild
  * succeeds).
+ *
+ * When setting the flag on a leaf that is itself a partition of some
+ * partitioned index, every ancestor partitioned index up the chain is
+ * marked indisvalid = false.  Those ancestors were only ever marked valid
+ * by validatePartitionedIndex() (tablecmds.c) counting this leaf as a
+ * valid, usable partition; now that it's unusable (unmaintained, possibly
+ * stale -- see BuildIndexInfo()), that count no longer holds, and a stale
+ * indisvalid = true on an ancestor is not just cosmetic: get_relation_info()
+ * builds a real IndexOptInfo for it that relation_has_unique_index_for()
+ * and rel_supports_distinctness() consult for planner correctness proofs.
+ * There is no equivalent revalidation on the way back to usable: clearing
+ * indisunusable only ever happens via a rebuild, and the existing
+ * detach/reattach-partition-index flow is how a rebuilt leaf gets counted
+ * again by validatePartitionedIndex().
  */
 void
 index_set_unusable(Oid indexId, bool unusable)
@@ -3637,6 +3651,45 @@ index_set_unusable(Oid indexId, bool unusable)
 		 * does when it clears this flag after a successful rebuild.
 		 */
 		CacheInvalidateRelcacheByRelid(heapId);
+
+		/*
+		 * Propagate invalidation up the partitioned-index ancestor chain;
+		 * see the file comment above for why.  There is no equivalent
+		 * revalidation step for the other direction, so this only runs
+		 * when setting the flag.
+		 */
+		if (unusable)
+		{
+			Oid			childId = indexId;
+
+			while (get_rel_relispartition(childId))
+			{
+				Oid			parentId = get_partition_parent(childId, false);
+				Relation	parentRel;
+				HeapTuple	parentTuple;
+				Form_pg_index parentForm;
+
+				parentRel = relation_open(parentId, AccessExclusiveLock);
+
+				parentTuple = SearchSysCacheCopy1(INDEXRELID,
+												  ObjectIdGetDatum(parentId));
+				if (!HeapTupleIsValid(parentTuple))
+					elog(ERROR, "cache lookup failed for index %u", parentId);
+				parentForm = (Form_pg_index) GETSTRUCT(parentTuple);
+
+				if (parentForm->indisvalid)
+				{
+					parentForm->indisvalid = false;
+					CatalogTupleUpdate(pg_index, &parentTuple->t_self, parentTuple);
+					CacheInvalidateRelcacheByRelid(parentForm->indrelid);
+				}
+
+				heap_freetuple(parentTuple);
+				relation_close(parentRel, NoLock);
+
+				childId = parentId;
+			}
+		}
 	}
 
 	table_close(pg_index, RowExclusiveLock);
