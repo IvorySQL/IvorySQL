@@ -691,11 +691,13 @@ def verify_sql_semantics(
             mode = run_sql(
                 spec,
                 node,
-                "SELECT current_setting('ivorysql.compatible_mode');",
+                "SELECT current_setting('ivorysql.database_mode');",
                 runner=executor,
             )
             if mode.lower() != "oracle":
-                problems.append(f"{member.name} does not have Oracle compatibility enabled")
+                problems.append(
+                    f"{member.name} is not initialized for Oracle compatibility"
+                )
         except HarnessError as exc:
             problems.append(f"{member.name} SQL verification failed: {exc}")
     return problems

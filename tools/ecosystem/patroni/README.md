@@ -4,8 +4,8 @@ This integration builds IvorySQL from the current checkout and runs a
 three-member Patroni cluster backed by etcd. HAProxy exposes a primary endpoint
 on port 5432 and a replica endpoint on port 5433. The harness validates that
 there is exactly one writable leader, all expected replicas are running, lag is
-within policy, SQL recovery roles match Patroni, and Oracle compatibility is
-enabled on every member.
+within policy, SQL recovery roles match Patroni, and every member reports the
+Oracle database mode recorded in its replicated control file.
 
 Copy `.env.example` to `.env`, replace all three passwords, then run:
 
