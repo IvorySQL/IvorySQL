@@ -1,0 +1,102 @@
+name: ivorysql-pgbouncer
+
+x-pool-environment: &pool-environment
+  IVORYSQL_HOST: database
+  IVORYSQL_PORT: "5333"
+  IVORYSQL_DATABASE: ${IVORYSQL_DATABASE:-appdb}
+  IVORYSQL_SUPERUSER: ${IVORYSQL_SUPERUSER:-ivorysql}
+  IVORYSQL_SUPERUSER_PASSWORD: ${IVORYSQL_SUPERUSER_PASSWORD:?set IVORYSQL_SUPERUSER_PASSWORD}
+  PGBOUNCER_APPLICATION_USER: ${PGBOUNCER_APPLICATION_USER:-app_user}
+  PGBOUNCER_APPLICATION_PASSWORD: ${PGBOUNCER_APPLICATION_PASSWORD:?set PGBOUNCER_APPLICATION_PASSWORD}
+  PGBOUNCER_AUTH_USER: ${PGBOUNCER_AUTH_USER:-pool_auth}
+  PGBOUNCER_AUTH_PASSWORD: ${PGBOUNCER_AUTH_PASSWORD:?set PGBOUNCER_AUTH_PASSWORD}
+  PGBOUNCER_ADMIN_USER: ${PGBOUNCER_ADMIN_USER:-pool_admin}
+  PGBOUNCER_ADMIN_PASSWORD: ${PGBOUNCER_ADMIN_PASSWORD:?set PGBOUNCER_ADMIN_PASSWORD}
+  PGBOUNCER_POOL_MODE: ${PGBOUNCER_POOL_MODE:-transaction}
+  PGBOUNCER_PORT: "6432"
+  PGBOUNCER_MAX_CLIENT_CONN: ${PGBOUNCER_MAX_CLIENT_CONN:-500}
+  PGBOUNCER_DEFAULT_POOL_SIZE: ${PGBOUNCER_DEFAULT_POOL_SIZE:-40}
+  PGBOUNCER_MIN_POOL_SIZE: ${PGBOUNCER_MIN_POOL_SIZE:-5}
+  PGBOUNCER_RESERVE_POOL_SIZE: ${PGBOUNCER_RESERVE_POOL_SIZE:-10}
+  PGBOUNCER_RESERVE_POOL_TIMEOUT: ${PGBOUNCER_RESERVE_POOL_TIMEOUT:-3}
+  PGBOUNCER_MAX_DB_CONNECTIONS: ${PGBOUNCER_MAX_DB_CONNECTIONS:-50}
+  PGBOUNCER_MAX_USER_CONNECTIONS: ${PGBOUNCER_MAX_USER_CONNECTIONS:-50}
+  PGBOUNCER_MAX_PREPARED_STATEMENTS: ${PGBOUNCER_MAX_PREPARED_STATEMENTS:-200}
+  PGBOUNCER_QUERY_TIMEOUT: ${PGBOUNCER_QUERY_TIMEOUT:-60}
+  PGBOUNCER_IDLE_TRANSACTION_TIMEOUT: ${PGBOUNCER_IDLE_TRANSACTION_TIMEOUT:-30}
+  PGBOUNCER_CLIENT_IDLE_TIMEOUT: ${PGBOUNCER_CLIENT_IDLE_TIMEOUT:-300}
+  PGBOUNCER_SERVER_IDLE_TIMEOUT: ${PGBOUNCER_SERVER_IDLE_TIMEOUT:-300}
+  PGBOUNCER_SERVER_LIFETIME: ${PGBOUNCER_SERVER_LIFETIME:-3600}
+  PGBOUNCER_WAITING_RATIO_LIMIT: ${PGBOUNCER_WAITING_RATIO_LIMIT:-0.10}
+  PGBOUNCER_AVERAGE_QUERY_LIMIT_MS: ${PGBOUNCER_AVERAGE_QUERY_LIMIT_MS:-250}
+  PGBOUNCER_REQUIRE_TLS: ${PGBOUNCER_REQUIRE_TLS:-false}
+
+services:
+  database:
+    build:
+      context: ../../..
+      dockerfile: tools/ecosystem/pgbouncer/Dockerfile
+      target: database
+      args:
+        PGBOUNCER_VERSION: ${PGBOUNCER_VERSION:-1.25.2}
+    image: ivorysql/pgbouncer-database:${IVORYSQL_IMAGE_TAG:-local}
+    restart: unless-stopped
+    environment:
+      <<: *pool-environment
+    volumes:
+      - database-data:/var/lib/ivorysql/data
+    healthcheck:
+      test: ["CMD-SHELL", "PGPASSWORD=$${IVORYSQL_SUPERUSER_PASSWORD} pg_isready -h 127.0.0.1 -p 5333 -U $${IVORYSQL_SUPERUSER}"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 30s
+
+  pgbouncer:
+    build:
+      context: ../../..
+      dockerfile: tools/ecosystem/pgbouncer/Dockerfile
+      target: pooler
+      args:
+        PGBOUNCER_VERSION: ${PGBOUNCER_VERSION:-1.25.2}
+    image: ivorysql/pgbouncer:${IVORYSQL_IMAGE_TAG:-local}
+    restart: unless-stopped
+    depends_on:
+      database:
+        condition: service_healthy
+    environment:
+      <<: *pool-environment
+    ports:
+      - "${PGBOUNCER_HOST_PORT:-6432}:6432"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          PGPASSWORD=$${PGBOUNCER_ADMIN_PASSWORD}
+          psql --no-psqlrc -h 127.0.0.1 -p 6432
+          -U $${PGBOUNCER_ADMIN_USER} -d pgbouncer -c 'SHOW VERSION' >/dev/null
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+    ulimits:
+      nofile:
+        soft: 4096
+        hard: 8192
+
+  verifier:
+    image: ivorysql/pgbouncer:${IVORYSQL_IMAGE_TAG:-local}
+    profiles: ["verify"]
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+    entrypoint: ["/usr/local/bin/verify-pooling"]
+    environment:
+      <<: *pool-environment
+      PGBOUNCER_HOST: pgbouncer
+      LOAD_CLIENTS: ${LOAD_CLIENTS:-200}
+      LOAD_CONCURRENCY: ${LOAD_CONCURRENCY:-100}
+      LOAD_HOLD_MS: ${LOAD_HOLD_MS:-50}
+
+volumes:
+  database-data:
