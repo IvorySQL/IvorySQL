@@ -25,7 +25,7 @@ main() {
 
     gosu ivorysql python3 /usr/local/libexec/backup_harness.py render --output "$config"
     gosu ivorysql python3 /usr/local/libexec/backup_harness.py restore \
-        --type=default --timeline=latest --action=promote --yes
+        --type=immediate --timeline=latest --action=promote --yes
     printf "port = %s\nlisten_addresses = '127.0.0.1'\n" "$port" \
         >> "$data_dir/postgresql.auto.conf"
     gosu ivorysql pg_ctl -D "$data_dir" -w -t 120 start
