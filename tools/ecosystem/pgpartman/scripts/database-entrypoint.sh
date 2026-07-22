@@ -43,6 +43,7 @@ initialize_database() {
         printf "pg_partman_bgw.analyze = off\n"
         printf "pg_partman_bgw.jobmon = off\n"
     } >> "$data_dir/postgresql.conf"
+    printf "host all all 0.0.0.0/0 scram-sha-256\n" >> "$data_dir/pg_hba.conf"
 
     gosu ivorysql pg_ctl -D "$data_dir" -o "-h 127.0.0.1 -p $port" -w start
     psql_super --set owner="$owner" --set owner_password="$ownerpass" \
