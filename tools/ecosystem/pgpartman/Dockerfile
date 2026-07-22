@@ -15,8 +15,8 @@ COPY . .
 RUN ./configure \
         --prefix=/opt/ivorysql \
         --with-openssl --with-libxml --with-libxslt --with-icu --with-uuid=e2fs \
-    && make -j"$(nproc)" world-bin \
-    && make install-world-bin
+    && make -j"$(nproc)" \
+    && make install
 
 WORKDIR /build/pg_partman
 RUN curl --fail --location --retry 3 \
