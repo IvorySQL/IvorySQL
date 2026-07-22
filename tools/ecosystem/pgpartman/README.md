@@ -5,6 +5,9 @@ least-privilege owner, declarative range-partitioned event table, background
 maintenance, future partition premaking, default-partition protection, and
 retention.
 
+The cluster is initialized in IvorySQL native PostgreSQL mode because
+pg_partman maintenance procedures use PostgreSQL transaction-control semantics.
+
 Copy `.env.example` to `.env`, replace both passwords, then run:
 
 ```sh
