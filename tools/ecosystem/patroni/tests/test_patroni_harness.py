@@ -71,8 +71,8 @@ def healthy_payload() -> dict[str, object]:
         "scope": "ivorysql-ha",
         "members": [
             member("ivory-1", "leader", lag=None),
-            member("ivory-2", "replica", lag=1024),
-            member("ivory-3", "replica", lag=2048),
+            member("ivory-2", "replica", state="streaming", lag=1024),
+            member("ivory-3", "replica", state="streaming", lag=2048),
         ],
     }
 

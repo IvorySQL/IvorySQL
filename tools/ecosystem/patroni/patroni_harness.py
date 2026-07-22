@@ -582,7 +582,10 @@ def validate_snapshot(spec: ClusterSpec, snapshot: ClusterSnapshot) -> list[str]
             f"expected at least {len(spec.nodes) - 1} replicas, found {len(snapshot.replicas)}"
         )
     for member in snapshot.members:
-        if member.state != "running":
+        healthy_states = {"running"}
+        if member in snapshot.replicas:
+            healthy_states.add("streaming")
+        if member.state not in healthy_states:
             problems.append(f"{member.name} is in state {member.state!r}")
         if member in snapshot.replicas and member.lag is not None:
             if member.lag > spec.maximum_replication_lag:
