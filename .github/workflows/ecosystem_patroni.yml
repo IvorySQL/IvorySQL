@@ -1,0 +1,62 @@
+name: Ecosystem Patroni integration
+
+on:
+  push:
+    branches: [agent/patroni-ha]
+    paths:
+      - tools/ecosystem/patroni/**
+      - .github/workflows/ecosystem_patroni.yml
+  pull_request:
+    paths:
+      - tools/ecosystem/patroni/**
+      - .github/workflows/ecosystem_patroni.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: tools/ecosystem/patroni
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run harness unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Validate shell syntax
+        run: bash -n scripts/*.sh
+      - name: Validate Compose model
+        run: |
+          cp .env.example .env
+          docker compose config --quiet
+      - name: Check patch whitespace
+        run: git show --check --oneline HEAD
+
+  integration:
+    if: github.event_name == 'push'
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: tools/ecosystem/patroni
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure test secrets
+        run: cp .env.example .env
+      - name: Build and start cluster
+        run: make up
+      - name: Verify topology and replication
+        run: make verify
+      - name: Collect service logs
+        if: failure()
+        run: docker compose logs --no-color --tail 200
+      - name: Remove test cluster
+        if: always()
+        run: make clean

@@ -1,0 +1,151 @@
+name: ivorysql-patroni
+
+x-ivorysql-common: &ivorysql-common
+  build:
+    context: ../../..
+    dockerfile: tools/ecosystem/patroni/Dockerfile
+    args:
+      PATRONI_VERSION: ${PATRONI_VERSION:-4.1.0}
+  image: ivorysql/patroni:${IVORYSQL_IMAGE_TAG:-local}
+  restart: unless-stopped
+  depends_on:
+    etcd:
+      condition: service_healthy
+  environment: &ivorysql-environment
+    PATRONI_SCOPE: ${PATRONI_SCOPE:-ivorysql-ha}
+    PATRONI_NAMESPACE: ${PATRONI_NAMESPACE:-/ivorysql/}
+    PATRONI_NODES: ivory-1,ivory-2,ivory-3
+    PATRONI_ETCD_HOSTS: etcd:2379
+    PATRONI_SUPERUSER: ${PATRONI_SUPERUSER:-postgres}
+    PATRONI_SUPERUSER_PASSWORD: ${PATRONI_SUPERUSER_PASSWORD:?set PATRONI_SUPERUSER_PASSWORD}
+    PATRONI_REPLICATION_USER: ${PATRONI_REPLICATION_USER:-replicator}
+    PATRONI_REPLICATION_PASSWORD: ${PATRONI_REPLICATION_PASSWORD:?set PATRONI_REPLICATION_PASSWORD}
+    PATRONI_API_USER: ${PATRONI_API_USER:-patroni}
+    PATRONI_API_PASSWORD: ${PATRONI_API_PASSWORD:?set PATRONI_API_PASSWORD}
+    PATRONI_DATABASE: ${PATRONI_DATABASE:-postgres}
+    PATRONI_TTL: ${PATRONI_TTL:-30}
+    PATRONI_LOOP_WAIT: ${PATRONI_LOOP_WAIT:-10}
+    PATRONI_RETRY_TIMEOUT: ${PATRONI_RETRY_TIMEOUT:-10}
+    PATRONI_FAILOVER_LAG: ${PATRONI_FAILOVER_LAG:-1MiB}
+    PATRONI_MAXIMUM_REPLICATION_LAG: ${PATRONI_MAXIMUM_REPLICATION_LAG:-16MiB}
+    PATRONI_SYNCHRONOUS_MODE: ${PATRONI_SYNCHRONOUS_MODE:-true}
+    PATRONI_SYNCHRONOUS_NODE_COUNT: ${PATRONI_SYNCHRONOUS_NODE_COUNT:-1}
+  networks:
+    - patroni
+  healthcheck:
+    test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8008/health"]
+    interval: 5s
+    timeout: 3s
+    retries: 30
+    start_period: 30s
+  stop_grace_period: 60s
+
+services:
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.21
+    restart: unless-stopped
+    command:
+      - /usr/local/bin/etcd
+      - --name=etcd
+      - --data-dir=/etcd-data
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://etcd:2379
+      - --listen-peer-urls=http://0.0.0.0:2380
+      - --initial-advertise-peer-urls=http://etcd:2380
+      - --initial-cluster=etcd=http://etcd:2380
+      - --initial-cluster-state=new
+      - --auto-compaction-mode=periodic
+      - --auto-compaction-retention=1h
+      - --quota-backend-bytes=2147483648
+    volumes:
+      - etcd-data:/etcd-data
+    networks:
+      - patroni
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  ivory-1:
+    <<: *ivorysql-common
+    hostname: ivory-1
+    command: ["ivory-1"]
+    ports:
+      - "${IVORY_1_SQL_PORT:-15431}:5432"
+      - "${IVORY_1_REST_PORT:-18008}:8008"
+    volumes:
+      - ivory-1-data:/var/lib/ivorysql/data
+
+  ivory-2:
+    <<: *ivorysql-common
+    hostname: ivory-2
+    command: ["ivory-2"]
+    ports:
+      - "${IVORY_2_SQL_PORT:-15432}:5432"
+      - "${IVORY_2_REST_PORT:-18009}:8008"
+    volumes:
+      - ivory-2-data:/var/lib/ivorysql/data
+
+  ivory-3:
+    <<: *ivorysql-common
+    hostname: ivory-3
+    command: ["ivory-3"]
+    ports:
+      - "${IVORY_3_SQL_PORT:-15433}:5432"
+      - "${IVORY_3_REST_PORT:-18010}:8008"
+    volumes:
+      - ivory-3-data:/var/lib/ivorysql/data
+
+  haproxy:
+    image: haproxy:3.0-alpine
+    restart: unless-stopped
+    depends_on:
+      ivory-1:
+        condition: service_healthy
+      ivory-2:
+        condition: service_healthy
+      ivory-3:
+        condition: service_healthy
+    ports:
+      - "${HAPROXY_PRIMARY_PORT:-5432}:5432"
+      - "${HAPROXY_REPLICA_PORT:-5433}:5433"
+      - "${HAPROXY_STATS_PORT:-7000}:7000"
+    volumes:
+      - ./config/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    networks:
+      - patroni
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://localhost:7000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  verifier:
+    image: ivorysql/patroni:${IVORYSQL_IMAGE_TAG:-local}
+    profiles: ["verify"]
+    depends_on:
+      haproxy:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "/verify/verify-failover.sh"]
+    environment:
+      <<: *ivorysql-environment
+      PRIMARY_HOST: haproxy
+      PRIMARY_PORT: "5432"
+      REPLICA_HOST: haproxy
+      REPLICA_PORT: "5433"
+      VERIFY_TIMEOUT: ${VERIFY_TIMEOUT:-180}
+    volumes:
+      - ./scripts:/verify:ro
+    networks:
+      - patroni
+
+networks:
+  patroni:
+    driver: bridge
+
+volumes:
+  etcd-data:
+  ivory-1-data:
+  ivory-2-data:
+  ivory-3-data:
