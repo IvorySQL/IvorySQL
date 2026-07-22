@@ -60,6 +60,7 @@ initialize_database() {
         printf "password_encryption = scram-sha-256\n"
         printf "max_connections = 100\n"
     } >> "$data_dir/postgresql.conf"
+    printf "host all all 0.0.0.0/0 scram-sha-256\n" >> "$data_dir/pg_hba.conf"
     gosu ivorysql pg_ctl -D "$data_dir" -o "-h 127.0.0.1 -p $port" -w start
     export IVORYSQL_DATABASE=$database
     initialize_roles
