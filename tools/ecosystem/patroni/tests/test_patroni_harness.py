@@ -317,6 +317,14 @@ class SnapshotTests(unittest.TestCase):
         self.assertEqual(len(snapshot.replicas), 2)
         self.assertEqual(harness.validate_snapshot(self.spec, snapshot), [])
 
+    def test_synchronous_and_asynchronous_standbys_are_replicas(self) -> None:
+        payload = healthy_payload()
+        payload["members"][1]["role"] = "sync_standby"
+        payload["members"][2]["role"] = "async_standby"
+        snapshot = harness.ClusterSnapshot.from_payload(payload)
+        self.assertEqual([member.name for member in snapshot.replicas], ["ivory-2", "ivory-3"])
+        self.assertEqual(harness.validate_snapshot(self.spec, snapshot), [])
+
     def test_missing_member_is_reported(self) -> None:
         payload = healthy_payload()
         payload["members"] = payload["members"][:2]

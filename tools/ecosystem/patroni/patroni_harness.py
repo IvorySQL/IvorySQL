@@ -550,7 +550,12 @@ class ClusterSnapshot:
 
     @property
     def replicas(self) -> tuple[MemberStatus, ...]:
-        return tuple(member for member in self.members if member.role in {"replica", "standby_leader"})
+        return tuple(
+            member
+            for member in self.members
+            if member.role
+            in {"replica", "standby_leader", "sync_standby", "async_standby"}
+        )
 
     def member(self, name: str) -> MemberStatus:
         for member in self.members:
