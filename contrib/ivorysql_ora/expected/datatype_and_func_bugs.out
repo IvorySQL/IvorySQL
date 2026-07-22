@@ -1,6 +1,29 @@
 --
 -- Mainly contains bug-modified test cases for built-in datatypes and built-in functions.
 --
+-- An empty nlsparam must not skip timestamp parsing.
+select sys.to_timestamp('2022-08-23 15:26:37.123456',
+						'YYYY-MM-DD HH24:MI:SS.FF',
+						pg_catalog.repeat('x', 0)) =
+	   sys.to_timestamp('2022-08-23 15:26:37.123456',
+						'YYYY-MM-DD HH24:MI:SS.FF')
+from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+select sys.to_timestamp_tz('2022-08-23 15:26:37.123456 +08:00',
+						   'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM',
+						   pg_catalog.repeat('x', 0)) =
+	   sys.to_timestamp_tz('2022-08-23 15:26:37.123456 +08:00',
+						   'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM')
+from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
 create table dtos_tb1tidid004134318(dtos_clo interval day to second);
 insert into dtos_tb1tidid004134318 values(interval '--2 07:16:23' day to second);
 ERROR:  invalid input syntax for type interval: "--2 07:16:23"

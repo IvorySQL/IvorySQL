@@ -278,7 +278,7 @@ plisql_package_parse(ParseState *parsestate, PackageCacheItem *item, List *names
 						elog(ERROR, "wrong number or types of arguments in call to \"%s\"", parse_first_name);
 
 					*pfunc = (void *) &psource->source;
-					value = (void *) detail;
+					value = (void *) (uintptr_t) detail;
 				}
 			}
 			break;
