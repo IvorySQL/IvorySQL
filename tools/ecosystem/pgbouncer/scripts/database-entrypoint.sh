@@ -47,6 +47,7 @@ initialize_database() {
     [[ -s "$data_dir/PG_VERSION" ]] && return
     local password_file
     password_file=$(mktemp)
+    chown ivorysql:ivorysql "$password_file"
     chmod 0600 "$password_file"
     printf '%s\n' "$superpass" > "$password_file"
     gosu ivorysql initdb --pgdata="$data_dir" --username="$superuser" \
