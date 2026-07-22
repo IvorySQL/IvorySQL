@@ -324,6 +324,7 @@ bootstrap:
   initdb:
     - encoding: UTF8
     - data-checksums
+    - dbmode: oracle
   pg_hba:
     - host replication {spec.replication_user} 0.0.0.0/0 scram-sha-256
     - host all all 0.0.0.0/0 scram-sha-256

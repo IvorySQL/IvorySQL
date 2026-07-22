@@ -202,6 +202,7 @@ class RenderingTests(unittest.TestCase):
         self.assertIn('scope: "ivorysql-ha"', text)
         self.assertIn('name: "ivory-1"', text)
         self.assertIn("etcd3:", text)
+        self.assertIn("dbmode: oracle", text)
         self.assertIn('hosts: "etcd-a:2379,etcd-b:2379,etcd-c:2379"', text)
         self.assertIn("use_pg_rewind: true", text)
         self.assertIn("data-checksums", text)
