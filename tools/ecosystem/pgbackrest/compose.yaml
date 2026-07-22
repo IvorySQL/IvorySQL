@@ -28,9 +28,10 @@ services:
       context: ../../..
       dockerfile: tools/ecosystem/pgbackrest/Dockerfile
       args:
+        IVORYSQL_REF: ${IVORYSQL_REF:-IvorySQL_5.4}
         PGBACKREST_VERSION: ${PGBACKREST_VERSION:-2.59.0}
         PGBACKREST_SHA256: ${PGBACKREST_SHA256:-faaf8faa14a6392279654ee216a493fcd07b0c513af4b55fe34faec062cb8875}
-    image: ivorysql/pgbackrest:${IVORYSQL_IMAGE_TAG:-local}
+    image: ivorysql/pgbackrest:${IVORYSQL_IMAGE_TAG:-5.4-pgbackrest-2.59.0}
     restart: unless-stopped
     environment:
       <<: *backup-environment
@@ -50,7 +51,7 @@ services:
     stop_grace_period: 60s
 
   restore-verifier:
-    image: ivorysql/pgbackrest:${IVORYSQL_IMAGE_TAG:-local}
+    image: ivorysql/pgbackrest:${IVORYSQL_IMAGE_TAG:-5.4-pgbackrest-2.59.0}
     profiles: ["restore"]
     depends_on:
       database:

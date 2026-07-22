@@ -1,17 +1,19 @@
 FROM ubuntu:22.04 AS build
 
 ARG DEBIAN_FRONTEND=noninteractive
+ARG IVORYSQL_REF=IvorySQL_5.4
 RUN apt-get update \
     && apt-get install --no-install-recommends -y \
-        bison build-essential ca-certificates flex gettext libicu-dev \
+        bison build-essential ca-certificates flex gettext git libicu-dev \
         libkrb5-dev libldap2-dev liblz4-dev libpam0g-dev libreadline-dev \
         libssl-dev libxml2-dev libxslt1-dev pkg-config python3-dev tcl-dev \
         uuid-dev zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /src
-COPY . .
-RUN ./configure \
+WORKDIR /build/ivorysql
+RUN git clone --depth 1 --branch "${IVORYSQL_REF}" \
+        https://github.com/IvorySQL/IvorySQL.git . \
+    && ./configure \
         --prefix=/opt/ivorysql \
         --with-openssl \
         --with-libxml \
