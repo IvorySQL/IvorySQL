@@ -13,8 +13,8 @@ COPY . .
 RUN ./configure \
         --prefix=/opt/ivorysql \
         --with-openssl --with-libxml --with-libxslt --with-icu --with-uuid=e2fs \
-    && make -j"$(nproc)" world-bin \
-    && make install-world-bin
+    && make -j"$(nproc)" \
+    && make install
 
 
 FROM ubuntu:22.04 AS pgbouncer-build
@@ -23,7 +23,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 ARG PGBOUNCER_VERSION=1.25.2
 RUN apt-get update \
     && apt-get install --no-install-recommends -y \
-        build-essential ca-certificates curl libevent-dev libssl-dev pkg-config python3 \
+        build-essential ca-certificates curl libevent-dev libssl-dev pkg-config \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 RUN curl --fail --location --retry 3 \
@@ -31,8 +31,8 @@ RUN curl --fail --location --retry 3 \
         --output pgbouncer.tar.gz \
     && tar --extract --gzip --file pgbouncer.tar.gz --strip-components=1 \
     && ./configure --prefix=/opt/pgbouncer --with-openssl \
-    && make -j"$(nproc)" \
-    && make install
+    && make -j"$(nproc)" pgbouncer \
+    && install -D -m 0755 pgbouncer /opt/pgbouncer/bin/pgbouncer
 
 
 FROM ubuntu:22.04 AS runtime
