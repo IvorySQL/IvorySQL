@@ -33,6 +33,7 @@ initialize_database() {
     gosu ivorysql initdb \
         --pgdata="$data_dir" \
         --username="$user" \
+        --dbmode=oracle \
         --pwfile="$password_file" \
         --auth-host=scram-sha-256 \
         --auth-local=trust \
