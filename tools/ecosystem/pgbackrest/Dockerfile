@@ -29,8 +29,8 @@ ARG PGBACKREST_VERSION=2.59.0
 ARG PGBACKREST_SHA256=faaf8faa14a6392279654ee216a493fcd07b0c513af4b55fe34faec062cb8875
 RUN apt-get update \
     && apt-get install --no-install-recommends -y \
-        build-essential ca-certificates curl liblz4-dev libpq-dev libssl-dev \
-        libxml2-dev libzstd-dev meson ninja-build pkg-config zlib1g-dev \
+        build-essential ca-certificates curl libbz2-dev liblz4-dev libpq-dev \
+        libssl-dev libxml2-dev libzstd-dev meson ninja-build pkg-config zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 RUN curl --fail --location --retry 3 \
@@ -48,7 +48,7 @@ FROM ubuntu:22.04 AS runtime
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
     && apt-get install --no-install-recommends -y \
-        ca-certificates gosu libicu70 libkrb5-3 libldap-2.5-0 liblz4-1 \
+        ca-certificates gosu libbz2-1.0 libicu70 libkrb5-3 libldap-2.5-0 liblz4-1 \
         libpam0g libreadline8 libssl3 libxml2 libxslt1.1 locales \
         libpq5 libzstd1 python3 tini uuid-runtime zlib1g \
     && locale-gen en_US.UTF-8 \
