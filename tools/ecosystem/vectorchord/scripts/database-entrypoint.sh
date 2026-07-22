@@ -33,6 +33,7 @@ initialize_database() {
         printf "maintenance_work_mem = 512MB\n"
         printf "max_parallel_maintenance_workers = 4\n"
     } >> "$data_dir/postgresql.conf"
+    printf "host all all 0.0.0.0/0 scram-sha-256\n" >> "$data_dir/pg_hba.conf"
     gosu ivorysql pg_ctl -D "$data_dir" -o "-h 127.0.0.1 -p $port" -w start
     gosu ivorysql createdb --host 127.0.0.1 --port "$port" \
         --username "$user" --owner "$user" "$database"
