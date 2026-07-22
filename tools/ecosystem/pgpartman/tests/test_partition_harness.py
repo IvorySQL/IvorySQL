@@ -262,6 +262,7 @@ class RenderingTests(unittest.TestCase):
         self.assertIn("retention_keep_table = false", text)
         self.assertIn("infinite_time_partitions = true", text)
         self.assertIn("run_maintenance_proc", text)
+        self.assertIn("RESET ivorysql.compatible_mode", text)
         self.assertIn("p_jobmon := false", text)
 
     def test_inventory_sql_uses_partman_boundaries(self) -> None:

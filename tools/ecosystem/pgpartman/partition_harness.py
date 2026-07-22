@@ -345,6 +345,8 @@ def render_install_sql(spec: RuntimeSpec, *, now: dt.datetime | None = None) -> 
     automatic = "on" if policy.automatic_maintenance else "off"
     return f"""CREATE SCHEMA IF NOT EXISTS {spec.partman_schema};
 CREATE EXTENSION IF NOT EXISTS pg_partman WITH SCHEMA {spec.partman_schema};
+ALTER PROCEDURE {spec.partman_schema}.run_maintenance_proc(integer, boolean, boolean)
+    RESET ivorysql.compatible_mode;
 
 CREATE SCHEMA IF NOT EXISTS {policy.schema} AUTHORIZATION {owner};
 CREATE TABLE IF NOT EXISTS {policy.parent} (
