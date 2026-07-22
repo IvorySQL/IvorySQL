@@ -2,6 +2,7 @@
 set -Eeuo pipefail
 
 readonly data_dir=${IVORYSQL_DATA_DIR:-/var/lib/ivorysql/restore-data}
+readonly socket_dir=${IVORYSQL_SOCKET_DIR:-/var/run/ivorysql}
 readonly port=${IVORYSQL_PORT:-5434}
 readonly user=${IVORYSQL_USER:-ivorysql}
 readonly config=${BACKUP_CONFIG_PATH:-/etc/pgbackrest/pgbackrest.conf}
@@ -18,7 +19,8 @@ main() {
     install -d -o ivorysql -g ivorysql -m 0700 "$data_dir"
     install -d -o ivorysql -g ivorysql -m 0750 "$(dirname "$config")" \
         /var/log/pgbackrest /var/spool/pgbackrest /tmp/pgbackrest
-    chown -R ivorysql:ivorysql "$data_dir" "$(dirname "$config")" \
+    install -d -o ivorysql -g ivorysql -m 0770 "$socket_dir"
+    chown -R ivorysql:ivorysql "$data_dir" "$socket_dir" "$(dirname "$config")" \
         /var/log/pgbackrest /var/spool/pgbackrest /tmp/pgbackrest
 
     gosu ivorysql python3 /usr/local/libexec/backup_harness.py render --output "$config"
