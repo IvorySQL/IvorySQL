@@ -20,8 +20,8 @@ RUN git clone --depth 1 --branch "${IVORYSQL_REF}" \
     && ./configure \
         --prefix=/opt/ivorysql \
         --with-openssl --with-libxml --with-libxslt --with-icu --with-uuid=e2fs \
-    && make -j"$(nproc)" world-bin \
-    && make install-world-bin
+    && make -j"$(nproc)" \
+    && make install
 
 WORKDIR /build/pgvector
 RUN curl --fail --location --retry 3 \
