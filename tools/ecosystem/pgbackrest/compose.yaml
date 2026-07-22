@@ -27,6 +27,9 @@ services:
     build:
       context: ../../..
       dockerfile: tools/ecosystem/pgbackrest/Dockerfile
+      args:
+        PGBACKREST_VERSION: ${PGBACKREST_VERSION:-2.59.0}
+        PGBACKREST_SHA256: ${PGBACKREST_SHA256:-faaf8faa14a6392279654ee216a493fcd07b0c513af4b55fe34faec062cb8875}
     image: ivorysql/pgbackrest:${IVORYSQL_IMAGE_TAG:-local}
     restart: unless-stopped
     environment:

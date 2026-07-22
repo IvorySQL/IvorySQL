@@ -4,6 +4,9 @@ This integration builds IvorySQL from the current checkout and configures
 pgBackRest WAL archiving, encrypted repositories, retention, full/differential/
 incremental backups, repository audits, and isolated restore verification.
 
+It builds pgBackRest 2.59.0 from the checksummed upstream distribution tarball;
+this is the first pgBackRest release with PostgreSQL 19 support.
+
 Copy `.env.example` to `.env` and replace both secrets. Then run:
 
 ```sh

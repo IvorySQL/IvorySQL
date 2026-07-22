@@ -22,6 +22,27 @@ RUN ./configure \
     && make install
 
 
+FROM ubuntu:22.04 AS pgbackrest-build
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG PGBACKREST_VERSION=2.59.0
+ARG PGBACKREST_SHA256=faaf8faa14a6392279654ee216a493fcd07b0c513af4b55fe34faec062cb8875
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y \
+        build-essential ca-certificates curl liblz4-dev libpq-dev libssl-dev \
+        libxml2-dev libzstd-dev meson ninja-build pkg-config zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /build
+RUN curl --fail --location --retry 3 \
+        "https://github.com/pgbackrest/pgbackrest/releases/download/release/${PGBACKREST_VERSION}/pgbackrest-${PGBACKREST_VERSION}.tar.gz" \
+        --output pgbackrest.tar.gz \
+    && printf '%s  %s\n' "${PGBACKREST_SHA256}" pgbackrest.tar.gz | sha256sum --check --strict \
+    && tar --extract --gzip --file pgbackrest.tar.gz --strip-components=1 \
+    && meson setup output --buildtype=release \
+        -Dlibssh2=disabled -Dlibsystemd=disabled -Dlibzstd=enabled \
+    && ninja -C output
+
+
 FROM ubuntu:22.04 AS runtime
 
 ARG DEBIAN_FRONTEND=noninteractive
@@ -29,7 +50,7 @@ RUN apt-get update \
     && apt-get install --no-install-recommends -y \
         ca-certificates gosu libicu70 libkrb5-3 libldap-2.5-0 liblz4-1 \
         libpam0g libreadline8 libssl3 libxml2 libxslt1.1 locales \
-        pgbackrest python3 tini uuid-runtime zlib1g \
+        libpq5 libzstd1 python3 tini uuid-runtime zlib1g \
     && locale-gen en_US.UTF-8 \
     && groupadd --gid 999 ivorysql \
     && useradd --uid 999 --gid 999 --home-dir /var/lib/ivorysql \
@@ -43,6 +64,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /opt/ivorysql /opt/ivorysql
+COPY --from=pgbackrest-build /build/output/src/pgbackrest /usr/bin/pgbackrest
 COPY tools/ecosystem/pgbackrest/backup_harness.py /usr/local/libexec/backup_harness.py
 COPY tools/ecosystem/pgbackrest/scripts/database-entrypoint.sh /usr/local/bin/database-entrypoint
 COPY tools/ecosystem/pgbackrest/scripts/verify-backup.sh /usr/local/bin/verify-backup
