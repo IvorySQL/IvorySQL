@@ -26,7 +26,7 @@ def valid_env(**overrides: str) -> dict[str, str]:
         "PATRONI_SCOPE": "ivorysql-ha",
         "PATRONI_NAMESPACE": "/ivorysql/",
         "PATRONI_NODES": "ivory-1,ivory-2,ivory-3",
-        "PATRONI_ETCD_HOSTS": "etcd-a:2379,etcd-b:2379,etcd-c:2379",
+        "PATRONI_ETCD3_HOSTS": "etcd-a:2379,etcd-b:2379,etcd-c:2379",
         "PATRONI_SUPERUSER": "postgres",
         "PATRONI_SUPERUSER_PASSWORD": "admin-secret",
         "PATRONI_REPLICATION_USER": "replicator",

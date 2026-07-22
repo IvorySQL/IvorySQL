@@ -240,8 +240,8 @@ class ClusterSpec:
             namespace=env_value(source, "PATRONI_NAMESPACE", DEFAULT_NAMESPACE),
             nodes=nodes,
             etcd_hosts=parse_csv(
-                env_value(source, "PATRONI_ETCD_HOSTS", "etcd:2379"),
-                name="PATRONI_ETCD_HOSTS",
+                env_value(source, "PATRONI_ETCD3_HOSTS", "etcd:2379"),
+                name="PATRONI_ETCD3_HOSTS",
             ),
             superuser=env_value(source, "PATRONI_SUPERUSER", "postgres"),
             superuser_password=env_value(source, "PATRONI_SUPERUSER_PASSWORD", "ivorysql-admin"),
