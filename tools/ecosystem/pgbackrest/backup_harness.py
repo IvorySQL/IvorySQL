@@ -620,13 +620,10 @@ class RecoveryPlan:
     def arguments(self) -> list[str]:
         result = ["--process-max=" + str(self.process_max)]
         if self.target_type is not RecoveryTargetType.DEFAULT:
-            result.extend(
-                (
-                    "--type=" + self.target_type.value,
-                    "--target-timeline=" + self.timeline,
-                    "--target-action=" + self.action,
-                )
-            )
+            result.append("--type=" + self.target_type.value)
+            if self.target_type is not RecoveryTargetType.IMMEDIATE:
+                result.append("--target-timeline=" + self.timeline)
+            result.append("--target-action=" + self.action)
         if self.target:
             result.append("--target=" + self.target)
         if self.backup_set:

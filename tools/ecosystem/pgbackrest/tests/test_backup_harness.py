@@ -465,6 +465,22 @@ class RecoveryPlanTests(unittest.TestCase):
                 2,
             )
 
+    def test_immediate_restore_omits_timeline(self) -> None:
+        plan = harness.RecoveryPlan(
+            harness.RecoveryTargetType.IMMEDIATE,
+            None,
+            None,
+            "latest",
+            "promote",
+            False,
+            False,
+            2,
+        )
+        self.assertEqual(
+            plan.arguments(),
+            ["--process-max=2", "--type=immediate", "--target-action=promote"],
+        )
+
     def test_restore_path_guard(self) -> None:
         for path in (pathlib.Path("/"), pathlib.Path("/var/lib"), pathlib.Path("/home")):
             with self.subTest(path=path):
