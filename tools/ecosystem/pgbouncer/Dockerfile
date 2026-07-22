@@ -23,7 +23,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 ARG PGBOUNCER_VERSION=1.25.2
 RUN apt-get update \
     && apt-get install --no-install-recommends -y \
-        build-essential ca-certificates curl libevent-dev libssl-dev pkg-config \
+        build-essential ca-certificates curl libevent-dev libssl-dev pkg-config python3 \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 RUN curl --fail --location --retry 3 \
