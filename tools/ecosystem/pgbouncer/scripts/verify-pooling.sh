@@ -5,10 +5,11 @@ readonly host=${PGBOUNCER_HOST:-pgbouncer}
 readonly port=${PGBOUNCER_PORT:-6432}
 readonly database=${IVORYSQL_DATABASE:-appdb}
 readonly app_user=${PGBOUNCER_APPLICATION_USER:-app_user}
+readonly psql_bin=${PGBOUNCER_PSQL:-/usr/lib/postgresql/14/bin/psql}
 export PGPASSWORD=${PGBOUNCER_APPLICATION_PASSWORD:?PGBOUNCER_APPLICATION_PASSWORD is required}
 
 main() {
-    psql --no-psqlrc --set ON_ERROR_STOP=1 --host "$host" --port "$port" \
+    "$psql_bin" --no-psqlrc --set ON_ERROR_STOP=1 --host "$host" --port "$port" \
         --username "$app_user" --dbname "$database" <<'SQL'
 CREATE TABLE IF NOT EXISTS pool_verification (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

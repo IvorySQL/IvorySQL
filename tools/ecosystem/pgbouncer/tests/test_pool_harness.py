@@ -419,9 +419,15 @@ class RuntimeCommandTests(unittest.TestCase):
 
     def test_psql_command_does_not_contain_password(self) -> None:
         command = harness.psql_command("pool", 6432, "app_user", "appdb", "SELECT 1")
+        self.assertEqual(command[0], "/usr/lib/postgresql/14/bin/psql")
         self.assertIn("--no-psqlrc", command)
         self.assertIn("ON_ERROR_STOP=1", command)
         self.assertNotIn(self.spec.backend.application_password, command)
+
+    def test_psql_command_allows_standard_client_override(self) -> None:
+        with mock.patch.dict(os.environ, {"PGBOUNCER_PSQL": "/opt/client/bin/psql"}):
+            command = harness.psql_command("pool", 6432, "app_user", "appdb", "SELECT 1")
+        self.assertEqual(command[0], "/opt/client/bin/psql")
 
     def test_console_query_uses_admin_password_environment(self) -> None:
         csv_output = "database,user\nappdb,app_user\n"

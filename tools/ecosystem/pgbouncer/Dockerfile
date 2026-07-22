@@ -42,7 +42,7 @@ RUN apt-get update \
     && apt-get install --no-install-recommends -y \
         ca-certificates gosu libevent-2.1-7 libicu70 libkrb5-3 libldap-2.5-0 \
         liblz4-1 libpam0g libreadline8 libssl3 libxml2 libxslt1.1 locales \
-        python3 tini uuid-runtime zlib1g \
+        postgresql-client python3 tini uuid-runtime zlib1g \
     && locale-gen en_US.UTF-8 \
     && groupadd --gid 999 ivorysql \
     && useradd --uid 999 --gid 999 --home-dir /var/lib/ivorysql \

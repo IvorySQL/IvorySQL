@@ -721,7 +721,7 @@ def psql_command(
     sql: str,
 ) -> list[str]:
     return [
-        "psql",
+        os.environ.get("PGBOUNCER_PSQL", "/usr/lib/postgresql/14/bin/psql"),
         "--no-psqlrc",
         "--set",
         "ON_ERROR_STOP=1",

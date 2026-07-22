@@ -30,6 +30,7 @@ x-pool-environment: &pool-environment
   PGBOUNCER_WAITING_RATIO_LIMIT: ${PGBOUNCER_WAITING_RATIO_LIMIT:-0.10}
   PGBOUNCER_AVERAGE_QUERY_LIMIT_MS: ${PGBOUNCER_AVERAGE_QUERY_LIMIT_MS:-250}
   PGBOUNCER_REQUIRE_TLS: ${PGBOUNCER_REQUIRE_TLS:-false}
+  PGBOUNCER_PSQL: /usr/lib/postgresql/14/bin/psql
 
 services:
   database:
@@ -73,7 +74,7 @@ services:
         - CMD-SHELL
         - >-
           PGPASSWORD=$${PGBOUNCER_ADMIN_PASSWORD}
-          psql --no-psqlrc -h 127.0.0.1 -p 6432
+          $${PGBOUNCER_PSQL} --no-psqlrc -h 127.0.0.1 -p 6432
           -U $${PGBOUNCER_ADMIN_USER} -d pgbouncer -c 'SHOW VERSION' >/dev/null
       interval: 5s
       timeout: 3s

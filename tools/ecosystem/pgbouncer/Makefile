@@ -32,10 +32,10 @@ reload:
 	$(COMPOSE) exec pgbouncer sh -c 'kill -HUP $$(cat /var/run/pgbouncer/pgbouncer.pid)'
 
 pause:
-	$(COMPOSE) exec pgbouncer sh -c 'PGPASSWORD="$$PGBOUNCER_ADMIN_PASSWORD" psql -h 127.0.0.1 -p 6432 -U "$$PGBOUNCER_ADMIN_USER" -d pgbouncer -c "PAUSE"'
+	$(COMPOSE) exec pgbouncer sh -c 'PGPASSWORD="$$PGBOUNCER_ADMIN_PASSWORD" "$$PGBOUNCER_PSQL" -h 127.0.0.1 -p 6432 -U "$$PGBOUNCER_ADMIN_USER" -d pgbouncer -c "PAUSE"'
 
 resume:
-	$(COMPOSE) exec pgbouncer sh -c 'PGPASSWORD="$$PGBOUNCER_ADMIN_PASSWORD" psql -h 127.0.0.1 -p 6432 -U "$$PGBOUNCER_ADMIN_USER" -d pgbouncer -c "RESUME"'
+	$(COMPOSE) exec pgbouncer sh -c 'PGPASSWORD="$$PGBOUNCER_ADMIN_PASSWORD" "$$PGBOUNCER_PSQL" -h 127.0.0.1 -p 6432 -U "$$PGBOUNCER_ADMIN_USER" -d pgbouncer -c "RESUME"'
 
 logs:
 	$(COMPOSE) logs --follow --tail 100
