@@ -53,7 +53,6 @@ initialize_database() {
             "$config" "$stanza"
         printf "archive_timeout = 60s\n"
         printf "password_encryption = scram-sha-256\n"
-        printf "ivorysql.compatible_mode = oracle\n"
     } >> "$data_dir/postgresql.conf"
 }
 
