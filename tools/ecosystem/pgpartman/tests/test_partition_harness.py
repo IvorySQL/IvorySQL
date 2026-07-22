@@ -261,9 +261,8 @@ class RenderingTests(unittest.TestCase):
         self.assertIn("retention = '90 days'", text)
         self.assertIn("retention_keep_table = false", text)
         self.assertIn("infinite_time_partitions = true", text)
-        self.assertIn("run_maintenance_proc", text)
         self.assertIn("RESET ivorysql.compatible_mode", text)
-        self.assertIn("p_jobmon := false", text)
+        self.assertNotIn("CALL partman.run_maintenance_proc", text)
 
     def test_inventory_sql_uses_partman_boundaries(self) -> None:
         text = harness.render_inventory_sql(self.spec)
@@ -275,6 +274,7 @@ class RenderingTests(unittest.TestCase):
     def test_maintenance_sql_keeps_procedure_outside_a_transaction_block(self) -> None:
         text = harness.render_maintenance_sql(self.spec)
         self.assertIn("run_maintenance_proc", text)
+        self.assertIn("p_jobmon := false", text)
         self.assertNotIn("SET ", text)
 
     def test_workload_sql(self) -> None:

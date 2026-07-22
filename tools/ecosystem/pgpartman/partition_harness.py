@@ -393,10 +393,6 @@ GRANT ALL ON ALL TABLES IN SCHEMA {spec.partman_schema} TO {owner};
 GRANT ALL ON ALL SEQUENCES IN SCHEMA {spec.partman_schema} TO {owner};
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA {spec.partman_schema} TO {owner};
 GRANT EXECUTE ON ALL PROCEDURES IN SCHEMA {spec.partman_schema} TO {owner};
-CALL {spec.partman_schema}.run_maintenance_proc(
-    p_analyze := {'true' if policy.maintenance_analyze else 'false'},
-    p_jobmon := false
-);
 """
 
 
