@@ -42,7 +42,6 @@ initialize_database() {
         printf "pg_partman_bgw.interval = %s\n" "$bgw_interval"
         printf "pg_partman_bgw.analyze = off\n"
         printf "pg_partman_bgw.jobmon = off\n"
-        printf "ivorysql.compatible_mode = oracle\n"
     } >> "$data_dir/postgresql.conf"
 
     gosu ivorysql pg_ctl -D "$data_dir" -o "-h 127.0.0.1 -p $port" -w start
