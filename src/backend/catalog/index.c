@@ -655,6 +655,7 @@ UpdateIndexRelation(Oid indexoid,
 	values[Anum_pg_index_indisready - 1] = BoolGetDatum(isready);
 	values[Anum_pg_index_indislive - 1] = BoolGetDatum(true);
 	values[Anum_pg_index_indisreplident - 1] = BoolGetDatum(false);
+	values[Anum_pg_index_indisunusable - 1] = BoolGetDatum(false);
 	values[Anum_pg_index_indkey - 1] = PointerGetDatum(indkey);
 	values[Anum_pg_index_indcollation - 1] = PointerGetDatum(indcollation);
 	values[Anum_pg_index_indclass - 1] = PointerGetDatum(indclass);
@@ -2455,7 +2456,15 @@ BuildIndexInfo(Relation index)
 					   RelationGetIndexPredicate(index),
 					   indexStruct->indisunique,
 					   indexStruct->indnullsnotdistinct,
-					   indexStruct->indisready,
+					   /*
+						* A manually UNUSABLE index (Oracle compat) is treated
+						* as not ready for inserts, so DML stops maintaining
+						* it, same as an in-progress CREATE INDEX
+						* CONCURRENTLY.  Unconditional on indisunusable, not
+						* gated on compatible_db -- see the matching comment
+						* in plancat.c for why.
+						*/
+					   indexStruct->indisready && !indexStruct->indisunusable,
 					   false,
 					   index->rd_indam->amsummarizing,
 					   indexStruct->indisexclusion && indexStruct->indisunique);
@@ -3582,6 +3591,110 @@ index_set_state_flags(Oid indexId, IndexStateFlagsAction action)
 	table_close(pg_index, RowExclusiveLock);
 }
 
+/*
+ * index_set_unusable - set or clear pg_index.indisunusable
+ *
+ * Oracle-compatible companion to index_set_state_flags(): flips the
+ * "manually disabled via ALTER INDEX ... UNUSABLE" bit.  Unlike the
+ * indisvalid/indisready/indislive trio, this flag is not part of the
+ * CREATE/DROP INDEX CONCURRENTLY state machine, so no transition
+ * invariants need to be asserted here.
+ *
+ * Called both from ExecOraAlterIndexUnusable() (to set the flag) and from
+ * ExecOraAlterIndexRebuild()/reindex_index() (to clear it once a rebuild
+ * succeeds).
+ *
+ * When setting the flag on a leaf that is itself a partition of some
+ * partitioned index, every ancestor partitioned index up the chain is
+ * marked indisvalid = false.  Those ancestors were only ever marked valid
+ * by validatePartitionedIndex() (tablecmds.c) counting this leaf as a
+ * valid, usable partition; now that it's unusable (unmaintained, possibly
+ * stale -- see BuildIndexInfo()), that count no longer holds, and a stale
+ * indisvalid = true on an ancestor is not just cosmetic: get_relation_info()
+ * builds a real IndexOptInfo for it that relation_has_unique_index_for()
+ * and rel_supports_distinctness() consult for planner correctness proofs.
+ * There is no equivalent revalidation on the way back to usable: clearing
+ * indisunusable only ever happens via a rebuild, and the existing
+ * detach/reattach-partition-index flow is how a rebuilt leaf gets counted
+ * again by validatePartitionedIndex().
+ */
+void
+index_set_unusable(Oid indexId, bool unusable)
+{
+	Relation	pg_index;
+	HeapTuple	indexTuple;
+	Form_pg_index indexForm;
+
+	pg_index = table_open(IndexRelationId, RowExclusiveLock);
+
+	indexTuple = SearchSysCacheCopy1(INDEXRELID,
+									 ObjectIdGetDatum(indexId));
+	if (!HeapTupleIsValid(indexTuple))
+		elog(ERROR, "cache lookup failed for index %u", indexId);
+	indexForm = (Form_pg_index) GETSTRUCT(indexTuple);
+
+	if (indexForm->indisunusable != unusable)
+	{
+		Oid			heapId = indexForm->indrelid;
+
+		indexForm->indisunusable = unusable;
+		CatalogTupleUpdate(pg_index, &indexTuple->t_self, indexTuple);
+
+		/*
+		 * CatalogTupleUpdate() only sends a relcache invalidation for the
+		 * index itself (see IndexRelationId case in inval.c), which is
+		 * enough for per-index checks like plancat.c's.  But the owning
+		 * table's cached rd_pkindex/rd_replidindex (built by
+		 * RelationGetIndexList() in relcache.c) are keyed off the table's
+		 * own relcache entry and won't be recomputed unless we invalidate
+		 * it explicitly here too -- matching what reindex_index() already
+		 * does when it clears this flag after a successful rebuild.
+		 */
+		CacheInvalidateRelcacheByRelid(heapId);
+
+		/*
+		 * Propagate invalidation up the partitioned-index ancestor chain;
+		 * see the file comment above for why.  There is no equivalent
+		 * revalidation step for the other direction, so this only runs
+		 * when setting the flag.
+		 */
+		if (unusable)
+		{
+			Oid			childId = indexId;
+
+			while (get_rel_relispartition(childId))
+			{
+				Oid			parentId = get_partition_parent(childId, false);
+				Relation	parentRel;
+				HeapTuple	parentTuple;
+				Form_pg_index parentForm;
+
+				parentRel = relation_open(parentId, AccessExclusiveLock);
+
+				parentTuple = SearchSysCacheCopy1(INDEXRELID,
+												  ObjectIdGetDatum(parentId));
+				if (!HeapTupleIsValid(parentTuple))
+					elog(ERROR, "cache lookup failed for index %u", parentId);
+				parentForm = (Form_pg_index) GETSTRUCT(parentTuple);
+
+				if (parentForm->indisvalid)
+				{
+					parentForm->indisvalid = false;
+					CatalogTupleUpdate(pg_index, &parentTuple->t_self, parentTuple);
+					CacheInvalidateRelcacheByRelid(parentForm->indrelid);
+				}
+
+				heap_freetuple(parentTuple);
+				relation_close(parentRel, NoLock);
+
+				childId = parentId;
+			}
+		}
+	}
+
+	table_close(pg_index, RowExclusiveLock);
+}
+
 
 /*
  * IndexGetRelation: given an index's relation OID, get the OID of the
@@ -3902,7 +4015,8 @@ reindex_index(const ReindexStmt *stmt, Oid indexId,
 
 		index_bad = (!indexForm->indisvalid ||
 					 !indexForm->indisready ||
-					 !indexForm->indislive);
+					 !indexForm->indislive ||
+					 indexForm->indisunusable);
 		if (index_bad ||
 			(indexForm->indcheckxmin && !indexInfo->ii_BrokenHotChain))
 		{
@@ -3913,6 +4027,8 @@ reindex_index(const ReindexStmt *stmt, Oid indexId,
 			indexForm->indisvalid = true;
 			indexForm->indisready = true;
 			indexForm->indislive = true;
+			/* a completed non-concurrent rebuild always clears UNUSABLE */
+			indexForm->indisunusable = false;
 			CatalogTupleUpdate(pg_index, &indexTuple->t_self, indexTuple);
 
 			/*

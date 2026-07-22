@@ -1,7 +1,8 @@
 --
 -- ALTER_INDEX
--- Test Oracle-compatible ALTER INDEX ... REBUILD syntax (IvorySQL feature #1064)
--- Covers: REBUILD, REBUILD ONLINE, REBUILD TABLESPACE, REBUILD PARTITION
+-- Test Oracle-compatible ALTER INDEX ... REBUILD / UNUSABLE syntax
+-- Covers: REBUILD, REBUILD ONLINE, REBUILD TABLESPACE, REBUILD PARTITION,
+--         UNUSABLE
 --
 -- Clean up in case a prior regression run failed
 SET client_min_messages TO 'warning';
@@ -327,3 +328,261 @@ ALTER INDEX rp_idx REBUILD PARALLEL 2 TABLESPACE pg_default;
 ALTER INDEX rp_idx REBUILD NOPARALLEL TABLESPACE pg_default;
 -- Cleanup GROUP 8
 DROP TABLE rp_t CASCADE;
+-- ============================================================
+-- GROUP 9: ALTER INDEX ... UNUSABLE
+--
+-- Real Oracle has no USABLE clause -- REBUILD is the only documented path
+-- back to a usable index, so that is the only recovery path tested here.
+-- ============================================================
+SET client_min_messages TO 'warning';
+DROP TABLE IF EXISTS unusable_t CASCADE;
+RESET client_min_messages;
+CREATE TABLE unusable_t (id int PRIMARY KEY, val text);
+INSERT INTO unusable_t SELECT g, 'val'||g FROM generate_series(1,200) g;
+CREATE UNIQUE INDEX idx_unusable_val ON unusable_t(val);
+-- U01: index is used by the planner before being marked unusable
+SET enable_seqscan = off;
+EXPLAIN (COSTS OFF) SELECT val FROM unusable_t WHERE val = 'val100';
+                      QUERY PLAN                      
+------------------------------------------------------
+ Index Only Scan using idx_unusable_val on unusable_t
+   Index Cond: (val = 'val100'::text)
+(2 rows)
+
+RESET enable_seqscan;
+-- U02: mark it unusable
+ALTER INDEX idx_unusable_val UNUSABLE;
+-- U03: planner no longer chooses it, even with seqscan discouraged --
+-- it falls back to the only plan left, a Seq Scan
+SET enable_seqscan = off;
+EXPLAIN (COSTS OFF) SELECT val FROM unusable_t WHERE val = 'val100';
+            QUERY PLAN            
+----------------------------------
+ Seq Scan on unusable_t
+   Disabled: true
+   Filter: (val = 'val100'::text)
+(3 rows)
+
+RESET enable_seqscan;
+-- U04: DML no longer maintains the unusable index -- a value that would
+-- violate uniqueness now succeeds silently (matches Oracle UNUSABLE semantics)
+INSERT INTO unusable_t VALUES (201, 'val100');
+-- U05: REBUILD fails while the table holds a value that violates uniqueness
+-- (the duplicate inserted in U04) -- demonstrates that maintenance really
+-- stopped while unusable, since REBUILD's physical build re-checks uniqueness
+ALTER INDEX idx_unusable_val REBUILD;
+ERROR:  could not create unique index "idx_unusable_val"
+DETAIL:  Key (val)=(val100) is duplicated.
+-- U06: clean up the duplicate, then REBUILD succeeds
+DELETE FROM unusable_t WHERE id = 201;
+ALTER INDEX idx_unusable_val REBUILD;
+-- U07: planner uses the index again
+SET enable_seqscan = off;
+EXPLAIN (COSTS OFF) SELECT val FROM unusable_t WHERE val = 'val100';
+                      QUERY PLAN                      
+------------------------------------------------------
+ Index Only Scan using idx_unusable_val on unusable_t
+   Index Cond: (val = 'val100'::text)
+(2 rows)
+
+RESET enable_seqscan;
+-- U08: uniqueness is enforced again post-REBUILD
+INSERT INTO unusable_t VALUES (202, 'val100');
+ERROR:  duplicate key value violates unique constraint "idx_unusable_val"
+DETAIL:  Key (val)=(val100) already exists.
+-- U09: plain REINDEX also clears UNUSABLE (safety net beyond Oracle syntax)
+ALTER INDEX idx_unusable_val UNUSABLE;
+REINDEX INDEX idx_unusable_val;
+SET enable_seqscan = off;
+EXPLAIN (COSTS OFF) SELECT val FROM unusable_t WHERE val = 'val100';
+                      QUERY PLAN                      
+------------------------------------------------------
+ Index Only Scan using idx_unusable_val on unusable_t
+   Index Cond: (val = 'val100'::text)
+(2 rows)
+
+RESET enable_seqscan;
+-- U10: UNUSABLE on a partitioned (parent) index -- must error (v1 only
+-- supports plain/leaf indexes; PARTITION-level granularity is future work)
+CREATE TABLE unusable_part (id int, region text) PARTITION BY RANGE (id);
+CREATE TABLE unusable_part_p1 PARTITION OF unusable_part FOR VALUES FROM (1) TO (1001);
+CREATE INDEX idx_unusable_part_id ON unusable_part(id);
+ALTER INDEX idx_unusable_part_id UNUSABLE;
+ERROR:  ALTER INDEX ... UNUSABLE is not supported for partitioned indexes
+HINT:  Mark each partition's leaf index unusable individually.
+DROP TABLE unusable_part CASCADE;
+-- U11: non-existent index (must error)
+ALTER INDEX no_such_index UNUSABLE;
+ERROR:  relation "no_such_index" does not exist
+-- U12: not an index (table name given) (must error)
+ALTER INDEX unusable_t UNUSABLE;
+ERROR:  "unusable_t" is not an index
+-- U13: data integrity preserved -- row count unaffected by UNUSABLE/REBUILD
+SELECT count(*) FROM unusable_t;
+ count 
+-------
+   200
+(1 row)
+
+ALTER INDEX idx_unusable_val UNUSABLE;
+SELECT count(*) FROM unusable_t;
+ count 
+-------
+   200
+(1 row)
+
+ALTER INDEX idx_unusable_val REBUILD;
+SELECT count(*) FROM unusable_t;
+ count 
+-------
+   200
+(1 row)
+
+-- U14: CLUSTER refuses to use an unusable index as the clustered index
+-- (an unmaintained index may be missing rows changed since it was disabled;
+-- clustering on it could silently drop or misorder those rows)
+ALTER TABLE unusable_t CLUSTER ON idx_unusable_val;
+ALTER INDEX idx_unusable_val UNUSABLE;
+CLUSTER unusable_t;
+ERROR:  cannot cluster on unusable index "idx_unusable_val"
+ALTER INDEX idx_unusable_val REBUILD;
+CLUSTER unusable_t;  -- succeeds again once rebuilt
+-- U15: ON CONFLICT falls back to a clean planning-time error, not an
+-- internal crash, when its only matching unique index is unusable
+CREATE TABLE unusable_conflict (id int UNIQUE, val text);
+INSERT INTO unusable_conflict VALUES (1, 'a');
+INSERT INTO unusable_conflict VALUES (1, 'b')
+  ON CONFLICT (id) DO UPDATE SET val = excluded.val;  -- baseline: works
+ALTER INDEX unusable_conflict_id_key UNUSABLE;
+INSERT INTO unusable_conflict VALUES (1, 'c')
+  ON CONFLICT (id) DO UPDATE SET val = excluded.val;  -- must error cleanly
+ERROR:  there is no unique or exclusion constraint matching the ON CONFLICT specification
+ALTER INDEX unusable_conflict_id_key REBUILD;
+INSERT INTO unusable_conflict VALUES (1, 'd')
+  ON CONFLICT (id) DO UPDATE SET val = excluded.val;  -- works again
+SELECT * FROM unusable_conflict;
+ id | val 
+----+-----
+  1 | d
+(1 row)
+
+DROP TABLE unusable_conflict;
+-- U16: UNUSABLE is rejected on a TOAST table's own index -- disabling it
+-- would silently break lookups for newly-toasted values while leaving the
+-- toast layer unaware anything changed
+CREATE TABLE unusable_toast (id int, big text);
+INSERT INTO unusable_toast VALUES (1, repeat('x', 100000));
+SELECT indexrelid::regclass AS toast_index_name
+  FROM pg_index
+  WHERE indrelid = (SELECT reltoastrelid FROM pg_class WHERE relname = 'unusable_toast')
+  \gset
+ALTER INDEX :toast_index_name UNUSABLE;
+ERROR:  ALTER INDEX ... UNUSABLE is not supported for TOAST table indexes
+DROP TABLE unusable_toast;
+-- U17: an unusable leaf partition index must not let the parent partitioned
+-- index be counted as fully valid (validatePartitionedIndex() must exclude
+-- unusable children from its count, since the parent's indisvalid feeds
+-- planner uniqueness proofs used for join removal -- see design doc 4.7/4.8)
+CREATE TABLE unusable_part2 (id int, region text) PARTITION BY RANGE (id);
+CREATE TABLE unusable_part2_p1 PARTITION OF unusable_part2 FOR VALUES FROM (1) TO (1001);
+CREATE TABLE unusable_part2_p2 PARTITION OF unusable_part2 FOR VALUES FROM (1001) TO (2001);
+CREATE INDEX idx_unusable_part2_id ON ONLY unusable_part2 (id);
+SELECT indisvalid FROM pg_index WHERE indexrelid = 'idx_unusable_part2_id'::regclass;  -- f: no children attached
+ indisvalid 
+------------
+ f
+(1 row)
+
+CREATE INDEX idx_unusable_part2_p1_id ON unusable_part2_p1 (id);
+ALTER INDEX idx_unusable_part2_id ATTACH PARTITION idx_unusable_part2_p1_id;
+SELECT indisvalid FROM pg_index WHERE indexrelid = 'idx_unusable_part2_id'::regclass;  -- f: 1 of 2 attached
+ indisvalid 
+------------
+ f
+(1 row)
+
+ALTER INDEX idx_unusable_part2_p1_id UNUSABLE;
+CREATE INDEX idx_unusable_part2_p2_id ON unusable_part2_p2 (id);
+ALTER INDEX idx_unusable_part2_id ATTACH PARTITION idx_unusable_part2_p2_id;
+-- must still be f: p1's leaf is unusable, so it must not count toward completeness
+SELECT indisvalid FROM pg_index WHERE indexrelid = 'idx_unusable_part2_id'::regclass;
+ indisvalid 
+------------
+ f
+(1 row)
+
+DROP TABLE unusable_part2;
+-- U18: a new foreign key cannot be backed by an unusable primary key
+-- (transformFkeyGetPrimaryKey) -- uniqueness is no longer enforced
+CREATE TABLE unusable_fk_parent (id int PRIMARY KEY, val text);
+ALTER INDEX unusable_fk_parent_pkey UNUSABLE;
+CREATE TABLE unusable_fk_child (id int REFERENCES unusable_fk_parent);
+ERROR:  cannot use an unusable primary key for referenced table "unusable_fk_parent"
+ALTER INDEX unusable_fk_parent_pkey REBUILD;
+CREATE TABLE unusable_fk_child (id int REFERENCES unusable_fk_parent);  -- works now
+DROP TABLE unusable_fk_child, unusable_fk_parent;
+-- U19: a new foreign key cannot be backed by a named unusable unique column
+-- list (transformFkeyCheckAttrs)
+CREATE TABLE unusable_fk_parent2 (id int, email text UNIQUE);
+ALTER INDEX unusable_fk_parent2_email_key UNUSABLE;
+CREATE TABLE unusable_fk_child2 (email text REFERENCES unusable_fk_parent2(email));
+ERROR:  there is no unique constraint matching given keys for referenced table "unusable_fk_parent2"
+ALTER INDEX unusable_fk_parent2_email_key REBUILD;
+CREATE TABLE unusable_fk_child2 (email text REFERENCES unusable_fk_parent2(email));  -- works now
+DROP TABLE unusable_fk_child2, unusable_fk_parent2;
+-- U20: ADD CONSTRAINT ... UNIQUE USING INDEX rejects an unusable index
+CREATE TABLE unusable_using_idx (id int, val text);
+CREATE UNIQUE INDEX idx_unusable_using_val ON unusable_using_idx(val);
+ALTER INDEX idx_unusable_using_val UNUSABLE;
+ALTER TABLE unusable_using_idx ADD CONSTRAINT uq_unusable_val UNIQUE USING INDEX idx_unusable_using_val;
+ERROR:  index "idx_unusable_using_val" is unusable
+LINE 1: ALTER TABLE unusable_using_idx ADD CONSTRAINT uq_unusable_va...
+                                           ^
+ALTER INDEX idx_unusable_using_val REBUILD;
+ALTER TABLE unusable_using_idx ADD CONSTRAINT uq_unusable_val UNIQUE USING INDEX idx_unusable_using_val;
+NOTICE:  ALTER TABLE / ADD CONSTRAINT USING INDEX will rename index "idx_unusable_using_val" to "uq_unusable_val"
+DROP TABLE unusable_using_idx;
+-- U21: amcheck refuses to check an unusable index -- it is expected to have
+-- drifted from the heap by design, which would otherwise read as a false
+-- positive corruption report
+CREATE EXTENSION IF NOT EXISTS amcheck;
+CREATE TABLE unusable_amcheck (id int PRIMARY KEY, val text);
+INSERT INTO unusable_amcheck SELECT g, 'v'||g FROM generate_series(1,50) g;
+SELECT bt_index_check('unusable_amcheck_pkey');  -- baseline: passes silently
+ bt_index_check 
+----------------
+ 
+(1 row)
+
+ALTER INDEX unusable_amcheck_pkey UNUSABLE;
+SELECT bt_index_check('unusable_amcheck_pkey');  -- must error, not report corruption
+ERROR:  cannot check index "unusable_amcheck_pkey"
+DETAIL:  Index is unusable.
+ALTER INDEX unusable_amcheck_pkey REBUILD;
+SELECT bt_index_check('unusable_amcheck_pkey');  -- works again
+ bt_index_check 
+----------------
+ 
+(1 row)
+
+DROP TABLE unusable_amcheck;
+-- U22: ALTER TABLE ... ALTER COLUMN TYPE must not silently reuse an unusable
+-- index's (possibly stale) physical storage -- CheckIndexCompatible() must
+-- treat it as incompatible, forcing a fresh rebuild instead
+CREATE TABLE unusable_altertype (id int, val int);
+CREATE INDEX idx_unusable_altertype_val ON unusable_altertype(val);
+SELECT indexrelid AS old_index_oid FROM pg_index
+  WHERE indexrelid = 'idx_unusable_altertype_val'::regclass \gset
+ALTER INDEX idx_unusable_altertype_val UNUSABLE;
+ALTER TABLE unusable_altertype ALTER COLUMN val TYPE int;
+-- must be a freshly built index (different OID, and not unusable)
+SELECT indexrelid <> :old_index_oid AS storage_was_rebuilt, indisunusable
+  FROM pg_index WHERE indrelid = 'unusable_altertype'::regclass;
+ storage_was_rebuilt | indisunusable 
+---------------------+---------------
+ t                   | f
+(1 row)
+
+DROP TABLE unusable_altertype;
+-- Cleanup GROUP 9
+DROP TABLE unusable_t CASCADE;

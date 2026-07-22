@@ -257,6 +257,23 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 			}
 
 			/*
+			 * Ignore indexes manually disabled via the Oracle-compatible
+			 * ALTER INDEX ... UNUSABLE.  This check is unconditional (not
+			 * gated on the current session's compatible_db): indisunusable
+			 * is a catalog fact about the index, not a per-session parser
+			 * choice, and every session must honor it consistently to avoid
+			 * planning against a stale/unmaintained index.  It can only ever
+			 * be set by the Oracle-only ALTER INDEX ... UNUSABLE command, so
+			 * behavior for installations that never use that command is
+			 * unaffected (indisunusable is always false).
+			 */
+			if (index->indisunusable)
+			{
+				index_close(indexRelation, NoLock);
+				continue;
+			}
+
+			/*
 			 * If the index is valid, but cannot yet be used, ignore it; but
 			 * mark the plan we are generating as transient. See
 			 * src/backend/access/heap/README.HOT for discussion.
@@ -1000,6 +1017,18 @@ infer_arbiter_indexes(PlannerInfo *root)
 		 * indexes at least one index that is marked valid.
 		 */
 		if (!idxForm->indisready)
+			continue;
+
+		/*
+		 * Also ignore an index manually disabled via the Oracle-compatible
+		 * ALTER INDEX ... UNUSABLE.  Such an index is skipped by
+		 * execIndexing.c the same way a !indisready index is (both make
+		 * ii_ReadyForInserts false, see BuildIndexInfo()), so picking it as
+		 * the sole arbiter here would make ExecOnConflictUpdate() fail to
+		 * find it at execution time and crash with "unexpected failure to
+		 * find arbiter index" instead of a clean planning-time error.
+		 */
+		if (idxForm->indisunusable)
 			continue;
 
 		/*

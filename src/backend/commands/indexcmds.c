@@ -65,6 +65,7 @@
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/ora_compatible.h"
 #include "utils/partcache.h"
 #include "utils/pg_rusage.h"
 #include "utils/regproc.h"
@@ -266,10 +267,15 @@ CheckIndexCompatible(Oid oldId,
 	/*
 	 * We don't assess expressions or predicates; assume incompatibility.
 	 * Also, if the index is invalid for any reason, treat it as incompatible.
+	 * Likewise for an index manually disabled via the Oracle-compatible
+	 * ALTER INDEX ... UNUSABLE: reusing its storage as-is (without a
+	 * rebuild) would let the new index inherit stale/incomplete contents
+	 * while appearing fully valid.
 	 */
 	if (!(heap_attisnull(tuple, Anum_pg_index_indpred, NULL) &&
 		  heap_attisnull(tuple, Anum_pg_index_indexprs, NULL) &&
-		  indexForm->indisvalid))
+		  indexForm->indisvalid &&
+		  !indexForm->indisunusable))
 	{
 		ReleaseSysCache(tuple);
 		return false;
@@ -2884,6 +2890,17 @@ ChooseIndexColumnNames(const List *indexElems)
  * For the non-PARTITION path the existing ReindexIndex() infrastructure is
  * reused directly so that locking, event-trigger collection, and pgstat
  * progress reporting follow the same code path as REINDEX INDEX.
+ *
+ * A successful non-CONCURRENTLY rebuild clears indisunusable (see
+ * index_set_unusable() in index.c, invoked from within reindex_index()),
+ * undoing a prior ALTER INDEX ... UNUSABLE.  REBUILD ONLINE also recovers a
+ * manually disabled index, but by a different mechanism: it builds a
+ * brand-new index and swaps it in for the old one (see
+ * index_concurrently_create_copy()/index_concurrently_swap() in index.c), and
+ * a freshly created pg_index tuple always starts with indisunusable = false
+ * (index_create(), index.c). index_concurrently_swap() does not, and does
+ * not need to, copy indisunusable from the old index to the new one -- the
+ * new index was never marked unusable to begin with.
  */
 void
 ExecOraAlterIndexRebuild(ParseState *pstate,
@@ -3131,7 +3148,15 @@ ExecOraAlterIndexRebuild(ParseState *pstate,
 		newparams.options |= REINDEXOPT_REPORT_PROGRESS;
 
 		if (online && persistence != RELPERSISTENCE_TEMP)
+		{
+			/*
+			 * NOTE: the CONCURRENTLY path recovers a manually disabled leaf
+			 * partition too, the same way as the non-PARTITION CONCURRENTLY
+			 * case below -- by swapping in a freshly built index, which
+			 * never had indisunusable set in the first place.
+			 */
 			ReindexRelationConcurrently(&reindex_stub, partIndexOid, &newparams);
+		}
 		else
 			reindex_index(&reindex_stub, partIndexOid, false, persistence,
 						  &newparams);
@@ -3142,9 +3167,112 @@ ExecOraAlterIndexRebuild(ParseState *pstate,
 		 * No PARTITION clause: delegate to ReindexIndex(), which handles
 		 * regular indexes, partitioned indexes (rebuilds all leaf partitions),
 		 * CONCURRENTLY, TABLESPACE, and progress reporting.
+		 *
+		 * For the non-CONCURRENTLY case, reindex_index() (see index.c)
+		 * already clears indisunusable as part of its own catalog update
+		 * when it heals a not-valid/not-ready/not-live/unusable index, so
+		 * no further action is needed here.  Calling index_set_unusable()
+		 * again from here would attempt a second update of the same
+		 * pg_index tuple within the same command and error with "tuple
+		 * already updated by self" (or worse, hit a missing-snapshot
+		 * assertion for the CONCURRENTLY/partitioned case, since
+		 * ReindexRelationConcurrently() manages its own multi-transaction
+		 * snapshot lifecycle that has already been torn down by the time
+		 * control returns here).
+		 *
+		 * For the CONCURRENTLY case, there is no equivalent pg_index tuple
+		 * to update: ReindexRelationConcurrently() builds a brand-new index
+		 * and swaps it in for the old one (index_concurrently_create_copy()/
+		 * index_concurrently_swap() in index.c). The new index's pg_index
+		 * tuple is created by index_create() with indisunusable = false, and
+		 * index_concurrently_swap() has no reason to copy the old value
+		 * over. So REBUILD ONLINE recovers a manually disabled index just
+		 * as well as a non-concurrent REBUILD, just via a different
+		 * mechanism (a new usable index taking the old one's place, rather
+		 * than an in-place flag flip).
 		 */
 		ReindexIndex(&reindex_stub, &params, isTopLevel);
 	}
+}
+
+/*
+ * ExecOraAlterIndexUnusable
+ *
+ * Primary entry point for Oracle-compatible ALTER INDEX ... UNUSABLE.
+ *
+ * Marks the named index unusable: the planner will no longer consider it
+ * (plancat.c) and DML will no longer maintain it (index.c/execIndexing.c),
+ * which as a side effect stops uniqueness enforcement for a unique/PK
+ * index -- matching Oracle's UNUSABLE semantics.  The only documented way
+ * back to a usable state, in both Oracle and here, is
+ * ALTER INDEX ... REBUILD (or a plain REINDEX), which clears the flag once
+ * the physical rebuild succeeds.
+ *
+ * This is reachable only from the Oracle grammar (ora_gram.y), which has no
+ * UNUSABLE production under compatible_db = pg; the explicit check below is
+ * defense in depth, matching this project's convention of gating
+ * Oracle-only logic on compatible_db.
+ *
+ * Returns the ObjectAddress of the affected index so the caller (utility.c)
+ * can hand it to EventTriggerCollectSimpleCommand(), the same way REINDEX
+ * and ALTER INDEX ... REBUILD show up in pg_event_trigger_ddl_commands().
+ */
+ObjectAddress
+ExecOraAlterIndexUnusable(ParseState *pstate, const OraAlterIndexUnusableStmt *stmt)
+{
+	ReindexParams params = {0};
+	struct ReindexIndexCallbackState cbstate;
+	Oid			indexOid;
+	char		relkind;
+	ObjectAddress address;
+
+	if (ORA_PARSER != compatible_db)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("ALTER INDEX ... UNUSABLE is only available when compatible_db is oracle")));
+
+	/*
+	 * Resolve and lock the index the same way ExecOraAlterIndexRebuild()
+	 * does for its non-CONCURRENTLY path: AccessExclusiveLock on the index,
+	 * with the heap table locked (ShareLock, since REINDEXOPT_CONCURRENTLY
+	 * is not set) and permission-checked by the shared callback.
+	 */
+	cbstate.params = params;
+	cbstate.locked_table_oid = InvalidOid;
+
+	indexOid = RangeVarGetRelidExtended(stmt->relation,
+										AccessExclusiveLock,
+										0,
+										RangeVarCallbackForReindexIndex,
+										&cbstate);
+
+	relkind = get_rel_relkind(indexOid);
+	if (relkind == RELKIND_PARTITIONED_INDEX)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("ALTER INDEX ... UNUSABLE is not supported for partitioned indexes"),
+				 errhint("Mark each partition's leaf index unusable individually.")));
+
+	/*
+	 * Reject indexes belonging to a TOAST relation.  toast_open_indexes()
+	 * (see toast_internals.c) trusts "the valid index" of a toast relation
+	 * to locate out-of-line values; an unusable toast index would still be
+	 * picked up there (indisvalid is untouched by UNUSABLE) while DML
+	 * silently stops maintaining it, causing lookups for newly-toasted
+	 * values inserted afterward to fail.  There is no documented Oracle
+	 * use case for disabling a toast index, so simply disallow it here
+	 * rather than relying solely on the defense added to
+	 * toast_open_indexes() itself.
+	 */
+	if (get_rel_relkind(IndexGetRelation(indexOid, false)) == RELKIND_TOASTVALUE)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("ALTER INDEX ... UNUSABLE is not supported for TOAST table indexes")));
+
+	index_set_unusable(indexOid, true);
+
+	ObjectAddressSet(address, RelationRelationId, indexOid);
+	return address;
 }
 
 /*

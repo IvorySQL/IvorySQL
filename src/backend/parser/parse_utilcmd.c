@@ -2617,6 +2617,18 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 					 parser_errposition(cxt->pstate, constraint->location)));
 
 		/*
+		 * Likewise reject an index manually disabled via the Oracle-
+		 * compatible ALTER INDEX ... UNUSABLE: it is no longer maintained
+		 * by DML, so its uniqueness can't be trusted to back a new
+		 * constraint.
+		 */
+		if (index_form->indisunusable)
+			ereport(ERROR,
+					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+					 errmsg("index \"%s\" is unusable", index_name),
+					 parser_errposition(cxt->pstate, constraint->location)));
+
+		/*
 		 * Today we forbid non-unique indexes, but we could permit GiST
 		 * indexes whose last entry is a range type and use that to create a
 		 * WITHOUT OVERLAPS constraint (i.e. a temporal constraint).
