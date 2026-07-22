@@ -1,0 +1,70 @@
+name: ivorysql-pgbackrest
+
+x-backup-environment: &backup-environment
+  IVORYSQL_DATA_DIR: /var/lib/ivorysql/data
+  IVORYSQL_PORT: "5333"
+  IVORYSQL_USER: ${IVORYSQL_USER:-ivorysql}
+  IVORYSQL_PASSWORD: ${IVORYSQL_PASSWORD:?set IVORYSQL_PASSWORD}
+  BACKUP_STANZA: ${BACKUP_STANZA:-ivorysql}
+  BACKUP_CONFIG_PATH: /etc/pgbackrest/pgbackrest.conf
+  BACKUP_REPO_TYPE: posix
+  BACKUP_REPO_PATH: /var/lib/pgbackrest
+  BACKUP_CIPHER_TYPE: ${BACKUP_CIPHER_TYPE:-aes-256-cbc}
+  BACKUP_CIPHER_PASS: ${BACKUP_CIPHER_PASS:?set BACKUP_CIPHER_PASS}
+  BACKUP_REQUIRE_ENCRYPTION: ${BACKUP_REQUIRE_ENCRYPTION:-true}
+  BACKUP_RETENTION_FULL: ${BACKUP_RETENTION_FULL:-2}
+  BACKUP_RETENTION_DIFF: ${BACKUP_RETENTION_DIFF:-4}
+  BACKUP_FULL_MAX_AGE: ${BACKUP_FULL_MAX_AGE:-8d}
+  BACKUP_ANY_MAX_AGE: ${BACKUP_ANY_MAX_AGE:-26h}
+  BACKUP_MINIMUM_SIZE: ${BACKUP_MINIMUM_SIZE:-1MiB}
+  BACKUP_PROCESS_MAX: ${BACKUP_PROCESS_MAX:-2}
+  BACKUP_COMPRESS_TYPE: ${BACKUP_COMPRESS_TYPE:-zst}
+  BACKUP_COMPRESS_LEVEL: ${BACKUP_COMPRESS_LEVEL:-3}
+
+services:
+  database:
+    build:
+      context: ../../..
+      dockerfile: tools/ecosystem/pgbackrest/Dockerfile
+    image: ivorysql/pgbackrest:${IVORYSQL_IMAGE_TAG:-local}
+    restart: unless-stopped
+    environment:
+      <<: *backup-environment
+    ports:
+      - "${IVORYSQL_HOST_PORT:-5333}:5333"
+    volumes:
+      - database-data:/var/lib/ivorysql/data
+      - backup-repository:/var/lib/pgbackrest
+      - backup-logs:/var/log/pgbackrest
+      - backup-spool:/var/spool/pgbackrest
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5333 -U $${IVORYSQL_USER}"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 30s
+    stop_grace_period: 60s
+
+  restore-verifier:
+    image: ivorysql/pgbackrest:${IVORYSQL_IMAGE_TAG:-local}
+    profiles: ["restore"]
+    depends_on:
+      database:
+        condition: service_healthy
+    entrypoint: ["/usr/local/bin/verify-restore"]
+    environment:
+      <<: *backup-environment
+      IVORYSQL_DATA_DIR: /var/lib/ivorysql/restore-data
+      IVORYSQL_PORT: "5434"
+    volumes:
+      - restore-data:/var/lib/ivorysql/restore-data
+      - backup-repository:/var/lib/pgbackrest:ro
+      - backup-logs:/var/log/pgbackrest
+      - backup-spool:/var/spool/pgbackrest
+
+volumes:
+  database-data:
+  restore-data:
+  backup-repository:
+  backup-logs:
+  backup-spool:
