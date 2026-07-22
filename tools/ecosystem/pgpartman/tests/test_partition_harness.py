@@ -133,6 +133,10 @@ class ParsingTests(unittest.TestCase):
 
     def test_parse_timestamp(self) -> None:
         self.assertEqual(harness.parse_timestamp("2026-07-22T10:00:00Z"), NOW.replace(minute=0))
+        self.assertEqual(
+            harness.parse_timestamp("2026-07-22 10:00:00+00"),
+            NOW.replace(minute=0),
+        )
         naive = harness.parse_timestamp("2026-07-22T10:00:00")
         self.assertEqual(naive.tzinfo, UTC)
         with self.assertRaises(harness.AuditError):

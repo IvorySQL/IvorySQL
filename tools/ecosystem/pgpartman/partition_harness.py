@@ -96,6 +96,7 @@ def quote_literal(raw: str) -> str:
 
 def parse_timestamp(raw: str) -> dt.datetime:
     normalized = raw.strip().replace("Z", "+00:00")
+    normalized = re.sub(r"([+-]\d{2})$", r"\1:00", normalized)
     try:
         result = dt.datetime.fromisoformat(normalized)
     except ValueError as exc:
