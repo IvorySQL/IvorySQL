@@ -426,6 +426,11 @@ class SQLVerificationTests(unittest.TestCase):
             harness.verify_sql_semantics(self.spec, self.snapshot, runner=runner),
             [],
         )
+        mode_query = runner.calls[2][0][-1]
+        self.assertEqual(
+            mode_query,
+            "SELECT current_setting('ivorysql.compatible_mode');",
+        )
 
     def test_verify_sql_semantics_reports_role_mismatch(self) -> None:
         runner = FakeRunner(

@@ -691,7 +691,6 @@ def verify_sql_semantics(
             mode = run_sql(
                 spec,
                 node,
-                "SET ivorysql.compatible_mode=oracle; "
                 "SELECT current_setting('ivorysql.compatible_mode');",
                 runner=executor,
             )
