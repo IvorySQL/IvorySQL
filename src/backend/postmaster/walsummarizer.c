@@ -349,6 +349,7 @@ WalSummarizerMain(const void *startup_data, size_t startup_data_len)
 	{
 		XLogRecPtr	latest_lsn;
 		TimeLineID	latest_tli;
+		XLogRecPtr	maximum_lsn;
 		XLogRecPtr	end_of_summary_lsn;
 
 		/* Flush any leaked data in the top-level context */
@@ -413,9 +414,10 @@ WalSummarizerMain(const void *startup_data, size_t startup_data_len)
 		}
 
 		/* Summarize WAL. */
+		maximum_lsn = XLogRecPtrIsValid(switch_lsn) ? switch_lsn : latest_lsn;
 		end_of_summary_lsn = SummarizeWAL(current_tli,
 										  current_lsn, exact,
-										  switch_lsn, latest_lsn);
+										  switch_lsn, maximum_lsn);
 		Assert(XLogRecPtrIsValid(end_of_summary_lsn));
 		Assert(end_of_summary_lsn >= current_lsn);
 
