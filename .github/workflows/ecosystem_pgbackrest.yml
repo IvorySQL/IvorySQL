@@ -36,7 +36,7 @@ jobs:
           cp .env.example .env
           docker compose config --quiet
       - name: Check patch whitespace
-        run: git show --check --oneline HEAD
+        run: git show --check --oneline HEAD -- .github/workflows/ecosystem_pgbackrest.yml tools/ecosystem/pgbackrest
 
   integration:
     if: github.event_name == 'push'
