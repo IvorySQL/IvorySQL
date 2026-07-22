@@ -54,6 +54,7 @@ initialize_database() {
         printf "archive_timeout = 60s\n"
         printf "password_encryption = scram-sha-256\n"
     } >> "$data_dir/postgresql.conf"
+    printf "host all all 0.0.0.0/0 scram-sha-256\n" >> "$data_dir/pg_hba.conf"
 }
 
 main() {
