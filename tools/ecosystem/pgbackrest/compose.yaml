@@ -2,6 +2,7 @@ name: ivorysql-pgbackrest
 
 x-backup-environment: &backup-environment
   IVORYSQL_DATA_DIR: /var/lib/ivorysql/data
+  IVORYSQL_SOCKET_DIR: /var/run/ivorysql
   IVORYSQL_PORT: "5333"
   IVORYSQL_USER: ${IVORYSQL_USER:-ivorysql}
   IVORYSQL_PASSWORD: ${IVORYSQL_PASSWORD:?set IVORYSQL_PASSWORD}

@@ -205,6 +205,7 @@ class BackupPolicy:
 class RuntimeSpec:
     stanza: str
     pg_path: pathlib.Path
+    pg_socket_path: pathlib.Path
     pg_port: int
     db_user: str
     config_path: pathlib.Path
@@ -221,6 +222,10 @@ class RuntimeSpec:
             raise ConfigurationError("IVORYSQL_DATA_DIR must be absolute")
         if path_is_root(self.pg_path):
             raise ConfigurationError("IVORYSQL_DATA_DIR must not be a filesystem root")
+        if not path_is_absolute(self.pg_socket_path):
+            raise ConfigurationError("IVORYSQL_SOCKET_DIR must be absolute")
+        if any(character in str(self.pg_socket_path) for character in "'\n\r"):
+            raise ConfigurationError("IVORYSQL_SOCKET_DIR contains unsafe characters")
         if not 1 <= self.pg_port <= 65535:
             raise ConfigurationError("IVORYSQL_PORT is out of range")
         for path, label in (
@@ -311,6 +316,9 @@ class RuntimeSpec:
         return cls(
             stanza=value(source, "BACKUP_STANZA", "ivorysql"),
             pg_path=pathlib.Path(value(source, "IVORYSQL_DATA_DIR", "/var/lib/ivorysql/data")),
+            pg_socket_path=pathlib.Path(
+                value(source, "IVORYSQL_SOCKET_DIR", "/var/run/ivorysql")
+            ),
             pg_port=integer(
                 value(source, "IVORYSQL_PORT", "5333"),
                 name="IVORYSQL_PORT",
@@ -335,6 +343,7 @@ def render_config(spec: RuntimeSpec) -> str:
     lines = [
         f"[{spec.stanza}]",
         f"pg1-path={quote_config(spec.pg_path.as_posix())}",
+        f"pg1-socket-path={quote_config(spec.pg_socket_path.as_posix())}",
         f"pg1-port={spec.pg_port}",
         "",
         "[global]",

@@ -2,6 +2,7 @@
 set -Eeuo pipefail
 
 readonly data_dir=${IVORYSQL_DATA_DIR:-/var/lib/ivorysql/data}
+readonly socket_dir=${IVORYSQL_SOCKET_DIR:-/var/run/ivorysql}
 readonly port=${IVORYSQL_PORT:-5333}
 readonly user=${IVORYSQL_USER:-ivorysql}
 readonly password=${IVORYSQL_PASSWORD:?IVORYSQL_PASSWORD is required}
@@ -15,11 +16,12 @@ die() {
 
 prepare_directories() {
     install -d -o ivorysql -g ivorysql -m 0700 "$data_dir"
+    install -d -o ivorysql -g ivorysql -m 0770 "$socket_dir"
     install -d -o ivorysql -g ivorysql -m 0750 "$(dirname "$config")"
     install -d -o ivorysql -g ivorysql -m 0750 \
         /var/lib/pgbackrest /var/log/pgbackrest /var/spool/pgbackrest /tmp/pgbackrest
     chown -R ivorysql:ivorysql \
-        "$data_dir" /var/lib/pgbackrest /var/log/pgbackrest \
+        "$data_dir" "$socket_dir" /var/lib/pgbackrest /var/log/pgbackrest \
         /var/spool/pgbackrest /tmp/pgbackrest "$(dirname "$config")"
 }
 
@@ -44,6 +46,7 @@ initialize_database() {
     {
         printf "port = %s\n" "$port"
         printf "listen_addresses = '*'\n"
+        printf "unix_socket_directories = '%s'\n" "$socket_dir"
         printf "wal_level = replica\n"
         printf "max_wal_senders = 10\n"
         printf "archive_mode = on\n"

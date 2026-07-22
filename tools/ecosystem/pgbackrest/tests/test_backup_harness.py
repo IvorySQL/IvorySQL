@@ -244,6 +244,7 @@ class RenderingTests(unittest.TestCase):
         text = harness.render_config(harness.RuntimeSpec.from_env(valid_env()))
         self.assertIn("[ivorysql]", text)
         self.assertIn("pg1-path=/var/lib/ivorysql/data", text)
+        self.assertIn("pg1-socket-path=/var/run/ivorysql", text)
         self.assertIn("repo1-type=posix", text)
         self.assertIn("repo1-cipher-type=aes-256-cbc", text)
         self.assertIn("archive-async=y", text)
