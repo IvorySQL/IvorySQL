@@ -34,8 +34,8 @@ RUN ./configure \
         --with-libxslt \
         --with-icu \
         --with-uuid=e2fs \
-    && make -j"$(nproc)" world-bin \
-    && make install-world-bin
+    && make -j"$(nproc)" \
+    && make install
 
 
 FROM ubuntu:22.04 AS runtime
