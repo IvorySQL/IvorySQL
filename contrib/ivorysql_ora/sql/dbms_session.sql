@@ -112,6 +112,22 @@ select sys_context('app', 'usr') as before_discard;
 discard all;
 select sys_context('app', 'usr') is null as after_discard;
 
+--
+-- DISCARD ALL inside a transaction block fails (PreventInTransactionBlock),
+-- but the ivorysql_ora ProcessUtility hook must still reset DBMS_SESSION
+-- state via PG_FINALLY() so a pooled connection does not leak the previous
+-- client's context.  This reproduces the bypass fixed alongside this test.
+--
+-- The discard runs in an explicit transaction block so it raises the expected
+-- ERROR (captured by pg_regress); after rollback ends the aborted block so
+-- the following SYS_CONTEXT read runs cleanly.
+call dbms_session.set_context('app', 'usr', 'dave');
+select sys_context('app', 'usr') as before_failed_discard;
+begin;
+discard all;  -- ERROR: DISCARD ALL cannot run inside a transaction block
+rollback;
+select sys_context('app', 'usr') is null as cleared_after_failed_discard;
+
 drop table docs;
 drop role dbms_sess_rls;
 
