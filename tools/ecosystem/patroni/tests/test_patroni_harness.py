@@ -206,7 +206,7 @@ class RenderingTests(unittest.TestCase):
         self.assertIn('hosts: "etcd-a:2379,etcd-b:2379,etcd-c:2379"', text)
         self.assertIn("use_pg_rewind: true", text)
         self.assertIn("data-checksums", text)
-        self.assertIn("ivorysql.compatible_mode: oracle", text)
+        self.assertNotIn("ivorysql.compatible_mode: oracle", text)
         self.assertIn("password_encryption: scram-sha-256", text)
 
     def test_render_quotes_secrets(self) -> None:

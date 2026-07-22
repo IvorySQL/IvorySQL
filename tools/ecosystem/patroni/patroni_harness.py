@@ -320,7 +320,6 @@ bootstrap:
         max_replication_slots: 10
         max_connections: 200
         password_encryption: scram-sha-256
-        ivorysql.compatible_mode: oracle
   initdb:
     - encoding: UTF8
     - data-checksums
@@ -684,7 +683,8 @@ def verify_sql_semantics(
             mode = run_sql(
                 spec,
                 node,
-                "SELECT setting FROM pg_settings WHERE name='ivorysql.compatible_mode';",
+                "SET ivorysql.compatible_mode=oracle; "
+                "SELECT current_setting('ivorysql.compatible_mode');",
                 runner=executor,
             )
             if mode.lower() != "oracle":

@@ -61,6 +61,7 @@ TRUNCATE patroni_failover_probe;
 INSERT INTO patroni_failover_probe(payload)
 SELECT 'probe-' || value FROM generate_series(1, 100) AS value;
 SELECT version();
+SET ivorysql.compatible_mode = oracle;
 SELECT current_setting('ivorysql.compatible_mode');
 SQL
 
