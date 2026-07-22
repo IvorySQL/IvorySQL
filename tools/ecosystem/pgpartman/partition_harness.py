@@ -450,9 +450,7 @@ ORDER BY range_start NULLS LAST;
 
 
 def render_maintenance_sql(spec: RuntimeSpec) -> str:
-    return f"""SET statement_timeout = '15min';
-SET lock_timeout = '5s';
-CALL {spec.partman_schema}.run_maintenance_proc(
+    return f"""CALL {spec.partman_schema}.run_maintenance_proc(
     p_wait := 0,
     p_analyze := {'true' if spec.policy.maintenance_analyze else 'false'},
     p_jobmon := false
@@ -700,6 +698,7 @@ def psql(
     csv_output: bool = False,
     runner: CommandRunner | None = None,
     owner: bool = False,
+    session_options: Mapping[str, str] | None = None,
     timeout: float = 300,
 ) -> str:
     if (sql is None) == (file is None):
@@ -728,9 +727,14 @@ def psql(
     else:
         assert file is not None
         command.extend(("--file", str(file)))
+    environment = {"PGPASSWORD": password}
+    if session_options:
+        environment["PGOPTIONS"] = " ".join(
+            f"-c {name}={setting}" for name, setting in session_options.items()
+        )
     result = (runner or CommandRunner()).run(
         command,
-        env={"PGPASSWORD": password},
+        env=environment,
         timeout=timeout,
     )
     return result.stdout
@@ -810,7 +814,13 @@ def execute(args: argparse.Namespace, spec: RuntimeSpec, runner: CommandRunner |
         )
         result = {"inserted": args.rows, "output": output.strip()}
     elif args.command == "maintenance":
-        output = psql(spec, sql=render_maintenance_sql(spec), runner=runner, timeout=900)
+        output = psql(
+            spec,
+            sql=render_maintenance_sql(spec),
+            runner=runner,
+            session_options={"statement_timeout": "15min", "lock_timeout": "5s"},
+            timeout=900,
+        )
         result = {"maintained": spec.policy.parent, "output": output.strip()}
     elif args.command in {"inventory", "audit"}:
         raw = psql(spec, sql=render_inventory_sql(spec), csv_output=True, runner=runner)

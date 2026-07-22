@@ -271,11 +271,10 @@ class RenderingTests(unittest.TestCase):
         self.assertIn("pg_total_relation_size", text)
         self.assertIn("events_default", text)
 
-    def test_maintenance_sql_sets_safety_timeouts(self) -> None:
+    def test_maintenance_sql_keeps_procedure_outside_a_transaction_block(self) -> None:
         text = harness.render_maintenance_sql(self.spec)
-        self.assertIn("statement_timeout = '15min'", text)
-        self.assertIn("lock_timeout = '5s'", text)
         self.assertIn("run_maintenance_proc", text)
+        self.assertNotIn("SET ", text)
 
     def test_workload_sql(self) -> None:
         text = harness.render_workload_sql(self.spec, 100)
@@ -481,6 +480,20 @@ class CommandTests(unittest.TestCase):
         command, kwargs = runner.calls[0]
         self.assertIn(self.spec.connection.owner, command)
         self.assertEqual(kwargs["env"]["PGPASSWORD"], self.spec.connection.owner_password)
+
+    def test_psql_sets_session_options_through_connection_environment(self) -> None:
+        runner = FakeRunner([""])
+        harness.psql(
+            self.spec,
+            sql="CALL partman.run_maintenance_proc()",
+            session_options={"statement_timeout": "15min", "lock_timeout": "5s"},
+            runner=runner,
+        )
+        _, kwargs = runner.calls[0]
+        self.assertEqual(
+            kwargs["env"]["PGOPTIONS"],
+            "-c statement_timeout=15min -c lock_timeout=5s",
+        )
 
     def test_psql_requires_exactly_one_input(self) -> None:
         with self.assertRaises(ValueError):
