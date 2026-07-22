@@ -25,6 +25,7 @@ wait_for_database() {
 main() {
     wait_for_database
     python3 /usr/local/libexec/backup_harness.py render --output "$config"
+    pgbackrest --config="$config" --stanza="$stanza" stanza-create
 
     run_psql <<'SQL'
 CREATE TABLE IF NOT EXISTS pgbackrest_restore_probe (
@@ -44,7 +45,6 @@ CHECKPOINT;
 SELECT pg_create_restore_point('ivorysql_pgbackrest_probe');
 SQL
 
-    pgbackrest --config="$config" --stanza="$stanza" stanza-create
     pgbackrest --config="$config" --stanza="$stanza" check
     pgbackrest --config="$config" --stanza="$stanza" --type=full backup
     python3 /usr/local/libexec/backup_harness.py audit
