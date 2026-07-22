@@ -24,6 +24,11 @@ list/probe/epsilon settings are explicit so recall-versus-latency tradeoffs are
 repeatable instead of hidden behind defaults. L2 and inner-product modes are
 also supported; spherical centroids are rejected for those metrics.
 
+The shipped profile probes every configured list with the most conservative
+distance bound. This establishes a quality-first compatibility baseline; lower
+probe and epsilon values can then be evaluated against the same recall and
+latency gates for workload-specific tuning.
+
 The integration intentionally targets `IvorySQL_5.4`, the stable PostgreSQL 18
 based release supported by VectorChord 1.1.1. IvorySQL `master` tracks
 PostgreSQL 19 development, which VectorChord does not yet expose as a build

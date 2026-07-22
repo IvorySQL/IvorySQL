@@ -277,12 +277,12 @@ class RuntimeSpec:
                 minimum=1,
             ),
             probes=parse_int(
-                env_value(source, "VECTOR_PROBES", "8"),
+                env_value(source, "VECTOR_PROBES", "64"),
                 name="VECTOR_PROBES",
                 minimum=1,
             ),
             epsilon=parse_float(
-                env_value(source, "VECTOR_EPSILON", "1.9"),
+                env_value(source, "VECTOR_EPSILON", "4.0"),
                 name="VECTOR_EPSILON",
                 minimum=0,
                 maximum=4,
