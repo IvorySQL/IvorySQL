@@ -50,7 +50,7 @@ initialize_database() {
     chmod 0600 "$password_file"
     printf '%s\n' "$superpass" > "$password_file"
     chown ivorysql:ivorysql "$password_file"
-    gosu ivorysql initdb --pgdata="$data_dir" --username="$superuser" \
+    gosu ivorysql initdb --pgdata="$data_dir" --username="$superuser" --dbmode=oracle \
         --pwfile="$password_file" --auth-host=scram-sha-256 \
         --auth-local=trust --encoding=UTF8 --data-checksums
     rm -f "$password_file"
