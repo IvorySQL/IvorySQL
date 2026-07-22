@@ -23,8 +23,8 @@ jobs:
       run:
         working-directory: tools/ecosystem/pgbouncer
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Run harness unit tests
@@ -47,7 +47,7 @@ jobs:
       run:
         working-directory: tools/ecosystem/pgbouncer
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Configure test secrets
         run: cp .env.example .env
       - name: Build and start pool
