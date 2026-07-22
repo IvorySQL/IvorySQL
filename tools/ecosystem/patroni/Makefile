@@ -21,7 +21,7 @@ status:
 	$(COMPOSE) exec ivory-1 python3 /usr/local/libexec/patroni_harness.py status
 
 verify:
-	$(COMPOSE) --profile verify run --rm verifier
+	$(COMPOSE) --profile verify run --no-deps --rm verifier
 
 switchover:
 	$(COMPOSE) exec ivory-1 python3 /usr/local/libexec/patroni_harness.py switchover --yes
