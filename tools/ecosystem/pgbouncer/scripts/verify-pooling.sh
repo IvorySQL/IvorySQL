@@ -19,6 +19,7 @@ TRUNCATE pool_verification;
 INSERT INTO pool_verification(client_tag)
 SELECT 'seed-' || value FROM generate_series(1, 1000) AS value;
 SELECT version();
+SET ivorysql.compatible_mode = oracle;
 SELECT current_setting('ivorysql.compatible_mode');
 SQL
 

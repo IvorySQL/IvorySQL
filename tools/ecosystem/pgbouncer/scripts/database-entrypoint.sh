@@ -59,7 +59,6 @@ initialize_database() {
         printf "listen_addresses = '*'\n"
         printf "password_encryption = scram-sha-256\n"
         printf "max_connections = 100\n"
-        printf "ivorysql.compatible_mode = oracle\n"
     } >> "$data_dir/postgresql.conf"
     gosu ivorysql pg_ctl -D "$data_dir" -o "-h 127.0.0.1 -p $port" -w start
     export IVORYSQL_DATABASE=$database
