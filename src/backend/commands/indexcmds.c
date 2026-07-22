@@ -2891,11 +2891,16 @@ ChooseIndexColumnNames(const List *indexElems)
  * reused directly so that locking, event-trigger collection, and pgstat
  * progress reporting follow the same code path as REINDEX INDEX.
  *
- * A successful non-CONCURRENTLY rebuild also clears indisunusable (see
+ * A successful non-CONCURRENTLY rebuild clears indisunusable (see
  * index_set_unusable() in index.c, invoked from within reindex_index()),
- * undoing a prior ALTER INDEX ... UNUSABLE.  REBUILD ONLINE currently does
- * NOT clear indisunusable -- use a non-concurrent REBUILD (or plain
- * REINDEX) to recover a manually disabled index.
+ * undoing a prior ALTER INDEX ... UNUSABLE.  REBUILD ONLINE also recovers a
+ * manually disabled index, but by a different mechanism: it builds a
+ * brand-new index and swaps it in for the old one (see
+ * index_concurrently_create_copy()/index_concurrently_swap() in index.c), and
+ * a freshly created pg_index tuple always starts with indisunusable = false
+ * (index_create(), index.c). index_concurrently_swap() does not, and does
+ * not need to, copy indisunusable from the old index to the new one -- the
+ * new index was never marked unusable to begin with.
  */
 void
 ExecOraAlterIndexRebuild(ParseState *pstate,
@@ -3145,9 +3150,10 @@ ExecOraAlterIndexRebuild(ParseState *pstate,
 		if (online && persistence != RELPERSISTENCE_TEMP)
 		{
 			/*
-			 * NOTE: the CONCURRENTLY path does not clear indisunusable --
-			 * see the comment below on the non-PARTITION CONCURRENTLY case
-			 * for why.
+			 * NOTE: the CONCURRENTLY path recovers a manually disabled leaf
+			 * partition too, the same way as the non-PARTITION CONCURRENTLY
+			 * case below -- by swapping in a freshly built index, which
+			 * never had indisunusable set in the first place.
 			 */
 			ReindexRelationConcurrently(&reindex_stub, partIndexOid, &newparams);
 		}
@@ -3174,9 +3180,16 @@ ExecOraAlterIndexRebuild(ParseState *pstate,
 		 * snapshot lifecycle that has already been torn down by the time
 		 * control returns here).
 		 *
-		 * For the CONCURRENTLY case, indisunusable is therefore NOT cleared
-		 * by REBUILD ONLINE in this version -- a known limitation.  Use a
-		 * non-concurrent REBUILD (or plain REINDEX) to clear UNUSABLE.
+		 * For the CONCURRENTLY case, there is no equivalent pg_index tuple
+		 * to update: ReindexRelationConcurrently() builds a brand-new index
+		 * and swaps it in for the old one (index_concurrently_create_copy()/
+		 * index_concurrently_swap() in index.c). The new index's pg_index
+		 * tuple is created by index_create() with indisunusable = false, and
+		 * index_concurrently_swap() has no reason to copy the old value
+		 * over. So REBUILD ONLINE recovers a manually disabled index just
+		 * as well as a non-concurrent REBUILD, just via a different
+		 * mechanism (a new usable index taking the old one's place, rather
+		 * than an in-place flag flip).
 		 */
 		ReindexIndex(&reindex_stub, &params, isTopLevel);
 	}
@@ -3199,14 +3212,19 @@ ExecOraAlterIndexRebuild(ParseState *pstate,
  * UNUSABLE production under compatible_db = pg; the explicit check below is
  * defense in depth, matching this project's convention of gating
  * Oracle-only logic on compatible_db.
+ *
+ * Returns the ObjectAddress of the affected index so the caller (utility.c)
+ * can hand it to EventTriggerCollectSimpleCommand(), the same way REINDEX
+ * and ALTER INDEX ... REBUILD show up in pg_event_trigger_ddl_commands().
  */
-void
+ObjectAddress
 ExecOraAlterIndexUnusable(ParseState *pstate, const OraAlterIndexUnusableStmt *stmt)
 {
 	ReindexParams params = {0};
 	struct ReindexIndexCallbackState cbstate;
 	Oid			indexOid;
 	char		relkind;
+	ObjectAddress address;
 
 	if (ORA_PARSER != compatible_db)
 		ereport(ERROR,
@@ -3252,6 +3270,9 @@ ExecOraAlterIndexUnusable(ParseState *pstate, const OraAlterIndexUnusableStmt *s
 				 errmsg("ALTER INDEX ... UNUSABLE is not supported for TOAST table indexes")));
 
 	index_set_unusable(indexOid, true);
+
+	ObjectAddressSet(address, RelationRelationId, indexOid);
+	return address;
 }
 
 /*

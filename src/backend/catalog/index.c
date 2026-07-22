@@ -3621,8 +3621,22 @@ index_set_unusable(Oid indexId, bool unusable)
 
 	if (indexForm->indisunusable != unusable)
 	{
+		Oid			heapId = indexForm->indrelid;
+
 		indexForm->indisunusable = unusable;
 		CatalogTupleUpdate(pg_index, &indexTuple->t_self, indexTuple);
+
+		/*
+		 * CatalogTupleUpdate() only sends a relcache invalidation for the
+		 * index itself (see IndexRelationId case in inval.c), which is
+		 * enough for per-index checks like plancat.c's.  But the owning
+		 * table's cached rd_pkindex/rd_replidindex (built by
+		 * RelationGetIndexList() in relcache.c) are keyed off the table's
+		 * own relcache entry and won't be recomputed unless we invalidate
+		 * it explicitly here too -- matching what reindex_index() already
+		 * does when it clears this flag after a successful rebuild.
+		 */
+		CacheInvalidateRelcacheByRelid(heapId);
 	}
 
 	table_close(pg_index, RowExclusiveLock);

@@ -42,8 +42,8 @@ extern void ExecReindex(ParseState *pstate, const ReindexStmt *stmt, bool isTopL
 extern void ExecOraAlterIndexRebuild(ParseState *pstate,
 									 const OraAlterIndexRebuildStmt *stmt,
 									 bool isTopLevel);
-extern void ExecOraAlterIndexUnusable(ParseState *pstate,
-									  const OraAlterIndexUnusableStmt *stmt);
+extern ObjectAddress ExecOraAlterIndexUnusable(ParseState *pstate,
+											   const OraAlterIndexUnusableStmt *stmt);
 extern char *makeObjectName(const char *name1, const char *name2,
 							const char *label);
 extern char *ChooseRelationName(const char *name1, const char *name2,

@@ -1603,12 +1603,13 @@ ProcessUtilitySlow(ParseState *pstate,
 				/*
 				 * Oracle-compatible ALTER INDEX ... UNUSABLE statement.
 				 *
-				 * Marks the index unusable; no event trigger collection is
-				 * performed for this lightweight catalog-state change.
+				 * Marks the index unusable, returning its ObjectAddress so
+				 * the fallthrough EventTriggerCollectSimpleCommand() call
+				 * below records it for ddl_command_end listeners, the same
+				 * as REINDEX and ALTER INDEX ... REBUILD.
 				 */
-				ExecOraAlterIndexUnusable(pstate,
-										  (OraAlterIndexUnusableStmt *) parsetree);
-				commandCollected = true;
+				address = ExecOraAlterIndexUnusable(pstate,
+													(OraAlterIndexUnusableStmt *) parsetree);
 				break;
 
 			case T_CreateExtensionStmt:
