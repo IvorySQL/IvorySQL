@@ -278,13 +278,16 @@ class RenderingTests(unittest.TestCase):
 
 class InformationParsingTests(unittest.TestCase):
     def test_parse_repository_info(self) -> None:
-        status = harness.parse_info(json.dumps(info_payload()), "ivorysql")
+        payload = info_payload()
+        payload[0]["backup"][0]["reference"] = None
+        status = harness.parse_info(json.dumps(payload), "ivorysql")
         self.assertEqual(status.status_code, 0)
         self.assertEqual(status.cipher, "aes-256-cbc")
         self.assertEqual(status.database_version, "17")
         self.assertEqual(len(status.backups), 2)
         self.assertEqual(status.latest.backup_type, harness.BackupType.INCR)
         self.assertEqual(status.latest_full.backup_type, harness.BackupType.FULL)
+        self.assertEqual(status.latest_full.reference, ())
 
     def test_parse_info_rejects_invalid_json(self) -> None:
         with self.assertRaisesRegex(harness.PolicyError, "valid JSON"):

@@ -440,7 +440,9 @@ class BackupSet:
             backup_type = BackupType(str(payload["type"]))
             started = dt.datetime.fromtimestamp(int(timestamps["start"]), tz=UTC)
             stopped = dt.datetime.fromtimestamp(int(timestamps["stop"]), tz=UTC)
-            reference_value = payload.get("reference", [])
+            reference_value = payload.get("reference")
+            if reference_value is None:
+                reference_value = []
             if not isinstance(reference_value, list):
                 raise TypeError("reference is not a list")
             return cls(
