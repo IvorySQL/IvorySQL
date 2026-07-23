@@ -1,0 +1,62 @@
+name: Ecosystem wal2json integration
+
+on:
+  push:
+    branches: [agent/wal2json-cdc]
+    paths:
+      - tools/ecosystem/wal2json/**
+      - .github/workflows/ecosystem_wal2json.yml
+  pull_request:
+    paths:
+      - tools/ecosystem/wal2json/**
+      - .github/workflows/ecosystem_wal2json.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: tools/ecosystem/wal2json
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Run harness unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Validate shell syntax
+        run: bash -n scripts/*.sh
+      - name: Validate Compose model
+        run: |
+          cp .env.example .env
+          docker compose config --quiet
+      - name: Check patch whitespace
+        run: git show --check --oneline HEAD -- .github/workflows/ecosystem_wal2json.yml tools/ecosystem/wal2json
+
+  integration:
+    if: github.event_name == 'push'
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: tools/ecosystem/wal2json
+    steps:
+      - uses: actions/checkout@v6
+      - name: Configure test secrets
+        run: cp .env.example .env
+      - name: Build and start logical-decoding database
+        run: make build up
+      - name: Verify CDC contract
+        run: make verify
+      - name: Collect service logs
+        if: failure()
+        run: docker compose logs --no-color --tail 250
+      - name: Remove test cluster
+        if: always()
+        run: make clean
