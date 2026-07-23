@@ -444,6 +444,16 @@ copy_sequences(WalReceiverConn *conn)
 	StringInfoData cmd;
 	MemoryContext oldctx;
 
+	/*
+	 * Sequence synchronization depends on publisher-side functionality
+	 * introduced in PostgreSQL 19, so it cannot work against an older
+	 * publisher.
+	 */
+	if (walrcv_server_version(conn) < 190000)
+		ereport(ERROR,
+				errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				errmsg("cannot synchronize sequences if the publisher is running a version earlier than PostgreSQL 19"));
+
 	initStringInfo(&seqstr);
 	initStringInfo(&cmd);
 

@@ -245,6 +245,12 @@ ALTER SUBSCRIPTION <replaceable class="parameter">name</replaceable> RENAME TO <
       sequences are subscribed. Run <literal>REFRESH PUBLICATION</literal>
       first if the publication's set of sequences has changed.
      </para>
+     <note>
+      <para>
+       Sequence replication requires the publisher to be running
+       <productname>PostgreSQL</productname> 19 or later.
+      </para>
+     </note>
      <para>
       See <xref linkend="sequence-definition-mismatches"/> for
       recommendations on how to handle any warnings about sequence definition

@@ -1322,6 +1322,16 @@ AlterSubscription_refresh_seq(Subscription *sub)
 	/* The publisher connection is only needed for the origin check. */
 	PG_TRY();
 	{
+		/*
+		 * Sequence synchronization depends on publisher-side functionality
+		 * introduced in PostgreSQL 19, so it cannot work against an older
+		 * publisher.
+		 */
+		if (walrcv_server_version(wrconn) < 190000)
+			ereport(ERROR,
+					errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+					errmsg("cannot synchronize sequences if the publisher is running a version earlier than PostgreSQL 19"));
+
 		check_publications_origin_sequences(wrconn, sub->publications, true,
 											sub->origin, NULL, 0, sub->name);
 	}

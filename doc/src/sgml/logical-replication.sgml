@@ -1803,6 +1803,13 @@ Included in publications:
    configuration.
   </para>
 
+  <note>
+   <para>
+    Sequence synchronization requires the publisher to be running
+    <productname>PostgreSQL</productname> 19 or later.
+   </para>
+  </note>
+
   <sect2 id="sequence-definition-mismatches">
    <title>Sequence Definition Mismatches</title>
    <para>
@@ -2353,7 +2360,16 @@ CONTEXT:  processing remote data for replication origin "pg_16395" during "INSER
      <command>ALTER SUBSCRIPTION ... REFRESH SEQUENCES</command></link>
      or by copying the current data from the publisher (perhaps using
      <command>pg_dump</command>) or by determining a sufficiently high value
-     from the tables themselves.
+     from the tables themselves.  Note that
+     <link linkend="sql-altersubscription-params-refresh-sequences">
+     <command>ALTER SUBSCRIPTION ... REFRESH SEQUENCES</command></link> only
+     re-synchronizes sequences that are already known to the subscription
+     (see <xref linkend="logical-replication-sequences"/>); in particular, it
+     requires the publisher to be running <productname>PostgreSQL</productname>
+     19 or later. Before relying on it to prepare for a switchover or
+     failover, confirm that the publisher's version supports sequence
+     replication and that the sequences of interest are already known to the
+     subscription.
     </para>
    </listitem>
 
