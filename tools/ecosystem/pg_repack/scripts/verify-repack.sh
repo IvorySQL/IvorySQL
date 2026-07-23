@@ -127,20 +127,28 @@ SQL
     repack_exit=$?
     set -e
     repack_finished=$(date +%s%3N)
-    wait "$writer_pid"
+    writer_exit=0
+    wait "$writer_pid" || writer_exit=$?
 
     printf '{"started_ms":%s,"finished_ms":%s,"exit_code":%s}\n' \
         "$repack_started" "$repack_finished" "$repack_exit" > "$execution_file"
-    ((repack_exit == 0)) || {
-        cat "$repack_log" >&2
-        return "$repack_exit"
-    }
 
     capture_metrics "$after_file"
+    audit_exit=0
     python3 /usr/local/libexec/repack_harness.py audit \
         --before "$before_file" --after "$after_file" \
         --writer "$writer_file" --execution "$execution_file" \
-        --output "$audit_file"
+        --output "$audit_file" || audit_exit=$?
+
+    if ((repack_exit != 0)); then
+        cat "$repack_log" >&2
+        return "$repack_exit"
+    fi
+    if ((writer_exit != 0)); then
+        printf 'concurrent writer exited with status %s\n' "$writer_exit" >&2
+        return "$writer_exit"
+    fi
+    ((audit_exit == 0)) || return "$audit_exit"
     grep -q '"passed": true' "$audit_file"
     printf 'pg_repack online maintenance contract passed; report: %s\n' "$audit_file"
 }

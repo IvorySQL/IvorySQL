@@ -24,6 +24,8 @@ jobs:
         working-directory: tools/ecosystem/pg_repack
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -48,6 +50,8 @@ jobs:
         working-directory: tools/ecosystem/pg_repack
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Configure test secrets
         run: cp .env.example .env
       - name: Build and start database

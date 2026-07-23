@@ -24,6 +24,7 @@ for ((operation = 1; operation <= writes; operation++)); do
         --host "$host" --port "$port" --username "$user" --dbname "$database" \
         --set schema="$schema" --set table="$table" --set op="$operation" \
         --quiet <<'SQL' >/dev/null
+BEGIN;
 SELECT format(
     'INSERT INTO %I.%I (external_id, status, payload) VALUES (%L, %L, %L)',
     :'schema',
@@ -39,6 +40,7 @@ SELECT format(
     'committed',
     'writer-' || :'op'
 ) \gexec
+COMMIT;
 SQL
     then
         ((success += 1))

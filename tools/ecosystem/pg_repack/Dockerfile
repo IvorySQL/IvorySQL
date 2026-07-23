@@ -1,10 +1,15 @@
-FROM ubuntu:24.04 AS build
+FROM ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebffbc7092d90 AS build
 
 ARG DEBIAN_FRONTEND=noninteractive
+ARG UBUNTU_SNAPSHOT=20260701T000000Z
 ARG IVORYSQL_REF=IvorySQL_5.4
+ARG IVORYSQL_COMMIT=aaa2c29e2572001fe8230a8d44b5b8dd2903b740
 ARG PG_REPACK_REF=ver_1.5.3
+ARG PG_REPACK_COMMIT=328ba0d6a3a1e0d0f8c3b977f1b48ebe098ee0ad
 
-RUN apt-get update \
+RUN sed -i "/^Signed-By:/a Snapshot: ${UBUNTU_SNAPSHOT}" \
+        /etc/apt/sources.list.d/ubuntu.sources \
+    && apt-get update \
     && apt-get install --no-install-recommends -y \
         bison build-essential ca-certificates flex gettext git libicu-dev \
         libkrb5-dev libldap2-dev liblz4-dev libpam0g-dev libreadline-dev \
@@ -15,6 +20,7 @@ RUN apt-get update \
 WORKDIR /build/ivorysql
 RUN git clone --depth 1 --branch "${IVORYSQL_REF}" \
         https://github.com/IvorySQL/IvorySQL.git . \
+    && test "$(git rev-parse HEAD)" = "${IVORYSQL_COMMIT}" \
     && ./configure \
         --prefix=/opt/ivorysql \
         --with-openssl --with-libxml --with-libxslt --with-icu --with-uuid=e2fs \
@@ -24,15 +30,19 @@ RUN git clone --depth 1 --branch "${IVORYSQL_REF}" \
 WORKDIR /build/pg_repack
 RUN git clone --depth 1 --branch "${PG_REPACK_REF}" \
         https://github.com/reorg/pg_repack.git . \
+    && test "$(git rev-parse HEAD)" = "${PG_REPACK_COMMIT}" \
     && test "$(git describe --tags --exact-match)" = "${PG_REPACK_REF}" \
     && make -j"$(nproc)" PG_CONFIG=/opt/ivorysql/bin/pg_config \
     && make PG_CONFIG=/opt/ivorysql/bin/pg_config install
 
 
-FROM ubuntu:24.04 AS runtime
+FROM ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebffbc7092d90 AS runtime
 
 ARG DEBIAN_FRONTEND=noninteractive
-RUN apt-get update \
+ARG UBUNTU_SNAPSHOT=20260701T000000Z
+RUN sed -i "/^Signed-By:/a Snapshot: ${UBUNTU_SNAPSHOT}" \
+        /etc/apt/sources.list.d/ubuntu.sources \
+    && apt-get update \
     && apt-get install --no-install-recommends -y \
         ca-certificates coreutils gosu libicu74 libkrb5-3 libldap2 liblz4-1 \
         libpam0g libreadline8t64 libssl3t64 libxml2 libxslt1.1 locales \

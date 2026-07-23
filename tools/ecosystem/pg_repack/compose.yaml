@@ -29,7 +29,7 @@ services:
       REPACK_WAIT_TIMEOUT: ${REPACK_WAIT_TIMEOUT:-60}
       REPACK_REPORT_DIR: /var/lib/ivorysql/reports
     ports:
-      - "${IVORYSQL_HOST_PORT:-5334}:5334"
+      - "127.0.0.1:${IVORYSQL_HOST_PORT:-5334}:5334"
     volumes:
       - database-data:/var/lib/ivorysql/data
       - repack-reports:/var/lib/ivorysql/reports
