@@ -49,9 +49,20 @@ SELECT json_build_object(
 )::text;
 SQL
 
+    set +e
     python3 /usr/local/libexec/migration_harness.py audit \
         --contract "$contract" --results "$results_file" \
         --metadata "$metadata_file" --output "$audit_file"
+    audit_status=$?
+    set -e
+    if ((audit_status != 0)); then
+        if [[ -s "$audit_file" ]]; then
+            cat "$audit_file" >&2
+        else
+            printf 'audit failed without producing %s\n' "$audit_file" >&2
+        fi
+        return "$audit_status"
+    fi
     grep -q '"passed": true' "$audit_file"
     printf 'orafce migration contract passed; report: %s\n' "$audit_file"
 }
