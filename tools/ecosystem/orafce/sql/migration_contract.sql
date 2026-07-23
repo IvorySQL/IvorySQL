@@ -1,7 +1,9 @@
 \set ON_ERROR_STOP on
 
 CREATE EXTENSION IF NOT EXISTS orafce;
+SET ivorysql.compatible_mode TO oracle;
 CREATE EXTENSION IF NOT EXISTS plisql;
+SET ivorysql.compatible_mode TO pg;
 DROP SCHEMA IF EXISTS migration CASCADE;
 CREATE SCHEMA migration;
 SET search_path TO migration, oracle, public, pg_catalog;

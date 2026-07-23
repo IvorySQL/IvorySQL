@@ -5,7 +5,10 @@ This integration builds the pinned orafce 4.16.7 source tag against IvorySQL
 representative compatibility surface into a versioned, machine-audited
 contract instead of treating successful extension installation as sufficient.
 The workload explicitly installs IvorySQL's `plisql` extension because a
-PostgreSQL-mode database does not preload that procedural language.
+PostgreSQL-mode database does not preload that procedural language. It switches
+to `ivorysql.compatible_mode=oracle` only for the extension installation, as
+IvorySQL's own initialization path does, then returns to PostgreSQL mode before
+executing the migration contract.
 
 IvorySQL 5.4 exposes PostgreSQL 18's `pg_re_flags` definition from the public
 regex header, while orafce 4.16.7 still carries its compatibility copy. The
