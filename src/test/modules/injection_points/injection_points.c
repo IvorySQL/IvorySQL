@@ -222,6 +222,19 @@ injection_notice(const char *name, const void *private_data, void *arg)
 		elog(NOTICE, "notice triggered for injection point %s", name);
 }
 
+/*
+ * Error cleanup callback for injection point waits.
+ */
+static void
+injection_wait_cleanup(int code, Datum arg)
+{
+	int			index = DatumGetInt32(arg);
+
+	SpinLockAcquire(&inj_state->lock);
+	inj_state->name[index][0] = '\0';
+	SpinLockRelease(&inj_state->lock);
+}
+
 /* Wait on a condition variable, awaken by injection_points_wakeup() */
 void
 injection_wait(const char *name, const void *private_data, void *arg)
@@ -266,24 +279,26 @@ injection_wait(const char *name, const void *private_data, void *arg)
 
 	/* And sleep.. */
 	ConditionVariablePrepareToSleep(&inj_state->wait_point);
-	for (;;)
+	PG_ENSURE_ERROR_CLEANUP(injection_wait_cleanup, Int32GetDatum(index));
 	{
-		uint32		new_wait_counts;
+		for (;;)
+		{
+			uint32		new_wait_counts;
 
-		SpinLockAcquire(&inj_state->lock);
-		new_wait_counts = inj_state->wait_counts[index];
-		SpinLockRelease(&inj_state->lock);
+			SpinLockAcquire(&inj_state->lock);
+			new_wait_counts = inj_state->wait_counts[index];
+			SpinLockRelease(&inj_state->lock);
 
-		if (old_wait_counts != new_wait_counts)
-			break;
-		ConditionVariableSleep(&inj_state->wait_point, injection_wait_event);
+			if (old_wait_counts != new_wait_counts)
+				break;
+			ConditionVariableSleep(&inj_state->wait_point, injection_wait_event);
+		}
+		ConditionVariableCancelSleep();
 	}
-	ConditionVariableCancelSleep();
+	PG_END_ENSURE_ERROR_CLEANUP(injection_wait_cleanup, Int32GetDatum(index));
 
 	/* Remove this injection point from the waiters. */
-	SpinLockAcquire(&inj_state->lock);
-	inj_state->name[index][0] = '\0';
-	SpinLockRelease(&inj_state->lock);
+	injection_wait_cleanup(0, Int32GetDatum(index));
 }
 
 /*
