@@ -84,9 +84,8 @@ TRUNCATE cdc.staging;
 COMMIT;
 SQL
 
-    run_psql --set slot="$slot" --set events_file="$events_file" <<'SQL'
-\copy (
-    SELECT data
+    run_psql --tuples-only --no-align --set slot="$slot" <<'SQL' > "$events_file"
+SELECT data
     FROM pg_logical_slot_get_changes(
         :'slot',
         NULL,
@@ -99,8 +98,7 @@ SQL
         'include-transaction', '1',
         'actions', 'insert,update,delete,truncate',
         'add-tables', 'cdc.accounts,cdc.staging'
-    )
-) TO :'events_file'
+    );
 SQL
 
     run_psql --tuples-only --no-align --set slot="$slot" <<'SQL' > "$metrics_file"
