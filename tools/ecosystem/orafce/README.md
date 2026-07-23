@@ -5,6 +5,13 @@ This integration builds the pinned orafce 4.16.7 source tag against IvorySQL
 representative compatibility surface into a versioned, machine-audited
 contract instead of treating successful extension installation as sufficient.
 
+IvorySQL 5.4 exposes PostgreSQL 18's `pg_re_flags` definition from the public
+regex header, while orafce 4.16.7 still carries its compatibility copy. The
+image applies a narrow version-guard patch after `git apply --check`; older
+server headers keep the backported definition and PG18-family headers use the
+server definition. The source tag remains pinned and any upstream context drift
+causes the build to stop before compilation.
+
 The contract covers:
 
 - a PL/iSQL procedure calling an orafce null-handling function;

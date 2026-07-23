@@ -23,9 +23,12 @@ RUN git clone --depth 1 --branch "${IVORYSQL_REF}" \
     && make install
 
 WORKDIR /build/orafce
+COPY tools/ecosystem/orafce/patches/orafce-4.16.7-pg18-regex-flags.patch /tmp/orafce-pg18.patch
 RUN git clone --depth 1 --branch "${ORAFCE_REF}" \
         https://github.com/orafce/orafce.git . \
     && test "$(git describe --tags --exact-match)" = "${ORAFCE_REF}" \
+    && git apply --check /tmp/orafce-pg18.patch \
+    && git apply /tmp/orafce-pg18.patch \
     && make -j"$(nproc)" PG_CONFIG=/opt/ivorysql/bin/pg_config \
     && make PG_CONFIG=/opt/ivorysql/bin/pg_config install
 
