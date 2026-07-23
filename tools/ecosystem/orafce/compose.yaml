@@ -1,0 +1,37 @@
+name: ivorysql-orafce
+
+services:
+  database:
+    build:
+      context: ../../..
+      dockerfile: tools/ecosystem/orafce/Dockerfile
+      args:
+        IVORYSQL_REF: ${IVORYSQL_REF:-IvorySQL_5.4}
+        ORAFCE_REF: ${ORAFCE_REF:-VERSION_4_16_7}
+    image: ivorysql/orafce:${IVORYSQL_IMAGE_TAG:-5.4-orafce-4.16.7}
+    restart: unless-stopped
+    environment:
+      IVORYSQL_PORT: "5335"
+      IVORYSQL_DATABASE: ${IVORYSQL_DATABASE:-migrationdb}
+      IVORYSQL_USER: ${IVORYSQL_USER:-ivorysql}
+      IVORYSQL_PASSWORD: ${IVORYSQL_PASSWORD:?set IVORYSQL_PASSWORD}
+      ORAFCE_EXPECTED_EXTENSION_VERSION: ${ORAFCE_EXPECTED_EXTENSION_VERSION:-4.16}
+      ORAFCE_EXPECTED_SOURCE_VERSION: ${ORAFCE_EXPECTED_SOURCE_VERSION:-4.16.7}
+      ORAFCE_CONTRACT: /usr/local/share/orafce/compatibility_contract.json
+      ORAFCE_REPORT_DIR: /var/lib/ivorysql/reports
+    ports:
+      - "${IVORYSQL_HOST_PORT:-5335}:5335"
+    volumes:
+      - database-data:/var/lib/ivorysql/data
+      - migration-reports:/var/lib/ivorysql/reports
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5335 -U ${IVORYSQL_USER:-ivorysql} -d ${IVORYSQL_DATABASE:-migrationdb}"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 30s
+    stop_grace_period: 60s
+
+volumes:
+  database-data:
+  migration-reports:

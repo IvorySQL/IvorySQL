@@ -1,0 +1,350 @@
+{
+  "schema_version": 1,
+  "integration": {
+    "ivorysql_ref": "IvorySQL_5.4",
+    "orafce_source_version": "4.16.7",
+    "orafce_source_ref": "VERSION_4_16_7",
+    "orafce_extension_version": "4.16"
+  },
+  "required_categories": [
+    "aggregate",
+    "conversion",
+    "date",
+    "dictionary",
+    "identity",
+    "math",
+    "null",
+    "package",
+    "plisql",
+    "predicate",
+    "semantics",
+    "string",
+    "type"
+  ],
+  "cases": [
+    {
+      "id": "identity.plisql_language",
+      "category": "identity",
+      "capability": "PL/iSQL is installed in the migration database",
+      "expected": true,
+      "sql_type": "boolean",
+      "required": true,
+      "migration_risk": "Oracle-style program units cannot compile without the procedural language."
+    },
+    {
+      "id": "plisql.orafce_nvl",
+      "category": "plisql",
+      "capability": "A PL/iSQL procedure can invoke an orafce function",
+      "expected": "125.50",
+      "sql_type": "text",
+      "required": true,
+      "migration_risk": "Extension functions must resolve inside migrated PL/iSQL routines."
+    },
+    {
+      "id": "date.add_months_eom",
+      "category": "date",
+      "capability": "ADD_MONTHS preserves end-of-month behavior in a leap year",
+      "expected": "2024-02-29",
+      "sql_type": "text",
+      "required": true,
+      "migration_risk": "Billing and maturity calculations frequently depend on month-end rules."
+    },
+    {
+      "id": "date.last_day_leap",
+      "category": "date",
+      "capability": "LAST_DAY returns the leap-year month boundary",
+      "expected": "2024-02-29",
+      "sql_type": "text",
+      "required": true,
+      "migration_risk": "Period closing logic must preserve leap-day boundaries."
+    },
+    {
+      "id": "date.next_day_strict",
+      "category": "date",
+      "capability": "NEXT_DAY advances when the input is already the named weekday",
+      "expected": "2024-01-08",
+      "sql_type": "text",
+      "required": true,
+      "migration_risk": "A non-strict weekday calculation shifts schedules by seven days."
+    },
+    {
+      "id": "date.months_between_eom",
+      "category": "date",
+      "capability": "MONTHS_BETWEEN treats two month-end dates as a whole month",
+      "expected": true,
+      "sql_type": "boolean",
+      "required": true,
+      "migration_risk": "Fractional-month drift changes accrual and service-period calculations."
+    },
+    {
+      "id": "date.trunc_iso_week",
+      "category": "date",
+      "capability": "TRUNC with IW returns the ISO-week Monday",
+      "expected": "2024-01-01",
+      "sql_type": "text",
+      "required": true,
+      "migration_risk": "Reporting windows rely on Oracle ISO-week truncation."
+    },
+    {
+      "id": "date.to_date_format",
+      "category": "date",
+      "capability": "TO_DATE parses an explicit Oracle datetime mask",
+      "expected": "2024-05-19 17:23:53",
+      "sql_type": "text",
+      "required": true,
+      "migration_risk": "Explicit Oracle format masks appear in imports and stored routines."
+    },
+    {
+      "id": "string.substr_negative",
+      "category": "string",
+      "capability": "SUBSTR accepts a negative offset from the end",
+      "expected": "ef",
+      "sql_type": "text",
+      "required": true,
+      "migration_risk": "Negative positions are common in identifier and suffix extraction."
+    },
+    {
+      "id": "string.instr_occurrence",
+      "category": "string",
+      "capability": "INSTR locates a requested occurrence",
+      "expected": 5,
+      "sql_type": "integer",
+      "required": true,
+      "migration_risk": "Occurrence-aware searches cannot be replaced by a simple position call."
+    },
+    {
+      "id": "string.lpad_zero",
+      "category": "string",
+      "capability": "LPAD produces fixed-width zero-padded values",
+      "expected": "00007",
+      "sql_type": "text",
+      "required": true,
+      "migration_risk": "Legacy account and document identifiers often require exact padding."
+    },
+    {
+      "id": "string.rtrim_character",
+      "category": "string",
+      "capability": "RTRIM removes only the requested trailing character set",
+      "expected": "600.",
+      "sql_type": "text",
+      "required": true,
+      "migration_risk": "Over-trimming changes formatted numeric and business-code values."
+    },
+    {
+      "id": "string.regexp_instr",
+      "category": "string",
+      "capability": "REGEXP_INSTR returns Oracle-style one-based position",
+      "expected": 4,
+      "sql_type": "integer",
+      "required": true,
+      "migration_risk": "Regular-expression location semantics affect validation and tokenization."
+    },
+    {
+      "id": "conversion.to_number",
+      "category": "conversion",
+      "capability": "TO_NUMBER converts a decimal text value",
+      "expected": "1234.50",
+      "sql_type": "text",
+      "required": true,
+      "migration_risk": "Text-to-number conversions must retain the expected scale."
+    },
+    {
+      "id": "null.nvl",
+      "category": "null",
+      "capability": "NVL supplies a fallback for NULL",
+      "expected": "fallback",
+      "sql_type": "text",
+      "required": true,
+      "migration_risk": "NVL is pervasive in migrated queries and routines."
+    },
+    {
+      "id": "null.nvl2",
+      "category": "null",
+      "capability": "NVL2 selects the non-NULL branch",
+      "expected": "present",
+      "sql_type": "text",
+      "required": true,
+      "migration_risk": "Branch inversion silently corrupts derived flags."
+    },
+    {
+      "id": "null.decode",
+      "category": "null",
+      "capability": "DECODE selects the matching search-result pair",
+      "expected": "two",
+      "sql_type": "text",
+      "required": true,
+      "migration_risk": "DECODE commonly carries compact business mappings."
+    },
+    {
+      "id": "predicate.lnnvl_null",
+      "category": "predicate",
+      "capability": "LNNVL treats a NULL predicate as true",
+      "expected": true,
+      "sql_type": "boolean",
+      "required": true,
+      "migration_risk": "NULL predicate behavior changes exclusion filters."
+    },
+    {
+      "id": "math.nanvl",
+      "category": "math",
+      "capability": "NANVL replaces a numeric NaN",
+      "expected": "42",
+      "sql_type": "text",
+      "required": true,
+      "migration_risk": "Scientific and financial imports may carry NaN sentinel values."
+    },
+    {
+      "id": "math.bitand",
+      "category": "math",
+      "capability": "BITAND performs Oracle-compatible integer masking",
+      "expected": 2,
+      "sql_type": "bigint",
+      "required": true,
+      "migration_risk": "Packed permission and state flags depend on bit masks."
+    },
+    {
+      "id": "math.mod_zero",
+      "category": "math",
+      "capability": "MOD returns the dividend when the divisor is zero",
+      "expected": 10,
+      "sql_type": "integer",
+      "required": true,
+      "migration_risk": "Oracle MOD zero-divisor behavior differs from naive remainder expressions."
+    },
+    {
+      "id": "aggregate.listagg",
+      "category": "aggregate",
+      "capability": "LISTAGG concatenates ordered rows with a delimiter",
+      "expected": "A,B,C",
+      "sql_type": "text",
+      "required": true,
+      "migration_risk": "Denormalized reporting output depends on stable ordered aggregation."
+    },
+    {
+      "id": "aggregate.median",
+      "category": "aggregate",
+      "capability": "MEDIAN handles an even number of values",
+      "expected": "2.50",
+      "sql_type": "text",
+      "required": true,
+      "migration_risk": "Analytical results must retain Oracle median interpolation."
+    },
+    {
+      "id": "type.varchar2_name",
+      "category": "type",
+      "capability": "A migrated column retains the oracle.varchar2 type",
+      "expected": "oracle.varchar2",
+      "sql_type": "text",
+      "required": true,
+      "migration_risk": "Falling back to PostgreSQL varchar loses orafce byte semantics."
+    },
+    {
+      "id": "type.varchar2_byte_semantics",
+      "category": "type",
+      "capability": "VARCHAR2 length is measured in UTF-8 bytes",
+      "expected": 4,
+      "sql_type": "integer",
+      "required": true,
+      "migration_risk": "Multibyte data can violate Oracle byte-sized column contracts."
+    },
+    {
+      "id": "type.nvarchar2_name",
+      "category": "type",
+      "capability": "A migrated column retains the oracle.nvarchar2 type",
+      "expected": "oracle.nvarchar2",
+      "sql_type": "text",
+      "required": true,
+      "migration_risk": "National-character columns require character rather than byte semantics."
+    },
+    {
+      "id": "type.nvarchar2_character_semantics",
+      "category": "type",
+      "capability": "NVARCHAR2 stores two multibyte characters in a two-character column",
+      "expected": "2/4",
+      "sql_type": "text",
+      "required": true,
+      "migration_risk": "Incorrect semantics reject valid multilingual values or truncate data."
+    },
+    {
+      "id": "package.dbms_assert_literal",
+      "category": "package",
+      "capability": "DBMS_ASSERT safely quotes an embedded apostrophe",
+      "expected": "'O''Reilly'",
+      "sql_type": "text",
+      "required": true,
+      "migration_risk": "Dynamic SQL ports need compatible quoting safeguards."
+    },
+    {
+      "id": "package.dbms_assert_rejects_injection",
+      "category": "package",
+      "capability": "DBMS_ASSERT rejects a non-name SQL fragment",
+      "expected": true,
+      "sql_type": "boolean",
+      "required": true,
+      "migration_risk": "Permissive identifier validation creates an injection path."
+    },
+    {
+      "id": "package.dbms_output",
+      "category": "package",
+      "capability": "DBMS_OUTPUT buffers and retrieves ordered lines",
+      "expected": "alpha|beta",
+      "sql_type": "text",
+      "required": true,
+      "migration_risk": "Diagnostic output from migrated routines must remain observable."
+    },
+    {
+      "id": "package.dbms_random_range",
+      "category": "package",
+      "capability": "DBMS_RANDOM.VALUE respects its half-open range",
+      "expected": true,
+      "sql_type": "boolean",
+      "required": true,
+      "migration_risk": "Out-of-range random values can violate sampling and key-generation logic."
+    },
+    {
+      "id": "dictionary.dual",
+      "category": "dictionary",
+      "capability": "Oracle DUAL exposes exactly one row",
+      "expected": 1,
+      "sql_type": "bigint",
+      "required": true,
+      "migration_risk": "Unchanged Oracle queries frequently retain FROM DUAL."
+    },
+    {
+      "id": "dictionary.user_tables",
+      "category": "dictionary",
+      "capability": "USER_TABLES exposes a migrated application table",
+      "expected": true,
+      "sql_type": "boolean",
+      "required": true,
+      "migration_risk": "Administrative routines inspect Oracle dictionary views."
+    },
+    {
+      "id": "dictionary.user_tab_columns",
+      "category": "dictionary",
+      "capability": "USER_TAB_COLUMNS exposes all application columns",
+      "expected": 3,
+      "sql_type": "bigint",
+      "required": true,
+      "migration_risk": "Metadata-driven applications rely on accurate column discovery."
+    },
+    {
+      "id": "dictionary.product_version",
+      "category": "dictionary",
+      "capability": "PRODUCT_COMPONENT_VERSION reports orafce",
+      "expected": true,
+      "sql_type": "boolean",
+      "required": true,
+      "migration_risk": "Compatibility checks use product component metadata."
+    },
+    {
+      "id": "semantics.empty_string_trigger",
+      "category": "semantics",
+      "capability": "The compatibility trigger converts an empty string to NULL",
+      "expected": true,
+      "sql_type": "boolean",
+      "required": true,
+      "migration_risk": "Oracle treats empty text as NULL while PostgreSQL normally does not."
+    }
+  ]
+}

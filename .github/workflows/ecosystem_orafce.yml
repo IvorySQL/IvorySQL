@@ -1,0 +1,69 @@
+name: Ecosystem orafce migration contract
+
+on:
+  push:
+    branches: [agent/orafce-migration-compatibility]
+    paths:
+      - tools/ecosystem/orafce/**
+      - .github/workflows/ecosystem_orafce.yml
+  pull_request:
+    paths:
+      - tools/ecosystem/orafce/**
+      - .github/workflows/ecosystem_orafce.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: tools/ecosystem/orafce
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Run migration harness unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Validate contract manifest
+        run: |
+          export IVORYSQL_PASSWORD=ivorysql-orafce-ci-password
+          python migration_harness.py preflight --contract compatibility_contract.json
+      - name: Validate shell syntax
+        run: bash -n scripts/*.sh
+      - name: Validate Compose model
+        run: |
+          cp .env.example .env
+          docker compose config --quiet
+      - name: Check patch whitespace
+        run: git show --check --oneline HEAD -- .github/workflows/ecosystem_orafce.yml tools/ecosystem/orafce
+
+  integration:
+    if: github.event_name == 'push'
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: tools/ecosystem/orafce
+    steps:
+      - uses: actions/checkout@v6
+      - name: Configure test secrets
+        run: cp .env.example .env
+      - name: Build and start IvorySQL
+        run: make build up
+      - name: Verify Oracle migration contract
+        run: make verify
+      - name: Show audit report
+        if: success()
+        run: make report
+      - name: Collect service logs
+        if: failure()
+        run: docker compose logs --no-color --tail 250
+      - name: Remove test cluster
+        if: always()
+        run: make clean
