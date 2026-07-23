@@ -112,8 +112,8 @@ typedef struct XLogRecoveryCtlData
 	TimestampTz recoveryLastXTime;
 
 	/*
-	 * timestamp of when we started replaying the current chunk of WAL data,
-	 * only relevant for replication or archive recovery
+	 * timestamp of when we caught up with the latest WAL chunk received from
+	 * streaming replication
 	 */
 	TimestampTz currentChunkStartTime;
 	/* Recovery pause state */

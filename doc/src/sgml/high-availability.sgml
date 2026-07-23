@@ -920,7 +920,10 @@ primary_conninfo = 'host=192.168.1.50 port=5432 user=foo password=foopass'
      <structname>pg_stat_wal_receiver</structname></link> view.  A large
      difference between <function>pg_last_wal_replay_lsn</function> and the
      view's <literal>flushed_lsn</literal> indicates that WAL is being
-     received faster than it can be replayed.
+     received faster than it can be replayed.  Recovery state and replay
+     progress can also be monitored via the
+     <link linkend="monitoring-pg-stat-recovery-view">
+     <structname>pg_stat_recovery</structname></link> view.
     </para>
    </sect3>
   </sect2>
@@ -1801,9 +1804,11 @@ postgres=# WAIT FOR LSN '0/306EE20';
     (In server versions before 14, the <varname>in_hot_standby</varname>
     parameter did not exist; a workable substitute method for older servers
     is <command>SHOW transaction_read_only</command>.)  In addition, a set of
-    functions (<xref linkend="functions-recovery-info-table"/>) allow users to
-    access information about the standby server. These allow you to write
-    programs that are aware of the current state of the database. These
+    functions (<xref linkend="functions-recovery-info-table"/>) and the
+    <link linkend="monitoring-pg-stat-recovery-view">
+    <structname>pg_stat_recovery</structname></link> view allow users to
+    access information about the standby server. These facilities allow you to
+    write programs that are aware of the current state of the database. They
     can be used to monitor the progress of recovery, or to allow you to
     write complex programs that restore the database to particular states.
    </para>
