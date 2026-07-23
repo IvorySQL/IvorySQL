@@ -34,6 +34,7 @@ CREATE TABLE migration.accounts (
 );
 INSERT INTO migration.accounts VALUES (101, NULL, 'OPEN');
 
+SET ivorysql.compatible_mode TO oracle;
 CREATE PROCEDURE migration.apply_payment(p_account_id bigint, p_amount numeric)
 LANGUAGE plisql
 AS $procedure$
@@ -45,6 +46,7 @@ END;
 $procedure$;
 
 CALL migration.apply_payment(101, 125.50);
+SET ivorysql.compatible_mode TO pg;
 SELECT migration.record(
     'plisql.orafce_nvl',
     (SELECT balance::text FROM migration.accounts WHERE account_id = 101)
@@ -166,7 +168,7 @@ SELECT migration.record(
     'package.dbms_assert_literal',
     dbms_assert.enquote_literal('O''Reilly')::text
 );
-DO LANGUAGE plisql $block$
+DO LANGUAGE plpgsql $block$
 BEGIN
     PERFORM dbms_assert.simple_sql_name('unsafe;drop table accounts');
     PERFORM migration.record('package.dbms_assert_rejects_injection', false);

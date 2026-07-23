@@ -8,7 +8,10 @@ The database is initialized with IvorySQL's Oracle database mode so PL/iSQL and
 the Oracle compatibility catalog are loaded through the supported initdb path.
 The workload then sets its session to `ivorysql.compatible_mode=pg` before
 installing orafce and executing the contract. The audit records and requires
-that session mode, so the setup cannot silently drift.
+that session mode, so the setup cannot silently drift. Only the PL/iSQL
+procedure creation and call run in Oracle-compatible session mode, which is an
+IvorySQL execution requirement; the workload restores PG mode immediately
+after that case.
 
 IvorySQL 5.4 exposes PostgreSQL 18's `pg_re_flags` definition from the public
 regex header, while orafce 4.16.7 still carries its compatibility copy. The

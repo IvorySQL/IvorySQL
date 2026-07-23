@@ -26,7 +26,8 @@ main() {
     rm -f "$results_file" "$metadata_file" "$audit_file"
 
     run_psql --file "$sql_file"
-    run_psql --tuples-only --no-align <<'SQL' > "$results_file"
+    run_psql --quiet --tuples-only --no-align <<'SQL' > "$results_file"
+SET ivorysql.compatible_mode TO pg;
 SELECT json_build_object(
     'id', case_id,
     'actual', actual,
@@ -35,7 +36,8 @@ SELECT json_build_object(
 FROM migration.contract_results
 ORDER BY case_id;
 SQL
-    run_psql --tuples-only --no-align <<'SQL' > "$metadata_file"
+    run_psql --quiet --tuples-only --no-align <<'SQL' > "$metadata_file"
+SET ivorysql.compatible_mode TO pg;
 SELECT json_build_object(
     'extension_version', (SELECT extversion FROM pg_extension WHERE extname = 'orafce'),
     'server_version', version(),
