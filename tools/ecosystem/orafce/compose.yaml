@@ -20,7 +20,7 @@ services:
       ORAFCE_CONTRACT: /usr/local/share/orafce/compatibility_contract.json
       ORAFCE_REPORT_DIR: /var/lib/ivorysql/reports
     ports:
-      - "${IVORYSQL_HOST_PORT:-5335}:5335"
+      - "127.0.0.1:${IVORYSQL_HOST_PORT:-5335}:5335"
     volumes:
       - database-data:/var/lib/ivorysql/data
       - migration-reports:/var/lib/ivorysql/reports

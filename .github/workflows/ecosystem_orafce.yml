@@ -19,20 +19,22 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      IVORYSQL_PASSWORD: ivorysql-orafce-ci-password
     defaults:
       run:
         working-directory: tools/ecosystem/orafce
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Run migration harness unit tests
         run: python -m unittest discover -s tests -v
       - name: Validate contract manifest
-        run: |
-          export IVORYSQL_PASSWORD=ivorysql-orafce-ci-password
-          python migration_harness.py preflight --contract compatibility_contract.json
+        run: python migration_harness.py preflight --contract compatibility_contract.json
       - name: Validate shell syntax
         run: bash -n scripts/*.sh
       - name: Validate Compose model
@@ -47,11 +49,15 @@ jobs:
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    env:
+      IVORYSQL_PASSWORD: ivorysql-orafce-ci-password
     defaults:
       run:
         working-directory: tools/ecosystem/orafce
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Configure test secrets
         run: cp .env.example .env
       - name: Build and start IvorySQL

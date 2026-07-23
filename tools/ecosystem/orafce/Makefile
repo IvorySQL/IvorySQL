@@ -11,7 +11,7 @@ config:
 	$(COMPOSE) config --quiet
 
 preflight:
-	$(HARNESS) preflight --contract compatibility_contract.json
+	@set -a; . ./.env; set +a; $(HARNESS) preflight --contract compatibility_contract.json
 
 up:
 	$(COMPOSE) up --detach --build --wait database
