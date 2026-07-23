@@ -22,7 +22,13 @@ NO_INSTALLCHECK = 1
 
 export enable_injection_points
 
-# List only tests that are compatible with Oracle mode.
+# Oracle-compatible subset of the regression suite.
+# The injection_points test case is excluded: it fails under Oracle mode
+# because the injection-points machinery does not fire in the
+# Oracle-compatible parser (the function calls return empty where the
+# expected output has error/notice/result rows). Verified via
+# make oracle-check-world in CI. The other three cases (hashagg,
+# reindex_conc, vacuum) pass.
 ORA_REGRESS = hashagg reindex_conc vacuum
 ORA_ISOLATION = $(ISOLATION)
 
