@@ -54,15 +54,15 @@ SELECT migration.record(
 
 SELECT migration.record(
     'date.add_months_eom',
-    oracle.add_months(date '2024-01-31', 1)::date::text
+    oracle.add_months(date '2024-01-31', 1)::pg_catalog.date::text
 );
 SELECT migration.record(
     'date.last_day_leap',
-    oracle.last_day(date '2024-02-10')::date::text
+    oracle.last_day(date '2024-02-10')::pg_catalog.date::text
 );
 SELECT migration.record(
     'date.next_day_strict',
-    oracle.next_day(date '2024-01-01', 'MONDAY')::date::text
+    oracle.next_day(date '2024-01-01', 'MONDAY')::pg_catalog.date::text
 );
 SELECT migration.record(
     'date.months_between_eom',
@@ -70,7 +70,7 @@ SELECT migration.record(
 );
 SELECT migration.record(
     'date.trunc_iso_week',
-    oracle.trunc(date '2024-01-03', 'IW')::date::text
+    oracle.trunc(date '2024-01-03', 'IW')::pg_catalog.date::text
 );
 SELECT migration.record(
     'date.to_date_format',
