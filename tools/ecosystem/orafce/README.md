@@ -4,11 +4,11 @@ This integration builds the pinned orafce 4.16.7 source tag against IvorySQL
 5.4 and exercises Oracle migration behavior on a running database. It turns a
 representative compatibility surface into a versioned, machine-audited
 contract instead of treating successful extension installation as sufficient.
-The workload explicitly installs IvorySQL's `plisql` extension because a
-PostgreSQL-mode database does not preload that procedural language. It switches
-to `ivorysql.compatible_mode=oracle` only for the extension installation, as
-IvorySQL's own initialization path does, then returns to PostgreSQL mode before
-executing the migration contract.
+The database is initialized with IvorySQL's Oracle database mode so PL/iSQL and
+the Oracle compatibility catalog are loaded through the supported initdb path.
+The workload then sets its session to `ivorysql.compatible_mode=pg` before
+installing orafce and executing the contract. The audit records and requires
+that session mode, so the setup cannot silently drift.
 
 IvorySQL 5.4 exposes PostgreSQL 18's `pg_re_flags` definition from the public
 regex header, while orafce 4.16.7 still carries its compatibility copy. The

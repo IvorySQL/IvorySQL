@@ -80,7 +80,7 @@ def valid_metadata(**overrides: object) -> harness.Metadata:
     values: dict[str, object] = {
         "extension_version": "4.16",
         "server_version": "IvorySQL 5.4 on x86_64-pc-linux-gnu",
-        "database_mode": "pg",
+        "compatible_mode": "pg",
         "plisql_installed": True,
         "result_count": 36,
     }
@@ -412,12 +412,12 @@ class ResultAndMetadataTests(unittest.TestCase):
             {
                 "extension_version": "4.16",
                 "server_version": "IvorySQL test",
-                "database_mode": None,
+                "compatible_mode": "pg",
                 "plisql_installed": True,
                 "result_count": 36,
             }
         )
-        self.assertIsNone(metadata.database_mode)
+        self.assertEqual(metadata.compatible_mode, "pg")
 
     def test_metadata_rejects_boolean_result_count(self) -> None:
         with self.assertRaisesRegex(harness.EvidenceError, "integer"):
@@ -425,7 +425,7 @@ class ResultAndMetadataTests(unittest.TestCase):
                 {
                     "extension_version": "4.16",
                     "server_version": "IvorySQL test",
-                    "database_mode": "pg",
+                    "compatible_mode": "pg",
                     "plisql_installed": True,
                     "result_count": True,
                 }
@@ -437,7 +437,7 @@ class ResultAndMetadataTests(unittest.TestCase):
                 {
                     "extension_version": "4.16",
                     "server_version": "IvorySQL test",
-                    "database_mode": "pg",
+                    "compatible_mode": "pg",
                     "plisql_installed": "yes",
                     "result_count": 36,
                 }
@@ -521,6 +521,11 @@ class AuditTests(unittest.TestCase):
     def test_missing_plisql_fails_metadata(self) -> None:
         report = self.audit(metadata=valid_metadata(plisql_installed=False))
         self.assertFalse(report.passed)
+
+    def test_wrong_compatible_mode_fails_metadata(self) -> None:
+        report = self.audit(metadata=valid_metadata(compatible_mode="oracle"))
+        self.assertFalse(report.passed)
+        self.assertFalse(report.metadata["checks"]["compatible_mode"])
 
     def test_result_count_mismatch_fails_metadata(self) -> None:
         report = self.audit(metadata=valid_metadata(result_count=35))

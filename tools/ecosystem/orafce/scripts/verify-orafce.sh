@@ -39,7 +39,7 @@ SQL
 SELECT json_build_object(
     'extension_version', (SELECT extversion FROM pg_extension WHERE extname = 'orafce'),
     'server_version', version(),
-    'database_mode', current_setting('ivorysql.database_mode', true),
+    'compatible_mode', current_setting('ivorysql.compatible_mode', true),
     'plisql_installed', EXISTS (
         SELECT FROM pg_language WHERE lanname = 'plisql'
     ),

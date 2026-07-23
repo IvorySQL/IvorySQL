@@ -436,7 +436,7 @@ def load_results(path: Path) -> dict[str, ResultRow]:
 class Metadata:
     extension_version: str
     server_version: str
-    database_mode: str | None
+    compatible_mode: str
     plisql_installed: bool
     result_count: int
 
@@ -448,7 +448,7 @@ class Metadata:
                 {
                     "extension_version",
                     "server_version",
-                    "database_mode",
+                    "compatible_mode",
                     "plisql_installed",
                     "result_count",
                 },
@@ -456,9 +456,6 @@ class Metadata:
             )
         except HarnessError as exc:
             raise EvidenceError(str(exc)) from exc
-        mode = value["database_mode"]
-        if mode is not None and not isinstance(mode, str):
-            raise EvidenceError("metadata.database_mode must be a string or null")
         return cls(
             extension_version=_nonempty_text(
                 value["extension_version"], "metadata.extension_version", EvidenceError
@@ -466,7 +463,9 @@ class Metadata:
             server_version=_nonempty_text(
                 value["server_version"], "metadata.server_version", EvidenceError
             ),
-            database_mode=mode,
+            compatible_mode=_nonempty_text(
+                value["compatible_mode"], "metadata.compatible_mode", EvidenceError
+            ),
             plisql_installed=_boolean(
                 value["plisql_installed"], "metadata.plisql_installed", EvidenceError
             ),
@@ -553,6 +552,7 @@ def audit(
         "source_version": contract.integration.orafce_source_version
         == policy.expected_source_version,
         "server_identity": "IvorySQL" in metadata.server_version,
+        "compatible_mode": metadata.compatible_mode == "pg",
         "plisql_installed": metadata.plisql_installed,
         "result_count": metadata.result_count == len(results) == len(contract.cases),
     }
