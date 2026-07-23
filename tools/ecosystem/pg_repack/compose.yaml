@@ -1,0 +1,46 @@
+name: ivorysql-pg-repack
+
+services:
+  database:
+    build:
+      context: ../../..
+      dockerfile: tools/ecosystem/pg_repack/Dockerfile
+      args:
+        IVORYSQL_REF: ${IVORYSQL_REF:-IvorySQL_5.4}
+        PG_REPACK_REF: ${PG_REPACK_REF:-ver_1.5.3}
+    image: ivorysql/pg-repack:${IVORYSQL_IMAGE_TAG:-5.4-pg-repack-1.5.3}
+    restart: unless-stopped
+    environment:
+      IVORYSQL_PORT: "5334"
+      IVORYSQL_DATABASE: ${IVORYSQL_DATABASE:-maintenancedb}
+      IVORYSQL_USER: ${IVORYSQL_USER:-ivorysql}
+      IVORYSQL_PASSWORD: ${IVORYSQL_PASSWORD:?set IVORYSQL_PASSWORD}
+      REPACK_SCHEMA: ${REPACK_SCHEMA:-maintenance}
+      REPACK_TABLE: ${REPACK_TABLE:-orders}
+      REPACK_INITIAL_ROWS: ${REPACK_INITIAL_ROWS:-24000}
+      REPACK_DELETE_PERCENT: ${REPACK_DELETE_PERCENT:-75}
+      REPACK_PAYLOAD_BYTES: ${REPACK_PAYLOAD_BYTES:-1024}
+      REPACK_MIN_BEFORE_SIZE: ${REPACK_MIN_BEFORE_SIZE:-8MiB}
+      REPACK_MIN_SAVED_BYTES: ${REPACK_MIN_SAVED_BYTES:-4MiB}
+      REPACK_MAX_FINAL_RATIO: ${REPACK_MAX_FINAL_RATIO:-0.55}
+      REPACK_CONCURRENT_WRITES: ${REPACK_CONCURRENT_WRITES:-40}
+      REPACK_MIN_CONCURRENT_WRITES: ${REPACK_MIN_CONCURRENT_WRITES:-30}
+      REPACK_MAX_WRITE_LATENCY: ${REPACK_MAX_WRITE_LATENCY:-5s}
+      REPACK_WAIT_TIMEOUT: ${REPACK_WAIT_TIMEOUT:-60}
+      REPACK_REPORT_DIR: /var/lib/ivorysql/reports
+    ports:
+      - "${IVORYSQL_HOST_PORT:-5334}:5334"
+    volumes:
+      - database-data:/var/lib/ivorysql/data
+      - repack-reports:/var/lib/ivorysql/reports
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5334 -U ${IVORYSQL_USER:-ivorysql} -d ${IVORYSQL_DATABASE:-maintenancedb}"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 30s
+    stop_grace_period: 60s
+
+volumes:
+  database-data:
+  repack-reports:

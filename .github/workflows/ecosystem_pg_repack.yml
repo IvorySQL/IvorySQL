@@ -1,0 +1,62 @@
+name: Ecosystem pg_repack integration
+
+on:
+  push:
+    branches: [agent/pg-repack-online-maintenance]
+    paths:
+      - tools/ecosystem/pg_repack/**
+      - .github/workflows/ecosystem_pg_repack.yml
+  pull_request:
+    paths:
+      - tools/ecosystem/pg_repack/**
+      - .github/workflows/ecosystem_pg_repack.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: tools/ecosystem/pg_repack
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Run harness unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Validate shell syntax
+        run: bash -n scripts/*.sh
+      - name: Validate Compose model
+        run: |
+          cp .env.example .env
+          docker compose config --quiet
+      - name: Check patch whitespace
+        run: git show --check --oneline HEAD -- .github/workflows/ecosystem_pg_repack.yml tools/ecosystem/pg_repack
+
+  integration:
+    if: github.event_name == 'push'
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: tools/ecosystem/pg_repack
+    steps:
+      - uses: actions/checkout@v6
+      - name: Configure test secrets
+        run: cp .env.example .env
+      - name: Build and start database
+        run: make build up
+      - name: Verify online repack policy
+        run: make verify
+      - name: Collect service logs
+        if: failure()
+        run: docker compose logs --no-color --tail 250
+      - name: Remove test cluster
+        if: always()
+        run: make clean
