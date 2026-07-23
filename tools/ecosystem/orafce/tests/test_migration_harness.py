@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import importlib.util
 import json
 import tempfile
 import unittest
@@ -13,6 +14,16 @@ import migration_harness as harness
 
 HERE = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = HERE / "compatibility_contract.json"
+
+
+def load_source_transformer():
+    path = HERE / "scripts" / "patch-orafce-pg18.py"
+    specification = importlib.util.spec_from_file_location("patch_orafce_pg18", path)
+    if specification is None or specification.loader is None:
+        raise RuntimeError("cannot load source transformer")
+    module = importlib.util.module_from_spec(specification)
+    specification.loader.exec_module(module)
+    return module
 
 
 def valid_environment(**overrides: str) -> dict[str, str]:
@@ -148,6 +159,37 @@ class RuntimePolicyTests(unittest.TestCase):
                 harness.RuntimePolicy.from_environment(
                     valid_environment(ORAFCE_REPORT_DIR=value)
                 )
+
+
+class SourceTransformerTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.transformer = load_source_transformer()
+
+    def test_exact_orafce_block_is_guarded(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory, "regexp.c")
+            path.write_text(
+                "prefix\n" + self.transformer.ORIGINAL + "suffix\n", encoding="utf-8"
+            )
+            self.transformer.patch_source(path)
+            updated = path.read_text(encoding="utf-8")
+            self.assertNotIn(self.transformer.ORIGINAL, updated)
+            self.assertEqual(updated.count(self.transformer.REPLACEMENT), 1)
+            self.assertIn("#if PG_VERSION_NUM < 180000", updated)
+
+    def test_source_drift_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory, "regexp.c")
+            path.write_text("typedef struct changed_flags;\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "found 0"):
+                self.transformer.patch_source(path)
+
+    def test_duplicate_blocks_are_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory, "regexp.c")
+            path.write_text(self.transformer.ORIGINAL * 2, encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "found 2"):
+                self.transformer.patch_source(path)
 
 
 class IdentityAndCaseTests(unittest.TestCase):
