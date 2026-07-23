@@ -12,6 +12,10 @@ CREATE FUNCTION test_fdw_connection(oid, oid, internal)
     RETURNS text
     AS :'regresslib', 'test_fdw_connection'
     LANGUAGE C;
+CREATE FUNCTION test_fdw_connection_no_password(oid, oid, internal)
+    RETURNS text
+    AS :'regresslib', 'test_fdw_connection_no_password'
+    LANGUAGE C;
 
 CREATE ROLE regress_subscription_user LOGIN SUPERUSER;
 CREATE ROLE regress_subscription_user2;
@@ -136,6 +140,17 @@ CREATE SUBSCRIPTION regress_testsub6 SERVER test_server
   PUBLICATION testpub WITH (slot_name = 'dummy', connect = false);
 
 RESET SESSION AUTHORIZATION;
+GRANT USAGE ON FOREIGN SERVER test_server TO regress_subscription_user2;
+CREATE USER MAPPING FOR regress_subscription_user2 SERVER test_server OPTIONS(user 'foo');
+ALTER FOREIGN DATA WRAPPER test_fdw CONNECTION test_fdw_connection_no_password;
+
+-- fail, new owner's generated conninfo must satisfy password_required
+ALTER SUBSCRIPTION regress_testsub6 OWNER TO regress_subscription_user2;
+
+ALTER FOREIGN DATA WRAPPER test_fdw CONNECTION test_fdw_connection;
+DROP USER MAPPING FOR regress_subscription_user2 SERVER test_server;
+REVOKE USAGE ON FOREIGN SERVER test_server FROM regress_subscription_user2;
+
 REVOKE USAGE ON FOREIGN SERVER test_server FROM regress_subscription_user3;
 SET SESSION AUTHORIZATION regress_subscription_user3;
 
@@ -182,6 +197,7 @@ DROP FUNCTION test_fdw_connection(oid, oid, internal);
 ALTER FOREIGN DATA WRAPPER test_fdw NO CONNECTION;
 
 DROP FUNCTION test_fdw_connection(oid, oid, internal);
+DROP FUNCTION test_fdw_connection_no_password(oid, oid, internal);
 
 DROP FOREIGN DATA WRAPPER test_fdw;
 
