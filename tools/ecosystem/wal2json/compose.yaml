@@ -30,7 +30,7 @@ services:
       CDC_REQUIRE_TYPES: ${CDC_REQUIRE_TYPES:-true}
       CDC_REQUIRE_PRIMARY_KEYS: ${CDC_REQUIRE_PRIMARY_KEYS:-true}
     ports:
-      - "${IVORYSQL_HOST_PORT:-5333}:5333"
+      - "127.0.0.1:${IVORYSQL_HOST_PORT:-5333}:5333"
     volumes:
       - database-data:/var/lib/ivorysql/data
       - cdc-reports:/var/lib/ivorysql/reports
