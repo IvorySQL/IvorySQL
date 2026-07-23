@@ -1,6 +1,7 @@
 \set ON_ERROR_STOP on
 
 CREATE EXTENSION IF NOT EXISTS orafce;
+CREATE EXTENSION IF NOT EXISTS plisql;
 DROP SCHEMA IF EXISTS migration CASCADE;
 CREATE SCHEMA migration;
 SET search_path TO migration, oracle, public, pg_catalog;
