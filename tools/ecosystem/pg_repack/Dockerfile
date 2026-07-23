@@ -3,15 +3,18 @@ FROM ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebff
 ARG DEBIAN_FRONTEND=noninteractive
 ARG UBUNTU_SNAPSHOT=20260701T000000Z
 ARG IVORYSQL_REF=IvorySQL_5.4
-ARG IVORYSQL_COMMIT=aaa2c29e2572001fe8230a8d44b5b8dd2903b740
+ARG IVORYSQL_COMMIT=a45b0457520007970848fc33198d876807b98f55
 ARG PG_REPACK_REF=ver_1.5.3
-ARG PG_REPACK_COMMIT=328ba0d6a3a1e0d0f8c3b977f1b48ebe098ee0ad
+ARG PG_REPACK_COMMIT=6902ab313aeb49227867087dca99cf107f7be23b
 
 RUN sed -i "/^Signed-By:/a Snapshot: ${UBUNTU_SNAPSHOT}" \
         /etc/apt/sources.list.d/ubuntu.sources \
+    && apt-get -o Acquire::https::Verify-Peer=false update \
+    && apt-get -o Acquire::https::Verify-Peer=false install \
+        --no-install-recommends -y ca-certificates \
     && apt-get update \
     && apt-get install --no-install-recommends -y \
-        bison build-essential ca-certificates flex gettext git libicu-dev \
+        bison build-essential flex gettext git libicu-dev \
         libkrb5-dev libldap2-dev liblz4-dev libpam0g-dev libreadline-dev \
         libssl-dev libxml2-dev libxslt1-dev pkg-config python3-dev tcl-dev \
         uuid-dev zlib1g-dev \
@@ -42,9 +45,12 @@ ARG DEBIAN_FRONTEND=noninteractive
 ARG UBUNTU_SNAPSHOT=20260701T000000Z
 RUN sed -i "/^Signed-By:/a Snapshot: ${UBUNTU_SNAPSHOT}" \
         /etc/apt/sources.list.d/ubuntu.sources \
+    && apt-get -o Acquire::https::Verify-Peer=false update \
+    && apt-get -o Acquire::https::Verify-Peer=false install \
+        --no-install-recommends -y ca-certificates \
     && apt-get update \
     && apt-get install --no-install-recommends -y \
-        ca-certificates coreutils gosu libicu74 libkrb5-3 libldap2 liblz4-1 \
+        coreutils gosu libicu74 libkrb5-3 libldap2 liblz4-1 \
         libpam0g libreadline8t64 libssl3t64 libxml2 libxslt1.1 locales \
         python3 tini uuid-runtime zlib1g \
     && locale-gen en_US.UTF-8 \
