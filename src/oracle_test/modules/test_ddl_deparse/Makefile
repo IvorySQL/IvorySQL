@@ -33,6 +33,8 @@ REGRESS = test_ddl_deparse \
 
 EXTRA_INSTALL = contrib/pg_stat_statements
 
+ORA_REGRESS = $(REGRESS)
+
 ifdef USE_PGXS
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
