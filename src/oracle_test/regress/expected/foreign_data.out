@@ -1450,7 +1450,8 @@ CREATE FOREIGN TABLE ft2 () INHERITS (fd_pt1)
  c3     | date            |           |          |         |           | plain    |              | 
 Not-null constraints:
     "fd_pt1_c1_not_null" NOT NULL "c1"
-Child tables: ft2, FOREIGN
+Child tables:
+    ft2, FOREIGN
 
 \d+ ft2
                                            Foreign table "public.ft2"
@@ -1463,7 +1464,8 @@ Not-null constraints:
     "fd_pt1_c1_not_null" NOT NULL "c1" (inherited)
 Server: s0
 FDW options: (delimiter ',', quote '"', "be quoted" 'value')
-Inherits: fd_pt1
+Inherits:
+    fd_pt1
 
 DROP FOREIGN TABLE ft2;
 \d+ fd_pt1
@@ -1503,7 +1505,8 @@ ALTER FOREIGN TABLE ft2 INHERIT fd_pt1;
  c3     | date            |           |          |         |           | plain    |              | 
 Not-null constraints:
     "fd_pt1_c1_not_null" NOT NULL "c1"
-Child tables: ft2, FOREIGN
+Child tables:
+    ft2, FOREIGN
 
 \d+ ft2
                                            Foreign table "public.ft2"
@@ -1516,7 +1519,8 @@ Not-null constraints:
     "ft2_c1_not_null" NOT NULL "c1" (local, inherited)
 Server: s0
 FDW options: (delimiter ',', quote '"', "be quoted" 'value')
-Inherits: fd_pt1
+Inherits:
+    fd_pt1
 
 CREATE TABLE ct3() INHERITS(ft2);
 CREATE FOREIGN TABLE ft3 (
@@ -1539,9 +1543,11 @@ Not-null constraints:
     "ft2_c1_not_null" NOT NULL "c1" (local, inherited)
 Server: s0
 FDW options: (delimiter ',', quote '"', "be quoted" 'value')
-Inherits: fd_pt1
-Child tables: ct3,
-              ft3, FOREIGN
+Inherits:
+    fd_pt1
+Child tables:
+    ct3
+    ft3, FOREIGN
 
 \d+ ct3
                                               Table "public.ct3"
@@ -1552,7 +1558,8 @@ Child tables: ct3,
  c3     | date            |           |          |         |           | plain    |              | 
 Not-null constraints:
     "ft2_c1_not_null" NOT NULL "c1" (inherited)
-Inherits: ft2
+Inherits:
+    ft2
 
 \d+ ft3
                                            Foreign table "public.ft3"
@@ -1564,7 +1571,8 @@ Inherits: ft2
 Not-null constraints:
     "ft3_c1_not_null" NOT NULL "c1" (local, inherited)
 Server: s0
-Inherits: ft2
+Inherits:
+    ft2
 
 -- add attributes recursively
 ALTER TABLE fd_pt1 ADD COLUMN c4 integer;
@@ -1587,7 +1595,8 @@ ALTER TABLE fd_pt1 ADD COLUMN c8 integer;
 Not-null constraints:
     "fd_pt1_c1_not_null" NOT NULL "c1"
     "fd_pt1_c7_not_null" NOT NULL "c7"
-Child tables: ft2, FOREIGN
+Child tables:
+    ft2, FOREIGN
 
 \d+ ft2
                                            Foreign table "public.ft2"
@@ -1606,9 +1615,11 @@ Not-null constraints:
     "fd_pt1_c7_not_null" NOT NULL "c7" (inherited)
 Server: s0
 FDW options: (delimiter ',', quote '"', "be quoted" 'value')
-Inherits: fd_pt1
-Child tables: ct3,
-              ft3, FOREIGN
+Inherits:
+    fd_pt1
+Child tables:
+    ct3
+    ft3, FOREIGN
 
 \d+ ct3
                                               Table "public.ct3"
@@ -1625,7 +1636,8 @@ Child tables: ct3,
 Not-null constraints:
     "ft2_c1_not_null" NOT NULL "c1" (inherited)
     "fd_pt1_c7_not_null" NOT NULL "c7" (inherited)
-Inherits: ft2
+Inherits:
+    ft2
 
 \d+ ft3
                                            Foreign table "public.ft3"
@@ -1643,7 +1655,8 @@ Not-null constraints:
     "ft3_c1_not_null" NOT NULL "c1" (local, inherited)
     "fd_pt1_c7_not_null" NOT NULL "c7" (inherited)
 Server: s0
-Inherits: ft2
+Inherits:
+    ft2
 
 -- alter attributes recursively
 ALTER TABLE fd_pt1 ALTER COLUMN c4 SET DEFAULT 0;
@@ -1673,7 +1686,8 @@ ALTER TABLE fd_pt1 ALTER COLUMN c8 SET STORAGE EXTERNAL;
 Not-null constraints:
     "fd_pt1_c1_not_null" NOT NULL "c1"
     "fd_pt1_c6_not_null" NOT NULL "c6"
-Child tables: ft2, FOREIGN
+Child tables:
+    ft2, FOREIGN
 
 \d+ ft2
                                            Foreign table "public.ft2"
@@ -1692,9 +1706,11 @@ Not-null constraints:
     "fd_pt1_c6_not_null" NOT NULL "c6" (inherited)
 Server: s0
 FDW options: (delimiter ',', quote '"', "be quoted" 'value')
-Inherits: fd_pt1
-Child tables: ct3,
-              ft3, FOREIGN
+Inherits:
+    fd_pt1
+Child tables:
+    ct3
+    ft3, FOREIGN
 
 -- drop attributes recursively
 ALTER TABLE fd_pt1 DROP COLUMN c4;
@@ -1711,7 +1727,8 @@ ALTER TABLE fd_pt1 DROP COLUMN c8;
  c3     | date            |           |          |         |           | plain    |              | 
 Not-null constraints:
     "fd_pt1_c1_not_null" NOT NULL "c1"
-Child tables: ft2, FOREIGN
+Child tables:
+    ft2, FOREIGN
 
 \d+ ft2
                                            Foreign table "public.ft2"
@@ -1724,9 +1741,11 @@ Not-null constraints:
     "ft2_c1_not_null" NOT NULL "c1" (local, inherited)
 Server: s0
 FDW options: (delimiter ',', quote '"', "be quoted" 'value')
-Inherits: fd_pt1
-Child tables: ct3,
-              ft3, FOREIGN
+Inherits:
+    fd_pt1
+Child tables:
+    ct3
+    ft3, FOREIGN
 
 -- add constraints recursively
 ALTER TABLE fd_pt1 ADD CONSTRAINT fd_pt1chk1 CHECK (c1 > 0) NO INHERIT;
@@ -1756,7 +1775,8 @@ Check constraints:
     "fd_pt1chk2" CHECK (c2 <> ''::text)
 Not-null constraints:
     "fd_pt1_c1_not_null" NOT NULL "c1"
-Child tables: ft2, FOREIGN
+Child tables:
+    ft2, FOREIGN
 
 \d+ ft2
                                            Foreign table "public.ft2"
@@ -1771,9 +1791,11 @@ Not-null constraints:
     "ft2_c1_not_null" NOT NULL "c1" (local, inherited)
 Server: s0
 FDW options: (delimiter ',', quote '"', "be quoted" 'value')
-Inherits: fd_pt1
-Child tables: ct3,
-              ft3, FOREIGN
+Inherits:
+    fd_pt1
+Child tables:
+    ct3
+    ft3, FOREIGN
 
 DROP FOREIGN TABLE ft2; -- ERROR
 ERROR:  cannot drop foreign table ft2 because other objects depend on it
@@ -1807,7 +1829,8 @@ Check constraints:
     "fd_pt1chk2" CHECK (c2 <> ''::text)
 Not-null constraints:
     "fd_pt1_c1_not_null" NOT NULL "c1"
-Child tables: ft2, FOREIGN
+Child tables:
+    ft2, FOREIGN
 
 \d+ ft2
                                            Foreign table "public.ft2"
@@ -1822,7 +1845,8 @@ Not-null constraints:
     "ft2_c1_not_null" NOT NULL "c1" (local, inherited)
 Server: s0
 FDW options: (delimiter ',', quote '"', "be quoted" 'value')
-Inherits: fd_pt1
+Inherits:
+    fd_pt1
 
 -- drop constraints recursively
 ALTER TABLE fd_pt1 DROP CONSTRAINT fd_pt1chk1 CASCADE;
@@ -1841,7 +1865,8 @@ Check constraints:
     "fd_pt1chk3" CHECK (c2 <> ''::text) NOT VALID
 Not-null constraints:
     "fd_pt1_c1_not_null" NOT NULL "c1"
-Child tables: ft2, FOREIGN
+Child tables:
+    ft2, FOREIGN
 
 \d+ ft2
                                            Foreign table "public.ft2"
@@ -1857,7 +1882,8 @@ Not-null constraints:
     "ft2_c1_not_null" NOT NULL "c1" (local, inherited)
 Server: s0
 FDW options: (delimiter ',', quote '"', "be quoted" 'value')
-Inherits: fd_pt1
+Inherits:
+    fd_pt1
 
 -- VALIDATE CONSTRAINT need do nothing on foreign tables
 ALTER TABLE fd_pt1 VALIDATE CONSTRAINT fd_pt1chk3;
@@ -1872,7 +1898,8 @@ Check constraints:
     "fd_pt1chk3" CHECK (c2 <> ''::text)
 Not-null constraints:
     "fd_pt1_c1_not_null" NOT NULL "c1"
-Child tables: ft2, FOREIGN
+Child tables:
+    ft2, FOREIGN
 
 \d+ ft2
                                            Foreign table "public.ft2"
@@ -1888,7 +1915,8 @@ Not-null constraints:
     "ft2_c1_not_null" NOT NULL "c1" (local, inherited)
 Server: s0
 FDW options: (delimiter ',', quote '"', "be quoted" 'value')
-Inherits: fd_pt1
+Inherits:
+    fd_pt1
 
 -- changes name of an attribute recursively
 ALTER TABLE fd_pt1 RENAME COLUMN c1 TO f1;
@@ -1907,7 +1935,8 @@ Check constraints:
     "f2_check" CHECK (f2 <> ''::text)
 Not-null constraints:
     "fd_pt1_c1_not_null" NOT NULL "f1"
-Child tables: ft2, FOREIGN
+Child tables:
+    ft2, FOREIGN
 
 \d+ ft2
                                            Foreign table "public.ft2"
@@ -1923,7 +1952,8 @@ Not-null constraints:
     "ft2_c1_not_null" NOT NULL "f1" (local, inherited)
 Server: s0
 FDW options: (delimiter ',', quote '"', "be quoted" 'value')
-Inherits: fd_pt1
+Inherits:
+    fd_pt1
 
 DROP TABLE fd_pt1 CASCADE;
 NOTICE:  drop cascades to foreign table ft2
@@ -1969,7 +1999,8 @@ CREATE FOREIGN TABLE fd_pt2_1 PARTITION OF fd_pt2 FOR VALUES IN (1)
 Partition key: LIST (c1)
 Not-null constraints:
     "fd_pt2_c1_not_null" NOT NULL "c1"
-Partitions: fd_pt2_1 FOR VALUES IN (1), FOREIGN
+Partitions:
+    fd_pt2_1 FOR VALUES IN (1), FOREIGN
 
 \d+ fd_pt2_1
                                          Foreign table "public.fd_pt2_1"
@@ -2051,7 +2082,8 @@ ALTER TABLE fd_pt2 ATTACH PARTITION fd_pt2_1 FOR VALUES IN (1);
 Partition key: LIST (c1)
 Not-null constraints:
     "fd_pt2_c1_not_null" NOT NULL "c1"
-Partitions: fd_pt2_1 FOR VALUES IN (1), FOREIGN
+Partitions:
+    fd_pt2_1 FOR VALUES IN (1), FOREIGN
 
 \d+ fd_pt2_1
                                          Foreign table "public.fd_pt2_1"
@@ -2083,7 +2115,8 @@ ALTER TABLE fd_pt2_1 ADD CONSTRAINT p21chk CHECK (c2 <> '');
 Partition key: LIST (c1)
 Not-null constraints:
     "fd_pt2_c1_not_null" NOT NULL "c1"
-Partitions: fd_pt2_1 FOR VALUES IN (1), FOREIGN
+Partitions:
+    fd_pt2_1 FOR VALUES IN (1), FOREIGN
 
 \d+ fd_pt2_1
                                          Foreign table "public.fd_pt2_1"

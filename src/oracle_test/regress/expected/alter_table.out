@@ -356,7 +356,8 @@ NOTICE:  merging constraint "con1" with inherited definition
  d      | pg_catalog.int4 |           |          | 
 Check constraints:
     "con1" CHECK (a > 0)
-Inherits: constraint_rename_test
+Inherits:
+    constraint_rename_test
 
 ALTER TABLE constraint_rename_test2 RENAME CONSTRAINT con1 TO con1foo; -- fail
 ERROR:  cannot rename inherited constraint "con1"
@@ -384,7 +385,8 @@ Number of child tables: 1 (Use \d+ to list them.)
  d      | pg_catalog.int4 |           |          | 
 Check constraints:
     "con1foo" CHECK (a > 0)
-Inherits: constraint_rename_test
+Inherits:
+    constraint_rename_test
 
 ALTER TABLE constraint_rename_test ADD CONSTRAINT con2 CHECK (b > 0) NO INHERIT;
 ALTER TABLE ONLY constraint_rename_test RENAME CONSTRAINT con2 TO con2foo; -- ok
@@ -411,7 +413,8 @@ Number of child tables: 1 (Use \d+ to list them.)
  d      | pg_catalog.int4 |           |          | 
 Check constraints:
     "con1foo" CHECK (a > 0)
-Inherits: constraint_rename_test
+Inherits:
+    constraint_rename_test
 
 ALTER TABLE constraint_rename_test ADD CONSTRAINT con3 PRIMARY KEY (a);
 ALTER TABLE constraint_rename_test RENAME CONSTRAINT con3 TO con3foo; -- ok
@@ -439,7 +442,8 @@ Number of child tables: 1 (Use \d+ to list them.)
  d      | pg_catalog.int4 |           |          | 
 Check constraints:
     "con1foo" CHECK (a > 0)
-Inherits: constraint_rename_test
+Inherits:
+    constraint_rename_test
 
 DROP TABLE constraint_rename_test2;
 DROP TABLE constraint_rename_test;
@@ -657,7 +661,8 @@ alter table nv_parent add check (d between '2001-01-01'::date and '2099-12-31'::
 Check constraints:
     "nv_child_2009_d_check" CHECK (d >= '2009-01-01'::date AND d <= '2009-12-31'::date)
     "nv_parent_d_check" CHECK (d >= '2001-01-01'::date AND d <= '2099-12-31'::date) NOT VALID
-Inherits: nv_parent
+Inherits:
+    nv_parent
 
 -- we leave nv_parent and children around to help test pg_dump logic
 -- Foreign key adding test with mixed types
@@ -1242,7 +1247,8 @@ primary key, btree, for table "public.atnnpart1"
 Partition key: LIST (id)
 Not-null constraints:
     "dummy_constr" NOT NULL "id" NOT VALID
-Partitions: atnnpart1 FOR VALUES IN (1)
+Partitions:
+    atnnpart1 FOR VALUES IN (1)
 
 BEGIN;
 ALTER TABLE atnnparted VALIDATE CONSTRAINT dummy_constr;
@@ -1273,7 +1279,8 @@ primary key, btree, for table "public.atnnpart1"
 Partition key: LIST (id)
 Not-null constraints:
     "dummy_constr" NOT NULL "id"
-Partitions: atnnpart1 FOR VALUES IN (1)
+Partitions:
+    atnnpart1 FOR VALUES IN (1)
 
 ROLLBACK;
 -- leave a table in this state for the pg_upgrade test
@@ -2410,7 +2417,8 @@ Number of child tables: 1 (Use \d+ to list them.)
  b      | pg_catalog.float8 |           |          | 
 Check constraints:
     "test_inh_check_a_check" CHECK (a > 10.2::pg_catalog.float8)
-Inherits: test_inh_check
+Inherits:
+    test_inh_check
 
 select relname, conname, coninhcount, conislocal, connoinherit
   from pg_constraint c, pg_class r
@@ -2441,7 +2449,8 @@ Number of child tables: 1 (Use \d+ to list them.)
  b      | pg_catalog.float8  |           |          | 
 Check constraints:
     "test_inh_check_a_check" CHECK (a::pg_catalog.float8 > 10.2::pg_catalog.float8)
-Inherits: test_inh_check
+Inherits:
+    test_inh_check
 
 select relname, conname, coninhcount, conislocal, connoinherit
   from pg_constraint c, pg_class r
@@ -2481,7 +2490,8 @@ Check constraints:
     "blocal" CHECK (b < 1000::pg_catalog.float8)
     "bmerged" CHECK (b > 1::pg_catalog.float8)
     "test_inh_check_a_check" CHECK (a::pg_catalog.float8 > 10.2::pg_catalog.float8)
-Inherits: test_inh_check
+Inherits:
+    test_inh_check
 
 select relname, conname, coninhcount, conislocal, connoinherit
   from pg_constraint c, pg_class r
@@ -2521,7 +2531,8 @@ Check constraints:
     "blocal" CHECK (b::pg_catalog.float8 < 1000::pg_catalog.float8)
     "bmerged" CHECK (b::pg_catalog.float8 > 1::pg_catalog.float8)
     "test_inh_check_a_check" CHECK (a::pg_catalog.float8 > 10.2::pg_catalog.float8)
-Inherits: test_inh_check
+Inherits:
+    test_inh_check
 
 select relname, conname, coninhcount, conislocal, connoinherit
   from pg_constraint c, pg_class r
@@ -3316,7 +3327,8 @@ Typed table of type: test_type2
 --------+-----------------+-----------+----------+---------
  aa     | pg_catalog.int4 |           |          | 
  c      | text            |           |          | 
-Inherits: test_tbl2
+Inherits:
+    test_tbl2
 
 DROP TABLE test_tbl2_subclass, test_tbl2;
 DROP TYPE test_type2;
