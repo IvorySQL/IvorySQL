@@ -1359,6 +1359,10 @@ set ivorysql.compatible_mode = 'pg';
 \parser
 reset ivorysql.compatible_mode;
 show ivorysql.compatible_mode;
+-- Re-pin to pg: the remainder of this file uses PG syntax (\df, \sf, ALTER
+-- ROLE, etc.). The RESET above restored the server's oracle mode, and
+-- mainloop.c's auto-sync would switch the parser back to oracle without
+-- this explicit SET.
 set ivorysql.compatible_mode = 'pg';
 
 -- ensure compatible_mode cannot be persisted via ALTER ROLE SET/RESET
