@@ -276,10 +276,15 @@ LINE 3: SELECT only_nums('not a number') FROM dual;
 SET ivorysql.compatible_mode = pg;
 WITH FUNCTION pg_mode_test(n INT) RETURN INT IS
 BEGIN RETURN n; END;
-SELECT pg_mode_test(1);
 ERROR:  syntax error at or near "pg_mode_test"
 LINE 1: WITH FUNCTION pg_mode_test(n INT) RETURN INT IS
                       ^
+WARNING:  there is no transaction in progress
+SELECT pg_mode_test(1);
+ERROR:  function pg_mode_test(integer) does not exist
+LINE 1: SELECT pg_mode_test(1);
+               ^
+DETAIL:  There is no function of that name.
 SET ivorysql.compatible_mode = oracle;
 -- E05: Syntax error in function body — expect error
 WITH FUNCTION broken_body(n NUMBER) RETURN NUMBER IS
