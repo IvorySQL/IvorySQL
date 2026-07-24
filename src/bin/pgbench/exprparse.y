@@ -167,7 +167,7 @@ function: FUNCTION			{ $$ = find_func(yyscanner, $1); pg_free($1); }
 static PgBenchExpr *
 make_null_constant(void)
 {
-	PgBenchExpr *expr = pg_malloc(sizeof(PgBenchExpr));
+	PgBenchExpr *expr = pg_malloc_object(PgBenchExpr);
 
 	expr->etype = ENODE_CONSTANT;
 	expr->u.constant.type = PGBT_NULL;
@@ -178,7 +178,7 @@ make_null_constant(void)
 static PgBenchExpr *
 make_integer_constant(int64 ival)
 {
-	PgBenchExpr *expr = pg_malloc(sizeof(PgBenchExpr));
+	PgBenchExpr *expr = pg_malloc_object(PgBenchExpr);
 
 	expr->etype = ENODE_CONSTANT;
 	expr->u.constant.type = PGBT_INT;
@@ -189,7 +189,7 @@ make_integer_constant(int64 ival)
 static PgBenchExpr *
 make_double_constant(double dval)
 {
-	PgBenchExpr *expr = pg_malloc(sizeof(PgBenchExpr));
+	PgBenchExpr *expr = pg_malloc_object(PgBenchExpr);
 
 	expr->etype = ENODE_CONSTANT;
 	expr->u.constant.type = PGBT_DOUBLE;
@@ -200,7 +200,7 @@ make_double_constant(double dval)
 static PgBenchExpr *
 make_boolean_constant(bool bval)
 {
-	PgBenchExpr *expr = pg_malloc(sizeof(PgBenchExpr));
+	PgBenchExpr *expr = pg_malloc_object(PgBenchExpr);
 
 	expr->etype = ENODE_CONSTANT;
 	expr->u.constant.type = PGBT_BOOLEAN;
@@ -211,7 +211,7 @@ make_boolean_constant(bool bval)
 static PgBenchExpr *
 make_variable(char *varname)
 {
-	PgBenchExpr *expr = pg_malloc(sizeof(PgBenchExpr));
+	PgBenchExpr *expr = pg_malloc_object(PgBenchExpr);
 
 	expr->etype = ENODE_VARIABLE;
 	expr->u.variable.varname = varname;
@@ -415,12 +415,12 @@ make_elist(PgBenchExpr *expr, PgBenchExprList *list)
 
 	if (list == NULL)
 	{
-		list = pg_malloc(sizeof(PgBenchExprList));
+		list = pg_malloc_object(PgBenchExprList);
 		list->head = NULL;
 		list->tail = NULL;
 	}
 
-	cons = pg_malloc(sizeof(PgBenchExprLink));
+	cons = pg_malloc_object(PgBenchExprLink);
 	cons->expr = expr;
 	cons->next = NULL;
 
@@ -453,7 +453,7 @@ make_func(yyscan_t yyscanner, int fnumber, PgBenchExprList *args)
 {
 	int			len = elist_length(args);
 
-	PgBenchExpr *expr = pg_malloc(sizeof(PgBenchExpr));
+	PgBenchExpr *expr = pg_malloc_object(PgBenchExpr);
 
 	Assert(fnumber >= 0);
 

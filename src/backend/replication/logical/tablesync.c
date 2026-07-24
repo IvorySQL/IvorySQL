@@ -112,6 +112,7 @@
 #include "replication/walreceiver.h"
 #include "replication/worker_internal.h"
 #include "storage/ipc.h"
+#include "storage/latch.h"
 #include "storage/lmgr.h"
 #include "utils/acl.h"
 #include "utils/array.h"
@@ -121,6 +122,7 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "utils/usercontext.h"
+#include "utils/wait_event.h"
 
 List	   *table_states_not_ready = NIL;
 
@@ -899,8 +901,8 @@ fetch_remote_table_info(char *nspname, char *relname, LogicalRepRelation *lrel,
 						nspname, relname, res->err)));
 
 	/* We don't know the number of rows coming, so allocate enough space. */
-	lrel->attnames = palloc0(MaxTupleAttributeNumber * sizeof(char *));
-	lrel->atttyps = palloc0(MaxTupleAttributeNumber * sizeof(Oid));
+	lrel->attnames = palloc0_array(char *, MaxTupleAttributeNumber);
+	lrel->atttyps = palloc0_array(Oid, MaxTupleAttributeNumber);
 	lrel->attkeys = NULL;
 
 	/*

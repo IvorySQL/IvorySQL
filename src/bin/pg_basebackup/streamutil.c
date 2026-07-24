@@ -94,8 +94,8 @@ GetConnection(void)
 				argcount++;
 		}
 
-		keywords = pg_malloc0((argcount + 1) * sizeof(*keywords));
-		values = pg_malloc0((argcount + 1) * sizeof(*values));
+		keywords = pg_malloc0_array(const char *, argcount + 1);
+		values = pg_malloc0_array(const char *, argcount + 1);
 
 		/*
 		 * Set dbname here already, so it can be overridden by a dbname in the
@@ -117,8 +117,8 @@ GetConnection(void)
 	}
 	else
 	{
-		keywords = pg_malloc0((argcount + 1) * sizeof(*keywords));
-		values = pg_malloc0((argcount + 1) * sizeof(*values));
+		keywords = pg_malloc0_array(const char *, argcount + 1);
+		values = pg_malloc0_array(const char *, argcount + 1);
 		keywords[i] = "dbname";
 		values[i] = (dbname == NULL) ? "replication" : dbname;
 		i++;

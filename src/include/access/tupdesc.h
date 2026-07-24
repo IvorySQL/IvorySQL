@@ -55,7 +55,7 @@ typedef struct TupleConstr
  *		directly after the FormData_pg_attribute struct is populated or
  *		altered in any way.
  *
- * Currently, this struct is 16 bytes.  Any code changes which enlarge this
+ * Currently, this struct is 8 bytes.  Any code changes which enlarge this
  * struct should be considered very carefully.
  *
  * Code which must access a TupleDesc's attribute data should always make use
@@ -67,17 +67,17 @@ typedef struct TupleConstr
  */
 typedef struct CompactAttribute
 {
-	int32		attcacheoff;	/* fixed offset into tuple, if known, or -1 */
+	int16		attcacheoff;	/* fixed offset into tuple, if known, or -1 */
 	int16		attlen;			/* attr len in bytes or -1 = varlen, -2 =
 								 * cstring */
 	bool		attbyval;		/* as FormData_pg_attribute.attbyval */
-	bool		attispackable;	/* FormData_pg_attribute.attstorage !=
-								 * TYPSTORAGE_PLAIN */
-	bool		atthasmissing;	/* as FormData_pg_attribute.atthasmissing */
-	bool		attisdropped;	/* as FormData_pg_attribute.attisdropped */
-	bool		attgenerated;	/* FormData_pg_attribute.attgenerated != '\0' */
-	char		attnullability; /* status of not-null constraint, see below */
 	uint8		attalignby;		/* alignment requirement in bytes */
+	bool		attispackable:1;	/* FormData_pg_attribute.attstorage !=
+									 * TYPSTORAGE_PLAIN */
+	bool		atthasmissing:1;	/* as FormData_pg_attribute.atthasmissing */
+	bool		attisdropped:1; /* as FormData_pg_attribute.attisdropped */
+	bool		attgenerated:1; /* FormData_pg_attribute.attgenerated != '\0' */
+	char		attnullability; /* status of not-null constraint, see below */
 } CompactAttribute;
 
 /* Valid values for CompactAttribute->attnullability */
@@ -131,6 +131,19 @@ typedef struct CompactAttribute
  * Any code making changes manually to and fields in the FormData_pg_attribute
  * array must subsequently call populate_compact_attribute() to flush the
  * changes out to the corresponding 'compact_attrs' element.
+ *
+ * firstNonCachedOffsetAttr stores the index into the compact_attrs array for
+ * the first attribute that we don't have a known attcacheoff for.
+ *
+ * firstNonGuaranteedAttr stores the index to into the compact_attrs array for
+ * the first attribute that is either NULLable, missing, or !attbyval.  This
+ * can be used in locations as a guarantee that attributes before this will
+ * always exist in tuples.  The !attbyval part isn't required for this, but
+ * including this allows various tuple deforming routines to forego any checks
+ * for !attbyval.
+ *
+ * Once a TupleDesc has been populated, before it is used for any purpose,
+ * TupleDescFinalize() must be called on it.
  */
 typedef struct TupleDescData
 {
@@ -138,6 +151,11 @@ typedef struct TupleDescData
 	Oid			tdtypeid;		/* composite type ID for tuple type */
 	int32		tdtypmod;		/* typmod for tuple type */
 	int			tdrefcount;		/* reference count, or -1 if not counting */
+	int			firstNonCachedOffsetAttr;	/* index of first compact_attrs
+											 * element without an attcacheoff */
+	int			firstNonGuaranteedAttr; /* index of the first nullable,
+										 * missing, dropped, or !attbyval
+										 * compact_attrs element. */
 	TupleConstr *constr;		/* constraints, or NULL if none */
 	bool		tdhasrowid;		/* tuples has rowid attribute in its header */
 	/* compact_attrs[N] is the compact metadata of Attribute Number N+1 */
@@ -206,6 +224,7 @@ extern void TupleDescCopy(TupleDesc dst, TupleDesc src);
 extern void TupleDescCopyEntry(TupleDesc dst, AttrNumber dstAttno,
 							   TupleDesc src, AttrNumber srcAttno);
 
+extern void TupleDescFinalize(TupleDesc tupdesc);
 extern void FreeTupleDesc(TupleDesc tupdesc);
 
 extern void IncrTupleDescRefCount(TupleDesc tupdesc);

@@ -1303,6 +1303,18 @@ DROP TABLE test7;
 CREATE COLLATION testcoll_rulesx (provider = icu, locale = '', rules = '!!wrong!!');
 NOTICE:  using standard form "und" for ICU locale ""
 ERROR:  could not open collator for locale "und" with rules "!!wrong!!": U_INVALID_FORMAT_ERROR
+-- strength specified in the rules
+CREATE COLLATION strength_in_rule (provider = icu, locale = 'und', deterministic = false, rules = '[strength 1]');
+-- In Oracle-compatibility mode, untyped string literals resolve to varchar
+-- rather than text. The varchar equality path does not apply the
+-- non-deterministic ICU comparison here, so the primary-strength rule is
+-- not honored and the result differs from upstream PostgreSQL ('t').
+SELECT 'a' = 'à' COLLATE strength_in_rule;
+ ?column? 
+----------
+ f
+(1 row)
+
 -- nondeterministic collations
 CREATE COLLATION ctest_det (provider = icu, locale = '', deterministic = true);
 NOTICE:  using standard form "und" for ICU locale ""

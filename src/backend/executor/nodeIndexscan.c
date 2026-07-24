@@ -34,6 +34,7 @@
 #include "access/tableam.h"
 #include "catalog/pg_am.h"
 #include "executor/executor.h"
+#include "executor/instrument.h"
 #include "executor/nodeIndexscan.h"
 #include "lib/pairingheap.h"
 #include "miscadmin.h"
@@ -42,6 +43,7 @@
 #include "utils/datum.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
+#include "utils/sortsupport.h"
 
 /*
  * When an ordering operator is used, tuples fetched from the index that
@@ -802,7 +804,7 @@ ExecEndIndexScan(IndexScanState *node)
 	{
 		IndexScanInstrumentation *winstrument;
 
-		Assert(ParallelWorkerNumber <= node->iss_SharedInfo->num_workers);
+		Assert(ParallelWorkerNumber < node->iss_SharedInfo->num_workers);
 		winstrument = &node->iss_SharedInfo->winstrument[ParallelWorkerNumber];
 
 		/*
@@ -938,7 +940,8 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
 	 */
 	ExecInitScanTupleSlot(estate, &indexstate->ss,
 						  RelationGetDescr(currentRelation),
-						  table_slot_callbacks(currentRelation));
+						  table_slot_callbacks(currentRelation),
+						  TTS_FLAG_OBEYS_NOT_NULL_CONSTRAINTS);
 
 	/*
 	 * Initialize result type and projection.

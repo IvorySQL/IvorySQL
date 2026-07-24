@@ -91,7 +91,7 @@ rewind_parseTimeLineHistory(char *buffer, TimeLineID targetTLI, int *nentries)
 		lasttli = tli;
 
 		nlines++;
-		entries = pg_realloc(entries, nlines * sizeof(TimeLineHistoryEntry));
+		entries = pg_realloc_array(entries, TimeLineHistoryEntry, nlines);
 
 		entry = &entries[nlines - 1];
 		entry->tli = tli;
@@ -115,9 +115,9 @@ rewind_parseTimeLineHistory(char *buffer, TimeLineID targetTLI, int *nentries)
 	 */
 	nlines++;
 	if (entries)
-		entries = pg_realloc(entries, nlines * sizeof(TimeLineHistoryEntry));
+		entries = pg_realloc_array(entries, TimeLineHistoryEntry, nlines);
 	else
-		entries = pg_malloc(1 * sizeof(TimeLineHistoryEntry));
+		entries = pg_malloc_array(TimeLineHistoryEntry, 1);
 
 	entry = &entries[nlines - 1];
 	entry->tli = targetTLI;

@@ -73,9 +73,9 @@
 #include "utils/guc.h"
 #include "utils/memutils.h"
 #include "utils/timestamp.h"
+#include "utils/tuplestore.h"
 #include "oracle_parser/ora_parser_hook.h"
 #include "utils/ora_compatible.h"
-
 
 PG_MODULE_MAGIC_EXT(
 					.name = "pg_stat_statements",

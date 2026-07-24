@@ -356,6 +356,8 @@ SendXlogRecPtrResult(XLogRecPtr ptr, TimeLineID tli)
 	 */
 	TupleDescInitBuiltinEntry(tupdesc, (AttrNumber) 2, "tli", INT8OID, -1, 0);
 
+	TupleDescFinalize(tupdesc);
+
 	/* send RowDescription */
 	tstate = begin_tup_output_tupdesc(dest, tupdesc, &TTSOpsVirtual);
 
@@ -387,6 +389,7 @@ SendTablespaceList(List *tablespaces)
 	TupleDescInitBuiltinEntry(tupdesc, (AttrNumber) 1, "spcoid", OIDOID, -1, 0);
 	TupleDescInitBuiltinEntry(tupdesc, (AttrNumber) 2, "spclocation", TEXTOID, -1, 0);
 	TupleDescInitBuiltinEntry(tupdesc, (AttrNumber) 3, "size", INT8OID, -1, 0);
+	TupleDescFinalize(tupdesc);
 
 	/* send RowDescription */
 	tstate = begin_tup_output_tupdesc(dest, tupdesc, &TTSOpsVirtual);

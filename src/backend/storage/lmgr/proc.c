@@ -54,6 +54,7 @@
 #include "storage/standby.h"
 #include "utils/timeout.h"
 #include "utils/timestamp.h"
+#include "utils/wait_event.h"
 
 /* GUC variables */
 int			DeadlockTimeout = 1000;
@@ -305,7 +306,7 @@ InitProcGlobal(void)
 		 * dummy PGPROCs don't need these though - they're never associated
 		 * with a real process
 		 */
-		if (i < MaxBackends + NUM_AUXILIARY_PROCS)
+		if (i < FIRST_PREPARED_XACT_PROC_NUMBER)
 		{
 			proc->sem = PGSemaphoreCreate();
 			InitSharedLatch(&(proc->procLatch));
@@ -370,7 +371,7 @@ InitProcGlobal(void)
 	 * processes and prepared transactions.
 	 */
 	AuxiliaryProcs = &procs[MaxBackends];
-	PreparedXactProcs = &procs[MaxBackends + NUM_AUXILIARY_PROCS];
+	PreparedXactProcs = &procs[FIRST_PREPARED_XACT_PROC_NUMBER];
 }
 
 /*
@@ -689,6 +690,7 @@ InitAuxiliaryProcess(void)
 			Assert(dlist_is_empty(&(MyProc->myProcLocks[i])));
 	}
 #endif
+	pg_atomic_write_u32(&MyProc->pendingRecoveryConflicts, 0);
 
 	/*
 	 * Acquire ownership of the PGPROC's latch, so that we can use WaitLatch
@@ -1308,6 +1310,7 @@ ProcSleep(LOCALLOCK *locallock)
 	TimestampTz standbyWaitStart = 0;
 	bool		allow_autovacuum_cancel = true;
 	bool		logged_recovery_conflict = false;
+	bool		logged_lock_wait = false;
 	ProcWaitStatus myWaitStatus;
 	DeadLockState deadlock_state;
 
@@ -1605,12 +1608,29 @@ ProcSleep(LOCALLOCK *locallock)
 			}
 
 			if (myWaitStatus == PROC_WAIT_STATUS_WAITING)
-				ereport(LOG,
-						(errmsg("process %d still waiting for %s on %s after %ld.%03d ms",
-								MyProcPid, modename, buf.data, msecs, usecs),
-						 (errdetail_log_plural("Process holding the lock: %s. Wait queue: %s.",
-											   "Processes holding the lock: %s. Wait queue: %s.",
-											   lockHoldersNum, lock_holders_sbuf.data, lock_waiters_sbuf.data))));
+			{
+				/*
+				 * Guard the "still waiting on lock" log message so it is
+				 * reported at most once while waiting for the lock.
+				 *
+				 * Without this guard, the message can be emitted whenever the
+				 * lock-wait sleep is interrupted (for example by SIGHUP for
+				 * config reload or by client_connection_check_interval). For
+				 * example, if client_connection_check_interval is set very
+				 * low (e.g., 100 ms), the message could be logged repeatedly,
+				 * flooding the log and making it difficult to use.
+				 */
+				if (!logged_lock_wait)
+				{
+					ereport(LOG,
+							(errmsg("process %d still waiting for %s on %s after %ld.%03d ms",
+									MyProcPid, modename, buf.data, msecs, usecs),
+							 (errdetail_log_plural("Process holding the lock: %s. Wait queue: %s.",
+												   "Processes holding the lock: %s. Wait queue: %s.",
+												   lockHoldersNum, lock_holders_sbuf.data, lock_waiters_sbuf.data))));
+					logged_lock_wait = true;
+				}
+			}
 			else if (myWaitStatus == PROC_WAIT_STATUS_OK)
 				ereport(LOG,
 						(errmsg("process %d acquired %s on %s after %ld.%03d ms",

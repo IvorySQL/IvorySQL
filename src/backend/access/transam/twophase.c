@@ -106,6 +106,7 @@
 #include "utils/injection_point.h"
 #include "utils/memutils.h"
 #include "utils/timestamp.h"
+#include "utils/wait_event.h"
 
 /*
  * Directory where Two-phase commit files reside within PGDATA
@@ -744,6 +745,7 @@ pg_prepared_xact(PG_FUNCTION_ARGS)
 		TupleDescInitEntry(tupdesc, (AttrNumber) 5, "dbid",
 						   OIDOID, -1, 0);
 
+		TupleDescFinalize(tupdesc);
 		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
 
 		/*
@@ -900,9 +902,10 @@ TwoPhaseGetXidByVirtualXID(VirtualTransactionId vxid,
  *		Get the dummy proc number for prepared transaction
  *
  * Dummy proc numbers are similar to proc numbers of real backends.  They
- * start at MaxBackends, and are unique across all currently active real
- * backends and prepared transactions.  If lock_held is set to true,
- * TwoPhaseStateLock will not be taken, so the caller had better hold it.
+ * start at FIRST_PREPARED_XACT_PROC_NUMBER, and are unique across all
+ * currently active real backends and prepared transactions.  If lock_held is
+ * set to true, TwoPhaseStateLock will not be taken, so the caller had better
+ * hold it.
  */
 ProcNumber
 TwoPhaseGetDummyProcNumber(FullTransactionId fxid, bool lock_held)

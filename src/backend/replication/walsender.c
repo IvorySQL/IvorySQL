@@ -98,6 +98,7 @@
 #include "utils/ps_status.h"
 #include "utils/timeout.h"
 #include "utils/timestamp.h"
+#include "utils/wait_event.h"
 
 /* Minimum interval used by walsender for stats flushes, in ms */
 #define WALSENDER_STATS_FLUSH_INTERVAL         1000
@@ -451,6 +452,7 @@ IdentifySystem(void)
 							  TEXTOID, -1, 0);
 	TupleDescInitBuiltinEntry(tupdesc, (AttrNumber) 4, "dbname",
 							  TEXTOID, -1, 0);
+	TupleDescFinalize(tupdesc);
 
 	/* prepare for projection of tuples */
 	tstate = begin_tup_output_tupdesc(dest, tupdesc, &TTSOpsVirtual);
@@ -496,6 +498,7 @@ ReadReplicationSlot(ReadReplicationSlotCmd *cmd)
 	/* TimeLineID is unsigned, so int4 is not wide enough. */
 	TupleDescInitBuiltinEntry(tupdesc, (AttrNumber) 3, "restart_tli",
 							  INT8OID, -1, 0);
+	TupleDescFinalize(tupdesc);
 
 	memset(nulls, true, READ_REPLICATION_SLOT_COLS * sizeof(bool));
 
@@ -598,6 +601,7 @@ SendTimeLineHistory(TimeLineHistoryCmd *cmd)
 	tupdesc = CreateTemplateTupleDesc(2);
 	TupleDescInitBuiltinEntry(tupdesc, (AttrNumber) 1, "filename", TEXTOID, -1, 0);
 	TupleDescInitBuiltinEntry(tupdesc, (AttrNumber) 2, "content", TEXTOID, -1, 0);
+	TupleDescFinalize(tupdesc);
 
 	TLHistoryFileName(histfname, cmd->timeline);
 	TLHistoryFilePath(path, cmd->timeline);
@@ -1015,6 +1019,7 @@ StartReplication(StartReplicationCmd *cmd)
 								  INT8OID, -1, 0);
 		TupleDescInitBuiltinEntry(tupdesc, (AttrNumber) 2, "next_tli_startpos",
 								  TEXTOID, -1, 0);
+		TupleDescFinalize(tupdesc);
 
 		/* prepare for projection of tuple */
 		tstate = begin_tup_output_tupdesc(dest, tupdesc, &TTSOpsVirtual);
@@ -1369,6 +1374,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 							  TEXTOID, -1, 0);
 	TupleDescInitBuiltinEntry(tupdesc, (AttrNumber) 4, "output_plugin",
 							  TEXTOID, -1, 0);
+	TupleDescFinalize(tupdesc);
 
 	/* prepare for projection of tuples */
 	tstate = begin_tup_output_tupdesc(dest, tupdesc, &TTSOpsVirtual);
@@ -1884,9 +1890,15 @@ WalSndWaitForWal(XLogRecPtr loc)
 		 * If we're shutting down, trigger pending WAL to be written out,
 		 * otherwise we'd possibly end up waiting for WAL that never gets
 		 * written, because walwriter has shut down already.
+		 *
+		 * Note that GetXLogInsertEndRecPtr() is used to obtain the WAL flush
+		 * request location instead of GetXLogInsertRecPtr(). Because if the
+		 * last WAL record ends at a page boundary, GetXLogInsertRecPtr() can
+		 * return an LSN pointing past the page header, which may cause
+		 * XLogFlush() to report an error.
 		 */
-		if (got_STOPPING)
-			XLogBackgroundFlush();
+		if (got_STOPPING && !RecoveryInProgress())
+			XLogFlush(GetXLogInsertEndRecPtr());
 
 		/*
 		 * To avoid the scenario where standbys need to catch up to a newer

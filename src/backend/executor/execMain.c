@@ -41,6 +41,7 @@
 #include "access/sysattr.h"
 #include "access/table.h"
 #include "access/tableam.h"
+#include "access/tupconvert.h"
 #include "access/xact.h"
 #include "catalog/namespace.h"
 #include "catalog/partition.h"
@@ -48,6 +49,7 @@
 #include "commands/trigger.h"
 #include "executor/executor.h"
 #include "executor/execPartition.h"
+#include "executor/instrument.h"
 #include "executor/nodeSubplan.h"
 #include "foreign/fdwapi.h"
 #include "mb/pg_wchar.h"
@@ -602,11 +604,11 @@ ExecCheckPermissions(List *rangeTable, List *rteperminfos,
 
 			/*
 			 * Only relation RTEs and subquery RTEs that were once relation
-			 * RTEs (views) have their perminfoindex set.
+			 * RTEs (views, property graphs) have their perminfoindex set.
 			 */
 			Assert(rte->rtekind == RTE_RELATION ||
 				   (rte->rtekind == RTE_SUBQUERY &&
-					rte->relkind == RELKIND_VIEW));
+					(rte->relkind == RELKIND_VIEW || rte->relkind == RELKIND_PROPGRAPH)));
 
 			(void) getRTEPermissionInfo(rteperminfos, rte);
 			/* Many-to-one mapping not allowed */
@@ -1178,6 +1180,12 @@ CheckValidResultRel(ResultRelInfo *resultRelInfo, CmdType operation,
 					break;
 			}
 			break;
+		case RELKIND_PROPGRAPH:
+			ereport(ERROR,
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+					 errmsg("cannot change property graph \"%s\"",
+							RelationGetRelationName(resultRel))));
+			break;
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
@@ -1241,6 +1249,13 @@ CheckValidRowMarkRel(Relation rel, RowMarkType markType)
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("cannot lock rows in foreign table \"%s\"",
 								RelationGetRelationName(rel))));
+			break;
+		case RELKIND_PROPGRAPH:
+			/* Should not get here; rewriter should have expanded the graph */
+			ereport(ERROR,
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+					 errmsg_internal("cannot lock rows in property graph \"%s\"",
+									 RelationGetRelationName(rel))));
 			break;
 		default:
 			ereport(ERROR,
@@ -1992,7 +2007,7 @@ ExecPartitionCheckEmitError(ResultRelInfo *resultRelInfo,
 		 */
 		if (map != NULL)
 			slot = execute_attr_map_slot(map, slot,
-										 MakeTupleTableSlot(tupdesc, &TTSOpsVirtual));
+										 MakeTupleTableSlot(tupdesc, &TTSOpsVirtual, 0));
 		modifiedCols = bms_union(ExecGetInsertedCols(rootrel, estate),
 								 ExecGetUpdatedCols(rootrel, estate));
 	}
@@ -2108,7 +2123,7 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 				 */
 				if (map != NULL)
 					slot = execute_attr_map_slot(map, slot,
-												 MakeTupleTableSlot(tupdesc, &TTSOpsVirtual));
+												 MakeTupleTableSlot(tupdesc, &TTSOpsVirtual, 0));
 				modifiedCols = bms_union(ExecGetInsertedCols(rootrel, estate),
 										 ExecGetUpdatedCols(rootrel, estate));
 				rel = rootrel->ri_RelationDesc;
@@ -2244,7 +2259,7 @@ ReportNotNullViolationError(ResultRelInfo *resultRelInfo, TupleTableSlot *slot,
 		 */
 		if (map != NULL)
 			slot = execute_attr_map_slot(map, slot,
-										 MakeTupleTableSlot(tupdesc, &TTSOpsVirtual));
+										 MakeTupleTableSlot(tupdesc, &TTSOpsVirtual, 0));
 		modifiedCols = bms_union(ExecGetInsertedCols(rootrel, estate),
 								 ExecGetUpdatedCols(rootrel, estate));
 		rel = rootrel->ri_RelationDesc;
@@ -2352,7 +2367,7 @@ ExecWithCheckOptions(WCOKind kind, ResultRelInfo *resultRelInfo,
 						 */
 						if (map != NULL)
 							slot = execute_attr_map_slot(map, slot,
-														 MakeTupleTableSlot(tupdesc, &TTSOpsVirtual));
+														 MakeTupleTableSlot(tupdesc, &TTSOpsVirtual, 0));
 
 						modifiedCols = bms_union(ExecGetInsertedCols(rootrel, estate),
 												 ExecGetUpdatedCols(rootrel, estate));

@@ -154,7 +154,7 @@ static void read_backend_variables(char *id, void **startup_data, size_t *startu
 static void restore_backend_variables(BackendParameters *param);
 
 static bool save_backend_variables(BackendParameters *param, int child_slot,
-								   ClientSocket *client_sock,
+								   const ClientSocket *client_sock,
 #ifdef WIN32
 								   HANDLE childProcess, pid_t childPid,
 #endif
@@ -162,7 +162,7 @@ static bool save_backend_variables(BackendParameters *param, int child_slot,
 
 static pid_t internal_forkexec(BackendType child_kind, int child_slot,
 							   const void *startup_data, size_t startup_data_len,
-							   ClientSocket *client_sock);
+							   const ClientSocket *client_sock);
 
 #endif							/* EXEC_BACKEND */
 
@@ -204,7 +204,7 @@ PostmasterChildName(BackendType child_type)
 pid_t
 postmaster_child_launch(BackendType child_type, int child_slot,
 						void *startup_data, size_t startup_data_len,
-						ClientSocket *client_sock)
+						const ClientSocket *client_sock)
 {
 	pid_t		pid;
 
@@ -283,7 +283,7 @@ postmaster_child_launch(BackendType child_type, int child_slot,
  */
 static pid_t
 internal_forkexec(BackendType child_kind, int child_slot,
-				  const void *startup_data, size_t startup_data_len, ClientSocket *client_sock)
+				  const void *startup_data, size_t startup_data_len, const ClientSocket *client_sock)
 {
 	static unsigned long tmpBackendFileNum = 0;
 	pid_t		pid;
@@ -393,7 +393,7 @@ internal_forkexec(BackendType child_kind, int child_slot,
  */
 static pid_t
 internal_forkexec(BackendType child_kind, int child_slot,
-				  const void *startup_data, size_t startup_data_len, ClientSocket *client_sock)
+				  const void *startup_data, size_t startup_data_len, const ClientSocket *client_sock)
 {
 	int			retry_count = 0;
 	STARTUPINFO si;
@@ -700,7 +700,7 @@ static void read_inheritable_socket(SOCKET *dest, InheritableSocket *src);
 /* Save critical backend variables into the BackendParameters struct */
 static bool
 save_backend_variables(BackendParameters *param,
-					   int child_slot, ClientSocket *client_sock,
+					   int child_slot, const ClientSocket *client_sock,
 #ifdef WIN32
 					   HANDLE childProcess, pid_t childPid,
 #endif

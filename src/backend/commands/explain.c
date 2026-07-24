@@ -46,6 +46,7 @@
 #include "utils/ruleutils.h"
 #include "utils/snapmgr.h"
 #include "utils/tuplesort.h"
+#include "utils/tuplestore.h"
 #include "utils/typcache.h"
 #include "utils/xml.h"
 #include "funcapi.h"
@@ -286,6 +287,7 @@ ExplainResultDesc(ExplainStmt *stmt)
 	tupdesc = CreateTemplateTupleDesc(1);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "QUERY PLAN",
 					   result_type, -1, 0);
+	TupleDescFinalize(tupdesc);
 	return tupdesc;
 }
 

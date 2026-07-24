@@ -1968,6 +1968,7 @@ addRangeTableEntryForFunction(ParseState *pstate,
 			TupleDescInitEntryCollation(tupdesc,
 										(AttrNumber) 1,
 										exprCollation(funcexpr));
+			TupleDescFinalize(tupdesc);
 		}
 		else if (functypclass == TYPEFUNC_RECORD)
 		{
@@ -2025,6 +2026,7 @@ addRangeTableEntryForFunction(ParseState *pstate,
 
 				i++;
 			}
+			TupleDescFinalize(tupdesc);
 
 			/*
 			 * Ensure that the coldeflist defines a legal set of names (no
@@ -2093,7 +2095,7 @@ addRangeTableEntryForFunction(ParseState *pstate,
 							   0);
 			/* no need to set collation */
 		}
-
+		TupleDescFinalize(tupdesc);
 		Assert(natts == totalatts);
 	}
 	else
@@ -2212,6 +2214,99 @@ addRangeTableEntryForTableFunc(ParseState *pstate,
 	return buildNSItemFromLists(rte, list_length(pstate->p_rtable),
 								rte->coltypes, rte->coltypmods,
 								rte->colcollations);
+}
+
+ParseNamespaceItem *
+addRangeTableEntryForGraphTable(ParseState *pstate,
+								Oid graphid,
+								GraphPattern *graph_pattern,
+								List *columns,
+								List *colnames,
+								Alias *alias,
+								bool lateral,
+								bool inFromCl)
+{
+	RangeTblEntry *rte = makeNode(RangeTblEntry);
+	char	   *refname = alias ? alias->aliasname : pstrdup("graph_table");
+	Alias	   *eref;
+	int			numaliases;
+	int			varattno;
+	ListCell   *lc;
+	List	   *coltypes = NIL;
+	List	   *coltypmods = NIL;
+	List	   *colcollations = NIL;
+	RTEPermissionInfo *perminfo;
+	ParseNamespaceItem *nsitem;
+
+	Assert(pstate != NULL);
+
+	rte->rtekind = RTE_GRAPH_TABLE;
+	rte->relid = graphid;
+	rte->relkind = RELKIND_PROPGRAPH;
+	rte->graph_pattern = graph_pattern;
+	rte->graph_table_columns = columns;
+	rte->alias = alias;
+	rte->rellockmode = AccessShareLock;
+
+	eref = alias ? copyObject(alias) : makeAlias(refname, NIL);
+
+	if (!eref->colnames)
+		eref->colnames = colnames;
+
+	numaliases = list_length(eref->colnames);
+
+	/* fill in any unspecified alias columns */
+	varattno = 0;
+	foreach(lc, colnames)
+	{
+		varattno++;
+		if (varattno > numaliases)
+			eref->colnames = lappend(eref->colnames, lfirst(lc));
+	}
+	if (varattno < numaliases)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
+				 errmsg("GRAPH_TABLE \"%s\" has %d columns available but %d columns specified",
+						refname, varattno, numaliases)));
+
+	rte->eref = eref;
+
+	foreach(lc, columns)
+	{
+		TargetEntry *te = lfirst_node(TargetEntry, lc);
+		Node	   *colexpr = (Node *) te->expr;
+
+		coltypes = lappend_oid(coltypes, exprType(colexpr));
+		coltypmods = lappend_int(coltypmods, exprTypmod(colexpr));
+		colcollations = lappend_oid(colcollations, exprCollation(colexpr));
+	}
+
+	/*
+	 * Set flags and access permissions.
+	 */
+	rte->lateral = lateral;
+	rte->inFromCl = inFromCl;
+
+	perminfo = addRTEPermissionInfo(&pstate->p_rteperminfos, rte);
+	perminfo->requiredPerms = ACL_SELECT;
+
+	/*
+	 * Add completed RTE to pstate's range table list, so that we know its
+	 * index.  But we don't add it to the join list --- caller must do that if
+	 * appropriate.
+	 */
+	pstate->p_rtable = lappend(pstate->p_rtable, rte);
+
+	/*
+	 * Build a ParseNamespaceItem, but don't add it to the pstate's namespace
+	 * list --- caller must do that if appropriate.
+	 */
+	nsitem = buildNSItemFromLists(rte, list_length(pstate->p_rtable),
+								  coltypes, coltypmods, colcollations);
+
+	nsitem->p_perminfo = perminfo;
+
+	return nsitem;
 }
 
 /*
@@ -3112,6 +3207,7 @@ expandRTE(RangeTblEntry *rte, int rtindex, int sublevels_up,
 		case RTE_VALUES:
 		case RTE_CTE:
 		case RTE_NAMEDTUPLESTORE:
+		case RTE_GRAPH_TABLE:
 			{
 				/* Tablefunc, Values, CTE, or ENR RTE */
 				ListCell   *aliasp_item = list_head(rte->eref->colnames);
@@ -3496,10 +3592,11 @@ get_rte_attribute_is_dropped(RangeTblEntry *rte, AttrNumber attnum)
 		case RTE_VALUES:
 		case RTE_CTE:
 		case RTE_GROUP:
+		case RTE_GRAPH_TABLE:
 
 			/*
-			 * Subselect, Table Functions, Values, CTE, GROUP RTEs never have
-			 * dropped columns
+			 * Subselect, Table Functions, Values, CTE, GROUP RTEs, Property
+			 * graph references never have dropped columns
 			 */
 			result = false;
 			break;

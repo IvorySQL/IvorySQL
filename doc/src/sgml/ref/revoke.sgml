@@ -105,6 +105,13 @@ REVOKE [ GRANT OPTION FOR ]
     [ CASCADE | RESTRICT ]
 
 REVOKE [ GRANT OPTION FOR ]
+    { SELECT | ALL [ PRIVILEGES ] }
+    ON PROPERTY GRAPH <replaceable>graph_name</replaceable> [, ...]
+    FROM <replaceable class="parameter">role_specification</replaceable> [, ...]
+    [ GRANTED BY <replaceable class="parameter">role_specification</replaceable> ]
+    [ CASCADE | RESTRICT ]
+
+REVOKE [ GRANT OPTION FOR ]
     { { CREATE | USAGE } [, ...] | ALL [ PRIVILEGES ] }
     ON SCHEMA <replaceable>schema_name</replaceable> [, ...]
     FROM <replaceable class="parameter">role_specification</replaceable> [, ...]
@@ -172,6 +179,12 @@ REVOKE [ { ADMIN | INHERIT | SET } OPTION FOR ]
    If <literal>GRANT OPTION FOR</literal> is specified, only the grant
    option for the privilege is revoked, not the privilege itself.
    Otherwise, both the privilege and the grant option are revoked.
+  </para>
+
+  <para>
+   If <literal>GRANTED BY</literal> is specified, only privileges granted by
+   the specified role are revoked.  A role can only revoke grants by another
+   role if it inherits the privileges of that role.
   </para>
 
   <para>
@@ -275,7 +288,7 @@ REVOKE [ { ADMIN | INHERIT | SET } OPTION FOR ]
     If the role executing <command>REVOKE</command> holds privileges
     indirectly via more than one role membership path, it is unspecified
     which containing role will be used to perform the command.  In such cases
-    it is best practice to use <command>SET ROLE</command> to become the specific
+    it is best practice to use <literal>GRANTED BY</literal> to specify which
     role you want to do the <command>REVOKE</command> as.  Failure to do so might
     lead to revoking privileges other than the ones you intended, or not
     revoking anything at all.

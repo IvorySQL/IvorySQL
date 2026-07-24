@@ -164,7 +164,10 @@ heap_xlog_prune_freeze(XLogReaderState *record)
 		 * modification would fail to clear the visibility map bit.
 		 */
 		if (vmflags & VISIBILITYMAP_VALID_BITS)
+		{
 			PageSetAllVisible(page);
+			PageClearPrunable(page);
+		}
 
 		MarkBufferDirty(buffer);
 
@@ -305,6 +308,7 @@ heap_xlog_visible(XLogReaderState *record)
 		page = BufferGetPage(buffer);
 
 		PageSetAllVisible(page);
+		PageClearPrunable(page);
 
 		if (XLogHintBitIsNeeded())
 			PageSetLSN(page, lsn);
@@ -734,7 +738,10 @@ heap_xlog_multi_insert(XLogReaderState *record)
 
 		/* XLH_INSERT_ALL_FROZEN_SET implies that all tuples are visible */
 		if (xlrec->flags & XLH_INSERT_ALL_FROZEN_SET)
+		{
 			PageSetAllVisible(page);
+			PageClearPrunable(page);
+		}
 
 		MarkBufferDirty(buffer);
 	}
@@ -815,7 +822,8 @@ heap_xlog_update(XLogReaderState *record, bool hot_update)
 	ItemPointerData newtid;
 	Buffer		obuffer,
 				nbuffer;
-	Page		page;
+	Page		opage,
+				npage;
 	OffsetNumber offnum;
 	ItemId		lp;
 	HeapTupleData oldtup;
@@ -879,15 +887,15 @@ heap_xlog_update(XLogReaderState *record, bool hot_update)
 									  &obuffer);
 	if (oldaction == BLK_NEEDS_REDO)
 	{
-		page = BufferGetPage(obuffer);
+		opage = BufferGetPage(obuffer);
 		offnum = xlrec->old_offnum;
-		if (offnum < 1 || offnum > PageGetMaxOffsetNumber(page))
+		if (offnum < 1 || offnum > PageGetMaxOffsetNumber(opage))
 			elog(PANIC, "offnum out of range");
-		lp = PageGetItemId(page, offnum);
+		lp = PageGetItemId(opage, offnum);
 		if (!ItemIdIsNormal(lp))
 			elog(PANIC, "invalid lp");
 
-		htup = (HeapTupleHeader) PageGetItem(page, lp);
+		htup = (HeapTupleHeader) PageGetItem(opage, lp);
 
 		oldtup.t_data = htup;
 		oldtup.t_len = ItemIdGetLength(lp);
@@ -906,12 +914,12 @@ heap_xlog_update(XLogReaderState *record, bool hot_update)
 		htup->t_ctid = newtid;
 
 		/* Mark the page as a candidate for pruning */
-		PageSetPrunable(page, XLogRecGetXid(record));
+		PageSetPrunable(opage, XLogRecGetXid(record));
 
 		if (xlrec->flags & XLH_UPDATE_OLD_ALL_VISIBLE_CLEARED)
-			PageClearAllVisible(page);
+			PageClearAllVisible(opage);
 
-		PageSetLSN(page, lsn);
+		PageSetLSN(opage, lsn);
 		MarkBufferDirty(obuffer);
 	}
 
@@ -926,8 +934,8 @@ heap_xlog_update(XLogReaderState *record, bool hot_update)
 	else if (XLogRecGetInfo(record) & XLOG_HEAP_INIT_PAGE)
 	{
 		nbuffer = XLogInitBufferForRedo(record, 0);
-		page = BufferGetPage(nbuffer);
-		PageInit(page, BufferGetPageSize(nbuffer), 0);
+		npage = BufferGetPage(nbuffer);
+		PageInit(npage, BufferGetPageSize(nbuffer), 0);
 		newaction = BLK_NEEDS_REDO;
 	}
 	else
@@ -959,10 +967,10 @@ heap_xlog_update(XLogReaderState *record, bool hot_update)
 		recdata = XLogRecGetBlockData(record, 0, &datalen);
 		recdata_end = recdata + datalen;
 
-		page = BufferGetPage(nbuffer);
+		npage = BufferGetPage(nbuffer);
 
 		offnum = xlrec->new_offnum;
-		if (PageGetMaxOffsetNumber(page) + 1 < offnum)
+		if (PageGetMaxOffsetNumber(npage) + 1 < offnum)
 			elog(PANIC, "invalid max offset number");
 
 		if (xlrec->flags & XLH_UPDATE_PREFIX_FROM_OLD)
@@ -1039,16 +1047,17 @@ heap_xlog_update(XLogReaderState *record, bool hot_update)
 		/* Make sure there is no forward chain link in t_ctid */
 		htup->t_ctid = newtid;
 
-		offnum = PageAddItem(page, htup, newlen, offnum, true, true);
+		offnum = PageAddItem(npage, htup, newlen, offnum, true, true);
 		if (offnum == InvalidOffsetNumber)
 			elog(PANIC, "failed to add tuple");
 
 		if (xlrec->flags & XLH_UPDATE_NEW_ALL_VISIBLE_CLEARED)
-			PageClearAllVisible(page);
+			PageClearAllVisible(npage);
 
-		freespace = PageGetHeapFreeSpace(page); /* needed to update FSM below */
+		/* needed to update FSM below */
+		freespace = PageGetHeapFreeSpace(npage);
 
-		PageSetLSN(page, lsn);
+		PageSetLSN(npage, lsn);
 		MarkBufferDirty(nbuffer);
 	}
 

@@ -156,6 +156,12 @@ typedef struct HeapScanDescData
 	 */
 	ParallelBlockTableScanWorkerData *rs_parallelworkerdata;
 
+	/*
+	 * For sequential scans and bitmap heap scans. The current heap block's
+	 * corresponding page in the visibility map.
+	 */
+	Buffer		rs_vmbuffer;
+
 	/* these fields only used in page-at-a-time mode and for bitmap scans */
 	uint32		rs_cindex;		/* current tuple's index in vistuples */
 	uint32		rs_ntuples;		/* number of visible tuples on page */
@@ -178,8 +184,14 @@ typedef struct IndexFetchHeapData
 {
 	IndexFetchTableData xs_base;	/* AM independent part of the descriptor */
 
-	Buffer		xs_cbuf;		/* current heap buffer in scan, if any */
-	/* NB: if xs_cbuf is not InvalidBuffer, we hold a pin on that buffer */
+	/*
+	 * Current heap buffer in scan, if any. NB: if xs_cbuf is not
+	 * InvalidBuffer, we hold a pin on that buffer.
+	 */
+	Buffer		xs_cbuf;
+
+	/* Current heap block's corresponding page in the visibility map */
+	Buffer		xs_vmbuffer;
 } IndexFetchHeapData;
 
 /* Result codes for HeapTupleSatisfiesVacuum */
@@ -271,6 +283,18 @@ typedef struct HeapPageFreeze
 	MultiXactId FreezePageRelminMxid;
 
 	/*
+	 * Newest XID that this page's freeze actions will remove from tuple
+	 * visibility metadata (currently xmin and/or xvac). It is used to derive
+	 * the snapshot conflict horizon for a WAL record that freezes tuples. On
+	 * a standby, we must not replay that change while any snapshot could
+	 * still treat that XID as running.
+	 *
+	 * It's only used if we execute freeze plans for this page, so there is no
+	 * corresponding "no freeze" tracker.
+	 */
+	TransactionId FreezePageConflictXid;
+
+	/*
 	 * "No freeze" NewRelfrozenXid/NewRelminMxid trackers.
 	 *
 	 * These trackers are maintained in the same way as the trackers used when
@@ -347,18 +371,19 @@ typedef struct PruneFreezeResult
 	int			recently_dead_tuples;
 
 	/*
-	 * all_visible and all_frozen indicate if the all-visible and all-frozen
-	 * bits in the visibility map can be set for this page, after pruning.
+	 * set_all_visible and set_all_frozen indicate if the all-visible and
+	 * all-frozen bits in the visibility map should be set for this page after
+	 * pruning.
 	 *
 	 * vm_conflict_horizon is the newest xmin of live tuples on the page.  The
 	 * caller can use it as the conflict horizon when setting the VM bits.  It
-	 * is only valid if we froze some tuples (nfrozen > 0), and all_frozen is
-	 * true.
+	 * is only valid if we froze some tuples (nfrozen > 0), and set_all_frozen
+	 * is true.
 	 *
 	 * These are only set if the HEAP_PAGE_PRUNE_FREEZE option is set.
 	 */
-	bool		all_visible;
-	bool		all_frozen;
+	bool		set_all_visible;
+	bool		set_all_frozen;
 	TransactionId vm_conflict_horizon;
 
 	/*
@@ -387,9 +412,37 @@ typedef struct PruneFreezeResult
 
 
 /*
- * SetHintBits()
+ * To be allowed to set hint bits, SetHintBits() needs to call
+ * BufferBeginSetHintBits(). However, that's not free, and some callsites call
+ * SetHintBits() on many tuples in a row. For those it makes sense to amortize
+ * the cost of BufferBeginSetHintBits(). Additionally it's desirable to defer
+ * the cost of BufferBeginSetHintBits() until a hint bit needs to actually be
+ * set. This enum serves as the necessary state space passed to
+ * SetHintBitsExt().
+ */
+typedef enum SetHintBitsState
+{
+	/* not yet checked if hint bits may be set */
+	SHB_INITIAL,
+	/* failed to get permission to set hint bits, don't check again */
+	SHB_DISABLED,
+	/* allowed to set hint bits */
+	SHB_ENABLED,
+} SetHintBitsState;
+
+/*
+ * SetHintBitsExt()
  *
  * Set commit/abort hint bits on a tuple, if appropriate at this time.
+ *
+ * To be allowed to set a hint bit on a tuple, the page must not be undergoing
+ * IO at this time (otherwise we e.g. could corrupt PG's page checksum or even
+ * the filesystem's, as is known to happen with btrfs).
+ *
+ * The right to set a hint bit can be acquired on a page level with
+ * BufferBeginSetHintBits(). Only a single backend gets the right to set hint
+ * bits at a time.  Alternatively, if called with a NULL SetHintBitsState*,
+ * hint bits are set with BufferSetHintBits16().
  *
  * It is only safe to set a transaction-committed hint bit if we know the
  * transaction's commit record is guaranteed to be flushed to disk before the
@@ -418,24 +471,67 @@ typedef struct PruneFreezeResult
  * InvalidTransactionId if no check is needed.
  */
 static inline void
-SetHintBits(HeapTupleHeader tuple, Buffer buffer,
-			uint16 infomask, TransactionId xid)
+SetHintBitsExt(HeapTupleHeader tuple, Buffer buffer,
+			   uint16 infomask, TransactionId xid, SetHintBitsState *state)
 {
+	/*
+	 * In batched mode, if we previously did not get permission to set hint
+	 * bits, don't try again - in all likelihood IO is still going on.
+	 */
+	if (state && *state == SHB_DISABLED)
+		return;
+
 	if (TransactionIdIsValid(xid))
 	{
-		/* NB: xid must be known committed here! */
-		XLogRecPtr	commitLSN = TransactionIdGetCommitLSN(xid);
-
-		if (BufferIsPermanent(buffer) && XLogNeedsFlush(commitLSN) &&
-			BufferGetLSNAtomic(buffer) < commitLSN)
+		if (BufferIsPermanent(buffer))
 		{
-			/* not flushed and no LSN interlock, so don't set hint */
-			return;
+			/* NB: xid must be known committed here! */
+			XLogRecPtr	commitLSN = TransactionIdGetCommitLSN(xid);
+
+			if (XLogNeedsFlush(commitLSN) &&
+				BufferGetLSNAtomic(buffer) < commitLSN)
+			{
+				/* not flushed and no LSN interlock, so don't set hint */
+				return;
+			}
 		}
 	}
 
+	/*
+	 * If we're not operating in batch mode, use BufferSetHintBits16() to mark
+	 * the page dirty, that's cheaper than
+	 * BufferBeginSetHintBits()/BufferFinishSetHintBits(). That's important
+	 * for cases where we set a lot of hint bits on a page individually.
+	 */
+	if (!state)
+	{
+		BufferSetHintBits16(&tuple->t_infomask,
+							tuple->t_infomask | infomask, buffer);
+		return;
+	}
+
+	if (*state == SHB_INITIAL)
+	{
+		if (!BufferBeginSetHintBits(buffer))
+		{
+			*state = SHB_DISABLED;
+			return;
+		}
+
+		*state = SHB_ENABLED;
+	}
 	tuple->t_infomask |= infomask;
-	MarkBufferDirtyHint(buffer, true);
+}
+
+/*
+ * Simple wrapper around SetHintBitExt(), use when operating on a single
+ * tuple.
+ */
+static inline void
+SetHintBits(HeapTupleHeader tuple, Buffer buffer,
+			uint16 infomask, TransactionId xid)
+{
+	SetHintBitsExt(tuple, buffer, infomask, xid, NULL);
 }
 
 /*
@@ -544,7 +640,8 @@ extern TransactionId heap_index_delete_tuples(Relation rel,
 											  TM_IndexDeleteOp *delstate);
 
 /* in heap/pruneheap.c */
-extern void heap_page_prune_opt(Relation relation, Buffer buffer);
+extern void heap_page_prune_opt(Relation relation, Buffer buffer,
+								Buffer *vmbuffer);
 extern void heap_page_prune_and_freeze(PruneFreezeParams *params,
 									   PruneFreezeResult *presult,
 									   OffsetNumber *off_loc,

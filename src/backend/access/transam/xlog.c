@@ -106,7 +106,9 @@
 #include "utils/timeout.h"
 #include "utils/timestamp.h"
 #include "utils/varlena.h"
+#include "utils/wait_event.h"
 #include "utils/ora_compatible.h"
+
 #ifdef WAL_DEBUG
 #include "utils/memutils.h"
 #endif
@@ -1992,7 +1994,6 @@ XLogRecPtrToBytePos(XLogRecPtr ptr)
 static void
 AdvanceXLInsertBuffer(XLogRecPtr upto, TimeLineID tli, bool opportunistic)
 {
-	XLogCtlInsert *Insert = &XLogCtl->Insert;
 	int			nextidx;
 	XLogRecPtr	OldPageRqstPtr;
 	XLogwrtRqst WriteRqst;
@@ -2115,22 +2116,6 @@ AdvanceXLInsertBuffer(XLogRecPtr upto, TimeLineID tli, bool opportunistic)
 		NewPage->xlp_pageaddr = NewPageBeginPtr;
 
 		/* NewPage->xlp_rem_len = 0; */	/* done by memset */
-
-		/*
-		 * If online backup is not in progress, mark the header to indicate
-		 * that WAL records beginning in this page have removable backup
-		 * blocks.  This allows the WAL archiver to know whether it is safe to
-		 * compress archived WAL data by transforming full-block records into
-		 * the non-full-block format.  It is sufficient to record this at the
-		 * page level because we force a page switch (in fact a segment
-		 * switch) when starting a backup, so the flag will be off before any
-		 * records can be written during the backup.  At the end of a backup,
-		 * the last page will be marked as all unsafe when perhaps only part
-		 * is unsafe, but at worst the archiver would miss the opportunity to
-		 * compress a few records.
-		 */
-		if (Insert->runningBackups == 0)
-			NewPage->xlp_info |= XLP_BKP_REMOVABLE;
 
 		/*
 		 * If first page of an XLOG segment file, make it a long header.
@@ -8374,6 +8359,30 @@ XLogRestorePoint(const char *rpName)
 }
 
 /*
+ * Write an empty XLOG record to assign a distinct LSN.
+ *
+ * This is used by some index AMs when building indexes on permanent relations
+ * with wal_level=minimal.  In that scenario, WAL-logging will start after
+ * commit, but the index AM needs distinct LSNs to detect concurrent page
+ * modifications.  When the current WAL insert position hasn't advanced since
+ * the last call, we emit a dummy record to ensure we get a new, distinct LSN.
+ */
+XLogRecPtr
+XLogAssignLSN(void)
+{
+	int			dummy = 0;
+
+	/*
+	 * Records other than XLOG_SWITCH must have content.  We use an integer 0
+	 * to satisfy this restriction.
+	 */
+	XLogBeginInsert();
+	XLogSetRecordFlags(XLOG_MARK_UNIMPORTANT);
+	XLogRegisterData(&dummy, sizeof(dummy));
+	return XLogInsert(RM_XLOG_ID, XLOG_ASSIGN_LSN);
+}
+
+/*
  * Check if any of the GUC parameters that are critical for hot standby
  * have changed, and update the value in pg_control file if necessary.
  */
@@ -8739,6 +8748,10 @@ xlog_redo(XLogReaderState *record)
 	else if (info == XLOG_RESTORE_POINT)
 	{
 		/* nothing to do here, handled in xlogrecovery.c */
+	}
+	else if (info == XLOG_ASSIGN_LSN)
+	{
+		/* nothing to do here, see XLogGetFakeLSN() */
 	}
 	else if (info == XLOG_FPI || info == XLOG_FPI_FOR_HINT)
 	{
@@ -9169,12 +9182,6 @@ do_pg_backup_start(const char *backupidstr, bool fast, List **tablespaces,
 		 * recovery: we won't have a history file covering the old timeline if
 		 * pg_wal directory was not included in the base backup and the WAL
 		 * archive was cleared too before starting the backup.
-		 *
-		 * This also ensures that we have emitted a WAL page header that has
-		 * XLP_BKP_REMOVABLE off before we emit the checkpoint record.
-		 * Therefore, if a WAL archiver (such as pglesslog) is trying to
-		 * compress out removable backup blocks, it won't remove any that
-		 * occur after this point.
 		 *
 		 * During recovery, we skip forcing XLOG file switch, which means that
 		 * the backup taken during recovery is not available for the special
@@ -9748,6 +9755,22 @@ GetXLogInsertRecPtr(void)
 	SpinLockRelease(&Insert->insertpos_lck);
 
 	return XLogBytePosToRecPtr(current_bytepos);
+}
+
+/*
+ * Get latest WAL record end pointer
+ */
+XLogRecPtr
+GetXLogInsertEndRecPtr(void)
+{
+	XLogCtlInsert *Insert = &XLogCtl->Insert;
+	uint64		current_bytepos;
+
+	SpinLockAcquire(&Insert->insertpos_lck);
+	current_bytepos = Insert->CurrBytePos;
+	SpinLockRelease(&Insert->insertpos_lck);
+
+	return XLogBytePosToEndRecPtr(current_bytepos);
 }
 
 /*

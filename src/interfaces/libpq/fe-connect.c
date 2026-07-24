@@ -8415,3 +8415,10 @@ PQregisterThreadLock(pgthreadlock_t newhandler)
 
 	return prev;
 }
+
+pgthreadlock_t
+PQgetThreadLock(void)
+{
+	Assert(pg_g_threadlock);
+	return pg_g_threadlock;
+}

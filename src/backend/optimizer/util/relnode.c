@@ -47,6 +47,9 @@ typedef struct JoinHashEntry
 	RelOptInfo *join_rel;
 } JoinHashEntry;
 
+/* Hook for plugins to get control in build_simple_rel() */
+build_simple_rel_hook_type build_simple_rel_hook = NULL;
+
 /* Hook for plugins to get control during joinrel setup */
 joinrel_setup_hook_type joinrel_setup_hook = NULL;
 
@@ -395,20 +398,24 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptInfo *parent)
 	}
 
 	/*
-	 * We must apply the partially filled in RelOptInfo before calling
-	 * apply_child_basequals due to some transformations within that function
-	 * which require the RelOptInfo to be available in the simple_rel_array.
+	 * Allow a plugin to editorialize on the new RelOptInfo. This could
+	 * involve editorializing on the information which get_relation_info
+	 * obtained from the catalogs, such as altering the assumed relation size,
+	 * removing an index, or adding a hypothetical index to the indexlist.
+	 *
+	 * An extension can also modify rel->pgs_mask here to control path
+	 * generation.
 	 */
-	root->simple_rel_array[relid] = rel;
+	if (build_simple_rel_hook)
+		(*build_simple_rel_hook) (root, rel, rte);
 
 	/*
 	 * Apply the parent's quals to the child, with appropriate substitution of
-	 * variables.  If the resulting clause is constant-FALSE or NULL after
-	 * applying transformations, apply_child_basequals returns false to
-	 * indicate that scanning this relation won't yield any rows.  In this
-	 * case, we mark the child as dummy right away.  (We must do this
-	 * immediately so that pruning works correctly when recursing in
-	 * expand_partitioned_rtentry.)
+	 * variables.  If any resulting clause is reduced to constant FALSE or
+	 * NULL, apply_child_basequals returns false to indicate that scanning
+	 * this relation won't yield any rows.  In this case, we mark the child as
+	 * dummy right away.  (We must do this immediately so that pruning works
+	 * correctly when recursing in expand_partitioned_rtentry.)
 	 */
 	if (parent)
 	{
@@ -418,12 +425,16 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptInfo *parent)
 		if (!apply_child_basequals(root, parent, rel, rte, appinfo))
 		{
 			/*
-			 * Restriction clause reduced to constant FALSE or NULL.  Mark as
-			 * dummy so we won't scan this relation.
+			 * A restriction clause reduced to constant FALSE or NULL after
+			 * substitution.  Mark the child as dummy so that it need not be
+			 * scanned.
 			 */
 			mark_dummy_rel(rel);
 		}
 	}
+
+	/* Save the finished struct in the query's simple_rel_array */
+	root->simple_rel_array[relid] = rel;
 
 	return rel;
 }

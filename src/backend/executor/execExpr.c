@@ -154,6 +154,26 @@ static void ExecInitJsonCoercion(ExprState *state, JsonReturning *returning,
 ExprState *
 ExecInitExpr(Expr *node, PlanState *parent)
 {
+	return ExecInitExprWithContext(node, parent, NULL);
+}
+
+/*
+ * ExecInitExprWithContext: same as ExecInitExpr, but with an optional
+ * ErrorSaveContext for soft error handling.
+ *
+ * When 'escontext' is non-NULL, expression nodes that support soft errors
+ * (currently CoerceToDomain's NOT NULL and CHECK constraint steps) will use
+ * errsave() instead of ereport(), allowing the caller to detect and handle
+ * failures without a transaction abort.
+ *
+ * The escontext must be provided at initialization time (not after), because
+ * it is copied into per-step data during expression compilation.
+ *
+ * Not all expression node types support soft errors.  If in doubt, pass NULL.
+ */
+ExprState *
+ExecInitExprWithContext(Expr *node, PlanState *parent, Node *escontext)
+{
 	ExprState  *state;
 	ExprEvalStep scratch = {0};
 
@@ -166,6 +186,7 @@ ExecInitExpr(Expr *node, PlanState *parent)
 	state->expr = node;
 	state->parent = parent;
 	state->ext_params = NULL;
+	state->escontext = (ErrorSaveContext *) escontext;
 
 	/* Insert setup steps as needed */
 	ExecCreateExprSetupSteps(state, (Node *) node);
@@ -818,6 +839,18 @@ ExecBuildUpdateProjection(List *targetList,
 ExprState *
 ExecPrepareExpr(Expr *node, EState *estate)
 {
+	return ExecPrepareExprWithContext(node, estate, NULL);
+}
+
+/*
+ * ExecPrepareExprWithContext: same as ExecPrepareExpr, but with an optional
+ * ErrorSaveContext for soft error handling.
+ *
+ * See ExecInitExprWithContext for details on the escontext parameter.
+ */
+ExprState *
+ExecPrepareExprWithContext(Expr *node, EState *estate, Node *escontext)
+{
 	ExprState  *result;
 	MemoryContext oldcontext;
 
@@ -825,7 +858,7 @@ ExecPrepareExpr(Expr *node, EState *estate)
 
 	node = expression_planner(node);
 
-	result = ExecInitExpr(node, NULL);
+	result = ExecInitExprWithContext(node, NULL, escontext);
 
 	MemoryContextSwitchTo(oldcontext);
 
@@ -4388,25 +4421,27 @@ ExecBuildHash32FromAttrs(TupleDesc desc, const TupleTableSlotOps *ops,
  * 'hash_exprs'.  When multiple expressions are present, the hash values
  * returned by each hash function are combined to produce a single hash value.
  *
+ * If any hash_expr yields NULL and the corresponding hash operator is strict,
+ * the created ExprState will return NULL.  (If the operator is not strict,
+ * we treat NULL values as having a hash value of zero.  The hash functions
+ * themselves are always treated as strict.)
+ *
  * desc: tuple descriptor for the to-be-hashed expressions
  * ops: TupleTableSlotOps for the TupleDesc
  * hashfunc_oids: Oid for each hash function to call, one for each 'hash_expr'
- * collations: collation to use when calling the hash function.
- * hash_expr: list of expressions to hash the value of
- * opstrict: array corresponding to the 'hashfunc_oids' to store op_strict()
+ * collations: collation to use when calling the hash function
+ * hash_exprs: list of expressions to hash the value of
+ * opstrict: strictness flag for each hash function's comparison operator
  * parent: PlanState node that the 'hash_exprs' will be evaluated at
  * init_value: Normally 0, but can be set to other values to seed the hash
  * with some other value.  Using non-zero is slightly less efficient but can
  * be useful.
- * keep_nulls: if true, evaluation of the returned ExprState will abort early
- * returning NULL if the given hash function is strict and the Datum to hash
- * is null.  When set to false, any NULL input Datums are skipped.
  */
 ExprState *
 ExecBuildHash32Expr(TupleDesc desc, const TupleTableSlotOps *ops,
 					const Oid *hashfunc_oids, const List *collations,
 					const List *hash_exprs, const bool *opstrict,
-					PlanState *parent, uint32 init_value, bool keep_nulls)
+					PlanState *parent, uint32 init_value)
 {
 	ExprState  *state = makeNode(ExprState);
 	ExprEvalStep scratch = {0};
@@ -4483,8 +4518,8 @@ ExecBuildHash32Expr(TupleDesc desc, const TupleTableSlotOps *ops,
 		fmgr_info(funcid, finfo);
 
 		/*
-		 * Build the steps to evaluate the hash function's argument have it so
-		 * the value of that is stored in the 0th argument of the hash func.
+		 * Build the steps to evaluate the hash function's argument, placing
+		 * the value in the 0th argument of the hash func.
 		 */
 		ExecInitExprRec(expr,
 						state,
@@ -4519,7 +4554,7 @@ ExecBuildHash32Expr(TupleDesc desc, const TupleTableSlotOps *ops,
 		scratch.d.hashdatum.fcinfo_data = fcinfo;
 		scratch.d.hashdatum.fn_addr = finfo->fn_addr;
 
-		scratch.opcode = opstrict[i] && !keep_nulls ? strict_opcode : opcode;
+		scratch.opcode = opstrict[i] ? strict_opcode : opcode;
 		scratch.d.hashdatum.jumpdone = -1;
 
 		ExprEvalPushStep(state, &scratch);
@@ -5173,7 +5208,7 @@ ExecInitJsonCoercion(ExprState *state, JsonReturning *returning,
 	scratch.d.jsonexpr_coercion.exists_cast_to_int = exists_coerce &&
 		getBaseType(returning->typid) == INT4OID;
 	scratch.d.jsonexpr_coercion.exists_check_domain = exists_coerce &&
-		DomainHasConstraints(returning->typid);
+		DomainHasConstraints(returning->typid, NULL);
 	ExprEvalPushStep(state, &scratch);
 }
 

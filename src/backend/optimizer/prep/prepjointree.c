@@ -150,7 +150,7 @@ static void replace_vars_in_jointree(Node *jtnode,
 									 pullup_replace_vars_context *context);
 static Node *pullup_replace_vars(Node *expr,
 								 pullup_replace_vars_context *context);
-static Node *pullup_replace_vars_callback(Var *var,
+static Node *pullup_replace_vars_callback(const Var *var,
 										  replace_rte_variables_context *context);
 static Query *pullup_replace_vars_subquery(Query *query,
 										   pullup_replace_vars_context *context);
@@ -852,14 +852,15 @@ pull_up_sublinks_qual_recurse(PlannerInfo *root, Node *node,
 			if ((saop = convert_VALUES_to_ANY(root,
 											  sublink->testexpr,
 											  (Query *) sublink->subselect)) != NULL)
-
+			{
 				/*
 				 * The VALUES sequence was simplified.  Nothing more to do
 				 * here.
 				 */
 				return (Node *) saop;
+			}
 
-			if ((j = convert_ANY_sublink_to_join(root, sublink,
+			if ((j = convert_ANY_sublink_to_join(root, sublink, false,
 												 available_rels1)) != NULL)
 			{
 				/* Yes; insert the new join node into the join tree */
@@ -885,7 +886,7 @@ pull_up_sublinks_qual_recurse(PlannerInfo *root, Node *node,
 				return NULL;
 			}
 			if (available_rels2 != NULL &&
-				(j = convert_ANY_sublink_to_join(root, sublink,
+				(j = convert_ANY_sublink_to_join(root, sublink, false,
 												 available_rels2)) != NULL)
 			{
 				/* Yes; insert the new join node into the join tree */
@@ -970,14 +971,68 @@ pull_up_sublinks_qual_recurse(PlannerInfo *root, Node *node,
 	}
 	if (is_notclause(node))
 	{
-		/* If the immediate argument of NOT is EXISTS, try to convert */
+		/* If the immediate argument of NOT is ANY or EXISTS, try to convert */
 		SubLink    *sublink = (SubLink *) get_notclausearg((Expr *) node);
 		JoinExpr   *j;
 		Relids		child_rels;
 
 		if (sublink && IsA(sublink, SubLink))
 		{
-			if (sublink->subLinkType == EXISTS_SUBLINK)
+			if (sublink->subLinkType == ANY_SUBLINK)
+			{
+				if ((j = convert_ANY_sublink_to_join(root, sublink, true,
+													 available_rels1)) != NULL)
+				{
+					/* Yes; insert the new join node into the join tree */
+					j->larg = *jtlink1;
+					*jtlink1 = (Node *) j;
+					/* Recursively process pulled-up jointree nodes */
+					j->rarg = pull_up_sublinks_jointree_recurse(root,
+																j->rarg,
+																&child_rels);
+
+					/*
+					 * Now recursively process the pulled-up quals.  Because
+					 * we are underneath a NOT, we can't pull up sublinks that
+					 * reference the left-hand stuff, but it's still okay to
+					 * pull up sublinks referencing j->rarg.
+					 */
+					j->quals = pull_up_sublinks_qual_recurse(root,
+															 j->quals,
+															 &j->rarg,
+															 child_rels,
+															 NULL, NULL);
+					/* Return NULL representing constant TRUE */
+					return NULL;
+				}
+				if (available_rels2 != NULL &&
+					(j = convert_ANY_sublink_to_join(root, sublink, true,
+													 available_rels2)) != NULL)
+				{
+					/* Yes; insert the new join node into the join tree */
+					j->larg = *jtlink2;
+					*jtlink2 = (Node *) j;
+					/* Recursively process pulled-up jointree nodes */
+					j->rarg = pull_up_sublinks_jointree_recurse(root,
+																j->rarg,
+																&child_rels);
+
+					/*
+					 * Now recursively process the pulled-up quals.  Because
+					 * we are underneath a NOT, we can't pull up sublinks that
+					 * reference the left-hand stuff, but it's still okay to
+					 * pull up sublinks referencing j->rarg.
+					 */
+					j->quals = pull_up_sublinks_qual_recurse(root,
+															 j->quals,
+															 &j->rarg,
+															 child_rels,
+															 NULL, NULL);
+					/* Return NULL representing constant TRUE */
+					return NULL;
+				}
+			}
+			else if (sublink->subLinkType == EXISTS_SUBLINK)
 			{
 				if ((j = convert_EXISTS_sublink_to_join(root, sublink, true,
 														available_rels1)) != NULL)
@@ -1575,6 +1630,10 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 				case RTE_RESULT:
 				case RTE_GROUP:
 					/* these can't contain any lateral references */
+					break;
+				case RTE_GRAPH_TABLE:
+					/* shouldn't happen here */
+					Assert(false);
 					break;
 			}
 		}
@@ -2641,6 +2700,10 @@ replace_vars_in_jointree(Node *jtnode,
 						/* these shouldn't be marked LATERAL */
 						Assert(false);
 						break;
+					case RTE_GRAPH_TABLE:
+						/* shouldn't happen here */
+						Assert(false);
+						break;
 				}
 			}
 		}
@@ -2698,7 +2761,7 @@ pullup_replace_vars(Node *expr, pullup_replace_vars_context *context)
 }
 
 static Node *
-pullup_replace_vars_callback(Var *var,
+pullup_replace_vars_callback(const Var *var,
 							 replace_rte_variables_context *context)
 {
 	pullup_replace_vars_context *rcon = (pullup_replace_vars_context *) context->callback_arg;
@@ -3705,6 +3768,13 @@ has_notnull_forced_var(PlannerInfo *root, List *forced_null_vars,
 		}
 
 		rte = rt_fetch(varno, root->parse->rtable);
+
+		/* We can only reason about ordinary relations */
+		if (rte->rtekind != RTE_RELATION)
+		{
+			bms_free(forcednullattnums);
+			continue;
+		}
 
 		/*
 		 * We must skip inheritance parent tables, as some child tables may

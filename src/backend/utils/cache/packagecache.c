@@ -43,6 +43,7 @@
 #include "utils/guc.h"
 #include "utils/plancache.h"
 #include "utils/builtins.h"
+#include "utils/tuplestore.h"
 #include "catalog/pg_package.h"
 #include "catalog/pg_package_body.h"
 #include "catalog/pg_language.h"

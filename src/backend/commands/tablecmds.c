@@ -26,6 +26,7 @@
 #include "access/sysattr.h"
 #include "access/tableam.h"
 #include "access/toast_compression.h"
+#include "access/tupconvert.h"
 #include "access/xact.h"
 #include "access/xlog.h"
 #include "access/xloginsert.h"
@@ -321,6 +322,12 @@ static const struct dropmsgstrings dropmsgstringarray[] = {
 		gettext_noop("index \"%s\" does not exist, skipping"),
 		gettext_noop("\"%s\" is not an index"),
 	gettext_noop("Use DROP INDEX to remove an index.")},
+	{RELKIND_PROPGRAPH,
+		ERRCODE_UNDEFINED_OBJECT,
+		gettext_noop("property graph \"%s\" does not exist"),
+		gettext_noop("property graph \"%s\" does not exist, skipping"),
+		gettext_noop("\"%s\" is not a property graph"),
+	gettext_noop("Use DROP PROPERTY GRAPH to remove a property graph.")},
 	{'\0', 0, NULL, NULL, NULL, NULL}
 };
 
@@ -409,14 +416,18 @@ static ObjectAddress ATExecAlterConstraint(List **wqueue, Relation rel,
 static bool ATExecAlterConstraintInternal(List **wqueue, ATAlterConstraint *cmdcon, Relation conrel,
 										  Relation tgrel, Relation rel, HeapTuple contuple,
 										  bool recurse, LOCKMODE lockmode);
-static bool ATExecAlterConstrEnforceability(List **wqueue, ATAlterConstraint *cmdcon,
-											Relation conrel, Relation tgrel,
-											Oid fkrelid, Oid pkrelid,
-											HeapTuple contuple, LOCKMODE lockmode,
-											Oid ReferencedParentDelTrigger,
-											Oid ReferencedParentUpdTrigger,
-											Oid ReferencingParentInsTrigger,
-											Oid ReferencingParentUpdTrigger);
+static bool ATExecAlterFKConstrEnforceability(List **wqueue, ATAlterConstraint *cmdcon,
+											  Relation conrel, Relation tgrel,
+											  Oid fkrelid, Oid pkrelid,
+											  HeapTuple contuple, LOCKMODE lockmode,
+											  Oid ReferencedParentDelTrigger,
+											  Oid ReferencedParentUpdTrigger,
+											  Oid ReferencingParentInsTrigger,
+											  Oid ReferencingParentUpdTrigger);
+static bool ATExecAlterCheckConstrEnforceability(List **wqueue, ATAlterConstraint *cmdcon,
+												 Relation conrel, HeapTuple contuple,
+												 bool recurse, bool recursing,
+												 LOCKMODE lockmode);
 static bool ATExecAlterConstrDeferrability(List **wqueue, ATAlterConstraint *cmdcon,
 										   Relation conrel, Relation tgrel, Relation rel,
 										   HeapTuple contuple, bool recurse,
@@ -427,14 +438,18 @@ static bool ATExecAlterConstrInheritability(List **wqueue, ATAlterConstraint *cm
 static void AlterConstrTriggerDeferrability(Oid conoid, Relation tgrel, Relation rel,
 											bool deferrable, bool initdeferred,
 											List **otherrelids);
-static void AlterConstrEnforceabilityRecurse(List **wqueue, ATAlterConstraint *cmdcon,
-											 Relation conrel, Relation tgrel,
-											 Oid fkrelid, Oid pkrelid,
-											 HeapTuple contuple, LOCKMODE lockmode,
-											 Oid ReferencedParentDelTrigger,
-											 Oid ReferencedParentUpdTrigger,
-											 Oid ReferencingParentInsTrigger,
-											 Oid ReferencingParentUpdTrigger);
+static void AlterFKConstrEnforceabilityRecurse(List **wqueue, ATAlterConstraint *cmdcon,
+											   Relation conrel, Relation tgrel,
+											   Oid fkrelid, Oid pkrelid,
+											   HeapTuple contuple, LOCKMODE lockmode,
+											   Oid ReferencedParentDelTrigger,
+											   Oid ReferencedParentUpdTrigger,
+											   Oid ReferencingParentInsTrigger,
+											   Oid ReferencingParentUpdTrigger);
+static void AlterCheckConstrEnforceabilityRecurse(List **wqueue, ATAlterConstraint *cmdcon,
+												  Relation conrel, Oid conrelid,
+												  bool recurse, bool recursing,
+												  LOCKMODE lockmode);
 static void AlterConstrDeferrabilityRecurse(List **wqueue, ATAlterConstraint *cmdcon,
 											Relation conrel, Relation tgrel, Relation rel,
 											HeapTuple contuple, bool recurse,
@@ -701,7 +716,7 @@ static void ATExecEnableDisableTrigger(Relation rel, const char *trigname,
 									   LOCKMODE lockmode);
 static void ATExecEnableDisableRule(Relation rel, const char *rulename,
 									char fires_when, LOCKMODE lockmode);
-static void ATPrepAddInherit(Relation child_rel);
+static void ATPrepChangeInherit(Relation child_rel);
 static ObjectAddress ATExecAddInherit(Relation child_rel, RangeVar *parent, LOCKMODE lockmode);
 static ObjectAddress ATExecDropInherit(Relation rel, RangeVar *parent, LOCKMODE lockmode);
 static void drop_parent_dependency(Oid relid, Oid refclassid, Oid refobjid,
@@ -1080,6 +1095,8 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 
 		populate_compact_attribute(descriptor, attnum - 1);
 	}
+
+	TupleDescFinalize(descriptor);
 
 	/*
 	 * For relations with table AM and partitioned tables, select access
@@ -1545,6 +1562,8 @@ BuildDescForRelation(const List *columns)
 		populate_compact_attribute(desc, attnum - 1);
 	}
 
+	TupleDescFinalize(desc);
+
 	return desc;
 }
 
@@ -1625,7 +1644,7 @@ DropErrorMsgWrongType(const char *relname, char wrongkind, char rightkind)
 /*
  * RemoveRelations
  *		Implements DROP TABLE, DROP INDEX, DROP SEQUENCE, DROP VIEW,
- *		DROP MATERIALIZED VIEW, DROP FOREIGN TABLE
+ *		DROP MATERIALIZED VIEW, DROP FOREIGN TABLE, DROP PROPERTY GRAPH
  */
 void
 RemoveRelations(DropStmt *drop)
@@ -1687,6 +1706,10 @@ RemoveRelations(DropStmt *drop)
 
 		case OBJECT_FOREIGN_TABLE:
 			relkind = RELKIND_FOREIGN_TABLE;
+			break;
+
+		case OBJECT_PROPGRAPH:
+			relkind = RELKIND_PROPGRAPH;
 			break;
 
 		default:
@@ -4321,7 +4344,7 @@ RenameConstraint(RenameStmt *stmt)
 }
 
 /*
- * Execute ALTER TABLE/INDEX/SEQUENCE/VIEW/MATERIALIZED VIEW/FOREIGN TABLE
+ * Execute ALTER TABLE/INDEX/SEQUENCE/VIEW/MATERIALIZED VIEW/FOREIGN TABLE/PROPERTY GRAPH
  * RENAME
  */
 ObjectAddress
@@ -5291,7 +5314,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		case AT_ClusterOn:		/* CLUSTER ON */
 		case AT_DropCluster:	/* SET WITHOUT CLUSTER */
 			ATSimplePermissions(cmd->subtype, rel,
-								ATT_TABLE | ATT_PARTITIONED_TABLE | ATT_MATVIEW);
+								ATT_TABLE | ATT_MATVIEW);
 			/* These commands never recurse */
 			/* No command-specific prep needed */
 			pass = AT_PASS_MISC;
@@ -5386,16 +5409,16 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			break;
 		case AT_AddInherit:		/* INHERIT */
 			ATSimplePermissions(cmd->subtype, rel,
-								ATT_TABLE | ATT_PARTITIONED_TABLE | ATT_FOREIGN_TABLE);
+								ATT_TABLE | ATT_FOREIGN_TABLE);
 			/* This command never recurses */
-			ATPrepAddInherit(rel);
+			ATPrepChangeInherit(rel);
 			pass = AT_PASS_MISC;
 			break;
 		case AT_DropInherit:	/* NO INHERIT */
 			ATSimplePermissions(cmd->subtype, rel,
-								ATT_TABLE | ATT_PARTITIONED_TABLE | ATT_FOREIGN_TABLE);
+								ATT_TABLE | ATT_FOREIGN_TABLE);
 			/* This command never recurses */
-			/* No command-specific prep needed */
+			ATPrepChangeInherit(rel);
 			pass = AT_PASS_MISC;
 			break;
 		case AT_AlterConstraint:	/* ALTER CONSTRAINT */
@@ -7745,15 +7768,6 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	 * NULL if so, so without any modification of the tuple data we will get
 	 * the effect of NULL values in the new column.
 	 *
-	 * An exception occurs when the new column is of a domain type: the domain
-	 * might have a not-null constraint, or a check constraint that indirectly
-	 * rejects nulls.  If there are any domain constraints then we construct
-	 * an explicit NULL default value that will be passed through
-	 * CoerceToDomain processing.  (This is a tad inefficient, since it causes
-	 * rewriting the table which we really wouldn't have to do; but we do it
-	 * to preserve the historical behavior that such a failure will be raised
-	 * only if the table currently contains some rows.)
-	 *
 	 * Note: we use build_column_default, and not just the cooked default
 	 * returned by AddRelationNewConstraints, so that the right thing happens
 	 * when a datatype's default applies.
@@ -7773,6 +7787,7 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	{
 		bool		has_domain_constraints;
 		bool		has_missing = false;
+		bool		has_volatile = false;
 
 		/*
 		 * For an identity column, we can't use build_column_default(),
@@ -7790,8 +7805,18 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		else
 			defval = (Expr *) build_column_default(rel, attribute->attnum);
 
+		has_domain_constraints =
+			DomainHasConstraints(attribute->atttypid, &has_volatile);
+
+		/*
+		 * If the domain has volatile constraints, we must do a table rewrite
+		 * since the constraint result could differ per row and cannot be
+		 * evaluated once and cached as a missing value.
+		 */
+		if (has_volatile)
+			tab->rewrite |= AT_REWRITE_DEFAULT_VAL;
+
 		/* Build CoerceToDomain(NULL) expression if needed */
-		has_domain_constraints = DomainHasConstraints(attribute->atttypid);
 		if (!defval && has_domain_constraints)
 		{
 			Oid			baseTypeId;
@@ -7833,27 +7858,50 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 			 * Attempt to skip a complete table rewrite by storing the
 			 * specified DEFAULT value outside of the heap.  This is only
 			 * allowed for plain relations and non-generated columns, and the
-			 * default expression can't be volatile (stable is OK).  Note that
-			 * contain_volatile_functions deems CoerceToDomain immutable, but
-			 * here we consider that coercion to a domain with constraints is
-			 * volatile; else it might fail even when the table is empty.
+			 * default expression can't be volatile (stable is OK), and the
+			 * domain constraint expressions can't be volatile (stable is OK).
+			 *
+			 * Note that contain_volatile_functions considers CoerceToDomain
+			 * immutable, so we rely on DomainHasConstraints (called above)
+			 * rather than checking defval alone.
+			 *
+			 * For domains with non-volatile constraints, we evaluate the
+			 * default using soft error handling: if the constraint check
+			 * fails (e.g., CHECK(value > 10) with DEFAULT 8), we fall back to
+			 * a table rewrite.  This preserves the historical behavior that
+			 * such a failure is only raised when the table has rows.
 			 */
 			if (rel->rd_rel->relkind == RELKIND_RELATION &&
 				!colDef->generated &&
-				!has_domain_constraints &&
+				!has_volatile &&
 				!contain_volatile_functions((Node *) defval))
 			{
 				EState	   *estate;
 				ExprState  *exprState;
 				Datum		missingval;
 				bool		missingIsNull;
+				ErrorSaveContext escontext = {T_ErrorSaveContext};
 
-				/* Evaluate the default expression */
+				/* Evaluate the default expression with soft errors */
 				estate = CreateExecutorState();
-				exprState = ExecPrepareExpr(defval, estate);
+				exprState = ExecPrepareExprWithContext(defval, estate,
+													   (Node *) &escontext);
 				missingval = ExecEvalExpr(exprState,
 										  GetPerTupleExprContext(estate),
 										  &missingIsNull);
+
+				/*
+				 * If the domain constraint check failed (via errsave),
+				 * missingval is unreliable.  Fall back to a table rewrite;
+				 * Phase 3 will re-evaluate with hard errors, so the user gets
+				 * an error only if the table has rows.
+				 */
+				if (SOFT_ERROR_OCCURRED(&escontext))
+				{
+					missingIsNull = true;
+					tab->rewrite |= AT_REWRITE_DEFAULT_VAL;
+				}
+
 				/* If it turns out NULL, nothing to do; else store it */
 				if (!missingIsNull)
 				{
@@ -9147,7 +9195,7 @@ ATExecSetExpression(AlteredTableInfo *tab, Relation rel, const char *colName,
 	 * expressions.
 	 */
 	if (attgenerated == ATTRIBUTE_GENERATED_VIRTUAL &&
-		GetRelationPublications(RelationGetRelid(rel)) != NIL)
+		GetRelationIncludedPublications(RelationGetRelid(rel)) != NIL)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("ALTER TABLE / SET EXPRESSION is not supported for virtual generated columns in tables that are part of a publication"),
@@ -12747,7 +12795,7 @@ GetForeignKeyCheckTriggers(Relation trigrel,
  *
  * Update the attributes of a constraint.
  *
- * Currently only works for Foreign Key and not null constraints.
+ * Currently works for Foreign Key, Check, and not null constraints.
  *
  * If the constraint is modified, returns its address; otherwise, return
  * InvalidObjectAddress.
@@ -12809,11 +12857,13 @@ ATExecAlterConstraint(List **wqueue, Relation rel, ATAlterConstraint *cmdcon,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("constraint \"%s\" of relation \"%s\" is not a foreign key constraint",
 						cmdcon->conname, RelationGetRelationName(rel))));
-	if (cmdcon->alterEnforceability && currcon->contype != CONSTRAINT_FOREIGN)
+	if (cmdcon->alterEnforceability &&
+		(currcon->contype != CONSTRAINT_FOREIGN && currcon->contype != CONSTRAINT_CHECK))
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("cannot alter enforceability of constraint \"%s\" of relation \"%s\"",
-						cmdcon->conname, RelationGetRelationName(rel))));
+						cmdcon->conname, RelationGetRelationName(rel)),
+				 errhint("Only foreign key and check constraints can change enforceability.")));
 	if (cmdcon->alterInheritability &&
 		currcon->contype != CONSTRAINT_NOTNULL)
 		ereport(ERROR,
@@ -12915,17 +12965,24 @@ ATExecAlterConstraintInternal(List **wqueue, ATAlterConstraint *cmdcon,
 	 * enforceability, we don't need to explicitly update multiple entries in
 	 * pg_trigger related to deferrability.
 	 *
-	 * Modifying enforceability involves either creating or dropping the
-	 * trigger, during which the deferrability setting will be adjusted
-	 * automatically.
+	 * Modifying foreign key enforceability involves either creating or
+	 * dropping the trigger, during which the deferrability setting will be
+	 * adjusted automatically.
 	 */
-	if (cmdcon->alterEnforceability &&
-		ATExecAlterConstrEnforceability(wqueue, cmdcon, conrel, tgrel,
-										currcon->conrelid, currcon->confrelid,
-										contuple, lockmode, InvalidOid,
-										InvalidOid, InvalidOid, InvalidOid))
-		changed = true;
-
+	if (cmdcon->alterEnforceability)
+	{
+		if (currcon->contype == CONSTRAINT_FOREIGN)
+			changed = ATExecAlterFKConstrEnforceability(wqueue, cmdcon, conrel, tgrel,
+														currcon->conrelid,
+														currcon->confrelid,
+														contuple, lockmode,
+														InvalidOid, InvalidOid,
+														InvalidOid, InvalidOid);
+		else if (currcon->contype == CONSTRAINT_CHECK)
+			changed = ATExecAlterCheckConstrEnforceability(wqueue, cmdcon, conrel,
+														   contuple, recurse, false,
+														   lockmode);
+	}
 	else if (cmdcon->alterDeferrability &&
 			 ATExecAlterConstrDeferrability(wqueue, cmdcon, conrel, tgrel, rel,
 											contuple, recurse, &otherrelids,
@@ -12955,7 +13012,7 @@ ATExecAlterConstraintInternal(List **wqueue, ATAlterConstraint *cmdcon,
 }
 
 /*
- * Returns true if the constraint's enforceability is altered.
+ * Returns true if the foreign key constraint's enforceability is altered.
  *
  * Depending on whether the constraint is being set to ENFORCED or NOT
  * ENFORCED, it creates or drops the trigger accordingly.
@@ -12967,14 +13024,14 @@ ATExecAlterConstraintInternal(List **wqueue, ATAlterConstraint *cmdcon,
  * enforced, as descendant constraints cannot be different in that case.
  */
 static bool
-ATExecAlterConstrEnforceability(List **wqueue, ATAlterConstraint *cmdcon,
-								Relation conrel, Relation tgrel,
-								Oid fkrelid, Oid pkrelid,
-								HeapTuple contuple, LOCKMODE lockmode,
-								Oid ReferencedParentDelTrigger,
-								Oid ReferencedParentUpdTrigger,
-								Oid ReferencingParentInsTrigger,
-								Oid ReferencingParentUpdTrigger)
+ATExecAlterFKConstrEnforceability(List **wqueue, ATAlterConstraint *cmdcon,
+								  Relation conrel, Relation tgrel,
+								  Oid fkrelid, Oid pkrelid,
+								  HeapTuple contuple, LOCKMODE lockmode,
+								  Oid ReferencedParentDelTrigger,
+								  Oid ReferencedParentUpdTrigger,
+								  Oid ReferencingParentInsTrigger,
+								  Oid ReferencingParentUpdTrigger)
 {
 	Form_pg_constraint currcon;
 	Oid			conoid;
@@ -13010,10 +13067,10 @@ ATExecAlterConstrEnforceability(List **wqueue, ATAlterConstraint *cmdcon,
 		 */
 		if (rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE ||
 			get_rel_relkind(currcon->confrelid) == RELKIND_PARTITIONED_TABLE)
-			AlterConstrEnforceabilityRecurse(wqueue, cmdcon, conrel, tgrel,
-											 fkrelid, pkrelid, contuple,
-											 lockmode, InvalidOid, InvalidOid,
-											 InvalidOid, InvalidOid);
+			AlterFKConstrEnforceabilityRecurse(wqueue, cmdcon, conrel, tgrel,
+											   fkrelid, pkrelid, contuple,
+											   lockmode, InvalidOid, InvalidOid,
+											   InvalidOid, InvalidOid);
 
 		/* Drop all the triggers */
 		DropForeignKeyConstraintTriggers(tgrel, conoid, InvalidOid, InvalidOid);
@@ -13089,17 +13146,175 @@ ATExecAlterConstrEnforceability(List **wqueue, ATAlterConstraint *cmdcon,
 		 */
 		if (rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE ||
 			get_rel_relkind(currcon->confrelid) == RELKIND_PARTITIONED_TABLE)
-			AlterConstrEnforceabilityRecurse(wqueue, cmdcon, conrel, tgrel,
-											 fkrelid, pkrelid, contuple,
-											 lockmode, ReferencedDelTriggerOid,
-											 ReferencedUpdTriggerOid,
-											 ReferencingInsTriggerOid,
-											 ReferencingUpdTriggerOid);
+			AlterFKConstrEnforceabilityRecurse(wqueue, cmdcon, conrel, tgrel,
+											   fkrelid, pkrelid, contuple,
+											   lockmode,
+											   ReferencedDelTriggerOid,
+											   ReferencedUpdTriggerOid,
+											   ReferencingInsTriggerOid,
+											   ReferencingUpdTriggerOid);
 	}
 
 	table_close(rel, NoLock);
 
 	return changed;
+}
+
+/*
+ * Returns true if the CHECK constraint's enforceability is altered.
+ */
+static bool
+ATExecAlterCheckConstrEnforceability(List **wqueue, ATAlterConstraint *cmdcon,
+									 Relation conrel, HeapTuple contuple,
+									 bool recurse, bool recursing, LOCKMODE lockmode)
+{
+	Form_pg_constraint currcon;
+	Relation	rel;
+	bool		changed = false;
+	List	   *children = NIL;
+
+	/* Since this function recurses, it could be driven to stack overflow */
+	check_stack_depth();
+
+	Assert(cmdcon->alterEnforceability);
+
+	currcon = (Form_pg_constraint) GETSTRUCT(contuple);
+
+	Assert(currcon->contype == CONSTRAINT_CHECK);
+
+	/*
+	 * Parent relation already locked by caller, children will be locked by
+	 * find_all_inheritors. So NoLock is fine here.
+	 */
+	rel = table_open(currcon->conrelid, NoLock);
+
+	if (currcon->conenforced != cmdcon->is_enforced)
+	{
+		AlterConstrUpdateConstraintEntry(cmdcon, conrel, contuple);
+		changed = true;
+	}
+
+	/*
+	 * Note that we must recurse even when trying to change a check constraint
+	 * to not enforced if it is already not enforced, in case descendant
+	 * constraints might be enforced and need to be changed to not enforced.
+	 * Conversely, we should do nothing if a constraint is being set to
+	 * enforced and is already enforced, as descendant constraints cannot be
+	 * different in that case.
+	 */
+	if (!cmdcon->is_enforced || changed)
+	{
+		/*
+		 * If we're recursing, the parent has already done this, so skip it.
+		 * Also, if the constraint is a NO INHERIT constraint, we shouldn't
+		 * try to look for it in the children.
+		 */
+		if (!recursing && !currcon->connoinherit)
+			children = find_all_inheritors(RelationGetRelid(rel),
+										   lockmode, NULL);
+
+		foreach_oid(childoid, children)
+		{
+			if (childoid == RelationGetRelid(rel))
+				continue;
+
+			/*
+			 * If we are told not to recurse, there had better not be any
+			 * child tables, because we can't change constraint enforceability
+			 * on the parent unless we have changed enforceability for all
+			 * child.
+			 */
+			if (!recurse)
+				ereport(ERROR,
+						errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						errmsg("constraint must be altered on child tables too"),
+						errhint("Do not specify the ONLY keyword."));
+
+			AlterCheckConstrEnforceabilityRecurse(wqueue, cmdcon, conrel,
+												  childoid, false, true,
+												  lockmode);
+		}
+	}
+
+	/*
+	 * Tell Phase 3 to check that the constraint is satisfied by existing
+	 * rows. We only need do this when altering the constraint from NOT
+	 * ENFORCED to ENFORCED.
+	 */
+	if (rel->rd_rel->relkind == RELKIND_RELATION &&
+		!currcon->conenforced &&
+		cmdcon->is_enforced)
+	{
+		AlteredTableInfo *tab;
+		NewConstraint *newcon;
+		Datum		val;
+		char	   *conbin;
+
+		newcon = palloc0_object(NewConstraint);
+		newcon->name = pstrdup(NameStr(currcon->conname));
+		newcon->contype = CONSTR_CHECK;
+
+		val = SysCacheGetAttrNotNull(CONSTROID, contuple,
+									 Anum_pg_constraint_conbin);
+		conbin = TextDatumGetCString(val);
+		newcon->qual = expand_generated_columns_in_expr(stringToNode(conbin), rel, 1);
+
+		/* Find or create work queue entry for this table */
+		tab = ATGetQueueEntry(wqueue, rel);
+		tab->constraints = lappend(tab->constraints, newcon);
+	}
+
+	table_close(rel, NoLock);
+
+	return changed;
+}
+
+/*
+ * Invokes ATExecAlterCheckConstrEnforceability for each CHECK constraint that
+ * is a child of the specified constraint.
+ *
+ * We rely on the parent and child tables having identical CHECK constraint
+ * names to retrieve the child's pg_constraint tuple.
+ *
+ * The arguments to this function have the same meaning as the arguments to
+ * ATExecAlterCheckConstrEnforceability.
+ */
+static void
+AlterCheckConstrEnforceabilityRecurse(List **wqueue, ATAlterConstraint *cmdcon,
+									  Relation conrel, Oid conrelid,
+									  bool recurse, bool recursing,
+									  LOCKMODE lockmode)
+{
+	SysScanDesc pscan;
+	HeapTuple	childtup;
+	ScanKeyData skey[3];
+
+	ScanKeyInit(&skey[0],
+				Anum_pg_constraint_conrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(conrelid));
+	ScanKeyInit(&skey[1],
+				Anum_pg_constraint_contypid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(InvalidOid));
+	ScanKeyInit(&skey[2],
+				Anum_pg_constraint_conname,
+				BTEqualStrategyNumber, F_NAMEEQ,
+				CStringGetDatum(cmdcon->conname));
+
+	pscan = systable_beginscan(conrel, ConstraintRelidTypidNameIndexId, true,
+							   NULL, 3, skey);
+
+	if (!HeapTupleIsValid(childtup = systable_getnext(pscan)))
+		ereport(ERROR,
+				errcode(ERRCODE_UNDEFINED_OBJECT),
+				errmsg("constraint \"%s\" of relation \"%s\" does not exist",
+					   cmdcon->conname, get_rel_name(conrelid)));
+
+	ATExecAlterCheckConstrEnforceability(wqueue, cmdcon, conrel, childtup,
+										 recurse, recursing, lockmode);
+
+	systable_endscan(pscan);
 }
 
 /*
@@ -13307,25 +13522,25 @@ AlterConstrTriggerDeferrability(Oid conoid, Relation tgrel, Relation rel,
 }
 
 /*
- * Invokes ATExecAlterConstrEnforceability for each constraint that is a child of
- * the specified constraint.
+ * Invokes ATExecAlterFKConstrEnforceability for each foreign key constraint
+ * that is a child of the specified constraint.
  *
  * Note that this doesn't handle recursion the normal way, viz. by scanning the
  * list of child relations and recursing; instead it uses the conparentid
  * relationships.  This may need to be reconsidered.
  *
  * The arguments to this function have the same meaning as the arguments to
- * ATExecAlterConstrEnforceability.
+ * ATExecAlterFKConstrEnforceability.
  */
 static void
-AlterConstrEnforceabilityRecurse(List **wqueue, ATAlterConstraint *cmdcon,
-								 Relation conrel, Relation tgrel,
-								 Oid fkrelid, Oid pkrelid,
-								 HeapTuple contuple, LOCKMODE lockmode,
-								 Oid ReferencedParentDelTrigger,
-								 Oid ReferencedParentUpdTrigger,
-								 Oid ReferencingParentInsTrigger,
-								 Oid ReferencingParentUpdTrigger)
+AlterFKConstrEnforceabilityRecurse(List **wqueue, ATAlterConstraint *cmdcon,
+								   Relation conrel, Relation tgrel,
+								   Oid fkrelid, Oid pkrelid,
+								   HeapTuple contuple, LOCKMODE lockmode,
+								   Oid ReferencedParentDelTrigger,
+								   Oid ReferencedParentUpdTrigger,
+								   Oid ReferencingParentInsTrigger,
+								   Oid ReferencingParentUpdTrigger)
 {
 	Form_pg_constraint currcon;
 	Oid			conoid;
@@ -13345,12 +13560,12 @@ AlterConstrEnforceabilityRecurse(List **wqueue, ATAlterConstraint *cmdcon,
 							   true, NULL, 1, &pkey);
 
 	while (HeapTupleIsValid(childtup = systable_getnext(pscan)))
-		ATExecAlterConstrEnforceability(wqueue, cmdcon, conrel, tgrel, fkrelid,
-										pkrelid, childtup, lockmode,
-										ReferencedParentDelTrigger,
-										ReferencedParentUpdTrigger,
-										ReferencingParentInsTrigger,
-										ReferencingParentUpdTrigger);
+		ATExecAlterFKConstrEnforceability(wqueue, cmdcon, conrel, tgrel, fkrelid,
+										  pkrelid, childtup, lockmode,
+										  ReferencedParentDelTrigger,
+										  ReferencedParentUpdTrigger,
+										  ReferencingParentInsTrigger,
+										  ReferencingParentUpdTrigger);
 
 	systable_endscan(pscan);
 }
@@ -15249,7 +15464,7 @@ ATColumnChangeRequiresRewrite(Node *expr, AttrNumber varattno)
 		{
 			CoerceToDomain *d = (CoerceToDomain *) expr;
 
-			if (DomainHasConstraints(d->resulttype))
+			if (DomainHasConstraints(d->resulttype, NULL))
 				return true;
 			expr = (Node *) d->arg;
 		}
@@ -16902,6 +17117,7 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing, LOCKMODE lock
 		case RELKIND_MATVIEW:
 		case RELKIND_FOREIGN_TABLE:
 		case RELKIND_PARTITIONED_TABLE:
+		case RELKIND_PROPGRAPH:
 			/* ok to change owner */
 			break;
 		case RELKIND_INDEX:
@@ -18033,14 +18249,12 @@ ATExecEnableDisableRule(Relation rel, const char *rulename,
 }
 
 /*
- * ALTER TABLE INHERIT
+ * Preparation phase of [NO] INHERIT
  *
- * Add a parent to the child's parents. This verifies that all the columns and
- * check constraints of the parent appear in the child and that they have the
- * same data types and expressions.
+ * Check the relation defined as a child.
  */
 static void
-ATPrepAddInherit(Relation child_rel)
+ATPrepChangeInherit(Relation child_rel)
 {
 	if (child_rel->rd_rel->reloftype)
 		ereport(ERROR,
@@ -18051,14 +18265,11 @@ ATPrepAddInherit(Relation child_rel)
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("cannot change inheritance of a partition")));
-
-	if (child_rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
-		ereport(ERROR,
-				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("cannot change inheritance of partitioned table")));
 }
 
 /*
+ * ALTER TABLE INHERIT
+ *
  * Return the address of the new parent relation.
  */
 static ObjectAddress
@@ -18169,6 +18380,9 @@ ATExecAddInherit(Relation child_rel, RangeVar *parent, LOCKMODE lockmode)
  * CreateInheritance
  *		Catalog manipulation portion of creating inheritance between a child
  *		table and a parent table.
+ *
+ * This verifies that all the columns and check constraints of the parent
+ * appear in the child and that they have the same data types and expressions.
  *
  * Common to ATExecAddInherit() and ATExecAttachPartition().
  */
@@ -18628,11 +18842,6 @@ ATExecDropInherit(Relation rel, RangeVar *parent, LOCKMODE lockmode)
 {
 	ObjectAddress address;
 	Relation	parent_rel;
-
-	if (rel->rd_rel->relispartition)
-		ereport(ERROR,
-				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("cannot change inheritance of a partition")));
 
 	/*
 	 * AccessShareLock on the parent is probably enough, seeing that DROP
@@ -19658,7 +19867,7 @@ ATPrepChangePersistence(AlteredTableInfo *tab, Relation rel, bool toLogged)
 	 * UNLOGGED, as UNLOGGED tables can't be published.
 	 */
 	if (!toLogged &&
-		GetRelationPublications(RelationGetRelid(rel)) != NIL)
+		GetRelationIncludedPublications(RelationGetRelid(rel)) != NIL)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("cannot change table \"%s\" to unlogged because it is part of a publication",
@@ -20470,6 +20679,11 @@ RangeVarCallbackForAlterRelation(const RangeVar *rv, Oid relid, Oid oldrelid,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("\"%s\" is not a composite type", rv->relname)));
 
+	if (reltype == OBJECT_PROPGRAPH && relkind != RELKIND_PROPGRAPH)
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("\"%s\" is not a property graph", rv->relname)));
+
 	if (reltype == OBJECT_INDEX && relkind != RELKIND_INDEX &&
 		relkind != RELKIND_PARTITIONED_INDEX
 		&& !IsA(stmt, RenameStmt))
@@ -21099,6 +21313,7 @@ ATExecAttachPartition(List **wqueue, Relation rel, PartitionCmd *cmd,
 	const char *trigger_name;
 	Oid			defaultPartOid;
 	List	   *partBoundConstraint;
+	List	   *exceptpuboids = NIL;
 	ParseState *pstate = make_parsestate(NULL);
 
 	pstate->p_sourcetext = context->queryString;
@@ -21137,6 +21352,50 @@ ATExecAttachPartition(List **wqueue, Relation rel, PartitionCmd *cmd,
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("cannot attach a typed table as partition")));
+
+	/*
+	 * Disallow attaching a partition if the table is referenced in a
+	 * publication EXCEPT clause. Changing the partition hierarchy could alter
+	 * the effective publication membership.
+	 */
+	exceptpuboids = GetRelationExcludedPublications(RelationGetRelid(attachrel));
+	if (exceptpuboids != NIL)
+	{
+		bool		first = true;
+		StringInfoData pubnames;
+
+		initStringInfo(&pubnames);
+
+		foreach_oid(pubid, exceptpuboids)
+		{
+			char	   *pubname = get_publication_name(pubid, false);
+
+			if (!first)
+			{
+				/*
+				 * translator: This is a separator in a list of publication
+				 * names.
+				 */
+				appendStringInfoString(&pubnames, _(", "));
+			}
+
+			first = false;
+
+			appendStringInfo(&pubnames, _("\"%s\""), pubname);
+		}
+
+		ereport(ERROR,
+				errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				errmsg_plural("cannot attach table \"%s\" as partition because it is referenced in publication %s EXCEPT clause",
+							  "cannot attach table \"%s\" as partition because it is referenced in publications %s EXCEPT clause",
+							  list_length(exceptpuboids),
+							  RelationGetRelationName(attachrel),
+							  pubnames.data),
+				errdetail("The publication EXCEPT clause cannot contain tables that are partitions."),
+				errhint("Change the publication's EXCEPT clause using ALTER PUBLICATION ... SET ALL TABLES."));
+	}
+
+	list_free(exceptpuboids);
 
 	/*
 	 * Table being attached should not already be part of inheritance; either

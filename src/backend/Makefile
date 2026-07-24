@@ -222,6 +222,7 @@ endif
 	$(MAKE) -C utils install-data
 	$(INSTALL_DATA) $(srcdir)/libpq/pg_hba.conf.sample '$(DESTDIR)$(datadir)/pg_hba.conf.sample'
 	$(INSTALL_DATA) $(srcdir)/libpq/pg_ident.conf.sample '$(DESTDIR)$(datadir)/pg_ident.conf.sample'
+	$(INSTALL_DATA) $(srcdir)/libpq/pg_hosts.conf.sample '$(DESTDIR)$(datadir)/pg_hosts.conf.sample'
 	$(INSTALL_DATA) $(srcdir)/utils/misc/postgresql.conf.sample '$(DESTDIR)$(datadir)/postgresql.conf.sample'
 	$(INSTALL_DATA) $(srcdir)/utils/misc/ivorysql.conf.sample '$(DESTDIR)$(datadir)/ivorysql.conf.sample'
 
@@ -282,6 +283,7 @@ endif
 	$(MAKE) -C utils uninstall-data
 	rm -f '$(DESTDIR)$(datadir)/pg_hba.conf.sample' \
 	      '$(DESTDIR)$(datadir)/pg_ident.conf.sample' \
+	      '$(DESTDIR)$(datadir)/pg_hosts.conf.sample' \
 	      '$(DESTDIR)$(datadir)/postgresql.conf.sample'
 ifeq ($(with_llvm), yes)
 	$(call uninstall_llvm_module,postgres)

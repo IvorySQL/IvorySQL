@@ -1787,6 +1787,7 @@ typedef struct JsonIsPredicate
 	JsonFormat *format;			/* FORMAT clause, if specified */
 	JsonValueType item_type;	/* JSON item type */
 	bool		unique_keys;	/* check key uniqueness? */
+	Oid			exprBaseType;	/* base type of the subject expression */
 	ParseLoc	location;		/* token location, or -1 if unknown */
 } JsonIsPredicate;
 
@@ -2218,6 +2219,30 @@ typedef struct ReturningExpr
 	bool		retold;			/* true for OLD, false for NEW */
 	Expr	   *retexpr;		/* expression to be returned */
 } ReturningExpr;
+
+/*
+ * GraphLabelRef - label reference in label expression inside GRAPH_TABLE clause
+ */
+typedef struct GraphLabelRef
+{
+	NodeTag		type;
+	Oid			labelid;
+	ParseLoc	location;
+} GraphLabelRef;
+
+/*
+ * GraphPropertyRef - property reference inside GRAPH_TABLE clause
+ */
+typedef struct GraphPropertyRef
+{
+	Expr		xpr;
+	const char *elvarname;
+	Oid			propid;
+	Oid			typeId;
+	int32		typmod;
+	Oid			collation;
+	ParseLoc	location;
+} GraphPropertyRef;
 
 /*--------------------
  * TargetEntry -

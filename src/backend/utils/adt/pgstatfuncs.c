@@ -31,6 +31,8 @@
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/timestamp.h"
+#include "utils/tuplestore.h"
+#include "utils/wait_event.h"
 
 #define UINT32_ACCESS_ONCE(var)		 ((uint32)(*((volatile uint32 *)&(var))))
 
@@ -287,8 +289,8 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 		cmdtype = PROGRESS_COMMAND_VACUUM;
 	else if (pg_strcasecmp(cmd, "ANALYZE") == 0)
 		cmdtype = PROGRESS_COMMAND_ANALYZE;
-	else if (pg_strcasecmp(cmd, "CLUSTER") == 0)
-		cmdtype = PROGRESS_COMMAND_CLUSTER;
+	else if (pg_strcasecmp(cmd, "REPACK") == 0)
+		cmdtype = PROGRESS_COMMAND_REPACK;
 	else if (pg_strcasecmp(cmd, "CREATE INDEX") == 0)
 		cmdtype = PROGRESS_COMMAND_CREATE_INDEX;
 	else if (pg_strcasecmp(cmd, "BASEBACKUP") == 0)
@@ -769,6 +771,7 @@ pg_stat_get_backend_subxact(PG_FUNCTION_ARGS)
 	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "subxact_overflow",
 					   BOOLOID, -1, 0);
 
+	TupleDescFinalize(tupdesc);
 	BlessTupleDesc(tupdesc);
 
 	if ((local_beentry = pgstat_get_local_beentry_by_proc_number(procNumber)) != NULL)
@@ -1670,6 +1673,7 @@ pg_stat_wal_build_tuple(PgStat_WalCounters wal_counters,
 	TupleDescInitEntry(tupdesc, (AttrNumber) 6, "stats_reset",
 					   TIMESTAMPTZOID, -1, 0);
 
+	TupleDescFinalize(tupdesc);
 	BlessTupleDesc(tupdesc);
 
 	/* Fill values and NULLs */
@@ -2097,6 +2101,7 @@ pg_stat_get_archiver(PG_FUNCTION_ARGS)
 	TupleDescInitEntry(tupdesc, (AttrNumber) 7, "stats_reset",
 					   TIMESTAMPTZOID, -1, 0);
 
+	TupleDescFinalize(tupdesc);
 	BlessTupleDesc(tupdesc);
 
 	/* Get statistics about the archiver process */
@@ -2178,6 +2183,7 @@ pg_stat_get_replication_slot(PG_FUNCTION_ARGS)
 					   TIMESTAMPTZOID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 13, "stats_reset",
 					   TIMESTAMPTZOID, -1, 0);
+	TupleDescFinalize(tupdesc);
 	BlessTupleDesc(tupdesc);
 
 	namestrcpy(&slotname, text_to_cstring(slotname_text));
@@ -2265,6 +2271,7 @@ pg_stat_get_subscription_stats(PG_FUNCTION_ARGS)
 					   INT8OID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 13, "stats_reset",
 					   TIMESTAMPTZOID, -1, 0);
+	TupleDescFinalize(tupdesc);
 	BlessTupleDesc(tupdesc);
 
 	if (!subentry)

@@ -35,6 +35,7 @@
 #include "utils/fmgrprotos.h"
 #include "utils/index_selfuncs.h"
 #include "utils/memutils.h"
+#include "utils/wait_event.h"
 
 
 /*
@@ -406,13 +407,6 @@ btrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 	 * race condition involving VACUUM setting pages all-visible in the VM.
 	 * It's also unsafe for plain index scans that use a non-MVCC snapshot.
 	 *
-	 * When we drop pins eagerly, the mechanism that marks so->killedItems[]
-	 * index tuples LP_DEAD has to deal with concurrent TID recycling races.
-	 * The scheme used to detect unsafe TID recycling won't work when scanning
-	 * unlogged relations (since it involves saving an affected page's LSN).
-	 * Opt out of eager pin dropping during unlogged relation scans for now
-	 * (this is preferable to opting out of kill_prior_tuple LP_DEAD setting).
-	 *
 	 * Also opt out of dropping leaf page pins eagerly during bitmap scans.
 	 * Pins cannot be held for more than an instant during bitmap scans either
 	 * way, so we might as well avoid wasting cycles on acquiring page LSNs.
@@ -422,8 +416,7 @@ btrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 	 * Note: so->dropPin should never change across rescans.
 	 */
 	so->dropPin = (!scan->xs_want_itup &&
-				   IsMVCCSnapshot(scan->xs_snapshot) &&
-				   RelationNeedsWAL(scan->indexRelation) &&
+				   IsMVCCLikeSnapshot(scan->xs_snapshot) &&
 				   scan->heapRelation != NULL);
 
 	so->markItemIndex = -1;

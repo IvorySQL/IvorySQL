@@ -23,7 +23,7 @@
  * return false.
  */
 static inline bool
-pg_lfind8(uint8 key, uint8 *base, uint32 nelem)
+pg_lfind8(uint8 key, const uint8 *base, uint32 nelem)
 {
 	uint32		i;
 
@@ -55,7 +55,7 @@ pg_lfind8(uint8 key, uint8 *base, uint32 nelem)
  * 'key', otherwise return false.
  */
 static inline bool
-pg_lfind8_le(uint8 key, uint8 *base, uint32 nelem)
+pg_lfind8_le(uint8 key, const uint8 *base, uint32 nelem)
 {
 	uint32		i;
 

@@ -22,6 +22,7 @@
 
 #include "funcapi.h"
 #include "access/printtup.h"
+#include "catalog/pg_type_d.h"
 #include "lib/stringinfo.h"
 #include "nodes/nodeFuncs.h"
 #include "nodes/pathnodes.h"
@@ -306,6 +307,10 @@ print_rt(const List *rtable)
 				break;
 			case RTE_GROUP:
 				printf("%d\t%s\t[group]",
+					   i, rte->eref->aliasname);
+				break;
+			case RTE_GRAPH_TABLE:
+				printf("%d\t%s\t[graph table]",
 					   i, rte->eref->aliasname);
 				break;
 			default:

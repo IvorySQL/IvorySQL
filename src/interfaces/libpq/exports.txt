@@ -236,3 +236,4 @@ Ivyclear                   334
 Ivyconnectdb2              335
 Ivyfinish2                 336
 IvyStmtExecute2            337
+PQgetThreadLock           211

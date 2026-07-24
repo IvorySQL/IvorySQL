@@ -36,6 +36,7 @@
 #include "pgstat.h"
 #include "storage/ipc.h"
 #include "storage/predicate.h"
+#include "storage/proc.h"
 #include "storage/spin.h"
 #include "tcop/tcopprot.h"
 #include "utils/combocid.h"
@@ -44,6 +45,7 @@
 #include "utils/memutils.h"
 #include "utils/relmapper.h"
 #include "utils/snapmgr.h"
+#include "utils/wait_event.h"
 
 /*
  * We don't want to waste a lot of memory on an error queue which, most of

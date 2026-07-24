@@ -320,7 +320,7 @@ kill_bgchild_atexit(void)
 static void
 tablespace_list_append(const char *arg)
 {
-	TablespaceListCell *cell = (TablespaceListCell *) pg_malloc0(sizeof(TablespaceListCell));
+	TablespaceListCell *cell = pg_malloc0_object(TablespaceListCell);
 	char	   *dst;
 	char	   *dst_ptr;
 	const char *arg_ptr;
@@ -623,7 +623,7 @@ StartLogStreamer(char *startpos, uint32 timeline, char *sysidentifier,
 				lo;
 	char		statusdir[MAXPGPATH];
 
-	param = pg_malloc0(sizeof(logstreamer_param));
+	param = pg_malloc0_object(logstreamer_param);
 	param->timeline = timeline;
 	param->sysidentifier = sysidentifier;
 	param->wal_compress_algorithm = wal_compress_algorithm;

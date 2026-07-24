@@ -70,8 +70,14 @@ EXISTS (<replaceable>subquery</replaceable>)
    and not on the contents of those rows, the output list of the
    subquery is normally unimportant.  A common coding convention is
    to write all <literal>EXISTS</literal> tests in the form
-   <literal>EXISTS(SELECT 1 WHERE ...)</literal>.  There are exceptions to
-   this rule however, such as subqueries that use <token>INTERSECT</token>.
+   <literal>EXISTS(SELECT * FROM ... WHERE ...)</literal>, another common
+   convention is to write <literal>EXISTS(SELECT 1 FROM ... WHERE
+   ...)</literal> or some other dummy constant.  These conventions are
+   actually equivalent in <productname>PostgreSQL</productname>, which
+   will optimize away evaluation of the subquery's output list altogether
+   when it cannot affect the number of rows returned.  (An example
+   that cannot be optimized away is an output list containing a
+   set-returning function, since the function might return zero rows.)
   </para>
 
   <para>

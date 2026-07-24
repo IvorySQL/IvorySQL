@@ -2258,6 +2258,7 @@ get_parameter_description(PG_FUNCTION_ARGS)
 		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "hint",
 					   TEXTOID, -1, 0);
 
+		TupleDescFinalize(tupdesc);
 		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
 		user_fctx->extral = (OraParamLink*) palloc(sizeof(OraParamLink));
 		user_fctx->extral->next_params = 0;

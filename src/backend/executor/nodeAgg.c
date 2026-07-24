@@ -257,6 +257,7 @@
 #include "common/hashfn.h"
 #include "executor/execExpr.h"
 #include "executor/executor.h"
+#include "executor/instrument.h"
 #include "executor/nodeAgg.h"
 #include "lib/hyperloglog.h"
 #include "miscadmin.h"
@@ -264,6 +265,7 @@
 #include "optimizer/optimizer.h"
 #include "parser/parse_agg.h"
 #include "parser/parse_coerce.h"
+#include "port/pg_bitutils.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
@@ -1682,7 +1684,7 @@ find_hash_columns(AggState *aggstate)
 							  &perhash->hashfunctions);
 		perhash->hashslot =
 			ExecAllocTableSlot(&estate->es_tupleTable, hashDesc,
-							   &TTSOpsMinimalTuple);
+							   &TTSOpsMinimalTuple, 0);
 
 		list_free(hashTlist);
 		bms_free(colnos);
@@ -4407,7 +4409,7 @@ ExecEndAgg(AggState *node)
 	{
 		AggregateInstrumentation *si;
 
-		Assert(ParallelWorkerNumber <= node->shared_info->num_workers);
+		Assert(ParallelWorkerNumber < node->shared_info->num_workers);
 		si = &node->shared_info->sinstrument[ParallelWorkerNumber];
 		si->hash_batches_used = node->hash_batches_used;
 		si->hash_disk_used = node->hash_disk_used;

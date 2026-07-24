@@ -48,6 +48,7 @@
 #include "access/parallel.h"
 #include "access/table.h"
 #include "access/tableam.h"
+#include "access/tupconvert.h"
 #include "executor/executor.h"
 #include "executor/nodeModifyTable.h"
 #include "jit/jit.h"
@@ -55,6 +56,7 @@
 #include "miscadmin.h"
 #include "parser/parse_relation.h"
 #include "partitioning/partdesc.h"
+#include "port/pg_bitutils.h"
 #include "storage/lmgr.h"
 #include "utils/builtins.h"
 #include "utils/memutils.h"
@@ -119,6 +121,9 @@ CreateExecutorState(void)
 	estate->es_rteperminfos = NIL;
 	estate->es_plannedstmt = NULL;
 	estate->es_part_prune_infos = NIL;
+	estate->es_part_prune_states = NIL;
+	estate->es_part_prune_results = NIL;
+	estate->es_unpruned_relids = NULL;
 
 	estate->es_junkFilter = NULL;
 
@@ -723,7 +728,7 @@ ExecCreateScanSlotFromOuterPlan(EState *estate,
 	outerPlan = outerPlanState(scanstate);
 	tupDesc = ExecGetResultType(outerPlan);
 
-	ExecInitScanTupleSlot(estate, scanstate, tupDesc, tts_ops);
+	ExecInitScanTupleSlot(estate, scanstate, tupDesc, tts_ops, 0);
 }
 
 /* ----------------------------------------------------------------

@@ -54,8 +54,7 @@ gen_db_file_maps(DbInfo *old_db, DbInfo *new_db,
 	bool		all_matched = true;
 
 	/* There will certainly not be more mappings than there are old rels */
-	maps = (FileNameMap *) pg_malloc(sizeof(FileNameMap) *
-									 old_db->rel_arr.nrels);
+	maps = pg_malloc_array(FileNameMap, old_db->rel_arr.nrels);
 
 	/*
 	 * Each of the RelInfo arrays should be sorted by OID.  Scan through them
@@ -365,7 +364,7 @@ get_template0_info(ClusterInfo *cluster)
 	if (PQntuples(dbres) != 1)
 		pg_fatal("template0 not found");
 
-	locale = pg_malloc(sizeof(DbLocaleInfo));
+	locale = pg_malloc_object(DbLocaleInfo);
 
 	i_datencoding = PQfnumber(dbres, "encoding");
 	i_datlocprovider = PQfnumber(dbres, "datlocprovider");
@@ -434,7 +433,7 @@ get_db_infos(ClusterInfo *cluster)
 	i_spclocation = PQfnumber(res, "spclocation");
 
 	ntups = PQntuples(res);
-	dbinfos = (DbInfo *) pg_malloc0(sizeof(DbInfo) * ntups);
+	dbinfos = pg_malloc0_array(DbInfo, ntups);
 
 	for (tupnum = 0; tupnum < ntups; tupnum++)
 	{
@@ -580,7 +579,7 @@ static void
 process_rel_infos(DbInfo *dbinfo, PGresult *res, void *arg)
 {
 	int			ntups = PQntuples(res);
-	RelInfo    *relinfos = (RelInfo *) pg_malloc(sizeof(RelInfo) * ntups);
+	RelInfo    *relinfos = pg_malloc_array(RelInfo, ntups);
 	int			i_reloid = PQfnumber(res, "reloid");
 	int			i_indtable = PQfnumber(res, "indtable");
 	int			i_toastheap = PQfnumber(res, "toastheap");
@@ -786,7 +785,7 @@ process_old_cluster_logical_slot_infos(DbInfo *dbinfo, PGresult *res, void *arg)
 		int			i_caught_up;
 		int			i_invalid;
 
-		slotinfos = (LogicalSlotInfo *) pg_malloc(sizeof(LogicalSlotInfo) * num_slots);
+		slotinfos = pg_malloc_array(LogicalSlotInfo, num_slots);
 
 		i_slotname = PQfnumber(res, "slot_name");
 		i_plugin = PQfnumber(res, "plugin");

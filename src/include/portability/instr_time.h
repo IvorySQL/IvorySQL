@@ -19,14 +19,14 @@
  *
  * INSTR_TIME_SET_CURRENT(t)		set t to current time
  *
- * INSTR_TIME_SET_CURRENT_LAZY(t)	set t to current time if t is zero,
- *									evaluates to whether t changed
  *
  * INSTR_TIME_ADD(x, y)				x += y
  *
  * INSTR_TIME_SUBTRACT(x, y)		x -= y
  *
  * INSTR_TIME_ACCUM_DIFF(x, y, z)	x += (y - z)
+ *
+ * INSTR_TIME_GT(x, y)				x > y
  *
  * INSTR_TIME_GET_DOUBLE(t)			convert t to double (in seconds)
  *
@@ -168,11 +168,7 @@ GetTimerFrequency(void)
 
 #define INSTR_TIME_IS_ZERO(t)	((t).ticks == 0)
 
-
 #define INSTR_TIME_SET_ZERO(t)	((t).ticks = 0)
-
-#define INSTR_TIME_SET_CURRENT_LAZY(t) \
-	(INSTR_TIME_IS_ZERO(t) ? INSTR_TIME_SET_CURRENT(t), true : false)
 
 
 #define INSTR_TIME_ADD(x,y) \
@@ -184,7 +180,7 @@ GetTimerFrequency(void)
 #define INSTR_TIME_ACCUM_DIFF(x,y,z) \
 	((x).ticks += (y).ticks - (z).ticks)
 
-#define INSTR_TIME_LT(x,y) \
+#define INSTR_TIME_GT(x,y) \
 	((x).ticks > (y).ticks)
 
 #define INSTR_TIME_GET_DOUBLE(t) \

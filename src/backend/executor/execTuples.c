@@ -76,7 +76,7 @@
 static TupleDesc ExecTypeFromTLInternal(List *targetList, bool hasrowid, 
 										bool skipjunk);
 static pg_attribute_always_inline void slot_deform_heap_tuple(TupleTableSlot *slot, HeapTuple tuple, uint32 *offp,
-															  int natts);
+															  int reqnatts, bool support_cstring);
 static inline void tts_buffer_heap_store_tuple(TupleTableSlot *slot,
 											   HeapTuple tuple,
 											   Buffer buffer,
@@ -352,7 +352,7 @@ tts_heap_getsomeattrs(TupleTableSlot *slot, int natts)
 
 	Assert(!TTS_EMPTY(slot));
 
-	slot_deform_heap_tuple(slot, hslot->tuple, &hslot->off, natts);
+	slot_deform_heap_tuple(slot, hslot->tuple, &hslot->off, natts, false);
 }
 
 static Datum
@@ -550,7 +550,7 @@ tts_minimal_getsomeattrs(TupleTableSlot *slot, int natts)
 
 	Assert(!TTS_EMPTY(slot));
 
-	slot_deform_heap_tuple(slot, mslot->tuple, &mslot->off, natts);
+	slot_deform_heap_tuple(slot, mslot->tuple, &mslot->off, natts, true);
 }
 
 /*
@@ -757,7 +757,7 @@ tts_buffer_heap_getsomeattrs(TupleTableSlot *slot, int natts)
 
 	Assert(!TTS_EMPTY(slot));
 
-	slot_deform_heap_tuple(slot, bslot->base.tuple, &bslot->base.off, natts);
+	slot_deform_heap_tuple(slot, bslot->base.tuple, &bslot->base.off, natts, false);
 }
 
 static Datum
@@ -996,122 +996,13 @@ tts_buffer_heap_store_tuple(TupleTableSlot *slot, HeapTuple tuple,
 }
 
 /*
- * slot_deform_heap_tuple_internal
- *		An always inline helper function for use in slot_deform_heap_tuple to
- *		allow the compiler to emit specialized versions of this function for
- *		various combinations of "slow" and "hasnulls".  For example, if a
- *		given tuple has no nulls, then we needn't check "hasnulls" for every
- *		attribute that we're deforming.  The caller can just call this
- *		function with hasnulls set to constant-false and have the compiler
- *		remove the constant-false branches and emit more optimal code.
- *
- * Returns the next attnum to deform, which can be equal to natts when the
- * function manages to deform all requested attributes.  *offp is an input and
- * output parameter which is the byte offset within the tuple to start deforming
- * from which, on return, gets set to the offset where the next attribute
- * should be deformed from.  *slowp is set to true when subsequent deforming
- * of this tuple must use a version of this function with "slow" passed as
- * true.
- *
- * Callers cannot assume when we return "attnum" (i.e. all requested
- * attributes have been deformed) that slow mode isn't required for any
- * additional deforming as the final attribute may have caused a switch to
- * slow mode.
- */
-static pg_attribute_always_inline int
-slot_deform_heap_tuple_internal(TupleTableSlot *slot, HeapTuple tuple,
-								int attnum, int natts, bool slow,
-								bool hasnulls, uint32 *offp, bool *slowp)
-{
-	TupleDesc	tupleDesc = slot->tts_tupleDescriptor;
-	Datum	   *values = slot->tts_values;
-	bool	   *isnull = slot->tts_isnull;
-	HeapTupleHeader tup = tuple->t_data;
-	char	   *tp;				/* ptr to tuple data */
-	bits8	   *bp = tup->t_bits;	/* ptr to null bitmap in tuple */
-	bool		slownext = false;
-
-	tp = (char *) tup + tup->t_hoff;
-
-	for (; attnum < natts; attnum++)
-	{
-		CompactAttribute *thisatt = TupleDescCompactAttr(tupleDesc, attnum);
-
-		if (hasnulls && att_isnull(attnum, bp))
-		{
-			values[attnum] = (Datum) 0;
-			isnull[attnum] = true;
-			if (!slow)
-			{
-				*slowp = true;
-				return attnum + 1;
-			}
-			else
-				continue;
-		}
-
-		isnull[attnum] = false;
-
-		/* calculate the offset of this attribute */
-		if (!slow && thisatt->attcacheoff >= 0)
-			*offp = thisatt->attcacheoff;
-		else if (thisatt->attlen == -1)
-		{
-			/*
-			 * We can only cache the offset for a varlena attribute if the
-			 * offset is already suitably aligned, so that there would be no
-			 * pad bytes in any case: then the offset will be valid for either
-			 * an aligned or unaligned value.
-			 */
-			if (!slow && *offp == att_nominal_alignby(*offp, thisatt->attalignby))
-				thisatt->attcacheoff = *offp;
-			else
-			{
-				*offp = att_pointer_alignby(*offp,
-											thisatt->attalignby,
-											-1,
-											tp + *offp);
-
-				if (!slow)
-					slownext = true;
-			}
-		}
-		else
-		{
-			/* not varlena, so safe to use att_nominal_alignby */
-			*offp = att_nominal_alignby(*offp, thisatt->attalignby);
-
-			if (!slow)
-				thisatt->attcacheoff = *offp;
-		}
-
-		values[attnum] = fetchatt(thisatt, tp + *offp);
-
-		*offp = att_addlength_pointer(*offp, thisatt->attlen, tp + *offp);
-
-		/* check if we need to switch to slow mode */
-		if (!slow)
-		{
-			/*
-			 * We're unable to deform any further if the above code set
-			 * 'slownext', or if this isn't a fixed-width attribute.
-			 */
-			if (slownext || thisatt->attlen <= 0)
-			{
-				*slowp = true;
-				return attnum + 1;
-			}
-		}
-	}
-
-	return natts;
-}
-
-/*
  * slot_deform_heap_tuple
  *		Given a TupleTableSlot, extract data from the slot's physical tuple
  *		into its Datum/isnull arrays.  Data is extracted up through the
- *		natts'th column (caller must ensure this is a legal column number).
+ *		reqnatts'th column.  If there are insufficient attributes in the given
+ *		tuple, then slot_getmissingattrs() is called to populate the
+ *		remainder.  If reqnatts is above the number of attributes in the
+ *		slot's TupleDesc, an error is raised.
  *
  *		This is essentially an incremental version of heap_deform_tuple:
  *		on each call we extract attributes up to the one needed, without
@@ -1120,94 +1011,257 @@ slot_deform_heap_tuple_internal(TupleTableSlot *slot, HeapTuple tuple,
  *
  * This is marked as always inline, so the different offp for different types
  * of slots gets optimized away.
+ *
+ * support_cstring should be passed as a const to allow the compiler only
+ * emit code during inlining for cstring deforming when it's required.
+ * cstrings can exist in MinimalTuples, but not in HeapTuples.
  */
 static pg_attribute_always_inline void
 slot_deform_heap_tuple(TupleTableSlot *slot, HeapTuple tuple, uint32 *offp,
-					   int natts)
+					   int reqnatts, bool support_cstring)
 {
-	bool		hasnulls = HeapTupleHasNulls(tuple);
-	int			attnum;
+	CompactAttribute *cattrs;
+	CompactAttribute *cattr;
+	TupleDesc	tupleDesc = slot->tts_tupleDescriptor;
+	HeapTupleHeader tup = tuple->t_data;
+	size_t		attnum;
+	int			firstNonCacheOffsetAttr;
+	int			firstNonGuaranteedAttr;
+	int			firstNullAttr;
+	int			natts;
+	Datum	   *values;
+	bool	   *isnull;
+	char	   *tp;				/* ptr to tuple data */
 	uint32		off;			/* offset in tuple data */
-	bool		slow;			/* can we use/set attcacheoff? */
 
-	/* We can only fetch as many attributes as the tuple has. */
-	natts = Min(HeapTupleHeaderGetNatts(tuple->t_data), natts);
+	/* Did someone forget to call TupleDescFinalize()? */
+	Assert(tupleDesc->firstNonCachedOffsetAttr >= 0);
 
-	/*
-	 * Check whether the first call for this tuple, and initialize or restore
-	 * loop state.
-	 */
-	attnum = slot->tts_nvalid;
-	if (attnum == 0)
-	{
-		/* Start from the first attribute */
-		off = 0;
-		slow = false;
-	}
-	else
-	{
-		/* Restore state from previous execution */
-		off = *offp;
-		slow = TTS_SLOW(slot);
-	}
+	isnull = slot->tts_isnull;
 
 	/*
-	 * If 'slow' isn't set, try deforming using deforming code that does not
-	 * contain any of the extra checks required for non-fixed offset
-	 * deforming.  During deforming, if or when we find a NULL or a variable
-	 * length attribute, we'll switch to a deforming method which includes the
-	 * extra code required for non-fixed offset deforming, a.k.a slow mode.
-	 * Because this is performance critical, we inline
-	 * slot_deform_heap_tuple_internal passing the 'slow' and 'hasnull'
-	 * parameters as constants to allow the compiler to emit specialized code
-	 * with the known-const false comparisons and subsequent branches removed.
+	 * Some callers may form and deform tuples prior to NOT NULL constraints
+	 * being checked.  Here we'd like to optimize the case where we only need
+	 * to fetch attributes before or up to the point where the attribute is
+	 * guaranteed to exist in the tuple.  We rely on the slot flag being set
+	 * correctly to only enable this optimization when it's valid to do so.
+	 * This optimization allows us to save fetching the number of attributes
+	 * from the tuple and saves the additional cost of handling non-byval
+	 * attrs.
 	 */
-	if (!slow)
+	firstNonGuaranteedAttr = Min(reqnatts, slot->tts_first_nonguaranteed);
+
+	firstNonCacheOffsetAttr = tupleDesc->firstNonCachedOffsetAttr;
+
+	if (HeapTupleHasNulls(tuple))
 	{
-		/* Tuple without any NULLs? We can skip doing any NULL checking */
-		if (!hasnulls)
-			attnum = slot_deform_heap_tuple_internal(slot,
-													 tuple,
-													 attnum,
-													 natts,
-													 false, /* slow */
-													 false, /* hasnulls */
-													 &off,
-													 &slow);
+		natts = HeapTupleHeaderGetNatts(tup);
+		tp = (char *) tup + MAXALIGN(offsetof(HeapTupleHeaderData, t_bits) +
+									 BITMAPLEN(natts) +
+									 ((tup->t_infomask & HEAP_HASROWID) ? sizeof(int64) : 0));
+
+		natts = Min(natts, reqnatts);
+		if (natts > firstNonGuaranteedAttr)
+		{
+			bits8	   *bp = tup->t_bits;
+
+			/* Find the first NULL attr */
+			firstNullAttr = first_null_attr(bp, natts);
+
+			/*
+			 * And populate the isnull array for all attributes being fetched
+			 * from the tuple.
+			 */
+			populate_isnull_array(bp, natts, isnull);
+		}
 		else
-			attnum = slot_deform_heap_tuple_internal(slot,
-													 tuple,
-													 attnum,
-													 natts,
-													 false, /* slow */
-													 true,	/* hasnulls */
-													 &off,
-													 &slow);
+		{
+			/* Otherwise all required columns are guaranteed to exist */
+			firstNullAttr = natts;
+		}
+	}
+	else
+	{
+		tp = (char *) tup + MAXALIGN(offsetof(HeapTupleHeaderData, t_bits) +
+									 ((tup->t_infomask & HEAP_HASROWID) ? sizeof(int64) : 0));
+
+		/*
+		 * We only need to look at the tuple's natts if we need more than the
+		 * guaranteed number of columns
+		 */
+		if (reqnatts > firstNonGuaranteedAttr)
+			natts = Min(HeapTupleHeaderGetNatts(tup), reqnatts);
+		else
+		{
+			/* No need to access the number of attributes in the tuple */
+			natts = reqnatts;
+		}
+
+		/* All attrs can be fetched without checking for NULLs */
+		firstNullAttr = natts;
 	}
 
-	/* If there's still work to do then we must be in slow mode */
-	if (attnum < natts)
+	attnum = slot->tts_nvalid;
+	values = slot->tts_values;
+	slot->tts_nvalid = reqnatts;
+
+	/*
+	 * We store the tupleDesc's CompactAttribute array in 'cattrs' as gcc
+	 * seems to be unwilling to optimize accessing the CompactAttribute
+	 * element efficiently when accessing it via TupleDescCompactAttr().
+	 */
+	cattrs = tupleDesc->compact_attrs;
+
+	/* Ensure we calculated tp correctly */
+	Assert(tp == (char *) tup + tup->t_hoff);
+
+	if (attnum < firstNonGuaranteedAttr)
 	{
-		/* XXX is it worth adding a separate call when hasnulls is false? */
-		attnum = slot_deform_heap_tuple_internal(slot,
-												 tuple,
-												 attnum,
-												 natts,
-												 true,	/* slow */
-												 hasnulls,
-												 &off,
-												 &slow);
+		int			attlen;
+
+		do
+		{
+			isnull[attnum] = false;
+			cattr = &cattrs[attnum];
+			attlen = cattr->attlen;
+
+			/* We don't expect any non-byval types */
+			pg_assume(attlen > 0);
+			Assert(cattr->attbyval == true);
+
+			off = cattr->attcacheoff;
+			values[attnum] = fetch_att_noerr(tp + off, true, attlen);
+			attnum++;
+		} while (attnum < firstNonGuaranteedAttr);
+
+		off += attlen;
+
+		if (attnum == reqnatts)
+			goto done;
+	}
+	else
+	{
+		/*
+		 * We may be incrementally deforming the tuple, so set 'off' to the
+		 * previously cached value.  This may be 0, if the slot has just
+		 * received a new tuple.
+		 */
+		off = *offp;
+
+		/* We expect *offp to be set to 0 when attnum == 0 */
+		Assert(off == 0 || attnum > 0);
+	}
+
+	/* We can use attcacheoff up until the first NULL */
+	firstNonCacheOffsetAttr = Min(firstNonCacheOffsetAttr, firstNullAttr);
+
+	/*
+	 * Handle the portion of the tuple that we have cached the offset for up
+	 * to the first NULL attribute.  The offset is effectively fixed for
+	 * these, so we can use the CompactAttribute's attcacheoff.
+	 */
+	if (attnum < firstNonCacheOffsetAttr)
+	{
+		int			attlen;
+
+		do
+		{
+			isnull[attnum] = false;
+			cattr = &cattrs[attnum];
+			attlen = cattr->attlen;
+			off = cattr->attcacheoff;
+			values[attnum] = fetch_att_noerr(tp + off,
+											 cattr->attbyval,
+											 attlen);
+			attnum++;
+		} while (attnum < firstNonCacheOffsetAttr);
+
+		/*
+		 * Point the offset after the end of the last attribute with a cached
+		 * offset.  We expect the final cached offset attribute to have a
+		 * fixed width, so just add the attlen to the attcacheoff
+		 */
+		Assert(attlen > 0);
+		off += attlen;
 	}
 
 	/*
-	 * Save state for next execution
+	 * Handle any portion of the tuple that doesn't have a fixed offset up
+	 * until the first NULL attribute.  This loop only differs from the one
+	 * after it by the NULL checks.
 	 */
-	slot->tts_nvalid = attnum;
+	for (; attnum < firstNullAttr; attnum++)
+	{
+		int			attlen;
+
+		isnull[attnum] = false;
+		cattr = &cattrs[attnum];
+		attlen = cattr->attlen;
+
+		/*
+		 * Only emit the cstring-related code in align_fetch_then_add() when
+		 * cstring support is needed.  We assume support_cstring will be
+		 * passed as a const to allow the compiler to eliminate this branch.
+		 *
+		 * IvorySQL: allow attlen == -2 here, since unlike upstream PG, heap
+		 * tuples can contain cstrings (e.g. RETURNS TABLE(... cstring)).
+		 */
+		if (!support_cstring)
+			pg_assume(attlen > 0 || attlen == -1 || attlen == -2);
+
+		/* align 'off', fetch the datum, and increment off beyond the datum */
+		values[attnum] = align_fetch_then_add(tp,
+											  &off,
+											  cattr->attbyval,
+											  attlen,
+											  cattr->attalignby);
+	}
+
+	/*
+	 * Now handle any remaining attributes in the tuple up to the requested
+	 * attnum.  This time, include NULL checks as we're now at the first NULL
+	 * attribute.
+	 */
+	for (; attnum < natts; attnum++)
+	{
+		int			attlen;
+
+		if (isnull[attnum])
+		{
+			values[attnum] = (Datum) 0;
+			continue;
+		}
+
+		cattr = &cattrs[attnum];
+		attlen = cattr->attlen;
+
+		/* As above, only emit cstring code when needed.  (IvorySQL: attlen == -2 allowed.) */
+		if (!support_cstring)
+			pg_assume(attlen > 0 || attlen == -1 || attlen == -2);
+
+		/* align 'off', fetch the datum, and increment off beyond the datum */
+		values[attnum] = align_fetch_then_add(tp,
+											  &off,
+											  cattr->attbyval,
+											  attlen,
+											  cattr->attalignby);
+	}
+
+	/* Fetch any missing attrs and raise an error if reqnatts is invalid */
+	if (unlikely(attnum < reqnatts))
+	{
+		/*
+		 * Cache the offset before calling the function to allow the compiler
+		 * to implement a tail-call optimization
+		 */
+		*offp = off;
+		slot_getmissingattrs(slot, attnum, reqnatts);
+		return;
+	}
+done:
+
+	/* Save current offset for next execution */
 	*offp = off;
-	if (slow)
-		slot->tts_flags |= TTS_FLAG_SLOW;
-	else
-		slot->tts_flags &= ~TTS_FLAG_SLOW;
 }
 
 const TupleTableSlotOps TTSOpsVirtual = {
@@ -1297,12 +1351,13 @@ const TupleTableSlotOps TTSOpsBufferHeapTuple = {
  *		Basic routine to make an empty TupleTableSlot of given
  *		TupleTableSlotType. If tupleDesc is specified the slot's descriptor is
  *		fixed for its lifetime, gaining some efficiency. If that's
- *		undesirable, pass NULL.
+ *		undesirable, pass NULL.  'flags' allows any of non-TTS_FLAGS_TRANSIENT
+ *		flags to be set in tts_flags.
  * --------------------------------
  */
 TupleTableSlot *
 MakeTupleTableSlot(TupleDesc tupleDesc,
-				   const TupleTableSlotOps *tts_ops)
+				   const TupleTableSlotOps *tts_ops, uint16 flags)
 {
 	Size		basesz,
 				allocsz;
@@ -1310,14 +1365,21 @@ MakeTupleTableSlot(TupleDesc tupleDesc,
 
 	basesz = tts_ops->base_slot_size;
 
+	/* Ensure callers don't have any way to set transient flags permanently */
+	flags &= ~TTS_FLAGS_TRANSIENT;
+
 	/*
 	 * When a fixed descriptor is specified, we can reduce overhead by
 	 * allocating the entire slot in one go.
+	 *
+	 * We round the size of tts_isnull up to the next highest multiple of 8.
+	 * This is needed as populate_isnull_array() operates on 8 elements at a
+	 * time when converting a tuple's NULL bitmap into a boolean array.
 	 */
 	if (tupleDesc)
 		allocsz = MAXALIGN(basesz) +
 			MAXALIGN(tupleDesc->natts * sizeof(Datum)) +
-			MAXALIGN(tupleDesc->natts * sizeof(bool));
+			TYPEALIGN(8, tupleDesc->natts * sizeof(bool));
 	else
 		allocsz = basesz;
 
@@ -1325,7 +1387,7 @@ MakeTupleTableSlot(TupleDesc tupleDesc,
 	/* const for optimization purposes, OK to modify at allocation time */
 	*((const TupleTableSlotOps **) &slot->tts_ops) = tts_ops;
 	slot->type = T_TupleTableSlot;
-	slot->tts_flags |= TTS_FLAG_EMPTY;
+	slot->tts_flags = TTS_FLAG_EMPTY | flags;
 	if (tupleDesc != NULL)
 		slot->tts_flags |= TTS_FLAG_FIXED;
 	slot->tts_tupleDescriptor = tupleDesc;
@@ -1337,12 +1399,25 @@ MakeTupleTableSlot(TupleDesc tupleDesc,
 		slot->tts_values = (Datum *)
 			(((char *) slot)
 			 + MAXALIGN(basesz));
+
 		slot->tts_isnull = (bool *)
 			(((char *) slot)
 			 + MAXALIGN(basesz)
 			 + MAXALIGN(tupleDesc->natts * sizeof(Datum)));
 
 		PinTupleDesc(tupleDesc);
+
+		/*
+		 * Precalculate the maximum guaranteed attribute that has to exist in
+		 * every tuple which gets deformed into this slot.  When the
+		 * TTS_FLAG_OBEYS_NOT_NULL_CONSTRAINTS flag is enabled, we simply take
+		 * the precalculated value from the tupleDesc, otherwise the
+		 * optimization is disabled, and we set the value to 0.
+		 */
+		if ((flags & TTS_FLAG_OBEYS_NOT_NULL_CONSTRAINTS) != 0)
+			slot->tts_first_nonguaranteed = tupleDesc->firstNonGuaranteedAttr;
+		else
+			slot->tts_first_nonguaranteed = 0;
 	}
 
 	/*
@@ -1361,9 +1436,9 @@ MakeTupleTableSlot(TupleDesc tupleDesc,
  */
 TupleTableSlot *
 ExecAllocTableSlot(List **tupleTable, TupleDesc desc,
-				   const TupleTableSlotOps *tts_ops)
+				   const TupleTableSlotOps *tts_ops, uint16 flags)
 {
-	TupleTableSlot *slot = MakeTupleTableSlot(desc, tts_ops);
+	TupleTableSlot *slot = MakeTupleTableSlot(desc, tts_ops, flags);
 
 	*tupleTable = lappend(*tupleTable, slot);
 
@@ -1430,7 +1505,7 @@ TupleTableSlot *
 MakeSingleTupleTableSlot(TupleDesc tupdesc,
 						 const TupleTableSlotOps *tts_ops)
 {
-	TupleTableSlot *slot = MakeTupleTableSlot(tupdesc, tts_ops);
+	TupleTableSlot *slot = MakeTupleTableSlot(tupdesc, tts_ops, 0);
 
 	return slot;
 }
@@ -1510,8 +1585,14 @@ ExecSetSlotDescriptor(TupleTableSlot *slot, /* slot to change */
 	 */
 	slot->tts_values = (Datum *)
 		MemoryContextAlloc(slot->tts_mcxt, tupdesc->natts * sizeof(Datum));
+
+	/*
+	 * We round the size of tts_isnull up to the next highest multiple of 8.
+	 * This is needed as populate_isnull_array() operates on 8 elements at a
+	 * time when converting a tuple's NULL bitmap into a boolean array.
+	 */
 	slot->tts_isnull = (bool *)
-		MemoryContextAlloc(slot->tts_mcxt, tupdesc->natts * sizeof(bool));
+		MemoryContextAlloc(slot->tts_mcxt, TYPEALIGN(8, tupdesc->natts * sizeof(bool)));
 }
 
 /* --------------------------------
@@ -1985,7 +2066,7 @@ ExecInitResultSlot(PlanState *planstate, const TupleTableSlotOps *tts_ops)
 	TupleTableSlot *slot;
 
 	slot = ExecAllocTableSlot(&planstate->state->es_tupleTable,
-							  planstate->ps_ResultTupleDesc, tts_ops);
+							  planstate->ps_ResultTupleDesc, tts_ops, 0);
 	planstate->ps_ResultTupleSlot = slot;
 
 	planstate->resultopsfixed = planstate->ps_ResultTupleDesc != NULL;
@@ -2013,10 +2094,11 @@ ExecInitResultTupleSlotTL(PlanState *planstate,
  */
 void
 ExecInitScanTupleSlot(EState *estate, ScanState *scanstate,
-					  TupleDesc tupledesc, const TupleTableSlotOps *tts_ops)
+					  TupleDesc tupledesc, const TupleTableSlotOps *tts_ops,
+					  uint16 flags)
 {
 	scanstate->ss_ScanTupleSlot = ExecAllocTableSlot(&estate->es_tupleTable,
-													 tupledesc, tts_ops);
+													 tupledesc, tts_ops, flags);
 	scanstate->ps.scandesc = tupledesc;
 	scanstate->ps.scanopsfixed = tupledesc != NULL;
 	scanstate->ps.scanops = tts_ops;
@@ -2036,7 +2118,7 @@ ExecInitExtraTupleSlot(EState *estate,
 					   TupleDesc tupledesc,
 					   const TupleTableSlotOps *tts_ops)
 {
-	return ExecAllocTableSlot(&estate->es_tupleTable, tupledesc, tts_ops);
+	return ExecAllocTableSlot(&estate->es_tupleTable, tupledesc, tts_ops, 0);
 }
 
 /* ----------------
@@ -2073,34 +2155,36 @@ slot_getmissingattrs(TupleTableSlot *slot, int startAttNum, int lastAttNum)
 {
 	AttrMissing *attrmiss = NULL;
 
+	/* Check for invalid attnums */
+	if (unlikely(lastAttNum > slot->tts_tupleDescriptor->natts))
+		elog(ERROR, "invalid attribute number %d", lastAttNum);
+
 	if (slot->tts_tupleDescriptor->constr)
 		attrmiss = slot->tts_tupleDescriptor->constr->missing;
 
 	if (!attrmiss)
 	{
 		/* no missing values array at all, so just fill everything in as NULL */
-		memset(slot->tts_values + startAttNum, 0,
-			   (lastAttNum - startAttNum) * sizeof(Datum));
-		memset(slot->tts_isnull + startAttNum, 1,
-			   (lastAttNum - startAttNum) * sizeof(bool));
+		for (int attnum = startAttNum; attnum < lastAttNum; attnum++)
+		{
+			slot->tts_values[attnum] = (Datum) 0;
+			slot->tts_isnull[attnum] = true;
+		}
 	}
 	else
 	{
-		int			missattnum;
-
-		/* if there is a missing values array we must process them one by one */
-		for (missattnum = startAttNum;
-			 missattnum < lastAttNum;
-			 missattnum++)
+		/* use attrmiss to set the missing values */
+		for (int attnum = startAttNum; attnum < lastAttNum; attnum++)
 		{
-			slot->tts_values[missattnum] = attrmiss[missattnum].am_value;
-			slot->tts_isnull[missattnum] = !attrmiss[missattnum].am_present;
+			slot->tts_values[attnum] = attrmiss[attnum].am_value;
+			slot->tts_isnull[attnum] = !attrmiss[attnum].am_present;
 		}
 	}
 }
 
 /*
- * slot_getsomeattrs_int - workhorse for slot_getsomeattrs()
+ * slot_getsomeattrs_int
+ *		external function to call getsomeattrs() for use in JIT
  */
 void
 slot_getsomeattrs_int(TupleTableSlot *slot, int attnum)
@@ -2109,21 +2193,13 @@ slot_getsomeattrs_int(TupleTableSlot *slot, int attnum)
 	Assert(slot->tts_nvalid < attnum);	/* checked in slot_getsomeattrs */
 	Assert(attnum > 0);
 
-	if (unlikely(attnum > slot->tts_tupleDescriptor->natts))
-		elog(ERROR, "invalid attribute number %d", attnum);
-
 	/* Fetch as many attributes as possible from the underlying tuple. */
 	slot->tts_ops->getsomeattrs(slot, attnum);
 
 	/*
-	 * If the underlying tuple doesn't have enough attributes, tuple
-	 * descriptor must have the missing attributes.
+	 * Avoid putting new code here as that would prevent the compiler from
+	 * using the sibling call optimization for the above function.
 	 */
-	if (unlikely(slot->tts_nvalid < attnum))
-	{
-		slot_getmissingattrs(slot, slot->tts_nvalid, attnum);
-		slot->tts_nvalid = attnum;
-	}
 }
 
 /* ----------------------------------------------------------------
@@ -2229,6 +2305,8 @@ ExecTypeFromTLInternal(List *targetList, bool hasrowid, bool skipjunk)
 		cur_resno++;
 	}
 
+	TupleDescFinalize(typeInfo);
+
 	return typeInfo;
 }
 
@@ -2262,6 +2340,8 @@ ExecTypeFromExprList(List *exprList)
 									exprCollation(e));
 		cur_resno++;
 	}
+
+	TupleDescFinalize(typeInfo);
 
 	return typeInfo;
 }
@@ -2311,10 +2391,16 @@ ExecTypeSetColNames(TupleDesc typeInfo, List *namesList)
  * This happens "for free" if the tupdesc came from a relcache entry, but
  * not if we have manufactured a tupdesc for a transient RECORD datatype.
  * In that case we have to notify typcache.c of the existence of the type.
+ *
+ * TupleDescFinalize() must be called on the TupleDesc before calling this
+ * function.
  */
 TupleDesc
 BlessTupleDesc(TupleDesc tupdesc)
 {
+	/* Did someone forget to call TupleDescFinalize()? */
+	Assert(tupdesc->firstNonCachedOffsetAttr >= 0);
+
 	if (tupdesc->tdtypeid == RECORDOID &&
 		tupdesc->tdtypmod < 0)
 		assign_record_type_typmod(tupdesc);

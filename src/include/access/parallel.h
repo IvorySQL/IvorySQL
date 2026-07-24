@@ -14,6 +14,8 @@
 #ifndef PARALLEL_H
 #define PARALLEL_H
 
+#include <signal.h>
+
 #include "access/xlogdefs.h"
 #include "lib/ilist.h"
 #include "postmaster/bgworker.h"

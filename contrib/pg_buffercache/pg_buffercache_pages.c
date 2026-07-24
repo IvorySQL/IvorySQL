@@ -16,6 +16,7 @@
 #include "storage/buf_internals.h"
 #include "storage/bufmgr.h"
 #include "utils/rel.h"
+#include "utils/tuplestore.h"
 
 
 #define NUM_BUFFERCACHE_PAGES_MIN_ELEM	8
@@ -174,6 +175,7 @@ pg_buffercache_pages(PG_FUNCTION_ARGS)
 			TupleDescInitEntry(tupledesc, (AttrNumber) 9, "pinning_backends",
 							   INT4OID, -1, 0);
 
+		TupleDescFinalize(tupledesc);
 		fctx->tupdesc = BlessTupleDesc(tupledesc);
 
 		/* Allocate NBuffers worth of BufferCachePagesRec records. */
@@ -442,6 +444,7 @@ pg_buffercache_os_pages_internal(FunctionCallInfo fcinfo, bool include_numa)
 		TupleDescInitEntry(tupledesc, (AttrNumber) 3, "numa_node",
 						   INT4OID, -1, 0);
 
+		TupleDescFinalize(tupledesc);
 		fctx->tupdesc = BlessTupleDesc(tupledesc);
 		fctx->include_numa = include_numa;
 

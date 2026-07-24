@@ -998,7 +998,7 @@ makeJsonKeyValue(Node *key, Node *value)
  */
 Node *
 makeJsonIsPredicate(Node *expr, JsonFormat *format, JsonValueType item_type,
-					bool unique_keys, int location)
+					bool unique_keys, Oid exprBaseType, int location)
 {
 	JsonIsPredicate *n = makeNode(JsonIsPredicate);
 
@@ -1006,6 +1006,7 @@ makeJsonIsPredicate(Node *expr, JsonFormat *format, JsonValueType item_type,
 	n->format = format;
 	n->item_type = item_type;
 	n->unique_keys = unique_keys;
+	n->exprBaseType = exprBaseType;
 	n->location = location;
 
 	return (Node *) n;

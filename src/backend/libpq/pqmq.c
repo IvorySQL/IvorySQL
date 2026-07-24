@@ -20,8 +20,10 @@
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "replication/logicalworker.h"
+#include "storage/latch.h"
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
+#include "utils/wait_event.h"
 
 static shm_mq_handle *pq_mq_handle = NULL;
 static bool pq_mq_busy = false;

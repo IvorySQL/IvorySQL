@@ -18,9 +18,11 @@
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "postmaster/bgworker.h"
+#include "storage/proc.h"
 #include "storage/shm_toc.h"
 #include "test_shm_mq.h"
 #include "utils/memutils.h"
+#include "utils/wait_event.h"
 
 typedef struct
 {

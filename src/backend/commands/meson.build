@@ -38,6 +38,7 @@ backend_sources += files(
   'portalcmds.c',
   'prepare.c',
   'proclang.c',
+  'propgraphcmds.c',
   'publicationcmds.c',
   'schemacmds.c',
   'seclabel.c',
