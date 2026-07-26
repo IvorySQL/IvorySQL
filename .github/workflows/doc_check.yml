@@ -1,0 +1,56 @@
+name: doc_check
+
+on:
+  push:
+    branches: [ master , IVORY_REL_4_STABLE , IVORYSQL_REL_1_STABLE]
+    paths:
+      - 'doc/**'
+      - '.github/workflows/doc_check.yml'
+  pull_request:
+    branches: [ master , IVORY_REL_4_STABLE , IVORYSQL_REL_1_STABLE]
+    paths:
+      - 'doc/**'
+      - '.github/workflows/doc_check.yml'
+
+permissions:
+  contents: read
+
+# A new push to the same branch supersedes any run still in progress.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  doc_check:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    # The DocBook DTD and stylesheets must be present before configure runs:
+    # configure probes for xmllint and xsltproc and the documentation targets
+    # fail with "missing" if they were not found.
+    - name: dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential bison flex perl \
+              docbook-xml docbook-xsl libxml2-utils xsltproc
+
+    - name: configure
+      run: |
+        ./configure --without-icu --without-readline --without-zlib
+
+    # Validates the SGML against the DocBook DTD, resolving every entity and
+    # cross-reference, and rejects tabs and non-breaking spaces.
+    - name: check documentation
+      run: make -C doc/src/sgml check
+
+    - name: build html documentation
+      run: make -C doc/src/sgml html
+
+    - name: upload html documentation
+      uses: actions/upload-artifact@v4
+      with:
+        name: html-doc
+        path: ${{ github.workspace }}/doc/src/sgml/html
+        retention-days: 7
