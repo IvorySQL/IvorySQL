@@ -4130,6 +4130,8 @@ ReindexRelationConcurrently(const ReindexStmt *stmt, Oid relationOid, const Rein
 		CommitTransactionCommand();
 	}
 
+	INJECTION_POINT("reindex-conc-index-built", NULL);
+
 	StartTransactionCommand();
 
 	/*
