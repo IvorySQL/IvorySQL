@@ -1296,7 +1296,9 @@ subquery_planner(PlannerGlobal *glob, Query *parse, char *plan_name,
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("cannot use generated column \"%s\" in FOR PORTION OF",
-							forPortionOf->range_name)));
+							get_attname(rte->relid,
+										forPortionOf->rangeVar->varattno,
+										false))));
 	}
 
 	/*

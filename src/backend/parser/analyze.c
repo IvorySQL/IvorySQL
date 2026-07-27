@@ -1644,7 +1644,6 @@ transformForPortionOfClause(ParseState *pstate,
 	else
 		result->rangeTargetList = NIL;
 
-	result->range_name = forPortionOf->range_name;
 	result->location = forPortionOf->location;
 	result->targetLocation = forPortionOf->target_location;
 
