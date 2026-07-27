@@ -12793,6 +12793,7 @@ get_json_constructor(JsonConstructorExpr *ctor, deparse_context *context,
 					  context->prettyFlags, context->wrapColumn,
 					  context->indentLevel);
 
+		get_json_format(ctor->format, buf);
 		get_json_constructor_options(ctor, buf);
 		appendStringInfoChar(buf, ')');
 
