@@ -1404,7 +1404,7 @@
 
 { name => 'ivorysql.enable_case_switch', type => 'bool', context => 'PGC_USERSET', group => 'CLIENT_CONN_STATEMENT',
   short_desc => 'whether enable case conversion feature in oracle compatible mode.',
-  flags => 'GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE',
+  flags => 'GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE | GUC_DISALLOW_IN_DB_ROLE_SETTING',
   variable => 'enable_case_switch',
   boot_val => 'true',
 },
