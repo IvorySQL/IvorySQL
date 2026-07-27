@@ -1359,11 +1359,6 @@ set ivorysql.compatible_mode = 'pg';
 \parser
 reset ivorysql.compatible_mode;
 show ivorysql.compatible_mode;
--- Re-pin to pg: the remainder of this file uses PG syntax (\df, \sf, ALTER
--- ROLE, etc.). The RESET above restored the server's oracle mode, and
--- mainloop.c's auto-sync would switch the parser back to oracle without
--- this explicit SET.
-set ivorysql.compatible_mode = 'pg';
 
 -- ensure compatible_mode cannot be persisted via ALTER ROLE SET/RESET
 create role regress_psql_cm_role;
@@ -1382,16 +1377,19 @@ create function psql_df_internal (float8)
   returns float8
   language internal immutable parallel safe strict
   as 'dsin';
+/
 
 create function psql_df_sql (x integer)
   returns integer
   security definer
   begin atomic select x + 1; end;
+/
 
 create function psql_df_plpgsql ()
   returns void
   language plpgsql
   as $$ begin return; end; $$;
+/
 
 comment on function psql_df_plpgsql () is 'some comment';
 
@@ -1476,6 +1474,7 @@ CREATE FUNCTION warn(msg TEXT) RETURNS BOOLEAN LANGUAGE plpgsql
 AS $$
   BEGIN RAISE NOTICE 'warn %', msg ; RETURN TRUE ; END
 $$;
+/
 
 -- show both
 SELECT 1 AS one \; SELECT warn('1.5') \; SELECT 2 AS two ;
@@ -1622,6 +1621,7 @@ CREATE FUNCTION psql_error(msg TEXT) RETURNS BOOLEAN AS $$
     RAISE EXCEPTION 'error %', msg;
   END;
 $$ LANGUAGE plpgsql;
+/
 
 \set ON_ERROR_ROLLBACK on
 \echo '# ON_ERROR_ROLLBACK:' :ON_ERROR_ROLLBACK
@@ -1954,6 +1954,7 @@ REVOKE ALL ON DOMAIN regress_zeropriv_domain FROM CURRENT_USER, PUBLIC;
 \dD+ regress_zeropriv_domain
 
 CREATE PROCEDURE regress_zeropriv_proc() LANGUAGE sql AS $$ $$;
+/
 REVOKE ALL ON PROCEDURE regress_zeropriv_proc() FROM CURRENT_USER, PUBLIC;
 \df+ regress_zeropriv_proc
 
