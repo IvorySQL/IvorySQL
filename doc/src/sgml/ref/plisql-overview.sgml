@@ -1,0 +1,188 @@
+<!--
+doc/src/sgml/plisql.sgml
+IvorySQL documentation: PL/iSQL overview
+-->
+
+<chapter id="plisql">
+ <title>PL/iSQL - Oracle-Compatible Procedural Language</title>
+
+ <indexterm zone="plisql">
+  <primary>PL/iSQL</primary>
+ </indexterm>
+
+ <para>
+  PL/iSQL is the Oracle-compatible procedural language for IvorySQL.
+  It extends the standard PL/pgSQL with Oracle PL/SQL semantics including
+  packages, autonomous transactions, nested subprograms, Oracle exception
+  types, and Oracle-compatible control flow syntax.
+ </para>
+
+ <sect1 id="plisql-overview">
+  <title>Overview</title>
+  <para>
+   PL/iSQL is a block-structured procedural language that closely follows
+   Oracle PL/SQL conventions. It is the default procedural language when
+   IvorySQL operates in Oracle-compatible mode (port 1521 by default).
+  </para>
+  <para>
+   Key differences from PL/pgSQL:
+  </para>
+  <itemizedlist>
+   <listitem>
+    <para>Package support (CREATE PACKAGE / CREATE PACKAGE BODY)</para>
+   </listitem>
+   <listitem>
+    <para>Autonomous transactions via PRAGMA AUTONOMOUS_TRANSACTION</para>
+   </listitem>
+   <listitem>
+    <para>Nested subprograms (procedures and functions declared within a block)</para>
+   </listitem>
+   <listitem>
+    <para>Oracle exception types (NO_DATA_FOUND, TOO_MANY_ROWS, DUP_VAL_ON_INDEX, etc.)</para>
+   </listitem>
+   <listitem>
+    <para>FOR loop with implicit cursor (SELECT ... loop without explicit cursor declaration)</para>
+   </listitem>
+   <listitem>
+    <para>OUT parameters in procedures</para>
+   </listitem>
+   <listitem>
+    <para>Oracle-compatible assignment and expression syntax</para>
+   </listitem>
+  </itemizedlist>
+ </sect1>
+
+ <sect1 id="plisql-structure">
+  <title>Block Structure</title>
+  <para>
+   A PL/iSQL block has the following structure:
+  </para>
+<programlisting>
+[ DECLARE
+    declaration_statements ]
+BEGIN
+    executable_statements
+[ EXCEPTION
+    exception_handlers ]
+END;
+</programlisting>
+  <para>
+   The DECLARE section is optional. The BEGIN...END block is mandatory.
+   The EXCEPTION section is optional and handles runtime errors.
+  </para>
+ </sect1>
+
+ <sect1 id="plisql-packages">
+  <title>Package Support</title>
+  <para>
+   PL/iSQL supports Oracle-style packages through CREATE PACKAGE and
+   CREATE PACKAGE BODY statements. A package specification declares
+   public types, variables, cursors, functions, and procedures. The
+   package body provides implementations.
+  </para>
+<programlisting>
+CREATE PACKAGE emp_pkg AS
+    FUNCTION get_salary(emp_id INTEGER) RETURN NUMERIC;
+    PROCEDURE raise_salary(emp_id INTEGER, amount NUMERIC);
+END emp_pkg;
+/
+
+CREATE PACKAGE BODY emp_pkg AS
+    FUNCTION get_salary(emp_id INTEGER) RETURN NUMERIC IS
+        v_sal NUMERIC;
+    BEGIN
+        SELECT sal INTO v_sal FROM emp WHERE empno = emp_id;
+        RETURN v_sal;
+    END;
+
+    PROCEDURE raise_salary(emp_id INTEGER, amount NUMERIC) IS
+    BEGIN
+        UPDATE emp SET sal = sal + amount WHERE empno = emp_id;
+    END;
+END emp_pkg;
+/
+</programlisting>
+ </sect1>
+
+ <sect1 id="plisql-autonomous">
+  <title>Autonomous Transactions</title>
+  <para>
+   PL/iSQL supports autonomous transactions through the
+   PRAGMA AUTONOMOUS_TRANSACTION directive. An autonomous transaction
+   runs independently of the calling transaction and can commit or
+   roll back without affecting the caller.
+  </para>
+<programlisting>
+PROCEDURE log_action(msg TEXT) IS
+    PRAGMA AUTONOMOUS_TRANSACTION;
+BEGIN
+    INSERT INTO audit_log(message) VALUES (msg);
+    COMMIT;
+END;
+</programlisting>
+ </sect1>
+
+ <sect1 id="plisql-exceptions">
+  <title>Exception Handling</title>
+  <para>
+   PL/iSQL provides Oracle-compatible named exceptions:
+  </para>
+  <informaltable>
+   <tgroup cols="2">
+    <thead>
+     <row><entry>Exception</entry><entry>Description</entry></row>
+    </thead>
+    <tbody>
+     <row><entry>NO_DATA_FOUND</entry><entry>SELECT INTO returned no rows</entry></row>
+     <row><entry>TOO_MANY_ROWS</entry><entry>SELECT INTO returned more than one row</entry></row>
+     <row><entry>DUP_VAL_ON_INDEX</entry><entry>Unique constraint violation</entry></row>
+     <row><entry>VALUE_ERROR</entry><entry>Arithmetic, conversion, or size error</entry></row>
+     <row><entry>ZERO_DIVIDE</entry><entry>Division by zero</entry></row>
+     <row><entry>INVALID_CURSOR</entry><entry>Cursor operation not allowed</entry></row>
+    </tbody>
+   </tgroup>
+  </informaltable>
+<programlisting>
+BEGIN
+    SELECT sal INTO v_sal FROM emp WHERE empno = 9999;
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        DBMS_OUTPUT.PUT_LINE(Employee not found);
+    WHEN TOO_MANY_ROWS THEN
+        DBMS_OUTPUT.PUT_LINE(Multiple rows returned);
+END;
+</programlisting>
+ </sect1>
+
+ <sect1 id="plisql-subprograms">
+  <title>Nested Subprograms</title>
+  <para>
+   PL/iSQL allows declaring procedures and functions within a block
+   declaration section. These nested subprograms are local to the
+   enclosing block and can reference variables from the outer scope.
+  </para>
+<programlisting>
+DECLARE
+    v_total NUMERIC := 0;
+    PROCEDURE add_value(n NUMERIC) IS
+    BEGIN
+        v_total := v_total + n;
+    END;
+BEGIN
+    add_value(10);
+    add_value(20);
+    DBMS_OUTPUT.PUT_LINE(Total:  || v_total);
+END;
+</programlisting>
+ </sect1>
+
+ <sect1 id="plisql-compatibility">
+  <title>Compatibility</title>
+  <para>
+   PL/iSQL is an IvorySQL extension that provides Oracle PL/SQL
+   compatibility. It is not available in standard PostgreSQL. The
+   language is automatically available in Oracle-compatible mode.
+   For PostgreSQL-native procedural code, use PL/pgSQL.
+  </para>
+ </sect1>
+</chapter>
