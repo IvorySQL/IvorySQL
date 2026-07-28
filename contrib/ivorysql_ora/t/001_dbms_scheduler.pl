@@ -346,4 +346,39 @@ $node->wait_for_log(qr/ivorysql scheduler started for database "sched_late"/, $l
   or die "reload did not retry the database given up on";
 ok(1, 'reloading the configuration retries a database given up on');
 
+# ---------------------------------------------------------------------
+# an error that cannot clear up on its own ends the worker on the first
+# report instead of being retried until the cycle limit
+# ---------------------------------------------------------------------
+$node->safe_psql($db, 'CREATE DATABASE sched_broken');
+$logpos = -s $node->logfile;
+$node->safe_psql($db,
+	"ALTER SYSTEM SET ivorysql_ora.scheduler_databases = 'ivorysql,sched_late,sched_broken'"
+);
+$node->reload;
+$node->wait_for_log(qr/ivorysql scheduler started for database "sched_broken"/,
+	$logpos)
+  or die "scheduler for sched_broken did not start";
+
+# Renaming the table the dispatch query reads makes every cycle fail with
+# undefined_table, which no amount of waiting fixes.  Views track the table by
+# OID, so they follow the rename rather than breaking.
+$logpos = -s $node->logfile;
+$node->safe_psql('sched_broken',
+	'ALTER TABLE sys.scheduler_jobs RENAME TO scheduler_jobs_gone');
+
+$node->wait_for_log(qr/scheduler for database "sched_broken" cannot continue, exiting/,
+	$logpos)
+  or die "worker did not exit on an error that cannot clear up";
+ok(1, 'an error that cannot clear up ends the worker');
+
+my $errors = () = (PostgreSQL::Test::Utils::slurp_file($node->logfile, $logpos) =~
+	  /scheduler metadata table "sys\.scheduler_jobs" does not exist/g);
+is($errors, 1, 'such an error is reported once, not retried to the cycle limit');
+
+$node->wait_for_log(qr/scheduler for database "sched_broken" stopped; not restarting it/,
+	$logpos)
+  or die "launcher did not give up on the broken database";
+ok(1, 'the launcher gives up on the database whose scheduler could not continue');
+
 done_testing();

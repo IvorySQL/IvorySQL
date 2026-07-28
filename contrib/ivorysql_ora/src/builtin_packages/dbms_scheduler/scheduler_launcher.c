@@ -475,6 +475,41 @@ scheduler_spawn_job_worker(Oid dboid, SchedDueJob *job)
 }
 
 /*
+ * Is the error the polling loop just caught worth another cycle?
+ *
+ * Resource shortages and transaction rollbacks clear up on their own, so
+ * waiting them out keeps a momentary shortage from taking this database's
+ * scheduling down until someone reloads.  A renamed metadata table or a
+ * revoked privilege does not clear up, and retrying it would only bury the
+ * reason under copies of itself - the polling loop reports every failed cycle.
+ *
+ * Class 53 covers out of memory, disk full and the connection/program limits;
+ * class 40 covers deadlocks and serialization failures.  Class 58 (I/O errors)
+ * is deliberately not here: those tend to mean real trouble, where stopping to
+ * be noticed beats retrying.
+ */
+static bool
+sched_error_is_transient(int sqlerrcode)
+{
+	switch (ERRCODE_TO_CATEGORY(sqlerrcode))
+	{
+		case ERRCODE_TO_CATEGORY(ERRCODE_INSUFFICIENT_RESOURCES):
+		case ERRCODE_TO_CATEGORY(ERRCODE_T_R_SERIALIZATION_FAILURE):
+			return true;
+	}
+
+	/*
+	 * Class 55 as a whole is not transient, but a lock timeout is.  Nothing
+	 * here can raise this: none of the scheduler's statements use NOWAIT or
+	 * FOR UPDATE, so it needs lock_timeout to have been set from outside.
+	 * Unlike statement_timeout, which is never armed in a background worker,
+	 * lock_timeout is armed by the lock manager in ProcSleep(), so it does
+	 * reach us.  Listed for that case rather than for a known path.
+	 */
+	return sqlerrcode == ERRCODE_LOCK_NOT_AVAILABLE;
+}
+
+/*
  * Mark leftover 'r' log rows as failed.  They can only result from a crash
  * or shutdown while jobs were running (job workers write their outcome in a
  * separate transaction after the run).
@@ -841,16 +876,17 @@ SchedulerDatabaseWorkerMain(Datum main_arg)
 		MemoryContextReset(worker_ctx);
 
 		/*
-		 * Keep going after an unforeseen error - out of memory, a failing
-		 * metadata query - instead of letting it reach bgworker.c's top-level
-		 * handler, which reports it and exits.  Surviving a transient failure
-		 * matters because the launcher no longer restarts a worker that quit.
+		 * Keep going after an unforeseen error instead of letting it reach
+		 * bgworker.c's top-level handler, which reports it and exits.
+		 * Surviving a transient failure matters because the launcher no longer
+		 * restarts a worker that quit.
 		 *
-		 * A cause that is not transient would spin here forever, so give up
-		 * once it is clear the failure is not going away and let the launcher
-		 * report the database as unscheduled.  Reaching that limit needs a
-		 * persistent fault outside this worker's control, which is why it is
-		 * covered by inspection rather than by a test.
+		 * Only errors that can actually clear up earn that patience; see
+		 * sched_error_is_transient().  Anything else exits on the first
+		 * report.  Even a transient cause gives up eventually, since one that
+		 * has not cleared in SCHED_MAX_CYCLE_FAILURES cycles is not going to.
+		 * That last limit needs a persistent resource shortage to reach, which
+		 * is why it is covered by inspection rather than by a test.
 		 */
 		PG_TRY();
 		{
@@ -888,8 +924,18 @@ SchedulerDatabaseWorkerMain(Datum main_arg)
 		}
 		PG_CATCH();
 		{
+			ErrorData  *edata;
+			bool		transient;
+
 			HOLD_INTERRUPTS();
-			EmitErrorReport();
+			EmitErrorReport();	/* report it as raised, once */
+
+			/* the code has to be read before the error state is flushed */
+			MemoryContextSwitchTo(worker_ctx);
+			edata = CopyErrorData();
+			transient = sched_error_is_transient(edata->sqlerrcode);
+			FreeErrorData(edata);
+
 			AbortOutOfAnyTransaction();
 			FlushErrorState();
 			MemoryContextSwitchTo(worker_ctx);
@@ -900,6 +946,14 @@ SchedulerDatabaseWorkerMain(Datum main_arg)
 			 */
 			QueryCancelPending = false;
 			RESUME_INTERRUPTS();
+
+			if (!transient)
+			{
+				ereport(LOG,
+						(errmsg("ivorysql scheduler for database \"%s\" cannot continue, exiting",
+								dbname)));
+				proc_exit(1);
+			}
 
 			if (++cycle_failures >= SCHED_MAX_CYCLE_FAILURES)
 			{
