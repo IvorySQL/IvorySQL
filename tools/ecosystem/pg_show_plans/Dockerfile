@@ -67,7 +67,7 @@ COPY --from=builder /opt/ivorysql /opt/ivorysql
 COPY entrypoint.sh /usr/local/bin/ivorysql-entrypoint
 COPY verify.sh /usr/local/bin/verify-pg-show-plans
 
-RUN useradd --create-home --uid 1000 ivorysql \
+RUN useradd --create-home --user-group ivorysql \
     && mkdir -p /var/lib/ivorysql/data \
     && chown -R ivorysql:ivorysql /var/lib/ivorysql \
     && chmod 0755 \
