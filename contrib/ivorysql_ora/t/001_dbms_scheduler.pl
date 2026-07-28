@@ -31,6 +31,7 @@ $node->append_conf(
 ivorysql_ora.scheduler = on
 ivorysql_ora.scheduler_databases = 'ivorysql'
 ivorysql_ora.scheduler_poll_interval = 1
+ivorysql_ora.scheduler_job_timeout = 2s
 });
 $node->start;
 
@@ -126,6 +127,27 @@ is( $node->safe_psql(
 		"SELECT state, failure_count, (SELECT error_message FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_FAIL' AND status = 'f') FROM sys.scheduler_jobs WHERE job_name = 'TAP_FAIL'"),
 	'FAILED|1|division by zero',
 	'failed job records state, failure count and error message');
+
+# ---------------------------------------------------------------------
+# a job running past scheduler_job_timeout is cancelled
+# ---------------------------------------------------------------------
+ora_sql(q{
+BEGIN
+  dbms_scheduler.create_job(job_name => 'tap_timeout', job_type => 'PLSQL_BLOCK',
+    job_action => 'SELECT pg_sleep(60)',
+    enabled => TRUE);
+END;});
+
+$node->poll_query_until($db,
+	"SELECT count(*) = 1 FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_TIMEOUT' AND status = 'f' AND error_message LIKE '%statement timeout%'"
+) or die "long-running job was not cancelled";
+ok(1, 'a job running past scheduler_job_timeout is cancelled');
+
+is( $node->safe_psql(
+		$db,
+		"SELECT state, failure_count, run_duration < '30 seconds'::pg_catalog.interval FROM sys.scheduler_jobs j JOIN sys.scheduler_job_run_details d USING (job_name) WHERE job_name = 'TAP_TIMEOUT'"),
+	'FAILED|1|t',
+	'cancelled job is recorded as failed and did not run to completion');
 
 # ---------------------------------------------------------------------
 # STORED_PROCEDURE job with program arguments runs in the background

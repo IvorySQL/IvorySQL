@@ -114,6 +114,7 @@ extern bool scheduler_enabled;
 extern char *scheduler_databases;
 extern int	scheduler_poll_interval;
 extern int	scheduler_max_job_workers;
+extern int	scheduler_job_timeout;
 
 extern void SchedulerLauncherRegister(void);
 

@@ -28,6 +28,8 @@
 
 #include "postgres.h"
 
+#include <limits.h>
+
 #include "utils/guc.h"
 
 #include "../include/guc.h"
@@ -80,5 +82,18 @@ IvorysqlOraDefineGucs(void)
 							64,
 							PGC_POSTMASTER,
 							0,
+							NULL, NULL, NULL);
+
+	DefineCustomIntVariable("ivorysql_ora.scheduler_job_timeout",
+							"Cancels a background DBMS_SCHEDULER job that runs longer than this.",
+							"Zero disables the limit.  Only background runs are"
+							" affected; RUN_JOB obeys the calling session's"
+							" statement_timeout instead.",
+							&scheduler_job_timeout,
+							0,
+							0,
+							INT_MAX,
+							PGC_SIGHUP,
+							GUC_UNIT_MS,
 							NULL, NULL, NULL);
 }

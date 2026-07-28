@@ -42,6 +42,7 @@
 #include "utils/guc.h"
 #include "utils/memutils.h"
 #include "utils/snapmgr.h"
+#include "utils/timeout.h"
 #include "utils/timestamp.h"
 
 #include "dbms_scheduler.h"
@@ -232,6 +233,17 @@ SchedulerJobWorkerMain(Datum main_arg)
 	PushActiveSnapshot(GetTransactionSnapshot());
 	SPI_connect();
 
+	/*
+	 * Bound the run time.  The STATEMENT_TIMEOUT handler is registered by
+	 * InitPostgres, but what arms it for a regular backend is the frontend
+	 * statement loop, which a background worker never enters -- so setting the
+	 * statement_timeout GUC alone would have no effect and the timeout has to
+	 * be armed here.  Firing it raises an ordinary query cancel, which the
+	 * PG_CATCH below records like any other job failure.
+	 */
+	if (scheduler_job_timeout > 0)
+		enable_timeout_after(STATEMENT_TIMEOUT, scheduler_job_timeout);
+
 	PG_TRY();
 	{
 		sched_execute_job(&def);
@@ -251,6 +263,9 @@ SchedulerJobWorkerMain(Datum main_arg)
 		AbortCurrentTransaction();
 	}
 	PG_END_TRY();
+
+	if (scheduler_job_timeout > 0)
+		disable_timeout(STATEMENT_TIMEOUT, false);
 
 	/* Transaction 3: record the outcome. */
 	if (edata == NULL)
