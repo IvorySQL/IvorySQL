@@ -1,0 +1,13 @@
+services:
+  database:
+    build:
+      context: .
+      args:
+        IVORYSQL_COMMIT: a45b0457520007970848fc33198d876807b98f55
+        IVORYSQL_REF: IvorySQL_5.4
+        PG_SHOW_PLANS_COMMIT: 92ecb21f8f2307a4bc7db8f01623599e75930fc2
+        PG_SHOW_PLANS_REF: v2.1.8
+    environment:
+      PGDATA: /var/lib/ivorysql/data
+    ports:
+      - "55432:5432"

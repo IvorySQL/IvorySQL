@@ -1,0 +1,47 @@
+name: pg_show_plans ecosystem
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/ecosystem_pg_show_plans.yml"
+      - "tools/ecosystem/pg_show_plans/**"
+  push:
+    branches:
+      - master
+    paths:
+      - ".github/workflows/ecosystem_pg_show_plans.yml"
+      - "tools/ecosystem/pg_show_plans/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pg-show-plans-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build integration image
+        working-directory: tools/ecosystem/pg_show_plans
+        run: make build
+
+      - name: Verify active plan visibility
+        working-directory: tools/ecosystem/pg_show_plans
+        run: make verify
+
+      - name: Show container logs
+        if: failure()
+        working-directory: tools/ecosystem/pg_show_plans
+        run: make logs
+
+      - name: Stop integration
+        if: always()
+        working-directory: tools/ecosystem/pg_show_plans
+        run: make down
