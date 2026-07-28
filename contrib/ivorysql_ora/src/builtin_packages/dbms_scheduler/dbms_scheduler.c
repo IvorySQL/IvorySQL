@@ -1793,7 +1793,7 @@ sched_update_job_stats(const SchedJobDef *def, bool success,
 		sched_meta_dml("UPDATE sys.scheduler_jobs SET"
 				  " run_count = run_count + 1,"
 				  " failure_count = failure_count + CASE WHEN $4 = 'FAILED' THEN 1 ELSE 0 END,"
-				  " last_start_date = $3, last_end_date = now(),"
+				  " last_start_date = $3, last_end_date = clock_timestamp(),"
 				  " state = CASE WHEN enabled THEN 'SCHEDULED' ELSE $4 END"
 				  " WHERE job_owner = $1 AND job_name = $2",
 				  4, argtypes, values, NULL);
@@ -1801,7 +1801,7 @@ sched_update_job_stats(const SchedJobDef *def, bool success,
 		sched_meta_dml("UPDATE sys.scheduler_jobs SET"
 				  " run_count = run_count + 1,"
 				  " failure_count = failure_count + CASE WHEN $4 = 'FAILED' THEN 1 ELSE 0 END,"
-				  " last_start_date = $3, last_end_date = now(),"
+				  " last_start_date = $3, last_end_date = clock_timestamp(),"
 				  " state = CASE WHEN enabled THEN state ELSE $4 END"
 				  " WHERE job_owner = $1 AND job_name = $2",
 				  4, argtypes, values, NULL);

@@ -220,7 +220,8 @@ CREATE VIEW sys.dba_scheduler_jobs AS
 		   job_type, job_action, number_of_arguments,
 		   schedule_owner, schedule_name, start_date, repeat_interval,
 		   end_date, next_run_date, job_class, auto_drop, enabled, state,
-		   run_count, failure_count, last_start_date, last_end_date, comments
+		   run_count, failure_count, last_start_date,
+		   (last_end_date - last_start_date) AS last_run_duration, comments
 	FROM sys.scheduler_jobs;
 
 CREATE VIEW sys.user_scheduler_jobs AS
@@ -228,7 +229,8 @@ CREATE VIEW sys.user_scheduler_jobs AS
 		   job_type, job_action, number_of_arguments,
 		   schedule_owner, schedule_name, start_date, repeat_interval,
 		   end_date, next_run_date, job_class, auto_drop, enabled, state,
-		   run_count, failure_count, last_start_date, last_end_date, comments
+		   run_count, failure_count, last_start_date,
+		   (last_end_date - last_start_date) AS last_run_duration, comments
 	FROM sys.scheduler_jobs
 	WHERE job_owner = current_user::text;
 
