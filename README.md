@@ -31,6 +31,22 @@ Furthermore, for more detailed installation instructions, please refer to the [I
 - [Rpm installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.4/4.1#Rpm-installation)
 - [Source code installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.4/4.1#Source-code-installation)
 
+## Third-party extension compatibility
+
+### PGroonga
+
+PGroonga relies on [Groonga's supported encodings](https://groonga.org/docs/reference/api/util_8h.html#c.grn_encoding), which do not include GB18030. A PGroonga index created in a GB18030-encoded database may therefore contain no tokens and return no matches. Create a UTF-8 database for workloads that use PGroonga:
+
+```sql
+CREATE DATABASE search_db
+  WITH ENCODING 'UTF8'
+       LC_COLLATE 'C'
+       LC_CTYPE 'C'
+       TEMPLATE template0;
+```
+
+Changing Groonga's runtime encoding or rebuilding the index does not change the database encoding. Existing data must be migrated or reloaded into a UTF-8 database before creating the PGroonga index.
+
 ## Development with Docker
 
 For a consistent development environment, we provide a Docker-based setup that includes all build dependencies.

@@ -35,6 +35,22 @@ IvorySQL 项目采用 Apache 2.0 许可协议发布，并鼓励各种形式的�
 - [RPM 安装](https://docs.ivorysql.org/cn/ivorysql-doc/v5.4/4.1#rpm安装)
 - [源代码安装](https://docs.ivorysql.org/cn/ivorysql-doc/v5.4/4.1#源码安装)
 
+## 第三方扩展兼容性
+
+### PGroonga
+
+PGroonga 依赖 [Groonga 支持的字符编码](https://groonga.org/docs/reference/api/util_8h.html#c.grn_encoding)，其中不包含 GB18030。因此，在 GB18030 编码的数据库中创建 PGroonga 索引时，索引可能没有生成词元，并导致查询无法返回匹配结果。使用 PGroonga 的业务应创建 UTF-8 编码的数据库：
+
+```sql
+CREATE DATABASE search_db
+  WITH ENCODING 'UTF8'
+       LC_COLLATE 'C'
+       LC_CTYPE 'C'
+       TEMPLATE template0;
+```
+
+修改 Groonga 的运行时编码或重建索引不会改变数据库编码。已有数据需要迁移或重新导入 UTF-8 数据库，再创建 PGroonga 索引。
+
 ## 为IvorySQL做贡献
 有许多方式可以为 IvorySQL 做出贡献。您可以通过更新文档或提供文档翻译来贡献。如果您具备设计技能，还可以参与 IvorySQL 官网项目的建设。
 
