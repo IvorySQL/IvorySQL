@@ -7018,6 +7018,15 @@ DefineStmt:
 					n->coldeflist = $6;
 					$$ = (Node *) n;
 				}
+			| CREATE TYPE_P any_name AS OBJECT_P '(' OptTableFuncElementList ')'
+				{
+					CompositeTypeStmt *n = makeNode(CompositeTypeStmt);
+
+					/* can't use qualified_name, sigh */
+					n->typevar = makeRangeVarFromAnyName($3, @3, yyscanner);
+					n->coldeflist = $7;
+					$$ = (Node *) n;
+				}
 			| CREATE TYPE_P any_name AS ENUM_P '(' opt_enum_val_list ')'
 				{
 					CreateEnumStmt *n = makeNode(CreateEnumStmt);

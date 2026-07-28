@@ -148,6 +148,16 @@ CREATE TYPE bogus_type (INPUT = array_in,
 
 CREATE TYPE default_test_row AS (f1 text_w_default, f2 int42);
 
+-- Oracle-style AS OBJECT is an alias for a composite type
+CREATE TYPE oracle_object_type AS OBJECT
+(
+	id integer,
+	label varchar(20)
+);
+
+SELECT ROW(1, 'one')::oracle_object_type;
+DROP TYPE oracle_object_type;
+
 CREATE FUNCTION get_default_test() RETURNS SETOF default_test_row AS '
   SELECT * FROM default_test;
 ' LANGUAGE SQL;
