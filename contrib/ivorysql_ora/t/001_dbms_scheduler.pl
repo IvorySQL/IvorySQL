@@ -269,4 +269,47 @@ is( $node->safe_psql(
 
 ora_sql(q{BEGIN dbms_scheduler.disable('tap_restart'); END;});
 
+# ---------------------------------------------------------------------
+# a job whose stored calendar cannot be parsed is taken out on its own,
+# without killing the database scheduler or the jobs queued behind it
+# ---------------------------------------------------------------------
+ora_sql(q{
+BEGIN
+  dbms_scheduler.create_job(job_name => 'tap_badcal', job_type => 'PLSQL_BLOCK',
+    job_action => 'BEGIN NULL; END;',
+    repeat_interval => 'FREQ=SECONDLY;INTERVAL=2',
+    enabled => TRUE);
+  dbms_scheduler.create_job(job_name => 'tap_survivor', job_type => 'PLSQL_BLOCK',
+    job_action => 'BEGIN NULL; END;',
+    repeat_interval => 'FREQ=SECONDLY;INTERVAL=2',
+    enabled => TRUE);
+END;});
+
+# CREATE_JOB validates the calendar, so a bad one can only be stored by writing
+# it directly.  The back-dated next_run_date also puts this job at the head of
+# the claim query's ORDER BY, ahead of tap_survivor.
+$node->safe_psql(
+	$db, q{
+UPDATE sys.scheduler_jobs
+   SET repeat_interval = 'FREQ=NOSUCHTHING',
+       next_run_date = now() - interval '1 hour'
+ WHERE job_name = 'TAP_BADCAL'});
+
+$node->poll_query_until($db,
+	"SELECT NOT enabled AND state = 'DISABLED' AND next_run_date IS NULL FROM sys.scheduler_jobs WHERE job_name = 'TAP_BADCAL'"
+) or die "job with an unparsable calendar was not disabled";
+ok(1, 'a job whose calendar cannot be parsed is disabled');
+
+# The scheduler has to still be alive, and the job that sorted behind the
+# broken one has to still be claimed rather than rolled back along with it.
+my $survived = $node->safe_psql($db,
+	"SELECT count(*) FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_SURVIVOR' AND status = 's'"
+);
+$node->poll_query_until($db,
+	"SELECT count(*) > $survived FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_SURVIVOR' AND status = 's'"
+) or die "database scheduler stopped claiming other jobs";
+ok(1, 'the database scheduler keeps running the remaining jobs');
+
+ora_sql(q{BEGIN dbms_scheduler.disable('tap_survivor'); END;});
+
 done_testing();

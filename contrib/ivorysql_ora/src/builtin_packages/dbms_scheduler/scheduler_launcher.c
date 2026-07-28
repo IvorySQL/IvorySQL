@@ -48,6 +48,7 @@
 #include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/memutils.h"
+#include "utils/resowner.h"
 #include "utils/snapmgr.h"
 #include "utils/timestamp.h"
 #include "utils/varlena.h"
@@ -66,6 +67,12 @@ bool		scheduler_launcher_registered = false;
 
 /* Wait this long before restarting a database worker that stopped. */
 #define SCHED_DBWORKER_RESTART_USEC		(60 * USECS_PER_SEC)
+
+/*
+ * Give up after this many consecutive polling cycles that all ended in an
+ * error, on the grounds that the cause is not going to clear on its own.
+ */
+#define SCHED_MAX_CYCLE_FAILURES		10
 
 /* Launcher's view of one database scheduler worker */
 typedef struct SchedDbWorker
@@ -482,6 +489,117 @@ typedef struct SchedDueRow
 	bool		end_isnull;
 } SchedDueRow;
 
+/*
+ * Take out a job whose stored definition cannot be used.  Mirrors what Oracle
+ * would report as a BROKEN job; we have no such state, so the job is simply
+ * disabled and removed from the schedule until someone fixes it and re-enables
+ * it.
+ */
+static void
+sched_disable_broken_job(const char *job_owner, const char *job_name)
+{
+	Oid			argtypes[2] = {TEXTOID, TEXTOID};
+	Datum		values[2];
+
+	values[0] = CStringGetTextDatum(job_owner);
+	values[1] = CStringGetTextDatum(job_name);
+	sched_meta_dml("UPDATE sys.scheduler_jobs SET enabled = false,"
+				   " state = 'DISABLED', next_run_date = NULL"
+				   " WHERE job_owner = $1 AND job_name = $2",
+				   2, argtypes, values, NULL);
+}
+
+/*
+ * Claim one due job: work out its following run, advance the schedule, mark it
+ * running and write its 'r' log row.  On success the job is appended to *due,
+ * allocated in caller_ctx.
+ *
+ * Raises an error on unusable job data (an unparsable calendar string, say).
+ * The caller runs this inside a subtransaction and disables the job rather
+ * than letting the error reach bgworker.c's top-level handler, which would
+ * take down this whole worker.
+ */
+static void
+sched_claim_one_job(SchedDueRow *row, MemoryContext caller_ctx, List **due)
+{
+	TimestampTz next = 0;
+	bool		has_next = false;
+	Oid			roloid;
+
+	/* compute the following run, anchored at start_date */
+	if (row->repeat_interval != NULL)
+	{
+		TimestampTz anchor = row->start_isnull ? row->req_start : row->start_date;
+
+		has_next = sched_calendar_next(row->repeat_interval, anchor,
+									   GetCurrentTimestamp(), &next);
+		if (has_next && !row->end_isnull && next > row->end_date)
+			has_next = false;
+	}
+
+	roloid = get_role_oid(row->job_owner, true);
+	if (!OidIsValid(roloid))
+	{
+		ereport(LOG,
+				(errmsg("disabling scheduler job \"%s\".\"%s\": owner role does not exist",
+						row->job_owner, row->job_name)));
+		sched_disable_broken_job(row->job_owner, row->job_name);
+		return;
+	}
+
+	/* advance / exhaust the schedule and mark the job running */
+	{
+		Oid			at3[3] = {INT8OID, TIMESTAMPTZOID, BOOLOID};
+		Datum		v3[3];
+		char		n3[3];
+
+		v3[0] = Int64GetDatum(row->job_id);
+		v3[1] = TimestampTzGetDatum(next);
+		v3[2] = BoolGetDatum(has_next);
+		n3[0] = ' ';
+		n3[1] = has_next ? ' ' : 'n';
+		n3[2] = ' ';
+		sched_meta_dml("UPDATE sys.scheduler_jobs SET"
+					   " next_run_date = $2, enabled = $3,"
+					   " state = 'RUNNING'"
+					   " WHERE job_id = $1",
+					   3, at3, v3, n3);
+	}
+
+	/* create the running-log row */
+	{
+		Oid			at4[4] = {TEXTOID, TEXTOID, INT8OID, TIMESTAMPTZOID};
+		Datum		v4[4];
+		bool		isnull;
+		int64		log_id;
+		SchedDueJob *job;
+		MemoryContext oldcxt;
+
+		v4[0] = CStringGetTextDatum(row->job_owner);
+		v4[1] = CStringGetTextDatum(row->job_name);
+		v4[2] = Int64GetDatum(row->job_id);
+		v4[3] = TimestampTzGetDatum(row->req_start);
+		if (sched_meta_dml("INSERT INTO sys.scheduler_job_run_details"
+						   " (job_owner, job_name, job_id, status, req_start_date)"
+						   " VALUES ($1, $2, $3, 'r', $4)"
+						   " RETURNING log_id",
+						   4, at4, v4, NULL) != 1)
+			elog(ERROR, "could not insert job run log record");
+		log_id = DatumGetInt64(SPI_getbinval(SPI_tuptable->vals[0],
+											 SPI_tuptable->tupdesc,
+											 1, &isnull));
+
+		oldcxt = MemoryContextSwitchTo(caller_ctx);
+		job = (SchedDueJob *) palloc0(sizeof(SchedDueJob));
+		job->job_id = row->job_id;
+		job->log_id = log_id;
+		job->job_owner = pstrdup(row->job_owner);
+		job->roloid = roloid;
+		*due = lappend(*due, job);
+		MemoryContextSwitchTo(oldcxt);
+	}
+}
+
 static List *
 scheduler_claim_due_jobs(int limit)
 {
@@ -492,6 +610,7 @@ scheduler_claim_due_jobs(int limit)
 	uint64		i;
 	SchedDueRow *rows;
 	MemoryContext caller_ctx = CurrentMemoryContext;
+	MemoryContext oldcxt;
 
 	/*
 	 * Without this, now() would stay frozen at this worker's start time
@@ -522,116 +641,90 @@ scheduler_claim_due_jobs(int limit)
 
 	/*
 	 * Copy the result set before issuing any further SPI statement: those
-	 * would replace SPI_tuptable under us.
+	 * would replace SPI_tuptable under us.  The copy goes into the caller's
+	 * context rather than the SPI procedure context so that it also outlives
+	 * the per-job subtransaction rollbacks below.
 	 */
+	oldcxt = MemoryContextSwitchTo(caller_ctx);
 	rows = (SchedDueRow *) palloc0(sizeof(SchedDueRow) * Max(nrows, 1));
+	MemoryContextSwitchTo(oldcxt);
 	for (i = 0; i < nrows; i++)
 	{
 		HeapTuple	tup = SPI_tuptable->vals[i];
 		TupleDesc	desc = SPI_tuptable->tupdesc;
 		bool		isnull;
+		char	   *owner = SPI_getvalue(tup, desc, 2);
+		char	   *name = SPI_getvalue(tup, desc, 3);
+		char	   *interval = SPI_getvalue(tup, desc, 6);
 
 		rows[i].job_id = DatumGetInt64(SPI_getbinval(tup, desc, 1, &isnull));
-		rows[i].job_owner = SPI_getvalue(tup, desc, 2);
-		rows[i].job_name = SPI_getvalue(tup, desc, 3);
 		rows[i].req_start = DatumGetTimestampTz(SPI_getbinval(tup, desc, 4, &isnull));
 		rows[i].start_date = DatumGetTimestampTz(SPI_getbinval(tup, desc, 5,
 															   &rows[i].start_isnull));
-		rows[i].repeat_interval = SPI_getvalue(tup, desc, 6);
 		rows[i].end_date = DatumGetTimestampTz(SPI_getbinval(tup, desc, 7,
 															 &rows[i].end_isnull));
+
+		oldcxt = MemoryContextSwitchTo(caller_ctx);
+		rows[i].job_owner = pstrdup(owner);
+		rows[i].job_name = pstrdup(name);
+		rows[i].repeat_interval = interval ? pstrdup(interval) : NULL;
+		MemoryContextSwitchTo(oldcxt);
 	}
 
 	for (i = 0; i < nrows; i++)
 	{
-		int64		job_id = rows[i].job_id;
-		char	   *job_owner = rows[i].job_owner;
-		char	   *job_name = rows[i].job_name;
-		TimestampTz req_start = rows[i].req_start;
-		TimestampTz next = 0;
-		bool		has_next = false;
-		Oid			roloid;
-		SchedDueJob *job;
-		MemoryContext oldcxt;
+		MemoryContext subcxt = CurrentMemoryContext;
+		ResourceOwner oldowner = CurrentResourceOwner;
 
-		/* compute the following run, anchored at start_date */
-		if (rows[i].repeat_interval != NULL)
+		/*
+		 * Claim each job in its own subtransaction, so that unusable job data
+		 * only costs that one job.
+		 *
+		 * A subtransaction rather than the abort-and-restart that
+		 * do_autovacuum() uses for its per-table errors: all jobs of one cycle
+		 * are claimed in a single transaction here, so aborting it outright
+		 * would also roll back the rows already written for the jobs sitting
+		 * in "due", whose log_id values are about to be handed to job workers.
+		 */
+		BeginInternalSubTransaction(NULL);
+		MemoryContextSwitchTo(subcxt);
+
+		PG_TRY();
 		{
-			TimestampTz anchor = rows[i].start_isnull ? req_start : rows[i].start_date;
+			sched_claim_one_job(&rows[i], caller_ctx, &due);
 
-			has_next = sched_calendar_next(rows[i].repeat_interval, anchor,
-										   GetCurrentTimestamp(), &next);
-			if (has_next && !rows[i].end_isnull && next > rows[i].end_date)
-				has_next = false;
+			ReleaseCurrentSubTransaction();
+			MemoryContextSwitchTo(subcxt);
+			CurrentResourceOwner = oldowner;
 		}
-
-		roloid = get_role_oid(job_owner, true);
-		if (!OidIsValid(roloid))
+		PG_CATCH();
 		{
-			Oid			at2[2] = {TEXTOID, TEXTOID};
-			Datum		v2[2];
+			ErrorData  *edata;
 
+			/* the error data must outlive the subtransaction it was raised in */
+			MemoryContextSwitchTo(caller_ctx);
+			edata = CopyErrorData();
+			FlushErrorState();
+
+			RollbackAndReleaseCurrentSubTransaction();
+			MemoryContextSwitchTo(subcxt);
+			CurrentResourceOwner = oldowner;
+
+			/*
+			 * The rollback undid this job's claim and, incidentally, the
+			 * metadata-owner privileges sched_meta_dml() may have been holding
+			 * when the error hit (AbortSubTransaction restores the user ID).
+			 * Take the job out of the schedule so the next cycle does not trip
+			 * over it again.
+			 */
 			ereport(LOG,
-					(errmsg("disabling scheduler job \"%s\".\"%s\": owner role does not exist",
-							job_owner, job_name)));
-			v2[0] = CStringGetTextDatum(job_owner);
-			v2[1] = CStringGetTextDatum(job_name);
-			sched_meta_dml("UPDATE sys.scheduler_jobs SET enabled = false,"
-						   " state = 'DISABLED', next_run_date = NULL"
-						   " WHERE job_owner = $1 AND job_name = $2",
-						   2, at2, v2, NULL);
-			continue;
+					(errmsg("disabling scheduler job \"%s\".\"%s\": its schedule cannot be evaluated",
+							rows[i].job_owner, rows[i].job_name),
+					 errdetail_internal("%s", edata->message)));
+			FreeErrorData(edata);
+			sched_disable_broken_job(rows[i].job_owner, rows[i].job_name);
 		}
-
-		/* advance / exhaust the schedule and mark the job running */
-		{
-			Oid			at3[3] = {INT8OID, TIMESTAMPTZOID, BOOLOID};
-			Datum		v3[3];
-			char		n3[3];
-
-			v3[0] = Int64GetDatum(job_id);
-			v3[1] = TimestampTzGetDatum(next);
-			v3[2] = BoolGetDatum(has_next);
-			n3[0] = ' ';
-			n3[1] = has_next ? ' ' : 'n';
-			n3[2] = ' ';
-			sched_meta_dml("UPDATE sys.scheduler_jobs SET"
-						   " next_run_date = $2, enabled = $3,"
-						   " state = 'RUNNING'"
-						   " WHERE job_id = $1",
-						   3, at3, v3, n3);
-		}
-
-		/* create the running-log row */
-		{
-			Oid			at4[4] = {TEXTOID, TEXTOID, INT8OID, TIMESTAMPTZOID};
-			Datum		v4[4];
-			bool		isnull2;
-			int64		log_id;
-
-			v4[0] = CStringGetTextDatum(job_owner);
-			v4[1] = CStringGetTextDatum(job_name);
-			v4[2] = Int64GetDatum(job_id);
-			v4[3] = TimestampTzGetDatum(req_start);
-			if (sched_meta_dml("INSERT INTO sys.scheduler_job_run_details"
-							   " (job_owner, job_name, job_id, status, req_start_date)"
-							   " VALUES ($1, $2, $3, 'r', $4)"
-							   " RETURNING log_id",
-							   4, at4, v4, NULL) != 1)
-				elog(ERROR, "could not insert job run log record");
-			log_id = DatumGetInt64(SPI_getbinval(SPI_tuptable->vals[0],
-												 SPI_tuptable->tupdesc,
-												 1, &isnull2));
-
-			oldcxt = MemoryContextSwitchTo(caller_ctx);
-			job = (SchedDueJob *) palloc0(sizeof(SchedDueJob));
-			job->job_id = job_id;
-			job->log_id = log_id;
-			job->job_owner = pstrdup(job_owner);
-			job->roloid = roloid;
-			due = lappend(due, job);
-			MemoryContextSwitchTo(oldcxt);
-		}
+		PG_END_TRY();
 	}
 
 	SPI_finish();
@@ -646,6 +739,7 @@ SchedulerDatabaseWorkerMain(Datum main_arg)
 {
 	char		dbname[NAMEDATALEN];
 	MemoryContext worker_ctx;
+	volatile int cycle_failures = 0;
 
 	strlcpy(dbname, MyBgworkerEntry->bgw_extra, NAMEDATALEN);
 
@@ -700,36 +794,76 @@ SchedulerDatabaseWorkerMain(Datum main_arg)
 		MemoryContextSwitchTo(worker_ctx);
 		MemoryContextReset(worker_ctx);
 
-		free_slots = scheduler_free_job_slots();
-		if (free_slots > 0)
+		/*
+		 * Keep going after an unforeseen error - out of memory, a failing
+		 * metadata query - instead of letting it reach bgworker.c's top-level
+		 * handler, which reports it and exits.  Surviving a transient failure
+		 * matters because the launcher no longer restarts a worker that quit.
+		 *
+		 * A cause that is not transient would spin here forever, so give up
+		 * once it is clear the failure is not going away and let the launcher
+		 * report the database as unscheduled.  Reaching that limit needs a
+		 * persistent fault outside this worker's control, which is why it is
+		 * covered by inspection rather than by a test.
+		 */
+		PG_TRY();
 		{
-			due = scheduler_claim_due_jobs(free_slots);
-
-			foreach(lc, due)
+			free_slots = scheduler_free_job_slots();
+			if (free_slots > 0)
 			{
-				SchedDueJob *job = (SchedDueJob *) lfirst(lc);
+				due = scheduler_claim_due_jobs(free_slots);
 
-				if (!scheduler_spawn_job_worker(MyDatabaseId, job))
+				foreach(lc, due)
 				{
-					/*
-					 * Out of worker slots: the run was already claimed, so
-					 * close its log row as failed rather than leaving it
-					 * dangling.  The job itself stays scheduled for its
-					 * next run date.
-					 */
-					SetCurrentStatementStartTimestamp();
-					StartTransactionCommand();
-					PushActiveSnapshot(GetTransactionSnapshot());
-					SPI_connect();
-					sched_log_finish(job->log_id, false, 0,
-									 "no free background worker slots",
-									 GetCurrentTimestamp());
-					SPI_finish();
-					PopActiveSnapshot();
-					CommitTransactionCommand();
+					SchedDueJob *job = (SchedDueJob *) lfirst(lc);
+
+					if (!scheduler_spawn_job_worker(MyDatabaseId, job))
+					{
+						/*
+						 * Out of worker slots: the run was already claimed, so
+						 * close its log row as failed rather than leaving it
+						 * dangling.  The job itself stays scheduled for its
+						 * next run date.
+						 */
+						SetCurrentStatementStartTimestamp();
+						StartTransactionCommand();
+						PushActiveSnapshot(GetTransactionSnapshot());
+						SPI_connect();
+						sched_log_finish(job->log_id, false, 0,
+										 "no free background worker slots",
+										 GetCurrentTimestamp());
+						SPI_finish();
+						PopActiveSnapshot();
+						CommitTransactionCommand();
+					}
 				}
 			}
+			cycle_failures = 0;
 		}
+		PG_CATCH();
+		{
+			HOLD_INTERRUPTS();
+			EmitErrorReport();
+			AbortOutOfAnyTransaction();
+			FlushErrorState();
+			MemoryContextSwitchTo(worker_ctx);
+
+			/*
+			 * A cancel aimed at the statement we just abandoned would
+			 * otherwise fire during the next cycle.
+			 */
+			QueryCancelPending = false;
+			RESUME_INTERRUPTS();
+
+			if (++cycle_failures >= SCHED_MAX_CYCLE_FAILURES)
+			{
+				ereport(LOG,
+						(errmsg("ivorysql scheduler for database \"%s\" failed %d consecutive cycles, exiting",
+								dbname, cycle_failures)));
+				proc_exit(1);
+			}
+		}
+		PG_END_TRY();
 
 		(void) WaitLatch(MyLatch,
 						 WL_LATCH_SET | WL_TIMEOUT | WL_EXIT_ON_PM_DEATH,
