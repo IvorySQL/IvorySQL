@@ -47,6 +47,7 @@
 #include "utils/resowner.h"
 #include "utils/syscache.h"
 #include "utils/timestamp.h"
+#include "utils/varlena.h"
 
 #include "dbms_scheduler.h"
 
@@ -546,6 +547,47 @@ sched_check_args_complete(const char *job_owner, const char *job_name,
 						job_owner, job_name, sched_getstring(0, 1))));
 }
 
+/*
+ * Is the current database covered by ivorysql_ora.scheduler_databases?
+ *
+ * Only used to warn about jobs that will never fire, so a malformed list
+ * counts as "not covered"; the launcher reports the syntax error itself.
+ */
+static bool
+sched_current_database_is_scheduled(void)
+{
+	char	   *rawstring;
+	List	   *elemlist;
+	ListCell   *lc;
+	const char *dbname;
+	bool		found = false;
+
+	if (scheduler_databases == NULL || scheduler_databases[0] == '\0')
+		return false;
+
+	rawstring = pstrdup(scheduler_databases);
+	if (!SplitIdentifierString(rawstring, ',', &elemlist))
+	{
+		list_free(elemlist);
+		pfree(rawstring);
+		return false;
+	}
+
+	dbname = get_database_name(MyDatabaseId);
+	foreach(lc, elemlist)
+	{
+		if (dbname != NULL && strcmp((char *) lfirst(lc), dbname) == 0)
+		{
+			found = true;
+			break;
+		}
+	}
+
+	list_free(elemlist);
+	pfree(rawstring);
+	return found;
+}
+
 static void
 sched_enable_job(const SchedName *job)
 {
@@ -656,6 +698,11 @@ sched_enable_job(const SchedName *job)
 				(errmsg("the scheduler background launcher is not running; job \"%s\".\"%s\" will not run automatically",
 						job->owner, job->name),
 				 errhint("Add ivorysql_ora to shared_preload_libraries and set ivorysql_ora.scheduler = on.")));
+	else if (!sched_current_database_is_scheduled())
+		ereport(WARNING,
+				(errmsg("database \"%s\" is not scheduled; job \"%s\".\"%s\" will not run automatically",
+						get_database_name(MyDatabaseId), job->owner, job->name),
+				 errhint("Add the database to ivorysql_ora.scheduler_databases.")));
 }
 
 static void

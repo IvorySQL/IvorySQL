@@ -21,9 +21,11 @@
  * DROP_PROGRAM_ARGUMENT (2), DROP_SCHEDULE, ENABLE,
  * EVALUATE_CALENDAR_STRING, RUN_JOB and SET_JOB_ARGUMENT_VALUE (2).
  *
- * Jobs run automatically through the scheduler background workers when
- * ivorysql_ora is preloaded (the oracle-mode default); RUN_JOB executes a
- * job synchronously in the current session.
+ * Background scheduling is off by default.  Jobs run automatically only when
+ * ivorysql_ora is preloaded (the oracle-mode default), ivorysql_ora.scheduler
+ * is set to on, and the database is listed in ivorysql_ora.scheduler_databases.
+ * Everything else in the package works regardless: RUN_JOB executes a job
+ * synchronously in the current session.
  *
  * contrib/ivorysql_ora/src/builtin_packages/dbms_scheduler/dbms_scheduler--1.0.sql
  *

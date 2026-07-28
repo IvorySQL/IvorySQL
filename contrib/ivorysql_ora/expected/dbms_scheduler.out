@@ -568,10 +568,15 @@ CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_enable(name, commit_seman
 PL/iSQL function enable line 117 at PERFORM
 SQL statement "CALL dbms_scheduler.enable('reg_job_named', commit_semantics => 'WHENEVER')"
 PL/iSQL function inline_code_block line 2 at CALL
+-- Enabling a job warns when it will not run automatically, which depends on
+-- ivorysql_ora.scheduler and ivorysql_ora.scheduler_databases in the instance
+-- under test.  Silence it so the expected output is stable either way.
+SET client_min_messages TO error;
 BEGIN
   dbms_scheduler.enable('reg_job_named', commit_semantics => 'TRANSACTIONAL');
 END;
 /
+RESET client_min_messages;
 SELECT job_name, enabled, state FROM user_scheduler_jobs
   WHERE job_name = 'REG_JOB_NAMED';
    job_name    | enabled |   state   

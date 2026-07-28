@@ -45,16 +45,17 @@ IvorysqlOraDefineGucs(void)
 							 "Enables the DBMS_SCHEDULER background launcher.",
 							 NULL,
 							 &scheduler_enabled,
-							 true,
+							 false,
 							 PGC_POSTMASTER,
 							 0,
 							 NULL, NULL, NULL);
 
 	DefineCustomStringVariable("ivorysql_ora.scheduler_databases",
 							   "Databases in which DBMS_SCHEDULER jobs are executed.",
-							   "Comma-separated list of database names.",
+							   "Comma-separated list of database names."
+							   "  An empty list schedules jobs in no database.",
 							   &scheduler_databases,
-							   "ivorysql",
+							   "",
 							   PGC_SIGHUP,
 							   GUC_LIST_INPUT,
 							   NULL, NULL, NULL);

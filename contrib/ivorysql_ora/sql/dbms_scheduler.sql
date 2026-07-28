@@ -316,10 +316,15 @@ BEGIN
   dbms_scheduler.enable('reg_job_named', commit_semantics => 'WHENEVER');
 END;
 /
+-- Enabling a job warns when it will not run automatically, which depends on
+-- ivorysql_ora.scheduler and ivorysql_ora.scheduler_databases in the instance
+-- under test.  Silence it so the expected output is stable either way.
+SET client_min_messages TO error;
 BEGIN
   dbms_scheduler.enable('reg_job_named', commit_semantics => 'TRANSACTIONAL');
 END;
 /
+RESET client_min_messages;
 SELECT job_name, enabled, state FROM user_scheduler_jobs
   WHERE job_name = 'REG_JOB_NAMED';
 BEGIN

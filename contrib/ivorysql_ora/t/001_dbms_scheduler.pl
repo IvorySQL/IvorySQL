@@ -25,8 +25,10 @@ use Test::More;
 
 my $node = PostgreSQL::Test::Cluster->new('scheduler');
 $node->init;
+# background scheduling is off by default; this test is all about it
 $node->append_conf(
 	'postgresql.conf', qq{
+ivorysql_ora.scheduler = on
 ivorysql_ora.scheduler_databases = 'ivorysql'
 ivorysql_ora.scheduler_poll_interval = 1
 });
