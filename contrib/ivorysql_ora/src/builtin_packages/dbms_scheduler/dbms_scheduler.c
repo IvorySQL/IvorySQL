@@ -688,8 +688,13 @@ sched_enable_job(const SchedName *job)
 		v3[0] = CStringGetTextDatum(job->owner);
 		v3[1] = CStringGetTextDatum(job->name);
 		v3[2] = TimestampTzGetDatum(next);
+		/*
+		 * Clear failure_count, as Oracle's ENABLE does: otherwise a job the
+		 * scheduler_max_failures limit disabled would be back at the limit on
+		 * its very next failure.
+		 */
 		sched_meta_dml("UPDATE sys.scheduler_jobs SET enabled = true,"
-				  " state = 'SCHEDULED', next_run_date = $3"
+				  " state = 'SCHEDULED', next_run_date = $3, failure_count = 0"
 				  " WHERE job_owner = $1 AND job_name = $2",
 				  3, at3, v3, NULL);
 	}
@@ -1854,28 +1859,79 @@ void
 sched_update_job_stats(const SchedJobDef *def, bool success,
 					   TimestampTz actual_start, bool background)
 {
-	Oid			argtypes[4] = {TEXTOID, TEXTOID, TIMESTAMPTZOID, TEXTOID};
-	Datum		values[4];
+	Oid			argtypes[5] = {TEXTOID, TEXTOID, TIMESTAMPTZOID, TEXTOID, INT4OID};
+	Datum		values[5];
 
 	values[0] = CStringGetTextDatum(def->job_owner);
 	values[1] = CStringGetTextDatum(def->job_name);
 	values[2] = TimestampTzGetDatum(actual_start);
 	values[3] = CStringGetTextDatum(success ? "SUCCEEDED" : "FAILED");
+	values[4] = Int32GetDatum(scheduler_max_failures);
 
 	/*
 	 * Background runs return an enabled job to SCHEDULED (its next run date
 	 * was already advanced when it was dispatched).  Manual runs leave the
 	 * state of enabled jobs alone.  Jobs that ended up disabled (one-shot,
 	 * end_date reached, or DISABLE while running) record the run outcome.
+	 *
+	 * failure_count counts *consecutive* failed background runs, as Oracle's
+	 * max_failures does, so a successful one clears it.  Reaching the limit
+	 * disables the job, which is Oracle's BROKEN state; we have no such state,
+	 * so the run outcome is recorded instead.  Manual RUN_JOB failures still
+	 * count, but never disable the job on their own -- the limit is about
+	 * scheduled runs.
 	 */
 	if (background)
+	{
+		bool		hit_limit = false;
+
+		/*
+		 * Whether this failure is the one that crosses the limit has to be
+		 * decided before the update: afterwards the previous enabled flag and
+		 * failure count are gone, and a one-shot job -- already disabled when
+		 * it was dispatched -- would look exactly the same.
+		 */
+		if (!success && scheduler_max_failures > 0)
+		{
+			Oid			at3[3] = {TEXTOID, TEXTOID, INT4OID};
+			Datum		v3[3];
+			bool		isnull;
+
+			v3[0] = values[0];
+			v3[1] = values[1];
+			v3[2] = values[4];
+			if (sched_meta_select("SELECT enabled AND failure_count + 1 >= $3"
+								  " FROM sys.scheduler_jobs"
+								  " WHERE job_owner = $1 AND job_name = $2",
+								  3, at3, v3, NULL) == 1)
+			{
+				Datum		d = sched_getdatum(0, 1, &isnull);
+
+				hit_limit = !isnull && DatumGetBool(d);
+			}
+		}
+
 		sched_meta_dml("UPDATE sys.scheduler_jobs SET"
 				  " run_count = run_count + 1,"
-				  " failure_count = failure_count + CASE WHEN $4 = 'FAILED' THEN 1 ELSE 0 END,"
+				  " failure_count = CASE WHEN $4 = 'FAILED' THEN failure_count + 1 ELSE 0 END,"
 				  " last_start_date = $3, last_end_date = clock_timestamp(),"
-				  " state = CASE WHEN enabled THEN 'SCHEDULED' ELSE $4 END"
+				  " enabled = enabled AND NOT ($4 = 'FAILED' AND $5 > 0"
+				  "                            AND failure_count + 1 >= $5),"
+				  " next_run_date = CASE WHEN $4 = 'FAILED' AND $5 > 0"
+				  "                       AND failure_count + 1 >= $5"
+				  "                      THEN NULL ELSE next_run_date END,"
+				  " state = CASE WHEN enabled AND NOT ($4 = 'FAILED' AND $5 > 0"
+				  "                                   AND failure_count + 1 >= $5)"
+				  "              THEN 'SCHEDULED' ELSE $4 END"
 				  " WHERE job_owner = $1 AND job_name = $2",
-				  4, argtypes, values, NULL);
+				  5, argtypes, values, NULL);
+
+		if (hit_limit)
+			ereport(LOG,
+					(errmsg("disabling scheduler job \"%s\".\"%s\" after %d consecutive failures",
+							def->job_owner, def->job_name,
+							scheduler_max_failures)));
+	}
 	else
 		sched_meta_dml("UPDATE sys.scheduler_jobs SET"
 				  " run_count = run_count + 1,"

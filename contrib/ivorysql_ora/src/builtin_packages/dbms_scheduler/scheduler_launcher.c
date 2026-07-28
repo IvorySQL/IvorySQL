@@ -60,6 +60,7 @@ char	   *scheduler_databases = NULL;
 int			scheduler_poll_interval = 5;
 int			scheduler_max_job_workers = 4;
 int			scheduler_job_timeout = 0;
+int			scheduler_max_failures = 0;
 
 bool		scheduler_launcher_registered = false;
 

@@ -84,6 +84,18 @@ IvorysqlOraDefineGucs(void)
 							0,
 							NULL, NULL, NULL);
 
+	DefineCustomIntVariable("ivorysql_ora.scheduler_max_failures",
+							"Disables a DBMS_SCHEDULER job after this many consecutive failed background runs.",
+							"Zero disables the limit.  ENABLE clears a job's"
+							" failure count, as it does in Oracle.",
+							&scheduler_max_failures,
+							0,
+							0,
+							INT_MAX,
+							PGC_SIGHUP,
+							0,
+							NULL, NULL, NULL);
+
 	DefineCustomIntVariable("ivorysql_ora.scheduler_job_timeout",
 							"Cancels a background DBMS_SCHEDULER job that runs longer than this.",
 							"Zero disables the limit.  Only background runs are"

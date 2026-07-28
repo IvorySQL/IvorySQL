@@ -32,6 +32,7 @@ ivorysql_ora.scheduler = on
 ivorysql_ora.scheduler_databases = 'ivorysql'
 ivorysql_ora.scheduler_poll_interval = 1
 ivorysql_ora.scheduler_job_timeout = 2s
+ivorysql_ora.scheduler_max_failures = 2
 });
 $node->start;
 
@@ -148,6 +149,34 @@ is( $node->safe_psql(
 		"SELECT state, failure_count, run_duration < '30 seconds'::pg_catalog.interval FROM sys.scheduler_jobs j JOIN sys.scheduler_job_run_details d USING (job_name) WHERE job_name = 'TAP_TIMEOUT'"),
 	'FAILED|1|t',
 	'cancelled job is recorded as failed and did not run to completion');
+
+# ---------------------------------------------------------------------
+# a repeating job is disabled once it hits scheduler_max_failures
+# ---------------------------------------------------------------------
+ora_sql(q{
+BEGIN
+  dbms_scheduler.create_job(job_name => 'tap_maxfail', job_type => 'PLSQL_BLOCK',
+    job_action => 'DECLARE v NUMBER; BEGIN v := 1/0; END;',
+    repeat_interval => 'FREQ=SECONDLY;INTERVAL=2',
+    enabled => TRUE);
+END;});
+
+$node->poll_query_until($db,
+	"SELECT NOT enabled AND state = 'FAILED' AND failure_count = 2 AND next_run_date IS NULL FROM sys.scheduler_jobs WHERE job_name = 'TAP_MAXFAIL'"
+) or die "repeatedly failing job was not disabled";
+ok(1, 'a repeating job is disabled after scheduler_max_failures failures');
+
+# ENABLE clears the count.  Read it back in the same transaction as the ENABLE,
+# so the scheduler cannot slip another failed run in between.
+ora_sql(q{
+BEGIN
+  dbms_scheduler.enable('tap_maxfail');
+  INSERT INTO sched_tap_t SELECT 5, 'fc=' || failure_count
+    FROM sys.scheduler_jobs WHERE job_name = 'TAP_MAXFAIL';
+  dbms_scheduler.disable('tap_maxfail');
+END;});
+is($node->safe_psql($db, "SELECT note FROM sched_tap_t WHERE id = 5"),
+	'fc=0', 'ENABLE clears the failure count');
 
 # ---------------------------------------------------------------------
 # STOP_JOB cancels a running job, using the worker pid on its log row
