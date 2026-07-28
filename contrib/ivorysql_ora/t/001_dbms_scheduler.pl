@@ -312,4 +312,38 @@ ok(1, 'the database scheduler keeps running the remaining jobs');
 
 ora_sql(q{BEGIN dbms_scheduler.disable('tap_survivor'); END;});
 
+# ---------------------------------------------------------------------
+# a database scheduler that stops on its own is reported once and left
+# stopped; reloading the configuration retries it
+# ---------------------------------------------------------------------
+my $logpos = -s $node->logfile;
+
+# a database that does not exist yet: the worker starts, fails to connect and
+# is gone, which is what the launcher has to notice
+$node->safe_psql($db,
+	"ALTER SYSTEM SET ivorysql_ora.scheduler_databases = 'ivorysql,sched_late'"
+);
+$node->reload;
+
+$node->wait_for_log(qr/scheduler for database "sched_late" stopped; not restarting it/,
+	$logpos)
+  or die "launcher did not report the stopped scheduler";
+ok(1, 'a database scheduler that stops on its own is reported');
+
+# The launcher cycles every 10s, so this covers several cycles.  Any retry
+# would log the same line again.
+sleep 25;
+my $reports = () = (PostgreSQL::Test::Utils::slurp_file($node->logfile, $logpos) =~
+	  /scheduler for database "sched_late" stopped; not restarting it/g);
+is($reports, 1, 'the stopped scheduler is not restarted, and reported only once');
+
+# creating the database is not enough on its own - the retry needs a reload
+$node->safe_psql($db, 'CREATE DATABASE sched_late');
+$logpos = -s $node->logfile;
+$node->reload;
+
+$node->wait_for_log(qr/ivorysql scheduler started for database "sched_late"/, $logpos)
+  or die "reload did not retry the database given up on";
+ok(1, 'reloading the configuration retries a database given up on');
+
 done_testing();

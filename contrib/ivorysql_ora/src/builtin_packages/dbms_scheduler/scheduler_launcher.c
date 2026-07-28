@@ -24,6 +24,13 @@
  * 'r' (running) log row and spawns a job worker per due job, capped by
  * ivorysql_ora.scheduler_max_job_workers.
  *
+ * A database scheduler that stops on its own is reported and left stopped:
+ * the reasons it stops for - no ivorysql_ora in that database, no such
+ * database, a failure it could not work through - do not resolve themselves,
+ * and restarting it on a timer would only repeat the reason until it is lost
+ * in the repetitions.  Reloading the configuration retries every database
+ * given up on this way, whether or not the GUC itself changed.
+ *
  * Portions Copyright (c) 2025-2026, IvorySQL Global Development Team
  *
  * contrib/ivorysql_ora/src/builtin_packages/dbms_scheduler/scheduler_launcher.c
@@ -65,9 +72,6 @@ int			scheduler_max_failures = 0;
 
 bool		scheduler_launcher_registered = false;
 
-/* Wait this long before restarting a database worker that stopped. */
-#define SCHED_DBWORKER_RESTART_USEC		(60 * USECS_PER_SEC)
-
 /*
  * Give up after this many consecutive polling cycles that all ended in an
  * error, on the grounds that the cause is not going to clear on its own.
@@ -79,8 +83,8 @@ typedef struct SchedDbWorker
 {
 	char		dbname[NAMEDATALEN];
 	BackgroundWorkerHandle *handle;
-	TimestampTz last_register;
 	bool		active;			/* still listed in the GUC */
+	bool		gave_up;		/* stopped on its own; not restarting it */
 } SchedDbWorker;
 
 /*
@@ -203,8 +207,6 @@ scheduler_start_dbworker(SchedDbWorker *dbw)
 	worker.bgw_main_arg = (Datum) 0;
 	worker.bgw_notify_pid = MyProcPid;
 
-	dbw->last_register = GetCurrentTimestamp();
-
 	{
 		/* the handle must outlive the launcher's per-cycle memory context */
 		MemoryContext oldcxt = MemoryContextSwitchTo(TopMemoryContext);
@@ -214,11 +216,16 @@ scheduler_start_dbworker(SchedDbWorker *dbw)
 
 		if (!ok)
 		{
+			/*
+			 * max_worker_processes cannot be raised without a restart, so
+			 * there is nothing to gain from trying again every cycle.
+			 */
 			ereport(LOG,
 					(errmsg("could not start scheduler worker for database \"%s\": out of background worker slots",
 							dbw->dbname),
 					 errhint("Consider increasing max_worker_processes.")));
 			dbw->handle = NULL;
+			dbw->gave_up = true;
 			return;
 		}
 	}
@@ -246,12 +253,22 @@ SchedulerLauncherMain(Datum main_arg)
 	{
 		List	   *wanted;
 		ListCell   *lc;
-		TimestampTz now;
 
 		if (ConfigReloadPending)
 		{
 			ConfigReloadPending = false;
 			ProcessConfigFile(PGC_SIGHUP);
+
+			/*
+			 * A reload is the administrator saying "I have dealt with it, try
+			 * again", so retry every database we had given up on.  This has to
+			 * happen whether or not scheduler_databases itself changed, and
+			 * registry entries are never removed, so a database that was
+			 * dropped from the GUC and later put back keeps its verdict until
+			 * cleared here.
+			 */
+			foreach(lc, dbworkers)
+				((SchedDbWorker *) lfirst(lc))->gave_up = false;
 		}
 
 		/* per-cycle allocations (the worker registry lives in TopMemoryContext) */
@@ -259,7 +276,6 @@ SchedulerLauncherMain(Datum main_arg)
 		MemoryContextReset(launcher_ctx);
 
 		wanted = scheduler_database_list();
-		now = GetCurrentTimestamp();
 
 		/* mark all current workers inactive, reactivate listed ones */
 		foreach(lc, dbworkers)
@@ -296,10 +312,37 @@ SchedulerLauncherMain(Datum main_arg)
 			}
 
 			dbw->active = true;
-			if (!scheduler_dbworker_alive(dbw) &&
-				TimestampDifferenceExceeds(dbw->last_register, now,
-										   SCHED_DBWORKER_RESTART_USEC / 1000))
+
+			if (dbw->gave_up)
+				continue;		/* waiting to be told to try again */
+
+			if (dbw->handle == NULL)
+			{
+				/* a reload cleared the earlier verdict; start over */
 				scheduler_start_dbworker(dbw);
+				continue;
+			}
+
+			/*
+			 * A database scheduler polls forever, so its stopping on its own
+			 * means something is wrong with that database: no ivorysql_ora
+			 * installed, a database that does not exist, a persistent failure
+			 * it could not work through.  None of that gets better by being
+			 * restarted on a timer, and retrying would only bury the reason in
+			 * repetitions of itself, so say so once and wait to be told to try
+			 * again.
+			 */
+			if (!scheduler_dbworker_alive(dbw))
+			{
+				ereport(LOG,
+						(errmsg("ivorysql scheduler for database \"%s\" stopped; not restarting it",
+								dbw->dbname),
+						 errhint("Address the cause reported above, then run"
+								 " SELECT pg_reload_conf() to retry.")));
+				pfree(dbw->handle);
+				dbw->handle = NULL;
+				dbw->gave_up = true;
+			}
 		}
 
 		/* stop workers for databases no longer listed */
@@ -310,6 +353,7 @@ SchedulerLauncherMain(Datum main_arg)
 			if (!dbw->active && dbw->handle != NULL)
 			{
 				TerminateBackgroundWorker(dbw->handle);
+				pfree(dbw->handle);
 				dbw->handle = NULL;
 			}
 		}
@@ -758,7 +802,9 @@ SchedulerDatabaseWorkerMain(Datum main_arg)
 		CommitTransactionCommand();
 		ereport(LOG,
 				(errmsg("ivorysql scheduler: extension ivorysql_ora is not installed in database \"%s\", exiting",
-						dbname)));
+						dbname),
+				 errhint("Run CREATE EXTENSION ivorysql_ora in that database,"
+						 " then SELECT pg_reload_conf().")));
 		proc_exit(0);
 	}
 	CommitTransactionCommand();
