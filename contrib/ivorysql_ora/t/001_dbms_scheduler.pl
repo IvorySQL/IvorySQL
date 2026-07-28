@@ -333,9 +333,16 @@ ok(1, 'a database scheduler that stops on its own is reported');
 # The launcher cycles every 10s, so this covers several cycles.  Any retry
 # would log the same line again.
 sleep 25;
+
+# Every reload retries the database, and a reload is not a signal aimed at the
+# scheduler, so the retry has to stay quiet about a cause that has not changed.
+$node->reload;
+$node->poll_query_until($db, 'SELECT true') or die "node did not come back";
+sleep 12;    # one more launcher cycle, enough to reach the verdict again
+
 my $reports = () = (PostgreSQL::Test::Utils::slurp_file($node->logfile, $logpos) =~
 	  /scheduler for database "sched_late" stopped; not restarting it/g);
-is($reports, 1, 'the stopped scheduler is not restarted, and reported only once');
+is($reports, 1, 'the stopped scheduler is reported once across retries');
 
 # creating the database is not enough on its own - the retry needs a reload
 $node->safe_psql($db, 'CREATE DATABASE sched_late');

@@ -78,6 +78,9 @@ bool		scheduler_launcher_registered = false;
  */
 #define SCHED_MAX_CYCLE_FAILURES		10
 
+/* Report a database we have given up on at most this often. */
+#define SCHED_GIVEUP_REPORT_USEC		(60 * 60 * USECS_PER_SEC)
+
 /* Launcher's view of one database scheduler worker */
 typedef struct SchedDbWorker
 {
@@ -85,6 +88,7 @@ typedef struct SchedDbWorker
 	BackgroundWorkerHandle *handle;
 	bool		active;			/* still listed in the GUC */
 	bool		gave_up;		/* stopped on its own; not restarting it */
+	TimestampTz last_report;	/* when we last said so; 0 = never */
 } SchedDbWorker;
 
 /*
@@ -266,6 +270,10 @@ SchedulerLauncherMain(Datum main_arg)
 			 * registry entries are never removed, so a database that was
 			 * dropped from the GUC and later put back keeps its verdict until
 			 * cleared here.
+			 *
+			 * last_report is deliberately left alone: it throttles what we say
+			 * about a database across those retries, so clearing it here would
+			 * defeat it.
 			 */
 			foreach(lc, dbworkers)
 				((SchedDbWorker *) lfirst(lc))->gave_up = false;
@@ -334,11 +342,37 @@ SchedulerLauncherMain(Datum main_arg)
 			 */
 			if (!scheduler_dbworker_alive(dbw))
 			{
-				ereport(LOG,
+				TimestampTz now = GetCurrentTimestamp();
+				bool		report;
+
+				/*
+				 * Every reload retries this database, and a reload is not a
+				 * signal aimed at the scheduler: the postmaster forwards SIGHUP
+				 * to all of its children whatever the reload was for.  So the
+				 * verdict can be reached again and again while the cause sits
+				 * unchanged, and only the first of those is news.
+				 *
+				 * The elapsed time is the whole test.  It needs no notion of
+				 * the worker having been healthy in between: a database that
+				 * ran for a month before breaking was last reported a month
+				 * ago, so it reports again.  Only a break within the hour after
+				 * a previous report is quieted, and something breaking that
+				 * often is flapping, where one line an hour is the right
+				 * volume.  Asking instead whether the worker had been healthy
+				 * cannot be answered here anyway - a worker that fails to
+				 * connect still passes through BGWH_STARTED.
+				 */
+				report = (dbw->last_report == 0 ||
+						  TimestampDifferenceExceeds(dbw->last_report, now,
+													 SCHED_GIVEUP_REPORT_USEC / 1000));
+
+				ereport(report ? LOG : DEBUG1,
 						(errmsg("ivorysql scheduler for database \"%s\" stopped; not restarting it",
 								dbw->dbname),
 						 errhint("Address the cause reported above, then run"
 								 " SELECT pg_reload_conf() to retry.")));
+				if (report)
+					dbw->last_report = now;
 				pfree(dbw->handle);
 				dbw->handle = NULL;
 				dbw->gave_up = true;
