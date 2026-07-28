@@ -66,6 +66,42 @@ SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
   ' freq = daily ; byhour = 7 ; byminute = 0 ; bysecond = 0 ',
   '2026-01-01 00:00:00+00', '2026-07-01 12:00:00+00') AS case_blank_insensitive;
 
+-- BYDATE: MMDD repeats every year, YYYYMMDD pins one absolute date
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=YEARLY;BYDATE=0101;BYHOUR=0;BYMINUTE=0;BYSECOND=0',
+  '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00') AS bydate_mmdd;
+-- a second date in another month must be reached even without BYMONTH
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=YEARLY;BYDATE=0101,0701;BYHOUR=2;BYMINUTE=0;BYSECOND=0',
+  '2026-01-01 00:00:00+00', '2026-03-01 00:00:00+00') AS bydate_two_months;
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=YEARLY;BYDATE=20270315;BYHOUR=9;BYMINUTE=30;BYSECOND=0',
+  '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00') AS bydate_absolute;
+-- 0229 is accepted and simply skips non-leap years
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=DAILY;BYDATE=0229;BYHOUR=0;BYMINUTE=0;BYSECOND=0',
+  '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00') AS bydate_leap_day;
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=MONTHLY;BYDATE=0115;BYHOUR=8;BYMINUTE=0;BYSECOND=0',
+  '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00') AS bydate_monthly;
+-- BY clauses intersect: only 0102 also satisfies BYMONTHDAY=2
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=YEARLY;BYDATE=0101,0102;BYMONTHDAY=2;BYHOUR=0;BYMINUTE=0;BYSECOND=0',
+  '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00') AS bydate_intersects;
+
+-- BYMONTH also accepts the numeric form
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=29;BYHOUR=0;BYMINUTE=0;BYSECOND=0',
+  '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00') AS bymonth_numeric;
+
+-- BYDAY also accepts the numeric form, 1 = Monday .. 7 = Sunday
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=WEEKLY;BYDAY=1;BYHOUR=6;BYMINUTE=0;BYSECOND=0',
+  '2026-01-05 00:00:00+00', '2026-07-01 00:00:00+00') AS byday_numeric_monday;
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=WEEKLY;BYDAY=7;BYHOUR=6;BYMINUTE=0;BYSECOND=0',
+  '2026-01-05 00:00:00+00', '2026-07-01 00:00:00+00') AS byday_numeric_sunday;
+
 -- calendar errors
 SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
   'BYHOUR=9', '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00');
@@ -85,9 +121,27 @@ SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
   'FREQ=DAILY;BYSETPOS=1', '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00');
 SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
   'FREQ=WEEKLY;BYDAY=2FRI', '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00');
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=WEEKLY;BYDAY=8', '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00');
+-- BYDATE errors
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=YEARLY;BYDATE=123', '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00');
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=YEARLY;BYDATE=1301', '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00');
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=YEARLY;BYDATE=0132', '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00');
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=YEARLY;BYDATE=20260230', '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00');
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=YEARLY;BYDATE=0101;BYDATE=0202',
+  '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00');
 -- pattern that never yields a date
 SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
   'FREQ=YEARLY;BYMONTH=FEB;BYMONTHDAY=30',
+  '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00');
+-- an absolute BYDATE entirely in the past yields nothing either
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=YEARLY;BYDATE=20200101',
   '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00');
 
 -- package-level OUT parameter form
@@ -223,7 +277,18 @@ BEGIN
       end_date   => TIMESTAMP '2199-01-01 00:00:00 +00:00');
 END;
 /
+-- BYDATE is accepted on the CREATE_SCHEDULE path too
+BEGIN
+  dbms_scheduler.create_schedule('reg_sched_bydate',
+      start_date => TIMESTAMP '2199-01-01 00:00:00 +00:00',
+      repeat_interval => 'FREQ=YEARLY;BYDATE=0101,0701;BYHOUR=4;BYMINUTE=0;BYSECOND=0');
+END;
+/
 SELECT schedule_name, repeat_interval FROM user_scheduler_schedules ORDER BY schedule_name;
+BEGIN
+  dbms_scheduler.drop_schedule('reg_sched_bydate');
+END;
+/
 
 --
 -- CREATE_JOB (both overloads)

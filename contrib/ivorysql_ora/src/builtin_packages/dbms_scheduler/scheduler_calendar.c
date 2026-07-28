@@ -21,15 +21,18 @@
  *   INTERVAL=1..99
  *   BYMONTH=JAN..DEC | 1..12          (comma separated)
  *   BYMONTHDAY=-31..-1 | 1..31        (negative counts from month end)
- *   BYDAY=[[-]n]MON..SUN              (ordinal prefix only for YEARLY/MONTHLY)
+ *   BYDAY=[[-]n]MON..SUN | 1..7       (1 = Monday; ordinal prefix, which is
+ *                                      only valid for YEARLY/MONTHLY, may be
+ *                                      combined with the name form only)
+ *   BYDATE=YYYYMMDD | MMDD            (MMDD repeats in every year)
  *   BYHOUR=0..23
  *   BYMINUTE=0..59
  *   BYSECOND=0..59
  *
  * Evaluation follows Oracle semantics: the repeat pattern is anchored at
  * start_date and date/time components not constrained by a BY clause are
- * inherited from start_date.  All evaluation happens in the session's
- * time zone.
+ * inherited from start_date.  A date must satisfy every BY clause that is
+ * present.  All evaluation happens in the session's time zone.
  *
  * contrib/ivorysql_ora/src/builtin_packages/dbms_scheduler/scheduler_calendar.c
  *
@@ -64,6 +67,13 @@ typedef struct SchedByDay
 	int			ord;			/* 0 = every, else 1..5 / -1..-5 within month */
 } SchedByDay;
 
+typedef struct SchedByDate
+{
+	int			year;			/* 0 = any year (MMDD form) */
+	int			mon;
+	int			mday;
+} SchedByDate;
+
 typedef struct CalendarRule
 {
 	SchedFreq	freq;
@@ -78,6 +88,9 @@ typedef struct CalendarRule
 	SchedByDay	byday[64];
 	int			n_byday;
 	bool		byday_has_ord;
+
+	SchedByDate bydate[64];
+	int			n_bydate;
 
 	bool		byhour[24];
 	bool		has_byhour;
@@ -95,6 +108,7 @@ typedef struct CalendarRule
 static void parse_calendar(const char *calendar, CalendarRule *rule);
 static bool eval_calendar(const CalendarRule *rule, TimestampTz start,
 						  TimestampTz after, TimestampTz *next);
+static int	days_in_month(int year, int month);
 
 /*
  * sched_calendar_validate - syntax-check a calendar string.
@@ -287,8 +301,16 @@ byday_cb(const char *calendar, const char *item, int len, CalendarRule *rule)
 			}
 		}
 	}
+	else if (len == 1)
+	{
+		/* ISO numbering, as EDB documents it: 1 = Monday .. 7 = Sunday */
+		int			iso;
+
+		if (parse_int(item, 1, &iso) && iso >= 1 && iso <= 7)
+			dow = iso % 7;
+	}
 	if (dow < 0)
-		calendar_error(calendar, "BYDAY values must be day names (MON through SUN) with an optional ordinal.");
+		calendar_error(calendar, "BYDAY values must be day names (MON through SUN) or 1 through 7, with an optional ordinal.");
 	if (rule->n_byday >= (int) lengthof(rule->byday))
 		calendar_error(calendar, "too many BYDAY values.");
 	rule->byday[rule->n_byday].dow = dow;
@@ -296,6 +318,49 @@ byday_cb(const char *calendar, const char *item, int len, CalendarRule *rule)
 	rule->n_byday++;
 	if (ord != 0)
 		rule->byday_has_ord = true;
+}
+
+/*
+ * BYDATE item: YYYYMMDD pins an absolute date, MMDD repeats in every year.
+ */
+static void
+bydate_cb(const char *calendar, const char *item, int len, CalendarRule *rule)
+{
+	int			year = 0;
+	int			mon;
+	int			mday;
+
+	if (len != 4 && len != 8)
+		calendar_error(calendar, "BYDATE values must be YYYYMMDD or MMDD.");
+
+	if (len == 8)
+	{
+		if (!parse_int(item, 4, &year) || year < 1)
+			calendar_error(calendar, "BYDATE year must be a four-digit year.");
+		item += 4;
+	}
+	if (!parse_int(item, 2, &mon) || !parse_int(item + 2, 2, &mday))
+		calendar_error(calendar, "BYDATE values must be YYYYMMDD or MMDD.");
+
+	if (mon < 1 || mon > 12)
+		calendar_error(calendar, "BYDATE month must be 01 through 12.");
+	if (mday < 1 || mday > 31)
+		calendar_error(calendar, "BYDATE day must be 01 through 31.");
+
+	/*
+	 * An absolute date must exist; a bare MMDD is checked against the longest
+	 * possible month so that 0229 stays legal and simply matches leap years
+	 * only, the same way BYMONTHDAY=31 skips shorter months.
+	 */
+	if (mday > days_in_month(year > 0 ? year : 2000, mon))
+		calendar_error(calendar, "BYDATE day is out of range for its month.");
+
+	if (rule->n_bydate >= (int) lengthof(rule->bydate))
+		calendar_error(calendar, "too many BYDATE values.");
+	rule->bydate[rule->n_bydate].year = year;
+	rule->bydate[rule->n_bydate].mon = mon;
+	rule->bydate[rule->n_bydate].mday = mday;
+	rule->n_bydate++;
 }
 
 static void
@@ -334,7 +399,7 @@ parse_calendar(const char *calendar, CalendarRule *rule)
 	char	   *norm;
 	char	   *clause;
 	bool		has_freq = false;
-	bool		seen[8] = {false};
+	bool		seen[9] = {false};
 
 	if (calendar == NULL || *calendar == '\0')
 		ereport(ERROR,
@@ -422,6 +487,13 @@ parse_calendar(const char *calendar, CalendarRule *rule)
 			seen[4] = true;
 			parse_list(calendar, value, rule, byday_cb);
 		}
+		else if (strcmp(clause, "BYDATE") == 0)
+		{
+			if (seen[8])
+				calendar_error(calendar, "duplicate BYDATE clause.");
+			seen[8] = true;
+			parse_list(calendar, value, rule, bydate_cb);
+		}
 		else if (strcmp(clause, "BYHOUR") == 0)
 		{
 			if (seen[5])
@@ -481,6 +553,23 @@ days_in_month(int year, int month)
 	return md[month - 1];
 }
 
+/* Does (year, mon, mday) appear in the BYDATE list? */
+static bool
+bydate_matches(const CalendarRule *rule, int year, int mon, int mday)
+{
+	int			i;
+
+	for (i = 0; i < rule->n_bydate; i++)
+	{
+		const SchedByDate *bd = &rule->bydate[i];
+
+		if (bd->mon == mon && bd->mday == mday &&
+			(bd->year == 0 || bd->year == year))
+			return true;
+	}
+	return false;
+}
+
 /* Convert a local calendar time to TimestampTz in the session time zone. */
 static bool
 local_time_to_timestamptz(int year, int mon, int mday,
@@ -521,6 +610,11 @@ month_day_list(const CalendarRule *rule, int year, int mon, int fallback_mday,
 	int			i,
 				d;
 
+	/*
+	 * The first clause that is present generates the candidate days; every
+	 * other clause that is present is then applied as an AND filter, matching
+	 * Oracle's rule that a date must satisfy all BY clauses given.
+	 */
 	if (rule->n_bymonthday > 0)
 	{
 		for (i = 0; i < rule->n_bymonthday; i++)
@@ -576,10 +670,33 @@ month_day_list(const CalendarRule *rule, int year, int mon, int fallback_mday,
 			}
 		}
 	}
+	else if (rule->n_bydate > 0)
+	{
+		for (i = 0; i < rule->n_bydate; i++)
+		{
+			const SchedByDate *bd = &rule->bydate[i];
+
+			if (bd->mon != mon || (bd->year != 0 && bd->year != year))
+				continue;
+			if (bd->mday <= dim)
+				mark[bd->mday] = true;
+		}
+	}
 	else
 	{
 		if (fallback_mday <= dim)
 			mark[fallback_mday] = true;
+	}
+
+	/* BYDATE as a filter, when some other clause generated the candidates. */
+	if (rule->n_bydate > 0 &&
+		(rule->n_bymonthday > 0 || rule->n_byday > 0))
+	{
+		for (d = 1; d <= dim; d++)
+		{
+			if (mark[d] && !bydate_matches(rule, year, mon, d))
+				mark[d] = false;
+		}
 	}
 
 	for (d = 1; d <= dim; d++)
@@ -653,6 +770,9 @@ date_matches(const CalendarRule *rule, int year, int mon, int mday)
 		if (i >= rule->n_byday)
 			return false;
 	}
+
+	if (rule->n_bydate > 0 && !bydate_matches(rule, year, mon, mday))
+		return false;
 
 	return true;
 }
@@ -810,9 +930,27 @@ eval_calendar(const CalendarRule *rule, TimestampTz start, TimestampTz after,
 					int			nmon;
 					int			mi;
 
-					nmon = set_to_list(rule->bymonth, 13, rule->has_bymonth,
-									   tm_start.tm_mon, months);
-					/* set_to_list over index 1..12 never yields index 0 */
+					if (rule->has_bymonth)
+					{
+						nmon = set_to_list(rule->bymonth, 13, true,
+										   tm_start.tm_mon, months);
+						/* set_to_list over index 1..12 never yields index 0 */
+					}
+					else if (rule->n_bydate > 0)
+					{
+						/*
+						 * BYDATE carries its own month, so the whole year has
+						 * to be scanned instead of inheriting start_date's
+						 * month the way the other BY clauses do.
+						 */
+						for (nmon = 0; nmon < 12; nmon++)
+							months[nmon] = nmon + 1;
+					}
+					else
+					{
+						nmon = 1;
+						months[0] = tm_start.tm_mon;
+					}
 
 					for (mi = 0; mi < nmon; mi++)
 					{
