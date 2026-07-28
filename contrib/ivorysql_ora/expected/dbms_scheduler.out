@@ -326,20 +326,38 @@ CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_create_program(program_na
 PL/iSQL function create_program line 34 at PERFORM
 SQL statement "CALL dbms_scheduler.create_program('reg_prog2', 'EXECUTABLE', '/bin/true')"
 PL/iSQL function inline_code_block line 2 at CALL
--- PLSQL_BLOCK program cannot take arguments
+-- number_of_arguments is ignored (with a warning) for a PLSQL_BLOCK program
 BEGIN
-  dbms_scheduler.create_program('reg_prog2', 'PLSQL_BLOCK', 'BEGIN NULL; END;',
+  dbms_scheduler.create_program('reg_prog_nargs', 'PLSQL_BLOCK', 'BEGIN NULL; END;',
                                 number_of_arguments => 1);
 END;
 /
-ERROR:  a PLSQL_BLOCK program cannot have arguments
+WARNING:  number_of_arguments is ignored for a PLSQL_BLOCK program
+SELECT program_name, number_of_arguments FROM user_scheduler_programs
+  WHERE program_name = 'REG_PROG_NARGS';
+  program_name  | number_of_arguments 
+----------------+---------------------
+ REG_PROG_NARGS |                   0
+(1 row)
+
+-- the range check still rejects an out-of-range count for either type
+BEGIN
+  dbms_scheduler.create_program('reg_prog_bad', 'PLSQL_BLOCK', 'BEGIN NULL; END;',
+                                number_of_arguments => 300);
+END;
+/
+ERROR:  number_of_arguments must be between 0 and 255
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_create_program(program_name,
 			program_type, program_action, number_of_arguments, enabled,
 			comments)"
 PL/iSQL function create_program line 34 at PERFORM
-SQL statement "CALL dbms_scheduler.create_program('reg_prog2', 'PLSQL_BLOCK', 'BEGIN NULL; END;',
-                                number_of_arguments => 1)"
+SQL statement "CALL dbms_scheduler.create_program('reg_prog_bad', 'PLSQL_BLOCK', 'BEGIN NULL; END;',
+                                number_of_arguments => 300)"
 PL/iSQL function inline_code_block line 2 at CALL
+BEGIN
+  dbms_scheduler.drop_program('reg_prog_nargs');
+END;
+/
 -- cannot enable while arguments are undefined
 BEGIN
   dbms_scheduler.enable('reg_prog');
@@ -538,20 +556,24 @@ PL/iSQL function create_job line 12 at PERFORM
 SQL statement "CALL dbms_scheduler.create_job(job_name => 'reg_prog', job_type => 'PLSQL_BLOCK',
       job_action => 'BEGIN NULL; END;')"
 PL/iSQL function inline_code_block line 2 at CALL
--- PLSQL_BLOCK job cannot take arguments
+-- number_of_arguments is ignored (with a warning) for a PLSQL_BLOCK job
 BEGIN
-  dbms_scheduler.create_job(job_name => 'reg_job_bad', job_type => 'PLSQL_BLOCK',
+  dbms_scheduler.create_job(job_name => 'reg_job_nargs', job_type => 'PLSQL_BLOCK',
       job_action => 'BEGIN NULL; END;', number_of_arguments => 2);
 END;
 /
-ERROR:  a PLSQL_BLOCK job cannot have arguments
-CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_create_job_inline(job_name, job_type,
-			job_action, number_of_arguments, start_date, repeat_interval,
-			end_date, job_class, enabled, auto_drop, comments)"
-PL/iSQL function create_job line 12 at PERFORM
-SQL statement "CALL dbms_scheduler.create_job(job_name => 'reg_job_bad', job_type => 'PLSQL_BLOCK',
-      job_action => 'BEGIN NULL; END;', number_of_arguments => 2)"
-PL/iSQL function inline_code_block line 2 at CALL
+WARNING:  number_of_arguments is ignored for a PLSQL_BLOCK job
+SELECT job_name, number_of_arguments FROM user_scheduler_jobs
+  WHERE job_name = 'REG_JOB_NARGS';
+   job_name    | number_of_arguments 
+---------------+---------------------
+ REG_JOB_NARGS |                   0
+(1 row)
+
+BEGIN
+  dbms_scheduler.drop_job('reg_job_nargs');
+END;
+/
 -- unsupported job type
 BEGIN
   dbms_scheduler.create_job(job_name => 'reg_job_bad', job_type => 'CHAIN',

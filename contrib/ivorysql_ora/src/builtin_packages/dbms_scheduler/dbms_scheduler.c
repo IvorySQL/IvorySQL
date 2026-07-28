@@ -790,15 +790,25 @@ ora_dbms_scheduler_create_job_inline(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("job_action must not be null")));
 
-	if (strcmp(job_type, "PLSQL_BLOCK") == 0 && nargs != 0)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("a PLSQL_BLOCK job cannot have arguments")));
 	if (nargs < 0 || nargs > SCHED_MAX_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("number_of_arguments must be between 0 and %d",
 						SCHED_MAX_ARGS)));
+
+	/*
+	 * A PLSQL_BLOCK action is executed verbatim and has nowhere to put
+	 * arguments, so the count is meaningless for it.  Ignore it rather than
+	 * rejecting the call, which is what EDB Postgres Advanced Server does,
+	 * but say so: passing arguments here usually means STORED_PROCEDURE was
+	 * intended.
+	 */
+	if (strcmp(job_type, "PLSQL_BLOCK") == 0 && nargs != 0)
+	{
+		ereport(WARNING,
+				(errmsg("number_of_arguments is ignored for a PLSQL_BLOCK job")));
+		nargs = 0;
+	}
 
 	if (repeat_interval != NULL)
 		sched_calendar_validate(repeat_interval);
@@ -949,15 +959,19 @@ ora_dbms_scheduler_create_program(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("program_action must not be null")));
-	if (strcmp(program_type, "PLSQL_BLOCK") == 0 && nargs != 0)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("a PLSQL_BLOCK program cannot have arguments")));
 	if (nargs < 0 || nargs > SCHED_MAX_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("number_of_arguments must be between 0 and %d",
 						SCHED_MAX_ARGS)));
+
+	/* see the matching comment in ora_dbms_scheduler_create_job_inline */
+	if (strcmp(program_type, "PLSQL_BLOCK") == 0 && nargs != 0)
+	{
+		ereport(WARNING,
+				(errmsg("number_of_arguments is ignored for a PLSQL_BLOCK program")));
+		nargs = 0;
+	}
 
 	values[0] = CStringGetTextDatum(prog.owner);
 	values[1] = CStringGetTextDatum(prog.name);

@@ -182,10 +182,22 @@ BEGIN
   dbms_scheduler.create_program('reg_prog2', 'EXECUTABLE', '/bin/true');
 END;
 /
--- PLSQL_BLOCK program cannot take arguments
+-- number_of_arguments is ignored (with a warning) for a PLSQL_BLOCK program
 BEGIN
-  dbms_scheduler.create_program('reg_prog2', 'PLSQL_BLOCK', 'BEGIN NULL; END;',
+  dbms_scheduler.create_program('reg_prog_nargs', 'PLSQL_BLOCK', 'BEGIN NULL; END;',
                                 number_of_arguments => 1);
+END;
+/
+SELECT program_name, number_of_arguments FROM user_scheduler_programs
+  WHERE program_name = 'REG_PROG_NARGS';
+-- the range check still rejects an out-of-range count for either type
+BEGIN
+  dbms_scheduler.create_program('reg_prog_bad', 'PLSQL_BLOCK', 'BEGIN NULL; END;',
+                                number_of_arguments => 300);
+END;
+/
+BEGIN
+  dbms_scheduler.drop_program('reg_prog_nargs');
 END;
 /
 -- cannot enable while arguments are undefined
@@ -304,10 +316,16 @@ BEGIN
       job_action => 'BEGIN NULL; END;');
 END;
 /
--- PLSQL_BLOCK job cannot take arguments
+-- number_of_arguments is ignored (with a warning) for a PLSQL_BLOCK job
 BEGIN
-  dbms_scheduler.create_job(job_name => 'reg_job_bad', job_type => 'PLSQL_BLOCK',
+  dbms_scheduler.create_job(job_name => 'reg_job_nargs', job_type => 'PLSQL_BLOCK',
       job_action => 'BEGIN NULL; END;', number_of_arguments => 2);
+END;
+/
+SELECT job_name, number_of_arguments FROM user_scheduler_jobs
+  WHERE job_name = 'REG_JOB_NARGS';
+BEGIN
+  dbms_scheduler.drop_job('reg_job_nargs');
 END;
 /
 -- unsupported job type
