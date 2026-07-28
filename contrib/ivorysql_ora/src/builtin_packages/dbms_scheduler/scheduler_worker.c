@@ -162,6 +162,9 @@ SchedulerJobWorkerMain(Datum main_arg)
 	found = false;
 	PG_TRY();
 	{
+		/* let STOP_JOB find this process while the job runs */
+		sched_log_set_worker_pid(args.log_id);
+
 		found = sched_load_job_by_id(args.job_id, &def);
 		if (found)
 		{

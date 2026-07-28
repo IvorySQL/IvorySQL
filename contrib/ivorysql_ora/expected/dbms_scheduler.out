@@ -636,7 +636,7 @@ END;
 ERROR:  argument_position 3 is out of range for job "regress_dbms_scheduler"."REG_JOB_NAMED" (1 .. 2)
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_set_job_argument_value_pos(job_name,
 			argument_position, argument_value)"
-PL/iSQL function set_job_argument_value line 139 at PERFORM
+PL/iSQL function set_job_argument_value line 147 at PERFORM
 SQL statement "CALL dbms_scheduler.set_job_argument_value('reg_job_named', 3, 'x')"
 PL/iSQL function inline_code_block line 2 at CALL
 BEGIN
@@ -646,7 +646,7 @@ END;
 ERROR:  program "regress_dbms_scheduler"."REG_PROG" has no argument named "NOSUCHARG"
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_set_job_argument_value_name(job_name,
 			argument_name, argument_value)"
-PL/iSQL function set_job_argument_value line 147 at PERFORM
+PL/iSQL function set_job_argument_value line 155 at PERFORM
 SQL statement "CALL dbms_scheduler.set_job_argument_value('reg_job_named', 'nosucharg', 'x')"
 PL/iSQL function inline_code_block line 2 at CALL
 BEGIN
@@ -657,7 +657,7 @@ ERROR:  job "regress_dbms_scheduler"."REG_JOB_INLINE" has no named arguments
 HINT:  Only jobs that reference a program have named arguments.
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_set_job_argument_value_name(job_name,
 			argument_name, argument_value)"
-PL/iSQL function set_job_argument_value line 147 at PERFORM
+PL/iSQL function set_job_argument_value line 155 at PERFORM
 SQL statement "CALL dbms_scheduler.set_job_argument_value('reg_job_inline', 'y', 'x')"
 PL/iSQL function inline_code_block line 2 at CALL
 SELECT job_name, argument_position, value FROM user_scheduler_job_args
@@ -788,6 +788,62 @@ SELECT note FROM sched_reg_t WHERE id = 90;
  fg=set job=REG_JOB_CTX
 (1 row)
 
+-- RUN_JOB records the running process on the log row (Oracle's SLAVE_PID)
+SELECT job_name, slave_pid = pg_backend_pid() AS pid_is_this_session
+  FROM user_scheduler_job_run_details WHERE job_name = 'REG_JOB_CTX';
+  job_name   | pid_is_this_session 
+-------------+---------------------
+ REG_JOB_CTX | t
+(1 row)
+
+--
+-- STOP_JOB (background execution is covered by the TAP test)
+--
+-- nothing is running
+BEGIN
+  dbms_scheduler.stop_job('reg_job_ctx');
+END;
+/
+ERROR:  job "regress_dbms_scheduler"."REG_JOB_CTX" is not running
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_stop_job(job_name, force,
+			commit_semantics)"
+PL/iSQL function stop_job line 139 at PERFORM
+SQL statement "CALL dbms_scheduler.stop_job('reg_job_ctx')"
+PL/iSQL function inline_code_block line 2 at CALL
+-- not a job
+BEGIN
+  dbms_scheduler.stop_job('reg_sched');
+END;
+/
+ERROR:  job "regress_dbms_scheduler"."REG_SCHED" does not exist
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_stop_job(job_name, force,
+			commit_semantics)"
+PL/iSQL function stop_job line 139 at PERFORM
+SQL statement "CALL dbms_scheduler.stop_job('reg_sched')"
+PL/iSQL function inline_code_block line 2 at CALL
+-- unknown object
+BEGIN
+  dbms_scheduler.stop_job('no_such_job');
+END;
+/
+ERROR:  job "regress_dbms_scheduler"."NO_SUCH_JOB" does not exist
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_stop_job(job_name, force,
+			commit_semantics)"
+PL/iSQL function stop_job line 139 at PERFORM
+SQL statement "CALL dbms_scheduler.stop_job('no_such_job')"
+PL/iSQL function inline_code_block line 2 at CALL
+-- commit_semantics is validated here too
+BEGIN
+  dbms_scheduler.stop_job('reg_job_ctx', commit_semantics => 'WHENEVER');
+END;
+/
+ERROR:  invalid commit_semantics value "WHENEVER"
+HINT:  Valid values are STOP_ON_FIRST_ERROR, TRANSACTIONAL and ABSORB_ERRORS.
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_stop_job(job_name, force,
+			commit_semantics)"
+PL/iSQL function stop_job line 139 at PERFORM
+SQL statement "CALL dbms_scheduler.stop_job('reg_job_ctx', commit_semantics => 'WHENEVER')"
+PL/iSQL function inline_code_block line 2 at CALL
 -- outside of a job both are NULL
 SELECT SYS_CONTEXT('USERENV','FG_JOB_ID') IS NULL AS fg_null,
        SYS_CONTEXT('USERENV','BG_JOB_ID') IS NULL AS bg_null,

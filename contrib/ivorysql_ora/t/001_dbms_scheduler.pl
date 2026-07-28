@@ -150,6 +150,42 @@ is( $node->safe_psql(
 	'cancelled job is recorded as failed and did not run to completion');
 
 # ---------------------------------------------------------------------
+# STOP_JOB cancels a running job, using the worker pid on its log row
+# ---------------------------------------------------------------------
+# raise the timeout first, so the job survives long enough to be stopped
+$node->safe_psql($db,
+	"ALTER SYSTEM SET ivorysql_ora.scheduler_job_timeout = '5min'");
+$node->reload;
+$node->poll_query_until($db,
+	"SELECT setting = '300000' FROM pg_settings WHERE name = 'ivorysql_ora.scheduler_job_timeout'"
+) or die "raised timeout did not take effect";
+
+ora_sql(q{
+BEGIN
+  dbms_scheduler.create_job(job_name => 'tap_stop', job_type => 'PLSQL_BLOCK',
+    job_action => 'SELECT pg_sleep(300)',
+    enabled => TRUE);
+END;});
+
+$node->poll_query_until($db,
+	"SELECT count(*) = 1 FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_STOP' AND status = 'r' AND worker_pid IS NOT NULL"
+) or die "running job did not publish its worker pid";
+ok(1, 'a running job publishes its worker pid on the log row');
+
+ora_sql(q{BEGIN dbms_scheduler.stop_job('tap_stop'); END;});
+
+$node->poll_query_until($db,
+	"SELECT count(*) = 1 FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_STOP' AND status = 'f'"
+) or die "STOP_JOB did not stop the job";
+ok(1, 'STOP_JOB cancels the running job');
+
+is( $node->safe_psql(
+		$db,
+		"SELECT state, failure_count FROM sys.scheduler_jobs WHERE job_name = 'TAP_STOP'"),
+	'FAILED|1',
+	'a stopped job is recorded as a failed run');
+
+# ---------------------------------------------------------------------
 # STORED_PROCEDURE job with program arguments runs in the background
 # ---------------------------------------------------------------------
 ora_sql(q{

@@ -19,7 +19,8 @@
  * CREATE_JOB (2 overloads), CREATE_PROGRAM, CREATE_SCHEDULE,
  * DEFINE_PROGRAM_ARGUMENT (2), DISABLE, DROP_JOB, DROP_PROGRAM,
  * DROP_PROGRAM_ARGUMENT (2), DROP_SCHEDULE, ENABLE,
- * EVALUATE_CALENDAR_STRING, RUN_JOB and SET_JOB_ARGUMENT_VALUE (2).
+ * EVALUATE_CALENDAR_STRING, RUN_JOB and SET_JOB_ARGUMENT_VALUE (2),
+ * plus STOP_JOB, which Oracle has but EDB Postgres Advanced Server does not.
  *
  * Background scheduling is off by default.  Jobs run automatically only when
  * ivorysql_ora is preloaded (the oracle-mode default), ivorysql_ora.scheduler
@@ -165,6 +166,8 @@ CREATE TABLE sys.scheduler_job_run_details (
 	error_message		text COLLATE "c",
 	req_start_date		timestamptz,
 	actual_start_date	timestamptz,
+	/* process running the job, so STOP_JOB can find it */
+	worker_pid			int,
 	/* qualified: bare "interval" does not parse as a type in oracle mode */
 	run_duration		pg_catalog.interval,
 	CONSTRAINT scheduler_job_run_details_pkey PRIMARY KEY (log_id)
@@ -245,16 +248,17 @@ CREATE VIEW sys.user_scheduler_job_args AS
 	FROM sys.scheduler_job_args
 	WHERE job_owner = current_user::text;
 
+/* worker_pid is exposed under Oracle's column name for the same thing. */
 CREATE VIEW sys.dba_scheduler_job_run_details AS
 	SELECT log_id, log_date, job_owner AS owner, job_name, job_id, status,
 		   error_no, error_message, req_start_date, actual_start_date,
-		   run_duration
+		   worker_pid AS slave_pid, run_duration
 	FROM sys.scheduler_job_run_details;
 
 CREATE VIEW sys.user_scheduler_job_run_details AS
 	SELECT log_id, log_date, job_name, job_id, status,
 		   error_no, error_message, req_start_date, actual_start_date,
-		   run_duration
+		   worker_pid AS slave_pid, run_duration
 	FROM sys.scheduler_job_run_details
 	WHERE job_owner = current_user::text;
 
@@ -369,6 +373,12 @@ RETURNS VOID
 AS 'MODULE_PATHNAME', 'ora_dbms_scheduler_run_job'
 LANGUAGE C VOLATILE;
 
+CREATE FUNCTION sys.ora_dbms_scheduler_stop_job(
+	job_name text, force boolean, commit_semantics text)
+RETURNS VOID
+AS 'MODULE_PATHNAME', 'ora_dbms_scheduler_stop_job'
+LANGUAGE C VOLATILE;
+
 CREATE FUNCTION sys.ora_dbms_scheduler_set_job_argument_value_pos(
 	job_name text, argument_position integer, argument_value text)
 RETURNS VOID
@@ -474,6 +484,10 @@ CREATE OR REPLACE PACKAGE dbms_scheduler IS
 
 	PROCEDURE run_job(job_name VARCHAR2,
 		use_current_session BOOLEAN DEFAULT TRUE);
+
+	PROCEDURE stop_job(job_name VARCHAR2,
+		force BOOLEAN DEFAULT FALSE,
+		commit_semantics VARCHAR2 DEFAULT 'STOP_ON_FIRST_ERROR');
 
 	PROCEDURE set_job_argument_value(job_name VARCHAR2,
 		argument_position INTEGER,
@@ -619,6 +633,14 @@ CREATE OR REPLACE PACKAGE BODY dbms_scheduler IS
 		use_current_session BOOLEAN DEFAULT TRUE) IS
 	BEGIN
 		PERFORM sys.ora_dbms_scheduler_run_job(job_name, use_current_session);
+	END;
+
+	PROCEDURE stop_job(job_name VARCHAR2,
+		force BOOLEAN DEFAULT FALSE,
+		commit_semantics VARCHAR2 DEFAULT 'STOP_ON_FIRST_ERROR') IS
+	BEGIN
+		PERFORM sys.ora_dbms_scheduler_stop_job(job_name, force,
+			commit_semantics);
 	END;
 
 	PROCEDURE set_job_argument_value(job_name VARCHAR2,

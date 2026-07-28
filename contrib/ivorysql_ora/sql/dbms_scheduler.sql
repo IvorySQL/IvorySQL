@@ -451,6 +451,32 @@ BEGIN
 END;
 /
 SELECT note FROM sched_reg_t WHERE id = 90;
+-- RUN_JOB records the running process on the log row (Oracle's SLAVE_PID)
+SELECT job_name, slave_pid = pg_backend_pid() AS pid_is_this_session
+  FROM user_scheduler_job_run_details WHERE job_name = 'REG_JOB_CTX';
+--
+-- STOP_JOB (background execution is covered by the TAP test)
+--
+-- nothing is running
+BEGIN
+  dbms_scheduler.stop_job('reg_job_ctx');
+END;
+/
+-- not a job
+BEGIN
+  dbms_scheduler.stop_job('reg_sched');
+END;
+/
+-- unknown object
+BEGIN
+  dbms_scheduler.stop_job('no_such_job');
+END;
+/
+-- commit_semantics is validated here too
+BEGIN
+  dbms_scheduler.stop_job('reg_job_ctx', commit_semantics => 'WHENEVER');
+END;
+/
 -- outside of a job both are NULL
 SELECT SYS_CONTEXT('USERENV','FG_JOB_ID') IS NULL AS fg_null,
        SYS_CONTEXT('USERENV','BG_JOB_ID') IS NULL AS bg_null,

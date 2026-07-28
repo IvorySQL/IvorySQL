@@ -78,6 +78,7 @@ PG_FUNCTION_INFO_V1(ora_dbms_scheduler_drop_program);
 PG_FUNCTION_INFO_V1(ora_dbms_scheduler_drop_schedule);
 PG_FUNCTION_INFO_V1(ora_dbms_scheduler_evaluate_calendar_string);
 PG_FUNCTION_INFO_V1(ora_dbms_scheduler_run_job);
+PG_FUNCTION_INFO_V1(ora_dbms_scheduler_stop_job);
 PG_FUNCTION_INFO_V1(ora_dbms_scheduler_set_job_argument_value_pos);
 PG_FUNCTION_INFO_V1(ora_dbms_scheduler_set_job_argument_value_name);
 PG_FUNCTION_INFO_V1(ora_dbms_scheduler_get_bg_job_id);
@@ -1790,14 +1791,31 @@ sched_log_start(const SchedJobDef *def, TimestampTz req_start,
 
 	if (sched_meta_dml("INSERT INTO sys.scheduler_job_run_details"
 				  " (job_owner, job_name, job_id, status,"
-				  "  req_start_date, actual_start_date)"
-				  " VALUES ($1, $2, $3, 'r', $4, $5)"
+				  "  req_start_date, actual_start_date, worker_pid)"
+				  " VALUES ($1, $2, $3, 'r', $4, $5, pg_backend_pid())"
 				  " RETURNING log_id",
 				  5, argtypes, values, NULL) != 1)
 		elog(ERROR, "could not insert job run log record");
 
 	d = sched_getdatum(0, 1, &isnull);
 	return DatumGetInt64(d);
+}
+
+/*
+ * Publish the running process on a log row the launcher created, so STOP_JOB
+ * can find the job worker.  Called by the worker once it is connected.
+ */
+void
+sched_log_set_worker_pid(int64 log_id)
+{
+	Oid			argtypes[1] = {INT8OID};
+	Datum		values[1];
+
+	values[0] = Int64GetDatum(log_id);
+	sched_meta_dml("UPDATE sys.scheduler_job_run_details"
+			  " SET worker_pid = pg_backend_pid()"
+			  " WHERE log_id = $1",
+			  1, argtypes, values, NULL);
 }
 
 void
@@ -1971,6 +1989,68 @@ ora_dbms_scheduler_run_job(PG_FUNCTION_ARGS)
 
 	sched_log_finish(log_id, true, 0, NULL, start_ts);
 	sched_update_job_stats(&def, true, start_ts, false);
+
+	SPI_finish();
+	PG_RETURN_VOID();
+}
+
+/*
+ * STOP_JOB
+ *
+ * Signal the job worker recorded on the job's running log row.  Without
+ * "force" the worker gets a query cancel, so it unwinds through its own
+ * error handler and records the run as failed; with "force" it is terminated
+ * outright and the leftover 'r' row is closed by the next orphan cleanup.
+ *
+ * Unlike Oracle this cannot stop a job running in another database: the
+ * dictionary is per-database, so a job is only visible where it lives.
+ */
+Datum
+ora_dbms_scheduler_stop_job(PG_FUNCTION_ARGS)
+{
+	char	   *raw_name = text_arg_or_null(fcinfo, 0);
+	bool		force = PG_ARGISNULL(1) ? false : PG_GETARG_BOOL(1);
+	char	   *commit_semantics = text_arg_or_null(fcinfo, 2);
+	SchedName	job;
+	Oid			argtypes[2] = {TEXTOID, TEXTOID};
+	Datum		values[2];
+	Oid			pidtype[1] = {INT4OID};
+	Datum		pidvalue[1];
+	int32		worker_pid;
+	bool		isnull;
+
+	SPI_connect();
+
+	sched_check_commit_semantics(commit_semantics);
+	sched_parse_name(raw_name, "job", &job);
+	if (sched_object_kind(&job) != SCHED_KIND_JOB)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("job \"%s\".\"%s\" does not exist",
+						job.owner, job.name)));
+
+	values[0] = CStringGetTextDatum(job.owner);
+	values[1] = CStringGetTextDatum(job.name);
+	if (sched_meta_select("SELECT worker_pid FROM sys.scheduler_job_run_details"
+					 " WHERE job_owner = $1 AND job_name = $2 AND status = 'r'"
+					 " ORDER BY log_id DESC LIMIT 1",
+					 2, argtypes, values, NULL) != 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("job \"%s\".\"%s\" is not running",
+						job.owner, job.name)));
+
+	worker_pid = DatumGetInt32(sched_getdatum(0, 1, &isnull));
+	if (isnull)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("job \"%s\".\"%s\" has no recorded worker process",
+						job.owner, job.name)));
+
+	pidvalue[0] = Int32GetDatum(worker_pid);
+	sched_meta_select(force ? "SELECT pg_terminate_backend($1)"
+					  : "SELECT pg_cancel_backend($1)",
+					  1, pidtype, pidvalue, NULL);
 
 	SPI_finish();
 	PG_RETURN_VOID();

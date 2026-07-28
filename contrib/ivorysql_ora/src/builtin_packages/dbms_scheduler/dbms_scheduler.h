@@ -102,6 +102,7 @@ extern bool sched_load_job_by_id(int64 job_id, SchedJobDef *def);
 extern void sched_log_finish(int64 log_id, bool success, int error_no,
 							 const char *error_message,
 							 TimestampTz actual_start);
+extern void sched_log_set_worker_pid(int64 log_id);
 extern void sched_update_job_stats(const SchedJobDef *def, bool success,
 								   TimestampTz actual_start, bool background);
 
