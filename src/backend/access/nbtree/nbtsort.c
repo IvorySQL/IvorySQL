@@ -52,10 +52,13 @@
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "storage/bulk_write.h"
+#include "storage/condition_variable.h"
+#include "storage/proc.h"
 #include "tcop/tcopprot.h"
 #include "utils/rel.h"
 #include "utils/sortsupport.h"
 #include "utils/tuplesort.h"
+#include "utils/wait_event.h"
 
 
 /* Magic numbers for parallel state sharing */

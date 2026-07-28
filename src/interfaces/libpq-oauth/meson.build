@@ -12,7 +12,15 @@ libpq_oauth_sources = files(
 libpq_oauth_so_sources = files(
   'oauth-utils.c',
 )
-libpq_oauth_so_c_args = ['-DUSE_DYNAMIC_OAUTH']
+libpq_oauth_so_c_args = [
+  '-DUSE_DYNAMIC_OAUTH',
+
+  # A bit of forward-looking paranoia: don't allow anyone to accidentally depend
+  # on the encoding IDs coming from libpq. They're not guaranteed to match the
+  # IDs in use by our version of pgcommon, now that we allow the major version
+  # of libpq to differ from the major version of libpq-oauth.
+  '-DUSE_PRIVATE_ENCODING_FUNCS',
+]
 
 export_file = custom_target('libpq-oauth.exports',
   kwargs: gen_export_kwargs,
@@ -38,10 +46,8 @@ endif
 
 # This is an internal module; we don't want an SONAME and therefore do not set
 # SO_MAJOR_VERSION.
-libpq_oauth_name = 'libpq-oauth-@0@'.format(pg_version_major)
-
 if build_shared_lib
-libpq_oauth_so = shared_module(libpq_oauth_name,
+libpq_oauth_so = shared_module('libpq-oauth',
   libpq_oauth_sources + libpq_oauth_so_sources,
   include_directories: [libpq_oauth_inc, postgres_inc],
   c_args: libpq_oauth_so_c_args,

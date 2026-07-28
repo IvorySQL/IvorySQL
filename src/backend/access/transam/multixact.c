@@ -159,12 +159,7 @@ typedef struct MultiXactStateData
 
 	/*
 	 * Per-backend data starts here.  We have two arrays stored in the area
-	 * immediately following the MultiXactStateData struct. Each is indexed by
-	 * ProcNumber.
-	 *
-	 * In both arrays, there's a slot for all normal backends
-	 * (0..MaxBackends-1) followed by a slot for max_prepared_xacts prepared
-	 * transactions.
+	 * immediately following the MultiXactStateData struct:
 	 *
 	 * OldestMemberMXactId[k] is the oldest MultiXactId each backend's current
 	 * transaction(s) could possibly be a member of, or InvalidMultiXactId
@@ -176,6 +171,10 @@ typedef struct MultiXactStateData
 	 * member of a MultiXact, and that MultiXact would have to be created
 	 * during or after the lock acquisition.)
 	 *
+	 * In the OldestMemberMXactId array, there's a slot for all normal
+	 * backends (0..MaxBackends-1) followed by a slot for max_prepared_xacts
+	 * prepared transactions.
+	 *
 	 * OldestVisibleMXactId[k] is the oldest MultiXactId each backend's
 	 * current transaction(s) think is potentially live, or InvalidMultiXactId
 	 * when not in a transaction or not in a transaction that's paid any
@@ -186,6 +185,9 @@ typedef struct MultiXactStateData
 	 * required not to attempt to access any SLRU data for MultiXactIds older
 	 * than its own OldestVisibleMXactId[] setting; this is necessary because
 	 * the relevant SLRU data can be concurrently truncated away.
+	 *
+	 * In the OldestVisibleMXactId array, there's a slot for all normal
+	 * backends (0..MaxBackends-1) only. No slots for prepared transactions.
 	 *
 	 * The oldest valid value among all of the OldestMemberMXactId[] and
 	 * OldestVisibleMXactId[] entries is considered by vacuum as the earliest
@@ -208,15 +210,51 @@ typedef struct MultiXactStateData
 } MultiXactStateData;
 
 /*
- * Size of OldestMemberMXactId and OldestVisibleMXactId arrays.
+ * Sizes of OldestMemberMXactId and OldestVisibleMXactId arrays.
  */
-#define MaxOldestSlot	(MaxBackends + max_prepared_xacts)
+#define NumMemberSlots		(MaxBackends + max_prepared_xacts)
+#define NumVisibleSlots		MaxBackends
 
 /* Pointers to the state data in shared memory */
 static MultiXactStateData *MultiXactState;
 static MultiXactId *OldestMemberMXactId;
 static MultiXactId *OldestVisibleMXactId;
 
+
+static inline MultiXactId *
+MyOldestMemberMXactIdSlot(void)
+{
+	/*
+	 * The first MaxBackends entries in the OldestMemberMXactId array are
+	 * reserved for regular backends.  MyProcNumber should index into one of
+	 * them.
+	 */
+	Assert(MyProcNumber >= 0 && MyProcNumber < MaxBackends);
+	return &OldestMemberMXactId[MyProcNumber];
+}
+
+static inline MultiXactId *
+PreparedXactOldestMemberMXactIdSlot(ProcNumber procno)
+{
+	int			prepared_xact_idx;
+
+	Assert(procno >= FIRST_PREPARED_XACT_PROC_NUMBER);
+	prepared_xact_idx = procno - FIRST_PREPARED_XACT_PROC_NUMBER;
+
+	/*
+	 * The first MaxBackends entries in the OldestMemberMXactId array are
+	 * reserved for regular backends.  Prepared xacts come after them.
+	 */
+	Assert(MaxBackends + prepared_xact_idx < NumMemberSlots);
+	return &OldestMemberMXactId[MaxBackends + prepared_xact_idx];
+}
+
+static inline MultiXactId *
+MyOldestVisibleMXactIdSlot(void)
+{
+	Assert(MyProcNumber >= 0 && MyProcNumber < NumVisibleSlots);
+	return &OldestVisibleMXactId[MyProcNumber];
+}
 
 /*
  * Definitions for the backend-local MultiXactId cache.
@@ -275,8 +313,18 @@ static void mXactCachePut(MultiXactId multi, int nmembers,
 						  MultiXactMember *members);
 
 /* management of SLRU infrastructure */
+
+/* opaque_data type for MultiXactMemberIoErrorDetail */
+typedef struct MultiXactMemberSlruReadContext
+{
+	MultiXactId multi;
+	MultiXactOffset offset;
+} MultiXactMemberSlruReadContext;
+
 static bool MultiXactOffsetPagePrecedes(int64 page1, int64 page2);
 static bool MultiXactMemberPagePrecedes(int64 page1, int64 page2);
+static int	MultiXactOffsetIoErrorDetail(const void *opaque_data);
+static int	MultiXactMemberIoErrorDetail(const void *opaque_data);
 static void ExtendMultiXactOffset(MultiXactId multi);
 static void ExtendMultiXactMember(MultiXactOffset offset, int nmembers);
 static void SetOldestOffset(void);
@@ -308,7 +356,7 @@ MultiXactIdCreate(TransactionId xid1, MultiXactStatus status1,
 	Assert(!TransactionIdEquals(xid1, xid2) || (status1 != status2));
 
 	/* MultiXactIdSetOldestMember() must have been called already. */
-	Assert(MultiXactIdIsValid(OldestMemberMXactId[MyProcNumber]));
+	Assert(MultiXactIdIsValid(*MyOldestMemberMXactIdSlot()));
 
 	/*
 	 * Note: unlike MultiXactIdExpand, we don't bother to check that both XIDs
@@ -362,7 +410,7 @@ MultiXactIdExpand(MultiXactId multi, TransactionId xid, MultiXactStatus status)
 	Assert(TransactionIdIsValid(xid));
 
 	/* MultiXactIdSetOldestMember() must have been called already. */
-	Assert(MultiXactIdIsValid(OldestMemberMXactId[MyProcNumber]));
+	Assert(MultiXactIdIsValid(*MyOldestMemberMXactIdSlot()));
 
 	debug_elog5(DEBUG2, "Expand: received multi %u, xid %u status %s",
 				multi, xid, mxstatus_to_string(status));
@@ -536,7 +584,7 @@ MultiXactIdIsRunning(MultiXactId multi, bool isLockOnly)
 void
 MultiXactIdSetOldestMember(void)
 {
-	if (!MultiXactIdIsValid(OldestMemberMXactId[MyProcNumber]))
+	if (!MultiXactIdIsValid(*MyOldestMemberMXactIdSlot()))
 	{
 		MultiXactId nextMXact;
 
@@ -558,7 +606,7 @@ MultiXactIdSetOldestMember(void)
 
 		nextMXact = MultiXactState->nextMXact;
 
-		OldestMemberMXactId[MyProcNumber] = nextMXact;
+		*MyOldestMemberMXactIdSlot() = nextMXact;
 
 		LWLockRelease(MultiXactGenLock);
 
@@ -586,7 +634,7 @@ MultiXactIdSetOldestMember(void)
 static void
 MultiXactIdSetOldestVisible(void)
 {
-	if (!MultiXactIdIsValid(OldestVisibleMXactId[MyProcNumber]))
+	if (!MultiXactIdIsValid(*MyOldestVisibleMXactIdSlot()))
 	{
 		MultiXactId oldestMXact;
 		int			i;
@@ -594,7 +642,7 @@ MultiXactIdSetOldestVisible(void)
 		LWLockAcquire(MultiXactGenLock, LW_EXCLUSIVE);
 
 		oldestMXact = MultiXactState->nextMXact;
-		for (i = 0; i < MaxOldestSlot; i++)
+		for (i = 0; i < NumMemberSlots; i++)
 		{
 			MultiXactId thisoldest = OldestMemberMXactId[i];
 
@@ -603,7 +651,7 @@ MultiXactIdSetOldestVisible(void)
 				oldestMXact = thisoldest;
 		}
 
-		OldestVisibleMXactId[MyProcNumber] = oldestMXact;
+		*MyOldestVisibleMXactIdSlot() = oldestMXact;
 
 		LWLockRelease(MultiXactGenLock);
 
@@ -791,14 +839,7 @@ RecordNewMultiXact(MultiXactId multi, MultiXactOffset offset,
 	lock = SimpleLruGetBankLock(MultiXactOffsetCtl, pageno);
 	LWLockAcquire(lock, LW_EXCLUSIVE);
 
-	/*
-	 * Note: we pass the MultiXactId to SimpleLruReadPage as the "transaction"
-	 * to complain about if there's any I/O error.  This is kinda bogus, but
-	 * since the errors will always give the full pathname, it should be clear
-	 * enough that a MultiXactId is really involved.  Perhaps someday we'll
-	 * take the trouble to generalize the slru.c error reporting code.
-	 */
-	slotno = SimpleLruReadPage(MultiXactOffsetCtl, pageno, true, multi);
+	slotno = SimpleLruReadPage(MultiXactOffsetCtl, pageno, true, &multi);
 	offptr = (MultiXactOffset *) MultiXactOffsetCtl->shared->page_buffer[slotno];
 	offptr += entryno;
 
@@ -827,7 +868,7 @@ RecordNewMultiXact(MultiXactId multi, MultiXactOffset offset,
 		lock = SimpleLruGetBankLock(MultiXactOffsetCtl, next_pageno);
 		LWLockAcquire(lock, LW_EXCLUSIVE);
 
-		slotno = SimpleLruReadPage(MultiXactOffsetCtl, next_pageno, true, next);
+		slotno = SimpleLruReadPage(MultiXactOffsetCtl, next_pageno, true, &next);
 		next_offptr = (MultiXactOffset *) MultiXactOffsetCtl->shared->page_buffer[slotno];
 		next_offptr += next_entryno;
 	}
@@ -867,6 +908,8 @@ RecordNewMultiXact(MultiXactId multi, MultiXactOffset offset,
 
 		if (pageno != prev_pageno)
 		{
+			MultiXactMemberSlruReadContext slru_read_context = {multi, offset};
+
 			/*
 			 * MultiXactMember SLRU page is changed so check if this new page
 			 * fall into the different SLRU bank then release the old bank's
@@ -881,7 +924,8 @@ RecordNewMultiXact(MultiXactId multi, MultiXactOffset offset,
 				LWLockAcquire(lock, LW_EXCLUSIVE);
 				prevlock = lock;
 			}
-			slotno = SimpleLruReadPage(MultiXactMemberCtl, pageno, true, multi);
+			slotno = SimpleLruReadPage(MultiXactMemberCtl, pageno, true,
+									   &slru_read_context);
 			prev_pageno = pageno;
 		}
 
@@ -1152,7 +1196,7 @@ GetMultiXactIdMembers(MultiXactId multi, MultiXactMember **members,
 	 * multi.  It cannot possibly still be running.
 	 */
 	if (isLockOnly &&
-		MultiXactIdPrecedes(multi, OldestVisibleMXactId[MyProcNumber]))
+		MultiXactIdPrecedes(multi, *MyOldestVisibleMXactIdSlot()))
 	{
 		debug_elog2(DEBUG2, "GetMembers: a locker-only multi is too old");
 		*members = NULL;
@@ -1206,7 +1250,7 @@ GetMultiXactIdMembers(MultiXactId multi, MultiXactMember **members,
 	LWLockAcquire(lock, LW_EXCLUSIVE);
 
 	/* read this multi's offset */
-	slotno = SimpleLruReadPage(MultiXactOffsetCtl, pageno, true, multi);
+	slotno = SimpleLruReadPage(MultiXactOffsetCtl, pageno, true, &multi);
 	offptr = (MultiXactOffset *) MultiXactOffsetCtl->shared->page_buffer[slotno];
 	offptr += entryno;
 	offset = *offptr;
@@ -1244,7 +1288,7 @@ GetMultiXactIdMembers(MultiXactId multi, MultiXactMember **members,
 				LWLockAcquire(newlock, LW_EXCLUSIVE);
 				lock = newlock;
 			}
-			slotno = SimpleLruReadPage(MultiXactOffsetCtl, pageno, true, tmpMXact);
+			slotno = SimpleLruReadPage(MultiXactOffsetCtl, pageno, true, &tmpMXact);
 		}
 
 		offptr = (MultiXactOffset *) MultiXactOffsetCtl->shared->page_buffer[slotno];
@@ -1293,6 +1337,7 @@ GetMultiXactIdMembers(MultiXactId multi, MultiXactMember **members,
 
 		if (pageno != prev_pageno)
 		{
+			MultiXactMemberSlruReadContext slru_read_context = {multi, offset};
 			LWLock	   *newlock;
 
 			/*
@@ -1308,8 +1353,8 @@ GetMultiXactIdMembers(MultiXactId multi, MultiXactMember **members,
 				LWLockAcquire(newlock, LW_EXCLUSIVE);
 				lock = newlock;
 			}
-
-			slotno = SimpleLruReadPage(MultiXactMemberCtl, pageno, true, multi);
+			slotno = SimpleLruReadPage(MultiXactMemberCtl, pageno, true,
+									   &slru_read_context);
 			prev_pageno = pageno;
 		}
 
@@ -1574,8 +1619,8 @@ AtEOXact_MultiXact(void)
 	 * We assume that storing a MultiXactId is atomic and so we need not take
 	 * MultiXactGenLock to do this.
 	 */
-	OldestMemberMXactId[MyProcNumber] = InvalidMultiXactId;
-	OldestVisibleMXactId[MyProcNumber] = InvalidMultiXactId;
+	*MyOldestMemberMXactIdSlot() = InvalidMultiXactId;
+	*MyOldestVisibleMXactIdSlot() = InvalidMultiXactId;
 
 	/*
 	 * Discard the local MultiXactId cache.  Since MXactContext was created as
@@ -1595,7 +1640,7 @@ AtEOXact_MultiXact(void)
 void
 AtPrepare_MultiXact(void)
 {
-	MultiXactId myOldestMember = OldestMemberMXactId[MyProcNumber];
+	MultiXactId myOldestMember = *MyOldestMemberMXactIdSlot();
 
 	if (MultiXactIdIsValid(myOldestMember))
 		RegisterTwoPhaseRecord(TWOPHASE_RM_MULTIXACT_ID, 0,
@@ -1615,7 +1660,7 @@ PostPrepare_MultiXact(FullTransactionId fxid)
 	 * Transfer our OldestMemberMXactId value to the slot reserved for the
 	 * prepared transaction.
 	 */
-	myOldestMember = OldestMemberMXactId[MyProcNumber];
+	myOldestMember = *MyOldestMemberMXactIdSlot();
 	if (MultiXactIdIsValid(myOldestMember))
 	{
 		ProcNumber	dummyProcNumber = TwoPhaseGetDummyProcNumber(fxid, false);
@@ -1628,8 +1673,8 @@ PostPrepare_MultiXact(FullTransactionId fxid)
 		 */
 		LWLockAcquire(MultiXactGenLock, LW_EXCLUSIVE);
 
-		OldestMemberMXactId[dummyProcNumber] = myOldestMember;
-		OldestMemberMXactId[MyProcNumber] = InvalidMultiXactId;
+		*PreparedXactOldestMemberMXactIdSlot(dummyProcNumber) = myOldestMember;
+		*MyOldestMemberMXactIdSlot() = InvalidMultiXactId;
 
 		LWLockRelease(MultiXactGenLock);
 	}
@@ -1642,7 +1687,7 @@ PostPrepare_MultiXact(FullTransactionId fxid)
 	 * We assume that storing a MultiXactId is atomic and so we need not take
 	 * MultiXactGenLock to do this.
 	 */
-	OldestVisibleMXactId[MyProcNumber] = InvalidMultiXactId;
+	*MyOldestVisibleMXactIdSlot() = InvalidMultiXactId;
 
 	/*
 	 * Discard the local MultiXactId cache like in AtEOXact_MultiXact.
@@ -1669,7 +1714,7 @@ multixact_twophase_recover(FullTransactionId fxid, uint16 info,
 	Assert(len == sizeof(MultiXactId));
 	oldestMember = *((MultiXactId *) recdata);
 
-	OldestMemberMXactId[dummyProcNumber] = oldestMember;
+	*PreparedXactOldestMemberMXactIdSlot(dummyProcNumber) = oldestMember;
 }
 
 /*
@@ -1684,7 +1729,7 @@ multixact_twophase_postcommit(FullTransactionId fxid, uint16 info,
 
 	Assert(len == sizeof(MultiXactId));
 
-	OldestMemberMXactId[dummyProcNumber] = InvalidMultiXactId;
+	*PreparedXactOldestMemberMXactIdSlot(dummyProcNumber) = InvalidMultiXactId;
 }
 
 /*
@@ -1699,21 +1744,32 @@ multixact_twophase_postabort(FullTransactionId fxid, uint16 info,
 }
 
 /*
- * Initialization of shared memory for MultiXact.  We use two SLRU areas,
- * thus double memory.  Also, reserve space for the shared MultiXactState
- * struct and the per-backend MultiXactId arrays (two of those, too).
+ * Initialization of shared memory for MultiXact.
+ *
+ * MultiXactSharedStateShmemSize() calculates the size of the MultiXactState
+ * struct, and the two per-backend MultiXactId arrays.  They are carved out of
+ * the same allocation.  MultiXactShmemSize() additionally includes the memory
+ * needed for the two SLRU areas.
  */
+static Size
+MultiXactSharedStateShmemSize(void)
+{
+	Size		size;
+
+	size = offsetof(MultiXactStateData, perBackendXactIds);
+	size = add_size(size,
+					mul_size(sizeof(MultiXactId), NumMemberSlots));
+	size = add_size(size,
+					mul_size(sizeof(MultiXactId), NumVisibleSlots));
+	return size;
+}
+
 Size
 MultiXactShmemSize(void)
 {
 	Size		size;
 
-	/* We need 2*MaxOldestSlot perBackendXactIds[] entries */
-#define SHARED_MULTIXACT_STATE_SIZE \
-	add_size(offsetof(MultiXactStateData, perBackendXactIds), \
-			 mul_size(sizeof(MultiXactId) * 2, MaxOldestSlot))
-
-	size = SHARED_MULTIXACT_STATE_SIZE;
+	size = MultiXactSharedStateShmemSize();
 	size = add_size(size, SimpleLruShmemSize(multixact_offset_buffers, 0));
 	size = add_size(size, SimpleLruShmemSize(multixact_member_buffers, 0));
 
@@ -1729,6 +1785,8 @@ MultiXactShmemInit(void)
 
 	MultiXactOffsetCtl->PagePrecedes = MultiXactOffsetPagePrecedes;
 	MultiXactMemberCtl->PagePrecedes = MultiXactMemberPagePrecedes;
+	MultiXactOffsetCtl->errdetail_for_io_error = MultiXactOffsetIoErrorDetail;
+	MultiXactMemberCtl->errdetail_for_io_error = MultiXactMemberIoErrorDetail;
 
 	SimpleLruInit(MultiXactOffsetCtl,
 				  "multixact_offset", multixact_offset_buffers, 0,
@@ -1747,14 +1805,14 @@ MultiXactShmemInit(void)
 
 	/* Initialize our shared state struct */
 	MultiXactState = ShmemInitStruct("Shared MultiXact State",
-									 SHARED_MULTIXACT_STATE_SIZE,
+									 MultiXactSharedStateShmemSize(),
 									 &found);
 	if (!IsUnderPostmaster)
 	{
 		Assert(!found);
 
 		/* Make sure we zero out the per-backend state */
-		MemSet(MultiXactState, 0, SHARED_MULTIXACT_STATE_SIZE);
+		MemSet(MultiXactState, 0, MultiXactSharedStateShmemSize());
 	}
 	else
 		Assert(found);
@@ -1763,7 +1821,7 @@ MultiXactShmemInit(void)
 	 * Set up array pointers.
 	 */
 	OldestMemberMXactId = MultiXactState->perBackendXactIds;
-	OldestVisibleMXactId = OldestMemberMXactId + MaxOldestSlot;
+	OldestVisibleMXactId = OldestMemberMXactId + NumMemberSlots;
 }
 
 /*
@@ -1879,7 +1937,7 @@ TrimMultiXact(void)
 		if (entryno == 0 || nextMXact == FirstMultiXactId)
 			slotno = SimpleLruZeroPage(MultiXactOffsetCtl, pageno);
 		else
-			slotno = SimpleLruReadPage(MultiXactOffsetCtl, pageno, true, nextMXact);
+			slotno = SimpleLruReadPage(MultiXactOffsetCtl, pageno, true, &nextMXact);
 		offptr = (MultiXactOffset *) MultiXactOffsetCtl->shared->page_buffer[slotno];
 		offptr += entryno;
 
@@ -1907,6 +1965,7 @@ TrimMultiXact(void)
 	flagsoff = MXOffsetToFlagsOffset(offset);
 	if (flagsoff != 0)
 	{
+		MultiXactMemberSlruReadContext slru_read_context = {InvalidMultiXactId, offset};
 		int			slotno;
 		TransactionId *xidptr;
 		int			memberoff;
@@ -1914,7 +1973,7 @@ TrimMultiXact(void)
 
 		LWLockAcquire(lock, LW_EXCLUSIVE);
 		memberoff = MXOffsetToMemberOffset(offset);
-		slotno = SimpleLruReadPage(MultiXactMemberCtl, pageno, true, offset);
+		slotno = SimpleLruReadPage(MultiXactMemberCtl, pageno, true, &slru_read_context);
 		xidptr = (TransactionId *)
 			(MultiXactMemberCtl->shared->page_buffer[slotno] + memberoff);
 
@@ -2303,7 +2362,6 @@ MultiXactId
 GetOldestMultiXactId(void)
 {
 	MultiXactId oldestMXact;
-	int			i;
 
 	/*
 	 * This is the oldest valid value among all the OldestMemberMXactId[] and
@@ -2311,7 +2369,7 @@ GetOldestMultiXactId(void)
 	 */
 	LWLockAcquire(MultiXactGenLock, LW_SHARED);
 	oldestMXact = MultiXactState->nextMXact;
-	for (i = 0; i < MaxOldestSlot; i++)
+	for (int i = 0; i < NumMemberSlots; i++)
 	{
 		MultiXactId thisoldest;
 
@@ -2319,6 +2377,11 @@ GetOldestMultiXactId(void)
 		if (MultiXactIdIsValid(thisoldest) &&
 			MultiXactIdPrecedes(thisoldest, oldestMXact))
 			oldestMXact = thisoldest;
+	}
+	for (int i = 0; i < NumVisibleSlots; i++)
+	{
+		MultiXactId thisoldest;
+
 		thisoldest = OldestVisibleMXactId[i];
 		if (MultiXactIdIsValid(thisoldest) &&
 			MultiXactIdPrecedes(thisoldest, oldestMXact))
@@ -2444,7 +2507,7 @@ find_multixact_start(MultiXactId multi, MultiXactOffset *result)
 		return false;
 
 	/* lock is acquired by SimpleLruReadPage_ReadOnly */
-	slotno = SimpleLruReadPage_ReadOnly(MultiXactOffsetCtl, pageno, multi);
+	slotno = SimpleLruReadPage_ReadOnly(MultiXactOffsetCtl, pageno, &multi);
 	offptr = (MultiXactOffset *) MultiXactOffsetCtl->shared->page_buffer[slotno];
 	offptr += entryno;
 	offset = *offptr;
@@ -2753,6 +2816,27 @@ static bool
 MultiXactMemberPagePrecedes(int64 page1, int64 page2)
 {
 	return page1 < page2;
+}
+
+static int
+MultiXactOffsetIoErrorDetail(const void *opaque_data)
+{
+	MultiXactId multixid = *(const MultiXactId *) opaque_data;
+
+	return errdetail("Could not access offset of multixact %u.", multixid);
+}
+
+static int
+MultiXactMemberIoErrorDetail(const void *opaque_data)
+{
+	const MultiXactMemberSlruReadContext *context = opaque_data;
+
+	if (MultiXactIdIsValid(context->multi))
+		return errdetail("Could not access member of multixact %u at offset %" PRIu64 ".",
+						 context->multi, context->offset);
+	else
+		return errdetail("Could not access multixact member at offset %" PRIu64 ".",
+						 context->offset);
 }
 
 /*

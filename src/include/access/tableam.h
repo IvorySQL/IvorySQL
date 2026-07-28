@@ -683,7 +683,6 @@ typedef struct TableAmRoutine
 	 * callback).
 	 */
 	bool		(*scan_analyze_next_tuple) (TableScanDesc scan,
-											TransactionId OldestXmin,
 											double *liverows,
 											double *deadrows,
 											TupleTableSlot *slot);
@@ -1726,11 +1725,11 @@ table_scan_analyze_next_block(TableScanDesc scan, ReadStream *stream)
  * tuples.
  */
 static inline bool
-table_scan_analyze_next_tuple(TableScanDesc scan, TransactionId OldestXmin,
+table_scan_analyze_next_tuple(TableScanDesc scan,
 							  double *liverows, double *deadrows,
 							  TupleTableSlot *slot)
 {
-	return scan->rs_rd->rd_tableam->scan_analyze_next_tuple(scan, OldestXmin,
+	return scan->rs_rd->rd_tableam->scan_analyze_next_tuple(scan,
 															liverows, deadrows,
 															slot);
 }

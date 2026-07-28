@@ -16,6 +16,7 @@
 #include "postgres.h"
 
 #include "access/amapi.h"
+#include "access/attmap.h"
 #include "access/gist.h"
 #include "access/heapam.h"
 #include "access/htup_details.h"
@@ -543,7 +544,7 @@ WaitForOlderSnapshots(TransactionId limitXmin, bool progress)
 ObjectAddress
 DefineIndex(ParseState *pstate,
 			Oid tableId,
-			IndexStmt *stmt,
+			const IndexStmt *stmt,
 			Oid indexRelationId,
 			Oid parentIndexId,
 			Oid parentConstraintId,
@@ -4356,7 +4357,7 @@ ReindexRelationConcurrently(const ReindexStmt *stmt, Oid relationOid, const Rein
 			ObjectAddressSet(address, RelationRelationId, newIndexId);
 			EventTriggerCollectSimpleCommand(address,
 											 InvalidObjectAddress,
-											 (Node *) stmt);
+											 (const Node *) stmt);
 		}
 	}
 

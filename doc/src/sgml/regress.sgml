@@ -343,6 +343,16 @@ make check-world PG_TEST_EXTRA='kerberos ldap ssl load_balance libpq_encryption'
     </varlistentry>
 
     <varlistentry>
+     <term><literal>saslprep</literal></term>
+     <listitem>
+      <para>
+       Runs the TAP test suite under <filename>src/test/modules/test_saslprep</filename>.
+       Not enabled by default because it is resource-intensive.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
      <term><literal>sepgsql</literal></term>
      <listitem>
       <para>
@@ -441,6 +451,70 @@ make check LANG=C ENCODING=EUC_JP
     The database encoding can be set for tests against either a temporary or
     an existing installation, though in the latter case it must be
     compatible with the installation's locale.
+   </para>
+  </sect2>
+
+  <sect2 id="regress-run-path-substitution">
+   <title>Path Substitution</title>
+
+   <para>
+    The test suites driven by <command>pg_regress</command> can use the
+    following environment variables for path substitutions:
+
+    <variablelist>
+     <varlistentry>
+      <term><literal>PG_ABS_SRCDIR</literal></term>
+      <listitem>
+       <para>
+        Absolute path to the source directory.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+     <term><literal>PG_ABS_BUILDDIR</literal></term>
+     <listitem>
+      <para>
+       Absolute path to the build directory.
+      </para>
+     </listitem>
+     </varlistentry>
+
+     <varlistentry>
+     <term><literal>PG_DLSUFFIX</literal></term>
+     <listitem>
+      <para>
+       Name of extension for dynamically-loadable modules (e.g.
+       <literal>.so</literal> on Linux).
+      </para>
+     </listitem>
+     </varlistentry>
+
+     <varlistentry>
+     <term><literal>PG_LIBDIR</literal></term>
+     <listitem>
+      <para>
+       Absolute path to dynamic libraries.
+      </para>
+     </listitem>
+     </varlistentry>
+    </variablelist>
+   </para>
+
+   <para>
+    These variables should be set in the tests with the meta-command
+    <command>\getenv</command>, like:
+<programlisting>
+\getenv abs_builddir PG_ABS_BUILDDIR
+\getenv abs_srcdir PG_ABS_SRCDIR
+</programlisting>
+   </para>
+
+   <para>
+    These are useful when dealing with function and object loading
+    that require specific paths to work, like paths defined in a
+    <command>CREATE FUNCTION</command> or <command>LOAD</command>
+    command.
    </para>
   </sect2>
 

@@ -13,7 +13,12 @@ use Test::More;
 my $primary = PostgreSQL::Test::Cluster->new('primary');
 $primary->init(
 	has_archiving    => 1,
-	allows_streaming => 1);
+	allows_streaming => 1,
+	# IvorySQL oracle-mode initdb writes substantially more WAL than upstream
+	# PG (~16-32MB via the extra ora catalogs), which fills the default 16MB
+	# segment 1 nearly full and makes this segment-counting test spill an extra
+	# segment.  Use a larger WAL segment size so init WAL no longer dominates.
+	extra            => ['--wal-segsize=64']);
 $primary->append_conf('postgresql.conf', 'autovacuum = off');
 $primary->start;
 my $primary_data = $primary->data_dir;

@@ -19,6 +19,7 @@
 #include "access/sysattr.h"
 #include "access/table.h"
 #include "access/tableam.h"
+#include "access/tupconvert.h"
 #include "access/xact.h"
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
@@ -32,6 +33,7 @@
 #include "catalog/pg_type.h"
 #include "commands/trigger.h"
 #include "executor/executor.h"
+#include "executor/instrument.h"
 #include "miscadmin.h"
 #include "nodes/bitmapset.h"
 #include "nodes/makefuncs.h"
@@ -157,7 +159,7 @@ static HeapTuple check_modified_virtual_generated(TupleDesc tupdesc, HeapTuple t
  * (but see CloneRowTriggersToPartition).
  */
 ObjectAddress
-CreateTrigger(CreateTrigStmt *stmt, const char *queryString,
+CreateTrigger(const CreateTrigStmt *stmt, const char *queryString,
 			  Oid relOid, Oid refRelOid, Oid constraintOid, Oid indexOid,
 			  Oid funcoid, Oid parentTriggerOid, Node *whenClause,
 			  bool isInternal, bool in_partition)
@@ -174,7 +176,7 @@ CreateTrigger(CreateTrigStmt *stmt, const char *queryString,
  * (always/origin/replica/disabled) can be specified.
  */
 ObjectAddress
-CreateTriggerFiringOn(CreateTrigStmt *stmt, const char *queryString,
+CreateTriggerFiringOn(const CreateTrigStmt *stmt, const char *queryString,
 					  Oid relOid, Oid refRelOid, Oid constraintOid,
 					  Oid indexOid, Oid funcoid, Oid parentTriggerOid,
 					  Node *whenClause, bool isInternal, bool in_partition,

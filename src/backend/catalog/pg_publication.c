@@ -53,37 +53,48 @@ typedef struct
  * error if not.
  */
 static void
-check_publication_add_relation(Relation targetrel)
+check_publication_add_relation(PublicationRelInfo *pri)
 {
+	Relation	targetrel = pri->relation;
+	const char *errormsg;
+
+	if (pri->except)
+		errormsg = gettext_noop("cannot use publication EXCEPT clause for relation \"%s\"");
+	else
+		errormsg = gettext_noop("cannot add relation \"%s\" to publication");
+
+	/* If in EXCEPT clause, must be root partitioned table */
+	if (pri->except && targetrel->rd_rel->relispartition)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg(errormsg, RelationGetRelationName(targetrel)),
+				 errdetail("This operation is not supported for individual partitions.")));
+
 	/* Must be a regular or partitioned table */
 	if (RelationGetForm(targetrel)->relkind != RELKIND_RELATION &&
 		RelationGetForm(targetrel)->relkind != RELKIND_PARTITIONED_TABLE)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("cannot add relation \"%s\" to publication",
-						RelationGetRelationName(targetrel)),
+				 errmsg(errormsg, RelationGetRelationName(targetrel)),
 				 errdetail_relkind_not_supported(RelationGetForm(targetrel)->relkind)));
 
 	/* Can't be system table */
 	if (IsCatalogRelation(targetrel))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("cannot add relation \"%s\" to publication",
-						RelationGetRelationName(targetrel)),
+				 errmsg(errormsg, RelationGetRelationName(targetrel)),
 				 errdetail("This operation is not supported for system tables.")));
 
 	/* UNLOGGED and TEMP relations cannot be part of publication. */
 	if (targetrel->rd_rel->relpersistence == RELPERSISTENCE_TEMP)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("cannot add relation \"%s\" to publication",
-						RelationGetRelationName(targetrel)),
+				 errmsg(errormsg, RelationGetRelationName(targetrel)),
 				 errdetail("This operation is not supported for temporary tables.")));
 	else if (targetrel->rd_rel->relpersistence == RELPERSISTENCE_UNLOGGED)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("cannot add relation \"%s\" to publication",
-						RelationGetRelationName(targetrel)),
+				 errmsg(errormsg, RelationGetRelationName(targetrel)),
 				 errdetail("This operation is not supported for unlogged tables.")));
 }
 
@@ -260,6 +271,49 @@ is_schema_publication(Oid pubid)
 }
 
 /*
+ * Returns true if the publication has explicitly included relation (i.e.,
+ * not marked as EXCEPT).
+ */
+bool
+is_table_publication(Oid pubid)
+{
+	Relation	pubrelsrel;
+	ScanKeyData scankey;
+	SysScanDesc scan;
+	HeapTuple	tup;
+	bool		result = false;
+
+	pubrelsrel = table_open(PublicationRelRelationId, AccessShareLock);
+	ScanKeyInit(&scankey,
+				Anum_pg_publication_rel_prpubid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(pubid));
+
+	scan = systable_beginscan(pubrelsrel,
+							  PublicationRelPrpubidIndexId,
+							  true, NULL, 1, &scankey);
+	tup = systable_getnext(scan);
+	if (HeapTupleIsValid(tup))
+	{
+		Form_pg_publication_rel pubrel;
+
+		pubrel = (Form_pg_publication_rel) GETSTRUCT(tup);
+
+		/*
+		 * For any publication, pg_publication_rel contains either only EXCEPT
+		 * entries or only explicitly included tables. Therefore, examining
+		 * the first tuple is sufficient to determine table inclusion.
+		 */
+		result = !pubrel->prexcept;
+	}
+
+	systable_endscan(scan);
+	table_close(pubrelsrel, AccessShareLock);
+
+	return result;
+}
+
+/*
  * Returns true if the relation has column list associated with the
  * publication, false otherwise.
  *
@@ -366,7 +420,7 @@ GetTopMostAncestorInPublication(Oid puboid, List *ancestors, int *ancestor_level
 	foreach(lc, ancestors)
 	{
 		Oid			ancestor = lfirst_oid(lc);
-		List	   *apubids = GetRelationPublications(ancestor);
+		List	   *apubids = GetRelationIncludedPublications(ancestor);
 		List	   *aschemaPubids = NIL;
 
 		level++;
@@ -429,7 +483,7 @@ attnumstoint2vector(Bitmapset *attrs)
  */
 ObjectAddress
 publication_add_relation(Oid pubid, PublicationRelInfo *pri,
-						 bool if_not_exists)
+						 bool if_not_exists, AlterPublicationStmt *alter_stmt)
 {
 	Relation	rel;
 	HeapTuple	tup;
@@ -444,6 +498,7 @@ publication_add_relation(Oid pubid, PublicationRelInfo *pri,
 				referenced;
 	List	   *relids = NIL;
 	int			i;
+	bool		inval_except_table;
 
 	rel = table_open(PublicationRelRelationId, RowExclusiveLock);
 
@@ -466,7 +521,7 @@ publication_add_relation(Oid pubid, PublicationRelInfo *pri,
 						RelationGetRelationName(targetrel), pub->name)));
 	}
 
-	check_publication_add_relation(targetrel);
+	check_publication_add_relation(pri);
 
 	/* Validate and translate column names into a Bitmapset of attnums. */
 	attnums = pub_collist_validate(pri->relation, pri->columns);
@@ -482,6 +537,8 @@ publication_add_relation(Oid pubid, PublicationRelInfo *pri,
 		ObjectIdGetDatum(pubid);
 	values[Anum_pg_publication_rel_prrelid - 1] =
 		ObjectIdGetDatum(relid);
+	values[Anum_pg_publication_rel_prexcept - 1] =
+		BoolGetDatum(pri->except);
 
 	/* Add qualifications, if available */
 	if (pri->whereClause != NULL)
@@ -530,17 +587,38 @@ publication_add_relation(Oid pubid, PublicationRelInfo *pri,
 	table_close(rel, RowExclusiveLock);
 
 	/*
-	 * Invalidate relcache so that publication info is rebuilt.
+	 * Determine whether EXCEPT tables require explicit relcache invalidation.
 	 *
-	 * For the partitioned tables, we must invalidate all partitions contained
-	 * in the respective partition hierarchies, not just the one explicitly
-	 * mentioned in the publication. This is required because we implicitly
-	 * publish the child tables when the parent table is published.
+	 * For CREATE PUBLICATION with EXCEPT tables, invalidation is skipped
+	 * here, as CreatePublication() function invalidates all relations as part
+	 * of defining a FOR ALL TABLES publication.
+	 *
+	 * For ALTER PUBLICATION, invalidation is needed only when adding an
+	 * EXCEPT table to a publication already marked as ALL TABLES. For
+	 * publications that were originally empty or defined as ALL SEQUENCES and
+	 * are being converted to ALL TABLES, invalidation is skipped here, as
+	 * AlterPublicationAllFlags() function invalidates all relations while
+	 * marking the publication as ALL TABLES publication.
 	 */
-	relids = GetPubPartitionOptionRelations(relids, PUBLICATION_PART_ALL,
-											relid);
+	inval_except_table = (alter_stmt != NULL) && pub->alltables &&
+		(alter_stmt->for_all_tables && pri->except);
 
-	InvalidatePublicationRels(relids);
+	if (!pri->except || inval_except_table)
+	{
+		/*
+		 * Invalidate relcache so that publication info is rebuilt.
+		 *
+		 * For the partitioned tables, we must invalidate all partitions
+		 * contained in the respective partition hierarchies, not just the one
+		 * explicitly mentioned in the publication. This is required because
+		 * we implicitly publish the child tables when the parent table is
+		 * published.
+		 */
+		relids = GetPubPartitionOptionRelations(relids, PUBLICATION_PART_ALL,
+												relid);
+
+		InvalidatePublicationRels(relids);
+	}
 
 	return myself;
 }
@@ -749,23 +827,30 @@ publication_add_schema(Oid pubid, Oid schemaid, bool if_not_exists)
 	return myself;
 }
 
-/* Gets list of publication oids for a relation */
-List *
-GetRelationPublications(Oid relid)
+/*
+ * Internal function to get the list of publication oids for a relation.
+ *
+ * If except_flag is true, returns the list of publication that specified the
+ * relation in EXCEPT clause; otherwise, returns the list of publications
+ * in which relation is included.
+ */
+static List *
+get_relation_publications(Oid relid, bool except_flag)
 {
 	List	   *result = NIL;
 	CatCList   *pubrellist;
-	int			i;
 
 	/* Find all publications associated with the relation. */
 	pubrellist = SearchSysCacheList1(PUBLICATIONRELMAP,
 									 ObjectIdGetDatum(relid));
-	for (i = 0; i < pubrellist->n_members; i++)
+	for (int i = 0; i < pubrellist->n_members; i++)
 	{
 		HeapTuple	tup = &pubrellist->members[i]->tuple;
-		Oid			pubid = ((Form_pg_publication_rel) GETSTRUCT(tup))->prpubid;
+		Form_pg_publication_rel pubrel = (Form_pg_publication_rel) GETSTRUCT(tup);
+		Oid			pubid = pubrel->prpubid;
 
-		result = lappend_oid(result, pubid);
+		if (pubrel->prexcept == except_flag)
+			result = lappend_oid(result, pubid);
 	}
 
 	ReleaseSysCacheList(pubrellist);
@@ -774,13 +859,33 @@ GetRelationPublications(Oid relid)
 }
 
 /*
- * Gets list of relation oids for a publication.
- *
- * This should only be used FOR TABLE publications, the FOR ALL TABLES/SEQUENCES
- * should use GetAllPublicationRelations().
+ * Gets list of publication oids for a relation.
  */
 List *
-GetPublicationRelations(Oid pubid, PublicationPartOpt pub_partopt)
+GetRelationIncludedPublications(Oid relid)
+{
+	return get_relation_publications(relid, false);
+}
+
+/*
+ * Gets list of publication oids which has relation in EXCEPT clause.
+ */
+List *
+GetRelationExcludedPublications(Oid relid)
+{
+	return get_relation_publications(relid, true);
+}
+
+/*
+ * Internal function to get the list of relation oids for a publication.
+ *
+ * If except_flag is true, returns the list of relations specified in the
+ * EXCEPT clause of the publication; otherwise, returns the list of relations
+ * included in the publication.
+ */
+static List *
+get_publication_relations(Oid pubid, PublicationPartOpt pub_partopt,
+						  bool except_flag)
 {
 	List	   *result;
 	Relation	pubrelsrel;
@@ -805,8 +910,10 @@ GetPublicationRelations(Oid pubid, PublicationPartOpt pub_partopt)
 		Form_pg_publication_rel pubrel;
 
 		pubrel = (Form_pg_publication_rel) GETSTRUCT(tup);
-		result = GetPubPartitionOptionRelations(result, pub_partopt,
-												pubrel->prrelid);
+
+		if (except_flag == pubrel->prexcept)
+			result = GetPubPartitionOptionRelations(result, pub_partopt,
+													pubrel->prrelid);
 	}
 
 	systable_endscan(scan);
@@ -817,6 +924,34 @@ GetPublicationRelations(Oid pubid, PublicationPartOpt pub_partopt)
 	list_deduplicate_oid(result);
 
 	return result;
+}
+
+/*
+ * Gets list of relation oids that are associated with a publication.
+ *
+ * This should only be used FOR TABLE publications, the FOR ALL TABLES/SEQUENCES
+ * should use GetAllPublicationRelations().
+ */
+List *
+GetIncludedPublicationRelations(Oid pubid, PublicationPartOpt pub_partopt)
+{
+	Assert(!GetPublication(pubid)->alltables);
+
+	return get_publication_relations(pubid, pub_partopt, false);
+}
+
+/*
+ * Gets list of table oids that were specified in the EXCEPT clause for a
+ * publication.
+ *
+ * This should only be used FOR ALL TABLES publications.
+ */
+List *
+GetExcludedPublicationTables(Oid pubid, PublicationPartOpt pub_partopt)
+{
+	Assert(GetPublication(pubid)->alltables);
+
+	return get_publication_relations(pubid, pub_partopt, true);
 }
 
 /*
@@ -858,23 +993,33 @@ GetAllTablesPublications(void)
 
 /*
  * Gets list of all relations published by FOR ALL TABLES/SEQUENCES
- * publication(s).
+ * publication.
  *
  * If the publication publishes partition changes via their respective root
  * partitioned tables, we must exclude partitions in favor of including the
  * root partitioned tables. This is not applicable to FOR ALL SEQUENCES
  * publication.
+ *
+ * For a FOR ALL TABLES publication, the returned list excludes tables mentioned
+ * in EXCEPT TABLE clause.
  */
 List *
-GetAllPublicationRelations(char relkind, bool pubviaroot)
+GetAllPublicationRelations(Oid pubid, char relkind, bool pubviaroot)
 {
 	Relation	classRel;
 	ScanKeyData key[1];
 	TableScanDesc scan;
 	HeapTuple	tuple;
 	List	   *result = NIL;
+	List	   *exceptlist = NIL;
 
 	Assert(!(relkind == RELKIND_SEQUENCE && pubviaroot));
+
+	/* EXCEPT filtering applies only to relations, not sequences */
+	if (relkind == RELKIND_RELATION)
+		exceptlist = GetExcludedPublicationTables(pubid, pubviaroot ?
+												  PUBLICATION_PART_ROOT :
+												  PUBLICATION_PART_LEAF);
 
 	classRel = table_open(RelationRelationId, AccessShareLock);
 
@@ -891,7 +1036,8 @@ GetAllPublicationRelations(char relkind, bool pubviaroot)
 		Oid			relid = relForm->oid;
 
 		if (is_publishable_class(relid, relForm) &&
-			!(relForm->relispartition && pubviaroot))
+			!(relForm->relispartition && pubviaroot) &&
+			!list_member_oid(exceptlist, relid))
 			result = lappend_oid(result, relid);
 	}
 
@@ -912,7 +1058,8 @@ GetAllPublicationRelations(char relkind, bool pubviaroot)
 			Oid			relid = relForm->oid;
 
 			if (is_publishable_class(relid, relForm) &&
-				!relForm->relispartition)
+				!relForm->relispartition &&
+				!list_member_oid(exceptlist, relid))
 				result = lappend_oid(result, relid);
 		}
 
@@ -1168,17 +1315,18 @@ pg_get_publication_tables(PG_FUNCTION_ARGS)
 			 * those. Otherwise, get the partitioned table itself.
 			 */
 			if (pub_elem->alltables)
-				pub_elem_tables = GetAllPublicationRelations(RELKIND_RELATION,
+				pub_elem_tables = GetAllPublicationRelations(pub_elem->oid,
+															 RELKIND_RELATION,
 															 pub_elem->pubviaroot);
 			else
 			{
 				List	   *relids,
 						   *schemarelids;
 
-				relids = GetPublicationRelations(pub_elem->oid,
-												 pub_elem->pubviaroot ?
-												 PUBLICATION_PART_ROOT :
-												 PUBLICATION_PART_LEAF);
+				relids = GetIncludedPublicationRelations(pub_elem->oid,
+														 pub_elem->pubviaroot ?
+														 PUBLICATION_PART_ROOT :
+														 PUBLICATION_PART_LEAF);
 				schemarelids = GetAllSchemaPublicationRelations(pub_elem->oid,
 																pub_elem->pubviaroot ?
 																PUBLICATION_PART_ROOT :
@@ -1230,6 +1378,7 @@ pg_get_publication_tables(PG_FUNCTION_ARGS)
 		TupleDescInitEntry(tupdesc, (AttrNumber) 4, "qual",
 						   PG_NODE_TREEOID, -1, 0);
 
+		TupleDescFinalize(tupdesc);
 		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
 		funcctx->user_fctx = table_infos;
 
@@ -1367,7 +1516,9 @@ pg_get_publication_sequences(PG_FUNCTION_ARGS)
 		publication = GetPublicationByName(pubname, false);
 
 		if (publication->allsequences)
-			sequences = GetAllPublicationRelations(RELKIND_SEQUENCE, false);
+			sequences = GetAllPublicationRelations(publication->oid,
+												   RELKIND_SEQUENCE,
+												   false);
 
 		funcctx->user_fctx = sequences;
 

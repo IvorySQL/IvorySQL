@@ -1774,7 +1774,7 @@ enlargeVariables(Variables *variables, int needed)
 	{
 		variables->max_vars = needed + VARIABLES_ALLOC_MARGIN;
 		variables->vars = (Variable *)
-			pg_realloc(variables->vars, variables->max_vars * sizeof(Variable));
+			pg_realloc_array(variables->vars, Variable, variables->max_vars);
 	}
 }
 
@@ -3067,7 +3067,7 @@ allocCStatePrepared(CState *st)
 {
 	Assert(st->prepared == NULL);
 
-	st->prepared = pg_malloc(sizeof(bool *) * num_scripts);
+	st->prepared = pg_malloc_array(bool *, num_scripts);
 	for (int i = 0; i < num_scripts; i++)
 	{
 		ParsedScript *script = &sql_script[i];
@@ -3075,7 +3075,7 @@ allocCStatePrepared(CState *st)
 
 		for (numcmds = 0; script->commands[numcmds] != NULL; numcmds++)
 			;
-		st->prepared[i] = pg_malloc0(sizeof(bool) * numcmds);
+		st->prepared[i] = pg_malloc0_array(bool, numcmds);
 	}
 }
 
@@ -5659,7 +5659,7 @@ create_sql_command(PQExpBuffer buf)
 		return NULL;
 
 	/* Allocate and initialize Command structure */
-	my_command = (Command *) pg_malloc(sizeof(Command));
+	my_command = pg_malloc0_object(Command);
 	initPQExpBuffer(&my_command->lines);
 	appendPQExpBufferStr(&my_command->lines, p);
 	my_command->first_line = NULL;	/* this is set later */
@@ -5755,7 +5755,7 @@ process_backslash_command(PsqlScanState sstate, const char *source,
 	}
 
 	/* Allocate and initialize Command structure */
-	my_command = (Command *) pg_malloc0(sizeof(Command));
+	my_command = pg_malloc0_object(Command);
 	my_command->type = META_COMMAND;
 	my_command->argc = 0;
 	initSimpleStats(&my_command->stats);
@@ -6011,7 +6011,7 @@ ParseScript(const char *script, const char *desc, int weight)
 	/* Initialize all fields of ps */
 	ps.desc = desc;
 	ps.weight = weight;
-	ps.commands = (Command **) pg_malloc(sizeof(Command *) * alloc_num);
+	ps.commands = pg_malloc_array(Command *, alloc_num);
 	initStats(&ps.stats, 0);
 
 	/* Prepare to parse script */
@@ -6114,7 +6114,7 @@ ParseScript(const char *script, const char *desc, int weight)
 		{
 			alloc_num += COMMANDS_ALLOC_NUM;
 			ps.commands = (Command **)
-				pg_realloc(ps.commands, sizeof(Command *) * alloc_num);
+				pg_realloc_array(ps.commands, Command *, alloc_num);
 		}
 
 		/* Done if we reached EOF */
@@ -6844,7 +6844,7 @@ main(int argc, char **argv)
 		}
 	}
 
-	state = (CState *) pg_malloc0(sizeof(CState));
+	state = pg_malloc0_object(CState);
 
 	/* set random seed early, because it may be used while parsing scripts. */
 	if (!set_random_seed(getenv("PGBENCH_RANDOM_SEED")))
@@ -7298,7 +7298,7 @@ main(int argc, char **argv)
 
 	if (nclients > 1)
 	{
-		state = (CState *) pg_realloc(state, sizeof(CState) * nclients);
+		state = pg_realloc_array(state, CState, nclients);
 		memset(state + 1, 0, sizeof(CState) * (nclients - 1));
 
 		/* copy any -D switch values to all clients */
@@ -7412,7 +7412,7 @@ main(int argc, char **argv)
 	PQfinish(con);
 
 	/* set up thread data structures */
-	threads = (TState *) pg_malloc(sizeof(TState) * nthreads);
+	threads = pg_malloc_array(TState, nthreads);
 	nclients_dealt = 0;
 
 	for (i = 0; i < nthreads; i++)
@@ -7993,7 +7993,7 @@ socket_has_input(socket_set *sa, int fd, int idx)
 static socket_set *
 alloc_socket_set(int count)
 {
-	return (socket_set *) pg_malloc0(sizeof(socket_set));
+	return pg_malloc0_object(socket_set);
 }
 
 static void

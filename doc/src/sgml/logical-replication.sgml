@@ -116,7 +116,11 @@
    <literal>FOR TABLES IN SCHEMA</literal>, <literal>FOR ALL TABLES</literal>,
    or <literal>FOR ALL SEQUENCES</literal>. Unlike tables, sequences can be
    synchronized at any time. For more information, see
-   <xref linkend="logical-replication-sequences"/>.
+   <xref linkend="logical-replication-sequences"/>. When a publication is
+   created with <literal>FOR ALL TABLES</literal>, a table or set of tables can
+   be explicitly excluded from publication using the
+   <link linkend="sql-createpublication-params-for-except-table"><literal>EXCEPT TABLE</literal></link>
+   clause.
   </para>
 
   <para>
@@ -2573,7 +2577,9 @@ CONTEXT:  processing remote data for replication origin "pg_16395" during "INSER
   <para>
    To create a subscription, the user must have the privileges of
    the <literal>pg_create_subscription</literal> role, as well as
-   <literal>CREATE</literal> privileges on the database.
+   <literal>CREATE</literal> privileges on the database.  If
+   <literal>SERVER</literal> is specified, the user also must have
+   <literal>USAGE</literal> privileges on the server.
   </para>
 
   <para>

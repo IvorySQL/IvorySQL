@@ -1045,29 +1045,29 @@ WHERE c.castmethod = 'b' AND
                     k.casttarget = c.castsource);
      castsource     |     casttarget     | castfunc | castcontext 
 --------------------+--------------------+----------+-------------
+ text               | pg_catalog.bpchar  |        0 | i
+ pg_catalog.varchar | pg_catalog.bpchar  |        0 | i
+ pg_node_tree       | text               |        0 | i
  pg_ndistinct       | bytea              |        0 | i
  pg_dependencies    | bytea              |        0 | i
  pg_mcv_list        | bytea              |        0 | i
- xml                | text               |        0 | a
- pg_node_tree       | text               |        0 | i
  cidr               | inet               |        0 | i
- text               | pg_catalog.bpchar  |        0 | i
- xml                | pg_catalog.bpchar  |        0 | a
- pg_catalog.varchar | pg_catalog.bpchar  |        0 | i
- varchar2           | pg_catalog.bpchar  |        0 | i
- varchar2           | pg_catalog.bpchar  |        0 | i
+ xml                | text               |        0 | a
  xml                | pg_catalog.varchar |        0 | a
+ xml                | pg_catalog.bpchar  |        0 | a
  text               | char               |        0 | i
- xml                | char               |        0 | a
  pg_catalog.varchar | char               |        0 | i
- varchar2           | char               |        0 | i
- varchar2           | char               |        0 | i
+ xml                | char               |        0 | a
  text               | char               |        0 | i
- xml                | char               |        0 | a
  pg_catalog.varchar | char               |        0 | i
- varchar2           | char               |        0 | i
- varchar2           | char               |        0 | i
+ xml                | char               |        0 | a
+ varchar2           | pg_catalog.bpchar  |        0 | i
  xml                | varchar2           |        0 | a
+ varchar2           | char               |        0 | i
+ varchar2           | char               |        0 | i
+ varchar2           | char               |        0 | i
+ varchar2           | char               |        0 | i
+ varchar2           | pg_catalog.bpchar  |        0 | i
  xml                | varchar2           |        0 | a
  date               | timestamp          |        0 | i
 (25 rows)

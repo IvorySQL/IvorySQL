@@ -88,6 +88,7 @@
 #include "storage/large_object.h"
 #include "storage/pg_shmem.h"
 #include "storage/predicate.h"
+#include "storage/proc.h"
 #include "storage/procnumber.h"
 #include "storage/standby.h"
 #include "tcop/backend_startup.h"
@@ -580,6 +581,7 @@ char	   *cluster_name = "";
 char	   *ConfigFileName;
 char	   *HbaFileName;
 char	   *IdentFileName;
+char	   *HostsFileName;
 char	   *external_pid_file;
 
 

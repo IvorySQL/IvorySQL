@@ -28,11 +28,14 @@
 #include "catalog/index.h"
 #include "catalog/pg_am.h"
 #include "commands/vacuum.h"
+#include "executor/instrument.h"
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "postmaster/autovacuum.h"
 #include "storage/bufmgr.h"
+#include "storage/condition_variable.h"
 #include "storage/freespace.h"
+#include "storage/proc.h"
 #include "tcop/tcopprot.h"
 #include "utils/acl.h"
 #include "utils/datum.h"
@@ -42,6 +45,7 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/tuplesort.h"
+#include "utils/wait_event.h"
 
 /* Magic numbers for parallel state sharing */
 #define PARALLEL_KEY_BRIN_SHARED		UINT64CONST(0xB000000000000001)
@@ -1687,9 +1691,6 @@ initialize_brin_buildstate(Relation idxRel, BrinRevmap *revmap,
 	state->bs_leader = NULL;
 	state->bs_worker_id = 0;
 	state->bs_sortstate = NULL;
-	state->bs_context = CurrentMemoryContext;
-	state->bs_emptyTuple = NULL;
-	state->bs_emptyTupleLen = 0;
 
 	/* Remember the memory context to use for an empty tuple, if needed. */
 	state->bs_context = CurrentMemoryContext;

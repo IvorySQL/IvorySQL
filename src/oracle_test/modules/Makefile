@@ -23,6 +23,7 @@ SUBDIRS = \
 		  test_copy_callbacks \
 		  test_custom_rmgrs \
 		  test_custom_stats \
+		  test_custom_types \
 		  test_ddl_deparse \
 		  test_dsa \
 		  test_dsm_registry \
@@ -38,12 +39,14 @@ SUBDIRS = \
 		  test_parser \
 		  test_package_reset \
 		  test_pg_dump \
+		  test_plan_advice \
 		  test_predtest \
 		  test_radixtree \
 		  test_rbtree \
 		  test_regex \
 		  test_resowner \
 		  test_rls_hooks \
+		  test_saslprep \
 		  test_shm_mq \
 		  test_slru \
 		  test_tidstore \

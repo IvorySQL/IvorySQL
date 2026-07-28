@@ -181,7 +181,7 @@ parse_publication_options(ParseState *pstate,
  */
 static void
 ObjectsInPublicationToOids(List *pubobjspec_list, ParseState *pstate,
-						   List **rels, List **schemas)
+						   List **rels, List **exceptrels, List **schemas)
 {
 	ListCell   *cell;
 	PublicationObjSpec *pubobj;
@@ -198,7 +198,12 @@ ObjectsInPublicationToOids(List *pubobjspec_list, ParseState *pstate,
 
 		switch (pubobj->pubobjtype)
 		{
+			case PUBLICATIONOBJ_EXCEPT_TABLE:
+				pubobj->pubtable->except = true;
+				*exceptrels = lappend(*exceptrels, pubobj->pubtable);
+				break;
 			case PUBLICATIONOBJ_TABLE:
+				pubobj->pubtable->except = false;
 				*rels = lappend(*rels, pubobj->pubtable);
 				break;
 			case PUBLICATIONOBJ_TABLES_IN_SCHEMA:
@@ -519,8 +524,8 @@ InvalidatePubRelSyncCache(Oid pubid, bool puballtables)
 		 * a target. However, WAL records for TRUNCATE specify both a root and
 		 * its leaves.
 		 */
-		relids = GetPublicationRelations(pubid,
-										 PUBLICATION_PART_ALL);
+		relids = GetIncludedPublicationRelations(pubid,
+												 PUBLICATION_PART_ALL);
 		schemarelids = GetAllSchemaPublicationRelations(pubid,
 														PUBLICATION_PART_ALL);
 
@@ -844,6 +849,7 @@ CreatePublication(ParseState *pstate, CreatePublicationStmt *stmt)
 	char		publish_generated_columns;
 	AclResult	aclresult;
 	List	   *relations = NIL;
+	List	   *exceptrelations = NIL;
 	List	   *schemaidlist = NIL;
 
 	/* must have CREATE privilege on database */
@@ -929,8 +935,21 @@ CreatePublication(ParseState *pstate, CreatePublicationStmt *stmt)
 	CommandCounterIncrement();
 
 	/* Associate objects with the publication. */
+	ObjectsInPublicationToOids(stmt->pubobjects, pstate, &relations,
+							   &exceptrelations, &schemaidlist);
+
 	if (stmt->for_all_tables)
 	{
+		/* Process EXCEPT table list */
+		if (exceptrelations != NIL)
+		{
+			List	   *rels;
+
+			rels = OpenTableList(exceptrelations);
+			PublicationAddTables(puboid, rels, true, NULL);
+			CloseTableList(rels);
+		}
+
 		/*
 		 * Invalidate relcache so that publication info is rebuilt. Sequences
 		 * publication doesn't require invalidation, as replica identity
@@ -940,9 +959,6 @@ CreatePublication(ParseState *pstate, CreatePublicationStmt *stmt)
 	}
 	else if (!stmt->for_all_sequences)
 	{
-		ObjectsInPublicationToOids(stmt->pubobjects, pstate, &relations,
-								   &schemaidlist);
-
 		/* FOR TABLES IN SCHEMA requires superuser */
 		if (schemaidlist != NIL && !superuser())
 			ereport(ERROR,
@@ -1050,8 +1066,8 @@ AlterPublicationOptions(ParseState *pstate, AlterPublicationStmt *stmt,
 		LockDatabaseObject(PublicationRelationId, pubform->oid, 0,
 						   AccessShareLock);
 
-		root_relids = GetPublicationRelations(pubform->oid,
-											  PUBLICATION_PART_ROOT);
+		root_relids = GetIncludedPublicationRelations(pubform->oid,
+													  PUBLICATION_PART_ROOT);
 
 		foreach(lc, root_relids)
 		{
@@ -1170,8 +1186,8 @@ AlterPublicationOptions(ParseState *pstate, AlterPublicationStmt *stmt,
 		 * trees, not just those explicitly mentioned in the publication.
 		 */
 		if (root_relids == NIL)
-			relids = GetPublicationRelations(pubform->oid,
-											 PUBLICATION_PART_ALL);
+			relids = GetIncludedPublicationRelations(pubform->oid,
+													 PUBLICATION_PART_ALL);
 		else
 		{
 			/*
@@ -1256,15 +1272,37 @@ AlterPublicationTables(AlterPublicationStmt *stmt, HeapTuple tup,
 		PublicationDropTables(pubid, rels, false);
 	else						/* AP_SetObjects */
 	{
-		List	   *oldrelids = GetPublicationRelations(pubid,
-														PUBLICATION_PART_ROOT);
+		List	   *oldrelids = NIL;
 		List	   *delrels = NIL;
 		ListCell   *oldlc;
 
-		TransformPubWhereClauses(rels, queryString, pubform->pubviaroot);
+		if (stmt->for_all_tables || stmt->for_all_sequences)
+		{
+			/*
+			 * In FOR ALL TABLES mode, relations are tracked as exclusions
+			 * (EXCEPT TABLES). Fetch the current excluded relations so they
+			 * can be reconciled with the specified EXCEPT list.
+			 *
+			 * This applies only if the existing publication is already
+			 * defined as FOR ALL TABLES; otherwise, there are no exclusion
+			 * entries to process.
+			 */
+			if (pubform->puballtables)
+			{
+				oldrelids = GetExcludedPublicationTables(pubid,
+														 PUBLICATION_PART_ROOT);
+			}
+		}
+		else
+		{
+			oldrelids = GetIncludedPublicationRelations(pubid,
+														PUBLICATION_PART_ROOT);
 
-		CheckPubRelationColumnList(stmt->pubname, rels, publish_schema,
-								   pubform->pubviaroot);
+			TransformPubWhereClauses(rels, queryString, pubform->pubviaroot);
+
+			CheckPubRelationColumnList(stmt->pubname, rels, publish_schema,
+									   pubform->pubviaroot);
+		}
 
 		/*
 		 * To recreate the relation list for the publication, look for
@@ -1358,6 +1396,7 @@ AlterPublicationTables(AlterPublicationStmt *stmt, HeapTuple tup,
 				oldrel = palloc_object(PublicationRelInfo);
 				oldrel->whereClause = NULL;
 				oldrel->columns = NIL;
+				oldrel->except = false;
 				oldrel->relation = table_open(oldrelid,
 											  ShareUpdateExclusiveLock);
 				delrels = lappend(delrels, oldrel);
@@ -1408,7 +1447,8 @@ AlterPublicationSchemas(AlterPublicationStmt *stmt,
 		ListCell   *lc;
 		List	   *reloids;
 
-		reloids = GetPublicationRelations(pubform->oid, PUBLICATION_PART_ROOT);
+		reloids = GetIncludedPublicationRelations(pubform->oid,
+												  PUBLICATION_PART_ROOT);
 
 		foreach(lc, reloids)
 		{
@@ -1480,6 +1520,16 @@ CheckAlterPublication(AlterPublicationStmt *stmt, HeapTuple tup,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("must be superuser to add or set schemas")));
 
+	if (stmt->for_all_tables && !superuser())
+		ereport(ERROR,
+				errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				errmsg("must be superuser to set ALL TABLES"));
+
+	if (stmt->for_all_sequences && !superuser())
+		ereport(ERROR,
+				errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				errmsg("must be superuser to set ALL SEQUENCES"));
+
 	/*
 	 * Check that user is allowed to manipulate the publication tables in
 	 * schema
@@ -1528,6 +1578,73 @@ CheckAlterPublication(AlterPublicationStmt *stmt, HeapTuple tup,
 						   NameStr(pubform->pubname)),
 					errdetail("Tables or sequences cannot be added to or dropped from FOR ALL SEQUENCES publications."));
 	}
+
+	if (stmt->for_all_tables || stmt->for_all_sequences)
+	{
+		/*
+		 * If the publication already contains specific tables or schemas, we
+		 * prevent switching to a ALL state.
+		 */
+		if (is_table_publication(pubform->oid) ||
+			is_schema_publication(pubform->oid))
+		{
+			ereport(ERROR,
+					errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+					stmt->for_all_tables ?
+					errmsg("publication \"%s\" does not support ALL TABLES operations", NameStr(pubform->pubname)) :
+					errmsg("publication \"%s\" does not support ALL SEQUENCES operations", NameStr(pubform->pubname)),
+					errdetail("This operation requires the publication to be defined as FOR ALL TABLES/SEQUENCES or to be empty."));
+		}
+	}
+}
+
+/*
+ * Update FOR ALL TABLES / FOR ALL SEQUENCES flags of a publication.
+ */
+static void
+AlterPublicationAllFlags(AlterPublicationStmt *stmt, Relation rel,
+						 HeapTuple tup)
+{
+	Form_pg_publication pubform;
+	bool		nulls[Natts_pg_publication] = {0};
+	bool		replaces[Natts_pg_publication] = {0};
+	Datum		values[Natts_pg_publication] = {0};
+	bool		dirty = false;
+
+	if (!stmt->for_all_tables && !stmt->for_all_sequences)
+		return;
+
+	pubform = (Form_pg_publication) GETSTRUCT(tup);
+
+	/* Update FOR ALL TABLES flag if changed */
+	if (stmt->for_all_tables != pubform->puballtables)
+	{
+		values[Anum_pg_publication_puballtables - 1] =
+			BoolGetDatum(stmt->for_all_tables);
+		replaces[Anum_pg_publication_puballtables - 1] = true;
+		dirty = true;
+	}
+
+	/* Update FOR ALL SEQUENCES flag if changed */
+	if (stmt->for_all_sequences != pubform->puballsequences)
+	{
+		values[Anum_pg_publication_puballsequences - 1] =
+			BoolGetDatum(stmt->for_all_sequences);
+		replaces[Anum_pg_publication_puballsequences - 1] = true;
+		dirty = true;
+	}
+
+	if (dirty)
+	{
+		tup = heap_modify_tuple(tup, RelationGetDescr(rel), values,
+								nulls, replaces);
+		CatalogTupleUpdate(rel, &tup->t_self, tup);
+		CommandCounterIncrement();
+
+		/* For ALL TABLES, we must invalidate all relcache entries */
+		if (replaces[Anum_pg_publication_puballtables - 1])
+			CacheInvalidateRelcacheAll();
+	}
 }
 
 /*
@@ -1566,11 +1683,12 @@ AlterPublication(ParseState *pstate, AlterPublicationStmt *stmt)
 	else
 	{
 		List	   *relations = NIL;
+		List	   *exceptrelations = NIL;
 		List	   *schemaidlist = NIL;
 		Oid			pubid = pubform->oid;
 
 		ObjectsInPublicationToOids(stmt->pubobjects, pstate, &relations,
-								   &schemaidlist);
+								   &exceptrelations, &schemaidlist);
 
 		CheckAlterPublication(stmt, tup, relations, schemaidlist);
 
@@ -1593,9 +1711,11 @@ AlterPublication(ParseState *pstate, AlterPublicationStmt *stmt)
 					errmsg("publication \"%s\" does not exist",
 						   stmt->pubname));
 
+		relations = list_concat(relations, exceptrelations);
 		AlterPublicationTables(stmt, tup, relations, pstate->p_sourcetext,
 							   schemaidlist != NIL);
 		AlterPublicationSchemas(stmt, tup, schemaidlist);
+		AlterPublicationAllFlags(stmt, rel, tup);
 	}
 
 	/* Cleanup. */
@@ -1771,6 +1891,7 @@ OpenTableList(List *tables)
 		pub_rel->relation = rel;
 		pub_rel->whereClause = t->whereClause;
 		pub_rel->columns = t->columns;
+		pub_rel->except = t->except;
 		rels = lappend(rels, pub_rel);
 		relids = lappend_oid(relids, myrelid);
 
@@ -1843,6 +1964,7 @@ OpenTableList(List *tables)
 
 				/* child inherits column list from parent */
 				pub_rel->columns = t->columns;
+				pub_rel->except = t->except;
 				rels = lappend(rels, pub_rel);
 				relids = lappend_oid(relids, childrelid);
 
@@ -1929,7 +2051,7 @@ PublicationAddTables(Oid pubid, List *rels, bool if_not_exists,
 			aclcheck_error(ACLCHECK_NOT_OWNER, get_relkind_objtype(rel->rd_rel->relkind),
 						   RelationGetRelationName(rel));
 
-		obj = publication_add_relation(pubid, pub_rel, if_not_exists);
+		obj = publication_add_relation(pubid, pub_rel, if_not_exists, stmt);
 		if (stmt)
 		{
 			EventTriggerCollectSimpleCommand(obj, InvalidObjectAddress,

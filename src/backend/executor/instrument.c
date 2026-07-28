@@ -67,9 +67,13 @@ InstrInit(Instrumentation *instr, int instrument_options)
 void
 InstrStartNode(Instrumentation *instr)
 {
-	if (instr->need_timer &&
-		!INSTR_TIME_SET_CURRENT_LAZY(instr->starttime))
-		elog(ERROR, "InstrStartNode called twice in a row");
+	if (instr->need_timer)
+	{
+		if (!INSTR_TIME_IS_ZERO(instr->starttime))
+			elog(ERROR, "InstrStartNode called twice in a row");
+		else
+			INSTR_TIME_SET_CURRENT(instr->starttime);
+	}
 
 	/* save buffer usage totals at node entry, if needed */
 	if (instr->need_bufusage)
@@ -170,7 +174,7 @@ InstrAggNode(Instrumentation *dst, Instrumentation *add)
 		dst->firsttuple = add->firsttuple;
 	}
 	else if (dst->running && add->running &&
-			 INSTR_TIME_LT(dst->firsttuple, add->firsttuple))
+			 INSTR_TIME_GT(dst->firsttuple, add->firsttuple))
 		dst->firsttuple = add->firsttuple;
 
 	INSTR_TIME_ADD(dst->counter, add->counter);

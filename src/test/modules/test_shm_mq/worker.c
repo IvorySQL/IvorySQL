@@ -21,6 +21,8 @@
 
 #include "miscadmin.h"
 #include "storage/ipc.h"
+#include "storage/latch.h"
+#include "storage/proc.h"
 #include "storage/procarray.h"
 #include "storage/shm_mq.h"
 #include "storage/shm_toc.h"

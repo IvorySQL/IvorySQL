@@ -482,8 +482,8 @@ check_for_data_types_usage(ClusterInfo *cluster)
 	}
 
 	/* Allocate memory for queries and for task states */
-	queries = pg_malloc0(sizeof(char *) * n_data_types_usage_checks);
-	states = pg_malloc0(sizeof(struct data_type_check_state) * n_data_types_usage_checks);
+	queries = pg_malloc0_array(char *, n_data_types_usage_checks);
+	states = pg_malloc0_array(struct data_type_check_state, n_data_types_usage_checks);
 
 	for (int i = 0; i < n_data_types_usage_checks; i++)
 	{

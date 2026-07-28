@@ -23,9 +23,11 @@
 
 #include "access/genam.h"
 #include "executor/executor.h"
+#include "executor/instrument.h"
 #include "executor/nodeBitmapIndexscan.h"
 #include "executor/nodeIndexscan.h"
 #include "miscadmin.h"
+#include "nodes/tidbitmap.h"
 
 
 /* ----------------------------------------------------------------
@@ -192,7 +194,7 @@ ExecEndBitmapIndexScan(BitmapIndexScanState *node)
 	{
 		IndexScanInstrumentation *winstrument;
 
-		Assert(ParallelWorkerNumber <= node->biss_SharedInfo->num_workers);
+		Assert(ParallelWorkerNumber < node->biss_SharedInfo->num_workers);
 		winstrument = &node->biss_SharedInfo->winstrument[ParallelWorkerNumber];
 
 		/*

@@ -244,7 +244,7 @@ ginInsertBAEntries(BuildAccumulator *accum,
 static int
 qsortCompareItemPointers(const void *a, const void *b)
 {
-	int			res = ginCompareItemPointers((ItemPointer) a, (ItemPointer) b);
+	int			res = ginCompareItemPointers((const ItemPointerData *) a, (const ItemPointerData *) b);
 
 	/* Assert that there are no equal item pointers being sorted */
 	Assert(res != 0);

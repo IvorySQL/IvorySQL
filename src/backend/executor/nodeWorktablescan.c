@@ -17,6 +17,7 @@
 
 #include "executor/executor.h"
 #include "executor/nodeWorktablescan.h"
+#include "utils/tuplestore.h"
 
 static TupleTableSlot *WorkTableScanNext(WorkTableScanState *node);
 
@@ -165,7 +166,7 @@ ExecInitWorkTableScan(WorkTableScan *node, EState *estate, int eflags)
 	scanstate->ss.ps.resultopsset = true;
 	scanstate->ss.ps.resultopsfixed = false;
 
-	ExecInitScanTupleSlot(estate, &scanstate->ss, NULL, &TTSOpsMinimalTuple);
+	ExecInitScanTupleSlot(estate, &scanstate->ss, NULL, &TTSOpsMinimalTuple, 0);
 
 	/*
 	 * initialize child expressions

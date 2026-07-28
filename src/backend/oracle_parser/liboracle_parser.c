@@ -1117,6 +1117,7 @@ oracle_pg_get_keywords(PG_FUNCTION_ARGS)
 		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "catdesc",
 						   TEXTOID, -1, 0);
 
+		TupleDescFinalize(tupdesc);
 		funcctx->attinmeta = TupleDescGetAttInMetadata(tupdesc);
 
 		MemoryContextSwitchTo(oldcontext);

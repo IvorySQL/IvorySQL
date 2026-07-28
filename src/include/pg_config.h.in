@@ -78,6 +78,14 @@
 /* Define to 1 if you have the <crtdefs.h> header file. */
 #undef HAVE_CRTDEFS_H
 
+/* Define to 1 if your C++ compiler understands `typeof' or something similar.
+   */
+#undef HAVE_CXX_TYPEOF
+
+/* Define to 1 if your C++ compiler understands `typeof_unqual' or something
+   similar. */
+#undef HAVE_CXX_TYPEOF_UNQUAL
+
 /* Define to 1 if you have the declaration of `fdatasync', and to 0 if you
    don't. */
 #undef HAVE_DECL_FDATASYNC
@@ -136,6 +144,9 @@
 
 /* Define to 1 if you have the `explicit_bzero' function. */
 #undef HAVE_EXPLICIT_BZERO
+
+/* Define to 1 if you have the `explicit_memset' function. */
+#undef HAVE_EXPLICIT_MEMSET
 
 /* Define to 1 if fseeko (and presumably ftello) exists and is declared. */
 #undef HAVE_FSEEKO
@@ -286,6 +297,9 @@
 /* Define to 1 if you have the <memory.h> header file. */
 #undef HAVE_MEMORY_H
 
+/* Define to 1 if you have the `memset_explicit' function. */
+#undef HAVE_MEMSET_EXPLICIT
+
 /* Define to 1 if you have the `mkdtemp' function. */
 #undef HAVE_MKDTEMP
 
@@ -367,14 +381,14 @@
 /* Define to 1 if you have the `SSL_CTX_set_ciphersuites' function. */
 #undef HAVE_SSL_CTX_SET_CIPHERSUITES
 
+/* Define to 1 if you have the `SSL_CTX_set_client_hello_cb' function. */
+#undef HAVE_SSL_CTX_SET_CLIENT_HELLO_CB
+
 /* Define to 1 if you have the `SSL_CTX_set_keylog_callback' function. */
 #undef HAVE_SSL_CTX_SET_KEYLOG_CALLBACK
 
 /* Define to 1 if you have the `SSL_CTX_set_num_tickets' function. */
 #undef HAVE_SSL_CTX_SET_NUM_TICKETS
-
-/* Define to 1 if your compiler supports statement expressions. */
-#undef HAVE_STATEMENT_EXPRESSIONS
 
 /* Define to 1 if you have the <stdint.h> header file. */
 #undef HAVE_STDINT_H
@@ -459,6 +473,10 @@
 
 /* Define to 1 if your compiler understands `typeof' or something similar. */
 #undef HAVE_TYPEOF
+
+/* Define to 1 if your compiler understands `typeof_unqual' or something
+   similar. */
+#undef HAVE_TYPEOF_UNQUAL
 
 /* Define to 1 if you have the <uchar.h> header file. */
 #undef HAVE_UCHAR_H
@@ -789,6 +807,12 @@
 /* Define for large files, on AIX-style hosts. */
 #undef _LARGE_FILES
 
+/* Define to how the C++ compiler spells `typeof'. */
+#undef pg_cxx_typeof
+
+/* Define to how the C++ compiler spells `typeof_unqual'. */
+#undef pg_cxx_typeof_unqual
+
 /* Define to keyword to use for C99 restrict support, or to nothing if not
    supported */
 #undef pg_restrict
@@ -809,3 +833,6 @@
 
 /* Define to how the compiler spells `typeof'. */
 #undef typeof
+
+/* Define to how the compiler spells `typeof_unqual'. */
+#undef typeof_unqual

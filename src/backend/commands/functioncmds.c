@@ -75,6 +75,7 @@
 #include "utils/ora_compatible.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
+#include "utils/tuplestore.h"
 #include "utils/typcache.h"
 #include "parser/parse_param.h"
 #include "access/printtup.h"
@@ -3295,6 +3296,7 @@ CallStmtResultDesc(CallStmt *stmt)
 							   -1,
 							   0);
 		}
+		TupleDescFinalize(tupdesc);
 	}
 
 	return tupdesc;

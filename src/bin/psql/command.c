@@ -1079,7 +1079,7 @@ exec_command_d(PsqlScanState scan_state, bool active_branch, const char *cmd)
 					success = describeTableDetails(pattern, show_verbose, show_system);
 				else
 					/* standard listing of interesting things */
-					success = listTables("tvmsE", NULL, show_verbose, show_system);
+					success = listTables("tvmsEG", NULL, show_verbose, show_system);
 				break;
 			case 'A':
 				{
@@ -1216,6 +1216,7 @@ exec_command_d(PsqlScanState scan_state, bool active_branch, const char *cmd)
 			case 'i':
 			case 's':
 			case 'E':
+			case 'G':
 				success = listTables(&cmd[1], pattern, show_verbose, show_system);
 				break;
 			case 'r':
@@ -1303,7 +1304,7 @@ exec_command_d(PsqlScanState scan_state, bool active_branch, const char *cmd)
 					success = listExtensions(pattern);
 				break;
 			case 'X':			/* Extended Statistics */
-				success = listExtendedStats(pattern);
+				success = listExtendedStats(pattern, show_verbose);
 				break;
 			case 'y':			/* Event Triggers */
 				success = listEventTriggers(pattern, show_verbose);
@@ -4225,8 +4226,8 @@ do_connect(enum trivalue reuse_previous_specification,
 	/* Loop till we have a connection or fail, which we might've already */
 	while (success)
 	{
-		const char **keywords = pg_malloc((nconnopts + 1) * sizeof(*keywords));
-		const char **values = pg_malloc((nconnopts + 1) * sizeof(*values));
+		const char **keywords = pg_malloc_array(const char *, nconnopts + 1);
+		const char **values = pg_malloc_array(const char *, nconnopts + 1);
 		int			paramnum = 0;
 		PQconninfoOption *ci;
 
@@ -5722,7 +5723,7 @@ savePsetInfo(const printQueryOpt *popt)
 {
 	printQueryOpt *save;
 
-	save = (printQueryOpt *) pg_malloc(sizeof(printQueryOpt));
+	save = pg_malloc_object(printQueryOpt);
 
 	/* Flat-copy all the scalar fields, then duplicate sub-structures. */
 	memcpy(save, popt, sizeof(printQueryOpt));

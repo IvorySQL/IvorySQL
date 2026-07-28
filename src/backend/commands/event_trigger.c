@@ -58,6 +58,7 @@
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
+#include "utils/tuplestore.h"
 
 typedef struct EventTriggerQueryState
 {
@@ -1715,7 +1716,7 @@ EventTriggerUndoInhibitCommandCollection(void)
 void
 EventTriggerCollectSimpleCommand(ObjectAddress address,
 								 ObjectAddress secondaryObject,
-								 Node *parsetree)
+								 const Node *parsetree)
 {
 	MemoryContext oldcxt;
 	CollectedCommand *command;
@@ -1751,7 +1752,7 @@ EventTriggerCollectSimpleCommand(ObjectAddress address,
  * add it to the command list.
  */
 void
-EventTriggerAlterTableStart(Node *parsetree)
+EventTriggerAlterTableStart(const Node *parsetree)
 {
 	MemoryContext oldcxt;
 	CollectedCommand *command;
@@ -1803,7 +1804,7 @@ EventTriggerAlterTableRelid(Oid objectId)
  * internally, so that's all that this code needs to handle at the moment.
  */
 void
-EventTriggerCollectAlterTableSubcmd(Node *subcmd, ObjectAddress address)
+EventTriggerCollectAlterTableSubcmd(const Node *subcmd, ObjectAddress address)
 {
 	MemoryContext oldcxt;
 	CollectedATSubcmd *newsub;
@@ -1920,7 +1921,7 @@ EventTriggerCollectGrant(InternalGrant *istmt)
  *		executed
  */
 void
-EventTriggerCollectAlterOpFam(AlterOpFamilyStmt *stmt, Oid opfamoid,
+EventTriggerCollectAlterOpFam(const AlterOpFamilyStmt *stmt, Oid opfamoid,
 							  List *operators, List *procedures)
 {
 	MemoryContext oldcxt;
@@ -1953,7 +1954,7 @@ EventTriggerCollectAlterOpFam(AlterOpFamilyStmt *stmt, Oid opfamoid,
  *		Save data about a CREATE OPERATOR CLASS command being executed
  */
 void
-EventTriggerCollectCreateOpClass(CreateOpClassStmt *stmt, Oid opcoid,
+EventTriggerCollectCreateOpClass(const CreateOpClassStmt *stmt, Oid opcoid,
 								 List *operators, List *procedures)
 {
 	MemoryContext oldcxt;
@@ -1987,7 +1988,7 @@ EventTriggerCollectCreateOpClass(CreateOpClassStmt *stmt, Oid opcoid,
  *		executed
  */
 void
-EventTriggerCollectAlterTSConfig(AlterTSConfigurationStmt *stmt, Oid cfgId,
+EventTriggerCollectAlterTSConfig(const AlterTSConfigurationStmt *stmt, Oid cfgId,
 								 Oid *dictIds, int ndicts)
 {
 	MemoryContext oldcxt;
@@ -2005,8 +2006,11 @@ EventTriggerCollectAlterTSConfig(AlterTSConfigurationStmt *stmt, Oid cfgId,
 	command->in_extension = creating_extension;
 	ObjectAddressSet(command->d.atscfg.address,
 					 TSConfigRelationId, cfgId);
-	command->d.atscfg.dictIds = palloc_array(Oid, ndicts);
-	memcpy(command->d.atscfg.dictIds, dictIds, sizeof(Oid) * ndicts);
+	if (ndicts > 0)
+	{
+		command->d.atscfg.dictIds = palloc_array(Oid, ndicts);
+		memcpy(command->d.atscfg.dictIds, dictIds, sizeof(Oid) * ndicts);
+	}
 	command->d.atscfg.ndicts = ndicts;
 	command->parsetree = (Node *) copyObject(stmt);
 
@@ -2022,7 +2026,7 @@ EventTriggerCollectAlterTSConfig(AlterTSConfigurationStmt *stmt, Oid cfgId,
  *		executed
  */
 void
-EventTriggerCollectAlterDefPrivs(AlterDefaultPrivilegesStmt *stmt)
+EventTriggerCollectAlterDefPrivs(const AlterDefaultPrivilegesStmt *stmt)
 {
 	MemoryContext oldcxt;
 	CollectedCommand *command;
@@ -2307,6 +2311,7 @@ stringify_grant_objtype(ObjectType objtype)
 		case OBJECT_OPERATOR:
 		case OBJECT_OPFAMILY:
 		case OBJECT_POLICY:
+		case OBJECT_PROPGRAPH:
 		case OBJECT_PUBLICATION:
 		case OBJECT_PUBLICATION_NAMESPACE:
 		case OBJECT_PUBLICATION_REL:
@@ -2395,6 +2400,7 @@ stringify_adefprivs_objtype(ObjectType objtype)
 		case OBJECT_OPFAMILY:
 		case OBJECT_PARAMETER_ACL:
 		case OBJECT_POLICY:
+		case OBJECT_PROPGRAPH:
 		case OBJECT_PUBLICATION:
 		case OBJECT_PUBLICATION_NAMESPACE:
 		case OBJECT_PUBLICATION_REL:

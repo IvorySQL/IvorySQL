@@ -15,7 +15,9 @@
 
 #include "postmaster/bgworker.h"
 #include "storage/dsm.h"
-#include "storage/proc.h"
+
+/* avoid including storage/proc.h */
+typedef struct PGPROC PGPROC;
 
 /* The queue itself, in shared memory. */
 struct shm_mq;

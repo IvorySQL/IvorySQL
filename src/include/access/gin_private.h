@@ -19,6 +19,7 @@
 #include "catalog/pg_am_d.h"
 #include "fmgr.h"
 #include "lib/rbtree.h"
+#include "nodes/tidbitmap.h"
 #include "storage/bufmgr.h"
 
 /*
@@ -488,7 +489,7 @@ extern ItemPointer ginMergeItemPointers(ItemPointerData *a, uint32 na,
  * so we want this to be inlined.
  */
 static inline int
-ginCompareItemPointers(ItemPointer a, ItemPointer b)
+ginCompareItemPointers(const ItemPointerData *a, const ItemPointerData *b)
 {
 	uint64		ia = (uint64) GinItemPointerGetBlockNumber(a) << 32 | GinItemPointerGetOffsetNumber(a);
 	uint64		ib = (uint64) GinItemPointerGetBlockNumber(b) << 32 | GinItemPointerGetOffsetNumber(b);

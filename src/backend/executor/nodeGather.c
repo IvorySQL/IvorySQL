@@ -36,6 +36,7 @@
 #include "executor/tqueue.h"
 #include "miscadmin.h"
 #include "optimizer/optimizer.h"
+#include "storage/latch.h"
 #include "utils/wait_event.h"
 
 

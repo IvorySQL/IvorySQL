@@ -181,6 +181,11 @@ typedef enum
  */
 typedef struct PGPROC
 {
+	/*
+	 * Align the struct at cache line boundaries.  This is just for
+	 * performance, to avoid false sharing.
+	 */
+	alignas(PG_CACHE_LINE_SIZE)
 	dlist_head *procgloballist; /* procglobal list that owns this PGPROC */
 	dlist_node	freeProcsLink;	/* link in procgloballist, when in recycled
 								 * state */
@@ -376,14 +381,6 @@ typedef struct PGPROC
 
 	uint32		wait_event_info;	/* proc's wait information */
 }
-
-/*
- * If compiler understands aligned pragma, use it to align the struct at cache
- * line boundaries.  This is just for performance, to avoid false sharing.
- */
-#if defined(pg_attribute_aligned)
-			pg_attribute_aligned(PG_CACHE_LINE_SIZE)
-#endif
 PGPROC;
 
 extern PGDLLIMPORT PGPROC *MyProc;
@@ -533,6 +530,7 @@ extern PGDLLIMPORT PGPROC *PreparedXactProcs;
 #define MAX_IO_WORKERS          32
 #define NUM_AUXILIARY_PROCS		(6 + MAX_IO_WORKERS)
 
+#define FIRST_PREPARED_XACT_PROC_NUMBER	(MaxBackends + NUM_AUXILIARY_PROCS)
 
 /* configurable options */
 extern PGDLLIMPORT int DeadlockTimeout;

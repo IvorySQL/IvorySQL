@@ -1042,29 +1042,29 @@ WHERE c.castmethod = 'b' AND
                     k.casttarget = c.castsource);
      castsource     |     casttarget     | castfunc | castcontext 
 --------------------+--------------------+----------+-------------
+ text               | character          |        0 | i
+ character varying  | character          |        0 | i
+ pg_node_tree       | text               |        0 | i
  pg_ndistinct       | bytea              |        0 | i
  pg_dependencies    | bytea              |        0 | i
  pg_mcv_list        | bytea              |        0 | i
- xml                | text               |        0 | a
- pg_node_tree       | text               |        0 | i
  cidr               | inet               |        0 | i
- text               | character          |        0 | i
- xml                | character          |        0 | a
- character varying  | character          |        0 | i
- sys.oravarcharchar | character          |        0 | i
- sys.oravarcharbyte | character          |        0 | i
+ xml                | text               |        0 | a
  xml                | character varying  |        0 | a
+ xml                | character          |        0 | a
  text               | sys.oracharchar    |        0 | i
- xml                | sys.oracharchar    |        0 | a
  character varying  | sys.oracharchar    |        0 | i
- sys.oravarcharchar | sys.oracharchar    |        0 | i
- sys.oravarcharbyte | sys.oracharchar    |        0 | i
+ xml                | sys.oracharchar    |        0 | a
  text               | sys.oracharbyte    |        0 | i
- xml                | sys.oracharbyte    |        0 | a
  character varying  | sys.oracharbyte    |        0 | i
- sys.oravarcharchar | sys.oracharbyte    |        0 | i
- sys.oravarcharbyte | sys.oracharbyte    |        0 | i
+ xml                | sys.oracharbyte    |        0 | a
+ sys.oravarcharchar | character          |        0 | i
  xml                | sys.oravarcharchar |        0 | a
+ sys.oravarcharchar | sys.oracharchar    |        0 | i
+ sys.oravarcharchar | sys.oracharbyte    |        0 | i
+ sys.oravarcharbyte | sys.oracharchar    |        0 | i
+ sys.oravarcharbyte | sys.oracharbyte    |        0 | i
+ sys.oravarcharbyte | character          |        0 | i
  xml                | sys.oravarcharbyte |        0 | a
  sys.oradate        | sys.oratimestamp   |        0 | i
 (25 rows)

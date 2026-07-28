@@ -379,11 +379,11 @@ switch_server_cert($node, certfile => 'server-ip-cn-only');
 $common_connstr =
   "$default_ssl_connstr user=ssltestuser dbname=trustdb sslrootcert=ssl/root+server_ca.crt hostaddr=$SERVERHOSTADDR sslmode=verify-full";
 
-$node->connect_ok("$common_connstr host=192.0.2.1",
+$node->connect_ok("$common_connstr host=192.0.2.1 sslsni=0",
 	"IP address in the Common Name");
 
 $node->connect_fails(
-	"$common_connstr host=192.000.002.001",
+	"$common_connstr host=192.000.002.001 sslsni=0",
 	"mismatch between host name and server certificate IP address",
 	expected_stderr =>
 	  qr/\Qserver certificate for "192.0.2.1" does not match host name "192.000.002.001"\E/
@@ -393,7 +393,7 @@ $node->connect_fails(
 # long-standing behavior.)
 switch_server_cert($node, certfile => 'server-ip-in-dnsname');
 
-$node->connect_ok("$common_connstr host=192.0.2.1",
+$node->connect_ok("$common_connstr host=192.0.2.1 sslsni=0",
 	"IP address in a dNSName");
 
 # Test Subject Alternative Names.
@@ -993,5 +993,61 @@ $node->connect_fails(
 		qr{Client certificate verification failed at depth 0: certificate revoked},
 		qr{Failed certificate data \(unverified\): subject "/CN=\\xce\\x9f\\xce\\xb4\\xcf\\x85\\xcf\\x83\\xcf\\x83\\xce\\xad\\xce\\xb1\\xcf\\x82", serial number \d+, issuer "/CN=Test CA for PostgreSQL SSL regression test client certs"},
 	]);
+
+SKIP:
+{
+	skip "sslmode require not supported in this build", 4
+	  unless ($supports_sslcertmode_require);
+
+	# Test client CAs
+	my $connstr =
+	  "user=ssltestuser dbname=certdb hostaddr=$SERVERHOSTADDR sslmode=require sslsni=1";
+
+	switch_server_cert($node, certfile => 'server-cn-only', cafile => '');
+	# example.org is unconfigured and should fail.
+	$node->connect_fails(
+		"$connstr host=example.org sslcertmode=require sslcert=ssl/client.crt"
+		  . sslkey('client.key'),
+		"host: 'example.org', ca: '': connect with sslcert, no client CA configured",
+		expected_stderr =>
+		  qr/client certificates can only be checked if a root certificate store is available/
+	);
+
+	# example.com uses the client CA.
+	switch_server_cert(
+		$node,
+		certfile => 'server-cn-only',
+		cafile => 'root+client_ca');
+	# example.com is configured and should require a valid client cert.
+	$node->connect_fails(
+		"$connstr host=example.com sslcertmode=disable",
+		"host: 'example.com', ca: 'root+client_ca.crt': connect fails if no client certificate sent",
+		expected_stderr => qr/connection requires a valid client certificate/
+	);
+	$node->connect_ok(
+		"$connstr host=example.com sslcertmode=require sslcert=ssl/client.crt "
+		  . sslkey('client.key'),
+		"host: 'example.com', ca: 'root+client_ca.crt': connect with sslcert, client certificate sent"
+	);
+
+	# example.net uses the server CA (which is wrong).
+	switch_server_cert(
+		$node,
+		certfile => 'server-cn-only',
+		cafile => 'root+server_ca');
+	# example.net is configured and should require a client cert, but will
+	# always fail verification.
+	$node->connect_fails(
+		"$connstr host=example.net sslcertmode=disable",
+		"host: 'example.net', ca: 'root+server_ca.crt': connect fails if no client certificate sent",
+		expected_stderr => qr/connection requires a valid client certificate/
+	);
+
+	$node->connect_fails(
+		"$connstr host=example.net sslcertmode=require sslcert=ssl/client.crt "
+		  . sslkey('client.key'),
+		"host: 'example.net', ca: 'root+server_ca.crt': connect with sslcert, client certificate sent",
+		expected_stderr => qr/unknown ca/);
+}
 
 done_testing();

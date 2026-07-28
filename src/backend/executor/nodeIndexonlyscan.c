@@ -37,6 +37,7 @@
 #include "access/visibilitymap.h"
 #include "catalog/pg_type.h"
 #include "executor/executor.h"
+#include "executor/instrument.h"
 #include "executor/nodeIndexonlyscan.h"
 #include "executor/nodeIndexscan.h"
 #include "miscadmin.h"
@@ -423,7 +424,7 @@ ExecEndIndexOnlyScan(IndexOnlyScanState *node)
 	{
 		IndexScanInstrumentation *winstrument;
 
-		Assert(ParallelWorkerNumber <= node->ioss_SharedInfo->num_workers);
+		Assert(ParallelWorkerNumber < node->ioss_SharedInfo->num_workers);
 		winstrument = &node->ioss_SharedInfo->winstrument[ParallelWorkerNumber];
 
 		/*
@@ -565,9 +566,10 @@ ExecInitIndexOnlyScan(IndexOnlyScan *node, EState *estate, int eflags)
 	 * types of the original datums.  (It's the AM's responsibility to return
 	 * suitable data anyway.)
 	 */
-	tupDesc = ExecTypeFromTL(node->indextlist, false);
+	tupDesc = ExecTypeFromTLWithRowId(node->indextlist, false);
 	ExecInitScanTupleSlot(estate, &indexstate->ss, tupDesc,
-						  &TTSOpsVirtual);
+						  &TTSOpsVirtual,
+						  0);
 
 	/*
 	 * We need another slot, in a format that's suitable for the table AM, for
@@ -576,7 +578,7 @@ ExecInitIndexOnlyScan(IndexOnlyScan *node, EState *estate, int eflags)
 	indexstate->ioss_TableSlot =
 		ExecAllocTableSlot(&estate->es_tupleTable,
 						   RelationGetDescr(currentRelation),
-						   table_slot_callbacks(currentRelation));
+						   table_slot_callbacks(currentRelation), 0);
 
 	/*
 	 * Initialize result type and projection info.  The node's targetlist will

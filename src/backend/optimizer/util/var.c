@@ -776,14 +776,6 @@ pull_var_clause_walker(Node *node, pull_var_clause_context *context)
  * PlaceHolderVar or constructed from those, we can just add the
  * varnullingrels bits to the existing nullingrels field(s); otherwise
  * we have to add a PlaceHolderVar wrapper.
- *
- * NOTE: this is also used by the parser, to expand join alias Vars before
- * checking GROUP BY validity.  For that use-case, root will be NULL, which
- * is why we have to pass the Query separately.  We need the root itself only
- * for making PlaceHolderVars.  We can avoid making PlaceHolderVars in the
- * parser's usage because it won't be dealing with arbitrary expressions:
- * so long as adjust_standard_join_alias_expression can handle everything
- * the parser would make as a join alias expression, we're OK.
  */
 Node *
 flatten_join_alias_vars(PlannerInfo *root, Query *query, Node *node)
@@ -800,6 +792,44 @@ flatten_join_alias_vars(PlannerInfo *root, Query *query, Node *node)
 	context.root = root;
 	context.query = query;
 	context.sublevels_up = 0;
+	/* flag whether join aliases could possibly contain SubLinks */
+	context.possible_sublink = query->hasSubLinks;
+	/* if hasSubLinks is already true, no need to work hard */
+	context.inserted_sublink = query->hasSubLinks;
+
+	return flatten_join_alias_vars_mutator(node, &context);
+}
+
+/*
+ * flatten_join_alias_for_parser
+ *
+ * This variant of flatten_join_alias_vars is used by the parser, to expand
+ * join alias Vars before checking GROUP BY validity.  In that case we lack
+ * a root structure.  Fortunately, we'd only need the root for making
+ * PlaceHolderVars.  We can avoid making PlaceHolderVars in the parser's
+ * usage because it won't be dealing with arbitrary expressions: so long as
+ * adjust_standard_join_alias_expression can handle everything the parser
+ * would make as a join alias expression, we're OK.
+ *
+ * The "node" might be part of a sub-query of the Query whose join alias
+ * Vars are to be expanded.  "sublevels_up" indicates how far below the
+ * given query we are starting.
+ */
+Node *
+flatten_join_alias_for_parser(Query *query, Node *node, int sublevels_up)
+{
+	flatten_join_alias_vars_context context;
+
+	/*
+	 * We do not expect this to be applied to the whole Query, only to
+	 * expressions or LATERAL subqueries.  Hence, if the top node is a Query,
+	 * it's okay to immediately increment sublevels_up.
+	 */
+	Assert(node != (Node *) query);
+
+	context.root = NULL;
+	context.query = query;
+	context.sublevels_up = sublevels_up;
 	/* flag whether join aliases could possibly contain SubLinks */
 	context.possible_sublink = query->hasSubLinks;
 	/* if hasSubLinks is already true, no need to work hard */
@@ -958,15 +988,12 @@ flatten_join_alias_vars_mutator(Node *node,
  * existing nullingrels field(s); otherwise we have to add a PlaceHolderVar
  * wrapper.
  *
- * NOTE: this is also used by ruleutils.c, to deparse one query parsetree back
- * to source text, and by check_output_expressions() to check for unsafe
- * pushdowns.  For these use-cases, root will be NULL, which is why we have to
- * pass the Query separately.  We need the root itself only for preserving
- * varnullingrels.  We can avoid preserving varnullingrels in the ruleutils.c's
- * usage because it does not make any difference to the deparsed source text.
- * We can also avoid it in check_output_expressions() because that function
- * uses the expanded expressions solely to check for volatile or set-returning
- * functions, which is independent of the Vars' nullingrels.
+ * NOTE: root may be passed as NULL, which is why we have to pass the Query
+ * separately.  We need the root itself only for preserving varnullingrels.
+ * Callers can safely pass NULL if preserving varnullingrels is unnecessary for
+ * their specific use case (e.g., deparsing source text, or scanning for
+ * volatile functions), or if it is already guaranteed that the query cannot
+ * contain grouping sets.
  */
 Node *
 flatten_group_exprs(PlannerInfo *root, Query *query, Node *node)

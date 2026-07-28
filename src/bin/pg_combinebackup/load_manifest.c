@@ -85,7 +85,7 @@ load_backup_manifests(int n_backups, char **backup_directories)
 	manifest_data **result;
 	int			i;
 
-	result = pg_malloc(sizeof(manifest_data *) * n_backups);
+	result = pg_malloc_array(manifest_data *, n_backups);
 	for (i = 0; i < n_backups; ++i)
 		result[i] = load_backup_manifest(backup_directories[i]);
 
@@ -139,7 +139,7 @@ load_backup_manifest(char *backup_directory)
 	/* Create the hash table. */
 	ht = manifest_files_create(initial_size, NULL);
 
-	result = pg_malloc0(sizeof(manifest_data));
+	result = pg_malloc0_object(manifest_data);
 	result->files = ht;
 	context.private_data = result;
 	context.version_cb = combinebackup_version_cb;

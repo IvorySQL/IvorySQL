@@ -23,17 +23,22 @@
 #include "catalog/index.h"
 #include "catalog/pg_collation.h"
 #include "commands/progress.h"
+#include "executor/instrument.h"
 #include "miscadmin.h"
 #include "nodes/execnodes.h"
 #include "pgstat.h"
 #include "storage/bufmgr.h"
+#include "storage/condition_variable.h"
+#include "storage/proc.h"
 #include "storage/predicate.h"
 #include "tcop/tcopprot.h"
 #include "utils/datum.h"
 #include "utils/memutils.h"
 #include "utils/builtins.h"
 #include "utils/rel.h"
+#include "utils/tuplesort.h"
 #include "utils/typcache.h"
+#include "utils/wait_event.h"
 
 
 /* Magic numbers for parallel state sharing */
@@ -848,8 +853,12 @@ ginHeapTupleInsert(GinState *ginstate, OffsetNumber attnum,
 								&nentries, &categories);
 
 	for (i = 0; i < nentries; i++)
+	{
+		/* there could be many entries, so be willing to abort here */
+		CHECK_FOR_INTERRUPTS();
 		ginEntryInsert(ginstate, attnum, entries[i], categories[i],
 					   item, 1, NULL);
+	}
 }
 
 bool
