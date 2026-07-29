@@ -868,6 +868,11 @@ DROP SEQUENCE seq_shard4;
 create sequence seq_shard5 shard extend ;
 alter sequence seq_shard5 noshard ;
 DROP SEQUENCE seq_shard5;
+-- Reject conflicting SHARD options.
+CREATE SEQUENCE seq_shard_conflict SHARD EXTEND NOSHARD;
+ERROR:  dumplicate or conflicting SHARD EXTEND/NOEXTEND specifications
+LINE 1: CREATE SEQUENCE seq_shard_conflict SHARD EXTEND NOSHARD;
+                                                        ^
 create sequence seq;
 SELECT seq.NEXTVAL FROM DUAL;--result:1
  nextval 

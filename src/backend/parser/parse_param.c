@@ -2055,9 +2055,9 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 				return true;		
 		}
 			break;		
-		case T_ClusterStmt:
+		case T_RepackStmt:
 		{
-		   ClusterStmt *stmt = (ClusterStmt *)node;	
+		   RepackStmt *stmt = (RepackStmt *)node;	
 	
 			if (WALK(stmt->relation))
 				return true;		

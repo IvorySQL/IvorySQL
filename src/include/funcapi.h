@@ -199,6 +199,7 @@ typedef struct
 								  bool missing_ok);
 	void		(*package_free) (PackageCacheItem * item);
 	void		(*package_free_list) (List *pkglist);
+	bool		(*package_reset_context) (Oid pkg_oid);
 	Oid			(*get_top_function_id) (void *function, bool *is_package);
 	void		(*get_subprocs_from_package) (Oid pkgoid, TupleDesc tupdesc,
 											  Tuplestorestate *tupstore);

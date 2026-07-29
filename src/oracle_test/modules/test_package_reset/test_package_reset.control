@@ -1,0 +1,5 @@
+comment = 'Test extension for PLiSQL package reset API'
+default_version = '1.0'
+module_pathname = '$libdir/test_package_reset'
+schema = test_package_reset
+relocatable = false

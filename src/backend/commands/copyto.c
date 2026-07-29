@@ -20,6 +20,7 @@
 
 #include "access/table.h"
 #include "access/tableam.h"
+#include "access/tupconvert.h"
 #include "catalog/pg_inherits.h"
 #include "commands/copyapi.h"
 #include "commands/progress.h"
@@ -37,6 +38,7 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
+#include "utils/wait_event.h"
 
 /*
  * Represents the different dest cases we need to worry about at

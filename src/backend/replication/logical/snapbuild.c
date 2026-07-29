@@ -144,6 +144,9 @@
 #include "utils/memutils.h"
 #include "utils/snapmgr.h"
 #include "utils/snapshot.h"
+#include "utils/wait_event.h"
+
+
 /*
  * Starting a transaction -- which we need to do while exporting a snapshot --
  * removes knowledge about the previously used resowner, so we save it here.
@@ -209,7 +212,7 @@ AllocateSnapshotBuilder(ReorderBuffer *reorder,
 	builder->committed.xcnt = 0;
 	builder->committed.xcnt_space = 128;	/* arbitrary number */
 	builder->committed.xip =
-		palloc0(builder->committed.xcnt_space * sizeof(TransactionId));
+		palloc0_array(TransactionId, builder->committed.xcnt_space);
 	builder->committed.includes_all_transactions = true;
 
 	builder->catchange.xcnt = 0;
@@ -836,8 +839,9 @@ SnapBuildAddCommittedTxn(SnapBuild *builder, TransactionId xid)
 		elog(DEBUG1, "increasing space for committed transactions to %u",
 			 (uint32) builder->committed.xcnt_space);
 
-		builder->committed.xip = repalloc(builder->committed.xip,
-										  builder->committed.xcnt_space * sizeof(TransactionId));
+		builder->committed.xip = repalloc_array(builder->committed.xip,
+												TransactionId,
+												builder->committed.xcnt_space);
 	}
 
 	/*

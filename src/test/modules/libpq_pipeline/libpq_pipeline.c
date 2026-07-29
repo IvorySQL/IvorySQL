@@ -260,8 +260,8 @@ copy_connection(PGconn *conn)
 		nopts++;
 	nopts++;					/* for the NULL terminator */
 
-	keywords = pg_malloc(sizeof(char *) * nopts);
-	vals = pg_malloc(sizeof(char *) * nopts);
+	keywords = pg_malloc_array(const char *, nopts);
+	vals = pg_malloc_array(const char *, nopts);
 
 	i = 0;
 	for (PQconninfoOption *opt = opts; opt->keyword != NULL; ++opt)
@@ -1337,8 +1337,8 @@ test_protocol_version(PGconn *conn)
 		nopts++;
 	nopts++;					/* NULL terminator */
 
-	keywords = pg_malloc0(sizeof(char *) * nopts);
-	vals = pg_malloc0(sizeof(char *) * nopts);
+	keywords = pg_malloc0_array(const char *, nopts);
+	vals = pg_malloc0_array(const char *, nopts);
 
 	i = 0;
 	for (PQconninfoOption *opt = opts; opt->keyword != NULL; ++opt)

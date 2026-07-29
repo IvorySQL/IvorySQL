@@ -17,6 +17,12 @@
 #include "nodes/bitmapset.h"
 #include "nodes/pathnodes.h"
 
+/* Hook for plugins to get control in build_simple_rel() */
+typedef void (*build_simple_rel_hook_type) (PlannerInfo *root,
+											RelOptInfo *rel,
+											RangeTblEntry *rte);
+extern PGDLLIMPORT build_simple_rel_hook_type build_simple_rel_hook;
+
 /*
  * Everything in subpaths or partial_subpaths will become part of the
  * Append node's subpaths list. Partial and non-partial subpaths can be
@@ -55,7 +61,7 @@ extern bool add_path_precheck(RelOptInfo *parent_rel, int disabled_nodes,
 							  List *pathkeys, Relids required_outer);
 extern void add_partial_path(RelOptInfo *parent_rel, Path *new_path);
 extern bool add_partial_path_precheck(RelOptInfo *parent_rel,
-									  int disabled_nodes,
+									  int disabled_nodes, Cost startup_cost,
 									  Cost total_cost, List *pathkeys);
 
 extern Path *create_seqscan_path(PlannerInfo *root, RelOptInfo *rel,

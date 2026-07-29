@@ -1,0 +1,62 @@
+OVERVIEW
+========
+
+This test module, "test_package_reset", exercises the PL/iSQL package reset
+API via the rendezvous mechanism (plisql_internal_funcs.package_reset_context).
+
+The extension provides two SQL-callable functions:
+
+- test_package_reset.reset_package_by_oid(Oid)
+
+  Resets a single PL/iSQL package (Oracle RESET_PACKAGE semantics): closes
+  refcursors, frees variable memory, resets mutable globals, and sets status
+  to PLISQL_PACKAGE_NO_INIT so the full init sequence (default expressions
+  re-evaluated + init block re-executed) runs lazily on next access.
+  Returns true if the package was actually reset, false if there was nothing
+  to reset (status already at initial).  Throws ERROR if the OID does not
+  map to a valid package.  Passing NULL is short-circuited by the STRICT
+  function attribute — returns NULL with no side effects.
+
+- test_package_reset.reset_all_packages()
+
+  Resets all PL/iSQL packages in the current session using a two-phase
+  approach: collect OIDs via PackageCacheListItems(), then reset each via
+  ResetPackageContext() — avoiding hash iterator corruption during
+  modification (same pattern as ResetAllPackages in relcache.c).
+  Returns the number of packages that were actually reset.  Returns -1
+  if PL/iSQL is not available (e.g., in PG mode before the plugin is
+  loaded).
+
+Architecture note: the lazy re-init path (NO_INIT) is deliberately chosen
+over a snapshot/restore approach.  Dynamic defaults such as SYSDATE,
+sequence calls, or cross-package function calls in default expressions
+are re-evaluated at re-init time, not frozen at reset time — matching
+Oracle §2.1 ("Default values for package variables are re-initialized"),
+§2.3 (init block re-executed), and §4.2 (lazy re-instantiation).
+
+Testing strategy
+================
+
+Each test creates packages with get/set methods and variables.  Values
+are set via SELECT, read via SELECT, and reset via the extension
+functions.  The output is compared against the expected output to
+verify correct behavior.
+
+- test_package_reset: verifies the extension loads, reset_all_packages()
+  returns -1 when PL/iSQL is unavailable, and reset_package_by_oid(0)
+  throws ERROR for an invalid OID.
+
+- test_reset_one_oid: creates three packages, modifies all three, then
+  resets each one individually by OID, verifying that sibling packages
+  remain untouched.  Also exercises a loop resetting all three one at
+  a time.  Finally tests reset_package_by_oid(NULL) — returns NULL with
+  no side effects (STRICT short-circuit).
+
+- test_reset_all: exercises the reset-init-get-reset pattern:
+  reset all → init one package → get all → reset all → get all →
+  init all three → get all → reset all → get all.
+
+- test_reset_defaults: creates a package with a default value (42), a
+  no-default variable (NULL), and a text default ('hello').  Verifies
+  that mutation takes effect, then that reset restores defaults via
+  lazy re-init (not NULL-reset semantics).

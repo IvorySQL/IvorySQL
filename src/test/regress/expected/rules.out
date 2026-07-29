@@ -1921,7 +1921,8 @@ pg_stat_database_conflicts| SELECT oid AS datid,
     pg_stat_get_db_conflict_snapshot(oid) AS confl_snapshot,
     pg_stat_get_db_conflict_bufferpin(oid) AS confl_bufferpin,
     pg_stat_get_db_conflict_startup_deadlock(oid) AS confl_deadlock,
-    pg_stat_get_db_conflict_logicalslot(oid) AS confl_active_logicalslot
+    pg_stat_get_db_conflict_logicalslot(oid) AS confl_active_logicalslot,
+    pg_stat_get_db_stat_reset_time(oid) AS stats_reset
    FROM pg_database d;
 pg_stat_gssapi| SELECT pid,
     gss_auth AS gss_authenticated,
@@ -2002,34 +2003,23 @@ pg_stat_progress_basebackup| SELECT pid,
             ELSE NULL::text
         END AS backup_type
    FROM pg_stat_get_progress_info('BASEBACKUP'::text) s(pid, datid, relid, param1, param2, param3, param4, param5, param6, param7, param8, param9, param10, param11, param12, param13, param14, param15, param16, param17, param18, param19, param20);
-pg_stat_progress_cluster| SELECT s.pid,
-    s.datid,
-    d.datname,
-    s.relid,
-        CASE s.param1
-            WHEN 1 THEN 'CLUSTER'::text
-            WHEN 2 THEN 'VACUUM FULL'::text
-            ELSE NULL::text
+pg_stat_progress_cluster| SELECT pid,
+    datid,
+    datname,
+    relid,
+        CASE
+            WHEN (command = ANY (ARRAY['CLUSTER'::text, 'VACUUM FULL'::text])) THEN command
+            WHEN (repack_index_relid = (0)::oid) THEN 'VACUUM FULL'::text
+            ELSE 'CLUSTER'::text
         END AS command,
-        CASE s.param2
-            WHEN 0 THEN 'initializing'::text
-            WHEN 1 THEN 'seq scanning heap'::text
-            WHEN 2 THEN 'index scanning heap'::text
-            WHEN 3 THEN 'sorting tuples'::text
-            WHEN 4 THEN 'writing new heap'::text
-            WHEN 5 THEN 'swapping relation files'::text
-            WHEN 6 THEN 'rebuilding index'::text
-            WHEN 7 THEN 'performing final cleanup'::text
-            ELSE NULL::text
-        END AS phase,
-    (s.param3)::oid AS cluster_index_relid,
-    s.param4 AS heap_tuples_scanned,
-    s.param5 AS heap_tuples_written,
-    s.param6 AS heap_blks_total,
-    s.param7 AS heap_blks_scanned,
-    s.param8 AS index_rebuild_count
-   FROM (pg_stat_get_progress_info('CLUSTER'::text) s(pid, datid, relid, param1, param2, param3, param4, param5, param6, param7, param8, param9, param10, param11, param12, param13, param14, param15, param16, param17, param18, param19, param20)
-     LEFT JOIN pg_database d ON ((s.datid = d.oid)));
+    phase,
+    repack_index_relid AS cluster_index_relid,
+    heap_tuples_scanned,
+    heap_tuples_written,
+    heap_blks_total,
+    heap_blks_scanned,
+    index_rebuild_count
+   FROM pg_stat_progress_repack;
 pg_stat_progress_copy| SELECT s.pid,
     s.datid,
     d.datname,
@@ -2089,6 +2079,35 @@ pg_stat_progress_create_index| SELECT s.pid,
     s.param15 AS partitions_done
    FROM (pg_stat_get_progress_info('CREATE INDEX'::text) s(pid, datid, relid, param1, param2, param3, param4, param5, param6, param7, param8, param9, param10, param11, param12, param13, param14, param15, param16, param17, param18, param19, param20)
      LEFT JOIN pg_database d ON ((s.datid = d.oid)));
+pg_stat_progress_repack| SELECT s.pid,
+    s.datid,
+    d.datname,
+    s.relid,
+        CASE s.param1
+            WHEN 1 THEN 'CLUSTER'::text
+            WHEN 2 THEN 'REPACK'::text
+            WHEN 3 THEN 'VACUUM FULL'::text
+            ELSE NULL::text
+        END AS command,
+        CASE s.param2
+            WHEN 0 THEN 'initializing'::text
+            WHEN 1 THEN 'seq scanning heap'::text
+            WHEN 2 THEN 'index scanning heap'::text
+            WHEN 3 THEN 'sorting tuples'::text
+            WHEN 4 THEN 'writing new heap'::text
+            WHEN 5 THEN 'swapping relation files'::text
+            WHEN 6 THEN 'rebuilding index'::text
+            WHEN 7 THEN 'performing final cleanup'::text
+            ELSE NULL::text
+        END AS phase,
+    (s.param3)::oid AS repack_index_relid,
+    s.param4 AS heap_tuples_scanned,
+    s.param5 AS heap_tuples_written,
+    s.param6 AS heap_blks_total,
+    s.param7 AS heap_blks_scanned,
+    s.param8 AS index_rebuild_count
+   FROM (pg_stat_get_progress_info('REPACK'::text) s(pid, datid, relid, param1, param2, param3, param4, param5, param6, param7, param8, param9, param10, param11, param12, param13, param14, param15, param16, param17, param18, param19, param20)
+     LEFT JOIN pg_database d ON ((s.datid = d.oid)));
 pg_stat_progress_vacuum| SELECT s.pid,
     s.datid,
     d.datname,
@@ -2127,6 +2146,17 @@ pg_stat_progress_vacuum| SELECT s.pid,
         END AS started_by
    FROM (pg_stat_get_progress_info('VACUUM'::text) s(pid, datid, relid, param1, param2, param3, param4, param5, param6, param7, param8, param9, param10, param11, param12, param13, param14, param15, param16, param17, param18, param19, param20)
      LEFT JOIN pg_database d ON ((s.datid = d.oid)));
+pg_stat_recovery| SELECT promote_triggered,
+    last_replayed_read_lsn,
+    last_replayed_end_lsn,
+    last_replayed_tli,
+    replay_end_lsn,
+    replay_end_tli,
+    recovery_last_xact_time,
+    current_chunk_start_time,
+    pause_state
+   FROM pg_stat_get_recovery() s(promote_triggered, last_replayed_read_lsn, last_replayed_end_lsn, last_replayed_tli, replay_end_lsn, replay_end_tli, recovery_last_xact_time, current_chunk_start_time, pause_state)
+  WHERE (promote_triggered IS NOT NULL);
 pg_stat_recovery_prefetch| SELECT stats_reset,
     prefetch,
     hit,
@@ -2421,7 +2451,8 @@ pg_statio_all_sequences| SELECT c.oid AS relid,
     n.nspname AS schemaname,
     c.relname,
     (pg_stat_get_blocks_fetched(c.oid) - pg_stat_get_blocks_hit(c.oid)) AS blks_read,
-    pg_stat_get_blocks_hit(c.oid) AS blks_hit
+    pg_stat_get_blocks_hit(c.oid) AS blks_hit,
+    pg_stat_get_stat_reset_time(c.oid) AS stats_reset
    FROM (pg_class c
      LEFT JOIN pg_namespace n ON ((n.oid = c.relnamespace)))
   WHERE (c.relkind = 'S'::"char");
@@ -2463,7 +2494,8 @@ pg_statio_sys_sequences| SELECT relid,
     schemaname,
     relname,
     blks_read,
-    blks_hit
+    blks_hit,
+    stats_reset
    FROM pg_statio_all_sequences
   WHERE ((schemaname = ANY (ARRAY['pg_catalog'::name, 'information_schema'::name])) OR (schemaname ~ '^pg_toast'::text));
 pg_statio_sys_tables| SELECT relid,
@@ -2494,7 +2526,8 @@ pg_statio_user_sequences| SELECT relid,
     schemaname,
     relname,
     blks_read,
-    blks_hit
+    blks_hit,
+    stats_reset
    FROM pg_statio_all_sequences
   WHERE ((schemaname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name])) AND (schemaname !~ '^pg_toast'::text));
 pg_statio_user_tables| SELECT relid,
@@ -2513,7 +2546,9 @@ pg_statio_user_tables| SELECT relid,
   WHERE ((schemaname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name])) AND (schemaname !~ '^pg_toast'::text));
 pg_stats| SELECT n.nspname AS schemaname,
     c.relname AS tablename,
+    a.attrelid AS tableid,
     a.attname,
+    a.attnum,
     s.stainherit AS inherited,
     s.stanullfrac AS null_frac,
     s.stawidth AS avg_width,
@@ -2605,8 +2640,10 @@ pg_stats| SELECT n.nspname AS schemaname,
   WHERE ((NOT a.attisdropped) AND has_column_privilege(c.oid, a.attnum, 'select'::text) AND ((c.relrowsecurity = false) OR (NOT row_security_active(c.oid))));
 pg_stats_ext| SELECT cn.nspname AS schemaname,
     c.relname AS tablename,
+    s.stxrelid AS tableid,
     sn.nspname AS statistics_schemaname,
     s.stxname AS statistics_name,
+    s.oid AS statistics_id,
     pg_get_userbyid(s.stxowner) AS statistics_owner,
     ( SELECT array_agg(a.attname ORDER BY a.attnum) AS array_agg
            FROM (unnest(s.stxkeys) k(k)
@@ -2633,8 +2670,10 @@ pg_stats_ext| SELECT cn.nspname AS schemaname,
   WHERE (pg_has_role(c.relowner, 'USAGE'::text) AND ((c.relrowsecurity = false) OR (NOT row_security_active(c.oid))));
 pg_stats_ext_exprs| SELECT cn.nspname AS schemaname,
     c.relname AS tablename,
+    s.stxrelid AS tableid,
     sn.nspname AS statistics_schemaname,
     s.stxname AS statistics_name,
+    s.oid AS statistics_id,
     pg_get_userbyid(s.stxowner) AS statistics_owner,
     stat.expr,
     sd.stxdinherit AS inherited,

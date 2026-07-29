@@ -59,6 +59,7 @@ SELECT pg_column_compression(f1) FROM cmmove2;
 -- test externally stored compressed data
 CREATE OR REPLACE FUNCTION large_val_lz4() RETURNS TEXT LANGUAGE SQL AS
 'select array_agg(fipshash(g::text))::text from generate_series(1, 256) g';
+/
 CREATE TABLE cmdata2 (f1 text COMPRESSION lz4);
 INSERT INTO cmdata2 SELECT large_val_lz4() || repeat('a', 4000);
 SELECT pg_column_compression(f1) FROM cmdata2;

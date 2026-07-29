@@ -335,11 +335,9 @@ getSpGistTupleDesc(Relation index, SpGistTypeDesc *keyType)
 		/* We shouldn't need to bother with making these valid: */
 		att->attcompression = InvalidCompressionMethod;
 		att->attcollation = InvalidOid;
-		/* In case we changed typlen, we'd better reset following offsets */
-		for (int i = spgFirstIncludeColumn; i < outTupDesc->natts; i++)
-			TupleDescCompactAttr(outTupDesc, i)->attcacheoff = -1;
 
 		populate_compact_attribute(outTupDesc, spgKeyColumn);
+		TupleDescFinalize(outTupDesc);
 	}
 	return outTupDesc;
 }

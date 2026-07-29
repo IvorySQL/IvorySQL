@@ -18,6 +18,7 @@
 #include "access/xlog.h"
 #include "access/xlogrecovery.h"
 #include "access/xlogwait.h"
+#include "catalog/pg_type_d.h"
 #include "commands/defrem.h"
 #include "commands/wait.h"
 #include "executor/executor.h"
@@ -338,5 +339,6 @@ WaitStmtResultDesc(WaitStmt *stmt)
 	tupdesc = CreateTemplateTupleDesc(1);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "status",
 					   TEXTOID, -1, 0);
+	TupleDescFinalize(tupdesc);
 	return tupdesc;
 }

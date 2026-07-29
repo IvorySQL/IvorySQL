@@ -256,7 +256,7 @@ CreateVariableSpace(void)
 {
 	struct _variable *ptr;
 
-	ptr = pg_malloc(sizeof *ptr);
+	ptr = pg_malloc_object(struct _variable);
 	ptr->varkind = PSQL_UNKNOWN_VAR;
 	ptr->typoid = 0;
 	ptr->typmod = -1;
@@ -574,7 +574,7 @@ SetVariable(VariableSpace space, const char *name, const char *value)
 	/* not present, make new entry ... unless we were asked to delete */
 	if (value)
 	{
-		current = pg_malloc(sizeof *current);
+		current = pg_malloc_object(struct _variable);
 		current->varkind = PSQL_SHELL_VAR;
 		current->typoid = 0;	/* InvalidOid */	
 		current->typmod = -1;
@@ -645,7 +645,7 @@ SetVariableHooks(VariableSpace space, const char *name,
 	}
 
 	/* not present, make new entry */
-	current = pg_malloc(sizeof *current);
+	current = pg_malloc_object(struct _variable);
 	current->name = pg_strdup(name);
 	current->value = NULL;
 	current->varkind = PSQL_SHELL_VAR;

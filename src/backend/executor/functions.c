@@ -37,6 +37,7 @@
 #include "utils/plancache.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
+#include "utils/tuplestore.h"
 
 
 /*
@@ -830,7 +831,7 @@ init_execution_state(SQLFunctionCachePtr fcache)
 															  fcache->func->rettupdesc,
 															  slot);
 		else
-			fcache->junkFilter = ExecInitJunkFilter(resulttlist, false, slot);
+			fcache->junkFilter = ExecInitJunkFilterWithRowId(resulttlist, false, slot);
 
 		/*
 		 * The resulttlist tree belongs to the plancache and might disappear

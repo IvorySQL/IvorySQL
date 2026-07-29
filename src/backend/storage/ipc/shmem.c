@@ -65,6 +65,8 @@
 
 #include "postgres.h"
 
+#include <unistd.h>
+
 #include "common/int.h"
 #include "fmgr.h"
 #include "funcapi.h"
@@ -75,6 +77,7 @@
 #include "storage/shmem.h"
 #include "storage/spin.h"
 #include "utils/builtins.h"
+#include "utils/tuplestore.h"
 
 /*
  * This is the first data structure stored in the shared memory segment, at
@@ -87,7 +90,7 @@
 typedef struct ShmemAllocatorData
 {
 	Size		free_offset;	/* offset to first free space from ShmemBase */
-	HTAB	   *index;			/* copy of ShmemIndex */
+	HASHHDR    *index;			/* location of ShmemIndex */
 
 	/* protects shared memory and LWLock allocation */
 	slock_t		shmem_lock;

@@ -15,6 +15,7 @@
 #include "postgres.h"
 
 #include "access/nbtree.h"
+#include "access/sysattr.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
@@ -3447,7 +3448,7 @@ restriction_is_always_true(PlannerInfo *root,
 		if (nulltest->argisrow)
 			return false;
 
-		return expr_is_nonnullable(root, nulltest->arg, true);
+		return expr_is_nonnullable(root, nulltest->arg, NOTNULL_SOURCE_RELOPT);
 	}
 
 	/* If it's an OR, check its sub-clauses */
@@ -3512,7 +3513,7 @@ restriction_is_always_false(PlannerInfo *root,
 		if (nulltest->argisrow)
 			return false;
 
-		return expr_is_nonnullable(root, nulltest->arg, true);
+		return expr_is_nonnullable(root, nulltest->arg, NOTNULL_SOURCE_RELOPT);
 	}
 
 	/* If it's an OR, check its sub-clauses */

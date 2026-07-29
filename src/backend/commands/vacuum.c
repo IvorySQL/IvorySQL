@@ -61,6 +61,7 @@
 #include "utils/memutils.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
+#include "utils/wait_event.h"
 
 /*
  * Minimum interval for cost-based vacuum delay reports from a parallel worker.
@@ -350,7 +351,6 @@ ExecVacuum(ParseState *pstate, VacuumStmt *vacstmt, bool isTopLevel)
 						 errmsg("ANALYZE option must be specified when a column list is provided")));
 		}
 	}
-
 
 	/*
 	 * Sanity check DISABLE_PAGE_SKIPPING option.
@@ -1665,9 +1665,11 @@ vac_update_datfrozenxid(void)
 
 	while ((classTup = systable_getnext(scan)) != NULL)
 	{
-		volatile FormData_pg_class *classForm = (Form_pg_class) GETSTRUCT(classTup);
-		TransactionId relfrozenxid = classForm->relfrozenxid;
-		TransactionId relminmxid = classForm->relminmxid;
+		Form_pg_class classForm = (Form_pg_class) GETSTRUCT(classTup);
+		volatile TransactionId *relfrozenxid_p = &classForm->relfrozenxid;
+		volatile TransactionId *relminmxid_p = &classForm->relminmxid;
+		TransactionId relfrozenxid = *relfrozenxid_p;
+		TransactionId relminmxid = *relminmxid_p;
 
 		/*
 		 * Only consider relations able to hold unfrozen XIDs (anything else
@@ -1869,9 +1871,11 @@ vac_truncate_clog(TransactionId frozenXID,
 
 	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
-		volatile FormData_pg_database *dbform = (Form_pg_database) GETSTRUCT(tuple);
-		TransactionId datfrozenxid = dbform->datfrozenxid;
-		TransactionId datminmxid = dbform->datminmxid;
+		Form_pg_database dbform = (Form_pg_database) GETSTRUCT(tuple);
+		volatile TransactionId *datfrozenxid_p = &dbform->datfrozenxid;
+		volatile TransactionId *datminmxid_p = &dbform->datminmxid;
+		TransactionId datfrozenxid = *datfrozenxid_p;
+		TransactionId datminmxid = *datminmxid_p;
 
 		Assert(TransactionIdIsNormal(datfrozenxid));
 		Assert(MultiXactIdIsValid(datminmxid));
@@ -2289,8 +2293,9 @@ vacuum_rel(Oid relid, RangeVar *relation, VacuumParams params,
 			if ((params.options & VACOPT_VERBOSE) != 0)
 				cluster_params.options |= CLUOPT_VERBOSE;
 
-			/* VACUUM FULL is now a variant of CLUSTER; see cluster.c */
-			cluster_rel(rel, InvalidOid, &cluster_params);
+			/* VACUUM FULL is a variant of REPACK; see cluster.c */
+			cluster_rel(REPACK_COMMAND_VACUUMFULL, rel, InvalidOid,
+						&cluster_params);
 			/* cluster_rel closes the relation, but keeps lock */
 
 			rel = NULL;

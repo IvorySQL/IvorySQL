@@ -109,6 +109,9 @@ extern void PackageCacheInsert(PackageCacheKey *key, PackageCacheItem *item);
 extern PGDLLIMPORT MemoryContext PackageCacheContext;
 
 extern void ResetPackageCaches(void);
+extern bool ResetPackageContext(Oid pkg_oid);
+extern int ResetAllPackagesContext(void);
+
 
 extern void plisql_internel_funcs_init(void);
 

@@ -32,6 +32,7 @@
 #include "utils/datetime.h"
 #include "utils/guc.h"
 #include "utils/ora_compatible.h"
+#include "utils/tuplestore.h"
 #include "utils/tzparser.h"
 
 static int	DecodeNumber(int flen, char *str, bool haveTextMonth,

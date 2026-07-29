@@ -33,6 +33,7 @@
  *		sockets, "[local:/dir/name]" if not default
  * %m - like %M, but hostname only (before first dot), or always "[local]"
  * %p - backend pid
+ * %P - pipeline status: on, off or abort
  * %> - database server port number
  * %n - database user name
  * %S - search_path
@@ -46,6 +47,8 @@
  *		in prompt3 nothing
  * %i - "standby" or "primary" depending on the server's in_hot_standby
  *      status, or "?" if unavailable (empty if unknown)
+ * %o - "[ORA]" when the session is in Oracle compatibility mode
+ *      (ivorysql.compatible_mode = oracle), empty otherwise
  * %x - transaction status: empty, *, !, ? (unknown or no connection)
  * %l - The line number inside the current statement, starting from 1.
  * %? - the error code of the last query (not yet implemented)
@@ -189,6 +192,7 @@ ora_get_prompt(Ora_promptStatus_t status, ConditionalStack cstack)
 						if (service_name)
 							strlcpy(buf, service_name, sizeof(buf));
 					}
+					pg_fallthrough;
 					/* backend pid */
 				case 'p':
 					if (pset.db)
@@ -197,6 +201,20 @@ ora_get_prompt(Ora_promptStatus_t status, ConditionalStack cstack)
 
 						if (pid)
 							snprintf(buf, sizeof(buf), "%d", pid);
+					}
+					break;
+					/* pipeline status */
+				case 'P':
+					if (pset.db)
+					{
+						PGpipelineStatus status = PQpipelineStatus(pset.db);
+
+						if (status == PQ_PIPELINE_ON)
+							strlcpy(buf, "on", sizeof(buf));
+						else if (status == PQ_PIPELINE_ABORTED)
+							strlcpy(buf, "abort", sizeof(buf));
+						else
+							strlcpy(buf, "off", sizeof(buf));
 					}
 					break;
 
@@ -268,6 +286,15 @@ ora_get_prompt(Ora_promptStatus_t status, ConditionalStack cstack)
 					}
 					break;
 
+				case 'o':
+					if (pset.db)
+					{
+						const char *cm = PQparameterStatus(pset.db, "ivorysql.compatible_mode");
+
+						if (cm && strcmp(cm, "oracle") == 0)
+							strlcpy(buf, "[ORA]", sizeof(buf));
+					}
+					break;
 				case 'x':
 					if (!pset.db)
 						buf[0] = '?';

@@ -221,5 +221,6 @@ extern bool plisql_subproc_should_change_return_type(FuncExpr *fexpr,
 
 extern bool is_row_record_datum(PLiSQL_datum *datum);
 extern void release_package_func_usecount(FunctionCallInfo fcinfo);
+extern bool plisql_package_reset_context(Oid pkg_oid);
 #endif
 

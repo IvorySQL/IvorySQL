@@ -329,6 +329,7 @@ elif host_system == 'openbsd'
 
 elif host_system == 'sunos'
   portname = 'solaris'
+  sema_kind = 'unnamed_posix'
   export_fmt = '-Wl,-M@0@'
   # We need these #defines to get POSIX-conforming versions
   # of many interfaces (sigwait, getpwuid_r, shmdt, ...).
@@ -1281,6 +1282,7 @@ endif
 
 perlopt = get_option('plperl')
 perl_dep = not_found_dep
+perl_includespec = ''
 perlversion = ''
 if not perlopt.disabled()
   perl_may_work = true
@@ -1305,6 +1307,7 @@ if not perlopt.disabled()
     useshrplib = run_command(perl_conf_cmd, 'useshrplib', check: true).stdout()
 
     perl_inc_dir = '@0@/CORE'.format(archlibexp)
+    perl_includespec = '-I@0@'.format(perl_inc_dir)
 
     if perlversion.version_compare('< 5.14')
       perl_may_work = false
@@ -1323,6 +1326,7 @@ if not perlopt.disabled()
     if not fs.is_file('@0@/perl.h'.format(perl_inc_dir)) and \
        fs.is_file('@0@@1@/perl.h'.format(pg_sysroot, perl_inc_dir))
       perl_ccflags = ['-iwithsysroot', perl_inc_dir]
+      perl_includespec = '-iwithsysroot @0@/CORE'.format(archlibexp)
     endif
 
     # check compiler finds header
@@ -1427,6 +1431,7 @@ endif
 
 pyopt = get_option('plpython')
 python3_dep = not_found_dep
+python_includespec = ''
 if not pyopt.disabled()
   pm = import('python')
   python3_inst = pm.find_installation(python.full_path(), required: pyopt)
@@ -1455,6 +1460,11 @@ if not pyopt.disabled()
     if not cc.check_header('Python.h', args: python3_header_check_args, dependencies: python3_dep, required: pyopt, include_directories: postgres_inc)
       python3_dep = not_found_dep
     endif
+  endif
+
+  if python3_dep.found()
+    command = [python, '-c', 'import sysconfig; print("-I" + sysconfig.get_config_var("INCLUDEPY"))']
+    python_includespec = run_command(command, check: true).stdout().strip()
   endif
 endif
 
@@ -1682,6 +1692,7 @@ if sslopt in ['auto', 'openssl']
       ['X509_get_signature_info'],
       ['SSL_CTX_set_num_tickets'],
       ['SSL_CTX_set_keylog_callback'],
+      ['SSL_CTX_set_client_hello_cb'],
     ]
 
     are_openssl_funcs_complete = true
@@ -1998,19 +2009,6 @@ if cc.compiles('''
 endif
 
 
-# Check if the C compiler supports GCC-style statement expressions.
-if cc.compiles('''
-    int main(int arg, char **argv)
-    {
-        ({ _Static_assert(1, "foo"); });
-    }
-    ''',
-    name: 'statement expressions',
-    args: test_c_args)
-  cdata.set('HAVE_STATEMENT_EXPRESSIONS', 1)
-endif
-
-
 # Select the format archetype to be used to check printf-type functions.
 #
 # Need to check a call with %m because netbsd supports gnu_printf but emits a
@@ -2263,6 +2261,8 @@ if cc.has_argument('-Wmissing-variable-declarations')
   cflags_no_missing_var_decls += '-Wno-missing-variable-declarations'
 endif
 
+# These are C-only flags, supported in all C11-capable GCC/Clang versions.
+cflags_warn += cc.get_supported_arguments(['-Wstrict-prototypes', '-Wold-style-definition'])
 
 # The following tests want to suppress various unhelpful warnings by adding
 # -Wno-foo switches.  But gcc won't complain about unrecognized -Wno-foo
@@ -2961,6 +2961,89 @@ int main(void)
   endif
 endforeach
 
+# Check if the C++ compiler understands typeof or a variant.
+if have_cxx
+  foreach kw : ['typeof', '__typeof__']
+    if cxx.compiles('''
+int main(void)
+{
+    int x = 0;
+    @0@(x) y;
+    y = x;
+    return y;
+}
+'''.format(kw),
+      name: 'C++ ' + kw,
+      args: test_c_args, include_directories: postgres_inc)
+
+      cdata.set('HAVE_CXX_TYPEOF', 1)
+      if kw != 'typeof'
+        cdata.set('pg_cxx_typeof', kw)
+      endif
+
+      break
+    endif
+  endforeach
+endif
+
+# Check if the C compiler understands typeof_unqual or a variant.  Define
+# HAVE_TYPEOF_UNQUAL if so, and define 'typeof_unqual' to the actual key word.
+#
+# Test with a void pointer, because MSVC doesn't handle that, and we
+# need that for copyObject().
+foreach kw : ['typeof_unqual', '__typeof_unqual__']
+  if cc.compiles('''
+int main(void)
+{
+    int x = 0;
+    @0@(x) y;
+    const void *a;
+    void *b;
+    y = x;
+    b = (@0@(*a) *) a;
+    return y;
+}
+'''.format(kw),
+    name: kw,
+    args: test_c_args, include_directories: postgres_inc)
+
+    cdata.set('HAVE_TYPEOF_UNQUAL', 1)
+    if kw != 'typeof_unqual'
+      cdata.set('typeof_unqual', kw)
+    endif
+
+    break
+  endif
+endforeach
+
+# Check if the C++ compiler understands typeof_unqual or a variant.
+if have_cxx
+  foreach kw : ['typeof_unqual', '__typeof_unqual__']
+    if cxx.compiles('''
+int main(void)
+{
+    int x = 0;
+    @0@(x) y;
+    const void *a;
+    void *b;
+    y = x;
+    b = (@0@(*a) *) a;
+    return y;
+}
+'''.format(kw),
+      name: 'C++ ' + kw,
+      args: test_c_args, include_directories: postgres_inc)
+
+      cdata.set('HAVE_CXX_TYPEOF_UNQUAL', 1)
+      if kw != 'typeof_unqual'
+        cdata.set('pg_cxx_typeof_unqual', kw)
+      endif
+
+      break
+    endif
+  endforeach
+endif
+
 
 # MSVC doesn't cope well with defining restrict to __restrict, the
 # spelling it understands, because it conflicts with
@@ -3023,6 +3106,7 @@ func_checks = [
   ['dlsym', {'dependencies': [dl_dep], 'define': false}],
   ['elf_aux_info'],
   ['explicit_bzero'],
+  ['explicit_memset'],
   ['getauxval'],
   ['getifaddrs'],
   ['getopt', {'dependencies': [getopt_dep, gnugetopt_dep], 'skip': always_replace_getopt}],
@@ -3034,6 +3118,7 @@ func_checks = [
   ['kqueue'],
   ['localeconv_l'],
   ['mbstowcs_l'],
+  ['memset_explicit'],
   ['mkdtemp'],
   ['posix_fadvise'],
   ['posix_fallocate'],
@@ -3188,6 +3273,7 @@ pl_targets = []
 contrib_targets = []
 testprep_targets = []
 nls_targets = []
+update_unicode_targets = []
 
 
 # Define the tests to distribute them to the correct test styles later
@@ -3951,6 +4037,21 @@ add_test_setup('running',
 
 
 ###############################################################
+# headerscheck
+###############################################################
+
+headerscheck = files('src/tools/pginclude/headerscheck')
+run_target('headerscheck',
+  command: [headerscheck, meson.project_source_root(), meson.project_build_root()]
+)
+
+run_target('cpluspluscheck',
+  command: [headerscheck, '--cplusplus', meson.project_source_root(), meson.project_build_root()]
+)
+
+
+
+###############################################################
 # Pseudo targets
 ###############################################################
 
@@ -3962,6 +4063,10 @@ alias_target('testprep', testprep_targets)
 
 alias_target('world', all_built, docs)
 alias_target('install-world', install_quiet, installdocs)
+
+if update_unicode_targets.length() > 0
+  alias_target('update-unicode', update_unicode_targets)
+endif
 
 run_target('help',
   command: [

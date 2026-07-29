@@ -18,6 +18,7 @@
 #include "executor/executor.h"
 #include "executor/nodeCtescan.h"
 #include "miscadmin.h"
+#include "utils/tuplestore.h"
 
 static TupleTableSlot *CteScanNext(CteScanState *node);
 
@@ -261,7 +262,7 @@ ExecInitCteScan(CteScan *node, EState *estate, int eflags)
 	 */
 	ExecInitScanTupleSlot(estate, &scanstate->ss,
 						  ExecGetResultType(scanstate->cteplanstate),
-						  &TTSOpsMinimalTuple);
+						  &TTSOpsMinimalTuple, 0);
 
 	/*
 	 * Initialize result type and projection.

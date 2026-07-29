@@ -10,7 +10,7 @@
 
 [English](README.md) | 中文
 
-IvorySQL 基于开源[PostgreSQL](https://github.com/postgres/postgres)数据库。是一款先进、功能全面的开源 Oracle 兼容 PostgreSQL，始终承诺100% 兼容最新版本的 PostgreSQL，并可作为其无缝替代方案。IvorySQL 增加了一个 “compatible_db” 开关，支持在 Oracle 和 PostgreSQL 兼容模式之间自由切换。IvorySQL 的一大亮点是 PL/iSQL 过程式语言，它兼容 Oracle 的 PL/SQL 语法并支持 Oracle 风格的 Package。
+IvorySQL 基于开源[PostgreSQL](https://github.com/postgres/postgres)数据库。是一款先进、功能全面的开源 Oracle 兼容 PostgreSQL，始终承诺100% 兼容最新版本的 PostgreSQL，并可作为其无缝替代方案。IvorySQL 增加了 `ivorysql.compatible_mode` GUC 参数，支持在 Oracle 和 PostgreSQL 兼容模式之间自由切换。IvorySQL 的一大亮点是 PL/iSQL 过程式语言，它兼容 Oracle 的 PL/SQL 语法并支持 Oracle 风格的 Package。
 
 IvorySQL 项目采用 Apache 2.0 许可协议发布，并鼓励各种形式的社区贡献。在 IvorySQL 社区中，每一份贡献都至关重要，我们由衷感谢所有社区贡献者的支持！
 
@@ -35,14 +35,13 @@ IvorySQL 项目采用 Apache 2.0 许可协议发布，并鼓励各种形式的�
 - [RPM 安装](https://docs.ivorysql.org/cn/ivorysql-doc/v5.4/4.1#rpm安装)
 - [源代码安装](https://docs.ivorysql.org/cn/ivorysql-doc/v5.4/4.1#源码安装)
 
-
-
 ## 为IvorySQL做贡献
 有许多方式可以为 IvorySQL 做出贡献。您可以通过更新文档或提供文档翻译来贡献。如果您具备设计技能，还可以参与 IvorySQL 官网项目的建设。
 
 测试 IvorySQL 并报告问题、提交错误修复或新功能的 Pull Request，或者在邮件列表中回答问题，都是为 IvorySQL 贡献的方式。IvorySQL 社区欢迎并感谢所有类型的贡献。
+贡献方式请参考[社区贡献指南](https://www.ivorysql.org/zh-cn/contribution-guidelines/)和[开发者贡献指南](https://docs.ivorysql.org/cn/ivorysql-doc/v5.4/8.1)。
 
-* **加入IvorySQL [邮件列表](http://lists.ivorysql.org) 即刻开始！**
+**提示**：在提交任何代码贡献之前，所有贡献者都必须签署贡献者许可协议（CLA）。CLA 既能保护贡献者自身权益，也能保护项目，有助于社区建立更加规范、可持续的开源治理体系。
 
 ## AI 编程助手
 
@@ -53,6 +52,30 @@ IvorySQL 项目采用 Apache 2.0 许可协议发布，并鼓励各种形式的�
 ## 文档
 请查看[在线文档](https://docs.ivorysql.org/)。
 
-## Star History
+## 社区与联系我们
 
-![Star History Chart](https://api.star-history.com/svg?repos=IvorySQL/IvorySQL&type=Date)
+IvorySQL 是一个由社区共同建设的开源项目。无论你是遇到使用问题、发现 Bug、提出功能建议，还是希望参与项目贡献，都欢迎通过以下渠道与社区交流。
+
+### 社区交流
+
+* **用户邮件列表：** [general@ivorysql.org](https://lists.ivorysql.org/postorius/lists/general.ivorysql.org/)
+  用于 IvorySQL 使用交流、问题讨论及社区沟通。
+
+* **开发者邮件列表：** [hackers@ivorysql.org](https://lists.ivorysql.org/postorius/lists/hackers.ivorysql.org/)
+  用于技术方案、内核开发、补丁提交及项目贡献相关讨论。
+
+* **Discord：** [加入 IvorySQL Discord 社区](https://discord.gg/w79Ta45Gkc)
+
+* **X / Twitter：** [@IvorySQL](https://twitter.com/IvorySQL)
+
+### 问题反馈与项目贡献
+
+* **Bug 反馈及功能建议：** [提交 GitHub Issue](https://github.com/IvorySQL/IvorySQL/issues/new/choose)
+* **源代码及项目贡献：** [GitHub](https://github.com/IvorySQL/IvorySQL)
+* **国内代码仓库：** [GitCode / AtomGit](https://atomgit.com/IvorySQL/IvorySQL)
+
+### 官方资源
+
+* **官方网站：** [ivorysql.org](https://www.ivorysql.org/zh-cn/)
+* **项目文档：** [docs.ivorysql.org](https://docs.ivorysql.org/)
+* **邮件列表：** [lists.ivorysql.org](https://lists.ivorysql.org/)

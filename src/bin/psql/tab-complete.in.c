@@ -830,6 +830,14 @@ static const SchemaQuery Query_for_list_of_partitioned_indexes = {
 	.result = "c.relname",
 };
 
+static const SchemaQuery Query_for_list_of_propgraphs = {
+	.catname = "pg_catalog.pg_class c",
+	.selcondition = "c.relkind IN (" CppAsString2(RELKIND_PROPGRAPH) ")",
+	.viscondition = "pg_catalog.pg_table_is_visible(c.oid)",
+	.namespace = "c.relnamespace",
+	.result = "pg_catalog.quote_ident(c.relname)",
+};
+
 
 /* All relations */
 static const SchemaQuery Query_for_list_of_relations = {
@@ -1282,7 +1290,7 @@ static const char *const sql_commands[] = {
 	"DELETE FROM", "DISCARD", "DO", "DROP", "END", "EXECUTE", "EXPLAIN",
 	"FETCH", "GRANT", "IMPORT FOREIGN SCHEMA", "INSERT INTO", "LISTEN", "LOAD", "LOCK",
 	"MERGE INTO", "MOVE", "NOTIFY", "PREPARE",
-	"REASSIGN", "REFRESH MATERIALIZED VIEW", "REINDEX", "RELEASE",
+	"REASSIGN", "REFRESH MATERIALIZED VIEW", "REINDEX", "RELEASE", "REPACK",
 	"RESET", "REVOKE", "ROLLBACK",
 	"SAVEPOINT", "SECURITY LABEL", "SELECT", "SET", "SHOW", "START",
 	"TABLE", "TRUNCATE", "UNLISTEN", "UPDATE", "VACUUM", "VALUES",
@@ -1354,6 +1362,7 @@ static const pgsql_thing_t words_after_create[] = {
 	{"PARSER", NULL, NULL, &Query_for_list_of_ts_parsers, NULL, THING_NO_SHOW},
 	{"POLICY", NULL, NULL, NULL},
 	{"PROCEDURE", NULL, NULL, Query_for_list_of_procedures},
+	{"PROPERTY GRAPH", NULL, NULL, &Query_for_list_of_propgraphs},
 	{"PUBLICATION", NULL, Query_for_list_of_publications},
 	{"ROLE", Query_for_list_of_roles},
 	{"ROUTINE", NULL, NULL, &Query_for_list_of_routines, NULL, THING_NO_CREATE},
@@ -2338,7 +2347,18 @@ match_previous_words(int pattern_id,
 		COMPLETE_WITH("TABLES IN SCHEMA", "TABLE");
 	/* ALTER PUBLICATION <name> SET */
 	else if (Matches("ALTER", "PUBLICATION", MatchAny, "SET"))
-		COMPLETE_WITH("(", "TABLES IN SCHEMA", "TABLE");
+		COMPLETE_WITH("(", "ALL SEQUENCES", "ALL TABLES", "TABLES IN SCHEMA", "TABLE");
+	else if (Matches("ALTER", "PUBLICATION", MatchAny, "SET", "ALL"))
+		COMPLETE_WITH("SEQUENCES", "TABLES");
+	else if (Matches("ALTER", "PUBLICATION", MatchAny, "SET", "ALL", "TABLES"))
+		COMPLETE_WITH("EXCEPT TABLE (");
+	else if (Matches("ALTER", "PUBLICATION", MatchAny, "SET", "ALL", "TABLES", "EXCEPT"))
+		COMPLETE_WITH("TABLE (");
+	else if (Matches("ALTER", "PUBLICATION", MatchAny, "SET", "ALL", "TABLES", "EXCEPT", "TABLE"))
+		COMPLETE_WITH("(");
+	/* Complete "ALTER PUBLICATION <name> FOR TABLE" with "<table>, ..." */
+	else if (Matches("ALTER", "PUBLICATION", MatchAny, "SET", "ALL", "TABLES", "EXCEPT", "TABLE", "("))
+		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_tables);
 	else if (Matches("ALTER", "PUBLICATION", MatchAny, "ADD|DROP|SET", "TABLES", "IN", "SCHEMA"))
 		COMPLETE_WITH_QUERY_PLUS(Query_for_list_of_schemas
 								 " AND nspname NOT LIKE E'pg\\\\_%%'",
@@ -2350,7 +2370,7 @@ match_previous_words(int pattern_id,
 	else if (Matches("ALTER", "SUBSCRIPTION", MatchAny))
 		COMPLETE_WITH("CONNECTION", "ENABLE", "DISABLE", "OWNER TO",
 					  "RENAME TO", "REFRESH PUBLICATION", "REFRESH SEQUENCES",
-					  "SET", "SKIP (", "ADD PUBLICATION", "DROP PUBLICATION");
+					  "SERVER", "SET", "SKIP (", "ADD PUBLICATION", "DROP PUBLICATION");
 	/* ALTER SUBSCRIPTION <name> REFRESH */
 	else if (Matches("ALTER", "SUBSCRIPTION", MatchAny, MatchAnyN, "REFRESH"))
 		COMPLETE_WITH("PUBLICATION", "SEQUENCES");
@@ -2554,12 +2574,24 @@ match_previous_words(int pattern_id,
 	else if (Matches("ALTER", "USER|ROLE", MatchAny) &&
 			 !TailMatches("USER", "MAPPING"))
 		COMPLETE_WITH("BYPASSRLS", "CONNECTION LIMIT", "CREATEDB", "CREATEROLE",
-					  "ENCRYPTED PASSWORD", "INHERIT", "LOGIN", "NOBYPASSRLS",
+					  "ENCRYPTED PASSWORD", "IN", "INHERIT", "LOGIN", "NOBYPASSRLS",
 					  "NOCREATEDB", "NOCREATEROLE", "NOINHERIT",
 					  "NOLOGIN", "NOREPLICATION", "NOSUPERUSER", "PASSWORD",
 					  "RENAME TO", "REPLICATION", "RESET", "SET", "SUPERUSER",
 					  "VALID UNTIL", "WITH");
-
+	/* ALTER USER,ROLE <name> IN */
+	else if (Matches("ALTER", "USER|ROLE", MatchAny, "IN"))
+		COMPLETE_WITH("DATABASE");
+	/* ALTER USER,ROLE <name> IN DATABASE */
+	else if (Matches("ALTER", "USER|ROLE", MatchAny, "IN", "DATABASE"))
+		COMPLETE_WITH_QUERY(Query_for_list_of_databases);
+	/* ALTER USER,ROLE <name> IN DATABASE <dbname> */
+	else if (Matches("ALTER", "USER|ROLE", MatchAny, "IN", "DATABASE", MatchAny))
+		COMPLETE_WITH("SET", "RESET");
+	/* ALTER USER,ROLE <name> IN DATABASE <dbname> SET */
+	else if (Matches("ALTER", "USER|ROLE", MatchAny, "IN", "DATABASE", MatchAny, "SET"))
+		COMPLETE_WITH_QUERY(Query_for_list_of_set_vars);
+	/* XXX missing support for ALTER ROLE <name> IN DATABASE <dbname> RESET */
 	/* ALTER USER,ROLE <name> RESET */
 	else if (Matches("ALTER", "USER|ROLE", MatchAny, "RESET"))
 	{
@@ -2744,6 +2776,20 @@ match_previous_words(int pattern_id,
 	/* ALTER POLICY <name> ON <table> WITH CHECK ( */
 	else if (Matches("ALTER", "POLICY", MatchAny, "ON", MatchAny, "WITH", "CHECK"))
 		COMPLETE_WITH("(");
+
+	/* ALTER PROPERTY GRAPH */
+	else if (Matches("ALTER", "PROPERTY", "GRAPH"))
+		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_propgraphs);
+	else if (Matches("ALTER", "PROPERTY", "GRAPH", MatchAny))
+		COMPLETE_WITH("ADD", "ALTER", "DROP", "OWNER TO", "RENAME TO", "SET SCHEMA");
+	else if (Matches("ALTER", "PROPERTY", "GRAPH", MatchAny, "ADD|ALTER|DROP"))
+		COMPLETE_WITH("VERTEX", "EDGE");
+	else if (Matches("ALTER", "PROPERTY", "GRAPH", MatchAny, "ADD|DROP", "VERTEX|EDGE"))
+		COMPLETE_WITH("TABLES");
+	else if (HeadMatches("ALTER", "PROPERTY", "GRAPH", MatchAny, "ADD") && TailMatches("EDGE"))
+		COMPLETE_WITH("TABLES");
+	else if (Matches("ALTER", "PROPERTY", "GRAPH", MatchAny, "ALTER", "VERTEX|EDGE"))
+		COMPLETE_WITH("TABLE");
 
 	/* ALTER RULE <name>, add ON */
 	else if (Matches("ALTER", "RULE", MatchAny))
@@ -3292,7 +3338,7 @@ match_previous_words(int pattern_id,
 					  "FOREIGN DATA WRAPPER", "FOREIGN TABLE",
 					  "FUNCTION", "INDEX", "LANGUAGE", "LARGE OBJECT",
 					  "MATERIALIZED VIEW", "OPERATOR", "PACKAGE", "POLICY",
-					  "PROCEDURE", "PROCEDURAL LANGUAGE", "PUBLICATION", "ROLE",
+					  "PROCEDURE", "PROCEDURAL LANGUAGE", "PROPERTY GRAPH", "PUBLICATION", "ROLE",
 					  "ROUTINE", "RULE", "SCHEMA", "SEQUENCE", "SERVER",
 					  "STATISTICS", "SUBSCRIPTION", "TABLE",
 					  "TABLESPACE", "TEXT SEARCH", "TRANSFORM FOR",
@@ -3330,6 +3376,8 @@ match_previous_words(int pattern_id,
 	}
 	else if (Matches("COMMENT", "ON", "PROCEDURAL", "LANGUAGE"))
 		COMPLETE_WITH_QUERY(Query_for_list_of_languages);
+	else if (Matches("COMMENT", "ON", "PROPERTY", "GRAPH"))
+		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_propgraphs);
 	else if (Matches("COMMENT", "ON", "RULE", MatchAny))
 		COMPLETE_WITH("ON");
 	else if (Matches("COMMENT", "ON", "RULE", MatchAny, "ON"))
@@ -3454,7 +3502,7 @@ match_previous_words(int pattern_id,
 
 			/* Complete COPY <sth> FROM filename WITH (ON_ERROR */
 			else if (TailMatches("ON_ERROR"))
-				COMPLETE_WITH("stop", "ignore");
+				COMPLETE_WITH("stop", "ignore", "set_null");
 
 			/* Complete COPY <sth> FROM filename WITH (LOG_VERBOSITY */
 			else if (TailMatches("LOG_VERBOSITY"))
@@ -3689,6 +3737,25 @@ match_previous_words(int pattern_id,
 	else if (Matches("CREATE", "POLICY", MatchAny, "ON", MatchAny, "AS", MatchAny, "USING"))
 		COMPLETE_WITH("(");
 
+/* CREATE PROPERTY GRAPH */
+	else if (Matches("CREATE", "PROPERTY"))
+		COMPLETE_WITH("GRAPH");
+	else if (Matches("CREATE", "PROPERTY", "GRAPH", MatchAny))
+		COMPLETE_WITH("VERTEX");
+	else if (Matches("CREATE", "PROPERTY", "GRAPH", MatchAny, "VERTEX|NODE"))
+		COMPLETE_WITH("TABLES");
+	else if (Matches("CREATE", "PROPERTY", "GRAPH", MatchAny, "VERTEX|NODE", "TABLES"))
+		COMPLETE_WITH("(");
+	else if (Matches("CREATE", "PROPERTY", "GRAPH", MatchAny, "VERTEX|NODE", "TABLES", "("))
+		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_tables);
+	else if (Matches("CREATE", "PROPERTY", "GRAPH", MatchAny, "VERTEX|NODE", "TABLES", "(*)"))
+		COMPLETE_WITH("EDGE");
+	else if (HeadMatches("CREATE", "PROPERTY", "GRAPH") && TailMatches("EDGE|RELATIONSHIP"))
+		COMPLETE_WITH("TABLES");
+	else if (HeadMatches("CREATE", "PROPERTY", "GRAPH") && TailMatches("EDGE|RELATIONSHIP", "TABLES"))
+		COMPLETE_WITH("(");
+	else if (HeadMatches("CREATE", "PROPERTY", "GRAPH") && TailMatches("EDGE|RELATIONSHIP", "TABLES", "("))
+		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_tables);
 
 /* CREATE PUBLICATION */
 	else if (Matches("CREATE", "PUBLICATION", MatchAny))
@@ -3698,7 +3765,17 @@ match_previous_words(int pattern_id,
 	else if (Matches("CREATE", "PUBLICATION", MatchAny, "FOR", "ALL"))
 		COMPLETE_WITH("TABLES", "SEQUENCES");
 	else if (Matches("CREATE", "PUBLICATION", MatchAny, "FOR", "ALL", "TABLES"))
-		COMPLETE_WITH("WITH (");
+		COMPLETE_WITH("EXCEPT TABLE (", "WITH (");
+	else if (Matches("CREATE", "PUBLICATION", MatchAny, "FOR", "ALL", "TABLES", "EXCEPT"))
+		COMPLETE_WITH("TABLE (");
+	else if (Matches("CREATE", "PUBLICATION", MatchAny, "FOR", "ALL", "TABLES", "EXCEPT", "TABLE"))
+		COMPLETE_WITH("(");
+	else if (Matches("CREATE", "PUBLICATION", MatchAny, "FOR", "ALL", "TABLES", "EXCEPT", "TABLE", "("))
+		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_tables);
+	else if (Matches("CREATE", "PUBLICATION", MatchAny, "FOR", "ALL", "TABLES", "EXCEPT", "TABLE", "(", MatchAnyN) && ends_with(prev_wd, ','))
+		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_tables);
+	else if (Matches("CREATE", "PUBLICATION", MatchAny, "FOR", "ALL", "TABLES", "EXCEPT", "TABLE", "(", MatchAnyN) && !ends_with(prev_wd, ','))
+		COMPLETE_WITH(")");
 	else if (Matches("CREATE", "PUBLICATION", MatchAny, "FOR", "TABLES"))
 		COMPLETE_WITH("IN SCHEMA");
 	else if (Matches("CREATE", "PUBLICATION", MatchAny, "FOR", "TABLE", MatchAny) && !ends_with(prev_wd, ','))
@@ -3877,9 +3954,16 @@ match_previous_words(int pattern_id,
 
 /* CREATE SUBSCRIPTION */
 	else if (Matches("CREATE", "SUBSCRIPTION", MatchAny))
-		COMPLETE_WITH("CONNECTION");
+		COMPLETE_WITH("SERVER", "CONNECTION");
+	else if (Matches("CREATE", "SUBSCRIPTION", MatchAny, "SERVER", MatchAny))
+		COMPLETE_WITH("PUBLICATION");
 	else if (Matches("CREATE", "SUBSCRIPTION", MatchAny, "CONNECTION", MatchAny))
 		COMPLETE_WITH("PUBLICATION");
+	else if (Matches("CREATE", "SUBSCRIPTION", MatchAny, "SERVER",
+					 MatchAny, "PUBLICATION"))
+	{
+		/* complete with nothing here as this refers to remote publications */
+	}
 	else if (Matches("CREATE", "SUBSCRIPTION", MatchAny, "CONNECTION",
 					 MatchAny, "PUBLICATION"))
 	{
@@ -4295,7 +4379,9 @@ match_previous_words(int pattern_id,
 	/* Complete DELETE FROM <table> */
 	else if (TailMatches("DELETE", "FROM", MatchAny))
 		COMPLETE_WITH("USING", "WHERE");
-	/* XXX: implement tab completion for DELETE ... USING */
+	/* Complete DELETE FROM <table> USING with relations supporting SELECT */
+	else if (TailMatches("DELETE", "FROM", MatchAny, "USING"))
+		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_selectables);
 
 /* DISCARD */
 	else if (Matches("DISCARD"))
@@ -4400,6 +4486,12 @@ match_previous_words(int pattern_id,
 	}
 	else if (Matches("DROP", "POLICY", MatchAny, "ON", MatchAny))
 		COMPLETE_WITH("CASCADE", "RESTRICT");
+
+	/* DROP PROPERTY GRAPH */
+	else if (Matches("DROP", "PROPERTY"))
+		COMPLETE_WITH("GRAPH");
+	else if (Matches("DROP", "PROPERTY", "GRAPH"))
+		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_propgraphs);
 
 	/* DROP RULE */
 	else if (Matches("DROP", "RULE", MatchAny))
@@ -4646,6 +4738,7 @@ match_previous_words(int pattern_id,
 											"LARGE OBJECT",
 											"PARAMETER",
 											"PROCEDURE",
+											"PROPERTY GRAPH",
 											"ROUTINE",
 											"SCHEMA",
 											"SEQUENCE",
@@ -4806,6 +4899,14 @@ match_previous_words(int pattern_id,
 		else
 			COMPLETE_WITH("FROM");
 	}
+
+/* GRAPH_TABLE */
+	else if (TailMatches("GRAPH_TABLE"))
+		COMPLETE_WITH("(");
+	else if (TailMatches("GRAPH_TABLE", "("))
+		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_propgraphs);
+	else if (TailMatches("GRAPH_TABLE", "(", MatchAny))
+		COMPLETE_WITH("MATCH");
 
 /* GROUP BY */
 	else if (TailMatches("FROM", MatchAny, "GROUP"))
@@ -5119,6 +5220,47 @@ match_previous_words(int pattern_id,
 			COMPLETE_WITH_QUERY(Query_for_list_of_tablespaces);
 	}
 
+/* REPACK */
+	else if (Matches("REPACK"))
+		COMPLETE_WITH_SCHEMA_QUERY_PLUS(Query_for_list_of_clusterables,
+										"(", "USING INDEX");
+	else if (Matches("REPACK", "(*)"))
+		COMPLETE_WITH_SCHEMA_QUERY_PLUS(Query_for_list_of_clusterables,
+										"USING INDEX");
+	else if (Matches("REPACK", MatchAnyExcept("(")))
+		COMPLETE_WITH("USING INDEX");
+	else if (Matches("REPACK", "(*)", MatchAnyExcept("(")))
+		COMPLETE_WITH("USING INDEX");
+	else if (Matches("REPACK", MatchAny, "USING", "INDEX") ||
+			 Matches("REPACK", "(*)", MatchAny, "USING", "INDEX"))
+	{
+		set_completion_reference(prev3_wd);
+		COMPLETE_WITH_SCHEMA_QUERY(Query_for_index_of_table);
+	}
+
+	/*
+	 * Complete ... [ (*) ] <sth> USING INDEX, with a list of indexes for
+	 * <sth>.
+	 */
+	else if (TailMatches(MatchAny, "USING", "INDEX"))
+	{
+		set_completion_reference(prev3_wd);
+		COMPLETE_WITH_SCHEMA_QUERY(Query_for_index_of_table);
+	}
+	else if (HeadMatches("REPACK", "(*") &&
+			 !HeadMatches("REPACK", "(*)"))
+	{
+		/*
+		 * This fires if we're in an unfinished parenthesized option list.
+		 * get_previous_words treats a completed parenthesized option list as
+		 * one word, so the above test is correct.
+		 */
+		if (ends_with(prev_wd, '(') || ends_with(prev_wd, ','))
+			COMPLETE_WITH("ANALYZE", "VERBOSE");
+		else if (TailMatches("ANALYZE", "VERBOSE"))
+			COMPLETE_WITH("ON", "OFF");
+	}
+
 /* SECURITY LABEL */
 	else if (Matches("SECURITY"))
 		COMPLETE_WITH("LABEL");
@@ -5131,8 +5273,10 @@ match_previous_words(int pattern_id,
 		COMPLETE_WITH("TABLE", "COLUMN", "AGGREGATE", "DATABASE", "DOMAIN",
 					  "EVENT TRIGGER", "FOREIGN TABLE", "FUNCTION",
 					  "LARGE OBJECT", "MATERIALIZED VIEW", "LANGUAGE",
-					  "PUBLICATION", "PROCEDURE", "ROLE", "ROUTINE", "SCHEMA",
+					  "PROPERTY GRAPH", "PUBLICATION", "PROCEDURE", "ROLE", "ROUTINE", "SCHEMA",
 					  "SEQUENCE", "SUBSCRIPTION", "TABLESPACE", "TYPE", "VIEW");
+	else if (Matches("SECURITY", "LABEL", "ON", "PROPERTY", "GRAPH"))
+		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_propgraphs);
 	else if (Matches("SECURITY", "LABEL", "ON", MatchAny, MatchAny))
 		COMPLETE_WITH("IS");
 
@@ -5613,6 +5757,8 @@ match_previous_words(int pattern_id,
 			COMPLETE_WITH("OBJECT");
 		else if (TailMatches("CREATE|ALTER|DROP", "MATERIALIZED"))
 			COMPLETE_WITH("VIEW");
+		else if (TailMatches("CREATE|ALTER|DROP", "PROPERTY"))
+			COMPLETE_WITH("GRAPH");
 		else if (TailMatches("CREATE|ALTER|DROP", "TEXT"))
 			COMPLETE_WITH("SEARCH");
 		else if (TailMatches("CREATE|ALTER|DROP", "USER"))
@@ -6357,8 +6503,7 @@ append_variable_names(char ***varnames, int *nvars,
 	if (*nvars >= *maxvars)
 	{
 		*maxvars *= 2;
-		*varnames = (char **) pg_realloc(*varnames,
-										 ((*maxvars) + 1) * sizeof(char *));
+		*varnames = pg_realloc_array(*varnames, char *, (*maxvars) + 1);
 	}
 
 	(*varnames)[(*nvars)++] = psprintf("%s%s%s", prefix, varname, suffix);
@@ -6383,7 +6528,7 @@ complete_from_variables(const char *text, const char *prefix, const char *suffix
 	int			i;
 	struct _variable *ptr;
 
-	varnames = (char **) pg_malloc((maxvars + 1) * sizeof(char *));
+	varnames = pg_malloc_array(char *, maxvars + 1);
 
 	for (ptr = pset.vars->next; ptr; ptr = ptr->next)
 	{
@@ -6961,7 +7106,7 @@ get_previous_words(int point, char **buffer, int *nwords)
 	 * This is usually much more space than we need, but it's cheaper than
 	 * doing a separate malloc() for each word.
 	 */
-	previous_words = (char **) pg_malloc(point * sizeof(char *));
+	previous_words = pg_malloc_array(char *, point);
 	*buffer = outptr = (char *) pg_malloc(point * 2);
 
 	/*

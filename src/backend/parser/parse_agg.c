@@ -48,9 +48,10 @@ typedef struct
 	ParseState *pstate;
 	Query	   *qry;
 	bool		hasJoinRTEs;
-	List	   *groupClauses;
-	List	   *groupClauseCommonVars;
-	List	   *gset_common;
+	List	   *groupClauses;	/* list of TargetEntry */
+	List	   *groupClauseCommonVars;	/* list of Vars */
+	List	   *groupClauseSubLevels;	/* list of lists of TargetEntry */
+	List	   *gset_common;	/* integer list of sortgrouprefs */
 	bool		have_non_var_grouping;
 	List	  **func_grouped_rels;
 	int			sublevels_up;
@@ -584,6 +585,14 @@ check_agglevels_and_constraints(ParseState *pstate, Node *expr)
 			errkind = true;
 			break;
 
+		case EXPR_KIND_PROPGRAPH_PROPERTY:
+			if (isAgg)
+				err = _("aggregate functions are not allowed in property definition expressions");
+			else
+				err = _("grouping operations are not allowed in property definition expressions");
+
+			break;
+
 			/*
 			 * There is intentionally no default: case here, so that the
 			 * compiler will warn if we add a new ParseExprKind without
@@ -1023,6 +1032,9 @@ transformWindowFuncCall(ParseState *pstate, WindowFunc *wfunc,
 		case EXPR_KIND_CYCLE_MARK:
 			errkind = true;
 			break;
+		case EXPR_KIND_PROPGRAPH_PROPERTY:
+			err = _("window functions are not allowed in property definition expressions");
+			break;
 
 			/*
 			 * There is intentionally no default: case here, so that the
@@ -1213,8 +1225,8 @@ parseCheckAggregates(ParseState *pstate, Query *qry)
 	}
 
 	/*
-	 * Build a list of the acceptable GROUP BY expressions for use by
-	 * substitute_grouped_columns().
+	 * Build a list of the acceptable GROUP BY expressions to save in the
+	 * RTE_GROUP RTE, and for use by substitute_grouped_columns().
 	 *
 	 * We get the TLE, not just the expr, because GROUPING wants to know the
 	 * sortgroupref.
@@ -1232,14 +1244,31 @@ parseCheckAggregates(ParseState *pstate, Query *qry)
 	}
 
 	/*
+	 * If there are any acceptable GROUP BY expressions, build an RTE and
+	 * nsitem for the result of the grouping step.  (It's important to do this
+	 * before flattening join alias vars in groupClauses, because the RTE
+	 * should preserve any alias vars that were in the input.)
+	 */
+	if (groupClauses)
+	{
+		pstate->p_grouping_nsitem =
+			addRangeTableEntryForGroup(pstate, groupClauses);
+
+		/* Set qry->rtable again in case it was previously NIL */
+		qry->rtable = pstate->p_rtable;
+		/* Mark the Query as having RTE_GROUP RTE */
+		qry->hasGroupRTE = true;
+	}
+
+	/*
 	 * If there are join alias vars involved, we have to flatten them to the
 	 * underlying vars, so that aliased and unaliased vars will be correctly
 	 * taken as equal.  We can skip the expense of doing this if no rangetable
 	 * entries are RTE_JOIN kind.
 	 */
 	if (hasJoinRTEs)
-		groupClauses = (List *) flatten_join_alias_vars(NULL, qry,
-														(Node *) groupClauses);
+		groupClauses = (List *)
+			flatten_join_alias_for_parser(qry, (Node *) groupClauses, 0);
 
 	/*
 	 * Detect whether any of the grouping expressions aren't simple Vars; if
@@ -1267,21 +1296,6 @@ parseCheckAggregates(ParseState *pstate, Query *qry)
 	}
 
 	/*
-	 * If there are any acceptable GROUP BY expressions, build an RTE and
-	 * nsitem for the result of the grouping step.
-	 */
-	if (groupClauses)
-	{
-		pstate->p_grouping_nsitem =
-			addRangeTableEntryForGroup(pstate, groupClauses);
-
-		/* Set qry->rtable again in case it was previously NIL */
-		qry->rtable = pstate->p_rtable;
-		/* Mark the Query as having RTE_GROUP RTE */
-		qry->hasGroupRTE = true;
-	}
-
-	/*
 	 * Replace grouped variables in the targetlist and HAVING clause with Vars
 	 * that reference the RTE_GROUP RTE.  Emit an error message if we find any
 	 * ungrouped variables.
@@ -1299,7 +1313,7 @@ parseCheckAggregates(ParseState *pstate, Query *qry)
 							groupClauses, hasJoinRTEs,
 							have_non_var_grouping);
 	if (hasJoinRTEs)
-		clause = flatten_join_alias_vars(NULL, qry, clause);
+		clause = flatten_join_alias_for_parser(qry, clause, 0);
 	qry->targetList = (List *)
 		substitute_grouped_columns(clause, pstate, qry,
 								   groupClauses, groupClauseCommonVars,
@@ -1312,7 +1326,7 @@ parseCheckAggregates(ParseState *pstate, Query *qry)
 							groupClauses, hasJoinRTEs,
 							have_non_var_grouping);
 	if (hasJoinRTEs)
-		clause = flatten_join_alias_vars(NULL, qry, clause);
+		clause = flatten_join_alias_for_parser(qry, clause, 0);
 	qry->havingQual =
 		substitute_grouped_columns(clause, pstate, qry,
 								   groupClauses, groupClauseCommonVars,
@@ -1342,17 +1356,6 @@ parseCheckAggregates(ParseState *pstate, Query *qry)
  *
  * NOTE: we assume that the given clause has been transformed suitably for
  * parser output.  This means we can use expression_tree_mutator.
- *
- * NOTE: we recognize grouping expressions in the main query, but only
- * grouping Vars in subqueries.  For example, this will be rejected,
- * although it could be allowed:
- *		SELECT
- *			(SELECT x FROM bar where y = (foo.a + foo.b))
- *		FROM foo
- *		GROUP BY a + b;
- * The difficulty is the need to account for different sublevels_up.
- * This appears to require a whole custom version of equal(), which is
- * way more pain than the feature seems worth.
  */
 static Node *
 substitute_grouped_columns(Node *node, ParseState *pstate, Query *qry,
@@ -1368,6 +1371,7 @@ substitute_grouped_columns(Node *node, ParseState *pstate, Query *qry,
 	context.hasJoinRTEs = false;	/* assume caller flattened join Vars */
 	context.groupClauses = groupClauses;
 	context.groupClauseCommonVars = groupClauseCommonVars;
+	context.groupClauseSubLevels = NIL;
 	context.gset_common = gset_common;
 	context.have_non_var_grouping = have_non_var_grouping;
 	context.func_grouped_rels = func_grouped_rels;
@@ -1435,14 +1439,22 @@ substitute_grouped_columns_mutator(Node *node,
 	 * If we have any GROUP BY items that are not simple Vars, check to see if
 	 * subexpression as a whole matches any GROUP BY item. We need to do this
 	 * at every recursion level so that we recognize GROUPed-BY expressions
-	 * before reaching variables within them. But this only works at the outer
-	 * query level, as noted above.
+	 * before reaching variables within them.  (Since this approach is pretty
+	 * expensive, we don't do it this way if the items are all simple Vars.)
 	 */
-	if (context->have_non_var_grouping && context->sublevels_up == 0)
+	if (context->have_non_var_grouping)
 	{
+		List	   *groupClauses;
 		int			attnum = 0;
 
-		foreach(gl, context->groupClauses)
+		/* Within a subquery, we need a mutated version of the groupClauses */
+		if (context->sublevels_up == 0)
+			groupClauses = context->groupClauses;
+		else
+			groupClauses = list_nth(context->groupClauseSubLevels,
+									context->sublevels_up - 1);
+
+		foreach(gl, groupClauses)
 		{
 			TargetEntry *tle = (TargetEntry *) lfirst(gl);
 
@@ -1503,7 +1515,7 @@ substitute_grouped_columns_mutator(Node *node,
 		/*
 		 * Check for a match, if we didn't do it above.
 		 */
-		if (!context->have_non_var_grouping || context->sublevels_up != 0)
+		if (!context->have_non_var_grouping)
 		{
 			int			attnum = 0;
 
@@ -1586,6 +1598,24 @@ substitute_grouped_columns_mutator(Node *node,
 		Query	   *newnode;
 
 		context->sublevels_up++;
+
+		/*
+		 * If we have non-Var grouping expressions, we'll need a copy of the
+		 * groupClauses list that's mutated to match this sublevels_up depth.
+		 * Build one if we've not yet visited a subquery at this depth.
+		 */
+		if (context->have_non_var_grouping &&
+			context->sublevels_up > list_length(context->groupClauseSubLevels))
+		{
+			List	   *subGroupClauses = copyObject(context->groupClauses);
+
+			IncrementVarSublevelsUp((Node *) subGroupClauses,
+									context->sublevels_up, 0);
+			context->groupClauseSubLevels =
+				lappend(context->groupClauseSubLevels, subGroupClauses);
+			Assert(context->sublevels_up == list_length(context->groupClauseSubLevels));
+		}
+
 		newnode = query_tree_mutator((Query *) node,
 									 substitute_grouped_columns_mutator,
 									 context,
@@ -1620,6 +1650,7 @@ finalize_grouping_exprs(Node *node, ParseState *pstate, Query *qry,
 	context.hasJoinRTEs = hasJoinRTEs;
 	context.groupClauses = groupClauses;
 	context.groupClauseCommonVars = NIL;
+	context.groupClauseSubLevels = NIL;
 	context.gset_common = NIL;
 	context.have_non_var_grouping = have_non_var_grouping;
 	context.func_grouped_rels = NULL;
@@ -1692,7 +1723,9 @@ finalize_grouping_exprs_walker(Node *node,
 				Index		ref = 0;
 
 				if (context->hasJoinRTEs)
-					expr = flatten_join_alias_vars(NULL, context->qry, expr);
+					expr = flatten_join_alias_for_parser(context->qry,
+														 expr,
+														 context->sublevels_up);
 
 				/*
 				 * Each expression must match a grouping entry at the current
@@ -1722,10 +1755,21 @@ finalize_grouping_exprs_walker(Node *node,
 						}
 					}
 				}
-				else if (context->have_non_var_grouping &&
-						 context->sublevels_up == 0)
+				else if (context->have_non_var_grouping)
 				{
-					foreach(gl, context->groupClauses)
+					List	   *groupClauses;
+
+					/*
+					 * Within a subquery, we need a mutated version of the
+					 * groupClauses
+					 */
+					if (context->sublevels_up == 0)
+						groupClauses = context->groupClauses;
+					else
+						groupClauses = list_nth(context->groupClauseSubLevels,
+												context->sublevels_up - 1);
+
+					foreach(gl, groupClauses)
 					{
 						TargetEntry *tle = lfirst(gl);
 
@@ -1760,6 +1804,24 @@ finalize_grouping_exprs_walker(Node *node,
 		bool		result;
 
 		context->sublevels_up++;
+
+		/*
+		 * If we have non-Var grouping expressions, we'll need a copy of the
+		 * groupClauses list that's mutated to match this sublevels_up depth.
+		 * Build one if we've not yet visited a subquery at this depth.
+		 */
+		if (context->have_non_var_grouping &&
+			context->sublevels_up > list_length(context->groupClauseSubLevels))
+		{
+			List	   *subGroupClauses = copyObject(context->groupClauses);
+
+			IncrementVarSublevelsUp((Node *) subGroupClauses,
+									context->sublevels_up, 0);
+			context->groupClauseSubLevels =
+				lappend(context->groupClauseSubLevels, subGroupClauses);
+			Assert(context->sublevels_up == list_length(context->groupClauseSubLevels));
+		}
+
 		result = query_tree_walker((Query *) node,
 								   finalize_grouping_exprs_walker,
 								   context,

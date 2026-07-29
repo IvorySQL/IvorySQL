@@ -55,10 +55,12 @@
 
 #include "access/htup_details.h"
 #include "access/tableam.h"
+#include "access/tupconvert.h"
 #include "access/xact.h"
 #include "commands/trigger.h"
 #include "executor/execPartition.h"
 #include "executor/executor.h"
+#include "executor/instrument.h"
 #include "executor/nodeModifyTable.h"
 #include "foreign/fdwapi.h"
 #include "miscadmin.h"
@@ -3490,6 +3492,11 @@ lmerge_matched:
 					TupleTableSlot *epqslot,
 							   *inputslot;
 					LockTupleMode lockmode;
+
+					if (IsolationUsesXactSnapshot())
+						ereport(ERROR,
+								(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
+								 errmsg("could not serialize access due to concurrent update")));
 
 					/*
 					 * The target tuple was concurrently updated by some other

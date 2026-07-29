@@ -147,7 +147,7 @@ main(int argc, char **argv)
 	 * extra for lock wait detection and global work.
 	 */
 	nconns = 1 + testspec->nsessions;
-	conns = (IsoConnInfo *) pg_malloc0(nconns * sizeof(IsoConnInfo));
+	conns = pg_malloc0_array(IsoConnInfo, nconns);
 	atexit(disconnect_atexit);
 
 	for (i = 0; i < nconns; i++)
@@ -262,7 +262,7 @@ check_testspec(TestSpec *testspec)
 	for (i = 0; i < testspec->nsessions; i++)
 		nallsteps += testspec->sessions[i]->nsteps;
 
-	allsteps = pg_malloc(nallsteps * sizeof(Step *));
+	allsteps = pg_malloc_array(Step *, nallsteps);
 
 	k = 0;
 	for (i = 0; i < testspec->nsessions; i++)
@@ -417,8 +417,8 @@ run_all_permutations(TestSpec *testspec)
 		nsteps += testspec->sessions[i]->nsteps;
 
 	/* Create PermutationStep workspace array */
-	steps = (PermutationStep *) pg_malloc0(sizeof(PermutationStep) * nsteps);
-	stepptrs = (PermutationStep **) pg_malloc(sizeof(PermutationStep *) * nsteps);
+	steps = pg_malloc0_array(PermutationStep, nsteps);
+	stepptrs = pg_malloc_array(PermutationStep *, nsteps);
 	for (i = 0; i < nsteps; i++)
 		stepptrs[i] = steps + i;
 
@@ -431,7 +431,7 @@ run_all_permutations(TestSpec *testspec)
 	 * A pile is actually just an integer which tells how many steps we've
 	 * already picked from this pile.
 	 */
-	piles = pg_malloc(sizeof(int) * testspec->nsessions);
+	piles = pg_malloc_array(int, testspec->nsessions);
 	for (i = 0; i < testspec->nsessions; i++)
 		piles[i] = 0;
 
@@ -524,7 +524,7 @@ run_permutation(TestSpec *testspec, int nsteps, PermutationStep **steps)
 	int			nwaiting = 0;
 	PermutationStep **waiting;
 
-	waiting = pg_malloc(sizeof(PermutationStep *) * testspec->nsessions);
+	waiting = pg_malloc_array(PermutationStep *, testspec->nsessions);
 
 	printf("\nstarting permutation:");
 	for (i = 0; i < nsteps; i++)

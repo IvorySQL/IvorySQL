@@ -14,6 +14,7 @@
 #ifndef EXECUTOR_H
 #define EXECUTOR_H
 
+#include "access/xlogdefs.h"
 #include "datatype/timestamp.h"
 #include "executor/execdesc.h"
 #include "fmgr.h"
@@ -202,9 +203,18 @@ TupleHashEntryGetAdditional(TupleHashTable hashtable, TupleHashEntry entry)
 
 /*
  * prototypes from functions in execJunk.c
+ *
+ * ExecInitJunkFilter preserves the upstream PostgreSQL signature
+ * (List *, TupleTableSlot *) and builds the clean tuple descriptor with
+ * hasrowid=false.  IvorySQL exposes the rowid-aware variant under a
+ * separate name, ExecInitJunkFilterWithRowId, so the caller can control
+ * the rowid attribute (Oracle compatibility).  Internal code that needs
+ * rowid control should use the WithRowId variant.
  */
-extern JunkFilter *ExecInitJunkFilter(List *targetList, bool hasrowid, 
+extern JunkFilter *ExecInitJunkFilter(List *targetList,
 									  TupleTableSlot *slot);
+extern JunkFilter *ExecInitJunkFilterWithRowId(List *targetList, bool hasrowid,
+											   TupleTableSlot *slot);
 extern JunkFilter *ExecInitJunkFilterConversion(List *targetList,
 												TupleDesc cleanTupType,
 												TupleTableSlot *slot);
@@ -327,6 +337,7 @@ ExecProcNode(PlanState *node)
  * prototypes from functions in execExpr.c
  */
 extern ExprState *ExecInitExpr(Expr *node, PlanState *parent);
+extern ExprState *ExecInitExprWithContext(Expr *node, PlanState *parent, Node *escontext);
 extern ExprState *ExecInitExprWithParams(Expr *node, ParamListInfo ext_params);
 extern ExprState *ExecInitQual(List *qual, PlanState *parent);
 extern ExprState *ExecInitCheck(List *qual, PlanState *parent);
@@ -347,7 +358,7 @@ extern ExprState *ExecBuildHash32Expr(TupleDesc desc,
 									  const List *collations,
 									  const List *hash_exprs,
 									  const bool *opstrict, PlanState *parent,
-									  uint32 init_value, bool keep_nulls);
+									  uint32 init_value);
 extern ExprState *ExecBuildGroupingEqual(TupleDesc ldesc, TupleDesc rdesc,
 										 const TupleTableSlotOps *lops, const TupleTableSlotOps *rops,
 										 int numCols,
@@ -375,6 +386,7 @@ extern ProjectionInfo *ExecBuildUpdateProjection(List *targetList,
 												 TupleTableSlot *slot,
 												 PlanState *parent);
 extern ExprState *ExecPrepareExpr(Expr *node, EState *estate);
+extern ExprState *ExecPrepareExprWithContext(Expr *node, EState *estate, Node *escontext);
 extern ExprState *ExecPrepareQual(List *qual, EState *estate);
 extern ExprState *ExecPrepareCheck(List *qual, EState *estate);
 extern List *ExecPrepareExprList(List *nodes, EState *estate);
@@ -598,14 +610,29 @@ extern void ExecInitResultTupleSlotTL(PlanState *planstate,
 									  const TupleTableSlotOps *tts_ops);
 extern void ExecInitScanTupleSlot(EState *estate, ScanState *scanstate,
 								  TupleDesc tupledesc,
-								  const TupleTableSlotOps *tts_ops);
+								  const TupleTableSlotOps *tts_ops,
+								  uint16 flags);
 extern TupleTableSlot *ExecInitExtraTupleSlot(EState *estate,
 											  TupleDesc tupledesc,
 											  const TupleTableSlotOps *tts_ops);
 extern TupleTableSlot *ExecInitNullTupleSlot(EState *estate, TupleDesc tupType,
 											 const TupleTableSlotOps *tts_ops);
-extern TupleDesc ExecTypeFromTL(List *targetList, bool hasrowid);
-extern TupleDesc ExecCleanTypeFromTL(List *targetList, bool hasrowid);
+/*
+ * ExecTypeFromTL / ExecCleanTypeFromTL preserve the upstream PostgreSQL
+ * signatures (single List * argument) for source and ABI compatibility
+ * with extensions written against standard PostgreSQL.  The resulting
+ * tuple descriptor carries no rowid attribute.
+ *
+ * IvorySQL exposes the rowid-aware variants under separate names
+ * (ExecTypeFromTLWithRowId / ExecCleanTypeFromTLWithRowId) so the caller
+ * can control whether the tuple descriptor carries an Oracle-style rowid
+ * attribute.  Internal code that needs rowid control should use the
+ * WithRowId variants.
+ */
+extern TupleDesc ExecTypeFromTL(List *targetList);
+extern TupleDesc ExecTypeFromTLWithRowId(List *targetList, bool hasrowid);
+extern TupleDesc ExecCleanTypeFromTL(List *targetList);
+extern TupleDesc ExecCleanTypeFromTLWithRowId(List *targetList, bool hasrowid);
 extern TupleDesc ExecTypeFromExprList(List *exprList);
 extern void ExecTypeSetColNames(TupleDesc typeInfo, List *namesList);
 extern void UpdateChangedParamSet(PlanState *node, Bitmapset *newchg);

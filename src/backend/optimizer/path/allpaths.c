@@ -787,6 +787,16 @@ set_rel_consider_parallel(PlannerInfo *root, RelOptInfo *rel,
 		case RTE_RESULT:
 			/* RESULT RTEs, in themselves, are no problem. */
 			break;
+
+		case RTE_GRAPH_TABLE:
+
+			/*
+			 * Shouldn't happen since these are replaced by subquery RTEs when
+			 * rewriting queries.
+			 */
+			Assert(false);
+			return;
+
 		case RTE_GROUP:
 			/* Shouldn't happen; we're only considering baserels here. */
 			Assert(false);
@@ -4318,6 +4328,11 @@ check_output_expressions(Query *subquery, pushdown_safety_info *safetyInfo)
 	 */
 	if (subquery->hasGroupRTE)
 	{
+		/*
+		 * We can safely pass NULL for the root here.  This function uses the
+		 * expanded expressions solely to check for volatile or set-returning
+		 * functions, which is independent of the Vars' nullingrels.
+		 */
 		flattened_targetList = (List *)
 			flatten_group_exprs(NULL, subquery, (Node *) subquery->targetList);
 	}

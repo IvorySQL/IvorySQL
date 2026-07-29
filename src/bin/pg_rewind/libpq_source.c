@@ -84,7 +84,7 @@ init_libpq_source(PGconn *conn)
 
 	init_libpq_conn(conn);
 
-	src = pg_malloc0(sizeof(libpq_source));
+	src = pg_malloc0_object(libpq_source);
 
 	src->common.traverse_files = libpq_traverse_files;
 	src->common.fetch_file = libpq_fetch_file;

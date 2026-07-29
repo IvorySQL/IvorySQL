@@ -37,6 +37,8 @@ test_cplusplus_add(PG_FUNCTION_ARGS)
 	int32		a = PG_GETARG_INT32(0);
 	int32		b = PG_GETARG_INT32(1);
 	RangeTblRef *node = makeNode(RangeTblRef);
+	const RangeTblRef *nodec = node;
+	RangeTblRef *copy = copyObject(nodec);
 	List	   *list = list_make1(node);
 
 	foreach_ptr(RangeTblRef, rtr, list)
@@ -54,6 +56,7 @@ test_cplusplus_add(PG_FUNCTION_ARGS)
 
 	list_free(list);
 	pfree(node);
+	pfree(copy);
 
 	switch (a)
 	{

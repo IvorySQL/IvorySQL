@@ -34,6 +34,7 @@
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
 #include "utils/timeout.h"
+#include "utils/wait_event.h"
 
 /*
  * The postmaster's list of registered background workers, in private memory.
@@ -1412,6 +1413,9 @@ TerminateBackgroundWorkersForDatabase(Oid databaseId)
 {
 	bool		signal_postmaster = false;
 
+	elog(DEBUG1, "attempting worker termination for database %u",
+		 databaseId);
+
 	LWLockAcquire(BackgroundWorkerLock, LW_EXCLUSIVE);
 
 	/*
@@ -1431,6 +1435,9 @@ TerminateBackgroundWorkersForDatabase(Oid databaseId)
 			{
 				slot->terminate = true;
 				signal_postmaster = true;
+
+				elog(DEBUG1, "termination requested for worker (PID %d) on database %u",
+					 (int) slot->pid, databaseId);
 			}
 		}
 	}
