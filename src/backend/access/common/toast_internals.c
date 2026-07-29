@@ -577,7 +577,14 @@ toast_open_indexes(Relation toastrel,
 	{
 		Relation	toastidx = (*toastidxs)[i];
 
-		if (toastidx->rd_index->indisvalid)
+		/*
+		 * Skip an index manually disabled via the Oracle-compatible
+		 * ALTER INDEX ... UNUSABLE.  Such an index is not maintained by
+		 * DML (see BuildIndexInfo()), so it may be missing chunks for
+		 * values toasted since it was disabled; trusting it here could
+		 * silently fail to locate valid toast data.
+		 */
+		if (toastidx->rd_index->indisvalid && !toastidx->rd_index->indisunusable)
 		{
 			res = i;
 			found = true;

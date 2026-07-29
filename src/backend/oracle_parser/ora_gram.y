@@ -851,7 +851,7 @@ static void determineLanguage(List *options);
 	TRUNCATE TRUSTED TYPE_P TYPES_P
 
 	UESCAPE UNBOUNDED UNCONDITIONAL UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN
-	UNLISTEN UNLOGGED UNTIL UPDATE UPDATEXML USER USERENV USING
+	UNLISTEN UNLOGGED UNTIL UNUSABLE UPDATE UPDATEXML USER USERENV USING
 
 	VACUUM VALID VALIDATE VALIDATOR VALUE_P VALUES VARCHAR VARCHAR2 VARIADIC VARYING
 	VERBOSE VERSION_P VERTEX VIEW VIEWS VIRTUAL VISIBLE VOLATILE
@@ -2460,6 +2460,13 @@ AlterTableStmt:
 
 					n->relation = $3;
 					n->options = $5;
+					$$ = (Node *) n;
+				}
+		|	ALTER INDEX qualified_name UNUSABLE
+				{
+					OraAlterIndexUnusableStmt *n = makeNode(OraAlterIndexUnusableStmt);
+
+					n->relation = $3;
 					$$ = (Node *) n;
 				}
 		|	ALTER INDEX ALL IN_P TABLESPACE name SET TABLESPACE name opt_nowait
@@ -21776,6 +21783,7 @@ unreserved_keyword:
 			| UNLISTEN
 			| UNLOGGED
 			| UNTIL
+			| UNUSABLE
 			| UPDATE
 			| USING_NLS_COMP
 			| VACUUM
@@ -22532,6 +22540,7 @@ bare_label_keyword:
 			| UNLISTEN
 			| UNLOGGED
 			| UNTIL
+			| UNUSABLE
 			| UPDATE
 			| UPDATEXML /* ReqID:SRS-SQL-XML */
 			| USER
