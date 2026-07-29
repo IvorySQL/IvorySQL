@@ -34,9 +34,9 @@ int			identifier_case_switch = INTERCHANGE;
 bool		identifier_case_from_pg_dump = false;
 bool		enable_case_switch = true;
 
-static char *nls_territory = "AMERICA";
-static char *nls_currency = "$";
-static char *nls_iso_currency = "AMERICA";
+static char	   *nls_territory = "AMERICA";
+static char	   *nls_currency = "$";
+static char	   *nls_iso_currency = "AMERICA";
 
 bool		enable_emptystring_to_NULL = false;
 
@@ -186,11 +186,12 @@ static struct config_bool Ivy_ConfigureNamesBool[] =
 	/*
 	 * ivorysql.default_with_rowids
 	 *
-	 * When enabled, all newly created tables will automatically include an
-	 * Oracle-compatible ROWID pseudo-column. This provides compatibility with
-	 * Oracle applications that rely on ROWID for row identification.
+	 * When enabled, all newly created tables will automatically include
+	 * an Oracle-compatible ROWID pseudo-column. This provides compatibility
+	 * with Oracle applications that rely on ROWID for row identification.
 	 *
-	 * Default: off Context: USERSET (can be changed by any user)
+	 * Default: off
+	 * Context: USERSET (can be changed by any user)
 	 */
 	{
 		{"ivorysql.default_with_rowids", PGC_USERSET, DEVELOPER_OPTIONS,
@@ -528,7 +529,7 @@ static void
 nls_case_conversion(char **param, char type)
 {
 	char	   *p;
-	size_t		len;
+	size_t	  len;
 
 CASE_CONVERSION:
 	len = strlen(*param);
