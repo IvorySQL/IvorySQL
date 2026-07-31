@@ -37,7 +37,11 @@ OBJS = \
 	src/builtin_packages/dbms_session/dbms_session.o \
 	src/builtin_packages/dbms_transaction/dbms_transaction.o \
 	src/builtin_packages/dbms_random/dbms_random.o \
-	src/builtin_packages/utl_match/utl_match.o
+	src/builtin_packages/utl_match/utl_match.o \
+	src/builtin_packages/dbms_scheduler/dbms_scheduler.o \
+	src/builtin_packages/dbms_scheduler/scheduler_calendar.o \
+	src/builtin_packages/dbms_scheduler/scheduler_launcher.o \
+	src/builtin_packages/dbms_scheduler/scheduler_worker.o
 
 EXTENSION = ivorysql_ora
 
@@ -99,7 +103,10 @@ ORA_REGRESS = \
 	dbms_session \
 	dbms_transaction \
 	dbms_random \
-	utl_match
+	utl_match \
+	dbms_scheduler
+
+TAP_TESTS = 1
 
 # Include path for plisql.h (needed by dbms_utility)
 PG_CPPFLAGS += -I$(top_srcdir)/src/pl/plisql/src
