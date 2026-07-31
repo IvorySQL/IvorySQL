@@ -53,3 +53,17 @@ Assisted-by: Claude:4.6
 Assisted-by: GitHub:Copilot
 Assisted-by: OpenAI:gpt-4
 ```
+
+Contributions shall include information on the proportion of AI-generated code in the following format:
+
+```
+Percentage of AI-generated code: xx%
+```
+
+## Guidelines for AI Utilization
+
+The community discourages the following practices:
+
+- Contributors employing verbatim AI-generated responses in communications with other contributors during code and documentation reviews;
+- Contributors lacking understanding of their AI-generated code, and incapable of explaining or maintaining such code;
+
