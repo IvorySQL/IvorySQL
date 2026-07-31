@@ -33,7 +33,11 @@ OBJS = \
 	src/builtin_packages/dbms_utility/dbms_utility.o \
 	src/builtin_packages/dbms_lock/dbms_lock.o \
 	src/builtin_packages/utl_encode/utl_encode.o \
-	src/builtin_packages/dbms_session/dbms_session.o
+	src/builtin_packages/dbms_session/dbms_session.o \
+	src/builtin_packages/dbms_scheduler/dbms_scheduler.o \
+	src/builtin_packages/dbms_scheduler/scheduler_calendar.o \
+	src/builtin_packages/dbms_scheduler/scheduler_launcher.o \
+	src/builtin_packages/dbms_scheduler/scheduler_worker.o
 
 EXTENSION = ivorysql_ora
 
@@ -84,9 +88,12 @@ ORA_REGRESS = \
 	utl_file \
 	utl_raw \
 	utl_encode \
-	dbms_session
+	dbms_session \
+	dbms_scheduler
 
-ifeq ($(with_libxml),yes) 
+TAP_TESTS = 1
+
+ifeq ($(with_libxml),yes)
 SHLIB_LINK += -lxml2
 endif
 
