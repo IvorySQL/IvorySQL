@@ -80,6 +80,7 @@
 #undef REG_DUMP
 #undef REG_FAKE
 #undef REG_PROGRESS
+#undef REG_NLDOT
 #undef REG_NOTBOL
 #undef REG_NOTEOL
 #undef REG_STARTEND
@@ -196,6 +197,7 @@ typedef struct
 #define REG_DUMP	004000		/* none of your business :-) */
 #define REG_FAKE	010000		/* none of your business :-) */
 #define REG_PROGRESS	020000	/* none of your business :-) */
+#define REG_NLDOT	040000		/* \n doesn't match . */
 
 
 

@@ -968,6 +968,40 @@ select regexp_count('hello
 Hello.hello
 good', '.', 1, 'n') from dual;
 
+-- Newlines outside the matches must not change the count.
+select regexp_count('bX' || 'cX', '.X', 1, 'c') as no_newline,
+       regexp_count(chr(10) || 'bX' || 'cX', '.X', 1, 'c') as one_newline,
+       regexp_count(chr(10) || 'bX' || chr(10) || 'cX',
+                    '.X', 1, 'c') as two_newlines
+from dual;
+
+-- The m and n options control line anchors and dot matching independently.
+select regexp_count('X' || chr(10), 'X.', 1, 'c') as c_mode,
+       regexp_count('X' || chr(10), 'X.', 1, 'n') as n_mode,
+       regexp_count('X' || chr(10), 'X.', 1, 'm') as m_mode,
+       regexp_count('X' || chr(10), 'X.', 1, 'mn') as mn_mode
+from dual;
+
+-- The n option must not add newlines that are outside a match.
+select regexp_count(chr(10) || 'bX' || chr(10) || 'cX',
+                    '.X', 1, 'n') as n_mode
+from dual;
+
+-- A negated bracket expression still matches a newline without the n option.
+select regexp_count('a,b' || chr(10) || 'c', '[^,]+', 1, 'c')
+       as negated_class
+from dual;
+
+-- The n option does not enable multiline anchors.
+select regexp_count('x' || chr(10) || 'b' || chr(10) || 'y',
+                    '^b$', 1, 'c') as c_mode,
+       regexp_count('x' || chr(10) || 'b' || chr(10) || 'y',
+                    '^b$', 1, 'n') as n_mode,
+       regexp_count('x' || chr(10) || 'b' || chr(10) || 'y',
+                    '^b$', 1, 'm') as m_mode,
+       regexp_count('x' || chr(10) || 'b' || chr(10) || 'y',
+                    '^b$', 1, 'mn') as mn_mode
+from dual;
 
 /*
  * length

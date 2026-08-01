@@ -452,7 +452,7 @@ pg_regcomp(regex_t *re,
 
 	/* parsing */
 	lexstart(v);				/* also handles prefixes */
-	if ((v->cflags & REG_NLSTOP) || (v->cflags & REG_NLANCH))
+	if (v->cflags & (REG_NLSTOP | REG_NLANCH | REG_NLDOT))
 	{
 		/* assign newline a unique color */
 		v->nlcolor = subcolor(v->cm, newline());
@@ -1002,7 +1002,8 @@ parseqatom(struct vars *v,
 			break;
 		case '.':
 			rainbow(v->nfa, v->cm, PLAIN,
-					(v->cflags & REG_NLSTOP) ? v->nlcolor : COLORLESS,
+					(v->cflags & (REG_NLSTOP | REG_NLDOT)) ?
+					v->nlcolor : COLORLESS,
 					lp, rp);
 			NEXT();
 			break;
