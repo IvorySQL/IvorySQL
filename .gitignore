@@ -33,7 +33,7 @@ lib*dll.def
 lib*.pc
 
 # add by ai
-/.codegraph/
+.codegraph/
 
 # Local excludes in root directory
 /GNUmakefile
