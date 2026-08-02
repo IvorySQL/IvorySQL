@@ -766,7 +766,12 @@ ora_regexp_count(PG_FUNCTION_ARGS)
 	p = PG_GETARG_TEXT_PP(1);
 	src_text_len = VARSIZE_ANY_EXHDR(s);
 	
-	if (PG_NARGS() == 4)
+	/*
+	 * Only count newlines when the pattern starts with '.' or '^', because
+	 * num/flag are only consulted for those patterns below.
+	 */
+	if (PG_NARGS() == 4 &&
+		(p->vl_dat[0] == '.' || p->vl_dat[0] == '^'))
 	{
 		char   *str = VARDATA_ANY(s);
 		int     i;
