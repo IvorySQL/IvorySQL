@@ -968,6 +968,24 @@ select regexp_count('hello
 Hello.hello
 good', '.', 1, 'n') from dual;
 
+-- optimized path: pattern does not start with '.' or '^', so the
+-- newline scan is skipped (expect 2)
+select regexp_count('
+hello
+world
+hello', 'hello', 1, 'i') from dual;
+
+-- non-optimized path: pattern '.' still runs the newline scan (expect 5)
+select regexp_count('
+a
+b
+', '.', 1, 'n') from dual;
+
+-- non-optimized path: pattern '^' still runs the newline scan (expect 3)
+select regexp_count('
+hello
+world
+', '^', 1, 'm') from dual;
 
 /*
  * length
