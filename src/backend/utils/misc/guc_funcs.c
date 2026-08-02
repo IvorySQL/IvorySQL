@@ -87,42 +87,11 @@ ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 									errmsg("parameter \"%s\" cannot be changed", DB_MODE_PARMATER)));
 			}
 
-			if (0 == pg_strcasecmp(stmt->name, "compatible_mode")
-				&& DB_PG == database_mode)
-					ereport(ERROR,
-						(errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM),
-						errmsg("parameter \"%s\" cannot be changed in native PG mode.", stmt->name)));
-
 			(void) set_config_option(stmt->name,
 									 ExtractSetVariableArgs(stmt),
 									 (superuser() ? PGC_SUSET : PGC_USERSET),
 									 PGC_S_SESSION,
 									 action, true, 0, false);
-
-			if (0 == pg_strcasecmp(stmt->name, "compatible_mode")
-				 && DB_ORACLE == database_mode)
-			{
-				if (0 == pg_strcasecmp(ExtractSetVariableArgs(stmt), "oracle"))
-				{
-					if (ora_raw_parser == NULL)
-						ereport(ERROR,
-								(errcode(ERRCODE_SYSTEM_ERROR),
-								 errmsg("liboracle_parser not found!"),
-								 errhint("You must load liboracle_parser to use oracle parser.")));
-
-					sql_raw_parser = ora_raw_parser;
-
-					pg_transform_merge_stmt_hook = ora_transform_merge_stmt_hook;
-					pg_exec_merge_matched_hook = ora_exec_merge_matched_hook;
-				}
-				else if (0 == pg_strcasecmp(ExtractSetVariableArgs(stmt), "pg"))
-				{
-					sql_raw_parser = standard_raw_parser;
-
-					pg_transform_merge_stmt_hook = transformMergeStmt;
-					pg_exec_merge_matched_hook = ExecMergeMatched;
-				}
-			}
 
 			break;
 		case VAR_SET_MULTI:
@@ -207,14 +176,6 @@ ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 									 PGC_S_SESSION,
 									 action, true, 0, false);
 
-			if (0 == pg_strcasecmp(stmt->name, "compatible_mode")
-				 && DB_ORACLE == database_mode)
-			{
-				sql_raw_parser = standard_raw_parser;
-
-				pg_transform_merge_stmt_hook = transformMergeStmt;
-				pg_exec_merge_matched_hook = ExecMergeMatched;
-			}
 			break;
 		case VAR_RESET_ALL:
 			ResetAllOptions();
