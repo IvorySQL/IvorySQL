@@ -459,9 +459,11 @@ check_compatible_mode(int *newval, void **extra, GucSource source)
 	int			newmode = *newval;
 
 	if (DB_PG == database_mode && newmode == ORA_PARSER)
-		ereport(ERROR,
-				(errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM),
-				 errmsg("parameter ivorysql.compatible_mode cannot be changed in native PG mode.")));
+	{
+		GUC_check_errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM);
+		GUC_check_errmsg("parameter ivorysql.compatible_mode cannot be changed in native PG mode.");
+		return false;
+	}
 
 	if (DB_ORACLE == database_mode
 		&& (IsNormalProcessingMode() || (IsUnderPostmaster && MyProcPort)))
@@ -469,15 +471,19 @@ check_compatible_mode(int *newval, void **extra, GucSource source)
 		if (newmode == ORA_PARSER)
 		{
 			if (ora_raw_parser == NULL)
-				ereport(ERROR,
-						(errcode(ERRCODE_SYSTEM_ERROR),
-						 errmsg("liboracle_parser not found!"),
-						 errhint("You must load liboracle_parser to use oracle parser.")));
+			{
+				GUC_check_errcode(ERRCODE_SYSTEM_ERROR);
+				GUC_check_errmsg("liboracle_parser not found!");
+				GUC_check_errhint("You must load liboracle_parser to use oracle parser.");
+				return false;
+			}
 			if (!ISLOADIVORYSQL_ORA)
-				ereport(ERROR,
-						(errcode(ERRCODE_SYSTEM_ERROR),
-						 errmsg("IVORYSQL_ORA library not found!"),
-						 errhint("You must load IVORYSQL_ORA to use oracle parser.")));
+			{
+				GUC_check_errcode(ERRCODE_SYSTEM_ERROR);
+				GUC_check_errmsg("IVORYSQL_ORA library not found!");
+				GUC_check_errhint("You must load IVORYSQL_ORA to use oracle parser.");
+				return false;
+			}
 		}
 	}
 	return true;
@@ -581,14 +587,18 @@ nls_length_check(char **newval, void **extra, GucSource source)
 		&& (IsNormalProcessingMode() || (IsUnderPostmaster && MyProcPort)))
 	{
 		if (strlen(*newval) > 255)
-			ereport(ERROR,
-					(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-					 errmsg("parameter value longer than 255 characters")));
+		{
+			GUC_check_errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION);
+			GUC_check_errmsg("parameter value longer than 255 characters");
+			return false;
+		}
 		else if (isdigit(**newval))
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("Cannot access NLS data files "
-							"or invalid environment specified")));
+		{
+			GUC_check_errcode(ERRCODE_INVALID_PARAMETER_VALUE);
+			GUC_check_errmsg("Cannot access NLS data files "
+							 "or invalid environment specified");
+			return false;
+		}
 		else if (identifier_case_switch == INTERCHANGE)
 			nls_case_conversion(newval, 'b');
 	}
@@ -607,10 +617,12 @@ nls_territory_check(char **newval, void **extra, GucSource source)
 		else if (pg_strcasecmp(*newval, "AMERICA") == 0)
 			memcpy(*newval, "AMERICA", 7);
 		else
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("Cannot access NLS data files "
-							"or invalid environment specified")));
+		{
+			GUC_check_errcode(ERRCODE_INVALID_PARAMETER_VALUE);
+			GUC_check_errmsg("Cannot access NLS data files "
+							 "or invalid environment specified");
+			return false;
+		}
 	}
 
 	return true;
