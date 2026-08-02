@@ -42,3 +42,42 @@ lib*.pc
 /Debug/
 /Release/
 /tmp_install
+
+# Sensitive files: never commit credentials or secrets
+.env
+.env.*
+*.pem
+*.pfx
+*.p12
+*.pkcs12
+*.jks
+*.keystore
+*.htpasswd
+*.secret
+*.p8
+id_rsa
+id_ed25519
+*.key
+
+# Local, editor and OS files
+.vs/
+.vscode/
+.idea/
+*.suo
+*.user
+*.local
+.DS_Store
+Thumbs.db
+desktop.ini
+.project
+.settings/
+
+# Logs and temporary artifacts
+*.log
+pg_log/
+*.tmp
+*.bak
+*.orig
+*.rej
+core
+core.*
