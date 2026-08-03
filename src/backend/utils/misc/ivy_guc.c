@@ -444,10 +444,11 @@ static bool
 check_nls_length_semantics(int *newval, void **extra, GucSource source)
 {
 	if (IsUnderPostmaster && DB_PG == database_mode)
-		ereport(WARNING,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("Do not use this GUC variable in the current cluster (PG).")));
-
+	{
+		GUC_check_errcode(ERRCODE_FEATURE_NOT_SUPPORTED);
+		GUC_check_errmsg("Do not use this GUC variable in the current cluster (PG).");
+		return false;
+	}
 
 	return true;
 }
@@ -495,9 +496,11 @@ check_database_mode(int *newval, void **extra, GucSource source)
 	int			newmode = *newval;
 
 	if (DB_PG == database_mode && DB_ORACLE == newmode)
-		ereport(NOTICE,
-				(errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM),
-				 errmsg("parameter ivorysql.database_mode cannot be changed")));
+	{
+		GUC_check_errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM);
+		GUC_check_errmsg("parameter ivorysql.database_mode cannot be changed");
+		return false;
+	}
 
 	return true;
 }
