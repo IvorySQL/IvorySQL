@@ -318,10 +318,11 @@ AppendSeconds(char *cp, size_t size, int sec, fsec_t fsec, int precision, bool f
 
 /*
  * Encode into str, using at most size bytes including the trailing NUL.
- * Advances *cp/*avail after a successful (non-truncated) snprintf.
+ * Advances *cp and *avail after a successful (non-truncated) snprintf.
  */
 static bool
 yminterval_appendf(char **cp, size_t *avail, const char *fmt,...)
+pg_attribute_printf(3, 4)
 {
 	va_list		args;
 	int			n;
