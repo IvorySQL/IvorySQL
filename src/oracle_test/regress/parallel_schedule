@@ -51,7 +51,14 @@ test: create_index create_index_spgist create_view index_including index_includi
 # ----------
 # Another group of parallel tests
 # ----------
-test: create_aggregate create_function_sql create_cast constraints triggers select inherit typed_table vacuum drop_if_exists updatable_views roleattributes create_am hash_func errors infinite_recurse create_property_graph invisible
+test: create_aggregate create_function_sql create_cast constraints triggers select inherit typed_table vacuum drop_if_exists updatable_views roleattributes create_am hash_func errors infinite_recurse create_property_graph for_portion_of
+
+# ----------
+# invisible uses generic table names (t1, t2, ...) that collide with
+# updatable_views when run in the same parallel group, so it runs on
+# its own line.
+# ----------
+test: invisible
 
 # ----------
 # sanity_check does a vacuum, affecting the sort order of SELECT *
