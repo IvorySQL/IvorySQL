@@ -99,6 +99,7 @@ tests += {
       't/010_tab_completion.pl',
       't/020_cancel.pl',
       't/030_pager.pl',
+      't/040_prompt.pl',
     ],
   },
 }
