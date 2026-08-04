@@ -1863,7 +1863,7 @@ ExecGrant_Attribute(InternalGrant *istmt, Oid relOid, const char *relname,
 }
 
 /*
- *	This processes both sequences and non-sequences.
+ * This processes all pg_class entries including sequences and property graphs.
  */
 static void
 ExecGrant_Relation(InternalGrant *istmt)
@@ -1970,6 +1970,18 @@ ExecGrant_Relation(InternalGrant *istmt)
 					this_privileges &= (AclMode) ACL_ALL_RIGHTS_SEQUENCE;
 				}
 			}
+			else if (pg_class_tuple->relkind == RELKIND_PROPGRAPH)
+			{
+				/*
+				 * Do not allow GRANT ... TABLE on property graph. We allowed
+				 * it on sequences for backward compatibility but there is no
+				 * reason to continue that further.
+				 */
+				ereport(ERROR,
+						errcode(ERRCODE_WRONG_OBJECT_TYPE),
+						errmsg("\"%s\" is a property graph", NameStr(pg_class_tuple->relname)),
+						errhint("Use GRANT ... ON PROPERTY GRAPH instead."));
+			}
 			else
 			{
 				if (this_privileges & ~((AclMode) ACL_ALL_RIGHTS_RELATION))
@@ -2074,6 +2086,9 @@ ExecGrant_Relation(InternalGrant *istmt)
 			{
 				case RELKIND_SEQUENCE:
 					objtype = OBJECT_SEQUENCE;
+					break;
+				case RELKIND_PROPGRAPH:
+					objtype = OBJECT_PROPGRAPH;
 					break;
 				default:
 					objtype = OBJECT_TABLE;
@@ -3659,6 +3674,9 @@ pg_class_aclmask_ext(Oid table_oid, Oid roleid, AclMode mask,
 		{
 			case RELKIND_SEQUENCE:
 				acl = acldefault(OBJECT_SEQUENCE, ownerId);
+				break;
+			case RELKIND_PROPGRAPH:
+				acl = acldefault(OBJECT_PROPGRAPH, ownerId);
 				break;
 			default:
 				acl = acldefault(OBJECT_TABLE, ownerId);
