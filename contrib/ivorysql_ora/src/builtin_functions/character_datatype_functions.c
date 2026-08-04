@@ -722,9 +722,7 @@ ora_regexp_count(PG_FUNCTION_ARGS)
 	pg_wchar   *data;
 	size_t		data_len;
 	pg_re_flags flags;
-	bool		dot_matches_newline = false;
 	bool		last_match_empty_at_end = false;
-	bool		multi_line = false;
 	
 	if (PG_ARGISNULL(2))
 		PG_RETURN_NULL();
@@ -746,7 +744,6 @@ ora_regexp_count(PG_FUNCTION_ARGS)
 	else
 	{
 		char	*paramstr = NULL;
-		int			i;
 
 		match_param = PG_GETARG_TEXT_PP(3);
 		paramstr = text_to_cstring(match_param);
@@ -758,24 +755,9 @@ ora_regexp_count(PG_FUNCTION_ARGS)
 							 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 								 errmsg("the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.")));
 		}
-		ora_parse_re_flags(&flags, match_param);
-
-		/* Oracle treats the m and n options as independent dimensions. */
-		for (i = 0; paramstr[i] != '\0'; i++)
-		{
-			if (paramstr[i] == 'n')
-				dot_matches_newline = true;
-			else if (paramstr[i] == 'm')
-				multi_line = true;
-		}
 	}
 
-	/* By default, a period does not match a newline in Oracle. */
-	flags.cflags &= ~REG_NEWLINE;
-	if (!dot_matches_newline)
-		flags.cflags |= REG_NLDOT;
-	if (multi_line)
-		flags.cflags |= REG_NLANCH;
+	ora_parse_re_flags(&flags, match_param);
 
 	if (PG_ARGISNULL(0) || 
 		PG_ARGISNULL(1))

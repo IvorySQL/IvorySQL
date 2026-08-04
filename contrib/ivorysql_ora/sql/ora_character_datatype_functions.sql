@@ -1003,6 +1003,79 @@ select regexp_count('x' || chr(10) || 'b' || chr(10) || 'y',
                     '^b$', 1, 'mn') as mn_mode
 from dual;
 
+-- REGEXP_COUNT, SUBSTR, INSTR, and REPLACE share the m and n semantics.
+select length(regexp_substr('X' || chr(10), 'X.', 1, 1))
+       as default_mode,
+       length(regexp_substr('X' || chr(10), 'X.', 1, 1, 'c'))
+       as c_mode,
+       length(regexp_substr('X' || chr(10), 'X.', 1, 1, 'n'))
+       as n_mode,
+       length(regexp_substr('X' || chr(10), 'X.', 1, 1, 'm'))
+       as m_mode,
+       length(regexp_substr('X' || chr(10), 'X.', 1, 1, 'mn'))
+       as mn_mode
+from dual;
+
+select regexp_substr('x' || chr(10) || 'b' || chr(10) || 'y',
+                     '^b$', 1, 1) as default_mode,
+       regexp_substr('x' || chr(10) || 'b' || chr(10) || 'y',
+                     '^b$', 1, 1, 'c') as c_mode,
+       regexp_substr('x' || chr(10) || 'b' || chr(10) || 'y',
+                     '^b$', 1, 1, 'n') as n_mode,
+       regexp_substr('x' || chr(10) || 'b' || chr(10) || 'y',
+                     '^b$', 1, 1, 'm') as m_mode,
+       regexp_substr('x' || chr(10) || 'b' || chr(10) || 'y',
+                     '^b$', 1, 1, 'mn') as mn_mode
+from dual;
+
+select regexp_instr('X' || chr(10), 'X.', 1, 1, 0) as default_mode,
+       regexp_instr('X' || chr(10), 'X.', 1, 1, 0, 'c') as c_mode,
+       regexp_instr('X' || chr(10), 'X.', 1, 1, 0, 'n') as n_mode,
+       regexp_instr('X' || chr(10), 'X.', 1, 1, 0, 'm') as m_mode,
+       regexp_instr('X' || chr(10), 'X.', 1, 1, 0, 'mn') as mn_mode
+from dual;
+
+select regexp_instr('x' || chr(10) || 'bb' || chr(10) || 'y',
+                    '^bb$', 1, 1, 0) as default_mode,
+       regexp_instr('x' || chr(10) || 'bb' || chr(10) || 'y',
+                    '^bb$', 1, 1, 0, 'c') as c_mode,
+       regexp_instr('x' || chr(10) || 'bb' || chr(10) || 'y',
+                    '^bb$', 1, 1, 0, 'n') as n_mode,
+       regexp_instr('x' || chr(10) || 'bb' || chr(10) || 'y',
+                    '^bb$', 1, 1, 0, 'm') as m_mode,
+       regexp_instr('x' || chr(10) || 'bb' || chr(10) || 'y',
+                    '^bb$', 1, 1, 0, 'mn') as mn_mode
+from dual;
+
+select length(regexp_replace('X' || chr(10), 'X.', 'Y', 1, 0))
+       as default_mode,
+       length(regexp_replace('X' || chr(10), 'X.', 'Y', 1, 0, 'c'))
+       as c_mode,
+       length(regexp_replace('X' || chr(10), 'X.', 'Y', 1, 0, 'n'))
+       as n_mode,
+       length(regexp_replace('X' || chr(10), 'X.', 'Y', 1, 0, 'm'))
+       as m_mode,
+       length(regexp_replace('X' || chr(10), 'X.', 'Y', 1, 0, 'mn'))
+       as mn_mode
+from dual;
+
+select replace(regexp_replace('x' || chr(10) || 'b' || chr(10) || 'y',
+                              '^b$', 'B', 1, 0),
+               chr(10), '|') as default_mode,
+       replace(regexp_replace('x' || chr(10) || 'b' || chr(10) || 'y',
+                              '^b$', 'B', 1, 0, 'c'),
+               chr(10), '|') as c_mode,
+       replace(regexp_replace('x' || chr(10) || 'b' || chr(10) || 'y',
+                              '^b$', 'B', 1, 0, 'n'),
+               chr(10), '|') as n_mode,
+       replace(regexp_replace('x' || chr(10) || 'b' || chr(10) || 'y',
+                              '^b$', 'B', 1, 0, 'm'),
+               chr(10), '|') as m_mode,
+       replace(regexp_replace('x' || chr(10) || 'b' || chr(10) || 'y',
+                              '^b$', 'B', 1, 0, 'mn'),
+               chr(10), '|') as mn_mode
+from dual;
+
 /*
  * length
  */
