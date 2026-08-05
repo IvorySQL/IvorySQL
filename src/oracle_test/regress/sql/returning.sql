@@ -414,4 +414,28 @@ END;
 
 \sf foo_update
 DROP FUNCTION foo_update;
+
+-- Test that the planner does not fold OLD/NEW IS NULL tests to constants
+-- based on NOT NULL constraints, since OLD is NULL for INSERT and NEW is
+-- NULL for DELETE.
+CREATE TEMP TABLE ret_nn (a int NOT NULL);
+
+-- INSERT has no OLD row, should return true
+INSERT INTO ret_nn VALUES (1) RETURNING old.a IS NULL;
+
+-- DELETE has no NEW row, should return true
+DELETE FROM ret_nn WHERE a = 1 RETURNING new.a IS NULL;
+
+-- MERGE: DELETE should have new.a IS NULL, INSERT should have old.a IS NULL
+-- Oracle compatible mode: IvorySQL's Oracle MERGE grammar (ora_gram.y
+-- merge_when_clause) does not support "WHEN MATCHED THEN DELETE", so this
+-- statement raises a syntax error here (unlike PG).  Expected output records
+-- the actual IvorySQL behavior; keep in sync with results/returning.out.
+INSERT INTO ret_nn VALUES (2);
+MERGE INTO ret_nn USING (VALUES (2), (3)) AS src(a) ON ret_nn.a = src.a
+  WHEN MATCHED THEN DELETE
+  WHEN NOT MATCHED THEN INSERT VALUES (src.a)
+  RETURNING merge_action(), old.a IS NULL, new.a IS NULL;
+
+DROP TABLE ret_nn;
 reset ivorysql.enable_emptystring_to_null;
