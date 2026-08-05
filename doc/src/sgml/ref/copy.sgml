@@ -462,10 +462,17 @@ COPY { <replaceable class="parameter">table_name</replaceable> [ ( <replaceable 
       command.
      </para>
      <para>
-      <literal>DO ON CONFLICT DO UPDATE</literal> is parsed but not yet
-      implemented; using it raises an error.  As a workaround, delete or
-      truncate the conflicting rows before importing, or use
-      <command>INSERT ... ON CONFLICT DO UPDATE</command>.
+      <literal>DO ON CONFLICT DO UPDATE</literal> overwrites the conflicting
+      row with the input row (a full-row overwrite, matching the AnalyticDB
+      semantics where no <literal>SET</literal> targets are allowed).  Note
+      that for a column subset <literal>COPY (column [, ...]) FROM ...</literal>,
+      columns not listed in the input are filled with their default values,
+      so a volatile default expression (e.g. <literal>nextval</literal>) will
+      produce a new value for each imported row and overwrite the stored one.
+     </para>
+     <para>
+      The number of updated rows is reported in a <literal>NOTICE</literal>
+      message at the end of the command.
      </para>
      <para>
       The target table must have at least one unique constraint (primary key
@@ -476,7 +483,9 @@ COPY { <replaceable class="parameter">table_name</replaceable> [ ( <replaceable 
      <para>
       The conflict check is performed before insertion, so under concurrent
       writes a unique violation may still be raised by the index insert
-      itself.  For strictly concurrent workloads, prefer
+      itself.  For <literal>DO ON CONFLICT DO UPDATE</literal>, a row that is
+      concurrently modified raises an error rather than being retried.  For
+      strictly concurrent workloads, prefer
       <command>INSERT ... ON CONFLICT</command>.
      </para>
     </listitem>

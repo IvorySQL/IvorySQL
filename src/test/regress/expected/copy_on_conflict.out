@@ -41,10 +41,6 @@ LINE 1: COPY copy_on_conflict_t1 TO STDOUT DO ON CONFLICT DO NOTHING...
                                            ^
 -- 5. DO UPDATE is parsed but rejected (not implemented yet)
 COPY copy_on_conflict_t1 FROM '/dev/null' DO ON CONFLICT DO UPDATE;
-ERROR:  COPY ON CONFLICT DO UPDATE is not supported yet
-LINE 1: COPY copy_on_conflict_t1 FROM '/dev/null' DO ON CONFLICT DO ...
-                                                  ^
-HINT:  Use DO ON CONFLICT DO NOTHING, or DELETE/TRUNCATE the conflicting rows before COPY, or use INSERT ... ON CONFLICT DO UPDATE.
 -- 6. multi-column unique index
 CREATE TABLE copy_on_conflict_t3 (a int, b int, c text, UNIQUE (a, b));
 INSERT INTO copy_on_conflict_t3 VALUES (1, 1, 'keep');
@@ -100,6 +96,113 @@ COPY copy_on_conflict_t1 FROM '/dev/null' WITH (on_conflict 'bogus');
 ERROR:  COPY ON_CONFLICT "bogus" not recognized
 LINE 1: COPY copy_on_conflict_t1 FROM '/dev/null' WITH (on_conflict ...
                                                         ^
+-- ===== DO ON CONFLICT DO UPDATE =====
+-- 11. DO UPDATE overwrites conflicting rows (full-row overwrite)
+DROP TABLE IF EXISTS copy_on_conflict_u1 CASCADE;
+NOTICE:  table "copy_on_conflict_u1" does not exist, skipping
+CREATE TABLE copy_on_conflict_u1 (id int PRIMARY KEY, name text);
+INSERT INTO copy_on_conflict_u1 VALUES (1, 'old-1'), (2, 'old-2');
+COPY copy_on_conflict_u1 FROM STDIN DO ON CONFLICT DO UPDATE;
+NOTICE:  2 rows were updated due to ON CONFLICT DO UPDATE
+SELECT * FROM copy_on_conflict_u1 ORDER BY id;
+ id | name  
+----+-------
+  1 | new-1
+  2 | new-2
+  3 | new-3
+(3 rows)
+
+-- 12. DO UPDATE without conflicts behaves like plain COPY
+COPY copy_on_conflict_u1 FROM STDIN DO ON CONFLICT DO UPDATE;
+SELECT count(*) FROM copy_on_conflict_u1;
+ count 
+-------
+     4
+(1 row)
+
+-- 13. multi-column unique index with DO UPDATE
+DROP TABLE IF EXISTS copy_on_conflict_u3 CASCADE;
+NOTICE:  table "copy_on_conflict_u3" does not exist, skipping
+CREATE TABLE copy_on_conflict_u3 (a int, b int, c text, UNIQUE (a, b));
+INSERT INTO copy_on_conflict_u3 VALUES (1, 1, 'keep');
+COPY copy_on_conflict_u3 FROM STDIN DO ON CONFLICT DO UPDATE;
+NOTICE:  1 row was updated due to ON CONFLICT DO UPDATE
+SELECT * FROM copy_on_conflict_u3 ORDER BY a, b;
+ a | b |    c    
+---+---+---------
+ 1 | 1 | changed
+ 1 | 2 | ok
+(2 rows)
+
+-- 14. partitioned table: in-partition DO UPDATE
+DROP TABLE IF EXISTS copy_on_conflict_up CASCADE;
+NOTICE:  table "copy_on_conflict_up" does not exist, skipping
+CREATE TABLE copy_on_conflict_up (id int PRIMARY KEY, v text) PARTITION BY RANGE (id);
+CREATE TABLE copy_on_conflict_up_lo PARTITION OF copy_on_conflict_up FOR VALUES FROM (0) TO (10);
+CREATE TABLE copy_on_conflict_up_hi PARTITION OF copy_on_conflict_up FOR VALUES FROM (10) TO (20);
+INSERT INTO copy_on_conflict_up VALUES (1, 'p-old'), (11, 'h-old');
+COPY copy_on_conflict_up FROM STDIN DO ON CONFLICT DO UPDATE;
+NOTICE:  2 rows were updated due to ON CONFLICT DO UPDATE
+SELECT * FROM copy_on_conflict_up ORDER BY id;
+ id |   v   
+----+-------
+  1 | p-new
+  5 | ins
+ 11 | h-new
+(3 rows)
+
+-- 15. stored generated columns are recomputed on DO UPDATE
+DROP TABLE IF EXISTS copy_on_conflict_u6 CASCADE;
+NOTICE:  table "copy_on_conflict_u6" does not exist, skipping
+CREATE TABLE copy_on_conflict_u6 (id int PRIMARY KEY, a int,
+	b int GENERATED ALWAYS AS (a * 2) STORED);
+INSERT INTO copy_on_conflict_u6 VALUES (1, 5, DEFAULT);
+COPY copy_on_conflict_u6 (id, a) FROM STDIN DO ON CONFLICT DO UPDATE;
+NOTICE:  1 row was updated due to ON CONFLICT DO UPDATE
+SELECT * FROM copy_on_conflict_u6;
+ id | a  | b  
+----+----+----
+  1 | 10 | 20
+(1 row)
+
+-- 16. AFTER ROW UPDATE triggers fire on DO UPDATE
+DROP TABLE IF EXISTS copy_on_conflict_u7, copy_on_conflict_u7_log CASCADE;
+NOTICE:  table "copy_on_conflict_u7" does not exist, skipping
+NOTICE:  table "copy_on_conflict_u7_log" does not exist, skipping
+CREATE TABLE copy_on_conflict_u7 (id int PRIMARY KEY, v text);
+CREATE TABLE copy_on_conflict_u7_log (id int, old_v text, new_v text);
+CREATE FUNCTION copy_on_conflict_u7_trg() RETURNS trigger AS $$
+BEGIN
+  INSERT INTO copy_on_conflict_u7_log VALUES (OLD.id, OLD.v, NEW.v);
+  RETURN NEW;
+END $$ LANGUAGE plpgsql;
+CREATE TRIGGER copy_on_conflict_u7_trg AFTER UPDATE ON copy_on_conflict_u7
+	FOR EACH ROW EXECUTE FUNCTION copy_on_conflict_u7_trg();
+INSERT INTO copy_on_conflict_u7 VALUES (1, 'old');
+COPY copy_on_conflict_u7 FROM STDIN DO ON CONFLICT DO UPDATE;
+NOTICE:  1 row was updated due to ON CONFLICT DO UPDATE
+SELECT * FROM copy_on_conflict_u7;
+ id |  v  
+----+-----
+  1 | new
+(1 row)
+
+SELECT * FROM copy_on_conflict_u7_log;
+ id | old_v | new_v 
+----+-------+-------
+  1 | old   | new
+(1 row)
+
+-- 17. partitioned table unique constraints must include partition columns
+-- (PG rule: cross-partition updates are therefore unreachable for ON CONFLICT)
+DROP TABLE IF EXISTS copy_on_conflict_u5 CASCADE;
+NOTICE:  table "copy_on_conflict_u5" does not exist, skipping
+CREATE TABLE copy_on_conflict_u5 (id int, uid int UNIQUE, v text) PARTITION BY RANGE (id);
+ERROR:  UNIQUE constraint on partitioned table must include all partitioning columns
+DETAIL:  UNIQUE constraint on table "copy_on_conflict_u5" lacks column "id" which is part of the partition key.
 -- cleanup
 DROP TABLE copy_on_conflict_t1, copy_on_conflict_t2, copy_on_conflict_t3,
-	copy_on_conflict_tp, copy_on_conflict_t4 CASCADE;
+	copy_on_conflict_tp, copy_on_conflict_tp_lo, copy_on_conflict_tp_hi,
+	copy_on_conflict_t4, copy_on_conflict_u1, copy_on_conflict_u3,
+	copy_on_conflict_up, copy_on_conflict_up_lo, copy_on_conflict_up_hi,
+	copy_on_conflict_u6, copy_on_conflict_u7, copy_on_conflict_u7_log CASCADE;

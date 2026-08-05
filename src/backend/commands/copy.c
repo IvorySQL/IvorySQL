@@ -485,10 +485,6 @@ defGetCopyOnErrorChoice(DefElem *def, ParseState *pstate, bool is_from)
 
 /*
  * Extract a CopyOnConflictChoice value from a DefElem.
- *
- * The DO ON CONFLICT DO UPDATE clause is parsed but not yet implemented;
- * reject it at startup so that users get a clear error instead of a silent
- * fallback to plain COPY.
  */
 static CopyOnConflictChoice
 defGetCopyOnConflictChoice(DefElem *def, ParseState *pstate, bool is_from)
@@ -506,11 +502,7 @@ defGetCopyOnConflictChoice(DefElem *def, ParseState *pstate, bool is_from)
 	if (pg_strcasecmp(sval, "nothing") == 0)
 		return COPY_ON_CONFLICT_NOTHING;
 	if (pg_strcasecmp(sval, "update") == 0)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("COPY ON CONFLICT DO UPDATE is not supported yet"),
-				 errhint("Use DO ON CONFLICT DO NOTHING, or DELETE/TRUNCATE the conflicting rows before COPY, or use INSERT ... ON CONFLICT DO UPDATE."),
-				 parser_errposition(pstate, def->location)));
+		return COPY_ON_CONFLICT_UPDATE;
 
 	ereport(ERROR,
 			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),

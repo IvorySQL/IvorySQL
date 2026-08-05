@@ -1926,7 +1926,8 @@ ExecCrossPartitionUpdate(IvyModifyTableContext *context,
 	 * to migrate to a different partition.  Maybe this can be implemented
 	 * some day, but it seems a fringe feature with little redeeming value.
 	 */
-	if (((ModifyTable *) mtstate->ps.plan)->onConflictAction == ONCONFLICT_UPDATE)
+	if (mtstate->ps.plan != NULL &&
+		((ModifyTable *) mtstate->ps.plan)->onConflictAction == ONCONFLICT_UPDATE)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("invalid ON UPDATE specification"),

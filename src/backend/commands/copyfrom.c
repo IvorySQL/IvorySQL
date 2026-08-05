@@ -786,6 +786,13 @@ CopyFrom(CopyFromState cstate)
 	ResultRelInfo *prevResultRelInfo = NULL;
 	EState	   *estate = CreateExecutorState(); /* for ExecConstraints() */
 	ModifyTableState *mtstate;
+
+	/*
+	 * Make sure any UPDATE performed by the ON CONFLICT DO UPDATE clause
+	 * uses the current command id, so that rows inserted by earlier
+	 * commands of this transaction are visible to the update.
+	 */
+	estate->es_output_cid = GetCurrentCommandId(true);
 	ExprContext *econtext;
 	TupleTableSlot *singleslot = NULL;
 	MemoryContext oldcontext = CurrentMemoryContext;
@@ -800,6 +807,7 @@ CopyFrom(CopyFromState cstate)
 	int64		processed = 0;
 	int64		excluded = 0;
 	int64		skipped = 0;	/* rows skipped by ON CONFLICT DO NOTHING */
+	int64		updated = 0;	/* rows updated by ON CONFLICT DO UPDATE */
 	bool		has_before_insert_row_trig;
 	bool		has_instead_insert_row_trig;
 	bool		leafpart_use_multi_insert = false;
@@ -1432,7 +1440,7 @@ CopyFrom(CopyFromState cstate)
 				 * pre-check: under concurrent insertion a unique violation
 				 * may still be raised by the index insert itself.
 				 */
-				if (cstate->opts.on_conflict == COPY_ON_CONFLICT_NOTHING)
+				if (cstate->opts.on_conflict != COPY_ON_CONFLICT_NONE)
 				{
 					ItemPointerData conflictTid;
 					ItemPointerData invalidItemPtr;
@@ -1466,12 +1474,107 @@ CopyFrom(CopyFromState cstate)
 												   estate, &conflictTid,
 												   &invalidItemPtr, NIL))
 					{
-						skipped++;
+						if (cstate->opts.on_conflict == COPY_ON_CONFLICT_NOTHING)
+						{
+							skipped++;
 
-						pgstat_progress_update_param(PROGRESS_COPY_TUPLES_SKIPPED,
-													 skipped);
+							pgstat_progress_update_param(PROGRESS_COPY_TUPLES_SKIPPED,
+														 skipped);
 
-						continue;	/* skip this tuple */
+							continue;	/* skip this tuple */
+						}
+
+						/* ===== DO ON CONFLICT DO UPDATE: overwrite the conflicting row ===== */
+						{
+							IvyModifyTableContext context;
+							IvyUpdateContext updateCxt;
+							EPQState	epqstate;
+							TM_Result	result;
+
+							/*
+							 * Like INSERT ... ON CONFLICT DO UPDATE, moving
+							 * the row to a different partition is not
+							 * supported; reject it explicitly instead of
+							 * crashing in ExecCrossPartitionUpdate (which
+							 * dereferences the ModifyTable plan node).
+							 */
+							if (resultRelInfo->ri_RelationDesc->rd_rel->relispartition &&
+								!ExecPartitionCheck(resultRelInfo, myslot,
+													estate, false))
+								ereport(ERROR,
+										(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+										 errmsg("COPY ON CONFLICT DO UPDATE cannot move the row to a different partition"),
+										 errdetail("The result tuple would appear in a different partition than the original tuple.")));
+
+							/* Set up the ModifyTable execution context. */
+							memset(&context, 0, sizeof(context));
+							context.mtstate = mtstate;
+							context.estate = estate;
+							context.planSlot = NULL;
+							EvalPlanQualInit(&epqstate, estate, NULL, NIL,
+											 0, NIL);
+							context.epqstate = &epqstate;
+
+							/*
+							 * Temporarily switch the ModifyTable operation
+							 * to UPDATE so that the Prologue/Epilogue use
+							 * UPDATE semantics (BEFORE/AFTER ROW UPDATE
+							 * triggers, transition capture, etc.).
+							 */
+							mtstate->operation = CMD_UPDATE;
+							if (resultRelInfo->ri_TrigDesc &&
+								(resultRelInfo->ri_TrigDesc->trig_update_new_table ||
+								 resultRelInfo->ri_TrigDesc->trig_update_old_table))
+								mtstate->mt_transition_capture =
+									MakeTransitionCaptureState(resultRelInfo->ri_TrigDesc,
+															   RelationGetRelid(resultRelInfo->ri_RelationDesc),
+															   CMD_UPDATE);
+							else
+								mtstate->mt_transition_capture = NULL;
+
+							/*
+							 * Run BEFORE ROW UPDATE triggers (if any) and
+							 * perform the update.  oldtuple is left NULL:
+							 * the trigger machinery fetches the old row
+							 * itself from conflictTid.
+							 */
+							if (ExecUpdatePrologue(&context, resultRelInfo,
+												   &conflictTid, NULL, myslot,
+												   &result))
+							{
+								updateCxt.crossPartUpdate = false;
+								updateCxt.updateIndexes = TU_None;
+								updateCxt.lockmode = LockTupleExclusive;
+
+								result = ExecUpdateAct(&context, resultRelInfo,
+													   &conflictTid, NULL, myslot,
+													   true, &updateCxt);
+
+								if (result == TM_Ok)
+									ExecUpdateEpilogue(&context, &updateCxt,
+													   resultRelInfo,
+													   &conflictTid, NULL,
+													   myslot);
+								else if (result == TM_Updated)
+									ereport(ERROR,
+											(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
+											 errmsg("concurrent update of row during COPY ON CONFLICT DO UPDATE")));
+								else
+									ereport(ERROR,
+											(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
+											 errmsg("could not update row during COPY ON CONFLICT DO UPDATE: %d", (int) result)));
+							}
+
+							/* Restore INSERT semantics for the rest of COPY. */
+							mtstate->operation = CMD_INSERT;
+							mtstate->mt_transition_capture = cstate->transition_capture;
+
+							updated++;
+							pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED,
+														 processed + updated);
+
+							continue;	/* row handled as UPDATE */
+						}
 					}
 				}
 
@@ -1593,6 +1696,12 @@ CopyFrom(CopyFromState cstate)
 				errmsg_plural("%" PRIu64 " row was skipped due to ON CONFLICT DO NOTHING",
 							  "%" PRIu64 " rows were skipped due to ON CONFLICT DO NOTHING",
 							  skipped, skipped));
+
+	if (cstate->opts.on_conflict == COPY_ON_CONFLICT_UPDATE && updated > 0)
+		ereport(NOTICE,
+				errmsg_plural("%" PRIu64 " row was updated due to ON CONFLICT DO UPDATE",
+							  "%" PRIu64 " rows were updated due to ON CONFLICT DO UPDATE",
+							  updated, updated));
 
 	if (bistate != NULL)
 		FreeBulkInsertState(bistate);
