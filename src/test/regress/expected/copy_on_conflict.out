@@ -33,7 +33,7 @@ SELECT count(*) FROM copy_on_conflict_t1;
 -- 3. table without unique constraint is rejected at startup
 CREATE TABLE copy_on_conflict_t2 (a int, b text);
 COPY copy_on_conflict_t2 FROM '/dev/null' DO ON CONFLICT DO NOTHING;
-ERROR:  COPY ON CONFLICT requires a unique constraint on table "copy_on_conflict_t2"
+ERROR:  COPY ON CONFLICT requires a unique or exclusion constraint on table "copy_on_conflict_t2"
 -- 4. COPY TO does not accept ON CONFLICT
 COPY copy_on_conflict_t1 TO STDOUT DO ON CONFLICT DO NOTHING;
 ERROR:  COPY ON_CONFLICT cannot be used with COPY TO
@@ -235,4 +235,6 @@ DROP TABLE copy_on_conflict_t1, copy_on_conflict_t2, copy_on_conflict_t3,
 	copy_on_conflict_tp, copy_on_conflict_tp_lo, copy_on_conflict_tp_hi,
 	copy_on_conflict_t4, copy_on_conflict_u1, copy_on_conflict_u3,
 	copy_on_conflict_up, copy_on_conflict_up_lo, copy_on_conflict_up_hi,
-	copy_on_conflict_u6, copy_on_conflict_u7, copy_on_conflict_u7_log CASCADE;
+	copy_on_conflict_u6, copy_on_conflict_u7, copy_on_conflict_u7_log,
+	copy_on_conflict_u8, copy_on_conflict_u9 CASCADE;
+DROP FUNCTION IF EXISTS copy_on_conflict_u7_trg();

@@ -475,8 +475,9 @@ COPY { <replaceable class="parameter">table_name</replaceable> [ ( <replaceable 
       message at the end of the command.
      </para>
      <para>
-      The target table must have at least one unique constraint (primary key
-      or unique index) for the conflict check to be meaningful; otherwise the
+      The target table must have at least one unique or exclusion constraint
+      (primary key, unique index, or <literal>EXCLUDE</literal> constraint)
+      for the conflict check to be meaningful; otherwise the
       <command>COPY</command> command fails at startup.  For partitioned
       tables, uniqueness is enforced per leaf partition.
      </para>

@@ -781,11 +781,13 @@ CopyMultiInsertInfoStore(CopyMultiInsertInfo *miinfo, ResultRelInfo *rri,
  * Lock the conflicting tuple (waiting for any concurrent transaction) and
  * overwrite it with the input row via the ModifyTable update machinery
  * (BEFORE/AFTER ROW UPDATE triggers, index maintenance, transition
- * capture).  Returns false if the conflicting tuple was concurrently
- * modified or deleted, in which case the caller must re-run the conflict
- * check from scratch.
+ * capture).  Returns:
+ *   0 - the conflicting tuple was concurrently modified or deleted; the
+ *       caller must re-run the conflict check from scratch
+ *   1 - the row was updated
+ *   2 - a BEFORE ROW UPDATE trigger suppressed the update (no row change)
  */
-static bool
+static int
 CopyOnConflictUpdate(IvyModifyTableContext *context,
 					 ResultRelInfo *resultRelInfo,
 					 ItemPointer conflictTid,
@@ -866,7 +868,7 @@ CopyOnConflictUpdate(IvyModifyTableContext *context,
 
 			/* Tell caller to try again from the very start. */
 			ExecClearTuple(existing);
-			return false;
+			return 0;
 
 		case TM_Deleted:
 			if (IsolationUsesXactSnapshot())
@@ -876,7 +878,7 @@ CopyOnConflictUpdate(IvyModifyTableContext *context,
 
 			/* see TM_Updated case */
 			ExecClearTuple(existing);
-			return false;
+			return 0;
 
 		default:
 			elog(ERROR, "unrecognized table_tuple_lock status: %u", test);
@@ -915,9 +917,12 @@ CopyOnConflictUpdate(IvyModifyTableContext *context,
 			ereport(ERROR,
 					(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
 					 errmsg("could not update row during COPY ON CONFLICT DO UPDATE: %d", (int) result)));
+
+		return 1;
 	}
 
-	return true;
+	/* BEFORE ROW UPDATE trigger suppressed the update */
+	return 2;
 }
 
 /*
@@ -931,20 +936,6 @@ CopyFrom(CopyFromState cstate)
 	ResultRelInfo *prevResultRelInfo = NULL;
 	EState	   *estate = CreateExecutorState(); /* for ExecConstraints() */
 	ModifyTableState *mtstate;
-
-	/*
-	 * Make sure any UPDATE performed by the ON CONFLICT DO UPDATE clause
-	 * uses the current command id, so that rows inserted by earlier
-	 * commands of this transaction are visible to the update.
-	 */
-	estate->es_output_cid = GetCurrentCommandId(true);
-
-	/*
-	 * COPY ON CONFLICT locks conflicting tuples (CopyOnConflictUpdate);
-	 * that needs a snapshot in the executor state.
-	 */
-	if (cstate->opts.on_conflict != COPY_ON_CONFLICT_NONE)
-		estate->es_snapshot = GetActiveSnapshot();
 	ExprContext *econtext;
 	TupleTableSlot *singleslot = NULL;
 	MemoryContext oldcontext = CurrentMemoryContext;
@@ -952,20 +943,35 @@ CopyFrom(CopyFromState cstate)
 	PartitionTupleRouting *proute = NULL;
 	ErrorContextCallback errcallback;
 	CommandId	mycid = GetCurrentCommandId(true);
+
 	int			ti_options = 0; /* start with default options for insert */
 	BulkInsertState bistate = NULL;
 	CopyInsertMethod insertMethod;
 	CopyMultiInsertInfo multiInsertInfo = {0};	/* pacify compiler */
 	int64		processed = 0;
 	int64		excluded = 0;
-	int64		skipped = 0;	/* rows skipped by ON CONFLICT DO NOTHING */
-	int64		updated = 0;	/* rows updated by ON CONFLICT DO UPDATE */
+	uint64		skipped = 0;	/* rows skipped by ON CONFLICT DO NOTHING */
+	uint64		updated = 0;	/* rows updated by ON CONFLICT DO UPDATE */
 	bool		has_before_insert_row_trig;
 	bool		has_instead_insert_row_trig;
 	bool		leafpart_use_multi_insert = false;
 
 	Assert(cstate->rel);
 	Assert(list_length(cstate->range_table) == 1);
+
+	/*
+	 * Make sure any UPDATE performed by the ON CONFLICT DO UPDATE clause
+	 * uses the current command id, so that rows inserted by earlier
+	 * commands of this transaction are visible to the update.
+	 */
+	estate->es_output_cid = mycid;
+
+	/*
+	 * COPY ON CONFLICT locks conflicting tuples (CopyOnConflictUpdate);
+	 * that needs a snapshot in the executor state.
+	 */
+	if (cstate->opts.on_conflict != COPY_ON_CONFLICT_NONE)
+		estate->es_snapshot = GetActiveSnapshot();
 
 	if (cstate->opts.on_error != COPY_ON_ERROR_STOP)
 		Assert(cstate->escontext);
@@ -1156,10 +1162,10 @@ CopyFrom(CopyFromState cstate)
 										&mtstate->ps);
 
 	/*
-	 * COPY ON CONFLICT needs a unique constraint to detect conflicts.  For
-	 * partitioned tables the check is done per leaf partition at runtime
-	 * (each partition enforces its own uniqueness), so skip the startup
-	 * check there.
+	 * COPY ON CONFLICT needs a unique or exclusion constraint to detect
+	 * conflicts.  For partitioned tables the check is done per leaf
+	 * partition at runtime (each partition enforces its own uniqueness),
+	 * so skip the startup check there.
 	 */
 	if (cstate->opts.on_conflict != COPY_ON_CONFLICT_NONE &&
 		cstate->rel->rd_rel->relkind != RELKIND_PARTITIONED_TABLE)
@@ -1175,7 +1181,8 @@ CopyFrom(CopyFromState cstate)
 			Relation	indexRel;
 
 			indexRel = index_open(indexoid, AccessShareLock);
-			if (indexRel->rd_index->indisunique)
+			if (indexRel->rd_index->indisunique ||
+				indexRel->rd_index->indisexclusion)
 				has_unique = true;
 			index_close(indexRel, AccessShareLock);
 			if (has_unique)
@@ -1186,7 +1193,7 @@ CopyFrom(CopyFromState cstate)
 		if (!has_unique)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("COPY ON CONFLICT requires a unique constraint on table \"%s\"",
+					 errmsg("COPY ON CONFLICT requires a unique or exclusion constraint on table \"%s\"",
 							RelationGetRelationName(cstate->rel))));
 	}
 
@@ -1598,6 +1605,7 @@ CopyFrom(CopyFromState cstate)
 					ItemPointerData invalidItemPtr;
 					bool		specConflict = false;
 					uint32		specToken = 0;
+					int			update_rc;
 					int			ii;
 
 					ItemPointerSetInvalid(&invalidItemPtr);
@@ -1644,7 +1652,6 @@ CopyFrom(CopyFromState cstate)
 							IvyModifyTableContext context;
 							IvyUpdateContext updateCxt;
 							EPQState	epqstate;
-							TM_Result	result;
 
 							/*
 							 * Like INSERT ... ON CONFLICT DO UPDATE, moving
@@ -1666,6 +1673,18 @@ CopyFrom(CopyFromState cstate)
 							context.mtstate = mtstate;
 							context.estate = estate;
 							context.planSlot = NULL;
+
+							/*
+							 * EvalPlanQualInit() and
+							 * MakeTransitionCaptureState() allocate in the
+							 * current memory context, which here is the
+							 * caller's context living for the whole COPY.
+							 * Allocate them in the per-tuple context so
+							 * per-row state is freed on the next iteration
+							 * (the transition capture pointer is reset
+							 * before we return to the loop).
+							 */
+							MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 							EvalPlanQualInit(&epqstate, estate, NULL, NIL,
 											 0, NIL);
 							context.epqstate = &epqstate;
@@ -1686,6 +1705,7 @@ CopyFrom(CopyFromState cstate)
 															   CMD_UPDATE);
 							else
 								mtstate->mt_transition_capture = NULL;
+							MemoryContextSwitchTo(oldcontext);
 
 							/*
 							 * Lock the conflicting row (waiting out any
@@ -1693,9 +1713,10 @@ CopyFrom(CopyFromState cstate)
 							 * If the row was concurrently modified or
 							 * deleted, re-run the whole conflict check.
 							 */
-							if (!CopyOnConflictUpdate(&context, resultRelInfo,
-													  &conflictTid, myslot,
-													  &updateCxt))
+							update_rc = CopyOnConflictUpdate(&context, resultRelInfo,
+															 &conflictTid, myslot,
+															 &updateCxt);
+							if (update_rc == 0)
 							{
 								/* Restore INSERT semantics, then retry. */
 								mtstate->operation = CMD_INSERT;
@@ -1707,11 +1728,14 @@ CopyFrom(CopyFromState cstate)
 							mtstate->operation = CMD_INSERT;
 							mtstate->mt_transition_capture = cstate->transition_capture;
 
-							updated++;
-							pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED,
-														 processed + updated);
+							if (update_rc == 1)
+								updated++;
 
-							continue;	/* row handled as UPDATE */
+							processed++;
+							pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED,
+														 processed);
+
+							continue;	/* row handled as UPDATE (or suppressed) */
 						}
 					}
 					else
@@ -1732,18 +1756,18 @@ CopyFrom(CopyFromState cstate)
 						table_tuple_insert_speculative(resultRelInfo->ri_RelationDesc,
 													   myslot,
 													   estate->es_output_cid,
-													   0, NULL, specToken);
+													   ti_options, NULL, specToken);
 
 						recheckIndexes = ExecInsertIndexTuples(resultRelInfo,
 															   estate,
 															   EIIT_NO_DUPE_ERROR,
 															   myslot, NIL,
 															   &specConflict);
-						list_free(recheckIndexes);
-						recheckIndexes = NIL;
 
 						if (specConflict)
 						{
+							list_free(recheckIndexes);
+							recheckIndexes = NIL;
 							/*
 							 * A concurrent transaction inserted a
 							 * conflicting row: back out the speculative
@@ -1767,7 +1791,9 @@ CopyFrom(CopyFromState cstate)
 
 						/* AFTER ROW INSERT triggers */
 						ExecARInsertTriggers(estate, resultRelInfo, myslot,
-											 NIL, cstate->transition_capture);
+											 recheckIndexes, cstate->transition_capture);
+						list_free(recheckIndexes);
+						recheckIndexes = NIL;
 
 						processed++;
 						pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED,

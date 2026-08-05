@@ -171,4 +171,6 @@ DROP TABLE copy_on_conflict_t1, copy_on_conflict_t2, copy_on_conflict_t3,
 	copy_on_conflict_tp, copy_on_conflict_tp_lo, copy_on_conflict_tp_hi,
 	copy_on_conflict_t4, copy_on_conflict_u1, copy_on_conflict_u3,
 	copy_on_conflict_up, copy_on_conflict_up_lo, copy_on_conflict_up_hi,
-	copy_on_conflict_u6, copy_on_conflict_u7, copy_on_conflict_u7_log CASCADE;
+	copy_on_conflict_u6, copy_on_conflict_u7, copy_on_conflict_u7_log,
+	copy_on_conflict_u8, copy_on_conflict_u9 CASCADE;
+DROP FUNCTION IF EXISTS copy_on_conflict_u7_trg();
