@@ -1858,6 +1858,21 @@ pg_stat_archiver| SELECT archived_count,
     last_failed_time,
     stats_reset
    FROM pg_stat_get_archiver() s(archived_count, last_archived_wal, last_archived_time, failed_count, last_failed_wal, last_failed_time, stats_reset);
+pg_stat_autovacuum_scores| SELECT s.oid AS relid,
+    n.nspname AS schemaname,
+    c.relname,
+    s.score,
+    s.xid_score,
+    s.mxid_score,
+    s.vacuum_score,
+    s.vacuum_insert_score,
+    s.analyze_score,
+    s.do_vacuum,
+    s.do_analyze,
+    s.for_wraparound
+   FROM ((pg_stat_get_autovacuum_scores() s(oid, score, xid_score, mxid_score, vacuum_score, vacuum_insert_score, analyze_score, do_vacuum, do_analyze, for_wraparound)
+     JOIN pg_class c ON ((c.oid = s.oid)))
+     LEFT JOIN pg_namespace n ON ((n.oid = c.relnamespace)));
 pg_stat_bgwriter| SELECT pg_stat_get_bgwriter_buf_written_clean() AS buffers_clean,
     pg_stat_get_bgwriter_maxwritten_clean() AS maxwritten_clean,
     pg_stat_get_buf_alloc() AS buffers_alloc,
@@ -2019,7 +2034,7 @@ pg_stat_progress_cluster| SELECT pid,
     phase,
     repack_index_relid AS cluster_index_relid,
     heap_tuples_scanned,
-    heap_tuples_written,
+    (heap_tuples_inserted + heap_tuples_updated) AS heap_tuples_written,
     heap_blks_total,
     heap_blks_scanned,
     index_rebuild_count
@@ -2134,17 +2149,20 @@ pg_stat_progress_repack| SELECT s.pid,
             WHEN 2 THEN 'index scanning heap'::text
             WHEN 3 THEN 'sorting tuples'::text
             WHEN 4 THEN 'writing new heap'::text
-            WHEN 5 THEN 'swapping relation files'::text
-            WHEN 6 THEN 'rebuilding index'::text
-            WHEN 7 THEN 'performing final cleanup'::text
+            WHEN 5 THEN 'catch-up'::text
+            WHEN 6 THEN 'swapping relation files'::text
+            WHEN 7 THEN 'rebuilding index'::text
+            WHEN 8 THEN 'performing final cleanup'::text
             ELSE NULL::text
         END AS phase,
     (s.param3)::oid AS repack_index_relid,
     s.param4 AS heap_tuples_scanned,
-    s.param5 AS heap_tuples_written,
-    s.param6 AS heap_blks_total,
-    s.param7 AS heap_blks_scanned,
-    s.param8 AS index_rebuild_count
+    s.param5 AS heap_tuples_inserted,
+    s.param6 AS heap_tuples_updated,
+    s.param7 AS heap_tuples_deleted,
+    s.param8 AS heap_blks_total,
+    s.param9 AS heap_blks_scanned,
+    s.param10 AS index_rebuild_count
    FROM (pg_stat_get_progress_info('REPACK'::text) s(pid, datid, relid, param1, param2, param3, param4, param5, param6, param7, param8, param9, param10, param11, param12, param13, param14, param15, param16, param17, param18, param19, param20)
      LEFT JOIN pg_database d ON ((s.datid = d.oid)));
 pg_stat_progress_vacuum| SELECT s.pid,
