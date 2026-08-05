@@ -47,6 +47,7 @@ COPY { <replaceable class="parameter">table_name</replaceable> [ ( <replaceable 
     REJECT_LIMIT <replaceable class="parameter">maxerror</replaceable>
     ENCODING '<replaceable class="parameter">encoding_name</replaceable>'
     LOG_VERBOSITY <replaceable class="parameter">verbosity</replaceable>
+    DO ON CONFLICT { DO NOTHING | DO UPDATE }
 </synopsis>
  </refsynopsisdiv>
 
@@ -440,6 +441,43 @@ COPY { <replaceable class="parameter">table_name</replaceable> [ ( <replaceable 
       failure.
       When it is set to <literal>silent</literal>, no message is emitted
       regarding input conversion failed rows.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry id="sql-copy-params-on-conflict">
+    <term><literal>ON CONFLICT</literal></term>
+    <listitem>
+     <para>
+      Specifies how to behave when an input row conflicts with a unique or
+      exclusion constraint on the target table, instead of aborting the whole
+      <command>COPY</command> command.  This clause is compatible with
+      <literal>COPY ON CONFLICT</literal> in Alibaba Cloud AnalyticDB for
+      PostgreSQL and is only applicable to <command>COPY FROM</command>.
+     </para>
+     <para>
+      <literal>DO ON CONFLICT DO NOTHING</literal> discards the conflicting
+      input row and continues with the next one.  The number of skipped rows
+      is reported in a <literal>NOTICE</literal> message at the end of the
+      command.
+     </para>
+     <para>
+      <literal>DO ON CONFLICT DO UPDATE</literal> is parsed but not yet
+      implemented; using it raises an error.  As a workaround, delete or
+      truncate the conflicting rows before importing, or use
+      <command>INSERT ... ON CONFLICT DO UPDATE</command>.
+     </para>
+     <para>
+      The target table must have at least one unique constraint (primary key
+      or unique index) for the conflict check to be meaningful; otherwise the
+      <command>COPY</command> command fails at startup.  For partitioned
+      tables, uniqueness is enforced per leaf partition.
+     </para>
+     <para>
+      The conflict check is performed before insertion, so under concurrent
+      writes a unique violation may still be raised by the index insert
+      itself.  For strictly concurrent workloads, prefer
+      <command>INSERT ... ON CONFLICT</command>.
      </para>
     </listitem>
    </varlistentry>
