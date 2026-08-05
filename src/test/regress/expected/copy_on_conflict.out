@@ -1,0 +1,105 @@
+-- COPY ON CONFLICT (AnalyticDB-compatible DO ON CONFLICT DO NOTHING)
+DROP TABLE IF EXISTS copy_on_conflict_t1, copy_on_conflict_t2, copy_on_conflict_t3,
+	copy_on_conflict_tp, copy_on_conflict_tp_lo, copy_on_conflict_tp_hi,
+	copy_on_conflict_t4 CASCADE;
+NOTICE:  table "copy_on_conflict_t1" does not exist, skipping
+NOTICE:  table "copy_on_conflict_t2" does not exist, skipping
+NOTICE:  table "copy_on_conflict_t3" does not exist, skipping
+NOTICE:  table "copy_on_conflict_tp" does not exist, skipping
+NOTICE:  table "copy_on_conflict_tp_lo" does not exist, skipping
+NOTICE:  table "copy_on_conflict_tp_hi" does not exist, skipping
+NOTICE:  table "copy_on_conflict_t4" does not exist, skipping
+CREATE TABLE copy_on_conflict_t1 (id int PRIMARY KEY, name text);
+INSERT INTO copy_on_conflict_t1 VALUES (1, 'old-1'), (2, 'old-2');
+-- 1. DO NOTHING skips conflicting rows, inserts the rest
+COPY copy_on_conflict_t1 FROM STDIN DO ON CONFLICT DO NOTHING;
+NOTICE:  2 rows were skipped due to ON CONFLICT DO NOTHING
+SELECT * FROM copy_on_conflict_t1 ORDER BY id;
+ id | name  
+----+-------
+  1 | old-1
+  2 | old-2
+  3 | new-3
+(3 rows)
+
+-- 2. no-conflict data behaves like plain COPY
+COPY copy_on_conflict_t1 FROM STDIN DO ON CONFLICT DO NOTHING;
+SELECT count(*) FROM copy_on_conflict_t1;
+ count 
+-------
+     4
+(1 row)
+
+-- 3. table without unique constraint is rejected at startup
+CREATE TABLE copy_on_conflict_t2 (a int, b text);
+COPY copy_on_conflict_t2 FROM '/dev/null' DO ON CONFLICT DO NOTHING;
+ERROR:  COPY ON CONFLICT requires a unique constraint on table "copy_on_conflict_t2"
+-- 4. COPY TO does not accept ON CONFLICT
+COPY copy_on_conflict_t1 TO STDOUT DO ON CONFLICT DO NOTHING;
+ERROR:  COPY ON_CONFLICT cannot be used with COPY TO
+LINE 1: COPY copy_on_conflict_t1 TO STDOUT DO ON CONFLICT DO NOTHING...
+                                           ^
+-- 5. DO UPDATE is parsed but rejected (not implemented yet)
+COPY copy_on_conflict_t1 FROM '/dev/null' DO ON CONFLICT DO UPDATE;
+ERROR:  COPY ON CONFLICT DO UPDATE is not supported yet
+LINE 1: COPY copy_on_conflict_t1 FROM '/dev/null' DO ON CONFLICT DO ...
+                                                  ^
+HINT:  Use DO ON CONFLICT DO NOTHING, or DELETE/TRUNCATE the conflicting rows before COPY, or use INSERT ... ON CONFLICT DO UPDATE.
+-- 6. multi-column unique index
+CREATE TABLE copy_on_conflict_t3 (a int, b int, c text, UNIQUE (a, b));
+INSERT INTO copy_on_conflict_t3 VALUES (1, 1, 'keep');
+COPY copy_on_conflict_t3 FROM STDIN DO ON CONFLICT DO NOTHING;
+NOTICE:  1 row was skipped due to ON CONFLICT DO NOTHING
+SELECT * FROM copy_on_conflict_t3 ORDER BY a, b;
+ a | b |  c   
+---+---+------
+ 1 | 1 | keep
+ 1 | 2 | ok
+(2 rows)
+
+-- 7. partitioned table: uniqueness enforced per leaf partition
+CREATE TABLE copy_on_conflict_tp (id int PRIMARY KEY, v text) PARTITION BY RANGE (id);
+CREATE TABLE copy_on_conflict_tp_lo PARTITION OF copy_on_conflict_tp FOR VALUES FROM (0) TO (10);
+CREATE TABLE copy_on_conflict_tp_hi PARTITION OF copy_on_conflict_tp FOR VALUES FROM (10) TO (20);
+INSERT INTO copy_on_conflict_tp VALUES (1, 'p-old'), (11, 'h-old');
+COPY copy_on_conflict_tp FROM STDIN DO ON CONFLICT DO NOTHING;
+NOTICE:  2 rows were skipped due to ON CONFLICT DO NOTHING
+SELECT * FROM copy_on_conflict_tp ORDER BY id;
+ id |   v   
+----+-------
+  1 | p-old
+  5 | p-new
+ 11 | h-old
+ 15 | h-new
+(4 rows)
+
+-- 8. combined with ON_ERROR ignore: type errors and conflicts handled independently
+CREATE TABLE copy_on_conflict_t4 (id int PRIMARY KEY, v int);
+INSERT INTO copy_on_conflict_t4 VALUES (1, 100);
+COPY copy_on_conflict_t4 FROM STDIN WITH (ON_ERROR ignore) DO ON CONFLICT DO NOTHING;
+NOTICE:  skipping row due to data type incompatibility at line 1 for column "v": "bad-dup"
+NOTICE:  skipping row due to data type incompatibility at line 2 for column "v": "notanumber"
+NOTICE:  2 rows were skipped due to data type incompatibility
+SELECT * FROM copy_on_conflict_t4 ORDER BY id;
+ id |  v  
+----+-----
+  1 | 100
+  2 | 200
+(2 rows)
+
+-- 9. parenthesized option syntax also accepts on_conflict
+COPY copy_on_conflict_t1 FROM STDIN WITH (on_conflict 'nothing');
+SELECT * FROM copy_on_conflict_t1 WHERE id = 5;
+ id | name 
+----+------
+  5 | five
+(1 row)
+
+-- 10. unknown on_conflict value is rejected
+COPY copy_on_conflict_t1 FROM '/dev/null' WITH (on_conflict 'bogus');
+ERROR:  COPY ON_CONFLICT "bogus" not recognized
+LINE 1: COPY copy_on_conflict_t1 FROM '/dev/null' WITH (on_conflict ...
+                                                        ^
+-- cleanup
+DROP TABLE copy_on_conflict_t1, copy_on_conflict_t2, copy_on_conflict_t3,
+	copy_on_conflict_tp, copy_on_conflict_t4 CASCADE;

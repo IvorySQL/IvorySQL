@@ -143,3 +143,6 @@ test: tablespace
 
 # Test that Oracle keywords (ROWNUM, ROWID, etc.) have no special meaning in PostgreSQL mode
 test: ora_keywords_pg
+
+# COPY ON CONFLICT (AnalyticDB-compatible)
+test: copy_on_conflict
