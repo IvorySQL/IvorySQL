@@ -958,6 +958,8 @@ test_enc_setup(PG_FUNCTION_ARGS)
 					mblen,
 					valid;
 
+		if (!PG_VALID_ENCODING(i))
+			continue;
 		if (pg_encoding_max_length(i) == 1)
 			continue;
 		pg_encoding_set_invalid(i, buf);
