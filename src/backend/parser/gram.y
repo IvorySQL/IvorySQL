@@ -501,7 +501,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <boolean> opt_instead
 %type <boolean> opt_unique opt_verbose opt_full
 %type <boolean> opt_freeze opt_analyze opt_default
-%type <defelt>	opt_binary copy_delimiter
+%type <defelt>	opt_binary copy_delimiter copy_on_conflict
 
 %type <boolean> copy_from opt_program
 
@@ -3545,7 +3545,7 @@ ClosePortalStmt:
 
 CopyStmt:	COPY opt_binary qualified_name opt_column_list
 			copy_from opt_program copy_file_name copy_delimiter opt_with
-			copy_options where_clause
+			copy_options copy_on_conflict where_clause
 				{
 					CopyStmt *n = makeNode(CopyStmt);
 
@@ -3555,7 +3555,7 @@ CopyStmt:	COPY opt_binary qualified_name opt_column_list
 					n->is_from = $5;
 					n->is_program = $6;
 					n->filename = $7;
-					n->whereClause = $11;
+					n->whereClause = $12;
 
 					if (n->is_program && n->filename == NULL)
 						ereport(ERROR,
@@ -3568,7 +3568,7 @@ CopyStmt:	COPY opt_binary qualified_name opt_column_list
 								(errcode(ERRCODE_SYNTAX_ERROR),
 								 errmsg("WHERE clause not allowed with COPY TO"),
 								 errhint("Try the COPY (SELECT ... WHERE ...) TO variant."),
-								 parser_errposition(@11)));
+								 parser_errposition(@12)));
 
 					n->options = NIL;
 					/* Concatenate user-supplied flags */
@@ -3578,6 +3578,8 @@ CopyStmt:	COPY opt_binary qualified_name opt_column_list
 						n->options = lappend(n->options, $8);
 					if ($10)
 						n->options = list_concat(n->options, $10);
+					if ($11)
+						n->options = lappend(n->options, $11);
 					$$ = (Node *) n;
 				}
 			| COPY '(' PreparableStmt ')' TO opt_program copy_file_name opt_with copy_options
@@ -3625,6 +3627,23 @@ copy_file_name:
 
 copy_options: copy_opt_list							{ $$ = $1; }
 			| '(' copy_generic_opt_list ')'			{ $$ = $2; }
+		;
+
+/* COPY ON CONFLICT (AnalyticDB-compatible), a standalone clause that may
+ * follow either the old-style or the new parenthesized option syntax. */
+copy_on_conflict:
+			DO ON CONFLICT DO UPDATE
+				{
+					$$ = makeDefElem("on_conflict", (Node *) makeString("update"), @1);
+				}
+			| DO ON CONFLICT DO NOTHING
+				{
+					$$ = makeDefElem("on_conflict", (Node *) makeString("nothing"), @1);
+				}
+			| /* EMPTY */
+				{
+					$$ = NULL;
+				}
 		;
 
 /* old COPY option syntax */

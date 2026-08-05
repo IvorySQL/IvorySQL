@@ -26,6 +26,7 @@
 
 #include "access/heapam.h"
 #include "access/tableam.h"
+#include "catalog/index.h"
 #include "access/tupconvert.h"
 #include "access/xact.h"
 #include "catalog/namespace.h"
@@ -798,6 +799,7 @@ CopyFrom(CopyFromState cstate)
 	CopyMultiInsertInfo multiInsertInfo = {0};	/* pacify compiler */
 	int64		processed = 0;
 	int64		excluded = 0;
+	int64		skipped = 0;	/* rows skipped by ON CONFLICT DO NOTHING */
 	bool		has_before_insert_row_trig;
 	bool		has_instead_insert_row_trig;
 	bool		leafpart_use_multi_insert = false;
@@ -923,7 +925,14 @@ CopyFrom(CopyFromState cstate)
 	/* Verify the named relation is a valid target for INSERT */
 	CheckValidResultRel(resultRelInfo, CMD_INSERT, ONCONFLICT_NONE, NIL);
 
-	ExecOpenIndices(resultRelInfo, false);
+	/*
+	 * With ON CONFLICT we need the per-index unique operator info that is
+	 * built only in speculative mode (BuildSpeculativeIndexInfo), since
+	 * ExecCheckIndexConstraints() looks up existing conflicting tuples via
+	 * index scans keyed on those operators.
+	 */
+	ExecOpenIndices(resultRelInfo,
+					cstate->opts.on_conflict != COPY_ON_CONFLICT_NONE);
 
 	/*
 	 * Set up a ModifyTableState so we can let FDW(s) init themselves for
@@ -987,6 +996,41 @@ CopyFrom(CopyFromState cstate)
 										&mtstate->ps);
 
 	/*
+	 * COPY ON CONFLICT needs a unique constraint to detect conflicts.  For
+	 * partitioned tables the check is done per leaf partition at runtime
+	 * (each partition enforces its own uniqueness), so skip the startup
+	 * check there.
+	 */
+	if (cstate->opts.on_conflict != COPY_ON_CONFLICT_NONE &&
+		cstate->rel->rd_rel->relkind != RELKIND_PARTITIONED_TABLE)
+	{
+		List	   *indexoidlist;
+		ListCell   *lc;
+		bool		has_unique = false;
+
+		indexoidlist = RelationGetIndexList(resultRelInfo->ri_RelationDesc);
+		foreach(lc, indexoidlist)
+		{
+			Oid			indexoid = lfirst_oid(lc);
+			Relation	indexRel;
+
+			indexRel = index_open(indexoid, AccessShareLock);
+			if (indexRel->rd_index->indisunique)
+				has_unique = true;
+			index_close(indexRel, AccessShareLock);
+			if (has_unique)
+				break;
+		}
+		list_free(indexoidlist);
+
+		if (!has_unique)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("COPY ON CONFLICT requires a unique constraint on table \"%s\"",
+							RelationGetRelationName(cstate->rel))));
+	}
+
+	/*
 	 * It's generally more efficient to prepare a bunch of tuples for
 	 * insertion, and insert them in one
 	 * table_multi_insert()/ExecForeignBatchInsert() call, than call
@@ -994,7 +1038,16 @@ CopyFrom(CopyFromState cstate)
 	 * However, there are a number of reasons why we might not be able to do
 	 * this.  These are explained below.
 	 */
-	if (resultRelInfo->ri_TrigDesc != NULL &&
+	if (cstate->opts.on_conflict != COPY_ON_CONFLICT_NONE)
+	{
+		/*
+		 * COPY ON CONFLICT performs per-tuple conflict checks, which are
+		 * incompatible with multi-insert batching; force single-tuple
+		 * insertion.
+		 */
+		insertMethod = CIM_SINGLE;
+	}
+	else if (resultRelInfo->ri_TrigDesc != NULL &&
 		(resultRelInfo->ri_TrigDesc->trig_insert_before_row ||
 		 resultRelInfo->ri_TrigDesc->trig_insert_instead_row))
 	{
@@ -1369,6 +1422,59 @@ CopyFrom(CopyFromState cstate)
 					(proute == NULL || has_before_insert_row_trig))
 					ExecPartitionCheck(resultRelInfo, myslot, estate, true);
 
+				/*
+				 * With DO ON CONFLICT DO NOTHING, check the tuple against
+				 * the unique/exclusion constraints of the target table (or
+				 * leaf partition) and skip it on conflict instead of
+				 * aborting the whole COPY.  The check runs after BEFORE
+				 * INSERT triggers and constraint checks, matching the
+				 * ordering of INSERT ... ON CONFLICT.  Note that this is a
+				 * pre-check: under concurrent insertion a unique violation
+				 * may still be raised by the index insert itself.
+				 */
+				if (cstate->opts.on_conflict == COPY_ON_CONFLICT_NOTHING)
+				{
+					ItemPointerData conflictTid;
+					ItemPointerData invalidItemPtr;
+					int			ii;
+
+					ItemPointerSetInvalid(&invalidItemPtr);
+
+					/*
+					 * Leaf partitions reached via tuple routing had their
+					 * indexes opened in ExecInitPartitionInfo() without the
+					 * speculative flag (COPY's ModifyTable plan node is
+					 * NULL), so the per-index unique operator info needed
+					 * by ExecCheckIndexConstraints() is missing.  Fill it
+					 * in on first use.
+					 */
+					if (resultRelInfo != target_resultRelInfo &&
+						resultRelInfo->ri_IndexRelationInfo != NULL)
+					{
+						for (ii = 0; ii < resultRelInfo->ri_NumIndices; ii++)
+						{
+							IndexInfo  *idxinfo = resultRelInfo->ri_IndexRelationInfo[ii];
+							Relation	idxrel = resultRelInfo->ri_IndexRelationDescs[ii];
+
+							if (idxinfo->ii_Unique && idxinfo->ii_UniqueProcs == NULL &&
+								idxrel != NULL)
+								BuildSpeculativeIndexInfo(idxrel, idxinfo);
+						}
+					}
+
+					if (!ExecCheckIndexConstraints(resultRelInfo, myslot,
+												   estate, &conflictTid,
+												   &invalidItemPtr, NIL))
+					{
+						skipped++;
+
+						pgstat_progress_update_param(PROGRESS_COPY_TUPLES_SKIPPED,
+													 skipped);
+
+						continue;	/* skip this tuple */
+					}
+				}
+
 				/* Store the slot in the multi-insert buffer, when enabled. */
 				if (insertMethod == CIM_MULTI || leafpart_use_multi_insert)
 				{
@@ -1481,6 +1587,12 @@ CopyFrom(CopyFromState cstate)
 								  cstate->num_errors,
 								  cstate->num_errors));
 	}
+
+	if (cstate->opts.on_conflict == COPY_ON_CONFLICT_NOTHING && skipped > 0)
+		ereport(NOTICE,
+				errmsg_plural("%" PRIu64 " row was skipped due to ON CONFLICT DO NOTHING",
+							  "%" PRIu64 " rows were skipped due to ON CONFLICT DO NOTHING",
+							  skipped, skipped));
 
 	if (bistate != NULL)
 		FreeBulkInsertState(bistate);

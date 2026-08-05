@@ -484,6 +484,43 @@ defGetCopyOnErrorChoice(DefElem *def, ParseState *pstate, bool is_from)
 }
 
 /*
+ * Extract a CopyOnConflictChoice value from a DefElem.
+ *
+ * The DO ON CONFLICT DO UPDATE clause is parsed but not yet implemented;
+ * reject it at startup so that users get a clear error instead of a silent
+ * fallback to plain COPY.
+ */
+static CopyOnConflictChoice
+defGetCopyOnConflictChoice(DefElem *def, ParseState *pstate, bool is_from)
+{
+	char	   *sval = defGetString(def);
+
+	if (!is_from)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+		/*- translator: first %s is the name of a COPY option, e.g. ON_CONFLICT,
+		 second %s is a COPY with direction, e.g. COPY TO */
+				 errmsg("COPY %s cannot be used with %s", "ON_CONFLICT", "COPY TO"),
+				 parser_errposition(pstate, def->location)));
+
+	if (pg_strcasecmp(sval, "nothing") == 0)
+		return COPY_ON_CONFLICT_NOTHING;
+	if (pg_strcasecmp(sval, "update") == 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("COPY ON CONFLICT DO UPDATE is not supported yet"),
+				 errhint("Use DO ON CONFLICT DO NOTHING, or DELETE/TRUNCATE the conflicting rows before COPY, or use INSERT ... ON CONFLICT DO UPDATE."),
+				 parser_errposition(pstate, def->location)));
+
+	ereport(ERROR,
+			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+	/*- translator: first %s is the name of a COPY option, e.g. ON_CONFLICT */
+			 errmsg("COPY %s \"%s\" not recognized", "ON_CONFLICT", sval),
+			 parser_errposition(pstate, def->location)));
+	return COPY_ON_CONFLICT_NONE;	/* keep compiler quiet */
+}
+
+/*
  * Extract REJECT_LIMIT value from a DefElem.
  *
  * REJECT_LIMIT can be specified in two ways: as an int64 for the COPY command
@@ -567,6 +604,7 @@ ProcessCopyOptions(ParseState *pstate,
 	bool		freeze_specified = false;
 	bool		header_specified = false;
 	bool		on_error_specified = false;
+	bool		on_conflict_specified = false;
 	bool		log_verbosity_specified = false;
 	bool		reject_limit_specified = false;
 	ListCell   *option;
@@ -727,6 +765,13 @@ ProcessCopyOptions(ParseState *pstate,
 				errorConflictingDefElem(defel, pstate);
 			on_error_specified = true;
 			opts_out->on_error = defGetCopyOnErrorChoice(defel, pstate, is_from);
+		}
+		else if (strcmp(defel->defname, "on_conflict") == 0)
+		{
+			if (on_conflict_specified)
+				errorConflictingDefElem(defel, pstate);
+			on_conflict_specified = true;
+			opts_out->on_conflict = defGetCopyOnConflictChoice(defel, pstate, is_from);
 		}
 		else if (strcmp(defel->defname, "log_verbosity") == 0)
 		{

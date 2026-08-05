@@ -28,8 +28,18 @@
 #define COPY_HEADER_TRUE	1
 
 /*
- * Represents where to save input processing errors.  More values to be added
- * in the future.
+ * What to do when a row conflicts with a unique constraint during COPY
+ * FROM.  DO ON CONFLICT DO UPDATE is parsed but not yet implemented.
+ */
+typedef enum CopyOnConflictChoice
+{
+	COPY_ON_CONFLICT_NONE,		/* no ON CONFLICT clause */
+	COPY_ON_CONFLICT_NOTHING,	/* DO ON CONFLICT DO NOTHING */
+	COPY_ON_CONFLICT_UPDATE		/* DO ON CONFLICT DO UPDATE (not yet implemented) */
+} CopyOnConflictChoice;
+
+/*
+ * Represents the type of an error to be handled by COPY FROM.
  */
 typedef enum CopyOnErrorChoice
 {
@@ -82,6 +92,7 @@ typedef struct CopyFormatOptions
 	bool		force_null_all; /* FORCE_NULL *? */
 	bool	   *force_null_flags;	/* per-column CSV FN flags */
 	bool		convert_selectively;	/* do selective binary conversion? */
+	CopyOnConflictChoice on_conflict;	/* behavior when unique constraint conflict happens */
 	CopyOnErrorChoice on_error; /* what to do when error happened */
 	CopyLogVerbosityChoice log_verbosity;	/* verbosity of logged messages */
 	int64		reject_limit;	/* maximum tolerable number of errors */
