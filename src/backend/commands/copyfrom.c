@@ -776,6 +776,151 @@ CopyMultiInsertInfoStore(CopyMultiInsertInfo *miinfo, ResultRelInfo *rri,
 }
 
 /*
+ * CopyOnConflictUpdate -- subroutine for COPY ON CONFLICT DO UPDATE
+ *
+ * Lock the conflicting tuple (waiting for any concurrent transaction) and
+ * overwrite it with the input row via the ModifyTable update machinery
+ * (BEFORE/AFTER ROW UPDATE triggers, index maintenance, transition
+ * capture).  Returns false if the conflicting tuple was concurrently
+ * modified or deleted, in which case the caller must re-run the conflict
+ * check from scratch.
+ */
+static bool
+CopyOnConflictUpdate(IvyModifyTableContext *context,
+					 ResultRelInfo *resultRelInfo,
+					 ItemPointer conflictTid,
+					 TupleTableSlot *excludedSlot,
+					 IvyUpdateContext *updateCxt)
+{
+	EState	   *estate = context->estate;
+	Relation	relation = resultRelInfo->ri_RelationDesc;
+	TupleTableSlot *existing;
+	TM_FailureData tmfd;
+	LockTupleMode lockmode;
+	TM_Result	test;
+	TM_Result	result;
+	Datum		xminDatum;
+	TransactionId xmin;
+	bool		isnull;
+
+	/*
+	 * Slot for the existing (conflicting) tuple; used only by the lock
+	 * machinery and by error paths.
+	 */
+	existing = table_slot_create(relation, &estate->es_tupleTable);
+
+	/* Determine lock mode to use */
+	lockmode = LockTupleExclusive;
+
+	/*
+	 * Lock the conflicting tuple.  A row locking conflict here means our
+	 * previous conclusion that the tuple is conclusively committed is not
+	 * true anymore (TM_Updated/TM_Deleted) and the caller should retry.
+	 */
+	test = table_tuple_lock(relation, conflictTid, estate->es_snapshot,
+							existing, estate->es_output_cid,
+							lockmode, LockWaitBlock, 0, &tmfd);
+	switch (test)
+	{
+		case TM_Ok:
+			/* success! */
+			break;
+
+		case TM_Invisible:
+
+			/*
+			 * This can occur when a just inserted row is updated again
+			 * in the same command, e.g. because multiple rows with the
+			 * same conflicting key values are inserted in one COPY.
+			 */
+			xminDatum = slot_getsysattr(existing,
+										MinTransactionIdAttributeNumber,
+										&isnull);
+			Assert(!isnull);
+			xmin = DatumGetTransactionId(xminDatum);
+
+			if (TransactionIdIsCurrentTransactionId(xmin))
+				ereport(ERROR,
+						(errcode(ERRCODE_CARDINALITY_VIOLATION),
+						 errmsg("ON CONFLICT DO UPDATE command cannot affect row a second time"),
+						 errhint("Ensure that no rows proposed for insertion within the same command have duplicate constrained values.")));
+			/* This shouldn't happen */
+			elog(ERROR, "attempted to lock invisible tuple");
+			break;
+
+		case TM_SelfModified:
+
+			/*
+			 * This state should never be reached.  As a dirty snapshot is
+			 * used to find conflicting tuples, speculative insertion
+			 * wouldn't have seen this row to conflict with.
+			 */
+			elog(ERROR, "unexpected self-updated tuple");
+			break;
+
+		case TM_Updated:
+			if (IsolationUsesXactSnapshot())
+				ereport(ERROR,
+						(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
+						 errmsg("could not serialize access due to concurrent update")));
+
+			/* Tell caller to try again from the very start. */
+			ExecClearTuple(existing);
+			return false;
+
+		case TM_Deleted:
+			if (IsolationUsesXactSnapshot())
+				ereport(ERROR,
+						(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
+						 errmsg("could not serialize access due to concurrent delete")));
+
+			/* see TM_Updated case */
+			ExecClearTuple(existing);
+			return false;
+
+		default:
+			elog(ERROR, "unrecognized table_tuple_lock status: %u", test);
+	}
+
+	/* Success, the tuple is locked. */
+
+	/*
+	 * Run BEFORE ROW UPDATE triggers (if any) and perform the update.
+	 * oldtuple is left NULL: the trigger machinery fetches the old row
+	 * itself from conflictTid.  The tuple is already locked, so
+	 * table_tuple_update inside ExecUpdateAct does not block.
+	 */
+	if (ExecUpdatePrologue(context, resultRelInfo,
+						   conflictTid, NULL, excludedSlot,
+						   &result))
+	{
+		updateCxt->crossPartUpdate = false;
+		updateCxt->updateIndexes = TU_None;
+		updateCxt->lockmode = LockTupleExclusive;
+
+		result = ExecUpdateAct(context, resultRelInfo,
+							   conflictTid, NULL, excludedSlot,
+							   true, updateCxt);
+
+		if (result == TM_Ok)
+			ExecUpdateEpilogue(context, updateCxt,
+							   resultRelInfo,
+							   conflictTid, NULL,
+							   excludedSlot);
+		else if (result == TM_Updated)
+			ereport(ERROR,
+					(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
+					 errmsg("concurrent update of row during COPY ON CONFLICT DO UPDATE")));
+		else
+			ereport(ERROR,
+					(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
+					 errmsg("could not update row during COPY ON CONFLICT DO UPDATE: %d", (int) result)));
+	}
+
+	return true;
+}
+
+/*
  * Copy FROM file to relation.
  */
 uint64
@@ -793,6 +938,13 @@ CopyFrom(CopyFromState cstate)
 	 * commands of this transaction are visible to the update.
 	 */
 	estate->es_output_cid = GetCurrentCommandId(true);
+
+	/*
+	 * COPY ON CONFLICT locks conflicting tuples (CopyOnConflictUpdate);
+	 * that needs a snapshot in the executor state.
+	 */
+	if (cstate->opts.on_conflict != COPY_ON_CONFLICT_NONE)
+		estate->es_snapshot = GetActiveSnapshot();
 	ExprContext *econtext;
 	TupleTableSlot *singleslot = NULL;
 	MemoryContext oldcontext = CurrentMemoryContext;
@@ -1444,6 +1596,8 @@ CopyFrom(CopyFromState cstate)
 				{
 					ItemPointerData conflictTid;
 					ItemPointerData invalidItemPtr;
+					bool		specConflict = false;
+					uint32		specToken = 0;
 					int			ii;
 
 					ItemPointerSetInvalid(&invalidItemPtr);
@@ -1470,6 +1624,7 @@ CopyFrom(CopyFromState cstate)
 						}
 					}
 
+				retry:
 					if (!ExecCheckIndexConstraints(resultRelInfo, myslot,
 												   estate, &conflictTid,
 												   &invalidItemPtr, NIL))
@@ -1533,36 +1688,19 @@ CopyFrom(CopyFromState cstate)
 								mtstate->mt_transition_capture = NULL;
 
 							/*
-							 * Run BEFORE ROW UPDATE triggers (if any) and
-							 * perform the update.  oldtuple is left NULL:
-							 * the trigger machinery fetches the old row
-							 * itself from conflictTid.
+							 * Lock the conflicting row (waiting out any
+							 * concurrent transaction) and overwrite it.
+							 * If the row was concurrently modified or
+							 * deleted, re-run the whole conflict check.
 							 */
-							if (ExecUpdatePrologue(&context, resultRelInfo,
-												   &conflictTid, NULL, myslot,
-												   &result))
+							if (!CopyOnConflictUpdate(&context, resultRelInfo,
+													  &conflictTid, myslot,
+													  &updateCxt))
 							{
-								updateCxt.crossPartUpdate = false;
-								updateCxt.updateIndexes = TU_None;
-								updateCxt.lockmode = LockTupleExclusive;
-
-								result = ExecUpdateAct(&context, resultRelInfo,
-													   &conflictTid, NULL, myslot,
-													   true, &updateCxt);
-
-								if (result == TM_Ok)
-									ExecUpdateEpilogue(&context, &updateCxt,
-													   resultRelInfo,
-													   &conflictTid, NULL,
-													   myslot);
-								else if (result == TM_Updated)
-									ereport(ERROR,
-											(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
-											 errmsg("concurrent update of row during COPY ON CONFLICT DO UPDATE")));
-								else
-									ereport(ERROR,
-											(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
-											 errmsg("could not update row during COPY ON CONFLICT DO UPDATE: %d", (int) result)));
+								/* Restore INSERT semantics, then retry. */
+								mtstate->operation = CMD_INSERT;
+								mtstate->mt_transition_capture = cstate->transition_capture;
+								goto retry;
 							}
 
 							/* Restore INSERT semantics for the rest of COPY. */
@@ -1575,6 +1713,67 @@ CopyFrom(CopyFromState cstate)
 
 							continue;	/* row handled as UPDATE */
 						}
+					}
+					else
+					{
+						/*
+						 * Pre-check passed.  Insert speculatively so that a
+						 * concurrent conflicting insert is detected
+						 * atomically by the index insert (no TOCTOU
+						 * window); on conflict, back the tuple out and
+						 * re-run the conflict check, which will now take
+						 * the DO NOTHING / DO UPDATE path above.
+						 */
+						List	   *recheckIndexes = NIL;
+
+						if (specToken == 0)
+							specToken = SpeculativeInsertionLockAcquire(GetCurrentTransactionId());
+
+						table_tuple_insert_speculative(resultRelInfo->ri_RelationDesc,
+													   myslot,
+													   estate->es_output_cid,
+													   0, NULL, specToken);
+
+						recheckIndexes = ExecInsertIndexTuples(resultRelInfo,
+															   estate,
+															   EIIT_NO_DUPE_ERROR,
+															   myslot, NIL,
+															   &specConflict);
+						list_free(recheckIndexes);
+						recheckIndexes = NIL;
+
+						if (specConflict)
+						{
+							/*
+							 * A concurrent transaction inserted a
+							 * conflicting row: back out the speculative
+							 * insert and retry the conflict check.
+							 */
+							table_tuple_complete_speculative(resultRelInfo->ri_RelationDesc,
+															 myslot, specToken,
+															 false);
+							SpeculativeInsertionLockRelease(GetCurrentTransactionId());
+							specToken = 0;
+							specConflict = false;
+							goto retry;
+						}
+
+						/* No conflict: confirm the speculative insert. */
+						table_tuple_complete_speculative(resultRelInfo->ri_RelationDesc,
+														 myslot, specToken,
+														 true);
+						SpeculativeInsertionLockRelease(GetCurrentTransactionId());
+						specToken = 0;
+
+						/* AFTER ROW INSERT triggers */
+						ExecARInsertTriggers(estate, resultRelInfo, myslot,
+											 NIL, cstate->transition_capture);
+
+						processed++;
+						pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED,
+													 processed);
+
+						continue;	/* row inserted via speculative path */
 					}
 				}
 

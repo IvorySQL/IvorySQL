@@ -481,11 +481,14 @@ COPY { <replaceable class="parameter">table_name</replaceable> [ ( <replaceable 
       tables, uniqueness is enforced per leaf partition.
      </para>
      <para>
-      The conflict check is performed before insertion, so under concurrent
-      writes a unique violation may still be raised by the index insert
-      itself.  For <literal>DO ON CONFLICT DO UPDATE</literal>, a row that is
-      concurrently modified raises an error rather than being retried.  For
-      strictly concurrent workloads, prefer
+      Conflict detection is atomic: after an initial constraint check, rows
+      are inserted speculatively so that a concurrent conflicting insert is
+      detected by the index insert itself, and the conflicting row is then
+      handled (or the insertion retried) without a check-to-insert race.  For
+      <literal>DO ON CONFLICT DO UPDATE</literal>, a row that is concurrently
+      modified is locked and the update is retried once the concurrent
+      transaction completes.  Duplicate constrained values within a single
+      <command>COPY</command> raise the same error as
       <command>INSERT ... ON CONFLICT</command>.
      </para>
     </listitem>

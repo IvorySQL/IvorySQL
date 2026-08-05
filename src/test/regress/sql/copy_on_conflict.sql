@@ -144,6 +144,28 @@ SELECT * FROM copy_on_conflict_u7_log;
 DROP TABLE IF EXISTS copy_on_conflict_u5 CASCADE;
 CREATE TABLE copy_on_conflict_u5 (id int, uid int UNIQUE, v text) PARTITION BY RANGE (id);
 
+-- 18. duplicate constrained values within one COPY with DO UPDATE raises
+-- the standard INSERT ON CONFLICT error ('cannot affect row a second time')
+DROP TABLE IF EXISTS copy_on_conflict_u8 CASCADE;
+CREATE TABLE copy_on_conflict_u8 (id int PRIMARY KEY, v text);
+INSERT INTO copy_on_conflict_u8 VALUES (1, 'existing');
+COPY copy_on_conflict_u8 FROM STDIN DO ON CONFLICT DO UPDATE;
+1	first
+1	second
+\.
+SELECT * FROM copy_on_conflict_u8;
+
+-- 19. same for DO NOTHING: the second duplicate is also skipped, no error
+DROP TABLE IF EXISTS copy_on_conflict_u9 CASCADE;
+CREATE TABLE copy_on_conflict_u9 (id int PRIMARY KEY, v text);
+INSERT INTO copy_on_conflict_u9 VALUES (1, 'existing');
+COPY copy_on_conflict_u9 FROM STDIN DO ON CONFLICT DO NOTHING;
+1	first
+1	second
+2	ok
+\.
+SELECT * FROM copy_on_conflict_u9 ORDER BY id;
+
 -- cleanup
 DROP TABLE copy_on_conflict_t1, copy_on_conflict_t2, copy_on_conflict_t3,
 	copy_on_conflict_tp, copy_on_conflict_tp_lo, copy_on_conflict_tp_hi,

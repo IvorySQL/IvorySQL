@@ -39,7 +39,7 @@ COPY copy_on_conflict_t1 TO STDOUT DO ON CONFLICT DO NOTHING;
 ERROR:  COPY ON_CONFLICT cannot be used with COPY TO
 LINE 1: COPY copy_on_conflict_t1 TO STDOUT DO ON CONFLICT DO NOTHING...
                                            ^
--- 5. DO UPDATE is parsed but rejected (not implemented yet)
+-- 5. DO UPDATE with empty input: no conflicts, no-op (see section below for behavior)
 COPY copy_on_conflict_t1 FROM '/dev/null' DO ON CONFLICT DO UPDATE;
 -- 6. multi-column unique index
 CREATE TABLE copy_on_conflict_t3 (a int, b int, c text, UNIQUE (a, b));
@@ -200,6 +200,36 @@ NOTICE:  table "copy_on_conflict_u5" does not exist, skipping
 CREATE TABLE copy_on_conflict_u5 (id int, uid int UNIQUE, v text) PARTITION BY RANGE (id);
 ERROR:  UNIQUE constraint on partitioned table must include all partitioning columns
 DETAIL:  UNIQUE constraint on table "copy_on_conflict_u5" lacks column "id" which is part of the partition key.
+-- 18. duplicate constrained values within one COPY with DO UPDATE raises
+-- the standard INSERT ON CONFLICT error ('cannot affect row a second time')
+DROP TABLE IF EXISTS copy_on_conflict_u8 CASCADE;
+NOTICE:  table "copy_on_conflict_u8" does not exist, skipping
+CREATE TABLE copy_on_conflict_u8 (id int PRIMARY KEY, v text);
+INSERT INTO copy_on_conflict_u8 VALUES (1, 'existing');
+COPY copy_on_conflict_u8 FROM STDIN DO ON CONFLICT DO UPDATE;
+ERROR:  ON CONFLICT DO UPDATE command cannot affect row a second time
+HINT:  Ensure that no rows proposed for insertion within the same command have duplicate constrained values.
+CONTEXT:  COPY copy_on_conflict_u8, line 2: "1	second"
+SELECT * FROM copy_on_conflict_u8;
+ id |    v     
+----+----------
+  1 | existing
+(1 row)
+
+-- 19. same for DO NOTHING: the second duplicate is also skipped, no error
+DROP TABLE IF EXISTS copy_on_conflict_u9 CASCADE;
+NOTICE:  table "copy_on_conflict_u9" does not exist, skipping
+CREATE TABLE copy_on_conflict_u9 (id int PRIMARY KEY, v text);
+INSERT INTO copy_on_conflict_u9 VALUES (1, 'existing');
+COPY copy_on_conflict_u9 FROM STDIN DO ON CONFLICT DO NOTHING;
+NOTICE:  2 rows were skipped due to ON CONFLICT DO NOTHING
+SELECT * FROM copy_on_conflict_u9 ORDER BY id;
+ id |    v     
+----+----------
+  1 | existing
+  2 | ok
+(2 rows)
+
 -- cleanup
 DROP TABLE copy_on_conflict_t1, copy_on_conflict_t2, copy_on_conflict_t3,
 	copy_on_conflict_tp, copy_on_conflict_tp_lo, copy_on_conflict_tp_hi,
