@@ -158,6 +158,15 @@ CREATE TYPE oracle_object_type AS OBJECT
 -- Oracle object types provide a system-defined attribute-value constructor.
 SELECT oracle_object_type(1, 'one');
 
+-- An ordinary routine with the same name and arguments takes precedence.
+CREATE FUNCTION oracle_object_type(integer, varchar)
+RETURNS oracle_object_type
+LANGUAGE SQL IMMUTABLE
+AS 'SELECT ROW($1 + 100, $2)::oracle_object_type';
+/
+SELECT oracle_object_type(1, 'one');
+DROP FUNCTION oracle_object_type(integer, varchar);
+
 -- Object values retain composite equality and ordering semantics.
 SELECT oracle_object_type(1, 'one') = oracle_object_type(1, 'one');
 SELECT oracle_object_type(1, 'one') < oracle_object_type(2, 'two');
