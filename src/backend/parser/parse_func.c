@@ -56,6 +56,7 @@ static void unify_hypothetical_args(ParseState *pstate,
 									List *fargs, int numAggregatedArgs,
 									Oid *actual_arg_types, Oid *declared_arg_types);
 static Oid	FuncNameAsType(List *funcname);
+static Oid	FuncNameAsCompositeType(List *funcname);
 static Node *ParseComplexProjection(ParseState *pstate, const char *funcname,
 									Node *first_arg, int location);
 static Oid	LookupFuncNameInternal(ObjectType objtype, List *funcname,
@@ -419,6 +420,65 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 			function_from = FUNC_FROM_PACKAGE;
 	}
 
+	/*
+	 * Resolve object.method(args) as method(object, args) in Oracle mode.
+	 * Member routines use the object's composite value as their first (SELF)
+	 * argument.  Package-qualified lookup has already failed at this point.
+	 * An existing schema still takes precedence over member notation.
+	 *
+	 * For now this handles a simple object column reference, which covers SQL
+	 * expressions and gives PL/iSQL's member-method implementation a normal
+	 * pg_proc calling convention to target.
+	 */
+	if (fdresult == FUNCDETAIL_NOTFOUND &&
+		ORA_PARSER == compatible_db &&
+		!proc_call && list_length(funcname) == 2 &&
+		agg_order == NIL && agg_filter == NULL &&
+		!agg_star && !agg_distinct && over == NULL &&
+		!func_variadic && nargs < FUNC_MAX_ARGS)
+	{
+		const char *objectname = strVal(linitial(funcname));
+		Node	   *self;
+
+		self = OidIsValid(LookupExplicitNamespace(objectname, true)) ? NULL :
+			colNameToVar(pstate, objectname, false, location);
+		if (self != NULL && ISCOMPLEX(exprType(self)))
+		{
+			List	   *methodname = list_make1(copyObject(lsecond(funcname)));
+			List	   *methodargs = lcons(self, list_copy(fargs));
+			Oid			method_arg_types[FUNC_MAX_ARGS];
+			FuncDetailCode method_result;
+			int			i;
+
+			method_arg_types[0] = exprType(self);
+			for (i = 0; i < nargs; i++)
+				method_arg_types[i + 1] = actual_arg_types[i];
+
+			method_result = func_get_detail(methodname, methodargs, argnames,
+											nargs + 1, method_arg_types,
+											!func_variadic, true, false,
+											&fgc_flags,
+											&funcid, &rettype, &retset,
+											&nvargs, &vatype,
+											&declared_arg_types, &argdefaults);
+			if (method_result != FUNCDETAIL_NOTFOUND)
+			{
+				fdresult = method_result;
+				funcname = methodname;
+				fargs = methodargs;
+				nargs++;
+				for (i = 0; i < nargs; i++)
+					actual_arg_types[i] = method_arg_types[i];
+				first_arg = self;
+			}
+			else
+			{
+				list_free(methodname);
+				list_free(methodargs);
+			}
+		}
+	}
+
 	if (fdresult == FUNCDETAIL_NOTFOUND)
 		fdresult = func_get_detail(funcname, fargs, argnames, nargs,
 								   actual_arg_types,
@@ -427,6 +487,49 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 								   &funcid, &rettype, &retset,
 								   &nvargs, &vatype,
 								   &declared_arg_types, &argdefaults);
+
+	/*
+	 * Oracle object types have a system-defined constructor whose name is
+	 * the same as the type.  PostgreSQL composite types normally require a
+	 * ROW expression and an explicit cast instead.  In Oracle mode, accept a
+	 * still-unresolved call of a composite type name as that constructor.
+	 *
+	 * Do this only after ordinary routine lookup, so a user-defined
+	 * constructor with the same signature continues to take precedence.
+	 */
+	if (fdresult == FUNCDETAIL_NOTFOUND &&
+		ORA_PARSER == compatible_db &&
+		!is_column && !proc_call && argnames == NIL &&
+		agg_order == NIL && agg_filter == NULL &&
+		!agg_star && !agg_distinct && over == NULL &&
+		!func_variadic)
+	{
+		Oid			targetType = FuncNameAsCompositeType(funcname);
+
+		if (OidIsValid(targetType))
+		{
+			RowExpr    *row = makeNode(RowExpr);
+			Node	   *constructor;
+
+			row->args = fargs;
+			row->row_typeid = RECORDOID;
+			row->row_format = COERCE_EXPLICIT_CALL;
+			row->colnames = NIL;
+			row->location = location;
+
+			constructor = coerce_to_target_type(pstate,
+											 (Node *) row, RECORDOID,
+											 targetType, -1,
+											 COERCION_EXPLICIT,
+											 COERCE_EXPLICIT_CALL,
+											 location);
+			if (constructor != NULL)
+			{
+				cancel_parser_errposition_callback(&pcbstate);
+				return constructor;
+			}
+		}
+	}
 
 	cancel_parser_errposition_callback(&pcbstate);
 
@@ -2421,6 +2524,37 @@ FuncNameAsType(List *funcname)
 		result = typeTypeId(typtup);
 	else
 		result = InvalidOid;
+
+	ReleaseSysCache(typtup);
+	return result;
+}
+
+/*
+ * FuncNameAsCompositeType
+ *		Return the OID when a possibly-qualified name denotes a composite type.
+ *
+ * FuncNameAsType deliberately excludes composite types because they are not
+ * valid PostgreSQL function-style casts.  Oracle attribute-value
+ * constructors need precisely that excluded case, so keep the lookup
+ * separate rather than weakening the existing cast rules.
+ */
+static Oid
+FuncNameAsCompositeType(List *funcname)
+{
+	Oid			result = InvalidOid;
+	Type		typtup;
+	Form_pg_type typeform;
+
+	typtup = LookupTypeNameExtended(NULL, makeTypeNameFromNameList(funcname),
+									NULL, false, false);
+	if (typtup == NULL)
+		return InvalidOid;
+
+	typeform = (Form_pg_type) GETSTRUCT(typtup);
+	if (typeform->typisdefined &&
+		typeform->typtype == TYPTYPE_COMPOSITE &&
+		OidIsValid(typeform->typrelid))
+		result = typeform->oid;
 
 	ReleaseSysCache(typtup);
 	return result;

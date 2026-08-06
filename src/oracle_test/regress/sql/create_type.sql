@@ -155,7 +155,27 @@ CREATE TYPE oracle_object_type AS OBJECT
 	label varchar(20)
 );
 
-SELECT ROW(1, 'one')::oracle_object_type;
+-- Oracle object types provide a system-defined attribute-value constructor.
+SELECT oracle_object_type(1, 'one');
+
+-- Object values retain composite equality and ordering semantics.
+SELECT oracle_object_type(1, 'one') = oracle_object_type(1, 'one');
+SELECT oracle_object_type(1, 'one') < oracle_object_type(2, 'two');
+
+-- Constructor arguments are coerced to their declared attribute types.
+SELECT oracle_object_type('2', 'two');
+
+-- Member-call notation passes the object value as the routine's SELF value.
+CREATE FUNCTION object_label(oracle_object_type)
+RETURNS varchar
+LANGUAGE SQL IMMUTABLE
+AS 'SELECT ($1).label';
+/
+
+SELECT value.object_label()
+FROM (VALUES (oracle_object_type(1, 'one'))) AS objects(value);
+
+DROP FUNCTION object_label(oracle_object_type);
 DROP TYPE oracle_object_type;
 
 CREATE FUNCTION get_default_test() RETURNS SETOF default_test_row AS '
