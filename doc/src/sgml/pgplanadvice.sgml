@@ -266,8 +266,9 @@ SEQ_SCAN(<replaceable>target</replaceable> [ ... ])
 TID_SCAN(<replaceable>target</replaceable> [ ... ])
 INDEX_SCAN(<replaceable>target</replaceable> <replaceable>index_name</replaceable> [ ... ])
 INDEX_ONLY_SCAN(<replaceable>target</replaceable> <replaceable>index_name</replaceable> [ ... ])
-FOREIGN_SCAN((<replaceable>target</replaceable> [ ... ]) [ ... ])
-BITMAP_HEAP_SCAN(<replaceable>target</replaceable> [ ... ])</synopsis>
+FOREIGN_JOIN((<replaceable>target</replaceable> [ ... ]) [ ... ])
+BITMAP_HEAP_SCAN(<replaceable>target</replaceable> [ ... ])
+DO_NOT_SCAN(<replaceable>target</replaceable> [ ... ])</synopsis>
 
    <para>
     <literal>SEQ_SCAN</literal> specifies that each target should be
@@ -287,14 +288,25 @@ BITMAP_HEAP_SCAN(<replaceable>target</replaceable> [ ... ])</synopsis>
    </para>
 
    <para>
-    <literal>FOREIGN_SCAN</literal> specifies that a join between two or
+    <literal>FOREIGN_JOIN</literal> specifies that a join between two or
     more foreign tables should be pushed down to a remote server so
     that it can be implemented as a single <literal>Foreign Scan</literal>.
-    Specifying <literal>FOREIGN_SCAN</literal> for a single foreign table is
+    Specifying <literal>FOREIGN_JOIN</literal> for a single foreign table is
     neither necessary nor permissible: a <literal>Foreign Scan</literal> will
     need to be used regardless. If you want to prevent a join from being
     pushed down, consider using the <literal>JOIN_ORDER</literal> tag for
     that purpose.
+   </para>
+
+   <para>
+    <literal>DO_NOT_SCAN</literal> specifies that a particular target
+    should not appear in the final plan at all. In most cases, this is
+    impossible, and will simply cause the scan of the target relation to
+    be marked disabled. However, in certain cases, the planner considers
+    optimizations where a portion of the plan tree is copied and mutated,
+    and then considered as an alternative to the original. In those cases,
+    <literal>DO_NOT_SCAN</literal> can be used to exclude the non-preferred
+    alternative.
    </para>
 
    <para>
@@ -383,7 +395,7 @@ join_method_name(<replaceable>join_method_item</replaceable> [ ... ])
 
 <phrase>where <replaceable>join_method_name</replaceable> is:</phrase>
 
-{ MERGE_JOIN_MATERIALIZE | MERGE_JOIN_PLAIN | NESTED_LOOP_MATERIALIZE | NESTED_LOOP_PLAIN | HASH_JOIN }
+{ MERGE_JOIN_MATERIALIZE | MERGE_JOIN_PLAIN | NESTED_LOOP_MATERIALIZE | NESTED_LOOP_MEMOIZE | NESTED_LOOP_PLAIN | HASH_JOIN }
 
 <phrase>and <replaceable>join_method_item</replaceable> is:</phrase>
 

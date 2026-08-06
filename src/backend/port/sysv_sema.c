@@ -301,16 +301,20 @@ IpcSemaphoreCreate(int numSems)
 
 
 /*
- * Report amount of shared memory needed for semaphores
+ * Request shared memory needed for semaphores
  */
-Size
-PGSemaphoreShmemSize(int maxSemas)
+void
+PGSemaphoreShmemRequest(int maxSemas)
 {
-	return mul_size(maxSemas, sizeof(PGSemaphoreData));
+	/* Need a PGSemaphoreData per semaphore */
+	ShmemRequestStruct(.name = "Semaphores",
+					   .size = mul_size(maxSemas, sizeof(PGSemaphoreData)),
+					   .ptr = (void **) &sharedSemas,
+		);
 }
 
 /*
- * PGReserveSemaphores --- initialize semaphore support
+ * PGSemaphoreInit --- initialize semaphore support
  *
  * This is called during postmaster start or shared memory reinitialization.
  * It should do whatever is needed to be able to support up to maxSemas
@@ -327,7 +331,7 @@ PGSemaphoreShmemSize(int maxSemas)
  * have clobbered.)
  */
 void
-PGReserveSemaphores(int maxSemas)
+PGSemaphoreInit(int maxSemas)
 {
 	struct stat statbuf;
 
@@ -343,8 +347,6 @@ PGReserveSemaphores(int maxSemas)
 				 errmsg("could not stat data directory \"%s\": %m",
 						DataDir)));
 
-	sharedSemas = (PGSemaphore)
-		ShmemAlloc(PGSemaphoreShmemSize(maxSemas));
 	numSharedSemas = 0;
 	maxSharedSemas = maxSemas;
 

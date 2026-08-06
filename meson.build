@@ -2140,7 +2140,7 @@ elif cc.links('''
 endif
 
 
-# Check for __get_cpuid_count() and __cpuidex() in a similar fashion.
+# Check for __get_cpuid_count()
 if cc.links('''
     #include <cpuid.h>
     int main(int arg, char **argv)
@@ -2151,12 +2151,19 @@ if cc.links('''
     ''', name: '__get_cpuid_count',
     args: test_c_args)
   cdata.set('HAVE__GET_CPUID_COUNT', 1)
-elif cc.links('''
+endif
+
+# Check for __cpuidex()
+if cc.links('''
+    #ifdef _MSC_VER
     #include <intrin.h>
+    #else
+    #include <cpuid.h>
+    #endif
     int main(int arg, char **argv)
     {
         unsigned int exx[4] = {0, 0, 0, 0};
-        __cpuidex(exx, 7, 0);
+        __cpuidex((int *) exx, 7, 0);
     }
     ''', name: '__cpuidex',
     args: test_c_args)
@@ -2184,6 +2191,20 @@ choke me
 endif
 
 
+# Check whether the C++ compiler supports designated initializers.
+# These are used by PG_MODULE_MAGIC, and we use the result of this
+# test to decide whether to enable the test_cplusplusext test module.
+# Designated initializers only got standardized in C++20.  In GCC and
+# Clang they also work when using earlier C++ versions, but MSVC
+# really only supports them when its configured to be in C++20 mode or
+# higher.
+if have_cxx
+  have_cxx_desinit = cxx.compiles('struct S { int x; } s = { .x = 1 };', name: 'C++ designated initializers')
+else
+  have_cxx_desinit = false
+endif
+
+
 
 ###############################################################
 # Compiler flags
@@ -2206,13 +2227,11 @@ vectorize_cflags = cc.get_supported_arguments(['-ftree-vectorize'])
 unroll_loops_cflags = cc.get_supported_arguments(['-funroll-loops'])
 
 common_warning_flags = [
-  '-Wmissing-prototypes',
   '-Wpointer-arith',
   # Really don't want VLAs to be used in our dialect of C
   '-Werror=vla',
   # On macOS, complain about usage of symbols newer than the deployment target
   '-Werror=unguarded-availability-new',
-  '-Wendif-labels',
   '-Wmissing-format-attribute',
   '-Wcast-function-type',
   '-Wshadow=compatible-local',
@@ -2220,7 +2239,15 @@ common_warning_flags = [
   '-Wformat-security',
 ]
 
-cflags_warn += cc.get_supported_arguments(common_warning_flags)
+# C-only warnings
+c_warning_flags = [
+  '-Wmissing-prototypes',
+  '-Wold-style-declaration',
+  '-Wold-style-definition',
+  '-Wstrict-prototypes',
+]
+
+cflags_warn += cc.get_supported_arguments(common_warning_flags, c_warning_flags)
 if have_cxx
   cxxflags_warn += cxx.get_supported_arguments(common_warning_flags)
 endif
@@ -2261,9 +2288,6 @@ if cc.has_argument('-Wmissing-variable-declarations')
   cflags_no_missing_var_decls += '-Wno-missing-variable-declarations'
 endif
 
-# These are C-only flags, supported in all C11-capable GCC/Clang versions.
-cflags_warn += cc.get_supported_arguments(['-Wstrict-prototypes', '-Wold-style-definition'])
-
 # The following tests want to suppress various unhelpful warnings by adding
 # -Wno-foo switches.  But gcc won't complain about unrecognized -Wno-foo
 # switches, so we have to test for the positive form and if that works,
@@ -2302,22 +2326,47 @@ endforeach
 
 
 if cc.get_id() == 'msvc'
-  cflags_warn += [
+  msvc_common_warning_flags = [
+    # Disable warnings in system headers
+    '/external:anglebrackets',
+    '/external:W0',
+
+    # Warnings to disable:
+    # from /W2:
+    '/wd4244', # conversion from 'type1' to 'type2', possible loss of data
+
+    # Additional warnings to enable:
+    '/w24062', # enumerator 'identifier' in switch of enum 'enumeration' is not handled [like -Wswitch]
+    '/w24102', # unreferenced label [like -Wunused-label]
+
+    # Turn this into an error, to match other compilers (as of C99)
+    '/we4013', # 'function' undefined; assuming extern returning int' [like -Wimplicit-function-declaration]
+  ]
+
+  msvc_c_warning_flags = [
     # Warnings to disable:
     # from /W1:
     '/wd4090', # different 'modifier' qualifiers
-    # from /W2:
-    '/wd4244', # conversion from 'type1' to 'type2', possible loss of data
     # from /W3:
     '/wd4018', # signed/unsigned mismatch
     '/wd4101', # unreferenced local variable [like -Wunused-variable, but there is no "unused" attribute, so too noisy]
     '/wd4267', # conversion from 'size_t' to 'type', possible loss of data
 
     # Additional warnings to enable:
-    '/w24062', # enumerator 'identifier' in switch of enum 'enumeration' is not handled [like -Wswitch]
-    '/w24102', # unreferenced label [like -Wunused-label]
-    '/w24777', # 'function' : format string 'string' requires an argument of type 'type1', but variadic argument number has type 'type2' [like -Wformat]
+    '/w24255', # 'function' : no function prototype given: converting '()' to '(void)' [like -Wstrict-prototypes]
   ]
+
+  msvc_cxx_warning_flags = [
+    # Warnings to disable:
+    # from /W2:
+    '/wd4200', # nonstandard extension used: zero-sized array in struct/union [widely used in PostgreSQL C headers]
+  ]
+
+  cflags_warn += msvc_common_warning_flags
+  cflags_warn += msvc_c_warning_flags
+
+  cxxflags_warn += msvc_common_warning_flags
+  cxxflags_warn += msvc_cxx_warning_flags
 
   cppflags += [
     '/DWIN32',
@@ -2451,6 +2500,33 @@ int main(void)
 
   if cc.links(prog, name: 'XSAVE intrinsics', args: test_c_args)
     cdata.set('HAVE_XSAVE_INTRINSICS', 1)
+  endif
+
+endif
+
+
+###############################################################
+# Check if the compiler supports AVX2 as a target
+# There is deliberately not a guard for __has_attribute here
+###############################################################
+
+if host_cpu == 'x86_64'
+
+  prog = '''
+__attribute__((target("avx2")))
+static int avx2_test(void)
+{
+    return 0;
+}
+
+int main(void)
+{
+    return avx2_test();
+}
+'''
+
+  if cc.links(prog, name: 'AVX2 support', args: test_c_args)
+    cdata.set('USE_AVX2_WITH_RUNTIME_CHECK', 1)
   endif
 
 endif
@@ -2682,6 +2758,39 @@ int main(void)
     have_optimized_crc = true
   endif
 
+    # Check if the compiler supports Arm CRYPTO PMULL (carryless multiplication)
+    # instructions used for vectorized CRC.
+    prog = '''
+#include <arm_acle.h>
+#include <arm_neon.h>
+uint64x2_t	a;
+uint64x2_t	b;
+uint64x2_t	c;
+
+#if defined(__has_attribute) && __has_attribute (target)
+__attribute__((target("+crypto")))
+#endif
+int main(void)
+{
+    uint64x2_t	r1;
+    uint64x2_t	r2;
+
+	__asm("pmull  %0.1q, %2.1d, %3.1d\neor %0.16b, %0.16b, %1.16b\n":"=w"(r1), "+w"(c):"w"(a), "w"(b));
+	__asm("pmull2 %0.1q, %2.2d, %3.2d\neor %0.16b, %0.16b, %1.16b\n":"=w"(r2), "+w"(c):"w"(a), "w"(b));
+
+	r1 = veorq_u64(r1, r2);
+	/* return computed value, to prevent the above being optimized away */
+	return (int) vgetq_lane_u64(r1, 0);
+}
+'''
+
+  if cc.links(prog,
+      name: 'CRYPTO CRC32C',
+      args: test_c_args)
+    # Use ARM CRYPTO Extension, with runtime check
+    cdata.set('USE_PMULL_CRC32C_WITH_RUNTIME_CHECK', 1)
+  endif
+
 elif host_cpu == 'loongarch64'
 
   prog = '''
@@ -2885,6 +2994,10 @@ if cc.has_member('struct sockaddr', 'sa_len',
 #include <sys/types.h>
 #include <sys/socket.h>''')
   cdata.set('HAVE_STRUCT_SOCKADDR_SA_LEN', 1)
+endif
+
+if cc.has_header_symbol('signal.h', 'SA_SIGINFO')
+  cdata.set('HAVE_SA_SIGINFO', 1)
 endif
 
 if cc.has_member('struct tm', 'tm_zone',

@@ -464,6 +464,13 @@ typedef struct PgStatShared_IO
 	PgStat_IO	stats;
 } PgStatShared_IO;
 
+typedef struct PgStatShared_Lock
+{
+	/* lock protects ->stats */
+	LWLock		lock;
+	PgStat_Lock stats;
+} PgStatShared_Lock;
+
 typedef struct PgStatShared_SLRU
 {
 	/* lock protects ->stats */
@@ -570,6 +577,7 @@ typedef struct PgStat_ShmemControl
 	PgStatShared_BgWriter bgwriter;
 	PgStatShared_Checkpointer checkpointer;
 	PgStatShared_IO io;
+	PgStatShared_Lock lock;
 	PgStatShared_SLRU slru;
 	PgStatShared_Wal wal;
 
@@ -601,6 +609,8 @@ typedef struct PgStat_Snapshot
 	PgStat_CheckpointerStats checkpointer;
 
 	PgStat_IO	io;
+
+	PgStat_Lock lock;
 
 	PgStat_SLRUStats slru[SLRU_NUM_ELEMENTS];
 
@@ -675,7 +685,8 @@ extern PgStat_EntryRef *pgstat_prep_pending_entry(PgStat_Kind kind, Oid dboid,
 extern PgStat_EntryRef *pgstat_fetch_pending_entry(PgStat_Kind kind,
 												   Oid dboid, uint64 objid);
 
-extern void *pgstat_fetch_entry(PgStat_Kind kind, Oid dboid, uint64 objid);
+extern void *pgstat_fetch_entry(PgStat_Kind kind, Oid dboid, uint64 objid,
+								bool *may_free);
 extern void pgstat_snapshot_fixed(PgStat_Kind kind);
 
 
@@ -696,7 +707,7 @@ extern void pgstat_archiver_snapshot_cb(void);
 #define PGSTAT_BACKEND_FLUSH_WAL   (1 << 1) /* Flush WAL statistics */
 #define PGSTAT_BACKEND_FLUSH_ALL   (PGSTAT_BACKEND_FLUSH_IO | PGSTAT_BACKEND_FLUSH_WAL)
 
-extern bool pgstat_flush_backend(bool nowait, bits32 flags);
+extern bool pgstat_flush_backend(bool nowait, uint32 flags);
 extern bool pgstat_backend_flush_cb(bool nowait);
 extern void pgstat_backend_reset_timestamp_cb(PgStatShared_Common *header,
 											  TimestampTz ts);
@@ -752,6 +763,14 @@ extern void pgstat_io_init_shmem_cb(void *stats);
 extern void pgstat_io_reset_all_cb(TimestampTz ts);
 extern void pgstat_io_snapshot_cb(void);
 
+/*
+ * Functions in pgstat_lock.c
+ */
+
+extern bool pgstat_lock_flush_cb(bool nowait);
+extern void pgstat_lock_init_shmem_cb(void *stats);
+extern void pgstat_lock_reset_all_cb(TimestampTz ts);
+extern void pgstat_lock_snapshot_cb(void);
 
 /*
  * Functions in pgstat_relation.c

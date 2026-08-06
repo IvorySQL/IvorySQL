@@ -17,24 +17,6 @@
 #include "pgpa_scan.h"
 
 /*
- * When generating advice, we should emit either SEMIJOIN_UNIQUE advice or
- * SEMIJOIN_NON_UNIQUE advice for each semijoin depending on whether we chose
- * to implement it as a semijoin or whether we instead chose to make the
- * nullable side unique and then perform an inner join. When the make-unique
- * strategy is not chosen, it's not easy to tell from the final plan tree
- * whether it was considered. That's awkward, because we don't want to emit
- * useless SEMIJOIN_NON_UNIQUE advice when there was no decision to be made.
- *
- * To avoid that, during planning, we create a pgpa_sj_unique_rel for each
- * relation that we considered making unique for purposes of semijoin planning.
- */
-typedef struct pgpa_sj_unique_rel
-{
-	char	   *plan_name;
-	Bitmapset  *relids;
-} pgpa_sj_unique_rel;
-
-/*
  * We use the term "query feature" to refer to plan nodes that are interesting
  * in the following way: to generate advice, we'll need to know the set of
  * same-subquery, non-join RTIs occurring at or below that plan node, without
@@ -118,11 +100,12 @@ typedef struct pgpa_plan_walker_context
 	List	   *join_strategies[NUM_PGPA_JOIN_STRATEGY];
 	List	   *query_features[NUM_PGPA_QF_TYPES];
 	List	   *future_query_features;
+	List	   *do_not_scan_identifiers;
 } pgpa_plan_walker_context;
 
 extern void pgpa_plan_walker(pgpa_plan_walker_context *walker,
 							 PlannedStmt *pstmt,
-							 List *sj_unique_rels);
+							 List *proots);
 
 extern void pgpa_add_future_feature(pgpa_plan_walker_context *walker,
 									pgpa_qf_type type,
@@ -131,6 +114,7 @@ extern void pgpa_add_future_feature(pgpa_plan_walker_context *walker,
 extern ElidedNode *pgpa_last_elided_node(PlannedStmt *pstmt, Plan *plan);
 extern Bitmapset *pgpa_relids(Plan *plan);
 extern Index pgpa_scanrelid(Plan *plan);
+extern bool pgpa_is_scan_level_materialize(Plan *plan);
 extern Bitmapset *pgpa_filter_out_join_relids(Bitmapset *relids, List *rtable);
 
 extern bool pgpa_walker_would_advise(pgpa_plan_walker_context *walker,

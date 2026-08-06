@@ -36,6 +36,8 @@ typedef enum
 	PROCSIG_BARRIER,			/* global barrier interrupt  */
 	PROCSIG_LOG_MEMORY_CONTEXT, /* ask backend to log the memory contexts */
 	PROCSIG_PARALLEL_APPLY_MESSAGE, /* Message from parallel apply workers */
+	PROCSIG_SLOTSYNC_MESSAGE,	/* ask slot synchronization to stop */
+	PROCSIG_REPACK_MESSAGE,		/* Message from repack worker */
 	PROCSIG_RECOVERY_CONFLICT,	/* backend is blocking recovery, check
 								 * PGPROC->pendingRecoveryConflicts for the
 								 * reason */
@@ -48,6 +50,10 @@ typedef enum
 	PROCSIGNAL_BARRIER_SMGRRELEASE, /* ask smgr to close files */
 	PROCSIGNAL_BARRIER_UPDATE_XLOG_LOGICAL_INFO,	/* ask to update
 													 * XLogLogicalInfo */
+	PROCSIGNAL_BARRIER_CHECKSUM_OFF,
+	PROCSIGNAL_BARRIER_CHECKSUM_INPROGRESS_ON,
+	PROCSIGNAL_BARRIER_CHECKSUM_INPROGRESS_OFF,
+	PROCSIGNAL_BARRIER_CHECKSUM_ON,
 } ProcSignalBarrierType;
 
 /*
@@ -63,9 +69,6 @@ typedef enum
 /*
  * prototypes for functions in procsignal.c
  */
-extern Size ProcSignalShmemSize(void);
-extern void ProcSignalShmemInit(void);
-
 extern void ProcSignalInit(const uint8 *cancel_key, int cancel_key_len);
 extern int	SendProcSignal(pid_t pid, ProcSignalReason reason,
 						   ProcNumber procNumber);

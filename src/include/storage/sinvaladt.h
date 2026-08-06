@@ -22,14 +22,11 @@
 #ifndef SINVALADT_H
 #define SINVALADT_H
 
-#include "storage/lock.h"
 #include "storage/sinval.h"
 
 /*
  * prototypes for functions in sinvaladt.c
  */
-extern Size SharedInvalShmemSize(void);
-extern void SharedInvalShmemInit(void);
 extern void SharedInvalBackendInit(bool sendOnly);
 
 extern void SIInsertDataEntries(const SharedInvalidationMessage *data, int n);

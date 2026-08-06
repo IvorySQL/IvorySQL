@@ -73,9 +73,11 @@ _PG_init(void)
 	es_extension_id = GetExplainExtensionId("pg_overexplain");
 
 	/* Register the new EXPLAIN options implemented by this module. */
-	RegisterExtensionExplainOption("debug", overexplain_debug_handler);
+	RegisterExtensionExplainOption("debug", overexplain_debug_handler,
+								   GUCCheckBooleanExplainOption);
 	RegisterExtensionExplainOption("range_table",
-								   overexplain_range_table_handler);
+								   overexplain_range_table_handler,
+								   GUCCheckBooleanExplainOption);
 
 	/* Use the per-node and per-plan hooks to make our options do something. */
 	prev_explain_per_node_hook = explain_per_node_hook;
@@ -774,17 +776,22 @@ overexplain_range_table(PlannedStmt *plannedstmt, ExplainState *es)
 		ExplainCloseGroup("Range Table Entry", NULL, true, es);
 	}
 
-	/* Print PlannedStmt fields that contain RTIs. */
+	/* Close the Range Table array before emitting PlannedStmt-level fields. */
+	ExplainCloseGroup("Range Table", "Range Table", false, es);
+
+	/*
+	 * Print PlannedStmt fields that contain RTIs.  These are properties of
+	 * the PlannedStmt, not of individual RTEs, so they belong outside the
+	 * Range Table array.
+	 */
 	if (es->format != EXPLAIN_FORMAT_TEXT ||
 		!bms_is_empty(plannedstmt->unprunableRelids))
 		overexplain_bitmapset("Unprunable RTIs", plannedstmt->unprunableRelids,
 							  es);
 	if (es->format != EXPLAIN_FORMAT_TEXT ||
-		plannedstmt->resultRelations != NIL)
-		overexplain_intlist("Result RTIs", plannedstmt->resultRelations, es);
-
-	/* Close group, we're all done */
-	ExplainCloseGroup("Range Table", "Range Table", false, es);
+		!bms_is_empty(plannedstmt->resultRelationRelids))
+		overexplain_bitmapset("Result RTIs", plannedstmt->resultRelationRelids,
+							  es);
 }
 
 /*

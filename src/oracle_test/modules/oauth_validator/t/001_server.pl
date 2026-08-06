@@ -71,9 +71,9 @@ END
 	$? = $exit_code;
 }
 
-# To test against HTTPS with our custom CA, we need to enable PGOAUTHDEBUG and
-# PGOAUTHCAFILE. But first, check to make sure the client refuses HTTP and
-# untrusted HTTPS connections by default.
+# To test against HTTPS with our custom CA, we'll set PGOAUTHCAFILE. But first,
+# check to make sure the client refuses HTTP and untrusted HTTPS connections by
+# default.
 my $port = $webserver->port();
 my $issuer = "http://127.0.0.1:$port";
 
@@ -92,6 +92,21 @@ $node->connect_fails(
 	expected_stderr =>
 	  qr@OAuth discovery URI "\Q$issuer\E/.well-known/openid-configuration" must use HTTPS@
 );
+
+{
+	# PGOAUTHDEBUG=http should have no effect (it needs an UNSAFE: marker).
+	local $ENV{PGOAUTHDEBUG} = "http";
+
+	$node->connect_fails(
+		"user=test dbname=postgres oauth_issuer=$issuer oauth_client_id=f02c6361-0635",
+		"HTTPS is required without debug mode (bad PGOAUTHDEBUG value)",
+		expected_stderr => qr[
+			^WARNING: .* \Qoption "http" is unsafe\E
+			.*
+			\QOAuth discovery URI "$issuer/.well-known/openid-configuration" must use HTTPS\E
+		]msx
+	);
+}
 
 # Switch to HTTPS.
 $issuer = "https://127.0.0.1:$port";
@@ -119,28 +134,46 @@ is( $contents,
 3|oauth|\{issuer=$issuer/param,"scope=openid postgres",validator=validator\}},
 	"pg_hba_file_rules recreates OAuth HBA settings");
 
-# Make sure PGOAUTHDEBUG=UNSAFE doesn't disable certificate verification.
-$ENV{PGOAUTHDEBUG} = "UNSAFE";
+{
+	# Make sure PGOAUTHDEBUG=UNSAFE doesn't disable certificate verification.
+	local $ENV{PGOAUTHDEBUG} = "UNSAFE";
 
-$node->connect_fails(
-	"user=test dbname=postgres oauth_issuer=$issuer oauth_client_id=f02c6361-0635",
-	"HTTPS trusts only system CA roots by default",
-	# Note that the latter half of this error message comes from Curl, which has
-	# had a few variants since 7.61:
-	#
-	# - SSL peer certificate or SSH remote key was not OK
-	# - Peer certificate cannot be authenticated with given CA certificates
-	# - Issuer check against peer certificate failed
-	#
-	# Key off of the "peer certificate" portion, since that seems to have
-	# remained constant over a long period of time.
-	expected_stderr =>
-	  qr/failed to fetch OpenID discovery document:.*peer certificate/i);
+	$node->connect_fails(
+		"user=test dbname=postgres oauth_issuer=$issuer oauth_client_id=f02c6361-0635",
+		"HTTPS trusts only system CA roots by default",
+		# Note that the latter half of this error message comes from Curl, which
+		# has had a few variants since 7.61:
+		#
+		# - SSL peer certificate or SSH remote key was not OK
+		# - Peer certificate cannot be authenticated with given CA certificates
+		# - Issuer check against peer certificate failed
+		#
+		# Key off of the "peer certificate" portion, since that seems to have
+		# remained constant over a long period of time.
+		expected_stderr =>
+		  qr/failed to fetch OpenID discovery document:.*peer certificate/i);
+}
 
-# Now we can use our alternative CA.
-$ENV{PGOAUTHCAFILE} = "$ENV{cert_dir}/root+server_ca.crt";
-
+my $alternative_ca = "$ENV{cert_dir}/root+server_ca.crt";
 my $user = "test";
+
+# Make sure we can use oauth_ca_file option to specify the alternative CA path
+$node->connect_ok(
+	"user=$user dbname=postgres oauth_issuer=$issuer oauth_client_id=f02c6361-0635 oauth_ca_file=$alternative_ca",
+	"connect as test (oauth_ca_file)",
+	expected_stderr =>
+	  qr@Visit https://example\.com/ and enter the code: postgresuser@,
+	log_like => [
+		qr/oauth_validator: token="9243959234", role="$user"/,
+		qr/oauth_validator: issuer="\Q$issuer\E", scope="openid postgres"/,
+		qr/connection authenticated: identity="test" method=oauth/,
+		qr/connection authorized/,
+	]);
+
+# Make sure that we can use the environment variable without PGOAUTHDEBUG, and
+# then use it for the rest of the tests
+$ENV{PGOAUTHCAFILE} = $alternative_ca;
+
 $node->connect_ok(
 	"user=$user dbname=postgres oauth_issuer=$issuer oauth_client_id=f02c6361-0635",
 	"connect as test",
@@ -151,7 +184,14 @@ $node->connect_ok(
 		qr/oauth_validator: issuer="\Q$issuer\E", scope="openid postgres"/,
 		qr/connection authenticated: identity="test" method=oauth/,
 		qr/connection authorized/,
-	]);
+	],
+	log_unlike => [qr/FATAL.*OAuth bearer authentication failed/]);
+
+# Enable some debugging features for all remaining tests:
+# - trace, for detailed Curl logs on failure
+# - dos-endpoint, to speed up the three-way handshake
+# - call-count, for our later sanity check
+$ENV{PGOAUTHDEBUG} = "UNSAFE:trace,dos-endpoint,call-count";
 
 # The /alternate issuer uses slightly different parameters, along with an
 # OAuth-style discovery document.
@@ -166,7 +206,8 @@ $node->connect_ok(
 		qr|oauth_validator: issuer="\Q$issuer/.well-known/oauth-authorization-server/alternate\E", scope="openid postgres alt"|,
 		qr/connection authenticated: identity="testalt" method=oauth/,
 		qr/connection authorized/,
-	]);
+	],
+	log_unlike => [qr/FATAL.*OAuth bearer authentication failed/]);
 
 # The issuer linked by the server must match the client's oauth_issuer setting.
 $node->connect_fails(
@@ -521,8 +562,8 @@ $node->connect_fails(
 	expected_stderr => qr/OAuth bearer authentication failed/,
 	log_like => [
 		qr/connection authenticated: identity=""/,
-		qr/DETAIL:\s+Validator provided no identity/,
 		qr/FATAL:\s+OAuth bearer authentication failed/,
+		qr/DETAIL:\s+Validator provided no identity/,
 	]);
 
 # Even if a validator authenticates the user, if the token isn't considered
@@ -541,9 +582,66 @@ $node->connect_fails(
 	expected_stderr => qr/OAuth bearer authentication failed/,
 	log_like => [
 		qr/connection authenticated: identity="test\@example\.org"/,
-		qr/DETAIL:\s+Validator failed to authorize the provided token/,
 		qr/FATAL:\s+OAuth bearer authentication failed/,
+		qr/DETAIL:\s+Validator failed to authorize the provided token/,
 	]);
+
+# Validators can provide their own explanations.
+$bgconn->query_safe(
+	"ALTER SYSTEM SET oauth_validator.error_detail TO 'something failed'");
+$node->reload;
+$log_start =
+  $node->wait_for_log(qr/reloading configuration files/, $log_start);
+
+$node->connect_fails(
+	"$common_connstr user=test",
+	"validator must authorize token explicitly (custom logdetail)",
+	expected_stderr => qr/OAuth bearer authentication failed/,
+	log_like => [
+		qr/connection authenticated: identity="test\@example\.org"/,
+		qr/FATAL:\s+OAuth bearer authentication failed/,
+		qr/DETAIL:\s+something failed/,
+	]);
+
+$bgconn->query_safe(
+	"ALTER SYSTEM SET oauth_validator.internal_error TO true");
+$node->reload;
+$log_start =
+  $node->wait_for_log(qr/reloading configuration files/, $log_start);
+
+$node->connect_fails(
+	"$common_connstr user=test",
+	"validator internal error (custom logdetail)",
+	expected_stderr => qr/OAuth bearer authentication failed/,
+	log_like => [
+		qr/WARNING:\s+internal error in OAuth validator module/,
+		qr/DETAIL:\s+something failed/,
+	]);
+
+$bgconn->query_safe("ALTER SYSTEM RESET oauth_validator.error_detail");
+$bgconn->query_safe("ALTER SYSTEM RESET oauth_validator.internal_error");
+
+# We complain when bad option names are registered, but connections may proceed
+# (since users can't set those options in the HBA anyway).
+$bgconn->query_safe("ALTER SYSTEM RESET oauth_validator.authn_id");
+$bgconn->query_safe("ALTER SYSTEM RESET oauth_validator.authorize_tokens");
+$bgconn->query_safe("ALTER SYSTEM SET oauth_validator.invalid_hba TO true");
+
+$node->reload;
+$log_start =
+  $node->wait_for_log(qr/reloading configuration files/, $log_start);
+
+$node->connect_ok(
+	"$common_connstr user=test",
+	"bad registered HBA option",
+	expected_stderr =>
+	  qr@Visit https://example\.com/ and enter the code: postgresuser@,
+	log_like => [
+		qr/WARNING:\s+HBA option name "bad option name" is invalid and will be ignored/,
+		qr/CONTEXT:\s+validator module "validator", in call to RegisterOAuthHBAOptions/,
+	]);
+
+$bgconn->query_safe("ALTER SYSTEM RESET oauth_validator.invalid_hba");
 
 #
 # Test user mapping.
@@ -612,6 +710,84 @@ $bgconn->query_safe("ALTER SYSTEM RESET oauth_validator.authn_id");
 $node->reload;
 $log_start =
   $node->wait_for_log(qr/reloading configuration files/, $log_start);
+
+$bgconn->quit;    # the tests below restart the server
+
+#
+# Test validator-specific HBA options.
+#
+
+unlink($node->data_dir . '/pg_hba.conf');
+$node->append_conf(
+	'pg_hba.conf', qq{
+local all test    oauth issuer="$issuer" scope="openid postgres" delegate_ident_mapping=1 \\
+                        validator.authn_id="ignored" validator.authn_id="other-identity"
+local all testalt oauth issuer="$issuer" scope="openid postgres" validator.log="testalt message"
+});
+
+$node->reload;
+$log_start =
+  $node->wait_for_log(qr/reloading configuration files/, $log_start);
+
+$node->connect_ok(
+	"$common_connstr user=test",
+	"custom HBA setting (test)",
+	expected_stderr =>
+	  qr@Visit https://example\.com/ and enter the code: postgresuser@,
+	log_like => [qr/connection authenticated: identity="other-identity"/]);
+$node->connect_ok(
+	"$common_connstr user=testalt",
+	"custom HBA setting (testalt)",
+	expected_stderr =>
+	  qr@Visit https://example\.com/ and enter the code: postgresuser@,
+	log_like => [
+		qr/LOG:\s+testalt message/,
+		qr/connection authenticated: identity="testalt"/,
+	]);
+
+# bad syntax
+unlink($node->data_dir . '/pg_hba.conf');
+$node->append_conf(
+	'pg_hba.conf', qq{
+local all testalt oauth issuer="$issuer" scope="openid postgres" validator.=1
+});
+
+$log_start = -s $node->logfile;
+$node->restart(fail_ok => 1);
+$node->log_check("empty HBA option name",
+	$log_start,
+	log_like => [qr/invalid OAuth validator option name: "validator\."/]);
+
+unlink($node->data_dir . '/pg_hba.conf');
+$node->append_conf(
+	'pg_hba.conf', qq{
+local all testalt oauth issuer="$issuer" scope="openid postgres" validator.@@=1
+});
+
+$log_start = -s $node->logfile;
+$node->restart(fail_ok => 1);
+$node->log_check("invalid HBA option name",
+	$log_start,
+	log_like => [qr/invalid OAuth validator option name: "validator\.@@"/]);
+
+# unknown settings (validation is deferred to connect time)
+unlink($node->data_dir . '/pg_hba.conf');
+$node->append_conf(
+	'pg_hba.conf', qq{
+local all testalt oauth issuer="$issuer" scope="openid postgres" \\
+                        validator.log=ignored validator.bad=1
+});
+$node->restart;
+
+$node->connect_fails(
+	"$common_connstr user=testalt",
+	"bad HBA setting",
+	expected_stderr => qr/OAuth bearer authentication failed/,
+	log_like => [
+		qr/WARNING:\s+unrecognized authentication option name: "validator\.bad"/,
+		qr/FATAL:\s+OAuth bearer authentication failed/,
+		qr/DETAIL:\s+unrecognized authentication option name: "validator\.bad"/,
+	]);
 
 #
 # Test multiple validators.

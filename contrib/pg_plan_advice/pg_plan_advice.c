@@ -126,7 +126,8 @@ _PG_init(void)
 
 	/* Register the new EXPLAIN options implemented by this module. */
 	RegisterExtensionExplainOption("plan_advice",
-								   pg_plan_advice_explain_option_handler);
+								   pg_plan_advice_explain_option_handler,
+								   GUCCheckBooleanExplainOption);
 
 	/* Install hooks */
 	pgpa_planner_install_hooks();
@@ -329,7 +330,7 @@ pg_plan_advice_explain_feedback(ExplainState *es, List *feedback)
 
 		appendStringInfo(&buf, "%s /* ", item->defname);
 		pgpa_trove_append_flags(&buf, flags);
-		appendStringInfo(&buf, " */\n");
+		appendStringInfoString(&buf, " */\n");
 	}
 
 	pg_plan_advice_explain_text_multiline(es, "Supplied Plan Advice",

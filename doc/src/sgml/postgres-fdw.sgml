@@ -332,7 +332,7 @@ OPTIONS (ADD password_required 'false');
    </para>
 
    <para>
-    The following option controls how such an <command>ANALYZE</command>
+    The following options control how such an <command>ANALYZE</command>
     operation behaves:
    </para>
 
@@ -360,6 +360,33 @@ OPTIONS (ADD password_required 'false');
        method automatically; currently it means
        either <literal>bernoulli</literal> or <literal>random</literal>
        depending on the remote server version.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>restore_stats</literal> (<type>boolean</type>)</term>
+     <listitem>
+      <para>
+       This option, which can be specified for a foreign table or a foreign
+       server, determines if <command>ANALYZE</command> on a foreign table
+       will instead attempt to fetch the existing statistics for the foreign
+       table on the remote server, and restore those statistics directly to
+       the local server.  If the attempt failed, statistics are collected by
+       row sampling on the foreign table.
+       This option is only useful if the remote table is one that can have
+       regular statistics (tables and materialized views).
+       When using this option, <emphasis>it is the user's responsibility
+       </emphasis> to ensure that the existing statistics for the foreign
+       table are up-to-date.
+       The default is <literal>false</literal>.
+      </para>
+
+      <para>
+       If the foreign table is a partition of a partitioned table, analyzing
+       the partitioned table will still result in row sampling on the foreign
+       table regardless of this setting, though direct analysis of the foreign
+       table would have attempted to fetch and restore remote statistics first.
       </para>
      </listitem>
     </varlistentry>
@@ -1101,6 +1128,23 @@ CREATE SUBSCRIPTION my_subscription SERVER subscription_server PUBLICATION testp
    isolation level, but it might be surprising for a <literal>READ
    COMMITTED</literal> local transaction.  A future
    <productname>PostgreSQL</productname> release might modify these rules.
+  </para>
+
+  <para>
+   The remote transaction is opened in the same read/write mode as the local
+   transaction: if the local transaction is <literal>READ ONLY</literal>,
+   the remote transaction is opened in <literal>READ ONLY</literal> mode,
+   otherwise it is opened in <literal>READ WRITE</literal> mode.
+   (This rule is also applied to remote and local subtransactions.)
+   Note that this does not prevent login triggers executed on the remote
+   server from writing.
+  </para>
+
+  <para>
+   The remote transaction is also opened in the same deferrable mode as the
+   local transaction: if the local transaction is <literal>DEFERRABLE</literal>,
+   the remote transaction is opened in <literal>DEFERRABLE</literal> mode,
+   otherwise it is opened in <literal>NOT DEFERRABLE</literal> mode.
   </para>
 
   <para>

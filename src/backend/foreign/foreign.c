@@ -48,7 +48,7 @@ GetForeignDataWrapper(Oid fdwid)
  * be found instead of raising an error.
  */
 ForeignDataWrapper *
-GetForeignDataWrapperExtended(Oid fdwid, bits16 flags)
+GetForeignDataWrapperExtended(Oid fdwid, uint16 flags)
 {
 	Form_pg_foreign_data_wrapper fdwform;
 	ForeignDataWrapper *fdw;
@@ -123,7 +123,7 @@ GetForeignServer(Oid serverid)
  * instead of raising an error.
  */
 ForeignServer *
-GetForeignServerExtended(Oid serverid, bits16 flags)
+GetForeignServerExtended(Oid serverid, uint16 flags)
 {
 	Form_pg_foreign_server serverform;
 	ForeignServer *server;
@@ -179,31 +179,6 @@ GetForeignServerExtended(Oid serverid, bits16 flags)
 
 
 /*
- * ForeignServerName - get name of foreign server.
- */
-char *
-ForeignServerName(Oid serverid)
-{
-	Form_pg_foreign_server serverform;
-	char	   *servername;
-	HeapTuple	tp;
-
-	tp = SearchSysCache1(FOREIGNSERVEROID, ObjectIdGetDatum(serverid));
-
-	if (!HeapTupleIsValid(tp))
-		elog(ERROR, "cache lookup failed for foreign server %u", serverid);
-
-	serverform = (Form_pg_foreign_server) GETSTRUCT(tp);
-
-	servername = pstrdup(NameStr(serverform->srvname));
-
-	ReleaseSysCache(tp);
-
-	return servername;
-}
-
-
-/*
  * GetForeignServerByName - look up the foreign server definition by name.
  */
 ForeignServer *
@@ -220,62 +195,30 @@ GetForeignServerByName(const char *srvname, bool missing_ok)
 
 /*
  * Retrieve connection string from server's FDW.
+ *
+ * NB: leaks into CurrentMemoryContext.
  */
 char *
-ForeignServerConnectionString(Oid userid, Oid serverid)
+ForeignServerConnectionString(Oid userid, ForeignServer *server)
 {
-	MemoryContext tempContext;
-	MemoryContext oldcxt;
-	text	   *volatile connection_text = NULL;
-	char	   *result = NULL;
+	ForeignDataWrapper *fdw;
+	Datum		connection_datum;
 
-	/*
-	 * GetForeignServer, GetForeignDataWrapper, and the connection function
-	 * itself all leak memory into CurrentMemoryContext. Switch to a temporary
-	 * context for easy cleanup.
-	 */
-	tempContext = AllocSetContextCreate(CurrentMemoryContext,
-										"FDWConnectionContext",
-										ALLOCSET_SMALL_SIZES);
+	fdw = GetForeignDataWrapper(server->fdwid);
 
-	oldcxt = MemoryContextSwitchTo(tempContext);
+	if (!OidIsValid(fdw->fdwconnection))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("foreign data wrapper \"%s\" does not support subscription connections",
+						fdw->fdwname),
+				 errdetail("Foreign data wrapper must be defined with CONNECTION specified.")));
 
-	PG_TRY();
-	{
-		ForeignServer *server;
-		ForeignDataWrapper *fdw;
-		Datum		connection_datum;
+	connection_datum = OidFunctionCall3(fdw->fdwconnection,
+										ObjectIdGetDatum(userid),
+										ObjectIdGetDatum(server->serverid),
+										PointerGetDatum(NULL));
 
-		server = GetForeignServer(serverid);
-		fdw = GetForeignDataWrapper(server->fdwid);
-
-		if (!OidIsValid(fdw->fdwconnection))
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("foreign data wrapper \"%s\" does not support subscription connections",
-							fdw->fdwname),
-					 errdetail("Foreign data wrapper must be defined with CONNECTION specified.")));
-
-
-		connection_datum = OidFunctionCall3(fdw->fdwconnection,
-											ObjectIdGetDatum(userid),
-											ObjectIdGetDatum(serverid),
-											PointerGetDatum(NULL));
-
-		connection_text = DatumGetTextPP(connection_datum);
-	}
-	PG_FINALLY();
-	{
-		MemoryContextSwitchTo(oldcxt);
-
-		if (connection_text)
-			result = text_to_cstring((text *) connection_text);
-
-		MemoryContextDelete(tempContext);
-	}
-	PG_END_TRY();
-
-	return result;
+	return text_to_cstring(DatumGetTextPP(connection_datum));
 }
 
 

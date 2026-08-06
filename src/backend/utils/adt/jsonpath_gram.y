@@ -86,16 +86,18 @@ static bool makeItemLikeRegex(JsonPathParseItem *expr,
 %token	<str>		DATETIME_P
 %token	<str>		BIGINT_P BOOLEAN_P DATE_P DECIMAL_P INTEGER_P NUMBER_P
 %token	<str>		STRINGFUNC_P TIME_P TIME_TZ_P TIMESTAMP_P TIMESTAMP_TZ_P
+%token	<str>		STR_REPLACE_P STR_LOWER_P STR_UPPER_P STR_LTRIM_P STR_RTRIM_P STR_BTRIM_P
+					STR_INITCAP_P STR_SPLIT_PART_P
 
 %type	<result>	result
 
 %type	<value>		scalar_value path_primary expr array_accessor
 					any_path accessor_op key predicate delimited_predicate
 					index_elem starts_with_initial expr_or_predicate
-					datetime_template opt_datetime_template csv_elem
-					datetime_precision opt_datetime_precision
+					str_elem opt_str_arg int_elem
+					uint_elem opt_uint_arg
 
-%type	<elems>		accessor_expr csv_list opt_csv_list
+%type	<elems>		accessor_expr int_list opt_int_list str_int_args str_str_args
 
 %type	<indexs>	index_list
 
@@ -254,7 +256,7 @@ accessor_op:
 	| '.' any_path					{ $$ = $2; }
 	| '.' method '(' ')'			{ $$ = makeItemType($2); }
 	| '?' '(' predicate ')'			{ $$ = makeItemUnary(jpiFilter, $3); }
-	| '.' DECIMAL_P '(' opt_csv_list ')'
+	| '.' DECIMAL_P '(' opt_int_list ')'
 		{
 			if (list_length($4) == 0)
 				$$ = makeItemBinary(jpiDecimal, NULL, NULL);
@@ -268,19 +270,29 @@ accessor_op:
 						 errmsg("invalid input syntax for type %s", "jsonpath"),
 						 errdetail(".decimal() can only have an optional precision[,scale].")));
 		}
-	| '.' DATETIME_P '(' opt_datetime_template ')'
+	| '.' DATETIME_P '(' opt_str_arg ')'
 		{ $$ = makeItemUnary(jpiDatetime, $4); }
-	| '.' TIME_P '(' opt_datetime_precision ')'
+	| '.' TIME_P '(' opt_uint_arg ')'
 		{ $$ = makeItemUnary(jpiTime, $4); }
-	| '.' TIME_TZ_P '(' opt_datetime_precision ')'
+	| '.' TIME_TZ_P '(' opt_uint_arg ')'
 		{ $$ = makeItemUnary(jpiTimeTz, $4); }
-	| '.' TIMESTAMP_P '(' opt_datetime_precision ')'
+	| '.' TIMESTAMP_P '(' opt_uint_arg ')'
 		{ $$ = makeItemUnary(jpiTimestamp, $4); }
-	| '.' TIMESTAMP_TZ_P '(' opt_datetime_precision ')'
+	| '.' TIMESTAMP_TZ_P '(' opt_uint_arg ')'
 		{ $$ = makeItemUnary(jpiTimestampTz, $4); }
+	| '.' STR_REPLACE_P '(' str_str_args ')'
+		{ $$ = makeItemBinary(jpiStrReplace, linitial($4), lsecond($4)); }
+	| '.' STR_SPLIT_PART_P '(' str_int_args ')'
+		{ $$ = makeItemBinary(jpiStrSplitPart, linitial($4), lsecond($4)); }
+	| '.' STR_LTRIM_P '(' opt_str_arg ')'
+		{ $$ = makeItemUnary(jpiStrLtrim, $4); }
+	| '.' STR_RTRIM_P '(' opt_str_arg ')'
+		{ $$ = makeItemUnary(jpiStrRtrim, $4); }
+	| '.' STR_BTRIM_P '(' opt_str_arg ')'
+		{ $$ = makeItemUnary(jpiStrBtrim, $4); }
 	;
 
-csv_elem:
+int_elem:
 	INT_P
 		{ $$ = makeItemNumeric(&$1); }
 	| '+' INT_P %prec UMINUS
@@ -289,32 +301,40 @@ csv_elem:
 		{ $$ = makeItemUnary(jpiMinus, makeItemNumeric(&$2)); }
 	;
 
-csv_list:
-	csv_elem						{ $$ = list_make1($1); }
-	| csv_list ',' csv_elem			{ $$ = lappend($1, $3); }
+int_list:
+	int_elem						{ $$ = list_make1($1); }
+	| int_list ',' int_elem			{ $$ = lappend($1, $3); }
 	;
 
-opt_csv_list:
-	csv_list						{ $$ = $1; }
+opt_int_list:
+	int_list						{ $$ = $1; }
 	| /* EMPTY */					{ $$ = NULL; }
 	;
 
-datetime_precision:
+uint_elem:
 	INT_P							{ $$ = makeItemNumeric(&$1); }
 	;
 
-opt_datetime_precision:
-	datetime_precision				{ $$ = $1; }
+opt_uint_arg:
+	uint_elem						{ $$ = $1; }
 	| /* EMPTY */					{ $$ = NULL; }
 	;
 
-datetime_template:
+str_elem:
 	STRING_P						{ $$ = makeItemString(&$1); }
 	;
 
-opt_datetime_template:
-	datetime_template				{ $$ = $1; }
+opt_str_arg:
+	str_elem						{ $$ = $1; }
 	| /* EMPTY */					{ $$ = NULL; }
+	;
+
+str_int_args:
+	str_elem ',' int_elem			{ $$ = list_make2($1, $3); }
+	;
+
+str_str_args:
+	str_elem ',' str_elem 			{ $$ = list_make2($1, $3); }
 	;
 
 key:
@@ -357,6 +377,14 @@ key_name:
 	| TIME_TZ_P
 	| TIMESTAMP_P
 	| TIMESTAMP_TZ_P
+	| STR_LOWER_P
+	| STR_UPPER_P
+	| STR_INITCAP_P
+	| STR_REPLACE_P
+	| STR_SPLIT_PART_P
+	| STR_LTRIM_P
+	| STR_RTRIM_P
+	| STR_BTRIM_P
 	;
 
 method:
@@ -373,6 +401,9 @@ method:
 	| INTEGER_P						{ $$ = jpiInteger; }
 	| NUMBER_P						{ $$ = jpiNumber; }
 	| STRINGFUNC_P					{ $$ = jpiStringFunc; }
+	| STR_LOWER_P					{ $$ = jpiStrLower; }
+	| STR_UPPER_P					{ $$ = jpiStrUpper; }
+	| STR_INITCAP_P					{ $$ = jpiStrInitcap; }
 	;
 %%
 

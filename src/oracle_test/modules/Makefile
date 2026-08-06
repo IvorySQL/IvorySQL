@@ -17,9 +17,11 @@ SUBDIRS = \
 		  plsample \
 		  spgist_name_ops \
 		  test_aio \
+		  test_autovacuum \
 		  test_bitmapset \
 		  test_bloomfilter \
 		  test_cloexec \
+		  test_checksums \
 		  test_copy_callbacks \
 		  test_custom_rmgrs \
 		  test_custom_stats \
@@ -47,6 +49,7 @@ SUBDIRS = \
 		  test_resowner \
 		  test_rls_hooks \
 		  test_saslprep \
+		  test_shmem \
 		  test_shm_mq \
 		  test_slru \
 		  test_tidstore \

@@ -18,11 +18,13 @@
  * to StartReadBuffers() so that a new one can begin to form.
  *
  * The algorithm for controlling the look-ahead distance is based on recent
- * cache hit and miss history.  When no I/O is necessary, there is no benefit
- * in looking ahead more than one block.  This is the default initial
- * assumption, but when blocks needing I/O are streamed, the distance is
- * increased rapidly to try to benefit from I/O combining and concurrency.  It
- * is reduced gradually when cached blocks are streamed.
+ * cache / miss history, as well as whether we need to wait for I/O completion
+ * after a miss.  When no I/O is necessary, there is no benefit in looking
+ * ahead more than one block.  This is the default initial assumption.  When
+ * blocks needing I/O are streamed, the combine distance is increased to
+ * benefit from I/O combining and the read-ahead distance is increased
+ * whenever we need to wait for I/O to try to benefit from increased I/O
+ * concurrency. Both are reduced gradually when cached blocks are streamed.
  *
  * The main data structure is a circular queue of buffers of size
  * max_pinned_buffers plus some extra space for technical reasons, ready to be
@@ -72,6 +74,7 @@
 #include "postgres.h"
 
 #include "miscadmin.h"
+#include "executor/instrument_node.h"
 #include "storage/aio.h"
 #include "storage/fd.h"
 #include "storage/smgr.h"
@@ -98,14 +101,31 @@ struct ReadStream
 	int16		max_pinned_buffers;
 	int16		forwarded_buffers;
 	int16		pinned_buffers;
-	int16		distance;
+
+	/*
+	 * Limit of how far, in blocks, to look-ahead for IO combining and for
+	 * read-ahead.
+	 *
+	 * The limits for read-ahead and combining are handled separately to allow
+	 * for IO combining even in cases where the I/O subsystem can keep up at a
+	 * low read-ahead distance, as doing larger IOs is more efficient.
+	 *
+	 * Set to 0 when the end of the stream is reached.
+	 */
+	int16		combine_distance;
+	int16		readahead_distance;
+	uint16		distance_decay_holdoff;
 	int16		initialized_buffers;
-	int16		resume_distance;
+	int16		resume_readahead_distance;
+	int16		resume_combine_distance;
 	int			read_buffers_flags;
 	bool		sync_mode;		/* using io_method=sync */
 	bool		batch_mode;		/* READ_STREAM_USE_BATCHING */
 	bool		advice_enabled;
 	bool		temporary;
+
+	/* scan stats counters */
+	IOStats    *stats;
 
 	/*
 	 * One-block buffer to support 'ungetting' a block number, to resolve flow
@@ -170,6 +190,73 @@ block_range_read_stream_cb(ReadStream *stream,
 		return p->current_blocknum++;
 
 	return InvalidBlockNumber;
+}
+
+/*
+ * Update stream stats with current pinned buffer depth.
+ *
+ * Called once per buffer returned to the consumer in read_stream_next_buffer().
+ * Records the number of pinned buffers at that moment, so we can compute the
+ * average look-ahead depth.
+ */
+static inline void
+read_stream_count_prefetch(ReadStream *stream)
+{
+	IOStats    *stats = stream->stats;
+
+	if (stats == NULL)
+		return;
+
+	stats->prefetch_count++;
+	stats->distance_sum += stream->pinned_buffers;
+	if (stream->pinned_buffers > stats->distance_max)
+		stats->distance_max = stream->pinned_buffers;
+}
+
+/*
+ * Update stream stats about size of I/O requests.
+ *
+ * We count the number of I/O requests, size of requests (counted in blocks)
+ * and number of in-progress I/Os.
+ */
+static inline void
+read_stream_count_io(ReadStream *stream, int nblocks, int in_progress)
+{
+	IOStats    *stats = stream->stats;
+
+	if (stats == NULL)
+		return;
+
+	stats->io_count++;
+	stats->io_nblocks += nblocks;
+	stats->io_in_progress += in_progress;
+}
+
+/*
+ * Update stream stats about waits for I/O when consuming buffers.
+ *
+ * We count the number of I/O waits while pulling buffers out of a stream.
+ */
+static inline void
+read_stream_count_wait(ReadStream *stream)
+{
+	IOStats    *stats = stream->stats;
+
+	if (stats == NULL)
+		return;
+
+	stats->wait_count++;
+}
+
+/*
+ * Enable collection of stats into the provided IOStats.
+ */
+void
+read_stream_enable_stats(ReadStream *stream, IOStats *stats)
+{
+	stream->stats = stats;
+	if (stream->stats)
+		stream->stats->distance_capacity = stream->max_pinned_buffers;
 }
 
 /*
@@ -331,8 +418,8 @@ read_stream_start_pending_read(ReadStream *stream)
 
 		/* Shrink distance: no more look-ahead until buffers are released. */
 		new_distance = stream->pinned_buffers + buffer_limit;
-		if (stream->distance > new_distance)
-			stream->distance = new_distance;
+		if (stream->readahead_distance > new_distance)
+			stream->readahead_distance = new_distance;
 
 		/* Unless we have nothing to give the consumer, stop here. */
 		if (stream->pinned_buffers > 0)
@@ -364,9 +451,39 @@ read_stream_start_pending_read(ReadStream *stream)
 	/* Remember whether we need to wait before returning this buffer. */
 	if (!need_wait)
 	{
-		/* Look-ahead distance decays, no I/O necessary. */
-		if (stream->distance > 1)
-			stream->distance--;
+		/*
+		 * If there currently is no IO in progress, and we have not needed to
+		 * issue IO recently, decay the look-ahead distance.  We detect if we
+		 * had to issue IO recently by having a decay holdoff that's set to
+		 * the max look-ahead distance whenever we need to do IO.  This is
+		 * important to ensure we eventually reach a high enough distance to
+		 * perform IO asynchronously when starting out with a small look-ahead
+		 * distance.
+		 */
+		if (stream->ios_in_progress == 0)
+		{
+			if (stream->distance_decay_holdoff > 0)
+				stream->distance_decay_holdoff--;
+			else
+			{
+				if (stream->readahead_distance > 1)
+					stream->readahead_distance--;
+
+				/*
+				 * For now we reduce the IO combine distance after
+				 * sufficiently many buffer hits. There is no clear
+				 * performance argument for doing so, but at the moment we
+				 * need to do so to make the entrance into fast_path work
+				 * correctly: We require combine_distance == 1 to enter
+				 * fast-path, as without that condition we would wrongly
+				 * re-enter fast-path when readahead_distance == 1 and
+				 * pinned_buffers == 1, as we would not yet have prepared
+				 * another IO in that situation.
+				 */
+				if (stream->combine_distance > 1)
+					stream->combine_distance--;
+			}
+		}
 	}
 	else
 	{
@@ -380,6 +497,9 @@ read_stream_start_pending_read(ReadStream *stream)
 		Assert(stream->ios_in_progress < stream->max_ios);
 		stream->ios_in_progress++;
 		stream->seq_blocknum = stream->pending_read_blocknum + nblocks;
+
+		/* update I/O stats */
+		read_stream_count_io(stream, nblocks, stream->ios_in_progress);
 	}
 
 	/*
@@ -426,6 +546,114 @@ read_stream_start_pending_read(ReadStream *stream)
 	return true;
 }
 
+/*
+ * Should we continue to perform look ahead?  Looking ahead may allow us to
+ * make the pending IO larger via IO combining or to issue more read-ahead.
+ */
+static inline bool
+read_stream_should_look_ahead(ReadStream *stream)
+{
+	/* If the callback has signaled end-of-stream, we're done */
+	if (stream->readahead_distance == 0)
+		return false;
+
+	/* never start more IOs than our cap */
+	if (stream->ios_in_progress >= stream->max_ios)
+		return false;
+
+	/*
+	 * Allow looking further ahead if we are in the process of building a
+	 * larger IO, the IO is not yet big enough, and we don't yet have IO in
+	 * flight.
+	 *
+	 * We do so to allow building larger reads when readahead_distance is
+	 * small (e.g. because the I/O subsystem is keeping up or
+	 * effective_io_concurrency is small). That's a useful goal because larger
+	 * reads are more CPU efficient than smaller reads, even if the system is
+	 * not IO bound.
+	 *
+	 * The reason we do *not* do so when we already have a read prepared (i.e.
+	 * why we check for pinned_buffers == 0) is once we are actually reading
+	 * ahead, we don't need it:
+	 *
+	 * - We won't issue unnecessarily small reads as
+	 * read_stream_should_issue_now() will return false until the IO is
+	 * suitably sized. The issuance of the pending read will be delayed until
+	 * enough buffers have been consumed.
+	 *
+	 * - If we are not reading ahead aggressively enough, future
+	 * WaitReadBuffers() calls will return true, leading to readahead_distance
+	 * being increased. After that more full-sized IOs can be issued.
+	 *
+	 * Furthermore, if we did not have the pinned_buffers == 0 condition, we
+	 * might end up issuing I/O more aggressively than we need.
+	 *
+	 * Note that a return of true here can lead to exceeding the read-ahead
+	 * limit, but we won't exceed the buffer pin limit (because pinned_buffers
+	 * == 0 and combine_distance is capped by max_pinned_buffers).
+	 */
+	if (stream->pending_read_nblocks > 0 &&
+		stream->pinned_buffers == 0 &&
+		stream->pending_read_nblocks < stream->combine_distance)
+		return true;
+
+	/*
+	 * Don't start more read-ahead if that'd put us over the distance limit
+	 * for doing read-ahead. As stream->readahead_distance is capped by
+	 * max_pinned_buffers, this prevents us from looking ahead so far that it
+	 * would put us over the pin limit.
+	 */
+	if (stream->pinned_buffers + stream->pending_read_nblocks >= stream->readahead_distance)
+		return false;
+
+	return true;
+}
+
+/*
+ * We don't start the pending read just because we've hit the distance limit,
+ * preferring to give it another chance to grow to full io_combine_limit size
+ * once more buffers have been consumed.  But this is not desirable in all
+ * situations - see below.
+ */
+static inline bool
+read_stream_should_issue_now(ReadStream *stream)
+{
+	int16		pending_read_nblocks = stream->pending_read_nblocks;
+
+	/* there is no pending IO that could be issued */
+	if (pending_read_nblocks == 0)
+		return false;
+
+	/* never start more IOs than our cap */
+	if (stream->ios_in_progress >= stream->max_ios)
+		return false;
+
+	/*
+	 * If the callback has signaled end-of-stream, start the pending read
+	 * immediately. There is no further potential for IO combining.
+	 */
+	if (stream->readahead_distance == 0)
+		return true;
+
+	/*
+	 * If we've already reached combine_distance, there's no chance of growing
+	 * the read further.
+	 */
+	if (pending_read_nblocks >= stream->combine_distance)
+		return true;
+
+	/*
+	 * If we currently have no reads in flight or prepared, issue the IO once
+	 * we are not looking ahead further. This ensures there's always at least
+	 * one IO prepared.
+	 */
+	if (stream->pinned_buffers == 0 &&
+		!read_stream_should_look_ahead(stream))
+		return true;
+
+	return false;
+}
+
 static void
 read_stream_look_ahead(ReadStream *stream)
 {
@@ -438,14 +666,13 @@ read_stream_look_ahead(ReadStream *stream)
 	if (stream->batch_mode)
 		pgaio_enter_batchmode();
 
-	while (stream->ios_in_progress < stream->max_ios &&
-		   stream->pinned_buffers + stream->pending_read_nblocks < stream->distance)
+	while (read_stream_should_look_ahead(stream))
 	{
 		BlockNumber blocknum;
 		int16		buffer_index;
 		void	   *per_buffer_data;
 
-		if (stream->pending_read_nblocks == stream->io_combine_limit)
+		if (read_stream_should_issue_now(stream))
 		{
 			read_stream_start_pending_read(stream);
 			continue;
@@ -465,7 +692,8 @@ read_stream_look_ahead(ReadStream *stream)
 		if (blocknum == InvalidBlockNumber)
 		{
 			/* End of stream. */
-			stream->distance = 0;
+			stream->readahead_distance = 0;
+			stream->combine_distance = 0;
 			break;
 		}
 
@@ -497,21 +725,13 @@ read_stream_look_ahead(ReadStream *stream)
 	}
 
 	/*
-	 * We don't start the pending read just because we've hit the distance
-	 * limit, preferring to give it another chance to grow to full
-	 * io_combine_limit size once more buffers have been consumed.  However,
-	 * if we've already reached io_combine_limit, or we've reached the
-	 * distance limit and there isn't anything pinned yet, or the callback has
-	 * signaled end-of-stream, we start the read immediately.  Note that the
-	 * pending read can exceed the distance goal, if the latter was reduced
-	 * after hitting the per-backend buffer limit.
+	 * Check if the pending read should be issued now, or if we should give it
+	 * another chance to grow to the full size.
+	 *
+	 * Note that the pending read can exceed the distance goal, if the latter
+	 * was reduced after hitting the per-backend buffer limit.
 	 */
-	if (stream->pending_read_nblocks > 0 &&
-		(stream->pending_read_nblocks == stream->io_combine_limit ||
-		 (stream->pending_read_nblocks >= stream->distance &&
-		  stream->pinned_buffers == 0) ||
-		 stream->distance == 0) &&
-		stream->ios_in_progress < stream->max_ios)
+	if (read_stream_should_issue_now(stream))
 		read_stream_start_pending_read(stream);
 
 	/*
@@ -520,7 +740,7 @@ read_stream_look_ahead(ReadStream *stream)
 	 * stream.  In the worst case we can always make progress one buffer at a
 	 * time.
 	 */
-	Assert(stream->pinned_buffers > 0 || stream->distance == 0);
+	Assert(stream->pinned_buffers > 0 || stream->readahead_distance == 0);
 
 	if (stream->batch_mode)
 		pgaio_exit_batchmode();
@@ -557,10 +777,9 @@ read_stream_begin_impl(int flags,
 	Oid			tablespace_id;
 
 	/*
-	 * Decide how many I/Os we will allow to run at the same time.  That
-	 * currently means advice to the kernel to tell it that we will soon read.
-	 * This number also affects how far we look ahead for opportunities to
-	 * start more I/Os.
+	 * Decide how many I/Os we will allow to run at the same time.  This
+	 * number also affects how far we look ahead for opportunities to start
+	 * more I/Os.
 	 */
 	tablespace_id = smgr->smgr_rlocator.locator.spcOid;
 	if (!OidIsValid(MyDatabaseId) ||
@@ -702,6 +921,7 @@ read_stream_begin_impl(int flags,
 	stream->seq_blocknum = InvalidBlockNumber;
 	stream->seq_until_processed = InvalidBlockNumber;
 	stream->temporary = SmgrIsTemp(smgr);
+	stream->distance_decay_holdoff = 0;
 
 	/*
 	 * Skip the initial ramp-up phase if the caller says we're going to be
@@ -709,10 +929,17 @@ read_stream_begin_impl(int flags,
 	 * doing full io_combine_limit sized reads.
 	 */
 	if (flags & READ_STREAM_FULL)
-		stream->distance = Min(max_pinned_buffers, stream->io_combine_limit);
+	{
+		stream->readahead_distance = Min(max_pinned_buffers, stream->io_combine_limit);
+		stream->combine_distance = Min(max_pinned_buffers, stream->io_combine_limit);
+	}
 	else
-		stream->distance = 1;
-	stream->resume_distance = stream->distance;
+	{
+		stream->readahead_distance = 1;
+		stream->combine_distance = 1;
+	}
+	stream->resume_readahead_distance = stream->readahead_distance;
+	stream->resume_combine_distance = stream->combine_distance;
 
 	/*
 	 * Since we always access the same relation, we can initialize parts of
@@ -811,7 +1038,8 @@ read_stream_next_buffer(ReadStream *stream, void **per_buffer_data)
 		Assert(stream->ios_in_progress == 0);
 		Assert(stream->forwarded_buffers == 0);
 		Assert(stream->pinned_buffers == 1);
-		Assert(stream->distance == 1);
+		Assert(stream->readahead_distance == 1);
+		Assert(stream->combine_distance == 1);
 		Assert(stream->pending_read_nblocks == 0);
 		Assert(stream->per_buffer_data_size == 0);
 		Assert(stream->initialized_buffers > stream->oldest_buffer_index);
@@ -834,6 +1062,21 @@ read_stream_next_buffer(ReadStream *stream, void **per_buffer_data)
 				flags |= READ_BUFFERS_ISSUE_ADVICE;
 
 			/*
+			 * While in fast-path, execute any IO that we might encounter
+			 * synchronously. Because we are, right now, only looking one
+			 * block ahead, dispatching any occasional IO to workers would
+			 * have the overhead of dispatching to workers, without any
+			 * realistic chance of the IO completing before we need it. We
+			 * will switch to non-synchronous IO after this.
+			 *
+			 * Arguably we should do so only for worker, as there's far less
+			 * dispatch overhead with io_uring. However, tests so far have not
+			 * shown a clear downside and additional io_method awareness here
+			 * seems not great from an abstraction POV.
+			 */
+			flags |= READ_BUFFERS_SYNCHRONOUSLY;
+
+			/*
 			 * Pin a buffer for the next call.  Same buffer entry, and
 			 * arbitrary I/O entry (they're all free).  We don't have to
 			 * adjust pinned_buffers because we're transferring one to caller
@@ -851,6 +1094,7 @@ read_stream_next_buffer(ReadStream *stream, void **per_buffer_data)
 										flags)))
 			{
 				/* Fast return. */
+				read_stream_count_prefetch(stream);
 				return buffer;
 			}
 
@@ -860,11 +1104,24 @@ read_stream_next_buffer(ReadStream *stream, void **per_buffer_data)
 			stream->ios_in_progress = 1;
 			stream->ios[0].buffer_index = oldest_buffer_index;
 			stream->seq_blocknum = next_blocknum + 1;
+
+			/*
+			 * XXX: It might be worth triggering additional read-ahead here,
+			 * to avoid having to effectively do another synchronous IO for
+			 * the next block (if it were also a miss).
+			 */
+
+			/* update I/O stats */
+			read_stream_count_io(stream, 1, stream->ios_in_progress);
+
+			/* update prefetch distance */
+			read_stream_count_prefetch(stream);
 		}
 		else
 		{
 			/* No more blocks, end of stream. */
-			stream->distance = 0;
+			stream->readahead_distance = 0;
+			stream->combine_distance = 0;
 			stream->oldest_buffer_index = stream->next_buffer_index;
 			stream->pinned_buffers = 0;
 			stream->buffers[oldest_buffer_index] = InvalidBuffer;
@@ -880,7 +1137,7 @@ read_stream_next_buffer(ReadStream *stream, void **per_buffer_data)
 		Assert(stream->oldest_buffer_index == stream->next_buffer_index);
 
 		/* End of stream reached?  */
-		if (stream->distance == 0)
+		if (stream->readahead_distance == 0)
 			return InvalidBuffer;
 
 		/*
@@ -894,7 +1151,7 @@ read_stream_next_buffer(ReadStream *stream, void **per_buffer_data)
 		/* End of stream reached? */
 		if (stream->pinned_buffers == 0)
 		{
-			Assert(stream->distance == 0);
+			Assert(stream->readahead_distance == 0);
 			return InvalidBuffer;
 		}
 	}
@@ -915,23 +1172,97 @@ read_stream_next_buffer(ReadStream *stream, void **per_buffer_data)
 		stream->ios[stream->oldest_io_index].buffer_index == oldest_buffer_index)
 	{
 		int16		io_index = stream->oldest_io_index;
-		int32		distance;	/* wider temporary value, clamped below */
+		bool		needed_wait;
 
 		/* Sanity check that we still agree on the buffers. */
 		Assert(stream->ios[io_index].op.buffers ==
 			   &stream->buffers[oldest_buffer_index]);
 
-		WaitReadBuffers(&stream->ios[io_index].op);
+		needed_wait = WaitReadBuffers(&stream->ios[io_index].op);
 
 		Assert(stream->ios_in_progress > 0);
 		stream->ios_in_progress--;
 		if (++stream->oldest_io_index == stream->max_ios)
 			stream->oldest_io_index = 0;
 
-		/* Look-ahead distance ramps up rapidly after we do I/O. */
-		distance = stream->distance * 2;
-		distance = Min(distance, stream->max_pinned_buffers);
-		stream->distance = distance;
+		/*
+		 * If the IO was executed synchronously, we will never see
+		 * WaitReadBuffers() block. Treat it as if it did block. This is
+		 * particularly crucial when effective_io_concurrency=0 is used, as
+		 * all IO will be synchronous.  Without treating synchronous IO as
+		 * having waited, we'd never allow the distance to get large enough to
+		 * allow for IO combining, resulting in bad performance.
+		 */
+		if (stream->ios[io_index].op.flags & READ_BUFFERS_SYNCHRONOUSLY)
+			needed_wait = true;
+
+		/* Count it as a wait if we need to wait for IO */
+		if (needed_wait)
+			read_stream_count_wait(stream);
+
+		/*
+		 * Have the read-ahead distance ramp up rapidly after we needed to
+		 * wait for IO. We only increase the read-ahead-distance when we
+		 * needed to wait, to avoid increasing the distance further than
+		 * necessary, as looking ahead too far can be costly, both due to the
+		 * cost of unnecessarily pinning many buffers and due to doing IOs
+		 * that may never be consumed if the stream is ended/reset before
+		 * completion.
+		 *
+		 * If we did not need to wait, the current distance was evidently
+		 * sufficient.
+		 *
+		 * NB: Must not increase the distance if we already reached the end of
+		 * the stream, as stream->readahead_distance == 0 is used to keep
+		 * track of having reached the end.
+		 */
+		if (stream->readahead_distance > 0 && needed_wait)
+		{
+			/* wider temporary value, due to overflow risk */
+			int32		readahead_distance;
+
+			readahead_distance = stream->readahead_distance * 2;
+			readahead_distance = Min(readahead_distance, stream->max_pinned_buffers);
+			stream->readahead_distance = readahead_distance;
+		}
+
+		/*
+		 * As we needed IO, prevent distances from being reduced within our
+		 * maximum look-ahead window. This avoids collapsing distances too
+		 * quickly in workloads where most of the required blocks are cached,
+		 * but where the remaining IOs are a sufficient enough factor to cause
+		 * a substantial slowdown if executed synchronously.
+		 *
+		 * There are valid arguments for preventing decay for max_ios or for
+		 * max_pinned_buffers.  But the argument for max_pinned_buffers seems
+		 * clearer - if we can't see any misses within the maximum look-ahead
+		 * distance, we can't do any useful read-ahead.
+		 */
+		stream->distance_decay_holdoff = stream->max_pinned_buffers;
+
+		/*
+		 * Whether we needed to wait or not, allow for more IO combining if we
+		 * needed to do IO. The reason to do so independent of needing to wait
+		 * is that when the data is resident in the kernel page cache, IO
+		 * combining reduces the syscall / dispatch overhead, making it
+		 * worthwhile regardless of needing to wait.
+		 *
+		 * It is also important with io_uring as it will never signal the need
+		 * to wait for reads if all the data is in the page cache. There are
+		 * heuristics to deal with that in method_io_uring.c, but they only
+		 * work when the IO gets large enough.
+		 */
+		if (stream->combine_distance > 0 &&
+			stream->combine_distance < stream->io_combine_limit)
+		{
+			/* wider temporary value, due to overflow risk */
+			int32		combine_distance;
+
+			combine_distance = stream->combine_distance * 2;
+			combine_distance = Min(combine_distance, stream->io_combine_limit);
+			combine_distance = Min(combine_distance, stream->max_pinned_buffers);
+			stream->combine_distance = combine_distance;
+		}
 
 		/*
 		 * If we've reached the first block of a sequential region we're
@@ -981,6 +1312,8 @@ read_stream_next_buffer(ReadStream *stream, void **per_buffer_data)
 	}
 #endif
 
+	read_stream_count_prefetch(stream);
+
 	/* Pin transferred to caller. */
 	Assert(stream->pinned_buffers > 0);
 	stream->pinned_buffers--;
@@ -998,7 +1331,8 @@ read_stream_next_buffer(ReadStream *stream, void **per_buffer_data)
 	if (stream->ios_in_progress == 0 &&
 		stream->forwarded_buffers == 0 &&
 		stream->pinned_buffers == 1 &&
-		stream->distance == 1 &&
+		stream->readahead_distance == 1 &&
+		stream->combine_distance == 1 &&
 		stream->pending_read_nblocks == 0 &&
 		stream->per_buffer_data_size == 0)
 	{
@@ -1044,8 +1378,10 @@ read_stream_next_block(ReadStream *stream, BufferAccessStrategy *strategy)
 BlockNumber
 read_stream_pause(ReadStream *stream)
 {
-	stream->resume_distance = stream->distance;
-	stream->distance = 0;
+	stream->resume_readahead_distance = stream->readahead_distance;
+	stream->resume_combine_distance = stream->combine_distance;
+	stream->readahead_distance = 0;
+	stream->combine_distance = 0;
 	return InvalidBlockNumber;
 }
 
@@ -1057,7 +1393,8 @@ read_stream_pause(ReadStream *stream)
 void
 read_stream_resume(ReadStream *stream)
 {
-	stream->distance = stream->resume_distance;
+	stream->readahead_distance = stream->resume_readahead_distance;
+	stream->combine_distance = stream->resume_combine_distance;
 }
 
 /*
@@ -1073,7 +1410,8 @@ read_stream_reset(ReadStream *stream)
 	Buffer		buffer;
 
 	/* Stop looking ahead. */
-	stream->distance = 0;
+	stream->readahead_distance = 0;
+	stream->combine_distance = 0;
 
 	/* Forget buffered block number and fast path state. */
 	stream->buffered_blocknum = InvalidBlockNumber;
@@ -1105,8 +1443,11 @@ read_stream_reset(ReadStream *stream)
 	Assert(stream->ios_in_progress == 0);
 
 	/* Start off assuming data is cached. */
-	stream->distance = 1;
-	stream->resume_distance = stream->distance;
+	stream->readahead_distance = 1;
+	stream->combine_distance = 1;
+	stream->resume_readahead_distance = stream->readahead_distance;
+	stream->resume_combine_distance = stream->combine_distance;
+	stream->distance_decay_holdoff = 0;
 }
 
 /*

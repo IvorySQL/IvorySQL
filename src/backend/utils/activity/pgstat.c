@@ -83,6 +83,7 @@
  * - pgstat_database.c
  * - pgstat_function.c
  * - pgstat_io.c
+ * - pgstat_lock.c
  * - pgstat_relation.c
  * - pgstat_replslot.c
  * - pgstat_slru.c
@@ -446,6 +447,23 @@ static const PgStat_KindInfo pgstat_kind_builtin_infos[PGSTAT_KIND_BUILTIN_SIZE]
 		.init_shmem_cb = pgstat_io_init_shmem_cb,
 		.reset_all_cb = pgstat_io_reset_all_cb,
 		.snapshot_cb = pgstat_io_snapshot_cb,
+	},
+
+	[PGSTAT_KIND_LOCK] = {
+		.name = "lock",
+
+		.fixed_amount = true,
+		.write_to_file = true,
+
+		.snapshot_ctl_off = offsetof(PgStat_Snapshot, lock),
+		.shared_ctl_off = offsetof(PgStat_ShmemControl, lock),
+		.shared_data_off = offsetof(PgStatShared_Lock, stats),
+		.shared_data_len = sizeof(((PgStatShared_Lock *) 0)->stats),
+
+		.flush_static_cb = pgstat_lock_flush_cb,
+		.init_shmem_cb = pgstat_lock_init_shmem_cb,
+		.reset_all_cb = pgstat_lock_reset_all_cb,
+		.snapshot_cb = pgstat_lock_snapshot_cb,
 	},
 
 	[PGSTAT_KIND_SLRU] = {
@@ -942,7 +960,7 @@ pgstat_clear_snapshot(void)
 }
 
 void *
-pgstat_fetch_entry(PgStat_Kind kind, Oid dboid, uint64 objid)
+pgstat_fetch_entry(PgStat_Kind kind, Oid dboid, uint64 objid, bool *may_free)
 {
 	PgStat_HashKey key = {0};
 	PgStat_EntryRef *entry_ref;
@@ -952,6 +970,13 @@ pgstat_fetch_entry(PgStat_Kind kind, Oid dboid, uint64 objid)
 	/* should be called from backends */
 	Assert(IsUnderPostmaster || !IsPostmasterEnvironment);
 	Assert(!kind_info->fixed_amount);
+
+	/*
+	 * Initialize *may_free to false.  We'll change it to true later if we end
+	 * up allocating the result in the caller's context and not caching it.
+	 */
+	if (may_free)
+		*may_free = false;
 
 	pgstat_prep_snapshot();
 
@@ -1006,7 +1031,16 @@ pgstat_fetch_entry(PgStat_Kind kind, Oid dboid, uint64 objid)
 	 * repeated accesses.
 	 */
 	if (pgstat_fetch_consistency == PGSTAT_FETCH_CONSISTENCY_NONE)
+	{
 		stats_data = palloc(kind_info->shared_data_len);
+
+		/*
+		 * Since we allocated the result in the caller's context and aren't
+		 * caching it, the caller can safely pfree() it.
+		 */
+		if (may_free)
+			*may_free = true;
+	}
 	else
 		stats_data = MemoryContextAlloc(pgStatLocal.snapshot.context,
 										kind_info->shared_data_len);

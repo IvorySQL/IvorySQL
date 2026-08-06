@@ -559,6 +559,8 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <range>	relation_expr
 %type <range>	extended_relation_expr
 %type <range>	relation_expr_opt_alias
+%type <alias>	for_portion_of_opt_alias
+%type <node>	for_portion_of_clause
 %type <node>	tablesample_clause opt_repeatable_clause
 %type <target>	target_el set_target insert_column_item
 
@@ -800,7 +802,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	OVER OVERLAPS OVERLAY OVERRIDING OWNED OWNER
 
 	PARALLEL PARAMETER PARSER PARTIAL PARTITION PARTITIONS PASSING PASSWORD PATH
-	PERIOD PLACING PLAN PLANS POLICY
+	PERIOD PLACING PLAN PLANS POLICY PORTION
 	POSITION PRECEDING PRECISION PRESERVE PREPARE PREPARED PRIMARY
 	PRIOR PRIVILEGES PROCEDURAL PROCEDURE PROCEDURES PROGRAM PROPERTIES PROPERTY PUBLICATION
 
@@ -923,12 +925,15 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
  * json_predicate_type_constraint and json_key_uniqueness_constraint_opt
  * productions (see comments there).
  *
+ * TO is assigned the same precedence as IDENT, to support the opt_interval
+ * production (see comment there).
+ *
  * Like the UNBOUNDED PRECEDING/FOLLOWING case, NESTED is assigned a lower
  * precedence than PATH to fix ambiguity in the json_table production.
  */
 %nonassoc	UNBOUNDED NESTED /* ideally would have same precedence as IDENT */
 %nonassoc	IDENT PARTITION RANGE ROWS GROUPS PRECEDING FOLLOWING CUBE ROLLUP
-			SET KEYS OBJECT_P SCALAR VALUE_P WITH WITHOUT PATH
+			SET KEYS OBJECT_P SCALAR TO USING VALUE_P WITH WITHOUT PATH
 %left		Op OPERATOR RIGHT_ARROW '|'	/* multi-character ops and user-defined operators */
 %left		'+' '-'
 %left		'*' '/' '%'
@@ -1678,8 +1683,11 @@ OptSchemaEltList:
 schema_stmt:
 			CreateStmt
 			| IndexStmt
+			| CreateDomainStmt
+			| CreateFunctionStmt
 			| CreateSeqStmt
 			| CreateTrigStmt
+			| DefineStmt
 			| GrantStmt
 			| ViewStmt
 		;
@@ -3654,6 +3662,10 @@ copy_opt_item:
 				{
 					$$ = makeDefElem("format", (Node *) makeString("csv"), @1);
 				}
+			| JSON
+				{
+					$$ = makeDefElem("format", (Node *) makeString("json"), @1);
+				}
 			| HEADER_P
 				{
 					$$ = makeDefElem("header", (Node *) makeBoolean(true), @1);
@@ -3735,6 +3747,10 @@ copy_generic_opt_elem:
 			ColLabel copy_generic_opt_arg
 				{
 					$$ = makeDefElem($1, $2, @1);
+				}
+			| FORMAT_LA copy_generic_opt_arg
+				{
+					$$ = makeDefElem("format", $2, @1);
 				}
 		;
 
@@ -11252,7 +11268,7 @@ AlterOwnerStmt: ALTER AGGREGATE aggregate_with_argtypes OWNER TO RoleSpec
  *
  * pub_all_obj_type is one of:
  *
- *		TABLES [EXCEPT TABLE ( table [, ...] )]
+ *		TABLES [EXCEPT (TABLE table [, ...] )]
  *		SEQUENCES
  *
  * CREATE PUBLICATION FOR pub_obj [, ...] [WITH options]
@@ -11395,7 +11411,7 @@ pub_obj_list:	PublicationObjSpec
 	;
 
 opt_pub_except_clause:
-			EXCEPT TABLE '(' pub_except_obj_list ')'	{ $$ = $4; }
+			EXCEPT '(' TABLE pub_except_obj_list ')'	{ $$ = $4; }
 			| /*EMPTY*/									{ $$ = NIL; }
 		;
 
@@ -11435,8 +11451,8 @@ PublicationExceptObjSpec:
 
 pub_except_obj_list: PublicationExceptObjSpec
 					{ $$ = list_make1($1); }
-			| pub_except_obj_list ',' PublicationExceptObjSpec
-					{ $$ = lappend($1, $3); }
+			| pub_except_obj_list ',' opt_table PublicationExceptObjSpec
+					{ $$ = lappend($1, $4); }
 	;
 
 /*****************************************************************************
@@ -11458,7 +11474,7 @@ pub_except_obj_list: PublicationExceptObjSpec
  *
  * pub_all_obj_type is one of:
  *
- *		ALL TABLES [ EXCEPT TABLE ( table_name [, ...] ) ]
+ *		ALL TABLES [ EXCEPT ( TABLE table_name [, ...] ) ]
  *		ALL SEQUENCES
  *
  *****************************************************************************/
@@ -13196,6 +13212,21 @@ DeleteStmt: opt_with_clause DELETE_P FROM relation_expr_opt_alias
 					n->withClause = $1;
 					$$ = (Node *) n;
 				}
+			| opt_with_clause DELETE_P FROM relation_expr
+			for_portion_of_clause for_portion_of_opt_alias
+			using_clause where_or_current_clause returning_clause
+				{
+					DeleteStmt *n = makeNode(DeleteStmt);
+
+					n->relation = $4;
+					n->forPortionOf = (ForPortionOfClause *) $5;
+					n->relation->alias = $6;
+					n->usingClause = $7;
+					n->whereClause = $8;
+					n->returningClause = $9;
+					n->withClause = $1;
+					$$ = (Node *) n;
+				}
 		;
 
 using_clause:
@@ -13267,6 +13298,25 @@ UpdateStmt: opt_with_clause UPDATE relation_expr_opt_alias
 					n->fromClause = $6;
 					n->whereClause = $7;
 					n->returningClause = $8;
+					n->withClause = $1;
+					$$ = (Node *) n;
+				}
+			| opt_with_clause UPDATE relation_expr
+			for_portion_of_clause for_portion_of_opt_alias
+			SET set_clause_list
+			from_clause
+			where_or_current_clause
+			returning_clause
+				{
+					UpdateStmt *n = makeNode(UpdateStmt);
+
+					n->relation = $3;
+					n->forPortionOf = (ForPortionOfClause *) $4;
+					n->relation->alias = $5;
+					n->targetList = $7;
+					n->fromClause = $8;
+					n->whereClause = $9;
+					n->returningClause = $10;
 					n->withClause = $1;
 					$$ = (Node *) n;
 				}
@@ -14784,6 +14834,55 @@ relation_expr_opt_alias: relation_expr					%prec UMINUS
 		;
 
 /*
+ * If an UPDATE/DELETE has FOR PORTION OF, then the relation_expr is separated
+ * from its potential alias by the for_portion_of_clause. So this production
+ * handles the potential alias in those cases. We need to solve the same
+ * problems as relation_expr_opt_alias, in particular resolving a shift/reduce
+ * conflict where "set set" could be an alias plus the SET keyword, or the SET
+ * keyword then a column name. As above, we force the latter interpretation by
+ * giving the non-alias choice a higher precedence.
+ */
+for_portion_of_opt_alias:
+			AS ColId
+				{
+					Alias	   *alias = makeNode(Alias);
+
+					alias->aliasname = $2;
+					$$ = alias;
+				}
+			| BareColLabel
+				{
+					Alias	   *alias = makeNode(Alias);
+
+					alias->aliasname = $1;
+					$$ = alias;
+				}
+			| /* empty */ %prec UMINUS { $$ = NULL; }
+		;
+
+for_portion_of_clause:
+			FOR PORTION OF ColId '(' a_expr ')'
+				{
+					ForPortionOfClause *n = makeNode(ForPortionOfClause);
+					n->range_name = $4;
+					n->location = @4;
+					n->target = $6;
+					n->target_location = @6;
+					$$ = (Node *) n;
+				}
+			| FOR PORTION OF ColId FROM a_expr TO a_expr
+				{
+					ForPortionOfClause *n = makeNode(ForPortionOfClause);
+					n->range_name = $4;
+					n->location = @4;
+					n->target_start = $6;
+					n->target_end = $8;
+					n->target_location = @5;
+					$$ = (Node *) n;
+				}
+		;
+
+/*
  * TABLESAMPLE decoration in a FROM item
  */
 tablesample_clause:
@@ -15623,16 +15722,25 @@ opt_timezone:
 			| /*EMPTY*/								{ $$ = false; }
 		;
 
+/*
+ * We need to handle this shift/reduce conflict:
+ * FOR PORTION OF valid_at FROM t + INTERVAL '1' YEAR TO MONTH.
+ * We don't see far enough ahead to know if there is another TO coming.
+ * We prefer to interpret this as FROM (t + INTERVAL '1' YEAR TO MONTH),
+ * i.e. to shift.
+ * That gives the user the option of adding parentheses to get the other meaning.
+ * If we reduced, intervals could never have a TO.
+ */
 opt_interval:
-			YEAR_P
+			YEAR_P																%prec IS
 				{ $$ = list_make1(makeIntConst(INTERVAL_MASK(YEAR), @1)); }
 			| MONTH_P
 				{ $$ = list_make1(makeIntConst(INTERVAL_MASK(MONTH), @1)); }
-			| DAY_P
+			| DAY_P																%prec IS
 				{ $$ = list_make1(makeIntConst(INTERVAL_MASK(DAY), @1)); }
-			| HOUR_P
+			| HOUR_P															%prec IS
 				{ $$ = list_make1(makeIntConst(INTERVAL_MASK(HOUR), @1)); }
-			| MINUTE_P
+			| MINUTE_P														%prec IS
 				{ $$ = list_make1(makeIntConst(INTERVAL_MASK(MINUTE), @1)); }
 			| interval_second
 				{ $$ = $1; }
@@ -18930,6 +19038,7 @@ unreserved_keyword:
 			| PLAN
 			| PLANS
 			| POLICY
+			| PORTION
 			| PRECEDING
 			| PREPARE
 			| PREPARED
@@ -19574,6 +19683,7 @@ bare_label_keyword:
 			| PLAN
 			| PLANS
 			| POLICY
+			| PORTION
 			| POSITION
 			| PRECEDING
 			| PREPARE

@@ -120,6 +120,8 @@ extern "C++"
 /*
  * Attribute macros
  *
+ * C23: https://en.cppreference.com/w/c/language/attributes.html
+ * C++: https://en.cppreference.com/w/cpp/language/attributes.html
  * GCC: https://gcc.gnu.org/onlinedocs/gcc/Function-Attributes.html
  * GCC: https://gcc.gnu.org/onlinedocs/gcc/Type-Attributes.html
  * Clang: https://clang.llvm.org/docs/AttributeReference.html
@@ -129,13 +131,20 @@ extern "C++"
  * For compilers which don't support __has_attribute, we just define
  * __has_attribute(x) to 0 so that we can define macros for various
  * __attribute__s more easily below.
+ *
+ * Note that __has_attribute only tells about GCC-style attributes, not C23 or
+ * C++ attributes.
  */
 #ifndef __has_attribute
 #define __has_attribute(attribute) 0
 #endif
 
-/* only GCC supports the unused attribute */
-#ifdef __GNUC__
+/*
+ * pg_attribute_unused() suppresses compiler warnings on unused entities.
+ */
+#if (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L) || (defined(__cplusplus) && __cplusplus >= 201703L)
+#define pg_attribute_unused() [[maybe_unused]]
+#elif defined(__GNUC__)
 #define pg_attribute_unused() __attribute__((unused))
 #else
 #define pg_attribute_unused()
@@ -155,11 +164,11 @@ extern "C++"
 
 /*
  * pg_nodiscard means the compiler should warn if the result of a function
- * call is ignored.  The name "nodiscard" is chosen in alignment with the C23
- * standard attribute with the same name.  For maximum forward compatibility,
- * place it before the declaration.
+ * call is ignored.
  */
-#ifdef __GNUC__
+#if (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L) || (defined(__cplusplus) && __cplusplus >= 201703L)
+#define pg_nodiscard [[nodiscard]]
+#elif defined(__GNUC__)
 #define pg_nodiscard __attribute__((warn_unused_result))
 #else
 #define pg_nodiscard
@@ -171,18 +180,15 @@ extern "C++"
  * uses __attribute__((noreturn)) in headers, which would get confused if
  * "noreturn" is defined to "_Noreturn", as is done by <stdnoreturn.h>.
  *
- * In a declaration, function specifiers go before the function name.  The
- * common style is to put them before the return type.  (The MSVC fallback has
- * the same requirement.  The GCC fallback is more flexible.)
+ * C23 attributes must be placed at the start of a declaration or statement.
+ * C11 function specifiers go before the function name in a declaration, but
+ * it is common style (and required for C23 compatibility) to put them before
+ * the return type.
  */
-#if (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L) && !defined(__cplusplus)
-#define pg_noreturn _Noreturn
-#elif defined(__GNUC__)
-#define pg_noreturn __attribute__((noreturn))
-#elif defined(_MSC_VER)
-#define pg_noreturn __declspec(noreturn)
+#if (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L) || defined(__cplusplus)
+#define pg_noreturn [[noreturn]]
 #else
-#define pg_noreturn
+#define pg_noreturn _Noreturn
 #endif
 
 /*
@@ -618,14 +624,6 @@ typedef uint8_t uint8;
 typedef uint16_t uint16;
 typedef uint32_t uint32;
 typedef uint64_t uint64;
-
-/*
- * bitsN
- *		Unit of bitwise operation, AT LEAST N BITS IN SIZE.
- */
-typedef uint8 bits8;			/* >= 8 bits */
-typedef uint16 bits16;			/* >= 16 bits */
-typedef uint32 bits32;			/* >= 32 bits */
 
 /*
  * 64-bit integers
@@ -1451,17 +1449,28 @@ extern int	fdatasync(int fd);
 #endif
 
 /*
- * The following is used as the arg list for signal handlers.  Any ports
- * that take something other than an int argument should override this in
- * their pg_config_os.h file.  Note that variable names are required
- * because it is used in both the prototypes as well as the definitions.
- * Note also the long name.  We expect that this won't collide with
- * other names causing compiler warnings.
+ * Platform independent struct representing additional information about the
+ * received signal.  If the system does not support the extended information,
+ * or a field does not apply to the signal, the value is instead reset to the
+ * documented default value.
  */
 
-#ifndef SIGNAL_ARGS
-#define SIGNAL_ARGS  int postgres_signal_arg
-#endif
+typedef struct pg_signal_info
+{
+	uint32_t	pid;			/* pid of sending process or 0 if unknown */
+	uint32_t	uid;			/* uid of sending process; only meaningful
+								 * when pid is not 0 */
+} pg_signal_info;
+
+/*
+ * The following is used as the arg list for signal handlers. These days we
+ * use the same argument to all signal handlers and hide the difference
+ * between platforms in wrapper functions.
+ *
+ * SIGNAL_ARGS just exists separately from the pqsignal() definition for
+ * historical reasons.
+ */
+#define SIGNAL_ARGS  int postgres_signal_arg, const pg_signal_info *pg_siginfo
 
 /*
  * When there is no sigsetjmp, its functionality is provided by plain

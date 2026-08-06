@@ -25,13 +25,14 @@
 #include "lib/stringinfo.h"
 #include "pgtime.h"
 #include "storage/block.h"
+#include "storage/checksum.h"
 #include "storage/relfilelocator.h"
 
 
 /*
  * Each page of XLOG file has a header like this:
  */
-#define XLOG_PAGE_MAGIC 0xD11D	/* can be used as WAL version indicator */
+#define XLOG_PAGE_MAGIC 0xD11F	/* can be used as WAL version indicator */
 
 typedef struct XLogPageHeaderData
 {
@@ -287,6 +288,12 @@ typedef struct xl_restore_point
 	char		rp_name[MAXFNAMELEN];
 } xl_restore_point;
 
+/* Information logged when data checksum level is changed */
+typedef struct xl_checksum_state
+{
+	ChecksumStateType new_checksum_state;
+} xl_checksum_state;
+
 /* Overwrite of prior contrecord */
 typedef struct xl_overwrite_contrecord
 {
@@ -302,6 +309,13 @@ typedef struct xl_end_of_recovery
 	TimeLineID	PrevTimeLineID; /* previous TLI we forked off from */
 	int			wal_level;
 } xl_end_of_recovery;
+
+/* checkpoint redo */
+typedef struct xl_checkpoint_redo
+{
+	int			wal_level;
+	uint32		data_checksum_version;
+} xl_checkpoint_redo;
 
 /*
  * The functions in xloginsert.c construct a chain of XLogRecData structs

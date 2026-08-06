@@ -270,7 +270,8 @@ EXPLAIN (COSTS OFF, PLAN_ADVICE) SELECT * FROM scan_table WHERE a > 0;
 COMMIT;
 -- We can force a primary key lookup to use a sequential scan, but we
 -- can't force it to use an index-only scan (due to the column list)
--- or a TID scan (due to the absence of a TID qual).
+-- or a TID scan (due to the absence of a TID qual). If we apply DO_NOT_SCAN
+-- here, we should get a valid plan anyway, but with the scan disabled.
 BEGIN;
 SET LOCAL pg_plan_advice.advice = 'SEQ_SCAN(scan_table)';
 EXPLAIN (COSTS OFF, PLAN_ADVICE) SELECT * FROM scan_table WHERE a = 1;
@@ -308,6 +309,20 @@ EXPLAIN (COSTS OFF, PLAN_ADVICE) SELECT * FROM scan_table WHERE a = 1;
    Index Cond: (a = 1)
  Supplied Plan Advice:
    TID_SCAN(scan_table) /* matched, failed */
+ Generated Plan Advice:
+   INDEX_SCAN(scan_table public.scan_table_pkey)
+   NO_GATHER(scan_table)
+(8 rows)
+
+SET LOCAL pg_plan_advice.advice = 'DO_NOT_SCAN(scan_table)';
+EXPLAIN (COSTS OFF, PLAN_ADVICE) SELECT * FROM scan_table WHERE a = 1;
+                   QUERY PLAN                    
+-------------------------------------------------
+ Index Scan using scan_table_pkey on scan_table
+   Disabled: true
+   Index Cond: (a = 1)
+ Supplied Plan Advice:
+   DO_NOT_SCAN(scan_table) /* matched, failed */
  Generated Plan Advice:
    INDEX_SCAN(scan_table public.scan_table_pkey)
    NO_GATHER(scan_table)
@@ -755,3 +770,41 @@ SELECT * FROM (SELECT * FROM scan_table s WHERE a = 1 OFFSET 0);
 (7 rows)
 
 COMMIT;
+-- Test a non-repeatable tablesample method with a scan-level Materialize.
+CREATE EXTENSION tsm_system_time;
+CREATE TABLE scan_tsm (i int);
+EXPLAIN (COSTS OFF, PLAN_ADVICE)
+SELECT 1 FROM (SELECT i FROM scan_tsm TABLESAMPLE system_time (1000)),
+	LATERAL (SELECT i LIMIT 1);
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Nested Loop
+   ->  Materialize
+         ->  Sample Scan on scan_tsm
+               Sampling: system_time ('1000'::double precision)
+   ->  Limit
+         ->  Result
+ Generated Plan Advice:
+   JOIN_ORDER(scan_tsm unnamed_subquery#2)
+   NESTED_LOOP_PLAIN(unnamed_subquery#2)
+   NO_GATHER(unnamed_subquery#2 scan_tsm "*RESULT*"@unnamed_subquery)
+(10 rows)
+
+-- Same, but with the scan-level Materialize on the inner side of a join.
+EXPLAIN (COSTS OFF, PLAN_ADVICE)
+SELECT 1 FROM (SELECT 1 AS x LIMIT 1),
+	LATERAL (SELECT x FROM scan_tsm TABLESAMPLE system_time (1000));
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Nested Loop
+   ->  Limit
+         ->  Result
+   ->  Materialize
+         ->  Sample Scan on scan_tsm
+               Sampling: system_time ('1000'::double precision)
+ Generated Plan Advice:
+   JOIN_ORDER(unnamed_subquery scan_tsm)
+   NESTED_LOOP_PLAIN(scan_tsm)
+   NO_GATHER(unnamed_subquery scan_tsm "*RESULT*"@unnamed_subquery)
+(10 rows)
+

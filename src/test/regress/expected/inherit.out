@@ -795,7 +795,8 @@ Number of child tables: 1 (Use \d+ to list them.)
  ff1    | integer |           |          | 
 Check constraints:
     "p2chk" CHECK (ff1 > 10)
-Inherits: p1
+Inherits:
+    p1
 
 -- Test that child does not override inheritable constraints of the parent
 create table c2 (constraint p2chk check (ff1 > 10) no inherit) inherits (p1);	--fails
@@ -990,8 +991,9 @@ create table c2(f3 int) inherits(p1,p2);
  f3     | integer |           |          | 
 Check constraints:
     "p2_f2_check" CHECK (f2 > 0)
-Inherits: p1,
-          p2
+Inherits:
+    p1
+    p2
 
 create table c3 (f4 int) inherits(c1,c2);
 NOTICE:  merging multiple inherited definitions of column "f1"
@@ -1007,8 +1009,9 @@ NOTICE:  merging multiple inherited definitions of column "f3"
  f4     | integer |           |          | 
 Check constraints:
     "p2_f2_check" CHECK (f2 > 0)
-Inherits: c1,
-          c2
+Inherits:
+    c1
+    c2
 
 drop table p1 cascade;
 NOTICE:  drop cascades to 3 other objects
@@ -1029,7 +1032,8 @@ alter table pp1 add column a1 int check (a1 > 0);
  a1     | integer |           |          | 
 Check constraints:
     "pp1_a1_check" CHECK (a1 > 0)
-Inherits: pp1
+Inherits:
+    pp1
 
 create table cc2(f4 float) inherits(pp1,cc1);
 NOTICE:  merging multiple inherited definitions of column "f1"
@@ -1045,8 +1049,9 @@ NOTICE:  merging multiple inherited definitions of column "a1"
  f4     | double precision |           |          | 
 Check constraints:
     "pp1_a1_check" CHECK (a1 > 0)
-Inherits: pp1,
-          cc1
+Inherits:
+    pp1
+    cc1
 
 alter table pp1 add column a2 int check (a2 > 0);
 NOTICE:  merging definition of column "a2" for child "cc2"
@@ -1064,8 +1069,9 @@ NOTICE:  merging constraint "pp1_a2_check" with inherited definition
 Check constraints:
     "pp1_a1_check" CHECK (a1 > 0)
     "pp1_a2_check" CHECK (a2 > 0)
-Inherits: pp1,
-          cc1
+Inherits:
+    pp1
+    cc1
 
 drop table pp1 cascade;
 NOTICE:  drop cascades to 2 other objects
@@ -1090,8 +1096,9 @@ ALTER TABLE inhts RENAME d TO dd;
  b      | integer |           |          |         | plain   |              | 
  c      | integer |           |          |         | plain   |              | 
  dd     | integer |           |          |         | plain   |              | 
-Inherits: inht1,
-          inhs1
+Inherits:
+    inht1
+    inhs1
 
 DROP TABLE inhts;
 -- Test for adding a column to a parent table with complex inheritance
@@ -1110,8 +1117,9 @@ NOTICE:  merging definition of column "j" for child "inhtd"
 --------+---------+-----------+----------+---------+---------+--------------+-------------
  i      | integer |           |          |         | plain   |              | 
  j      | bigint  |           |          | 1       | plain   |              | 
-Child tables: inhtb,
-              inhtd
+Child tables:
+    inhtb
+    inhtd
 
 \d+ inhtd
                                    Table "public.inhtd"
@@ -1119,9 +1127,10 @@ Child tables: inhtb,
 --------+---------+-----------+----------+---------+---------+--------------+-------------
  i      | integer |           |          |         | plain   |              | 
  j      | bigint  |           |          | 1       | plain   |              | 
-Inherits: inhta,
-          inhtb,
-          inhtc
+Inherits:
+    inhta
+    inhtb
+    inhtc
 
 DROP TABLE inhta, inhtb, inhtc, inhtd;
 -- Test for renaming in diamond inheritance
@@ -1140,8 +1149,9 @@ ALTER TABLE inht1 RENAME aa TO aaa;
  x      | integer |           |          |         | plain   |              | 
  y      | integer |           |          |         | plain   |              | 
  z      | integer |           |          |         | plain   |              | 
-Inherits: inht2,
-          inht3
+Inherits:
+    inht2
+    inht3
 
 CREATE TABLE inhts (d int) INHERITS (inht2, inhs1);
 NOTICE:  merging multiple inherited definitions of column "b"
@@ -1157,8 +1167,9 @@ ERROR:  cannot rename inherited column "b"
  x      | integer |           |          |         | plain   |              | 
  c      | integer |           |          |         | plain   |              | 
  d      | integer |           |          |         | plain   |              | 
-Inherits: inht2,
-          inhs1
+Inherits:
+    inht2
+    inhs1
 
 WITH RECURSIVE r AS (
   SELECT 'inht1'::regclass AS inhrelid
@@ -1204,7 +1215,8 @@ CREATE TABLE test_constraints_inh () INHERITS (test_constraints);
  val2   | integer           |           |          |         | plain    |              | 
 Indexes:
     "test_constraints_val1_val2_key" UNIQUE CONSTRAINT, btree (val1, val2)
-Child tables: test_constraints_inh
+Child tables:
+    test_constraints_inh
 
 ALTER TABLE ONLY test_constraints DROP CONSTRAINT test_constraints_val1_val2_key;
 \d+ test_constraints
@@ -1214,7 +1226,8 @@ ALTER TABLE ONLY test_constraints DROP CONSTRAINT test_constraints_val1_val2_key
  id     | integer           |           |          |         | plain    |              | 
  val1   | character varying |           |          |         | extended |              | 
  val2   | integer           |           |          |         | plain    |              | 
-Child tables: test_constraints_inh
+Child tables:
+    test_constraints_inh
 
 \d+ test_constraints_inh
                                  Table "public.test_constraints_inh"
@@ -1223,7 +1236,8 @@ Child tables: test_constraints_inh
  id     | integer           |           |          |         | plain    |              | 
  val1   | character varying |           |          |         | extended |              | 
  val2   | integer           |           |          |         | plain    |              | 
-Inherits: test_constraints
+Inherits:
+    test_constraints
 
 DROP TABLE test_constraints_inh;
 DROP TABLE test_constraints;
@@ -1239,7 +1253,8 @@ CREATE TABLE test_ex_constraints_inh () INHERITS (test_ex_constraints);
  c      | circle |           |          |         | plain   |              | 
 Indexes:
     "test_ex_constraints_c_excl" EXCLUDE USING gist (c WITH &&)
-Child tables: test_ex_constraints_inh
+Child tables:
+    test_ex_constraints_inh
 
 ALTER TABLE test_ex_constraints DROP CONSTRAINT test_ex_constraints_c_excl;
 \d+ test_ex_constraints
@@ -1247,14 +1262,16 @@ ALTER TABLE test_ex_constraints DROP CONSTRAINT test_ex_constraints_c_excl;
  Column |  Type  | Collation | Nullable | Default | Storage | Stats target | Description 
 --------+--------+-----------+----------+---------+---------+--------------+-------------
  c      | circle |           |          |         | plain   |              | 
-Child tables: test_ex_constraints_inh
+Child tables:
+    test_ex_constraints_inh
 
 \d+ test_ex_constraints_inh
                          Table "public.test_ex_constraints_inh"
  Column |  Type  | Collation | Nullable | Default | Storage | Stats target | Description 
 --------+--------+-----------+----------+---------+---------+--------------+-------------
  c      | circle |           |          |         | plain   |              | 
-Inherits: test_ex_constraints
+Inherits:
+    test_ex_constraints
 
 DROP TABLE test_ex_constraints_inh;
 DROP TABLE test_ex_constraints;
@@ -1281,7 +1298,8 @@ Not-null constraints:
  id1    | integer |           |          |         | plain   |              | 
 Foreign-key constraints:
     "test_foreign_constraints_id1_fkey" FOREIGN KEY (id1) REFERENCES test_primary_constraints(id)
-Child tables: test_foreign_constraints_inh
+Child tables:
+    test_foreign_constraints_inh
 
 ALTER TABLE test_foreign_constraints DROP CONSTRAINT test_foreign_constraints_id1_fkey;
 \d+ test_foreign_constraints
@@ -1289,14 +1307,16 @@ ALTER TABLE test_foreign_constraints DROP CONSTRAINT test_foreign_constraints_id
  Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
 --------+---------+-----------+----------+---------+---------+--------------+-------------
  id1    | integer |           |          |         | plain   |              | 
-Child tables: test_foreign_constraints_inh
+Child tables:
+    test_foreign_constraints_inh
 
 \d+ test_foreign_constraints_inh
                        Table "public.test_foreign_constraints_inh"
  Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
 --------+---------+-----------+----------+---------+---------+--------------+-------------
  id1    | integer |           |          |         | plain   |              | 
-Inherits: test_foreign_constraints
+Inherits:
+    test_foreign_constraints
 
 DROP TABLE test_foreign_constraints_inh;
 DROP TABLE test_foreign_constraints;
@@ -1520,7 +1540,8 @@ alter table p1 drop constraint f1_pos;
  f1     | integer |           |          | 
 Check constraints:
     "f1_pos" CHECK (f1 > 0)
-Inherits: p1
+Inherits:
+    p1
 
 drop table p1 cascade;
 NOTICE:  drop cascades to table p1_c1
@@ -1540,8 +1561,9 @@ alter table p1 drop constraint f1_pos;
  Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
  f1     | integer |           |          | 
-Inherits: p1,
-          p2
+Inherits:
+    p1
+    p2
 
               Table "public.p1p2_c2"
  Column |  Type   | Collation | Nullable | Default 
@@ -1549,8 +1571,9 @@ Inherits: p1,
  f1     | integer |           |          | 
 Check constraints:
     "f1_pos" CHECK (f1 > 0)
-Inherits: p1,
-          p2
+Inherits:
+    p1
+    p2
 
 drop table p1, p2 cascade;
 NOTICE:  drop cascades to 2 other objects
@@ -1568,8 +1591,9 @@ NOTICE:  merging multiple inherited definitions of column "f1"
  f1     | integer |           |          | 
 Check constraints:
     "f1_pos" CHECK (f1 > 0)
-Inherits: p1_c1,
-          p1_c2
+Inherits:
+    p1_c1
+    p1_c2
 
 alter table p1 drop constraint f1_pos;
 \d p1_c1c2
@@ -1577,8 +1601,9 @@ alter table p1 drop constraint f1_pos;
  Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
  f1     | integer |           |          | 
-Inherits: p1_c1,
-          p1_c2
+Inherits:
+    p1_c1
+    p1_c2
 
 drop table p1 cascade;
 NOTICE:  drop cascades to 3 other objects
@@ -1603,9 +1628,10 @@ alter table p1_c2 drop constraint f1_pos;
  Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
  f1     | integer |           |          | 
-Inherits: p1_c1,
-          p1_c2,
-          p1
+Inherits:
+    p1_c1
+    p1_c2
+    p1
 
 drop table p1 cascade;
 NOTICE:  drop cascades to 3 other objects
@@ -2257,9 +2283,10 @@ alter table pp1 alter f1 set not null;
  f4     | double precision |           |          |         | plain    |              | 
 Not-null constraints:
     "pp1_f1_not_null" NOT NULL "f1" (inherited)
-Inherits: pp1,
-          cc1,
-          cc2
+Inherits:
+    pp1
+    cc1
+    cc2
 
 alter table cc3 no inherit pp1;
 alter table cc3 no inherit cc1;
@@ -2289,8 +2316,10 @@ alter table cc1 add column a2 int constraint nn not null;
 Not-null constraints:
     "pp1_f1_not_null" NOT NULL "f1" (inherited)
     "nn" NOT NULL "a2"
-Inherits: pp1
-Child tables: cc2
+Inherits:
+    pp1
+Child tables:
+    cc2
 
 \d+ cc2
                                          Table "public.cc2"
@@ -2304,8 +2333,9 @@ Child tables: cc2
 Not-null constraints:
     "pp1_f1_not_null" NOT NULL "f1" (inherited)
     "nn" NOT NULL "a2" (inherited)
-Inherits: pp1,
-          cc1
+Inherits:
+    pp1
+    cc1
 
 alter table pp1 alter column f1 set not null;
 \d+ pp1
@@ -2315,8 +2345,9 @@ alter table pp1 alter column f1 set not null;
  f1     | integer |           | not null |         | plain   |              | 
 Not-null constraints:
     "pp1_f1_not_null" NOT NULL "f1"
-Child tables: cc1,
-              cc2
+Child tables:
+    cc1
+    cc2
 
 \d+ cc1
                                     Table "public.cc1"
@@ -2329,8 +2360,10 @@ Child tables: cc1,
 Not-null constraints:
     "pp1_f1_not_null" NOT NULL "f1" (inherited)
     "nn" NOT NULL "a2"
-Inherits: pp1
-Child tables: cc2
+Inherits:
+    pp1
+Child tables:
+    cc2
 
 \d+ cc2
                                          Table "public.cc2"
@@ -2344,8 +2377,9 @@ Child tables: cc2
 Not-null constraints:
     "pp1_f1_not_null" NOT NULL "f1" (inherited)
     "nn" NOT NULL "a2" (inherited)
-Inherits: pp1,
-          cc1
+Inherits:
+    pp1
+    cc1
 
 -- cannot create table with inconsistent NO INHERIT constraint
 create table cc3 (a2 int not null no inherit) inherits (cc1);
@@ -2372,8 +2406,10 @@ alter table cc1 alter column a2 drop not null;
  a2     | integer |           |          |         | plain    |              | 
 Not-null constraints:
     "pp1_f1_not_null" NOT NULL "f1" (inherited)
-Inherits: pp1
-Child tables: cc2
+Inherits:
+    pp1
+Child tables:
+    cc2
 
 -- same for cc2
 alter table cc2 alter column f1 drop not null;
@@ -2389,8 +2425,9 @@ ERROR:  cannot drop inherited constraint "pp1_f1_not_null" of relation "cc2"
  a2     | integer          |           |          |         | plain    |              | 
 Not-null constraints:
     "pp1_f1_not_null" NOT NULL "f1" (inherited)
-Inherits: pp1,
-          cc1
+Inherits:
+    pp1
+    cc1
 
 -- remove from cc1, should fail again
 alter table cc1 alter column f1 drop not null;
@@ -2402,8 +2439,9 @@ alter table pp1 alter column f1 drop not null;
  Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
 --------+---------+-----------+----------+---------+---------+--------------+-------------
  f1     | integer |           |          |         | plain   |              | 
-Child tables: cc1,
-              cc2
+Child tables:
+    cc1
+    cc2
 
 alter table pp1 add primary key (f1);
 -- Leave these tables around, for pg_upgrade testing
@@ -2455,8 +2493,9 @@ alter table inh_pp1 alter column f1 drop not null;
  f2     | text             |           |          |         | extended |              | 
  f3     | integer          |           |          |         | plain    |              | 
  f4     | double precision |           |          |         | plain    |              | 
-Inherits: inh_pp1,
-          inh_cc1
+Inherits:
+    inh_pp1
+    inh_cc1
 
 drop table inh_pp1, inh_cc1, inh_cc2;
 -- Test a not-null addition that must walk down the hierarchy
@@ -2480,8 +2519,9 @@ create table inh_child1 () inherits (inh_parent1, inh_parent2);
 Not-null constraints:
     "nn" NOT NULL "a" (inherited)
     "inh_child1_b_not_null" NOT NULL "b" (inherited)
-Inherits: inh_parent1,
-          inh_parent2
+Inherits:
+    inh_parent1
+    inh_parent2
 
 create table inh_child2 (constraint foo not null a) inherits (inh_parent1, inh_parent2);
 alter table inh_child2 no inherit inh_parent2;
@@ -2494,7 +2534,8 @@ alter table inh_child2 no inherit inh_parent2;
 Not-null constraints:
     "foo" NOT NULL "a" (local, inherited)
     "nn" NOT NULL "b"
-Inherits: inh_parent1
+Inherits:
+    inh_parent1
 
 drop table inh_parent1, inh_parent2, inh_child1, inh_child2;
 -- Test multiple parents with overlapping primary keys
@@ -2533,8 +2574,9 @@ Not-null constraints:
     "inh_parent1_a_not_null" NOT NULL "a" (inherited)
     "inh_parent1_b_not_null" NOT NULL "b" (inherited)
     "inh_parent2_d_not_null" NOT NULL "d" (inherited)
-Inherits: inh_parent1,
-          inh_parent2
+Inherits:
+    inh_parent1
+    inh_parent2
 
 drop table inh_parent1, inh_parent2, inh_child;
 -- NOT NULL NO INHERIT
@@ -2558,13 +2600,15 @@ select conrelid::regclass, conname, contype, conkey,
  Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
 --------+---------+-----------+----------+---------+---------+--------------+-------------
  a      | integer |           |          |         | plain   |              | 
-Inherits: inh_nn_parent
+Inherits:
+    inh_nn_parent
 
                                Table "public.inh_nn_child2"
  Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
 --------+---------+-----------+----------+---------+---------+--------------+-------------
  a      | integer |           |          |         | plain   |              | 
-Inherits: inh_nn_parent
+Inherits:
+    inh_nn_parent
 
                                Table "public.inh_nn_parent"
  Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
@@ -2572,8 +2616,9 @@ Inherits: inh_nn_parent
  a      | integer |           | not null |         | plain   |              | 
 Not-null constraints:
     "inh_nn_parent_a_not_null" NOT NULL "a" NO INHERIT
-Child tables: inh_nn_child,
-              inh_nn_child2
+Child tables:
+    inh_nn_child
+    inh_nn_child2
 
 drop table inh_nn_parent, inh_nn_child, inh_nn_child2;
 CREATE TABLE inh_nn_parent (a int, NOT NULL a NO INHERIT);
@@ -2632,7 +2677,8 @@ alter table inh_parent alter column f1 set not null;
  f1     | integer |           | not null |         | plain   |              | 
 Not-null constraints:
     "inh_parent_f1_not_null" NOT NULL "f1"
-Child tables: inh_child1
+Child tables:
+    inh_child1
 
 \d+ inh_child1
                                 Table "public.inh_child1"
@@ -2641,8 +2687,10 @@ Child tables: inh_child1
  f1     | integer |           | not null |         | plain   |              | 
 Not-null constraints:
     "inh_child1_f1_not_null" NOT NULL "f1" (local, inherited)
-Inherits: inh_parent
-Child tables: inh_child2
+Inherits:
+    inh_parent
+Child tables:
+    inh_child2
 
 \d+ inh_child2
                                 Table "public.inh_child2"
@@ -2651,7 +2699,8 @@ Child tables: inh_child2
  f1     | integer |           | not null |         | plain   |              | 
 Not-null constraints:
     "inh_child2_f1_not_null" NOT NULL "f1" (local, inherited)
-Inherits: inh_child1
+Inherits:
+    inh_child1
 
 select conrelid::regclass, conname, contype, coninhcount, conislocal
  from pg_constraint where contype = 'n' and
@@ -2685,8 +2734,9 @@ Not-null constraints:
  f1     | integer |           | not null |         | plain   |              | 
 Not-null constraints:
     "inh_child1_f1_not_null" NOT NULL "f1"
-Child tables: inh_child2,
-              inh_child3
+Child tables:
+    inh_child2
+    inh_child3
 
 \d+ inh_child2
                                 Table "public.inh_child2"
@@ -2695,7 +2745,8 @@ Child tables: inh_child2,
  f1     | integer |           | not null |         | plain   |              | 
 Not-null constraints:
     "inh_child2_f1_not_null" NOT NULL "f1" (local, inherited)
-Inherits: inh_child1
+Inherits:
+    inh_child1
 
 select conrelid::regclass, conname, contype, coninhcount, conislocal
  from pg_constraint where contype = 'n' and
