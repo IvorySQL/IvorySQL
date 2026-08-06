@@ -559,6 +559,72 @@ select sessiontimezone() from dual; /* BUG:0000427 */
  Asia/Hong_Kong
 (1 row)
 
+--dbtimezone
+select dbtimezone() from dual;
+ dbtimezone 
+------------
+ +00:00
+(1 row)
+
+select dbtimezone() from dual; /* unaffected by session timezone set above */
+ dbtimezone 
+------------
+ +00:00
+(1 row)
+
+set ivorysql.dbtimezone = '+08:00'; /* rejected: only ALTER DATABASE ... SET may change it */
+ERROR:  parameter "ivorysql.dbtimezone" cannot be set
+DETAIL:  "ivorysql.dbtimezone" can only be set with ALTER DATABASE ... SET, not within a session or per-role.
+select current_database() as cur_db \gset
+alter database :cur_db set ivorysql.dbtimezone = '+08:00';
+\c -
+select dbtimezone() from dual;
+ dbtimezone 
+------------
+ +08:00
+(1 row)
+
+alter database :cur_db set ivorysql.dbtimezone = 'not_a_zone';
+ERROR:  invalid value for parameter "ivorysql.dbtimezone": "not_a_zone"
+DETAIL:  "not_a_zone" is not a valid UTC offset (+/-HH:MI) or time zone name.
+alter database :cur_db set ivorysql.dbtimezone = '+15:00';
+ERROR:  invalid value for parameter "ivorysql.dbtimezone": "+15:00"
+DETAIL:  time zone offset "+15:00" is out of range for DBTIMEZONE (-12:59 to +14:00)
+alter database :cur_db set ivorysql.dbtimezone = '-13:00';
+ERROR:  invalid value for parameter "ivorysql.dbtimezone": "-13:00"
+DETAIL:  time zone offset "-13:00" is out of range for DBTIMEZONE (-12:59 to +14:00)
+alter database :cur_db set ivorysql.dbtimezone = '+00:00';
+\c -
+select dbtimezone() from dual;
+ dbtimezone 
+------------
+ +00:00
+(1 row)
+
+/* a granted non-superuser can set DBTIMEZONE for a database they own */
+select current_user as cur_super \gset
+create role dbtz_owner login;
+create database dbtz_test owner dbtz_owner;
+\c dbtz_test dbtz_owner
+alter database dbtz_test set ivorysql.dbtimezone = '+05:00'; /* rejected: not granted permission on this SUSET parameter */
+ERROR:  permission denied to set parameter "ivorysql.dbtimezone"
+\c :cur_db :cur_super
+grant set on parameter ivorysql.dbtimezone to dbtz_owner;
+\c dbtz_test dbtz_owner
+alter database dbtz_test set ivorysql.dbtimezone = '+05:00'; /* allowed: granted + owns the database */
+\c dbtz_test dbtz_owner
+select dbtimezone() from dual;
+ dbtimezone 
+------------
+ +05:00
+(1 row)
+
+\c :cur_db :cur_super
+revoke set on parameter ivorysql.dbtimezone from dbtz_owner;
+drop database dbtz_test;
+drop role dbtz_owner;
+set timezone = 'Asia/Hong_Kong';
+SET NLS_TIMESTAMP_TZ_FORMAT = 'MM-DD-YYYY HH24:MI:SS.FF9 TZH:TZM';
 alter session set nls_date_format='YYYY-MM-DD HH24:MI:SS';
 alter session set nls_timestamp_format = 'YYYY-MM-DD HH24:MI:SS.ff';
 /*

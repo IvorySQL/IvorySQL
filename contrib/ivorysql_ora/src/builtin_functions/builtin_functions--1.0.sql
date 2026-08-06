@@ -664,6 +664,13 @@ LANGUAGE C
 STRICT
 STABLE;
 
+CREATE FUNCTION sys.dbtimezone()
+RETURNS text
+AS 'MODULE_PATHNAME','ora_dbtimezone'
+LANGUAGE C
+STRICT
+STABLE;
+
 CREATE FUNCTION sys.to_date(text)
 RETURNS sys.oradate
 AS 'MODULE_PATHNAME','to_oradate1'
