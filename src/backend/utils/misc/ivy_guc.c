@@ -444,7 +444,8 @@ static bool
 check_nls_length_semantics(int *newval, void **extra, GucSource source)
 {
 	//if (source >= PGC_S_INTERACTIVE &&
-	if( IsUnderPostmaster && DB_PG == database_mode)
+	if (source >= PGC_S_INTERACTIVE &&
+	 IsUnderPostmaster && DB_PG == database_mode)
 	{
 		GUC_check_errcode(ERRCODE_FEATURE_NOT_SUPPORTED);
 		GUC_check_errmsg("Do not use this GUC variable in the current cluster (PG).");
@@ -497,11 +498,12 @@ check_database_mode(int *newval, void **extra, GucSource source)
 	int			newmode = *newval;
 
 	//if (source >= PGC_S_INTERACTIVE &&
-	if( DB_PG == database_mode && DB_ORACLE == newmode)
+	if (source >= PGC_S_INTERACTIVE &&
+	 DB_PG == database_mode && DB_ORACLE == newmode)
 	{
 		GUC_check_errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM);
 		GUC_check_errmsg("parameter ivorysql.database_mode cannot be changed");
-		return false;
+		//return false;
 	}
 
 	return true;
