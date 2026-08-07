@@ -4006,6 +4006,7 @@ typedef struct CompositeTypeStmt
 	NodeTag		type;
 	RangeVar   *typevar;		/* the composite type to be created */
 	List	   *coldeflist;		/* list of ColumnDef nodes */
+	bool		is_object;		/* Oracle CREATE TYPE ... AS OBJECT */
 } CompositeTypeStmt;
 
 /* ----------------------

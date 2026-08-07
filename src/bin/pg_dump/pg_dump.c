@@ -6318,6 +6318,7 @@ getTypes(Archive *fout)
 	int			i_typrelkind;
 	int			i_typtype;
 	int			i_typisdefined;
+	int			i_typisobject;
 	int			i_isarray;
 	int			i_typarray;
 
@@ -6343,7 +6344,7 @@ getTypes(Archive *fout)
 						 "typelem, typrelid, typarray, "
 						 "CASE WHEN typrelid = 0 THEN ' '::\"char\" "
 						 "ELSE (SELECT relkind FROM pg_class WHERE oid = typrelid) END AS typrelkind, "
-						 "typtype, typisdefined, "
+						 "typtype, typisdefined, typisobject, "
 						 "typname[0] = '_' AND typelem != 0 AND "
 						 "(SELECT typarray FROM pg_type te WHERE oid = pg_type.typelem) = oid AS isarray "
 						 "FROM pg_type");
@@ -6366,6 +6367,7 @@ getTypes(Archive *fout)
 	i_typrelkind = PQfnumber(res, "typrelkind");
 	i_typtype = PQfnumber(res, "typtype");
 	i_typisdefined = PQfnumber(res, "typisdefined");
+	i_typisobject = PQfnumber(res, "typisobject");
 	i_isarray = PQfnumber(res, "isarray");
 	i_typarray = PQfnumber(res, "typarray");
 
@@ -6388,6 +6390,8 @@ getTypes(Archive *fout)
 		tyinfo[i].typrelid = atooid(PQgetvalue(res, i, i_typrelid));
 		tyinfo[i].typrelkind = *PQgetvalue(res, i, i_typrelkind);
 		tyinfo[i].typtype = *PQgetvalue(res, i, i_typtype);
+		tyinfo[i].isObject =
+			strcmp(PQgetvalue(res, i, i_typisobject), "t") == 0;
 		tyinfo[i].shellType = NULL;
 
 		if (strcmp(PQgetvalue(res, i, i_typisdefined), "t") == 0)
@@ -13335,8 +13339,9 @@ dumpCompositeType(Archive *fout, const TypeInfo *tyinfo)
 	qtypname = pg_strdup(fmtId(tyinfo->dobj.name));
 	qualtypname = pg_strdup(fmtQualifiedDumpable(tyinfo));
 
-	appendPQExpBuffer(q, "CREATE TYPE %s AS (",
-					  qualtypname);
+	appendPQExpBuffer(q, "CREATE TYPE %s AS%s (",
+					  qualtypname,
+					  tyinfo->isObject ? " OBJECT" : "");
 
 	actual_atts = 0;
 	for (i = 0; i < ntups; i++)

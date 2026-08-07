@@ -2590,7 +2590,7 @@ AssignTypeMultirangeArrayOid(void)
  *-------------------------------------------------------------------
  */
 ObjectAddress
-DefineCompositeType(RangeVar *typevar, List *coldeflist)
+DefineCompositeType(RangeVar *typevar, List *coldeflist, bool is_object)
 {
 	CreateStmt *createStmt = makeNode(CreateStmt);
 	Oid			old_type_oid;
@@ -2636,6 +2636,32 @@ DefineCompositeType(RangeVar *typevar, List *coldeflist)
 	 */
 	DefineRelation(createStmt, RELKIND_COMPOSITE_TYPE, InvalidOid, &address,
 				   NULL);
+
+	if (is_object)
+	{
+		Oid			typeoid = address.objectId;
+		Relation	typrel;
+		HeapTuple	tup;
+		HeapTuple	newtup;
+		Datum		values[Natts_pg_type] = {0};
+		bool		nulls[Natts_pg_type] = {0};
+		bool		replaces[Natts_pg_type] = {0};
+
+		typrel = table_open(TypeRelationId, RowExclusiveLock);
+		tup = SearchSysCacheCopy1(TYPEOID, ObjectIdGetDatum(typeoid));
+		if (!HeapTupleIsValid(tup))
+			elog(ERROR, "cache lookup failed for type %u", typeoid);
+
+		values[Anum_pg_type_typisobject - 1] = BoolGetDatum(true);
+		replaces[Anum_pg_type_typisobject - 1] = true;
+		newtup = heap_modify_tuple(tup, RelationGetDescr(typrel),
+								   values, nulls, replaces);
+		CatalogTupleUpdate(typrel, &tup->t_self, newtup);
+
+		heap_freetuple(newtup);
+		heap_freetuple(tup);
+		table_close(typrel, RowExclusiveLock);
+	}
 
 	return address;
 }

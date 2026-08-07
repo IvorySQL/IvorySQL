@@ -229,8 +229,47 @@ FROM (VALUES (oracle_object_type(1, 'one'))) AS objects(value);
  one
 (1 row)
 
+SELECT typisobject FROM pg_type WHERE typname = 'oracle_object_type';
+ typisobject 
+-------------
+ t
+(1 row)
+
 DROP FUNCTION object_label(oracle_object_type);
 DROP TYPE oracle_object_type;
+-- Only types declared AS OBJECT have constructor and member semantics.
+CREATE TABLE ordinary_object_table (id integer, label varchar(20));
+CREATE VIEW ordinary_object_view AS
+	SELECT 1 AS id, 'view'::varchar(20) AS label;
+SELECT ordinary_object_table(1, 'table');
+ERROR:  function ordinary_object_table(pg_catalog.int4, unknown) does not exist
+LINE 1: SELECT ordinary_object_table(1, 'table');
+               ^
+DETAIL:  There is no function of that name.
+SELECT ordinary_object_view(1, 'view');
+ERROR:  function ordinary_object_view(pg_catalog.int4, unknown) does not exist
+LINE 1: SELECT ordinary_object_view(1, 'view');
+               ^
+DETAIL:  There is no function of that name.
+SELECT default_test_row('row', 42);
+ERROR:  function default_test_row(unknown, pg_catalog.int4) does not exist
+LINE 1: SELECT default_test_row('row', 42);
+               ^
+DETAIL:  There is no function of that name.
+SELECT typname, typisobject
+FROM pg_type
+WHERE typname IN ('ordinary_object_table', 'ordinary_object_view',
+				  'default_test_row')
+ORDER BY typname;
+        typname        | typisobject 
+-----------------------+-------------
+ default_test_row      | f
+ ordinary_object_table | f
+ ordinary_object_view  | f
+(3 rows)
+
+DROP VIEW ordinary_object_view;
+DROP TABLE ordinary_object_table;
 CREATE FUNCTION get_default_test() RETURNS SETOF default_test_row AS '
   SELECT * FROM default_test;
 ' LANGUAGE SQL;

@@ -27,7 +27,8 @@ extern ObjectAddress DefineDomain(ParseState *pstate, CreateDomainStmt *stmt);
 extern ObjectAddress DefineEnum(CreateEnumStmt *stmt);
 extern ObjectAddress DefineRange(ParseState *pstate, CreateRangeStmt *stmt);
 extern ObjectAddress AlterEnum(AlterEnumStmt *stmt);
-extern ObjectAddress DefineCompositeType(RangeVar *typevar, List *coldeflist);
+extern ObjectAddress DefineCompositeType(RangeVar *typevar, List *coldeflist,
+										 bool is_object);
 extern Oid	AssignTypeArrayOid(void);
 extern Oid	AssignTypeMultirangeOid(void);
 extern Oid	AssignTypeMultirangeArrayOid(void);

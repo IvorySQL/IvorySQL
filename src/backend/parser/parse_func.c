@@ -56,7 +56,7 @@ static void unify_hypothetical_args(ParseState *pstate,
 									List *fargs, int numAggregatedArgs,
 									Oid *actual_arg_types, Oid *declared_arg_types);
 static Oid	FuncNameAsType(List *funcname);
-static Oid	FuncNameAsCompositeType(List *funcname);
+static Oid	FuncNameAsObjectType(List *funcname);
 static Node *ParseComplexProjection(ParseState *pstate, const char *funcname,
 									Node *first_arg, int location);
 static Oid	LookupFuncNameInternal(ObjectType objtype, List *funcname,
@@ -442,7 +442,8 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 
 		self = OidIsValid(LookupExplicitNamespace(objectname, true)) ? NULL :
 			colNameToVar(pstate, objectname, false, location);
-		if (self != NULL && ISCOMPLEX(exprType(self)))
+		if (self != NULL && ISCOMPLEX(exprType(self)) &&
+			get_typisobject(exprType(self)))
 		{
 			List	   *methodname = list_make1(copyObject(lsecond(funcname)));
 			List	   *methodargs = lcons(self, list_copy(fargs));
@@ -504,7 +505,7 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 		!agg_star && !agg_distinct && over == NULL &&
 		!func_variadic)
 	{
-		Oid			targetType = FuncNameAsCompositeType(funcname);
+		Oid			targetType = FuncNameAsObjectType(funcname);
 
 		if (OidIsValid(targetType))
 		{
@@ -2530,8 +2531,9 @@ FuncNameAsType(List *funcname)
 }
 
 /*
- * FuncNameAsCompositeType
- *		Return the OID when a possibly-qualified name denotes a composite type.
+ * FuncNameAsObjectType
+ *		Return the OID when a possibly-qualified name denotes an Oracle object
+ *		type.
  *
  * FuncNameAsType deliberately excludes composite types because they are not
  * valid PostgreSQL function-style casts.  Oracle attribute-value
@@ -2539,7 +2541,7 @@ FuncNameAsType(List *funcname)
  * separate rather than weakening the existing cast rules.
  */
 static Oid
-FuncNameAsCompositeType(List *funcname)
+FuncNameAsObjectType(List *funcname)
 {
 	Oid			result = InvalidOid;
 	Type		typtup;
@@ -2553,6 +2555,7 @@ FuncNameAsCompositeType(List *funcname)
 	typeform = (Form_pg_type) GETSTRUCT(typtup);
 	if (typeform->typisdefined &&
 		typeform->typtype == TYPTYPE_COMPOSITE &&
+		typeform->typisobject &&
 		OidIsValid(typeform->typrelid))
 		result = typeform->oid;
 

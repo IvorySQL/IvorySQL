@@ -1670,7 +1670,8 @@ ProcessUtilitySlow(ParseState *pstate,
 					CompositeTypeStmt *stmt = (CompositeTypeStmt *) parsetree;
 
 					address = DefineCompositeType(stmt->typevar,
-												  stmt->coldeflist);
+											  stmt->coldeflist,
+											  stmt->is_object);
 				}
 				break;
 

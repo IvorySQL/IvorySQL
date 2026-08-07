@@ -96,6 +96,9 @@ CATALOG(pg_type,1247,TypeRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(71,TypeRelati
 	 */
 	bool		typisdefined BKI_DEFAULT(t);
 
+	/* Was this composite type declared with Oracle AS OBJECT syntax? */
+	bool		typisobject BKI_DEFAULT(f);
+
 	/* delimiter for arrays of this type */
 	char		typdelim BKI_DEFAULT(',');
 

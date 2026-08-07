@@ -2660,6 +2660,30 @@ get_typisdefined(Oid typid)
 }
 
 /*
+ * get_typisobject
+ *
+ *		Given the type OID, determine whether it is an Oracle object type.
+ */
+bool
+get_typisobject(Oid typid)
+{
+	HeapTuple	tp;
+
+	tp = SearchSysCache1(TYPEOID, ObjectIdGetDatum(typid));
+	if (HeapTupleIsValid(tp))
+	{
+		Form_pg_type typtup = (Form_pg_type) GETSTRUCT(tp);
+		bool		result;
+
+		result = typtup->typisobject;
+		ReleaseSysCache(tp);
+		return result;
+	}
+	else
+		return false;
+}
+
+/*
  * get_typlen
  *
  *		Given the type OID, return the length of the type.

@@ -184,8 +184,28 @@ AS 'SELECT ($1).label';
 SELECT value.object_label()
 FROM (VALUES (oracle_object_type(1, 'one'))) AS objects(value);
 
+SELECT typisobject FROM pg_type WHERE typname = 'oracle_object_type';
+
 DROP FUNCTION object_label(oracle_object_type);
 DROP TYPE oracle_object_type;
+
+-- Only types declared AS OBJECT have constructor and member semantics.
+CREATE TABLE ordinary_object_table (id integer, label varchar(20));
+CREATE VIEW ordinary_object_view AS
+	SELECT 1 AS id, 'view'::varchar(20) AS label;
+
+SELECT ordinary_object_table(1, 'table');
+SELECT ordinary_object_view(1, 'view');
+SELECT default_test_row('row', 42);
+
+SELECT typname, typisobject
+FROM pg_type
+WHERE typname IN ('ordinary_object_table', 'ordinary_object_view',
+				  'default_test_row')
+ORDER BY typname;
+
+DROP VIEW ordinary_object_view;
+DROP TABLE ordinary_object_table;
 
 CREATE FUNCTION get_default_test() RETURNS SETOF default_test_row AS '
   SELECT * FROM default_test;
