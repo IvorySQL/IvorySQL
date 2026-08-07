@@ -465,8 +465,10 @@ ora_parse_re_flags(pg_re_flags *flags, text *opts)
 	parse_re_flags(flags, opts);
 
 	/*
-	 * Oracle treats m and n as independent options: m changes the behavior of
-	 * line anchors, while n allows dot to match a newline.  PostgreSQL's
+	 * Oracle treats m and n as distinct, mutually overriding newline modes.
+	 * The m mode enables multiline anchors while keeping dot from matching a
+	 * newline; the n mode keeps single-line anchors while allowing dot to
+	 * match a newline.  When both occur, the last one wins.  PostgreSQL's
 	 * parser treats the two options as synonyms, so replace its newline flags
 	 * with the Oracle semantics after parsing the other options.
 	 */
@@ -482,9 +484,9 @@ ora_parse_re_flags(pg_re_flags *flags, text *opts)
 		for (i = 0; i < opt_len; i++)
 		{
 			if (opt_p[i] == 'n')
-				flags->cflags &= ~REG_NLDOT;
+				flags->cflags &= ~(REG_NLANCH | REG_NLDOT);
 			else if (opt_p[i] == 'm')
-				flags->cflags |= REG_NLANCH;
+				flags->cflags |= REG_NLANCH | REG_NLDOT;
 		}
 	}
 }

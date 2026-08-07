@@ -975,11 +975,13 @@ select regexp_count('bX' || 'cX', '.X', 1, 'c') as no_newline,
                     '.X', 1, 'c') as two_newlines
 from dual;
 
--- The m and n options control line anchors and dot matching independently.
-select regexp_count('X' || chr(10), 'X.', 1, 'c') as c_mode,
+-- The last m or n option determines the newline matching mode.
+select regexp_count('X' || chr(10), 'X.', 1) as default_mode,
+       regexp_count('X' || chr(10), 'X.', 1, 'c') as c_mode,
        regexp_count('X' || chr(10), 'X.', 1, 'n') as n_mode,
        regexp_count('X' || chr(10), 'X.', 1, 'm') as m_mode,
-       regexp_count('X' || chr(10), 'X.', 1, 'mn') as mn_mode
+       regexp_count('X' || chr(10), 'X.', 1, 'mn') as mn_mode,
+       regexp_count('X' || chr(10), 'X.', 1, 'nm') as nm_mode
 from dual;
 
 -- The n option must not add newlines that are outside a match.
@@ -992,18 +994,22 @@ select regexp_count('a,b' || chr(10) || 'c', '[^,]+', 1, 'c')
        as negated_class
 from dual;
 
--- The n option does not enable multiline anchors.
+-- A trailing n keeps anchors single-line; a trailing m enables multiline.
 select regexp_count('x' || chr(10) || 'b' || chr(10) || 'y',
+                    '^b$', 1) as default_mode,
+       regexp_count('x' || chr(10) || 'b' || chr(10) || 'y',
                     '^b$', 1, 'c') as c_mode,
        regexp_count('x' || chr(10) || 'b' || chr(10) || 'y',
                     '^b$', 1, 'n') as n_mode,
        regexp_count('x' || chr(10) || 'b' || chr(10) || 'y',
                     '^b$', 1, 'm') as m_mode,
        regexp_count('x' || chr(10) || 'b' || chr(10) || 'y',
-                    '^b$', 1, 'mn') as mn_mode
+                    '^b$', 1, 'mn') as mn_mode,
+       regexp_count('x' || chr(10) || 'b' || chr(10) || 'y',
+                    '^b$', 1, 'nm') as nm_mode
 from dual;
 
--- REGEXP_COUNT, SUBSTR, INSTR, and REPLACE share the m and n semantics.
+-- REGEXP_COUNT, SUBSTR, INSTR, and REPLACE share the last-option semantics.
 select length(regexp_substr('X' || chr(10), 'X.', 1, 1))
        as default_mode,
        length(regexp_substr('X' || chr(10), 'X.', 1, 1, 'c'))
@@ -1013,7 +1019,9 @@ select length(regexp_substr('X' || chr(10), 'X.', 1, 1))
        length(regexp_substr('X' || chr(10), 'X.', 1, 1, 'm'))
        as m_mode,
        length(regexp_substr('X' || chr(10), 'X.', 1, 1, 'mn'))
-       as mn_mode
+       as mn_mode,
+       length(regexp_substr('X' || chr(10), 'X.', 1, 1, 'nm'))
+       as nm_mode
 from dual;
 
 select regexp_substr('x' || chr(10) || 'b' || chr(10) || 'y',
@@ -1025,14 +1033,17 @@ select regexp_substr('x' || chr(10) || 'b' || chr(10) || 'y',
        regexp_substr('x' || chr(10) || 'b' || chr(10) || 'y',
                      '^b$', 1, 1, 'm') as m_mode,
        regexp_substr('x' || chr(10) || 'b' || chr(10) || 'y',
-                     '^b$', 1, 1, 'mn') as mn_mode
+                     '^b$', 1, 1, 'mn') as mn_mode,
+       regexp_substr('x' || chr(10) || 'b' || chr(10) || 'y',
+                     '^b$', 1, 1, 'nm') as nm_mode
 from dual;
 
 select regexp_instr('X' || chr(10), 'X.', 1, 1, 0) as default_mode,
        regexp_instr('X' || chr(10), 'X.', 1, 1, 0, 'c') as c_mode,
        regexp_instr('X' || chr(10), 'X.', 1, 1, 0, 'n') as n_mode,
        regexp_instr('X' || chr(10), 'X.', 1, 1, 0, 'm') as m_mode,
-       regexp_instr('X' || chr(10), 'X.', 1, 1, 0, 'mn') as mn_mode
+       regexp_instr('X' || chr(10), 'X.', 1, 1, 0, 'mn') as mn_mode,
+       regexp_instr('X' || chr(10), 'X.', 1, 1, 0, 'nm') as nm_mode
 from dual;
 
 select regexp_instr('x' || chr(10) || 'bb' || chr(10) || 'y',
@@ -1044,7 +1055,9 @@ select regexp_instr('x' || chr(10) || 'bb' || chr(10) || 'y',
        regexp_instr('x' || chr(10) || 'bb' || chr(10) || 'y',
                     '^bb$', 1, 1, 0, 'm') as m_mode,
        regexp_instr('x' || chr(10) || 'bb' || chr(10) || 'y',
-                    '^bb$', 1, 1, 0, 'mn') as mn_mode
+                    '^bb$', 1, 1, 0, 'mn') as mn_mode,
+       regexp_instr('x' || chr(10) || 'bb' || chr(10) || 'y',
+                    '^bb$', 1, 1, 0, 'nm') as nm_mode
 from dual;
 
 select length(regexp_replace('X' || chr(10), 'X.', 'Y', 1, 0))
@@ -1056,7 +1069,9 @@ select length(regexp_replace('X' || chr(10), 'X.', 'Y', 1, 0))
        length(regexp_replace('X' || chr(10), 'X.', 'Y', 1, 0, 'm'))
        as m_mode,
        length(regexp_replace('X' || chr(10), 'X.', 'Y', 1, 0, 'mn'))
-       as mn_mode
+       as mn_mode,
+       length(regexp_replace('X' || chr(10), 'X.', 'Y', 1, 0, 'nm'))
+       as nm_mode
 from dual;
 
 select replace(regexp_replace('x' || chr(10) || 'b' || chr(10) || 'y',
@@ -1073,7 +1088,10 @@ select replace(regexp_replace('x' || chr(10) || 'b' || chr(10) || 'y',
                chr(10), '|') as m_mode,
        replace(regexp_replace('x' || chr(10) || 'b' || chr(10) || 'y',
                               '^b$', 'B', 1, 0, 'mn'),
-               chr(10), '|') as mn_mode
+               chr(10), '|') as mn_mode,
+       replace(regexp_replace('x' || chr(10) || 'b' || chr(10) || 'y',
+                              '^b$', 'B', 1, 0, 'nm'),
+               chr(10), '|') as nm_mode
 from dual;
 
 /*
