@@ -2847,10 +2847,6 @@ ri_FastPathCheck(RI_ConstraintInfo *riinfo,
 	idx_rel = index_open(riinfo->conindid, AccessShareLock);
 
 	slot = table_slot_create(pk_rel, NULL);
-	scandesc = index_beginscan(pk_rel, idx_rel,
-							   snapshot, NULL,
-							   riinfo->nkeys, 0,
-							   SO_NONE);
 
 	GetUserIdAndSecContext(&saved_userid, &saved_sec_context);
 	SetUserIdAndSecContext(RelationGetForm(pk_rel)->relowner,
@@ -2858,6 +2854,17 @@ ri_FastPathCheck(RI_ConstraintInfo *riinfo,
 						   SECURITY_LOCAL_USERID_CHANGE |
 						   SECURITY_NOFORCE_RLS);
 	ri_CheckPermissions(pk_rel);
+
+	/*
+	 * Begin the scan under the switched user id, so that any access method
+	 * code invoked by index_beginscan() runs as the PK relation's owner.  For
+	 * btree this has no functional consequence, but it keeps the ordering
+	 * correct for out-of-tree access methods.
+	 */
+	scandesc = index_beginscan(pk_rel, idx_rel,
+							   snapshot, NULL,
+							   riinfo->nkeys, 0,
+							   SO_NONE);
 
 	if (riinfo->fpmeta == NULL)
 	{
@@ -2984,9 +2991,6 @@ ri_FastPathBatchFlush(RI_FastPathEntry *fpentry, Relation fk_rel,
 	 */
 	oldcxt = MemoryContextSwitchTo(fpentry->flush_cxt);
 
-	scandesc = index_beginscan(pk_rel, idx_rel, snapshot, NULL,
-							   riinfo->nkeys, 0, SO_NONE);
-
 	GetUserIdAndSecContext(&saved_userid, &saved_sec_context);
 	SetUserIdAndSecContext(RelationGetForm(pk_rel)->relowner,
 						   saved_sec_context |
@@ -3001,6 +3005,15 @@ ri_FastPathBatchFlush(RI_FastPathEntry *fpentry, Relation fk_rel,
 	 * ri_FastPathCheck().
 	 */
 	ri_CheckPermissions(pk_rel);
+
+	/*
+	 * Begin the scan under the switched user id, so that any access method
+	 * code invoked by index_beginscan() runs as the PK relation's owner.  For
+	 * btree this has no functional consequence, but it keeps the ordering
+	 * correct for out-of-tree access methods.
+	 */
+	scandesc = index_beginscan(pk_rel, idx_rel, snapshot, NULL,
+							   riinfo->nkeys, 0, SO_NONE);
 
 	if (riinfo->fpmeta == NULL)
 	{
