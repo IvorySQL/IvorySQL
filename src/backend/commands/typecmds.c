@@ -604,7 +604,8 @@ DefineType(ParseState *pstate, List *names, List *parameters)
 				   -1,			/* typMod (Domains only) */
 				   0,			/* Array Dimensions of typbasetype */
 				   false,		/* Type NOT NULL */
-				   collation);	/* type's collation */
+				   collation,	/* type's collation */
+				   false);		/* not an object type */
 	Assert(typoid == address.objectId);
 
 	/*
@@ -646,7 +647,8 @@ DefineType(ParseState *pstate, List *names, List *parameters)
 			   -1,				/* typMod (Domains only) */
 			   0,				/* Array dimensions of typbasetype */
 			   false,			/* Type NOT NULL */
-			   collation);		/* type's collation */
+			   collation,		/* type's collation */
+			   false);			/* not an object type */
 
 	pfree(array_type);
 
@@ -1089,7 +1091,8 @@ DefineDomain(ParseState *pstate, CreateDomainStmt *stmt)
 				   basetypeMod, /* typeMod value */
 				   typNDims,	/* Array dimensions for base type */
 				   typNotNull,	/* Type NOT NULL */
-				   domaincoll); /* type's collation */
+				   domaincoll, /* type's collation */
+				   false);		/* not an object type */
 
 	/*
 	 * Create the array type that goes with it.
@@ -1130,7 +1133,8 @@ DefineDomain(ParseState *pstate, CreateDomainStmt *stmt)
 			   -1,				/* typMod (Domains only) */
 			   0,				/* Array dimensions of typbasetype */
 			   false,			/* Type NOT NULL */
-			   domaincoll);		/* type's collation */
+			   domaincoll,		/* type's collation */
+			   false);			/* not an object type */
 
 	pfree(domainArrayName);
 
@@ -1252,7 +1256,8 @@ DefineEnum(CreateEnumStmt *stmt)
 				   -1,			/* typMod (Domains only) */
 				   0,			/* Array dimensions of typbasetype */
 				   false,		/* Type NOT NULL */
-				   InvalidOid); /* type's collation */
+				   InvalidOid, /* type's collation */
+				   false);		/* not an object type */
 
 	/* Enter the enum's values into pg_enum */
 	EnumValuesCreate(enumTypeAddr.objectId, stmt->vals);
@@ -1293,7 +1298,8 @@ DefineEnum(CreateEnumStmt *stmt)
 			   -1,				/* typMod (Domains only) */
 			   0,				/* Array dimensions of typbasetype */
 			   false,			/* Type NOT NULL */
-			   InvalidOid);		/* type's collation */
+			   InvalidOid,		/* type's collation */
+			   false);			/* not an object type */
 
 	pfree(enumArrayName);
 
@@ -1599,7 +1605,8 @@ DefineRange(ParseState *pstate, CreateRangeStmt *stmt)
 				   -1,			/* typMod (Domains only) */
 				   0,			/* Array dimensions of typbasetype */
 				   false,		/* Type NOT NULL */
-				   InvalidOid); /* type's collation (ranges never have one) */
+				   InvalidOid, /* type's collation (ranges never have one) */
+				   false);		/* not an object type */
 	Assert(typoid == InvalidOid || typoid == address.objectId);
 	typoid = address.objectId;
 
@@ -1666,7 +1673,8 @@ DefineRange(ParseState *pstate, CreateRangeStmt *stmt)
 				   -1,			/* typMod (Domains only) */
 				   0,			/* Array dimensions of typbasetype */
 				   false,		/* Type NOT NULL */
-				   InvalidOid); /* type's collation (ranges never have one) */
+				   InvalidOid, /* type's collation (ranges never have one) */
+				   false);		/* not an object type */
 	Assert(multirangeOid == mltrngaddress.objectId);
 
 	/*
@@ -1705,7 +1713,8 @@ DefineRange(ParseState *pstate, CreateRangeStmt *stmt)
 			   -1,				/* typMod (Domains only) */
 			   0,				/* Array dimensions of typbasetype */
 			   false,			/* Type NOT NULL */
-			   InvalidOid);		/* typcollation */
+			   InvalidOid,		/* typcollation */
+			   false);			/* not an object type */
 
 	pfree(rangeArrayName);
 
@@ -1744,7 +1753,8 @@ DefineRange(ParseState *pstate, CreateRangeStmt *stmt)
 			   -1,				/* typMod (Domains only) */
 			   0,				/* Array dimensions of typbasetype */
 			   false,			/* Type NOT NULL */
-			   InvalidOid);		/* typcollation */
+			   InvalidOid,		/* typcollation */
+			   false);			/* not an object type */
 
 	/* Ensure these new types are visible to ProcedureCreate */
 	CommandCounterIncrement();
@@ -2609,6 +2619,7 @@ DefineCompositeType(RangeVar *typevar, List *coldeflist, bool is_object)
 	createStmt->oncommit = ONCOMMIT_NOOP;
 	createStmt->tablespacename = NULL;
 	createStmt->if_not_exists = false;
+	createStmt->is_object = is_object;
 
 	/*
 	 * Check for collision with an existing type name. If there is one and
@@ -2636,32 +2647,6 @@ DefineCompositeType(RangeVar *typevar, List *coldeflist, bool is_object)
 	 */
 	DefineRelation(createStmt, RELKIND_COMPOSITE_TYPE, InvalidOid, &address,
 				   NULL);
-
-	if (is_object)
-	{
-		Oid			typeoid = address.objectId;
-		Relation	typrel;
-		HeapTuple	tup;
-		HeapTuple	newtup;
-		Datum		values[Natts_pg_type] = {0};
-		bool		nulls[Natts_pg_type] = {0};
-		bool		replaces[Natts_pg_type] = {0};
-
-		typrel = table_open(TypeRelationId, RowExclusiveLock);
-		tup = SearchSysCacheCopy1(TYPEOID, ObjectIdGetDatum(typeoid));
-		if (!HeapTupleIsValid(tup))
-			elog(ERROR, "cache lookup failed for type %u", typeoid);
-
-		values[Anum_pg_type_typisobject - 1] = BoolGetDatum(true);
-		replaces[Anum_pg_type_typisobject - 1] = true;
-		newtup = heap_modify_tuple(tup, RelationGetDescr(typrel),
-								   values, nulls, replaces);
-		CatalogTupleUpdate(typrel, &tup->t_self, newtup);
-
-		heap_freetuple(newtup);
-		heap_freetuple(tup);
-		table_close(typrel, RowExclusiveLock);
-	}
 
 	return address;
 }

@@ -148,6 +148,17 @@ my %tests = (
 		like => { %full_runs, },
 	},
 
+	'CREATE TYPE oracle_object_type AS OBJECT' => {
+		create_order => 3,
+		create_sql   =>
+			'CREATE TYPE oracle_object_type AS OBJECT (
+				id integer,
+				label varchar2(20)
+			)',
+		regexp => qr/^CREATE TYPE public\.oracle_object_type AS OBJECT \(/m,
+		like   => { %full_runs, },
+	},
+
 	'DROP PACKAGE IF EXISTS public.test_pkg;' => {
 		regexp => qr/^DROP PACKAGE IF EXISTS public.test_pkg;/m,
 		like   => { clean_if_exists => 1, },

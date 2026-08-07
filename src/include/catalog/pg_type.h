@@ -387,7 +387,8 @@ extern ObjectAddress TypeCreate(Oid newTypeOid,
 								int32 typeMod,
 								int32 typNDims,
 								bool typeNotNull,
-								Oid typeCollation);
+								Oid typeCollation,
+								bool isObject);
 
 extern void GenerateTypeDependencies(HeapTuple typeTuple,
 									 Relation typeCatalog,

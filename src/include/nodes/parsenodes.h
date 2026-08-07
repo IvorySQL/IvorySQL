@@ -2934,6 +2934,7 @@ typedef struct CreateStmt
 	char	   *accessMethod;	/* table access method */
 	bool		if_not_exists;	/* just do nothing if it already exists? */
 	bool		with_rowid_seq;
+	bool		is_object;		/* internal: Oracle object type relation */
 } CreateStmt;
 
 /* ----------

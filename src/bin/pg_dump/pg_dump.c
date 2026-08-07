@@ -6344,7 +6344,14 @@ getTypes(Archive *fout)
 						 "typelem, typrelid, typarray, "
 						 "CASE WHEN typrelid = 0 THEN ' '::\"char\" "
 						 "ELSE (SELECT relkind FROM pg_class WHERE oid = typrelid) END AS typrelkind, "
-						 "typtype, typisdefined, typisobject, "
+						 "typtype, typisdefined, ");
+
+	if (fout->remoteVersion >= 190000)
+		appendPQExpBufferStr(query, "typisobject, ");
+	else
+		appendPQExpBufferStr(query, "false AS typisobject, ");
+
+	appendPQExpBufferStr(query,
 						 "typname[0] = '_' AND typelem != 0 AND "
 						 "(SELECT typarray FROM pg_type te WHERE oid = pg_type.typelem) = oid AS isarray "
 						 "FROM pg_type");
