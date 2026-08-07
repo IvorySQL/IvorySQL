@@ -14,6 +14,7 @@
 #define PQMQ_H
 
 #include "lib/stringinfo.h"
+#include "storage/procnumber.h"
 #include "storage/shm_mq.h"
 
 extern void pq_redirect_to_shm_mq(dsm_segment *seg, shm_mq_handle *mqh);

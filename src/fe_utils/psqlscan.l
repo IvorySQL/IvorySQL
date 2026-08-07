@@ -293,6 +293,8 @@ less_equals		"<="
 greater_equals	">="
 less_greater	"<>"
 not_equals		"!="
+/* Note there is no need for left_arrow, since "<-" is not a single operator. */
+right_arrow		"->"
 
 /*
  * "self" is the set of chars that should be returned as single-character
@@ -304,7 +306,7 @@ not_equals		"!="
  * If you change either set, adjust the character lists appearing in the
  * rule for "operator"!
  */
-self			[,()\[\].;\:\+\-\*\/\%\^\<\>\=]
+self			[,()\[\].;\:\|\+\-\*\/\%\^\<\>\=]
 op_chars		[\~\!\@\#\^\&\|\`\?\+\-\*\/\%\<\>\=]
 operator		{op_chars}+
 
@@ -652,6 +654,10 @@ other			.
 					ECHO;
 				}
 
+{right_arrow}	{
+					ECHO;
+				}
+
 	/*
 	 * These rules are specific to psql --- they implement parenthesis
 	 * counting and detection of command-ending semicolon.  These must
@@ -922,19 +928,24 @@ other			.
 					 * writing a full parser here, the following heuristic
 					 * should work.  First, we track whether the beginning of
 					 * the statement matches CREATE [OR REPLACE]
-					 * {FUNCTION|PROCEDURE}
+					 * {FUNCTION|PROCEDURE|SCHEMA}.  (Allowing this in
+					 * CREATE SCHEMA, without tracking whether we're within a
+					 * CREATE FUNCTION/PROCEDURE subcommand, is a bit shaky
+					 * but should be okay with the present set of valid
+					 * subcommands.)
 					 */
 
 					if (cur_state->identifier_count == 0)
 						memset(cur_state->identifiers, 0, sizeof(cur_state->identifiers));
 
-					if (pg_strcasecmp(yytext, "create") == 0 ||
-						pg_strcasecmp(yytext, "function") == 0 ||
-						pg_strcasecmp(yytext, "procedure") == 0 ||
-						pg_strcasecmp(yytext, "or") == 0 ||
-						pg_strcasecmp(yytext, "replace") == 0)
+					if (cur_state->identifier_count < sizeof(cur_state->identifiers))
 					{
-						if (cur_state->identifier_count < sizeof(cur_state->identifiers))
+						if (pg_strcasecmp(yytext, "create") == 0 ||
+							pg_strcasecmp(yytext, "function") == 0 ||
+							pg_strcasecmp(yytext, "procedure") == 0 ||
+							pg_strcasecmp(yytext, "or") == 0 ||
+							pg_strcasecmp(yytext, "replace") == 0 ||
+							pg_strcasecmp(yytext, "schema") == 0)
 							cur_state->identifiers[cur_state->identifier_count] = pg_tolower((unsigned char) yytext[0]);
 					}
 
@@ -943,7 +954,8 @@ other			.
 					if (cur_state->identifiers[0] == 'c' &&
 						(cur_state->identifiers[1] == 'f' || cur_state->identifiers[1] == 'p' ||
 						 (cur_state->identifiers[1] == 'o' && cur_state->identifiers[2] == 'r' &&
-						  (cur_state->identifiers[3] == 'f' || cur_state->identifiers[3] == 'p'))) &&
+						  (cur_state->identifiers[3] == 'f' || cur_state->identifiers[3] == 'p')) ||
+						 cur_state->identifiers[1] == 's') &&
 						cur_state->paren_depth == 0)
 					{
 						if (pg_strcasecmp(yytext, "begin") == 0)

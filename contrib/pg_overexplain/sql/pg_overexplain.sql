@@ -66,6 +66,12 @@ EXPLAIN (DEBUG, RANGE_TABLE, FORMAT XML, COSTS OFF)
 SELECT genus, array_agg(name ORDER BY name) FROM vegetables GROUP BY genus
 $$);
 
+-- Test JSON format with RANGE_TABLE to verify valid JSON structure.
+SELECT explain_filter($$
+EXPLAIN (RANGE_TABLE, FORMAT JSON, COSTS OFF)
+SELECT genus, array_agg(name ORDER BY name) FROM vegetables GROUP BY genus
+$$);
+
 -- Test just the DEBUG option. Verify that it shows information about
 -- disabled nodes, parallel safety, and the parallelModeNeeded flag.
 SET enable_seqscan = false;
@@ -120,3 +126,14 @@ SELECT * FROM vegetables v,
 EXPLAIN (RANGE_TABLE, COSTS OFF)
 SELECT * FROM vegetables v,
        (SELECT * FROM vegetables WHERE genus = 'daucus' OFFSET 0);
+
+-- Property graph test
+CREATE PROPERTY GRAPH vegetables_graph
+VERTEX TABLES
+(
+	daucus KEY(name) DEFAULT LABEL LABEL vegetables,
+	brassica KEY(name) DEFAULT LABEL LABEL vegetables
+);
+
+EXPLAIN (RANGE_TABLE, COSTS OFF)
+SELECT * FROM GRAPH_TABLE (vegetables_graph MATCH (v1 IS vegetables) WHERE v1.genus = 'daucus' COLUMNS (v1.name));

@@ -85,6 +85,7 @@
 #include "tcop/tcopprot.h"
 #include "utils/guc_hooks.h"
 #include "utils/ps_status.h"
+#include "utils/wait_event.h"
 
 /* User-settable parameters for sync rep */
 char	   *SyncRepStandbyNames;
@@ -299,10 +300,18 @@ SyncRepWaitForLSN(XLogRecPtr lsn, bool commit)
 		 */
 		if (ProcDiePending)
 		{
-			ereport(WARNING,
-					(errcode(ERRCODE_ADMIN_SHUTDOWN),
-					 errmsg("canceling the wait for synchronous replication and terminating connection due to administrator command"),
-					 errdetail("The transaction has already committed locally, but might not have been replicated to the standby.")));
+			if (ProcDieSenderPid != 0)
+				ereport(WARNING,
+						(errcode(ERRCODE_ADMIN_SHUTDOWN),
+						 errmsg("canceling the wait for synchronous replication and terminating connection due to administrator command"),
+						 errdetail("The transaction has already committed locally, but might not have been replicated to the standby.  Signal sent by PID %d, UID %d.",
+								   (int) ProcDieSenderPid,
+								   (int) ProcDieSenderUid)));
+			else
+				ereport(WARNING,
+						(errcode(ERRCODE_ADMIN_SHUTDOWN),
+						 errmsg("canceling the wait for synchronous replication and terminating connection due to administrator command"),
+						 errdetail("The transaction has already committed locally, but might not have been replicated to the standby.")));
 			whereToSendOutput = DestNone;
 			SyncRepCancelWait();
 			break;

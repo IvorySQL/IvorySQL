@@ -18,10 +18,10 @@ include $(top_builddir)/src/Makefile.global
 
 EXTRA_INSTALL = src/oracle_test/modules/injection_points
 export enable_injection_points
-oracle_check:
+oracle-check:
 	$(oracle_prove_check)
 
-oracle_installcheck:
+oracle-installcheck:
 	$(oracle_prove_installcheck)
 
 clean distclean maintainer-clean:

@@ -49,6 +49,7 @@
 #include "optimizer/cost.h"
 #include "optimizer/optimizer.h"
 #include "optimizer/pathnode.h"
+#include "optimizer/placeholder.h"
 #include "parser/parsetree.h"
 #include "partitioning/partbounds.h"
 #include "partitioning/partprune.h"
@@ -158,7 +159,7 @@ static PartitionPruneStep *gen_prune_step_combine(GeneratePruningStepsContext *c
 static List *gen_prune_steps_from_opexps(GeneratePruningStepsContext *context,
 										 List **keyclauses, Bitmapset *nullkeys);
 static PartClauseMatchStatus match_clause_to_partition_key(GeneratePruningStepsContext *context,
-														   Expr *clause, Expr *partkey, int partkeyidx,
+														   Expr *clause, const Expr *partkey, int partkeyidx,
 														   bool *clause_is_not_null,
 														   PartClauseInfo **pc, List **clause_steps);
 static List *get_steps_using_prefix(GeneratePruningStepsContext *context,
@@ -197,7 +198,7 @@ static PruneStepResult *perform_pruning_combine_step(PartitionPruneContext *cont
 													 PruneStepResult **step_results);
 static PartClauseMatchStatus match_boolean_partition_clause(Oid partopfamily,
 															Expr *clause,
-															Expr *partkey,
+															const Expr *partkey,
 															Expr **outconst,
 															bool *notclause);
 static void partkey_datum_from_expr(PartitionPruneContext *context,
@@ -1813,10 +1814,19 @@ gen_prune_steps_from_opexps(GeneratePruningStepsContext *context,
  *   and couldn't possibly match any other one either, due to its form or
  *   properties (such as containing a volatile function).
  *   Output arguments: none set.
+ *
+ * Note that when pulling up a subquery, the clause operands may get wrapped
+ * in PlaceHolderVars to enforce separate identity or as a result of outer
+ * joins.  We must strip such no-op PlaceHolderVars before comparing operands
+ * to the partition key, otherwise the equal() checks will fail to recognize
+ * valid matches.  This is safe because the clauses here are always
+ * relation-scan-level expressions, where a PlaceHolderVar with empty
+ * phnullingrels is effectively a no-op.  Stripping may also bring separate
+ * RelabelType nodes into adjacency, so we must loop when peeling those.
  */
 static PartClauseMatchStatus
 match_clause_to_partition_key(GeneratePruningStepsContext *context,
-							  Expr *clause, Expr *partkey, int partkeyidx,
+							  Expr *clause, const Expr *partkey, int partkeyidx,
 							  bool *clause_is_not_null, PartClauseInfo **pc,
 							  List **clause_steps)
 {
@@ -1928,10 +1938,12 @@ match_clause_to_partition_key(GeneratePruningStepsContext *context,
 		PartClauseInfo *partclause;
 
 		leftop = (Expr *) get_leftop(clause);
-		if (IsA(leftop, RelabelType))
+		leftop = (Expr *) strip_noop_phvs((Node *) leftop);
+		while (IsA(leftop, RelabelType))
 			leftop = ((RelabelType *) leftop)->arg;
 		rightop = (Expr *) get_rightop(clause);
-		if (IsA(rightop, RelabelType))
+		rightop = (Expr *) strip_noop_phvs((Node *) rightop);
+		while (IsA(rightop, RelabelType))
 			rightop = ((RelabelType *) rightop)->arg;
 		opno = opclause->opno;
 
@@ -2179,7 +2191,8 @@ match_clause_to_partition_key(GeneratePruningStepsContext *context,
 				   *elem_clauses;
 		ListCell   *lc1;
 
-		if (IsA(leftop, RelabelType))
+		leftop = (Expr *) strip_noop_phvs((Node *) leftop);
+		while (IsA(leftop, RelabelType))
 			leftop = ((RelabelType *) leftop)->arg;
 
 		/* check if the LHS matches this partition key */
@@ -2405,7 +2418,8 @@ match_clause_to_partition_key(GeneratePruningStepsContext *context,
 		NullTest   *nulltest = (NullTest *) clause;
 		Expr	   *arg = nulltest->arg;
 
-		if (IsA(arg, RelabelType))
+		arg = (Expr *) strip_noop_phvs((Node *) arg);
+		while (IsA(arg, RelabelType))
 			arg = ((RelabelType *) arg)->arg;
 
 		/* Does arg match with this partition key column? */
@@ -3697,7 +3711,7 @@ perform_pruning_combine_step(PartitionPruneContext *context,
  * 'partkey'.
  */
 static PartClauseMatchStatus
-match_boolean_partition_clause(Oid partopfamily, Expr *clause, Expr *partkey,
+match_boolean_partition_clause(Oid partopfamily, Expr *clause, const Expr *partkey,
 							   Expr **outconst, bool *notclause)
 {
 	Expr	   *leftop;
@@ -3717,7 +3731,8 @@ match_boolean_partition_clause(Oid partopfamily, Expr *clause, Expr *partkey,
 		BooleanTest *btest = (BooleanTest *) clause;
 
 		leftop = btest->arg;
-		if (IsA(leftop, RelabelType))
+		leftop = (Expr *) strip_noop_phvs((Node *) leftop);
+		while (IsA(leftop, RelabelType))
 			leftop = ((RelabelType *) leftop)->arg;
 
 		if (equal(leftop, partkey))
@@ -3754,7 +3769,8 @@ match_boolean_partition_clause(Oid partopfamily, Expr *clause, Expr *partkey,
 
 		leftop = is_not_clause ? get_notclausearg(clause) : clause;
 
-		if (IsA(leftop, RelabelType))
+		leftop = (Expr *) strip_noop_phvs((Node *) leftop);
+		while (IsA(leftop, RelabelType))
 			leftop = ((RelabelType *) leftop)->arg;
 
 		/* Compare to the partition key, and make up a clause ... */

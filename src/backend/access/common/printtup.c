@@ -17,6 +17,7 @@
 #include "postgres.h"
 
 #include "access/printtup.h"
+#include "catalog/pg_type_d.h"
 #include "libpq/pqformat.h"
 #include "libpq/protocol.h"
 #include "tcop/pquery.h"

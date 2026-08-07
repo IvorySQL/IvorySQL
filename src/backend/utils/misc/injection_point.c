@@ -28,6 +28,7 @@
 #include "storage/fd.h"
 #include "storage/lwlock.h"
 #include "storage/shmem.h"
+#include "storage/subsystems.h"
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
 
@@ -108,6 +109,9 @@ typedef struct InjectionPointCacheEntry
 } InjectionPointCacheEntry;
 
 static HTAB *InjectionPointCache = NULL;
+
+static void InjectionPointShmemRequest(void *arg);
+static void InjectionPointShmemInit(void *arg);
 
 /*
  * injection_point_cache_add
@@ -224,47 +228,32 @@ injection_point_cache_get(const char *name)
 
 	return NULL;
 }
+
+const ShmemCallbacks InjectionPointShmemCallbacks = {
+	.request_fn = InjectionPointShmemRequest,
+	.init_fn = InjectionPointShmemInit,
+};
+
+/*
+ * Reserve space for the dynamic shared hash table
+ */
+static void
+InjectionPointShmemRequest(void *arg)
+{
+	ShmemRequestStruct(.name = "InjectionPoint hash",
+					   .size = sizeof(InjectionPointsCtl),
+					   .ptr = (void **) &ActiveInjectionPoints,
+		);
+}
+
+static void
+InjectionPointShmemInit(void *arg)
+{
+	pg_atomic_init_u32(&ActiveInjectionPoints->max_inuse, 0);
+	for (int i = 0; i < MAX_INJECTION_POINTS; i++)
+		pg_atomic_init_u64(&ActiveInjectionPoints->entries[i].generation, 0);
+}
 #endif							/* USE_INJECTION_POINTS */
-
-/*
- * Return the space for dynamic shared hash table.
- */
-Size
-InjectionPointShmemSize(void)
-{
-#ifdef USE_INJECTION_POINTS
-	Size		sz = 0;
-
-	sz = add_size(sz, sizeof(InjectionPointsCtl));
-	return sz;
-#else
-	return 0;
-#endif
-}
-
-/*
- * Allocate shmem space for dynamic shared hash.
- */
-void
-InjectionPointShmemInit(void)
-{
-#ifdef USE_INJECTION_POINTS
-	bool		found;
-
-	ActiveInjectionPoints = ShmemInitStruct("InjectionPoint hash",
-											sizeof(InjectionPointsCtl),
-											&found);
-	if (!IsUnderPostmaster)
-	{
-		Assert(!found);
-		pg_atomic_init_u32(&ActiveInjectionPoints->max_inuse, 0);
-		for (int i = 0; i < MAX_INJECTION_POINTS; i++)
-			pg_atomic_init_u64(&ActiveInjectionPoints->entries[i].generation, 0);
-	}
-	else
-		Assert(found);
-#endif
-}
 
 /*
  * Attach a new injection point.
@@ -333,6 +322,7 @@ InjectionPointAttach(const char *name,
 	strlcpy(entry->name, name, sizeof(entry->name));
 	strlcpy(entry->library, library, sizeof(entry->library));
 	strlcpy(entry->function, function, sizeof(entry->function));
+	memset(entry->private_data, 0, INJ_PRIVATE_MAXLEN);
 	if (private_data != NULL)
 		memcpy(entry->private_data, private_data, private_data_size);
 

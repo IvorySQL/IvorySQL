@@ -35,6 +35,8 @@
 #include "catalog/pg_opfamily.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
+#include "catalog/pg_propgraph_label.h"
+#include "catalog/pg_propgraph_property.h"
 #include "catalog/pg_publication.h"
 #include "catalog/pg_range.h"
 #include "catalog/pg_statistic.h"
@@ -853,6 +855,47 @@ comparison_ops_are_compatible(Oid opno1, Oid opno2)
 		 */
 		if (op_in_opfamily(opno2, op_form->amopfamily) &&
 			GetIndexAmRoutineByAmId(op_form->amopmethod, false)->amconsistentordering)
+		{
+			result = true;
+			break;
+		}
+	}
+
+	ReleaseSysCacheList(catlist);
+
+	return result;
+}
+
+/*
+ * op_is_safe_index_member
+ *		Check if the operator is a member of a B-tree or Hash operator family.
+ *
+ * We use this check as a proxy for "null-safety": if an operator is trusted by
+ * the btree or hash opfamily, it implies that the operator adheres to standard
+ * boolean behavior, and would not return NULL when given valid non-null
+ * inputs, as doing so would break index integrity.
+ */
+bool
+op_is_safe_index_member(Oid opno)
+{
+	bool		result = false;
+	CatCList   *catlist;
+	int			i;
+
+	/*
+	 * Search pg_amop to see if the target operator is registered for any
+	 * btree or hash opfamily.
+	 */
+	catlist = SearchSysCacheList1(AMOPOPID, ObjectIdGetDatum(opno));
+
+	for (i = 0; i < catlist->n_members; i++)
+	{
+		HeapTuple	tuple = &catlist->members[i]->tuple;
+		Form_pg_amop aform = (Form_pg_amop) GETSTRUCT(tuple);
+
+		/* Check if the AM is B-tree or Hash */
+		if (aform->amopmethod == BTREE_AM_OID ||
+			aform->amopmethod == HASH_AM_OID)
 		{
 			result = true;
 			break;
@@ -3944,6 +3987,31 @@ get_range_collation(Oid rangeOid)
 }
 
 /*
+ * get_range_constructor2
+ *		Gets the 2-arg constructor for the given rangetype.
+ *
+ *	Raises an error if not found.
+ */
+RegProcedure
+get_range_constructor2(Oid rangeOid)
+{
+	HeapTuple	tp;
+
+	tp = SearchSysCache1(RANGETYPE, ObjectIdGetDatum(rangeOid));
+	if (HeapTupleIsValid(tp))
+	{
+		Form_pg_range rngtup = (Form_pg_range) GETSTRUCT(tp);
+		RegProcedure result;
+
+		result = rngtup->rngconstruct2;
+		ReleaseSysCache(tp);
+		return result;
+	}
+	else
+		elog(ERROR, "cache lookup failed for range type %u", rangeOid);
+}
+
+/*
  * get_range_multirange
  *		Returns the multirange type of a given range type
  *
@@ -4208,4 +4276,40 @@ get_subscription_name(Oid subid, bool missing_ok)
 	ReleaseSysCache(tup);
 
 	return subname;
+}
+
+char *
+get_propgraph_label_name(Oid labeloid)
+{
+	HeapTuple	tuple;
+	char	   *labelname;
+
+	tuple = SearchSysCache1(PROPGRAPHLABELOID, labeloid);
+	if (!tuple)
+	{
+		elog(ERROR, "cache lookup failed for label %u", labeloid);
+		return NULL;
+	}
+	labelname = pstrdup(NameStr(((Form_pg_propgraph_label) GETSTRUCT(tuple))->pgllabel));
+	ReleaseSysCache(tuple);
+
+	return labelname;
+}
+
+char *
+get_propgraph_property_name(Oid propoid)
+{
+	HeapTuple	tuple;
+	char	   *propname;
+
+	tuple = SearchSysCache1(PROPGRAPHPROPOID, propoid);
+	if (!tuple)
+	{
+		elog(ERROR, "cache lookup failed for property %u", propoid);
+		return NULL;
+	}
+	propname = pstrdup(NameStr(((Form_pg_propgraph_property) GETSTRUCT(tuple))->pgpname));
+	ReleaseSysCache(tuple);
+
+	return propname;
 }

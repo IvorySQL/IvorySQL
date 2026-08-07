@@ -2018,6 +2018,15 @@ scalararraysel(PlannerInfo *root,
 		if (arrayisnull)		/* qual can't succeed if null array */
 			return (Selectivity) 0.0;
 		arrayval = DatumGetArrayTypeP(arraydatum);
+
+		/*
+		 * When the array contains a NULL constant, same as var_eq_const, we
+		 * assume the operator is strict and nothing will match, thus return
+		 * 0.0.
+		 */
+		if (!useOr && array_contains_nulls(arrayval))
+			return (Selectivity) 0.0;
+
 		get_typlenbyvalalign(ARR_ELEMTYPE(arrayval),
 							 &elmlen, &elmbyval, &elmalign);
 		deconstruct_array(arrayval,
@@ -2114,6 +2123,14 @@ scalararraysel(PlannerInfo *root,
 			Node	   *elem = (Node *) lfirst(l);
 			List	   *args;
 			Selectivity s2;
+
+			/*
+			 * When the array contains a NULL constant, same as var_eq_const,
+			 * we assume the operator is strict and nothing will match, thus
+			 * return 0.0.
+			 */
+			if (!useOr && IsA(elem, Const) && ((Const *) elem)->constisnull)
+				return (Selectivity) 0.0;
 
 			/*
 			 * Theoretically, if elem isn't of nominal_element_type we should
@@ -2247,6 +2264,18 @@ estimate_array_length(PlannerInfo *root, Node *arrayexpr)
 		VariableStatData vardata;
 		AttStatsSlot sslot;
 		double		nelem = 0;
+
+		/*
+		 * Skip calling examine_variable for Var with varno 0, which has no
+		 * valid relation entry and would error in find_base_rel.  Such a Var
+		 * can appear when a nested set operation's output type doesn't match
+		 * the parent's expected type, because recurse_set_operations builds a
+		 * projection target list using generate_setop_tlist with varno 0, and
+		 * if the required type coercion involves an ArrayCoerceExpr, we can
+		 * be called on that Var.
+		 */
+		if (IsA(arrayexpr, Var) && ((Var *) arrayexpr)->varno == 0)
+			return 10;			/* default guess, should match scalararraysel */
 
 		examine_variable(root, arrayexpr, 0, &vardata);
 		if (HeapTupleIsValid(vardata.statsTuple))
@@ -4350,10 +4379,11 @@ estimate_multivariate_bucketsize(PlannerInfo *root, RelOptInfo *inner,
  * This attempts to determine two values:
  *
  * 1. The frequency of the most common value of the expression (returns
- * zero into *mcv_freq if we can't get that).
+ * zero into *mcv_freq if we can't get that).  This will be frequency
+ * relative to the entire underlying table.
  *
  * 2. The "bucketsize fraction", ie, average number of entries in a bucket
- * divided by total tuples in relation.
+ * divided by total number of tuples to be hashed.
  *
  * XXX This is really pretty bogus since we're effectively assuming that the
  * distribution of hash keys will be the same after applying restriction
@@ -4372,8 +4402,8 @@ estimate_multivariate_bucketsize(PlannerInfo *root, RelOptInfo *inner,
  * exactly those that will be probed most often.  Therefore, the "average"
  * bucket size for costing purposes should really be taken as something close
  * to the "worst case" bucket size.  We try to estimate this by adjusting the
- * fraction if there are too few distinct data values, and then scaling up
- * by the ratio of the most common value's frequency to the average frequency.
+ * fraction if there are too few distinct data values, and then clamping to
+ * at least the bucket size implied by the most common value's frequency.
  *
  * If no statistics are available, use a default estimate of 0.1.  This will
  * discourage use of a hash rather strongly if the inner relation is large,
@@ -4393,9 +4423,7 @@ estimate_hash_bucket_stats(PlannerInfo *root, Node *hashkey, double nbuckets,
 {
 	VariableStatData vardata;
 	double		estfract,
-				ndistinct,
-				stanullfrac,
-				avgfreq;
+				ndistinct;
 	bool		isdefault;
 	AttStatsSlot sslot;
 
@@ -4426,8 +4454,8 @@ estimate_hash_bucket_stats(PlannerInfo *root, Node *hashkey, double nbuckets,
 			 * If there are no recorded MCVs, but we do have a histogram, then
 			 * assume that ANALYZE determined that the column is unique.
 			 */
-			if (vardata.rel && vardata.rel->rows > 0)
-				*mcv_freq = 1.0 / vardata.rel->rows;
+			if (vardata.rel && vardata.rel->tuples > 0)
+				*mcv_freq = 1.0 / vardata.rel->tuples;
 		}
 	}
 
@@ -4444,20 +4472,6 @@ estimate_hash_bucket_stats(PlannerInfo *root, Node *hashkey, double nbuckets,
 		ReleaseVariableStats(vardata);
 		return;
 	}
-
-	/* Get fraction that are null */
-	if (HeapTupleIsValid(vardata.statsTuple))
-	{
-		Form_pg_statistic stats;
-
-		stats = (Form_pg_statistic) GETSTRUCT(vardata.statsTuple);
-		stanullfrac = stats->stanullfrac;
-	}
-	else
-		stanullfrac = 0.0;
-
-	/* Compute avg freq of all distinct data values in raw relation */
-	avgfreq = (1.0 - stanullfrac) / ndistinct;
 
 	/*
 	 * Adjust ndistinct to account for restriction clauses.  Observe we are
@@ -4484,20 +4498,11 @@ estimate_hash_bucket_stats(PlannerInfo *root, Node *hashkey, double nbuckets,
 		estfract = 1.0 / ndistinct;
 
 	/*
-	 * Adjust estimated bucketsize upward to account for skewed distribution.
+	 * Clamp the bucketsize fraction to be not less than the MCV frequency,
+	 * since whichever bucket the MCV values end up in will have at least that
+	 * size.  This has no effect if *mcv_freq is still zero.
 	 */
-	if (avgfreq > 0.0 && *mcv_freq > avgfreq)
-		estfract *= *mcv_freq / avgfreq;
-
-	/*
-	 * Clamp bucketsize to sane range (the above adjustment could easily
-	 * produce an out-of-range result).  We set the lower bound a little above
-	 * zero, since zero isn't a very sane result.
-	 */
-	if (estfract < 1.0e-6)
-		estfract = 1.0e-6;
-	else if (estfract > 1.0)
-		estfract = 1.0;
+	estfract = Max(estfract, *mcv_freq);
 
 	*bucketsize_frac = (Selectivity) estfract;
 
@@ -5923,7 +5928,11 @@ examine_variable(PlannerInfo *root, Node *node, int varRelid,
 					vardata->statsTuple =
 						statext_expressions_load(info->statOid, rte->inh, pos);
 
-					vardata->freefunc = ReleaseDummy;
+					/* Nothing to release if no data found */
+					if (vardata->statsTuple != NULL)
+					{
+						vardata->freefunc = ReleaseDummy;
+					}
 
 					/*
 					 * Test if user has permission to access all rows from the
@@ -7181,7 +7190,8 @@ get_actual_variable_endpoint(Relation heapRel,
 
 	index_scan = index_beginscan(heapRel, indexRel,
 								 &SnapshotNonVacuumable, NULL,
-								 1, 0);
+								 1, 0,
+								 SO_NONE);
 	/* Set it up for index-only scan */
 	index_scan->xs_want_itup = true;
 	index_rescan(index_scan, scankeys, 1, NULL, 0);
@@ -7391,6 +7401,11 @@ index_other_operands_eval_cost(PlannerInfo *root, List *indexquals)
 	return qual_arg_cost;
 }
 
+/*
+ * Compute generic index access cost estimates.
+ *
+ * See struct GenericCosts in selfuncs.h for more info.
+ */
 void
 genericcostestimate(PlannerInfo *root,
 					IndexPath *path,
@@ -7486,16 +7501,18 @@ genericcostestimate(PlannerInfo *root,
 	 * Estimate the number of index pages that will be retrieved.
 	 *
 	 * We use the simplistic method of taking a pro-rata fraction of the total
-	 * number of index pages.  In effect, this counts only leaf pages and not
-	 * any overhead such as index metapage or upper tree levels.
+	 * number of index leaf pages.  We disregard any overhead such as index
+	 * metapages or upper tree levels.
 	 *
 	 * In practice access to upper index levels is often nearly free because
 	 * those tend to stay in cache under load; moreover, the cost involved is
 	 * highly dependent on index type.  We therefore ignore such costs here
 	 * and leave it to the caller to add a suitable charge if needed.
 	 */
-	if (index->pages > 1 && index->tuples > 1)
-		numIndexPages = ceil(numIndexTuples * index->pages / index->tuples);
+	if (index->pages > costs->numNonLeafPages && index->tuples > 1)
+		numIndexPages =
+			ceil(numIndexTuples * (index->pages - costs->numNonLeafPages)
+				 / index->tuples);
 	else
 		numIndexPages = 1.0;
 
@@ -8086,9 +8103,18 @@ btcostestimate(PlannerInfo *root, IndexPath *path, double loop_count,
 
 	/*
 	 * Now do generic index cost estimation.
+	 *
+	 * While we expended effort to make realistic estimates of numIndexTuples
+	 * and num_sa_scans, we are content to count only the btree metapage as
+	 * non-leaf.  btree fanout is typically high enough that upper pages are
+	 * few relative to leaf pages, so accounting for them would move the
+	 * estimates at most a percent or two.  Given the uncertainty in just how
+	 * many upper pages exist in a particular index, we'll skip trying to
+	 * handle that.
 	 */
 	costs.numIndexTuples = numIndexTuples;
 	costs.num_sa_scans = num_sa_scans;
+	costs.numNonLeafPages = 1;
 
 	genericcostestimate(root, path, loop_count, &costs);
 
@@ -8153,6 +8179,9 @@ hashcostestimate(PlannerInfo *root, IndexPath *path, double loop_count,
 {
 	GenericCosts costs = {0};
 
+	/* As in btcostestimate, count only the metapage as non-leaf */
+	costs.numNonLeafPages = 1;
+
 	genericcostestimate(root, path, loop_count, &costs);
 
 	/*
@@ -8196,6 +8225,8 @@ gistcostestimate(PlannerInfo *root, IndexPath *path, double loop_count,
 	IndexOptInfo *index = path->indexinfo;
 	GenericCosts costs = {0};
 	Cost		descentCost;
+
+	/* GiST has no metapage, so we treat all pages as leaf pages */
 
 	genericcostestimate(root, path, loop_count, &costs);
 
@@ -8251,6 +8282,9 @@ spgcostestimate(PlannerInfo *root, IndexPath *path, double loop_count,
 	IndexOptInfo *index = path->indexinfo;
 	GenericCosts costs = {0};
 	Cost		descentCost;
+
+	/* As in btcostestimate, count only the metapage as non-leaf */
+	costs.numNonLeafPages = 1;
 
 	genericcostestimate(root, path, loop_count, &costs);
 

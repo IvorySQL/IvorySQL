@@ -115,7 +115,7 @@ extern pid_t postmaster_child_launch(BackendType child_type,
 									 int child_slot,
 									 void *startup_data,
 									 size_t startup_data_len,
-									 struct ClientSocket *client_sock);
+									 const struct ClientSocket *client_sock);
 const char *PostmasterChildName(BackendType child_type);
 #ifdef EXEC_BACKEND
 pg_noreturn extern void SubPostmasterMain(int argc, char *argv[]);

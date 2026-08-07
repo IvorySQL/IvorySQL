@@ -136,14 +136,12 @@ SELECT count(*) FROM timestamptmp WHERE a >  '2004-10-26 08:55:08'::timestamp;
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM timestamptmp WHERE a <> '2004-10-26 08:55:08'::timestamp;
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
  Aggregate
-   ->  Bitmap Heap Scan on timestamptmp
-         Recheck Cond: (a <> '2004-10-26 08:55:08.000000000'::timestamp(6))
-         ->  Bitmap Index Scan on timestampidx
-               Index Cond: (a <> '2004-10-26 08:55:08.000000000'::timestamp(6))
-(5 rows)
+   ->  Index Only Scan using timestampidx on timestamptmp
+         Index Cond: (a <> '2004-10-26 08:55:08.000000000'::timestamp(6))
+(3 rows)
 
 SELECT count(*) FROM timestamptmp WHERE a <> '2004-10-26 08:55:08'::timestamp;
  count 

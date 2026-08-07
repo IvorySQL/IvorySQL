@@ -26,17 +26,21 @@
 #include "access/xact.h"
 #include "bootstrap/bootstrap.h"
 #include "catalog/index.h"
+#include "catalog/pg_authid.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "common/link-canary.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
-#include "pg_getopt.h"
+#include "port/pg_getopt_ctx.h"
 #include "postmaster/postmaster.h"
 #include "storage/bufpage.h"
+#include "storage/checksum.h"
+#include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/proc.h"
+#include "storage/shmem_internal.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
@@ -118,6 +122,8 @@ static const struct typinfo TypInfo[] = {
 	F_JSONB_IN, F_JSONB_OUT},
 	{"oid", OIDOID, 0, 4, true, TYPALIGN_INT, TYPSTORAGE_PLAIN, InvalidOid,
 	F_OIDIN, F_OIDOUT},
+	{"aclitem", ACLITEMOID, 0, 16, false, TYPALIGN_DOUBLE, TYPSTORAGE_PLAIN, InvalidOid,
+	F_ACLITEMIN, F_ACLITEMOUT},
 	{"pg_node_tree", PG_NODE_TREEOID, 0, -1, false, TYPALIGN_INT, TYPSTORAGE_EXTENDED, DEFAULT_COLLATION_OID,
 	F_PG_NODE_TREE_IN, F_PG_NODE_TREE_OUT},
 	{"int2vector", INT2VECTOROID, INT2OID, -1, false, TYPALIGN_INT, TYPSTORAGE_PLAIN, InvalidOid,
@@ -146,6 +152,43 @@ struct typmap
 
 static List *Typ = NIL;			/* List of struct typmap* */
 static struct typmap *Ap = NULL;
+
+/*
+ * Basic information about built-in roles.
+ *
+ * Presently, this need only list roles that are mentioned in aclitem arrays
+ * in the catalog .dat files.  We might as well list everything that is in
+ * pg_authid.dat, since there aren't that many.  Like pg_authid.dat, we
+ * represent the bootstrap superuser's name as "POSTGRES", even though it
+ * (probably) won't be that in the finished installation; this means aclitem
+ * entries in .dat files must spell it like that.
+ */
+struct rolinfo
+{
+	const char *rolname;
+	Oid			oid;
+};
+
+static const struct rolinfo RolInfo[] = {
+	{"POSTGRES", BOOTSTRAP_SUPERUSERID},
+	{"pg_database_owner", ROLE_PG_DATABASE_OWNER},
+	{"pg_read_all_data", ROLE_PG_READ_ALL_DATA},
+	{"pg_write_all_data", ROLE_PG_WRITE_ALL_DATA},
+	{"pg_monitor", ROLE_PG_MONITOR},
+	{"pg_read_all_settings", ROLE_PG_READ_ALL_SETTINGS},
+	{"pg_read_all_stats", ROLE_PG_READ_ALL_STATS},
+	{"pg_stat_scan_tables", ROLE_PG_STAT_SCAN_TABLES},
+	{"pg_read_server_files", ROLE_PG_READ_SERVER_FILES},
+	{"pg_write_server_files", ROLE_PG_WRITE_SERVER_FILES},
+	{"pg_execute_server_program", ROLE_PG_EXECUTE_SERVER_PROGRAM},
+	{"pg_signal_backend", ROLE_PG_SIGNAL_BACKEND},
+	{"pg_checkpoint", ROLE_PG_CHECKPOINT},
+	{"pg_maintain", ROLE_PG_MAINTAIN},
+	{"pg_use_reserved_connections", ROLE_PG_USE_RESERVED_CONNECTIONS},
+	{"pg_create_subscription", ROLE_PG_CREATE_SUBSCRIPTION},
+	{"pg_signal_autovacuum_worker", ROLE_PG_SIGNAL_AUTOVACUUM_WORKER}
+};
+
 
 static Datum values[MAXATTR];	/* current row's attribute values */
 static bool Nulls[MAXATTR];
@@ -198,9 +241,10 @@ BootstrapModeMain(int argc, char *argv[], bool check_only)
 {
 	int			i;
 	char	   *progname = argv[0];
+	pg_getopt_ctx optctx;
 	int			flag;
 	char	   *userDoption = NULL;
-	uint32		bootstrap_data_checksum_version = 0;	/* No checksum */
+	uint32		bootstrap_data_checksum_version = PG_DATA_CHECKSUM_OFF;
 	yyscan_t	scanner;
 
 	Assert(!IsUnderPostmaster);
@@ -218,12 +262,13 @@ BootstrapModeMain(int argc, char *argv[], bool check_only)
 	argc--;
 
 	/* add parameter "-y" for sql parser mode option */
-	while ((flag = getopt(argc, argv, "B:C:c:d:D:Fkr:X:-:y:")) != -1)
+	pg_getopt_start(&optctx, argc, argv, "B:C:c:d:D:Fkr:X:-:y:");
+	while ((flag = pg_getopt_next(&optctx)) != -1)
 	{
 		switch (flag)
 		{
 			case 'B':
-				SetConfigOption("shared_buffers", optarg, PGC_POSTMASTER, PGC_S_ARGV);
+				SetConfigOption("shared_buffers", optctx.optarg, PGC_POSTMASTER, PGC_S_ARGV);
 				break;
 			case '-':
 
@@ -233,10 +278,10 @@ BootstrapModeMain(int argc, char *argv[], bool check_only)
 				 * returns DISPATCH_POSTMASTER if it doesn't find a match, so
 				 * error for anything else.
 				 */
-				if (parse_dispatch_option(optarg) != DISPATCH_POSTMASTER)
+				if (parse_dispatch_option(optctx.optarg) != DISPATCH_POSTMASTER)
 					ereport(ERROR,
 							(errcode(ERRCODE_SYNTAX_ERROR),
-							 errmsg("--%s must be first argument", optarg)));
+							 errmsg("--%s must be first argument", optctx.optarg)));
 
 				pg_fallthrough;
 			case 'C':
@@ -245,19 +290,19 @@ BootstrapModeMain(int argc, char *argv[], bool check_only)
 					char	   *name,
 							   *value;
 
-					ParseLongOption(optarg, &name, &value);
+					ParseLongOption(optctx.optarg, &name, &value);
 					if (!value)
 					{
 						if (flag == '-')
 							ereport(ERROR,
 									(errcode(ERRCODE_SYNTAX_ERROR),
 									 errmsg("--%s requires a value",
-											optarg)));
+											optctx.optarg)));
 						else
 							ereport(ERROR,
 									(errcode(ERRCODE_SYNTAX_ERROR),
 									 errmsg("-c %s requires a value",
-											optarg)));
+											optctx.optarg)));
 					}
 
 					SetConfigOption(name, value, PGC_POSTMASTER, PGC_S_ARGV);
@@ -266,14 +311,14 @@ BootstrapModeMain(int argc, char *argv[], bool check_only)
 					break;
 				}
 			case 'D':
-				userDoption = pstrdup(optarg);
+				userDoption = pstrdup(optctx.optarg);
 				break;
 			case 'd':
 				{
 					/* Turn on debugging for the bootstrap process. */
 					char	   *debugstr;
 
-					debugstr = psprintf("debug%s", optarg);
+					debugstr = psprintf("debug%s", optctx.optarg);
 					SetConfigOption("log_min_messages", debugstr,
 									PGC_POSTMASTER, PGC_S_ARGV);
 					SetConfigOption("client_min_messages", debugstr,
@@ -288,11 +333,11 @@ BootstrapModeMain(int argc, char *argv[], bool check_only)
 				bootstrap_data_checksum_version = PG_DATA_CHECKSUM_VERSION;
 				break;
 			case 'r':
-				strlcpy(OutputFileName, optarg, MAXPGPATH);
+				strlcpy(OutputFileName, optctx.optarg, MAXPGPATH);
 				break;
 			case 'y':
 			{
-				bootstrap_dbmode = strdup(optarg);
+				bootstrap_dbmode = strdup(optctx.optarg);
 
 				if (pg_strcasecmp(bootstrap_dbmode, "pg") == 0 || pg_strcasecmp(bootstrap_dbmode, "0") == 0)
 					bootstrap_database_mode = DB_PG;
@@ -305,7 +350,7 @@ BootstrapModeMain(int argc, char *argv[], bool check_only)
 			}
 			break;
 			case 'X':
-				SetConfigOption("wal_segment_size", optarg, PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
+				SetConfigOption("wal_segment_size", optctx.optarg, PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
 				break;
 			default:
 				write_stderr("Try \"%s --help\" for more information.\n",
@@ -315,7 +360,7 @@ BootstrapModeMain(int argc, char *argv[], bool check_only)
 		}
 	}
 
-	if (argc != optind)
+	if (argc != optctx.optind)
 	{
 		write_stderr("%s: invalid command-line arguments\n", progname);
 		proc_exit(1);
@@ -337,6 +382,8 @@ BootstrapModeMain(int argc, char *argv[], bool check_only)
 	SetProcessingMode(BootstrapProcessing);
 	IgnoreSystemIndexes = true;
 
+	RegisterBuiltinShmemCallbacks();
+
 	InitializeMaxBackends();
 
 	/*
@@ -348,6 +395,7 @@ BootstrapModeMain(int argc, char *argv[], bool check_only)
 
 	InitializeFastPathLocks();
 
+	ShmemCallRequestCallbacks();
 	CreateSharedMemoryAndSemaphores();
 
 	/*
@@ -434,10 +482,10 @@ bootstrap_signals(void)
 	 * mode; "curl up and die" is a sufficient response for all these cases.
 	 * Let's set that handling explicitly, as documentation if nothing else.
 	 */
-	pqsignal(SIGHUP, SIG_DFL);
-	pqsignal(SIGINT, SIG_DFL);
-	pqsignal(SIGTERM, SIG_DFL);
-	pqsignal(SIGQUIT, SIG_DFL);
+	pqsignal(SIGHUP, PG_SIG_DFL);
+	pqsignal(SIGINT, PG_SIG_DFL);
+	pqsignal(SIGTERM, PG_SIG_DFL);
+	pqsignal(SIGQUIT, PG_SIG_DFL);
 }
 
 /* ----------------------------------------------------------------
@@ -649,7 +697,7 @@ InsertOneTuple(void)
 
 	elog(DEBUG4, "inserting row with %d columns", numattr);
 
-	tupDesc = CreateTupleDesc(numattr, attrtypes, false, false);
+	tupDesc = CreateTupleDescWithRowId(numattr, attrtypes, false, false);
 	tuple = heap_form_tuple(tupDesc, values, Nulls);
 	pfree(tupDesc);				/* just free's tupDesc, not the attrtypes */
 
@@ -1054,6 +1102,25 @@ boot_get_type_io_data(Oid typid,
 }
 
 /* ----------------
+ *		boot_get_role_oid
+ *
+ * Look up a role name at bootstrap time.  This is equivalent to
+ * get_role_oid(rolname, true): return the role OID or InvalidOid if
+ * not found.  We only need to cope with built-in role names.
+ * ----------------
+ */
+Oid
+boot_get_role_oid(const char *rolname)
+{
+	for (int i = 0; i < lengthof(RolInfo); i++)
+	{
+		if (strcmp(RolInfo[i].rolname, rolname) == 0)
+			return RolInfo[i].oid;
+	}
+	return InvalidOid;
+}
+
+/* ----------------
  *		AllocateAttribute
  *
  * Note: bootstrap never sets any per-column ACLs, so we only need
@@ -1140,7 +1207,7 @@ build_indices(void)
 		heap = table_open(ILHead->il_heap, NoLock);
 		ind = index_open(ILHead->il_ind, NoLock);
 
-		index_build(heap, ind, ILHead->il_info, false, false);
+		index_build(heap, ind, ILHead->il_info, false, false, false);
 
 		index_close(ind, NoLock);
 		table_close(heap, NoLock);

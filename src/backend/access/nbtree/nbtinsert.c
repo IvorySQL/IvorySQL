@@ -61,6 +61,7 @@ static Buffer _bt_split(Relation rel, Relation heaprel, BTScanInsert itup_key,
 						IndexTuple nposting, uint16 postingoff);
 static void _bt_insert_parent(Relation rel, Relation heaprel, Buffer buf,
 							  Buffer rbuf, BTStack stack, bool isroot, bool isonly);
+static void _bt_freestack(BTStack stack);
 static Buffer _bt_newlevel(Relation rel, Relation heaprel, Buffer lbuf, Buffer rbuf);
 static inline bool _bt_pgaddtup(Page page, Size itemsize, const IndexTupleData *itup,
 								OffsetNumber itup_off, bool newfirstdataitem);
@@ -380,7 +381,7 @@ _bt_search_insert(Relation rel, Relation heaprel, BTInsertState insertstate)
 
 	/* Cannot use optimization -- descend tree, return proper descent stack */
 	return _bt_search(rel, heaprel, insertstate->itup_key, &insertstate->buf,
-					  BT_WRITE);
+					  BT_WRITE, true);
 }
 
 /*
@@ -681,20 +682,31 @@ _bt_check_unique(Relation rel, BTInsertState insertstate, Relation heapRel,
 				{
 					/*
 					 * The conflicting tuple (or all HOT chains pointed to by
-					 * all posting list TIDs) is dead to everyone, so mark the
-					 * index entry killed.
+					 * all posting list TIDs) is dead to everyone, so try to
+					 * mark the index entry killed. It's ok if we're not
+					 * allowed to, this isn't required for correctness.
 					 */
-					ItemIdMarkDead(curitemid);
-					opaque->btpo_flags |= BTP_HAS_GARBAGE;
+					Buffer		buf;
+
+					/* Be sure to operate on the proper buffer */
+					if (nbuf != InvalidBuffer)
+						buf = nbuf;
+					else
+						buf = insertstate->buf;
 
 					/*
-					 * Mark buffer with a dirty hint, since state is not
-					 * crucial. Be sure to mark the proper buffer dirty.
+					 * Use the hint bit infrastructure to check if we can
+					 * update the page while just holding a share lock.
+					 *
+					 * Can't use BufferSetHintBits16() here as we update two
+					 * different locations.
 					 */
-					if (nbuf != InvalidBuffer)
-						MarkBufferDirtyHint(nbuf, true);
-					else
-						MarkBufferDirtyHint(insertstate->buf, true);
+					if (BufferBeginSetHintBits(buf))
+					{
+						ItemIdMarkDead(curitemid);
+						opaque->btpo_flags |= BTP_HAS_GARBAGE;
+						BufferFinishSetHintBits(buf, true, true);
+					}
 				}
 
 				/*
@@ -1125,6 +1137,7 @@ _bt_insertonpg(Relation rel,
 	IndexTuple	oposting = NULL;
 	IndexTuple	origitup = NULL;
 	IndexTuple	nposting = NULL;
+	XLogRecPtr	recptr;
 
 	page = BufferGetPage(buf);
 	opaque = BTPageGetOpaque(page);
@@ -1322,7 +1335,6 @@ _bt_insertonpg(Relation rel,
 			xl_btree_insert xlrec;
 			xl_btree_metadata xlmeta;
 			uint8		xlinfo;
-			XLogRecPtr	recptr;
 			uint16		upostingoff;
 
 			xlrec.offnum = newitemoff;
@@ -1395,14 +1407,16 @@ _bt_insertonpg(Relation rel,
 			}
 
 			recptr = XLogInsert(RM_BTREE_ID, xlinfo);
-
-			if (BufferIsValid(metabuf))
-				PageSetLSN(metapg, recptr);
-			if (!isleaf)
-				PageSetLSN(BufferGetPage(cbuf), recptr);
-
-			PageSetLSN(page, recptr);
 		}
+		else
+			recptr = XLogGetFakeLSN(rel);
+
+		if (BufferIsValid(metabuf))
+			PageSetLSN(metapg, recptr);
+		if (!isleaf)
+			PageSetLSN(BufferGetPage(cbuf), recptr);
+
+		PageSetLSN(page, recptr);
 
 		END_CRIT_SECTION();
 
@@ -1504,6 +1518,7 @@ _bt_split(Relation rel, Relation heaprel, BTScanInsert itup_key, Buffer buf,
 	bool		newitemonleft,
 				isleaf,
 				isrightmost;
+	XLogRecPtr	recptr;
 
 	/*
 	 * origpage is the original page to be split.  leftpage is a temporary
@@ -1983,7 +1998,6 @@ _bt_split(Relation rel, Relation heaprel, BTScanInsert itup_key, Buffer buf,
 	{
 		xl_btree_split xlrec;
 		uint8		xlinfo;
-		XLogRecPtr	recptr;
 
 		xlrec.level = ropaque->btpo_level;
 		/* See comments below on newitem, orignewitem, and posting lists */
@@ -2067,14 +2081,16 @@ _bt_split(Relation rel, Relation heaprel, BTScanInsert itup_key, Buffer buf,
 
 		xlinfo = newitemonleft ? XLOG_BTREE_SPLIT_L : XLOG_BTREE_SPLIT_R;
 		recptr = XLogInsert(RM_BTREE_ID, xlinfo);
-
-		PageSetLSN(origpage, recptr);
-		PageSetLSN(rightpage, recptr);
-		if (!isrightmost)
-			PageSetLSN(spage, recptr);
-		if (!isleaf)
-			PageSetLSN(BufferGetPage(cbuf), recptr);
 	}
+	else
+		recptr = XLogGetFakeLSN(rel);
+
+	PageSetLSN(origpage, recptr);
+	PageSetLSN(rightpage, recptr);
+	if (!isrightmost)
+		PageSetLSN(spage, recptr);
+	if (!isleaf)
+		PageSetLSN(BufferGetPage(cbuf), recptr);
 
 	END_CRIT_SECTION();
 
@@ -2439,6 +2455,22 @@ _bt_getstackbuf(Relation rel, Relation heaprel, BTStack stack, BlockNumber child
 }
 
 /*
+ * _bt_freestack() -- free a retracement stack made by _bt_search_insert.
+ */
+static void
+_bt_freestack(BTStack stack)
+{
+	BTStack		ostack;
+
+	while (stack != NULL)
+	{
+		ostack = stack;
+		stack = stack->bts_parent;
+		pfree(ostack);
+	}
+}
+
+/*
  *	_bt_newlevel() -- Create a new level above root page.
  *
  *		We've just split the old root page and need to create a new one.
@@ -2476,6 +2508,7 @@ _bt_newlevel(Relation rel, Relation heaprel, Buffer lbuf, Buffer rbuf)
 	Buffer		metabuf;
 	Page		metapg;
 	BTMetaPageData *metad;
+	XLogRecPtr	recptr;
 
 	lbkno = BufferGetBlockNumber(lbuf);
 	rbkno = BufferGetBlockNumber(rbuf);
@@ -2571,7 +2604,6 @@ _bt_newlevel(Relation rel, Relation heaprel, Buffer lbuf, Buffer rbuf)
 	if (RelationNeedsWAL(rel))
 	{
 		xl_btree_newroot xlrec;
-		XLogRecPtr	recptr;
 		xl_btree_metadata md;
 
 		xlrec.rootblk = rootblknum;
@@ -2605,11 +2637,13 @@ _bt_newlevel(Relation rel, Relation heaprel, Buffer lbuf, Buffer rbuf)
 							((PageHeader) rootpage)->pd_upper);
 
 		recptr = XLogInsert(RM_BTREE_ID, XLOG_BTREE_NEWROOT);
-
-		PageSetLSN(lpage, recptr);
-		PageSetLSN(rootpage, recptr);
-		PageSetLSN(metapg, recptr);
 	}
+	else
+		recptr = XLogGetFakeLSN(rel);
+
+	PageSetLSN(lpage, recptr);
+	PageSetLSN(rootpage, recptr);
+	PageSetLSN(metapg, recptr);
 
 	END_CRIT_SECTION();
 

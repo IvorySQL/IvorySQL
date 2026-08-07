@@ -44,6 +44,7 @@
 #include "catalog/pg_package.h"
 #include "miscadmin.h"
 #include "utils/guc.h"
+#include "utils/hsearch.h"
 
 
 typedef struct _subprocFuncCandidateList
@@ -903,6 +904,7 @@ plisql_register_internal_func(void)
 	plisql_internal_funcs.package_free = plisql_free_package_function;
 	plisql_internal_funcs.get_subprocs_from_package = plisql_get_subprocs_from_package;
 	plisql_internal_funcs.function_free = plisql_free_function;
+	plisql_internal_funcs.package_reset_context = plisql_package_reset_context;
 	plisql_internal_funcs.get_subproc_arg_info = plisql_get_subproc_arg_info;
 	plisql_internal_funcs.get_subproc_prokind = plisql_get_subproc_prokind;
 	plisql_internal_funcs.subproc_should_change_return_type = plisql_subproc_should_change_return_type;

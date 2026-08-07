@@ -47,7 +47,7 @@ static size_t hex_encode(const uint8 *src, size_t len, char *dst);
 manifest_writer *
 create_manifest_writer(char *directory, uint64 system_identifier)
 {
-	manifest_writer *mwriter = pg_malloc(sizeof(manifest_writer));
+	manifest_writer *mwriter = pg_malloc_object(manifest_writer);
 
 	snprintf(mwriter->pathname, MAXPGPATH, "%s/backup_manifest", directory);
 	mwriter->fd = -1;

@@ -411,6 +411,14 @@ systable_beginscan(Relation heapRelation,
 	SysScanDesc sysscan;
 	Relation	irel;
 
+	/*
+	 * If this backend promised that it won't access shared catalogs during
+	 * logical decoding, this it the right place to verify.
+	 */
+	Assert(!HistoricSnapshotActive() ||
+		   accessSharedCatalogsInDecoding ||
+		   !heapRelation->rd_rel->relisshared);
+
 	if (indexOK &&
 		!IgnoreSystemIndexes &&
 		!ReindexIsProcessingIndex(indexId))
@@ -472,7 +480,8 @@ systable_beginscan(Relation heapRelation,
 		}
 
 		sysscan->iscan = index_beginscan(heapRelation, irel,
-										 snapshot, NULL, nkeys, 0);
+										 snapshot, NULL, nkeys, 0,
+										 SO_NONE);
 		index_rescan(sysscan->iscan, idxkey, nkeys, NULL, 0);
 		sysscan->scan = NULL;
 
@@ -733,7 +742,8 @@ systable_beginscan_ordered(Relation heapRelation,
 		bsysscan = true;
 
 	sysscan->iscan = index_beginscan(heapRelation, indexRelation,
-									 snapshot, NULL, nkeys, 0);
+									 snapshot, NULL, nkeys, 0,
+									 SO_NONE);
 	index_rescan(sysscan->iscan, idxkey, nkeys, NULL, 0);
 	sysscan->scan = NULL;
 

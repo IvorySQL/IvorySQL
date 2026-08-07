@@ -37,6 +37,7 @@
 #include "optimizer/prep.h"
 #include "optimizer/tlist.h"
 #include "parser/parse_coerce.h"
+#include "port/pg_bitutils.h"
 #include "utils/selfuncs.h"
 
 
@@ -249,7 +250,7 @@ recurse_set_operations(Node *setOp, PlannerInfo *root,
 		 */
 		plan_name = choose_plan_name(root->glob, "setop", true);
 		subroot = rel->subroot = subquery_planner(root->glob, subquery,
-												  plan_name, root,
+												  plan_name, root, NULL,
 												  false, root->tuple_fraction,
 												  parentOp);
 

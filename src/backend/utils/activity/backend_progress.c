@@ -12,6 +12,7 @@
 
 #include "access/parallel.h"
 #include "libpq/pqformat.h"
+#include "storage/proc.h"
 #include "utils/backend_progress.h"
 #include "utils/backend_status.h"
 

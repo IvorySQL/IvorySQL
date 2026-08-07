@@ -17,6 +17,7 @@
 
 #include "postgres.h"
 
+#include "catalog/pg_type_d.h"
 #include "funcapi.h"
 #include "regex/regex.h"
 #include "utils/array.h"

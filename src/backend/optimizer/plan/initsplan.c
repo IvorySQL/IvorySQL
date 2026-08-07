@@ -15,6 +15,7 @@
 #include "postgres.h"
 
 #include "access/nbtree.h"
+#include "access/sysattr.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
@@ -810,6 +811,17 @@ create_agg_clause_infos(PlannerInfo *root)
 		Assert(aggref->aggdistinct == NIL);
 
 		/*
+		 * We cannot push down aggregates that contain volatile functions.
+		 * Doing so would change the number of times the function is
+		 * evaluated.
+		 */
+		if (contain_volatile_functions((Node *) aggref))
+		{
+			eager_agg_applicable = false;
+			break;
+		}
+
+		/*
 		 * If there are any securityQuals, do not try to apply eager
 		 * aggregation if any non-leakproof aggregate functions are present.
 		 * This is overly strict, but for now...
@@ -912,9 +924,17 @@ create_grouping_expr_infos(PlannerInfo *root)
 										   tce->btree_opintype,
 										   tce->btree_opintype,
 										   BTEQUALIMAGE_PROC);
+
+		/*
+		 * If there is no BTEQUALIMAGE_PROC, eager aggregation is assumed to
+		 * be unsafe.  Otherwise, we call the procedure to check.  We must be
+		 * careful to pass the expression's actual collation, rather than the
+		 * data type's default collation, to ensure that non-deterministic
+		 * collations are correctly handled.
+		 */
 		if (!OidIsValid(equalimageproc) ||
 			!DatumGetBool(OidFunctionCall1Coll(equalimageproc,
-											   tce->typcollation,
+											   exprCollation((Node *) tle->expr),
 											   ObjectIdGetDatum(tce->btree_opintype))))
 			return;
 
@@ -3447,7 +3467,7 @@ restriction_is_always_true(PlannerInfo *root,
 		if (nulltest->argisrow)
 			return false;
 
-		return expr_is_nonnullable(root, nulltest->arg, true);
+		return expr_is_nonnullable(root, nulltest->arg, NOTNULL_SOURCE_RELOPT);
 	}
 
 	/* If it's an OR, check its sub-clauses */
@@ -3512,7 +3532,7 @@ restriction_is_always_false(PlannerInfo *root,
 		if (nulltest->argisrow)
 			return false;
 
-		return expr_is_nonnullable(root, nulltest->arg, true);
+		return expr_is_nonnullable(root, nulltest->arg, NOTNULL_SOURCE_RELOPT);
 	}
 
 	/* If it's an OR, check its sub-clauses */

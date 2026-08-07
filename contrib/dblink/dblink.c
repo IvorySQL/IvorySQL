@@ -59,9 +59,11 @@
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
+#include "utils/hsearch.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
+#include "utils/tuplestore.h"
 #include "utils/varlena.h"
 #include "utils/wait_event.h"
 
@@ -881,6 +883,7 @@ materializeResult(FunctionCallInfo fcinfo, PGconn *conn, PGresult *res)
 		tupdesc = CreateTemplateTupleDesc(1);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "status",
 						   TEXTOID, -1, 0);
+		TupleDescFinalize(tupdesc);
 		ntuples = 1;
 		nfields = 1;
 	}
@@ -1044,6 +1047,7 @@ materializeQueryResult(FunctionCallInfo fcinfo,
 			tupdesc = CreateTemplateTupleDesc(1);
 			TupleDescInitEntry(tupdesc, (AttrNumber) 1, "status",
 							   TEXTOID, -1, 0);
+			TupleDescFinalize(tupdesc);
 			attinmeta = TupleDescGetAttInMetadata(tupdesc);
 
 			oldcontext = MemoryContextSwitchTo(rsinfo->econtext->ecxt_per_query_memory);
@@ -1528,6 +1532,8 @@ dblink_get_pkey(PG_FUNCTION_ARGS)
 						   INT4OID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "colname",
 						   TEXTOID, -1, 0);
+
+		TupleDescFinalize(tupdesc);
 
 		/*
 		 * Generate attribute metadata needed later to produce tuples from raw
@@ -2072,7 +2078,7 @@ get_text_array_contents(ArrayType *array, int *numitems)
 	uint8		typalignby;
 	char	  **values;
 	char	   *ptr;
-	bits8	   *bitmap;
+	uint8	   *bitmap;
 	int			bitmask;
 	int			i;
 

@@ -1,0 +1,18 @@
+-- Test: extension loads and functions are callable in PG mode
+CREATE EXTENSION test_package_reset;
+-- reset_all_packages() is callable even with no packages
+SELECT test_package_reset.reset_all_packages();
+ reset_all_packages 
+--------------------
+                 -1
+(1 row)
+
+-- reset_package_by_oid(0) → false when plisql is not yet loaded in this session
+SELECT test_package_reset.reset_package_by_oid(0);
+ reset_package_by_oid 
+----------------------
+ f
+(1 row)
+
+-- cleanup
+DROP EXTENSION test_package_reset;

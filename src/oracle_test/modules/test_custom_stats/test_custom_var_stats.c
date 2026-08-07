@@ -16,6 +16,7 @@
 #include "common/hashfn.h"
 #include "funcapi.h"
 #include "storage/dsm_registry.h"
+#include "storage/fd.h"
 #include "utils/builtins.h"
 #include "utils/pgstat_internal.h"
 
@@ -493,7 +494,8 @@ test_custom_stats_var_fetch_entry(const char *stat_name)
 	return (PgStat_StatCustomVarEntry *)
 		pgstat_fetch_entry(PGSTAT_KIND_TEST_CUSTOM_VAR_STATS,
 						   InvalidOid,
-						   PGSTAT_CUSTOM_VAR_STATS_IDX(stat_name));
+						   PGSTAT_CUSTOM_VAR_STATS_IDX(stat_name),
+						   NULL);
 }
 
 /*--------------------------------------------------------------------------

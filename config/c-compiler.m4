@@ -150,22 +150,6 @@ fi])# PGAC_TYPE_128BIT_INT
 
 
 
-# PGAC_C_STATEMENT_EXPRESSIONS
-# ----------------------------
-# Check if the C compiler understands GCC statement expressions.
-AC_DEFUN([PGAC_C_STATEMENT_EXPRESSIONS],
-[AC_CACHE_CHECK(for statement expressions, pgac_cv_statement_expressions,
-[AC_LINK_IFELSE([AC_LANG_PROGRAM([],
-[({ _Static_assert(1, "foo"); })])],
-[pgac_cv_statement_expressions=yes],
-[pgac_cv_statement_expressions=no])])
-if test x"$pgac_cv_statement_expressions" = xyes ; then
-AC_DEFINE(HAVE_STATEMENT_EXPRESSIONS, 1,
-          [Define to 1 if your compiler supports statement expressions.])
-fi])# PGAC_C_STATEMENT_EXPRESSIONS
-
-
-
 # PGAC_C_TYPEOF
 # -------------
 # Check if the C compiler understands typeof or a variant.  Define
@@ -190,6 +174,96 @@ if test "$pgac_cv_c_typeof" != no; then
     AC_DEFINE_UNQUOTED(typeof, $pgac_cv_c_typeof, [Define to how the compiler spells `typeof'.])
   fi
 fi])# PGAC_C_TYPEOF
+
+
+# PGAC_C_TYPEOF_UNQUAL
+# --------------------
+# Check if the C compiler understands typeof_unqual or a variant.  Define
+# HAVE_TYPEOF_UNQUAL if so, and define 'typeof_unqual' to the actual key word.
+#
+AC_DEFUN([PGAC_C_TYPEOF_UNQUAL],
+[AC_CACHE_CHECK(for typeof_unqual, pgac_cv_c_typeof_unqual,
+[pgac_cv_c_typeof_unqual=no
+# Test with a void pointer, because MSVC doesn't handle that, and we
+# need that for copyObject().
+for pgac_kw in typeof_unqual __typeof_unqual__; do
+  AC_COMPILE_IFELSE([AC_LANG_PROGRAM([],
+[int x = 0;
+$pgac_kw(x) y;
+const void *a;
+void *b;
+y = x;
+b = ($pgac_kw(*a) *) a;
+return y;])],
+[pgac_cv_c_typeof_unqual=$pgac_kw])
+  test "$pgac_cv_c_typeof_unqual" != no && break
+done])
+if test "$pgac_cv_c_typeof_unqual" != no; then
+  AC_DEFINE(HAVE_TYPEOF_UNQUAL, 1,
+            [Define to 1 if your compiler understands `typeof_unqual' or something similar.])
+  if test "$pgac_cv_c_typeof_unqual" != typeof_unqual; then
+    AC_DEFINE_UNQUOTED(typeof_unqual, $pgac_cv_c_typeof_unqual, [Define to how the compiler spells `typeof_unqual'.])
+  fi
+fi])# PGAC_C_TYPEOF_UNQUAL
+
+
+# PGAC_CXX_TYPEOF
+# ----------------
+# Check if the C++ compiler understands typeof or a variant.  Define
+# HAVE_CXX_TYPEOF if so, and define 'pg_cxx_typeof' to the actual key word.
+#
+AC_DEFUN([PGAC_CXX_TYPEOF],
+[AC_CACHE_CHECK(for C++ typeof, pgac_cv_cxx_typeof,
+[pgac_cv_cxx_typeof=no
+AC_LANG_PUSH(C++)
+for pgac_kw in typeof __typeof__; do
+  AC_COMPILE_IFELSE([AC_LANG_PROGRAM([],
+[int x = 0;
+$pgac_kw(x) y;
+y = x;
+return y;])],
+[pgac_cv_cxx_typeof=$pgac_kw])
+  test "$pgac_cv_cxx_typeof" != no && break
+done
+AC_LANG_POP([])])
+if test "$pgac_cv_cxx_typeof" != no; then
+  AC_DEFINE(HAVE_CXX_TYPEOF, 1,
+            [Define to 1 if your C++ compiler understands `typeof' or something similar.])
+  if test "$pgac_cv_cxx_typeof" != typeof; then
+    AC_DEFINE_UNQUOTED(pg_cxx_typeof, $pgac_cv_cxx_typeof, [Define to how the C++ compiler spells `typeof'.])
+  fi
+fi])# PGAC_CXX_TYPEOF
+
+
+# PGAC_CXX_TYPEOF_UNQUAL
+# ----------------------
+# Check if the C++ compiler understands typeof_unqual or a variant.  Define
+# HAVE_CXX_TYPEOF_UNQUAL if so, and define 'pg_cxx_typeof_unqual' to the actual key word.
+#
+AC_DEFUN([PGAC_CXX_TYPEOF_UNQUAL],
+[AC_CACHE_CHECK(for C++ typeof_unqual, pgac_cv_cxx_typeof_unqual,
+[pgac_cv_cxx_typeof_unqual=no
+AC_LANG_PUSH(C++)
+for pgac_kw in typeof_unqual __typeof_unqual__; do
+  AC_COMPILE_IFELSE([AC_LANG_PROGRAM([],
+[int x = 0;
+$pgac_kw(x) y;
+const void *a;
+void *b;
+y = x;
+b = ($pgac_kw(*a) *) a;
+return y;])],
+[pgac_cv_cxx_typeof_unqual=$pgac_kw])
+  test "$pgac_cv_cxx_typeof_unqual" != no && break
+done
+AC_LANG_POP([])])
+if test "$pgac_cv_cxx_typeof_unqual" != no; then
+  AC_DEFINE(HAVE_CXX_TYPEOF_UNQUAL, 1,
+            [Define to 1 if your C++ compiler understands `typeof_unqual' or something similar.])
+  if test "$pgac_cv_cxx_typeof_unqual" != typeof_unqual; then
+    AC_DEFINE_UNQUOTED(pg_cxx_typeof_unqual, $pgac_cv_cxx_typeof_unqual, [Define to how the C++ compiler spells `typeof_unqual'.])
+  fi
+fi])# PGAC_CXX_TYPEOF_UNQUAL
 
 
 
@@ -613,6 +687,31 @@ fi
 undefine([Ac_cachevar])dnl
 ])# PGAC_SSE42_CRC32_INTRINSICS
 
+# PGAC_AVX2_SUPPORT
+# ---------------------------
+# Check if the compiler supports AVX2 as a target
+#
+# If AVX2 target attribute is supported, sets pgac_avx2_support.
+#
+# There is deliberately not a guard for __has_attribute here
+AC_DEFUN([PGAC_AVX2_SUPPORT],
+[define([Ac_cachevar], [AS_TR_SH([pgac_cv_avx2_support])])dnl
+AC_CACHE_CHECK([for AVX2 target attribute support], [Ac_cachevar],
+[AC_COMPILE_IFELSE([AC_LANG_PROGRAM([
+    __attribute__((target("avx2")))
+    static int avx2_test(void)
+    {
+      return 0;
+    }],
+  [return avx2_test();])],
+  [Ac_cachevar=yes],
+  [Ac_cachevar=no])])
+if test x"$Ac_cachevar" = x"yes"; then
+  pgac_avx2_support=yes
+fi
+undefine([Ac_cachevar])dnl
+])# PGAC_AVX2_SUPPORT
+
 # PGAC_AVX512_PCLMUL_INTRINSICS
 # ---------------------------
 # Check if the compiler supports AVX-512 carryless multiplication
@@ -684,6 +783,44 @@ if test x"$Ac_cachevar" = x"yes"; then
 fi
 undefine([Ac_cachevar])dnl
 ])# PGAC_ARMV8_CRC32C_INTRINSICS
+
+# PGAC_ARM_PLMULL
+# ---------------------------
+# Check if the compiler supports Arm CRYPTO PMULL (carryless multiplication)
+# instructions used for vectorized CRC.
+#
+# If the instructions are supported, sets pgac_arm_pmull.
+AC_DEFUN([PGAC_ARM_PLMULL],
+[define([Ac_cachevar], [AS_TR_SH([pgac_cv_arm_pmull_$1])])dnl
+AC_CACHE_CHECK([for pmull and pmull2], [Ac_cachevar],
+[AC_LINK_IFELSE([AC_LANG_PROGRAM([#include <arm_acle.h>
+#include <arm_neon.h>
+uint64x2_t  a;
+uint64x2_t  b;
+uint64x2_t  c;
+uint64x2_t  r1;
+uint64x2_t  r2;
+
+  #if defined(__has_attribute) && __has_attribute (target)
+  __attribute__((target("+crypto")))
+  #endif
+  static int pmull_test(void)
+  {
+    __asm("pmull  %0.1q, %2.1d, %3.1d\neor %0.16b, %0.16b, %1.16b\n":"=w"(r1), "+w"(c):"w"(a), "w"(b));
+    __asm("pmull2 %0.1q, %2.2d, %3.2d\neor %0.16b, %0.16b, %1.16b\n":"=w"(r2), "+w"(c):"w"(a), "w"(b));
+
+    r1 = veorq_u64(r1, r2);
+    /* return computed value, to prevent the above being optimized away */
+    return (int) vgetq_lane_u64(r1, 0);
+  }],
+  [return pmull_test();])],
+  [Ac_cachevar=yes],
+  [Ac_cachevar=no])])
+if test x"$Ac_cachevar" = x"yes"; then
+  pgac_arm_pmull=yes
+fi
+undefine([Ac_cachevar])dnl
+])# PGAC_ARM_PLMULL
 
 # PGAC_LOONGARCH_CRC32C_INTRINSICS
 # ---------------------------

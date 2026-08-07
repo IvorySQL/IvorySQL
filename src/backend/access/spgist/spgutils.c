@@ -335,11 +335,9 @@ getSpGistTupleDesc(Relation index, SpGistTypeDesc *keyType)
 		/* We shouldn't need to bother with making these valid: */
 		att->attcompression = InvalidCompressionMethod;
 		att->attcollation = InvalidOid;
-		/* In case we changed typlen, we'd better reset following offsets */
-		for (int i = spgFirstIncludeColumn; i < outTupDesc->natts; i++)
-			TupleDescCompactAttr(outTupDesc, i)->attcacheoff = -1;
 
 		populate_compact_attribute(outTupDesc, spgKeyColumn);
+		TupleDescFinalize(outTupDesc);
 	}
 	return outTupDesc;
 }
@@ -931,12 +929,12 @@ spgFormLeafTuple(SpGistState *state, const ItemPointerData *heapPtr,
 
 	if (needs_null_mask)
 	{
-		bits8	   *bp;			/* ptr to null bitmap in tuple */
+		uint8	   *bp;			/* ptr to null bitmap in tuple */
 
 		/* Set nullmask presence bit in SpGistLeafTuple header */
 		SGLT_SET_HASNULLMASK(tup, true);
 		/* Fill the data area and null mask */
-		bp = (bits8 *) ((char *) tup + sizeof(SpGistLeafTupleData));
+		bp = (uint8 *) ((char *) tup + sizeof(SpGistLeafTupleData));
 		heap_fill_tuple(tupleDescriptor, datums, isnulls, tp, data_size,
 						&tupmask, bp);
 	}
@@ -944,7 +942,7 @@ spgFormLeafTuple(SpGistState *state, const ItemPointerData *heapPtr,
 	{
 		/* Fill data area only */
 		heap_fill_tuple(tupleDescriptor, datums, isnulls, tp, data_size,
-						&tupmask, (bits8 *) NULL);
+						&tupmask, (uint8 *) NULL);
 	}
 	/* otherwise we have no data, nor a bitmap, to fill */
 
@@ -1118,7 +1116,7 @@ spgDeformLeafTuple(SpGistLeafTuple tup, TupleDesc tupleDescriptor,
 {
 	bool		hasNullsMask = SGLT_GET_HASNULLMASK(tup);
 	char	   *tp;				/* ptr to tuple data */
-	bits8	   *bp;				/* ptr to null bitmap in tuple */
+	uint8	   *bp;				/* ptr to null bitmap in tuple */
 
 	if (keyColumnIsNull && tupleDescriptor->natts == 1)
 	{
@@ -1139,7 +1137,7 @@ spgDeformLeafTuple(SpGistLeafTuple tup, TupleDesc tupleDescriptor,
 	}
 
 	tp = (char *) tup + SGLTHDRSZ(hasNullsMask);
-	bp = (bits8 *) ((char *) tup + sizeof(SpGistLeafTupleData));
+	bp = (uint8 *) ((char *) tup + sizeof(SpGistLeafTupleData));
 
 	index_deform_tuple_internal(tupleDescriptor,
 								datums, isnulls,

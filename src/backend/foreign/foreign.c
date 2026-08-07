@@ -28,6 +28,7 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
+#include "utils/tuplestore.h"
 #include "utils/varlena.h"
 
 
@@ -47,7 +48,7 @@ GetForeignDataWrapper(Oid fdwid)
  * be found instead of raising an error.
  */
 ForeignDataWrapper *
-GetForeignDataWrapperExtended(Oid fdwid, bits16 flags)
+GetForeignDataWrapperExtended(Oid fdwid, uint16 flags)
 {
 	Form_pg_foreign_data_wrapper fdwform;
 	ForeignDataWrapper *fdw;
@@ -72,6 +73,7 @@ GetForeignDataWrapperExtended(Oid fdwid, bits16 flags)
 	fdw->fdwname = pstrdup(NameStr(fdwform->fdwname));
 	fdw->fdwhandler = fdwform->fdwhandler;
 	fdw->fdwvalidator = fdwform->fdwvalidator;
+	fdw->fdwconnection = fdwform->fdwconnection;
 
 	/* Extract the fdwoptions */
 	datum = SysCacheGetAttr(FOREIGNDATAWRAPPEROID,
@@ -121,7 +123,7 @@ GetForeignServer(Oid serverid)
  * instead of raising an error.
  */
 ForeignServer *
-GetForeignServerExtended(Oid serverid, bits16 flags)
+GetForeignServerExtended(Oid serverid, uint16 flags)
 {
 	Form_pg_foreign_server serverform;
 	ForeignServer *server;
@@ -188,6 +190,35 @@ GetForeignServerByName(const char *srvname, bool missing_ok)
 		return NULL;
 
 	return GetForeignServer(serverid);
+}
+
+
+/*
+ * Retrieve connection string from server's FDW.
+ *
+ * NB: leaks into CurrentMemoryContext.
+ */
+char *
+ForeignServerConnectionString(Oid userid, ForeignServer *server)
+{
+	ForeignDataWrapper *fdw;
+	Datum		connection_datum;
+
+	fdw = GetForeignDataWrapper(server->fdwid);
+
+	if (!OidIsValid(fdw->fdwconnection))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("foreign data wrapper \"%s\" does not support subscription connections",
+						fdw->fdwname),
+				 errdetail("Foreign data wrapper must be defined with CONNECTION specified.")));
+
+	connection_datum = OidFunctionCall3(fdw->fdwconnection,
+										ObjectIdGetDatum(userid),
+										ObjectIdGetDatum(server->serverid),
+										PointerGetDatum(NULL));
+
+	return text_to_cstring(DatumGetTextPP(connection_datum));
 }
 
 

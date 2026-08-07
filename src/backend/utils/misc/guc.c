@@ -61,6 +61,7 @@
 #define CONFIG_FILENAME "postgresql.conf"
 #define HBA_FILENAME	"pg_hba.conf"
 #define IDENT_FILENAME	"pg_ident.conf"
+#define HOSTS_FILENAME	"pg_hosts.conf"
 
 #ifdef EXEC_BACKEND
 #define CONFIG_EXEC_PARAMS "global/config_exec_params"
@@ -1848,6 +1849,37 @@ SelectConfigFiles(const char *userDoption, const char *progname)
 	else
 		guc_free(fname);
 
+	/*
+	 * Likewise for pg_hosts.conf.
+	 */
+	if (HostsFileName)
+	{
+		fname = make_absolute_path(HostsFileName);
+		fname_is_malloced = true;
+	}
+	else if (configdir)
+	{
+		fname = guc_malloc(FATAL,
+						   strlen(configdir) + strlen(HOSTS_FILENAME) + 2);
+		sprintf(fname, "%s/%s", configdir, HOSTS_FILENAME);
+		fname_is_malloced = false;
+	}
+	else
+	{
+		write_stderr("%s does not know where to find the \"hosts\" configuration file.\n"
+					 "This can be specified as \"hosts_file\" in \"%s\", "
+					 "or by the -D invocation option, or by the "
+					 "PGDATA environment variable.\n",
+					 progname, ConfigFileName);
+		goto fail;
+	}
+	SetConfigOption("hosts_file", fname, PGC_POSTMASTER, PGC_S_OVERRIDE);
+
+	if (fname_is_malloced)
+		free(fname);
+	else
+		guc_free(fname);
+
 	free(configdir);
 
 	return true;
@@ -3331,9 +3363,15 @@ set_config_with_handle(const char *name, config_handle *handle,
 	 *
 	 * Also allow normal setting if the GUC is marked GUC_ALLOW_IN_PARALLEL.
 	 *
-	 * Other changes might need to affect other workers, so forbid them.
+	 * Other changes might need to affect other workers, so forbid them. Note,
+	 * that parallel autovacuum leader is an exception because cost-based
+	 * delays need to be affected to parallel autovacuum workers. These
+	 * parameters are propagated to its workers during parallel vacuum (see
+	 * vacuumparallel.c for details). All other changes will affect only the
+	 * parallel autovacuum leader.
 	 */
-	if (IsInParallelMode() && changeVal && action != GUC_ACTION_SAVE &&
+	if (IsInParallelMode() && !AmAutoVacuumWorkerProcess() && changeVal &&
+		action != GUC_ACTION_SAVE &&
 		(record->flags & GUC_ALLOW_IN_PARALLEL) == 0)
 	{
 		ereport(elevel,

@@ -13,6 +13,7 @@
  */
 #include "postgres.h"
 
+#include "access/attmap.h"
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
@@ -671,7 +672,7 @@ ChangeVarNodes_walker(Node *node, ChangeVarNodes_context *context)
  * value indicating if the given node should be skipped from further processing
  * by ChangeVarNodes_walker.  The callback is called only for expressions and
  * other children nodes of a Query processed by a walker.  Initial processing
- * of the root Query doesn't involve the callback.
+ * of the root Query node doesn't invoke the callback.
  */
 void
 ChangeVarNodesExtended(Node *node, int rt_index, int new_index,
@@ -736,16 +737,27 @@ ChangeVarNodes(Node *node, int rt_index, int new_index, int sublevels_up)
 }
 
 /*
- * ChangeVarNodesWalkExpression - process expression within the custom
- *								  callback provided to the
- *								  ChangeVarNodesExtended.
+ * ChangeVarNodesWalkExpression - process subexpression within a callback
+ *								  function passed to ChangeVarNodesExtended.
+ *
+ * This is intended to be used by a callback that needs to recursively
+ * process subexpressions of some node being visited by an outer
+ * ChangeVarNodesExtended call, instead of relying on ChangeVarNodes_walker's
+ * default recursion.  We invoke ChangeVarNodes_walker directly rather than
+ * via expression_tree_walker, because expression_tree_walker only visits
+ * child nodes and would fail to process the passed node itself --
+ * for example, a bare Var node would not get its varno adjusted.
+ *
+ * Because this calls ChangeVarNodes_walker directly, if the passed node is
+ * a Query, it will be treated as a sub-Query: sublevels_up is incremented
+ * before recursing into it, and Query-level fields (resultRelation,
+ * mergeTargetRelation, rowMarks, etc.) will not be adjusted.  Do not apply
+ * this to a top-level Query node; use ChangeVarNodesExtended for that.
  */
 bool
 ChangeVarNodesWalkExpression(Node *node, ChangeVarNodes_context *context)
 {
-	return expression_tree_walker(node,
-								  ChangeVarNodes_walker,
-								  (void *) context);
+	return ChangeVarNodes_walker(node, context);
 }
 
 /*
@@ -1768,7 +1780,7 @@ typedef struct
 } ReplaceVarsFromTargetList_context;
 
 static Node *
-ReplaceVarsFromTargetList_callback(Var *var,
+ReplaceVarsFromTargetList_callback(const Var *var,
 								   replace_rte_variables_context *context)
 {
 	ReplaceVarsFromTargetList_context *rcon = (ReplaceVarsFromTargetList_context *) context->callback_arg;
@@ -1789,7 +1801,7 @@ ReplaceVarsFromTargetList_callback(Var *var,
 }
 
 Node *
-ReplaceVarFromTargetList(Var *var,
+ReplaceVarFromTargetList(const Var *var,
 						 RangeTblEntry *target_rte,
 						 List *targetlist,
 						 int result_relation,
@@ -1875,11 +1887,14 @@ ReplaceVarFromTargetList(Var *var,
 				break;
 
 			case REPLACEVARS_CHANGE_VARNO:
-				var = copyObject(var);
-				var->varno = nomatch_varno;
-				var->varlevelsup = 0;
-				/* we leave the syntactic referent alone */
-				return (Node *) var;
+				{
+					Var		   *newvar = copyObject(var);
+
+					newvar->varno = nomatch_varno;
+					newvar->varlevelsup = 0;
+					/* we leave the syntactic referent alone */
+					return (Node *) newvar;
+				}
 
 			case REPLACEVARS_SUBSTITUTE_NULL:
 				{

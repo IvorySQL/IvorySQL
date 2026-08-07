@@ -134,6 +134,7 @@ extern void assign_session_authorization(const char *newval, void *extra);
 extern void assign_session_replication_role(int newval, void *extra);
 extern void assign_stats_fetch_consistency(int newval, void *extra);
 extern bool check_ssl(bool *newval, void **extra, GucSource source);
+extern bool check_ssl_sni(bool *newval, void **extra, GucSource source);
 extern bool check_stage_log_stats(bool *newval, void **extra, GucSource source);
 extern bool check_standard_conforming_strings(bool *newval, void **extra,
 											  GucSource source);
@@ -163,6 +164,9 @@ extern const char *show_timezone(void);
 extern bool check_timezone_abbreviations(char **newval, void **extra,
 										 GucSource source);
 extern void assign_timezone_abbreviations(const char *newval, void *extra);
+extern void assign_timing_clock_source(int newval, void *extra);
+extern bool check_timing_clock_source(int *newval, void **extra, GucSource source);
+extern const char *show_timing_clock_source(void);
 extern bool check_transaction_buffers(int *newval, void **extra, GucSource source);
 extern bool check_transaction_deferrable(bool *newval, void **extra, GucSource source);
 extern bool check_transaction_isolation(int *newval, void **extra, GucSource source);

@@ -19,15 +19,20 @@
 #include "access/htup_details.h"
 #include "access/tableam.h"
 #include "catalog/indexing.h"
+#include "catalog/pg_foreign_server.h"
 #include "catalog/pg_subscription.h"
 #include "catalog/pg_subscription_rel.h"
 #include "catalog/pg_type.h"
+#include "foreign/foreign.h"
 #include "miscadmin.h"
 #include "storage/lmgr.h"
+#include "storage/lock.h"
+#include "utils/acl.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
+#include "utils/memutils.h"
 #include "utils/pg_lsn.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
@@ -69,13 +74,15 @@ GetPublicationsStr(List *publications, StringInfo dest, bool quote_literal)
  * Fetch the subscription from the syscache.
  */
 Subscription *
-GetSubscription(Oid subid, bool missing_ok)
+GetSubscription(Oid subid, bool missing_ok, bool aclcheck)
 {
 	HeapTuple	tup;
 	Subscription *sub;
 	Form_pg_subscription subform;
 	Datum		datum;
 	bool		isnull;
+	MemoryContext cxt;
+	MemoryContext oldcxt;
 
 	tup = SearchSysCache1(SUBSCRIPTIONOID, ObjectIdGetDatum(subid));
 
@@ -87,9 +94,14 @@ GetSubscription(Oid subid, bool missing_ok)
 		elog(ERROR, "cache lookup failed for subscription %u", subid);
 	}
 
+	cxt = AllocSetContextCreate(CurrentMemoryContext, "subscription",
+								ALLOCSET_SMALL_SIZES);
+	oldcxt = MemoryContextSwitchTo(cxt);
+
 	subform = (Form_pg_subscription) GETSTRUCT(tup);
 
 	sub = palloc_object(Subscription);
+	sub->cxt = cxt;
 	sub->oid = subid;
 	sub->dbid = subform->subdbid;
 	sub->skiplsn = subform->subskiplsn;
@@ -108,10 +120,38 @@ GetSubscription(Oid subid, bool missing_ok)
 	sub->retentionactive = subform->subretentionactive;
 
 	/* Get conninfo */
-	datum = SysCacheGetAttrNotNull(SUBSCRIPTIONOID,
-								   tup,
-								   Anum_pg_subscription_subconninfo);
-	sub->conninfo = TextDatumGetCString(datum);
+	if (OidIsValid(subform->subserver))
+	{
+		AclResult	aclresult;
+		ForeignServer *server;
+
+		server = GetForeignServer(subform->subserver);
+
+		/* recheck ACL if requested */
+		if (aclcheck)
+		{
+			aclresult = object_aclcheck(ForeignServerRelationId,
+										subform->subserver,
+										subform->subowner, ACL_USAGE);
+
+			if (aclresult != ACLCHECK_OK)
+				ereport(ERROR,
+						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+						 errmsg("subscription owner \"%s\" does not have permission on foreign server \"%s\"",
+								GetUserNameFromId(subform->subowner, false),
+								server->servername)));
+		}
+
+		sub->conninfo = ForeignServerConnectionString(subform->subowner,
+													  server);
+	}
+	else
+	{
+		datum = SysCacheGetAttrNotNull(SUBSCRIPTIONOID,
+									   tup,
+									   Anum_pg_subscription_subconninfo);
+		sub->conninfo = TextDatumGetCString(datum);
+	}
 
 	/* Get slotname */
 	datum = SysCacheGetAttr(SUBSCRIPTIONOID,
@@ -152,6 +192,8 @@ GetSubscription(Oid subid, bool missing_ok)
 
 	ReleaseSysCache(tup);
 
+	MemoryContextSwitchTo(oldcxt);
+
 	return sub;
 }
 
@@ -186,20 +228,6 @@ CountDBSubscriptions(Oid dbid)
 	table_close(rel, NoLock);
 
 	return nsubs;
-}
-
-/*
- * Free memory allocated by subscription struct.
- */
-void
-FreeSubscription(Subscription *sub)
-{
-	pfree(sub->name);
-	pfree(sub->conninfo);
-	if (sub->slotname)
-		pfree(sub->slotname);
-	list_free_deep(sub->publications);
-	pfree(sub);
 }
 
 /*

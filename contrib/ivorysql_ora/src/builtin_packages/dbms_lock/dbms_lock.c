@@ -81,7 +81,7 @@ static HTAB *dbms_lock_hash_table = NULL;
 /*
  * static routines
  */
-static void dbms_lock_init_hash_table();
+static void dbms_lock_init_hash_table(void);
 static bool dbms_lock_record_acquire(int64, int8);
 static bool dbms_lock_check(int64, int8);
 static bool dbms_lock_record_release(int64, int8);

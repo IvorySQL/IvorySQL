@@ -23,7 +23,6 @@
 #include "catalog/pg_type.h"
 #include "parser/parse_node.h"
 #include "storage/buf.h"
-#include "storage/lock.h"
 #include "utils/relcache.h"
 
 /*
@@ -216,7 +215,7 @@ typedef enum VacOptValue
  */
 typedef struct VacuumParams
 {
-	bits32		options;		/* bitmask of VACOPT_* */
+	uint32		options;		/* bitmask of VACOPT_* */
 	int			freeze_min_age; /* min freeze age, -1 to use default */
 	int			freeze_table_age;	/* age at which to scan whole table */
 	int			multixact_freeze_min_age;	/* min multixact freeze age, -1 to
@@ -300,6 +299,28 @@ typedef struct VacDeadItemsInfo
 	int64		num_items;		/* current # of entries */
 } VacDeadItemsInfo;
 
+/*
+ * Statistics for parallel vacuum workers (planned vs. actual)
+ */
+typedef struct PVWorkerStats
+{
+	/* Number of parallel workers planned to launch */
+	int			nplanned;
+
+	/* Number of parallel workers that were successfully launched */
+	int			nlaunched;
+} PVWorkerStats;
+
+/*
+ * PVWorkerUsage stores information about total number of launched and
+ * planned workers during parallel vacuum (both for index vacuum and cleanup).
+ */
+typedef struct PVWorkerUsage
+{
+	PVWorkerStats vacuum;
+	PVWorkerStats cleanup;
+} PVWorkerUsage;
+
 /* GUC parameters */
 extern PGDLLIMPORT int default_statistics_target;	/* PGDLLIMPORT for PostGIS */
 extern PGDLLIMPORT int vacuum_freeze_min_age;
@@ -341,7 +362,7 @@ extern PGDLLIMPORT int64 parallel_vacuum_worker_delay_ns;
 
 /* in commands/vacuum.c */
 extern void ExecVacuum(ParseState *pstate, VacuumStmt *vacstmt, bool isTopLevel);
-extern void vacuum(List *relations, const VacuumParams params,
+extern void vacuum(List *relations, const VacuumParams *params,
 				   BufferAccessStrategy bstrategy, MemoryContext vac_context,
 				   bool isTopLevel);
 extern void vac_open_indexes(Relation relation, LOCKMODE lockmode,
@@ -362,15 +383,15 @@ extern void vac_update_relstats(Relation relation,
 								bool *frozenxid_updated,
 								bool *minmulti_updated,
 								bool in_outer_xact);
-extern bool vacuum_get_cutoffs(Relation rel, const VacuumParams params,
+extern bool vacuum_get_cutoffs(Relation rel, const VacuumParams *params,
 							   struct VacuumCutoffs *cutoffs);
 extern bool vacuum_xid_failsafe_check(const struct VacuumCutoffs *cutoffs);
 extern void vac_update_datfrozenxid(void);
 extern void vacuum_delay_point(bool is_analyze);
 extern bool vacuum_is_permitted_for_relation(Oid relid, Form_pg_class reltuple,
-											 bits32 options);
+											 uint32 options);
 extern Relation vacuum_open_relation(Oid relid, RangeVar *relation,
-									 bits32 options, bool verbose,
+									 uint32 options, bool verbose,
 									 LOCKMODE lmode);
 extern IndexBulkDeleteResult *vac_bulkdel_one_index(IndexVacuumInfo *ivinfo,
 													IndexBulkDeleteResult *istat,
@@ -394,17 +415,23 @@ extern TidStore *parallel_vacuum_get_dead_items(ParallelVacuumState *pvs,
 extern void parallel_vacuum_reset_dead_items(ParallelVacuumState *pvs);
 extern void parallel_vacuum_bulkdel_all_indexes(ParallelVacuumState *pvs,
 												long num_table_tuples,
-												int num_index_scans);
+												int num_index_scans,
+												PVWorkerStats *wstats);
 extern void parallel_vacuum_cleanup_all_indexes(ParallelVacuumState *pvs,
 												long num_table_tuples,
 												int num_index_scans,
-												bool estimated_count);
+												bool estimated_count,
+												PVWorkerStats *wstats);
+extern void parallel_vacuum_update_shared_delay_params(void);
+extern void parallel_vacuum_propagate_shared_delay_params(void);
 extern void parallel_vacuum_main(dsm_segment *seg, shm_toc *toc);
 
 /* in commands/analyze.c */
 extern void analyze_rel(Oid relid, RangeVar *relation,
-						const VacuumParams params, List *va_cols, bool in_outer_xact,
+						const VacuumParams *params, List *va_cols, bool in_outer_xact,
 						BufferAccessStrategy bstrategy);
+extern bool attribute_is_analyzable(Relation onerel, int attnum, Form_pg_attribute attr,
+									int *p_attstattarget);
 extern bool std_typanalyze(VacAttrStats *stats);
 
 /* in utils/misc/sampling.c --- duplicate of declarations in utils/sampling.h */

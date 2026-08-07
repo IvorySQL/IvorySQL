@@ -212,12 +212,13 @@ CreateQueryDesc(PlannedStmt *plannedstmt,
 	qd->params = params;		/* parameter values passed into query */
 	qd->queryEnv = queryEnv;
 	qd->instrument_options = instrument_options;	/* instrumentation wanted? */
+	qd->query_instr_options = 0;
 
 	/* null these fields until set by ExecutorStart */
 	qd->tupDesc = NULL;
 	qd->estate = NULL;
 	qd->planstate = NULL;
-	qd->totaltime = NULL;
+	qd->query_instr = NULL;
 
 	/* not yet executed */
 	qd->already_executed = false;
@@ -670,7 +671,7 @@ PortalStart(Portal portal, ParamListInfo params,
 
 					pstmt = PortalGetPrimaryStmt(portal);
 					portal->tupDesc =
-						ExecCleanTypeFromTL(pstmt->planTree->targetlist, false);
+						ExecCleanTypeFromTLWithRowId(pstmt->planTree->targetlist, false);
 				}
 
 				/*

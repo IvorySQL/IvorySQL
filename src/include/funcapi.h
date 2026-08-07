@@ -199,6 +199,7 @@ typedef struct
 								  bool missing_ok);
 	void		(*package_free) (PackageCacheItem * item);
 	void		(*package_free_list) (List *pkglist);
+	bool		(*package_reset_context) (Oid pkg_oid);
 	Oid			(*get_top_function_id) (void *function, bool *is_package);
 	void		(*get_subprocs_from_package) (Oid pkgoid, TupleDesc tupdesc,
 											  Tuplestorestate *tupstore);
@@ -403,7 +404,7 @@ HeapTupleGetDatum(const HeapTupleData *tuple)
 #define MAT_SRF_USE_EXPECTED_DESC	0x01	/* use expectedDesc as tupdesc. */
 #define MAT_SRF_BLESS				0x02	/* "Bless" a tuple descriptor with
 											 * BlessTupleDesc(). */
-extern void InitMaterializedSRF(FunctionCallInfo fcinfo, bits32 flags);
+extern void InitMaterializedSRF(FunctionCallInfo fcinfo, uint32 flags);
 
 extern FuncCallContext *init_MultiFuncCall(PG_FUNCTION_ARGS);
 extern FuncCallContext *per_MultiFuncCall(PG_FUNCTION_ARGS);

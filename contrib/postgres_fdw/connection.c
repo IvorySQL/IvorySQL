@@ -33,6 +33,7 @@
 #include "utils/hsearch.h"
 #include "utils/inval.h"
 #include "utils/syscache.h"
+#include "utils/tuplestore.h"
 
 /*
  * Connection cache hash table entry
@@ -59,6 +60,7 @@ typedef struct ConnCacheEntry
 	/* Remaining fields are invalid when conn is NULL: */
 	int			xact_depth;		/* 0 = no xact open, 1 = main xact open, 2 =
 								 * one level of subxact open, etc */
+	bool		xact_read_only; /* xact r/o state */
 	bool		have_prep_stmt; /* have we prepared any stmts in this xact? */
 	bool		have_error;		/* have any subxacts aborted in this xact? */
 	bool		changing_xact_state;	/* xact state change in process */
@@ -84,6 +86,12 @@ static unsigned int prep_stmt_number = 0;
 
 /* tracks whether any work is needed in callback functions */
 static bool xact_got_connection = false;
+
+/*
+ * tracks the topmost read-only local transaction's nesting level determined
+ * by GetTopReadOnlyTransactionNestLevel()
+ */
+static int	read_only_level = 0;
 
 /* custom wait event values, retrieved from shared memory */
 static uint32 pgfdw_we_cleanup_result = 0;
@@ -132,6 +140,7 @@ PG_FUNCTION_INFO_V1(postgres_fdw_get_connections);
 PG_FUNCTION_INFO_V1(postgres_fdw_get_connections_1_2);
 PG_FUNCTION_INFO_V1(postgres_fdw_disconnect);
 PG_FUNCTION_INFO_V1(postgres_fdw_disconnect_all);
+PG_FUNCTION_INFO_V1(postgres_fdw_connection);
 
 /* prototypes of private functions */
 static void make_new_connection(ConnCacheEntry *entry, UserMapping *user);
@@ -376,6 +385,7 @@ make_new_connection(ConnCacheEntry *entry, UserMapping *user)
 
 	/* Reset all transient state fields, to be sure all are clean */
 	entry->xact_depth = 0;
+	entry->xact_read_only = false;
 	entry->have_prep_stmt = false;
 	entry->have_error = false;
 	entry->changing_xact_state = false;
@@ -477,6 +487,142 @@ pgfdw_security_check(const char **keywords, const char **values, UserMapping *us
 }
 
 /*
+ * Construct connection params from generic options of ForeignServer and
+ * UserMapping.  (Some of them might not be libpq options, in which case we'll
+ * just waste a few array slots.)
+ */
+static void
+construct_connection_params(ForeignServer *server, UserMapping *user,
+							const char ***p_keywords, const char ***p_values,
+							char **p_appname)
+{
+	const char **keywords;
+	const char **values;
+	char	   *appname = NULL;
+	int			n;
+
+	/*
+	 * Add 4 extra slots for application_name, fallback_application_name,
+	 * client_encoding, end marker, and 3 extra slots for scram keys and
+	 * required scram pass-through options.
+	 */
+	n = list_length(server->options) + list_length(user->options) + 4 + 3;
+	keywords = (const char **) palloc(n * sizeof(char *));
+	values = (const char **) palloc(n * sizeof(char *));
+
+	n = 0;
+	n += ExtractConnectionOptions(server->options,
+								  keywords + n, values + n);
+	n += ExtractConnectionOptions(user->options,
+								  keywords + n, values + n);
+
+	/*
+	 * Use pgfdw_application_name as application_name if set.
+	 *
+	 * PQconnectdbParams() processes the parameter arrays from start to end.
+	 * If any key word is repeated, the last value is used. Therefore note
+	 * that pgfdw_application_name must be added to the arrays after options
+	 * of ForeignServer are, so that it can override application_name set in
+	 * ForeignServer.
+	 */
+	if (pgfdw_application_name && *pgfdw_application_name != '\0')
+	{
+		keywords[n] = "application_name";
+		values[n] = pgfdw_application_name;
+		n++;
+	}
+
+	/*
+	 * Search the parameter arrays to find application_name setting, and
+	 * replace escape sequences in it with status information if found.  The
+	 * arrays are searched backwards because the last value is used if
+	 * application_name is repeatedly set.
+	 */
+	for (int i = n - 1; i >= 0; i--)
+	{
+		if (strcmp(keywords[i], "application_name") == 0 &&
+			*(values[i]) != '\0')
+		{
+			/*
+			 * Use this application_name setting if it's not empty string even
+			 * after any escape sequences in it are replaced.
+			 */
+			appname = process_pgfdw_appname(values[i]);
+			if (appname[0] != '\0')
+			{
+				values[i] = appname;
+				break;
+			}
+
+			/*
+			 * This empty application_name is not used, so we set values[i] to
+			 * NULL and keep searching the array to find the next one.
+			 */
+			values[i] = NULL;
+			pfree(appname);
+			appname = NULL;
+		}
+	}
+
+	*p_appname = appname;
+
+	/* Use "postgres_fdw" as fallback_application_name */
+	keywords[n] = "fallback_application_name";
+	values[n] = "postgres_fdw";
+	n++;
+
+	/* Set client_encoding so that libpq can convert encoding properly. */
+	keywords[n] = "client_encoding";
+	values[n] = GetDatabaseEncodingName();
+	n++;
+
+	/* Add required SCRAM pass-through connection options if it's enabled. */
+	if (MyProcPort != NULL && MyProcPort->has_scram_keys && UseScramPassthrough(server, user))
+	{
+		int			len;
+		int			encoded_len;
+
+		keywords[n] = "scram_client_key";
+		len = pg_b64_enc_len(sizeof(MyProcPort->scram_ClientKey));
+		/* don't forget the zero-terminator */
+		values[n] = palloc0(len + 1);
+		encoded_len = pg_b64_encode(MyProcPort->scram_ClientKey,
+									sizeof(MyProcPort->scram_ClientKey),
+									(char *) values[n], len);
+		if (encoded_len < 0)
+			elog(ERROR, "could not encode SCRAM client key");
+		n++;
+
+		keywords[n] = "scram_server_key";
+		len = pg_b64_enc_len(sizeof(MyProcPort->scram_ServerKey));
+		/* don't forget the zero-terminator */
+		values[n] = palloc0(len + 1);
+		encoded_len = pg_b64_encode(MyProcPort->scram_ServerKey,
+									sizeof(MyProcPort->scram_ServerKey),
+									(char *) values[n], len);
+		if (encoded_len < 0)
+			elog(ERROR, "could not encode SCRAM server key");
+		n++;
+
+		/*
+		 * Require scram-sha-256 to ensure that no other auth method is used
+		 * when connecting with foreign server.
+		 */
+		keywords[n] = "require_auth";
+		values[n] = "scram-sha-256";
+		n++;
+	}
+
+	keywords[n] = values[n] = NULL;
+
+	/* Verify the set of connection parameters. */
+	check_conn_params(keywords, values, user);
+
+	*p_keywords = keywords;
+	*p_values = values;
+}
+
+/*
  * Connect to remote server using specified server and user mapping properties.
  */
 static PGconn *
@@ -491,127 +637,9 @@ connect_pg_server(ForeignServer *server, UserMapping *user)
 	{
 		const char **keywords;
 		const char **values;
-		char	   *appname = NULL;
-		int			n;
+		char	   *appname;
 
-		/*
-		 * Construct connection params from generic options of ForeignServer
-		 * and UserMapping.  (Some of them might not be libpq options, in
-		 * which case we'll just waste a few array slots.)  Add 4 extra slots
-		 * for application_name, fallback_application_name, client_encoding,
-		 * end marker, and 3 extra slots for scram keys and required scram
-		 * pass-through options.
-		 */
-		n = list_length(server->options) + list_length(user->options) + 4 + 3;
-		keywords = (const char **) palloc(n * sizeof(char *));
-		values = (const char **) palloc(n * sizeof(char *));
-
-		n = 0;
-		n += ExtractConnectionOptions(server->options,
-									  keywords + n, values + n);
-		n += ExtractConnectionOptions(user->options,
-									  keywords + n, values + n);
-
-		/*
-		 * Use pgfdw_application_name as application_name if set.
-		 *
-		 * PQconnectdbParams() processes the parameter arrays from start to
-		 * end. If any key word is repeated, the last value is used. Therefore
-		 * note that pgfdw_application_name must be added to the arrays after
-		 * options of ForeignServer are, so that it can override
-		 * application_name set in ForeignServer.
-		 */
-		if (pgfdw_application_name && *pgfdw_application_name != '\0')
-		{
-			keywords[n] = "application_name";
-			values[n] = pgfdw_application_name;
-			n++;
-		}
-
-		/*
-		 * Search the parameter arrays to find application_name setting, and
-		 * replace escape sequences in it with status information if found.
-		 * The arrays are searched backwards because the last value is used if
-		 * application_name is repeatedly set.
-		 */
-		for (int i = n - 1; i >= 0; i--)
-		{
-			if (strcmp(keywords[i], "application_name") == 0 &&
-				*(values[i]) != '\0')
-			{
-				/*
-				 * Use this application_name setting if it's not empty string
-				 * even after any escape sequences in it are replaced.
-				 */
-				appname = process_pgfdw_appname(values[i]);
-				if (appname[0] != '\0')
-				{
-					values[i] = appname;
-					break;
-				}
-
-				/*
-				 * This empty application_name is not used, so we set
-				 * values[i] to NULL and keep searching the array to find the
-				 * next one.
-				 */
-				values[i] = NULL;
-				pfree(appname);
-				appname = NULL;
-			}
-		}
-
-		/* Use "postgres_fdw" as fallback_application_name */
-		keywords[n] = "fallback_application_name";
-		values[n] = "postgres_fdw";
-		n++;
-
-		/* Set client_encoding so that libpq can convert encoding properly. */
-		keywords[n] = "client_encoding";
-		values[n] = GetDatabaseEncodingName();
-		n++;
-
-		/* Add required SCRAM pass-through connection options if it's enabled. */
-		if (MyProcPort != NULL && MyProcPort->has_scram_keys && UseScramPassthrough(server, user))
-		{
-			int			len;
-			int			encoded_len;
-
-			keywords[n] = "scram_client_key";
-			len = pg_b64_enc_len(sizeof(MyProcPort->scram_ClientKey));
-			/* don't forget the zero-terminator */
-			values[n] = palloc0(len + 1);
-			encoded_len = pg_b64_encode(MyProcPort->scram_ClientKey,
-										sizeof(MyProcPort->scram_ClientKey),
-										(char *) values[n], len);
-			if (encoded_len < 0)
-				elog(ERROR, "could not encode SCRAM client key");
-			n++;
-
-			keywords[n] = "scram_server_key";
-			len = pg_b64_enc_len(sizeof(MyProcPort->scram_ServerKey));
-			/* don't forget the zero-terminator */
-			values[n] = palloc0(len + 1);
-			encoded_len = pg_b64_encode(MyProcPort->scram_ServerKey,
-										sizeof(MyProcPort->scram_ServerKey),
-										(char *) values[n], len);
-			if (encoded_len < 0)
-				elog(ERROR, "could not encode SCRAM server key");
-			n++;
-
-			/*
-			 * Require scram-sha-256 to ensure that no other auth method is
-			 * used when connecting with foreign server.
-			 */
-			keywords[n] = "require_auth";
-			values[n] = "scram-sha-256";
-			n++;
-		}
-
-		keywords[n] = values[n] = NULL;
-
-		/* Verify the set of connection parameters. */
-		check_conn_params(keywords, values, user);
+		construct_connection_params(server, user, &keywords, &values, &appname);
 
 		/* first time, allocate or get the custom wait event */
 		if (pgfdw_we_connect == 0)
@@ -667,8 +695,9 @@ disconnect_pg_server(ConnCacheEntry *entry)
 }
 
 /*
- * Return true if the password_required is defined and false for this user
- * mapping, otherwise false. The mapping has been pre-validated.
+ * Check and return the value of password_required, if defined; otherwise,
+ * return true, which is the default value of it.  The mapping has been
+ * pre-validated.
  */
 static bool
 UserMappingPasswordRequired(UserMapping *user)
@@ -850,28 +879,105 @@ do_sql_command_end(PGconn *conn, const char *sql, bool consume_input)
  * those scans.  A disadvantage is that we can't provide sane emulation of
  * READ COMMITTED behavior --- it would be nice if we had some other way to
  * control which remote queries share a snapshot.
+ *
+ * Note also that we always start the remote transaction with the same
+ * read/write and deferrable properties as the local transaction, and start
+ * the remote subtransaction with the same read/write property as the local
+ * subtransaction.
  */
 static void
 begin_remote_xact(ConnCacheEntry *entry)
 {
 	int			curlevel = GetCurrentTransactionNestLevel();
 
-	/* Start main transaction if we haven't yet */
+	/*
+	 * If the current local (sub)transaction is read-only, set the topmost
+	 * read-only local transaction's nesting level if we haven't yet.
+	 *
+	 * Note: once it's set, it's retained until the topmost read-only local
+	 * transaction is committed/aborted (see pgfdw_xact_callback and
+	 * pgfdw_subxact_callback).
+	 */
+	if (XactReadOnly)
+	{
+		if (read_only_level == 0)
+			read_only_level = GetTopReadOnlyTransactionNestLevel();
+		Assert(read_only_level > 0);
+	}
+	else
+		Assert(read_only_level == 0);
+
+	/*
+	 * Start main transaction if we haven't yet; otherwise, change the current
+	 * remote (sub)transaction's read/write mode if needed.
+	 */
 	if (entry->xact_depth <= 0)
 	{
-		const char *sql;
+		/*
+		 * This is the case when we haven't yet started a main transaction.
+		 */
+		StringInfoData sql;
+		bool		ro = (read_only_level == 1);
 
 		elog(DEBUG3, "starting remote transaction on connection %p",
 			 entry->conn);
 
+		initStringInfo(&sql);
+		appendStringInfoString(&sql, "START TRANSACTION ISOLATION LEVEL ");
 		if (IsolationIsSerializable())
-			sql = "START TRANSACTION ISOLATION LEVEL SERIALIZABLE";
+			appendStringInfoString(&sql, "SERIALIZABLE");
 		else
-			sql = "START TRANSACTION ISOLATION LEVEL REPEATABLE READ";
+			appendStringInfoString(&sql, "REPEATABLE READ");
+		if (ro)
+			appendStringInfoString(&sql, " READ ONLY");
+		if (XactDeferrable)
+			appendStringInfoString(&sql, " DEFERRABLE");
 		entry->changing_xact_state = true;
-		do_sql_command(entry->conn, sql);
+		do_sql_command(entry->conn, sql.data);
 		entry->xact_depth = 1;
+		if (ro)
+		{
+			Assert(!entry->xact_read_only);
+			entry->xact_read_only = true;
+		}
 		entry->changing_xact_state = false;
+	}
+	else if (!entry->xact_read_only)
+	{
+		/*
+		 * The remote (sub)transaction has been opened in read-write mode.
+		 */
+		Assert(read_only_level == 0 ||
+			   entry->xact_depth <= read_only_level);
+
+		/*
+		 * If its nesting depth matches read_only_level, it means that the
+		 * local read-write (sub)transaction that started it has changed to
+		 * read-only after that; in which case change it to read-only as well.
+		 * Otherwise, the local (sub)transaction is still read-write, so there
+		 * is no need to do anything.
+		 */
+		if (entry->xact_depth == read_only_level)
+		{
+			entry->changing_xact_state = true;
+			do_sql_command(entry->conn, "SET transaction_read_only = on");
+			entry->xact_read_only = true;
+			entry->changing_xact_state = false;
+		}
+	}
+	else
+	{
+		/*
+		 * The remote (sub)transaction has been opened in read-only mode.
+		 */
+		Assert(read_only_level > 0 &&
+			   entry->xact_depth >= read_only_level);
+
+		/*
+		 * The local read-only (sub)transaction that started it is guaranteed
+		 * to be still read-only (see check_transaction_read_only), so there
+		 * is no need to do anything.
+		 */
 	}
 
 	/*
@@ -881,12 +987,21 @@ begin_remote_xact(ConnCacheEntry *entry)
 	 */
 	while (entry->xact_depth < curlevel)
 	{
-		char		sql[64];
+		StringInfoData sql;
+		bool		ro = (entry->xact_depth + 1 == read_only_level);
 
-		snprintf(sql, sizeof(sql), "SAVEPOINT s%d", entry->xact_depth + 1);
+		initStringInfo(&sql);
+		appendStringInfo(&sql, "SAVEPOINT s%d", entry->xact_depth + 1);
+		if (ro)
+			appendStringInfoString(&sql, "; SET transaction_read_only = on");
 		entry->changing_xact_state = true;
-		do_sql_command(entry->conn, sql);
+		do_sql_command(entry->conn, sql.data);
 		entry->xact_depth++;
+		if (ro)
+		{
+			Assert(!entry->xact_read_only);
+			entry->xact_read_only = true;
+		}
 		entry->changing_xact_state = false;
 	}
 }
@@ -1191,6 +1306,9 @@ pgfdw_xact_callback(XactEvent event, void *arg)
 
 	/* Also reset cursor numbering for next transaction */
 	cursor_number = 0;
+
+	/* Likewise for read_only_level */
+	read_only_level = 0;
 }
 
 /*
@@ -1289,6 +1407,10 @@ pgfdw_subxact_callback(SubXactEvent event, SubTransactionId mySubid,
 									   false);
 		}
 	}
+
+	/* If in read_only_level, reset it */
+	if (curlevel == read_only_level)
+		read_only_level = 0;
 }
 
 /*
@@ -1391,6 +1513,9 @@ pgfdw_reset_xact_state(ConnCacheEntry *entry, bool toplevel)
 		/* Reset state to show we're out of a transaction */
 		entry->xact_depth = 0;
 
+		/* Reset xact r/o state */
+		entry->xact_read_only = false;
+
 		/*
 		 * If the connection isn't in a good idle state, it is marked as
 		 * invalid or keep_connections option of its server is disabled, then
@@ -1411,6 +1536,10 @@ pgfdw_reset_xact_state(ConnCacheEntry *entry, bool toplevel)
 	{
 		/* Reset state to show we're out of a subtransaction */
 		entry->xact_depth--;
+
+		/* If in read_only_level, reset xact r/o state */
+		if (entry->xact_depth + 1 == read_only_level)
+			entry->xact_read_only = false;
 	}
 }
 
@@ -2307,6 +2436,56 @@ postgres_fdw_get_connections_internal(FunctionCallInfo fcinfo,
 
 		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
 	}
+}
+
+/*
+ * Values in connection strings must be enclosed in single quotes. Single
+ * quotes and backslashes must be escaped with backslash. NB: these rules are
+ * different from the rules for escaping a SQL literal.
+ */
+static void
+appendEscapedValue(StringInfo str, const char *val)
+{
+	appendStringInfoChar(str, '\'');
+	for (int i = 0; val[i] != '\0'; i++)
+	{
+		if (val[i] == '\\' || val[i] == '\'')
+			appendStringInfoChar(str, '\\');
+		appendStringInfoChar(str, val[i]);
+	}
+	appendStringInfoChar(str, '\'');
+}
+
+Datum
+postgres_fdw_connection(PG_FUNCTION_ARGS)
+{
+	Oid			userid = PG_GETARG_OID(0);
+	Oid			serverid = PG_GETARG_OID(1);
+	ForeignServer *server = GetForeignServer(serverid);
+	UserMapping *user = GetUserMapping(userid, serverid);
+	StringInfoData str;
+	const char **keywords;
+	const char **values;
+	char	   *appname;
+	char	   *sep = "";
+
+	construct_connection_params(server, user, &keywords, &values, &appname);
+
+	initStringInfo(&str);
+	for (int i = 0; keywords[i] != NULL; i++)
+	{
+		if (values[i] == NULL)
+			continue;
+		appendStringInfo(&str, "%s%s = ", sep, keywords[i]);
+		appendEscapedValue(&str, values[i]);
+		sep = " ";
+	}
+
+	if (appname != NULL)
+		pfree(appname);
+	pfree(keywords);
+	pfree(values);
+	PG_RETURN_TEXT_P(cstring_to_text(str.data));
 }
 
 /*

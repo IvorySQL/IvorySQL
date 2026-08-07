@@ -19,6 +19,7 @@
 #include "catalog/pg_am_d.h"
 #include "fmgr.h"
 #include "lib/rbtree.h"
+#include "nodes/tidbitmap.h"
 #include "storage/bufmgr.h"
 
 /*
@@ -99,7 +100,7 @@ extern void GinInitPage(Page page, uint32 f, Size pageSize);
 extern void GinInitMetabuffer(Buffer b);
 extern Datum *ginExtractEntries(GinState *ginstate, OffsetNumber attnum,
 								Datum value, bool isNull,
-								int32 *nentries, GinNullCategory **categories);
+								int32 *nentries_p, GinNullCategory **categories_p);
 
 extern OffsetNumber gintuple_get_attrnum(GinState *ginstate, IndexTuple tuple);
 extern Datum gintuple_get_key(GinState *ginstate, IndexTuple tuple,
@@ -488,7 +489,7 @@ extern ItemPointer ginMergeItemPointers(ItemPointerData *a, uint32 na,
  * so we want this to be inlined.
  */
 static inline int
-ginCompareItemPointers(ItemPointer a, ItemPointer b)
+ginCompareItemPointers(const ItemPointerData *a, const ItemPointerData *b)
 {
 	uint64		ia = (uint64) GinItemPointerGetBlockNumber(a) << 32 | GinItemPointerGetOffsetNumber(a);
 	uint64		ib = (uint64) GinItemPointerGetBlockNumber(b) << 32 | GinItemPointerGetOffsetNumber(b);

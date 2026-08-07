@@ -73,6 +73,7 @@
 #include "postgres.h"
 
 #include "executor/executor.h"
+#include "executor/instrument.h"
 #include "executor/nodeAgg.h"
 #include "executor/nodeAppend.h"
 #include "executor/nodeBitmapAnd.h"
@@ -120,7 +121,6 @@
 #include "nodes/nodeFuncs.h"
 
 static TupleTableSlot *ExecProcNodeFirst(PlanState *node);
-static TupleTableSlot *ExecProcNodeInstr(PlanState *node);
 static bool ExecShutdownNode_walker(PlanState *node, void *context);
 
 
@@ -413,8 +413,8 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 
 	/* Set up instrumentation for this node if requested */
 	if (estate->es_instrument)
-		result->instrument = InstrAlloc(1, estate->es_instrument,
-										result->async_capable);
+		result->instrument = InstrAllocNode(estate->es_instrument,
+											result->async_capable);
 
 	return result;
 }
@@ -469,25 +469,6 @@ ExecProcNodeFirst(PlanState *node)
 	return node->ExecProcNode(node);
 }
 
-
-/*
- * ExecProcNode wrapper that performs instrumentation calls.  By keeping
- * this a separate function, we avoid overhead in the normal case where
- * no instrumentation is wanted.
- */
-static TupleTableSlot *
-ExecProcNodeInstr(PlanState *node)
-{
-	TupleTableSlot *result;
-
-	InstrStartNode(node->instrument);
-
-	result = node->ExecProcNodeReal(node);
-
-	InstrStopNode(node->instrument, TupIsNull(result) ? 0.0 : 1.0);
-
-	return result;
-}
 
 
 /* ----------------------------------------------------------------

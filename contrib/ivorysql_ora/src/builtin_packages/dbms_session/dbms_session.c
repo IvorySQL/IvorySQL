@@ -35,6 +35,7 @@
 #include "access/hash.h"
 #include "utils/builtins.h"
 #include "utils/memutils.h"
+#include "utils/packagecache.h"
 #include "utils/tuplestore.h"
 
 #include "../../include/ivorysql_ora.h"
@@ -81,6 +82,7 @@ PG_FUNCTION_INFO_V1(ora_dbms_session_clear_context);
 PG_FUNCTION_INFO_V1(ora_dbms_session_clear_all_context);
 PG_FUNCTION_INFO_V1(ora_dbms_session_get_context);
 PG_FUNCTION_INFO_V1(ora_dbms_session_list_context);
+PG_FUNCTION_INFO_V1(ora_dbms_session_reset_package);
 
 /*
  * dbms_session_init
@@ -427,6 +429,21 @@ ora_dbms_session_list_context(PG_FUNCTION_ARGS)
 	}
 
 	return (Datum) 0;
+}
+
+/*
+ * DBMS_SESSION.RESET_PACKAGE
+ *
+ * Resets all PL/iSQL package state in the current session (Oracle semantics):
+ * closes refcursors, frees variable memory, and marks every package
+ * uninitialized so the full init sequence runs lazily on next access.
+ * Session-local only — does not affect other sessions.
+ */
+Datum
+ora_dbms_session_reset_package(PG_FUNCTION_ARGS)
+{
+	ResetAllPackagesContext();
+	PG_RETURN_VOID();
 }
 
 /*

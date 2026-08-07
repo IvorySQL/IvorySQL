@@ -9,6 +9,7 @@ pgport_sources = [
   'path.c',
   'pg_bitutils.c',
   'pg_cpu_x86.c',
+  'pg_getopt_ctx.c',
   'pg_localeconv_r.c',
   'pg_numa.c',
   'pg_popcount_aarch64.c',
@@ -94,6 +95,7 @@ replace_funcs_pos = [
   # arm / aarch64
   ['pg_crc32c_armv8', 'USE_ARMV8_CRC32C'],
   ['pg_crc32c_armv8', 'USE_ARMV8_CRC32C_WITH_RUNTIME_CHECK', 'crc'],
+  ['pg_crc32c_armv8_choose', 'USE_ARMV8_CRC32C'],
   ['pg_crc32c_armv8_choose', 'USE_ARMV8_CRC32C_WITH_RUNTIME_CHECK'],
   ['pg_crc32c_sb8', 'USE_ARMV8_CRC32C_WITH_RUNTIME_CHECK'],
 

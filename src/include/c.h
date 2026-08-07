@@ -85,6 +85,14 @@
 #include <libintl.h>
 #endif
 
+#ifdef __cplusplus
+extern "C++"
+{
+/* This header is used in the definition of various C++ things below. */
+#include <type_traits>
+}
+#endif
+
  /* Pull in fundamental symbols that we also expose to applications */
 #include "postgres_ext.h"
 
@@ -112,6 +120,8 @@
 /*
  * Attribute macros
  *
+ * C23: https://en.cppreference.com/w/c/language/attributes.html
+ * C++: https://en.cppreference.com/w/cpp/language/attributes.html
  * GCC: https://gcc.gnu.org/onlinedocs/gcc/Function-Attributes.html
  * GCC: https://gcc.gnu.org/onlinedocs/gcc/Type-Attributes.html
  * Clang: https://clang.llvm.org/docs/AttributeReference.html
@@ -121,13 +131,20 @@
  * For compilers which don't support __has_attribute, we just define
  * __has_attribute(x) to 0 so that we can define macros for various
  * __attribute__s more easily below.
+ *
+ * Note that __has_attribute only tells about GCC-style attributes, not C23 or
+ * C++ attributes.
  */
 #ifndef __has_attribute
 #define __has_attribute(attribute) 0
 #endif
 
-/* only GCC supports the unused attribute */
-#ifdef __GNUC__
+/*
+ * pg_attribute_unused() suppresses compiler warnings on unused entities.
+ */
+#if (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L) || (defined(__cplusplus) && __cplusplus >= 201703L)
+#define pg_attribute_unused() [[maybe_unused]]
+#elif defined(__GNUC__)
 #define pg_attribute_unused() __attribute__((unused))
 #else
 #define pg_attribute_unused()
@@ -147,11 +164,11 @@
 
 /*
  * pg_nodiscard means the compiler should warn if the result of a function
- * call is ignored.  The name "nodiscard" is chosen in alignment with the C23
- * standard attribute with the same name.  For maximum forward compatibility,
- * place it before the declaration.
+ * call is ignored.
  */
-#ifdef __GNUC__
+#if (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L) || (defined(__cplusplus) && __cplusplus >= 201703L)
+#define pg_nodiscard [[nodiscard]]
+#elif defined(__GNUC__)
 #define pg_nodiscard __attribute__((warn_unused_result))
 #else
 #define pg_nodiscard
@@ -163,18 +180,15 @@
  * uses __attribute__((noreturn)) in headers, which would get confused if
  * "noreturn" is defined to "_Noreturn", as is done by <stdnoreturn.h>.
  *
- * In a declaration, function specifiers go before the function name.  The
- * common style is to put them before the return type.  (The MSVC fallback has
- * the same requirement.  The GCC fallback is more flexible.)
+ * C23 attributes must be placed at the start of a declaration or statement.
+ * C11 function specifiers go before the function name in a declaration, but
+ * it is common style (and required for C23 compatibility) to put them before
+ * the return type.
  */
-#if (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L) && !defined(__cplusplus)
-#define pg_noreturn _Noreturn
-#elif defined(__GNUC__)
-#define pg_noreturn __attribute__((noreturn))
-#elif defined(_MSC_VER)
-#define pg_noreturn __declspec(noreturn)
+#if (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L) || defined(__cplusplus)
+#define pg_noreturn [[noreturn]]
 #else
-#define pg_noreturn
+#define pg_noreturn _Noreturn
 #endif
 
 /*
@@ -426,6 +440,58 @@
 #endif
 
 /*
+ * When we call clang to generate bitcode, we might be using configure results
+ * from a different compiler, which might not be fully compatible with the
+ * clang we are using.  The fully correct solution would be to run a separate
+ * set of configure tests for that clang-for-bitcode, but that could be very
+ * difficult to implement, and in practice clang supports most things other
+ * compilers support.  So this section just contains some hardcoded ugliness
+ * to override some configure results where it is necessary.
+ */
+#if defined(__clang__)
+#if __clang_major__ < 19
+#undef HAVE_TYPEOF_UNQUAL
+#else
+#undef typeof_unqual
+#define typeof_unqual __typeof_unqual__
+#endif
+#endif							/* __clang__ */
+
+/*
+ * Provide typeof in C++ for C++ compilers that don't support typeof natively.
+ * It might be spelled __typeof__ instead of typeof, in which case
+ * pg_cxx_typeof provides that mapping. If neither is supported, we can use
+ * decltype, but to make it equivalent to C's typeof, we need to remove
+ * references from the result [1]. Also ensure HAVE_TYPEOF is set so that
+ * typeof-dependent code is always enabled in C++ mode.
+ *
+ * [1]: https://www.open-std.org/jtc1/sc22/wg14/www/docs/n2927.htm#existing-decltype
+ */
+#if defined(__cplusplus)
+#undef typeof
+#ifdef pg_cxx_typeof
+#define typeof(x) pg_cxx_typeof(x)
+#elif !defined(HAVE_CXX_TYPEOF)
+#define typeof(x) std::remove_reference<decltype(x)>::type
+#endif
+#ifndef HAVE_TYPEOF
+#define HAVE_TYPEOF 1
+#endif
+/*
+ * and analogously for typeof_unqual
+ */
+#undef typeof_unqual
+#ifdef pg_cxx_typeof_unqual
+#define typeof_unqual(x) pg_cxx_typeof_unqual(x)
+#elif !defined(HAVE_CXX_TYPEOF_UNQUAL)
+#define typeof_unqual(x) std::remove_cv<std::remove_reference<decltype(x)>::type>::type
+#endif
+#ifndef HAVE_TYPEOF_UNQUAL
+#define HAVE_TYPEOF_UNQUAL 1
+#endif
+#endif							/* __cplusplus */
+
+/*
  * CppAsString
  *		Convert the argument to a string, using the C preprocessor.
  * CppAsString2
@@ -558,14 +624,6 @@ typedef uint8_t uint8;
 typedef uint16_t uint16;
 typedef uint32_t uint32;
 typedef uint64_t uint64;
-
-/*
- * bitsN
- *		Unit of bitwise operation, AT LEAST N BITS IN SIZE.
- */
-typedef uint8 bits8;			/* >= 8 bits */
-typedef uint16 bits16;			/* >= 16 bits */
-typedef uint32 bits32;			/* >= 32 bits */
 
 /*
  * 64-bit integers
@@ -963,18 +1021,32 @@ pg_noreturn extern void ExceptionalCondition(const char *conditionName,
 /*
  * StaticAssertExpr() is for use in an expression.
  *
- * For compilers without GCC statement expressions, we fall back on a kluge
- * that assumes the compiler will complain about a negative width for a struct
- * bit-field.  This will not include a helpful error message, but it beats not
- * getting an error at all.
+ * See <https://www.open-std.org/jtc1/sc22/wg14/www/docs/n3715.pdf> for some
+ * rationale for the precise behavior of this implementation.  See
+ * <https://stackoverflow.com/questions/31311748> about the C++
+ * implementation.
+ *
+ * For compilers that don't support this, we fall back on a kluge that assumes
+ * the compiler will complain about a negative width for a struct bit-field.
+ * This will not include a helpful error message, but it beats not getting an
+ * error at all.
  */
-#ifdef HAVE_STATEMENT_EXPRESSIONS
+#ifndef __cplusplus
+#if !defined(_MSC_VER) || _MSC_VER >= 1933
 #define StaticAssertExpr(condition, errmessage) \
-	((void) ({ static_assert(condition, errmessage); true; }))
-#else
+	((void) sizeof(struct {static_assert(condition, errmessage); char a;}))
+#else							/* _MSC_VER < 1933 */
+/*
+ * This compiler is buggy and fails to compile the previous variant; use a
+ * fallback implementation.
+ */
 #define StaticAssertExpr(condition, errmessage) \
 	((void) sizeof(struct { int static_assert_failure : (condition) ? 1 : -1; }))
-#endif							/* HAVE_STATEMENT_EXPRESSIONS */
+#endif							/* _MSC_VER < 1933 */
+#else							/* __cplusplus */
+#define StaticAssertExpr(condition, errmessage) \
+	([]{static_assert(condition, errmessage);})
+#endif
 
 
 /*
@@ -990,10 +1062,10 @@ pg_noreturn extern void ExceptionalCondition(const char *conditionName,
  */
 #ifdef HAVE__BUILTIN_TYPES_COMPATIBLE_P
 #define StaticAssertVariableIsOfType(varname, typename) \
-	StaticAssertDecl(__builtin_types_compatible_p(__typeof__(varname), typename), \
+	StaticAssertDecl(__builtin_types_compatible_p(typeof(varname), typename), \
 	CppAsString(varname) " does not have type " CppAsString(typename))
 #define StaticAssertVariableIsOfTypeMacro(varname, typename) \
-	(StaticAssertExpr(__builtin_types_compatible_p(__typeof__(varname), typename), \
+	(StaticAssertExpr(__builtin_types_compatible_p(typeof(varname), typename), \
 	 CppAsString(varname) " does not have type " CppAsString(typename)))
 #else							/* !HAVE__BUILTIN_TYPES_COMPATIBLE_P */
 #define StaticAssertVariableIsOfType(varname, typename) \
@@ -1260,20 +1332,13 @@ typedef struct PGAlignedXLogBlock PGAlignedXLogBlock;
 #if defined(__cplusplus)
 #define unconstify(underlying_type, expr) const_cast<underlying_type>(expr)
 #define unvolatize(underlying_type, expr) const_cast<underlying_type>(expr)
-#elif defined(HAVE__BUILTIN_TYPES_COMPATIBLE_P)
-#define unconstify(underlying_type, expr) \
-	(StaticAssertExpr(__builtin_types_compatible_p(__typeof(expr), const underlying_type), \
-					  "wrong cast"), \
-	 (underlying_type) (expr))
-#define unvolatize(underlying_type, expr) \
-	(StaticAssertExpr(__builtin_types_compatible_p(__typeof(expr), volatile underlying_type), \
-					  "wrong cast"), \
-	 (underlying_type) (expr))
 #else
 #define unconstify(underlying_type, expr) \
-	((underlying_type) (expr))
+	(StaticAssertVariableIsOfTypeMacro(expr, const underlying_type), \
+	 (underlying_type) (expr))
 #define unvolatize(underlying_type, expr) \
-	((underlying_type) (expr))
+	(StaticAssertVariableIsOfTypeMacro(expr, volatile underlying_type), \
+	 (underlying_type) (expr))
 #endif
 
 /*
@@ -1384,17 +1449,28 @@ extern int	fdatasync(int fd);
 #endif
 
 /*
- * The following is used as the arg list for signal handlers.  Any ports
- * that take something other than an int argument should override this in
- * their pg_config_os.h file.  Note that variable names are required
- * because it is used in both the prototypes as well as the definitions.
- * Note also the long name.  We expect that this won't collide with
- * other names causing compiler warnings.
+ * Platform independent struct representing additional information about the
+ * received signal.  If the system does not support the extended information,
+ * or a field does not apply to the signal, the value is instead reset to the
+ * documented default value.
  */
 
-#ifndef SIGNAL_ARGS
-#define SIGNAL_ARGS  int postgres_signal_arg
-#endif
+typedef struct pg_signal_info
+{
+	uint32_t	pid;			/* pid of sending process or 0 if unknown */
+	uint32_t	uid;			/* uid of sending process; only meaningful
+								 * when pid is not 0 */
+} pg_signal_info;
+
+/*
+ * The following is used as the arg list for signal handlers. These days we
+ * use the same argument to all signal handlers and hide the difference
+ * between platforms in wrapper functions.
+ *
+ * SIGNAL_ARGS just exists separately from the pqsignal() definition for
+ * historical reasons.
+ */
+#define SIGNAL_ARGS  int postgres_signal_arg, const pg_signal_info *pg_siginfo
 
 /*
  * When there is no sigsetjmp, its functionality is provided by plain

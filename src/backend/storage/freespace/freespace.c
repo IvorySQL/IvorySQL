@@ -904,16 +904,19 @@ fsm_vacuum_page(Relation rel, FSMAddress addr,
 	max_avail = fsm_get_max_avail(page);
 
 	/*
-	 * Reset the next slot pointer. This encourages the use of low-numbered
-	 * pages, increasing the chances that a later vacuum can truncate the
-	 * relation. We don't bother with marking the page dirty if it wasn't
-	 * already, since this is just a hint.
+	 * Try to reset the next slot pointer. This encourages the use of
+	 * low-numbered pages, increasing the chances that a later vacuum can
+	 * truncate the relation. We don't bother with marking the page dirty if
+	 * it wasn't already, since this is just a hint.
 	 */
 	LockBuffer(buf, BUFFER_LOCK_SHARE);
-	((FSMPage) PageGetContents(page))->fp_next_slot = 0;
-	LockBuffer(buf, BUFFER_LOCK_UNLOCK);
+	if (BufferBeginSetHintBits(buf))
+	{
+		((FSMPage) PageGetContents(page))->fp_next_slot = 0;
+		BufferFinishSetHintBits(buf, false, false);
+	}
 
-	ReleaseBuffer(buf);
+	UnlockReleaseBuffer(buf);
 
 	return max_avail;
 }

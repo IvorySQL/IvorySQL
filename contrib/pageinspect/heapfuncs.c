@@ -32,6 +32,7 @@
 #include "funcapi.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
+#include "pageinspect.h"
 #include "port/pg_bitutils.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
@@ -41,11 +42,11 @@
 /*
  * bits_to_text
  *
- * Converts a bits8-array of 'len' bits to a human-readable
+ * Converts a uint8-array of 'len' bits to a human-readable
  * c-string representation.
  */
 static char *
-bits_to_text(bits8 *bits, int len)
+bits_to_text(uint8 *bits, int len)
 {
 	int			i;
 	char	   *str;
@@ -64,13 +65,13 @@ bits_to_text(bits8 *bits, int len)
 /*
  * text_to_bits
  *
- * Converts a c-string representation of bits into a bits8-array. This is
+ * Converts a c-string representation of bits into a uint8-array. This is
  * the reverse operation of previous routine.
  */
-static bits8 *
+static uint8 *
 text_to_bits(char *str, int len)
 {
-	bits8	   *bits;
+	uint8	   *bits;
 	int			off = 0;
 	char		byte = 0;
 
@@ -118,24 +119,16 @@ heap_page_items(PG_FUNCTION_ARGS)
 	bytea	   *raw_page = PG_GETARG_BYTEA_P(0);
 	heap_page_items_state *inter_call_data = NULL;
 	FuncCallContext *fctx;
-	int			raw_page_size;
 
 	if (!superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("must be superuser to use raw page functions")));
 
-	raw_page_size = VARSIZE(raw_page) - VARHDRSZ;
-
 	if (SRF_IS_FIRSTCALL())
 	{
 		TupleDesc	tupdesc;
 		MemoryContext mctx;
-
-		if (raw_page_size < SizeOfPageHeaderData)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("input page too small (%d bytes)", raw_page_size)));
 
 		fctx = SRF_FIRSTCALL_INIT();
 		mctx = MemoryContextSwitchTo(fctx->multi_call_memory_ctx);
@@ -149,7 +142,7 @@ heap_page_items(PG_FUNCTION_ARGS)
 		inter_call_data->tupd = tupdesc;
 
 		inter_call_data->offset = FirstOffsetNumber;
-		inter_call_data->page = VARDATA(raw_page);
+		inter_call_data->page = get_page_from_raw(raw_page);
 
 		fctx->max_calls = PageGetMaxOffsetNumber(inter_call_data->page);
 		fctx->user_fctx = inter_call_data;
@@ -195,7 +188,7 @@ heap_page_items(PG_FUNCTION_ARGS)
 		if (ItemIdHasStorage(id) &&
 			lp_len >= MinHeapTupleSize &&
 			lp_offset == MAXALIGN(lp_offset) &&
-			lp_offset + lp_len <= raw_page_size)
+			lp_offset + lp_len <= BLCKSZ)
 		{
 			HeapTupleHeader tuphdr;
 
@@ -295,7 +288,7 @@ heap_page_items(PG_FUNCTION_ARGS)
 static Datum
 tuple_data_split_internal(Oid relid, char *tupdata,
 						  uint16 tupdata_len, uint16 t_infomask,
-						  uint16 t_infomask2, bits8 *t_bits,
+						  uint16 t_infomask2, uint8 *t_bits,
 						  bool do_detoast)
 {
 	ArrayBuildState *raw_attrs;
@@ -424,7 +417,7 @@ tuple_data_split(PG_FUNCTION_ARGS)
 	uint16		t_infomask2;
 	char	   *t_bits_str;
 	bool		do_detoast = false;
-	bits8	   *t_bits = NULL;
+	uint8	   *t_bits = NULL;
 	Datum		res;
 
 	relid = PG_GETARG_OID(0);
@@ -446,7 +439,7 @@ tuple_data_split(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 
 	/*
-	 * Convert t_bits string back to the bits8 array as represented in the
+	 * Convert t_bits string back to the uint8 array as represented in the
 	 * tuple header.
 	 */
 	if (t_infomask & HEAP_HASNULL)

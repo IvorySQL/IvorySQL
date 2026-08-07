@@ -40,15 +40,6 @@
 #include "utils/skipsupport.h"
 #include "utils/sortsupport.h"
 
-/*
- * gcc's -ffast-math switch breaks routines that expect exact results from
- * expressions like timeval / SECS_PER_HOUR, where timeval is double.
- */
-#ifdef __FAST_MATH__
-#error -ffast-math is known to break this code
-#endif
-
-#define SAMESIGN(a,b)	(((a) < 0) == ((b) < 0))
 
 /* Set at postmaster start */
 TimestampTz PgStartTime;
@@ -352,7 +343,8 @@ timestamp_scale(PG_FUNCTION_ARGS)
 
 	result = timestamp;
 
-	AdjustTimestampForTypmod(&result, typmod, NULL);
+	if (!AdjustTimestampForTypmod(&result, typmod, fcinfo->context))
+		PG_RETURN_NULL();
 
 	PG_RETURN_TIMESTAMP(result);
 }
@@ -875,7 +867,8 @@ timestamptz_scale(PG_FUNCTION_ARGS)
 
 	result = timestamp;
 
-	AdjustTimestampForTypmod(&result, typmod, NULL);
+	if (!AdjustTimestampForTypmod(&result, typmod, fcinfo->context))
+		PG_RETURN_NULL();
 
 	PG_RETURN_TIMESTAMPTZ(result);
 }
@@ -1334,7 +1327,8 @@ interval_scale(PG_FUNCTION_ARGS)
 	result = palloc_object(Interval);
 	*result = *interval;
 
-	AdjustIntervalForTypmod(result, typmod, NULL);
+	if (!AdjustIntervalForTypmod(result, typmod, fcinfo->context))
+		PG_RETURN_NULL();
 
 	PG_RETURN_INTERVAL_P(result);
 }
@@ -6430,8 +6424,13 @@ Datum
 timestamp_timestamptz(PG_FUNCTION_ARGS)
 {
 	Timestamp	timestamp = PG_GETARG_TIMESTAMP(0);
+	TimestampTz result;
 
-	PG_RETURN_TIMESTAMPTZ(timestamp2timestamptz(timestamp));
+	result = timestamp2timestamptz_safe(timestamp, fcinfo->context);
+	if (SOFT_ERROR_OCCURRED(fcinfo->context))
+		PG_RETURN_NULL();
+
+	PG_RETURN_TIMESTAMPTZ(result);
 }
 
 /*
@@ -6493,8 +6492,13 @@ Datum
 timestamptz_timestamp(PG_FUNCTION_ARGS)
 {
 	TimestampTz timestamp = PG_GETARG_TIMESTAMPTZ(0);
+	Timestamp	result;
 
-	PG_RETURN_TIMESTAMP(timestamptz2timestamp(timestamp));
+	result = timestamptz2timestamp_safe(timestamp, fcinfo->context);
+	if (unlikely(SOFT_ERROR_OCCURRED(fcinfo->context)))
+		PG_RETURN_NULL();
+
+	PG_RETURN_TIMESTAMP(result);
 }
 
 /*

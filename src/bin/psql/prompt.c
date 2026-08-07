@@ -46,6 +46,8 @@
  *		in prompt3 nothing
  * %i - "standby" or "primary" depending on the server's in_hot_standby
  *      status, or "?" if unavailable (empty if unknown)
+ * %o - "[ORA]" when the session is in Oracle compatibility mode
+ *      (ivorysql.compatible_mode = oracle), empty otherwise
  * %x - transaction status: empty, *, !, ? (unknown or no connection)
  * %l - The line number inside the current statement, starting from 1.
  * %? - the error code of the last query (not yet implemented)
@@ -275,6 +277,15 @@ get_prompt(promptStatus_t status, ConditionalStack cstack)
 						/* Use ? for versions that don't report in_hot_standby */
 						else
 							buf[0] = '?';
+					}
+					break;
+				case 'o':
+					if (pset.db)
+					{
+						const char *cm = PQparameterStatus(pset.db, "ivorysql.compatible_mode");
+
+						if (cm && strcmp(cm, "oracle") == 0)
+							strlcpy(buf, "[ORA]", sizeof(buf));
 					}
 					break;
 				case 'x':

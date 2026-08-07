@@ -1,0 +1,13 @@
+src/test/modules/test_saslprep
+
+Tests for SASLprep
+==================
+
+This repository contains a test suite for stressing the SASLprep
+implementation internal to PostgreSQL.
+
+It provides a set of functions able to check the validity of a SASLprep
+operation for a single byte as well as a range of these, acting as
+wrappers around pg_saslprep().
+
+For more detailed instructions, refer to the "README" file in the "src/test/modules/test_saslprep" directory.

@@ -33,6 +33,7 @@
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
+#include "utils/hsearch.h"
 #include "utils/lsyscache.h"
 #include "utils/ora_compatible.h"
 #include "utils/memutils.h"
@@ -2637,6 +2638,7 @@ plisql_parse_wordrowtype(char *ident)
 	TypeName	*typname;
 	bool		missing_ok = false;
 	TypeName   *typeName;
+	ObjectAddress *refobj;
     MemoryContext oldCxt;
 
     /* Avoid memory leaks in long-term function context */
@@ -2694,8 +2696,6 @@ plisql_parse_wordrowtype(char *ident)
 	if (check_referenced_objects)
 	{
         MemoryContextSwitchTo(oldCxt);
-
-		ObjectAddress *refobj;
 
 		refobj = (ObjectAddress *) palloc(sizeof(ObjectAddress));
 		refobj->classId = RelationRelationId;
@@ -2961,6 +2961,8 @@ build_row_from_vars(PLiSQL_variable * *vars, int numvars)
 						   0);
 		TupleDescInitEntryCollation(row->rowtupdesc, i + 1, typcoll);
 	}
+
+	TupleDescFinalize(row->rowtupdesc);
 
 	return row;
 }

@@ -6321,6 +6321,61 @@ SELECT * FROM test_nested_commit ORDER BY id;
 
 DROP PACKAGE pkg_commit_test;
 DROP TABLE test_nested_commit;
+-- Test that a package CONSTANT referenced more than once while evaluating a
+-- simple expression always yields its own value, even when the reference is
+-- the RHS of an assignment to a variable that was already assigned earlier
+-- in the same block.  (Previously, plisql_param_compile rebound dno to the
+-- resolved datum's own dno within the package's namespace, and
+-- plisql_param_eval_var_check compared that against expr->target_param -- a
+-- dno in the *calling* function's namespace -- without accounting for
+-- pkgoid.  A coincidental numeric match caused it to read an unrelated local
+-- variable's value instead of the package constant.)
+CREATE OR REPLACE PACKAGE pkg_const_repeat_test IS
+  my_const CONSTANT VARCHAR2(2) := chr(13) || chr(10);
+  my_var VARCHAR2(20) := 'pkgvar-init';
+END pkg_const_repeat_test;
+/
+DO $$
+DECLARE
+  l_message VARCHAR2(100);
+  v_local   VARCHAR2(2) := pkg_const_repeat_test.my_const;
+BEGIN
+  IF v_local != chr(13) || chr(10) THEN
+    RAISE EXCEPTION 'unexpected v_local value';
+  END IF;
+
+  l_message := 'Line 1' || v_local || 'Line 2';
+  IF l_message != 'Line 1' || chr(13) || chr(10) || 'Line 2' THEN
+    RAISE EXCEPTION 'unexpected l_message value (first assignment): %', l_message;
+  END IF;
+
+  l_message := 'Line 3' || pkg_const_repeat_test.my_const || 'Line 4';
+  IF l_message != 'Line 3' || chr(13) || chr(10) || 'Line 4' THEN
+    RAISE EXCEPTION 'unexpected l_message value (second assignment): %', l_message;
+  END IF;
+
+  -- Same failure pattern, but for a mutable (non-CONSTANT) package variable,
+  -- including a reassignment of the package variable itself in between.
+  IF pkg_const_repeat_test.my_var != 'pkgvar-init' THEN
+    RAISE EXCEPTION 'unexpected initial my_var value: %', pkg_const_repeat_test.my_var;
+  END IF;
+
+  l_message := 'Line 1' || pkg_const_repeat_test.my_var || 'Line 2';
+  IF l_message != 'Line 1' || 'pkgvar-init' || 'Line 2' THEN
+    RAISE EXCEPTION 'unexpected l_message value (var, first assignment): %', l_message;
+  END IF;
+
+  pkg_const_repeat_test.my_var := 'pkgvar-updated';
+  l_message := 'Line 3' || pkg_const_repeat_test.my_var || 'Line 4';
+  IF l_message != 'Line 3' || 'pkgvar-updated' || 'Line 4' THEN
+    RAISE EXCEPTION 'unexpected l_message value (var, second assignment): %', l_message;
+  END IF;
+
+  RAISE NOTICE 'pkg_const_repeat_test: all checks passed';
+END;
+$$;
+NOTICE:  pkg_const_repeat_test: all checks passed
+DROP PACKAGE pkg_const_repeat_test;
 --clean data
 RESET ivorysql.allow_out_parameter_const;
 DROP FUNCTION test_event_trigger;

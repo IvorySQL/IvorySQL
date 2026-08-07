@@ -20,12 +20,14 @@
 
 #include "access/table.h"
 #include "access/tableam.h"
+#include "access/tupconvert.h"
 #include "catalog/pg_inherits.h"
 #include "commands/copyapi.h"
 #include "commands/progress.h"
 #include "executor/execdesc.h"
 #include "executor/executor.h"
 #include "executor/tuptable.h"
+#include "funcapi.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
 #include "mb/pg_wchar.h"
@@ -33,10 +35,12 @@
 #include "pgstat.h"
 #include "storage/fd.h"
 #include "tcop/tcopprot.h"
+#include "utils/json.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
+#include "utils/wait_event.h"
 
 /*
  * Represents the different dest cases we need to worry about at
@@ -84,6 +88,14 @@ typedef struct CopyToStateData
 	List	   *attnumlist;		/* integer list of attnums to copy */
 	char	   *filename;		/* filename, or NULL for STDOUT */
 	bool		is_program;		/* is 'filename' a program to popen? */
+	bool		json_row_delim_needed;	/* need delimiter before next row */
+	StringInfo	json_buf;		/* reusable buffer for JSON output,
+								 * initialized in BeginCopyTo */
+	TupleDesc	tupDesc;		/* Descriptor for JSON output; for a column
+								 * list this is a projected descriptor */
+	Datum	   *json_projvalues;	/* pre-allocated projection values, or
+									 * NULL */
+	bool	   *json_projnulls; /* pre-allocated projection nulls, or NULL */
 	copy_data_dest_cb data_dest_cb; /* function for writing data */
 
 	CopyFormatOptions opts;
@@ -130,6 +142,8 @@ static void CopyToCSVOneRow(CopyToState cstate, TupleTableSlot *slot);
 static void CopyToTextLikeOneRow(CopyToState cstate, TupleTableSlot *slot,
 								 bool is_csv);
 static void CopyToTextLikeEnd(CopyToState cstate);
+static void CopyToJsonOneRow(CopyToState cstate, TupleTableSlot *slot);
+static void CopyToJsonEnd(CopyToState cstate);
 static void CopyToBinaryStart(CopyToState cstate, TupleDesc tupDesc);
 static void CopyToBinaryOutFunc(CopyToState cstate, Oid atttypid, FmgrInfo *finfo);
 static void CopyToBinaryOneRow(CopyToState cstate, TupleTableSlot *slot);
@@ -148,9 +162,6 @@ static void CopySendInt16(CopyToState cstate, int16 val);
 
 /*
  * COPY TO routines for built-in formats.
- *
- * CSV and text formats share the same TextLike routines except for the
- * one-row callback.
  */
 
 /* text format */
@@ -169,6 +180,14 @@ static const CopyToRoutine CopyToRoutineCSV = {
 	.CopyToEnd = CopyToTextLikeEnd,
 };
 
+/* json format */
+static const CopyToRoutine CopyToRoutineJson = {
+	.CopyToStart = CopyToTextLikeStart,
+	.CopyToOutFunc = CopyToTextLikeOutFunc,
+	.CopyToOneRow = CopyToJsonOneRow,
+	.CopyToEnd = CopyToJsonEnd,
+};
+
 /* binary format */
 static const CopyToRoutine CopyToRoutineBinary = {
 	.CopyToStart = CopyToBinaryStart,
@@ -181,16 +200,18 @@ static const CopyToRoutine CopyToRoutineBinary = {
 static const CopyToRoutine *
 CopyToGetRoutine(const CopyFormatOptions *opts)
 {
-	if (opts->csv_mode)
+	if (opts->format == COPY_FORMAT_CSV)
 		return &CopyToRoutineCSV;
-	else if (opts->binary)
+	else if (opts->format == COPY_FORMAT_BINARY)
 		return &CopyToRoutineBinary;
+	else if (opts->format == COPY_FORMAT_JSON)
+		return &CopyToRoutineJson;
 
 	/* default is text */
 	return &CopyToRoutineText;
 }
 
-/* Implementation of the start callback for text and CSV formats */
+/* Implementation of the start callback for text, CSV, and json formats */
 static void
 CopyToTextLikeStart(CopyToState cstate, TupleDesc tupDesc)
 {
@@ -209,6 +230,8 @@ CopyToTextLikeStart(CopyToState cstate, TupleDesc tupDesc)
 		ListCell   *cur;
 		bool		hdr_delim = false;
 
+		Assert(cstate->opts.format != COPY_FORMAT_JSON);
+
 		foreach(cur, cstate->attnumlist)
 		{
 			int			attnum = lfirst_int(cur);
@@ -220,7 +243,7 @@ CopyToTextLikeStart(CopyToState cstate, TupleDesc tupDesc)
 
 			colname = NameStr(TupleDescAttr(tupDesc, attnum - 1)->attname);
 
-			if (cstate->opts.csv_mode)
+			if (cstate->opts.format == COPY_FORMAT_CSV)
 				CopyAttributeOutCSV(cstate, colname, false);
 			else
 				CopyAttributeOutText(cstate, colname);
@@ -228,10 +251,19 @@ CopyToTextLikeStart(CopyToState cstate, TupleDesc tupDesc)
 
 		CopySendTextLikeEndOfRow(cstate);
 	}
+
+	/*
+	 * If FORCE_ARRAY has been specified, send the opening bracket.
+	 */
+	if (cstate->opts.format == COPY_FORMAT_JSON && cstate->opts.force_array)
+	{
+		CopySendChar(cstate, '[');
+		CopySendTextLikeEndOfRow(cstate);
+	}
 }
 
 /*
- * Implementation of the outfunc callback for text and CSV formats. Assign
+ * Implementation of the outfunc callback for text, CSV, and json formats. Assign
  * the output function data to the given *finfo.
  */
 static void
@@ -309,6 +341,95 @@ static void
 CopyToTextLikeEnd(CopyToState cstate)
 {
 	/* Nothing to do here */
+}
+
+/* Implementation of the end callback for json format */
+static void
+CopyToJsonEnd(CopyToState cstate)
+{
+	if (cstate->opts.force_array)
+	{
+		CopySendChar(cstate, ']');
+		CopySendTextLikeEndOfRow(cstate);
+	}
+}
+
+/* Implementation of per-row callback for json format */
+static void
+CopyToJsonOneRow(CopyToState cstate, TupleTableSlot *slot)
+{
+	Datum		rowdata;
+
+	resetStringInfo(cstate->json_buf);
+
+	if (cstate->json_projvalues != NULL)
+	{
+		/*
+		 * Column list case: project selected column values into sequential
+		 * positions matching the custom TupleDesc, then form a new tuple.
+		 */
+		HeapTuple	tup;
+		int			i = 0;
+
+		foreach_int(attnum, cstate->attnumlist)
+		{
+			cstate->json_projvalues[i] = slot->tts_values[attnum - 1];
+			cstate->json_projnulls[i] = slot->tts_isnull[attnum - 1];
+			i++;
+		}
+
+		tup = heap_form_tuple(cstate->tupDesc,
+							  cstate->json_projvalues,
+							  cstate->json_projnulls);
+
+		/*
+		 * heap_form_tuple already stamps the datum-length, type-id, and
+		 * type-mod fields on t_data, so we can use it directly as a composite
+		 * Datum without the extra pallocmemcpy that heap_copy_tuple_as_datum
+		 * would do.  Any TOAST pointers in the projected values will be
+		 * detoasted by the per-column output functions called from
+		 * composite_to_json.
+		 */
+		rowdata = HeapTupleGetDatum(tup);
+	}
+	else
+	{
+		/*
+		 * Full table or query without column list.  For queries, the slot's
+		 * TupleDesc may carry RECORDOID, which is not registered in the type
+		 * cache and would cause composite_to_json's lookup_rowtype_tupdesc
+		 * call to fail.  Build a HeapTuple stamped with the blessed
+		 * descriptor so the type can be looked up correctly.
+		 */
+		if (!cstate->rel && slot->tts_tupleDescriptor->tdtypeid == RECORDOID)
+		{
+			HeapTuple	tup = heap_form_tuple(cstate->tupDesc,
+											  slot->tts_values,
+											  slot->tts_isnull);
+
+			rowdata = HeapTupleGetDatum(tup);
+		}
+		else
+			rowdata = ExecFetchSlotHeapTupleDatum(slot);
+	}
+
+	composite_to_json(rowdata, cstate->json_buf, false);
+
+	if (cstate->opts.force_array)
+	{
+		if (cstate->json_row_delim_needed)
+			CopySendChar(cstate, ',');
+		else
+		{
+			/* first row needs no delimiter */
+			CopySendChar(cstate, ' ');
+			cstate->json_row_delim_needed = true;
+		}
+	}
+
+	CopySendData(cstate, cstate->json_buf->data, cstate->json_buf->len);
+
+	CopySendTextLikeEndOfRow(cstate);
 }
 
 /*
@@ -397,14 +518,28 @@ SendCopyBegin(CopyToState cstate)
 {
 	StringInfoData buf;
 	int			natts = list_length(cstate->attnumlist);
-	int16		format = (cstate->opts.binary ? 1 : 0);
+	int16		format = (cstate->opts.format == COPY_FORMAT_BINARY ? 1 : 0);
 	int			i;
 
 	pq_beginmessage(&buf, PqMsg_CopyOutResponse);
 	pq_sendbyte(&buf, format);	/* overall format */
-	pq_sendint16(&buf, natts);
-	for (i = 0; i < natts; i++)
-		pq_sendint16(&buf, format); /* per-column formats */
+	if (cstate->opts.format != COPY_FORMAT_JSON)
+	{
+		pq_sendint16(&buf, natts);
+		for (i = 0; i < natts; i++)
+			pq_sendint16(&buf, format); /* per-column formats */
+	}
+	else
+	{
+		/*
+		 * For JSON format, report one text-format column.  Each CopyData
+		 * message contains one complete JSON object, not individual column
+		 * values, so the per-column count is always 1.
+		 */
+		pq_sendint16(&buf, 1);
+		pq_sendint16(&buf, 0);
+	}
+
 	pq_endmessage(&buf);
 	cstate->copy_dest = COPY_FRONTEND;
 }
@@ -506,7 +641,7 @@ CopySendEndOfRow(CopyToState cstate)
 }
 
 /*
- * Wrapper function of CopySendEndOfRow for text and CSV formats. Sends the
+ * Wrapper function of CopySendEndOfRow for text, CSV, and json formats. Sends the
  * line termination and do common appropriate things for the end of row.
  */
 static inline void
@@ -749,6 +884,7 @@ BeginCopyTo(ParseState *pstate,
 
 		tupDesc = RelationGetDescr(cstate->rel);
 		cstate->partitions = children;
+		cstate->tupDesc = tupDesc;
 	}
 	else
 	{
@@ -885,10 +1021,52 @@ BeginCopyTo(ParseState *pstate,
 		ExecutorStart(cstate->queryDesc, 0);
 
 		tupDesc = cstate->queryDesc->tupDesc;
+		tupDesc = BlessTupleDesc(tupDesc);
+		cstate->tupDesc = tupDesc;
 	}
 
 	/* Generate or convert list of attributes to process */
 	cstate->attnumlist = CopyGetAttnums(tupDesc, cstate->rel, attnamelist);
+
+	/* Set up JSON-specific state */
+	if (cstate->opts.format == COPY_FORMAT_JSON)
+	{
+		cstate->json_buf = makeStringInfo();
+
+		if (rel && list_length(cstate->attnumlist) < tupDesc->natts)
+		{
+			int			natts = list_length(cstate->attnumlist);
+			TupleDesc	resultDesc;
+
+			/*
+			 * Build a TupleDesc describing only the selected columns so that
+			 * composite_to_json() emits the right column names and types.
+			 */
+			resultDesc = CreateTemplateTupleDesc(natts);
+
+			foreach_int(attnum, cstate->attnumlist)
+			{
+				Form_pg_attribute attr = TupleDescAttr(tupDesc, attnum - 1);
+
+				TupleDescInitEntry(resultDesc,
+								   foreach_current_index(attnum) + 1,
+								   NameStr(attr->attname),
+								   attr->atttypid,
+								   attr->atttypmod,
+								   attr->attndims);
+			}
+
+			TupleDescFinalize(resultDesc);
+			cstate->tupDesc = BlessTupleDesc(resultDesc);
+
+			/*
+			 * Pre-allocate arrays for projecting selected column values into
+			 * sequential positions matching the custom TupleDesc.
+			 */
+			cstate->json_projvalues = palloc_array(Datum, natts);
+			cstate->json_projnulls = palloc_array(bool, natts);
+		}
+	}
 
 	num_phys_attrs = tupDesc->natts;
 
@@ -1158,7 +1336,8 @@ CopyRelationTo(CopyToState cstate, Relation rel, Relation root_rel, uint64 *proc
 	AttrMap    *map = NULL;
 	TupleTableSlot *root_slot = NULL;
 
-	scandesc = table_beginscan(rel, GetActiveSnapshot(), 0, NULL);
+	scandesc = table_beginscan(rel, GetActiveSnapshot(), 0, NULL,
+							   SO_NONE);
 	slot = table_slot_create(rel, NULL);
 
 	/*

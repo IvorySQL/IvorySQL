@@ -3023,7 +3023,7 @@ void
 disable_sigpipe_trap(void)
 {
 #ifndef WIN32
-	pqsignal(SIGPIPE, SIG_IGN);
+	pqsignal(SIGPIPE, PG_SIG_IGN);
 #endif
 }
 
@@ -3046,7 +3046,7 @@ void
 restore_sigpipe_trap(void)
 {
 #ifndef WIN32
-	pqsignal(SIGPIPE, always_ignore_sigpipe ? SIG_IGN : SIG_DFL);
+	pqsignal(SIGPIPE, always_ignore_sigpipe ? PG_SIG_IGN : PG_SIG_DFL);
 #endif
 }
 

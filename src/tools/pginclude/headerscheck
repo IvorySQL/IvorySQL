@@ -37,13 +37,11 @@ fi
 
 me=`basename $0`
 
-# These switches are g++ specific, you may override if necessary.
-CXXFLAGS=${CXXFLAGS:- -fsyntax-only -Wall}
-
 # Pull some info from configure's results.
 MGLOB="$builddir/src/Makefile.global"
 CPPFLAGS=`sed -n 's/^CPPFLAGS[ 	]*=[ 	]*//p' "$MGLOB"`
 CFLAGS=`sed -n 's/^CFLAGS[ 	]*=[ 	]*//p' "$MGLOB"`
+CXXFLAGS=`sed -n 's/^CXXFLAGS[ 	]*=[ 	]*//p' "$MGLOB"`
 ICU_CFLAGS=`sed -n 's/^ICU_CFLAGS[ 	]*=[ 	]*//p' "$MGLOB"`
 LLVM_CPPFLAGS=`sed -n 's/^LLVM_CPPFLAGS[ 	]*=[ 	]*//p' "$MGLOB"`
 CC=`sed -n 's/^CC[ 	]*=[ 	]*//p' "$MGLOB"`
@@ -122,9 +120,11 @@ do
 	# sepgsql.h depends on headers that aren't there on most platforms.
 	test "$f" = contrib/sepgsql/sepgsql.h && continue
 
-	# nodetags.h cannot be included standalone: it's just a code fragment.
+	# These files cannot be included standalone, because they contain
+	# code fragments.
 	test "$f" = src/include/nodes/nodetags.h && continue
 	test "$f" = src/backend/nodes/nodetags.h && continue
+	test "$f" = src/include/storage/checksum_block_internal.h && continue
 
 	# These files are not meant to be included standalone, because
 	# they contain lists that might have multiple use-cases.
@@ -133,6 +133,7 @@ do
 	test "$f" = src/include/postmaster/proctypelist.h && continue
 	test "$f" = src/include/regex/regerrs.h && continue
 	test "$f" = src/include/storage/lwlocklist.h && continue
+	test "$f" = src/include/storage/subsystemlist.h && continue
 	test "$f" = src/include/tcop/cmdtaglist.h && continue
 	test "$f" = src/interfaces/ecpg/preproc/c_kwlist.h && continue
 	test "$f" = src/interfaces/ecpg/preproc/ecpg_kwlist.h && continue
@@ -155,10 +156,13 @@ do
 	test "$f" = src/include/catalog/syscache_ids.h && continue
 	test "$f" = src/include/catalog/syscache_info.h && continue
 
+	test "$f" = src/interfaces/libpq/oauth-debug.h && continue
+
 	# We can't make these Bison output files compilable standalone
 	# without using "%code require", which old Bison versions lack.
 	# parser/gram.h will be included by parser/gramparse.h anyway.
 	test "$f" = contrib/cube/cubeparse.h && continue
+	test "$f" = contrib/pg_plan_advice/pgpa_parser.h && continue
 	test "$f" = contrib/seg/segparse.h && continue
 	test "$f" = src/backend/bootstrap/bootparse.h && continue
 	test "$f" = src/backend/parser/gram.h && continue
@@ -214,11 +218,16 @@ do
 	    # info to guess which, but in some subdirectories there's a
 	    # reasonable choice to make, and otherwise we use postgres.h.
 	    # Also, those three files should compile with no pre-include, as
-	    # should src/interfaces headers meant to be exposed to clients.
+	    # should files included early by c.h, as well as
+	    # src/interfaces headers meant to be exposed to clients.
 	    case "$f" in
-		src/include/postgres.h) ;;
-		src/include/postgres_fe.h) ;;
 		src/include/c.h) ;;
+		src/include/pg_config.h) ;;
+		src/include/pg_config_manual.h) ;;
+		src/include/pg_config_os.h) ;;
+		src/include/postgres.h) ;;
+		src/include/postgres_ext.h) ;;
+		src/include/postgres_fe.h) ;;
 		src/interfaces/libpq/libpq-fe.h) ;;
 		src/interfaces/libpq/libpq-events.h) ;;
 		src/interfaces/ecpg/ecpglib/ecpglib_extern.h)

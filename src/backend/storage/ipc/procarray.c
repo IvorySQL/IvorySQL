@@ -62,12 +62,14 @@
 #include "storage/proc.h"
 #include "storage/procarray.h"
 #include "storage/procsignal.h"
+#include "storage/subsystems.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/injection_point.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
+#include "utils/wait_event.h"
 
 #define UINT32_ACCESS_ONCE(var)		 ((uint32)(*((volatile uint32 *)&(var))))
 
@@ -102,6 +104,18 @@ typedef struct ProcArrayStruct
 	/* indexes into allProcs[], has PROCARRAY_MAXPROCS entries */
 	int			pgprocnos[FLEXIBLE_ARRAY_MEMBER];
 } ProcArrayStruct;
+
+static void ProcArrayShmemRequest(void *arg);
+static void ProcArrayShmemInit(void *arg);
+static void ProcArrayShmemAttach(void *arg);
+
+static ProcArrayStruct *procArray;
+
+const struct ShmemCallbacks ProcArrayShmemCallbacks = {
+	.request_fn = ProcArrayShmemRequest,
+	.init_fn = ProcArrayShmemInit,
+	.attach_fn = ProcArrayShmemAttach,
+};
 
 /*
  * State for the GlobalVisTest* family of functions. Those functions can
@@ -269,9 +283,6 @@ typedef enum KAXCompressReason
 	KAX_STARTUP_PROCESS_IDLE,	/* startup process is about to sleep */
 } KAXCompressReason;
 
-
-static ProcArrayStruct *procArray;
-
 static PGPROC *allProcs;
 
 /*
@@ -282,8 +293,11 @@ static TransactionId cachedXidIsNotInProgress = InvalidTransactionId;
 /*
  * Bookkeeping for tracking emulated transactions in recovery
  */
+
 static TransactionId *KnownAssignedXids;
+
 static bool *KnownAssignedXidsValid;
+
 static TransactionId latestObservedXid = InvalidTransactionId;
 
 /*
@@ -374,18 +388,12 @@ static inline FullTransactionId FullXidRelativeTo(FullTransactionId rel,
 static void GlobalVisUpdateApply(ComputeXidHorizonsResult *horizons);
 
 /*
- * Report shared-memory space needed by ProcArrayShmemInit
+ * Register the shared PGPROC array during postmaster startup.
  */
-Size
-ProcArrayShmemSize(void)
+static void
+ProcArrayShmemRequest(void *arg)
 {
-	Size		size;
-
-	/* Size of the ProcArray structure itself */
 #define PROCARRAY_MAXPROCS	(MaxBackends + max_prepared_xacts)
-
-	size = offsetof(ProcArrayStruct, pgprocnos);
-	size = add_size(size, mul_size(sizeof(int), PROCARRAY_MAXPROCS));
 
 	/*
 	 * During Hot Standby processing we have a data structure called
@@ -405,64 +413,49 @@ ProcArrayShmemSize(void)
 
 	if (EnableHotStandby)
 	{
-		size = add_size(size,
-						mul_size(sizeof(TransactionId),
-								 TOTAL_MAX_CACHED_SUBXIDS));
-		size = add_size(size,
-						mul_size(sizeof(bool), TOTAL_MAX_CACHED_SUBXIDS));
+		ShmemRequestStruct(.name = "KnownAssignedXids",
+						   .size = mul_size(sizeof(TransactionId), TOTAL_MAX_CACHED_SUBXIDS),
+						   .ptr = (void **) &KnownAssignedXids,
+			);
+
+		ShmemRequestStruct(.name = "KnownAssignedXidsValid",
+						   .size = mul_size(sizeof(bool), TOTAL_MAX_CACHED_SUBXIDS),
+						   .ptr = (void **) &KnownAssignedXidsValid,
+			);
 	}
 
-	return size;
+	/* Register the ProcArray shared structure */
+	ShmemRequestStruct(.name = "Proc Array",
+					   .size = add_size(offsetof(ProcArrayStruct, pgprocnos),
+										mul_size(sizeof(int), PROCARRAY_MAXPROCS)),
+					   .ptr = (void **) &procArray,
+		);
 }
 
 /*
  * Initialize the shared PGPROC array during postmaster startup.
  */
-void
-ProcArrayShmemInit(void)
+static void
+ProcArrayShmemInit(void *arg)
 {
-	bool		found;
-
-	/* Create or attach to the ProcArray shared structure */
-	procArray = (ProcArrayStruct *)
-		ShmemInitStruct("Proc Array",
-						add_size(offsetof(ProcArrayStruct, pgprocnos),
-								 mul_size(sizeof(int),
-										  PROCARRAY_MAXPROCS)),
-						&found);
-
-	if (!found)
-	{
-		/*
-		 * We're the first - initialize.
-		 */
-		procArray->numProcs = 0;
-		procArray->maxProcs = PROCARRAY_MAXPROCS;
-		procArray->maxKnownAssignedXids = TOTAL_MAX_CACHED_SUBXIDS;
-		procArray->numKnownAssignedXids = 0;
-		procArray->tailKnownAssignedXids = 0;
-		procArray->headKnownAssignedXids = 0;
-		procArray->lastOverflowedXid = InvalidTransactionId;
-		procArray->replication_slot_xmin = InvalidTransactionId;
-		procArray->replication_slot_catalog_xmin = InvalidTransactionId;
-		TransamVariables->xactCompletionCount = 1;
-	}
+	procArray->numProcs = 0;
+	procArray->maxProcs = PROCARRAY_MAXPROCS;
+	procArray->maxKnownAssignedXids = TOTAL_MAX_CACHED_SUBXIDS;
+	procArray->numKnownAssignedXids = 0;
+	procArray->tailKnownAssignedXids = 0;
+	procArray->headKnownAssignedXids = 0;
+	procArray->lastOverflowedXid = InvalidTransactionId;
+	procArray->replication_slot_xmin = InvalidTransactionId;
+	procArray->replication_slot_catalog_xmin = InvalidTransactionId;
+	TransamVariables->xactCompletionCount = 1;
 
 	allProcs = ProcGlobal->allProcs;
+}
 
-	/* Create or attach to the KnownAssignedXids arrays too, if needed */
-	if (EnableHotStandby)
-	{
-		KnownAssignedXids = (TransactionId *)
-			ShmemInitStruct("KnownAssignedXids",
-							mul_size(sizeof(TransactionId),
-									 TOTAL_MAX_CACHED_SUBXIDS),
-							&found);
-		KnownAssignedXidsValid = (bool *)
-			ShmemInitStruct("KnownAssignedXidsValid",
-							mul_size(sizeof(bool), TOTAL_MAX_CACHED_SUBXIDS),
-							&found);
-	}
+static void
+ProcArrayShmemAttach(void *arg)
+{
+	allProcs = ProcGlobal->allProcs;
 }
 
 /*
@@ -710,8 +703,6 @@ ProcArrayEndTransaction(PGPROC *proc, TransactionId latestXid)
 		/* be sure this is cleared in abort */
 		proc->delayChkptFlags = 0;
 
-		pg_atomic_write_u32(&proc->pendingRecoveryConflicts, 0);
-
 		/* must be cleared with xid/xmin: */
 		/* avoid unnecessarily dirtying shared cachelines */
 		if (proc->statusFlags & PROC_VACUUM_STATE_MASK)
@@ -751,8 +742,6 @@ ProcArrayEndTransactionInternal(PGPROC *proc, TransactionId latestXid)
 
 	/* be sure this is cleared in abort */
 	proc->delayChkptFlags = 0;
-
-	pg_atomic_write_u32(&proc->pendingRecoveryConflicts, 0);
 
 	/* must be cleared with xid/xmin: */
 	/* avoid unnecessarily dirtying shared cachelines */
@@ -935,7 +924,6 @@ ProcArrayClearTransaction(PGPROC *proc)
 
 	proc->vxid.lxid = InvalidLocalTransactionId;
 	proc->xmin = InvalidTransactionId;
-	pg_atomic_write_u32(&proc->pendingRecoveryConflicts, 0);
 
 	Assert(!(proc->statusFlags & PROC_VACUUM_STATE_MASK));
 	Assert(!proc->delayChkptFlags);
@@ -2636,9 +2624,11 @@ ProcArrayInstallRestoredXmin(TransactionId xmin, PGPROC *proc)
  *
  * Note that if any transaction has overflowed its cached subtransactions
  * then there is no real need include any subtransactions.
+ *
+ * If 'dbid' is valid, only gather transactions running in that database.
  */
 RunningTransactions
-GetRunningTransactionData(void)
+GetRunningTransactionData(Oid dbid)
 {
 	/* result workspace */
 	static RunningTransactionsData CurrentRunningXactsData;
@@ -2714,6 +2704,18 @@ GetRunningTransactionData(void)
 			continue;
 
 		/*
+		 * Filter by database OID if requested.
+		 */
+		if (OidIsValid(dbid))
+		{
+			int			pgprocno = arrayP->pgprocnos[index];
+			PGPROC	   *proc = &allProcs[pgprocno];
+
+			if (proc->databaseId != dbid)
+				continue;
+		}
+
+		/*
 		 * Be careful not to exclude any xids before calculating the values of
 		 * oldestRunningXid and suboverflowed, since these are used to clean
 		 * up transaction information held on standbys.
@@ -2764,6 +2766,12 @@ GetRunningTransactionData(void)
 			int			nsubxids;
 
 			/*
+			 * Filter by database OID if requested.
+			 */
+			if (OidIsValid(dbid) && proc->databaseId != dbid)
+				continue;
+
+			/*
 			 * Save subtransaction XIDs. Other backends can't add or remove
 			 * entries while we're holding XidGenLock.
 			 */
@@ -2796,6 +2804,7 @@ GetRunningTransactionData(void)
 	 * increases if slots do.
 	 */
 
+	CurrentRunningXacts->dbid = dbid;
 	CurrentRunningXacts->xcnt = count - subcount;
 	CurrentRunningXacts->subxcnt = subcount;
 	CurrentRunningXacts->subxid_status = suboverflowed ? SUBXIDS_IN_SUBTRANS : SUBXIDS_IN_ARRAY;
@@ -3526,7 +3535,7 @@ SignalRecoveryConflictWithVirtualXID(VirtualTransactionId vxid, RecoveryConflict
 }
 
 /*
- * SignalRecoveryConflictWithDatabase --- signal all backends specified database
+ * SignalRecoveryConflictWithDatabase -- signal backends using specified database
  *
  * Like SignalRecoveryConflict, but signals all backends using the database.
  */
@@ -4228,11 +4237,17 @@ GlobalVisUpdate(void)
  * The state passed needs to have been initialized for the relation fxid is
  * from (NULL is also OK), otherwise the result may not be correct.
  *
+ * If allow_update is false, the GlobalVisState boundaries will not be updated
+ * even if it would otherwise be beneficial. This is useful for callers that
+ * do not want GlobalVisState to advance at all, for example because they need
+ * a conservative answer based on the current boundaries.
+ *
  * See comment for GlobalVisState for details.
  */
 bool
 GlobalVisTestIsRemovableFullXid(GlobalVisState *state,
-								FullTransactionId fxid)
+								FullTransactionId fxid,
+								bool allow_update)
 {
 	/*
 	 * If fxid is older than maybe_needed bound, it definitely is visible to
@@ -4253,7 +4268,7 @@ GlobalVisTestIsRemovableFullXid(GlobalVisState *state,
 	 * might not exist a snapshot considering fxid running. If it makes sense,
 	 * update boundaries and recheck.
 	 */
-	if (GlobalVisTestShouldUpdate(state))
+	if (allow_update && GlobalVisTestShouldUpdate(state))
 	{
 		GlobalVisUpdate();
 
@@ -4273,7 +4288,8 @@ GlobalVisTestIsRemovableFullXid(GlobalVisState *state,
  * relfrozenxid).
  */
 bool
-GlobalVisTestIsRemovableXid(GlobalVisState *state, TransactionId xid)
+GlobalVisTestIsRemovableXid(GlobalVisState *state, TransactionId xid,
+							bool allow_update)
 {
 	FullTransactionId fxid;
 
@@ -4287,7 +4303,33 @@ GlobalVisTestIsRemovableXid(GlobalVisState *state, TransactionId xid)
 	 */
 	fxid = FullXidRelativeTo(state->definitely_needed, xid);
 
-	return GlobalVisTestIsRemovableFullXid(state, fxid);
+	return GlobalVisTestIsRemovableFullXid(state, fxid, allow_update);
+}
+
+/*
+ * Wrapper around GlobalVisTestIsRemovableXid() for use when examining live
+ * tuples. Returns true if the given XID may be considered running by at least
+ * one snapshot.
+ *
+ * This function alone is insufficient to determine tuple visibility; callers
+ * must also consider the XID's commit status. Its purpose is purely semantic:
+ * when applied to live tuples, GlobalVisTestIsRemovableXid() is checking
+ * whether the inserting transaction is still considered running, not whether
+ * the tuple is removable. Live tuples are, by definition, not removable, but
+ * the snapshot criteria for "transaction still running" are identical to
+ * those used for removal XIDs.
+ *
+ * If allow_update is true, the GlobalVisState boundaries may be updated. If
+ * it is false, they definitely will not be updated.
+ *
+ * See the comment above GlobalVisTestIsRemovable[Full]Xid() for details on
+ * the required preconditions for calling this function.
+ */
+bool
+GlobalVisTestXidConsideredRunning(GlobalVisState *state, TransactionId xid,
+								  bool allow_update)
+{
+	return !GlobalVisTestIsRemovableXid(state, xid, allow_update);
 }
 
 /*
@@ -4301,7 +4343,7 @@ GlobalVisCheckRemovableFullXid(Relation rel, FullTransactionId fxid)
 
 	state = GlobalVisTestFor(rel);
 
-	return GlobalVisTestIsRemovableFullXid(state, fxid);
+	return GlobalVisTestIsRemovableFullXid(state, fxid, true);
 }
 
 /*
@@ -4315,7 +4357,7 @@ GlobalVisCheckRemovableXid(Relation rel, TransactionId xid)
 
 	state = GlobalVisTestFor(rel);
 
-	return GlobalVisTestIsRemovableXid(state, xid);
+	return GlobalVisTestIsRemovableXid(state, xid, true);
 }
 
 /*

@@ -135,14 +135,12 @@ SELECT count(*) FROM binary_doubletmp WHERE a >  -1890.0::binary_double;
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM binary_doubletmp WHERE a <> -1890.0::binary_double;
-                       QUERY PLAN                        
----------------------------------------------------------
+                            QUERY PLAN                            
+------------------------------------------------------------------
  Aggregate
-   ->  Bitmap Heap Scan on binary_doubletmp
-         Recheck Cond: (a <> '-1890'::binary_double)
-         ->  Bitmap Index Scan on binary_doubleidx
-               Index Cond: (a <> '-1890'::binary_double)
-(5 rows)
+   ->  Index Only Scan using binary_doubleidx on binary_doubletmp
+         Index Cond: (a <> '-1890'::binary_double)
+(3 rows)
 
 SELECT count(*) FROM binary_doubletmp WHERE a <> -1890.0::binary_double;
  count 

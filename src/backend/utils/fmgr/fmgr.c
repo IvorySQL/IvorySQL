@@ -33,6 +33,7 @@
 #include "utils/builtins.h"
 #include "utils/fmgrtab.h"
 #include "utils/guc.h"
+#include "utils/hsearch.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "commands/proclang.h"

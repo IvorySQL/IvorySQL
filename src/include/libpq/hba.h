@@ -37,7 +37,6 @@ typedef enum UserAuth
 	uaBSD,
 	uaLDAP,
 	uaCert,
-	uaRADIUS,
 	uaPeer,
 	uaOAuth,
 #define USER_AUTH_LAST uaOAuth	/* Must be last value of this enum */
@@ -128,18 +127,12 @@ typedef struct HbaLine
 	bool		include_realm;
 	bool		compat_realm;
 	bool		upn_username;
-	List	   *radiusservers;
-	char	   *radiusservers_s;
-	List	   *radiussecrets;
-	char	   *radiussecrets_s;
-	List	   *radiusidentifiers;
-	char	   *radiusidentifiers_s;
-	List	   *radiusports;
-	char	   *radiusports_s;
 	char	   *oauth_issuer;
 	char	   *oauth_scope;
 	char	   *oauth_validator;
 	bool		oauth_skip_usermap;
+	List	   *oauth_opt_keys;
+	List	   *oauth_opt_vals;
 } HbaLine;
 
 typedef struct IdentLine
@@ -150,6 +143,36 @@ typedef struct IdentLine
 	AuthToken  *system_user;
 	AuthToken  *pg_user;
 } IdentLine;
+
+typedef struct HostsLine
+{
+	int			linenumber;
+
+	char	   *sourcefile;
+	char	   *rawline;
+
+	/* Required fields */
+	List	   *hostnames;
+	char	   *ssl_key;
+	char	   *ssl_cert;
+
+	/* Optional fields */
+	char	   *ssl_ca;
+	char	   *ssl_passphrase_cmd;
+	bool		ssl_passphrase_reload;
+
+	/* Internal bookkeeping */
+	void	   *ssl_ctx;		/* associated SSL_CTX* for the above settings */
+} HostsLine;
+
+typedef enum HostsFileLoadResult
+{
+	HOSTSFILE_LOAD_OK = 0,
+	HOSTSFILE_LOAD_FAILED,
+	HOSTSFILE_EMPTY,
+	HOSTSFILE_MISSING,
+	HOSTSFILE_DISABLED,
+} HostsFileLoadResult;
 
 /*
  * TokenizedAuthLine represents one line lexed from an authentication

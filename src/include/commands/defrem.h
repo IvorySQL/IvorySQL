@@ -28,7 +28,7 @@ extern void RemoveObjects(DropStmt *stmt);
 /* commands/indexcmds.c */
 extern ObjectAddress DefineIndex(ParseState *pstate,
 								 Oid tableId,
-								 IndexStmt *stmt,
+								 const IndexStmt *stmt,
 								 Oid indexRelationId,
 								 Oid parentIndexId,
 								 Oid parentConstraintId,
@@ -42,6 +42,8 @@ extern void ExecReindex(ParseState *pstate, const ReindexStmt *stmt, bool isTopL
 extern void ExecOraAlterIndexRebuild(ParseState *pstate,
 									 const OraAlterIndexRebuildStmt *stmt,
 									 bool isTopLevel);
+extern ObjectAddress ExecOraAlterIndexUnusable(ParseState *pstate,
+											   const OraAlterIndexUnusableStmt *stmt);
 extern char *makeObjectName(const char *name1, const char *name2,
 							const char *label);
 extern char *ChooseRelationName(const char *name1, const char *name2,

@@ -49,12 +49,15 @@
 #include "replication/walreceiver.h"
 #include "storage/dsm.h"
 #include "storage/io_worker.h"
+#include "storage/ipc.h"
 #include "storage/pg_shmem.h"
+#include "storage/shmem_internal.h"
 #include "tcop/backend_startup.h"
 #include "utils/memutils.h"
 
 #ifdef EXEC_BACKEND
 #include "nodes/queryjumble.h"
+#include "portability/instr_time.h"
 #include "storage/pg_shmem.h"
 #include "storage/spin.h"
 #endif
@@ -99,11 +102,6 @@ typedef struct
 #ifdef USE_INJECTION_POINTS
 	struct InjectionPointsCtl *ActiveInjectionPoints;
 #endif
-	int			NamedLWLockTrancheRequests;
-	NamedLWLockTrancheRequest *NamedLWLockTrancheRequestArray;
-	char	  **LWLockTrancheNames;
-	int		   *LWLockCounter;
-	LWLockPadded *MainLWLockArray;
 	PROC_HDR   *ProcGlobal;
 	PGPROC	   *AuxiliaryProcs;
 	PGPROC	   *PreparedXactProcs;
@@ -132,6 +130,8 @@ typedef struct
 
 	int			MyPMChildSlot;
 
+	int32		timing_tsc_frequency_khz;
+
 	/*
 	 * These are only used by backend processes, but are here because passing
 	 * a socket needs some special handling on Windows. 'client_sock' is an
@@ -154,7 +154,7 @@ static void read_backend_variables(char *id, void **startup_data, size_t *startu
 static void restore_backend_variables(BackendParameters *param);
 
 static bool save_backend_variables(BackendParameters *param, int child_slot,
-								   ClientSocket *client_sock,
+								   const ClientSocket *client_sock,
 #ifdef WIN32
 								   HANDLE childProcess, pid_t childPid,
 #endif
@@ -162,7 +162,7 @@ static bool save_backend_variables(BackendParameters *param, int child_slot,
 
 static pid_t internal_forkexec(BackendType child_kind, int child_slot,
 							   const void *startup_data, size_t startup_data_len,
-							   ClientSocket *client_sock);
+							   const ClientSocket *client_sock);
 
 #endif							/* EXEC_BACKEND */
 
@@ -204,7 +204,7 @@ PostmasterChildName(BackendType child_type)
 pid_t
 postmaster_child_launch(BackendType child_type, int child_slot,
 						void *startup_data, size_t startup_data_len,
-						ClientSocket *client_sock)
+						const ClientSocket *client_sock)
 {
 	pid_t		pid;
 
@@ -283,7 +283,7 @@ postmaster_child_launch(BackendType child_type, int child_slot,
  */
 static pid_t
 internal_forkexec(BackendType child_kind, int child_slot,
-				  const void *startup_data, size_t startup_data_len, ClientSocket *client_sock)
+				  const void *startup_data, size_t startup_data_len, const ClientSocket *client_sock)
 {
 	static unsigned long tmpBackendFileNum = 0;
 	pid_t		pid;
@@ -393,7 +393,7 @@ internal_forkexec(BackendType child_kind, int child_slot,
  */
 static pid_t
 internal_forkexec(BackendType child_kind, int child_slot,
-				  const void *startup_data, size_t startup_data_len, ClientSocket *client_sock)
+				  const void *startup_data, size_t startup_data_len, const ClientSocket *client_sock)
 {
 	int			retry_count = 0;
 	STARTUPINFO si;
@@ -667,6 +667,8 @@ SubPostmasterMain(int argc, char *argv[])
 	 */
 	LocalProcessControlFile(false);
 
+	RegisterBuiltinShmemCallbacks();
+
 	/*
 	 * Reload any libraries that were preloaded by the postmaster.  Since we
 	 * exec'd this process, those libraries didn't come along with us; but we
@@ -677,7 +679,10 @@ SubPostmasterMain(int argc, char *argv[])
 
 	/* Restore basic shared memory pointers */
 	if (UsedShmemSegAddr != NULL)
+	{
 		InitShmemAllocator(UsedShmemSegAddr);
+		ShmemCallRequestCallbacks();
+	}
 
 	/*
 	 * Run the appropriate Main function
@@ -700,7 +705,7 @@ static void read_inheritable_socket(SOCKET *dest, InheritableSocket *src);
 /* Save critical backend variables into the BackendParameters struct */
 static bool
 save_backend_variables(BackendParameters *param,
-					   int child_slot, ClientSocket *client_sock,
+					   int child_slot, const ClientSocket *client_sock,
 #ifdef WIN32
 					   HANDLE childProcess, pid_t childPid,
 #endif
@@ -729,11 +734,6 @@ save_backend_variables(BackendParameters *param,
 	param->ActiveInjectionPoints = ActiveInjectionPoints;
 #endif
 
-	param->NamedLWLockTrancheRequests = NamedLWLockTrancheRequests;
-	param->NamedLWLockTrancheRequestArray = NamedLWLockTrancheRequestArray;
-	param->LWLockTrancheNames = LWLockTrancheNames;
-	param->LWLockCounter = LWLockCounter;
-	param->MainLWLockArray = MainLWLockArray;
 	param->ProcGlobal = ProcGlobal;
 	param->AuxiliaryProcs = AuxiliaryProcs;
 	param->PreparedXactProcs = PreparedXactProcs;
@@ -752,6 +752,8 @@ save_backend_variables(BackendParameters *param,
 
 	param->MaxBackends = MaxBackends;
 	param->num_pmchild_slots = num_pmchild_slots;
+
+	param->timing_tsc_frequency_khz = timing_tsc_frequency_khz;
 
 #ifdef WIN32
 	param->PostmasterHandle = PostmasterHandle;
@@ -988,11 +990,6 @@ restore_backend_variables(BackendParameters *param)
 	ActiveInjectionPoints = param->ActiveInjectionPoints;
 #endif
 
-	NamedLWLockTrancheRequests = param->NamedLWLockTrancheRequests;
-	NamedLWLockTrancheRequestArray = param->NamedLWLockTrancheRequestArray;
-	LWLockTrancheNames = param->LWLockTrancheNames;
-	LWLockCounter = param->LWLockCounter;
-	MainLWLockArray = param->MainLWLockArray;
 	ProcGlobal = param->ProcGlobal;
 	AuxiliaryProcs = param->AuxiliaryProcs;
 	PreparedXactProcs = param->PreparedXactProcs;
@@ -1011,6 +1008,12 @@ restore_backend_variables(BackendParameters *param)
 
 	MaxBackends = param->MaxBackends;
 	num_pmchild_slots = param->num_pmchild_slots;
+
+	timing_tsc_frequency_khz = param->timing_tsc_frequency_khz;
+
+	/* Re-run logic usually done by assign_timing_clock_source */
+	pg_initialize_timing();
+	pg_set_timing_clock_source(timing_clock_source);
 
 #ifdef WIN32
 	PostmasterHandle = param->PostmasterHandle;

@@ -57,9 +57,6 @@
 /* GUC parameter */
 int			constraint_exclusion = CONSTRAINT_EXCLUSION_PARTITION;
 
-/* Hook for plugins to get control in get_relation_info() */
-get_relation_info_hook_type get_relation_info_hook = NULL;
-
 typedef struct NotnullHashEntry
 {
 	Oid			relid;			/* OID of the relation */
@@ -251,6 +248,23 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 			 * indisready.
 			 */
 			if (!index->indisvalid)
+			{
+				index_close(indexRelation, NoLock);
+				continue;
+			}
+
+			/*
+			 * Ignore indexes manually disabled via the Oracle-compatible
+			 * ALTER INDEX ... UNUSABLE.  This check is unconditional (not
+			 * gated on the current session's compatible_db): indisunusable
+			 * is a catalog fact about the index, not a per-session parser
+			 * choice, and every session must honor it consistently to avoid
+			 * planning against a stale/unmaintained index.  It can only ever
+			 * be set by the Oracle-only ALTER INDEX ... UNUSABLE command, so
+			 * behavior for installations that never use that command is
+			 * unaffected (indisunusable is always false).
+			 */
+			if (index->indisunusable)
 			{
 				index_close(indexRelation, NoLock);
 				continue;
@@ -571,17 +585,6 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 		set_relation_partition_info(root, rel, relation);
 
 	table_close(relation, NoLock);
-
-	/*
-	 * Allow a plugin to editorialize on the info we obtained from the
-	 * catalogs.  Actions might include altering the assumed relation size,
-	 * removing an index, or adding a hypothetical index to the indexlist.
-	 *
-	 * An extension can also modify rel->pgs_mask here to control path
-	 * generation.
-	 */
-	if (get_relation_info_hook)
-		(*get_relation_info_hook) (root, relationObjectId, inhparent, rel);
 }
 
 /*
@@ -1000,6 +1003,18 @@ infer_arbiter_indexes(PlannerInfo *root)
 		 * indexes at least one index that is marked valid.
 		 */
 		if (!idxForm->indisready)
+			continue;
+
+		/*
+		 * Also ignore an index manually disabled via the Oracle-compatible
+		 * ALTER INDEX ... UNUSABLE.  Such an index is skipped by
+		 * execIndexing.c the same way a !indisready index is (both make
+		 * ii_ReadyForInserts false, see BuildIndexInfo()), so picking it as
+		 * the sole arbiter here would make ExecOnConflictUpdate() fail to
+		 * find it at execution time and crash with "unexpected failure to
+		 * find arbiter index" instead of a clean planning-time error.
+		 */
+		if (idxForm->indisunusable)
 			continue;
 
 		/*
@@ -1805,6 +1820,9 @@ get_relation_statistics(PlannerInfo *root, RelOptInfo *rel,
 				exprsString = TextDatumGetCString(datum);
 				exprs = (List *) stringToNode(exprsString);
 				pfree(exprsString);
+
+				/* Expand virtual generated columns in the expressions */
+				exprs = (List *) expand_generated_columns_in_expr((Node *) exprs, relation, 1);
 
 				/*
 				 * Modify the copies we obtain from the relcache to have the

@@ -48,6 +48,7 @@
 #include "access/parallel.h"
 #include "access/table.h"
 #include "access/tableam.h"
+#include "access/tupconvert.h"
 #include "executor/executor.h"
 #include "executor/nodeModifyTable.h"
 #include "jit/jit.h"
@@ -55,6 +56,7 @@
 #include "miscadmin.h"
 #include "parser/parse_relation.h"
 #include "partitioning/partdesc.h"
+#include "port/pg_bitutils.h"
 #include "storage/lmgr.h"
 #include "utils/builtins.h"
 #include "utils/memutils.h"
@@ -119,6 +121,9 @@ CreateExecutorState(void)
 	estate->es_rteperminfos = NIL;
 	estate->es_plannedstmt = NULL;
 	estate->es_part_prune_infos = NIL;
+	estate->es_part_prune_states = NIL;
+	estate->es_part_prune_results = NIL;
+	estate->es_unpruned_relids = NULL;
 
 	estate->es_junkFilter = NULL;
 
@@ -723,7 +728,7 @@ ExecCreateScanSlotFromOuterPlan(EState *estate,
 	outerPlan = outerPlanState(scanstate);
 	tupDesc = ExecGetResultType(outerPlan);
 
-	ExecInitScanTupleSlot(estate, scanstate, tupDesc, tts_ops);
+	ExecInitScanTupleSlot(estate, scanstate, tupDesc, tts_ops, 0);
 }
 
 /* ----------------------------------------------------------------
@@ -740,7 +745,28 @@ ExecCreateScanSlotFromOuterPlan(EState *estate,
 bool
 ExecRelationIsTargetRelation(EState *estate, Index scanrelid)
 {
-	return list_member_int(estate->es_plannedstmt->resultRelations, scanrelid);
+	return bms_is_member(scanrelid, estate->es_plannedstmt->resultRelationRelids);
+}
+
+/*
+ * Return true if the scan node's relation is not modified by the query.
+ *
+ * This is not perfectly accurate. INSERT ... SELECT from the same table does
+ * not add the scan relation to resultRelationRelids, so it will be reported
+ * as read-only even though the query modifies it.
+ *
+ * Conversely, when any relation in the query has a modifying row mark, all
+ * other relations get a ROW_MARK_REFERENCE, causing them to be reported as
+ * not read-only even though they may be.
+ */
+bool
+ScanRelIsReadOnly(ScanState *ss)
+{
+	Index		scanrelid = ((Scan *) ss->ps.plan)->scanrelid;
+	PlannedStmt *pstmt = ss->ps.state->es_plannedstmt;
+
+	return !bms_is_member(scanrelid, pstmt->resultRelationRelids) &&
+		!bms_is_member(scanrelid, pstmt->rowMarkRelids);
 }
 
 /* ----------------------------------------------------------------

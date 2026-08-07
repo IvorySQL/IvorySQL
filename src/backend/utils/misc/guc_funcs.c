@@ -23,6 +23,7 @@
 #include "catalog/objectaccess.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_parameter_acl.h"
+#include "catalog/pg_type_d.h"
 #include "funcapi.h"
 #include "guc_internal.h"
 #include "miscadmin.h"
@@ -31,9 +32,7 @@
 #include "utils/builtins.h"
 #include "utils/guc_tables.h"
 #include "utils/snapmgr.h"
-#include "executor/nodeModifyTable.h"
-#include "parser/parse_merge.h"
-#include "parser/parser.h"
+#include "utils/tuplestore.h"
 #include "utils/ora_compatible.h"
 
 static char *flatten_set_variable_args(const char *name, List *args);
@@ -85,42 +84,12 @@ ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 									errmsg("parameter \"%s\" cannot be changed", DB_MODE_PARMATER)));
 			}
 
-			if (0 == pg_strcasecmp(stmt->name, "compatible_mode")
-				&& DB_PG == database_mode)
-					ereport(ERROR,
-						(errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM),
-						errmsg("parameter \"%s\" cannot be changed in native PG mode.", stmt->name)));
-
+			/* compatible_mode is handled by check/assign hooks in ivy_guc.c */
 			(void) set_config_option(stmt->name,
 									 ExtractSetVariableArgs(stmt),
 									 (superuser() ? PGC_SUSET : PGC_USERSET),
 									 PGC_S_SESSION,
 									 action, true, 0, false);
-
-			if (0 == pg_strcasecmp(stmt->name, "compatible_mode")
-				 && DB_ORACLE == database_mode)
-			{
-				if (0 == pg_strcasecmp(ExtractSetVariableArgs(stmt), "oracle"))
-				{
-					if (ora_raw_parser == NULL)
-						ereport(ERROR,
-								(errcode(ERRCODE_SYSTEM_ERROR),
-								 errmsg("liboracle_parser not found!"),
-								 errhint("You must load liboracle_parser to use oracle parser.")));
-
-					sql_raw_parser = ora_raw_parser;
-
-					pg_transform_merge_stmt_hook = ora_transform_merge_stmt_hook;
-					pg_exec_merge_matched_hook = ora_exec_merge_matched_hook;
-				}
-				else if (0 == pg_strcasecmp(ExtractSetVariableArgs(stmt), "pg"))
-				{
-					sql_raw_parser = standard_raw_parser;
-
-					pg_transform_merge_stmt_hook = transformMergeStmt;
-					pg_exec_merge_matched_hook = ExecMergeMatched;
-				}
-			}
 
 			break;
 		case VAR_SET_MULTI:
@@ -204,15 +173,6 @@ ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 									 (superuser() ? PGC_SUSET : PGC_USERSET),
 									 PGC_S_SESSION,
 									 action, true, 0, false);
-
-			if (0 == pg_strcasecmp(stmt->name, "compatible_mode")
-				 && DB_ORACLE == database_mode)
-			{
-				sql_raw_parser = standard_raw_parser;
-
-				pg_transform_merge_stmt_hook = transformMergeStmt;
-				pg_exec_merge_matched_hook = ExecMergeMatched;
-			}
 			break;
 		case VAR_RESET_ALL:
 			ResetAllOptions();
@@ -511,6 +471,7 @@ GetPGVariableResultDesc(const char *name)
 		TupleDescInitEntry(tupdesc, (AttrNumber) 1, varname,
 						   TEXTOID, -1, 0);
 	}
+	TupleDescFinalize(tupdesc);
 	return tupdesc;
 }
 
@@ -532,6 +493,7 @@ ShowGUCConfigOption(const char *name, DestReceiver *dest)
 	tupdesc = CreateTemplateTupleDesc(1);
 	TupleDescInitBuiltinEntry(tupdesc, (AttrNumber) 1, varname,
 							  TEXTOID, -1, 0);
+	TupleDescFinalize(tupdesc);
 
 	/* prepare for projection of tuples */
 	tstate = begin_tup_output_tupdesc(dest, tupdesc, &TTSOpsVirtual);
@@ -566,6 +528,7 @@ ShowAllGUCConfig(DestReceiver *dest)
 							  TEXTOID, -1, 0);
 	TupleDescInitBuiltinEntry(tupdesc, (AttrNumber) 3, "description",
 							  TEXTOID, -1, 0);
+	TupleDescFinalize(tupdesc);
 
 	/* prepare for projection of tuples */
 	tstate = begin_tup_output_tupdesc(dest, tupdesc, &TTSOpsVirtual);
@@ -1000,6 +963,8 @@ show_all_settings(PG_FUNCTION_ARGS)
 						   INT4OID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 17, "pending_restart",
 						   BOOLOID, -1, 0);
+
+		TupleDescFinalize(tupdesc);
 
 		/*
 		 * Generate attribute metadata needed later to produce tuples from raw

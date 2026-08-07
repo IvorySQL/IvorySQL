@@ -23,7 +23,7 @@
 
 
 /* Version identifier for this pg_control format */
-#define PG_CONTROL_VERSION	1901
+#define PG_CONTROL_VERSION	1902
 
 /* Nonce key length, see below */
 #define MOCK_AUTH_NONCE_LEN		32
@@ -64,6 +64,9 @@ typedef struct CheckPoint
 	 * set to InvalidTransactionId.
 	 */
 	TransactionId oldestActiveXid;
+
+	/* data checksums state at the time of the checkpoint  */
+	uint32		dataChecksumState;
 } CheckPoint;
 
 /* XLOG info values for XLOG rmgr */
@@ -79,10 +82,13 @@ typedef struct CheckPoint
 #define XLOG_END_OF_RECOVERY			0x90
 #define XLOG_FPI_FOR_HINT				0xA0
 #define XLOG_FPI						0xB0
-/* 0xC0 is used in Postgres 9.5-11 */
+#define XLOG_ASSIGN_LSN					0xC0
 #define XLOG_OVERWRITE_CONTRECORD		0xD0
 #define XLOG_CHECKPOINT_REDO			0xE0
 #define XLOG_LOGICAL_DECODING_STATUS_CHANGE	0xF0
+
+/* XLOG info values for XLOG2 rmgr */
+#define XLOG2_CHECKSUMS					0x00
 
 
 /*

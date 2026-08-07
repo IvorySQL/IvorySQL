@@ -18,17 +18,19 @@
 #include "access/sdir.h"
 #include "access/skey.h"
 #include "executor/instrument_node.h"
-#include "nodes/tidbitmap.h"
 #include "storage/buf.h"
 #include "storage/lockdefs.h"
 #include "utils/snapshot.h"
 
-/* We don't want this file to depend on execnodes.h. */
+
+/*
+ * forward references in this file
+ */
 typedef struct IndexInfo IndexInfo;
+typedef struct RelationData *Relation;
+typedef struct TIDBitmap TIDBitmap;
 typedef struct TupleTableSlot TupleTableSlot;
 
-/* or relcache.h */
-typedef struct RelationData *Relation;
 
 /*
  * Struct for statistics returned by ambuild
@@ -156,7 +158,8 @@ extern IndexScanDesc index_beginscan(Relation heapRelation,
 									 Relation indexRelation,
 									 Snapshot snapshot,
 									 IndexScanInstrumentation *instrument,
-									 int nkeys, int norderbys);
+									 int nkeys, int norderbys,
+									 uint32 flags);
 extern IndexScanDesc index_beginscan_bitmap(Relation indexRelation,
 											Snapshot snapshot,
 											IndexScanInstrumentation *instrument,
@@ -168,21 +171,17 @@ extern void index_endscan(IndexScanDesc scan);
 extern void index_markpos(IndexScanDesc scan);
 extern void index_restrpos(IndexScanDesc scan);
 extern Size index_parallelscan_estimate(Relation indexRelation,
-										int nkeys, int norderbys, Snapshot snapshot,
-										bool instrument, bool parallel_aware,
-										int nworkers);
+										int nkeys, int norderbys, Snapshot snapshot);
 extern void index_parallelscan_initialize(Relation heapRelation,
 										  Relation indexRelation, Snapshot snapshot,
-										  bool instrument, bool parallel_aware,
-										  int nworkers,
-										  SharedIndexScanInstrumentation **sharedinfo,
 										  ParallelIndexScanDesc target);
 extern void index_parallelrescan(IndexScanDesc scan);
 extern IndexScanDesc index_beginscan_parallel(Relation heaprel,
 											  Relation indexrel,
 											  IndexScanInstrumentation *instrument,
 											  int nkeys, int norderbys,
-											  ParallelIndexScanDesc pscan);
+											  ParallelIndexScanDesc pscan,
+											  uint32 flags);
 extern ItemPointer index_getnext_tid(IndexScanDesc scan,
 									 ScanDirection direction);
 extern bool index_fetch_heap(IndexScanDesc scan, TupleTableSlot *slot);

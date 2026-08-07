@@ -20,21 +20,19 @@ if ($ENV{enable_injection_points} ne 'yes')
 sub launch_bgworker
 {
 	my ($node, $database, $testcase, $interruptible) = @_;
-	my $offset = -s $node->logfile;
 
 	# Launch a background worker on the given database.
 	my $pid = $node->safe_psql(
-		$database, qq(
+		'postgres', qq(
         SELECT worker_spi_launch($testcase, '$database'::regdatabase, 0, '{}', $interruptible);
     ));
 
-	# Check that the bgworker is initialized.
-	$node->wait_for_log(
-		qr/LOG: .*worker_spi dynamic worker $testcase initialized with .*\..*/,
-		$offset);
-	my $result = $node->safe_psql($database,
-		"SELECT count(*) > 0 FROM pg_stat_activity WHERE pid = $pid;");
-	is($result, 't', "dynamic bgworker $testcase launched");
+	# Check that the bgworker is initialized and napping.
+	my $result =
+	  $node->poll_query_until('postgres',
+		qq[SELECT wait_event FROM pg_stat_activity WHERE pid = $pid;],
+		qq[WorkerSpiMain]);
+	is($result, 1, "dynamic bgworker $testcase launched");
 
 	return $pid;
 }
@@ -52,6 +50,11 @@ sub run_bgworker_interruptible_test
 		qr/terminating background worker \"worker_spi dynamic\" due to administrator command/,
 		$offset);
 
+	# Postmaster entry reporting the worker as exiting.
+	$node->wait_for_log(
+		qr/LOG: .*background worker \"worker_spi dynamic\" \(PID $pid\) exited with exit code/,
+		$offset);
+
 	my $result = $node->safe_psql('postgres',
 		"SELECT count(*) = 0 FROM pg_stat_activity WHERE pid = $pid;");
 	is($result, 't', "dynamic bgworker stopped for $testname");
@@ -59,6 +62,16 @@ sub run_bgworker_interruptible_test
 
 my $node = PostgreSQL::Test::Cluster->new('mynode');
 $node->init;
+# The naptime is large enough to give some room on slow machines, so as
+# the spawned workers have the time to process the interrupt requests sent
+# by the database commands.
+$node->append_conf(
+	"postgresql.conf", qq(
+autovacuum = off
+debug_parallel_query = off
+log_min_messages = debug1
+worker_spi.naptime = 600
+));
 $node->start;
 
 # Check if the extension injection_points is available, as it may be

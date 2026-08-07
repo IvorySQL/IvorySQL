@@ -31,6 +31,7 @@
 #include "utils/jsonpath.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/tuplestore.h"
 #include "utils/xml.h"
 
 static TupleTableSlot *TableFuncNext(TableFuncScanState *node);
@@ -148,7 +149,7 @@ ExecInitTableFuncScan(TableFuncScan *node, EState *estate, int eflags)
 								 tf->colcollations);
 	/* and the corresponding scan slot */
 	ExecInitScanTupleSlot(estate, &scanstate->ss, tupdesc,
-						  &TTSOpsMinimalTuple);
+						  &TTSOpsMinimalTuple, 0);
 
 	/*
 	 * Initialize result type and projection.

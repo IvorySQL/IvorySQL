@@ -13,7 +13,8 @@ CREATE TABLE guid2
 CREATE TABLE guid3
 (
 	id SERIAL,
-	guid_field UUID
+	guid_field UUID,
+	guid_encoded text GENERATED ALWAYS AS (encode(guid_field::bytea, 'base32hex')) STORED
 );
 -- inserting invalid data tests
 -- too long
@@ -226,11 +227,23 @@ SELECT count(DISTINCT guid_field) FROM guid1;
 (1 row)
 
 -- test sortability of v7
+INSERT INTO guid3 (guid_field) VALUES ('00000000-0000-0000-0000-000000000000'::uuid);
 INSERT INTO guid3 (guid_field) SELECT uuidv7() FROM generate_series(1, 10);
+INSERT INTO guid3 (guid_field) VALUES ('ffffffff-ffff-ffff-ffff-ffffffffffff'::uuid);
 SELECT array_agg(id ORDER BY guid_field) FROM guid3;
-       array_agg        
-------------------------
- {1,2,3,4,5,6,7,8,9,10}
+          array_agg           
+------------------------------
+ {1,2,3,4,5,6,7,8,9,10,11,12}
+(1 row)
+
+-- Test base32hex encoding of UUIDs and its lexicographical sorting property.
+-- COLLATE "C" is required to prevent buildfarm failures in non-C locales
+-- where natural language collations (such as cs_CZ) would break strict
+-- byte-wise ordering.
+SELECT array_agg(id ORDER BY guid_encoded COLLATE "C") FROM guid3;
+          array_agg           
+------------------------------
+ {1,2,3,4,5,6,7,8,9,10,11,12}
 (1 row)
 
 -- Check the timestamp offsets for v7.
@@ -303,6 +316,28 @@ SELECT uuid_extract_timestamp('11111111-1111-1111-1111-111111111111');  -- null
  uuid_extract_timestamp 
 ------------------------
  
+(1 row)
+
+-- casts
+SELECT '5b35380a-7143-4912-9b55-f322699c6770'::uuid::bytea;
+               bytea                
+------------------------------------
+ \x5b35380a714349129b55f322699c6770
+(1 row)
+
+SELECT '\x019a2f859ced7225b99d9c55044a2563'::bytea::uuid;
+                 uuid                 
+--------------------------------------
+ 019a2f85-9ced-7225-b99d-9c55044a2563
+(1 row)
+
+SELECT '\x1234567890abcdef'::bytea::uuid; -- error
+ERROR:  invalid input length for type uuid
+DETAIL:  Expected 16 bytes, got 8.
+SELECT v = v::bytea::uuid as matched FROM gen_random_uuid() v;
+ matched 
+---------
+ t
 (1 row)
 
 -- clean up

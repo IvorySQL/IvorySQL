@@ -41,6 +41,7 @@
 #include "storage/proc.h"
 #include "utils/memutils.h"
 #include "utils/pgstat_internal.h"
+#include "utils/rel.h"
 
 /*
  * Guess the maximum buffer size required to store a compressed version of
@@ -251,9 +252,9 @@ XLogRegisterBuffer(uint8 block_id, Buffer buffer, uint8 flags)
 	Assert(begininsert_called);
 
 	/*
-	 * Ordinarily, buffer should be exclusive-locked and marked dirty before
-	 * we get here, otherwise we could end up violating one of the rules in
-	 * access/transam/README.
+	 * Ordinarily, the buffer should be exclusive-locked (or share-exclusive
+	 * in case of hint bits) and marked dirty before we get here, otherwise we
+	 * could end up violating one of the rules in access/transam/README.
 	 *
 	 * Some callers intentionally register a clean page and never update that
 	 * page's LSN; in that case they can pass the flag REGBUF_NO_CHANGE to
@@ -261,8 +262,11 @@ XLogRegisterBuffer(uint8 block_id, Buffer buffer, uint8 flags)
 	 */
 #ifdef USE_ASSERT_CHECKING
 	if (!(flags & REGBUF_NO_CHANGE))
-		Assert(BufferIsLockedByMeInMode(buffer, BUFFER_LOCK_EXCLUSIVE) &&
-			   BufferIsDirty(buffer));
+	{
+		Assert(BufferIsDirty(buffer));
+		Assert(BufferIsLockedByMeInMode(buffer, BUFFER_LOCK_EXCLUSIVE) ||
+			   BufferIsLockedByMeInMode(buffer, BUFFER_LOCK_SHARE_EXCLUSIVE));
+	}
 #endif
 
 	if (block_id >= max_registered_block_id)
@@ -545,6 +549,57 @@ XLogSimpleInsertInt64(RmgrId rmid, uint8 info, int64 value)
 	XLogBeginInsert();
 	XLogRegisterData(&value, sizeof(value));
 	return XLogInsert(rmid, info);
+}
+
+/*
+ * XLogGetFakeLSN - get a fake LSN for an index page that isn't WAL-logged.
+ *
+ * Some index AMs use LSNs to detect concurrent page modifications, but not
+ * all index pages are WAL-logged.  This function provides a sequence of fake
+ * LSNs for that purpose.
+ */
+XLogRecPtr
+XLogGetFakeLSN(Relation rel)
+{
+	if (rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP)
+	{
+		/*
+		 * Temporary relations are only accessible in our session, so a simple
+		 * backend-local counter will do.
+		 */
+		static XLogRecPtr counter = FirstNormalUnloggedLSN;
+
+		return counter++;
+	}
+	else if (rel->rd_rel->relpersistence == RELPERSISTENCE_UNLOGGED)
+	{
+		/*
+		 * Unlogged relations are accessible from other backends, and survive
+		 * (clean) restarts.  GetFakeLSNForUnloggedRel() handles that for us.
+		 */
+		return GetFakeLSNForUnloggedRel();
+	}
+	else
+	{
+		/*
+		 * WAL-logging on this relation will start after commit, so its LSNs
+		 * must be distinct numbers smaller than the LSN at the next commit.
+		 * Emit a dummy WAL record if insert-LSN hasn't advanced after the
+		 * last call.
+		 */
+		static XLogRecPtr lastlsn = InvalidXLogRecPtr;
+		XLogRecPtr	currlsn = GetXLogInsertEndRecPtr();
+
+		Assert(!RelationNeedsWAL(rel));
+		Assert(RelationIsPermanent(rel));
+
+		/* No need for an actual record if we already have a distinct LSN */
+		if (XLogRecPtrIsValid(lastlsn) && lastlsn == currlsn)
+			currlsn = XLogAssignLSN();
+
+		lastlsn = currlsn;
+		return currlsn;
+	}
 }
 
 /*
@@ -1066,22 +1121,14 @@ XLogCheckBufferNeedsBackup(Buffer buffer)
  * Write a backup block if needed when we are setting a hint. Note that
  * this may be called for a variety of page types, not just heaps.
  *
- * Callable while holding just share lock on the buffer content.
- *
- * We can't use the plain backup block mechanism since that relies on the
- * Buffer being exclusively locked. Since some modifications (setting LSN, hint
- * bits) are allowed in a sharelocked buffer that can lead to wal checksum
- * failures. So instead we copy the page and insert the copied data as normal
- * record data.
+ * Callable while holding just a share-exclusive lock on the buffer
+ * content. That suffices to prevent concurrent modifications of the
+ * buffer. The buffer already needs to have been marked dirty by
+ * MarkBufferDirtyHint().
  *
  * We only need to do something if page has not yet been full page written in
  * this checkpoint round. The LSN of the inserted wal record is returned if we
  * had to write, InvalidXLogRecPtr otherwise.
- *
- * It is possible that multiple concurrent backends could attempt to write WAL
- * records. In that case, multiple copies of the same block would be recorded
- * in separate WAL records by different backends, though that is still OK from
- * a correctness perspective.
  */
 XLogRecPtr
 XLogSaveBufferForHint(Buffer buffer, bool buffer_std)
@@ -1090,58 +1137,37 @@ XLogSaveBufferForHint(Buffer buffer, bool buffer_std)
 	XLogRecPtr	lsn;
 	XLogRecPtr	RedoRecPtr;
 
-	/*
-	 * Ensure no checkpoint can change our view of RedoRecPtr.
-	 */
-	Assert((MyProc->delayChkptFlags & DELAY_CHKPT_START) != 0);
+	/* this also verifies that we hold an appropriate lock */
+	Assert(BufferIsDirty(buffer));
 
 	/*
-	 * Update RedoRecPtr so that we can make the right decision
+	 * Update RedoRecPtr so that we can make the right decision. It's possible
+	 * that a new checkpoint will start just after GetRedoRecPtr(), but that
+	 * is ok, as the buffer is already dirty, ensuring that any BufferSync()
+	 * started after the buffer was marked dirty cannot complete without
+	 * flushing this buffer.  If a checkpoint started between marking the
+	 * buffer dirty and this check, we will emit an unnecessary WAL record (as
+	 * the buffer will be written out as part of the checkpoint), but the
+	 * window for that is not big.
 	 */
 	RedoRecPtr = GetRedoRecPtr();
 
 	/*
 	 * We assume page LSN is first data on *every* page that can be passed to
-	 * XLogInsert, whether it has the standard page layout or not. Since we're
-	 * only holding a share-lock on the page, we must take the buffer header
-	 * lock when we look at the LSN.
+	 * XLogInsert, whether it has the standard page layout or not.
 	 */
-	lsn = BufferGetLSNAtomic(buffer);
+	lsn = PageGetLSN(BufferGetPage(buffer));
 
 	if (lsn <= RedoRecPtr)
 	{
 		int			flags = 0;
-		PGAlignedBlock copied_buffer;
-		char	   *origdata = (char *) BufferGetBlock(buffer);
-		RelFileLocator rlocator;
-		ForkNumber	forkno;
-		BlockNumber blkno;
-
-		/*
-		 * Copy buffer so we don't have to worry about concurrent hint bit or
-		 * lsn updates. We assume pd_lower/upper cannot be changed without an
-		 * exclusive lock, so the contents bkp are not racy.
-		 */
-		if (buffer_std)
-		{
-			/* Assume we can omit data between pd_lower and pd_upper */
-			Page		page = BufferGetPage(buffer);
-			uint16		lower = ((PageHeader) page)->pd_lower;
-			uint16		upper = ((PageHeader) page)->pd_upper;
-
-			memcpy(copied_buffer.data, origdata, lower);
-			memcpy(copied_buffer.data + upper, origdata + upper, BLCKSZ - upper);
-		}
-		else
-			memcpy(copied_buffer.data, origdata, BLCKSZ);
 
 		XLogBeginInsert();
 
 		if (buffer_std)
 			flags |= REGBUF_STANDARD;
 
-		BufferGetTag(buffer, &rlocator, &forkno, &blkno);
-		XLogRegisterBlock(0, &rlocator, forkno, blkno, copied_buffer.data, flags);
+		XLogRegisterBuffer(0, buffer, flags);
 
 		recptr = XLogInsert(RM_XLOG_ID, XLOG_FPI_FOR_HINT);
 	}

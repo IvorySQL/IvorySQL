@@ -346,6 +346,7 @@ DecodeDsinterval(char **field, int *ftype, int nf, int range,
 				 */
 
 				/* FALL THROUGH */
+				pg_fallthrough;
 
 			case DTK_DATE:
 			case DTK_NUMBER:
@@ -1229,6 +1230,7 @@ ora_DecodeISO8601Interval(char *str,
 					}
 					/* Else fall through to extended alternative format */
 					/* FALLTHROUGH */
+					pg_fallthrough;
 				case '-':		/* ISO 8601 4.4.3.3 Alternative Format,
 								 * Extended */
 					if (havefield)
@@ -1308,6 +1310,7 @@ ora_DecodeISO8601Interval(char *str,
 					}
 					/* Else fall through to extended alternative format */
 					/* FALLTHROUGH */
+					pg_fallthrough;
 				case ':':		/* ISO 8601 4.4.3.3 Alternative Format,
 								 * Extended */
 					if (havefield)

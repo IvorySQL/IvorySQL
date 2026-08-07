@@ -2585,6 +2585,23 @@ postgresql://%2Fvar%2Flib%2Fpostgresql/dbname
       </listitem>
      </varlistentry>
 
+     <varlistentry id="libpq-connect-oauth-ca-file" xreflabel="oauth_ca_file">
+      <term><literal>oauth_ca_file</literal></term>
+      <listitem>
+       <para>
+        The name of a file containing one or more SSL certificate authority
+        (<acronym>CA</acronym>) certificates, which will be used to verify the
+        identity of the authorization server and its endpoints. By default, the
+        <productname>Curl</productname> system certificate bundle is used.
+       </para>
+       <para>
+        This parameter does not affect verification of the
+        <productname>PostgreSQL</productname> server certificate; see
+        <xref linkend="libpq-connect-sslrootcert"/> instead.
+       </para>
+      </listitem>
+     </varlistentry>
+
     </variablelist>
    </para>
   </sect2>
@@ -9422,6 +9439,16 @@ myEventProc(PGEventId evtId, void *evtInfo, void *passThrough)
       linkend="libpq-connect-max-protocol-version"/> connection parameter.
      </para>
     </listitem>
+
+    <listitem>
+     <para>
+      <indexterm>
+       <primary><envar>PGOAUTHCAFILE</envar></primary>
+      </indexterm>
+      <envar>PGOAUTHCAFILE</envar> behaves the same as the <xref
+      linkend="libpq-connect-oauth-ca-file"/> connection parameter.
+     </para>
+    </listitem>
    </itemizedlist>
   </para>
 
@@ -10362,6 +10389,7 @@ PQauthDataHook_type PQgetAuthDataHook(void);
         <indexterm><primary>PQAUTHDATA_PROMPT_OAUTH_DEVICE</primary></indexterm>
        </term>
        <listitem>
+        <para><emphasis>Available in PostgreSQL 18 and later.</emphasis></para>
         <para>
          Replaces the default user prompt during the builtin device
          authorization client flow. <replaceable>data</replaceable> points to
@@ -10414,6 +10442,7 @@ typedef struct _PGpromptOAuthDevice
         <indexterm><primary>PQAUTHDATA_OAUTH_BEARER_TOKEN</primary></indexterm>
        </term>
        <listitem>
+        <para><emphasis>Available in PostgreSQL 18 and later.</emphasis></para>
         <para>
          Adds a custom implementation of a flow, replacing the builtin flow if
          it is <link linkend="configure-option-with-libcurl">installed</link>.
@@ -10421,6 +10450,13 @@ typedef struct _PGpromptOAuthDevice
          user/issuer/scope combination, if one is available without blocking, or
          else set up an asynchronous callback to retrieve one.
         </para>
+        <note>
+         <para>
+          For <productname>PostgreSQL</productname> releases 19 and later,
+          applications should prefer
+          <link linkend="libpq-oauth-authdata-oauth-bearer-token-v2"><literal>PQAUTHDATA_OAUTH_BEARER_TOKEN_V2</literal></link>.
+         </para>
+        </note>
         <para>
          <replaceable>data</replaceable> points to an instance
          of <symbol>PGoauthBearerRequest</symbol>, which should be filled in
@@ -10516,6 +10552,81 @@ typedef struct PGoauthBearerRequest
         </para>
        </listitem>
       </varlistentry>
+
+      <varlistentry id="libpq-oauth-authdata-oauth-bearer-token-v2">
+       <term>
+        <symbol>PQAUTHDATA_OAUTH_BEARER_TOKEN_V2</symbol>
+        <indexterm>
+         <primary>PQAUTHDATA_OAUTH_BEARER_TOKEN_V2</primary>
+         <secondary>PQAUTHDATA_OAUTH_BEARER_TOKEN</secondary>
+        </indexterm>
+       </term>
+       <listitem>
+        <para><emphasis>Available in PostgreSQL 19 and later.</emphasis></para>
+        <para>
+         Provides all the functionality of
+         <link linkend="libpq-oauth-authdata-oauth-bearer-token"><literal>PQAUTHDATA_OAUTH_BEARER_TOKEN</literal></link>,
+         as well as the ability to set custom error messages and retrieve the
+         OAuth issuer ID that the client has trusted.
+        </para>
+        <para>
+         <replaceable>data</replaceable> points to an instance
+         of <symbol>PGoauthBearerRequestV2</symbol>:
+<synopsis>
+typedef struct
+{
+    PGoauthBearerRequest v1;    /* see the PGoauthBearerRequest struct, above */
+
+    /* Hook inputs (constant across all calls) */
+    const char *issuer;            /* the issuer identifier (RFC 9207) in use */
+
+    /* Hook outputs */
+    const char *error;             /* hook-defined error message */
+} PGoauthBearerRequestV2;
+</synopsis>
+        </para>
+        <para>
+         Applications must first use the <replaceable>v1</replaceable> struct
+         member to implement the base API, as described
+         <link linkend="libpq-oauth-authdata-oauth-bearer-token">above</link>.
+         <application>libpq</application> additionally guarantees that the
+         <literal>request</literal> pointer passed to the
+         <replaceable>v1.async</replaceable> and <replaceable>v1.cleanup</replaceable>
+         callbacks may be safely cast to <literal>(PGoauthBearerRequestV2&nbsp;*)</literal>,
+         to make use of the additional members described below.
+        </para>
+        <warning>
+         <para>
+          Casting to <literal>(PGoauthBearerRequestV2&nbsp;*)</literal> is
+          <emphasis>only</emphasis> safe when the hook type is
+          <literal>PQAUTHDATA_OAUTH_BEARER_TOKEN_V2</literal>. Applications may
+          crash or misbehave if a hook implementation attempts to access v2
+          members when handling a v1 (<literal>PQAUTHDATA_OAUTH_BEARER_TOKEN</literal>)
+          hook request.
+         </para>
+        </warning>
+        <para>
+         In addition to the functionality of the version 1 API, the v2 struct
+         provides an additional input and output for the hook:
+        </para>
+        <para>
+         <replaceable>issuer</replaceable> contains the issuer identifier, as
+         defined in <ulink url="https://datatracker.ietf.org/doc/html/rfc9207">RFC 9207</ulink>,
+         that is in use for the current connection. This identifier is
+         derived from <xref linkend="libpq-connect-oauth-issuer"/>.
+         To avoid mix-up attacks, custom flows should ensure that any discovery
+         metadata provided by the authorization server matches this issuer ID.
+        </para>
+        <para>
+         <replaceable>error</replaceable> may be set to point to a custom
+         error message when a flow fails. The message will be included as part
+         of <xref linkend="libpq-PQerrorMessage"/>. Hooks must free any error
+         message allocations during the <replaceable>v1.cleanup</replaceable>
+         callback.
+        </para>
+       </listitem>
+      </varlistentry>
+
      </variablelist>
     </para>
    </sect3>
@@ -10525,41 +10636,111 @@ typedef struct PGoauthBearerRequest
    <title>Debugging and Developer Settings</title>
 
    <para>
-    A "dangerous debugging mode" may be enabled by setting the environment
-    variable <envar>PGOAUTHDEBUG=UNSAFE</envar>. This functionality is provided
-    for ease of local development and testing only. It does several things that
-    you will not want a production system to do:
-
-    <itemizedlist spacing="compact">
-     <listitem>
-      <para>
-       permits the use of unencrypted HTTP during the OAuth provider exchange
-      </para>
-     </listitem>
-     <listitem>
-      <para>
-       allows the system's trusted CA list to be completely replaced using the
-       <envar>PGOAUTHCAFILE</envar> environment variable
-      </para>
-     </listitem>
-     <listitem>
-      <para>
-       prints HTTP traffic (containing several critical secrets) to standard
-       error during the OAuth flow
-      </para>
-     </listitem>
-     <listitem>
-      <para>
-       permits the use of zero-second retry intervals, which can cause the
-       client to busy-loop and pointlessly consume CPU
-      </para>
-     </listitem>
-    </itemizedlist>
+    While developing against a local authorization server, it may be helpful to
+    make use of the <xref linkend="libpq-connect-oauth-ca-file"/> connection
+    parameter (or the equivalent <envar>PGOAUTHCAFILE</envar> environment
+    variable) in the client application.
    </para>
+
+   <para>
+    Debug features may be enabled by setting the <envar>PGOAUTHDEBUG</envar>
+    environment variable. This functionality is provided for ease of local
+    development and testing. The variable accepts a comma-separated list of
+    debug options:
+
+    <programlisting>
+PGOAUTHDEBUG=option1,option2,...         <lineannotation>for safe options only</lineannotation>
+PGOAUTHDEBUG=UNSAFE:option1,option2,...  <lineannotation>when using unsafe options</lineannotation>
+PGOAUTHDEBUG=UNSAFE                      <lineannotation>legacy format; enables all options</lineannotation>
+    </programlisting>
+   </para>
+
+   <para>
+    Available debug options:
+
+    <variablelist>
+     <varlistentry>
+      <term><literal>http</literal> (unsafe)</term>
+      <listitem>
+       <para>
+        Permits the use of unencrypted HTTP during the OAuth provider exchange.
+        This allows OAuth credentials to be transmitted over unencrypted
+        connections, which is extremely dangerous and should only be used for
+        local testing.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><literal>trace</literal> (unsafe)</term>
+      <listitem>
+       <para>
+        Prints HTTP traffic to standard error during the OAuth flow. This output
+        contains critical secrets including bearer tokens, client secrets, access
+        tokens, and authorization codes. Never share this output with third
+        parties.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><literal>dos-endpoint</literal> (unsafe)</term>
+      <listitem>
+       <para>
+        Permits the use of zero-second retry intervals instead of the normal
+        minimum of one second. This speeds up tests, but in normal operation it
+        will cause the client to busy-loop, consuming CPU and network resources.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><literal>call-count</literal> (safe)</term>
+      <listitem>
+       <para>
+        Prints the total number of calls to the flow plugin to standard error
+        when the OAuth flow completes. This helps developers debug the async
+        callback behavior.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><literal>plugin-errors</literal> (safe)</term>
+      <listitem>
+       <para>
+        Prints plugin loading errors to standard error. This helps developers
+        and package maintainers debug issues when the OAuth plugin fails to load.
+       </para>
+      </listitem>
+     </varlistentry>
+    </variablelist>
+   </para>
+
+   <para>
+    Unsafe options (<literal>http</literal>, <literal>trace</literal>,
+    <literal>dos-endpoint</literal>) require the <literal>UNSAFE:</literal> prefix.
+    If unsafe options are specified without this prefix, or if an option name is
+    unrecognized, a warning is printed to standard error and that option is
+    ignored. Other valid options in the list continue to work. Safe options
+    (<literal>call-count</literal>, <literal>plugin-errors</literal>) can be
+    used without the prefix.
+   </para>
+
+   <para>
+    Examples:
+    <programlisting>
+PGOAUTHDEBUG=call-count              <lineannotation>safe options only</lineannotation>
+PGOAUTHDEBUG=UNSAFE:http,trace       <lineannotation>enable HTTP and traffic logging</lineannotation>
+PGOAUTHDEBUG=UNSAFE:http,call-count  <lineannotation>mix of unsafe and safe</lineannotation>
+    </programlisting>
+   </para>
+
    <warning>
     <para>
-     Do not share the output of the OAuth flow traffic with third parties. It
-     contains secrets that can be used to attack your clients and servers.
+     Never use unsafe debug options in production environments. They expose
+     secrets and behaviors that can be used to attack your clients and servers.
+     Do not share <literal>trace</literal> output with third parties.
     </para>
    </warning>
   </sect2>
@@ -10635,7 +10816,11 @@ int PQisthreadsafe();
    Kerberos calls because Kerberos functions are not thread-safe.  See
    function <function>PQregisterThreadLock</function> in the
    <application>libpq</application> source code for a way to do cooperative
-   locking between <application>libpq</application> and your application.
+   locking between <application>libpq</application> and your application. (Note
+   that it is only safe to call <function>PQregisterThreadLock</function> when
+   there are no open connections.) Clients may retrieve the current locking
+   callback with <function>PQgetThreadLock</function>; if no custom callback
+   has been registered, a default is used.
   </para>
 
   <para>

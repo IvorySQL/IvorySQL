@@ -444,6 +444,9 @@ create sequence seq_shard5 shard extend ;
 alter sequence seq_shard5 noshard ;
 DROP SEQUENCE seq_shard5;
 
+-- Reject conflicting SHARD options.
+CREATE SEQUENCE seq_shard_conflict SHARD EXTEND NOSHARD;
+
 create sequence seq;
 SELECT seq.NEXTVAL FROM DUAL;--result:1
 alter sequence seq restart start with 10;

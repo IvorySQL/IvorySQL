@@ -635,16 +635,16 @@ if test "$GCC" = yes -a "$ICC" = no; then
     PERMIT_DECLARATION_AFTER_STATEMENT=-Wno-declaration-after-statement
   fi
   AC_SUBST(PERMIT_DECLARATION_AFTER_STATEMENT)
-  # Really don't want VLAs to be used in our dialect of C
+  # Really don't want VLAs to be used
   PGAC_PROG_CC_CFLAGS_OPT([-Werror=vla])
+  PGAC_PROG_CXX_CFLAGS_OPT([-Werror=vla])
   # On macOS, complain about usage of symbols newer than the deployment target
   PGAC_PROG_CC_CFLAGS_OPT([-Werror=unguarded-availability-new])
   PGAC_PROG_CXX_CFLAGS_OPT([-Werror=unguarded-availability-new])
-  # -Wvla is not applicable for C++
-  PGAC_PROG_CC_CFLAGS_OPT([-Wendif-labels])
-  PGAC_PROG_CXX_CFLAGS_OPT([-Wendif-labels])
   PGAC_PROG_CC_CFLAGS_OPT([-Wmissing-format-attribute])
   PGAC_PROG_CXX_CFLAGS_OPT([-Wmissing-format-attribute])
+  PGAC_PROG_CC_CFLAGS_OPT([-Wold-style-declaration])
+  # -Wold-style-declaration is not applicable for C++
 
   # To require fallthrough attribute annotations, use
   # -Wimplicit-fallthrough=5 with gcc and -Wimplicit-fallthrough with
@@ -873,13 +873,6 @@ AC_LINK_IFELSE([AC_LANG_PROGRAM([], [return 0;])],
   [AC_MSG_RESULT(yes)],
   [AC_MSG_RESULT(no)
    AC_MSG_ERROR([cannot proceed])])
-
-# Defend against gcc -ffast-math
-if test "$GCC" = yes; then
-AC_COMPILE_IFELSE([AC_LANG_PROGRAM([], [@%:@ifdef __FAST_MATH__
-choke me
-@%:@endif])], [], [AC_MSG_ERROR([do not put -ffast-math in CFLAGS])])
-fi
 
 # Defend against clang being used on x86-32 without SSE2 enabled.  As current
 # versions of clang do not understand -fexcess-precision=standard, the use of
@@ -1538,7 +1531,7 @@ if test "$with_ssl" = openssl ; then
   # Function introduced in OpenSSL 1.0.2, not in LibreSSL.
   AC_CHECK_FUNCS([SSL_CTX_set_cert_cb])
   # Function introduced in OpenSSL 1.1.1, not in LibreSSL.
-  AC_CHECK_FUNCS([X509_get_signature_info SSL_CTX_set_num_tickets SSL_CTX_set_keylog_callback])
+  AC_CHECK_FUNCS([X509_get_signature_info SSL_CTX_set_num_tickets SSL_CTX_set_keylog_callback SSL_CTX_set_client_hello_cb])
   AC_DEFINE([USE_OPENSSL], 1, [Define to 1 to build with OpenSSL support. (--with-ssl=openssl)])
 elif test "$with_ssl" != no ; then
   AC_MSG_ERROR([--with-ssl must specify openssl])
@@ -1818,8 +1811,10 @@ m4_defun([AC_PROG_CC_STDC], []) dnl We don't want that.
 AC_C_BIGENDIAN
 PGAC_PRINTF_ARCHETYPE
 PGAC_CXX_PRINTF_ARCHETYPE
-PGAC_C_STATEMENT_EXPRESSIONS
 PGAC_C_TYPEOF
+PGAC_CXX_TYPEOF
+PGAC_C_TYPEOF_UNQUAL
+PGAC_CXX_TYPEOF_UNQUAL
 PGAC_C_TYPES_COMPATIBLE
 PGAC_C_BUILTIN_CONSTANT_P
 PGAC_C_BUILTIN_OP_OVERFLOW
@@ -1910,6 +1905,24 @@ if test "$ac_cv_sizeof_off_t" -lt 8; then
   fi
 fi
 
+# Check for SA_SIGINFO extended signal handler availability
+AC_CACHE_CHECK([for SA_SIGINFO], [ac_cv_have_sa_siginfo], [
+    AC_COMPILE_IFELSE([
+        AC_LANG_PROGRAM([[
+            #include <signal.h>
+            #include <stddef.h>
+        ]], [[
+            struct sigaction sa;
+            sa.sa_flags = SA_SIGINFO;
+        ]])
+    ],
+    [ac_cv_have_sa_siginfo=yes],
+    [ac_cv_have_sa_siginfo=no])
+])
+
+if test "x$ac_cv_have_sa_siginfo" = "xyes"; then
+    AC_DEFINE([HAVE_SA_SIGINFO], 1, [Define to 1 if you have SA_SIGINFO available.])
+fi
 
 ##
 ## Functions, global variables
@@ -1929,6 +1942,7 @@ AC_CHECK_FUNCS(m4_normalize([
 	copyfile
 	copy_file_range
 	elf_aux_info
+	explicit_memset
 	getauxval
 	getifaddrs
 	getpeerucred
@@ -1936,6 +1950,7 @@ AC_CHECK_FUNCS(m4_normalize([
 	kqueue
 	localeconv_l
 	mbstowcs_l
+	memset_explicit
 	posix_fallocate
 	ppoll
 	pthread_is_threaded_np
@@ -2118,6 +2133,14 @@ related to locating shared libraries.  Check the file 'config.log'
 for the exact reason.]])],
 [AC_MSG_RESULT([cross-compiling])])
 
+# These flags are supported in all C11-capable GCC/Clang versions,
+# so no capability test is needed.  Added here to avoid affecting configure probes,
+# particularly PGAC_PRINTF_ARCHETYPE which uses -Werror and would fail to detect
+# gnu_printf if -Wstrict-prototypes is active.
+if test "$GCC" = yes -a "$ICC" = no; then
+  CFLAGS="$CFLAGS -Wstrict-prototypes -Wold-style-definition"
+fi
+
 # --------------------
 # Run tests below here
 # --------------------
@@ -2190,7 +2213,7 @@ else
   fi
 fi
 
-# Check for __get_cpuid_count() and __cpuidex() in a similar fashion.
+# Check for __get_cpuid_count()
 AC_CACHE_CHECK([for __get_cpuid_count], [pgac_cv__get_cpuid_count],
 [AC_LINK_IFELSE([AC_LANG_PROGRAM([#include <cpuid.h>],
   [[unsigned int exx[4] = {0, 0, 0, 0};
@@ -2200,17 +2223,30 @@ AC_CACHE_CHECK([for __get_cpuid_count], [pgac_cv__get_cpuid_count],
   [pgac_cv__get_cpuid_count="no"])])
 if test x"$pgac_cv__get_cpuid_count" = x"yes"; then
   AC_DEFINE(HAVE__GET_CPUID_COUNT, 1, [Define to 1 if you have __get_cpuid_count.])
-else
-  # __cpuidex()
-  AC_CACHE_CHECK([for __cpuidex], [pgac_cv__cpuidex],
-  [AC_LINK_IFELSE([AC_LANG_PROGRAM([#include <intrin.h>],
-    [[unsigned int exx[4] = {0, 0, 0, 0};
-    __cpuidex(exx, 7, 0);
-    ]])],
-    [pgac_cv__cpuidex="yes"],
-    [pgac_cv__cpuidex="no"])])
-  if test x"$pgac_cv__cpuidex" = x"yes"; then
-    AC_DEFINE(HAVE__CPUIDEX, 1, [Define to 1 if you have __cpuidex.])
+fi
+
+# Check for __cpuidex()
+AC_CACHE_CHECK([for __cpuidex], [pgac_cv__cpuidex],
+[AC_LINK_IFELSE([AC_LANG_PROGRAM([#ifdef _MSC_VER
+    #include <intrin.h>
+    #else
+    #include <cpuid.h>
+    #endif],
+  [[unsigned int exx[4] = {0, 0, 0, 0};
+  __cpuidex((int *) exx, 7, 0);
+  ]])],
+  [pgac_cv__cpuidex="yes"],
+  [pgac_cv__cpuidex="no"])])
+if test x"$pgac_cv__cpuidex" = x"yes"; then
+  AC_DEFINE(HAVE__CPUIDEX, 1, [Define to 1 if you have __cpuidex.])
+fi
+
+# Check for AVX2 target support
+#
+if test x"$host_cpu" = x"x86_64"; then
+  PGAC_AVX2_SUPPORT()
+  if test x"$pgac_avx2_support" = x"yes"; then
+    AC_DEFINE(USE_AVX2_WITH_RUNTIME_CHECK, 1, [Define to 1 to use AVX2 instructions with a runtime check.])
   fi
 fi
 
@@ -2347,7 +2383,7 @@ else
   else
     if test x"$USE_ARMV8_CRC32C" = x"1"; then
       AC_DEFINE(USE_ARMV8_CRC32C, 1, [Define to 1 to use ARMv8 CRC Extension.])
-      PG_CRC32C_OBJS="pg_crc32c_armv8.o"
+      PG_CRC32C_OBJS="pg_crc32c_armv8.o pg_crc32c_armv8_choose.o"
       AC_MSG_RESULT(ARMv8 CRC instructions)
     else
       if test x"$USE_ARMV8_CRC32C_WITH_RUNTIME_CHECK" = x"1"; then
@@ -2374,6 +2410,10 @@ AC_SUBST(PG_CRC32C_OBJS)
 #
 if test x"$host_cpu" = x"x86_64"; then
   PGAC_AVX512_PCLMUL_INTRINSICS()
+else
+  if test x"$host_cpu" = x"aarch64"; then
+    PGAC_ARM_PLMULL()
+  fi
 fi
 
 AC_MSG_CHECKING([for vectorized CRC-32C])
@@ -2381,7 +2421,12 @@ if test x"$pgac_avx512_pclmul_intrinsics" = x"yes"; then
   AC_DEFINE(USE_AVX512_CRC32C_WITH_RUNTIME_CHECK, 1, [Define to 1 to use AVX-512 CRC algorithms with a runtime check.])
   AC_MSG_RESULT(AVX-512 with runtime check)
 else
-  AC_MSG_RESULT(none)
+  if test x"$pgac_arm_pmull" = x"yes"; then
+    AC_DEFINE(USE_PMULL_CRC32C_WITH_RUNTIME_CHECK, 1, [Define to 1 to use Arm PMULL CRC algorithms with a runtime check.])
+    AC_MSG_RESULT(CRYPTO PMULL with runtime check)
+  else
+    AC_MSG_RESULT(none)
+  fi
 fi
 
 # Select semaphore implementation type.

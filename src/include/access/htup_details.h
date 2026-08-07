@@ -175,7 +175,7 @@ struct HeapTupleHeaderData
 	/* ^ - 23 bytes - ^ */
 
 #define FIELDNO_HEAPTUPLEHEADERDATA_BITS 5
-	bits8		t_bits[FLEXIBLE_ARRAY_MEMBER];	/* bitmap of NULLs */
+	uint8		t_bits[FLEXIBLE_ARRAY_MEMBER];	/* bitmap of NULLs */
 
 	/* MORE DATA FOLLOWS AT END OF STRUCT */
 };
@@ -699,7 +699,7 @@ struct MinimalTupleData
 
 	/* ^ - 23 bytes - ^ */
 
-	bits8		t_bits[FLEXIBLE_ARRAY_MEMBER];	/* bitmap of NULLs */
+	uint8		t_bits[FLEXIBLE_ARRAY_MEMBER];	/* bitmap of NULLs */
 
 	/* MORE DATA FOLLOWS AT END OF STRUCT */
 };
@@ -816,7 +816,7 @@ extern Size heap_compute_data_size(TupleDesc tupleDesc,
 extern void heap_fill_tuple(TupleDesc tupleDesc,
 							const Datum *values, const bool *isnull,
 							char *data, Size data_size,
-							uint16 *infomask, bits8 *bit);
+							uint16 *infomask, uint8 *bit);
 extern bool heap_attisnull(HeapTuple tup, int attnum, TupleDesc tupleDesc);
 extern Datum nocachegetattr(HeapTuple tup, int attnum,
 							TupleDesc tupleDesc);

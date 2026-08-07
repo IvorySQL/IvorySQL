@@ -55,6 +55,7 @@
 #include "utils/pidfile.h"
 #include "utils/syscache.h"
 #include "utils/varlena.h"
+#include "utils/wait_event.h"
 
 
 #define DIRECTORY_LOCK_FILE		"postmaster.pid"
@@ -844,7 +845,8 @@ InitializeSessionUserIdStandalone(void)
 	 * workers, in slot sync worker and in background workers.
 	 */
 	Assert(!IsUnderPostmaster || AmAutoVacuumWorkerProcess() ||
-		   AmLogicalSlotSyncWorkerProcess() || AmBackgroundWorkerProcess());
+		   AmLogicalSlotSyncWorkerProcess() || AmBackgroundWorkerProcess() ||
+		   AmDataChecksumsWorkerProcess());
 
 	/* call only once */
 	Assert(!OidIsValid(AuthenticatedUserId));

@@ -26,6 +26,7 @@
 
 #include "access/heapam.h"
 #include "access/tableam.h"
+#include "access/tupconvert.h"
 #include "access/xact.h"
 #include "catalog/namespace.h"
 #include "commands/copyapi.h"
@@ -50,6 +51,7 @@
 #include "utils/portal.h"
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
+#include "utils/typcache.h"
 
 /*
  * No more than this many tuples per CopyMultiInsertBuffer
@@ -99,7 +101,7 @@ typedef struct CopyMultiInsertInfo
 	CopyFromState cstate;		/* Copy state for this CopyMultiInsertInfo */
 	EState	   *estate;			/* Executor state used for COPY */
 	CommandId	mycid;			/* Command Id used for COPY */
-	int			ti_options;		/* table insert options */
+	uint32		ti_options;		/* table insert options */
 } CopyMultiInsertInfo;
 
 
@@ -155,9 +157,9 @@ static const CopyFromRoutine CopyFromRoutineBinary = {
 static const CopyFromRoutine *
 CopyFromGetRoutine(const CopyFormatOptions *opts)
 {
-	if (opts->csv_mode)
+	if (opts->format == COPY_FORMAT_CSV)
 		return &CopyFromRoutineCSV;
-	else if (opts->binary)
+	else if (opts->format == COPY_FORMAT_BINARY)
 		return &CopyFromRoutineBinary;
 
 	/* default is text */
@@ -261,7 +263,7 @@ CopyFromErrorCallback(void *arg)
 				   cstate->cur_relname);
 		return;
 	}
-	if (cstate->opts.binary)
+	if (cstate->opts.format == COPY_FORMAT_BINARY)
 	{
 		/* can't usefully display the data */
 		if (cstate->cur_attname)
@@ -399,7 +401,7 @@ CopyMultiInsertInfoSetupBuffer(CopyMultiInsertInfo *miinfo,
 static void
 CopyMultiInsertInfoInit(CopyMultiInsertInfo *miinfo, ResultRelInfo *rri,
 						CopyFromState cstate, EState *estate, CommandId mycid,
-						int ti_options)
+						uint32 ti_options)
 {
 	miinfo->multiInsertBuffers = NIL;
 	miinfo->bufferedTuples = 0;
@@ -533,7 +535,7 @@ CopyMultiInsertBufferFlush(CopyMultiInsertInfo *miinfo,
 	else
 	{
 		CommandId	mycid = miinfo->mycid;
-		int			ti_options = miinfo->ti_options;
+		uint32		ti_options = miinfo->ti_options;
 		bool		line_buf_valid = cstate->line_buf_valid;
 		uint64		save_cur_lineno = cstate->cur_lineno;
 		MemoryContext oldcontext;
@@ -790,7 +792,7 @@ CopyFrom(CopyFromState cstate)
 	PartitionTupleRouting *proute = NULL;
 	ErrorContextCallback errcallback;
 	CommandId	mycid = GetCurrentCommandId(true);
-	int			ti_options = 0; /* start with default options for insert */
+	uint32		ti_options = 0; /* start with default options for insert */
 	BulkInsertState bistate = NULL;
 	CopyInsertMethod insertMethod;
 	CopyMultiInsertInfo multiInsertInfo = {0};	/* pacify compiler */
@@ -1463,14 +1465,22 @@ CopyFrom(CopyFromState cstate)
 	/* Done, clean up */
 	error_context_stack = errcallback.previous;
 
-	if (cstate->opts.on_error != COPY_ON_ERROR_STOP &&
-		cstate->num_errors > 0 &&
+	if (cstate->num_errors > 0 &&
 		cstate->opts.log_verbosity >= COPY_LOG_VERBOSITY_DEFAULT)
-		ereport(NOTICE,
-				errmsg_plural("%" PRIu64 " row was skipped due to data type incompatibility",
-							  "%" PRIu64 " rows were skipped due to data type incompatibility",
-							  cstate->num_errors,
-							  cstate->num_errors));
+	{
+		if (cstate->opts.on_error == COPY_ON_ERROR_IGNORE)
+			ereport(NOTICE,
+					errmsg_plural("%" PRIu64 " row was skipped due to data type incompatibility",
+								  "%" PRIu64 " rows were skipped due to data type incompatibility",
+								  cstate->num_errors,
+								  cstate->num_errors));
+		else if (cstate->opts.on_error == COPY_ON_ERROR_SET_NULL)
+			ereport(NOTICE,
+					errmsg_plural("in %" PRIu64 " row, columns were set to null due to data type incompatibility",
+								  "in %" PRIu64 " rows, columns were set to null due to data type incompatibility",
+								  cstate->num_errors,
+								  cstate->num_errors));
+	}
 
 	if (bistate != NULL)
 		FreeBulkInsertState(bistate);
@@ -1617,15 +1627,36 @@ BeginCopyFrom(ParseState *pstate,
 		cstate->escontext->type = T_ErrorSaveContext;
 		cstate->escontext->error_occurred = false;
 
-		/*
-		 * Currently we only support COPY_ON_ERROR_IGNORE. We'll add other
-		 * options later
-		 */
-		if (cstate->opts.on_error == COPY_ON_ERROR_IGNORE)
+		if (cstate->opts.on_error == COPY_ON_ERROR_IGNORE ||
+			cstate->opts.on_error == COPY_ON_ERROR_SET_NULL)
 			cstate->escontext->details_wanted = false;
 	}
 	else
 		cstate->escontext = NULL;
+
+	if (cstate->opts.on_error == COPY_ON_ERROR_SET_NULL)
+	{
+		int			attr_count = list_length(cstate->attnumlist);
+
+		/*
+		 * When data type conversion fails and ON_ERROR is SET_NULL, we need
+		 * ensure that the input column allow null values.  ExecConstraints()
+		 * will cover most of the cases, but it does not verify domain
+		 * constraints.  Therefore, for constrained domains, the null value
+		 * check must be performed during the initial string-to-datum
+		 * conversion (see CopyFromTextLikeOneRow()).
+		 */
+		cstate->domain_with_constraint = palloc0_array(bool, attr_count);
+
+		foreach_int(attno, cstate->attnumlist)
+		{
+			int			i = foreach_current_index(attno);
+
+			Form_pg_attribute att = TupleDescAttr(tupDesc, attno - 1);
+
+			cstate->domain_with_constraint[i] = DomainHasConstraints(att->atttypid, NULL);
+		}
+	}
 
 	/* Convert FORCE_NULL name list to per-column flags, check validity */
 	cstate->opts.force_null_flags = (bool *) palloc0(num_phys_attrs * sizeof(bool));
@@ -1716,6 +1747,7 @@ BeginCopyFrom(ParseState *pstate,
 	cstate->cur_attname = NULL;
 	cstate->cur_attval = NULL;
 	cstate->relname_only = false;
+	cstate->simd_enabled = true;
 
 	/*
 	 * Allocate buffers for the input pipeline.

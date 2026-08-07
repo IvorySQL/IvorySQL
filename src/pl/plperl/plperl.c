@@ -36,6 +36,7 @@
 #include "utils/ora_compatible.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
+#include "utils/tuplestore.h"
 #include "utils/typcache.h"
 
 /* define our text domain for translations */
@@ -1093,7 +1094,7 @@ plperl_build_tuple_result(HV *perlhash, TupleDesc td)
 		SV		   *val = HeVAL(he);
 		char	   *key = hek2cstr(he);
 		int			attn = SPI_fnumber(td, key);
-		Form_pg_attribute attr = TupleDescAttr(td, attn - 1);
+		Form_pg_attribute attr;
 
 		if (attn == SPI_ERROR_NOATTRIBUTE)
 			ereport(ERROR,
@@ -1106,6 +1107,7 @@ plperl_build_tuple_result(HV *perlhash, TupleDesc td)
 					 errmsg("cannot set system attribute \"%s\"",
 							key)));
 
+		attr = TupleDescAttr(td, attn - 1);
 		values[attn - 1] = plperl_sv_to_datum(val,
 											  attr->atttypid,
 											  attr->atttypmod,
@@ -1799,7 +1801,7 @@ plperl_modify_tuple(HV *hvTD, TriggerData *tdata, HeapTuple otup)
 		char	   *key = hek2cstr(he);
 		SV		   *val = HeVAL(he);
 		int			attn = SPI_fnumber(tupdesc, key);
-		Form_pg_attribute attr = TupleDescAttr(tupdesc, attn - 1);
+		Form_pg_attribute attr;
 
 		if (attn == SPI_ERROR_NOATTRIBUTE)
 			ereport(ERROR,
@@ -1811,6 +1813,8 @@ plperl_modify_tuple(HV *hvTD, TriggerData *tdata, HeapTuple otup)
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("cannot set system attribute \"%s\"",
 							key)));
+
+		attr = TupleDescAttr(tupdesc, attn - 1);
 		if (attr->attgenerated)
 			ereport(ERROR,
 					(errcode(ERRCODE_E_R_I_E_TRIGGER_PROTOCOL_VIOLATED),

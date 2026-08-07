@@ -1675,7 +1675,7 @@ iso_year(int y, int m, int d)
  * Get the timezone value of the operating system.
  */
 static int64
-sys_time_zone()
+sys_time_zone(void)
 {
 
 #ifdef _WIN64

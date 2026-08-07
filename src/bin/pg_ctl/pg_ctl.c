@@ -346,7 +346,7 @@ readfile(const char *path, int *numlines)
 	{
 		/* empty file */
 		close(fd);
-		result = (char **) pg_malloc(sizeof(char *));
+		result = pg_malloc_object(char *);
 		*result = NULL;
 		return result;
 	}
@@ -374,7 +374,7 @@ readfile(const char *path, int *numlines)
 	}
 
 	/* set up the result buffer */
-	result = (char **) pg_malloc((nlines + 1) * sizeof(char *));
+	result = pg_malloc_array(char *, nlines + 1);
 	*numlines = nlines;
 
 	/* now split the buffer into lines */
@@ -868,7 +868,7 @@ trap_sigint_during_startup(SIGNAL_ARGS)
 	 * Clear the signal handler, and send the signal again, to terminate the
 	 * process as normal.
 	 */
-	pqsignal(postgres_signal_arg, SIG_DFL);
+	pqsignal(postgres_signal_arg, PG_SIG_DFL);
 	raise(postgres_signal_arg);
 }
 

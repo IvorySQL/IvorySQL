@@ -50,7 +50,7 @@ static const PgStat_KindInfo custom_stats = {
 	.fixed_amount = true,		/* exactly one entry */
 	.write_to_file = true,		/* persist to stats file */
 
-	.shared_size = sizeof(PgStat_StatCustomFixedEntry),
+	.shared_size = sizeof(PgStatShared_CustomFixedEntry),
 	.shared_data_off = offsetof(PgStatShared_CustomFixedEntry, stats),
 	.shared_data_len = sizeof(((PgStatShared_CustomFixedEntry *) 0)->stats),
 
@@ -206,6 +206,7 @@ test_custom_stats_fixed_report(PG_FUNCTION_ARGS)
 					   INT8OID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "stats_reset",
 					   TIMESTAMPTZOID, -1, 0);
+	TupleDescFinalize(tupdesc);
 	BlessTupleDesc(tupdesc);
 
 	values[0] = Int64GetDatum(stats->numcalls);

@@ -469,6 +469,8 @@ pg_visibility_tupdesc(bool include_blkno, bool include_pd)
 		TupleDescInitEntry(tupdesc, ++a, "pd_all_visible", BOOLOID, -1, 0);
 	Assert(a == maxattr);
 
+	TupleDescFinalize(tupdesc);
+
 	return BlessTupleDesc(tupdesc);
 }
 
@@ -619,7 +621,7 @@ GetStrictOldestNonRemovableTransactionId(Relation rel)
 	else if (rel == NULL || rel->rd_rel->relisshared)
 	{
 		/* Shared relation: take into account all running xids */
-		runningTransactions = GetRunningTransactionData();
+		runningTransactions = GetRunningTransactionData(InvalidOid);
 		LWLockRelease(ProcArrayLock);
 		LWLockRelease(XidGenLock);
 		return runningTransactions->oldestRunningXid;
@@ -630,7 +632,7 @@ GetStrictOldestNonRemovableTransactionId(Relation rel)
 		 * Normal relation: take into account xids running within the current
 		 * database
 		 */
-		runningTransactions = GetRunningTransactionData();
+		runningTransactions = GetRunningTransactionData(InvalidOid);
 		LWLockRelease(ProcArrayLock);
 		LWLockRelease(XidGenLock);
 		return runningTransactions->oldestDatabaseRunningXid;

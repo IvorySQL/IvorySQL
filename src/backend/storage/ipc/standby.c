@@ -36,6 +36,7 @@
 #include "utils/ps_status.h"
 #include "utils/timeout.h"
 #include "utils/timestamp.h"
+#include "utils/wait_event.h"
 
 /* User-settable GUC parameters */
 int			max_standby_archive_delay = 30 * 1000;
@@ -476,10 +477,11 @@ ResolveRecoveryConflictWithSnapshot(TransactionId snapshotConflictHorizon,
 	/*
 	 * If we get passed InvalidTransactionId then we do nothing (no conflict).
 	 *
-	 * This can happen when replaying already-applied WAL records after a
-	 * standby crash or restart, or when replaying an XLOG_HEAP2_VISIBLE
-	 * record that marks as frozen a page which was already all-visible.  It's
-	 * also quite common with records generated during index deletion
+	 * This can happen whenever the changes in the WAL record do not affect
+	 * visibility on a standby. For example: a record that only freezes an
+	 * xmax from a locker.
+	 *
+	 * It's also quite common with records generated during index deletion
 	 * (original execution of the deletion can reason that a recovery conflict
 	 * which is sufficient for the deletion operation must take place before
 	 * replay of the deletion record itself).
@@ -1187,6 +1189,14 @@ standby_redo(XLogReaderState *record)
 		xl_running_xacts *xlrec = (xl_running_xacts *) XLogRecGetData(record);
 		RunningTransactionsData running;
 
+		/*
+		 * Records issued for specific database are not suitable for physical
+		 * replication because that affects the whole cluster. In particular,
+		 * the list of XID is probably incomplete here.
+		 */
+		if (OidIsValid(xlrec->dbid))
+			return;
+
 		running.xcnt = xlrec->xcnt;
 		running.subxcnt = xlrec->subxcnt;
 		running.subxid_status = xlrec->subxid_overflow ? SUBXIDS_MISSING : SUBXIDS_IN_ARRAY;
@@ -1276,11 +1286,22 @@ standby_redo(XLogReaderState *record)
  * as there's no independent knob to just enable logical decoding. For
  * details of how this is used, check snapbuild.c's introductory comment.
  *
+ * If 'dbid' is valid, only gather transactions running in that
+ * database. snapbuild.c can use such running xacts information for faster
+ * startup, but it still needs normal (cluster-wide) during the actual
+ * decoding - see standby_decode() and SnapBuildProcessRunningXacts() for
+ * details. Other processes (e.g. checkpointer) issue the cluster-wide records
+ * whether logical decoding is active or not.
+ *
+ * Please be careful about using this argument for other purposes. In
+ * particular, physical replication *must* ignore the database-specific
+ * records, exactly because they do not cover the whole cluster - see
+ * standby_redo().
  *
  * Returns the RecPtr of the last inserted record.
  */
 XLogRecPtr
-LogStandbySnapshot(void)
+LogStandbySnapshot(Oid dbid)
 {
 	XLogRecPtr	recptr;
 	RunningTransactions running;
@@ -1313,7 +1334,7 @@ LogStandbySnapshot(void)
 	 * Log details of all in-progress transactions. This should be the last
 	 * record we write, because standby will open up when it sees this.
 	 */
-	running = GetRunningTransactionData();
+	running = GetRunningTransactionData(dbid);
 
 	/*
 	 * GetRunningTransactionData() acquired ProcArrayLock, we must release it.
@@ -1357,6 +1378,7 @@ LogCurrentRunningXacts(RunningTransactions CurrRunningXacts)
 	xl_running_xacts xlrec;
 	XLogRecPtr	recptr;
 
+	xlrec.dbid = CurrRunningXacts->dbid;
 	xlrec.xcnt = CurrRunningXacts->xcnt;
 	xlrec.subxcnt = CurrRunningXacts->subxcnt;
 	xlrec.subxid_overflow = (CurrRunningXacts->subxid_status != SUBXIDS_IN_ARRAY);

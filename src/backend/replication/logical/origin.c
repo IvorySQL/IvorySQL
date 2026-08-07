@@ -88,6 +88,7 @@
 #include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/lmgr.h"
+#include "storage/subsystems.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
@@ -95,6 +96,7 @@
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
+#include "utils/wait_event.h"
 
 /* paths for replication origin checkpoint files */
 #define PG_REPLORIGIN_CHECKPOINT_FILENAME PG_LOGICAL_DIR "/replorigin_checkpoint"
@@ -174,6 +176,16 @@ ReplOriginXactState replorigin_xact_state = {
  * max_active_replication_origins.
  */
 static ReplicationState *replication_states;
+
+static void ReplicationOriginShmemRequest(void *arg);
+static void ReplicationOriginShmemInit(void *arg);
+static void ReplicationOriginShmemAttach(void *arg);
+
+const ShmemCallbacks ReplicationOriginShmemCallbacks = {
+	.request_fn = ReplicationOriginShmemRequest,
+	.init_fn = ReplicationOriginShmemInit,
+	.attach_fn = ReplicationOriginShmemAttach,
+};
 
 /*
  * Actual shared memory block (replication_states[] is now part of this).
@@ -538,50 +550,48 @@ replorigin_by_oid(ReplOriginId roident, bool missing_ok, char **roname)
  * ---------------------------------------------------------------------------
  */
 
-Size
-ReplicationOriginShmemSize(void)
+static void
+ReplicationOriginShmemRequest(void *arg)
 {
 	Size		size = 0;
 
 	if (max_active_replication_origins == 0)
-		return size;
+		return;
 
 	size = add_size(size, offsetof(ReplicationStateCtl, states));
-
 	size = add_size(size,
 					mul_size(max_active_replication_origins, sizeof(ReplicationState)));
-	return size;
+	ShmemRequestStruct(.name = "ReplicationOriginState",
+					   .size = size,
+					   .ptr = (void **) &replication_states_ctl,
+		);
 }
 
-void
-ReplicationOriginShmemInit(void)
+static void
+ReplicationOriginShmemInit(void *arg)
 {
-	bool		found;
-
 	if (max_active_replication_origins == 0)
 		return;
 
-	replication_states_ctl = (ReplicationStateCtl *)
-		ShmemInitStruct("ReplicationOriginState",
-						ReplicationOriginShmemSize(),
-						&found);
 	replication_states = replication_states_ctl->states;
 
-	if (!found)
+	replication_states_ctl->tranche_id = LWTRANCHE_REPLICATION_ORIGIN_STATE;
+
+	for (int i = 0; i < max_active_replication_origins; i++)
 	{
-		int			i;
-
-		MemSet(replication_states_ctl, 0, ReplicationOriginShmemSize());
-
-		replication_states_ctl->tranche_id = LWTRANCHE_REPLICATION_ORIGIN_STATE;
-
-		for (i = 0; i < max_active_replication_origins; i++)
-		{
-			LWLockInitialize(&replication_states[i].lock,
-							 replication_states_ctl->tranche_id);
-			ConditionVariableInit(&replication_states[i].origin_cv);
-		}
+		LWLockInitialize(&replication_states[i].lock,
+						 replication_states_ctl->tranche_id);
+		ConditionVariableInit(&replication_states[i].origin_cv);
 	}
+}
+
+static void
+ReplicationOriginShmemAttach(void *arg)
+{
+	if (max_active_replication_origins == 0)
+		return;
+
+	replication_states = replication_states_ctl->states;
 }
 
 /* ---------------------------------------------------------------------------
@@ -1185,55 +1195,70 @@ replorigin_session_setup(ReplOriginId node, int acquired_by)
 		if (curstate->roident != node)
 			continue;
 
-		else if (curstate->acquired_by != 0 && acquired_by == 0)
+		if (acquired_by == 0)
 		{
-			ereport(ERROR,
-					(errcode(ERRCODE_OBJECT_IN_USE),
-					 errmsg("replication origin with ID %d is already active for PID %d",
-							curstate->roident, curstate->acquired_by)));
+			/* With acquired_by == 0, we need the origin to be free */
+			if (curstate->acquired_by != 0)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_OBJECT_IN_USE),
+						 errmsg("replication origin with ID %d is already active for PID %d",
+								curstate->roident, curstate->acquired_by)));
+			}
+			else if (curstate->refcount > 0)
+			{
+				/*
+				 * The origin is in use, but PID is not recorded. This can
+				 * happen if the process that originally acquired the origin
+				 * exited without releasing it. To ensure correctness, other
+				 * processes cannot acquire the origin until all processes
+				 * currently using it have released it.
+				 */
+				ereport(ERROR,
+						(errcode(ERRCODE_OBJECT_IN_USE),
+						 errmsg("replication origin with ID %d is already active in another process",
+								curstate->roident)));
+			}
 		}
-
-		else if (curstate->acquired_by != acquired_by)
+		else
 		{
-			ereport(ERROR,
-					(errcode(ERRCODE_OBJECT_IN_USE),
-					 errmsg("could not find replication state slot for replication origin with OID %u which was acquired by %d",
-							node, acquired_by)));
-		}
+			/*
+			 * With acquired_by != 0, we need the origin to be active by the
+			 * given PID
+			 */
+			if (curstate->acquired_by != acquired_by)
+				ereport(ERROR,
+						(errcode(ERRCODE_OBJECT_IN_USE),
+						 errmsg("replication origin with ID %d is not active for PID %d",
+								curstate->roident, acquired_by)));
 
-		/*
-		 * The origin is in use, but PID is not recorded. This can happen if
-		 * the process that originally acquired the origin exited without
-		 * releasing it. To ensure correctness, other processes cannot acquire
-		 * the origin until all processes currently using it have released it.
-		 */
-		else if (curstate->acquired_by == 0 && curstate->refcount > 0)
-			ereport(ERROR,
-					(errcode(ERRCODE_OBJECT_IN_USE),
-					 errmsg("replication origin with ID %d is already active in another process",
-							curstate->roident)));
+			/*
+			 * Here, it is okay to have refcount > 0 as more than one process
+			 * can safely re-use the origin.
+			 */
+		}
 
 		/* ok, found slot */
 		session_replication_state = curstate;
 		break;
 	}
 
-
-	if (session_replication_state == NULL && free_slot == -1)
-		ereport(ERROR,
-				(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),
-				 errmsg("could not find free replication state slot for replication origin with ID %d",
-						node),
-				 errhint("Increase \"max_active_replication_origins\" and try again.")));
-	else if (session_replication_state == NULL)
+	if (session_replication_state == NULL)
 	{
-		if (acquired_by)
+		if (acquired_by != 0)
 			ereport(ERROR,
 					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 					 errmsg("cannot use PID %d for inactive replication origin with ID %d",
 							acquired_by, node)));
 
 		/* initialize new slot */
+		if (free_slot == -1)
+			ereport(ERROR,
+					(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),
+					 errmsg("could not find free replication state slot for replication origin with ID %d",
+							node),
+					 errhint("Increase \"max_active_replication_origins\" and try again.")));
+
 		session_replication_state = &replication_states[free_slot];
 		Assert(!XLogRecPtrIsValid(session_replication_state->remote_lsn));
 		Assert(!XLogRecPtrIsValid(session_replication_state->local_lsn));

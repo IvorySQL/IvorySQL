@@ -95,7 +95,8 @@ pgstat_fetch_stat_backend(ProcNumber procNumber)
 	PgStat_Backend *backend_entry;
 
 	backend_entry = (PgStat_Backend *) pgstat_fetch_entry(PGSTAT_KIND_BACKEND,
-														  InvalidOid, procNumber);
+														  InvalidOid, procNumber,
+														  NULL);
 
 	return backend_entry;
 }
@@ -268,7 +269,7 @@ pgstat_flush_backend_entry_wal(PgStat_EntryRef *entry_ref)
  * if some statistics could not be flushed due to lock contention.
  */
 bool
-pgstat_flush_backend(bool nowait, bits32 flags)
+pgstat_flush_backend(bool nowait, uint32 flags)
 {
 	PgStat_EntryRef *entry_ref;
 	bool		has_pending_data = false;
@@ -380,6 +381,8 @@ pgstat_tracks_backend_bktype(BackendType bktype)
 		case B_CHECKPOINTER:
 		case B_IO_WORKER:
 		case B_STARTUP:
+		case B_DATACHECKSUMSWORKER_LAUNCHER:
+		case B_DATACHECKSUMSWORKER_WORKER:
 			return false;
 
 		case B_AUTOVAC_WORKER:

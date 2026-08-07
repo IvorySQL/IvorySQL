@@ -16,8 +16,6 @@
 
 #include "access/sdir.h"
 #include "access/stratnum.h"
-#include "common/relpath.h"
-#include "lib/stringinfo.h"
 #include "nodes/bitmapset.h"
 #include "nodes/lockoptions.h"
 #include "nodes/primnodes.h"
@@ -119,9 +117,8 @@ typedef struct PlannedStmt
 	 */
 	List	   *permInfos;
 
-	/* rtable indexes of target relations for INSERT/UPDATE/DELETE/MERGE */
-	/* integer list of RT indexes, or NIL */
-	List	   *resultRelations;
+	/* RT indexes of relations targeted by INSERT/UPDATE/DELETE/MERGE */
+	Bitmapset  *resultRelationRelids;
 
 	/* list of AppendRelInfo nodes */
 	List	   *appendRelations;
@@ -139,6 +136,9 @@ typedef struct PlannedStmt
 
 	/* a list of PlanRowMark's */
 	List	   *rowMarks;
+
+	/* RT indexes of relations with row marks */
+	Bitmapset  *rowMarkRelids;
 
 	/* OIDs of relations the plan depends on */
 	List	   *relationOids;
@@ -379,6 +379,8 @@ typedef struct ModifyTable
 	List	   *onConflictCols;
 	/* WHERE for ON CONFLICT DO SELECT/UPDATE */
 	Node	   *onConflictWhere;
+	/* FOR PORTION OF clause for UPDATE/DELETE */
+	Node	   *forPortionOf;
 	/* RTI of the EXCLUDED pseudo relation */
 	Index		exclRelRTI;
 	/* tlist of the EXCLUDED pseudo relation */

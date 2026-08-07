@@ -75,7 +75,9 @@
 #include "pgstat.h"
 #include "rewrite/rewriteDefine.h"
 #include "rewrite/rowsecurity.h"
+#include "storage/fd.h"
 #include "storage/lmgr.h"
+#include "storage/lock.h"
 #include "storage/smgr.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
@@ -671,14 +673,6 @@ RelationBuildTupleDesc(Relation relation)
 			 need, RelationGetRelid(relation));
 
 	/*
-	 * We can easily set the attcacheoff value for the first attribute: it
-	 * must be zero.  This eliminates the need for special cases for attnum=1
-	 * that used to exist in fastgetattr() and index_getattr().
-	 */
-	if (RelationGetNumberOfAttributes(relation) > 0)
-		TupleDescCompactAttr(relation->rd_att, 0)->attcacheoff = 0;
-
-	/*
 	 * Set up constraint/default info
 	 */
 	if (constr->has_not_null ||
@@ -733,6 +727,8 @@ RelationBuildTupleDesc(Relation relation)
 		pfree(constr);
 		relation->rd_att->constr = NULL;
 	}
+
+	TupleDescFinalize(relation->rd_att);
 }
 
 /*
@@ -2045,8 +2041,7 @@ formrdesc(const char *relationName, Oid relationReltype,
 		populate_compact_attribute(relation->rd_att, i);
 	}
 
-	/* initialize first attribute's attcacheoff, cf RelationBuildTupleDesc */
-	TupleDescCompactAttr(relation->rd_att, 0)->attcacheoff = 0;
+	TupleDescFinalize(relation->rd_att);
 
 	/* mark not-null status */
 	if (has_not_null)
@@ -3752,6 +3747,8 @@ RelationBuildLocalRelation(const char *relname,
 	for (i = 0; i < natts; i++)
 		TupleDescAttr(rel->rd_att, i)->attrelid = relid;
 
+	TupleDescFinalize(rel->rd_att);
+
 	rel->rd_rel->reltablespace = reltablespace;
 
 	if (mapped_relation)
@@ -4507,8 +4504,7 @@ BuildHardcodedDescriptor(int natts, const FormData_pg_attribute *attrs, bool has
 		populate_compact_attribute(result, i);
 	}
 
-	/* initialize first attribute's attcacheoff, cf RelationBuildTupleDesc */
-	TupleDescCompactAttr(result, 0)->attcacheoff = 0;
+	TupleDescFinalize(result);
 
 	/* Note: we don't bother to set up a TupleConstr entry */
 
@@ -4960,8 +4956,14 @@ RelationGetIndexList(Relation relation)
 
 		/*
 		 * Remember primary key index, if any.  For regular tables we do this
-		 * only if the index is valid; but for partitioned tables, then we do
-		 * it even if it's invalid.
+		 * only if the index is valid and not manually disabled via the
+		 * Oracle-compatible ALTER INDEX ... UNUSABLE (an unusable index may
+		 * be missing entries for rows changed since it was disabled, so it
+		 * can't be trusted to enforce uniqueness -- the same reasoning that
+		 * already excludes invalid indexes here); but for partitioned
+		 * tables, then we do it even if it's invalid (UNUSABLE cannot be
+		 * set on a partitioned index in the first place, so no exception is
+		 * needed for that case).
 		 *
 		 * The reason for returning invalid primary keys for partitioned
 		 * tables is that we need it to prevent drop of not-null constraints
@@ -4969,7 +4971,7 @@ RelationGetIndexList(Relation relation)
 		 * partitioned tables.
 		 */
 		if (index->indisprimary &&
-			(index->indisvalid ||
+			((index->indisvalid && !index->indisunusable) ||
 			 relation->rd_rel->relkind == RELKIND_PARTITIONED_TABLE))
 		{
 			pkeyIndex = index->indexrelid;
@@ -4980,6 +4982,15 @@ RelationGetIndexList(Relation relation)
 			continue;
 
 		if (!index->indisvalid)
+			continue;
+
+		/*
+		 * Likewise, a manually disabled index cannot be trusted as the
+		 * explicitly-chosen replica identity index: logical decoding would
+		 * build old-row images from an index that may not reflect recent
+		 * changes.
+		 */
+		if (index->indisunusable)
 			continue;
 
 		/* remember explicitly chosen replica index */
@@ -5856,7 +5867,9 @@ RelationGetExclusionInfo(Relation indexRelation,
 void
 RelationBuildPublicationDesc(Relation relation, PublicationDesc *pubdesc)
 {
-	List	   *puboids;
+	List	   *puboids = NIL;
+	List	   *exceptpuboids = NIL;
+	List	   *alltablespuboids;
 	ListCell   *lc;
 	MemoryContext oldcxt;
 	Oid			schemaid;
@@ -5894,28 +5907,49 @@ RelationBuildPublicationDesc(Relation relation, PublicationDesc *pubdesc)
 	pubdesc->gencols_valid_for_delete = true;
 
 	/* Fetch the publication membership info. */
-	puboids = GetRelationPublications(relid);
+	puboids = GetRelationIncludedPublications(relid);
 	schemaid = RelationGetNamespace(relation);
 	puboids = list_concat_unique_oid(puboids, GetSchemaPublications(schemaid));
 
 	if (relation->rd_rel->relispartition)
 	{
+		Oid			last_ancestor_relid;
+
 		/* Add publications that the ancestors are in too. */
 		ancestors = get_partition_ancestors(relid);
+		last_ancestor_relid = llast_oid(ancestors);
 
 		foreach(lc, ancestors)
 		{
 			Oid			ancestor = lfirst_oid(lc);
 
 			puboids = list_concat_unique_oid(puboids,
-											 GetRelationPublications(ancestor));
+											 GetRelationIncludedPublications(ancestor));
 			schemaid = get_rel_namespace(ancestor);
 			puboids = list_concat_unique_oid(puboids,
 											 GetSchemaPublications(schemaid));
 		}
-	}
-	puboids = list_concat_unique_oid(puboids, GetAllTablesPublications());
 
+		/*
+		 * Only the top-most ancestor can appear in the EXCEPT clause.
+		 * Therefore, for a partition, exclusion must be evaluated at the
+		 * top-most ancestor.
+		 */
+		exceptpuboids = GetRelationExcludedPublications(last_ancestor_relid);
+	}
+	else
+	{
+		/*
+		 * For a regular table or a root partitioned table, check exclusion on
+		 * table itself.
+		 */
+		exceptpuboids = GetRelationExcludedPublications(relid);
+	}
+
+	alltablespuboids = GetAllTablesPublications();
+	puboids = list_concat_unique_oid(puboids,
+									 list_difference_oid(alltablespuboids,
+														 exceptpuboids));
 	foreach(lc, puboids)
 	{
 		Oid			pubid = lfirst_oid(lc);
@@ -6337,6 +6371,8 @@ load_relcache_init_file(bool shared)
 
 			populate_compact_attribute(rel->rd_att, i);
 		}
+
+		TupleDescFinalize(rel->rd_att);
 
 		/* next read the access method specific field */
 		if (fread(&len, 1, sizeof(len), fp) != sizeof(len))

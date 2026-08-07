@@ -46,6 +46,12 @@ PostgreSQL documentation
   </para>
 
   <para>
+   When enabling checksums, if checksums were in the process of being enabled
+   when the cluster was shut down, <application>pg_checksums</application>
+   will still process all relations regardless of the online processing.
+  </para>
+
+  <para>
    When verifying checksums, every file in the cluster is scanned. When
    enabling checksums, each relation file block with a changed checksum is
    rewritten in-place.
@@ -61,8 +67,8 @@ PostgreSQL documentation
 
     <variablelist>
      <varlistentry>
-      <term><option>-D <replaceable>directory</replaceable></option></term>
-      <term><option>--pgdata=<replaceable>directory</replaceable></option></term>
+      <term><option>-D <replaceable>datadir</replaceable></option></term>
+      <term><option>--pgdata=<replaceable>datadir</replaceable></option></term>
       <listitem>
        <para>
         Specifies the directory where the database cluster is stored.

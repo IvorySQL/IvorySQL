@@ -101,6 +101,7 @@
 #include "utils/guc_hooks.h"
 #include "utils/resowner.h"
 #include "utils/varlena.h"
+#include "utils/wait_event.h"
 
 /* Define PG_FLUSH_DATA_WORKS if we have an implementation for pg_flush_data */
 #if defined(HAVE_SYNC_FILE_RANGE)
@@ -2747,11 +2748,11 @@ OpenPipeStream(const char *command, const char *mode)
 
 TryAgain:
 	fflush(NULL);
-	pqsignal(SIGPIPE, SIG_DFL);
+	pqsignal(SIGPIPE, PG_SIG_DFL);
 	errno = 0;
 	file = popen(command, mode);
 	save_errno = errno;
-	pqsignal(SIGPIPE, SIG_IGN);
+	pqsignal(SIGPIPE, PG_SIG_IGN);
 	errno = save_errno;
 	if (file != NULL)
 	{

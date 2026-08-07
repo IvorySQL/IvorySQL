@@ -52,6 +52,11 @@
 #include "catalog/pg_parameter_acl.h"
 #include "catalog/pg_policy.h"
 #include "catalog/pg_proc.h"
+#include "catalog/pg_propgraph_element.h"
+#include "catalog/pg_propgraph_element_label.h"
+#include "catalog/pg_propgraph_label.h"
+#include "catalog/pg_propgraph_label_property.h"
+#include "catalog/pg_propgraph_property.h"
 #include "catalog/pg_publication.h"
 #include "catalog/pg_publication_namespace.h"
 #include "catalog/pg_publication_rel.h"
@@ -966,6 +971,17 @@ findDependentObjects(const ObjectAddress *object,
 			continue;
 
 		/*
+		 * Check that the dependent object is not in a shared catalog, which
+		 * is not supported by doDeletion().
+		 */
+		if (IsSharedRelation(otherObject.classId))
+			ereport(ERROR,
+					(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
+					 errmsg("cannot drop %s because %s depends on it",
+							getObjectDescription(object, false),
+							getObjectDescription(&otherObject, false))));
+
+		/*
 		 * Must lock the dependent object before recursing to it.
 		 */
 		AcquireDeletionLock(&otherObject, 0);
@@ -1852,6 +1868,11 @@ doDeletion(const ObjectAddress *object, int flags)
 		case AccessMethodRelationId:
 		case AccessMethodOperatorRelationId:
 		case AccessMethodProcedureRelationId:
+		case PropgraphElementRelationId:
+		case PropgraphElementLabelRelationId:
+		case PropgraphLabelRelationId:
+		case PropgraphLabelPropertyRelationId:
+		case PropgraphPropertyRelationId:
 		case NamespaceRelationId:
 		case TSParserRelationId:
 		case TSDictionaryRelationId:
@@ -2623,6 +2644,7 @@ find_expr_references_walker(Node *node,
 			switch (rte->rtekind)
 			{
 				case RTE_RELATION:
+				case RTE_GRAPH_TABLE:
 					add_object_address(RelationRelationId, rte->relid, 0,
 									   context->addrs);
 					break;

@@ -114,3 +114,45 @@ select sys_context('app', 'usr') is null as after_discard;
 
 drop table docs;
 drop role dbms_sess_rls;
+
+--
+-- RESET_PACKAGE: resets all PL/iSQL package state in the session
+--
+-- Smoke test: call with no user-defined package state initialized
+call dbms_session.reset_package();
+
+-- Create a package with mutable state to verify the reset
+CREATE OR REPLACE PACKAGE rp_pkg IS
+    g_n NUMBER := 0;
+    FUNCTION get_n RETURN NUMBER;
+    FUNCTION set_n(n NUMBER) RETURN NUMBER;
+END rp_pkg;
+/
+
+CREATE OR REPLACE PACKAGE BODY rp_pkg IS
+    FUNCTION get_n RETURN NUMBER AS
+    BEGIN
+        RETURN g_n;
+    END;
+    FUNCTION set_n(n NUMBER) RETURN NUMBER AS
+    BEGIN
+        g_n := n;
+        RETURN n;
+    END;
+END rp_pkg;
+/
+
+-- Mutate package state
+SELECT rp_pkg.set_n(42);
+SELECT rp_pkg.get_n;
+
+-- RESET_PACKAGE marks every package uninitialized; next access re-runs package init
+call dbms_session.reset_package();
+SELECT rp_pkg.get_n;
+
+-- reset_package must not touch application-context values (non-package session state)
+call dbms_session.set_context('rp_ns', 'key', 'preserved');
+call dbms_session.reset_package();
+select sys_context('rp_ns', 'key') as ctx_after_reset;
+
+DROP PACKAGE rp_pkg;

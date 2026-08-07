@@ -58,6 +58,7 @@
 #include "postgres.h"
 
 #include "access/heaptoast.h"
+#include "access/tupconvert.h"
 #include "catalog/pg_type.h"
 #include "commands/sequence.h"
 #include "executor/execExpr.h"
@@ -78,6 +79,7 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/timestamp.h"
+#include "utils/tuplesort.h"
 #include "utils/typcache.h"
 #include "utils/xml.h"
 #include "commands/proclang.h"
@@ -3518,7 +3520,7 @@ ExecEvalArrayExpr(ExprState *state, ExprEvalStep *op)
 		bool		havenulls = false;
 		bool		haveempty = false;
 		char	  **subdata;
-		bits8	  **subbitmaps;
+		uint8	  **subbitmaps;
 		int		   *subbytes;
 		int		   *subnitems;
 		int32		dataoffset;
@@ -3526,7 +3528,7 @@ ExecEvalArrayExpr(ExprState *state, ExprEvalStep *op)
 		int			iitem;
 
 		subdata = (char **) palloc(nelems * sizeof(char *));
-		subbitmaps = (bits8 **) palloc(nelems * sizeof(bits8 *));
+		subbitmaps = (uint8 **) palloc(nelems * sizeof(uint8 *));
 		subbytes = (int *) palloc(nelems * sizeof(int));
 		subnitems = (int *) palloc(nelems * sizeof(int));
 
@@ -4112,7 +4114,7 @@ ExecEvalScalarArrayOp(ExprState *state, ExprEvalStep *op)
 	char		typalign;
 	uint8		typalignby;
 	char	   *s;
-	bits8	   *bitmap;
+	uint8	   *bitmap;
 	int			bitmask;
 
 	/*
@@ -4339,7 +4341,7 @@ ExecEvalHashedScalarArrayOp(ExprState *state, ExprEvalStep *op, ExprContext *eco
 		int			nitems;
 		bool		has_nulls = false;
 		char	   *s;
-		bits8	   *bitmap;
+		uint8	   *bitmap;
 		int			bitmask;
 		MemoryContext oldcontext;
 		ArrayType  *arr;
@@ -4624,7 +4626,7 @@ ExecEvalXmlExpr(ExprState *state, ExprEvalStep *op)
 
 				*op->resvalue = PointerGetDatum(xmlparse(data,
 														 xexpr->xmloption,
-														 preserve_whitespace));
+														 preserve_whitespace, NULL));
 				*op->resnull = false;
 			}
 			break;
@@ -4845,7 +4847,7 @@ ExecEvalJsonIsPredicate(ExprState *state, ExprEvalStep *op)
 {
 	JsonIsPredicate *pred = op->d.is_json.pred;
 	Datum		js = *op->resvalue;
-	Oid			exprtype;
+	Oid			exprtype = pred->exprBaseType;
 	bool		res;
 
 	if (*op->resnull)
@@ -4853,8 +4855,6 @@ ExecEvalJsonIsPredicate(ExprState *state, ExprEvalStep *op)
 		*op->resvalue = BoolGetDatum(false);
 		return;
 	}
-
-	exprtype = exprType(pred->expr);
 
 	if (exprtype == TEXTOID || exprtype == JSONOID)
 	{

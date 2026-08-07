@@ -18,6 +18,7 @@
 #include "access/xlog.h"
 #include "access/xlogrecovery.h"
 #include "access/xlogwait.h"
+#include "catalog/pg_type_d.h"
 #include "commands/defrem.h"
 #include "commands/wait.h"
 #include "executor/executor.h"
@@ -30,7 +31,8 @@
 
 
 void
-ExecWaitStmt(ParseState *pstate, WaitStmt *stmt, DestReceiver *dest)
+ExecWaitStmt(ParseState *pstate, WaitStmt *stmt, bool isTopLevel,
+			 DestReceiver *dest)
 {
 	XLogRecPtr	lsn;
 	int64		timeout = 0;
@@ -43,6 +45,17 @@ ExecWaitStmt(ParseState *pstate, WaitStmt *stmt, DestReceiver *dest)
 	bool		timeout_specified = false;
 	bool		no_throw_specified = false;
 	bool		mode_specified = false;
+
+	/*
+	 * WAIT FOR must not be run as a non-top-level statement (e.g., inside a
+	 * function, procedure, or DO block). Forbid this case upfront.
+	 */
+	if (!isTopLevel)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("%s can only be executed as a top-level statement",
+						"WAIT FOR"),
+				 errdetail("WAIT FOR cannot be used within a function, procedure, or DO block.")));
 
 	/* Parse and validate the mandatory LSN */
 	lsn = DatumGetLSN(DirectFunctionCall1(pg_lsn_in,
@@ -141,10 +154,9 @@ ExecWaitStmt(ParseState *pstate, WaitStmt *stmt, DestReceiver *dest)
 	 * implying a kind of self-deadlock.  This is the reason why WAIT FOR is a
 	 * command, not a procedure or function.
 	 *
-	 * At first, we should check there is no active snapshot.  According to
-	 * PlannedStmtRequiresSnapshot(), even in an atomic context, CallStmt is
-	 * processed with a snapshot.  Thankfully, we can pop this snapshot,
-	 * because PortalRunUtility() can tolerate this.
+	 * Non-top-level contexts are rejected above, but be defensive and pop any
+	 * active snapshot if one is present.  PortalRunUtility() can tolerate
+	 * utility commands that remove the active snapshot.
 	 */
 	if (ActiveSnapshotSet())
 		PopActiveSnapshot();
@@ -160,7 +172,7 @@ ExecWaitStmt(ParseState *pstate, WaitStmt *stmt, DestReceiver *dest)
 		ereport(ERROR,
 				errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				errmsg("WAIT FOR must be called without an active or registered snapshot"),
-				errdetail("WAIT FOR cannot be executed from a function or procedure, nor within a transaction with an isolation level higher than READ COMMITTED."));
+				errdetail("WAIT FOR cannot be executed within a transaction with an isolation level higher than READ COMMITTED."));
 
 	/*
 	 * As the result we should hold no snapshot, and correspondingly our xmin
@@ -334,9 +346,17 @@ WaitStmtResultDesc(WaitStmt *stmt)
 {
 	TupleDesc	tupdesc;
 
-	/* Need a tuple descriptor representing a single TEXT  column */
+	/*
+	 * Need a tuple descriptor representing a single TEXT column.
+	 *
+	 * We use TupleDescInitBuiltinEntry instead of TupleDescInitEntry to avoid
+	 * syscache access. This is important because WaitStmtResultDesc may be
+	 * called after snapshots have been released, and we must not re-establish
+	 * a catalog snapshot which could cause recovery conflicts on a standby.
+	 */
 	tupdesc = CreateTemplateTupleDesc(1);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "status",
-					   TEXTOID, -1, 0);
+	TupleDescInitBuiltinEntry(tupdesc, (AttrNumber) 1, "status",
+							  TEXTOID, -1, 0);
+	TupleDescFinalize(tupdesc);
 	return tupdesc;
 }

@@ -1770,7 +1770,7 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 			|| strcmp(defel->defname, "noshard") == 0)
 		{
 			shardcnt++;
-			if(keepcnt > 1)
+			if(shardcnt > 1)
 			{
 				ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
@@ -2628,6 +2628,7 @@ pg_get_sequence_data(PG_FUNCTION_ARGS)
 					   BOOLOID, -1, 0);
 	TupleDescInitEntry(resultTupleDesc, (AttrNumber) 3, "page_lsn",
 					   LSNOID, -1, 0);
+	TupleDescFinalize(resultTupleDesc);
 	resultTupleDesc = BlessTupleDesc(resultTupleDesc);
 
 	seqrel = try_relation_open(relid, AccessShareLock);

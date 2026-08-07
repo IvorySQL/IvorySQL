@@ -34,6 +34,7 @@
 #include "access/tableam.h"
 #include "catalog/pg_am.h"
 #include "executor/executor.h"
+#include "executor/instrument.h"
 #include "executor/nodeIndexscan.h"
 #include "lib/pairingheap.h"
 #include "miscadmin.h"
@@ -42,6 +43,7 @@
 #include "utils/datum.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
+#include "utils/sortsupport.h"
 
 /*
  * When an ordering operator is used, tuples fetched from the index that
@@ -109,9 +111,11 @@ IndexNext(IndexScanState *node)
 		scandesc = index_beginscan(node->ss.ss_currentRelation,
 								   node->iss_RelationDesc,
 								   estate->es_snapshot,
-								   &node->iss_Instrument,
+								   node->iss_Instrument,
 								   node->iss_NumScanKeys,
-								   node->iss_NumOrderByKeys);
+								   node->iss_NumOrderByKeys,
+								   ScanRelIsReadOnly(&node->ss) ?
+								   SO_HINT_REL_READ_ONLY : SO_NONE);
 
 		node->iss_ScanDesc = scandesc;
 
@@ -205,9 +209,11 @@ IndexNextWithReorder(IndexScanState *node)
 		scandesc = index_beginscan(node->ss.ss_currentRelation,
 								   node->iss_RelationDesc,
 								   estate->es_snapshot,
-								   &node->iss_Instrument,
+								   node->iss_Instrument,
 								   node->iss_NumScanKeys,
-								   node->iss_NumOrderByKeys);
+								   node->iss_NumOrderByKeys,
+								   ScanRelIsReadOnly(&node->ss) ?
+								   SO_HINT_REL_READ_ONLY : SO_NONE);
 
 		node->iss_ScanDesc = scandesc;
 
@@ -802,7 +808,7 @@ ExecEndIndexScan(IndexScanState *node)
 	{
 		IndexScanInstrumentation *winstrument;
 
-		Assert(ParallelWorkerNumber <= node->iss_SharedInfo->num_workers);
+		Assert(ParallelWorkerNumber < node->iss_SharedInfo->num_workers);
 		winstrument = &node->iss_SharedInfo->winstrument[ParallelWorkerNumber];
 
 		/*
@@ -811,7 +817,7 @@ ExecEndIndexScan(IndexScanState *node)
 		 * shutdown on the workers.  On rescan it will spin up new workers
 		 * which will have a new IndexOnlyScanState and zeroed stats.
 		 */
-		winstrument->nsearches += node->iss_Instrument.nsearches;
+		winstrument->nsearches += node->iss_Instrument->nsearches;
 	}
 
 	/*
@@ -938,7 +944,8 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
 	 */
 	ExecInitScanTupleSlot(estate, &indexstate->ss,
 						  RelationGetDescr(currentRelation),
-						  table_slot_callbacks(currentRelation));
+						  table_slot_callbacks(currentRelation),
+						  TTS_FLAG_OBEYS_NOT_NULL_CONSTRAINTS);
 
 	/*
 	 * Initialize result type and projection.
@@ -970,6 +977,10 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
 	 */
 	if (eflags & EXEC_FLAG_EXPLAIN_ONLY)
 		return indexstate;
+
+	/* Set up instrumentation of index scans if requested */
+	if (estate->es_instrument)
+		indexstate->iss_Instrument = palloc0_object(IndexScanInstrumentation);
 
 	/* Open the index relation. */
 	lockmode = exec_rt_fetch(node->scan.scanrelid, estate)->rellockmode;
@@ -1663,21 +1674,11 @@ ExecIndexScanEstimate(IndexScanState *node,
 					  ParallelContext *pcxt)
 {
 	EState	   *estate = node->ss.ps.state;
-	bool		instrument = node->ss.ps.instrument != NULL;
-	bool		parallel_aware = node->ss.ps.plan->parallel_aware;
-
-	if (!instrument && !parallel_aware)
-	{
-		/* No DSM required by the scan */
-		return;
-	}
 
 	node->iss_PscanLen = index_parallelscan_estimate(node->iss_RelationDesc,
 													 node->iss_NumScanKeys,
 													 node->iss_NumOrderByKeys,
-													 estate->es_snapshot,
-													 instrument, parallel_aware,
-													 pcxt->nworkers);
+													 estate->es_snapshot);
 	shm_toc_estimate_chunk(&pcxt->estimator, node->iss_PscanLen);
 	shm_toc_estimate_keys(&pcxt->estimator, 1);
 }
@@ -1694,36 +1695,23 @@ ExecIndexScanInitializeDSM(IndexScanState *node,
 {
 	EState	   *estate = node->ss.ps.state;
 	ParallelIndexScanDesc piscan;
-	bool		instrument = node->ss.ps.instrument != NULL;
-	bool		parallel_aware = node->ss.ps.plan->parallel_aware;
-
-	if (!instrument && !parallel_aware)
-	{
-		/* No DSM required by the scan */
-		return;
-	}
 
 	piscan = shm_toc_allocate(pcxt->toc, node->iss_PscanLen);
 	index_parallelscan_initialize(node->ss.ss_currentRelation,
 								  node->iss_RelationDesc,
 								  estate->es_snapshot,
-								  instrument, parallel_aware, pcxt->nworkers,
-								  &node->iss_SharedInfo, piscan);
+								  piscan);
 	shm_toc_insert(pcxt->toc, node->ss.ps.plan->plan_node_id, piscan);
-
-	if (!parallel_aware)
-	{
-		/* Only here to initialize SharedInfo in DSM */
-		return;
-	}
 
 	node->iss_ScanDesc =
 		index_beginscan_parallel(node->ss.ss_currentRelation,
 								 node->iss_RelationDesc,
-								 &node->iss_Instrument,
+								 node->iss_Instrument,
 								 node->iss_NumScanKeys,
 								 node->iss_NumOrderByKeys,
-								 piscan);
+								 piscan,
+								 ScanRelIsReadOnly(&node->ss) ?
+								 SO_HINT_REL_READ_ONLY : SO_NONE);
 
 	/*
 	 * If no run-time keys to calculate or they are ready, go ahead and pass
@@ -1760,34 +1748,18 @@ ExecIndexScanInitializeWorker(IndexScanState *node,
 							  ParallelWorkerContext *pwcxt)
 {
 	ParallelIndexScanDesc piscan;
-	bool		instrument = node->ss.ps.instrument != NULL;
-	bool		parallel_aware = node->ss.ps.plan->parallel_aware;
-
-	if (!instrument && !parallel_aware)
-	{
-		/* No DSM required by the scan */
-		return;
-	}
 
 	piscan = shm_toc_lookup(pwcxt->toc, node->ss.ps.plan->plan_node_id, false);
-
-	if (instrument)
-		node->iss_SharedInfo = (SharedIndexScanInstrumentation *)
-			OffsetToPointer(piscan, piscan->ps_offset_ins);
-
-	if (!parallel_aware)
-	{
-		/* Only here to set up worker node's SharedInfo */
-		return;
-	}
 
 	node->iss_ScanDesc =
 		index_beginscan_parallel(node->ss.ss_currentRelation,
 								 node->iss_RelationDesc,
-								 &node->iss_Instrument,
+								 node->iss_Instrument,
 								 node->iss_NumScanKeys,
 								 node->iss_NumOrderByKeys,
-								 piscan);
+								 piscan,
+								 ScanRelIsReadOnly(&node->ss) ?
+								 SO_HINT_REL_READ_ONLY : SO_NONE);
 
 	/*
 	 * If no run-time keys to calculate or they are ready, go ahead and pass
@@ -1797,6 +1769,73 @@ ExecIndexScanInitializeWorker(IndexScanState *node,
 		index_rescan(node->iss_ScanDesc,
 					 node->iss_ScanKeys, node->iss_NumScanKeys,
 					 node->iss_OrderByKeys, node->iss_NumOrderByKeys);
+}
+
+/*
+ * Compute the amount of space we'll need for the shared instrumentation and
+ * inform pcxt->estimator.
+ */
+void
+ExecIndexScanInstrumentEstimate(IndexScanState *node,
+								ParallelContext *pcxt)
+{
+	Size		size;
+
+	if (!node->ss.ps.instrument || pcxt->nworkers == 0)
+		return;
+
+	/*
+	 * This size calculation is trivial enough that we don't bother saving it
+	 * in the IndexScanState. We'll recalculate the needed size in
+	 * ExecIndexScanInstrumentInitDSM().
+	 */
+	size = add_size(offsetof(SharedIndexScanInstrumentation, winstrument),
+					mul_size(pcxt->nworkers, sizeof(IndexScanInstrumentation)));
+	shm_toc_estimate_chunk(&pcxt->estimator, size);
+	shm_toc_estimate_keys(&pcxt->estimator, 1);
+}
+
+/*
+ * Set up parallel index scan instrumentation.
+ */
+void
+ExecIndexScanInstrumentInitDSM(IndexScanState *node,
+							   ParallelContext *pcxt)
+{
+	Size		size;
+
+	if (!node->ss.ps.instrument || pcxt->nworkers == 0)
+		return;
+
+	size = add_size(offsetof(SharedIndexScanInstrumentation, winstrument),
+					mul_size(pcxt->nworkers, sizeof(IndexScanInstrumentation)));
+	node->iss_SharedInfo =
+		(SharedIndexScanInstrumentation *) shm_toc_allocate(pcxt->toc, size);
+
+	/* Each per-worker area must start out as zeroes */
+	memset(node->iss_SharedInfo, 0, size);
+	node->iss_SharedInfo->num_workers = pcxt->nworkers;
+	shm_toc_insert(pcxt->toc,
+				   node->ss.ps.plan->plan_node_id +
+				   PARALLEL_KEY_SCAN_INSTRUMENT_OFFSET,
+				   node->iss_SharedInfo);
+}
+
+/*
+ * Look up and save the location of the shared instrumentation.
+ */
+void
+ExecIndexScanInstrumentInitWorker(IndexScanState *node,
+								  ParallelWorkerContext *pwcxt)
+{
+	if (!node->ss.ps.instrument)
+		return;
+
+	node->iss_SharedInfo = (SharedIndexScanInstrumentation *)
+		shm_toc_lookup(pwcxt->toc,
+					   node->ss.ps.plan->plan_node_id +
+					   PARALLEL_KEY_SCAN_INSTRUMENT_OFFSET,
+					   false);
 }
 
 /* ----------------------------------------------------------------

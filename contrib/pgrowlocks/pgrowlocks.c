@@ -40,6 +40,7 @@
 #include "utils/fmgrprotos.h"
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
+#include "utils/tuplestore.h"
 #include "utils/varlena.h"
 
 PG_MODULE_MAGIC_EXT(
@@ -114,7 +115,7 @@ pgrowlocks(PG_FUNCTION_ARGS)
 					   RelationGetRelationName(rel));
 
 	/* Scan the relation */
-	scan = table_beginscan(rel, GetActiveSnapshot(), 0, NULL);
+	scan = table_beginscan(rel, GetActiveSnapshot(), 0, NULL, SO_NONE);
 	hscan = (HeapScanDesc) scan;
 
 	attinmeta = TupleDescGetAttInMetadata(rsinfo->setDesc);

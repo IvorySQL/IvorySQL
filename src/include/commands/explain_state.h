@@ -16,6 +16,7 @@
 #include "nodes/parsenodes.h"
 #include "nodes/plannodes.h"
 #include "parser/parse_node.h"
+#include "port/pg_bitutils.h"
 
 typedef enum ExplainSerializeOption
 {
@@ -54,6 +55,7 @@ typedef struct ExplainState
 	bool		summary;		/* print total planning and execution timing */
 	bool		memory;			/* print planner's memory usage information */
 	bool		settings;		/* print modified settings */
+	bool		io;				/* print info about IO (prefetch, ...) */
 	bool		generic;		/* generate a generic plan */
 	ExplainSerializeOption serialize;	/* serialize the query's output? */
 	ExplainFormat format;		/* output format */
@@ -77,6 +79,9 @@ typedef struct ExplainState
 } ExplainState;
 
 typedef void (*ExplainOptionHandler) (ExplainState *, DefElem *, ParseState *);
+typedef bool (*ExplainOptionGUCCheckHandler) (const char *option_name,
+											  const char *option_value,
+											  NodeTag option_type);
 
 /* Hook to perform additional EXPLAIN options validation */
 typedef void (*explain_validate_options_hook_type) (ExplainState *es, List *options,
@@ -93,8 +98,16 @@ extern void SetExplainExtensionState(ExplainState *es, int extension_id,
 									 void *opaque);
 
 extern void RegisterExtensionExplainOption(const char *option_name,
-										   ExplainOptionHandler handler);
+										   ExplainOptionHandler handler,
+										   ExplainOptionGUCCheckHandler guc_check_handler);
 extern bool ApplyExtensionExplainOption(ExplainState *es, DefElem *opt,
 										ParseState *pstate);
+extern bool GUCCheckExplainExtensionOption(const char *option_name,
+										   const char *option_value,
+										   NodeTag option_type);
+
+extern bool GUCCheckBooleanExplainOption(const char *option_name,
+										 const char *option_value,
+										 NodeTag option_type);
 
 #endif							/* EXPLAIN_STATE_H */

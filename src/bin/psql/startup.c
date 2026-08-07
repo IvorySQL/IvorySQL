@@ -26,6 +26,7 @@
 #include "input.h"
 #include "mainloop.h"
 #include "oracle_fe_utils/ora_string_utils.h"
+#include "portability/instr_time.h"
 #include "settings.h"
 
 /*
@@ -331,6 +332,9 @@ main(int argc, char *argv[])
 #endif
 
 	PQsetNoticeProcessor(pset.db, NoticeProcessor, NULL);
+
+	/* initialize timing infrastructure (required for INSTR_* calls) */
+	pg_initialize_timing();
 
 	SyncVariables();
 

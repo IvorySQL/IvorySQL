@@ -88,10 +88,12 @@
 #include "storage/large_object.h"
 #include "storage/pg_shmem.h"
 #include "storage/predicate.h"
+#include "storage/proc.h"
 #include "storage/procnumber.h"
 #include "storage/standby.h"
 #include "tcop/backend_startup.h"
 #include "tcop/tcopprot.h"
+#include "portability/instr_time.h"
 #include "tsearch/ts_cache.h"
 #include "utils/builtins.h"
 #include "utils/bytea.h"
@@ -385,6 +387,15 @@ static const struct config_enum_entry huge_pages_options[] = {
 	{NULL, 0, false}
 };
 
+static const struct config_enum_entry timing_clock_source_options[] = {
+	{"auto", TIMING_CLOCK_SOURCE_AUTO, false},
+	{"system", TIMING_CLOCK_SOURCE_SYSTEM, false},
+#if PG_INSTR_TSC_CLOCK
+	{"tsc", TIMING_CLOCK_SOURCE_TSC, false},
+#endif
+	{NULL, 0, false}
+};
+
 static const struct config_enum_entry huge_pages_status_options[] = {
 	{"off", HUGE_PAGES_OFF, false},
 	{"on", HUGE_PAGES_ON, false},
@@ -516,6 +527,14 @@ static const struct config_enum_entry file_extend_method_options[] = {
 	{NULL, 0, false}
 };
 
+static const struct config_enum_entry data_checksums_options[] = {
+	{"on", PG_DATA_CHECKSUM_VERSION, true},
+	{"off", PG_DATA_CHECKSUM_OFF, true},
+	{"inprogress-on", PG_DATA_CHECKSUM_INPROGRESS_ON, true},
+	{"inprogress-off", PG_DATA_CHECKSUM_INPROGRESS_OFF, true},
+	{NULL, 0, false}
+};
+
 /*
  * Options for enum values stored in other modules
  */
@@ -580,6 +599,7 @@ char	   *cluster_name = "";
 char	   *ConfigFileName;
 char	   *HbaFileName;
 char	   *IdentFileName;
+char	   *HostsFileName;
 char	   *external_pid_file;
 
 
@@ -651,7 +671,6 @@ static int	shared_memory_size_in_huge_pages;
 static int	wal_block_size;
 static int	num_os_semaphores;
 static int	effective_wal_level = WAL_LEVEL_REPLICA;
-static bool data_checksums;
 static bool integer_datetimes;
 
 #ifdef USE_ASSERT_CHECKING
@@ -747,6 +766,7 @@ const char *const config_group_names[] =
 	[CONN_AUTH_TCP] = gettext_noop("Connections and Authentication / TCP Settings"),
 	[CONN_AUTH_AUTH] = gettext_noop("Connections and Authentication / Authentication"),
 	[CONN_AUTH_SSL] = gettext_noop("Connections and Authentication / SSL"),
+	[RESOURCES_TIME] = gettext_noop("Resource Usage / Time"),
 	[RESOURCES_MEM] = gettext_noop("Resource Usage / Memory"),
 	[RESOURCES_DISK] = gettext_noop("Resource Usage / Disk"),
 	[RESOURCES_KERNEL] = gettext_noop("Resource Usage / Kernel Resources"),

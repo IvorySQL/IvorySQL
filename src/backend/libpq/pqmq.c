@@ -14,14 +14,17 @@
 #include "postgres.h"
 
 #include "access/parallel.h"
+#include "commands/repack.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
 #include "libpq/pqmq.h"
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "replication/logicalworker.h"
+#include "storage/latch.h"
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
+#include "utils/wait_event.h"
 
 static shm_mq_handle *pq_mq_handle = NULL;
 static bool pq_mq_busy = false;
@@ -174,6 +177,10 @@ mq_putmessage(char msgtype, const char *s, size_t len)
 			if (IsLogicalParallelApplyWorker())
 				SendProcSignal(pq_mq_parallel_leader_pid,
 							   PROCSIG_PARALLEL_APPLY_MESSAGE,
+							   pq_mq_parallel_leader_proc_number);
+			else if (AmRepackWorker())
+				SendProcSignal(pq_mq_parallel_leader_pid,
+							   PROCSIG_REPACK_MESSAGE,
 							   pq_mq_parallel_leader_proc_number);
 			else
 			{

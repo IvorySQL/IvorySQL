@@ -507,9 +507,10 @@ include_dir 'conf.d'
      <para>
       In addition to the <filename>postgresql.conf</filename> file
       already mentioned, <productname>PostgreSQL</productname> uses
-      two other manually-edited configuration files, which control
+      three other manually-edited configuration files, which control
       client authentication (their use is discussed in <xref
-      linkend="client-authentication"/>).  By default, all three
+      linkend="client-authentication"/>) and SSL host configuration.
+      By default, all four
       configuration files are stored in the database cluster's data
       directory.  The parameters described in this section allow the
       configuration files to be placed elsewhere.  (Doing so can ease
@@ -579,6 +580,22 @@ include_dir 'conf.d'
       </listitem>
      </varlistentry>
 
+     <varlistentry id="guc-hosts-file" xreflabel="hosts_file">
+      <term><varname>hosts_file</varname> (<type>string</type>)
+      <indexterm>
+       <primary><varname>hosts_file</varname> configuration parameter</primary>
+      </indexterm>
+      </term>
+      <listitem>
+       <para>
+         Specifies the configuration file for host-based SSL configuration
+         (customarily called <filename>pg_hosts.conf</filename>).
+         This parameter can only be set at server start. See also
+         <xref linkend="ssl-sni"/>.
+       </para>
+      </listitem>
+     </varlistentry>
+
      <varlistentry id="guc-external-pid-file" xreflabel="external_pid_file">
       <term><varname>external_pid_file</varname> (<type>string</type>)
       <indexterm>
@@ -620,10 +637,11 @@ include_dir 'conf.d'
      <para>
       If you wish, you can specify the configuration file names and locations
       individually using the parameters <varname>config_file</varname>,
-      <varname>hba_file</varname> and/or <varname>ident_file</varname>.
+      <varname>hba_file</varname>, <varname>ident_file</varname> and/or
+      <varname>hosts_file</varname>.
       <varname>config_file</varname> can only be specified on the
       <command>postgres</command> command line, but the others can be
-      set within the main configuration file.  If all three parameters plus
+      set within the main configuration file.  If all four parameters plus
       <varname>data_directory</varname> are explicitly set, then it is not necessary
       to specify <option>-D</option> or <envar>PGDATA</envar>.
      </para>
@@ -1734,6 +1752,25 @@ include_dir 'conf.d'
        </para>
       </listitem>
      </varlistentry>
+
+     <varlistentry id="guc-ssl-sni" xreflabel="ssl_sni">
+      <term><varname>ssl_sni</varname> (<type>boolean</type>)
+      <indexterm>
+       <primary><varname>ssl_sni</varname> configuration parameter</primary>
+      </indexterm>
+      </term>
+      <listitem>
+       <para>
+        Enables SNI configuration for SSL connections.  When set to <literal>on</literal>
+        host configuration from <xref linkend="guc-hosts-file"/> is used, see
+        <xref linkend="ssl-sni"/> for more details.
+       </para>
+       <para>
+        This parameter can only be set in the <filename>postgresql.conf</filename>
+        file or on the server command line.  The default is <literal>off</literal>.
+       </para>
+      </listitem>
+     </varlistentry>
     </variablelist>
     </sect2>
    </sect1>
@@ -2533,6 +2570,78 @@ include_dir 'conf.d'
      </variablelist>
     </sect2>
 
+    <sect2 id="runtime-config-resource-time">
+     <title>Timing</title>
+
+     <variablelist>
+      <varlistentry id="guc-timing-clock-source" xreflabel="timing_clock_source">
+       <term><varname>timing_clock_source</varname> (<type>enum</type>)
+       <indexterm>
+        <primary><varname>timing_clock_source</varname> configuration parameter</primary>
+       </indexterm>
+       </term>
+       <listitem>
+        <para>
+         Selects the method for making timing measurements using the OS or
+         specialized CPU instructions. Possible values are:
+         <itemizedlist>
+          <listitem>
+           <para>
+            <literal>auto</literal> (automatically chooses <acronym>TSC</acronym>
+            clock source on supported x86-64 CPUs, otherwise uses the OS system
+            clock)
+           </para>
+          </listitem>
+          <listitem>
+           <para>
+            <literal>system</literal> (measures timing using the OS system clock)
+           </para>
+          </listitem>
+          <listitem>
+           <para>
+            <literal>tsc</literal> (measures timing with a CPU instruction, e.g.
+            using <command>RDTSC</command>/<command>RDTSCP</command> on x86-64)
+           </para>
+          </listitem>
+         </itemizedlist>
+         The default is <literal>auto</literal>. Only superusers can change this
+         setting. Changing the setting during query execution is not recommended
+         and may cause interval timings to jump significantly or produce negative
+         values.
+        </para>
+        <para>
+         <indexterm>
+          <primary>Time-Stamp Counter</primary>
+          <see><acronym>TSC</acronym></see>
+         </indexterm>
+         <indexterm><primary><acronym>TSC</acronym></primary></indexterm>
+         If enabled, the <acronym>TSC</acronym> clock source, named after the
+         Time-Stamp Counter on x86-64, will use specialized CPU instructions when
+         measuring time intervals. This lowers timing overhead compared to reading
+         the OS system clock, and reduces the measurement error on top of the
+         actual runtime, for example with <command>EXPLAIN ANALYZE</command>.
+        </para>
+        <para>
+         <indexterm><primary><acronym>RDTSC</acronym></primary></indexterm>
+         On x86-64 CPUs the <acronym>TSC</acronym> clock source utilizes the
+         <command>RDTSC</command> instruction for <command>EXPLAIN ANALYZE</command>.
+         For timings that require higher precision the <command>RDTSCP</command>
+         instruction is used, which avoids inaccuracies due to CPU instruction
+         re-ordering. Use of the <acronym>TSC</acronym> clock source is not
+         supported on older x86-64 CPUs and other architectures, and is not
+         advised on systems that utilize an emulated <acronym>TSC</acronym>, as it
+         is likely slower than the system clock source.
+        </para>
+       <para>
+        To help decide which clock source to use you can run the
+        <xref linkend="pgtesttiming"/> utility to check <acronym>TSC</acronym>
+        availability, and perform timing measurements.
+       </para>
+
+       </listitem>
+      </varlistentry>
+     </variablelist>
+    </sect2>
 
     <sect2 id="runtime-config-resource-background-writer">
      <title>Background Writer</title>
@@ -2870,16 +2979,75 @@ include_dir 'conf.d'
        </listitem>
       </varlistentry>
 
-      <varlistentry id="guc-io-workers" xreflabel="io_workers">
-       <term><varname>io_workers</varname> (<type>integer</type>)
+      <varlistentry id="guc-io-min-workers" xreflabel="io_min_workers">
+       <term><varname>io_min_workers</varname> (<type>integer</type>)
        <indexterm>
-        <primary><varname>io_workers</varname> configuration parameter</primary>
+        <primary><varname>io_min_workers</varname> configuration parameter</primary>
        </indexterm>
        </term>
        <listitem>
         <para>
-         Selects the number of I/O worker processes to use. The default is
-         3. This parameter can only be set in the
+         Sets the minimum number of I/O worker processes. The default is
+         2. This parameter can only be set in the
+         <filename>postgresql.conf</filename> file or on the server command
+         line.
+        </para>
+        <para>
+         Only has an effect if <xref linkend="guc-io-method"/> is set to
+         <literal>worker</literal>.
+        </para>
+       </listitem>
+      </varlistentry>
+      <varlistentry id="guc-io-max-workers" xreflabel="io_max_workers">
+       <term><varname>io_max_workers</varname> (<type>int</type>)
+       <indexterm>
+        <primary><varname>io_max_workers</varname> configuration parameter</primary>
+       </indexterm>
+       </term>
+       <listitem>
+        <para>
+         Sets the maximum number of I/O worker processes. The default is
+         8. This parameter can only be set in the
+         <filename>postgresql.conf</filename> file or on the server command
+         line.
+        </para>
+        <para>
+         Only has an effect if <xref linkend="guc-io-method"/> is set to
+         <literal>worker</literal>.
+        </para>
+       </listitem>
+      </varlistentry>
+      <varlistentry id="guc-io-worker-idle-timeout" xreflabel="io_worker_idle_timeout">
+       <term><varname>io_worker_idle_timeout</varname> (<type>int</type>)
+       <indexterm>
+        <primary><varname>io_worker_idle_timeout</varname> configuration parameter</primary>
+       </indexterm>
+       </term>
+       <listitem>
+        <para>
+         Sets the time after which entirely idle I/O worker processes exit, reducing the
+         size of pool to match demand.  The default is 1 minute.  This
+         parameter can only be set in the
+         <filename>postgresql.conf</filename> file or on the server command
+         line.
+        </para>
+        <para>
+         Only has an effect if <xref linkend="guc-io-method"/> is set to
+         <literal>worker</literal>.
+        </para>
+       </listitem>
+      </varlistentry>
+      <varlistentry id="guc-io-worker-launch-interval" xreflabel="io_worker_launch_interval">
+       <term><varname>io_worker_launch_interval</varname> (<type>int</type>)
+       <indexterm>
+        <primary><varname>io_worker_launch_interval</varname> configuration parameter</primary>
+       </indexterm>
+       </term>
+       <listitem>
+        <para>
+         Sets the minimum time before another I/O worker can be launched.  This avoids
+         creating too many for an unsustained burst of activity.  The default is 100ms.
+         This parameter can only be set in the
          <filename>postgresql.conf</filename> file or on the server command
          line.
         </para>
@@ -2918,6 +3086,7 @@ include_dir 'conf.d'
         <para>
          When changing this value, consider also adjusting
          <xref linkend="guc-max-parallel-workers"/>,
+         <xref linkend="guc-autovacuum-max-parallel-workers"/>,
          <xref linkend="guc-max-parallel-maintenance-workers"/>, and
          <xref linkend="guc-max-parallel-workers-per-gather"/>.
         </para>
@@ -4334,6 +4503,21 @@ restore_command = 'copy "C:\\server\\archivedir\\%f" "%p"'  # Windows
         The precise stopping point is also influenced by
         <xref linkend="guc-recovery-target-inclusive"/>.
        </para>
+
+       <para>
+        The value can be specified as either a 32-bit transaction ID or a 64-bit
+        transaction ID (consisting of an epoch and a 32-bit ID), such as the
+        value returned by <function>pg_current_xact_id()</function>. When a
+        64-bit transaction ID is provided, only its 32-bit transaction ID
+        portion is used as the recovery target. For example, the values
+        4294968296 (epoch 1) and 8589935592 (epoch 2) both refer to the same
+        32-bit transaction ID, 1000.
+       </para>
+
+       <para>
+        The effective transaction ID (the 32-bit portion) must be greater than
+        or equal to 3.
+       </para>
       </listitem>
      </varlistentry>
 
@@ -4623,6 +4807,21 @@ restore_command = 'copy "C:\\server\\archivedir\\%f" "%p"'  # Windows
        </listitem>
       </varlistentry>
 
+      <varlistentry id="guc-max-repack-replication-slots" xreflabel="max_repack_replication_slots">
+       <term><varname>max_repack_replication_slots</varname> (<type>integer</type>)
+       <indexterm>
+        <primary><varname>max_repack_replication_slots</varname> configuration parameter</primary>
+       </indexterm>
+       </term>
+       <listitem>
+        <para>
+         Specifies the maximum number of replication slots for use of
+         the <command>REPACK</command> command.  The default is 5.
+         This parameter can only be set at server start.
+        </para>
+       </listitem>
+      </varlistentry>
+
       <varlistentry id="guc-max-replication-slots" xreflabel="max_replication_slots">
        <term><varname>max_replication_slots</varname> (<type>integer</type>)
        <indexterm>
@@ -4772,6 +4971,48 @@ restore_command = 'copy "C:\\server\\archivedir\\%f" "%p"'  # Windows
         connection, and a larger value helps in judging better the health
         of a standby if located on a remote location, with a high-latency
         network connection.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="guc-wal-sender-shutdown-timeout" xreflabel="wal_sender_shutdown_timeout">
+      <term><varname>wal_sender_shutdown_timeout</varname> (<type>integer</type>)
+      <indexterm>
+       <primary><varname>wal_sender_shutdown_timeout</varname> configuration parameter</primary>
+      </indexterm>
+      </term>
+      <listitem>
+       <para>
+        Specifies the maximum time the server waits during shutdown for all
+        WAL data to be replicated to the receiver.  If this value is specified
+        without units, it is taken as milliseconds.  A value of
+        <literal>-1</literal> (the default) disables the timeout mechanism.
+       </para>
+       <para>
+       When replication is in use, the sending server normally waits until
+       all WAL data has been transferred to the receiver before completing
+       shutdown.  This helps keep sender and receiver in sync after shutdown,
+       which is especially important for physical replication switchovers,
+       but it can delay shutdown.
+       </para>
+       <para>
+        If this parameter is set, the server stops waiting and completes
+        shutdown when the timeout expires.  This can shorten shutdown time,
+        for example, when replication is slow on high-latency networks or
+        when a logical replication apply worker is blocked waiting for locks.
+        However, in this case the sender and receiver may be out of sync after
+        shutdown.
+       </para>
+       <para>
+        This parameter can be set in <varname>primary_conninfo</varname> and
+        in the <literal>CONNECTION</literal> clause of
+        <command>CREATE SUBSCRIPTION</command> (for example, include
+        <literal>options=-cwal_sender_shutdown_timeout=10s</literal> in the
+        connection string), allowing different timeouts per replication
+        connection.  For example, when both physical and logical replication
+        are used, it can be disabled for physical replication (e.g., for
+        switchovers) while enabled for logical replication to limit shutdown
+        time.
        </para>
       </listitem>
      </varlistentry>
@@ -6576,7 +6817,7 @@ SELECT * FROM parent WHERE key = 2400;
         Determines whether <acronym>JIT</acronym> compilation may be used by
         <productname>PostgreSQL</productname>, if available (see <xref
         linkend="jit"/>).
-        The default is <literal>on</literal>.
+        The default is <literal>off</literal>.
        </para>
       </listitem>
      </varlistentry>
@@ -7172,6 +7413,7 @@ local0.*    /var/log/postgresql
          <member><literal>bgworker</literal></member>
          <member><literal>bgwriter</literal></member>
          <member><literal>checkpointer</literal></member>
+         <member><literal>checksums</literal></member>
          <member><literal>ioworker</literal></member>
          <member><literal>postmaster</literal></member>
          <member><literal>slotsyncworker</literal></member>
@@ -9380,6 +9622,119 @@ COPY postgres_log FROM '/full/path/to/logfile.csv' WITH csv;
        </listitem>
       </varlistentry>
 
+      <varlistentry id="guc-autovacuum-freeze-score-weight" xreflabel="autovacuum_freeze_score_weight">
+       <term><varname>autovacuum_freeze_score_weight</varname> (<type>floating point</type>)
+       <indexterm>
+        <primary><varname>autovacuum_freeze_score_weight</varname></primary>
+        <secondary>configuration parameter</secondary>
+       </indexterm>
+       </term>
+       <listitem>
+        <para>
+         Specifies the scaling factor of the transaction ID age component of
+         the score used by autovacuum for prioritization purposes.  The default
+         is <literal>1.0</literal>.  This parameter can only be set in the
+         <filename>postgresql.conf</filename> file or on the server command
+         line.  See <xref linkend="autovacuum-priority"/> for more information.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="guc-autovacuum-multixact-freeze-score-weight" xreflabel="autovacuum_multixact_freeze_score_weight">
+       <term><varname>autovacuum_multixact_freeze_score_weight</varname> (<type>floating point</type>)
+       <indexterm>
+        <primary><varname>autovacuum_multixact_freeze_score_weight</varname></primary>
+        <secondary>configuration parameter</secondary>
+       </indexterm>
+       </term>
+       <listitem>
+        <para>
+         Specifies the scaling factor of the multixact ID age component of the
+         score used by autovacuum for prioritization purposes.  The default is
+         <literal>1.0</literal>.  This parameter can only be set in the
+         <filename>postgresql.conf</filename> file or on the server command
+         line.  See <xref linkend="autovacuum-priority"/> for more information.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="guc-autovacuum-vacuum-score-weight" xreflabel="autovacuum_vacuum_score_weight">
+       <term><varname>autovacuum_vacuum_score_weight</varname> (<type>floating point</type>)
+       <indexterm>
+        <primary><varname>autovacuum_vacuum_score_weight</varname></primary>
+        <secondary>configuration parameter</secondary>
+       </indexterm>
+       </term>
+       <listitem>
+        <para>
+         Specifies the scaling factor of the vacuum threshold component of the
+         score used by autovacuum for prioritization purposes.  The default is
+         <literal>1.0</literal>.  This parameter can only be set in the
+         <filename>postgresql.conf</filename> file or on the server command
+         line.  See <xref linkend="autovacuum-priority"/> for more information.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="guc-autovacuum-vacuum-insert-score-weight" xreflabel="autovacuum_vacuum_insert_score_weight">
+       <term><varname>autovacuum_vacuum_insert_score_weight</varname> (<type>floating point</type>)
+       <indexterm>
+        <primary><varname>autovacuum_vacuum_insert_score_weight</varname></primary>
+        <secondary>configuration parameter</secondary>
+       </indexterm>
+       </term>
+       <listitem>
+        <para>
+         Specifies the scaling factor of the vacuum insert threshold component
+         of the score used by autovacuum for prioritization purposes.  The
+         default is <literal>1.0</literal>.  This parameter can only be set in
+         the <filename>postgresql.conf</filename> file or on the server command
+         line.  See <xref linkend="autovacuum-priority"/> for more information.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="guc-autovacuum-analyze-score-weight" xreflabel="autovacuum_analyze_score_weight">
+       <term><varname>autovacuum_analyze_score_weight</varname> (<type>floating point</type>)
+       <indexterm>
+        <primary><varname>autovacuum_analyze_score_weight</varname></primary>
+        <secondary>configuration parameter</secondary>
+       </indexterm>
+       </term>
+       <listitem>
+        <para>
+         Specifies the scaling factor of the analyze threshold component of the
+         score used by autovacuum for prioritization purposes.  The default is
+         <literal>1.0</literal>.  This parameter can only be set in the
+         <filename>postgresql.conf</filename> file or on the server command
+         line.  See <xref linkend="autovacuum-priority"/> for more information.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="guc-autovacuum-max-parallel-workers" xreflabel="autovacuum_max_parallel_workers">
+       <term><varname>autovacuum_max_parallel_workers</varname> (<type>integer</type>)
+       <indexterm>
+        <primary><varname>autovacuum_max_parallel_workers</varname></primary>
+        <secondary>configuration parameter</secondary>
+       </indexterm>
+       </term>
+       <listitem>
+        <para>
+         Sets the maximum number of parallel workers that can be used by a
+         single autovacuum worker to process indexes. This limit applies
+         specifically to the index vacuuming and index cleanup phases (for the
+         details of each autovacuum phase, please refer to <xref linkend="vacuum-phases"/>).
+         The actual number of parallel workers is further limited by
+         <xref linkend="guc-max-parallel-workers"/>. This is the
+         per-autovacuum worker equivalent of the <literal>PARALLEL</literal>
+         option of the <link linkend="sql-vacuum"><command>VACUUM</command></link>
+         command. Setting this value to 0 disables parallel vacuum during autovacuum.
+         The default is 0.
+        </para>
+       </listitem>
+     </varlistentry>
+
      </variablelist>
     </sect2>
 
@@ -10020,7 +10375,8 @@ COPY postgres_log FROM '/full/path/to/logfile.csv' WITH csv;
         The supported compression methods are <literal>pglz</literal> and
         (if <productname>PostgreSQL</productname> was compiled with
         <option>--with-lz4</option>) <literal>lz4</literal>.
-        The default is <literal>pglz</literal>.
+        The default is <literal>lz4</literal> (if available); otherwise,
+        <literal>pglz</literal>.
        </para>
       </listitem>
      </varlistentry>
@@ -11364,7 +11720,7 @@ dynamic_library_path = '/usr/local/lib/postgresql:$libdir'
         can lock more objects as long as the locks of all transactions
         fit in the lock table.  This is <emphasis>not</emphasis> the number of
         rows that can be locked; that value is unlimited.  The default,
-        64, has historically proven sufficient, but you might need to
+        128, has historically proven sufficient, but you might need to
         raise this value if you have queries that touch many different
         tables in a single transaction, e.g., query of a parent table with
         many children.  This parameter can only be set at server start.
@@ -11863,15 +12219,17 @@ dynamic_library_path = '/usr/local/lib/postgresql:$libdir'
      </varlistentry>
 
      <varlistentry id="guc-data-checksums" xreflabel="data_checksums">
-      <term><varname>data_checksums</varname> (<type>boolean</type>)
+      <term><varname>data_checksums</varname> (<type>enum</type>)
       <indexterm>
        <primary><varname>data_checksums</varname> configuration parameter</primary>
       </indexterm>
       </term>
       <listitem>
        <para>
-        Reports whether data checksums are enabled for this cluster.
-        See <xref linkend="app-initdb-data-checksums"/> for more information.
+        Reports the state of data checksums for this cluster.
+        Possible values are <literal>on</literal>, <literal>off</literal>,
+        <literal>inprogress-on</literal> and <literal>inprogress-off</literal>.
+        See <xref linkend="checksums"/> for more information.
        </para>
       </listitem>
      </varlistentry>

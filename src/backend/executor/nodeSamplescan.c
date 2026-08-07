@@ -128,7 +128,8 @@ ExecInitSampleScan(SampleScan *node, EState *estate, int eflags)
 	/* and create slot with appropriate rowtype */
 	ExecInitScanTupleSlot(estate, &scanstate->ss,
 						  RelationGetDescr(scanstate->ss.ss_currentRelation),
-						  table_slot_callbacks(scanstate->ss.ss_currentRelation));
+						  table_slot_callbacks(scanstate->ss.ss_currentRelation),
+						  TTS_FLAG_OBEYS_NOT_NULL_CONSTRAINTS);
 
 	/*
 	 * Initialize result type and projection.
@@ -297,7 +298,9 @@ tablesample_init(SampleScanState *scanstate)
 									 0, NULL,
 									 scanstate->use_bulkread,
 									 allow_sync,
-									 scanstate->use_pagemode);
+									 scanstate->use_pagemode,
+									 ScanRelIsReadOnly(&scanstate->ss) ?
+									 SO_HINT_REL_READ_ONLY : SO_NONE);
 	}
 	else
 	{

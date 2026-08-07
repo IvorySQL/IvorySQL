@@ -85,7 +85,9 @@
 #include "storage/proclist.h"
 #include "storage/procnumber.h"
 #include "storage/spin.h"
+#include "storage/subsystems.h"
 #include "utils/memutils.h"
+#include "utils/wait_event.h"
 
 #ifdef LWLOCK_STATS
 #include "utils/hsearch.h"
@@ -127,8 +129,8 @@ StaticAssertDecl((LW_VAL_EXCLUSIVE & LW_FLAG_MASK) == 0,
  * in lwlocklist.h.  We absorb the names of these tranches, too.
  *
  * 3. Extensions can create new tranches, via either RequestNamedLWLockTranche
- * or LWLockNewTrancheId.  These names are stored in shared memory and can be
- * accessed via LWLockTrancheNames.
+ * or LWLockNewTrancheId.  These are stored in shared memory and can be
+ * accessed via LWLockTranches.
  *
  * All these names are user-visible as wait event names, so choose with care
  * ... and do not forget to update the documentation's list of wait events.
@@ -145,20 +147,7 @@ StaticAssertDecl(lengthof(BuiltinTrancheNames) ==
 				 LWTRANCHE_FIRST_USER_DEFINED,
 				 "missing entries in BuiltinTrancheNames[]");
 
-/*
- * This is indexed by tranche ID minus LWTRANCHE_FIRST_USER_DEFINED, and
- * points to the shared memory locations of the names of all
- * dynamically-created tranches.  Backends inherit the pointer by fork from the
- * postmaster (except in the EXEC_BACKEND case, where we have special measures
- * to pass it down).
- */
-char	  **LWLockTrancheNames = NULL;
-
-/*
- * This points to the main array of LWLocks in shared memory.  Backends inherit
- * the pointer by fork from the postmaster (except in the EXEC_BACKEND case,
- * where we have special measures to pass it down).
- */
+/* Main array of LWLocks in shared memory */
 LWLockPadded *MainLWLockArray = NULL;
 
 /*
@@ -178,33 +167,62 @@ typedef struct LWLockHandle
 static int	num_held_lwlocks = 0;
 static LWLockHandle held_lwlocks[MAX_SIMUL_LWLOCKS];
 
-/* struct representing the LWLock tranche request for named tranche */
+/* Maximum number of LWLock tranches that can be assigned by extensions */
+#define MAX_USER_DEFINED_TRANCHES 256
+
+/*
+ * Shared memory structure holding user-defined tranches.
+ */
+typedef struct LWLockTrancheShmemData
+{
+	/* This is indexed by tranche ID minus LWTRANCHE_FIRST_USER_DEFINED */
+	struct
+	{
+		char		name[NAMEDATALEN];
+
+		/*
+		 * Index of the tranche's locks in MainLWLockArray if this tranche was
+		 * allocated with RequestNamedLWLockTranche(), or -1 if the tranche
+		 * was allocated with LWLockNewTrancheId()
+		 */
+		int			main_array_idx;
+	}			user_defined[MAX_USER_DEFINED_TRANCHES];
+
+	int			num_user_defined;	/* 'user_defined' entries in use */
+
+	slock_t		lock;			/* protects the above */
+} LWLockTrancheShmemData;
+
+static LWLockTrancheShmemData *LWLockTranches;
+
+/* backend-local copy of LWLockTranches->num_user_defined */
+static int	LocalNumUserDefinedTranches;
+
+/*
+ * NamedLWLockTrancheRequests is a list of tranches requested with
+ * RequestNamedLWLockTranche().  It is only valid in the postmaster; after
+ * startup the tranches are tracked in LWLockTranches in shared memory.
+ */
 typedef struct NamedLWLockTrancheRequest
 {
 	char		tranche_name[NAMEDATALEN];
 	int			num_lwlocks;
 } NamedLWLockTrancheRequest;
 
-/*
- * NamedLWLockTrancheRequests is the valid length of the request array.  These
- * variables are non-static so that launch_backend.c can copy them to child
- * processes in EXEC_BACKEND builds.
- */
-int			NamedLWLockTrancheRequests = 0;
-NamedLWLockTrancheRequest *NamedLWLockTrancheRequestArray = NULL;
+static List *NamedLWLockTrancheRequests = NIL;
 
-/* postmaster's local copy of the request array */
-static NamedLWLockTrancheRequest *LocalNamedLWLockTrancheRequestArray = NULL;
+/* Size of MainLWLockArray.  Only valid in postmaster. */
+static int	num_main_array_locks;
 
-/* shared memory counter of registered tranches */
-int		   *LWLockCounter = NULL;
+static void LWLockShmemRequest(void *arg);
+static void LWLockShmemInit(void *arg);
 
-/* backend-local counter of registered tranches */
-static int	LocalLWLockCounter;
+const ShmemCallbacks LWLockCallbacks = {
+	.request_fn = LWLockShmemRequest,
+	.init_fn = LWLockShmemInit,
+};
 
-#define MAX_NAMED_TRANCHES 256
 
-static void InitializeLWLocks(void);
 static inline void LWLockReportWaitStart(LWLock *lock);
 static inline void LWLockReportWaitEnd(void);
 static const char *GetLWTrancheName(uint16 trancheId);
@@ -376,172 +394,110 @@ get_lwlock_stats_entry(LWLock *lock)
 
 
 /*
- * Compute number of LWLocks required by named tranches.  These will be
- * allocated in the main array.
+ * Compute number of LWLocks required by user-defined tranches requested with
+ * RequestNamedLWLockTranche().  These will be allocated in the main array.
  */
 static int
 NumLWLocksForNamedTranches(void)
 {
 	int			numLocks = 0;
-	int			i;
 
-	for (i = 0; i < NamedLWLockTrancheRequests; i++)
-		numLocks += NamedLWLockTrancheRequestArray[i].num_lwlocks;
+	foreach_ptr(NamedLWLockTrancheRequest, request, NamedLWLockTrancheRequests)
+	{
+		numLocks += request->num_lwlocks;
+	}
 
 	return numLocks;
 }
 
 /*
- * Compute shmem space needed for LWLocks and named tranches.
- */
-Size
-LWLockShmemSize(void)
-{
-	Size		size;
-	int			numLocks = NUM_FIXED_LWLOCKS;
-
-	/*
-	 * If re-initializing shared memory, the request array will no longer be
-	 * accessible, so switch to the copy in postmaster's local memory.  We'll
-	 * copy it back into shared memory later when CreateLWLocks() is called
-	 * again.
-	 */
-	if (LocalNamedLWLockTrancheRequestArray)
-		NamedLWLockTrancheRequestArray = LocalNamedLWLockTrancheRequestArray;
-
-	/* Calculate total number of locks needed in the main array. */
-	numLocks += NumLWLocksForNamedTranches();
-
-	/* Space for dynamic allocation counter. */
-	size = MAXALIGN(sizeof(int));
-
-	/* Space for named tranches. */
-	size = add_size(size, mul_size(MAX_NAMED_TRANCHES, sizeof(char *)));
-	size = add_size(size, mul_size(MAX_NAMED_TRANCHES, NAMEDATALEN));
-
-	/*
-	 * Make space for named tranche requests.  This is done for the benefit of
-	 * EXEC_BACKEND builds, which otherwise wouldn't be able to call
-	 * GetNamedLWLockTranche() outside postmaster.
-	 */
-	size = add_size(size, mul_size(NamedLWLockTrancheRequests,
-								   sizeof(NamedLWLockTrancheRequest)));
-
-	/* Space for the LWLock array, plus room for cache line alignment. */
-	size = add_size(size, LWLOCK_PADDED_SIZE);
-	size = add_size(size, mul_size(numLocks, sizeof(LWLockPadded)));
-
-	return size;
-}
-
-/*
- * Allocate shmem space for the main LWLock array and all tranches and
- * initialize it.
- */
-void
-CreateLWLocks(void)
-{
-	if (!IsUnderPostmaster)
-	{
-		Size		spaceLocks = LWLockShmemSize();
-		char	   *ptr;
-
-		/* Allocate space */
-		ptr = (char *) ShmemAlloc(spaceLocks);
-
-		/* Initialize the dynamic-allocation counter for tranches */
-		LWLockCounter = (int *) ptr;
-		*LWLockCounter = LWTRANCHE_FIRST_USER_DEFINED;
-		ptr += MAXALIGN(sizeof(int));
-
-		/* Initialize tranche names */
-		LWLockTrancheNames = (char **) ptr;
-		ptr += MAX_NAMED_TRANCHES * sizeof(char *);
-		for (int i = 0; i < MAX_NAMED_TRANCHES; i++)
-		{
-			LWLockTrancheNames[i] = ptr;
-			ptr += NAMEDATALEN;
-		}
-
-		/*
-		 * Move named tranche requests to shared memory.  This is done for the
-		 * benefit of EXEC_BACKEND builds, which otherwise wouldn't be able to
-		 * call GetNamedLWLockTranche() outside postmaster.
-		 */
-		if (NamedLWLockTrancheRequests > 0)
-		{
-			/*
-			 * Save the pointer to the request array in postmaster's local
-			 * memory.  We'll need it if we ever need to re-initialize shared
-			 * memory after a crash.
-			 */
-			LocalNamedLWLockTrancheRequestArray = NamedLWLockTrancheRequestArray;
-
-			memcpy(ptr, NamedLWLockTrancheRequestArray,
-				   NamedLWLockTrancheRequests * sizeof(NamedLWLockTrancheRequest));
-			NamedLWLockTrancheRequestArray = (NamedLWLockTrancheRequest *) ptr;
-			ptr += NamedLWLockTrancheRequests * sizeof(NamedLWLockTrancheRequest);
-		}
-
-		/* Ensure desired alignment of LWLock array */
-		ptr += LWLOCK_PADDED_SIZE - ((uintptr_t) ptr) % LWLOCK_PADDED_SIZE;
-		MainLWLockArray = (LWLockPadded *) ptr;
-
-		/* Initialize all LWLocks */
-		InitializeLWLocks();
-	}
-}
-
-/*
- * Initialize LWLocks that are fixed and those belonging to named tranches.
+ * Request shmem space for user-defined tranches and the main LWLock array.
  */
 static void
-InitializeLWLocks(void)
+LWLockShmemRequest(void *arg)
 {
-	int			id;
-	int			i;
-	int			j;
-	LWLockPadded *lock;
+	size_t		size;
 
-	/* Initialize all individual LWLocks in main array */
-	for (id = 0, lock = MainLWLockArray; id < NUM_INDIVIDUAL_LWLOCKS; id++, lock++)
-		LWLockInitialize(&lock->lock, id);
+	/* Space for user-defined tranches */
+	ShmemRequestStruct(.name = "LWLock tranches",
+					   .size = sizeof(LWLockTrancheShmemData),
+					   .ptr = (void **) &LWLockTranches,
+		);
 
-	/* Initialize buffer mapping LWLocks in main array */
-	lock = MainLWLockArray + BUFFER_MAPPING_LWLOCK_OFFSET;
-	for (id = 0; id < NUM_BUFFER_PARTITIONS; id++, lock++)
-		LWLockInitialize(&lock->lock, LWTRANCHE_BUFFER_MAPPING);
+	/* Space for the LWLock array */
+	if (!IsUnderPostmaster)
+	{
+		num_main_array_locks = NUM_FIXED_LWLOCKS + NumLWLocksForNamedTranches();
+		size = num_main_array_locks * sizeof(LWLockPadded);
+	}
+	else
+		size = SHMEM_ATTACH_UNKNOWN_SIZE;
 
-	/* Initialize lmgrs' LWLocks in main array */
-	lock = MainLWLockArray + LOCK_MANAGER_LWLOCK_OFFSET;
-	for (id = 0; id < NUM_LOCK_PARTITIONS; id++, lock++)
-		LWLockInitialize(&lock->lock, LWTRANCHE_LOCK_MANAGER);
+	ShmemRequestStruct(.name = "Main LWLock array",
+					   .size = size,
+					   .ptr = (void **) &MainLWLockArray,
+		);
+}
 
-	/* Initialize predicate lmgrs' LWLocks in main array */
-	lock = MainLWLockArray + PREDICATELOCK_MANAGER_LWLOCK_OFFSET;
-	for (id = 0; id < NUM_PREDICATELOCK_PARTITIONS; id++, lock++)
-		LWLockInitialize(&lock->lock, LWTRANCHE_PREDICATE_LOCK_MANAGER);
+/*
+ * Initialize shmem space for user-defined tranches and the main LWLock array.
+ */
+static void
+LWLockShmemInit(void *arg)
+{
+	int			pos;
+
+	/* Initialize the dynamic-allocation counter for tranches */
+	LWLockTranches->num_user_defined = 0;
+
+	SpinLockInit(&LWLockTranches->lock);
 
 	/*
-	 * Copy the info about any named tranches into shared memory (so that
-	 * other processes can see it), and initialize the requested LWLocks.
+	 * Allocate and initialize all LWLocks in the main array.  It includes all
+	 * LWLocks for built-in tranches and those requested with
+	 * RequestNamedLWLockTranche().
 	 */
-	if (NamedLWLockTrancheRequests > 0)
+	pos = 0;
+
+	/* Initialize all individual LWLocks in main array */
+	for (int id = 0; id < NUM_INDIVIDUAL_LWLOCKS; id++)
+		LWLockInitialize(&MainLWLockArray[pos++].lock, id);
+
+	/* Initialize buffer mapping LWLocks in main array */
+	Assert(pos == BUFFER_MAPPING_LWLOCK_OFFSET);
+	for (int i = 0; i < NUM_BUFFER_PARTITIONS; i++)
+		LWLockInitialize(&MainLWLockArray[pos++].lock, LWTRANCHE_BUFFER_MAPPING);
+
+	/* Initialize lmgrs' LWLocks in main array */
+	Assert(pos == LOCK_MANAGER_LWLOCK_OFFSET);
+	for (int i = 0; i < NUM_LOCK_PARTITIONS; i++)
+		LWLockInitialize(&MainLWLockArray[pos++].lock, LWTRANCHE_LOCK_MANAGER);
+
+	/* Initialize predicate lmgrs' LWLocks in main array */
+	Assert(pos == PREDICATELOCK_MANAGER_LWLOCK_OFFSET);
+	for (int i = 0; i < NUM_PREDICATELOCK_PARTITIONS; i++)
+		LWLockInitialize(&MainLWLockArray[pos++].lock, LWTRANCHE_PREDICATE_LOCK_MANAGER);
+
+	/*
+	 * Copy the info about any user-defined tranches into shared memory (so
+	 * that other processes can see it), and initialize the requested LWLocks.
+	 */
+	Assert(pos == NUM_FIXED_LWLOCKS);
+	foreach_ptr(NamedLWLockTrancheRequest, request, NamedLWLockTrancheRequests)
 	{
-		lock = &MainLWLockArray[NUM_FIXED_LWLOCKS];
+		int			idx = (LWLockTranches->num_user_defined++);
 
-		for (i = 0; i < NamedLWLockTrancheRequests; i++)
-		{
-			NamedLWLockTrancheRequest *request;
-			int			tranche;
+		strlcpy(LWLockTranches->user_defined[idx].name,
+				request->tranche_name,
+				NAMEDATALEN);
+		LWLockTranches->user_defined[idx].main_array_idx = pos;
 
-			request = &NamedLWLockTrancheRequestArray[i];
-			tranche = LWLockNewTrancheId(request->tranche_name);
-
-			for (j = 0; j < request->num_lwlocks; j++, lock++)
-				LWLockInitialize(&lock->lock, tranche);
-		}
+		for (int i = 0; i < request->num_lwlocks; i++)
+			LWLockInitialize(&MainLWLockArray[pos++].lock, LWTRANCHE_FIRST_USER_DEFINED + idx);
 	}
+
+	/* Cross-check that we agree on the total size with LWLockShmemRequest() */
+	Assert(pos == num_main_array_locks);
 }
 
 /*
@@ -566,22 +522,32 @@ InitLWLockAccess(void)
 LWLockPadded *
 GetNamedLWLockTranche(const char *tranche_name)
 {
-	int			lock_pos;
-	int			i;
+	SpinLockAcquire(&LWLockTranches->lock);
+	LocalNumUserDefinedTranches = LWLockTranches->num_user_defined;
+	SpinLockRelease(&LWLockTranches->lock);
 
 	/*
 	 * Obtain the position of base address of LWLock belonging to requested
-	 * tranche_name in MainLWLockArray.  LWLocks for named tranches are placed
-	 * in MainLWLockArray after fixed locks.
+	 * tranche_name in MainLWLockArray.  LWLocks for user-defined tranches
+	 * requested with RequestNamedLWLockTranche() are placed in
+	 * MainLWLockArray after fixed locks.
 	 */
-	lock_pos = NUM_FIXED_LWLOCKS;
-	for (i = 0; i < NamedLWLockTrancheRequests; i++)
+	for (int i = 0; i < LocalNumUserDefinedTranches; i++)
 	{
-		if (strcmp(NamedLWLockTrancheRequestArray[i].tranche_name,
+		if (strcmp(LWLockTranches->user_defined[i].name,
 				   tranche_name) == 0)
-			return &MainLWLockArray[lock_pos];
+		{
+			int			lock_pos = LWLockTranches->user_defined[i].main_array_idx;
 
-		lock_pos += NamedLWLockTrancheRequestArray[i].num_lwlocks;
+			/*
+			 * GetNamedLWLockTranche() should only be used for locks requested
+			 * with RequestNamedLWLockTranche(), not those allocated with
+			 * LWLockNewTrancheId().
+			 */
+			if (lock_pos == -1)
+				elog(ERROR, "requested tranche was not registered with RequestNamedLWLockTranche()");
+			return &MainLWLockArray[lock_pos];
+		}
 	}
 
 	elog(ERROR, "requested tranche is not registered");
@@ -596,7 +562,7 @@ GetNamedLWLockTranche(const char *tranche_name)
 int
 LWLockNewTrancheId(const char *name)
 {
-	int			result;
+	int			idx;
 
 	if (!name)
 		ereport(ERROR,
@@ -610,28 +576,33 @@ LWLockNewTrancheId(const char *name)
 				 errdetail("LWLock tranche names must be no longer than %d bytes.",
 						   NAMEDATALEN - 1)));
 
-	/*
-	 * We use the ShmemLock spinlock to protect LWLockCounter and
-	 * LWLockTrancheNames.
-	 */
-	SpinLockAcquire(ShmemLock);
+	/* The counter and the tranche names are protected by the spinlock */
+	SpinLockAcquire(&LWLockTranches->lock);
 
-	if (*LWLockCounter - LWTRANCHE_FIRST_USER_DEFINED >= MAX_NAMED_TRANCHES)
+	if (LWLockTranches->num_user_defined >= MAX_USER_DEFINED_TRANCHES)
 	{
-		SpinLockRelease(ShmemLock);
+		SpinLockRelease(&LWLockTranches->lock);
 		ereport(ERROR,
 				(errmsg("maximum number of tranches already registered"),
 				 errdetail("No more than %d tranches may be registered.",
-						   MAX_NAMED_TRANCHES)));
+						   MAX_USER_DEFINED_TRANCHES)));
 	}
 
-	result = (*LWLockCounter)++;
-	LocalLWLockCounter = *LWLockCounter;
-	strlcpy(LWLockTrancheNames[result - LWTRANCHE_FIRST_USER_DEFINED], name, NAMEDATALEN);
+	/* Allocate an entry in the user_defined array */
+	idx = (LWLockTranches->num_user_defined)++;
 
-	SpinLockRelease(ShmemLock);
+	/* update our local copy while we're at it */
+	LocalNumUserDefinedTranches = LWLockTranches->num_user_defined;
 
-	return result;
+	/* Initialize it */
+	strlcpy(LWLockTranches->user_defined[idx].name, name, NAMEDATALEN);
+
+	/* the locks are not in the main array */
+	LWLockTranches->user_defined[idx].main_array_idx = -1;
+
+	SpinLockRelease(&LWLockTranches->lock);
+
+	return LWTRANCHE_FIRST_USER_DEFINED + idx;
 }
 
 /*
@@ -650,7 +621,7 @@ void
 RequestNamedLWLockTranche(const char *tranche_name, int num_lwlocks)
 {
 	NamedLWLockTrancheRequest *request;
-	static int	NamedLWLockTrancheRequestsAllocated;
+	MemoryContext oldcontext;
 
 	if (!process_shmem_requests_in_progress)
 		elog(FATAL, "cannot request additional LWLocks outside shmem_request_hook");
@@ -667,29 +638,30 @@ RequestNamedLWLockTranche(const char *tranche_name, int num_lwlocks)
 				 errdetail("LWLock tranche names must be no longer than %d bytes.",
 						   NAMEDATALEN - 1)));
 
-	if (NamedLWLockTrancheRequestArray == NULL)
+	if (list_length(NamedLWLockTrancheRequests) >= MAX_USER_DEFINED_TRANCHES)
+		ereport(ERROR,
+				(errmsg("maximum number of tranches already registered"),
+				 errdetail("No more than %d tranches may be registered.",
+						   MAX_USER_DEFINED_TRANCHES)));
+
+	/* Check that the name isn't already in use */
+	foreach_ptr(NamedLWLockTrancheRequest, existing, NamedLWLockTrancheRequests)
 	{
-		NamedLWLockTrancheRequestsAllocated = 16;
-		NamedLWLockTrancheRequestArray = (NamedLWLockTrancheRequest *)
-			MemoryContextAlloc(TopMemoryContext,
-							   NamedLWLockTrancheRequestsAllocated
-							   * sizeof(NamedLWLockTrancheRequest));
+		if (strcmp(existing->tranche_name, tranche_name) == 0)
+			elog(ERROR, "requested tranche \"%s\" is already registered", tranche_name);
 	}
 
-	if (NamedLWLockTrancheRequests >= NamedLWLockTrancheRequestsAllocated)
-	{
-		int			i = pg_nextpower2_32(NamedLWLockTrancheRequests + 1);
+	if (IsPostmasterEnvironment)
+		oldcontext = MemoryContextSwitchTo(PostmasterContext);
+	else
+		oldcontext = MemoryContextSwitchTo(TopMemoryContext);
 
-		NamedLWLockTrancheRequestArray = (NamedLWLockTrancheRequest *)
-			repalloc(NamedLWLockTrancheRequestArray,
-					 i * sizeof(NamedLWLockTrancheRequest));
-		NamedLWLockTrancheRequestsAllocated = i;
-	}
-
-	request = &NamedLWLockTrancheRequestArray[NamedLWLockTrancheRequests];
+	request = palloc0(sizeof(NamedLWLockTrancheRequest));
 	strlcpy(request->tranche_name, tranche_name, NAMEDATALEN);
 	request->num_lwlocks = num_lwlocks;
-	NamedLWLockTrancheRequests++;
+	NamedLWLockTrancheRequests = lappend(NamedLWLockTrancheRequests, request);
+
+	MemoryContextSwitchTo(oldcontext);
 }
 
 /*
@@ -737,34 +709,36 @@ LWLockReportWaitEnd(void)
 static const char *
 GetLWTrancheName(uint16 trancheId)
 {
+	int			idx;
+
 	/* Built-in tranche or individual LWLock? */
 	if (trancheId < LWTRANCHE_FIRST_USER_DEFINED)
 		return BuiltinTrancheNames[trancheId];
 
 	/*
-	 * We only ever add new entries to LWLockTrancheNames, so most lookups can
-	 * avoid taking the spinlock as long as the backend-local counter
-	 * (LocalLWLockCounter) is greater than the requested tranche ID.  Else,
-	 * we need to first update the backend-local counter with ShmemLock held
-	 * before attempting the lookup again.  In practice, the latter case is
-	 * probably rare.
+	 * It's an extension tranche, so look in LWLockTranches->user_defined.
 	 */
-	if (trancheId >= LocalLWLockCounter)
-	{
-		SpinLockAcquire(ShmemLock);
-		LocalLWLockCounter = *LWLockCounter;
-		SpinLockRelease(ShmemLock);
+	idx = trancheId - LWTRANCHE_FIRST_USER_DEFINED;
 
-		if (trancheId >= LocalLWLockCounter)
+	/*
+	 * We only ever add new entries to LWLockTranches->user_defined, so most
+	 * lookups can avoid taking the spinlock as long as the backend-local
+	 * counter (LocalNumUserDefinedTranches) is greater than the requested
+	 * tranche ID.  Else, we need to first update the backend-local counter
+	 * with the spinlock held before attempting the lookup again.  In
+	 * practice, the latter case is probably rare.
+	 */
+	if (idx >= LocalNumUserDefinedTranches)
+	{
+		SpinLockAcquire(&LWLockTranches->lock);
+		LocalNumUserDefinedTranches = LWLockTranches->num_user_defined;
+		SpinLockRelease(&LWLockTranches->lock);
+
+		if (idx >= LocalNumUserDefinedTranches)
 			elog(ERROR, "tranche %d is not registered", trancheId);
 	}
 
-	/*
-	 * It's an extension tranche, so look in LWLockTrancheNames.
-	 */
-	trancheId -= LWTRANCHE_FIRST_USER_DEFINED;
-
-	return LWLockTrancheNames[trancheId];
+	return LWLockTranches->user_defined[idx].name;
 }
 
 /*

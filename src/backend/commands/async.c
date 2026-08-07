@@ -176,8 +176,10 @@
 #include "miscadmin.h"
 #include "storage/dsm_registry.h"
 #include "storage/ipc.h"
+#include "storage/latch.h"
 #include "storage/lmgr.h"
 #include "storage/procsignal.h"
+#include "storage/subsystems.h"
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
 #include "utils/dsa.h"
@@ -344,6 +346,15 @@ typedef struct AsyncQueueControl
 
 static AsyncQueueControl *asyncQueueControl;
 
+static void AsyncShmemRequest(void *arg);
+static void AsyncShmemInit(void *arg);
+
+const ShmemCallbacks AsyncShmemCallbacks = {
+	.request_fn = AsyncShmemRequest,
+	.init_fn = AsyncShmemInit,
+};
+
+
 #define QUEUE_HEAD					(asyncQueueControl->head)
 #define QUEUE_TAIL					(asyncQueueControl->tail)
 #define QUEUE_STOP_PAGE				(asyncQueueControl->stopPage)
@@ -358,9 +369,13 @@ static AsyncQueueControl *asyncQueueControl;
 /*
  * The SLRU buffer area through which we access the notification queue
  */
-static SlruCtlData NotifyCtlData;
+static inline bool asyncQueuePagePrecedes(int64 p, int64 q);
+static int	asyncQueueErrdetailForIoError(const void *opaque_data);
 
-#define NotifyCtl					(&NotifyCtlData)
+static SlruDesc NotifySlruDesc;
+
+
+#define NotifyCtl					(&NotifySlruDesc)
 #define QUEUE_PAGESIZE				BLCKSZ
 
 #define QUEUE_FULL_WARN_INTERVAL	5000	/* warn at most once every 5s */
@@ -570,7 +585,6 @@ int			max_notify_queue_pages = 1048576;
 
 /* local function prototypes */
 static inline int64 asyncQueuePageDiff(int64 p, int64 q);
-static inline bool asyncQueuePagePrecedes(int64 p, int64 q);
 static inline void GlobalChannelKeyInit(GlobalChannelKey *key, Oid dboid,
 										const char *channel);
 static dshash_hash globalChannelTableHash(const void *key, size_t size,
@@ -608,6 +622,15 @@ static void AddEventToPendingNotifies(Notification *n);
 static uint32 notification_hash(const void *key, Size keysize);
 static int	notification_match(const void *key1, const void *key2, Size keysize);
 static void ClearPendingActionsAndNotifies(void);
+
+static int
+asyncQueueErrdetailForIoError(const void *opaque_data)
+{
+	const QueuePosition *position = opaque_data;
+
+	return errdetail("Could not access async queue at page %" PRId64 ", offset %d.",
+					 position->page, position->offset);
+}
 
 /*
  * Compute the difference between two queue page numbers.
@@ -769,77 +792,63 @@ initPendingListenActions(void)
 }
 
 /*
- * Report space needed for our shared memory area
+ * Register our shared memory needs
  */
-Size
-AsyncShmemSize(void)
+static void
+AsyncShmemRequest(void *arg)
 {
 	Size		size;
 
-	/* This had better match AsyncShmemInit */
 	size = mul_size(MaxBackends, sizeof(QueueBackendStatus));
 	size = add_size(size, offsetof(AsyncQueueControl, backend));
 
-	size = add_size(size, SimpleLruShmemSize(notify_buffers, 0));
+	ShmemRequestStruct(.name = "Async Queue Control",
+					   .size = size,
+					   .ptr = (void **) &asyncQueueControl,
+		);
 
-	return size;
+	SimpleLruRequest(.desc = &NotifySlruDesc,
+					 .name = "notify",
+					 .Dir = "pg_notify",
+
+	/* long segment names are used in order to avoid wraparound */
+					 .long_segment_names = true,
+
+					 .nslots = notify_buffers,
+
+					 .sync_handler = SYNC_HANDLER_NONE,
+					 .PagePrecedes = asyncQueuePagePrecedes,
+					 .errdetail_for_io_error = asyncQueueErrdetailForIoError,
+
+					 .buffer_tranche_id = LWTRANCHE_NOTIFY_BUFFER,
+					 .bank_tranche_id = LWTRANCHE_NOTIFY_SLRU,
+		);
 }
 
-/*
- * Initialize our shared memory area
- */
-void
-AsyncShmemInit(void)
+static void
+AsyncShmemInit(void *arg)
 {
-	bool		found;
-	Size		size;
-
-	/*
-	 * Create or attach to the AsyncQueueControl structure.
-	 */
-	size = mul_size(MaxBackends, sizeof(QueueBackendStatus));
-	size = add_size(size, offsetof(AsyncQueueControl, backend));
-
-	asyncQueueControl = (AsyncQueueControl *)
-		ShmemInitStruct("Async Queue Control", size, &found);
-
-	if (!found)
+	SET_QUEUE_POS(QUEUE_HEAD, 0, 0);
+	SET_QUEUE_POS(QUEUE_TAIL, 0, 0);
+	QUEUE_STOP_PAGE = 0;
+	QUEUE_FIRST_LISTENER = INVALID_PROC_NUMBER;
+	asyncQueueControl->lastQueueFillWarn = 0;
+	asyncQueueControl->globalChannelTableDSA = DSA_HANDLE_INVALID;
+	asyncQueueControl->globalChannelTableDSH = DSHASH_HANDLE_INVALID;
+	for (int i = 0; i < MaxBackends; i++)
 	{
-		/* First time through, so initialize it */
-		SET_QUEUE_POS(QUEUE_HEAD, 0, 0);
-		SET_QUEUE_POS(QUEUE_TAIL, 0, 0);
-		QUEUE_STOP_PAGE = 0;
-		QUEUE_FIRST_LISTENER = INVALID_PROC_NUMBER;
-		asyncQueueControl->lastQueueFillWarn = 0;
-		asyncQueueControl->globalChannelTableDSA = DSA_HANDLE_INVALID;
-		asyncQueueControl->globalChannelTableDSH = DSHASH_HANDLE_INVALID;
-		for (int i = 0; i < MaxBackends; i++)
-		{
-			QUEUE_BACKEND_PID(i) = InvalidPid;
-			QUEUE_BACKEND_DBOID(i) = InvalidOid;
-			QUEUE_NEXT_LISTENER(i) = INVALID_PROC_NUMBER;
-			SET_QUEUE_POS(QUEUE_BACKEND_POS(i), 0, 0);
-			QUEUE_BACKEND_WAKEUP_PENDING(i) = false;
-			QUEUE_BACKEND_IS_ADVANCING(i) = false;
-		}
+		QUEUE_BACKEND_PID(i) = InvalidPid;
+		QUEUE_BACKEND_DBOID(i) = InvalidOid;
+		QUEUE_NEXT_LISTENER(i) = INVALID_PROC_NUMBER;
+		SET_QUEUE_POS(QUEUE_BACKEND_POS(i), 0, 0);
+		QUEUE_BACKEND_WAKEUP_PENDING(i) = false;
+		QUEUE_BACKEND_IS_ADVANCING(i) = false;
 	}
 
 	/*
-	 * Set up SLRU management of the pg_notify data. Note that long segment
-	 * names are used in order to avoid wraparound.
+	 * During start or reboot, clean out the pg_notify directory.
 	 */
-	NotifyCtl->PagePrecedes = asyncQueuePagePrecedes;
-	SimpleLruInit(NotifyCtl, "notify", notify_buffers, 0,
-				  "pg_notify", LWTRANCHE_NOTIFY_BUFFER, LWTRANCHE_NOTIFY_SLRU,
-				  SYNC_HANDLER_NONE, true);
-
-	if (!found)
-	{
-		/*
-		 * During start or reboot, clean out the pg_notify directory.
-		 */
-		(void) SlruScanDirectory(NotifyCtl, SlruScanDirCbDeleteAll, NULL);
-	}
+	(void) SlruScanDirectory(NotifyCtl, SlruScanDirCbDeleteAll, NULL);
 }
 
 
@@ -2067,8 +2076,7 @@ asyncQueueAddEntries(ListCell *nextNotify)
 	if (QUEUE_POS_IS_ZERO(queue_head))
 		slotno = SimpleLruZeroPage(NotifyCtl, pageno);
 	else
-		slotno = SimpleLruReadPage(NotifyCtl, pageno, true,
-								   InvalidTransactionId);
+		slotno = SimpleLruReadPage(NotifyCtl, pageno, true, &queue_head);
 
 	/* Note we mark the page dirty before writing in it */
 	NotifyCtl->shared->page_dirty[slotno] = true;
@@ -2549,8 +2557,7 @@ HandleNotifyInterrupt(void)
 	/* signal that work needs to be done */
 	notifyInterruptPending = true;
 
-	/* make sure the event is processed in due course */
-	SetLatch(MyLatch);
+	/* latch will be set by procsignal_sigusr1_handler */
 }
 
 /*
@@ -2738,8 +2745,7 @@ asyncQueueProcessPageEntries(QueuePosition *current,
 	alignas(AsyncQueueEntry) char local_buf[QUEUE_PAGESIZE];
 	char	   *local_buf_end = local_buf;
 
-	slotno = SimpleLruReadPage_ReadOnly(NotifyCtl, curpage,
-										InvalidTransactionId);
+	slotno = SimpleLruReadPage_ReadOnly(NotifyCtl, curpage, current);
 	page_buffer = NotifyCtl->shared->page_buffer[slotno];
 
 	do
@@ -2997,8 +3003,7 @@ AsyncNotifyFreezeXids(TransactionId newFrozenXid)
 
 			lock = SimpleLruGetBankLock(NotifyCtl, pageno);
 			LWLockAcquire(lock, LW_EXCLUSIVE);
-			slotno = SimpleLruReadPage(NotifyCtl, pageno, true,
-									   InvalidTransactionId);
+			slotno = SimpleLruReadPage(NotifyCtl, pageno, true, &pos);
 			page_buffer = NotifyCtl->shared->page_buffer[slotno];
 			curpage = pageno;
 		}

@@ -108,9 +108,9 @@ static void LoadOutputPlugin(OutputPluginCallbacks *callbacks, const char *plugi
  * decoding.
  */
 void
-CheckLogicalDecodingRequirements(void)
+CheckLogicalDecodingRequirements(bool repack)
 {
-	CheckSlotRequirements();
+	CheckSlotRequirements(repack);
 
 	/*
 	 * NB: Adding a new requirement likely means that RestoreSlotFromDisk()
@@ -285,6 +285,9 @@ StartupDecodingContext(List *output_plugin_options,
 	ctx->write = do_write;
 	ctx->update_progress = update_progress;
 
+	/* Assume shared catalog access. The startup callback can change it. */
+	ctx->options.need_shared_catalogs = true;
+
 	ctx->output_plugin_options = output_plugin_options;
 
 	ctx->fast_forward = fast_forward;
@@ -301,6 +304,7 @@ StartupDecodingContext(List *output_plugin_options,
  * output_plugin_options -- contains options passed to the output plugin
  * need_full_snapshot -- if true, must obtain a snapshot able to read all
  *		tables; if false, one that can read only catalogs is acceptable.
+ * for_repack -- if true, we're going to be decoding for REPACK.
  * restart_lsn -- if given as invalid, it's this routine's responsibility to
  *		mark WAL as reserved by setting a convenient restart_lsn for the slot.
  *		Otherwise, we set for decoding to start from the given LSN without
@@ -321,6 +325,7 @@ LogicalDecodingContext *
 CreateInitDecodingContext(const char *plugin,
 						  List *output_plugin_options,
 						  bool need_full_snapshot,
+						  bool for_repack,
 						  XLogRecPtr restart_lsn,
 						  XLogReaderRoutine *xl_routine,
 						  LogicalOutputPluginWriterPrepareWrite prepare_write,
@@ -337,7 +342,7 @@ CreateInitDecodingContext(const char *plugin,
 	 * On a standby, this check is also required while creating the
 	 * slot. Check the comments in the function.
 	 */
-	CheckLogicalDecodingRequirements();
+	CheckLogicalDecodingRequirements(for_repack);
 
 	/* shorter lines... */
 	slot = MyReplicationSlot;
@@ -598,7 +603,7 @@ CreateDecodingContext(XLogRecPtr start_lsn,
 
 	ctx->reorder->output_rewrites = ctx->options.receive_rewrites;
 
-	ereport(LOG,
+	ereport(LogicalDecodingLogLevel(),
 			(errmsg("starting logical decoding for slot \"%s\"",
 					NameStr(slot->data.name)),
 			 errdetail("Streaming transactions committing after %X/%08X, reading WAL from %X/%08X.",

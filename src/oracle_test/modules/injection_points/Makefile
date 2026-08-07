@@ -14,8 +14,13 @@ REGRESS_OPTS = --dlpath=$(top_builddir)/src/oracle_test/regress
 
 ISOLATION = basic \
 	    inplace \
+	    repack \
+	    repack_toast \
 	    syscache-update-pruned \
 	    heap_lock_update
+
+# some isolation tests require wal_level=replica
+ISOLATION_OPTS = --temp-config $(top_srcdir)/src/oracle_test/modules/injection_points/extra.conf
 
 # The injection points are cluster-wide, so disable installcheck
 NO_INSTALLCHECK = 1

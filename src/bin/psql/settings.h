@@ -23,8 +23,8 @@
 #define DEFAULT_EDITOR_LINENUMBER_ARG "+"
 #endif
 
-#define DEFAULT_PROMPT1 "%/%R%x%# "
-#define DEFAULT_PROMPT2 "%/%R%x%# "
+#define DEFAULT_PROMPT1 "%o%/%R%x%# "
+#define DEFAULT_PROMPT2 "%o%/%R%x%# "
 #define DEFAULT_PROMPT3 ">> "
 
 #define DEFAULT_WATCH_INTERVAL "2"

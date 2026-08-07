@@ -50,6 +50,8 @@
 #include "utils/ora_compatible.h"
 #include "utils/syscache.h"
 #include "utils/timestamp.h"
+#include "utils/tuplestore.h"
+#include "utils/wait_event.h"
 
 
 /*
@@ -95,7 +97,7 @@ count_nulls(FunctionCallInfo fcinfo,
 		int			ndims,
 					nitems,
 				   *dims;
-		bits8	   *bitmap;
+		uint8	   *bitmap;
 
 		Assert(PG_NARGS() == 1);
 

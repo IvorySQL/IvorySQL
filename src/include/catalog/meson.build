@@ -73,6 +73,11 @@ catalog_headers = [
   'pg_package.h',
   'pg_package_body.h',
   'pg_force_view.h',
+  'pg_propgraph_element.h',
+  'pg_propgraph_element_label.h',
+  'pg_propgraph_label.h',
+  'pg_propgraph_label_property.h',
+  'pg_propgraph_property.h',
 ]
 
 # The .dat files we need can just be listed alphabetically.
@@ -82,6 +87,7 @@ bki_data = [
   'pg_amop.dat',
   'pg_amproc.dat',
   'pg_authid.dat',
+  'pg_auth_members.dat',
   'pg_cast.dat',
   'pg_class.dat',
   'pg_collation.dat',

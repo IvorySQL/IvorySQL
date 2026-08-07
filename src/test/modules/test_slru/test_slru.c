@@ -40,14 +40,22 @@ PG_FUNCTION_INFO_V1(test_slru_delete_all);
 /* Number of SLRU page slots */
 #define NUM_TEST_BUFFERS		16
 
-static SlruCtlData TestSlruCtlData;
-#define TestSlruCtl			(&TestSlruCtlData)
+static void test_slru_shmem_request(void *arg);
+static bool test_slru_page_precedes_logically(int64 page1, int64 page2);
+static int	test_slru_errdetail_for_io_error(const void *opaque_data);
 
-static shmem_request_hook_type prev_shmem_request_hook = NULL;
-static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
+static const char *TestSlruDir = "pg_test_slru";
+
+static SlruDesc TestSlruDesc;
+
+static const ShmemCallbacks test_slru_shmem_callbacks = {
+	.request_fn = test_slru_shmem_request
+};
+
+#define TestSlruCtl			(&TestSlruDesc)
 
 static bool
-test_slru_scan_cb(SlruCtl ctl, char *filename, int64 segpage, void *data)
+test_slru_scan_cb(SlruDesc *ctl, char *filename, int64 segpage, void *data)
 {
 	elog(NOTICE, "Calling test_slru_scan_cb()");
 	return SlruScanDirCbDeleteAll(ctl, filename, segpage, data);
@@ -93,14 +101,14 @@ test_slru_page_read(PG_FUNCTION_ARGS)
 {
 	int64		pageno = PG_GETARG_INT64(0);
 	bool		write_ok = PG_GETARG_BOOL(1);
+	TransactionId xid = PG_GETARG_TRANSACTIONID(2);
 	char	   *data = NULL;
 	int			slotno;
 	LWLock	   *lock = SimpleLruGetBankLock(TestSlruCtl, pageno);
 
 	/* find page in buffers, reading it if necessary */
 	LWLockAcquire(lock, LW_EXCLUSIVE);
-	slotno = SimpleLruReadPage(TestSlruCtl, pageno,
-							   write_ok, InvalidTransactionId);
+	slotno = SimpleLruReadPage(TestSlruCtl, pageno, write_ok, &xid);
 	data = (char *) TestSlruCtl->shared->page_buffer[slotno];
 	LWLockRelease(lock);
 
@@ -118,7 +126,7 @@ test_slru_page_readonly(PG_FUNCTION_ARGS)
 	/* find page in buffers, reading it if necessary */
 	slotno = SimpleLruReadPage_ReadOnly(TestSlruCtl,
 										pageno,
-										InvalidTransactionId);
+										NULL);
 	Assert(LWLockHeldByMe(lock));
 	data = (char *) TestSlruCtl->shared->page_buffer[slotno];
 	LWLockRelease(lock);
@@ -190,65 +198,18 @@ test_slru_delete_all(PG_FUNCTION_ARGS)
 	PG_RETURN_VOID();
 }
 
-/*
- * Module load callbacks and initialization.
- */
-
-static void
-test_slru_shmem_request(void)
-{
-	if (prev_shmem_request_hook)
-		prev_shmem_request_hook();
-
-	/* reserve shared memory for the test SLRU */
-	RequestAddinShmemSpace(SimpleLruShmemSize(NUM_TEST_BUFFERS, 0));
-}
-
 static bool
 test_slru_page_precedes_logically(int64 page1, int64 page2)
 {
 	return page1 < page2;
 }
 
-static void
-test_slru_shmem_startup(void)
+static int
+test_slru_errdetail_for_io_error(const void *opaque_data)
 {
-	/*
-	 * Short segments names are well tested elsewhere so in this test we are
-	 * focusing on long names.
-	 */
-	const bool	long_segment_names = true;
-	const char	slru_dir_name[] = "pg_test_slru";
-	int			test_tranche_id = -1;
-	int			test_buffer_tranche_id = -1;
+	TransactionId xid = *(const TransactionId *) opaque_data;
 
-	if (prev_shmem_startup_hook)
-		prev_shmem_startup_hook();
-
-	/*
-	 * Create the SLRU directory if it does not exist yet, from the root of
-	 * the data directory.
-	 */
-	(void) MakePGDirectory(slru_dir_name);
-
-	/*
-	 * Initialize the SLRU facility.  In EXEC_BACKEND builds, the
-	 * shmem_startup_hook is called in the postmaster and in each backend, but
-	 * we only need to generate the LWLock tranches once.  Note that these
-	 * tranche ID variables are not used by SimpleLruInit() when
-	 * IsUnderPostmaster is true.
-	 */
-	if (!IsUnderPostmaster)
-	{
-		test_tranche_id = LWLockNewTrancheId("test_slru_tranche");
-		test_buffer_tranche_id = LWLockNewTrancheId("test_buffer_tranche");
-	}
-
-	TestSlruCtl->PagePrecedes = test_slru_page_precedes_logically;
-	SimpleLruInit(TestSlruCtl, "TestSLRU",
-				  NUM_TEST_BUFFERS, 0, slru_dir_name,
-				  test_buffer_tranche_id, test_tranche_id, SYNC_HANDLER_NONE,
-				  long_segment_names);
+	return errdetail("Could not access test_slru entry %u.", xid);
 }
 
 void
@@ -260,9 +221,37 @@ _PG_init(void)
 				 errdetail("\"%s\" must be loaded with \"shared_preload_libraries\".",
 						   "test_slru")));
 
-	prev_shmem_request_hook = shmem_request_hook;
-	shmem_request_hook = test_slru_shmem_request;
+	/*
+	 * Create the SLRU directory if it does not exist yet, from the root of
+	 * the data directory.
+	 */
+	(void) MakePGDirectory(TestSlruDir);
 
-	prev_shmem_startup_hook = shmem_startup_hook;
-	shmem_startup_hook = test_slru_shmem_startup;
+	RegisterShmemCallbacks(&test_slru_shmem_callbacks);
+}
+
+static void
+test_slru_shmem_request(void *arg)
+{
+	SimpleLruRequest(.desc = &TestSlruDesc,
+					 .name = "TestSLRU",
+					 .Dir = TestSlruDir,
+
+	/*
+	 * Short segments names are well tested elsewhere so in this test we are
+	 * focusing on long names.
+	 */
+					 .long_segment_names = true,
+
+					 .nslots = NUM_TEST_BUFFERS,
+					 .nlsns = 0,
+
+					 .sync_handler = SYNC_HANDLER_NONE,
+					 .PagePrecedes = test_slru_page_precedes_logically,
+					 .errdetail_for_io_error = test_slru_errdetail_for_io_error,
+
+	/* let slru.c assign these */
+					 .buffer_tranche_id = 0,
+					 .bank_tranche_id = 0,
+		);
 }
