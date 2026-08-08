@@ -199,6 +199,8 @@ extern void plisql_check_subprocfunc_properties(PLiSQL_subproc_function *subproc
 							List *properties, bool isdeclare);
 extern PLiSQL_subproc_function *plisql_build_subproc_function(char *funcname, List *args,
 							PLiSQL_type *rettype, int location); 
+extern PLiSQL_function_argitem *plisql_build_object_self_arg(int argmode);
+extern PLiSQL_type *plisql_build_object_self_type(void);
 extern void plisql_add_subproc_function(PLiSQL_subproc_function *inlinefunc);
 extern void plisql_register_internal_func(void);
 extern void plisql_unregister_internal_func(void);
@@ -264,4 +266,3 @@ extern PLiSQL_function* plisql_dynamic_compile_subproc(FunctionCallInfo fcinfo,
 								bool forValidator);
 
 #endif   /* PL_SUBPROC_FUNCTION_H */
-

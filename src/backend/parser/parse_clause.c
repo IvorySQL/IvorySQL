@@ -27,6 +27,7 @@
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
+#include "commands/packagecmds.h"
 #include "commands/view.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
@@ -98,6 +99,8 @@ static TargetEntry *findTargetlistEntrySQL92(ParseState *pstate, Node *node,
 											 List **tlist, ParseExprKind exprKind);
 static TargetEntry *findTargetlistEntrySQL99(ParseState *pstate, Node *node,
 											 List **tlist, ParseExprKind exprKind);
+static TargetEntry *transformObjectSortTarget(ParseState *pstate,
+											  TargetEntry *tle, int location);
 static int	get_matching_location(int sortgroupref,
 								  List *sortgrouprefs, List *exprs);
 static List *resolve_unique_index_expr(ParseState *pstate, InferClause *infer,
@@ -2441,6 +2444,30 @@ findTargetlistEntrySQL99(ParseState *pstate, Node *node, List **tlist,
 	return target_result;
 }
 
+/* Reject implicit object sorting when no comparison method was declared. */
+static TargetEntry *
+transformObjectSortTarget(ParseState *pstate, TargetEntry *tle,
+						  int location)
+{
+	Oid			typeOid = exprType((Node *) tle->expr);
+	bool		isOrder;
+	char	   *method;
+
+	if (ORA_PARSER != compatible_db || !get_typisobject(typeOid))
+		return tle;
+
+	method = GetObjectTypeComparisonMethod(typeOid, &isOrder);
+	if (method == NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("object type %s has no MAP method for sorting",
+						format_type_be(typeOid)),
+				 parser_errposition(pstate, location)));
+	(void) isOrder;
+	pfree(method);
+	return tle;
+}
+
 /*-------------------------------------------------------------------------
  * Flatten out parenthesized sublists in grouping lists, and some cases
  * of nested grouping sets.
@@ -3034,6 +3061,8 @@ transformSortClause(ParseState *pstate,
 		else
 			tle = findTargetlistEntrySQL92(pstate, sortby->node,
 										   targetlist, exprKind);
+		tle = transformObjectSortTarget(pstate, tle,
+									  exprLocation(sortby->node));
 
 		sortlist = addTargetToSortList(pstate, tle,
 									   sortlist, *targetlist, sortby);
@@ -4245,4 +4274,3 @@ check_funcexpr_outparams(List *funcexprs)
 		}
 	}
 }
-

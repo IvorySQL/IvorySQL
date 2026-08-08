@@ -148,7 +148,7 @@ CREATE TYPE bogus_type (INPUT = array_in,
 
 CREATE TYPE default_test_row AS (f1 text_w_default, f2 int42);
 
--- Oracle-style AS OBJECT is an alias for a composite type
+-- Oracle-style AS OBJECT creates a composite-backed object type.
 CREATE TYPE oracle_object_type AS OBJECT
 (
 	id integer,
@@ -167,14 +167,17 @@ AS 'SELECT ROW($1 + 100, $2)::oracle_object_type';
 SELECT oracle_object_type(1, 'one');
 DROP FUNCTION oracle_object_type(integer, varchar);
 
--- Object values retain composite equality and ordering semantics.
+-- Without MAP or ORDER, object values support equality but not ordering.
 SELECT oracle_object_type(1, 'one') = oracle_object_type(1, 'one');
 SELECT oracle_object_type(1, 'one') < oracle_object_type(2, 'two');
+SELECT v
+FROM (VALUES (oracle_object_type(1, 'one'))) AS objects(v)
+ORDER BY v;
 
 -- Constructor arguments are coerced to their declared attribute types.
 SELECT oracle_object_type('2', 'two');
 
--- Member-call notation passes the object value as the routine's SELF value.
+-- An unrelated standalone function is not an object member method.
 CREATE FUNCTION object_label(oracle_object_type)
 RETURNS varchar
 LANGUAGE SQL IMMUTABLE
@@ -188,6 +191,323 @@ SELECT typisobject FROM pg_type WHERE typname = 'oracle_object_type';
 
 DROP FUNCTION object_label(oracle_object_type);
 DROP TYPE oracle_object_type;
+
+-- Object method specifications, bodies, implicit SELF, and attribute names.
+CREATE OR REPLACE TYPE person_object_type AS OBJECT
+(
+    first_name varchar2(20),
+    last_name varchar2(20),
+    birth_year integer,
+    MEMBER FUNCTION full_name RETURN varchar2,
+    MEMBER FUNCTION age_in(p_year integer DEFAULT 2026) RETURN integer
+) NOT FINAL;
+/
+
+CREATE OR REPLACE TYPE BODY person_object_type AS
+    MEMBER FUNCTION full_name RETURN varchar2 AS
+    BEGIN
+        RETURN first_name || ' ' || last_name;
+    END full_name;
+
+    MEMBER FUNCTION age_in(p_year integer) RETURN integer IS
+    BEGIN
+        RETURN p_year - self.birth_year;
+    END age_in;
+END;
+/
+
+SELECT p.full_name(), p.age_in(2026)
+FROM (VALUES (person_object_type('Ada', 'Lovelace', 1815))) AS v(p);
+SELECT p.age_in()
+FROM (VALUES (person_object_type('Ada', 'Lovelace', 1815))) AS v(p);
+SELECT p.age_in(p_year => 2020)
+FROM (VALUES (person_object_type('Ada', 'Lovelace', 1815))) AS v(p);
+
+-- Qualified object columns retain member-call semantics.
+CREATE TABLE person_object_table (object_value person_object_type);
+INSERT INTO person_object_table
+VALUES (person_object_type('Grace', 'Hopper', 1906));
+SELECT t.object_value.full_name() FROM person_object_table AS t;
+SELECT public.person_object_table.object_value.full_name()
+FROM public.person_object_table;
+DROP TABLE person_object_table;
+
+SELECT pkgtypeoid = 'person_object_type'::regtype,
+       pkginstantiable,
+       pkgfinal
+FROM pg_package
+WHERE pkgname = 'person_object_type';
+
+CREATE OR REPLACE TYPE person_object_type AS OBJECT
+(
+    first_name varchar2(20),
+    last_name varchar2(20),
+    birth_year integer,
+    MEMBER FUNCTION full_name RETURN varchar2,
+    MEMBER FUNCTION age_in(p_year integer DEFAULT 2026) RETURN integer
+) NOT FINAL;
+/
+SELECT p.full_name()
+FROM (VALUES (person_object_type('Ada', 'Lovelace', 1815))) AS v(p);
+
+CREATE OR REPLACE TYPE person_object_type AS OBJECT
+(
+    first_name varchar2(30),
+    last_name varchar2(20),
+    birth_year integer,
+    MEMBER FUNCTION full_name RETURN varchar2,
+    MEMBER FUNCTION age_in(p_year integer DEFAULT 2026) RETURN integer
+) NOT FINAL;
+/
+
+DROP TYPE person_object_type;
+
+-- Constructors, static functions, and mutating member procedures.
+CREATE TYPE feature_object_type AS OBJECT
+(
+    value integer,
+    label varchar2(20),
+    CONSTRUCTOR FUNCTION feature_object_type(p_value integer, p_label varchar2)
+        RETURN SELF AS RESULT,
+    MEMBER FUNCTION describe RETURN varchar2,
+    MEMBER PROCEDURE bump(delta integer),
+    STATIC FUNCTION decorate(p_text varchar2) RETURN varchar2,
+    STATIC PROCEDURE increment(p_value IN OUT integer)
+);
+/
+
+CREATE TYPE BODY feature_object_type AS
+    CONSTRUCTOR FUNCTION feature_object_type(p_value integer, p_label varchar2)
+        RETURN SELF AS RESULT IS
+    BEGIN
+        self.value := p_value + 100;
+        self.label := p_label;
+        RETURN self;
+    END feature_object_type;
+
+    MEMBER FUNCTION describe RETURN varchar2 IS
+    BEGIN
+        RETURN label || ':' || self.value;
+    END describe;
+
+    MEMBER PROCEDURE bump(delta integer) IS
+    BEGIN
+        self.value := self.value + delta;
+    END bump;
+
+    STATIC FUNCTION decorate(p_text varchar2) RETURN varchar2 IS
+    BEGIN
+        RETURN '[' || p_text || ']';
+    END decorate;
+
+    STATIC PROCEDURE increment(p_value IN OUT integer) IS
+    BEGIN
+        p_value := p_value + 1;
+    END increment;
+END;
+/
+
+SELECT feature_object_type(1, 'one'),
+       feature_object_type.decorate('static');
+SELECT feature_object_type(p_label => 'named', p_value => 8);
+SELECT v.describe()
+FROM (VALUES (feature_object_type(2, 'two'))) AS objects(v);
+
+DO $$
+DECLARE
+    v feature_object_type := feature_object_type(3, 'three');
+	n integer := 10;
+BEGIN
+    v.bump(4);
+	feature_object_type.increment(n);
+    IF v.value <> 107 THEN
+        RAISE EXCEPTION 'unexpected member procedure result: %', v.value;
+    END IF;
+	IF n <> 11 THEN
+		RAISE EXCEPTION 'unexpected static procedure result: %', n;
+	END IF;
+END;
+$$;
+
+-- Object methods use TYPE privileges, not the hidden package ACL.
+CREATE ROLE object_type_user;
+REVOKE ALL ON TYPE feature_object_type FROM PUBLIC;
+SET ROLE object_type_user;
+SELECT feature_object_type.decorate('denied');
+RESET ROLE;
+GRANT USAGE ON TYPE feature_object_type TO object_type_user;
+SET ROLE object_type_user;
+SELECT feature_object_type.decorate('allowed');
+RESET ROLE;
+REVOKE USAGE ON TYPE feature_object_type FROM object_type_user;
+DROP ROLE object_type_user;
+
+-- The hidden method namespace follows type ownership.
+CREATE ROLE object_type_owner;
+ALTER TYPE feature_object_type OWNER TO object_type_owner;
+SELECT t.typowner = p.pkgowner AS owners_match
+FROM pg_type AS t
+JOIN pg_package AS p ON p.pkgtypeoid = t.oid
+WHERE t.typname = 'feature_object_type';
+ALTER TYPE feature_object_type OWNER TO CURRENT_USER;
+DROP ROLE object_type_owner;
+
+-- PostgreSQL-only rename/schema moves are rejected rather than desynchronizing
+-- the compiled Oracle method contract.
+ALTER TYPE feature_object_type RENAME TO renamed_feature_object_type;
+CREATE SCHEMA object_type_target;
+ALTER TYPE feature_object_type SET SCHEMA object_type_target;
+DROP SCHEMA object_type_target;
+
+DROP TYPE feature_object_type;
+
+-- MAP methods define equality and ordering through a scalar key.
+CREATE TYPE map_object_type AS OBJECT
+(
+    value integer,
+    label varchar2(20),
+    MAP MEMBER FUNCTION sort_key RETURN integer
+);
+/
+
+CREATE TYPE BODY map_object_type AS
+    MAP MEMBER FUNCTION sort_key RETURN integer IS
+    BEGIN
+		IF self IS NULL THEN
+			RAISE EXCEPTION 'MAP method invoked for NULL SELF';
+		END IF;
+        RETURN self.value % 10;
+    END sort_key;
+END;
+/
+
+SELECT map_object_type(11, 'z') = map_object_type(1, 'a') AS map_equal,
+       map_object_type(2, 'z') < map_object_type(9, 'a') AS map_less;
+SELECT NULL::map_object_type < map_object_type(9, 'a') AS map_null;
+SELECT (v).value
+FROM (VALUES (map_object_type(2, 'two')),
+             (map_object_type(11, 'eleven'))) AS objects(v)
+ORDER BY v;
+SELECT count(*) AS map_groups
+FROM
+(
+    SELECT v
+    FROM (VALUES (map_object_type(11, 'z')),
+                 (map_object_type(1, 'a')),
+                 (map_object_type(2, 'b'))) AS objects(v)
+    GROUP BY v
+) AS grouped_objects;
+SELECT count(*) AS map_distinct
+FROM
+(
+    SELECT DISTINCT v
+    FROM (VALUES (map_object_type(11, 'z')),
+                 (map_object_type(1, 'a')),
+                 (map_object_type(2, 'b'))) AS objects(v)
+) AS distinct_objects;
+SELECT count(*) AS map_union
+FROM
+(
+    SELECT map_object_type(11, 'z') AS v
+    UNION
+    SELECT map_object_type(1, 'a')
+    UNION
+    SELECT map_object_type(2, 'b')
+) AS union_objects;
+DROP TYPE map_object_type;
+
+-- ORDER methods compare SELF directly with another object value.
+CREATE TYPE order_object_type AS OBJECT
+(
+    value integer,
+    label varchar2(20),
+    ORDER MEMBER FUNCTION compare(other order_object_type) RETURN integer
+);
+/
+
+CREATE TYPE BODY order_object_type AS
+    ORDER MEMBER FUNCTION compare(other order_object_type) RETURN integer IS
+    BEGIN
+		IF self IS NULL OR other IS NULL THEN
+			RAISE EXCEPTION 'ORDER method invoked for NULL object';
+		END IF;
+        RETURN (self.value % 10) - (other.value % 10);
+    END compare;
+END;
+/
+
+SELECT order_object_type(4, 'z') > order_object_type(2, 'a') AS order_greater,
+       order_object_type(7, 'x') = order_object_type(7, 'y') AS order_equal;
+SELECT NULL::order_object_type < order_object_type(1, 'one') AS order_null;
+SELECT (v).value
+FROM (VALUES (order_object_type(2, 'two')),
+             (order_object_type(11, 'eleven'))) AS objects(v)
+ORDER BY v;
+SELECT count(*) AS order_groups
+FROM
+(
+    SELECT v
+    FROM (VALUES (order_object_type(7, 'x')),
+                 (order_object_type(7, 'y')),
+                 (order_object_type(8, 'z'))) AS objects(v)
+    GROUP BY v
+) AS grouped_objects;
+SELECT count(*) AS order_distinct
+FROM
+(
+    SELECT DISTINCT v
+    FROM (VALUES (order_object_type(7, 'x')),
+                 (order_object_type(7, 'y')),
+                 (order_object_type(8, 'z'))) AS objects(v)
+) AS distinct_objects;
+SELECT count(*) AS order_union
+FROM
+(
+    SELECT order_object_type(7, 'x') AS v
+    UNION
+    SELECT order_object_type(7, 'y')
+    UNION
+    SELECT order_object_type(8, 'z')
+) AS union_objects;
+DROP TYPE order_object_type;
+
+-- NOT INSTANTIABLE object types reject construction and must be NOT FINAL.
+CREATE TYPE invalid_empty_object_type AS OBJECT ();
+CREATE TYPE invalid_abstract_type AS OBJECT (id integer) NOT INSTANTIABLE;
+CREATE TYPE invalid_abstract_constructor AS OBJECT
+(
+    id integer,
+    CONSTRUCTOR FUNCTION invalid_abstract_constructor(p_id integer)
+        RETURN SELF AS RESULT
+) NOT INSTANTIABLE NOT FINAL;
+CREATE TYPE invalid_order_type AS OBJECT
+(
+    id integer,
+    ORDER MEMBER FUNCTION compare(other OUT invalid_order_type) RETURN integer
+);
+CREATE TYPE invalid_map_type AS OBJECT
+(
+    id integer,
+    MAP MEMBER FUNCTION map_key(extra integer) RETURN integer
+);
+CREATE TYPE invalid_map_return_type AS OBJECT
+(
+    id integer,
+    MAP MEMBER FUNCTION map_key RETURN json
+);
+CREATE TYPE invalid_comparison_type AS OBJECT
+(
+    id integer,
+    MAP MEMBER FUNCTION map_key RETURN integer,
+    ORDER MEMBER FUNCTION compare(other invalid_comparison_type) RETURN integer
+);
+CREATE TYPE abstract_modifier_order AS OBJECT ()
+    NOT FINAL NOT INSTANTIABLE;
+DROP TYPE abstract_modifier_order;
+CREATE TYPE abstract_object_type AS OBJECT (id integer)
+    NOT INSTANTIABLE NOT FINAL;
+SELECT abstract_object_type(1);
+DROP TYPE abstract_object_type;
 
 -- Only types declared AS OBJECT have constructor and member semantics.
 CREATE TABLE ordinary_object_table (id integer, label varchar(20));
@@ -206,6 +526,17 @@ ORDER BY typname;
 
 DROP VIEW ordinary_object_view;
 DROP TABLE ordinary_object_table;
+
+-- Method introducers remain usable as ordinary identifiers elsewhere.
+CREATE TABLE object_keyword_compatibility
+(
+    constructor integer,
+    member integer,
+    static integer
+);
+INSERT INTO object_keyword_compatibility VALUES (1, 2, 3);
+SELECT constructor, member, static FROM object_keyword_compatibility;
+DROP TABLE object_keyword_compatibility;
 
 CREATE FUNCTION get_default_test() RETURNS SETOF default_test_row AS '
   SELECT * FROM default_test;

@@ -51,10 +51,13 @@
 #include "catalog/pg_enum.h"
 #include "catalog/pg_language.h"
 #include "catalog/pg_namespace.h"
+#include "catalog/pg_package.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_range.h"
 #include "catalog/pg_type.h"
+#include "commands/alter.h"
 #include "commands/defrem.h"
+#include "commands/packagecmds.h"
 #include "commands/tablecmds.h"
 #include "commands/typecmds.h"
 #include "executor/executor.h"
@@ -2599,13 +2602,88 @@ AssignTypeMultirangeArrayOid(void)
  * Return type is the new type's object address.
  *-------------------------------------------------------------------
  */
+static void
+check_object_type_replace(Oid typeOid, List *coldeflist)
+{
+	HeapTuple	typeTuple;
+	Form_pg_type typeForm;
+	Relation	relation;
+	TupleDesc	tupdesc;
+	ListCell   *lc;
+	int			attno = 0;
+
+	typeTuple = SearchSysCache1(TYPEOID, ObjectIdGetDatum(typeOid));
+	if (!HeapTupleIsValid(typeTuple))
+		elog(ERROR, "cache lookup failed for type %u", typeOid);
+	typeForm = (Form_pg_type) GETSTRUCT(typeTuple);
+
+	if (!typeForm->typisobject)
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("type \"%s\" is not an object type",
+						NameStr(typeForm->typname))));
+	if (!object_ownercheck(TypeRelationId, typeOid, GetUserId()))
+		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_TYPE,
+					   NameStr(typeForm->typname));
+
+	relation = relation_open(typeForm->typrelid, AccessShareLock);
+	tupdesc = RelationGetDescr(relation);
+	foreach(lc, coldeflist)
+	{
+		ColumnDef  *column = lfirst_node(ColumnDef, lc);
+		Form_pg_attribute attribute;
+		Oid			declaredType;
+		Oid			declaredCollation;
+		int32		declaredTypmod;
+
+		while (attno < tupdesc->natts &&
+			   TupleDescAttr(tupdesc, attno)->attisdropped)
+			attno++;
+		if (attno >= tupdesc->natts)
+			goto mismatch;
+
+		attribute = TupleDescAttr(tupdesc, attno++);
+		typenameTypeIdAndMod(NULL, column->typeName,
+							 &declaredType, &declaredTypmod);
+		declaredCollation = GetColumnDefCollation(NULL, column, declaredType);
+		if (strcmp(NameStr(attribute->attname), column->colname) != 0 ||
+			attribute->atttypid != declaredType ||
+			attribute->atttypmod != declaredTypmod ||
+			attribute->attcollation != declaredCollation)
+			goto mismatch;
+	}
+	while (attno < tupdesc->natts &&
+		   TupleDescAttr(tupdesc, attno)->attisdropped)
+		attno++;
+	if (attno != tupdesc->natts)
+		goto mismatch;
+
+	relation_close(relation, AccessShareLock);
+	ReleaseSysCache(typeTuple);
+	return;
+
+mismatch:
+	relation_close(relation, AccessShareLock);
+	ReleaseSysCache(typeTuple);
+	ereport(ERROR,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("CREATE OR REPLACE TYPE cannot change object attributes"),
+			 errhint("Drop and recreate the type to change its stored attributes.")));
+}
+
 ObjectAddress
-DefineCompositeType(RangeVar *typevar, List *coldeflist, bool is_object)
+DefineCompositeType(RangeVar *typevar, List *coldeflist, bool is_object,
+					bool replace, List *methods, bool instantiable, bool final)
 {
 	CreateStmt *createStmt = makeNode(CreateStmt);
 	Oid			old_type_oid;
 	Oid			typeNamespace;
 	ObjectAddress address;
+
+	if (is_object && coldeflist == NIL && instantiable)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+				 errmsg("an object type without attributes must be NOT INSTANTIABLE")));
 
 	/*
 	 * now set the parameters for keys/inheritance etc. All of these are
@@ -2636,6 +2714,15 @@ DefineCompositeType(RangeVar *typevar, List *coldeflist, bool is_object)
 						ObjectIdGetDatum(typeNamespace));
 	if (OidIsValid(old_type_oid))
 	{
+		if (is_object && replace)
+		{
+			check_object_type_replace(old_type_oid, coldeflist);
+			ObjectAddressSet(address, TypeRelationId, old_type_oid);
+			CommandCounterIncrement();
+			CreateObjectTypePackage(old_type_oid, methods, true,
+									instantiable, final);
+			return address;
+		}
 		if (!moveArrayTypeName(old_type_oid, createStmt->relation->relname, typeNamespace))
 			ereport(ERROR,
 					(errcode(ERRCODE_DUPLICATE_OBJECT),
@@ -2647,6 +2734,13 @@ DefineCompositeType(RangeVar *typevar, List *coldeflist, bool is_object)
 	 */
 	DefineRelation(createStmt, RELKIND_COMPOSITE_TYPE, InvalidOid, &address,
 				   NULL);
+
+	if (is_object)
+	{
+		CommandCounterIncrement();
+		CreateObjectTypePackage(address.objectId, methods, false,
+								instantiable, final);
+	}
 
 	return address;
 }
@@ -3865,6 +3959,17 @@ RenameType(RenameStmt *stmt)
 	/* we do allow separate renaming of multirange types, though */
 
 	/*
+	 * The method specification and constructor names are stored in the
+	 * package-shaped implementation namespace.  Renaming only pg_type would
+	 * leave that compiled contract inconsistent, so reject the PostgreSQL-only
+	 * operation instead of silently breaking method dispatch.
+	 */
+	if (typTup->typisobject)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("renaming an Oracle object type is not supported")));
+
+	/*
 	 * If type is composite we need to rename associated pg_class entry too.
 	 * RenameRelationInternal will call RenameTypeInternal automatically.
 	 */
@@ -4015,6 +4120,7 @@ AlterTypeOwner_oid(Oid typeOid, Oid newOwnerId, bool hasDependEntry)
 	Relation	rel;
 	HeapTuple	tup;
 	Form_pg_type typTup;
+	Oid			objectPackageOid = InvalidOid;
 
 	rel = table_open(TypeRelationId, RowExclusiveLock);
 
@@ -4022,6 +4128,8 @@ AlterTypeOwner_oid(Oid typeOid, Oid newOwnerId, bool hasDependEntry)
 	if (!HeapTupleIsValid(tup))
 		elog(ERROR, "cache lookup failed for type %u", typeOid);
 	typTup = (Form_pg_type) GETSTRUCT(tup);
+	if (typTup->typisobject)
+		objectPackageOid = GetObjectTypePackageOid(typeOid, false);
 
 	/*
 	 * If it's a composite type, invoke ATExecChangeOwner so that we fix up
@@ -4038,6 +4146,11 @@ AlterTypeOwner_oid(Oid typeOid, Oid newOwnerId, bool hasDependEntry)
 		changeDependencyOnOwner(TypeRelationId, typeOid, newOwnerId);
 
 	InvokeObjectPostAlterHook(TypeRelationId, typeOid, 0);
+
+	/* Keep the internal method namespace under the same owner as its type. */
+	if (OidIsValid(objectPackageOid))
+		AlterObjectOwner_internal(PackageRelationId, objectPackageOid,
+								  newOwnerId);
 
 	ReleaseSysCache(tup);
 	table_close(rel, RowExclusiveLock);
@@ -4171,6 +4284,11 @@ AlterTypeNamespace_oid(Oid typeOid, Oid nspOid, bool ignoreDependent,
 					   ObjectAddresses *objsMoved)
 {
 	Oid			elemOid;
+
+	if (get_typisobject(typeOid))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("moving an Oracle object type to another schema is not supported")));
 
 	/* check permissions on type */
 	if (!object_ownercheck(TypeRelationId, typeOid, GetUserId()))

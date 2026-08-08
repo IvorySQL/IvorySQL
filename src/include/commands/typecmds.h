@@ -28,7 +28,9 @@ extern ObjectAddress DefineEnum(CreateEnumStmt *stmt);
 extern ObjectAddress DefineRange(ParseState *pstate, CreateRangeStmt *stmt);
 extern ObjectAddress AlterEnum(AlterEnumStmt *stmt);
 extern ObjectAddress DefineCompositeType(RangeVar *typevar, List *coldeflist,
-										 bool is_object);
+										 bool is_object, bool replace,
+										 List *methods, bool instantiable,
+										 bool final);
 extern Oid	AssignTypeArrayOid(void);
 extern Oid	AssignTypeMultirangeOid(void);
 extern Oid	AssignTypeMultirangeArrayOid(void);

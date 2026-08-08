@@ -182,6 +182,7 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 		case T_CreateFunctionStmt:
 		case T_CreatePackageStmt:
 		case T_CreatePackageBodyStmt:
+		case T_CreateTypeBodyStmt:
 		case T_AlterPackageStmt:
 		case T_CreateOpClassStmt:
 		case T_CreateOpFamilyStmt:
@@ -1671,7 +1672,11 @@ ProcessUtilitySlow(ParseState *pstate,
 
 					address = DefineCompositeType(stmt->typevar,
 											  stmt->coldeflist,
-											  stmt->is_object);
+											  stmt->is_object,
+											  stmt->replace,
+											  stmt->methods,
+											  stmt->instantiable,
+											  stmt->final);
 				}
 				break;
 
@@ -1974,6 +1979,9 @@ ProcessUtilitySlow(ParseState *pstate,
 				break;
 			case T_CreatePackageBodyStmt:
 				address = CreatePackageBody((CreatePackageBodyStmt *) parsetree);
+				break;
+			case T_CreateTypeBodyStmt:
+				address = CreateObjectTypeBody((CreateTypeBodyStmt *) parsetree);
 				break;
 			case T_AlterPackageStmt:
 				address = AlterPackage((AlterPackageStmt *) parsetree);
@@ -3365,6 +3373,9 @@ CreateCommandTag(Node *parsetree)
 		case T_CreatePackageBodyStmt:
 			tag = CMDTAG_CREATE_PACKAGE_BODY;
 			break;
+		case T_CreateTypeBodyStmt:
+			tag = CMDTAG_CREATE_TYPE;
+			break;
 		case T_AlterPackageStmt:
 			tag = CMDTAG_ALTER_PACKAGE;
 			break;
@@ -3930,6 +3941,7 @@ GetCommandLogLevel(Node *parsetree)
 
 		case T_CreatePackageStmt:
 		case T_CreatePackageBodyStmt:
+		case T_CreateTypeBodyStmt:
 		case T_AlterPackageStmt:
 			lev = LOGSTMT_DDL;
 			break;

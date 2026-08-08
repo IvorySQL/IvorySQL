@@ -1033,6 +1033,26 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 	return transformColumnRefInternal(pstate, cref, false);
 }
 
+/*
+ * Resolve the object expression preceding a member-method name.  Unlike an
+ * ordinary ColumnRef, a miss is not immediately an error because the same
+ * dotted name may still be diagnosed as a function or package reference by
+ * ParseFuncOrColumn.
+ */
+Node *
+transformColumnRefForObjectMethod(ParseState *pstate, ColumnRef *cref)
+{
+	Node	   *result;
+	ParseExprKind saved_kind = pstate->p_expr_kind;
+
+	/* Package bodies can analyze CALL expressions without an outer kind. */
+	if (pstate->p_expr_kind == EXPR_KIND_NONE)
+		pstate->p_expr_kind = EXPR_KIND_OTHER;
+	result = transformColumnRefInternal(pstate, cref, true);
+	pstate->p_expr_kind = saved_kind;
+	return result;
+}
+
 static Node *
 transformParamRef(ParseState *pstate, ParamRef *pref)
 {

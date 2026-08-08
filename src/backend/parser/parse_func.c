@@ -17,6 +17,7 @@
 
 #include "access/htup_details.h"
 #include "catalog/pg_aggregate.h"
+#include "catalog/pg_package.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "funcapi.h"
@@ -38,6 +39,7 @@
 #include "utils/lsyscache.h"
 #include "utils/ora_compatible.h"
 #include "utils/syscache.h"
+#include "utils/typcache.h"
 #include "commands/packagecmds.h"
 #include "parser/parse_param.h"
 #include "commands/proclang.h"
@@ -57,6 +59,8 @@ static void unify_hypothetical_args(ParseState *pstate,
 									Oid *actual_arg_types, Oid *declared_arg_types);
 static Oid	FuncNameAsType(List *funcname);
 static Oid	FuncNameAsObjectType(List *funcname);
+static Node *BuildObjectConstructorSelf(ParseState *pstate, Oid typeOid,
+										int location);
 static Node *ParseComplexProjection(ParseState *pstate, const char *funcname,
 									Node *first_arg, int location);
 static Oid	LookupFuncNameInternal(ObjectType objtype, List *funcname,
@@ -426,45 +430,70 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 	 * argument.  Package-qualified lookup has already failed at this point.
 	 * An existing schema still takes precedence over member notation.
 	 *
-	 * For now this handles a simple object column reference, which covers SQL
-	 * expressions and gives PL/iSQL's member-method implementation a normal
-	 * pg_proc calling convention to target.
+	 * The object expression may itself be qualified (for example,
+	 * table_alias.object_column.method()).
 	 */
 	if (fdresult == FUNCDETAIL_NOTFOUND &&
 		ORA_PARSER == compatible_db &&
-		!proc_call && list_length(funcname) == 2 &&
+		list_length(funcname) >= 2 && list_length(funcname) <= 4 &&
 		agg_order == NIL && agg_filter == NULL &&
 		!agg_star && !agg_distinct && over == NULL &&
 		!func_variadic && nargs < FUNC_MAX_ARGS)
 	{
-		const char *objectname = strVal(linitial(funcname));
 		Node	   *self;
+		ColumnRef  *selfref;
+		bool		explicit_namespace;
 
-		self = OidIsValid(LookupExplicitNamespace(objectname, true)) ? NULL :
-			colNameToVar(pstate, objectname, false, location);
+		explicit_namespace = list_length(funcname) == 2 &&
+			OidIsValid(LookupExplicitNamespace(strVal(linitial(funcname)), true));
+		self = NULL;
+		selfref = NULL;
+		if (!explicit_namespace)
+		{
+			selfref = makeNode(ColumnRef);
+			selfref->fields = list_copy_head(funcname,
+											 list_length(funcname) - 1);
+			selfref->location = location;
+			self = transformColumnRefForObjectMethod(pstate, selfref);
+		}
 		if (self != NULL && ISCOMPLEX(exprType(self)) &&
 			get_typisobject(exprType(self)))
 		{
-			List	   *methodname = list_make1(copyObject(lsecond(funcname)));
+			HeapTuple	typeTuple;
+			Form_pg_type typeForm;
+			List	   *methodname;
 			List	   *methodargs = lcons(self, list_copy(fargs));
 			Oid			method_arg_types[FUNC_MAX_ARGS];
 			FuncDetailCode method_result;
 			int			i;
 
+			typeTuple = SearchSysCache1(TYPEOID,
+									ObjectIdGetDatum(exprType(self)));
+			if (!HeapTupleIsValid(typeTuple))
+				elog(ERROR, "cache lookup failed for type %u", exprType(self));
+			typeForm = (Form_pg_type) GETSTRUCT(typeTuple);
+			methodname = list_make3(
+				makeString(get_namespace_name(typeForm->typnamespace)),
+				makeString(pstrdup(NameStr(typeForm->typname))),
+				copyObject(llast(funcname)));
+			ReleaseSysCache(typeTuple);
+
 			method_arg_types[0] = exprType(self);
 			for (i = 0; i < nargs; i++)
 				method_arg_types[i + 1] = actual_arg_types[i];
 
-			method_result = func_get_detail(methodname, methodargs, argnames,
-											nargs + 1, method_arg_types,
-											!func_variadic, true, false,
-											&fgc_flags,
-											&funcid, &rettype, &retset,
-											&nvargs, &vatype,
-											&declared_arg_types, &argdefaults);
+			method_result = LookupPkgFunc(pstate, methodname, &methodargs,
+											  argnames, nargs + 1,
+											  method_arg_types,
+											  !func_variadic, true, proc_call,
+											  &funcid, &rettype, &retset,
+											  &nvargs, &vatype,
+											  &declared_arg_types, &argdefaults,
+											  &pfunc, &pkgoid, true);
 			if (method_result != FUNCDETAIL_NOTFOUND)
 			{
 				fdresult = method_result;
+				function_from = FUNC_FROM_PACKAGE;
 				funcname = methodname;
 				fargs = methodargs;
 				nargs++;
@@ -474,8 +503,12 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 			}
 			else
 			{
-				list_free(methodname);
-				list_free(methodargs);
+				ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_FUNCTION),
+						 errmsg("method \"%s\" does not exist for object type %s",
+								strVal(llast(funcname)),
+								format_type_be(exprType(self))),
+						 parser_errposition(pstate, location)));
 			}
 		}
 	}
@@ -488,6 +521,93 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 								   &funcid, &rettype, &retset,
 								   &nvargs, &vatype,
 								   &declared_arg_types, &argdefaults);
+
+	/*
+	 * A user-declared constructor is stored as a routine in the object's
+	 * hidden package namespace.  Its first argument is the compiler-generated
+	 * SELF value, so synthesize a non-atomic object whose attributes initially
+	 * contain NULL and prepend it to the visible constructor arguments.
+	 */
+	if (fdresult == FUNCDETAIL_NOTFOUND &&
+		ORA_PARSER == compatible_db &&
+		!is_column && !proc_call &&
+		agg_order == NIL && agg_filter == NULL &&
+		!agg_star && !agg_distinct && over == NULL &&
+		!func_variadic && nargs < FUNC_MAX_ARGS)
+	{
+		Oid			targetType = FuncNameAsObjectType(funcname);
+
+		if (OidIsValid(targetType))
+		{
+			HeapTuple	typeTuple;
+			Form_pg_type typeForm;
+			Oid			objectPackage;
+			List	   *constructorName;
+			List	   *constructorArgs;
+			Oid			constructorArgTypes[FUNC_MAX_ARGS];
+			Node	   *self;
+			int			i;
+
+			typeTuple = SearchSysCache1(TYPEOID, ObjectIdGetDatum(targetType));
+			if (!HeapTupleIsValid(typeTuple))
+				elog(ERROR, "cache lookup failed for type %u", targetType);
+			typeForm = (Form_pg_type) GETSTRUCT(typeTuple);
+			objectPackage = GetObjectTypePackageOid(targetType, true);
+			if (OidIsValid(objectPackage))
+			{
+				HeapTuple	packageTuple;
+				Form_pg_package packageForm;
+
+				packageTuple = SearchSysCache1(PKGOID,
+										 ObjectIdGetDatum(objectPackage));
+				if (!HeapTupleIsValid(packageTuple))
+					elog(ERROR, "cache lookup failed for package %u", objectPackage);
+				packageForm = (Form_pg_package) GETSTRUCT(packageTuple);
+				if (!packageForm->pkginstantiable)
+					ereport(ERROR,
+						(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+						 errmsg("object type \"%s\" is not instantiable",
+								NameStr(typeForm->typname))));
+				ReleaseSysCache(packageTuple);
+			}
+
+			constructorName = list_make3(
+				makeString(get_namespace_name(typeForm->typnamespace)),
+				makeString(pstrdup(NameStr(typeForm->typname))),
+				makeString(pstrdup(NameStr(typeForm->typname))));
+			ReleaseSysCache(typeTuple);
+
+			self = BuildObjectConstructorSelf(pstate, targetType, location);
+			constructorArgs = lcons(self, list_copy(fargs));
+			constructorArgTypes[0] = targetType;
+			for (i = 0; i < nargs; i++)
+				constructorArgTypes[i + 1] = actual_arg_types[i];
+
+			fdresult = LookupPkgFunc(pstate, constructorName,
+										 &constructorArgs, argnames, nargs + 1,
+										 constructorArgTypes,
+										 true, true, false,
+										 &funcid, &rettype, &retset,
+										 &nvargs, &vatype,
+										 &declared_arg_types, &argdefaults,
+										 &pfunc, &pkgoid, true);
+			if (fdresult != FUNCDETAIL_NOTFOUND)
+			{
+				function_from = FUNC_FROM_PACKAGE;
+				funcname = constructorName;
+				fargs = constructorArgs;
+				nargs++;
+				for (i = 0; i < nargs; i++)
+					actual_arg_types[i] = constructorArgTypes[i];
+				first_arg = self;
+			}
+			else
+			{
+				list_free_deep(constructorName);
+				list_free(constructorArgs);
+			}
+		}
+	}
 
 	/*
 	 * Oracle object types have a system-defined constructor whose name is
@@ -2560,6 +2680,45 @@ FuncNameAsObjectType(List *funcname)
 		result = typeform->oid;
 
 	ReleaseSysCache(typtup);
+	return result;
+}
+
+/* Build the initialized SELF value passed to a user-defined constructor. */
+static Node *
+BuildObjectConstructorSelf(ParseState *pstate, Oid typeOid, int location)
+{
+	TupleDesc	tupdesc;
+	RowExpr    *row;
+	List	   *args = NIL;
+	Node	   *result;
+	int			i;
+
+	tupdesc = lookup_rowtype_tupdesc(typeOid, -1);
+	for (i = 0; i < tupdesc->natts; i++)
+	{
+		Form_pg_attribute attribute = TupleDescAttr(tupdesc, i);
+
+		if (attribute->attisdropped)
+			continue;
+		args = lappend(args,
+					   makeNullConst(attribute->atttypid,
+								 attribute->atttypmod,
+								 attribute->attcollation));
+	}
+	ReleaseTupleDesc(tupdesc);
+
+	row = makeNode(RowExpr);
+	row->args = args;
+	row->row_typeid = RECORDOID;
+	row->row_format = COERCE_EXPLICIT_CALL;
+	row->colnames = NIL;
+	row->location = location;
+
+	result = coerce_to_target_type(pstate, (Node *) row, RECORDOID,
+								   typeOid, -1, COERCION_EXPLICIT,
+								   COERCE_EXPLICIT_CALL, location);
+	if (result == NULL)
+		elog(ERROR, "could not initialize object type %u", typeOid);
 	return result;
 }
 

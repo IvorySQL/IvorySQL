@@ -368,6 +368,23 @@ plisql_build_variable_from_funcargs(PLiSQL_subproc_function * subprocfunc, bool 
 				((PLiSQL_rec *)argvariable)->info = argmode;
 			else
 				((PLiSQL_rec *)argvariable)->info = PROARGMODE_IN;
+
+			/*
+			 * A constructor's hidden SELF is an input in its callable
+			 * signature, but is a writable, initialized local copy inside the
+			 * body.  Keeping those two properties separate lets SQL callers
+			 * invoke constructors with expressions while preserving Oracle's
+			 * assignment semantics for SELF attributes.
+			 */
+			if (i == 0 && argmode == PROARGMODE_IN &&
+				argitem->argname != NULL &&
+				pg_strcasecmp(argitem->argname, "self") == 0 &&
+				get_typisobject(argdtype->typoid) &&
+				subprocfunc->rettype != NULL &&
+				subprocfunc->rettype->typoid == argdtype->typoid &&
+				pg_strcasecmp(subprocfunc->func_name,
+							  get_rel_name(get_typ_typrelid(argdtype->typoid))) == 0)
+				((PLiSQL_rec *) argvariable)->info = PROARGMODE_INOUT;
 		}
 		function->fn_argvarnos[i] = argvariable->dno;
 
@@ -384,6 +401,36 @@ plisql_build_variable_from_funcargs(PLiSQL_subproc_function * subprocfunc, bool 
 		if (argnames && argnames[i][0] != '\0')
 			add_parameter_name(argitemtype, argvariable->dno,
 							   argnames[i]);
+
+		/*
+		 * Oracle permits an object's attributes to be referenced without a
+		 * SELF. qualifier inside member routines.  Materialize record-field
+		 * datums and put aliases in the routine namespace.  Later formal
+		 * parameters and local declarations naturally shadow these entries.
+		 */
+		if (i == 0 && argvariable->dtype == PLISQL_DTYPE_REC &&
+			argitem->argname != NULL &&
+			pg_strcasecmp(argitem->argname, "self") == 0 &&
+			get_typisobject(argdtype->typoid))
+		{
+			PLiSQL_rec *self = (PLiSQL_rec *) argvariable;
+			TupleDesc	tupdesc;
+			int			fieldno;
+
+			tupdesc = lookup_rowtype_tupdesc(argdtype->typoid, -1);
+			for (fieldno = 0; fieldno < tupdesc->natts; fieldno++)
+			{
+				Form_pg_attribute attribute = TupleDescAttr(tupdesc, fieldno);
+				PLiSQL_recfield *field;
+
+				if (attribute->attisdropped)
+					continue;
+				field = plisql_build_recfield(self, NameStr(attribute->attname));
+				plisql_ns_additem(PLISQL_NSTYPE_VAR, field->dno,
+								  NameStr(attribute->attname));
+			}
+			ReleaseTupleDesc(tupdesc);
+		}
 
 		if (argitem->defexpr != NULL)
 		{
@@ -861,6 +908,44 @@ plisql_build_subproc_function(char *funcname, List *args,
 	}
 
 	return funcs;
+}
+
+PLiSQL_type *
+plisql_build_object_self_type(void)
+{
+	HeapTuple	packageTuple;
+	Form_pg_package packageForm;
+	Oid			typeOid;
+
+	packageTuple = SearchSysCache1(PKGOID,
+								ObjectIdGetDatum(plisql_curr_compile->fn_oid));
+	if (!HeapTupleIsValid(packageTuple))
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("object routine declaration is only valid in an object type")));
+	packageForm = (Form_pg_package) GETSTRUCT(packageTuple);
+	typeOid = packageForm->pkgtypeoid;
+	ReleaseSysCache(packageTuple);
+
+	if (!OidIsValid(typeOid))
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("object routine declaration is only valid in an object type")));
+
+	return plisql_build_datatype(typeOid, -1, InvalidOid, NULL);
+}
+
+PLiSQL_function_argitem *
+plisql_build_object_self_arg(int argmode)
+{
+	PLiSQL_function_argitem *argument;
+
+	argument = palloc0_object(PLiSQL_function_argitem);
+	argument->argname = pstrdup("self");
+	argument->type = plisql_build_object_self_type();
+	argument->argmode = argmode;
+	argument->nocopy = (argmode == ARGMODE_INOUT);
+	return argument;
 }
 
 /*

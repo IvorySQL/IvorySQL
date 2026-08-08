@@ -31,6 +31,7 @@
 #include "miscadmin.h"
 #include "c.h"
 #include "nodes/pg_list.h"
+#include "nodes/makefuncs.h"
 #include "catalog/objectaddress.h"
 #include "catalog/pg_package.h"
 #include "catalog/pg_package_body.h"
@@ -42,6 +43,7 @@
 #include "catalog/pg_language.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_proc.h"
+#include "catalog/pg_type.h"
 #include "access/htup.h"
 #include "access/table.h"
 #include "access/xact.h"
@@ -50,6 +52,7 @@
 #include "utils/builtins.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
+#include "utils/typcache.h"
 #include "utils/lsyscache.h"
 #include "utils/inval.h"
 #include "utils/guc.h"
@@ -58,6 +61,7 @@
 #include "commands/packagecmds.h"
 #include "commands/proclang.h"
 #include "commands/extension.h"
+#include "parser/parse_type.h"
 
 static void handle_package_proper(List *proper, bool *define_invok,
 							char **access_source, bool *use_collation);
@@ -66,13 +70,19 @@ static ObjectAddress CreatePackage_internal(const char *pkgname,
 										const char *pkgsrc,
 										bool replace, bool define_invok,
 										bool editable, const char *access_source,
-										bool use_collation);
+										bool use_collation, Oid typeOid,
+										bool instantiable, bool final,
+										const char *mapMethod,
+										const char *orderMethod);
 static ObjectAddress CreatePackageBody_internal(const char *pkgname,
 										Oid namespaceid, const char *bodysrc,
 										bool replace, bool editable);
 static bool package_source_nochange(HeapTuple tuple, const char *src,
 									bool define_invok, const char *access_source,
-									bool use_collation);
+									bool use_collation, Oid typeOid,
+									bool instantiable, bool final,
+									const char *mapMethod,
+									const char *orderMethod);
 /*
  * handle package proper
  */
@@ -139,7 +149,9 @@ CreatePackage_internal(const char *pkgname,
 					const char *pkgsrc,
 					bool replace, bool define_invok,
 					bool editable, const char *access_source,
-					bool use_collation)
+					bool use_collation, Oid typeOid,
+					bool instantiable, bool final,
+					const char *mapMethod, const char *orderMethod)
 {
 	Relation	rel;
 	HeapTuple	tup;
@@ -149,6 +161,8 @@ CreatePackage_internal(const char *pkgname,
 	Datum		values[Natts_pg_package];
 	bool		replaces[Natts_pg_package];
 	NameData	pg_pkgname;
+	NameData	pg_mapmethod;
+	NameData	pg_ordermethod;
 	int			i;
 	bool		is_update = false;
 	Acl		   *pkgacl = NULL;
@@ -169,12 +183,19 @@ CreatePackage_internal(const char *pkgname,
 	}
 
 	namestrcpy(&pg_pkgname, pkgname);
+	namestrcpy(&pg_mapmethod, mapMethod != NULL ? mapMethod : "");
+	namestrcpy(&pg_ordermethod, orderMethod != NULL ? orderMethod : "");
 	values[Anum_pg_package_pkgname - 1] = NameGetDatum(&pg_pkgname);
 	values[Anum_pg_package_pkgnamespace - 1] = ObjectIdGetDatum(namespaceId);
 	values[Anum_pg_package_pkgowner - 1] = ObjectIdGetDatum(pkgowner);
 	values[Anum_pg_package_define_invok - 1] = CharGetDatum(define_invok);
 	values[Anum_pg_package_editable - 1] = BoolGetDatum(editable);
 	values[Anum_pg_package_use_collation - 1] = BoolGetDatum(use_collation);
+	values[Anum_pg_package_pkgtypeoid - 1] = ObjectIdGetDatum(typeOid);
+	values[Anum_pg_package_pkginstantiable - 1] = BoolGetDatum(instantiable);
+	values[Anum_pg_package_pkgfinal - 1] = BoolGetDatum(final);
+	values[Anum_pg_package_pkgmapmethod - 1] = NameGetDatum(&pg_mapmethod);
+	values[Anum_pg_package_pkgordermethod - 1] = NameGetDatum(&pg_ordermethod);
 	values[Anum_pg_package_pkgsrc - 1] = CStringGetTextDatum(pkgsrc);
 	if (access_source != NULL)
 		values[Anum_pg_package_accesssource - 1] = CStringGetTextDatum(access_source);
@@ -204,8 +225,16 @@ CreatePackage_internal(const char *pkgname,
 			aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_PACKAGE,
 						   pkgname);
 		/* if no change, we doesn't update the pg_package */
+		if (oldpkg->pkgtypeoid != typeOid)
+			ereport(ERROR,
+					(errcode(ERRCODE_DUPLICATE_OBJECT),
+					 errmsg("package \"%s\" conflicts with object type method namespace",
+							pkgname)));
+
 		if (package_source_nochange(oldtup, pkgsrc, define_invok,
-								access_source, use_collation))
+								access_source, use_collation, typeOid,
+								instantiable, final,
+								mapMethod, orderMethod))
 		{
 			myself.classId = PackageRelationId;
 			myself.objectId = oldpkg->oid;
@@ -221,6 +250,11 @@ CreatePackage_internal(const char *pkgname,
 		 */
 		replaces[Anum_pg_package_define_invok - 1] = true;
 		replaces[Anum_pg_package_use_collation - 1] = true;
+		replaces[Anum_pg_package_pkgtypeoid - 1] = true;
+		replaces[Anum_pg_package_pkginstantiable - 1] = true;
+		replaces[Anum_pg_package_pkgfinal - 1] = true;
+		replaces[Anum_pg_package_pkgmapmethod - 1] = true;
+		replaces[Anum_pg_package_pkgordermethod - 1] = true;
 		replaces[Anum_pg_package_pkgsrc - 1] = true;
 		replaces[Anum_pg_package_accesssource - 1] = true;
 
@@ -279,6 +313,13 @@ CreatePackage_internal(const char *pkgname,
 	record_object_address_dependencies(&myself, addrs,
 			DEPENDENCY_NORMAL);
 	free_object_addresses(addrs);
+
+	/* An object method namespace is an implementation detail of its type. */
+	if (OidIsValid(typeOid))
+	{
+		ObjectAddressSet(referenced, TypeRelationId, typeOid);
+		recordDependencyOn(&myself, &referenced, DEPENDENCY_INTERNAL);
+	}
 
 	/* dependency on owner */
 	if (!is_update)
@@ -495,7 +536,10 @@ CreatePackageBody_internal(const char *pkgname,
 static bool
 package_source_nochange(HeapTuple tuple, const char *src,
 								bool define_invok, const char *access_source,
-								bool use_collation)
+								bool use_collation, Oid typeOid,
+								bool instantiable, bool final,
+								const char *mapMethod,
+								const char *orderMethod)
 {
 	char *ssrc;
 	char *saccess_source;
@@ -508,6 +552,15 @@ package_source_nochange(HeapTuple tuple, const char *src,
 	if (pkgStruct->define_invok != define_invok)
 		return false;
 	if (pkgStruct->use_collation != use_collation)
+		return false;
+	if (pkgStruct->pkgtypeoid != typeOid ||
+		pkgStruct->pkginstantiable != instantiable ||
+		pkgStruct->pkgfinal != final)
+		return false;
+	if (strcmp(NameStr(pkgStruct->pkgmapmethod),
+			   mapMethod != NULL ? mapMethod : "") != 0 ||
+		strcmp(NameStr(pkgStruct->pkgordermethod),
+			   orderMethod != NULL ? orderMethod : "") != 0)
 		return false;
 
 	pkgdatum = SysCacheGetAttr(PKGOID, tuple,
@@ -626,7 +679,12 @@ CreatePackage(CreatePackageStmt *stmt)
 								define_invok,
 								stmt->editable,
 								access_source,
-								use_collation);
+								use_collation,
+								InvalidOid,
+								true,
+								true,
+								NULL,
+								NULL);
 }
 
 /*
@@ -654,6 +712,346 @@ CreatePackageBody(CreatePackageBodyStmt *stmt)
 									stmt->bodysrc,
 									stmt->replace,
 									stmt->editable);
+}
+
+static void
+append_object_method_parameters(StringInfo buf, List *parameters)
+{
+	ListCell   *lc;
+	bool		first = true;
+
+	if (parameters == NIL)
+		return;
+
+	appendStringInfoChar(buf, '(');
+	foreach(lc, parameters)
+	{
+		FunctionParameter *parameter = lfirst_node(FunctionParameter, lc);
+
+		if (!first)
+			appendStringInfoString(buf, ", ");
+		first = false;
+		if (parameter->name != NULL)
+			appendStringInfo(buf, "%s ", quote_identifier(parameter->name));
+
+		switch (parameter->mode)
+		{
+			case FUNC_PARAM_OUT:
+				appendStringInfoString(buf, "out ");
+				break;
+			case FUNC_PARAM_INOUT:
+				appendStringInfoString(buf, "in out ");
+				break;
+			case FUNC_PARAM_IN:
+			case FUNC_PARAM_DEFAULT:
+				break;
+			default:
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("unsupported object method parameter mode")));
+		}
+		appendStringInfoString(buf, TypeNameToString(parameter->argType));
+		if (parameter->defexpr != NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("default values are not supported in object method declarations")));
+	}
+	appendStringInfoChar(buf, ')');
+}
+
+static char *
+build_object_package_source(List *methods)
+{
+	StringInfoData buf;
+	ListCell   *lc;
+
+	initStringInfo(&buf);
+	foreach(lc, methods)
+	{
+		ObjectTypeMethod *method = lfirst_node(ObjectTypeMethod, lc);
+
+		if (method->source != NULL)
+		{
+			appendStringInfo(&buf, "%s;\n", method->source);
+			continue;
+		}
+
+		switch (method->kind)
+		{
+			case OBJECT_METHOD_MEMBER_FUNCTION:
+				appendStringInfoString(&buf, "member function ");
+				break;
+			case OBJECT_METHOD_MEMBER_PROCEDURE:
+				appendStringInfoString(&buf, "member procedure ");
+				break;
+			case OBJECT_METHOD_STATIC_FUNCTION:
+				appendStringInfoString(&buf, "static function ");
+				break;
+			case OBJECT_METHOD_STATIC_PROCEDURE:
+				appendStringInfoString(&buf, "static procedure ");
+				break;
+			case OBJECT_METHOD_CONSTRUCTOR:
+				appendStringInfoString(&buf, "constructor function ");
+				break;
+			case OBJECT_METHOD_MAP:
+				appendStringInfoString(&buf, "map member function ");
+				break;
+			case OBJECT_METHOD_ORDER:
+				appendStringInfoString(&buf, "order member function ");
+				break;
+		}
+
+		appendStringInfoString(&buf, quote_identifier(method->name));
+		append_object_method_parameters(&buf, method->parameters);
+		if (method->kind == OBJECT_METHOD_CONSTRUCTOR)
+			appendStringInfoString(&buf, " return self as result");
+		else if (method->returnType != NULL)
+			appendStringInfo(&buf, " return %s",
+							 TypeNameToString(method->returnType));
+		if (method->deterministic)
+			appendStringInfoString(&buf, " deterministic");
+		appendStringInfoString(&buf, ";\n");
+	}
+	appendStringInfoString(&buf, "end");
+	return buf.data;
+}
+
+/*
+ * Store an object's method specification in a package-shaped namespace.
+ * PL/iSQL already provides overload resolution, validation, caching, and
+ * execution for package subprograms; pg_package.pkgtypeoid distinguishes
+ * these internal namespaces from user-created packages.
+ */
+ObjectAddress
+CreateObjectTypePackage(Oid typeOid, List *methods, bool replace,
+						bool instantiable, bool final)
+{
+	HeapTuple	typeTuple;
+	Form_pg_type typeForm;
+	char	   *source;
+	const char *mapMethod = NULL;
+	const char *orderMethod = NULL;
+	ObjectAddress address;
+	ListCell   *lc;
+
+	typeTuple = SearchSysCache1(TYPEOID, ObjectIdGetDatum(typeOid));
+	if (!HeapTupleIsValid(typeTuple))
+		elog(ERROR, "cache lookup failed for type %u", typeOid);
+	typeForm = (Form_pg_type) GETSTRUCT(typeTuple);
+	if (!instantiable && final)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+				 errmsg("a NOT INSTANTIABLE object type must be NOT FINAL")));
+	foreach(lc, methods)
+	{
+		ObjectTypeMethod *method = lfirst_node(ObjectTypeMethod, lc);
+
+		if (!instantiable && method->kind == OBJECT_METHOD_CONSTRUCTOR)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+					 errmsg("a NOT INSTANTIABLE object type cannot declare a constructor")));
+		if (method->kind == OBJECT_METHOD_CONSTRUCTOR &&
+			strcmp(method->name, NameStr(typeForm->typname)) != 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+					 errmsg("constructor name must match object type name \"%s\"",
+							NameStr(typeForm->typname))));
+		if (method->kind == OBJECT_METHOD_MAP)
+		{
+			Oid			returnType;
+			TypeCacheEntry *typeCache;
+
+			if (mapMethod != NULL)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+						 errmsg("object type may declare only one MAP method")));
+			if (method->parameters != NIL)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+						 errmsg("MAP method may not have parameters")));
+			returnType = typenameTypeId(NULL, method->returnType);
+			if (returnType == typeOid || get_typtype(returnType) == TYPTYPE_COMPOSITE)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+						 errmsg("MAP method must return a scalar type")));
+			typeCache = lookup_type_cache(returnType, TYPECACHE_CMP_PROC);
+			if (!OidIsValid(typeCache->cmp_proc))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+						 errmsg("MAP method return type %s is not orderable",
+								format_type_be(returnType))));
+			mapMethod = method->name;
+		}
+		else if (method->kind == OBJECT_METHOD_ORDER)
+		{
+			FunctionParameter *parameter;
+			Oid			returnType;
+			Oid			parameterType;
+
+			if (orderMethod != NULL)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+						 errmsg("object type may declare only one ORDER method")));
+			if (list_length(method->parameters) != 1)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+						 errmsg("ORDER method must have exactly one parameter")));
+			parameter = linitial_node(FunctionParameter, method->parameters);
+			if (parameter->mode != FUNC_PARAM_IN &&
+				parameter->mode != FUNC_PARAM_DEFAULT)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+						 errmsg("ORDER method parameter must be an input parameter")));
+			parameterType = typenameTypeId(NULL, parameter->argType);
+			if (parameterType != typeOid)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+						 errmsg("ORDER method parameter must have type %s",
+								format_type_be(typeOid))));
+			returnType = typenameTypeId(NULL, method->returnType);
+			if (returnType != INT2OID && returnType != INT4OID &&
+				returnType != INT8OID && returnType != NUMERICOID)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+						 errmsg("ORDER method must return a numeric type")));
+			orderMethod = method->name;
+		}
+	}
+	if (mapMethod != NULL && orderMethod != NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+				 errmsg("object type may not declare both MAP and ORDER methods")));
+
+	source = build_object_package_source(methods);
+	address = CreatePackage_internal(NameStr(typeForm->typname),
+									 typeForm->typnamespace,
+									 typeForm->typowner,
+									 source, replace, true, true,
+									 NULL, false, typeOid,
+									 instantiable, final,
+									 mapMethod, orderMethod);
+
+	pfree(source);
+	ReleaseSysCache(typeTuple);
+	return address;
+}
+
+/* Look up and verify the package-shaped method namespace for an object type. */
+Oid
+GetObjectTypePackageOid(Oid typeOid, bool missing_ok)
+{
+	HeapTuple	typeTuple;
+	Form_pg_type typeForm;
+	Oid			packageOid;
+	HeapTuple	packageTuple;
+	Form_pg_package packageForm;
+
+	typeTuple = SearchSysCache1(TYPEOID, ObjectIdGetDatum(typeOid));
+	if (!HeapTupleIsValid(typeTuple))
+		elog(ERROR, "cache lookup failed for type %u", typeOid);
+	typeForm = (Form_pg_type) GETSTRUCT(typeTuple);
+	packageOid = get_package_pkgid(NameStr(typeForm->typname),
+								   typeForm->typnamespace);
+	ReleaseSysCache(typeTuple);
+
+	if (!OidIsValid(packageOid))
+	{
+		if (missing_ok)
+			return InvalidOid;
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("object type %s has no method namespace",
+						format_type_be(typeOid))));
+	}
+
+	packageTuple = SearchSysCache1(PKGOID, ObjectIdGetDatum(packageOid));
+	if (!HeapTupleIsValid(packageTuple))
+		elog(ERROR, "cache lookup failed for package %u", packageOid);
+	packageForm = (Form_pg_package) GETSTRUCT(packageTuple);
+	if (packageForm->pkgtypeoid != typeOid)
+	{
+		ReleaseSysCache(packageTuple);
+		if (missing_ok)
+			return InvalidOid;
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("package associated with type %s is not an object method namespace",
+						format_type_be(typeOid))));
+	}
+	ReleaseSysCache(packageTuple);
+	return packageOid;
+}
+
+ObjectAddress
+CreateObjectTypeBody(CreateTypeBodyStmt *stmt)
+{
+	TypeName   *typeName = makeTypeNameFromNameList(stmt->typeName);
+	Oid			typeOid = typenameTypeId(NULL, typeName);
+	HeapTuple	typeTuple;
+	Form_pg_type typeForm;
+	ObjectAddress address;
+
+	typeTuple = SearchSysCache1(TYPEOID, ObjectIdGetDatum(typeOid));
+	if (!HeapTupleIsValid(typeTuple))
+		elog(ERROR, "cache lookup failed for type %u", typeOid);
+	typeForm = (Form_pg_type) GETSTRUCT(typeTuple);
+	if (!typeForm->typisobject)
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("type \"%s\" is not an object type",
+						NameStr(typeForm->typname))));
+
+	(void) GetObjectTypePackageOid(typeOid, false);
+
+	address = CreatePackageBody_internal(NameStr(typeForm->typname),
+									 typeForm->typnamespace,
+									 stmt->body, stmt->replace, true);
+	ReleaseSysCache(typeTuple);
+	return address;
+}
+
+/* Return the declared MAP or ORDER method used by object comparisons. */
+char *
+GetObjectTypeComparisonMethod(Oid typeOid, bool *isOrder)
+{
+	HeapTuple	typeTuple;
+	Form_pg_type typeForm;
+	Oid			packageOid;
+	HeapTuple	packageTuple;
+	Form_pg_package packageForm;
+	char	   *result = NULL;
+
+	*isOrder = false;
+	typeTuple = SearchSysCache1(TYPEOID, ObjectIdGetDatum(typeOid));
+	if (!HeapTupleIsValid(typeTuple))
+		return NULL;
+	typeForm = (Form_pg_type) GETSTRUCT(typeTuple);
+	if (!typeForm->typisobject)
+	{
+		ReleaseSysCache(typeTuple);
+		return NULL;
+	}
+	packageOid = GetObjectTypePackageOid(typeOid, true);
+	ReleaseSysCache(typeTuple);
+	if (!OidIsValid(packageOid))
+		return NULL;
+
+	packageTuple = SearchSysCache1(PKGOID, ObjectIdGetDatum(packageOid));
+	if (!HeapTupleIsValid(packageTuple))
+		return NULL;
+	packageForm = (Form_pg_package) GETSTRUCT(packageTuple);
+	if (packageForm->pkgtypeoid == typeOid)
+	{
+		if (NameStr(packageForm->pkgmapmethod)[0] != '\0')
+			result = pstrdup(NameStr(packageForm->pkgmapmethod));
+		else if (NameStr(packageForm->pkgordermethod)[0] != '\0')
+		{
+			result = pstrdup(NameStr(packageForm->pkgordermethod));
+			*isOrder = true;
+		}
+	}
+	ReleaseSysCache(packageTuple);
+	return result;
 }
 
 /*
@@ -1272,4 +1670,3 @@ get_functup_bytypenames(Oid namespaceid,
 
 	return tuple;
 }
-
