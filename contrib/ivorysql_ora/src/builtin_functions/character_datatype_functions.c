@@ -1721,14 +1721,24 @@ text_position_prev(int start_pos, TextPositionState *state)
 /*
  *	appendUTF16Escape
  *
- *	Converts a UTF-16 code unit to a Unicode escape sequence (\xxxx) 
- * 	and appends it to the output string.
+ *	Converts a UTF-16 code unit to a Unicode escape sequence (\xxxx)
+ *	and appends it to the output string.
  */
-static void 
-appendUTF16Escape(StringInfoData* outputString, uint16_t codePoint) {
-    char buffer[10];
-    snprintf(buffer, sizeof(buffer), "\\%04X", codePoint);
-    appendStringInfoString(outputString, buffer);
+static void
+appendUTF16Escape(StringInfoData *outputString, uint16_t codePoint)
+{
+	static const char hexdigits[] = "0123456789ABCDEF";
+	char	   *destination;
+
+	enlargeStringInfo(outputString, 5);
+	destination = outputString->data + outputString->len;
+	destination[0] = '\\';
+	destination[1] = hexdigits[(codePoint >> 12) & 0x0F];
+	destination[2] = hexdigits[(codePoint >> 8) & 0x0F];
+	destination[3] = hexdigits[(codePoint >> 4) & 0x0F];
+	destination[4] = hexdigits[codePoint & 0x0F];
+	outputString->len += 5;
+	outputString->data[outputString->len] = '\0';
 }
 
 /****************************************************************

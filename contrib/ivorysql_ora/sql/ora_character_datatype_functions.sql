@@ -1238,6 +1238,7 @@ SELECT INSTR('Information for the information age requires information.', 'infor
  select asciistr('こんにちは') from dual;
  select asciistr('你好') from dual;
  select asciistr('😊👍') from dual;
+ select asciistr(repeat('你', 205)) = repeat(chr(92) || '4F60', 205) as buffer_growth from dual;
 
  -- string with mixed ascii and non-ascii
  select asciistr('ABÄCDE') from dual;
