@@ -43,6 +43,8 @@ $node->safe_psql(
 	'postgres',
 	"SELECT 'init' FROM pg_create_physical_replication_slot('regress_pg_waldump_slot', true, false);
 CREATE TABLE test_table AS SELECT generate_series(1,100) a;
+-- Start a fresh segment so the full-page image is in the WAL file dumped below.
+SELECT pg_switch_wal();
 -- Force FPWs on the next writes.
 CHECKPOINT;
 UPDATE test_table SET a = a + 1;
