@@ -35,6 +35,10 @@ static check_password_hook_type prev_check_password_hook = NULL;
 
 /* GUC variables */
 static int	min_password_length = 8;
+static bool require_uppercase = true;
+static bool require_lowercase = true;
+static bool require_digit = true;
+static bool require_special = true;
 
 /*
  * check_password
@@ -91,7 +95,11 @@ check_password(const char *username,
 		int			pwdlen = strlen(password);
 		int			i;
 		bool		pwd_has_letter,
-					pwd_has_nonletter;
+					pwd_has_nonletter,
+					pwd_has_uppercase,
+					pwd_has_lowercase,
+					pwd_has_digit,
+					pwd_has_special;
 #ifdef USE_CRACKLIB
 		const char *reason;
 #endif
@@ -113,21 +121,53 @@ check_password(const char *username,
 		/* check if the password contains both letters and non-letters */
 		pwd_has_letter = false;
 		pwd_has_nonletter = false;
+		pwd_has_uppercase = false;
+		pwd_has_lowercase = false;
+		pwd_has_digit = false;
+		pwd_has_special = false;
 		for (i = 0; i < pwdlen; i++)
 		{
+			unsigned char ch = (unsigned char) password[i];
+
 			/*
 			 * isalpha() does not work for multibyte encodings but let's
 			 * consider non-ASCII characters non-letters
 			 */
-			if (isalpha((unsigned char) password[i]))
+			if (isalpha(ch))
 				pwd_has_letter = true;
 			else
 				pwd_has_nonletter = true;
+
+			if (isupper(ch))
+				pwd_has_uppercase = true;
+			if (islower(ch))
+				pwd_has_lowercase = true;
+			if (isdigit(ch))
+				pwd_has_digit = true;
+			if (ispunct(ch))
+				pwd_has_special = true;
 		}
 		if (!pwd_has_letter || !pwd_has_nonletter)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("password must contain both letters and nonletters")));
+
+		if (require_uppercase && !pwd_has_uppercase)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("password must contain an uppercase letter")));
+		if (require_lowercase && !pwd_has_lowercase)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("password must contain a lowercase letter")));
+		if (require_digit && !pwd_has_digit)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("password must contain a digit")));
+		if (require_special && !pwd_has_special)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("password must contain a special character")));
 
 #ifdef USE_CRACKLIB
 		/* call cracklib to check password */
@@ -158,6 +198,42 @@ _PG_init(void)
 							PGC_SUSET,
 							GUC_UNIT_BYTE,
 							NULL, NULL, NULL);
+
+	DefineCustomBoolVariable("passwordcheck.require_uppercase",
+							 "Require at least one uppercase ASCII letter.",
+							 NULL,
+							 &require_uppercase,
+							 true,
+							 PGC_SUSET,
+							 0,
+							 NULL, NULL, NULL);
+
+	DefineCustomBoolVariable("passwordcheck.require_lowercase",
+							 "Require at least one lowercase ASCII letter.",
+							 NULL,
+							 &require_lowercase,
+							 true,
+							 PGC_SUSET,
+							 0,
+							 NULL, NULL, NULL);
+
+	DefineCustomBoolVariable("passwordcheck.require_digit",
+							 "Require at least one ASCII digit.",
+							 NULL,
+							 &require_digit,
+							 true,
+							 PGC_SUSET,
+							 0,
+							 NULL, NULL, NULL);
+
+	DefineCustomBoolVariable("passwordcheck.require_special",
+							 "Require at least one ASCII punctuation character.",
+							 NULL,
+							 &require_special,
+							 true,
+							 PGC_SUSET,
+							 0,
+							 NULL, NULL, NULL);
 
 	MarkGUCPrefixReserved("passwordcheck");
 
