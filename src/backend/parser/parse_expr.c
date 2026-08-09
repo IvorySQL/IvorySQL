@@ -118,6 +118,26 @@ static Node *make_nulltest_from_distinct(ParseState *pstate,
 										 A_Expr *distincta, Node *arg);
 static Node *transformColumnRefOrFunCall(ParseState *pstate, ColumnRefOrFuncCall *cref_func);
 
+/*
+ * record_orajoin_operand
+ *		Record the Oracle join operand for the current column reference
+ *		if the resolved node is a Var and we're processing an Oracle join.
+ *
+ *		Only Var nodes can be used as Oracle join operands; other node types
+ *		(such as FuncExpr from row-type function calls) are rejected by
+ *		leaving ojs->var NULL, which causes extractOraJoins to skip them.
+ */
+static void
+record_orajoin_operand(ParseState *pstate, Node *node, ColumnRef *cref)
+{
+	if (pstate->p_orajoin_state != NULL && IsA(node, Var))
+	{
+		OraJoinState *ojs = (OraJoinState *) pstate->p_orajoin_state;
+		ojs->var = (Var *) node;
+		ojs->cref = cref;
+	}
+}
+
 static inline void
 set_merge_on_attrno(ParseState *pstate, char *colname)
 {
@@ -739,6 +759,9 @@ transformColumnRefInternal(ParseState *pstate, ColumnRef *cref, bool missing_ok)
 						node = transformWholeRowRef(pstate, nsitem, levels_up,
 													cref->location);
 				}
+
+				record_orajoin_operand(pstate, node, cref);
+
 				break;
 			}
 		case 2:
@@ -805,6 +828,9 @@ transformColumnRefInternal(ParseState *pstate, ColumnRef *cref, bool missing_ok)
 											 false,
 											 cref->location);
 				}
+
+				record_orajoin_operand(pstate, node, cref);
+
 				break;
 			}
 		case 3:
@@ -873,6 +899,9 @@ transformColumnRefInternal(ParseState *pstate, ColumnRef *cref, bool missing_ok)
 											 false,
 											 cref->location);
 				}
+
+				record_orajoin_operand(pstate, node, cref);
+
 				break;
 			}
 		case 4:
@@ -953,6 +982,9 @@ transformColumnRefInternal(ParseState *pstate, ColumnRef *cref, bool missing_ok)
 											 false,
 											 cref->location);
 				}
+
+				record_orajoin_operand(pstate, node, cref);
+
 				break;
 			}
 		default:

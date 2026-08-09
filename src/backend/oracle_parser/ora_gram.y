@@ -213,6 +213,7 @@ static void preprocess_pubobj_list(List *pubobjspec_list,
 								   ora_core_yyscan_t yyscanner);
 static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 static void determineLanguage(List *options);
+static bool oracleJoinOpExists(const Node *expr);
 
 %}
 
@@ -1029,7 +1030,7 @@ static void determineLanguage(List *options);
  * They wouldn't be given a precedence at all, were it not that we need
  * left-associativity among the JOIN rules themselves.
  */
-%left		JOIN CROSS LEFT FULL RIGHT INNER_P NATURAL
+%left		JOIN CROSS LEFT FULL RIGHT INNER_P NATURAL ORAJOINOPR
 /*
  * Precedences used to resolve the shift/reduce conflicts that arise from
  * "WITH plsql_declarations" when followed by an unreserved DML keyword
@@ -15121,6 +15122,7 @@ simple_select:
 					n->groupDistinct = ($7)->distinct;
 					n->havingClause = $8;
 					n->windowClause = $9;
+					n->ora_join_op_exists = oracleJoinOpExists(n->whereClause);
 					$$ = (Node *) n;
 				}
 			| SELECT distinct_clause target_list
@@ -20491,6 +20493,32 @@ columnref:	ColId
 						}
 					}
 				}
+			| ColId ORAJOINOPR
+				{
+					$$ = makeColumnRef($1, NIL, @1, yyscanner);
+					if (IsA($$, ColumnRef))
+						((ColumnRef *) $$)->ora_join_op_exists = true;
+					else if (IsA($$, A_Indirection))
+						((ColumnRef *) ((A_Indirection *) $$)->arg)->ora_join_op_exists = true;
+					else
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("Oracle join operator (+) cannot be applied to a subscripted expression"),
+								 parser_errposition(@1)));
+				}
+			| ColId indirection ORAJOINOPR
+				{
+					$$ = makeColumnRef($1, $2, @1, yyscanner);
+					if (IsA($$, ColumnRef))
+						((ColumnRef *) $$)->ora_join_op_exists = true;
+					else if (IsA($$, A_Indirection))
+						((ColumnRef *) ((A_Indirection *) $$)->arg)->ora_join_op_exists = true;
+					else
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("Oracle join operator (+) cannot be applied to a subscripted expression"),
+								 parser_errposition(@1)));
+				}
 		;
 
 indirection_el:
@@ -23758,6 +23786,59 @@ preprocess_pubobj_list(List *pubobjspec_list, ora_core_yyscan_t yyscanner)
 
 		prevobjtype = pubobj->pubobjtype;
 	}
+}
+
+/*
+ * Process expr to check for orajoin, COLUMNREF->ora_join_op_exists.
+ * if used, set the parent SELECTSTMT->ora_join_op_exists.
+ *
+ * This must recurse into every BoolExpr (AND, OR, and NOT alike), not
+ * just AND_EXPR: a (+) marker hidden inside an OR or NOT still needs to
+ * be detected here so the query gets routed into transformOraJoinClause()
+ * at all -- which is what actually rejects (+) inside OR/NOT with a
+ * proper error (real Oracle: ORA-01719). Restricting this scan to
+ * AND_EXPR meant an OR/NOT-wrapped (+) predicate will silently be treated as
+ * an ordinary (non-outer-join) condition instead, with no error and no
+ * outer-join semantics applied.
+ */
+static bool
+oracleJoinOpExists(const Node *expr)
+{
+	if (!expr)
+		return false;
+
+	if (IsA(expr, BoolExpr))
+	{
+		BoolExpr   *blexpr = (BoolExpr *) expr;
+		ListCell   *lc;
+
+		foreach(lc, blexpr->args)
+			if (oracleJoinOpExists(lfirst(lc)))
+				return true;
+	}
+	else if (IsA(expr, A_Expr))
+	{
+		A_Expr	   *aexpr = (A_Expr *) expr;
+		ColumnRef  *colref;
+		bool		ora_join_op_exists = false;
+
+		if (aexpr->lexpr == NULL)
+			return false;
+		if (IsA(aexpr->lexpr, ColumnRef))
+		{
+			colref = (ColumnRef *) aexpr->lexpr;
+			ora_join_op_exists = colref->ora_join_op_exists;
+		}
+		if (!ora_join_op_exists && IsA(aexpr->rexpr, ColumnRef))
+		{
+			colref = (ColumnRef *) aexpr->rexpr;
+			ora_join_op_exists = colref->ora_join_op_exists;
+		}
+
+		return ora_join_op_exists;
+	}
+
+	return false;
 }
 
 /*----------

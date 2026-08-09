@@ -1809,6 +1809,10 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt,
 	/* process the FROM clause */
 	transformFromClause(pstate, stmt->fromClause);
 
+	/* process Oracle Join (+) Operator */
+	if (stmt->ora_join_op_exists)
+		transformOraJoinClause(pstate, stmt, EXPR_KIND_JOIN_ON);
+
 	/* transform targetlist */
 	qry->targetList = transformTargetList(pstate, stmt->targetList,
 										  EXPR_KIND_SELECT_TARGET);

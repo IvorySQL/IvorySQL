@@ -30,6 +30,8 @@ extern List *transformGroupClause(ParseState *pstate, List *grouplist,
 								  List **groupingSets,
 								  List **targetlist, List *sortClause,
 								  ParseExprKind exprKind, bool useSQL99);
+extern Node *transformOraJoinClause(ParseState *pstate, SelectStmt *stmt,
+									 ParseExprKind exprKind);
 extern List *transformSortClause(ParseState *pstate, List *orderlist,
 								 List **targetlist, ParseExprKind exprKind,
 								 bool useSQL99);
