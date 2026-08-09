@@ -461,6 +461,8 @@ ora_round(PG_FUNCTION_ARGS)
 
 	tm_round(tm, fmt);
 
+	fsec = 0;
+
 	if (tm2timestamp(tm, fsec, NULL, &result) != 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
