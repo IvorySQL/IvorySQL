@@ -10,21 +10,6 @@ if host_system == 'windows'
     '--FILEDESC', 'gb18030_2022 - support gb18030 2022 with extension',])
 endif
 
-custom_target('gb18030_2022.bc',
-  output: 'utf8_and_gb18030_2022.bc',
-  command: [perl, '../contrib/ivorysql_ora/gensql.pl', 'meson', '1.0'],
-  capture: true,
-  install: true,
-  install_dir: contrib_data_args['install_dir'],
-)
-
-foreach file : ['utf8_and_gb18030_2022.bc', 'gb18030_2022.bc']
-  run_target(
-    file,
-    command: ['touch', meson.current_build_dir() / file]
-  )
-endforeach
-
 gb18030_2022 = shared_module('gb18030_2022',
   gb18030_2022_src_files,
   kwargs: contrib_mod_args,
