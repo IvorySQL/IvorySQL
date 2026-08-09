@@ -1481,12 +1481,174 @@ heapTupleSatisfiesUpdate4Merge(HeapTuple htup, CommandId curcid,
 		else if (TransactionIdIsCurrentTransactionId(HeapTupleHeaderGetRawXmin(tuple)))
 		{
 			if (HeapTupleHeaderGetCmin(tuple) >= curcid)
+				return TM_Invisible;	/* inserted after scan started */
+
+			if (tuple->t_infomask & HEAP_XMAX_INVALID)	/* xid invalid */
+				return TM_Ok;
+
+			if (HEAP_XMAX_IS_LOCKED_ONLY(tuple->t_infomask))
 			{
-				 /* Only for compatible oracle MERGE */
-				return TM_Ok;	/* inserted after scan started */
+				if (tuple->t_infomask & HEAP_XMAX_IS_MULTI)
+				{
+					if (MultiXactIdIsRunning(HeapTupleHeaderGetRawXmax(tuple), true))
+						return TM_BeingModified;
+					else
+						return TM_Ok;
+				}
+
+				if (!TransactionIdIsInProgress(HeapTupleHeaderGetRawXmax(tuple)))
+					return TM_Ok;
+				return TM_BeingModified;
 			}
+
+			if (tuple->t_infomask & HEAP_XMAX_IS_MULTI)
+			{
+				TransactionId xmax;
+
+				xmax = HeapTupleGetUpdateXid(tuple);
+				Assert(TransactionIdIsValid(xmax));
+
+				if (!TransactionIdIsCurrentTransactionId(xmax))
+				{
+					if (MultiXactIdIsRunning(HeapTupleHeaderGetRawXmax(tuple),
+											 false))
+						return TM_BeingModified;
+					return TM_Ok;
+				}
+				else
+				{
+					if (HeapTupleHeaderGetCmax(tuple) >= curcid)
+						return TM_SelfModified;
+					else
+						return TM_Invisible;
+				}
+			}
+
+			if (!TransactionIdIsCurrentTransactionId(HeapTupleHeaderGetRawXmax(tuple)))
+			{
+				SetHintBits(tuple, buffer, HEAP_XMAX_INVALID,
+							InvalidTransactionId);
+				return TM_Ok;
+			}
+
+			if (HeapTupleHeaderGetCmax(tuple) >= curcid)
+				return TM_SelfModified;
+			else
+				return TM_Invisible;
+		}
+		else if (TransactionIdIsInProgress(HeapTupleHeaderGetRawXmin(tuple)))
+			return TM_Invisible;
+		else if (TransactionIdDidCommit(HeapTupleHeaderGetRawXmin(tuple)))
+			SetHintBits(tuple, buffer, HEAP_XMIN_COMMITTED,
+						HeapTupleHeaderGetRawXmin(tuple));
+		else
+		{
+			SetHintBits(tuple, buffer, HEAP_XMIN_INVALID,
+						InvalidTransactionId);
+			return TM_Invisible;
+		}
+	}
+
+	/* by here, the inserting transaction has committed */
+
+	if (tuple->t_infomask & HEAP_XMAX_INVALID)	/* xid invalid or aborted */
+		return TM_Ok;
+
+	if (tuple->t_infomask & HEAP_XMAX_COMMITTED)
+	{
+		if (HEAP_XMAX_IS_LOCKED_ONLY(tuple->t_infomask))
+			return TM_Ok;
+		if (!ItemPointerEquals(&htup->t_self, &tuple->t_ctid))
+			return TM_Updated;
+		else
+			return TM_Deleted;
+	}
+
+	if (tuple->t_infomask & HEAP_XMAX_IS_MULTI)
+	{
+		TransactionId xmax;
+
+		if (HEAP_LOCKED_UPGRADED(tuple->t_infomask))
+			return TM_Ok;
+
+		if (HEAP_XMAX_IS_LOCKED_ONLY(tuple->t_infomask))
+		{
+			if (MultiXactIdIsRunning(HeapTupleHeaderGetRawXmax(tuple), true))
+				return TM_BeingModified;
+
+			SetHintBits(tuple, buffer, HEAP_XMAX_INVALID, InvalidTransactionId);
+			return TM_Ok;
 		}
 
+		xmax = HeapTupleGetUpdateXid(tuple);
+		if (!TransactionIdIsValid(xmax))
+		{
+			if (MultiXactIdIsRunning(HeapTupleHeaderGetRawXmax(tuple), false))
+				return TM_BeingModified;
+		}
+
+		Assert(TransactionIdIsValid(xmax));
+
+		if (TransactionIdIsCurrentTransactionId(xmax))
+		{
+			if (HeapTupleHeaderGetCmax(tuple) >= curcid)
+				return TM_SelfModified;
+			else
+				return TM_Invisible;
+		}
+
+		if (MultiXactIdIsRunning(HeapTupleHeaderGetRawXmax(tuple), false))
+			return TM_BeingModified;
+
+		if (TransactionIdDidCommit(xmax))
+		{
+			if (!ItemPointerEquals(&htup->t_self, &tuple->t_ctid))
+				return TM_Updated;
+			else
+				return TM_Deleted;
+		}
+
+		if (!MultiXactIdIsRunning(HeapTupleHeaderGetRawXmax(tuple), false))
+		{
+			SetHintBits(tuple, buffer, HEAP_XMAX_INVALID,
+						InvalidTransactionId);
+			return TM_Ok;
+		}
+		else
+			return TM_BeingModified;
 	}
-	return TM_Invisible;
+
+	if (TransactionIdIsCurrentTransactionId(HeapTupleHeaderGetRawXmax(tuple)))
+	{
+		if (HEAP_XMAX_IS_LOCKED_ONLY(tuple->t_infomask))
+			return TM_BeingModified;
+		if (HeapTupleHeaderGetCmax(tuple) >= curcid)
+			return TM_SelfModified;
+		else
+			return TM_Invisible;
+	}
+
+	if (TransactionIdIsInProgress(HeapTupleHeaderGetRawXmax(tuple)))
+		return TM_BeingModified;
+
+	if (!TransactionIdDidCommit(HeapTupleHeaderGetRawXmax(tuple)))
+	{
+		SetHintBits(tuple, buffer, HEAP_XMAX_INVALID,
+					InvalidTransactionId);
+		return TM_Ok;
+	}
+
+	if (HEAP_XMAX_IS_LOCKED_ONLY(tuple->t_infomask))
+	{
+		SetHintBits(tuple, buffer, HEAP_XMAX_INVALID,
+					InvalidTransactionId);
+		return TM_Ok;
+	}
+
+	SetHintBits(tuple, buffer, HEAP_XMAX_COMMITTED,
+				HeapTupleHeaderGetRawXmax(tuple));
+	if (!ItemPointerEquals(&htup->t_self, &tuple->t_ctid))
+		return TM_Updated;
+	else
+		return TM_Deleted;
 }
