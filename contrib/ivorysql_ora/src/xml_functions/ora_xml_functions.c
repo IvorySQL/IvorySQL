@@ -1939,7 +1939,6 @@ ivy_insertchildxml2(PG_FUNCTION_ARGS)
 	}
 
 	new_node = xmlParseDoc(nodestring);
-	pfree(nodestring);
 	if (new_node == NULL)
 	{
 		ereport(ERROR, (errcode(ERRCODE_INVALID_XML_DOCUMENT),
@@ -1969,6 +1968,7 @@ ivy_insertchildxml2(PG_FUNCTION_ARGS)
 		}
 		/* End - Bug#Z204, Bug#Z215 */
 	}
+	pfree(nodestring);
 
 	res = ivy_xml_xpath(&ws, xpath_expr_text, data, cns);
 	ivy_xml_addchildnode(res, (xmlNodePtr)new_node);
