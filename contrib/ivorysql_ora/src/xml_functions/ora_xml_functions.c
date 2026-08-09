@@ -234,6 +234,7 @@ ivy_xml_xpath(xpath_ws *ws, text *xpath_expr_text, xmltype *data, char *namespac
 	PG_TRY();
 	{
 		ws->doc = xmlReadMemory((const char *)string, len, NULL, NULL, XML_PARSE_NOBLANKS); /* Bug#Z202 */
+		pfree(string);
 		if (ws->doc != NULL)
 		{
 			ws->xpathctx = xmlXPathNewContext(ws->doc);
@@ -247,6 +248,7 @@ ivy_xml_xpath(xpath_ws *ws, text *xpath_expr_text, xmltype *data, char *namespac
 				register_ns_from_csting(ws->xpathctx, namespace);
 
 			ws->xpathcomp = xmlXPathCompile(xpath_expr);
+			pfree(xpath_expr);
 			if (ws->xpathcomp == NULL)
 				ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 						errmsg("invalid XPath expression")));
@@ -298,6 +300,7 @@ init_ws_doc(xpath_ws *ws, xmltype *data)
 	PG_TRY();
 	{
 		ws->doc = xmlReadMemory((const char *)string, len, NULL, NULL, XML_PARSE_NOBLANKS); /* Bug#Z202 */
+		pfree(string);
 		if (ws->doc == NULL)
 			ereport(ERROR,(errcode(ERRCODE_INVALID_XML_DOCUMENT),
 					errmsg("could not parse XML document")));
@@ -341,6 +344,7 @@ ivy_xml_xpath2(xpath_ws *ws, text *xpath_expr_text, xmlDocPtr doc, char *namespa
 			register_ns_from_csting(ws->xpathctx, namespace);
 
 		ws->xpathcomp = xmlXPathCompile(xpath_expr);
+		pfree(xpath_expr);
 		if (ws->xpathcomp == NULL)
 			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 					errmsg("invalid XPath expression")));
@@ -1442,6 +1446,7 @@ ivy_appendchildxml(PG_FUNCTION_ARGS)
 	res = ivy_xml_xpath(&ws, xpath_expr_text, data, NULL);
 
 	new_node = xmlParseDoc(nodestring);
+	pfree(nodestring);
 	if (new_node == NULL)
 	{
 		cleanup_ws(&ws);
@@ -1517,6 +1522,7 @@ ivy_appendchildxml2(PG_FUNCTION_ARGS)
 	res = ivy_xml_xpath(&ws, xpath_expr_text, data, cns);
 
 	new_node = xmlParseDoc(nodestring);
+	pfree(nodestring);
 	if (new_node == NULL)
 	{
 		cleanup_ws(&ws);
@@ -1840,6 +1846,7 @@ ivy_insertchildxml(PG_FUNCTION_ARGS)
 				errmsg("invalid XPath expression")));
 
 	new_node = xmlParseDoc(nodestring);
+	pfree(nodestring);
 	if (new_node == NULL)
 	{
 		ereport(ERROR, (errcode(ERRCODE_INVALID_XML_DOCUMENT),
@@ -1932,6 +1939,7 @@ ivy_insertchildxml2(PG_FUNCTION_ARGS)
 	}
 
 	new_node = xmlParseDoc(nodestring);
+	pfree(nodestring);
 	if (new_node == NULL)
 	{
 		ereport(ERROR, (errcode(ERRCODE_INVALID_XML_DOCUMENT),
