@@ -318,7 +318,6 @@ select sessiontimezone() from dual; /* BUG:0000427 */
 
 --dbtimezone
 select dbtimezone() from dual;
-select dbtimezone() from dual; /* unaffected by session timezone set above */
 set ivorysql.dbtimezone = '+08:00'; /* rejected: only ALTER DATABASE ... SET may change it */
 select current_database() as cur_db \gset
 alter database :cur_db set ivorysql.dbtimezone = '+08:00';
@@ -348,8 +347,10 @@ revoke set on parameter ivorysql.dbtimezone from dbtz_owner;
 drop database dbtz_test;
 drop role dbtz_owner;
 
+/* restore previous values */
 set timezone = 'Asia/Hong_Kong';
 SET NLS_TIMESTAMP_TZ_FORMAT = 'MM-DD-YYYY HH24:MI:SS.FF9 TZH:TZM';
+
 alter session set nls_date_format='YYYY-MM-DD HH24:MI:SS';
 alter session set nls_timestamp_format = 'YYYY-MM-DD HH24:MI:SS.ff';
 /*
