@@ -488,7 +488,15 @@ check_database_mode(int *newval, void **extra, GucSource source)
 {
 	int			newmode = *newval;
 
-	if (DB_PG == database_mode && DB_ORACLE == newmode)
+	/*
+	 * Allow the change during startup (e.g., when xlog.c restores the
+	 * database_mode from the control file with PGC_S_OVERRIDE), but
+	 * reject user-initiated attempts to change from pg to oracle at
+	 * runtime.  Use ERROR instead of NOTICE so the change is actually
+	 * blocked, matching the behavior of check_compatible_mode().
+	 */
+	if (DB_PG == database_mode && DB_ORACLE == newmode &&
+		source != PGC_S_OVERRIDE && source != PGC_S_DEFAULT)
 		ereport(ERROR,
 				(errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM),
 				 errmsg("parameter ivorysql.database_mode cannot be changed")));

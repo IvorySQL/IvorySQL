@@ -1,4 +1,4 @@
-﻿-- pg_regress should ensure that this default value applies; however
+-- pg_regress should ensure that this default value applies; however
 -- we can't rely on any specific default value of vacuum_cost_delay
 SHOW datestyle;
 
