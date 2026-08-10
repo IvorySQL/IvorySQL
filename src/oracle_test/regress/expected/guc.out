@@ -1,4 +1,4 @@
--- pg_regress should ensure that this default value applies; however
+﻿-- pg_regress should ensure that this default value applies; however
 -- we can't rely on any specific default value of vacuum_cost_delay
 SHOW datestyle;
    DateStyle   
@@ -976,3 +976,9 @@ SELECT name FROM tab_settings_flags
 (0 rows)
 
 DROP TABLE tab_settings_flags;
+
+
+-- Test that ivorysql.database_mode cannot be changed from pg to oracle
+-- This should raise an ERROR, not a NOTICE
+SET ivorysql.database_mode = 'oracle';
+ERROR:  parameter ivorysql.database_mode cannot be changed

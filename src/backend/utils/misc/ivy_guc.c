@@ -489,7 +489,7 @@ check_database_mode(int *newval, void **extra, GucSource source)
 	int			newmode = *newval;
 
 	if (DB_PG == database_mode && DB_ORACLE == newmode)
-		ereport(NOTICE,
+		ereport(ERROR,
 				(errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM),
 				 errmsg("parameter ivorysql.database_mode cannot be changed")));
 
