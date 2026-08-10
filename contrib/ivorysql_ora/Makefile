@@ -86,10 +86,6 @@ ORA_REGRESS = \
 	utl_encode \
 	dbms_session
 
-ifeq ($(with_libxml),yes) 
-SHLIB_LINK += -lxml2
-endif
-
 # Include path for plisql.h (needed by dbms_utility)
 PG_CPPFLAGS += -I$(top_srcdir)/src/pl/plisql/src
 
@@ -102,6 +98,13 @@ subdir = contrib/ivorysql_ora
 top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 include $(top_srcdir)/contrib/contrib-global.mk
+endif
+
+# This must come AFTER the includes above so that with_libxml is already
+# defined; otherwise the ifeq is evaluated with an empty value and -lxml2 is
+# silently dropped even on builds configured with --with-libxml.
+ifeq ($(with_libxml),yes)
+SHLIB_LINK += -lxml2
 endif
 
 
