@@ -9,7 +9,7 @@
 
 project('postgresql',
   ['c'],
-  version: '19beta2',
+  version: '19beta3',
   license: 'PostgreSQL',
 
   # We want < 0.62 for python 3.6 compatibility on old platforms.
