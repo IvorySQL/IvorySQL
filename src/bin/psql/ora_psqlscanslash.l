@@ -724,6 +724,7 @@ ora_psql_scan_get_lex_state(PsqlScanState state)
 
 	lex_state->paren_depth = state->paren_depth;
 	lex_state->begin_depth = state->begin_depth;
+	lex_state->copy_stdin_count = state->copy_stdin_count;
 	lex_state->init_idents_count = state->init_idents_count;
 	memcpy(lex_state->init_idents, state->init_idents,
 		   sizeof(lex_state->init_idents));
@@ -742,6 +743,7 @@ ora_psql_scan_set_lex_state(PsqlScanState state,
 {
 	state->paren_depth = lex_state->paren_depth;
 	state->begin_depth = lex_state->begin_depth;
+	state->copy_stdin_count = lex_state->copy_stdin_count;
 	state->init_idents_count = lex_state->init_idents_count;
 	memcpy(state->init_idents, lex_state->init_idents,
 		   sizeof(state->init_idents));

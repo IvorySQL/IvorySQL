@@ -220,10 +220,12 @@ typedef struct PsqlScanStateData
 	char	   *dolqstart;		/* current $foo$ quote start string */
 
 	/*
-	 * State to track boundaries of BEGIN ... END blocks in function
-	 * definitions, so that semicolons do not send query too early.
+	 * State used to track boundaries of BEGIN ... END blocks in function
+	 * definitions, so that semicolons do not send query too early.  We also
+	 * use this state to detect and count COPY FROM STDIN commands.
 	 */
 	int			begin_depth;	/* depth of begin/end pairs */
+	int			copy_stdin_count;	/* number of COPY FROM STDIN commands */
 	bool		cancel_semicolon_terminator; /* not send command when semicolon found */
 
 	/*
@@ -249,7 +251,7 @@ typedef struct PsqlScanStateData
 	 */
 	bool		maybe_anonymous_begin_start;	/* T if the first token is BEGIN */
 	int			init_idents_count;	/* # identifiers since start of statement */
-	char		init_idents[4]; /* records the first few identifiers */
+	char		init_idents[8]; /* records the first few identifiers */
 	int			sub_idents_count;	/* # identifiers since start of a CREATE
 									 * SCHEMA element */
 	char		sub_idents[4];	/* records the first few of those identifiers */
@@ -293,8 +295,9 @@ typedef struct PsqlScanStateSave
 {
 	int			paren_depth;	/* depth of nesting in parentheses */
 	int			begin_depth;	/* depth of begin/end pairs */
+	int			copy_stdin_count;	/* number of COPY FROM STDIN commands */
 	int			init_idents_count;	/* # identifiers since start of statement */
-	char		init_idents[4]; /* records the first few identifiers */
+	char		init_idents[8]; /* records the first few identifiers */
 	int			sub_idents_count;	/* # identifiers since start of a CREATE
 									 * SCHEMA element */
 	char		sub_idents[4];	/* records the first few of those identifiers */
