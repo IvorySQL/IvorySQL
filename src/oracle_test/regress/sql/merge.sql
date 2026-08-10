@@ -1,4 +1,4 @@
---
+﻿--
 -- MERGE
 --
 
@@ -1851,6 +1851,49 @@ WHEN MATCHED AND c.oid = 'pg_depend'::regclass THEN
 	UPDATE SET reltuples = reltuples - 1
 RETURNING c.oid;
 
+
+--
+-- Test MERGE DELETE without WHERE clause (Oracle compatibility)
+-- In Oracle, DELETE without WHERE deletes all matched and updated rows
+--
+
+-- Setup test tables
+CREATE TABLE merge_del_test (id NUMBER, val VARCHAR2);
+CREATE TABLE merge_del_source (id NUMBER, val VARCHAR2);
+
+INSERT INTO merge_del_test VALUES (1, 'old1');
+INSERT INTO merge_del_test VALUES (2, 'old2');
+INSERT INTO merge_del_test VALUES (3, 'old3');
+INSERT INTO merge_del_source VALUES (1, 'new1');
+INSERT INTO merge_del_source VALUES (2, 'new2');
+
+-- Test 1: DELETE without WHERE - should delete all matched and updated rows
+MERGE INTO merge_del_test t
+USING merge_del_source s ON (t.id = s.id)
+WHEN MATCHED THEN
+  UPDATE SET t.val = s.val
+  DELETE;
+
+-- Only row 3 (not matched) should remain
+SELECT * FROM merge_del_test ORDER BY id;
+
+-- Reset for next test
+INSERT INTO merge_del_test VALUES (1, 'old1');
+INSERT INTO merge_del_test VALUES (2, 'old2');
+
+-- Test 2: DELETE with WHERE - should delete only matching rows
+MERGE INTO merge_del_test t
+USING merge_del_source s ON (t.id = s.id)
+WHEN MATCHED THEN
+  UPDATE SET t.val = s.val
+  DELETE WHERE (t.id = 1);
+
+-- Row 1 should be deleted, row 2 should be updated, row 3 should remain
+SELECT * FROM merge_del_test ORDER BY id;
+
+-- Cleanup
+DROP TABLE merge_del_test;
+DROP TABLE merge_del_source;
 DROP TABLE target, target2;
 DROP TABLE source, source2;
 DROP FUNCTION merge_trigfunc();

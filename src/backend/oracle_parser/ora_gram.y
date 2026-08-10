@@ -14877,6 +14877,21 @@ merge_delete:
 					ereport(ERROR,(errcode(ERRCODE_SYNTAX_ERROR),
 						errmsg("missing WHERE keyword"),parser_errposition(@2)));
 			}
+		| DELETE_P
+			{
+				/*
+				 * Oracle allows DELETE without WHERE in MERGE, meaning
+				 * delete all matched and updated rows.  A NULL condition
+				 * is treated as "always true" by the executor (ExecQual
+				 * returns true when the qual state is NULL).
+				 */
+				MergeWhenClause *n = makeNode(MergeWhenClause);
+
+				n->commandType = CMD_DELETE;
+				n->condition = NULL;
+
+				$$ = n;
+			}
 	;
 
 merge_insert:
