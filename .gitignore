@@ -32,9 +32,6 @@ win32ver.rc
 lib*dll.def
 lib*.pc
 
-# add by ai
-.codegraph/
-
 # Local excludes in root directory
 /GNUmakefile
 /config.cache

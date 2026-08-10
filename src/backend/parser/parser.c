@@ -40,6 +40,17 @@ static char *str_udeescape(const char *str, char escape,
 List *
 raw_parser(const char *str, RawParseMode mode)
 {
+	/*
+	 * sql_raw_parser should always be initialized to a valid parser
+	 * (standard_raw_parser by default, or a hook installed by a plugin).
+	 * A defensive NULL check is kept here in case a plugin ever clears it.
+	 */
+	if (sql_raw_parser == NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYSTEM_ERROR),
+				 errmsg("raw parser hook is not initialized"),
+				 errhint("The sql_raw_parser hook must be set before parsing SQL.")));
+
 	return (*sql_raw_parser)(str, mode);
 }
 
