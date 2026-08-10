@@ -25,6 +25,7 @@
 #include "oracle_parser/ora_scanner.h"
 #include "parser/scansup.h"
 #include "utils/builtins.h"
+#include "utils/lsyscache.h"
 
 #include "plisql.h"
 
@@ -4374,6 +4375,7 @@ static PLiSQL_stmt *
 make_return_stmt(int location, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 {
 	PLiSQL_stmt_return *new;
+	int			constructor_self_varno = -1;
 
 	new = palloc0_object(PLiSQL_stmt_return);
 	new->cmd_type = PLISQL_STMT_RETURN;
@@ -4382,7 +4384,45 @@ make_return_stmt(int location, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yysc
 	new->expr	  = NULL;
 	new->retvarno = -1;
 
-	if (plisql_curr_compile->fn_retset)
+	/*
+	 * An Oracle object constructor returns its initialized SELF value with a
+	 * bare RETURN statement.  RETURN SELF is not legal Oracle syntax.  Detect
+	 * constructors from their hidden first SELF argument, object result type,
+	 * and type-matching routine name rather than changing ordinary functions
+	 * that happen to return an object value.
+	 */
+	if (!plisql_curr_compile->fn_retset &&
+		plisql_curr_compile->fn_prokind == PROKIND_FUNCTION &&
+		plisql_curr_compile->fn_nargs > 0 &&
+		OidIsValid(plisql_curr_compile->fn_rettype) &&
+		get_typisobject(plisql_curr_compile->fn_rettype) &&
+		plisql_curr_compile->namelabel != NULL)
+	{
+		Oid			typrelid = get_typ_typrelid(plisql_curr_compile->fn_rettype);
+		char	   *type_name = OidIsValid(typrelid) ? get_rel_name(typrelid) : NULL;
+		int			self_varno = plisql_curr_compile->fn_argvarnos[0];
+
+		if (type_name != NULL &&
+			pg_strcasecmp(plisql_curr_compile->namelabel, type_name) == 0 &&
+			self_varno >= 0 && self_varno < plisql_nDatums &&
+			plisql_Datums[self_varno]->dtype == PLISQL_DTYPE_REC &&
+			pg_strcasecmp(((PLiSQL_rec *)
+				plisql_Datums[self_varno])->refname, "self") == 0)
+			constructor_self_varno = self_varno;
+		if (type_name != NULL)
+			pfree(type_name);
+	}
+
+	if (constructor_self_varno >= 0)
+	{
+		if (yylex(yylvalp, yyllocp, yyscanner) != ';')
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("RETURN statement in an object constructor cannot have an expression"),
+					 parser_errposition(*yyllocp)));
+		new->retvarno = constructor_self_varno;
+	}
+	else if (plisql_curr_compile->fn_retset)
 	{
 		if (yylex(yylvalp, yyllocp, yyscanner) != ';')
 			ereport(ERROR,

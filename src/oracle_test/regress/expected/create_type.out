@@ -177,66 +177,86 @@ CREATE TYPE oracle_object_type AS OBJECT
 	label varchar(20)
 );
 -- Oracle object types provide a system-defined attribute-value constructor.
-SELECT oracle_object_type(1, 'one');
+SELECT oracle_object_type(1, 'one') FROM dual;
  oracle_object_type 
 --------------------
  (1,one)
 (1 row)
 
--- An ordinary routine with the same name and arguments takes precedence.
-CREATE FUNCTION oracle_object_type(integer, varchar)
-RETURNS oracle_object_type
-LANGUAGE SQL IMMUTABLE
-AS 'SELECT ROW($1 + 100, $2)::oracle_object_type';
+-- Standalone routines share Oracle's schema namespace with object types.
+CREATE FUNCTION oracle_object_type(p_id integer, p_label varchar2)
+RETURN oracle_object_type
+IS
+BEGIN
+    RETURN NULL;
+END;
 /
-SELECT oracle_object_type(1, 'one');
- oracle_object_type 
---------------------
- (101,one)
-(1 row)
-
-DROP FUNCTION oracle_object_type(integer, varchar);
+ERROR:  name "oracle_object_type" is already used by an object type
 -- Without MAP or ORDER, object values support equality but not ordering.
-SELECT oracle_object_type(1, 'one') = oracle_object_type(1, 'one');
+SELECT oracle_object_type(1, 'one') = oracle_object_type(1, 'one') FROM dual;
  ?column? 
 ----------
  t
 (1 row)
 
-SELECT oracle_object_type(1, 'one') < oracle_object_type(2, 'two');
+SELECT oracle_object_type(1, 'one') < oracle_object_type(2, 'two') FROM dual;
 ERROR:  object type oracle_object_type has no MAP or ORDER method
-SELECT v
-FROM (VALUES (oracle_object_type(1, 'one'))) AS objects(v)
-ORDER BY v;
-ERROR:  object type oracle_object_type has no MAP method for sorting
-LINE 3: ORDER BY v;
-                 ^
+SELECT objects.v
+FROM (SELECT oracle_object_type(1, 'one') v FROM dual) objects
+ORDER BY objects.v;
+    v    
+---------
+ (1,one)
+(1 row)
+
+SELECT objects.v
+FROM
+(
+    SELECT oracle_object_type(1, 'one') v FROM dual
+    UNION ALL
+    SELECT oracle_object_type(2, 'two') v FROM dual
+) objects
+ORDER BY objects.v;
+ERROR:  object type oracle_object_type has no MAP or ORDER method
 -- Constructor arguments are coerced to their declared attribute types.
-SELECT oracle_object_type('2', 'two');
+SELECT oracle_object_type('2', 'two') FROM dual;
  oracle_object_type 
 --------------------
  (2,two)
 (1 row)
 
 -- An unrelated standalone function is not an object member method.
-CREATE FUNCTION object_label(oracle_object_type)
-RETURNS varchar
-LANGUAGE SQL IMMUTABLE
-AS 'SELECT ($1).label';
+CREATE FUNCTION object_label(p_value oracle_object_type)
+RETURN varchar2
+IS
+BEGIN
+    RETURN p_value.label;
+END;
 /
-SELECT value.object_label()
-FROM (VALUES (oracle_object_type(1, 'one'))) AS objects(value);
+SELECT objects.value.object_label()
+FROM (SELECT oracle_object_type(1, 'one') value FROM dual) objects;
 ERROR:  method "object_label" does not exist for object type oracle_object_type
-LINE 1: SELECT value.object_label()
+LINE 1: SELECT objects.value.object_label()
                ^
+-- IvorySQL catalog integration (not an Oracle data-dictionary query).
 SELECT typisobject FROM pg_type WHERE typname = 'oracle_object_type';
  typisobject 
 -------------
  t
 (1 row)
 
-DROP FUNCTION object_label(oracle_object_type);
+DROP FUNCTION object_label;
 DROP TYPE oracle_object_type;
+-- The namespace conflict is symmetric when the standalone routine exists first.
+CREATE FUNCTION object_type_name_conflict RETURN integer
+IS
+BEGIN
+    RETURN 1;
+END;
+/
+CREATE TYPE object_type_name_conflict AS OBJECT (id integer);
+ERROR:  name "object_type_name_conflict" is already used by a function or procedure
+DROP FUNCTION object_type_name_conflict;
 -- Object method specifications, bodies, implicit SELF, and attribute names.
 CREATE OR REPLACE TYPE person_object_type AS OBJECT
 (
@@ -258,22 +278,22 @@ CREATE OR REPLACE TYPE BODY person_object_type AS
     END age_in;
 END;
 /
-SELECT p.full_name(), p.age_in(2026)
-FROM (VALUES (person_object_type('Ada', 'Lovelace', 1815))) AS v(p);
+SELECT v.p.full_name(), v.p.age_in(2026)
+FROM (SELECT person_object_type('Ada', 'Lovelace', 1815) p FROM dual) v;
   full_name   | age_in 
 --------------+--------
  Ada Lovelace |    211
 (1 row)
 
-SELECT p.age_in()
-FROM (VALUES (person_object_type('Ada', 'Lovelace', 1815))) AS v(p);
+SELECT v.p.age_in()
+FROM (SELECT person_object_type('Ada', 'Lovelace', 1815) p FROM dual) v;
  age_in 
 --------
     211
 (1 row)
 
-SELECT p.age_in(p_year => 2020)
-FROM (VALUES (person_object_type('Ada', 'Lovelace', 1815))) AS v(p);
+SELECT v.p.age_in(p_year => 2020)
+FROM (SELECT person_object_type('Ada', 'Lovelace', 1815) p FROM dual) v;
  age_in 
 --------
     205
@@ -283,12 +303,13 @@ FROM (VALUES (person_object_type('Ada', 'Lovelace', 1815))) AS v(p);
 CREATE TABLE person_object_table (object_value person_object_type);
 INSERT INTO person_object_table
 VALUES (person_object_type('Grace', 'Hopper', 1906));
-SELECT t.object_value.full_name() FROM person_object_table AS t;
+SELECT t.object_value.full_name() FROM person_object_table t;
   full_name   
 --------------
  Grace Hopper
 (1 row)
 
+-- IvorySQL-specific schema qualification through a relation name.
 SELECT public.person_object_table.object_value.full_name()
 FROM public.person_object_table;
   full_name   
@@ -297,6 +318,7 @@ FROM public.person_object_table;
 (1 row)
 
 DROP TABLE person_object_table;
+-- IvorySQL catalog integration for the hidden method package.
 SELECT pkgtypeoid = 'person_object_type'::regtype,
        pkginstantiable,
        pkgfinal
@@ -316,8 +338,8 @@ CREATE OR REPLACE TYPE person_object_type AS OBJECT
     MEMBER FUNCTION age_in(p_year integer DEFAULT 2026) RETURN integer
 ) NOT FINAL;
 /
-SELECT p.full_name()
-FROM (VALUES (person_object_type('Ada', 'Lovelace', 1815))) AS v(p);
+SELECT v.p.full_name()
+FROM (SELECT person_object_type('Ada', 'Lovelace', 1815) p FROM dual) v;
   full_name   
 --------------
  Ada Lovelace
@@ -331,10 +353,56 @@ CREATE OR REPLACE TYPE person_object_type AS OBJECT
     MEMBER FUNCTION full_name RETURN varchar2,
     MEMBER FUNCTION age_in(p_year integer DEFAULT 2026) RETURN integer
 ) NOT FINAL;
-ERROR:  CREATE OR REPLACE TYPE cannot change object attributes
-HINT:  Drop and recreate the type to change its stored attributes.
 /
+SELECT v.p.full_name()
+FROM (SELECT person_object_type('Ada', 'Lovelace', 1815) p FROM dual) v;
+  full_name   
+--------------
+ Ada Lovelace
+(1 row)
+
 DROP TYPE person_object_type;
+-- CREATE OR REPLACE can evolve attributes when stored dependencies allow it.
+CREATE TYPE evolving_object_type AS OBJECT (id integer);
+CREATE OR REPLACE TYPE evolving_object_type AS OBJECT
+(
+    id integer,
+    label varchar2(10)
+);
+/
+SELECT evolving_object_type(7, 'seven') FROM dual;
+ evolving_object_type 
+----------------------
+ (7,seven)
+(1 row)
+
+CREATE OR REPLACE TYPE evolving_object_type AS OBJECT
+(
+    renamed_id varchar2(20)
+);
+/
+SELECT evolving_object_type('renamed') FROM dual;
+ evolving_object_type 
+----------------------
+ (renamed)
+(1 row)
+
+DROP TYPE evolving_object_type;
+-- Stored dependents prevent replacement, matching Oracle's ORA-02303 rule.
+CREATE TYPE dependent_object_type AS OBJECT (id integer);
+CREATE TABLE dependent_object_table (object_value dependent_object_type);
+CREATE OR REPLACE TYPE dependent_object_type AS OBJECT (id integer);
+ERROR:  cannot alter type "dependent_object_type" because column "dependent_object_table.object_value" uses it
+/
+CREATE OR REPLACE TYPE dependent_object_type AS OBJECT
+(
+    id integer,
+    label varchar2(10)
+);
+ERROR:  cannot alter type "dependent_object_type" because column "dependent_object_table.object_value" uses it
+/
+DROP TABLE dependent_object_table;
+DROP TYPE dependent_object_type;
 -- Constructors, static functions, and mutating member procedures.
 CREATE TYPE feature_object_type AS OBJECT
 (
@@ -345,7 +413,7 @@ CREATE TYPE feature_object_type AS OBJECT
     MEMBER FUNCTION describe RETURN varchar2,
     MEMBER PROCEDURE bump(delta integer),
     STATIC FUNCTION decorate(p_text varchar2) RETURN varchar2,
-    STATIC PROCEDURE increment(p_value IN OUT integer)
+    STATIC PROCEDURE increment_value(p_value IN OUT integer)
 );
 /
 CREATE TYPE BODY feature_object_type AS
@@ -354,7 +422,7 @@ CREATE TYPE BODY feature_object_type AS
     BEGIN
         self.value := p_value + 100;
         self.label := p_label;
-        RETURN self;
+        RETURN;
     END feature_object_type;
     MEMBER FUNCTION describe RETURN varchar2 IS
     BEGIN
@@ -368,47 +436,75 @@ CREATE TYPE BODY feature_object_type AS
     BEGIN
         RETURN '[' || p_text || ']';
     END decorate;
-    STATIC PROCEDURE increment(p_value IN OUT integer) IS
+    STATIC PROCEDURE increment_value(p_value IN OUT integer) IS
     BEGIN
         p_value := p_value + 1;
-    END increment;
+    END increment_value;
 END;
 /
 SELECT feature_object_type(1, 'one'),
-       feature_object_type.decorate('static');
+       feature_object_type.decorate('static')
+FROM dual;
  feature_object_type | decorate 
 ---------------------+----------
  (101,one)           | [static]
 (1 row)
 
-SELECT feature_object_type(p_label => 'named', p_value => 8);
+SELECT feature_object_type(p_label => 'named', p_value => 8) FROM dual;
  feature_object_type 
 ---------------------
  (108,named)
 (1 row)
 
-SELECT v.describe()
-FROM (VALUES (feature_object_type(2, 'two'))) AS objects(v);
+SELECT objects.v.describe()
+FROM (SELECT feature_object_type(2, 'two') v FROM dual) objects;
  describe 
 ----------
  two:102
 (1 row)
 
-DO $$
 DECLARE
     v feature_object_type := feature_object_type(3, 'three');
 	n integer := 10;
 BEGIN
     v.bump(4);
-	feature_object_type.increment(n);
+	feature_object_type.increment_value(n);
     IF v.value <> 107 THEN
-        RAISE EXCEPTION 'unexpected member procedure result: %', v.value;
+		raise_application_error(-20001, 'unexpected member procedure result');
     END IF;
 	IF n <> 11 THEN
-		RAISE EXCEPTION 'unexpected static procedure result: %', n;
+		raise_application_error(-20002, 'unexpected static procedure result');
 	END IF;
 END;
-$$;
+/
+-- Oracle constructors reject RETURN expressions, including RETURN SELF.
+CREATE TYPE invalid_constructor_return_type AS OBJECT
+(
+    value integer,
+    CONSTRUCTOR FUNCTION invalid_constructor_return_type(p_value integer)
+        RETURN SELF AS RESULT
+);
+/
+CREATE TYPE BODY invalid_constructor_return_type AS
+    CONSTRUCTOR FUNCTION invalid_constructor_return_type(p_value integer)
+        RETURN SELF AS RESULT IS
+    BEGIN
+        self.value := p_value;
+        RETURN self;
+    END invalid_constructor_return_type;
+END;
+/
+ERROR:  RETURN statement in an object constructor cannot have an expression
+LINE 5:         RETURN self;
+                       ^
+QUERY:  CONSTRUCTOR FUNCTION invalid_constructor_return_type(p_value integer)
+        RETURN SELF AS RESULT IS
+    BEGIN
+        self.value := p_value;
+        RETURN self;
+    END invalid_constructor_return_type;
+END
+DROP TYPE invalid_constructor_return_type;
 -- Object methods use TYPE privileges, not the hidden package ACL.
 CREATE ROLE object_type_user;
 REVOKE ALL ON TYPE feature_object_type FROM PUBLIC;
@@ -463,45 +559,53 @@ CREATE TYPE map_object_type AS OBJECT
 CREATE TYPE BODY map_object_type AS
     MAP MEMBER FUNCTION sort_key RETURN integer IS
     BEGIN
-		IF self IS NULL THEN
-			RAISE EXCEPTION 'MAP method invoked for NULL SELF';
-		END IF;
-        RETURN self.value % 10;
+        RETURN mod(self.value, 10);
     END sort_key;
 END;
 /
 SELECT map_object_type(11, 'z') = map_object_type(1, 'a') AS map_equal,
-       map_object_type(2, 'z') < map_object_type(9, 'a') AS map_less;
+       map_object_type(2, 'z') < map_object_type(9, 'a') AS map_less
+FROM dual;
  map_equal | map_less 
 -----------+----------
  t         | t
 (1 row)
 
-SELECT NULL::map_object_type < map_object_type(9, 'a') AS map_null;
+SELECT CAST(NULL AS map_object_type) < map_object_type(9, 'a') AS map_null
+FROM dual;
  map_null 
 ----------
  
 (1 row)
 
-SELECT (v).value
-FROM (VALUES (map_object_type(2, 'two')),
-             (map_object_type(11, 'eleven'))) AS objects(v)
-ORDER BY v;
- value 
--------
-    11
-     2
+SELECT objects.v
+FROM
+(
+    SELECT map_object_type(2, 'two') v FROM dual
+    UNION ALL
+    SELECT map_object_type(11, 'eleven') v FROM dual
+) objects
+ORDER BY objects.v;
+      v      
+-------------
+ (11,eleven)
+ (2,two)
 (2 rows)
 
 SELECT count(*) AS map_groups
 FROM
 (
-    SELECT v
-    FROM (VALUES (map_object_type(11, 'z')),
-                 (map_object_type(1, 'a')),
-                 (map_object_type(2, 'b'))) AS objects(v)
-    GROUP BY v
-) AS grouped_objects;
+    SELECT objects.v
+    FROM
+    (
+        SELECT map_object_type(11, 'z') v FROM dual
+        UNION ALL
+        SELECT map_object_type(1, 'a') v FROM dual
+        UNION ALL
+        SELECT map_object_type(2, 'b') v FROM dual
+    ) objects
+    GROUP BY objects.v
+) grouped_objects;
  map_groups 
 ------------
           2
@@ -510,11 +614,16 @@ FROM
 SELECT count(*) AS map_distinct
 FROM
 (
-    SELECT DISTINCT v
-    FROM (VALUES (map_object_type(11, 'z')),
-                 (map_object_type(1, 'a')),
-                 (map_object_type(2, 'b'))) AS objects(v)
-) AS distinct_objects;
+    SELECT DISTINCT objects.v
+    FROM
+    (
+        SELECT map_object_type(11, 'z') v FROM dual
+        UNION ALL
+        SELECT map_object_type(1, 'a') v FROM dual
+        UNION ALL
+        SELECT map_object_type(2, 'b') v FROM dual
+    ) objects
+) distinct_objects;
  map_distinct 
 --------------
             2
@@ -523,12 +632,12 @@ FROM
 SELECT count(*) AS map_union
 FROM
 (
-    SELECT map_object_type(11, 'z') AS v
+    SELECT map_object_type(11, 'z') v FROM dual
     UNION
-    SELECT map_object_type(1, 'a')
+    SELECT map_object_type(1, 'a') v FROM dual
     UNION
-    SELECT map_object_type(2, 'b')
-) AS union_objects;
+    SELECT map_object_type(2, 'b') v FROM dual
+) union_objects;
  map_union 
 -----------
          2
@@ -546,45 +655,53 @@ CREATE TYPE order_object_type AS OBJECT
 CREATE TYPE BODY order_object_type AS
     ORDER MEMBER FUNCTION compare(other order_object_type) RETURN integer IS
     BEGIN
-		IF self IS NULL OR other IS NULL THEN
-			RAISE EXCEPTION 'ORDER method invoked for NULL object';
-		END IF;
-        RETURN (self.value % 10) - (other.value % 10);
+        RETURN mod(self.value, 10) - mod(other.value, 10);
     END compare;
 END;
 /
 SELECT order_object_type(4, 'z') > order_object_type(2, 'a') AS order_greater,
-       order_object_type(7, 'x') = order_object_type(7, 'y') AS order_equal;
+       order_object_type(7, 'x') = order_object_type(7, 'y') AS order_equal
+FROM dual;
  order_greater | order_equal 
 ---------------+-------------
  t             | t
 (1 row)
 
-SELECT NULL::order_object_type < order_object_type(1, 'one') AS order_null;
+SELECT CAST(NULL AS order_object_type) < order_object_type(1, 'one') AS order_null
+FROM dual;
  order_null 
 ------------
  
 (1 row)
 
-SELECT (v).value
-FROM (VALUES (order_object_type(2, 'two')),
-             (order_object_type(11, 'eleven'))) AS objects(v)
-ORDER BY v;
- value 
--------
-    11
-     2
+SELECT objects.v
+FROM
+(
+    SELECT order_object_type(2, 'two') v FROM dual
+    UNION ALL
+    SELECT order_object_type(11, 'eleven') v FROM dual
+) objects
+ORDER BY objects.v;
+      v      
+-------------
+ (11,eleven)
+ (2,two)
 (2 rows)
 
 SELECT count(*) AS order_groups
 FROM
 (
-    SELECT v
-    FROM (VALUES (order_object_type(7, 'x')),
-                 (order_object_type(7, 'y')),
-                 (order_object_type(8, 'z'))) AS objects(v)
-    GROUP BY v
-) AS grouped_objects;
+    SELECT objects.v
+    FROM
+    (
+        SELECT order_object_type(7, 'x') v FROM dual
+        UNION ALL
+        SELECT order_object_type(7, 'y') v FROM dual
+        UNION ALL
+        SELECT order_object_type(8, 'z') v FROM dual
+    ) objects
+    GROUP BY objects.v
+) grouped_objects;
  order_groups 
 --------------
             2
@@ -593,11 +710,16 @@ FROM
 SELECT count(*) AS order_distinct
 FROM
 (
-    SELECT DISTINCT v
-    FROM (VALUES (order_object_type(7, 'x')),
-                 (order_object_type(7, 'y')),
-                 (order_object_type(8, 'z'))) AS objects(v)
-) AS distinct_objects;
+    SELECT DISTINCT objects.v
+    FROM
+    (
+        SELECT order_object_type(7, 'x') v FROM dual
+        UNION ALL
+        SELECT order_object_type(7, 'y') v FROM dual
+        UNION ALL
+        SELECT order_object_type(8, 'z') v FROM dual
+    ) objects
+) distinct_objects;
  order_distinct 
 ----------------
               2
@@ -606,12 +728,12 @@ FROM
 SELECT count(*) AS order_union
 FROM
 (
-    SELECT order_object_type(7, 'x') AS v
+    SELECT order_object_type(7, 'x') v FROM dual
     UNION
-    SELECT order_object_type(7, 'y')
+    SELECT order_object_type(7, 'y') v FROM dual
     UNION
-    SELECT order_object_type(8, 'z')
-) AS union_objects;
+    SELECT order_object_type(8, 'z') v FROM dual
+) union_objects;
  order_union 
 -------------
            2
@@ -620,16 +742,20 @@ FROM
 DROP TYPE order_object_type;
 -- NOT INSTANTIABLE object types reject construction and must be NOT FINAL.
 CREATE TYPE invalid_empty_object_type AS OBJECT ();
-ERROR:  an object type without attributes must be NOT INSTANTIABLE
+ERROR:  an object type must have at least one attribute
 CREATE TYPE invalid_abstract_type AS OBJECT (id integer) NOT INSTANTIABLE;
 ERROR:  a NOT INSTANTIABLE object type must be NOT FINAL
-CREATE TYPE invalid_abstract_constructor AS OBJECT
+CREATE TYPE abstract_constructor_type AS OBJECT
 (
     id integer,
-    CONSTRUCTOR FUNCTION invalid_abstract_constructor(p_id integer)
+    CONSTRUCTOR FUNCTION abstract_constructor_type(p_id integer)
         RETURN SELF AS RESULT
 ) NOT INSTANTIABLE NOT FINAL;
-ERROR:  a NOT INSTANTIABLE object type cannot declare a constructor
+SELECT abstract_constructor_type(1) FROM dual;
+ERROR:  object type "abstract_constructor_type" is not instantiable
+LINE 1: SELECT abstract_constructor_type(1) FROM dual;
+               ^
+DROP TYPE abstract_constructor_type;
 CREATE TYPE invalid_order_type AS OBJECT
 (
     id integer,
@@ -657,33 +783,35 @@ CREATE TYPE invalid_comparison_type AS OBJECT
 ERROR:  object type may not declare both MAP and ORDER methods
 CREATE TYPE abstract_modifier_order AS OBJECT ()
     NOT FINAL NOT INSTANTIABLE;
-DROP TYPE abstract_modifier_order;
+ERROR:  an object type must have at least one attribute
 CREATE TYPE abstract_object_type AS OBJECT (id integer)
     NOT INSTANTIABLE NOT FINAL;
-SELECT abstract_object_type(1);
+SELECT abstract_object_type(1) FROM dual;
 ERROR:  object type "abstract_object_type" is not instantiable
-LINE 1: SELECT abstract_object_type(1);
+LINE 1: SELECT abstract_object_type(1) FROM dual;
                ^
 DROP TYPE abstract_object_type;
 -- Only types declared AS OBJECT have constructor and member semantics.
 CREATE TABLE ordinary_object_table (id integer, label varchar(20));
 CREATE VIEW ordinary_object_view AS
-	SELECT 1 AS id, 'view'::varchar(20) AS label;
-SELECT ordinary_object_table(1, 'table');
+	SELECT 1 AS id, CAST('view' AS varchar(20)) AS label FROM dual;
+SELECT ordinary_object_table(1, 'table') FROM dual;
 ERROR:  function ordinary_object_table(pg_catalog.int4, unknown) does not exist
-LINE 1: SELECT ordinary_object_table(1, 'table');
+LINE 1: SELECT ordinary_object_table(1, 'table') FROM dual;
                ^
 DETAIL:  There is no function of that name.
-SELECT ordinary_object_view(1, 'view');
+SELECT ordinary_object_view(1, 'view') FROM dual;
 ERROR:  function ordinary_object_view(pg_catalog.int4, unknown) does not exist
-LINE 1: SELECT ordinary_object_view(1, 'view');
+LINE 1: SELECT ordinary_object_view(1, 'view') FROM dual;
                ^
 DETAIL:  There is no function of that name.
+-- PostgreSQL-compatible composite types still are not Oracle object types.
 SELECT default_test_row('row', 42);
 ERROR:  function default_test_row(unknown, pg_catalog.int4) does not exist
 LINE 1: SELECT default_test_row('row', 42);
                ^
 DETAIL:  There is no function of that name.
+-- IvorySQL catalog integration (not an Oracle data-dictionary query).
 SELECT typname, typisobject
 FROM pg_type
 WHERE typname IN ('ordinary_object_table', 'ordinary_object_view',

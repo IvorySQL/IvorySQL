@@ -1010,12 +1010,19 @@ record_cmp(FunctionCallInfo fcinfo)
 	tupTypmod1 = HeapTupleHeaderGetTypMod(record1);
 	tupType2 = HeapTupleHeaderGetTypeId(record2);
 	tupTypmod2 = HeapTupleHeaderGetTypMod(record2);
-	if (tupType1 == tupType2 &&
-		compare_oracle_object_records(tupType1, record1, record2, &result))
+	if (tupType1 == tupType2 && ORA_PARSER == compatible_db &&
+		get_typisobject(tupType1))
 	{
-		PG_FREE_IF_COPY(record1, 0);
-		PG_FREE_IF_COPY(record2, 1);
-		return result;
+		if (compare_oracle_object_records(tupType1, record1, record2, &result))
+		{
+			PG_FREE_IF_COPY(record1, 0);
+			PG_FREE_IF_COPY(record2, 1);
+			return result;
+		}
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("object type %s has no MAP or ORDER method",
+						format_type_be(tupType1))));
 	}
 	tupdesc1 = lookup_rowtype_tupdesc(tupType1, tupTypmod1);
 	ncolumns1 = tupdesc1->natts;

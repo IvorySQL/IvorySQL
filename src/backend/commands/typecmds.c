@@ -57,6 +57,7 @@
 #include "catalog/pg_type.h"
 #include "commands/alter.h"
 #include "commands/defrem.h"
+#include "commands/event_trigger.h"
 #include "commands/packagecmds.h"
 #include "commands/tablecmds.h"
 #include "commands/typecmds.h"
@@ -69,7 +70,9 @@
 #include "parser/parse_expr.h"
 #include "parser/parse_func.h"
 #include "parser/parse_type.h"
+#include "tcop/utility.h"
 #include "utils/builtins.h"
+#include "utils/catcache.h"
 #include "utils/fmgroids.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
@@ -87,6 +90,14 @@ typedef struct
 	int		   *atts;			/* attribute numbers */
 	/* atts[] is of allocated length RelationGetNumberOfAttributes(rel) */
 } RelToCheck;
+
+typedef struct ObjectTypeAttribute
+{
+	char	   *name;
+	Oid			typeOid;
+	int32		typmod;
+	Oid			collation;
+} ObjectTypeAttribute;
 
 /* parameter structure for AlterTypeRecurse() */
 typedef struct
@@ -2603,14 +2614,60 @@ AssignTypeMultirangeArrayOid(void)
  *-------------------------------------------------------------------
  */
 static void
-check_object_type_replace(Oid typeOid, List *coldeflist)
+check_object_type_routine_name(Oid namespaceId, const char *typeName)
+{
+	CatCList   *proclist;
+	bool		found = false;
+
+	proclist = SearchSysCacheList1(PROCNAMEARGSNSP,
+								 CStringGetDatum(typeName));
+	for (int i = 0; i < proclist->n_members; i++)
+	{
+		HeapTuple	procTuple = &proclist->members[i]->tuple;
+		Form_pg_proc procForm = (Form_pg_proc) GETSTRUCT(procTuple);
+
+		if (procForm->pronamespace == namespaceId)
+		{
+			found = true;
+			break;
+		}
+	}
+	ReleaseSysCacheList(proclist);
+
+	if (found)
+		ereport(ERROR,
+				(errcode(ERRCODE_DUPLICATE_OBJECT),
+				 errmsg("name \"%s\" is already used by a function or procedure",
+						typeName)));
+}
+
+/*
+ * Reconcile the stored composite attributes with a CREATE OR REPLACE TYPE
+ * specification.  Oracle permits attribute evolution when stored
+ * dependencies do not prevent it.  Use the ordinary ALTER TYPE machinery so
+ * dependency checks, function invalidation, and relcache invalidation remain
+ * centralized.
+ */
+static void
+replace_object_type_attributes(Oid typeOid, List *coldeflist)
 {
 	HeapTuple	typeTuple;
 	Form_pg_type typeForm;
 	Relation	relation;
 	TupleDesc	tupdesc;
+	Oid			relationOid;
+	Oid			typeNamespace;
+	char	   *relationName;
+	List	   *oldAttributes = NIL;
+	List	   *newAttributes = NIL;
+	List	   *temporaryNames = NIL;
+	List	   *alterCommands = NIL;
 	ListCell   *lc;
-	int			attno = 0;
+	bool		renameAttributes = false;
+	int			oldCount;
+	int			newCount;
+	int			commonCount;
+	int			attno;
 
 	typeTuple = SearchSysCache1(TYPEOID, ObjectIdGetDatum(typeOid));
 	if (!HeapTupleIsValid(typeTuple))
@@ -2625,50 +2682,195 @@ check_object_type_replace(Oid typeOid, List *coldeflist)
 	if (!object_ownercheck(TypeRelationId, typeOid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_TYPE,
 					   NameStr(typeForm->typname));
+	relationOid = typeForm->typrelid;
+	typeNamespace = typeForm->typnamespace;
+	relationName = pstrdup(NameStr(typeForm->typname));
 
-	relation = relation_open(typeForm->typrelid, AccessShareLock);
+	/* Keep the type relation locked across dependency checks and evolution. */
+	relation = relation_open(relationOid, AccessExclusiveLock);
 	tupdesc = RelationGetDescr(relation);
+	for (attno = 0; attno < tupdesc->natts; attno++)
+	{
+		Form_pg_attribute attribute = TupleDescAttr(tupdesc, attno);
+		ObjectTypeAttribute *oldAttribute;
+
+		if (attribute->attisdropped)
+			continue;
+		oldAttribute = palloc_object(ObjectTypeAttribute);
+		oldAttribute->name = pstrdup(NameStr(attribute->attname));
+		oldAttribute->typeOid = attribute->atttypid;
+		oldAttribute->typmod = attribute->atttypmod;
+		oldAttribute->collation = attribute->attcollation;
+		oldAttributes = lappend(oldAttributes, oldAttribute);
+	}
+
+	/* Oracle rejects CREATE OR REPLACE while a stored column uses the type. */
+	find_composite_type_dependencies(typeOid, relation, NULL);
+
 	foreach(lc, coldeflist)
 	{
 		ColumnDef  *column = lfirst_node(ColumnDef, lc);
-		Form_pg_attribute attribute;
-		Oid			declaredType;
-		Oid			declaredCollation;
-		int32		declaredTypmod;
+		ObjectTypeAttribute *newAttribute;
+		ListCell   *previous;
 
-		while (attno < tupdesc->natts &&
-			   TupleDescAttr(tupdesc, attno)->attisdropped)
-			attno++;
-		if (attno >= tupdesc->natts)
-			goto mismatch;
+		foreach(previous, newAttributes)
+		{
+			ObjectTypeAttribute *seen = lfirst(previous);
 
-		attribute = TupleDescAttr(tupdesc, attno++);
+			if (strcmp(seen->name, column->colname) == 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_DUPLICATE_COLUMN),
+						 errmsg("attribute \"%s\" specified more than once",
+								column->colname)));
+		}
+
+		newAttribute = palloc_object(ObjectTypeAttribute);
+		newAttribute->name = pstrdup(column->colname);
 		typenameTypeIdAndMod(NULL, column->typeName,
-							 &declaredType, &declaredTypmod);
-		declaredCollation = GetColumnDefCollation(NULL, column, declaredType);
-		if (strcmp(NameStr(attribute->attname), column->colname) != 0 ||
-			attribute->atttypid != declaredType ||
-			attribute->atttypmod != declaredTypmod ||
-			attribute->attcollation != declaredCollation)
-			goto mismatch;
+							 &newAttribute->typeOid, &newAttribute->typmod);
+		newAttribute->collation =
+			GetColumnDefCollation(NULL, column, newAttribute->typeOid);
+		newAttributes = lappend(newAttributes, newAttribute);
 	}
-	while (attno < tupdesc->natts &&
-		   TupleDescAttr(tupdesc, attno)->attisdropped)
-		attno++;
-	if (attno != tupdesc->natts)
-		goto mismatch;
 
-	relation_close(relation, AccessShareLock);
+	relation_close(relation, NoLock);
 	ReleaseSysCache(typeTuple);
-	return;
 
-mismatch:
-	relation_close(relation, AccessShareLock);
-	ReleaseSysCache(typeTuple);
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("CREATE OR REPLACE TYPE cannot change object attributes"),
-			 errhint("Drop and recreate the type to change its stored attributes.")));
+	oldCount = list_length(oldAttributes);
+	newCount = list_length(newAttributes);
+	commonCount = Min(oldCount, newCount);
+	for (attno = 0; attno < commonCount; attno++)
+	{
+		ObjectTypeAttribute *oldAttribute = list_nth(oldAttributes, attno);
+		ObjectTypeAttribute *newAttribute = list_nth(newAttributes, attno);
+
+		if (strcmp(oldAttribute->name, newAttribute->name) != 0)
+		{
+			renameAttributes = true;
+			break;
+		}
+	}
+
+	/* Move all old names aside before applying position-preserving renames. */
+	if (renameAttributes)
+	{
+		for (attno = 0; attno < oldCount; attno++)
+		{
+			ObjectTypeAttribute *oldAttribute = list_nth(oldAttributes, attno);
+			RenameStmt *renameStmt = makeNode(RenameStmt);
+			char	   *temporaryName;
+			int			attempt = 0;
+
+			do
+			{
+				if (attempt > 0)
+					pfree(temporaryName);
+				temporaryName = psprintf("__ivorysql_replace_%u_%d_%d",
+										 relationOid, attno + 1, attempt++);
+			}
+			while (get_attnum(relationOid, temporaryName) != InvalidAttrNumber);
+			renameStmt->renameType = OBJECT_ATTRIBUTE;
+			renameStmt->relationType = OBJECT_TYPE;
+			renameStmt->relation = makeRangeVar(get_namespace_name(typeNamespace),
+												 relationName, -1);
+			renameStmt->subname = oldAttribute->name;
+			renameStmt->newname = temporaryName;
+			renameStmt->behavior = DROP_RESTRICT;
+			renameStmt->missing_ok = false;
+			(void) renameatt(renameStmt);
+			CommandCounterIncrement();
+			temporaryNames = lappend(temporaryNames,
+									 makeString(temporaryName));
+		}
+
+		for (attno = 0; attno < commonCount; attno++)
+		{
+			ObjectTypeAttribute *newAttribute = list_nth(newAttributes, attno);
+			RenameStmt *renameStmt = makeNode(RenameStmt);
+
+			renameStmt->renameType = OBJECT_ATTRIBUTE;
+			renameStmt->relationType = OBJECT_TYPE;
+			renameStmt->relation = makeRangeVar(get_namespace_name(typeNamespace),
+												 relationName, -1);
+			renameStmt->subname = strVal(list_nth(temporaryNames, attno));
+			renameStmt->newname = newAttribute->name;
+			renameStmt->behavior = DROP_RESTRICT;
+			renameStmt->missing_ok = false;
+			(void) renameatt(renameStmt);
+			CommandCounterIncrement();
+		}
+	}
+
+	for (attno = 0; attno < commonCount; attno++)
+	{
+		ObjectTypeAttribute *oldAttribute = list_nth(oldAttributes, attno);
+		ObjectTypeAttribute *newAttribute = list_nth(newAttributes, attno);
+		ColumnDef  *column = list_nth_node(ColumnDef, coldeflist, attno);
+
+		if (oldAttribute->typeOid != newAttribute->typeOid ||
+			oldAttribute->typmod != newAttribute->typmod ||
+			oldAttribute->collation != newAttribute->collation)
+		{
+			AlterTableCmd *command = makeNode(AlterTableCmd);
+			ColumnDef  *definition = makeNode(ColumnDef);
+
+			command->subtype = AT_AlterColumnType;
+			command->name = newAttribute->name;
+			command->def = (Node *) definition;
+			command->behavior = DROP_RESTRICT;
+			definition->typeName = copyObject(column->typeName);
+			definition->collClause = copyObject(column->collClause);
+			definition->raw_default = NULL;
+			definition->location = column->location;
+			alterCommands = lappend(alterCommands, command);
+		}
+	}
+
+	for (attno = commonCount; attno < oldCount; attno++)
+	{
+		AlterTableCmd *command = makeNode(AlterTableCmd);
+
+		command->subtype = AT_DropColumn;
+		command->name = renameAttributes ?
+			strVal(list_nth(temporaryNames, attno)) :
+			((ObjectTypeAttribute *) list_nth(oldAttributes, attno))->name;
+		command->behavior = DROP_RESTRICT;
+		command->missing_ok = false;
+		alterCommands = lappend(alterCommands, command);
+	}
+
+	for (attno = commonCount; attno < newCount; attno++)
+	{
+		AlterTableCmd *command = makeNode(AlterTableCmd);
+
+		command->subtype = AT_AddColumn;
+		command->def = (Node *) copyObject(list_nth_node(ColumnDef,
+													 coldeflist, attno));
+		command->behavior = DROP_RESTRICT;
+		alterCommands = lappend(alterCommands, command);
+	}
+
+	if (alterCommands != NIL)
+	{
+		AlterTableStmt *alterStmt = makeNode(AlterTableStmt);
+		AlterTableUtilityContext context = {0};
+		LOCKMODE	lockmode;
+
+		alterStmt->relation = makeRangeVar(get_namespace_name(typeNamespace),
+										 relationName, -1);
+		alterStmt->cmds = alterCommands;
+		alterStmt->objtype = OBJECT_TYPE;
+		lockmode = AlterTableGetLockLevel(alterCommands);
+		context.queryString = "CREATE OR REPLACE TYPE";
+		context.relid = AlterTableLookupRelation(alterStmt, lockmode);
+
+		EventTriggerAlterTableStart((Node *) alterStmt);
+		EventTriggerAlterTableRelid(context.relid);
+		AlterTable(alterStmt, lockmode, &context);
+		EventTriggerAlterTableEnd();
+	}
+
+	pfree(relationName);
 }
 
 ObjectAddress
@@ -2680,10 +2882,10 @@ DefineCompositeType(RangeVar *typevar, List *coldeflist, bool is_object,
 	Oid			typeNamespace;
 	ObjectAddress address;
 
-	if (is_object && coldeflist == NIL && instantiable)
+	if (is_object && coldeflist == NIL)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-				 errmsg("an object type without attributes must be NOT INSTANTIABLE")));
+				 errmsg("an object type must have at least one attribute")));
 
 	/*
 	 * now set the parameters for keys/inheritance etc. All of these are
@@ -2716,7 +2918,7 @@ DefineCompositeType(RangeVar *typevar, List *coldeflist, bool is_object,
 	{
 		if (is_object && replace)
 		{
-			check_object_type_replace(old_type_oid, coldeflist);
+			replace_object_type_attributes(old_type_oid, coldeflist);
 			ObjectAddressSet(address, TypeRelationId, old_type_oid);
 			CommandCounterIncrement();
 			CreateObjectTypePackage(old_type_oid, methods, true,
@@ -2728,6 +2930,9 @@ DefineCompositeType(RangeVar *typevar, List *coldeflist, bool is_object,
 					(errcode(ERRCODE_DUPLICATE_OBJECT),
 					 errmsg("type \"%s\" already exists", createStmt->relation->relname)));
 	}
+	else if (is_object)
+		check_object_type_routine_name(typeNamespace,
+									   createStmt->relation->relname);
 
 	/*
 	 * Finally create the relation.  This also creates the type.

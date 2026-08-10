@@ -19,7 +19,6 @@
 #include "access/htup_details.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
-#include "commands/packagecmds.h"
 #include "lib/stringinfo.h"
 #include "nodes/nodeFuncs.h"
 #include "parser/parse_coerce.h"
@@ -746,37 +745,6 @@ make_op(ParseState *pstate, List *opname, Node *ltree, Node *rtree,
 	List	   *args;
 	Oid			rettype;
 	OpExpr	   *result;
-
-	/*
-	 * Oracle object values have no relational ordering unless their type
-	 * declares MAP or ORDER.  Equality without either method continues to use
-	 * field-wise record equality.
-	 */
-	if (ORA_PARSER == compatible_db && ltree != NULL && rtree != NULL &&
-		list_length(opname) == 1 &&
-		exprType(ltree) == exprType(rtree) &&
-		get_typisobject(exprType(ltree)))
-	{
-		const char *operatorName = strVal(linitial(opname));
-
-		if (strcmp(operatorName, "<") == 0 ||
-			strcmp(operatorName, "<=") == 0 ||
-			strcmp(operatorName, ">") == 0 ||
-			strcmp(operatorName, ">=") == 0)
-		{
-			bool		isOrder;
-			char	   *method;
-
-			method = GetObjectTypeComparisonMethod(exprType(ltree), &isOrder);
-			(void) isOrder;
-			if (method == NULL)
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("object type %s has no MAP or ORDER method",
-								format_type_be(exprType(ltree)))));
-			pfree(method);
-		}
-	}
 
 	/* Check it's not a postfix operator */
 	if (rtree == NULL)

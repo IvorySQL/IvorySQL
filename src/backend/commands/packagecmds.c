@@ -846,10 +846,6 @@ CreateObjectTypePackage(Oid typeOid, List *methods, bool replace,
 	{
 		ObjectTypeMethod *method = lfirst_node(ObjectTypeMethod, lc);
 
-		if (!instantiable && method->kind == OBJECT_METHOD_CONSTRUCTOR)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-					 errmsg("a NOT INSTANTIABLE object type cannot declare a constructor")));
 		if (method->kind == OBJECT_METHOD_CONSTRUCTOR &&
 			strcmp(method->name, NameStr(typeForm->typname)) != 0)
 			ereport(ERROR,
