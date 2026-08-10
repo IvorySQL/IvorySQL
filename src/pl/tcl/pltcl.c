@@ -1431,6 +1431,7 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid,
 	Tcl_DString proc_internal_def;
 	Tcl_DString proc_internal_name;
 	Tcl_DString proc_internal_body;
+	Tcl_DString proc_internal_args;
 
 	/* We'll need the pg_proc tuple in any case... */
 	procTup = SearchSysCache1(PROCOID, ObjectIdGetDatum(fn_oid));
@@ -1480,6 +1481,7 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid,
 	Tcl_DStringInit(&proc_internal_def);
 	Tcl_DStringInit(&proc_internal_name);
 	Tcl_DStringInit(&proc_internal_body);
+	Tcl_DStringInit(&proc_internal_args);
 	PG_TRY();
 	{
 		bool		is_trigger = OidIsValid(tgreloid);
@@ -1489,10 +1491,9 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid,
 		bool		need_underscore;
 		HeapTuple	typeTup;
 		Form_pg_type typeStruct;
-		char		proc_internal_args[33 * FUNC_MAX_ARGS];
 		Datum		prosrcdatum;
 		char	   *proc_source;
-		char		buf[48];
+		char		buf[64];
 		pltcl_interp_desc *interp_desc;
 		Tcl_Interp *interp;
 		int			i;
@@ -1661,7 +1662,6 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid,
 		 ************************************************************/
 		if (!is_trigger && !is_event_trigger)
 		{
-			proc_internal_args[0] = '\0';
 			for (i = 0; i < prodesc->nargs; i++)
 			{
 				Oid			argtype = procStruct->proargtypes.values[i];
@@ -1694,8 +1694,8 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid,
 				}
 
 				if (i > 0)
-					strcat(proc_internal_args, " ");
-				strcat(proc_internal_args, buf);
+					Tcl_DStringAppend(&proc_internal_args, " ", -1);
+				Tcl_DStringAppend(&proc_internal_args, buf, -1);
 
 				ReleaseSysCache(typeTup);
 			}
@@ -1703,13 +1703,14 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid,
 		else if (is_trigger)
 		{
 			/* trigger procedure has fixed args */
-			strcpy(proc_internal_args,
-				   "TG_name TG_relid TG_table_name TG_table_schema TG_relatts TG_when TG_level TG_op __PLTcl_Tup_NEW __PLTcl_Tup_OLD args");
+			Tcl_DStringAppend(&proc_internal_args,
+							  "TG_name TG_relid TG_table_name TG_table_schema TG_relatts TG_when TG_level TG_op __PLTcl_Tup_NEW __PLTcl_Tup_OLD args",
+							  -1);
 		}
 		else if (is_event_trigger)
 		{
 			/* event trigger procedure has fixed args */
-			strcpy(proc_internal_args, "TG_event TG_tag");
+			Tcl_DStringAppend(&proc_internal_args, "TG_event TG_tag", -1);
 		}
 
 		/************************************************************
@@ -1722,7 +1723,8 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid,
 		 ************************************************************/
 		Tcl_DStringAppendElement(&proc_internal_def, "proc");
 		Tcl_DStringAppendElement(&proc_internal_def, internal_proname);
-		Tcl_DStringAppendElement(&proc_internal_def, proc_internal_args);
+		Tcl_DStringAppendElement(&proc_internal_def,
+								 Tcl_DStringValue(&proc_internal_args));
 
 		/************************************************************
 		 * prefix procedure body with
@@ -1803,6 +1805,7 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid,
 		Tcl_DStringFree(&proc_internal_def);
 		Tcl_DStringFree(&proc_internal_name);
 		Tcl_DStringFree(&proc_internal_body);
+		Tcl_DStringFree(&proc_internal_args);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -1832,6 +1835,7 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid,
 	Tcl_DStringFree(&proc_internal_def);
 	Tcl_DStringFree(&proc_internal_name);
 	Tcl_DStringFree(&proc_internal_body);
+	Tcl_DStringFree(&proc_internal_args);
 
 	ReleaseSysCache(procTup);
 
