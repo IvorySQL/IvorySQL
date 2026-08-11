@@ -84,6 +84,7 @@ static int Ivyreplacenamebindtoposition3(Ivyconn *tconn,
 						IvyPreparedStatement *stmtHandle,
 						IvyError *errhp,
 						HostVariable *host);
+static char *IvyBuildParameterDescriptionQuery(const char *source);
 static int IvybindOutParameterByPosInternel(IvyPreparedStatement *stmthandle,
 						IvyBindOutInfo **bindinfo,
 						int	position,
@@ -3753,6 +3754,38 @@ ERROR_HANDLE:
 	return 0;
 }
 
+/* Build a query with source escaped as a single-quoted SQL literal. */
+static char *
+IvyBuildParameterDescriptionQuery(const char *source)
+{
+	static const char prefix[] = "select * from get_parameter_description('";
+	static const char suffix[] = "');";
+	const size_t overhead = sizeof(prefix) - 1 + sizeof(suffix);
+	size_t		source_len = strlen(source);
+	char	   *query;
+	char	   *write_ptr;
+
+	if (source_len > (SIZE_MAX - overhead) / 2)
+		return NULL;
+
+	query = malloc(source_len * 2 + overhead);
+	if (query == NULL)
+		return NULL;
+
+	write_ptr = query;
+	memcpy(write_ptr, prefix, sizeof(prefix) - 1);
+	write_ptr += sizeof(prefix) - 1;
+	while (*source != '\0')
+	{
+		if (*source == '\'')
+			*write_ptr++ = *source;
+		*write_ptr++ = *source++;
+	}
+	memcpy(write_ptr, suffix, sizeof(suffix));
+
+	return query;
+}
+
 /*
  * replace bindbyname to position
  */
@@ -3776,7 +3809,6 @@ Ivyreplacenamebindtoposition(Ivyconn *tconn,
 	if (stmtHandle->paramNames == NULL)
 	{
 		char	*query;
-		int	query_len;
 		int	n_tuples;
 		int	n_fields;
 		char	*first_name;
@@ -3784,35 +3816,14 @@ Ivyreplacenamebindtoposition(Ivyconn *tconn,
 		int	dostmt = 0;
 		bool	iscallstmt = false;
 		char	*convertcall = NULL;
-		char	*newsql = NULL;
-		char	*ptr = NULL;
-		const char *query_ptr = NULL;
 
-		query_len = (stmtHandle->query_len * 2) + strlen("select * from get_parameter_description(") + 5;
-		query = (char *) malloc(query_len);
+		query = IvyBuildParameterDescriptionQuery(stmtHandle->query);
 
 		if (query == NULL)
 		{
 			snprintf(errmsg, size_error_buf, "%s", "failed to allocate memory");
 			return 0;
 		}
-
-		newsql = malloc(stmtHandle->query_len * 2);	/* enough */
-		ptr = newsql;
-		query_ptr = stmtHandle->query;
-		
-		while (*query_ptr != '\0')
-		{
-			if (*query_ptr == '\'')
-				*ptr++ = *query_ptr;
-			*ptr++ = *query_ptr;
-			query_ptr++;
-		}
-		*ptr = '\0';
-
-		memset(query, 0x00, query_len);
-		snprintf(query, query_len, "select * from get_parameter_description('%s');", newsql);
-		free(newsql);
 
 		res = Ivyexec(tconn, query);
 		if (IvyresultStatus(res) != PGRES_TUPLES_OK)
@@ -4063,7 +4074,6 @@ Ivyreplacenamebindtoposition2(Ivyconn *tconn,
 	if (stmtHandle->paramNames == NULL)
 	{
 		char	*query;
-		int 	query_len;
 		int 	n_tuples;
 		int 	n_fields;
 		int	first_pos;
@@ -4071,12 +4081,8 @@ Ivyreplacenamebindtoposition2(Ivyconn *tconn,
 		int	dostmt = 0;
 		bool	iscallstmt = false;
 		char	*convertcall = NULL;
-		char	*newsql = NULL;
-		char	*ptr = NULL;
-		const char *query_ptr = NULL;
 
-		query_len = (strlen(stmtHandle->query) * 2) + strlen("select * from get_parameter_description(") + 5;
-		query = (char *) malloc(query_len);
+		query = IvyBuildParameterDescriptionQuery(stmtHandle->query);
 
 		if (query == NULL)
 		{
@@ -4084,23 +4090,6 @@ Ivyreplacenamebindtoposition2(Ivyconn *tconn,
 				"failed to allocate memory");
 			return 0;
 		}
-
-		newsql = malloc(strlen(stmtHandle->query) * 2);	/* enough */
-		ptr = newsql;
-		query_ptr = stmtHandle->query;
-		
-		while (*query_ptr != '\0')
-		{
-			if (*query_ptr == '\'')
-				*ptr++ = *query_ptr;
-			*ptr++ = *query_ptr;
-			query_ptr++;
-		}
-		*ptr = '\0';
-
-		memset(query, 0x00, query_len);
-		snprintf(query, query_len, "select * from get_parameter_description('%s');", newsql);
-		free(newsql);
 
 		res = Ivyexec(tconn, query);
 		if (IvyresultStatus(res) != PGRES_TUPLES_OK)
