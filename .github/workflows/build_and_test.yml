@@ -94,7 +94,7 @@ jobs:
       if: failure()
       uses: actions/upload-artifact@v4
       with:
-        name: results
+        name: results-${{ matrix.container-os }}
         path: ${{ github.workspace }}/regression.tar.gz
 
     - name: Cleanup
