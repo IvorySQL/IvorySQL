@@ -3819,6 +3819,7 @@ Ivyreplacenamebindtoposition(Ivyconn *tconn,
 		{
 			snprintf(errmsg, size_error_buf, "%s", IvyerrorMessage(tconn));
 			free(query);
+			Ivyclear(res);
 			return 0;
 		}
 
@@ -3945,7 +3946,10 @@ Ivyreplacenamebindtoposition(Ivyconn *tconn,
 		 * if no namebind, just return.
 		 */
 		if (stmtHandle->namebind == NULL)
+		{
+			Ivyclear(res);
 			return 1;
+		}
 
 		/* number of params doesn't match */
 		if (n_tuples - 1 != stmtHandle->nParams)
@@ -4107,6 +4111,7 @@ Ivyreplacenamebindtoposition2(Ivyconn *tconn,
 		{
 			snprintf(errhp->error_msg, errhp->err_buf_size, "%s", IvyerrorMessage(tconn));
 			free(query);
+			Ivyclear(res);
 			return 0;
 		}
 
@@ -4489,4 +4494,3 @@ error_handle:
 	stmtHandle->paramNames = NULL;
 	return 0;
 }
-
