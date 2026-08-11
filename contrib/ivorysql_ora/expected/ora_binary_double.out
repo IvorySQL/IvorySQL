@@ -616,6 +616,13 @@ SELECT sys.to_binary_double('  1234.5', '9999.9');
  1234
 (1 row)
 
+-- Empty format model returns NULL instead of crashing
+SELECT sys.to_binary_double('123', '');
+ to_binary_double 
+------------------
+ 
+(1 row)
+
 -- Oracle special values: NaN and Infinity
 SELECT sys.to_binary_double('NaN');
  to_binary_double 

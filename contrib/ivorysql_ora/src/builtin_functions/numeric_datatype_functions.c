@@ -90,13 +90,21 @@ ora_to_number(PG_FUNCTION_ARGS)
  * Oracle special values 'NaN', 'Infinity' (or 'INF') and their negations.
  */
 static float4
-ora_to_binary_float_internal(text *value, text *fmt)
+ora_to_binary_float_internal(text *value, text *fmt, bool *isnull)
 {
 	Datum		result;
+
+	*isnull = false;
 
 	if (fmt)
 	{
 		Numeric		num = ora_to_number_internal(value, fmt);
+
+		if (num == NULL)
+		{
+			*isnull = true;
+			return (float4) 0;
+		}
 
 		result = DirectFunctionCall1(number_binary_float,
 									 NumericGetDatum(num));
@@ -123,13 +131,21 @@ ora_to_binary_float_internal(text *value, text *fmt)
  * ora_to_binary_float_internal().
  */
 static float8
-ora_to_binary_double_internal(text *value, text *fmt)
+ora_to_binary_double_internal(text *value, text *fmt, bool *isnull)
 {
 	Datum		result;
+
+	*isnull = false;
 
 	if (fmt)
 	{
 		Numeric		num = ora_to_number_internal(value, fmt);
+
+		if (num == NULL)
+		{
+			*isnull = true;
+			return (float8) 0;
+		}
 
 		result = DirectFunctionCall1(number_binary_double,
 									 NumericGetDatum(num));
@@ -159,11 +175,18 @@ ora_to_binary_float(PG_FUNCTION_ARGS)
 {
 	text	   *value = PG_GETARG_TEXT_P(0);
 	text	   *fmt = NULL;
+	float4		result;
+	bool		isnull;
 
 	if (PG_NARGS() > 1)
 		fmt = PG_GETARG_TEXT_P(1);
 
-	PG_RETURN_FLOAT4(ora_to_binary_float_internal(value, fmt));
+	result = ora_to_binary_float_internal(value, fmt, &isnull);
+
+	if (isnull)
+		PG_RETURN_NULL();
+
+	PG_RETURN_FLOAT4(result);
 }
 
 /*
@@ -179,9 +202,16 @@ ora_to_binary_double(PG_FUNCTION_ARGS)
 {
 	text	   *value = PG_GETARG_TEXT_P(0);
 	text	   *fmt = NULL;
+	float8		result;
+	bool		isnull;
 
 	if (PG_NARGS() > 1)
 		fmt = PG_GETARG_TEXT_P(1);
 
-	PG_RETURN_FLOAT8(ora_to_binary_double_internal(value, fmt));
+	result = ora_to_binary_double_internal(value, fmt, &isnull);
+
+	if (isnull)
+		PG_RETURN_NULL();
+
+	PG_RETURN_FLOAT8(result);
 }
