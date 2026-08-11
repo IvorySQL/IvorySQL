@@ -28,6 +28,7 @@ rm -f tmp_install/log/install.log
 
 # Run "make check" and store return code in $TMP/ret.
 # Display output but also capture it in $TMP/0.
+echo 0 > "$TMP"/ret
 (
 	if [ "$CLEAN" = 'Y' ]
 	then	$MAKE "$@" clean 2>&1
