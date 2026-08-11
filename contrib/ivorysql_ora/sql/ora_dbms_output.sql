@@ -370,6 +370,26 @@ BEGIN
 END;
 /
 
+-- Test 6.4: A write after GET_LINE discards unread lines
+DECLARE
+    lines TEXT[];
+    numlines INTEGER := 10;
+    line TEXT;
+    status INTEGER;
+BEGIN
+    dbms_output.enable();
+    dbms_output.put_line('Old 1');
+    dbms_output.put_line('Old 2');
+    dbms_output.get_line(line, status);
+    dbms_output.put_line('New 1');
+    dbms_output.get_lines(lines, numlines);
+    RAISE NOTICE 'Test 6.4 - Retrieved % lines after writing', numlines;
+    FOR i IN 1..numlines LOOP
+        RAISE NOTICE '  Line %: [%]', i, lines[i];
+    END LOOP;
+END;
+/
+
 -- =============================================================================
 -- Section 7: Usage in procedures and functions
 -- =============================================================================

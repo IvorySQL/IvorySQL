@@ -77,6 +77,7 @@ typedef struct DbmsOutputBuffer
 	int64		buffer_used;	/* Content bytes only (user-perceived usage) */
 	int			line_count;		/* Number of lines currently in buffer */
 	bool		enabled;		/* Buffer enabled/disabled state */
+	bool		discard_unread_on_write;	/* A read occurred since the last write */
 	StringInfo	current_line;	/* Accumulator for PUT calls (not yet a line) */
 	MemoryContext buffer_mcxt;	/* Memory context for buffer allocations */
 } DbmsOutputBuffer;
@@ -100,6 +101,7 @@ static void init_output_buffer(int64 buffer_size);
 static void cleanup_output_buffer(void);
 static void add_line_to_buffer(const char *line, int line_len);
 static DbmsOutputLine *pop_line_from_buffer(void);
+static void discard_unread_lines(void);
 
 /* SQL-callable function declarations */
 PG_FUNCTION_INFO_V1(ora_dbms_output_enable);
@@ -287,6 +289,23 @@ pop_line_from_buffer(void)
 }
 
 /*
+ * Discard completed lines left unread by the preceding GET operation.
+ */
+static void
+discard_unread_lines(void)
+{
+	DbmsOutputLine *node;
+
+	if (!output_buffer->discard_unread_on_write)
+		return;
+
+	while ((node = pop_line_from_buffer()) != NULL)
+		pfree(node);
+
+	output_buffer->discard_unread_on_write = false;
+}
+
+/*
  * ora_dbms_output_enable
  *
  * Enable output buffering with optional size limit.
@@ -354,6 +373,8 @@ ora_dbms_output_put_line(PG_FUNCTION_ARGS)
 	if (output_buffer == NULL || !output_buffer->enabled)
 		PG_RETURN_VOID();
 
+	discard_unread_lines();
+
 	/* Handle NULL argument - Oracle stores actual NULL */
 	if (PG_ARGISNULL(0))
 	{
@@ -418,6 +439,8 @@ ora_dbms_output_put(PG_FUNCTION_ARGS)
 	if (output_buffer == NULL || !output_buffer->enabled)
 		PG_RETURN_VOID();
 
+	discard_unread_lines();
+
 	/* Handle NULL argument - treat as empty string (Oracle behavior) */
 	if (PG_ARGISNULL(0))
 		PG_RETURN_VOID();  /* NULL appends nothing */
@@ -450,6 +473,8 @@ ora_dbms_output_new_line(PG_FUNCTION_ARGS)
 	/* Silently discard if buffer not enabled */
 	if (output_buffer == NULL || !output_buffer->enabled)
 		PG_RETURN_VOID();
+
+	discard_unread_lines();
 
 	/* Flush current_line to buffer as a completed line */
 	if (output_buffer->current_line->len > 0)
@@ -493,6 +518,8 @@ ora_dbms_output_get_line(PG_FUNCTION_ARGS)
 	tupdesc = BlessTupleDesc(tupdesc);
 
 	node = pop_line_from_buffer();
+	if (output_buffer != NULL)
+		output_buffer->discard_unread_on_write = true;
 
 	if (node == NULL)
 	{
@@ -547,6 +574,8 @@ ora_dbms_output_get_lines(PG_FUNCTION_ARGS)
 	HeapTuple	tuple;
 
 	requested_lines = PG_GETARG_INT32(0);
+	if (output_buffer != NULL)
+		output_buffer->discard_unread_on_write = true;
 
 	/* Normalize negative values to 0 (Oracle behavior) */
 	if (requested_lines < 0)
