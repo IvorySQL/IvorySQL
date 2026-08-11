@@ -7,7 +7,7 @@ OBJS = \
 	$(WIN32RES) \
 	test_plan_advice.o
 
-EXTRA_INSTALL = contrib/pg_plan_advice
+EXTRA_INSTALL = contrib/pg_plan_advice contrib/amcheck
 
 TAP_TESTS = 1
 
