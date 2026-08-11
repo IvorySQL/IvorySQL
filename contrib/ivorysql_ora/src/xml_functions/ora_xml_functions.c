@@ -1587,6 +1587,7 @@ ivy_insertxmlbefore(PG_FUNCTION_ARGS)
 		nodestring = ivy_xmlCharStrndup(cnodestr, len);
 	}
 	else
+	pfree(nodestring);
 		PG_RETURN_XML_P(data);
 
 	res = ivy_xml_xpath(&ws, xpath_expr_text, data, NULL);
@@ -1649,6 +1650,7 @@ ivy_insertxmlbefore2(PG_FUNCTION_ARGS)
 		nodestring = ivy_xmlCharStrndup(cnodestr, len);
 	}
 	else
+	pfree(nodestring);
 		PG_RETURN_XML_P(data);
 
 	if (!fcinfo->args[3].isnull)
@@ -1718,6 +1720,7 @@ ivy_insertxmlafter(PG_FUNCTION_ARGS)
 		nodestring = ivy_xmlCharStrndup(cnodestr, len);
 	}
 	else
+	pfree(nodestring);
 		PG_RETURN_XML_P(data);
 
 	res = ivy_xml_xpath(&ws, xpath_expr_text, data, NULL);
@@ -1772,6 +1775,7 @@ ivy_insertxmlafter2(PG_FUNCTION_ARGS)
 		nodestring = ivy_xmlCharStrndup(cnodestr, len);
 	}
 	else
+	pfree(nodestring);
 		PG_RETURN_XML_P(data);
 
 	if (!fcinfo->args[3].isnull)
@@ -1952,6 +1956,7 @@ ivy_insertchildxml2(PG_FUNCTION_ARGS)
 		appendStringInfoString(&r, cname);
 
 		if (strstr((char *)nodestring, r.data))
+	pfree(nodestring);
 		{
 			if (!strstr(cname, (char *)((xmlNodePtr)new_node->children->name)))
 			{
@@ -1960,6 +1965,7 @@ ivy_insertchildxml2(PG_FUNCTION_ARGS)
 						errmsg("The document being inserted does not conform to specified child name")));
 			}
 		}
+	pfree(nodestring);
 		else
 		{
 			xmlFreeDoc(new_node);
@@ -1968,7 +1974,6 @@ ivy_insertchildxml2(PG_FUNCTION_ARGS)
 		}
 		/* End - Bug#Z204, Bug#Z215 */
 	}
-	pfree(nodestring);
 
 	res = ivy_xml_xpath(&ws, xpath_expr_text, data, cns);
 	ivy_xml_addchildnode(res, (xmlNodePtr)new_node);
@@ -2040,6 +2045,7 @@ ivy_insertchildxmlbefore(PG_FUNCTION_ARGS)
 		nodestring = ivy_xmlCharStrndup(cnodestr, len);
 	}
 	else
+	pfree(nodestring);
 		 PG_RETURN_XML_P(data);
 
 	initStringInfo(&result);
@@ -2116,6 +2122,7 @@ ivy_insertchildxmlbefore2(PG_FUNCTION_ARGS)
 		nodestring = ivy_xmlCharStrndup(cnodestr, len);
 	}
 	else
+	pfree(nodestring);
 		PG_RETURN_XML_P(data);
 
 	if (!fcinfo->args[4].isnull)
@@ -2199,6 +2206,7 @@ ivy_insertchildxmlafter(PG_FUNCTION_ARGS)
 		nodestring = ivy_xmlCharStrndup(cnodestr, len);
 	}
 	else
+	pfree(nodestring);
 		PG_RETURN_XML_P(data);
 
 	initStringInfo(&result);
@@ -2275,6 +2283,7 @@ ivy_insertchildxmlafter2(PG_FUNCTION_ARGS)
 		nodestring = ivy_xmlCharStrndup(cnodestr, len);
 	}
 	else
+	pfree(nodestring);
 		PG_RETURN_XML_P(data);
 
 	if (!fcinfo->args[4].isnull)
@@ -2432,7 +2441,11 @@ updatexml(List *args)
 
 		narg += 2;
 		if (narg == tmp->length)
+		{
+			if (string && string != (xmlChar *) "")
+				pfree(string);
 			break;
+		}
 	}
 
 	cleanup_ws(&ws);
