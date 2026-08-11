@@ -17,8 +17,14 @@ jobs:
       run: |
         docker build -t ivorysql-${{ matrix.container-os }}:latest -<<EOF
         FROM    centos:7
-        RUN     rpm --import http://download.fedoraproject.org/pub/epel/RPM-GPG-KEY-EPEL-7
+        RUN     sed -i -e 's|^mirrorlist=|#mirrorlist=|g' \
+                       -e 's|^#baseurl=http://mirror.centos.org/centos/\$releasever|baseurl=http://vault.centos.org/7.9.2009|g' \
+                       /etc/yum.repos.d/CentOS-Base.repo
+        RUN     rpm --import https://download.fedoraproject.org/pub/epel/RPM-GPG-KEY-EPEL-7
         RUN     yum install -y epel-release centos-release-scl
+        RUN     sed -i -e 's|^mirrorlist=|#mirrorlist=|g' \
+                       -e 's|^# *baseurl=http://mirror.centos.org/centos/7/sclo|baseurl=http://vault.centos.org/centos/7/sclo|g' \
+                       /etc/yum.repos.d/CentOS-SCLo-*.repo
         RUN     yum groups mark install "Development Tools"
         RUN     yum groupinstall -y "Development Tools"
         RUN     yum install -y \
