@@ -1505,3 +1505,23 @@ CREATE AGGREGATE sys.stragg(text) (
     PARALLEL  = SAFE
 );
 /* End - STRAGG */
+
+/* VSIZE */
+/*
+ * VSIZE: Oracle-compatible function returning the number of bytes in the
+ * internal representation of the argument.  Returns NULL for NULL input.
+ * For varlena types the logical (decompressed) data size, excluding the
+ * varlena header, is returned; for fixed-width types the storage width is
+ * returned.
+ *
+ * The anycompatible pseudo-type accepts a value of any data type, and an
+ * untyped string literal is resolved to text, so VSIZE('abc') works just
+ * like in Oracle.
+ */
+CREATE FUNCTION sys.vsize(anycompatible)
+RETURNS int4
+AS 'MODULE_PATHNAME', 'ora_vsize'
+LANGUAGE C
+STRICT
+IMMUTABLE;
+/* End - VSIZE */
