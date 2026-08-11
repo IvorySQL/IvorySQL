@@ -28,8 +28,6 @@ jobs:
     - name: configure - linux
       if: ${{ matrix.os == 'ubuntu-latest' }}
       run: |
-        curl -L -o cpanm http://cpanmin.us && chmod +x cpanm && \
-        ./cpanm --sudo IPC::Run && \
         ./configure \
             --prefix=$PWD/inst \
             --enable-cassert --enable-debug --enable-tap-tests --enable-rpath \
