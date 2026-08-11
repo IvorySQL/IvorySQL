@@ -330,6 +330,19 @@ alter database :cur_db set ivorysql.dbtimezone = '+00:00';
 \c -
 select dbtimezone() from dual;
 
+/* ALTER ROLE ... SET is rejected at the command level (not just silently
+ * ignored at connection time), so it never leaves a stale
+ * pg_db_role_setting entry that would re-fire on every future connection */
+select current_user as cur_super \gset
+alter role :cur_super set ivorysql.dbtimezone = '+07:00';
+alter role :cur_super in database :cur_db set ivorysql.dbtimezone = '+07:00';
+alter role all set ivorysql.dbtimezone = '+07:00';
+alter role :cur_super set ivorysql.dbtimezone to default;
+alter role :cur_super set ivorysql.dbtimezone from current;
+alter role :cur_super reset ivorysql.dbtimezone; /* RESET is still allowed */
+alter role :cur_super reset all;
+select count(*) from pg_db_role_setting where setdatabase = (select oid from pg_database where datname = :'cur_db') and setrole <> 0;
+
 /* a granted non-superuser can set DBTIMEZONE for a database they own */
 select current_user as cur_super \gset
 create role dbtz_owner login;
