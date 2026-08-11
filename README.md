@@ -51,6 +51,7 @@ docker compose exec dev bash
 
 make -j$(nproc)
 make install
+export PATH="/home/ivorysql/ivorysql/bin:$PATH"
 
 # Initialize database in Oracle mode
 initdb -D data_ora -m oracle
