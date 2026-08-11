@@ -174,14 +174,14 @@ BEGIN
 END;
 /
 
--- Test 3.3: Re-ENABLE clears buffer
+-- Test 3.3: Re-ENABLE preserves buffer
 DECLARE
     line TEXT;
     status INTEGER;
 BEGIN
     dbms_output.enable();
     dbms_output.put_line('First enable content');
-    dbms_output.enable();  -- Re-enable should clear
+    dbms_output.enable();  -- Re-enable should preserve unread output
     dbms_output.get_line(line, status);
     RAISE NOTICE 'Test 3.3 - After re-enable: [%], Status: %', line, status;
 END;

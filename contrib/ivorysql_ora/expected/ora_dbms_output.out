@@ -175,19 +175,19 @@ BEGIN
 END;
 /
 NOTICE:  Test 3.2 - Buffer after disable: [<NULL>], Status: 1
--- Test 3.3: Re-ENABLE clears buffer
+-- Test 3.3: Re-ENABLE preserves buffer
 DECLARE
     line TEXT;
     status INTEGER;
 BEGIN
     dbms_output.enable();
     dbms_output.put_line('First enable content');
-    dbms_output.enable();  -- Re-enable should clear
+    dbms_output.enable();  -- Re-enable should preserve unread output
     dbms_output.get_line(line, status);
     RAISE NOTICE 'Test 3.3 - After re-enable: [%], Status: %', line, status;
 END;
 /
-NOTICE:  Test 3.3 - After re-enable: [<NULL>], Status: 1
+NOTICE:  Test 3.3 - After re-enable: [First enable content], Status: 0
 -- Test 3.4: Output while disabled is silently ignored
 DECLARE
     line TEXT;
