@@ -315,6 +315,10 @@ get_altertable_subcmdinfo(PG_FUNCTION_ARGS)
 			case AT_ReAddStatistics:
 				strtype = "(re) ADD STATS";
 				break;
+				/*
+				 * These enum values are for Oracle-compatible features and would
+				 * not be hit in PG mode, but put them here to avoid build warning.
+				 */
 			case AT_AddRowids:
 				strtype = "SET WITH ROWID";
 				break;
