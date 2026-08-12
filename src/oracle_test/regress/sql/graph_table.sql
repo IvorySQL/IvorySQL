@@ -154,7 +154,6 @@ SELECT * FROM GRAPH_TABLE (myshop MATCH (c IS customers)->(o IS orders) COLUMNS 
 CREATE TABLE x1 (a int, b text);
 INSERT INTO x1 VALUES (1, 'one'), (2, 'two');
 SELECT * FROM x1, GRAPH_TABLE (myshop MATCH (c IS customers WHERE c.address = 'US' AND c.customer_id = x1.a)-[IS customer_orders]->(o IS orders) COLUMNS (c.name AS customer_name, c.customer_id AS cid));
-DROP TABLE x1;
 
 CREATE TABLE v1 (
     id int PRIMARY KEY,
@@ -507,7 +506,16 @@ SELECT * FROM GRAPH_TABLE (g4 MATCH (s)-[e]-(d) WHERE s.id = 3 COLUMNS (s.val, e
 SELECT * FROM GRAPH_TABLE (g4 MATCH (s WHERE s.id = 3)-[e]-(d) COLUMNS (s.val, e.val, d.val)) ORDER BY 1, 2, 3;
 
 -- ruleutils reverse parsing
-CREATE VIEW customers_us AS SELECT * FROM GRAPH_TABLE (myshop MATCH (c IS customers WHERE c.address = 'US')-[IS customer_orders | customer_wishlists ]->(l IS orders | wishlists)-[ IS list_items]->(p IS products) COLUMNS (c.name AS customer_name, p.name AS product_name)) ORDER BY customer_name, product_name;
+-- The query in the view definition is intentionally complex to test one view with many
+-- features like label disjunction, lateral references, WHERE clauses in graph
+-- patterns.
+CREATE VIEW customers_us AS
+SELECT g.* FROM x1,
+                GRAPH_TABLE (myshop MATCH (c IS customers WHERE c.address = 'US' AND c.customer_id = x1.a)
+                                          -[IS customer_orders | customer_wishlists ]->
+                                          (l IS orders | wishlists)-[ IS list_items]->(p IS products)
+                                    COLUMNS (c.name AS customer_name, p.name AS product_name, x1.a AS a)) g
+           ORDER BY customer_name, product_name;
 SELECT pg_get_viewdef('customers_us'::regclass);
 
 -- test view/graph nesting
