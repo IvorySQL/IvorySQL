@@ -386,7 +386,7 @@ SELECT shows_body(5) FROM dual;
                         QUERY PLAN                         
 -----------------------------------------------------------
  Seq Scan on sys.dual
-   Output: (null)(VARIADIC (5)::number)
+   Output: (null)((5)::number)
  WITH Function: shows_body(n sys.number) RETURN sys.number
    Body: BEGIN RETURN n + 100; END
 (4 rows)
