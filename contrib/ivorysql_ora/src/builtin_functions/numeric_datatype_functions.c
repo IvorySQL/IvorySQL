@@ -33,7 +33,7 @@
 #include "utils/formatting.h"
 #include "utils/numeric.h"
 
-/* Functions implemented in src/datatype/binary_float.c and binary_double.c */
+/* Functions implemented in contrib/ivorysql_ora/src/datatype/binary_float.c and contrib/ivorysql_ora/src/datatype/binary_double.c */
 extern Datum binary_float_in(PG_FUNCTION_ARGS);
 extern Datum binary_double_in(PG_FUNCTION_ARGS);
 extern Datum number_binary_float(PG_FUNCTION_ARGS);
