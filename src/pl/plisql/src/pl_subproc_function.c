@@ -2585,6 +2585,35 @@ internal_get_subprocfunc_result_type(PLiSQL_subproc_function * subprocfunc,
 		return result;
 	}
 
+	/*
+	 * For package-defined record return types the typoid is RECORDOID but the
+	 * structure is known via a blessed TupleDesc registered in the session's
+	 * record-type cache under a specific typmod.  Return a palloc'd copy
+	 * (tdrefcount=-1) so callers are not required to call ReleaseTupleDesc,
+	 * matching the convention used for named composite type TupleDescs.
+	 */
+	if (rettype == RECORDOID && subprocfunc->rettype != NULL &&
+		subprocfunc->rettype->atttypmod >= 0)
+	{
+		TupleDesc	pkgrecord_tupdesc;
+		TupleDesc	pinned;
+
+		pinned = lookup_rowtype_tupdesc_noerror(RECORDOID,
+												subprocfunc->rettype->atttypmod,
+												true);
+		if (pinned != NULL)
+		{
+			pkgrecord_tupdesc = CreateTupleDescCopy(pinned);
+			ReleaseTupleDesc(pinned);
+
+			if (resultTypeId)
+				*resultTypeId = RECORDOID;
+			if (resultTupleDesc)
+				*resultTupleDesc = pkgrecord_tupdesc;
+			return TYPEFUNC_COMPOSITE;
+		}
+	}
+
 	/* Resolve scalar polymorphic result type, if any. */
 	if (IsPolymorphicType(rettype))
 	{
