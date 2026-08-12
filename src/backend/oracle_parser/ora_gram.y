@@ -544,6 +544,8 @@ static void determineLanguage(List *options);
 				a_expr b_expr c_expr AexprConst indirection_el opt_slice_bound
 				columnref having_clause func_table xmltable array_expr
 				OptWhereClause operator_def_arg
+%type <node>	optionalPeriodName
+%type <list>	opt_column_and_period_list
 %type <list>	rowsfrom_item rowsfrom_list opt_col_def_list
 %type <boolean> opt_ordinality opt_without_overlaps
 %type <list>	ExclusionConstraintList ExclusionConstraintElem
@@ -828,7 +830,7 @@ static void determineLanguage(List *options);
 	ORDER ORDINALITY OTHERS OUT_P OUTER_P
 	OVER OVERLAPS OVERLAY OVERRIDING OWNED OWNER PACKAGES
 
-	PARALLEL PARAMETER PARSER PARTIAL PARTITION PASSING PASSWORD PATH
+	PARALLEL PARAMETER PARSER PARTIAL PARTITION PASSING PASSWORD PATH PERIOD
 	EXTRACT PGEXTRACT PLACING PLAN PLANS POLICY PORTION
 	POSITION PRECEDING PRECISION PRESERVE PREPARE PREPARED PRIMARY
 	PRIOR PRIVILEGES PROCEDURAL PROCEDURE PROCEDURES PROGRAM PROPERTIES PROPERTY PUBLICATION
@@ -4875,21 +4877,31 @@ ConstraintElem:
 								   NULL, NULL, yyscanner);
 					$$ = (Node *) n;
 				}
-			| FOREIGN KEY '(' columnList ')' REFERENCES qualified_name
-				opt_column_list key_match key_actions ConstraintAttributeSpec
+			| FOREIGN KEY '(' columnList optionalPeriodName ')' REFERENCES qualified_name
+				opt_column_and_period_list key_match key_actions ConstraintAttributeSpec
 				{
 					Constraint *n = makeNode(Constraint);
 
 					n->contype = CONSTR_FOREIGN;
 					n->location = @1;
-					n->pktable = $7;
+					n->pktable = $8;
 					n->fk_attrs = $4;
-					n->pk_attrs = $8;
-					n->fk_matchtype = $9;
-					n->fk_upd_action = ($10)->updateAction->action;
-					n->fk_del_action = ($10)->deleteAction->action;
-					n->fk_del_set_cols = ($10)->deleteAction->cols;
-					processCASbits($11, @11, "FOREIGN KEY",
+					if ($5)
+					{
+						n->fk_attrs = lappend(n->fk_attrs, $5);
+						n->fk_with_period = true;
+					}
+					n->pk_attrs = linitial($9);
+					if (lsecond($9))
+					{
+						n->pk_attrs = lappend(n->pk_attrs, lsecond($9));
+						n->pk_with_period = true;
+					}
+					n->fk_matchtype = $10;
+					n->fk_upd_action = ($11)->updateAction->action;
+					n->fk_del_action = ($11)->deleteAction->action;
+					n->fk_del_set_cols = ($11)->deleteAction->cols;
+					processCASbits($12, @12, "FOREIGN KEY",
 								   &n->deferrable, &n->initdeferred,
 								   &n->is_enforced, &n->skip_validation, NULL,
 								   yyscanner);
@@ -4976,6 +4988,16 @@ columnElem: ColId
 				{
 					$$ = (Node *) makeString($1);
 				}
+		;
+
+optionalPeriodName:
+			',' PERIOD columnElem				{ $$ = $3; }
+			| /*EMPTY*/							{ $$ = NULL; }
+		;
+
+opt_column_and_period_list:
+			'(' columnList optionalPeriodName ')'			{ $$ = list_make2($2, $3); }
+			| /*EMPTY*/								{ $$ = list_make2(NIL, NULL); }
 		;
 
 opt_c_include:	INCLUDE '(' columnList ')'			{ $$ = $3; }
@@ -21771,6 +21793,7 @@ unreserved_keyword:
 			| PASSING
 			| PASSWORD
 			| PATH
+			| PERIOD
 			| PIPELINED
 			| PLAN
 			| PLANS
@@ -22502,6 +22525,7 @@ bare_label_keyword:
 			| PASSING
 			| PASSWORD
 			| PATH
+			| PERIOD
 			| PGEXTRACT
 			| PIPELINED
 			| PLACING

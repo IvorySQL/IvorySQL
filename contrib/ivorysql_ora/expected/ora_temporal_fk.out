@@ -1,0 +1,54 @@
+--
+-- FOREIGN KEY ... PERIOD (temporal foreign keys)
+--
+-- Oracle-compatible temporal foreign key syntax, supported through the
+-- Oracle parser and executed by the PostgreSQL foreign key engine.
+--
+-- referenced table needs a WITHOUT OVERLAPS unique constraint
+CREATE TABLE parent (id int4range, valid_at daterange,
+  PRIMARY KEY (id, valid_at WITHOUT OVERLAPS));
+CREATE TABLE child (
+  id int4range, valid_at daterange, parent_id int4range,
+  FOREIGN KEY (parent_id, PERIOD valid_at) REFERENCES parent (id, PERIOD valid_at)
+);
+\d child
+                  Table "public.child"
+  Column   |   Type    | Collation | Nullable | Default 
+-----------+-----------+-----------+----------+---------
+ id        | int4range |           |          | 
+ valid_at  | daterange |           |          | 
+ parent_id | int4range |           |          | 
+Foreign-key constraints:
+    "child_parent_id_valid_at_fkey" FOREIGN KEY (parent_id, PERIOD valid_at) REFERENCES parent(id, PERIOD valid_at)
+
+-- PERIOD only on the referencing side is rejected
+CREATE TABLE child_bad (
+  id int4range, valid_at daterange, parent_id int4range,
+  FOREIGN KEY (parent_id, PERIOD valid_at) REFERENCES parent (id)
+);
+ERROR:  foreign key uses PERIOD on the referencing table but not the referenced table
+-- PERIOD only on the referenced side is rejected
+CREATE TABLE child_bad2 (
+  id int4range, valid_at daterange, parent_id int4range,
+  FOREIGN KEY (parent_id, valid_at) REFERENCES parent (id, PERIOD valid_at)
+);
+ERROR:  foreign key uses PERIOD on the referenced table but not the referencing table
+-- data
+INSERT INTO parent VALUES ('[1,2)', '[2020-01-01,2021-01-01)');
+INSERT INTO parent VALUES ('[2,3)', '[2021-01-01,2022-01-01)');
+-- valid inserts
+INSERT INTO child VALUES ('[10,11)', '[2020-06-01,2020-07-01)', '[1,2)');
+INSERT INTO child VALUES ('[20,21)', '[2021-06-01,2021-07-01)', '[2,3)');
+-- violation: parent_id not present in parent
+INSERT INTO child VALUES ('[30,31)', '[2020-06-01,2020-07-01)', '[99,100)');
+ERROR:  insert or update on table "child" violates foreign key constraint "child_parent_id_valid_at_fkey"
+DETAIL:  Key (parent_id, valid_at)=([99,100), [06-01-2020,07-01-2020)) is not present in table "parent".
+SELECT * FROM child ORDER BY 1;
+   id    |        valid_at         | parent_id 
+---------+-------------------------+-----------
+ [10,11) | [06-01-2020,07-01-2020) | [1,2)
+ [20,21) | [06-01-2021,07-01-2021) | [2,3)
+(2 rows)
+
+DROP TABLE child;
+DROP TABLE parent;
