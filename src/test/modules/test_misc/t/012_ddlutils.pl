@@ -15,6 +15,13 @@ use Test::More;
 
 my $node = PostgreSQL::Test::Cluster->new('main');
 $node->init;
+# Pin the cluster timezone to UTC so pg_get_role_ddl()'s formatting of
+# rolvaliduntil is deterministic regardless of the host timezone.  The
+# original regression test (role_ddl.sql) did this with a per-session
+# "SET timezone TO 'UTC'"; safe_psql() opens a fresh session per call, so
+# set it at the cluster level instead.  Without this, a host in UTC+8
+# renders '2030-12-31 23:59:59+00' as '2031-01-01 07:59:59+08'.
+$node->append_conf('postgresql.conf', "timezone = 'UTC'");
 $node->start;
 
 # Perl helper that strips locale/collation details from DDL output so
