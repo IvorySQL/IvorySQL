@@ -87,6 +87,7 @@ ORA_REGRESS = \
 	ora_misc_functions \
 	ora_vsize \
 	ora_merge \
+	ora_split_partition \
 	datatype_and_func_bugs \
 	ora_sysview \
 	ora_like_operator \
