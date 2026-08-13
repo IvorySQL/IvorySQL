@@ -307,6 +307,7 @@ BEGIN
 END;
 /
 NOTICE:  Test 5.2 - User limit honored after expansion: PASSED (2000 lines)
+CALL dbms_output.disable();
 -- =============================================================================
 -- Section 6: GET_LINE and GET_LINES behavior
 -- =============================================================================
