@@ -392,6 +392,11 @@ ora_dbms_output_put_line(PG_FUNCTION_ARGS)
 		add_line_to_buffer(output_buffer->current_line->data,
 						   output_buffer->current_line->len);
 		resetStringInfo(output_buffer->current_line);
+
+		/* Oracle behavior: a NULL PUT_LINE still adds a NULL line after
+		 * flushing the pending PUT text. */
+		if (is_null)
+			add_line_to_buffer(NULL, 0);
 	}
 	else
 	{
