@@ -107,6 +107,22 @@ BEGIN
 END;
 /
 
+-- Test 2.2b: PUT_LINE(NULL) after pending PUT text flushes pending then
+-- appends a NULL line
+DECLARE
+    line TEXT;
+    status INTEGER;
+BEGIN
+    dbms_output.enable();
+    dbms_output.put('Pending text');
+    dbms_output.put_line(NULL);
+    dbms_output.get_line(line, status);
+    RAISE NOTICE 'Test 2.2b - pending then PUT_LINE(NULL): [%], Status: %', line, status;
+    dbms_output.get_line(line, status);
+    RAISE NOTICE 'Test 2.2b - second line after NULL: [%], Status: %', line, status;
+END;
+/
+
 -- Test 2.3: Multiple PUT calls building one line
 DECLARE
     line TEXT;
