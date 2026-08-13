@@ -281,6 +281,7 @@ END;
 DECLARE
     v_count INTEGER := 0;
 BEGIN
+    dbms_output.disable();  -- Ensure a clean buffer: re-ENABLE preserves unread output
     dbms_output.enable(2000);  -- 2000 byte content limit
     -- Write 1-byte lines until overflow
     -- Internal: 1-byte lines need 3 bytes each (2 prefix + 1 data)
@@ -312,6 +313,7 @@ DECLARE
     line TEXT;
     status INTEGER;
 BEGIN
+    dbms_output.disable();  -- Ensure a clean buffer: re-ENABLE preserves unread output
     dbms_output.enable();
     dbms_output.put_line('Line A');
     dbms_output.put_line('Line B');
@@ -332,6 +334,7 @@ DECLARE
     lines TEXT[];
     numlines INTEGER := 100;  -- Request more than available
 BEGIN
+    dbms_output.disable();  -- Ensure a clean buffer: re-ENABLE preserves unread output
     dbms_output.enable();
     dbms_output.put_line('Only');
     dbms_output.put_line('Three');
@@ -577,6 +580,7 @@ END;
 -- Write in first block
 DO $$
 BEGIN
+    dbms_output.disable();  -- Ensure a clean buffer: re-ENABLE preserves unread output
     dbms_output.enable(1000000);
     dbms_output.put_line('Written in block 1');
 END;
