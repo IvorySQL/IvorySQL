@@ -1526,7 +1526,7 @@
 },
 
 { name => 'ivorysql.listen_addresses', type => 'string', context => 'PGC_POSTMASTER', group => 'CONN_AUTH_SETTINGS',
-  short_desc => 'Sets the shell command that will be called to archive a WAL file.',
+  short_desc => 'Sets the IPv4/IPv6 address(es) the Oracle-mode server listens on.',
   flags => 'GUC_LIST_INPUT',
   variable => 'OraListenAddresses',
   boot_val => '"localhost"',
@@ -1549,7 +1549,7 @@
 
 { name => 'ivorysql.rowid_seq_cache', type => 'int', context => 'PGC_USERSET', group => 'DEVELOPER_OPTIONS',
   short_desc => 'Sets rowid Sequence cache number.',
-  long_desc => '0 disables the timeout.',
+  long_desc => 'Sets the number of cached sequence values for rowid generation.',
   flags => 'GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE',
   variable => 'rowid_seq_cache',
   boot_val => '20',
