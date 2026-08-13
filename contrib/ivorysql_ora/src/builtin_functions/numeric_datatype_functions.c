@@ -28,6 +28,7 @@
  */
 
 #include "postgres.h"
+#include <math.h>
 #include "fmgr.h"
 #include "utils/builtins.h"
 #include "utils/formatting.h"
@@ -41,6 +42,9 @@ extern Datum number_binary_double(PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(number_bitand);
 PG_FUNCTION_INFO_V1(ora_to_number);
+PG_FUNCTION_INFO_V1(number_nanvl);
+PG_FUNCTION_INFO_V1(binary_float_nanvl);
+PG_FUNCTION_INFO_V1(binary_double_nanvl);
 PG_FUNCTION_INFO_V1(ora_to_binary_float);
 PG_FUNCTION_INFO_V1(ora_to_binary_double);
 
@@ -75,6 +79,50 @@ ora_to_number(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 	else
 		PG_RETURN_NUMERIC(result);
+}
+
+/*
+ * number_nanvl
+ * Oracle NANVL(expr1, expr2) for NUMBER: returns expr2 when expr1
+ * is NaN, otherwise returns expr1. PostgreSQL's numeric type (unlike
+ * Oracle's NUMBER) can hold a NaN value, so this reuses the existing
+ * numeric_is_nan() rather than assuming expr1 is never NaN.
+ */
+Datum
+number_nanvl(PG_FUNCTION_ARGS)
+{
+	Numeric		arg1 = PG_GETARG_NUMERIC(0);
+	Numeric		arg2 = PG_GETARG_NUMERIC(1);
+
+	PG_RETURN_NUMERIC(numeric_is_nan(arg1) ? arg2 : arg1);
+}
+
+/*
+ * binary_float_nanvl
+ * Oracle NANVL(expr1, expr2) for BINARY_FLOAT: returns expr2 when
+ * expr1 is NaN, otherwise returns expr1.
+ */
+Datum
+binary_float_nanvl(PG_FUNCTION_ARGS)
+{
+	float4		arg1 = PG_GETARG_FLOAT4(0);
+	float4		arg2 = PG_GETARG_FLOAT4(1);
+
+	PG_RETURN_FLOAT4(isnan(arg1) ? arg2 : arg1);
+}
+
+/*
+ * binary_double_nanvl
+ * Oracle NANVL(expr1, expr2) for BINARY_DOUBLE: returns expr2 when
+ * expr1 is NaN, otherwise returns expr1.
+ */
+Datum
+binary_double_nanvl(PG_FUNCTION_ARGS)
+{
+	float8		arg1 = PG_GETARG_FLOAT8(0);
+	float8		arg2 = PG_GETARG_FLOAT8(1);
+
+	PG_RETURN_FLOAT8(isnan(arg1) ? arg2 : arg1);
 }
 
 /*
