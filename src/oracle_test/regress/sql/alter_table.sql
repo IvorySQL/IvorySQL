@@ -3165,6 +3165,12 @@ create table modify_column_test
   expected_30 varchar2(30)
 );
 
+insert into modify_column_test (paren_col, plain_col)
+values (null, 'plain data');
+
+alter table modify_column_test modify (paren_col varchar2(20) not null);
+
+update modify_column_test set paren_col = 'paren data';
 alter table modify_column_test modify (paren_col varchar2(20) not null);
 
 select modified.atttypid = expected.atttypid
@@ -3177,6 +3183,9 @@ where modified.attrelid = 'modify_column_test'::regclass
   and modified.attname = 'paren_col'
   and expected.attname = 'expected_20';
 
+select paren_col, plain_col
+from modify_column_test;
+
 alter table modify_column_test modify plain_col varchar2(30) not null;
 
 select modified.atttypid = expected.atttypid
@@ -3188,5 +3197,13 @@ join pg_attribute expected
 where modified.attrelid = 'modify_column_test'::regclass
   and modified.attname = 'plain_col'
   and expected.attname = 'expected_30';
+
+insert into modify_column_test (paren_col, plain_col)
+values ('longer than ten', 'a value longer than ten');
+
+select count(*) = 1 as long_values_stored
+from modify_column_test
+where paren_col = 'longer than ten'
+  and plain_col = 'a value longer than ten';
 
 drop table modify_column_test;

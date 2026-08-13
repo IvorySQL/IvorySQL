@@ -3620,6 +3620,10 @@ set_statistics_value:
 			| DEFAULT						{ $$ = NULL; }
 		;
 
+/*
+ * Also used for Oracle MODIFY <column> <type> NOT NULL. Keeping this
+ * alternative here avoids conflicts with MODIFY <column> VISIBLE/INVISIBLE.
+ */
 identity_clause:
 		'(' identity_options ')'		{ $$ = $2; }
 		| identity_options				{ $$ = $1; }

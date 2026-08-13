@@ -4883,6 +4883,11 @@ create table modify_column_test
   expected_20 varchar2(20),
   expected_30 varchar2(30)
 );
+insert into modify_column_test (paren_col, plain_col)
+values (null, 'plain data');
+alter table modify_column_test modify (paren_col varchar2(20) not null);
+ERROR:  column "paren_col" of relation "modify_column_test" contains null values
+update modify_column_test set paren_col = 'paren data';
 alter table modify_column_test modify (paren_col varchar2(20) not null);
 select modified.atttypid = expected.atttypid
        and modified.atttypmod = expected.atttypmod as type_changed,
@@ -4898,6 +4903,13 @@ where modified.attrelid = 'modify_column_test'::regclass
  t            | t
 (1 row)
 
+select paren_col, plain_col
+from modify_column_test;
+ paren_col  | plain_col
+------------+------------
+ paren data | plain data
+(1 row)
+
 alter table modify_column_test modify plain_col varchar2(30) not null;
 select modified.atttypid = expected.atttypid
        and modified.atttypmod = expected.atttypmod as type_changed,
@@ -4911,6 +4923,17 @@ where modified.attrelid = 'modify_column_test'::regclass
  type_changed | attnotnull
 --------------+------------
  t            | t
+(1 row)
+
+insert into modify_column_test (paren_col, plain_col)
+values ('longer than ten', 'a value longer than ten');
+select count(*) = 1 as long_values_stored
+from modify_column_test
+where paren_col = 'longer than ten'
+  and plain_col = 'a value longer than ten';
+ long_values_stored
+--------------------
+ t
 (1 row)
 
 drop table modify_column_test;
