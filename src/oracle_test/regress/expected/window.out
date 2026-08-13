@@ -5430,3 +5430,72 @@ WINDOW w AS (PARTITION BY distance ORDER BY name ROWS BETWEEN 2 PRECEDING AND 2 
  xyzzy   | far      |       |       24491 |      24491 |           |             |      24491
 (10 rows)
 
+-- volatile arguments cannot use the IGNORE NULLS nullness cache
+CREATE TEMPORARY SEQUENCE null_treatment_seq;
+CREATE FUNCTION pg_temp.volatile_null(i int) RETURNS int
+LANGUAGE sql VOLATILE AS
+$$
+  SELECT CASE WHEN nextval('null_treatment_seq') % 2 = 0 THEN i ELSE NULL END;
+$$;
+/
+SELECT x,
+       first_value(pg_temp.volatile_null(x)) IGNORE NULLS
+         OVER (ORDER BY x ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+FROM generate_series(1,5) g(x);
+ x | first_value 
+---+-------------
+ 1 |            
+ 2 |           1
+ 3 |           2
+ 4 |           2
+ 5 |           2
+(5 rows)
+
+SELECT last_value FROM null_treatment_seq;
+ last_value 
+------------
+         20
+(1 row)
+
+ALTER SEQUENCE null_treatment_seq RESTART WITH 1;
+ERROR:  SQL command not properly ended
+SELECT x,
+       lead(pg_temp.volatile_null(x), 1) IGNORE NULLS OVER (ORDER BY x)
+FROM generate_series(1,5) g(x);
+ x | lead 
+---+------
+ 1 |    3
+ 2 |    4
+ 3 |    5
+ 4 |     
+ 5 |     
+(5 rows)
+
+SELECT last_value FROM null_treatment_seq;
+ last_value 
+------------
+         20
+(1 row)
+
+ALTER SEQUENCE null_treatment_seq RESTART WITH 1;
+ERROR:  SQL command not properly ended
+SELECT x,
+       first_value((SELECT CASE WHEN nextval('null_treatment_seq') % 2 = 0
+                                THEN x ELSE NULL END)) IGNORE NULLS
+         OVER (ORDER BY x ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+FROM generate_series(1,5) g(x);
+ x | first_value 
+---+-------------
+ 1 |           1
+ 2 |           2
+ 3 |           2
+ 4 |           2
+ 5 |           2
+(5 rows)
+
+SELECT last_value FROM null_treatment_seq;
+ last_value 
+------------
+         40
+(1 row)
+
