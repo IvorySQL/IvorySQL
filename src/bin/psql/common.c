@@ -3637,13 +3637,27 @@ get_hostvariables(const char *sql, bool *error)
 	HostVariable *host = NULL;
 	char		*newsql = NULL;
 	char		*ptr = NULL;
+	size_t		sql_len;
 
 	*error = false;
 	if (!sql)
 		return NULL;
 
+	/*
+	 * Each input byte may be emitted twice (quoted quotes) plus one NUL
+	 * terminator, so reject inputs whose doubled length would overflow
+	 * before pg_malloc0() sees a wrapped size.
+	 */
+	sql_len = strlen(sql);
+	if (sql_len > (SIZE_MAX - 1) / 2)
+	{
+		pg_log_error("query is too long to escape for host-variable binding");
+		*error = true;
+		return NULL;
+	}
+
 	/* double write quote */
-	newsql = pg_malloc0(strlen(sql) * 2 + 1);	/* doubled quotes plus NUL */
+	newsql = pg_malloc0(sql_len * 2 + 1);	/* doubled quotes plus NUL */
 	ptr = newsql;
 
 	while (*sql != '\0')
