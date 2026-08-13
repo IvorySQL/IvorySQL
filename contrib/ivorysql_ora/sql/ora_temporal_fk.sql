@@ -1062,4 +1062,20 @@ ALTER TABLE temporal_partitioned_fk_mltrng2mltrng
 
 DROP TABLE temporal_partitioned_fk_mltrng2mltrng;
 DROP TABLE temporal_partitioned_mltrng;
+
+--
+-- cleanup: the upstream test leaves these tables behind on purpose (they
+-- are used by pg_dump tests), but in the ivorysql_ora regression database
+-- they would show up in ora_sysview's all_cons_columns / dba_cons_columns
+-- queries, so drop them here.
+--
+
+DROP TABLE temporal_fk2_mltrng2mltrng;
+DROP TABLE temporal_fk_mltrng2mltrng;
+DROP TABLE temporal_mltrng2;
+DROP TABLE temporal_mltrng;
+DROP TABLE temporal_fk2_rng2rng;
+DROP TABLE temporal_fk_rng2rng;
+DROP TABLE temporal_rng2;
+DROP TABLE temporal_rng;
 RESET datestyle;
