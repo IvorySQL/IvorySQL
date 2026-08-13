@@ -1756,7 +1756,7 @@ SELECT pg_catalog.pg_restore_extended_stats(
   'statistics_name', 'test_stat_clone',
   'inherited', false,
   'exprs', '{ "avg_width": "4", "null_frac": "0" }'::jsonb);
--- wrong number of exprs
+-- wrong number of exprs, too few
 SELECT pg_catalog.pg_restore_extended_stats(
   'schemaname', 'stats_import',
   'relname', 'test_clone',
@@ -1764,6 +1764,14 @@ SELECT pg_catalog.pg_restore_extended_stats(
   'statistics_name', 'test_stat_clone',
   'inherited', false,
   'exprs', '[ { "avg_width": "4" } ]'::jsonb);
+-- wrong number of exprs, too many
+SELECT pg_catalog.pg_restore_extended_stats(
+  'schemaname', 'stats_import',
+  'relname', 'test_clone',
+  'statistics_schemaname', 'stats_import',
+  'statistics_name', 'test_stat_clone',
+  'inherited', false,
+  'exprs', '[ { "avg_width": "4" }, { "avg_width": "4" }, { "avg_width": "4" } ]'::jsonb);
 -- incorrect type of value: should be a string or a NULL.
 SELECT pg_catalog.pg_restore_extended_stats(
   'schemaname', 'stats_import',
@@ -2249,6 +2257,15 @@ WHERE e.statistics_schemaname = 'stats_import' AND
     e.statistics_name = 'test_stat_mcelem' AND
     e.inherited = false
 \gx
+
+-- bad: exprs param which is a prefix of a valid key name
+SELECT pg_catalog.pg_restore_extended_stats(
+  'schemaname', 'stats_import',
+  'relname', 'test',
+  'statistics_schemaname', 'stats_import',
+  'statistics_name', 'test_stat_mcelem',
+  'inherited', false,
+  'exprs', '[{ "n": "-1" }]'::jsonb);
 
 -- ok: tsvector exceptions, test just the collation exceptions
 CREATE STATISTICS stats_import.test_stat_tsvec ON (length(name)), (to_tsvector(name)) FROM stats_import.test;
