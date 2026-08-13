@@ -610,6 +610,8 @@ explain (costs off) select count(*) from para_ora where sys.to_number(name) > 10
 explain (costs off) select count(*) from para_ora where sys.rawtohex(name) > '0';
 -- misc functions
 explain (costs off) select count(*) from para_ora where sys.instr(name, 'e') > 0;
+-- explicit varchar2 arguments exercise the sys.instr(varchar2, ...) SQL wrappers
+explain (costs off) select count(*) from para_ora where sys.instr(name::varchar2, 'e'::varchar2) > 0;
 drop table para_ora;
 
 -- Check parallel worker stats

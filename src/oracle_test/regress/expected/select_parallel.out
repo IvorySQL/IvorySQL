@@ -1497,6 +1497,18 @@ explain (costs off) select count(*) from para_ora where sys.instr(name, 'e') > 0
                      Filter: (instr((name)::text, 'e'::text) > 0)
 (6 rows)
 
+-- explicit varchar2 arguments exercise the sys.instr(varchar2, ...) SQL wrappers
+explain (costs off) select count(*) from para_ora where sys.instr(name::varchar2, 'e'::varchar2) > 0;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather
+         Workers Planned: 2
+         ->  Partial Aggregate
+               ->  Parallel Seq Scan on para_ora
+                     Filter: (instr((name)::text, 'e'::text) > 0)
+(6 rows)
+
 drop table para_ora;
 -- Check parallel worker stats
 select pg_stat_force_next_flush();
