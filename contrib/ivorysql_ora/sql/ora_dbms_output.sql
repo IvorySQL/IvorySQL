@@ -175,16 +175,20 @@ BEGIN
 END;
 /
 
--- Test 3.3: Re-ENABLE preserves unread output
+-- Test 3.3: Re-ENABLE preserves unread output and applies the new size limit
 DECLARE
     line TEXT;
     status INTEGER;
 BEGIN
-    dbms_output.enable();
+    dbms_output.enable(2000);
     dbms_output.put_line('First enable content');
-    dbms_output.enable();  -- Re-enable should preserve
+    dbms_output.enable(4000);  -- Re-enable should preserve and grow the limit
+    -- A 2500-byte line overflows under the 2000 limit but fits under 4000
+    dbms_output.put_line(repeat('X', 2500));
     dbms_output.get_line(line, status);
-    RAISE NOTICE 'Test 3.3 - After re-enable: [%], Status: %', line, status;
+    RAISE NOTICE 'Test 3.3 - First: [%], Status: %', line, status;
+    dbms_output.get_line(line, status);
+    RAISE NOTICE 'Test 3.3 - Second line length: %, Status: %', length(line), status;
 END;
 /
 
@@ -275,6 +279,8 @@ BEGIN
     END IF;
 END;
 /
+
+CALL dbms_output.disable();
 
 -- Test 5.2: User limit honored even after internal buffer expansion
 -- Small lines cause internal buffer to expand (2-byte overhead per line)
@@ -569,6 +575,8 @@ EXCEPTION WHEN OTHERS THEN
     RAISE NOTICE 'Test 9.3 - PUT overflow error: %', SQLERRM;
 END;
 /
+
+CALL dbms_output.disable();
 
 -- =============================================================================
 -- Section 10: Session Scope (buffer persists across transactions)

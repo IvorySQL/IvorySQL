@@ -323,7 +323,8 @@ ora_dbms_output_enable(PG_FUNCTION_ARGS)
 			buffer_size = DBMS_OUTPUT_MIN_BUFFER_SIZE;
 	}
 
-	/* Initialize buffer (clears existing if present) */
+	/* Initialize or re-initialize the buffer; re-ENABLE preserves unread output
+	 * and only applies the new size limit. */
 	init_output_buffer(buffer_size);
 
 	PG_RETURN_VOID();
