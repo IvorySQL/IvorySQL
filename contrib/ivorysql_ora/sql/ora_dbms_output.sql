@@ -175,15 +175,44 @@ END;
 /
 
 -- Test 3.3: Re-ENABLE preserves buffer
+-- Full contract: unread lines and pending PUT text are preserved, and the
+-- latest size limit is applied to the active buffer.
 DECLARE
     line TEXT;
     status INTEGER;
+    i INTEGER;
+    overflow BOOLEAN := FALSE;
 BEGIN
+    -- Unread line preserved across re-enable
     dbms_output.enable();
     dbms_output.put_line('First enable content');
     dbms_output.enable();  -- Re-enable should preserve unread output
     dbms_output.get_line(line, status);
     RAISE NOTICE 'Test 3.3 - After re-enable: [%], Status: %', line, status;
+
+    -- Pending PUT text preserved across re-enable
+    dbms_output.put('Pending PUT');
+    dbms_output.enable();  -- Re-enable should preserve partial output
+    dbms_output.new_line();
+    dbms_output.get_line(line, status);
+    RAISE NOTICE 'Test 3.3 - Pending PUT preserved: [%], Status: %', line, status;
+
+    -- New size limit enforced: writing past the old 2000-byte limit succeeds
+    dbms_output.enable(2000);   -- small limit
+    dbms_output.enable(1000000);  -- re-enable with a larger limit
+    FOR i IN 1..60 LOOP
+        BEGIN
+            dbms_output.put_line(rpad('X', 50, 'X'));  -- 50 bytes x 60 = 3000 bytes
+        EXCEPTION WHEN OTHERS THEN
+            overflow := TRUE;
+            EXIT;
+        END;
+    END LOOP;
+    IF overflow THEN
+        RAISE NOTICE 'Test 3.3 - New size limit applied: FAILED';
+    ELSE
+        RAISE NOTICE 'Test 3.3 - New size limit applied: PASSED (3000 bytes written)';
+    END IF;
 END;
 /
 
