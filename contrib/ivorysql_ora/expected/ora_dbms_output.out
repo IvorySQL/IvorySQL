@@ -176,7 +176,7 @@ BEGIN
 END;
 /
 NOTICE:  Test 3.2 - Buffer after disable: [<NULL>], Status: 1
--- Test 3.3: Re-ENABLE clears buffer
+-- Test 3.3: Re-ENABLE preserves unread output
 DECLARE
     line TEXT;
     status INTEGER;
@@ -188,7 +188,7 @@ BEGIN
     RAISE NOTICE 'Test 3.3 - After re-enable: [%], Status: %', line, status;
 END;
 /
-NOTICE:  Test 3.3 - After re-enable: [<NULL>], Status: 1
+NOTICE:  Test 3.3 - After re-enable: [First enable content], Status: 0
 -- Test 3.4: Output while disabled is silently ignored
 DECLARE
     line TEXT;

@@ -118,16 +118,25 @@ PG_FUNCTION_INFO_V1(ora_dbms_output_get_lines);
  *
  * buffer_size: user-specified content limit in bytes, or -1 for unlimited.
  *
- * IvorySQL behavior: ENABLE always clears existing buffer.
- * Note: Oracle preserves buffer on re-ENABLE; this is an intentional
- * IvorySQL simplification.
+ * Oracle behavior: re-ENABLE preserves existing unread output and only
+ * updates the size limit. The buffer is cleared only when it was disabled
+ * or has not been created yet.
  */
 static void
 init_output_buffer(int64 buffer_size)
 {
 	MemoryContext oldcontext;
 
-	/* IvorySQL behavior: ENABLE clears existing buffer (differs from Oracle) */
+	/*
+	 * Oracle behavior: re-ENABLE preserves unread output and only applies the
+	 * new size limit. Clear the buffer only when it is disabled or absent.
+	 */
+	if (output_buffer != NULL && output_buffer->enabled)
+	{
+		output_buffer->buffer_size = buffer_size;
+		return;
+	}
+
 	if (output_buffer != NULL)
 		cleanup_output_buffer();
 
