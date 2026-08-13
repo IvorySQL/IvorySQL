@@ -5498,6 +5498,15 @@ exec_stmt_rollback(PLiSQL_execstate * estate, PLiSQL_stmt_rollback * stmt)
  * procedure's effective user.  A transaction must start with an empty
  * security context, so temporarily restore the outer user and then reinstate
  * the procedure owner after SPI has started the next transaction.
+ *
+ * We decide whether to save/restore the user from the security context flag
+ * alone.  Checking compatible_db here would be unsafe: it is a GUC that can
+ * be changed inside the procedure (for example by EXECUTE 'SET
+ * ivorysql.compatible_mode = ...'), so a transaction control statement that
+ * runs after such a change would skip the restore and commit with a non-empty
+ * security context, crashing the backend.  SECURITY_LOCAL_USERID_CHANGE is
+ * stable for the whole call, exactly matching how definer procedures are
+ * entered (see SetUserIdAndSecContext in pl_package.c and friends).
  */
 static void
 exec_transaction(bool is_commit, bool chain)
@@ -5507,8 +5516,7 @@ exec_transaction(bool is_commit, bool chain)
 	bool		restore_user;
 
 	GetUserIdAndSecContext(&save_userid, &save_sec_context);
-	restore_user = compatible_db == ORA_PARSER &&
-		save_sec_context == SECURITY_LOCAL_USERID_CHANGE;
+	restore_user = (save_sec_context & SECURITY_LOCAL_USERID_CHANGE) != 0;
 
 	if (restore_user)
 		SetUserIdAndSecContext(GetOuterUserId(), 0);

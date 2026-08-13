@@ -678,6 +678,35 @@ DROP PROCEDURE transaction_definer;
 DROP TABLE test_definer_xact;
 DROP ROLE transaction_caller;
 
+-- Test that transaction control in a security-definer procedure is safe even
+-- when the procedure body switches ivorysql.compatible_mode before COMMIT.
+-- compatible_db is a GUC and can be changed by EXECUTE 'SET ...' inside the
+-- procedure, so exec_transaction must restore the outer user based on the
+-- security context flag alone rather than the mutable compatible_db.  Before
+-- the fix this crashed the backend at the COMMIT statement.
+CREATE ROLE transaction_mode_switcher;
+CREATE TABLE test_definer_mode_xact (event text, effective_user name);
+
+CREATE OR REPLACE PROCEDURE transaction_definer_mode_switch AUTHID DEFINER IS
+BEGIN
+    INSERT INTO test_definer_mode_xact VALUES ('before commit', current_user);
+    EXECUTE 'SET ivorysql.compatible_mode = ''pg''';
+    COMMIT;
+    EXECUTE 'SET ivorysql.compatible_mode = ''ora''';
+END;
+/
+
+REVOKE EXECUTE ON PROCEDURE transaction_definer_mode_switch FROM PUBLIC;
+GRANT EXECUTE ON PROCEDURE transaction_definer_mode_switch TO transaction_mode_switcher;
+SET ROLE transaction_mode_switcher;
+CALL transaction_definer_mode_switch();
+SELECT current_user = 'transaction_mode_switcher'::name AS caller_restored;
+RESET ROLE;
+SELECT count(*) FROM test_definer_mode_xact;
+DROP PROCEDURE transaction_definer_mode_switch;
+DROP TABLE test_definer_mode_xact;
+DROP ROLE transaction_mode_switcher;
+
 -- Test nested security-definer procedure calls with COMMIT/ROLLBACK
 -- (Issue #1007).  Oracle-syntax procedures default to AUTHID DEFINER.
 
