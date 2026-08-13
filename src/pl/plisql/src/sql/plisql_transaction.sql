@@ -653,7 +653,7 @@ SELECT * FROM test1;
 -- Test transaction control in an AUTHID DEFINER procedure (Issue #1187).
 -- Verify that the procedure retains its owner's privileges after transaction
 -- boundaries and that the caller's effective user is restored on return.
-CREATE ROLE transaction_caller;
+CREATE ROLE regress_transaction_caller;
 CREATE TABLE test_definer_xact (event text, effective_user name);
 
 CREATE OR REPLACE PROCEDURE transaction_definer AUTHID DEFINER IS
@@ -667,16 +667,16 @@ END;
 /
 
 REVOKE EXECUTE ON PROCEDURE transaction_definer FROM PUBLIC;
-GRANT EXECUTE ON PROCEDURE transaction_definer TO transaction_caller;
-SET ROLE transaction_caller;
+GRANT EXECUTE ON PROCEDURE transaction_definer TO regress_transaction_caller;
+SET ROLE regress_transaction_caller;
 CALL transaction_definer();
-SELECT current_user = 'transaction_caller'::name AS caller_restored;
+SELECT current_user = 'regress_transaction_caller'::name AS caller_restored;
 RESET ROLE;
 SELECT event, effective_user = current_user AS ran_as_owner
 FROM test_definer_xact ORDER BY event;
 DROP PROCEDURE transaction_definer;
 DROP TABLE test_definer_xact;
-DROP ROLE transaction_caller;
+DROP ROLE regress_transaction_caller;
 
 -- Test that transaction control in a security-definer procedure is safe even
 -- when the procedure body switches ivorysql.compatible_mode before COMMIT.
@@ -684,7 +684,7 @@ DROP ROLE transaction_caller;
 -- procedure, so exec_transaction must restore the outer user based on the
 -- security context flag alone rather than the mutable compatible_db.  Before
 -- the fix this crashed the backend at the COMMIT statement.
-CREATE ROLE transaction_mode_switcher;
+CREATE ROLE regress_transaction_mode_switcher;
 CREATE TABLE test_definer_mode_xact (event text, effective_user name);
 
 CREATE OR REPLACE PROCEDURE transaction_definer_mode_switch AUTHID DEFINER IS
@@ -697,15 +697,15 @@ END;
 /
 
 REVOKE EXECUTE ON PROCEDURE transaction_definer_mode_switch FROM PUBLIC;
-GRANT EXECUTE ON PROCEDURE transaction_definer_mode_switch TO transaction_mode_switcher;
-SET ROLE transaction_mode_switcher;
+GRANT EXECUTE ON PROCEDURE transaction_definer_mode_switch TO regress_transaction_mode_switcher;
+SET ROLE regress_transaction_mode_switcher;
 CALL transaction_definer_mode_switch();
-SELECT current_user = 'transaction_mode_switcher'::name AS caller_restored;
+SELECT current_user = 'regress_transaction_mode_switcher'::name AS caller_restored;
 RESET ROLE;
 SELECT count(*) FROM test_definer_mode_xact;
 DROP PROCEDURE transaction_definer_mode_switch;
 DROP TABLE test_definer_mode_xact;
-DROP ROLE transaction_mode_switcher;
+DROP ROLE regress_transaction_mode_switcher;
 
 -- Test nested security-definer procedure calls with COMMIT/ROLLBACK
 -- (Issue #1007).  Oracle-syntax procedures default to AUTHID DEFINER.
