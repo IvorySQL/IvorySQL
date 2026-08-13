@@ -3153,3 +3153,40 @@ alter table alter1.t1 set schema alter2;
 drop publication pub1;
 drop schema alter1 cascade;
 drop schema alter2 cascade;
+
+--
+-- Oracle-compatible MODIFY column syntax
+--
+create table modify_column_test
+(
+  paren_col varchar2(10),
+  plain_col varchar2(10),
+  expected_20 varchar2(20),
+  expected_30 varchar2(30)
+);
+
+alter table modify_column_test modify (paren_col varchar2(20) not null);
+
+select modified.atttypid = expected.atttypid
+       and modified.atttypmod = expected.atttypmod as type_changed,
+       modified.attnotnull
+from pg_attribute modified
+join pg_attribute expected
+  on expected.attrelid = modified.attrelid
+where modified.attrelid = 'modify_column_test'::regclass
+  and modified.attname = 'paren_col'
+  and expected.attname = 'expected_20';
+
+alter table modify_column_test modify plain_col varchar2(30) not null;
+
+select modified.atttypid = expected.atttypid
+       and modified.atttypmod = expected.atttypmod as type_changed,
+       modified.attnotnull
+from pg_attribute modified
+join pg_attribute expected
+  on expected.attrelid = modified.attrelid
+where modified.attrelid = 'modify_column_test'::regclass
+  and modified.attname = 'plain_col'
+  and expected.attname = 'expected_30';
+
+drop table modify_column_test;

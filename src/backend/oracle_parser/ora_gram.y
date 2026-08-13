@@ -3663,6 +3663,25 @@ identity_options:
 				$$ = list_make1(n);
 			}
 
+			/* ALTER TABLE <name> MODIFY [(] <colname> <typename> NOT NULL [)] */
+			| ColId Typename NOT NULL_P
+				{
+					AlterTableCmd *m = makeNode(AlterTableCmd);
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					ColumnDef *def = makeNode(ColumnDef);
+
+					m->subtype = AT_AlterColumnType;
+					m->name = $1;
+					m->def = (Node *) def;
+					/* We only use these fields of the ColumnDef node */
+					def->typeName = $2;
+					def->location = @1;
+
+					n->subtype = AT_SetNotNull;
+					n->name = $1;
+					$$ = list_make2(m, n);
+				}
+
 drop_identity:
 		ColId DROP IDENTITY_P
 			{
