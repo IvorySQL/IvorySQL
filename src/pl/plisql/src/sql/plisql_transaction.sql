@@ -688,11 +688,15 @@ CREATE ROLE regress_transaction_mode_switcher;
 CREATE TABLE test_definer_mode_xact (event text, effective_user name);
 
 CREATE OR REPLACE PROCEDURE transaction_definer_mode_switch AUTHID DEFINER IS
+    i int;
 BEGIN
-    INSERT INTO test_definer_mode_xact VALUES ('before commit', current_user);
-    EXECUTE 'SET ivorysql.compatible_mode = ''pg''';
-    COMMIT;
-    EXECUTE 'SET ivorysql.compatible_mode = ''ora''';
+    FOR i IN 1..2 LOOP
+        INSERT INTO test_definer_mode_xact VALUES ('privilege check', current_user);
+        IF i = 1 THEN
+            EXECUTE 'SET ivorysql.compatible_mode = ''pg''';
+            COMMIT;
+        END IF;
+    END LOOP;
 END;
 /
 
@@ -700,6 +704,7 @@ REVOKE EXECUTE ON PROCEDURE transaction_definer_mode_switch FROM PUBLIC;
 GRANT EXECUTE ON PROCEDURE transaction_definer_mode_switch TO regress_transaction_mode_switcher;
 SET ROLE regress_transaction_mode_switcher;
 CALL transaction_definer_mode_switch();
+SET ivorysql.compatible_mode = oracle;
 SELECT current_user = 'regress_transaction_mode_switcher'::name AS caller_restored;
 RESET ROLE;
 SELECT count(*) FROM test_definer_mode_xact;
@@ -819,6 +824,48 @@ TRUNCATE test_nested_commit;
 CALL nested_outer_rollback_oracle_style();
 SELECT * FROM test_nested_commit ORDER BY id;
 
+-- Test 6: Keep nested COMMIT coverage for AUTHID CURRENT_USER procedures.
+CREATE OR REPLACE PROCEDURE nested_invoker_inner_commit AUTHID CURRENT_USER IS
+BEGIN
+    INSERT INTO test_nested_commit VALUES (401);
+    COMMIT;
+    INSERT INTO test_nested_commit VALUES (402);
+END;
+/
+
+CREATE OR REPLACE PROCEDURE nested_invoker_outer_commit AUTHID CURRENT_USER IS
+BEGIN
+    INSERT INTO test_nested_commit VALUES (400);
+    CALL nested_invoker_inner_commit();
+    INSERT INTO test_nested_commit VALUES (403);
+END;
+/
+
+TRUNCATE test_nested_commit;
+CALL nested_invoker_outer_commit();
+SELECT * FROM test_nested_commit ORDER BY id;
+
+-- Test 7: Keep nested ROLLBACK coverage for AUTHID CURRENT_USER procedures.
+CREATE OR REPLACE PROCEDURE nested_invoker_inner_rollback AUTHID CURRENT_USER IS
+BEGIN
+    INSERT INTO test_nested_commit VALUES (501);
+    ROLLBACK;
+    INSERT INTO test_nested_commit VALUES (502);
+END;
+/
+
+CREATE OR REPLACE PROCEDURE nested_invoker_outer_rollback AUTHID CURRENT_USER IS
+BEGIN
+    INSERT INTO test_nested_commit VALUES (500);
+    CALL nested_invoker_inner_rollback();
+    INSERT INTO test_nested_commit VALUES (503);
+END;
+/
+
+TRUNCATE test_nested_commit;
+CALL nested_invoker_outer_rollback();
+SELECT * FROM test_nested_commit ORDER BY id;
+
 -- Clean up nested commit tests
 DROP PROCEDURE nested_inner_commit;
 DROP PROCEDURE nested_outer_commit;
@@ -830,6 +877,10 @@ DROP PROCEDURE nested_level4;
 DROP PROCEDURE nested_inner_rollback;
 DROP PROCEDURE nested_outer_rollback;
 DROP PROCEDURE nested_outer_rollback_oracle_style;
+DROP PROCEDURE nested_invoker_inner_commit;
+DROP PROCEDURE nested_invoker_outer_commit;
+DROP PROCEDURE nested_invoker_inner_rollback;
+DROP PROCEDURE nested_invoker_outer_rollback;
 DROP TABLE test_nested_commit;
 
 

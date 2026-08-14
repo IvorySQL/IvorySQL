@@ -3116,11 +3116,15 @@ ExecuteCallStmt(CallStmt *stmt, ParamListInfo params, bool atomic, DestReceiver 
 	 */
 	if (((Form_pg_proc) GETSTRUCT(tp))->prosecdef)
 	{
-		GetUserIdAndSecContext(&userid, &sec_context);
 		if (compatible_db != ORA_PARSER ||
-			((Form_pg_proc) GETSTRUCT(tp))->prolang != LANG_PLISQL_OID ||
-			(sec_context & ~SECURITY_LOCAL_USERID_CHANGE) != 0)
+			((Form_pg_proc) GETSTRUCT(tp))->prolang != LANG_PLISQL_OID)
 			callcontext->atomic = true;
+		else
+		{
+			GetUserIdAndSecContext(&userid, &sec_context);
+			if ((sec_context & ~SECURITY_LOCAL_USERID_CHANGE) != 0)
+				callcontext->atomic = true;
+		}
 	}
 
 	ReleaseSysCache(tp);
