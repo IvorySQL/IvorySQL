@@ -22,6 +22,6 @@ END;
 CREATE OR REPLACE PACKAGE BODY UTL_RAW IS
     FUNCTION CAST_TO_RAW(c IN VARCHAR2) RETURN RAW IS
     BEGIN
-        RETURN pg_catalog.convert_to(c::text, 'UTF8');
+        RETURN pg_catalog.convert_to(c::text, pg_catalog.getdatabaseencoding());
     END;
 END;
