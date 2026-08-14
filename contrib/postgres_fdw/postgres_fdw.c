@@ -5459,7 +5459,7 @@ analyze_row_processor(PGresult *res, int row, PgFdwAnalyzeState *astate)
 
 /*
  * postgresImportForeignStatistics
- * 		Attempt to fetch/restore remote statistics instead of sampling.
+ * 		Attempt to import remote statistics instead of sampling.
  */
 static bool
 postgresImportForeignStatistics(Relation relation, List *va_cols, int elevel)
@@ -5472,7 +5472,7 @@ postgresImportForeignStatistics(Relation relation, List *va_cols, int elevel)
 	RemoteAttributeMapping *remattrmap = NULL;
 	int			attrcnt = 0;
 	TimestampTz starttime = 0;
-	bool		restore_stats = false;
+	bool		import_stats = false;
 	bool		ok = false;
 	ListCell   *lc;
 
@@ -5482,7 +5482,7 @@ postgresImportForeignStatistics(Relation relation, List *va_cols, int elevel)
 	server = GetForeignServer(table->serverid);
 
 	/*
-	 * Check whether the restore_stats option is enabled on the foreign table.
+	 * Check whether the import_stats option is enabled on the foreign table.
 	 * If not, silently ignore the foreign table.
 	 *
 	 * Server-level options can be overridden by table-level options, so check
@@ -5492,9 +5492,9 @@ postgresImportForeignStatistics(Relation relation, List *va_cols, int elevel)
 	{
 		DefElem    *def = (DefElem *) lfirst(lc);
 
-		if (strcmp(def->defname, "restore_stats") == 0)
+		if (strcmp(def->defname, "import_stats") == 0)
 		{
-			restore_stats = defGetBoolean(def);
+			import_stats = defGetBoolean(def);
 			break;
 		}
 	}
@@ -5502,13 +5502,13 @@ postgresImportForeignStatistics(Relation relation, List *va_cols, int elevel)
 	{
 		DefElem    *def = (DefElem *) lfirst(lc);
 
-		if (strcmp(def->defname, "restore_stats") == 0)
+		if (strcmp(def->defname, "import_stats") == 0)
 		{
-			restore_stats = defGetBoolean(def);
+			import_stats = defGetBoolean(def);
 			break;
 		}
 	}
-	if (!restore_stats)
+	if (!import_stats)
 		return false;
 
 	/*
