@@ -1800,11 +1800,17 @@ ora_asciistr(PG_FUNCTION_ARGS) {
             str++;
         } else if ((c & 0xE0) == 0xC0) {
             /* Two-byte UTF-8 sequence */
+            if (str + 2 > end)
+                ereport(ERROR,
+                        (errcode(ERRCODE_INVALID_PARAMETER_VALUE), errmsg("Invalid bytes")));
             codePoint = ((c & 0x1F) << 6) | (str[1] & 0x3F);
             appendUTF16Escape(&output, (uint16_t) codePoint);
             str += 2;
         } else if ((c & 0xF0) == 0xE0) {
             /* Three-byte UTF-8 sequence */
+            if (str + 3 > end)
+                ereport(ERROR,
+                        (errcode(ERRCODE_INVALID_PARAMETER_VALUE), errmsg("Invalid bytes")));
             codePoint = ((c & 0x0F) << 12) | ((str[1] & 0x3F) << 6) | (str[2] & 0x3F);
             appendUTF16Escape(&output, (uint16_t) codePoint);
             str += 3;
@@ -1812,6 +1818,9 @@ ora_asciistr(PG_FUNCTION_ARGS) {
             /* Four-byte UTF-8 sequence */
 			uint16_t highSurrogate, lowSurrogate;
 
+            if (str + 4 > end)
+                ereport(ERROR,
+                        (errcode(ERRCODE_INVALID_PARAMETER_VALUE), errmsg("Invalid bytes")));
             codePoint = ((c & 0x07) << 18) | ((str[1] & 0x3F) << 12) | ((str[2] & 0x3F) << 6) | (str[3] & 0x3F);
             codePoint -= 0x10000;
             highSurrogate = 0xD800 | (codePoint >> 10);
