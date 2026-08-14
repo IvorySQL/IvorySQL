@@ -179,8 +179,21 @@ scheduler_database_list(void)
 	return result;
 }
 
+/*
+ * Is this database's worker still on the books - running, or registered and
+ * waiting for the postmaster to fork it?
+ *
+ * The pending state counts as being on the books.  It says the worker has
+ * been registered and its turn to be forked has not come yet, which is an
+ * ordinary moment in a worker's life rather than a failure; only
+ * BGWH_STOPPED says one is over.  (GetBackgroundWorkerPid() tells the two
+ * apart by slot->pid: InvalidPid for a worker not started yet, 0 for one
+ * that is gone.)  The distinction is not academic, because the caller
+ * answers false by giving up on the database until an administrator
+ * reloads - so a worker still on its way up must not read as gone.
+ */
 static bool
-scheduler_dbworker_alive(SchedDbWorker *dbw)
+scheduler_dbworker_running_or_pending(SchedDbWorker *dbw)
 {
 	pid_t		pid;
 	BgwHandleStatus status;
@@ -191,6 +204,17 @@ scheduler_dbworker_alive(SchedDbWorker *dbw)
 	return (status == BGWH_STARTED || status == BGWH_NOT_YET_STARTED);
 }
 
+/*
+ * Ask the postmaster to start the scheduler worker for one database.
+ *
+ * Registering it is where this ends: the worker is not waited for.  A wait
+ * could report no more than that the process forked, while everything a
+ * database scheduler fails at - a database that is not there, ivorysql_ora
+ * not installed in it - happens after that point, so having waited
+ * successfully would be a false assurance.  The launcher's polling loop
+ * learns the outcome either way, and unlike a one-shot wait it goes on
+ * learning it for as long as the worker runs.
+ */
 static void
 scheduler_start_dbworker(SchedDbWorker *dbw)
 {
@@ -340,7 +364,7 @@ SchedulerLauncherMain(Datum main_arg)
 			 * repetitions of itself, so say so once and wait to be told to try
 			 * again.
 			 */
-			if (!scheduler_dbworker_alive(dbw))
+			if (!scheduler_dbworker_running_or_pending(dbw))
 			{
 				TimestampTz now = GetCurrentTimestamp();
 				bool		report;

@@ -225,8 +225,10 @@ ORDER BY table_name, constraint_name, position;
  SCHEDULER_JOBS            | SCHEDULER_JOBS_STATE_CHECK                      | STATE               | 1
  SCHEDULER_JOBS            | SCHEDULER_JOBS_STYLE_CHECK                      | JOB_TYPE            | 1
  SCHEDULER_JOBS            | SCHEDULER_JOBS_STYLE_CHECK                      | JOB_ACTION          | 2
- SCHEDULER_JOBS            | SCHEDULER_JOBS_STYLE_CHECK                      | PROGRAM_NAME        | 3
- SCHEDULER_JOBS            | SCHEDULER_JOBS_STYLE_CHECK                      | SCHEDULE_NAME       | 4
+ SCHEDULER_JOBS            | SCHEDULER_JOBS_STYLE_CHECK                      | PROGRAM_OWNER       | 3
+ SCHEDULER_JOBS            | SCHEDULER_JOBS_STYLE_CHECK                      | PROGRAM_NAME        | 4
+ SCHEDULER_JOBS            | SCHEDULER_JOBS_STYLE_CHECK                      | SCHEDULE_OWNER      | 5
+ SCHEDULER_JOBS            | SCHEDULER_JOBS_STYLE_CHECK                      | SCHEDULE_NAME       | 6
  SCHEDULER_JOBS            | scheduler_jobs_auto_drop_NOT_NULL               | AUTO_DROP           | 1
  SCHEDULER_JOBS            | scheduler_jobs_enabled_NOT_NULL                 | ENABLED             | 1
  SCHEDULER_JOBS            | scheduler_jobs_failure_count_NOT_NULL           | FAILURE_COUNT       | 1
@@ -275,7 +277,7 @@ ORDER BY table_name, constraint_name, position;
  T_PK_SINGLE               | T_PK_SINGLE_PKEY                                | ID                  | 1
  T_UNIQUE                  | UK_COL1                                         | COL1                | 1
  UTL_FILE_DIRECTORY        | UTL_FILE_DIRECTORY_PKEY                         | DIRNAME             | 1
-(59 rows)
+(61 rows)
 
 SELECT constraint_name, COUNT(*) AS column_count
 FROM all_cons_columns
@@ -293,7 +295,7 @@ ORDER BY constraint_name;
  SCHEDULER_JOBS_NUMBER_OF_ARGUMENTS_CHECK        |            1
  SCHEDULER_JOBS_PKEY                             |            2
  SCHEDULER_JOBS_STATE_CHECK                      |            1
- SCHEDULER_JOBS_STYLE_CHECK                      |            4
+ SCHEDULER_JOBS_STYLE_CHECK                      |            6
  SCHEDULER_JOB_ARGS_ARGUMENT_POSITION_CHECK      |            1
  SCHEDULER_JOB_ARGS_FK                           |            2
  SCHEDULER_JOB_ARGS_PKEY                         |            3
