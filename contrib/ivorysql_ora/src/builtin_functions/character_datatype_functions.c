@@ -722,8 +722,7 @@ ora_regexp_count(PG_FUNCTION_ARGS)
 	pg_wchar   *data;
 	size_t		data_len;
 	pg_re_flags flags;
-	int			num = 0;
-	bool		flag = false;
+	bool		last_match_empty_at_end = false;
 	
 	if (PG_ARGISNULL(2))
 		PG_RETURN_NULL();
@@ -745,6 +744,7 @@ ora_regexp_count(PG_FUNCTION_ARGS)
 	else
 	{
 		char	*paramstr = NULL;
+
 		match_param = PG_GETARG_TEXT_PP(3);
 		paramstr = text_to_cstring(match_param);
 		if (paramstr && paramstr[0] != '\0')
@@ -755,8 +755,9 @@ ora_regexp_count(PG_FUNCTION_ARGS)
 							 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 								 errmsg("the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.")));
 		}
-		ora_parse_re_flags(&flags, match_param);
 	}
+
+	ora_parse_re_flags(&flags, match_param);
 
 	if (PG_ARGISNULL(0) || 
 		PG_ARGISNULL(1))
@@ -765,20 +766,7 @@ ora_regexp_count(PG_FUNCTION_ARGS)
 	s = PG_GETARG_TEXT_PP(0);
 	p = PG_GETARG_TEXT_PP(1);
 	src_text_len = VARSIZE_ANY_EXHDR(s);
-	
-	if (PG_NARGS() == 4)
-	{
-		char   *str = VARDATA_ANY(s);
-		int     i;
 
-		for (i = 0; i < src_text_len; i++)
-		{
-			if (str[i] == '\n')
-				num++;
-		}
-		if (src_text_len > 0 && str[src_text_len - 1] == '\n')
-			flag = true;
-	}
 	/* Compile RE */
 	re = RE_compile_and_cache(p, flags.cflags, PG_GET_COLLATION());
 
@@ -818,6 +806,9 @@ ora_regexp_count(PG_FUNCTION_ARGS)
 
 		/* Count the number of matches */
 		occurrence_cnt++;
+		last_match_empty_at_end =
+			pmatch[0].rm_so == pmatch[0].rm_eo &&
+			pmatch[0].rm_eo == (pg_regoff_t) data_len;
 
 		/*
 		 * Advance search position.  Normally we start the next search at the
@@ -830,23 +821,15 @@ ora_regexp_count(PG_FUNCTION_ARGS)
 			search_start++;
 	}
 
-	if (flags.cflags == (REG_ICASE | REG_ADVANCED) || (flags.cflags == REG_ADVANCED))
-	{
-		if (!strncmp(p->vl_dat ,".",1))
-			occurrence_cnt -= num;
-	}	
-	if (flags.cflags == (REG_NEWLINE | REG_ADVANCED) && !strncmp(p->vl_dat ,".",1))
-		occurrence_cnt += num;
-	if (flags.cflags == (REG_NEWLINE | REG_ADVANCED) && !strncmp(p->vl_dat ,"^",1))
-	{
-		if (num)
-			occurrence_cnt = num;
-	}
-	if (flags.cflags ==  REG_ADVANCED && !strncmp(p->vl_dat ,"^",1) && flag)
-	{
-		if (num > 1)
-			occurrence_cnt += 1;
-	}
+	/* Do not count the empty line after a trailing newline for a bare ^. */
+	if ((flags.cflags & REG_NLANCH) != 0 &&
+		VARSIZE_ANY_EXHDR(p) == 1 &&
+		*VARDATA_ANY(p) == '^' &&
+		data_len > 0 && data[data_len - 1] == '\n' &&
+		last_match_empty_at_end &&
+		occurrence_cnt > 0)
+		occurrence_cnt--;
+
 	pfree(data);
 
 	PG_RETURN_INT32(occurrence_cnt);

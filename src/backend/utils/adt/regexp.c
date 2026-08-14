@@ -462,7 +462,31 @@ parse_re_flags(pg_re_flags *flags, text *opts)
 void
 ora_parse_re_flags(pg_re_flags *flags, text *opts)
 {
-	parse_re_flags(flags,opts);
+	parse_re_flags(flags, opts);
+
+	/*
+	 * Oracle treats m and n as independent options: m changes the behavior of
+	 * line anchors, while n allows dot to match a newline.  PostgreSQL's
+	 * parser treats the two options as synonyms, so replace its newline flags
+	 * with the Oracle semantics after parsing the other options.
+	 */
+	flags->cflags &= ~REG_NEWLINE;
+	flags->cflags |= REG_NLDOT;
+
+	if (opts)
+	{
+		char	   *opt_p = VARDATA_ANY(opts);
+		int			opt_len = VARSIZE_ANY_EXHDR(opts);
+		int			i;
+
+		for (i = 0; i < opt_len; i++)
+		{
+			if (opt_p[i] == 'n')
+				flags->cflags &= ~REG_NLDOT;
+			else if (opt_p[i] == 'm')
+				flags->cflags |= REG_NLANCH;
+		}
+	}
 }
 
 /*
