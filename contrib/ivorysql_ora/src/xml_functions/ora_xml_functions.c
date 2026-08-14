@@ -414,7 +414,7 @@ rv_newline(text *tv)
 
 	tmp = text_to_cstring(tv);
 	len = strlen(tmp);
-	if (tmp[len-1] == '\n')
+	if (len > 0 && tmp[len-1] == '\n')
 		tmp[len-1] = '\0';
 	ret = cstring_to_text(tmp);
 
@@ -451,7 +451,8 @@ right_trim(char *str)
 		return str;
 
 	end = str + strlen(str) - 1;
-	while (isspace(*end)) end--;
+	while (end >= str && isspace((unsigned char) *end))
+		end--;
 	*(end + 1) = '\0';
 
 	return str;
@@ -539,7 +540,7 @@ register_ns_from_csting(xmlXPathContextPtr xpathCtx, char* nsList)
 	f = strchr(nslist, (int)'=');
 	while (f != NULL)
 	{
-		if ((*(f - 1) == ' ') || (*(f + 1) != '"') || (*(f + 2) == ' '))
+		if ((f == nslist) || (*(f - 1) == ' ') || (*(f + 1) != '"') || (*(f + 2) == ' '))
 			elog(ERROR, "Invalid namespace");
 		f = strchr(f + 1, (int)'=');
 	}
@@ -557,14 +558,14 @@ register_ns_from_csting(xmlXPathContextPtr xpathCtx, char* nsList)
 		/* get the prefix */
 		start = strchr(tmp.data, (int)':');
 		end = strchr(tmp.data, (int)'=');
-		memcpy(prefix.data, start + 1, end - start);
-		prefix.data[end - start -1] = '\0';
+		if (start == NULL || end == NULL || end <= start)
+			elog(ERROR, "Invalid namespace");
+		appendBinaryStringInfo(&prefix, start + 1, end - start - 1);
 
 		/* get the url */
 		p1 = strstr(tmp.data, "=");
 		l1 = strlen(p1);
-		memcpy(url.data, p1 + 2, l1 - 3);
-		url.data[l1 - 3] = '\0';
+		appendBinaryStringInfo(&url, p1 + 2, l1 - 3);
 
 		/* do register namespace */
 		if (xmlXPathRegisterNs(xpathCtx, (xmlChar *)prefix.data, (xmlChar *)url.data) != 0)
