@@ -622,7 +622,10 @@ ora_regexp_like(PG_FUNCTION_ARGS)
 				out_flag  |=  REG_ICASE;
 				break;
 			case 'n':
-				out_flag |= REG_NEWLINE;
+				out_flag |= REG_NLDOT;
+				break;
+			case 'm':
+				out_flag |= REG_NLANCH;
 				break;
 			case 'c':
 				out_flag  &=  ~REG_ICASE;
