@@ -3671,7 +3671,12 @@ get_hostvariables(const char *sql, bool *error)
 
 		/* No placeholders do not need to use PBE */
 		if (ntuples == 1)
+		{
+			PQclear(res);
+			destroyPQExpBuffer(query);
+			pg_free(newsql);
 			return NULL;
+		}
 
 		/* is an anonymous block and has placeholders */
 		if (ntuples > 1)
@@ -4153,7 +4158,8 @@ psql_exec_pbe(const char *sql, HostVariable *hv, struct _variable **bindvar)
 					IvyFreeHandle(stmthandle, IVY_HANDLE_STMT);
 					IvyFreeHandle(errhp, IVY_HANDLE_ERROR);
 					Ivyfinish2(conn);
-					return NULL;
+					res = NULL;
+					goto pbe_failure;
 				}
 		}
 

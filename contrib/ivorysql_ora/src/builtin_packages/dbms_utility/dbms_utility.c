@@ -69,8 +69,6 @@ lookup_plisql_functions(void)
 	if (lookup_attempted)
 		return;
 
-	lookup_attempted = true;
-
 #ifndef WIN32
 	{
 		/*
@@ -95,7 +93,13 @@ lookup_plisql_functions(void)
 			get_call_stack_fn = (plisql_get_call_stack_fn) fn;
 	}
 #endif
-	/* On Windows, function pointers remain NULL - features require plisql */
+
+	/* Only cache the lookups if plisql was found; retry otherwise */
+	if (get_exception_context_fn != NULL &&
+		get_exception_message_fn != NULL &&
+		get_exception_sqlerrcode_fn != NULL &&
+		get_call_stack_fn != NULL)
+		lookup_attempted = true;
 }
 
 /*
