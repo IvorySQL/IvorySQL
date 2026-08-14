@@ -244,6 +244,20 @@ SELECT * FROM x1, GRAPH_TABLE (myshop MATCH (c IS customers WHERE c.address = 'U
  1 | one | customer1     |   1
 (1 row)
 
+-- lateral reference with multi-label pattern, which is rewritten as UNION of
+-- path queries
+SELECT x1.a, g.* FROM x1,
+    GRAPH_TABLE (myshop MATCH (c IS customers WHERE c.customer_id = x1.a)-[IS customer_orders | customer_wishlists]->(l IS lists)-[IS list_items]->(p IS products)
+        COLUMNS (x1.a AS outer_id, c.name AS customer_name, p.name AS product_name, l.list_type)) g
+    ORDER BY 1, 3, 4, 5;
+ a | outer_id | customer_name | product_name | list_type 
+---+----------+---------------+--------------+-----------
+ 1 |        1 | customer1     | product1     | order
+ 1 |        1 | customer1     | product2     | order
+ 2 |        2 | customer2     | product1     | order
+ 2 |        2 | customer2     | product1     | wishlist
+(4 rows)
+
 CREATE TABLE v1 (
     id int PRIMARY KEY,
     vname varchar(10),
