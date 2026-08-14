@@ -2391,7 +2391,7 @@ IvyStmtExecute(Ivyconn *tconn,
 		free(tresult);
 		tresult = NULL;
 		snprintf(errhp->error_msg, errhp->err_buf_size, "%s", "ivorysql.out_parameter_column_position failed");
-		return NULL;
+		goto ERROR_HANDLE;
 	}
 
 	/* send query */
@@ -2663,7 +2663,7 @@ IvyStmtExecute2(Ivyconn *tconn,
 		free(tresult);
 		tresult = NULL;
 		snprintf(errhp->error_msg, errhp->err_buf_size, "%s", "ivorysql.out_parameter_column_position failed");
-		return NULL;
+		goto ERROR_HANDLE;
 	}
 
 	/* send query */
@@ -3667,7 +3667,8 @@ IvyhandleParamsValues(IvyPreparedStatement *stmtHandle,
 
 			for (tmp1 = stmtHandle->namebind; tmp1 != NULL; tmp1 = tmp1->next)
 			{
-				if (strcmp(tmp1->name, stmtHandle->paramNames[i]) == 0)
+				if (stmtHandle->paramNames[i] != NULL &&
+					strcmp(tmp1->name, stmtHandle->paramNames[i]) == 0)
 					break;
 			}
 
@@ -3975,6 +3976,12 @@ Ivyreplacenamebindtoposition(Ivyconn *tconn,
 		}
 
 		stmtHandle->paramNames = (char **) malloc(sizeof(char *) * (n_tuples - 1));
+		if (stmtHandle->paramNames == NULL)
+		{
+			snprintf(errmsg, size_error_buf, "%s", "failed to allocate memory");
+			Ivyclear(res);
+			return 0;
+		}
 		memset(stmtHandle->paramNames, 0x00, sizeof(char *) * (n_tuples - 1));
 		for (int i = 1; i < n_tuples; i++)
 		{
@@ -3984,6 +3991,9 @@ Ivyreplacenamebindtoposition(Ivyconn *tconn,
 
 			position = atoi(Ivygetvalue(res, i, 1)) - 1;
 			name = Ivygetvalue(res, i, 0);
+
+			if (position < 0 || position >= stmtHandle->nParams)
+				goto error_handle;
 
 			if (stmtHandle->paramNames[position] != NULL)
 				goto error_handle;
@@ -4010,7 +4020,8 @@ Ivyreplacenamebindtoposition(Ivyconn *tconn,
 
 		for (position = 0; position < stmtHandle->nParams; position++)
 		{
-			if (strcmp(stmtHandle->paramNames[position], tmp->name) == 0)
+			if (stmtHandle->paramNames[position] != NULL &&
+				strcmp(stmtHandle->paramNames[position], tmp->name) == 0)
 				break;
 		}
 
@@ -4045,14 +4056,17 @@ error_handle:
 		"get_parameter_description return failed");
 
 	Ivyclear(res);
-	for (int i = 0; i < stmtHandle->nParams; i++)
+	if (stmtHandle->paramNames != NULL)
 	{
-		if (stmtHandle->paramNames[i] != NULL)
-			free(stmtHandle->paramNames[i]);
-	}
+		for (int i = 0; i < stmtHandle->nParams; i++)
+		{
+			if (stmtHandle->paramNames[i] != NULL)
+				free(stmtHandle->paramNames[i]);
+		}
 
-	free(stmtHandle->paramNames);
-	stmtHandle->paramNames = NULL;
+		free(stmtHandle->paramNames);
+		stmtHandle->paramNames = NULL;
+	}
 
 	return 0;
 }
@@ -4252,6 +4266,13 @@ Ivyreplacenamebindtoposition2(Ivyconn *tconn,
 		}
 
 		stmtHandle->paramNames = (char **) malloc(sizeof(char *) * (n_tuples - 1));
+		if (stmtHandle->paramNames == NULL)
+		{
+			snprintf(errhp->error_msg, errhp->err_buf_size, "%s",
+					 "failed to allocate memory");
+			Ivyclear(res);
+			return 0;
+		}
 		stmtHandle->nParams = n_tuples - 1;
 		memset(stmtHandle->paramNames, 0x00, sizeof(char *) * (n_tuples - 1));
 		for (int i = 1; i < n_tuples; i++)
@@ -4262,6 +4283,9 @@ Ivyreplacenamebindtoposition2(Ivyconn *tconn,
 
 			position = atoi(Ivygetvalue(res, i, 1)) - 1;
 			name = Ivygetvalue(res, i, 0);
+
+			if (position < 0 || position >= stmtHandle->nParams)
+				goto error_handle;
 
 			if (stmtHandle->paramNames[position] != NULL)
 				goto error_handle;
@@ -4288,7 +4312,8 @@ Ivyreplacenamebindtoposition2(Ivyconn *tconn,
 
 		for (position = 0; position < stmtHandle->nParams; position++)
 		{
-			if (strcmp(stmtHandle->paramNames[position], tmp->name) == 0)
+			if (stmtHandle->paramNames[position] != NULL &&
+				strcmp(stmtHandle->paramNames[position], tmp->name) == 0)
 				break;
 		}
 
@@ -4327,14 +4352,17 @@ error_handle:
 		"get_parameter_description return failed");
 
 	Ivyclear(res);
-	for (int i = 0; i < stmtHandle->nParams; i++)
+	if (stmtHandle->paramNames != NULL)
 	{
-		if (stmtHandle->paramNames[i] != NULL)
-			free(stmtHandle->paramNames[i]);
-	}
+		for (int i = 0; i < stmtHandle->nParams; i++)
+		{
+			if (stmtHandle->paramNames[i] != NULL)
+				free(stmtHandle->paramNames[i]);
+		}
 
-	free(stmtHandle->paramNames);
-	stmtHandle->paramNames = NULL;
+		free(stmtHandle->paramNames);
+		stmtHandle->paramNames = NULL;
+	}
 
 	return 0;
 }
@@ -4438,6 +4466,12 @@ Ivyreplacenamebindtoposition3(Ivyconn *tconn,
 
 		stmtHandle->stmttype = IVY_STMT_OTHERS;
 		stmtHandle->paramNames = (char **) malloc(sizeof(char *) * host->length);
+		if (stmtHandle->paramNames == NULL)
+		{
+			snprintf(errhp->error_msg, errhp->err_buf_size, "%s",
+					 "failed to allocate memory");
+			return 0;
+		}
 		stmtHandle->nParams = host->length;
 		memset(stmtHandle->paramNames, 0x00, sizeof(char *) * host->length);
 		for (i = 0; i < host->length; i++)
@@ -4448,6 +4482,9 @@ Ivyreplacenamebindtoposition3(Ivyconn *tconn,
 
 			position = host->hostvars[i].position - 1;
 			name = host->hostvars[i].name;
+
+			if (position < 0 || position >= stmtHandle->nParams)
+				goto error_handle;
 
 			if (stmtHandle->paramNames[position] != NULL)
 				goto error_handle;
@@ -4500,10 +4537,13 @@ Ivyreplacenamebindtoposition3(Ivyconn *tconn,
 
 error_handle:
 	snprintf(errhp->error_msg, errhp->err_buf_size, "%s", "Ivyreplacenamebindtoposition3 failed");
-	for (i = 0; i < stmtHandle->nParams; i++)
-		if (stmtHandle->paramNames[i] != NULL)
-			free(stmtHandle->paramNames[i]);
-	free(stmtHandle->paramNames);
-	stmtHandle->paramNames = NULL;
+	if (stmtHandle->paramNames != NULL)
+	{
+		for (i = 0; i < stmtHandle->nParams; i++)
+			if (stmtHandle->paramNames[i] != NULL)
+				free(stmtHandle->paramNames[i]);
+		free(stmtHandle->paramNames);
+		stmtHandle->paramNames = NULL;
+	}
 	return 0;
 }
