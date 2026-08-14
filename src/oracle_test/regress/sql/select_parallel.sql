@@ -592,6 +592,28 @@ DELETE FROM parallel_hang WHERE 380 <= i AND i <= 420;
 
 ROLLBACK;
 
+-- sys.* builtins must not disable parallelism
+set parallel_setup_cost=0;
+set parallel_tuple_cost=0;
+set min_parallel_table_scan_size=0;
+set max_parallel_workers_per_gather=4;
+create table para_ora(id int, d date, name varchar2(50));
+insert into para_ora select g, sysdate - g, 'name_' || g from generate_series(1, 1000) g;
+analyze para_ora;
+-- character datatype functions
+explain (costs off) select count(*) from para_ora where sys.length(name) > 5;
+-- datetime datatype functions
+explain (costs off) select count(*) from para_ora where sys.to_char(d, 'YYYY') > '1900';
+-- number datatype functions
+explain (costs off) select count(*) from para_ora where sys.to_number(name) > 100;
+-- raw/blob/clob datatype functions
+explain (costs off) select count(*) from para_ora where sys.rawtohex(name) > '0';
+-- misc functions
+explain (costs off) select count(*) from para_ora where sys.instr(name, 'e') > 0;
+-- explicit varchar2 arguments exercise the sys.instr(varchar2, ...) SQL wrappers
+explain (costs off) select count(*) from para_ora where sys.instr(name::varchar2, 'e'::varchar2) > 0;
+drop table para_ora;
+
 -- Check parallel worker stats
 select pg_stat_force_next_flush();
 select parallel_workers_to_launch > :'parallel_workers_to_launch_before'  AS wrk_to_launch,
