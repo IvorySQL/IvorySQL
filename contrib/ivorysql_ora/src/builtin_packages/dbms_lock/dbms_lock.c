@@ -262,6 +262,9 @@ ivorysql_dbms_lock_request(PG_FUNCTION_ARGS)
     if (timeout < 0)
         PG_RETURN_INT32(DBMS_LOCK_PARAM_ERROR);
 
+	if (dbms_lock_check(key, lockmode))
+		PG_RETURN_INT32(DBMS_LOCK_ALREADY_OWNED);
+
     while (true)
     {
         if (exclusive)
