@@ -188,10 +188,12 @@ ivorysql_ora_ProcessUtility(PlannedStmt *pstmt,
 		standard_ProcessUtility(pstmt, queryString, readOnlyTree,
 								context, params, queryEnv, dest, qc);
 
-	/* Reset DBMS_OUTPUT buffer and DBMS_SESSION context after DISCARD ALL/PACKAGES */
+	/* Reset DBMS_OUTPUT buffer, DBMS_SESSION context and DBMS_LOCK bookkeeping
+	 * after DISCARD ALL/PACKAGES */
 	if (is_discard_reset)
 	{
 		ora_dbms_output_reset();
 		ora_dbms_session_reset();
+		ora_dbms_lock_reset();
 	}
 }

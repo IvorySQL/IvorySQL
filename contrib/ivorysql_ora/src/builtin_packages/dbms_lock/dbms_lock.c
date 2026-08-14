@@ -40,6 +40,7 @@
 #include "storage/lockdefs.h"
 #include "c.h"
 #include "utils/float.h"
+#include "../../include/ivorysql_ora.h"
 
 /* Oracle compatible lock modes */
 /* we support only:
@@ -107,6 +108,19 @@ dbms_lock_init_hash_table(void)
                              DBMS_LOCK_MAX,         
                              &ctl,
                              HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
+}
+
+/*
+ * Drop the session-local lock bookkeeping on DISCARD ALL/PACKAGES.
+ */
+void
+ora_dbms_lock_reset(void)
+{
+    if (dbms_lock_hash_table != NULL)
+    {
+        hash_destroy(dbms_lock_hash_table);
+        dbms_lock_hash_table = NULL;
+    }
 }
 
 /*
