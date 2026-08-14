@@ -69,10 +69,7 @@ get_pg_version(const char *datadir, char **version_str)
 	fclose(version_fd);
 
 	if (version_str)
-	{
-		*version_str = pg_malloc(PG_VERSION_MAX_SIZE);
-		memcpy(*version_str, buf, st.st_size);
-	}
+		*version_str = pg_strdup(buf);
 
 	if (v1 < 10)
 	{
