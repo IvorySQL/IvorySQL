@@ -521,7 +521,7 @@ static void
 pgss_shmem_request(void *arg)
 {
 	ShmemRequestHash(.name = "pg_stat_statements hash",
-					 .nelems = pgss_max,
+					 .nelems = (int64) pgss_max,
 					 .hash_info.keysize = sizeof(pgssHashKey),
 					 .hash_info.entrysize = sizeof(pgssEntry),
 					 .hash_flags = HASH_ELEM | HASH_BLOBS,
@@ -548,9 +548,8 @@ pgss_shmem_init(void *arg)
 	FILE	   *file = NULL;
 	FILE	   *qfile = NULL;
 	uint32		header;
-	int32		num;
+	int64		num;
 	int32		pgver;
-	int32		i;
 	int			buffer_size;
 	char	   *buffer = NULL;
 
@@ -627,14 +626,14 @@ pgss_shmem_init(void *arg)
 
 	if (fread(&header, sizeof(uint32), 1, file) != 1 ||
 		fread(&pgver, sizeof(uint32), 1, file) != 1 ||
-		fread(&num, sizeof(int32), 1, file) != 1)
+		fread(&num, sizeof(int64), 1, file) != 1)
 		goto read_error;
 
 	if (header != PGSS_FILE_HEADER ||
 		pgver != PGSS_PG_MAJOR_VERSION)
 		goto data_error;
 
-	for (i = 0; i < num; i++)
+	for (int64 i = 0; i < num; i++)
 	{
 		pgssEntry	temp;
 		pgssEntry  *entry;
@@ -752,7 +751,7 @@ pgss_shmem_shutdown(int code, Datum arg)
 	char	   *qbuffer = NULL;
 	Size		qbuffer_size = 0;
 	HASH_SEQ_STATUS hash_seq;
-	int32		num_entries;
+	int64		num_entries;
 	pgssEntry  *entry;
 
 	/* Don't try to dump during a crash. */
@@ -776,7 +775,7 @@ pgss_shmem_shutdown(int code, Datum arg)
 	if (fwrite(&PGSS_PG_MAJOR_VERSION, sizeof(uint32), 1, file) != 1)
 		goto error;
 	num_entries = hash_get_num_entries(pgss_hash);
-	if (fwrite(&num_entries, sizeof(int32), 1, file) != 1)
+	if (fwrite(&num_entries, sizeof(int64), 1, file) != 1)
 		goto error;
 
 	qbuffer = qtext_load_file(&qbuffer_size);
@@ -2101,7 +2100,7 @@ entry_alloc(pgssHashKey *key, Size query_offset, int query_len, int encoding,
 	bool		found;
 
 	/* Make space if needed */
-	while (hash_get_num_entries(pgss_hash) >= pgss_max)
+	while (hash_get_num_entries(pgss_hash) >= (int64) pgss_max)
 		entry_dealloc();
 
 	/* Find or create an entry with desired hash code */
