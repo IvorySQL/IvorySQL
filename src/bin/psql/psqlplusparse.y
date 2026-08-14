@@ -412,7 +412,7 @@ exec_stmt: exec_keyword
 			if (state->is_sqlplus_cmd)
 			{
 				psqlplus_cmd_execute *exec = make_exec_node();
-				int	offset = strlen(state->scanbuf);
+				int	offset = strlen($1);
 				exec->plisqlstmts = pg_strdup(state->scanline + offset);
 				state->psqlpluscmd = (psqlplus_cmd *) exec;
 				return 0;
