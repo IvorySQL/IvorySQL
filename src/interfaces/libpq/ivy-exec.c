@@ -837,18 +837,11 @@ IvyexecPreparedStatement2(Ivyconn *tconn,
 void
 IvyFreePreparedStatement(IvyPreparedStatement *stmtHandle)
 {
-	if (stmtHandle == NULL || stmtHandle->query == NULL)
+	if (stmtHandle == NULL)
 		return;
 
 	/* get the lock */
 	PGSemaphoreLock(&stmtHandle->lock);
-
-	/* already free */
-	if (stmtHandle->query == NULL)
-	{
-		PGSemaphoreUnlock(&stmtHandle->lock);
-		return;
-	}
 
 	/* free bind info of out parameter */
 	if (stmtHandle->outbind != NULL)
