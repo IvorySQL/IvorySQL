@@ -1895,6 +1895,16 @@ IvyHandleDostmt(Ivyconn *tconn,
 						break;
 				}
 
+				if (info == NULL)
+				{
+					snprintf(errmsg, err_buf_size, "%s",
+							 "outbind position not found");
+					free(stmtHandle->paramTypes);
+					stmtHandle->paramTypes = NULL;
+					destroyPQExpBuffer(query_buf);
+					return 0;
+				}
+
 				stmtHandle->paramTypes[i] = (Oid) info->dtype;
 
 				switch(UnSetModeOut(info->dtype))
