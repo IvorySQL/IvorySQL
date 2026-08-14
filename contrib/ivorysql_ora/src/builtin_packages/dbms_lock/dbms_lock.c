@@ -31,6 +31,7 @@
 #include "storage/lwlock.h"
 #include "catalog/pg_type.h"
 #include "utils/elog.h"
+#include "utils/memutils.h"
 #include "utils/timeout.h"
 #include "utils/uuid.h"
 #include "access/hash.h"
@@ -100,11 +101,12 @@ dbms_lock_init_hash_table(void)
     ctl.keysize = sizeof(int64);
     ctl.entrysize = sizeof(lock_entry);
     ctl.hash = tag_hash;
+    ctl.hcxt = TopMemoryContext;
 
     dbms_lock_hash_table = hash_create("pg_dbms_lock table",
                              DBMS_LOCK_MAX,         
                              &ctl,
-                             HASH_ELEM | HASH_FUNCTION);
+                             HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
 }
 
 /*
