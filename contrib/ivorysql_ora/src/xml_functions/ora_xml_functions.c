@@ -557,14 +557,12 @@ register_ns_from_csting(xmlXPathContextPtr xpathCtx, char* nsList)
 		/* get the prefix */
 		start = strchr(tmp.data, (int)':');
 		end = strchr(tmp.data, (int)'=');
-		memcpy(prefix.data, start + 1, end - start);
-		prefix.data[end - start -1] = '\0';
+		appendBinaryStringInfo(&prefix, start + 1, end - start - 1);
 
 		/* get the url */
 		p1 = strstr(tmp.data, "=");
 		l1 = strlen(p1);
-		memcpy(url.data, p1 + 2, l1 - 3);
-		url.data[l1 - 3] = '\0';
+		appendBinaryStringInfo(&url, p1 + 2, l1 - 3);
 
 		/* do register namespace */
 		if (xmlXPathRegisterNs(xpathCtx, (xmlChar *)prefix.data, (xmlChar *)url.data) != 0)
