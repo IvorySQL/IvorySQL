@@ -597,7 +597,7 @@ nls_length_check(char **newval, void **extra, GucSource source)
 			GUC_check_errmsg("parameter value longer than 255 characters");
 			return false;
 		}
-		else if (isdigit(**newval))
+		else if (isdigit((unsigned char) **newval))
 		{
 			GUC_check_errcode(ERRCODE_INVALID_PARAMETER_VALUE);
 			GUC_check_errmsg("Cannot access NLS data files "
@@ -618,9 +618,9 @@ nls_territory_check(char **newval, void **extra, GucSource source)
 		&& (IsNormalProcessingMode() || (IsUnderPostmaster && MyProcPort)))
 	{
 		if (pg_strcasecmp(*newval, "CHINA") == 0)
-			memcpy(*newval, "CHINA", 5);
+			memcpy(*newval, "CHINA", sizeof("CHINA"));
 		else if (pg_strcasecmp(*newval, "AMERICA") == 0)
-			memcpy(*newval, "AMERICA", 7);
+			memcpy(*newval, "AMERICA", sizeof("AMERICA"));
 		else
 		{
 			GUC_check_errcode(ERRCODE_INVALID_PARAMETER_VALUE);

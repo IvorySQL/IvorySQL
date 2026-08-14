@@ -224,6 +224,11 @@ variable_paramref_hook(ParseState *pstate, ParamRef *pref)
 													*parstate->numParams, paramno);
 		else
 			*parstate->paramTypes = palloc0_array(Oid, paramno);
+		if (parstate->paramTypeWithMask)
+			parstate->paramTypeWithMask = repalloc0_array(parstate->paramTypeWithMask, Oid,
+														  *parstate->numParams, paramno);
+		else
+			parstate->paramTypeWithMask = palloc0_array(Oid, paramno);
 		*parstate->numParams = paramno;
 	}
 
@@ -2633,7 +2638,7 @@ calculate_oraparamname_position(Node *parsetree, char ***paramnames)
 	 * Check if the parameter is correct,
 	 * make sure all the parameters should have a name.
 	 */
-	for (i = 1; i <= state.numParams; i++)
+	for (i = 1; i < state.maxparams; i++)
 	{
 		if (state.paramNames[i] == NULL)
 			elog(ERROR, "placeholdvar at the position %d has no name", i);

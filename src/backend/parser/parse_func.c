@@ -551,7 +551,7 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 	 */
 	if (fdresult == FUNCDETAIL_NORMAL || fdresult == FUNCDETAIL_PROCEDURE)
 	{
-		if (ORA_PARSER == compatible_db)
+		if (ORA_PARSER == compatible_db && function_from != FUNC_FROM_WITH_CLAUSE)
 		{
 			HeapTuple	tup;
 			Form_pg_proc procstruct;
