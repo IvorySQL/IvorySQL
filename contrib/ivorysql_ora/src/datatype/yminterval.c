@@ -1425,7 +1425,7 @@ yminterval_in(PG_FUNCTION_ARGS)
 							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 							 errmsg("The character string you specified is not a valid interval")));
 
-				if (abs(tm->tm_mon) < 0 || abs(tm->tm_mon) > 11)
+				if (tm->tm_mon < 0 || tm->tm_mon > 11)
 					ereport(ERROR,
 							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 							 errmsg("month must be between 0 and 11")));

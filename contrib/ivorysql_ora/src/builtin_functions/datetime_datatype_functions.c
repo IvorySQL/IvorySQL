@@ -871,10 +871,7 @@ to_oradate3(PG_FUNCTION_ARGS)
 				 errmsg("function \"to_date\" not support the parameter of \"nlsparam\".")));
 #endif
 
-	if (p && strlen(p) != 0)
-		/* make compiler quiet */
-
-		ora_do_to_timestamp(date_txt, fmt, collid, false, &tm, &fsec, NULL, NULL, NULL, true);
+	ora_do_to_timestamp(date_txt, fmt, collid, false, &tm, &fsec, NULL, NULL, NULL, true);
 
 	/* no timezone and no fractional second */
 	fsec = 0;
@@ -951,10 +948,7 @@ to_oratimestamp3(PG_FUNCTION_ARGS)
 	 * (errcode(ERRCODE_UNTERMINATED_C_STRING), errmsg("function \"to_date\"
 	 * not support the parameter of \"nlsparam\".")));
 	 */
-	if (p && strlen(p) != 0)
-		/* make compiler quiet */
-
-		ora_do_to_timestamp(date_txt, fmt, collid, false, &tm, &fsec, NULL, NULL, NULL, true);
+	ora_do_to_timestamp(date_txt, fmt, collid, false, &tm, &fsec, NULL, NULL, NULL, true);
 
 	/* no time zone */
 	if (tm2timestamp(&tm, fsec, NULL, &result) != 0)
@@ -1059,16 +1053,13 @@ to_oratimestamptz3(PG_FUNCTION_ARGS)
 
 	p = text_to_cstring(nlsparam);
 
-	if (p && strlen(p) != 0)
-		/* make compile quiet */
+	/*
+	 * if (strlen(p) != 0) ereport(WARNING,
+	 * (errcode(ERRCODE_UNTERMINATED_C_STRING), errmsg("function
+	 * \"to_date\" not support the parameter of \"nlsparam\".")));
+	 */
 
-		/*
-		 * if (strlen(p) != 0) ereport(WARNING,
-		 * (errcode(ERRCODE_UNTERMINATED_C_STRING), errmsg("function
-		 * \"to_date\" not support the parameter of \"nlsparam\".")));
-		 */
-
-		ora_do_to_timestamp(date_txt, fmt, collid, false, &tm, &fsec, NULL, NULL, NULL, true);
+	ora_do_to_timestamp(date_txt, fmt, collid, false, &tm, &fsec, NULL, NULL, NULL, true);
 
 	if (tm.tm_zone)
 	{
@@ -1459,7 +1450,7 @@ numtoyminterval(PG_FUNCTION_ARGS)
 			interval_val = 0;
 
 		if (interval_val <= -0.5 && interval_val > -1)
-			interval_val = 1;
+			interval_val = -1;
 	}
 
 	/* round to first place after the decimal point */

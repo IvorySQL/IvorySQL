@@ -512,8 +512,6 @@ binary_float_in(PG_FUNCTION_ARGS)
 #endif
 					)
 					PG_RETURN_FLOAT4(-get_float4_infinity());
-				else if (val == 0.0)
-					PG_RETURN_FLOAT4(0);
 			}
 
 			/*
