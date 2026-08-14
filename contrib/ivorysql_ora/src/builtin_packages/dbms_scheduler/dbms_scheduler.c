@@ -394,17 +394,50 @@ sched_object_kind(const SchedName *n)
 	return (kind && kind[0]) ? kind[0] : SCHED_KIND_NONE;
 }
 
+/*
+ * Reject (owner, name) when any scheduler object already goes by it.
+ *
+ * The detail names the kind of the existing object: with one namespace for
+ * all three kinds, the caller's own kind is not what the user is missing -
+ * a CREATE_PROGRAM can fail because a job holds the name.
+ */
 static void
-sched_check_name_free(const SchedName *n, const char *what)
+sched_check_name_free(const SchedName *n)
 {
-	if (sched_object_kind(n) != SCHED_KIND_NONE)
+	char		kind = sched_object_kind(n);
+
+	if (kind != SCHED_KIND_NONE)
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_OBJECT),
 				 errmsg("scheduler object \"%s\".\"%s\" already exists",
 						n->owner, n->name),
-				 errdetail("Jobs, programs and schedules share one namespace.")));
+				 errdetail("A %s of that name already exists; jobs, programs and schedules share one namespace.",
+						   kind == SCHED_KIND_JOB ? "job" :
+						   kind == SCHED_KIND_PROGRAM ? "program" : "schedule")));
+}
 
-	(void) what;
+/*
+ * Verify that a named-program job carries both halves of an object reference
+ * ("program" or "schedule") before they are handed to CStringGetTextDatum().
+ *
+ * scheduler_jobs_style_check already guarantees this for rows read straight
+ * from the metadata.  The check is here because those are ordinary tables
+ * their owner can write directly: should a hand-made row reach this code, a
+ * null must come out as this complaint rather than as a crash inside
+ * CStringGetTextDatum().  Callers that were handed a reference rather than
+ * reading one use it to state the same expectation of their own arguments.
+ */
+static void
+sched_check_job_ref(const char *job_owner, const char *job_name,
+					const char *what, const char *owner, const char *name)
+{
+	if (owner == NULL || name == NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("job \"%s\".\"%s\" has an incomplete %s reference",
+						job_owner, job_name, what),
+				 errdetail("Column %s_owner or %s_name is null in sys.scheduler_jobs.",
+						   what, what)));
 }
 
 /* Validate commit_semantics; the value is accepted but has no effect. */
@@ -511,6 +544,16 @@ sched_check_args_complete(const char *job_owner, const char *job_name,
 	Datum		values[5];
 	char		nulls[5];
 	uint64		missing;
+
+	/*
+	 * The two program columns always travel together: a caller passing half
+	 * of a reference would crash below.  Stating that here rather than
+	 * trusting the caller matters because today's sole caller happens to
+	 * guarantee it and tomorrow's may not.
+	 */
+	if (prog_owner != NULL || prog_name != NULL)
+		sched_check_job_ref(job_owner, job_name, "program",
+							prog_owner, prog_name);
 
 	if (nargs <= 0)
 		return;
@@ -640,6 +683,11 @@ sched_enable_job(const SchedName *job)
 		char	   *sched_name = sched_getstring(0, 6);
 		Oid			at2[2] = {TEXTOID, TEXTOID};
 		Datum		v2[2];
+
+		sched_check_job_ref(job->owner, job->name, "program",
+							prog_owner, prog_name);
+		sched_check_job_ref(job->owner, job->name, "schedule",
+							sched_owner, sched_name);
 
 		v2[0] = CStringGetTextDatum(prog_owner);
 		v2[1] = CStringGetTextDatum(prog_name);
@@ -788,7 +836,7 @@ ora_dbms_scheduler_create_job_inline(PG_FUNCTION_ARGS)
 	SPI_connect();
 
 	sched_parse_name(raw_name, "job", &job);
-	sched_check_name_free(&job, "job");
+	sched_check_name_free(&job);
 
 	job_type = sched_check_type(job_type, "job_type");
 	if (job_action == NULL)
@@ -892,7 +940,7 @@ ora_dbms_scheduler_create_job_named(PG_FUNCTION_ARGS)
 	SPI_connect();
 
 	sched_parse_name(raw_name, "job", &job);
-	sched_check_name_free(&job, "job");
+	sched_check_name_free(&job);
 
 	if (raw_program == NULL || raw_schedule == NULL)
 		ereport(ERROR,
@@ -958,7 +1006,7 @@ ora_dbms_scheduler_create_program(PG_FUNCTION_ARGS)
 	SPI_connect();
 
 	sched_parse_name(raw_name, "program", &prog);
-	sched_check_name_free(&prog, "program");
+	sched_check_name_free(&prog);
 
 	program_type = sched_check_type(program_type, "program_type");
 	if (program_action == NULL)
@@ -1020,7 +1068,7 @@ ora_dbms_scheduler_create_schedule(PG_FUNCTION_ARGS)
 	SPI_connect();
 
 	sched_parse_name(raw_name, "schedule", &sched);
-	sched_check_name_free(&sched, "schedule");
+	sched_check_name_free(&sched);
 
 	if (start_isnull && repeat_interval == NULL)
 		ereport(ERROR,
@@ -1271,6 +1319,8 @@ sched_job_arg_context(const SchedName *job, char **prog_owner,
 
 	*prog_owner = sched_getstring(0, 3);
 	*prog_name = sched_getstring(0, 4);
+	sched_check_job_ref(job->owner, job->name, "program",
+						*prog_owner, *prog_name);
 
 	{
 		SchedName	prog;
@@ -1691,6 +1741,9 @@ sched_load_job_definition(const SchedName *job, SchedJobDef *def)
 	{
 		Oid			at2[2] = {TEXTOID, TEXTOID};
 		Datum		v2[2];
+
+		sched_check_job_ref(job->owner, job->name, "program",
+							prog_owner, prog_name);
 
 		v2[0] = CStringGetTextDatum(prog_owner);
 		v2[1] = CStringGetTextDatum(prog_name);

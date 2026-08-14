@@ -306,7 +306,7 @@ BEGIN
 END;
 /
 ERROR:  scheduler object "regress_dbms_scheduler"."REG_PROG" already exists
-DETAIL:  Jobs, programs and schedules share one namespace.
+DETAIL:  A program of that name already exists; jobs, programs and schedules share one namespace.
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_create_program(program_name,
 			program_type, program_action, number_of_arguments, enabled,
 			comments)"
@@ -548,7 +548,7 @@ BEGIN
 END;
 /
 ERROR:  scheduler object "regress_dbms_scheduler"."REG_PROG" already exists
-DETAIL:  Jobs, programs and schedules share one namespace.
+DETAIL:  A program of that name already exists; jobs, programs and schedules share one namespace.
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_create_job_inline(job_name, job_type,
 			job_action, number_of_arguments, start_date, repeat_interval,
 			end_date, job_class, enabled, auto_drop, comments)"

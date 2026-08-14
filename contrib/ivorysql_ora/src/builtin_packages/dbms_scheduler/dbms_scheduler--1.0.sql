@@ -124,12 +124,19 @@ CREATE TABLE sys.scheduler_jobs (
 	last_start_date		timestamptz,
 	last_end_date		timestamptz,
 	CONSTRAINT scheduler_jobs_pkey PRIMARY KEY (job_owner, job_name),
+	/*
+	 * Each reference is named by both of its columns: the C code reads
+	 * program_owner next to program_name and passes both on, so a row with
+	 * only one half set would be as broken as one with neither.
+	 */
 	CONSTRAINT scheduler_jobs_style_check CHECK (
 		(job_type IS NOT NULL AND job_action IS NOT NULL
-		 AND program_name IS NULL AND schedule_name IS NULL)
+		 AND program_owner IS NULL AND program_name IS NULL
+		 AND schedule_owner IS NULL AND schedule_name IS NULL)
 		OR
 		(job_type IS NULL AND job_action IS NULL
-		 AND program_name IS NOT NULL AND schedule_name IS NOT NULL)
+		 AND program_owner IS NOT NULL AND program_name IS NOT NULL
+		 AND schedule_owner IS NOT NULL AND schedule_name IS NOT NULL)
 	)
 );
 
