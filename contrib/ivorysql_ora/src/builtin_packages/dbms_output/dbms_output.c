@@ -343,13 +343,12 @@ ora_dbms_output_enable(PG_FUNCTION_ARGS)
  * ora_dbms_output_disable
  *
  * Disable output buffering.
- * Oracle behavior: buffer persists (can still GET_LINE), but PUT_LINE is ignored.
+ * Oracle behavior: purge the buffer and ignore output until re-enabled.
  */
 Datum
 ora_dbms_output_disable(PG_FUNCTION_ARGS)
 {
-	if (output_buffer != NULL)
-		output_buffer->enabled = false;
+	cleanup_output_buffer();
 
 	PG_RETURN_VOID();
 }
