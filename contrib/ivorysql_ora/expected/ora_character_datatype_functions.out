@@ -3272,6 +3272,12 @@ SELECT INSTR('Information for the information age requires information.', 'infor
  \D83D\DE0A\D83D\DC4D
 (1 row)
 
+ select asciistr(repeat('你', 205)) = repeat(chr(92) || '4F60', 205) as buffer_growth from dual;
+ buffer_growth 
+---------------
+ t
+(1 row)
+
  -- string with mixed ascii and non-ascii
  select asciistr('ABÄCDE') from dual;
   asciistr  
