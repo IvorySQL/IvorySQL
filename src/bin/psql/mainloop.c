@@ -492,7 +492,7 @@ MainLoop(FILE *source)
 		                         * init_value[0] indicates the type of missing quote: single or double quote
 		                         */
 		                        char	quote = bind_var->init_value[0];
-		                        char	*str_double_quote = pg_malloc0(strlen(bind_var->init_value) * 2);	/* Ensure enough space */
+		                        char	*str_double_quote = pg_malloc0(strlen(bind_var->init_value) * 2 + 1);	/* doubled quotes plus NUL */
 		                        char	*ptr = str_double_quote;
 		                        int		i;
 

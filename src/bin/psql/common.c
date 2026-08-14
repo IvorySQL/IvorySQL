@@ -3764,7 +3764,7 @@ get_hostvariables(const char *sql, bool *error)
 		return NULL;
 
 	/* double write quote */
-	newsql = pg_malloc0(strlen(sql) * 2);	/* enough */
+	newsql = pg_malloc0(strlen(sql) * 2 + 1);	/* doubled quotes plus NUL */
 	ptr = newsql;
 
 	while (*sql != '\0')

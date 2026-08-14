@@ -3797,7 +3797,13 @@ Ivyreplacenamebindtoposition(Ivyconn *tconn,
 			return 0;
 		}
 
-		newsql = malloc(stmtHandle->query_len * 2);	/* enough */
+		newsql = malloc((size_t) stmtHandle->query_len * 2 + 1);	/* doubled quotes plus NUL */
+		if (newsql == NULL)
+		{
+			free(query);
+			snprintf(errmsg, size_error_buf, "%s", "failed to allocate memory");
+			return 0;
+		}
 		ptr = newsql;
 		query_ptr = stmtHandle->query;
 		
@@ -4089,7 +4095,14 @@ Ivyreplacenamebindtoposition2(Ivyconn *tconn,
 			return 0;
 		}
 
-		newsql = malloc(strlen(stmtHandle->query) * 2);	/* enough */
+		newsql = malloc((size_t) strlen(stmtHandle->query) * 2 + 1);	/* doubled quotes plus NUL */
+		if (newsql == NULL)
+		{
+			free(query);
+			snprintf(errhp->error_msg, errhp->err_buf_size, "%s",
+					 "failed to allocate memory");
+			return 0;
+		}
 		ptr = newsql;
 		query_ptr = stmtHandle->query;
 		
