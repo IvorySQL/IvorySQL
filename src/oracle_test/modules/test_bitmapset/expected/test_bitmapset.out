@@ -528,6 +528,80 @@ SELECT test_bms_difference(NULL, NULL) AS result;
  <>
 (1 row)
 
+-- bms_offset_members()
+-- Ensure overflow detection works
+SELECT test_bms_offset_members('(b 1)', 2147483647);
+ERROR:  bitmapset overflow
+SELECT test_bms_offset_members('(b 2)', 2147483646);
+ERROR:  bitmapset overflow
+-- Ensure members are all offset as expected
+SELECT test_bms_offset_members('(b 1 3 5)', 1);
+ test_bms_offset_members 
+-------------------------
+ (b 2 4 6)
+(1 row)
+
+SELECT test_bms_offset_members('(b 1 3 5)', 0);
+ test_bms_offset_members 
+-------------------------
+ (b 1 3 5)
+(1 row)
+
+SELECT test_bms_offset_members('(b 1 3 5)', -1);
+ test_bms_offset_members 
+-------------------------
+ (b 0 2 4)
+(1 row)
+
+SELECT test_bms_offset_members('(b 31 32 63 64)', 1);
+ test_bms_offset_members 
+-------------------------
+ (b 32 33 64 65)
+(1 row)
+
+SELECT test_bms_offset_members('(b 31 32 63 64)', 0);
+ test_bms_offset_members 
+-------------------------
+ (b 31 32 63 64)
+(1 row)
+
+SELECT test_bms_offset_members('(b 31 32 63 64)', -1);
+ test_bms_offset_members 
+-------------------------
+ (b 30 31 62 63)
+(1 row)
+
+SELECT test_bms_offset_members('(b 1 2 3)', 64);
+ test_bms_offset_members 
+-------------------------
+ (b 65 66 67)
+(1 row)
+
+SELECT test_bms_offset_members('(b 65 66 67)', -64);
+ test_bms_offset_members 
+-------------------------
+ (b 1 2 3)
+(1 row)
+
+-- Ensure members going below zero silently fall off the set
+SELECT test_bms_offset_members('(b 0 1 2 10)', -2);
+ test_bms_offset_members 
+-------------------------
+ (b 0 8)
+(1 row)
+
+SELECT test_bms_offset_members('(b 1 2 3)', -10);
+ test_bms_offset_members 
+-------------------------
+ <>
+(1 row)
+
+SELECT test_bms_offset_members('(b 0)', -2147483648);
+ test_bms_offset_members 
+-------------------------
+ <>
+(1 row)
+
 -- bms_is_member()
 SELECT test_bms_is_member('(b)', -5); -- error
 ERROR:  negative bitmapset member not allowed
@@ -1573,6 +1647,13 @@ SELECT test_random_operations(NULL, 10000, 81920, 0) > 0 AS result;
  result 
 --------
  t
+(1 row)
+
+-- perform some random tests on bms_offset_members()
+SELECT test_random_offset_operations(NULL, 1000, 1024, 0) AS result;
+ result 
+--------
+   1000
 (1 row)
 
 DROP EXTENSION test_bitmapset;
