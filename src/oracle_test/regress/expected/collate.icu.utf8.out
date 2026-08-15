@@ -2397,8 +2397,8 @@ ERROR:  nondeterministic collations are not supported for regular expressions
 SELECT x FROM test1bpci UNION SELECT x FROM test2bpci ORDER BY x;
   x  
 -----
- abc
  ABC
+ abc
  def
  ghi
 (4 rows)

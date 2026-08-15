@@ -670,4 +670,10 @@ on true limit 1;
 -- Test handling of Vars with varno 0 in estimate_array_length
 explain (verbose, costs off)
 select null::int[] union all select null::int[] union all select null::bigint[];
+
+-- Estimate a UNION's output rows as the sum of its children's distinct-group
+-- estimates, not the total input size.  Ensure we get an index nested loop
+explain (costs off)
+select * from tenk1 t
+join (select ten from tenk1 union select ten from onek) s on s.ten = t.unique1;
 reset ivorysql.enable_emptystring_to_null;
