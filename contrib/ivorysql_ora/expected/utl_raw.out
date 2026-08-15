@@ -73,4 +73,3 @@ SELECT pg_catalog.encode(
 
 \c :original_db
 DROP DATABASE utl_raw_latin1;
-
