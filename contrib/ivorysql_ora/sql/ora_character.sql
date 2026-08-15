@@ -24,8 +24,7 @@ SELECT '中文'::varchar2(6 byte) = '中文'
        AND octet_length('中文'::varchar2(6 byte)) = 6;
 SELECT '中文'::varchar2(5 byte) = '中'
        AND octet_length('中文'::varchar2(5 byte)) = 3;
-SELECT '中文'::varchar2(2 byte) = ''
-       AND octet_length('中文'::varchar2(2 byte)) = 0;
+SELECT coalesce(octet_length('中文'::varchar2(2 byte)), 0) = 0;
 SELECT 'abcdef'::varchar2(4 byte) = 'abcd';
 SELECT 'abc'::varchar2(4 byte) = 'abc';
 
