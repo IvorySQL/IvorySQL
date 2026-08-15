@@ -2912,8 +2912,11 @@ ExecOraAlterIndexRebuild(ParseState *pstate,
 {
 	ReindexParams params = {0};
 	bool		online = false;
+	bool		has_online = false;
 	char	   *tablespacename = NULL;
+	bool		has_tablespace = false;
 	char	   *partitionname = NULL;
+	bool		has_partition = false;
 	bool		has_parallel = false;
 	bool		has_noparallel = false;
 	int			parallel_degree = 0;	/* 0 = auto; N >= 1 = explicit DOP */
@@ -2941,11 +2944,35 @@ ExecOraAlterIndexRebuild(ParseState *pstate,
 		DefElem    *opt = (DefElem *) lfirst(lc);
 
 		if (strcmp(opt->defname, "online") == 0)
+		{
+			if (has_online)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("duplicate ONLINE option"),
+						 parser_errposition(pstate, opt->location)));
+			has_online = true;
 			online = defGetBoolean(opt);
+		}
 		else if (strcmp(opt->defname, "tablespace") == 0)
+		{
+			if (has_tablespace)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("duplicate TABLESPACE option"),
+						 parser_errposition(pstate, opt->location)));
+			has_tablespace = true;
 			tablespacename = defGetString(opt);
+		}
 		else if (strcmp(opt->defname, "partition") == 0)
+		{
+			if (has_partition)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("duplicate PARTITION option"),
+						 parser_errposition(pstate, opt->location)));
+			has_partition = true;
 			partitionname = defGetString(opt);
+		}
 		else if (strcmp(opt->defname, "parallel") == 0)
 		{
 			if (has_noparallel)

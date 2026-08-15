@@ -441,6 +441,10 @@ lmerge_matched:
 				goto out;
 
 			case TM_Updated:
+				if (IsolationUsesXactSnapshot())
+					ereport(ERROR,
+							(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
+							 errmsg("could not serialize access due to concurrent update")));
 				{
 					bool		was_matched;
 					Relation	 resultRelationDesc;
@@ -711,6 +715,9 @@ IvytransformMergeStmt(ParseState *pstate, MergeStmt *stmt)
 	{
 		MergeWhenClause *mergeWhenClause = (MergeWhenClause *) lfirst(l);
 		MergeWhenClause *delstmt = NULL;
+
+		/* delete_clause is per-clause state; reset it for this iteration */
+		delete_clause = -1;
 
 		/*
 		 * Collect permissions to check, according to action types. We require
