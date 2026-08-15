@@ -40,6 +40,13 @@ SELECT '中文'::varchar2(5 byte) = '中'
  t
 (1 row)
 
+SELECT '中文'::varchar2(2 byte) = ''
+       AND octet_length('中文'::varchar2(2 byte)) = 0;
+ ?column? 
+----------
+ t
+(1 row)
+
 SELECT 'abcdef'::varchar2(4 byte) = 'abcd';
  ?column? 
 ----------
