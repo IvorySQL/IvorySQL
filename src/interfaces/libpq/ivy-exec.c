@@ -256,7 +256,7 @@ IvyCreatePreparedStatement(const char *stmtName,
 {
 	IvyPreparedStatement *result;
 
-	if (stmtName == NULL || query == NULL || nParams == 0)
+	if (stmtName == NULL || query == NULL || nParams == 0 || paramTypes == NULL)
 		return NULL;
 
 	result = (IvyPreparedStatement *) malloc(sizeof(IvyPreparedStatement));
@@ -432,11 +432,11 @@ IvyexecPreparedStatement(Ivyconn *tconn,
 	PGSemaphoreLock(&tconn->self_lock);
 	conn = tconn->conn;
 
-	if (!PQexecStart(conn))
+	if (!conn || !PQexecStart(conn))
 	{
 		PGSemaphoreUnlock(&tconn->self_lock);
 		PGSemaphoreUnlock(&stmtHandle->lock);
-		snprintf(errmsg, size_error_buf, "%s", PQerrorMessage(conn));
+		snprintf(errmsg, size_error_buf, "%s", conn ? PQerrorMessage(conn) : "connection is gone");
 		free(tresult);
 		return NULL;
 	}
@@ -628,8 +628,16 @@ IvyexecPreparedStatement2(Ivyconn *tconn,
 			tmp = (IvyBindOutInfo *) malloc(sizeof(IvyBindOutInfo));
 			if (tmp == NULL)
 			{
+				IvyBindOutInfo *leak;
+
 				PGSemaphoreUnlock(&stmtHandle->lock);
 				snprintf(errmsg, size_error_buf, "%s", "malloc failed");
+				while (dumpbindinfo != NULL)
+				{
+					leak = dumpbindinfo->next;
+					free(dumpbindinfo);
+					dumpbindinfo = leak;
+				}
 				free(tresult);
 				return NULL;
 			}
@@ -712,11 +720,11 @@ IvyexecPreparedStatement2(Ivyconn *tconn,
 	PGSemaphoreLock(&tconn->self_lock);
 	conn = tconn->conn;
 
-	if (!PQexecStart(conn))
+	if (!conn || !PQexecStart(conn))
 	{
 		PGSemaphoreUnlock(&tconn->self_lock);
 		PGSemaphoreUnlock(&stmtHandle->lock);
-		snprintf(errmsg, size_error_buf, "%s", PQerrorMessage(conn));
+		snprintf(errmsg, size_error_buf, "%s", conn ? PQerrorMessage(conn) : "connection is gone");
 		free(tresult);
 		return NULL;
 	}
@@ -1250,10 +1258,12 @@ IvyStmtPrepare(IvyPreparedStatement *stmthandle,
 					int		language,
 					int		mode)
 {
-	if (NULL == stmthandle || NULL == query )
+	if (NULL == stmthandle || NULL == query || NULL == errhp ||
+		NULL == errhp->error_msg)
 	{
-		snprintf(errhp->error_msg, errhp->err_buf_size, "%s", 
-				"stmthandle or query is null");
+		if (errhp != NULL && errhp->error_msg != NULL)
+			snprintf(errhp->error_msg, errhp->err_buf_size, "%s",
+					 "stmthandle or query is null");
 		return 0;
 	}
 
@@ -1261,7 +1271,7 @@ IvyStmtPrepare(IvyPreparedStatement *stmthandle,
 
 	if (stmthandle->query != NULL)
 	{
-		snprintf(errhp->error_msg, errhp->err_buf_size, 
+		snprintf(errhp->error_msg, errhp->err_buf_size,
 				"stmt has prepared a query");
 		PGSemaphoreUnlock(&stmthandle->lock);
 
@@ -1270,6 +1280,14 @@ IvyStmtPrepare(IvyPreparedStatement *stmthandle,
 
 	stmthandle->query_len = query_len;
 	stmthandle->query = strdup(query);
+	if (stmthandle->query == NULL)
+	{
+		snprintf(errhp->error_msg, errhp->err_buf_size, "%s",
+				"failed to allocate memory");
+		PGSemaphoreUnlock(&stmthandle->lock);
+
+		return 0;
+	}
 	stmthandle->mode = mode;
 	stmthandle->language = language;
 
@@ -1307,6 +1325,12 @@ IvybindOutParameterByPosInternel(IvyPreparedStatement *stmthandle,
 	if (position <= 0)
 	{
 		snprintf(errormsg, size_error_buf, "%s", "position is wrong");
+		return 0;
+	}
+
+	if (bindinfo == NULL)
+	{
+		snprintf(errormsg, size_error_buf, "%s", "bindinfo is null");
 		return 0;
 	}
 
@@ -1453,6 +1477,12 @@ IvyBindByPosInternel(IvyPreparedStatement *stmtHandle,
 	if (position <= 0)
 	{
 		snprintf(errhp->error_msg, errhp->err_buf_size, "%s", "position is wrong");
+		return 0;
+	}
+
+	if (bindinfo == NULL)
+	{
+		snprintf(errhp->error_msg, errhp->err_buf_size, "%s", "bindinfo is null");
 		return 0;
 	}
 
@@ -1811,6 +1841,8 @@ IvyHandleDostmt(Ivyconn *tconn,
 				snprintf(errmsg, err_buf_size, "%s",
 							"failed to allocate memory");
 
+				free(stmtHandle->paramTypes);
+				stmtHandle->paramTypes = NULL;
 				destroyPQExpBuffer(query_buf);
 
 				return 0;
@@ -1831,9 +1863,17 @@ IvyHandleDostmt(Ivyconn *tconn,
 				stmtHandle->paramNames[i] = malloc(size_char);
 				if (stmtHandle->paramNames[i] == NULL)
 				{
+					int		j;
+
 					snprintf(errmsg, err_buf_size, "%s",
 							"failed to allocate memory");
 
+					for (j = 0; j < i; j++)
+						free(stmtHandle->paramNames[j]);
+					free(stmtHandle->paramNames);
+					stmtHandle->paramNames = NULL;
+					free(stmtHandle->paramTypes);
+					stmtHandle->paramTypes = NULL;
 					destroyPQExpBuffer(query_buf);
 
 					return 0;
@@ -2248,14 +2288,12 @@ IvyStmtExecute(Ivyconn *tconn,
 	PGSemaphoreLock(&tconn->self_lock);
 	conn = tconn->conn;
 
-	if (!PQexecStart(conn))
+	if (!conn || !PQexecStart(conn))
 	{
 		PGSemaphoreUnlock(&tconn->self_lock);
 		PGSemaphoreUnlock(&stmtHandle->lock);
-
-		snprintf(errhp->error_msg, errhp->err_buf_size, "%s", PQerrorMessage(conn));
+		snprintf(errhp->error_msg, errhp->err_buf_size, "%s", conn ? PQerrorMessage(conn) : "connection is gone");
 		free(tresult);
-
 		return NULL;
 	}
 
@@ -2544,11 +2582,11 @@ IvyStmtExecute2(Ivyconn *tconn,
 	PGSemaphoreLock(&tconn->self_lock);
 	conn = tconn->conn;
 
-	if (!PQexecStart(conn))
+	if (!conn || !PQexecStart(conn))
 	{
 		PGSemaphoreUnlock(&tconn->self_lock);
 		PGSemaphoreUnlock(&stmtHandle->lock);
-		snprintf(errhp->error_msg, errhp->err_buf_size, "%s", PQerrorMessage(conn));
+		snprintf(errhp->error_msg, errhp->err_buf_size, "%s", conn ? PQerrorMessage(conn) : "connection is gone");
 		free(tresult);
 		return NULL;
 	}
@@ -3507,9 +3545,16 @@ assign_value_internel(PGresult *res, char *column,
 			case IVY_VALUE_INTEGER:
 			{
 				int int_value;
-				unsigned int diff = sizeof(int) - bindvar_size;
+				unsigned int diff;
 
 				int_value = atoi(attrvalue->value);
+				if (bindvar_size < sizeof(int))
+				{
+					if (indp != NULL)
+						*indp = -2;
+					break;
+				}
+				diff = sizeof(int) - bindvar_size;
 				if (indp != NULL)
 					*indp = diff;
 				*((int *) bindvar) = int_value;
@@ -3518,9 +3563,16 @@ assign_value_internel(PGresult *res, char *column,
 			case IVY_VALUE_BIGINTEGER:
 			{
 				long long_value;
-				unsigned int diff = sizeof(long) - bindvar_size;
+				unsigned int diff;
 
 				long_value = atol(attrvalue->value);
+				if (bindvar_size < sizeof(long))
+				{
+					if (indp != NULL)
+						*indp = -2;
+					break;
+				}
+				diff = sizeof(long) - bindvar_size;
 				if (indp != NULL)
 					*indp = diff;
 				*((long *) bindvar) = long_value;
@@ -3529,9 +3581,16 @@ assign_value_internel(PGresult *res, char *column,
 			case IVY_VALUE_FLOAT:
 			{
 				float float_value;
-				unsigned int diff = sizeof(float) - bindvar_size;
+				unsigned int diff;
 
 				float_value = atof(attrvalue->value);
+				if (bindvar_size < sizeof(float))
+				{
+					if (indp != NULL)
+						*indp = -2;
+					break;
+				}
+				diff = sizeof(float) - bindvar_size;
 				if (indp != NULL)
 					*indp = diff;
 				*((float *) bindvar) = float_value;
