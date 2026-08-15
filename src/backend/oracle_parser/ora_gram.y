@@ -693,6 +693,14 @@ static void determineLanguage(List *options);
 				json_table
 				json_table_column_definition
 				json_table_column_path_clause_opt
+				json_table_plan_clause_opt
+				json_table_plan
+				json_table_plan_simple
+				json_table_plan_outer
+				json_table_plan_inner
+				json_table_plan_union
+				json_table_plan_cross
+				json_table_plan_primary
 
 %type <list>		json_name_and_value_list
 					json_value_expr_list
@@ -705,6 +713,9 @@ static void determineLanguage(List *options);
 %type <ival>	json_behavior_type
 				json_predicate_type_constraint
 				json_quotes_clause_opt
+				json_table_default_plan_choices
+				json_table_default_plan_inner_outer
+				json_table_default_plan_union_cross
 				json_wrapper_behavior
 
 %type <boolean>		json_key_uniqueness_constraint_opt
@@ -16619,6 +16630,7 @@ json_table:
 				json_value_expr ',' a_expr json_table_path_name_opt
 				json_passing_clause_opt
 				COLUMNS '(' json_table_column_definition_list ')'
+				json_table_plan_clause_opt
 				json_on_error_clause_opt
 			')'
 				{
@@ -16630,13 +16642,15 @@ json_table:
 						castNode(A_Const, $5)->val.node.type != T_String)
 						ereport(ERROR,
 								errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								errmsg("only string constants are supported in JSON_TABLE path specification"),
+								errmsg("only string constants are supported in"
+									   " JSON_TABLE path specification"),
 								parser_errposition(@5));
 					pathstring = castNode(A_Const, $5)->val.sval.sval;
 					n->pathspec = makeJsonTablePathSpec(pathstring, $6, @5, @6);
 					n->passing = $7;
 					n->columns = $10;
-					n->on_error = (JsonBehavior *) $12;
+					n->planspec = (JsonTablePlanSpec *) $12;
+					n->on_error = (JsonBehavior *) $13;
 					n->location = @1;
 					$$ = (Node *) n;
 				}
@@ -16728,8 +16742,7 @@ json_table_column_definition:
 					JsonTableColumn *n = makeNode(JsonTableColumn);
 
 					n->coltype = JTC_NESTED;
-					n->pathspec = (JsonTablePathSpec *)
-						makeJsonTablePathSpec($3, NULL, @3, -1);
+					n->pathspec = makeJsonTablePathSpec($3, NULL, @3, -1);
 					n->columns = $6;
 					n->location = @1;
 					$$ = (Node *) n;
@@ -16740,8 +16753,7 @@ json_table_column_definition:
 					JsonTableColumn *n = makeNode(JsonTableColumn);
 
 					n->coltype = JTC_NESTED;
-					n->pathspec = (JsonTablePathSpec *)
-						makeJsonTablePathSpec($3, $5, @3, @5);
+					n->pathspec = makeJsonTablePathSpec($3, $5, @3, @5);
 					n->columns = $8;
 					n->location = @1;
 					$$ = (Node *) n;
@@ -16758,6 +16770,83 @@ json_table_column_path_clause_opt:
 				{ $$ = (Node *) makeJsonTablePathSpec($2, NULL, @2, -1); }
 			| /* EMPTY */
 				{ $$ = NULL; }
+		;
+
+json_table_plan_clause_opt:
+			PLAN '(' json_table_plan ')'
+				{ $$ = $3; }
+			| PLAN DEFAULT '(' json_table_default_plan_choices ')'
+				{ $$ = makeJsonTableDefaultPlan($4, @1); }
+			| /* EMPTY */
+				{ $$ = NULL; }
+		;
+
+json_table_plan:
+			json_table_plan_simple
+			| json_table_plan_outer
+			| json_table_plan_inner
+			| json_table_plan_union
+			| json_table_plan_cross
+		;
+
+json_table_plan_simple:
+			name
+				{ $$ = makeJsonTableSimplePlan($1, @1); }
+		;
+
+json_table_plan_outer:
+			json_table_plan_simple OUTER_P json_table_plan_primary
+				{ $$ = makeJsonTableJoinedPlan(JSTP_JOIN_OUTER, $1, $3, @1); }
+		;
+
+json_table_plan_inner:
+			json_table_plan_simple INNER_P json_table_plan_primary
+				{ $$ = makeJsonTableJoinedPlan(JSTP_JOIN_INNER, $1, $3, @1); }
+		;
+
+json_table_plan_union:
+			json_table_plan_primary UNION json_table_plan_primary
+				{ $$ = makeJsonTableJoinedPlan(JSTP_JOIN_UNION, $1, $3, @1); }
+			| json_table_plan_union UNION json_table_plan_primary
+				{ $$ = makeJsonTableJoinedPlan(JSTP_JOIN_UNION, $1, $3, @1); }
+		;
+
+json_table_plan_cross:
+			json_table_plan_primary CROSS json_table_plan_primary
+				{ $$ = makeJsonTableJoinedPlan(JSTP_JOIN_CROSS, $1, $3, @1); }
+			| json_table_plan_cross CROSS json_table_plan_primary
+				{ $$ = makeJsonTableJoinedPlan(JSTP_JOIN_CROSS, $1, $3, @1); }
+		;
+
+json_table_plan_primary:
+			json_table_plan_simple
+				{ $$ = $1; }
+			| '(' json_table_plan ')'
+				{
+					castNode(JsonTablePlanSpec, $2)->location = @1;
+					$$ = $2;
+				}
+		;
+
+json_table_default_plan_choices:
+			json_table_default_plan_inner_outer
+				{ $$ = $1 | JSTP_JOIN_UNION; }
+			| json_table_default_plan_union_cross
+				{ $$ = $1 | JSTP_JOIN_OUTER; }
+			| json_table_default_plan_inner_outer ',' json_table_default_plan_union_cross
+				{ $$ = $1 | $3; }
+			| json_table_default_plan_union_cross ',' json_table_default_plan_inner_outer
+				{ $$ = $1 | $3; }
+		;
+
+json_table_default_plan_inner_outer:
+			INNER_P						{ $$ = JSTP_JOIN_INNER; }
+			| OUTER_P					{ $$ = JSTP_JOIN_OUTER; }
+		;
+
+json_table_default_plan_union_cross:
+			UNION						{ $$ = JSTP_JOIN_UNION; }
+			| CROSS						{ $$ = JSTP_JOIN_CROSS; }
 		;
 
 /*****************************************************************************
