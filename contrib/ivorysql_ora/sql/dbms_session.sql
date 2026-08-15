@@ -157,13 +157,28 @@ select sys_context('rp_ns', 'key') as ctx_after_reset;
 
 DROP PACKAGE rp_pkg;
 
--- Clear operations validate oversized namespaces even when no context exists
-call dbms_session.clear_context('rp_ns');
-call dbms_session.clear_context(repeat('n', 255));
-call dbms_session.clear_all_context(repeat('n', 255));
+-- Reconnect so oversized clears exercise the uninitialized context store
+\c -
 \set VERBOSITY terse
-call dbms_session.set_context(repeat('n', 256), 'attr', 'value');
 call dbms_session.clear_context(repeat('n', 256), 'attr');
 call dbms_session.clear_context(repeat('n', 256));
 call dbms_session.clear_all_context(repeat('n', 256));
+\set VERBOSITY default
+
+-- The 255-byte namespace and attribute boundaries remain usable
+call dbms_session.set_context(repeat('n', 255), repeat('a', 255), 'value');
+select sys_context(repeat('n', 255), repeat('a', 255)) = 'value' as ok;
+call dbms_session.clear_context(repeat('n', 255), repeat('a', 255));
+select sys_context(repeat('n', 255), repeat('a', 255)) is null as ok;
+
+-- Namespace-wide clears exercise the fixed-size fold and comparison path
+call dbms_session.set_context(repeat('n', 255), 'attr', 'value');
+call dbms_session.clear_context(repeat('n', 255));
+select sys_context(repeat('n', 255), 'attr') is null as ok;
+call dbms_session.set_context(repeat('n', 255), 'attr', 'value');
+call dbms_session.clear_all_context(repeat('n', 255));
+select sys_context(repeat('n', 255), 'attr') is null as ok;
+
+\set VERBOSITY terse
+call dbms_session.set_context(repeat('n', 256), 'attr', 'value');
 \set VERBOSITY default
