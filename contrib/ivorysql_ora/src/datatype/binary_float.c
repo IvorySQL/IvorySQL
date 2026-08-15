@@ -513,7 +513,10 @@ binary_float_in(PG_FUNCTION_ARGS)
 					)
 					PG_RETURN_FLOAT4(-get_float4_infinity());
 				else if (val == 0.0)
+				{
+					val = 0.0;	/* normalize -0 to +0 */
 					goto accept_underflow;
+				}
 			}
 
 			/*

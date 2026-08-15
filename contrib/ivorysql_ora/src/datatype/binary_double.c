@@ -201,7 +201,10 @@ binary_double_in_internal_opt_error(char *num, char **endptr_p,
 				else if (val <= -HUGE_VAL)
 					return -get_float8_infinity();
 				else if (val == 0.0)
+				{
+					val = 0.0;	/* normalize -0 to +0 */
 					goto accept_underflow;
+				}
 			}
 
 			/*
