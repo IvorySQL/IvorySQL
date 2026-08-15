@@ -525,9 +525,7 @@ plisql_push_back_token(int token, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t y
 bool
 plisql_token_is_unreserved_keyword(int token)
 {
-	int			i;
-
-	for (i = 0; i < lengthof(UnreservedPLKeywordTokens); i++)
+	for (size_t i = 0; i < lengthof(UnreservedPLKeywordTokens); i++)
 	{
 		if (UnreservedPLKeywordTokens[i] == token)
 			return true;

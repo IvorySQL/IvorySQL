@@ -871,7 +871,7 @@ test_one_vector(pe_test_config *tc, const pe_test_vector *tv)
 		exit(1);
 	}
 
-	for (int escoff = 0; escoff < lengthof(pe_test_escape_funcs); escoff++)
+	for (size_t escoff = 0; escoff < lengthof(pe_test_escape_funcs); escoff++)
 	{
 		const pe_test_escape_func *ef = &pe_test_escape_funcs[escoff];
 
@@ -959,7 +959,7 @@ main(int argc, char *argv[])
 	test_gb18030_page_multiple(&tc);
 	test_gb18030_json(&tc);
 
-	for (int i = 0; i < lengthof(pe_test_vectors); i++)
+	for (size_t i = 0; i < lengthof(pe_test_vectors); i++)
 	{
 		test_one_vector(&tc, &pe_test_vectors[i]);
 	}

@@ -147,7 +147,7 @@ validator_startup(ValidatorModuleState *state)
 	 * startup_cb).
 	 */
 	RegisterOAuthHBAOptions(state, lengthof(hba_opts), hba_opts);
-	for (int i = 0; i < lengthof(hba_opts); i++)
+	for (size_t i = 0; i < lengthof(hba_opts); i++)
 	{
 		if (GetOAuthHBAOption(state, hba_opts[i]))
 			elog(ERROR,
