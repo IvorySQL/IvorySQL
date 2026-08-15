@@ -2916,7 +2916,7 @@ IvyassignOutParameters(const Ivyresult *tres, IvyBindOutInfo *outbind)
 				struct pgresAttValue *attrvalue;
 
 				attrvalue = &res->tuples[0][serbind->resultcolumnno];
-				if (attrvalue->len > 0 && attrvalue->len >= serbind->val_size)
+				if (attrvalue->len > 0 && attrvalue->len > serbind->val_size)
 				{
 					unsigned int diff = attrvalue->len - serbind->val_size;
 
@@ -2946,7 +2946,8 @@ IvyassignOutParameters(const Ivyresult *tres, IvyBindOutInfo *outbind)
 							*(serbind->indp) = 0;
 
 						memcpy(serbind->var, attrvalue->value, attrvalue->len);
-						((char *) serbind->var)[attrvalue->len] = '\0';
+						if (attrvalue->len < serbind->val_size)
+							((char *) serbind->var)[attrvalue->len] = '\0';
 					}
 				}
 			}
@@ -3485,7 +3486,7 @@ assign_value_internel(PGresult *res, char *column,
 		{
 			case IVY_VALUE_BYTE:
 			{
-				if (attrvalue->len >= bindvar_size)
+				if (attrvalue->len > bindvar_size)
 				{
 					unsigned int diff = attrvalue->len - bindvar_size;
 
@@ -3504,7 +3505,8 @@ assign_value_internel(PGresult *res, char *column,
 					if (indp != NULL)
 						*indp = 0;
 					memcpy(bindvar, attrvalue->value, attrvalue->len);
-					((char *) bindvar)[attrvalue->len] = '\0';
+					if (attrvalue->len < bindvar_size)
+						((char *) bindvar)[attrvalue->len] = '\0';
 				}
 			}
 			break;
