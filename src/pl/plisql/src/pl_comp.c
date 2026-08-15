@@ -2374,6 +2374,7 @@ plisql_parse_tripword(char *paramname, char *word1, char *word2, char *word3,
 						wdatum->quoted = false; /* not used */
 						wdatum->idents = idents;
 						wdatum->nname_used = 3;
+						return true;
 						break;
 					case PKG_TYPE:
 						break;
@@ -2381,7 +2382,6 @@ plisql_parse_tripword(char *paramname, char *word1, char *word2, char *word3,
 						break;
 				}
 				pfree(entry);
-				return true;
 			}
 		}
 	}
@@ -2421,6 +2421,15 @@ plisql_parse_wordtype(char *ident)
 		switch (nse->itemtype)
 		{
 			case PLISQL_NSTYPE_VAR:
+				if (plisql_Datums[nse->itemno]->dtype == PLISQL_DTYPE_PACKAGE_DATUM)
+				{
+					PLiSQL_var *var = (PLiSQL_var *)
+						((PLiSQL_pkg_datum *) plisql_Datums[nse->itemno])->pkgvar;
+
+					dtype = var->datatype;
+					dtype->notnull = var->notnull;
+					return dtype;
+				}
 
 				/*
 				 * Set the not null attribute of variable with notnull
