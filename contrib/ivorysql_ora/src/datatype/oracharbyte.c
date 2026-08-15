@@ -62,6 +62,16 @@ PG_FUNCTION_INFO_V1(oracharbyte_larger);
 PG_FUNCTION_INFO_V1(oracharbyte_smaller);
 PG_FUNCTION_INFO_V1(oracharbytehash);
 
+static void
+oracharbyte_check_collation_set(Oid collid)
+{
+	if (!OidIsValid(collid))
+		ereport(ERROR,
+				(errcode(ERRCODE_INDETERMINATE_COLLATION),
+				 errmsg("could not determine which collation to use for string comparison"),
+				 errhint("Use the COLLATE clause to set the collation explicitly.")));
+}
+
 /*******************************************************************
  * bpchar_input -- common guts of oracharbytein and oracharbyterecv
  *
@@ -375,7 +385,7 @@ oracharbyteeq(PG_FUNCTION_ARGS)
 	Oid			collid = PG_GET_COLLATION();
 	pg_locale_t mylocale;
 
-	check_collation_set(collid);
+	oracharbyte_check_collation_set(collid);
 
 	len1 = bcTruelen(arg1);
 	len2 = bcTruelen(arg2);
@@ -410,7 +420,7 @@ oracharbytene(PG_FUNCTION_ARGS)
 	Oid			collid = PG_GET_COLLATION();
 	pg_locale_t mylocale;
 
-	check_collation_set(collid);
+	oracharbyte_check_collation_set(collid);
 
 	len1 = bcTruelen(arg1);
 	len2 = bcTruelen(arg2);
@@ -625,7 +635,7 @@ oracharbytehash(PG_FUNCTION_ARGS)
 	pg_locale_t mylocale;
 	Datum		result;
 
-	check_collation_set(collid);
+	oracharbyte_check_collation_set(collid);
 
 	keydata = VARDATA_ANY(key);
 	keylen = bcTruelen(key);
