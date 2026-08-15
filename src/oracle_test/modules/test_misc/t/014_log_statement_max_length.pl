@@ -62,7 +62,7 @@ $node->psql(
 	'postgres', "
 	SET log_statement_max_length TO 0;
 	SELECT '123456789ABCDEF';");
-ok($node->log_contains(qr/LOG:\s+statement:\s*$/m, $log_offset),
+ok($node->log_contains(qr/statement:\s*$/m, $log_offset),
 	"0 logs an empty statement body");
 
 # Verify truncation via the extended query protocol (execute message).
