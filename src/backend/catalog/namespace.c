@@ -1584,17 +1584,17 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 			{
 				newResult->args[j] = proargtypes[argnumbers[j]];
 
-				if (argtypenames != NULL && strcmp(argtypenames[argnumbers[i]], "") != 0)
+				if (argtypenames != NULL && strcmp(argtypenames[argnumbers[j]], "") != 0)
 				{
 					TypeName	*tname;
 					PkgType *pkgtype;
 
-					tname = (TypeName *) stringToNode(argtypenames[argnumbers[i]]);
+					tname = (TypeName *) stringToNode(argtypenames[argnumbers[j]]);
 
 					pkgtype = LookupPkgTypeByTypename(tname->names, false);
 					if (pkgtype != NULL)
 					{
-						newResult->args[i] = pkgtype->basetypid;
+						newResult->args[j] = pkgtype->basetypid;
 						pfree(pkgtype);
 					}
 					else
@@ -1611,7 +1611,7 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 									 errmsg("argument type %s is invalid",
 										TypeNameToString(tname))));
 
-							newResult->args[i] = typeTypeId(typtup);
+							newResult->args[j] = typeTypeId(typtup);
 							ReleaseSysCache(typtup);
 						}
 					}

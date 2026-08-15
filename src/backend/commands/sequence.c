@@ -1838,15 +1838,15 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 			if ((seqform->seqtypid == INT2OID && seqform->seqmax == PG_INT16_MAX) ||
 				(seqform->seqtypid == INT4OID && seqform->seqmax == PG_INT32_MAX) ||
 				(seqform->seqtypid == INT8OID && seqform->seqmax == PG_INT64_MAX) ||
-				(seqform->seqtypid == FLOAT4OID && seqform->seqmax == PG_INT32_MAX) ||
+				(seqform->seqtypid == FLOAT4OID && seqform->seqmax == PG_INT64_MAX) ||
 				(seqform->seqtypid == FLOAT8OID && seqform->seqmax == PG_INT64_MAX) ||
 				(seqform->seqtypid == NUMBEROID && seqform->seqmax == PG_INT64_MAX))
 				reset_max_value = true;
 			if ((seqform->seqtypid == INT2OID && seqform->seqmin == PG_INT16_MIN) ||
 				(seqform->seqtypid == INT4OID && seqform->seqmin == PG_INT32_MIN) ||
 				(seqform->seqtypid == INT8OID && seqform->seqmin == PG_INT64_MIN) ||
-				(seqform->seqtypid == FLOAT4OID && seqform->seqmin == PG_INT32_MAX) ||
-				(seqform->seqtypid == FLOAT8OID && seqform->seqmin == PG_INT64_MAX) ||
+				(seqform->seqtypid == FLOAT4OID && seqform->seqmin == PG_INT64_MIN) ||
+				(seqform->seqtypid == FLOAT8OID && seqform->seqmin == PG_INT64_MIN) ||
 				(seqform->seqtypid == NUMBEROID && seqform->seqmin == PG_INT64_MIN))
 				reset_min_value = true;
 		}
