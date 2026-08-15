@@ -2638,7 +2638,7 @@ calculate_oraparamname_position(Node *parsetree, char ***paramnames)
 	 * Check if the parameter is correct,
 	 * make sure all the parameters should have a name.
 	 */
-	for (i = 1; i < state.maxparams; i++)
+	for (i = 1; i <= state.numParams; i++)
 	{
 		if (state.paramNames[i] == NULL)
 			elog(ERROR, "placeholdvar at the position %d has no name", i);
