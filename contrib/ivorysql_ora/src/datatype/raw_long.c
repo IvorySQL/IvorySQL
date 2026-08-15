@@ -195,7 +195,8 @@ orachar_to_long_with_typmod(PG_FUNCTION_ARGS)
 	int32		maxlen = PG_GETARG_INT32(1);
 	bool		isExplicit = PG_GETARG_BOOL(2);
 	BpChar	   *result;
-	int32		len;
+	int32		len,
+				charlen;
 	char	   *r;
 	char	   *s;
 
@@ -207,26 +208,24 @@ orachar_to_long_with_typmod(PG_FUNCTION_ARGS)
 
 	len = VARSIZE_ANY_EXHDR(source);
 	s = VARDATA_ANY(source);
+	charlen = pg_mbstrlen_with_len(s, len);
 
-	/* No work if supplied data matches typmod already */
-	if (len == maxlen)
+	/* No work if supplied data fits the typmod already */
+	if (charlen <= maxlen)
 		PG_RETURN_TEXT_P(source);
 
 	/*
 	 * Report error for implicit conversion 
 	 * Truncate string for exlicit conversion 
 	 */
-	if (len > maxlen)
-	{
-		if (!isExplicit)
-			ereport(ERROR,
-					(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-					 errmsg("value too long for type long(%d)",
-							maxlen)));
-		len = maxlen;	
-	}
+	if (!isExplicit)
+		ereport(ERROR,
+				(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
+				 errmsg("value too long for type long(%d)",
+						maxlen)));
+	len = pg_mbcharcliplen(s, len, maxlen);
 
-	Assert(maxlen >= len);
+	Assert(maxlen >= pg_mbstrlen_with_len(s, len));
 
 	result = palloc(len + VARHDRSZ);
 	SET_VARSIZE(result, len + VARHDRSZ);

@@ -44,6 +44,14 @@ SELECT * FROM LONG_TEXT ORDER BY II DESC;
 
 DROP TABLE LONG_TEXT;
 
+-- LONG typmods count characters, not bytes
+CREATE TABLE LONG_UTF8_TEST(a LONG(2));
+INSERT INTO LONG_UTF8_TEST VALUES ('中文');
+INSERT INTO LONG_UTF8_TEST VALUES ('中文A');
+SELECT length(a) = 2 AND octet_length(a) = 6 FROM LONG_UTF8_TEST;
+SELECT '中文A'::LONG(2) = '中文'::text;
+DROP TABLE LONG_UTF8_TEST;
+
 -- rawtohex
 SELECT sys.rawtohex('\xDEADBEEF'::bytea);
 SELECT sys.rawtohex('\xFF'::raw);
