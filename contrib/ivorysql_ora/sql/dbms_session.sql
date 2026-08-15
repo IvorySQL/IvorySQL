@@ -156,3 +156,14 @@ call dbms_session.reset_package();
 select sys_context('rp_ns', 'key') as ctx_after_reset;
 
 DROP PACKAGE rp_pkg;
+
+-- Clear operations validate oversized namespaces even when no context exists
+call dbms_session.clear_context('rp_ns');
+call dbms_session.clear_context(repeat('n', 255));
+call dbms_session.clear_all_context(repeat('n', 255));
+\set VERBOSITY terse
+call dbms_session.set_context(repeat('n', 256), 'attr', 'value');
+call dbms_session.clear_context(repeat('n', 256), 'attr');
+call dbms_session.clear_context(repeat('n', 256));
+call dbms_session.clear_all_context(repeat('n', 256));
+\set VERBOSITY default
