@@ -313,7 +313,13 @@ COMMIT;
 
 -- This should fail gracefully with proper error message
 -- \set ON_ERROR_STOP off
+-- The error CONTEXT echoes the internally generated dblink query, whose
+-- connection string embeds the dynamically assigned server port, so the
+-- output differs between runs.  Suppress CONTEXT display to keep the
+-- expected output stable (same technique as upstream copy2.sql).
+\set SHOW_CONTEXT never
 SELECT test_function_error();
+\set SHOW_CONTEXT errors
 -- \set ON_ERROR_STOP on
 
 --

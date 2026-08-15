@@ -344,12 +344,14 @@ COMMIT;
 WARNING:  there is no transaction in progress
 -- This should fail gracefully with proper error message
 -- \set ON_ERROR_STOP off
+-- The error CONTEXT echoes the internally generated dblink query, whose
+-- connection string embeds the dynamically assigned server port, so the
+-- output differs between runs.  Suppress CONTEXT display to keep the
+-- expected output stable (same technique as upstream copy2.sql).
+\set SHOW_CONTEXT never
 SELECT test_function_error();
 ERROR:  relation "nonexistent_table" does not exist
-CONTEXT:  PL/iSQL function test_function_error() line 6 at SQL statement
-while executing query on unnamed dblink connection
-SQL statement "SELECT * FROM dblink('dbname=''pl_regression'' port=58928', 'SET ivorysql.compatible_mode = oracle; SET plisql.inside_autonomous_transaction = true; SELECT public.test_function_error();') AS t(result pg_catalog.int4)"
-PL/iSQL function test_function_error() during function entry
+\set SHOW_CONTEXT errors
 -- \set ON_ERROR_STOP on
 --
 -- Test 16: Function with pass-by-reference return type
