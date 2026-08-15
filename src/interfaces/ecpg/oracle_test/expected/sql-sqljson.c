@@ -414,8 +414,8 @@ if (sqlca.sqlcode < 0) sqlprint();}
 if (sqlca.sqlcode < 0) sqlprint();}
 #line 114 "sqljson.pgc"
 
-	  for (int i = 0; i < sizeof(is_json); i++)
-		  printf("Found is_json[%d]: %s\n", i, is_json[i] ? "true" : "false");
+	  for (size_t i = 0; i < sizeof(is_json); i++)
+		  printf("Found is_json[%zu]: %s\n", i, is_json[i] ? "true" : "false");
 
   { ECPGdisconnect(__LINE__, "CURRENT");
 #line 118 "sqljson.pgc"

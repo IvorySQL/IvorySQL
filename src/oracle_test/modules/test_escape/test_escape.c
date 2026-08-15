@@ -355,7 +355,7 @@ escape_replace(PGconn *conn, PQExpBuffer target,
 
 	appendPQExpBufferChar(target, '\'');
 
-	for (int i = 0; i < unescaped_len; i++)
+	for (size_t i = 0; i < unescaped_len; i++)
 	{
 		char		c = *s;
 

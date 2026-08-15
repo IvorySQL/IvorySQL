@@ -112,8 +112,8 @@ EXEC SQL END DECLARE SECTION;
 		  INTO :is_json[0], :is_json[1], :is_json[2], :is_json[3], :is_json[4],
 		  :is_json[5], :is_json[6], :is_json[7]
 		  FROM val;
-	  for (int i = 0; i < sizeof(is_json); i++)
-		  printf("Found is_json[%d]: %s\n", i, is_json[i] ? "true" : "false");
+	  for (size_t i = 0; i < sizeof(is_json); i++)
+		  printf("Found is_json[%zu]: %s\n", i, is_json[i] ? "true" : "false");
 
   EXEC SQL DISCONNECT;
 

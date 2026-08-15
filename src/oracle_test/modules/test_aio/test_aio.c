@@ -564,7 +564,7 @@ evict_rel(PG_FUNCTION_ARGS)
 
 			nblocks = smgrnblocks(smgr, forknum);
 
-			for (int blkno = 0; blkno < nblocks; blkno++)
+			for (BlockNumber blkno = 0; blkno < nblocks; blkno++)
 			{
 				invalidate_one_block(rel, forknum, blkno);
 			}

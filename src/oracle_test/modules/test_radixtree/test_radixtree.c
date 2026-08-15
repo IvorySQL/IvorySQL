@@ -321,7 +321,7 @@ test_random(void)
 	/* add some random values */
 	pg_prng_seed(&state, seed);
 	keys = (TestValueType *) palloc(sizeof(uint64) * num_keys);
-	for (uint64 i = 0; i < num_keys; i++)
+	for (int i = 0; i < num_keys; i++)
 	{
 		uint64		key = pg_prng_uint64(&state) & filter;
 		TestValueType val = (TestValueType) key;
@@ -334,7 +334,7 @@ test_random(void)
 
 	rt_stats(radixtree);
 
-	for (uint64 i = 0; i < num_keys; i++)
+	for (int i = 0; i < num_keys; i++)
 	{
 		TestValueType *value;
 
@@ -349,7 +349,7 @@ test_random(void)
 	qsort(keys, num_keys, sizeof(uint64), key_cmp);
 
 	/* should not find numbers in between the keys */
-	for (uint64 i = 0; i < num_keys - 1; i++)
+	for (int i = 0; i < num_keys - 1; i++)
 	{
 		TestValueType *value;
 
@@ -411,7 +411,7 @@ test_random(void)
 	pg_prng_seed(&state, seed);
 
 	/* delete in original random order */
-	for (uint64 i = 0; i < num_keys; i++)
+	for (int i = 0; i < num_keys; i++)
 	{
 		uint64		key = pg_prng_uint64(&state) & filter;
 
