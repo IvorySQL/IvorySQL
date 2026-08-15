@@ -1687,8 +1687,6 @@ ora_build_regexp_instr_matches_result(regexp_matches_ctx *matchctx ,int ret_opt,
 			eo = matchctx->match_locs[loc + matchctx->npatterns * 2 -1] - 1;
 			if(eo < 0)
 				eo = 0;
-			if(so == eo)
-				return false;
 		}
 
 		if (so < 0 || eo < 0)

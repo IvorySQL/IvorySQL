@@ -2157,8 +2157,14 @@ adjust_partial_year_to_2020RR(int year)
 		{
 			sprintf(year1, "%d%02d", prenum, year);
 		}
+		else if (sufnum >= 50 && year <= 49)
+		{
+			/* current 50-99, input 00-49: next century */
+			sprintf(year1, "%d%02d", prenum + 1, year);
+		}
 		else
 		{
+			/* current 00-49, input 50-99: previous century */
 			sprintf(year1, "%d%02d", prenum - 1, year);
 		}
 	}
