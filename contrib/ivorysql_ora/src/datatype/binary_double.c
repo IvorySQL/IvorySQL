@@ -200,6 +200,8 @@ binary_double_in_internal_opt_error(char *num, char **endptr_p,
 					return get_float8_infinity();
 				else if (val <= -HUGE_VAL)
 					return -get_float8_infinity();
+				else if (val == 0.0)
+					goto accept_underflow;
 			}
 
 			/*
@@ -235,6 +237,7 @@ binary_double_in_internal_opt_error(char *num, char **endptr_p,
 	}
 
 	/* skip trailing whitespace */
+accept_underflow:
 	while (*endptr != '\0' && isspace((unsigned char) *endptr))
 		endptr++;
 

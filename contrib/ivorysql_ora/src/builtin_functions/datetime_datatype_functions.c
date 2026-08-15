@@ -853,16 +853,10 @@ to_oradate3(PG_FUNCTION_ARGS)
 {
 	text	   *date_txt = PG_GETARG_TEXT_P(0);
 	text	   *fmt = PG_GETARG_TEXT_P(1);
-	text	   *nlsparam = PG_GETARG_TEXT_P(2);
 	Oid			collid = PG_GET_COLLATION();
 	Timestamp	result;
 	struct pg_tm tm;
 	fsec_t		fsec;
-
-	/* TODO */
-	char	   *p;
-
-	p = text_to_cstring(nlsparam);
 
 #if 0
 	if (strlen(p) != 0)
@@ -934,14 +928,10 @@ to_oratimestamp3(PG_FUNCTION_ARGS)
 {
 	text	   *date_txt = PG_GETARG_TEXT_P(0);
 	text	   *fmt = PG_GETARG_TEXT_P(1);
-	text	   *nlsparam = PG_GETARG_TEXT_P(2);
 	Oid			collid = PG_GET_COLLATION();
 	Timestamp	result;
 	struct pg_tm tm;
 	fsec_t		fsec;
-	char	   *p;
-
-	p = text_to_cstring(nlsparam);
 
 	/*
 	 * if (strlen(p) != 0) ereport(WARNING,
@@ -1042,16 +1032,12 @@ to_oratimestamptz3(PG_FUNCTION_ARGS)
 {
 	text	   *date_txt = PG_GETARG_TEXT_P(0);
 	text	   *fmt = PG_GETARG_TEXT_P(1);
-	text	   *nlsparam = PG_GETARG_TEXT_P(2);
 	Oid			collid = PG_GET_COLLATION();
 	Timestamp	result;
 	int			tz;
 	struct pg_tm tm;
 	fsec_t		fsec;
 	DateTimeErrorExtra extra;
-	char	   *p;
-
-	p = text_to_cstring(nlsparam);
 
 	/*
 	 * if (strlen(p) != 0) ereport(WARNING,

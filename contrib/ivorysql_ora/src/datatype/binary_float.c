@@ -512,6 +512,8 @@ binary_float_in(PG_FUNCTION_ARGS)
 #endif
 					)
 					PG_RETURN_FLOAT4(-get_float4_infinity());
+				else if (val == 0.0)
+					goto accept_underflow;
 			}
 
 			/*
@@ -545,6 +547,7 @@ binary_float_in(PG_FUNCTION_ARGS)
 	}
 
 	/* skip trailing whitespace */
+accept_underflow:
 	while (*endptr != '\0' && isspace((unsigned char) *endptr))
 		endptr++;
 
