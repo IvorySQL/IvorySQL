@@ -1159,13 +1159,21 @@ other			.
 				}
 
 {param}			{
-					ErrorSaveContext escontext = {T_ErrorSaveContext};
-					int32	val;
+					int32	val = 0;
+					const char *p = yytext + 1;
 
 					SET_YYLLOC();
-					val = pg_strtoint32_safe(yytext + 1, (Node *) &escontext);
-					if (escontext.error_occurred)
-						yyerror("parameter number too large");
+					/* Parameter numbers stop at the first non-digit; unlike
+					 * numeric literals they accept no underscore separators,
+					 * so $0_1 must parse as parameter 0 followed by an
+					 * identifier, not as the number 1. */
+					while (*p >= '0' && *p <= '9')
+					{
+						if (unlikely(val > (PG_INT32_MAX - (*p - '0')) / 10))
+							yyerror("parameter number too large");
+						val = val * 10 + (*p - '0');
+						p++;
+					}
 					yylval->ival = val;
 					return PARAM;
 				}
