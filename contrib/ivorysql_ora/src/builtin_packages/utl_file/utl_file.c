@@ -1342,23 +1342,6 @@ get_line(FILE *fd, size_t max_linesize, int encoding, bool *iseof)
 		*bpt++ = c;
 	}
 
-	/* A line that does not fit in max_linesize must raise an error */
-	if (csize == max_linesize)
-	{
-		c = fgetc(fd);
-		if (c == '\r')
-		{
-			int	c2 = fgetc(fd);
-
-			if (c2 == '\n')
-				c = '\n';
-			else
-				c = '\r';
-		}
-		if (c != EOF && c != '\n')
-			CUSTOM_EXCEPTION(VALUE_ERROR, "buffer is too short");
-	}
-
 	if (!eof)
 	{
 		char   *decoded;
