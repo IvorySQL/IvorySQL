@@ -6,6 +6,7 @@
 
 use strict;
 use warnings FATAL => 'all';
+use File::Copy qw(copy);
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
@@ -113,5 +114,48 @@ my $logfile = slurp_file($node->logfile());
 ok( $logfile =~
 	  qr/FATAL: .* could not find redo location .* referenced by checkpoint record at .*/,
 	"ends with FATAL because it could not find redo location");
+
+# Test for a missing redo record specified in a backup_label file.
+# This reuses the redo and checkpoint LSNs calculated previously and
+# writes a fake backup_label into a fresh node.
+my $node_label = PostgreSQL::Test::Cluster->new('testnode_backup_label');
+$node_label->init;
+$node_label->append_conf('postgresql.conf', "archive_mode = off");
+
+# Copy pg_control from the original node so the new node recognizes the
+# system identifier and timeline.
+copy(
+	$node->data_dir . '/global/pg_control',
+	$node_label->data_dir . '/global/pg_control'
+) or BAIL_OUT("could not copy pg_control");
+
+# Provide only the checkpoint segment, omitting the redo segment.
+copy(
+	$node->data_dir . "/pg_wal/$checkpoint_walfile_name",
+	$node_label->data_dir . "/pg_wal/$checkpoint_walfile_name"
+) or BAIL_OUT("could not copy checkpoint WAL segment");
+
+# Write a fake backup_label with valid checkpoint and redo LSNs.
+open my $fh, '>', $node_label->data_dir . '/backup_label'
+  or BAIL_OUT("could not create backup_label");
+binmode $fh;
+print $fh "START WAL LOCATION: $redo_lsn (file $redo_walfile_name)\n";
+print $fh "CHECKPOINT LOCATION: $checkpoint_lsn\n";
+print $fh "BACKUP METHOD: pg_backup_start\n";
+print $fh "BACKUP FROM: primary\n";
+close $fh;
+
+run_log(
+	[
+		'pg_ctl',
+		'--pgdata' => $node_label->data_dir,
+		'--log' => $node_label->logfile,
+		'start',
+	]);
+
+my $logfile_label = slurp_file($node_label->logfile());
+ok( $logfile_label =~
+	  qr/FATAL: .* could not find redo location .* referenced by checkpoint record at .*/,
+	"ends with FATAL for missing redo location with backup_label");
 
 done_testing();
