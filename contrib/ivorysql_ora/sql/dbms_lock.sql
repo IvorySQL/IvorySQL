@@ -75,6 +75,9 @@ begin
  v_rc := dbms_lock.request(v_handle, dbms_lock.x_mode, 0);  
  raise notice 'request rc=%', v_rc;
  assert v_rc = 0, format('DBMS_LOCK.request failed: rc=%s', v_rc);
+ v_rc := dbms_lock.request(v_handle, dbms_lock.x_mode, 0);
+ raise notice 'second request rc=%', v_rc;
+ assert v_rc = 4, format('DBMS_LOCK.request should report already owned: rc=%s', v_rc);
  insert into handle values(v_handle);
 end;
 /
