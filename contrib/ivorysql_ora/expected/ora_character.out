@@ -25,6 +25,33 @@ LINE 1: CREATE TABLE TEST_ORACHAR(a varchar2(32768 char));
 -- valid range
 CREATE TABLE TEST_ORACHAR(a char(5 byte), b char(5 char));
 CREATE TABLE TEST_ORAVARCHAR(a varchar2(5 char), b varchar2(5 byte));
+-- Explicit VARCHAR2(n BYTE) casts retain only complete characters
+SELECT '中文'::varchar2(6 byte) = '中文'
+       AND octet_length('中文'::varchar2(6 byte)) = 6;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '中文'::varchar2(5 byte) = '中'
+       AND octet_length('中文'::varchar2(5 byte)) = 3;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT 'abcdef'::varchar2(4 byte) = 'abcd';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT 'abc'::varchar2(4 byte) = 'abc';
+ ?column? 
+----------
+ t
+(1 row)
+
 INSERT INTO TEST_ORACHAR SELECT generate_series(1,10), generate_series(1,10);
 INSERT INTO TEST_ORAVARCHAR SELECT generate_series(1,10), generate_series(1,10);
 -- Comparison operator
