@@ -2121,7 +2121,10 @@ pg_stat_progress_data_checksums| SELECT s.pid,
             WHEN '-1'::pg_catalog.int4 THEN NULL::pg_catalog.int8
             ELSE s.param2
         END AS databases_total,
-    s.param3 AS databases_done,
+        CASE s.param3
+            WHEN '-1'::pg_catalog.int4 THEN NULL::pg_catalog.int8
+            ELSE s.param3
+        END AS databases_done,
         CASE s.param4
             WHEN '-1'::pg_catalog.int4 THEN NULL::pg_catalog.int8
             ELSE s.param4
