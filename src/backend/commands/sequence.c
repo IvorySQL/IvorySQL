@@ -1572,7 +1572,6 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 	DefElem    *cache_value = NULL;
 	DefElem    *is_cycled = NULL;
 	DefElem	   *scale = NULL;
-	DefElem	   *session = NULL;
 	ListCell   *option;
 	bool		reset_max_value = false;
 	bool		reset_min_value = false;
@@ -1735,7 +1734,7 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 		}
 		else if(strcmp(defel->defname, "session") == 0)
 		{
-			if (session || global_flag)
+			if (session_flag || global_flag)
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
@@ -1746,7 +1745,7 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 		}
 		else if(strcmp(defel->defname, "global") == 0)
 		{
-			if (session || session_flag)
+			if (session_flag || global_flag)
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
