@@ -670,7 +670,7 @@ ora_tz_offset(PG_FUNCTION_ARGS)
 				 errmsg("timestamp out of range")));
 
 	tz = DetermineTimeZoneOffset(tm, timezonedat);
-	if (tz <= 0)
+	if (tz < 0)
 	{
 		tz = tz * (-1);
 		ispositive = false;
@@ -1589,7 +1589,7 @@ ora_make_timezone(char **newval)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 					 errmsg("timezone minute between 0 and 59")));
-		if (hours < 0)
+		if (hours < 0 || (*newval)[0] == '-')
 			minu *= -1;
 		gmtoffset = -(hours * SECS_PER_HOUR + minu * SECS_PER_MINUTE);
 		new_tz = pg_tzset_offset(gmtoffset);
