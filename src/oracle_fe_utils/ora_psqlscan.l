@@ -602,7 +602,10 @@ other			.
 								if (cur_str[fir_len + i] == cur_str[last_len - tmp + i])
 									flag = true;
 								else
+								{
+									flag = false;
 									break;
+								}
 							}
 						}
 					}

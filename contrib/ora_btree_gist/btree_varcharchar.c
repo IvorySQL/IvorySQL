@@ -165,15 +165,15 @@ gbt_varcharcharcmp(const void *a, const void *b, Oid collation, FmgrInfo *flinfo
 
 static gbtree_vinfo bptinfo =
 {
-	gbt_t_bpchar,
+	gbt_t_text,
 	0,
 	false,
-	gbt_varcharchargt,
-	gbt_varcharcharge,
-	gbt_varcharchareq,
-	gbt_varcharcharle,
-	gbt_varcharcharlt,
-	gbt_varcharcharcmp,
+	gbt_textgt,
+	gbt_textge,
+	gbt_texteq,
+	gbt_textle,
+	gbt_textlt,
+	gbt_textcmp,
 	NULL
 };
 
