@@ -670,7 +670,7 @@ ora_tz_offset(PG_FUNCTION_ARGS)
 				 errmsg("timestamp out of range")));
 
 	tz = DetermineTimeZoneOffset(tm, timezonedat);
-	if (tz < 0)
+	if (tz <= 0)
 	{
 		tz = tz * (-1);
 		ispositive = false;
