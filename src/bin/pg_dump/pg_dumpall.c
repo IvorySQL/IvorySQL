@@ -614,9 +614,7 @@ main(int argc, char *argv[])
 			exit_nicely(1);
 		}
 	}
-#ifdef IvorySQL
-		getDbCompatibleMode(conn);
-#endif
+	getDbCompatibleMode(conn);
 
 	/*
 	 * Get a list of database names that match the exclude patterns
@@ -775,6 +773,7 @@ main(int argc, char *argv[])
 				pg_encoding_to_char(encoding));
 		fprintf(OPF, "SET standard_conforming_strings = on;\n");
 		fprintf(OPF, "SET ivorysql.identifier_case_switch = normal;\n");
+		fprintf(OPF, "SET ivorysql.enable_emptystring_to_NULL = off;\n");
 		fprintf(OPF, "\n");
 	}
 
