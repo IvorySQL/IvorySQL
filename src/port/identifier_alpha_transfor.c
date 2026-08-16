@@ -109,7 +109,7 @@ is_all_lower(const char *src, int len)
 
 	for (i = 0; i < len; i++)
 	{
-		if (isalpha(*s) && isupper(*s))
+		if (isalpha((unsigned char) *s) && isupper((unsigned char) *s))
 			return false;
 		s++;
 	}
@@ -130,7 +130,7 @@ is_all_upper(const char *src, int len)
 
 	for (i = 0; i < len; i++)
 	{
-		if (isalpha(*s) && islower(*s))
+		if (isalpha((unsigned char) *s) && islower((unsigned char) *s))
 			return false;
 		s++;
 	}

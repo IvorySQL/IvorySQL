@@ -2790,7 +2790,7 @@ alter_table_cmd:
 					n->def = $2;
 					n->missing_ok = false;
 					colDef = castNode(ColumnDef, $2);
-					if (strcmp(colDef->colname, "rowid") == 0)
+					if (pg_strcasecmp(colDef->colname, "rowid") == 0)
 						elog(ERROR, "column name \"%s\" conflicts with a system column name", colDef->colname);
 					$$ = (Node *) n;
 				}
@@ -2803,7 +2803,7 @@ alter_table_cmd:
 				n->def = $3;
 				n->missing_ok = false;
 				colDef = castNode(ColumnDef, $3);
-					if (strcmp(colDef->colname, "rowid") == 0)
+					if (pg_strcasecmp(colDef->colname, "rowid") == 0)
 						elog(ERROR, "column name \"%s\" conflicts with a system column name", colDef->colname);
 				$$ = (Node *)n;
 				}
@@ -2817,7 +2817,7 @@ alter_table_cmd:
 					n->def = $5;
 					n->missing_ok = true;
 					colDef = castNode(ColumnDef, $5);
-					if (strcmp(colDef->colname, "rowid") == 0)
+					if (pg_strcasecmp(colDef->colname, "rowid") == 0)
 						elog(ERROR, "column name \"%s\" conflicts with a system column name", colDef->colname);
 					$$ = (Node *) n;
 				}
@@ -2831,7 +2831,7 @@ alter_table_cmd:
 					n->def = $3;
 					n->missing_ok = false;
 					colDef = castNode(ColumnDef, $3);
-					if (strcmp(colDef->colname, "rowid") == 0)
+					if (pg_strcasecmp(colDef->colname, "rowid") == 0)
 						elog(ERROR, "column name \"%s\" conflicts with a system column name", colDef->colname);
 					$$ = (Node *) n;
 				}
@@ -2845,7 +2845,7 @@ alter_table_cmd:
 					n->def = $6;
 					n->missing_ok = true;
 					colDef = castNode(ColumnDef, $6);
-					if (strcmp(colDef->colname, "rowid") == 0)
+					if (pg_strcasecmp(colDef->colname, "rowid") == 0)
 						elog(ERROR, "column name \"%s\" conflicts with a system column name", colDef->colname);
 					$$ = (Node *) n;
 				}
@@ -3058,7 +3058,7 @@ alter_table_cmd:
 					n->name = $5;
 					n->behavior = $6;
 					n->missing_ok = true;
-					if (strcmp(n->name, "rowid") == 0)
+					if (pg_strcasecmp(n->name, "rowid") == 0)
 						elog(ERROR, "cannot drop system column \"%s\"", n->name);
 					$$ = (Node *) n;
 				}
@@ -3071,7 +3071,7 @@ alter_table_cmd:
 					n->name = $3;
 					n->behavior = $4;
 					n->missing_ok = false;
-					if (strcmp(n->name, "rowid") == 0)
+					if (pg_strcasecmp(n->name, "rowid") == 0)
 						elog(ERROR, "cannot drop system column \"%s\"", n->name);
 					$$ = (Node *) n;
 				}

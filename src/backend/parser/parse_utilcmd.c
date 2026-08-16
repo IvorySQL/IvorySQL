@@ -304,7 +304,7 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 				{
 					ColumnDef  *col = (ColumnDef *) element;
 
-					if (compatible_db == ORA_PARSER && strcmp(col->colname, "rowid") == 0)
+					if (compatible_db == ORA_PARSER && pg_strcasecmp(col->colname, "rowid") == 0)
 						elog(ERROR, "column name \"%s\" conflicts with a system column name", col->colname);
 					else
 						transformColumnDefinition(&cxt, (ColumnDef *) element);

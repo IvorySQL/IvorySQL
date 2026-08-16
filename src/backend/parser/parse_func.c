@@ -567,8 +567,6 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 					(procstruct->prokind == PROKIND_FUNCTION ||
 					 procstruct->prokind == PROKIND_PROCEDURE))
 				{
-					ReleaseSysCache(tup);
-
 					ereport(ERROR,
 							(errcode(ERRCODE_SYNTAX_ERROR),
 							 errmsg("%s %s is in invalid state",
