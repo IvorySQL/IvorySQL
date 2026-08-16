@@ -1221,7 +1221,7 @@ PostmasterMain(int argc, char *argv[])
 			ereport(FATAL,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("invalid list syntax in parameter \"%s\"",
-							"listen_addresses")));
+							"ivorysql.listen_addresses")));
 		}
 
 		foreach(l, elemlist)

@@ -241,15 +241,24 @@ BackendInitialize(ClientSocket *client_sock, CAC_state cac)
 	{
 		char	PostPortNumberStr[32];
 		char	OraPortNumberStr[32];
+		size_t	slen = strlen(service);
+		size_t	plen;
+		size_t	olen;
 
 		snprintf(PostPortNumberStr, sizeof(PostPortNumberStr), "%d", PostPortNumber);
 		snprintf(OraPortNumberStr, sizeof(OraPortNumberStr), "%d", OraPortNumber);
+		plen = strlen(PostPortNumberStr);
+		olen = strlen(OraPortNumberStr);
 
-		if (strstr(service, PostPortNumberStr) != NULL)
+		/* Socket names end with the port number; compare the suffix so that
+		 * e.g. an oracle port 15432 is not matched by the PG port 5432 */
+		if (slen >= plen &&
+			strcmp(service + slen - plen, PostPortNumberStr) == 0)
 		{
 			port->connmode = 'p';
 		}
-		else if (strstr(service, OraPortNumberStr) != NULL)
+		else if (slen >= olen &&
+				 strcmp(service + slen - olen, OraPortNumberStr) == 0)
 		{
 			port->connmode = 'o';
 		}

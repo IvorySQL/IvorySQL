@@ -1526,7 +1526,7 @@
 },
 
 { name => 'ivorysql.listen_addresses', type => 'string', context => 'PGC_POSTMASTER', group => 'CONN_AUTH_SETTINGS',
-  short_desc => 'Sets the shell command that will be called to archive a WAL file.',
+  short_desc => 'Sets the host name or IP address(es) the server will listen to for Oracle connections.',
   flags => 'GUC_LIST_INPUT',
   variable => 'OraListenAddresses',
   boot_val => '"localhost"',
@@ -2437,7 +2437,7 @@
 },
 
 { name => 'nls_timestamp_tz_format', type => 'string', context => 'PGC_USERSET', group => 'COMPAT_ORACLE_OPTIONS',
-  short_desc => 'Sets the shell command that will be called to archive a WAL file.',
+  short_desc => 'Sets the default time zone format for TIMESTAMP WITH TIME ZONE values.',
   long_desc => 'An empty string means use "archive_library".',
   flags => 'GUC_NOT_IN_SAMPLE',
   variable => 'nls_timestamp_tz_format',
