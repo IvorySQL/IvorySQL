@@ -4738,6 +4738,11 @@ ExecEvalXmlExpr(ExprState *state, ExprEvalStep *op)
 				ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 						errmsg("invalid number of arguments")));
 
+			/* resnull is already true; bail out on any NULL argument */
+			for (int i = 0; i < list_length(xexpr->args); i++)
+				if (op->d.xmlexpr.argnull[i])
+					return;
+
 			for (int i = 0; i < list_length(xexpr->args); i++)
 			{
 				values = lappend(values, DatumGetPointer(argvalue[i]));
@@ -4746,10 +4751,12 @@ ExecEvalXmlExpr(ExprState *state, ExprEvalStep *op)
 			if (values != NIL)
 			{
 				if (ora_updatexml_hook && compatible_db == ORA_PARSER)
+				{
 					*op->resvalue = PointerGetDatum((*ora_updatexml_hook)(values));
+					*op->resnull = false;
+				}
 				else
-					*op->resvalue = (Datum) 0;
-				*op->resnull = false;
+					*op->resnull = true;
 			}
 		}
 		break;
