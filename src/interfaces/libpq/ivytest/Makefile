@@ -14,7 +14,7 @@ endif
 override CPPFLAGS := -I$(libpq_srcdir) $(CPPFLAGS)
 LDFLAGS_INTERNAL += $(libpq_pgport)
 
-PROGS = testlibpq testlibpqstmt2 testlibpq_nullstmt testlibpq_allout testlibpq_prepare_plsql testlibpq_prepare_dml \
+PROGS = testlibpq testlibpqstmt2 testlibpq_deallocate_name testlibpq_nullstmt testlibpq_allout testlibpq_prepare_plsql testlibpq_prepare_dml \
         testlibpq_binary_double testlibpq_binary_float testlibpq_interval testlibpq_number testlibpq_prepare_call \
 		testlibpq_call testlibpqstmt2_call
 
