@@ -1001,7 +1001,21 @@ main(int argc, char **argv)
 	ConnectDatabaseAhx(fout, &dopt.cparams, false);
 	getDbCompatibleMode(((ArchiveHandle *) fout)->connection);
 	setup_connection(fout, dumpencoding, dumpsnapshot, use_role);
-	ExecuteSqlStatement(fout, "set ivorysql.identifier_case_switch = normal;");
+	/* Only set the IvorySQL-specific GUC when it exists (native-PG sources) */
+	{
+		PGresult   *res_guc;
+		bool		has_guc = false;
+
+		res_guc = ExecuteSqlQuery(fout,
+								  "SELECT 1 FROM pg_catalog.pg_settings "
+								  "WHERE name = 'ivorysql.identifier_case_switch'",
+								  PGRES_TUPLES_OK);
+		has_guc = (PQntuples(res_guc) > 0);
+		PQclear(res_guc);
+
+		if (has_guc)
+			ExecuteSqlStatement(fout, "set ivorysql.identifier_case_switch = normal;");
+	}
 
 	/*
 	 * On hot standbys, never try to dump unlogged table data, since it will
@@ -7281,6 +7295,7 @@ getPackages(Archive *fout, int *numPkgs)
 			findNamespace(atooid(PQgetvalue(res, i, i_pkgnamespace)));
 		pkginfo[i].rolname = pg_strdup(PQgetvalue(res, i, i_rolname));
 		pkginfo[i].pkgacl = pg_strdup(PQgetvalue(res, i, i_pkgacl));
+		pkginfo[i].dacl.acl = pg_strdup(PQgetvalue(res, i, i_pkgacl));
 		pkginfo[i].dacl.acldefault = pg_strdup(PQgetvalue(res, i, i_acldefault));
 		pkginfo[i].dacl.privtype = 0;
 		pkginfo[i].dacl.initprivs = NULL;
@@ -7288,10 +7303,10 @@ getPackages(Archive *fout, int *numPkgs)
 		/* Decide whether we want to dump it */
 		selectDumpableObject(&(pkginfo[i].dobj), fout);
 		/* Do not try to dump ACL if no ACL exists. */
-		if (!PQgetisnull(res, i, i_pkgacl))
+		if (PQgetisnull(res, i, i_pkgacl))
 			pkginfo[i].dobj.dump &= ~DUMP_COMPONENT_ACL;
 		if (strlen(pkginfo[i].rolname) == 0)
-			pg_log_warning("WARNING: owner of package \"%s\" appears to be invalid\n",
+			pg_log_warning("owner of package \"%s\" appears to be invalid",
 					  pkginfo[i].dobj.name);
 	}
 	PQclear(res);

@@ -3289,7 +3289,7 @@ initialize_data_directory(void)
 	fputs(_("performing post-bootstrap initialization ... "), stdout);
 	fflush(stdout);
 
-	if (strcmp(dbmode, "pg") == 0)
+	if (pg_strcasecmp(dbmode, "pg") == 0)
 	{
 		initPQExpBuffer(&cmd);
 		printfPQExpBuffer(&cmd, "\"%s\" %s %s template1 >%s",
