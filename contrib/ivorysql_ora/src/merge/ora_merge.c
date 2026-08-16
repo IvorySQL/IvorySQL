@@ -330,6 +330,11 @@ lmerge_matched:
 										 newslot, mtstate->canSetTag, &updateCxt);
 				if (result == TM_Ok)
 				{
+					if (updateCxt.crossPartUpdate)
+					{
+						mtstate->mt_merge_updated += 1;
+						goto out;
+					}
 					/* Fire row-level after update trigger */
 					ExecUpdateEpilogue(context, &updateCxt, resultRelInfo,
 										 tupleid, NULL, newslot);

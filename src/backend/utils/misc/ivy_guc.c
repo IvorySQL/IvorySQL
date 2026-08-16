@@ -518,8 +518,10 @@ assign_compatible_mode(int newval, void *extra)
 			sql_raw_parser = ora_raw_parser;
 
 
-			pg_transform_merge_stmt_hook = ora_transform_merge_stmt_hook;
-			pg_exec_merge_matched_hook = ora_exec_merge_matched_hook;
+			pg_transform_merge_stmt_hook = ora_transform_merge_stmt_hook ?
+				ora_transform_merge_stmt_hook : transformMergeStmt;
+			pg_exec_merge_matched_hook = ora_exec_merge_matched_hook ?
+				ora_exec_merge_matched_hook : ExecMergeMatched;
 
 			assign_search_path(NULL, NULL);
 		}

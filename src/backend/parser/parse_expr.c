@@ -787,7 +787,8 @@ transformColumnRefInternal(ParseState *pstate, ColumnRef *cref, bool missing_ok)
 				}
 
 				colname = strVal(field2);
-				set_merge_on_attrno(pstate, colname);
+				if (nsitem == pstate->p_target_nsitem)
+					set_merge_on_attrno(pstate, colname);
 
 				/* Try to identify as a column of the nsitem */
 				node = scanNSItemForColumn(pstate, nsitem, levels_up, colname,
@@ -855,7 +856,8 @@ transformColumnRefInternal(ParseState *pstate, ColumnRef *cref, bool missing_ok)
 				}
 
 				colname = strVal(field3);
-				set_merge_on_attrno(pstate, colname);
+				if (nsitem == pstate->p_target_nsitem)
+					set_merge_on_attrno(pstate, colname);
 
 				/* Try to identify as a column of the nsitem */
 				node = scanNSItemForColumn(pstate, nsitem, levels_up, colname,
@@ -935,7 +937,8 @@ transformColumnRefInternal(ParseState *pstate, ColumnRef *cref, bool missing_ok)
 				}
 
 				colname = strVal(field4);
-				set_merge_on_attrno(pstate, colname);
+				if (nsitem == pstate->p_target_nsitem)
+					set_merge_on_attrno(pstate, colname);
 
 				/* Try to identify as a column of the nsitem */
 				node = scanNSItemForColumn(pstate, nsitem, levels_up, colname,
