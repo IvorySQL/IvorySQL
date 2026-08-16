@@ -344,12 +344,10 @@ COMMIT;
 WARNING:  there is no transaction in progress
 -- This should fail gracefully with proper error message
 -- \set ON_ERROR_STOP off
+\set VERBOSITY terse
 SELECT test_function_error();
 ERROR:  relation "nonexistent_table" does not exist
-CONTEXT:  PL/iSQL function test_function_error() line 6 at SQL statement
-while executing query on unnamed dblink connection
-SQL statement "SELECT * FROM dblink('dbname=''pl_regression'' port=58928', 'SET ivorysql.compatible_mode = oracle; SET plisql.inside_autonomous_transaction = true; SELECT public.test_function_error();') AS t(result pg_catalog.int4)"
-PL/iSQL function test_function_error() during function entry
+\set VERBOSITY default
 -- \set ON_ERROR_STOP on
 --
 -- Test 16: Function with pass-by-reference return type
@@ -535,14 +533,44 @@ SELECT id, msg FROM autonomous_test WHERE id = 76;
 (1 row)
 
 --
+-- Test 22: AUTHID DEFINER authenticates as the function owner
+--
+CREATE ROLE autonomous_caller;
+CREATE OR REPLACE FUNCTION test_autonomous_definer_user RETURN TEXT
+AUTHID DEFINER AS $$
+PRAGMA AUTONOMOUS_TRANSACTION;
+BEGIN
+    RETURN current_user;
+END;
+$$ LANGUAGE plisql;
+/
+SET ROLE autonomous_caller;
+SELECT public.test_autonomous_definer_user() = session_user AS uses_function_owner;
+ uses_function_owner 
+---------------------
+ t
+(1 row)
+
+RESET ROLE;
+--
+-- Test 23: Resolve dblink functions from the extension schema
+-- Earlier tests warmed both cached OIDs.  Creating these functions sends a
+-- pg_proc invalidation before each lookup below.
+--
+CREATE SCHEMA autonomous_untrusted;
+CREATE FUNCTION autonomous_untrusted.dblink(TEXT, TEXT)
+RETURNS SETOF RECORD LANGUAGE SQL AS 'SELECT 999';
+CREATE FUNCTION autonomous_untrusted.dblink_exec(TEXT, TEXT)
+RETURNS TEXT LANGUAGE SQL AS 'SELECT ''HIJACKED''';
+SET search_path = autonomous_untrusted, public, pg_catalog;
+SELECT public.test_function_return(77);
+CALL public.test_with_params(78, 'qualified dblink');
+RESET search_path;
+SELECT id, msg FROM autonomous_test WHERE id IN (77, 78) ORDER BY id;
+--
 -- Summary: Show all test results
 --
 SELECT 'All autonomous transaction tests completed' AS status;
-                   status                   
---------------------------------------------
- All autonomous transaction tests completed
-(1 row)
-
 -- Cleanup
 DROP PROCEDURE test_basic();
 DROP PROCEDURE test_with_params(INT, TEXT);
@@ -561,6 +589,27 @@ DROP FUNCTION outer_function(INT);
 DROP FUNCTION test_function_numeric(NUMERIC);
 DROP FUNCTION test_function_date(DATE, INT);
 DROP FUNCTION test_function_boolean(INT);
+DROP FUNCTION test_autonomous_definer_user();
 DROP PACKAGE BODY test_pkg;
 DROP PACKAGE test_pkg;
+DROP FUNCTION autonomous_untrusted.dblink(TEXT, TEXT);
+DROP FUNCTION autonomous_untrusted.dblink_exec(TEXT, TEXT);
+DROP SCHEMA autonomous_untrusted;
+DROP ROLE autonomous_caller;
 DROP TABLE autonomous_test;
+ test_function_return 
+----------------------
+                  154
+(1 row)
+
+ id |       msg        
+----+------------------
+ 77 | function test
+ 78 | qualified dblink
+(2 rows)
+
+                   status                   
+--------------------------------------------
+ All autonomous transaction tests completed
+(1 row)
+

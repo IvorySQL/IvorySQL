@@ -21,6 +21,7 @@
 #include "nodes/makefuncs.h"
 #include "parser/parse_func.h"
 #include "parser/parse_type.h"
+#include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/guc.h"
@@ -33,6 +34,46 @@
 
 static Oid	dblink_exec_oid = InvalidOid;
 static Oid	dblink_oid = InvalidOid;
+
+static Oid
+lookup_dblink_function(const char *function_name)
+{
+	Oid		extension_oid;
+	Oid		extension_schema;
+	Oid		argtypes[2] = {TEXTOID, TEXTOID};
+	char   *schema_name;
+	Oid		function_oid;
+
+	extension_oid = get_extension_oid("dblink", true);
+	if (!OidIsValid(extension_oid))
+		return InvalidOid;
+
+	extension_schema = get_extension_schema(extension_oid);
+	schema_name = get_namespace_name(extension_schema);
+	if (schema_name == NULL)
+		return InvalidOid;
+
+	function_oid = LookupFuncName(list_make2(makeString(schema_name),
+											 makeString(pstrdup(function_name))),
+							  2, argtypes, true);
+
+	return function_oid;
+}
+
+static void
+append_conninfo_value(StringInfo buf, const char *keyword, const char *value)
+{
+	const char *p;
+
+	appendStringInfo(buf, "%s='", keyword);
+	for (p = value; *p; p++)
+	{
+		if (*p == '\'' || *p == '\\')
+			appendStringInfoChar(buf, '\\');
+		appendStringInfoChar(buf, *p);
+	}
+	appendStringInfoChar(buf, '\'');
+}
 
 /**
  * Reset the cached dblink_exec OID when the pg_proc catalog changes.
@@ -139,8 +180,8 @@ get_procedure_name(Oid funcoid)
 				 errdetail("Schema OID %u no longer exists.", nspoid)));
 	}
 
-	/* Build schema-qualified name */
-	result = psprintf("%s.%s", quote_identifier(nspname), quote_identifier(procname));
+	/* Build a schema-qualified name, quoting each identifier independently. */
+	result = quote_qualified_identifier(nspname, procname);
 
 	ReleaseSysCache(proctup);
 	pfree(nspname);
@@ -208,7 +249,8 @@ plisql_check_dblink_available(void)
  *         responsible for freeing the returned string with pfree.
  */
 static char *
-build_autonomous_call(PLiSQL_function *func, FunctionCallInfo fcinfo, bool *is_function)
+build_autonomous_call(PLiSQL_function *func, FunctionCallInfo fcinfo,
+					  bool *is_function)
 {
 	StringInfoData sql;
 	StringInfoData args;
@@ -335,12 +377,12 @@ execute_autonomous_function(char *connstr, char *sql, Oid rettype, FunctionCallI
 	bool typbyval;
 	MemoryContext oldcontext;
 	bool spi_connected = false;
+	char   *dblink_name;
 
 	/* Look up dblink() function if not cached */
 	if (!OidIsValid(dblink_oid))
 	{
-		Oid argtypes[2] = {TEXTOID, TEXTOID};
-		dblink_oid = LookupFuncName(list_make1(makeString("dblink")), 2, argtypes, true);
+		dblink_oid = lookup_dblink_function("dblink");
 		if (!OidIsValid(dblink_oid))
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_FUNCTION),
@@ -349,10 +391,13 @@ execute_autonomous_function(char *connstr, char *sql, Oid rettype, FunctionCallI
 	}
 
 	/* Build query: SELECT * FROM dblink('connstr', 'sql') AS t(result rettype) */
-	query = psprintf("SELECT * FROM dblink(%s, %s) AS t(result %s)",
+	dblink_name = get_procedure_name(dblink_oid);
+	query = psprintf("SELECT * FROM %s(%s, %s) AS t(result %s)",
+					 dblink_name,
 					 quote_literal_cstr(connstr),
 					 quote_literal_cstr(sql),
 					 format_type_be(rettype));
+	pfree(dblink_name);
 
 	/* Execute via SPI with proper error handling */
 	PG_TRY();
@@ -442,6 +487,7 @@ plisql_exec_autonomous_function(PLiSQL_function *func, FunctionCallInfo fcinfo,
 	const char *port_str;
 	const char *host_str;
 	char *dbname;
+	char *username;
 	Datum connstr_datum;
 	Datum sql_datum;
 	Datum result_datum;
@@ -456,8 +502,7 @@ plisql_exec_autonomous_function(PLiSQL_function *func, FunctionCallInfo fcinfo,
 	/* Lookup dblink_exec function if not cached */
 	if (!OidIsValid(dblink_exec_oid))
 	{
-		Oid argtypes[2] = {TEXTOID, TEXTOID};
-		dblink_exec_oid_local = LookupFuncName(list_make1(makeString("dblink_exec")), 2, argtypes, true);
+		dblink_exec_oid_local = lookup_dblink_function("dblink_exec");
 		if (!OidIsValid(dblink_exec_oid_local))
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_FUNCTION),
@@ -468,6 +513,7 @@ plisql_exec_autonomous_function(PLiSQL_function *func, FunctionCallInfo fcinfo,
 
 	/* Get current database name dynamically */
 	dbname = get_current_database();
+	username = GetUserNameFromId(GetUserId(), false);
 
 	/* Get return type to determine if this is a function or procedure */
 	proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(func->fn_oid));
@@ -484,15 +530,14 @@ plisql_exec_autonomous_function(PLiSQL_function *func, FunctionCallInfo fcinfo,
 	port_str = GetConfigOption("port", false, false);
 	initStringInfo(&connstr_buf);
 
-	/* Append dbname with single-quote escaping for libpq */
-	appendStringInfoString(&connstr_buf, "dbname='");
-	for (const char *p = dbname; *p; p++)
-	{
-		if (*p == '\'' || *p == '\\')
-			appendStringInfoChar(&connstr_buf, '\\');
-		appendStringInfoChar(&connstr_buf, *p);
-	}
-	appendStringInfoChar(&connstr_buf, '\'');
+	/*
+	 * Authenticate the autonomous connection as the effective SQL user.  If
+	 * that identity cannot authenticate independently, dblink must fail closed
+	 * rather than connect as the server operating-system account.
+	 */
+	append_conninfo_value(&connstr_buf, "dbname", dbname);
+	appendStringInfoChar(&connstr_buf, ' ');
+	append_conninfo_value(&connstr_buf, "user", username);
 
 	/* Add host if configured */
 	host_str = GetConfigOption("listen_addresses", false, false);
@@ -522,6 +567,7 @@ plisql_exec_autonomous_function(PLiSQL_function *func, FunctionCallInfo fcinfo,
 			pfree(connstr_buf.data);
 			pfree(sql);
 			pfree(dbname);
+			pfree(username);
 			PG_RE_THROW();
 		}
 		PG_END_TRY();
@@ -530,6 +576,7 @@ plisql_exec_autonomous_function(PLiSQL_function *func, FunctionCallInfo fcinfo,
 		pfree(connstr_buf.data);
 		pfree(sql);
 		pfree(dbname);
+		pfree(username);
 
 		return result;
 	}
@@ -551,6 +598,7 @@ plisql_exec_autonomous_function(PLiSQL_function *func, FunctionCallInfo fcinfo,
 			pfree(connstr_buf.data);
 			pfree(sql);
 			pfree(dbname);
+			pfree(username);
 			PG_RE_THROW();
 		}
 		PG_END_TRY();
@@ -559,6 +607,7 @@ plisql_exec_autonomous_function(PLiSQL_function *func, FunctionCallInfo fcinfo,
 		pfree(connstr_buf.data);
 		pfree(sql);
 		pfree(dbname);
+		pfree(username);
 
 		/* Procedures return NULL */
 		fcinfo->isnull = true;

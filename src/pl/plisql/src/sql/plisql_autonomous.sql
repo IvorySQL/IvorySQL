@@ -313,7 +313,9 @@ COMMIT;
 
 -- This should fail gracefully with proper error message
 -- \set ON_ERROR_STOP off
+\set VERBOSITY terse
 SELECT test_function_error();
+\set VERBOSITY default
 -- \set ON_ERROR_STOP on
 
 --
@@ -452,6 +454,38 @@ CALL test_pkg.pkg_test_with_params(76, 'package procedure test');
 SELECT id, msg FROM autonomous_test WHERE id = 76;
 
 --
+-- Test 22: AUTHID DEFINER authenticates as the function owner
+--
+CREATE ROLE autonomous_caller;
+CREATE OR REPLACE FUNCTION test_autonomous_definer_user RETURN TEXT
+AUTHID DEFINER AS $$
+PRAGMA AUTONOMOUS_TRANSACTION;
+BEGIN
+    RETURN current_user;
+END;
+$$ LANGUAGE plisql;
+/
+SET ROLE autonomous_caller;
+SELECT public.test_autonomous_definer_user() = session_user AS uses_function_owner;
+RESET ROLE;
+
+--
+-- Test 23: Resolve dblink functions from the extension schema
+-- Earlier tests warmed both cached OIDs.  Creating these functions sends a
+-- pg_proc invalidation before each lookup below.
+--
+CREATE SCHEMA autonomous_untrusted;
+CREATE FUNCTION autonomous_untrusted.dblink(TEXT, TEXT)
+RETURNS SETOF RECORD LANGUAGE SQL AS 'SELECT 999';
+CREATE FUNCTION autonomous_untrusted.dblink_exec(TEXT, TEXT)
+RETURNS TEXT LANGUAGE SQL AS 'SELECT ''HIJACKED''';
+SET search_path = autonomous_untrusted, public, pg_catalog;
+SELECT public.test_function_return(77);
+CALL public.test_with_params(78, 'qualified dblink');
+RESET search_path;
+SELECT id, msg FROM autonomous_test WHERE id IN (77, 78) ORDER BY id;
+
+--
 -- Summary: Show all test results
 --
 SELECT 'All autonomous transaction tests completed' AS status;
@@ -474,6 +508,11 @@ DROP FUNCTION outer_function(INT);
 DROP FUNCTION test_function_numeric(NUMERIC);
 DROP FUNCTION test_function_date(DATE, INT);
 DROP FUNCTION test_function_boolean(INT);
+DROP FUNCTION test_autonomous_definer_user();
 DROP PACKAGE BODY test_pkg;
 DROP PACKAGE test_pkg;
+DROP FUNCTION autonomous_untrusted.dblink(TEXT, TEXT);
+DROP FUNCTION autonomous_untrusted.dblink_exec(TEXT, TEXT);
+DROP SCHEMA autonomous_untrusted;
+DROP ROLE autonomous_caller;
 DROP TABLE autonomous_test;
