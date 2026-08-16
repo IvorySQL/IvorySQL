@@ -1554,7 +1554,7 @@ numtodsinterval(PG_FUNCTION_ARGS)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("illegal argument for function numtoyminterval")));
+				 errmsg("illegal argument for function numtodsinterval")));
 	}
 
 	result = (Interval *) palloc(sizeof(Interval));
