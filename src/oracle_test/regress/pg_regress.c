@@ -2559,6 +2559,7 @@ regression_main(int argc, char *argv[],
 		
 		/* BEGIN - SQL oracle_test */
 		oraPort = port + 1;
+		sprintf(portstr, "%d", oraPort);	/* probe the oracle port, not the main one */
 
 		for (i = 0; i < 16; i++)
 		{

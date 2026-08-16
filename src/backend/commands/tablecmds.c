@@ -16298,6 +16298,10 @@ RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
 
 	systable_endscan(scan);
 	table_close(depRel, NoLock);
+
+	/* write back the (possibly repalloc'd) array to the caller */
+	if (FuncPkgDepend)
+		*dependentFuncPkg = dependentFuncPkgOids;
 }
 
 /*
