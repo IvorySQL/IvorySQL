@@ -39,6 +39,7 @@
 #include "parser/parse_type.h"
 #include "parser/scansup.h"
 #include "utils/acl.h"
+#include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/regproc.h"
@@ -346,7 +347,9 @@ format_procedure_extended(Oid procedure_oid, uint16 flags)
 		char	   *proname = NameStr(procform->proname);
 		int			nargs = procform->pronargs;
 		int			i;
+		int			argname_idx;
 		char	   *nspname;
+		char	   *promodes = NULL;
 		StringInfoData buf;
 		char		**p_argtypeNames = NULL;
 
@@ -371,15 +374,36 @@ format_procedure_extended(Oid procedure_oid, uint16 flags)
 			get_func_typename_info(proctup,
 						&p_argtypeNames, NULL);
 
-		for (i = 0; i < nargs; i++)
+		/* proargmodes marks OUT/TABLE positions in p_argtypeNames */
+		if (p_argtypeNames != NULL)
+		{
+			Datum		proargmodes;
+			bool		isnull;
+
+			proargmodes = SysCacheGetAttr(PROCOID, proctup,
+										  Anum_pg_proc_proargmodes,
+										  &isnull);
+			if (!isnull)
+				promodes = (char *) ARR_DATA_PTR(DatumGetArrayTypeP(proargmodes));
+		}
+
+		for (i = 0, argname_idx = 0; i < nargs; i++, argname_idx++)
 		{
 			Oid			thisargtype = procform->proargtypes.values[i];
 
+			/* skip OUT/TABLE positions in p_argtypeNames */
+			if (promodes != NULL)
+			{
+				while (promodes[argname_idx] == FUNC_PARAM_OUT ||
+					   promodes[argname_idx] == FUNC_PARAM_TABLE)
+					argname_idx++;
+			}
+
 			if (i > 0)
 				appendStringInfoChar(&buf, ',');
-			if (p_argtypeNames != NULL && strcmp(p_argtypeNames[i], "") != 0)
+			if (p_argtypeNames != NULL && strcmp(p_argtypeNames[argname_idx], "") != 0)
 			{
-				TypeName *tname = stringToNode(p_argtypeNames[i]);
+				TypeName *tname = stringToNode(p_argtypeNames[argname_idx]);
 
 				appendStringInfoString(&buf,
 								   (flags & FORMAT_PROC_FORCE_QUALIFY) != 0 ?
@@ -398,6 +422,8 @@ format_procedure_extended(Oid procedure_oid, uint16 flags)
 
 		result = buf.data;
 
+		if (p_argtypeNames != NULL)
+			pfree(p_argtypeNames);
 		ReleaseSysCache(proctup);
 	}
 	else if ((flags & FORMAT_PROC_INVALID_AS_NULL) != 0)
@@ -429,6 +455,8 @@ format_procedure_parts(Oid procedure_oid, List **objnames, List **objargs,
 	Form_pg_proc procform;
 	int			nargs;
 	int			i;
+	int			argname_idx;
+	char	   *promodes = NULL;
 	char		**p_argtypeNames = NULL;
 
 	proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(procedure_oid));
@@ -449,15 +477,37 @@ format_procedure_parts(Oid procedure_oid, List **objnames, List **objargs,
 	if (ORA_PARSER == compatible_db)
 		get_func_typename_info(proctup,
 						&p_argtypeNames, NULL);
-	for (i = 0; i < nargs; i++)
+
+	/* proargmodes marks OUT/TABLE positions in p_argtypeNames */
+	if (p_argtypeNames != NULL)
+	{
+		Datum		proargmodes;
+		bool		isnull;
+
+		proargmodes = SysCacheGetAttr(PROCOID, proctup,
+									  Anum_pg_proc_proargmodes,
+									  &isnull);
+		if (!isnull)
+			promodes = (char *) ARR_DATA_PTR(DatumGetArrayTypeP(proargmodes));
+	}
+
+	for (i = 0, argname_idx = 0; i < nargs; i++, argname_idx++)
 	{
 		Oid			thisargtype = procform->proargtypes.values[i];
 
-		if (p_argtypeNames != NULL && strcmp(p_argtypeNames[i], "") != 0)
+		/* skip OUT/TABLE positions in p_argtypeNames */
+		if (promodes != NULL)
+		{
+			while (promodes[argname_idx] == FUNC_PARAM_OUT ||
+				   promodes[argname_idx] == FUNC_PARAM_TABLE)
+				argname_idx++;
+		}
+
+		if (p_argtypeNames != NULL && strcmp(p_argtypeNames[argname_idx], "") != 0)
 		{
 			TypeName	*tname;
 
-			tname = (TypeName *) stringToNode(p_argtypeNames[i]);
+			tname = (TypeName *) stringToNode(p_argtypeNames[argname_idx]);
 			*objargs = lappend(*objargs, TypeNameToQuoteString(tname));
 			pfree(tname);
 		}
@@ -465,6 +515,8 @@ format_procedure_parts(Oid procedure_oid, List **objnames, List **objargs,
 			*objargs = lappend(*objargs, format_type_be_qualified(thisargtype));
 	}
 
+	if (p_argtypeNames != NULL)
+		pfree(p_argtypeNames);
 	ReleaseSysCache(proctup);
 }
 

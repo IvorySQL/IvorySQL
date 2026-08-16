@@ -14961,11 +14961,24 @@ pg_get_function_arg_reference_typerowtype(PG_FUNCTION_ARGS)
 		int			numargs = form_proc->pronargs;
 		char	  **p_argtypeNames = NULL;
 		char	   *rettypename = NULL;
+		char	   *promodes = NULL;
 		int			nth_arg;
 		Datum		values[NUM_RETURN_COLUMNS];
 		bool		nulls[NUM_RETURN_COLUMNS];
 
 		get_func_typename_info(proc_tuple, &p_argtypeNames, &rettypename);
+
+		/* proargmodes marks OUT/TABLE positions in p_argtypeNames */
+		if (p_argtypeNames != NULL)
+		{
+			Datum		proargmodes;
+			bool		isnull;
+
+			proargmodes = heap_getattr(proc_tuple, Anum_pg_proc_proargmodes,
+									   proc_rel->rd_att, &isnull);
+			if (!isnull)
+				promodes = (char *) ARR_DATA_PTR(DatumGetArrayTypeP(proargmodes));
+		}
 
 		if (p_argtypeNames == NULL && rettypename == NULL)
 			continue;
@@ -14979,13 +14992,23 @@ pg_get_function_arg_reference_typerowtype(PG_FUNCTION_ARGS)
 
 		if (p_argtypeNames != NULL)
 		{
-			for (nth_arg = 0; nth_arg < numargs; nth_arg++)
+			int		argname_idx = 0;
+
+			for (nth_arg = 0; nth_arg < numargs; nth_arg++, argname_idx++)
 			{
 				MemSet(nulls, 0, sizeof(nulls));
 
-				if (strcmp(p_argtypeNames[nth_arg], "") != 0)
+				/* skip OUT/TABLE positions in p_argtypeNames */
+				if (promodes != NULL)
+				{
+					while (promodes[argname_idx] == FUNC_PARAM_OUT ||
+						   promodes[argname_idx] == FUNC_PARAM_TABLE)
+						argname_idx++;
+				}
+
+				if (strcmp(p_argtypeNames[argname_idx], "") != 0)
 					pg_get_function_arg_reference_typerowtype_internal(&tupstore, tupdesc,
-																	   p_argtypeNames[nth_arg], nth_arg + 1,
+																	   p_argtypeNames[argname_idx], nth_arg + 1,
 																	   form_proc->oid, values, nulls);
 			}
 
