@@ -887,7 +887,7 @@ ListBindVariables(VariableSpace space, const char *name)
 				printf("\n");
 			if (ptr->name)
 				printf("variable	%s\n", ptr->name);
-			if (ptr->typoid)
+			if (ptr->typoid && typdesc)
 				printf("datatype	%s\n", typdesc);
 
 			PQclear(res);
