@@ -1147,7 +1147,7 @@ compute_function_attributes(ParseState *pstate,
 			VariableSetStmt *sstmt = lfirst_node(VariableSetStmt, lc);
 
 			if (sstmt->name != NULL &&
-				strcmp(sstmt->name, "ivorysql.compatible_mode") == 0)
+				pg_strcasecmp(sstmt->name, "ivorysql.compatible_mode") == 0)
 			{
 				have_explicit = true;
 				break;
