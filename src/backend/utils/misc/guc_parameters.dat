@@ -1549,7 +1549,6 @@
 
 { name => 'ivorysql.rowid_seq_cache', type => 'int', context => 'PGC_USERSET', group => 'DEVELOPER_OPTIONS',
   short_desc => 'Sets rowid Sequence cache number.',
-  long_desc => '0 disables the timeout.',
   flags => 'GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE',
   variable => 'rowid_seq_cache',
   boot_val => '20',
@@ -2412,7 +2411,7 @@
 },
 
 { name => 'nls_length_semantics', type => 'enum', context => 'PGC_USERSET', group => 'COMPAT_ORACLE_OPTIONS',
-  short_desc => 'Compatible Oracle NLS parameter for charater data type.',
+  short_desc => 'Compatible Oracle NLS parameter for character data type.',
   long_desc => 'Valid values are CHAR, BYTE.',
   flags => 'GUC_IS_NAME | GUC_NOT_IN_SAMPLE',
   variable => 'nls_length_semantics',
