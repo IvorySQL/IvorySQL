@@ -1742,9 +1742,9 @@ select_common_type_for_nvl(ParseState *pstate, List *exprs, const char *context,
 			else if (compatible_db == ORA_PARSER)
 			{
 				if (nls_length_semantics == NLS_LENGTH_CHAR)
-					ptype = ORAVARCHARCHAROID;
-				else
 					ptype = ORAVARCHARBYTEOID;
+				else
+					ptype = ORAVARCHARCHAROID;
 			}
 		}
 		else
@@ -1777,9 +1777,9 @@ select_common_type_for_nvl(ParseState *pstate, List *exprs, const char *context,
 				else if (compatible_db == ORA_PARSER)
 				{
 					if (nls_length_semantics == NLS_LENGTH_CHAR)
-						ptype = ORAVARCHARCHAROID;
-					else
 						ptype = ORAVARCHARBYTEOID;
+					else
+						ptype = ORAVARCHARCHAROID;
 				}
 			}
 		}
