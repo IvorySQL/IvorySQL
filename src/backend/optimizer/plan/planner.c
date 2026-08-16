@@ -777,9 +777,8 @@ transform_rownum_to_limit(Query *parse)
 		}
 	}
 
-	/* Already has LIMIT or OFFSET? Don't transform (OFFSET is applied
-	 * before LIMIT, which would change ROWNUM semantics) */
-	if (parse->limitCount != NULL || parse->limitOffset != NULL)
+	/* Already has LIMIT? Don't transform */
+	if (parse->limitCount != NULL)
 		return;
 
 	/* No WHERE clause? Nothing to do */
