@@ -6074,7 +6074,7 @@ plisql_exec_get_datum_type(PLiSQL_execstate * estate,
 		case PLISQL_DTYPE_PACKAGE_DATUM:
 			{
 				datum = plisql_get_datum(estate, datum);
-				plisql_exec_get_datum_type(estate, datum);
+				typeid = plisql_exec_get_datum_type(estate, datum);
 				break;
 			}
 
@@ -7054,7 +7054,7 @@ plisql_param_fetch(ParamListInfo params,
 	 * If the access is speculative, we prefer to return no data rather than
 	 * to fail in exec_eval_datum().  Check the likely failure cases.
 	 */
-	else if (speculative)
+	if (speculative)
 	{
 		switch (datum->dtype)
 		{
