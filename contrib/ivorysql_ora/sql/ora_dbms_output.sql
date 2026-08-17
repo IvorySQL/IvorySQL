@@ -213,6 +213,18 @@ BEGIN
     ELSE
         RAISE NOTICE 'Test 3.3 - New size limit applied: PASSED (3000 bytes written)';
     END IF;
+
+    -- Shrinking the limit below the buffered content: buffered lines stay
+    -- readable, and new writes are rejected until the buffer drains
+    dbms_output.enable(2000);  -- shrink below the 3000 bytes already buffered
+    BEGIN
+        dbms_output.put_line('Y');
+        RAISE NOTICE 'Test 3.3 - Shrink write: unexpected success';
+    EXCEPTION WHEN OTHERS THEN
+        RAISE NOTICE 'Test 3.3 - Shrink write blocked: %', SQLERRM;
+    END;
+    dbms_output.get_line(line, status);
+    RAISE NOTICE 'Test 3.3 - Shrink keeps buffered: [%], Status: %', line, status;
 END;
 /
 
