@@ -416,30 +416,6 @@ sched_check_name_free(const SchedName *n)
 						   kind == SCHED_KIND_PROGRAM ? "program" : "schedule")));
 }
 
-/*
- * Verify that a named-program job carries both halves of an object reference
- * ("program" or "schedule") before they are handed to CStringGetTextDatum().
- *
- * scheduler_jobs_style_check already guarantees this for rows read straight
- * from the metadata.  The check is here because those are ordinary tables
- * their owner can write directly: should a hand-made row reach this code, a
- * null must come out as this complaint rather than as a crash inside
- * CStringGetTextDatum().  Callers that were handed a reference rather than
- * reading one use it to state the same expectation of their own arguments.
- */
-static void
-sched_check_job_ref(const char *job_owner, const char *job_name,
-					const char *what, const char *owner, const char *name)
-{
-	if (owner == NULL || name == NULL)
-		ereport(ERROR,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("job \"%s\".\"%s\" has an incomplete %s reference",
-						job_owner, job_name, what),
-				 errdetail("Column %s_owner or %s_name is null in sys.scheduler_jobs.",
-						   what, what)));
-}
-
 /* Validate commit_semantics; the value is accepted but has no effect. */
 static void
 sched_check_commit_semantics(const char *value)
@@ -545,24 +521,21 @@ sched_check_args_complete(const char *job_owner, const char *job_name,
 	char		nulls[5];
 	uint64		missing;
 
-	/*
-	 * The two program columns always travel together: a caller passing half
-	 * of a reference would crash below.  Stating that here rather than
-	 * trusting the caller matters because today's sole caller happens to
-	 * guarantee it and tomorrow's may not.
-	 */
-	if (prog_owner != NULL || prog_name != NULL)
-		sched_check_job_ref(job_owner, job_name, "program",
-							prog_owner, prog_name);
-
 	if (nargs <= 0)
 		return;
+
+	if (job_owner == NULL || job_name == NULL)
+		elog(ERROR, "scheduler job owner or name is null");
 
 	values[0] = CStringGetTextDatum(job_owner);
 	values[1] = CStringGetTextDatum(job_name);
 	nulls[0] = nulls[1] = ' ';
 	if (prog_name != NULL)
 	{
+		/* the two program columns travel together */
+		if (prog_owner == NULL)
+			elog(ERROR, "job \"%s\".\"%s\" has an incomplete program reference",
+				 job_owner, job_name);
 		values[2] = CStringGetTextDatum(prog_owner);
 		values[3] = CStringGetTextDatum(prog_name);
 		nulls[2] = nulls[3] = ' ';
@@ -684,10 +657,12 @@ sched_enable_job(const SchedName *job)
 		Oid			at2[2] = {TEXTOID, TEXTOID};
 		Datum		v2[2];
 
-		sched_check_job_ref(job->owner, job->name, "program",
-							prog_owner, prog_name);
-		sched_check_job_ref(job->owner, job->name, "schedule",
-							sched_owner, sched_name);
+		if (prog_owner == NULL || prog_name == NULL)
+			elog(ERROR, "job \"%s\".\"%s\" has an incomplete program reference",
+				 job->owner, job->name);
+		if (sched_owner == NULL || sched_name == NULL)
+			elog(ERROR, "job \"%s\".\"%s\" has an incomplete schedule reference",
+				 job->owner, job->name);
 
 		v2[0] = CStringGetTextDatum(prog_owner);
 		v2[1] = CStringGetTextDatum(prog_name);
@@ -1319,8 +1294,9 @@ sched_job_arg_context(const SchedName *job, char **prog_owner,
 
 	*prog_owner = sched_getstring(0, 3);
 	*prog_name = sched_getstring(0, 4);
-	sched_check_job_ref(job->owner, job->name, "program",
-						*prog_owner, *prog_name);
+	if (*prog_owner == NULL || *prog_name == NULL)
+		elog(ERROR, "job \"%s\".\"%s\" has an incomplete program reference",
+			 job->owner, job->name);
 
 	{
 		SchedName	prog;
@@ -1742,8 +1718,9 @@ sched_load_job_definition(const SchedName *job, SchedJobDef *def)
 		Oid			at2[2] = {TEXTOID, TEXTOID};
 		Datum		v2[2];
 
-		sched_check_job_ref(job->owner, job->name, "program",
-							prog_owner, prog_name);
+		if (prog_owner == NULL || prog_name == NULL)
+			elog(ERROR, "job \"%s\".\"%s\" has an incomplete program reference",
+				 job->owner, job->name);
 
 		v2[0] = CStringGetTextDatum(prog_owner);
 		v2[1] = CStringGetTextDatum(prog_name);
