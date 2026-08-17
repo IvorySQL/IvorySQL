@@ -43,6 +43,14 @@ $node->safe_psql(
 	'postgres',
 	"SELECT 'init' FROM pg_create_physical_replication_slot('regress_pg_waldump_slot', true, false);
 CREATE TABLE test_table AS SELECT generate_series(1,100) a;
+-- IvorySQL: start data generation at the beginning of a fresh WAL segment.
+-- Without this, the room left in the previous segment's tail depends on how
+-- much WAL the initdb template wrote (which differs between compatible
+-- modes and builds), so the FPW record may stay behind in that tail while
+-- pg_walfile_name(pg_switch_wal()) already names the next segment, making
+-- this test fail (seen in oracle-check).  Keep this adjustment on future
+-- syncs with PG upstream.
+SELECT pg_switch_wal();
 -- Force FPWs on the next writes.
 CHECKPOINT;
 UPDATE test_table SET a = a + 1;
