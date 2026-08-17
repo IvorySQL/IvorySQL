@@ -225,6 +225,23 @@ BEGIN
     END;
     dbms_output.get_line(line, status);
     RAISE NOTICE 'Test 3.3 - Shrink keeps buffered: [%], Status: %', line, status;
+
+    -- Drain all remaining buffered lines, checking the count and order
+    i := 0;
+    LOOP
+        dbms_output.get_line(line, status);
+        EXIT WHEN status != 0;
+        i := i + 1;
+        IF line <> rpad('X', 50, 'X') THEN
+            RAISE NOTICE 'Test 3.3 - Shrink drain order: unexpected [%]', line;
+        END IF;
+    END LOOP;
+    RAISE NOTICE 'Test 3.3 - Shrink drained: % lines, Status: %', i, status;
+
+    -- Usage is back below the limit: a marker write succeeds and reads back
+    dbms_output.put_line('MARKER');
+    dbms_output.get_line(line, status);
+    RAISE NOTICE 'Test 3.3 - Shrink resumes writes: [%], Status: %', line, status;
 END;
 /
 
