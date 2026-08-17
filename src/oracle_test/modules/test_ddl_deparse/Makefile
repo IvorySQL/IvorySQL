@@ -32,7 +32,9 @@ REGRESS = test_ddl_deparse \
 
 EXTRA_INSTALL = contrib/pg_stat_statements
 
-ORA_REGRESS = $(REGRESS)
+# create_schema embeds PostgreSQL CREATE PROCEDURE ... BEGIN ATOMIC and other
+# schema elements that are not accepted by the Oracle-compatible parser.
+ORA_REGRESS = $(filter-out create_schema,$(REGRESS))
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
