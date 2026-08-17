@@ -3155,55 +3155,33 @@ drop schema alter1 cascade;
 drop schema alter2 cascade;
 
 --
--- Oracle-compatible MODIFY column syntax
+-- Oracle-compatible ALTER TABLE ... MODIFY
 --
-create table modify_column_test
-(
-  paren_col varchar2(10),
-  plain_col varchar2(10),
-  expected_20 varchar2(20),
-  expected_30 varchar2(30)
-);
+create table modify_test (a varchar2(10), b varchar2(10), c number);
+insert into modify_test values (null, 'x', 1);
 
-insert into modify_column_test (paren_col, plain_col)
-values (null, 'plain data');
+-- type change plus NOT NULL, parenthesized form
+alter table modify_test modify (a varchar2(20) not null); -- error, a contains nulls
+update modify_test set a = 'y';
+alter table modify_test modify (a varchar2(20) not null);
 
-alter table modify_column_test modify (paren_col varchar2(20) not null);
+-- same thing without the parentheses
+alter table modify_test modify b varchar2(30) not null;
 
-update modify_column_test set paren_col = 'paren data';
-alter table modify_column_test modify (paren_col varchar2(20) not null);
+-- nullability only
+alter table modify_test modify (a null);
+alter table modify_test modify b null;
 
-select modified.atttypid = expected.atttypid
-       and modified.atttypmod = expected.atttypmod as type_changed,
-       modified.attnotnull
-from pg_attribute modified
-join pg_attribute expected
-  on expected.attrelid = modified.attrelid
-where modified.attrelid = 'modify_column_test'::regclass
-  and modified.attname = 'paren_col'
-  and expected.attname = 'expected_20';
+-- several columns in one command
+alter table modify_test modify (a varchar2(40) not null, c number not null);
+\d modify_test
 
-select paren_col, plain_col
-from modify_column_test;
+-- existing data is preserved and the widened types are usable
+insert into modify_test values ('012345678901234567890123456789', '0123456789012345', 2);
+select a, b, c from modify_test order by c;
 
-alter table modify_column_test modify plain_col varchar2(30) not null;
+-- a bare type change is not accepted: <type> is ambiguous with
+-- MODIFY <colname> INVISIBLE, since INVISIBLE is an unreserved keyword
+alter table modify_test modify (c number(10)); -- error
 
-select modified.atttypid = expected.atttypid
-       and modified.atttypmod = expected.atttypmod as type_changed,
-       modified.attnotnull
-from pg_attribute modified
-join pg_attribute expected
-  on expected.attrelid = modified.attrelid
-where modified.attrelid = 'modify_column_test'::regclass
-  and modified.attname = 'plain_col'
-  and expected.attname = 'expected_30';
-
-insert into modify_column_test (paren_col, plain_col)
-values ('longer than ten', 'a value longer than ten');
-
-select count(*) = 1 as long_values_stored
-from modify_column_test
-where paren_col = 'longer than ten'
-  and plain_col = 'a value longer than ten';
-
-drop table modify_column_test;
+drop table modify_test;
