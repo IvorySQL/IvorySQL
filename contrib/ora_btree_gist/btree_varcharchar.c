@@ -101,68 +101,6 @@ static gbtree_vinfo tinfo =
 	NULL
 };
 
-/* bpchar needs its own comparison rules */
-
-static bool
-gbt_varcharchargt(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
-{
-	(void) flinfo;		/* not used */
-	return DatumGetBool(DirectFunctionCall2Coll(bpchargt,
-												collation,
-												PointerGetDatum(a),
-												PointerGetDatum(b)));
-}
-
-static bool
-gbt_varcharcharge(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
-{
-	(void) flinfo;		/* not used */
-	return DatumGetBool(DirectFunctionCall2Coll(bpcharge,
-												collation,
-												PointerGetDatum(a),
-												PointerGetDatum(b)));
-}
-
-static bool
-gbt_varcharchareq(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
-{
-	(void) flinfo;		/* not used */
-	return DatumGetBool(DirectFunctionCall2Coll(bpchareq,
-												collation,
-												PointerGetDatum(a),
-												PointerGetDatum(b)));
-}
-
-static bool
-gbt_varcharcharle(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
-{
-	(void) flinfo;		/* not used */
-	return DatumGetBool(DirectFunctionCall2Coll(bpcharle,
-												collation,
-												PointerGetDatum(a),
-												PointerGetDatum(b)));
-}
-
-static bool
-gbt_varcharcharlt(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
-{
-	(void) flinfo;		/* not used */
-	return DatumGetBool(DirectFunctionCall2Coll(bpcharlt,
-												collation,
-												PointerGetDatum(a),
-												PointerGetDatum(b)));
-}
-
-static int32
-gbt_varcharcharcmp(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
-{
-	(void) flinfo;		/* not used */
-	return DatumGetInt32(DirectFunctionCall2Coll(bpcharcmp,
-												 collation,
-												 PointerGetDatum(a),
-												 PointerGetDatum(b)));
-}
-
 static gbtree_vinfo bptinfo =
 {
 	gbt_t_text,
