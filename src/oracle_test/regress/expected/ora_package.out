@@ -4813,7 +4813,7 @@ LINE 1: x + 1
           ^
 HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
 QUERY:  x + 1
-CONTEXT:  PL/iSQL function f1 line 3 at RETURN
+CONTEXT:  PL/iSQL function public.test_pkg.f1 line 3 at RETURN
 PL/iSQL function inline_code_block line 5 at assignment
 begin
    test_pkg.var1 := test_pkg.f1(42);
