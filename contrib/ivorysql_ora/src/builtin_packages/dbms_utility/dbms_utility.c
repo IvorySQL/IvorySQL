@@ -30,7 +30,10 @@
 #include "fmgr.h"
 #include "utils/builtins.h"
 #include "utils/errcodes.h"
-#include "mb/pg_wchar.h"
+#include "utils/guc.h"
+#include "utils/ora_compatible.h"
+#include "parser/scansup.h"
+#include "port.h"
 
 #ifndef WIN32
 #include <dlfcn.h>
@@ -99,6 +102,40 @@ lookup_plisql_functions(void)
 }
 
 /*
+ * Return a copy of ident cased to match ivorysql.identifier_case_switch,
+ * mirroring the rules applied to double-quoted identifiers at every other
+ * identifier_case_switch call site in the tree (ora_scan.l, varlena.c,
+ * ri_triggers.c, backend_startup.c):
+ *
+ *   LOWERCASE:   an all-uppercase ident is downcased; anything else
+ *                (already lowercase, or mixed case) is left unchanged.
+ *   INTERCHANGE: an all-uppercase ident is downcased and an all-lowercase
+ *                ident is upcased (the two cases are "interchanged");
+ *                mixed-case idents are left unchanged.
+ *   NORMAL, or ivorysql.enable_case_switch off: unchanged (standard
+ *   PostgreSQL rules already give ident its real stored case there).
+ */
+static char *
+apply_identifier_case_switch(const char *ident)
+{
+	size_t		len = strlen(ident);
+
+	if (!enable_case_switch)
+		return pstrdup(ident);
+
+	if (identifier_case_switch == LOWERCASE)
+	{
+		if (is_all_upper(ident, len))
+			return downcase_identifier(ident, len, false, false);
+		return pstrdup(ident);
+	}
+	else if (identifier_case_switch == INTERCHANGE)
+		return identifier_case_transform(ident, len);
+
+	return pstrdup(ident);
+}
+
+/*
  * Transform a single line from PostgreSQL error context format to Oracle format.
  *
  * PostgreSQL format examples:
@@ -124,9 +161,8 @@ transform_and_append_line(StringInfo result, const char *line)
 	int line_num;
 	char *func_name;
 	char *schema_name;
-	char *func_upper;
-	char *schema_upper;
-	int i;
+	char *func_cased;
+	char *schema_cased;
 
 	/* Skip SQL statement lines */
 	if (strncmp(line, "SQL statement", 13) == 0)
@@ -187,28 +223,45 @@ transform_and_append_line(StringInfo result, const char *line)
 	line_num_start = line_marker + 6; /* Skip " line " */
 	line_num = atoi(line_num_start);
 
-	/* For now, just use PUBLIC as the default schema */
-	/* TODO: Look up the actual schema from pg_proc catalog */
-	schema_name = pstrdup("PUBLIC");
+	func_cased = apply_identifier_case_switch(func_name);
 
-	/* Convert function name to uppercase for Oracle compatibility */
-	/* Use simple ASCII uppercase conversion */
-	func_upper = pstrdup(func_name);
-	for (i = 0; func_upper[i]; i++)
-		func_upper[i] = pg_toupper((unsigned char) func_upper[i]);
+	if (strchr(func_name, '.') != NULL)
+	{
+		/*
+		 * Already schema- (or schema.package-) qualified: either a
+		 * top-level routine called with an explicit schema, or a package
+		 * member (whose context line is schema.package.routine -- see
+		 * plisql_package_qualified_signature() in pl_exec.c). Use as-is;
+		 * prepending another schema below would double it up.
+		 */
+		appendStringInfo(result, "ORA-06512: at \"%s\", line %d\n",
+						 func_cased, line_num);
+	}
+	else
+	{
+		/*
+		 * Unqualified: the routine was visible via search_path, so we
+		 * don't actually know its owning schema here.
+		 * TODO: look up the real schema from pg_proc instead of assuming
+		 * public.
+		 *
+		 * Use the real (lowercase) catalog spelling here, not "PUBLIC" --
+		 * apply_identifier_case_switch() expects its input already in
+		 * genuine stored-identifier case, same as func_name above.
+		 */
+		schema_name = pstrdup("public");
+		schema_cased = apply_identifier_case_switch(schema_name);
 
-	schema_upper = pstrdup(schema_name);
-	for (i = 0; schema_upper[i]; i++)
-		schema_upper[i] = pg_toupper((unsigned char) schema_upper[i]);
+		/* Format: ORA-06512: at "SCHEMA.FUNCTION", line N */
+		appendStringInfo(result, "ORA-06512: at \"%s.%s\", line %d\n",
+						 schema_cased, func_cased, line_num);
 
-	/* Format: ORA-06512: at "SCHEMA.FUNCTION", line N */
-	appendStringInfo(result, "ORA-06512: at \"%s.%s\", line %d\n",
-					 schema_upper, func_upper, line_num);
+		pfree(schema_cased);
+		pfree(schema_name);
+	}
 
 	pfree(func_name);
-	pfree(func_upper);
-	pfree(schema_upper);
-	pfree(schema_name);
+	pfree(func_cased);
 
 	return true;
 }
@@ -403,8 +456,7 @@ ora_format_call_stack(PG_FUNCTION_ARGS)
 		char *signature;
 		char *tab1;
 		char *tab2;
-		char *func_upper;
-		int i;
+		char *func_cased;
 
 		frame_count++;
 
@@ -435,19 +487,16 @@ ora_format_call_stack(PG_FUNCTION_ARGS)
 		lineno_str = pnstrdup(tab1 + 1, tab2 - tab1 - 1);
 		signature = tab2 + 1;
 
-		/* Convert function name to uppercase for Oracle compatibility */
-		func_upper = pstrdup(signature);
-		for (i = 0; func_upper[i]; i++)
-			func_upper[i] = pg_toupper((unsigned char) func_upper[i]);
+		func_cased = apply_identifier_case_switch(signature);
 
 		/* Format each stack frame */
 		appendStringInfo(&result, "%s  %5s  function %s\n",
-						 handle_str, lineno_str, func_upper);
+						 handle_str, lineno_str, func_cased);
 		found_any = true;
 
 		pfree(handle_str);
 		pfree(lineno_str);
-		pfree(func_upper);
+		pfree(func_cased);
 
 		line = strtok_r(NULL, "\n", &saveptr);
 	}
