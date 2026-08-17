@@ -1993,6 +1993,13 @@ exec_bind_message(StringInfo input_message)
 			plength = pq_getmsgint(input_message, 4);
 			isNull = (plength == -1);
 
+			if (numPFormats > 1)
+				pformat = pformats[paramno];
+			else if (numPFormats > 0)
+				pformat = pformats[0];
+			else
+				pformat = 0;	/* default = text */
+
 			if (!isNull)
 			{
 				char	   *pvalue;
@@ -2004,13 +2011,6 @@ exec_bind_message(StringInfo input_message)
 				 * add a trailing NUL which is required for the input function
 				 * call.
 				 */
-				if (numPFormats > 1)
-					pformat = pformats[paramno];
-				else if (numPFormats > 0)
-					pformat = pformats[0];
-				else
-					pformat = 0;	/* default = text */
-
 				if (compatible_db == ORA_PARSER &&
 					enable_emptystring_to_NULL &&
 					pformat == 0 &&
