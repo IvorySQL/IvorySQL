@@ -464,6 +464,9 @@ select * from datetest;
 (4 rows)
 
 drop table datetest;
+-- The invalid-unit error must identify NUMTODSINTERVAL, not NUMTOYMINTERVAL.
+select numtodsinterval(1, 'xxx');
+ERROR:  illegal argument for function numtodsinterval
 --NUMTOYMINTERVAL
 create table datetest (aa interval year(3) to month);
 insert into datetest values (NUMTOYMINTERVAL(123,'year'));

@@ -60,6 +60,8 @@ cleansql:
 
 # REGRESS_OPTS mainly used for installcheck or debug.
 #REGRESS_OPTS = --port=1521
+# ora_ascii includes a UTF-8 code-point regression test.
+ORACLE_REGRESS_OPTS += --encoding=UTF8
 ORA_REGRESS = \
 	ora_character \
 	ora_datetime \
@@ -103,6 +105,5 @@ top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 include $(top_srcdir)/contrib/contrib-global.mk
 endif
-
 
 
