@@ -39,8 +39,9 @@ UPDATE update_subscript_test u SET u.a[2] = 99 WHERE u.id = 1;
 SELECT id, a FROM update_subscript_test;
 
 -- A non-column first indirection must report an error, rather than treating
--- an A_Indices node as a String node.
+-- it as a String node.
 UPDATE update_subscript_test u SET u[1] = 5;
+UPDATE update_subscript_test u SET u.* = 5;
 DROP TABLE update_subscript_test;
 
 --
