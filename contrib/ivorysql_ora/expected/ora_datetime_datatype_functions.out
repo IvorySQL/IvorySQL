@@ -1354,6 +1354,28 @@ select to_date(20111211, 'YYYYMMDD') from dual;
  2011-12-11 00:00:00
 (1 row)
 
+-- bigint wrappers must not be immutable because they delegate to stable
+-- functions that depend on session settings or the current date.
+SELECT count(*) AS stable_bigint_to_date_overloads
+FROM pg_proc
+WHERE oid IN ('sys.to_date(bigint)'::regprocedure,
+              'sys.to_date(bigint,text)'::regprocedure)
+  AND provolatile = 's';
+ stable_bigint_to_date_overloads 
+---------------------------------
+                               2
+(1 row)
+
+CREATE TABLE to_date_bigint_idx_test (value bigint);
+CREATE INDEX ON to_date_bigint_idx_test (sys.to_date(value));
+ERROR:  functions in index expression must be marked IMMUTABLE
+LINE 1: CREATE INDEX ON to_date_bigint_idx_test (sys.to_date(value))...
+                                                 ^
+CREATE INDEX ON to_date_bigint_idx_test (sys.to_date(value, 'J'));
+ERROR:  functions in index expression must be marked IMMUTABLE
+LINE 1: CREATE INDEX ON to_date_bigint_idx_test (sys.to_date(value, ...
+                                                 ^
+DROP TABLE to_date_bigint_idx_test;
 create table test1(d date);
 insert into test1 values (to_date('2009-12-2', 'syyyy-mm-dd'));
 insert into test1 values (to_date('-1452-12-2', 'syyyy-mm-dd'));

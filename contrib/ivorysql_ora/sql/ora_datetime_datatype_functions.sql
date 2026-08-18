@@ -473,6 +473,19 @@ select to_date('07--2019-23', 'MM-SYYYY-DD') from dual;
 --select to_date('2019', 'syyyy') from dual;	--expect:2019-current month-01 00:00:00
 select to_date(20111211, 'YYYYMMDD') from dual;
 
+-- bigint wrappers must not be immutable because they delegate to stable
+-- functions that depend on session settings or the current date.
+SELECT count(*) AS stable_bigint_to_date_overloads
+FROM pg_proc
+WHERE oid IN ('sys.to_date(bigint)'::regprocedure,
+              'sys.to_date(bigint,text)'::regprocedure)
+  AND provolatile = 's';
+
+CREATE TABLE to_date_bigint_idx_test (value bigint);
+CREATE INDEX ON to_date_bigint_idx_test (sys.to_date(value));
+CREATE INDEX ON to_date_bigint_idx_test (sys.to_date(value, 'J'));
+DROP TABLE to_date_bigint_idx_test;
+
 create table test1(d date);
 insert into test1 values (to_date('2009-12-2', 'syyyy-mm-dd'));
 insert into test1 values (to_date('-1452-12-2', 'syyyy-mm-dd'));
