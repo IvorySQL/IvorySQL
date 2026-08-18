@@ -456,7 +456,8 @@ SELECT id, msg FROM autonomous_test WHERE id = 76;
 --
 -- Test 22: AUTHID DEFINER authenticates as the function owner
 --
-CREATE ROLE autonomous_caller;
+-- LOGIN and SUPERUSER permit passwordless dblink authentication in this test.
+CREATE ROLE autonomous_caller LOGIN SUPERUSER;
 CREATE OR REPLACE FUNCTION test_autonomous_definer_user RETURN TEXT
 AUTHID DEFINER AS $$
 PRAGMA AUTONOMOUS_TRANSACTION;
@@ -465,8 +466,17 @@ BEGIN
 END;
 $$ LANGUAGE plisql;
 /
+CREATE OR REPLACE FUNCTION test_autonomous_session_user RETURN TEXT
+AUTHID CURRENT_USER AS $$
+PRAGMA AUTONOMOUS_TRANSACTION;
+BEGIN
+    RETURN session_user;
+END;
+$$ LANGUAGE plisql;
+/
 SET ROLE autonomous_caller;
 SELECT public.test_autonomous_definer_user() = session_user AS uses_function_owner;
+SELECT public.test_autonomous_session_user() = current_user AS authenticates_effective_user;
 RESET ROLE;
 
 --
@@ -509,6 +519,7 @@ DROP FUNCTION test_function_numeric(NUMERIC);
 DROP FUNCTION test_function_date(DATE, INT);
 DROP FUNCTION test_function_boolean(INT);
 DROP FUNCTION test_autonomous_definer_user();
+DROP FUNCTION test_autonomous_session_user();
 DROP PACKAGE BODY test_pkg;
 DROP PACKAGE test_pkg;
 DROP FUNCTION autonomous_untrusted.dblink(TEXT, TEXT);
