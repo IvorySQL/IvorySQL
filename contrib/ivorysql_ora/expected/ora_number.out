@@ -1261,6 +1261,16 @@ SELECT '' AS to_number_16, to_number('12.34','9G999D99');
 
 SELECT '' AS to_number_17, to_number('1122.34','9G999D99');
 ERROR:  invalid number format model
+-- Without a format model, trailing spaces are accepted in the integer part.
+SELECT '' AS to_number_18, to_number('123 ');
+ to_number_18 | to_number 
+--------------+-----------
+              |       123
+(1 row)
+
+-- Whitespace between digits remains invalid.
+SELECT '' AS to_number_19, to_number('123 4');
+ERROR:  invalid number format model
 --
 -- Input syntax
 --
