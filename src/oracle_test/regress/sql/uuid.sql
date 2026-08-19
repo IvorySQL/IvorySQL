@@ -118,6 +118,22 @@ SELECT count(DISTINCT guid_field) FROM guid1;
 INSERT INTO guid3 (guid_field) SELECT uuidv7() FROM generate_series(1, 10);
 SELECT array_agg(id ORDER BY guid_field) FROM guid3;
 
+-- uuidv7: infinite intervals are rejected
+-- Oracle compatible mode: the parser rejects the bare "interval" typename at
+-- parse time ("missing or invalid datetime field"), so use pg_catalog.interval
+-- to keep PG interval semantics; the outputs match PG's exactly.
+SELECT uuidv7('infinity'::pg_catalog.interval);
+SELECT uuidv7('-infinity'::pg_catalog.interval);
+
+-- uuidv7: timestamps before Unix epoch are rejected
+SELECT uuidv7('-1000 years'::pg_catalog.interval);
+
+-- uuidv7: timestamps beyond 48-bit ms field (~year 10889) are rejected
+SELECT uuidv7('9000 years'::pg_catalog.interval);
+
+-- uuidv7: a large but in-range forward shift is accepted
+SELECT uuid_extract_timestamp(uuidv7('1000 years'::pg_catalog.interval)) > now() + '999 years'::pg_catalog.interval;
+
 -- extract functions
 
 -- version
