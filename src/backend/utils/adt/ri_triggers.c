@@ -163,6 +163,9 @@ typedef struct FastPathMeta
 	Oid			subtypes[RI_MAX_NUMKEYS];
 	int			strats[RI_MAX_NUMKEYS];
 	AttrNumber	index_attnos[RI_MAX_NUMKEYS];	/* index column positions */
+
+	/* Link in ri_fpmeta_dead_list while awaiting deferred release */
+	struct FastPathMeta *next_dead;
 } FastPathMeta;
 
 /*
@@ -276,6 +279,14 @@ static bool ri_fastpath_callback_registered = false;
 static bool ri_fastpath_flushing = false;
 
 /*
+ * FastPathMeta objects detached from their cache entry by invalidation, but
+ * possibly still referenced by an RI check further up the stack.  Released
+ * by AtEOXact_RI(), where no such reference can exist.  See
+ * InvalidateConstraintCacheCallBack().
+ */
+static FastPathMeta *ri_fpmeta_dead_list = NULL;
+
+/*
  * Local function prototypes
  */
 static bool ri_Check_Pk_Match(Relation pk_rel, Relation fk_rel,
@@ -329,10 +340,12 @@ static void ri_FastPathBatchAdd(RI_ConstraintInfo *riinfo,
 static void ri_FastPathBatchFlush(RI_FastPathEntry *fpentry, Relation fk_rel,
 								  RI_ConstraintInfo *riinfo);
 static int	ri_FastPathFlushArray(RI_FastPathEntry *fpentry, TupleTableSlot *fk_slot,
-								  const RI_ConstraintInfo *riinfo, Relation fk_rel,
+								  const RI_ConstraintInfo *riinfo,
+								  FastPathMeta *fpmeta, Relation fk_rel,
 								  Snapshot snapshot, IndexScanDesc scandesc);
 static int	ri_FastPathFlushLoop(RI_FastPathEntry *fpentry, TupleTableSlot *fk_slot,
-								 const RI_ConstraintInfo *riinfo, Relation fk_rel,
+								 const RI_ConstraintInfo *riinfo,
+								 FastPathMeta *fpmeta, Relation fk_rel,
 								 Snapshot snapshot, IndexScanDesc scandesc);
 static bool ri_FastPathProbeOne(Relation pk_rel, Relation idx_rel,
 								IndexScanDesc scandesc, TupleTableSlot *slot,
@@ -345,6 +358,7 @@ static void ri_CheckPermissions(Relation query_rel);
 static bool recheck_matched_pk_tuple(Relation idxrel, ScanKeyData *skeys,
 									 int nkeys, TupleTableSlot *new_slot);
 static void build_index_scankeys(const RI_ConstraintInfo *riinfo,
+								 FastPathMeta *fpmeta,
 								 Relation idx_rel, Datum *pk_vals,
 								 char *pk_nulls, ScanKey skeys);
 static void ri_populate_fastpath_metadata(RI_ConstraintInfo *riinfo,
@@ -2580,6 +2594,10 @@ get_ri_constraint_root(Oid constrOid)
  * from the cache, but only mark them invalid, which is harmless to active
  * uses.  (Any query using an entry should hold a lock sufficient to keep that
  * data from changing under it --- but we may get cache flushes anyway.)
+ *
+ * The fast-path metadata hanging off an entry is subject to the same rule.
+ * We unlink it so that the next check rebuilds it, but the object itself is
+ * only queued here and is actually released by AtEOXact_RI().
  */
 static void
 InvalidateConstraintCacheCallBack(Datum arg, SysCacheIdentifier cacheid,
@@ -2613,11 +2631,25 @@ InvalidateConstraintCacheCallBack(Datum arg, SysCacheIdentifier cacheid,
 			riinfo->rootHashValue == hashvalue)
 		{
 			riinfo->valid = false;
+
+			/*
+			 * Detach any fast-path metadata so that the next check
+			 * repopulates it, but do not free it here.  ri_FastPathCheck()
+			 * and the flush routines copy riinfo->fpmeta into a local (and
+			 * take FmgrInfo pointers into it) and then run index scans, tuple
+			 * locking, and user-supplied cast and equality functions, all of
+			 * which can accept invalidation messages and reach this callback.
+			 * Freeing now would leave those callers reading freed memory.
+			 * Queue it instead; AtEOXact_RI() releases it once no RI check
+			 * can be running.
+			 */
 			if (riinfo->fpmeta)
 			{
-				pfree(riinfo->fpmeta);
+				riinfo->fpmeta->next_dead = ri_fpmeta_dead_list;
+				ri_fpmeta_dead_list = riinfo->fpmeta;
 				riinfo->fpmeta = NULL;
 			}
+
 			/* Remove invalidated entries from the list, too */
 			dclist_delete_from(&ri_constraint_cache_valid_list, iter.cur);
 		}
@@ -2881,7 +2913,8 @@ ri_FastPathCheck(RI_ConstraintInfo *riinfo,
 	}
 	Assert(riinfo->fpmeta);
 	ri_ExtractValues(fk_rel, newslot, riinfo, false, pk_vals, pk_nulls);
-	build_index_scankeys(riinfo, idx_rel, pk_vals, pk_nulls, skey);
+	build_index_scankeys(riinfo, riinfo->fpmeta, idx_rel, pk_vals, pk_nulls,
+						 skey);
 	found = ri_FastPathProbeOne(pk_rel, idx_rel, scandesc, slot,
 								snapshot, riinfo, skey, riinfo->nkeys);
 	SetUserIdAndSecContext(saved_userid, saved_sec_context);
@@ -2973,6 +3006,7 @@ ri_FastPathBatchFlush(RI_FastPathEntry *fpentry, Relation fk_rel,
 	Oid			saved_userid;
 	int			saved_sec_context;
 	MemoryContext oldcxt;
+	FastPathMeta *fpmeta;
 	int			violation_index;
 
 	if (fpentry->batch_count == 0)
@@ -3031,6 +3065,15 @@ ri_FastPathBatchFlush(RI_FastPathEntry *fpentry, Relation fk_rel,
 	Assert(riinfo->fpmeta);
 
 	/*
+	 * Take our own reference to the metadata for the duration of the flush.
+	 * The probe below runs user-defined cast and equality functions, which
+	 * can accept invalidation messages; InvalidateConstraintCacheCallBack()
+	 * then clears riinfo->fpmeta, so re-reading it partway through the batch
+	 * would find NULL.  The object itself stays valid until AtEOXact_RI().
+	 */
+	fpmeta = riinfo->fpmeta;
+
+	/*
 	 * The probe runs user-defined cast and equality functions.  Set the
 	 * flushing flag around it so a re-entrant ri_FastPathBatchAdd on this
 	 * entry takes the per-row path, and clear it even on error so the entry
@@ -3043,10 +3086,12 @@ ri_FastPathBatchFlush(RI_FastPathEntry *fpentry, Relation fk_rel,
 		/* Skip array overhead for single-row batches. */
 		if (riinfo->nkeys == 1 && fpentry->batch_count > 1)
 			violation_index = ri_FastPathFlushArray(fpentry, fk_slot, riinfo,
-													fk_rel, snapshot, scandesc);
+													fpmeta, fk_rel, snapshot,
+													scandesc);
 		else
 			violation_index = ri_FastPathFlushLoop(fpentry, fk_slot, riinfo,
-												   fk_rel, snapshot, scandesc);
+												   fpmeta, fk_rel, snapshot,
+												   scandesc);
 	}
 	PG_FINALLY();
 	{
@@ -3084,8 +3129,9 @@ ri_FastPathBatchFlush(RI_FastPathEntry *fpentry, Relation fk_rel,
  */
 static int
 ri_FastPathFlushLoop(RI_FastPathEntry *fpentry, TupleTableSlot *fk_slot,
-					 const RI_ConstraintInfo *riinfo, Relation fk_rel,
-					 Snapshot snapshot, IndexScanDesc scandesc)
+					 const RI_ConstraintInfo *riinfo, FastPathMeta *fpmeta,
+					 Relation fk_rel, Snapshot snapshot,
+					 IndexScanDesc scandesc)
 {
 	Relation	pk_rel = fpentry->pk_rel;
 	Relation	idx_rel = fpentry->idx_rel;
@@ -3099,7 +3145,7 @@ ri_FastPathFlushLoop(RI_FastPathEntry *fpentry, TupleTableSlot *fk_slot,
 	{
 		ExecStoreHeapTuple(fpentry->batch[i], fk_slot, false);
 		ri_ExtractValues(fk_rel, fk_slot, riinfo, false, pk_vals, pk_nulls);
-		build_index_scankeys(riinfo, idx_rel, pk_vals, pk_nulls, skey);
+		build_index_scankeys(riinfo, fpmeta, idx_rel, pk_vals, pk_nulls, skey);
 
 		found = ri_FastPathProbeOne(pk_rel, idx_rel, scandesc, pk_slot,
 									snapshot, riinfo, skey, riinfo->nkeys);
@@ -3128,10 +3174,10 @@ ri_FastPathFlushLoop(RI_FastPathEntry *fpentry, TupleTableSlot *fk_slot,
  */
 static int
 ri_FastPathFlushArray(RI_FastPathEntry *fpentry, TupleTableSlot *fk_slot,
-					  const RI_ConstraintInfo *riinfo, Relation fk_rel,
-					  Snapshot snapshot, IndexScanDesc scandesc)
+					  const RI_ConstraintInfo *riinfo, FastPathMeta *fpmeta,
+					  Relation fk_rel, Snapshot snapshot,
+					  IndexScanDesc scandesc)
 {
-	FastPathMeta *fpmeta = riinfo->fpmeta;
 	Relation	pk_rel = fpentry->pk_rel;
 	Relation	idx_rel = fpentry->idx_rel;
 	TupleTableSlot *pk_slot = fpentry->pk_slot;
@@ -3515,11 +3561,10 @@ recheck_matched_pk_tuple(Relation idxrel, ScanKeyData *skeys, int nkeys,
  */
 static void
 build_index_scankeys(const RI_ConstraintInfo *riinfo,
+					 FastPathMeta *fpmeta,
 					 Relation idx_rel, Datum *pk_vals,
 					 char *pk_nulls, ScanKey skeys)
 {
-	FastPathMeta *fpmeta = riinfo->fpmeta;
-
 	Assert(fpmeta);
 
 	/*
@@ -3572,8 +3617,10 @@ ri_populate_fastpath_metadata(RI_ConstraintInfo *riinfo,
 	MemoryContext oldcxt = MemoryContextSwitchTo(TopMemoryContext);
 
 	Assert(riinfo != NULL && riinfo->valid);
+	Assert(riinfo->fpmeta == NULL);
 
 	fpmeta = palloc_object(FastPathMeta);
+	fpmeta->next_dead = NULL;
 	for (int i = 0; i < riinfo->nkeys; i++)
 	{
 		Oid			eq_opr = riinfo->pf_eq_oprs[i];
@@ -4387,6 +4434,20 @@ AtEOXact_RI(bool isCommit)
 	 * set.
 	 */
 	ri_fastpath_flushing = false;
+
+	/*
+	 * Release fast-path metadata detached during this transaction by
+	 * InvalidateConstraintCacheCallBack().  We are past every RI check that
+	 * could still hold a pointer into one of these, so freeing here is safe
+	 * on both the commit and the abort path.
+	 */
+	while (ri_fpmeta_dead_list != NULL)
+	{
+		FastPathMeta *dead = ri_fpmeta_dead_list;
+
+		ri_fpmeta_dead_list = dead->next_dead;
+		pfree(dead);
+	}
 }
 
 /*
