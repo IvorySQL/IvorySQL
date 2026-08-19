@@ -181,7 +181,35 @@ SQL error: invalid statement name "cursor1" on line 82
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: ecpg_process_output on line 115: OK: DROP TABLE
 [NO_PID]: sqlca: code: 0, state: 00000
-[NO_PID]: ECPGtrans on line 116: action "commit"; connection "ecpg1_regression"
+[NO_PID]: ecpg_execute on line 120: query: set ivorysql . enable_emptystring_to_null to false; with 0 parameter(s) on connection ecpg1_regression
+[NO_PID]: sqlca: code: 0, state: 00000
+[NO_PID]: ecpg_execute on line 120: using PQexec
+[NO_PID]: sqlca: code: 0, state: 00000
+[NO_PID]: ecpg_process_output on line 120: OK: SET
+[NO_PID]: sqlca: code: 0, state: 00000
+[NO_PID]: ecpg_execute on line 123: query: select '' :: text; with 0 parameter(s) on connection ecpg1_regression
+[NO_PID]: sqlca: code: 0, state: 00000
+[NO_PID]: ecpg_execute on line 123: using PQexec
+[NO_PID]: sqlca: code: 0, state: 00000
+[NO_PID]: ecpg_process_output on line 123: correctly got 1 tuples with 1 fields
+[NO_PID]: sqlca: code: 0, state: 00000
+[NO_PID]: ecpg_get_data on line 123: RESULT:  offset: -1; array: no
+[NO_PID]: sqlca: code: 0, state: 00000
+[NO_PID]: raising sqlcode -217 on line 123: invalid input syntax for type bytea: "", on line 123
+[NO_PID]: sqlca: code: -217, state: 42804
+SQL error: invalid input syntax for type bytea: "", on line 123
+[NO_PID]: ecpg_execute on line 124: query: select '\\a1234' :: text; with 0 parameter(s) on connection ecpg1_regression
+[NO_PID]: sqlca: code: 0, state: 00000
+[NO_PID]: ecpg_execute on line 124: using PQexec
+[NO_PID]: sqlca: code: 0, state: 00000
+[NO_PID]: ecpg_process_output on line 124: correctly got 1 tuples with 1 fields
+[NO_PID]: sqlca: code: 0, state: 00000
+[NO_PID]: ecpg_get_data on line 124: RESULT: \\a1234 offset: -1; array: no
+[NO_PID]: sqlca: code: 0, state: 00000
+[NO_PID]: raising sqlcode -217 on line 124: invalid input syntax for type bytea: "\\a1234", on line 124
+[NO_PID]: sqlca: code: -217, state: 42804
+SQL error: invalid input syntax for type bytea: "\\a1234", on line 124
+[NO_PID]: ECPGtrans on line 126: action "commit"; connection "ecpg1_regression"
 [NO_PID]: sqlca: code: 0, state: 00000
 [NO_PID]: deallocate_one on line 0: name sel_stmt
 [NO_PID]: sqlca: code: 0, state: 00000

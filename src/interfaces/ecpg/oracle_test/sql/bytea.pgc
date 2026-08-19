@@ -113,6 +113,16 @@ while (0)
 	dump_binary(recv_short_buf.arr, recv_short_buf.len, ind[1]);
 
 	exec sql drop table test;
+
+	/* IvorySQL: Oracle-compatible mode converts '' to NULL by default
+	 (ivorysql.enable_emptystring_to_NULL); disable that so the first
+	 query below returns an empty string, as on PG. */
+	exec sql set ivorysql.enable_emptystring_to_null to false;
+
+	/* Test for invalid bytea format */
+	exec sql select ''::text into :recv_buf[0];
+	exec sql select '\\a1234'::text into :recv_buf[0];
+
 	exec sql commit;
 	exec sql disconnect;
 
