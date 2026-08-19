@@ -4098,6 +4098,16 @@ INSERT INTO result_tbl SELECT * FROM async_pt WHERE b === 505;
 SELECT * FROM result_tbl ORDER BY a;
 DELETE FROM result_tbl;
 
+-- Test ExecAppendAsyncReset code path that drains outstanding async requests
+-- (case where subplans are re-scanned with parameter changes)
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT o.x FROM (VALUES (2505), (3505)) o(x), LATERAL (SELECT a FROM async_pt WHERE a = o.x OR a = 1505 LIMIT 1) s ORDER BY o.x;
+SELECT o.x FROM (VALUES (2505), (3505)) o(x), LATERAL (SELECT a FROM async_pt WHERE a = o.x OR a = 1505 LIMIT 1) s ORDER BY o.x;
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT o.x FROM (VALUES (2505), (3505)) o(x), LATERAL (SELECT a FROM async_pt WHERE a = o.x OR (a = 1505 AND o.x = 2505) LIMIT 1) s ORDER BY o.x;
+SELECT o.x FROM (VALUES (2505), (3505)) o(x), LATERAL (SELECT a FROM async_pt WHERE a = o.x OR (a = 1505 AND o.x = 2505) LIMIT 1) s ORDER BY o.x;
+
 DROP FOREIGN TABLE async_p3;
 DROP TABLE base_tbl3;
 
@@ -4336,8 +4346,8 @@ DROP TABLE base_tbl2;
 DROP TABLE result_tbl;
 DROP TABLE join_tbl;
 
--- Test that an asynchronous fetch is processed before restarting the scan in
--- ReScanForeignScan
+-- Test ExecAppendAsyncReset code path that drains outstanding async requests
+-- (case where subplans are re-scanned without parameter changes)
 CREATE TABLE base_tbl (a number(38,0), b number(38,0));
 INSERT INTO base_tbl VALUES (1, 11), (2, 22), (3, 33);
 CREATE FOREIGN TABLE foreign_tbl (b number(38,0))
