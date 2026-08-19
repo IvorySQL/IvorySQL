@@ -157,8 +157,8 @@ select sys_context('rp_ns', 'key') as ctx_after_reset;
 
 DROP PACKAGE rp_pkg;
 
--- Reconnect so oversized clears exercise the uninitialized context store
-\c -
+-- Reset package state so oversized clears exercise the uninitialized context store
+DISCARD PACKAGES;
 \set VERBOSITY terse
 call dbms_session.clear_context(repeat('n', 256), 'attr');
 call dbms_session.clear_context(repeat('n', 256));
@@ -171,13 +171,24 @@ select sys_context(repeat('n', 255), repeat('a', 255)) = 'value' as ok;
 call dbms_session.clear_context(repeat('n', 255), repeat('a', 255));
 select sys_context(repeat('n', 255), repeat('a', 255)) is null as ok;
 
+-- Oversized clears are also rejected after the context store is initialized
+\set VERBOSITY terse
+call dbms_session.clear_context(repeat('n', 256), 'attr');
+call dbms_session.clear_context(repeat('n', 256));
+call dbms_session.clear_all_context(repeat('n', 256));
+\set VERBOSITY default
+
 -- Namespace-wide clears exercise the fixed-size fold and comparison path
 call dbms_session.set_context(repeat('n', 255), 'attr', 'value');
+call dbms_session.set_context(repeat('n', 255), 'other_attr', 'value2');
 call dbms_session.clear_context(repeat('n', 255));
 select sys_context(repeat('n', 255), 'attr') is null as ok;
+select sys_context(repeat('n', 255), 'other_attr') is null as ok;
 call dbms_session.set_context(repeat('n', 255), 'attr', 'value');
+call dbms_session.set_context(repeat('n', 255), 'other_attr', 'value2');
 call dbms_session.clear_all_context(repeat('n', 255));
 select sys_context(repeat('n', 255), 'attr') is null as ok;
+select sys_context(repeat('n', 255), 'other_attr') is null as ok;
 
 \set VERBOSITY terse
 call dbms_session.set_context(repeat('n', 256), 'attr', 'value');
