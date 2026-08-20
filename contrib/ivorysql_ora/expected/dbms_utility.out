@@ -474,5 +474,43 @@ DROP SCHEMA bug_schema CASCADE;
 NOTICE:  drop cascades to 2 other objects
 DETAIL:  drop cascades to function bug_schema.schema_error()
 drop cascades to function bug_schema.schema_caller()
+-- Test 20: FORMAT_ERROR_BACKTRACE - A package initialization block is the
+-- package itself, not a package member.  Its frame must therefore contain one
+-- package name rather than schema.package.package.
+CREATE SCHEMA init_backtrace_ns;
+CREATE OR REPLACE PACKAGE init_backtrace_ns.init_error_pkg IS
+  PROCEDURE noop;
+END init_error_pkg;
+/
+CREATE OR REPLACE PACKAGE BODY init_backtrace_ns.init_error_pkg IS
+  PROCEDURE noop IS
+  BEGIN
+    NULL;
+  END noop;
+BEGIN
+  RAISE EXCEPTION 'error during package initialization';
+END init_error_pkg;
+/
+CREATE OR REPLACE PROCEDURE init_backtrace_caller AS
+  v_backtrace VARCHAR2(4000);
+BEGIN
+  init_backtrace_ns.init_error_pkg.noop();
+EXCEPTION
+  WHEN OTHERS THEN
+    v_backtrace := DBMS_UTILITY.FORMAT_ERROR_BACKTRACE;
+    IF v_backtrace LIKE '%INIT_BACKTRACE_NS.INIT_ERROR_PKG%'
+       AND v_backtrace NOT LIKE '%INIT_ERROR_PKG.INIT_ERROR_PKG%' THEN
+      RAISE INFO 'Package-init backtrace is correctly qualified: OK';
+    ELSE
+      RAISE INFO 'Package-init backtrace is correctly qualified: FAILED (got: %)',
+                 v_backtrace;
+    END IF;
+END;
+/
+CALL init_backtrace_caller();
+INFO:  Package-init backtrace is correctly qualified: OK
+DROP PROCEDURE init_backtrace_caller;
+DROP PACKAGE init_backtrace_ns.init_error_pkg;
+DROP SCHEMA init_backtrace_ns;
 RESET ivorysql.identifier_case_switch;
 RESET ivorysql.enable_case_switch;
