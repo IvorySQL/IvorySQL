@@ -16,10 +16,11 @@
  * Implementation of Oracle's DBMS_SCHEDULER package (EDB-parity subset).
  * This module is part of ivorysql_ora extension.
  *
- * The metadata lives in ordinary sys.scheduler_* tables protected by row
- * level security; every write goes through these functions, which validate
- * ownership as the invoking user and then perform the DML with the rights
- * of the metadata tables' owner.
+ * The metadata lives in ordinary sys.scheduler_* tables that carry no PUBLIC
+ * privileges; users read their own objects through the USER_SCHEDULER_*
+ * views.  Every write goes through these functions, which validate ownership
+ * as the invoking user and then perform the DML with the rights of the
+ * metadata tables' owner.
  *
  * Portions Copyright (c) 2025-2026, IvorySQL Global Development Team
  *
@@ -260,6 +261,16 @@ sched_parse_name_part(const char **pp, const char *raw, const char *what)
 			appendStringInfoChar(&buf, pg_toupper((unsigned char) *p));
 			p++;
 		}
+
+		/*
+		 * Whitespace around an unquoted identifier is not part of it, the way
+		 * Oracle reads "reg_job " and "owner . name".  Only the trailing side
+		 * is handled here: the leading one was skipped before this part
+		 * started.
+		 */
+		while (buf.len > 0 &&
+			   (buf.data[buf.len - 1] == ' ' || buf.data[buf.len - 1] == '\t'))
+			buf.data[--buf.len] = '\0';
 	}
 
 	if (buf.len == 0 || buf.len > SCHED_MAX_NAME_LEN)
@@ -317,6 +328,8 @@ sched_parse_name(const char *raw, const char *what, SchedName *result)
 	if (*p == '.')
 	{
 		p++;
+		while (*p == ' ' || *p == '\t')
+			p++;
 		part2 = sched_parse_name_part(&p, raw, what);
 	}
 	while (*p == ' ' || *p == '\t')
@@ -678,6 +691,15 @@ sched_enable_job(const SchedName *job)
 		d = sched_getdatum(0, 2, &isnull);
 		nargs = isnull ? 0 : DatumGetInt32(d);
 
+		/* a disabled program cannot run, so a job on it cannot be enabled */
+		d = sched_getdatum(0, 3, &isnull);
+		if (isnull || !DatumGetBool(d))
+			ereport(ERROR,
+					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+					 errmsg("cannot enable job \"%s\".\"%s\": program \"%s\".\"%s\" is disabled",
+							job->owner, job->name, prog_owner, prog_name),
+					 errhint("Enable the program first.")));
+
 		v2[0] = CStringGetTextDatum(sched_owner);
 		v2[1] = CStringGetTextDatum(sched_name);
 		if (sched_meta_select("SELECT start_date, repeat_interval, end_date"
@@ -803,10 +825,10 @@ ora_dbms_scheduler_create_job_inline(PG_FUNCTION_ARGS)
 	bool		auto_drop = PG_ARGISNULL(9) ? true : PG_GETARG_BOOL(9);
 	char	   *comments = text_arg_or_null(fcinfo, 10);
 	SchedName	job;
-	Oid			argtypes[10] = {TEXTOID, TEXTOID, TEXTOID, TEXTOID, INT4OID,
-	TIMESTAMPTZOID, TEXTOID, TIMESTAMPTZOID, TEXTOID, BOOLOID};
-	Datum		values[10];
-	char		nulls[10];
+	Oid			argtypes[11] = {TEXTOID, TEXTOID, TEXTOID, TEXTOID, INT4OID,
+	TIMESTAMPTZOID, TEXTOID, TIMESTAMPTZOID, TEXTOID, BOOLOID, TEXTOID};
+	Datum		values[11];
+	char		nulls[11];
 
 	SPI_connect();
 
@@ -857,6 +879,7 @@ ora_dbms_scheduler_create_job_inline(PG_FUNCTION_ARGS)
 	values[7] = TimestampTzGetDatum(end_date);
 	values[8] = job_class ? CStringGetTextDatum(job_class) : (Datum) 0;
 	values[9] = BoolGetDatum(auto_drop);
+	values[10] = comments ? CStringGetTextDatum(comments) : (Datum) 0;
 	memset(nulls, ' ', sizeof(nulls));
 	if (start_isnull)
 		nulls[5] = 'n';
@@ -866,26 +889,15 @@ ora_dbms_scheduler_create_job_inline(PG_FUNCTION_ARGS)
 		nulls[7] = 'n';
 	if (job_class == NULL)
 		nulls[8] = 'n';
+	if (comments == NULL)
+		nulls[10] = 'n';
 
 	sched_meta_dml("INSERT INTO sys.scheduler_jobs"
 			  " (job_owner, job_name, job_type, job_action,"
 			  "  number_of_arguments, start_date, repeat_interval, end_date,"
 			  "  job_class, auto_drop, comments)"
-			  " VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NULL)",
-			  10, argtypes, values, nulls);
-
-	if (comments != NULL)
-	{
-		Oid			at[3] = {TEXTOID, TEXTOID, TEXTOID};
-		Datum		v[3];
-
-		v[0] = values[0];
-		v[1] = values[1];
-		v[2] = CStringGetTextDatum(comments);
-		sched_meta_dml("UPDATE sys.scheduler_jobs SET comments = $3"
-				  " WHERE job_owner = $1 AND job_name = $2",
-				  3, at, v, NULL);
-	}
+			  " VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+			  11, argtypes, values, nulls);
 
 	if (enabled)
 		sched_enable_job(&job);
@@ -1036,9 +1048,10 @@ ora_dbms_scheduler_create_schedule(PG_FUNCTION_ARGS)
 	TimestampTz end_date = end_isnull ? 0 : PG_GETARG_TIMESTAMPTZ(3);
 	char	   *comments = text_arg_or_null(fcinfo, 4);
 	SchedName	sched;
-	Oid			argtypes[5] = {TEXTOID, TEXTOID, TIMESTAMPTZOID, TEXTOID, TIMESTAMPTZOID};
-	Datum		values[5];
-	char		nulls[5];
+	Oid			argtypes[6] = {TEXTOID, TEXTOID, TIMESTAMPTZOID, TEXTOID,
+	TIMESTAMPTZOID, TEXTOID};
+	Datum		values[6];
+	char		nulls[6];
 
 	SPI_connect();
 
@@ -1061,6 +1074,7 @@ ora_dbms_scheduler_create_schedule(PG_FUNCTION_ARGS)
 	values[2] = TimestampTzGetDatum(start_date);
 	values[3] = repeat_interval ? CStringGetTextDatum(repeat_interval) : (Datum) 0;
 	values[4] = TimestampTzGetDatum(end_date);
+	values[5] = comments ? CStringGetTextDatum(comments) : (Datum) 0;
 	memset(nulls, ' ', sizeof(nulls));
 	if (start_isnull)
 		nulls[2] = 'n';
@@ -1068,25 +1082,14 @@ ora_dbms_scheduler_create_schedule(PG_FUNCTION_ARGS)
 		nulls[3] = 'n';
 	if (end_isnull)
 		nulls[4] = 'n';
+	if (comments == NULL)
+		nulls[5] = 'n';
 
 	sched_meta_dml("INSERT INTO sys.scheduler_schedules"
 			  " (schedule_owner, schedule_name, start_date, repeat_interval,"
-			  "  end_date)"
-			  " VALUES ($1, $2, $3, $4, $5)",
-			  5, argtypes, values, nulls);
-
-	if (comments != NULL)
-	{
-		Oid			at[3] = {TEXTOID, TEXTOID, TEXTOID};
-		Datum		v[3];
-
-		v[0] = values[0];
-		v[1] = values[1];
-		v[2] = CStringGetTextDatum(comments);
-		sched_meta_dml("UPDATE sys.scheduler_schedules SET comments = $3"
-				  " WHERE schedule_owner = $1 AND schedule_name = $2",
-				  3, at, v, NULL);
-	}
+			  "  end_date, comments)"
+			  " VALUES ($1, $2, $3, $4, $5, $6)",
+			  6, argtypes, values, nulls);
 
 	SPI_finish();
 	PG_RETURN_VOID();
@@ -1368,7 +1371,6 @@ ora_dbms_scheduler_set_job_argument_value_name(PG_FUNCTION_ARGS)
 	char	   *prog_owner;
 	char	   *prog_name;
 	int			position;
-	const char *p;
 	Oid			argtypes[3] = {TEXTOID, TEXTOID, TEXTOID};
 	Datum		values[3];
 	bool		isnull;
@@ -1389,8 +1391,7 @@ ora_dbms_scheduler_set_job_argument_value_name(PG_FUNCTION_ARGS)
 						job.owner, job.name),
 				 errhint("Only jobs that reference a program have named arguments.")));
 
-	p = argument_name;
-	argument_name = sched_parse_name_part(&p, argument_name, "argument");
+	argument_name = sched_normalize_simple(argument_name, "argument");
 
 	values[0] = CStringGetTextDatum(prog_owner);
 	values[1] = CStringGetTextDatum(prog_name);
@@ -1725,7 +1726,7 @@ sched_load_job_definition(const SchedName *job, SchedJobDef *def)
 		v2[0] = CStringGetTextDatum(prog_owner);
 		v2[1] = CStringGetTextDatum(prog_name);
 		if (sched_meta_select("SELECT program_type, program_action,"
-						 " number_of_arguments"
+						 " number_of_arguments, enabled"
 						 " FROM sys.scheduler_programs"
 						 " WHERE program_owner = $1 AND program_name = $2",
 						 2, at2, v2, NULL) != 1)
@@ -1737,6 +1738,18 @@ sched_load_job_definition(const SchedName *job, SchedJobDef *def)
 		def->job_action = sched_getstring(0, 2);
 		d = sched_getdatum(0, 3, &isnull);
 		def->number_of_arguments = isnull ? 0 : DatumGetInt32(d);
+
+		/*
+		 * ENABLE rejects a job whose program is disabled, but the program can
+		 * be disabled afterwards; a run started from there has to fail rather
+		 * than execute a program its owner took out of service.
+		 */
+		d = sched_getdatum(0, 4, &isnull);
+		if (isnull || !DatumGetBool(d))
+			ereport(ERROR,
+					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+					 errmsg("program \"%s\".\"%s\" referenced by job \"%s\".\"%s\" is disabled",
+							prog_owner, prog_name, job->owner, job->name)));
 	}
 
 	if (def->number_of_arguments > 0)
@@ -1748,6 +1761,7 @@ sched_load_job_definition(const SchedName *job, SchedJobDef *def)
 		uint64		row;
 
 		def->arg_values = palloc0(sizeof(char *) * def->number_of_arguments);
+		def->arg_types = palloc0(sizeof(char *) * def->number_of_arguments);
 
 		v5[0] = CStringGetTextDatum(job->owner);
 		v5[1] = CStringGetTextDatum(job->name);
@@ -1770,7 +1784,8 @@ sched_load_job_definition(const SchedName *job, SchedJobDef *def)
 		nrows = sched_meta_select("SELECT pos.pos,"
 							 " COALESCE(ja.argument_value, pa.default_value),"
 							 " (ja.argument_position IS NOT NULL"
-							 "  OR COALESCE(pa.has_default, false))"
+							 "  OR COALESCE(pa.has_default, false)),"
+							 " pa.argument_type"
 							 " FROM generate_series(1, $5) pos(pos)"
 							 " LEFT JOIN sys.scheduler_job_args ja"
 							 "  ON ja.job_owner = $1 AND ja.job_name = $2"
@@ -1800,6 +1815,7 @@ sched_load_job_definition(const SchedName *job, SchedJobDef *def)
 								pos, job->owner, job->name)));
 
 			def->arg_values[pos - 1] = sched_getstring(row, 2);
+			def->arg_types[pos - 1] = sched_getstring(row, 4);
 		}
 	}
 }
@@ -1826,8 +1842,11 @@ sched_log_start(const SchedJobDef *def, TimestampTz req_start,
 
 	if (sched_meta_dml("INSERT INTO sys.scheduler_job_run_details"
 				  " (job_owner, job_name, job_id, status,"
-				  "  req_start_date, actual_start_date, worker_pid)"
-				  " VALUES ($1, $2, $3, 'r', $4, $5, pg_backend_pid())"
+				  "  req_start_date, actual_start_date, worker_pid,"
+				  "  worker_backend_start)"
+				  " VALUES ($1, $2, $3, 'r', $4, $5, pg_backend_pid(),"
+				  "  (SELECT backend_start FROM pg_stat_activity"
+				  "    WHERE pid = pg_backend_pid()))"
 				  " RETURNING log_id",
 				  5, argtypes, values, NULL) != 1)
 		elog(ERROR, "could not insert job run log record");
@@ -1848,7 +1867,9 @@ sched_log_set_worker_pid(int64 log_id)
 
 	values[0] = Int64GetDatum(log_id);
 	sched_meta_dml("UPDATE sys.scheduler_job_run_details"
-			  " SET worker_pid = pg_backend_pid()"
+			  " SET worker_pid = pg_backend_pid(),"
+			  " worker_backend_start = (SELECT backend_start"
+			  "   FROM pg_stat_activity WHERE pid = pg_backend_pid())"
 			  " WHERE log_id = $1",
 			  1, argtypes, values, NULL);
 }
@@ -2003,6 +2024,8 @@ ora_dbms_scheduler_run_job(PG_FUNCTION_ARGS)
 	SchedJobDef def;
 	TimestampTz start_ts;
 	int64		log_id;
+	int64		save_fg_job_id;
+	char		save_job_name[sizeof(sched_job_name)];
 	MemoryContext oldcontext;
 	ResourceOwner oldowner;
 
@@ -2019,6 +2042,14 @@ ora_dbms_scheduler_run_job(PG_FUNCTION_ARGS)
 
 	start_ts = GetCurrentTimestamp();
 	log_id = sched_log_start(&def, start_ts, start_ts);
+
+	/*
+	 * A job action is arbitrary SQL and may call RUN_JOB again, so the
+	 * identity SYS_CONTEXT reports has to be saved and put back rather than
+	 * cleared: otherwise the inner run would leave the outer one anonymous.
+	 */
+	save_fg_job_id = sched_fg_job_id;
+	strlcpy(save_job_name, sched_job_name, sizeof(save_job_name));
 
 	sched_fg_job_id = def.job_id;
 	strlcpy(sched_job_name, def.job_name, sizeof(sched_job_name));
@@ -2049,8 +2080,8 @@ ora_dbms_scheduler_run_job(PG_FUNCTION_ARGS)
 		MemoryContextSwitchTo(oldcontext);
 		CurrentResourceOwner = oldowner;
 
-		sched_fg_job_id = 0;
-		sched_job_name[0] = '\0';
+		sched_fg_job_id = save_fg_job_id;
+		strlcpy(sched_job_name, save_job_name, sizeof(sched_job_name));
 
 		/*
 		 * Record the failure and re-throw the job's error, matching Oracle:
@@ -2070,8 +2101,8 @@ ora_dbms_scheduler_run_job(PG_FUNCTION_ARGS)
 	}
 	PG_END_TRY();
 
-	sched_fg_job_id = 0;
-	sched_job_name[0] = '\0';
+	sched_fg_job_id = save_fg_job_id;
+	strlcpy(sched_job_name, save_job_name, sizeof(sched_job_name));
 
 	sched_log_finish(log_id, true, 0, NULL, start_ts);
 	sched_update_job_stats(&def, true, start_ts, false);
@@ -2100,10 +2131,13 @@ ora_dbms_scheduler_stop_job(PG_FUNCTION_ARGS)
 	SchedName	job;
 	Oid			argtypes[2] = {TEXTOID, TEXTOID};
 	Datum		values[2];
-	Oid			pidtype[1] = {INT4OID};
-	Datum		pidvalue[1];
+	Oid			pidtype[2] = {INT4OID, TIMESTAMPTZOID};
+	Datum		pidvalue[2];
 	int32		worker_pid;
+	TimestampTz backend_start;
 	bool		isnull;
+	bool		startnull;
+	Datum		signaled;
 
 	SPI_connect();
 
@@ -2117,7 +2151,8 @@ ora_dbms_scheduler_stop_job(PG_FUNCTION_ARGS)
 
 	values[0] = CStringGetTextDatum(job.owner);
 	values[1] = CStringGetTextDatum(job.name);
-	if (sched_meta_select("SELECT worker_pid FROM sys.scheduler_job_run_details"
+	if (sched_meta_select("SELECT worker_pid, worker_backend_start"
+					 " FROM sys.scheduler_job_run_details"
 					 " WHERE job_owner = $1 AND job_name = $2 AND status = 'r'"
 					 " ORDER BY log_id DESC LIMIT 1",
 					 2, argtypes, values, NULL) != 1)
@@ -2127,16 +2162,45 @@ ora_dbms_scheduler_stop_job(PG_FUNCTION_ARGS)
 						job.owner, job.name)));
 
 	worker_pid = DatumGetInt32(sched_getdatum(0, 1, &isnull));
-	if (isnull)
+	backend_start = DatumGetTimestampTz(sched_getdatum(0, 2, &startnull));
+	if (isnull || startnull)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("job \"%s\".\"%s\" has no recorded worker process",
 						job.owner, job.name)));
 
+	/*
+	 * Signal the recorded process only while it is still the one that took
+	 * this run.  A row that says 'r' does not prove that: a crash leaves the
+	 * row behind, and the pid it names is then free to be reused.  Matching
+	 * the start time as well identifies the backend exactly, so a stale row
+	 * reports "not running" instead of cancelling somebody else's session
+	 * with the metadata owner's rights.
+	 */
 	pidvalue[0] = Int32GetDatum(worker_pid);
-	sched_meta_select(force ? "SELECT pg_terminate_backend($1)"
-					  : "SELECT pg_cancel_backend($1)",
-					  1, pidtype, pidvalue, NULL);
+	pidvalue[1] = TimestampTzGetDatum(backend_start);
+	if (sched_meta_select(force ?
+						  "SELECT pg_terminate_backend(pid)"
+						  " FROM pg_stat_activity"
+						  " WHERE pid = $1 AND backend_start = $2"
+						  "   AND datname = current_database()" :
+						  "SELECT pg_cancel_backend(pid)"
+						  " FROM pg_stat_activity"
+						  " WHERE pid = $1 AND backend_start = $2"
+						  "   AND datname = current_database()",
+						  2, pidtype, pidvalue, NULL) != 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("job \"%s\".\"%s\" is not running",
+						job.owner, job.name),
+				 errdetail("The process recorded for the run is gone; its log record is closed by the next orphan cleanup.")));
+
+	signaled = sched_getdatum(0, 1, &isnull);
+	if (isnull || !DatumGetBool(signaled))
+		ereport(ERROR,
+				(errcode(ERRCODE_SYSTEM_ERROR),
+				 errmsg("could not signal process %d running job \"%s\".\"%s\"",
+						worker_pid, job.owner, job.name)));
 
 	SPI_finish();
 	PG_RETURN_VOID();

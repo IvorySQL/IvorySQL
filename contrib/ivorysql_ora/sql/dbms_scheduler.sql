@@ -89,6 +89,17 @@ SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
   'FREQ=YEARLY;BYDATE=0101,0102;BYMONTHDAY=2;BYHOUR=0;BYMINUTE=0;BYSECOND=0',
   '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00') AS bydate_intersects;
 
+-- an ordinal on BYDAY narrows a BYMONTHDAY candidate set as well: the second
+-- Monday falls on the 8th only in a month that starts on a Monday, so the
+-- first match after the probe is 2027-02-08
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=MONTHLY;BYMONTHDAY=1,8,15;BYDAY=2MON;BYHOUR=0;BYMINUTE=0;BYSECOND=0',
+  '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00') AS byday_ord_with_monthday;
+-- a negative ordinal counts back from the last such weekday of the month
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=MONTHLY;BYMONTHDAY=1,8,15,22,29;BYDAY=-1WED;BYHOUR=0;BYMINUTE=0;BYSECOND=0',
+  '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00') AS byday_negative_ord;
+
 -- BYMONTH also accepts the numeric form
 SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
   'FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=29;BYHOUR=0;BYMINUTE=0;BYSECOND=0',
@@ -194,6 +205,17 @@ SELECT program_name, number_of_arguments FROM user_scheduler_programs
 BEGIN
   dbms_scheduler.create_program('reg_prog_bad', 'PLSQL_BLOCK', 'BEGIN NULL; END;',
                                 number_of_arguments => 300);
+END;
+/
+-- PROCEDURE is accepted as a spelling of STORED_PROCEDURE
+BEGIN
+  dbms_scheduler.create_program('reg_prog_alias', 'PROCEDURE', 'sched_reg_proc', 0);
+END;
+/
+SELECT program_name, program_type FROM user_scheduler_programs
+  WHERE program_name = 'REG_PROG_ALIAS';
+BEGIN
+  dbms_scheduler.drop_program('reg_prog_alias');
 END;
 /
 BEGIN
@@ -428,6 +450,40 @@ BEGIN
   dbms_scheduler.enable('reg_job_args');
 END;
 /
+-- a job whose first run would fall after end_date cannot be enabled
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_job_endd', job_type => 'PLSQL_BLOCK',
+      job_action => 'BEGIN NULL; END;',
+      start_date => TIMESTAMP '2199-01-02 00:00:00 +00:00',
+      repeat_interval => 'FREQ=YEARLY;BYMONTH=1;BYMONTHDAY=1;BYHOUR=0;BYMINUTE=0;BYSECOND=0',
+      end_date => TIMESTAMP '2199-06-01 00:00:00 +00:00');
+END;
+/
+BEGIN
+  dbms_scheduler.enable('reg_job_endd');
+END;
+/
+BEGIN
+  dbms_scheduler.drop_job('reg_job_endd');
+END;
+/
+-- a disabled program cannot be put to work: neither ENABLE nor RUN_JOB
+BEGIN
+  dbms_scheduler.disable('reg_prog');
+END;
+/
+BEGIN
+  dbms_scheduler.enable('reg_job_named');
+END;
+/
+BEGIN
+  dbms_scheduler.run_job('reg_job_named');
+END;
+/
+BEGIN
+  dbms_scheduler.enable('reg_prog');
+END;
+/
 
 --
 -- RUN_JOB (current session)
@@ -451,6 +507,52 @@ BEGIN
 END;
 /
 SELECT note FROM sched_reg_t WHERE id = 90;
+-- a nested RUN_JOB puts the caller's identity back when it returns
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_job_inner', job_type => 'PLSQL_BLOCK',
+      job_action => 'BEGIN INSERT INTO sched_reg_t VALUES (91, ''inner job=''||SYS_CONTEXT(''USERENV'',''SCHEDULER_JOB'')); END;');
+  dbms_scheduler.create_job(job_name => 'reg_job_outer', job_type => 'PLSQL_BLOCK',
+      job_action => 'BEGIN dbms_scheduler.run_job(''reg_job_inner''); INSERT INTO sched_reg_t VALUES (92, ''outer job=''||SYS_CONTEXT(''USERENV'',''SCHEDULER_JOB'')); END;');
+  dbms_scheduler.run_job('reg_job_outer');
+END;
+/
+SELECT id, note FROM sched_reg_t WHERE id IN (91, 92) ORDER BY id;
+-- arguments are passed with the type the program declares, so an overloaded
+-- procedure resolves on that type rather than on an untyped literal
+CREATE OR REPLACE PROCEDURE sched_reg_ovl(x NUMBER) IS
+BEGIN
+  INSERT INTO sched_reg_t VALUES (93, 'called with NUMBER');
+END;
+/
+CREATE OR REPLACE PROCEDURE sched_reg_ovl(x VARCHAR2) IS
+BEGIN
+  INSERT INTO sched_reg_t VALUES (93, 'called with VARCHAR2');
+END;
+/
+BEGIN
+  dbms_scheduler.create_program('reg_prog_ovl', 'STORED_PROCEDURE', 'sched_reg_ovl', 1);
+  dbms_scheduler.define_program_argument(program_name => 'reg_prog_ovl',
+      argument_position => 1, argument_name => 'x', argument_type => 'NUMBER');
+  dbms_scheduler.enable('reg_prog_ovl');
+  dbms_scheduler.create_job(job_name => 'reg_job_ovl', program_name => 'reg_prog_ovl',
+      schedule_name => 'reg_sched');
+  dbms_scheduler.set_job_argument_value('reg_job_ovl', 1, '7');
+  dbms_scheduler.run_job('reg_job_ovl');
+END;
+/
+SELECT note FROM sched_reg_t WHERE id = 93;
+BEGIN
+  dbms_scheduler.drop_job('reg_job_ovl');
+  dbms_scheduler.drop_program('reg_prog_ovl');
+END;
+/
+DROP PROCEDURE sched_reg_ovl(NUMBER);
+DROP PROCEDURE sched_reg_ovl(VARCHAR2);
+BEGIN
+  dbms_scheduler.drop_job('reg_job_inner');
+  dbms_scheduler.drop_job('reg_job_outer');
+END;
+/
 -- RUN_JOB records the running process on the log row (Oracle's SLAVE_PID)
 SELECT job_name, slave_pid = pg_backend_pid() AS pid_is_this_session
   FROM user_scheduler_job_run_details WHERE job_name = 'REG_JOB_CTX';
@@ -513,6 +615,17 @@ END;
 SELECT job_name FROM user_scheduler_jobs WHERE job_name = 'lower_job';
 BEGIN
   dbms_scheduler.drop_job('"lower_job"');
+END;
+/
+-- blanks around an unquoted name are not part of it
+BEGIN
+  dbms_scheduler.create_job(job_name => ' reg_job_blank ', job_type => 'PLSQL_BLOCK',
+      job_action => 'BEGIN NULL; END;');
+END;
+/
+SELECT job_name FROM user_scheduler_jobs WHERE job_name = 'REG_JOB_BLANK';
+BEGIN
+  dbms_scheduler.drop_job('reg_job_blank ');
 END;
 /
 
@@ -593,3 +706,4 @@ DROP TABLE sched_reg_t;
 DROP PROCEDURE sched_reg_proc;
 DELETE FROM sys.scheduler_job_run_details;
 DROP ROLE regress_dbms_scheduler;
+RESET timezone;

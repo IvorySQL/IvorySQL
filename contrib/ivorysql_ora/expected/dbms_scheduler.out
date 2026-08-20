@@ -174,6 +174,26 @@ SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
  2027-01-02 00:00:00.000000 +00:00
 (1 row)
 
+-- an ordinal on BYDAY narrows a BYMONTHDAY candidate set as well: the second
+-- Monday falls on the 8th only in a month that starts on a Monday, so the
+-- first match after the probe is 2027-02-08
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=MONTHLY;BYMONTHDAY=1,8,15;BYDAY=2MON;BYHOUR=0;BYMINUTE=0;BYSECOND=0',
+  '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00') AS byday_ord_with_monthday;
+      byday_ord_with_monthday      
+-----------------------------------
+ 2027-02-08 00:00:00.000000 +00:00
+(1 row)
+
+-- a negative ordinal counts back from the last such weekday of the month
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=MONTHLY;BYMONTHDAY=1,8,15,22,29;BYDAY=-1WED;BYHOUR=0;BYMINUTE=0;BYSECOND=0',
+  '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00') AS byday_negative_ord;
+        byday_negative_ord         
+-----------------------------------
+ 2026-07-29 00:00:00.000000 +00:00
+(1 row)
+
 -- BYMONTH also accepts the numeric form
 SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
   'FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=29;BYHOUR=0;BYMINUTE=0;BYSECOND=0',
@@ -354,6 +374,22 @@ PL/iSQL function create_program line 34 at PERFORM
 SQL statement "CALL dbms_scheduler.create_program('reg_prog_bad', 'PLSQL_BLOCK', 'BEGIN NULL; END;',
                                 number_of_arguments => 300)"
 PL/iSQL function inline_code_block line 2 at CALL
+-- PROCEDURE is accepted as a spelling of STORED_PROCEDURE
+BEGIN
+  dbms_scheduler.create_program('reg_prog_alias', 'PROCEDURE', 'sched_reg_proc', 0);
+END;
+/
+SELECT program_name, program_type FROM user_scheduler_programs
+  WHERE program_name = 'REG_PROG_ALIAS';
+  program_name  |   program_type   
+----------------+------------------
+ REG_PROG_ALIAS | STORED_PROCEDURE
+(1 row)
+
+BEGIN
+  dbms_scheduler.drop_program('reg_prog_alias');
+END;
+/
 BEGIN
   dbms_scheduler.drop_program('reg_prog_nargs');
 END;
@@ -755,6 +791,56 @@ CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_enable(name, commit_seman
 PL/iSQL function enable line 117 at PERFORM
 SQL statement "CALL dbms_scheduler.enable('reg_job_args')"
 PL/iSQL function inline_code_block line 2 at CALL
+-- a job whose first run would fall after end_date cannot be enabled
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_job_endd', job_type => 'PLSQL_BLOCK',
+      job_action => 'BEGIN NULL; END;',
+      start_date => TIMESTAMP '2199-01-02 00:00:00 +00:00',
+      repeat_interval => 'FREQ=YEARLY;BYMONTH=1;BYMONTHDAY=1;BYHOUR=0;BYMINUTE=0;BYSECOND=0',
+      end_date => TIMESTAMP '2199-06-01 00:00:00 +00:00');
+END;
+/
+BEGIN
+  dbms_scheduler.enable('reg_job_endd');
+END;
+/
+ERROR:  cannot enable job "regress_dbms_scheduler"."REG_JOB_ENDD": next run date is later than end_date
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_enable(name, commit_semantics)"
+PL/iSQL function enable line 117 at PERFORM
+SQL statement "CALL dbms_scheduler.enable('reg_job_endd')"
+PL/iSQL function inline_code_block line 2 at CALL
+BEGIN
+  dbms_scheduler.drop_job('reg_job_endd');
+END;
+/
+-- a disabled program cannot be put to work: neither ENABLE nor RUN_JOB
+BEGIN
+  dbms_scheduler.disable('reg_prog');
+END;
+/
+BEGIN
+  dbms_scheduler.enable('reg_job_named');
+END;
+/
+ERROR:  cannot enable job "regress_dbms_scheduler"."REG_JOB_NAMED": program "regress_dbms_scheduler"."REG_PROG" is disabled
+HINT:  Enable the program first.
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_enable(name, commit_semantics)"
+PL/iSQL function enable line 117 at PERFORM
+SQL statement "CALL dbms_scheduler.enable('reg_job_named')"
+PL/iSQL function inline_code_block line 2 at CALL
+BEGIN
+  dbms_scheduler.run_job('reg_job_named');
+END;
+/
+ERROR:  program "regress_dbms_scheduler"."REG_PROG" referenced by job "regress_dbms_scheduler"."REG_JOB_NAMED" is disabled
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_run_job(job_name, use_current_session)"
+PL/iSQL function run_job line 132 at PERFORM
+SQL statement "CALL dbms_scheduler.run_job('reg_job_named')"
+PL/iSQL function inline_code_block line 2 at CALL
+BEGIN
+  dbms_scheduler.enable('reg_prog');
+END;
+/
 --
 -- RUN_JOB (current session)
 --
@@ -788,6 +874,63 @@ SELECT note FROM sched_reg_t WHERE id = 90;
  fg=set job=REG_JOB_CTX
 (1 row)
 
+-- a nested RUN_JOB puts the caller's identity back when it returns
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_job_inner', job_type => 'PLSQL_BLOCK',
+      job_action => 'BEGIN INSERT INTO sched_reg_t VALUES (91, ''inner job=''||SYS_CONTEXT(''USERENV'',''SCHEDULER_JOB'')); END;');
+  dbms_scheduler.create_job(job_name => 'reg_job_outer', job_type => 'PLSQL_BLOCK',
+      job_action => 'BEGIN dbms_scheduler.run_job(''reg_job_inner''); INSERT INTO sched_reg_t VALUES (92, ''outer job=''||SYS_CONTEXT(''USERENV'',''SCHEDULER_JOB'')); END;');
+  dbms_scheduler.run_job('reg_job_outer');
+END;
+/
+SELECT id, note FROM sched_reg_t WHERE id IN (91, 92) ORDER BY id;
+ id |          note           
+----+-------------------------
+ 91 | inner job=REG_JOB_INNER
+ 92 | outer job=REG_JOB_OUTER
+(2 rows)
+
+-- arguments are passed with the type the program declares, so an overloaded
+-- procedure resolves on that type rather than on an untyped literal
+CREATE OR REPLACE PROCEDURE sched_reg_ovl(x NUMBER) IS
+BEGIN
+  INSERT INTO sched_reg_t VALUES (93, 'called with NUMBER');
+END;
+/
+CREATE OR REPLACE PROCEDURE sched_reg_ovl(x VARCHAR2) IS
+BEGIN
+  INSERT INTO sched_reg_t VALUES (93, 'called with VARCHAR2');
+END;
+/
+BEGIN
+  dbms_scheduler.create_program('reg_prog_ovl', 'STORED_PROCEDURE', 'sched_reg_ovl', 1);
+  dbms_scheduler.define_program_argument(program_name => 'reg_prog_ovl',
+      argument_position => 1, argument_name => 'x', argument_type => 'NUMBER');
+  dbms_scheduler.enable('reg_prog_ovl');
+  dbms_scheduler.create_job(job_name => 'reg_job_ovl', program_name => 'reg_prog_ovl',
+      schedule_name => 'reg_sched');
+  dbms_scheduler.set_job_argument_value('reg_job_ovl', 1, '7');
+  dbms_scheduler.run_job('reg_job_ovl');
+END;
+/
+SELECT note FROM sched_reg_t WHERE id = 93;
+        note        
+--------------------
+ called with NUMBER
+(1 row)
+
+BEGIN
+  dbms_scheduler.drop_job('reg_job_ovl');
+  dbms_scheduler.drop_program('reg_prog_ovl');
+END;
+/
+DROP PROCEDURE sched_reg_ovl(NUMBER);
+DROP PROCEDURE sched_reg_ovl(VARCHAR2);
+BEGIN
+  dbms_scheduler.drop_job('reg_job_inner');
+  dbms_scheduler.drop_job('reg_job_outer');
+END;
+/
 -- RUN_JOB records the running process on the log row (Oracle's SLAVE_PID)
 SELECT job_name, slave_pid = pg_backend_pid() AS pid_is_this_session
   FROM user_scheduler_job_run_details WHERE job_name = 'REG_JOB_CTX';
@@ -918,6 +1061,22 @@ BEGIN
   dbms_scheduler.drop_job('"lower_job"');
 END;
 /
+-- blanks around an unquoted name are not part of it
+BEGIN
+  dbms_scheduler.create_job(job_name => ' reg_job_blank ', job_type => 'PLSQL_BLOCK',
+      job_action => 'BEGIN NULL; END;');
+END;
+/
+SELECT job_name FROM user_scheduler_jobs WHERE job_name = 'REG_JOB_BLANK';
+   job_name    
+---------------
+ REG_JOB_BLANK
+(1 row)
+
+BEGIN
+  dbms_scheduler.drop_job('reg_job_blank ');
+END;
+/
 --
 -- ownership and dictionary views
 --
@@ -1043,3 +1202,4 @@ DROP TABLE sched_reg_t;
 DROP PROCEDURE sched_reg_proc;
 DELETE FROM sys.scheduler_job_run_details;
 DROP ROLE regress_dbms_scheduler;
+RESET timezone;
