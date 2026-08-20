@@ -696,11 +696,21 @@ sched_claim_one_job(SchedDueRow *row, MemoryContext caller_ctx, List **due)
 		n3[0] = ' ';
 		n3[1] = has_next ? ' ' : 'n';
 		n3[2] = ' ';
-		sched_meta_dml("UPDATE sys.scheduler_jobs SET"
-					   " next_run_date = $2, enabled = $3,"
-					   " state = 'RUNNING'"
-					   " WHERE job_id = $1",
-					   3, at3, v3, n3);
+
+		/*
+		 * "AND enabled" is what keeps a DISABLE that commits between the scan
+		 * above and this update from being overwritten: without it this
+		 * statement, which re-reads the row under READ COMMITTED, would put
+		 * the enabled flag it computed back on a job the user just switched
+		 * off, and the job would keep running.  Losing the claim is fine, the
+		 * next cycle looks again.
+		 */
+		if (sched_meta_dml("UPDATE sys.scheduler_jobs SET"
+						   " next_run_date = $2, enabled = $3,"
+						   " state = 'RUNNING'"
+						   " WHERE job_id = $1 AND enabled",
+						   3, at3, v3, n3) == 0)
+			return;
 	}
 
 	/* create the running-log row */
@@ -877,6 +887,7 @@ SchedulerDatabaseWorkerMain(Datum main_arg)
 	char		dbname[NAMEDATALEN];
 	MemoryContext worker_ctx;
 	volatile int cycle_failures = 0;
+	volatile bool orphans_cleaned = false;
 
 	strlcpy(dbname, MyBgworkerEntry->bgw_extra, NAMEDATALEN);
 
@@ -913,8 +924,6 @@ SchedulerDatabaseWorkerMain(Datum main_arg)
 	ereport(LOG,
 			(errmsg("ivorysql scheduler started for database \"%s\"", dbname)));
 
-	scheduler_cleanup_orphans();
-
 	for (;;)
 	{
 		List	   *due;
@@ -948,6 +957,20 @@ SchedulerDatabaseWorkerMain(Datum main_arg)
 		 */
 		PG_TRY();
 		{
+			/*
+			 * Startup cleanup runs here, inside the protection below, rather
+			 * than before the loop: it raises errors like everything else, and
+			 * outside the loop one of them would reach bgworker.c's top-level
+			 * handler and end this worker for good, since the launcher does
+			 * not restart one that quit.  Leaving it in place makes a
+			 * transient failure cost one cycle instead.
+			 */
+			if (!orphans_cleaned)
+			{
+				scheduler_cleanup_orphans();
+				orphans_cleaned = true;
+			}
+
 			free_slots = scheduler_free_job_slots();
 			if (free_slots > 0)
 			{
@@ -959,6 +982,9 @@ SchedulerDatabaseWorkerMain(Datum main_arg)
 
 					if (!scheduler_spawn_job_worker(MyDatabaseId, job))
 					{
+						Oid			at1[1] = {INT8OID};
+						Datum		v1[1];
+
 						/*
 						 * Out of worker slots: the run was already claimed, so
 						 * close its log row as failed rather than leaving it
@@ -972,6 +998,18 @@ SchedulerDatabaseWorkerMain(Datum main_arg)
 						sched_log_finish(job->log_id, false, 0,
 										 "no free background worker slots",
 										 GetCurrentTimestamp());
+
+						/*
+						 * Nothing was started, so nothing will move the job
+						 * out of RUNNING later: put the state back here, the
+						 * way the job worker does when it finishes.
+						 */
+						v1[0] = Int64GetDatum(job->job_id);
+						sched_meta_dml("UPDATE sys.scheduler_jobs SET"
+									   " state = CASE WHEN enabled THEN 'SCHEDULED'"
+									   " ELSE 'DISABLED' END"
+									   " WHERE job_id = $1",
+									   1, at1, v1, NULL);
 						SPI_finish();
 						PopActiveSnapshot();
 						CommitTransactionCommand();

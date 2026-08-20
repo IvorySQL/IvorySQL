@@ -71,6 +71,7 @@ typedef struct SchedJobDef
 	char	   *job_action;
 	int			number_of_arguments;
 	char	  **arg_values;		/* argument values (NULL element = no value) */
+	char	  **arg_types;		/* declared argument types, NULL when unknown */
 } SchedJobDef;
 
 extern void sched_execute_job(SchedJobDef *job);

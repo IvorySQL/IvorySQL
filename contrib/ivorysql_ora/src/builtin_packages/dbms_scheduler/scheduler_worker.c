@@ -31,6 +31,8 @@
 #include "access/xact.h"
 #include "executor/spi.h"
 #include "miscadmin.h"
+#include "nodes/miscnodes.h"
+#include "parser/parse_type.h"
 #include "pgstat.h"
 #include "postmaster/bgworker.h"
 #include "postmaster/interrupt.h"
@@ -40,6 +42,7 @@
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
+#include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/snapmgr.h"
 #include "utils/timeout.h"
@@ -64,24 +67,88 @@ sched_execute_job(SchedJobDef *job)
 {
 	int			save_nestlevel;
 	const char *sql;
+	int			nparams = 0;
+	Oid		   *paramtypes = NULL;
+	Datum	   *paramvalues = NULL;
+	char	   *paramnulls = NULL;
 	int			rc;
+
+	save_nestlevel = NewGUCNestLevel();
+	(void) set_config_option("ivorysql.compatible_mode", "oracle",
+							 PGC_USERSET, PGC_S_SESSION,
+							 GUC_ACTION_SAVE, true, 0, false);
 
 	if (strcmp(job->job_type, "STORED_PROCEDURE") == 0)
 	{
 		StringInfoData buf;
 		int			i;
 
+		if (job->number_of_arguments > 0)
+		{
+			paramtypes = palloc(sizeof(Oid) * job->number_of_arguments);
+			paramvalues = palloc(sizeof(Datum) * job->number_of_arguments);
+			paramnulls = palloc(sizeof(char) * job->number_of_arguments);
+		}
+
 		initStringInfo(&buf);
 		appendStringInfo(&buf, "CALL %s(", job->job_action);
 		for (i = 0; i < job->number_of_arguments; i++)
 		{
+			char	   *typename = job->arg_types ? job->arg_types[i] : NULL;
+			ErrorSaveContext escontext = {T_ErrorSaveContext};
+			Oid			typid = InvalidOid;
+			int32		typmod = -1;
+
 			if (i > 0)
 				appendStringInfoString(&buf, ", ");
+
+			/*
+			 * Argument values are stored as text, so they have to be given a
+			 * type on the way in.  The program's declared type is the right
+			 * one: an untyped literal leaves the choice to the parser, which
+			 * picks the wrong overload of a procedure that has several, and
+			 * fails outright for a parameter type with no cast from unknown.
+			 *
+			 * The declared type is free text that nothing validated when it
+			 * was recorded, so a name that does not resolve falls back to the
+			 * literal form rather than failing the run.  parseTypeString is
+			 * called under the oracle parser, so Oracle spellings such as
+			 * NUMBER and VARCHAR2(10) resolve here.
+			 */
+			if (typename != NULL &&
+				!parseTypeString(typename, &typid, &typmod,
+								 (Node *) &escontext))
+				typid = InvalidOid;
+
+			if (!OidIsValid(typid))
+			{
+				if (job->arg_values[i] == NULL)
+					appendStringInfoString(&buf, "NULL");
+				else
+					appendStringInfoString(&buf,
+										   quote_literal_cstr(job->arg_values[i]));
+				continue;
+			}
+
+			paramtypes[nparams] = typid;
 			if (job->arg_values[i] == NULL)
-				appendStringInfoString(&buf, "NULL");
+			{
+				paramvalues[nparams] = (Datum) 0;
+				paramnulls[nparams] = 'n';
+			}
 			else
-				appendStringInfoString(&buf,
-									   quote_literal_cstr(job->arg_values[i]));
+			{
+				Oid			typinput;
+				Oid			typioparam;
+
+				getTypeInputInfo(typid, &typinput, &typioparam);
+				paramvalues[nparams] = OidInputFunctionCall(typinput,
+															job->arg_values[i],
+															typioparam, typmod);
+				paramnulls[nparams] = ' ';
+			}
+			nparams++;
+			appendStringInfo(&buf, "$%d", nparams);
 		}
 		appendStringInfoChar(&buf, ')');
 		sql = buf.data;
@@ -89,12 +156,8 @@ sched_execute_job(SchedJobDef *job)
 	else
 		sql = job->job_action;	/* PLSQL_BLOCK: anonymous block text */
 
-	save_nestlevel = NewGUCNestLevel();
-	(void) set_config_option("ivorysql.compatible_mode", "oracle",
-							 PGC_USERSET, PGC_S_SESSION,
-							 GUC_ACTION_SAVE, true, 0, false);
-
-	rc = SPI_execute(sql, false, 0);
+	rc = SPI_execute_with_args(sql, nparams, paramtypes, paramvalues,
+							   paramnulls, false, 0);
 	if (rc < 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
@@ -180,9 +243,14 @@ SchedulerJobWorkerMain(Datum main_arg)
 			if (def.number_of_arguments > 0)
 			{
 				stable.arg_values = palloc0(sizeof(char *) * def.number_of_arguments);
+				stable.arg_types = palloc0(sizeof(char *) * def.number_of_arguments);
 				for (i = 0; i < def.number_of_arguments; i++)
+				{
 					if (def.arg_values[i] != NULL)
 						stable.arg_values[i] = pstrdup(def.arg_values[i]);
+					if (def.arg_types != NULL && def.arg_types[i] != NULL)
+						stable.arg_types[i] = pstrdup(def.arg_types[i]);
+				}
 			}
 			def = stable;
 			MemoryContextSwitchTo(oldcxt);

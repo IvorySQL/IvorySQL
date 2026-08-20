@@ -37,9 +37,11 @@
  * Scheduler metadata.
  *
  * Object names are stored normalized (unquoted names are upper-cased) and
- * owners are role names.  Row level security restricts users to their own
- * scheduler objects; all modifications go through the package procedures,
- * which validate ownership in C before writing with escalated rights.
+ * owners are role names.  The base tables carry no PUBLIC privileges; users
+ * see their own objects through the USER_SCHEDULER_* views defined below
+ * (see the "Visibility" comment there for why row level security is not an
+ * option).  All modifications go through the package procedures, which
+ * validate ownership in C before writing with escalated rights.
  */
 
 CREATE SEQUENCE sys.scheduler_job_id_seq;
@@ -173,8 +175,14 @@ CREATE TABLE sys.scheduler_job_run_details (
 	error_message		text COLLATE "c",
 	req_start_date		timestamptz,
 	actual_start_date	timestamptz,
-	/* process running the job, so STOP_JOB can find it */
+	/*
+	 * Process running the job, so STOP_JOB can find it.  The pid alone does
+	 * not identify it: a row left behind by a crash keeps naming a pid the
+	 * operating system is free to hand to an unrelated backend, so the start
+	 * time is recorded with it and both are checked before signaling.
+	 */
 	worker_pid			int,
+	worker_backend_start timestamptz,
 	/* qualified: bare "interval" does not parse as a type in oracle mode */
 	run_duration		pg_catalog.interval,
 	CONSTRAINT scheduler_job_run_details_pkey PRIMARY KEY (log_id)

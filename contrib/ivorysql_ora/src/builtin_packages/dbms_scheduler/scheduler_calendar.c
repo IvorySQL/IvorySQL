@@ -635,7 +635,31 @@ month_day_list(const CalendarRule *rule, int year, int mon, int fallback_mday,
 					continue;
 				for (i = 0; i < rule->n_byday; i++)
 				{
-					if (j2day(date2j(year, mon, d)) == rule->byday[i].dow)
+					int			dow = rule->byday[i].dow;
+					int			ord = rule->byday[i].ord;
+					int			first_match;
+					int			nth;
+
+					if (j2day(date2j(year, mon, d)) != dow)
+						continue;
+					if (ord == 0)
+						break;	/* every such weekday qualifies */
+
+					/*
+					 * An ordinal narrows the filter to one occurrence, so
+					 * BYMONTHDAY=1,8,15 with BYDAY=2MON keeps a day only when
+					 * it is also the second Monday.  Counting from the first
+					 * matching weekday of the month gives its position;
+					 * negative ordinals count back from the last one.
+					 */
+					first_match = 1 + ((dow - j2day(date2j(year, mon, 1))) + 7) % 7;
+					nth = (d - first_match) / 7 + 1;
+					if (ord > 0)
+					{
+						if (nth == ord)
+							break;
+					}
+					else if (nth == (dim - first_match) / 7 + 1 + ord + 1)
 						break;
 				}
 				if (i >= rule->n_byday)
