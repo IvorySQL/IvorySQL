@@ -330,7 +330,7 @@ DETAIL:  A program of that name already exists; jobs, programs and schedules sha
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_create_program(program_name,
 			program_type, program_action, number_of_arguments, enabled,
 			comments)"
-PL/iSQL function create_program line 34 at PERFORM
+PL/iSQL function sys.dbms_scheduler.create_program line 34 at PERFORM
 SQL statement "CALL dbms_scheduler.create_program('reg_prog', 'PLSQL_BLOCK', 'BEGIN NULL; END;')"
 PL/iSQL function inline_code_block line 2 at CALL
 -- unsupported program type
@@ -343,7 +343,7 @@ HINT:  Supported types are PLSQL_BLOCK and STORED_PROCEDURE.
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_create_program(program_name,
 			program_type, program_action, number_of_arguments, enabled,
 			comments)"
-PL/iSQL function create_program line 34 at PERFORM
+PL/iSQL function sys.dbms_scheduler.create_program line 34 at PERFORM
 SQL statement "CALL dbms_scheduler.create_program('reg_prog2', 'EXECUTABLE', '/bin/true')"
 PL/iSQL function inline_code_block line 2 at CALL
 -- number_of_arguments is ignored (with a warning) for a PLSQL_BLOCK program
@@ -370,7 +370,7 @@ ERROR:  number_of_arguments must be between 0 and 255
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_create_program(program_name,
 			program_type, program_action, number_of_arguments, enabled,
 			comments)"
-PL/iSQL function create_program line 34 at PERFORM
+PL/iSQL function sys.dbms_scheduler.create_program line 34 at PERFORM
 SQL statement "CALL dbms_scheduler.create_program('reg_prog_bad', 'PLSQL_BLOCK', 'BEGIN NULL; END;',
                                 number_of_arguments => 300)"
 PL/iSQL function inline_code_block line 2 at CALL
@@ -401,7 +401,7 @@ END;
 /
 ERROR:  cannot enable program "regress_dbms_scheduler"."REG_PROG": argument 1 is not defined
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_enable(name, commit_semantics)"
-PL/iSQL function enable line 117 at PERFORM
+PL/iSQL function sys.dbms_scheduler.enable line 117 at PERFORM
 SQL statement "CALL dbms_scheduler.enable('reg_prog')"
 PL/iSQL function inline_code_block line 2 at CALL
 -- argument definitions (overload without and with default_value)
@@ -423,7 +423,7 @@ ERROR:  argument_position 3 is out of range for program "regress_dbms_scheduler"
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_define_program_argument(program_name,
 			argument_position, argument_name, argument_type, NULL, false,
 			out_argument)"
-PL/iSQL function define_program_argument line 55 at PERFORM
+PL/iSQL function sys.dbms_scheduler.define_program_argument line 55 at PERFORM
 SQL statement "CALL dbms_scheduler.define_program_argument(program_name => 'reg_prog',
       argument_position => 3, argument_type => 'NUMBER')"
 PL/iSQL function inline_code_block line 2 at CALL
@@ -437,7 +437,7 @@ ERROR:  OUT arguments are not supported
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_define_program_argument(program_name,
 			argument_position, argument_name, argument_type, NULL, false,
 			out_argument)"
-PL/iSQL function define_program_argument line 55 at PERFORM
+PL/iSQL function sys.dbms_scheduler.define_program_argument line 55 at PERFORM
 SQL statement "CALL dbms_scheduler.define_program_argument(program_name => 'reg_prog',
       argument_position => 1, argument_type => 'NUMBER', out_argument => TRUE)"
 PL/iSQL function inline_code_block line 2 at CALL
@@ -472,7 +472,7 @@ END;
 ERROR:  argument 1 of program "regress_dbms_scheduler"."REG_PROG" is not defined
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_drop_program_argument_pos(program_name,
 			argument_position)"
-PL/iSQL function drop_program_argument line 97 at PERFORM
+PL/iSQL function sys.dbms_scheduler.drop_program_argument line 97 at PERFORM
 SQL statement "CALL dbms_scheduler.drop_program_argument('reg_prog', 1)"
 PL/iSQL function inline_code_block line 2 at CALL
 BEGIN
@@ -486,7 +486,7 @@ END;
 ERROR:  argument "NOSUCHARG" of program "regress_dbms_scheduler"."REG_PROG" is not defined
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_drop_program_argument_name(program_name,
 			argument_name)"
-PL/iSQL function drop_program_argument line 104 at PERFORM
+PL/iSQL function sys.dbms_scheduler.drop_program_argument line 104 at PERFORM
 SQL statement "CALL dbms_scheduler.drop_program_argument('reg_prog', 'nosucharg')"
 PL/iSQL function inline_code_block line 2 at CALL
 SELECT count(*) AS remaining_args FROM user_scheduler_program_args;
@@ -521,7 +521,7 @@ END;
 ERROR:  either start_date or repeat_interval must be specified
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_create_schedule(schedule_name,
 			start_date, repeat_interval, end_date, comments)"
-PL/iSQL function create_schedule line 45 at PERFORM
+PL/iSQL function sys.dbms_scheduler.create_schedule line 45 at PERFORM
 SQL statement "CALL dbms_scheduler.create_schedule('reg_sched2')"
 PL/iSQL function inline_code_block line 2 at CALL
 -- calendar syntax is validated at creation
@@ -533,7 +533,7 @@ ERROR:  invalid calendar string "FREQ=BROKEN"
 DETAIL:  FREQ must be one of YEARLY, MONTHLY, WEEKLY, DAILY, HOURLY, MINUTELY or SECONDLY.
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_create_schedule(schedule_name,
 			start_date, repeat_interval, end_date, comments)"
-PL/iSQL function create_schedule line 45 at PERFORM
+PL/iSQL function sys.dbms_scheduler.create_schedule line 45 at PERFORM
 SQL statement "CALL dbms_scheduler.create_schedule('reg_sched2', repeat_interval => 'FREQ=BROKEN')"
 PL/iSQL function inline_code_block line 2 at CALL
 -- end_date must be after start_date
@@ -546,7 +546,7 @@ END;
 ERROR:  end_date must be later than start_date
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_create_schedule(schedule_name,
 			start_date, repeat_interval, end_date, comments)"
-PL/iSQL function create_schedule line 45 at PERFORM
+PL/iSQL function sys.dbms_scheduler.create_schedule line 45 at PERFORM
 SQL statement "CALL dbms_scheduler.create_schedule('reg_sched2',
       start_date => TIMESTAMP '2199-01-02 00:00:00 +00:00',
       end_date   => TIMESTAMP '2199-01-01 00:00:00 +00:00')"
@@ -588,7 +588,7 @@ DETAIL:  A program of that name already exists; jobs, programs and schedules sha
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_create_job_inline(job_name, job_type,
 			job_action, number_of_arguments, start_date, repeat_interval,
 			end_date, job_class, enabled, auto_drop, comments)"
-PL/iSQL function create_job line 12 at PERFORM
+PL/iSQL function sys.dbms_scheduler.create_job line 12 at PERFORM
 SQL statement "CALL dbms_scheduler.create_job(job_name => 'reg_prog', job_type => 'PLSQL_BLOCK',
       job_action => 'BEGIN NULL; END;')"
 PL/iSQL function inline_code_block line 2 at CALL
@@ -621,7 +621,7 @@ HINT:  Supported types are PLSQL_BLOCK and STORED_PROCEDURE.
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_create_job_inline(job_name, job_type,
 			job_action, number_of_arguments, start_date, repeat_interval,
 			end_date, job_class, enabled, auto_drop, comments)"
-PL/iSQL function create_job line 12 at PERFORM
+PL/iSQL function sys.dbms_scheduler.create_job line 12 at PERFORM
 SQL statement "CALL dbms_scheduler.create_job(job_name => 'reg_job_bad', job_type => 'CHAIN',
       job_action => 'c1')"
 PL/iSQL function inline_code_block line 2 at CALL
@@ -641,7 +641,7 @@ END;
 ERROR:  program "regress_dbms_scheduler"."NO_PROG" does not exist
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_create_job_named(job_name, program_name,
 			schedule_name, job_class, enabled, auto_drop, comments)"
-PL/iSQL function create_job line 24 at PERFORM
+PL/iSQL function sys.dbms_scheduler.create_job line 24 at PERFORM
 SQL statement "CALL dbms_scheduler.create_job(job_name => 'reg_job_bad', program_name => 'no_prog',
       schedule_name => 'reg_sched')"
 PL/iSQL function inline_code_block line 2 at CALL
@@ -672,7 +672,7 @@ END;
 ERROR:  argument_position 3 is out of range for job "regress_dbms_scheduler"."REG_JOB_NAMED" (1 .. 2)
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_set_job_argument_value_pos(job_name,
 			argument_position, argument_value)"
-PL/iSQL function set_job_argument_value line 147 at PERFORM
+PL/iSQL function sys.dbms_scheduler.set_job_argument_value line 147 at PERFORM
 SQL statement "CALL dbms_scheduler.set_job_argument_value('reg_job_named', 3, 'x')"
 PL/iSQL function inline_code_block line 2 at CALL
 BEGIN
@@ -682,7 +682,7 @@ END;
 ERROR:  program "regress_dbms_scheduler"."REG_PROG" has no argument named "NOSUCHARG"
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_set_job_argument_value_name(job_name,
 			argument_name, argument_value)"
-PL/iSQL function set_job_argument_value line 155 at PERFORM
+PL/iSQL function sys.dbms_scheduler.set_job_argument_value line 155 at PERFORM
 SQL statement "CALL dbms_scheduler.set_job_argument_value('reg_job_named', 'nosucharg', 'x')"
 PL/iSQL function inline_code_block line 2 at CALL
 BEGIN
@@ -693,7 +693,7 @@ ERROR:  job "regress_dbms_scheduler"."REG_JOB_INLINE" has no named arguments
 HINT:  Only jobs that reference a program have named arguments.
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_set_job_argument_value_name(job_name,
 			argument_name, argument_value)"
-PL/iSQL function set_job_argument_value line 155 at PERFORM
+PL/iSQL function sys.dbms_scheduler.set_job_argument_value line 155 at PERFORM
 SQL statement "CALL dbms_scheduler.set_job_argument_value('reg_job_inline', 'y', 'x')"
 PL/iSQL function inline_code_block line 2 at CALL
 SELECT job_name, argument_position, value FROM user_scheduler_job_args
@@ -714,7 +714,7 @@ END;
 /
 ERROR:  schedule "regress_dbms_scheduler"."REG_SCHED" cannot be enabled
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_enable(name, commit_semantics)"
-PL/iSQL function enable line 117 at PERFORM
+PL/iSQL function sys.dbms_scheduler.enable line 117 at PERFORM
 SQL statement "CALL dbms_scheduler.enable('reg_sched')"
 PL/iSQL function inline_code_block line 2 at CALL
 BEGIN
@@ -723,7 +723,7 @@ END;
 /
 ERROR:  schedule "regress_dbms_scheduler"."REG_SCHED" cannot be disabled
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_disable(name, force, commit_semantics)"
-PL/iSQL function disable line 76 at PERFORM
+PL/iSQL function sys.dbms_scheduler.disable line 76 at PERFORM
 SQL statement "CALL dbms_scheduler.disable('reg_sched')"
 PL/iSQL function inline_code_block line 2 at CALL
 -- unknown object
@@ -733,7 +733,7 @@ END;
 /
 ERROR:  scheduler object "regress_dbms_scheduler"."NO_SUCH_OBJECT" does not exist
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_enable(name, commit_semantics)"
-PL/iSQL function enable line 117 at PERFORM
+PL/iSQL function sys.dbms_scheduler.enable line 117 at PERFORM
 SQL statement "CALL dbms_scheduler.enable('no_such_object')"
 PL/iSQL function inline_code_block line 2 at CALL
 -- commit_semantics values are validated (and otherwise ignored)
@@ -744,7 +744,7 @@ END;
 ERROR:  invalid commit_semantics value "WHENEVER"
 HINT:  Valid values are STOP_ON_FIRST_ERROR, TRANSACTIONAL and ABSORB_ERRORS.
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_enable(name, commit_semantics)"
-PL/iSQL function enable line 117 at PERFORM
+PL/iSQL function sys.dbms_scheduler.enable line 117 at PERFORM
 SQL statement "CALL dbms_scheduler.enable('reg_job_named', commit_semantics => 'WHENEVER')"
 PL/iSQL function inline_code_block line 2 at CALL
 -- Enabling a job warns when it will not run automatically, which depends on
@@ -788,7 +788,7 @@ END;
 /
 ERROR:  cannot enable job "regress_dbms_scheduler"."REG_JOB_ARGS": argument 1 has no value and no default
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_enable(name, commit_semantics)"
-PL/iSQL function enable line 117 at PERFORM
+PL/iSQL function sys.dbms_scheduler.enable line 117 at PERFORM
 SQL statement "CALL dbms_scheduler.enable('reg_job_args')"
 PL/iSQL function inline_code_block line 2 at CALL
 -- a job whose first run would fall after end_date cannot be enabled
@@ -806,7 +806,7 @@ END;
 /
 ERROR:  cannot enable job "regress_dbms_scheduler"."REG_JOB_ENDD": next run date is later than end_date
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_enable(name, commit_semantics)"
-PL/iSQL function enable line 117 at PERFORM
+PL/iSQL function sys.dbms_scheduler.enable line 117 at PERFORM
 SQL statement "CALL dbms_scheduler.enable('reg_job_endd')"
 PL/iSQL function inline_code_block line 2 at CALL
 BEGIN
@@ -825,7 +825,7 @@ END;
 ERROR:  cannot enable job "regress_dbms_scheduler"."REG_JOB_NAMED": program "regress_dbms_scheduler"."REG_PROG" is disabled
 HINT:  Enable the program first.
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_enable(name, commit_semantics)"
-PL/iSQL function enable line 117 at PERFORM
+PL/iSQL function sys.dbms_scheduler.enable line 117 at PERFORM
 SQL statement "CALL dbms_scheduler.enable('reg_job_named')"
 PL/iSQL function inline_code_block line 2 at CALL
 BEGIN
@@ -834,7 +834,7 @@ END;
 /
 ERROR:  program "regress_dbms_scheduler"."REG_PROG" referenced by job "regress_dbms_scheduler"."REG_JOB_NAMED" is disabled
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_run_job(job_name, use_current_session)"
-PL/iSQL function run_job line 132 at PERFORM
+PL/iSQL function sys.dbms_scheduler.run_job line 132 at PERFORM
 SQL statement "CALL dbms_scheduler.run_job('reg_job_named')"
 PL/iSQL function inline_code_block line 2 at CALL
 BEGIN
@@ -950,7 +950,7 @@ END;
 ERROR:  job "regress_dbms_scheduler"."REG_JOB_CTX" is not running
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_stop_job(job_name, force,
 			commit_semantics)"
-PL/iSQL function stop_job line 139 at PERFORM
+PL/iSQL function sys.dbms_scheduler.stop_job line 139 at PERFORM
 SQL statement "CALL dbms_scheduler.stop_job('reg_job_ctx')"
 PL/iSQL function inline_code_block line 2 at CALL
 -- not a job
@@ -961,7 +961,7 @@ END;
 ERROR:  job "regress_dbms_scheduler"."REG_SCHED" does not exist
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_stop_job(job_name, force,
 			commit_semantics)"
-PL/iSQL function stop_job line 139 at PERFORM
+PL/iSQL function sys.dbms_scheduler.stop_job line 139 at PERFORM
 SQL statement "CALL dbms_scheduler.stop_job('reg_sched')"
 PL/iSQL function inline_code_block line 2 at CALL
 -- unknown object
@@ -972,7 +972,7 @@ END;
 ERROR:  job "regress_dbms_scheduler"."NO_SUCH_JOB" does not exist
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_stop_job(job_name, force,
 			commit_semantics)"
-PL/iSQL function stop_job line 139 at PERFORM
+PL/iSQL function sys.dbms_scheduler.stop_job line 139 at PERFORM
 SQL statement "CALL dbms_scheduler.stop_job('no_such_job')"
 PL/iSQL function inline_code_block line 2 at CALL
 -- commit_semantics is validated here too
@@ -984,7 +984,7 @@ ERROR:  invalid commit_semantics value "WHENEVER"
 HINT:  Valid values are STOP_ON_FIRST_ERROR, TRANSACTIONAL and ABSORB_ERRORS.
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_stop_job(job_name, force,
 			commit_semantics)"
-PL/iSQL function stop_job line 139 at PERFORM
+PL/iSQL function sys.dbms_scheduler.stop_job line 139 at PERFORM
 SQL statement "CALL dbms_scheduler.stop_job('reg_job_ctx', commit_semantics => 'WHENEVER')"
 PL/iSQL function inline_code_block line 2 at CALL
 -- outside of a job both are NULL
@@ -1011,7 +1011,7 @@ CONTEXT:  PL/iSQL assignment "v := 1/0"
 PL/iSQL function inline_code_block line 1 at assignment
 SQL statement "DECLARE v NUMBER; BEGIN v := 1/0; END;"
 SQL statement "SELECT sys.ora_dbms_scheduler_run_job(job_name, use_current_session)"
-PL/iSQL function run_job line 132 at PERFORM
+PL/iSQL function sys.dbms_scheduler.run_job line 132 at PERFORM
 SQL statement "CALL dbms_scheduler.run_job('reg_job_fail')"
 PL/iSQL function inline_code_block line 2 at CALL
 -- only the current session mode is supported
@@ -1022,7 +1022,7 @@ END;
 ERROR:  use_current_session => false is not supported
 HINT:  Enable the job to have the scheduler run it in the background.
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_run_job(job_name, use_current_session)"
-PL/iSQL function run_job line 132 at PERFORM
+PL/iSQL function sys.dbms_scheduler.run_job line 132 at PERFORM
 SQL statement "CALL dbms_scheduler.run_job('reg_job_inline', use_current_session => FALSE)"
 PL/iSQL function inline_code_block line 2 at CALL
 SELECT job_name, state, run_count FROM user_scheduler_jobs
@@ -1109,7 +1109,7 @@ END;
 ERROR:  insufficient privileges to operate on scheduler objects owned by "sched_regress_u1"
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_drop_job(job_name, force, defer,
 			commit_semantics)"
-PL/iSQL function drop_job line 84 at PERFORM
+PL/iSQL function sys.dbms_scheduler.drop_job line 84 at PERFORM
 SQL statement "CALL dbms_scheduler.drop_job('sched_regress_u1.u1_job')"
 PL/iSQL function inline_code_block line 2 at CALL
 SELECT count(*) FROM sys.scheduler_jobs;
@@ -1140,7 +1140,7 @@ END;
 ERROR:  program "regress_dbms_scheduler"."REG_PROG" is referenced by jobs
 HINT:  Use force => true to disable the referencing jobs.
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_drop_program(program_name, force)"
-PL/iSQL function drop_program line 91 at PERFORM
+PL/iSQL function sys.dbms_scheduler.drop_program line 91 at PERFORM
 SQL statement "CALL dbms_scheduler.drop_program('reg_prog')"
 PL/iSQL function inline_code_block line 2 at CALL
 BEGIN
@@ -1166,7 +1166,7 @@ END;
 ERROR:  job "regress_dbms_scheduler"."NO_SUCH_JOB" does not exist
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_drop_job(job_name, force, defer,
 			commit_semantics)"
-PL/iSQL function drop_job line 84 at PERFORM
+PL/iSQL function sys.dbms_scheduler.drop_job line 84 at PERFORM
 SQL statement "CALL dbms_scheduler.drop_job('no_such_job')"
 PL/iSQL function inline_code_block line 2 at CALL
 BEGIN
