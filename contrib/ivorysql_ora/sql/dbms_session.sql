@@ -158,7 +158,7 @@ select sys_context('rp_ns', 'key') as ctx_after_reset;
 DROP PACKAGE rp_pkg;
 
 -- Reset package state so oversized clears exercise the uninitialized context store
-DISCARD PACKAGES;
+DISCARD PACKAGE;
 \set VERBOSITY terse
 call dbms_session.clear_context(repeat('n', 256), 'attr');
 call dbms_session.clear_context(repeat('n', 256));
