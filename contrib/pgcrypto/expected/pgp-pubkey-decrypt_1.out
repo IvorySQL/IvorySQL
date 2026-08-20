@@ -3,6 +3,12 @@
 --
 -- As most of the low-level stuff is tested in symmetric key
 -- tests, here's only public-key specific tests
+-- IvorySQL: in Oracle-compatible mode an empty-string literal is lexed as
+-- NULL (ivorysql.enable_emptystring_to_NULL), which would make the STRICT
+-- pgp_pub_decrypt calls below that pass an empty passphrase return NULL
+-- instead of running.  Disable the conversion so the empty-string
+-- passphrase behaves as in PostgreSQL.
+SET ivorysql.enable_emptystring_to_null to false;
 create table keytbl (
 	id int4,
 	name text,
