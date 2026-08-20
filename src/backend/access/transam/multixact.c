@@ -83,6 +83,7 @@
 #include "storage/pmsignal.h"
 #include "storage/proc.h"
 #include "storage/procarray.h"
+#include "storage/subsystems.h"
 #include "utils/guc_hooks.h"
 #include "utils/injection_point.h"
 #include "utils/lsyscache.h"
@@ -113,11 +114,16 @@ PreviousMultiXactId(MultiXactId multi)
 /*
  * Links to shared-memory data structures for MultiXact control
  */
-static SlruCtlData MultiXactOffsetCtlData;
-static SlruCtlData MultiXactMemberCtlData;
+static bool MultiXactOffsetPagePrecedes(int64 page1, int64 page2);
+static int	MultiXactOffsetIoErrorDetail(const void *opaque_data);
+static bool MultiXactMemberPagePrecedes(int64 page1, int64 page2);
+static int	MultiXactMemberIoErrorDetail(const void *opaque_data);
 
-#define MultiXactOffsetCtl	(&MultiXactOffsetCtlData)
-#define MultiXactMemberCtl	(&MultiXactMemberCtlData)
+static SlruDesc MultiXactOffsetSlruDesc;
+static SlruDesc MultiXactMemberSlruDesc;
+
+#define MultiXactOffsetCtl	(&MultiXactOffsetSlruDesc)
+#define MultiXactMemberCtl	(&MultiXactMemberSlruDesc)
 
 /*
  * MultiXact state shared across all backends.  All this state is protected
@@ -220,6 +226,15 @@ static MultiXactStateData *MultiXactState;
 static MultiXactId *OldestMemberMXactId;
 static MultiXactId *OldestVisibleMXactId;
 
+static void MultiXactShmemRequest(void *arg);
+static void MultiXactShmemInit(void *arg);
+static void MultiXactShmemAttach(void *arg);
+
+const ShmemCallbacks MultiXactShmemCallbacks = {
+	.request_fn = MultiXactShmemRequest,
+	.init_fn = MultiXactShmemInit,
+	.attach_fn = MultiXactShmemAttach,
+};
 
 static inline MultiXactId *
 MyOldestMemberMXactIdSlot(void)
@@ -321,10 +336,6 @@ typedef struct MultiXactMemberSlruReadContext
 	MultiXactOffset offset;
 } MultiXactMemberSlruReadContext;
 
-static bool MultiXactOffsetPagePrecedes(int64 page1, int64 page2);
-static bool MultiXactMemberPagePrecedes(int64 page1, int64 page2);
-static int	MultiXactOffsetIoErrorDetail(const void *opaque_data);
-static int	MultiXactMemberIoErrorDetail(const void *opaque_data);
 static void ExtendMultiXactOffset(MultiXactId multi);
 static void ExtendMultiXactMember(MultiXactOffset offset, int nmembers);
 static void SetOldestOffset(void);
@@ -1059,6 +1070,8 @@ GetNewMultiXactId(int nmembers, MultiXactOffset *offset)
 									   multiWrapLimit - result,
 									   oldest_datname,
 									   multiWrapLimit - result),
+						 errdetail("Approximately %.2f%% of MultiXactIds are available for use.",
+								   (double) (multiWrapLimit - result) / (MaxMultiXactId / 2) * 100),
 						 errhint("Execute a database-wide VACUUM in that database.\n"
 								 "You might also need to commit or roll back old prepared transactions, or drop stale replication slots.")));
 			else
@@ -1068,6 +1081,8 @@ GetNewMultiXactId(int nmembers, MultiXactOffset *offset)
 									   multiWrapLimit - result,
 									   oldest_datoid,
 									   multiWrapLimit - result),
+						 errdetail("Approximately %.2f%% of MultiXactIds are available for use.",
+								   (double) (multiWrapLimit - result) / (MaxMultiXactId / 2) * 100),
 						 errhint("Execute a database-wide VACUUM in that database.\n"
 								 "You might also need to commit or roll back old prepared transactions, or drop stale replication slots.")));
 		}
@@ -1743,83 +1758,80 @@ multixact_twophase_postabort(FullTransactionId fxid, uint16 info,
 	multixact_twophase_postcommit(fxid, info, recdata, len);
 }
 
+
 /*
- * Initialization of shared memory for MultiXact.
- *
- * MultiXactSharedStateShmemSize() calculates the size of the MultiXactState
- * struct, and the two per-backend MultiXactId arrays.  They are carved out of
- * the same allocation.  MultiXactShmemSize() additionally includes the memory
- * needed for the two SLRU areas.
+ * Register shared memory needs for MultiXact.
  */
-static Size
-MultiXactSharedStateShmemSize(void)
+static void
+MultiXactShmemRequest(void *arg)
 {
 	Size		size;
 
+	/*
+	 * Calculate the size of the MultiXactState struct, and the two
+	 * per-backend MultiXactId arrays.  They are carved out of the same
+	 * allocation.
+	 */
 	size = offsetof(MultiXactStateData, perBackendXactIds);
 	size = add_size(size,
 					mul_size(sizeof(MultiXactId), NumMemberSlots));
 	size = add_size(size,
 					mul_size(sizeof(MultiXactId), NumVisibleSlots));
-	return size;
+	ShmemRequestStruct(.name = "Shared MultiXact State",
+					   .size = size,
+					   .ptr = (void **) &MultiXactState,
+		);
+
+	SimpleLruRequest(.desc = &MultiXactOffsetSlruDesc,
+					 .name = "multixact_offset",
+					 .Dir = "pg_multixact/offsets",
+					 .long_segment_names = false,
+
+					 .nslots = multixact_offset_buffers,
+
+					 .sync_handler = SYNC_HANDLER_MULTIXACT_OFFSET,
+					 .PagePrecedes = MultiXactOffsetPagePrecedes,
+					 .errdetail_for_io_error = MultiXactOffsetIoErrorDetail,
+
+					 .buffer_tranche_id = LWTRANCHE_MULTIXACTOFFSET_BUFFER,
+					 .bank_tranche_id = LWTRANCHE_MULTIXACTOFFSET_SLRU,
+		);
+
+	SimpleLruRequest(.desc = &MultiXactMemberSlruDesc,
+					 .name = "multixact_member",
+					 .Dir = "pg_multixact/members",
+					 .long_segment_names = true,
+
+					 .nslots = multixact_member_buffers,
+
+					 .sync_handler = SYNC_HANDLER_MULTIXACT_MEMBER,
+					 .PagePrecedes = MultiXactMemberPagePrecedes,
+					 .errdetail_for_io_error = MultiXactMemberIoErrorDetail,
+
+					 .buffer_tranche_id = LWTRANCHE_MULTIXACTMEMBER_BUFFER,
+					 .bank_tranche_id = LWTRANCHE_MULTIXACTMEMBER_SLRU,
+		);
 }
 
-Size
-MultiXactShmemSize(void)
+static void
+MultiXactShmemInit(void *arg)
 {
-	Size		size;
-
-	size = MultiXactSharedStateShmemSize();
-	size = add_size(size, SimpleLruShmemSize(multixact_offset_buffers, 0));
-	size = add_size(size, SimpleLruShmemSize(multixact_member_buffers, 0));
-
-	return size;
-}
-
-void
-MultiXactShmemInit(void)
-{
-	bool		found;
-
-	debug_elog2(DEBUG2, "Shared Memory Init for MultiXact");
-
-	MultiXactOffsetCtl->PagePrecedes = MultiXactOffsetPagePrecedes;
-	MultiXactMemberCtl->PagePrecedes = MultiXactMemberPagePrecedes;
-	MultiXactOffsetCtl->errdetail_for_io_error = MultiXactOffsetIoErrorDetail;
-	MultiXactMemberCtl->errdetail_for_io_error = MultiXactMemberIoErrorDetail;
-
-	SimpleLruInit(MultiXactOffsetCtl,
-				  "multixact_offset", multixact_offset_buffers, 0,
-				  "pg_multixact/offsets", LWTRANCHE_MULTIXACTOFFSET_BUFFER,
-				  LWTRANCHE_MULTIXACTOFFSET_SLRU,
-				  SYNC_HANDLER_MULTIXACT_OFFSET,
-				  false);
 	SlruPagePrecedesUnitTests(MultiXactOffsetCtl, MULTIXACT_OFFSETS_PER_PAGE);
-	SimpleLruInit(MultiXactMemberCtl,
-				  "multixact_member", multixact_member_buffers, 0,
-				  "pg_multixact/members", LWTRANCHE_MULTIXACTMEMBER_BUFFER,
-				  LWTRANCHE_MULTIXACTMEMBER_SLRU,
-				  SYNC_HANDLER_MULTIXACT_MEMBER,
-				  true);
-	/* doesn't call SimpleLruTruncate() or meet criteria for unit tests */
-
-	/* Initialize our shared state struct */
-	MultiXactState = ShmemInitStruct("Shared MultiXact State",
-									 MultiXactSharedStateShmemSize(),
-									 &found);
-	if (!IsUnderPostmaster)
-	{
-		Assert(!found);
-
-		/* Make sure we zero out the per-backend state */
-		MemSet(MultiXactState, 0, MultiXactSharedStateShmemSize());
-	}
-	else
-		Assert(found);
 
 	/*
-	 * Set up array pointers.
+	 * members SLRU doesn't call SimpleLruTruncate() or meet criteria for unit
+	 * tests
 	 */
+
+	/* Set up array pointers */
+	OldestMemberMXactId = MultiXactState->perBackendXactIds;
+	OldestVisibleMXactId = OldestMemberMXactId + NumMemberSlots;
+}
+
+static void
+MultiXactShmemAttach(void *arg)
+{
+	/* Set up array pointers */
 	OldestMemberMXactId = MultiXactState->perBackendXactIds;
 	OldestVisibleMXactId = OldestMemberMXactId + NumMemberSlots;
 }
@@ -2098,16 +2110,16 @@ SetMultiXactIdLimit(MultiXactId oldest_datminmxid, Oid oldest_datoid)
 		multiStopLimit -= FirstMultiXactId;
 
 	/*
-	 * We'll start complaining loudly when we get within 40M multis of data
+	 * We'll start complaining loudly when we get within 100M multis of data
 	 * loss.  This is kind of arbitrary, but if you let your gas gauge get
-	 * down to 2% of full, would you be looking for the next gas station?  We
+	 * down to 5% of full, would you be looking for the next gas station?  We
 	 * need to be fairly liberal about this number because there are lots of
 	 * scenarios where most transactions are done by automatic clients that
 	 * won't pay attention to warnings.  (No, we're not gonna make this
 	 * configurable.  If you know enough to configure it, you know enough to
 	 * not get in this kind of trouble in the first place.)
 	 */
-	multiWarnLimit = multiWrapLimit - 40000000;
+	multiWarnLimit = multiWrapLimit - 100000000;
 	if (multiWarnLimit < FirstMultiXactId)
 		multiWarnLimit -= FirstMultiXactId;
 
@@ -2196,6 +2208,8 @@ SetMultiXactIdLimit(MultiXactId oldest_datminmxid, Oid oldest_datoid)
 								   multiWrapLimit - curMulti,
 								   oldest_datname,
 								   multiWrapLimit - curMulti),
+					 errdetail("Approximately %.2f%% of MultiXactIds are available for use.",
+							   (double) (multiWrapLimit - curMulti) / (MaxMultiXactId / 2) * 100),
 					 errhint("To avoid MultiXactId assignment failures, execute a database-wide VACUUM in that database.\n"
 							 "You might also need to commit or roll back old prepared transactions, or drop stale replication slots.")));
 		else
@@ -2205,6 +2219,8 @@ SetMultiXactIdLimit(MultiXactId oldest_datminmxid, Oid oldest_datoid)
 								   multiWrapLimit - curMulti,
 								   oldest_datoid,
 								   multiWrapLimit - curMulti),
+					 errdetail("Approximately %.2f%% of MultiXactIds are available for use.",
+							   (double) (multiWrapLimit - curMulti) / (MaxMultiXactId / 2) * 100),
 					 errhint("To avoid MultiXactId assignment failures, execute a database-wide VACUUM in that database.\n"
 							 "You might also need to commit or roll back old prepared transactions, or drop stale replication slots.")));
 	}
@@ -2949,7 +2965,6 @@ multixact_redo(XLogReaderState *record)
 	else if (info == XLOG_MULTIXACT_TRUNCATE_ID)
 	{
 		xl_multixact_truncate xlrec;
-		int64		pageno;
 
 		memcpy(&xlrec, XLogRecGetData(record),
 			   SizeOfMultiXactTruncate);
@@ -2972,15 +2987,6 @@ multixact_redo(XLogReaderState *record)
 		SetMultiXactIdLimit(xlrec.oldestMulti, xlrec.oldestMultiDB);
 
 		PerformMembersTruncation(xlrec.oldestOffset);
-
-		/*
-		 * During XLOG replay, latest_page_number isn't necessarily set up
-		 * yet; insert a suitable value to bypass the sanity test in
-		 * SimpleLruTruncate.
-		 */
-		pageno = MultiXactIdToOffsetPage(xlrec.oldestMulti);
-		pg_atomic_write_u64(&MultiXactOffsetCtl->shared->latest_page_number,
-							pageno);
 		PerformOffsetsTruncation(xlrec.oldestMulti);
 
 		LWLockRelease(MultiXactTruncationLock);

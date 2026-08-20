@@ -136,14 +136,12 @@ SELECT count(*) FROM timestampltztmp WHERE a >  '2018-12-18 10:59:54'::timestamp
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM timestampltztmp WHERE a <> '2018-12-18 10:59:54'::timestamp with local time zone;
-                                             QUERY PLAN                                              
------------------------------------------------------------------------------------------------------
+                                          QUERY PLAN                                           
+-----------------------------------------------------------------------------------------------
  Aggregate
-   ->  Bitmap Heap Scan on timestampltztmp
-         Recheck Cond: (a <> '2018-12-18 10:59:54.000000000'::timestamp(6) with local time zone)
-         ->  Bitmap Index Scan on timestampltzidx
-               Index Cond: (a <> '2018-12-18 10:59:54.000000000'::timestamp(6) with local time zone)
-(5 rows)
+   ->  Index Only Scan using timestampltzidx on timestampltztmp
+         Index Cond: (a <> '2018-12-18 10:59:54.000000000'::timestamp(6) with local time zone)
+(3 rows)
 
 SELECT count(*) FROM timestampltztmp WHERE a <> '2018-12-18 10:59:54'::timestamp with local time zone;
  count 

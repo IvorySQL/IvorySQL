@@ -7,6 +7,7 @@ ASN1_OBJECT
 ASN1_OCTET_STRING
 ASN1_STRING
 ATAlterConstraint
+AttrResultArgMap
 AV
 A_ArrayExpr
 A_Const
@@ -30,6 +31,8 @@ AddForeignUpdateTargets_function
 AddrInfo
 AffixNode
 AffixNodeData
+AfterTriggerBatchCallback
+AfterTriggerCallbackItem
 AfterTriggerEvent
 AfterTriggerEventChunk
 AfterTriggerEventData
@@ -147,6 +150,9 @@ ArchiveOpts
 ArchiveShutdownCB
 ArchiveStartupCB
 ArchiveStreamState
+ArchivedWALFile
+ArchivedWAL_hash
+ArchivedWAL_iterator
 ArchiverOutput
 ArchiverStage
 ArrayAnalyzeExtraData
@@ -184,6 +190,7 @@ AuthToken
 AutoPrewarmReadStreamData
 AutoPrewarmSharedState
 AutoVacOpts
+AutoVacuumScores
 AutoVacuumShmemStruct
 AutoVacuumWorkItem
 AutoVacuumWorkItemType
@@ -305,6 +312,7 @@ BlockSampler
 BlockSamplerData
 BlockedProcData
 BlockedProcsData
+BlocksReadStreamData
 BlocktableEntry
 BloomBuildState
 BloomFilter
@@ -423,6 +431,7 @@ CatCacheHeader
 CatalogId
 CatalogIdMapEntry
 CatalogIndexState
+ChangeContext
 ChangeVarNodes_callback
 ChangeVarNodes_context
 ChannelName
@@ -431,6 +440,8 @@ CheckPointStmt
 CheckpointStatsData
 CheckpointerRequest
 CheckpointerShmemStruct
+ChecksumBarrierCondition
+ChecksumStateType
 Chromosome
 CkptSortItem
 CkptTsStatus
@@ -500,6 +511,7 @@ CompressFileHandle
 CompressionLocation
 CompressorState
 ComputeXidHorizonsResult
+ConcurrentChangeKind
 ConditionVariable
 ConditionVariableMinimallyPadded
 ConditionalStack
@@ -530,6 +542,7 @@ ConversionLocation
 ConvertRowtypeExpr
 CookedConstraint
 CopyDest
+CopyFormat
 CopyFormatOptions
 CopyFromRoutine
 CopyFromState
@@ -575,7 +588,6 @@ CreateRangeStmt
 CreateReplicationSlotCmd
 CreateRoleStmt
 CreateSchemaStmt
-CreateSchemaStmtContext
 CreateSeqStmt
 CreateStatsStmt
 CreateStmt
@@ -602,6 +614,7 @@ CustomScan
 CustomScanMethods
 CustomScanState
 CycleCtr
+DataChecksumsWorkerOperation
 DBState
 DbOidName
 DCHCacheEntry
@@ -620,9 +633,14 @@ DSMREntryType
 DSMRegistryCtxStruct
 DSMRegistryEntry
 DWORD
+DataChecksumsStateStruct
+DataChecksumsWorkerDatabase
+DataChecksumsWorkerResult
 DataDirSyncMethod
 DataDumperPtr
 DataPageDeleteStack
+DdlOptType
+DdlOption
 DataTypesUsageChecks
 DataTypesUsageVersionCheck
 DatabaseInfo
@@ -640,6 +658,8 @@ DeclareCursorStmt
 DecodedBkpBlock
 DecodedXLogRecord
 DecodingOutputState
+DecodingWorker
+DecodingWorkerShared
 DefElem
 DefElemAction
 DefaultACLInfo
@@ -811,6 +831,7 @@ ExtensionInfo
 ExtensionLocation
 ExtensionSiblingCache
 ExtensionVersionInfo
+FastPathMeta
 FDWCollateState
 FD_SET
 FILE
@@ -858,6 +879,9 @@ ForBothState
 ForEachState
 ForFiveState
 ForFourState
+ForPortionOfClause
+ForPortionOfExpr
+ForPortionOfState
 ForThreeState
 ForeignAsyncConfigureWait_function
 ForeignAsyncNotify_function
@@ -1256,6 +1280,7 @@ IOContext
 IOFuncSelector
 IOObject
 IOOp
+IOStats
 IO_STATUS_BLOCK
 IPCompareMethod
 ITEM
@@ -1299,6 +1324,7 @@ IndexElem
 IndexFetchHeapData
 IndexFetchTableData
 IndexInfo
+IndexInsertState
 IndexList
 IndexOnlyScan
 IndexOnlyScanState
@@ -1573,6 +1599,7 @@ LWLock
 LWLockHandle
 LWLockMode
 LWLockPadded
+LWLockTrancheShmemData
 LZ4F_compressionContext_t
 LZ4F_decompressOptions_t
 LZ4F_decompressionContext_t
@@ -1803,6 +1830,7 @@ NextSampleBlock_function
 NextSampleTuple_function
 NextValueExpr
 Node
+NodeInstrumentation
 NodeTag
 NonEmptyRange
 NoneCompressorState
@@ -2090,6 +2118,7 @@ PVIndStats
 PVIndVacStatus
 PVOID
 PVShared
+PVSharedCostParams
 PVWorkerUsage
 PVWorkerStats
 PX_Alias
@@ -2243,6 +2272,7 @@ PgAioUringCaps
 PgAioUringContext
 PgAioWaitRef
 PgAioWorkerControl
+PgAioWorkerSet
 PgAioWorkerSlot
 PgAioWorkerSubmissionQueue
 PgArchData
@@ -2278,6 +2308,7 @@ PgStatShared_Database
 PgStatShared_Function
 PgStatShared_HashEntry
 PgStatShared_IO
+PgStatShared_Lock
 PgStatShared_Relation
 PgStatShared_ReplSlot
 PgStatShared_SLRU
@@ -2300,8 +2331,11 @@ PgStat_HashKey
 PgStat_IO
 PgStat_KindInfo
 PgStat_LocalState
+PgStat_Lock
+PgStat_LockEntry
 PgStat_PendingDroppedStatsItem
 PgStat_PendingIO
+PgStat_PendingLock
 PgStat_SLRUStats
 PgStat_ShmemControl
 PgStat_Snapshot
@@ -2473,6 +2507,7 @@ RIX
 RI_CompareHashEntry
 RI_CompareKey
 RI_ConstraintInfo
+RI_FastPathEntry
 RI_QueryHashEntry
 RI_QueryKey
 RTEKind
@@ -2608,6 +2643,7 @@ ReorderBufferTupleCidKey
 ReorderBufferUpdateProgressTxnCB
 ReorderTuple
 RepackCommand
+RepackDecodingState
 RepackStmt
 ReparameterizeForeignPathByChild_function
 ReplOriginId
@@ -2766,6 +2802,7 @@ SelfJoinCandidate
 SemTPadded
 SemiAntiJoinFactors
 SeqScan
+SeqScanInstrumentation
 SeqScanState
 SeqTable
 SeqTableData
@@ -2830,7 +2867,9 @@ SharedMemoizeInfo
 SharedRecordTableEntry
 SharedRecordTableKey
 SharedRecordTypmodRegistry
+SharedSeqScanInstrumentation
 SharedSortInfo
+SharedTidRangeScanInstrumentation
 SharedTuplestore
 SharedTuplestoreAccessor
 SharedTuplestoreChunk
@@ -2839,9 +2878,14 @@ SharedTypmodTableEntry
 Sharedsort
 ShellTypeInfo
 ShippableCacheEntry
-ShmemAllocatorData
 ShippableCacheKey
+ShmemAllocatorData
+ShmemCallbacks
 ShmemIndexEnt
+ShmemHashOpts
+ShmemRequest
+ShmemRequestKind
+ShmemStructOpts
 ShutdownForeignScan_function
 ShutdownInformation
 ShutdownMode
@@ -2870,9 +2914,9 @@ SlotInvalidationCauseMap
 SlotNumber
 SlotSyncCtxStruct
 SlotSyncSkipReason
-SlruCtl
-SlruCtlData
+SlruDesc
 SlruErrorCause
+SlruOpts
 SlruPageStatus
 SlruScanCallback
 SlruSegState
@@ -2935,6 +2979,7 @@ SplitTextOutputData
 SplitVar
 StackElem
 StakindFlags
+StartBufferIOResult
 StartDataPtrType
 StartLOPtrType
 StartLOsPtrType
@@ -3088,8 +3133,10 @@ TableLikeClause
 TableSampleClause
 TableScanDesc
 TableScanDescData
+TableScanInstrumentation
 TableSpaceCacheEntry
 TableSpaceOpts
+TableToProcess
 TablespaceList
 TablespaceListCell
 TapeBlockTrailer
@@ -3113,6 +3160,7 @@ TestDSMRegistryHashEntry
 TestDSMRegistryStruct
 TestDecodingData
 TestDecodingTxnData
+TestShmemData
 TestSpec
 TestValueType
 TextFreq
@@ -3126,6 +3174,7 @@ TidOpExpr
 TidPath
 TidRangePath
 TidRangeScan
+TidRangeScanInstrumentation
 TidRangeScanState
 TidScan
 TidScanState
@@ -3144,6 +3193,7 @@ TimeoutId
 TimeoutType
 Timestamp
 TimestampTz
+TimingClockSourceType
 TmFromChar
 TmToChar
 ToastAttrInfo
@@ -3187,6 +3237,7 @@ TriggerDesc
 TriggerEvent
 TriggerFlags
 TriggerInfo
+TriggerInstrumentation
 TriggerTransition
 TruncateStmt
 TsmRoutine
@@ -3273,11 +3324,13 @@ UserAuth
 UserContext
 UserMapping
 UserOpts
+VMCorruptionType
 VacAttrStats
 VacAttrStatsP
 VacDeadItemsInfo
 VacErrPhase
 VacOptValue
+VacuumCutoffs
 VacuumParams
 VacuumRelation
 VacuumStmt
@@ -3407,9 +3460,9 @@ WorkTableScan
 WorkTableScanState
 WorkerInfo
 WorkerInfoData
-WorkerInstrumentation
 WorkerJobDumpPtrType
 WorkerJobRestorePtrType
+WorkerNodeInstrumentation
 Working_State
 WriteBufPtrType
 WriteBytePtrType
@@ -3544,8 +3597,11 @@ astreamer_recovery_injector
 astreamer_tar_archiver
 astreamer_tar_parser
 astreamer_verify
+astreamer_waldump
 astreamer_zstd_frame
 auth_password_hook_typ
+auto_explain_extension_options
+auto_explain_option
 autovac_table
 av_relation
 avc_cache
@@ -3576,9 +3632,6 @@ bh_node_type
 binaryheap
 binaryheap_comparator
 bitmapword
-bits16
-bits32
-bits8
 blockreftable_hash
 blockreftable_iterator
 bloom_filter
@@ -3965,6 +4018,7 @@ pg_enc2name
 pg_encname
 pg_fe_sasl_mech
 pg_funcptr_t
+pg_getopt_ctx
 pg_gssinfo
 pg_hmac_ctx
 pg_hmac_errno
@@ -3985,6 +4039,7 @@ pg_sha224_ctx
 pg_sha256_ctx
 pg_sha384_ctx
 pg_sha512_ctx
+pg_signal_info
 pg_snapshot
 pg_special_case
 pg_stack_base_t
@@ -4024,14 +4079,12 @@ pgpa_join_strategy
 pgpa_join_unroller
 pgpa_output_context
 pgpa_plan_walker_context
+pgpa_planner_info
 pgpa_planner_state
 pgpa_qf_type
 pgpa_query_feature
-pgpa_ri_checker
-pgpa_ri_checker_key
 pgpa_scan
 pgpa_scan_strategy
-pgpa_sj_unique_rel
 pgpa_target_type
 pgpa_trove
 pgpa_trove_entry
@@ -4042,6 +4095,16 @@ pgpa_trove_lookup_type
 pgpa_trove_result
 pgpa_trove_slice
 pgpa_unrolled_join
+pgsa_entry
+pgsa_entry_key
+pgsa_saved_entry
+pgsa_saved_stash
+pgsa_saved_stash_table_hash
+pgsa_shared_state
+pgsa_stash
+pgsa_stash_count
+pgsa_stash_name
+pgsa_writer_context
 pgsocket
 pgsql_thing_t
 pgssEntry
@@ -4123,8 +4186,6 @@ qc_hash_func
 qsort_arg_comparator
 qsort_comparator
 query_pathkeys_callback
-radius_attribute
-radius_packet
 RadixSortInfo
 rangeTableEntry_used_context
 rank_context
@@ -4157,9 +4218,11 @@ relopt_ternary
 relopt_type
 relopt_value
 relopts_validator
+RemoteAttributeMapping
 remoteConn
 remoteConnHashEnt
 remoteDep
+RemoteStatsResults
 remove_nulling_relids_context
 rendezvousHashEntry
 rep
@@ -4200,6 +4263,7 @@ shm_mq_result
 shm_toc
 shm_toc_entry
 shm_toc_estimator
+shmem_hash_allocator
 shmem_request_hook_type
 shmem_startup_hook_type
 sig_atomic_t
@@ -4385,6 +4449,8 @@ xl_btree_split
 xl_btree_unlink_page
 xl_btree_update
 xl_btree_vacuum
+xl_checkpoint_redo
+xl_checksum_state
 xl_clog_truncate
 xl_commit_ts_truncate
 xl_dbase_create_file_copy_rec
@@ -4415,7 +4481,6 @@ xl_heap_prune
 xl_heap_rewrite_mapping
 xl_heap_truncate
 xl_heap_update
-xl_heap_visible
 xl_invalid_page
 xl_invalid_page_key
 xl_invalidations

@@ -49,12 +49,15 @@
 #include "replication/walreceiver.h"
 #include "storage/dsm.h"
 #include "storage/io_worker.h"
+#include "storage/ipc.h"
 #include "storage/pg_shmem.h"
+#include "storage/shmem_internal.h"
 #include "tcop/backend_startup.h"
 #include "utils/memutils.h"
 
 #ifdef EXEC_BACKEND
 #include "nodes/queryjumble.h"
+#include "portability/instr_time.h"
 #include "storage/pg_shmem.h"
 #include "storage/spin.h"
 #endif
@@ -99,11 +102,6 @@ typedef struct
 #ifdef USE_INJECTION_POINTS
 	struct InjectionPointsCtl *ActiveInjectionPoints;
 #endif
-	int			NamedLWLockTrancheRequests;
-	NamedLWLockTrancheRequest *NamedLWLockTrancheRequestArray;
-	char	  **LWLockTrancheNames;
-	int		   *LWLockCounter;
-	LWLockPadded *MainLWLockArray;
 	PROC_HDR   *ProcGlobal;
 	PGPROC	   *AuxiliaryProcs;
 	PGPROC	   *PreparedXactProcs;
@@ -131,6 +129,8 @@ typedef struct
 	char		pkglib_path[MAXPGPATH];
 
 	int			MyPMChildSlot;
+
+	int32		timing_tsc_frequency_khz;
 
 	/*
 	 * These are only used by backend processes, but are here because passing
@@ -667,6 +667,8 @@ SubPostmasterMain(int argc, char *argv[])
 	 */
 	LocalProcessControlFile(false);
 
+	RegisterBuiltinShmemCallbacks();
+
 	/*
 	 * Reload any libraries that were preloaded by the postmaster.  Since we
 	 * exec'd this process, those libraries didn't come along with us; but we
@@ -677,7 +679,10 @@ SubPostmasterMain(int argc, char *argv[])
 
 	/* Restore basic shared memory pointers */
 	if (UsedShmemSegAddr != NULL)
+	{
 		InitShmemAllocator(UsedShmemSegAddr);
+		ShmemCallRequestCallbacks();
+	}
 
 	/*
 	 * Run the appropriate Main function
@@ -729,11 +734,6 @@ save_backend_variables(BackendParameters *param,
 	param->ActiveInjectionPoints = ActiveInjectionPoints;
 #endif
 
-	param->NamedLWLockTrancheRequests = NamedLWLockTrancheRequests;
-	param->NamedLWLockTrancheRequestArray = NamedLWLockTrancheRequestArray;
-	param->LWLockTrancheNames = LWLockTrancheNames;
-	param->LWLockCounter = LWLockCounter;
-	param->MainLWLockArray = MainLWLockArray;
 	param->ProcGlobal = ProcGlobal;
 	param->AuxiliaryProcs = AuxiliaryProcs;
 	param->PreparedXactProcs = PreparedXactProcs;
@@ -752,6 +752,8 @@ save_backend_variables(BackendParameters *param,
 
 	param->MaxBackends = MaxBackends;
 	param->num_pmchild_slots = num_pmchild_slots;
+
+	param->timing_tsc_frequency_khz = timing_tsc_frequency_khz;
 
 #ifdef WIN32
 	param->PostmasterHandle = PostmasterHandle;
@@ -988,11 +990,6 @@ restore_backend_variables(BackendParameters *param)
 	ActiveInjectionPoints = param->ActiveInjectionPoints;
 #endif
 
-	NamedLWLockTrancheRequests = param->NamedLWLockTrancheRequests;
-	NamedLWLockTrancheRequestArray = param->NamedLWLockTrancheRequestArray;
-	LWLockTrancheNames = param->LWLockTrancheNames;
-	LWLockCounter = param->LWLockCounter;
-	MainLWLockArray = param->MainLWLockArray;
 	ProcGlobal = param->ProcGlobal;
 	AuxiliaryProcs = param->AuxiliaryProcs;
 	PreparedXactProcs = param->PreparedXactProcs;
@@ -1011,6 +1008,12 @@ restore_backend_variables(BackendParameters *param)
 
 	MaxBackends = param->MaxBackends;
 	num_pmchild_slots = param->num_pmchild_slots;
+
+	timing_tsc_frequency_khz = param->timing_tsc_frequency_khz;
+
+	/* Re-run logic usually done by assign_timing_clock_source */
+	pg_initialize_timing();
+	pg_set_timing_clock_source(timing_clock_source);
 
 #ifdef WIN32
 	PostmasterHandle = param->PostmasterHandle;

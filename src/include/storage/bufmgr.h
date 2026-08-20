@@ -145,9 +145,11 @@ struct ReadBuffersOperation
 	 */
 	Buffer	   *buffers;
 	BlockNumber blocknum;
-	int			flags;
+	uint16		flags;
 	int16		nblocks;
 	int16		nblocks_done;
+	/* true if waiting on another backend's IO */
+	bool		foreign_io;
 	PgAioWaitRef io_wref;
 	PgAioReturn io_return;
 };
@@ -250,7 +252,7 @@ extern bool StartReadBuffers(ReadBuffersOperation *operation,
 							 BlockNumber blockNum,
 							 int *nblocks,
 							 int flags);
-extern void WaitReadBuffers(ReadBuffersOperation *operation);
+extern bool WaitReadBuffers(ReadBuffersOperation *operation);
 
 extern void ReleaseBuffer(Buffer buffer);
 extern void UnlockReleaseBuffer(Buffer buffer);
@@ -369,10 +371,6 @@ extern void MarkDirtyRelUnpinnedBuffers(Relation rel,
 extern void MarkDirtyAllUnpinnedBuffers(int32 *buffers_dirtied,
 										int32 *buffers_already_dirty,
 										int32 *buffers_skipped);
-
-/* in buf_init.c */
-extern void BufferManagerShmemInit(void);
-extern Size BufferManagerShmemSize(void);
 
 /* in localbuf.c */
 extern void AtProcExit_LocalBuffers(void);

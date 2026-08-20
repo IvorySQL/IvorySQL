@@ -21,7 +21,7 @@
 /* Hook for plugins to get control at end of parse analysis */
 typedef void (*post_parse_analyze_hook_type) (ParseState *pstate,
 											  Query *query,
-											  JumbleState *jstate);
+											  const JumbleState *jstate);
 extern PGDLLIMPORT post_parse_analyze_hook_type post_parse_analyze_hook;
 
 
@@ -43,7 +43,8 @@ extern List *transformInsertRow(ParseState *pstate, List *exprlist,
 								List *stmtcols, List *icolumns, List *attrnos,
 								bool strip_indirection);
 extern List *transformUpdateTargetList(ParseState *pstate,
-									   List *origTlist);
+									   List *origTlist,
+									   ForPortionOfExpr *forPortionOf);
 extern void transformReturningClause(ParseState *pstate, Query *qry,
 									 ReturningClause *returningClause,
 									 ParseExprKind exprKind);

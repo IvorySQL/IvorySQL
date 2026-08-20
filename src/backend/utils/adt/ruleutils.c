@@ -533,6 +533,8 @@ static void get_rte_alias(RangeTblEntry *rte, int varno, bool use_as,
 						  deparse_context *context);
 static void get_column_alias_list(deparse_columns *colinfo,
 								  deparse_context *context);
+static void get_for_portion_of(ForPortionOfExpr *forPortionOf,
+							   deparse_context *context);
 static void get_from_clause_coldeflist(RangeTblFunction *rtfunc,
 									   deparse_columns *colinfo,
 									   deparse_context *context);
@@ -554,7 +556,7 @@ static void add_cast_to(StringInfo buf, Oid typid);
 static char *generate_qualified_type_name(Oid typid);
 static text *string_to_text(char *str);
 static char *flatten_reloptions(Oid relid);
-static void get_reloptions(StringInfo buf, Datum reloptions);
+void		get_reloptions(StringInfo buf, Datum reloptions);
 static const char *standard_quote_identifier(const char *ident);
 Datum		pg_get_functiondef_internal(PG_FUNCTION_ARGS);
 static void get_json_path_spec(Node *path_spec, deparse_context *context,
@@ -1278,7 +1280,7 @@ pg_get_indexdef_columns(Oid indexrelid, bool pretty)
 
 /* Internal version, extensible with flags to control its behavior */
 char *
-pg_get_indexdef_columns_extended(Oid indexrelid, bits16 flags)
+pg_get_indexdef_columns_extended(Oid indexrelid, uint16 flags)
 {
 	bool		pretty = ((flags & RULE_INDEXDEF_PRETTY) != 0);
 	bool		keys_only = ((flags & RULE_INDEXDEF_KEYS_ONLY) != 0);
@@ -1712,7 +1714,7 @@ make_propgraphdef_elements(StringInfo buf, Oid pgrelid, char pgekind)
 			first = false;
 		}
 		else
-			appendStringInfo(buf, ",\n");
+			appendStringInfoString(buf, ",\n");
 
 		relname = get_rel_name(pgeform->pgerelid);
 		if (relname && strcmp(relname, NameStr(pgeform->pgealias)) == 0)
@@ -1728,7 +1730,7 @@ make_propgraphdef_elements(StringInfo buf, Oid pgrelid, char pgekind)
 		{
 			appendStringInfoString(buf, " KEY (");
 			decompile_column_index_array(datum, pgeform->pgerelid, false, buf);
-			appendStringInfoString(buf, ")");
+			appendStringInfoChar(buf, ')');
 		}
 		else
 			elog(ERROR, "null pgekey for element %u", pgeform->oid);
@@ -1762,7 +1764,7 @@ make_propgraphdef_elements(StringInfo buf, Oid pgrelid, char pgekind)
 				decompile_column_index_array(srckey, pgeform->pgerelid, false, buf);
 				appendStringInfo(buf, ") REFERENCES %s (", quote_identifier(NameStr(pgeform2->pgealias)));
 				decompile_column_index_array(srcref, pgeform2->pgerelid, false, buf);
-				appendStringInfoString(buf, ")");
+				appendStringInfoChar(buf, ')');
 			}
 			else
 				appendStringInfo(buf, " %s ", quote_identifier(NameStr(pgeform2->pgealias)));
@@ -1779,7 +1781,7 @@ make_propgraphdef_elements(StringInfo buf, Oid pgrelid, char pgekind)
 				decompile_column_index_array(destkey, pgeform->pgerelid, false, buf);
 				appendStringInfo(buf, ") REFERENCES %s (", quote_identifier(NameStr(pgeform2->pgealias)));
 				decompile_column_index_array(destref, pgeform2->pgerelid, false, buf);
-				appendStringInfoString(buf, ")");
+				appendStringInfoChar(buf, ')');
 			}
 			else
 				appendStringInfo(buf, " %s", quote_identifier(NameStr(pgeform2->pgealias)));
@@ -1789,7 +1791,7 @@ make_propgraphdef_elements(StringInfo buf, Oid pgrelid, char pgekind)
 		make_propgraphdef_labels(buf, pgeform->oid, NameStr(pgeform->pgealias), pgeform->pgerelid);
 	}
 	if (!first)
-		appendStringInfo(buf, "\n    )");
+		appendStringInfoString(buf, "\n    )");
 
 	systable_endscan(scan);
 	table_close(pgerel, AccessShareLock);
@@ -1869,7 +1871,7 @@ make_propgraphdef_labels(StringInfo buf, Oid elid, const char *elalias, Oid elre
 		{
 			/* If the default label is the only label, don't print anything. */
 			if (count != 1)
-				appendStringInfo(buf, " DEFAULT LABEL");
+				appendStringInfoString(buf, " DEFAULT LABEL");
 		}
 		else
 			appendStringInfo(buf, " LABEL %s", quote_identifier(osp->str));
@@ -1953,7 +1955,7 @@ make_propgraphdef_properties(StringInfo buf, Oid ellabelid, Oid elrelid)
 
 		context = deparse_context_for(get_relation_name(elrelid), elrelid);
 
-		appendStringInfo(buf, " PROPERTIES (");
+		appendStringInfoString(buf, " PROPERTIES (");
 
 		foreach(lc, outlist)
 		{
@@ -1964,20 +1966,20 @@ make_propgraphdef_properties(StringInfo buf, Oid ellabelid, Oid elrelid)
 			if (first)
 				first = false;
 			else
-				appendStringInfo(buf, ", ");
+				appendStringInfoString(buf, ", ");
 
 			if (IsA(expr, Var) && strcmp(propname, get_attname(elrelid, castNode(Var, expr)->varattno, false)) == 0)
-				appendStringInfo(buf, "%s", quote_identifier(propname));
+				appendStringInfoString(buf, quote_identifier(propname));
 			else
 				appendStringInfo(buf, "%s AS %s",
 								 deparse_expression_pretty(expr, context, false, false, 0, 0),
 								 quote_identifier(propname));
 		}
 
-		appendStringInfo(buf, ")");
+		appendStringInfoChar(buf, ')');
 	}
 	else
-		appendStringInfo(buf, " NO PROPERTIES");
+		appendStringInfoString(buf, " NO PROPERTIES");
 }
 
 /*
@@ -8020,6 +8022,9 @@ get_update_query_def(Query *query, deparse_context *context)
 					 only_marker(rte),
 					 generate_relation_name(rte->relid, NIL));
 
+	/* Print the FOR PORTION OF, if needed */
+	get_for_portion_of(query->forPortionOf, context);
+
 	/* Print the relation alias, if needed */
 	get_rte_alias(rte, query->resultRelation, false, context);
 
@@ -8223,6 +8228,9 @@ get_delete_query_def(Query *query, deparse_context *context)
 	appendStringInfo(buf, "DELETE FROM %s%s",
 					 only_marker(rte),
 					 generate_relation_name(rte->relid, NIL));
+
+	/* Print the FOR PORTION OF, if needed */
+	get_for_portion_of(query->forPortionOf, context);
 
 	/* Print the relation alias, if needed */
 	get_rte_alias(rte, query->resultRelation, false, context);
@@ -8467,7 +8475,7 @@ get_graph_label_expr(Node *label_expr, deparse_context *context)
 					if (!first)
 					{
 						if (be->boolop == OR_EXPR)
-							appendStringInfoString(buf, "|");
+							appendStringInfoChar(buf, '|');
 					}
 					else
 						first = false;
@@ -8500,7 +8508,7 @@ get_path_pattern_expr_def(List *path_pattern_expr, deparse_context *context)
 		switch (gep->kind)
 		{
 			case VERTEX_PATTERN:
-				appendStringInfoString(buf, "(");
+				appendStringInfoChar(buf, '(');
 				break;
 			case EDGE_PATTERN_LEFT:
 				appendStringInfoString(buf, "<-[");
@@ -8510,7 +8518,7 @@ get_path_pattern_expr_def(List *path_pattern_expr, deparse_context *context)
 				appendStringInfoString(buf, "-[");
 				break;
 			case PAREN_EXPR:
-				appendStringInfoString(buf, "(");
+				appendStringInfoChar(buf, '(');
 				break;
 		}
 
@@ -8545,7 +8553,7 @@ get_path_pattern_expr_def(List *path_pattern_expr, deparse_context *context)
 		switch (gep->kind)
 		{
 			case VERTEX_PATTERN:
-				appendStringInfoString(buf, ")");
+				appendStringInfoChar(buf, ')');
 				break;
 			case EDGE_PATTERN_LEFT:
 			case EDGE_PATTERN_ANY:
@@ -8555,7 +8563,7 @@ get_path_pattern_expr_def(List *path_pattern_expr, deparse_context *context)
 				appendStringInfoString(buf, "]->");
 				break;
 			case PAREN_EXPR:
-				appendStringInfoString(buf, ")");
+				appendStringInfoChar(buf, ')');
 				break;
 		}
 
@@ -13605,8 +13613,7 @@ get_from_clause_item(Node *jtnode, Query *query, deparse_context *context)
 						appendStringInfoString(buf, quote_identifier(te->resname));
 					}
 				}
-				appendStringInfoString(buf, ")");
-				appendStringInfoString(buf, ")");
+				appendStringInfoString(buf, "))");
 				break;
 			case RTE_VALUES:
 				/* Values list RTE */
@@ -13830,6 +13837,39 @@ get_rte_alias(RangeTblEntry *rte, int varno, bool use_as,
 		appendStringInfo(context->buf, "%s%s",
 						 use_as ? " AS " : " ",
 						 quote_identifier(refname));
+}
+
+/*
+ * get_for_portion_of - print FOR PORTION OF if needed
+ * XXX: Newlines would help here, at least when pretty-printing. But then the
+ * alias and SET will be on their own line with a leading space.
+ */
+static void
+get_for_portion_of(ForPortionOfExpr *forPortionOf, deparse_context *context)
+{
+	if (forPortionOf)
+	{
+		appendStringInfo(context->buf, " FOR PORTION OF %s",
+						 quote_identifier(forPortionOf->range_name));
+
+		/*
+		 * Try to write it as FROM ... TO ... if we received it that way,
+		 * otherwise (targetExpr).
+		 */
+		if (forPortionOf->targetFrom && forPortionOf->targetTo)
+		{
+			appendStringInfoString(context->buf, " FROM ");
+			get_rule_expr(forPortionOf->targetFrom, context, false);
+			appendStringInfoString(context->buf, " TO ");
+			get_rule_expr(forPortionOf->targetTo, context, false);
+		}
+		else
+		{
+			appendStringInfoString(context->buf, " (");
+			get_rule_expr(forPortionOf->targetRange, context, false);
+			appendStringInfoChar(context->buf, ')');
+		}
+	}
 }
 
 /*
@@ -14718,7 +14758,7 @@ string_to_text(char *str)
 /*
  * Generate a C string representing a relation options from text[] datum.
  */
-static void
+void
 get_reloptions(StringInfo buf, Datum reloptions)
 {
 	Datum	   *options;

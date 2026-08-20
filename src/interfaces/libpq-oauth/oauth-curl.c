@@ -49,6 +49,12 @@
 
 #endif							/* USE_DYNAMIC_OAUTH */
 
+/*
+ * oauth-debug.h needs the declaration of libpq_gettext(), from one of the above
+ * sources.
+ */
+#include "oauth-debug.h"
+
 /* One final guardrail against accidental inclusion... */
 #if defined(USE_DYNAMIC_OAUTH) && defined(LIBPQ_INT_H)
 #error do not rely on libpq-int.h in dynamic builds of libpq-oauth
@@ -216,6 +222,7 @@ struct async_ctx
 	/* relevant connection options cached from the PGconn */
 	char	   *client_id;		/* oauth_client_id */
 	char	   *client_secret;	/* oauth_client_secret (may be NULL) */
+	char	   *ca_file;		/* oauth_ca_file */
 
 	/* options cached from the PGoauthBearerRequest (we don't own these) */
 	const char *discovery_uri;
@@ -273,7 +280,7 @@ struct async_ctx
 	int			running;		/* is asynchronous work in progress? */
 	bool		user_prompted;	/* have we already sent the authz prompt? */
 	bool		used_basic_auth;	/* did we send a client secret? */
-	bool		debugging;		/* can we give unsafe developer assistance? */
+	uint32		debug_flags;	/* can we give developer assistance? */
 	int			dbg_num_calls;	/* (debug mode) how many times were we called? */
 };
 
@@ -336,6 +343,7 @@ free_async_ctx(struct async_ctx *actx)
 
 	free(actx->client_id);
 	free(actx->client_secret);
+	free(actx->ca_file);
 
 	free(actx);
 }
@@ -1021,7 +1029,7 @@ parse_interval(struct async_ctx *actx, const char *interval_str)
 	parsed = ceil(parsed);
 
 	if (parsed < 1)
-		return actx->debugging ? 0 : 1;
+		return (actx->debug_flags & OAUTHDEBUG_UNSAFE_DOS_ENDPOINT) ? 0 : 1;
 
 	else if (parsed >= INT_MAX)
 		return INT_MAX;
@@ -1795,7 +1803,7 @@ setup_curl_handles(struct async_ctx *actx)
 	 */
 	CHECK_SETOPT(actx, CURLOPT_NOSIGNAL, 1L, return false);
 
-	if (actx->debugging)
+	if (actx->debug_flags & OAUTHDEBUG_UNSAFE_TRACE)
 	{
 		/*
 		 * Set a callback for retrieving error information from libcurl, the
@@ -1827,27 +1835,15 @@ setup_curl_handles(struct async_ctx *actx)
 		const long	unsafe = CURLPROTO_HTTPS | CURLPROTO_HTTP;
 #endif
 
-		if (actx->debugging)
+		if (actx->debug_flags & OAUTHDEBUG_UNSAFE_HTTP)
 			protos = unsafe;
 
 		CHECK_SETOPT(actx, popt, protos, return false);
 	}
 
-	/*
-	 * If we're in debug mode, allow the developer to change the trusted CA
-	 * list. For now, this is not something we expose outside of the UNSAFE
-	 * mode, because it's not clear that it's useful in production: both libpq
-	 * and the user's browser must trust the same authorization servers for
-	 * the flow to work at all, so any changes to the roots are likely to be
-	 * done system-wide.
-	 */
-	if (actx->debugging)
-	{
-		const char *env;
-
-		if ((env = getenv("PGOAUTHCAFILE")) != NULL)
-			CHECK_SETOPT(actx, CURLOPT_CAINFO, env, return false);
-	}
+	/* Allow the user to change the trusted CA list. */
+	if (actx->ca_file != NULL)
+		CHECK_SETOPT(actx, CURLOPT_CAINFO, actx->ca_file, return false);
 
 	/*
 	 * Suppress the Accept header to make our request as minimal as possible.
@@ -2307,7 +2303,7 @@ check_for_device_flow(struct async_ctx *actx)
 	 * decent time to bail out if we're not using HTTPS for the endpoints
 	 * we'll use for the flow.
 	 */
-	if (!actx->debugging)
+	if ((actx->debug_flags & OAUTHDEBUG_UNSAFE_HTTP) == 0)
 	{
 		if (pg_strncasecmp(provider->device_authorization_endpoint,
 						   HTTPS_SCHEME, strlen(HTTPS_SCHEME)) != 0)
@@ -3037,7 +3033,7 @@ pg_fe_run_oauth_flow(PGconn *conn, struct PGoauthBearerRequest *request,
 	 * drain_timer_events(), when we're in debug mode, track the total number
 	 * of calls to this function and print that at the end of the flow.
 	 */
-	if (actx->debugging)
+	if (actx->debug_flags & OAUTHDEBUG_CALL_COUNT)
 	{
 		actx->dbg_num_calls++;
 		if (result == PGRES_POLLING_OK || result == PGRES_POLLING_FAILED)
@@ -3097,8 +3093,8 @@ pg_start_oauthbearer(PGconn *conn, PGoauthBearerRequestV2 *request)
 	 * Now finish filling in the actx.
 	 */
 
-	/* Should we enable unsafe features? */
-	actx->debugging = oauth_unsafe_debugging_enabled();
+	/* Parse debug flags from the environment. */
+	actx->debug_flags = oauth_parse_debug_flags();
 
 	initPQExpBuffer(&actx->work_data);
 	initPQExpBuffer(&actx->errbuf);
@@ -3123,6 +3119,12 @@ pg_start_oauthbearer(PGconn *conn, PGoauthBearerRequestV2 *request)
 		{
 			actx->client_secret = strdup(opt->val);
 			if (!actx->client_secret)
+				goto oom;
+		}
+		else if (strcmp(opt->keyword, "oauth_ca_file") == 0)
+		{
+			actx->ca_file = strdup(opt->val);
+			if (!actx->ca_file)
 				goto oom;
 		}
 	}

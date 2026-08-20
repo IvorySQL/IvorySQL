@@ -3615,7 +3615,8 @@ alter trigger parenttrig on parent rename to anothertrig;
  a      | pg_catalog.int4 |           |          |         |           | plain   |              | 
 Triggers:
     parenttrig AFTER INSERT ON child FOR EACH ROW EXECUTE FUNCTION f()
-Inherits: parent
+Inherits:
+    parent
 
 drop table parent, child;
 drop function f();

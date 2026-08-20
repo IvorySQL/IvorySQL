@@ -12,9 +12,14 @@
 #ifndef SLOTSYNC_H
 #define SLOTSYNC_H
 
+#include <signal.h>
+
 #include "replication/walreceiver.h"
 
 extern PGDLLIMPORT bool sync_replication_slots;
+
+/* Interrupt flag set by HandleSlotSyncMessageInterrupt() */
+extern PGDLLIMPORT volatile sig_atomic_t SlotSyncShutdownPending;
 
 /*
  * GUCs needed by slot sync worker to connect to the primary
@@ -31,8 +36,8 @@ pg_noreturn extern void ReplSlotSyncWorkerMain(const void *startup_data, size_t 
 extern void ShutDownSlotSync(void);
 extern bool SlotSyncWorkerCanRestart(void);
 extern bool IsSyncingReplicationSlots(void);
-extern Size SlotSyncShmemSize(void);
-extern void SlotSyncShmemInit(void);
 extern void SyncReplicationSlots(WalReceiverConn *wrconn);
+extern void HandleSlotSyncMessageInterrupt(void);
+extern void ProcessSlotSyncMessage(void);
 
 #endif							/* SLOTSYNC_H */

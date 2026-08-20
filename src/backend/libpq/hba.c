@@ -114,7 +114,6 @@ static const char *const UserAuthName[] =
 	"bsd",
 	"ldap",
 	"cert",
-	"radius",
 	"peer",
 	"oauth",
 };
@@ -1744,8 +1743,6 @@ parse_hba_line(TokenizedAuthLine *tok_line, int elevel)
 #else
 		unsupauth = "cert";
 #endif
-	else if (strcmp(token->string, "radius") == 0)
-		parsedline->auth_method = uaRADIUS;
 	else if (strcmp(token->string, "oauth") == 0)
 		parsedline->auth_method = uaOAuth;
 	else
@@ -1943,87 +1940,6 @@ parse_hba_line(TokenizedAuthLine *tok_line, int elevel)
 					 errcontext("line %d of configuration file \"%s\"",
 								line_num, file_name)));
 			*err_msg = "cannot use ldapsearchattribute together with ldapsearchfilter";
-			return NULL;
-		}
-	}
-
-	if (parsedline->auth_method == uaRADIUS)
-	{
-		MANDATORY_AUTH_ARG(parsedline->radiusservers, "radiusservers", "radius");
-		MANDATORY_AUTH_ARG(parsedline->radiussecrets, "radiussecrets", "radius");
-
-		if (parsedline->radiusservers == NIL)
-		{
-			ereport(elevel,
-					(errcode(ERRCODE_CONFIG_FILE_ERROR),
-					 errmsg("list of RADIUS servers cannot be empty"),
-					 errcontext("line %d of configuration file \"%s\"",
-								line_num, file_name)));
-			*err_msg = "list of RADIUS servers cannot be empty";
-			return NULL;
-		}
-
-		if (parsedline->radiussecrets == NIL)
-		{
-			ereport(elevel,
-					(errcode(ERRCODE_CONFIG_FILE_ERROR),
-					 errmsg("list of RADIUS secrets cannot be empty"),
-					 errcontext("line %d of configuration file \"%s\"",
-								line_num, file_name)));
-			*err_msg = "list of RADIUS secrets cannot be empty";
-			return NULL;
-		}
-
-		/*
-		 * Verify length of option lists - each can be 0 (except for secrets,
-		 * but that's already checked above), 1 (use the same value
-		 * everywhere) or the same as the number of servers.
-		 */
-		if (!(list_length(parsedline->radiussecrets) == 1 ||
-			  list_length(parsedline->radiussecrets) == list_length(parsedline->radiusservers)))
-		{
-			ereport(elevel,
-					(errcode(ERRCODE_CONFIG_FILE_ERROR),
-					 errmsg("the number of RADIUS secrets (%d) must be 1 or the same as the number of RADIUS servers (%d)",
-							list_length(parsedline->radiussecrets),
-							list_length(parsedline->radiusservers)),
-					 errcontext("line %d of configuration file \"%s\"",
-								line_num, file_name)));
-			*err_msg = psprintf("the number of RADIUS secrets (%d) must be 1 or the same as the number of RADIUS servers (%d)",
-								list_length(parsedline->radiussecrets),
-								list_length(parsedline->radiusservers));
-			return NULL;
-		}
-		if (!(list_length(parsedline->radiusports) == 0 ||
-			  list_length(parsedline->radiusports) == 1 ||
-			  list_length(parsedline->radiusports) == list_length(parsedline->radiusservers)))
-		{
-			ereport(elevel,
-					(errcode(ERRCODE_CONFIG_FILE_ERROR),
-					 errmsg("the number of RADIUS ports (%d) must be 1 or the same as the number of RADIUS servers (%d)",
-							list_length(parsedline->radiusports),
-							list_length(parsedline->radiusservers)),
-					 errcontext("line %d of configuration file \"%s\"",
-								line_num, file_name)));
-			*err_msg = psprintf("the number of RADIUS ports (%d) must be 1 or the same as the number of RADIUS servers (%d)",
-								list_length(parsedline->radiusports),
-								list_length(parsedline->radiusservers));
-			return NULL;
-		}
-		if (!(list_length(parsedline->radiusidentifiers) == 0 ||
-			  list_length(parsedline->radiusidentifiers) == 1 ||
-			  list_length(parsedline->radiusidentifiers) == list_length(parsedline->radiusservers)))
-		{
-			ereport(elevel,
-					(errcode(ERRCODE_CONFIG_FILE_ERROR),
-					 errmsg("the number of RADIUS identifiers (%d) must be 1 or the same as the number of RADIUS servers (%d)",
-							list_length(parsedline->radiusidentifiers),
-							list_length(parsedline->radiusservers)),
-					 errcontext("line %d of configuration file \"%s\"",
-								line_num, file_name)));
-			*err_msg = psprintf("the number of RADIUS identifiers (%d) must be 1 or the same as the number of RADIUS servers (%d)",
-								list_length(parsedline->radiusidentifiers),
-								list_length(parsedline->radiusservers));
 			return NULL;
 		}
 	}
@@ -2350,138 +2266,6 @@ parse_hba_auth_opt(char *name, char *val, HbaLine *hbaline,
 		else
 			hbaline->upn_username = false;
 	}
-	else if (strcmp(name, "radiusservers") == 0)
-	{
-		struct addrinfo *gai_result;
-		struct addrinfo hints;
-		int			ret;
-		List	   *parsed_servers;
-		ListCell   *l;
-		char	   *dupval = pstrdup(val);
-
-		REQUIRE_AUTH_OPTION(uaRADIUS, "radiusservers", "radius");
-
-		if (!SplitGUCList(dupval, ',', &parsed_servers))
-		{
-			/* syntax error in list */
-			ereport(elevel,
-					(errcode(ERRCODE_CONFIG_FILE_ERROR),
-					 errmsg("could not parse RADIUS server list \"%s\"",
-							val),
-					 errcontext("line %d of configuration file \"%s\"",
-								line_num, file_name)));
-			return false;
-		}
-
-		/* For each entry in the list, translate it */
-		foreach(l, parsed_servers)
-		{
-			MemSet(&hints, 0, sizeof(hints));
-			hints.ai_socktype = SOCK_DGRAM;
-			hints.ai_family = AF_UNSPEC;
-
-			ret = pg_getaddrinfo_all((char *) lfirst(l), NULL, &hints, &gai_result);
-			if (ret || !gai_result)
-			{
-				ereport(elevel,
-						(errcode(ERRCODE_CONFIG_FILE_ERROR),
-						 errmsg("could not translate RADIUS server name \"%s\" to address: %s",
-								(char *) lfirst(l), gai_strerror(ret)),
-						 errcontext("line %d of configuration file \"%s\"",
-									line_num, file_name)));
-				if (gai_result)
-					pg_freeaddrinfo_all(hints.ai_family, gai_result);
-
-				list_free(parsed_servers);
-				return false;
-			}
-			pg_freeaddrinfo_all(hints.ai_family, gai_result);
-		}
-
-		/* All entries are OK, so store them */
-		hbaline->radiusservers = parsed_servers;
-		hbaline->radiusservers_s = pstrdup(val);
-	}
-	else if (strcmp(name, "radiusports") == 0)
-	{
-		List	   *parsed_ports;
-		ListCell   *l;
-		char	   *dupval = pstrdup(val);
-
-		REQUIRE_AUTH_OPTION(uaRADIUS, "radiusports", "radius");
-
-		if (!SplitGUCList(dupval, ',', &parsed_ports))
-		{
-			ereport(elevel,
-					(errcode(ERRCODE_CONFIG_FILE_ERROR),
-					 errmsg("could not parse RADIUS port list \"%s\"",
-							val),
-					 errcontext("line %d of configuration file \"%s\"",
-								line_num, file_name)));
-			*err_msg = psprintf("invalid RADIUS port number: \"%s\"", val);
-			return false;
-		}
-
-		foreach(l, parsed_ports)
-		{
-			if (atoi(lfirst(l)) == 0)
-			{
-				ereport(elevel,
-						(errcode(ERRCODE_CONFIG_FILE_ERROR),
-						 errmsg("invalid RADIUS port number: \"%s\"", val),
-						 errcontext("line %d of configuration file \"%s\"",
-									line_num, file_name)));
-
-				return false;
-			}
-		}
-		hbaline->radiusports = parsed_ports;
-		hbaline->radiusports_s = pstrdup(val);
-	}
-	else if (strcmp(name, "radiussecrets") == 0)
-	{
-		List	   *parsed_secrets;
-		char	   *dupval = pstrdup(val);
-
-		REQUIRE_AUTH_OPTION(uaRADIUS, "radiussecrets", "radius");
-
-		if (!SplitGUCList(dupval, ',', &parsed_secrets))
-		{
-			/* syntax error in list */
-			ereport(elevel,
-					(errcode(ERRCODE_CONFIG_FILE_ERROR),
-					 errmsg("could not parse RADIUS secret list \"%s\"",
-							val),
-					 errcontext("line %d of configuration file \"%s\"",
-								line_num, file_name)));
-			return false;
-		}
-
-		hbaline->radiussecrets = parsed_secrets;
-		hbaline->radiussecrets_s = pstrdup(val);
-	}
-	else if (strcmp(name, "radiusidentifiers") == 0)
-	{
-		List	   *parsed_identifiers;
-		char	   *dupval = pstrdup(val);
-
-		REQUIRE_AUTH_OPTION(uaRADIUS, "radiusidentifiers", "radius");
-
-		if (!SplitGUCList(dupval, ',', &parsed_identifiers))
-		{
-			/* syntax error in list */
-			ereport(elevel,
-					(errcode(ERRCODE_CONFIG_FILE_ERROR),
-					 errmsg("could not parse RADIUS identifiers list \"%s\"",
-							val),
-					 errcontext("line %d of configuration file \"%s\"",
-								line_num, file_name)));
-			return false;
-		}
-
-		hbaline->radiusidentifiers = parsed_identifiers;
-		hbaline->radiusidentifiers_s = pstrdup(val);
-	}
 	else if (strcmp(name, "issuer") == 0)
 	{
 		REQUIRE_AUTH_OPTION(uaOAuth, "issuer", "oauth");
@@ -2496,6 +2280,32 @@ parse_hba_auth_opt(char *name, char *val, HbaLine *hbaline,
 	{
 		REQUIRE_AUTH_OPTION(uaOAuth, "validator", "oauth");
 		hbaline->oauth_validator = pstrdup(val);
+	}
+	else if (strncmp(name, "validator.", strlen("validator.")) == 0)
+	{
+		const char *key = name + strlen("validator.");
+
+		REQUIRE_AUTH_OPTION(uaOAuth, name, "oauth");
+
+		/*
+		 * Validator modules may register their own per-HBA-line options.
+		 * Unfortunately, since we don't want to require these modules to be
+		 * loaded into the postmaster, we don't know if the options are valid
+		 * yet and must store them for later. Perform only a basic syntax
+		 * check here.
+		 */
+		if (!valid_oauth_hba_option_name(key))
+		{
+			ereport(elevel,
+					(errcode(ERRCODE_CONFIG_FILE_ERROR),
+					 errmsg("invalid OAuth validator option name: \"%s\"", name),
+					 errcontext("line %d of configuration file \"%s\"",
+								line_num, file_name)));
+			return false;
+		}
+
+		hbaline->oauth_opt_keys = lappend(hbaline->oauth_opt_keys, pstrdup(key));
+		hbaline->oauth_opt_vals = lappend(hbaline->oauth_opt_vals, pstrdup(val));
 	}
 	else if (strcmp(name, "delegate_ident_mapping") == 0)
 	{

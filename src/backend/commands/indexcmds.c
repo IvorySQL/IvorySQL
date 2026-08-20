@@ -587,8 +587,8 @@ DefineIndex(ParseState *pstate,
 	Datum		reloptions;
 	int16	   *coloptions;
 	IndexInfo  *indexInfo;
-	bits16		flags;
-	bits16		constr_flags;
+	uint16		flags;
+	uint16		constr_flags;
 	int			numberOfAttributes;
 	int			numberOfKeyAttributes;
 	TransactionId limitXmin;
@@ -1140,7 +1140,8 @@ DefineIndex(ParseState *pstate,
 					 errmsg("index creation on system columns is not supported")));
 
 
-		if (TupleDescAttr(RelationGetDescr(rel), attno - 1)->attgenerated == ATTRIBUTE_GENERATED_VIRTUAL)
+		if (attno > 0 &&
+			TupleDescAttr(RelationGetDescr(rel), attno - 1)->attgenerated == ATTRIBUTE_GENERATED_VIRTUAL)
 			ereport(ERROR,
 					errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					stmt->primary ?
@@ -1182,7 +1183,8 @@ DefineIndex(ParseState *pstate,
 		{
 			AttrNumber	attno = j + FirstLowInvalidHeapAttributeNumber;
 
-			if (TupleDescAttr(RelationGetDescr(rel), attno - 1)->attgenerated == ATTRIBUTE_GENERATED_VIRTUAL)
+			if (attno > 0 &&
+				TupleDescAttr(RelationGetDescr(rel), attno - 1)->attgenerated == ATTRIBUTE_GENERATED_VIRTUAL)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 stmt->isconstraint ?
@@ -4424,10 +4426,13 @@ ReindexRelationConcurrently(const ReindexStmt *stmt, Oid relationOid, const Rein
 			tablespaceid = indexRel->rd_rel->reltablespace;
 
 		/* Create new index definition based on given index */
-		newIndexId = index_concurrently_create_copy(heapRel,
-													idx->indexId,
-													tablespaceid,
-													concurrentName);
+		newIndexId = index_create_copy(heapRel,
+									   INDEX_CREATE_CONCURRENT |
+									   INDEX_CREATE_SKIP_BUILD |
+									   INDEX_CREATE_SUPPRESS_PROGRESS,
+									   idx->indexId,
+									   tablespaceid,
+									   concurrentName);
 
 		/*
 		 * Now open the relation of the new index, a session-level lock is

@@ -111,5 +111,9 @@ include $(top_builddir)/src/Makefile.global
 include $(top_srcdir)/contrib/contrib-global.mk
 endif
 
+ifeq ($(with_libxml),yes)
+SHLIB_LINK += -lxml2
+endif
+
 
 

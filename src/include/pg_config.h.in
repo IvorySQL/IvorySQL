@@ -363,6 +363,9 @@
 /* Define to 1 if you have the `rl_variable_bind' function. */
 #undef HAVE_RL_VARIABLE_BIND
 
+/* Define to 1 if you have SA_SIGINFO available. */
+#undef HAVE_SA_SIGINFO
+
 /* Define to 1 if you have the <security/pam_appl.h> header file. */
 #undef HAVE_SECURITY_PAM_APPL_H
 
@@ -689,6 +692,9 @@
 /* Define to 1 to build with assertion checks. (--enable-cassert) */
 #undef USE_ASSERT_CHECKING
 
+/* Define to 1 to use AVX2 instructions with a runtime check. */
+#undef USE_AVX2_WITH_RUNTIME_CHECK
+
 /* Define to 1 to use AVX-512 CRC algorithms with a runtime check. */
 #undef USE_AVX512_CRC32C_WITH_RUNTIME_CHECK
 
@@ -743,6 +749,9 @@
 
 /* Define to 1 to build with PAM support. (--with-pam) */
 #undef USE_PAM
+
+/* Define to 1 to use Arm PMULL CRC algorithms with a runtime check. */
+#undef USE_PMULL_CRC32C_WITH_RUNTIME_CHECK
 
 /* Define to 1 to use software CRC-32C implementation (slicing-by-8). */
 #undef USE_SLICING_BY_8_CRC32C

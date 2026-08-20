@@ -205,7 +205,8 @@ RelationFindReplTupleByIndex(Relation rel, Oid idxoid,
 	skey_attoff = build_replindex_scan_key(skey, rel, idxrel, searchslot);
 
 	/* Start an index scan. */
-	scan = index_beginscan(rel, idxrel, &snap, NULL, skey_attoff, 0);
+	scan = index_beginscan(rel, idxrel,
+						   &snap, NULL, skey_attoff, 0, SO_NONE);
 
 retry:
 	found = false;
@@ -383,7 +384,8 @@ RelationFindReplTupleSeq(Relation rel, LockTupleMode lockmode,
 
 	/* Start a heap scan. */
 	InitDirtySnapshot(snap);
-	scan = table_beginscan(rel, &snap, 0, NULL);
+	scan = table_beginscan(rel, &snap, 0, NULL,
+						   SO_NONE);
 	scanslot = table_slot_create(rel, NULL);
 
 retry:
@@ -602,7 +604,8 @@ RelationFindDeletedTupleInfoSeq(Relation rel, TupleTableSlot *searchslot,
 	 * not yet committed or those just committed prior to the scan are
 	 * excluded in update_most_recent_deletion_info().
 	 */
-	scan = table_beginscan(rel, SnapshotAny, 0, NULL);
+	scan = table_beginscan(rel, SnapshotAny, 0, NULL,
+						   SO_NONE);
 	scanslot = table_slot_create(rel, NULL);
 
 	table_rescan(scan, NULL);
@@ -666,7 +669,8 @@ RelationFindDeletedTupleInfoByIndex(Relation rel, Oid idxoid,
 	 * not yet committed or those just committed prior to the scan are
 	 * excluded in update_most_recent_deletion_info().
 	 */
-	scan = index_beginscan(rel, idxrel, SnapshotAny, NULL, skey_attoff, 0);
+	scan = index_beginscan(rel, idxrel,
+						   SnapshotAny, NULL, skey_attoff, 0, SO_NONE);
 
 	index_rescan(scan, skey, skey_attoff, NULL, 0);
 
@@ -847,7 +851,7 @@ ExecSimpleRelationInsert(ResultRelInfo *resultRelInfo,
 
 		if (resultRelInfo->ri_NumIndices > 0)
 		{
-			bits32		flags;
+			uint32		flags;
 
 			if (conflictindexes != NIL)
 				flags = EIIT_NO_DUPE_ERROR;
@@ -951,7 +955,7 @@ ExecSimpleRelationUpdate(ResultRelInfo *resultRelInfo,
 
 		if (resultRelInfo->ri_NumIndices > 0 && (update_indexes != TU_None))
 		{
-			bits32		flags = EIIT_IS_UPDATE;
+			uint32		flags = EIIT_IS_UPDATE;
 
 			if (conflictindexes != NIL)
 				flags |= EIIT_NO_DUPE_ERROR;

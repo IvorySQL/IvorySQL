@@ -103,6 +103,8 @@ SELECT customer_name FROM GRAPH_TABLE (myshop MATCH (c IS customers)->{1,2}(o IS
 ERROR:  element pattern quantifier is not supported
 SELECT * FROM GRAPH_TABLE (myshop MATCH ((c IS customers)->(o IS orders)) COLUMNS (c.name));
 ERROR:  unsupported element pattern kind: "nested path pattern"
+LINE 1: SELECT * FROM GRAPH_TABLE (myshop MATCH ((c IS customers)->(...
+                                                ^
 -- a property graph can be referenced only from within GRAPH_TABLE clause.
 SELECT * FROM myshop; -- error
 ERROR:  cannot open relation "myshop"
@@ -234,14 +236,34 @@ SELECT * FROM GRAPH_TABLE (myshop MATCH (c IS customers)->(o IS orders) COLUMNS 
 (2 rows)
 
 -- lateral test
-CREATE TABLE x1 (a int, b text);
+-- Use table with a column name same as a property in the property graph so as
+-- to test resolution preferences. Property references are preferred over
+-- lateral table references.
+CREATE TABLE x1 (a int, address text);
 INSERT INTO x1 VALUES (1, 'one'), (2, 'two');
 SELECT * FROM x1, GRAPH_TABLE (myshop MATCH (c IS customers WHERE c.address = 'US' AND c.customer_id = x1.a)-[IS customer_orders]->(o IS orders) COLUMNS (c.name AS customer_name, c.customer_id AS cid));
- a |  b  | customer_name | cid 
----+-----+---------------+-----
- 1 | one | customer1     |   1
+ a | address | customer_name | cid 
+---+---------+---------------+-----
+ 1 | one     | customer1     |   1
 (1 row)
 
+SELECT x1.a, g.* FROM x1, GRAPH_TABLE (myshop MATCH (x1 IS customers WHERE x1.address = 'US')-[IS customer_orders]->(o IS orders) COLUMNS (x1.name AS customer_name, x1.customer_id AS cid, o.order_id)) g;
+ a | customer_name | cid | order_id 
+---+---------------+-----+----------
+ 1 | customer1     |   1 |        1
+ 2 | customer1     |   1 |        1
+(2 rows)
+
+-- non-local property references are not allowed, even if a lateral column
+-- reference is available
+SELECT x1.a, g.* FROM x1, GRAPH_TABLE (myshop MATCH (x1 IS customers)-[IS customer_orders]->(o IS orders WHERE o.order_id = x1.a) COLUMNS (x1.name AS customer_name, x1.customer_id AS cid, o.order_id)) g; -- error
+ERROR:  non-local element variable reference is not supported
+LINE 1: ...customer_orders]->(o IS orders WHERE o.order_id = x1.a) COLU...
+                                                             ^
+SELECT x1.a, g.* FROM x1, GRAPH_TABLE (myshop MATCH (c IS customers WHERE c.address = 'US' AND c.customer_id = x1.a)-[IS customer_orders]->(x1 IS orders) COLUMNS (c.name AS customer_name, c.customer_id AS cid, x1.order_id)) g; -- error
+ERROR:  non-local element variable reference is not supported
+LINE 1: ...tomers WHERE c.address = 'US' AND c.customer_id = x1.a)-[IS ...
+                                                             ^
 DROP TABLE x1;
 CREATE TABLE v1 (
     id int PRIMARY KEY,
@@ -420,6 +442,33 @@ SELECT * FROM GRAPH_TABLE (myshop MATCH (c IS customers WHERE c.* IS NOT NULL)-[
 ERROR:  "*" not allowed here
 LINE 1: ...M GRAPH_TABLE (myshop MATCH (c IS customers WHERE c.* IS NOT...
                                                              ^
+-- consecutive element patterns with same kind
+SELECT * FROM GRAPH_TABLE (g1 MATCH ()() COLUMNS (1 as one));
+ERROR:  adjacent vertex patterns are not supported
+LINE 1: SELECT * FROM GRAPH_TABLE (g1 MATCH ()() COLUMNS (1 as one))...
+                                              ^
+SELECT * FROM GRAPH_TABLE (g1 MATCH -> COLUMNS (1 AS one));
+ERROR:  path pattern cannot start with an edge pattern
+LINE 1: SELECT * FROM GRAPH_TABLE (g1 MATCH -> COLUMNS (1 AS one));
+                                            ^
+SELECT * FROM GRAPH_TABLE (g1 MATCH ()-[]- COLUMNS (1 AS one));
+ERROR:  path pattern cannot end with an edge pattern
+LINE 1: SELECT * FROM GRAPH_TABLE (g1 MATCH ()-[]- COLUMNS (1 AS one...
+                                              ^
+SELECT * FROM GRAPH_TABLE (g1 MATCH ()-> ->() COLUMNS (1 AS one));
+ERROR:  edge pattern must be preceded by a vertex pattern
+LINE 1: SELECT * FROM GRAPH_TABLE (g1 MATCH ()-> ->() COLUMNS (1 AS ...
+                                                 ^
+-- non-local element variable reference with element patterns without variable
+-- names
+SELECT * FROM GRAPH_TABLE (g1 MATCH (a)-[WHERE a.vprop1 = 10]->(c) COLUMNS (a.vname AS aname, c.vname AS cname));
+ERROR:  non-local element variable reference is not supported
+LINE 1: SELECT * FROM GRAPH_TABLE (g1 MATCH (a)-[WHERE a.vprop1 = 10...
+                                                       ^
+SELECT * FROM GRAPH_TABLE (g1 MATCH (WHERE b.eprop1 = 10001)-[b]->(c) COLUMNS (b.ename AS bname, c.vname AS cname));
+ERROR:  non-local element variable reference is not supported
+LINE 1: SELECT * FROM GRAPH_TABLE (g1 MATCH (WHERE b.eprop1 = 10001)...
+                                                   ^
 -- select all the properties across all the labels associated with a given type
 -- of graph element
 SELECT * FROM GRAPH_TABLE (g1 MATCH (src)-[conn]->(dest) COLUMNS (src.vname AS svname, conn.ename AS cename, dest.vname AS dvname, src.vprop1 AS svp1, src.vprop2 AS svp2, src.lprop1 AS slp1, dest.vprop1 AS dvp1, dest.vprop2 AS dvp2, dest.lprop1 AS dlp1, conn.eprop1 AS cep1, conn.lprop2 AS clp2));

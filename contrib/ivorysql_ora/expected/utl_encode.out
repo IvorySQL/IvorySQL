@@ -104,7 +104,7 @@ SELECT rawtohex(utl_encode.base64_decode(hextoraw('0A0D200A'))) IS NULL;
 -- hextoraw('5A5A5A21') = 'ZZZ!' where '!' is not a valid base64 character
 SELECT utl_encode.base64_decode(hextoraw('5A5A5A21'));
 ERROR:  UTL_ENCODE.BASE64_DECODE: invalid base64 input
-CONTEXT:  PL/iSQL function base64_decode line 8 at RETURN
+CONTEXT:  PL/iSQL function sys.utl_encode.base64_decode line 8 at RETURN
 -- PL/iSQL package interface test for decode
 DECLARE
     v_src     RAW(100) := hextoraw('48656C6C6F');

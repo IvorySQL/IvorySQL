@@ -16,18 +16,133 @@ PostgreSQL documentation
 
  <refnamediv>
   <refname>ALTER PACKAGE</refname>
-  <refpurpose>alter a package</refpurpose>
+  <refpurpose>change the definition of a package</refpurpose>
  </refnamediv>
 
  <refsynopsisdiv>
 <synopsis>
-ALTER PACKAGE [schema.] <replaceable class="parameter">package_name</replaceable> { package_compile_clause | { EDITIONABLE | NONEDITIONABLE } } ;
-
-package_compile_clause:
-    COMPILE [ DEBUG ] [ compiler_parameters_clause ... ] [ REUSE SETTINGS ]
-	
-compiler_parameters_clause:
-    parameter_name = parameter_value
+ALTER PACKAGE <replaceable class="parameter">name</replaceable> { EDITIONABLE | NONEDITIONABLE }
+ALTER PACKAGE <replaceable class="parameter">name</replaceable> RENAME TO <replaceable class="parameter">new_name</replaceable>
+ALTER PACKAGE <replaceable class="parameter">name</replaceable> OWNER TO { <replaceable class="parameter">new_owner</replaceable> | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
+ALTER PACKAGE <replaceable class="parameter">name</replaceable> SET SCHEMA <replaceable class="parameter">new_schema</replaceable>
 </synopsis>
-</refsynopsisdiv>
+ </refsynopsisdiv>
+
+ <refsect1 id="sql-alterpackage-description">
+  <title>Description</title>
+
+  <para>
+   <command>ALTER PACKAGE</command> changes the properties, name, owner, or
+   schema of an existing package.
+  </para>
+
+  <para>
+   You must own the package to use <command>ALTER PACKAGE</command>.
+   To change a package's schema, you must also have <literal>CREATE</literal>
+   privilege on the new schema.  To alter the owner, you must be able to
+   <literal>SET ROLE</literal> to the new owning role, and that role must have
+   <literal>CREATE</literal> privilege on the package's schema.  A superuser
+   can alter any package.
+  </para>
+ </refsect1>
+
+ <refsect1 id="sql-alterpackage-parameters">
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="parameter">name</replaceable></term>
+    <listitem>
+     <para>
+      The name (optionally schema-qualified) of an existing package.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>EDITIONABLE</literal></term>
+    <term><literal>NONEDITIONABLE</literal></term>
+    <listitem>
+     <para>
+      Change the editionability property of the package specification.  When
+      a package body is subsequently created or replaced, its editionability
+      must match this property.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">new_name</replaceable></term>
+    <listitem>
+     <para>
+      The new name of the package.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">new_owner</replaceable></term>
+    <listitem>
+     <para>
+      The new owner of the package.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">new_schema</replaceable></term>
+    <listitem>
+     <para>
+      The new schema for the package.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1 id="sql-alterpackage-examples">
+  <title>Examples</title>
+
+  <para>
+   Mark the package <literal>inventory_api</literal> as noneditionable:
+<programlisting>
+ALTER PACKAGE inventory_api NONEDITIONABLE;
+</programlisting>
+  </para>
+
+  <para>
+   Rename the package:
+<programlisting>
+ALTER PACKAGE inventory_api RENAME TO stock_api;
+</programlisting>
+  </para>
+
+  <para>
+   Move the package to the <literal>application</literal> schema:
+<programlisting>
+ALTER PACKAGE stock_api SET SCHEMA application;
+</programlisting>
+  </para>
+ </refsect1>
+
+ <refsect1 id="sql-alterpackage-compatibility">
+  <title>Compatibility</title>
+
+  <para>
+   <command>ALTER PACKAGE</command> is an <productname>IvorySQL</productname>
+   extension for Oracle compatibility.  It is not defined by the SQL
+   standard.  Oracle forms that recompile a package, such as
+   <literal>ALTER PACKAGE ... COMPILE</literal>, are not currently supported.
+  </para>
+ </refsect1>
+
+ <refsect1 id="sql-alterpackage-see-also">
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createpackage"/></member>
+   <member><xref linkend="sql-createpackagebody"/></member>
+   <member><xref linkend="sql-droppackage"/></member>
+  </simplelist>
+ </refsect1>
 </refentry>

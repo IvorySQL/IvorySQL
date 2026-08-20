@@ -318,7 +318,8 @@ SELECT * FROM gtest1_1;
 --------+---------+-----------+----------+-----------------------------
  a      | integer |           | not null | 
  b      | integer |           |          | generated always as (a * 2)
-Inherits: gtest1
+Inherits:
+    gtest1
 
 INSERT INTO gtest1_1 VALUES (4);
 SELECT * FROM gtest1_1;
@@ -367,7 +368,8 @@ NOTICE:  merging column "b" with inherited definition
  x      | integer |           |          |                              | plain   |              | 
 Not-null constraints:
     "gtest1_a_not_null" NOT NULL "a" (inherited)
-Inherits: gtest1
+Inherits:
+    gtest1
 
 INSERT INTO gtestx (a, x) VALUES (11, 22);
 SELECT * FROM gtest1;
@@ -418,8 +420,9 @@ DETAIL:  User-specified column moved to the position of the inherited column.
  a      | integer |           | not null | 
  b      | integer |           |          | generated always as (x + 1)
  x      | integer |           |          | 
-Inherits: gtest1,
-          gtesty
+Inherits:
+    gtest1
+    gtesty
 
 -- test correct handling of GENERATED column that's only in child
 CREATE TABLE gtestp (f1 int);
@@ -532,6 +535,12 @@ SELECT * FROM gtest3 ORDER BY a;
  4 | 12
 (4 rows)
 
+-- COPY JSON should exclude generated columns, same as text/CSV
+COPY gtest1 TO stdout WITH (FORMAT json);
+{"a":1}
+{"a":2}
+{"a":3}
+{"a":4}
 -- null values
 CREATE TABLE gtest2 (a int PRIMARY KEY, b int GENERATED ALWAYS AS (NULL) VIRTUAL);
 INSERT INTO gtest2 VALUES (1);
@@ -558,7 +567,7 @@ CREATE TYPE double_int as (a int, b int);
 CREATE TABLE gtest4 (
     a int,
     b double_int GENERATED ALWAYS AS ((a * 2, a * 3)) VIRTUAL
-);
+);  -- fails, user-defined type
 ERROR:  virtual generated column "b" cannot have a user-defined type
 DETAIL:  Virtual generated columns that make use of user-defined types are not yet supported.
 --INSERT INTO gtest4 VALUES (1), (6);
@@ -832,12 +841,6 @@ CREATE TABLE gtest24nn (a int, b gtestdomainnn GENERATED ALWAYS AS (a * 2) VIRTU
 ERROR:  virtual generated column "b" cannot have a domain type
 --INSERT INTO gtest24nn (a) VALUES (4);  -- ok
 --INSERT INTO gtest24nn (a) VALUES (NULL);  -- error
--- using user-defined type not yet supported
-CREATE TABLE gtest24xxx (a gtestdomain1, b gtestdomain1, c int GENERATED ALWAYS AS (greatest(a, b)) VIRTUAL);  -- error
-ERROR:  generation expression uses user-defined type
-LINE 1: ...main1, b gtestdomain1, c int GENERATED ALWAYS AS (greatest(a...
-                                                             ^
-DETAIL:  Virtual generated columns that make use of user-defined types are not yet supported.
 -- typed tables (currently not supported)
 CREATE TYPE gtest_type AS (f1 integer, f2 text, f3 bigint);
 CREATE TABLE gtest28 OF gtest_type (f1 WITH OPTIONS GENERATED ALWAYS AS (f2 *2) VIRTUAL);
@@ -1297,7 +1300,8 @@ Number of child tables: 1 (Use \d+ to list them.)
 --------+---------+-----------+----------+-----------------------------
  a      | integer |           |          | 
  b      | integer |           |          | generated always as (a * 2)
-Inherits: gtest30
+Inherits:
+    gtest30
 
 DROP TABLE gtest30 CASCADE;
 NOTICE:  drop cascades to table gtest30_1
@@ -1322,7 +1326,8 @@ Number of child tables: 1 (Use \d+ to list them.)
 --------+---------+-----------+----------+-----------------------------
  a      | integer |           |          | 
  b      | integer |           |          | generated always as (a * 2)
-Inherits: gtest30
+Inherits:
+    gtest30
 
 ALTER TABLE gtest30_1 ALTER COLUMN b DROP EXPRESSION;  -- error
 ERROR:  cannot drop generation expression from inherited column
@@ -1532,6 +1537,12 @@ SELECT attrelid, attname, attgenerated FROM pg_attribute WHERE attgenerated NOT 
 --
 -- these tests are specific to generated_virtual.sql
 --
+-- using user-defined type not yet supported
+CREATE TABLE gtest24xxx (a gtestdomain1, b gtestdomain1, c int GENERATED ALWAYS AS (greatest(a, b)) VIRTUAL);  -- error
+ERROR:  generation expression uses user-defined type
+LINE 1: ...main1, b gtestdomain1, c int GENERATED ALWAYS AS (greatest(a...
+                                                             ^
+DETAIL:  Virtual generated columns that make use of user-defined types are not yet supported.
 create table gtest32 (
   a int primary key,
   b int generated always as (a * 2),

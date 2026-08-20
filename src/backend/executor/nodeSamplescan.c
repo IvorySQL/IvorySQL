@@ -298,7 +298,9 @@ tablesample_init(SampleScanState *scanstate)
 									 0, NULL,
 									 scanstate->use_bulkread,
 									 allow_sync,
-									 scanstate->use_pagemode);
+									 scanstate->use_pagemode,
+									 ScanRelIsReadOnly(&scanstate->ss) ?
+									 SO_HINT_REL_READ_ONLY : SO_NONE);
 	}
 	else
 	{

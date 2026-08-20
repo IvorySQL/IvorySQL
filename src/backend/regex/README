@@ -280,9 +280,9 @@ and it also typically adds lots of follow-on arc-splitting work for the
 color splitting logic.  Now we handle this case by generating a single arc
 labeled with the special color RAINBOW, meaning all colors.  Such arcs
 never need to be split, so they help keep NFAs small in this common case.
-(Note: this optimization doesn't help in REG_NLSTOP mode, where "." is
-not supposed to match newline.  In that case we still handle "." by
-generating an almost-rainbow of all colors except newline's color.)
+(Note: this optimization doesn't help in REG_NLSTOP or REG_NLDOT mode,
+where "." is not supposed to match newline.  In that case we still handle "."
+by generating an almost-rainbow of all colors except newline's color.)
 
 Given this summary, we can see we need the following operations for
 colors:

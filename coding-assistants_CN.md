@@ -53,3 +53,17 @@ Assisted-by: Claude:4.6
 Assisted-by: GitHub:Copilot
 Assisted-by: OpenAI:gpt-4
 ```
+
+贡献应包含AI生成的代码所占比例信息，格式如下：
+
+```
+Percentage of AI-generated code: xx%
+```
+
+## 使用AI注意事项
+
+社区不鼓励如下行为：
+
+- 贡献者在代码/文档评审过程中，与其他贡献者的互动直接套用AI生成的回复；
+- 贡献者对自己使用AI生成的代码不理解，无法解释或维护代码；
+
