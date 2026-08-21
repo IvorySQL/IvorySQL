@@ -858,7 +858,13 @@ to_oradate3(PG_FUNCTION_ARGS)
 	struct pg_tm tm;
 	fsec_t		fsec;
 
+
 	/* nlsparam is not interpreted yet, but must not affect parsing. */
+
+	/* nlsparam is not supported yet, just ignore it */
+	(void) nlsparam;
+
+
 	ora_do_to_timestamp(date_txt, fmt, collid, false, &tm, &fsec, NULL, NULL, NULL, true);
 
 	/* no timezone and no fractional second */
@@ -927,7 +933,13 @@ to_oratimestamp3(PG_FUNCTION_ARGS)
 	struct pg_tm tm;
 	fsec_t		fsec;
 
+
 	/* nlsparam is not interpreted yet, but must not affect parsing. */
+
+	/* nlsparam is not supported yet, just ignore it */
+	(void) nlsparam;
+
+
 	ora_do_to_timestamp(date_txt, fmt, collid, false, &tm, &fsec, NULL, NULL, NULL, true);
 
 	/* no time zone */
@@ -1029,9 +1041,15 @@ to_oratimestamptz3(PG_FUNCTION_ARGS)
 	fsec_t		fsec;
 	DateTimeErrorExtra extra;
 
+
 	/* nlsparam is not interpreted yet, but must not affect parsing. */
 	ora_do_to_timestamp(date_txt, fmt, collid, false, &tm, &fsec, NULL, NULL, NULL, true);
 
+	/* nlsparam is not supported yet, just ignore it */
+	(void) nlsparam;
+
+
+	ora_do_to_timestamp(date_txt, fmt, collid, false, &tm, &fsec, NULL, NULL, NULL, true);
 	if (tm.tm_zone)
 	{
 		int			dterr = DecodeTimezone((char *) tm.tm_zone, &tz);
