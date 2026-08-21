@@ -1265,7 +1265,7 @@ ERROR:  invalid number format model
 SELECT '' AS to_number_18, to_number('123 ');
  to_number_18 | to_number 
 --------------+-----------
-              |       123
+              | 123
 (1 row)
 
 -- Whitespace between digits remains invalid.
