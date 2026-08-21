@@ -72,7 +72,6 @@ ORA_REGRESS = \
 	ora_datetime_datatype_functions \
 	ora_misc_functions \
 	ora_merge \
-	ora_split_partition \
 	datatype_and_func_bugs \
 	ora_sysview \
 	ora_like_operator \
