@@ -61,6 +61,11 @@ cleansql:
 
 # REGRESS_OPTS mainly used for installcheck or debug.
 #REGRESS_OPTS = --port=1521
+# The utl_url regression tests exercise multibyte input and charset
+# conversions, so pin the test database to UTF8 instead of relying on
+# whatever encoding initdb derives from the invoking environment's locale.
+ENCODING = UTF8
+
 ORA_REGRESS = \
 	ora_character \
 	ora_datetime \
