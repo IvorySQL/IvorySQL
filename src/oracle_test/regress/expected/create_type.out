@@ -477,6 +477,21 @@ BEGIN
 	END IF;
 END;
 /
+-- Keep a same-named STANDARD routine visible while compiling the object.  A
+-- failed package-type probe must fall back to the schema object type.
+BEGIN;
+CREATE OR REPLACE PACKAGE sys.standard IS
+    FUNCTION type_probe_collision() RETURN integer;
+END;
+/
+CREATE TYPE type_probe_collision AS OBJECT
+(
+    value integer,
+    CONSTRUCTOR FUNCTION type_probe_collision RETURN SELF AS RESULT,
+    STATIC FUNCTION new_instance RETURN type_probe_collision
+);
+/
+ROLLBACK;
 -- Object constructors remain callable from static methods.  The constructor's
 -- hidden SELF argument must not participate in the source-level call.
 CREATE TYPE factory_object_type AS OBJECT

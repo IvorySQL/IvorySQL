@@ -188,7 +188,16 @@ plisql_package_parse(ParseState *parsestate, PackageCacheItem *item, List *names
 		(flags != PACKAGE_PARSE_FUNC &&
 		flags != PACKAGE_PARSE_PROC &&
 		flags != PACKAGE_PARSE_ENTRY))
+	{
+		/*
+		 * Some callers probe a package before falling back to ordinary type
+		 * lookup.  A same-named routine is not a package type in that context;
+		 * with missing_ok, report no match rather than aborting the fallback.
+		 */
+		if (missing_ok)
+			return NULL;
 		elog(ERROR, "\"%s\" is a function or procedure", parse_first_name);
+	}
 
 	switch (nse->itemtype)
 	{
