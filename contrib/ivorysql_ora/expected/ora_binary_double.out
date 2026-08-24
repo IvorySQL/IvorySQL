@@ -613,7 +613,7 @@ SELECT to_binary_double('1,234.5', '9,999.9');
 SELECT to_binary_double('  1234.5', '9999.9');
  to_binary_double 
 ------------------
- 1234
+ 1234.5
 (1 row)
 
 -- Empty format model returns NULL instead of crashing
