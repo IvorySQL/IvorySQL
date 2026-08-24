@@ -133,6 +133,9 @@ static void plsql_init_glovalvar_from_stack(PLiSQL_execstate * estate, int dno,
 static void plsql_assign_out_glovalvar_from_stack(PLiSQL_execstate * estate,
 												  int dno, int *start_level);
 static bool is_subprocfunc_argnum(PLiSQL_function * pfunc, int dno);
+static bool is_object_constructor_subproc(PLiSQL_function *pfunc,
+										  PLiSQL_nsitem *nse,
+										  const char *funcname);
 
 /*
  * Initialize global state for subproc compilation (similar to plisql_start_datums).
@@ -3223,6 +3226,52 @@ is_subprocfunc_argnum(PLiSQL_function * pfunc, int dno)
 
 
 /*
+ * Check whether a subprogram namespace entry contains an object constructor.
+ * Constructors have a compiler-generated SELF argument that is not written by
+ * the caller, so their stored subprogram signature cannot be matched directly.
+ */
+static bool
+is_object_constructor_subproc(PLiSQL_function *pfunc, PLiSQL_nsitem *nse,
+							  const char *funcname)
+{
+	ListCell   *lc;
+
+	foreach(lc, nse->subprocfunc)
+	{
+		int			fno = lfirst_int(lc);
+		PLiSQL_subproc_function *subprocfunc;
+		PLiSQL_function_argitem *selfarg;
+		Oid			selftype;
+		char	   *typename;
+
+		if (fno < 0 || fno >= pfunc->nsubprocfuncs)
+			elog(ERROR, "invalid fno :%d", fno);
+
+		subprocfunc = pfunc->subprocfuncs[fno];
+		if (subprocfunc->is_proc || subprocfunc->rettype == NULL ||
+			subprocfunc->arg == NIL ||
+			pg_strcasecmp(subprocfunc->func_name, funcname) != 0)
+			continue;
+
+		selfarg = linitial(subprocfunc->arg);
+		selftype = selfarg->type->typoid;
+		if (selfarg->argmode != ARGMODE_IN ||
+			selfarg->argname == NULL ||
+			pg_strcasecmp(selfarg->argname, "self") != 0 ||
+			!get_typisobject(selftype) ||
+			subprocfunc->rettype->typoid != selftype)
+			continue;
+
+		typename = get_rel_name(get_typ_typrelid(selftype));
+		if (typename != NULL && pg_strcasecmp(typename, funcname) == 0)
+			return true;
+	}
+
+	return false;
+}
+
+
+/*
  * Similar to plisql_param_ref: resolve a subproc function reference.
  * Argument handling aligns with func_get_detail.
  */
@@ -3300,7 +3349,20 @@ plisql_subprocfunc_ref(ParseState *pstate, List *funcname,
 										   argdefaults);	/* return value */
 	if (detail != FUNCDETAIL_NORMAL &&
 		detail != FUNCDETAIL_PROCEDURE)
+	{
+		/*
+		 * An unqualified constructor call made inside an object method first
+		 * finds the constructor in the PL/iSQL subprogram namespace.  Its
+		 * hidden SELF argument makes the direct lookup fail.  Let parse_func.c
+		 * continue with object-constructor lookup, which creates SELF and then
+		 * resolves the routine in the hidden object package.
+		 */
+		if (detail == FUNCDETAIL_NOTFOUND && !proc_call && list_len == 1 &&
+			is_object_constructor_subproc(expr->func, nse, func_name))
+			return FUNCDETAIL_NOTFOUND;
+
 		elog(ERROR, "wrong number or types of arguments in call to \"%s\"", func_name);
+	}
 
 	*pfunc = (void *) expr->func;
 

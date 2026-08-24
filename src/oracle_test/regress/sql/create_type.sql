@@ -385,6 +385,42 @@ BEGIN
 END;
 /
 
+-- Object constructors remain callable from static methods.  The constructor's
+-- hidden SELF argument must not participate in the source-level call.
+CREATE TYPE factory_object_type AS OBJECT
+(
+    value integer,
+    label varchar2(20),
+    CONSTRUCTOR FUNCTION factory_object_type RETURN SELF AS RESULT,
+    STATIC FUNCTION new_instance(p_value integer, p_label varchar2)
+        RETURN factory_object_type
+);
+/
+
+CREATE TYPE BODY factory_object_type AS
+    CONSTRUCTOR FUNCTION factory_object_type RETURN SELF AS RESULT IS
+    BEGIN
+        self.value := -1;
+        self.label := 'default';
+        RETURN;
+    END factory_object_type;
+
+    STATIC FUNCTION new_instance(p_value integer, p_label varchar2)
+        RETURN factory_object_type IS
+        result factory_object_type;
+    BEGIN
+        result := factory_object_type();
+        result.value := p_value;
+        result.label := p_label;
+        RETURN result;
+    END new_instance;
+END;
+/
+
+SELECT factory_object_type() FROM dual;
+SELECT factory_object_type.new_instance(1, 'one') FROM dual;
+DROP TYPE factory_object_type;
+
 -- Oracle constructors reject RETURN expressions, including RETURN SELF.
 CREATE TYPE invalid_constructor_return_type AS OBJECT
 (
