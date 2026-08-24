@@ -453,107 +453,107 @@ select * from binaryf_tbtidb002145521;
 
 -- Oracle-compatible TO_BINARY_FLOAT function
 -- Single-argument form, text input
-SELECT sys.to_binary_float('0.0');
+SELECT to_binary_float('0.0');
  to_binary_float 
 -----------------
  0
 (1 row)
 
-SELECT sys.to_binary_float('1.23');
+SELECT to_binary_float('1.23');
  to_binary_float 
 -----------------
  1.23
 (1 row)
 
-SELECT sys.to_binary_float('   -34.84   ');
+SELECT to_binary_float('   -34.84   ');
  to_binary_float 
 -----------------
  -34.84
 (1 row)
 
-SELECT sys.to_binary_float('1.2345678901234e+20');
+SELECT to_binary_float('1.2345678901234e+20');
  to_binary_float 
 -----------------
  1.23457e+20
 (1 row)
 
-SELECT sys.to_binary_float('1.2345678901234e-20');
+SELECT to_binary_float('1.2345678901234e-20');
  to_binary_float 
 -----------------
  1.23457e-20
 (1 row)
 
 -- Two-argument form with a number format model
-SELECT sys.to_binary_float('1,234.5', '9,999.9');
+SELECT to_binary_float('1,234.5', '9,999.9');
  to_binary_float 
 -----------------
  1234.5
 (1 row)
 
-SELECT sys.to_binary_float('  1234.5', '9999.9');
+SELECT to_binary_float('  1234.5', '9999.9');
  to_binary_float 
 -----------------
  1234
 (1 row)
 
 -- Empty format model returns NULL instead of crashing
-SELECT sys.to_binary_float('123', '');
+SELECT to_binary_float('123', '');
  to_binary_float 
 -----------------
  
 (1 row)
 
 -- Oracle special values: NaN and Infinity
-SELECT sys.to_binary_float('NaN');
+SELECT to_binary_float('NaN');
  to_binary_float 
 -----------------
  Nan
 (1 row)
 
-SELECT sys.to_binary_float('nan');
+SELECT to_binary_float('nan');
  to_binary_float 
 -----------------
  Nan
 (1 row)
 
-SELECT sys.to_binary_float('Infinity');
+SELECT to_binary_float('Infinity');
  to_binary_float 
 -----------------
  Inf
 (1 row)
 
-SELECT sys.to_binary_float('inf');
+SELECT to_binary_float('inf');
  to_binary_float 
 -----------------
  Inf
 (1 row)
 
-SELECT sys.to_binary_float('-Infinity');
+SELECT to_binary_float('-Infinity');
  to_binary_float 
 -----------------
  -Inf
 (1 row)
 
-SELECT sys.to_binary_float('-inf');
+SELECT to_binary_float('-inf');
  to_binary_float 
 -----------------
  -Inf
 (1 row)
 
 -- Conversion overloads from other numeric types
-SELECT sys.to_binary_float(42::numeric);
+SELECT to_binary_float(42::numeric);
  to_binary_float 
 -----------------
  42
 (1 row)
 
-SELECT sys.to_binary_float(42::sys.binary_float);
+SELECT to_binary_float(42::sys.binary_float);
  to_binary_float 
 -----------------
  42
 (1 row)
 
-SELECT sys.to_binary_float(42::sys.binary_double);
+SELECT to_binary_float(42::sys.binary_double);
  to_binary_float 
 -----------------
  42

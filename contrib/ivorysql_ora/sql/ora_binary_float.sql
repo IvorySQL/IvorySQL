@@ -167,28 +167,28 @@ select * from binaryf_tbtidb002145521;
 
 -- Oracle-compatible TO_BINARY_FLOAT function
 -- Single-argument form, text input
-SELECT sys.to_binary_float('0.0');
-SELECT sys.to_binary_float('1.23');
-SELECT sys.to_binary_float('   -34.84   ');
-SELECT sys.to_binary_float('1.2345678901234e+20');
-SELECT sys.to_binary_float('1.2345678901234e-20');
+SELECT to_binary_float('0.0');
+SELECT to_binary_float('1.23');
+SELECT to_binary_float('   -34.84   ');
+SELECT to_binary_float('1.2345678901234e+20');
+SELECT to_binary_float('1.2345678901234e-20');
 
 -- Two-argument form with a number format model
-SELECT sys.to_binary_float('1,234.5', '9,999.9');
-SELECT sys.to_binary_float('  1234.5', '9999.9');
+SELECT to_binary_float('1,234.5', '9,999.9');
+SELECT to_binary_float('  1234.5', '9999.9');
 
 -- Empty format model returns NULL instead of crashing
-SELECT sys.to_binary_float('123', '');
+SELECT to_binary_float('123', '');
 
 -- Oracle special values: NaN and Infinity
-SELECT sys.to_binary_float('NaN');
-SELECT sys.to_binary_float('nan');
-SELECT sys.to_binary_float('Infinity');
-SELECT sys.to_binary_float('inf');
-SELECT sys.to_binary_float('-Infinity');
-SELECT sys.to_binary_float('-inf');
+SELECT to_binary_float('NaN');
+SELECT to_binary_float('nan');
+SELECT to_binary_float('Infinity');
+SELECT to_binary_float('inf');
+SELECT to_binary_float('-Infinity');
+SELECT to_binary_float('-inf');
 
 -- Conversion overloads from other numeric types
-SELECT sys.to_binary_float(42::numeric);
-SELECT sys.to_binary_float(42::sys.binary_float);
-SELECT sys.to_binary_float(42::sys.binary_double);
+SELECT to_binary_float(42::numeric);
+SELECT to_binary_float(42::sys.binary_float);
+SELECT to_binary_float(42::sys.binary_double);
