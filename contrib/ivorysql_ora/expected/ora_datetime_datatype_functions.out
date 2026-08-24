@@ -40,7 +40,6 @@ SELECT to_date('01-15-1989 11:00:00', 'MM-DD-YYYY HH24:MI:SS', '') FROM DUAL;
        to_date       
 ---------------------
  01-15-1989 11:00:00
-
 (1 row)
 
 /*
