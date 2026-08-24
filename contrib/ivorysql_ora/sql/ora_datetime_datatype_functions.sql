@@ -317,9 +317,18 @@ set timezone = 'Asia/Hong_Kong';
 select sessiontimezone() from dual; /* BUG:0000427 */
 
 --dbtimezone
-select dbtimezone() from dual;
-set ivorysql.dbtimezone = '+08:00'; /* rejected: only ALTER DATABASE ... SET may change it */
+/* ivorysql.dbtimezone's baked-in default is '+00:00', but the effective
+ * value in any given cluster can differ (e.g. postgresql.conf may set a
+ * cluster-wide default) -- pin a known baseline ourselves instead of
+ * assuming it's still '+00:00' here, so the rest of this test is
+ * deterministic regardless of environment */
 select current_database() as cur_db \gset
+alter database :cur_db set ivorysql.dbtimezone = '+00:00';
+\c -
+select dbtimezone() from dual;
+set timezone = 'Asia/Hong_Kong';
+select dbtimezone() from dual; /* unaffected by session timezone just set above */
+set ivorysql.dbtimezone = '+08:00'; /* rejected: only ALTER DATABASE ... SET may change it */
 alter database :cur_db set ivorysql.dbtimezone = '+08:00';
 \c -
 select dbtimezone() from dual;
