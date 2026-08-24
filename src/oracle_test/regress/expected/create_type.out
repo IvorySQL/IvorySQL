@@ -481,16 +481,56 @@ END;
 -- failed package-type probe must fall back to the schema object type.
 BEGIN;
 CREATE OR REPLACE PACKAGE sys.standard IS
-    FUNCTION type_probe_collision() RETURN integer;
+    FUNCTION type_probe_function_collision() RETURN integer;
+    PROCEDURE type_probe_procedure_collision();
 END;
 /
-CREATE TYPE type_probe_collision AS OBJECT
+CREATE TYPE type_probe_function_collision AS OBJECT
 (
     value integer,
-    CONSTRUCTOR FUNCTION type_probe_collision RETURN SELF AS RESULT,
-    STATIC FUNCTION new_instance RETURN type_probe_collision
+    CONSTRUCTOR FUNCTION type_probe_function_collision RETURN SELF AS RESULT,
+    STATIC FUNCTION new_instance RETURN type_probe_function_collision
 );
 /
+CREATE TYPE type_probe_procedure_collision AS OBJECT
+(
+    value integer,
+    CONSTRUCTOR FUNCTION type_probe_procedure_collision RETURN SELF AS RESULT,
+    STATIC FUNCTION new_instance RETURN type_probe_procedure_collision
+);
+/
+-- Explicit package qualification is not a fallback probe and must still
+-- report that a routine is not a package type.
+SAVEPOINT explicit_package_probe;
+DECLARE
+    value standard.type_probe_function_collision;
+BEGIN
+    NULL;
+END;
+/
+ERROR:  "type_probe_function_collision" is a function or procedure
+LINE 2:     value standard.type_probe_function_collision;
+                  ^
+QUERY:  DECLARE
+    value standard.type_probe_function_collision;
+BEGIN
+    NULL;
+END
+ROLLBACK TO SAVEPOINT explicit_package_probe;
+DECLARE
+    value standard.type_probe_procedure_collision;
+BEGIN
+    NULL;
+END;
+/
+ERROR:  "type_probe_procedure_collision" is a function or procedure
+LINE 2:     value standard.type_probe_procedure_collision;
+                  ^
+QUERY:  DECLARE
+    value standard.type_probe_procedure_collision;
+BEGIN
+    NULL;
+END
 ROLLBACK;
 -- Object constructors remain callable from static methods.  The constructor's
 -- hidden SELF argument must not participate in the source-level call.
@@ -534,6 +574,98 @@ SELECT factory_object_type.new_instance(1, 'one') FROM dual;
 (1 row)
 
 DROP TYPE factory_object_type;
+-- Constructor lookup remains correct for overloads, default arguments, and
+-- named notation when invoked from a static method.
+CREATE TYPE overloaded_constructor_type AS OBJECT
+(
+    value integer,
+    label varchar2(20),
+    CONSTRUCTOR FUNCTION overloaded_constructor_type RETURN SELF AS RESULT,
+    CONSTRUCTOR FUNCTION overloaded_constructor_type(
+        p_value integer, p_label varchar2 DEFAULT 'default')
+        RETURN SELF AS RESULT,
+    STATIC FUNCTION make_default(p_value integer)
+        RETURN overloaded_constructor_type,
+    STATIC FUNCTION make_named(p_value integer, p_label varchar2)
+        RETURN overloaded_constructor_type
+);
+/
+CREATE TYPE BODY overloaded_constructor_type AS
+    CONSTRUCTOR FUNCTION overloaded_constructor_type RETURN SELF AS RESULT IS
+    BEGIN
+        self.value := -1;
+        self.label := 'empty';
+        RETURN;
+    END overloaded_constructor_type;
+    CONSTRUCTOR FUNCTION overloaded_constructor_type(
+        p_value integer, p_label varchar2)
+        RETURN SELF AS RESULT IS
+    BEGIN
+        self.value := p_value;
+        self.label := p_label;
+        RETURN;
+    END overloaded_constructor_type;
+    STATIC FUNCTION make_default(p_value integer)
+        RETURN overloaded_constructor_type IS
+    BEGIN
+        RETURN overloaded_constructor_type(p_value);
+    END make_default;
+    STATIC FUNCTION make_named(p_value integer, p_label varchar2)
+        RETURN overloaded_constructor_type IS
+    BEGIN
+        RETURN overloaded_constructor_type(
+            p_label => p_label, p_value => p_value);
+    END make_named;
+END;
+/
+SELECT overloaded_constructor_type() FROM dual;
+ overloaded_constructor_type 
+-----------------------------
+ (-1,empty)
+(1 row)
+
+SELECT overloaded_constructor_type(7) FROM dual;
+ overloaded_constructor_type 
+-----------------------------
+ (7,default)
+(1 row)
+
+SELECT overloaded_constructor_type(
+    p_label => 'named', p_value => 9) FROM dual;
+ overloaded_constructor_type 
+-----------------------------
+ (9,named)
+(1 row)
+
+SELECT overloaded_constructor_type.make_default(11) FROM dual;
+ make_default 
+--------------
+ (11,default)
+(1 row)
+
+SELECT overloaded_constructor_type.make_named(13, 'thirteen') FROM dual;
+  make_named   
+---------------
+ (13,thirteen)
+(1 row)
+
+SELECT overloaded_constructor_type(1, 'one', 3) FROM dual;
+ERROR:  wrong number or types of arguments in call to "overloaded_constructor_type"
+LINE 1: SELECT overloaded_constructor_type(1, 'one', 3) FROM dual;
+               ^
+DROP TYPE overloaded_constructor_type;
+-- Quoted and schema-qualified self types bypass unqualified STANDARD lookup.
+CREATE SCHEMA object_type_corner;
+CREATE TYPE object_type_corner."QuotedFactoryType" AS OBJECT
+(
+    value integer,
+    CONSTRUCTOR FUNCTION "QuotedFactoryType" RETURN SELF AS RESULT,
+    STATIC FUNCTION new_instance
+        RETURN object_type_corner."QuotedFactoryType"
+);
+/
+DROP TYPE object_type_corner."QuotedFactoryType";
+DROP SCHEMA object_type_corner;
 -- Oracle constructors reject RETURN expressions, including RETURN SELF.
 CREATE TYPE invalid_constructor_return_type AS OBJECT
 (
