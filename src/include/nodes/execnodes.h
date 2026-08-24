@@ -39,6 +39,7 @@
 #include "partitioning/partdefs.h"
 #include "storage/buf.h"
 #include "utils/reltrigger.h"
+#include "utils/typcache.h"
 
 
 /*
@@ -59,6 +60,8 @@ typedef struct ScanKeyData ScanKeyData;
 typedef struct SnapshotData *Snapshot;
 typedef struct SortSupportData *SortSupport;
 typedef struct TIDBitmap TIDBitmap;
+typedef struct NodeInstrumentation NodeInstrumentation;
+typedef struct TriggerInstrumentation TriggerInstrumentation;
 typedef struct TupleConversionMap TupleConversionMap;
 typedef struct TupleDescData *TupleDesc;
 typedef struct Tuplesortstate Tuplesortstate;
@@ -66,7 +69,7 @@ typedef struct Tuplestorestate Tuplestorestate;
 typedef struct TupleTableSlot TupleTableSlot;
 typedef struct TupleTableSlotOps TupleTableSlotOps;
 typedef struct WalUsage WalUsage;
-typedef struct WorkerInstrumentation WorkerInstrumentation;
+typedef struct WorkerNodeInstrumentation WorkerNodeInstrumentation;
 
 
 /* ----------------
@@ -467,6 +470,24 @@ typedef struct MergeActionState
 } MergeActionState;
 
 /*
+ * ForPortionOfState
+ *
+ * Executor state of a FOR PORTION OF operation.
+ */
+typedef struct ForPortionOfState
+{
+	NodeTag		type;
+
+	char	   *fp_rangeName;	/* the column named in FOR PORTION OF */
+	Oid			fp_rangeType;	/* the type of the FOR PORTION OF expression */
+	int			fp_rangeAttno;	/* the attno of the range column */
+	Datum		fp_targetRange; /* the range/multirange from FOR PORTION OF */
+	TypeCacheEntry *fp_leftoverstypcache;	/* type cache entry of the range */
+	TupleTableSlot *fp_Existing;	/* slot to store old tuple */
+	TupleTableSlot *fp_Leftover;	/* slot to store leftover */
+} ForPortionOfState;
+
+/*
  * ResultRelInfo
  *
  * Whenever we update an existing relation, we have to update indexes on the
@@ -535,7 +556,7 @@ typedef struct ResultRelInfo
 	ExprState **ri_TrigWhenExprs;
 
 	/* optional runtime measurements for triggers */
-	Instrumentation *ri_TrigInstrument;
+	TriggerInstrumentation *ri_TrigInstrument;
 
 	/* On-demand created slots for triggers / returning processing */
 	TupleTableSlot *ri_ReturningSlot;	/* for trigger output tuples */
@@ -601,6 +622,9 @@ typedef struct ResultRelInfo
 
 	/* for MERGE, expr state for checking the join condition */
 	ExprState  *ri_MergeJoinCondition;
+
+	/* FOR PORTION OF evaluation state */
+	ForPortionOfState *ri_forPortionOf;
 
 	/* partition check expression state (NULL if not set up yet) */
 	ExprState  *ri_PartitionCheckExpr;
@@ -1199,8 +1223,10 @@ typedef struct PlanState
 	ExecProcNodeMtd ExecProcNodeReal;	/* actual function, if above is a
 										 * wrapper */
 
-	Instrumentation *instrument;	/* Optional runtime stats for this node */
-	WorkerInstrumentation *worker_instrument;	/* per-worker instrumentation */
+	NodeInstrumentation *instrument;	/* Optional runtime stats for this
+										 * node */
+	WorkerNodeInstrumentation *worker_instrument;	/* per-worker
+													 * instrumentation */
 
 	/* Per-worker JIT instrumentation */
 	struct SharedJitInstrumentation *worker_jit_instrument;
@@ -1661,6 +1687,7 @@ typedef struct SeqScanState
 {
 	ScanState	ss;				/* its first field is NodeTag */
 	Size		pscan_len;		/* size of parallel heap scan descriptor */
+	struct SharedSeqScanInstrumentation *sinstrument;
 } SeqScanState;
 
 /* ----------------
@@ -1749,7 +1776,7 @@ typedef struct IndexScanState
 	ExprContext *iss_RuntimeContext;
 	Relation	iss_RelationDesc;
 	struct IndexScanDescData *iss_ScanDesc;
-	IndexScanInstrumentation iss_Instrument;
+	IndexScanInstrumentation *iss_Instrument;
 	SharedIndexScanInstrumentation *iss_SharedInfo;
 
 	/* These are needed for re-checking ORDER BY expr ordering */
@@ -1800,7 +1827,7 @@ typedef struct IndexOnlyScanState
 	ExprContext *ioss_RuntimeContext;
 	Relation	ioss_RelationDesc;
 	struct IndexScanDescData *ioss_ScanDesc;
-	IndexScanInstrumentation ioss_Instrument;
+	IndexScanInstrumentation *ioss_Instrument;
 	SharedIndexScanInstrumentation *ioss_SharedInfo;
 	TupleTableSlot *ioss_TableSlot;
 	Buffer		ioss_VMBuffer;
@@ -1841,7 +1868,7 @@ typedef struct BitmapIndexScanState
 	ExprContext *biss_RuntimeContext;
 	Relation	biss_RelationDesc;
 	struct IndexScanDescData *biss_ScanDesc;
-	IndexScanInstrumentation biss_Instrument;
+	IndexScanInstrumentation *biss_Instrument;
 	SharedIndexScanInstrumentation *biss_SharedInfo;
 } BitmapIndexScanState;
 
@@ -1912,6 +1939,7 @@ typedef struct TidRangeScanState
 	ItemPointerData trss_maxtid;
 	bool		trss_inScan;
 	Size		trss_pscanlen;
+	struct SharedTidRangeScanInstrumentation *trss_sinstrument;
 } TidRangeScanState;
 
 /* ----------------

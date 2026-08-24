@@ -137,7 +137,8 @@ SELECT * FROM htest1_1;
 --------+-----------------+-----------+----------+-----------------------------------
  a      | pg_catalog.int8 |           | not null | nextval('htest1_a_seq'::regclass)
  b      | text            |           |          | 
-Inherits: htest1
+Inherits:
+    htest1
 
 INSERT INTO htest1_1 VALUES ('htest1 three');
 SELECT * FROM htest1_1;
@@ -289,7 +290,8 @@ SELECT * FROM htest3_1;
  c      | pg_catalog.int4 |           |          |                                   | invisible | plain   |              | 
 Not-null constraints:
     "htest3_a_not_null" NOT NULL "a" (inherited)
-Inherits: htest3
+Inherits:
+    htest3
 
 DROP TABLE htest3_1, htest3;
 -- Ordering do not include the invisible column

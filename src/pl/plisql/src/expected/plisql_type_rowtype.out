@@ -1672,7 +1672,7 @@ ERROR:  invalid input syntax for type integer: "abc"
 LINE 1: var1.phone_number := 'abc'
                              ^
 QUERY:  var1.phone_number := 'abc'
-CONTEXT:  PL/iSQL function pfun line 4 at assignment
+CONTEXT:  PL/iSQL function public.pkg1.pfun line 4 at assignment
 PL/iSQL function inline_code_block line 5 at RAISE
 DROP PROCEDURE p1(v tmpe%ROWTYPE);
 DROP FUNCTION f1(v int);
@@ -1793,7 +1793,7 @@ END;
 /
 ERROR:  record "r" has no field "phone_number"
 CONTEXT:  PL/iSQL assignment "r.phone_number :=  'abc'"
-PL/iSQL function pfun line 4 at assignment
+PL/iSQL function public.pkg1.pfun line 4 at assignment
 PL/iSQL function inline_code_block line 5 at RAISE
 DROP PROCEDURE p1(v tmpe%ROWTYPE);
 DROP FUNCTION f1(v int);
@@ -1916,7 +1916,7 @@ END;
 /
 ERROR:  record "r" has no field "phone_number"
 CONTEXT:  PL/iSQL assignment "r.phone_number :=  'abc'"
-PL/iSQL function pfun line 4 at assignment
+PL/iSQL function public.pkg1.pfun line 4 at assignment
 PL/iSQL function inline_code_block line 5 at RAISE
 DROP PROCEDURE p1(v tmpe%ROWTYPE);
 DROP FUNCTION f1(v int);

@@ -50,6 +50,17 @@ typedef enum CopyLogVerbosityChoice
 } CopyLogVerbosityChoice;
 
 /*
+ * Represents the format of the COPY operation.
+ */
+typedef enum CopyFormat
+{
+	COPY_FORMAT_TEXT = 0,
+	COPY_FORMAT_BINARY,
+	COPY_FORMAT_CSV,
+	COPY_FORMAT_JSON,
+} CopyFormat;
+
+/*
  * A struct to hold COPY options, in a parsed form. All of these are related
  * to formatting, except for 'freeze', which doesn't really belong here, but
  * it's expedient to parse it along with all the other options.
@@ -59,9 +70,8 @@ typedef struct CopyFormatOptions
 	/* parameters from the COPY command */
 	int			file_encoding;	/* file or remote side's character encoding,
 								 * -1 if not specified */
-	bool		binary;			/* binary format? */
+	CopyFormat	format;			/* format of the COPY operation */
 	bool		freeze;			/* freeze rows on loading? */
-	bool		csv_mode;		/* Comma Separated Value format? */
 	int			header_line;	/* number of lines to skip or COPY_HEADER_XXX
 								 * value (see the above) */
 	char	   *null_print;		/* NULL marker string (server encoding!) */
@@ -78,6 +88,7 @@ typedef struct CopyFormatOptions
 	List	   *force_notnull;	/* list of column names */
 	bool		force_notnull_all;	/* FORCE_NOT_NULL *? */
 	bool	   *force_notnull_flags;	/* per-column CSV FNN flags */
+	bool		force_array;	/* add JSON array decorations */
 	List	   *force_null;		/* list of column names */
 	bool		force_null_all; /* FORCE_NULL *? */
 	bool	   *force_null_flags;	/* per-column CSV FN flags */

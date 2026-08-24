@@ -787,7 +787,7 @@ oravarchar_xml(PG_FUNCTION_ARGS)
 {
 	text	   *data = PG_GETARG_TEXT_P(0);
 
-	PG_RETURN_XML_P(xmlparse(data, xmloption, true));
+	PG_RETURN_XML_P(xmlparse(data, xmloption, true, fcinfo->context));
 }
 
 /*

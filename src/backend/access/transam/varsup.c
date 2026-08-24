@@ -23,6 +23,7 @@
 #include "postmaster/autovacuum.h"
 #include "storage/pmsignal.h"
 #include "storage/proc.h"
+#include "storage/subsystems.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
@@ -30,35 +31,25 @@
 /* Number of OIDs to prefetch (preallocate) per XLOG write */
 #define VAR_OID_PREFETCH		8192
 
+static void VarsupShmemRequest(void *arg);
+
 /* pointer to variables struct in shared memory */
 TransamVariablesData *TransamVariables = NULL;
 
+const ShmemCallbacks VarsupShmemCallbacks = {
+	.request_fn = VarsupShmemRequest,
+};
 
 /*
- * Initialization of shared memory for TransamVariables.
+ * Request shared memory for TransamVariables.
  */
-Size
-VarsupShmemSize(void)
+static void
+VarsupShmemRequest(void *arg)
 {
-	return sizeof(TransamVariablesData);
-}
-
-void
-VarsupShmemInit(void)
-{
-	bool		found;
-
-	/* Initialize our shared state struct */
-	TransamVariables = ShmemInitStruct("TransamVariables",
-									   sizeof(TransamVariablesData),
-									   &found);
-	if (!IsUnderPostmaster)
-	{
-		Assert(!found);
-		memset(TransamVariables, 0, sizeof(TransamVariablesData));
-	}
-	else
-		Assert(found);
+	ShmemRequestStruct(.name = "TransamVariables",
+					   .size = sizeof(TransamVariablesData),
+					   .ptr = (void **) &TransamVariables,
+		);
 }
 
 /*
@@ -175,6 +166,8 @@ GetNewTransactionId(bool isSubXact)
 						(errmsg("database \"%s\" must be vacuumed within %u transactions",
 								oldest_datname,
 								xidWrapLimit - xid),
+						 errdetail("Approximately %.2f%% of transaction IDs are available for use.",
+								   (double) (xidWrapLimit - xid) / (MaxTransactionId / 2) * 100),
 						 errhint("To avoid transaction ID assignment failures, execute a database-wide VACUUM in that database.\n"
 								 "You might also need to commit or roll back old prepared transactions, or drop stale replication slots.")));
 			else
@@ -182,6 +175,8 @@ GetNewTransactionId(bool isSubXact)
 						(errmsg("database with OID %u must be vacuumed within %u transactions",
 								oldest_datoid,
 								xidWrapLimit - xid),
+						 errdetail("Approximately %.2f%% of transaction IDs are available for use.",
+								   (double) (xidWrapLimit - xid) / (MaxTransactionId / 2) * 100),
 						 errhint("To avoid XID assignment failures, execute a database-wide VACUUM in that database.\n"
 								 "You might also need to commit or roll back old prepared transactions, or drop stale replication slots.")));
 		}
@@ -407,16 +402,16 @@ SetTransactionIdLimit(TransactionId oldest_datfrozenxid, Oid oldest_datoid)
 		xidStopLimit -= FirstNormalTransactionId;
 
 	/*
-	 * We'll start complaining loudly when we get within 40M transactions of
+	 * We'll start complaining loudly when we get within 100M transactions of
 	 * data loss.  This is kind of arbitrary, but if you let your gas gauge
-	 * get down to 2% of full, would you be looking for the next gas station?
+	 * get down to 5% of full, would you be looking for the next gas station?
 	 * We need to be fairly liberal about this number because there are lots
 	 * of scenarios where most transactions are done by automatic clients that
 	 * won't pay attention to warnings.  (No, we're not gonna make this
 	 * configurable.  If you know enough to configure it, you know enough to
 	 * not get in this kind of trouble in the first place.)
 	 */
-	xidWarnLimit = xidWrapLimit - 40000000;
+	xidWarnLimit = xidWrapLimit - 100000000;
 	if (xidWarnLimit < FirstNormalTransactionId)
 		xidWarnLimit -= FirstNormalTransactionId;
 
@@ -490,6 +485,8 @@ SetTransactionIdLimit(TransactionId oldest_datfrozenxid, Oid oldest_datoid)
 					(errmsg("database \"%s\" must be vacuumed within %u transactions",
 							oldest_datname,
 							xidWrapLimit - curXid),
+					 errdetail("Approximately %.2f%% of transaction IDs are available for use.",
+							   (double) (xidWrapLimit - curXid) / (MaxTransactionId / 2) * 100),
 					 errhint("To avoid XID assignment failures, execute a database-wide VACUUM in that database.\n"
 							 "You might also need to commit or roll back old prepared transactions, or drop stale replication slots.")));
 		else
@@ -497,6 +494,8 @@ SetTransactionIdLimit(TransactionId oldest_datfrozenxid, Oid oldest_datoid)
 					(errmsg("database with OID %u must be vacuumed within %u transactions",
 							oldest_datoid,
 							xidWrapLimit - curXid),
+					 errdetail("Approximately %.2f%% of transaction IDs are available for use.",
+							   (double) (xidWrapLimit - curXid) / (MaxTransactionId / 2) * 100),
 					 errhint("To avoid XID assignment failures, execute a database-wide VACUUM in that database.\n"
 							 "You might also need to commit or roll back old prepared transactions, or drop stale replication slots.")));
 	}

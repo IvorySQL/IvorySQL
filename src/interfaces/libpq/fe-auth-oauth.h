@@ -34,12 +34,12 @@ typedef struct
 	PGconn	   *conn;
 	void	   *async_ctx;
 
+	bool		v1;
 	bool		builtin;
-	void	   *builtin_flow;
+	void	   *flow_module;
 } fe_oauth_state;
 
 extern void pqClearOAuthToken(PGconn *conn);
-extern bool oauth_unsafe_debugging_enabled(void);
 
 /* Mechanisms in fe-auth-oauth.c */
 extern const pg_fe_sasl_mech pg_oauth_mech;

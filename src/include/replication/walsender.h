@@ -33,6 +33,7 @@ extern PGDLLIMPORT bool wake_wal_senders;
 /* user-settable parameters */
 extern PGDLLIMPORT int max_wal_senders;
 extern PGDLLIMPORT int wal_sender_timeout;
+extern PGDLLIMPORT int wal_sender_shutdown_timeout;
 extern PGDLLIMPORT bool log_replication_commands;
 
 extern void InitWalSender(void);
@@ -41,8 +42,6 @@ extern void WalSndErrorCleanup(void);
 extern void PhysicalWakeupLogicalWalSnd(void);
 extern XLogRecPtr GetStandbyFlushRecPtr(TimeLineID *tli);
 extern void WalSndSignals(void);
-extern Size WalSndShmemSize(void);
-extern void WalSndShmemInit(void);
 extern void WalSndWakeup(bool physical, bool logical);
 extern void WalSndInitStopping(void);
 extern void WalSndWaitStopping(void);

@@ -59,6 +59,7 @@
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
+#include "utils/hsearch.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
@@ -2077,7 +2078,7 @@ get_text_array_contents(ArrayType *array, int *numitems)
 	uint8		typalignby;
 	char	  **values;
 	char	   *ptr;
-	bits8	   *bitmap;
+	uint8	   *bitmap;
 	int			bitmask;
 	int			i;
 

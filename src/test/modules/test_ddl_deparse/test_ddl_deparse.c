@@ -315,6 +315,28 @@ get_altertable_subcmdinfo(PG_FUNCTION_ARGS)
 			case AT_ReAddStatistics:
 				strtype = "(re) ADD STATS";
 				break;
+				/*
+				 * These enum values are for Oracle-compatible features and would
+				 * not be hit in PG mode, but put them here to avoid build warning.
+				 */
+			case AT_AddRowids:
+				strtype = "SET WITH ROWID";
+				break;
+			case AT_AddRowidsRecurse:
+				strtype = "SET WITH ROWID (recursive)";
+				break;
+			case AT_DropRowids:
+				strtype = "SET WITHOUT ROWID";
+				break;
+			case AT_DropInvisible:
+				strtype = "ALTER COLUMN DROP INVISIBLE";
+				break;
+			case AT_SetInvisible:
+				strtype = "ALTER COLUMN SET INVISIBLE";
+				break;
+			case AT_ForceViewCompile:
+				strtype = "COMPILE FORCE VIEW";
+				break;
 		}
 
 		if (subcmd->recurse)

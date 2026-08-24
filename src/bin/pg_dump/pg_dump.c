@@ -4637,14 +4637,14 @@ getPublications(Archive *fout)
 		 * Get the list of tables for publications specified in the EXCEPT
 		 * TABLE clause.
 		 *
-		 * Although individual EXCEPT TABLE entries could be stored in
+		 * Although individual table entries in EXCEPT list could be stored in
 		 * PublicationRelInfo, dumpPublicationTable cannot be used to emit
 		 * them, because there is no ALTER PUBLICATION ... ADD command to add
-		 * individual table entries to the EXCEPT TABLE list.
+		 * individual table entries to the EXCEPT list.
 		 *
-		 * Therefore, the approach is to dump the complete EXCEPT TABLE list
-		 * in a single CREATE PUBLICATION statement. PublicationInfo is used
-		 * to collect this information, which is then emitted by
+		 * Therefore, the approach is to dump the complete EXCEPT list in a
+		 * single CREATE PUBLICATION statement. PublicationInfo is used to
+		 * collect this information, which is then emitted by
 		 * dumpPublication().
 		 */
 		if (fout->remoteVersion >= 190000)
@@ -4720,19 +4720,19 @@ dumpPublication(Archive *fout, const PublicationInfo *pubinfo)
 
 		appendPQExpBufferStr(query, " FOR ALL TABLES");
 
-		/* Include EXCEPT TABLE clause if there are except_tables. */
+		/* Include EXCEPT (TABLE) clause if there are except_tables. */
 		for (SimplePtrListCell *cell = pubinfo->except_tables.head; cell; cell = cell->next)
 		{
 			TableInfo  *tbinfo = (TableInfo *) cell->ptr;
 
 			if (++n_except == 1)
-				appendPQExpBufferStr(query, " EXCEPT TABLE (");
+				appendPQExpBufferStr(query, " EXCEPT (");
 			else
 				appendPQExpBufferStr(query, ", ");
-			appendPQExpBuffer(query, "ONLY %s", fmtQualifiedDumpable(tbinfo));
+			appendPQExpBuffer(query, "TABLE ONLY %s", fmtQualifiedDumpable(tbinfo));
 		}
 		if (n_except > 0)
-			appendPQExpBufferStr(query, ")");
+			appendPQExpBufferChar(query, ')');
 
 		if (pubinfo->puballsequences)
 			appendPQExpBufferStr(query, ", ALL SEQUENCES");
@@ -5284,8 +5284,7 @@ getSubscriptions(Archive *fout)
 		appendPQExpBufferStr(query,
 							 " s.submaxretention,\n");
 	else
-		appendPQExpBuffer(query,
-						  " 0 AS submaxretention,\n");
+		appendPQExpBufferStr(query, " 0 AS submaxretention,\n");
 
 	if (fout->remoteVersion >= 190000)
 		appendPQExpBufferStr(query,
@@ -5604,7 +5603,7 @@ dumpSubscription(Archive *fout, const SubscriptionInfo *subinfo)
 	}
 	else
 	{
-		appendPQExpBuffer(query, "CONNECTION ");
+		appendPQExpBufferStr(query, "CONNECTION ");
 		appendStringLiteralAH(query, subinfo->subconninfo, fout);
 	}
 
@@ -11365,7 +11364,7 @@ fetchAttributeStats(Archive *fout)
 
 		if (fout->remoteVersion >= 190000)
 		{
-			RelStatsInfo *rsinfo = (RelStatsInfo *) te->defnDumperArg;
+			const RelStatsInfo *rsinfo = (const RelStatsInfo *) te->defnDumperArg;
 			char		relid[32];
 
 			sprintf(relid, "%u", rsinfo->relid);

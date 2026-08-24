@@ -59,10 +59,10 @@
 #include "catalog/storage.h"
 #include "catalog/storage_xlog.h"
 #include "catalog/toasting.h"
-#include "commands/cluster.h"
 #include "commands/comment.h"
 #include "commands/defrem.h"
 #include "commands/event_trigger.h"
+#include "commands/repack.h"
 #include "commands/sequence.h"
 #include "commands/tablecmds.h"
 #include "commands/tablespace.h"
@@ -6283,6 +6283,7 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 			finish_heap_swap(tab->relid, OIDNewHeap,
 							 false, false, true,
 							 !OidIsValid(tab->newTableSpace),
+							 true,	/* reindex */
 							 RecentXmin,
 							 ReadNextMultiXactId(),
 							 persistence);
@@ -6420,7 +6421,7 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 	EState	   *estate;
 	CommandId	mycid;
 	BulkInsertState bistate;
-	int			ti_options;
+	uint32		ti_options;
 	ExprState  *partqualstate = NULL;
 
 	/*
@@ -6646,7 +6647,8 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 		 * checking all the constraints.
 		 */
 		snapshot = RegisterSnapshot(GetLatestSnapshot());
-		scan = table_beginscan(oldrel, snapshot, 0, NULL);
+		scan = table_beginscan(oldrel, snapshot, 0, NULL,
+							   SO_NONE);
 
 		/*
 		 * Switch to per-tuple memory context and reset it for each tuple
@@ -7896,7 +7898,7 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 				 * Phase 3 will re-evaluate with hard errors, so the user gets
 				 * an error only if the table has rows.
 				 */
-				if (SOFT_ERROR_OCCURRED(&escontext))
+				if (escontext.error_occurred)
 				{
 					missingIsNull = true;
 					tab->rewrite |= AT_REWRITE_DEFAULT_VAL;
@@ -8594,11 +8596,11 @@ ATExecSetNotNull(List **wqueue, Relation rel, char *conName, char *colName,
 	ccon = linitial(cooked);
 	ObjectAddressSet(address, ConstraintRelationId, ccon->conoid);
 
-	InvokeObjectPostAlterHook(RelationRelationId,
-							  RelationGetRelid(rel), attnum);
-
 	/* Mark pg_attribute.attnotnull for the column and queue validation */
 	set_attnotnull(wqueue, rel, attnum, true, true);
+
+	InvokeObjectPostAlterHook(RelationRelationId,
+							  RelationGetRelid(rel), attnum);
 
 	/*
 	 * Recurse to propagate the constraint to children that don't have one.
@@ -10317,7 +10319,7 @@ ATExecAddIndexConstraint(AlteredTableInfo *tab, Relation rel,
 	char	   *constraintName;
 	char		constraintType;
 	ObjectAddress address;
-	bits16		flags;
+	uint16		flags;
 
 	Assert(IsA(stmt, IndexStmt));
 	Assert(OidIsValid(index_oid));
@@ -13089,6 +13091,8 @@ ATExecAlterFKConstrEnforceability(List **wqueue, ATAlterConstraint *cmdcon,
 		fkconstraint->fk_matchtype = currcon->confmatchtype;
 		fkconstraint->fk_upd_action = currcon->confupdtype;
 		fkconstraint->fk_del_action = currcon->confdeltype;
+		fkconstraint->deferrable = currcon->condeferrable;
+		fkconstraint->initdeferred = currcon->condeferred;
 
 		/* Create referenced triggers */
 		if (currcon->conrelid == fkrelid)
@@ -14185,6 +14189,18 @@ transformFkeyGetPrimaryKey(Relation pkrel, Oid *indexOid,
 		if (indexStruct->indisprimary && indexStruct->indisvalid)
 		{
 			/*
+			 * Refuse to use a primary key manually disabled via the
+			 * Oracle-compatible ALTER INDEX ... UNUSABLE: it is no longer
+			 * maintained by DML, so its uniqueness can't be trusted to
+			 * back a new foreign key.
+			 */
+			if (indexStruct->indisunusable)
+				ereport(ERROR,
+						(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+						 errmsg("cannot use an unusable primary key for referenced table \"%s\"",
+								RelationGetRelationName(pkrel))));
+
+			/*
 			 * Refuse to use a deferrable primary key.  This is per SQL spec,
 			 * and there would be a lot of interesting semantic problems if we
 			 * tried to allow it.
@@ -14307,11 +14323,15 @@ transformFkeyCheckAttrs(Relation pkrel,
 		/*
 		 * Must have the right number of columns; must be unique (or if
 		 * temporal then exclusion instead) and not a partial index; forget it
-		 * if there are any expressions, too. Invalid indexes are out as well.
+		 * if there are any expressions, too. Invalid indexes are out as well,
+		 * as is one manually disabled via the Oracle-compatible ALTER INDEX
+		 * ... UNUSABLE (it's no longer maintained by DML, so its uniqueness
+		 * can't be trusted to back a new foreign key).
 		 */
 		if (indexStruct->indnkeyatts == numattrs &&
 			(with_period ? indexStruct->indisexclusion : indexStruct->indisunique) &&
 			indexStruct->indisvalid &&
+			!indexStruct->indisunusable &&
 			heap_attisnull(indexTuple, Anum_pg_index_indpred, NULL) &&
 			heap_attisnull(indexTuple, Anum_pg_index_indexprs, NULL))
 		{
@@ -14511,8 +14531,8 @@ validateForeignKeyConstraint(char *conname,
 	 */
 	snapshot = RegisterSnapshot(GetLatestSnapshot());
 	slot = table_slot_create(rel, NULL);
-	scan = table_beginscan(rel, snapshot, 0, NULL);
-
+	scan = table_beginscan(rel, snapshot, 0, NULL,
+						   SO_NONE);
 	perTupCxt = AllocSetContextCreate(CurrentMemoryContext,
 									  "validateForeignKeyConstraint",
 									  ALLOCSET_SMALL_SIZES);
@@ -22874,7 +22894,22 @@ validatePartitionedIndex(Relation partedIdx, Relation partedTbl)
 		if (!HeapTupleIsValid(indTup))
 			elog(ERROR, "cache lookup failed for index %u", inhForm->inhrelid);
 		indexForm = (Form_pg_index) GETSTRUCT(indTup);
-		if (indexForm->indisvalid)
+
+		/*
+		 * Don't count a child index that's been manually disabled via the
+		 * Oracle-compatible ALTER INDEX ... UNUSABLE.  Such an index is
+		 * unmaintained (see BuildIndexInfo()) and may be missing entries
+		 * for rows changed since it was disabled, so counting it here could
+		 * let the parent index end up marked indisvalid=true while one
+		 * partition's leaf is actually stale.  That flag is not just
+		 * cosmetic: get_relation_info() builds a real IndexOptInfo for the
+		 * parent partitioned index, which relation_has_unique_index_for()
+		 * (indxpath.c) and rel_supports_distinctness() (analyzejoins.c)
+		 * consult for join-removal and uniqueness-proof optimizations --
+		 * a false positive there can make the planner silently return
+		 * wrong rows.
+		 */
+		if (indexForm->indisvalid && !indexForm->indisunusable)
 			tuples += 1;
 		ReleaseSysCache(indTup);
 	}
@@ -23609,7 +23644,7 @@ MergePartitionsMoveRows(List **wqueue, List *mergingPartitions, Relation newPart
 	ListCell   *ltab;
 
 	/* The FSM is empty, so don't bother using it. */
-	int			ti_options = TABLE_INSERT_SKIP_FSM;
+	uint32		ti_options = TABLE_INSERT_SKIP_FSM;
 	BulkInsertState bistate;	/* state of bulk inserts for partition */
 	TupleTableSlot *dstslot;
 
@@ -23659,7 +23694,8 @@ MergePartitionsMoveRows(List **wqueue, List *mergingPartitions, Relation newPart
 
 		/* Scan through the rows. */
 		snapshot = RegisterSnapshot(GetLatestSnapshot());
-		scan = table_beginscan(mergingPartition, snapshot, 0, NULL);
+		scan = table_beginscan(mergingPartition, snapshot, 0, NULL,
+							   SO_NONE);
 
 		/*
 		 * Switch to per-tuple memory context and reset it for each tuple
@@ -23999,7 +24035,7 @@ createSplitPartitionContext(Relation partRel)
  * deleteSplitPartitionContext: delete context for partition
  */
 static void
-deleteSplitPartitionContext(SplitPartitionContext *pc, List **wqueue, int ti_options)
+deleteSplitPartitionContext(SplitPartitionContext *pc, List **wqueue, uint32 ti_options)
 {
 	ListCell   *ltab;
 
@@ -24041,7 +24077,7 @@ SplitPartitionMoveRows(List **wqueue, Relation rel, Relation splitRel,
 					   List *partlist, List *newPartRels)
 {
 	/* The FSM is empty, so don't bother using it. */
-	int			ti_options = TABLE_INSERT_SKIP_FSM;
+	uint32		ti_options = TABLE_INSERT_SKIP_FSM;
 	CommandId	mycid;
 	EState	   *estate;
 	ListCell   *listptr,
@@ -24123,7 +24159,8 @@ SplitPartitionMoveRows(List **wqueue, Relation rel, Relation splitRel,
 
 	/* Scan through the rows. */
 	snapshot = RegisterSnapshot(GetLatestSnapshot());
-	scan = table_beginscan(splitRel, snapshot, 0, NULL);
+	scan = table_beginscan(splitRel, snapshot, 0, NULL,
+						   SO_NONE);
 
 	/*
 	 * Switch to per-tuple memory context and reset it for each tuple

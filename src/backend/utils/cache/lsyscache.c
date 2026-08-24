@@ -1120,33 +1120,6 @@ get_attoptions(Oid relid, int16 attnum)
 	return result;
 }
 
-/*
- * get_attnotnull
- *
- *		Given the relation id and the attribute number,
- *		return the "attnotnull" field from the attribute relation.
- */
-bool
-get_attnotnull(Oid relid, AttrNumber attnum)
-{
-	HeapTuple	tp;
-	bool		result = false;
-
-	tp = SearchSysCache2(ATTNUM,
-						 ObjectIdGetDatum(relid),
-						 Int16GetDatum(attnum));
-
-	if (HeapTupleIsValid(tp))
-	{
-		Form_pg_attribute att_tup = (Form_pg_attribute) GETSTRUCT(tp);
-
-		result = att_tup->attnotnull;
-		ReleaseSysCache(tp);
-	}
-
-	return result;
-}
-
 /*				---------- PG_CAST CACHE ----------					 */
 
 /*
@@ -4011,6 +3984,31 @@ get_range_collation(Oid rangeOid)
 	}
 	else
 		return InvalidOid;
+}
+
+/*
+ * get_range_constructor2
+ *		Gets the 2-arg constructor for the given rangetype.
+ *
+ *	Raises an error if not found.
+ */
+RegProcedure
+get_range_constructor2(Oid rangeOid)
+{
+	HeapTuple	tp;
+
+	tp = SearchSysCache1(RANGETYPE, ObjectIdGetDatum(rangeOid));
+	if (HeapTupleIsValid(tp))
+	{
+		Form_pg_range rngtup = (Form_pg_range) GETSTRUCT(tp);
+		RegProcedure result;
+
+		result = rngtup->rngconstruct2;
+		ReleaseSysCache(tp);
+		return result;
+	}
+	else
+		elog(ERROR, "cache lookup failed for range type %u", rangeOid);
 }
 
 /*

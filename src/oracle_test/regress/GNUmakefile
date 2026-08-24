@@ -95,6 +95,8 @@ installdirs-tests: installdirs
 ## Run tests
 ##
 
+EXTRA_INSTALL = contrib/amcheck
+
 ORACLE_REGRESS_OPTS = --dlpath=. --max-concurrent-tests=20 \
 	$(EXTRA_REGRESS_OPTS)
 

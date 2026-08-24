@@ -20,6 +20,7 @@
 #include "commands/discard.h"
 #include "commands/prepare.h"
 #include "commands/sequence.h"
+#include "storage/lock.h"
 #include "utils/guc.h"
 #include "utils/portal.h"
 #include "utils/packagecache.h"

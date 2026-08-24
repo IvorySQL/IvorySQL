@@ -27,7 +27,6 @@
 #include "catalog/toasting.h"
 #include "commands/alter.h"
 #include "commands/async.h"
-#include "commands/cluster.h"
 #include "commands/collationcmds.h"
 #include "commands/comment.h"
 #include "commands/conversioncmds.h"
@@ -47,6 +46,7 @@
 #include "commands/proclang.h"
 #include "commands/propgraphcmds.h"
 #include "commands/publicationcmds.h"
+#include "commands/repack.h"
 #include "commands/schemacmds.h"
 #include "commands/seclabel.h"
 #include "commands/sequence.h"
@@ -290,6 +290,7 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 
 		case T_ReindexStmt:
 		case T_OraAlterIndexRebuildStmt:	/* Oracle-compat ALTER INDEX ... REBUILD */
+		case T_OraAlterIndexUnusableStmt:	/* Oracle-compat ALTER INDEX ... UNUSABLE */
 		case T_VacuumStmt:
 		case T_RepackStmt:
 			{
@@ -1069,7 +1070,8 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 
 		case T_WaitStmt:
 			{
-				ExecWaitStmt(pstate, (WaitStmt *) parsetree, dest);
+				ExecWaitStmt(pstate, (WaitStmt *) parsetree, isTopLevel,
+							 dest);
 			}
 			break;
 
@@ -1129,8 +1131,8 @@ ProcessUtilitySlow(ParseState *pstate,
 				 * relation and attribute manipulation
 				 */
 			case T_CreateSchemaStmt:
-				CreateSchemaCommand((CreateSchemaStmt *) parsetree,
-									queryString,
+				CreateSchemaCommand(pstate,
+									(CreateSchemaStmt *) parsetree,
 									pstmt->stmt_location,
 									pstmt->stmt_len);
 
@@ -1599,6 +1601,19 @@ ProcessUtilitySlow(ParseState *pstate,
 										 (OraAlterIndexRebuildStmt *) parsetree,
 										 isTopLevel);
 				commandCollected = true;
+				break;
+
+			case T_OraAlterIndexUnusableStmt:
+				/*
+				 * Oracle-compatible ALTER INDEX ... UNUSABLE statement.
+				 *
+				 * Marks the index unusable, returning its ObjectAddress so
+				 * the fallthrough EventTriggerCollectSimpleCommand() call
+				 * below records it for ddl_command_end listeners, the same
+				 * as REINDEX and ALTER INDEX ... REBUILD.
+				 */
+				address = ExecOraAlterIndexUnusable(pstate,
+													(OraAlterIndexUnusableStmt *) parsetree);
 				break;
 
 			case T_CreateExtensionStmt:
@@ -3106,6 +3121,14 @@ CreateCommandTag(Node *parsetree)
 			tag = CMDTAG_ALTER_INDEX;
 			break;
 
+		case T_OraAlterIndexUnusableStmt:
+			/*
+			 * Oracle-compatible ALTER INDEX ... UNUSABLE.
+			 * Reuse CMDTAG_ALTER_INDEX for the same reason as REBUILD above.
+			 */
+			tag = CMDTAG_ALTER_INDEX;
+			break;
+
 		case T_CreateConversionStmt:
 			tag = CMDTAG_CREATE_CONVERSION;
 			break;
@@ -3748,6 +3771,10 @@ GetCommandLogLevel(Node *parsetree)
 			 * log whenever log_statement = 'all' is set.
 			 */
 			lev = LOGSTMT_ALL;
+			break;
+
+		case T_OraAlterIndexUnusableStmt:
+			lev = LOGSTMT_ALL;	/* same treatment as REBUILD/REINDEX */
 			break;
 
 		case T_CreateConversionStmt:

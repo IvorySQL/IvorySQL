@@ -63,6 +63,7 @@
 #include "storage/shmem.h"
 #include "storage/smgr.h"
 #include "storage/spin.h"
+#include "storage/subsystems.h"
 #include "utils/acl.h"
 #include "utils/guc.h"
 #include "utils/memutils.h"
@@ -143,6 +144,14 @@ typedef struct
 
 static CheckpointerShmemStruct *CheckpointerShmem;
 
+static void CheckpointerShmemRequest(void *arg);
+static void CheckpointerShmemInit(void *arg);
+
+const ShmemCallbacks CheckpointerShmemCallbacks = {
+	.request_fn = CheckpointerShmemRequest,
+	.init_fn = CheckpointerShmemInit,
+};
+
 /* interval for calling AbsorbSyncRequests in CheckpointWriteDelay */
 #define WRITES_PER_ABSORB		1000
 
@@ -214,17 +223,17 @@ CheckpointerMain(const void *startup_data, size_t startup_data_len)
 	 */
 	pqsignal(SIGHUP, SignalHandlerForConfigReload);
 	pqsignal(SIGINT, ReqShutdownXLOG);
-	pqsignal(SIGTERM, SIG_IGN); /* ignore SIGTERM */
+	pqsignal(SIGTERM, PG_SIG_IGN);	/* ignore SIGTERM */
 	/* SIGQUIT handler was already set up by InitPostmasterChild */
-	pqsignal(SIGALRM, SIG_IGN);
-	pqsignal(SIGPIPE, SIG_IGN);
+	pqsignal(SIGALRM, PG_SIG_IGN);
+	pqsignal(SIGPIPE, PG_SIG_IGN);
 	pqsignal(SIGUSR1, procsignal_sigusr1_handler);
 	pqsignal(SIGUSR2, SignalHandlerForShutdownRequest);
 
 	/*
 	 * Reset some signals that are accepted by postmaster but not here
 	 */
-	pqsignal(SIGCHLD, SIG_DFL);
+	pqsignal(SIGCHLD, PG_SIG_DFL);
 
 	/*
 	 * Initialize so that first time-driven event happens at the correct time.
@@ -950,11 +959,11 @@ ReqShutdownXLOG(SIGNAL_ARGS)
  */
 
 /*
- * CheckpointerShmemSize
- *		Compute space needed for checkpointer-related shared memory
+ * CheckpointerShmemRequest
+ *		Register shared memory space needed for checkpointer
  */
-Size
-CheckpointerShmemSize(void)
+static void
+CheckpointerShmemRequest(void *arg)
 {
 	Size		size;
 
@@ -967,39 +976,24 @@ CheckpointerShmemSize(void)
 	size = add_size(size, mul_size(Min(NBuffers,
 									   MAX_CHECKPOINT_REQUESTS),
 								   sizeof(CheckpointerRequest)));
-
-	return size;
+	ShmemRequestStruct(.name = "Checkpointer Data",
+					   .size = size,
+					   .ptr = (void **) &CheckpointerShmem,
+		);
 }
 
 /*
  * CheckpointerShmemInit
- *		Allocate and initialize checkpointer-related shared memory
+ *		Initialize checkpointer-related shared memory
  */
-void
-CheckpointerShmemInit(void)
+static void
+CheckpointerShmemInit(void *arg)
 {
-	Size		size = CheckpointerShmemSize();
-	bool		found;
-
-	CheckpointerShmem = (CheckpointerShmemStruct *)
-		ShmemInitStruct("Checkpointer Data",
-						size,
-						&found);
-
-	if (!found)
-	{
-		/*
-		 * First time through, so initialize.  Note that we zero the whole
-		 * requests array; this is so that CompactCheckpointerRequestQueue can
-		 * assume that any pad bytes in the request structs are zeroes.
-		 */
-		MemSet(CheckpointerShmem, 0, size);
-		SpinLockInit(&CheckpointerShmem->ckpt_lck);
-		CheckpointerShmem->max_requests = Min(NBuffers, MAX_CHECKPOINT_REQUESTS);
-		CheckpointerShmem->head = CheckpointerShmem->tail = 0;
-		ConditionVariableInit(&CheckpointerShmem->start_cv);
-		ConditionVariableInit(&CheckpointerShmem->done_cv);
-	}
+	SpinLockInit(&CheckpointerShmem->ckpt_lck);
+	CheckpointerShmem->max_requests = Min(NBuffers, MAX_CHECKPOINT_REQUESTS);
+	CheckpointerShmem->head = CheckpointerShmem->tail = 0;
+	ConditionVariableInit(&CheckpointerShmem->start_cv);
+	ConditionVariableInit(&CheckpointerShmem->done_cv);
 }
 
 /*

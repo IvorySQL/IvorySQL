@@ -15,7 +15,6 @@
 #ifndef _PROC_H_
 #define _PROC_H_
 
-#include "access/clog.h"
 #include "access/xlogdefs.h"
 #include "lib/ilist.h"
 #include "miscadmin.h"
@@ -24,6 +23,10 @@
 #include "storage/pg_sema.h"
 #include "storage/proclist_types.h"
 #include "storage/procnumber.h"
+#include "storage/spin.h"
+
+/* Avoid including clog.h here */
+typedef int XidStatus;
 
 /*
  * Each backend advertises up to PGPROC_MAX_CACHED_SUBXIDS TransactionIds
@@ -550,8 +553,6 @@ extern PGDLLIMPORT PGPROC *AuxiliaryProcs;
  * Function Prototypes
  */
 extern int	ProcGlobalSemas(void);
-extern Size ProcGlobalShmemSize(void);
-extern void InitProcGlobal(void);
 extern void InitProcess(void);
 extern void InitProcessPhase2(void);
 extern void InitAuxiliaryProcess(void);

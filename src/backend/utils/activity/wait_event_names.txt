@@ -119,6 +119,8 @@ CHECKPOINT_DELAY_COMPLETE	"Waiting for a backend that blocks a checkpoint from c
 CHECKPOINT_DELAY_START	"Waiting for a backend that blocks a checkpoint from starting."
 CHECKPOINT_DONE	"Waiting for a checkpoint to complete."
 CHECKPOINT_START	"Waiting for a checkpoint to start."
+CHECKSUM_ENABLE_STARTCONDITION	"Waiting for data checksums enabling to start."
+CHECKSUM_ENABLE_TEMPTABLE_WAIT	"Waiting for temporary tables to be dropped for data checksums to be enabled."
 EXECUTE_GATHER	"Waiting for activity from a child process while executing a <literal>Gather</literal> plan node."
 HASH_BATCH_ALLOCATE	"Waiting for an elected Parallel Hash participant to allocate a hash table."
 HASH_BATCH_ELECT	"Waiting to elect a Parallel Hash participant to allocate a hash table."
@@ -154,6 +156,7 @@ RECOVERY_CONFLICT_SNAPSHOT	"Waiting for recovery conflict resolution for a vacuu
 RECOVERY_CONFLICT_TABLESPACE	"Waiting for recovery conflict resolution for dropping a tablespace."
 RECOVERY_END_COMMAND	"Waiting for <xref linkend="guc-recovery-end-command"/> to complete."
 RECOVERY_PAUSE	"Waiting for recovery to be resumed."
+REPACK_WORKER_EXPORT	"Waiting for decoding worker to export a new output file."
 REPLICATION_ORIGIN_DROP	"Waiting for a replication origin to become inactive so it can be dropped."
 REPLICATION_SLOT_DROP	"Waiting for a replication slot to become inactive so it can be dropped."
 RESTORE_COMMAND	"Waiting for <xref linkend="guc-restore-command"/> to complete."
@@ -321,7 +324,6 @@ ABI_compatibility:
 
 Section: ClassName - WaitEventLWLock
 
-ShmemIndex	"Waiting to find or allocate space in shared memory."
 OidGen	"Waiting to allocate a new OID."
 XidGen	"Waiting to allocate a new transaction ID."
 ProcArray	"Waiting to access the shared per-process data structures (typically, to get a snapshot or report a session's transaction ID)."
@@ -366,6 +368,8 @@ SerialControl	"Waiting to read or update shared <filename>pg_serial</filename> s
 AioWorkerSubmissionQueue	"Waiting to access AIO worker submission queue."
 WaitLSN	"Waiting to read or update shared Wait-for-LSN state."
 LogicalDecodingControl	"Waiting to read or update logical decoding status information."
+DataChecksumsWorker	"Waiting for data checksums worker."
+AioWorkerControl	"Waiting to update AIO worker information."
 
 #
 # END OF PREDEFINED LWLOCKS (DO NOT CHANGE THIS LINE)
@@ -412,6 +416,7 @@ SubtransSLRU	"Waiting to access the sub-transaction SLRU cache."
 XactSLRU	"Waiting to access the transaction status SLRU cache."
 ParallelVacuumDSA	"Waiting for parallel vacuum dynamic shared memory allocation."
 AioUringCompletion	"Waiting for another process to complete IO via io_uring."
+ShmemIndex	"Waiting to find or allocate space in shared memory."
 
 # No "ABI_compatibility" region here as WaitEventLWLock has its own C code.
 

@@ -40,6 +40,7 @@
 #include "commands/event_trigger.h"
 #include "commands/explain_state.h"
 #include "commands/prepare.h"
+#include "commands/repack.h"
 #include "common/pg_prng.h"
 #include "jit/jit.h"
 #include "libpq/libpq.h"
@@ -52,13 +53,14 @@
 #include "optimizer/optimizer.h"
 #include "parser/analyze.h"
 #include "parser/parser.h"
-#include "pg_getopt.h"
 #include "pg_trace.h"
 #include "pgstat.h"
+#include "port/pg_getopt_ctx.h"
 #include "postmaster/interrupt.h"
 #include "postmaster/postmaster.h"
 #include "replication/logicallauncher.h"
 #include "replication/logicalworker.h"
+#include "replication/slotsync.h"
 #include "replication/slot.h"
 #include "replication/walsender.h"
 #include "rewrite/rewriteHandler.h"
@@ -68,6 +70,7 @@
 #include "storage/pmsignal.h"
 #include "storage/proc.h"
 #include "storage/procsignal.h"
+#include "storage/shmem_internal.h"
 #include "storage/sinval.h"
 #include "storage/standby.h"
 #include "tcop/backend_startup.h"
@@ -110,6 +113,14 @@ int			client_connection_check_interval = 0;
 
 /* flags for non-system relation kinds to restrict use */
 int			restrict_nonsystem_relation_kind;
+
+/*
+ * Include signal sender PID/UID as errdetail when available (SA_SIGINFO).
+ * The caller must supply the (already-captured) pid and uid values.
+ */
+#define ERRDETAIL_SIGNAL_SENDER(pid, uid) \
+	((pid) == 0 ? 0 : \
+	 errdetail("Signal sent by PID %d, UID %d.", (int) (pid), (int) (uid)))
 
 /* ----------------
  *		private typedefs etc
@@ -3223,6 +3234,17 @@ die(SIGNAL_ARGS)
 	{
 		InterruptPending = true;
 		ProcDiePending = true;
+
+		/*
+		 * Record who sent the signal.  Will be 0 on platforms without
+		 * SA_SIGINFO, which is fine -- ProcessInterrupts() checks for that.
+		 * Only set on the first SIGTERM so we report the original sender.
+		 */
+		if (ProcDieSenderPid == 0)
+		{
+			ProcDieSenderPid = pg_siginfo->pid;
+			ProcDieSenderUid = pg_siginfo->uid;
+		}
 	}
 
 	/* for the cumulative stats system */
@@ -3552,7 +3574,12 @@ ProcessInterrupts(void)
 
 	if (ProcDiePending)
 	{
+		int			sender_pid = ProcDieSenderPid;
+		int			sender_uid = ProcDieSenderUid;
+
 		ProcDiePending = false;
+		ProcDieSenderPid = 0;
+		ProcDieSenderUid = 0;
 		QueryCancelPending = false; /* ProcDie trumps QueryCancel */
 		LockErrorCleanup();
 		/* As in quickdie, don't risk sending to client during auth */
@@ -3565,15 +3592,18 @@ ProcessInterrupts(void)
 		else if (AmAutoVacuumWorkerProcess())
 			ereport(FATAL,
 					(errcode(ERRCODE_ADMIN_SHUTDOWN),
-					 errmsg("terminating autovacuum process due to administrator command")));
+					 errmsg("terminating autovacuum process due to administrator command"),
+					 ERRDETAIL_SIGNAL_SENDER(sender_pid, sender_uid)));
 		else if (IsLogicalWorker())
 			ereport(FATAL,
 					(errcode(ERRCODE_ADMIN_SHUTDOWN),
-					 errmsg("terminating logical replication worker due to administrator command")));
+					 errmsg("terminating logical replication worker due to administrator command"),
+					 ERRDETAIL_SIGNAL_SENDER(sender_pid, sender_uid)));
 		else if (IsLogicalLauncher())
 		{
 			ereport(DEBUG1,
-					(errmsg_internal("logical replication launcher shutting down")));
+					(errmsg_internal("logical replication launcher shutting down"),
+					 ERRDETAIL_SIGNAL_SENDER(sender_pid, sender_uid)));
 
 			/*
 			 * The logical replication launcher can be stopped at any time.
@@ -3584,23 +3614,27 @@ ProcessInterrupts(void)
 		else if (AmWalReceiverProcess())
 			ereport(FATAL,
 					(errcode(ERRCODE_ADMIN_SHUTDOWN),
-					 errmsg("terminating walreceiver process due to administrator command")));
+					 errmsg("terminating walreceiver process due to administrator command"),
+					 ERRDETAIL_SIGNAL_SENDER(sender_pid, sender_uid)));
 		else if (AmBackgroundWorkerProcess())
 			ereport(FATAL,
 					(errcode(ERRCODE_ADMIN_SHUTDOWN),
 					 errmsg("terminating background worker \"%s\" due to administrator command",
-							MyBgworkerEntry->bgw_type)));
+							MyBgworkerEntry->bgw_type),
+					 ERRDETAIL_SIGNAL_SENDER(sender_pid, sender_uid)));
 		else if (AmIoWorkerProcess())
 		{
 			ereport(DEBUG1,
-					(errmsg_internal("io worker shutting down due to administrator command")));
+					(errmsg_internal("io worker shutting down due to administrator command"),
+					 ERRDETAIL_SIGNAL_SENDER(sender_pid, sender_uid)));
 
 			proc_exit(0);
 		}
 		else
 			ereport(FATAL,
 					(errcode(ERRCODE_ADMIN_SHUTDOWN),
-					 errmsg("terminating connection due to administrator command")));
+					 errmsg("terminating connection due to administrator command"),
+					 ERRDETAIL_SIGNAL_SENDER(sender_pid, sender_uid)));
 	}
 
 	if (CheckClientConnectionPending)
@@ -3783,6 +3817,12 @@ ProcessInterrupts(void)
 
 	if (ParallelApplyMessagePending)
 		ProcessParallelApplyMessages();
+
+	if (SlotSyncShutdownPending)
+		ProcessSlotSyncMessage();
+
+	if (RepackMessagePending)
+		ProcessRepackMessages();
 }
 
 /*
@@ -4003,9 +4043,9 @@ get_stats_option_name(const char *arg)
 	switch (arg[0])
 	{
 		case 'p':
-			if (optarg[1] == 'a')	/* "parser" */
+			if (arg[1] == 'a')	/* "parser" */
 				return "log_parser_stats";
-			else if (optarg[1] == 'l')	/* "planner" */
+			else if (arg[1] == 'l') /* "planner" */
 				return "log_planner_stats";
 			break;
 
@@ -4045,6 +4085,7 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 	int			errs = 0;
 	GucSource	gucsource;
 	int			flag;
+	pg_getopt_ctx optctx;
 
 	if (secure)
 	{
@@ -4062,27 +4103,26 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 		gucsource = PGC_S_CLIENT;	/* switches came from client */
 	}
 
-#ifdef HAVE_INT_OPTERR
+	/*
+	 * Parse command-line options.  CAUTION: keep this in sync with
+	 * postmaster/postmaster.c (the option sets should not conflict) and with
+	 * the common help() function in main/main.c.
+	 */
+	pg_getopt_start(&optctx, argc, argv, "B:bC:c:D:d:EeFf:h:ijk:lN:nOPp:r:S:sTt:v:W:-:");
 
 	/*
 	 * Turn this off because it's either printed to stderr and not the log
 	 * where we'd want it, or argv[0] is now "--single", which would make for
 	 * a weird error message.  We print our own error message below.
 	 */
-	opterr = 0;
-#endif
+	optctx.opterr = 0;
 
-	/*
-	 * Parse command-line options.  CAUTION: keep this in sync with
-	 * postmaster/postmaster.c (the option sets should not conflict) and with
-	 * the common help() function in main/main.c.
-	 */
-	while ((flag = getopt(argc, argv, "B:bC:c:D:d:EeFf:h:ijk:lN:nOPp:r:S:sTt:v:W:-:")) != -1)
+	while ((flag = pg_getopt_next(&optctx)) != -1)
 	{
 		switch (flag)
 		{
 			case 'B':
-				SetConfigOption("shared_buffers", optarg, ctx, gucsource);
+				SetConfigOption("shared_buffers", optctx.optarg, ctx, gucsource);
 				break;
 
 			case 'b':
@@ -4103,10 +4143,10 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 				 * returns DISPATCH_POSTMASTER if it doesn't find a match, so
 				 * error for anything else.
 				 */
-				if (parse_dispatch_option(optarg) != DISPATCH_POSTMASTER)
+				if (parse_dispatch_option(optctx.optarg) != DISPATCH_POSTMASTER)
 					ereport(ERROR,
 							(errcode(ERRCODE_SYNTAX_ERROR),
-							 errmsg("--%s must be first argument", optarg)));
+							 errmsg("--%s must be first argument", optctx.optarg)));
 
 				pg_fallthrough;
 			case 'c':
@@ -4114,19 +4154,19 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 					char	   *name,
 							   *value;
 
-					ParseLongOption(optarg, &name, &value);
+					ParseLongOption(optctx.optarg, &name, &value);
 					if (!value)
 					{
 						if (flag == '-')
 							ereport(ERROR,
 									(errcode(ERRCODE_SYNTAX_ERROR),
 									 errmsg("--%s requires a value",
-											optarg)));
+											optctx.optarg)));
 						else
 							ereport(ERROR,
 									(errcode(ERRCODE_SYNTAX_ERROR),
 									 errmsg("-c %s requires a value",
-											optarg)));
+											optctx.optarg)));
 					}
 					SetConfigOption(name, value, ctx, gucsource);
 					pfree(name);
@@ -4136,11 +4176,11 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 
 			case 'D':
 				if (secure)
-					userDoption = strdup(optarg);
+					userDoption = strdup(optctx.optarg);
 				break;
 
 			case 'd':
-				set_debug_options(atoi(optarg), ctx, gucsource);
+				set_debug_options(atoi(optctx.optarg), ctx, gucsource);
 				break;
 
 			case 'E':
@@ -4157,12 +4197,12 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 				break;
 
 			case 'f':
-				if (!set_plan_disabling_options(optarg, ctx, gucsource))
+				if (!set_plan_disabling_options(optctx.optarg, ctx, gucsource))
 					errs++;
 				break;
 
 			case 'h':
-				SetConfigOption("listen_addresses", optarg, ctx, gucsource);
+				SetConfigOption("listen_addresses", optctx.optarg, ctx, gucsource);
 				break;
 
 			case 'i':
@@ -4175,7 +4215,7 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 				break;
 
 			case 'k':
-				SetConfigOption("unix_socket_directories", optarg, ctx, gucsource);
+				SetConfigOption("unix_socket_directories", optctx.optarg, ctx, gucsource);
 				break;
 
 			case 'l':
@@ -4183,7 +4223,7 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 				break;
 
 			case 'N':
-				SetConfigOption("max_connections", optarg, ctx, gucsource);
+				SetConfigOption("max_connections", optctx.optarg, ctx, gucsource);
 				break;
 
 			case 'n':
@@ -4199,17 +4239,17 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 				break;
 
 			case 'p':
-				SetConfigOption("port", optarg, ctx, gucsource);
+				SetConfigOption("port", optctx.optarg, ctx, gucsource);
 				break;
 
 			case 'r':
 				/* send output (stdout and stderr) to the given file */
 				if (secure)
-					strlcpy(OutputFileName, optarg, MAXPGPATH);
+					strlcpy(OutputFileName, optctx.optarg, MAXPGPATH);
 				break;
 
 			case 'S':
-				SetConfigOption("work_mem", optarg, ctx, gucsource);
+				SetConfigOption("work_mem", optctx.optarg, ctx, gucsource);
 				break;
 
 			case 's':
@@ -4222,7 +4262,7 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 
 			case 't':
 				{
-					const char *tmp = get_stats_option_name(optarg);
+					const char *tmp = get_stats_option_name(optctx.optarg);
 
 					if (tmp)
 						SetConfigOption(tmp, "true", ctx, gucsource);
@@ -4241,11 +4281,11 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 				 * standalone backend.
 				 */
 				if (secure)
-					FrontendProtocol = (ProtocolVersion) atoi(optarg);
+					FrontendProtocol = (ProtocolVersion) atoi(optctx.optarg);
 				break;
 
 			case 'W':
-				SetConfigOption("post_auth_delay", optarg, ctx, gucsource);
+				SetConfigOption("post_auth_delay", optctx.optarg, ctx, gucsource);
 				break;
 
 			default:
@@ -4260,36 +4300,27 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 	/*
 	 * Optional database name should be there only if *dbname is NULL.
 	 */
-	if (!errs && dbname && *dbname == NULL && argc - optind >= 1)
-		*dbname = strdup(argv[optind++]);
+	if (!errs && dbname && *dbname == NULL && argc - optctx.optind >= 1)
+		*dbname = strdup(argv[optctx.optind++]);
 
-	if (errs || argc != optind)
+	if (errs || argc != optctx.optind)
 	{
 		if (errs)
-			optind--;			/* complain about the previous argument */
+			optctx.optind--;	/* complain about the previous argument */
 
 		/* spell the error message a bit differently depending on context */
 		if (IsUnderPostmaster)
 			ereport(FATAL,
 					errcode(ERRCODE_SYNTAX_ERROR),
-					errmsg("invalid command-line argument for server process: %s", argv[optind]),
+					errmsg("invalid command-line argument for server process: %s", argv[optctx.optind]),
 					errhint("Try \"%s --help\" for more information.", progname));
 		else
 			ereport(FATAL,
 					errcode(ERRCODE_SYNTAX_ERROR),
 					errmsg("%s: invalid command-line argument: %s",
-						   progname, argv[optind]),
+						   progname, argv[optctx.optind]),
 					errhint("Try \"%s --help\" for more information.", progname));
 	}
-
-	/*
-	 * Reset getopt(3) library so that it will work correctly in subprocesses
-	 * or when this function is called a second time with another array.
-	 */
-	optind = 1;
-#ifdef HAVE_INT_OPTRESET
-	optreset = 1;				/* some systems need this too */
-#endif
 }
 
 
@@ -4354,6 +4385,9 @@ PostgresSingleUserMain(int argc, char *argv[],
 	/* read control file (error checking and contains config ) */
 	LocalProcessControlFile(false);
 
+	/* Register the shared memory needs of all core subsystems. */
+	RegisterBuiltinShmemCallbacks();
+
 	/*
 	 * process any libraries that should be preloaded at postmaster start
 	 */
@@ -4372,9 +4406,20 @@ PostgresSingleUserMain(int argc, char *argv[],
 	InitializeFastPathLocks();
 
 	/*
-	 * Give preloaded libraries a chance to request additional shared memory.
+	 * Also call any legacy shmem request hooks that might'be been installed
+	 * by preloaded libraries.
+	 *
+	 * Note: this must be done before ShmemCallRequestCallbacks(), because the
+	 * hooks may request LWLocks with RequestNamedLWLockTranche(), which in
+	 * turn affects the size of the LWLock array calculated in lwlock.c.
 	 */
 	process_shmem_requests();
+
+	/*
+	 * Before computing the total size needed, give all subsystems, including
+	 * add-ins, a chance to chance to adjust their requested shmem sizes.
+	 */
+	ShmemCallRequestCallbacks();
 
 	/*
 	 * Now that loadable modules have had their chance to request additional
@@ -4490,17 +4535,17 @@ PostgresMain(const char *dbname, const char *username)
 		 * returns to outer loop.  This seems safer than forcing exit in the
 		 * midst of output during who-knows-what operation...
 		 */
-		pqsignal(SIGPIPE, SIG_IGN);
+		pqsignal(SIGPIPE, PG_SIG_IGN);
 		pqsignal(SIGUSR1, procsignal_sigusr1_handler);
-		pqsignal(SIGUSR2, SIG_IGN);
+		pqsignal(SIGUSR2, PG_SIG_IGN);
 		pqsignal(SIGFPE, FloatExceptionHandler);
 
 		/*
 		 * Reset some signals that are accepted by postmaster but not by
 		 * backend
 		 */
-		pqsignal(SIGCHLD, SIG_DFL); /* system() requires this on some
-									 * platforms */
+		pqsignal(SIGCHLD, PG_SIG_DFL);	/* system() requires this on some
+										 * platforms */
 	}
 
 	/* Early initialization */

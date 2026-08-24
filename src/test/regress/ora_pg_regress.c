@@ -487,7 +487,7 @@ signal_remove_temp(SIGNAL_ARGS)
 {
 	remove_temp();
 
-	pqsignal(postgres_signal_arg, SIG_DFL);
+	pqsignal(postgres_signal_arg, PG_SIG_DFL);
 	raise(postgres_signal_arg);
 }
 
@@ -2111,6 +2111,8 @@ regression_main(int argc, char *argv[],
 	pg_logging_init(argv[0]);
 	progname = get_progname(argv[0]);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_regress"));
+
+	pg_initialize_timing();
 
 	get_restricted_token();
 

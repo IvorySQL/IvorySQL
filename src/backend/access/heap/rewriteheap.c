@@ -618,12 +618,12 @@ raw_heap_insert(RewriteState state, HeapTuple tup)
 	}
 	else if (HeapTupleHasExternal(tup) || tup->t_len > TOAST_TUPLE_THRESHOLD)
 	{
-		int			options = HEAP_INSERT_SKIP_FSM;
+		uint32		options = HEAP_INSERT_SKIP_FSM;
 
 		/*
-		 * While rewriting the heap for VACUUM FULL / CLUSTER, make sure data
-		 * for the TOAST table are not logically decoded.  The main heap is
-		 * WAL-logged as XLOG FPI records, which are not logically decoded.
+		 * While rewriting the heap for REPACK, make sure data for the TOAST
+		 * table are not logically decoded.  The main heap is WAL-logged as
+		 * XLOG FPI records, which are not logically decoded.
 		 */
 		options |= HEAP_INSERT_NO_LOGICAL;
 

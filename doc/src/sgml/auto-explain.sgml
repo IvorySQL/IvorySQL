@@ -128,6 +128,26 @@ LOAD 'auto_explain';
     </listitem>
    </varlistentry>
 
+   <varlistentry id="auto-explain-configuration-parameters-log-io">
+    <term>
+     <varname>auto_explain.log_io</varname> (<type>boolean</type>)
+     <indexterm>
+      <primary><varname>auto_explain.log_io</varname> configuration parameter</primary>
+     </indexterm>
+    </term>
+    <listitem>
+     <para>
+      <varname>auto_explain.log_io</varname> controls whether I/O usage
+      statistics are printed when an execution plan is logged; it's
+      equivalent to the <literal>IO</literal> option of <command>EXPLAIN</command>.
+      This parameter has no effect
+      unless <varname>auto_explain.log_analyze</varname> is enabled.
+      This parameter is off by default.
+      Only superusers can change this setting.
+     </para>
+    </listitem>
+   </varlistentry>
+
    <varlistentry id="auto-explain-configuration-parameters-log-wal">
     <term>
      <varname>auto_explain.log_wal</varname> (<type>boolean</type>)
@@ -240,6 +260,29 @@ LOAD 'auto_explain';
       <command>EXPLAIN</command> output format to be used.
       The allowed values are <literal>text</literal>, <literal>xml</literal>,
       <literal>json</literal>, and <literal>yaml</literal>.  The default is text.
+      Only superusers can change this setting.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry id="auto-explain-configuration-parameters-log-extension-options">
+    <term>
+     <varname>auto_explain.log_extension_options</varname> (<type>string</type>)
+     <indexterm>
+      <primary><varname>auto_explain.log_extension_options</varname> configuration parameter</primary>
+     </indexterm>
+    </term>
+    <listitem>
+     <para>
+      Loadable modules can extend the <literal>EXPLAIN</literal> command with
+      additional options that affect the output format. Such options can also
+      be specified here. The value of this parameter is a comma-separated
+      list of options, each of which is an option name followed optionally by
+      an associated value. The module that provides the
+      <literal>EXPLAIN</literal> option, such as
+      <link linkend="pgplanadvice"><literal>pg_plan_advice</literal></link> or
+      <link linkend="pgoverexplain"><literal>pg_overexplain</literal></link>,
+      should be loaded before this parameter is set.
       Only superusers can change this setting.
      </para>
     </listitem>

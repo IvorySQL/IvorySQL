@@ -19,6 +19,21 @@ use File::Temp;
 use IO::Handle;
 use Getopt::Long;
 
+# By default Perl's SIGINT/SIGTERM kill the process without running
+# END blocks, so File::Temp never gets to clean up.  Converting the
+# signal into an exit() makes END-block cleanup run.  See:
+# <http://www.perlmonks.org/?node_id=714225>.  Exit codes use the
+# 128+signum convention so callers can tell the process was killed by
+# a signal.
+$SIG{INT} = sub { exit 130; };     # 128 + 2 (SIGINT)
+$SIG{TERM} = sub { exit 143; };    # 128 + 15 (SIGTERM)
+
+# pg_bsd_indent creates a .BAK file that File::Temp doesn't know about. This
+# END block makes sure that that file is cleaned up in case someone presses
+# Ctrl+C during pgindent.
+my $bak_to_cleanup;
+END { unlink $bak_to_cleanup if defined $bak_to_cleanup; }
+
 # Update for pg_bsd_indent version
 my $INDENT_VERSION = "2.1.2";
 
@@ -224,6 +239,9 @@ sub pre_indent
 {
 	my $source = shift;
 
+	## Ensure file ends with a newline (pg_bsd_indent messes up otherwise)
+	$source .= "\n" unless substr($source, -1) eq "\n";
+
 	## Comments
 
 	# Convert // comments to /* */
@@ -287,11 +305,14 @@ sub run_indent
 	print $tmp_fh $source;
 	$tmp_fh->close();
 
+	$bak_to_cleanup = "$filename.BAK";
+
 	$$error_message = `$cmd $filename 2>&1`;
 
 	return "" if ($? || length($$error_message) > 0);
 
-	unlink "$filename.BAK";
+	unlink $bak_to_cleanup;
+	$bak_to_cleanup = undef;
 
 	open(my $src_out, '<', $filename) || die $!;
 	local ($/) = undef;

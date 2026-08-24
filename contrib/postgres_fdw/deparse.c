@@ -1193,7 +1193,7 @@ is_foreign_pathkey(PlannerInfo *root,
 static char *
 deparse_type_name(Oid type_oid, int32 typemod)
 {
-	bits16		flags = FORMAT_TYPE_TYPEMOD_GIVEN;
+	uint16		flags = FORMAT_TYPE_TYPEMOD_GIVEN;
 
 	if (!is_builtin(type_oid))
 		flags |= FORMAT_TYPE_FORCE_QUALIFY;
@@ -2545,8 +2545,8 @@ deparseAnalyzeSizeSql(StringInfo buf, Relation rel)
 }
 
 /*
- * Construct SELECT statement to acquire the number of rows and the relkind of
- * a relation.
+ * Construct SELECT statement to acquire the number of pages, the number of
+ * rows, and the relkind of a relation.
  *
  * Note: we just return the remote server's reltuples value, which might
  * be off a good deal, but it doesn't seem worth working harder.  See
@@ -2561,7 +2561,7 @@ deparseAnalyzeInfoSql(StringInfo buf, Relation rel)
 	initStringInfo(&relname);
 	deparseRelation(&relname, rel);
 
-	appendStringInfoString(buf, "SELECT reltuples, relkind FROM pg_catalog.pg_class WHERE oid = ");
+	appendStringInfoString(buf, "SELECT relpages, reltuples, relkind FROM pg_catalog.pg_class WHERE oid = ");
 	deparseStringLiteral(buf, relname.data);
 	appendStringInfoString(buf, "::pg_catalog.regclass");
 }

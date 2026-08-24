@@ -14,10 +14,15 @@
 #ifndef PREDICATE_H
 #define PREDICATE_H
 
+#include "access/transam.h"
 #include "storage/itemptr.h"
-#include "storage/lock.h"
 #include "utils/relcache.h"
 #include "utils/snapshot.h"
+
+/*
+ * forward references in this file
+ */
+typedef struct VirtualTransactionId VirtualTransactionId;
 
 
 /*
@@ -36,11 +41,6 @@ typedef void *SerializableXactHandle;
 /*
  * function prototypes
  */
-
-/* housekeeping for shared memory predicate lock structures */
-extern void PredicateLockShmemInit(void);
-extern Size PredicateLockShmemSize(void);
-
 extern void CheckPointPredicate(void);
 
 /* predicate lock reporting */
