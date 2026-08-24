@@ -33,6 +33,7 @@ SELECT to_char(
   empty_nls_to_date  
 ---------------------
  2001-02-03 00:00:00
+(1 row)
 
 -- nlsparam is an empty string, should still parse the value
 SELECT to_date('01-15-1989 11:00:00', 'MM-DD-YYYY HH24:MI:SS', '') FROM DUAL;

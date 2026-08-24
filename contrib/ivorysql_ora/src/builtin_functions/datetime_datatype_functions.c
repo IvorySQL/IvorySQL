@@ -853,6 +853,7 @@ to_oradate3(PG_FUNCTION_ARGS)
 {
 	text	   *date_txt = PG_GETARG_TEXT_P(0);
 	text	   *fmt = PG_GETARG_TEXT_P(1);
+	text	   *nlsparam = PG_GETARG_TEXT_P(2);
 	Oid			collid = PG_GET_COLLATION();
 	Timestamp	result;
 	struct pg_tm tm;
@@ -928,6 +929,7 @@ to_oratimestamp3(PG_FUNCTION_ARGS)
 {
 	text	   *date_txt = PG_GETARG_TEXT_P(0);
 	text	   *fmt = PG_GETARG_TEXT_P(1);
+	text	   *nlsparam = PG_GETARG_TEXT_P(2);
 	Oid			collid = PG_GET_COLLATION();
 	Timestamp	result;
 	struct pg_tm tm;
@@ -1034,6 +1036,7 @@ to_oratimestamptz3(PG_FUNCTION_ARGS)
 {
 	text	   *date_txt = PG_GETARG_TEXT_P(0);
 	text	   *fmt = PG_GETARG_TEXT_P(1);
+	text	   *nlsparam = PG_GETARG_TEXT_P(2);
 	Oid			collid = PG_GET_COLLATION();
 	Timestamp	result;
 	int			tz;
@@ -1041,9 +1044,6 @@ to_oratimestamptz3(PG_FUNCTION_ARGS)
 	fsec_t		fsec;
 	DateTimeErrorExtra extra;
 
-
-	/* nlsparam is not interpreted yet, but must not affect parsing. */
-	ora_do_to_timestamp(date_txt, fmt, collid, false, &tm, &fsec, NULL, NULL, NULL, true);
 
 	/* nlsparam is not supported yet, just ignore it */
 	(void) nlsparam;
