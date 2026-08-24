@@ -33,6 +33,7 @@ OBJS = \
 	src/builtin_packages/dbms_utility/dbms_utility.o \
 	src/builtin_packages/dbms_lock/dbms_lock.o \
 	src/builtin_packages/utl_encode/utl_encode.o \
+	src/builtin_packages/utl_url/utl_url.o \
 	src/builtin_packages/dbms_session/dbms_session.o
 
 EXTENSION = ivorysql_ora
@@ -84,6 +85,7 @@ ORA_REGRESS = \
 	utl_file \
 	utl_raw \
 	utl_encode \
+	utl_url \
 	dbms_session
 
 # Include path for plisql.h (needed by dbms_utility)

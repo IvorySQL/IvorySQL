@@ -1,0 +1,154 @@
+--
+-- utl_url.sql
+--
+-- Tests for the UTL_URL package (ESCAPE function)
+--
+-- The escaped form of a multibyte character depends on the character set the
+-- character is converted to, so the multibyte cases below pass 'UTF8'
+-- explicitly rather than relying on the database encoding.
+--
+-- ============================================================
+-- Tests for UTL_URL.ESCAPE
+-- ============================================================
+-- NULL input returns NULL
+SELECT utl_url.escape(NULL) IS NULL AS escape_null;
+ escape_null 
+-------------
+ t
+(1 row)
+
+-- Empty input
+SELECT utl_url.escape('') AS escape_empty, utl_url.escape('') IS NULL AS empty_is_null;
+ escape_empty | empty_is_null 
+--------------+---------------
+              | t
+(1 row)
+
+-- Unreserved characters are never escaped
+SELECT utl_url.escape('AZaz09-_.!~*''()') AS unreserved;
+   unreserved    
+-----------------
+ AZaz09-_.!~*'()
+(1 row)
+
+-- Space and the other illegal characters are escaped, reserved ones are not
+SELECT utl_url.escape('a b/c?d=e&f') AS default_mode;
+ default_mode  
+---------------
+ a%20b/c?d=e&f
+(1 row)
+
+-- With escape_reserved_chars = TRUE the delimiters are escaped as well
+SELECT utl_url.escape('a b/c?d=e&f', TRUE) AS reserved_mode;
+     reserved_mode     
+-----------------------
+ a%20b%2Fc%3Fd%3De%26f
+(1 row)
+
+-- Full reserved set: passed through by default, escaped on request
+SELECT utl_url.escape(';/?:@&=+$%,#') AS reserved_default;
+ reserved_default 
+------------------
+ ;/?:@&=+$%,#
+(1 row)
+
+SELECT utl_url.escape(';/?:@&=+$%,#', TRUE) AS reserved_escaped;
+           reserved_escaped           
+--------------------------------------
+ %3B%2F%3F%3A%40%26%3D%2B%24%25%2C%23
+(1 row)
+
+-- Illegal ASCII characters are always escaped
+SELECT utl_url.escape('<>"{}|\\^[]`') AS illegal_ascii;
+            illegal_ascii             
+--------------------------------------
+ %3C%3E%22%7B%7D%7C%5C%5C%5E%5B%5D%60
+(1 row)
+
+-- Control characters are escaped
+SELECT utl_url.escape('a' || chr(9) || 'b' || chr(10) || 'c') AS control_chars;
+ control_chars 
+---------------
+ a%09b%0Ac
+(1 row)
+
+-- Examples from the Oracle documentation
+SELECT utl_url.escape('http://www.acme.com/a url with space.html') AS doc_escape;
+                   doc_escape                    
+-------------------------------------------------
+ http://www.acme.com/a%20url%20with%20space.html
+(1 row)
+
+SELECT utl_url.escape('http://oracle-base.com/my page.html', TRUE) AS doc_escape_reserved;
+              doc_escape_reserved              
+-----------------------------------------------
+ http%3A%2F%2Foracle-base.com%2Fmy%20page.html
+(1 row)
+
+SELECT utl_url.escape('Is the use of the "$" sign okay?', TRUE) AS doc_escape_value;
+                    doc_escape_value                    
+--------------------------------------------------------
+ Is%20the%20use%20of%20the%20%22%24%22%20sign%20okay%3F
+(1 row)
+
+-- Multibyte characters: each byte of the converted character gets its own %XX
+SELECT utl_url.escape('中文测试', FALSE, 'UTF8') AS cjk_utf8;
+               cjk_utf8               
+--------------------------------------
+ %E4%B8%AD%E6%96%87%E6%B5%8B%E8%AF%95
+(1 row)
+
+-- Explicit character set conversion: the same characters in GB18030
+SELECT utl_url.escape('中文', FALSE, 'GB18030') AS cjk_gb18030;
+ cjk_gb18030  
+--------------
+ %D6%D0%CE%C4
+(1 row)
+
+-- The charset name may be spelled the IANA way or the PostgreSQL way
+SELECT utl_url.escape('a b', FALSE, 'ISO-8859-1') AS iana_name,
+       utl_url.escape('a b', FALSE, 'LATIN1') AS pg_name;
+ iana_name | pg_name 
+-----------+---------
+ a%20b     | a%20b
+(1 row)
+
+-- An unrecognized character set is rejected
+SELECT utl_url.escape('a b', FALSE, 'NO_SUCH_CHARSET');
+ERROR:  UTL_URL: unrecognized URL character set "NO_SUCH_CHARSET"
+CONTEXT:  PL/iSQL function sys.utl_url.escape line 5 at RETURN
+-- A character with no representation in the target character set is rejected
+SELECT utl_url.escape('中文', FALSE, 'LATIN1');
+ERROR:  character with byte sequence 0xe4 0xb8 0xad in encoding "UTF8" has no equivalent in encoding "LATIN1"
+CONTEXT:  PL/iSQL function sys.utl_url.escape line 5 at RETURN
+-- ============================================================
+-- PL/iSQL package interface
+-- ============================================================
+DECLARE
+    v_url     VARCHAR2(200) := 'http://example.com/a b/中文?x=1&y=2';
+    v_escaped VARCHAR2(400);
+    line      TEXT;
+    status    INTEGER;
+BEGIN
+    dbms_output.enable();
+    v_escaped := utl_url.escape(v_url);
+    dbms_output.put_line('escaped=' || v_escaped);
+    dbms_output.get_line(line, status);
+    RAISE NOTICE '%', line;
+END;
+/
+NOTICE:  escaped=http://example.com/a%20b/%E4%B8%AD%E6%96%87?x=1&y=2
+-- All three arguments through the package
+DECLARE
+    v_escaped VARCHAR2(400);
+    line      TEXT;
+    status    INTEGER;
+BEGIN
+    dbms_output.enable();
+    v_escaped := utl_url.escape('a b$c', TRUE, 'UTF8');
+    dbms_output.put_line('escaped=' || v_escaped);
+    dbms_output.get_line(line, status);
+    RAISE NOTICE '%', line;
+END;
+/
+NOTICE:  escaped=a%20b%24c
