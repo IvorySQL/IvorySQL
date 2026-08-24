@@ -338,6 +338,13 @@ alter database :cur_db set ivorysql.dbtimezone = '-13:00';
 alter database :cur_db set ivorysql.dbtimezone = '+00:00';
 \c -
 select dbtimezone() from dual;
+/* contrib_regression is shared by the rest of this schedule (and reused
+ * across ad hoc reruns of just this file), so remove the override we
+ * pinned above entirely rather than leaving it permanently set -- restore
+ * the "no per-database override" state this database had before this
+ * test file touched it */
+alter database :cur_db reset ivorysql.dbtimezone;
+\c -
 
 /* ALTER ROLE ... SET is rejected at the command level (not just silently
  * ignored at connection time), so it never leaves a stale

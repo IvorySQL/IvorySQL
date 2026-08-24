@@ -609,6 +609,13 @@ select dbtimezone() from dual;
  +00:00
 (1 row)
 
+/* contrib_regression is shared by the rest of this schedule (and reused
+ * across ad hoc reruns of just this file), so remove the override we
+ * pinned above entirely rather than leaving it permanently set -- restore
+ * the "no per-database override" state this database had before this
+ * test file touched it */
+alter database :cur_db reset ivorysql.dbtimezone;
+\c -
 /* ALTER ROLE ... SET is rejected at the command level (not just silently
  * ignored at connection time), so it never leaves a stale
  * pg_db_role_setting entry that would re-fire on every future connection */
