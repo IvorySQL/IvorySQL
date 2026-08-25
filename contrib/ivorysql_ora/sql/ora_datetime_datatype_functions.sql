@@ -19,7 +19,7 @@ SELECT to_char(
 	'YYYY-MM-DD HH24:MI:SS') AS empty_nls_to_date FROM DUAL;
 
 -- nlsparam is an empty string, should still parse the value
-SELECT to_date('01-15-1989 11:00:00', 'MM-DD-YYYY HH24:MI:SS', '') FROM DUAL;
+SELECT to_date('01-15-1989 11:00:00', 'MM-DD-YYYY HH24:MI:SS', repeat('x', 0)) FROM DUAL;
 
 
 /*
@@ -44,7 +44,7 @@ SELECT to_char(
 	
 
 -- nlsparam is an empty string, should still parse the value
-SELECT to_timestamp('10-9-2016 14:10:10.123000', 'DD-MM-YYYY HH24:MI:SS.FF9', '') FROM DUAL;
+SELECT to_timestamp('10-9-2016 14:10:10.123000', 'DD-MM-YYYY HH24:MI:SS.FF9', repeat('x', 0)) FROM DUAL;
 
 
 /*
@@ -71,7 +71,7 @@ SELECT to_char(
 COMMIT;
 
 -- nlsparam is an empty string, should still parse the value
-SELECT to_timestamp_tz('10-9-2016 14:10:10.123000 +8:30', 'DD-MM-YYYY HH24:MI:SS.FF TZH:TZM', '') FROM DUAL;
+SELECT to_timestamp_tz('10-9-2016 14:10:10.123000 +8:30', 'DD-MM-YYYY HH24:MI:SS.FF TZH:TZM', repeat('x', 0)) FROM DUAL;
 
 
 SELECT to_timestamp_tz('10-9-2016 14:10:10.123000 +8:30', 'DD-MM-YYYY HH24:MI:SS.FF TZH:TZM') FROM DUAL;

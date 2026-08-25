@@ -26,7 +26,6 @@ SELECT to_date(
  01-15-1989 11:00:00
 (1 row)
 
-
 SELECT to_char(
 	to_date('2001-02-03', 'YYYY-MM-DD', repeat('x', 0)),
 	'YYYY-MM-DD HH24:MI:SS') AS empty_nls_to_date FROM DUAL;
@@ -36,7 +35,7 @@ SELECT to_char(
 (1 row)
 
 -- nlsparam is an empty string, should still parse the value
-SELECT to_date('01-15-1989 11:00:00', 'MM-DD-YYYY HH24:MI:SS', '') FROM DUAL;
+SELECT to_date('01-15-1989 11:00:00', 'MM-DD-YYYY HH24:MI:SS', repeat('x', 0)) FROM DUAL;
        to_date       
 ---------------------
  01-15-1989 11:00:00
@@ -69,7 +68,6 @@ SELECT to_timestamp(
  09-10-2016 14:10:10.123000000
 (1 row)
 
-
 SELECT to_char(
 	to_timestamp('2002-03-04 05:06:07.123',
 		'YYYY-MM-DD HH24:MI:SS.FF3', repeat('x', 0)),
@@ -81,7 +79,7 @@ SELECT to_char(
 
 	
 -- nlsparam is an empty string, should still parse the value
-SELECT to_timestamp('10-9-2016 14:10:10.123000', 'DD-MM-YYYY HH24:MI:SS.FF9', '') FROM DUAL;
+SELECT to_timestamp('10-9-2016 14:10:10.123000', 'DD-MM-YYYY HH24:MI:SS.FF9', repeat('x', 0)) FROM DUAL;
          to_timestamp          
 -------------------------------
  09-10-2016 14:10:10.123000000
@@ -114,7 +112,6 @@ SELECT to_timestamp_tz(
  09-10-2016 14:10:10.123000000 -07:00
 (1 row)
 
-
 BEGIN;
 SET LOCAL TIME ZONE 'UTC';
 SELECT to_char(
@@ -127,14 +124,12 @@ SELECT to_char(
 (1 row)
 
 COMMIT;
-
 -- nlsparam is an empty string, should still parse the value
-SELECT to_timestamp_tz('10-9-2016 14:10:10.123000 +8:30', 'DD-MM-YYYY HH24:MI:SS.FF TZH:TZM', '') FROM DUAL;
+SELECT to_timestamp_tz('10-9-2016 14:10:10.123000 +8:30', 'DD-MM-YYYY HH24:MI:SS.FF TZH:TZM', repeat('x', 0)) FROM DUAL;
            to_timestamp_tz            
 --------------------------------------
  09-09-2016 22:40:10.123000000 -07:00
 (1 row)
-
 
 SELECT to_timestamp_tz('10-9-2016 14:10:10.123000 +8:30', 'DD-MM-YYYY HH24:MI:SS.FF TZH:TZM') FROM DUAL;
            to_timestamp_tz            
