@@ -1696,3 +1696,139 @@ LANGUAGE C
 STRICT
 IMMUTABLE;
 /* End - VSIZE */
+
+/* BIT_AND_AGG / BIT_OR_AGG / BIT_XOR_AGG */
+/*
+ * Oracle 21c+ bitwise aggregate functions over NUMBER.
+ *
+ * sys.number's transtype can't be int8 directly: its argument type
+ * (sys.number) is not binary-coercible to int8, and CREATE AGGREGATE's
+ * strict/no-INITCOND bootstrap (see advance_transition_function() in
+ * nodeAgg.c) requires that coercibility whenever the transfn is STRICT.
+ * An INITCOND of 0 would sidestep that type mismatch too, but 0 is only
+ * the correct identity element for OR/XOR, not for AND (whose identity is
+ * all-ones) -- so a single shared INITCOND across all three would make
+ * AND wrong on real input. Instead the transfn is NOT STRICT and does its
+ * own NULL bookkeeping (ignore NULL inputs; let a NULL running state pass
+ * through untouched), and the finalfn maps a running state that never saw
+ * a non-NULL input to NUMBER 0 -- confirmed against a real Oracle instance
+ * that BIT_AND_AGG/BIT_OR_AGG/BIT_XOR_AGG over an empty or all-NULL group
+ * all return 0, not NULL (despite some published docs suggesting NULL).
+ */
+CREATE FUNCTION sys.number_int8and_transfn(int8, sys.number)
+RETURNS int8
+LANGUAGE plpgsql
+IMMUTABLE
+PARALLEL SAFE
+AS $$
+BEGIN
+    /* Oracle truncates expr to an integer before applying the bitwise op
+     * (it does not round), so trunc() first rather than casting directly.
+     * Cast to numeric explicitly: trunc(sys.number) alone is ambiguous
+     * between trunc(numeric) and trunc(double precision), and PostgreSQL's
+     * numeric-category tie-break prefers float8, silently losing precision
+     * (and even spuriously overflowing int8 right at its boundary, since
+     * 9223372036854775807 rounds up to 2^63 as a double). */
+    IF $2 IS NULL THEN
+        RETURN $1;
+    ELSIF $1 IS NULL THEN
+        RETURN trunc($2::numeric)::int8;
+    ELSE
+        RETURN pg_catalog.int8and($1, trunc($2::numeric)::int8);
+    END IF;
+END;
+$$;
+
+CREATE FUNCTION sys.number_int8or_transfn(int8, sys.number)
+RETURNS int8
+LANGUAGE plpgsql
+IMMUTABLE
+PARALLEL SAFE
+AS $$
+BEGIN
+    /* Oracle truncates expr to an integer before applying the bitwise op
+     * (it does not round), so trunc() first rather than casting directly.
+     * Cast to numeric explicitly: trunc(sys.number) alone is ambiguous
+     * between trunc(numeric) and trunc(double precision), and PostgreSQL's
+     * numeric-category tie-break prefers float8, silently losing precision
+     * (and even spuriously overflowing int8 right at its boundary, since
+     * 9223372036854775807 rounds up to 2^63 as a double). */
+    IF $2 IS NULL THEN
+        RETURN $1;
+    ELSIF $1 IS NULL THEN
+        RETURN trunc($2::numeric)::int8;
+    ELSE
+        RETURN pg_catalog.int8or($1, trunc($2::numeric)::int8);
+    END IF;
+END;
+$$;
+
+CREATE FUNCTION sys.number_bitagg_finalfn(int8)
+RETURNS sys.number
+LANGUAGE plpgsql
+IMMUTABLE
+PARALLEL SAFE
+AS $$
+BEGIN
+    /* A NULL running state means no non-NULL input was ever seen (empty
+     * group, or every value was NULL). Real Oracle returns 0 for that
+     * case for all three functions, not NULL. */
+    IF $1 IS NULL THEN
+        RETURN 0;
+    ELSE
+        RETURN sys.int8_number($1);
+    END IF;
+END;
+$$;
+
+CREATE AGGREGATE sys.bit_and_agg(sys.number) (
+    SFUNC       = sys.number_int8and_transfn,
+    STYPE       = int8,
+    FINALFUNC   = sys.number_bitagg_finalfn,
+    COMBINEFUNC = pg_catalog.int8and,
+    PARALLEL    = SAFE
+);
+COMMENT ON AGGREGATE sys.bit_and_agg(sys.number) IS 'Oracle-compatible bitwise AND aggregate over NUMBER values';
+
+CREATE AGGREGATE sys.bit_or_agg(sys.number) (
+    SFUNC       = sys.number_int8or_transfn,
+    STYPE       = int8,
+    FINALFUNC   = sys.number_bitagg_finalfn,
+    COMBINEFUNC = pg_catalog.int8or,
+    PARALLEL    = SAFE
+);
+COMMENT ON AGGREGATE sys.bit_or_agg(sys.number) IS 'Oracle-compatible bitwise OR aggregate over NUMBER values';
+
+CREATE FUNCTION sys.number_int8xor_transfn(int8, sys.number)
+RETURNS int8
+LANGUAGE plpgsql
+IMMUTABLE
+PARALLEL SAFE
+AS $$
+BEGIN
+    /* Oracle truncates expr to an integer before applying the bitwise op
+     * (it does not round), so trunc() first rather than casting directly.
+     * Cast to numeric explicitly: trunc(sys.number) alone is ambiguous
+     * between trunc(numeric) and trunc(double precision), and PostgreSQL's
+     * numeric-category tie-break prefers float8, silently losing precision
+     * (and even spuriously overflowing int8 right at its boundary, since
+     * 9223372036854775807 rounds up to 2^63 as a double). */
+    IF $2 IS NULL THEN
+        RETURN $1;
+    ELSIF $1 IS NULL THEN
+        RETURN trunc($2::numeric)::int8;
+    ELSE
+        RETURN pg_catalog.int8xor($1, trunc($2::numeric)::int8);
+    END IF;
+END;
+$$;
+
+CREATE AGGREGATE sys.bit_xor_agg(sys.number) (
+    SFUNC       = sys.number_int8xor_transfn,
+    STYPE       = int8,
+    FINALFUNC   = sys.number_bitagg_finalfn,
+    COMBINEFUNC = pg_catalog.int8xor,
+    PARALLEL    = SAFE
+);
+COMMENT ON AGGREGATE sys.bit_xor_agg(sys.number) IS 'Oracle-compatible bitwise XOR aggregate over NUMBER values';
+/* End - BIT_AND_AGG / BIT_OR_AGG / BIT_XOR_AGG */
