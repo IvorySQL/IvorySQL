@@ -2437,8 +2437,7 @@
 },
 
 { name => 'nls_timestamp_tz_format', type => 'string', context => 'PGC_USERSET', group => 'COMPAT_ORACLE_OPTIONS',
-  short_desc => 'Sets the shell command that will be called to archive a WAL file.',
-  long_desc => 'An empty string means use "archive_library".',
+  short_desc => 'Compatible Oracle NLS parameter for timestamp with time zone type.',
   flags => 'GUC_NOT_IN_SAMPLE',
   variable => 'nls_timestamp_tz_format',
   boot_val => '"YYYY-MM-DD HH24:MI:SS.FF6 TZH:TZM"',
