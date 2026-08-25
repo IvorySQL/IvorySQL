@@ -391,6 +391,42 @@ BEGIN;
 CREATE OR REPLACE PACKAGE sys.standard IS
     FUNCTION type_probe_function_collision() RETURN integer;
     PROCEDURE type_probe_procedure_collision();
+    FUNCTION fallback_arity_probe(p_value integer) RETURN integer;
+    fallback_kind_probe integer;
+    type_probe_variable_collision integer;
+END;
+/
+
+-- Optional STANDARD routine probes must continue into the schema namespace
+-- when a same-named package item has the wrong signature or the wrong kind.
+CREATE FUNCTION fallback_arity_probe(p_left integer, p_right integer)
+RETURN integer
+IS
+BEGIN
+    RETURN p_left + p_right;
+END;
+/
+
+CREATE FUNCTION fallback_kind_probe(p_value integer)
+RETURN integer
+IS
+BEGIN
+    RETURN p_value;
+END;
+/
+
+DECLARE
+    value integer;
+BEGIN
+    value := fallback_arity_probe(10, 20);
+    IF value <> 30 THEN
+        raise_application_error(-20001, 'unexpected arity fallback result');
+    END IF;
+
+    value := fallback_kind_probe(40);
+    IF value <> 40 THEN
+        raise_application_error(-20002, 'unexpected kind fallback result');
+    END IF;
 END;
 /
 
@@ -409,6 +445,27 @@ CREATE TYPE type_probe_procedure_collision AS OBJECT
     STATIC FUNCTION new_instance RETURN type_probe_procedure_collision
 );
 /
+
+-- A same-named STANDARD variable is not the return datatype of an object
+-- method; type resolution must continue into the schema namespace.
+CREATE TYPE type_probe_variable_collision AS OBJECT
+(
+    value integer,
+    STATIC FUNCTION new_instance(p_value integer)
+        RETURN type_probe_variable_collision
+);
+/
+
+CREATE TYPE BODY type_probe_variable_collision AS
+    STATIC FUNCTION new_instance(p_value integer)
+        RETURN type_probe_variable_collision IS
+    BEGIN
+        RETURN type_probe_variable_collision(p_value);
+    END new_instance;
+END;
+/
+
+SELECT type_probe_variable_collision.new_instance(42) FROM dual;
 
 -- Explicit package qualification is not a fallback probe and must still
 -- report that a routine is not a package type.
