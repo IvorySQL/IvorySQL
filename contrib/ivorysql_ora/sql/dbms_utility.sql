@@ -2,6 +2,10 @@
 -- Tests for DBMS_UTILITY package
 --
 
+-- Backtrace/call-stack frames are qualified per ivorysql.identifier_case_switch
+SET ivorysql.enable_case_switch = true;
+SET ivorysql.identifier_case_switch = interchange;
+
 -- Test 1: FORMAT_ERROR_BACKTRACE - Basic exception in procedure
 CREATE OR REPLACE PROCEDURE test_basic_error AS
   v_backtrace VARCHAR2(4000);
@@ -439,3 +443,67 @@ CALL test_all_functions_outer();
 
 DROP PROCEDURE test_all_functions_outer;
 DROP PROCEDURE test_all_functions_inner;
+
+-- Test 18: FORMAT_CALL_STACK - Package procedure. The frame for a package
+-- member must carry the exact owning-schema/package/routine triple.  The
+-- package lives in a dedicated non-public schema so the assertion can pin
+-- the schema name; a wildcard-only prefix would let a wrong or missing
+-- schema qualifier pass silently.
+CREATE SCHEMA callstack_ns;
+
+CREATE OR REPLACE PACKAGE callstack_ns.test_call_stack_pkg IS
+  PROCEDURE stack_caller;
+END test_call_stack_pkg;
+/
+
+CREATE OR REPLACE PACKAGE BODY callstack_ns.test_call_stack_pkg IS
+  PROCEDURE stack_caller IS
+    v_stack VARCHAR2(4000);
+  BEGIN
+    v_stack := DBMS_UTILITY.FORMAT_CALL_STACK;
+    IF v_stack LIKE '%CALLSTACK_NS.TEST_CALL_STACK_PKG.STACK_CALLER%'
+       AND v_stack NOT LIKE '%PUBLIC.CALLSTACK_NS%' THEN
+      RAISE INFO 'Call stack is package-qualified: OK';
+    ELSE
+      RAISE INFO 'Call stack is package-qualified: FAILED (got: %)', v_stack;
+    END IF;
+  END stack_caller;
+END test_call_stack_pkg;
+/
+
+CALL callstack_ns.test_call_stack_pkg.stack_caller();
+
+DROP PACKAGE callstack_ns.test_call_stack_pkg;
+DROP SCHEMA callstack_ns;
+
+-- Test 19: FORMAT_ERROR_BACKTRACE - Schema-qualified routine must not acquire a
+-- spurious PUBLIC prefix.  Regression: before fix, schema_error() appeared as
+-- PUBLIC.SCHEMA_ERROR instead of BUG_SCHEMA.SCHEMA_ERROR.
+CREATE SCHEMA bug_schema;
+
+CREATE OR REPLACE PROCEDURE bug_schema.schema_error IS
+BEGIN
+  RAISE EXCEPTION 'boom';
+END;
+/
+
+CREATE OR REPLACE PROCEDURE bug_schema.schema_caller IS
+  v_backtrace VARCHAR2(4000);
+BEGIN
+  bug_schema.schema_error();
+EXCEPTION
+  WHEN OTHERS THEN
+    v_backtrace := DBMS_UTILITY.FORMAT_ERROR_BACKTRACE;
+    IF v_backtrace LIKE '%ORA-06512: at "BUG_SCHEMA.SCHEMA_ERROR"%' THEN
+      RAISE INFO 'Backtrace has correct schema qualifier: OK';
+    ELSE
+      RAISE INFO 'Backtrace has correct schema qualifier: FAILED (got: %)', v_backtrace;
+    END IF;
+END;
+/
+
+CALL bug_schema.schema_caller();
+DROP SCHEMA bug_schema CASCADE;
+
+RESET ivorysql.identifier_case_switch;
+RESET ivorysql.enable_case_switch;
