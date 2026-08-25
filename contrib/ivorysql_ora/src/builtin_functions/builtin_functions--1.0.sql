@@ -130,6 +130,117 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
+/*
+ * lengthc --- Oracle's LENGTHC: the number of complete Unicode characters,
+ * that is, the number of code points left after NFC normalization.
+ *
+ * All five character types bind the C symbol directly and none of them go
+ * through a cast: sys.oracharchar -> text and sys.oracharchar ->
+ * sys.oravarcharchar are both implemented by rtrim(), so routing CHAR through
+ * either of them would silently drop the blank padding that Oracle counts.
+ *
+ * The overload set deliberately mirrors sys.length(): with more than one
+ * candidate in the same namespace, func_select_candidate() cannot break the
+ * tie by search path position and fails with "function ... is not unique".
+ * Dropping the text overload would therefore break lengthc('abc'), and
+ * dropping the numeric/date wrappers would break lengthc(192).  Conversely
+ * sys.binary_float and sys.oratimestampltz are intentionally absent: they
+ * resolve via the preferred types sys.binary_double and sys.oratimestamptz.
+ * sys.clob/nclob/long are domains over text and fold onto lengthc(text).
+ *
+ * Oracle rejects binary arguments with ORA-00932, but we cannot: pg_cast has
+ * an implicit bytea -> sys.oravarcharchar entry, so bytea/raw/blob reach the
+ * oravarcharchar overload and are counted as their hex text, exactly as they
+ * already are by sys.ltrim() and the rest of this extension.  Removing the
+ * oravarcharchar overload is not an option -- it is what keeps CHAR blank
+ * padding out of rtrim().  Note length()/lengthb() escape this only because
+ * pg_catalog.length(bytea) and sys.lengthb(bytea) are exact matches.
+ */
+
+CREATE FUNCTION sys.lengthc(text)
+RETURNS integer
+AS 'MODULE_PATHNAME','ora_lengthc'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.lengthc(sys.oracharchar)
+RETURNS integer
+AS 'MODULE_PATHNAME','ora_lengthc'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.lengthc(sys.oracharbyte)
+RETURNS integer
+AS 'MODULE_PATHNAME','ora_lengthc'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.lengthc(sys.oravarcharchar)
+RETURNS integer
+AS 'MODULE_PATHNAME','ora_lengthc'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.lengthc(sys.oravarcharbyte)
+RETURNS integer
+AS 'MODULE_PATHNAME','ora_lengthc'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+COMMENT ON FUNCTION sys.lengthc(text) IS 'Return the number of complete Unicode characters (code points after NFC normalization)';
+
+CREATE FUNCTION sys.lengthc(integer)
+RETURNS integer
+AS 'select sys.lengthc($1::sys.oravarcharchar)'
+LANGUAGE SQL
+IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.lengthc(numeric)
+RETURNS integer
+AS 'select sys.lengthc($1::sys.oravarcharchar)'
+LANGUAGE SQL
+IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.lengthc(sys.number)
+RETURNS integer
+AS 'select sys.lengthc($1::sys.oravarcharchar)'
+LANGUAGE SQL
+IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.lengthc(sys.binary_double)
+RETURNS integer
+AS 'select sys.lengthc($1::sys.oravarcharchar)'
+LANGUAGE SQL
+IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.lengthc(sys.oradate)
+RETURNS integer
+AS 'select sys.lengthc($1::sys.oravarcharchar)'
+LANGUAGE SQL
+IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.lengthc(sys.oratimestamp)
+RETURNS integer
+AS 'select sys.lengthc($1::sys.oravarcharchar)'
+LANGUAGE SQL
+IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.lengthc(sys.oratimestamptz)
+RETURNS integer
+AS 'select sys.lengthc($1::sys.oravarcharchar)'
+LANGUAGE SQL
+IMMUTABLE PARALLEL SAFE STRICT;
+
 CREATE FUNCTION sys.length(integer)
 RETURNS integer
 AS $$SELECT sys.length(cast($1 as sys.oravarcharchar));$$

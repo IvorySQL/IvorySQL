@@ -1132,6 +1132,117 @@ select lengthb(cast('2020-06-18 14:40:20' as date)) from dual;
 select lengthb(cast('2020-06-18 14:40:20' as timestamp)) from dual;
 
 /*
+ * lengthc
+ *
+ * LENGTHC counts complete Unicode characters, i.e. code points after NFC
+ * normalization.  NB: the cases below assume a UTF8 database, as does the
+ * rest of this file (see length('今天') above).  On a non-UTF8 cluster
+ * lengthc() deliberately degrades to length() instead of erroring the way
+ * pg_catalog.normalize() does; that path is verified manually.
+ */
+-- (1) ASCII equivalence and three-way comparison
+select length('Highgo DB!'), lengthb('Highgo DB!'), lengthc('Highgo DB!') from dual;
+select length('今天'), lengthb('今天'), lengthc('今天') from dual;
+select sys.lengthc('明天') from dual;
+
+-- (2) CHAR blank padding is counted, not trimmed
+select lengthc(cast('ab' as char(5))) from dual;
+select lengthc(cast('abc' as char(5 byte))) from dual;
+select lengthc(cast('abc' as char(5 char))) from dual;
+select lengthc(cast('Highgo DB!' as char(20))) from dual;
+select lengthc(cast('今天是Monday' as char(20))) from dual;
+select lengthc(cast('Highgo DB!' as varchar2(20))) from dual;
+-- padding kept + NFC composition + three different answers, all in one row
+select length(cast('e'||chr(769) as char(10 char))),
+       lengthb(cast('e'||chr(769) as char(10 char))),
+       lengthc(cast('e'||chr(769) as char(10 char))) from dual;
+
+CREATE TABLE TEST_LENGTHC_CHAR(a char(5 byte), b char(5 char));
+INSERT INTO TEST_LENGTHC_CHAR VALUES('aaa', 'bbb');
+INSERT INTO TEST_LENGTHC_CHAR VALUES('e'||chr(769), 'e'||chr(769));
+SELECT length(a), lengthc(a), length(b), lengthc(b) FROM TEST_LENGTHC_CHAR;
+DROP TABLE TEST_LENGTHC_CHAR;
+
+-- (3) actual normalization
+select length('e'||chr(769)), lengthb('e'||chr(769)), lengthc('e'||chr(769)) from dual;
+select length(chr(233)), lengthc(chr(233)) from dual;
+select length(decompose('áéíóú')), lengthc(decompose('áéíóú')) from dual;
+-- QC_NO plus canonical reordering: U+0301 (ccc 230) before U+0328 (ccc 202)
+select length('a'||chr(769)||chr(808)), lengthc('a'||chr(769)||chr(808)) from dual;
+-- conjoining jamo L+V+T compose algorithmically into one syllable
+select length(chr(4370)||chr(4449)||chr(4523)), lengthc(chr(4370)||chr(4449)||chr(4523)) from dual;
+
+-- (4) NFC can also lengthen: U+0958 is a composition exclusion
+select length(chr(2392)), lengthb(chr(2392)), lengthc(chr(2392)) from dual;
+select asciistr(compose(chr(2392))) from dual;
+
+-- (5) supplementary plane / no UCS-2 confusion
+select length(chr(119070)), lengthb(chr(119070)), lengthc(chr(119070)) from dual;
+select lengthc(chr(119070)||chr(119070)) from dual;
+
+-- (6) NULL and empty string
+select lengthc(null) from dual;
+select lengthc('') from dual;
+select lengthc(' ') from dual;
+
+-- (7) domains over text fold onto lengthc(text)
+select lengthc(cast('abc' as clob)) from dual;
+select lengthc(cast('abc' as nclob)) from dual;
+select lengthc(cast('abc' as long)) from dual;
+select lengthc(cast('e'||chr(769) as clob)) from dual;
+select lengthc(cast(repeat('e'||chr(769), 1000) as clob)) from dual;
+
+-- (8) numeric/date overloads; binary_float and timestamptz resolve via
+-- the preferred types binary_double and oratimestamptz
+alter session set nls_date_format = 'YYYY-MM-DD HH24:MI:SS';
+alter session set nls_timestamp_format = 'YYYY-MM-DD HH24:MI:SS';
+select length(192), lengthc(192) from dual;
+select length(192.922), lengthc(192.922) from dual;
+select length(cast(192 as int2)), lengthc(cast(192 as int2)) from dual;
+select length(cast(192 as int4)), lengthc(cast(192 as int4)) from dual;
+select length(cast(192 as int8)), lengthc(cast(192 as int8)) from dual;
+select length(cast(192.922 as numeric)), lengthc(cast(192.922 as numeric)) from dual;
+select length(cast(192.922 as number)), lengthc(cast(192.922 as number)) from dual;
+select lengthc(cast(1.5 as binary_double)) from dual;
+select lengthc(cast(1.5 as binary_float)) from dual;
+select length(cast('2019-12-12' as date)), lengthc(cast('2019-12-12' as date)) from dual;
+select length(cast('2019-12-12' as timestamp)), lengthc(cast('2019-12-12' as timestamp)) from dual;
+
+-- (9) differential invariant against pg_catalog.normalize(); this pins down
+-- both the ASCII fast path and the NFC quick-check fast path at once.
+-- CHAR values must not go in here: cast(char as text) rtrims.
+select bool_and(sys.lengthc(s) = pg_catalog.length(pg_catalog.normalize(s, 'NFC'))) as lengthc_matches_nfc
+from (values ('abc'), (''), (' '), ('今天'),
+             ('e'||chr(769)), (chr(233)), (chr(2392)),
+             ('a'||chr(769)||chr(808)),
+             (chr(4370)||chr(4449)||chr(4523)),
+             (chr(119070)),
+             (repeat('a',5000)||'e'||chr(769)),
+             (repeat('今',5000)||'e'||chr(769)),
+             (repeat('e'||chr(769), 5000))
+      ) t(s);
+
+-- (10) binary input.  Oracle raises ORA-00932 here; IvorySQL instead counts
+-- the hex text, because pg_cast has an implicit bytea -> sys.oravarcharchar
+-- entry that every sys function with an oravarcharchar overload inherits
+-- (compare sys.ltrim('abc'::bytea), which likewise yields \x616263).
+-- length()/lengthb() differ only because they have exact bytea matches.
+select length(cast('ab' as raw(2))), lengthb(cast('ab' as raw(2))),
+       lengthc(cast('ab' as raw(2))) from dual;
+select length('abc'::bytea), lengthb('abc'::bytea), lengthc('abc'::bytea) from dual;
+
+-- (11) attribute guardrails: IMMUTABLE is required for expression indexes
+CREATE TABLE TEST_LENGTHC_IDX(c varchar2(50));
+CREATE INDEX TEST_LENGTHC_IDX_I ON TEST_LENGTHC_IDX (lengthc(c));
+DROP TABLE TEST_LENGTHC_IDX;
+
+SELECT pg_catalog.pg_get_function_arguments(p.oid) AS args,
+       p.provolatile, p.proisstrict, p.proparallel
+  FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+ WHERE n.nspname = 'sys' AND p.proname = 'lengthc'
+ ORDER BY 1;
+
+/*
  * round
  */
 select round(cast(1.234 as double precision), 2), trunc(cast(1.234 as double precision), 2) from dual;
