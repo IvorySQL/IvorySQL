@@ -31,10 +31,11 @@ CREATE OR REPLACE PACKAGE utl_url AS
      * Unreserved characters, never escaped:
      *     A-Z  a-z  0-9  -  _  .  !  ~  *  '  (  )
      * Reserved characters, escaped only when escape_reserved_chars is TRUE:
-     *     ;  /  ?  :  @  &  =  +  $  %  ,  #
+     *     ;  /  ?  :  @  &  =  +  $  ,
      * Everything else, always escaped:
-     *     space, control characters, " < > { } | \ ^ [ ] ` and every
-     *     non-ASCII byte.
+     *     #, space, control characters, " < > { } | \ ^ [ ] ` , every
+     *     non-ASCII byte, and a literal "%" (already-escaped input is
+     *     double-escaped, matching Oracle).
      *
      * Parameters:
      *   url                    IN VARCHAR2 - the original URL
@@ -44,7 +45,15 @@ CREATE OR REPLACE PACKAGE utl_url AS
      *                                         converted to before being
      *                                         escaped.  NULL (the default)
      *                                         means the database encoding,
-     *                                         with no conversion.
+     *                                         with no conversion.  Note:
+     *                                         Oracle's documented default is
+     *                                         utl_http.body_charset
+     *                                         (ISO-8859-1); using the database
+     *                                         encoding instead is a deliberate
+     *                                         deviation, since ISO-8859-1
+     *                                         cannot represent non-Latin text
+     *                                         and UTL_HTTP is not available
+     *                                         here.
      * Returns:
      *   VARCHAR2 - the escaped URL, or NULL when url IS NULL
      */

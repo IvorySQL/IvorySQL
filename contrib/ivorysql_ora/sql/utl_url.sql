@@ -27,9 +27,33 @@ SELECT utl_url.escape('a b/c?d=e&f') AS default_mode;
 -- With escape_reserved_chars = TRUE the delimiters are escaped as well
 SELECT utl_url.escape('a b/c?d=e&f', TRUE) AS reserved_mode;
 
--- Full reserved set: passed through by default, escaped on request
+-- The reserved delimiters: passed through by default, escaped on request.
+-- '%' and '#' are not passthrough delimiters and are escaped even in the
+-- default mode.
 SELECT utl_url.escape(';/?:@&=+$%,#') AS reserved_default;
 SELECT utl_url.escape(';/?:@&=+$%,#', TRUE) AS reserved_escaped;
+
+-- A literal '%' is always escaped, even in default mode, so that
+-- already-escaped input is double-escaped (matching Oracle)
+SELECT utl_url.escape('a%b') AS pct_default;
+SELECT utl_url.escape('a%b', TRUE) AS pct_reserved;
+SELECT utl_url.escape('a%20b') AS preescaped_default;
+SELECT utl_url.escape('a%20b', TRUE) AS preescaped_reserved;
+
+-- '#' is always escaped, including default mode, matching Oracle.
+SELECT utl_url.escape('a#b') AS hash_default;
+SELECT utl_url.escape('a#b', TRUE) AS hash_reserved;
+
+-- A real-world URL with a pre-escaped component and a fragment
+SELECT utl_url.escape('http://h/p?q=a%20b#frag') AS url_default;
+
+-- '#' alone
+SELECT utl_url.escape('#') AS hash_only_default;
+SELECT utl_url.escape('#', TRUE) AS hash_only_reserved;
+
+-- a fragment/query-like string in both modes
+SELECT utl_url.escape('a#b?c=d', FALSE) AS hash_query_default;
+SELECT utl_url.escape('a#b?c=d', TRUE) AS hash_query_reserved;
 
 -- Illegal ASCII characters are always escaped
 SELECT utl_url.escape('<>"{}|\\^[]`') AS illegal_ascii;

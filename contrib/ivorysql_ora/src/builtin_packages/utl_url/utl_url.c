@@ -42,14 +42,16 @@
  * "Reserved" characters are URL delimiters.  They are passed through when
  * escape_reserved_chars is FALSE (the Oracle default) and escaped when it is
  * TRUE:
- *		;  /  ?  :  @  &  =  +  $  %  ,  #
+ *		;  /  ?  :  @  &  =  +  $  ,
  *
  * Everything else (space, control characters, "<", ">", quotes, braces,
- * brackets, backslash, and every non-ASCII byte) is an "illegal" URL
- * character and is always escaped.
+ * brackets, backslash, every non-ASCII byte, and literal "%" and "#"
+ * characters) is an "illegal" URL character and is always escaped.  Escaping
+ * "%" unconditionally means already-escaped input is double-escaped
+ * ("a%20b" becomes "a%2520b"), matching Oracle's observed behaviour.
  */
 #define UTL_URL_UNRESERVED_CHARS	"-_.!~*'()"
-#define UTL_URL_RESERVED_CHARS		";/?:@&=+$%,#"
+#define UTL_URL_RESERVED_CHARS		";/?:@&=+$,"
 
 static bool utl_url_is_unreserved(unsigned char c);
 static bool utl_url_is_reserved(unsigned char c);
