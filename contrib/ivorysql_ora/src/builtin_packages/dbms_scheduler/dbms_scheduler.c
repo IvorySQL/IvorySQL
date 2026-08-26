@@ -38,6 +38,9 @@
 #include "executor/spi.h"
 #include "fmgr.h"
 #include "miscadmin.h"
+#include "storage/latch.h"
+#include "storage/proc.h"
+#include "storage/procarray.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/fmgrprotos.h"
@@ -618,6 +621,97 @@ sched_current_database_is_scheduled(void)
 	return found;
 }
 
+/*
+ * Wake this database's scheduler after the current transaction commits.
+ *
+ * The scheduler sleeps until the earliest run date it knew of when it last
+ * looked, so a job enabled while it sleeps would otherwise wait that sleep
+ * out.  Oracle's job coordinator is woken the same way: it "wakes up when a
+ * new job is about to be executed or a job was created using the CREATE_JOB
+ * procedure".
+ *
+ * Which process to wake is read from pg_stat_activity rather than recorded in
+ * the metadata: that view is derived from the process array, so it cannot go
+ * stale, whereas a copy of who is scheduling what would be one more thing
+ * needing to be cleaned up after a crash.
+ *
+ * It has to be two steps.  Signalling before the commit would wake the
+ * scheduler onto a job it cannot see yet, and it would go back to sleep on
+ * its old deadline -- worse than not signalling at all.  Signalling after the
+ * commit means running in a transaction callback, which is past the point
+ * where a query can be run.  So the pid is looked up here, where SPI still
+ * works, and only the signal itself is left for the callback.
+ */
+static int32 sched_wakeup_pid = 0;
+
+static void
+sched_wakeup_at_commit(XactEvent event, void *arg)
+{
+	PGPROC	   *proc;
+	int32		pid;
+
+	switch (event)
+	{
+		case XACT_EVENT_COMMIT:
+			break;
+		case XACT_EVENT_ABORT:
+		case XACT_EVENT_PARALLEL_ABORT:
+			sched_wakeup_pid = 0;
+			return;
+		default:
+
+			/*
+			 * Anything else, XACT_EVENT_PRE_COMMIT above all, is not the end
+			 * of the transaction: leave the request alone rather than dropping
+			 * it before the commit it was made for arrives.
+			 */
+			return;
+	}
+
+	pid = sched_wakeup_pid;
+	sched_wakeup_pid = 0;
+	if (pid == 0)
+		return;
+
+	/*
+	 * The pid was read before the commit, so by now the process may be gone
+	 * or, worse, its pid reused.  Getting it wrong costs the other process a
+	 * spurious latch set, which every process is written to tolerate, so the
+	 * database check is as far as this needs to go -- unlike STOP_JOB, which
+	 * cancels what it finds and therefore matches on the backend start time
+	 * too.
+	 */
+	proc = BackendPidGetProc(pid);
+	if (proc != NULL && proc->databaseId == MyDatabaseId)
+		SetLatch(&proc->procLatch);
+}
+
+static void
+sched_request_scheduler_wakeup(void)
+{
+	static bool registered = false;
+	bool		isnull;
+	Datum		d;
+
+	if (!registered)
+	{
+		RegisterXactCallback(sched_wakeup_at_commit, NULL);
+		registered = true;
+	}
+
+	/* one scheduler per database, so this database's is the one to wake */
+	if (sched_meta_select("SELECT pid FROM pg_catalog.pg_stat_activity"
+						  " WHERE backend_type = 'ivorysql scheduler worker'"
+						  "  AND datname = pg_catalog.current_database()"
+						  " LIMIT 1",
+						  0, NULL, NULL, NULL) != 1)
+		return;
+
+	d = sched_getdatum(0, 1, &isnull);
+	if (!isnull)
+		sched_wakeup_pid = DatumGetInt32(d);
+}
+
 static void
 sched_enable_job(const SchedName *job)
 {
@@ -761,6 +855,8 @@ sched_enable_job(const SchedName *job)
 				(errmsg("database \"%s\" is not scheduled; job \"%s\".\"%s\" will not run automatically",
 						get_database_name(MyDatabaseId), job->owner, job->name),
 				 errhint("Add the database to ivorysql_ora.scheduler_databases.")));
+	else
+		sched_request_scheduler_wakeup();
 }
 
 static void
