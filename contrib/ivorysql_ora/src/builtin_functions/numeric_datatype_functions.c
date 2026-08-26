@@ -87,42 +87,79 @@ ora_to_number(PG_FUNCTION_ARGS)
  * is NaN, otherwise returns expr1. PostgreSQL's numeric type (unlike
  * Oracle's NUMBER) can hold a NaN value, so this reuses the existing
  * numeric_is_nan() rather than assuming expr1 is never NaN.
+ *
+ * Oracle only inspects expr1: expr2 is evaluated (and thus only
+ * matters) when expr1 is NaN, so this function cannot be STRICT --
+ * a NULL expr2 must not force a NULL result when expr1 is a normal
+ * (non-NaN) value.
  */
 Datum
 number_nanvl(PG_FUNCTION_ARGS)
 {
-	Numeric		arg1 = PG_GETARG_NUMERIC(0);
-	Numeric		arg2 = PG_GETARG_NUMERIC(1);
+	Numeric		arg1;
 
-	PG_RETURN_NUMERIC(numeric_is_nan(arg1) ? arg2 : arg1);
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
+
+	arg1 = PG_GETARG_NUMERIC(0);
+
+	if (!numeric_is_nan(arg1))
+		PG_RETURN_NUMERIC(arg1);
+
+	if (PG_ARGISNULL(1))
+		PG_RETURN_NULL();
+
+	PG_RETURN_NUMERIC(PG_GETARG_NUMERIC(1));
 }
 
 /*
  * binary_float_nanvl
  * Oracle NANVL(expr1, expr2) for BINARY_FLOAT: returns expr2 when
- * expr1 is NaN, otherwise returns expr1.
+ * expr1 is NaN, otherwise returns expr1. See number_nanvl() for why
+ * this cannot be STRICT.
  */
 Datum
 binary_float_nanvl(PG_FUNCTION_ARGS)
 {
-	float4		arg1 = PG_GETARG_FLOAT4(0);
-	float4		arg2 = PG_GETARG_FLOAT4(1);
+	float4		arg1;
 
-	PG_RETURN_FLOAT4(isnan(arg1) ? arg2 : arg1);
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
+
+	arg1 = PG_GETARG_FLOAT4(0);
+
+	if (!isnan(arg1))
+		PG_RETURN_FLOAT4(arg1);
+
+	if (PG_ARGISNULL(1))
+		PG_RETURN_NULL();
+
+	PG_RETURN_FLOAT4(PG_GETARG_FLOAT4(1));
 }
 
 /*
  * binary_double_nanvl
  * Oracle NANVL(expr1, expr2) for BINARY_DOUBLE: returns expr2 when
- * expr1 is NaN, otherwise returns expr1.
+ * expr1 is NaN, otherwise returns expr1. See number_nanvl() for why
+ * this cannot be STRICT.
  */
 Datum
 binary_double_nanvl(PG_FUNCTION_ARGS)
 {
-	float8		arg1 = PG_GETARG_FLOAT8(0);
-	float8		arg2 = PG_GETARG_FLOAT8(1);
+	float8		arg1;
 
-	PG_RETURN_FLOAT8(isnan(arg1) ? arg2 : arg1);
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
+
+	arg1 = PG_GETARG_FLOAT8(0);
+
+	if (!isnan(arg1))
+		PG_RETURN_FLOAT8(arg1);
+
+	if (PG_ARGISNULL(1))
+		PG_RETURN_NULL();
+
+	PG_RETURN_FLOAT8(PG_GETARG_FLOAT8(1));
 }
 
 /*

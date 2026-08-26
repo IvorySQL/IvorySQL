@@ -1001,7 +1001,6 @@ CREATE FUNCTION sys.nanvl(number, number)
 RETURNS number
 AS 'MODULE_PATHNAME','number_nanvl'
 LANGUAGE C
-STRICT
 IMMUTABLE
 PARALLEL SAFE;
 
@@ -1009,7 +1008,6 @@ CREATE FUNCTION sys.nanvl(sys.binary_float, sys.binary_float)
 RETURNS sys.binary_float
 AS 'MODULE_PATHNAME','binary_float_nanvl'
 LANGUAGE C
-STRICT
 IMMUTABLE
 PARALLEL SAFE;
 
@@ -1017,7 +1015,6 @@ CREATE FUNCTION sys.nanvl(sys.binary_double, sys.binary_double)
 RETURNS sys.binary_double
 AS 'MODULE_PATHNAME','binary_double_nanvl'
 LANGUAGE C
-STRICT
 IMMUTABLE
 PARALLEL SAFE;
 

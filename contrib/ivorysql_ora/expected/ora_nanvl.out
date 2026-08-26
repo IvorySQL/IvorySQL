@@ -72,7 +72,11 @@ SELECT NANVL(CAST('-INF' AS BINARY_DOUBLE), CAST(2.5 AS BINARY_DOUBLE)) FROM DUA
 (1 row)
 
 --
--- NULL handling: SQL standard — any NULL argument yields NULL
+-- NULL handling: NANVL only inspects expr1.
+-- * expr1 NULL            -> result is NULL, expr2 is never evaluated.
+-- * expr1 not NaN (and not NULL) -> expr1 is returned as-is, so a NULL
+--   expr2 does not matter.
+-- * expr1 NaN and expr2 NULL -> result is NULL (expr2 is the result).
 --
 SELECT NANVL(CAST(NULL AS BINARY_FLOAT), CAST(2.5 AS BINARY_FLOAT)) FROM DUAL;
  nanvl 
@@ -83,10 +87,28 @@ SELECT NANVL(CAST(NULL AS BINARY_FLOAT), CAST(2.5 AS BINARY_FLOAT)) FROM DUAL;
 SELECT NANVL(CAST(1.5 AS BINARY_FLOAT), CAST(NULL AS BINARY_FLOAT)) FROM DUAL;
  nanvl 
 -------
- 
+ 1.5
 (1 row)
 
 SELECT NANVL(CAST(NULL AS BINARY_FLOAT), CAST(NULL AS BINARY_FLOAT)) FROM DUAL;
+ nanvl 
+-------
+ 
+(1 row)
+
+SELECT NANVL(CAST('NAN' AS BINARY_FLOAT), CAST(NULL AS BINARY_FLOAT)) FROM DUAL;
+ nanvl 
+-------
+ 
+(1 row)
+
+SELECT NANVL(CAST(1.5 AS BINARY_DOUBLE), CAST(NULL AS BINARY_DOUBLE)) FROM DUAL;
+ nanvl 
+-------
+ 1.5
+(1 row)
+
+SELECT NANVL(CAST('NAN' AS BINARY_DOUBLE), CAST(NULL AS BINARY_DOUBLE)) FROM DUAL;
  nanvl 
 -------
  
@@ -143,6 +165,12 @@ SELECT NANVL(CAST(NULL AS NUMBER), 100) FROM DUAL;
 (1 row)
 
 SELECT NANVL(CAST(1.23 AS NUMBER), CAST(NULL AS NUMBER)) FROM DUAL;
+ nanvl 
+-------
+ 1.23
+(1 row)
+
+SELECT NANVL(CAST('NAN' AS NUMBER), CAST(NULL AS NUMBER)) FROM DUAL;
  nanvl 
 -------
  
