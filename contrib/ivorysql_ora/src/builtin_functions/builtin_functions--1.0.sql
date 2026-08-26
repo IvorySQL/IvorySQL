@@ -796,7 +796,7 @@ AS 'MODULE_PATHNAME','oradate_to_char1'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
-IMMUTABLE;
+STABLE;
 
 
 CREATE FUNCTION sys.to_char(sys.oradate, text)
@@ -805,7 +805,7 @@ AS 'MODULE_PATHNAME','oradate_to_char2'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
-IMMUTABLE;
+STABLE;
 
 CREATE FUNCTION sys.to_char(sys.oradate, text, text)
 RETURNS varchar2
@@ -813,7 +813,7 @@ AS 'MODULE_PATHNAME','oradate_to_char3'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
-IMMUTABLE;
+STABLE;
 
 CREATE FUNCTION sys.to_char(sys.oratimestamp)
 RETURNS varchar2
@@ -821,7 +821,7 @@ AS 'MODULE_PATHNAME','oratimestamp_to_char1'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
-IMMUTABLE;
+STABLE;
 
 CREATE FUNCTION sys.to_char(sys.oratimestamp, text)
 RETURNS varchar2
@@ -829,7 +829,7 @@ AS 'MODULE_PATHNAME','oratimestamp_to_char2'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
-IMMUTABLE;
+STABLE;
 
 CREATE FUNCTION sys.to_char(sys.oratimestamp, text, text)
 RETURNS varchar2
@@ -837,7 +837,7 @@ AS 'MODULE_PATHNAME','oratimestamp_to_char3'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
-IMMUTABLE;
+STABLE;
 
 CREATE FUNCTION sys.to_char(sys.oratimestamptz)
 RETURNS varchar2
@@ -845,7 +845,7 @@ AS 'MODULE_PATHNAME','oratimestamptz_to_char1'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
-IMMUTABLE;
+STABLE;
 
 CREATE FUNCTION sys.to_char(sys.oratimestamptz, text)
 RETURNS varchar2
@@ -853,7 +853,7 @@ AS 'MODULE_PATHNAME','oratimestamptz_to_char2'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
-IMMUTABLE;
+STABLE;
 
 CREATE FUNCTION sys.to_char(sys.oratimestamptz, text, text)
 RETURNS varchar2
@@ -861,7 +861,7 @@ AS 'MODULE_PATHNAME','oratimestamptz_to_char3'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
-IMMUTABLE;
+STABLE;
 
 CREATE FUNCTION sys.to_char(sys.oratimestampltz)
 RETURNS varchar2
@@ -869,7 +869,7 @@ AS 'MODULE_PATHNAME','oratimestampltz_to_char1'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
-IMMUTABLE;
+STABLE;
 
 CREATE FUNCTION sys.to_char(sys.oratimestampltz, text)
 RETURNS varchar2
@@ -877,7 +877,7 @@ AS 'MODULE_PATHNAME','oratimestampltz_to_char2'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
-IMMUTABLE;
+STABLE;
 
 CREATE FUNCTION sys.to_char(sys.oratimestampltz, text, text)
 RETURNS varchar2
@@ -885,7 +885,7 @@ AS 'MODULE_PATHNAME','oratimestampltz_to_char3'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
-IMMUTABLE;
+STABLE;
 
 CREATE FUNCTION sys.to_char(sys.dsinterval)
 RETURNS varchar2
