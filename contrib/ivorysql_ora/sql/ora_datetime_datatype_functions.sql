@@ -13,6 +13,10 @@ SELECT to_date(
      'NLS_DATE_LANGUAGE = American')
      FROM DUAL;
 
+SELECT to_char(
+	to_date('2001-02-03', 'YYYY-MM-DD', repeat('x', 0)),
+	'YYYY-MM-DD HH24:MI:SS') AS empty_nls_to_date FROM DUAL;
+
 /*
  * to_timestamp
  */
@@ -26,6 +30,11 @@ SELECT to_timestamp(
 	'10-9-2016 14:10:10.123000', 
 	'DD-MM-YYYY HH24:MI:SS.FF9',
 	'NLS_DATE_LANGUAGE = American') FROM DUAL;
+
+SELECT to_char(
+	to_timestamp('2002-03-04 05:06:07.123',
+		'YYYY-MM-DD HH24:MI:SS.FF3', repeat('x', 0)),
+	'YYYY-MM-DD HH24:MI:SS.FF3') AS empty_nls_to_timestamp FROM DUAL;
 	
 /*
  * to_timestamp_tz
@@ -40,6 +49,14 @@ SELECT to_timestamp_tz(
 	'10-9-2016 14:10:10.123000', 
 	'DD-MM-YYYY HH24:MI:SS.FF9',
 	'NLS_DATE_LANGUAGE = American') FROM DUAL;
+
+BEGIN;
+SET LOCAL TIME ZONE 'UTC';
+SELECT to_char(
+	to_timestamp_tz('2003-04-05 06:07:08.123 +08:00',
+		'YYYY-MM-DD HH24:MI:SS.FF3 TZH:TZM', repeat('x', 0)),
+	'YYYY-MM-DD HH24:MI:SS.FF3 TZH:TZM') AS empty_nls_to_timestamp_tz FROM DUAL;
+COMMIT;
 
 SELECT to_timestamp_tz('10-9-2016 14:10:10.123000 +8:30', 'DD-MM-YYYY HH24:MI:SS.FF TZH:TZM') FROM DUAL;
 SELECT to_timestamp_tz('10-9-2016 14:10:10.123000 +1:00', 'DD-MM-YYYY HH24:MI:SS.FF TZH:TZM') FROM DUAL;

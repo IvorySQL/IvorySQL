@@ -384,52 +384,6 @@ static struct config_real Ivy_ConfigureNamesReal[] =
 static struct config_enum Ivy_ConfigureNamesEnum[] =
 {
 #endif
-#ifdef IVY_GUC_ENUM_PARAMS
-
-	{
-		{"ivorysql.database_mode", PGC_INTERNAL, PRESET_OPTIONS,
-			gettext_noop("Set database mode"),
-			NULL,
-			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
-		},
-		&database_mode,
-		DB_PG, db_mode_options,
-		check_database_mode, NULL, NULL
-	},
-
-	{
-		{"ivorysql.compatible_mode", PGC_USERSET, CLIENT_CONN_STATEMENT,
-			gettext_noop("Set default sql parser compatibility mode"),
-			NULL,
-			GUC_REPORT | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE | GUC_DISALLOW_IN_DB_ROLE_SETTING
-		},
-		&compatible_db,
-		PG_PARSER, db_parser_options,
-		check_compatible_mode, assign_compatible_mode, NULL
-	},
-
-	{
-		{"ivorysql.identifier_case_switch", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
-			gettext_noop("Set character case conversion mode."),
-			NULL
-		},
-		&identifier_case_switch,
-		INTERCHANGE, case_conversion_mode,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"nls_length_semantics", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
-			gettext_noop("Compatible Oracle NLS parameter for character data type."),
-			gettext_noop("Valid values are CHAR, BYTE."),
-			GUC_IS_NAME | GUC_NOT_IN_SAMPLE
-		},
-		&nls_length_semantics,
-		NLS_LENGTH_BYTE, nls_length_options,
-		check_nls_length_semantics, NULL, NULL
-	},
-
-#endif
 #if 0
 	/* End-of-list marker */
 	{
@@ -443,11 +397,13 @@ static struct config_enum Ivy_ConfigureNamesEnum[] =
 static bool
 check_nls_length_semantics(int *newval, void **extra, GucSource source)
 {
-	if (IsUnderPostmaster && DB_PG == database_mode)
-		ereport(WARNING,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("Do not use this GUC variable in the current cluster (PG).")));
-
+	if (source >= PGC_S_INTERACTIVE &&
+		IsUnderPostmaster && DB_PG == database_mode)
+	{
+		GUC_check_errcode(ERRCODE_FEATURE_NOT_SUPPORTED);
+		GUC_check_errmsg("Do not use this GUC variable in the current cluster (PG).");
+		return false;
+	}
 
 	return true;
 }
@@ -459,9 +415,11 @@ check_compatible_mode(int *newval, void **extra, GucSource source)
 	int			newmode = *newval;
 
 	if (DB_PG == database_mode && newmode == ORA_PARSER)
-		ereport(ERROR,
-				(errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM),
-				 errmsg("parameter ivorysql.compatible_mode cannot be changed in native PG mode.")));
+	{
+		GUC_check_errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM);
+		GUC_check_errmsg("parameter ivorysql.compatible_mode cannot be changed in native PG mode.");
+		return false;
+	}
 
 	if (DB_ORACLE == database_mode
 		&& (IsNormalProcessingMode() || (IsUnderPostmaster && MyProcPort)))
@@ -469,15 +427,19 @@ check_compatible_mode(int *newval, void **extra, GucSource source)
 		if (newmode == ORA_PARSER)
 		{
 			if (ora_raw_parser == NULL)
-				ereport(ERROR,
-						(errcode(ERRCODE_SYSTEM_ERROR),
-						 errmsg("liboracle_parser not found!"),
-						 errhint("You must load liboracle_parser to use oracle parser.")));
+			{
+				GUC_check_errcode(ERRCODE_SYSTEM_ERROR);
+				GUC_check_errmsg("liboracle_parser not found!");
+				GUC_check_errhint("You must load liboracle_parser to use oracle parser.");
+				return false;
+			}
 			if (!ISLOADIVORYSQL_ORA)
-				ereport(ERROR,
-						(errcode(ERRCODE_SYSTEM_ERROR),
-						 errmsg("IVORYSQL_ORA library not found!"),
-						 errhint("You must load IVORYSQL_ORA to use oracle parser.")));
+			{
+				GUC_check_errcode(ERRCODE_SYSTEM_ERROR);
+				GUC_check_errmsg("IVORYSQL_ORA library not found!");
+				GUC_check_errhint("You must load IVORYSQL_ORA to use oracle parser.");
+				return false;
+			}
 		}
 	}
 	return true;
@@ -488,10 +450,13 @@ check_database_mode(int *newval, void **extra, GucSource source)
 {
 	int			newmode = *newval;
 
-	if (DB_PG == database_mode && DB_ORACLE == newmode)
-		ereport(NOTICE,
-				(errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM),
-				 errmsg("parameter ivorysql.database_mode cannot be changed")));
+	if (source >= PGC_S_INTERACTIVE &&
+		DB_PG == database_mode && DB_ORACLE == newmode)
+	{
+		GUC_check_errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM);
+		GUC_check_errmsg("parameter ivorysql.database_mode cannot be changed");
+		return false;
+	}
 
 	return true;
 }
@@ -581,14 +546,18 @@ nls_length_check(char **newval, void **extra, GucSource source)
 		&& (IsNormalProcessingMode() || (IsUnderPostmaster && MyProcPort)))
 	{
 		if (strlen(*newval) > 255)
-			ereport(ERROR,
-					(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-					 errmsg("parameter value longer than 255 characters")));
+		{
+			GUC_check_errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION);
+			GUC_check_errmsg("parameter value longer than 255 characters");
+			return false;
+		}
 		else if (isdigit(**newval))
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("Cannot access NLS data files "
-							"or invalid environment specified")));
+		{
+			GUC_check_errcode(ERRCODE_INVALID_PARAMETER_VALUE);
+			GUC_check_errmsg("Cannot access NLS data files "
+							 "or invalid environment specified");
+			return false;
+		}
 		else if (identifier_case_switch == INTERCHANGE)
 			nls_case_conversion(newval, 'b');
 	}
@@ -607,10 +576,12 @@ nls_territory_check(char **newval, void **extra, GucSource source)
 		else if (pg_strcasecmp(*newval, "AMERICA") == 0)
 			memcpy(*newval, "AMERICA", 7);
 		else
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("Cannot access NLS data files "
-							"or invalid environment specified")));
+		{
+			GUC_check_errcode(ERRCODE_INVALID_PARAMETER_VALUE);
+			GUC_check_errmsg("Cannot access NLS data files "
+							 "or invalid environment specified");
+			return false;
+		}
 	}
 
 	return true;

@@ -16,13 +16,8 @@
 #include <unistd.h>
 #include <sys/file.h>
 
-#ifdef HAVE_SYS_IPC_H
 #include <sys/ipc.h>
-#endif
-
-#ifdef HAVE_SYS_SEM_H
 #include <sys/sem.h>
-#endif
 
 #include "ivy_sema.h"
 

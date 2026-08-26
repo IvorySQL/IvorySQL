@@ -53,10 +53,10 @@ make -j$(nproc)
 make install
 
 # Initialize database in Oracle mode
-initdb -D data_ora -m oracle
+/home/ivorysql/ivorysql/bin/initdb -D data_ora -m oracle
 
 # Start the server
-pg_ctl -D data_ora start
+/home/ivorysql/ivorysql/bin/pg_ctl -D data_ora start
 
 # Run tests
 make oracle-check
