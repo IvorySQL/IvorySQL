@@ -2853,7 +2853,6 @@ match_previous_words(int pattern_id,
 					  "OWNER TO", "SET", "VALIDATE CONSTRAINT",
 					  "REPLICA IDENTITY", "ATTACH PARTITION",
 					  "DETACH PARTITION", "FORCE ROW LEVEL SECURITY",
-					  "SPLIT PARTITION", "MERGE PARTITIONS (",
 					  "OF", "NOT OF", "MODIFY");
 
 	/*
@@ -3127,29 +3126,16 @@ match_previous_words(int pattern_id,
 		COMPLETE_WITH("FROM (", "IN (", "WITH (");
 
 	/*
-	 * If we have ALTER TABLE <foo> DETACH|SPLIT PARTITION, provide a list of
+	 * If we have ALTER TABLE <foo> DETACH PARTITION, provide a list of
 	 * partitions of <foo>.
 	 */
-	else if (Matches("ALTER", "TABLE", MatchAny, "DETACH|SPLIT", "PARTITION"))
+	else if (Matches("ALTER", "TABLE", MatchAny, "DETACH", "PARTITION"))
 	{
 		set_completion_reference(prev3_wd);
 		COMPLETE_WITH_SCHEMA_QUERY(Query_for_partition_of_table);
 	}
 	else if (Matches("ALTER", "TABLE", MatchAny, "DETACH", "PARTITION", MatchAny))
 		COMPLETE_WITH("CONCURRENTLY", "FINALIZE");
-
-	/* ALTER TABLE <name> SPLIT PARTITION <name> */
-	else if (Matches("ALTER", "TABLE", MatchAny, "SPLIT", "PARTITION", MatchAny))
-		COMPLETE_WITH("INTO ( PARTITION");
-
-	/* ALTER TABLE <name> MERGE PARTITIONS ( */
-	else if (Matches("ALTER", "TABLE", MatchAny, "MERGE", "PARTITIONS", "("))
-	{
-		set_completion_reference(prev4_wd);
-		COMPLETE_WITH_SCHEMA_QUERY(Query_for_partition_of_table);
-	}
-	else if (Matches("ALTER", "TABLE", MatchAny, "MERGE", "PARTITIONS", "(*)"))
-		COMPLETE_WITH("INTO");
 
 	/* ALTER TABLE <name> OF */
 	else if (Matches("ALTER", "TABLE", MatchAny, "OF"))
