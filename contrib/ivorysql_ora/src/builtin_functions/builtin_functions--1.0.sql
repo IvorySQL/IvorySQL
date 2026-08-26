@@ -1013,6 +1013,66 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
+-- to_binary_float
+CREATE FUNCTION sys.to_binary_float(text,text)
+RETURNS sys.binary_float
+AS 'MODULE_PATHNAME','ora_to_binary_float'
+LANGUAGE C
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION sys.to_binary_float(text)
+RETURNS sys.binary_float
+AS 'MODULE_PATHNAME','ora_to_binary_float'
+LANGUAGE C
+STRICT
+IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION sys.to_binary_float(number)
+RETURNS sys.binary_float
+AS 'select $1::sys.binary_float'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE OR REPLACE FUNCTION sys.to_binary_float(binary_float)
+RETURNS sys.binary_float
+AS 'select $1'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE OR REPLACE FUNCTION sys.to_binary_float(binary_double)
+RETURNS sys.binary_float
+AS 'select $1::sys.binary_float'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+-- to_binary_double
+CREATE FUNCTION sys.to_binary_double(text,text)
+RETURNS sys.binary_double
+AS 'MODULE_PATHNAME','ora_to_binary_double'
+LANGUAGE C
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION sys.to_binary_double(text)
+RETURNS sys.binary_double
+AS 'MODULE_PATHNAME','ora_to_binary_double'
+LANGUAGE C
+STRICT
+IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION sys.to_binary_double(number)
+RETURNS sys.binary_double
+AS 'select $1::sys.binary_double'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE OR REPLACE FUNCTION sys.to_binary_double(binary_double)
+RETURNS sys.binary_double
+AS 'select $1'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE OR REPLACE FUNCTION sys.to_binary_double(binary_float)
+RETURNS sys.binary_double
+AS 'select $1::sys.binary_double'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
 /***************************************************************
  *
  * RAW BLOB CLOB datatype functions.

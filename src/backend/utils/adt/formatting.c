@@ -6406,7 +6406,16 @@ NUM_numpart_from_char(NUMProc *Np, int id, size_t input_len)
 	if (OVERLOAD_TEST)
 		return;
 
-	if (*Np->inout_p == ' ')
+	/*
+	 * Skip leading blanks in the input.  Oracle ignores leading blanks
+	 * before the numeric content, so they must not consume 9 positions.
+	 * Otherwise a digit can be pushed onto the decimal-node position and
+	 * the fractional part (e.g. TO_BINARY_DOUBLE('  1234.5', '9999.9'))
+	 * would be lost.  Only skip before any content has been read, so that
+	 * blanks belonging to literal spaces inside the format are preserved.
+	 */
+	while (*Np->inout_p == ' ' && Np->read_pre == 0 && Np->read_post == 0 &&
+		   *Np->number == ' ' && !OVERLOAD_TEST)
 		Np->inout_p++;
 
 	if (OVERLOAD_TEST)
