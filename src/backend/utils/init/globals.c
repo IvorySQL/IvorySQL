@@ -43,6 +43,8 @@ volatile sig_atomic_t IdleStatsUpdateTimeoutPending = false;
 volatile uint32 InterruptHoldoffCount = 0;
 volatile uint32 QueryCancelHoldoffCount = 0;
 volatile uint32 CritSectionCount = 0;
+volatile int ProcDieSenderPid = 0;
+volatile int ProcDieSenderUid = 0;
 
 int			MyProcPid;
 pg_time_t	MyStartTime;
@@ -143,6 +145,7 @@ int			NBuffers = 16384;
 int			MaxConnections = 100;
 int			max_worker_processes = 8;
 int			max_parallel_workers = 8;
+int			autovacuum_max_parallel_workers = 0;
 int			MaxBackends = 0;
 
 /* GUC parameters for vacuum */

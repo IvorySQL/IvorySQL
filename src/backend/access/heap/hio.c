@@ -498,7 +498,7 @@ RelationAddBlocks(Relation relation, BulkInsertState bistate,
  */
 Buffer
 RelationGetBufferForTuple(Relation relation, Size len,
-						  Buffer otherBuffer, int options,
+						  Buffer otherBuffer, uint32 options,
 						  BulkInsertState bistate,
 						  Buffer *vmbuffer, Buffer *vmbuffer_other,
 						  int num_pages)
@@ -711,14 +711,15 @@ loop:
 		 * unlock the two buffers in, so this can be slightly simpler than the
 		 * code above.
 		 */
-		LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
 		if (otherBuffer == InvalidBuffer)
-			ReleaseBuffer(buffer);
+			UnlockReleaseBuffer(buffer);
 		else if (otherBlock != targetBlock)
 		{
+			UnlockReleaseBuffer(buffer);
 			LockBuffer(otherBuffer, BUFFER_LOCK_UNLOCK);
-			ReleaseBuffer(buffer);
 		}
+		else
+			LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
 
 		/* Is there an ongoing bulk extension? */
 		if (bistate && bistate->next_free != InvalidBlockNumber)

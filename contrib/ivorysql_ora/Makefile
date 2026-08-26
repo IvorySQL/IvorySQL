@@ -71,6 +71,7 @@ ORA_REGRESS = \
 	ora_character_datatype_functions \
 	ora_datetime_datatype_functions \
 	ora_misc_functions \
+	ora_vsize \
 	ora_merge \
 	datatype_and_func_bugs \
 	ora_sysview \
@@ -86,10 +87,6 @@ ORA_REGRESS = \
 	utl_encode \
 	dbms_session
 
-ifeq ($(with_libxml),yes) 
-SHLIB_LINK += -lxml2
-endif
-
 # Include path for plisql.h (needed by dbms_utility)
 PG_CPPFLAGS += -I$(top_srcdir)/src/pl/plisql/src
 
@@ -102,6 +99,10 @@ subdir = contrib/ivorysql_ora
 top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 include $(top_srcdir)/contrib/contrib-global.mk
+endif
+
+ifeq ($(with_libxml),yes)
+SHLIB_LINK += -lxml2
 endif
 
 

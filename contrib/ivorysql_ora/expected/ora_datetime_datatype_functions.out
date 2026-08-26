@@ -26,6 +26,14 @@ SELECT to_date(
  01-15-1989 11:00:00
 (1 row)
 
+SELECT to_char(
+	to_date('2001-02-03', 'YYYY-MM-DD', repeat('x', 0)),
+	'YYYY-MM-DD HH24:MI:SS') AS empty_nls_to_date FROM DUAL;
+  empty_nls_to_date  
+---------------------
+ 2001-02-03 00:00:00
+(1 row)
+
 /*
  * to_timestamp
  */
@@ -51,6 +59,15 @@ SELECT to_timestamp(
          to_timestamp          
 -------------------------------
  09-10-2016 14:10:10.123000000
+(1 row)
+
+SELECT to_char(
+	to_timestamp('2002-03-04 05:06:07.123',
+		'YYYY-MM-DD HH24:MI:SS.FF3', repeat('x', 0)),
+	'YYYY-MM-DD HH24:MI:SS.FF3') AS empty_nls_to_timestamp FROM DUAL;
+ empty_nls_to_timestamp  
+-------------------------
+ 2002-03-04 05:06:07.123
 (1 row)
 
 	
@@ -81,6 +98,18 @@ SELECT to_timestamp_tz(
  09-10-2016 14:10:10.123000000 -07:00
 (1 row)
 
+BEGIN;
+SET LOCAL TIME ZONE 'UTC';
+SELECT to_char(
+	to_timestamp_tz('2003-04-05 06:07:08.123 +08:00',
+		'YYYY-MM-DD HH24:MI:SS.FF3 TZH:TZM', repeat('x', 0)),
+	'YYYY-MM-DD HH24:MI:SS.FF3 TZH:TZM') AS empty_nls_to_timestamp_tz FROM DUAL;
+   empty_nls_to_timestamp_tz    
+--------------------------------
+ 2003-04-04 22:07:08.123 +00:00
+(1 row)
+
+COMMIT;
 SELECT to_timestamp_tz('10-9-2016 14:10:10.123000 +8:30', 'DD-MM-YYYY HH24:MI:SS.FF TZH:TZM') FROM DUAL;
            to_timestamp_tz            
 --------------------------------------

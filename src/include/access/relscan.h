@@ -24,6 +24,7 @@
 
 
 struct ParallelTableScanDescData;
+struct TableScanInstrumentation;
 
 /*
  * Generic descriptor for table scans. This is the base-class for table scans,
@@ -64,6 +65,11 @@ typedef struct TableScanDescData
 
 	struct ParallelTableScanDescData *rs_parallel;	/* parallel scan
 													 * information */
+
+	/*
+	 * Instrumentation counters maintained by all table AMs.
+	 */
+	struct TableScanInstrumentation *rs_instrument;
 } TableScanDescData;
 typedef struct TableScanDescData *TableScanDesc;
 
@@ -122,6 +128,12 @@ typedef struct ParallelBlockTableScanWorkerData *ParallelBlockTableScanWorker;
 typedef struct IndexFetchTableData
 {
 	Relation	rel;
+
+	/*
+	 * Bitmask of ScanOptions affecting the relation. No SO_INTERNAL_FLAGS are
+	 * permitted.
+	 */
+	uint32		flags;
 } IndexFetchTableData;
 
 struct IndexScanInstrumentation;
@@ -197,7 +209,6 @@ typedef struct ParallelIndexScanDescData
 {
 	RelFileLocator ps_locator;	/* physical table relation to scan */
 	RelFileLocator ps_indexlocator; /* physical index relation to scan */
-	Size		ps_offset_ins;	/* Offset to SharedIndexScanInstrumentation */
 	Size		ps_offset_am;	/* Offset to am-specific structure */
 	char		ps_snapshot_data[FLEXIBLE_ARRAY_MEMBER];
 }			ParallelIndexScanDescData;

@@ -14,14 +14,11 @@
 #ifndef PROCARRAY_H
 #define PROCARRAY_H
 
-#include "storage/lock.h"
 #include "storage/standby.h"
 #include "utils/relcache.h"
 #include "utils/snapshot.h"
 
 
-extern Size ProcArrayShmemSize(void);
-extern void ProcArrayShmemInit(void);
 extern void ProcArrayAdd(PGPROC *proc);
 extern void ProcArrayRemove(PGPROC *proc, TransactionId latestXid);
 
@@ -50,7 +47,7 @@ extern bool ProcArrayInstallImportedXmin(TransactionId xmin,
 										 VirtualTransactionId *sourcevxid);
 extern bool ProcArrayInstallRestoredXmin(TransactionId xmin, PGPROC *proc);
 
-extern RunningTransactions GetRunningTransactionData(void);
+extern RunningTransactions GetRunningTransactionData(Oid dbid);
 
 extern bool TransactionIdIsInProgress(TransactionId xid);
 extern TransactionId GetOldestNonRemovableTransactionId(Relation rel);

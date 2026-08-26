@@ -48,6 +48,7 @@
 #include "storage/proc.h"
 #include "storage/procsignal.h"
 #include "storage/shmem.h"
+#include "storage/subsystems.h"
 #include "utils/guc.h"
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
@@ -154,33 +155,31 @@ static int	ready_file_comparator(Datum a, Datum b, void *arg);
 static void LoadArchiveLibrary(void);
 static void pgarch_call_module_shutdown_cb(int code, Datum arg);
 
-/* Report shared memory space needed by PgArchShmemInit */
-Size
-PgArchShmemSize(void)
+static void PgArchShmemRequest(void *arg);
+static void PgArchShmemInit(void *arg);
+
+const ShmemCallbacks PgArchShmemCallbacks = {
+	.request_fn = PgArchShmemRequest,
+	.init_fn = PgArchShmemInit,
+};
+
+/* Register shared memory space needed by the archiver */
+static void
+PgArchShmemRequest(void *arg)
 {
-	Size		size = 0;
-
-	size = add_size(size, sizeof(PgArchData));
-
-	return size;
+	ShmemRequestStruct(.name = "Archiver Data",
+					   .size = sizeof(PgArchData),
+					   .ptr = (void **) &PgArch,
+		);
 }
 
-/* Allocate and initialize archiver-related shared memory */
-void
-PgArchShmemInit(void)
+/* Initialize archiver-related shared memory */
+static void
+PgArchShmemInit(void *arg)
 {
-	bool		found;
-
-	PgArch = (PgArchData *)
-		ShmemInitStruct("Archiver Data", PgArchShmemSize(), &found);
-
-	if (!found)
-	{
-		/* First time through, so initialize */
-		MemSet(PgArch, 0, PgArchShmemSize());
-		PgArch->pgprocno = INVALID_PROC_NUMBER;
-		pg_atomic_init_u32(&PgArch->force_dir_scan, 0);
-	}
+	MemSet(PgArch, 0, sizeof(PgArchData));
+	PgArch->pgprocno = INVALID_PROC_NUMBER;
+	pg_atomic_init_u32(&PgArch->force_dir_scan, 0);
 }
 
 /*
@@ -230,16 +229,16 @@ PgArchiverMain(const void *startup_data, size_t startup_data_len)
 	 * except for SIGHUP, SIGTERM, SIGUSR1, SIGUSR2, and SIGQUIT.
 	 */
 	pqsignal(SIGHUP, SignalHandlerForConfigReload);
-	pqsignal(SIGINT, SIG_IGN);
+	pqsignal(SIGINT, PG_SIG_IGN);
 	pqsignal(SIGTERM, SignalHandlerForShutdownRequest);
 	/* SIGQUIT handler was already set up by InitPostmasterChild */
-	pqsignal(SIGALRM, SIG_IGN);
-	pqsignal(SIGPIPE, SIG_IGN);
+	pqsignal(SIGALRM, PG_SIG_IGN);
+	pqsignal(SIGPIPE, PG_SIG_IGN);
 	pqsignal(SIGUSR1, procsignal_sigusr1_handler);
 	pqsignal(SIGUSR2, pgarch_waken_stop);
 
 	/* Reset some signals that are accepted by postmaster but not here */
-	pqsignal(SIGCHLD, SIG_DFL);
+	pqsignal(SIGCHLD, PG_SIG_DFL);
 
 	/* Unblock signals (they were blocked when the postmaster forked us) */
 	sigprocmask(SIG_SETMASK, &UnBlockSig, NULL);

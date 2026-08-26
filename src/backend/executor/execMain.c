@@ -254,6 +254,15 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	estate->es_jit_flags = queryDesc->plannedstmt->jitFlags;
 
 	/*
+	 * Set up query-level instrumentation if extensions have requested it via
+	 * query_instr_options. Ensure an extension has not allocated query_instr
+	 * itself.
+	 */
+	Assert(queryDesc->query_instr == NULL);
+	if (queryDesc->query_instr_options)
+		queryDesc->query_instr = InstrAlloc(queryDesc->query_instr_options);
+
+	/*
 	 * Set up an AFTER-trigger statement context, unless told not to, or
 	 * unless it's EXPLAIN-only mode (when ExecutorFinish won't be called).
 	 */
@@ -335,8 +344,8 @@ standard_ExecutorRun(QueryDesc *queryDesc,
 	oldcontext = MemoryContextSwitchTo(estate->es_query_cxt);
 
 	/* Allow instrumentation of Executor overall runtime */
-	if (queryDesc->totaltime)
-		InstrStartNode(queryDesc->totaltime);
+	if (queryDesc->query_instr)
+		InstrStart(queryDesc->query_instr);
 
 	/*
 	 * extract information from the query descriptor and the query feature.
@@ -387,8 +396,8 @@ standard_ExecutorRun(QueryDesc *queryDesc,
 	if (sendTuples)
 		dest->rShutdown(dest);
 
-	if (queryDesc->totaltime)
-		InstrStopNode(queryDesc->totaltime, estate->es_processed);
+	if (queryDesc->query_instr)
+		InstrStop(queryDesc->query_instr);
 
 	MemoryContextSwitchTo(oldcontext);
 }
@@ -437,8 +446,8 @@ standard_ExecutorFinish(QueryDesc *queryDesc)
 	oldcontext = MemoryContextSwitchTo(estate->es_query_cxt);
 
 	/* Allow instrumentation of Executor overall runtime */
-	if (queryDesc->totaltime)
-		InstrStartNode(queryDesc->totaltime);
+	if (queryDesc->query_instr)
+		InstrStart(queryDesc->query_instr);
 
 	/* Run ModifyTable nodes to completion */
 	ExecPostprocessPlan(estate);
@@ -447,8 +456,8 @@ standard_ExecutorFinish(QueryDesc *queryDesc)
 	if (!(estate->es_top_eflags & EXEC_FLAG_SKIP_TRIGGERS))
 		AfterTriggerEndQuery(estate);
 
-	if (queryDesc->totaltime)
-		InstrStopNode(queryDesc->totaltime, 0);
+	if (queryDesc->query_instr)
+		InstrStop(queryDesc->query_instr);
 
 	MemoryContextSwitchTo(oldcontext);
 
@@ -527,7 +536,7 @@ standard_ExecutorEnd(QueryDesc *queryDesc)
 	queryDesc->tupDesc = NULL;
 	queryDesc->estate = NULL;
 	queryDesc->planstate = NULL;
-	queryDesc->totaltime = NULL;
+	queryDesc->query_instr = NULL;
 }
 
 /* ----------------------------------------------------------------
@@ -1300,7 +1309,7 @@ InitResultRelInfo(ResultRelInfo *resultRelInfo,
 		resultRelInfo->ri_TrigWhenExprs = (ExprState **)
 			palloc0_array(ExprState *, n);
 		if (instrument_options)
-			resultRelInfo->ri_TrigInstrument = InstrAlloc(n, instrument_options, false);
+			resultRelInfo->ri_TrigInstrument = InstrAllocTrigger(n, instrument_options);
 	}
 	else
 	{
@@ -1329,6 +1338,7 @@ InitResultRelInfo(ResultRelInfo *resultRelInfo,
 	resultRelInfo->ri_projectReturning = NULL;
 	resultRelInfo->ri_onConflictArbiterIndexes = NIL;
 	resultRelInfo->ri_onConflict = NULL;
+	resultRelInfo->ri_forPortionOf = NULL;
 	resultRelInfo->ri_ReturningSlot = NULL;
 	resultRelInfo->ri_TrigOldSlot = NULL;
 	resultRelInfo->ri_TrigNewSlot = NULL;

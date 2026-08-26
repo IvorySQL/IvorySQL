@@ -24,8 +24,8 @@
 #include "catalog/namespace.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_opclass.h"
-#include "commands/cluster.h"
 #include "commands/matview.h"
+#include "commands/repack.h"
 #include "commands/tablecmds.h"
 #include "commands/tablespace.h"
 #include "executor/executor.h"
@@ -49,7 +49,7 @@ typedef struct
 	/* These fields are filled by transientrel_startup: */
 	Relation	transientrel;	/* relation to write to */
 	CommandId	output_cid;		/* cmin to insert in output tuples */
-	int			ti_options;		/* table_tuple_insert performance options */
+	uint32		ti_options;		/* table_tuple_insert performance options */
 	BulkInsertState bistate;	/* bulk insert state */
 } DR_transientrel;
 
@@ -893,6 +893,7 @@ static void
 refresh_by_heap_swap(Oid matviewOid, Oid OIDNewHeap, char relpersistence)
 {
 	finish_heap_swap(matviewOid, OIDNewHeap, false, false, true, true,
+					 true,		/* reindex */
 					 RecentXmin, ReadNextMultiXactId(), relpersistence);
 }
 

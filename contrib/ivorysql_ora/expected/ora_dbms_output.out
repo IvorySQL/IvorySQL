@@ -170,7 +170,6 @@ BEGIN
     dbms_output.enable();
     dbms_output.put_line('This will be cleared');
     dbms_output.disable();
-    dbms_output.enable();
     dbms_output.get_line(line, status);
     RAISE NOTICE 'Test 3.2 - Buffer after disable: [%], Status: %', line, status;
 END;

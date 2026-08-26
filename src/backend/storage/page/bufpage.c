@@ -107,7 +107,15 @@ PageIsVerified(PageData *page, BlockNumber blkno, int flags, bool *checksum_fail
 	 */
 	if (!PageIsNew(page))
 	{
-		if (DataChecksumsEnabled())
+		/*
+		 * There shouldn't be any check for interrupt calls happening in this
+		 * codepath, but just to be on the safe side we hold interrupts since
+		 * if they did happen the data checksum state could change during
+		 * verifying checksums, which could lead to incorrect verification
+		 * results.
+		 */
+		HOLD_INTERRUPTS();
+		if (DataChecksumsNeedVerify())
 		{
 			checksum = pg_checksum_page(page, blkno);
 
@@ -118,6 +126,7 @@ PageIsVerified(PageData *page, BlockNumber blkno, int flags, bool *checksum_fail
 					*checksum_failure_p = true;
 			}
 		}
+		RESUME_INTERRUPTS();
 
 		/*
 		 * The following checks don't prove the header is correct, only that
@@ -151,8 +160,9 @@ PageIsVerified(PageData *page, BlockNumber blkno, int flags, bool *checksum_fail
 		if ((flags & (PIV_LOG_WARNING | PIV_LOG_LOG)) != 0)
 			ereport(flags & PIV_LOG_WARNING ? WARNING : LOG,
 					(errcode(ERRCODE_DATA_CORRUPTED),
-					 errmsg("page verification failed, calculated checksum %u but expected %u",
-							checksum, p->pd_checksum)));
+					 errmsg("page verification failed, calculated checksum %u but expected %u%s",
+							checksum, p->pd_checksum,
+							(flags & PIV_ZERO_BUFFERS_ON_ERROR ? ", buffer will be zeroed" : ""))));
 
 		if (header_sane && (flags & PIV_IGNORE_CHECKSUM_FAILURE))
 			return true;
@@ -1492,57 +1502,29 @@ PageIndexTupleOverwrite(Page page, OffsetNumber offnum,
 
 
 /*
- * Set checksum for a page in shared buffers.
+ * Set checksum on a page.
  *
- * If checksums are disabled, or if the page is not initialized, just return
- * the input.  Otherwise, we must make a copy of the page before calculating
- * the checksum, to prevent concurrent modifications (e.g. setting hint bits)
- * from making the final checksum invalid.  It doesn't matter if we include or
- * exclude hints during the copy, as long as we write a valid page and
- * associated checksum.
+ * If the page is in shared buffers, it needs to be locked in at least
+ * share-exclusive mode.
  *
- * Returns a pointer to the block-sized data that needs to be written. Uses
- * statically-allocated memory, so the caller must immediately write the
- * returned page and not refer to it again.
- */
-char *
-PageSetChecksumCopy(Page page, BlockNumber blkno)
-{
-	static char *pageCopy = NULL;
-
-	/* If we don't need a checksum, just return the passed-in data */
-	if (PageIsNew(page) || !DataChecksumsEnabled())
-		return page;
-
-	/*
-	 * We allocate the copy space once and use it over on each subsequent
-	 * call.  The point of palloc'ing here, rather than having a static char
-	 * array, is first to ensure adequate alignment for the checksumming code
-	 * and second to avoid wasting space in processes that never call this.
-	 */
-	if (pageCopy == NULL)
-		pageCopy = MemoryContextAllocAligned(TopMemoryContext,
-											 BLCKSZ,
-											 PG_IO_ALIGN_SIZE,
-											 0);
-
-	memcpy(pageCopy, page, BLCKSZ);
-	((PageHeader) pageCopy)->pd_checksum = pg_checksum_page(pageCopy, blkno);
-	return pageCopy;
-}
-
-/*
- * Set checksum for a page in private memory.
+ * If checksums are disabled, or if the page is not initialized, just
+ * return. Otherwise compute and set the checksum.
  *
- * This must only be used when we know that no other process can be modifying
- * the page buffer.
+ * In the past this needed to be done on a copy of the page, due to the
+ * possibility of e.g., hint bits being set concurrently. However, this is not
+ * necessary anymore as hint bits won't be set while IO is going on.
  */
 void
-PageSetChecksumInplace(Page page, BlockNumber blkno)
+PageSetChecksum(Page page, BlockNumber blkno)
 {
+	HOLD_INTERRUPTS();
 	/* If we don't need a checksum, just return */
-	if (PageIsNew(page) || !DataChecksumsEnabled())
+	if (PageIsNew(page) || !DataChecksumsNeedWrite())
+	{
+		RESUME_INTERRUPTS();
 		return;
+	}
 
 	((PageHeader) page)->pd_checksum = pg_checksum_page(page, blkno);
+	RESUME_INTERRUPTS();
 }

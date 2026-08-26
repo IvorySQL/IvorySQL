@@ -115,6 +115,7 @@
 #include "nodes/nodeFuncs.h"
 #include "storage/lmgr.h"
 #include "utils/injection_point.h"
+#include "utils/lsyscache.h"
 #include "utils/multirangetypes.h"
 #include "utils/rangetypes.h"
 #include "utils/snapmgr.h"
@@ -309,7 +310,7 @@ ExecCloseIndices(ResultRelInfo *resultRelInfo)
 List *
 ExecInsertIndexTuples(ResultRelInfo *resultRelInfo,
 					  EState *estate,
-					  bits32 flags,
+					  uint32 flags,
 					  TupleTableSlot *slot,
 					  List *arbiterIndexes,
 					  bool *specConflict)
@@ -753,11 +754,18 @@ check_exclusion_or_unique_constraint(Relation heap, Relation index,
 		{
 			TupleDesc	tupdesc = RelationGetDescr(heap);
 			Form_pg_attribute att = TupleDescAttr(tupdesc, attno - 1);
-			TypeCacheEntry *typcache = lookup_type_cache(att->atttypid, 0);
+			TypeCacheEntry *typcache = lookup_type_cache(att->atttypid,
+														 TYPECACHE_DOMAIN_BASE_INFO);
+			char		typtype;
+
+			if (OidIsValid(typcache->domainBaseType))
+				typtype = get_typtype(typcache->domainBaseType);
+			else
+				typtype = typcache->typtype;
 
 			ExecWithoutOverlapsNotEmpty(heap, att->attname,
 										values[indnkeyatts - 1],
-										typcache->typtype, att->atttypid);
+										typtype, att->atttypid);
 		}
 	}
 
@@ -815,7 +823,9 @@ check_exclusion_or_unique_constraint(Relation heap, Relation index,
 retry:
 	conflict = false;
 	found_self = false;
-	index_scan = index_beginscan(heap, index, &DirtySnapshot, NULL, indnkeyatts, 0);
+	index_scan = index_beginscan(heap, index,
+								 &DirtySnapshot, NULL, indnkeyatts, 0,
+								 SO_NONE);
 	index_rescan(index_scan, scankeys, indnkeyatts, NULL, 0);
 
 	while (index_getnext_slot(index_scan, ForwardScanDirection, existing_slot))

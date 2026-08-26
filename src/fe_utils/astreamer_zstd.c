@@ -82,7 +82,7 @@ astreamer_zstd_compressor_new(astreamer *next, pg_compress_specification *compre
 
 	streamer->base.bbs_next = next;
 	initStringInfo(&streamer->base.bbs_buffer);
-	enlargeStringInfo(&streamer->base.bbs_buffer, ZSTD_DStreamOutSize());
+	enlargeStringInfo(&streamer->base.bbs_buffer, ZSTD_CStreamOutSize());
 
 	streamer->cctx = ZSTD_createCCtx();
 	if (!streamer->cctx)
@@ -347,7 +347,7 @@ astreamer_zstd_decompressor_finalize(astreamer *streamer)
 	if (mystreamer->zstd_outBuf.pos > 0)
 		astreamer_content(mystreamer->base.bbs_next, NULL,
 						  mystreamer->base.bbs_buffer.data,
-						  mystreamer->base.bbs_buffer.maxlen,
+						  mystreamer->zstd_outBuf.pos,
 						  ASTREAMER_UNKNOWN);
 
 	astreamer_finalize(mystreamer->base.bbs_next);

@@ -49,11 +49,12 @@
 
 
 /* Entry points for IoMethodOps. */
-static size_t pgaio_uring_shmem_size(void);
-static void pgaio_uring_shmem_init(bool first_time);
+static void pgaio_uring_shmem_request(void *arg);
+static void pgaio_uring_shmem_init(void *arg);
 static void pgaio_uring_init_backend(void);
 static int	pgaio_uring_submit(uint16 num_staged_ios, PgAioHandle **staged_ios);
 static void pgaio_uring_wait_one(PgAioHandle *ioh, uint64 ref_generation);
+static void pgaio_uring_check_one(PgAioHandle *ioh, uint64 ref_generation);
 
 /* helper functions */
 static void pgaio_uring_sq_from_io(PgAioHandle *ioh, struct io_uring_sqe *sqe);
@@ -69,12 +70,13 @@ const IoMethodOps pgaio_uring_ops = {
 	 */
 	.wait_on_fd_before_close = true,
 
-	.shmem_size = pgaio_uring_shmem_size,
-	.shmem_init = pgaio_uring_shmem_init,
+	.shmem_callbacks.request_fn = pgaio_uring_shmem_request,
+	.shmem_callbacks.init_fn = pgaio_uring_shmem_init,
 	.init_backend = pgaio_uring_init_backend,
 
 	.submit = pgaio_uring_submit,
 	.wait_one = pgaio_uring_wait_one,
+	.check_one = pgaio_uring_check_one,
 };
 
 /*
@@ -265,12 +267,6 @@ pgaio_uring_shmem_size(void)
 {
 	size_t		sz;
 
-	/*
-	 * Kernel and liburing support for various features influences how much
-	 * shmem we need, perform the necessary checks.
-	 */
-	pgaio_uring_check_capabilities();
-
 	sz = pgaio_uring_context_shmem_size();
 	sz = add_size(sz, pgaio_uring_ring_shmem_size());
 
@@ -278,10 +274,24 @@ pgaio_uring_shmem_size(void)
 }
 
 static void
-pgaio_uring_shmem_init(bool first_time)
+pgaio_uring_shmem_request(void *arg)
+{
+	/*
+	 * Kernel and liburing support for various features influences how much
+	 * shmem we need, perform the necessary checks.
+	 */
+	pgaio_uring_check_capabilities();
+
+	ShmemRequestStruct(.name = "AioUringContext",
+					   .size = pgaio_uring_shmem_size(),
+					   .ptr = (void **) &pgaio_uring_contexts,
+		);
+}
+
+static void
+pgaio_uring_shmem_init(void *arg)
 {
 	int			TotalProcs = pgaio_uring_procs();
-	bool		found;
 	char	   *shmem;
 	size_t		ring_mem_remain = 0;
 	char	   *ring_mem_next = 0;
@@ -289,13 +299,11 @@ pgaio_uring_shmem_init(bool first_time)
 	/*
 	 * We allocate memory for all PgAioUringContext instances and, if
 	 * supported, the memory required for each of the io_uring instances, in
-	 * one ShmemInitStruct().
+	 * one combined allocation.
+	 *
+	 * pgaio_uring_contexts is already set to the base of the allocation.
 	 */
-	shmem = ShmemInitStruct("AioUringContext", pgaio_uring_shmem_size(), &found);
-	if (found)
-		return;
-
-	pgaio_uring_contexts = (PgAioUringContext *) shmem;
+	shmem = (char *) pgaio_uring_contexts;
 	shmem += pgaio_uring_context_shmem_size();
 
 	/* if supported, handle memory alignment / sizing for io_uring memory */
@@ -407,7 +415,6 @@ static int
 pgaio_uring_submit(uint16 num_staged_ios, PgAioHandle **staged_ios)
 {
 	struct io_uring *uring_instance = &pgaio_my_uring_context->io_uring_ring;
-	int			in_flight_before = dclist_count(&pgaio_my_backend->in_flight_ios);
 
 	Assert(num_staged_ios <= PGAIO_SUBMIT_BATCH_SIZE);
 
@@ -423,27 +430,6 @@ pgaio_uring_submit(uint16 num_staged_ios, PgAioHandle **staged_ios)
 
 		pgaio_io_prepare_submit(ioh);
 		pgaio_uring_sq_from_io(ioh, sqe);
-
-		/*
-		 * io_uring executes IO in process context if possible. That's
-		 * generally good, as it reduces context switching. When performing a
-		 * lot of buffered IO that means that copying between page cache and
-		 * userspace memory happens in the foreground, as it can't be
-		 * offloaded to DMA hardware as is possible when using direct IO. When
-		 * executing a lot of buffered IO this causes io_uring to be slower
-		 * than worker mode, as worker mode parallelizes the copying. io_uring
-		 * can be told to offload work to worker threads instead.
-		 *
-		 * If an IO is buffered IO and we already have IOs in flight or
-		 * multiple IOs are being submitted, we thus tell io_uring to execute
-		 * the IO in the background. We don't do so for the first few IOs
-		 * being submitted as executing in this process' context has lower
-		 * latency.
-		 */
-		if (in_flight_before > 4 && (ioh->flags & PGAIO_HF_BUFFERED))
-			io_uring_sqe_set_flags(sqe, IOSQE_ASYNC);
-
-		in_flight_before++;
 	}
 
 	while (true)
@@ -659,9 +645,105 @@ pgaio_uring_wait_one(PgAioHandle *ioh, uint64 ref_generation)
 }
 
 static void
+pgaio_uring_check_one(PgAioHandle *ioh, uint64 ref_generation)
+{
+	ProcNumber	owner_procno = ioh->owner_procno;
+	PgAioUringContext *owner_context = &pgaio_uring_contexts[owner_procno];
+
+	/*
+	 * This check is not reliable when not holding the completion lock, but
+	 * it's a useful cheap pre-check to see if it's worth trying to get the
+	 * completion lock.
+	 */
+	if (!io_uring_cq_ready(&owner_context->io_uring_ring))
+		return;
+
+	/*
+	 * If the completion lock is currently held, the holder will likely
+	 * process any pending completions, give up.
+	 */
+	if (!LWLockConditionalAcquire(&owner_context->completion_lock, LW_EXCLUSIVE))
+		return;
+
+	pgaio_debug_io(DEBUG3, ioh,
+				   "check_one io_gen: %" PRIu64 ", ref_gen: %" PRIu64,
+				   ioh->generation,
+				   ref_generation);
+
+	/*
+	 * Recheck if there are any completions, another backend could have
+	 * processed them since we checked above, or our unlocked pre-check could
+	 * have been reading outdated values.
+	 *
+	 * It is possible that the IO handle has been reused since the start of
+	 * the call, but now that we have the lock, we can just as well drain all
+	 * completions.
+	 */
+	if (io_uring_cq_ready(&owner_context->io_uring_ring))
+		pgaio_uring_drain_locked(owner_context);
+
+	LWLockRelease(&owner_context->completion_lock);
+}
+
+/*
+ * io_uring executes IO in process context if possible. That's generally good,
+ * as it reduces context switching. When performing a lot of buffered IO that
+ * means that copying between page cache and userspace memory happens in the
+ * foreground, as it can't be offloaded to DMA hardware as is possible when
+ * using direct IO. When executing a lot of buffered IO this causes io_uring
+ * to be slower than worker mode, as worker mode parallelizes the
+ * copying. io_uring can be told to offload work to worker threads instead.
+ *
+ * If the IOs are small, we only benefit from forcing things into the
+ * background if there is a lot of IO, as otherwise the overhead from context
+ * switching is higher than the gain.
+ *
+ * If IOs are large, there is benefit from asynchronous processing at lower
+ * queue depths, as IO latency is less of a crucial factor and parallelizing
+ * memory copies is more important.  In addition, it is important to trigger
+ * asynchronous processing even at low queue depth, as with foreground
+ * processing we might never actually reach deep enough IO depths to trigger
+ * asynchronous processing, which in turn would deprive readahead control
+ * logic of information about whether a deeper look-ahead distance would be
+ * advantageous.
+ *
+ * We have done some basic benchmarking to validate the thresholds used, but
+ * it's quite plausible that there are better values.  See
+ * https://postgr.es/m/3gkuvs3lz3u3skuaxfkxnsysfqslf2srigl6546vhesekve6v2%40va3r5esummvg
+ * for some details of this benchmarking.
+ */
+static bool
+pgaio_uring_should_use_async(PgAioHandle *ioh, size_t io_size)
+{
+	/*
+	 * With DIO there's no benefit from forcing asynchronous processing, as
+	 * io_uring will never execute direct IO synchronously during submission.
+	 */
+	if (!(ioh->flags & PGAIO_HF_BUFFERED))
+		return false;
+
+	/*
+	 * Once the IO queue depth is not that shallow anymore, the overhead of
+	 * dispatching to the background is a less significant factor.
+	 */
+	if (dclist_count(&pgaio_my_backend->in_flight_ios) > 4)
+		return true;
+
+	/*
+	 * If the IO is larger, the gains from parallelizing the memory copy are
+	 * larger and typically the impact of the latency is smaller.
+	 */
+	if (io_size >= (BLCKSZ * 4))
+		return true;
+
+	return false;
+}
+
+static void
 pgaio_uring_sq_from_io(PgAioHandle *ioh, struct io_uring_sqe *sqe)
 {
 	struct iovec *iov;
+	size_t		io_size = 0;
 
 	switch ((PgAioOp) ioh->op)
 	{
@@ -674,6 +756,8 @@ pgaio_uring_sq_from_io(PgAioHandle *ioh, struct io_uring_sqe *sqe)
 								   iov->iov_base,
 								   iov->iov_len,
 								   ioh->op_data.read.offset);
+
+				io_size = iov->iov_len;
 			}
 			else
 			{
@@ -683,7 +767,13 @@ pgaio_uring_sq_from_io(PgAioHandle *ioh, struct io_uring_sqe *sqe)
 									ioh->op_data.read.iov_length,
 									ioh->op_data.read.offset);
 
+				for (int i = 0; i < ioh->op_data.read.iov_length; i++, iov++)
+					io_size += iov->iov_len;
 			}
+
+			if (pgaio_uring_should_use_async(ioh, io_size))
+				io_uring_sqe_set_flags(sqe, IOSQE_ASYNC);
+
 			break;
 
 		case PGAIO_OP_WRITEV:
@@ -704,6 +794,12 @@ pgaio_uring_sq_from_io(PgAioHandle *ioh, struct io_uring_sqe *sqe)
 									 ioh->op_data.write.iov_length,
 									 ioh->op_data.write.offset);
 			}
+
+			/*
+			 * For now don't trigger use of IOSQE_ASYNC for writes, it's not
+			 * clear there is a performance benefit in doing so.
+			 */
+
 			break;
 
 		case PGAIO_OP_INVALID:

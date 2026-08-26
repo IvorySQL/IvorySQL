@@ -30,7 +30,9 @@
 #include "postgres.h"
 #include "fmgr.h"
 #include "miscadmin.h"
+#include "access/detoast.h"
 #include "utils/formatting.h"
+#include "utils/lsyscache.h"
 #include "utils/numeric.h"
 #include "varatt.h"
 #include "lib/stringinfo.h"
@@ -38,6 +40,69 @@
 
 PG_FUNCTION_INFO_V1(uid);
 PG_FUNCTION_INFO_V1(stragg_transfn);
+PG_FUNCTION_INFO_V1(ora_vsize);
+
+
+/*
+ * ora_vsize
+ *
+ * Oracle-compatible VSIZE function.
+ * Returns the number of bytes in the internal representation of the
+ * argument.  NULL input yields NULL (the function is declared STRICT).
+ *
+ * For varlena types the logical (decompressed) data size is returned,
+ * excluding the varlena header, so that VSIZE('abc') is 3, matching
+ * Oracle's behavior for character data.  For fixed-width types the
+ * type's storage width is returned.
+ */
+Datum
+ora_vsize(PG_FUNCTION_ARGS)
+{
+	Datum		value = PG_GETARG_DATUM(0);
+	int32		result;
+	int			typlen;
+
+	/* On first call, get the input type's typlen, and save at *fn_extra */
+	if (fcinfo->flinfo->fn_extra == NULL)
+	{
+		/* Lookup the datatype of the supplied argument */
+		Oid			argtypeid = get_fn_expr_argtype(fcinfo->flinfo, 0);
+
+		typlen = get_typlen(argtypeid);
+		if (typlen == 0)		/* should not happen */
+			elog(ERROR, "cache lookup failed for type %u", argtypeid);
+
+		fcinfo->flinfo->fn_extra = MemoryContextAlloc(fcinfo->flinfo->fn_mcxt,
+													  sizeof(int));
+		*((int *) fcinfo->flinfo->fn_extra) = typlen;
+	}
+	else
+		typlen = *((int *) fcinfo->flinfo->fn_extra);
+
+	if (typlen == -1)
+	{
+		/*
+		 * varlena type.  toast_raw_datum_size() normalizes 1-byte/4-byte
+		 * headers, compression and external (toasted) storage to the
+		 * logical (decompressed) size using the 4-byte header convention,
+		 * so subtracting VARHDRSZ yields the payload byte count in every
+		 * case -- the same pattern octet_length() uses.
+		 */
+		result = toast_raw_datum_size(value) - VARHDRSZ;
+	}
+	else if (typlen == -2)
+	{
+		/* cstring */
+		result = strlen(DatumGetCString(value)) + 1;
+	}
+	else
+	{
+		/* ordinary fixed-width type */
+		result = typlen;
+	}
+
+	PG_RETURN_INT32(result);
+}
 
 
 Datum

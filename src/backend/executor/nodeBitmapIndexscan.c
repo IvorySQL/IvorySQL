@@ -203,7 +203,7 @@ ExecEndBitmapIndexScan(BitmapIndexScanState *node)
 		 * shutdown on the workers.  On rescan it will spin up new workers
 		 * which will have a new BitmapIndexScanState and zeroed stats.
 		 */
-		winstrument->nsearches += node->biss_Instrument.nsearches;
+		winstrument->nsearches += node->biss_Instrument->nsearches;
 	}
 
 	/*
@@ -274,6 +274,10 @@ ExecInitBitmapIndexScan(BitmapIndexScan *node, EState *estate, int eflags)
 	if (eflags & EXEC_FLAG_EXPLAIN_ONLY)
 		return indexstate;
 
+	/* Set up instrumentation of bitmap index scans if requested */
+	if (estate->es_instrument)
+		indexstate->biss_Instrument = palloc0_object(IndexScanInstrumentation);
+
 	/* Open the index relation. */
 	lockmode = exec_rt_fetch(node->scan.scanrelid, estate)->rellockmode;
 	indexstate->biss_RelationDesc = index_open(node->indexid, lockmode);
@@ -325,7 +329,7 @@ ExecInitBitmapIndexScan(BitmapIndexScan *node, EState *estate, int eflags)
 	indexstate->biss_ScanDesc =
 		index_beginscan_bitmap(indexstate->biss_RelationDesc,
 							   estate->es_snapshot,
-							   &indexstate->biss_Instrument,
+							   indexstate->biss_Instrument,
 							   indexstate->biss_NumScanKeys);
 
 	/*
@@ -390,7 +394,9 @@ ExecBitmapIndexScanInitializeDSM(BitmapIndexScanState *node,
 	node->biss_SharedInfo =
 		(SharedIndexScanInstrumentation *) shm_toc_allocate(pcxt->toc,
 															size);
-	shm_toc_insert(pcxt->toc, node->ss.ps.plan->plan_node_id,
+	shm_toc_insert(pcxt->toc,
+				   node->ss.ps.plan->plan_node_id +
+				   PARALLEL_KEY_SCAN_INSTRUMENT_OFFSET,
 				   node->biss_SharedInfo);
 
 	/* Each per-worker area must start out as zeroes */
@@ -413,7 +419,10 @@ ExecBitmapIndexScanInitializeWorker(BitmapIndexScanState *node,
 		return;
 
 	node->biss_SharedInfo = (SharedIndexScanInstrumentation *)
-		shm_toc_lookup(pwcxt->toc, node->ss.ps.plan->plan_node_id, false);
+		shm_toc_lookup(pwcxt->toc,
+					   node->ss.ps.plan->plan_node_id +
+					   PARALLEL_KEY_SCAN_INSTRUMENT_OFFSET,
+					   false);
 }
 
 /* ----------------------------------------------------------------

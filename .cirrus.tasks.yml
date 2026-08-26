@@ -782,6 +782,7 @@ task:
     CIRRUS_WINDOWS_ERROR_MODE: 0x8001
 
     MESON_FEATURES:
+      -Dcpp_args=/std:c++20
       -Dauto_features=disabled
       -Dldap=enabled
       -Dssl=openssl
@@ -1004,6 +1005,7 @@ task:
   ###
   # Verify headerscheck / cpluspluscheck succeed
   #
+  # - Run both in same script to increase parallelism, use -k to get result of both
   # - Use -fmax-errors, as particularly cpluspluscheck can be very verbose
   ###
   always:
@@ -1014,9 +1016,7 @@ task:
         --quiet \
         CC="ccache gcc" CXX="ccache g++" CLANG="ccache clang"
       make -s -j${BUILD_JOBS} clean
-      time make -s headerscheck EXTRAFLAGS='-fmax-errors=10'
-    headers_cpluspluscheck_script: |
-      time make -s cpluspluscheck EXTRAFLAGS='-fmax-errors=10'
+      time make -s -j${BUILD_JOBS} -k ${CHECKFLAGS} headerscheck cpluspluscheck EXTRAFLAGS='-fmax-errors=10'
 
   always:
     upload_caches: ccache

@@ -57,12 +57,20 @@ CREATE TABLE "S 1"."T 4" (
 	c3 varchar2(1024),
 	CONSTRAINT t4_pkey PRIMARY KEY (c1)
 );
+CREATE TABLE "S 1"."T 5" (
+	c1 int4range NOT NULL,
+	c2 number(38,0) NOT NULL,
+	c3 varchar2(1024),
+	c4 daterange NOT NULL,
+	CONSTRAINT t5_pkey PRIMARY KEY (c1, c4 WITHOUT OVERLAPS)
+);
 
 -- Disable autovacuum for these tables to avoid unexpected effects of that
 ALTER TABLE "S 1"."T 1" SET (autovacuum_enabled = 'false');
 ALTER TABLE "S 1"."T 2" SET (autovacuum_enabled = 'false');
 ALTER TABLE "S 1"."T 3" SET (autovacuum_enabled = 'false');
 ALTER TABLE "S 1"."T 4" SET (autovacuum_enabled = 'false');
+ALTER TABLE "S 1"."T 5" SET (autovacuum_enabled = 'false');
 
 INSERT INTO "S 1"."T 1"
 	SELECT id,
@@ -90,11 +98,18 @@ INSERT INTO "S 1"."T 4"
 	       'AAA' || to_char(id, 'FM000')
 	FROM generate_series(1, 100) id;
 DELETE FROM "S 1"."T 4" WHERE c1 % 3 != 0;	-- delete for outer join tests
+INSERT INTO "S 1"."T 5"
+	SELECT int4range(id, id + 1),
+	       id + 1,
+	       'AAA' || to_char(id, 'FM000'),
+        '[2000-01-01,2020-01-01)'
+	FROM generate_series(1, 100) id;
 
 ANALYZE "S 1"."T 1";
 ANALYZE "S 1"."T 2";
 ANALYZE "S 1"."T 3";
 ANALYZE "S 1"."T 4";
+ANALYZE "S 1"."T 5";
 
 -- ===================================================================
 -- create foreign tables
@@ -148,6 +163,14 @@ CREATE FOREIGN TABLE ft7 (
 	c2 number(38,0) NOT NULL,
 	c3 varchar2(1024)
 ) SERVER loopback3 OPTIONS (schema_name 'S 1', table_name 'T 4');
+
+CREATE FOREIGN TABLE ft8 (
+	c1 int4range NOT NULL,
+	c2 number(38,0) NOT NULL,
+	c3 varchar2(1024),
+	c4 daterange NOT NULL
+) SERVER loopback OPTIONS (schema_name 'S 1', table_name 'T 5');
+
 
 -- ===================================================================
 -- tests interval
@@ -1621,6 +1644,17 @@ UPDATE ft2 SET c3 = 'bar' WHERE c1 = 1200 RETURNING tableoid::regclass;
 EXPLAIN (verbose, costs off)
 DELETE FROM ft2 WHERE c1 = 1200 RETURNING tableoid::regclass;                       -- can be pushed down
 DELETE FROM ft2 WHERE c1 = 1200 RETURNING tableoid::regclass;
+
+-- Test UPDATE FOR PORTION OF
+UPDATE ft8 FOR PORTION OF c4 FROM '2005-01-01' TO '2006-01-01'
+SET c2 = c2 + 1
+WHERE c1 = '[1,2)';
+SELECT * FROM ft8 WHERE c1 = '[1,2)' ORDER BY c1, c4;
+
+-- Test DELETE FOR PORTION OF
+DELETE FROM ft8 FOR PORTION OF c4 FROM '2005-01-01' TO '2006-01-01'
+WHERE c1 = '[2,3)';
+SELECT * FROM ft8 WHERE c1 = '[2,3)' ORDER BY c1, c4;
 
 -- Test UPDATE/DELETE with RETURNING on a three-table join
 INSERT INTO ft2 (c1,c2,c3)
@@ -4405,6 +4439,87 @@ DROP FOREIGN TABLE remote_application_name;
 DROP VIEW my_application_name;
 
 -- ===================================================================
+-- test read-only and/or deferrable transactions
+-- ===================================================================
+CREATE TABLE loct (f1 number(38,0), f2 varchar2(1024));
+CREATE FUNCTION locf() RETURNS SETOF loct LANGUAGE SQL AS
+  'UPDATE public.loct SET f2 = f2 || f2 RETURNING *';
+/
+CREATE VIEW locv AS SELECT t.* FROM locf() t;
+CREATE FOREIGN TABLE remt (f1 number(38,0), f2 varchar2(1024))
+  SERVER loopback OPTIONS (table_name 'locv');
+CREATE FOREIGN TABLE remt2 (f1 number(38,0), f2 varchar2(1024))
+  SERVER loopback2 OPTIONS (table_name 'locv');
+INSERT INTO loct VALUES (1, 'foo'), (2, 'bar');
+
+START TRANSACTION READ ONLY;
+SAVEPOINT s;
+SELECT * FROM remt;  -- should fail
+ROLLBACK TO s;
+RELEASE SAVEPOINT s;
+SELECT * FROM remt;  -- should fail
+ROLLBACK;
+
+START TRANSACTION;
+SAVEPOINT s;
+SET transaction_read_only = on;
+SELECT * FROM remt;  -- should fail
+ROLLBACK TO s;
+RELEASE SAVEPOINT s;
+SET transaction_read_only = on;
+SELECT * FROM remt;  -- should fail
+ROLLBACK;
+
+START TRANSACTION;
+SAVEPOINT s;
+SELECT * FROM remt;  -- should work
+SET transaction_read_only = on;
+SELECT * FROM remt;  -- should fail
+ROLLBACK TO s;
+RELEASE SAVEPOINT s;
+SELECT * FROM remt;  -- should work
+SET transaction_read_only = on;
+SELECT * FROM remt;  -- should fail
+ROLLBACK;
+
+-- Exercise abort code paths in pgfdw_xact_callback/pgfdw_subxact_callback
+-- in situations where multiple connections are involved
+START TRANSACTION;
+SAVEPOINT s;
+SELECT * FROM remt;  -- should work
+SET transaction_read_only = on;
+SELECT * FROM remt2;  -- should fail
+ROLLBACK TO s;
+RELEASE SAVEPOINT s;
+SELECT * FROM remt;  -- should work
+SET transaction_read_only = on;
+SELECT * FROM remt2;  -- should fail
+ROLLBACK;
+
+DROP FOREIGN TABLE remt;
+CREATE FOREIGN TABLE remt (f1 number(38,0), f2 varchar2(1024))
+  SERVER loopback OPTIONS (table_name 'loct');
+
+START TRANSACTION ISOLATION LEVEL SERIALIZABLE READ ONLY;
+SELECT * FROM remt;
+COMMIT;
+
+START TRANSACTION ISOLATION LEVEL SERIALIZABLE DEFERRABLE;
+SELECT * FROM remt;
+COMMIT;
+
+START TRANSACTION ISOLATION LEVEL SERIALIZABLE READ ONLY DEFERRABLE;
+SELECT * FROM remt;
+COMMIT;
+
+-- Clean up
+DROP FOREIGN TABLE remt;
+DROP FOREIGN TABLE remt2;
+DROP VIEW locv;
+DROP FUNCTION locf();
+DROP TABLE loct;
+
+-- ===================================================================
 -- test parallel commit and parallel abort
 -- ===================================================================
 ALTER SERVER loopback OPTIONS (ADD parallel_commit 'true');
@@ -4510,6 +4625,70 @@ ANALYZE analyze_ftable;
 -- cleanup
 DROP FOREIGN TABLE analyze_ftable;
 DROP TABLE analyze_table;
+
+-- ===================================================================
+-- test for statistics import
+-- ===================================================================
+
+CREATE TABLE simport_table (c1 int, c2 text);
+CREATE FOREIGN TABLE simport_ftable (c1 int, c2 text, cx int)
+       SERVER loopback OPTIONS (table_name 'simport_table');
+ALTER FOREIGN TABLE simport_ftable ALTER COLUMN cx OPTIONS (ADD column_name 'c1');
+ALTER FOREIGN TABLE simport_ftable OPTIONS (ADD restore_stats 'true');
+
+ANALYZE simport_ftable;                   -- should fail
+
+ANALYZE simport_table;
+
+ANALYZE VERBOSE simport_ftable;           -- should work
+
+ALTER TABLE simport_table ALTER COLUMN c1 SET STATISTICS 0;
+ALTER TABLE simport_table ALTER COLUMN c2 SET STATISTICS 0;
+INSERT INTO simport_table VALUES (1, 'foo'), (1, 'foo'), (2, 'bar'), (2, 'bar');
+ANALYZE simport_table;
+
+ANALYZE simport_ftable;                   -- should fail
+
+ALTER TABLE simport_table ALTER COLUMN c1 SET STATISTICS DEFAULT;
+ANALYZE simport_table;
+
+ANALYZE simport_ftable;                   -- should fail
+
+ALTER TABLE simport_table ALTER COLUMN c2 SET STATISTICS DEFAULT;
+ANALYZE simport_table;
+
+ANALYZE VERBOSE simport_ftable;           -- should work
+
+ANALYZE VERBOSE simport_ftable (c1);      -- should work
+
+ANALYZE VERBOSE simport_ftable (c2);      -- should work
+
+ANALYZE VERBOSE simport_ftable (c1, cx);  -- should work
+
+ANALYZE VERBOSE simport_ftable (c2, cx);  -- should work
+
+CREATE STATISTICS stats (dependencies) ON c1, c2 FROM simport_ftable;
+
+ANALYZE simport_ftable;                   -- should fail
+
+DROP STATISTICS stats;
+
+ANALYZE simport_ftable (cid);             -- should fail
+
+ANALYZE simport_ftable (c1, c1);          -- should fail
+
+CREATE VIEW simport_view AS SELECT * FROM simport_table;
+CREATE FOREIGN TABLE simport_fview (c1 int, c2 text)
+       SERVER loopback OPTIONS (table_name 'simport_view');
+ALTER FOREIGN TABLE simport_fview OPTIONS (ADD restore_stats 'true');
+
+ANALYZE simport_fview;                    -- should fail
+
+-- cleanup
+DROP FOREIGN TABLE simport_ftable;
+DROP FOREIGN TABLE simport_fview;
+DROP VIEW simport_view;
+DROP TABLE simport_table;
 
 -- ===================================================================
 -- test for postgres_fdw_get_connections function with check_conn = true

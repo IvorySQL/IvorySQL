@@ -221,6 +221,14 @@ WAIT FOR LSN '<replaceable class="parameter">lsn</replaceable>'
 
  <refsect1>
   <title>Notes</title>
+  <para>
+   <command>WAIT FOR</command> must be executed as a top-level command.
+   It cannot be executed from a function, procedure, or
+   <command>DO</command> block. It also requires that no active or
+   registered snapshot be held, and therefore cannot be used in contexts
+   where such a snapshot must remain active, including transactions running
+   at isolation levels higher than <literal>READ COMMITTED</literal>.
+  </para>
 
   <para>
    <command>WAIT FOR</command> waits until the specified
@@ -251,6 +259,16 @@ WAIT FOR LSN '<replaceable class="parameter">lsn</replaceable>'
    <literal>NO_THROW</literal> is not specified). Promotion creates a new
    timeline, and the LSN being waited for may refer to WAL from the old
    timeline.
+  </para>
+
+  <para>
+   On a standby server, <command>WAIT FOR</command> sessions may be
+   interrupted by recovery conflicts.  Some recovery conflicts are
+   unavoidable: for example, replaying a tablespace drop resolves
+   conflicts by terminating all backends, regardless of what they are
+   doing.  Applications using <command>WAIT FOR</command> on a standby
+   should be prepared to handle such interruptions, for example by
+   retrying the command or falling back to an alternative mechanism.
   </para>
 
 </refsect1>

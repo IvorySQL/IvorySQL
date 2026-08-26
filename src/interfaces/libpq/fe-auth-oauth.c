@@ -26,7 +26,14 @@
 #include "fe-auth.h"
 #include "fe-auth-oauth.h"
 #include "mb/pg_wchar.h"
+#include "oauth-debug.h"
 #include "pg_config_paths.h"
+#include "utils/memdebug.h"
+
+static PostgresPollingStatusType do_async(fe_oauth_state *state,
+										  PGoauthBearerRequestV2 *request);
+static void do_cleanup(fe_oauth_state *state, PGoauthBearerRequestV2 *request);
+static void poison_req_v2(PGoauthBearerRequestV2 *request, bool poison);
 
 /* The exported OAuth callback mechanism. */
 static void *oauth_init(PGconn *conn, const char *password,
@@ -383,7 +390,7 @@ issuer_from_well_known_uri(PGconn *conn, const char *wkuri)
 		authority_start = wkuri + strlen(HTTPS_SCHEME);
 
 	if (!authority_start
-		&& oauth_unsafe_debugging_enabled()
+		&& (oauth_parse_debug_flags() & OAUTHDEBUG_UNSAFE_HTTP)
 		&& pg_strncasecmp(wkuri, HTTP_SCHEME, strlen(HTTP_SCHEME)) == 0)
 	{
 		/* Allow http:// for testing only. */
@@ -741,9 +748,7 @@ run_oauth_flow(PGconn *conn)
 		return PGRES_POLLING_FAILED;
 	}
 
-	status = request->v1.async(conn,
-							   (PGoauthBearerRequest *) request,
-							   &conn->altsock);
+	status = do_async(state, request);
 
 	if (status == PGRES_POLLING_FAILED)
 	{
@@ -804,8 +809,7 @@ cleanup_oauth_flow(PGconn *conn)
 
 	Assert(request);
 
-	if (request->v1.cleanup)
-		request->v1.cleanup(conn, (PGoauthBearerRequest *) request);
+	do_cleanup(state, request);
 	conn->altsock = PGINVALID_SOCKET;
 
 	free(request);
@@ -887,8 +891,8 @@ use_builtin_flow(PGconn *conn, fe_oauth_state *state, PGoauthBearerRequestV2 *re
 		"libpq-oauth" DLSUFFIX;
 #endif
 
-	state->builtin_flow = dlopen(module_name, RTLD_NOW | RTLD_LOCAL);
-	if (!state->builtin_flow)
+	state->flow_module = dlopen(module_name, RTLD_NOW | RTLD_LOCAL);
+	if (!state->flow_module)
 	{
 		/*
 		 * For end users, this probably isn't an error condition, it just
@@ -897,25 +901,33 @@ use_builtin_flow(PGconn *conn, fe_oauth_state *state, PGoauthBearerRequestV2 *re
 		 *
 		 * Note that POSIX dlerror() isn't guaranteed to be threadsafe.
 		 */
-		if (oauth_unsafe_debugging_enabled())
+		if (oauth_parse_debug_flags() & OAUTHDEBUG_PLUGIN_ERRORS)
 			fprintf(stderr, "failed dlopen for libpq-oauth: %s\n", dlerror());
 
 		return 0;
 	}
 
-	if ((init = dlsym(state->builtin_flow, "libpq_oauth_init")) == NULL
-		|| (start_flow = dlsym(state->builtin_flow, "pg_start_oauthbearer")) == NULL)
+	/*
+	 * Our libpq-oauth.so provides a special initialization function for libpq
+	 * integration. If we don't find this, assume that a custom module is in
+	 * use instead.
+	 */
+	init = dlsym(state->flow_module, "libpq_oauth_init");
+	if (!init)
+		state->builtin = false; /* adjust our error messages */
+
+	if ((start_flow = dlsym(state->flow_module, "pg_start_oauthbearer")) == NULL)
 	{
 		/*
 		 * This is more of an error condition than the one above, but the
 		 * cause is still locked behind PGOAUTHDEBUG due to the dlerror()
 		 * threadsafety issue.
 		 */
-		if (oauth_unsafe_debugging_enabled())
+		if (oauth_parse_debug_flags() & OAUTHDEBUG_PLUGIN_ERRORS)
 			fprintf(stderr, "failed dlsym for libpq-oauth: %s\n", dlerror());
 
-		dlclose(state->builtin_flow);
-		state->builtin_flow = NULL;
+		dlclose(state->flow_module);
+		state->flow_module = NULL;
 
 		request->error = libpq_gettext("could not find entry point for libpq-oauth");
 		return -1;
@@ -926,39 +938,42 @@ use_builtin_flow(PGconn *conn, fe_oauth_state *state, PGoauthBearerRequestV2 *re
 	 * permanently.
 	 */
 
-	/*
-	 * We need to inject necessary function pointers into the module. This
-	 * only needs to be done once -- even if the pointers are constant,
-	 * assigning them while another thread is executing the flows feels like
-	 * tempting fate.
-	 */
-	if ((lockerr = pthread_mutex_lock(&init_mutex)) != 0)
+	if (init)
 	{
-		/* Should not happen... but don't continue if it does. */
-		Assert(false);
+		/*
+		 * We need to inject necessary function pointers into the module. This
+		 * only needs to be done once -- even if the pointers are constant,
+		 * assigning them while another thread is executing the flows feels
+		 * like tempting fate.
+		 */
+		if ((lockerr = pthread_mutex_lock(&init_mutex)) != 0)
+		{
+			/* Should not happen... but don't continue if it does. */
+			Assert(false);
 
-		appendPQExpBuffer(&conn->errorMessage,
-						  "use_builtin_flow: failed to lock mutex (%d)\n",
-						  lockerr);
+			appendPQExpBuffer(&conn->errorMessage,
+							  "use_builtin_flow: failed to lock mutex (%d)\n",
+							  lockerr);
 
-		request->error = "";	/* satisfy report_flow_error() */
-		return -1;
-	}
+			request->error = "";	/* satisfy report_flow_error() */
+			return -1;
+		}
 
-	if (!initialized)
-	{
-		init(
+		if (!initialized)
+		{
+			init(
 #ifdef ENABLE_NLS
-			 libpq_gettext
+				 libpq_gettext
 #else
-			 NULL
+				 NULL
 #endif
-			);
+				);
 
-		initialized = true;
+			initialized = true;
+		}
+
+		pthread_mutex_unlock(&init_mutex);
 	}
-
-	pthread_mutex_unlock(&init_mutex);
 
 	return (start_flow(conn, request) == 0) ? 1 : -1;
 }
@@ -1019,7 +1034,14 @@ setup_token_request(PGconn *conn, fe_oauth_state *state)
 	 */
 	res = PQauthDataHook(PQAUTHDATA_OAUTH_BEARER_TOKEN_V2, conn, &request);
 	if (res == 0)
+	{
+		poison_req_v2(&request, true);
+
 		res = PQauthDataHook(PQAUTHDATA_OAUTH_BEARER_TOKEN, conn, &request);
+		state->v1 = (res != 0);
+
+		poison_req_v2(&request, false);
+	}
 	if (res == 0)
 	{
 		state->builtin = true;
@@ -1045,8 +1067,7 @@ setup_token_request(PGconn *conn, fe_oauth_state *state)
 			}
 
 			/* short-circuit */
-			if (request.v1.cleanup)
-				request.v1.cleanup(conn, (PGoauthBearerRequest *) &request);
+			do_cleanup(state, &request);
 			return true;
 		}
 
@@ -1076,8 +1097,7 @@ setup_token_request(PGconn *conn, fe_oauth_state *state)
 		libpq_append_conn_error(conn, "no OAuth flows are available (try installing the libpq-oauth package)");
 
 fail:
-	if (request.v1.cleanup)
-		request.v1.cleanup(conn, (PGoauthBearerRequest *) &request);
+	do_cleanup(state, &request);
 	return false;
 }
 
@@ -1419,12 +1439,117 @@ pqClearOAuthToken(PGconn *conn)
 }
 
 /*
- * Returns true if the PGOAUTHDEBUG=UNSAFE flag is set in the environment.
+ * Hook v1 Poisoning
+ *
+ * Try to catch misuses of the v1 PQAUTHDATA_OAUTH_BEARER_TOKEN hook and its
+ * callbacks, which are not allowed to downcast their request argument to
+ * PGoauthBearerRequestV2. (Such clients may crash or worse when speaking to
+ * libpq 18.)
+ *
+ * This attempts to use Valgrind hooks, if present, to mark the extra members as
+ * inaccessible. For uninstrumented builds, it also munges request->issuer to
+ * try to crash clients that perform string operations, and it aborts if
+ * request->error is set.
  */
-bool
-oauth_unsafe_debugging_enabled(void)
-{
-	const char *env = getenv("PGOAUTHDEBUG");
 
-	return (env && strcmp(env, "UNSAFE") == 0);
+#define MASK_BITS ((uintptr_t) 0x55aa55aa55aa55aa)
+#define POISON_MASK(ptr) ((void *) (((uintptr_t) ptr) ^ MASK_BITS))
+
+/*
+ * Workhorse for v2 request poisoning. This must be called exactly twice: once
+ * to poison, once to unpoison.
+ *
+ * NB: Unpoisoning must restore the request to its original state, because we
+ * might still switch back to a v2 implementation internally. Don't do anything
+ * destructive during the poison operation.
+ */
+static void
+poison_req_v2(PGoauthBearerRequestV2 *request, bool poison)
+{
+#ifdef USE_VALGRIND
+	void	   *const base = (char *) request + sizeof(request->v1);
+	const size_t len = sizeof(*request) - sizeof(request->v1);
+#endif
+
+	if (poison)
+	{
+		/* Poison request->issuer with a mask to help uninstrumented builds. */
+		request->issuer = POISON_MASK(request->issuer);
+
+		/*
+		 * We'll check to make sure request->error wasn't assigned when
+		 * unpoisoning, so it had better not be assigned now.
+		 */
+		Assert(!request->error);
+
+		VALGRIND_MAKE_MEM_NOACCESS(base, len);
+	}
+	else
+	{
+		/*
+		 * XXX Using DEFINED here is technically too lax; we might catch
+		 * struct padding in the blast radius. But since this API has to
+		 * poison stack addresses, and Valgrind can't track/manage undefined
+		 * stack regions, we can't be any stricter without tracking the
+		 * original state of the memory.
+		 */
+		VALGRIND_MAKE_MEM_DEFINED(base, len);
+
+		/* Undo our mask. */
+		request->issuer = POISON_MASK(request->issuer);
+
+		/*
+		 * For uninstrumented builds, make sure request->error wasn't touched.
+		 */
+		if (request->error)
+		{
+			fprintf(stderr,
+					"abort! out-of-bounds write to PGoauthBearerRequest by PQAUTHDATA_OAUTH_BEARER_TOKEN hook\n");
+			abort();
+		}
+	}
+}
+
+/*
+ * Wrapper around PGoauthBearerRequest.async() which applies poison during the
+ * callback when necessary.
+ */
+static PostgresPollingStatusType
+do_async(fe_oauth_state *state, PGoauthBearerRequestV2 *request)
+{
+	PostgresPollingStatusType ret;
+	PGconn	   *conn = state->conn;
+
+	Assert(request->v1.async);
+
+	if (state->v1)
+		poison_req_v2(request, true);
+
+	ret = request->v1.async(conn,
+							(PGoauthBearerRequest *) request,
+							&conn->altsock);
+
+	if (state->v1)
+		poison_req_v2(request, false);
+
+	return ret;
+}
+
+/*
+ * Similar wrapper for the optional PGoauthBearerRequest.cleanup() callback.
+ * Does nothing if one is not defined.
+ */
+static void
+do_cleanup(fe_oauth_state *state, PGoauthBearerRequestV2 *request)
+{
+	if (!request->v1.cleanup)
+		return;
+
+	if (state->v1)
+		poison_req_v2(request, true);
+
+	request->v1.cleanup(state->conn, (PGoauthBearerRequest *) request);
+
+	if (state->v1)
+		poison_req_v2(request, false);
 }

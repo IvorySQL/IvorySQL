@@ -137,22 +137,22 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt,
 			Bitmapset  *expr_attrs = NULL;
 			int			i;
 
-			/* add nsitem to query namespace */
+			/* Add nsitem to query namespace */
 			addNSItemToQuery(pstate, nsitem, false, true, true);
 
 			/* Transform the raw expression tree */
 			whereClause = transformExpr(pstate, stmt->whereClause, EXPR_KIND_COPY_WHERE);
 
-			/* Make sure it yields a boolean result. */
+			/* Make sure it yields a boolean result */
 			whereClause = coerce_to_boolean(pstate, whereClause, "WHERE");
 
-			/* we have to fix its collations too */
+			/* We have to fix its collations too */
 			assign_expr_collations(pstate, whereClause);
 
 			/*
-			 * Examine all the columns in the WHERE clause expression.  When
-			 * the whole-row reference is present, examine all the columns of
-			 * the table.
+			 * Identify all columns used in the WHERE clause's expression.  If
+			 * there's a whole-row reference, replace it with a range of all
+			 * the user columns (caution: that'll include dropped columns).
 			 */
 			pull_varattnos(whereClause, 1, &expr_attrs);
 			if (bms_is_member(0 - FirstLowInvalidHeapAttributeNumber, expr_attrs))
@@ -163,12 +163,30 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt,
 				expr_attrs = bms_del_member(expr_attrs, 0 - FirstLowInvalidHeapAttributeNumber);
 			}
 
+			/* Now we can scan each column needed in the WHERE clause */
 			i = -1;
 			while ((i = bms_next_member(expr_attrs, i)) >= 0)
 			{
 				AttrNumber	attno = i + FirstLowInvalidHeapAttributeNumber;
+				Form_pg_attribute att;
 
-				Assert(attno != 0);
+				Assert(attno != 0); /* removed above */
+
+				/*
+				 * Prohibit system columns in the WHERE clause.  They won't
+				 * have been filled yet when the filtering happens.  (We could
+				 * allow tableoid, but right now it isn't really useful: it
+				 * will read as the target table's OID.  Any conceivable use
+				 * for such a WHERE clause would probably wish it to read as
+				 * the target partition's OID, which is not known yet.
+				 * Disallow it to keep flexibility to change that sometime.)
+				 */
+				if (attno < 0)
+					ereport(ERROR,
+							errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
+							errmsg("system columns are not supported in COPY FROM WHERE conditions"),
+							errdetail("Column \"%s\" is a system column.",
+									  get_attname(RelationGetRelid(rel), attno, false)));
 
 				/*
 				 * Prohibit generated columns in the WHERE clause.  Stored
@@ -177,7 +195,8 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt,
 				 * would need to expand them somewhere around here), but for
 				 * now we keep them consistent with the stored variant.
 				 */
-				if (TupleDescAttr(RelationGetDescr(rel), attno - 1)->attgenerated)
+				att = TupleDescAttr(RelationGetDescr(rel), attno - 1);
+				if (att->attgenerated && !att->attisdropped)
 					ereport(ERROR,
 							errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
 							errmsg("generated columns are not supported in COPY FROM WHERE conditions"),
@@ -185,6 +204,7 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt,
 									  get_attname(RelationGetRelid(rel), attno, false)));
 			}
 
+			/* Reduce WHERE clause to standard list-of-AND-terms form */
 			whereClause = eval_const_expressions(NULL, whereClause);
 
 			whereClause = (Node *) canonicalize_qual((Expr *) whereClause, false);
@@ -569,6 +589,7 @@ ProcessCopyOptions(ParseState *pstate,
 	bool		on_error_specified = false;
 	bool		log_verbosity_specified = false;
 	bool		reject_limit_specified = false;
+	bool		force_array_specified = false;
 	ListCell   *option;
 
 	/* Support external use for option sanity checking */
@@ -576,6 +597,8 @@ ProcessCopyOptions(ParseState *pstate,
 		opts_out = palloc0_object(CopyFormatOptions);
 
 	opts_out->file_encoding = -1;
+	/* default format */
+	opts_out->format = COPY_FORMAT_TEXT;
 
 	/* Extract options from the statement node tree */
 	foreach(option, options)
@@ -590,11 +613,13 @@ ProcessCopyOptions(ParseState *pstate,
 				errorConflictingDefElem(defel, pstate);
 			format_specified = true;
 			if (strcmp(fmt, "text") == 0)
-				 /* default format */ ;
+				opts_out->format = COPY_FORMAT_TEXT;
 			else if (strcmp(fmt, "csv") == 0)
-				opts_out->csv_mode = true;
+				opts_out->format = COPY_FORMAT_CSV;
 			else if (strcmp(fmt, "binary") == 0)
-				opts_out->binary = true;
+				opts_out->format = COPY_FORMAT_BINARY;
+			else if (strcmp(fmt, "json") == 0)
+				opts_out->format = COPY_FORMAT_JSON;
 			else
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -721,6 +746,13 @@ ProcessCopyOptions(ParseState *pstate,
 								defel->defname),
 						 parser_errposition(pstate, defel->location)));
 		}
+		else if (strcmp(defel->defname, "force_array") == 0)
+		{
+			if (force_array_specified)
+				errorConflictingDefElem(defel, pstate);
+			force_array_specified = true;
+			opts_out->force_array = defGetBoolean(defel);
+		}
 		else if (strcmp(defel->defname, "on_error") == 0)
 		{
 			if (on_error_specified)
@@ -754,31 +786,42 @@ ProcessCopyOptions(ParseState *pstate,
 	 * Check for incompatible options (must do these three before inserting
 	 * defaults)
 	 */
-	if (opts_out->binary && opts_out->delim)
+	if (opts_out->delim &&
+		(opts_out->format == COPY_FORMAT_BINARY ||
+		 opts_out->format == COPY_FORMAT_JSON))
 		ereport(ERROR,
-				(errcode(ERRCODE_SYNTAX_ERROR),
-		/*- translator: %s is the name of a COPY option, e.g. ON_ERROR */
-				 errmsg("cannot specify %s in BINARY mode", "DELIMITER")));
+				errcode(ERRCODE_SYNTAX_ERROR),
+				opts_out->format == COPY_FORMAT_BINARY
+				? errmsg("cannot specify %s in BINARY mode", "DELIMITER")
+				: errmsg("cannot specify %s in JSON mode", "DELIMITER"));
 
-	if (opts_out->binary && opts_out->null_print)
+	if (opts_out->null_print &&
+		(opts_out->format == COPY_FORMAT_BINARY ||
+		 opts_out->format == COPY_FORMAT_JSON))
 		ereport(ERROR,
-				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("cannot specify %s in BINARY mode", "NULL")));
+				errcode(ERRCODE_SYNTAX_ERROR),
+				opts_out->format == COPY_FORMAT_BINARY
+				? errmsg("cannot specify %s in BINARY mode", "NULL")
+				: errmsg("cannot specify %s in JSON mode", "NULL"));
 
-	if (opts_out->binary && opts_out->default_print)
+	if (opts_out->default_print &&
+		(opts_out->format == COPY_FORMAT_BINARY ||
+		 opts_out->format == COPY_FORMAT_JSON))
 		ereport(ERROR,
-				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("cannot specify %s in BINARY mode", "DEFAULT")));
+				errcode(ERRCODE_SYNTAX_ERROR),
+				opts_out->format == COPY_FORMAT_BINARY
+				? errmsg("cannot specify %s in BINARY mode", "DEFAULT")
+				: errmsg("cannot specify %s in JSON mode", "DEFAULT"));
 
 	/* Set defaults for omitted options */
 	if (!opts_out->delim)
-		opts_out->delim = opts_out->csv_mode ? "," : "\t";
+		opts_out->delim = (opts_out->format == COPY_FORMAT_CSV) ? "," : "\t";
 
 	if (!opts_out->null_print)
-		opts_out->null_print = opts_out->csv_mode ? "" : "\\N";
+		opts_out->null_print = (opts_out->format == COPY_FORMAT_CSV) ? "" : "\\N";
 	opts_out->null_print_len = strlen(opts_out->null_print);
 
-	if (opts_out->csv_mode)
+	if (opts_out->format == COPY_FORMAT_CSV)
 	{
 		if (!opts_out->quote)
 			opts_out->quote = "\"";
@@ -826,7 +869,7 @@ ProcessCopyOptions(ParseState *pstate,
 	 * future-proofing.  Likewise we disallow all digits though only octal
 	 * digits are actually dangerous.
 	 */
-	if (!opts_out->csv_mode &&
+	if (opts_out->format != COPY_FORMAT_CSV &&
 		strchr("\\.abcdefghijklmnopqrstuvwxyz0123456789",
 			   opts_out->delim[0]) != NULL)
 		ereport(ERROR,
@@ -834,43 +877,47 @@ ProcessCopyOptions(ParseState *pstate,
 				 errmsg("COPY delimiter cannot be \"%s\"", opts_out->delim)));
 
 	/* Check header */
-	if (opts_out->binary && opts_out->header_line != COPY_HEADER_FALSE)
+	if (opts_out->header_line != COPY_HEADER_FALSE &&
+		(opts_out->format == COPY_FORMAT_BINARY ||
+		 opts_out->format == COPY_FORMAT_JSON))
 		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 		/*- translator: %s is the name of a COPY option, e.g. ON_ERROR */
-				 errmsg("cannot specify %s in BINARY mode", "HEADER")));
+				opts_out->format == COPY_FORMAT_BINARY
+				? errmsg("cannot specify %s in BINARY mode", "HEADER")
+				: errmsg("cannot specify %s in JSON mode", "HEADER"));
 
 	/* Check quote */
-	if (!opts_out->csv_mode && opts_out->quote != NULL)
+	if (opts_out->format != COPY_FORMAT_CSV && opts_out->quote != NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 		/*- translator: %s is the name of a COPY option, e.g. ON_ERROR */
 				 errmsg("COPY %s requires CSV mode", "QUOTE")));
 
-	if (opts_out->csv_mode && strlen(opts_out->quote) != 1)
+	if (opts_out->format == COPY_FORMAT_CSV && strlen(opts_out->quote) != 1)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("COPY quote must be a single one-byte character")));
 
-	if (opts_out->csv_mode && opts_out->delim[0] == opts_out->quote[0])
+	if (opts_out->format == COPY_FORMAT_CSV && opts_out->delim[0] == opts_out->quote[0])
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("COPY delimiter and quote must be different")));
 
 	/* Check escape */
-	if (!opts_out->csv_mode && opts_out->escape != NULL)
+	if (opts_out->format != COPY_FORMAT_CSV && opts_out->escape != NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 		/*- translator: %s is the name of a COPY option, e.g. ON_ERROR */
 				 errmsg("COPY %s requires CSV mode", "ESCAPE")));
 
-	if (opts_out->csv_mode && strlen(opts_out->escape) != 1)
+	if (opts_out->format == COPY_FORMAT_CSV && strlen(opts_out->escape) != 1)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("COPY escape must be a single one-byte character")));
 
 	/* Check force_quote */
-	if (!opts_out->csv_mode && (opts_out->force_quote || opts_out->force_quote_all))
+	if (opts_out->format != COPY_FORMAT_CSV && (opts_out->force_quote || opts_out->force_quote_all))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 		/*- translator: %s is the name of a COPY option, e.g. ON_ERROR */
@@ -884,8 +931,8 @@ ProcessCopyOptions(ParseState *pstate,
 						"COPY FROM")));
 
 	/* Check force_notnull */
-	if (!opts_out->csv_mode && (opts_out->force_notnull != NIL ||
-								opts_out->force_notnull_all))
+	if (opts_out->format != COPY_FORMAT_CSV && (opts_out->force_notnull != NIL ||
+												opts_out->force_notnull_all))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 		/*- translator: %s is the name of a COPY option, e.g. ON_ERROR */
@@ -900,8 +947,8 @@ ProcessCopyOptions(ParseState *pstate,
 						"COPY TO")));
 
 	/* Check force_null */
-	if (!opts_out->csv_mode && (opts_out->force_null != NIL ||
-								opts_out->force_null_all))
+	if (opts_out->format != COPY_FORMAT_CSV && (opts_out->force_null != NIL ||
+												opts_out->force_null_all))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 		/*- translator: %s is the name of a COPY option, e.g. ON_ERROR */
@@ -925,7 +972,7 @@ ProcessCopyOptions(ParseState *pstate,
 						"NULL")));
 
 	/* Don't allow the CSV quote char to appear in the null string. */
-	if (opts_out->csv_mode &&
+	if (opts_out->format == COPY_FORMAT_CSV &&
 		strchr(opts_out->null_print, opts_out->quote[0]) != NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -941,6 +988,17 @@ ProcessCopyOptions(ParseState *pstate,
 		 second %s is a COPY with direction, e.g. COPY TO */
 				 errmsg("COPY %s cannot be used with %s", "FREEZE",
 						"COPY TO")));
+
+	/* Check json format */
+	if (opts_out->format == COPY_FORMAT_JSON && is_from)
+		ereport(ERROR,
+				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("COPY %s is not supported for %s", "FORMAT JSON", "COPY FROM"));
+
+	if (opts_out->format != COPY_FORMAT_JSON && opts_out->force_array)
+		ereport(ERROR,
+				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("COPY %s can only be used with JSON mode", "FORCE_ARRAY"));
 
 	if (opts_out->default_print)
 	{
@@ -961,7 +1019,7 @@ ProcessCopyOptions(ParseState *pstate,
 							"DEFAULT")));
 
 		/* Don't allow the CSV quote char to appear in the default string. */
-		if (opts_out->csv_mode &&
+		if (opts_out->format == COPY_FORMAT_CSV &&
 			strchr(opts_out->default_print, opts_out->quote[0]) != NULL)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -978,7 +1036,7 @@ ProcessCopyOptions(ParseState *pstate,
 					 errmsg("NULL specification and DEFAULT specification cannot be the same")));
 	}
 	/* Check on_error */
-	if (opts_out->binary && opts_out->on_error != COPY_ON_ERROR_STOP)
+	if (opts_out->format == COPY_FORMAT_BINARY && opts_out->on_error != COPY_ON_ERROR_STOP)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("only ON_ERROR STOP is allowed in BINARY mode")));
