@@ -223,3 +223,31 @@ insert into binaryd_tb values (Binary_Double_Infinity);
 select * from binaryd_tb;
 drop table binaryd_tb;
 
+-- Oracle-compatible TO_BINARY_DOUBLE function
+-- Single-argument form, text input
+SELECT to_binary_double('0.0');
+SELECT to_binary_double('3.14');
+SELECT to_binary_double('   -34.84   ');
+SELECT to_binary_double('1.2345678901234e+200');
+SELECT to_binary_double('1.2345678901234e-200');
+
+-- Two-argument form with a number format model
+SELECT to_binary_double('1,234.5', '9,999.9');
+SELECT to_binary_double('  1234.5', '9999.9');
+
+-- Empty format model returns NULL instead of crashing
+SELECT to_binary_double('123', '');
+
+-- Oracle special values: NaN and Infinity
+SELECT to_binary_double('NaN');
+SELECT to_binary_double('nan');
+SELECT to_binary_double('Infinity');
+SELECT to_binary_double('inf');
+SELECT to_binary_double('-Infinity');
+SELECT to_binary_double('-inf');
+
+-- Conversion overloads from other numeric types
+SELECT to_binary_double(42::numeric);
+SELECT to_binary_double(42::sys.binary_double);
+SELECT to_binary_double(42::sys.binary_float);
+
