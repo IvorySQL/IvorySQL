@@ -364,6 +364,60 @@ $node->poll_query_until($db,
 ok(1, 'the run leaves the RUNNING state behind when it ends');
 
 # ---------------------------------------------------------------------
+# a job does not wait for a poll boundary: ENABLE wakes the scheduler, and
+# each cycle then sleeps only until the job's own next run date.  Both are
+# measured against a poll interval far longer than the test is willing to
+# wait, so neither can be passed by polling.
+# ---------------------------------------------------------------------
+$node->safe_psql($db,
+	"ALTER SYSTEM SET ivorysql_ora.scheduler_poll_interval = 30");
+$node->reload;
+$node->poll_query_until($db,
+	"SELECT setting = '30' FROM pg_settings WHERE name = 'ivorysql_ora.scheduler_poll_interval'"
+) or die "raised poll interval did not take effect";
+# let the scheduler finish the cycle it is in and pick the new interval up
+sleep 3;
+
+my $t0 = time();
+ora_sql(q{
+BEGIN
+  dbms_scheduler.create_job(job_name => 'tap_wake', job_type => 'PLSQL_BLOCK',
+    job_action => 'BEGIN INSERT INTO sched_tap_t VALUES (9, ''wake''); END;',
+    repeat_interval => 'FREQ=SECONDLY;INTERVAL=2',
+    enabled => TRUE);
+END;});
+
+# ENABLE has to have woken the scheduler: it was sleeping out a 30 second
+# interval with nothing scheduled, so nothing else would run this job now.
+my $first = 0;
+for (1 .. 10)
+{
+	$first = $node->safe_psql($db,
+		"SELECT count(*) FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_WAKE'"
+	);
+	last if $first > 0;
+	sleep 1;
+}
+ok($first > 0 && time() - $t0 < 10,
+	'ENABLE wakes the scheduler instead of leaving the job for the next poll');
+
+# ...and the runs after it come every two seconds, which only holds if each
+# cycle sleeps to the next run date rather than to the poll interval.
+sleep 7;
+my $runs = $node->safe_psql($db,
+	"SELECT count(*) FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_WAKE'");
+ok($runs >= 3,
+	"a cycle sleeps until the next run date, not to the poll boundary ($runs runs)");
+
+ora_sql(q{BEGIN dbms_scheduler.disable('tap_wake'); END;});
+$node->safe_psql($db,
+	"ALTER SYSTEM SET ivorysql_ora.scheduler_poll_interval = 1");
+$node->reload;
+$node->poll_query_until($db,
+	"SELECT setting = '1' FROM pg_settings WHERE name = 'ivorysql_ora.scheduler_poll_interval'"
+) or die "restored poll interval did not take effect";
+
+# ---------------------------------------------------------------------
 # STORED_PROCEDURE job with program arguments runs in the background
 # ---------------------------------------------------------------------
 ora_sql(q{

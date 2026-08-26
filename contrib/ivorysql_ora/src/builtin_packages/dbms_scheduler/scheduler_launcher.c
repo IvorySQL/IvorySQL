@@ -19,21 +19,36 @@
  *
  * A single launcher process (registered at shared_preload time) starts one
  * database scheduler worker for every database listed in
- * ivorysql_ora.scheduler_databases.  Each database scheduler polls
+ * ivorysql_ora.scheduler_databases.  Each database scheduler scans
  * sys.scheduler_jobs for due jobs, advances their next run date, writes a
  * 'r' (running) log row and spawns a job worker per due job, capped by
  * ivorysql_ora.scheduler_max_job_workers.
  *
- * A job never runs twice at the same time, as in Oracle: "a new instance of
- * the job, however, will not be started until the current one completes".
- * The next run date is computed when a run starts, so it can fall due while
- * that run is still going; the job is held back until the run finishes and
- * then started once, no matter how many of its scheduled times went by in
- * the meantime.  What implements both halves is the state <> 'RUNNING' test
- * in the due query below (the held-back run keeps its original next run date,
- * which is what makes it start immediately afterwards) together with
- * sched_calendar_next(), which always answers with the first scheduled time
- * after *now* rather than working through the ones that were missed.
+ * A scan is not on a fixed timer.  Each cycle ends by sleeping until the time
+ * the next job is actually due, so a job starts when its own schedule says
+ * rather than at whatever poll boundary comes after it;
+ * ivorysql_ora.scheduler_poll_interval is the longest such sleep, not the
+ * period.  A job enabled while that sleep is under way is not in the deadline
+ * it was computed from, so ENABLE wakes this process through its latch (see
+ * sched_request_scheduler_wakeup()).  That wake-up is best effort and the
+ * deadline is what makes it safe to be: missing one costs the job the rest of
+ * one sleep, not its run.  Oracle's job coordinator is arranged the same way -
+ * it "goes to sleep when no jobs are scheduled" and "wakes up when a new job
+ * is about to be executed or a job was created using the CREATE_JOB
+ * procedure".
+ *
+ * A job never runs twice at the same time, as in Oracle: "immediately after a
+ * job starts, the repeat_interval is evaluated to determine the next scheduled
+ * execution time of the job.  While this might arrive while the job is still
+ * running, a new instance of the job does not start until the current one
+ * completes".  Because that one next time is all that is ever computed, the
+ * scheduled times a long run passes over leave nothing behind: the job is held
+ * back until the run finishes and then started once, however many went by.
+ * What implements it is the state <> 'RUNNING' test in the due query below
+ * (the held-back run keeps its original next run date, which is what makes it
+ * start immediately afterwards) together with sched_calendar_next(), which
+ * always answers with the first scheduled time after *now* rather than working
+ * through the ones that were missed.
  *
  * A database scheduler that stops on its own is reported and left stopped:
  * the reasons it stops for - no ivorysql_ora in that database, no such
@@ -91,6 +106,14 @@ bool		scheduler_launcher_registered = false;
 
 /* Report a database we have given up on at most this often. */
 #define SCHED_GIVEUP_REPORT_USEC		(60 * 60 * USECS_PER_SEC)
+
+/*
+ * Floor on a cycle that sleeps only until the next job is due.  A job that is
+ * due but could not be taken -- more were due than there were free slots --
+ * leaves a deadline in the past, and without a floor the cycle would spin on
+ * it until a slot came free.
+ */
+#define SCHED_MIN_SLEEP_MS				100
 
 /* Launcher's view of one database scheduler worker */
 typedef struct SchedDbWorker
@@ -877,8 +900,12 @@ sched_claim_one_job(SchedDueRow *row, MemoryContext caller_ctx, List **due)
 	}
 }
 
+/*
+ * Claim what is due, and report through *next_due when the next job comes due
+ * so the caller can sleep until then rather than to its next poll.
+ */
 static List *
-scheduler_claim_due_jobs(int limit)
+scheduler_claim_due_jobs(int limit, TimestampTz *next_due)
 {
 	List	   *due = NIL;
 	Oid			argtypes[1] = {INT4OID};
@@ -1005,11 +1032,50 @@ scheduler_claim_due_jobs(int limit)
 		PG_END_TRY();
 	}
 
+	/*
+	 * Read the next deadline after the claims above, so that the jobs just
+	 * dispatched are out of it: their state is RUNNING and their next_run_date
+	 * stays in the past for as long as they run, and taking that for a
+	 * deadline would spin the cycle for the length of the job.  The test is
+	 * the due query's, less the part about being due already.
+	 */
+	*next_due = 0;
+	if (sched_meta_select("SELECT min(next_run_date) FROM sys.scheduler_jobs"
+						  " WHERE enabled AND next_run_date IS NOT NULL"
+						  "  AND state <> 'RUNNING'",
+						  0, NULL, NULL, NULL) == 1)
+	{
+		bool		isnull;
+		Datum		d = SPI_getbinval(SPI_tuptable->vals[0],
+									  SPI_tuptable->tupdesc, 1, &isnull);
+
+		if (!isnull)
+			*next_due = DatumGetTimestampTz(d);
+	}
+
 	SPI_finish();
 	PopActiveSnapshot();
 	CommitTransactionCommand();
 
 	return due;
+}
+
+/*
+ * How long to wait, in milliseconds: until "due", but never past "cap_ms" and
+ * never below SCHED_MIN_SLEEP_MS.  A deadline of 0 means nothing is coming.
+ */
+static long
+sched_sleep_until(TimestampTz due, long cap_ms)
+{
+	int64		ms;
+
+	if (due == 0)
+		return cap_ms;
+
+	ms = (due - GetCurrentTimestamp()) / 1000;
+	if (ms < SCHED_MIN_SLEEP_MS)
+		ms = SCHED_MIN_SLEEP_MS;
+	return (long) Min(ms, (int64) cap_ms);
 }
 
 void
@@ -1061,6 +1127,12 @@ SchedulerDatabaseWorkerMain(Datum main_arg)
 		ListCell   *lc;
 		int			free_slots;
 
+		/*
+		 * Read after the config file below, and volatile because the PG_TRY
+		 * further down assigns it and the wait after it reads it back.
+		 */
+		volatile long timeout_ms;
+
 		CHECK_FOR_INTERRUPTS();
 
 		if (ConfigReloadPending)
@@ -1072,6 +1144,9 @@ SchedulerDatabaseWorkerMain(Datum main_arg)
 		/* per-cycle allocations (job slots live in TopMemoryContext) */
 		MemoryContextSwitchTo(worker_ctx);
 		MemoryContextReset(worker_ctx);
+
+		/* the poll interval is the longest this cycle sleeps, not the only one */
+		timeout_ms = scheduler_poll_interval * 1000L;
 
 		/*
 		 * Keep going after an unforeseen error instead of letting it reach
@@ -1117,7 +1192,9 @@ SchedulerDatabaseWorkerMain(Datum main_arg)
 
 			if (free_slots > 0)
 			{
-				due = scheduler_claim_due_jobs(free_slots);
+				TimestampTz next_due;
+
+				due = scheduler_claim_due_jobs(free_slots, &next_due);
 
 				foreach(lc, due)
 				{
@@ -1158,6 +1235,16 @@ SchedulerDatabaseWorkerMain(Datum main_arg)
 						CommitTransactionCommand();
 					}
 				}
+
+				/*
+				 * Sleep to the next job's own time rather than to a poll
+				 * boundary, so that it starts when it is due.  Computed after
+				 * the dispatch above, whose cost would otherwise be added to
+				 * the wait.  Slots that are all busy leave the deadline alone
+				 * -- nothing could be dispatched at it anyway, and the due
+				 * jobs behind it would make it a spin.
+				 */
+				timeout_ms = sched_sleep_until(next_due, timeout_ms);
 			}
 			cycle_failures = 0;
 		}
@@ -1186,6 +1273,9 @@ SchedulerDatabaseWorkerMain(Datum main_arg)
 			QueryCancelPending = false;
 			RESUME_INTERRUPTS();
 
+			/* the deadline this cycle computed, if any, is not to be trusted */
+			timeout_ms = scheduler_poll_interval * 1000L;
+
 			if (!transient)
 			{
 				ereport(LOG,
@@ -1206,7 +1296,7 @@ SchedulerDatabaseWorkerMain(Datum main_arg)
 
 		(void) WaitLatch(MyLatch,
 						 WL_LATCH_SET | WL_TIMEOUT | WL_EXIT_ON_PM_DEATH,
-						 scheduler_poll_interval * 1000L,
+						 timeout_ms,
 						 PG_WAIT_EXTENSION);
 		ResetLatch(MyLatch);
 	}
