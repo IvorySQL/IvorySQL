@@ -24,6 +24,7 @@
 #include "access/htup_details.h"
 #include "access/transam.h"
 #include "access/tupconvert.h"
+#include "catalog/pg_package.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
@@ -356,6 +357,7 @@ static int	exec_stmt_commit(PLiSQL_execstate * estate,
 							 PLiSQL_stmt_commit * stmt);
 static int	exec_stmt_rollback(PLiSQL_execstate * estate,
 							   PLiSQL_stmt_rollback * stmt);
+static void exec_transaction(bool is_commit, bool chain);
 
 static void plisql_estate_setup(PLiSQL_execstate * estate,
 								PLiSQL_function * func,
@@ -1417,6 +1419,56 @@ plisql_exec_event_trigger(PLiSQL_function * func, EventTriggerData *trigdata)
 }
 
 /*
+ * If func is a package member, return its package-qualified name (e.g.
+ * "schema"."package".funcname) for use in error context messages; otherwise
+ * return NULL.
+ *
+ * A package member's fn_signature is only ever the bare routine name (see
+ * quote_qualified_identifier(NULL, funcname) in
+ * plisql_build_subproc_function_internal()), because nothing else about the
+ * package is known at parse time of that string. But the compiler already
+ * resolved and attached the owning package's PackageCacheItem to the
+ * function (func->item, set in pl_subproc_function.c), so we can look the
+ * package up by oid here instead of ever needing to search package body
+ * source text for a matching declaration. Callers that walk
+ * PG_EXCEPTION_CONTEXT (e.g. contrib/pg_owa_util's who_called_me) benefit
+ * directly: the package identity is now in the text they already parse.
+ */
+static char *
+plisql_package_qualified_signature(PLiSQL_function *func)
+{
+	HeapTuple	pkgTup;
+	Form_pg_package pkgStruct;
+	char	   *nspname;
+	char	   *pkgqual;
+	char	   *result;
+
+	if (func->item == NULL)
+		return NULL;
+
+	pkgTup = SearchSysCache1(PKGOID, ObjectIdGetDatum(func->item->pkey));
+	if (!HeapTupleIsValid(pkgTup))
+		return NULL;			/* package concurrently dropped; fall back */
+
+	pkgStruct = (Form_pg_package) GETSTRUCT(pkgTup);
+	nspname = get_namespace_name(pkgStruct->pkgnamespace);
+	if (nspname == NULL)
+	{
+		ReleaseSysCache(pkgTup);
+		return NULL;			/* namespace concurrently dropped */
+	}
+
+	pkgqual = quote_qualified_identifier(nspname, NameStr(pkgStruct->pkgname));
+	ReleaseSysCache(pkgTup);
+	pfree(nspname);
+
+	result = psprintf("%s.%s", pkgqual, func->fn_signature);
+	pfree(pkgqual);
+
+	return result;
+}
+
+/*
  * error context callback to let us supply a call-stack traceback
  */
 static void
@@ -1424,6 +1476,8 @@ plisql_exec_error_callback(void *arg)
 {
 	PLiSQL_execstate *estate = (PLiSQL_execstate *) arg;
 	int			err_lineno;
+	char	   *funcname;
+	char	   *qualified_funcname;
 
 	/*
 	 * If err_var is set, report the variable's declaration line number.
@@ -1437,6 +1491,14 @@ plisql_exec_error_callback(void *arg)
 		err_lineno = estate->err_stmt->lineno;
 	else
 		err_lineno = 0;
+
+	/*
+	 * qualified_funcname, when non-NULL, is a fresh palloc'd string we own
+	 * and must free below; the fn_signature fallback is borrowed from the
+	 * long-lived function cache and must never be freed.
+	 */
+	qualified_funcname = plisql_package_qualified_signature(estate->func);
+	funcname = qualified_funcname != NULL ? qualified_funcname : estate->func->fn_signature;
 
 	if (estate->err_text != NULL)
 	{
@@ -1458,7 +1520,7 @@ plisql_exec_error_callback(void *arg)
 			 * local variable initialization"
 			 */
 			errcontext("PL/iSQL function %s line %d %s",
-					   estate->func->fn_signature,
+					   funcname,
 					   err_lineno,
 					   _(estate->err_text));
 		}
@@ -1469,7 +1531,7 @@ plisql_exec_error_callback(void *arg)
 			 * arguments into local variables"
 			 */
 			errcontext("PL/iSQL function %s %s",
-					   estate->func->fn_signature,
+					   funcname,
 					   _(estate->err_text));
 		}
 	}
@@ -1477,13 +1539,16 @@ plisql_exec_error_callback(void *arg)
 	{
 		/* translator: last %s is a plisql statement type name */
 		errcontext("PL/iSQL function %s line %d at %s",
-				   estate->func->fn_signature,
+				   funcname,
 				   err_lineno,
 				   plisql_stmt_typename(estate->err_stmt));
 	}
 	else
 		errcontext("PL/iSQL function %s",
-				   estate->func->fn_signature);
+				   funcname);
+
+	if (qualified_funcname != NULL)
+		pfree(qualified_funcname);
 }
 
 /*
@@ -5458,10 +5523,7 @@ exec_stmt_close(PLiSQL_execstate * estate, PLiSQL_stmt_close * stmt)
 static int
 exec_stmt_commit(PLiSQL_execstate * estate, PLiSQL_stmt_commit * stmt)
 {
-	if (stmt->chain)
-		SPI_commit_and_chain();
-	else
-		SPI_commit();
+	exec_transaction(true, stmt->chain);
 
 	/*
 	 * We need to build new simple-expression infrastructure, since the old
@@ -5482,10 +5544,7 @@ exec_stmt_commit(PLiSQL_execstate * estate, PLiSQL_stmt_commit * stmt)
 static int
 exec_stmt_rollback(PLiSQL_execstate * estate, PLiSQL_stmt_rollback * stmt)
 {
-	if (stmt->chain)
-		SPI_rollback_and_chain();
-	else
-		SPI_rollback();
+	exec_transaction(false, stmt->chain);
 
 	/*
 	 * We need to build new simple-expression infrastructure, since the old
@@ -5496,6 +5555,63 @@ exec_stmt_rollback(PLiSQL_execstate * estate, PLiSQL_stmt_rollback * stmt)
 	plisql_create_econtext(estate);
 
 	return PLISQL_RC_OK;
+}
+
+/*
+ * End the current transaction while preserving an Oracle security-definer
+ * procedure's effective user.  A transaction must start with an empty
+ * security context, so temporarily restore the outer user and then reinstate
+ * the procedure owner after SPI has started the next transaction.
+ *
+ * We decide whether to save/restore the user from the security context flag
+ * alone.  Checking compatible_db here would be unsafe: it is a GUC that can
+ * be changed inside the procedure (for example by EXECUTE 'SET
+ * ivorysql.compatible_mode = ...'), so a transaction control statement that
+ * runs after such a change would skip the restore and commit with a non-empty
+ * security context, crashing the backend.  SECURITY_LOCAL_USERID_CHANGE is
+ * stable for the whole call, exactly matching how definer procedures are
+ * entered (see SetUserIdAndSecContext in pl_package.c and friends).
+ */
+static void
+exec_transaction(bool is_commit, bool chain)
+{
+	Oid			save_userid;
+	int			save_sec_context;
+	bool		restore_user;
+
+	GetUserIdAndSecContext(&save_userid, &save_sec_context);
+	restore_user = (save_sec_context & SECURITY_LOCAL_USERID_CHANGE) != 0;
+
+	if (restore_user)
+		SetUserIdAndSecContext(GetOuterUserId(), 0);
+
+	PG_TRY();
+	{
+		if (is_commit)
+		{
+			if (chain)
+				SPI_commit_and_chain();
+			else
+				SPI_commit();
+		}
+		else
+		{
+			if (chain)
+				SPI_rollback_and_chain();
+			else
+				SPI_rollback();
+		}
+	}
+	PG_CATCH();
+	{
+		if (restore_user)
+			SetUserIdAndSecContext(save_userid, save_sec_context);
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	if (restore_user)
+		SetUserIdAndSecContext(save_userid, save_sec_context);
 }
 
 /* ----------
@@ -10249,8 +10365,15 @@ plisql_get_current_exception_sqlerrcode(void)
 /*
  * plisql_get_call_stack
  *
- * Returns the current PL/iSQL call stack as a formatted string.
- * This walks the error_context_stack looking for PL/iSQL function contexts.
+ * Returns the current PL/iSQL call stack as a formatted string, one frame
+ * per line as "handle\tlineno\tsignature". Package members' signature is
+ * schema/package-qualified (see plisql_package_qualified_signature()), not
+ * just the bare routine name.
+ *
+ * This walks the error_context_stack looking for PL/iSQL function contexts,
+ * silently skipping any interleaved non-PL/iSQL (e.g. PL/pgSQL) frames --
+ * callers that need every frame in true call order regardless of language
+ * cannot use this function for that purpose.
  * Used by DBMS_UTILITY.FORMAT_CALL_STACK.
  *
  * Returns NULL if not inside any PL/iSQL function.
@@ -10273,12 +10396,28 @@ plisql_get_call_stack(void)
 		{
 			PLiSQL_execstate *estate = (PLiSQL_execstate *) context->arg;
 			int lineno = 0;
+			char *signature;
+			char *qualified_signature;
 
 			/* Get current line number */
-			if (estate->err_stmt != NULL)
-				lineno = estate->err_stmt->lineno;
-			else if (estate->err_var != NULL)
+			if (estate->err_var != NULL)
 				lineno = estate->err_var->lineno;
+			else if (estate->err_stmt != NULL)
+				lineno = estate->err_stmt->lineno;
+
+			/*
+			 * Package members' fn_signature is only ever the bare routine
+			 * name (see plisql_build_subproc_function_internal()); qualify
+			 * it with the owning package's schema/name, same as the
+			 * error-context callback above, so callers of this function
+			 * don't have to re-derive package identity themselves.
+			 *
+			 * qualified_signature, when non-NULL, is a fresh palloc'd
+			 * string we own and must free below; the fn_signature fallback
+			 * is borrowed from the long-lived function cache.
+			 */
+			qualified_signature = plisql_package_qualified_signature(estate->func);
+			signature = qualified_signature != NULL ? qualified_signature : estate->func->fn_signature;
 
 			/* Add to stack output */
 			if (found_any)
@@ -10287,8 +10426,11 @@ plisql_get_call_stack(void)
 			appendStringInfo(&buf, "%p\t%d\t%s",
 							 (void *) estate->func,
 							 lineno,
-							 estate->func->fn_signature);
+							 signature);
 			found_any = true;
+
+			if (qualified_signature != NULL)
+				pfree(qualified_signature);
 		}
 	}
 

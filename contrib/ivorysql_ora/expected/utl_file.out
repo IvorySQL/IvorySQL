@@ -15,7 +15,7 @@ end;
 ERROR:  INVALID_PATH
 DETAIL:  File location is invalid.
 HINT:  locality is not found in sys.utl_file_directory table
-CONTEXT:  PL/iSQL function fopen line 56 at assignment
+CONTEXT:  PL/iSQL function sys.utl_file.fopen line 56 at assignment
 PL/iSQL function inline_code_block line 5 at assignment
 -- test fopen, put, putf, put_line, new_line, get_line, is_open, fclose, fclose_all
 declare

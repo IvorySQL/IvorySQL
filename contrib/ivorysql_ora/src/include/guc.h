@@ -38,3 +38,5 @@ extern int	nls_length_semantics;
 #endif
 
 extern void IvorysqlOraDefineGucs(void);
+
+extern char *ivorysql_dbtimezone;

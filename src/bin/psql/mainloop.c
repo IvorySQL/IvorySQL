@@ -175,7 +175,7 @@ MainLoop(FILE *source)
 			if (query_buf->len == 0)
 			{
 				if (db_mode == DB_ORACLE)
-					prompt_status = ORAPROMPT_READY;
+					prompt_status = (promptStatus_t) ORAPROMPT_READY;
 				else
 					prompt_status = PROMPT_READY;
 			}
@@ -195,7 +195,7 @@ MainLoop(FILE *source)
 			}
 			/* Now we can fetch a line */
 			if (db_mode == DB_ORACLE)
-				line = gets_interactive(ora_get_prompt(prompt_status, cond_stack),
+				line = gets_interactive(ora_get_prompt((Ora_promptStatus_t) prompt_status, cond_stack),
 									query_buf);
 			else
 				line = gets_interactive(get_prompt(prompt_status, cond_stack),
@@ -492,7 +492,7 @@ MainLoop(FILE *source)
 		                         * init_value[0] indicates the type of missing quote: single or double quote
 		                         */
 		                        char	quote = bind_var->init_value[0];
-		                        char	*str_double_quote = pg_malloc0(strlen(bind_var->init_value) * 2);	/* Ensure enough space */
+		                        char	*str_double_quote = pg_malloc0(strlen(bind_var->init_value) * 2 + 1);	/* doubled quotes plus NUL */
 		                        char	*ptr = str_double_quote;
 		                        int		i;
 
@@ -939,7 +939,7 @@ non_psqlplus_cmd:
 				if (ora_scan_state->scanbufhandle == NULL)
 					break;
 				ora_scan_result = ora_psql_scan(ora_scan_state, query_buf, &ora_prompt_tmp);
-				prompt_status = ora_prompt_tmp;
+				prompt_status = (promptStatus_t) ora_prompt_tmp;
 
 				if (PQExpBufferBroken(query_buf))
 					pg_fatal("out of memory");

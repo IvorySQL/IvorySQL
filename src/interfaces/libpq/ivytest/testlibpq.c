@@ -85,7 +85,7 @@ static void run_stmt(Ivyconn *tconn,IvyPreparedStatement *stmt, Ivyargmode *argm
 
 
 static void
-exit_nicely()
+exit_nicely(void)
 {
 	Ivyfinish(thread_data.tconn1);
 	Ivyfinish(thread_data.tconn3);
@@ -139,7 +139,7 @@ init_data(Ivyconn *conn)
 	{
 		fprintf(stderr, "plsql_function_out Ivyexec failed\n");
 		Ivyclear(res);
-		exit_nicely(conn);
+		exit_nicely();
 	}
 	Ivyclear(res);
 
