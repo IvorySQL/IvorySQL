@@ -22,6 +22,8 @@
  */
 #include "postgres_fe.h"
 
+#include <ctype.h>
+
 #include "common.h"
 #include "ora_psqlscanslash.h"
 #include "common/logging.h"
@@ -620,7 +622,7 @@ ora_psql_scan_slash_option(PsqlScanState state,
 			/* empty arg */
 			break;
 		case xslasharg:
-			/* Strip any unquoted trailing semi-colons if requested */
+			/* Strip any unquoted trailing semicolons if requested */
 			if (semicolon)
 			{
 				while (unquoted_option_chars-- > 0 &&
@@ -652,7 +654,21 @@ ora_psql_scan_slash_option(PsqlScanState state,
 			termPQExpBuffer(&mybuf);
 			return NULL;
 		case xslashwholeline:
-			/* always okay */
+			/*
+			 * In whole-line mode, interpret semicolon = true as stripping
+			 * trailing whitespace as well as semicolons.  There is no concept
+			 * of quoting in this mode.
+			 */
+			if (semicolon)
+			{
+				while (mybuf.len > 0 &&
+					   (mybuf.data[mybuf.len - 1] == ';' ||
+						(isascii((unsigned char) mybuf.data[mybuf.len - 1]) &&
+						 isspace((unsigned char) mybuf.data[mybuf.len - 1]))))
+				{
+					mybuf.data[--mybuf.len] = '\0';
+				}
+			}
 			break;
 		default:
 			/* can't get here */
