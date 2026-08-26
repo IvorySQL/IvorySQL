@@ -6846,6 +6846,15 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 	Np->read_pre = 0;
 	Np->read_dec = false;
 
+	if (!is_to_char)
+  	{
+		while (from_char_input_len > 0 && *inout == ' ')
+		{
+			inout++;
+			from_char_input_len--;
+		}
+	}
+
 	if (Np->Num->zero_start)
 		--Np->Num->zero_start;
 
