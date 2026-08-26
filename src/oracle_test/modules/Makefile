@@ -59,6 +59,10 @@ SUBDIRS = \
 # Enable them only after their tests have Oracle-compatible behavior and
 # expectations.
 
+# TAP modules replay the core Oracle regression schedule, whose alter_index
+# test requires amcheck to be present in the temporary installation.
+EXTRA_INSTALL += contrib/amcheck
+
 
 ifeq ($(enable_injection_points),yes)
 SUBDIRS += injection_points gin typcache

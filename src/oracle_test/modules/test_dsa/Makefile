@@ -11,7 +11,8 @@ DATA = test_dsa--1.0.sql
 
 REGRESS = test_dsa
 
-ORA_REGRESS = $(REGRESS)
+# Oracle mode does not emit the extra separator line expected by the PG parser.
+ORA_REGRESS = test_dsa_oracle
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
