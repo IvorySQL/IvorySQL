@@ -1505,3 +1505,28 @@ CREATE AGGREGATE sys.stragg(text) (
     PARALLEL  = SAFE
 );
 /* End - STRAGG */
+
+/* LNNVL */
+/*
+ * LNNVL: Oracle-compatible condition negation.
+ * Returns true when the condition is false or unknown, and false when it is
+ * true, so a WHERE clause keeps the rows whose condition is unknown, which a
+ * plain NOT silently drops.
+ *
+ * The truth table is exactly that of the SQL standard "IS NOT TRUE" predicate,
+ * so the body needs nothing more than that.  Written in SQL rather than C so
+ * that inline_function() folds it into the caller and the resulting plan is the
+ * same as writing IS NOT TRUE by hand.
+ *
+ * Must NOT be declared STRICT: LNNVL(NULL) has to return true, which is the
+ * whole reason the function exists.  CALLED ON NULL INPUT is the default and is
+ * spelled out here so it does not get "tidied" into STRICT like its neighbours.
+ */
+CREATE FUNCTION sys.lnnvl(pg_catalog.bool)
+RETURNS pg_catalog.bool
+AS $$SELECT $1 IS NOT TRUE$$
+LANGUAGE sql
+CALLED ON NULL INPUT
+PARALLEL SAFE
+IMMUTABLE;
+/* End - LNNVL */
