@@ -2,7 +2,7 @@
  *
  * UTL_URL Package
  *
- * Oracle-compatible URL escape utilities (RFC 2396).
+ * Oracle-compatible URL escape/unescape utilities (RFC 2396).
  *
  * contrib/ivorysql_ora/src/builtin_packages/utl_url/utl_url--1.0.sql
  *
@@ -18,6 +18,11 @@
 CREATE FUNCTION sys.utl_url_escape(url text, escape_reserved_chars boolean, url_charset text)
 RETURNS text
 AS 'MODULE_PATHNAME', 'ivorysql_utl_url_escape'
+LANGUAGE C IMMUTABLE PARALLEL SAFE;
+
+CREATE FUNCTION sys.utl_url_unescape(url text, url_charset text)
+RETURNS text
+AS 'MODULE_PATHNAME', 'ivorysql_utl_url_unescape'
 LANGUAGE C IMMUTABLE PARALLEL SAFE;
 
 -- PL/iSQL package declaration
@@ -61,6 +66,30 @@ CREATE OR REPLACE PACKAGE utl_url AS
                     escape_reserved_chars IN BOOLEAN DEFAULT FALSE,
                     url_charset IN VARCHAR2 DEFAULT NULL) RETURN VARCHAR2;
 
+    /*
+     * UNESCAPE
+     * Converts the %XX escape code sequences of a URL back to the original
+     * characters.  Multibyte characters are reassembled from consecutive %XX
+     * groups, so UNESCAPE(ESCAPE(x)) returns x.
+     *
+     * Parameters:
+     *   url          IN VARCHAR2 - the URL to unescape
+     *   url_charset  IN VARCHAR2 - character set the unescaped bytes are
+     *                              assumed to be in; they are converted from
+     *                              it to the database encoding.  NULL (the
+     *                              default) means the bytes are already in the
+     *                              database encoding.
+     * Returns:
+     *   VARCHAR2 - the unescaped URL, or NULL when url IS NULL
+     *
+     * A "%" that is not followed by two hexadecimal digits raises an error
+     * (Oracle raises UTL_URL.BAD_URL, ORA-29262).  A %00 escape is likewise
+     * rejected, because a text value cannot contain a NUL byte (Oracle
+     * instead returns a string containing a NUL byte).
+     */
+    FUNCTION unescape(url IN VARCHAR2,
+                      url_charset IN VARCHAR2 DEFAULT NULL) RETURN VARCHAR2;
+
 END utl_url;
 
 CREATE OR REPLACE PACKAGE BODY utl_url AS
@@ -70,6 +99,12 @@ CREATE OR REPLACE PACKAGE BODY utl_url AS
                     url_charset IN VARCHAR2 DEFAULT NULL) RETURN VARCHAR2 IS
     BEGIN
         RETURN sys.utl_url_escape(url, escape_reserved_chars, url_charset);
+    END;
+
+    FUNCTION unescape(url IN VARCHAR2,
+                      url_charset IN VARCHAR2 DEFAULT NULL) RETURN VARCHAR2 IS
+    BEGIN
+        RETURN sys.utl_url_unescape(url, url_charset);
     END;
 
 END utl_url;
