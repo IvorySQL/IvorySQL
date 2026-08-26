@@ -215,6 +215,155 @@ is( $node->safe_psql(
 	'a stopped job is recorded as a failed run');
 
 # ---------------------------------------------------------------------
+# a run that outlives its repeat interval is not joined by a second one:
+# the next run waits for it and starts as soon as it is over, and the
+# scheduled times that went by in the meantime collapse into that one run
+# ---------------------------------------------------------------------
+ora_sql(q{
+BEGIN
+  dbms_scheduler.create_job(job_name => 'tap_overlap', job_type => 'PLSQL_BLOCK',
+    job_action => 'DECLARE v NUMBER; BEGIN SELECT count(*) INTO v FROM (SELECT pg_sleep(4)) s; END;',
+    repeat_interval => 'FREQ=SECONDLY;INTERVAL=1',
+    enabled => TRUE);
+END;});
+
+# Each run takes four seconds against a one second interval, so a scheduler
+# that did not hold the job back would have four of them going at once.  A
+# claimed run is on the books as 'r' from the moment it is dispatched, which
+# is what makes this countable without racing the workers themselves.
+my $max_running = 0;
+for (1 .. 40)
+{
+	my $running = $node->safe_psql($db,
+		"SELECT count(*) FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_OVERLAP' AND status = 'r'"
+	);
+	$max_running = $running if $running > $max_running;
+	last
+	  if $node->safe_psql($db,
+		"SELECT count(*) >= 3 FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_OVERLAP' AND status = 's'"
+	  ) eq 't';
+	sleep 1;
+}
+is($max_running, 1, 'a job never has two runs going at the same time');
+
+ora_sql(q{BEGIN dbms_scheduler.disable('tap_overlap'); END;});
+
+is( $node->safe_psql(
+		$db, q{
+SELECT count(*) FROM (
+  SELECT actual_start_date,
+         lag(actual_start_date + run_duration) OVER (ORDER BY log_id) AS prev_end
+    FROM sys.scheduler_job_run_details
+   WHERE job_name = 'TAP_OVERLAP' AND status = 's') t
+ WHERE prev_end IS NOT NULL AND actual_start_date < prev_end}),
+	'0',
+	'no two runs of a job overlap in time');
+
+# The run that was held back keeps the scheduled time it was meant to start
+# at, so it starts late by about as long as the run before it took, rather
+# than waiting for the next scheduled time.  The ones in between are gone:
+# three runs of four seconds cover more than three of the one second
+# scheduled times, and there is a run for each of those three only.
+is( $node->safe_psql(
+		$db, q{
+SELECT count(*) FROM sys.scheduler_job_run_details
+ WHERE job_name = 'TAP_OVERLAP' AND status = 's'
+   AND log_id > (SELECT min(log_id) FROM sys.scheduler_job_run_details
+                  WHERE job_name = 'TAP_OVERLAP')
+   AND actual_start_date - req_start_date < '2 seconds'::pg_catalog.interval}),
+	'0',
+	'a held-back run starts right after the run before it, not on the next scheduled time');
+
+$node->poll_query_until($db,
+	"SELECT count(*) = 0 FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_OVERLAP' AND status = 'r'"
+) or die "the run in progress when the job was disabled never finished";
+
+is( $node->safe_psql(
+		$db,
+		"SELECT run_count >= 3 AND run_count = (SELECT count(*) FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_OVERLAP') FROM sys.scheduler_jobs WHERE job_name = 'TAP_OVERLAP'"
+	),
+	't',
+	'the job is counted once per run, not once per scheduled time');
+
+# ---------------------------------------------------------------------
+# a job worker that is terminated before it can record its outcome does
+# not leave the job stuck in RUNNING, which would take it out of the
+# schedule for good now that a running job is not dispatched again
+# ---------------------------------------------------------------------
+ora_sql(q{
+BEGIN
+  dbms_scheduler.create_job(job_name => 'tap_killed', job_type => 'PLSQL_BLOCK',
+    job_action => 'SELECT pg_sleep(300)',
+    repeat_interval => 'FREQ=SECONDLY;INTERVAL=2',
+    enabled => TRUE);
+END;});
+
+$node->poll_query_until($db,
+	"SELECT count(*) = 1 FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_KILLED' AND status = 'r' AND worker_pid IS NOT NULL"
+) or die "job did not start";
+
+# force => true terminates the worker, which is fatal to it: it never reaches
+# the transaction that writes the outcome of the run.
+ora_sql(q{BEGIN dbms_scheduler.stop_job('tap_killed', force => TRUE); END;});
+
+$node->poll_query_until($db,
+	"SELECT count(*) = 1 FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_KILLED' AND status = 'f' AND error_message LIKE 'job worker terminated%'"
+) or die "the terminated run was never closed out";
+ok(1, 'a run whose worker was terminated is closed out as failed');
+
+$node->poll_query_until($db,
+	"SELECT count(*) >= 2 FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_KILLED'"
+) or die "job was not scheduled again after its worker was terminated";
+ok(1, 'the job is scheduled again after its worker was terminated');
+
+ora_sql(q{
+BEGIN
+  dbms_scheduler.disable('tap_killed');
+  dbms_scheduler.stop_job('tap_killed', force => TRUE);
+END;});
+
+# ---------------------------------------------------------------------
+# nothing but the run itself clears the RUNNING state, which is what holds
+# a second instance back: DROP_PROGRAM / DROP_SCHEDULE with force disable
+# the jobs that use them, and leave a job whose run is still going alone
+# ---------------------------------------------------------------------
+ora_sql(q{
+BEGIN
+  dbms_scheduler.create_program('tap_dropprog', 'PLSQL_BLOCK', 'SELECT pg_sleep(300)');
+  dbms_scheduler.enable('tap_dropprog');
+  dbms_scheduler.create_schedule('tap_dropsched',
+      repeat_interval => 'FREQ=SECONDLY;INTERVAL=2');
+  dbms_scheduler.create_job(job_name => 'tap_dropdep',
+      program_name => 'tap_dropprog', schedule_name => 'tap_dropsched',
+      enabled => TRUE);
+END;});
+
+$node->poll_query_until($db,
+	"SELECT state = 'RUNNING' FROM sys.scheduler_jobs WHERE job_name = 'TAP_DROPDEP'"
+) or die "the job on the dropped-dependency program did not start";
+
+ora_sql(q{BEGIN dbms_scheduler.drop_schedule('tap_dropsched', force => TRUE); END;});
+is( $node->safe_psql(
+		$db,
+		"SELECT enabled, state FROM sys.scheduler_jobs WHERE job_name = 'TAP_DROPDEP'"),
+	'f|RUNNING',
+	'DROP_SCHEDULE force disables a running job without clearing RUNNING');
+
+ora_sql(q{BEGIN dbms_scheduler.drop_program('tap_dropprog', force => TRUE); END;});
+is( $node->safe_psql(
+		$db,
+		"SELECT enabled, state FROM sys.scheduler_jobs WHERE job_name = 'TAP_DROPDEP'"),
+	'f|RUNNING',
+	'DROP_PROGRAM force disables a running job without clearing RUNNING');
+
+# the run itself is what puts the state right, disabled job or not
+ora_sql(q{BEGIN dbms_scheduler.stop_job('tap_dropdep', force => TRUE); END;});
+$node->poll_query_until($db,
+	"SELECT state <> 'RUNNING' FROM sys.scheduler_jobs WHERE job_name = 'TAP_DROPDEP'"
+) or die "the disabled job was left in the RUNNING state";
+ok(1, 'the run leaves the RUNNING state behind when it ends');
+
+# ---------------------------------------------------------------------
 # STORED_PROCEDURE job with program arguments runs in the background
 # ---------------------------------------------------------------------
 ora_sql(q{

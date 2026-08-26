@@ -24,6 +24,17 @@
  * 'r' (running) log row and spawns a job worker per due job, capped by
  * ivorysql_ora.scheduler_max_job_workers.
  *
+ * A job never runs twice at the same time, as in Oracle: "a new instance of
+ * the job, however, will not be started until the current one completes".
+ * The next run date is computed when a run starts, so it can fall due while
+ * that run is still going; the job is held back until the run finishes and
+ * then started once, no matter how many of its scheduled times went by in
+ * the meantime.  What implements both halves is the state <> 'RUNNING' test
+ * in the due query below (the held-back run keeps its original next run date,
+ * which is what makes it start immediately afterwards) together with
+ * sched_calendar_next(), which always answers with the first scheduled time
+ * after *now* rather than working through the ones that were missed.
+ *
  * A database scheduler that stops on its own is reported and left stopped:
  * the reasons it stops for - no ivorysql_ora in that database, no such
  * database, a failure it could not work through - do not resolve themselves,
@@ -447,10 +458,33 @@ typedef struct SchedJobSlot
 {
 	BackgroundWorkerHandle *handle;
 	bool		in_use;
+	int64		job_id;
+	int64		log_id;
 } SchedJobSlot;
+
+/* One job worker that has gone away, for scheduler_reconcile_stopped(). */
+typedef struct SchedStoppedRun
+{
+	int64		job_id;
+	int64		log_id;
+} SchedStoppedRun;
 
 static SchedJobSlot *job_slots = NULL;
 
+/*
+ * Runs whose job worker is gone and whose log row has not been closed out
+ * yet.  Kept in TopMemoryContext, and emptied only once the transaction that
+ * closes them has committed: a run dropped from here is one nobody looks at
+ * again before the next scheduler start, so it has to survive both a failed
+ * attempt and the per-cycle context reset that follows it.
+ */
+static List *pending_reconcile = NIL;
+
+/*
+ * Reclaim the slots of job workers that have gone away and return the number
+ * of slots now free.  Each reclaimed run is added to pending_reconcile for
+ * scheduler_reconcile_stopped() to close out.
+ */
 static int
 scheduler_free_job_slots(void)
 {
@@ -467,6 +501,14 @@ scheduler_free_job_slots(void)
 			status = GetBackgroundWorkerPid(job_slots[i].handle, &pid);
 			if (status == BGWH_STOPPED)
 			{
+				MemoryContext oldcxt = MemoryContextSwitchTo(TopMemoryContext);
+				SchedStoppedRun *run = palloc(sizeof(SchedStoppedRun));
+
+				run->job_id = job_slots[i].job_id;
+				run->log_id = job_slots[i].log_id;
+				pending_reconcile = lappend(pending_reconcile, run);
+				MemoryContextSwitchTo(oldcxt);
+
 				pfree(job_slots[i].handle);
 				job_slots[i].handle = NULL;
 				job_slots[i].in_use = false;
@@ -476,6 +518,92 @@ scheduler_free_job_slots(void)
 			free_count++;
 	}
 	return free_count;
+}
+
+/*
+ * Close out runs whose job worker is gone but which are still on the books as
+ * running.
+ *
+ * A worker records its own outcome, so there is normally nothing to do here.
+ * What leaves a run behind is the worker dying before it got that far -
+ * STOP_JOB with force => true terminates it, and SIGTERM is fatal to it - and
+ * that must not be allowed to stand: the due query skips jobs in the RUNNING
+ * state, so a job left in it would never be scheduled again.  (Until the next
+ * scheduler start, whose scheduler_cleanup_orphans() sweeps the same rows.)
+ *
+ * The status = 'r' test is what keeps this off the runs that ended normally:
+ * the worker writes its outcome and exits, in that order, so a row that still
+ * says 'r' once the worker is gone is one nobody is going to close.
+ *
+ * All of this is one transaction, and pending_reconcile is emptied only once
+ * it has committed, so a failure costs a cycle rather than the runs: their
+ * slots were handed back before this ran, and nothing else would come looking
+ * for them again.
+ */
+static void
+scheduler_reconcile_stopped(void)
+{
+	ListCell   *lc;
+
+	SetCurrentStatementStartTimestamp();
+	StartTransactionCommand();
+	PushActiveSnapshot(GetTransactionSnapshot());
+	SPI_connect();
+
+	foreach(lc, pending_reconcile)
+	{
+		SchedStoppedRun *run = (SchedStoppedRun *) lfirst(lc);
+		Oid			at1[1] = {INT8OID};
+		Datum		v1[1];
+
+		v1[0] = Int64GetDatum(run->log_id);
+
+		/*
+		 * run_duration is measured from the time the worker published its pid,
+		 * the one start time this process has to go on.  A worker that died
+		 * before publishing it never got as far as running the job, and the
+		 * row is dated from when the run was claimed instead: an unknown start
+		 * would otherwise leave both columns NULL, which reads as a run that
+		 * never happened rather than one that was cut short.
+		 */
+		if (sched_meta_dml("UPDATE sys.scheduler_job_run_details SET"
+						   " status = 'f', error_no = 0,"
+						   " error_message ="
+						   " 'job worker terminated before recording its outcome',"
+						   " actual_start_date ="
+						   " COALESCE(worker_backend_start, log_date),"
+						   " run_duration = clock_timestamp()"
+						   " - COALESCE(worker_backend_start, log_date)"
+						   " WHERE log_id = $1 AND status = 'r'",
+						   1, at1, v1, NULL) == 0)
+			continue;
+
+		/*
+		 * Nothing ran to move the job out of RUNNING, so do it here, the way
+		 * the job worker would have.  The run itself is not counted: run_count
+		 * and failure_count follow the job definition, which this process does
+		 * not have loaded.
+		 */
+		v1[0] = Int64GetDatum(run->job_id);
+		sched_meta_dml("UPDATE sys.scheduler_jobs SET"
+					   " state = CASE WHEN enabled THEN 'SCHEDULED'"
+					   " ELSE 'DISABLED' END"
+					   " WHERE job_id = $1 AND state = 'RUNNING'",
+					   1, at1, v1, NULL);
+
+		ereport(LOG,
+				(errmsg("ivorysql scheduler: job run " INT64_FORMAT
+						" ended without recording an outcome, marked as failed",
+						run->log_id)));
+	}
+
+	SPI_finish();
+	PopActiveSnapshot();
+	CommitTransactionCommand();
+
+	/* committed: these runs are closed and must not be revisited */
+	list_free_deep(pending_reconcile);
+	pending_reconcile = NIL;
 }
 
 static bool
@@ -529,6 +657,8 @@ scheduler_spawn_job_worker(Oid dboid, SchedDueJob *job)
 
 	job_slots[i].handle = handle;
 	job_slots[i].in_use = true;
+	job_slots[i].job_id = job->job_id;
+	job_slots[i].log_id = job->log_id;
 	return true;
 }
 
@@ -782,6 +912,7 @@ scheduler_claim_due_jobs(int limit)
 							  "  ON s.schedule_owner = j.schedule_owner"
 							  "  AND s.schedule_name = j.schedule_name"
 							  " WHERE j.enabled AND j.next_run_date <= now()"
+							  "  AND j.state <> 'RUNNING'"
 							  " ORDER BY j.next_run_date"
 							  " LIMIT $1",
 							  1, argtypes, values, NULL);
@@ -971,7 +1102,19 @@ SchedulerDatabaseWorkerMain(Datum main_arg)
 				orphans_cleaned = true;
 			}
 
+			/*
+			 * Committing a transaction leaves the current context at
+			 * TopMemoryContext, so switch back before allocating anything
+			 * that is only meant to last for this cycle.
+			 */
+			MemoryContextSwitchTo(worker_ctx);
 			free_slots = scheduler_free_job_slots();
+			if (pending_reconcile != NIL)
+			{
+				scheduler_reconcile_stopped();
+				MemoryContextSwitchTo(worker_ctx);
+			}
+
 			if (free_slots > 0)
 			{
 				due = scheduler_claim_due_jobs(free_slots);

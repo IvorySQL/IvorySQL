@@ -737,9 +737,16 @@ sched_enable_job(const SchedName *job)
 		 * Clear failure_count, as Oracle's ENABLE does: otherwise a job the
 		 * scheduler_max_failures limit disabled would be back at the limit on
 		 * its very next failure.
+		 *
+		 * A job that is running stays in the RUNNING state: that state is what
+		 * keeps the scheduler from starting a second instance alongside the
+		 * one already going, and the run in progress puts it back to SCHEDULED
+		 * when it finishes.
 		 */
 		sched_meta_dml("UPDATE sys.scheduler_jobs SET enabled = true,"
-				  " state = 'SCHEDULED', next_run_date = $3, failure_count = 0"
+				  " state = CASE WHEN state = 'RUNNING' THEN state"
+				  "              ELSE 'SCHEDULED' END,"
+				  " next_run_date = $3, failure_count = 0"
 				  " WHERE job_owner = $1 AND job_name = $2",
 				  3, at3, v3, NULL);
 	}
@@ -1480,8 +1487,18 @@ ora_dbms_scheduler_disable(PG_FUNCTION_ARGS)
 	switch (kind)
 	{
 		case SCHED_KIND_JOB:
+
+			/*
+			 * A job that is running keeps the RUNNING state: dropping it here
+			 * would let a DISABLE followed by an ENABLE start a second run
+			 * alongside the one still going.  The run in progress records its
+			 * outcome as the job's state when it finishes, as it does for any
+			 * job disabled under it.
+			 */
 			sched_meta_dml("UPDATE sys.scheduler_jobs SET enabled = false,"
-					  " state = 'DISABLED', next_run_date = NULL"
+					  " state = CASE WHEN state = 'RUNNING' THEN state"
+					  "              ELSE 'DISABLED' END,"
+					  " next_run_date = NULL"
 					  " WHERE job_owner = $1 AND job_name = $2",
 					  2, argtypes, values, NULL);
 			break;
@@ -1577,8 +1594,19 @@ ora_dbms_scheduler_drop_program(PG_FUNCTION_ARGS)
 							prog.owner, prog.name),
 					 errhint("Use force => true to disable the referencing jobs.")));
 
+		/*
+		 * A job that is running keeps the RUNNING state.  Only the run itself
+		 * clears it, since that state is what holds the scheduler back from
+		 * starting a second instance alongside the one already going.  No
+		 * second run could be reached through here today in any case -- ENABLE
+		 * refuses a job whose program is gone, so this one cannot go back in
+		 * the schedule at all -- but the invariant is cheaper to keep in every
+		 * writer than to re-establish by auditing them one at a time.
+		 */
 		sched_meta_dml("UPDATE sys.scheduler_jobs SET enabled = false,"
-				  " state = 'DISABLED', next_run_date = NULL"
+				  " state = CASE WHEN state = 'RUNNING' THEN state"
+				  "              ELSE 'DISABLED' END,"
+				  " next_run_date = NULL"
 				  " WHERE program_owner = $1 AND program_name = $2",
 				  2, argtypes, values, NULL);
 	}
@@ -1626,8 +1654,19 @@ ora_dbms_scheduler_drop_schedule(PG_FUNCTION_ARGS)
 							sched.owner, sched.name),
 					 errhint("Use force => true to disable the referencing jobs.")));
 
+		/*
+		 * A job that is running keeps the RUNNING state.  Only the run itself
+		 * clears it, since that state is what holds the scheduler back from
+		 * starting a second instance alongside the one already going.  No
+		 * second run could be reached through here today in any case -- ENABLE
+		 * refuses a job whose schedule is gone, so this one cannot go back in
+		 * the schedule at all -- but the invariant is cheaper to keep in every
+		 * writer than to re-establish by auditing them one at a time.
+		 */
 		sched_meta_dml("UPDATE sys.scheduler_jobs SET enabled = false,"
-				  " state = 'DISABLED', next_run_date = NULL"
+				  " state = CASE WHEN state = 'RUNNING' THEN state"
+				  "              ELSE 'DISABLED' END,"
+				  " next_run_date = NULL"
 				  " WHERE schedule_owner = $1 AND schedule_name = $2",
 				  2, argtypes, values, NULL);
 	}
@@ -2015,6 +2054,14 @@ sched_load_job_by_id(int64 job_id, SchedJobDef *def)
 	return true;
 }
 
+/*
+ * RUN_JOB runs the job in the calling session and leaves the job state alone,
+ * so it is the one way a job can still be running twice at once here: the
+ * scheduler holds a background run back while another background run is going,
+ * but it has no way to see a foreground one.  Left as it is until there is
+ * something to say what Oracle does with a RUN_JOB on a job that is already
+ * running, rather than guessing at an error to raise.
+ */
 Datum
 ora_dbms_scheduler_run_job(PG_FUNCTION_ARGS)
 {
@@ -2117,7 +2164,8 @@ ora_dbms_scheduler_run_job(PG_FUNCTION_ARGS)
  * Signal the job worker recorded on the job's running log row.  Without
  * "force" the worker gets a query cancel, so it unwinds through its own
  * error handler and records the run as failed; with "force" it is terminated
- * outright and the leftover 'r' row is closed by the next orphan cleanup.
+ * outright, and the 'r' row it leaves behind is closed on the scheduler's
+ * next cycle, when scheduler_reconcile_stopped() finds the worker gone.
  *
  * Unlike Oracle this cannot stop a job running in another database: the
  * dictionary is per-database, so a job is only visible where it lives.
@@ -2193,7 +2241,7 @@ ora_dbms_scheduler_stop_job(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("job \"%s\".\"%s\" is not running",
 						job.owner, job.name),
-				 errdetail("The process recorded for the run is gone; its log record is closed by the next orphan cleanup.")));
+				 errdetail("The process recorded for the run is gone; its log record is closed once the scheduler notices, or by orphan cleanup at the next scheduler start.")));
 
 	signaled = sched_getdatum(0, 1, &isnull);
 	if (isnull || !DatumGetBool(signaled))
