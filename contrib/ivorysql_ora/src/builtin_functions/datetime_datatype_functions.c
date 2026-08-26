@@ -41,6 +41,7 @@
 #include "access/xact.h"
 
 #include "../include/common_datatypes.h"
+#include "../include/guc.h"
 
 PG_FUNCTION_INFO_V1(sysdate);
 PG_FUNCTION_INFO_V1(ora_current_timestamp);
@@ -58,6 +59,7 @@ PG_FUNCTION_INFO_V1(months_between);
 PG_FUNCTION_INFO_V1(ora_from_tz);
 PG_FUNCTION_INFO_V1(ora_sys_extract_utc);
 PG_FUNCTION_INFO_V1(ora_sessiontimezone);
+PG_FUNCTION_INFO_V1(ora_dbtimezone);
 PG_FUNCTION_INFO_V1(to_oradate1);
 PG_FUNCTION_INFO_V1(to_oradate2);
 PG_FUNCTION_INFO_V1(to_oradate3);
@@ -798,6 +800,17 @@ ora_sessiontimezone(PG_FUNCTION_ARGS)
 	out = cstring_to_text(res);
 
 	PG_RETURN_TEXT_P(out);
+}
+
+/*
+ * returns the time zone of the database, as set by
+ * ivorysql.dbtimezone. Unlike sessiontimezone(), this value is
+ * independent of the session's TimeZone setting.
+ */
+Datum
+ora_dbtimezone(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_TEXT_P(cstring_to_text(ivorysql_dbtimezone));
 }
 
 /*
