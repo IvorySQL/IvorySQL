@@ -6414,8 +6414,11 @@ NUM_numpart_from_char(NUMProc *Np, int id, size_t input_len)
 	 * would be lost.  Only skip before any content has been read, so that
 	 * blanks belonging to literal spaces inside the format are preserved.
 	 */
+/*
 	while (*Np->inout_p == ' ' && Np->read_pre == 0 && Np->read_post == 0 &&
 		   *Np->number == ' ' && !OVERLOAD_TEST)
+*/
+	if (*Np->inout_p == ' ')
 		Np->inout_p++;
 
 	if (OVERLOAD_TEST)
