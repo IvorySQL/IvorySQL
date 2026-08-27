@@ -119,7 +119,7 @@ begin
     utl_file.fflush(f);
 
     -- data reading after fflush
-    utl_file.fseek(f1); -- reset off_set to 0
+    utl_file.fseek(f1, 0, NULL); -- reset offset to 0
     raise notice 'data read after fflush';
     utl_file.get_line(f1, line);
     line2_pos := utl_file.fgetpos(f1); -- after reading line 1, get position
@@ -147,6 +147,53 @@ begin
             utl_file.fclose_all();
             raise notice 'is_open(f) = %', utl_file.is_open(f);
             raise notice 'is_open(f1) = %', utl_file.is_open(f1);
+end;
+/
+
+-- invalid FSEEK offsets must not move the file position
+declare
+    f sys.ora_utl_file_file_type;
+    fexists boolean;
+    file_length number;
+    block_size integer;
+begin
+    utl_file.fgetattr('data_directory', 'regressflush.txt',
+                      fexists, file_length, block_size);
+    f := utl_file.fopen('data_directory', 'regressflush.txt', 'r');
+
+    begin
+        utl_file.fseek(f);
+    exception
+        when others then
+            raise notice 'null offsets: %, position: %', sqlerrm,
+                         utl_file.fgetpos(f);
+    end;
+
+    begin
+        utl_file.fseek(f, -1, NULL);
+    exception
+        when others then
+            raise notice 'negative absolute offset: %, position: %', sqlerrm,
+                         utl_file.fgetpos(f);
+    end;
+
+    begin
+        utl_file.fseek(f, file_length + 1, NULL);
+    exception
+        when others then
+            raise notice 'absolute offset past EOF: %, position: %', sqlerrm,
+                         utl_file.fgetpos(f);
+    end;
+
+    begin
+        utl_file.fseek(f, NULL, file_length + 1);
+    exception
+        when others then
+            raise notice 'relative offset past EOF: %, position: %', sqlerrm,
+                         utl_file.fgetpos(f);
+    end;
+
+    utl_file.fclose(f);
 end;
 /
 

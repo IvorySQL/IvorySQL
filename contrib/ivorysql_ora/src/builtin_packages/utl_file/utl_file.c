@@ -677,32 +677,44 @@ ora_utl_file_frename(PG_FUNCTION_ARGS)
 Datum
 ora_utl_file_fseek(PG_FUNCTION_ARGS)
 {
-	FILE   *fd;
+	FILE	   *fd;
+	bool		absolute_specified;
+	bool		relative_specified;
+	long		current_offset;
+	int64		target_offset;
+	struct stat statbuf;
+
 	CHECK_FILE_HANDLE();
 	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), NULL, NULL);
-	if(fd == NULL)
+	if (fd == NULL)
 		INVALID_FILEHANDLE_EXCEPTION();
-	if (PG_NARGS() > 1 && !PG_ARGISNULL(1))
+
+	absolute_specified = PG_NARGS() > 1 && !PG_ARGISNULL(1);
+	relative_specified = PG_NARGS() > 2 && !PG_ARGISNULL(2);
+	if (!absolute_specified && !relative_specified)
+		CUSTOM_EXCEPTION(INVALID_OFFSET,
+						 "Absolute and relative offsets cannot both be NULL.");
+
+	current_offset = ftell(fd);
+	if (current_offset < 0 || fstat(fileno(fd), &statbuf) != 0)
+		IO_EXCEPTION();
+
+	if (absolute_specified)
 	{
-		/* absolute_offset: seek from beginning */
-		long abs_offset = (long) PG_GETARG_INT32(1);
-		rewind(fd); /* first, reset pos to beginning */
-		if (fseek(fd, abs_offset, SEEK_SET) != 0)
-			CUSTOM_EXCEPTION(INVALID_OFFSET, "Provided absolute offsets are invalid.");
-	}
-	else if (PG_NARGS() > 2 && !PG_ARGISNULL(2))
-	{
-		/* relative_offset: seek from current position */
-		long rel_offset = (long) PG_GETARG_INT32(2);
-		if (fseek(fd, rel_offset, SEEK_CUR) != 0)
-			CUSTOM_EXCEPTION(INVALID_OFFSET, "Provided relative offsets are invalid.");
+		target_offset = PG_GETARG_INT32(1);
 	}
 	else
 	{
-		/* no offset provided: no-op or reset to beginning */
-		if (fseek(fd, 0, SEEK_SET) != 0)
-			CUSTOM_EXCEPTION(INVALID_OFFSET, "Provided offsets are invalid.");
+		target_offset = (int64) current_offset + PG_GETARG_INT32(2);
 	}
+
+	if (target_offset < 0 || target_offset > statbuf.st_size ||
+		target_offset > LONG_MAX)
+		CUSTOM_EXCEPTION(INVALID_OFFSET, "Provided offset is outside the file.");
+
+	if (fseek(fd, (long) target_offset, SEEK_SET) != 0)
+		CUSTOM_EXCEPTION(INVALID_OFFSET, "Provided offset is invalid.");
+
 	PG_RETURN_VOID();
 }
 

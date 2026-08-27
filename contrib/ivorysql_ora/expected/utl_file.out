@@ -128,7 +128,7 @@ begin
     raise notice '>>%<<', line;
     utl_file.fflush(f);
     -- data reading after fflush
-    utl_file.fseek(f1); -- reset off_set to 0
+    utl_file.fseek(f1, 0, NULL); -- reset offset to 0
     raise notice 'data read after fflush';
     utl_file.get_line(f1, line);
     line2_pos := utl_file.fgetpos(f1); -- after reading line 1, get position
@@ -169,6 +169,51 @@ NOTICE:  lets print line#2 again
 NOTICE:  >>line 2<<
 NOTICE:  lets print line#2 again via relative seek
 NOTICE:  >>line 2<<
+-- invalid FSEEK offsets must not move the file position
+declare
+    f sys.ora_utl_file_file_type;
+    fexists boolean;
+    file_length number;
+    block_size integer;
+begin
+    utl_file.fgetattr('data_directory', 'regressflush.txt',
+                      fexists, file_length, block_size);
+    f := utl_file.fopen('data_directory', 'regressflush.txt', 'r');
+    begin
+        utl_file.fseek(f);
+    exception
+        when others then
+            raise notice 'null offsets: %, position: %', sqlerrm,
+                         utl_file.fgetpos(f);
+    end;
+    begin
+        utl_file.fseek(f, -1, NULL);
+    exception
+        when others then
+            raise notice 'negative absolute offset: %, position: %', sqlerrm,
+                         utl_file.fgetpos(f);
+    end;
+    begin
+        utl_file.fseek(f, file_length + 1, NULL);
+    exception
+        when others then
+            raise notice 'absolute offset past EOF: %, position: %', sqlerrm,
+                         utl_file.fgetpos(f);
+    end;
+    begin
+        utl_file.fseek(f, NULL, file_length + 1);
+    exception
+        when others then
+            raise notice 'relative offset past EOF: %, position: %', sqlerrm,
+                         utl_file.fgetpos(f);
+    end;
+    utl_file.fclose(f);
+end;
+/
+NOTICE:  null offsets: INVALID_OFFSET, position: 0
+NOTICE:  negative absolute offset: INVALID_OFFSET, position: 0
+NOTICE:  absolute offset past EOF: INVALID_OFFSET, position: 0
+NOTICE:  relative offset past EOF: INVALID_OFFSET, position: 0
 -- test cases for automatic file closing on session terminated/rollback etc
 declare
     f sys.ora_utl_file_file_type;
