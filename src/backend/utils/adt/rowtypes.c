@@ -127,13 +127,27 @@ compare_oracle_object_records(Oid typeOid, HeapTupleHeader record1,
 	ObjectComparePlanKey planKey;
 	ObjectComparePlanEntry *planEntry;
 	bool		found;
+	int			save_nestlevel = -1;
 
-	if (ORA_PARSER != compatible_db || !get_typisobject(typeOid))
+	if (!get_typisobject(typeOid))
 		return false;
 
 	method = GetObjectTypeComparisonMethod(typeOid, &isOrder);
 	if (method == NULL)
 		return false;
+
+	/*
+	 * Object comparison semantics belong to the type, not to the session that
+	 * happens to compare it.  Parse and execute the hidden method call using
+	 * Oracle semantics, then restore the caller's compatibility mode.
+	 */
+	if (compatible_db != ORA_PARSER)
+	{
+		save_nestlevel = NewGUCNestLevel();
+		(void) set_config_option("ivorysql.compatible_mode", "oracle",
+								 PGC_USERSET, PGC_S_SESSION,
+								 GUC_ACTION_SAVE, true, 0, false);
+	}
 
 	typeTuple = SearchSysCache1(TYPEOID, ObjectIdGetDatum(typeOid));
 	if (!HeapTupleIsValid(typeTuple))
@@ -210,6 +224,8 @@ compare_oracle_object_records(Oid typeOid, HeapTupleHeader record1,
 	pfree(sql.data);
 	pfree(method);
 	pfree(schemaName);
+	if (save_nestlevel >= 0)
+		AtEOXact_GUC(false, save_nestlevel);
 	return true;
 }
 

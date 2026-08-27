@@ -213,6 +213,13 @@ END;
 CREATE TYPE object_type_name_conflict AS OBJECT (id integer);
 DROP FUNCTION object_type_name_conflict;
 
+-- Object types and ordinary packages share the hidden method namespace.
+CREATE PACKAGE object_type_package_conflict IS
+END;
+/
+CREATE TYPE object_type_package_conflict AS OBJECT (id integer);
+DROP PACKAGE object_type_package_conflict;
+
 -- Object method specifications, bodies, implicit SELF, and attribute names.
 CREATE OR REPLACE TYPE person_object_type AS OBJECT
 (
@@ -664,6 +671,18 @@ END;
 SELECT map_object_type(11, 'z') = map_object_type(1, 'a') AS map_equal,
        map_object_type(2, 'z') < map_object_type(9, 'a') AS map_less
 FROM dual;
+SET ivorysql.compatible_mode = pg;
+DO $$
+BEGIN
+    IF NOT (ROW(11, 'z')::map_object_type =
+            ROW(1, 'a')::map_object_type) OR
+       NOT (ROW(11, 'z')::map_object_type <
+            ROW(2, 'a')::map_object_type) THEN
+        RAISE EXCEPTION 'MAP comparison changed with compatible_mode';
+    END IF;
+END;
+$$;
+SET ivorysql.compatible_mode = oracle;
 SELECT CAST(NULL AS map_object_type) < map_object_type(9, 'a') AS map_null
 FROM dual;
 SELECT objects.v
@@ -732,6 +751,18 @@ END;
 SELECT order_object_type(4, 'z') > order_object_type(2, 'a') AS order_greater,
        order_object_type(7, 'x') = order_object_type(7, 'y') AS order_equal
 FROM dual;
+SET ivorysql.compatible_mode = pg;
+DO $$
+BEGIN
+    IF NOT (ROW(4, 'z')::order_object_type >
+            ROW(2, 'a')::order_object_type) OR
+       NOT (ROW(7, 'x')::order_object_type =
+            ROW(7, 'y')::order_object_type) THEN
+        RAISE EXCEPTION 'ORDER comparison changed with compatible_mode';
+    END IF;
+END;
+$$;
+SET ivorysql.compatible_mode = oracle;
 SELECT CAST(NULL AS order_object_type) < order_object_type(1, 'one') AS order_null
 FROM dual;
 SELECT objects.v

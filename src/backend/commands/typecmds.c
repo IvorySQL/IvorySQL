@@ -2614,10 +2614,19 @@ AssignTypeMultirangeArrayOid(void)
  *-------------------------------------------------------------------
  */
 static void
-check_object_type_routine_name(Oid namespaceId, const char *typeName)
+check_object_type_namespace_conflicts(Oid namespaceId, const char *typeName)
 {
 	CatCList   *proclist;
 	bool		found = false;
+
+	if (SearchSysCacheExists2(PKGNAMEARGSNSP,
+							  CStringGetDatum(typeName),
+							  ObjectIdGetDatum(namespaceId)))
+		ereport(ERROR,
+				(errcode(ERRCODE_DUPLICATE_OBJECT),
+				 errmsg("name \"%s\" is already used by a package", typeName),
+				 errdetail("Object type method namespaces share the package "
+						   "namespace and cannot reuse an existing package's name.")));
 
 	proclist = SearchSysCacheList1(PROCNAMEARGSNSP,
 								 CStringGetDatum(typeName));
@@ -2931,8 +2940,8 @@ DefineCompositeType(RangeVar *typevar, List *coldeflist, bool is_object,
 					 errmsg("type \"%s\" already exists", createStmt->relation->relname)));
 	}
 	else if (is_object)
-		check_object_type_routine_name(typeNamespace,
-									   createStmt->relation->relname);
+		check_object_type_namespace_conflicts(typeNamespace,
+										  createStmt->relation->relname);
 
 	/*
 	 * Finally create the relation.  This also creates the type.
