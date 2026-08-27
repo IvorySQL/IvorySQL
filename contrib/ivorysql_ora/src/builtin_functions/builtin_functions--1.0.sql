@@ -235,23 +235,33 @@ AS 'select sys.lengthc($1::sys.oravarcharchar)'
 LANGUAGE SQL
 IMMUTABLE PARALLEL SAFE STRICT;
 
+/*
+ * The datetime overloads are STABLE, not IMMUTABLE: the cast to
+ * oravarcharchar goes through sys.oradate_out() and friends, which are
+ * themselves STABLE because they read nls_date_format / nls_timestamp_format
+ * -- the same reason pg_catalog.date_out() and timestamp_out() are STABLE.
+ * Declaring these IMMUTABLE would launder that dependency past
+ * contain_mutable_functions(), which does not look inside a SQL function
+ * body, and let CREATE INDEX ... (lengthc(date_col)) store lengths that go
+ * stale the moment the format changes.
+ */
 CREATE FUNCTION sys.lengthc(sys.oradate)
 RETURNS integer
 AS 'select sys.lengthc($1::sys.oravarcharchar)'
 LANGUAGE SQL
-IMMUTABLE PARALLEL SAFE STRICT;
+STABLE PARALLEL SAFE STRICT;
 
 CREATE FUNCTION sys.lengthc(sys.oratimestamp)
 RETURNS integer
 AS 'select sys.lengthc($1::sys.oravarcharchar)'
 LANGUAGE SQL
-IMMUTABLE PARALLEL SAFE STRICT;
+STABLE PARALLEL SAFE STRICT;
 
 CREATE FUNCTION sys.lengthc(sys.oratimestamptz)
 RETURNS integer
 AS 'select sys.lengthc($1::sys.oravarcharchar)'
 LANGUAGE SQL
-IMMUTABLE PARALLEL SAFE STRICT;
+STABLE PARALLEL SAFE STRICT;
 
 /*
  * bytea and the two non-LOB domains over it.  These only restate the

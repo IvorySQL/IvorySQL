@@ -1270,16 +1270,24 @@ select length(cast('ab' as raw(2))), lengthb(cast('ab' as raw(2))),
 select length('abc'::bytea), lengthb('abc'::bytea), lengthc('abc'::bytea) from dual;
 select lengthc(cast('abc'::bytea as blob)) from dual;
 
--- (11) attribute guardrails: IMMUTABLE is required for expression indexes
-CREATE TABLE TEST_LENGTHC_IDX(c varchar2(50));
+-- (11) lengthc() must stay IMMUTABLE on the character types, or it cannot
+-- carry an expression index.  The datetime overloads are STABLE on purpose:
+-- their answer is whatever nls_date_format says, so an index over them would
+-- go stale on the next alter session, and CREATE INDEX has to refuse it.
+--
+-- length(d) is shown alongside to record that it does NOT refuse it yet.
+-- sys.length/sys.lengthb declare their own datetime wrappers IMMUTABLE
+-- (builtin_functions--1.0.sql:1429-1448, 1470-1485) even though the cast
+-- inside them reaches the STABLE sys.oradate_out(); the wrapper hides that
+-- from contain_mutable_functions(), which never looks inside a SQL function
+-- body.  Fixing those is a separate change -- they are three whole function
+-- families' worth of user-visible behaviour -- so the asymmetry is pinned
+-- down here rather than left to be discovered.
+CREATE TABLE TEST_LENGTHC_IDX(c varchar2(50), d date);
 CREATE INDEX TEST_LENGTHC_IDX_I ON TEST_LENGTHC_IDX (lengthc(c));
+CREATE INDEX TEST_LENGTHC_IDX_D ON TEST_LENGTHC_IDX (lengthc(d));
+CREATE INDEX TEST_LENGTHC_IDX_L ON TEST_LENGTHC_IDX (length(d));
 DROP TABLE TEST_LENGTHC_IDX;
-
-SELECT pg_catalog.pg_get_function_arguments(p.oid) AS args,
-       p.provolatile, p.proisstrict, p.proparallel
-  FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
- WHERE n.nspname = 'sys' AND p.proname = 'lengthc'
- ORDER BY 1;
 
 /*
  * round
