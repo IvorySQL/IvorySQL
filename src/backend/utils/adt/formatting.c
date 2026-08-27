@@ -7399,8 +7399,6 @@ Numeric ora_to_number_internal(text *value, text *fmt)
 	Datum		result;
 	int			scale = 0,
 				precision = 0;
-	char 		*tem = NULL;
-	bool 		isleft = true;
 
 	if(fmt)
 	{
@@ -7422,68 +7420,169 @@ Numeric ora_to_number_internal(text *value, text *fmt)
 	}
 	else
 	{
-		numstr = text_to_cstring(value);
-		tem = numstr;
-		precision = 0;
-		scale = 0;
-		while(*tem == ' ')
-		{
-		/* Remove leading space */
-			tem++;
-		}
-		if(*tem == '-' || *tem == '+')
-		{
-			precision++;
-			tem++;
-		}
-		for (; *tem != '\0'; tem++)
-		{
-			if (isleft)
-			{
-				if (isdigit((unsigned char) *tem))
-					precision++;
-				else if (*tem == '.')
-					isleft = false;
-				else if (*tem == ' ')
-				{
-					/* allow trailing whitespace only (same as the scale side) */
-					while (*tem == ' ')
-						tem++;
+		const char *p;
+		int			int_digits = 0;
+		int			frac_digits = 0;
+		int64		exponent = 0;
+		bool		has_exp_digit = false;
+		bool		exp_overflow = false;
+		bool		underflow_to_zero = false;
+		bool		has_dot = false;
+		bool		has_digit = false;
+		bool		has_nonzero_digit = false;
 
-					if (*tem == '\0')
-						break;
-					ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								 errmsg("invalid number format model")));
-				}
+		numstr = text_to_cstring(value);
+		p = numstr;
+
+		/* Skip leading blanks (Oracle ignores them) */
+		while (*p == ' ')
+			p++;
+
+		/* Optional sign */
+		if (*p == '-' || *p == '+')
+			p++;
+
+		/*
+		 * Mantissa: digits with an optional decimal point.  Integer and
+		 * fractional digits are counted separately so that the numeric
+		 * typmod can be derived after the exponent is applied.
+		 */
+		while (*p != '\0')
+		{
+			if (isdigit((unsigned char) *p))
+			{
+				has_digit = true;
+				if (*p != '0')
+					has_nonzero_digit = true;
+				if (!has_dot)
+					int_digits++;
 				else
-					ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								 errmsg("invalid number format model")));
+					frac_digits++;
+				p++;
+			}
+			else if (*p == '.' && !has_dot)
+			{
+				has_dot = true;
+				p++;
 			}
 			else
-			{
-				if (isdigit((unsigned char) *tem))
-					scale++;
-				else
-				{
-					while(*tem == ' ')
-						tem++;
-
-					if(*tem == '\0')
-						break;
-					else
-						ereport(ERROR,
-								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-									errmsg("invalid number format model")));
-				}
-			}
+				break;
 		}
-		precision += scale;
-		if (precision == 0)
+
+		/*
+		 * Optional exponent (scientific notation), e.g. '1e3' or '-1.5E-2'.
+		 * Oracle's TO_NUMBER accepts these.
+		 */
+		if (*p == 'e' || *p == 'E')
+		{
+			int			exp_sign = 1;
+
+			p++;
+
+			if (*p == '-')
+			{
+				exp_sign = -1;
+				p++;
+			}
+			else if (*p == '+')
+				p++;
+
+			while (isdigit((unsigned char) *p))
+			{
+				/*
+				 * Consume every exponent digit rather than stopping after a
+				 * fixed number of them, so that '1e0000000010' is not misread
+				 * as '1e1'.  Accumulate the magnitude in int64 and apply the
+				 * same bound as numeric_in() (PG_INT32_MAX / 2) to spot
+				 * exponents that can no longer be represented.  Past that
+				 * bound the outcome is already fixed: a positive exponent
+				 * overflows numeric, while a negative one underflows to zero
+				 * (matching Oracle's TO_NUMBER).  Keep scanning so the rest of
+				 * the input is still validated, but stop accumulating.
+				 */
+				has_exp_digit = true;
+				if (!exp_overflow)
+				{
+					if (exponent > PG_INT32_MAX / 2)
+						exp_overflow = true;
+					else
+					{
+						exponent = exponent * 10 + (*p - '0');
+						if (exponent > PG_INT32_MAX / 2)
+							exp_overflow = true;
+					}
+				}
+				p++;
+			}
+
+			/* An exponent must have at least one digit */
+			if (!has_exp_digit)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("invalid number format model")));
+
+			if (exp_overflow)
+			{
+				if (exp_sign > 0 && has_nonzero_digit)
+					ereport(ERROR,
+							(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+							 errmsg("value overflows numeric format")));
+
+				/*
+				 * An oversized exponent times an all-zero mantissa is still
+				 * zero, and a negative exponent that large underflows to
+				 * zero as well -- both match Oracle's TO_NUMBER.  numeric_in()
+				 * would instead raise an out-of-range error, so parse a
+				 * plain "0" below.
+				 */
+				underflow_to_zero = true;
+				exponent = 0;
+			}
+			else
+				exponent *= exp_sign;
+		}
+
+		/* Skip trailing blanks (Oracle ignores them) */
+		while (*p == ' ')
+			p++;
+
+		if (*p != '\0')
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						errmsg("invalid number format model")));
+					 errmsg("invalid number format model")));
+
+		if (!has_digit)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("invalid number format model")));
+
+		/*
+		 * Derive the numeric typmod from the mantissa digits and the
+		 * exponent: scale = max(0, frac_digits - exponent), precision =
+		 * mantissa digits shifted by the exponent (never less than the
+		 * scale).  Values beyond numeric's limits are rejected by
+		 * numeric_in() with an overflow error.
+		 */
+		scale = Max(0, frac_digits - (int) exponent);
+		precision = Max(int_digits + frac_digits +
+						Max(0, (int) exponent - frac_digits), scale);
+
+		/* Keep the typmod within numeric's valid range */
+		if (precision > NUMERIC_MAX_PRECISION)
+			precision = NUMERIC_MAX_PRECISION;
+		if (scale > precision)
+			scale = precision;
+
+		/*
+		 * A negative exponent that underflows numeric's range yields zero
+		 * (as Oracle's TO_NUMBER does), so hand numeric_in() a plain "0"
+		 * instead of the original string, which would overflow.
+		 */
+		if (underflow_to_zero)
+		{
+			pfree(numstr);
+			numstr = pstrdup("0");
+		}
 	}
 
 	result = DirectFunctionCall3(numeric_in,
