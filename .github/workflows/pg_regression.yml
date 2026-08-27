@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ master , IVORY_REL_4_STABLE , IVORYSQL_REL_1_STABLE]
 
+permissions:
+  contents: read
+
 jobs:
   pg_regression:
     runs-on: ${{ matrix.os }}
@@ -25,8 +28,21 @@ jobs:
               libreadline-dev libedit-dev uuid-dev libossp-uuid-dev \
               libipc-run-perl libtime-hires-perl libtest-simple-perl \
               libicu-dev libnuma-dev
+    - name: Setup ccache
+      uses: hendrikmuhs/ccache-action@v1.2.23
+      with:
+        key: ${{ runner.os }}-autoconf
+        restore-keys: |
+          ${{ runner.os }}-autoconf
+        max-size: 2G
+        save: ${{ github.event_name == 'push' }}
+    - name: Configure ccache
+      run: echo "CCACHE_SLOPPINESS=time_macros" >> "$GITHUB_ENV"
     - name: configure - linux
       if: ${{ matrix.os == 'ubuntu-latest' }}
+      env:
+        CC: ccache gcc
+        CXX: ccache g++
       run: |
         curl -L -o cpanm http://cpanmin.us && chmod +x cpanm && \
         ./cpanm --sudo IPC::Run && \
@@ -38,7 +54,7 @@ jobs:
             --with-ossp-uuid  --with-libxml --with-libxslt  --with-perl \
             --with-icu --with-libnuma --enable-injection-points --enable-nls
     - name: compile
-      run: make && make install
+      run: make -j"$(nproc)" && make -j"$(nproc)" install
 
     - name: pg_regression
       run: make check-world
