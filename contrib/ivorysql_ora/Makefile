@@ -85,7 +85,8 @@ ORA_REGRESS = \
 	utl_file \
 	utl_raw \
 	utl_encode \
-	dbms_session
+	dbms_session \
+	ora_bit_agg
 
 # Include path for plisql.h (needed by dbms_utility)
 PG_CPPFLAGS += -I$(top_srcdir)/src/pl/plisql/src
