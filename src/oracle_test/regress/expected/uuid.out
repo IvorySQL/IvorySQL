@@ -232,6 +232,31 @@ SELECT array_agg(id ORDER BY guid_field) FROM guid3;
  {1,2,3,4,5,6,7,8,9,10}
 (1 row)
 
+-- uuidv7: infinite intervals are rejected
+-- Oracle compatible mode: the parser rejects the bare "interval" typename at
+-- parse time ("missing or invalid datetime field"), so use pg_catalog.interval
+-- to keep PG interval semantics; the outputs match PG's exactly.
+SELECT uuidv7('infinity'::pg_catalog.interval);
+ERROR:  interval out of range for UUID version 7
+DETAIL:  UUID version 7 does not support infinite intervals.
+SELECT uuidv7('-infinity'::pg_catalog.interval);
+ERROR:  interval out of range for UUID version 7
+DETAIL:  UUID version 7 does not support infinite intervals.
+-- uuidv7: timestamps before Unix epoch are rejected
+SELECT uuidv7('-1000 years'::pg_catalog.interval);
+ERROR:  timestamp out of range for UUID version 7
+DETAIL:  UUID version 7 supports timestamps from 1970-01-01 to approximately year 10889.
+-- uuidv7: timestamps beyond 48-bit ms field (~year 10889) are rejected
+SELECT uuidv7('9000 years'::pg_catalog.interval);
+ERROR:  timestamp out of range for UUID version 7
+DETAIL:  UUID version 7 supports timestamps from 1970-01-01 to approximately year 10889.
+-- uuidv7: a large but in-range forward shift is accepted
+SELECT uuid_extract_timestamp(uuidv7('1000 years'::pg_catalog.interval)) > now() + '999 years'::pg_catalog.interval;
+ ?column? 
+----------
+ t
+(1 row)
+
 -- extract functions
 -- version
 SELECT uuid_extract_version('11111111-1111-5111-8111-111111111111');  -- 5

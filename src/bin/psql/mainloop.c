@@ -813,7 +813,9 @@ non_psqlplus_cmd:
 					/* execute query unless we're in an inactive \if branch */
 					if (conditional_active(cond_stack))
 					{
-						success = SendQuery(query_buf->data);
+						/* count_copy_from_stdin should be reliable here */
+						success = SendQuery(query_buf->data,
+											psql_scan_count_copy_from_stdin(scan_state));
 						slashCmdStatus = success ? PSQL_CMD_SEND : PSQL_CMD_ERROR;
 						pset.stmt_lineno = 1;
 
@@ -825,9 +827,10 @@ non_psqlplus_cmd:
 							query_buf = swap_buf;
 						}
 						resetPQExpBuffer(query_buf);
+						/* reset parsing state, too */
+						psql_scan_reset(scan_state);
 
 						added_nl_pos = -1;
-						/* we need not do psql_scan_reset() here */
 					}
 					else
 					{
@@ -889,7 +892,7 @@ non_psqlplus_cmd:
 						/* should not see this in inactive branch */
 						Assert(conditional_active(cond_stack));
 
-						success = SendQuery(query_buf->data);
+						success = SendQuery(query_buf->data, -1);
 
 						/* transfer query to previous_buf by pointer-swapping */
 						{
@@ -899,8 +902,7 @@ non_psqlplus_cmd:
 							query_buf = swap_buf;
 						}
 						resetPQExpBuffer(query_buf);
-
-						/* flush any paren nesting info after forced send */
+						/* reset parsing state, too */
 						psql_scan_reset(scan_state);
 					}
 					else if (slashCmdStatus == PSQL_CMD_NEWEDIT)
@@ -1055,7 +1057,9 @@ non_psqlplus_cmd:
 							if (haserror)
 								success = false;
 							else
-								success = SendQuery(query_buf->data);
+								success = SendQuery(query_buf->data,
+												ora_psql_scan_count_copy_from_stdin(
+													ora_scan_state));
 						}
 						slashCmdStatus = success ? PSQL_CMD_SEND : PSQL_CMD_ERROR;
 						pset.stmt_lineno = 1;
@@ -1068,9 +1072,10 @@ non_psqlplus_cmd:
 							query_buf = swap_buf;
 						}
 						resetPQExpBuffer(query_buf);
+						/* reset parsing state, too */
+						ora_psql_scan_reset(ora_scan_state);
 
 						added_nl_pos = -1;
-						/* we need not do psql_scan_reset() here */
 					}
 					else
 					{
@@ -1132,7 +1137,7 @@ non_psqlplus_cmd:
 						/* should not see this in inactive branch */
 						Assert(conditional_active(cond_stack));
 
-						success = SendQuery(query_buf->data);
+						success = SendQuery(query_buf->data, -1);
 
 						/* transfer query to previous_buf by pointer-swapping */
 						{
@@ -1142,8 +1147,7 @@ non_psqlplus_cmd:
 							query_buf = swap_buf;
 						}
 						resetPQExpBuffer(query_buf);
-
-						/* flush any paren nesting info after forced send */
+						/* reset parsing state, too */
 						ora_psql_scan_reset(ora_scan_state);
 					}
 					else if (slashCmdStatus == PSQL_CMD_NEWEDIT)
@@ -1232,7 +1236,14 @@ non_psqlplus_cmd:
 		/* execute query unless we're in an inactive \if branch */
 		if (conditional_active(cond_stack))
 		{
-			success = SendQuery(query_buf->data);
+			/*
+			 * In Oracle compatible mode the query buffer was scanned by the
+			 * Oracle lexer, so get the count from that scan state instead.
+			 */
+			success = SendQuery(query_buf->data,
+							db_mode == DB_ORACLE
+							? ora_psql_scan_count_copy_from_stdin(ora_scan_state)
+							: psql_scan_count_copy_from_stdin(scan_state));
 		}
 		else
 		{

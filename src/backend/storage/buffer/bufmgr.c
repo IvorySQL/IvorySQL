@@ -656,7 +656,7 @@ PrefetchBuffer(Relation reln, ForkNumber forkNum, BlockNumber blockNum)
 
 	if (RelationUsesLocalBuffers(reln))
 	{
-		/* see comments in ReadBufferExtended */
+		/* see comments in ReadBuffer_common */
 		if (RELATION_IS_OTHER_TEMP(reln))
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -809,18 +809,9 @@ ReadBufferExtended(Relation reln, ForkNumber forkNum, BlockNumber blockNum,
 	Buffer		buf;
 
 	/*
-	 * Reject attempts to read non-local temporary relations; we would be
-	 * likely to get wrong data since we have no visibility into the owning
-	 * session's local buffers.
-	 */
-	if (RELATION_IS_OTHER_TEMP(reln))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("cannot access temporary tables of other sessions")));
-
-	/*
 	 * Read the buffer, and update pgstat counters to reflect a cache hit or
-	 * miss.
+	 * miss.  The other-session temp-relation check is enforced by
+	 * ReadBuffer_common().
 	 */
 	buf = ReadBuffer_common(reln, RelationGetSmgr(reln), 0,
 							forkNum, blockNum, mode, strategy);
@@ -1107,7 +1098,7 @@ ZeroAndLockBuffer(Buffer buffer, ReadBufferMode mode, bool already_valid)
  * already present, or false if more work is required to either read it in or
  * zero it.
  */
-static pg_attribute_always_inline Buffer
+static pg_always_inline Buffer
 PinBufferForBlock(Relation rel,
 				  SMgrRelation smgr,
 				  char persistence,
@@ -1190,7 +1181,7 @@ PinBufferForBlock(Relation rel,
  *
  * smgr is required, rel is optional unless using P_NEW.
  */
-static pg_attribute_always_inline Buffer
+static pg_always_inline Buffer
 ReadBuffer_common(Relation rel, SMgrRelation smgr, char smgr_persistence,
 				  ForkNumber forkNum,
 				  BlockNumber blockNum, ReadBufferMode mode,
@@ -1200,6 +1191,18 @@ ReadBuffer_common(Relation rel, SMgrRelation smgr, char smgr_persistence,
 	Buffer		buffer;
 	int			flags;
 	char		persistence;
+
+	/*
+	 * Reject attempts to read non-local temporary relations; we would be
+	 * likely to get wrong data since we have no visibility into the owning
+	 * session's local buffers.  This is the canonical place for the check,
+	 * covering the ReadBufferExtended() entry point and any other caller that
+	 * supplies a Relation.
+	 */
+	if (rel && RELATION_IS_OTHER_TEMP(rel))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot access temporary tables of other sessions")));
 
 	/*
 	 * Backward compatibility path, most code should use ExtendBufferedRel()
@@ -1259,7 +1262,7 @@ ReadBuffer_common(Relation rel, SMgrRelation smgr, char smgr_persistence,
 	return buffer;
 }
 
-static pg_attribute_always_inline bool
+static pg_always_inline bool
 StartReadBuffersImpl(ReadBuffersOperation *operation,
 					 Buffer *buffers,
 					 BlockNumber blockNum,
@@ -1274,6 +1277,12 @@ StartReadBuffersImpl(ReadBuffersOperation *operation,
 	Assert(*nblocks == 1 || allow_forwarding);
 	Assert(*nblocks > 0);
 	Assert(*nblocks <= MAX_IO_COMBINE_LIMIT);
+
+	/* see comments in ReadBuffer_common */
+	if (operation->rel && RELATION_IS_OTHER_TEMP(operation->rel))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot access temporary tables of other sessions")));
 
 	for (int i = 0; i < actual_nblocks; ++i)
 	{
@@ -1997,7 +2006,7 @@ AsyncReadBuffers(ReadBuffersOperation *operation, int *nblocks_progress)
  *
  * No locks are held either at entry or exit.
  */
-static pg_attribute_always_inline BufferDesc *
+static pg_always_inline BufferDesc *
 BufferAlloc(SMgrRelation smgr, char relpersistence, ForkNumber forkNum,
 			BlockNumber blockNum,
 			BufferAccessStrategy strategy,
@@ -2578,9 +2587,23 @@ ExtendBufferedRelCommon(BufferManagerRelation bmr,
 										 extend_by);
 
 	if (bmr.relpersistence == RELPERSISTENCE_TEMP)
+	{
+		/*
+		 * Reject attempts to extend non-local temporary relations; we have no
+		 * ability to transfer about-to-be-created local buffers into the
+		 * owning session's local buffers.  This is the canonical place for
+		 * the check, covering any attempt to extend a non-local temporary
+		 * relation.
+		 */
+		if (bmr.rel && RELATION_IS_OTHER_TEMP(bmr.rel))
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("cannot access temporary tables of other sessions")));
+
 		first_block = ExtendBufferedRelLocal(bmr, fork, flags,
 											 extend_by, extend_upto,
 											 buffers, &extend_by);
+	}
 	else
 		first_block = ExtendBufferedRelShared(bmr, fork, strategy, flags,
 											  extend_by, extend_upto,
@@ -6781,7 +6804,7 @@ EvictRelUnpinnedBuffers(Relation rel, int32 *buffers_evicted,
  * part of error handling, which in turn could lead to the buffer being
  * replaced while IO is ongoing.
  */
-static pg_attribute_always_inline void
+static pg_always_inline void
 buffer_stage_common(PgAioHandle *ioh, bool is_write, bool is_temp)
 {
 	uint64	   *io_data;
@@ -7027,7 +7050,7 @@ buffer_readv_encode_error(PgAioResult *result,
  * Helper for AIO readv completion callbacks, supporting both shared and temp
  * buffers. Gets called once for each buffer in a multi-page read.
  */
-static pg_attribute_always_inline void
+static pg_always_inline void
 buffer_readv_complete_one(PgAioTargetData *td, uint8 buf_off, Buffer buffer,
 						  uint8 flags, bool failed, bool is_temp,
 						  bool *buffer_invalid,
@@ -7171,7 +7194,7 @@ buffer_readv_complete_one(PgAioTargetData *td, uint8 buf_off, Buffer buffer,
  *
  * Shared between shared and local buffers, to reduce code duplication.
  */
-static pg_attribute_always_inline PgAioResult
+static pg_always_inline PgAioResult
 buffer_readv_complete(PgAioHandle *ioh, PgAioResult prior_result,
 					  uint8 cb_data, bool is_temp)
 {

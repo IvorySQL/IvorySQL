@@ -70,6 +70,10 @@ typedef int YYSTYPE;
 
 #define ECHO ora_psqlscan_emit(cur_state, yytext, yyleng)
 
+static bool ora_psqlscan_is_copy_from_stdin(PsqlScanState state);
+static void ora_psqlscan_track_identifier(PsqlScanState state,
+											  const char *identifier);
+
 /*
  * Work around a bug in flex 2.5.35: it emits a couple of functions that
  * it forgets to emit declarations for.  Since we use -Wmissing-prototypes,
@@ -776,6 +780,9 @@ other			.
 							cur_state->paren_depth == 0 && cur_state->begin_depth == 0) || 
 								is_oracle_slash(cur_state, cur_state->scanline))
 					{
+						/* Remember if this subcommand was COPY FROM STDIN */
+						if (ora_psqlscan_is_copy_from_stdin(cur_state))
+							cur_state->copy_stdin_count++;
 						/* Terminate lexing temporarily */
 						cur_state->cancel_semicolon_terminator = false;
 						cur_state->maybe_anonymous_declare_start = false;
@@ -787,7 +794,7 @@ other			.
 						cur_state->start_state = YY_START;
 						cur_state->token_count = 0;
 						cur_state->token_cursor_idx = 0;
-						cur_state->identifier_count = 0;
+						cur_state->init_idents_count = 0;
 						cur_state->begin_depth = 0;
 						cur_state->ora_plsql_expect_end_symbol = END_SYMBOL_INVALID;
 						return LEXRES_SEMI;
@@ -805,6 +812,9 @@ other			.
 							cur_state->begin_depth == 0 &&
 							!cur_state->cancel_semicolon_terminator)
 					{
+						/* Remember if this subcommand was COPY FROM STDIN */
+						if (ora_psqlscan_is_copy_from_stdin(cur_state))
+							cur_state->copy_stdin_count++;
 						/* Terminate lexing temporarily */
 						/* Paranoid */
 						cur_state->maybe_anonymous_declare_start = false;
@@ -816,7 +826,7 @@ other			.
 						cur_state->token_cursor_idx = 0;
 						cur_state->token_count = 0;
 						cur_state->start_state = YY_START;
-						cur_state->identifier_count = 0;
+						cur_state->init_idents_count = 0;
 						cur_state->ora_plsql_expect_end_symbol = END_SYMBOL_INVALID;
 						return LEXRES_SEMI;
 					}
@@ -830,8 +840,16 @@ other			.
 "\\"[;:]		{
 					/* Force a semi-colon or colon into the query buffer */
 					ora_psqlscan_emit(cur_state, yytext + 1, 1);
-					if (yytext[1] == ';')
-						cur_state->identifier_count = 0;
+					/* Reset BEGIN/END/COPY tracking if semi at outer level */
+					if (yytext[1] == ';' &&
+						cur_state->paren_depth == 0 &&
+						cur_state->begin_depth == 0)
+					{
+						/* Remember if this subcommand was COPY FROM STDIN */
+						if (ora_psqlscan_is_copy_from_stdin(cur_state))
+							cur_state->copy_stdin_count++;
+						cur_state->init_idents_count = 0;
+					}
 				}
 
 "\\"			{
@@ -1067,76 +1085,19 @@ other			.
 
 {identifier}	{
 					/*
-					 * We need to track if we are inside a BEGIN .. END block
-					 * in a function definition, so that semicolons contained
-					 * therein don't terminate the whole statement.  Short of
-					 * writing a full parser here, the following heuristic
-					 * should work.  First, we track whether the beginning of
-					 * the statement matches CREATE [OR REPLACE]
-					 * {FUNCTION|PROCEDURE}
+					 * Not final End state. This state needs to be cleared.
 					 */
-
-					if (cur_state->identifier_count == 0)
-						memset(cur_state->identifiers, 0, sizeof(cur_state->identifiers));
-
-					if (pg_strcasecmp(yytext, "create") == 0 ||
-						pg_strcasecmp(yytext, "function") == 0 ||
-						pg_strcasecmp(yytext, "procedure") == 0 ||
-						pg_strcasecmp(yytext, "package") == 0 || 
-						pg_strcasecmp(yytext, "or") == 0 ||
-						pg_strcasecmp(yytext, "replace") == 0)
-					{
-						if (cur_state->identifier_count < sizeof(cur_state->identifiers))
-							cur_state->identifiers[cur_state->identifier_count] = pg_tolower((unsigned char) yytext[0]);
-					}
-					
-					/* Not final End state .This state needs to be cleared */
 					if (cur_state->ora_plsql_expect_end_symbol)
 						cur_state->ora_plsql_expect_end_symbol = END_SYMBOL_INVALID;
+
 					/*
-					 * Simply discard EDITIONABLE and NONEDITIONABLE that occur in
-					 * the first 4 identifiers at the beginning of the command.
+					 * We need to track if we are inside a BEGIN .. END block
+					 * in a function definition, so that semicolons contained
+					 * therein don't terminate the whole statement, and we also
+					 * detect COPY ... FROM STDIN commands.  Short of writing a
+					 * full parser here, the following heuristic should work.
 					 */
-					if (pg_strcasecmp(yytext, "editionable") != 0 &&
-						pg_strcasecmp(yytext, "noneditionable") != 0)
-						cur_state->identifier_count++;
-
-					if (cur_state->identifiers[0] == 'c' &&
-						(cur_state->identifiers[1] == 'f' || cur_state->identifiers[1] == 'p' ||
-						 (cur_state->identifiers[1] == 'o' && cur_state->identifiers[2] == 'r' &&
-						  (cur_state->identifiers[3] == 'f' || cur_state->identifiers[3] == 'p'))) &&
-						cur_state->paren_depth == 0)
-					{
-						/*
-						 * In Oracle mode we do not rely on begin_depth to cancel the semicolon terminator,
-						 * because Oracle's DECLARE clause has no DECLARE keyword declaration, so a semicolon
-						 * will be encountered before begin_depth++; another reason is that the slash (/) will
-						 * force the query be sent to the server, the begin_depth is not 0 in the next query
-						 * scan phase, so the semicolon erroneously loses its ability to terminate.
-						 */
-						cur_state->cancel_semicolon_terminator = true;
-
-						if (pg_strcasecmp(yytext, "begin") == 0)
-							cur_state->begin_depth++;
-						else if (pg_strcasecmp(yytext, "case") == 0)
-						{
-							/*
-							 * CASE also ends with END.  We only need to track
-							 * this if we are already inside a BEGIN.
-							 */
-							if (cur_state->begin_depth >= 1)
-								cur_state->begin_depth++;
-						}
-						else if (pg_strcasecmp(yytext, "end") == 0)
-						{
-							if (cur_state->begin_depth > 0)
-								cur_state->begin_depth--;
-							
-							/* update Symbol State */
-							cur_state->ora_plsql_expect_end_symbol = END_SYMBOL_SEMICOLON;
-						}
-					}
-
+					ora_psqlscan_track_identifier(cur_state, yytext);
 					ECHO;
 				}
 
@@ -1162,6 +1123,133 @@ other			.
 %%
 
 /* LCOV_EXCL_STOP */
+
+/*
+ * Does the current input match COPY ... FROM STDIN?
+ *
+ * This is the same logic as psqlscan_is_copy_from_stdin() in psqlscan.l.
+ */
+static bool
+ora_psqlscan_is_copy_from_stdin(PsqlScanState state)
+{
+	const char *idents = state->init_idents;
+
+	/*
+	 * The first word must be COPY, but after that there could be up to four
+	 * identifiers (BINARY database.schema.table) before FROM.  Since some of
+	 * the words we track are not reserved words, don't assume the intervening
+	 * array entries are '\0'.
+	 */
+	if (idents[0] != 'C')
+		return false;
+	for (int i = 1; i < lengthof(state->init_idents) - 1; i++)
+	{
+		/* Scan to find FROM; if not seen within range, it's not valid COPY */
+		if (idents[i] != 'F')
+			continue;
+		/* It's COPY FROM STDIN only if the next word is STDIN */
+		return (idents[i + 1] == 'S');
+	}
+	return false;
+}
+
+/*
+ * This is the Oracle-mode counterpart of psqlscan_track_identifier() in
+ * psqlscan.l.  It presently has these tasks:
+ *
+ * 1. Track whether we are inside BEGIN .. END in a function definition,
+ * so that semicolons contained therein don't terminate the whole statement.
+ * Short of writing a full parser here, the following heuristic should work.
+ *
+ * We track whether the beginning of the statement matches CREATE [OR REPLACE]
+ * {FUNCTION|PROCEDURE|PACKAGE}.  If so, count BEGIN and END pairs.  We also
+ * have to account for CASE ... END.
+ *
+ * 2. Record enough information for ora_psqlscan_is_copy_from_stdin() to
+ * recognize COPY ... FROM STDIN commands.
+ */
+static void
+ora_psqlscan_track_identifier(PsqlScanState state, const char *identifier)
+{
+	/* None of this needs to happen when we're inside parentheses */
+	if (state->paren_depth != 0)
+		return;
+
+	/* Reset all my state at the start of each new statement */
+	if (state->init_idents_count == 0)
+		memset(state->init_idents, 0, sizeof(state->init_idents));
+
+	if (state->init_idents_count < lengthof(state->init_idents))
+	{
+		/*
+		 * What we need to recognize is CREATE [OR REPLACE]
+		 * FUNCTION/PROCEDURE/PACKAGE, and COPY ... FROM STDIN.  (Note: the
+		 * backend grammar doesn't distinguish STDIN from STDOUT, so we should
+		 * not do so here either.)  We record the first set of keywords in
+		 * lower case and the second set in upper case, to avoid conflicts.
+		 */
+		if (pg_strcasecmp(identifier, "create") == 0 ||
+			pg_strcasecmp(identifier, "function") == 0 ||
+			pg_strcasecmp(identifier, "procedure") == 0 ||
+			pg_strcasecmp(identifier, "package") == 0 ||
+			pg_strcasecmp(identifier, "or") == 0 ||
+			pg_strcasecmp(identifier, "replace") == 0)
+			state->init_idents[state->init_idents_count] = pg_tolower((unsigned char) identifier[0]);
+		else if (pg_strcasecmp(identifier, "copy") == 0 ||
+				 pg_strcasecmp(identifier, "from") == 0 ||
+				 pg_strcasecmp(identifier, "stdin") == 0 ||
+				 pg_strcasecmp(identifier, "stdout") == 0)
+			state->init_idents[state->init_idents_count] = pg_toupper((unsigned char) identifier[0]);
+
+		/*
+		 * Simply discard EDITIONABLE and NONEDITIONABLE that occur in the
+		 * first few identifiers at the beginning of the command.
+		 */
+		if (pg_strcasecmp(identifier, "editionable") != 0 &&
+			pg_strcasecmp(identifier, "noneditionable") != 0)
+			state->init_idents_count++;
+	}
+
+	/*
+	 * Track BEGIN/CASE/END only when within an appropriate statement.
+	 */
+	if (state->init_idents[0] == 'c' &&
+		(state->init_idents[1] == 'f' || state->init_idents[1] == 'p' ||
+		 (state->init_idents[1] == 'o' && state->init_idents[2] == 'r' &&
+		  (state->init_idents[3] == 'f' || state->init_idents[3] == 'p'))))
+	{
+		/*
+		 * In Oracle mode we do not rely on begin_depth to cancel the
+		 * semicolon terminator, because Oracle's DECLARE clause has no
+		 * DECLARE keyword declaration, so a semicolon will be encountered
+		 * before begin_depth++; another reason is that the slash (/) will
+		 * force the query be sent to the server, the begin_depth is not 0
+		 * in the next query scan phase, so the semicolon erroneously loses
+		 * its ability to terminate.
+		 */
+		state->cancel_semicolon_terminator = true;
+
+		if (pg_strcasecmp(identifier, "begin") == 0)
+			state->begin_depth++;
+		else if (pg_strcasecmp(identifier, "case") == 0)
+		{
+			/*
+			 * CASE also ends with END.  We only need to track this if we
+			 * are already inside a BEGIN.
+			 */
+			if (state->begin_depth >= 1)
+				state->begin_depth++;
+		}
+		else if (pg_strcasecmp(identifier, "end") == 0)
+		{
+			if (state->begin_depth > 0)
+				state->begin_depth--;
+
+			/* update Symbol State */
+			state->ora_plsql_expect_end_symbol = END_SYMBOL_SEMICOLON;
+		}
+	}
+}
 
 /*
  * Create a lexer working state struct.
@@ -1450,8 +1538,9 @@ ora_psql_scan_reset(PsqlScanState state)
 	if (state->dolqstart)
 		free(state->dolqstart);
 	state->dolqstart = NULL;
-	state->identifier_count = 0;
+	state->init_idents_count = 0;
 	state->begin_depth = 0;
+	state->copy_stdin_count = 0;
 	state->maybe_anonymous_declare_start = false;
 	state->maybe_anonymous_begin_start = false;
 	state->cancel_semicolon_terminator = false;
@@ -1487,6 +1576,27 @@ void
 ora_psql_scan_reselect_sql_lexer(PsqlScanState state)
 {
 	state->start_state = INITIAL;
+}
+
+/*
+ * Return the number of COPY ... FROM STDIN commands in the input string.
+ *
+ * This should be called only after we've finished parsing a complete
+ * string and are ready to send it to the backend.  It is the Oracle-mode
+ * counterpart of psql_scan_count_copy_from_stdin() in psqlscan.l.
+ */
+int
+ora_psql_scan_count_copy_from_stdin(PsqlScanState state)
+{
+	if (state->init_idents_count > 0)
+	{
+		/* Count any COPY FROM STDIN following the last semicolon */
+		if (ora_psqlscan_is_copy_from_stdin(state))
+			state->copy_stdin_count++;
+		/* ... but do so only once */
+		state->init_idents_count = 0;
+	}
+	return state->copy_stdin_count;
 }
 
 /*
@@ -1696,7 +1806,7 @@ ora_psqlscan_emit(PsqlScanState state, const char *txt, int len)
 			 */
 			if (strcmp(txt, "<<") == 0 && state->token_count == 0)
 				state->anonymous_label_start = true;
-			else if (state->identifier_count == 1 && state->token_count == 1)
+			else if (state->init_idents_count == 1 && state->token_count == 1)
 				state->anonymous_label_ident = true;
 			else if (strcmp(txt, ">>") == 0 && state->token_count == 2)
 				state->anonymous_label_end = true;

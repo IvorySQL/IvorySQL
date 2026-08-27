@@ -30,6 +30,10 @@ $node_standby_2->init_from_backup($node_primary, $backup_name,
 	has_streaming => 1);
 $node_standby_2->start;
 
+# Wait for standby_1 and standby_2 connection to the primary.
+$node_primary->poll_query_until('postgres',
+	"SELECT count(1) = 2 FROM pg_stat_replication");
+
 # Create some content on primary
 $node_primary->safe_psql('postgres',
 	"CREATE TABLE tab_int AS SELECT generate_series(1,1000) AS a");
@@ -47,11 +51,15 @@ $node_standby_1->psql(
 	stdout => \$psql_out);
 is($psql_out, 't', "promotion of standby with pg_promote");
 
-# Switch standby 2 to replay from standby 1
+# Switch standby 2 to replay from standby 1.  During the timeline switch,
+# the WAL receiver process on standby 2 should not be stopped, and the
+# new primary connection string should not be visible
+# in pg_stat_wal_receiver.
+my $secret = 'dont_show_me';
 my $connstr_1 = $node_standby_1->connstr;
 $node_standby_2->append_conf(
 	'postgresql.conf', qq(
-primary_conninfo='$connstr_1'
+primary_conninfo='$connstr_1 password=$secret'
 ));
 $node_standby_2->restart;
 
@@ -65,6 +73,13 @@ my $result =
   $node_standby_2->safe_psql('postgres', "SELECT count(*) FROM tab_int");
 is($result, qq(2000), 'check content of standby 2');
 
+
+my $raw_conninfo_count = $node_standby_2->safe_psql('postgres',
+	"SELECT count(*) FROM pg_stat_wal_receiver WHERE conninfo LIKE '%$secret%'"
+);
+
+is($raw_conninfo_count, '0',
+	'pg_stat_wal_receiver.conninfo not updated across timeline jumps');
 
 # Ensure that a standby is able to follow a primary on a newer timeline
 # when WAL archiving is enabled.

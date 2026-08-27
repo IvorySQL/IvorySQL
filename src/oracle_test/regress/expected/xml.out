@@ -6,11 +6,19 @@ CREATE TABLE xmltest (
 );
 INSERT INTO xmltest VALUES (1, '<value>one</value>');
 INSERT INTO xmltest VALUES (2, '<value>two</value>');
-INSERT INTO xmltest VALUES (3, '<wrong');
+INSERT INTO xmltest VALUES (3, '<value>three</wrong>  ');
 ERROR:  invalid XML content
-LINE 1: INSERT INTO xmltest VALUES (3, '<wrong');
+LINE 1: INSERT INTO xmltest VALUES (3, '<value>three</wrong>  ');
                                        ^
-DETAIL:  line 1: Couldn't find end of Start Tag wrong line 1
+DETAIL:  line 1: Opening and ending tag mismatch: value line 1 and wrong
+<value>three</wrong>  
+                    ^
+-- If no XML data could be inserted, skip the tests as the server has been
+-- compiled without libxml support.
+SELECT count(*) = 0 AS skip_test FROM xmltest \gset
+\if :skip_test
+\quit
+\endif
 SELECT * FROM xmltest;
  id |        data        
 ----+--------------------
@@ -89,11 +97,13 @@ SELECT xmlconcat(1, 2);
 ERROR:  argument of XMLCONCAT must be type xml, not type pg_catalog.int4
 LINE 1: SELECT xmlconcat(1, 2);
                          ^
-SELECT xmlconcat('bad', '<syntax');
+SELECT xmlconcat('bad', '<wrong></syntax>  ');
 ERROR:  invalid XML content
-LINE 1: SELECT xmlconcat('bad', '<syntax');
+LINE 1: SELECT xmlconcat('bad', '<wrong></syntax>  ');
                                 ^
-DETAIL:  line 1: Couldn't find end of Start Tag syntax line 1
+DETAIL:  line 1: Opening and ending tag mismatch: wrong line 1 and syntax
+<wrong></syntax>  
+                ^
 SELECT xmlconcat('<foo/>', NULL, '<?xml version="1.1" standalone="no"?><bar/>');
   xmlconcat   
 --------------
@@ -277,13 +287,11 @@ ERROR:  invalid XML content
 DETAIL:  line 1: xmlParseEntityRef: no name
 <invalidentity>&</invalidentity>
                 ^
-line 1: chunk is not well balanced
 SELECT xmlparse(content '<undefinedentity>&idontexist;</undefinedentity>');
 ERROR:  invalid XML content
 DETAIL:  line 1: Entity 'idontexist' not defined
 <undefinedentity>&idontexist;</undefinedentity>
                              ^
-line 1: chunk is not well balanced
 SELECT xmlparse(content '<invalidns xmlns=''&lt;''/>');
          xmlparse          
 ---------------------------
@@ -296,22 +304,25 @@ SELECT xmlparse(content '<relativens xmlns=''relative''/>');
  <relativens xmlns='relative'/>
 (1 row)
 
-SELECT xmlparse(content '<twoerrors>&idontexist;</unbalanced>');
+SELECT xmlparse(content '<twoerrors>&idontexist;</unbalanced>  ');
 ERROR:  invalid XML content
 DETAIL:  line 1: Entity 'idontexist' not defined
-<twoerrors>&idontexist;</unbalanced>
+<twoerrors>&idontexist;</unbalanced>  
                        ^
 line 1: Opening and ending tag mismatch: twoerrors line 1 and unbalanced
-line 1: chunk is not well balanced
+<twoerrors>&idontexist;</unbalanced>  
+                                    ^
 SELECT xmlparse(content '<nosuchprefix:tag/>');
       xmlparse       
 ---------------------
  <nosuchprefix:tag/>
 (1 row)
 
-SELECT xmlparse(document '   ');
+SELECT xmlparse(document '!');
 ERROR:  invalid XML document
 DETAIL:  line 1: Start tag expected, '<' not found
+!
+^
 SELECT xmlparse(document 'abc');
 ERROR:  invalid XML document
 DETAIL:  line 1: Start tag expected, '<' not found
@@ -323,18 +334,22 @@ SELECT xmlparse(document '<abc>x</abc>');
  <abc>x</abc>
 (1 row)
 
-SELECT xmlparse(document '<invalidentity>&</abc>');
+SELECT xmlparse(document '<invalidentity>&</abc>  ');
 ERROR:  invalid XML document
 DETAIL:  line 1: xmlParseEntityRef: no name
-<invalidentity>&</abc>
+<invalidentity>&</abc>  
                 ^
 line 1: Opening and ending tag mismatch: invalidentity line 1 and abc
-SELECT xmlparse(document '<undefinedentity>&idontexist;</abc>');
+<invalidentity>&</abc>  
+                      ^
+SELECT xmlparse(document '<undefinedentity>&idontexist;</abc>  ');
 ERROR:  invalid XML document
 DETAIL:  line 1: Entity 'idontexist' not defined
-<undefinedentity>&idontexist;</abc>
+<undefinedentity>&idontexist;</abc>  
                              ^
 line 1: Opening and ending tag mismatch: undefinedentity line 1 and abc
+<undefinedentity>&idontexist;</abc>  
+                                   ^
 SELECT xmlparse(document '<invalidns xmlns=''&lt;''/>');
          xmlparse          
 ---------------------------
@@ -347,12 +362,14 @@ SELECT xmlparse(document '<relativens xmlns=''relative''/>');
  <relativens xmlns='relative'/>
 (1 row)
 
-SELECT xmlparse(document '<twoerrors>&idontexist;</unbalanced>');
+SELECT xmlparse(document '<twoerrors>&idontexist;</unbalanced>  ');
 ERROR:  invalid XML document
 DETAIL:  line 1: Entity 'idontexist' not defined
-<twoerrors>&idontexist;</unbalanced>
+<twoerrors>&idontexist;</unbalanced>  
                        ^
 line 1: Opening and ending tag mismatch: twoerrors line 1 and unbalanced
+<twoerrors>&idontexist;</unbalanced>  
+                                    ^
 SELECT xmlparse(document '<nosuchprefix:tag/>');
       xmlparse       
 ---------------------
@@ -501,8 +518,7 @@ SELECT xmlserialize(DOCUMENT '<foo><bar><val x="y">42</val></bar></foo>' AS text
    <bar>                +
      <val x="y">42</val>+
    </bar>               +
- </foo>                 +
- 
+ </foo>
 (1 row)
 
 SELECT xmlserialize(CONTENT  '<foo><bar><val x="y">42</val></bar></foo>' AS text INDENT);
@@ -562,8 +578,7 @@ SELECT xmlserialize(DOCUMENT '<foo><bar><val x="y">42</val><val x="y">text node<
      <val x="y">42</val>                    +
      <val x="y">text node<val>73</val></val>+
    </bar>                                   +
- </foo>                                     +
- 
+ </foo>
 (1 row)
 
 SELECT xmlserialize(CONTENT  '<foo><bar><val x="y">42</val><val x="y">text node<val>73</val></val></bar></foo>' AS text INDENT);
@@ -617,8 +632,7 @@ SELECT xmlserialize(DOCUMENT '<?xml version="1.0" encoding="UTF-8"?><foo><bar><v
    <bar>                               +
      <val>73</val>                     +
    </bar>                              +
- </foo>                                +
- 
+ </foo>
 (1 row)
 
 SELECT xmlserialize(CONTENT  '<?xml version="1.0" encoding="UTF-8"?><foo><bar><val>73</val></bar></foo>' AS text INDENT);
@@ -636,8 +650,7 @@ SELECT xmlserialize(DOCUMENT '<!DOCTYPE a><a/>' AS text INDENT);
  xmlserialize 
 --------------
  <!DOCTYPE a>+
- <a/>        +
- 
+ <a/>
 (1 row)
 
 SELECT xmlserialize(CONTENT  '<!DOCTYPE a><a/>' AS text INDENT);
@@ -654,8 +667,7 @@ SELECT xmlserialize(DOCUMENT '<foo><bar></bar></foo>' AS text INDENT);
 --------------
  <foo>       +
    <bar/>    +
- </foo>      +
- 
+ </foo>
 (1 row)
 
 SELECT xmlserialize(CONTENT  '<foo><bar></bar></foo>' AS text INDENT);
@@ -677,6 +689,24 @@ SELECT xmlserialize(CONTENT  '<foo><bar><val x="y">42</val></bar></foo>' AS text
  ?column? 
 ----------
  t
+(1 row)
+
+-- indent xml strings containing blank nodes
+SELECT xmlserialize(DOCUMENT '<foo>   <bar></bar>    </foo>' AS text INDENT);
+ xmlserialize 
+--------------
+ <foo>       +
+   <bar/>    +
+ </foo>
+(1 row)
+
+SELECT xmlserialize(CONTENT  'text node<foo>    <bar></bar>   </foo>' AS text INDENT);
+ xmlserialize 
+--------------
+ text node   +
+ <foo>       +
+   <bar/>    +
+ </foo>
 (1 row)
 
 SELECT xml '<foo>bar</foo>' IS DOCUMENT;
@@ -825,21 +855,25 @@ CREATE VIEW xmlview6 AS SELECT xmlpi(name foo, 'bar');
 CREATE VIEW xmlview7 AS SELECT xmlroot(xml '<foo/>', version no value, standalone yes);
 CREATE VIEW xmlview8 AS SELECT xmlserialize(content 'good' as char(10));
 CREATE VIEW xmlview9 AS SELECT xmlserialize(content 'good' as text);
+CREATE VIEW xmlview10 AS SELECT xmlserialize(document '<foo><bar>42</bar></foo>' AS text indent);
+CREATE VIEW xmlview11 AS SELECT xmlserialize(document '<foo><bar>42</bar></foo>' AS character varying no indent);
 SELECT table_name, view_definition FROM information_schema.views
   WHERE table_name LIKE 'xmlview%' ORDER BY 1;
- table_name |                                              view_definition                                               
-------------+------------------------------------------------------------------------------------------------------------
+ table_name |                                                         view_definition                                                         
+------------+---------------------------------------------------------------------------------------------------------------------------------
  xmlview1   |  SELECT xmlcomment('test'::text) AS xmlcomment;
+ xmlview10  |  SELECT XMLSERIALIZE(DOCUMENT '<foo><bar>42</bar></foo>'::xml AS text INDENT) AS "xmlserialize";
+ xmlview11  |  SELECT (XMLSERIALIZE(DOCUMENT '<foo><bar>42</bar></foo>'::xml AS varchar2(4000) NO INDENT))::varchar2(4000) AS "xmlserialize";
  xmlview2   |  SELECT XMLCONCAT('hello'::xml, 'you'::xml) AS "xmlconcat";
  xmlview3   |  SELECT XMLELEMENT(NAME element, XMLATTRIBUTES(1 AS ":one:", 'deuce' AS two), 'content&') AS "xmlelement";
- xmlview4   |  SELECT XMLELEMENT(NAME employee, XMLFOREST(name AS name, age AS age, salary AS pay)) AS "xmlelement"     +
+ xmlview4   |  SELECT XMLELEMENT(NAME employee, XMLFOREST(name AS name, age AS age, salary AS pay)) AS "xmlelement"                          +
             |    FROM emp;
  xmlview5   |  SELECT XMLPARSE(CONTENT '<abc>x</abc>'::text STRIP WHITESPACE) AS "xmlparse";
  xmlview6   |  SELECT XMLPI(NAME foo, 'bar'::text) AS "xmlpi";
  xmlview7   |  SELECT XMLROOT('<foo/>'::xml, VERSION NO VALUE, STANDALONE YES) AS "xmlroot";
- xmlview8   |  SELECT (XMLSERIALIZE(CONTENT 'good'::xml AS char(10)))::char(10) AS "xmlserialize";
- xmlview9   |  SELECT XMLSERIALIZE(CONTENT 'good'::xml AS text) AS "xmlserialize";
-(9 rows)
+ xmlview8   |  SELECT (XMLSERIALIZE(CONTENT 'good'::xml AS char(10) NO INDENT))::char(10) AS "xmlserialize";
+ xmlview9   |  SELECT XMLSERIALIZE(CONTENT 'good'::xml AS text NO INDENT) AS "xmlserialize";
+(11 rows)
 
 -- Text XPath expressions evaluation
 SELECT xpath('/value', data) FROM xmltest;
@@ -941,6 +975,12 @@ SELECT xpath('root', '<root/>');
    xpath   
 -----------
  {<root/>}
+(1 row)
+
+SELECT xpath('//namespace::foo', '<root xmlns:foo="http://127.0.0.1"/>');
+       xpath        
+--------------------
+ {http://127.0.0.1}
 (1 row)
 
 -- Round-trip non-ASCII data through xpath().
@@ -1399,7 +1439,7 @@ SELECT * FROM xmltableview2;
 \sv xmltableview2
 CREATE OR REPLACE VIEW public.xmltableview2 AS
  SELECT a
-   FROM XMLTABLE(XMLNAMESPACES ('http://x.y'::text AS "Zz"), ('/Zz:rows/Zz:row'::text) PASSING ('<rows xmlns="http://x.y"><row><a>10</a></row></rows>'::xml) COLUMNS a integer PATH ('Zz:a'::text))
+   FROM XMLTABLE(XMLNAMESPACES ('http://x.y'::text AS "Zz"), ('/Zz:rows/Zz:row'::text) PASSING ('<rows xmlns="http://x.y"><row><a>10</a></row></rows>'::xml) COLUMNS a pg_catalog.int4 PATH ('Zz:a'::text))
 SELECT * FROM XMLTABLE(XMLNAMESPACES(DEFAULT 'http://x.y'),
                       '/rows/row'
                       PASSING '<rows xmlns="http://x.y"><row><a>10</a></row></rows>'
@@ -1588,6 +1628,7 @@ SELECT f.* FROM xmldata, LATERAL xmltable('/ROWS/ROW[COUNTRY_NAME="Japan" or COU
        "Parallel Aware": false,                                                                                                                                                                         +
        "Async Capable": false,                                                                                                                                                                          +
        "Join Type": "Inner",                                                                                                                                                                            +
+       "Disabled": false,                                                                                                                                                                               +
        "Output": ["f.\"COUNTRY_NAME\"", "f.\"REGION_ID\""],                                                                                                                                             +
        "Inner Unique": false,                                                                                                                                                                           +
        "Plans": [                                                                                                                                                                                       +
@@ -1599,6 +1640,7 @@ SELECT f.* FROM xmldata, LATERAL xmltable('/ROWS/ROW[COUNTRY_NAME="Japan" or COU
            "Relation Name": "xmldata",                                                                                                                                                                  +
            "Schema": "public",                                                                                                                                                                          +
            "Alias": "xmldata",                                                                                                                                                                          +
+           "Disabled": false,                                                                                                                                                                           +
            "Output": ["xmldata.data"]                                                                                                                                                                   +
          },                                                                                                                                                                                             +
          {                                                                                                                                                                                              +
@@ -1608,6 +1650,7 @@ SELECT f.* FROM xmldata, LATERAL xmltable('/ROWS/ROW[COUNTRY_NAME="Japan" or COU
            "Async Capable": false,                                                                                                                                                                      +
            "Table Function Name": "xmltable",                                                                                                                                                           +
            "Alias": "f",                                                                                                                                                                                +
+           "Disabled": false,                                                                                                                                                                           +
            "Output": ["f.\"COUNTRY_NAME\"", "f.\"REGION_ID\""],                                                                                                                                         +
            "Table Function Call": "XMLTABLE(('/ROWS/ROW[COUNTRY_NAME=\"Japan\" or COUNTRY_NAME=\"India\"]'::text) PASSING (xmldata.data) COLUMNS \"COUNTRY_NAME\" text, \"REGION_ID\" pg_catalog.int4)",+
            "Filter": "(f.\"COUNTRY_NAME\" = 'Japan'::text)"                                                                                                                                             +

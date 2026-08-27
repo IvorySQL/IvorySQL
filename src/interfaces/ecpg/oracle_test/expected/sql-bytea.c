@@ -356,17 +356,46 @@ if (sqlca.sqlcode < 0) sqlprint();}
 if (sqlca.sqlcode < 0) sqlprint();}
 #line 115 "bytea.pgc"
 
-	{ ECPGtrans(__LINE__, NULL, "commit");
-#line 116 "bytea.pgc"
+
+	/* IvorySQL: Oracle-compatible mode converts '' to NULL by default
+	 (ivorysql.enable_emptystring_to_NULL); disable that so the first
+	 query below returns an empty string, as on PG. */
+	{ ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "set ivorysql . enable_emptystring_to_null to false", ECPGt_EOIT, ECPGt_EORT);
+#line 120 "bytea.pgc"
 
 if (sqlca.sqlcode < 0) sqlprint();}
-#line 116 "bytea.pgc"
+#line 120 "bytea.pgc"
+
+
+	/* Test for invalid bytea format */
+	{ ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "select '' :: text", ECPGt_EOIT, 
+	ECPGt_bytea,&(recv_buf[0]),(long)DATA_SIZE,(long)1,sizeof(struct bytea_2), 
+	ECPGt_NO_INDICATOR, NULL , 0L, 0L, 0L, ECPGt_EORT);
+#line 123 "bytea.pgc"
+
+if (sqlca.sqlcode < 0) sqlprint();}
+#line 123 "bytea.pgc"
+
+	{ ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "select '\\\\a1234' :: text", ECPGt_EOIT, 
+	ECPGt_bytea,&(recv_buf[0]),(long)DATA_SIZE,(long)1,sizeof(struct bytea_2), 
+	ECPGt_NO_INDICATOR, NULL , 0L, 0L, 0L, ECPGt_EORT);
+#line 124 "bytea.pgc"
+
+if (sqlca.sqlcode < 0) sqlprint();}
+#line 124 "bytea.pgc"
+
+
+	{ ECPGtrans(__LINE__, NULL, "commit");
+#line 126 "bytea.pgc"
+
+if (sqlca.sqlcode < 0) sqlprint();}
+#line 126 "bytea.pgc"
 
 	{ ECPGdisconnect(__LINE__, "CURRENT");
-#line 117 "bytea.pgc"
+#line 127 "bytea.pgc"
 
 if (sqlca.sqlcode < 0) sqlprint();}
-#line 117 "bytea.pgc"
+#line 127 "bytea.pgc"
 
 
 	return 0;

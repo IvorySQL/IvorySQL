@@ -16,7 +16,9 @@ ORACLE_REGRESS_OPTS = --dlpath=$(top_builddir)/src/oracle_test/regress
 
 ISOLATION = basic \
 	    inplace \
+	    reindex_concurrently_deferred \
 	    syscache-update-pruned \
+	    wait_cleanup \
 	    heap_lock_update
 
 TAP_TESTS = 1
