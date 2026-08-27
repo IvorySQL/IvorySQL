@@ -209,9 +209,10 @@ ivorysql_utl_url_escape(PG_FUNCTION_ARGS)
  * Oracle-compatible UNESCAPE implementation:
  *   - Converts every %XX sequence back to the byte it encodes; all other
  *     characters are copied verbatim
- *   - The reassembled byte string is assumed to be in url_charset and is
- *     converted to the database encoding, so a %E4%B8%AD group becomes one
- *     UTF-8 character
+ *   - Literal characters are already in the database encoding and are kept
+ *     as they are; only the %XX-decoded bytes are interpreted in
+ *     url_charset and converted to the database encoding, so a %E4%B8%AD
+ *     group becomes one UTF-8 character
  *   - A NULL url returns NULL
  *   - A NULL url_charset means "the bytes are already in the database
  *     encoding, do not convert"
@@ -233,10 +234,11 @@ ivorysql_utl_url_unescape(PG_FUNCTION_ARGS)
 	int			source_encoding;
 	char	   *src;
 	int			src_len;
-	char	   *raw;
-	int			raw_len;
+	StringInfoData out;		/* output, in database encoding */
+	char	   *pending;	/* accumulated %XX bytes, in url_charset */
+	int			pending_len;
+	int			pending_alloc;
 	int			i;
-	char	   *converted;
 
 	if (PG_ARGISNULL(0))
 		PG_RETURN_NULL();
@@ -249,9 +251,21 @@ ivorysql_utl_url_unescape(PG_FUNCTION_ARGS)
 	src = text_to_cstring(url);
 	src_len = strlen(src);
 
-	/* Decoding never grows the string, so src_len bytes always suffice */
-	raw = palloc(src_len + 1);
-	raw_len = 0;
+	/*
+	 * Walk the URL byte by byte.  Literal characters are already in the
+	 * database encoding and are appended to the output directly; %XX
+	 * decoded bytes are accumulated in a separate buffer and flushed
+	 * (converted from url_charset to the database encoding) whenever a
+	 * literal character or the end of the string is encountered.  Keeping
+	 * the two encoding domains separate matters when url_charset differs
+	 * from the database encoding: mixing them into one buffer would
+	 * misinterpret database-encoded literal bytes as url_charset bytes
+	 * (a UTF-8 literal in a LATIN1 url_charset would come back mangled).
+	 */
+	initStringInfo(&out);
+	pending_alloc = 64;
+	pending = palloc(pending_alloc + 1);
+	pending_len = 0;
 	i = 0;
 
 	while (i < src_len)
@@ -283,20 +297,62 @@ ivorysql_utl_url_unescape(PG_FUNCTION_ARGS)
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("UTL_URL.UNESCAPE: escaped NUL character (%%00) is not supported")));
 
-			raw[raw_len++] = (char) ((hi << 4) | lo);
+			if (pending_len >= pending_alloc)
+			{
+				pending_alloc *= 2;
+				pending = repalloc(pending, pending_alloc + 1);
+			}
+			pending[pending_len++] = (char) ((hi << 4) | lo);
 			i += 3;
 		}
 		else
-			raw[raw_len++] = src[i++];
+		{
+			/*
+			 * Literal character: flush any accumulated %XX bytes (which
+			 * are in url_charset) through the charset conversion before
+			 * appending this byte, which is already in the database
+			 * encoding.
+			 */
+			if (pending_len > 0)
+			{
+				char	   *converted;
+				int			converted_len;
+
+				/*
+				 * pg_any_to_server() may return the input pointer
+				 * unchanged, so terminate the buffer for strlen().
+				 */
+				pending[pending_len] = '\0';
+
+				/*
+				 * pg_any_to_server() validates the byte string even when
+				 * no conversion is required, so a %XX group that does not
+				 * form a valid character in url_charset is reported rather
+				 * than silently stored.
+				 */
+				converted = pg_any_to_server(pending, pending_len,
+											 source_encoding);
+				converted_len = strlen(converted);
+				appendBinaryStringInfo(&out, converted, converted_len);
+				pending_len = 0;
+			}
+			appendStringInfoChar(&out, src[i]);
+			i++;
+		}
 	}
-	raw[raw_len] = '\0';
 
-	/*
-	 * pg_any_to_server() validates the byte string even when no conversion is
-	 * required, so a %XX group that does not form a valid character in the
-	 * source encoding is reported rather than silently stored.
-	 */
-	converted = pg_any_to_server(raw, raw_len, source_encoding);
+	/* Flush any trailing %XX bytes */
+	if (pending_len > 0)
+	{
+		char	   *converted;
+		int			converted_len;
 
-	PG_RETURN_TEXT_P(cstring_to_text_with_len(converted, strlen(converted)));
+		pending[pending_len] = '\0';
+		converted = pg_any_to_server(pending, pending_len,
+									 source_encoding);
+		converted_len = strlen(converted);
+		appendBinaryStringInfo(&out, converted, converted_len);
+	}
+
+	PG_RETURN_TEXT_P(cstring_to_text_with_len(out.data, out.len));
 }

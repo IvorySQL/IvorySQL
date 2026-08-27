@@ -270,6 +270,16 @@ SELECT utl_url.unescape('%D6%D0%CE%C4', 'GBK') AS cjk_gbk;
  中文
 (1 row)
 
+-- Mixed literal (database encoding) and %XX (url_charset): literal
+-- characters are preserved as-is; only the %XX bytes are converted from
+-- url_charset (a UTF-8 literal must not be re-interpreted through the
+-- url_charset)
+SELECT utl_url.unescape('café%21', 'LATIN1') AS mixed_literal_pct;
+ mixed_literal_pct 
+-------------------
+ café!
+(1 row)
+
 -- An unrecognized character set is rejected (Oracle reports ORA-01482)
 SELECT utl_url.unescape('a%20b', 'NO_SUCH_CHARSET');
 ERROR:  UTL_URL: unrecognized URL character set "NO_SUCH_CHARSET"

@@ -116,6 +116,12 @@ SELECT utl_url.unescape('%E4%B8%AD%E6%96%87', 'UTF8') AS cjk_utf8;
 -- spelling; Oracle writes ZHS16GBK)
 SELECT utl_url.unescape('%D6%D0%CE%C4', 'GBK') AS cjk_gbk;
 
+-- Mixed literal (database encoding) and %XX (url_charset): literal
+-- characters are preserved as-is; only the %XX bytes are converted from
+-- url_charset (a UTF-8 literal must not be re-interpreted through the
+-- url_charset)
+SELECT utl_url.unescape('café%21', 'LATIN1') AS mixed_literal_pct;
+
 -- An unrecognized character set is rejected (Oracle reports ORA-01482)
 SELECT utl_url.unescape('a%20b', 'NO_SUCH_CHARSET');
 
