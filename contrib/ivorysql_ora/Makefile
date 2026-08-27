@@ -34,6 +34,7 @@ OBJS = \
 	src/builtin_packages/dbms_lock/dbms_lock.o \
 	src/builtin_packages/utl_encode/utl_encode.o \
 	src/builtin_packages/dbms_session/dbms_session.o \
+	src/builtin_packages/dbms_transaction/dbms_transaction.o \
 	src/builtin_packages/dbms_scheduler/dbms_scheduler.o \
 	src/builtin_packages/dbms_scheduler/scheduler_calendar.o \
 	src/builtin_packages/dbms_scheduler/scheduler_launcher.o \
@@ -90,13 +91,10 @@ ORA_REGRESS = \
 	utl_raw \
 	utl_encode \
 	dbms_session \
+	dbms_transaction \
 	dbms_scheduler
 
 TAP_TESTS = 1
-
-ifeq ($(with_libxml),yes)
-SHLIB_LINK += -lxml2
-endif
 
 # Include path for plisql.h (needed by dbms_utility)
 PG_CPPFLAGS += -I$(top_srcdir)/src/pl/plisql/src
