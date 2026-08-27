@@ -3070,6 +3070,8 @@ ExecuteCallStmt(CallStmt *stmt, ParamListInfo params, bool atomic, DestReceiver 
 	HeapTuple	tp;
 	PgStat_FunctionCallUsage fcusage;
 	Datum		retval;
+	Oid			userid;
+	int			sec_context;
 
 	fexpr = stmt->funcexpr;
 	Assert(fexpr);
@@ -3105,13 +3107,25 @@ ExecuteCallStmt(CallStmt *stmt, ParamListInfo params, bool atomic, DestReceiver 
 		callcontext->atomic = true;
 
 	/*
-	 * In security definer procedures, we can't allow transaction commands.
-	 * StartTransaction() insists that the security context stack is empty,
-	 * and AbortTransaction() resets the security context.  This could be
-	 * reorganized, but right now it doesn't work.
+	 * In security definer procedures, we normally can't allow transaction
+	 * commands because StartTransaction() insists that the security context
+	 * stack is empty.  PL/iSQL handles the local user-ID change around a
+	 * transaction boundary in Oracle mode, where procedures are security
+	 * definer by default.  Other security restrictions must still make the
+	 * call atomic.
 	 */
 	if (((Form_pg_proc) GETSTRUCT(tp))->prosecdef)
-		callcontext->atomic = true;
+	{
+		if (compatible_db != ORA_PARSER ||
+			((Form_pg_proc) GETSTRUCT(tp))->prolang != LANG_PLISQL_OID)
+			callcontext->atomic = true;
+		else
+		{
+			GetUserIdAndSecContext(&userid, &sec_context);
+			if ((sec_context & ~SECURITY_LOCAL_USERID_CHANGE) != 0)
+				callcontext->atomic = true;
+		}
+	}
 
 	ReleaseSysCache(tp);
 

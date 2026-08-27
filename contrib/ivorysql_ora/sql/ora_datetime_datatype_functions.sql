@@ -13,6 +13,10 @@ SELECT to_date(
      'NLS_DATE_LANGUAGE = American')
      FROM DUAL;
 
+SELECT to_char(
+	to_date('2001-02-03', 'YYYY-MM-DD', repeat('x', 0)),
+	'YYYY-MM-DD HH24:MI:SS') AS empty_nls_to_date FROM DUAL;
+
 /*
  * to_timestamp
  */
@@ -26,6 +30,11 @@ SELECT to_timestamp(
 	'10-9-2016 14:10:10.123000', 
 	'DD-MM-YYYY HH24:MI:SS.FF9',
 	'NLS_DATE_LANGUAGE = American') FROM DUAL;
+
+SELECT to_char(
+	to_timestamp('2002-03-04 05:06:07.123',
+		'YYYY-MM-DD HH24:MI:SS.FF3', repeat('x', 0)),
+	'YYYY-MM-DD HH24:MI:SS.FF3') AS empty_nls_to_timestamp FROM DUAL;
 	
 /*
  * to_timestamp_tz
@@ -40,6 +49,14 @@ SELECT to_timestamp_tz(
 	'10-9-2016 14:10:10.123000', 
 	'DD-MM-YYYY HH24:MI:SS.FF9',
 	'NLS_DATE_LANGUAGE = American') FROM DUAL;
+
+BEGIN;
+SET LOCAL TIME ZONE 'UTC';
+SELECT to_char(
+	to_timestamp_tz('2003-04-05 06:07:08.123 +08:00',
+		'YYYY-MM-DD HH24:MI:SS.FF3 TZH:TZM', repeat('x', 0)),
+	'YYYY-MM-DD HH24:MI:SS.FF3 TZH:TZM') AS empty_nls_to_timestamp_tz FROM DUAL;
+COMMIT;
 
 SELECT to_timestamp_tz('10-9-2016 14:10:10.123000 +8:30', 'DD-MM-YYYY HH24:MI:SS.FF TZH:TZM') FROM DUAL;
 SELECT to_timestamp_tz('10-9-2016 14:10:10.123000 +1:00', 'DD-MM-YYYY HH24:MI:SS.FF TZH:TZM') FROM DUAL;
@@ -315,6 +332,71 @@ SELECT FROM_TZ(TIMESTAMP '2000-03-28 08:00:00', '3:00') FROM DUAL;
 --sessiontimezone
 set timezone = 'Asia/Hong_Kong';
 select sessiontimezone() from dual; /* BUG:0000427 */
+
+--dbtimezone
+/* ivorysql.dbtimezone's baked-in default is '+00:00', but the effective
+ * value in any given cluster can differ (e.g. postgresql.conf may set a
+ * cluster-wide default) -- pin a known baseline ourselves instead of
+ * assuming it's still '+00:00' here, so the rest of this test is
+ * deterministic regardless of environment */
+select current_database() as cur_db \gset
+alter database :cur_db set ivorysql.dbtimezone = '+00:00';
+\c -
+select dbtimezone() from dual;
+set timezone = 'Asia/Hong_Kong';
+select dbtimezone() from dual; /* unaffected by session timezone just set above */
+set ivorysql.dbtimezone = '+08:00'; /* rejected: only ALTER DATABASE ... SET may change it */
+alter database :cur_db set ivorysql.dbtimezone = '+08:00';
+\c -
+select dbtimezone() from dual;
+alter database :cur_db set ivorysql.dbtimezone = 'not_a_zone';
+alter database :cur_db set ivorysql.dbtimezone = '+15:00';
+alter database :cur_db set ivorysql.dbtimezone = '-13:00';
+alter database :cur_db set ivorysql.dbtimezone = '+00:00';
+\c -
+select dbtimezone() from dual;
+/* contrib_regression is shared by the rest of this schedule (and reused
+ * across ad hoc reruns of just this file), so remove the override we
+ * pinned above entirely rather than leaving it permanently set -- restore
+ * the "no per-database override" state this database had before this
+ * test file touched it */
+alter database :cur_db reset ivorysql.dbtimezone;
+\c -
+
+/* ALTER ROLE ... SET is rejected at the command level (not just silently
+ * ignored at connection time), so it never leaves a stale
+ * pg_db_role_setting entry that would re-fire on every future connection */
+select current_user as cur_super \gset
+alter role :cur_super set ivorysql.dbtimezone = '+07:00';
+alter role :cur_super in database :cur_db set ivorysql.dbtimezone = '+07:00';
+alter role all set ivorysql.dbtimezone = '+07:00';
+alter role :cur_super set ivorysql.dbtimezone to default;
+alter role :cur_super set ivorysql.dbtimezone from current;
+alter role :cur_super reset ivorysql.dbtimezone; /* RESET is still allowed */
+alter role :cur_super reset all;
+select count(*) from pg_db_role_setting where setdatabase = (select oid from pg_database where datname = :'cur_db') and setrole <> 0;
+
+/* a granted non-superuser can set DBTIMEZONE for a database they own */
+select current_user as cur_super \gset
+create role dbtz_owner login;
+create database dbtz_test owner dbtz_owner;
+\c dbtz_test dbtz_owner
+alter database dbtz_test set ivorysql.dbtimezone = '+05:00'; /* rejected: not granted permission on this SUSET parameter */
+\c :cur_db :cur_super
+grant set on parameter ivorysql.dbtimezone to dbtz_owner;
+\c dbtz_test dbtz_owner
+alter database dbtz_test set ivorysql.dbtimezone = '+05:00'; /* allowed: granted + owns the database */
+\c dbtz_test dbtz_owner
+select dbtimezone() from dual;
+\c :cur_db :cur_super
+revoke set on parameter ivorysql.dbtimezone from dbtz_owner;
+drop database dbtz_test;
+drop role dbtz_owner;
+
+/* restore previous values */
+set timezone = 'Asia/Hong_Kong';
+SET NLS_TIMESTAMP_TZ_FORMAT = 'MM-DD-YYYY HH24:MI:SS.FF9 TZH:TZM';
+
 alter session set nls_date_format='YYYY-MM-DD HH24:MI:SS';
 alter session set nls_timestamp_format = 'YYYY-MM-DD HH24:MI:SS.ff';
 /*
