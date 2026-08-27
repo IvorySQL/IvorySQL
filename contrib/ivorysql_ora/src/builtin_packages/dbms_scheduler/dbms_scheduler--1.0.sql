@@ -20,13 +20,25 @@
  * DEFINE_PROGRAM_ARGUMENT (2), DISABLE, DROP_JOB, DROP_PROGRAM,
  * DROP_PROGRAM_ARGUMENT (2), DROP_SCHEDULE, ENABLE,
  * EVALUATE_CALENDAR_STRING, RUN_JOB and SET_JOB_ARGUMENT_VALUE (2),
- * plus STOP_JOB, which Oracle has but EDB Postgres Advanced Server does not.
+ * plus STOP_JOB and PURGE_LOG, which Oracle has but EDB Postgres Advanced
+ * Server does not.
+ *
+ * PURGE_LOG deviates from Oracle twice, both because of features this
+ * implementation does not have: WINDOW_LOG purges nothing, there being no
+ * windows, and job_name takes one name where Oracle takes a comma-separated
+ * list that may also name job classes.
  *
  * Background scheduling is off by default.  Jobs run automatically only when
  * ivorysql_ora is preloaded (the oracle-mode default), ivorysql_ora.scheduler
  * is set to on, and the database is listed in ivorysql_ora.scheduler_databases.
  * Everything else in the package works regardless: RUN_JOB executes a job
  * synchronously in the current session.
+ *
+ * Job run history is purged automatically by each database's scheduler:
+ * ivorysql_ora.scheduler_log_history sets how many days to keep (Oracle's
+ * log_history, and zero means the same thing it does there - keep none), and
+ * ivorysql_ora.scheduler_purge_schedule says when to purge, as a calendaring
+ * expression, or turns purging off when empty.  PURGE_LOG purges on demand.
  *
  * contrib/ivorysql_ora/src/builtin_packages/dbms_scheduler/dbms_scheduler--1.0.sql
  *
@@ -382,6 +394,13 @@ RETURNS timestamptz
 AS 'MODULE_PATHNAME', 'ora_dbms_scheduler_evaluate_calendar_string'
 LANGUAGE C VOLATILE;
 
+/* not STRICT: a null log_history has to reach C to be diagnosed there */
+CREATE FUNCTION sys.ora_dbms_scheduler_purge_log(
+	log_history integer, which_log text, job_name text)
+RETURNS VOID
+AS 'MODULE_PATHNAME', 'ora_dbms_scheduler_purge_log'
+LANGUAGE C VOLATILE;
+
 CREATE FUNCTION sys.ora_dbms_scheduler_run_job(
 	job_name text, use_current_session boolean)
 RETURNS VOID
@@ -496,6 +515,10 @@ CREATE OR REPLACE PACKAGE dbms_scheduler IS
 		start_date IN TIMESTAMP WITH TIME ZONE,
 		return_date_after IN TIMESTAMP WITH TIME ZONE,
 		next_run_date OUT TIMESTAMP WITH TIME ZONE);
+
+	PROCEDURE purge_log(log_history INTEGER DEFAULT 0,
+		which_log VARCHAR2 DEFAULT 'JOB_AND_WINDOW_LOG',
+		job_name VARCHAR2 DEFAULT NULL);
 
 	PROCEDURE run_job(job_name VARCHAR2,
 		use_current_session BOOLEAN DEFAULT TRUE);
@@ -672,6 +695,21 @@ CREATE OR REPLACE PACKAGE BODY dbms_scheduler IS
 	BEGIN
 		PERFORM sys.ora_dbms_scheduler_set_job_argument_value_name(job_name,
 			argument_name, argument_value);
+	END;
+
+	/*
+	 * Kept last on purpose.  Error messages raised out of this package carry
+	 * the body line number of the procedure that raised them, so inserting a
+	 * procedure anywhere above here renumbers every one that follows and
+	 * rewrites that much of the regression baseline for no reason.  New
+	 * procedures belong at the end.
+	 */
+	PROCEDURE purge_log(log_history INTEGER DEFAULT 0,
+		which_log VARCHAR2 DEFAULT 'JOB_AND_WINDOW_LOG',
+		job_name VARCHAR2 DEFAULT NULL) IS
+	BEGIN
+		PERFORM sys.ora_dbms_scheduler_purge_log(log_history, which_log,
+			job_name);
 	END;
 
 END dbms_scheduler;

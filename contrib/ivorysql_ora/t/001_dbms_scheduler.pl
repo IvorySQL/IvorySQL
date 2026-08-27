@@ -516,10 +516,89 @@ ok(1, 'the database scheduler keeps running the remaining jobs');
 ora_sql(q{BEGIN dbms_scheduler.disable('tap_survivor'); END;});
 
 # ---------------------------------------------------------------------
+# expired run history is purged automatically, on its own schedule
+# ---------------------------------------------------------------------
+# The real schedule is daily, which a test cannot wait for, so it is moved to
+# every second.  A retention of one day is likewise beyond waiting for, so the
+# rows to purge are given an age directly.
+$node->safe_psql($db, q{
+INSERT INTO sys.scheduler_job_run_details (job_owner, job_name, status, log_date)
+  VALUES ('tap_purge_owner', 'TAP_PURGE_OLD', 's', now() - '10 days'::pg_catalog.interval),
+         ('tap_purge_owner', 'TAP_PURGE_NEW', 's', now())});
+
+$node->safe_psql($db,
+	"ALTER SYSTEM SET ivorysql_ora.scheduler_log_history = 5");
+$node->safe_psql($db,
+	"ALTER SYSTEM SET ivorysql_ora.scheduler_purge_schedule = 'FREQ=SECONDLY'");
+$node->reload;
+$node->poll_query_until($db,
+	"SELECT setting = 'FREQ=SECONDLY' FROM pg_settings WHERE name = 'ivorysql_ora.scheduler_purge_schedule'"
+) or die "purge schedule did not take effect";
+
+$node->poll_query_until($db,
+	"SELECT count(*) = 0 FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_PURGE_OLD'"
+) or die "expired log row was not purged";
+ok(1, 'the scheduler purges log rows older than scheduler_log_history');
+
+is( $node->safe_psql(
+		$db,
+		"SELECT count(*) FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_PURGE_NEW'"),
+	'1',
+	'a log row inside the retention window is kept');
+
+# A run in progress must survive whatever its age: the worker that owns the row
+# is still going to write its outcome there.
+$node->safe_psql($db, q{
+INSERT INTO sys.scheduler_job_run_details (job_owner, job_name, status, log_date)
+  VALUES ('tap_purge_owner', 'TAP_PURGE_LIVE', 'r', now() - '10 days'::pg_catalog.interval)});
+sleep(3);
+is( $node->safe_psql(
+		$db,
+		"SELECT count(*) FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_PURGE_LIVE'"),
+	'1',
+	'a run still in progress is never purged, however old its row');
+
+# ---------------------------------------------------------------------
+# a malformed purge schedule is reported and the default used, rather than
+# taking the database's scheduling down with it
+# ---------------------------------------------------------------------
+# Calendar syntax errors are not in the transient class, so an unguarded
+# evaluation would exit this worker for good and the launcher does not restart
+# one that quit.  A typo in a retention setting must not be able to stop jobs.
+my $logpos = -s $node->logfile;
+$node->safe_psql($db,
+	"ALTER SYSTEM SET ivorysql_ora.scheduler_purge_schedule = 'FREQ=NOSUCHTHING'");
+$node->reload;
+
+$node->wait_for_log(
+	qr/ignoring ivorysql_ora\.scheduler_purge_schedule, using "FREQ=DAILY/,
+	$logpos)
+  or die "malformed purge schedule was not reported";
+ok(1, 'a malformed purge schedule falls back to the default');
+
+# the scheduler has to still be there, and still running jobs
+ora_sql(q{BEGIN dbms_scheduler.enable('tap_survivor'); END;});
+my $alive = $node->safe_psql($db,
+	"SELECT count(*) FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_SURVIVOR' AND status = 's'"
+);
+$node->poll_query_until($db,
+	"SELECT count(*) > $alive FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_SURVIVOR' AND status = 's'"
+) or die "database scheduler stopped after a bad purge schedule";
+ok(1, 'a malformed purge schedule does not stop job scheduling');
+ora_sql(q{BEGIN dbms_scheduler.disable('tap_survivor'); END;});
+
+# put purging back where the rest of the test expects it
+$node->safe_psql($db,
+	"ALTER SYSTEM RESET ivorysql_ora.scheduler_purge_schedule");
+$node->safe_psql($db,
+	"ALTER SYSTEM RESET ivorysql_ora.scheduler_log_history");
+$node->reload;
+
+# ---------------------------------------------------------------------
 # a database scheduler that stops on its own is reported once and left
 # stopped; reloading the configuration retries it
 # ---------------------------------------------------------------------
-my $logpos = -s $node->logfile;
+$logpos = -s $node->logfile;
 
 # a database that does not exist yet: the worker starts, fails to connect and
 # is gone, which is what the launcher has to notice

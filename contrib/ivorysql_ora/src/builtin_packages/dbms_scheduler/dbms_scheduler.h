@@ -41,6 +41,30 @@
 #define SCHED_MAX_ARGS			255
 
 /*
+ * Upper bound of a log retention period, in days, matching the range Oracle
+ * documents for its log_history scheduler attribute.  The bound is not
+ * decoration: it keeps days * USECS_PER_DAY well inside int64, which a value
+ * anywhere near INT_MAX would not.
+ *
+ * Note that PURGE_LOG's log_history argument and the
+ * ivorysql_ora.scheduler_log_history GUC share this limit and share Oracle's
+ * reading of zero, which is "keep no history" - not "do not purge".  Turning
+ * automatic purging off is done by emptying
+ * ivorysql_ora.scheduler_purge_schedule instead.
+ */
+#define SCHED_MAX_LOG_HISTORY	1000000
+
+/*
+ * When automatic purging runs, unless ivorysql_ora.scheduler_purge_schedule
+ * says otherwise.  Oracle does not document the time its own purge job keeps,
+ * only that it purges "once per day"; this is the interval its
+ * DAILY_PURGE_SCHEDULE is shipped with, so a DBA who knows Oracle finds the
+ * purge where it is expected.
+ */
+#define SCHED_DEFAULT_PURGE_SCHEDULE \
+	"FREQ=DAILY;BYHOUR=3;BYMINUTE=0;BYSECOND=0"
+
+/*
  * scheduler_calendar.c
  */
 
@@ -106,6 +130,8 @@ extern void sched_log_finish(int64 log_id, bool success, int error_no,
 extern void sched_log_set_worker_pid(int64 log_id);
 extern void sched_update_job_stats(const SchedJobDef *def, bool success,
 								   TimestampTz actual_start, bool background);
+extern uint64 sched_purge_log(TimestampTz cutoff, const char *owner,
+							  const char *job_name, int batch_limit);
 
 /*
  * scheduler_launcher.c
@@ -118,6 +144,8 @@ extern int	scheduler_poll_interval;
 extern int	scheduler_max_job_workers;
 extern int	scheduler_job_timeout;
 extern int	scheduler_max_failures;
+extern int	scheduler_log_history;
+extern char *scheduler_purge_schedule;
 
 extern void SchedulerLauncherRegister(void);
 
