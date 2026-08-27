@@ -193,6 +193,18 @@ begin
                          utl_file.fgetpos(f);
     end;
 
+    begin
+        utl_file.fseek(f, NULL, -1);
+    exception
+        when others then
+            raise notice 'relative offset before start: %, position: %', sqlerrm,
+                         utl_file.fgetpos(f);
+    end;
+
+    utl_file.fseek(f, file_length, NULL);
+    raise notice 'offset at EOF accepted: %',
+                 utl_file.fgetpos(f) = file_length;
+
     utl_file.fclose(f);
 end;
 /
